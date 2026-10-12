@@ -16,12 +16,17 @@ import (
 const PlaylistNameMaxLength = 100
 
 // Playlist はプレイリスト 1 つの要約である。ItemCount は見せる項目（research.md R-4）の数、
-// UpdatedAt は名前か項目を最後に変えた時刻である。
+// UpdatedAt は名前か項目を最後に変えた時刻である。Covers は一覧のカードのフォルダの絵柄に
+// 差し込むサムネイル（ui-design.md「Playlists screen」）で、見せる項目を位置の順にたどって
+// 動画の項目はその動画、グループの項目は並びの順で最初のサムネイル生成済みのメンバーを
+// 1 枚ずつ、サムネイル生成済みのものだけ MaxFolderPreviews 件まで持つ。一覧（ListPlaylists）
+// だけが埋め、ほかの読み出しでは nil である。
 type Playlist struct {
 	ID        int64
 	Name      string
 	ItemCount int
 	UpdatedAt time.Time
+	Covers    []FolderPreview
 }
 
 // PlaylistItem はプレイリストの項目 1 つである。見せる項目は Video と Group のどちらか一方だけを持ち、

@@ -16,8 +16,17 @@ function json(body: unknown, status = 200): Response {
   });
 }
 
-function playlist(id: number, name: string, itemCount: number): PlaylistSummary {
-  return { id, name, itemCount, updatedAt: "2026-09-01T00:00:00Z" };
+function playlist(
+  id: number,
+  name: string,
+  itemCount: number,
+  covers: PlaylistSummary["covers"] = [],
+): PlaylistSummary {
+  return { id, name, itemCount, updatedAt: "2026-09-01T00:00:00Z", covers };
+}
+
+function cover(videoId: number): NonNullable<PlaylistSummary["covers"]>[number] {
+  return { videoId, thumbnailUrl: `/api/videos/${String(videoId)}/thumbnail?v=x` };
 }
 
 const server = {
@@ -84,18 +93,28 @@ function renderPage() {
   );
 }
 
-/** rowNames は表の行の名前のリンクの読み上げ名を上から返す。 */
-function rowNames(): string[] {
-  const table = screen.getByRole("table", { name: "Playlists" });
-  return within(table)
-    .getAllByRole("link")
-    .map((link) => link.getAttribute("aria-label") ?? "");
+/** cards は格子のカードを上から返す。 */
+function cards(): HTMLElement[] {
+  return Array.from(document.querySelectorAll<HTMLElement>("article[data-playlist-id]"));
+}
+
+/** cardNames はカードのリンクの読み上げ名を上から返す。 */
+function cardNames(): string[] {
+  return cards().map(
+    (card) => within(card).getByRole("link").getAttribute("aria-label") ?? "",
+  );
+}
+
+/** findCards は格子が描かれるのを待つ。 */
+async function findCards(): Promise<HTMLElement[]> {
+  await screen.findAllByRole("article");
+  return cards();
 }
 
 beforeEach(() => {
   server.items = [
-    playlist(3, "Morning", 12),
-    playlist(1, "Road trip", 1),
+    playlist(3, "Morning", 12, [cover(31), cover(32), cover(33), cover(34)]),
+    playlist(1, "Road trip", 1, [cover(11)]),
     playlist(2, "Empty one", 0),
   ];
   server.listStatus = 200;
@@ -113,13 +132,13 @@ afterEach(() => {
 });
 
 describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」）", () => {
-  it("プレイリストを API の順（最後に変えた順）に、項目数とともに並べる", async () => {
+  it("プレイリストを API の順（最後に変えた順）にカードで並べ、項目数とともに出す", async () => {
     renderPage();
     expect(screen.getByRole("heading", { level: 1, name: "Playlists" })).toBeDefined();
     expect(document.title).toBe("Playlists");
 
-    await screen.findByRole("table", { name: "Playlists" });
-    expect(rowNames()).toEqual([
+    await findCards();
+    expect(cardNames()).toEqual([
       "Morning, 12 items",
       "Road trip, 1 item",
       "Empty one, 0 items",
@@ -129,24 +148,67 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
     expect(
       screen.getByRole("link", { name: "Morning, 12 items" }).getAttribute("href"),
     ).toBe("/playlists/3");
+    // 表の列は無い。
+    expect(screen.queryByRole("table")).toBeNull();
+  });
+
+  it("カードはグループのカードの絵柄に先頭の項目のサムネイルを差し込み、名前と更新の時刻を出す", async () => {
+    renderPage();
+    const [morning, roadTrip, emptyOne] = await findCards();
+    if (morning === undefined || roadTrip === undefined || emptyOne === undefined) {
+      throw new Error("cards not rendered");
+    }
+    const sheets = (card: HTMLElement) =>
+      Array.from(
+        card.querySelectorAll<HTMLImageElement>(
+          "[data-folder-art] [data-folder-preview] img",
+        ),
+      ).map((img) => img.getAttribute("src"));
+    expect(sheets(morning)).toEqual([
+      "/api/videos/31/thumbnail?v=x",
+      "/api/videos/32/thumbnail?v=x",
+      "/api/videos/33/thumbnail?v=x",
+      "/api/videos/34/thumbnail?v=x",
+    ]);
+    expect(sheets(roadTrip)).toEqual(["/api/videos/11/thumbnail?v=x"]);
+    // 空のプレイリストはフォルダの背板だけ。
+    expect(emptyOne.querySelector("[data-folder-art]")).not.toBeNull();
+    expect(sheets(emptyOne)).toEqual([]);
+
+    expect(
+      within(morning).getByRole("heading", { level: 3, name: "Morning" }),
+    ).toBeDefined();
+    expect(within(morning).getByText("12 items")).toBeDefined();
+    expect(within(emptyOne).getByText("0 items")).toBeDefined();
+    // 最後に変えた時刻は、表の列ではなく名前の下の 1 行。
+    const updated = morning.querySelector("p span[title]");
+    expect(updated?.textContent).not.toBe("");
+  });
+
+  it("カードを押すとそのプレイリストの画面を開く", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await findCards();
+    await user.click(screen.getByRole("link", { name: "Road trip, 1 item" }));
+    expect(await screen.findByText("Playlist screen")).toBeDefined();
   });
 
   it("同じ名前の 2 つのプレイリストをまとめずにどちらも並べる", async () => {
     server.items = [playlist(5, "Same", 2), playlist(4, "Same", 7)];
     renderPage();
 
-    await screen.findByRole("table", { name: "Playlists" });
-    expect(rowNames()).toEqual(["Same, 2 items", "Same, 7 items"]);
+    await findCards();
+    expect(cardNames()).toEqual(["Same, 2 items", "Same, 7 items"]);
     expect(screen.getAllByRole("link").map((link) => link.getAttribute("href"))).toEqual([
       "/playlists/5",
       "/playlists/4",
     ]);
   });
 
-  it("名前を入れて作ると、トリムした名前を送り、先頭の行の名前へフォーカスを移す", async () => {
+  it("名前を入れて作ると、トリムした名前を送り、先頭のカードのリンクへフォーカスを移す", async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByRole("table", { name: "Playlists" });
+    await findCards();
 
     await user.click(screen.getByRole("button", { name: "New playlist" }));
     const dialog = await screen.findByRole("dialog", { name: "New playlist" });
@@ -157,7 +219,7 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
 
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(server.creates).toEqual([{ name: "Evening" }]);
-    expect(rowNames()[0]).toBe("Evening, 0 items");
+    expect(cardNames()[0]).toBe("Evening, 0 items");
     expect(screen.getByText("4 playlists")).toBeDefined();
     await waitFor(() =>
       expect(document.activeElement).toBe(
@@ -166,13 +228,13 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
     );
     // 作った後に一覧を読み直す（ui-design.md「States」）。
     await waitFor(() => expect(server.listCalls).toBe(2));
-    expect(rowNames()).toHaveLength(4);
+    expect(cardNames()).toHaveLength(4);
   });
 
   it("空の名前と 100 文字を超える名前は送らず、名前の規則を欄の誤りとして出す", async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByRole("table", { name: "Playlists" });
+    await findCards();
 
     await user.click(screen.getByRole("button", { name: "New playlist" }));
     const dialog = await screen.findByRole("dialog", { name: "New playlist" });
@@ -197,7 +259,7 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
   it("400 は名前の規則を、ほかの失敗は理由を添えた 1 行を窓の中に出し、窓を開いたままにする", async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByRole("table", { name: "Playlists" });
+    await findCards();
     await user.click(screen.getByRole("button", { name: "New playlist" }));
     const dialog = await screen.findByRole("dialog", { name: "New playlist" });
     const field = within(dialog).getByRole("textbox", { name: "Name" });
@@ -220,7 +282,7 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
   it("Cancel で閉じると入れた名前を捨てる", async () => {
     const user = userEvent.setup();
     renderPage();
-    await screen.findByRole("table", { name: "Playlists" });
+    await findCards();
     await user.click(screen.getByRole("button", { name: "New playlist" }));
     let dialog = await screen.findByRole("dialog", { name: "New playlist" });
     await user.type(within(dialog).getByRole("textbox", { name: "Name" }), "Draft");
@@ -235,7 +297,7 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
     expect(server.creates).toEqual([]);
   });
 
-  it("空なら本体の「New playlist」だけを出し、作ると表に変わる", async () => {
+  it("空なら本体の「New playlist」だけを出し、作ると格子に変わる", async () => {
     server.items = [];
     const user = userEvent.setup();
     renderPage();
@@ -250,8 +312,8 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
       "First{Enter}",
     );
 
-    expect(await screen.findByRole("table", { name: "Playlists" })).toBeDefined();
-    expect(rowNames()).toEqual(["First, 0 items"]);
+    await findCards();
+    expect(cardNames()).toEqual(["First, 0 items"]);
     expect(screen.getByText("1 playlist")).toBeDefined();
   });
 
@@ -263,14 +325,14 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
     expect(await screen.findByText("Couldn't load the playlists")).toBeDefined();
     server.listStatus = 200;
     await user.click(screen.getByRole("button", { name: "Retry" }));
-    expect(await screen.findByRole("table", { name: "Playlists" })).toBeDefined();
-    expect(rowNames()).toHaveLength(3);
+    await findCards();
+    expect(cardNames()).toHaveLength(3);
   });
 
   it("疑似ロケールではカタログの文言だけを描く", async () => {
     enablePseudoLocale();
     renderPage();
-    await screen.findByRole("table", { name: /Playlists/ });
+    await findCards();
     expectCatalogTextOnly(document.body, ["Morning", "Road trip", "Empty one"]);
   });
 });

@@ -17,7 +17,8 @@ Sources that already decide things, linked rather than repeated here:
 | Topic | Source |
 | --- | --- |
 | Tokens, closed scales, library and viewing density | [design-system.md, Foundations](../../docs/design-docs/design-system.md#foundations); the values in `@theme` of [`web/src/ui/tokens.css`](../../web/src/ui/tokens.css), named here and never copied |
-| `ListPage`, `PageHeader`, `DataTable`, the state blocks | [patterns.md, List page](../../web/registry/rules/patterns.md#list-page), [Sections](../../web/registry/rules/patterns.md#sections) and [States](../../web/registry/rules/patterns.md#states) |
+| `ListPage`, `PageHeader`, `CardGrid`, `DataTable`, the state blocks | [patterns.md, List page](../../web/registry/rules/patterns.md#list-page), [Sections](../../web/registry/rules/patterns.md#sections) and [States](../../web/registry/rules/patterns.md#states) |
+| The group card: its box, the folder art (`FolderArt`) and the count face on it | [library-ui.md, Cards](../../docs/design-docs/library-ui.md#cards), [017 UI design, Group card](../017-folder-groups/ui-design.md#group-card) |
 | `FormDialog`, `ConfirmDialog`: `pending`, the failure `Alert` inside them | [patterns.md, Form dialog](../../web/registry/rules/patterns.md#form-dialog) and [Confirm dialog](../../web/registry/rules/patterns.md#confirm-dialog) |
 | `Button`, `Popover`, `Command`, `DropdownMenu`, `Tooltip`, `Sonner`, `VideoThumbnail`, `FavoriteToggle`: what each is for | [components.md](../../web/registry/rules/components.md) |
 | The library list view's columns, row height and watch marks; the group row | [library-ui.md, List view and selection](../../docs/design-docs/library-ui.md#list-view-and-selection), [017 UI design, List view row](../017-folder-groups/ui-design.md#list-view-row) |
@@ -60,15 +61,22 @@ member list's watched mark, because the scale has no `size-3.5`.
 
 ## Why this shape
 
-The playlists screen is a list page whose body is a `DataTable` of one row per
-playlist: the name, the item count and when it last changed. The screen's one
-job is to open a playlist, and a row the owner presses is the quietest form
-for that; a card per playlist was rejected because `GET /api/playlists`
-carries no artwork, so a card would be a framed box around a name, and a
-`GroupedList` was rejected because the rows share no heading. The one
+The playlists screen is a list page whose body is the library's `CardGrid` of
+one card per playlist, in the library group card's form: the folder art of
+`FolderArt` filled with the thumbnails of the playlist's first shown items,
+the item count on the art's face, the name under it and when it last changed
+under the name. The maintainer chose this over the first design's `DataTable`
+of name, count and date, so that a playlist, which is a hand-made group of
+videos, looks on its own screen as a group looks in the library, and the owner
+recognises a playlist by its contents before reading its name
+(`UI品質`, `情報密度`). The art needs artwork in the response, so
+`GET /api/playlists` carries `covers`: up to four thumbnails of the first
+shown items ([contracts/screen-api.md](contracts/screen-api.md#schemas)). A
+card with an icon in place of art was rejected as a framed box around a name,
+and a `GroupedList` was rejected because the rows share no heading. The one
 `default` action is "New playlist", because a new owner's first act on the
 screen is to make one; rename and delete live on the playlist itself, where
-the name is in view, so the list holds no row menu and nothing competes with
+the name is in view, so the list holds no card menu and nothing competes with
 the names (`UI品質`, `操作の優先度`).
 
 The playlist screen is a list page whose body is the library list view's
@@ -133,10 +141,9 @@ the catalog's "1 item" / "N items" helper, and `videos` its "N videos".
 | Place | Text | Notes |
 | --- | --- | --- |
 | Sidebar entry, page title, `document.title` of `/playlists` | Playlists | `shell.nav.playlists`, `playlists.title`, `playlists.documentTitle` |
-| Playlists table accessible name | Playlists | `playlists.table` |
-| Column heads | Name, Items, Updated | `playlists.columns.name`, `.items`, `.updated` |
-| Updated cell | 3 days ago | `formatRelative(updatedAt)`, as the library list view's `Added` column; the full date and time in `title` |
-| Row link accessible name | {name}, {N items} | `playlists.rowLabel(name, count)` |
+| Count on the card's art | 12 items | `playlists.items(count)`, in the group card's count face |
+| Updated line under the name | 3 days ago | `formatRelative(updatedAt)`, as the library list view's `Added` column; the full date and time in `title` |
+| Card link accessible name | {name}, {N items} | `playlists.rowLabel(name, count)` |
 | Header count on `/playlists` | 3 playlists | `playlists.count(count)`; "1 playlist" |
 | New-playlist button, dialog title | New playlist | `playlists.new`, `playlists.newDialog.title` |
 | Name field label | Name | `playlists.nameLabel` |
@@ -229,19 +236,27 @@ to the playlist.
 A `ListPage` with no toolbar, no band, no aside and no selection bar. The
 header is the `PageHeader` title "Playlists" (`text-xl font-semibold`), the
 count "3 playlists" and, in `actions`, the one `default` `sm` button "New
-playlist" (lucide `Plus`). The body is one `DataTable` or one state block;
-the header stays where it is in every state.
+playlist" (lucide `Plus`). The body is one `CardGrid` (`size` 1, the library's
+default card width; the screen has no zoom control) or one state block; the
+header stays where it is in every state.
+
+Each card is `PlaylistCard`, the library group card
+([017 UI design, Group card](../017-folder-groups/ui-design.md#group-card))
+with the group's values replaced by the playlist's, and nothing a playlist
+does not have.
 
 | Part | Form |
 | --- | --- |
-| Rows | One per playlist, in the API's order (last changed first, so the playlist the owner is building sits at the top) |
-| Name | `text-sm font-medium text-foreground`, one line, truncated with the full name in `title`; the cell is a `Link` to `/playlists/{id}` that covers the row (`hover:bg-accent` on the row), with lucide `ListVideo` in `text-muted-foreground` before the name |
-| Items | `items(count)` in `text-xs text-muted-foreground tabular-nums`, right-aligned; "0 items" for an empty playlist, not blank, so an empty row does not read as a loading glitch |
-| Updated | `formatRelative(updatedAt)` in `text-xs text-muted-foreground`, right-aligned, from `md`; hidden below |
-| Nothing else | No check column, no row menu, no thumbnail: the API gives no artwork, and the row's one action is to open |
+| Cards | One per playlist, in the API's order (last changed first, so the playlist the owner is building sits first) |
+| Art | The group card's `VideoThumbnail` frame with the shared `FolderArt`, fed `covers` from the response: the thumbnails of the first shown items, a video item's video or a group item's first member with a thumbnail, up to four, overlapping at an angle on the tabbed back panel; moving the mouse sideways brings one forward and plays its preview, as on a group card. An empty playlist, or one whose shown items have no thumbnails yet, shows the back panel alone, as an empty folder does |
+| Count | `items(count)` on the art's bottom-right face (`VideoThumbnailDuration`, `text-2xs`, `bg-overlay`), where the group card puts its count; "0 items" for an empty playlist, not blank, so an empty card does not read as a loading glitch |
+| Name | `h3`, `text-sm font-medium text-foreground`, on up to two lines with the full name in `title`, as a group's name |
+| Updated | One `text-xs text-muted-foreground` line under the name: `formatRelative(updatedAt)`, with the full date and time in `title`; the card's only line below the name |
+| Link | The whole card is one `Link` to `/playlists/{id}` with the accessible name "{name}, {N items}" |
+| Nothing else | No checkbox, no favorite or add mark, no progress, no tag row, no card menu: a playlist has none of those, and the card's one action is to open |
 
-Two playlists may share a name (R-11); two rows with the same name are told
-apart by their counts and dates, and nothing merges them.
+Two playlists may share a name (R-11); two cards with the same name are told
+apart by their art, counts and dates, and nothing merges them.
 
 ### New playlist
 
@@ -256,7 +271,7 @@ box does. The footer is `Cancel` and the `default` "Create".
 | --- | --- |
 | Name empty after trimming, or over 100 code points | "Create" stays enabled, and the field shows no error while the owner types. Enter or a press sends nothing; "Use a name of 1 to 100 characters." becomes the field's `FieldError` and the field is `aria-invalid` until the text changes |
 | Submit | `pending`: both buttons disabled, "Creating…" with a `Spinner`; the trimmed name is sent to `POST /api/playlists` |
-| `201` | The dialog closes, the new row is at the top of the table, and focus moves to its name link; no toast, the row is the result |
+| `201` | The dialog closes, the new playlist's card, with the empty art and "0 items", is first in the grid, and focus moves to its link; no toast, the card is the result |
 | `400` | The field's `FieldError` is "Use a name of 1 to 100 characters."; the dialog stays open |
 | Other failure | A `destructive` `Alert` "Couldn't create the playlist: {reason}" under the field; the dialog stays open |
 | Cancel, Esc | The dialog closes; the typed name is dropped |
@@ -278,11 +293,11 @@ stateDiagram-v2
 
 | State | What the screen shows |
 | --- | --- |
-| Loading | `LoadingState` `layout="table"` in the body; the header with "New playlist" |
+| Loading | `LoadingState` `layout="grid"` in the body; the header with "New playlist" |
 | Load failed | `ErrorState` with "Couldn't load the playlists" and `Retry` |
 | Empty | `EmptyState` with lucide `ListVideo`, "No playlists yet", "Create a playlist, then add videos and groups to it from the library." and the `default` `sm` action "New playlist", which opens the same dialog; the header's button is not drawn, so the area has one `default` button |
-| Content | The table; the header's count and "New playlist" |
-| Creating | The dialog in its `pending` form over the unchanged table |
+| Content | The grid; the header's count and "New playlist" |
+| Creating | The dialog in its `pending` form over the unchanged grid |
 
 The list is read when the screen opens and after a create; returning from a
 playlist re-reads it (the `Link` leaves the route and the screen mounts
@@ -638,16 +653,18 @@ When drawing as a guest, the following are not shown. They are neither
 
 ## Responsive behaviour
 
-The widths below are the ones the implementation is judged at. The tables
-change at `sm` (640 px: the watched column, and the library list view's add
-to playlist column) and `md` (768 px: the updated column); the video page's line and layers change at `sm` as the group line
-and the notice already do.
+The widths below are the ones the implementation is judged at. The playlists
+grid changes with the width alone (`CardGrid` fills the row with as many
+`card-1` columns as fit, one below about 600 px); the playlist table changes
+at `sm` (640 px: the watched column, and the library list view's add to
+playlist column); the video page's line and layers change at `sm` as the
+group line and the notice already do.
 
 | Width | Layout |
 | --- | --- |
-| 360px | The sidebar is the drawer. Playlists: the header is the title, the count and "New playlist" on one row, with the button's text kept; the table shows Name and Items. Playlist: the header is the name on up to two lines, the count under it, and "Play" with "More" at the row's end; a row is the handle and number, the `w-list-thumb` thumbnail, the title on up to two lines, the length and the `×`, with no watched column; a long title never pushes the `×` out of the row. The dialogs span the width with the dialog's own margin. The picker popover is `w-popover`, kept inside the viewport. The selection bar's "Add to playlist" sits on the tier with "Favorite" and "Visibility" or the tier below, at the right end, with its text whole. The library's list view rows have no add to playlist column, so the length column stays inside the table; the selection bar adds from there. Video page: the playlist line is `text-xs` above the title; the notice and the end layer omit the thumbnail as today; the aside is under the facts with its top border and `px-4`, and the playlist panel is its first section, with its rows the width of the related rows, its list no taller than `max-h-playlist-panel` and scrolling inside while the page does not move, and the member list and the related videos below it |
-| 768px | The rail sidebar. Playlists: Name, Items and Updated. Playlist: the watched column joins the row; the header's name, count and the two actions fit one row for a name of up to about 40 characters, and a longer name wraps under the actions. The selection bar, with one item selected, holds the count and the five actions on the first row and "Select all" and clear at the right end of the second; with two or more, "Favorite" onward on the second row, as the bar's rules say. Video page: still one column; the aside under the facts with `px-6`, the panel as at 360px |
-| 1280px | Playlists: the three columns with the names taking the width. Playlist: the full row; the dragged row's shadow is visible against the rows it passes. The selection bar is one row. Video page: two columns; the playlist line sits above the title in the left column, and the aside (`w-detail-aside-wide` at this width) opens with the playlist panel, whose heading and capped list stay at the top of the column while the member list and the related videos scroll under them; at 1280×800 the panel leaves at least three related rows in view below it |
+| 360px | The sidebar is the drawer. Playlists: the header is the title, the count and "New playlist" on one row, with the button's text kept; the grid is one column of cards the body's width, each with the art, the count on it, the name and the date. Playlist: the header is the name on up to two lines, the count under it, and "Play" with "More" at the row's end; a row is the handle and number, the `w-list-thumb` thumbnail, the title on up to two lines, the length and the `×`, with no watched column; a long title never pushes the `×` out of the row. The dialogs span the width with the dialog's own margin. The picker popover is `w-popover`, kept inside the viewport. The selection bar's "Add to playlist" sits on the tier with "Favorite" and "Visibility" or the tier below, at the right end, with its text whole. The library's list view rows have no add to playlist column, so the length column stays inside the table; the selection bar adds from there. Video page: the playlist line is `text-xs` above the title; the notice and the end layer omit the thumbnail as today; the aside is under the facts with its top border and `px-4`, and the playlist panel is its first section, with its rows the width of the related rows, its list no taller than `max-h-playlist-panel` and scrolling inside while the page does not move, and the member list and the related videos below it |
+| 768px | The rail sidebar. Playlists: two columns of cards, their edges on the header's edges. Playlist: the watched column joins the row; the header's name, count and the two actions fit one row for a name of up to about 40 characters, and a longer name wraps under the actions. The selection bar, with one item selected, holds the count and the five actions on the first row and "Select all" and clear at the right end of the second; with two or more, "Favorite" onward on the second row, as the bar's rules say. Video page: still one column; the aside under the facts with `px-6`, the panel as at 360px |
+| 1280px | Playlists: three or four columns of cards at the library's card width, so three playlists fill one row with room over. Playlist: the full row; the dragged row's shadow is visible against the rows it passes. The selection bar is one row. Video page: two columns; the playlist line sits above the title in the left column, and the aside (`w-detail-aside-wide` at this width) opens with the playlist panel, whose heading and capped list stay at the top of the column while the member list and the related videos scroll under them; at 1280×800 the panel leaves at least three related rows in view below it |
 
 ## Review criteria
 
@@ -672,9 +689,10 @@ empty playlist.
    tags, favorite, quality, size or date (`UI品質`, `情報密度`).
 3. **Spacing rhythm**: the playlists screen and the playlist screen have the
    header, the gap to the body and the body's edges of the history and tags
-   screens, because `ListPage` draws them; the table's card and border are
-   the library list view's. Nothing on either screen writes its own margin
-   (`UI品質`, `余白のリズム`).
+   screens, because `ListPage` draws them; the playlists grid has the
+   library grid's columns and `gap-3`, with both edges on the header's, and
+   the playlist table's card and border are the library list view's. Nothing
+   on either screen writes its own margin (`UI品質`, `余白のリズム`).
 4. **Priority of actions**: on the playlist screen, Tab reaches "Play"
    before "More", and "More" holds "Rename…" and "Delete…" with "Delete…"
    last after a line. Pressing a row starts playback from that item without
@@ -756,9 +774,10 @@ empty playlist.
     `×`, and the member list and the related videos follow it after one
     divider each (requirement 8, `UI品質`, `視覚的な階層`, `情報密度`,
     `余白のリズム`).
-15. **Failing examples** (`UI品質`): the playlists drawn as framed cards with
-    an icon where artwork would be; a row menu with rename and delete on the
-    playlists screen; the playlist's count or the row numbers in the same
+15. **Failing examples** (`UI品質`): a playlist card with an icon or a plain
+    frame where the folder art would be, or with a checkbox, a heart, an add
+    mark or a tag row a playlist does not have; a card menu with rename and
+    delete on the playlists screen; the playlist's count or the row numbers in the same
     size or weight as the name; a `default` play button on every row; the
     handle revealed only on hover; rows taller than the library's list view
     rows, or rows with quality, size and date columns; "Delete…" drawn as a
@@ -772,3 +791,12 @@ empty playlist.
     height; the current row drawn as a link or without its left line; a
     handle or a `×` in the panel's rows; the panel scrolling the page to its
     current row.
+16. **Playlists grid**: beside a library group card at the same width, a
+    playlist card has the same box, the same art and the same count face,
+    with "8 items" where the group says "12 videos"; the eight-item
+    playlist's art holds four thumbnails, the first of a group item being the
+    member its group card shows first, the empty playlist's art is the back
+    panel alone with "0 items", and the name and the date under the art are
+    the only text outside it. Pressing anywhere on a card opens the
+    playlist, and creating a playlist puts its empty card first with the
+    focus on it (`UI品質`, `視覚的な階層`, `情報密度`).

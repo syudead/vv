@@ -2354,6 +2354,13 @@ export interface components {
              * @description 名前か項目を最後に変えた時刻
              */
             updatedAt: string;
+            /**
+             * @description 一覧のカードのフォルダの絵柄に差し込むサムネイル（`LibraryGroup.previews` と同じ形）。
+             *     見せる項目を位置の順にたどり、動画の項目はその動画、グループの項目は並びの順で
+             *     最初のサムネイル生成済みのメンバーを 1 枚ずつ、サムネイル生成済みのものだけ最大 4 件。
+             *     `GET /api/playlists` の要約にだけ入り、ほかの応答では省く
+             */
+            covers?: components["schemas"]["FolderPreview"][];
         };
         PlaylistList: {
             /** @description プレイリストの要約。`updatedAt` の新しい順（同じなら id の大きい順） */
