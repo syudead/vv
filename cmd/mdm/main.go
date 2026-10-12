@@ -22,6 +22,7 @@ import (
 
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/artifacts"
+	"github.com/syudead/vv/internal/comfyui"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/eventbus"
 	"github.com/syudead/vv/internal/httpapi"
@@ -273,6 +274,9 @@ func run(opts runOptions) error {
 	// ここで差し替える。
 	classifier := ollama.New(settingsStore)
 	ollamaConnection := app.NewOllamaConnection(settingsStore, classifier)
+	// 画像編集の提供元 ComfyUI（自前か Comfy Cloud）。アダプタが自分の接続先を設定から読む
+	// （docs/design-docs/ai-layer.md）。
+	comfyUIConnection := app.NewComfyUIConnection(settingsStore, comfyui.New(settingsStore))
 	// 自動タグ付け。取り込みでシーク用プレビューの段階を終えた動画を、入なら判定に回す
 	// （docs/design-docs/auto-tagging.md）。前回の停止で判定中のまま残った行を積み直してから動かす。
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
@@ -405,6 +409,7 @@ func run(opts runOptions) error {
 		AutoImport:        autoImport,
 		AutoTagging:       autoTagger,
 		Ollama:            ollamaConnection,
+		ComfyUI:           comfyUIConnection,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,

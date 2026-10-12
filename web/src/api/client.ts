@@ -96,6 +96,8 @@ export type AutoImportSettings = components["schemas"]["AutoImportSettings"];
 export type AutoTaggingSettings = components["schemas"]["AutoTaggingSettings"];
 export type CheckResult = components["schemas"]["CheckResult"];
 export type OllamaSettings = components["schemas"]["OllamaSettings"];
+export type ComfyUISettings = components["schemas"]["ComfyUISettings"];
+export type UpdateComfyUISettings = components["schemas"]["UpdateComfyUISettingsRequest"];
 export type AutoTaggingScope = components["schemas"]["StartAutoTaggingRequest"]["scope"];
 export type UpdateAutoTaggingSettings =
   components["schemas"]["UpdateAutoTaggingSettingsRequest"];
@@ -900,6 +902,42 @@ export function updateOllamaSettings(
  */
 export function checkOllama(signal?: AbortSignal): Promise<CheckResult> {
   return request<CheckResult>("/api/settings/ollama/check", {
+    method: "POST",
+    signal,
+  });
+}
+
+/**
+ * getComfyUISettings はサムネイルの編集に使う ComfyUI の接続先を取得する。API キーは返らず、
+ * 保存されているかだけが `apiKeySet` で返る。何も保存されていなければ `provider` が無い
+ * （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+ */
+export function getComfyUISettings(signal?: AbortSignal): Promise<ComfyUISettings> {
+  return request<ComfyUISettings>("/api/settings/comfyui", { signal });
+}
+
+/**
+ * updateComfyUISettings は ComfyUI の接続先を保存し、保存後の値を返す。`apiKey` を省けば
+ * 保存済みのキーを残し、`""` なら消す。
+ */
+export function updateComfyUISettings(
+  settings: UpdateComfyUISettings,
+  signal?: AbortSignal,
+): Promise<ComfyUISettings> {
+  return request<ComfyUISettings>("/api/settings/comfyui", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+    signal,
+  });
+}
+
+/**
+ * checkComfyUI は保存した接続先に ComfyUI が応えるかを確かめる。接続先は送らない（サーバーは
+ * 保存した設定だけを使う）。
+ */
+export function checkComfyUI(signal?: AbortSignal): Promise<CheckResult> {
+  return request<CheckResult>("/api/settings/comfyui/check", {
     method: "POST",
     signal,
   });

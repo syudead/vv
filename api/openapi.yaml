@@ -1596,6 +1596,70 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/settings/comfyui:
+    get:
+      operationId: getComfyUISettings
+      summary: ComfyUI の接続先を返す
+      description: |
+        サムネイルの編集に使う ComfyUI の接続先（自前の ComfyUI か Comfy Cloud）。サムネイルの編集の
+        機能とは別に持つ（docs/design-docs/ai-layer.md）。API キーは返さず、保存されているかを
+        `apiKeySet` で返す。何も保存されていなければ `provider` を省いた `200` を返す。
+        `Cache-Control: no-store` を付ける
+        （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+      responses:
+        "200":
+          description: 今の接続先
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComfyUISettings"
+    put:
+      operationId: updateComfyUISettings
+      summary: ComfyUI の接続先を保存する
+      description: |
+        `apiKey` が無ければ保存済みのキーを残し、`""` なら消す。`self_hosted` で正しい http か
+        https の URL が無ければ `400` `invalid_request`・reason `comfyui_url_invalid`、`cloud` で
+        キーが保存も送信もされていなければ reason `comfyui_api_key_missing` を返し、保存しない。
+        `cloud` では `url` を使わず、保存済みの URL を残す
+        （specs/045-comfyui-thumbnails/research.md R-9）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateComfyUISettingsRequest"
+      responses:
+        "200":
+          description: 保存後の接続先
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ComfyUISettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/settings/comfyui/check:
+    post:
+      operationId: checkComfyUI
+      summary: 保存した接続先に ComfyUI が応えるかを確かめる
+      description: |
+        自前の ComfyUI は保存した URL の `GET /system_stats`、Comfy Cloud は `GET /jobs?limit=1` に
+        `X-API-Key` を付けて確かめる。使えないときの `message` は、届かない、ComfyUI でない、キーが
+        拒まれた、何も保存されていないを区別する。接続先は要求の本文から取らない（任意の URL へ
+        サーバーから要求を送らせないため）。要求の本文は無い
+        （specs/045-comfyui-thumbnails/research.md R-5）。
+      responses:
+        "200":
+          description: 確かめた結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CheckResult"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/settings/auto-tagging:
     get:
       operationId: getAutoTaggingSettings
@@ -3169,6 +3233,40 @@ components:
         model:
           type: string
           description: Ollama の模型名。保存値が無ければ clef-flash
+
+    ComfyUIProvider:
+      type: string
+      enum: [self_hosted, cloud]
+      description: ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
+
+    ComfyUISettings:
+      type: object
+      required: [apiKeySet]
+      additionalProperties: false
+      description: ComfyUI の接続先（docs/design-docs/ai-layer.md）。API キーそのものは返さない
+      properties:
+        provider:
+          $ref: "#/components/schemas/ComfyUIProvider"
+        url:
+          type: string
+          description: 自前の ComfyUI の基底 URL（http か https）。保存値が無ければ省く
+        apiKeySet:
+          type: boolean
+          description: Comfy Cloud の API キーが保存されているか
+
+    UpdateComfyUISettingsRequest:
+      type: object
+      required: [provider]
+      additionalProperties: false
+      properties:
+        provider:
+          $ref: "#/components/schemas/ComfyUIProvider"
+        url:
+          type: string
+          description: "`self_hosted` のとき必須。http か https の基底 URL"
+        apiKey:
+          type: string
+          description: Comfy Cloud の API キー。省けば保存済みのキーを残し、空文字列なら消す
 
     AutoTaggingQueue:
       type: object
@@ -4972,3 +5070,5 @@ components:
         - not_bundled
         - listen_failed
         - auto_tagging_off
+        - comfyui_url_invalid
+        - comfyui_api_key_missing

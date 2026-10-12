@@ -978,6 +978,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/comfyui": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ComfyUI の接続先を返す
+         * @description サムネイルの編集に使う ComfyUI の接続先（自前の ComfyUI か Comfy Cloud）。サムネイルの編集の
+         *     機能とは別に持つ（docs/design-docs/ai-layer.md）。API キーは返さず、保存されているかを
+         *     `apiKeySet` で返す。何も保存されていなければ `provider` を省いた `200` を返す。
+         *     `Cache-Control: no-store` を付ける
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+         */
+        get: operations["getComfyUISettings"];
+        /**
+         * ComfyUI の接続先を保存する
+         * @description `apiKey` が無ければ保存済みのキーを残し、`""` なら消す。`self_hosted` で正しい http か
+         *     https の URL が無ければ `400` `invalid_request`・reason `comfyui_url_invalid`、`cloud` で
+         *     キーが保存も送信もされていなければ reason `comfyui_api_key_missing` を返し、保存しない。
+         *     `cloud` では `url` を使わず、保存済みの URL を残す
+         *     （specs/045-comfyui-thumbnails/research.md R-9）。
+         */
+        put: operations["updateComfyUISettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/settings/comfyui/check": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 保存した接続先に ComfyUI が応えるかを確かめる
+         * @description 自前の ComfyUI は保存した URL の `GET /system_stats`、Comfy Cloud は `GET /jobs?limit=1` に
+         *     `X-API-Key` を付けて確かめる。使えないときの `message` は、届かない、ComfyUI でない、キーが
+         *     拒まれた、何も保存されていないを区別する。接続先は要求の本文から取らない（任意の URL へ
+         *     サーバーから要求を送らせないため）。要求の本文は無い
+         *     （specs/045-comfyui-thumbnails/research.md R-5）。
+         */
+        post: operations["checkComfyUI"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/auto-tagging": {
         parameters: {
             query?: never;
@@ -1978,6 +2034,26 @@ export interface components {
             /** @description Ollama の模型名。保存値が無ければ clef-flash */
             model: string;
         };
+        /**
+         * @description ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
+         * @enum {string}
+         */
+        ComfyUIProvider: "self_hosted" | "cloud";
+        /** @description ComfyUI の接続先（docs/design-docs/ai-layer.md）。API キーそのものは返さない */
+        ComfyUISettings: {
+            provider?: components["schemas"]["ComfyUIProvider"];
+            /** @description 自前の ComfyUI の基底 URL（http か https）。保存値が無ければ省く */
+            url?: string;
+            /** @description Comfy Cloud の API キーが保存されているか */
+            apiKeySet: boolean;
+        };
+        UpdateComfyUISettingsRequest: {
+            provider: components["schemas"]["ComfyUIProvider"];
+            /** @description `self_hosted` のとき必須。http か https の基底 URL */
+            url?: string;
+            /** @description Comfy Cloud の API キー。省けば保存済みのキーを残し、空文字列なら消す */
+            apiKey?: string;
+        };
         AutoTaggingQueue: {
             queued: number;
             running: number;
@@ -2972,7 +3048,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -4486,6 +4562,73 @@ export interface operations {
         };
     };
     checkOllama: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 確かめた結果 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckResult"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getComfyUISettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 今の接続先 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComfyUISettings"];
+                };
+            };
+        };
+    };
+    updateComfyUISettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateComfyUISettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存後の接続先 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComfyUISettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    checkComfyUI: {
         parameters: {
             query?: never;
             header?: never;
