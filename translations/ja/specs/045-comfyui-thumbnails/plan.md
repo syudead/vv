@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/plan.md
-sourceHash: 734378088e264acfc4a63ce2cde4711f12350db8284954a5243331dad9dd1951
+sourceHash: 29032ccba152edab224a03d3b88ed1cb7f01538ba1b87d70249278048c0bd698
 ---
 
 # 実装計画: 動画のフレームを ComfyUI で編集し、サムネイルとして使う {#implementation-plan-edit-a-video-frame-with-comfyui-and-use-it-as-the-thumbnail}
@@ -42,7 +42,7 @@ flowchart LR
 | API キー | 書き込み専用 ([R-9](research.md#r-9-the-api-key-is-write-only)) |
 | ルート | 設定、編集、元に戻す操作のための所有者専用の新しいルート。位置の上書きは変わる ([contracts/screen-api.md](contracts/screen-api.md)) |
 
-Issue には `ui` ラベルがないので、`design` 段階は実行しない: 2 つの画面の単位はデザインシステムと動画のページの既存のサムネイルの操作部品 ([029 ui-design](../029-video-overrides/ui-design.md)) から組み立て、それぞれに見た目のレビューが必要である。
+Issue には `ui` ラベルがあるので、2 つの画面の単位より前に `design` 段階が `ui-design.md` を書く: Settings の ComfyUI の節、動画のページのサムネイルの操作部品の隣の編集の入口 ([029 ui-design](../029-video-overrides/ui-design.md))、マスクの塗り、実行の状態と失敗、適用、再実行、破棄を持つ比較、「use the frame instead」である。
 
 親 Issue のとおり範囲外のもの: 一括の生成、ComfyUI、モデル、ワークフローの同梱やインストール、シーク用のスプライト、スクラブのフレーム、ホバーのプレビューの置き換え、生成した画像の履歴、ほかのプロバイダー、vv の外で作った画像のアップロード、Comfy Cloud のクレジットの表示。Issue は画面だけを求めているので、外部 API と MCP にはこれらのルートは加わらない。
 
@@ -102,7 +102,7 @@ specs/045-comfyui-thumbnails/
     └── workflow.md
 ```
 
-自動の検査は偽の ComfyUI に対してしか実行しないので、`quickstart.md` がある。`contracts/workflow.md` は、下の手順書が引き継ぐまで、所有者に向けたワークフローの契約である。
+`ui-design.md` は `design` 段階が書く (Issue に `ui` ラベルがある)。自動の検査は偽の ComfyUI に対してしか実行しないので、`quickstart.md` がある。`contracts/workflow.md` は、下の手順書が引き継ぐまで、所有者に向けたワークフローの契約である。
 
 ### ソースコード {#source-code}
 
@@ -126,7 +126,7 @@ specs/045-comfyui-thumbnails/
 
 ## 実装作業 {#implementation-work}
 
-図は、どの単位が先に入る必要があるかを示す。
+図は、どの単位が先に入る必要があるかを示す。2 つの画面の単位は、`design` 段階の `ui-design.md` も待つ。
 
 ```mermaid
 flowchart LR
@@ -160,7 +160,7 @@ flowchart LR
 
 ### ComfyUI の接続とワークフローを Settings に加える {#add-the-comfyui-connection-and-workflow-to-settings}
 
-**範囲**: Settings の ComfyUI の節: プロバイダーの選択、URL または API キー (キーの欄はキーが保存されていることだけを示す)、保存、テストとその結果、ワークフローのファイルのアップロードとそれが受け取る入力、削除、カタログの文言、手順書への文書のリンク。
+**範囲**: Settings の ComfyUI の節: プロバイダーの選択、URL または API キー (キーの欄はキーが保存されていることだけを示す)、保存、テストとその結果、ワークフローのファイルのアップロードとそれが受け取る入力、削除、カタログの文言、手順書への文書のリンク。レイアウトと文言は `ui-design.md` に従う。
 
 **依存**: 画面の API で ComfyUI の接続を保存し、テストする。vv というタイトルのノードを持つサムネイルのワークフローを登録する。
 
@@ -200,7 +200,7 @@ flowchart LR
 
 ### 動画のページからサムネイルを編集する {#edit-the-thumbnail-from-the-video-page}
 
-**範囲**: サムネイルの操作部品の隣の入口 (`readiness` がそろっていないときは理由付きで無効、ゲストにはない)、フレーム、マスクの塗り、参照画像、プロンプトを持つ編集の表示、経過時間と進み具合付きの実行の状態、キャンセル、適用、再実行、破棄を持つ並べた比較、アンマウント時の破棄、`thumbnailGenerated` の間の「use the frame instead」。カタログの文言。
+**範囲**: サムネイルの操作部品の隣の入口 (`readiness` がそろっていないときは理由付きで無効、ゲストにはない)、フレーム、マスクの塗り、参照画像、プロンプトを持つ編集の表示、経過時間と進み具合付きの実行の状態、キャンセル、適用、再実行、破棄を持つ並べた比較、アンマウント時の破棄、`thumbnailGenerated` の間の「use the frame instead」。カタログの文言。レイアウトと操作は `ui-design.md` に従う。
 
 **依存**: 画面の API でサムネイルの編集のセッションを提供する。
 
