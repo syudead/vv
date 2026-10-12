@@ -72,6 +72,22 @@ describe("ComfyUISection", () => {
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
+  it("keeps the focus on the heading when the settings arrive after the anchor's last retry", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    fetchMock.mockImplementationOnce(
+      () => new Promise<Response>((resolve) => (answer = resolve)),
+    );
+    renderSection("/settings#comfyui");
+    const heading = screen.getByRole("heading", { level: 2, name: "ComfyUI" });
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+    await new Promise((resolve) => setTimeout(resolve, 150));
+    answer(json(current));
+    await screen.findByLabelText("ComfyUI URL");
+    expect(document.activeElement).toBe(
+      screen.getByRole("heading", { level: 2, name: "ComfyUI" }),
+    );
+  });
+
   it("starts on My own ComfyUI with an empty URL when nothing is saved", async () => {
     renderSection();
     const url = await screen.findByLabelText<HTMLInputElement>("ComfyUI URL");

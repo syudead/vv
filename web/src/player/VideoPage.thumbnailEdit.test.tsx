@@ -97,6 +97,7 @@ const server = {
   reads: [] as ThumbnailEdit[],
   run: vi.fn<(form: FormData) => Response>(),
   apply: vi.fn<() => Response>(),
+  cancel: vi.fn<() => Response>(),
   revert: vi.fn<() => Response>(),
   requests: [] as string[],
 };
@@ -187,6 +188,7 @@ describe("VideoPage thumbnail edit", () => {
     server.reads = [session];
     server.run.mockReset();
     server.apply.mockReset();
+    server.cancel.mockReset();
     server.revert.mockReset();
     server.requests = [];
     installFakeEventSource();
@@ -213,6 +215,8 @@ describe("VideoPage thumbnail edit", () => {
       if (url === "/api/thumbnail-edits/e1/runs")
         return Promise.resolve(server.run(init?.body as FormData));
       if (url === "/api/thumbnail-edits/e1/apply") return Promise.resolve(server.apply());
+      if (url === "/api/thumbnail-edits/e1/cancel")
+        return Promise.resolve(server.cancel());
       if (url === "/api/videos/7/thumbnail-image" && method === "DELETE")
         return Promise.resolve(server.revert());
       if (url === "/api/videos/7") return Promise.resolve(json(video));
@@ -248,6 +252,30 @@ describe("VideoPage thumbnail edit", () => {
       server.requests.filter((r) => r === "GET /api/thumbnail-edits/readiness"),
     ).toHaveLength(2);
     expect(server.requests).not.toContain("POST /api/videos/7/thumbnail-edits");
+  });
+
+  it("最初の readiness の答えが押した後の読み直しより遅れて届いても、入口を薄くし直さない", async () => {
+    let answerFirst: (response: Response) => void = () => undefined;
+    const route = fetchMock.getMockImplementation();
+    let readinessCalls = 0;
+    fetchMock.mockImplementation((input, init) => {
+      if (String(input) === "/api/thumbnail-edits/readiness" && readinessCalls++ === 0) {
+        server.requests.push("GET /api/thumbnail-edits/readiness");
+        return new Promise<Response>((resolve) => (answerFirst = resolve));
+      }
+      return route!(input, init);
+    });
+    await openPage();
+    await waitFor(() =>
+      expect(server.requests).toContain("GET /api/thumbnail-edits/readiness"),
+    );
+    fireEvent.click(entry());
+    const dialog = await screen.findByRole("dialog", { name: "Edit thumbnail" });
+    await act(async () => answerFirst(json({ connection: false })));
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(entry().getAttribute("aria-disabled")).toBeNull();
   });
 
   it("押すと再生を止めて今の位置で始め、実行の状態を経過時間・進み具合とともに見せ、結果をコマと並べる", async () => {
@@ -375,6 +403,60 @@ describe("VideoPage thumbnail edit", () => {
         }) as HTMLTextAreaElement
       ).value,
     ).toBe("make it brighter");
+  });
+
+  it("実行の開始が 502 で断られたら、失敗したセッションから提供元の文を読んで出す", async () => {
+    const dialog = await openEditor();
+    server.run.mockReturnValueOnce(
+      json(
+        { code: "provider_failed", message: "provider failed", reason: "unreachable" },
+        502,
+      ),
+    );
+    server.reads = [
+      {
+        ...session,
+        state: "failed",
+        error: { reason: "unreachable", message: "dial tcp: connection refused" },
+      },
+    ];
+    fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toContain("Couldn't generate the image:");
+    await waitFor(() =>
+      expect(alert.textContent).toContain("dial tcp: connection refused"),
+    );
+  });
+
+  it("中止が届かなくても読み続け、実行の終わりを見せる", async () => {
+    const dialog = await openEditor();
+    server.run.mockReturnValueOnce(
+      json({ ...session, state: "queued", elapsedMs: 0 }, 202),
+    );
+    server.reads = [{ ...session, state: "running", elapsedMs: 1_000 }];
+    fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+    await waitFor(() =>
+      expect(runArea(dialog).textContent).toContain("Waiting in the queue"),
+    );
+    await tick();
+    await waitFor(() => expect(runArea(dialog).textContent).toContain("Generating"));
+
+    server.cancel.mockReturnValueOnce(
+      json({ code: "internal", message: "temporarily unavailable" }, 500),
+    );
+    server.reads = [
+      {
+        ...session,
+        state: "succeeded",
+        elapsedMs: 3_000,
+        resultUrl: "/api/thumbnail-edits/e1/result",
+      },
+    ];
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(server.cancel).toHaveBeenCalledTimes(1));
+    await tick();
+    await tick();
+    expect(await within(dialog).findByRole("img", { name: "Generated" })).toBeDefined();
   });
 
   it("ページを離れるとセッションを捨てる", async () => {

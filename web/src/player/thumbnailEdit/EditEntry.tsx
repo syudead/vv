@@ -1,5 +1,5 @@
 import { LoaderCircle, WandSparkles } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
 import {
@@ -33,28 +33,30 @@ export const COMFYUI_SETTINGS = "/settings#comfyui";
 /**
  * useReadiness は編集の入口を有効にできるか（ComfyUI の接続先が保存されているか）を読む。
  * 読めない間・読めなかったときは `null` で、入口は準備ができていないときと同じに見せる。
+ * 読み直すときは読みかけを捨て、最後に送った読み取りの答えだけを反映する。
  */
 function useReadiness(): {
   ready: boolean | null;
   reread: () => Promise<boolean>;
 } {
   const [ready, setReady] = useState<boolean | null>(null);
-  useEffect(() => {
+  const latest = useRef<AbortController | null>(null);
+
+  const read = useCallback(async () => {
+    latest.current?.abort();
     const controller = new AbortController();
-    getThumbnailEditReadiness(controller.signal).then(
-      (readiness) => {
-        if (!controller.signal.aborted) setReady(readiness.connection);
-      },
-      () => undefined,
-    );
-    return () => controller.abort();
-  }, []);
-  const reread = async () => {
-    const readiness = await getThumbnailEditReadiness();
+    latest.current = controller;
+    const readiness = await getThumbnailEditReadiness(controller.signal);
+    if (controller.signal.aborted) throw new DOMException("superseded", "AbortError");
     setReady(readiness.connection);
     return readiness.connection;
-  };
-  return { ready, reread };
+  }, []);
+
+  useEffect(() => {
+    read().catch(() => undefined);
+    return () => latest.current?.abort();
+  }, [read]);
+  return { ready, reread: read };
 }
 
 /**

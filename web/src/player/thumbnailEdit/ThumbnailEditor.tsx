@@ -79,6 +79,25 @@ function sessionEnded(error: unknown): boolean {
   );
 }
 
+/**
+ * providerMessage は実行の開始が `502 provider_failed` で断られたときに、提供元の文を返す。
+ * 応答は提供元の文を載せず、失敗したセッションの `error.message` に残すので、セッションを
+ * 読み直して取る（specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+ */
+async function providerMessage(
+  editId: string,
+  error: unknown,
+): Promise<string | undefined> {
+  if (!(error instanceof RequestFailed) || error.code !== "provider_failed")
+    return undefined;
+  try {
+    const failed = await getThumbnailEdit(editId);
+    return failed.state === "failed" ? failed.error?.message : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 /** useNow は `active` の間、毎秒進む今の時刻を返す。 */
 function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now());
@@ -95,12 +114,13 @@ function useNow(active: boolean): number {
  * useSessionPolling はセッションを読み続ける。実行が進んでいる間は毎秒、それ以外は 60 秒ごと
  * に読む。読み取りはページの生存の知らせを兼ね、5 分読まれないセッションはサーバーが終える
  * （specs/045-comfyui-thumbnails/research.md R-4）。操作を送るときは `pause` で読みかけを
- * 捨て、操作の前に送った読み取りの答えで見え方を戻さない。
+ * 捨て、操作の前に送った読み取りの答えで見え方を戻さない。操作が終わったら `resume` で
+ * 読み取りを仕掛け直す。操作の答えが見え方を変えなくても（失敗しても）読み続けるため。
  */
 function useSessionPolling(
   state: EditorState,
   dispatch: (action: Parameters<typeof editorReducer>[1]) => void,
-): { pause: () => void } {
+): { pause: () => void; resume: () => void } {
   const epoch = useRef(0);
   const controller = useRef<AbortController | null>(null);
   // 読み取りが届かなかったときに、次の読み取りを仕掛け直すための数。
@@ -140,7 +160,8 @@ function useSessionPolling(
     epoch.current += 1;
     controller.current?.abort();
   }, []);
-  return { pause };
+  const resume = useCallback(() => setRetry((count) => count + 1), []);
+  return { pause, resume };
 }
 
 /**
@@ -259,10 +280,14 @@ export default function ThumbnailEditor({
       if (!ended404(error))
         dispatch({
           type: "rejected",
-          failure: { title: text.runFailed(errorText(error)) },
+          failure: {
+            title: text.runFailed(errorText(error)),
+            message: await providerMessage(editId, error),
+          },
         });
     } finally {
       setBusy(null);
+      polling.resume();
     }
   };
 
@@ -278,6 +303,7 @@ export default function ThumbnailEditor({
       ended404(error);
     } finally {
       setBusy(null);
+      polling.resume();
     }
   };
 
@@ -303,6 +329,7 @@ export default function ThumbnailEditor({
       }
     } finally {
       setBusy(null);
+      if (!settled.current) polling.resume();
     }
   };
 
