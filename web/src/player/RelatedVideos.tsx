@@ -172,9 +172,9 @@ function useWideScreen(): boolean {
 
 /** 関連動画の並びの入れ物。広い画面では並びだけを中でスクロールさせる。 */
 const scrollerClass =
-  // 端まで来てもページへは送らない。行の hover の面と輪郭が切れないよう、はみ出す分だけ
-  // 内側に余白を取る。
-  "lg:-mx-1.5 lg:min-h-0 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:px-1.5 lg:pt-1.5 lg:pb-6";
+  // 端まで来てもページへは送らない。行の hover の面と輪郭が切れないよう、左と上ははみ出す分
+  // だけ内側に余白を取る。右は画面の端に接するので、見出しの帯の × と揃う余白（pr-3）を取る。
+  "lg:-ml-1.5 lg:min-h-0 lg:scrollbar-on-hover lg:overflow-y-auto lg:overscroll-contain lg:pt-1.5 lg:pr-3 lg:pb-6 lg:pl-1.5";
 
 /** 関連動画の行のサムネイルの幅。 */
 const thumbnailWidth = "w-related-thumb";
@@ -252,7 +252,7 @@ export default function RelatedVideos({
       )}
 
       {state.kind === "loading" && (
-        <ul aria-hidden="true" className={relatedListClass}>
+        <ul aria-hidden="true" className={cn(relatedListClass, "lg:pr-3")}>
           {Array.from({ length: 6 }, (_, index) => (
             <li key={index}>
               <RelatedCardSkeleton />
@@ -404,7 +404,7 @@ function GroupedRelated({
       aria-labelledby="group-heading"
       className="flex flex-col gap-3 lg:min-h-0 lg:flex-1"
     >
-      <div className="flex items-baseline justify-between gap-3">
+      <div className="flex items-baseline justify-between gap-3 lg:pr-3">
         <h2 id="group-heading" className="text-sm font-semibold">
           {t.player.related.group}
         </h2>

@@ -46,10 +46,12 @@ export function DetailPage({ header, media, aside, children }: DetailPageProps) 
             {media}
             <div className="flex flex-col gap-5 px-4 sm:px-6 lg:px-0">{children}</div>
           </div>
+          {/* 広い画面の情報欄は画面の右端まで寄せ（lg:-mr-6 と lg:pr-0）、中でスクロールする並びの
+              スクロールバーを画面の端に出す。右の余白は並びの側が持つ。 */}
           {aside && (
             <aside
               data-slot="detail-page-aside"
-              className="min-w-0 border-t border-border px-4 pt-5 sm:px-6 lg:flex lg:min-h-0 lg:w-detail-aside lg:shrink-0 lg:flex-col lg:border-t-0 lg:border-l lg:pt-6 lg:pl-5 xl:w-detail-aside-wide"
+              className="min-w-0 border-t border-border px-4 pt-5 sm:px-6 lg:flex lg:min-h-0 lg:w-detail-aside lg:shrink-0 lg:flex-col lg:-mr-6 lg:border-t-0 lg:border-l lg:pt-6 lg:pr-0 lg:pl-5 xl:w-detail-aside-wide"
             >
               {aside}
             </aside>
