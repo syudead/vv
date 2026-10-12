@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"strconv"
@@ -42,20 +43,39 @@ func Thumbnail(ctx context.Context, videoPath string, durationMs int64, output s
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
 
-	offset := thumbnailOffset(durationMs)
-	if err := runThumbnail(ctx, videoPath, offset, output); err != nil {
-		// 指定した位置でフレームが取れないことがある（可変フレームレート、
-		// 索引の壊れたファイル）。1枚も無いより先頭の1枚の方がよいので、
-		// 一度だけ先頭から取り直す。
-		if offset == 0 {
-			return false, err
-		}
-		if retryErr := runThumbnail(ctx, videoPath, 0, output); retryErr != nil {
-			return false, err
-		}
-		return true, nil
+	positions := AutoThumbnailPositions(durationMs)
+	err = runThumbnail(ctx, videoPath, positionSeconds(positions[0]), output)
+	if err == nil {
+		return false, nil
 	}
-	return false, nil
+	// 指定した位置でフレームが取れないことがある（可変フレームレート、
+	// 索引の壊れたファイル）。1枚も無いより先頭の1枚の方がよいので、
+	// 一度だけ先頭から取り直す。
+	if len(positions) < 2 {
+		return false, err
+	}
+	if retryErr := runThumbnail(ctx, videoPath, positionSeconds(positions[1]), output); retryErr != nil {
+		return false, err
+	}
+	return true, nil
+}
+
+// AutoThumbnailPositions は、位置を指定していない動画の代表サムネイルのコマを取りに行く位置
+// （ミリ秒）を試す順に返す。尺 durationMs（0 以下は不明）に対する自動の位置と、そこでコマが
+// 取れなかったときの先頭（0）である。自動の位置が先頭なら 1 つだけである。サムネイルジョブ
+// （Thumbnail）と、今のサムネイルからの編集（specs/046-thumbnail-image-upload/research.md R-4）が
+// この 1 か所の規則を使う。
+func AutoThumbnailPositions(durationMs int64) []int64 {
+	auto := int64(math.Round(thumbnailOffset(durationMs) * 1000))
+	if auto <= 0 {
+		return []int64{0}
+	}
+	return []int64{auto, 0}
+}
+
+// positionSeconds は位置 positionMs（ミリ秒）を ffmpeg に渡す秒にする。負の位置は先頭である。
+func positionSeconds(positionMs int64) float64 {
+	return float64(max(positionMs, 0)) / 1000
 }
 
 // ThumbnailAt は動画の positionMs ミリ秒の場面を1枚取り出し、output へ書く。所有者が
@@ -68,7 +88,7 @@ func ThumbnailAt(ctx context.Context, videoPath string, positionMs int64, output
 	ctx, cancel := context.WithTimeout(ctx, thumbnailTimeout)
 	defer cancel()
 
-	return runThumbnail(ctx, videoPath, float64(max(positionMs, 0))/1000, output)
+	return runThumbnail(ctx, videoPath, positionSeconds(positionMs), output)
 }
 
 // runThumbnail は ffmpeg を1回実行し、画像が実際に書かれたことまで確かめる。

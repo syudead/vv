@@ -161,6 +161,33 @@ func (s *OverrideStore) ThumbnailImageSource(ctx context.Context, contentKey str
 	return source, nil
 }
 
+// CurrentThumbnailSelection は内容 contentKey の今の代表サムネイルの選び方（適用した画像の元の
+// 画像、元の画像を持たない行では代表サムネイル、と指定した位置）を返す
+// （specs/046-thumbnail-image-upload/research.md R-4）。1 つの文で読むので、画像と位置は同じ
+// 時点のもので、行が置き換わる途中の組み合わせにはならない。
+func (s *OverrideStore) CurrentThumbnailSelection(
+	ctx context.Context, contentKey string,
+) (domain.CurrentThumbnailSelection, error) {
+	if contentKey == "" {
+		return domain.CurrentThumbnailSelection{}, nil
+	}
+	var image []byte
+	var position sql.NullInt64
+	err := s.db.sql.QueryRowContext(ctx,
+		`select (select coalesce(source, image) from thumbnail_images where content_key = ?1),
+		        (select thumbnail_position_ms from video_overrides where content_key = ?1)`,
+		contentKey,
+	).Scan(&image, &position)
+	if err != nil {
+		return domain.CurrentThumbnailSelection{}, fmt.Errorf("cannot read the current thumbnail: %w", err)
+	}
+	selection := domain.CurrentThumbnailSelection{Image: image}
+	if position.Valid {
+		selection.PositionMs = &position.Int64
+	}
+	return selection, nil
+}
+
 // deleteThumbnailImage は内容 key に適用した画像の行を消し、消したかを返す。
 func deleteThumbnailImage(ctx context.Context, tx *sql.Tx, key string) (bool, error) {
 	result, err := tx.ExecContext(ctx, `delete from thumbnail_images where content_key = ?`, key)

@@ -318,7 +318,7 @@ func TestStreamEventsSendsScanWhenActivityChanges(t *testing.T) {
 	if activity == nil {
 		t.Fatalf("activity が無い: %s", event.data)
 	}
-	if activity.Kind != gen.Thumbnail || activity.FileName != "movie.mp4" {
+	if activity.Kind != gen.ScanActivityKindThumbnail || activity.FileName != "movie.mp4" {
 		t.Errorf("activity = %+v, want thumbnail の movie.mp4", activity)
 	}
 	if activity.VideoId == nil || *activity.VideoId != 12 {

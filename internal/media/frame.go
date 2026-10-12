@@ -47,7 +47,7 @@ func frameArgs(videoPath string, positionMs int64) []string {
 	return []string{
 		"-nostdin",
 		"-v", "error",
-		"-ss", strconv.FormatFloat(float64(max(positionMs, 0))/1000, 'f', 3, 64),
+		"-ss", strconv.FormatFloat(positionSeconds(positionMs), 'f', 3, 64),
 		"-i", videoPath,
 		"-frames:v", "1",
 		"-vf", frameScale,
@@ -60,4 +60,9 @@ func frameArgs(videoPath string, positionMs int64) []string {
 // FrameAt は FrameAt を呼ぶ。
 func (a *Assets) FrameAt(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error) {
 	return FrameAt(ctx, path, positionMs)
+}
+
+// AutoThumbnailPositions は AutoThumbnailPositions を呼ぶ。
+func (a *Assets) AutoThumbnailPositions(durationMs int64) []int64 {
+	return AutoThumbnailPositions(durationMs)
 }

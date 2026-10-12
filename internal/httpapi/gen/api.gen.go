@@ -665,28 +665,28 @@ func (e ScanState) Valid() bool {
 
 // Defines values for ScanActivityKind.
 const (
-	Fingerprint   ScanActivityKind = "fingerprint"
-	Preview       ScanActivityKind = "preview"
-	Probe         ScanActivityKind = "probe"
-	Registering   ScanActivityKind = "registering"
-	SeekThumbnail ScanActivityKind = "seekThumbnail"
-	Thumbnail     ScanActivityKind = "thumbnail"
+	ScanActivityKindFingerprint   ScanActivityKind = "fingerprint"
+	ScanActivityKindPreview       ScanActivityKind = "preview"
+	ScanActivityKindProbe         ScanActivityKind = "probe"
+	ScanActivityKindRegistering   ScanActivityKind = "registering"
+	ScanActivityKindSeekThumbnail ScanActivityKind = "seekThumbnail"
+	ScanActivityKindThumbnail     ScanActivityKind = "thumbnail"
 )
 
 // Valid indicates whether the value is a known member of the ScanActivityKind enum.
 func (e ScanActivityKind) Valid() bool {
 	switch e {
-	case Fingerprint:
+	case ScanActivityKindFingerprint:
 		return true
-	case Preview:
+	case ScanActivityKindPreview:
 		return true
-	case Probe:
+	case ScanActivityKindProbe:
 		return true
-	case Registering:
+	case ScanActivityKindRegistering:
 		return true
-	case SeekThumbnail:
+	case ScanActivityKindSeekThumbnail:
 		return true
-	case Thumbnail:
+	case ScanActivityKindThumbnail:
 		return true
 	default:
 		return false
@@ -942,6 +942,24 @@ func (e ThumbnailEditFailure) Valid() bool {
 	case ThumbnailEditFailureUnreachable:
 		return true
 	case ThumbnailEditFailureWorkflowRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ThumbnailEditSource.
+const (
+	ThumbnailEditSourceFrame     ThumbnailEditSource = "frame"
+	ThumbnailEditSourceThumbnail ThumbnailEditSource = "thumbnail"
+)
+
+// Valid indicates whether the value is a known member of the ThumbnailEditSource enum.
+func (e ThumbnailEditSource) Valid() bool {
+	switch e {
+	case ThumbnailEditSourceFrame:
+		return true
+	case ThumbnailEditSourceThumbnail:
 		return true
 	default:
 		return false
@@ -2258,8 +2276,12 @@ type StartAutoTaggingRequestScope string
 
 // StartThumbnailEditRequest defines model for StartThumbnailEditRequest.
 type StartThumbnailEditRequest struct {
-	// PositionMs 編集するコマの位置（ミリ秒）。0 以上で尺未満
-	PositionMs int64 `json:"positionMs"`
+	// PositionMs `frame` のときだけ必須。編集するコマの位置（ミリ秒）。0 以上で尺未満。`thumbnail` では無視する
+	PositionMs *int64 `json:"positionMs,omitempty"`
+
+	// Source 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
+	// （specs/046-thumbnail-image-upload/research.md R-4）
+	Source ThumbnailEditSource `json:"source"`
 }
 
 // SubtitleTrack defines model for SubtitleTrack.
@@ -2407,11 +2429,19 @@ type ThumbnailEdit struct {
 	// Id セッションの識別子
 	Id string `json:"id"`
 
+	// PositionMs 画像がコマのとき、それを取った位置（ミリ秒。選んだ位置、指定した位置、自動の位置、先頭に
+	// 戻したときは 0）。保存した元の画像から始めたときは省く
+	PositionMs *int64 `json:"positionMs,omitempty"`
+
 	// Progress 提供元が報告したステップの進み具合。報告が無ければ省く
 	Progress *ThumbnailEditProgress `json:"progress,omitempty"`
 
 	// ResultUrl `succeeded` のときだけ。出力の画像（`GET /api/thumbnail-edits/{editId}/result`）
 	ResultUrl *string `json:"resultUrl,omitempty"`
+
+	// Source 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
+	// （specs/046-thumbnail-image-upload/research.md R-4）
+	Source ThumbnailEditSource `json:"source"`
 
 	// State 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
 	State   ThumbnailEditState `json:"state"`
@@ -2441,6 +2471,10 @@ type ThumbnailEditReadiness struct {
 	// Connection ComfyUI の接続先が保存されているか（テストに通ったかではない）
 	Connection bool `json:"connection"`
 }
+
+// ThumbnailEditSource 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
+// （specs/046-thumbnail-image-upload/research.md R-4）
+type ThumbnailEditSource string
 
 // ThumbnailEditState 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
 type ThumbnailEditState string
@@ -3761,7 +3795,7 @@ type ServerInterface interface {
 	// GetVideoThumbnail サムネイル画像を返す
 	// (GET /api/videos/{id}/thumbnail)
 	GetVideoThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoThumbnailParams)
-	// StartThumbnailEdit 動画の1コマのサムネイルの編集を始める
+	// StartThumbnailEdit 動画の1コマか今のサムネイルからサムネイルの編集を始める
 	// (POST /api/videos/{id}/thumbnail-edits)
 	StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id VideoId)
 	// RevertThumbnailImage 動画に適用したサムネイルの画像を外す

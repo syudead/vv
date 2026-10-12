@@ -133,7 +133,7 @@ export default function EditEntry({
       if (raw === null || !Number.isFinite(raw)) return;
       const positionMs = Math.max(0, Math.round(raw));
       capture.pause();
-      const session = await startThumbnailEdit(videoId, positionMs);
+      const session = await startThumbnailEdit(videoId, { source: "frame", positionMs });
       if (mounted.current) setEdit({ session, positionMs });
       // 始める間にページを離れたら、始めたセッションをすぐ捨てる。
       else void discardThumbnailEdit(session.id).catch(() => undefined);

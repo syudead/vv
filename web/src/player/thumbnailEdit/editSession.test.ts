@@ -13,6 +13,8 @@ const ready: ThumbnailEdit = {
   id: "e1",
   videoId: 7,
   state: "ready",
+  source: "frame",
+  positionMs: 0,
   frameUrl: "/api/thumbnail-edits/e1/frame",
   frameWidth: 1920,
   frameHeight: 1080,

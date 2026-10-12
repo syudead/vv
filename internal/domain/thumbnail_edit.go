@@ -49,6 +49,29 @@ type ThumbnailFrame struct {
 	Height int
 }
 
+// ThumbnailEditSource は編集を何から始めるかである（specs/046-thumbnail-image-upload/contracts/screen-api.md、
+// research.md R-4）。
+type ThumbnailEditSource string
+
+const (
+	// ThumbnailEditFromFrame は持ち主が選んだ位置のコマから始める。
+	ThumbnailEditFromFrame ThumbnailEditSource = "frame"
+	// ThumbnailEditFromThumbnail は今のサムネイルから始める。
+	ThumbnailEditFromThumbnail ThumbnailEditSource = "thumbnail"
+)
+
+// Valid は既知の値かを返す。
+func (s ThumbnailEditSource) Valid() bool {
+	return s == ThumbnailEditFromFrame || s == ThumbnailEditFromThumbnail
+}
+
+// ThumbnailEditStart は編集を始める要求である。PositionMs は Source が ThumbnailEditFromFrame の
+// ときのコマの位置で、無ければ nil である。ThumbnailEditFromThumbnail では見ない。
+type ThumbnailEditStart struct {
+	Source     ThumbnailEditSource
+	PositionMs *int64
+}
+
 // ThumbnailEditRunInput は 1 回の実行に持ち主が渡す入力である。Mask と Reference は nil なら無い。
 type ThumbnailEditRunInput struct {
 	Instruction string
@@ -59,11 +82,15 @@ type ThumbnailEditRunInput struct {
 // ThumbnailEdit は画面へ返す編集のセッションの今の姿である（contracts/screen-api.md の
 // ThumbnailEdit）。Elapsed は実行を送ってからの時間で、ready では nil である。終わった実行では
 // 終わった時点で止まる。Progress は提供元が報告したときだけ、Error は failed のときだけ持つ。
-// HasResult は succeeded で適用する画像があることである。
+// HasResult は succeeded で適用する画像があることである。Source はセッションを何から始めたかで、
+// PositionMs は画像がコマのときにそれを取った位置、保存した元の画像のときは nil である
+// （specs/046-thumbnail-image-upload/data-model.md の Edit session）。
 type ThumbnailEdit struct {
 	ID          string
 	VideoID     int64
 	State       ThumbnailEditState
+	Source      ThumbnailEditSource
+	PositionMs  *int64
 	FrameWidth  int
 	FrameHeight int
 	Elapsed     *time.Duration

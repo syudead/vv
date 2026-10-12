@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/thumbnail-editing.md
-sourceHash: bc2ebec9a964bc8b5b3a6b681767bcbb593a103eb16919ad8822b8244cd8cf28
+sourceHash: 1373c3eecd48e6659b615556231e94003be4990d516050d24236893a35c29579
 ---
 
 # サムネイル編集のセッション {#thumbnail-editing-sessions}
 
-ComfyUI による動画フレームの編集は、[`app.ThumbnailEdits`](../../internal/app/thumbnail_edits.go) にある動画ごとのメモリ上のセッションで、`/api/thumbnail-edits` のルートが動画ページに提供する ([契約](../../specs/045-comfyui-thumbnails/contracts/screen-api.md))。
+ComfyUI による動画フレームまたは現在のサムネイルの編集は、[`app.ThumbnailEdits`](../../internal/app/thumbnail_edits.go) にある動画ごとのメモリ上のセッションで、`/api/thumbnail-edits` のルートが動画ページに提供する ([契約](../../specs/045-comfyui-thumbnails/contracts/screen-api.md))。
 
 図は、セッションがやり取りする相手を示す。
 
@@ -14,6 +14,7 @@ flowchart LR
   page[動画ページ] -->|開始、実行、ポーリング、適用| api[画面 API]
   api --> edits[app.ThumbnailEdits]
   edits -->|フレーム| media[internal/media]
+  edits -->|適用済みの画像| images[(thumbnail_images)]
   edits -->|接続のスナップショット| settings[(設定)]
   edits -->|ImageEditor ポート| comfy[internal/comfyui]
   edits -->|適用| ingest[app.Ingest]
@@ -55,6 +56,18 @@ stateDiagram-v2
 | --- | --- |
 | 永続キューのジョブの種類 | 再試行と `failed` の記録がページより長く残り、取り込みの問題に表示される |
 | `/api/events` による進捗 | このストリームは確定したドメインイベントをすべての閲覧者に届けるが、実行の状態は 1 つのページのものだ |
+
+## 編集の元 {#edit-source}
+
+編集の開始時には `source` を指定する。`frame` はプレーヤーの `positionMs` にあるフレーム、`thumbnail` は現在のサムネイルだ ([R-4](../../specs/046-thumbnail-image-upload/research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame))。`positionMs` のない `frame` は、長さの外の位置と同じく `400 thumbnail_position_out_of_range` を返す。`thumbnail` では、セッションの画像は次のうち最初に存在するものだ。
+
+| 場合 | 画像 | `positionMs` |
+| --- | --- | --- |
+| 画像が適用されている | 行の `source` を PNG にデコードしたもの。`source` のない行では `image` | なし |
+| 位置が記録されている | その位置のフレーム | その位置 |
+| どちらでもない | サムネイルのジョブの自動の位置にあるフレーム。その位置でフレームが得られないときは最初のフレーム | 自動の位置、または `0` |
+
+自動の位置と、最初のフレームへの代替は `media.AutoThumbnailPositions` から来る。これはサムネイルのジョブと編集の両方が使う唯一の規則なので、所有者が編集するフレームはサムネイルが示すフレームと同じだ。デコードできない保存済みの画像は、切り出せないフレームと同じく `409 thumbnail_frame_unavailable` を返す。`frameWidth` と `frameHeight` は元が何であれセッションの画像を表し、マスクはその大きさに対して検査する。セッションは開始時から画像をメモリに保持するので、後のアップロード、位置の変更、元に戻す操作は、進行中の編集もその実行が送るものも変えない。適用済みの画像と記録された位置は、リクエストが先に読んだ動画からではなく 1 つのクエリでまとめて読むので、その間に確定したアップロード、位置の変更、元に戻す操作に対しては、その前か後のサムネイルが得られ、両者が混ざることはない。
 
 ## 実行は開始時の接続を使う {#a-run-uses-the-connection-it-started-with}
 
