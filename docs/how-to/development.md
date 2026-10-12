@@ -117,11 +117,11 @@ On the first day of each month the `Mutation testing` workflow
 ([`.github/workflows/mutation-testing.yml`](../../.github/workflows/mutation-testing.yml))
 measures whether the Go tests catch injected bugs. It runs
 `task mutation-go`, which runs gremlins (pinned as a tool in `tools/go.mod`) on
-`./internal/domain/...` and writes `reports/mutation/go/gremlins.json`. The
-workflow writes the test efficacy (killed mutants over killed and lived) and the
-mutant coverage to the run's summary and keeps the report as an artifact for 90
-days; a low score does not fail the run. `MUTATION_GO_DIR=./internal/other task
-mutation-go` measures another package tree, and arguments after `--` go to
+`./internal/domain/...` and writes `reports/mutation/go/gremlins.json`, the
+place and outcome of every mutant. The workflow keeps that report as it is, as
+an artifact for 90 days; mutants that the tests miss do not fail the run.
+`MUTATION_GO_DIR=./internal/other task mutation-go` measures another package
+tree, and arguments after `--` go to
 `gremlins unleash`. A pull request that changes the workflow runs it too. Web
 mutation testing with StrykerJS waits for a release of
 `@stryker-mutator/vitest-runner` that fixes

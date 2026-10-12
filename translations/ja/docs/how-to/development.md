@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/development.md
-sourceHash: 197021e173bfc682680fe220aeaa125fb7b654e5eeffd374a08d6d428c4d6fbe
+sourceHash: 9eaf2629c4c2c147d0ffb384555a5507e339e4b884e3ddabd57576a842079e43
 ---
 
 # 開発 {#development}
@@ -69,6 +69,6 @@ Go と Vitest のテストグループは、`task test-go` と `task test-web-un
 
 確認グループと並んで、`Quality` ジョブはすべてのプルリクエストと `main` へのプッシュで `task complexity-go`、`task complexity-web`、`task duplication` を並列に実行する。それぞれが 1 つのツールの出力を `reports/quality/` の下に書き出す。gocyclo（`tools/go.mod` にツールとして固定されている）によるすべての Go の関数の循環的複雑度、ESLint の `complexity` ルールによるすべての Web の関数の循環的複雑度、そして jscpd が見つける重複コードだ。CI はそれぞれを同じ名前のアーティファクトとして 90 日間保持する（[テストと CI の品質監視](../design-docs/test-quality-monitoring.md)）。測定が失敗しても実行は失敗しない。`task quality-metrics` はローカルマシンで 3 つすべてを実行する。
 
-毎月 1 日に `Mutation testing` ワークフロー（[`.github/workflows/mutation-testing.yml`](../../.github/workflows/mutation-testing.yml)）が、Go のテストが埋め込まれたバグを検出するかを測定する。ワークフローは `task mutation-go` を実行し、このタスクは gremlins（`tools/go.mod` にツールとして固定されている）を `./internal/domain/...` に対して実行して `reports/mutation/go/gremlins.json` を書き出す。ワークフローはテストの有効性（killed と lived のミュータントに対する killed のミュータントの割合）とミュータントのカバレッジを実行のサマリーに書き出し、レポートをアーティファクトとして 90 日間保持する。スコアが低くても実行は失敗しない。`MUTATION_GO_DIR=./internal/other task mutation-go` は別のパッケージツリーを測定し、`--` のあとの引数は `gremlins unleash` に渡る。ワークフローを変更するプルリクエストもそれを実行する。StrykerJS による Web のミューテーションテストは、[stryker-js#6210](https://github.com/stryker-mutator/stryker-js/issues/6210) を修正する `@stryker-mutator/vitest-runner` のリリースを待っている。Vitest 5 ではランナーがすべてのテストを除外するので、すべてのミュータントが生き残る。
+毎月 1 日に `Mutation testing` ワークフロー（[`.github/workflows/mutation-testing.yml`](../../.github/workflows/mutation-testing.yml)）が、Go のテストが埋め込まれたバグを検出するかを測定する。ワークフローは `task mutation-go` を実行し、このタスクは gremlins（`tools/go.mod` にツールとして固定されている）を `./internal/domain/...` に対して実行し、すべてのミュータントの位置と結果を記した `reports/mutation/go/gremlins.json` を書き出す。ワークフローはそのレポートをそのまま、アーティファクトとして 90 日間保持する。テストが見逃したミュータントがあっても実行は失敗しない。`MUTATION_GO_DIR=./internal/other task mutation-go` は別のパッケージツリーを測定し、`--` のあとの引数は `gremlins unleash` に渡る。ワークフローを変更するプルリクエストもそれを実行する。StrykerJS による Web のミューテーションテストは、[stryker-js#6210](https://github.com/stryker-mutator/stryker-js/issues/6210) を修正する `@stryker-mutator/vitest-runner` のリリースを待っている。Vitest 5 ではランナーがすべてのテストを除外するので、すべてのミュータントが生き残る。
 
 OpenAPI の契約が変わるときは、`api/openapi.yaml`（外部 API なら `api/external-v1.yaml`）を編集し、`task generate` を実行する。`internal/httpapi/gen/`、`internal/httpapi/extgen/`、`web/src/api/gen/` を直接編集してはならない。

@@ -1,7 +1,7 @@
 # 変異テスト（mutation testing）を月に 1 回流し、テストが壊れたコードを見つけられるかを測る。
 # いまは Go だけで、gremlins が internal/domain を変異させる（task mutation-go）。
-# スコアは実行の Summary に出し、レポートは artifact に残す。参考値なので、スコアが
-# 低くても失敗にしない。手元では task mutation-go で同じものを流す。
+# gremlins の出力（変異ごとの場所と結果）を集計せずに artifact に残す。参考の出力なので、
+# 結果が悪くても失敗にしない。手元では task mutation-go で同じものを流す。
 # Web（StrykerJS）は、vitest-runner が Vitest 5 で検査を 1 件も流さない不具合
 # （stryker-mutator/stryker-js#6210）の修正版が出てから足す。
 name: Mutation testing
@@ -48,35 +48,6 @@ jobs:
 
       - name: 変異テストを流す
         run: task mutation-go
-
-      # gremlins の JSON にある検出率（test_efficacy、KILLED / (KILLED + LIVED)）と
-      # 変異の網羅率（mutations_coverage）を書く。どちらも百分率で入っている。
-      # TIMED OUT の数は集計の項に無いので、変異ごとの状態から数える。
-      - name: スコアを Summary に書く
-        if: ${{ !cancelled() }}
-        run: |
-          report=reports/mutation/go/gremlins.json
-          {
-            echo "## Go (gremlins)"
-            echo
-            if [ ! -f "$report" ]; then
-              echo "レポートがありません。"
-              exit 0
-            fi
-            jq -r '
-              "| 指標 | 値 |",
-              "| --- | --- |",
-              "| Test efficacy | \(.test_efficacy * 100 | round / 100)% |",
-              "| Mutant coverage | \(.mutations_coverage * 100 | round / 100)% |",
-              "| Killed | \(.mutants_killed) |",
-              "| Lived | \(.mutants_lived) |",
-              "| Not covered | \(.mutants_not_covered) |",
-              "| Timed out | \([.files[].mutations[] | select(.status == "TIMED OUT")] | length) |",
-              "| Not viable | \(.mutants_not_viable) |",
-              "| Elapsed | \(.elapsed_time | round)s |"
-            ' "$report"
-            echo
-          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: レポートを残す
         if: ${{ !cancelled() }}
