@@ -155,6 +155,22 @@ func testPNG(t *testing.T, width, height int) []byte {
 // testWebP は 1×1 の可逆の WebP である。
 var testWebP = []byte("RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00")
 
+// corruptWebP は、RIFF とチャンクの長さも VP8L の見出しも正しいまま、画像の符号だけが壊れた
+// WebP である。チャンクの並びと見出しを見るだけでは見分けられない。
+func corruptWebP() []byte {
+	data := append([]byte(nil), testWebP...)
+	data[26] = 0
+	return data
+}
+
+// shortWebP は、VP8L の符号が途中で終わり、RIFF とチャンクの長さをその短さに合わせた WebP である。
+func shortWebP() []byte {
+	payload := testWebP[20:27]
+	data := []byte("RIFF\x14\x00\x00\x00WEBPVP8L\x07\x00\x00\x00")
+	data = append(data, payload...)
+	return append(data, 0)
+}
+
 func testJPEG(t *testing.T) []byte {
 	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, 64, 48))
@@ -422,6 +438,30 @@ func TestThumbnailEditOutputFetchRetries(t *testing.T) {
 }
 
 // 出力が読めない画像なら、succeeded にせず no_output で failed にする。
+// 提供元の WebP の出力は、最後まで読めれば適用できる結果になり、符号が壊れていれば no_output になる。
+func TestThumbnailEditWebPOutput(t *testing.T) {
+	for name, c := range map[string]struct {
+		output []byte
+		want   domain.ThumbnailEditState
+	}{
+		"valid":   {testWebP, domain.ThumbnailEditSucceeded},
+		"corrupt": {corruptWebP(), domain.ThumbnailEditFailed},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f := newEditsFixture(t)
+			id := f.start(t, 1).ID
+			f.run(t, id)
+			f.editor.output = c.output
+			f.editor.set(domain.ThumbnailEditSucceeded, nil)
+			edit := f.get(t, id)
+			wantState(t, edit, c.want)
+			if edit.HasResult != (c.want == domain.ThumbnailEditSucceeded) {
+				t.Fatalf("edit = %+v", edit)
+			}
+		})
+	}
+}
+
 func TestThumbnailEditUndecodableOutput(t *testing.T) {
 	f := newEditsFixture(t)
 	id := f.start(t, 1).ID
@@ -637,6 +677,8 @@ func TestThumbnailEditRunRejectsInputs(t *testing.T) {
 		{"forged WebP header", domain.ThumbnailEditRunInput{Reference: []byte("RIFF\x05\x00\x00\x00WEBPx")}, domain.ErrThumbnailEditReferenceInvalid},
 		{"truncated WebP reference", domain.ThumbnailEditRunInput{Reference: testWebP[:len(testWebP)-6]}, domain.ErrThumbnailEditReferenceInvalid},
 		{"WebP without an image", domain.ThumbnailEditRunInput{Reference: []byte("RIFF\x0c\x00\x00\x00WEBPEXIF\x00\x00\x00\x00")}, domain.ErrThumbnailEditReferenceInvalid},
+		{"WebP with a corrupt bitstream", domain.ThumbnailEditRunInput{Reference: corruptWebP()}, domain.ErrThumbnailEditReferenceInvalid},
+		{"WebP whose bitstream ends early", domain.ThumbnailEditRunInput{Reference: shortWebP()}, domain.ErrThumbnailEditReferenceInvalid},
 		{"reference too large to decode", domain.ThumbnailEditRunInput{Reference: hugePNGHeader(t)}, domain.ErrThumbnailEditReferenceInvalid},
 	} {
 		if _, err := f.edits.StartRun(context.Background(), id, c.input); !errors.Is(err, c.want) {

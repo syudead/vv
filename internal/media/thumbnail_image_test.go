@@ -58,6 +58,20 @@ func TestFitThumbnailImage(t *testing.T) {
 	}
 }
 
+// 提供元の出力の WebP も、PNG と同じく動画の縦横比の JPEG になる。
+func TestFitThumbnailImageWebP(t *testing.T) {
+	// 1×1 の可逆の WebP。
+	webp := []byte("RIFF\x1a\x00\x00\x00WEBPVP8L\x0d\x00\x00\x00\x2f\x00\x00\x00\x10\x07\x10\x11\x11\x88\x88\xfe\x07\x00")
+	fitted, err := FitThumbnailImage(context.Background(), webp, 16.0/9.0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := jpeg.DecodeConfig(bytes.NewReader(fitted))
+	if err != nil || config.Width != 640 || config.Height != 360 {
+		t.Fatalf("fitted = %+v, %v", config, err)
+	}
+}
+
 func TestFitThumbnailImageRejectsUndecodableData(t *testing.T) {
 	_, err := FitThumbnailImage(context.Background(), []byte("not an image"), 16.0/9.0)
 	if !errors.Is(err, domain.ErrThumbnailImageInvalid) {
