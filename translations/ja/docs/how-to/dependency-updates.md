@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: 1f0a75c319e888de855a2fd0b973738100a35520c728762617b8b0bc437d73af
+sourceHash: f2e73f02f2cf0e3b83947dc2561bbb7551eb341968f83ba06dc907812e26eff4
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
@@ -38,6 +38,14 @@ flowchart LR
 | Dependabot のセキュリティ更新 | リポジトリの設定で無効 | Renovate の `vulnerabilityAlerts` が同じ役目を果たす |
 
 除外には `matchPackageNames` ではなく `matchDepNames` を使う。mise マネージャーは `go` を `golang/go`、`node` を `nodejs` と名付ける一方、依存関係名は両方のマネージャーで共通だからである。
+
+## 用途の狭い依存関係 {#dependencies-with-a-narrow-use}
+
+次の直接の依存関係は、それぞれ 1 つのアダプタが使う。Renovate はそれぞれが属するグループと一緒に更新する。表は、どれかが変わったときに確かめることを示す。
+
+| 依存関係 | 使う側 | 更新時に確かめること |
+| --- | --- | --- |
+| `github.com/coder/websocket` | `internal/comfyui`。ComfyUI の実行のステップ進捗に使う（[045 research、R-5](../../specs/045-comfyui-thumbnails/research.md#r-5-provider-differences-stay-inside-the-adapter)） | `go test ./internal/comfyui`。このモジュールは自身の依存関係を持たないので、更新で依存関係は増えない |
 
 ## 同梱 FFmpeg のバージョンを上げる {#raise-the-bundled-ffmpeg-version}
 

@@ -91,3 +91,10 @@ type ImageEditJob struct {
 	ID         string
 	Output     string
 }
+
+// ImageEditProgress は実行のステップの進み具合で、Max ステップのうち Value まで進んだことを表す。
+// 提供元が報告したときだけあり、実行の状態は決めない（contracts/workflow.md の Run states）。
+type ImageEditProgress struct {
+	Value int
+	Max   int
+}
