@@ -45,12 +45,14 @@ function install(playlists: PlaylistSummary[]): Server {
   fetchMock.mockImplementation((input, init) => {
     const path = String(input);
     const method = init?.method ?? "GET";
-    if (path === "/api/playlists" && method === "GET") {
+    if (path.startsWith("/api/playlists?") && method === "GET") {
       if (server.failList === true) {
         server.failList = false;
         return Promise.resolve(json({ code: "internal", message: "boom" }, 500));
       }
-      return Promise.resolve(json({ items: server.playlists }));
+      return Promise.resolve(
+        json({ items: server.playlists, total: server.playlists.length }),
+      );
     }
     if (method === "POST") {
       const body = JSON.parse(String(init?.body)) as unknown;
@@ -210,7 +212,8 @@ describe("AddToPlaylistButton", () => {
     const reads = () =>
       fetchMock.mock.calls.filter(
         ([input, init]) =>
-          String(input) === "/api/playlists" && (init?.method ?? "GET") === "GET",
+          String(input).startsWith("/api/playlists?") &&
+          (init?.method ?? "GET") === "GET",
       ).length;
     await waitFor(() => expect(reads()).toBe(2));
   });

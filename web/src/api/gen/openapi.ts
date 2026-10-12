@@ -1390,9 +1390,11 @@ export interface paths {
         };
         /**
          * プレイリストを更新日時の新しい順に返す
-         * @description 所有者だけ。すべてのプレイリストを `updatedAt` の新しい順（同じなら id の大きい順）に返す。
-         *     ページングは無い。`itemCount` は今見せる項目の数である
-         *     （specs/044-playlists/contracts/screen-api.md）。
+         * @description 所有者だけ。プレイリストを `updatedAt` の新しい順（同じなら id の大きい順）に、`cursor` の
+         *     次から最大 `limit` 件返す。続きがあれば `nextCursor` を入れ、`total` はページングとは独立に
+         *     全部の数を返す。`covers` は返したページの分だけ作る。`cursor` が読めなければ 400
+         *     `invalid_cursor`、`limit` が範囲の外なら 400 `invalid_request`。`itemCount` は今見せる
+         *     項目の数である（specs/044-playlists/contracts/screen-api.md）。
          */
         get: operations["listPlaylists"];
         put?: never;
@@ -2363,8 +2365,12 @@ export interface components {
             covers?: components["schemas"]["FolderPreview"][];
         };
         PlaylistList: {
-            /** @description プレイリストの要約。`updatedAt` の新しい順（同じなら id の大きい順） */
+            /** @description プレイリストの要約の 1 ページ。`updatedAt` の新しい順（同じなら id の大きい順） */
             items: components["schemas"]["PlaylistSummary"][];
+            /** @description 全部のプレイリストの数。ページングとは独立に返る */
+            total: number;
+            /** @description 次のページの取得に渡す。続きがあるときだけ入る */
+            nextCursor?: string;
         };
         /** @description プレイリスト 1 つ。`PlaylistSummary` の欄に見せる項目を足したもの */
         Playlist: {
@@ -5346,7 +5352,12 @@ export interface operations {
     };
     listPlaylists: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
             header?: never;
             path?: never;
             cookie?: never;
@@ -5362,6 +5373,7 @@ export interface operations {
                     "application/json": components["schemas"]["PlaylistList"];
                 };
             };
+            400: components["responses"]["InvalidRequest"];
         };
     };
     createPlaylist: {

@@ -17,8 +17,9 @@ import (
 // Playlists はプレイリストの保存先である。internal/store の *PlaylistStore がこれを満たす。
 // どの操作も 1 つの取引で済むので、internal/app は通さない（plan.md の Constitution Check）。
 type Playlists interface {
-	// ListPlaylists はすべてのプレイリストを更新日時の新しい順に返す。
-	ListPlaylists(ctx context.Context) ([]domain.Playlist, error)
+	// ListPlaylists はプレイリストを更新日時の新しい順（同じなら id の大きい順）に cursor の次から
+	// limit 件返す。Covers は返したページの分だけ埋まる。読めない cursor は domain.ErrInvalidCursor。
+	ListPlaylists(ctx context.Context, cursor string, limit int) (domain.PlaylistPage, error)
 	// CreatePlaylist は名前 name の空のプレイリストを作る。名前の規則違反は
 	// *domain.InvalidPlaylistNameError。
 	CreatePlaylist(ctx context.Context, name string) (domain.Playlist, error)
@@ -41,25 +42,47 @@ type Playlists interface {
 // PUT /api/favorites と同じ形と件数の上限なので、同じ大きさにする。
 const playlistsBodyLimit = favoritesBodyLimit
 
-// ListPlaylists はプレイリストを更新日時の新しい順に返す（GET /api/playlists）。
-func (s *server) ListPlaylists(w http.ResponseWriter, r *http.Request) {
+// ListPlaylists はプレイリストを更新日時の新しい順に、cursor の次から limit 件返す
+// （GET /api/playlists）。limit の既定と上限はライブラリの一覧と同じ（domain.DefaultLimit・
+// domain.MaxLimit）で、範囲の外は 400 invalid_request、読めない cursor は 400 invalid_cursor。
+func (s *server) ListPlaylists(w http.ResponseWriter, r *http.Request, params gen.ListPlaylistsParams) {
 	if s.playlists == nil {
 		s.internalError(w, "Playlist storage is not configured.", nil)
 		return
 	}
+	limit := domain.DefaultLimit
+	if params.Limit != nil {
+		if *params.Limit < 1 || *params.Limit > domain.MaxLimit {
+			s.invalidRequest(w, "limit must be between 1 and 200.")
+			return
+		}
+		limit = *params.Limit
+	}
+	cursor := ""
+	if params.Cursor != nil {
+		cursor = *params.Cursor
+	}
 	ctx := r.Context()
-	playlists, err := s.playlists.ListPlaylists(ctx)
-	if err != nil {
+	page, err := s.playlists.ListPlaylists(ctx, cursor, limit)
+	switch {
+	case errors.Is(err, domain.ErrInvalidCursor):
+		s.invalidRequestReason(w, reasonInvalidCursor, "Cannot read the cursor. Reload the list.")
+		return
+	case err != nil:
 		s.internalError(w, "Could not load the playlists.", err)
 		return
 	}
-	out := gen.PlaylistList{Items: make([]gen.PlaylistSummary, 0, len(playlists))}
-	for _, playlist := range playlists {
+	out := gen.PlaylistList{Items: make([]gen.PlaylistSummary, 0, len(page.Items)), Total: page.Total}
+	for _, playlist := range page.Items {
 		summary := toAPIPlaylistSummary(playlist)
 		// 一覧のカードの絵柄のサムネイル。previewUrl はグループのカードと同じ folderPreviews を通す。
 		covers := s.folderPreviews(ctx, previewVideos(playlist.Covers))
 		summary.Covers = &covers
 		out.Items = append(out.Items, summary)
+	}
+	if page.NextCursor != "" {
+		nextCursor := page.NextCursor
+		out.NextCursor = &nextCursor
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)

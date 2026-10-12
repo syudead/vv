@@ -1670,8 +1670,14 @@ type PlaylistItemsAdded struct {
 
 // PlaylistList defines model for PlaylistList.
 type PlaylistList struct {
-	// Items プレイリストの要約。`updatedAt` の新しい順（同じなら id の大きい順）
+	// Items プレイリストの要約の 1 ページ。`updatedAt` の新しい順（同じなら id の大きい順）
 	Items []PlaylistSummary `json:"items"`
+
+	// NextCursor 次のページの取得に渡す。続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 全部のプレイリストの数。ページングとは独立に返る
+	Total int `json:"total"`
 }
 
 // PlaylistName defines model for PlaylistName.
@@ -2786,6 +2792,15 @@ type DeleteMediaFolderParams struct {
 	Version int64 `form:"version" json:"version"`
 }
 
+// ListPlaylistsParams defines parameters for ListPlaylists.
+type ListPlaylistsParams struct {
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // GetPlaylistPlaybackParams defines parameters for GetPlaylistPlayback.
 type GetPlaylistPlaybackParams struct {
 	// Item 再生している項目の識別子
@@ -3175,7 +3190,7 @@ type ServerInterface interface {
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
 	// ListPlaylists プレイリストを更新日時の新しい順に返す
 	// (GET /api/playlists)
-	ListPlaylists(w http.ResponseWriter, r *http.Request)
+	ListPlaylists(w http.ResponseWriter, r *http.Request, params ListPlaylistsParams)
 	// CreatePlaylist 空のプレイリストを作る
 	// (POST /api/playlists)
 	CreatePlaylist(w http.ResponseWriter, r *http.Request)
@@ -4288,8 +4303,40 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 // ListPlaylists operation middleware
 func (siw *ServerInterfaceWrapper) ListPlaylists(w http.ResponseWriter, r *http.Request) {
 
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPlaylistsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListPlaylists(w, r)
+		siw.Handler.ListPlaylists(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {

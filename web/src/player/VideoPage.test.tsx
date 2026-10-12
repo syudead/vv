@@ -2268,7 +2268,7 @@ describe("VideoPage", () => {
       const answered = fetchMock.getMockImplementation();
       fetchMock.mockImplementation((input, init) => {
         const url = String(input);
-        if (url === "/api/playlists") {
+        if (url.startsWith("/api/playlists?")) {
           return Promise.resolve(
             json({
               items: [

@@ -5,7 +5,7 @@ import { type FolderRef, isAborted, RequestFailed } from "../api/client";
 import {
   addToPlaylist,
   createPlaylist,
-  listPlaylists,
+  listAllPlaylists,
   type PlaylistSummary,
 } from "../api/playlists";
 import { maxVideoTagsSelection } from "../api/tags";
@@ -33,7 +33,8 @@ type Pending = { kind: "playlist"; id: number } | { kind: "create" } | null;
  * （specs/044-playlists/ui-design.md「Add to playlist」）。カード・行・動画ページ・選択バーの
  * 4 か所が、それぞれの `Popover` の中に置く。
  *
- * - 開くたびに `GET /api/playlists` を読み、打った文字を名前に含むものを API の順に出す。
+ * - 開くたびに `GET /api/playlists` を `nextCursor` が尽きるまで読み（listAllPlaylists）、打った文字を
+ *   名前に含むものを API の順に出す。
  *   打った名前と同じ名前のプレイリストが無ければ、先頭に「Create "{name}"」の行を出す。
  * - 行を選ぶと `videoIds` と `folders` を `POST /api/playlists/{id}/items` で送る。作成の行は
  *   `POST /api/playlists` の後に、その新しいプレイリストへ足す。足すのに失敗した後に同じ名前で
@@ -79,7 +80,7 @@ export default function PlaylistPicker({
     const controller = new AbortController();
     loadAbort.current = controller;
     if (!quiet) setLoad({ status: "loading" });
-    listPlaylists(controller.signal).then(
+    listAllPlaylists(controller.signal).then(
       (playlists) => {
         if (!controller.signal.aborted) setLoad({ status: "ready", playlists });
       },

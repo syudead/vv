@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"slices"
 	"strconv"
 	"strings"
@@ -147,6 +148,66 @@ func TestPlaylistCreateRenameAndList(t *testing.T) {
 			t.Errorf("一覧の名前 = %q", item.Name)
 		}
 	}
+	if list.Total != 2 || list.NextCursor != nil {
+		t.Errorf("1 ページに収まる一覧の total = %d, nextCursor = %v", list.Total, list.NextCursor)
+	}
+}
+
+// 一覧は limit 件ずつ返し、続きがあるときだけ nextCursor を入れ、total はどのページでも全部の数。
+// limit の範囲外は 400 invalid_request、読めない cursor は 400 invalid_cursor
+// （specs/044-playlists/contracts/screen-api.md「GET /api/playlists」）。
+func TestPlaylistListPaging(t *testing.T) {
+	f := newLibraryFixture(t)
+	var want []int64
+	for _, name := range []string{"a", "b", "c"} {
+		want = append([]int64{f.createPlaylist(t, name).Id}, want...)
+	}
+
+	var got []int64
+	query := "?limit=2"
+	for pages := 0; ; pages++ {
+		rec := f.env.get("/api/playlists"+query, f.owner)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("ページ %d: status = %d: %s", pages, rec.Code, rec.Body)
+		}
+		list := decode[gen.PlaylistList](t, rec)
+		if list.Total != 3 {
+			t.Errorf("ページ %d の total = %d, want 3", pages, list.Total)
+		}
+		for _, item := range list.Items {
+			if item.Covers == nil {
+				t.Errorf("ページ %d の %q に covers が無い", pages, item.Name)
+			}
+			got = append(got, item.Id)
+		}
+		if list.NextCursor == nil {
+			if len(list.Items) != 1 {
+				t.Errorf("最後のページ = %d 件, want 1", len(list.Items))
+			}
+			break
+		}
+		if len(list.Items) != 2 {
+			t.Errorf("ページ %d = %d 件, want 2", pages, len(list.Items))
+		}
+		query = "?limit=2&cursor=" + url.QueryEscape(*list.NextCursor)
+		if pages > 3 {
+			t.Fatal("ページが終わらない")
+		}
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("ページを結んだ id = %v, want %v", got, want)
+	}
+
+	for label, query := range map[string]string{"limit 0": "?limit=0", "limit 201": "?limit=201"} {
+		rec := f.env.get("/api/playlists"+query, f.owner)
+		assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+		})
+	}
+	rec := f.env.get("/api/playlists?cursor=not-a-cursor", f.owner)
+	assertErrorBody(t, "読めない cursor", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidCursor,
+	})
 }
 
 // 追加は 200 で added と existing を返し、要求の順（動画、次にフォルダ）で末尾に足す。ライブラリに

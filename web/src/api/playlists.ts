@@ -1,4 +1,11 @@
-import { apiFetch, type FolderRef, request, toRequestFailed } from "./client";
+import {
+  apiFetch,
+  type FolderRef,
+  MAX_PAGE_SIZE,
+  PAGE_SIZE,
+  request,
+  toRequestFailed,
+} from "./client";
 import type { components } from "./gen/openapi";
 
 // プレイリストの画面 API（specs/044-playlists/contracts/screen-api.md「Client use」）。
@@ -21,12 +28,45 @@ function playlistItemPath(id: number, itemId: number): string {
   return `${playlistPath(id)}/items/${String(itemId)}`;
 }
 
-/** listPlaylists はプレイリストを更新日時の新しい順に取得する（GET /api/playlists）。 */
-export async function listPlaylists(signal?: AbortSignal): Promise<PlaylistSummary[]> {
-  const list = await request<components["schemas"]["PlaylistList"]>("/api/playlists", {
-    signal,
-  });
-  return list.items;
+export type PlaylistList = components["schemas"]["PlaylistList"];
+
+export interface ListPlaylistsParams {
+  /** 前回の応答の `nextCursor`。中身は解釈しない。 */
+  cursor?: string;
+  /** 1 ページの件数。省けばライブラリの一覧と同じ 60 件。 */
+  limit?: number;
+  signal?: AbortSignal;
+}
+
+/**
+ * listPlaylists はプレイリストを更新日時の新しい順に 1 ページ取得する（GET /api/playlists）。
+ * 続きがあれば `nextCursor` が入り、`total` はページングとは独立な全部の数である。
+ */
+export function listPlaylists({
+  cursor,
+  limit = PAGE_SIZE,
+  signal,
+}: ListPlaylistsParams = {}): Promise<PlaylistList> {
+  const params = new URLSearchParams();
+  if (cursor !== undefined) params.set("cursor", cursor);
+  params.set("limit", String(limit));
+  return request<PlaylistList>(`/api/playlists?${params.toString()}`, { signal });
+}
+
+/**
+ * listAllPlaylists はプレイリストの全部を、`nextCursor` が尽きるまで最大の件数（MAX_PAGE_SIZE）の
+ * ページで辿って取得する。名前で選ぶ「Add to playlist」のピッカーのように、一覧の全部を手元で
+ * 絞る所が使う。
+ */
+export async function listAllPlaylists(signal?: AbortSignal): Promise<PlaylistSummary[]> {
+  const items: PlaylistSummary[] = [];
+  let cursor: string | undefined;
+  do {
+    const page = await listPlaylists({ cursor, limit: MAX_PAGE_SIZE, signal });
+    items.push(...page.items);
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+  return items;
 }
 
 /**

@@ -12,7 +12,7 @@ The `POST` and `PATCH` routes join `requiresJSONBody`.
 
 | Route | Purpose |
 | --- | --- |
-| `GET /api/playlists` | The playlists |
+| `GET /api/playlists` | One page of the playlists |
 | `POST /api/playlists` | Create one |
 | `GET /api/playlists/{id}` | One playlist and its shown items |
 | `PATCH /api/playlists/{id}` | Rename |
@@ -33,6 +33,13 @@ PlaylistSummary:
     itemCount: { type: integer }        # shown items (R-4)
     updatedAt: { type: string, format: date-time }
     covers: { type: array, maxItems: 4, items: { $ref: FolderPreview } }   # GET /api/playlists only; see below
+
+PlaylistList:
+  required: [items, total]
+  properties:
+    items: { type: array, items: { $ref: PlaylistSummary } }   # one page, updatedAt desc then id desc
+    total: { type: integer }        # every playlist, independent of paging
+    nextCursor: { type: string }    # only while more follow
 
 Playlist:
   allOf: [PlaylistSummary without covers]
@@ -56,10 +63,20 @@ PlaylistName:
 
 ## `GET /api/playlists`
 
-`200 {items: PlaylistSummary[]}`, `updatedAt` descending. No paging: the list
-serves the sidebar screen and the add menu.
+Query: `cursor` (the previous response's `nextCursor`, opaque) and `limit`
+(1 to 200, default 60), the library lists' paging parameters.
 
-Each summary carries `covers`, the art of the playlists screen's card
+`200 PlaylistList`: the playlists after `cursor`, `updatedAt` descending,
+then `id` descending, `limit` of them at most; `nextCursor` only while more
+follow, and `total` the number of every playlist, independent of paging. The
+cursor names the last playlist of its page (`updatedAt`, `id`), so a playlist
+changed while the owner pages comes back on an earlier page and the client
+drops the repeat by `id`; the order is otherwise stable. An unreadable
+`cursor` is `400 invalid_cursor`; a `limit` out of range is
+`400 invalid_request`.
+
+Each summary carries `covers`, computed for the returned page only, the art
+of the playlists screen's card
 ([ui-design.md, Playlists screen](../ui-design.md#playlists-screen)): the
 shown items in position order, each contributing one `FolderPreview`, a video
 item its video and a group item the first member in the group's order that
@@ -153,7 +170,7 @@ PlaylistStep:
 
 | Screen | Calls |
 | --- | --- |
-| Playlists screen (`/playlists`) | `GET /api/playlists`, `POST /api/playlists` |
+| Playlists screen (`/playlists`) | `GET /api/playlists` with the default `limit`, then with each `nextCursor` as the grid's end comes into view ([ui-design.md, Paging](../ui-design.md#paging)); `POST /api/playlists` |
 | Playlist screen (`/playlists/{id}`) | `GET`, `PATCH`, `DELETE /api/playlists/{id}`; `move` and item `DELETE`. Play opens `/videos/{videoId}?playlist={id}&item={itemId}` with `state: {from: "/playlists/{id}", autoplay: true}`, where `videoId` is the video or the group's `openVideoId` |
-| Add menu (card, selection bar, video page) | `GET /api/playlists` when opened; `POST /api/playlists/{id}/items`; creating a playlist from the menu is `POST /api/playlists` then the add |
+| Add menu (card, selection bar, video page) | `GET /api/playlists` with `limit=200` when opened, followed through `nextCursor` until the last page, because the menu filters the whole list by name on the client (`covers` of these pages go unused; a parameter to omit them was not added, as the menu's pages are few); `POST /api/playlists/{id}/items`; creating a playlist from the menu is `POST /api/playlists` then the add |
 | Video page with `playlist` and `item`, owner only | `GET /api/playlists/{id}/playback` on open, when the video ends, and when the notice finds its next video gone; `GET /api/playlists/{id}` alongside each of those reads, for the aside's playlist panel ([ui-design.md, Playlist panel](../ui-design.md#playlist-panel)); the pair is used only when both carry the same `updatedAt`, and is read again when they differ ([ui-design.md, One order](../ui-design.md#one-order)), so the panel and `next` show the same order. A `404` from either read drops the context. Moving to a step keeps `playlist`, sets `item` to the step's `itemId`, and carries `state.from` over |

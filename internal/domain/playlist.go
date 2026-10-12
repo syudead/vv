@@ -1,8 +1,11 @@
 package domain
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -27,6 +30,47 @@ type Playlist struct {
 	ItemCount int
 	UpdatedAt time.Time
 	Covers    []FolderPreview
+}
+
+// PlaylistPage はプレイリストの一覧の 1 ページである。Items は (updated_at desc, id desc) の順、
+// Total はページングとは独立な全部のプレイリストの数、NextCursor は続きがあるときだけ空でない
+// （specs/044-playlists/contracts/screen-api.md「GET /api/playlists」）。
+type PlaylistPage struct {
+	Items      []Playlist
+	Total      int
+	NextCursor string
+}
+
+// PlaylistCursor はプレイリストの一覧のカーソルの中身で、前のページの最後のプレイリストの
+// updated_at（Unix ミリ秒）と id である。並びは (updated_at desc, id desc) なので、次のページは
+// この組より小さいものから始まる。
+type PlaylistCursor struct {
+	UpdatedAtMs int64 `json:"u"`
+	ID          int64 `json:"i"`
+}
+
+// EncodePlaylistCursor はカーソルを不透明な文字列にする。視聴履歴のカーソル
+// （EncodeWatchHistoryCursor）と同じく、JSON を URL に使える base64 で包む。
+func EncodePlaylistCursor(cursor PlaylistCursor) string {
+	body, _ := json.Marshal(cursor) // 整数 2 つの構造体の Marshal は失敗しない。
+	return base64.RawURLEncoding.EncodeToString(body)
+}
+
+// DecodePlaylistCursor は EncodePlaylistCursor の逆である。読めないもの、欄の欠けたもの、
+// id が 1 未満のものは ErrInvalidCursor を返す。
+func DecodePlaylistCursor(cursor string) (PlaylistCursor, error) {
+	body, err := base64.RawURLEncoding.DecodeString(cursor)
+	if err != nil {
+		return PlaylistCursor{}, fmt.Errorf("%w: %s", ErrInvalidCursor, strconv.Quote(cursor))
+	}
+	var fields struct {
+		UpdatedAtMs *int64 `json:"u"`
+		ID          *int64 `json:"i"`
+	}
+	if err := json.Unmarshal(body, &fields); err != nil || fields.UpdatedAtMs == nil || fields.ID == nil || *fields.ID < 1 {
+		return PlaylistCursor{}, fmt.Errorf("%w: %s", ErrInvalidCursor, strconv.Quote(cursor))
+	}
+	return PlaylistCursor{UpdatedAtMs: *fields.UpdatedAtMs, ID: *fields.ID}, nil
 }
 
 // PlaylistItem はプレイリストの項目 1 つである。見せる項目は Video と Group のどちらか一方だけを持ち、

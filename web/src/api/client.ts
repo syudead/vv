@@ -118,6 +118,8 @@ export type VideoChanged = components["schemas"]["VideoChanged"];
 // 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
 // これだけを待つ。
 export const PAGE_SIZE = 60;
+/** MAX_PAGE_SIZE は一覧の 1 ページに求められる件数の上限（契約の `limit` の maximum）である。 */
+export const MAX_PAGE_SIZE = 200;
 
 export type ErrorCode = ApiError["code"];
 export type ErrorReason = components["schemas"]["ErrorReason"];
