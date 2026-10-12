@@ -677,12 +677,40 @@ export interface paths {
          *     409 `duration_unknown`、0 未満か尺以上なら 400 `thumbnail_position_out_of_range`（`limit` に
          *     尺のミリ秒）、画像を作れなければ 409 `thumbnail_frame_unavailable`（前の画像と位置はそのまま）、
          *     どの所在も開けなければ 404 `file_unavailable` を返す。同じ動画への同時の指定は直列になり、
-         *     最後に記録した位置の画像が残る。確定後に `/api/events` の `video` が流れる
+         *     最後に記録した位置の画像が残る。適用した画像があれば同じ取引で外す
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）。確定後に `/api/events` の `video` が流れる
          *     （specs/029-video-overrides/contracts/screen-api.md §2）。
          */
         put: operations["setVideoThumbnailPosition"];
         post?: never;
         delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/thumbnail-image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 動画に適用したサムネイルの画像を外す
+         * @description 所有者だけ。要求の本文は無い。適用した画像を外し、代表サムネイルをコマから作り直して公開する。
+         *     `thumbnailPositionMs` があればその場面、無ければ自動の位置で作る。画像を適用していなくても
+         *     作り直して 200 を返す。応答は生成が終わってから返し、形は `GET /api/videos/{id}` と同じ
+         *     `Video` である（`thumbnailGenerated` は無く、新しい版の `thumbnailUrl`）。誤りは
+         *     `PUT /api/videos/{id}/thumbnail-position` と同じで、画像を作れなければ 409
+         *     `thumbnail_frame_unavailable`（適用した画像と前のファイルはそのまま）、どの所在も開けなければ
+         *     404 `file_unavailable` を返す。確定後に `/api/events` の `video` が流れる
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+         */
+        delete: operations["revertThumbnailImage"];
         options?: never;
         head?: never;
         patch?: never;
@@ -2414,7 +2442,7 @@ export interface components {
         };
         /**
          * @description ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-         *     `thumbnailPositionMs` を省き、`tags` を空の配列にする
+         *     `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
          *     （specs/016-single-account-auth/contracts/guest-api.md §1、
          *     specs/029-video-overrides/contracts/screen-api.md §0）。
          */
@@ -2435,6 +2463,11 @@ export interface components {
              * @description 代表サムネイルにする場面の位置（ミリ秒）。設定されているときだけ、所有者の応答にだけ入る
              */
             thumbnailPositionMs?: number;
+            /**
+             * @description 所有者が適用した画像が代表サムネイルのとき `true`。適用しているときだけ、所有者の応答にだけ入る
+             *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）
+             */
+            thumbnailGenerated?: boolean;
             /** Format: int64 */
             sizeBytes: number;
             /** Format: date-time */
@@ -2498,7 +2531,10 @@ export interface components {
             thumbnailState: "pending" | "done" | "failed";
             /** @enum {string} */
             previewState: "pending" | "done" | "failed";
-            /** @description thumbnailState = done のときだけ入る */
+            /**
+             * @description thumbnailState = done のときだけ入る。版は内容鍵の先頭で、位置の指定中は `-r<改版番号>`、
+             *     適用した画像の表示中は `-g<改版番号>` が付く（ゲストにも同じ文字列）
+             */
             thumbnailUrl?: string;
             /** @description previewState = done かつ保存済み asset が配信可能なときだけ入る版付き URL。done なのに asset が無ければ、サーバーは作り直しを積み、previewState を pending として返す */
             previewUrl?: string;
@@ -4006,6 +4042,32 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    revertThumbnailImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 反映後の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];

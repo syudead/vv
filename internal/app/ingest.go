@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -38,6 +39,16 @@ type IngestStore interface {
 	// 動画の thumbnail_state を done にする。画像を公開したあと、生成の錠の中で呼ぶ
 	// （specs/029-video-overrides/data-model.md §3）。
 	SetThumbnailPosition(ctx context.Context, videoID int64, positionMs *int64) (domain.Video, error)
+	// ApplyThumbnailImage は内容 contentKey の動画 videoID に適用した画像 image を記録し、同じ取引で
+	// その内容の動画の thumbnail_state を done にする。動画が無いか内容が違えば
+	// domain.ErrContentChanged で、何も書かない。画像を公開したあと、生成の錠の中で呼ぶ
+	// （specs/045-comfyui-thumbnails/data-model.md）。
+	ApplyThumbnailImage(ctx context.Context, videoID int64, contentKey string, image []byte) (domain.Video, error)
+	// RevertThumbnailImage は動画 videoID の内容に適用した画像の行を消し、同じ取引でその内容の
+	// 動画の thumbnail_state を done にする。コマを公開したあと、生成の錠の中で呼ぶ。
+	RevertThumbnailImage(ctx context.Context, videoID int64) (domain.Video, error)
+	// ThumbnailImage は内容 contentKey に適用した画像を返す。適用していなければ nil。
+	ThumbnailImage(ctx context.Context, contentKey string) ([]byte, error)
 }
 
 // ContentIndex は内容の識別子を参照する動画があるかの問い合わせ先である。
@@ -97,6 +108,9 @@ type Generator interface {
 	// SpriteFingerprint は完成したシーク用スプライトのシート（シート 0 から順の JPEG）から
 	// 映像の指紋を作る。ffmpeg は起動しない。
 	SpriteFingerprint(sprite domain.SeekSprite, sheets [][]byte) (domain.Fingerprint, error)
+	// FitThumbnailImage は所有者が適用する画像 image を動画の表示上の縦横比 aspect（0 は不明）に
+	// 合わせた代表サムネイルの JPEG を返す。読めない画像は domain.ErrThumbnailImageInvalid。
+	FitThumbnailImage(ctx context.Context, image []byte, aspect float64) ([]byte, error)
 }
 
 // IngestOptions は取り込みの組み立てに必要な依存である。
@@ -218,7 +232,8 @@ func (i *Ingest) Probe(ctx context.Context, job domain.Job) error {
 // Thumbnail は代表サムネイルを1枚生成し、状態を記録する。シーク用サムネイルは
 // 別の段階（SeekThumbnails）が作るので、ここでは待たない。
 //
-// 所有者が位置を指定していればその場面で（ThumbnailAt）、無ければ自動の位置で作る
+// 所有者が画像を適用していればその画像を公開し直し（specs/045-comfyui-thumbnails/research.md
+// R-6）、位置を指定していればその場面で（ThumbnailAt）、どちらも無ければ自動の位置で作る
 // （specs/029-video-overrides/research.md R-5）。位置と thumbnail_state は生成の錠に
 // 入ってから読み直した値で決める。錠を待つ間に SetThumbnailPosition が位置と done を
 // 記録していたら、古い値で画像を上書きせずに生成を飛ばす。
@@ -255,7 +270,17 @@ func (i *Ingest) Thumbnail(ctx context.Context, job domain.Job) error {
 			// 先頭のコマでの代用は、成功を書く取引で問題として記録する
 			// （specs/024-import-progress/research.md R-7）。指定の位置では代用しない。
 			substitution := domain.SubstitutionUnknown
+			// 所有者が画像を適用していれば、コマを取らずにその画像を公開し直す
+			// （specs/045-comfyui-thumbnails/research.md R-6）。
+			image, err := i.store.ThumbnailImage(ctx, job.ContentKey)
+			if err != nil {
+				return false, err
+			}
 			if err := i.files.PublishThumbnail(job.ContentKey, func(output string) error {
+				if image != nil {
+					substitution = domain.SubstitutionNone
+					return writeThumbnailImage(output, image)
+				}
 				if video.ThumbnailPositionMs != nil {
 					substitution = domain.SubstitutionNone
 					return i.generator.ThumbnailAt(ctx, job.LocationPath, *video.ThumbnailPositionMs, output)
@@ -311,9 +336,56 @@ func (i *Ingest) SetThumbnailPosition(
 		return domain.Video{}, domain.ErrNotFound
 	}
 
+	return i.replaceThumbnailWithFrame(ctx, video, locationPath, path,
+		func() (*int64, error) { return positionMs, nil },
+		func() (domain.Video, error) { return i.store.SetThumbnailPosition(ctx, videoID, positionMs) })
+}
+
+// RevertThumbnailImage は動画 videoID に適用した画像を外し、代表サムネイルをコマから作り直して
+// 公開する（specs/045-comfyui-thumbnails/data-model.md、research.md R-10）。記録した位置が
+// あればその場面で、無ければ自動の位置で作る。位置は生成の錠に入ってから読み直すので、錠を
+// 待つ間に記録された位置が使われる。画像を適用していなくても作り直して成功する。
+//
+// locationPath・path と、生成・公開・記録の順と失敗の扱いは SetThumbnailPosition と同じである。
+// 生成に失敗したら何も記録せず domain.ErrThumbnailFrameUnavailable を返し、画像の行と
+// 前のファイルは残る。
+func (i *Ingest) RevertThumbnailImage(
+	ctx context.Context, videoID int64, locationPath, path string,
+) (domain.Video, error) {
+	video, err := i.store.GetVideo(ctx, videoID)
+	if err != nil {
+		return domain.Video{}, err
+	}
+	if video.ContentKey == "" {
+		return domain.Video{}, domain.ErrNotFound
+	}
+	return i.replaceThumbnailWithFrame(ctx, video, locationPath, path,
+		func() (*int64, error) {
+			current, err := i.store.GetVideo(ctx, videoID)
+			if err != nil {
+				return nil, err
+			}
+			return current.ThumbnailPositionMs, nil
+		},
+		func() (domain.Video, error) { return i.store.RevertThumbnailImage(ctx, videoID) })
+}
+
+// replaceThumbnailWithFrame は、生成の錠の中で動画 video の代表サムネイルを path のコマから
+// 作り直して公開し、record で記録する。コマの位置は錠の中で position が決め、nil なら自動の
+// 位置にする。所在の確かめ直し、前の画像の写し、記録できなかったときの復元は
+// SetThumbnailPosition の説明の通りである。
+func (i *Ingest) replaceThumbnailWithFrame(
+	ctx context.Context, video domain.Video, locationPath, path string,
+	position func() (*int64, error), record func() (domain.Video, error),
+) (domain.Video, error) {
+	videoID := video.ID
 	var saved domain.Video
-	err = i.artifacts.generate(ctx, video.ContentKey, artifactThumbnail, func() (bool, error) {
+	err := i.artifacts.generate(ctx, video.ContentKey, artifactThumbnail, func() (bool, error) {
 		if err := i.checkThumbnailSource(ctx, videoID, video.ContentKey, locationPath); err != nil {
+			return false, err
+		}
+		positionMs, err := position()
+		if err != nil {
 			return false, err
 		}
 		restore, discard, err := i.files.StashThumbnail(video.ContentKey)
@@ -350,7 +422,7 @@ func (i *Ingest) SetThumbnailPosition(
 		if err := i.checkThumbnailSource(ctx, videoID, video.ContentKey, locationPath); err != nil {
 			return true, errors.Join(err, restore())
 		}
-		recorded, err := i.store.SetThumbnailPosition(ctx, videoID, positionMs)
+		recorded, err := record()
 		if err != nil {
 			return true, errors.Join(err, restore())
 		}
@@ -362,6 +434,70 @@ func (i *Ingest) SetThumbnailPosition(
 		return domain.Video{}, err
 	}
 	return saved, nil
+}
+
+// ApplyThumbnailImage は、所有者が編集した画像 image を動画 videoID の代表サムネイルにする
+// （specs/045-comfyui-thumbnails/data-model.md、research.md R-6・R-7・R-10）。contentKey は
+// 編集を始めたときの動画の内容である。
+//
+// 生成の錠の中で動画を読み直し、動画が無いか内容が contentKey でなければ何も書かずに
+// domain.ErrContentChanged を返す。画像は動画の表示上の縦横比に合わせ（読めなければ
+// domain.ErrThumbnailImageInvalid）、今の代表サムネイルを写してから公開し、1 つの取引で
+// 画像の行を書いて、その内容の動画の thumbnail_state を done にする。公開に失敗すれば画像の行も
+// ファイルも元のまま、記録に失敗すれば写した前のファイルへ戻す。位置の指定と同じ錠の中で
+// 行うので、あとで確定した方が残る。
+func (i *Ingest) ApplyThumbnailImage(
+	ctx context.Context, videoID int64, contentKey string, image []byte,
+) (domain.Video, error) {
+	if contentKey == "" {
+		return domain.Video{}, domain.ErrContentChanged
+	}
+	var saved domain.Video
+	err := i.artifacts.generate(ctx, contentKey, artifactThumbnail, func() (bool, error) {
+		video, err := i.store.GetVideo(ctx, videoID)
+		if errors.Is(err, domain.ErrNotFound) {
+			return false, domain.ErrContentChanged
+		}
+		if err != nil {
+			return false, err
+		}
+		if video.ContentKey != contentKey {
+			return false, domain.ErrContentChanged
+		}
+		fitted, err := i.generator.FitThumbnailImage(ctx, image, domain.ThumbnailImageAspect(video))
+		if err != nil {
+			return false, err
+		}
+		restore, discard, err := i.files.StashThumbnail(contentKey)
+		if err != nil {
+			return false, err
+		}
+		if err := i.files.PublishThumbnail(contentKey, func(output string) error {
+			return writeThumbnailImage(output, fitted)
+		}); err != nil {
+			discard()
+			return false, err
+		}
+		recorded, err := i.store.ApplyThumbnailImage(ctx, videoID, contentKey, fitted)
+		if err != nil {
+			return true, errors.Join(err, restore())
+		}
+		discard()
+		saved = recorded
+		return true, nil
+	})
+	if err != nil {
+		return domain.Video{}, err
+	}
+	return saved, nil
+}
+
+// writeThumbnailImage は適用した画像 image を一時置き場のパス output へ書く。
+func writeThumbnailImage(output string, image []byte) error {
+	if err := os.WriteFile(output, image, 0o644); err != nil {
+		return fmt.Errorf("cannot write the thumbnail image: %w", err)
+	}
+	return nil
 }
 
 // checkThumbnailSource は、所在 locationPath が今も動画 videoID の内容 key のものかを確かめる。

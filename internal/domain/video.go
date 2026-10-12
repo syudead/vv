@@ -235,6 +235,10 @@ type Video struct {
 	// ThumbnailRevision は位置を記録するたびに書く改版番号（R-6）。未設定は 0。
 	// thumbnailUrl の版だけに使い、応答の項目にはしない。
 	ThumbnailRevision int64
+	// ThumbnailImageRevision は適用したサムネイルの画像（thumbnail_images）の改版番号
+	// （specs/045-comfyui-thumbnails/data-model.md）。適用していなければ 0。設定されていれば
+	// thumbnailUrl の版は位置の改版番号の代わりにこれを使う。
+	ThumbnailImageRevision int64
 }
 
 // PlayableInBrowser はブラウザでそのまま再生できると確定しているかを返す。

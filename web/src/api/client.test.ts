@@ -23,6 +23,7 @@ import {
   getCurrentScan,
   setVideoDisplayName,
   setVideoThumbnailPosition,
+  revertThumbnailImage,
   listVideoVersions,
   bundleVideos,
   makeRepresentativeVersion,
@@ -401,6 +402,33 @@ describe("setVideoThumbnailPosition", () => {
     hold();
     await setVideoThumbnailPosition(7, 1_000);
     expect(takeListSnapshot(key)).toBeUndefined();
+  });
+});
+
+describe("revertThumbnailImage", () => {
+  it("DELETE で送り、成功したら一覧の控えを捨て、失敗したら残す", async () => {
+    const key = { query: "old" };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ code: "conflict", reason: "thumbnail_frame_unavailable" }, 409),
+    );
+    hold();
+    await expect(revertThumbnailImage(7)).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
+
+    fetch.mockResolvedValueOnce(jsonResponse({ id: 7 }));
+    hold();
+    await expect(revertThumbnailImage(7, signal)).resolves.toMatchObject({ id: 7 });
+    expect(takeListSnapshot(key)).toBeUndefined();
+    expect(fetch).toHaveBeenLastCalledWith(
+      "/api/videos/7/thumbnail-image",
+      expect.objectContaining({ method: "DELETE", signal }),
+    );
   });
 });
 

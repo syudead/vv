@@ -201,9 +201,12 @@ func TestWatchHistoryMigrationBackfills(t *testing.T) {
 		listingFile(fixturePath("/media/d.mp4"), "d", "key-d", 4),
 	)
 	a, b := ids[fixturePath("/media/a.mp4")], ids[fixturePath("/media/b.mp4")]
+	// Bundle は今の読み出しで動画を返し、後の移行（00040）の表も読む。その間だけ空の表を置く。
+	execSQL(t, db, `create table thumbnail_images (content_key text primary key, revision integer)`)
 	if _, err := db.Versions().Bundle(ctx, []int64{a, b}, a); err != nil {
 		t.Fatal(err)
 	}
+	execSQL(t, db, `drop table thumbnail_images`)
 	var bundleKey string
 	if err := db.sql.QueryRow(`select user_key from video_bundles`).Scan(&bundleKey); err != nil {
 		t.Fatal(err)
