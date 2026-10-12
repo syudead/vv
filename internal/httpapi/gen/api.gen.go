@@ -54,6 +54,24 @@ func (e ComfyUIMissingItemKind) Valid() bool {
 	}
 }
 
+// Defines values for ComfyUIModel.
+const (
+	Flux2Klein4b      ComfyUIModel = "flux2_klein_4b"
+	QwenImageEdit2511 ComfyUIModel = "qwen_image_edit_2511"
+)
+
+// Valid indicates whether the value is a known member of the ComfyUIModel enum.
+func (e ComfyUIModel) Valid() bool {
+	switch e {
+	case Flux2Klein4b:
+		return true
+	case QwenImageEdit2511:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ComfyUIProvider.
 const (
 	Cloud      ComfyUIProvider = "cloud"
@@ -1389,6 +1407,9 @@ type ComfyUIMissingItem struct {
 // ComfyUIMissingItemKind defines model for ComfyUIMissingItem.Kind.
 type ComfyUIMissingItemKind string
 
+// ComfyUIModel サムネイルの編集に使うモデル。モデルごとに vv が同梱するワークフローの組が決まる。 `flux2_klein_4b` は FLUX.2 [klein] 4B（既定）、`qwen_image_edit_2511` は Qwen-Image-Edit-2511 に Lightning の 4 ステップの LoRA を当てたもの
+type ComfyUIModel string
+
 // ComfyUIProvider ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
 type ComfyUIProvider string
 
@@ -1396,6 +1417,9 @@ type ComfyUIProvider string
 type ComfyUISettings struct {
 	// ApiKeySet Comfy Cloud の API キーが保存されているか
 	ApiKeySet bool `json:"apiKeySet"`
+
+	// Model サムネイルの編集に使うモデル。モデルごとに vv が同梱するワークフローの組が決まる。 `flux2_klein_4b` は FLUX.2 [klein] 4B（既定）、`qwen_image_edit_2511` は Qwen-Image-Edit-2511 に Lightning の 4 ステップの LoRA を当てたもの
+	Model ComfyUIModel `json:"model"`
 
 	// Provider ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
 	Provider *ComfyUIProvider `json:"provider,omitempty"`
@@ -2454,6 +2478,9 @@ type UpdateAutoTaggingSettingsRequest struct {
 type UpdateComfyUISettingsRequest struct {
 	// ApiKey Comfy Cloud の API キー。省けば保存済みのキーを残し、空文字列なら消す
 	ApiKey *string `json:"apiKey,omitempty"`
+
+	// Model サムネイルの編集に使うモデル。モデルごとに vv が同梱するワークフローの組が決まる。 `flux2_klein_4b` は FLUX.2 [klein] 4B（既定）、`qwen_image_edit_2511` は Qwen-Image-Edit-2511 に Lightning の 4 ステップの LoRA を当てたもの
+	Model *ComfyUIModel `json:"model,omitempty"`
 
 	// Provider ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
 	Provider ComfyUIProvider `json:"provider"`

@@ -14,19 +14,26 @@ import (
 
 // 埋め込んだ各ワークフローは、アダプタが埋める vv:* のノードを決まった型で 1 つずつ持つ
 // （contracts/workflow.md の Workflows、research.md R-2）。参考画像の vv:reference は
-// 参考画像ありの方だけが持つ。
+// 参考画像ありの方だけが持つ。vv:prompt の型はモデルごとに違い、promptInputs に載っている。
 func TestWorkflowsHaveTheTitlesVVFills(t *testing.T) {
-	base := map[string]string{
-		"vv:frame":  "LoadImage",
-		"vv:prompt": "CLIPTextEncode",
-		"vv:mask":   "LoadImageMask",
-		"vv:output": "SaveImage",
+	titles := func(prompt string, reference bool) map[string]string {
+		m := map[string]string{
+			"vv:frame":  "LoadImage",
+			"vv:prompt": prompt,
+			"vv:mask":   "LoadImageMask",
+			"vv:output": "SaveImage",
+		}
+		if reference {
+			m["vv:reference"] = "LoadImage"
+		}
+		return m
 	}
-	withReference := map[string]string{"vv:reference": "LoadImage"}
-	for k, v := range base {
-		withReference[k] = v
+	cases := map[string]map[string]string{
+		workflowEdit:              titles("CLIPTextEncode", false),
+		workflowEditReference:     titles("CLIPTextEncode", true),
+		workflowQwenEdit:          titles("TextEncodeQwenImageEditPlus", false),
+		workflowQwenEditReference: titles("TextEncodeQwenImageEditPlus", true),
 	}
-	cases := map[string]map[string]string{workflowEdit: base, workflowEditReference: withReference}
 	for _, name := range workflowNames {
 		w, err := loadWorkflow(name)
 		if err != nil {
@@ -50,7 +57,7 @@ func TestWorkflowsHaveTheTitlesVVFills(t *testing.T) {
 
 // ローダーが名指すファイルはどれも Required files の表にあり、表のファイルはどれも使われる。
 func TestWorkflowLoadersNameTheRequiredFiles(t *testing.T) {
-	required, err := workflowRequirement("")
+	required, err := workflowRequirement(domain.ComfyUIModelFlux2Klein, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,7 +78,7 @@ func TestWorkflowLoadersNameTheRequiredFiles(t *testing.T) {
 
 // 拡散モデルを差し替えると、確かめるファイルはそのファイルに代わり、入手先は空になる。
 func TestWorkflowRequirementWithDiffusionModel(t *testing.T) {
-	required, err := workflowRequirement("klein-4b-finetune.safetensors")
+	required, err := workflowRequirement(domain.ComfyUIModelFlux2Klein, "klein-4b-finetune.safetensors")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -91,6 +98,81 @@ func TestWorkflowRequirementWithDiffusionModel(t *testing.T) {
 	}
 }
 
+// どのモデルにもワークフローの組があり、ローダーが名指すファイルはそのモデルの必要なファイルの
+// 表にあり、表のファイルはどれも使われる。
+func TestEveryModelHasAPresetWhoseLoadersNameItsFiles(t *testing.T) {
+	for _, model := range domain.ComfyUIModels {
+		p, ok := presets[model]
+		if !ok {
+			t.Fatalf("%s has no preset", model)
+		}
+		required, err := workflowRequirement(model, "")
+		if err != nil {
+			t.Fatalf("%s: %v", model, err)
+		}
+		if len(required.files) != len(p.files) {
+			t.Errorf("%s: the workflows load %d files, the table has %d", model, len(required.files), len(p.files))
+		}
+		if !contains(workflowNames, p.edit) || !contains(workflowNames, p.editReference) {
+			t.Errorf("%s: workflows %s and %s are not all in workflowNames", model, p.edit, p.editReference)
+		}
+	}
+	required, err := workflowRequirement(domain.ComfyUIModelQwenImageEdit, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var names []string
+	for _, f := range required.files {
+		names = append(names, f.file.name)
+	}
+	want := []string{
+		"qwen_image_edit_2511_fp8mixed.safetensors", "qwen_2.5_vl_7b_fp8_scaled.safetensors",
+		"qwen_image_vae.safetensors", "Qwen-Image-Edit-2511-Lightning-4steps-V1.0-bf16.safetensors",
+	}
+	if !reflect.DeepEqual(names, want) {
+		t.Fatalf("Qwen files = %v, want %v", names, want)
+	}
+	if !contains(required.nodes, "TextEncodeQwenImageEditPlus") || !contains(required.nodes, "LoraLoaderModelOnly") {
+		t.Errorf("Qwen nodes = %v", required.nodes)
+	}
+}
+
+// 接続のテストは保存したモデルのワークフローに要るものだけを確かめる。
+func TestCheckUsesTheSavedModel(t *testing.T) {
+	var files []string
+	for _, f := range qwenRequiredFiles {
+		files = append(files, f.name)
+	}
+	required, err := workflowRequirement(domain.ComfyUIModelQwenImageEdit, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	info := map[string]any{}
+	for _, node := range required.nodes {
+		inputs := map[string]any{}
+		if input, ok := modelLoaders[node]; ok {
+			inputs[input] = []any{files, map[string]any{}}
+		}
+		info[node] = map[string]any{"input": map[string]any{"required": inputs}}
+	}
+	data, err := json.Marshal(info)
+	if err != nil {
+		t.Fatal(err)
+	}
+	url := fakeProvider(t, "/system_stats", systemStatsReply, "", data, nil)
+	qwen := fixedSettings{settings: domain.ComfyUISettings{
+		Provider: domain.ComfyUISelfHosted, URL: url, Model: domain.ComfyUIModelQwenImageEdit,
+	}}
+	// klein の差し替えは Qwen では効かない。
+	if err := NewWithOptions(qwen, Options{DiffusionModel: "klein-4b-finetune.safetensors"}).Check(context.Background()); err != nil {
+		t.Fatalf("Check with Qwen files = %v", err)
+	}
+	var missing *domain.ComfyUIMissingError
+	if err := New(selfHosted(url)).Check(context.Background()); !errors.As(err, &missing) {
+		t.Fatalf("Check with the default model = %v, want klein's files missing", err)
+	}
+}
+
 func contains(list []string, s string) bool {
 	for _, v := range list {
 		if v == s {
@@ -105,7 +187,7 @@ func contains(list []string, s string) bool {
 // drop に挙げた型は省く。
 func objectInfoFor(t *testing.T, files []string, combo bool, drop ...string) []byte {
 	t.Helper()
-	required, err := workflowRequirement("")
+	required, err := workflowRequirement(domain.ComfyUIModelFlux2Klein, "")
 	if err != nil {
 		t.Fatal(err)
 	}

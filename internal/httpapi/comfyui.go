@@ -34,7 +34,7 @@ func (s *server) GetComfyUISettings(w http.ResponseWriter, r *http.Request) {
 }
 
 // UpdateComfyUISettings は ComfyUI の接続先を確かめて保存する。apiKey が無ければ保存済みの
-// キーを残し、空文字列なら消す。
+// キーを残し、空文字列なら消す。model が無ければ保存済みのモデルを残す。
 func (s *server) UpdateComfyUISettings(w http.ResponseWriter, r *http.Request) {
 	if s.comfyUI == nil {
 		s.internalError(w, "ComfyUI settings are not configured.", nil)
@@ -44,6 +44,7 @@ func (s *server) UpdateComfyUISettings(w http.ResponseWriter, r *http.Request) {
 		Provider *string `json:"provider"`
 		URL      *string `json:"url"`
 		APIKey   *string `json:"apiKey"`
+		Model    *string `json:"model"`
 	}
 	if !s.readJSONBody(w, r, &body) {
 		return
@@ -55,6 +56,10 @@ func (s *server) UpdateComfyUISettings(w http.ResponseWriter, r *http.Request) {
 	update := domain.ComfyUISettingsUpdate{Provider: domain.ComfyUIProvider(*body.Provider), APIKey: body.APIKey}
 	if body.URL != nil {
 		update.URL = *body.URL
+	}
+	if body.Model != nil {
+		model := domain.ComfyUIModel(*body.Model)
+		update.Model = &model
 	}
 	saved, err := s.comfyUI.SaveSettings(r.Context(), update)
 	switch {
@@ -127,7 +132,7 @@ func (s *server) GetThumbnailEditReadiness(w http.ResponseWriter, r *http.Reques
 
 // comfyUISettingsBody は接続先を応答の形にする。API キーは入れない。
 func comfyUISettingsBody(settings domain.ComfyUISettings) gen.ComfyUISettings {
-	body := gen.ComfyUISettings{ApiKeySet: settings.APIKey != ""}
+	body := gen.ComfyUISettings{ApiKeySet: settings.APIKey != "", Model: gen.ComfyUIModel(settings.EffectiveModel())}
 	if settings.Saved() {
 		provider := gen.ComfyUIProvider(settings.Provider)
 		body.Provider = &provider

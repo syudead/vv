@@ -3,6 +3,7 @@ package domain
 import (
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -20,6 +21,21 @@ const (
 	ComfyUICloud ComfyUIProvider = "cloud"
 )
 
+// ComfyUIModel は画像編集に使うモデルである。モデルごとに vv が同梱するワークフローの組が
+// 決まる（docs/design-docs/ai-layer.md の Image-edit provider）。
+type ComfyUIModel string
+
+const (
+	// ComfyUIModelFlux2Klein は FLUX.2 [klein] 4B fp8 で、既定のモデルである。
+	ComfyUIModelFlux2Klein ComfyUIModel = "flux2_klein_4b"
+	// ComfyUIModelQwenImageEdit は Qwen-Image-Edit-2511 fp8mixed に Lightning の 4 ステップの
+	// LoRA を当てたものである。参考画像の雰囲気をよく取り込むが、重い。
+	ComfyUIModelQwenImageEdit ComfyUIModel = "qwen_image_edit_2511"
+)
+
+// ComfyUIModels は選べるモデルの全部で、既定のモデルが先頭である。
+var ComfyUIModels = []ComfyUIModel{ComfyUIModelFlux2Klein, ComfyUIModelQwenImageEdit}
+
 // comfyUIMaxAPIKeyLength は API キーの長さの上限である。
 const comfyUIMaxAPIKeyLength = 1000
 
@@ -36,10 +52,12 @@ var (
 // ComfyUISettings は ComfyUI の接続先である。Provider が空なら何も保存されていない。
 // URL は自前の ComfyUI だけが、APIKey は Comfy Cloud だけが使う。もう一方の値は
 // 提供元を切り替えて戻したときのために保存したままにする。APIKey は API から返さない。
+// Model は使うモデルで、空なら既定のモデル（EffectiveModel）を使う。
 type ComfyUISettings struct {
 	Provider ComfyUIProvider
 	URL      string
 	APIKey   string
+	Model    ComfyUIModel
 }
 
 // Saved は接続先が保存されているかを返す。
@@ -47,12 +65,21 @@ func (s ComfyUISettings) Saved() bool {
 	return s.Provider != ""
 }
 
+// EffectiveModel は使うモデルを返す。保存されていなければ既定のモデルである。
+func (s ComfyUISettings) EffectiveModel() ComfyUIModel {
+	if s.Model == "" {
+		return ComfyUIModels[0]
+	}
+	return s.Model
+}
+
 // ComfyUISettingsUpdate は接続先の保存の要求である。APIKey が nil なら保存済みのキーを
-// 残し、空文字列ならキーを消す（R-9）。
+// 残し、空文字列ならキーを消す（R-9）。Model が nil なら保存済みのモデルを残す。
 type ComfyUISettingsUpdate struct {
 	Provider ComfyUIProvider
 	URL      string
 	APIKey   *string
+	Model    *ComfyUIModel
 }
 
 // ApplyComfyUISettingsUpdate は保存済みの接続先 current に update を当てて整え、保存する値を
@@ -68,6 +95,12 @@ func ApplyComfyUISettingsUpdate(current ComfyUISettings, update ComfyUISettingsU
 			return ComfyUISettings{}, fmt.Errorf("%w: the API key must be a single token", ErrInvalidComfyUISettings)
 		}
 		next.APIKey = key
+	}
+	if update.Model != nil {
+		if !slices.Contains(ComfyUIModels, *update.Model) {
+			return ComfyUISettings{}, fmt.Errorf("%w: the model must be one of %v", ErrInvalidComfyUISettings, ComfyUIModels)
+		}
+		next.Model = *update.Model
 	}
 	switch update.Provider {
 	case ComfyUISelfHosted:

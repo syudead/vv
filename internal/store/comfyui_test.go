@@ -15,7 +15,9 @@ func TestComfyUISettingsRoundTrip(t *testing.T) {
 	if err != nil || got != (domain.ComfyUISettings{}) || got.Saved() {
 		t.Fatalf("保存前 = %+v, %v", got, err)
 	}
-	want := domain.ComfyUISettings{Provider: domain.ComfyUICloud, URL: "http://gpu:8188", APIKey: "secret"}
+	want := domain.ComfyUISettings{
+		Provider: domain.ComfyUICloud, URL: "http://gpu:8188", APIKey: "secret", Model: domain.ComfyUIModelQwenImageEdit,
+	}
 	if err := db.Settings().SaveComfyUISettings(ctx, want); err != nil {
 		t.Fatal(err)
 	}

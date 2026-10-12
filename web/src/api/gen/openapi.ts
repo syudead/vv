@@ -2393,6 +2393,11 @@ export interface components {
          * @enum {string}
          */
         ComfyUIProvider: "self_hosted" | "cloud";
+        /**
+         * @description サムネイルの編集に使うモデル。モデルごとに vv が同梱するワークフローの組が決まる。 `flux2_klein_4b` は FLUX.2 [klein] 4B（既定）、`qwen_image_edit_2511` は Qwen-Image-Edit-2511 に Lightning の 4 ステップの LoRA を当てたもの
+         * @enum {string}
+         */
+        ComfyUIModel: "flux2_klein_4b" | "qwen_image_edit_2511";
         /** @description ComfyUI の接続先（docs/design-docs/ai-layer.md）。API キーそのものは返さない */
         ComfyUISettings: {
             provider?: components["schemas"]["ComfyUIProvider"];
@@ -2400,6 +2405,7 @@ export interface components {
             url?: string;
             /** @description Comfy Cloud の API キーが保存されているか */
             apiKeySet: boolean;
+            model: components["schemas"]["ComfyUIModel"];
         };
         UpdateComfyUISettingsRequest: {
             provider: components["schemas"]["ComfyUIProvider"];
@@ -2407,6 +2413,7 @@ export interface components {
             url?: string;
             /** @description Comfy Cloud の API キー。省けば保存済みのキーを残し、空文字列なら消す */
             apiKey?: string;
+            model?: components["schemas"]["ComfyUIModel"];
         };
         AutoTaggingQueue: {
             queued: number;

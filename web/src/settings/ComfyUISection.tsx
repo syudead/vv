@@ -28,19 +28,19 @@ import { Label } from "../ui/shadcn/label";
 import { RadioGroup, RadioGroupItem } from "../ui/shadcn/radio-group";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
+import {
+  afterSave,
+  bodyOf,
+  type Draft,
+  draftOf,
+  isDirty,
+  type Model,
+  modelOrder,
+  type Provider,
+  providerOrder,
+} from "./comfyUIDraft";
 import { COMFYUI_GUIDE_URL } from "./docsLinks";
 import { useSectionAnchor } from "./useSectionAnchor";
-
-type Provider = UpdateComfyUISettings["provider"];
-
-const providerOrder: readonly Provider[] = ["self_hosted", "cloud"];
-
-/** Draft は画面で編集中の値である。`apiKey` は入力欄の値で、保存済みのキーは入らない。 */
-interface Draft {
-  provider: Provider;
-  url: string;
-  apiKey: string;
-}
 
 type CheckState =
   | { kind: "idle" }
@@ -48,38 +48,6 @@ type CheckState =
   | { kind: "ok"; provider: Provider }
   | { kind: "failed"; message: UiText }
   | { kind: "missing"; items: ComfyUIMissingItem[] };
-
-/** draftOf は保存済みの値から下書きを作る。何も保存されていなければ自前の ComfyUI を選ぶ。 */
-function draftOf(settings: ComfyUISettings): Draft {
-  return {
-    provider: settings.provider ?? "self_hosted",
-    url: settings.url ?? "",
-    apiKey: "",
-  };
-}
-
-/**
- * afterSave は保存の応答を受けた後の下書きを返す。送った後に値が変わっていなければ保存後の値に
- * 戻す。変わっていれば送った後の編集を残し、キーの欄は送ったキーのままのときだけ空にする。
- */
-function afterSave(current: Draft, sent: Draft, saved: ComfyUISettings): Draft {
-  if (
-    current.provider === sent.provider &&
-    current.url === sent.url &&
-    current.apiKey === sent.apiKey
-  ) {
-    return draftOf(saved);
-  }
-  return current.apiKey === sent.apiKey ? { ...current, apiKey: "" } : current;
-}
-
-/** bodyOf は下書きを保存の要求にする。キーの欄が空なら `apiKey` を省き、保存済みのキーを残す。 */
-function bodyOf(draft: Draft): UpdateComfyUISettings {
-  const body: UpdateComfyUISettings = { provider: draft.provider };
-  if (draft.provider === "self_hosted") body.url = draft.url;
-  if (draft.apiKey !== "") body.apiKey = draft.apiKey;
-  return body;
-}
 
 /** modelsFirst は足りないものをモデルファイル、ノードの順に並べる（ui-design.md Missing files）。 */
 function modelsFirst(items: readonly ComfyUIMissingItem[]): ComfyUIMissingItem[] {
@@ -142,13 +110,7 @@ function ComfyUISectionBody() {
     return () => controller.current?.abort();
   }, [load]);
 
-  const dirty =
-    draft !== null &&
-    settings !== null &&
-    (settings.provider === undefined ||
-      draft.provider !== settings.provider ||
-      (draft.provider === "self_hosted" && draft.url !== (settings.url ?? "")) ||
-      draft.apiKey !== "");
+  const dirty = draft !== null && settings !== null && isDirty(draft, settings);
 
   const busy = saving || forgetting;
 
@@ -275,43 +237,14 @@ function ComfyUISectionBody() {
 
   return (
     <PageSection title={text.heading} description={description}>
-      <Field data-slot="form-row" orientation="responsive" className="sm:gap-6">
-        <FieldContent>
-          <FieldTitle id="comfyui-provider-label">{text.provider}</FieldTitle>
-        </FieldContent>
-        <div data-slot="form-row-control" className="flex sm:shrink-0 sm:justify-end">
-          <RadioGroup
-            name="comfyui-provider"
-            value={draft.provider}
-            onValueChange={(value) => update({ provider: value as Provider })}
-            aria-labelledby="comfyui-provider-label"
-            className="sm:w-sm"
-          >
-            {providerOrder.map((provider) => {
-              const itemId = `comfyui-provider-${provider}`;
-              const hintId = `comfyui-provider-hint-${provider}`;
-              return (
-                <div key={provider} className="flex min-w-0 items-start gap-3">
-                  <RadioGroupItem
-                    id={itemId}
-                    value={provider}
-                    aria-describedby={hintId}
-                    className="mt-0.5"
-                  />
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <Label htmlFor={itemId} className="font-normal">
-                      {text.providers[provider].label}
-                    </Label>
-                    <p id={hintId} className="text-sm text-muted-foreground">
-                      {text.providers[provider].hint}
-                    </p>
-                  </div>
-                </div>
-              );
-            })}
-          </RadioGroup>
-        </div>
-      </Field>
+      <ChoiceRow
+        name="comfyui-provider"
+        title={text.provider}
+        value={draft.provider}
+        order={providerOrder}
+        options={text.providers}
+        onChange={(provider) => update({ provider })}
+      />
       {draft.provider === "self_hosted" ? (
         <FormRow label={text.url} description={text.urlHint} htmlFor="comfyui-url">
           <Input
@@ -338,6 +271,14 @@ function ComfyUISectionBody() {
           />
         </FormRow>
       )}
+      <ChoiceRow
+        name="comfyui-model"
+        title={text.model}
+        value={draft.model}
+        order={modelOrder}
+        options={text.models}
+        onChange={(model: Model) => update({ model })}
+      />
       {keyStillSaved && (
         <div className="flex flex-wrap items-center gap-2">
           <p className="text-sm text-muted-foreground">{text.keyStillSaved}</p>
@@ -449,5 +390,65 @@ function ComfyUISectionBody() {
         )}
       </div>
     </PageSection>
+  );
+}
+
+interface ChoiceRowProps<T extends string> {
+  name: string;
+  title: string;
+  value: T;
+  order: readonly T[];
+  options: Record<T, { label: string; hint: string }>;
+  onChange: (value: T) => void;
+}
+
+/** ChoiceRow は設定の 1 行で、選択肢ごとに名前と説明を並べたラジオの組である。 */
+function ChoiceRow<T extends string>({
+  name,
+  title,
+  value,
+  order,
+  options,
+  onChange,
+}: ChoiceRowProps<T>) {
+  const labelId = `${name}-label`;
+  return (
+    <Field data-slot="form-row" orientation="responsive" className="sm:gap-6">
+      <FieldContent>
+        <FieldTitle id={labelId}>{title}</FieldTitle>
+      </FieldContent>
+      <div data-slot="form-row-control" className="flex sm:shrink-0 sm:justify-end">
+        <RadioGroup
+          name={name}
+          value={value}
+          onValueChange={(next) => onChange(next as T)}
+          aria-labelledby={labelId}
+          className="sm:w-sm"
+        >
+          {order.map((option) => {
+            const itemId = `${name}-${option}`;
+            const hintId = `${name}-hint-${option}`;
+            return (
+              <div key={option} className="flex min-w-0 items-start gap-3">
+                <RadioGroupItem
+                  id={itemId}
+                  value={option}
+                  aria-describedby={hintId}
+                  className="mt-0.5"
+                />
+                <div className="flex min-w-0 flex-col gap-0.5">
+                  <Label htmlFor={itemId} className="font-normal">
+                    {options[option].label}
+                  </Label>
+                  <p id={hintId} className="text-sm text-muted-foreground">
+                    {options[option].hint}
+                  </p>
+                </div>
+              </div>
+            );
+          })}
+        </RadioGroup>
+      </div>
+    </Field>
   );
 }

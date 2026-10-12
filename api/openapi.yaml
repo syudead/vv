@@ -3744,9 +3744,17 @@ components:
       enum: [self_hosted, cloud]
       description: ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
 
+    ComfyUIModel:
+      type: string
+      enum: [flux2_klein_4b, qwen_image_edit_2511]
+      description: >-
+        サムネイルの編集に使うモデル。モデルごとに vv が同梱するワークフローの組が決まる。
+        `flux2_klein_4b` は FLUX.2 [klein] 4B（既定）、`qwen_image_edit_2511` は Qwen-Image-Edit-2511
+        に Lightning の 4 ステップの LoRA を当てたもの
+
     ComfyUISettings:
       type: object
-      required: [apiKeySet]
+      required: [apiKeySet, model]
       additionalProperties: false
       description: ComfyUI の接続先（docs/design-docs/ai-layer.md）。API キーそのものは返さない
       properties:
@@ -3758,6 +3766,8 @@ components:
         apiKeySet:
           type: boolean
           description: Comfy Cloud の API キーが保存されているか
+        model:
+          $ref: "#/components/schemas/ComfyUIModel"
 
     UpdateComfyUISettingsRequest:
       type: object
@@ -3772,6 +3782,8 @@ components:
         apiKey:
           type: string
           description: Comfy Cloud の API キー。省けば保存済みのキーを残し、空文字列なら消す
+        model:
+          $ref: "#/components/schemas/ComfyUIModel"
 
     AutoTaggingQueue:
       type: object

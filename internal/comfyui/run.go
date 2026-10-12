@@ -56,16 +56,17 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 	if err != nil {
 		return domain.ImageEditJob{}, err
 	}
-	name := workflowEdit
+	p := presetFor(conn.EffectiveModel())
+	name := p.edit
 	if input.Reference != nil {
-		name = workflowEditReference
+		name = p.editReference
 	}
 	prompt, err := loadPrompt(name)
 	if err != nil {
 		return domain.ImageEditJob{}, err
 	}
-	if c.diffusionModel != "" && conn.Provider == domain.ComfyUISelfHosted {
-		if err := prompt.setLoaderInput(diffusionLoader, c.diffusionModel); err != nil {
+	if override := c.diffusionModelFor(conn); override != "" {
+		if err := prompt.setLoaderInput(diffusionLoader, override); err != nil {
 			return domain.ImageEditJob{}, err
 		}
 	}
@@ -114,7 +115,7 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 			return domain.ImageEditJob{}, err
 		}
 	}
-	if err := prompt.setInput(titlePrompt, "text", instruction); err != nil {
+	if err := prompt.setPrompt(instruction); err != nil {
 		return domain.ImageEditJob{}, err
 	}
 	clientID, err := newClientID()
@@ -842,6 +843,20 @@ func (g promptGraph) setInput(title, input string, value any) error {
 	}
 	inputs[input] = value
 	return nil
+}
+
+// setPrompt は vv:prompt のノードの、指示の文を受ける入力を instruction にする。入力の名前は
+// ノードの型で決まる（promptInputs）。
+func (g promptGraph) setPrompt(instruction string) error {
+	id, err := g.nodeID(titlePrompt)
+	if err != nil {
+		return err
+	}
+	input, ok := promptInputs[g.classType(id)]
+	if !ok {
+		return fmt.Errorf("the bundled workflow's %s node has an unknown type %s", titlePrompt, g.classType(id))
+	}
+	return g.setInput(titlePrompt, input, instruction)
 }
 
 // setLoaderInput は型 class のローダーノードすべての、ファイル名を受ける入力を file にする。
