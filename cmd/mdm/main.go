@@ -157,6 +157,14 @@ func run(opts runOptions) error {
 	}
 	logger.Info("rebuilt the tag search keys", slog.Int("names", tagsRefreshed))
 
+	// 人物・団体の名前と作品情報の品番の照合用の鍵も、タグ名の後で作り直す
+	// （specs/047-video-work-info/data-model.md「Entities」）。数は名前の行と作品情報の行の合計。
+	creditsRefreshed, err := db.Credits().RefreshSearchKeys(context.Background())
+	if err != nil {
+		return fmt.Errorf("cannot rebuild the credit search keys: %w", err)
+	}
+	logger.Info("rebuilt the credit search keys", slog.Int("rows", creditsRefreshed))
+
 	// 移行の前に書かれた視聴履歴の行に、題名の照合形（title_key）を埋める。動画の無い件の検索が
 	// 読むので、受け付けより前に行い、失敗したら起動を止める
 	// （specs/043-watch-history/data-model.md「Migration」）。

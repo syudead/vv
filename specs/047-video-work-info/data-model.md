@@ -149,7 +149,15 @@ anywhere is an error (except the line feed in `description`), surrounding
 whitespace is trimmed, and an empty result clears the field or drops the list
 entry
 ([029 R-10](../029-video-overrides/research.md#r-10-display-name-rules-follow-tag-name-rules-with-a-200-code-point-limit)).
-Stored spellings are not folded or normalized; matching folds them (R-6).
+Two values may not be empty and are refused with the problem `Empty`
+(`work_info_empty`) instead: an entity `name`, and one half of an external ID
+whose other half is set. Stored spellings are not folded or normalized;
+matching folds them (R-6).
+
+Each entry of a list is checked in the order sent, and a `field` path names
+the position in the list as sent, counting the entries that are dropped. A
+list's entry limit counts the entries left after dropping. A repeated value
+is reported at its second occurrence.
 
 | Field | Table | Rule |
 | --- | --- | --- |
@@ -158,14 +166,14 @@ Stored spellings are not folded or normalized; matching folds them (R-6).
 | `dates[].kind` | `video_work_dates.kind` | One of `release`, `recorded`, `published`; one entry per kind ([R-12](research.md#r-12-one-date-per-kind-in-yyyy-yyyy-mm-or-yyyy-mm-dd)) |
 | `dates[].date` | `video_work_dates.date` | `YYYY`, `YYYY-MM` or `YYYY-MM-DD`; year 1 to 9999, month 1 to 12, a day that exists in that month |
 | `urls[]` | `video_work_urls.url` | 0 to 20 entries, each at most 2,048 code points, an absolute `http` or `https` URL with a host; `position` is the index; a repeated URL is an error |
-| `externalIds[]` | `video_work_external_ids` | 0 to 20 entries; `source` 1 to 50 code points, `value` 1 to 200; a repeated `(source, value)` is an error |
+| `externalIds[]` | `video_work_external_ids` | 0 to 20 entries; `source` 1 to 50 code points, `value` 1 to 200; an entry with both halves empty is dropped, and one with exactly one empty half is `Empty` with `field` `externalIds[i].source` or `externalIds[i].value`; a repeated `(source, value)` is `Duplicate` with `field` `externalIds[i]` |
 | `people[]` | `video_work_people` | 0 to 100 entries per role; `role` one of `performer`, `director`, `photographer`, `streamer`; `id` an existing person; `position` is the index within the role; the same person twice in one role is an error |
 | `organizations[]` | `video_work_organizations` | 0 to 20 entries per role; `role` one of `maker`, `label`; `id` an existing organization; the same organization twice in one role is an error |
-| Entity `name` | `*_names` with `canonical = 1` | 1 to 200 code points |
-| Entity `aliases[]` | `*_names` with `canonical = 0` | 0 to 50 entries, each `name` 1 to 200 code points; an alias equal to the name or to another alias is an error |
-| Entity `aliases[].language` | `*_names.language` | Optional; 2 to 35 characters of ASCII letters, digits and `-`, starting with 2 or 3 letters (the syntax of a BCP 47 tag); not otherwise validated |
+| Entity `name` | `*_names` with `canonical = 1` | 1 to 200 code points; empty after trimming is `Empty` with `field: name`, as `tag_name_empty` is for a tag |
+| Entity `aliases[]` | `*_names` with `canonical = 0` | 0 to 50 entries, each `name` 1 to 200 code points; an alias whose name is empty after trimming is dropped, even when it has a `language`; an alias equal to the name or to another alias (compared exactly, not folded) is `Duplicate` with `field` `aliases[i].name` |
+| Entity `aliases[].language` | `*_names.language` | Optional, empty after trimming means none; at most 35 characters (`TooLong`), and otherwise the syntax of a BCP 47 tag, `^[A-Za-z]{2,3}(-[A-Za-z0-9-]*)?$`: ASCII letters, digits and `-`, starting with a subtag of 2 or 3 letters (`InvalidLanguage`); not otherwise validated |
 | Entity `externalIds[]` | `*_external_ids` | 0 to 20 entries, the rules of `externalIds[]` above; a `(source, value)` that another entity of the same kind holds is an error (`CreditExternalIDTakenError`) |
-| Organization `parentId` | `organizations.parent_id` | An existing organization that is neither the organization itself nor one of its descendants; `null` clears |
+| Organization `parentId` | `organizations.parent_id` | An existing organization that is neither the organization itself nor one of its descendants; `null` clears. A person has no parent, and `CreditStore` does not read `parentId` for one |
 
 A cleared single-value field is `null`; a `video_work_info` row exists only
 while `code` or `description` is set.
@@ -183,10 +191,10 @@ table names; the SQL is written once.
 | --- | --- |
 | `List(kind, CreditQuery)` | `q` folded and matched with `instr` on `search_key` of every name row (names and aliases); `sort` one of `name`, `countDesc`, `countAsc`, `createdDesc`, `createdAsc` with the tie-break of [036 R-1](../036-tag-admin-scale/research.md#r-1-the-server-pages-the-list-and-applies-search-filters-and-sort-to-every-tag); keyset `cursor` and `limit` 1 to 200, every entity when `limit` is absent; `total` counts the matches and `totalAll` every entity |
 | `Get(kind, id)` | The entity, or `domain.ErrNotFound` |
-| `Lookup(kind, source, value)` | The entity holding that external ID, or `domain.ErrNotFound` |
+| `Lookup(kind, source, value)` | The entity holding exactly that external ID, or `domain.ErrNotFound` |
 | `Create(kind, CreditInput)` | One transaction: normalize, refuse an external ID another entity of the kind holds, insert the entity, its canonical row, its alias rows and its external IDs; for an organization check the parent |
-| `Update(kind, id, CreditPatch)` | One transaction: for each present field, normalize and replace; a list replaces the stored rows whole; an external ID another entity of the kind holds is refused; the parent is checked for a cycle by walking `parent_id` from the new parent up to the root; a patch that changes nothing returns the entity unchanged |
-| `Merge(kind, targetID, sourceIDs)` | One transaction: a source equal to the target is `ErrMergeSameCredit`; for an organization, walk `parent_id` from the target up to the root and refuse with `ErrCreditParentCycle` when a source is on the chain, since pointing that source's children at the target would close a loop. Then, for each source, move its link rows to the target (`insert or ignore` into `(content_key, role, position)` after shifting the source's positions behind the target's, then renumber each `(content_key, role)` densely), move its name rows as aliases (`insert or ignore`, so a spelling the target already has is dropped), re-point its external IDs at the target (`update`; the unique `(source, value)` index means the target cannot already hold one), point the children of a source organization at the target, delete the source. Last, count the target's aliases and external IDs: over 50 or 20 rolls the transaction back with `InvalidWorkInfoError{Field: "aliases" or "externalIds", Problem: TooMany, Limit}`, so a merge never leaves an entity that `NormalizeCredit` would refuse. Missing sources are listed in `NotFoundIDs` |
+| `Update(kind, id, CreditPatch)` | One transaction: the present fields are laid over the stored entity and the result is normalized; a list replaces the stored rows whole; a new `name` equal to an alias the patch keeps is `Duplicate` with `field: name`, as a tag rename onto its own synonym is refused; an external ID another entity of the kind holds is refused; the parent is checked for a cycle by walking `parent_id` from the new parent up to the root; a patch that changes nothing returns the entity unchanged |
+| `Merge(kind, targetID, sourceIDs)` | One transaction: a source equal to the target is `ErrMergeSameCredit`; for an organization, walk `parent_id` from the target up to the root and refuse with `ErrCreditParentCycle` when a source is on the chain, since pointing that source's children at the target would close a loop. Then, for each source, move its link rows to the target (`update or ignore` re-points a source's row at the target in its position, so the target takes the source's place in the list; where the target is already in that `(content_key, role)` the unique index keeps the row, which is then deleted, and that `(content_key, role)` is renumbered densely), move its name rows as aliases (`insert or ignore`, so a spelling the target already has is dropped), re-point its external IDs at the target (`update`; the unique `(source, value)` index means the target cannot already hold one), point the children of a source organization at the target, delete the source. Last, count the target's aliases and external IDs: over 50 or 20 rolls the transaction back with `InvalidWorkInfoError{Field: "aliases" or "externalIds", Problem: TooMany, Limit}`, so a merge never leaves an entity that `NormalizeCredit` would refuse. Missing sources are listed in `NotFoundIDs` |
 | `Delete(kind, id)` | Deletes the entity; names, external IDs and link rows cascade; the children of an organization get `parent_id = null`; the remaining positions of each `(content_key, role)` are renumbered |
 | `RefreshSearchKeys` | At startup, after `TagStore.RefreshSearchKeys`: rewrites `search_key` and `sort_key` of name rows and `code_key` of `video_work_info` rows whose `search_version` is below `domain.SearchKeyVersion` |
 
@@ -199,7 +207,7 @@ table names; the SQL is written once.
 | `DateKind`, `PersonRole`, `OrganizationRole` | The fixed sets of [Fields](#fields), as string constants |
 | `NormalizeWorkInfo(input WorkInfo) (WorkInfo, empty bool, error)` | Applies [Fields](#fields) except the existence of the ids, which the store checks; `empty` is true when every field cleared |
 | `WorkInfoLimits` | The limits above, read by the API for `limit` |
-| `InvalidWorkInfoError{Field, Problem, Limit}` with `Problem` one of `ControlCharacters`, `TooLong`, `TooMany`, `InvalidDate`, `InvalidURL`, `InvalidLanguage`, `Duplicate` | Unwraps to `ErrInvalidWorkInfo`; `Field` is the path of [contracts/screen-api.md, Added `reason` values and `field`](contracts/screen-api.md#added-reason-values-and-field) |
+| `InvalidWorkInfoError{Field, Problem, Limit}` with `Problem` one of `ControlCharacters`, `TooLong`, `TooMany`, `InvalidDate`, `InvalidURL`, `InvalidLanguage`, `Duplicate`, `Empty` | Unwraps to `ErrInvalidWorkInfo`; `Field` is the path of [contracts/screen-api.md, Added `reason` values and `field`](contracts/screen-api.md#added-reason-values-and-field) |
 | `CreditNotFoundError{Kind, ID, Field}` | A referenced id that does not exist; the API maps it to `404` with `person_not_found` or `organization_not_found` and `field` |
 | `WorkInfoChange{Video VideoRef, WorkInfo WorkInfo}`, `WorkInfoAtError{Index int, Err error}` | The external bulk operation's item and its positioned error, shaped like `DisplayNameChange` and `DisplayNameAtError` |
 | `Video.WorkInfo *WorkInfo` | Filled by the detail read and the external reads; `nil` in list reads and when the video has no rows |

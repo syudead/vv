@@ -69,6 +69,7 @@ external operation shares.
 | A `date` that is not `YYYY`, `YYYY-MM` or a calendar date `YYYY-MM-DD` | `400 invalid_request` / `work_info_invalid_date`, `field` |
 | A `url` that is not an absolute `http` or `https` URL | `400 invalid_request` / `work_info_invalid_url`, `field` |
 | A repeated date kind, URL, external ID, or person or organization within a role | `400 invalid_request` / `work_info_duplicate`, `field` |
+| An external ID with exactly one of `source` and `value` empty after trimming (an entry with both empty is dropped) | `400 invalid_request` / `work_info_empty`, `field` (`externalIds[i].source` or `externalIds[i].value`) |
 | A `kind` or `role` outside its enum | `400 invalid_request` (the generated schema check) |
 | A person id that does not exist | `404 not_found` / `person_not_found`, `field` |
 | An organization id that does not exist | `404 not_found` / `organization_not_found`, `field` |
@@ -219,7 +220,7 @@ CreditList:
 | --- | --- | --- | --- |
 | `GET /api/people` | `q` (at most 100 characters), `sort` (`name`, `countDesc`, `countAsc`, `createdDesc`, `createdAsc`; default `name`), `cursor`, `limit` (1 to 200; absent returns every entity) | `200 CreditList` of `Person` | `400` (`sort`, `limit`, `q` length), `400 invalid_cursor` |
 | `GET /api/people/{id}` | — | `200 Person` | `404 person_not_found` |
-| `POST /api/people` | `CreditInput` | `201 Person` | `400` (the field errors of [`PUT /api/videos/{id}/work-info`](#put-apivideosidwork-info) with `field` of `name`, `aliases[i].name`, `aliases[i].language` (`work_info_invalid_language`), `externalIds[i].source`, `externalIds[i].value`); `409 conflict` / `external_id_taken` with `field: externalIds[i]` when another person holds that `(source, value)` |
+| `POST /api/people` | `CreditInput` | `201 Person` | `400` (the field errors of [`PUT /api/videos/{id}/work-info`](#put-apivideosidwork-info) with `field` of `name`, `aliases[i].name`, `aliases[i].language` (`work_info_invalid_language`), `externalIds[i].source`, `externalIds[i].value`; a `name` empty after trimming is `work_info_empty` with `field: name`, as `tag_name_empty` ([023 error-api.md](../../023-english-i18n/contracts/error-api.md)) is for a tag); `409 conflict` / `external_id_taken` with `field: externalIds[i]` when another person holds that `(source, value)` |
 | `PATCH /api/people/{id}` | `CreditPatch` | `200 Person` (unchanged when nothing differs) | `400` as above, `404 person_not_found`, and the `409` of `POST` |
 | `DELETE /api/people/{id}` | — | `204`; link rows are removed | `404 person_not_found` |
 | `POST /api/people/{id}/merge` | `{ sourceIds: int64[] }`, 1 to 20,000 entries | `200 { person: Person, notFoundIds: int64[] }` | `400 work_info_too_many` with `field: sourceIds` and `limit`; `400 work_info_too_many` with `field: aliases` (limit 50) or `externalIds` (limit 20) when the merged entity would hold more; `400 merge_same_person`; `404 person_not_found` (the target). Nothing changes on an error |
@@ -249,7 +250,7 @@ route itself does not add `field`.
 
 `ErrorReason` gains `work_info_control_characters`, `work_info_too_long`,
 `work_info_too_many`, `work_info_invalid_date`, `work_info_invalid_url`,
-`work_info_invalid_language`, `work_info_duplicate`, `person_not_found`,
+`work_info_invalid_language`, `work_info_duplicate`, `work_info_empty`, `person_not_found`,
 `organization_not_found`, `organization_parent_cycle`, `merge_same_person`,
 `merge_same_organization` and `external_id_taken`, and
 `web/src/i18n/errors.ts` gets an English message for each that names the

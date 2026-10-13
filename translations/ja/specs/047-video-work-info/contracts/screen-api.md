@@ -1,6 +1,6 @@
 ---
 source: specs/047-video-work-info/contracts/screen-api.md
-sourceHash: 89deb699cf26befa447f7ab23bc4f2e6a176e95e9bdc89d81da1062d7c53b900
+sourceHash: c3f3e50e2b26fb29273fe5cdf31d43700b8338534c3c0d4d12c1761933c5fbf3
 ---
 
 # 契約: 画面の API の作品情報、人物、組織 {#contract-work-information-people-and-organizations-in-the-screen-api}
@@ -44,6 +44,7 @@ sourceHash: 89deb699cf26befa447f7ab23bc4f2e6a176e95e9bdc89d81da1062d7c53b900
 | `YYYY`、`YYYY-MM`、暦の上の日付 `YYYY-MM-DD` のどれでもない `date` | `400 invalid_request` / `work_info_invalid_date`、`field` |
 | 絶対の `http` か `https` の URL でない `url` | `400 invalid_request` / `work_info_invalid_url`、`field` |
 | 繰り返した日付の種類、URL、外部 ID、または役割の中で繰り返した人物や組織 | `400 invalid_request` / `work_info_duplicate`、`field` |
+| `source` と `value` のちょうど一方が前後の空白を取り除いて空になる外部 ID (両方が空の項目は捨てる) | `400 invalid_request` / `work_info_empty`、`field` (`externalIds[i].source` または `externalIds[i].value`) |
 | 列挙の外の `kind` か `role` | `400 invalid_request` (生成したスキーマの確認) |
 | 存在しない人物の id | `404 not_found` / `person_not_found`、`field` |
 | 存在しない組織の id | `404 not_found` / `organization_not_found`、`field` |
@@ -170,7 +171,7 @@ CreditList:
 | --- | --- | --- | --- |
 | `GET /api/people` | `q` (最大 100 文字)、`sort` (`name`、`countDesc`、`countAsc`、`createdDesc`、`createdAsc`。既定は `name`)、`cursor`、`limit` (1 から 200。ないときはすべてのエンティティを返す) | `Person` の `200 CreditList` | `400` (`sort`、`limit`、`q` の長さ)、`400 invalid_cursor` |
 | `GET /api/people/{id}` | — | `200 Person` | `404 person_not_found` |
-| `POST /api/people` | `CreditInput` | `201 Person` | `400` ([`PUT /api/videos/{id}/work-info`](#put-apivideosidwork-info) のフィールドのエラーで、`field` は `name`、`aliases[i].name`、`aliases[i].language` (`work_info_invalid_language`)、`externalIds[i].source`、`externalIds[i].value`)。別の人物がその `(source, value)` を持つときは、`409 conflict` / `external_id_taken` と `field: externalIds[i]` |
+| `POST /api/people` | `CreditInput` | `201 Person` | `400` ([`PUT /api/videos/{id}/work-info`](#put-apivideosidwork-info) のフィールドのエラーで、`field` は `name`、`aliases[i].name`、`aliases[i].language` (`work_info_invalid_language`)、`externalIds[i].source`、`externalIds[i].value`。前後の空白を取り除いて空になる `name` は `work_info_empty` で `field: name` であり、タグに対する `tag_name_empty` ([023 error-api.md](../../023-english-i18n/contracts/error-api.md)) と同じである)。別の人物がその `(source, value)` を持つときは、`409 conflict` / `external_id_taken` と `field: externalIds[i]` |
 | `PATCH /api/people/{id}` | `CreditPatch` | `200 Person` (何も違わないときは変わらない) | 上と同じ `400`、`404 person_not_found`、`POST` の `409` |
 | `DELETE /api/people/{id}` | — | `204`。リンクの行は削除される | `404 person_not_found` |
 | `POST /api/people/{id}/merge` | `{ sourceIds: int64[] }`、1 から 20,000 項目 | `200 { person: Person, notFoundIds: int64[] }` | `field: sourceIds` と `limit` 付きの `400 work_info_too_many`。統合したエンティティがより多くを持つことになるときは、`field: aliases` (上限 50) か `externalIds` (上限 20) 付きの `400 work_info_too_many`。`400 merge_same_person`。`404 person_not_found` (統合先)。エラーのときは何も変わらない |
@@ -184,4 +185,4 @@ CreditList:
 
 `Error` は省略可能なプロパティ `field` を得る: `work_info_*`、`person_not_found`、`organization_not_found`、`external_id_taken` の理由が指すプロパティのパスであり、JSON のプロパティ名を `.` でつなぎ、一覧の位置を角括弧に入れたものである: `code`、`dates[1].date`、`people[0].person.id`、`aliases[2].language`、`parentId`。外部の一括操作では、`index` は `items` の中の位置のままで、`field` はその項目の `workInfo` の中のパスである。`PUT /api/videos/{id}/details` では、`field` は既存の 2 つの `display_name_*` の理由では `displayName` で、それ以外では `workInfo` の中のパスなので、1 つのメッセージのカタログがエディターと作品情報のルートに使われる。表示名のルート自体は `field` を加えない。
 
-`ErrorReason` は `work_info_control_characters`、`work_info_too_long`、`work_info_too_many`、`work_info_invalid_date`、`work_info_invalid_url`、`work_info_invalid_language`、`work_info_duplicate`、`person_not_found`、`organization_not_found`、`organization_parent_cycle`、`merge_same_person`、`merge_same_organization`、`external_id_taken` を得て、`web/src/i18n/errors.ts` はそれぞれについてフィールドを挙げる英語のメッセージを得る。
+`ErrorReason` は `work_info_control_characters`、`work_info_too_long`、`work_info_too_many`、`work_info_invalid_date`、`work_info_invalid_url`、`work_info_invalid_language`、`work_info_duplicate`、`work_info_empty`、`person_not_found`、`organization_not_found`、`organization_parent_cycle`、`merge_same_person`、`merge_same_organization`、`external_id_taken` を得て、`web/src/i18n/errors.ts` はそれぞれについてフィールドを挙げる英語のメッセージを得る。

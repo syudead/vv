@@ -1,6 +1,6 @@
 ---
 source: specs/047-video-work-info/contracts/external-api.md
-sourceHash: 1e0aa6f7ec56a0d5d657d45fb61967680e71199b4ce5ad80728d2237854b988d
+sourceHash: 3f931b50af2ca019598fb477af4c1881fb339cf10633c7c410d080ca0058c195
 ---
 
 # 契約: 外部 API v1 と MCP の作品情報、人物、組織 {#contract-work-information-people-and-organizations-in-external-api-v1-and-mcp}
@@ -73,7 +73,7 @@ flowchart LR
 | --- | --- | --- |
 | `400` | `invalid_request` | 5 つの値の外の `sort`、1 から 200 の外の `limit`、100 文字を超える `q`、`externalId` のない `source` かその逆 |
 | `400` | `invalid_request` / `invalid_cursor` | 読めない、または別の `sort` の下で作った `cursor` |
-| `400` | `invalid_request` / `work_info_*`、`field`、`limit` | 名前、別名、言語、外部 ID、一覧がその規則を破る ([data-model.md、フィールド](../data-model.md#fields)) |
+| `400` | `invalid_request` / `work_info_*`、`field`、`limit` | 名前、別名、言語、外部 ID、一覧がその規則を破る ([data-model.md、フィールド](../data-model.md#fields))。前後の空白を取り除いて空になる名前、またはちょうど一方の半分が空の外部 ID は `work_info_empty` で、`field` は `name`、`externalIds[i].source`、`externalIds[i].value` のいずれか |
 | `400` | `invalid_request` / `work_info_too_many`、`field`、`limit` | `sourceIds` か `ids` が空か 20,000 項目を超える、または統合で統合先が 50 を超える `aliases` か 20 を超える `externalIds` を持つことになる。何も変わらない |
 | `400` | `invalid_request` / `merge_same_person` | `sourceIds` が `targetId` を含む。何も変わらない |
 | `400` | `invalid_request` / `organization_parent_cycle` | `parentId` がその組織かその子孫の 1 つである、または統合元が `targetId` の祖先である。何も変わらない |
@@ -82,7 +82,7 @@ flowchart LR
 
 どの操作も JSON の本文を返すので、どの MCP ツールにも結果がある ([039 R-5](../../039-external-tag-admin/research.md#r-5-every-operation-returns-a-json-body-so-every-tool-has-a-result))。`createPerson` は、ほかの外部の書き込みと同じ理由で、`201` ではなく `200` で答える。
 
-`Error` は省略可能な `field` を得て、`ErrorReason` は [screen-api.md、追加する `reason` の値と `field`](screen-api.md#added-reason-values-and-field) の 13 の値を得る。
+`Error` は省略可能な `field` を得て、`ErrorReason` は [screen-api.md、追加する `reason` の値と `field`](screen-api.md#added-reason-values-and-field) の 14 の値を得る。
 
 ## MCP ツール {#mcp-tools}
 

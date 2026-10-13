@@ -1,6 +1,6 @@
 ---
 source: specs/047-video-work-info/data-model.md
-sourceHash: ca27e1fc25feb670987e50371e9b713318dc35d725c73f3d19ea784adc069cc6
+sourceHash: 11bb541d5ff8645c654e66a4d9eea3274a43d10c8a7f6d682689064ab0ed3f42
 ---
 
 # データモデル: 動画の作品情報 {#data-model-work-information-on-videos}
@@ -137,7 +137,9 @@ down は 12 のテーブルを削除する。どれもユーザーデータで�
 
 ## フィールド {#fields}
 
-どの文字列もまず表示名の手順を通る: どこかに制御文字があればエラーであり (`description` の改行を除く)、前後の空白は取り除き、結果が空ならフィールドを消すか一覧の項目を捨てる ([029 R-10](../029-video-overrides/research.md#r-10-display-name-rules-follow-tag-name-rules-with-a-200-code-point-limit))。保存する表記は畳み込みも正規化もしない。照合のときに畳み込む (R-6)。
+どの文字列もまず表示名の手順を通る: どこかに制御文字があればエラーであり (`description` の改行を除く)、前後の空白は取り除き、結果が空ならフィールドを消すか一覧の項目を捨てる ([029 R-10](../029-video-overrides/research.md#r-10-display-name-rules-follow-tag-name-rules-with-a-200-code-point-limit))。2 つの値は空にできず、代わりに問題 `Empty` (`work_info_empty`) で拒否する: エンティティの `name` と、もう一方の半分が設定された外部 ID の半分である。保存する表記は畳み込みも正規化もしない。照合のときに畳み込む (R-6)。
+
+一覧の各項目は送られた順に検査し、`field` のパスは、捨てる項目も数えた、送られたとおりの一覧での位置を指す。一覧の項目数の上限は、捨てた後に残る項目を数える。繰り返した値は 2 回目の出現で報告する。
 
 | フィールド | テーブル | 規則 |
 | --- | --- | --- |
@@ -146,14 +148,14 @@ down は 12 のテーブルを削除する。どれもユーザーデータで�
 | `dates[].kind` | `video_work_dates.kind` | `release`、`recorded`、`published` のいずれか。種類ごとに 1 項目 ([R-12](research.md#r-12-one-date-per-kind-in-yyyy-yyyy-mm-or-yyyy-mm-dd)) |
 | `dates[].date` | `video_work_dates.date` | `YYYY`、`YYYY-MM`、`YYYY-MM-DD`。年は 1 から 9999、月は 1 から 12、日はその月に存在する日 |
 | `urls[]` | `video_work_urls.url` | 0 から 20 項目。それぞれ最大 2,048 コードポイントで、ホストを持つ絶対の `http` か `https` の URL。`position` は添字。繰り返した URL はエラー |
-| `externalIds[]` | `video_work_external_ids` | 0 から 20 項目。`source` は 1 から 50 コードポイント、`value` は 1 から 200。繰り返した `(source, value)` はエラー |
+| `externalIds[]` | `video_work_external_ids` | 0 から 20 項目。`source` は 1 から 50 コードポイント、`value` は 1 から 200。両方の半分が空の項目は捨て、ちょうど一方の半分が空の項目は `Empty` で、`field` は `externalIds[i].source` か `externalIds[i].value`。繰り返した `(source, value)` は `Duplicate` で、`field` は `externalIds[i]` |
 | `people[]` | `video_work_people` | 役割ごとに 0 から 100 項目。`role` は `performer`、`director`、`photographer`、`streamer` のいずれか。`id` は存在する人物。`position` は役割の中の添字。1 つの役割に同じ人物が 2 回あればエラー |
 | `organizations[]` | `video_work_organizations` | 役割ごとに 0 から 20 項目。`role` は `maker`、`label` のいずれか。`id` は存在する組織。1 つの役割に同じ組織が 2 回あればエラー |
-| エンティティの `name` | `*_names` の `canonical = 1` の行 | 1 から 200 コードポイント |
-| エンティティの `aliases[]` | `*_names` の `canonical = 0` の行 | 0 から 50 項目。それぞれの `name` は 1 から 200 コードポイント。名前か別の別名と等しい別名はエラー |
-| エンティティの `aliases[].language` | `*_names.language` | 省略可能。ASCII の英字、数字、`-` からなる 2 から 35 文字で、2 か 3 文字の英字で始まる (BCP 47 のタグの構文)。それ以外の検証はしない |
+| エンティティの `name` | `*_names` の `canonical = 1` の行 | 1 から 200 コードポイント。前後の空白を取り除いて空なら `Empty` で、`field: name`。タグに対する `tag_name_empty` と同じである |
+| エンティティの `aliases[]` | `*_names` の `canonical = 0` の行 | 0 から 50 項目。それぞれの `name` は 1 から 200 コードポイント。前後の空白を取り除いて名前が空になる別名は、`language` を持っていても捨てる。名前か別の別名と等しい別名 (畳み込まず、そのまま比べる) は `Duplicate` で、`field` は `aliases[i].name` |
+| エンティティの `aliases[].language` | `*_names.language` | 省略可能で、前後の空白を取り除いて空ならなしを意味する。最大 35 文字 (`TooLong`)、それを満たしたうえで BCP 47 のタグの構文 `^[A-Za-z]{2,3}(-[A-Za-z0-9-]*)?$`: ASCII の英字、数字、`-` からなり、2 か 3 文字の英字のサブタグで始まる (`InvalidLanguage`)。それ以外の検証はしない |
 | エンティティの `externalIds[]` | `*_external_ids` | 0 から 20 項目、上の `externalIds[]` の規則。同じ種類の別のエンティティが持つ `(source, value)` はエラー (`CreditExternalIDTakenError`) |
-| 組織の `parentId` | `organizations.parent_id` | 存在する組織で、その組織自身でもその子孫の 1 つでもないもの。`null` で消す |
+| 組織の `parentId` | `organizations.parent_id` | 存在する組織で、その組織自身でもその子孫の 1 つでもないもの。`null` で消す。人物は親を持たず、`CreditStore` は人物の `parentId` を読まない |
 
 消した単一の値のフィールドは `null` である。`video_work_info` の行は、`code` か `description` が設定されている間だけ存在する。
 
@@ -165,10 +167,10 @@ down は 12 のテーブルを削除する。どれもユーザーデータで�
 | --- | --- |
 | `List(kind, CreditQuery)` | `q` は畳み込み、`instr` で、すべての名前の行 (名前と別名) の `search_key` に照合する。`sort` は `name`、`countDesc`、`countAsc`、`createdDesc`、`createdAsc` のいずれかで、同順の扱いは [036 R-1](../036-tag-admin-scale/research.md#r-1-the-server-pages-the-list-and-applies-search-filters-and-sort-to-every-tag) に従う。キーセットの `cursor` と 1 から 200 の `limit`。`limit` がなければすべてのエンティティ。`total` は一致したものを、`totalAll` はすべてのエンティティを数える |
 | `Get(kind, id)` | エンティティ、または `domain.ErrNotFound` |
-| `Lookup(kind, source, value)` | その外部 ID を持つエンティティ、または `domain.ErrNotFound` |
+| `Lookup(kind, source, value)` | その外部 ID と完全に一致するものを持つエンティティ、または `domain.ErrNotFound` |
 | `Create(kind, CreditInput)` | 1 つのトランザクション: 正規化し、その種類の別のエンティティが持つ外部 ID を拒否し、エンティティ、その正式な名前の行、別名の行、外部 ID を挿入する。組織では親を確かめる |
-| `Update(kind, id, CreditPatch)` | 1 つのトランザクション: ある各フィールドについて、正規化して置き換える。一覧は保存した行全体を置き換える。その種類の別のエンティティが持つ外部 ID は拒否する。親は、新しい親から根まで `parent_id` をたどって循環を確かめる。何も変えないパッチは、エンティティを変えずに返す |
-| `Merge(kind, targetID, sourceIDs)` | 1 つのトランザクション: 統合先と等しい統合元は `ErrMergeSameCredit` である。組織では、統合先から根まで `parent_id` をたどり、統合元がその連鎖の上にあれば `ErrCreditParentCycle` で拒否する。その統合元の子を統合先に向けるとループができるからである。次に、各統合元について、そのリンクの行を統合先に移し (統合元の位置を統合先の位置の後ろにずらしてから、`insert or ignore` で `(content_key, role, position)` に入れ、その後各 `(content_key, role)` を詰めて番号付けし直す)、その名前の行を別名として移し (`insert or ignore` なので、統合先がすでに持つ表記は捨てる)、その外部 ID を統合先に向け直し (`update`。一意の `(source, value)` の索引により、統合先がすでにそれを持つことはありえない)、統合元の組織の子を統合先に向け、統合元を削除する。最後に、統合先の別名と外部 ID を数える: 50 か 20 を超えれば `InvalidWorkInfoError{Field: "aliases" or "externalIds", Problem: TooMany, Limit}` でトランザクションをロールバックするので、統合が `NormalizeCredit` の拒否するエンティティを残すことは決してない。存在しない統合元は `NotFoundIDs` に挙げる |
+| `Update(kind, id, CreditPatch)` | 1 つのトランザクション: パッチにあるフィールドを保存したエンティティに重ね、その結果を正規化する。一覧は保存した行全体を置き換える。パッチが残す別名と等しい新しい `name` は `Duplicate` で、`field: name`。タグを自身の同義語に改名すると拒否されるのと同じである。その種類の別のエンティティが持つ外部 ID は拒否する。親は、新しい親から根まで `parent_id` をたどって循環を確かめる。何も変えないパッチは、エンティティを変えずに返す |
+| `Merge(kind, targetID, sourceIDs)` | 1 つのトランザクション: 統合先と等しい統合元は `ErrMergeSameCredit` である。組織では、統合先から根まで `parent_id` をたどり、統合元がその連鎖の上にあれば `ErrCreditParentCycle` で拒否する。その統合元の子を統合先に向けるとループができるからである。次に、各統合元について、そのリンクの行を統合先に移し (`update or ignore` で統合元の行をその位置のまま統合先に向け直すので、統合先は一覧の中で統合元の位置を占める。統合先がすでにその `(content_key, role)` にあるところでは、一意の索引によりその行は残り、その後削除し、その `(content_key, role)` を詰めて番号付けし直す)、その名前の行を別名として移し (`insert or ignore` なので、統合先がすでに持つ表記は捨てる)、その外部 ID を統合先に向け直し (`update`。一意の `(source, value)` の索引により、統合先がすでにそれを持つことはありえない)、統合元の組織の子を統合先に向け、統合元を削除する。最後に、統合先の別名と外部 ID を数える: 50 か 20 を超えれば `InvalidWorkInfoError{Field: "aliases" or "externalIds", Problem: TooMany, Limit}` でトランザクションをロールバックするので、統合が `NormalizeCredit` の拒否するエンティティを残すことは決してない。存在しない統合元は `NotFoundIDs` に挙げる |
 | `Delete(kind, id)` | エンティティを削除する。名前、外部 ID、リンクの行は連鎖して消える。組織の子は `parent_id = null` になる。各 `(content_key, role)` の残りの位置は番号付けし直す |
 | `RefreshSearchKeys` | 起動時、`TagStore.RefreshSearchKeys` の後: 名前の行の `search_key` と `sort_key`、および `code_key` (`video_work_info` の行) のうち、`search_version` が `domain.SearchKeyVersion` より小さい行のものを書き直す |
 
@@ -181,7 +183,7 @@ down は 12 のテーブルを削除する。どれもユーザーデータで�
 | `DateKind`、`PersonRole`、`OrganizationRole` | [フィールド](#fields) の決まった集合。文字列の定数 |
 | `NormalizeWorkInfo(input WorkInfo) (WorkInfo, empty bool, error)` | ストアが確かめる id の存在を除いて [フィールド](#fields) を適用する。すべてのフィールドが消えたとき `empty` は true |
 | `WorkInfoLimits` | 上の上限。API が `limit` のために読む |
-| `InvalidWorkInfoError{Field, Problem, Limit}`。`Problem` は `ControlCharacters`、`TooLong`、`TooMany`、`InvalidDate`、`InvalidURL`、`InvalidLanguage`、`Duplicate` のいずれか | `ErrInvalidWorkInfo` にアンラップされる。`Field` は [contracts/screen-api.md、追加する `reason` の値と `field`](contracts/screen-api.md#added-reason-values-and-field) のパス |
+| `InvalidWorkInfoError{Field, Problem, Limit}`。`Problem` は `ControlCharacters`、`TooLong`、`TooMany`、`InvalidDate`、`InvalidURL`、`InvalidLanguage`、`Duplicate`、`Empty` のいずれか | `ErrInvalidWorkInfo` にアンラップされる。`Field` は [contracts/screen-api.md、追加する `reason` の値と `field`](contracts/screen-api.md#added-reason-values-and-field) のパス |
 | `CreditNotFoundError{Kind, ID, Field}` | 存在しない参照した id。API はそれを `404` に対応付け、`person_not_found` か `organization_not_found` と `field` を付ける |
 | `WorkInfoChange{Video VideoRef, WorkInfo WorkInfo}`、`WorkInfoAtError{Index int, Err error}` | 外部の一括操作の項目と、その位置付きのエラー。`DisplayNameChange` と `DisplayNameAtError` と同じ形 |
 | `Video.WorkInfo *WorkInfo` | 詳細の読み取りと外部の読み取りが埋める。一覧の読み取りと、動画が行を持たないときは `nil` |

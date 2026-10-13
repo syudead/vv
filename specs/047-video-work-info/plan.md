@@ -93,7 +93,7 @@ route of its own (Structure decision).
   dependency; `SearchKeyVersion` and `FolderIndexVersion` are not raised.
 - A new domain event, `VideoWorkInfoChanged`, and no new `/api/events` kind
   (R-11).
-- The error body gains `field` in both schemas and thirteen `reason` values
+- The error body gains `field` in both schemas and fourteen `reason` values
   ([contracts/screen-api.md, Added `reason` values and `field`](contracts/screen-api.md#added-reason-values-and-field));
   the two existing `display_name_*` reasons carry `field: displayName` from
   the details route only.
@@ -294,7 +294,7 @@ leaving `updatedAt` and publishing nothing.
 `/api/organizations`, the schemas `Person`, `Organization`, `Alias`,
 `ExternalId`, `CreditInput`, `CreditPatch` and `CreditList`
 ([contracts/screen-api.md, People and organizations](contracts/screen-api.md#people-and-organizations));
-`field` on `Error` and the thirteen reasons
+`field` on `Error` and the fourteen reasons
 ([Added `reason` values and `field`](contracts/screen-api.md#added-reason-values-and-field))
 with the one mapping function from `InvalidWorkInfoError`,
 `CreditNotFoundError` and `CreditExternalIDTakenError`; the messages in `web/src/i18n/errors.ts`;
@@ -397,7 +397,7 @@ video item; an id with no entity returning an empty list with `200`; `0` or
 
 **Scope**: `workInfo` on `ExternalVideo`, `POST /api/v1/video-work-info`, the
 five operations under `/api/v1/people` and `/api/v1/organizations`, `field`
-and the thirteen reasons in `api/external-v1.yaml`, the eleven MCP tools and
+and the fourteen reasons in `api/external-v1.yaml`, the eleven MCP tools and
 `workInfo` in `list_videos` and `get_video`
 ([contracts/external-api.md](contracts/external-api.md)); the error mapping
 shared with the screen routes; `task generate`. The "Set work information"

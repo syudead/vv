@@ -40,6 +40,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertTagSortKeyInvariant(t, db)
 		assertFavoriteInvariant(t, db)
 		assertPlaylistInvariant(t, db)
+		assertCreditInvariant(t, db)
 	})
 	return db
 }
@@ -535,4 +536,107 @@ func assertPlaylistInvariant(t *testing.T, db *DB) {
 	if err := keys.Err(); err != nil {
 		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
 	}
+}
+
+// assertCreditInvariant は人物・団体の表の規則を確かめる（specs/047-video-work-info/data-model.md
+// 「Rules」のうち実体に関わるもの）。正規の名前の行がちょうど 1 つ、正規の行の language は null、
+// 団体の親の連鎖は根で終わる、別名 50 件・外部 ID 20 件以下、(source, value) は種類ごとに 1 実体、
+// 結び付きの位置は (content_key, role) ごとに 0 … n-1、名前の鍵は今の版の畳み込み。どの検査も
+// 違反を 1 行 1 件の説明として返す問い合わせで、行が無ければ守られている。
+func assertCreditInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'people'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("人物・団体の不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+
+	var checks []string
+	for _, tables := range creditTablesByKind {
+		checks = append(checks, tables.q(`
+			select '{entity} ' || e.id || ' の正規の名前の行が ' || count(n.name) || ' 行'
+			  from {entity} e left join {names} n on n.{id} = e.id and n.canonical = 1
+			 group by e.id having count(n.name) <> 1`),
+			tables.q(`select '{names} の正規の行 ' || {id} || ' に language がある' from {names}
+			 where canonical = 1 and language is not null`),
+			tables.q(`select '{entity} ' || {id} || ' の別名が ' || count(*) || ' 件' from {names}
+			 where canonical = 0 group by {id} having count(*) > 50`),
+			tables.q(`select '{entity} ' || {id} || ' の外部 ID が ' || count(*) || ' 件' from {ext}
+			 group by {id} having count(*) > 20`),
+			tables.q(`select '{ext} の ' || source || ':' || value || ' を ' || count(*) || ' 実体が持つ' from {ext}
+			 group by source, value having count(*) > 1`),
+			tables.q(`select '{links} の ' || content_key || ' ' || role || ' の位置が詰まっていない' from {links}
+			 group by content_key, role
+			having min(position) <> 0 or max(position) <> count(*) - 1 or count(distinct position) <> count(*)`))
+	}
+	checks = append(checks, `
+		with recursive chain (start, id, depth) as (
+			select id, parent_id, 1 from organizations where parent_id is not null
+			union all
+			select c.start, o.parent_id, c.depth + 1 from chain c join organizations o on o.id = c.id
+			 where o.parent_id is not null and c.depth <= (select count(*) from organizations)
+		)
+		select distinct '団体 ' || start || ' の親の連鎖が輪になる' from chain where id = start`,
+		`select 'video_work_urls の ' || content_key || ' の位置が詰まっていない' from video_work_urls
+		  group by content_key
+		 having min(position) <> 0 or max(position) <> count(*) - 1 or count(distinct position) <> count(*)`)
+	for _, check := range checks {
+		for _, violation := range violations(t, db, check) {
+			t.Error(violation)
+		}
+	}
+
+	for _, tables := range creditTablesByKind {
+		assertCreditNameKeys(t, db, tables)
+	}
+}
+
+// assertCreditNameKeys は今の版の名前の行の search_key と sort_key が名前の畳み込みであることを確かめる。
+func assertCreditNameKeys(t *testing.T, db *DB, tables creditTables) {
+	t.Helper()
+	rows, err := db.sql.Query(tables.q(`select name, search_key, sort_key from {names} where search_version = ?`),
+		domain.SearchKeyVersion)
+	if err != nil {
+		t.Fatalf("人物・団体の不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var name, searchKey, sortKey string
+		if err := rows.Scan(&name, &searchKey, &sortKey); err != nil {
+			t.Fatalf("人物・団体の不変条件を検査できない: %v", err)
+		}
+		if searchKey != domain.FoldForMatch(name) || sortKey != domain.NaturalSortKey(name) {
+			t.Errorf("%s の %q の鍵が今の版の畳み込みと違う", tables.names, name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("人物・団体の不変条件を検査できない: %v", err)
+	}
+}
+
+// violations は違反を 1 列の文字列で返す問い合わせの行を読み切る。
+func violations(t *testing.T, db *DB, query string) []string {
+	t.Helper()
+	rows, err := db.sql.Query(query)
+	if err != nil {
+		t.Fatalf("問い合わせに失敗した: %v\n%s", err, query)
+	}
+	defer func() { _ = rows.Close() }()
+	var values []string
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			t.Fatalf("問い合わせの行を読めない: %v", err)
+		}
+		values = append(values, value)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("問い合わせの行を読めない: %v", err)
+	}
+	return values
 }
