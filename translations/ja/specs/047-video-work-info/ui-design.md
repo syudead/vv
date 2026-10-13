@@ -1,6 +1,6 @@
 ---
 source: specs/047-video-work-info/ui-design.md
-sourceHash: 22b41169198faece945384bb4b268246960b2c243ea6026f3ed215869b35b03e
+sourceHash: c62edfee1a0050ddcc8b174755787282782e9c178523586275c1c0123c3f9568
 ---
 
 # UI 設計: 動画の作品情報 (コード、日付、人物、組織、URL、外部 ID) {#ui-design-work-information-on-videos-code-dates-people-organizations-urls-external-ids}
@@ -174,7 +174,7 @@ flowchart LR
 
 ### エラーの理由 {#error-reasons}
 
-`web/src/i18n/errors.ts` の `reason` の表に加える ([contracts/screen-api.md、追加した `reason` の値と `field`](contracts/screen-api.md#added-reason-values-and-field))。文言は欄を名指さない。画面は `field` が名指す操作要素の下にそれを置き、一致する操作要素がないときは、失敗の行が文言の後にパスをインラインコードで表示する。二つの `display_name_*` の理由は 029 の文言を保ち、`field: displayName` とともにエディタに届く。
+`web/src/i18n/errors.ts` が読む `web/src/i18n/en.ts` の `reason` の表に加える ([contracts/screen-api.md、追加した `reason` の値と `field`](contracts/screen-api.md#added-reason-values-and-field))。文言は欄を名指さない。画面は `field` が名指す操作要素の下にそれを置き、一致する操作要素がないときは、失敗の行が文言の後にパスをインラインコードで表示する。二つの `display_name_*` の理由は 029 の文言を保ち、`field: displayName` とともにエディタに届く。
 
 | 理由 | 文言 |
 | --- | --- |
@@ -185,6 +185,7 @@ flowchart LR
 | `work_info_invalid_url` | Enter a full web address starting with http:// or https://. |
 | `work_info_invalid_language` | Enter a language tag such as ja or en-US. |
 | `work_info_duplicate` | Already listed. |
+| `work_info_empty` | This can't be empty. |
 | `person_not_found` | This person no longer exists. |
 | `organization_not_found` | This organization no longer exists. |
 | `organization_parent_cycle` | The parent can't be the organization itself or one inside it. |

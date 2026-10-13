@@ -293,7 +293,7 @@ kinds in the catalog.
 
 ### Error reasons
 
-Added to the `reason` table in `web/src/i18n/errors.ts`
+Added to the `reason` table in `web/src/i18n/en.ts`, which `web/src/i18n/errors.ts` reads
 ([contracts/screen-api.md, Added `reason` values and `field`](contracts/screen-api.md#added-reason-values-and-field)).
 The text names no field: the screen places it under the control that `field`
 names, and when no control matches, the failure line shows the text followed
@@ -309,6 +309,7 @@ text and reach the editor with `field: displayName`.
 | `work_info_invalid_url` | Enter a full web address starting with http:// or https://. |
 | `work_info_invalid_language` | Enter a language tag such as ja or en-US. |
 | `work_info_duplicate` | Already listed. |
+| `work_info_empty` | This can't be empty. |
 | `person_not_found` | This person no longer exists. |
 | `organization_not_found` | This organization no longer exists. |
 | `organization_parent_cycle` | The parent can't be the organization itself or one inside it. |
