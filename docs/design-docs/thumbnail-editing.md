@@ -1,6 +1,7 @@
 # Thumbnail editing sessions
 
-An edit of a video frame with ComfyUI is an in-memory session per video in
+An edit of a video frame or the current thumbnail with ComfyUI is an in-memory
+session per video in
 [`app.ThumbnailEdits`](../../internal/app/thumbnail_edits.go), served to the
 video page by the `/api/thumbnail-edits` routes
 ([contract](../../specs/045-comfyui-thumbnails/contracts/screen-api.md)).
@@ -12,6 +13,7 @@ flowchart LR
   page[Video page] -->|start, run, poll, apply| api[Screen API]
   api --> edits[app.ThumbnailEdits]
   edits -->|frame| media[internal/media]
+  edits -->|applied image| images[(thumbnail_images)]
   edits -->|connection snapshot| settings[(settings)]
   edits -->|ImageEditor port| comfy[internal/comfyui]
   edits -->|apply| ingest[app.Ingest]
@@ -83,6 +85,34 @@ has an image the apply can read.
 | A job kind in the persistent queue | Its retries and `failed` records would outlive the page and show in the import issues |
 | Progress through `/api/events` | That stream carries committed domain events to every viewer; a run's state is one page's |
 
+## Edit source
+
+Starting an edit names its `source`: `frame`, the frame at the player's
+`positionMs`, or `thumbnail`, the current thumbnail
+([R-4](../../specs/046-thumbnail-image-upload/research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame)).
+`frame` without `positionMs` answers `400 thumbnail_position_out_of_range`, as
+a position outside the duration does. For `thumbnail`, the session's image is
+the first of these that exists:
+
+| Case | Image | `positionMs` |
+| --- | --- | --- |
+| An image is applied | The row's `source` decoded to PNG, or `image` in a row without `source` | Absent |
+| A position is recorded | The frame at that position | That position |
+| Neither | The frame at the thumbnail job's automatic position, or the first frame when that position yields none | The automatic position, or `0` |
+
+The automatic position and its first-frame fallback come from
+`media.AutoThumbnailPositions`, the one rule the thumbnail job and the edit
+both use, so the frame the owner edits is the one the thumbnail shows. A
+stored image that does not decode answers `409 thumbnail_frame_unavailable`,
+as a frame that cannot be extracted does. `frameWidth` and `frameHeight`
+describe the session's image whatever its source, and the mask is checked
+against that size. The session keeps the image in memory from the start, so a
+later upload, position change or revert does not change the edit in progress
+or what its runs send. The applied image and the recorded position are read
+together in one query, not from the video the request read first, so an upload,
+position change or revert that commits meanwhile yields the thumbnail before or
+after it, never a mix of the two.
+
 ## A run uses the connection it started with
 
 Starting a run reads the saved ComfyUI connection and keeps it in the run, so
@@ -117,3 +147,74 @@ revert and position override confirmed last wins
 The session ends after a successful apply and after `content_changed`, when
 the video is gone or holds other content; an undecodable result keeps the
 session so the owner can run again.
+
+An apply writes one `thumbnail_images` row in the transaction that sets
+`thumbnail_state` to `done`
+([data model](../../specs/046-thumbnail-image-upload/data-model.md)):
+
+| Column | Content |
+| --- | --- |
+| `image` | The 640 px JPEG fitted to the video's aspect; the thumbnail file is published from it |
+| `source` | The same crop with its long side at most 2048 px, as a JPEG, for an edit that starts from the current thumbnail ([R-3](../../specs/046-thumbnail-image-upload/research.md#r-3-the-row-keeps-the-applied-images-source-at-up-to-2048-px-and-its-origin)); null in rows written before migration `00041` |
+| `origin` | `generated` for an edit's result, `uploaded` for an uploaded image; the owner's `Video` answers it as `thumbnailImage` ([R-5](../../specs/046-thumbnail-image-upload/research.md#r-5-thumbnailimage-names-the-applied-images-origin-in-place-of-thumbnailgenerated)) |
+
+A position change and a revert delete the whole row. The thumbnail job
+republishes `image` and never reads `source`.
+
+## Uploaded images
+
+`POST /api/videos/{id}/thumbnail-image` makes an image from the owner's device
+the thumbnail through the same `Ingest.ApplyThumbnailImage`, with origin
+`uploaded`
+([R-1](../../specs/046-thumbnail-image-upload/research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image),
+[contract](../../specs/046-thumbnail-image-upload/contracts/screen-api.md#post-apivideosidthumbnail-image)).
+It needs no ComfyUI connection and holds no session. The route reads the
+video's content key before the body, holds the `image` part in memory and
+writes nothing to disk before the fitted image is published, so a request cut
+off before its body arrives leaves nothing behind. Once the body has arrived,
+the check and the apply run under a context detached from the client and
+bounded at five minutes, so a page that goes away does not abort an upload it
+finished sending. The five minutes also bound the wait for the generation
+lock: an apply whose context ends while it waits gives up its place and writes
+nothing, and the lock keeps its order for the others.
+
+The gate below bounds the decodes, not the bodies held in memory. Before it
+reads a body, the route takes the body's size from a process-wide budget of
+four bodies at the 65 MiB limit, and keeps it until it has answered. The size
+is the `Content-Length` when that is within the limit, and the limit
+otherwise. A request that finds the budget used up waits there, under the
+client's context, before reading its body.
+
+The check is the edit's image check with a larger pixel cap
+([R-2](../../specs/046-thumbnail-image-upload/research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time)):
+
+| Limit | Upload | Edit reference |
+| --- | --- | --- |
+| Bytes | 64 MiB for the part; the body may be 1 MiB larger for the multipart framing | 20 MiB |
+| Pixels in the header | 120 million, refused as `thumbnail_upload_too_large` with `limit` | 8192 × 8192, refused as unreadable |
+| Formats | PNG, JPEG, still WebP decoded to the end; an animated WebP is refused by its `VP8X` header | The same |
+
+A 120-megapixel PNG decodes to 480 MB, so one process-wide upload gate admits
+one upload at a time to each step that decodes the original. The diagram shows
+when an upload holds the gate.
+
+```mermaid
+sequenceDiagram
+  participant U as Upload
+  participant G as Upload gate
+  participant L as Generation lock
+  U->>G: acquire
+  U->>U: check
+  U->>G: release
+  U->>L: lock the video's content
+  U->>G: acquire
+  U->>U: fit 640 px and 2048 px
+  U->>G: release
+  U->>L: publish, record, unlock
+```
+
+An upload waiting on its own video's lock does not hold the gate, so it does
+not stop uploads to other videos. A generated image's apply does not take the
+gate; its input is the provider's output, already bounded by the edit's
+checks. The lock orders an upload with a position change and a generated
+image's apply, and the one confirmed last stays.

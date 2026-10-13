@@ -24,6 +24,7 @@ import {
   setVideoDisplayName,
   setVideoThumbnailPosition,
   revertThumbnailImage,
+  uploadThumbnailImage,
   startThumbnailEdit,
   getThumbnailEdit,
   runThumbnailEdit,
@@ -438,11 +439,48 @@ describe("revertThumbnailImage", () => {
   });
 });
 
+describe("uploadThumbnailImage", () => {
+  it("POSTs the image as multipart form data and drops the list snapshot only on success", async () => {
+    const key = { query: "old" };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    vi.stubGlobal("fetch", fetch);
+    const signal = new AbortController().signal;
+    const image = new File(["jpeg"], "photo.jpg", { type: "image/jpeg" });
+
+    fetch.mockResolvedValueOnce(
+      jsonResponse({ code: "invalid_request", reason: "thumbnail_upload_invalid" }, 400),
+    );
+    hold();
+    await expect(uploadThumbnailImage(7, image)).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
+
+    fetch.mockResolvedValueOnce(jsonResponse({ id: 7, thumbnailImage: "uploaded" }));
+    hold();
+    await expect(uploadThumbnailImage(7, image, signal)).resolves.toMatchObject({
+      id: 7,
+      thumbnailImage: "uploaded",
+    });
+    expect(takeListSnapshot(key)).toBeUndefined();
+    const [path, init] = fetch.mock.calls[1] ?? [];
+    expect(path).toBe("/api/videos/7/thumbnail-image");
+    expect(init?.method).toBe("POST");
+    expect(init?.signal).toBe(signal);
+    expect(new Headers(init?.headers).has("Content-Type")).toBe(false);
+    const sent = (init?.body as FormData).get("image");
+    expect(sent).toBeInstanceOf(File);
+    expect((sent as File).name).toBe("photo.jpg");
+  });
+});
+
 describe("thumbnail edit API client", () => {
   const edit = {
     id: "ab12",
     videoId: 7,
     state: "ready",
+    source: "frame",
+    positionMs: 1500,
     frameUrl: "/api/thumbnail-edits/ab12/frame",
     frameWidth: 4,
     frameHeight: 3,
@@ -455,7 +493,9 @@ describe("thumbnail edit API client", () => {
     vi.stubGlobal("fetch", fetch);
     const signal = new AbortController().signal;
 
-    await expect(startThumbnailEdit(7, 1500, signal)).resolves.toMatchObject({
+    await expect(
+      startThumbnailEdit(7, { source: "frame", positionMs: 1500 }, signal),
+    ).resolves.toMatchObject({
       id: "ab12",
     });
     await getThumbnailEdit("ab12", signal);
@@ -468,7 +508,11 @@ describe("thumbnail edit API client", () => {
         ["/api/thumbnail-edits/ab12/cancel", "POST"],
       ],
     );
-    expect(fetch.mock.calls[0]?.[1]?.body).toBe(JSON.stringify({ positionMs: 1500 }));
+    expect(fetch.mock.calls[0]?.[1]?.body).toBe(
+      JSON.stringify({ source: "frame", positionMs: 1500 }),
+    );
+    await startThumbnailEdit(7, { source: "thumbnail" }, signal);
+    expect(fetch.mock.calls[3]?.[1]?.body).toBe(JSON.stringify({ source: "thumbnail" }));
   });
 
   it("sends a run as multipart form data with only the given parts", async () => {

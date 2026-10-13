@@ -1,4 +1,4 @@
-import { LoaderCircle, WandSparkles } from "lucide-react";
+import { Film, LoaderCircle, WandSparkles } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 
@@ -9,12 +9,20 @@ import {
   RequestFailed,
   startThumbnailEdit,
   type ThumbnailEdit,
+  type ThumbnailEditStart,
   type Video,
 } from "../../api/client";
 import type { DetailMark } from "../../api/useVideoDetail";
 import { errorText, t, type UiText } from "../../i18n";
 import { cn } from "../../lib/cn";
+import { formatDuration } from "../../lib/format";
 import { Button } from "../../ui/shadcn/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "../../ui/shadcn/dropdown-menu";
 import {
   Popover,
   PopoverAnchor,
@@ -60,26 +68,43 @@ function useReadiness(): {
 }
 
 /**
- * EditEntry は情報の行の右端の「Edit thumbnail with ComfyUI」と、それが開く編集画面である
- * （specs/045-comfyui-thumbnails/ui-design.md「Video page: edit entry」）。所有者で
- * プレイヤーが出ているときだけ置く。
+ * framePosition は、キャプチャのボタンと同じ条件で画面にコマがあるときのプレイヤーの位置
+ * （ミリ秒、整数）を返し、無ければ null を返す。
+ */
+function framePosition(capture: ThumbnailCapture | undefined): number | null {
+  if (capture === undefined || !capture.enabled) return null;
+  const raw = capture.positionMs();
+  if (raw === null || !Number.isFinite(raw)) return null;
+  return Math.max(0, Math.round(raw));
+}
+
+/**
+ * EditEntry は情報の行の右端の「Edit thumbnail with ComfyUI」と、それが開く元の選択のメニューと
+ * 編集画面である（specs/045-comfyui-thumbnails/ui-design.md「Video page: edit entry」、
+ * specs/046-thumbnail-image-upload/ui-design.md「Video page: edit entry with the source
+ * choice」）。所有者に置き、プレイヤーが出ていない動画にも置く。
  *
- * - 準備ができていれば、押すと再生を止め、プレイヤーの位置で編集を始め、コマを取り出す間は
- *   回る。始められなければ情報の行の失敗の 1 行に理由を出す。
+ * - 準備ができていれば、押すと元の選択のメニューを開く。コマの項目はメニューを開いた時点の
+ *   プレイヤーの位置を名指して送り、画面にコマが無いとき（`capture` が無いか押せない）は
+ *   押せない。今のサムネイルの項目はいつも押せる。どちらも再生を止め、編集を始め、画像を
+ *   取り出す間は入口が回る。始められなければ情報の行の失敗の 1 行に理由を出す。
  * - 準備ができていなければ薄く出し（フォーカスは受ける）、押すと読み直し、まだなら Settings
- *   への案内の吹き出しを開く。
- * - 始められるコマが無い（キャプチャのボタンと同じ条件）ときは押せない。
+ *   への案内の吹き出しを開く。読み直して準備ができていればメニューを開く。
  */
 export default function EditEntry({
   videoId,
   capture,
+  thumbnailUrl,
   report,
   onApplied,
   onStale,
   onEditingChange,
 }: {
   videoId: number;
-  capture: ThumbnailCapture;
+  /** プレイヤーが出ているときだけ渡す。 */
+  capture?: ThumbnailCapture;
+  /** 今のサムネイルの画像。メニューの項目に小さく出す。 */
+  thumbnailUrl: string | undefined;
   /** 情報の行の失敗の 1 行。始めるときに null を渡す。 */
   report: (failure: UiText | null) => void;
   onApplied: (video: Video, mark: DetailMark) => void;
@@ -92,9 +117,9 @@ export default function EditEntry({
   const [pending, setPending] = useState(false);
   const busy = useRef(false);
   const [hintOpen, setHintOpen] = useState(false);
-  const [edit, setEdit] = useState<{ session: ThumbnailEdit; positionMs: number } | null>(
-    null,
-  );
+  // メニューを開いた時点のコマの位置。null ならコマの項目は押せない。
+  const [menu, setMenu] = useState<{ positionMs: number | null } | null>(null);
+  const [edit, setEdit] = useState<ThumbnailEdit | null>(null);
   const mounted = useRef(true);
   const editingChange = useRef(onEditingChange);
   editingChange.current = onEditingChange;
@@ -117,24 +142,42 @@ export default function EditEntry({
   }, [open]);
   useEffect(() => () => editingChange.current?.(false), []);
 
-  const unavailable = !capture.enabled && !pending;
+  const openMenu = () => setMenu({ positionMs: framePosition(capture) });
 
+  /** press は入口が押された。準備ができていればメニューを開き、無ければ読み直す。 */
   const press = async () => {
-    if (busy.current || !capture.enabled) return;
+    if (busy.current) return;
+    if (ready === true) {
+      openMenu();
+      return;
+    }
     busy.current = true;
     setPending(true);
     report(null);
     try {
-      if (ready !== true && !(await reread())) {
-        if (mounted.current) setHintOpen(true);
-        return;
-      }
-      const raw = capture.positionMs();
-      if (raw === null || !Number.isFinite(raw)) return;
-      const positionMs = Math.max(0, Math.round(raw));
-      capture.pause();
-      const session = await startThumbnailEdit(videoId, positionMs);
-      if (mounted.current) setEdit({ session, positionMs });
+      if (await reread()) {
+        if (mounted.current) openMenu();
+      } else if (mounted.current) setHintOpen(true);
+    } catch (error) {
+      if (isAborted(error) || !mounted.current) return;
+      report(text.startFailed(errorText(error)));
+    } finally {
+      busy.current = false;
+      if (mounted.current) setPending(false);
+    }
+  };
+
+  /** begin は選んだ元で再生を止めて編集を始める。 */
+  const begin = async (start: ThumbnailEditStart) => {
+    setMenu(null);
+    if (busy.current) return;
+    busy.current = true;
+    setPending(true);
+    report(null);
+    try {
+      capture?.pause();
+      const session = await startThumbnailEdit(videoId, start);
+      if (mounted.current) setEdit(session);
       // 始める間にページを離れたら、始めたセッションをすぐ捨てる。
       else void discardThumbnailEdit(session.id).catch(() => undefined);
     } catch (error) {
@@ -147,31 +190,64 @@ export default function EditEntry({
     }
   };
 
+  const framePositionMs = menu?.positionMs ?? null;
+
   return (
     <>
       <Popover open={hintOpen} onOpenChange={setHintOpen}>
         <PopoverAnchor asChild>
           <span className="inline-flex">
-            <ActionButton
-              ref={button}
-              label={text.entry}
-              aria-disabled={unavailable || pending || ready !== true || undefined}
-              aria-busy={pending || undefined}
-              onClick={() => void press()}
-              className={cn(
-                "aria-disabled:cursor-default",
-                (unavailable || (ready !== true && !pending)) && "opacity-50",
-              )}
+            <DropdownMenu
+              open={menu !== null && !pending}
+              onOpenChange={(next) => {
+                if (next) void press();
+                else setMenu(null);
+              }}
             >
-              {pending ? (
-                <LoaderCircle
-                  aria-hidden="true"
-                  className="animate-spin motion-reduce:animate-none"
-                />
-              ) : (
-                <WandSparkles aria-hidden="true" />
-              )}
-            </ActionButton>
+              <DropdownMenuTrigger asChild>
+                <ActionButton
+                  ref={button}
+                  label={text.entry}
+                  aria-disabled={pending || ready !== true || undefined}
+                  aria-busy={pending || undefined}
+                  className={cn(
+                    "aria-disabled:cursor-default data-[state=open]:bg-accent",
+                    ready !== true && !pending && "opacity-50",
+                  )}
+                >
+                  {pending ? (
+                    <LoaderCircle
+                      aria-hidden="true"
+                      className="animate-spin motion-reduce:animate-none"
+                    />
+                  ) : (
+                    <WandSparkles aria-hidden="true" />
+                  )}
+                </ActionButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem
+                  disabled={framePositionMs === null}
+                  onSelect={() => {
+                    if (framePositionMs !== null)
+                      void begin({ source: "frame", positionMs: framePositionMs });
+                  }}
+                >
+                  <Film aria-hidden="true" />
+                  {framePositionMs === null ? (
+                    text.frameOnScreen
+                  ) : (
+                    <span className="tabular-nums">
+                      {text.frameAt(formatDuration(framePositionMs))}
+                    </span>
+                  )}
+                </DropdownMenuItem>
+                <DropdownMenuItem onSelect={() => void begin({ source: "thumbnail" })}>
+                  <ThumbnailImage url={thumbnailUrl} />
+                  {text.currentThumbnail}
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </span>
         </PopoverAnchor>
         <PopoverContent side="bottom" align="end">
@@ -186,13 +262,32 @@ export default function EditEntry({
       </Popover>
       {edit !== null && (
         <ThumbnailEditor
-          key={edit.session.id}
-          edit={edit.session}
-          positionMs={edit.positionMs}
+          key={edit.id}
+          edit={edit}
           onApplied={onApplied}
           onClosed={() => setEdit(null)}
         />
       )}
     </>
+  );
+}
+
+/**
+ * ThumbnailImage はメニューの今のサムネイルの項目の小さな画像で、情報の行のサムネイルの項目と
+ * 同じ形にする。項目の文字が名前を持つので `alt` は空にする。読めない間は空の箱にする。
+ */
+function ThumbnailImage({ url }: { url: string | undefined }) {
+  const [brokenUrl, setBrokenUrl] = useState<string | null>(null);
+  return (
+    <span className="aspect-video h-6 shrink-0 overflow-hidden rounded-sm bg-card">
+      {url !== undefined && url !== brokenUrl && (
+        <img
+          src={url}
+          alt=""
+          onError={() => setBrokenUrl(url)}
+          className="size-full object-cover"
+        />
+      )}
+    </span>
   );
 }

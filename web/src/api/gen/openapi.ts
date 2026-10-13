@@ -698,13 +698,28 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        post?: never;
+        /**
+         * 手元の画像を動画のサムネイルにする
+         * @description 所有者だけ。`multipart/form-data` の `image`（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）を
+         *     受け取り、メモリに持ったまま最後まで読めるかを確かめて、生成した画像と同じ適用で動画の縦横比に
+         *     合わせた代表サムネイルにする。本文全体は部分の区切りと見出しのぶん 1 MiB 多くまで認める。応答は
+         *     公開が終わってから返し、形は `GET /api/videos/{id}` と同じ `Video` である（`thumbnailImage:
+         *     "uploaded"`、新しい版の `thumbnailUrl`）。記録した位置はそのまま残る。`image` が 64 MiB を越えるか
+         *     見出しが 1 億 2000 万画素を越えれば 400 `thumbnail_upload_too_large`（`limit` に越えた上限）、
+         *     PNG・JPEG・WebP でない、アニメーションの WebP、最後まで読めない画像は 400
+         *     `thumbnail_upload_invalid`、動画が無ければ 404 `video_not_found`、要求を始めたときから動画が消えたか
+         *     別の内容になれば 409 `content_changed`、ffmpeg が合わせられなければ 409 `thumbnail_image_invalid`
+         *     を返し、どの誤りでも何も書かない。本文が届き終わったあとの確かめと適用は、接続が切れても 5 分を
+         *     上限に最後まで行う。確定後に `/api/events` の `video` が流れる
+         *     （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-1・R-2）。
+         */
+        post: operations["uploadThumbnailImage"];
         /**
          * 動画に適用したサムネイルの画像を外す
          * @description 所有者だけ。要求の本文は無い。適用した画像を外し、代表サムネイルをコマから作り直して公開する。
          *     `thumbnailPositionMs` があればその場面、無ければ自動の位置で作る。画像を適用していなくても
          *     作り直して 200 を返す。応答は生成が終わってから返し、形は `GET /api/videos/{id}` と同じ
-         *     `Video` である（`thumbnailGenerated` は無く、新しい版の `thumbnailUrl`）。誤りは
+         *     `Video` である（`thumbnailImage` は無く、新しい版の `thumbnailUrl`）。誤りは
          *     `PUT /api/videos/{id}/thumbnail-position` と同じで、画像を作れなければ 409
          *     `thumbnail_frame_unavailable`（適用した画像と前のファイルはそのまま）、どの所在も開けなければ
          *     404 `file_unavailable` を返す。確定後に `/api/events` の `video` が流れる
@@ -726,13 +741,19 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 動画の1コマのサムネイルの編集を始める
-         * @description 所有者だけ。`positionMs` の場面を、長辺を動画の長辺（上限 2048 px）にした PNG として取り出し、
-         *     `ready` の編集のセッションを `201` で返す。同じ動画のセッションがあれば、その実行を ComfyUI で
-         *     中止してから終える。位置の誤りと所在の誤りは `PUT /api/videos/{id}/thumbnail-position` と同じで、
-         *     ComfyUI の接続先が保存されていなければ 409 `thumbnail_edit_not_ready`、コマを取り出せなければ
-         *     409 `thumbnail_frame_unavailable` を返す。セッションはメモリにだけあり、イベントは流れない
-         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md、research.md R-4・R-8・R-11）。
+         * 動画の1コマか今のサムネイルからサムネイルの編集を始める
+         * @description 所有者だけ。`source` が `frame` なら `positionMs` の場面を、長辺を動画の長辺（上限 2048 px）にした
+         *     PNG として取り出す。`thumbnail` なら今のサムネイルから始め、画像を適用していればその元の画像
+         *     （長辺最大 2048 px）を PNG にしたもの、なければ指定した位置のコマ、それも無ければサムネイル
+         *     ジョブと同じ自動の位置のコマ（そこで取れなければ先頭のコマ）を使う。`ready` の編集のセッションを
+         *     `201` で返し、セッションは始めた時点の画像を持ち続ける。同じ動画のセッションがあれば、その実行を
+         *     ComfyUI で中止してから終える。`frame` で `positionMs` が無いか尺の外なら 400
+         *     `thumbnail_position_out_of_range`、ほかの位置の誤りと所在の誤りは
+         *     `PUT /api/videos/{id}/thumbnail-position` と同じで、ComfyUI の接続先が保存されていなければ 409
+         *     `thumbnail_edit_not_ready`、コマを取り出せないか保存した画像を読めなければ 409
+         *     `thumbnail_frame_unavailable` を返す。セッションはメモリにだけあり、イベントは流れない
+         *     （specs/045-comfyui-thumbnails/contracts/screen-api.md、research.md R-4・R-8・R-11、
+         *     specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-4）。
          */
         post: operations["startThumbnailEdit"];
         delete?: never;
@@ -2461,12 +2482,19 @@ export interface components {
             connection: boolean;
         };
         StartThumbnailEditRequest: {
+            source: components["schemas"]["ThumbnailEditSource"];
             /**
              * Format: int64
-             * @description 編集するコマの位置（ミリ秒）。0 以上で尺未満
+             * @description `frame` のときだけ必須。編集するコマの位置（ミリ秒）。0 以上で尺未満。`thumbnail` では無視する
              */
-            positionMs: number;
+            positionMs?: number;
         };
+        /**
+         * @description 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
+         *     （specs/046-thumbnail-image-upload/research.md R-4）
+         * @enum {string}
+         */
+        ThumbnailEditSource: "frame" | "thumbnail";
         RunThumbnailEditRequest: {
             /** @description 持ち主の指示。省けば、塗った範囲があるとき vv の既定の指示を送る */
             prompt?: string;
@@ -2480,6 +2508,13 @@ export interface components {
              * @description 参考画像（PNG・JPEG・WebP、20 MiB まで）。省けば参考画像の無いワークフローを使う
              */
             reference?: string;
+        };
+        UploadThumbnailImageRequest: {
+            /**
+             * Format: binary
+             * @description サムネイルにする画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）
+             */
+            image: string;
         };
         /**
          * @description 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
@@ -2497,6 +2532,13 @@ export interface components {
             /** Format: int64 */
             videoId: number;
             state: components["schemas"]["ThumbnailEditState"];
+            source: components["schemas"]["ThumbnailEditSource"];
+            /**
+             * Format: int64
+             * @description 画像がコマのとき、それを取った位置（ミリ秒。選んだ位置、指定した位置、自動の位置、先頭に
+             *     戻したときは 0）。保存した元の画像から始めたときは省く
+             */
+            positionMs?: number;
             /** @description コマの PNG（`GET /api/thumbnail-edits/{editId}/frame`） */
             frameUrl: string;
             /** @description コマの幅（px）。マスクはこの大きさで描く */
@@ -3045,7 +3087,7 @@ export interface components {
         };
         /**
          * @description ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-         *     `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+         *     `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
          *     （specs/016-single-account-auth/contracts/guest-api.md §1、
          *     specs/029-video-overrides/contracts/screen-api.md §0）。
          */
@@ -3067,10 +3109,12 @@ export interface components {
              */
             thumbnailPositionMs?: number;
             /**
-             * @description 所有者が適用した画像が代表サムネイルのとき `true`。適用しているときだけ、所有者の応答にだけ入る
-             *     （specs/045-comfyui-thumbnails/contracts/screen-api.md）
+             * @description 所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
+             *     `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る
+             *     （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-5）
+             * @enum {string}
              */
-            thumbnailGenerated?: boolean;
+            thumbnailImage?: "generated" | "uploaded";
             /** Format: int64 */
             sizeBytes: number;
             /** Format: date-time */
@@ -3600,7 +3644,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -4672,6 +4716,37 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["ThumbnailPositionUpdate"];
+            };
+        };
+        responses: {
+            /** @description 反映後の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    uploadThumbnailImage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["UploadThumbnailImageRequest"];
             };
         };
         responses: {

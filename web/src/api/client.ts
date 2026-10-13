@@ -566,7 +566,7 @@ export async function setVideoThumbnailPosition(
 /**
  * revertThumbnailImage は動画に適用したサムネイルの画像を外し、代表サムネイルを
  * `thumbnailPositionMs` の場面（無ければ自動の位置）のコマから作り直す。画像を適用していなくても
- * 成功する。応答は生成が終わってから返り、`getVideo` と同じ形の動画で、`thumbnailGenerated` が
+ * 成功する。応答は生成が終わってから返り、`getVideo` と同じ形の動画で、`thumbnailImage` が
  * 無く、新しい版の `thumbnailUrl` が反映済みである
  * （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
  *
@@ -578,6 +578,33 @@ export async function revertThumbnailImage(
 ): Promise<Video> {
   const video = await request<Video>(`/api/videos/${String(id)}/thumbnail-image`, {
     method: "DELETE",
+    signal,
+  });
+  clearListSnapshot();
+  return video;
+}
+
+/**
+ * uploadThumbnailImage は手元の画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）を
+ * `multipart/form-data` の `image` で送り、動画のサムネイルにする。応答は公開が終わってから返り、
+ * `getVideo` と同じ形の動画で、`thumbnailImage: "uploaded"` と新しい版の `thumbnailUrl` が反映済み
+ * である。上限を越えれば 400 `thumbnail_upload_too_large`、読めなければ 400
+ * `thumbnail_upload_invalid` で失敗する
+ * （specs/046-thumbnail-image-upload/contracts/screen-api.md）。Content-Type はブラウザが境界と
+ * ともに付けるので、ここでは付けない。
+ *
+ * 成功したら `setVideoThumbnailPosition` と同じ理由で一覧の控えを捨てる。
+ */
+export async function uploadThumbnailImage(
+  id: number,
+  image: Blob,
+  signal?: AbortSignal,
+): Promise<Video> {
+  const form = new FormData();
+  form.append("image", image, image instanceof File ? image.name : "image");
+  const video = await request<Video>(`/api/videos/${String(id)}/thumbnail-image`, {
+    method: "POST",
+    body: form,
     signal,
   });
   clearListSnapshot();
@@ -963,20 +990,29 @@ export function getThumbnailEditReadiness(
 }
 
 /**
- * startThumbnailEdit は動画の `positionMs`（ミリ秒）の場面で、サムネイルの編集のセッションを始める。
+ * ThumbnailEditStart は編集を何から始めるかである。`frame` は選んだ位置 `positionMs`（ミリ秒）の
+ * コマ、`thumbnail` は今のサムネイルである
+ * （specs/046-thumbnail-image-upload/contracts/screen-api.md）。
+ */
+export type ThumbnailEditStart =
+  { source: "frame"; positionMs: number } | { source: "thumbnail" };
+
+/**
+ * startThumbnailEdit は `start` が指す画像から、動画のサムネイルの編集のセッションを始める。
  * 同じ動画のセッションがあれば、サーバーがその実行を中止して終える。応答は `ready` のセッションで、
- * `frameUrl` がコマの PNG、`frameWidth`・`frameHeight` がマスクを描く大きさである
- * （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+ * `frameUrl` が始めた画像の PNG、`frameWidth`・`frameHeight` がマスクを描く大きさ、`source` と
+ * `positionMs` がその画像の元である（specs/045-comfyui-thumbnails/contracts/screen-api.md、
+ * specs/046-thumbnail-image-upload/contracts/screen-api.md）。
  */
 export function startThumbnailEdit(
   videoId: number,
-  positionMs: number,
+  start: ThumbnailEditStart,
   signal?: AbortSignal,
 ): Promise<ThumbnailEdit> {
   return request<ThumbnailEdit>(`/api/videos/${String(videoId)}/thumbnail-edits`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ positionMs }),
+    body: JSON.stringify(start),
     signal,
   });
 }

@@ -2,9 +2,34 @@ package media
 
 import (
 	"math"
+	"slices"
 	"strings"
 	"testing"
 )
+
+// 位置を指定していない動画のコマは、自動の位置、次に先頭の順に取りに行く。サムネイルジョブと
+// 今のサムネイルからの編集が同じ規則を使う（specs/046-thumbnail-image-upload/research.md R-4）。
+func TestAutoThumbnailPositions(t *testing.T) {
+	tests := []struct {
+		name       string
+		durationMs int64
+		want       []int64
+	}{
+		{"尺が不明なら下限、次に先頭", 0, []int64{1000, 0}},
+		{"100 秒の動画は 10 秒、次に先頭", 100_000, []int64{10_000, 0}},
+		{"0.5 秒の動画は 10% 地点、次に先頭", 500, []int64{50, 0}},
+		{"10 分の動画は上限、次に先頭", 600_000, []int64{60_000, 0}},
+		{"自動の位置が先頭に丸まれば先頭だけ", 3, []int64{0}},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := AutoThumbnailPositions(tc.durationMs)
+			if !slices.Equal(got, tc.want) {
+				t.Errorf("AutoThumbnailPositions(%d) = %v, want %v", tc.durationMs, got, tc.want)
+			}
+		})
+	}
+}
 
 // 抽出位置は「尺の 10%、ただし下限 1 秒・上限 60 秒」。
 //

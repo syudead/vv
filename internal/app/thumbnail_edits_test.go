@@ -9,6 +9,7 @@ import (
 	"image"
 	"image/jpeg"
 	"image/png"
+	"slices"
 	"strconv"
 	"sync"
 	"testing"
@@ -115,24 +116,94 @@ func (f *fakeImageEditor) cancelled() []string {
 	return append([]string(nil), f.cancels...)
 }
 
-type fakeFrames struct{ frame domain.ThumbnailFrame }
+type fakeFrames struct {
+	mu    sync.Mutex
+	frame domain.ThumbnailFrame
+	// missing はコマが取れない位置である。
+	missing map[int64]bool
+	// auto は AutoThumbnailPositions が返す位置である。
+	auto []int64
+	// positions は FrameAt に渡された位置である。
+	positions []int64
+}
 
-func (f *fakeFrames) FrameAt(context.Context, string, int64) (domain.ThumbnailFrame, error) {
-	if f.frame.PNG == nil {
+func (f *fakeFrames) FrameAt(_ context.Context, _ string, positionMs int64) (domain.ThumbnailFrame, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.positions = append(f.positions, positionMs)
+	if f.frame.PNG == nil || f.missing[positionMs] {
 		return domain.ThumbnailFrame{}, errors.New("no frame")
 	}
 	return f.frame, nil
 }
 
+func (f *fakeFrames) AutoThumbnailPositions(int64) []int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]int64(nil), f.auto...)
+}
+
+func (f *fakeFrames) extracted() []int64 {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]int64(nil), f.positions...)
+}
+
+// fakeThumbnailImages は内容ごとに適用した画像（代表サムネイル image と元の画像 source）と
+// 指定した位置を持つ。
+type fakeThumbnailImages struct {
+	mu       sync.Mutex
+	image    map[string][]byte
+	source   map[string][]byte
+	position map[string]*int64
+	err      error
+}
+
+func (f *fakeThumbnailImages) CurrentThumbnailSelection(
+	_ context.Context, contentKey string,
+) (domain.CurrentThumbnailSelection, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	image := f.source[contentKey]
+	if image == nil {
+		image = f.image[contentKey]
+	}
+	return domain.CurrentThumbnailSelection{Image: image, PositionMs: f.position[contentKey]}, f.err
+}
+
+// setPosition は内容 contentKey に指定した位置を置く。nil なら解除する。
+func (f *fakeThumbnailImages) setPosition(contentKey string, positionMs *int64) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.position == nil {
+		f.position = map[string]*int64{}
+	}
+	f.position[contentKey] = positionMs
+}
+
+// set は内容 contentKey に適用した画像を置く。image が nil なら外す（元に戻す操作）。
+func (f *fakeThumbnailImages) set(contentKey string, image, source []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.image == nil {
+		f.image, f.source = map[string][]byte{}, map[string][]byte{}
+	}
+	f.image[contentKey], f.source[contentKey] = image, source
+}
+
 type fakeApplier struct {
 	err     error
 	applied [][]byte
+	// origins は適用に渡された出どころである。
+	origins []domain.ThumbnailImageOrigin
 	// entered と release があれば、適用はそこで止まり、release が閉じるまで返らない。
 	entered chan struct{}
 	release chan struct{}
 }
 
-func (f *fakeApplier) ApplyThumbnailImage(_ context.Context, videoID int64, _ string, image []byte) (domain.Video, error) {
+func (f *fakeApplier) ApplyThumbnailImage(
+	_ context.Context, videoID int64, _ string, image []byte, origin domain.ThumbnailImageOrigin,
+) (domain.Video, error) {
 	if f.entered != nil {
 		close(f.entered)
 		<-f.release
@@ -141,6 +212,7 @@ func (f *fakeApplier) ApplyThumbnailImage(_ context.Context, videoID int64, _ st
 		return domain.Video{}, f.err
 	}
 	f.applied = append(f.applied, image)
+	f.origins = append(f.origins, origin)
 	return domain.Video{ID: videoID}, nil
 }
 
@@ -151,6 +223,7 @@ type editsFixture struct {
 	applier  *fakeApplier
 	clock    *fakeClock
 	frames   *fakeFrames
+	images   *fakeThumbnailImages
 }
 
 func newEditsFixture(t *testing.T) *editsFixture {
@@ -160,10 +233,14 @@ func newEditsFixture(t *testing.T) *editsFixture {
 		settings: &fakeComfyUIStore{settings: domain.ComfyUISettings{Provider: domain.ComfyUISelfHosted, URL: "http://a:8188"}},
 		applier:  &fakeApplier{},
 		clock:    &fakeClock{now: time.Unix(1_700_000_000, 0)},
-		frames:   &fakeFrames{frame: domain.ThumbnailFrame{PNG: testPNG(t, 8, 6), Width: 8, Height: 6}},
+		frames: &fakeFrames{
+			frame: domain.ThumbnailFrame{PNG: testPNG(t, 8, 6), Width: 8, Height: 6}, auto: []int64{6_000, 0},
+		},
+		images: &fakeThumbnailImages{},
 	}
 	f.edits = NewThumbnailEdits(ThumbnailEditsOptions{
-		Settings: f.settings, Editor: f.editor, Frames: f.frames, Applier: f.applier, Now: f.clock.Now,
+		Settings: f.settings, Editor: f.editor, Frames: f.frames, Images: f.images, Applier: f.applier,
+		Now: f.clock.Now,
 	})
 	return f
 }
@@ -229,10 +306,16 @@ func truncatedPNG(t *testing.T, data []byte) []byte {
 // hugePNGHeader は、見出しだけが 100000×100000 を名乗る PNG を返す。
 func hugePNGHeader(t *testing.T) []byte {
 	t.Helper()
+	return pngHeaderSized(t, 100_000, 100_000)
+}
+
+// pngHeaderSized は、見出しだけが width×height を名乗る 1×1 の PNG を返す。
+func pngHeaderSized(t *testing.T, width, height uint32) []byte {
+	t.Helper()
 	data := testPNG(t, 1, 1)
 	ihdr := bytes.Index(data, []byte("IHDR"))
-	binary.BigEndian.PutUint32(data[ihdr+4:], 100_000)
-	binary.BigEndian.PutUint32(data[ihdr+8:], 100_000)
+	binary.BigEndian.PutUint32(data[ihdr+4:], width)
+	binary.BigEndian.PutUint32(data[ihdr+8:], height)
 	binary.BigEndian.PutUint32(data[ihdr+17:], crc32.ChecksumIEEE(data[ihdr:ihdr+17]))
 	if _, err := png.DecodeConfig(bytes.NewReader(data)); err != nil {
 		t.Fatal(err)
@@ -247,11 +330,16 @@ func editVideo(id int64) domain.Video {
 
 func (f *editsFixture) start(t *testing.T, videoID int64) domain.ThumbnailEdit {
 	t.Helper()
-	edit, err := f.edits.Start(context.Background(), editVideo(videoID), "/media/a.mp4", 1_000)
+	edit, err := f.edits.Start(context.Background(), editVideo(videoID), "/media/a.mp4", frameStart(1_000))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return edit
+}
+
+// frameStart は positionMs のコマから始める要求である。
+func frameStart(positionMs int64) domain.ThumbnailEditStart {
+	return domain.ThumbnailEditStart{Source: domain.ThumbnailEditFromFrame, PositionMs: &positionMs}
 }
 
 func (f *editsFixture) run(t *testing.T, id string) domain.ThumbnailEdit {
@@ -323,6 +411,9 @@ func TestThumbnailEditHappyPath(t *testing.T) {
 	video, err := f.edits.Apply(context.Background(), edit.ID)
 	if err != nil || video.ID != 1 || len(f.applier.applied) != 1 || !bytes.Equal(f.applier.applied[0], f.editor.output) {
 		t.Fatalf("Apply = %+v, %v, applied %q", video, err, f.applier.applied)
+	}
+	if !slices.Equal(f.applier.origins, []domain.ThumbnailImageOrigin{domain.ThumbnailImageGenerated}) {
+		t.Fatalf("出どころ = %v, want generated", f.applier.origins)
 	}
 	f.wantEnded(t, edit.ID)
 	if len(f.editor.cancelled()) != 0 {
@@ -947,16 +1038,16 @@ func TestThumbnailEditStartRejects(t *testing.T) {
 		{"no content", noKey, 0, domain.ErrNotFound},
 		{"past the end", editVideo(1), 60_000, domain.ErrThumbnailPositionOutOfRange},
 	} {
-		if _, err := f.edits.Start(ctx, c.video, "/a", c.position); !errors.Is(err, c.want) {
+		if _, err := f.edits.Start(ctx, c.video, "/a", frameStart(c.position)); !errors.Is(err, c.want) {
 			t.Errorf("%s: %v, want %v", c.name, err, c.want)
 		}
 	}
 	f.frames.frame = domain.ThumbnailFrame{}
-	if _, err := f.edits.Start(ctx, editVideo(1), "/a", 0); !errors.Is(err, domain.ErrThumbnailFrameUnavailable) {
+	if _, err := f.edits.Start(ctx, editVideo(1), "/a", frameStart(0)); !errors.Is(err, domain.ErrThumbnailFrameUnavailable) {
 		t.Errorf("no frame: %v", err)
 	}
 	f.settings.settings = domain.ComfyUISettings{}
-	if _, err := f.edits.Start(ctx, editVideo(1), "/a", 0); !errors.Is(err, domain.ErrThumbnailEditNotReady) {
+	if _, err := f.edits.Start(ctx, editVideo(1), "/a", frameStart(0)); !errors.Is(err, domain.ErrThumbnailEditNotReady) {
 		t.Errorf("no connection: %v", err)
 	}
 }

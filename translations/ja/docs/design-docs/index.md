@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 0a72445eff1b16187205d2bb6f613c10696fcfc0fae5af8f138b8b41660ed937
+sourceHash: 146ca24390252dfb10393bfeec56624f65a0eea606da75087550c158f6c70665
 ---
 
 # 設計文書 {#design-documents}
@@ -63,3 +63,4 @@ sourceHash: 0a72445eff1b16187205d2bb6f613c10696fcfc0fae5af8f138b8b41660ed937
 - [カードの `+N` の裏に隠れたタグを、何個でも見えて押せるようにする: UI](../../specs/041-tag-overflow-list/ui-design.md)
 - [変更されたメディアフォルダの自動取り込み (設定、問題の知らせ、静かな結果の知らせ): UI](../../specs/042-folder-watch-import/ui-design.md)
 - [視聴履歴の画面 (日のグループ、エントリを 1 つ削除する、履歴を消す): UI](../../specs/043-watch-history/ui-design.md)
+- [ローカルの画像をサムネイルにし、今のサムネイルを ComfyUI で編集する (アップロードの入口、アップロードした画像の項目、編集の元のメニュー): UI](../../specs/046-thumbnail-image-upload/ui-design.md)

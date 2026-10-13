@@ -9,8 +9,9 @@
 //   internal/comfyui/workflows/ のファイルから読むので、ワークフローが変わっても揃ったままである。
 // - POST /upload/image、POST /prompt: 上げた画像の名前と送られたプロンプトを記録する。
 // - GET /queue、GET /history/{id}: 実行は待ち行列で少し待ち、実行中を経て、決まった一色の
-//   画像を出力して終わる。
-// - GET /view: その一色の画像。
+//   画像を出力して終わる。合成を有効にしたときは、ワークフローの合成（contracts/workflow.md）の
+//   ように、上げたコマの大きさで、マスクの白い所だけその色にし、ほかはコマのままにする。
+// - GET /view: 実行の出力の画像。
 // - POST /interrupt、POST /queue（delete）: 実行を止める。
 //
 // WebSocket の /ws は持たない。アダプタは接続できなければ進み具合を出さないだけである。
@@ -18,6 +19,8 @@
 // テストが読み書きする /__fake/* は ComfyUI のルートではない。
 // - GET /__fake/prompts: 送られたプロンプトと、そのときまでに上げた画像の名前。
 // - PUT /__fake/timing: 待ち行列と実行中の長さ（ミリ秒）を変える。
+// - PUT /__fake/composite: マスクを通した合成の有無（{ enabled }）を変える。既定は無効で、
+//   出力は塗った範囲によらず一色の画像である（specs/045 の流れのテストはそれを前提にする）。
 //
 // 標準入力が閉じたら（起動した run-e2e.mjs が終わったら）終わる。
 
@@ -26,7 +29,7 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { deflateSync } from "node:zlib";
+import { deflateSync, inflateSync } from "node:zlib";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const workflowDir = path.join(repoRoot, "internal", "comfyui", "workflows");
@@ -87,16 +90,18 @@ function pngChunk(type, data) {
   return Buffer.concat([length, body, crc]);
 }
 
-/** solidPNG は width×height の一色 color（RGB）の PNG を作る。 */
-function solidPNG(width, height, color) {
+/** encodePNG は width×height の RGB の画素 pixels（1 画素 3 バイト）を PNG にする。 */
+function encodePNG(width, height, pixels) {
   const header = Buffer.alloc(13);
   header.writeUInt32BE(width, 0);
   header.writeUInt32BE(height, 4);
   header[8] = 8; // ビット深度
   header[9] = 2; // RGB
-  const row = Buffer.alloc(1 + width * 3);
-  for (let x = 0; x < width; x += 1) row.set(color, 1 + x * 3);
-  const raw = Buffer.concat(Array.from({ length: height }, () => row));
+  const stride = width * 3;
+  const raw = Buffer.alloc((1 + stride) * height);
+  for (let y = 0; y < height; y += 1) {
+    pixels.copy(raw, y * (1 + stride) + 1, y * stride, (y + 1) * stride);
+  }
   return Buffer.concat([
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     pngChunk("IHDR", header),
@@ -105,15 +110,119 @@ function solidPNG(width, height, color) {
   ]);
 }
 
-const outputImage = solidPNG(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_COLOR);
-const outputName = "vv-fake-output.png";
+/** solidPNG は width×height の一色 color（RGB）の PNG を作る。 */
+function solidPNG(width, height, color) {
+  const pixels = Buffer.alloc(width * height * 3);
+  for (let i = 0; i < width * height; i += 1) pixels.set(color, i * 3);
+  return encodePNG(width, height, pixels);
+}
+
+// PNG の色の型ごとの、1 画素の標本の数。
+const pngChannels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
+
+/** paeth は PNG のフィルタ 4 の予測である。 */
+function paeth(a, b, c) {
+  const p = a + b - c;
+  const pa = Math.abs(p - a);
+  const pb = Math.abs(p - b);
+  const pc = Math.abs(p - c);
+  if (pa <= pb && pa <= pc) return a;
+  return pb <= pc ? b : c;
+}
+
+/** unfilter は PNG の行ごとのフィルタを外し、行を連ねたバイト列を返す。 */
+function unfilter(data, height, stride, bpp) {
+  const out = Buffer.alloc(height * stride);
+  for (let y = 0; y < height; y += 1) {
+    const filter = data[y * (stride + 1)];
+    const row = y * (stride + 1) + 1;
+    for (let x = 0; x < stride; x += 1) {
+      const a = x >= bpp ? out[y * stride + x - bpp] : 0;
+      const b = y > 0 ? out[(y - 1) * stride + x] : 0;
+      const c = x >= bpp && y > 0 ? out[(y - 1) * stride + x - bpp] : 0;
+      const predict = [0, a, b, (a + b) >> 1, paeth(a, b, c)][filter];
+      if (predict === undefined) throw new Error(`unknown PNG filter ${String(filter)}`);
+      out[y * stride + x] = (data[row + x] + predict) & 0xff;
+    }
+  }
+  return out;
+}
+
+/**
+ * decodePNG は vv が上げるコマとマスク（8 か 16 ビット、インターレース無し）を読み、
+ * 幅・高さと RGB の画素（1 画素 3 バイト）を返す。
+ */
+function decodePNG(buffer) {
+  let offset = 8;
+  let header;
+  let palette = Buffer.alloc(0);
+  const data = [];
+  while (offset < buffer.length) {
+    const length = buffer.readUInt32BE(offset);
+    const type = buffer.toString("ascii", offset + 4, offset + 8);
+    const body = buffer.subarray(offset + 8, offset + 8 + length);
+    if (type === "IHDR") header = body;
+    if (type === "PLTE") palette = body;
+    if (type === "IDAT") data.push(body);
+    offset += 12 + length;
+  }
+  if (header === undefined) throw new Error("PNG without IHDR");
+  const width = header.readUInt32BE(0);
+  const height = header.readUInt32BE(4);
+  const depth = header[8];
+  const colorType = header[9];
+  const channels = pngChannels[colorType];
+  if (channels === undefined || (depth !== 8 && depth !== 16) || header[12] !== 0) {
+    throw new Error(`unsupported PNG: depth ${String(depth)}, type ${String(colorType)}`);
+  }
+  const sample = depth / 8;
+  const bpp = channels * sample;
+  const raw = unfilter(inflateSync(Buffer.concat(data)), height, width * bpp, bpp);
+  const pixels = Buffer.alloc(width * height * 3);
+  for (let i = 0; i < width * height; i += 1) {
+    const at = (channel) => raw[i * bpp + channel * sample];
+    let rgb;
+    if (colorType === 3) rgb = [...palette.subarray(at(0) * 3, at(0) * 3 + 3)];
+    else if (channels <= 2) rgb = [at(0), at(0), at(0)];
+    else rgb = [at(0), at(1), at(2)];
+    pixels.set(rgb, i * 3);
+  }
+  return { width, height, pixels };
+}
+
+/**
+ * compositePNG はコマ frame の大きさで、マスク mask の赤が半分より明るい所を OUTPUT_COLOR に、
+ * ほかをコマのままにした PNG を返す。マスクの大きさが違えば、近い画素を読む。
+ */
+function compositePNG(frame, mask) {
+  const source = decodePNG(frame);
+  const painted = decodePNG(mask);
+  const pixels = Buffer.from(source.pixels);
+  for (let y = 0; y < source.height; y += 1) {
+    const my = Math.floor((y * painted.height) / source.height);
+    for (let x = 0; x < source.width; x += 1) {
+      const mx = Math.floor((x * painted.width) / source.width);
+      if (painted.pixels[(my * painted.width + mx) * 3] > 127) {
+        pixels.set(OUTPUT_COLOR, (y * source.width + x) * 3);
+      }
+    }
+  }
+  return encodePNG(source.width, source.height, pixels);
+}
+
+const solidOutput = solidPNG(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_COLOR);
 
 const timing = { queuedMs: 600, runningMs: 2500 };
+let composite = false;
 /** uploads は上げた画像の名前で、上げた順に並ぶ。 */
 const uploads = [];
+/** uploadedImages は上げた画像の名前ごとの中身である。 */
+const uploadedImages = new Map();
+/** outputs は出力の画像の名前ごとの中身である。 */
+const outputs = new Map();
 /** prompts は送られたプロンプトで、送られた順に並ぶ。 */
 const prompts = [];
-/** runs は実行の id ごとの、始めた時刻・出力のノード・止めたか。 */
+/** runs は実行の id ごとの、始めた時刻・出力のノードと画像の名前・止めたか。 */
 const runs = new Map();
 let number = 0;
 
@@ -143,7 +252,9 @@ function historyEntry(run) {
   }
   return {
     outputs: {
-      [run.output]: { images: [{ filename: outputName, subfolder: "", type: "output" }] },
+      [run.output]: {
+        images: [{ filename: run.outputName, subfolder: "", type: "output" }],
+      },
     },
     status: { status_str: "success", completed: true, messages: [] },
   };
@@ -165,6 +276,52 @@ async function readBody(request) {
 async function readJSON(request) {
   const body = await readBody(request);
   return body.length === 0 ? {} : JSON.parse(body.toString("utf8"));
+}
+
+/**
+ * imagePart は multipart の本文 body から、name="image" の部分のファイル名と中身を返す。
+ * 無ければ null を返す。
+ */
+function imagePart(contentType, body) {
+  const boundary = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType ?? "");
+  if (boundary === null) return null;
+  const delimiter = Buffer.from(`--${boundary[1] ?? boundary[2]}`);
+  let start = body.indexOf(delimiter);
+  while (start !== -1) {
+    const next = body.indexOf(delimiter, start + delimiter.length);
+    if (next === -1) return null;
+    const part = body.subarray(start + delimiter.length, next);
+    const headerEnd = part.indexOf("\r\n\r\n");
+    const headers = part.subarray(0, Math.max(headerEnd, 0)).toString("latin1");
+    const match = /name="image"; filename="([^"]+)"/.exec(headers);
+    if (headerEnd !== -1 && match !== null) {
+      return {
+        name: Buffer.from(match[1], "latin1").toString("utf8"),
+        // 部分の終わりの CRLF は区切りの一部である。
+        content: Buffer.from(part.subarray(headerEnd + 4, part.length - 2)),
+      };
+    }
+    start = next;
+  }
+  return null;
+}
+
+/** inputImage はプロンプトの、_meta.title が title のノードが読む、上げた画像を返す。 */
+function inputImage(prompt, title) {
+  const node = Object.values(prompt ?? {}).find(
+    (candidate) => candidate?._meta?.title === title,
+  );
+  const name = node?.inputs?.image;
+  return typeof name === "string" ? uploadedImages.get(name) : undefined;
+}
+
+/** runOutput はプロンプトの実行が出す画像を返す。合成が無効なら一色の画像である。 */
+function runOutput(prompt) {
+  if (!composite) return solidOutput;
+  const frame = inputImage(prompt, "vv:frame");
+  const mask = inputImage(prompt, "vv:mask");
+  if (frame === undefined || mask === undefined) return solidOutput;
+  return compositePNG(frame, mask);
 }
 
 /** stop は実行 id を止める。待ち行列にあるか実行中のときだけ効く。 */
@@ -191,16 +348,14 @@ async function handle(request, response) {
     return;
   }
   if (route === "POST /upload/image") {
-    // multipart の本文から、ファイルの部分の名前だけを読む。
-    const body = (await readBody(request)).toString("latin1");
-    const match = /name="image"; filename="([^"]+)"/.exec(body);
-    if (match === null) {
+    const image = imagePart(request.headers["content-type"], await readBody(request));
+    if (image === null) {
       send(response, 400, { error: "no image" });
       return;
     }
-    const name = Buffer.from(match[1], "latin1").toString("utf8");
-    uploads.push(name);
-    send(response, 200, { name, subfolder: "", type: "input" });
+    uploads.push(image.name);
+    uploadedImages.set(image.name, image.content);
+    send(response, 200, { name: image.name, subfolder: "", type: "input" });
     return;
   }
   if (route === "POST /prompt") {
@@ -217,10 +372,13 @@ async function handle(request, response) {
     }
     const id = randomUUID();
     number += 1;
+    const outputName = `vv-fake-output-${String(number)}.png`;
+    outputs.set(outputName, runOutput(prompt));
     runs.set(id, {
       id,
       number,
       output,
+      outputName,
       submittedAt: Date.now(),
       queuedMs: timing.queuedMs,
       runningMs: timing.runningMs,
@@ -268,11 +426,12 @@ async function handle(request, response) {
     return;
   }
   if (route === "GET /view") {
-    if (url.searchParams.get("filename") !== outputName) {
+    const image = outputs.get(url.searchParams.get("filename") ?? "");
+    if (image === undefined) {
       send(response, 404, "not found", "text/plain");
       return;
     }
-    send(response, 200, outputImage, "image/png");
+    send(response, 200, image, "image/png");
     return;
   }
   if (route === "GET /__fake/prompts") {
@@ -284,6 +443,12 @@ async function handle(request, response) {
     if (Number.isFinite(body.queuedMs)) timing.queuedMs = body.queuedMs;
     if (Number.isFinite(body.runningMs)) timing.runningMs = body.runningMs;
     send(response, 200, timing);
+    return;
+  }
+  if (route === "PUT /__fake/composite") {
+    const body = await readJSON(request);
+    composite = body.enabled === true;
+    send(response, 200, { enabled: composite });
     return;
   }
   send(response, 404, "not found", "text/plain");

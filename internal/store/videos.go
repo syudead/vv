@@ -259,6 +259,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		displayName                              sql.NullString
 		thumbnailPositionMs, thumbnailRevision   sql.NullInt64
 		thumbnailImageRevision                   sql.NullInt64
+		thumbnailImageOrigin                     sql.NullString
 		editedAt                                 int64
 	)
 
@@ -266,7 +267,8 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 		&video.ID, &video.Path, &video.Title, &video.SizeBytes, &mtime, &fileCreatedAt, &addedAt, &indexedAt,
 		&video.ContentKey, &video.UserKey, &durationMs, &width, &height, &displayAspectRatio, &container, &videoCodec, &audioCodec,
 		&playable, &unplayableReason, &probeState, &probeError, &probeErrorCode, &thumbnailState, &seekThumbnailState, &previewState,
-		&public, &favorite, &displayName, &thumbnailPositionMs, &thumbnailRevision, &thumbnailImageRevision, &editedAt,
+		&public, &favorite, &displayName, &thumbnailPositionMs, &thumbnailRevision, &thumbnailImageRevision,
+		&thumbnailImageOrigin, &editedAt,
 	)
 	if err != nil {
 		return domain.Video{}, err
@@ -319,6 +321,7 @@ func scanVideo(row rowScanner) (domain.Video, error) {
 	}
 	video.ThumbnailRevision = thumbnailRevision.Int64
 	video.ThumbnailImageRevision = thumbnailImageRevision.Int64
+	video.ThumbnailImageOrigin = domain.ThumbnailImageOrigin(thumbnailImageOrigin.String)
 
 	return video, nil
 }

@@ -27,7 +27,9 @@ import (
 type editFakes struct {
 	edits *app.ThumbnailEdits
 
-	mu        sync.Mutex
+	mu sync.Mutex
+	// positions は FrameAt に渡された位置である。
+	positions []int64
 	starts    int
 	startErr  error
 	state     domain.ThumbnailEditState
@@ -40,7 +42,8 @@ type editFakes struct {
 func newEditFakes(db *store.DB) *editFakes {
 	f := &editFakes{state: domain.ThumbnailEditQueued, frameSize: 4}
 	f.edits = app.NewThumbnailEdits(app.ThumbnailEditsOptions{
-		Settings: db.Settings(), Editor: editEditor{f}, Frames: editFrames{f}, Applier: editApplier{f, db},
+		Settings: db.Settings(), Editor: editEditor{f}, Frames: editFrames{f}, Images: db.Overrides(),
+		Applier: editApplier{f, db},
 	})
 	return f
 }
@@ -93,14 +96,20 @@ func (e editEditor) Output(context.Context, domain.ImageEditJob) ([]byte, error)
 
 type editFrames struct{ f *editFakes }
 
-func (e editFrames) FrameAt(context.Context, string, int64) (domain.ThumbnailFrame, error) {
+func (e editFrames) FrameAt(_ context.Context, _ string, positionMs int64) (domain.ThumbnailFrame, error) {
 	e.f.mu.Lock()
 	defer e.f.mu.Unlock()
+	e.f.positions = append(e.f.positions, positionMs)
 	if e.f.noFrame {
 		return domain.ThumbnailFrame{}, errors.New("ffmpeg: no frame")
 	}
 	size := e.f.frameSize
 	return domain.ThumbnailFrame{PNG: editPNG(size, size), Width: size, Height: size}, nil
+}
+
+// AutoThumbnailPositions は自動の位置を 6 秒、次に先頭とする。
+func (e editFrames) AutoThumbnailPositions(int64) []int64 {
+	return []int64{6_000, 0}
 }
 
 // editApplier は画像を本物の保存層へ記録する。applyErr があればそれを返して何も書かない。
@@ -109,14 +118,17 @@ type editApplier struct {
 	db *store.DB
 }
 
-func (e editApplier) ApplyThumbnailImage(ctx context.Context, videoID int64, contentKey string, image []byte) (domain.Video, error) {
+func (e editApplier) ApplyThumbnailImage(
+	ctx context.Context, videoID int64, contentKey string, image []byte, origin domain.ThumbnailImageOrigin,
+) (domain.Video, error) {
 	e.f.mu.Lock()
 	err := e.f.applyErr
 	e.f.mu.Unlock()
 	if err != nil {
 		return domain.Video{}, err
 	}
-	return e.db.Ingest().ApplyThumbnailImage(ctx, videoID, contentKey, image)
+	return e.db.Ingest().ApplyThumbnailImage(ctx, videoID, contentKey,
+		domain.AppliedThumbnailImage{Image: image, Source: image, Origin: origin})
 }
 
 func editPNG(width, height int) []byte {
@@ -142,7 +154,7 @@ func (f *guestFixture) startEdit(name, body string, cookies ...*http.Cookie) *ht
 
 func (f *guestFixture) startedEdit(t *testing.T, name string) gen.ThumbnailEdit {
 	t.Helper()
-	rec := f.startEdit(name, `{"positionMs":1000}`, f.owner)
+	rec := f.startEdit(name, `{"source":"frame","positionMs":1000}`, f.owner)
 	if rec.Code != http.StatusCreated {
 		t.Fatalf("start: %d %s", rec.Code, rec.Body)
 	}
@@ -192,7 +204,8 @@ func TestThumbnailEditRoutesAreOwnerOnly(t *testing.T) {
 	f.saveConnection(t)
 	id := f.startedEdit(t, "a").Id
 
-	assertUnauthenticated(t, "start", f.startEdit("a", `{"positionMs":1000}`))
+	assertUnauthenticated(t, "start", f.startEdit("a", `{"source":"frame","positionMs":1000}`))
+	assertUnauthenticated(t, "start from the thumbnail", f.startEdit("a", `{"source":"thumbnail"}`))
 	assertUnauthenticated(t, "runs", f.runEdit(t, id, map[string][]byte{"prompt": []byte("x")}))
 	for _, route := range []struct{ method, suffix string }{
 		{http.MethodGet, ""}, {http.MethodGet, "/frame"}, {http.MethodGet, "/result"},
@@ -216,22 +229,26 @@ func TestStartThumbnailEditStatuses(t *testing.T) {
 		t.Helper()
 		assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), want)
 	}
-	check("no connection", f.startEdit("a", `{"positionMs":1000}`, f.owner),
+	check("no connection", f.startEdit("a", `{"source":"frame","positionMs":1000}`, f.owner),
 		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonThumbnailEditNotReady})
 	f.saveConnection(t)
 
-	check("no position", f.startEdit("a", `{}`, f.owner),
+	check("no source", f.startEdit("a", `{"positionMs":1000}`, f.owner),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
-	check("past the end", f.startEdit("a", `{"positionMs":60000}`, f.owner),
+	check("unknown source", f.startEdit("a", `{"source":"poster"}`, f.owner),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	check("frame without a position", f.startEdit("a", `{"source":"frame"}`, f.owner),
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonThumbnailPositionOutOfRange, limit: 60_000})
-	check("no duration", f.startEdit("d", `{"positionMs":1000}`, f.owner),
+	check("past the end", f.startEdit("a", `{"source":"frame","positionMs":60000}`, f.owner),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonThumbnailPositionOutOfRange, limit: 60_000})
+	check("no duration", f.startEdit("d", `{"source":"frame","positionMs":1000}`, f.owner),
 		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonDurationUnknown})
 	missing := f.env.serve(authRequest{method: http.MethodPost, target: "/api/videos/9999/thumbnail-edits",
-		body: `{"positionMs":1000}`, cookies: []*http.Cookie{f.owner}})
+		body: `{"source":"frame","positionMs":1000}`, cookies: []*http.Cookie{f.owner}})
 	check("no video", missing, wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonVideoNotFound})
 
 	f.edits.set(func(e *editFakes) { e.noFrame = true })
-	check("no frame", f.startEdit("a", `{"positionMs":1000}`, f.owner),
+	check("no frame", f.startEdit("a", `{"source":"frame","positionMs":1000}`, f.owner),
 		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonThumbnailFrameUnavailable})
 	f.edits.set(func(e *editFakes) { e.noFrame = false })
 
@@ -239,15 +256,16 @@ func TestStartThumbnailEditStatuses(t *testing.T) {
 	if err := os.Remove(video.Location.Path); err != nil {
 		t.Fatal(err)
 	}
-	check("no file", f.startEdit("b", `{"positionMs":1000}`, f.owner),
+	check("no file", f.startEdit("b", `{"source":"frame","positionMs":1000}`, f.owner),
 		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFileUnavailable})
 
-	rec := f.startEdit("a", `{"positionMs":1000}`, f.owner)
+	rec := f.startEdit("a", `{"source":"frame","positionMs":1000}`, f.owner)
 	edit := decode[gen.ThumbnailEdit](t, rec)
 	if rec.Code != http.StatusCreated || rec.Header().Get("Cache-Control") != cacheNoStore ||
 		edit.State != gen.ThumbnailEditStateReady || edit.VideoId != f.ids["a"] || edit.ElapsedMs != nil ||
 		edit.FrameUrl != "/api/thumbnail-edits/"+edit.Id+"/frame" || edit.FrameWidth != 4 || edit.FrameHeight != 4 ||
-		edit.ResultUrl != nil {
+		edit.ResultUrl != nil || edit.Source != gen.ThumbnailEditSourceFrame ||
+		edit.PositionMs == nil || *edit.PositionMs != 1000 {
 		t.Fatalf("start = %d %s", rec.Code, rec.Body)
 	}
 	frame := f.editRequest(http.MethodGet, edit.Id, "/frame", f.owner)
@@ -361,7 +379,7 @@ func TestApplyThumbnailEdit(t *testing.T) {
 
 	rec := f.editRequest(http.MethodPost, id, "/apply", f.owner)
 	video := decode[gen.Video](t, rec)
-	if rec.Code != http.StatusOK || video.Id != f.ids["a"] || video.ThumbnailGenerated == nil || !*video.ThumbnailGenerated || video.Location == nil {
+	if rec.Code != http.StatusOK || video.Id != f.ids["a"] || video.ThumbnailImage == nil || *video.ThumbnailImage != gen.Generated || video.Location == nil {
 		t.Fatalf("apply = %d %s", rec.Code, rec.Body)
 	}
 	check("ended", f.editRequest(http.MethodGet, id, "", f.owner),

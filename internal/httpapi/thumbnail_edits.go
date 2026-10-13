@@ -26,7 +26,7 @@ const thumbnailEditMaxRunBody = thumbnailEditMaxMaskBytes + domain.ThumbnailEdit
 // ThumbnailEdits はサムネイルの編集のセッションである。internal/app の *ThumbnailEdits が満たす。
 // 終わったセッションは domain.ErrThumbnailEditNotFound を返す。
 type ThumbnailEdits interface {
-	Start(ctx context.Context, video domain.Video, path string, positionMs int64) (domain.ThumbnailEdit, error)
+	Start(ctx context.Context, video domain.Video, path string, start domain.ThumbnailEditStart) (domain.ThumbnailEdit, error)
 	Get(ctx context.Context, id string) (domain.ThumbnailEdit, error)
 	Frame(ctx context.Context, id string) ([]byte, error)
 	Result(ctx context.Context, id string) ([]byte, error)
@@ -36,16 +36,15 @@ type ThumbnailEdits interface {
 	Discard(ctx context.Context, id string)
 }
 
-// StartThumbnailEdit は動画の positionMs の場面で編集を始める（POST /api/videos/{id}/thumbnail-edits）。
+// StartThumbnailEdit は動画のコマか今のサムネイルから編集を始める（POST /api/videos/{id}/thumbnail-edits。
+// specs/046-thumbnail-image-upload/contracts/screen-api.md）。
 func (s *server) StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
-	var body struct {
-		PositionMs *int64 `json:"positionMs"`
-	}
+	var body gen.StartThumbnailEditRequest
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if body.PositionMs == nil {
-		s.invalidRequest(w, "positionMs is required.")
+	if !body.Source.Valid() {
+		s.invalidRequest(w, "source must be frame or thumbnail.")
 		return
 	}
 	if s.thumbnailEdits == nil {
@@ -56,29 +55,49 @@ func (s *server) StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id g
 	if !ok {
 		return
 	}
-	// 所在を開く前に位置を確かめる（SetVideoThumbnailPosition と同じ）。
-	if err := domain.CheckThumbnailPosition(video, *body.PositionMs); err != nil {
-		s.thumbnailPositionError(w, video, err)
-		return
+	start := domain.ThumbnailEditStart{Source: domain.ThumbnailEditSource(body.Source)}
+	if start.Source == domain.ThumbnailEditFromFrame {
+		start.PositionMs = body.PositionMs
+		// 所在を開く前に位置を確かめる（SetVideoThumbnailPosition と同じ）。
+		if err := checkThumbnailEditPosition(video, body.PositionMs); err != nil {
+			s.thumbnailPositionError(w, video, err)
+			return
+		}
 	}
 	if s.files == nil {
 		s.internalError(w, "Media file access is not configured.", nil)
 		return
 	}
 	// 読む元は配信と同じ規則で決め、symlink を辿った先のパスを渡す（SetVideoThumbnailPosition）。
+	// 今のサムネイルから始める編集は、適用した画像があればファイルを読まないので、ファイルを
+	// 開けなくても空のパスで進め、コマが要るときだけ Start が domain.ErrMediaFileUnavailable を返す
+	// （specs/046-thumbnail-image-upload/ui-design.md: プレイヤーが出ない動画でも始められる）。
 	_, path, ok := s.resolveMediaFile(r, video)
-	if !ok {
+	if !ok && start.Source == domain.ThumbnailEditFromFrame {
 		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
 		return
 	}
-	edit, err := s.thumbnailEdits.Start(r.Context(), video, path, *body.PositionMs)
+	edit, err := s.thumbnailEdits.Start(r.Context(), video, path, start)
 	if err != nil {
+		if errors.Is(err, domain.ErrMediaFileUnavailable) {
+			s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+			return
+		}
 		if !s.thumbnailEditError(w, err) {
 			s.thumbnailPositionError(w, video, err)
 		}
 		return
 	}
 	s.writeThumbnailEdit(w, http.StatusCreated, edit)
+}
+
+// checkThumbnailEditPosition は frame から始める編集の位置 positionMs を確かめる。無い位置は
+// 尺の外と同じ誤りである。
+func checkThumbnailEditPosition(video domain.Video, positionMs *int64) error {
+	if positionMs == nil {
+		return domain.ErrThumbnailPositionOutOfRange
+	}
+	return domain.CheckThumbnailPosition(video, *positionMs)
 }
 
 // GetThumbnailEdit はセッションの今の状態を返す（GET /api/thumbnail-edits/{editId}）。
@@ -185,38 +204,58 @@ func (s *server) DiscardThumbnailEdit(w http.ResponseWriter, r *http.Request, ed
 // 参考画像は、それぞれの reason の 400 にする。
 func (s *server) readThumbnailEditRun(w http.ResponseWriter, r *http.Request) (domain.ThumbnailEditRunInput, bool) {
 	var input domain.ThumbnailEditRunInput
+	ok := s.readMultipart(w, r, thumbnailEditMaxRunBody, nil, func(name string, part io.Reader) bool {
+		return s.readThumbnailEditPart(w, name, part, &input)
+	})
+	return input, ok
+}
+
+// readMultipart は要求の本文を multipart/form-data として、全体で maxBody バイトまで読み、部分ごとに
+// その名前と中身で readPart を呼ぶ。Content-Type が違うか形が壊れているか、同じ部分を 2 度送れば
+// 400 を書いて false を返す。部分の区切りや見出しを読む間に本文全体が maxBody を越えたときは、
+// tooLarge があればそれが応答を書き、無ければ形の誤りと同じ 400 にする。readPart が false を返せば
+// （応答は readPart が書く）そこでやめる。サムネイルの編集の実行とアップロード（thumbnail_upload.go）が
+// 共有する。
+func (s *server) readMultipart(
+	w http.ResponseWriter, r *http.Request, maxBody int64, tooLarge func(),
+	readPart func(name string, part io.Reader) bool,
+) bool {
 	mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 	if err != nil || mediaType != "multipart/form-data" {
 		s.invalidRequest(w, "Content-Type must be multipart/form-data.")
-		return input, false
+		return false
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, thumbnailEditMaxRunBody)
+	r.Body = http.MaxBytesReader(w, r.Body, maxBody)
 	reader, err := r.MultipartReader()
 	if err != nil {
 		s.invalidRequest(w, "The request body is not valid multipart/form-data.")
-		return input, false
+		return false
 	}
 	seen := map[string]bool{}
 	for {
 		part, err := reader.NextPart()
 		if errors.Is(err, io.EOF) {
-			break
+			return true
+		}
+		var bodyTooLarge *http.MaxBytesError
+		if errors.As(err, &bodyTooLarge) && tooLarge != nil {
+			tooLarge()
+			return false
 		}
 		if err != nil {
 			s.invalidRequest(w, "The request body is not valid multipart/form-data.")
-			return input, false
+			return false
 		}
 		name := part.FormName()
 		if seen[name] {
 			s.invalidRequest(w, "Each part may be sent only once.")
-			return input, false
+			return false
 		}
 		seen[name] = true
-		if !s.readThumbnailEditPart(w, name, part, &input) {
-			return input, false
+		if !readPart(name, part) {
+			return false
 		}
 	}
-	return input, true
 }
 
 // readThumbnailEditPart は multipart の部分 part を名前 name に応じて input へ読む。
@@ -322,6 +361,7 @@ func thumbnailEditBody(edit domain.ThumbnailEdit) gen.ThumbnailEdit {
 	base := "/api/thumbnail-edits/" + edit.ID
 	body := gen.ThumbnailEdit{
 		Id: edit.ID, VideoId: edit.VideoID, State: gen.ThumbnailEditState(edit.State),
+		Source: gen.ThumbnailEditSource(edit.Source), PositionMs: edit.PositionMs,
 		FrameUrl: base + "/frame", FrameWidth: edit.FrameWidth, FrameHeight: edit.FrameHeight,
 	}
 	if edit.Elapsed != nil {

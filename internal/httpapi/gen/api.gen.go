@@ -290,6 +290,8 @@ const (
 	ErrorReasonThumbnailFrameUnavailable     ErrorReason = "thumbnail_frame_unavailable"
 	ErrorReasonThumbnailImageInvalid         ErrorReason = "thumbnail_image_invalid"
 	ErrorReasonThumbnailPositionOutOfRange   ErrorReason = "thumbnail_position_out_of_range"
+	ErrorReasonThumbnailUploadInvalid        ErrorReason = "thumbnail_upload_invalid"
+	ErrorReasonThumbnailUploadTooLarge       ErrorReason = "thumbnail_upload_too_large"
 	ErrorReasonTimedOut                      ErrorReason = "timed_out"
 	ErrorReasonTooFewVideos                  ErrorReason = "too_few_videos"
 	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
@@ -407,6 +409,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonThumbnailImageInvalid:
 		return true
 	case ErrorReasonThumbnailPositionOutOfRange:
+		return true
+	case ErrorReasonThumbnailUploadInvalid:
+		return true
+	case ErrorReasonThumbnailUploadTooLarge:
 		return true
 	case ErrorReasonTimedOut:
 		return true
@@ -665,28 +671,28 @@ func (e ScanState) Valid() bool {
 
 // Defines values for ScanActivityKind.
 const (
-	Fingerprint   ScanActivityKind = "fingerprint"
-	Preview       ScanActivityKind = "preview"
-	Probe         ScanActivityKind = "probe"
-	Registering   ScanActivityKind = "registering"
-	SeekThumbnail ScanActivityKind = "seekThumbnail"
-	Thumbnail     ScanActivityKind = "thumbnail"
+	ScanActivityKindFingerprint   ScanActivityKind = "fingerprint"
+	ScanActivityKindPreview       ScanActivityKind = "preview"
+	ScanActivityKindProbe         ScanActivityKind = "probe"
+	ScanActivityKindRegistering   ScanActivityKind = "registering"
+	ScanActivityKindSeekThumbnail ScanActivityKind = "seekThumbnail"
+	ScanActivityKindThumbnail     ScanActivityKind = "thumbnail"
 )
 
 // Valid indicates whether the value is a known member of the ScanActivityKind enum.
 func (e ScanActivityKind) Valid() bool {
 	switch e {
-	case Fingerprint:
+	case ScanActivityKindFingerprint:
 		return true
-	case Preview:
+	case ScanActivityKindPreview:
 		return true
-	case Probe:
+	case ScanActivityKindProbe:
 		return true
-	case Registering:
+	case ScanActivityKindRegistering:
 		return true
-	case SeekThumbnail:
+	case ScanActivityKindSeekThumbnail:
 		return true
-	case Thumbnail:
+	case ScanActivityKindThumbnail:
 		return true
 	default:
 		return false
@@ -948,6 +954,24 @@ func (e ThumbnailEditFailure) Valid() bool {
 	}
 }
 
+// Defines values for ThumbnailEditSource.
+const (
+	ThumbnailEditSourceFrame     ThumbnailEditSource = "frame"
+	ThumbnailEditSourceThumbnail ThumbnailEditSource = "thumbnail"
+)
+
+// Valid indicates whether the value is a known member of the ThumbnailEditSource enum.
+func (e ThumbnailEditSource) Valid() bool {
+	switch e {
+	case ThumbnailEditSourceFrame:
+		return true
+	case ThumbnailEditSourceThumbnail:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ThumbnailEditState.
 const (
 	ThumbnailEditStateCancelled ThumbnailEditState = "cancelled"
@@ -1038,6 +1062,24 @@ func (e VideoSeekThumbnailState) Valid() bool {
 	case VideoSeekThumbnailStateFailed:
 		return true
 	case VideoSeekThumbnailStatePending:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for VideoThumbnailImage.
+const (
+	Generated VideoThumbnailImage = "generated"
+	Uploaded  VideoThumbnailImage = "uploaded"
+)
+
+// Valid indicates whether the value is a known member of the VideoThumbnailImage enum.
+func (e VideoThumbnailImage) Valid() bool {
+	switch e {
+	case Generated:
+		return true
+	case Uploaded:
 		return true
 	default:
 		return false
@@ -1756,7 +1798,7 @@ type LibraryItem struct {
 	Kind  LibraryItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -1853,7 +1895,7 @@ type PlaylistItem struct {
 	Kind PlaylistItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -1938,7 +1980,7 @@ type PlaylistStep struct {
 	ItemId int64 `json:"itemId"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video Video `json:"video"`
@@ -2240,8 +2282,12 @@ type StartAutoTaggingRequestScope string
 
 // StartThumbnailEditRequest defines model for StartThumbnailEditRequest.
 type StartThumbnailEditRequest struct {
-	// PositionMs 編集するコマの位置（ミリ秒）。0 以上で尺未満
-	PositionMs int64 `json:"positionMs"`
+	// PositionMs `frame` のときだけ必須。編集するコマの位置（ミリ秒）。0 以上で尺未満。`thumbnail` では無視する
+	PositionMs *int64 `json:"positionMs,omitempty"`
+
+	// Source 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
+	// （specs/046-thumbnail-image-upload/research.md R-4）
+	Source ThumbnailEditSource `json:"source"`
 }
 
 // SubtitleTrack defines model for SubtitleTrack.
@@ -2389,11 +2435,19 @@ type ThumbnailEdit struct {
 	// Id セッションの識別子
 	Id string `json:"id"`
 
+	// PositionMs 画像がコマのとき、それを取った位置（ミリ秒。選んだ位置、指定した位置、自動の位置、先頭に
+	// 戻したときは 0）。保存した元の画像から始めたときは省く
+	PositionMs *int64 `json:"positionMs,omitempty"`
+
 	// Progress 提供元が報告したステップの進み具合。報告が無ければ省く
 	Progress *ThumbnailEditProgress `json:"progress,omitempty"`
 
 	// ResultUrl `succeeded` のときだけ。出力の画像（`GET /api/thumbnail-edits/{editId}/result`）
 	ResultUrl *string `json:"resultUrl,omitempty"`
+
+	// Source 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
+	// （specs/046-thumbnail-image-upload/research.md R-4）
+	Source ThumbnailEditSource `json:"source"`
 
 	// State 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
 	State   ThumbnailEditState `json:"state"`
@@ -2423,6 +2477,10 @@ type ThumbnailEditReadiness struct {
 	// Connection ComfyUI の接続先が保存されているか（テストに通ったかではない）
 	Connection bool `json:"connection"`
 }
+
+// ThumbnailEditSource 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
+// （specs/046-thumbnail-image-upload/research.md R-4）
+type ThumbnailEditSource string
 
 // ThumbnailEditState 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
 type ThumbnailEditState string
@@ -2506,6 +2564,12 @@ type UpdateTranscodingSettingsRequest struct {
 	VideoEncoder VideoEncoderChoice `json:"videoEncoder"`
 }
 
+// UploadThumbnailImageRequest defines model for UploadThumbnailImageRequest.
+type UploadThumbnailImageRequest struct {
+	// Image サムネイルにする画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）
+	Image openapi_types.File `json:"image"`
+}
+
 // VersionCandidate 「同じ動画かもしれない」2 本の組（specs/030-video-versions/contracts/screen-api.md §5）
 type VersionCandidate struct {
 	// Distance 2 本の映像の指紋のハミング距離の中央値（小さいほど似ている）
@@ -2531,7 +2595,7 @@ type VersionCandidatePage struct {
 }
 
 // Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
 // （specs/016-single-account-auth/contracts/guest-api.md §1、
 // specs/029-video-overrides/contracts/screen-api.md §0）。
 type Video struct {
@@ -2623,9 +2687,10 @@ type Video struct {
 	// （specs/017-folder-groups/contracts/folder-groups-api.md §4）
 	Tags []VideoTag `json:"tags"`
 
-	// ThumbnailGenerated 所有者が適用した画像が代表サムネイルのとき `true`。適用しているときだけ、所有者の応答にだけ入る
-	// （specs/045-comfyui-thumbnails/contracts/screen-api.md）
-	ThumbnailGenerated *bool `json:"thumbnailGenerated,omitempty"`
+	// ThumbnailImage 所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
+	// `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る
+	// （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-5）
+	ThumbnailImage *VideoThumbnailImage `json:"thumbnailImage,omitempty"`
 
 	// ThumbnailPositionMs 代表サムネイルにする場面の位置（ミリ秒）。設定されているときだけ、所有者の応答にだけ入る
 	ThumbnailPositionMs *int64              `json:"thumbnailPositionMs,omitempty"`
@@ -2670,6 +2735,11 @@ type VideoProbeState string
 // 無いときは、サーバーが作り直しを積んで pending として返す）、failed = 生成に
 // 失敗し、再試行の上限に達した
 type VideoSeekThumbnailState string
+
+// VideoThumbnailImage 所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
+// `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る
+// （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-5）
+type VideoThumbnailImage string
 
 // VideoThumbnailState defines model for Video.ThumbnailState.
 type VideoThumbnailState string
@@ -2911,7 +2981,7 @@ type WatchHistoryEntry struct {
 	Title string `json:"title"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailGenerated` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -3441,6 +3511,9 @@ type PutVideoProgressJSONRequestBody = ProgressUpdate
 // StartThumbnailEditJSONRequestBody defines body for StartThumbnailEdit for application/json ContentType.
 type StartThumbnailEditJSONRequestBody = StartThumbnailEditRequest
 
+// UploadThumbnailImageMultipartRequestBody defines body for UploadThumbnailImage for multipart/form-data ContentType.
+type UploadThumbnailImageMultipartRequestBody = UploadThumbnailImageRequest
+
 // SetVideoThumbnailPositionJSONRequestBody defines body for SetVideoThumbnailPosition for application/json ContentType.
 type SetVideoThumbnailPositionJSONRequestBody = ThumbnailPositionUpdate
 
@@ -3737,12 +3810,15 @@ type ServerInterface interface {
 	// GetVideoThumbnail サムネイル画像を返す
 	// (GET /api/videos/{id}/thumbnail)
 	GetVideoThumbnail(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoThumbnailParams)
-	// StartThumbnailEdit 動画の1コマのサムネイルの編集を始める
+	// StartThumbnailEdit 動画の1コマか今のサムネイルからサムネイルの編集を始める
 	// (POST /api/videos/{id}/thumbnail-edits)
 	StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id VideoId)
 	// RevertThumbnailImage 動画に適用したサムネイルの画像を外す
 	// (DELETE /api/videos/{id}/thumbnail-image)
 	RevertThumbnailImage(w http.ResponseWriter, r *http.Request, id VideoId)
+	// UploadThumbnailImage 手元の画像を動画のサムネイルにする
+	// (POST /api/videos/{id}/thumbnail-image)
+	UploadThumbnailImage(w http.ResponseWriter, r *http.Request, id VideoId)
 	// SetVideoThumbnailPosition 動画の代表サムネイルの位置を設定・解除する
 	// (PUT /api/videos/{id}/thumbnail-position)
 	SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -6759,6 +6835,32 @@ func (siw *ServerInterfaceWrapper) RevertThumbnailImage(w http.ResponseWriter, r
 	handler.ServeHTTP(w, r)
 }
 
+// UploadThumbnailImage operation middleware
+func (siw *ServerInterfaceWrapper) UploadThumbnailImage(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadThumbnailImage(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetVideoThumbnailPosition operation middleware
 func (siw *ServerInterfaceWrapper) SetVideoThumbnailPosition(w http.ResponseWriter, r *http.Request) {
 
@@ -7293,6 +7395,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/display-name", wrapper.SetVideoDisplayName)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/thumbnail-position", wrapper.SetVideoThumbnailPosition)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.RevertThumbnailImage)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.UploadThumbnailImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-edits", wrapper.StartThumbnailEdit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/versions", wrapper.ListVideoVersions)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/make-representative", wrapper.MakeRepresentativeVersion)

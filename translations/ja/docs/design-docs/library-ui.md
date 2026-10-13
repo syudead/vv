@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 2da32664642020d5a0093bf28cbeffc80693d69b336a9544a043f7e2ef7552d9
+sourceHash: d3483b38e568925f2f1a9cc856b8d07650f776873e3ca24252c55caee7c53fc1
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -300,10 +300,10 @@ flowchart LR
 
 | 行 | 内容 |
 | --- | --- |
-| 1 行目 | アイコン付きの長さ、サイズ、追加日、編集日、作成日。続いて、グループに表示できるバージョンが 2 つ以上あるときは `3 versions`、所有者にはサムネイルの位置が設定されているか、生成された画像がサムネイルであるときにサムネイルの項目。右端に操作 |
+| 1 行目 | アイコン付きの長さ、サイズ、追加日、編集日、作成日。続いて、グループに表示できるバージョンが 2 つ以上あるときは `3 versions`、所有者にはサムネイルの位置が設定されているか、生成またはアップロードされた画像がサムネイルであるときにサムネイルの項目。右端に操作 |
 | 2 行目 | 細い線で区切った解像度、コンテナ、コーデック。最も小さく、最も控えめ |
 
-操作は、お気に入り、`Add to playlist`、`Use current frame as thumbnail`、`Edit thumbnail with ComfyUI`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。ComfyUI の入口は、ページの上に開く `EditorDialog` であるサムネイルエディターを開き、ComfyUI の接続が保存されるまでは設定用のポップオーバーを伴って淡く表示される。その入口で生成された画像がサムネイルである間、サムネイルの項目はその画像を `Use the frame instead` とともに示す（[045 UI 設計](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)）。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
+操作は、お気に入り、`Add to playlist`、`Use current frame as thumbnail`、`Edit thumbnail with ComfyUI`、`Upload an image as thumbnail`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。ComfyUI の入口は、ページの上に開く `EditorDialog` であるサムネイルエディターを開き、ComfyUI の接続が保存されるまでは設定用のポップオーバーを伴って淡く表示される。その入口で生成された画像がサムネイルである間、サムネイルの項目はその画像を `Use the frame instead` とともに示す（[045 UI 設計](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)）。アップロードの入口は、プレイヤーが表示されないときも所有者のものであり、ComfyUI に依存しない。ブラウザーのファイル選択を PNG、JPEG、WebP 向けに開き、それ以外の種類や 64 MB を超えるファイルは何かを送る前に失敗の行で拒み、送っている間は回転表示になる。アップロードされた画像がサムネイルである間、サムネイルの項目はその画像を `ImageUp` アイコン、`Uploaded thumbnail` というラベル、同じ `Use the frame instead` とともに示す。サムネイルの操作は一度に 1 つだけ送る。キャプチャ、`×`、アップロードのいずれかが送っている間、ほかの操作は `aria-disabled` になる（[046 UI 設計](../../specs/046-thumbnail-image-upload/ui-design.md#video-page-upload-entry)）。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
 
 所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `Toggle` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。`Add to playlist` は同じ条件でその後に続く。
 
@@ -315,7 +315,7 @@ flowchart LR
   put -->|エラー| line[下に 1 行の失敗表示]
 ```
 
-キャッシュした一覧を更新するので、戻ったときにはライブラリのカードが変わっている。失敗の行は、開く操作やキャプチャの失敗と同じく 1 行目の情報の行のすぐ下に置き、トーストは出さない。
+キャッシュした一覧を更新するので、戻ったときにはライブラリのカードが変わっている。失敗の行は、開く操作、キャプチャ、アップロードの失敗と同じく 1 行目の情報の行のすぐ下に置き、トーストは出さない。
 
 ### プレーヤーの状態 {#player-states}
 

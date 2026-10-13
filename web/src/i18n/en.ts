@@ -244,8 +244,11 @@ const errorReasons = {
   thumbnail_edit_mask_invalid: "The painting doesn't match the frame",
   thumbnail_edit_reference_invalid: "The reference image can't be read",
   thumbnail_edit_no_result: "There is no generated image yet",
-  thumbnail_image_invalid: "The generated image can't be read",
-  content_changed: "The video changed while you were editing",
+  thumbnail_image_invalid: "The image can't be read.",
+  thumbnail_upload_too_large: "The image is too large: up to 64 MB and 120 megapixels.",
+  thumbnail_upload_invalid:
+    "The file isn't a PNG, JPEG or still WebP, or it can't be read.",
+  content_changed: "The video changed in the meantime.",
   unreachable: "ComfyUI can't be reached",
   unauthorized: "Comfy Cloud rejected the API key",
   insufficient_credits: "Comfy Cloud has no credits left",
@@ -1342,6 +1345,12 @@ export const en = {
       startFailed: (reason: string) => `Couldn't start editing the thumbnail: ${reason}`,
       title: "Edit thumbnail",
       frameAt: (time: string) => `Frame at ${time}`,
+      // 編集を何から始めるかのメニューと、今のサムネイルから始めたときの編集画面の文言
+      // （specs/046-thumbnail-image-upload/ui-design.md「Words」）。
+      frameOnScreen: "Frame on screen",
+      currentThumbnail: "Current thumbnail",
+      thumbnailFrameAt: (time: string) => `Current thumbnail, frame at ${time}`,
+      thumbnailSavedImage: "Current thumbnail, saved image",
       close: "Close",
       tools: "Painting tools",
       paint: "Paint",
@@ -1352,6 +1361,8 @@ export const en = {
       paintedArea: "Painted area",
       paintingHint:
         "Paint over what to change. Leave it unpainted to change the whole frame.",
+      paintingHintImage:
+        "Paint over what to change. Leave it unpainted to change the whole image.",
       instructions: "Instructions",
       instructionsPlaceholder: "For example: remove the caption at the bottom",
       instructionsHint: "Optional when you paint: the painted area is then cleaned up.",
@@ -1377,6 +1388,7 @@ export const en = {
       cancelled: "Cancelled. The thumbnail is unchanged.",
       runFailed: (reason: string) => `Couldn't generate the image: ${reason}`,
       frame: "Frame",
+      thumbnail: "Thumbnail",
       generated: "Generated",
       cropNote: "Cropped to the video's shape, as the thumbnail will be.",
       apply: "Use as thumbnail",
@@ -1391,6 +1403,15 @@ export const en = {
       keepEditing: "Keep editing",
       generatedThumbnail: "Generated thumbnail",
       useFrameInstead: "Use the frame instead",
+    },
+    // 手元の画像をサムネイルにする入口とアップロードした画像の項目
+    // （specs/046-thumbnail-image-upload/ui-design.md「Words」の Video page）。
+    thumbnailUpload: {
+      entry: "Upload an image as thumbnail",
+      refusedType: "Choose a PNG, JPEG or WebP image.",
+      refusedSize: "Choose an image up to 64 MB.",
+      failed: (reason: string) => `Couldn't upload the image: ${reason}`,
+      uploadedThumbnail: "Uploaded thumbnail",
     },
     versions: {
       count: (count: number) =>

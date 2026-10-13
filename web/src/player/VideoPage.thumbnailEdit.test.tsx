@@ -17,7 +17,9 @@ import type { PlayerStatus } from "./VideoPlayer";
 import VideoPage from "./VideoPage";
 
 // 動画ページから ComfyUI でサムネイルを編集する流れ（specs/045-comfyui-thumbnails/ui-design.md
-// 「Video page: edit entry」「Thumbnail editor」「Generated thumbnail item」）。
+// 「Video page: edit entry」「Thumbnail editor」「Generated thumbnail item」、
+// specs/046-thumbnail-image-upload/ui-design.md「Video page: edit entry with the source choice」
+// 「Thumbnail editor from the current thumbnail」）。
 
 interface PlayerProps {
   onControls: (controls: PlayerControls | null) => void;
@@ -78,6 +80,8 @@ const session: ThumbnailEdit = {
   id: "e1",
   videoId: 7,
   state: "ready",
+  source: "frame",
+  positionMs: 83_456,
   frameUrl: "/api/thumbnail-edits/e1/frame",
   frameWidth: 1920,
   frameHeight: 1080,
@@ -99,6 +103,12 @@ const server = {
   apply: vi.fn<() => Response>(),
   cancel: vi.fn<() => Response>(),
   revert: vi.fn<() => Response>(),
+  /** POST /api/videos/7/thumbnail-edits の答え。 */
+  start: vi.fn<() => Response>(),
+  /** POST /api/videos/7/thumbnail-edits で送った本文。 */
+  starts: [] as unknown[],
+  /** GET /api/videos/7 の答え。 */
+  video,
   requests: [] as string[],
 };
 
@@ -154,6 +164,18 @@ function entry() {
   return screen.getByRole("button", { name: "Edit thumbnail with ComfyUI" });
 }
 
+/** pressEntry は入口を押す（Radix のメニューの引き金は click ではなくキーで開く）。 */
+function pressEntry() {
+  fireEvent.keyDown(entry(), { key: "Enter" });
+}
+
+/** openMenu は入口を押して元の選択のメニューを開く。 */
+async function openMenu() {
+  await waitFor(() => expect(entry().getAttribute("aria-disabled")).toBeNull());
+  pressEntry();
+  return screen.findByRole("menu");
+}
+
 async function openPage(audience: Audience = "owner") {
   const view = renderPage(audience);
   await screen.findByRole("heading", { level: 1 });
@@ -162,10 +184,10 @@ async function openPage(audience: Audience = "owner") {
   return view;
 }
 
-async function openEditor() {
+async function openEditor(item: string | RegExp = /^Frame at /) {
   await openPage();
-  await waitFor(() => expect(entry().getAttribute("aria-disabled")).toBeNull());
-  fireEvent.click(entry());
+  const menu = await openMenu();
+  fireEvent.click(within(menu).getByRole("menuitem", { name: item }));
   return screen.findByRole("dialog", { name: "Edit thumbnail" });
 }
 
@@ -190,6 +212,10 @@ describe("VideoPage thumbnail edit", () => {
     server.apply.mockReset();
     server.cancel.mockReset();
     server.revert.mockReset();
+    server.start.mockReset();
+    server.start.mockImplementation(() => json(session, 201));
+    server.starts = [];
+    server.video = video;
     server.requests = [];
     installFakeEventSource();
     // 前の検査で描いた見る人を忘れる。
@@ -204,8 +230,10 @@ describe("VideoPage thumbnail edit", () => {
       if (url === "/api/auth/session") return Promise.resolve(json({ state: "owner" }));
       if (url === "/api/thumbnail-edits/readiness")
         return Promise.resolve(json({ connection: server.ready }));
-      if (url === "/api/videos/7/thumbnail-edits" && method === "POST")
-        return Promise.resolve(json(session, 201));
+      if (url === "/api/videos/7/thumbnail-edits" && method === "POST") {
+        server.starts.push(JSON.parse(String(init?.body)));
+        return Promise.resolve(server.start());
+      }
       if (url === "/api/thumbnail-edits/e1" && method === "GET") {
         const next = server.reads.length > 1 ? server.reads.shift() : server.reads[0];
         return Promise.resolve(json(next));
@@ -219,7 +247,7 @@ describe("VideoPage thumbnail edit", () => {
         return Promise.resolve(server.cancel());
       if (url === "/api/videos/7/thumbnail-image" && method === "DELETE")
         return Promise.resolve(server.revert());
-      if (url === "/api/videos/7") return Promise.resolve(json(video));
+      if (url === "/api/videos/7") return Promise.resolve(json(server.video));
       if (url === "/api/videos/7/related") return Promise.resolve(json({ items: [] }));
       if (url === "/api/videos/7/subtitles")
         return Promise.resolve(json({ subtitles: [] }));
@@ -244,7 +272,7 @@ describe("VideoPage thumbnail edit", () => {
     expect(entry().getAttribute("aria-disabled")).toBe("true");
     expect(entry().className).toContain("opacity-50");
 
-    fireEvent.click(entry());
+    pressEntry();
     const link = await screen.findByRole("link", { name: "Open Settings" });
     expect(link.getAttribute("href")).toBe("/settings#comfyui");
     expect(screen.getByText("Set up ComfyUI first")).toBeDefined();
@@ -252,6 +280,7 @@ describe("VideoPage thumbnail edit", () => {
       server.requests.filter((r) => r === "GET /api/thumbnail-edits/readiness"),
     ).toHaveLength(2);
     expect(server.requests).not.toContain("POST /api/videos/7/thumbnail-edits");
+    expect(screen.queryByRole("menu")).toBeNull();
   });
 
   it("最初の readiness の答えが押した後の読み直しより遅れて届いても、入口を薄くし直さない", async () => {
@@ -269,13 +298,139 @@ describe("VideoPage thumbnail edit", () => {
     await waitFor(() =>
       expect(server.requests).toContain("GET /api/thumbnail-edits/readiness"),
     );
-    fireEvent.click(entry());
+    pressEntry();
+    const menu = await screen.findByRole("menu");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Frame at 1:23" }));
     const dialog = await screen.findByRole("dialog", { name: "Edit thumbnail" });
     await act(async () => answerFirst(json({ connection: false })));
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(entry().getAttribute("aria-disabled")).toBeNull();
+  });
+
+  it("コマの項目はメニューを開いた時点の位置を送り、今のサムネイルの項目は位置なしで送る", async () => {
+    await openPage();
+    let menu = await openMenu();
+    const frameItem = within(menu).getByRole("menuitem", { name: "Frame at 1:23" });
+    const thumbnailItem = within(menu).getByRole("menuitem", {
+      name: "Current thumbnail",
+    });
+    expect(frameItem.getAttribute("aria-disabled")).toBeNull();
+    expect(thumbnailItem.querySelector("img")?.getAttribute("src")).toBe(
+      video.thumbnailUrl,
+    );
+    expect(thumbnailItem.querySelector("img")?.getAttribute("alt")).toBe("");
+    // メニューを開いている間に再生が進んでも、項目が名指した位置を送る。
+    vi.mocked(playerMock.controls!.positionMs).mockReturnValue(99_000);
+    fireEvent.click(frameItem);
+    let dialog = await screen.findByRole("dialog", { name: "Edit thumbnail" });
+    expect(server.starts).toEqual([{ source: "frame", positionMs: 83_456 }]);
+    expect(playerMock.controls?.pause).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    menu = await openMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Current thumbnail" }));
+    dialog = await screen.findByRole("dialog", { name: "Edit thumbnail" });
+    expect(server.starts[1]).toEqual({ source: "thumbnail" });
+    expect(playerMock.controls?.pause).toHaveBeenCalledTimes(2);
+  });
+
+  it("今のサムネイルから始めると、編集画面の詳細・ヒント・比較の名前が元を名指す", async () => {
+    const saved: ThumbnailEdit = {
+      ...session,
+      source: "thumbnail",
+      positionMs: undefined,
+    };
+    server.start.mockImplementation(() => json(saved, 201));
+    server.reads = [saved];
+    // ページのサムネイルの種類は文言に使わない。
+    server.video = { ...video, thumbnailImage: "generated" };
+    const dialog = await openEditor("Current thumbnail");
+    expect(within(dialog).getByText("Current thumbnail, saved image")).toBeDefined();
+    expect(
+      within(dialog).getByText(
+        "Paint over what to change. Leave it unpainted to change the whole image.",
+      ),
+    ).toBeDefined();
+    expect(within(dialog).queryByText(/^Frame at/)).toBeNull();
+
+    server.run.mockReturnValueOnce(
+      json({ ...saved, state: "queued", elapsedMs: 0 }, 202),
+    );
+    server.reads = [
+      {
+        ...saved,
+        state: "succeeded",
+        elapsedMs: 2_000,
+        resultUrl: "/api/thumbnail-edits/e1/result",
+      },
+    ];
+    fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+    await waitFor(() =>
+      expect(runArea(dialog).textContent).toContain("Waiting in the queue"),
+    );
+    await tick();
+    const first = await within(dialog).findByRole("img", { name: "Thumbnail" });
+    expect(first.getAttribute("src")).toBe("/api/thumbnail-edits/e1/frame");
+    expect(within(dialog).getByText("Thumbnail")).toBeDefined();
+    expect(within(dialog).queryByRole("img", { name: "Frame" })).toBeNull();
+  });
+
+  it("今のサムネイルがコマから作られていれば、詳細はその位置を名指す", async () => {
+    const framed: ThumbnailEdit = { ...session, source: "thumbnail", positionMs: 61_000 };
+    server.start.mockImplementation(() => json(framed, 201));
+    server.reads = [framed];
+    const dialog = await openEditor("Current thumbnail");
+    expect(within(dialog).getByText("Current thumbnail, frame at 1:01")).toBeDefined();
+  });
+
+  it("画面にコマが無くても入口は薄くならず、コマの項目だけ押せない", async () => {
+    renderPage();
+    await screen.findByTestId("video-player");
+    // 位置が確定していない（キャプチャのボタンは押せない）。
+    await waitFor(() =>
+      expect(server.requests).toContain("GET /api/thumbnail-edits/readiness"),
+    );
+    await waitFor(() => expect(entry().getAttribute("aria-disabled")).toBeNull());
+    expect(entry().className.split(" ")).not.toContain("opacity-50");
+    const menu = await openMenu();
+    const frameItem = within(menu).getByRole("menuitem", { name: "Frame on screen" });
+    expect(frameItem.getAttribute("aria-disabled")).toBe("true");
+    fireEvent.click(frameItem);
+    expect(server.starts).toEqual([]);
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Current thumbnail" }));
+    await screen.findByRole("dialog", { name: "Edit thumbnail" });
+    expect(server.starts).toEqual([{ source: "thumbnail" }]);
+  });
+
+  it("プレイヤーが出ない動画にも入口を置き、今のサムネイルから始められる", async () => {
+    server.video = { ...video, probeState: "failed" };
+    renderPage();
+    await screen.findByRole("heading", { level: 1 });
+    expect(screen.queryByTestId("video-player")).toBeNull();
+    const menu = await openMenu();
+    expect(
+      within(menu)
+        .getByRole("menuitem", { name: "Frame on screen" })
+        .getAttribute("aria-disabled"),
+    ).toBe("true");
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Current thumbnail" }));
+    await screen.findByRole("dialog", { name: "Edit thumbnail" });
+    expect(server.starts).toEqual([{ source: "thumbnail" }]);
+  });
+
+  it("始められなければ、情報の行の失敗の 1 行に理由を出す", async () => {
+    server.start.mockImplementation(() =>
+      json({ code: "internal", message: "temporarily unavailable" }, 500),
+    );
+    await openPage();
+    const menu = await openMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Current thumbnail" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toContain("Couldn't start editing the thumbnail:");
+    expect(screen.queryByRole("dialog")).toBeNull();
   });
 
   it("押すと再生を止めて今の位置で始め、実行の状態を経過時間・進み具合とともに見せ、結果をコマと並べる", async () => {
@@ -346,7 +501,7 @@ describe("VideoPage thumbnail edit", () => {
     server.apply.mockReturnValueOnce(
       json({
         ...video,
-        thumbnailGenerated: true,
+        thumbnailImage: "generated",
         thumbnailUrl: "/api/videos/7/thumbnail?v=g2",
       }),
     );
@@ -463,8 +618,8 @@ describe("VideoPage thumbnail edit", () => {
     const view = renderPage();
     await screen.findByTestId("video-player");
     positioned();
-    await waitFor(() => expect(entry().getAttribute("aria-disabled")).toBeNull());
-    fireEvent.click(entry());
+    const menu = await openMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "Frame at 1:23" }));
     await screen.findByRole("dialog", { name: "Edit thumbnail" });
 
     view.unmount();

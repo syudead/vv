@@ -175,7 +175,7 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.FileTitle = nil
 	video.DisplayName = nil
 	video.ThumbnailPositionMs = nil
-	video.ThumbnailGenerated = nil
+	video.ThumbnailImage = nil
 	video.Favorite = nil
 	return video
 }
@@ -492,10 +492,10 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		position := *video.ThumbnailPositionMs
 		out.ThumbnailPositionMs = &position
 	}
-	// 適用した画像の有無も所有者の応答にだけ入る（specs/045-comfyui-thumbnails/contracts/screen-api.md）。
-	if video.ThumbnailImageRevision != 0 {
-		generated := true
-		out.ThumbnailGenerated = &generated
+	// 適用した画像の出どころも所有者の応答にだけ入る（specs/046-thumbnail-image-upload/contracts/screen-api.md）。
+	if video.ThumbnailImageRevision != 0 && video.ThumbnailImageOrigin != "" {
+		origin := gen.VideoThumbnailImage(video.ThumbnailImageOrigin)
+		out.ThumbnailImage = &origin
 	}
 	if video.DurationMs != nil {
 		out.DurationMs = video.DurationMs

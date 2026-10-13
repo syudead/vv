@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/thumbnail-editing.md
-sourceHash: fa66ad339a7b568d6330875c90784b8d3a635774b09ef7d887857b2757127554
+sourceHash: acdc8796002cd8168faba302949e213c13a392bb1f46bac156517a96e30be09d
 ---
 
 # サムネイル編集のセッション {#thumbnail-editing-sessions}
 
-ComfyUI による動画フレームの編集は、[`app.ThumbnailEdits`](../../internal/app/thumbnail_edits.go) にある動画ごとのメモリ上のセッションで、`/api/thumbnail-edits` のルートが動画ページに提供する ([契約](../../specs/045-comfyui-thumbnails/contracts/screen-api.md))。
+ComfyUI による動画フレームまたは現在のサムネイルの編集は、[`app.ThumbnailEdits`](../../internal/app/thumbnail_edits.go) にある動画ごとのメモリ上のセッションで、`/api/thumbnail-edits` のルートが動画ページに提供する ([契約](../../specs/045-comfyui-thumbnails/contracts/screen-api.md))。
 
 図は、セッションがやり取りする相手を示す。
 
@@ -14,6 +14,7 @@ flowchart LR
   page[動画ページ] -->|開始、実行、ポーリング、適用| api[画面 API]
   api --> edits[app.ThumbnailEdits]
   edits -->|フレーム| media[internal/media]
+  edits -->|適用済みの画像| images[(thumbnail_images)]
   edits -->|接続のスナップショット| settings[(設定)]
   edits -->|ImageEditor ポート| comfy[internal/comfyui]
   edits -->|適用| ingest[app.Ingest]
@@ -56,6 +57,18 @@ stateDiagram-v2
 | 永続キューのジョブの種類 | 再試行と `failed` の記録がページより長く残り、取り込みの問題に表示される |
 | `/api/events` による進捗 | このストリームは確定したドメインイベントをすべての閲覧者に届けるが、実行の状態は 1 つのページのものだ |
 
+## 編集の元 {#edit-source}
+
+編集の開始時には `source` を指定する。`frame` はプレーヤーの `positionMs` にあるフレーム、`thumbnail` は現在のサムネイルだ ([R-4](../../specs/046-thumbnail-image-upload/research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame))。`positionMs` のない `frame` は、長さの外の位置と同じく `400 thumbnail_position_out_of_range` を返す。`thumbnail` では、セッションの画像は次のうち最初に存在するものだ。
+
+| 場合 | 画像 | `positionMs` |
+| --- | --- | --- |
+| 画像が適用されている | 行の `source` を PNG にデコードしたもの。`source` のない行では `image` | なし |
+| 位置が記録されている | その位置のフレーム | その位置 |
+| どちらでもない | サムネイルのジョブの自動の位置にあるフレーム。その位置でフレームが得られないときは最初のフレーム | 自動の位置、または `0` |
+
+自動の位置と、最初のフレームへの代替は `media.AutoThumbnailPositions` から来る。これはサムネイルのジョブと編集の両方が使う唯一の規則なので、所有者が編集するフレームはサムネイルが示すフレームと同じだ。デコードできない保存済みの画像は、切り出せないフレームと同じく `409 thumbnail_frame_unavailable` を返す。`frameWidth` と `frameHeight` は元が何であれセッションの画像を表し、マスクはその大きさに対して検査する。セッションは開始時から画像をメモリに保持するので、後のアップロード、位置の変更、元に戻す操作は、進行中の編集もその実行が送るものも変えない。適用済みの画像と記録された位置は、リクエストが先に読んだ動画からではなく 1 つのクエリでまとめて読むので、その間に確定したアップロード、位置の変更、元に戻す操作に対しては、その前か後のサムネイルが得られ、両者が混ざることはない。
+
 ## 実行は開始時の接続を使う {#a-run-uses-the-connection-it-started-with}
 
 実行の開始時に保存済みの ComfyUI 接続を読んで実行の中に保持するので、その間に所有者が接続を変更または削除しても、読み取り、取り消し、出力の取得はそのプロバイダに送られる。接続の削除後に開始した実行は `409 thumbnail_edit_not_ready` を返す。セッションの新しい実行は、送信の前に進行中の実行を取り消す。
@@ -67,3 +80,46 @@ stateDiagram-v2
 ## 適用は生成のロックを通る {#applying-goes-through-the-generation-lock}
 
 適用は結果を `Ingest.ApplyThumbnailImage` に渡し、これが内容のサムネイル生成のロックの中で結果を収まる大きさに合わせて公開するので、適用、元に戻す操作、位置の上書きのうち最後に確定したものが勝つ ([R-10](../../specs/045-comfyui-thumbnails/research.md#r-10-apply-revert-and-the-position-override-are-ordered-by-the-generation-lock))。セッションは、適用が成功した後と、動画がなくなったか別の内容を持つときの `content_changed` の後に終了し、デコードできない結果ではセッションが残るので、所有者は再実行できる。
+
+適用は、`thumbnail_state` を `done` にするトランザクションの中で `thumbnail_images` の行を 1 つ書く ([データモデル](../../specs/046-thumbnail-image-upload/data-model.md))。
+
+| 列 | 内容 |
+| --- | --- |
+| `image` | 動画の縦横比に合わせた 640 px の JPEG。サムネイルのファイルはここから公開する |
+| `source` | 同じ切り抜きを長辺 2048 px 以下にした JPEG で、現在のサムネイルから始める編集に使う ([R-3](../../specs/046-thumbnail-image-upload/research.md#r-3-the-row-keeps-the-applied-images-source-at-up-to-2048-px-and-its-origin))。マイグレーション `00041` より前に書かれた行では null |
+| `origin` | 編集の結果なら `generated`、アップロードした画像なら `uploaded`。所有者の `Video` はこれを `thumbnailImage` として返す ([R-5](../../specs/046-thumbnail-image-upload/research.md#r-5-thumbnailimage-names-the-applied-images-origin-in-place-of-thumbnailgenerated)) |
+
+位置の変更と元に戻す操作は行全体を削除する。サムネイルのジョブは `image` を公開し直し、`source` は決して読まない。
+
+## アップロードした画像 {#uploaded-images}
+
+`POST /api/videos/{id}/thumbnail-image` は、所有者の端末にある画像を、同じ `Ingest.ApplyThumbnailImage` を通して origin `uploaded` でサムネイルにする ([R-1](../../specs/046-thumbnail-image-upload/research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image)、[契約](../../specs/046-thumbnail-image-upload/contracts/screen-api.md#post-apivideosidthumbnail-image))。ComfyUI 接続を必要とせず、セッションも持たない。ルートは本文より前に動画の内容の鍵を読み、`image` パートをメモリに保持し、収まる大きさに合わせた画像を公開するまでディスクに何も書かないので、本文が届く前に切れたリクエストは何も残さない。本文が届いた後は、検査と適用をクライアントから切り離した 5 分を上限とするコンテキストの下で実行するので、ページが離れても、送信し終えたアップロードは中断されない。この 5 分は生成のロックを待つ時間の上限でもある。待っている間にコンテキストが終わった適用は自分の順番を手放して何も書かず、ロックは他のものに対する順序を保つ。
+
+下のゲートが制限するのはデコードで、メモリに保持する本文ではない。本文を読む前に、ルートは上限 65 MiB の本文 4 つ分にあたるプロセス全体の予算から本文のサイズを取り、応答するまでそれを保持する。サイズは、`Content-Length` が上限以内ならその値、そうでなければ上限だ。予算を使い切っていたリクエストは、本文を読む前に、クライアントのコンテキストの下でそこで待つ。
+
+検査は、編集の画像の検査をピクセルの上限を大きくして使うものだ ([R-2](../../specs/046-thumbnail-image-upload/research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time))。
+
+| 上限 | アップロード | 編集の参照画像 |
+| --- | --- | --- |
+| バイト数 | パートは 64 MiB。本文はマルチパートの枠のために 1 MiB 大きくてよい | 20 MiB |
+| ヘッダーのピクセル数 | 1 億 2000 万。`limit` を付けて `thumbnail_upload_too_large` として拒否する | 8192 × 8192。読めないものとして拒否する |
+| 形式 | 最後までデコードする PNG、JPEG、静止画の WebP。アニメーション WebP は `VP8X` ヘッダーで拒否する | 同じ |
+
+1 億 2000 万ピクセルの PNG はデコードすると 480 MB になるので、プロセス全体で 1 つのアップロードのゲートが、元の画像をデコードする各段階に一度に 1 つのアップロードだけを通す。図は、アップロードがゲートを保持する時点を示す。
+
+```mermaid
+sequenceDiagram
+  participant U as アップロード
+  participant G as アップロードのゲート
+  participant L as 生成のロック
+  U->>G: 取得
+  U->>U: 検査
+  U->>G: 解放
+  U->>L: 動画の内容をロック
+  U->>G: 取得
+  U->>U: 640 px と 2048 px に合わせる
+  U->>G: 解放
+  U->>L: 公開、記録、ロック解除
+```
+
+自分の動画のロックを待つアップロードはゲートを保持しないので、他の動画へのアップロードを止めない。生成した画像の適用はゲートを取らない。その入力はプロバイダの出力で、編集の検査ですでに制限されている。ロックはアップロードを位置の変更や生成した画像の適用と順序付け、最後に確定したものが残る。
