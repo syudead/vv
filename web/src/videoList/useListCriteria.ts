@@ -22,7 +22,8 @@ export interface ListCriteriaState {
    * apply は条件を URL に書く。視聴状態などの個別の操作は push、入力の続きは replace。
    *
    * `extra` に `extraParams` のパラメータの名前と値を渡すと、この呼び出しでその値を
-   * 差し替える。渡さなかったパラメータは、今の URL にある値をそのまま残す。
+   * 差し替える。渡さなかったパラメータは、今の URL にある値（まだ描画していない直前の
+   * apply があれば、それが書いた値）をそのまま残す。
    */
   apply: (next: ListCriteria, mode: HistoryMode, extra?: ExtraValues) => void;
 }
@@ -93,10 +94,15 @@ export function useListCriteria(
     (next: ListCriteria, mode: HistoryMode, extraValues?: ExtraValues) => {
       const { location: current } = latest.current;
       const params = serializeListCriteria(next);
+      const written: Record<string, readonly string[]> = {};
       for (const name of extraParams) {
         const values = extraValues?.[name] ?? latest.current.extra[name] ?? [];
+        written[name] = values;
         for (const value of values) params.append(name, value);
       }
+      // 次の描画より前にもう一度書く呼び出し（人物と団体の名前の読みが同時に `404`
+      // など）が、今書いた値の上に積むよう覚える。描画すると URL の値で上書きされる。
+      latest.current = { ...latest.current, extra: written };
       const search = params.toString();
       navigate(
         { pathname: current.pathname, search: search === "" ? "" : `?${search}` },

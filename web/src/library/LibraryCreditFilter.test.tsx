@@ -239,6 +239,41 @@ describe("人物・団体での絞り込み", () => {
     });
   });
 
+  it("人物と団体の名前の読みが同時に 404 なら、両方のパラメータが外れる", async () => {
+    const pending: (() => void)[] = [];
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      const path = new URL(String(input), "http://localhost").pathname;
+      if (path === "/api/people/9" || path === "/api/organizations/8") {
+        // 両方の応答をそろえて、同じ描画の前に返す。
+        return new Promise<Response>((resolve) => {
+          pending.push(() => {
+            void base?.(input, init)?.then(resolve);
+          });
+        });
+      }
+      return base?.(input, init) ?? Promise.reject(new Error("no mock"));
+    });
+    renderAt("/?tag=2&person=9&organization=8");
+
+    await waitFor(() => expect(pending).toHaveLength(2));
+    await act(async () => {
+      for (const release of pending) release();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(location()).toBe("?tag=2"));
+    expect(screen.queryByRole("button", { name: "Remove the person filter" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Remove the organization filter" }),
+    ).toBeNull();
+    await waitFor(() => {
+      const last = libraryRequests().at(-1);
+      expect(last?.searchParams.has("person")).toBe(false);
+      expect(last?.searchParams.has("organization")).toBe(false);
+    });
+  });
+
   it("名前が届くまではチップに Skeleton と種類ごとの読み上げ名を出す", async () => {
     let resolvePerson: ((response: Response) => void) | undefined;
     const base = fetchMock.getMockImplementation();
