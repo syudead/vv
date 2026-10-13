@@ -179,7 +179,7 @@ function Description({ text }: { text: string }) {
       <p
         ref={ref}
         className={cn(
-          "max-w-prose text-sm whitespace-pre-line text-foreground",
+          "max-w-prose text-sm wrap-anywhere whitespace-pre-line text-foreground",
           !open && "line-clamp-3",
         )}
       >
