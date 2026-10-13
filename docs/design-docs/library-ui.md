@@ -659,11 +659,13 @@ and the page never filters the pages it has loaded
 URL).
 
 The list routes (`GET /api/videos`, `GET /api/library` and
-`GET /api/library/ids`) take these conditions, each ANDed with the others:
+`GET /api/library/ids`) take these conditions, each ANDed with the others.
+`GET /api/library/ids` is owner-only and answers a guest `401`, so the Guest
+column applies to `GET /api/videos` and `GET /api/library`:
 
 | Parameter | Keeps | Guest |
 | --- | --- | --- |
-| `query` | Videos whose title or relative path matches the search expression | Allowed; tag names are not matched |
+| `query` | Videos the search expression matches (see below) | Allowed; matches only the title and relative path |
 | `tag` | Videos that carry every listed tag | `400 guest_filter_not_allowed` |
 | `watch` | Videos in that watch state (`all` keeps every video) | Only `all` |
 | `playable` | Videos that play in the browser | Allowed |
@@ -676,6 +678,17 @@ group matched only in part lists its matched members as video items. A
 `person` or `organization` id with no entity gives an empty list, and a value
 that is not a positive integer is `400 invalid_request`
 ([047 screen-api.md](../../specs/047-video-work-info/contracts/screen-api.md#list-parameters-person-and-organization)).
+
+For the owner, a search term matches a video when it appears in the title or
+relative path of one of its locations, in a name or synonym of one of its
+tags, in its work code, or in a name or alias of a person or organization
+linked to its work information. Matching uses the folded form
+(`domain.FoldForMatch`), so width, letter case and hiragana or katakana do not
+matter. The description, dates, URLs and external IDs are not matched. A guest
+search matches only the title and relative path, so names a guest cannot see
+do not decide which public videos are returned
+([`search.go`](../../internal/store/search.go),
+[047 data-model.md, Search](../../specs/047-video-work-info/data-model.md#search)).
 
 Only the server knows which videos and groups belong to a folder and match the
 filters, so a page that filtered locally would show a different set from
