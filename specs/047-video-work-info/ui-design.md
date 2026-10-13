@@ -6,7 +6,8 @@
 [research.md R-4](research.md#r-4-a-video-write-references-people-and-organizations-by-id-creation-has-its-own-route) ·
 [R-5](research.md#r-5-one-put-that-replaces-the-whole-work-information-object) ·
 [R-7](research.md#r-7-person-and-organization-list-parameters-by-id-matching-every-role) ·
-[R-8](research.md#r-8-entity-edits-are-a-patch-of-optional-fields-a-merge-that-moves-links-and-a-delete-that-detaches)
+[R-8](research.md#r-8-entity-edits-are-a-patch-of-optional-fields-a-merge-that-moves-links-and-a-delete-that-detaches) ·
+[R-14](research.md#r-14-the-editor-saves-the-display-name-and-the-work-information-with-one-put-apivideosiddetails-in-one-transaction)
 
 Sources that already decide things, linked rather than repeated here:
 
@@ -14,24 +15,27 @@ Sources that already decide things, linked rather than repeated here:
 | --- | --- |
 | Tokens, closed scales, the two densities | [design-system.md, Foundations](../../docs/design-docs/design-system.md#foundations); the values in `@theme` of [`web/src/ui/tokens.css`](../../web/src/ui/tokens.css), named here and never copied |
 | `Button`, `Input`, `Textarea`, `Field`, `Badge`, `Toggle`, `Combobox`, `DropdownMenu`, `Tooltip`, `Sidebar`, `TagCommand` | [components.md](../../web/registry/rules/components.md) |
-| `DetailPage`, `AdminTablePage`, `FormDialog`, `ConfirmDialog`, `DataTable`, the state blocks | [patterns.md](../../web/registry/rules/patterns.md) |
-| The video page's information rows, their right-hand action group, the one failure line | [library-ui.md, Information rows](../../docs/design-docs/library-ui.md#information-rows); [`VideoFacts.tsx`](../../web/src/player/VideoFacts.tsx) |
-| An edit entry on the video page and its in-place form (Save, Cancel, the failure line, keys) | [029 UI design, Title editing](../029-video-overrides/ui-design.md#title-editing); [`VideoTitle.tsx`](../../web/src/player/VideoTitle.tsx) |
+| `DetailPage`, `AdminTablePage`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `DataTable`, the state blocks | [patterns.md](../../web/registry/rules/patterns.md) |
+| The video page's band, information rows, their right-hand action group, the one failure line | [012 UI design, Video header](../012-video-detail-ia/ui-design.md#video-header); [library-ui.md, Information rows](../../docs/design-docs/library-ui.md#information-rows); [`VideoFacts.tsx`](../../web/src/player/VideoFacts.tsx) |
+| The title's in-place editing on the video page (the pencil, Save, Cancel, the failure line, keys), which stays | [029 UI design, Title editing](../029-video-overrides/ui-design.md#title-editing); [`VideoTitle.tsx`](../../web/src/player/VideoTitle.tsx) |
+| A full-window editor's band, its `Cancel` that asks before discarding work, and the page's keys not acting under it | [045 UI design, Thumbnail editor](../045-comfyui-thumbnails/ui-design.md#thumbnail-editor), [Closing](../045-comfyui-thumbnails/ui-design.md#closing) |
 | Chips with a name link and `×`, and the add input with a dropdown list on the video page | [014 UI design, Video page tags](../014-video-tags/ui-design.md#video-page-tags); [`VideoTags.tsx`](../../web/src/player/VideoTags.tsx) |
 | The library's active filter row and its chips | [014 UI design, Active tag filters](../014-video-tags/ui-design.md#active-tag-filters); [`ActiveTagFilters.tsx`](../../web/src/library/ActiveTagFilters.tsx) |
 | The tag admin screen: top bar, band, rows, create and rename, merge dialog, delete, end-of-list states, touch and narrow-width actions, review widths | [036 UI design](../036-tag-admin-scale/ui-design.md); [014 UI design, Tag management page](../014-video-tags/ui-design.md#tag-management-page); [`web/src/tags/`](../../web/src/tags/) |
 | Width breakpoints in CSS; layout checked by people; the sidebar's rail and drawer | [library-ui.md, Width breakpoints](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception), [Layout verified by people](../../docs/design-docs/library-ui.md#layout-verified-by-people-not-machines), [Shell and toolbar](../../docs/design-docs/library-ui.md#shell-and-toolbar) |
 | Guests on owner-only screens | [016 UI design, Guest degradation](../016-single-account-auth/ui-design.md); [`AuthGate.tsx`](../../web/src/auth/AuthGate.tsx) (`ownerOnlyPath`) |
-| Screen text | [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts); this feature adds `player.workInfo`, `credits`, two `shell.nav` entries, extends `library.activeTags` and the error reasons |
+| Screen text | [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts); this feature adds `player.workInfo`, `player.detailsEditor`, `credits`, two `shell.nav` entries, extends `library.activeTags` and the error reasons |
 
 This feature adds four things, all for the owner only:
 
 1. A **work details row** in the video page's information area, showing only
    the set items, with the description folded (requirements 9 and 11,
    acceptance criteria 1, 2 and 6).
-2. An **edit entry and in-place form** on the video page, with a picker that
-   finds or creates a person or organization (requirement 8, acceptance
-   criterion 1).
+2. An **edit entry** on the video page that opens a **full-screen editor** at
+   `/videos/:id/edit`, holding the display name and every work information
+   item, with a picker that finds or creates a person or organization, and
+   one `Save` that writes both at once (requirement 8, acceptance criterion
+   1). The title's in-place editing on the page stays.
 3. A **person or organization filter** in the library, reached by pressing a
    name on the video page (requirement 11, acceptance criterion 4).
 4. Two **list screens**, `/people` and `/organizations`, built like the tag
@@ -43,18 +47,18 @@ The diagram shows the parts and where each action leads.
 ```mermaid
 flowchart LR
   row[Work details row] -->|press a name| lib[Library, filtered]
-  entry[Edit entry] --> form[In-place form]
-  form -->|pick or create| picker[Person picker]
-  form -->|Save| row
+  entry[Edit entry] -->|opens| editor["Editor (/videos/:id/edit)"]
+  editor -->|pick or create| picker[Person picker]
+  editor -->|Save or Cancel| page[Video page]
   side[Sidebar: People, Organizations] --> admin[List screens]
   admin -->|press a name| lib
   admin --> details[Details dialog]
   admin --> merge[Merge dialog]
 ```
 
-Unchanged: the player, the title and its editor, the tags, the visibility
-toggle, the file facts and the technical line, cards and list rows (they carry
-no work information), the tag screen, and everything a guest sees.
+Unchanged: the player, the title and its in-place editor, the tags, the
+visibility toggle, the file facts and the technical line, cards and list rows
+(they carry no work information), the tag screen, and everything a guest sees.
 
 ## Why this shape
 
@@ -87,21 +91,47 @@ the related videos off the screen. Three lines show what the video is, and
 `Show more` opens the rest in place. A dialog for the full text was rejected:
 reading is not a task that needs the page covered.
 
-**Editing happens in place, as the title and the tags are edited.** The entry
-is one icon button in the information row's action group, the place every
-per-video edit action on this page already lives
+**Editing happens on a screen of its own, reached from one icon in the
+information row's action group.** Requirement 8 asks for a full-screen
+editor opened from the video page that holds the display name too and saves
+both with one request, and the Plan makes it the route `/videos/:id/edit`
+(Structure decision), so the player is not running under a form that may
+hold a hundred chips, and the page that most visits never edit does not load
+the editor's code. The entry stays one icon in the action group, the place
+every per-video edit action on this page already lives
 ([046, Why this shape](../046-thumbnail-image-upload/ui-design.md#why-this-shape)),
 so a video with nothing set shows no empty fields and no prompt, only the
-entry (`UI品質`: `入力を前提にしない`). Pressing it replaces the work details
-row with the form, and `Save` sends the one `PUT` of R-5. A `FormDialog` was
-rejected: the people picker's list opens below its input, and a list layered
-inside a dialog's scrolling body is what
-[036's merge dialog](../036-tag-admin-scale/ui-design.md#why-this-shape) had
-to abandon because it covered the dialog's buttons; six such pickers (four
-people roles, two organization roles) cannot each have a fixed-height box.
-Editing each item on its own, chip by chip as tags are attached, was
-rejected: R-5 makes the object the unit of change, and a code, dates and a
-description are typed, not picked.
+entry (`UI品質`: `入力を前提にしない`). The title's pencil stays as the quick
+way to rename: retitling is the one edit made in passing while watching, and
+the editor is for sitting down with the work. A `FormDialog` was rejected:
+thirteen fields and six pickers inside `max-w-lg` scroll in a dialog's body,
+and the requirement names a full screen. An `EditorDialog` was rejected: its
+stage is for an image, and the form would be squeezed into its aside.
+`SettingsPage` was rejected because each of its rows saves itself and it has
+no save button; `CenteredForm` because it is a card `max-w-sm` wide. No
+skeleton fits a page of many values saved together, so one is added to the
+design system first, as 045 added `EditorDialog`
+([Changes to the design system](#changes-to-the-design-system)).
+
+**`Cancel` and `Save` sit in the editor's band, not under the last field.**
+The column may hold a hundred chips; the band is sticky at every width, so
+saving never needs a scroll to the bottom, and the top band is where the video
+page has trained the eye to find the way out
+([012, Video header](../012-video-detail-ia/ui-design.md#video-header)). The
+band carries no logo, breadcrumb or `×`: the editor is a step inside the
+video page, and the one way out is `Cancel`, which asks before discarding
+changes (as [045's editor](../045-comfyui-thumbnails/ui-design.md#closing)),
+because an owner who has typed a dozen values should not lose them to one
+press. Esc never leaves the editor for the same reason.
+
+**The name is the first field, holding the display name, with the file-name
+title as its placeholder.** Requirement 8 puts the display name in the same
+editor; it comes first because it is what the page shows first. Prefilling
+it with the file-name title, as the in-place editor does
+([029, Edit mode](../029-video-overrides/ui-design.md#edit-mode)), was
+rejected here: an untouched field would then save a display name equal to
+the file name, and the placeholder already shows what an empty name falls
+back to.
 
 **People and organizations are picked with the tag page's picker, generalised,
 and a new entry is created on `Save`.** The video page's `Add tag` is a
@@ -154,14 +184,16 @@ dates, URLs and IDs are user data and are embedded untranslated.
 | ID item | {source}: {value} | |
 | Description, fold control | Show more / Show less | `link` `sm` `Button` after the folded text |
 | A list item's hidden entries | +{n} more / Show fewer | `link` `sm` `Button` after the first three entries; `aria-label` `Show all {count} {label}` (`Show all 12 performers`) |
-| Entry, name and tooltip | Edit work details | `player.workInfo.edit` |
+| Entry, name and tooltip | Edit details | `player.workInfo.edit`; the name and the work information together |
 
-### Video page, form
+### Editor
 
 | Place | Text | Notes |
 | --- | --- | --- |
-| Hidden heading of the form | Edit work details | `h2`, `sr-only` |
-| Field labels | Code / Description / Released / Recorded / Published / Performers / Directors / Photographers / Streamers / Makers / Labels / Links / IDs | Visible `FieldLabel`s; role labels are always plural in the form |
+| Band title (`h1`) and `document.title` | Edit details | `document.title` is `Edit details · {title}` |
+| Band detail | {title} | The video's current title, muted, after the band title |
+| Field labels | Name / Code / Description / Released / Recorded / Published / Performers / Directors / Photographers / Streamers / Makers / Labels / Links / IDs | Visible `FieldLabel`s; role labels are always plural in the editor |
+| Name placeholder | The file-name title itself | User data; not translated. As the in-place editor's placeholder (029) |
 | Date placeholder | YYYY-MM-DD | The three date fields; `YYYY` and `YYYY-MM` are accepted too, said in the description below the fields: `A year or a year and month is enough.` |
 | Picker input, name and placeholder | Add a performer / Add a director / Add a photographer / Add a streamer / Add a maker / Add a label | One per role |
 | Picker, create row | Create "{name}" | Last row; always offered for a non-empty name |
@@ -173,9 +205,12 @@ dates, URLs and IDs are user data and are embedded untranslated.
 | Chip mark for an unsaved new entry | New | `text-xs text-muted-foreground` after the name; read as `{name}, new` |
 | Link rows | Link / Remove link / Add link | The row input's `aria-label`, its `×`, the button under the rows |
 | ID rows | Source / Value / Remove ID / Add ID | |
-| Buttons | Save / Cancel | Save reads `Saving…` with a spinner while sending |
-| Failure line | Couldn't save the work details: {reason} | Under the buttons; `{reason}` from [Error reasons](#error-reasons) |
-| Created but not saved | {n} people were created, but the work details weren't saved: {reason} | The failure line when a `POST` succeeded and the `PUT` failed; the chips keep their ids, so `Save` again sends only the `PUT` |
+| Band buttons | Cancel / Save | Save reads `Saving…` with a spinner while sending |
+| Failure line | Couldn't save the details: {reason} | At the top of the column; `{reason}` from [Error reasons](#error-reasons) |
+| Created but not saved | {n} people were created, but the details weren't saved: {reason} | The failure line when a `POST` succeeded and the `PUT` failed; the chips keep their ids, so `Save` again sends only the `PUT` |
+| Discard confirmation | Discard changes? / The changes to "{title}" haven't been saved. / Keep editing / Discard | `ConfirmDialog` title, text, cancel and action |
+| Loading failed | Couldn't load the video: {reason} | `ErrorState` with `Retry` |
+| Video gone | This video no longer exists. | `ErrorState` without `Retry` |
 
 ### Library
 
@@ -229,7 +264,7 @@ kinds in the catalog.
 | Delete dialog buttons | Cancel / Delete | `Deleting…` while sending |
 | Delete toast | Deleted "{name}" | |
 | Entity gone during an action | This person no longer exists, so the list was reloaded / This organization no longer exists, so the list was reloaded | Toast, as the tag page's `tag_not_found` |
-| Empty list | No people yet / No organizations yet | `EmptyState` title; description `Add them from a video's work details, or create one here.`; the create button |
+| Empty list | No people yet / No organizations yet | `EmptyState` title; description `Add them from a video's details, or create one here.`; the create button |
 | No search match | No people match "{q}" / No organizations match "{q}" | `EmptyState`; `Clear search` |
 | Load failed | Couldn't load people: {reason} / Couldn't load organizations: {reason} | `ErrorState` with `Retry` |
 | Loading more, failed, list changed | As 036: Loading more people… / Couldn't load more: {reason} / People were added or removed elsewhere, so the rest of this list may be out of date. | The organization texts likewise |
@@ -240,7 +275,8 @@ Added to the `reason` table in `web/src/i18n/errors.ts`
 ([contracts/screen-api.md, Added `reason` values and `field`](contracts/screen-api.md#added-reason-values-and-field)).
 The text names no field: the screen places it under the control that `field`
 names, and when no control matches, the failure line shows the text followed
-by the path in inline code.
+by the path in inline code. The two `display_name_*` reasons keep their 029
+text and reach the editor with `field: displayName`.
 
 | Reason | Text |
 | --- | --- |
@@ -260,18 +296,25 @@ by the path in inline code.
 
 ## Changes to the design system
 
+Both additions land, with their rules in
+[patterns.md](../../web/registry/rules/patterns.md) and
+[components.md](../../web/registry/rules/components.md) and their row in
+[design-system.md](../../docs/design-docs/design-system.md), before the video
+page unit uses them, as 045 added `EditorDialog`.
+
 | Change | What it is |
 | --- | --- |
-| `CreditCommand`, a vv component and registry item `credit-command` | `TagCommand`'s `Command` with the entity name rules (1 to 200 code points, no control characters, a paste with a line break refused with its reason) in place of the tag name rules, with the same `dropdown` and `inline` layouts and the same row content (name, hint line, count at the right, the create row last). Added before the video page unit uses it; the implementation makes it and `TagCommand` one base component that takes the name rules, so no code is copied (AGENTS.md). components.md's `TagCommand` section gains the sibling and its last sentence becomes `Do not use either for values other than tag names and the names of people and organizations.` |
+| `FormPage` skeleton, registry item `form-page`, block `form-page-example` | A page, not a dialog, that fills the window on `bg-background` for a form of many values saved together, which `FormDialog` (a few fields) and `SettingsPage` (each row saves itself) do not cover: a header band `navbar` high, `sticky top-0` at every width, with a bottom border and the video page band's `bg-background/90 backdrop-blur-md`, holding the `title` (the page's `h1`, `text-lg font-semibold`), a muted `detail` after it (`text-sm text-muted-foreground`, `truncate`, hidden below `sm`), and an `actions` slot at the right end for `Cancel` and the one `default` button; a body of one column `max-w-2xl`, centred, `px-4` (`px-6` from `sm`) and `py-6`, whose children are `Field`s and `FieldSet`s `gap-6` apart; library density. It owns the band, the column and the gaps, as every skeleton does; the screen passes content into the slots. Its row in patterns.md's skeleton table reads "Fills in many values saved together, on a screen of its own", and the Settings page rule's last sentence becomes `A group of values saved together belongs in a FormDialog, or in a FormPage when it is more than a few.` |
+| `CreditCommand`, a vv component and registry item `credit-command` | `TagCommand`'s `Command` with the entity name rules (1 to 200 code points, no control characters, a paste with a line break refused with its reason) in place of the tag name rules, with the same `dropdown` and `inline` layouts and the same row content (name, hint line, count at the right, the create row last). The implementation makes it and `TagCommand` one base component that takes the name rules, so no code is copied (AGENTS.md). components.md's `TagCommand` section gains the sibling and its last sentence becomes `Do not use either for values other than tag names and the names of people and organizations.` |
 | `Combobox`, first use on a screen | The parent organization field of the details dialog. No change to the component |
 
 No token is added, nothing is added to `pairs` in
 `web/src/theme/tokens.test.ts` (`foreground` and `muted-foreground` on
-`background`, `popover` and `card` are already listed), and no skeleton or
-section is added. Icons are lucide `Clapperboard` (the edit entry), `User`
-(a person chip), `Building2` (an organization chip and the `Organizations`
-sidebar entry), `Users` (the `People` sidebar entry), `IdCard`
-(`Edit details`), and the tag screen's `Pencil`, `Ellipsis`, `Merge` and
+`background`, `popover` and `card` are already listed), and no section is
+added. Icons are lucide `Clapperboard` (the edit entry), `User` (a person
+chip), `Building2` (an organization chip and the `Organizations` sidebar
+entry), `Users` (the `People` sidebar entry), `IdCard` (`Edit details` on the
+list screens), and the tag screen's `Pencil`, `Ellipsis`, `Merge` and
 `Trash2`.
 
 ## Video page: work details row
@@ -319,7 +362,7 @@ stateDiagram-v2
 The row has no loading state of its own: `workInfo` arrives with the video.
 A `video` notification refetches the video and the row shows the new values,
 including an object written through the external API (acceptance criterion
-8), unless the form is open ([Form](#video-page-editing)).
+8).
 
 | State | What the row shows |
 | --- | --- |
@@ -327,40 +370,72 @@ including an object written through the external API (acceptance criterion
 | Some items set | The set items only, in order, wrapping |
 | Guest | Nothing, and no entry: the response has no `workInfo` |
 
-## Video page: editing
-
-### Entry
+## Video page: entry
 
 An `ActionButton` (`ghost` `icon-sm`, lucide `Clapperboard`,
-`text-muted-foreground`) in the information row's action group, after
-`Add to playlist` and before `Use current frame as thumbnail`, so the three
-thumbnail actions stay together. It is placed for the owner whenever the page
-is open, player or not, and never for a guest. It is the only entry: the row
-carries no pencil, so a video with and without work information has the same
-way in. While the form is open the entry has `aria-expanded="true"` and
-pressing it moves the focus to the form's first field.
+`text-muted-foreground`, named `Edit details`) in the information row's
+action group, after `Add to playlist` and before
+`Use current frame as thumbnail`, so the three thumbnail actions stay
+together. It is a router `Link` (`Button asChild`) to `/videos/:id/edit`,
+carrying the page's return target (`from`, `trail`) in the navigation state
+so the editor can hand it back. It is placed for the owner whenever the page
+is open, player or not, and never for a guest. It is the only entry for the
+work information: the row carries no pencil, so a video with and without
+work information has the same way in. The title's pencil
+([029, Title editing](../029-video-overrides/ui-design.md#title-editing))
+stays beside it as the quick way to rename; it edits the name alone, in
+place, with `PUT /api/videos/{id}/display-name`.
 
-### Form
+Opening the editor leaves the video page, so playback stops; on return the
+page opens as it does from the list, not playing.
 
-Pressing the entry replaces the work details row (or, for a video without
-one, inserts the form at its place) with an in-place form in the left column,
-as the title editor replaces the `h1`. The file row, its action group and the
-technical line stay where they are; the tags and the visibility toggle stay
-usable. Fields are stacked with `gap-4`, each a `Field` with a visible
-`FieldLabel`; controls are the video page's `default` height, and the buttons
-are the title editor's `sm` `Save` (`default` variant) and `sm` `Cancel`
-(`ghost`), left-aligned under the last field.
+## Editor
+
+`/videos/:id/edit` is a `FormPage`
+([Changes to the design system](#changes-to-the-design-system)) outside
+`AppShell`, as the video page is: no sidebar, no top bar, no player. It is
+loaded with `deferredRoute` and joins `ownerOnlyPath`, so a guest is sent to
+sign in with `next` set to the editor (plan, Structure decision). Opened from
+the entry it starts from the page's `Video`; opened by its URL it reads
+`GET /api/videos/{id}` first ([States](#states-1)).
+
+The diagram shows the screen's parts, top to bottom.
+
+```mermaid
+flowchart TB
+  band["Band: Edit details · {title} · Cancel · Save"] --> col["One column, max-w-2xl"]
+  col --> name[Name]
+  name --> work[Code, Description]
+  work --> dates[Dates: Released, Recorded, Published]
+  dates --> people[People: Performers, Directors, Photographers, Streamers]
+  people --> orgs[Organizations: Makers, Labels]
+  orgs --> lists[Links, IDs]
+```
+
+### Screen
+
+| Part | Form |
+| --- | --- |
+| Band | The skeleton's band: `Edit details` as the `h1`, the video's current title as the detail, and at the right end `Cancel` (`ghost` `sm`) then `Save` (`default` `sm`, the only `default` button on the screen). No logo, breadcrumb or `×` |
+| Column | The skeleton's column; the fields below in this order, `gap-6` apart. A `FieldSet` with a `FieldLegend` groups the three dates (`Dates`), the four people roles (`People`) and the two organization roles (`Organizations`), its fields `gap-4` apart inside, so the thirteen fields read as six groups. Controls are the skeleton's library density (`sm`) |
+| Failure line | The video page's failure line (`role="alert"`, `text-sm text-destructive`, lucide `AlertCircle` first) as the first child of the column, above `Name`, so it is visible under the band that holds `Save`. It clears on the next `Save` and on leaving |
+
+### Fields
 
 | Field | Control | Initial value |
 | --- | --- | --- |
+| Name | `Input`; the placeholder is the file-name title, so an empty field says in place what the page will show. No description: the placeholder is the explanation, as in 029 | The display name when one is set, else empty |
 | Code | `Input` | The stored code |
 | Description | `Textarea`, growing with its content from three rows | The stored text |
-| Released, Recorded, Published | Three `Input`s in one `FieldSet` row, three columns from `sm`, stacked below; placeholder `YYYY-MM-DD`; one `FieldDescription` under the row: `A year or a year and month is enough.` | The stored text of each kind |
+| Released, Recorded, Published | Three `Input`s in one row, three columns from `sm`, stacked below; placeholder `YYYY-MM-DD`; one `FieldDescription` under the row: `A year or a year and month is enough.` | The stored text of each kind |
 | Performers, Directors, Photographers, Streamers | A chip row and a picker input on one wrapping line, the shape of the video page's tags: `secondary` `Badge` chips (the name, no link, and the `×` named `Remove {name}`), then the `CreditCommand` `dropdown` input (`w-combobox`) at the end of the line | The linked people of that role, in position order |
 | Makers, Labels | The same, for organizations | |
 | Links | One `Input` per URL with a `ghost` `icon-sm` `×` (`Remove link`) at its right, then `Add link` (`outline` `sm`, lucide `Plus`) under the rows; no row while the list is empty | The stored URLs in order |
 | IDs | One row per external ID: `Source` and `Value` `Input`s side by side (`Source` a third of the row), the `×` (`Remove ID`), then `Add ID` | The stored IDs |
 
+- The editor opens with the focus on `Name`, its text not selected: the
+  owner usually came for the work information, and a selected name invites
+  typing over it.
 - `Add link` and `Add ID` append an empty row and focus it. An empty row is
   dropped on `Save`.
 - A role's chips are in position order, and a new chip joins the end: the
@@ -368,24 +443,23 @@ are the title editor's `sm` `Save` (`default` variant) and `sm` `Cancel`
   adding again. Drag ordering was not asked for and would need a component
   the design system lacks.
 - The chip's `×` removes it at once; the removal is sent with `Save`.
-- A `video` notification that arrives while the form is open refetches the
-  video but does not touch the draft; `Save` makes the draft the last write,
-  and `Cancel` shows the refetched row (as the title editor).
-- Keys: the page's shortcuts (Space, F, M, C, 0) do not act while a field has
-  the focus. Esc closes an open picker list; elsewhere in the form it does
-  nothing and never reaches the page, so the page does not close under a
-  form holding a dozen values. The form is left only through `Save` or
-  `Cancel`. Enter in a text field submits the form, as in the title editor;
-  Enter in a picker input acts on the picker.
-- `Cancel` sends nothing, discards new chips, returns to the row and moves
-  the focus to the entry.
+- A `video` notification that arrives while the editor is open does not
+  touch the draft; `Save` makes the draft the last write.
+- Keys: Esc closes an open picker list or the discard confirmation and
+  otherwise does nothing; the editor is left only through `Cancel`, `Save` or
+  the browser's Back ([Leaving](#leaving)). Enter in `Name`, `Code`, a date,
+  a link or an ID input saves, as Enter saves in the in-place title editor;
+  Enter in `Description` inserts a line break; Enter in a picker input acts on
+  the picker. The video page's playback shortcuts do not exist here: there
+  is no player.
 
 ### Picker
 
 The `CreditCommand` in `dropdown` layout behaves as the video page's
 `Add tag` ([014, Add input](../014-video-tags/ui-design.md#add-input)): the
 list opens below the input on focus or typing, Esc, Tab and leaving close it,
-and no row is selected until the arrow keys or the pointer select one.
+and no row is selected until the arrow keys or the pointer select one. The
+list is a popover on the page, so no dialog body clips it.
 
 The diagram shows where each input leads.
 
@@ -402,7 +476,7 @@ flowchart LR
 | Aspect | Rule |
 | --- | --- |
 | Candidates | Every keystroke requests `GET /api/people?q={input}&limit=8` (or `/api/organizations`), the previous request aborted, with `q` cut to the input's first 100 characters, because the list contract accepts at most 100 while a name may have 200; every match of the full name contains that prefix, so the cut narrows nothing away and the name stays valid to create; the previous rows stay until the new ones arrive, with the small spinner at the input's right end, as the merge dialog's target list |
-| Row content | The name; `Alias: {alias}` under it when the input matched an alias and not the name; `{n} videos` at the right. People already in this role's chips, and the form's unsaved new chips, are not listed as matches |
+| Row content | The name; `Alias: {alias}` under it when the input matched an alias and not the name; `{n} videos` at the right. People already in this role's chips, and the editor's unsaved new chips, are not listed as matches |
 | Exact match | A candidate whose name or alias equals the whole input under the search fold comes first. The eight rows are one page of substring matches in name order, so an exact match can be missing from them ([contracts/screen-api.md](contracts/screen-api.md#people-and-organizations) has no separate exact result); see Enter below |
 | Create row | `Create "{name}"`, last, offered for every non-empty name that is not an unsaved new chip already, even when an exact match exists ([Why this shape](#why-this-shape)). Choosing it adds a chip marked `New`; nothing is sent yet. The same name typed into another role offers that unsaved chip as a match row (marked `New`, no count) instead of a second create row |
 | Enter without arrows | The exact match when the rows hold one. When they do not and the response had a `nextCursor` (more matches than the rows), the picker first requests the same `q` without `limit`, which returns every match, with the input's spinner, and picks the exact match from that response if there is one; only when no exact match exists anywhere does Enter take the create row, so Enter never creates a namesake of an existing entry. A failure of that request shows the `Request failed` line and adds no chip. An empty name shows `Enter a name` under the input |
@@ -417,28 +491,62 @@ The diagram shows what `Save` sends.
 flowchart LR
   save[Save pressed] --> new{New chips?}
   new -->|yes| post["POST /api/people per chip, in order"]
-  post -->|201| put["PUT /api/videos/id/work-info"]
+  post -->|201| put["PUT /api/videos/id/details"]
   post -->|error| line1[Failure line; chips keep ids got so far]
   new -->|no| put
-  put -->|200| row[Row shows the response]
-  put -->|400 with field| field[Reason under that control]
+  put -->|200| page[Video page shows the response]
+  put -->|400 or 404 with field| field[Reason under that control]
   put -->|other error| line2[Failure line]
 ```
 
-| Situation | What the form shows |
-| --- | --- |
-| Sending | `Save` reads `Saving…` with a spinning `LoaderCircle`, `aria-disabled`; every field is `readOnly` and the pickers and `×`s do not act. A save without new chips sends only the `PUT`, and `Cancel` stays pressable and returns to the row without waiting (a response that arrives is used only to replace the video), as the title editor. A save with new chips makes `Cancel` `aria-disabled` too until the `POST`s and the `PUT` have all answered: a `POST` already sent cannot be withdrawn, so closing the form under it would leave a person or organization linked to nothing; waiting lets the `PUT` link it, or ends in the failure line below, which names what was created |
-| Saved (`200`) | The response `Video` replaces the page's video, the form closes, the row shows the saved items (none when everything was cleared) and the focus returns to the entry. No toast: the row is the result |
-| `400` with `field` | The reason under the control the path names (`code`, `description`, `dates[i].date` to the date field of that kind, `urls[i]`, `externalIds[i].source` or `.value` to that row's input, `people[i].person.id` to that chip's `×`), with `aria-invalid` on it, and the focus moved there; the form stays open with every value kept. A path with no control shows on the failure line with the path in inline code |
-| `404 person_not_found` or `organization_not_found` with `field` | The same, at the chip, which the owner removes; another tab deleted that entry |
-| A `POST` failed | The failure line `Couldn't save the work details: {reason}`; chips whose `POST` succeeded lose their `New` mark and keep their ids, so a second `Save` creates nothing twice |
-| The `PUT` failed after a `POST` succeeded | The failure line `{n} people were created, but the work details weren't saved: {reason}`; a second `Save` sends only the `PUT`. `Cancel` from here closes the form and keeps the created entries, which the line has just named; they stay on the list screen with `0 videos`, where the owner can delete them |
-| `404 video_not_found` | The video is refetched, as 029 |
-| Nothing changed | The `PUT` is still sent; the server returns `200` and leaves `updatedAt` ([contracts/screen-api.md](contracts/screen-api.md#put-apivideosidwork-info)); the form closes |
+The `PUT` carries `displayName` (the `Name` field, trimmed; empty clears the
+display name) and `workInfo` (every other field, as one object), and the
+server writes both or neither
+([contracts/screen-api.md, `PUT /api/videos/{id}/details`](contracts/screen-api.md#put-apivideosiddetails)).
 
-The failure line is the title editor's: `role="alert"`, `text-sm
-text-destructive`, lucide `AlertCircle` first, directly under the buttons; it
-clears on the next `Save`, on `Cancel`, and on another video.
+| Situation | What the editor shows |
+| --- | --- |
+| Sending | `Save` reads `Saving…` with a spinning `LoaderCircle`, `aria-disabled`; every field is `readOnly` and the pickers and `×`s do not act; `Cancel` is `aria-disabled` until the `POST`s and the `PUT` have all answered. A `POST` already sent cannot be withdrawn, so leaving under it would leave a person or organization linked to nothing, and leaving under the `PUT` would show the page with the old title and items until the notification arrives; waiting lets the save end on the page, or in the failure line below |
+| Saved (`200`) | The editor returns to `/videos/:id` with the response `Video`, so the page shows the new title, the row with the saved items (none when everything was cleared) and `document.title` at once, with no flash of the old values, and the focus lands on the entry. No toast: the page is the result |
+| `400` with `field` | The reason under the control the path names (`displayName` to `Name`, `code`, `description`, `dates[i].date` to the date field of that kind, `urls[i]`, `externalIds[i].source` or `.value` to that row's input, `people[i].person.id` to that chip's `×`), with `aria-invalid` on it, the column scrolled so the control is under the band, and the focus moved there; the editor stays open with every value kept, and nothing was written, the name included. A path with no control shows on the failure line with the path in inline code |
+| `404 person_not_found` or `organization_not_found` with `field` | The same, at the chip, which the owner removes; another tab deleted that entry |
+| A `POST` failed | The failure line `Couldn't save the details: {reason}`; chips whose `POST` succeeded lose their `New` mark and keep their ids, so a second `Save` creates nothing twice |
+| The `PUT` failed after a `POST` succeeded | The failure line `{n} people were created, but the details weren't saved: {reason}`; a second `Save` sends only the `PUT`. `Cancel` from here leaves and keeps the created entries, which the line has just named and which the discard confirmation does not mention; they stay on the list screen with `0 videos`, where the owner can delete them |
+| `404 video_not_found` | The editor shows [the gone state](#states-1) |
+| Nothing changed | The `PUT` is still sent; the server returns `200` and leaves `updatedAt` ([contracts/screen-api.md](contracts/screen-api.md#put-apivideosiddetails)); the editor returns to the page |
+
+### Leaving
+
+The diagram shows the ways out.
+
+```mermaid
+flowchart LR
+  cancel[Cancel, or the browser's Back] --> changed{Draft changed?}
+  changed -->|no| page[Video page]
+  changed -->|yes| confirm[Discard changes?]
+  confirm -->|Discard| page
+  confirm -->|Keep editing| editor[Editor, as it was]
+  save[Save, 200] --> page
+```
+
+| Aspect | Rule |
+| --- | --- |
+| Changed | The draft differs from the loaded values after trimming: a text that differs, a chip added or removed (an unsaved `New` chip counts), a link or ID row that differs, an empty added row not counted |
+| `Cancel`, unchanged | Returns to the page at once, sending nothing |
+| `Cancel`, changed | A `ConfirmDialog` `Discard changes?` ([Words](#editor)) with `Keep editing` and a `destructive` `Discard`; `Discard` returns to the page, sending nothing and leaving no new chip behind; `Keep editing` and Esc close the dialog and return the focus to `Cancel` |
+| The browser's Back | The same as `Cancel`: unchanged leaves, changed asks first and stays on the editor while the dialog is open |
+| A reload or a closed tab | While the draft is changed, the browser's own leave prompt (`beforeunload`); otherwise nothing |
+| Return target | `/videos/:id` with the `from` and `trail` the entry carried, so the page's `×` still returns to the list the owner came from; opened by its URL, the editor returns to `/videos/:id` without state, and the page then returns to `/` as it does when opened by its URL. The focus lands on the entry |
+
+### States
+
+| State | What the editor shows |
+| --- | --- |
+| Loading (opened by its URL) | The band with an empty detail, `Cancel` pressable and `Save` `aria-disabled`; the column shows every field's label with a `Skeleton` the control's height (`h-8`, `w-full`) in its place, so nothing jumps when the values arrive. Opened from the entry there is no loading: the page's `Video` is the draft's source |
+| Loaded | The fields with their initial values; the focus on `Name` |
+| Load failed | An `ErrorState` in the column, `Couldn't load the video: {reason}`, with `Retry`; `Save` `aria-disabled` |
+| Gone (`404 video_not_found`, on load or on `Save`) | An `ErrorState` `This video no longer exists.` without `Retry`; `Save` `aria-disabled`; `Cancel` returns to the page, which shows its own gone layer |
+| Guest | Sent to `/login?next=/videos/:id/edit` before anything is drawn; after signing in the editor opens |
 
 ## Library: filter by a person or organization
 
@@ -470,8 +578,9 @@ Two entries join the upper group after `Tags` and before `Duplicates`:
 `People` (lucide `Users`, `/people`) and `Organizations` (lucide `Building2`,
 `/organizations`), owner only, in the rail's icon-above-label square and in
 the drawer. The rail then holds eight entries, which fit above the footer at
-the heights the showcase is judged at. `/people` and `/organizations` join
-`ownerOnlyPath`, so a guest is sent to sign in, as from `/tags`.
+the heights the showcase is judged at. `/people`, `/organizations` and
+`/videos/:id/edit` join `ownerOnlyPath`, so a guest is sent to sign in, as
+from `/tags`.
 
 ## People and organizations screens
 
@@ -577,11 +686,11 @@ reloads the list from the top, as the tag page does for `tag_not_found`.
 Only Tailwind's default breakpoints are used, switched in CSS. The widths
 judged are 360px, 768px and 1280px (the list screens at 1280×800).
 
-| Width | Video page | Library | List screens |
-| --- | --- | --- | --- |
-| 1280px | The file row on one line with the entry as one more icon in the action group; the work details row under it, a code, a date and two performers on one line; the description at `max-w-prose`; the form's three date fields in one row, the pickers at `w-combobox` at the end of their chip lines | The active filter row centred above the count, tag chips then entity chips | As 036 at 1280px, without the `Filter` button and the checkbox column |
-| 768px | As 1280px; the work details row may wrap to two lines before the description | As 1280px | As 036 at 768px |
-| 360px | The action group (favorite, playlist, work details, capture, edit, upload, open, copy) stays on one line with the facts wrapping above it; the work details row wraps item by item, a long performer list after a comma and a long name within itself; links truncate; no horizontal scroll (the Issue's edge case, acceptance criterion in the browser test). In the form the date fields stack, each picker input takes its own line under its chips, and `Source` and `Value` stay side by side | The chips wrap | As 036 at 360px: the name column about 160px, one `Actions` menu, no horizontal scroll; the details dialog's alias rows stack `Alias` over `Language` |
+| Width | Video page | Editor | Library | List screens |
+| --- | --- | --- | --- | --- |
+| 1280px | The file row on one line with the entry as one more icon in the action group; the work details row under it, a code, a date and two performers on one line; the description at `max-w-prose` | The band with the title, the detail and `Cancel` and `Save` at its right end; the column `max-w-2xl` centred with the page's background on both sides; the three date fields in one row; the pickers at `w-combobox` at the end of their chip lines; `Source` and `Value` side by side | The active filter row centred above the count, tag chips then entity chips | As 036 at 1280px, without the `Filter` button and the checkbox column |
+| 768px | As 1280px; the work details row may wrap to two lines before the description | As 1280px; the column fills the width less its padding | As 1280px | As 036 at 768px |
+| 360px | The action group (favorite, playlist, details, capture, edit, upload, open, copy) stays on one line with the facts wrapping above it; the work details row wraps item by item, a long performer list after a comma and a long name within itself; links truncate; no horizontal scroll (the Issue's edge case, acceptance criterion in the browser test) | The band keeps the title and the two buttons on one line, the detail hidden; the date fields stack; each picker input takes its own line under its chips; `Source` and `Value` stay side by side; no horizontal scroll with a 200-character name chip | The chips wrap | As 036 at 360px: the name column about 160px, one `Actions` menu, no horizontal scroll; the details dialog's alias rows stack `Alias` over `Language` |
 
 ## Review criteria
 
@@ -594,9 +703,12 @@ Judged by looking at the running screen in vv's one dark scheme
    technical line, in the same `text-sm`; labels are muted and values are the
    body colour, so a glance picks up `AB-123`, `2024-03-01` and the names
    before the words `Code` and `Released`. The entry is one muted icon among
-   the action group's icons, with no fill, border or `primary` colour. On the
-   list screens the names are read first, then the heading and `New person`,
-   then counts and aliases, as on the tag screen.
+   the action group's icons, with no fill, border or `primary` colour. In the
+   editor the eye goes band title → `Name` → the groups in order, and `Save`
+   is the only filled button; the legends `Dates`, `People` and
+   `Organizations` read before their fields. On the list screens the names
+   are read first, then the heading and `New person`, then counts and
+   aliases, as on the tag screen.
 2. **Information density**: a video with a code, a release date and two
    performers adds one line to the information area at 1280px; a video with
    every item set adds a few wrapped lines and the folded description, and
@@ -604,32 +716,41 @@ Judged by looking at the running screen in vv's one dark scheme
    shows three entries and `+{n} more`; a 10,000-character description is
    three lines and `Show more`.
    A video with nothing set is unchanged in every pixel of the rows, and the
-   action group gains exactly one icon. About 12 rows show under the band of
-   a list screen at 1280×800.
+   action group gains exactly one icon. The editor shows `Name` through
+   `Dates` without scrolling at 1280×800, and `Save` stays in view at every
+   scroll position. About 12 rows show under the band of a list screen at
+   1280×800.
 3. **Spacing rhythm**: the work details row's gaps between items equal the
    file row's (`gap-x-4`, `gap-x-5` from `sm`), the gap between a label and
    its value equals the gap between a fact's icon and its value, and the
    area's `gap-3` separates the row from the file row above and the technical
-   line below; no extra space appears around the description. In the form the
-   fields are `gap-4` apart and the chips and picker sit on one line with the
-   tag row's `gap-1.5`.
+   line below; no extra space appears around the description. In the editor
+   the groups are `gap-6` apart and the fields inside a group `gap-4`, the
+   band is the video page band's height, and the chips and picker sit on one
+   line with the tag row's `gap-1.5`.
 4. **Typography**: labels and values are the file row's `text-sm`; dates,
    codes and IDs are `tabular-nums`; the description is the same size, never
    larger or bolder than the facts, and the fold control reads as a link, not
-   a button. On the list screens the row name is `text-sm font-medium` and
-   the second line `text-xs` muted, as a tag row's synonyms.
-5. **Action priority**: entering a code, a release date and two performers is
-   entry → type → pick or create → `Save`, one form and one press to save,
-   with no dialog in the way (acceptance criterion 1); clearing an item is
-   emptying its field or pressing a chip's `×`, then `Save`, and the item is
-   gone from the row (acceptance criterion 2). `Save` is the only `default`
-   button in the form, and the viewing row has no control but the names, the
-   links and `Show more`. On a list screen rename is one press, merge and
-   delete are behind `More actions` and a confirmation.
+   a button. The editor's band title is `text-lg font-semibold`, its detail
+   muted `text-sm`, and its field labels the `FieldLabel` size; the `Name`
+   field is the same `Input` as `Code`, not the title's `text-2xl`. On the
+   list screens the row name is `text-sm font-medium` and the second line
+   `text-xs` muted, as a tag row's synonyms.
+5. **Action priority**: entering a name, a code, a release date and two
+   performers is entry → type → pick or create → `Save`, one screen and one
+   press to save, after which the page shows the new title and the row
+   (acceptance criterion 1 and requirement 8); clearing an item is emptying
+   its field or pressing a chip's `×`, then `Save`, and the item is gone from
+   the row (acceptance criterion 2). `Save` is the only `default` button in
+   the editor, `Cancel` beside it is `ghost`, and the viewing row has no
+   control but the names, the links and `Show more`. The title's pencil
+   still renames in place without opening the editor. On a list screen
+   rename is one press, merge and delete are behind `More actions` and a
+   confirmation.
 6. **No prompt on an empty video**: a video without work information shows no
    empty field, placeholder, dashed box or sentence inviting input; only the
    entry's icon, which does nothing until pressed (`UI品質`:
-   `入力を前提にしない`).
+   `入力を前提にしない`). The empty fields exist only in the editor.
 7. **Picking and creating**: typing `ali` in `Add a performer` lists people
    named or aliased `ali…` with their video counts, with `Create "ali"` last;
    picking a match adds a chip, choosing create adds a chip marked `New`;
@@ -637,34 +758,48 @@ Judged by looking at the running screen in vv's one dark scheme
    `Save` creates the person once and then the row shows them in both roles.
    A namesake can be created beside an existing person and the two rows on
    `/people` differ by count.
-8. **Navigation**: pressing a performer on the video page opens the library
+8. **Saving as one**: a new name and an invalid date saved together leave the
+   editor open with the reason under `Recorded`, the column scrolled to it,
+   every value kept, and the page's title unchanged when the editor is left;
+   a name over the limit with a valid object shows the reason under `Name`
+   and writes no work information. `Cancel` with a changed draft asks
+   `Discard changes?`, and `Discard` leaves no new person on `/people`;
+   `Cancel` with nothing changed leaves at once.
+9. **Navigation**: pressing a performer on the video page opens the library
    with `person=<id>` in the URL, the chip `User {name}` in the active filter
    row, and only that person's videos (acceptance criterion 4); pressing the
    maker does the same with `Building2`. Back returns to the video page.
-   Pressing a name on `/people` does the same.
-9. **Merge**: merging `A` into `B` on `/people` removes `A`'s row, sums the
-   counts on `B`, shows `B` as the performer on the video, and typing `A`'s
-   name in the library search finds the video (acceptance criterion 5).
-   Choosing a parent that is the organization's own label shows the cycle
-   reason under the parent field and saves nothing.
-10. **Phone width**: at 360px the video page shows no horizontal scroll with
+   Pressing a name on `/people` does the same. Leaving the editor returns to
+   the video page, whose `×` still returns to the list the owner came from.
+10. **Merge**: merging `A` into `B` on `/people` removes `A`'s row, sums the
+    counts on `B`, shows `B` as the performer on the video, and typing `A`'s
+    name in the library search finds the video (acceptance criterion 5).
+    Choosing a parent that is the organization's own label shows the cycle
+    reason under the parent field and saves nothing.
+11. **Phone width**: at 360px the video page shows no horizontal scroll with
     a long description, twenty performers and a 200-character name; the
-    action group is one line; the form's fields stack; on `/people` the row
-    actions are one `Actions` menu.
-11. **Guest**: signed out, the same video page shows no work details row and
-    no entry; the sidebar shows no `People` or `Organizations`; `/people`
-    redirects to sign in; `/?person=<id>` is corrected to `/`.
-12. **Examples that do not meet the requirement**: the work details are a
+    action group is one line; the editor's band keeps `Cancel` and `Save`
+    in view with the date fields stacked and a 200-character chip wrapping
+    inside the column; on `/people` the row actions are one `Actions` menu.
+12. **Guest**: signed out, the same video page shows no work details row and
+    no entry; `/videos/:id/edit` redirects to sign in; the sidebar shows no
+    `People` or `Organizations`; `/people` redirects to sign in;
+    `/?person=<id>` is corrected to `/`.
+13. **Examples that do not meet the requirement**: the work details are a
     framed card or a term-and-value list one item per line; labels are
     icons; the description is shown whole or opens in a dialog; an empty video
     shows empty fields, a placeholder row or a `No work details yet` line;
-    editing opens a dialog; a picker's list is clipped inside a dialog; a
+    editing opens a dialog or a form under the player; the editor shows the
+    sidebar, the logo or a breadcrumb; `Save` is only at the bottom of the
+    column; the `Name` field is prefilled with the file name; the title is
+    saved while the work information fails, or the other way round; `Cancel`
+    with a changed draft leaves without asking, or Esc leaves the editor; a
     cancelled edit that sent no `Save` leaves a new person on `/people`;
-    `Cancel` closes the form while a `POST` is in flight; an existing name
-    suppresses the create row; the entity chip in the library has the tag
-    icon; the list screens have a checkbox column or a selection bar; the
-    `Save` of the details dialog is red; `Merge` is pressable before a target
-    is chosen; fewer than 12 rows show at 1280×800.
+    `Cancel` leaves the editor while a `POST` or the `PUT` is in flight; an
+    existing name suppresses the create row; the entity chip in the library
+    has the tag icon; the list screens have a checkbox column or a selection
+    bar; the `Save` of the details dialog is red; `Merge` is pressable before
+    a target is chosen; fewer than 12 rows show at 1280×800.
 
 ## Accessibility
 
@@ -674,12 +809,14 @@ names and announcements are decided, as in 036 and 046.
 - The row's `ul` is `Work details`; each item's label is visible text, so no
   hidden name is needed; a name link is `Show videos with {name}`; a link
   item's `title` is the full URL.
-- The entry is `Edit work details` with `aria-expanded`; the form's hidden
-  `h2` is `Edit work details`; every field has a visible `FieldLabel`, every
-  `×` an `aria-label`; the picker input is named by its placeholder and
-  the `New` mark is read after the name.
+- The entry is a link named `Edit details`. The editor's `h1` is the band
+  title `Edit details`; every field has a visible `FieldLabel`, every `×` an
+  `aria-label`; the picker input is named by its placeholder and the `New`
+  mark is read after the name; a `FieldSet`'s `FieldLegend` names its group.
+  On open the focus is on `Name`; on return to the page it is on the entry.
 - A field's reason uses `FieldError` with `aria-invalid` on the control; the
   failure line is `role="alert"`; the fold control's text says its action.
+  The discard confirmation is an `AlertDialog`.
 - The active filter chips keep the tag chips' names; the toast for a gone
   entity is the same `Sonner` notice as a gone tag.
 - On the list screens the names, menus and dialogs carry the tag screen's
