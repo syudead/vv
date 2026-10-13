@@ -82,8 +82,11 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			// 視聴履歴の経路（watch_history_test.go）。
 			WatchHistory: db.Playback(),
 			Overrides:    db.Overrides(),
-			Versions:     db.Versions(),
-			Library:      library,
+			// 作品情報と人物・団体の経路（video_work_info_test.go）。
+			WorkInfo: db.WorkInfo(),
+			Credits:  db.Credits(),
+			Versions: db.Versions(),
+			Library:  library,
 			// 外部連携 API の上書きの一括操作（external_video_overrides_test.go）が引き当てに使う。
 			ExternalVideos: library,
 			// 生成は代わりにし、位置の確かめと記録は本物の保存層で行う。
@@ -213,7 +216,7 @@ func rawItems(t *testing.T, body []byte, field string) []map[string]json.RawMess
 // assertGuestVideo は動画の JSON に所有者のデータが無いことを確かめる（guest-api.md §1）。
 func assertGuestVideo(t *testing.T, label string, video map[string]json.RawMessage) {
 	t.Helper()
-	for _, field := range []string{"location", "progress", "probeError", "probeErrorCode", "fileTitle", "displayName", "thumbnailPositionMs", "thumbnailImage", "favorite"} {
+	for _, field := range []string{"location", "progress", "probeError", "probeErrorCode", "fileTitle", "displayName", "thumbnailPositionMs", "thumbnailImage", "favorite", "workInfo"} {
 		if value, ok := video[field]; ok {
 			t.Errorf("%s: ゲストの応答に %s = %s", label, field, value)
 		}

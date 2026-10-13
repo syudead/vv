@@ -161,7 +161,8 @@ func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audie
 // 再生位置・読み取りの誤りとそのコード（誤りは絶対パスを含みうる）を出さず、タグを空の配列にする
 // （contracts/guest-api.md §1、親 Issue 要件 18）。ファイル名由来の題名・表示名・代表サムネイルの
 // 位置と適用した画像の有無も出さず、ゲストは title で表示名だけを受け取る
-// （specs/029-video-overrides/contracts/screen-api.md §0）。
+// （specs/029-video-overrides/contracts/screen-api.md §0）。作品情報も出さない
+// （specs/047-video-work-info/research.md R-10）。
 // 所有者にはそのまま返す。
 func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	if audience.IsOwner() {
@@ -177,6 +178,7 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.ThumbnailPositionMs = nil
 	video.ThumbnailImage = nil
 	video.Favorite = nil
+	video.WorkInfo = nil
 	return video
 }
 
@@ -286,6 +288,13 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 	if !ok {
 		return
 	}
+	// 作品情報は動画 1 件の応答にだけ載せる（specs/047-video-work-info/contracts/screen-api.md
+	// 「Video changes」）。一覧・関連動画・ライブラリの項目は読まない。
+	video, err := s.workInfoForDetail(r.Context(), video)
+	if err != nil {
+		s.internalError(w, "Could not load the video.", err)
+		return
+	}
 	s.writeVideoDetail(w, r, video)
 }
 
@@ -301,6 +310,8 @@ func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video 
 	// forAudience がゲストの応答から外す。
 	payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
 	payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
+	// 作品情報は、読んだ（または書いた）経路が video に埋めたときだけ載せる。
+	payload.WorkInfo = toAPIWorkInfo(video.WorkInfo)
 	// グループも動画1件の応答にだけ載せる。ゲストには公開のメンバーだけで数えたものが
 	// 返り、公開のメンバーが1本なら無い（specs/017-folder-groups/contracts/folder-groups-api.md §3）。
 	if s.catalog != nil {

@@ -411,6 +411,7 @@ func run(opts runOptions) error {
 		MediaFolders:     mediaFolders,
 		Tags:             db.Tags(),
 		Credits:          db.Credits(),
+		WorkInfo:         db.WorkInfo(),
 		Visibility:       db.Visibility(),
 		Favorites:        db.Favorites(),
 		Playlists:        db.Playlists(),

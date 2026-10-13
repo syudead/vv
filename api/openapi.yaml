@@ -1141,6 +1141,72 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/videos/{id}/work-info:
+    put:
+      operationId: setVideoWorkInfo
+      summary: 動画の作品情報をまるごと置き換える
+      description: |
+        所有者だけ。本文の作品情報で保存済みのものを置き換える。省いた・null の・前後の空白を除いて空の
+        項目は解除し、`{}` はすべてを解除する。人物と団体は id で指す。規則に合わない最初の項目を
+        `field` 付きの誤りで返し、何も書かない。応答は `GET /api/videos/{id}` と同じ形の `Video` で、
+        `workInfo` が反映済み（すべて解除したときは無い）。変わったときは確定後に同じ利用者データの鍵の
+        各動画の `video` が `/api/events` に流れる
+        （specs/047-video-work-info/contracts/screen-api.md「PUT /api/videos/{id}/work-info」）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkInfoInput"
+      responses:
+        "200":
+          description: 反映後の動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/videos/{id}/details:
+    put:
+      operationId: setVideoDetails
+      summary: 動画の表示名と作品情報を 1 回で保存する
+      description: |
+        所有者だけ。全画面の編集画面の保存で、表示名（`PUT /api/videos/{id}/display-name` の規則）と
+        作品情報（`PUT /api/videos/{id}/work-info` の規則）を 1 つの取引で書き、どちらかが規則に
+        合わなければどちらも書かない。表示名を先に、次に作品情報を `WorkInfo` の項目の順に確かめ、
+        最初の誤りだけを返す。表示名の誤りの `field` は `displayName`、作品情報の誤りの `field` は
+        `workInfo` の中の位置である。応答は `GET /api/videos/{id}` と同じ形の `Video`
+        （specs/047-video-work-info/contracts/screen-api.md「PUT /api/videos/{id}/details」）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VideoDetailsInput"
+      responses:
+        "200":
+          description: 反映後の動画
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Video"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/videos/{id}/thumbnail-position:
     put:
       operationId: setVideoThumbnailPosition
@@ -4743,6 +4809,170 @@ components:
         value:
           type: string
 
+    WorkDateKind:
+      type: string
+      enum: [release, recorded, published]
+      description: 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+
+    WorkPersonRole:
+      type: string
+      enum: [performer, director, photographer, streamer]
+      description: 動画での人物の役割
+
+    WorkOrganizationRole:
+      type: string
+      enum: [maker, label]
+      description: 動画での団体の役割
+
+    WorkDate:
+      type: object
+      required: [kind, date]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/WorkDateKind"
+        date:
+          type: string
+          description: YYYY・YYYY-MM・YYYY-MM-DD（日まであれば暦にある日）
+          examples: ["2024", "2024-02", "2024-02-29"]
+
+    WorkPerson:
+      type: object
+      required: [role, person]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkPersonRole"
+        person:
+          $ref: "#/components/schemas/CreditRef"
+
+    WorkOrganization:
+      type: object
+      required: [role, organization]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkOrganizationRole"
+        organization:
+          $ref: "#/components/schemas/CreditRef"
+
+    WorkInfo:
+      type: object
+      required: [dates, people, organizations, urls, externalIds]
+      additionalProperties: false
+      description: |
+        動画の作品情報（specs/047-video-work-info/contracts/screen-api.md「WorkInfo schema」）。
+        一覧は必ずあり、空なら []。単一の値は未設定なら無い
+      properties:
+        code:
+          type: string
+          description: 品番
+        description:
+          type: string
+          description: 説明。改行を含みうる
+        dates:
+          type: array
+          description: 種類の順（release・recorded・published）
+          items:
+            $ref: "#/components/schemas/WorkDate"
+        people:
+          type: array
+          description: 役割の順、同じ役割の中は入力した順。name は人物の今の名前
+          items:
+            $ref: "#/components/schemas/WorkPerson"
+        organizations:
+          type: array
+          description: 役割の順、同じ役割の中は入力した順。name は団体の今の名前
+          items:
+            $ref: "#/components/schemas/WorkOrganization"
+        urls:
+          type: array
+          description: 入力した順
+          items:
+            type: string
+        externalIds:
+          type: array
+          description: (source, value) の順
+          items:
+            $ref: "#/components/schemas/ExternalId"
+
+    CreditIdRef:
+      type: object
+      required: [id]
+      additionalProperties: false
+      description: 書き込みで人物か団体 1 件を指す参照
+      properties:
+        id:
+          type: integer
+          format: int64
+
+    WorkPersonInput:
+      type: object
+      required: [role, person]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkPersonRole"
+        person:
+          $ref: "#/components/schemas/CreditIdRef"
+
+    WorkOrganizationInput:
+      type: object
+      required: [role, organization]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkOrganizationRole"
+        organization:
+          $ref: "#/components/schemas/CreditIdRef"
+
+    WorkInfoInput:
+      type: object
+      additionalProperties: false
+      description: |
+        作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
+        WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
+        解除で、全体を置き換える
+      properties:
+        code:
+          type: [string, "null"]
+        description:
+          type: [string, "null"]
+        dates:
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/WorkDate"
+        people:
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/WorkPersonInput"
+        organizations:
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/WorkOrganizationInput"
+        urls:
+          type: [array, "null"]
+          items:
+            type: string
+        externalIds:
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/ExternalId"
+
+    VideoDetailsInput:
+      type: object
+      required: [displayName, workInfo]
+      additionalProperties: false
+      description: |
+        全画面の編集画面の保存の本文（specs/047-video-work-info/contracts/screen-api.md
+        「PUT /api/videos/{id}/details」）。両方とも必須
+      properties:
+        displayName:
+          type: string
+          description: 新しい表示名。前後の空白を取り除いて空なら解除する
+        workInfo:
+          $ref: "#/components/schemas/WorkInfoInput"
+
     Person:
       type: object
       required: [id, name, aliases, externalIds, videoCount, createdAt]
@@ -5576,7 +5806,7 @@ components:
       type: object
       description: |
         ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-        `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+        `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
         （specs/016-single-account-auth/contracts/guest-api.md §1、
         specs/029-video-overrides/contracts/screen-api.md §0）。
       required:
@@ -5728,6 +5958,12 @@ components:
           description: |
             所有者がお気に入りにした動画か。所有者の応答にだけ入る
             （specs/035-favorites/data-model.md §3）
+        workInfo:
+          $ref: "#/components/schemas/WorkInfo"
+          description: |
+            作品情報。GET /api/videos/{id} と、作品情報を書く所有者の PUT（work-info・details）の
+            応答にだけ入り、行の無い動画とゲストの応答では無い。一覧の項目・関連動画・ライブラリの
+            項目には入らない（specs/047-video-work-info/contracts/screen-api.md「Video changes」）
         seekThumbnailState:
           type: string
           enum: [pending, done, failed]
