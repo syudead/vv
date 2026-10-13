@@ -13,7 +13,7 @@ import {
 // 編集画面（骨格）。画面の端から端までを覆う、1 枚の画像を相手にする作業のためのモーダルの
 // Dialog。上端の帯（題・薄い詳細・閉じる ×、下に線）、画像を置く段（stage）、入力を並べる
 // 横の欄（aside）と、欄の主な操作の足（footer）を持つ。lg からは段が残りを埋め、欄は
-// detail-aside（xl からは detail-aside-wide）の幅の列で左に線を引く。lg 未満は段を帯の下に
+// editor-aside（xl からは editor-aside-wide）の幅の列で左に線を引く。lg 未満は段を帯の下に
 // editor-stage の高さで置き、その下に欄が続き、足は画面の下に貼り付く。
 // Esc と × は onClose を呼ぶ。閉じる前に確かめるかは呼び出し側が決める（ConfirmDialog）。
 // 規則は web/registry/rules/patterns.md の Editor dialog。
@@ -109,7 +109,7 @@ export function EditorDialog({
           </div>
           <div
             data-slot="editor-dialog-aside"
-            className="flex flex-1 flex-col border-border lg:min-h-0 lg:w-detail-aside lg:flex-none lg:border-l xl:w-detail-aside-wide"
+            className="flex flex-1 flex-col border-border lg:min-h-0 lg:w-editor-aside lg:flex-none lg:border-l xl:w-editor-aside-wide"
           >
             <div className="flex flex-1 flex-col gap-4 p-4 lg:min-h-0 lg:overflow-y-auto">
               {aside}

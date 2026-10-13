@@ -159,6 +159,9 @@
      動画ページでは中のカードの幅（224px）に左右の余白を足した幅 */
   --spacing-detail-aside: 16rem;
   --spacing-detail-aside-wide: 16rem;
+  /* 編集画面（web/src/ui/patterns/editor-dialog.tsx）の横の欄の幅。xl からは広い方 */
+  --spacing-editor-aside: 20rem;
+  --spacing-editor-aside-wide: 24rem;
   /* 編集画面（web/src/ui/patterns/editor-dialog.tsx）の段の高さ。lg 未満で、画面の高さの約 45% */
   --spacing-editor-stage: 45dvh;
   /* 一覧ページの横の欄（web/src/ui/patterns/list-page.tsx の aside）の幅と、トップバーの下に

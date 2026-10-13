@@ -191,7 +191,7 @@ bottom border holds the title, a muted detail after it and the close `×` (a
 
 | Width      | Layout                                                                                                                                                                            |
 | ---------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| From `lg`  | The stage fills the rest; the aside is a column `detail-aside` wide (`detail-aside-wide` from `xl`) with a left border, scrolling on its own, and its `footer` sits at its bottom |
+| From `lg`  | The stage fills the rest; the aside is a column `editor-aside` wide (`editor-aside-wide` from `xl`) with a left border, scrolling on its own, and its `footer` sits at its bottom |
 | Below `lg` | The stage sits under the band, `editor-stage` high (about 45% of the viewport); the aside follows it, the body scrolls as one, and the `footer` sticks to the viewport's bottom   |
 
 | Slot     | Put in it                                                                                                             | Never                          |

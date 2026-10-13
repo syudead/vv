@@ -1,6 +1,6 @@
 ---
 source: specs/045-comfyui-thumbnails/ui-design.md
-sourceHash: a732df4c75bfdc21b6d23c992db10cd73192a5857523e90e515c04168b7994ac
+sourceHash: c0f4c81477f9b14850eb6db425fe3239a55f11258948ee9c62065d72cbf861ab
 ---
 
 # UI デザイン: 動画のフレームを ComfyUI で編集してサムネイルにする {#ui-design-editing-a-video-frame-with-comfyui-into-the-thumbnail}
@@ -151,7 +151,7 @@ vv 自身のワークフローは三つの入力をすべて受け取るので�
 
 | 変更 | 項目 | 内容 |
 | --- | --- | --- |
-| `EditorDialog` の雛形 | `editor-dialog`、ブロック `editor-dialog-example` | `bg-background` の上でビューポートを端から端まで埋めるモーダルの `Dialog`。高さ `navbar` で下に境界線のあるヘッダーの帯 (タイトル、その後に控えめな詳細、閉じる `×` を `ghost` `icon-sm` の `Button` として)、`stage` スロットと `aside` スロットを持つ。`lg` 以上ではステージが残りを埋め、aside は幅 `detail-aside` (`xl` 以上では `detail-aside-wide`) で左に境界線のある列になる。`lg` 未満ではステージは帯の下に置き、名前付きの段階 `editor-stage` (ビューポートの高さの約 45%) を上限とし、aside がその後に続く。aside は主な操作を持つ `footer` スロットを持つ。`lg` 以上では aside の下端に、`lg` 未満ではビューポートの下端に固定する。ステージは内容を `bg-muted` の上に `p-4` で中央に置く。Esc と `×` は `onClose` を呼び、画面はそれに `ConfirmDialog` で応じてよい。ウィンドウ全体が要る一枚の画像の作業に使う。フォームは `FormDialog` のままにする |
+| `EditorDialog` の雛形 | `editor-dialog`、ブロック `editor-dialog-example` | `bg-background` の上でビューポートを端から端まで埋めるモーダルの `Dialog`。高さ `navbar` で下に境界線のあるヘッダーの帯 (タイトル、その後に控えめな詳細、閉じる `×` を `ghost` `icon-sm` の `Button` として)、`stage` スロットと `aside` スロットを持つ。`lg` 以上ではステージが残りを埋め、aside は幅 `editor-aside` (`xl` 以上では `editor-aside-wide`) で左に境界線のある列になる。`lg` 未満ではステージは帯の下に置き、名前付きの段階 `editor-stage` (ビューポートの高さの約 45%) を上限とし、aside がその後に続く。aside は主な操作を持つ `footer` スロットを持つ。`lg` 以上では aside の下端に、`lg` 未満ではビューポートの下端に固定する。ステージは内容を `bg-muted` の上に `p-4` で中央に置く。Esc と `×` は `onClose` を呼び、画面はそれに `ConfirmDialog` で応じてよい。ウィンドウ全体が要る一枚の画像の作業に使う。フォームは `FormDialog` のままにする |
 
 名前付きの段階 `editor-stage` を、`player-height` と同じく `tokens.css` に加える。色のトークンは加えない。塗りのレイヤーは `opacity-50` の `primary` の色で、ブラシの輪郭は `foreground` である。`web/src/theme/tokens.test.ts` の `pairs` には何も加えない。どちらも文字を持たないからである。
 
@@ -315,8 +315,8 @@ Tailwind の既定のブレークポイントだけを使い、CSS で切り替�
 
 | 幅 | Settings の節 | エディタ |
 | --- | --- | --- |
-| 1440px | 1280px と同じ | ステージが左、aside `detail-aside-wide` が右。Compare の二つの箱は横に並び、それぞれ幅約 470 px |
-| 1280px | ラベルとヒントが左、コントロールが右 (`FormRow`) | ステージが左、aside `detail-aside` が右。フッターは aside の下端。道具の行は一行 |
+| 1440px | 1280px と同じ | ステージが左、aside `editor-aside-wide` が右。Compare の二つの箱は横に並び、それぞれ幅約 470 px |
+| 1280px | ラベルとヒントが左、コントロールが右 (`FormRow`) | ステージが左、aside `editor-aside` が右。フッターは aside の下端。道具の行は一行 |
 | 768px | 1280px と同じ | ステージが上で、`editor-stage` を上限とする。aside はその下。フッターは下端に固定。Compare は横に並ぶ |
 | 360px | ラベル、ヒント、コントロールを縦に積む。プロバイダの項目も縦に積む | 768px と同じで、Compare の箱は縦に積む。道具の行は二行に折り返す。`Change and generate again` と `Discard` は `Use as thumbnail` の下で一行を分け合う。横スクロールはない |
 

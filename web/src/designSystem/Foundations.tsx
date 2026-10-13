@@ -85,6 +85,7 @@ const namedSizes = [
   "combobox-list",
   "menu",
   "detail-aside",
+  "editor-aside",
 ] as const;
 
 const radii = [
