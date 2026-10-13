@@ -30,6 +30,11 @@ flowchart LR
   (the `config:best-practices` default).
 - Base images in `Dockerfile` are pinned as `tag@sha256:digest`; when the
   content behind a tag changes, Renovate opens a digest update PR.
+- `web/package.json` constrains npm to 11.x so the Mend Renovate App uses npm 11
+  to generate `web/package-lock.json`. npm 12 currently fails on the
+  `@tailwindcss/oxide-wasm32-wasi` tarball during lockfile-only updates
+  ([npm issue #9800](https://github.com/npm/cli/issues/9800)). Revisit the
+  constraint when npm fixes that failure.
 
 ## Excluded dependencies
 
