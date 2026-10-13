@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -157,10 +158,12 @@ func (s *server) getCredit(w http.ResponseWriter, r *http.Request, api creditKin
 
 func (s *server) createCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI) {
 	var body gen.CreditInput
-	if !s.readJSONBody(w, r, &body) {
+	present, ok := s.readJSONBodyFields(w, r, &body)
+	if !ok {
 		return
 	}
-	if body.ParentId != nil && api.kind != domain.CreditOrganization {
+	// 人物の本文の parentId は null でも 400 である（人物に親は無い）。
+	if present("parentId") && api.kind != domain.CreditOrganization {
 		s.invalidRequest(w, "parentId applies to organizations only.")
 		return
 	}
@@ -193,37 +196,28 @@ func (s *server) updateCredit(w http.ResponseWriter, r *http.Request, api credit
 }
 
 // readCreditPatch は PATCH の本文を domain.CreditPatch にする。省いたプロパティと null を見分けるため、
-// 本文を生成された型で（知らないプロパティを断って）読んだあと、どのプロパティがあったかを読み直す。
+// readJSONBodyFields でどのプロパティがあったかも読む。
 // 一覧の null は空の一覧、parentId の null は親を外すこと、name の null は 400 である。
 func (s *server) readCreditPatch(w http.ResponseWriter, r *http.Request, kind domain.CreditKind) (domain.CreditPatch, bool) {
-	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	if err != nil {
-		s.invalidBody(w, err, "Cannot read the body.")
-		return domain.CreditPatch{}, false
-	}
 	var body gen.CreditPatch
-	if !s.decodeJSONBody(w, r, bytes.NewReader(raw), &body) {
-		return domain.CreditPatch{}, false
-	}
-	var present map[string]json.RawMessage
-	if err := json.Unmarshal(raw, &present); err != nil {
-		s.invalidBody(w, err, "Cannot parse the JSON body.")
+	present, ok := s.readJSONBodyFields(w, r, &body)
+	if !ok {
 		return domain.CreditPatch{}, false
 	}
 	patch := domain.CreditPatch{Name: body.Name}
-	if _, ok := present["name"]; ok && body.Name == nil {
+	if present("name") && body.Name == nil {
 		s.invalidRequest(w, "name cannot be null.")
 		return domain.CreditPatch{}, false
 	}
-	if _, ok := present["aliases"]; ok {
+	if present("aliases") {
 		aliases := fromAPIAliases(body.Aliases)
 		patch.Aliases = &aliases
 	}
-	if _, ok := present["externalIds"]; ok {
+	if present("externalIds") {
 		ids := fromAPIExternalIDs(body.ExternalIds)
 		patch.ExternalIDs = &ids
 	}
-	if _, ok := present["parentId"]; ok {
+	if present("parentId") {
 		if kind != domain.CreditOrganization {
 			s.invalidRequest(w, "parentId applies to organizations only.")
 			return domain.CreditPatch{}, false
@@ -231,6 +225,33 @@ func (s *server) readCreditPatch(w http.ResponseWriter, r *http.Request, kind do
 		patch.ParentSet, patch.ParentID = true, body.ParentId
 	}
 	return patch, true
+}
+
+// readJSONBodyFields は readJSONBody と同じく本文を target に読み、加えて最上位のプロパティが本文に
+// あったか（値が null でも）を答える関数を返す。encoding/json はプロパティ名を大文字小文字を区別せずに
+// target へ当てるので、有無も strings.EqualFold で比べる（Aliases は aliases として読まれ、有るとも答える）。
+func (s *server) readJSONBodyFields(w http.ResponseWriter, r *http.Request, target any) (func(name string) bool, bool) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		s.invalidBody(w, err, "Cannot read the body.")
+		return nil, false
+	}
+	if !s.decodeJSONBody(w, r, bytes.NewReader(raw), target) {
+		return nil, false
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		s.invalidBody(w, err, "Cannot parse the JSON body.")
+		return nil, false
+	}
+	return func(name string) bool {
+		for key := range fields {
+			if strings.EqualFold(key, name) {
+				return true
+			}
+		}
+		return false
+	}, true
 }
 
 func (s *server) deleteCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {

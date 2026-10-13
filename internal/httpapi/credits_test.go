@@ -134,6 +134,15 @@ func TestPatchPersonAliasesKeepsName(t *testing.T) {
 	if got := decode[gen.Person](t, rec); got.Name != "山田" || len(got.Aliases) != 0 {
 		t.Errorf("null の書き換えの後 = %+v", got)
 	}
+
+	// encoding/json と同じく、プロパティ名の大文字小文字は区別しない（Aliases も黙って捨てない）。
+	rec = f.owned(http.MethodPatch, creditPath("/api/people", person.Id, ""), `{"Aliases":[{"name":"大文字"}]}`)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("Aliases の書き換え: status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.Person](t, rec); len(got.Aliases) != 1 || got.Aliases[0].Name != "大文字" {
+		t.Errorf("Aliases の書き換えの後 = %+v", got.Aliases)
+	}
 }
 
 func TestCreditFieldErrors(t *testing.T) {
@@ -182,6 +191,14 @@ func TestCreditFieldErrors(t *testing.T) {
 		},
 		{
 			"人物に親", http.MethodPost, "/api/people", `{"name":"名","parentId":1}`,
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "",
+		},
+		{
+			"人物に null の親", http.MethodPost, "/api/people", `{"name":"名","parentId":null}`,
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "",
+		},
+		{
+			"人物の書き換えに大文字の親", http.MethodPatch, creditPath("/api/people", holder.Id, ""), `{"ParentId":null}`,
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "",
 		},
 		{
