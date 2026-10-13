@@ -3399,8 +3399,14 @@ type FolderRootId = int64
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
 
+// OrganizationFilter defines model for OrganizationFilter.
+type OrganizationFilter = int64
+
 // OrganizationId defines model for OrganizationId.
 type OrganizationId = int64
+
+// PersonFilter defines model for PersonFilter.
+type PersonFilter = int64
 
 // PersonId defines model for PersonId.
 type PersonId = int64
@@ -3559,6 +3565,17 @@ type ListLibraryParams struct {
 	// 最大16個、17個以上は400。存在しない id は条件から落とし、応答の
 	// missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+
+	// Person 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+	// 組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+	// `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+	// ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
+
+	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
 }
 
 // ListLibraryIdsParams defines parameters for ListLibraryIds.
@@ -3573,6 +3590,17 @@ type ListLibraryIdsParams struct {
 
 	// Tag 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+
+	// Person 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+	// 組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+	// `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+	// ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
+
+	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
 }
 
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
@@ -3722,6 +3750,17 @@ type ListVideosParams struct {
 	// 最大16個、17個以上は400。存在しない id は条件から落とし、応答の
 	// missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+
+	// Person 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+	// 組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+	// `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+	// ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
+
+	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
 }
 
 // ListVideoGroupMembersParams defines parameters for ListVideoGroupMembers.
@@ -5046,6 +5085,32 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "person" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "person", r.URL.Query(), &params.Person, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "person"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "organization" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organization", r.URL.Query(), &params.Organization, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListLibrary(w, r, params)
 	}))
@@ -5127,6 +5192,32 @@ func (siw *ServerInterfaceWrapper) ListLibraryIds(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "person" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "person", r.URL.Query(), &params.Person, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "person"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "organization" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organization", r.URL.Query(), &params.Organization, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
 		}
 		return
 	}
@@ -6996,6 +7087,32 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "person" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "person", r.URL.Query(), &params.Person, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "person"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "organization" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organization", r.URL.Query(), &params.Organization, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
 		}
 		return
 	}

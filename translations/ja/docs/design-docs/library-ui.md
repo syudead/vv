@@ -428,6 +428,20 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 
 一覧の条件（検索、絞り込み、並び順、シャッフルのシード）はすべてサーバーが適用し、ページは読み込んだページを決して絞り込まない（[`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) が条件を URL に保つ）。
 
+一覧のルート（`GET /api/videos`、`GET /api/library`、`GET /api/library/ids`）は次の条件を受け取り、各条件は他の条件と AND で組み合わされる。`GET /api/library/ids` は所有者専用でゲストには `401` を返すので、「ゲスト」列は `GET /api/videos` と `GET /api/library` に当てはまる。
+
+| パラメーター | 残すもの | ゲスト |
+| --- | --- | --- |
+| `query` | 検索式に一致する動画（後述） | 許可。タイトルと相対パスだけに一致する |
+| `tag` | 指定したタグをすべて持つ動画 | `400 guest_filter_not_allowed` |
+| `watch` | その視聴状態の動画（`all` はすべての動画を残す） | `all` だけ |
+| `playable` | ブラウザで再生できる動画 | 許可 |
+| `favorite` | お気に入りの動画とお気に入りのグループ | `400 guest_filter_not_allowed` |
+| `person` | いずれかの役割でその人物に結び付いた動画 | `400 guest_filter_not_allowed` |
+| `organization` | いずれかの役割でその組織に結び付いた動画 | `400 guest_filter_not_allowed` |
+
+`query`、`tag`、`person`、`organization` はグループの各メンバーに適用されるので、一部だけが一致したグループは、一致したメンバーを動画の項目として一覧に出す。実体のない `person` または `organization` の ID は空の一覧になり、正の整数でない値は `400 invalid_request` になる（[047 screen-api.md](../../specs/047-video-work-info/contracts/screen-api.md#list-parameters-person-and-organization)）。
+
 所有者の場合、検索語は、動画の場所のいずれかのタイトルまたは相対パス、タグのいずれかの名前または同義語、作品コード、作品情報に結び付いた人物または組織の名前または別名に現れるとき、その動画に一致する。照合は畳み込んだ形（`domain.FoldForMatch`）を使うので、全角と半角、大文字と小文字、ひらがなとカタカナの違いは問わない。説明、日付、URL、外部 ID は照合しない。ゲストの検索はタイトルと相対パスだけに一致するので、ゲストが見られない名前が、どの公開動画を返すかを決めない（[`search.go`](../../internal/store/search.go)、[047 data-model.md、Search](../../specs/047-video-work-info/data-model.md#search)）。
 
 どの動画とグループがフォルダに属し、絞り込みに合うかを知るのはサーバーだけなので、手元で絞り込むページは `total` と異なる集合を表示してしまう。同じ理由で、取得し直した一覧の項目は自分の位置を決して推測しない。

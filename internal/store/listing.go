@@ -84,10 +84,14 @@ type listSpec struct {
 	tagIDs []int64
 	// favoriteOnly はお気に入りだけにする（specs/035-favorites/data-model.md §5）。
 	favoriteOnly bool
-	sort         domain.VideoSort
-	seed         int64
-	cursor       string
-	limit        int
+	// personID と organizationID は、どの役割でもその人物・団体に結び付いた動画だけにする
+	// id である。0 は絞り込まない（specs/047-video-work-info/data-model.md の Lists）。
+	personID       int64
+	organizationID int64
+	sort           domain.VideoSort
+	seed           int64
+	cursor         string
+	limit          int
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
@@ -113,11 +117,7 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 	if err != nil {
 		return domain.VideoPage{}, err
 	}
-	page, err := listVideoPageTx(ctx, tx, listSpec{
-		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
-		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
-	})
+	page, err := listVideoPageTx(ctx, tx, libraryListSpec(audience, q, tagIDs))
 	if err != nil {
 		return domain.VideoPage{}, err
 	}
@@ -126,6 +126,17 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 	}
 	page.MissingTagIDs = missingTagIDs
 	return page, nil
+}
+
+// libraryListSpec はライブラリの一覧（GET /api/videos・GET /api/library・GET /api/library/ids）の
+// 問い合わせ q を、存在を確かめたタグの id tagIDs とともに listSpec にする。
+func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int64) listSpec {
+	return listSpec{
+		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
+		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
+		personID: q.Person, organizationID: q.Organization,
+		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
+	}
 }
 
 // ListFolderVideos はフォルダの動画1ページを返す。範囲は q.Scope で直下か配下
@@ -231,7 +242,7 @@ func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 	if spec.favoriteOnly {
 		conditions = append(conditions, `fav.content_key is not null`)
 	}
-	// 再生可否とタグ（data-model.md §6）。タグの存在の確認は呼び出し側
+	// 再生可否・タグ（data-model.md §6）・人物と団体。タグの存在の確認は呼び出し側
 	// （resolveTagIDs）が済ませているので、ここでは AND を掛けるだけでよい。
 	member, args := memberConditions(spec)
 	conditions = append(conditions, member...)
