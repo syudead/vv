@@ -378,13 +378,22 @@ library grid does; a failed page shows the `LoadMoreRow` `Alert` "Couldn't
 load more of the group" with `Retry`.
 
 Selection is the library's: the check on a card or row, the group check
-selecting the child's members, "Select all" selecting the group's `videoIds`
-(every descendant video, so every item), and the library's selection bar
-with the three group actions ([Selection bar](#selection-bar)). "Remove from
-group" sends `POST /api/groups/{id}/items/remove` with the ids of the items
-whose video is selected or whose child group's members are all selected,
-then shows "Removed 3 items from "{name}"" and clears the selection; the
-rows leave and the rest renumber.
+selecting the child's members and remembering the child as a selected group
+(`LibrarySelection.groups`), "Select all" selecting the group's `videoIds`
+(every descendant video) and, as selected groups, the child groups listed so
+far, and the library's selection bar with the three group actions
+([Selection bar](#selection-bar)). "Remove from group" splits the selection
+as "Favorite" does: a child group item is removed when that child is a
+selected group, and a video item when its video is selected and is not a
+member of a selected group. A child group whose members happen to be all
+selected through video checks is not removed, so checking only V, which is
+both a direct item and the one video of child C, removes V's item and keeps C.
+Selecting C removes C and keeps the direct V, although V's card shows
+selected through C; removing both takes a second removal of V. The action
+sends `POST /api/groups/{id}/items/remove` with the ids of those items among
+the items listed so far (an item on a page not read yet has no id on the
+screen and is not sent), then shows "Removed 3 items from "{name}"" and
+clears the selection; the rows leave and the rest renumber.
 
 ### Reordering
 
@@ -514,7 +523,7 @@ context still overrides the group ([044 UI design, Video page in a playlist](../
 | --- | --- |
 | Group line | One line above the title, in its form (lucide `Folder` `size-4`, the name truncated, `·`, "3 / 12"; `text-xs`, `text-sm` from `sm`, `text-muted-foreground`). The line is a `Link` to `/groups/{id}` with `state.from` carried over and the accessible name "Group "{name}", video 3 of 12. Open the group"; from the video page the trail is empty, so the band there reads "Library › {name}". For a guest the line is the same link |
 | Group actions | For the owner, after the line on the same row: a `ghost` `icon-sm` button (lucide `Ellipsis`, `text-muted-foreground`, tooltip "Group actions") opening a `DropdownMenu` with "Remove from this group" (lucide `FolderMinus`), "Turn the group into a tag…" (lucide `Tag`), a separator and "Dissolve…" (lucide `Trash2`, `variant="destructive"`). Esc closes only the menu, as today |
-| Remove from this group | `POST /api/groups/{id}/items/remove` with the video's item (read with the group's items by the video's id); on `200` the toast "Removed from "{name}"" shows and the video and related videos are read again without `group`, so the line, the list and the arrows follow the fallback group or go; a `404` reads again the same way with no toast |
+| Remove from this group | Drawn only when the video is a direct item of the line's group. For the owner the page reads that group's items (`GET /api/groups/{id}/items` with `limit` 200, following `nextCursor`) when the line is drawn, and the menu item appears once a `video` item whose `video.id` is this video's id is found; until then, and when the video is in the group only through a child group (the play order includes the child's videos, but the remove route takes only the group's own item ids), the menu holds the other two items. Pressing it sends `POST /api/groups/{id}/items/remove` with that item's id; on `200` the toast "Removed from "{name}"" shows and the video and related videos are read again without `group`, so the line, the list and the arrows follow the fallback group or go; a `404` reads again the same way with no toast |
 | Dissolve…, Turn the group into a tag… | The group page's dialogs ([Dissolving](#dissolving), [Turning into a tag](#turning-into-a-tag)); on success the toast shows and the video and related videos are read again without `group`, and the page stays |
 | Action group | "Add to group" after "Add to playlist" ([Add to group](#add-to-group)) |
 
@@ -643,7 +652,10 @@ is also in another group, one watched video and one video in progress.
     the group with the smaller id (acceptance criterion 2). The line is as
     small and as muted as today and opens G1's page; the actions button
     after it is as muted, and "Remove from this group" removes the video
-    with the toast and the line then names the other group.
+    with the toast and the line then names the other group. A video opened
+    from the parent's page that is in the parent only through its child
+    group shows the parent's line, and its actions menu has no "Remove from
+    this group".
 12. **Dissolving**: "Dissolve" on the child group's page leaves for the
     parent's page with the toast "Dissolved "{name}"", the parent's count
     lower by the child's videos and the child's videos still in the
