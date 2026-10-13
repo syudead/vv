@@ -1,6 +1,8 @@
 package store
 
 import (
+	"context"
+	"database/sql"
 	"fmt"
 	"testing"
 
@@ -40,6 +42,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertTagSortKeyInvariant(t, db)
 		assertFavoriteInvariant(t, db)
 		assertPlaylistInvariant(t, db)
+		assertWorkInfoInvariant(t, db)
 	})
 	return db
 }
@@ -534,5 +537,80 @@ func assertPlaylistInvariant(t *testing.T, db *DB) {
 	}
 	if err := keys.Err(); err != nil {
 		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+	}
+}
+
+// assertWorkInfoInvariant は作品情報の不変条件を確かめる（specs/047-video-work-info/data-model.md
+// 「Rules」）。行は少なくとも 1 つの項目か出演者を持ち、空文字の項目と空の鍵の行は無く、1 つの鍵の
+// 出演者の位置は 0 … n-1 で、今の版の行の maker_key・name_key・search_key は値の照合形と一致する。
+func assertWorkInfoInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name in ('video_work_info', 'video_work_performers')`,
+	).Scan(&present); err != nil {
+		t.Fatalf("作品情報の不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present < 2 {
+		return
+	}
+
+	for name, condition := range map[string]string{
+		"項目も出演者も無い行": `code is null and release_date is null and maker is null and description is null
+			and source_url is null and not exists (select 1 from video_work_performers p where p.content_key = wi.content_key)`,
+		"空文字の項目を持つ行": `code = '' or release_date = '' or maker = '' or description = '' or source_url = ''`,
+		"空の鍵の行":      `content_key = ''`,
+		"出演者の位置が詰まっていない行": `exists (select 1 from video_work_performers p where p.content_key = wi.content_key
+			and (p.position < 0 or p.position >= (select count(*) from video_work_performers q where q.content_key = wi.content_key)))`,
+	} {
+		var count int
+		if err := db.sql.QueryRow(`select count(*) from video_work_info wi where ` + condition).Scan(&count); err != nil {
+			t.Fatalf("作品情報の不変条件を検査できない: %v", err)
+		}
+		if count != 0 {
+			t.Errorf("video_work_info に%sが %d 行ある", name, count)
+		}
+	}
+	assertWorkInfoSearchKeys(t, db)
+}
+
+// assertWorkInfoSearchKeys は今の版の作品情報の行の maker_key・search_key と出演者の name_key が、
+// 値の照合形と一致することを確かめる。
+func assertWorkInfoSearchKeys(t *testing.T, db *DB) {
+	t.Helper()
+	keys, err := staleNames(context.Background(), db.sql,
+		`select content_key from video_work_info where search_version >= ?`)
+	if err != nil {
+		t.Fatalf("作品情報の不変条件を検査できない: %v", err)
+	}
+	infos, err := workInfoByUserKeys(context.Background(), db.sql, keys)
+	if err != nil {
+		t.Fatalf("作品情報の不変条件を検査できない: %v", err)
+	}
+	for _, key := range keys {
+		info := infos[key]
+		var maker sql.NullString
+		var search string
+		if err := db.sql.QueryRow(`select maker_key, search_key from video_work_info where content_key = ?`, key).
+			Scan(&maker, &search); err != nil {
+			t.Fatalf("作品情報の不変条件を検査できない: %v", err)
+		}
+		if want := makerKey(info.Maker); (want == nil) != !maker.Valid || (want != nil && want != maker.String) {
+			t.Errorf("鍵 %s の maker_key = %v, want %v", key, maker, want)
+		}
+		if want := workInfoSearchKey(info); search != want {
+			t.Errorf("鍵 %s の search_key = %q, want %q", key, search, want)
+		}
+		for position, name := range info.Performers {
+			var nameKey string
+			if err := db.sql.QueryRow(`select name_key from video_work_performers where content_key = ? and position = ?`,
+				key, position).Scan(&nameKey); err != nil {
+				t.Fatalf("作品情報の不変条件を検査できない: %v", err)
+			}
+			if want := domain.FoldForMatch(name); nameKey != want {
+				t.Errorf("鍵 %s の出演者 %q の name_key = %q, want %q", key, name, nameKey, want)
+			}
+		}
 	}
 }

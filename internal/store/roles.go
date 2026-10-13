@@ -1,6 +1,10 @@
 package store
 
-import "database/sql"
+import (
+	"database/sql"
+
+	"github.com/syudead/vv/internal/domain"
+)
 
 // 役割ごとの型。業務の操作は、それを受け持つ型のメソッドとして置き、*DB は
 // 接続・マイグレーション・疎通確認・知らせの発行先だけを持つ土台にとどめる。
@@ -96,6 +100,16 @@ type OverrideStore struct{ db *DB }
 // 通して使う。
 type VersionStore struct{ db *DB }
 
+// WorkInfoStore は動画の作品情報の置き換え（1 本・外部連携の一括）、利用者データの鍵からの
+// 読み出しと照合用の鍵の作り直しを受け持つ（work_info.go、specs/047-video-work-info/data-model.md
+// 「Writes」）。作品情報は利用者データの鍵に結ぶ利用者データである。FavoriteStore と同じく共有する
+// SQLite 接続を持ち、ライブラリ索引の型には依存しない。確定後に domain.VideoWorkInfoChanged を
+// 発行するため、発行先（publish）も持つ。
+type WorkInfoStore struct {
+	sql     *sql.DB
+	publish func(events ...domain.Event)
+}
+
 func (db *DB) Ingest() *IngestStore       { return &IngestStore{db: db} }
 func (db *DB) Library() *LibraryStore     { return &LibraryStore{db: db} }
 func (db *DB) Scans() *ScanStore          { return &ScanStore{db: db} }
@@ -113,3 +127,6 @@ func (db *DB) FolderGroups() *FolderGroupStore { return &FolderGroupStore{db: db
 func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
 func (db *DB) AutoTags() *AutoTagStore         { return &AutoTagStore{db: db} }
 func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
+func (db *DB) WorkInfo() *WorkInfoStore {
+	return &WorkInfoStore{sql: db.sql, publish: db.publishEvents}
+}

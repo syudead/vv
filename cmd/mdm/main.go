@@ -157,6 +157,14 @@ func run(opts runOptions) error {
 	}
 	logger.Info("rebuilt the tag search keys", slog.Int("names", tagsRefreshed))
 
+	// 作品情報の照合用の鍵（maker_key・name_key・search_key）も同じ時点で作り直す
+	// （specs/047-video-work-info/data-model.md「Writes」）。
+	workInfoRefreshed, err := db.WorkInfo().RefreshSearchKeys(context.Background())
+	if err != nil {
+		return fmt.Errorf("cannot rebuild the work information search keys: %w", err)
+	}
+	logger.Info("rebuilt the work information search keys", slog.Int("entries", workInfoRefreshed))
+
 	// 移行の前に書かれた視聴履歴の行に、題名の照合形（title_key）を埋める。動画の無い件の検索が
 	// 読むので、受け付けより前に行い、失敗したら起動を止める
 	// （specs/043-watch-history/data-model.md「Migration」）。
