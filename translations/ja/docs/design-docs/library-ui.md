@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: d3483b38e568925f2f1a9cc856b8d07650f776873e3ca24252c55caee7c53fc1
+sourceHash: 4b8fc5666821beeb404c788678dadba58751922dfc47cffe502ae418a8387c3e
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -420,6 +420,8 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 ## サーバーが適用する一覧の条件 {#list-conditions-applied-by-the-server}
 
 一覧の条件（検索、絞り込み、並び順、シャッフルのシード）はすべてサーバーが適用し、ページは読み込んだページを決して絞り込まない（[`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) が条件を URL に保つ）。
+
+所有者の場合、検索語は動画の題名とパス、タグの名前と同義語、品番、メーカー名、出演者名に一致する。説明、発売日、出典 URL には決して一致しない。ゲストの検索語は題名とパスにだけ一致するので、ゲストに見えない名前が、検索がどの動画を返すかを通じて漏れることはない（[`search.go`](../../internal/store/search.go)）。
 
 どの動画とグループがフォルダに属し、絞り込みに合うかを知るのはサーバーだけなので、手元で絞り込むページは `total` と異なる集合を表示してしまう。同じ理由で、取得し直した一覧の項目は自分の位置を決して推測しない。
 
