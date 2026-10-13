@@ -1,6 +1,6 @@
 ---
 source: specs/047-video-work-info/plan.md
-sourceHash: 9f937dfdc3a79a197b384e91f4359910fd9fdefdc69f553e07aa56f729cf2c69
+sourceHash: 593aafd0e202fc715629d17fb4c8e76cda3c7ff300d7ea2dadeac0359529ce9e
 ---
 
 # 実装計画: 動画の作品情報 (コード、日付、人物、組織、URL、外部 ID) {#implementation-plan-work-information-on-videos-code-dates-people-organizations-urls-external-ids}
@@ -72,7 +72,7 @@ Issue に `ui` ラベルがあるので、情報欄での項目の配置、エ�
 
 - マイグレーションは `00042_work_info.sql` の 1 つで、ユーザーデータのテーブルは 12 ある ([data-model.md、マイグレーション](data-model.md#migration))。Go と Web の依存は増えない。`SearchKeyVersion` と `FolderIndexVersion` は上げない。
 - 新しいドメインイベント `VideoWorkInfoChanged` を加え、`/api/events` の種類は増やさない (R-11)。
-- エラーの本文は、両方のスキーマで `field` と 13 の `reason` の値を得る ([contracts/screen-api.md、追加する `reason` の値と `field`](contracts/screen-api.md#added-reason-values-and-field))。既存の 2 つの `display_name_*` の理由は、詳細のルートからのときだけ `field: displayName` を持つ。
+- エラーの本文は、両方のスキーマで `field` と 14 の `reason` の値を得る ([contracts/screen-api.md、追加する `reason` の値と `field`](contracts/screen-api.md#added-reason-values-and-field))。既存の 2 つの `display_name_*` の理由は、詳細のルートからのときだけ `field: displayName` を持つ。
 - 所有者専用の新しい画面を 3 つ加える: `/videos/{id}/edit` のエディター、`/people`、`/organizations`。後の 2 つのサイドバーでの配置は `ui-design.md` で決める。
 - `quickstart.md` はない: ストア、httpapi、Vitest、ブラウザーのテストが受け入れ条件を確かめ、この機能に固有の手動の手順はない。
 
@@ -169,7 +169,7 @@ flowchart LR
 
 ### 画面の API で人物と組織を管理する {#manage-people-and-organizations-through-the-screen-api}
 
-**範囲**: `/api/people` の下の 6 つのルートと `/api/organizations` の下の 6 つのルート、スキーマ `Person`、`Organization`、`Alias`、`ExternalId`、`CreditInput`、`CreditPatch`、`CreditList` ([contracts/screen-api.md、人物と組織](contracts/screen-api.md#people-and-organizations))。`Error` の `field` と 13 の理由 ([追加する `reason` の値と `field`](contracts/screen-api.md#added-reason-values-and-field))、および `InvalidWorkInfoError`、`CreditNotFoundError`、`CreditExternalIDTakenError` からの 1 つの対応付けの関数。`web/src/i18n/errors.ts` のメッセージ。`api/openapi.yaml` と `task generate`。`requiresJSONBody` と `accessRoutes` の分類。両方の接頭辞の下に登録する 1 つのハンドラーの組。
+**範囲**: `/api/people` の下の 6 つのルートと `/api/organizations` の下の 6 つのルート、スキーマ `Person`、`Organization`、`Alias`、`ExternalId`、`CreditInput`、`CreditPatch`、`CreditList` ([contracts/screen-api.md、人物と組織](contracts/screen-api.md#people-and-organizations))。`Error` の `field` と 14 の理由 ([追加する `reason` の値と `field`](contracts/screen-api.md#added-reason-values-and-field))、および `InvalidWorkInfoError`、`CreditNotFoundError`、`CreditExternalIDTakenError` からの 1 つの対応付けの関数。`web/src/i18n/errors.ts` のメッセージ。`api/openapi.yaml` と `task generate`。`requiresJSONBody` と `accessRoutes` の分類。両方の接頭辞の下に登録する 1 つのハンドラーの組。
 
 **依存**: 名前、別名、外部 ID、統合、親を持つ人物と組織を保存する
 
@@ -201,7 +201,7 @@ flowchart LR
 
 ### 外部 API と MCP で作品情報、人物、組織を読み書きする {#read-and-write-work-information-people-and-organizations-in-the-external-api-and-mcp}
 
-**範囲**: `ExternalVideo` の `workInfo`、`POST /api/v1/video-work-info`、`/api/v1/people` と `/api/v1/organizations` の下の 5 つの操作、`api/external-v1.yaml` の `field` と 13 の理由、11 の MCP ツールと `list_videos` と `get_video` の `workInfo` ([contracts/external-api.md](contracts/external-api.md))。画面のルートと共有するエラーの対応付け。`task generate`。external-api.md の "Set work information" の節と mcp.md のツールの行。
+**範囲**: `ExternalVideo` の `workInfo`、`POST /api/v1/video-work-info`、`/api/v1/people` と `/api/v1/organizations` の下の 5 つの操作、`api/external-v1.yaml` の `field` と 14 の理由、11 の MCP ツールと `list_videos` と `get_video` の `workInfo` ([contracts/external-api.md](contracts/external-api.md))。画面のルートと共有するエラーの対応付け。`task generate`。external-api.md の "Set work information" の節と mcp.md のツールの行。
 
 **依存**: 画面の API で人物と組織を管理する。画面の API で作品情報を読み書きする
 
