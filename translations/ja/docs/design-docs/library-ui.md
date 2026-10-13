@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: ec13afa211f10bb96839e2e687f3500f046237ac0c95cf66a405ecf227b1b77e
+sourceHash: 4c42576a149908879184e2b6c10f31a6e59848bd23893a9c01974ce075f28619
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -64,7 +64,7 @@ flowchart LR
 
 一覧は折り返すグリッドで、1 行のカード数は画面幅とカード幅で変わる。そのため仮想化すると、その数を計算し、スクロール位置の復元を仮想座標で作り直すことになる。ページは 60 項目ずつ読み込む（[`PAGE_SIZE`](../../web/src/api/client.ts)）ので、DOM には利用者が読み込んだものだけがある。**何が遅いかを測った後にだけ見直す。**
 
-タグ管理の一覧（`/tags`）は測定に基づく例外だ。タグが数千あると、開く、検索、スクロールが固まったので、ビューポートの近くの行だけを描画する（`@tanstack/react-virtual` の `useWindowVirtualizer`、[036 調査、R-2](../../specs/036-tag-admin-scale/research.md)）。上の理由はどちらもそこには当てはまらない。1 列であり、行は現在の条件に対してサーバーから 100 件ずつ届く。スクロールの持ち主は文書のままで、一覧はフォーカスのある行を描画したまま保ち、Tab は描画範囲の端を越えるので、キーボードの順序はすべての行に届く。画面は管理用の表ページのパターンだ。ヘッダー、タブ、ツールバーはページと一緒にスクロールし、行は `DataTable` の本体であり、描画範囲の外の行は空のスペーサー行として保つので、列はそろったままになる。ページは固定された上部バーの高さ（`--spacing-navbar`）を仮想化の処理と `scroll-padding-top` に渡すので、フォーカスのある行が上部バーの下に隠れることはない（[036 UI 設計、Band](../../specs/036-tag-admin-scale/ui-design.md)）。
+タグ管理の一覧（`/tags`）は測定に基づく例外だ。タグが数千あると、開く、検索、スクロールが固まったので、ビューポートの近くの行だけを描画する（`@tanstack/react-virtual` の `useWindowVirtualizer`、[036 調査、R-2](../../specs/036-tag-admin-scale/research.md)）。上の理由はどちらもそこには当てはまらない。1 列であり、行は現在の条件に対してサーバーから 100 件ずつ届く。スクロールの持ち主は文書のままで、一覧はフォーカスのある行を描画したまま保ち、Tab は描画範囲の端を越えるので、キーボードの順序はすべての行に届く。画面は管理用の表ページのパターンだ。ヘッダー、タブ、ツールバーはページと一緒にスクロールし、行は `DataTable` の本体であり、描画範囲の外の行は空のスペーサー行として保つので、列はそろったままになる。ページは固定された上部バーの高さ（`--spacing-navbar`）を仮想化の処理と `scroll-padding-top` に渡すので、フォーカスのある行が上部バーの下に隠れることはない（[036 UI 設計、Band](../../specs/036-tag-admin-scale/ui-design.md)）。人物と組織の管理の一覧（`/people`、`/organizations`）も、`web/src/tags/` にある同じ部品から同じ方法で組み立てる。サーバーから 100 件ずつのページを読み、ビューポートの近くの行を描画し、名前の変更、詳細、統合、削除の後はローカルで更新する（[047 UI 設計、People and organizations screens](../../specs/047-video-work-info/ui-design.md#people-and-organizations-screens-1)）。
 
 ### スクロールはウィンドウが持つ {#the-window-owns-scrolling}
 
@@ -123,7 +123,7 @@ flowchart LR
 
 ### シェルとツールバー {#shell-and-toolbar}
 
-上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰（640px 未満のみ）とロゴを持ち、スキャンのコントロールは持たない（[スキャンの入口と進捗](#scan-entry-and-progress)を参照）。ライブラリ、フォルダのページ、タグのページは、その後に自分のツールバーを差し込む。これはデザインシステムの `Toolbar` を `placement="topBar"` で使い、[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx) を通して描画したものだ。ページ本体は見出しと件数から始まるので、ツールバーはどのスクロール位置でも届く。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストは上部バーの下に貼り付く帯なので、親フォルダはどのスクロール位置でも 1 クリックで開ける。パンくずリストの最後の項目がフォルダ名を示すので、ページの `h1` はスクリーンリーダー専用で、それを繰り返す見える見出しはない（[design-system.md、Page patterns](design-system.md#page-patterns)）。タグのページは `AdminTablePage` だ。中央に寄せた `max-w-4xl` の列で、ヘッダー（行を選択している間は選択バー）とタブが上部バーの下に貼り付き、表の列見出しはそのすぐ下に貼り付く。ライブラリとフォルダのページでは、検索、絞り込み、タグ、並び順のどれかを変えるとページが先頭までスクロールするので、新しい一覧は最初のカードから始まる。プレーヤーから戻ったときは、これまでどおり保存した位置を復元する。サイドバーには 2 つの状態（レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）がある。レールは幅 68px（`sidebar-rail`）で、各項目のアイコンを小さなラベルの上に 56px（`rail-item`）の正方形で表示するので、どの項目にも名前が見える。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
+上部バー（[`TopBar.tsx`](../../web/src/shell/TopBar.tsx)）は ☰（640px 未満のみ）とロゴを持ち、スキャンのコントロールは持たない（[スキャンの入口と進捗](#scan-entry-and-progress)を参照）。ライブラリ、フォルダのページ、管理のページ（タグ、人物、組織）は、その後に自分のツールバーを差し込む。これはデザインシステムの `Toolbar` を `placement="topBar"` で使い、[`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx) を通して描画したものだ。ページ本体は見出しと件数から始まるので、ツールバーはどのスクロール位置でも届く。フォルダのページはデザインシステムの `ListPage` だ。パンくずリストは上部バーの下に貼り付く帯なので、親フォルダはどのスクロール位置でも 1 クリックで開ける。パンくずリストの最後の項目がフォルダ名を示すので、ページの `h1` はスクリーンリーダー専用で、それを繰り返す見える見出しはない（[design-system.md、Page patterns](design-system.md#page-patterns)）。タグのページは `AdminTablePage` だ。中央に寄せた `max-w-4xl` の列で、ヘッダー（行を選択している間は選択バー）とタブが上部バーの下に貼り付き、表の列見出しはそのすぐ下に貼り付く。人物と組織のページは、種類を受け取る 1 つの `AdminTablePage` コンポーネントだ。同じヘッダーと列見出しを持つが、絞り込み、タブ、チェックボックスの列、選択バーはなく、同義語のダイアログの代わりに詳細のダイアログ（別名、外部 ID、組織の場合は親）を持つ。ライブラリとフォルダのページでは、検索、絞り込み、タグ、並び順のどれかを変えるとページが先頭までスクロールするので、新しい一覧は最初のカードから始まる。プレーヤーから戻ったときは、これまでどおり保存した位置を復元する。サイドバーには 2 つの状態（レール、ドロワー。[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)を参照）がある。レールは幅 68px（`sidebar-rail`）で、各項目のアイコンを小さなラベルの上に 56px（`rail-item`）の正方形で表示するので、どの項目にも名前が見える。カード幅はズームの段階に従う。ゲストのルールは [016 UI 設計、Shell entries、Guest degradation](../../specs/016-single-account-auth/ui-design.md) にある。
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |
