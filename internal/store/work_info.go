@@ -126,8 +126,16 @@ func (s *WorkInfoStore) SetMany(ctx context.Context, changes []domain.WorkInfoCh
 
 // ByUserKeys は利用者データの鍵 userKeys の作品情報を返す。作品情報の無い鍵は含めない。
 // 出演者は position の順である。
+//
+// 項目と出演者は別々の問い合わせなので、同じ読み取りスナップショット（読み取り専用の取引）で読み、
+// 書き込みと重なっても古い項目と新しい出演者が混ざらないようにする（TagStore.TagImpact と同じ）。
 func (s *WorkInfoStore) ByUserKeys(ctx context.Context, userKeys []string) (map[string]domain.WorkInfo, error) {
-	return workInfoByUserKeys(ctx, s.sql, userKeys)
+	tx, err := s.sql.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the work information: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	return workInfoByUserKeys(ctx, tx, userKeys)
 }
 
 // RefreshSearchKeys は search_version が domain.SearchKeyVersion より小さい行の maker_key・
