@@ -139,9 +139,10 @@ func fitThumbnailSize(aspect float64) (width, height int) {
 
 // fitThumbnailSourceSize は width×height の画像を縦横比 aspect（0 以下は画像自身の比率）に中央で
 // 切り抜き、長辺が 2048px を超えれば 2048px に縮めた大きさを返す。拡大はしないので、辺は
-// 切り抜いた大きさを超えない偶数に切り下げる（fitThumbnailSize と同じく偶数にする）。2px に
-// 満たない辺は 1px にする。その大きさでは aspect を表せないので、元の画像は画像の画素を拡大せず
-// そのまま残す。
+// 切り抜いた大きさを超えない整数に切り下げる。偶数には丸めない。偶数にすると 16×9 の画像が
+// 16×8 になるように、小さな画像では縦横比がずれ、表示しているサムネイルより狭い範囲から編集が
+// 始まる（ffmpeg の JPEG は奇数の辺も書ける）。1px に満たない辺は 1px にする。その大きさでは
+// aspect を表せないので、元の画像は画像の画素を拡大せずそのまま残す。
 func fitThumbnailSourceSize(width, height int, aspect float64) (int, int) {
 	w, h := float64(width), float64(height)
 	if aspect > 0 && w/h > aspect {
@@ -152,17 +153,13 @@ func fitThumbnailSourceSize(width, height int, aspect float64) (int, int) {
 	if long := math.Max(w, h); long > thumbnailSourceLongSide {
 		w, h = w*thumbnailSourceLongSide/long, h*thumbnailSourceLongSide/long
 	}
-	return evenAtMost(w), evenAtMost(h)
+	return sideAtMost(w), sideAtMost(h)
 }
 
-// evenAtMost は value を超えない最大の偶数を返す。value が 2 に満たなければ 1 を返す。
+// sideAtMost は value を超えない最大の整数を返す。value が 1 に満たなければ 1 を返す。
 // 浮動小数の誤差で整数をわずかに下回った値は、その整数として扱う。
-func evenAtMost(value float64) int {
-	side := int(math.Floor(value + 1e-9))
-	if side < 2 {
-		return 1
-	}
-	return side &^ 1
+func sideAtMost(value float64) int {
+	return max(int(math.Floor(value+1e-9)), 1)
 }
 
 // FitThumbnailImage は FitThumbnailImage を呼ぶ。
