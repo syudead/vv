@@ -178,6 +178,24 @@ is reported at its second occurrence.
 A cleared single-value field is `null`; a `video_work_info` row exists only
 while `code` or `description` is set.
 
+The video rules also settle these cases, each the same as a rule above:
+
+| Case | Rule |
+| --- | --- |
+| A `dates[]` entry whose `date` is empty after trimming | Dropped, so it does not count for the one-per-kind rule |
+| A repeated date kind | `Duplicate` with `field` `dates[i].kind` |
+| A repeated person or organization within a role | `Duplicate` with `field` `people[i].person.id` or `organizations[i].organization.id` |
+| A role over its entry limit | `TooMany` with `field` `people` (limit 100) or `organizations` (limit 20) |
+| A `date` longer than its form, or a one-digit month or day | `InvalidDate` |
+| A `kind` or `role` outside its set | An error wrapping `ErrInvalidWorkInfo` without a `Problem`; the generated schema check refuses it first |
+| A missing person or organization | Checked after every field rule, in sent order, people before organizations; `field` is the position in the list as sent |
+
+The role order of `(role, position)` is the order of the role sets:
+`performer`, `director`, `photographer`, `streamer`, then `maker`, `label`.
+`NormalizeWorkInfo` returns its lists in the read order of
+[Reads](#reads), so the store compares a write with the stored object
+directly.
+
 ## Entities
 
 A person or organization is read as `domain.Credit`: the canonical name,
