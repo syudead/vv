@@ -4,7 +4,7 @@
 
 services:
   mdm:
-    image: ghcr.io/syudead/vv:latest
+    image: ghcr.io/syudead/vv:latest@sha256:a3220c0e301f28b4389523ca6c356b7bfe128358db1fffa7a1344ca8652d68b9
     ports:
       # 変える: 左がブラウザで開くポート。NAS の管理画面が 8080 を使うなら 18080 などにする。
       - "8080:8080"
