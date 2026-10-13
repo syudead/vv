@@ -1,11 +1,11 @@
 ---
 source: docs/how-to/external-api.md
-sourceHash: 90c1473af96a98ccdb042978a81fa74123d803085dfa65ed888feed2b5cdaab0
+sourceHash: f10be89634feade4d042160954d91760be81eb15d8d456aa803641800090a384
 ---
 
 # 外部 API を使う {#use-the-external-api}
 
-API トークンがあれば、スクレイパーなどの外部ツールは `/api/v1` または `/mcp` の MCP サーバーを通じて、動画一覧を読み、スキャンを開始し、タグ、表示名、カバーサムネイルを設定できる。判断の理由は [specs/026-external-api/research.md](../../specs/026-external-api/research.md) にある。
+API トークンがあれば、スクレイパーなどの外部ツールは `/api/v1` または `/mcp` の MCP サーバーを通じて、動画一覧を読み、スキャンを開始し、タグ、表示名、カバーサムネイル、作品情報を設定できる。判断の理由は [specs/026-external-api/research.md](../../specs/026-external-api/research.md) にある。
 
 外部ツールは `/api/v1` と `/mcp` だけを使う。画面用の `/api/*` は予告なく変わる。
 
@@ -59,7 +59,7 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
 | 操作が本文を取る | `Content-Type: application/json` が必要 |
 | リクエスト中にトークンが失効する | リクエストは打ち切られる |
 
-- エラー本文は `{ code, message, reason?, limit?, index?, tagId?, tagName? }` である。`message` は英語の文である。分岐には `code` と `reason` を使う。`tagId` と `tagName` はタグ名の衝突のときだけ付く（[タグを整理する](#tidy-up-tags)）。
+- エラー本文は `{ code, message, reason?, limit?, index?, field?, tagId?, tagName? }` である。`message` は英語の文である。分岐には `code` と `reason` を使う。`tagId` と `tagName` はタグ名の衝突のときだけ付く（[タグを整理する](#tidy-up-tags)）。`field` は作品情報のエラーのときだけ付く（[作品情報を設定する](#set-work-information)）。
 - Settings ページのトークン一覧は最終使用時刻を表示する。この時刻の更新は最大で 1 分に 1 回である。
 
 ## スキャン {#scans}
@@ -378,6 +378,99 @@ flowchart LR
 
 どのエラーも `index` を持つ。生成中にスキャンが動画を変えることがあるため、各項目は生成の直前に動画と場所を読み込み直す。そのため、検証エラーでもリクエストが途中で止まることがある。止まったとき、`index` より前の項目は適用され、その項目と残りは適用されない。続けるには、`index` の項目を直すか除き、`index` 以降を再送する。適用済みの項目を再送しても、同じ位置で生成し直すだけである。
 
+## 作品情報を設定する {#set-work-information}
+
+動画の作品情報は、そのコード、説明、日付、人物、組織、URL、外部 ID である。人物と組織はそれ自体がエンティティであり、動画はそれを id で参照する。正本は [specs/047-video-work-info/contracts/external-api.md](../../specs/047-video-work-info/contracts/external-api.md) である。
+
+### 動画に書き込む {#write-videos}
+
+`POST /api/v1/video-work-info` は、複数の動画の作品情報を置き換える。
+
+```json
+{ "items": [ { "video": { "path": "/media/a.mp4" },
+               "workInfo": { "code": "ABC-123",
+                             "dates": [ { "kind": "release", "date": "2024-06" } ],
+                             "people": [ { "role": "performer", "person": { "id": 7 } } ],
+                             "organizations": [ { "role": "maker", "organization": { "id": 2 } } ],
+                             "urls": [ "https://example.com/abc-123" ],
+                             "externalIds": [ { "source": "example", "value": "abc123" } ] } },
+             { "video": { "id": 12 }, "workInfo": {} } ] }
+```
+
+- 各 `workInfo` は保存したオブジェクトを置き換える。ない、`null`、または前後の空白を除くと空になるプロパティは消えるので、`{}` はすべてを消す。1 つのフィールドを変えるには、動画を読み、そのフィールドを変え、オブジェクト全体を送る。
+- 1 つのトランザクションで 1 から 20000 項目。どのエラーでも何も適用せず、`items` の中の `index` を返す。同じ動画への後の項目が優先される。
+- 応答は `items` の順の `{ items: [{ video: { id, contentKey }, workInfo }] }` である。同じリクエストを繰り返すと `200` を返し、`updatedAt` も含めて何も変えない。
+- 動画のどの読み取り（`GET /api/v1/videos`、`GET /api/v1/videos/lookup`）も `workInfo` を持つ。この API では、設定していない `code` や `description` は `null` であり、空の一覧は `[]` である。
+
+フィールドは次の規則に従う。全体の一覧は [data-model.md、フィールド](../../specs/047-video-work-info/data-model.md#fields) にある。
+
+| フィールド | 規則 |
+| --- | --- |
+| `code` | 最大 100 文字 |
+| `description` | 最大 10,000 文字。改行を許す |
+| `dates[]` | `kind` は `release`、`recorded`、`published` のいずれかで、種類ごとに 1 つ。`date` は `YYYY`、`YYYY-MM`、`YYYY-MM-DD` のいずれか |
+| `people[]` | `role` は `performer`、`director`、`photographer`、`streamer` のいずれか。`person.id` が存在する。役割ごとに最大 100 |
+| `organizations[]` | `role` は `maker` か `label`。`organization.id` が存在する。役割ごとに最大 20 |
+| `urls[]` | 2,048 文字以下の絶対 `http` または `https` URL を最大 20 個。重複なし |
+| `externalIds[]` | 最大 20。`source` は最大 50 文字、`value` は最大 200 文字。重複なし |
+
+どの文字列も制御文字を含んではならない。規則を破ると、`work_info_*` の理由、`field`（その項目の `workInfo` の中のパス。`people[0].person.id` など）、上限のときは `limit` を付けた `400` を返す。存在しない人物か組織の id は、`field` 付きの `404`（`person_not_found` または `organization_not_found`）を返す。見つからない動画は `404`（`video_not_found`）を返す。
+
+### 人物と組織を管理する {#manage-people-and-organizations}
+
+人物は `/api/v1/people`、組織は `/api/v1/organizations` の下にあり、同じ 5 つの操作を持つ。組織はさらに `parent` を持ち（根では `null`）、`parentId` を受け付ける。
+
+| 操作 | リクエスト | 応答 |
+| --- | --- | --- |
+| 一覧 | `GET …?q=&sort=&cursor=&limit=`。[タグを一覧する](#list-tags) と同じ | `{ items, total, totalAll, nextCursor? }` |
+| 照会 | `GET …?source=example&externalId=42` | その外部 ID を持つ 1 つのエンティティを入れた `items`、または空の `items` |
+| 作成 | `{ name, aliases?, externalIds?, parentId? }` を付けた `POST …` | `200` とエンティティ |
+| 更新 | `{ id, …fields }` を付けた `POST …/update` | `200` とエンティティ。ないフィールドはそのまま残り、与えた一覧は保存した一覧を置き換え、`null` は一覧を空にする |
+| 統合 | `{ targetId, sourceIds }` を付けた `POST …/merge` | `{ person or organization, notFoundIds }`。統合元は統合先の別名になる |
+| 削除 | `{ ids }` を付けた `POST …/delete` | `ids` の順の `{ deletedIds, notFoundIds }` |
+
+- 外部 ID は、ある種類のエンティティを最大 1 つ指す。別のエンティティが持つ外部 ID でエンティティを作成または更新すると、`409`（`external_id_taken`、`field: externalIds[i]`）を返す。
+- `sourceIds` と `ids` は 1 から 20000 の id を取る。その範囲の外は `400`（`work_info_too_many`、`field`、`limit`）である。統合元に `targetId` を含む統合は `400`（`merge_same_person` または `merge_same_organization`）である。
+
+### 例: スクレイパーが見つけたものを書き込む {#example-write-what-a-scraper-found}
+
+各出演者を外部サイトの ID で照会し、照会が空のときだけ人物を作成し、それから id を付けて動画を 1 回書き込む。照会と作成の間に別のクライアントが同じ人物を作成すると、作成は `409` (`external_id_taken`) を返す。その人物をもう一度照会し、その id を使う。
+
+```mermaid
+sequenceDiagram
+  participant S as スクレイパー
+  participant V as VVMDM
+  S->>V: GET /api/v1/people?source=example&externalId=42
+  alt items is empty
+    S->>V: POST /api/v1/people
+    opt 409 external_id_taken
+      S->>V: GET /api/v1/people?source=example&externalId=42
+    end
+  end
+  S->>V: 人物の id を付けて POST /api/v1/video-work-info
+```
+
+```sh
+# 1. Look the performer up by the external ID.
+lookup() {
+  curl -s -H "Authorization: Bearer $TOKEN" \
+    "$BASE/api/v1/people?source=example&externalId=42" | jq '.items[0].id // empty'
+}
+ID=$(lookup)
+
+# 2. Create the performer only when the lookup found none. A 409 response has no
+#    id: another client created the person first, so look it up again.
+[ -n "$ID" ] || ID=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" "$BASE/api/v1/people" \
+  -d '{"name":"山田 花子","externalIds":[{"source":"example","value":"42"}]}' | jq '.id // empty')
+[ -n "$ID" ] || ID=$(lookup)
+
+# 3. Write the video with the id.
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/v1/video-work-info" \
+  -d '{"items":[{"video":{"contentKey":"…"},"workInfo":{"code":"ABC-123","people":[{"role":"performer","person":{"id":'"$ID"'}}]}}]}'
+```
+
 ## 例: スクレイパーを連携させる {#example-integrate-a-scraper}
 
 この流れは、新しくスキャンされた動画を外部サイトで調べ、見つかった情報でタグを付ける。
@@ -444,6 +537,12 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `batch_tags` | `POST /api/v1/tags/batch` |
 | `list_rejected_tag_names` | `GET /api/v1/tags/rejected-names`。`limit` の既定は 100 |
 | `forget_rejected_tag_name` | `DELETE /api/v1/tags/rejected-names` |
+| `update_video_work_info` | `POST /api/v1/video-work-info` |
+| `list_people`、`list_organizations` | `GET /api/v1/people`、`GET /api/v1/organizations`。ツールでは `limit` の既定は 100 |
+| `create_person`、`create_organization` | `POST /api/v1/people`、`POST /api/v1/organizations` |
+| `update_person`、`update_organization` | `POST /api/v1/people/update`、`POST /api/v1/organizations/update` |
+| `merge_people`、`merge_organizations` | `POST /api/v1/people/merge`、`POST /api/v1/organizations/merge` |
+| `delete_people`、`delete_organizations` | `POST /api/v1/people/delete`、`POST /api/v1/organizations/delete` |
 
 - ツールの引数は操作のクエリと本文の形を持ち、構造化された結果は応答本文の形を持つ。操作のエラーは、`isError: true` と [エラー本文](#call-the-api) を持つツール結果になる。
 - 受け付けるのは `POST /mcp` だけで、応答は `application/json` である。サーバーはセッションを保持しないため、`GET` と `DELETE` は `405` を返す。

@@ -53,6 +53,7 @@ func newMCPFixture(t *testing.T, opts Options) mcpFixture {
 		if opts.ThumbnailPicker == nil {
 			opts.ThumbnailPicker = &fakeThumbnailPicker{db: db}
 		}
+		opts.Credits, opts.WorkInfo = db.Credits(), db.WorkInfo()
 		return opts
 	})
 	f := mcpFixture{env: env, owner: env.setup()}
@@ -114,7 +115,7 @@ func callTool(t *testing.T, session *mcp.ClientSession, name string, args any, o
 	return result.IsError
 }
 
-// SDK のクライアントから接続すると 14 のツールが契約の注記つきで並び、update_video_tags の
+// SDK のクライアントから接続すると 25 のツールが契約の注記つきで並び、update_video_tags の
 // 結果が REST の lookup に、update_video_display_names の結果が get_video に出る。
 func TestMCPToolsMatchExternalAPI(t *testing.T) {
 	scans := &fakeScans{}
@@ -146,6 +147,18 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 		"batch_tags":               {destructive: true, idempotent: true},
 		"list_rejected_tag_names":  {readOnly: true},
 		"forget_rejected_tag_name": {destructive: true, idempotent: true},
+		// specs/047-video-work-info/contracts/external-api.md「MCP tools」
+		"update_video_work_info": {destructive: true, idempotent: true},
+		"list_people":            {readOnly: true},
+		"list_organizations":     {readOnly: true},
+		"create_person":          {destructive: false, idempotent: false},
+		"create_organization":    {destructive: false, idempotent: false},
+		"update_person":          {destructive: true, idempotent: true},
+		"update_organization":    {destructive: true, idempotent: true},
+		"merge_people":           {destructive: true, idempotent: true},
+		"merge_organizations":    {destructive: true, idempotent: true},
+		"delete_people":          {destructive: true, idempotent: true},
+		"delete_organizations":   {destructive: true, idempotent: true},
 	}
 	var names []string
 	for _, tool := range listed.Tools {
@@ -167,7 +180,7 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 			t.Errorf("tool %q: hints = %+v, want %+v", tool.Name, got, w)
 		}
 	}
-	if len(names) != len(want) || len(names) != 14 {
+	if len(names) != len(want) || len(names) != 25 {
 		t.Errorf("tools = %v", names)
 	}
 

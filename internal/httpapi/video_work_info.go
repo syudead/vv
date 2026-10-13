@@ -21,6 +21,9 @@ import (
 type WorkInfo interface {
 	// Set は動画 videoID の作品情報をまるごと置き換え、作品情報を含む動画を返す。
 	Set(ctx context.Context, videoID int64, info domain.WorkInfo) (domain.Video, error)
+	// SetMany は外部連携の一括操作で、各動画の作品情報を 1 つの取引でまとめて置き換え、反映後の動画を
+	// changes の順に返す。誤りは *domain.WorkInfoAtError か *domain.VideoRefNotFoundError で位置を運ぶ。
+	SetMany(ctx context.Context, changes []domain.WorkInfoChange) ([]domain.Video, error)
 	// SetDetails は表示名と作品情報を 1 つの取引で書き、両方を含む動画を返す。
 	SetDetails(ctx context.Context, videoID int64, displayName string, info domain.WorkInfo) (domain.Video, error)
 	// ByUserKeys は利用者データの鍵ごとの作品情報を返す。行の無い鍵は含めない。
@@ -135,13 +138,22 @@ func (s *server) workInfoConfigured(w http.ResponseWriter) bool {
 // check」に当たる検査）。生成型は欠けた date を空の文字列に読み、空の日付は落として保存済みの日付を
 // 消してしまうので、有無は raw で確かめる。省いた一覧の値と null は空で、空は解除である。
 func (s *server) readWorkInfoInput(w http.ResponseWriter, input gen.WorkInfoInput, raw json.RawMessage) (domain.WorkInfo, bool) {
+	info, message, ok := workInfoFromInput(input, raw)
+	if !ok {
+		s.invalidRequest(w, message)
+	}
+	return info, ok
+}
+
+// workInfoFromInput は readWorkInfoInput の本体で、応答を書かずに誤りの文言と false を返す。外部連携 API の
+// POST /api/v1/video-work-info も、項目の workInfo を同じ形の gen.WorkInfoInput に読んでこれを呼ぶ。
+func workInfoFromInput(input gen.WorkInfoInput, raw json.RawMessage) (domain.WorkInfo, string, bool) {
 	message, ok := workInfoInputRequiredPresent(raw)
 	if ok {
 		message, ok = workInfoInputEnumsValid(input)
 	}
 	if !ok {
-		s.invalidRequest(w, message)
-		return domain.WorkInfo{}, false
+		return domain.WorkInfo{}, message, false
 	}
 	info := domain.WorkInfo{Code: valueOrZero(input.Code), Description: valueOrZero(input.Description)}
 	for _, date := range valueOrZero(input.Dates) {
@@ -159,7 +171,7 @@ func (s *server) readWorkInfoInput(w http.ResponseWriter, input gen.WorkInfoInpu
 	}
 	info.URLs = valueOrZero(input.Urls)
 	info.ExternalIDs = fromAPIExternalIDs(input.ExternalIds)
-	return info, true
+	return info, "", true
 }
 
 // workInfoInputEnumsValid は日付の種類と人物・団体の役割が契約の列挙にあるかを確かめ、無ければ

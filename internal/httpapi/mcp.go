@@ -295,6 +295,8 @@ func (t *mcpTools) register(server *mcp.Server) {
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, _ mcpNoInput) (*mcp.CallToolResult, any, error) {
 		return t.call(ctx, http.MethodGet, "/scans/current", nil, nil)
 	})
+
+	t.registerWorkInfo(server)
 }
 
 // videoTagsInputSchema は update_video_tags の入力の形である。型から導き、action に
@@ -324,17 +326,21 @@ func tagSynonymsInputSchema() *jsonschema.Schema {
 // listTagsInputSchema は list_tags の入力の形である。型から導き、sort に契約の値を、
 // limit と q に上限を足す（型からは文字列・整数としか分からない）。
 func listTagsInputSchema() *jsonschema.Schema {
-	schema := inputSchemaFor[mcpListTags]("list_tags")
+	return withListInputLimits(inputSchemaFor[mcpListTags]("list_tags"), mcpListTagsDefaultLimit,
+		string(extgen.TagSortName), string(extgen.TagSortCountDesc), string(extgen.TagSortCountAsc),
+		string(extgen.TagSortCreatedDesc), string(extgen.TagSortCreatedAsc))
+}
+
+// withListInputLimits は一覧のツールの入力の形に、sort の値、limit の範囲と既定、q の上限を足して返す。
+// list_tags と list_people・list_organizations が同じ規則で読む。
+func withListInputLimits(schema *jsonschema.Schema, defaultLimit int, sorts ...any) *jsonschema.Schema {
 	if sort := schema.Properties["sort"]; sort != nil {
-		sort.Enum = []any{
-			string(extgen.Name), string(extgen.CountDesc), string(extgen.CountAsc),
-			string(extgen.CreatedDesc), string(extgen.CreatedAsc),
-		}
+		sort.Enum = sorts
 	}
 	if limit := schema.Properties["limit"]; limit != nil {
 		minimum, maximum := 1.0, float64(domain.MaxTagPageLimit)
 		limit.Minimum, limit.Maximum = &minimum, &maximum
-		limit.Default = json.RawMessage(strconv.Itoa(mcpListTagsDefaultLimit))
+		limit.Default = json.RawMessage(strconv.Itoa(defaultLimit))
 	}
 	if q := schema.Properties["q"]; q != nil {
 		maxLength := maxQueryLength

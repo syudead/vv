@@ -23,6 +23,8 @@ import (
 type Credits interface {
 	List(ctx context.Context, kind domain.CreditKind, query domain.CreditQuery) (domain.CreditPage, error)
 	Get(ctx context.Context, kind domain.CreditKind, id int64) (domain.Credit, error)
+	// Lookup は外部 ID (source, value) を持つ実体を返す。無ければ domain.ErrNotFound。
+	Lookup(ctx context.Context, kind domain.CreditKind, source, value string) (domain.Credit, error)
 	Create(ctx context.Context, kind domain.CreditKind, input domain.CreditInput) (domain.Credit, error)
 	Update(ctx context.Context, kind domain.CreditKind, id int64, patch domain.CreditPatch) (domain.Credit, error)
 	Merge(ctx context.Context, kind domain.CreditKind, targetID int64, sourceIDs []int64) (domain.CreditMergeOutcome, error)
@@ -122,11 +124,7 @@ func (s *server) MergeOrganizations(w http.ResponseWriter, r *http.Request, id g
 // listCredits は GET /api/people と GET /api/organizations である。パラメータの規則はタグの一覧と同じ
 // （buildTagListQuery）で、limit を省けば全件を返す。
 func (s *server) listCredits(w http.ResponseWriter, r *http.Request, api creditKindAPI, params gen.ListPeopleParams) {
-	var sort *string
-	if params.Sort != nil {
-		value := string(*params.Sort)
-		sort = &value
-	}
+	sort := sortParam(params.Sort)
 	tagQuery, problem := buildTagListQuery(params.Q, nil, nil, sort, params.Cursor, params.Limit)
 	if !s.acceptTagListQuery(w, problem) || !s.creditsConfigured(w) {
 		return
@@ -204,10 +202,20 @@ func (s *server) readCreditPatch(w http.ResponseWriter, r *http.Request, kind do
 	if !ok {
 		return domain.CreditPatch{}, false
 	}
+	patch, message, ok := creditPatchOf(body, present, kind)
+	if !ok {
+		s.invalidRequest(w, message)
+	}
+	return patch, ok
+}
+
+// creditPatchOf は readCreditPatch の本体で、応答を書かずに誤りの文言と false を返す。present は本文の
+// 最上位にプロパティがあったか（値が null でも）を答える。外部連携 API の POST …/update も、本文を同じ形の
+// gen.CreditPatch に読んでこれを呼ぶ。
+func creditPatchOf(body gen.CreditPatch, present func(name string) bool, kind domain.CreditKind) (domain.CreditPatch, string, bool) {
 	patch := domain.CreditPatch{Name: body.Name}
 	if present("name") && body.Name == nil {
-		s.invalidRequest(w, "name cannot be null.")
-		return domain.CreditPatch{}, false
+		return domain.CreditPatch{}, "name cannot be null.", false
 	}
 	if present("aliases") {
 		aliases := fromAPIAliases(body.Aliases)
@@ -219,12 +227,11 @@ func (s *server) readCreditPatch(w http.ResponseWriter, r *http.Request, kind do
 	}
 	if present("parentId") {
 		if kind != domain.CreditOrganization {
-			s.invalidRequest(w, "parentId applies to organizations only.")
-			return domain.CreditPatch{}, false
+			return domain.CreditPatch{}, "parentId applies to organizations only.", false
 		}
 		patch.ParentSet, patch.ParentID = true, body.ParentId
 	}
-	return patch, true
+	return patch, "", true
 }
 
 // readJSONBodyFields は readJSONBody と同じく本文を target に読み、加えて最上位のプロパティが本文に

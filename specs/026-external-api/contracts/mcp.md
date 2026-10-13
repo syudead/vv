@@ -23,7 +23,7 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 Input and output (structured content) have the same shape as the parameters and body, and the
 response body, of the same operation in [external-api.md](external-api.md). Errors are returned as a
 tool result with `isError: true` and, in the body, the same `{ code, message, reason?, limit?,
-index?, tagId?, tagName? }` as external API errors.
+index?, field?, tagId?, tagName? }` as external API errors.
 
 | Tool | Operation |
 | --- | --- |
@@ -41,6 +41,12 @@ index?, tagId?, tagName? }` as external API errors.
 | `batch_tags` | `POST /api/v1/tags/batch` |
 | `list_rejected_tag_names` | `GET /api/v1/tags/rejected-names` |
 | `forget_rejected_tag_name` | `DELETE /api/v1/tags/rejected-names` |
+| `update_video_work_info` | `POST /api/v1/video-work-info` |
+| `list_people`, `list_organizations` | `GET /api/v1/people`, `GET /api/v1/organizations`; `limit` defaults to 100 in the tool |
+| `create_person`, `create_organization` | `POST /api/v1/people`, `POST /api/v1/organizations` |
+| `update_person`, `update_organization` | `POST /api/v1/people/update`, `POST /api/v1/organizations/update` |
+| `merge_people`, `merge_organizations` | `POST /api/v1/people/merge`, `POST /api/v1/organizations/merge` |
+| `delete_people`, `delete_organizations` | `POST /api/v1/people/delete`, `POST /api/v1/organizations/delete` |
 
 `update_video_display_names` and `update_video_thumbnails` were added in 029
 ([specs/029-video-overrides/contracts/external-api.md, MCP tools](../../029-video-overrides/contracts/external-api.md#mcp-tools)).
@@ -48,6 +54,9 @@ index?, tagId?, tagName? }` as external API errors.
 tools `merge_tags`, `rename_tag`, `update_tag_synonyms`, `batch_tags`,
 `list_rejected_tag_names` and `forget_rejected_tag_name`
 ([specs/039-external-tag-admin/contracts/external-api.md, MCP tools](../../039-external-tag-admin/contracts/external-api.md#mcp-tools)).
+047 added `update_video_work_info` and the five tools each for people and
+organizations, and `workInfo` in the output of `list_videos` and `get_video`
+([specs/047-video-work-info/contracts/external-api.md, MCP tools](../../047-video-work-info/contracts/external-api.md#mcp-tools)).
 
 | Tool | Hints | Reason |
 | --- | --- | --- |
@@ -59,4 +68,8 @@ tools `merge_tags`, `rename_tag`, `update_tag_synonyms`, `batch_tags`,
 | `rename_tag` | `destructiveHint: false`, `idempotentHint: true` | — |
 | `update_tag_synonyms` | `destructiveHint: true`, `idempotentHint: true` | `remove` drops a name; `add` with `mergeTagId` merges a tag. |
 | `batch_tags` | `destructiveHint: true`, `idempotentHint: true` | `reject` and `delete` remove tags. |
+| `update_video_work_info` | `destructiveHint: true`, `idempotentHint: true` | A cleared item is lost. |
+| `create_person`, `create_organization` | `destructiveHint: false`, `idempotentHint: false` | Each call creates one. |
+| `update_person`, `update_organization` | `destructiveHint: true`, `idempotentHint: true` | A given list replaces the stored one. |
+| `merge_people`, `merge_organizations`, `delete_people`, `delete_organizations` | `destructiveHint: true`, `idempotentHint: true` | Merged sources and deleted entities are gone. |
 | `forget_rejected_tag_name` | `destructiveHint: true`, `idempotentHint: true` | The name stops being skipped by tentative attaches. |
