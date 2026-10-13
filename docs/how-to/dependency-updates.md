@@ -22,7 +22,7 @@ flowchart LR
 - PRs open early every Monday morning (JST) in 6 groups: Go modules, web npm,
   tools npm, GitHub Actions, mise tools and container images. Vulnerability fix
   PRs open at any time.
-- Minor, patch, pin, digest and lockfile maintenance updates are merged
+- Minor, patch, pin, digest pinning (`pinDigest`), digest and lockfile maintenance updates are merged
   automatically once the required `Checks` job passes. Browser E2E and the
   Docker image run on the push to `main` after the merge.
 - A person reads the breaking changes of a major update before merging it.
@@ -37,6 +37,7 @@ flowchart LR
 | --- | --- | --- |
 | `golang` / `node` images in `Dockerfile`; `go` / `node` in `mise.toml` | Version updates are excluded; digest updates of the `Dockerfile` images stay in scope | The runtime version must match the `go` line in `go.mod`, so a person changes them together |
 | `task` and `jq` in `mise.toml`; `alpine` in `Dockerfile` | In scope, in the mise tools and container images groups | — |
+| `ghcr.io/syudead/vv:latest` in `compose.hosting.yaml` | Excluded | `latest` follows the image published from `main`; pinning its digest would stop that behavior |
 | FFmpeg bundled in the Windows zip (`ffmpegVersion` and `ffmpegSHA256` in `scripts/build/windows_app.go`) | Raised by a person ([Raise the bundled FFmpeg version](#raise-the-bundled-ffmpeg-version)) | Renovate does not read these constants |
 | Dependabot security updates | Disabled in the repository settings | Renovate's `vulnerabilityAlerts` does the same job |
 

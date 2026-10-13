@@ -23,7 +23,7 @@ flowchart LR
 ```
 
 - PR は毎週月曜の早朝（JST）に 6 つのグループで開く。Go モジュール、web の npm、tools の npm、GitHub Actions、mise のツール、コンテナイメージである。脆弱性修正の PR はいつでも開く。
-- マイナー、パッチ、ピン留め、ダイジェスト、ロックファイル保守の更新は、必須の `Checks` ジョブが通ると自動でマージされる。Browser E2E と Docker イメージは、マージ後の `main` への push で実行される。
+- マイナー、パッチ、ピン留め、ダイジェストのピン留め（`pinDigest`）、ダイジェスト、ロックファイル保守の更新は、必須の `Checks` ジョブが通ると自動でマージされる。Browser E2E と Docker イメージは、マージ後の `main` への push で実行される。
 - メジャー更新は、人が破壊的変更を読んでからマージする。
 - GitHub Actions はコミットハッシュに固定し、タグ名をコメントに書く（`config:best-practices` の既定）。
 - `Dockerfile` のベースイメージは `tag@sha256:digest` として固定する。タグの指す内容が変わると、Renovate がダイジェスト更新の PR を開く。
@@ -34,6 +34,7 @@ flowchart LR
 | --- | --- | --- |
 | `Dockerfile` の `golang` / `node` イメージ、`mise.toml` の `go` / `node` | バージョン更新は除外する。`Dockerfile` のイメージのダイジェスト更新は対象のまま | ランタイムのバージョンは `go.mod` の `go` 行と一致しなければならないため、人がまとめて変える |
 | `mise.toml` の `task` と `jq`、`Dockerfile` の `alpine` | 対象。mise のツールとコンテナイメージのグループに入る | — |
+| `compose.hosting.yaml` の `ghcr.io/syudead/vv:latest` | 除外 | `latest` は `main` から公開されたイメージに追従する。ダイジェストを固定すると、この動作が止まる |
 | Windows の zip に同梱する FFmpeg（`scripts/build/windows_app.go` の `ffmpegVersion` と `ffmpegSHA256`） | 人が上げる（[同梱 FFmpeg のバージョンを上げる](#raise-the-bundled-ffmpeg-version)） | Renovate はこれらの定数を読まない |
 | Dependabot のセキュリティ更新 | リポジトリの設定で無効 | Renovate の `vulnerabilityAlerts` が同じ役目を果たす |
 
