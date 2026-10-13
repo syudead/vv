@@ -28,6 +28,10 @@ var userDataTables = []struct{ table, columns string }{
 	{"video_tags", "tag_id, created_at"},
 	{"public_videos", "published_at"},
 	{"video_favorites", "favorited_at"},
+	// 作品情報（specs/047-video-work-info/data-model.md「Bundles and succession」）。出演者は外部キーで
+	// 作品情報の行を指すので、その後に写す。
+	{"video_work_info", "code, release_date, maker, maker_key, description, source_url, search_key, search_version, updated_at"},
+	{"video_work_performers", "position, name, name_key"},
 }
 
 // bundleRef は動画が属する集まりである。

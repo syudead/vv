@@ -230,6 +230,9 @@ type Video struct {
 	FileTitle string
 	// DisplayName は所有者が付けた表示名。未設定は空である。
 	DisplayName string
+	// WorkInfo は作品情報（specs/047-video-work-info/data-model.md）。詳細と外部連携の読み出しが
+	// 利用者データの鍵で埋め、一覧の読み出しと作品情報の無い動画では nil である。
+	WorkInfo *WorkInfo
 	// ThumbnailPositionMs は代表サムネイルにする場面の位置（ミリ秒）。未設定は nil。
 	ThumbnailPositionMs *int64
 	// ThumbnailRevision は位置を記録するたびに書く改版番号（R-6）。未設定は 0。

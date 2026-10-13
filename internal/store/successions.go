@@ -231,11 +231,14 @@ func moveBundleMember(ctx context.Context, tx *sql.Tx, bundle bundleRef, oldKey,
 	return nil
 }
 
-// moveUserData は鍵 from の再生位置・公開の設定・お気に入り・更新日時・タグ・視聴履歴・プレイリストの項目を
-// 鍵 to へ付け替える。
-// 再生位置・公開の設定・お気に入り・更新日時は from に行があれば to の行を置き換え、タグと視聴履歴は和にする。
+// moveUserData は鍵 from の再生位置・公開の設定・お気に入り・更新日時・作品情報・タグ・視聴履歴・
+// プレイリストの項目を鍵 to へ付け替える。
+// 再生位置・公開の設定・お気に入り・更新日時・作品情報は from に行があれば to の行を置き換え、タグと視聴履歴は
+// 和にする。作品情報の出演者は、to の行を消すと on delete cascade で消え、from の行の付け替えに
+// on update cascade で付いて移る（specs/047-video-work-info/data-model.md「Bundles and succession」）。
+// 出演者の行を直接付け替えると外部キーが切れるので、ループには入れない。
 func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
-	for _, table := range []string{"playback_progress", "public_videos", "video_favorites", "video_edits"} {
+	for _, table := range []string{"playback_progress", "public_videos", "video_favorites", "video_edits", "video_work_info"} {
 		if _, err := tx.ExecContext(ctx, `delete from `+table+` where content_key = ?
 			and exists (select 1 from `+table+` where content_key = ?)`, to, from); err != nil {
 			return fmt.Errorf("cannot move the %s values: %w", table, err)
