@@ -1581,6 +1581,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 人物を一覧する
+         * @description 所有者だけ。`q` は名前と別名に部分一致し、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
+         *     続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
+         *     （specs/047-video-work-info/contracts/screen-api.md「People and organizations」）。
+         */
+        get: operations["listPeople"];
+        put?: never;
+        /**
+         * 人物を 1 件作る
+         * @description 所有者だけ。項目の規則に合わなければ 400 で `reason`（`work_info_*`）と `field` を返し、他の人物が持つ
+         *     外部 ID なら 409 `external_id_taken`（`field: externalIds[i]`）。`parentId` は送れない（400 `invalid_request`）。
+         */
+        post: operations["createPerson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 人物を 1 件返す
+         * @description 所有者だけ。無ければ 404 `person_not_found`。
+         */
+        get: operations["getPerson"];
+        put?: never;
+        post?: never;
+        /**
+         * 人物を 1 件消す
+         * @description 所有者だけ。動画との結び付きも外す。無ければ 404 `person_not_found`。
+         */
+        delete: operations["deletePerson"];
+        options?: never;
+        head?: never;
+        /**
+         * 人物の名前・別名・外部 ID を書き換える
+         * @description 所有者だけ。送ったプロパティだけを置き換え、一覧は丸ごと置き換える（`null` は空にする）。何も変わらなければ
+         *     書かずに今の状態を返す。誤りは作成と同じで、無ければ 404 `person_not_found`。`parentId` は送れない（400 `invalid_request`）。
+         */
+        patch: operations["updatePerson"];
+        trace?: never;
+    };
+    "/api/people/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * sourceIds の人物を id の人物へ統合する
+         * @description 所有者だけ。統合元（1 件以上 20,000 件以下）の結び付き・名前・外部 ID を 1 つの取引で統合先へ移し、
+         *     統合元を消す。無い統合元は飛ばして `notFoundIds` に載せる。`sourceIds` の件数が範囲の外なら 400
+         *     `work_info_too_many`（`field: sourceIds`）、統合先を含めば 400 `merge_same_person`、統合後の別名か
+         *     外部 ID が上限を超えれば 400 `work_info_too_many`（`field: aliases` か `externalIds`）、統合先が無ければ
+         *     404 `person_not_found`。誤りのときは何も変えない。
+         */
+        post: operations["mergePeople"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 団体を一覧する
+         * @description 所有者だけ。`q` は名前と別名に部分一致し、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
+         *     続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
+         *     （specs/047-video-work-info/contracts/screen-api.md「People and organizations」）。
+         */
+        get: operations["listOrganizations"];
+        put?: never;
+        /**
+         * 団体を 1 件作る
+         * @description 所有者だけ。項目の規則に合わなければ 400 で `reason`（`work_info_*`）と `field` を返し、他の団体が持つ
+         *     外部 ID なら 409 `external_id_taken`（`field: externalIds[i]`）。`parentId` の団体が無ければ 404 `organization_not_found`（`field: parentId`）。
+         */
+        post: operations["createOrganization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 団体を 1 件返す
+         * @description 所有者だけ。無ければ 404 `organization_not_found`。
+         */
+        get: operations["getOrganization"];
+        put?: never;
+        post?: never;
+        /**
+         * 団体を 1 件消す
+         * @description 所有者だけ。動画との結び付きも外す。無ければ 404 `organization_not_found`。
+         */
+        delete: operations["deleteOrganization"];
+        options?: never;
+        head?: never;
+        /**
+         * 団体の名前・別名・外部 ID を書き換える
+         * @description 所有者だけ。送ったプロパティだけを置き換え、一覧は丸ごと置き換える（`null` は空にする）。何も変わらなければ
+         *     書かずに今の状態を返す。誤りは作成と同じで、無ければ 404 `organization_not_found`。`parentId` の団体が無ければ 404 `organization_not_found`（`field: parentId`）、自分か子孫なら 400 `organization_parent_cycle`。
+         */
+        patch: operations["updateOrganization"];
+        trace?: never;
+    };
+    "/api/organizations/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * sourceIds の団体を id の団体へ統合する
+         * @description 所有者だけ。統合元（1 件以上 20,000 件以下）の結び付き・名前・外部 ID を 1 つの取引で統合先へ移し、
+         *     統合元を消す。無い統合元は飛ばして `notFoundIds` に載せる。`sourceIds` の件数が範囲の外なら 400
+         *     `work_info_too_many`（`field: sourceIds`）、統合先を含めば 400 `merge_same_organization`、統合後の別名か
+         *     外部 ID が上限を超えれば 400 `work_info_too_many`（`field: aliases` か `externalIds`）、統合先が無ければ
+         *     404 `organization_not_found`。統合元が統合先の親か祖先なら 400 `organization_parent_cycle`。誤りのときは何も変えない。
+         */
+        post: operations["mergeOrganizations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/video-tags": {
         parameters: {
             query?: never;
@@ -2740,6 +2900,118 @@ export interface components {
             id?: number;
             name?: string;
         };
+        /** @description 人物か団体 1 件への参照。name はその実体の今の名前 */
+        CreditRef: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description 人物か団体の別名 1 件（specs/047-video-work-info/data-model.md「Fields」） */
+        Alias: {
+            name: string;
+            /** @description BCP 47 の構文の言語タグ。無ければ省く */
+            language?: string;
+        };
+        /** @description 外部の情報源での識別子 1 件 */
+        ExternalId: {
+            source: string;
+            value: string;
+        };
+        /** @description 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」） */
+        Person: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description 名前の自然順 */
+            aliases: components["schemas"]["Alias"][];
+            /** @description (source, value) の順 */
+            externalIds: components["schemas"]["ExternalId"][];
+            /** @description この人物をどれかの役割で結ぶ、表示中の動画の数 */
+            videoCount: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description 団体 1 件。Person と同じ項目に親の団体が加わる */
+        Organization: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description 名前の自然順 */
+            aliases: components["schemas"]["Alias"][];
+            /** @description (source, value) の順 */
+            externalIds: components["schemas"]["ExternalId"][];
+            /** @description この団体をどれかの役割で結ぶ、表示中の動画の数 */
+            videoCount: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description 親の団体。根の団体では省く */
+            parent?: components["schemas"]["CreditRef"];
+        };
+        /** @description 人物か団体を作るときの本文。parentId は団体だけが使う */
+        CreditInput: {
+            name: string;
+            aliases?: components["schemas"]["Alias"][];
+            externalIds?: components["schemas"]["ExternalId"][];
+            /**
+             * Format: int64
+             * @description 親の団体の id。団体だけで、人物に送ると 400 invalid_request
+             */
+            parentId?: number;
+        };
+        /**
+         * @description 人物か団体の書き換えの本文。どのプロパティも省いてよく、省いたものは今のまま残す。一覧は丸ごと
+         *     置き換え、null は一覧を空にする。parentId は団体だけが使い、null は親を外す
+         */
+        CreditPatch: {
+            name?: string;
+            aliases?: components["schemas"]["Alias"][] | null;
+            externalIds?: components["schemas"]["ExternalId"][] | null;
+            /**
+             * Format: int64
+             * @description 親の団体の id。null は親を外す。人物に送ると 400 invalid_request
+             */
+            parentId?: number | null;
+        };
+        CreditMergeRequest: {
+            /** @description 統合元の id。1 件以上 20,000 件以下 */
+            sourceIds: number[];
+        };
+        /** @description 人物の一覧（契約の CreditList の人物の形） */
+        PersonList: {
+            items: components["schemas"]["Person"][];
+            /** @description 条件（q）に合う人物の数。ページングとは独立に返る */
+            total: number;
+            /** @description 全部の人物の数 */
+            totalAll: number;
+            /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        /** @description 団体の一覧（契約の CreditList の団体の形） */
+        OrganizationList: {
+            items: components["schemas"]["Organization"][];
+            /** @description 条件（q）に合う団体の数。ページングとは独立に返る */
+            total: number;
+            /** @description 全部の団体の数 */
+            totalAll: number;
+            /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        PersonMergeResponse: {
+            person: components["schemas"]["Person"];
+            /** @description もう無かった統合元 */
+            notFoundIds: number[];
+        };
+        OrganizationMergeResponse: {
+            organization: components["schemas"]["Organization"];
+            /** @description もう無かった統合元 */
+            notFoundIds: number[];
+        };
+        /**
+         * @description 人物と団体の一覧の並び順。タグの一覧（TagSort）と同じ 5 つで、値が同じものは名前の自然順、それも同じなら id
+         * @default name
+         * @enum {string}
+         */
+        CreditSort: "name" | "countDesc" | "countAsc" | "createdDesc" | "createdAsc";
         /** @enum {string} */
         VideoTagsAction: "add" | "remove";
         VideoTagsRequest: {
@@ -3637,6 +3909,8 @@ export interface components {
             reason?: components["schemas"]["ErrorReason"];
             /** @description reason の上限値。契約の表で limit を返す reason のときだけ入る （specs/023-english-i18n/contracts/error-api.md §1） */
             limit?: number;
+            /** @description reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く （aliases[0].language・externalIds[1]・parentId）。work_info_*・person_not_found・ organization_not_found・external_id_taken のときだけ入る （specs/047-video-work-info/contracts/screen-api.md「Added reason values and field」） */
+            field?: string;
             /** @description 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と tag_merge_required のときだけ入る（specs/023-english-i18n/contracts/error-api.md §1） */
             tagName?: string;
         };
@@ -3644,7 +3918,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -3710,6 +3984,18 @@ export interface components {
         VideoTagId: number;
         /** @description タグの識別子 */
         TagId: number;
+        /** @description 人物の識別子 */
+        PersonId: number;
+        /** @description 団体の識別子 */
+        OrganizationId: number;
+        /** @description 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする */
+        CreditQuery: string;
+        /** @description 並び順 */
+        CreditSort: components["schemas"]["CreditSort"];
+        /** @description 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する */
+        CreditCursor: string;
+        /** @description 1 ページの件数。省くと全件を返し、`nextCursor` は入らない */
+        CreditLimit: number;
         /** @description フォルダが属する登録済みメディアフォルダの識別子 */
         FolderRootId: number;
         /** @description プレイリストの項目の識別子 */
@@ -6053,6 +6339,338 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listPeople: {
+        parameters: {
+            query?: {
+                /** @description 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする */
+                q?: components["parameters"]["CreditQuery"];
+                /** @description 並び順 */
+                sort?: components["parameters"]["CreditSort"];
+                /** @description 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する */
+                cursor?: components["parameters"]["CreditCursor"];
+                /** @description 1 ページの件数。省くと全件を返し、`nextCursor` は入らない */
+                limit?: components["parameters"]["CreditLimit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 人物の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    createPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditInput"];
+            };
+        };
+        responses: {
+            /** @description 作った人物 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 人物の識別子 */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 人物 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deletePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 人物の識別子 */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updatePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 人物の識別子 */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditPatch"];
+            };
+        };
+        responses: {
+            /** @description 書き換えた後の人物 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    mergePeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 人物の識別子 */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description 統合後の統合先と、もう無かった統合元 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonMergeResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listOrganizations: {
+        parameters: {
+            query?: {
+                /** @description 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする */
+                q?: components["parameters"]["CreditQuery"];
+                /** @description 並び順 */
+                sort?: components["parameters"]["CreditSort"];
+                /** @description 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する */
+                cursor?: components["parameters"]["CreditCursor"];
+                /** @description 1 ページの件数。省くと全件を返し、`nextCursor` は入らない */
+                limit?: components["parameters"]["CreditLimit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 団体の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    createOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditInput"];
+            };
+        };
+        responses: {
+            /** @description 作った団体 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 団体の識別子 */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 団体 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 団体の識別子 */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 団体の識別子 */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditPatch"];
+            };
+        };
+        responses: {
+            /** @description 書き換えた後の団体 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    mergeOrganizations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 団体の識別子 */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description 統合後の統合先と、もう無かった統合元 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMergeResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     updateVideoTags: {

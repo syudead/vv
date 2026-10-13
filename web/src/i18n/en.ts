@@ -258,6 +258,25 @@ const errorReasons = {
   run_failed: "The edit failed in ComfyUI",
   no_output: "ComfyUI returned no image",
   timed_out: "No result after 10 minutes",
+  // 作品情報と人物・団体の理由は項目名を入れない。画面が `field` の示す入力の下に出す
+  // （specs/047-video-work-info/ui-design.md「Error reasons」）。
+  work_info_control_characters: "Contains characters that can't be used.",
+  work_info_too_long: ({ limit }) =>
+    limit === undefined ? "Too long." : `Too long: up to ${characters(limit)}.`,
+  work_info_too_many: ({ limit }) =>
+    limit === undefined ? "Too many." : `Too many: up to ${formatNumber(limit)}.`,
+  work_info_invalid_date: "Enter a date as YYYY, YYYY-MM or YYYY-MM-DD.",
+  work_info_invalid_url: "Enter a full web address starting with http:// or https://.",
+  work_info_invalid_language: "Enter a language tag such as ja or en-US.",
+  work_info_duplicate: "Already listed.",
+  work_info_empty: "This can't be empty.",
+  person_not_found: "This person no longer exists.",
+  organization_not_found: "This organization no longer exists.",
+  organization_parent_cycle:
+    "The parent can't be the organization itself or one inside it.",
+  merge_same_person: "A person can't be merged into themselves.",
+  merge_same_organization: "An organization can't be merged into itself.",
+  external_id_taken: "Another entry already has this ID.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

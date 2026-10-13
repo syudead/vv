@@ -256,6 +256,8 @@ type Options struct {
 	MediaFolders MediaFolders
 	// Tags はタグの取得と個別操作。nilなら該当経路は500を返す。
 	Tags Tags
+	// Credits は人物と団体の保存先。nilなら /api/people* と /api/organizations* は500を返す。
+	Credits Credits
 	// Visibility は動画の公開フラグの保存先。nilなら切り替えの経路は500を返す。
 	Visibility Visibility
 	// Favorites はお気に入りの保存先。nilなら付け外しの経路は500を返す。
@@ -353,6 +355,7 @@ type server struct {
 	scans        Scans
 	mediaFolders MediaFolders
 	tags         Tags
+	credits      Credits
 	visibility   Visibility
 	favorites    Favorites
 	playlists    Playlists
@@ -408,6 +411,7 @@ type server struct {
 //	/api/folders*    → JSON（同上）
 //	/api/library*    → JSON（同上）
 //	/api/tags*       → JSON（同上）
+//	/api/people*・/api/organizations* → JSON（所有者が管理する人物と団体。同上）
 //	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
 //	/api/settings/*  → JSON（所有者が設定画面で選ぶ値。同上）
 //	/api/api-tokens* → JSON（所有者が設定画面で管理する API トークン。同上）
@@ -436,6 +440,7 @@ func NewRouter(opts Options) http.Handler {
 		scans:                  opts.Scans,
 		mediaFolders:           opts.MediaFolders,
 		tags:                   opts.Tags,
+		credits:                opts.Credits,
 		visibility:             opts.Visibility,
 		favorites:              opts.Favorites,
 		playlists:              opts.Playlists,
@@ -570,6 +575,11 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 }
 
 func requiresJSONBody(r *http.Request) bool {
+	return requiresCreditJSONBody(r.Method, r.URL.Path) || requiresOtherJSONBody(r)
+}
+
+// requiresOtherJSONBody は人物と団体の経路（requiresCreditJSONBody）を除く、本文を持つ経路を返す。
+func requiresOtherJSONBody(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost:
 		switch r.URL.Path {
@@ -636,6 +646,37 @@ func requiresJSONBody(r *http.Request) bool {
 			}
 			return !strings.Contains(id, "/")
 		}
+	}
+	return false
+}
+
+// requiresCreditJSONBody は人物と団体の経路のうち本文を持つもの（POST /api/people、
+// PATCH /api/people/{id}、POST /api/people/{id}/merge と団体の同じ 3 つ）を返す
+// （specs/047-video-work-info/contracts/screen-api.md「People and organizations」）。
+func requiresCreditJSONBody(method, path string) bool {
+	var rest string
+	found := false
+	for _, prefix := range []string{"/api/people", "/api/organizations"} {
+		if suffix, ok := strings.CutPrefix(path, prefix); ok {
+			rest, found = suffix, true
+			break
+		}
+	}
+	if !found {
+		return false
+	}
+	if rest == "" {
+		return method == http.MethodPost
+	}
+	segments := strings.Split(strings.TrimPrefix(rest, "/"), "/")
+	if !strings.HasPrefix(rest, "/") || segments[0] == "" {
+		return false
+	}
+	switch len(segments) {
+	case 1:
+		return method == http.MethodPatch
+	case 2:
+		return method == http.MethodPost && segments[1] == "merge"
 	}
 	return false
 }
