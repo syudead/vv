@@ -190,12 +190,13 @@ func normalizeAliases(name string, aliases []Alias) ([]Alias, error) {
 		if err != nil {
 			return nil, err
 		}
+		if alias == "" {
+			// 名前の無い別名は language を確かめずに落とす（language の誤りでも拒まない）。
+			continue
+		}
 		language, err := normalizeWorkInfoText(field+".language", raw.Language, CreditLanguageMaxLength, false)
 		if err != nil {
 			return nil, err
-		}
-		if alias == "" {
-			continue
 		}
 		if language != "" && !isLanguageTagSyntax(language) {
 			return nil, invalidWorkInfo(field+".language", WorkInfoInvalidLanguage, 0)

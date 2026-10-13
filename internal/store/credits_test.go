@@ -561,3 +561,21 @@ func TestRefreshCreditSearchKeysFillsStaleRows(t *testing.T) {
 		t.Errorf("2 度目 = %d, %v", again, err)
 	}
 }
+
+// 正でない id はどの実体も指さない。一覧の絞り込みなしと取り違えて、表の最初の実体を返さない。
+func TestNonPositiveCreditIDIsNotFound(t *testing.T) {
+	db := migratedDB(t)
+	createPerson(t, db, "山田")
+	createOrganization(t, db, "メーカー", nil)
+	ctx := context.Background()
+	for _, kind := range []domain.CreditKind{domain.CreditPerson, domain.CreditOrganization} {
+		for _, id := range []int64{0, -1} {
+			if got, err := db.Credits().Get(ctx, kind, id); !errors.Is(err, domain.ErrNotFound) {
+				t.Errorf("Get(%s, %d) = %+v, %v; want ErrNotFound", kind, id, got, err)
+			}
+			if got, err := db.Credits().Update(ctx, kind, id, domain.CreditPatch{}); !errors.Is(err, domain.ErrNotFound) {
+				t.Errorf("Update(%s, %d, {}) = %+v, %v; want ErrNotFound", kind, id, got, err)
+			}
+		}
+	}
+}

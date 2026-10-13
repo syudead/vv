@@ -79,8 +79,12 @@ func (s *CreditStore) List(ctx context.Context, kind domain.CreditKind, query do
 	return page, nil
 }
 
-// creditByID は取引 tx の中で実体 id を読む。無ければ domain.ErrNotFound。
+// creditByID は取引 tx の中で実体 id を読む。無ければ domain.ErrNotFound。正でない id は
+// どの実体も指さない（listedCreditsCTE は正でない onlyID を絞り込みなしと読むので、先に拒む）。
 func creditByID(ctx context.Context, tx *sql.Tx, t creditTables, id int64) (domain.Credit, error) {
+	if id <= 0 {
+		return domain.Credit{}, domain.ErrNotFound
+	}
 	listed, args := listedCreditsCTE(t, "", id)
 	items, _, _, err := readListedCredits(ctx, tx, t,
 		listed+` select `+creditListedColumns+`, 1 from listed`, args)

@@ -75,6 +75,10 @@ func TestNormalizeCreditTrimsAndDrops(t *testing.T) {
 		Aliases: []Alias{
 			{Name: " Hanako ", Language: " en "},
 			{Name: "  ", Language: "ja"},
+			// 名前の無い別名は、言語が誤っていても（形・長さ・制御文字）拒まずに落とす。
+			{Name: "", Language: "x"},
+			{Name: " ", Language: strings.Repeat("a", CreditLanguageMaxLength+1)},
+			{Name: "", Language: "ja\x00"},
 			{Name: "hanako"},
 			{Name: "やまだ", Language: "ja-Hira"},
 		},
