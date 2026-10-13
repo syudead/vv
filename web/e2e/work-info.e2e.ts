@@ -5,6 +5,9 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 // 作品動画A〜D の 4 本。テストは順に状態を積む: A に編集画面で値を入れ、B・C には画面の API で
 // 絞り込みと統合のための値を置き、D には撮影日と撮影者だけを入れる。人物と団体はサーバーの
 // 中で他の e2e と共有するので、名前は「作品e2e」で始めて他と重ならないようにする。
+// 人物・団体・別名はフォルダを外しても残るので、名前の末尾に実行ごとの印 run を付け、
+// CI の再試行（同じサーバーと DB でワーカーを作り直す）が前の試行の同名の候補に当たらないようにする。
+// 表示名と作品情報は動画の中身に付いて残り、再登録と再スキャンで戻ってくるので、beforeAll で消す。
 // テスト名の番号は受け入れ条件の番号で、値を消す 2 は値を使う他のテストの後に置く。
 
 interface MediaFolder {
@@ -33,16 +36,19 @@ interface ExternalVideo {
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 
+/** run は試行ごとに変わる印。再試行はワーカーを作り直すので、このモジュールも読み直される。 */
+const run = Date.now().toString(36);
+
 /** 入れる値。品番・名前・別名は検索で他の動画に当たらないものにする。 */
 const displayName = "作品e2e表示名";
 const code = "WIE-047";
 const released = "2024-06-01";
-const haruka = "作品e2e春香";
-const harukaAlias = "HarukaE2E";
-const natsumi = "作品e2e夏美";
-const akiko = "作品e2e秋子";
-const maker = "作品e2eメーカー";
-const photographer = "作品e2e撮影者";
+const haruka = `作品e2e春香${run}`;
+const harukaAlias = `HarukaE2E${run}`;
+const natsumi = `作品e2e夏美${run}`;
+const akiko = `作品e2e秋子${run}`;
+const maker = `作品e2eメーカー${run}`;
+const photographer = `作品e2e撮影者${run}`;
 const externalCode = "EXT-047";
 
 let folder: MediaFolder | undefined;
@@ -108,6 +114,16 @@ async function setWorkInfo(request: APIRequestContext, id: number, workInfo: obj
     data: workInfo,
   });
   expect(response.ok()).toBe(true);
+}
+
+/** clearDetails は前の試行が残した表示名と作品情報を消し、ファイル名の題名に戻った動画を返す。 */
+async function clearDetails(request: APIRequestContext, id: number): Promise<Video> {
+  const response = await request.put(`/api/videos/${String(id)}/details`, {
+    headers: mutationHeaders,
+    data: { displayName: "", workInfo: {} },
+  });
+  expect(response.ok()).toBe(true);
+  return (await response.json()) as Video;
 }
 
 async function issueToken(request: APIRequestContext): Promise<string> {
@@ -214,7 +230,10 @@ test.describe.serial("work information", () => {
     const list = await request.get("/api/videos?limit=200");
     const page = (await list.json()) as { items: Video[] };
     expect(page.items).toHaveLength(4);
-    for (const item of page.items) videos.set(item.title, item);
+    for (const item of page.items) {
+      const cleared = await clearDetails(request, item.id);
+      videos.set(cleared.title, cleared);
+    }
 
     // 編集画面では春香を既存の人物から選び、夏美とメーカーはその場で作る。
     people.set(
@@ -434,7 +453,7 @@ test.describe.serial("work information", () => {
     request,
   }) => {
     const b = video("作品動画B");
-    const longName = `作品e2e長い名前${"あ".repeat(120)}`;
+    const longName = `作品e2e長い名前${run}${"あ".repeat(120)}`;
     const long = await createCredit(request, "people", { name: longName });
     const paragraph = "長い説明の一文です。".repeat(30);
     const description = [
