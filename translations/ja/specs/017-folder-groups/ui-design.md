@@ -1,6 +1,6 @@
 ---
 source: specs/017-folder-groups/ui-design.md
-sourceHash: c5d3f611b9e8b53a81ed48e7965bcd5d53d537fe08513bc17abc7575d74b4e6e
+sourceHash: c43423b1b728898d8cccdc768d36d8a0ccc8ae8fbaddab7050a2306f7d70b871
 ---
 
 # UI 設計: フォルダのグループを 1 件として一覧に出し、続けて再生する {#ui-design-listing-a-folder-group-as-one-entry-and-playing-it-continuously}
@@ -30,7 +30,7 @@ sourceHash: c5d3f611b9e8b53a81ed48e7965bcd5d53d537fe08513bc17abc7575d74b4e6e
 
 | 部分 | 形 |
 | --- | --- |
-| **フォルダの絵** | 共通の `FolderArt` (`web/src/videoList/FolderArt.tsx`) をそのまま使う。タブ付きの背面パネルの上に、`previews` (サムネイルを生成済みのメンバー最大 4 本、順番どおり) が斜めに重なる。マウスを横に動かすと、その位置の 1 枚が前に出てプレビューを再生する。メンバーのサムネイルがなければ背面パネルだけを描く |
+| **フォルダの絵** | 共通の `FolderArt` (`web/src/videoList/FolderArt.tsx`) をそのまま使う。タブ付きの背面パネルの上に、`previews` (サムネイルを生成済みのメンバー最大 4 本、順番どおり) が斜めに重なり、各 1 枚が次の 1 枚の上に来るので先頭が一番上になる。マウスを横に動かすと、その位置の 1 枚が前に出てプレビューを再生する。メンバーのサムネイルがなければ背面パネルだけを描く |
 | **本数と長さのバッジ** | 背面パネルの右下 (`right-5 bottom-4`) に、動画カードの長さと同じ面 (`bg-navbar/85`、`text-[11px]`、`tabular-nums`) で `12 本`、続けて合計の長さ。前に出た画像より上 (`z-20`) にあり、操作できない (`pointer-events-none`)。合計の長さ (`durationMs`) がなければ本数だけを表示する。視聴済みの本数は数字では表示しない。絵がすでにフォルダを示しているので、lucide の `Folder` マークも置かない |
 | **左上** | 選択チェックボックス (今と同じ位置) |
 | **下部の進捗** | `watchState = inProgress` のときだけ: 動画カードと同じ `h-[5px]` のバーで、`bg-accent` の幅は `watchedCount / videoCount`。`watchedCount = 0` で視聴中 (最初のメンバーを途中まで見た) のときはバーの溝 (`bg-fg-subtle/50`) だけが見え、「見始めた」ことを示す。`role="progressbar"` の `aria-valuenow` は同じ比率で、アクセシブルネームは `視聴済みの本数の割合`。`unwatched` と `watched` では表示しない |

@@ -112,3 +112,31 @@ describe("FolderArt の同じ動画を 2 度持つ絵柄", () => {
     expect(error).not.toHaveBeenCalled();
   });
 });
+
+describe("FolderArt の重なり", () => {
+  const sheet = (videoId: number): FolderPreview => ({
+    videoId,
+    thumbnailUrl: `/api/videos/${String(videoId)}/thumbnail?v=x`,
+  });
+  const zIndexes = (art: Element) =>
+    Array.from(art.querySelectorAll<HTMLElement>("[data-folder-preview]"), (element) =>
+      Number(element.style.zIndex),
+    );
+
+  it("指していないときは先頭の1枚ほど手前に重ね、指した1枚はどれよりも手前に出す", () => {
+    const view = render(
+      <FolderArt previews={[sheet(1), sheet(2), sheet(3), sheet(4)]} />,
+    );
+    const art = view.container.querySelector<HTMLElement>("[data-folder-art]");
+    if (art === null) throw new Error("folder art not found");
+    art.getBoundingClientRect = () => new DOMRect(0, 0, 200, 100);
+
+    const resting = zIndexes(art);
+    expect(resting).toEqual([...resting].sort((a, b) => b - a));
+    expect(new Set(resting).size).toBe(4);
+
+    fireEvent.pointerMove(art, { clientX: 190, pointerType: "mouse" });
+    const pointed = zIndexes(art);
+    expect(pointed[3]).toBeGreaterThan(Math.max(...pointed.slice(0, 3)));
+  });
+});
