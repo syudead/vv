@@ -1,8 +1,11 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"github.com/syudead/vv/internal/domain"
@@ -27,14 +30,15 @@ type WorkInfo interface {
 // SetVideoWorkInfo は動画の作品情報をまるごと置き換える（PUT /api/videos/{id}/work-info）。
 func (s *server) SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	var body *gen.WorkInfoInput
-	if !s.readJSONBody(w, r, &body) {
+	raw, ok := s.readJSONBodyRaw(w, r, &body)
+	if !ok {
 		return
 	}
 	if body == nil {
 		s.invalidRequest(w, "The body must be a JSON object.")
 		return
 	}
-	info, ok := s.readWorkInfoInput(w, *body)
+	info, ok := s.readWorkInfoInput(w, *body, raw)
 	if !ok || !s.workInfoConfigured(w) {
 		return
 	}
@@ -54,21 +58,32 @@ func (s *server) SetVideoDetails(w http.ResponseWriter, r *http.Request, id gen.
 		DisplayName *string            `json:"displayName"`
 		WorkInfo    *gen.WorkInfoInput `json:"workInfo"`
 	}
-	if !s.readJSONBody(w, r, &body) {
+	raw, ok := s.readJSONBodyRaw(w, r, &body)
+	if !ok {
 		return
 	}
 	if body.DisplayName == nil || body.WorkInfo == nil {
 		s.invalidRequest(w, "displayName and workInfo are required.")
 		return
 	}
-	info, ok := s.readWorkInfoInput(w, *body.WorkInfo)
+	// 契約は displayName を先に確かめる。作品情報の列挙と必須のプロパティの検査より前に表示名の規則を
+	// 見て、両方に誤りがあっても display_name_* と field: displayName を返す。
+	if _, _, err := domain.NormalizeDisplayName(*body.DisplayName); s.writeDetailsDisplayNameError(w, err) {
+		return
+	}
+	var fields struct {
+		WorkInfo json.RawMessage `json:"workInfo"`
+	}
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		s.invalidBody(w, err, "Cannot parse the JSON body.")
+		return
+	}
+	info, ok := s.readWorkInfoInput(w, *body.WorkInfo, fields.WorkInfo)
 	if !ok || !s.workInfoConfigured(w) {
 		return
 	}
 	video, err := s.workInfo.SetDetails(r.Context(), id, *body.DisplayName, info)
-	if failure, ok := displayNameFailureOf(err); ok {
-		failure.field = "displayName"
-		s.writeWorkInfoFailure(w, failure)
+	if s.writeDetailsDisplayNameError(w, err) {
 		return
 	}
 	if err != nil {
@@ -76,6 +91,17 @@ func (s *server) SetVideoDetails(w http.ResponseWriter, r *http.Request, id gen.
 		return
 	}
 	s.writeVideoDetail(w, r, video)
+}
+
+// writeDetailsDisplayNameError は err が表示名の誤りなら field: displayName を付けて書き、true を返す。
+func (s *server) writeDetailsDisplayNameError(w http.ResponseWriter, err error) bool {
+	failure, ok := displayNameFailureOf(err)
+	if !ok {
+		return false
+	}
+	failure.field = "displayName"
+	s.writeWorkInfoFailure(w, failure)
+	return true
 }
 
 // writeVideoWorkInfoError は作品情報の書き込みの誤りを写す。項目と参照の誤りは workInfoFailureOf が、
@@ -103,11 +129,17 @@ func (s *server) workInfoConfigured(w http.ResponseWriter) bool {
 	return true
 }
 
-// readWorkInfoInput は要求の作品情報を domain の形にする。種類と役割が契約の列挙に無ければ
-// 400 invalid_request を書いて false を返す（契約の「generated schema check」に当たる検査）。
-// 省いた値と null は空で、空は解除である。
-func (s *server) readWorkInfoInput(w http.ResponseWriter, input gen.WorkInfoInput) (domain.WorkInfo, bool) {
-	if message, ok := workInfoInputEnumsValid(input); !ok {
+// readWorkInfoInput は要求の作品情報を domain の形にする。raw は input を読んだ JSON そのもので、
+// 一覧の各件の必須のプロパティ（WorkDate の kind・date など）が欠けているか null なら、または種類と
+// 役割が契約の列挙に無ければ、400 invalid_request を書いて false を返す（契約の「generated schema
+// check」に当たる検査）。生成型は欠けた date を空の文字列に読み、空の日付は落として保存済みの日付を
+// 消してしまうので、有無は raw で確かめる。省いた一覧の値と null は空で、空は解除である。
+func (s *server) readWorkInfoInput(w http.ResponseWriter, input gen.WorkInfoInput, raw json.RawMessage) (domain.WorkInfo, bool) {
+	message, ok := workInfoInputRequiredPresent(raw)
+	if ok {
+		message, ok = workInfoInputEnumsValid(input)
+	}
+	if !ok {
 		s.invalidRequest(w, message)
 		return domain.WorkInfo{}, false
 	}
@@ -149,6 +181,65 @@ func workInfoInputEnumsValid(input gen.WorkInfoInput) (string, bool) {
 		}
 	}
 	return "", true
+}
+
+// workInfoInputEntries は WorkInfoInput の一覧のうち、件が必須のプロパティを持つものを JSON のまま
+// 読む形である。一覧の null と省略は空で、件の null は空の map（どのプロパティも無い）になる。
+type workInfoInputEntries struct {
+	Dates         []map[string]json.RawMessage `json:"dates"`
+	People        []map[string]json.RawMessage `json:"people"`
+	Organizations []map[string]json.RawMessage `json:"organizations"`
+	ExternalIds   []map[string]json.RawMessage `json:"externalIds"`
+}
+
+// workInfoInputRequired は一覧ごとの件の必須のプロパティを WorkInfo の順に並べたものである
+// （api/openapi.yaml の WorkDate・WorkPersonInput・WorkOrganizationInput・ExternalId）。ref は
+// CreditIdRef を値に持つプロパティで、その id も必須である。
+var workInfoInputRequired = []struct {
+	list     string
+	entries  func(workInfoInputEntries) []map[string]json.RawMessage
+	required []string
+	ref      string
+}{
+	{"dates", func(e workInfoInputEntries) []map[string]json.RawMessage { return e.Dates }, []string{"kind", "date"}, ""},
+	{"people", func(e workInfoInputEntries) []map[string]json.RawMessage { return e.People }, []string{"role", "person"}, "person"},
+	{"organizations", func(e workInfoInputEntries) []map[string]json.RawMessage { return e.Organizations },
+		[]string{"role", "organization"}, "organization"},
+	{"externalIds", func(e workInfoInputEntries) []map[string]json.RawMessage { return e.ExternalIds },
+		[]string{"source", "value"}, ""},
+}
+
+// workInfoInputRequiredPresent は raw（WorkInfoInput の JSON）の一覧の各件が必須のプロパティを null で
+// なく持つかを WorkInfo の順に確かめ、最初に欠けたものの誤りの文言と false を返す。
+func workInfoInputRequiredPresent(raw json.RawMessage) (string, bool) {
+	var entries workInfoInputEntries
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		return "The work information must be a JSON object.", false
+	}
+	for _, list := range workInfoInputRequired {
+		for i, entry := range list.entries(entries) {
+			for _, name := range list.required {
+				if !jsonPropertyNotNull(entry, name) {
+					return fmt.Sprintf("%s[%d].%s is required.", list.list, i, name), false
+				}
+			}
+			if list.ref == "" {
+				continue
+			}
+			value, _ := jsonProperty(entry, list.ref)
+			var ref map[string]json.RawMessage
+			if err := json.Unmarshal(value, &ref); err != nil || !jsonPropertyNotNull(ref, "id") {
+				return fmt.Sprintf("%s[%d].%s.id is required.", list.list, i, list.ref), false
+			}
+		}
+	}
+	return "", true
+}
+
+// jsonPropertyNotNull は JSON オブジェクトが name を null でない値で持つことを返す。
+func jsonPropertyNotNull(fields map[string]json.RawMessage, name string) bool {
+	value, ok := jsonProperty(fields, name)
+	return ok && !bytes.Equal(bytes.TrimSpace(value), []byte("null"))
 }
 
 // valueOrZero は省いた値と null を型の零値として読む。

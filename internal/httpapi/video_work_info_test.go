@@ -164,6 +164,55 @@ func TestSetVideoWorkInfoRejects(t *testing.T) {
 	} {
 		assertStatus(t, label, f.putVideo("a", "/work-info", body, f.owner), http.StatusBadRequest)
 	}
+}
+
+// 一覧の件の必須のプロパティ（契約の WorkDate・WorkPersonInput・WorkOrganizationInput・ExternalId）が
+// 欠けているか null の本文は 400 で、保存済みの作品情報を消さない。空の文字列の date は今までどおり解除である。
+func TestSetVideoWorkInfoRejectsMissingRequiredProperties(t *testing.T) {
+	f := newGuestFixture(t, true)
+	performer := f.createWorkInfoPerson(t, "出演者")
+	saved := jsonBody(map[string]any{
+		"dates":       []map[string]string{{"kind": "release", "date": "2024-02-29"}},
+		"people":      []map[string]any{{"role": "performer", "person": map[string]int64{"id": performer}}},
+		"externalIds": []map[string]string{{"source": "s", "value": "v"}},
+	})
+	assertStatus(t, "保存", f.putVideo("a", "/work-info", saved, f.owner), http.StatusOK)
+	want := decode[gen.Video](t, f.env.get(f.videoPath("a", ""), f.owner)).WorkInfo
+
+	for label, body := range map[string]string{
+		"date が無い":            `{"dates":[{"kind":"release"}]}`,
+		"date が null":         `{"dates":[{"kind":"release","date":null}]}`,
+		"kind が無い":            `{"dates":[{"date":"2024"}]}`,
+		"件が null":             `{"dates":[null]}`,
+		"person が無い":          `{"people":[{"role":"performer"}]}`,
+		"person.id が無い":       `{"people":[{"role":"performer","person":{}}]}`,
+		"person が null":       `{"people":[{"role":"performer","person":null}]}`,
+		"organization.id が無い": `{"organizations":[{"role":"maker","organization":{}}]}`,
+		"source が無い":          `{"externalIds":[{"value":"v"}]}`,
+		"value と source が無い":  `{"externalIds":[{}]}`,
+	} {
+		rec := f.putVideo("a", "/work-info", body, f.owner)
+		assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+		rec = f.putVideo("a", "/details", `{"displayName":"a","workInfo":`+body+`}`, f.owner)
+		assertErrorBody(t, "details の "+label, rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	}
+	if got := decode[gen.Video](t, f.env.get(f.videoPath("a", ""), f.owner)).WorkInfo; !reflect.DeepEqual(got, want) {
+		t.Errorf("断った後の workInfo = %+v, want %+v", got, want)
+	}
+
+	// 空の文字列の date は欠けたものではなく、その日付の解除である。
+	rec := f.putVideo("a", "/work-info", `{"dates":[{"kind":"release","date":""}]}`, f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("空の date: status = %d: %s", rec.Code, rec.Body)
+	}
+	if value, ok := rawVideo(t, rec)["workInfo"]; ok {
+		t.Errorf("空の date の応答に workInfo = %s", value)
+	}
+}
+
+// 無い動画とゲストの保存。
+func TestSetVideoWorkInfoMissingVideoAndGuest(t *testing.T) {
+	f := newGuestFixture(t, true)
 
 	assertUnauthenticated(t, "ゲストの保存", f.putVideo("a", "/work-info", `{"code":"X"}`))
 	missing := f.env.serve(authRequest{
@@ -219,6 +268,17 @@ func TestSetVideoDetails(t *testing.T) {
 	}, "displayName")
 	if value, ok := rawVideo(t, f.env.get(f.videoPath("b", ""), f.owner))["workInfo"]; ok {
 		t.Errorf("断った後の詳細に workInfo = %s", value)
+	}
+
+	// 表示名は作品情報の列挙と必須のプロパティより先に確かめる。
+	for label, info := range map[string]string{
+		"役割が列挙に無い": `{"people":[{"role":"actor","person":{"id":1}}]}`,
+		"date が無い": `{"dates":[{"kind":"release"}]}`,
+	} {
+		body := `{"displayName":"` + strings.Repeat("あ", domain.DisplayNameMaxLength+1) + `","workInfo":` + info + `}`
+		assertFieldError(t, "長すぎる表示名と"+label, f.putVideo("b", "/details", body, f.owner), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonDisplayNameTooLong, limit: domain.DisplayNameMaxLength,
+		}, "displayName")
 	}
 
 	for label, body := range map[string]string{
