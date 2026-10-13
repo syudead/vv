@@ -179,7 +179,8 @@ the description only, and collapsing a repeated performer. Store tests show:
 a set object read back in performer order; a second set with the same values
 leaving `updatedAt` unchanged and publishing no event; clearing every field
 deleting the row and its performers; the values readable after the content is
-re-indexed at another path and after a same-path succession; bundling two
+re-indexed at another path and after a same-path succession, with
+performers set and also when the new key already holds work information; bundling two
 videos showing the representative's values on the bundle, and unbundling
 giving the member its own values back.
 

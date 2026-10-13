@@ -49,7 +49,8 @@ tables keyed by the user key, the same key as `video_tags` and
 `video_favorites` ([data-model.md, Migration](data-model.md#migration)). Both
 join `userDataTables` (bundling copies the representative's rows to the bundle
 key, a removed member gets its own rows back) and `moveUserData` (same-path
-succession). Neither table has a foreign key to `videos`.
+succession, which re-keys `video_work_info` and lets `on update cascade` carry
+the performers). Neither table has a foreign key to `videos`.
 
 | Option | Verdict |
 | --- | --- |

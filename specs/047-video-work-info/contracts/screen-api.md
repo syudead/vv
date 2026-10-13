@@ -1,6 +1,7 @@
 # Contract: Work information in the screen API
 
-Source of truth: `api/openapi.yaml`, operation `setVideoWorkInfo` and the
+Source of truth: `api/openapi.yaml`, operation `setVideoWorkInfo`, the schemas
+`WorkInfo` and `WorkInfoInput`, and the
 `performer` and `maker` parameters of `listVideos`, `listLibrary` and
 `listLibraryIds`. This document covers only what this feature adds. The
 decisions are [research.md R-4](../research.md#r-4-performer-and-maker-list-parameters-matched-by-folded-value-library-only),
@@ -18,6 +19,16 @@ and [R-7](../research.md#r-7-guests-receive-no-work-information-in-responses-sea
 | `description` | string | No | Absent when unset |
 | `sourceUrl` | string (`uri`) | No | Absent when unset |
 
+## `WorkInfoInput` schema
+
+The request body of `setVideoWorkInfo` and the `workInfo` of each item of the
+external `updateVideoWorkInfo`. It has the six properties of
+[`WorkInfo`](#workinfo-schema), none required and each `nullable`
+(`performers` included), so `{}` and `null` clear a field. It is a separate
+schema because `WorkInfo` describes a response, in which `performers` is
+required and never `null`; sharing one schema would make the generated types
+either reject a valid clearing request or weaken the response.
+
 ## `Video` changes
 
 | Field | Type | Rule |
@@ -27,9 +38,8 @@ and [R-7](../research.md#r-7-guests-receive-no-work-information-in-responses-sea
 ## `PUT /api/videos/{id}/work-info`
 
 `operationId: setVideoWorkInfo`. Owner only (the default class in
-`accessRoutes`). The body is a `WorkInfo` in which every field is optional
-(`performers` included) and `null` is accepted for each; a field absent, `null`
-or empty after trimming is cleared. The object replaces what is stored.
+`accessRoutes`). The body is a [`WorkInfoInput`](#workinfoinput-schema); a
+field absent, `null` or empty after trimming is cleared. The object replaces what is stored.
 
 | Situation | Response |
 | --- | --- |

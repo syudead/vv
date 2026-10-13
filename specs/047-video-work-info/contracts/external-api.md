@@ -31,7 +31,9 @@ error property are added.
              { "video": { "id": 12 }, "workInfo": {} } ] }
 ```
 
-`workInfo` replaces the stored object: a field absent, `null` or empty after
+Each item's `workInfo` is a
+[`WorkInfoInput`](screen-api.md#workinfoinput-schema), shared with the screen
+API's request body, and replaces the stored object: a field absent, `null` or empty after
 trimming is cleared, and `{}` clears everything. All items are applied in one
 transaction; if any item has an error, nothing is applied. A later item for
 the same video wins.

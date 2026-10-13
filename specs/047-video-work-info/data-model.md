@@ -33,7 +33,8 @@ create table video_work_info (
 create index video_work_info_maker_idx on video_work_info (maker_key);
 
 create table video_work_performers (
-    content_key text    not null references video_work_info (content_key) on delete cascade,
+    content_key text    not null references video_work_info (content_key)
+                            on delete cascade on update cascade,
     position    integer not null,
     name        text    not null,
     name_key    text    not null,
@@ -43,8 +44,9 @@ create index video_work_performers_name_idx on video_work_performers (name_key, 
 ```
 
 Down drops both tables. `content_key` holds the user key, as it does in
-`video_favorites`; the column keeps that name so that `userDataTables` and
-`moveUserData` copy it with the same statement as the other tables. Both
+`video_favorites`; the column keeps that name so that `userDataTables` copies it with
+the same statement as the other tables, and `moveUserData` re-keys it
+([Bundles and succession](#bundles-and-succession)). Both
 tables are user data: they join the user data row of
 [running-vv.md, Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery)
 and the list in ARCHITECTURE.md "User data survives a rebuild".
@@ -154,7 +156,7 @@ members as video items. `total` counts with the filters applied.
 | Path | Change |
 | --- | --- |
 | `userDataTables` | `video_work_info` and then `video_work_performers` are appended, so bundling copies the representative's row and names to the bundle key and unbundling leaves each member's own rows ([030 R-1](../030-video-versions/research.md#r-1-bundles-live-in-user-data-tables-and-bundle-values-sit-in-the-existing-tables-under-the-bundles-own-key)) |
-| `moveUserData` | Both tables are re-keyed from the old key to the new one, replacing the new key's rows when the old key has any (the `playback_progress` rule) |
+| `moveUserData` | `video_work_info` is re-keyed from the old key to the new one, replacing the new key's row when the old key has one (the `playback_progress` rule); deleting the new key's row removes its performers, and `on update cascade` moves the old key's performers with the re-keyed row. Updating `video_work_performers.content_key` directly would break the foreign key, so it is not in the loop. A store test covers a succession with performers, with and without work information already under the new key |
 
 ## Rules
 
