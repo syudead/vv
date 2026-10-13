@@ -4,6 +4,7 @@ import {
   hasConditions as hasBaseConditions,
   type ListCriteria,
 } from "../videoList/listCriteria";
+import { type CreditFilter, hasCreditFilter } from "./creditCriteria";
 
 /**
  * tagCriteria は、ライブラリだけが持つタグ絞り込みの条件（URL の `tag`）の
@@ -62,10 +63,15 @@ export function removeTagId(current: readonly number[], id: number): number[] {
 
 /**
  * hasConditions は、共有の hasConditions（検索語・視聴状態・再生可否）に
- * タグ絞り込みも加えた版である。「条件を解除」を出すかどうかに使う。
+ * タグ絞り込みと人物・団体の絞り込み（creditCriteria.ts）も加えた版である。
+ * 「条件を解除」を出すかどうかに使う。
  */
-export function hasConditions(criteria: ListCriteria, tag: readonly number[]): boolean {
-  return tag.length > 0 || hasBaseConditions(criteria);
+export function hasConditions(
+  criteria: ListCriteria,
+  tag: readonly number[],
+  credits: CreditFilter = {},
+): boolean {
+  return tag.length > 0 || hasCreditFilter(credits) || hasBaseConditions(criteria);
 }
 
 /**

@@ -77,3 +77,15 @@ export function createCredit(
     signal,
   });
 }
+
+/**
+ * getCredit は人物か団体を 1 件読む（`GET /api/people/{id}`・`GET /api/organizations/{id}`）。
+ * 無ければ `404`（`person_not_found`・`organization_not_found`）の RequestFailed になる。
+ */
+export function getCredit(
+  kind: CreditKind,
+  id: number,
+  signal?: AbortSignal,
+): Promise<Credit> {
+  return request<Credit>(`${basePath(kind)}/${String(id)}`, { signal });
+}

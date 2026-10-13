@@ -49,6 +49,12 @@ export interface ListKey {
    * （specs/014-video-tags/contracts/list-url.md §1）。
    */
   tags?: readonly number[];
+  /**
+   * ライブラリの人物・団体の絞り込み（id）。`/?person=1` から戻って `/` の控えが
+   * 使われないようにする（specs/047-video-work-info/contracts/screen-api.md）。
+   */
+  person?: number;
+  organization?: number;
 }
 
 /** ListSnapshot は一覧を離れる直前の状態である（data-model.md 2.）。 */
@@ -115,6 +121,8 @@ function normalize(key: ListKey): string {
     sort,
     seed,
     tags,
+    key.person === undefined ? "" : String(key.person),
+    key.organization === undefined ? "" : String(key.organization),
   ].join("\0");
   return key.folder === undefined ? list : `folder\0${key.folder}\0${list}`;
 }
