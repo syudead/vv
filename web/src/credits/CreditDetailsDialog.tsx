@@ -86,23 +86,35 @@ function problemOf(failure: unknown, sent: Sent): FieldProblem | null {
   return null;
 }
 
+/** Edited は窓を開いてから手を入れた欄である。手を入れていない欄は送らない。 */
+interface Edited {
+  aliases: boolean;
+  ids: boolean;
+  parent: boolean;
+}
+
 /** blank は行の入力がすべて空白だけかである。そうした行は送らない（足しただけの行）。 */
 function blank(...values: string[]): boolean {
   return values.every((value) => value.trim() === "");
 }
 
 /**
- * buildPatch は窓の値から `PATCH` の本文を作る。一覧はいつも丸ごと送る（research.md R-8）。
- * 空の行は送らず、言語が空の別名は言語を省く。親は団体のときだけ送り、「None」は `null`。
+ * buildPatch は窓の値から `PATCH` の本文を作る。手を入れた欄（`edited`）だけを送り、送る
+ * 一覧は丸ごと送る（research.md R-8）。手を入れていない欄を開いたときの値で送ると、そのあと
+ * ほかのタブで変えた値を消すため送らない（サーバーは省いた欄を残す）。空の行は送らず、
+ * 言語が空の別名は言語を省く。親は団体のときだけ送り、「None」は `null`。
  */
 function buildPatch(
   kind: CreditKind,
   aliases: readonly AliasRow[],
   ids: readonly IdRow[],
   parent: string,
+  edited: Edited,
 ): { patch: CreditPatch; sent: Sent } {
-  const aliasRows = aliases.filter((row) => !blank(row.name, row.language));
-  const idRows = ids.filter((row) => !blank(row.source, row.value));
+  const aliasRows = edited.aliases
+    ? aliases.filter((row) => !blank(row.name, row.language))
+    : [];
+  const idRows = edited.ids ? ids.filter((row) => !blank(row.source, row.value)) : [];
   const sentAliases: Alias[] = aliasRows.map((row) => {
     const language = row.language.trim();
     return language === ""
@@ -113,8 +125,10 @@ function buildPatch(
     source: row.source.trim(),
     value: row.value.trim(),
   }));
-  const patch: CreditPatch = { aliases: sentAliases, externalIds: sentIds };
-  if (kind === "organization")
+  const patch: CreditPatch = {};
+  if (edited.aliases) patch.aliases = sentAliases;
+  if (edited.ids) patch.externalIds = sentIds;
+  if (kind === "organization" && edited.parent)
     patch.parentId = parent === noParent ? null : Number(parent);
   return {
     patch,
@@ -128,7 +142,7 @@ function buildPatch(
 /**
  * CreditDetailsDialog は人物・団体の詳細の窓 `Edit "{name}"` である（specs/047-video-work-info/
  * ui-design.md「Details dialog」）。別名（言語つき、50 件まで）、外部 ID（20 件まで）、団体
- * だけ親の団体を持ち、1 回の「Save」で持っている一覧を丸ごと `PATCH` する。名前はここに
+ * だけ親の団体を持ち、1 回の「Save」で手を入れた一覧を丸ごと `PATCH` する。名前はここに
  * 無い（改名は行で行う）。
  *
  * `field` つきの `400` と `409 external_id_taken` はその行の入力の下か親の欄の下に出し、
@@ -166,6 +180,11 @@ export default function CreditDetailsDialog({
     const current = parentOf(credit);
     return current === undefined ? noParent : String(current.id);
   });
+  const [edited, setEdited] = useState<Edited>({
+    aliases: false,
+    ids: false,
+    parent: false,
+  });
   const [pending, setPending] = useState(false);
   const [problem, setProblem] = useState<FieldProblem | null>(null);
   const [error, setError] = useState<UiText | null>(null);
@@ -177,7 +196,7 @@ export default function CreditDetailsDialog({
 
   async function submit() {
     if (pending) return;
-    const { patch, sent } = buildPatch(kind, aliases, ids, parent);
+    const { patch, sent } = buildPatch(kind, aliases, ids, parent, edited);
     setPending(true);
     setProblem(null);
     setError(null);
@@ -197,6 +216,8 @@ export default function CreditDetailsDialog({
 
   const onEnter = saveOnEnter(save);
   const rowsProps = { saving: pending, problem, onEnter };
+  const markEdited = (field: keyof Edited) =>
+    setEdited((current) => (current[field] ? current : { ...current, [field]: true }));
 
   return (
     <FormDialog
@@ -221,13 +242,23 @@ export default function CreditDetailsDialog({
     >
       <FieldSet>
         <FieldLegend>{d.aliases}</FieldLegend>
-        <AliasRows rows={aliases} onChange={setAliases} {...rowsProps} />
+        <AliasRows
+          rows={aliases}
+          onChange={(next) => {
+            setAliases(next);
+            markEdited("aliases");
+          }}
+          {...rowsProps}
+        />
       </FieldSet>
       <FieldSet>
         <FieldLegend>{d.externalIds}</FieldLegend>
         <IdRows
           rows={ids}
-          onChange={setIds}
+          onChange={(next) => {
+            setIds(next);
+            markEdited("ids");
+          }}
           title={null}
           max={maxExternalIds}
           {...rowsProps}
@@ -242,6 +273,7 @@ export default function CreditDetailsDialog({
             value={parent}
             onChange={(next) => {
               setParent(next);
+              markEdited("parent");
               if (problem?.control === "parent") setProblem(null);
             }}
             disabled={pending}

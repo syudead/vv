@@ -51,6 +51,7 @@ import {
   matchesCreditQuery,
   parseCreditListCriteria,
   readCreditSort,
+  reparentRows,
   serializeCreditListCriteria,
   sortStorageKey,
 } from "./creditRows";
@@ -245,6 +246,20 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
   }
 
   /**
+   * reparentLoaded は団体 `fromId` を親に持つ読み込んだ子の親を `to` へ書き換え、`to` が
+   * undefined なら外す（改名・削除・統合のあと。サーバーは子の親を同じように変える）。
+   */
+  function reparentLoaded(fromId: number, to?: Credit) {
+    if (kind !== "organization") return;
+    const parent = to === undefined ? undefined : { id: to.id, name: to.name };
+    applyLocal((current) => {
+      if (current === undefined) return current;
+      const rows = reparentRows(current.rows, fromId, parent);
+      return rows === current.rows ? current : { ...current, rows };
+    });
+  }
+
+  /**
    * gone は対象がもう無かったときの扱いである。窓を閉じたあとで呼び、トーストを出して
    * 一覧を先頭から読み直し、消えた行の次の行へ移す。
    */
@@ -281,6 +296,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     try {
       const updated = await updateCredit(kind, credit.id, { name });
       replaceLoaded(updated, credit);
+      reparentLoaded(updated.id, updated);
       setRenaming(null);
       if (shown(updated)) focusRow(credit.id, "rename");
       else focusAfterRemoval(order, credit.id);
@@ -305,6 +321,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     try {
       await deleteCredit(kind, target.id);
       removeLoaded(target);
+      reparentLoaded(target.id);
       setDeleting(null);
       toast(t.credits.deleted(target.name));
       focusAfterRemoval(order, target.id);
@@ -347,6 +364,7 @@ export default function CreditsPage({ kind }: { kind: CreditKind }) {
     const order = visibleRows;
     removeLoaded(source);
     replaceLoaded(merged, target);
+    reparentLoaded(source.id, merged);
     setMerging(null);
     toast(t.credits.merged(source.name, merged.name));
     // 統合先が読み込んだ範囲（続きのカーソルの境まで）に入るなら、その名前へ移す。

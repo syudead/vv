@@ -4,6 +4,7 @@ import {
   type CreditKind,
   type CreditSort,
   listCredits,
+  type Organization,
 } from "../api/credits";
 import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
@@ -41,6 +42,27 @@ export function matchesCreditQuery(credit: Credit, query: ListRowsQuery): boolea
 /** parentOf は団体の親を返す。人物と根の団体は undefined。 */
 export function parentOf(credit: Credit) {
   return "parent" in credit ? credit.parent : undefined;
+}
+
+/**
+ * reparentRows は、団体 `fromId` の改名・削除・統合のあと、読み込んだ行のうちその団体を親に
+ * 持つ子の `parent` を書き換える。`to` は新しい親（改名ならその団体、統合なら統合先）で、
+ * undefined なら親を外す（削除はサーバーが子の親を外す。data-model.md「Entities」）。親は
+ * 並び順と検索に関わらないので、行の位置と件数は変えない。子が無ければ同じ配列を返す。
+ */
+export function reparentRows(
+  rows: Credit[],
+  fromId: number,
+  to: Organization["parent"],
+): Credit[] {
+  if (!rows.some((row) => parentOf(row)?.id === fromId)) return rows;
+  return rows.map((row) => {
+    if (parentOf(row)?.id !== fromId) return row;
+    const next: Organization = { ...row };
+    if (to === undefined) delete next.parent;
+    else next.parent = to;
+    return next;
+  });
 }
 
 /**

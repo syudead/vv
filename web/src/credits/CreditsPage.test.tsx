@@ -99,6 +99,11 @@ function handle(kind: CreditKind, rest: string, method: string, url: URL, body: 
       target.videoCount += source.videoCount;
       target.aliases.push({ name: source.name });
       items.splice(items.indexOf(source), 1);
+      // 統合元の団体の子は統合先の下へ付け替わる。
+      for (const child of items) {
+        if ((child as { parent?: { id: number } }).parent?.id === source.id)
+          Object.assign(child, { parent: { id: target.id, name: target.name } });
+      }
     }
     const merged = structuredClone(target);
     return jsonResponse({
@@ -121,6 +126,11 @@ function handle(kind: CreditKind, rest: string, method: string, url: URL, body: 
   }
   if (method === "DELETE") {
     items.splice(items.indexOf(target), 1);
+    // 消えた団体の子は親を失う。
+    for (const child of items) {
+      if ((child as { parent?: { id: number } }).parent?.id === target.id)
+        Reflect.deleteProperty(child, "parent");
+    }
     return jsonResponse(null, 204);
   }
   return jsonResponse(structuredClone(target));
@@ -368,6 +378,31 @@ describe("CreditsPage 人物の一覧", () => {
     ).toBeDefined();
   });
 
+  it("詳細の窓は手を入れていない一覧を送らず、ほかで変えた値を残す", async () => {
+    server.people[0]!.externalIds = [{ source: "imdb", value: "nm1" }];
+    const user = userEvent.setup();
+    renderPage("person");
+    await screen.findByTitle("Alice");
+
+    await user.click(
+      within(rowOf("Alice")).getByRole("button", { name: "Edit details" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Edit "Alice"' });
+    // 窓を開いたあとに、ほかのタブが外部 ID を足す。
+    server.people[0]!.externalIds.push({ source: "wikidata", value: "Q1" });
+    await user.click(within(dialog).getAllByRole("button", { name: "Remove alias" })[1]!);
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(requests("PATCH", /^\/api\/people\/1$/).map((item) => item.body)).toEqual([
+      { aliases: [{ name: "アリス", language: "ja" }] },
+    ]);
+    expect(server.people[0]!.externalIds).toEqual([
+      { source: "imdb", value: "nm1" },
+      { source: "wikidata", value: "Q1" },
+    ]);
+  });
+
   it("詳細の窓は field の示す行の下に理由を出し、開いたままにする", async () => {
     const user = userEvent.setup();
     renderPage("person");
@@ -386,6 +421,10 @@ describe("CreditsPage 人物の一覧", () => {
       within(rowOf("Alice")).getByRole("button", { name: "Edit details" }),
     );
     const dialog = await screen.findByRole("dialog", { name: 'Edit "Alice"' });
+    await user.type(
+      within(dialog).getAllByRole("textbox", { name: "Language" })[0]!,
+      "x",
+    );
     await user.click(within(dialog).getByRole("button", { name: "Save" }));
 
     expect(
@@ -545,13 +584,68 @@ describe("CreditsPage 団体の一覧", () => {
     ).toBeDefined();
     expect(
       requests("PATCH", /^\/api\/organizations\/10$/).map((item) => item.body),
-    ).toEqual([{ aliases: [], externalIds: [], parentId: 11 }]);
+    ).toEqual([{ parentId: 11 }]);
     // 親の候補は自分を除き、「None」が先頭にある。
     expect(
       requests("GET", /^\/api\/organizations$/)
         .at(-1)
         ?.params.has("limit"),
     ).toBe(false);
+  });
+
+  it("親を改名すると、読み込んだ子の 1 行も新しい名前になる", async () => {
+    const user = userEvent.setup();
+    renderPage("organization");
+    await screen.findByTitle("Studio");
+
+    await user.click(within(rowOf("Studio")).getByRole("button", { name: "Rename" }));
+    const input = screen.getByRole("textbox", { name: 'New name for "Studio"' });
+    await user.clear(input);
+    await user.type(input, "New Studio{Enter}");
+
+    await screen.findByTitle("New Studio");
+    expect(
+      within(rowOf("Label")).getByText("Part of New Studio · Aliases: Lbl"),
+    ).toBeDefined();
+  });
+
+  it("親を統合すると、読み込んだ子は統合先の下になる", async () => {
+    server.organizations.push(credit({ id: 12, name: "Agency" }));
+    const user = userEvent.setup();
+    renderPage("organization");
+    await screen.findByTitle("Studio");
+
+    await user.click(
+      within(rowOf("Studio")).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(
+      await screen.findByRole("menuitem", { name: "Merge into another organization…" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: 'Merge "Studio"' });
+    await user.click(await within(dialog).findByRole("option", { name: /Agency/ }));
+    await user.click(within(dialog).getByRole("button", { name: "Merge" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByTitle("Studio")).toBeNull();
+    expect(
+      within(rowOf("Label")).getByText("Part of Agency · Aliases: Lbl"),
+    ).toBeDefined();
+  });
+
+  it("親を削除すると、読み込んだ子の 1 行から親が消える", async () => {
+    const user = userEvent.setup();
+    renderPage("organization");
+    await screen.findByTitle("Studio");
+
+    await user.click(
+      within(rowOf("Studio")).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+    const dialog = await screen.findByRole("alertdialog", { name: 'Delete "Studio"?' });
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+
+    await waitFor(() => expect(screen.queryByTitle("Studio")).toBeNull());
+    expect(within(rowOf("Label")).getByText("Aliases: Lbl")).toBeDefined();
   });
 
   it("削除の確認は、中の団体が親を失うことも書く", async () => {
