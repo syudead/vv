@@ -84,7 +84,7 @@ an entity, and the two list screens are decided by `ui-design.md` in the next
   dependency; `SearchKeyVersion` and `FolderIndexVersion` are not raised.
 - A new domain event, `VideoWorkInfoChanged`, and no new `/api/events` kind
   (R-11).
-- The error body gains `field` in both schemas and twelve `reason` values
+- The error body gains `field` in both schemas and thirteen `reason` values
   ([contracts/screen-api.md, Added `reason` values and `field`](contracts/screen-api.md#added-reason-values-and-field)).
 - Two new owner-only screens, `/people` and `/organizations`; their sidebar
   placement is decided in `ui-design.md`.
@@ -192,8 +192,8 @@ flowchart LR
 ([data-model.md, Migration](data-model.md#migration), [Rules](data-model.md#rules));
 `Credit`, `CreditKind`, `Alias`, `ExternalID`, `NormalizeCredit`,
 `CreditInput`, `CreditPatch`, `CreditQuery`, `CreditPage`,
-`CreditMergeOutcome`, `ErrCreditParentCycle`, `ErrMergeSameCredit` and
-`InvalidWorkInfoError` in `domain`
+`CreditMergeOutcome`, `ErrCreditParentCycle`, `ErrMergeSameCredit`,
+`CreditExternalIDTakenError` and `InvalidWorkInfoError` in `domain`
 ([Values added to `domain`](data-model.md#values-added-to-domain));
 `CreditStore` with `List`, `Get`, `Lookup`, `Create`, `Update`, `Merge`,
 `Delete` and `RefreshSearchKeys` and `db.Credits()`
@@ -213,6 +213,11 @@ same name having different ids and both listed; a page of 100 with
 external IDs to the target, dropping a spelling the target already has,
 renumbering a `(content_key, role)` that held both, re-parenting a source
 organization's children, and listing a missing source in `NotFoundIDs`;
+`Merge` refused with `ErrCreditParentCycle` when a source is the target's
+grandparent, and with `TooMany` on `aliases` when the merged aliases would
+exceed 50, each leaving every row as it was; an external ID that another
+person holds refused on `Create` and `Update` with
+`CreditExternalIDTakenError`;
 `Delete` removing the link rows and renumbering; a `parentId` of the
 organization itself and of a grandchild refused; `Lookup` by external ID; a
 row with `search_version = 0` refilled at startup.
@@ -244,7 +249,9 @@ unknown person id failing with `CreditNotFoundError` naming the field and
 writing nothing; clearing everything leaving no row in any table; a video
 with only a date surviving bundling; the values readable after the content
 is re-indexed at another path and after a same-path succession, with people
-linked and also when the new key already holds work information; bundling
+linked, with no work information under the new key, and with a new key
+holding a date and a URL the old key does not have, which the succession
+clears; bundling
 two videos showing the representative's values on the bundle, and unbundling
 giving the member its own values back.
 
@@ -254,10 +261,10 @@ giving the member its own values back.
 `/api/organizations`, the schemas `Person`, `Organization`, `Alias`,
 `ExternalId`, `CreditInput`, `CreditPatch` and `CreditList`
 ([contracts/screen-api.md, People and organizations](contracts/screen-api.md#people-and-organizations));
-`field` on `Error` and the twelve reasons
+`field` on `Error` and the thirteen reasons
 ([Added `reason` values and `field`](contracts/screen-api.md#added-reason-values-and-field))
-with the one mapping function from `InvalidWorkInfoError` and
-`CreditNotFoundError`; the messages in `web/src/i18n/errors.ts`;
+with the one mapping function from `InvalidWorkInfoError`,
+`CreditNotFoundError` and `CreditExternalIDTakenError`; the messages in `web/src/i18n/errors.ts`;
 `api/openapi.yaml` and `task generate`; `requiresJSONBody` and the
 `accessRoutes` class; one handler set registered under both prefixes.
 
@@ -268,9 +275,11 @@ external IDs, merges and parents
 returning `201` with the person and `GET /api/people/{id}` returning it; a
 `PATCH` with `aliases` replacing the list and leaving the name; an alias
 `language` of `x` returning `400 work_info_invalid_language` with
-`field: aliases[0].language`; `POST /api/organizations` with a `parentId`
-that is a descendant returning `400 organization_parent_cycle`; a merge
-returning the target with `notFoundIds`; `DELETE` returning `204` and the
+`field: aliases[0].language`; a `PATCH /api/organizations/{id}` of an
+existing organization with a `parentId` that is its child returning
+`400 organization_parent_cycle`; a `POST /api/people` with an external ID
+another person holds returning `409 external_id_taken` with
+`field: externalIds[0]`; a merge returning the target with `notFoundIds`; `DELETE` returning `204` and the
 later `GET` `404 person_not_found`; a guest receiving `401` from every route;
 `GET /api/people?limit=2` returning `nextCursor` and `total`.
 
@@ -343,7 +352,7 @@ video item; an id with no entity returning an empty list with `200`; `0` or
 
 **Scope**: `workInfo` on `ExternalVideo`, `POST /api/v1/video-work-info`, the
 five operations under `/api/v1/people` and `/api/v1/organizations`, `field`
-and the twelve reasons in `api/external-v1.yaml`, the eleven MCP tools and
+and the thirteen reasons in `api/external-v1.yaml`, the eleven MCP tools and
 `workInfo` in `list_videos` and `get_video`
 ([contracts/external-api.md](contracts/external-api.md)); the error mapping
 shared with the screen routes; `task generate`. The "Set work information"

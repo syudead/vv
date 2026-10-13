@@ -82,7 +82,7 @@ in this API `parent` is `null` at the root and every list is `[]` when empty.
 
 | Operation | Method and path | Body or parameters | Response |
 | --- | --- | --- | --- |
-| `listPeople` | `GET /api/v1/people` | `q`, `sort`, `cursor`, `limit` as on the screen; or `source` and `externalId` together for a lookup | `200 CreditList`; a lookup returns the one entity holding that external ID or an empty `items` |
+| `listPeople` | `GET /api/v1/people` | `q`, `sort`, `cursor`, `limit` as on the screen; or `source` and `externalId` together for a lookup | `200 CreditList`; a lookup returns the one entity holding that external ID (an external ID names at most one entity of a kind) or an empty `items` |
 | `createPerson` | `POST /api/v1/people` | `CreditInput` | `200 Person` |
 | `updatePerson` | `POST /api/v1/people/update` | `{ id }` plus `CreditPatch` | `200 Person` |
 | `mergePeople` | `POST /api/v1/people/merge` | `{ targetId, sourceIds }`, 1 to 20,000 sources | `200 { person: Person, notFoundIds }` |
@@ -93,9 +93,10 @@ in this API `parent` is `null` at the root and every list is `[]` when empty.
 | `400` | `invalid_request` | `sort` outside the five values, `limit` outside 1 to 200, `q` over 100 characters, `source` without `externalId` or the reverse |
 | `400` | `invalid_request` / `invalid_cursor` | `cursor` unreadable or made under another `sort` |
 | `400` | `invalid_request` / `work_info_*`, `field`, `limit` | A name, alias, language, external ID or list breaks its rule ([data-model.md, Fields](../data-model.md#fields)) |
-| `400` | `invalid_request` / `work_info_too_many`, `field`, `limit` | `sourceIds` or `ids` empty or over 20,000 entries |
+| `400` | `invalid_request` / `work_info_too_many`, `field`, `limit` | `sourceIds` or `ids` empty or over 20,000 entries, or a merge that would leave the target with over 50 `aliases` or 20 `externalIds`. Nothing changes |
 | `400` | `invalid_request` / `merge_same_person` | `sourceIds` contains `targetId`. Nothing changes |
-| `400` | `invalid_request` / `organization_parent_cycle` | `parentId` is the organization or one of its descendants |
+| `400` | `invalid_request` / `organization_parent_cycle` | `parentId` is the organization or one of its descendants, or a merge source is an ancestor of `targetId`. Nothing changes |
+| `409` | `conflict` / `external_id_taken`, `field` | `create` or `update` sends an external ID that another entity of the kind holds; `field` is `externalIds[i]`. A client that meant that entity looks it up and uses its id |
 | `404` | `not_found` / `person_not_found` | `id` or `targetId` does not exist, or (`field: parentId`) the parent does not exist. Missing sources and missing `ids` of `delete` are listed, not errors |
 
 Every operation returns a JSON body, so every MCP tool has a result
@@ -103,7 +104,7 @@ Every operation returns a JSON body, so every MCP tool has a result
 `createPerson` answers `200`, not `201`, for the same reason as the other
 external writes.
 
-`Error` gains the optional `field`, and `ErrorReason` gets the twelve values
+`Error` gains the optional `field`, and `ErrorReason` gets the thirteen values
 of [screen-api.md, Added `reason` values and `field`](screen-api.md#added-reason-values-and-field).
 
 ## MCP tools

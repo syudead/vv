@@ -79,17 +79,18 @@ create table people_external_ids (
     value     text    not null,
     primary key (person_id, source, value)
 ) without rowid;
-create index people_external_ids_lookup_idx on people_external_ids (source, value);
+-- An external ID names one entity of a kind, so Lookup has one answer.
+create unique index people_external_ids_lookup_idx on people_external_ids (source, value);
 create table organization_external_ids (
     organization_id integer not null references organizations (id) on delete cascade,
     source          text    not null,
     value           text    not null,
     primary key (organization_id, source, value)
 ) without rowid;
-create index organization_external_ids_lookup_idx on organization_external_ids (source, value);
+create unique index organization_external_ids_lookup_idx on organization_external_ids (source, value);
 
 -- Per-video tables (research.md R-2). content_key holds the user key; no foreign key to videos
--- and none between these tables, so the bundle and succession paths treat each one alone.
+-- and none between these tables, so the bundle paths copy each one alone; succession moves the six together.
 create table video_work_info (
     content_key    text    primary key,
     code           text,
@@ -163,7 +164,7 @@ Stored spellings are not folded or normalized; matching folds them (R-6).
 | Entity `name` | `*_names` with `canonical = 1` | 1 to 200 code points |
 | Entity `aliases[]` | `*_names` with `canonical = 0` | 0 to 50 entries, each `name` 1 to 200 code points; an alias equal to the name or to another alias is an error |
 | Entity `aliases[].language` | `*_names.language` | Optional; 2 to 35 characters of ASCII letters, digits and `-`, starting with 2 or 3 letters (the syntax of a BCP 47 tag); not otherwise validated |
-| Entity `externalIds[]` | `*_external_ids` | 0 to 20 entries, the rules of `externalIds[]` above |
+| Entity `externalIds[]` | `*_external_ids` | 0 to 20 entries, the rules of `externalIds[]` above; a `(source, value)` that another entity of the same kind holds is an error (`CreditExternalIDTakenError`) |
 | Organization `parentId` | `organizations.parent_id` | An existing organization that is neither the organization itself nor one of its descendants; `null` clears |
 
 A cleared single-value field is `null`; a `video_work_info` row exists only
@@ -183,9 +184,9 @@ table names; the SQL is written once.
 | `List(kind, CreditQuery)` | `q` folded and matched with `instr` on `search_key` of every name row (names and aliases); `sort` one of `name`, `countDesc`, `countAsc`, `createdDesc`, `createdAsc` with the tie-break of [036 R-1](../036-tag-admin-scale/research.md#r-1-the-server-pages-the-list-and-applies-search-filters-and-sort-to-every-tag); keyset `cursor` and `limit` 1 to 200, every entity when `limit` is absent; `total` counts the matches and `totalAll` every entity |
 | `Get(kind, id)` | The entity, or `domain.ErrNotFound` |
 | `Lookup(kind, source, value)` | The entity holding that external ID, or `domain.ErrNotFound` |
-| `Create(kind, CreditInput)` | One transaction: normalize, insert the entity, its canonical row, its alias rows and its external IDs; for an organization check the parent |
-| `Update(kind, id, CreditPatch)` | One transaction: for each present field, normalize and replace; a list replaces the stored rows whole; the parent is checked for a cycle by walking `parent_id` from the new parent up to the root; a patch that changes nothing returns the entity unchanged |
-| `Merge(kind, targetID, sourceIDs)` | One transaction: for each source, move its link rows to the target (`insert or ignore` into `(content_key, role, position)` after shifting the source's positions behind the target's, then renumber each `(content_key, role)` densely), move its name rows as aliases (`insert or ignore`, so a spelling the target already has is dropped), move its external IDs (`insert or ignore`), point the children of a source organization at the target, delete the source; missing sources are listed in `NotFoundIDs`; a source equal to the target is `ErrMergeSameCredit` |
+| `Create(kind, CreditInput)` | One transaction: normalize, refuse an external ID another entity of the kind holds, insert the entity, its canonical row, its alias rows and its external IDs; for an organization check the parent |
+| `Update(kind, id, CreditPatch)` | One transaction: for each present field, normalize and replace; a list replaces the stored rows whole; an external ID another entity of the kind holds is refused; the parent is checked for a cycle by walking `parent_id` from the new parent up to the root; a patch that changes nothing returns the entity unchanged |
+| `Merge(kind, targetID, sourceIDs)` | One transaction: a source equal to the target is `ErrMergeSameCredit`; for an organization, walk `parent_id` from the target up to the root and refuse with `ErrCreditParentCycle` when a source is on the chain, since pointing that source's children at the target would close a loop. Then, for each source, move its link rows to the target (`insert or ignore` into `(content_key, role, position)` after shifting the source's positions behind the target's, then renumber each `(content_key, role)` densely), move its name rows as aliases (`insert or ignore`, so a spelling the target already has is dropped), re-point its external IDs at the target (`update`; the unique `(source, value)` index means the target cannot already hold one), point the children of a source organization at the target, delete the source. Last, count the target's aliases and external IDs: over 50 or 20 rolls the transaction back with `InvalidWorkInfoError{Field: "aliases" or "externalIds", Problem: TooMany, Limit}`, so a merge never leaves an entity that `NormalizeCredit` would refuse. Missing sources are listed in `NotFoundIDs` |
 | `Delete(kind, id)` | Deletes the entity; names, external IDs and link rows cascade; the children of an organization get `parent_id = null`; the remaining positions of each `(content_key, role)` are renumbered |
 | `RefreshSearchKeys` | At startup, after `TagStore.RefreshSearchKeys`: rewrites `search_key` and `sort_key` of name rows and `code_key` of `video_work_info` rows whose `search_version` is below `domain.SearchKeyVersion` |
 
@@ -205,6 +206,7 @@ table names; the SQL is written once.
 | `CreditKind` (`person`, `organization`), `Credit{Kind, ID, Name, Aliases []Alias, ExternalIDs, Parent *CreditRef, VideoCount, CreatedAt}`, `Alias{Name, Language string}` | The entity ([Entities](#entities)) |
 | `CreditInput{Name, Aliases, ExternalIDs, ParentID *int64}`, `CreditPatch` (the same fields, each optional), `CreditQuery{Q, Sort, Cursor, Limit}`, `CreditPage{Items, Total, TotalAll, NextCursor}`, `CreditMergeOutcome{Credit, NotFoundIDs}` | The inputs and outputs of `CreditStore` |
 | `NormalizeCredit`, `ErrCreditParentCycle`, `ErrMergeSameCredit` | The entity rules of [Fields](#fields) and the two refusals |
+| `CreditExternalIDTakenError{Kind, Field, HolderID}` | An entity external ID that another entity of the kind holds; the API maps it to `409 conflict` / `external_id_taken` with `field` |
 | `VideoQuery.Person`, `VideoQuery.Organization` (int64) | The list filters of [R-7](research.md#r-7-person-and-organization-list-parameters-by-id-matching-every-role); zero means no filter |
 | `VideoWorkInfoChanged{VideoIDs []int64}` | The event of [R-11](research.md#r-11-a-work-information-write-publishes-videoworkinfochanged-entity-edits-publish-nothing) |
 
@@ -293,7 +295,7 @@ per page like the tag counts of
 | Path | Change |
 | --- | --- |
 | `userDataTables` | The six per-video tables are appended with their non-key columns, so bundling copies the representative's rows to the bundle key and unbundling leaves each member's own rows ([030 R-1](../030-video-versions/research.md#r-1-bundles-live-in-user-data-tables-and-bundle-values-sit-in-the-existing-tables-under-the-bundles-own-key)) |
-| `moveUserData` | The six tables join the loop that deletes the new key's rows when the old key has any and re-keys the old key's rows (the `playback_progress` rule). A store test covers a succession with people linked, with and without work information already under the new key |
+| `moveUserData` | The six tables move as one object, not table by table: when the old key has a row in any of them, the new key's rows are deleted from all six, then the old key's rows are re-keyed. The per-table rule of the existing loop (the `playback_progress` rule) would keep a table the old key leaves empty, so the new key would end with one video's people and another video's dates. A store test covers a succession with people linked, with no work information under the new key, and with a new key holding a date and a URL the old key does not have, which the succession clears |
 
 ## Rules
 
@@ -303,7 +305,9 @@ per page like the tag counts of
 | `position` values of one `(content_key, role)` and of one key's URLs are `0..n-1` | `WorkInfoStore` writes lists whole; `CreditStore.Merge` and `Delete` renumber; `invariants_test.go` |
 | Every entity has exactly one `canonical = 1` name row | `CreditStore`; `invariants_test.go` |
 | `language` is null on a canonical row | `CreditStore`; `invariants_test.go` |
-| `parent_id` chains end at a root (no cycle) | `CreditStore.Update` and `Create` walk the chain; `invariants_test.go` |
+| `parent_id` chains end at a root (no cycle) | `CreditStore.Update` and `Create` walk the chain from the new parent, `Merge` from the target; `invariants_test.go` |
+| An entity holds at most 50 aliases and 20 external IDs | `NormalizeCredit` on create and update, the count at the end of `Merge`; `invariants_test.go` |
+| A `(source, value)` names at most one entity of a kind | The unique lookup indexes; `CreditStore.Create` and `Update` report `CreditExternalIDTakenError` |
 | `code_key`, `search_key` and `sort_key` equal the fold of their values at `search_version = SearchKeyVersion` | Written in the same statement as the values; `RefreshSearchKeys` |
 | The field rules of [Fields](#fields) | `domain.NormalizeWorkInfo` and `domain.NormalizeCredit`, called by every write |
 

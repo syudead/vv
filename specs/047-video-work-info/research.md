@@ -60,8 +60,11 @@ A `video_work_info` row exists only while `code` or `description` is set.
 **Rationale**: Keying by the user key makes requirement 13 and the Edge Cases
 (same content in several places, bundles, moves and renames) properties the
 existing paths already give. With no row depending on another, every table is
-copied, replaced and re-keyed by the same two statements as `video_favorites`,
-and bundling a video with only a date or only a URL loses nothing.
+copied and replaced by the same statements as `video_favorites`, and bundling
+a video with only a date or only a URL loses nothing. Succession is the one
+path that treats the six tables as a unit: when the old key has work
+information, the new key's rows in all six are replaced, so a succession never
+leaves one video's people beside another video's dates.
 
 ## R-3: People and organizations are id entities whose names are not unique, served by one `CreditStore`
 
@@ -174,10 +177,14 @@ rename, which a name in the URL would not.
 **Decision**: `PATCH /api/people/{id}` (and `/api/organizations/{id}`) takes
 `name`, `aliases`, `externalIds` and, for an organization, `parentId`, each
 optional; a given list replaces the stored list whole. `POST …/{id}/merge`
-takes `sourceIds` and moves every link row and every name row of the sources
-to the target in one transaction. `DELETE …/{id}` removes the entity and its
-link rows; the screen shows `videoCount` before asking. A `parentId` that is
-the organization itself or one of its descendants is refused
+takes `sourceIds` and moves every link row, name row and external ID of the
+sources to the target in one transaction; it is refused, changing nothing,
+when the merged target would exceed the alias or external ID limit, or when a
+source organization is an ancestor of the target. `DELETE …/{id}` removes the
+entity and its link rows; the screen shows `videoCount` before asking. A
+`parentId` that is the organization itself or one of its descendants is
+refused. An external ID names at most one entity of a kind, so `POST` and
+`PATCH` refuse one another entity holds
 ([contracts/screen-api.md, People and organizations](contracts/screen-api.md#people-and-organizations)).
 
 | Option | Verdict |
@@ -186,6 +193,9 @@ the organization itself or one of its descendants is refused
 | Tag-style synonym routes (`POST …/synonyms`, `DELETE …/synonyms?name=`) | Rejected: tag synonyms need per-name routes because adding one can trigger a merge; a person's alias conflicts with nothing (R-3), so the alias dialog saves one list |
 | `PUT` replacing the whole entity | Rejected: the rename dialog would resend the aliases it loaded and overwrite an alias edit made in another tab |
 | Refuse to delete an entity with linked videos | Rejected: the Edge Case says the count is shown and the links are detached |
+| Merge a source that is an ancestor of the target by re-parenting the chain (the target takes the source's place) | Rejected: the organizations between the two would need their own rule to avoid a loop; refusing keeps the Edge Case's "a cycle is refused", and the owner can move the target first or merge the other way |
+| Merge past the alias and external ID limits | Rejected: the target would hold lists that the next `PATCH` of those lists refuses |
+| Let two entities share an external ID, and return every holder from the lookup | Rejected: a scraper looking up a performer could not tell which one to link; a duplicate is a mistake to merge, not a state to keep |
 
 **Rationale**: The list screens follow the tag page (list, rename, merge),
 and one `PATCH` serves rename, alias editing and the parent with one route

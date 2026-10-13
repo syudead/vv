@@ -172,11 +172,11 @@ CreditList:
 | --- | --- | --- | --- |
 | `GET /api/people` | `q` (at most 100 characters), `sort` (`name`, `countDesc`, `countAsc`, `createdDesc`, `createdAsc`; default `name`), `cursor`, `limit` (1 to 200; absent returns every entity) | `200 CreditList` of `Person` | `400` (`sort`, `limit`, `q` length), `400 invalid_cursor` |
 | `GET /api/people/{id}` | — | `200 Person` | `404 person_not_found` |
-| `POST /api/people` | `CreditInput` | `201 Person` | `400` (the field errors of [`PUT /api/videos/{id}/work-info`](#put-apivideosidwork-info) with `field` of `name`, `aliases[i].name`, `aliases[i].language` (`work_info_invalid_language`), `externalIds[i].source`, `externalIds[i].value`) |
-| `PATCH /api/people/{id}` | `CreditPatch` | `200 Person` (unchanged when nothing differs) | `400` as above, `404 person_not_found` |
+| `POST /api/people` | `CreditInput` | `201 Person` | `400` (the field errors of [`PUT /api/videos/{id}/work-info`](#put-apivideosidwork-info) with `field` of `name`, `aliases[i].name`, `aliases[i].language` (`work_info_invalid_language`), `externalIds[i].source`, `externalIds[i].value`); `409 conflict` / `external_id_taken` with `field: externalIds[i]` when another person holds that `(source, value)` |
+| `PATCH /api/people/{id}` | `CreditPatch` | `200 Person` (unchanged when nothing differs) | `400` as above, `404 person_not_found`, and the `409` of `POST` |
 | `DELETE /api/people/{id}` | — | `204`; link rows are removed | `404 person_not_found` |
-| `POST /api/people/{id}/merge` | `{ sourceIds: int64[] }`, 1 to 20,000 entries | `200 { person: Person, notFoundIds: int64[] }` | `400 work_info_too_many` with `field: sourceIds` and `limit`, `400 merge_same_person`, `404 person_not_found` (the target) |
-| `GET /api/organizations` and the five others | As above, with `Organization`, `organization_not_found`, `merge_same_organization` | — | `POST` and `PATCH` add `404 organization_not_found` with `field: parentId` when the parent does not exist, and `400 organization_parent_cycle` when `parentId` is the organization or a descendant |
+| `POST /api/people/{id}/merge` | `{ sourceIds: int64[] }`, 1 to 20,000 entries | `200 { person: Person, notFoundIds: int64[] }` | `400 work_info_too_many` with `field: sourceIds` and `limit`; `400 work_info_too_many` with `field: aliases` (limit 50) or `externalIds` (limit 20) when the merged entity would hold more; `400 merge_same_person`; `404 person_not_found` (the target). Nothing changes on an error |
+| `GET /api/organizations` and the five others | As above, with `Organization`, `organization_not_found`, `merge_same_organization` | — | `POST` and `PATCH` add `404 organization_not_found` with `field: parentId` when the parent does not exist, and `400 organization_parent_cycle` when `parentId` is the organization or a descendant; merge adds `400 organization_parent_cycle` when a source is the target's parent or another ancestor, because its children would move under the target |
 
 - The video page's combobox reads `GET /api/people?q=…&limit=…` for
   candidates (names and aliases match) and shows the id's current name; a
@@ -189,8 +189,8 @@ CreditList:
 ## Added `reason` values and `field`
 
 `Error` gains the optional property `field`: the path of the property a
-`work_info_*`, `person_not_found` or `organization_not_found` reason refers
-to, as the JSON property names joined by `.` with list positions in brackets:
+`work_info_*`, `person_not_found`, `organization_not_found` or
+`external_id_taken` reason refers to, as the JSON property names joined by `.` with list positions in brackets:
 `code`, `dates[1].date`, `people[0].person.id`, `aliases[2].language`,
 `parentId`. In the external bulk operation `index` stays the position in
 `items`, and `field` is the path inside that item's `workInfo`.
@@ -198,6 +198,7 @@ to, as the JSON property names joined by `.` with list positions in brackets:
 `ErrorReason` gains `work_info_control_characters`, `work_info_too_long`,
 `work_info_too_many`, `work_info_invalid_date`, `work_info_invalid_url`,
 `work_info_invalid_language`, `work_info_duplicate`, `person_not_found`,
-`organization_not_found`, `organization_parent_cycle`, `merge_same_person`
-and `merge_same_organization`, and `web/src/i18n/errors.ts` gets an English
-message for each that names the field.
+`organization_not_found`, `organization_parent_cycle`, `merge_same_person`,
+`merge_same_organization` and `external_id_taken`, and
+`web/src/i18n/errors.ts` gets an English message for each that names the
+field.
