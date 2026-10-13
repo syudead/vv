@@ -184,9 +184,11 @@ func TestSetVideoWorkInfoRejects(t *testing.T) {
 	}
 
 	for label, body := range map[string]string{
-		"知らない欄": `{"code":"x","extra":1}`,
-		"型が違う":  `{"code":1}`,
-		"出演者の型": `{"performers":"x"}`,
+		"知らない欄":     `{"code":"x","extra":1}`,
+		"型が違う":      `{"code":1}`,
+		"出演者の型":     `{"performers":"x"}`,
+		"本文が null":  `null`,
+		"出演者の null": `{"performers":[null]}`,
 	} {
 		assertStatus(t, label, f.setWorkInfo("a", body, f.owner), http.StatusBadRequest)
 	}
@@ -198,4 +200,36 @@ func TestSetVideoWorkInfoRejects(t *testing.T) {
 	assertErrorBody(t, "無い動画", missing.Code, missing.Body.Bytes(), wantError{
 		status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonVideoNotFound,
 	})
+}
+
+// 形の誤りの本文は、保存した作品情報を消さない。本文そのものの null と performers の要素の null は
+// encoding/json が零値にするので、解除として通らないことを確かめる。
+func TestSetVideoWorkInfoMalformedNullKeepsSaved(t *testing.T) {
+	f := newGuestFixture(t, true)
+	saved := gen.WorkInfoInput{Code: ptr("ABC-123"), Performers: &[]string{"Alice"}}
+	assertStatus(t, "保存", f.setWorkInfo("a", workInfoBody(t, saved), f.owner), http.StatusOK)
+
+	for label, body := range map[string]string{
+		"本文が null":     `null`,
+		"出演者の null":    `{"code":"ABC-123","performers":[null]}`,
+		"出演者の一部が null": `{"code":"ABC-123","performers":["Alice",null]}`,
+	} {
+		rec := f.setWorkInfo("a", body, f.owner)
+		assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), wantError{
+			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
+		})
+	}
+
+	got := decode[gen.Video](t, f.env.get(f.videoPath("a", ""), f.owner))
+	if got.WorkInfo == nil || got.WorkInfo.Code == nil || *got.WorkInfo.Code != "ABC-123" ||
+		!slices.Equal(got.WorkInfo.Performers, []string{"Alice"}) {
+		t.Errorf("形の誤りの本文で作品情報が変わった: %+v", got.WorkInfo)
+	}
+
+	// performers そのものの null は従来どおり出演者だけを解除する。
+	rec := f.setWorkInfo("a", `{"code":"ABC-123","performers":null}`, f.owner)
+	assertStatus(t, "performers の null", rec, http.StatusOK)
+	if cleared := decode[gen.Video](t, rec); cleared.WorkInfo == nil || len(cleared.WorkInfo.Performers) != 0 {
+		t.Errorf("performers の null で出演者が残った: %+v", cleared.WorkInfo)
+	}
 }

@@ -1,9 +1,12 @@
 package httpapi
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
+	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -26,7 +29,7 @@ type WorkInfoStore interface {
 // SetVideoWorkInfo は動画の作品情報を置き換える（PUT /api/videos/{id}/work-info）。項目が無い・
 // null・整えて空なら解除する（research.md R-5）。
 func (s *server) SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
-	var body gen.WorkInfoInput
+	var body workInfoRequest
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
@@ -35,7 +38,7 @@ func (s *server) SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id gen
 		return
 	}
 
-	video, err := s.workInfo.Set(r.Context(), id, workInfoFromInput(body))
+	video, err := s.workInfo.Set(r.Context(), id, workInfoFromInput(gen.WorkInfoInput(body)))
 	switch {
 	case errors.Is(err, domain.ErrInvalidWorkInfo):
 		s.invalidWorkInfo(w, err)
@@ -48,6 +51,40 @@ func (s *server) SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id gen
 		return
 	}
 	s.writeVideoDetail(w, r, video)
+}
+
+// workInfoRequest は setVideoWorkInfo の本文である。gen.WorkInfoInput と同じ形だが、encoding/json が
+// 黙って零値にする 2 つの null を断る。本文そのものの null（項目ごとの null と違い、解除ではなく
+// 形の誤り）と、performers の要素の null（要素は string で、空の名前として落とすと置き換えで
+// 出演者が消える）である。
+type workInfoRequest gen.WorkInfoInput
+
+var (
+	errWorkInfoBodyNull      = errors.New("the work information body must be a JSON object")
+	errWorkInfoPerformerNull = errors.New("performers must not contain null")
+)
+
+func (b *workInfoRequest) UnmarshalJSON(data []byte) error {
+	if bytes.Equal(bytes.TrimSpace(data), []byte("null")) {
+		return errWorkInfoBodyNull
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var input gen.WorkInfoInput
+	if err := decoder.Decode(&input); err != nil {
+		return err
+	}
+	var performers struct {
+		Performers []*string `json:"performers"`
+	}
+	if err := json.Unmarshal(data, &performers); err != nil {
+		return err
+	}
+	if slices.Contains(performers.Performers, nil) {
+		return errWorkInfoPerformerNull
+	}
+	*b = workInfoRequest(input)
+	return nil
 }
 
 // workInfoFromInput は本文を domain.WorkInfo へ写す。無い項目と null は空（解除）にする。
