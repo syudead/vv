@@ -32,11 +32,11 @@ sources.
 The shadcn CLI and MCP server cannot search a registry on disk, so the `vv`
 item is the list of every item, its tier and when to use it. Start from it.
 
-| Tool | Call, from `web/` |
-| --- | --- |
-| CLI | `npx shadcn view ./registry/r/vv.json`, then `./registry/r/<item>.json` |
-| MCP | `view_items_in_registries` with `./registry/r/<item>.json`; it returns the item's description and files |
-| Plain read | `web/registry/r/<item>.json` |
+| Tool       | Call, from `web/`                                                                                       |
+| ---------- | ------------------------------------------------------------------------------------------------------- |
+| CLI        | `npx shadcn view ./registry/r/vv.json`, then `./registry/r/<item>.json`                                 |
+| MCP        | `view_items_in_registries` with `./registry/r/<item>.json`; it returns the item's description and files |
+| Plain read | `web/registry/r/<item>.json`                                                                            |
 
 The CLI prints each file's content and the item's `docs` line, which names the
 section of the usage rules that applies. The item list, the file layout and
@@ -50,9 +50,9 @@ is registered for Claude in `.mcp.json` and for Codex in `.codex/config.toml`.
 A feature's `ui-design.md` composes registry components and page patterns, and
 adds a missing one to the design system first.
 
-| Rejected | Why |
-| --- | --- |
-| A `@vv` registry on a localhost URL | Every agent session would have to start a server first |
+| Rejected                               | Why                                                                                                   |
+| -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| A `@vv` registry on a localhost URL    | Every agent session would have to start a server first                                                |
 | A GitHub address (`syudead/vv/<item>`) | Sees only pushed commits, so a component added on a working branch is invisible to the agent using it |
 
 The decisions behind the setup are R-3, R-4 and R-7 of
@@ -67,16 +67,16 @@ than screens. `eslint-plugin-better-tailwindcss` reads the theme from
 `web/src/index.css` and checks `className` and the string arguments of `cn()`
 and `cva()`.
 
-| Fails on | Rule | Message |
-| --- | --- | --- |
-| `<button>`, `<input>`, `<select>`, `<textarea>`, `<table>`, `<dialog>` outside `web/src/ui` | `no-restricted-syntax` | `Use the design-system component (web/registry/rules/components.md).` |
-| `role="button"` outside `web/src/ui` | `no-restricted-syntax` | `Use the design-system Button (web/registry/rules/components.md).` |
-| A fixed value (a literal) in `style` outside `web/src/ui`; `style` is only for values known at run time | `no-restricted-syntax` | `A fixed value in style bypasses the design-system scale. …` |
-| An import from `radix-ui` or `@radix-ui/*` outside `web/src/ui` | `no-restricted-syntax` | `Use the design-system components in web/src/ui/shadcn instead of Radix directly.` |
+| Fails on                                                                                                                                                 | Rule                                       | Message                                                                                                                                     |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `<button>`, `<input>`, `<select>`, `<textarea>`, `<table>`, `<dialog>` outside `web/src/ui`                                                              | `no-restricted-syntax`                     | `Use the design-system component (web/registry/rules/components.md).`                                                                       |
+| `role="button"` outside `web/src/ui`                                                                                                                     | `no-restricted-syntax`                     | `Use the design-system Button (web/registry/rules/components.md).`                                                                          |
+| A fixed value (a literal) in `style` outside `web/src/ui`; `style` is only for values known at run time                                                  | `no-restricted-syntax`                     | `A fixed value in style bypasses the design-system scale. …`                                                                                |
+| An import from `radix-ui` or `@radix-ui/*` outside `web/src/ui`                                                                                          | `no-restricted-syntax`                     | `Use the design-system components in web/src/ui/shadcn instead of Radix directly.`                                                          |
 | `outline-none`, `outline-hidden`, or a `ring` or `outline` class under a `focus`, `focus-visible` or `focus-within` variant, outside `web/src/ui/shadcn` | `better-tailwindcss/no-restricted-classes` | `Keep the shared focus ring (web/src/index.css :focus-visible); never remove it or add your own (web/registry/rules/components.md, Focus).` |
-| A class with an arbitrary value or property, or the `(--var)` shorthand | `better-tailwindcss/no-restricted-classes` | `Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).` |
-| A class the theme does not generate, including a step outside the scale (`p-7`, `text-2xl`, `rounded-xl`, `font-bold`) | `better-tailwindcss/no-unknown-classes` | `Unknown class detected: <class>` |
-| A raw colour outside the tokens, a default palette class, a contrast pair below its minimum | `web/src/theme/tokens.test.ts` | The test's own |
+| A class with an arbitrary value or property, or the `(--var)` shorthand                                                                                  | `better-tailwindcss/no-restricted-classes` | `Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).`                                                      |
+| A class the theme does not generate, including a step outside the scale (`p-7`, `text-2xl`, `rounded-xl`, `font-bold`)                                   | `better-tailwindcss/no-unknown-classes`    | `Unknown class detected: <class>`                                                                                                           |
+| A raw colour outside the tokens, a default palette class, a contrast pair below its minimum                                                              | `web/src/theme/tokens.test.ts`             | The test's own                                                                                                                              |
 
 Arbitrary variants (`data-[state=open]:`, `has-[...]:`, `max-[49.5rem]:`)
 pass: the arbitrary-value rule checks only the utility after the last variant.
@@ -86,13 +86,13 @@ passes.
 `noInlineConfig` turns off `eslint-disable` comments, so every exception is an
 entry in `web/design-exceptions.js`:
 
-| Field | Meaning |
-| --- | --- |
-| `file` | Path under `web/src`, such as `player/VideoPage.tsx` |
-| `rules` | The rule names from the table above that the entry exempts |
+| Field     | Meaning                                                                                                                                      |
+| --------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `file`    | Path under `web/src`, such as `player/VideoPage.tsx`                                                                                         |
+| `rules`   | The rule names from the table above that the entry exempts                                                                                   |
 | `classes` | Optional: regular expressions for the only classes allowed, each matched against the whole class; without it the file is exempt from `rules` |
-| `kind` | `special`, which stays; `migration` marked a file waiting for its screen migration and is no longer accepted |
-| `reason` | Required for `special`: why the design system cannot express the look |
+| `kind`    | `special`, which stays; `migration` marked a file waiting for its screen migration and is no longer accepted                                 |
+| `reason`  | Required for `special`: why the design system cannot express the look                                                                        |
 
 An exemption from `no-restricted-syntax` lifts only the raw-control check; the
 i18n checks that share the rule still apply. `classes` applies to the two class
@@ -108,10 +108,10 @@ Once every screen had migrated, the last unit removed the remaining
 names a missing file, names an unknown rule, is a `migration` entry or has
 another unknown `kind`, repeats a file, or is `special` without a `reason`.
 
-| Rejected | Why |
-| --- | --- |
-| `eslint-disable` comments at each offender | `noInlineConfig` forbids them, and scattered comments cannot be counted or removed by area |
-| Checking tests as well | Tests render bare `<button>` harnesses that are not screens; listing them would keep `migration` entries that no screen migration removes |
+| Rejected                                   | Why                                                                                                                                       |
+| ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| `eslint-disable` comments at each offender | `noInlineConfig` forbids them, and scattered comments cannot be counted or removed by area                                                |
+| Checking tests as well                     | Tests render bare `<button>` harnesses that are not screens; listing them would keep `migration` entries that no screen migration removes |
 
 The decisions behind the checks are R-8 and R-9 of
 [038 research](../../specs/038-design-system/research.md).
@@ -128,15 +128,15 @@ floating layers. Which token to use where is in
 Colour tokens use shadcn/ui's semantic names, so upstream component code needs
 no renaming, plus vv's own roles that shadcn lacks.
 
-| Token | Role |
-| --- | --- |
-| `navbar`, `background`, `muted`, `card`, `popover` | The five surfaces, darkest first; no two look the same |
-| `foreground`, `muted-foreground` (and the `-foreground` of each surface) | Body and secondary text; two greys of text are enough |
-| `secondary`, `accent` | Secondary fills and hover rows; `accent` is shadcn's hover role, not the brand colour |
-| `primary`, `primary-hover`, `primary-active`, `primary-foreground`, `primary-soft` | Cyan: the main action, selection, progress |
-| `border`, `input`, `ring` | Dividers, control edges, keyboard focus |
-| `destructive`, `warning`, `success`, each with `-foreground` and `-soft`; `destructive-strong` | Status, always with words and an icon |
-| `favorite`, `overlay` | The favorite heart only; the one translucent colour, behind dialogs and over thumbnails |
+| Token                                                                                          | Role                                                                                    |
+| ---------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `navbar`, `background`, `muted`, `card`, `popover`                                             | The five surfaces, darkest first; no two look the same                                  |
+| `foreground`, `muted-foreground` (and the `-foreground` of each surface)                       | Body and secondary text; two greys of text are enough                                   |
+| `secondary`, `accent`                                                                          | Secondary fills and hover rows; `accent` is shadcn's hover role, not the brand colour   |
+| `primary`, `primary-hover`, `primary-active`, `primary-foreground`, `primary-soft`             | Cyan: the main action, selection, progress                                              |
+| `border`, `input`, `ring`                                                                      | Dividers, control edges, keyboard focus                                                 |
+| `destructive`, `warning`, `success`, each with `-foreground` and `-soft`; `destructive-strong` | Status, always with words and an icon                                                   |
+| `favorite`, `overlay`                                                                          | The favorite heart only; the one translucent colour, behind dialogs and over thumbnails |
 
 Values are six-digit hex, so `web/src/theme/tokens.test.ts` can check every
 text and border pair on every surface; one dark set exists
@@ -146,13 +146,13 @@ theme's variables into `index.css`, where the raw-colour scan fails them.
 
 The scales are closed:
 
-| Scale | Steps |
-| --- | --- |
-| Type | `text-2xs` (thumbnail text) to `text-xl` (page titles), six steps; `font-normal`, `font-medium`, `font-semibold` |
+| Scale             | Steps                                                                                                                                                                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Type              | `text-2xs` (thumbnail text) to `text-xl` (page titles), six steps; `font-normal`, `font-medium`, `font-semibold`                                                                                                                          |
 | Spacing and sizes | One 4px scale (`0` to `16`, with `9` for control heights) and named layout steps (`navbar`, `sidebar`, `card-0` to `card-3`, list columns, the history row's thumbnail columns, the list page's side column, popover and combobox widths) |
-| Radius | `sm`, `md`, `lg`, `full` |
-| Shadow | `shadow-card-hover`, `shadow-elevated`, `drop-shadow-mark`; none on resting surfaces |
-| Motion | `fade-in`, `pop-in`, `slide-up`, and `shimmer`, `spin`, `pulse` for loading; off under reduced motion |
+| Radius            | `sm`, `md`, `lg`, `full`                                                                                                                                                                                                                  |
+| Shadow            | `shadow-card-hover`, `shadow-elevated`, `drop-shadow-mark`; none on resting surfaces                                                                                                                                                      |
+| Motion            | `fade-in`, `pop-in`, `slide-up`, and `shimmer`, `spin`, `pulse` for loading; off under reduced motion                                                                                                                                     |
 
 The library is denser than the video page: `h-8` controls, `gap-2` between
 controls, `gap-3` between cards, `text-sm` body, against `h-9`, `gap-3`,
@@ -174,11 +174,11 @@ pattern failed off-scale steps; both went with the reset. The cyan `accent` was
 renamed to `primary` everywhere at once, because shadcn uses `accent` for the
 hover fill.
 
-| Rejected | Why |
-| --- | --- |
-| Keeping vv's names (`surface`, `fg-muted`) | Every shadcn/ui component added later would be translated by hand |
-| oklch values, as shadcn's defaults | The contrast test parses hex only |
-| A white primary button, as shadcn's default | Cyan is the brand's action colour |
+| Rejected                                    | Why                                                               |
+| ------------------------------------------- | ----------------------------------------------------------------- |
+| Keeping vv's names (`surface`, `fg-muted`)  | Every shadcn/ui component added later would be translated by hand |
+| oklch values, as shadcn's defaults          | The contrast test parses hex only                                 |
+| A white primary button, as shadcn's default | Cyan is the brand's action colour                                 |
 
 The decisions behind the foundations are R-5 and R-8 of
 [038 research](../../specs/038-design-system/research.md) and
@@ -194,15 +194,15 @@ and height change, through the tokens. When to use each one, what it pairs
 with and when not to use it is in
 [components.md](../../web/registry/rules/components.md) (item `vv-rules`).
 
-| Component | Item | Replaces |
-| --- | --- | --- |
-| `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `ghost-destructive`, `link`; sizes `sm`, `default`, `lg`, `icon-sm`, `icon`) | `button` | `ui/Button`, `ui/IconButton` |
-| `Input`, `Textarea`, `Label`, `Field` | `input`, `textarea`, `label`, `field` | Raw `<input>` and `<textarea>` |
-| `Select`, `RadioGroup` | `select`, `radio-group` | Raw `<select>`, the sort radio columns |
-| `Checkbox`, `Switch` | `checkbox`, `switch` | `ui/Checkbox` |
-| `Toggle`, `ToggleGroup` | `toggle`, `toggle-group` | `ui/FilterChip`, `ui/SegmentedControl` |
-| `Slider` | `slider` | The zoom slider |
-| `Combobox` (`Command` in a popover), `Command` | `combobox`, `command` | `ui/Combobox` |
+| Component                                                                                                                                         | Item                                  | Replaces                               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------- | -------------------------------------- |
+| `Button` (`default`, `secondary`, `outline`, `ghost`, `destructive`, `ghost-destructive`, `link`; sizes `sm`, `default`, `lg`, `icon-sm`, `icon`) | `button`                              | `ui/Button`, `ui/IconButton`           |
+| `Input`, `Textarea`, `Label`, `Field`                                                                                                             | `input`, `textarea`, `label`, `field` | Raw `<input>` and `<textarea>`         |
+| `Select`, `RadioGroup`                                                                                                                            | `select`, `radio-group`               | Raw `<select>`, the sort radio columns |
+| `Checkbox`, `Switch`                                                                                                                              | `checkbox`, `switch`                  | `ui/Checkbox`                          |
+| `Toggle`, `ToggleGroup`                                                                                                                           | `toggle`, `toggle-group`              | `ui/FilterChip`, `ui/SegmentedControl` |
+| `Slider`                                                                                                                                          | `slider`                              | The zoom slider                        |
+| `Combobox` (`Command` in a popover), `Command`                                                                                                    | `combobox`, `command`                 | `ui/Combobox`                          |
 
 The diagram shows how a screen reaches a component and its rules.
 
@@ -216,11 +216,11 @@ flowchart LR
 
 The components share three behaviours, so a screen never restyles them:
 
-| Behaviour | How |
-| --- | --- |
-| Keyboard focus | One ring for every component, the `:focus-visible` outline in `web/src/index.css`; upstream's per-component `ring-[3px]` and `ring-3` are dropped. Rows in a menu, a select or a command list show focus with the `accent` fill instead |
-| Selected and pressed | `primary-soft` fill with `primary` text (`Toggle`, `ToggleGroup`), or a `primary` fill (`Checkbox`, `Switch`, `RadioGroup`) |
-| Density | Library-density screens use `sm` and `icon-sm` (`h-8`); the video page uses `default` and `lg` |
+| Behaviour            | How                                                                                                                                                                                                                                     |
+| -------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Keyboard focus       | One ring for every component, the `:focus-visible` outline in `web/src/index.css`; upstream's per-component `ring-[3px]` and `ring-3` are dropped. Rows in a menu, a select or a command list show focus with the `accent` fill instead |
+| Selected and pressed | `primary-soft` fill with `primary` text (`Toggle`, `ToggleGroup`), or a `primary` fill (`Checkbox`, `Switch`, `RadioGroup`)                                                                                                             |
+| Density              | Library-density screens use `sm` and `icon-sm` (`h-8`); the video page uses `default` and `lg`                                                                                                                                          |
 
 Five changes to upstream keep the checks and the catalog rules: `Checkbox`
 draws the `indeterminate` state, `Slider` passes its `aria-label` to the thumb
@@ -256,12 +256,12 @@ around the component: `web/src/index.css` adds it to Tailwind's `hover`,
 `focus`, `focus-visible` and `active` variants, and draws the focus ring on
 the element's first child. Screens never set it.
 
-| Rejected | Why |
-| --- | --- |
-| Keeping vv's file names (`Button.tsx`) for the new components | `shadcn add` writes upstream's names, so every later update would be renamed by hand |
-| Moving the old components aside and switching the library screen to the new ones in this tier | The maintainer keeps every existing screen unchanged until its own migration |
-| Restyling the components to look like the old ones | The components are for new screens; the screen migrations replace the old look |
-| A per-component focus ring, as upstream | Each component would carry its own copy that differs from the shared outline, and the arbitrary `ring-[3px]` fails the checks |
+| Rejected                                                                                      | Why                                                                                                                           |
+| --------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| Keeping vv's file names (`Button.tsx`) for the new components                                 | `shadcn add` writes upstream's names, so every later update would be renamed by hand                                          |
+| Moving the old components aside and switching the library screen to the new ones in this tier | The maintainer keeps every existing screen unchanged until its own migration                                                  |
+| Restyling the components to look like the old ones                                            | The components are for new screens; the screen migrations replace the old look                                                |
+| A per-component focus ring, as upstream                                                       | Each component would carry its own copy that differs from the shared outline, and the arbitrary `ring-[3px]` fails the checks |
 
 ### Overlays and feedback, and vv components
 
@@ -274,18 +274,19 @@ for, what it combines with and when not to use it. They are new components for
 new screens: existing screens keep their current components until the
 maintainer approves this tier on the showcase and each screen migrates.
 
-| Component | Will replace | Notes |
-| --- | --- | --- |
-| `Dialog`, `AlertDialog` | `ModalFrame` | `AlertDialog` confirms what cannot be undone |
-| `Popover`, `DropdownMenu`, `Tooltip`, `Tabs` | `Popover`, `Menu`, `Tooltip`, `Tabs` | Radix positions the layers |
-| `Sonner` | `Toast` | Every screen uses it; `ui/Toast` keeps only the queue that limits how many show at once |
-| `Badge` | `Chip`, tag chips, counts | Adds `soft`, `warning`, `success` to the upstream variants |
-| `Skeleton`, `Progress`, `Spinner` | `Skeleton`, scan and watch bars | `Skeleton` shimmers; `Progress` takes a `max` |
-| `Alert`, `Empty` | Stall warning, autoplay notice, inline errors, empty blocks | `Alert` adds `warning` and `success` |
-| `Separator`, `Kbd`, `Breadcrumb` | Dividers, search keys, folder path | |
-| `Sidebar`, with `Sheet` | `shell/Sidebar` | Icon rail from 640px, a drawer below 640px |
-| `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows, the former `videoList/FavoriteToggle` | vv components |
-| `TagCommand` | `ui/Combobox`, the selection bar's former `library/TagCommand` | vv component; a `Command` with the tag-name rules |
+| Component                                                                                                 | Will replace                                                              | Notes                                                                                                                                                                               |
+| --------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Dialog`, `AlertDialog`                                                                                   | `ModalFrame`                                                              | `AlertDialog` confirms what cannot be undone                                                                                                                                        |
+| `Popover`, `DropdownMenu`, `Tooltip`, `Tabs`                                                              | `Popover`, `Menu`, `Tooltip`, `Tabs`                                      | Radix positions the layers                                                                                                                                                          |
+| `Sonner`                                                                                                  | `Toast`                                                                   | Every screen uses it; `ui/Toast` keeps only the queue that limits how many show at once                                                                                             |
+| `Badge`                                                                                                   | `Chip`, tag chips, counts                                                 | Adds `soft`, `warning`, `success` to the upstream variants                                                                                                                          |
+| `Skeleton`, `Progress`, `Spinner`                                                                         | `Skeleton`, scan and watch bars                                           | `Skeleton` shimmers; `Progress` takes a `max`                                                                                                                                       |
+| `Alert`, `Empty`                                                                                          | Stall warning, autoplay notice, inline errors, empty blocks               | `Alert` adds `warning` and `success`                                                                                                                                                |
+| `Separator`, `Kbd`, `Breadcrumb`                                                                          | Dividers, search keys, folder path                                        |                                                                                                                                                                                     |
+| `Sidebar`, with `Sheet`                                                                                   | `shell/Sidebar`                                                           | Icon rail from 640px, a drawer below 640px                                                                                                                                          |
+| `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows, the former `videoList/FavoriteToggle` | vv components                                                                                                                                                                       |
+| `TagCommand`                                                                                              | `ui/Combobox`, the selection bar's former `library/TagCommand`            | vv component; a `Command` with the tag-name rules                                                                                                                                   |
+| `CreditCommand`                                                                                           | —                                                                         | vv component; `TagCommand`'s sibling with the rules for the names of people and organizations, on the same base (`NameCommand`), offering its create row even beside an exact match |
 
 The shadcn components live in `web/src/ui/shadcn` under upstream's
 kebab-case names (`dropdown-menu.tsx`), beside the action and input
@@ -300,11 +301,11 @@ that no utility names: the floating layers' transform origin and available
 height, and the `Alert` icon column. They are `special` entries in
 `web/design-exceptions.js`.
 
-| Rejected | Why |
-| --- | --- |
-| Restyling the components to look like the ones they replace | The components are for building new screens, not for repeating the old look |
-| Moving the old components aside so the new ones take their names now | Every screen's imports would change before the tier is approved |
-| Separate `sidebar-*` colour tokens, as upstream | The sidebar uses `navbar`, `accent` and `secondary`, the roles it already had |
+| Rejected                                                             | Why                                                                           |
+| -------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Restyling the components to look like the ones they replace          | The components are for building new screens, not for repeating the old look   |
+| Moving the old components aside so the new ones take their names now | Every screen's imports would change before the tier is approved               |
+| Separate `sidebar-*` colour tokens, as upstream                      | The sidebar uses `navbar`, `accent` and `secondary`, the roles it already had |
 
 The decisions behind the components are in
 [038 UI design, Components](../../specs/038-design-system/ui-design.md#components).
@@ -317,11 +318,11 @@ a screen never writes them; it only passes content into slots. Which skeleton
 to pick, what goes in each slot and what must not is in
 [patterns.md](../../web/registry/rules/patterns.md) (item `vv-rules`).
 
-| Layer | What it is | Registry |
-| --- | --- | --- |
-| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
-| Sections | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps | `registry:ui`, one item each |
-| States | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data | `registry:ui`, one item each |
+| Layer          | What it is                                                                                                                                                                                                                                   | Registry                     |
+| -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
+| Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                                       | `registry:ui`, one item each |
+| States         | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data                                                                                                                                | `registry:ui`, one item each |
 
 Each skeleton also has an example block (`list-page-example` and so on, plus
 `list-states-example`): a working composition of the skeleton, its sections
@@ -344,12 +345,12 @@ flowchart TD
 
 Skeletons and sections share four behaviours:
 
-| Behaviour | How |
-| --- | --- |
-| Spacing | Fixed in the pattern; patterns take no `className`, so a screen cannot override it |
-| Density | `DetailPage` provides viewing density, under which `PageSection` and `FactList` switch to `p-4` rows and `text-base`; every other skeleton is library density |
+| Behaviour       | How                                                                                                                                                                     |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Spacing         | Fixed in the pattern; patterns take no `className`, so a screen cannot override it                                                                                      |
+| Density         | `DetailPage` provides viewing density, under which `PageSection` and `FactList` switch to `p-4` rows and `text-base`; every other skeleton is library density           |
 | States in place | A state block goes in the same body slot as the data, so the header and toolbar never move ([038 UI design, States](../../specs/038-design-system/ui-design.md#states)) |
-| Edges line up | `CardGrid` stretches its columns to the body width (`auto-fill` over the `card-*` steps), so the toolbar, the count row and the grid share both edges |
+| Edges line up   | `CardGrid` stretches its columns to the body width (`auto-fill` over the `card-*` steps), so the toolbar, the count row and the grid share both edges                   |
 
 `CardGrid` passes its column template through `style`, because a template made
 from a named step is an arbitrary value to the checks; the step still comes
@@ -373,13 +374,24 @@ leaves a 16:9 frame about 290 px tall at 1280 px, too small to paint on or to
 compare two images; `FormDialog` stays the dialog for a form
 ([045 UI design, Changes to the design system](../../specs/045-comfyui-thumbnails/ui-design.md#changes-to-the-design-system)).
 
+`FormPage` is a page, not a dialog, for many values saved together on a screen
+of its own, such as the details of a video: a sticky header band holding the
+title, a muted detail and the actions, a `notice` line under it, then an
+`aside` and two panels laid out by the named utility `grid-cols-form-page`
+from `lg` (the aside the named step `form-page-aside` wide, the panels in the
+ratio 5:6), where the page keeps the viewport's height and each panel scrolls
+inside itself; below `lg` the parts stack and the page scrolls as one.
+`FormDialog` holds a few fields and `SettingsPage` saves each row by itself,
+so neither fits a form of a dozen fields saved with one button
+([047 UI design, Changes to the design system](../../specs/047-video-work-info/ui-design.md#changes-to-the-design-system)).
+
 The showcase (`/design-system`) renders every example block, the list page in
 each of its states, and the dialogs behind their buttons, so the maintainer
 confirms the patterns at 1440px and 390px.
 
-| Rejected | Why |
-| --- | --- |
-| Patterns extracted from today's screens | The maintainer asked for recipes to build new screens from; the screen migrations then move each screen onto them |
-| Blocks only, without skeleton and section components | Every copy would carry its own margins and gaps, and screens would drift apart again |
-| A `className` escape hatch on patterns | A screen could change the spacing the pattern exists to fix |
-| Building the library screen on the patterns in this tier | The maintainer keeps every existing screen unchanged until its own migration |
+| Rejected                                                 | Why                                                                                                               |
+| -------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Patterns extracted from today's screens                  | The maintainer asked for recipes to build new screens from; the screen migrations then move each screen onto them |
+| Blocks only, without skeleton and section components     | Every copy would carry its own margins and gaps, and screens would drift apart again                              |
+| A `className` escape hatch on patterns                   | A screen could change the spacing the pattern exists to fix                                                       |
+| Building the library screen on the patterns in this tier | The maintainer keeps every existing screen unchanged until its own migration                                      |

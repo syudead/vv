@@ -5,6 +5,7 @@ import { Navigate, useLocation, useNavigate } from "react-router";
 import { type AuthSession, getAuthSession } from "../api/auth";
 import { RequestFailed, setRenderedAudience } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
+import { isVideoEditPath } from "../lib/videoEditPath";
 import { Button } from "../ui/shadcn/button";
 import { EmptyState } from "../videoList/states";
 import { AudienceProvider } from "./audience";
@@ -27,12 +28,14 @@ export function routePath(pathname: string): string {
 }
 
 /**
- * ownerOnlyPath は所有者だけの画面（設定・タグの管理・視聴履歴・プレイリスト・重複の候補）かを返す。pathname は
- * routePath 済み。
+ * ownerOnlyPath は所有者だけの画面（設定・タグの管理・視聴履歴・プレイリスト・重複の候補・
+ * 動画の作品情報の編集画面）かを返す。pathname は routePath 済み。
  */
 function ownerOnlyPath(pathname: string): boolean {
-  return ["/settings", "/tags", "/history", "/playlists", "/duplicates"].some(
-    (path) => pathname === path || pathname.startsWith(`${path}/`),
+  return (
+    ["/settings", "/tags", "/history", "/playlists", "/duplicates"].some(
+      (path) => pathname === path || pathname.startsWith(`${path}/`),
+    ) || isVideoEditPath(pathname)
   );
 }
 

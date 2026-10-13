@@ -1,0 +1,328 @@
+import { Plus, X } from "lucide-react";
+import { type Ref, useLayoutEffect, useRef } from "react";
+
+import { type WorkDateKind, workDateKinds } from "../../api/workInfo";
+import { t, type UiText } from "../../i18n";
+import { Button } from "../../ui/shadcn/button";
+import { Field, FieldDescription, FieldLabel, FieldTitle } from "../../ui/shadcn/field";
+import { Input } from "../../ui/shadcn/input";
+import { Textarea } from "../../ui/shadcn/textarea";
+import { type Draft, type IdRow, type LinkRow, newRowKey } from "./draft";
+import {
+  controlId,
+  type FieldProblem,
+  invalidProps,
+  Problem,
+  saveOnEnter,
+} from "./fields";
+
+function dateLabel(kind: WorkDateKind): UiText {
+  const e = t.player.detailsEditor;
+  if (kind === "release") return e.released;
+  if (kind === "recorded") return e.recorded;
+  return e.published;
+}
+
+export interface PanelProps {
+  draft: Draft;
+  update: (change: (draft: Draft) => Draft) => void;
+  /** 保存の送信中。入力は読むだけにする。 */
+  saving: boolean;
+  problem: FieldProblem | null;
+  save: () => void;
+}
+
+/**
+ * BasicsPanel は編集画面の `Basics` の欄の中身である（ui-design.md「Screen」「Fields」）。
+ * 上から Name、Code と 3 つの日付の 2×2、Description（残りの高さを埋める）、Links、IDs。
+ */
+export default function BasicsPanel({
+  draft,
+  update,
+  saving,
+  problem,
+  save,
+  namePlaceholder,
+  nameRef,
+}: PanelProps & {
+  /** Name が空のときにページが出す題名（ファイル名の題名）。 */
+  namePlaceholder: string;
+  nameRef: Ref<HTMLInputElement>;
+}) {
+  const e = t.player.detailsEditor;
+  const onEnter = saveOnEnter(save);
+  return (
+    <>
+      <Field>
+        <FieldLabel htmlFor={controlId("name")}>{e.name}</FieldLabel>
+        <Input
+          ref={nameRef}
+          id={controlId("name")}
+          value={draft.name}
+          placeholder={namePlaceholder}
+          readOnly={saving}
+          onChange={(event) => {
+            const name = event.target.value;
+            update((current) => ({ ...current, name }));
+          }}
+          onKeyDown={onEnter}
+          className="h-8"
+          {...invalidProps(problem, "name")}
+        />
+        <Problem problem={problem} control="name" />
+      </Field>
+      <div className="flex flex-col gap-2">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <Field>
+            <FieldLabel htmlFor={controlId("code")}>{e.code}</FieldLabel>
+            <Input
+              id={controlId("code")}
+              value={draft.code}
+              readOnly={saving}
+              onChange={(event) => {
+                const code = event.target.value;
+                update((current) => ({ ...current, code }));
+              }}
+              onKeyDown={onEnter}
+              className="h-8 tabular-nums"
+              {...invalidProps(problem, "code")}
+            />
+            <Problem problem={problem} control="code" />
+          </Field>
+          {workDateKinds.map((kind) => (
+            <Field key={kind}>
+              <FieldLabel htmlFor={controlId(`date-${kind}`)}>
+                {dateLabel(kind)}
+              </FieldLabel>
+              <Input
+                id={controlId(`date-${kind}`)}
+                value={draft.dates[kind]}
+                placeholder={e.datePlaceholder}
+                readOnly={saving}
+                onChange={(event) => {
+                  const date = event.target.value;
+                  update((current) => ({
+                    ...current,
+                    dates: { ...current.dates, [kind]: date },
+                  }));
+                }}
+                onKeyDown={onEnter}
+                className="h-8 tabular-nums"
+                {...invalidProps(problem, `date-${kind}`)}
+              />
+              <Problem problem={problem} control={`date-${kind}`} />
+            </Field>
+          ))}
+        </div>
+        <FieldDescription>{e.dateHint}</FieldDescription>
+      </div>
+      <Field className="flex-1">
+        <FieldLabel htmlFor={controlId("description")}>{e.description}</FieldLabel>
+        <Textarea
+          id={controlId("description")}
+          value={draft.description}
+          rows={4}
+          readOnly={saving}
+          onChange={(event) => {
+            const description = event.target.value;
+            update((current) => ({ ...current, description }));
+          }}
+          className="flex-1 resize-none field-sizing-fixed"
+          {...invalidProps(problem, "description")}
+        />
+        <Problem problem={problem} control="description" />
+      </Field>
+      <LinkRows
+        rows={draft.urls}
+        onChange={(urls) => update((current) => ({ ...current, urls }))}
+        saving={saving}
+        problem={problem}
+        onEnter={onEnter}
+      />
+      <IdRows
+        rows={draft.externalIds}
+        onChange={(externalIds) => update((current) => ({ ...current, externalIds }))}
+        saving={saving}
+        problem={problem}
+        onEnter={onEnter}
+      />
+    </>
+  );
+}
+
+/** useFocusAdded は、足した行の最初の入力へフォーカスを移す。 */
+function useFocusAdded() {
+  const pending = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    const control = pending.current;
+    if (control === null) return;
+    pending.current = null;
+    document.getElementById(controlId(control))?.focus();
+  });
+  return (control: string) => {
+    pending.current = control;
+  };
+}
+
+interface RowsProps<T> {
+  rows: readonly T[];
+  onChange: (rows: T[]) => void;
+  saving: boolean;
+  problem: FieldProblem | null;
+  onEnter: ReturnType<typeof saveOnEnter>;
+}
+
+function RemoveRow({
+  label,
+  saving,
+  onRemove,
+}: {
+  label: UiText;
+  saving: boolean;
+  onRemove: () => void;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={label}
+      aria-disabled={saving || undefined}
+      onClick={() => {
+        if (!saving) onRemove();
+      }}
+      className="text-muted-foreground"
+    >
+      <X aria-hidden="true" />
+    </Button>
+  );
+}
+
+function AddRow({
+  label,
+  saving,
+  onAdd,
+}: {
+  label: UiText;
+  saving: boolean;
+  onAdd: () => void;
+}) {
+  return (
+    <Button
+      variant="outline"
+      size="sm"
+      aria-disabled={saving || undefined}
+      onClick={() => {
+        if (!saving) onAdd();
+      }}
+      className="w-auto self-start"
+    >
+      <Plus aria-hidden="true" />
+      {label}
+    </Button>
+  );
+}
+
+/** LinkRows は Links の行（1 行に URL 1 つと ×）と「Add link」である。 */
+function LinkRows({ rows, onChange, saving, problem, onEnter }: RowsProps<LinkRow>) {
+  const e = t.player.detailsEditor;
+  const focusAdded = useFocusAdded();
+  return (
+    <Field aria-labelledby={controlId("links")}>
+      <FieldTitle id={controlId("links")}>{e.links}</FieldTitle>
+      {rows.map((row, index) => (
+        <div key={row.key} className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Input
+              id={controlId(`url-${row.key}`)}
+              aria-label={e.link}
+              value={row.url}
+              readOnly={saving}
+              onChange={(event) =>
+                onChange(
+                  rows.map((item, at) =>
+                    at === index ? { ...item, url: event.target.value } : item,
+                  ),
+                )
+              }
+              onKeyDown={onEnter}
+              className="h-8"
+              {...invalidProps(problem, `url-${row.key}`)}
+            />
+            <RemoveRow
+              label={e.removeLink}
+              saving={saving}
+              onRemove={() => onChange(rows.filter((_, at) => at !== index))}
+            />
+          </div>
+          <Problem problem={problem} control={`url-${row.key}`} />
+        </div>
+      ))}
+      <AddRow
+        label={e.addLink}
+        saving={saving}
+        onAdd={() => {
+          const key = newRowKey("u");
+          focusAdded(`url-${key}`);
+          onChange([...rows, { key, url: "" }]);
+        }}
+      />
+    </Field>
+  );
+}
+
+/** IdRows は IDs の行（Source と Value と ×）と「Add ID」である。 */
+function IdRows({ rows, onChange, saving, problem, onEnter }: RowsProps<IdRow>) {
+  const e = t.player.detailsEditor;
+  const focusAdded = useFocusAdded();
+  const change = (index: number, patch: Partial<IdRow>) =>
+    onChange(rows.map((item, at) => (at === index ? { ...item, ...patch } : item)));
+  return (
+    <Field aria-labelledby={controlId("ids")}>
+      <FieldTitle id={controlId("ids")}>{e.ids}</FieldTitle>
+      {rows.map((row, index) => (
+        <div key={row.key} className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <Input
+              id={controlId(`id-source-${row.key}`)}
+              aria-label={e.source}
+              placeholder={e.source}
+              value={row.source}
+              readOnly={saving}
+              onChange={(event) => change(index, { source: event.target.value })}
+              onKeyDown={onEnter}
+              className="h-8 w-1/3 shrink-0"
+              {...invalidProps(problem, `id-source-${row.key}`)}
+            />
+            <Input
+              id={controlId(`id-value-${row.key}`)}
+              aria-label={e.value}
+              placeholder={e.value}
+              value={row.value}
+              readOnly={saving}
+              onChange={(event) => change(index, { value: event.target.value })}
+              onKeyDown={onEnter}
+              className="h-8 tabular-nums"
+              {...invalidProps(problem, `id-value-${row.key}`)}
+            />
+            <RemoveRow
+              label={e.removeId}
+              saving={saving}
+              onRemove={() => onChange(rows.filter((_, at) => at !== index))}
+            />
+          </div>
+          <Problem problem={problem} control={`id-source-${row.key}`} />
+          <Problem problem={problem} control={`id-value-${row.key}`} />
+        </div>
+      ))}
+      <AddRow
+        label={e.addId}
+        saving={saving}
+        onAdd={() => {
+          const key = newRowKey("i");
+          focusAdded(`id-source-${key}`);
+          onChange([...rows, { key, source: "", value: "" }]);
+        }}
+      />
+    </Field>
+  );
+}

@@ -138,6 +138,8 @@ export interface RequestFailedDetails {
   reason?: string;
   limit?: number;
   tagName?: string;
+  /** 理由が指すプロパティの経路（`code`・`dates[0].date`。specs/047-video-work-info/contracts/screen-api.md）。 */
+  field?: string;
 }
 
 /**
@@ -152,6 +154,7 @@ export class RequestFailed extends Error {
   readonly reason: string | undefined;
   readonly limit: number | undefined;
   readonly tagName: string | undefined;
+  readonly field: string | undefined;
 
   constructor(
     status: number,
@@ -166,6 +169,7 @@ export class RequestFailed extends Error {
     this.reason = details.reason;
     this.limit = details.limit;
     this.tagName = details.tagName;
+    this.field = details.field;
   }
 }
 
@@ -291,6 +295,7 @@ export async function toRequestFailed(response: Response): Promise<RequestFailed
       reason: typeof body.reason === "string" ? body.reason : undefined,
       limit: typeof body.limit === "number" ? body.limit : undefined,
       tagName: typeof body.tagName === "string" ? body.tagName : undefined,
+      field: typeof body.field === "string" ? body.field : undefined,
     },
   );
 }

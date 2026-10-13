@@ -164,6 +164,8 @@
   --spacing-editor-aside-wide: 24rem;
   /* 編集画面（web/src/ui/patterns/editor-dialog.tsx）の段の高さ。lg 未満で、画面の高さの約 45% */
   --spacing-editor-stage: 45dvh;
+  /* 入力画面（web/src/ui/patterns/form-page.tsx）の左の列の幅。lg から */
+  --spacing-form-page-aside: 16.25rem;
   /* 一覧ページの横の欄（web/src/ui/patterns/list-page.tsx の aside）の幅と、トップバーの下に
      貼り付けたときの高さの上限（それより高ければ欄の中で動かす）。lg から */
   --spacing-list-aside: 11rem;
@@ -325,6 +327,14 @@
  */
 @utility grid-cols-list-aside {
   grid-template-columns: minmax(0, 1fr) var(--spacing-list-aside);
+}
+
+/*
+ * 入力画面の本体（web/src/ui/patterns/form-page.tsx）。lg から form-page-aside の幅の左の列と、
+ * 5:6 の 2 つの欄。列の定義は段で表せないので名前つきのユーティリティにする。
+ */
+@utility grid-cols-form-page {
+  grid-template-columns: var(--spacing-form-page-aside) minmax(0, 5fr) minmax(0, 6fr);
 }
 
 /*
