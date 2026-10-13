@@ -1006,7 +1006,7 @@ type CreditCursor = string
 type CreditExternalId = string
 
 // CreditLimit defines model for CreditLimit.
-type CreditLimit = int
+type CreditLimit = string
 
 // CreditQuery defines model for CreditQuery.
 type CreditQuery = string
@@ -1049,7 +1049,7 @@ type ListOrganizationsParams struct {
 	// Cursor 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する
 	Cursor *CreditCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない。`source` と `externalId` での検索では読まない
 	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Source 外部 ID の情報源。`externalId` と組で渡すと、その外部 ID を持つ実体だけを返す
@@ -1070,7 +1070,7 @@ type ListPeopleParams struct {
 	// Cursor 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する
 	Cursor *CreditCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
 
-	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない。`source` と `externalId` での検索では読まない
 	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
 
 	// Source 外部 ID の情報源。`externalId` と組で渡すと、その外部 ID を持つ実体だけを返す

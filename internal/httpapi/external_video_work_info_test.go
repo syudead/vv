@@ -324,3 +324,41 @@ func TestExternalOrganizationsCarryParent(t *testing.T) {
 	badSort := f.get(t, "/api/v1/organizations?sort=unknown")
 	assertExternalError(t, "知らない並び順", badSort, wantExternalError{status: http.StatusBadRequest, code: extgen.ErrorCodeInvalidRequest, index: -1})
 }
+
+// 必須のプロパティ（作成の name・統合の targetId・書き換えの id）が無いか null の本文は、項目の規則の誤りや
+// 無い実体ではなく形の誤り（400 invalid_request、reason なし）である。外部 ID での検索は limit を読まない
+// ので、整数でない limit でも引け、一覧では limit が整数でなければ 400 である。
+func TestExternalCreditsRejectMalformedBodiesAndIgnoreLookupLimit(t *testing.T) {
+	f := newExternalOverridesFixture(t)
+	id := f.createCredit(t, domain.CreditPerson, domain.CreditInput{
+		Name: "山田 花子", ExternalIDs: []domain.ExternalID{{Source: "example", Value: "42"}},
+	})
+	malformed := wantExternalError{status: http.StatusBadRequest, code: extgen.ErrorCodeInvalidRequest, index: -1}
+	for label, request := range map[string]struct {
+		target string
+		body   any
+	}{
+		"作成の name が null":     {"/api/v1/people", map[string]any{"name": nil}},
+		"作成の name が無い":        {"/api/v1/organizations", map[string]any{"aliases": []any{}}},
+		"統合の targetId が null": {"/api/v1/people/merge", map[string]any{"targetId": nil, "sourceIds": []int64{id}}},
+		"統合の targetId が無い":    {"/api/v1/organizations/merge", map[string]any{"sourceIds": []int64{id}}},
+		"書き換えの id が null":     {"/api/v1/people/update", map[string]any{"id": nil, "name": "x"}},
+	} {
+		assertExternalError(t, label, f.post(t, request.target, request.body), malformed)
+	}
+	if after := decode[extgen.PersonList](t, f.get(t, "/api/v1/people")); after.TotalAll != 1 {
+		t.Errorf("断った本文の後の人物の数 = %d, want 1", after.TotalAll)
+	}
+
+	found := f.get(t, "/api/v1/people?source=example&externalId=42&limit=abc")
+	if found.Code != http.StatusOK {
+		t.Fatalf("limit=abc の検索: status = %d: %s", found.Code, found.Body)
+	}
+	if got := decode[extgen.PersonList](t, found); len(got.Items) != 1 || got.Items[0].Id != id {
+		t.Errorf("limit=abc の検索 = %+v", got)
+	}
+	assertExternalError(t, "一覧の limit=abc", f.get(t, "/api/v1/organizations?limit=abc"), malformed)
+	if page := decode[extgen.PersonList](t, f.get(t, "/api/v1/people?limit=1")); len(page.Items) != 1 {
+		t.Errorf("limit=1 の一覧 = %+v", page)
+	}
+}

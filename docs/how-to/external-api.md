@@ -571,7 +571,9 @@ has `parent`, which is `null` at the root, and accepts `parentId`.
 ### Example: write what a scraper found
 
 Look each performer up by the external site's ID, create the person only when
-the lookup is empty, then write the video once with the ids.
+the lookup is empty, then write the video once with the ids. When another
+client creates the same person between the lookup and the create, the create
+returns `409` (`external_id_taken`); look the person up again and use that id.
 
 ```mermaid
 sequenceDiagram
@@ -580,19 +582,27 @@ sequenceDiagram
   S->>V: GET /api/v1/people?source=example&externalId=42
   alt items is empty
     S->>V: POST /api/v1/people
+    opt 409 external_id_taken
+      S->>V: GET /api/v1/people?source=example&externalId=42
+    end
   end
   S->>V: POST /api/v1/video-work-info with the person's id
 ```
 
 ```sh
 # 1. Look the performer up by the external ID.
-ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "$BASE/api/v1/people?source=example&externalId=42" | jq '.items[0].id // empty')
+lookup() {
+  curl -s -H "Authorization: Bearer $TOKEN" \
+    "$BASE/api/v1/people?source=example&externalId=42" | jq '.items[0].id // empty'
+}
+ID=$(lookup)
 
-# 2. Create the performer only when the lookup found none.
+# 2. Create the performer only when the lookup found none. A 409 response has no
+#    id: another client created the person first, so look it up again.
 [ -n "$ID" ] || ID=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" "$BASE/api/v1/people" \
-  -d '{"name":"山田 花子","externalIds":[{"source":"example","value":"42"}]}' | jq '.id')
+  -d '{"name":"山田 花子","externalIds":[{"source":"example","value":"42"}]}' | jq '.id // empty')
+[ -n "$ID" ] || ID=$(lookup)
 
 # 3. Write the video with the id.
 curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/extgen"
@@ -105,8 +106,11 @@ func (e *externalServer) listCredits(w http.ResponseWriter, r *http.Request, api
 		e.lookupCredit(w, r, api, params.Source, params.ExternalId)
 		return
 	}
-	sort := sortParam(params.Sort)
-	query, problem := buildTagListQuery(params.Q, nil, nil, sort, params.Cursor, params.Limit)
+	limit, problem := creditListLimit(params.Limit)
+	if !e.acceptListQuery(w, problem) {
+		return
+	}
+	query, problem := buildTagListQuery(params.Q, nil, nil, sortParam(params.Sort), params.Cursor, limit)
 	if !e.acceptListQuery(w, problem) || !e.creditsConfigured(w) {
 		return
 	}
@@ -122,6 +126,20 @@ func (e *externalServer) listCredits(w http.ResponseWriter, r *http.Request, api
 		return
 	}
 	writeExternalBody(w, e.s, api.list(page.Items, page.Total, page.TotalAll, page.NextCursor))
+}
+
+// creditListLimit は一覧の limit を整数に読む。外部 ID での検索は limit を読まないので、生成型では文字列の
+// まま受け（api/external-v1.yaml の CreditLimit の x-go-type）、一覧のときだけここで読む。整数でなければ
+// 範囲の外と同じ誤りにする。
+func creditListLimit(raw *extgen.CreditLimit) (*int, tagListProblem) {
+	if raw == nil {
+		return nil, tagListOK
+	}
+	limit, err := strconv.Atoi(*raw)
+	if err != nil {
+		return nil, tagListLimitOutOfRange
+	}
+	return &limit, tagListOK
 }
 
 // lookupCredit は外部 ID (source, externalId) を持つ実体を一覧の形で返す。外部 ID は種類ごとに高々 1 つの
@@ -159,12 +177,12 @@ func (e *externalServer) lookupCredit(w http.ResponseWriter, r *http.Request, ap
 // 200 を返す（contracts/external-api.md「People and organizations」）。
 func (e *externalServer) createCredit(w http.ResponseWriter, r *http.Request, api externalCreditKind) {
 	var body gen.CreditInput
-	present, ok := e.readJSONBodyFields(w, r, &body)
-	if !ok {
+	fields, ok := e.readJSONBodyFields(w, r, &body)
+	if !ok || !e.requireProperties(w, fields, "name") {
 		return
 	}
 	// 人物の本文の parentId は null でも 400 である（人物に親は無い。画面の経路と同じ）。
-	if present("parentId") && api.kind != domain.CreditOrganization {
+	if fields.has("parentId") && api.kind != domain.CreditOrganization {
 		e.invalidRequest(w, nil, "parentId applies to organizations only.")
 		return
 	}
@@ -191,15 +209,11 @@ type creditUpdateBody struct {
 // updateCredit は POST /api/v1/people/update と POST /api/v1/organizations/update である。
 func (e *externalServer) updateCredit(w http.ResponseWriter, r *http.Request, api externalCreditKind) {
 	var body creditUpdateBody
-	present, ok := e.readJSONBodyFields(w, r, &body)
-	if !ok {
+	fields, ok := e.readJSONBodyFields(w, r, &body)
+	if !ok || !e.requireProperties(w, fields, "id") {
 		return
 	}
-	if body.ID == nil {
-		e.invalidRequest(w, nil, "id is required.")
-		return
-	}
-	patch, message, ok := creditPatchOf(body.CreditPatch, present, api.kind)
+	patch, message, ok := creditPatchOf(body.CreditPatch, fields.has, api.kind)
 	if !ok {
 		e.invalidRequest(w, nil, message)
 		return
@@ -220,7 +234,8 @@ func (e *externalServer) updateCredit(w http.ResponseWriter, r *http.Request, ap
 // 統合後の上限は保存層が断る（画面の経路と同じ）。
 func (e *externalServer) mergeCredits(w http.ResponseWriter, r *http.Request, api externalCreditKind) {
 	var body extgen.CreditMergeRequest
-	if !e.readJSONBody(w, r, &body) {
+	fields, ok := e.readJSONBodyFields(w, r, &body)
+	if !ok || !e.requireProperties(w, fields, "targetId") {
 		return
 	}
 	if !e.acceptCreditIDCount(w, "sourceIds", len(body.SourceIds)) || !e.creditsConfigured(w) {
@@ -309,9 +324,37 @@ func (e *externalServer) creditsConfigured(w http.ResponseWriter) bool {
 	return true
 }
 
-// readJSONBodyFields は readJSONBody と同じく本文を target に読み、加えて最上位のプロパティが本文に
-// あったか（値が null でも）を答える関数を返す。省いたプロパティと null を見分ける書き込みに使う。
-func (e *externalServer) readJSONBodyFields(w http.ResponseWriter, r *http.Request, target any) (func(name string) bool, bool) {
+// bodyFields は本文の最上位のプロパティである。生成型に読むと失われる、プロパティの有無と null を答える。
+type bodyFields map[string]json.RawMessage
+
+// has はプロパティ name が本文にあったか（値が null でも）を答える。
+func (f bodyFields) has(name string) bool {
+	_, present := jsonProperty(f, name)
+	return present
+}
+
+// given はプロパティ name が本文にあり、null でないかを答える。
+func (f bodyFields) given(name string) bool {
+	value, present := jsonProperty(f, name)
+	return present && !bytes.Equal(bytes.TrimSpace(value), []byte("null"))
+}
+
+// requireProperties は必須のプロパティが無いか null なら、形の誤りとして 400 invalid_request を書いて
+// false を返す。生成型では省略と null がゼロ値に変わり、項目の規則の誤り（work_info_empty）や無い実体
+// （404）に化けるためである。
+func (e *externalServer) requireProperties(w http.ResponseWriter, fields bodyFields, names ...string) bool {
+	for _, name := range names {
+		if !fields.given(name) {
+			e.invalidRequest(w, nil, name+" is required and cannot be null.")
+			return false
+		}
+	}
+	return true
+}
+
+// readJSONBodyFields は readJSONBody と同じく本文を target に読み、加えて最上位のプロパティを返す。
+// 省いたプロパティと null を見分ける書き込みに使う。
+func (e *externalServer) readJSONBodyFields(w http.ResponseWriter, r *http.Request, target any) (bodyFields, bool) {
 	var raw json.RawMessage
 	if !e.readJSONBody(w, r, &raw) {
 		return nil, false
@@ -322,15 +365,12 @@ func (e *externalServer) readJSONBodyFields(w http.ResponseWriter, r *http.Reque
 		e.invalidBody(w, err, "Cannot parse the JSON body.")
 		return nil, false
 	}
-	var fields map[string]json.RawMessage
+	var fields bodyFields
 	if err := json.Unmarshal(raw, &fields); err != nil {
 		e.invalidBody(w, err, "The body must be a JSON object.")
 		return nil, false
 	}
-	return func(name string) bool {
-		_, present := jsonProperty(fields, name)
-		return present
-	}, true
+	return fields, true
 }
 
 // writeExternalBody は 200 と本文を、キャッシュさせずに書く。

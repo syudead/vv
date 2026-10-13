@@ -1005,11 +1005,15 @@ components:
     CreditLimit:
       name: limit
       in: query
-      description: 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+      description: |
+        1 ページの件数。省くと全件を返し、`nextCursor` は入らない。`source` と `externalId` での検索では読まない
       schema:
         type: integer
         minimum: 1
         maximum: 200
+        # 外部 ID での検索は limit を読まないので、整数でない値も検索の前に断らないよう、
+        # サーバーでは文字列のまま受けて一覧のときだけ整数に読む。
+        x-go-type: string
     CreditSource:
       name: source
       in: query

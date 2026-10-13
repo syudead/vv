@@ -21,7 +21,16 @@ import (
 // 変わってしまうためである。入力の形（inputSchema）は本文の型から導く。
 
 // mcpListCredits は list_people と list_organizations の入力で、GET /api/v1/people の問い合わせと同じ形である。
-type mcpListCredits = extgen.ListPeopleParams
+// 生成型の extgen.ListPeopleParams は limit を文字列で受ける（外部 ID での検索では読まないため）ので、
+// ツールの入力では整数の limit を持つこの形にする。
+type mcpListCredits struct {
+	Q          *extgen.CreditQuery      `json:"q,omitempty"`
+	Sort       *extgen.CreditSort       `json:"sort,omitempty"`
+	Cursor     *extgen.CreditCursor     `json:"cursor,omitempty"`
+	Limit      *int                     `json:"limit,omitempty"`
+	Source     *extgen.CreditSource     `json:"source,omitempty"`
+	ExternalID *extgen.CreditExternalId `json:"externalId,omitempty"`
+}
 
 // mcpListCreditsDefaultLimit は list_people・list_organizations が limit を省かれたときに入れる 1 ページの
 // 件数である（list_tags と同じ）。
@@ -131,7 +140,7 @@ func (t *mcpTools) post(path string) mcp.ToolHandlerFor[json.RawMessage, any] {
 // mcpListCreditsDefaultLimit にする（REST の既定の全件は変えない、list_tags と同じ）。
 func creditListQuery(in mcpListCredits) url.Values {
 	query := url.Values{}
-	for name, value := range map[string]*string{"q": in.Q, "cursor": in.Cursor, "source": in.Source, "externalId": in.ExternalId} {
+	for name, value := range map[string]*string{"q": in.Q, "cursor": in.Cursor, "source": in.Source, "externalId": in.ExternalID} {
 		if value != nil {
 			query.Set(name, *value)
 		}
