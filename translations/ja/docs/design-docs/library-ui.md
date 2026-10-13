@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: d3483b38e568925f2f1a9cc856b8d07650f776873e3ca24252c55caee7c53fc1
+sourceHash: b033d6030b7d2266073fd8955b5622ef14704acf517fdbf7dc074dc065c606c5
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -420,6 +420,8 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 ## サーバーが適用する一覧の条件 {#list-conditions-applied-by-the-server}
 
 一覧の条件（検索、絞り込み、並び順、シャッフルのシード）はすべてサーバーが適用し、ページは読み込んだページを決して絞り込まない（[`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) が条件を URL に保つ）。
+
+所有者の場合、検索語は、動画の場所のいずれかのタイトルまたは相対パス、タグのいずれかの名前または同義語、作品コード、作品情報に結び付いた人物または組織の名前または別名に現れるとき、その動画に一致する。照合は畳み込んだ形（`domain.FoldForMatch`）を使うので、全角と半角、大文字と小文字、ひらがなとカタカナの違いは問わない。説明、日付、URL、外部 ID は照合しない。ゲストの検索はタイトルと相対パスだけに一致するので、ゲストが見られない名前が、どの公開動画を返すかを決めない（[`search.go`](../../internal/store/search.go)、[047 data-model.md、Search](../../specs/047-video-work-info/data-model.md#search)）。
 
 どの動画とグループがフォルダに属し、絞り込みに合うかを知るのはサーバーだけなので、手元で絞り込むページは `total` と異なる集合を表示してしまう。同じ理由で、取得し直した一覧の項目は自分の位置を決して推測しない。
 

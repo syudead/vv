@@ -35,10 +35,12 @@ func termUsesMatch(text string) bool {
 // タグ名（元の名前・シノニムの両方）への instr の OR に広げる
 // （specs/014-video-tags/data-model.md §7）。除外語はこの OR 全体の否定にする。
 // タグは動画の単位なので、語の長さに関係なく instr で調べ、全文索引は足さない。
+// 所有者の OR には作品情報の品番と、結び付いた人物・団体の名前と別名への instr も
+// 加える（specs/047-video-work-info/data-model.md「Search」、research.md R-6）。
 //
-// ゲストの検索はタグの名前とシノニムに照合せず、所在の条件だけにする
-// （specs/016-single-account-auth/contracts/guest-api.md §3）。ゲストに見せない
-// タグの名前が、当たる動画の有無から漏れないようにするため。
+// ゲストの検索はタグの名前とシノニムにも作品情報にも照合せず、所在の条件だけにする
+// （specs/016-single-account-auth/contracts/guest-api.md §3、047 research.md R-10）。
+// ゲストに見せないタグの名前や作品情報が、当たる動画の有無から漏れないようにするため。
 func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.Audience) (string, []any) {
 	if expr.Empty() {
 		return "", nil
@@ -61,9 +63,10 @@ func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.A
 			}
 			condition := `(` + locationCondition + `)`
 			if audience.IsOwner() {
-				condition = `(` + locationCondition + ` or ` + tagNameMatchCondition(alias) + `)`
-				// 手で付けた分とフォルダ名の分で、同じ語を1つずつ渡す。
-				args = append(args, text, text)
+				condition = `(` + locationCondition + ` or ` + tagNameMatchCondition(alias) +
+					` or ` + workInfoMatchCondition(alias) + `)`
+				// タグ名の手で付けた分とフォルダ名の分、作品情報の品番・人物・団体で、同じ語を1つずつ渡す。
+				args = append(args, text, text, text, text, text)
 			}
 			if term.Negated {
 				condition = `not ` + condition
@@ -100,6 +103,29 @@ func tagNameMatchCondition(alias string) string {
 		`join tag_names tn on tn.tag_id = folder_tn.tag_id ` +
 		`join videos v on v.id = vfn.video_id and v.content_key <> '' ` +
 		`where vfn.video_id = ` + alias + `.video_id and instr(tn.search_key, ?) > 0))`
+}
+
+// workInfoMatchCondition は、所在（別名 alias）の動画の利用者データの鍵（userKeyExpr）に結ぶ
+// 作品情報の品番の照合形（code_key）か、結び付いた人物・団体の名前か別名の照合形（search_key）の
+// どれかが語に当たるかの条件句を返す（specs/047-video-work-info/data-model.md「Search」）。
+// 呼び出し側が FoldForMatch 済みの語を、3つの出所のために同じものを3つ引数として渡す。
+// 名前の照合形は名前の行にあるので、人物の改名や統合では動画側の鍵を書き直さない（R-6）。
+// 内容の識別子が空の動画はタグの照合と同じ理由で除く。説明・日付・URL・外部 ID は照合しない。
+func workInfoMatchCondition(alias string) string {
+	video := `select 1 from videos v `
+	owned := `where v.id = ` + alias + `.video_id and v.content_key <> '' and `
+	userKey := userKeyExpr("v")
+	return `(exists (` + video +
+		`join video_work_info wi on wi.content_key = ` + userKey + ` ` +
+		owned + `instr(wi.code_key, ?) > 0) ` +
+		`or exists (` + video +
+		`join video_work_people vp on vp.content_key = ` + userKey + ` ` +
+		`join people_names pn on pn.person_id = vp.person_id ` +
+		owned + `instr(pn.search_key, ?) > 0) ` +
+		`or exists (` + video +
+		`join video_work_organizations vo on vo.content_key = ` + userKey + ` ` +
+		`join organization_names onm on onm.organization_id = vo.organization_id ` +
+		owned + `instr(onm.search_key, ?) > 0))`
 }
 
 // quoteMatchPhrase は語を FTS5 の1つのフレーズとして渡せる形にする。

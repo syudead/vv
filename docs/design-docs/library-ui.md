@@ -658,6 +658,17 @@ and the page never filters the pages it has loaded
 ([`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) keeps them in the
 URL).
 
+For the owner, a search term matches a video when it appears in the title or
+relative path of one of its locations, in a name or synonym of one of its
+tags, in its work code, or in a name or alias of a person or organization
+linked to its work information. Matching uses the folded form
+(`domain.FoldForMatch`), so width, letter case and hiragana or katakana do not
+matter. The description, dates, URLs and external IDs are not matched. A guest
+search matches only the title and relative path, so names a guest cannot see
+do not decide which public videos are returned
+([`search.go`](../../internal/store/search.go),
+[047 data-model.md, Search](../../specs/047-video-work-info/data-model.md#search)).
+
 Only the server knows which videos and groups belong to a folder and match the
 filters, so a page that filtered locally would show a different set from
 `total`. For the same reason a re-fetched list item never guesses its place:
