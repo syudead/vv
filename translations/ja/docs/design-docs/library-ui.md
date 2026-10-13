@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: d3483b38e568925f2f1a9cc856b8d07650f776873e3ca24252c55caee7c53fc1
+sourceHash: 7799a3a81d0054e9213da7137119bf7b6677b4dcd080a711b4dbc8c91758fc92
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -420,6 +420,20 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 ## サーバーが適用する一覧の条件 {#list-conditions-applied-by-the-server}
 
 一覧の条件（検索、絞り込み、並び順、シャッフルのシード）はすべてサーバーが適用し、ページは読み込んだページを決して絞り込まない（[`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) が条件を URL に保つ）。
+
+一覧のルート（`GET /api/videos`、`GET /api/library`、`GET /api/library/ids`）は次の条件を受け取り、各条件はほかの条件と AND で組み合わさる。
+
+| パラメーター | 残すもの | ゲスト |
+| --- | --- | --- |
+| `query` | タイトルか相対パスが検索式に合う動画 | 使える。タグ名は照合しない |
+| `tag` | 指定したタグをすべて持つ動画 | `400 guest_filter_not_allowed` |
+| `watch` | その視聴状態の動画（`all` はすべての動画を残す） | `all` だけ |
+| `playable` | ブラウザで再生できる動画 | 使える |
+| `favorite` | お気に入りの動画とお気に入りのグループ | `400 guest_filter_not_allowed` |
+| `person` | いずれかの役割でその人物に結び付いた動画 | `400 guest_filter_not_allowed` |
+| `organization` | いずれかの役割でその組織に結び付いた動画 | `400 guest_filter_not_allowed` |
+
+`query`、`tag`、`person`、`organization` はグループの各メンバーに適用するので、一部だけが合うグループは、合ったメンバーを動画の項目として並べる。対応する実体がない `person` か `organization` の id は空の一覧になり、正の整数でない値は `400 invalid_request` になる（[047 screen-api.md](../../specs/047-video-work-info/contracts/screen-api.md#list-parameters-person-and-organization)）。
 
 どの動画とグループがフォルダに属し、絞り込みに合うかを知るのはサーバーだけなので、手元で絞り込むページは `total` と異なる集合を表示してしまう。同じ理由で、取得し直した一覧の項目は自分の位置を決して推測しない。
 
