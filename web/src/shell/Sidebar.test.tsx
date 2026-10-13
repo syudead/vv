@@ -207,20 +207,28 @@ describe("Sidebar", () => {
     expect((entry as HTMLButtonElement).disabled).toBe(false);
     expect(reloadPage).not.toHaveBeenCalled();
   });
-  it("所有者の上段は「Folders」の後に「History」と「Playlists」、「Tags」の後に「Duplicates」を置き、ゲストには出さない", () => {
+  it("所有者の上段は「Folders」の後に「History」と「Playlists」、「Tags」の後に「People」「Organizations」「Duplicates」を置き、ゲストには出さない", () => {
     const { unmount } = renderSidebar({ mode: "rail" });
     const main = screen.getByRole("complementary", { name: "Main navigation" });
     const names = within(main)
       .getAllByRole("link")
       .map((link) => link.textContent);
-    expect(names.slice(0, 6)).toEqual([
+    expect(names.slice(0, 8)).toEqual([
       "Library",
       "Folders",
       "History",
       "Playlists",
       "Tags",
+      "People",
+      "Organizations",
       "Duplicates",
     ]);
+    expect(within(main).getByRole("link", { name: "People" }).getAttribute("href")).toBe(
+      "/people",
+    );
+    expect(
+      within(main).getByRole("link", { name: "Organizations" }).getAttribute("href"),
+    ).toBe("/organizations");
     expect(
       within(main).getByRole("link", { name: "Playlists" }).getAttribute("href"),
     ).toBe("/playlists");

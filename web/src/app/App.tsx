@@ -23,6 +23,13 @@ const SettingsPage = await deferredRoute(
   "/settings",
 );
 const TagsPage = await deferredRoute(() => import("../tags/TagsPage"), "/tags");
+// 人物と団体の管理画面（specs/047-video-work-info/ui-design.md「People and organizations
+// screens」）。1 つの部品が種類を受けて両方を描く。
+const PeoplePage = await deferredRoute(() => import("../credits/PeoplePage"), "/people");
+const OrganizationsPage = await deferredRoute(
+  () => import("../credits/OrganizationsPage"),
+  "/organizations",
+);
 const HistoryPage = await deferredRoute(
   () => import("../history/HistoryPage"),
   "/history",
@@ -97,6 +104,22 @@ function AppRoutes() {
           element={
             <AppShell>
               <TagsPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/people"
+          element={
+            <AppShell>
+              <PeoplePage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/organizations"
+          element={
+            <AppShell>
+              <OrganizationsPage />
             </AppShell>
           }
         />

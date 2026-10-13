@@ -8,7 +8,7 @@ import NameCommand, { type NameChoice, type NameRules } from "./NameCommand";
 export type CreditChoice = NameChoice;
 
 // 文言は表示の時点のカタログから引く（擬似ロケールがカタログを差し替えるため）。
-const creditNameRules: NameRules = {
+export const creditNameRules: NameRules = {
   reason: creditNameReason,
   get required() {
     return t.creditName.required;

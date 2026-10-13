@@ -104,7 +104,7 @@ export default function TagListEmptyState({
  * TagsEmpty は見出しつきの空の状態である。題は見出し（h2）にし、読み上げソフトで
  * 見出しから状態へ飛べるようにする（状態の部品の題は見出しの要素を持たないため）。
  */
-function TagsEmpty({
+export function TagsEmpty({
   icon,
   title,
   description,

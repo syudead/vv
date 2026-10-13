@@ -1,19 +1,22 @@
-import { Plus, X } from "lucide-react";
-import { type Ref, useLayoutEffect, useRef } from "react";
+import type { Ref } from "react";
 
 import { type WorkDateKind, workDateKinds } from "../../api/workInfo";
 import { t, type UiText } from "../../i18n";
-import { Button } from "../../ui/shadcn/button";
 import { Field, FieldDescription, FieldLabel, FieldTitle } from "../../ui/shadcn/field";
 import { Input } from "../../ui/shadcn/input";
 import { Textarea } from "../../ui/shadcn/textarea";
-import { type Draft, type IdRow, type LinkRow, newRowKey } from "./draft";
+import { type Draft, type LinkRow, newRowKey } from "./draft";
 import {
+  AddRow,
   controlId,
   type FieldProblem,
+  IdRows,
   invalidProps,
   Problem,
+  RemoveRow,
+  type RowsProps,
   saveOnEnter,
+  useFocusAdded,
 } from "./fields";
 
 function dateLabel(kind: WorkDateKind): UiText {
@@ -150,78 +153,6 @@ export default function BasicsPanel({
   );
 }
 
-/** useFocusAdded は、足した行の最初の入力へフォーカスを移す。 */
-function useFocusAdded() {
-  const pending = useRef<string | null>(null);
-  useLayoutEffect(() => {
-    const control = pending.current;
-    if (control === null) return;
-    pending.current = null;
-    document.getElementById(controlId(control))?.focus();
-  });
-  return (control: string) => {
-    pending.current = control;
-  };
-}
-
-interface RowsProps<T> {
-  rows: readonly T[];
-  onChange: (rows: T[]) => void;
-  saving: boolean;
-  problem: FieldProblem | null;
-  onEnter: ReturnType<typeof saveOnEnter>;
-}
-
-function RemoveRow({
-  label,
-  saving,
-  onRemove,
-}: {
-  label: UiText;
-  saving: boolean;
-  onRemove: () => void;
-}) {
-  return (
-    <Button
-      variant="ghost"
-      size="icon-sm"
-      aria-label={label}
-      aria-disabled={saving || undefined}
-      onClick={() => {
-        if (!saving) onRemove();
-      }}
-      className="text-muted-foreground"
-    >
-      <X aria-hidden="true" />
-    </Button>
-  );
-}
-
-function AddRow({
-  label,
-  saving,
-  onAdd,
-}: {
-  label: UiText;
-  saving: boolean;
-  onAdd: () => void;
-}) {
-  return (
-    <Button
-      variant="outline"
-      size="sm"
-      aria-disabled={saving || undefined}
-      onClick={() => {
-        if (!saving) onAdd();
-      }}
-      className="w-auto self-start"
-    >
-      <Plus aria-hidden="true" />
-      {label}
-    </Button>
-  );
-}
-
 /** LinkRows は Links の行（1 行に URL 1 つと ×）と「Add link」である。 */
 function LinkRows({ rows, onChange, saving, problem, onEnter }: RowsProps<LinkRow>) {
   const e = t.player.detailsEditor;
@@ -264,63 +195,6 @@ function LinkRows({ rows, onChange, saving, problem, onEnter }: RowsProps<LinkRo
           const key = newRowKey("u");
           focusAdded(`url-${key}`);
           onChange([...rows, { key, url: "" }]);
-        }}
-      />
-    </Field>
-  );
-}
-
-/** IdRows は IDs の行（Source と Value と ×）と「Add ID」である。 */
-function IdRows({ rows, onChange, saving, problem, onEnter }: RowsProps<IdRow>) {
-  const e = t.player.detailsEditor;
-  const focusAdded = useFocusAdded();
-  const change = (index: number, patch: Partial<IdRow>) =>
-    onChange(rows.map((item, at) => (at === index ? { ...item, ...patch } : item)));
-  return (
-    <Field aria-labelledby={controlId("ids")}>
-      <FieldTitle id={controlId("ids")}>{e.ids}</FieldTitle>
-      {rows.map((row, index) => (
-        <div key={row.key} className="flex flex-col gap-1">
-          <div className="flex items-center gap-2">
-            <Input
-              id={controlId(`id-source-${row.key}`)}
-              aria-label={e.source}
-              placeholder={e.source}
-              value={row.source}
-              readOnly={saving}
-              onChange={(event) => change(index, { source: event.target.value })}
-              onKeyDown={onEnter}
-              className="h-8 w-1/3 shrink-0"
-              {...invalidProps(problem, `id-source-${row.key}`)}
-            />
-            <Input
-              id={controlId(`id-value-${row.key}`)}
-              aria-label={e.value}
-              placeholder={e.value}
-              value={row.value}
-              readOnly={saving}
-              onChange={(event) => change(index, { value: event.target.value })}
-              onKeyDown={onEnter}
-              className="h-8 tabular-nums"
-              {...invalidProps(problem, `id-value-${row.key}`)}
-            />
-            <RemoveRow
-              label={e.removeId}
-              saving={saving}
-              onRemove={() => onChange(rows.filter((_, at) => at !== index))}
-            />
-          </div>
-          <Problem problem={problem} control={`id-source-${row.key}`} />
-          <Problem problem={problem} control={`id-value-${row.key}`} />
-        </div>
-      ))}
-      <AddRow
-        label={e.addId}
-        saving={saving}
-        onAdd={() => {
-          const key = newRowKey("i");
-          focusAdded(`id-source-${key}`);
-          onChange([...rows, { key, source: "", value: "" }]);
         }}
       />
     </Field>

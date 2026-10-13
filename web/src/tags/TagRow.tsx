@@ -7,19 +7,11 @@ import {
   Tags as SynonymsIcon,
   Trash2,
 } from "lucide-react";
-import {
-  type ComponentProps,
-  memo,
-  type Ref,
-  useEffect,
-  useEffectEvent,
-  useRef,
-} from "react";
+import { type ComponentProps, memo, type ReactNode, type Ref } from "react";
 import { Link } from "react-router";
 
 import type { Tag } from "../api/tags";
 import { t } from "../i18n";
-import { isComposingKeyEvent } from "../lib/ime";
 import { Button } from "../ui/shadcn/button";
 import { Checkbox } from "../ui/shadcn/checkbox";
 import {
@@ -29,12 +21,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/shadcn/dropdown-menu";
-import { Input } from "../ui/shadcn/input";
 import { Spinner } from "../ui/shadcn/spinner";
 import { TableCell, TableRow } from "../ui/shadcn/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import TentativeMark from "../ui/TentativeMark";
-import { useTagNameField, type TagFieldError } from "./tagNameField";
+import RowNameInput from "./RowNameInput";
+import type { TagFieldError } from "./tagNameField";
 
 export interface TagRowRefs {
   nameLink: HTMLAnchorElement | null;
@@ -120,37 +112,6 @@ function TagRow({
   selected?: boolean;
   onSelect?: (tag: Tag, selected: boolean) => void;
 }) {
-  const field = useTagNameField(tag.name, onDraftChange);
-  const inputRef = useRef<HTMLInputElement | null>(null);
-
-  // 改名を開くたびに今の名前へ戻し、選んだ状態にする。きっかけは renaming だけで、
-  // 開いている間に名前や field が変わっても入力中の値は戻さない。
-  const startRenaming = useEffectEvent(() => {
-    field.setValue(tag.name);
-    inputRef.current?.focus();
-    inputRef.current?.select();
-  });
-  useEffect(() => {
-    if (renaming) startRenaming();
-  }, [renaming]);
-
-  function submit() {
-    if (pending) return;
-    const spelling = field.trySpelling();
-    if (spelling !== null) onSubmitRename(tag, spelling);
-  }
-
-  function cancel() {
-    // 送信中は、その応答が届くまで閉じない（Esc の場合。この行に「キャンセル」
-    // のボタンは無い。ui-design.md「Create and rename」）。閉じたあとに届いた
-    // 応答が、もう無いこの行や別の行の状態を書き換えることを防ぐ。
-    if (pending) return;
-    onCancelRename(tag);
-  }
-
-  const reasonId = `tag-rename-reason-${String(tag.id)}`;
-  const errorId = `tag-rename-error-${String(tag.id)}`;
-
   return (
     <TableRow
       ref={measureRef}
@@ -185,29 +146,16 @@ function TagRow({
       */}
       <TableCell className="w-full max-w-0 whitespace-normal">
         {renaming ? (
-          <Input
-            ref={inputRef}
-            value={field.value}
-            onChange={(event) => field.setValue(event.target.value)}
-            onPaste={field.onPaste}
-            onBeforeInput={field.onBeforeInput}
-            onKeyDown={(event) => {
-              if (isComposingKeyEvent(event)) return;
-              if (event.key === "Enter") {
-                event.preventDefault();
-                submit();
-              } else if (event.key === "Escape") {
-                event.preventDefault();
-                cancel();
-              }
-            }}
-            aria-label={t.tags.row.renameLabel(tag.name)}
-            aria-describedby={
-              field.reason !== null ? reasonId : error !== null ? errorId : undefined
-            }
-            aria-busy={pending || undefined}
-            aria-invalid={field.reason !== null || error?.kind === "taken" || undefined}
-            className="h-8"
+          <RowNameInput
+            idPrefix="tag-rename"
+            rowId={tag.id}
+            name={tag.name}
+            label={t.tags.row.renameLabel(tag.name)}
+            pending={pending}
+            error={error}
+            onSubmit={(name) => onSubmitRename(tag, name)}
+            onCancel={() => onCancelRename(tag)}
+            onDraftChange={onDraftChange}
           />
         ) : (
           <>
@@ -250,27 +198,6 @@ function TagRow({
             )}
           </>
         )}
-        {renaming && field.reason !== null && (
-          <p id={reasonId} className="mt-1 text-xs text-destructive">
-            {field.reason}
-          </p>
-        )}
-        {renaming &&
-          field.reason === null &&
-          error !== null &&
-          error.kind === "taken" && (
-            <p id={errorId} className="mt-1 text-xs text-destructive">
-              {error.message}
-            </p>
-          )}
-        {renaming &&
-          field.reason === null &&
-          error !== null &&
-          error.kind === "other" && (
-            <p id={errorId} role="alert" className="mt-1 text-sm text-destructive">
-              {error.message}
-            </p>
-          )}
       </TableCell>
       <TableCell className="text-right text-muted-foreground tabular-nums">
         {t.tags.row.videoCount(tag.videoCount)}
@@ -328,42 +255,28 @@ function TagRow({
           >
             <SynonymsIcon aria-hidden="true" />
           </RowIconButton>
-          <DropdownMenu>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    ref={(node) => registerRefs(tag.id, { menuButton: node })}
-                    variant="ghost"
-                    size="icon-sm"
-                    aria-label={t.tags.row.more}
-                    disabled={renaming || blockStart || confirming}
-                  >
-                    <Ellipsis aria-hidden="true" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </TooltipTrigger>
-              <TooltipContent>{t.tags.row.more}</TooltipContent>
-            </Tooltip>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onSelect={() => onOpenMerge(tag)}>
-                <Merge aria-hidden="true" />
-                {t.tags.row.merge}
+          <RowMoreMenu
+            buttonRef={(node) => registerRefs(tag.id, { menuButton: node })}
+            label={t.tags.row.more}
+            disabled={renaming || blockStart || confirming}
+          >
+            <DropdownMenuItem onSelect={() => onOpenMerge(tag)}>
+              <Merge aria-hidden="true" />
+              {t.tags.row.merge}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            {tag.tentative ? (
+              <DropdownMenuItem variant="destructive" onSelect={() => onReject?.(tag)}>
+                <Ban aria-hidden="true" />
+                {t.tags.row.reject}
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {tag.tentative ? (
-                <DropdownMenuItem variant="destructive" onSelect={() => onReject?.(tag)}>
-                  <Ban aria-hidden="true" />
-                  {t.tags.row.reject}
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem variant="destructive" onSelect={() => onDelete(tag)}>
-                  <Trash2 aria-hidden="true" />
-                  {t.tags.row.delete}
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
+            ) : (
+              <DropdownMenuItem variant="destructive" onSelect={() => onDelete(tag)}>
+                <Trash2 aria-hidden="true" />
+                {t.tags.row.delete}
+              </DropdownMenuItem>
+            )}
+          </RowMoreMenu>
         </div>
       </TableCell>
     </TableRow>
@@ -374,7 +287,7 @@ function TagRow({
  * RowIconButton は行の操作の、文字を持たないボタンである（ghost の icon-sm と、同じ
  * 名前の Tooltip。web/registry/rules/components.md「Button」）。
  */
-function RowIconButton({
+export function RowIconButton({
   label,
   ...props
 }: Omit<ComponentProps<typeof Button>, "variant" | "size" | "aria-label"> & {
@@ -387,6 +300,45 @@ function RowIconButton({
       </TooltipTrigger>
       <TooltipContent>{label}</TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * RowMoreMenu は行の「More actions」（`Ellipsis` の ghost の icon-sm と同じ名前の Tooltip）と、
+ * それが開くメニューである。タグの行と人物・団体の行（`web/src/credits/CreditRow`）が使う。
+ */
+export function RowMoreMenu({
+  buttonRef,
+  label,
+  disabled,
+  children,
+}: {
+  buttonRef: Ref<HTMLButtonElement>;
+  label: string;
+  disabled: boolean;
+  /** メニューの項目。 */
+  children: ReactNode;
+}) {
+  return (
+    <DropdownMenu>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <DropdownMenuTrigger asChild>
+            <Button
+              ref={buttonRef}
+              variant="ghost"
+              size="icon-sm"
+              aria-label={label}
+              disabled={disabled}
+            >
+              <Ellipsis aria-hidden="true" />
+            </Button>
+          </DropdownMenuTrigger>
+        </TooltipTrigger>
+        <TooltipContent>{label}</TooltipContent>
+      </Tooltip>
+      <DropdownMenuContent align="end">{children}</DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 

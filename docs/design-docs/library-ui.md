@@ -103,6 +103,11 @@ as empty spacer rows so the columns stay aligned. The page passes the fixed top
 bar's height (`--spacing-navbar`) to the virtualizer and to
 `scroll-padding-top`, so a focused row never hides under the top bar
 ([036 UI design, Band](../../specs/036-tag-admin-scale/ui-design.md)).
+The people and organizations admin lists (`/people`, `/organizations`) are
+built the same way from the same pieces in `web/src/tags/`: pages of 100
+read from the server, rows drawn near the viewport, and local updates after
+rename, details, merge and delete
+([047 UI design, People and organizations screens](../../specs/047-video-work-info/ui-design.md#people-and-organizations-screens-1)).
 
 ### The window owns scrolling
 
@@ -184,7 +189,7 @@ flowchart LR
 The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰ (below
 640px only) and the logo, and no scan control (see
 [Scan entry and progress](#scan-entry-and-progress)). The library, the folder
-pages and the tags page insert their toolbar after them: the design-system
+pages and the admin pages (tags, people, organizations) insert their toolbar after them: the design-system
 `Toolbar` with
 `placement="topBar"`, rendered through
 [`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx). The page body
@@ -196,7 +201,12 @@ page's `h1` is for screen readers only and no visible title repeats it
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
 The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
 header (or, while rows are selected, the selection bar) and tabs stick under
-the top bar, and the table's column header sticks right under them.
+the top bar, and the table's column header sticks right under them. The
+people and organizations pages are one `AdminTablePage` component that takes
+the kind; they have the same header and column header, without the filter,
+tabs, checkbox column and selection bar, and a details dialog (aliases,
+external IDs and, for an organization, the parent) in place of the synonyms
+dialog.
 On the library and folder pages, changing the search, a filter, a tag or the
 sort order scrolls the page back to the top, so the new list starts from its
 first card. Returning from the player still restores the saved position.

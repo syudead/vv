@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: df324436f4a4a8e50faa6f9a6bcb107df8236c5b4cf513ffc44b6d8824055bbc
+sourceHash: 088052794ce6f01de655077c148b65d036a6396045e2f792c6d7e67c96b02054
 ---
 
 # アーキテクチャ {#architecture}
@@ -148,6 +148,7 @@ flowchart LR
 | `app/` | ルート |
 | `shell/` | トップバー、サイドバー、スキャンの状態、画面を囲む枠 |
 | `library/`、`folders/`、`settings/`、`tags/`、`player/`、`versions/` | それぞれの製品フロー |
+| `credits/` | 人物と組織の管理画面。種類を受け取る 1 つのページで、`tags/` にあるタグ管理画面の一覧の部品から組み立てる |
 | `videoList/` | ライブラリ画面とフォルダ画面が共有する一覧の部品 |
 | `ui/` | 再利用できるプリミティブ。`web/registry.json` の shadcn レジストリとして公開する ([design-system.md](docs/design-docs/design-system.md)) |
 | `hooks/` | レジストリのコンポーネントが共有するフック（`use-mobile` など） |
