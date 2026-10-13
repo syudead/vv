@@ -1,6 +1,6 @@
 ---
 source: specs/047-video-work-info/data-model.md
-sourceHash: 8260ac41dc0ccc87ce35a58d9886f93ba516d3a9c9821570d2f0b3fdc3e37145
+sourceHash: ca27e1fc25feb670987e50371e9b713318dc35d725c73f3d19ea784adc069cc6
 ---
 
 # データモデル: 動画の作品情報 {#data-model-work-information-on-videos}
@@ -224,6 +224,7 @@ flowchart LR
 | --- | --- |
 | `Set(videoID, WorkInfo)` | 1 つのトランザクション: 正規化し、キーを解決し、参照したすべての id を確かめ、保存したオブジェクトと比べ、6 つのテーブルの行を置き換え (`video_work_info` の行は、`code` と `description` の両方が消えたときは作らない)、`code_key` と `search_version` を書き、オブジェクトが変わったときは `touchEditedAtForUserKeys` を呼び、`WorkInfo` を持つ動画を返す |
 | `SetMany([]WorkInfoChange)` | 1 つのトランザクションで、すべての項目に同じことをする。同じ動画に対する後の項目が勝つ。最初のエラーで、`WorkInfoAtError` か `VideoRefNotFoundError` とともに中止する |
+| `SetDetails(videoID, displayName, WorkInfo)` | 1 つのトランザクション ([R-14](research.md#r-14-the-editor-saves-the-display-name-and-the-work-information-with-one-put-apivideosiddetails-in-one-transaction)): 先に `NormalizeDisplayName`、次に `NormalizeWorkInfo` を呼び、どちらのエラーも何かを書く前に返す。内容の鍵 (`registeredContentKeysForVideoIDs`) とユーザーキーを解決する。参照したすべての id を確かめる。表示名が `displayNamesOf` と異なるときは、`writeDisplayName` と `refreshSearchKeysForContentKeys` で書く。オブジェクトが異なるときは、`Set` と同じく 6 つのテーブルの行を置き換える。編集時刻は、名前が異なるときの編集した動画の内容の鍵と、オブジェクトが異なるときのユーザーキーのすべてのメンバーの内容の鍵 (`touchEditedAtForUserKeys` が展開するとおりの `contentKeysForUserKeys`) の重複を除いた和集合に対する 1 回の `touchEditedAt` の呼び出しで 1 回進め、まとまりのすべてのメンバーが共有のオブジェクトの編集時刻を持つようにする。`WorkInfo` を持つ動画を返す。コミットの後、名前が変わったときは `VideoOverrideChanged{VideoID}` を、オブジェクトが変わったときは `VideoWorkInfoChanged{VideoIDs}` を発行する。どちらも変えない書き込みは何も発行しない |
 | `ByUserKeys(keys)` | [読み取り](#reads) のオブジェクト |
 
 ## 検索 {#search}
@@ -277,7 +278,7 @@ or exists (select 1 from video_work_organizations vo join organization_names onm
 
 ## 変わらないもの {#what-does-not-change}
 
-- `video_overrides` と表示名は内容の鍵ごとのままである: タイトルは代表に従い、作品情報はまとまりに従う (R-2)。
+- `video_overrides` と表示名は内容の鍵ごとのままである: タイトルは代表に従い、作品情報はまとまりに従う (R-2)。`SetDetails` はそれぞれを自身のキーの下に 1 つのトランザクションで書き、この組のためのテーブルも列も加えない (R-14)。
 - 場所の `search_key` と `title_key`、および `SearchKeyVersion` は変わらない。タイトルでの並べ替えは作品情報を読まない。
 - 一覧とカードは作品情報を持たない。詳細の読み取りが持つ。
 - タグ、タグ名、タグの絞り込みは触れない。人物はタグではない。

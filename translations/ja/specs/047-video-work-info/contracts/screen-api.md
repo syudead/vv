@@ -1,11 +1,11 @@
 ---
 source: specs/047-video-work-info/contracts/screen-api.md
-sourceHash: 7656166e9b622cd12761e3a31f088e5a135eede22b9cd97e9dfbf6bb63cd21c1
+sourceHash: 89deb699cf26befa447f7ab23bc4f2e6a176e95e9bdc89d81da1062d7c53b900
 ---
 
 # 契約: 画面の API の作品情報、人物、組織 {#contract-work-information-people-and-organizations-in-the-screen-api}
 
-正本: `api/openapi.yaml`、つまり操作 `setVideoWorkInfo`、`listPeople`、`getPerson`、`createPerson`、`updatePerson`、`deletePerson`、`mergePeople` とその `Organization` の対応物、スキーマ `WorkInfo`、`WorkInfoInput`、`Person`、`Organization`、`CreditInput`、`CreditPatch`、`CreditList`、および `listVideos`、`listLibrary`、`listLibraryIds` の `person` と `organization` のパラメータ。この文書は、この機能が加えるものだけを扱う。決定は [research.md R-4](../research.md#r-4-a-video-write-references-people-and-organizations-by-id-creation-has-its-own-route)、[R-5](../research.md#r-5-one-put-that-replaces-the-whole-work-information-object)、[R-7](../research.md#r-7-person-and-organization-list-parameters-by-id-matching-every-role)、[R-8](../research.md#r-8-entity-edits-are-a-patch-of-optional-fields-a-merge-that-moves-links-and-a-delete-that-detaches)、[R-10](../research.md#r-10-guests-receive-no-work-information-in-responses-search-or-filters) にある。ここのどのルートも所有者専用である (`accessRoutes` の既定の分類)。本文を持つルートは `requiresJSONBody` と `openapi_routes_test.go` の対応付けに加わる。
+正本: `api/openapi.yaml`、つまり操作 `setVideoWorkInfo`、`setVideoDetails`、`listPeople`、`getPerson`、`createPerson`、`updatePerson`、`deletePerson`、`mergePeople` とその `Organization` の対応物、スキーマ `WorkInfo`、`WorkInfoInput`、`VideoDetailsInput`、`Person`、`Organization`、`CreditInput`、`CreditPatch`、`CreditList`、および `listVideos`、`listLibrary`、`listLibraryIds` の `person` と `organization` のパラメータ。この文書は、この機能が加えるものだけを扱う。`PUT /api/videos/{id}/display-name` ([029 screen-api.md](../../029-video-overrides/contracts/screen-api.md)) は変わらず、その場でのタイトルの編集に使われ続ける。決定は [research.md R-4](../research.md#r-4-a-video-write-references-people-and-organizations-by-id-creation-has-its-own-route)、[R-5](../research.md#r-5-one-put-that-replaces-the-whole-work-information-object)、[R-7](../research.md#r-7-person-and-organization-list-parameters-by-id-matching-every-role)、[R-8](../research.md#r-8-entity-edits-are-a-patch-of-optional-fields-a-merge-that-moves-links-and-a-delete-that-detaches)、[R-10](../research.md#r-10-guests-receive-no-work-information-in-responses-search-or-filters)、[R-14](../research.md#r-14-the-editor-saves-the-display-name-and-the-work-information-with-one-put-apivideosiddetails-in-one-transaction) にある。ここのどのルートも所有者専用である (`accessRoutes` の既定の分類)。本文を持つルートは `requiresJSONBody` と `openapi_routes_test.go` の対応付けに加わる。
 
 ## `WorkInfo` スキーマ {#workinfo-schema}
 
@@ -33,7 +33,7 @@ sourceHash: 7656166e9b622cd12761e3a31f088e5a135eede22b9cd97e9dfbf6bb63cd21c1
 
 ## `PUT /api/videos/{id}/work-info` {#put-apivideosidwork-info}
 
-`operationId: setVideoWorkInfo`。本文は [`WorkInfoInput`](#workinfoinput-schema) であり、そのオブジェクトが保存したものを置き換える。
+`operationId: setVideoWorkInfo`。本文は [`WorkInfoInput`](#workinfoinput-schema) であり、そのオブジェクトが保存したものを置き換える。エディターはこれを呼ばない ([`PUT /api/videos/{id}/details`](#put-apivideosiddetails) を呼ぶ)。これは、外部の操作と共有する意味で作品情報だけを書くクライアントのためにある。
 
 | 状況 | 応答 |
 | --- | --- |
@@ -52,17 +52,46 @@ sourceHash: 7656166e9b622cd12761e3a31f088e5a135eede22b9cd97e9dfbf6bb63cd21c1
 
 [`WorkInfo` スキーマ](#workinfo-schema) の順で最初に失敗したフィールドを報告し、何も書かない。何も変えない書き込みは `200` を返し、`updatedAt` を進めない。変更がコミットされた後、同じユーザーキーの下のすべての動画について `video` を `/api/events` に送る。
 
+## `PUT /api/videos/{id}/details` {#put-apivideosiddetails}
+
+`operationId: setVideoDetails`。全画面のエディターの保存である ([R-14](../research.md#r-14-the-editor-saves-the-display-name-and-the-work-information-with-one-put-apivideosiddetails-in-one-transaction))。本文は `VideoDetailsInput` である:
+
+| フィールド | 型 | 必須 | 規則 |
+| --- | --- | --- | --- |
+| `displayName` | string | はい | `PUT /api/videos/{id}/display-name` の規則 ([029 screen-api.md](../../029-video-overrides/contracts/screen-api.md)): 前後の空白を取り除き、空なら表示名を消してタイトルはファイルのタイトルに戻る。プロパティがないときは、そこと同じく `400 invalid_request` である |
+| `workInfo` | [`WorkInfoInput`](#workinfoinput-schema) | はい | `PUT /api/videos/{id}/work-info` と同じく保存したオブジェクトを置き換える。`{}` はすべてを消す |
+
+両方を 1 つのトランザクションで書くか、どちらも書かない。
+
+| 状況 | 応答 |
+| --- | --- |
+| 保存した | `200` `Video`。`title`、`displayName`、`workInfo` を適用している (消したときは `displayName` はなく、すべてを消したときは `workInfo` はない) |
+| `displayName` が規則に反する | `400 invalid_request` / `display_name_control_characters` か `display_name_too_long` (`limit` 付き)、`field: displayName`。何も書かない |
+| `workInfo` のフィールドが規則に反するか、存在しない人物や組織を挙げる | そのフィールドに対する [`PUT /api/videos/{id}/work-info`](#put-apivideosidwork-info) の応答で、`field` は `workInfo` の中のパス (`code`、`dates[0].date`、`people[0].person.id`) である。表示名も含めて何も書かない |
+| 動画が存在しないか、メディアのフォルダの下に場所を持たない | `404 not_found` / `video_not_found` |
+| ゲスト | `401 unauthenticated` (境界が返す) |
+
+先に `displayName` を確かめ、次に [`WorkInfo` スキーマ](#workinfo-schema) の順で `workInfo` を確かめ、最初の失敗だけを報告する。どちらの値も変えない保存は `200` を返し、何も進めず、何も送らない。どちらかを変える保存は `updatedAt` を 1 回進める: 表示名が変わったときはその動画について、作品情報が変わったときはユーザーキーの下のすべての動画について進める。変更がコミットされた後、`/api/events` は、表示名が変わったときはその id の `video` を、作品情報が変わったときはユーザーキーの下のすべての動画の `video` を運ぶ。開いている動画のページはどちらでも取得し直す。
+
 ```mermaid
 sequenceDiagram
   participant P as 動画のページ
+  participant D as エディター (全画面)
   participant S as サーバー
   participant E as /api/events
-  P->>S: POST /api/people (必要なときは新しい出演者)
-  S-->>P: 201 Person
-  P->>S: PUT /api/videos/{id}/work-info
-  S-->>P: workInfo を持つ 200 Video
-  S-->>E: キーの下の各 id の video
-  E-->>P: 取得し直す (ほかのタブと一覧)
+  P->>D: エディターを開く (タイトルと作品情報はページの Video から読み込む)
+  D->>S: POST /api/people (必要なときは新しい出演者)
+  S-->>D: 201 Person
+  D->>S: PUT /api/videos/{id}/details { displayName, workInfo }
+  alt a field fails
+    S-->>D: field 付きの 400 か 404。何も書かない
+    D->>D: フィールドにメッセージを表示し、すべての値を保つ
+  else saved
+    S-->>D: title、displayName、workInfo を持つ 200 Video
+    D->>P: 閉じる。ページは応答を表示する
+    S-->>E: その id とキーの下の各 id の video
+    E-->>P: 取得し直す (ほかのタブと一覧)
+  end
 ```
 
 ## 一覧のパラメータ `person` と `organization` {#list-parameters-person-and-organization}
@@ -147,12 +176,12 @@ CreditList:
 | `POST /api/people/{id}/merge` | `{ sourceIds: int64[] }`、1 から 20,000 項目 | `200 { person: Person, notFoundIds: int64[] }` | `field: sourceIds` と `limit` 付きの `400 work_info_too_many`。統合したエンティティがより多くを持つことになるときは、`field: aliases` (上限 50) か `externalIds` (上限 20) 付きの `400 work_info_too_many`。`400 merge_same_person`。`404 person_not_found` (統合先)。エラーのときは何も変わらない |
 | `GET /api/organizations` とほかの 5 つ | 上と同じで、`Organization`、`organization_not_found`、`merge_same_organization` を使う | — | `POST` と `PATCH` は、親が存在しないときの `field: parentId` 付きの `404 organization_not_found` と、`parentId` がその組織か子孫であるときの `400 organization_parent_cycle` を加える。統合は、統合元が統合先の親かほかの祖先であるとき、その子が統合先の下に移ることになるので、`400 organization_parent_cycle` を加える |
 
-- 動画のページのコンボボックスは、候補のために `GET /api/people?q=…&limit=…` を読み (名前と別名が一致する)、その id の今の名前を表示する。選ぶと id を送り、`Create "…"` はまず `POST /api/people { name }` を送る (R-4)。
+- エディターのコンボボックスは、候補のために `GET /api/people?q=…&limit=…` を読み (名前と別名が一致する)、その id の今の名前を表示する。選ぶと id を送り、`Create "…"` はまず `POST /api/people { name }` を送る (R-4)。こうして作成した人物は、その後エディターの保存が失敗したり放棄されたりしても存在し、人物の画面がそれを一覧する。
 - 一覧画面は、タグのページと同じく、`nextCursor` で 100 件ずつのページを読む ([036 screen-api.md、`GET /api/tags` のパラメータ](../../036-tag-admin-scale/contracts/screen-api.md#get-apitags-parameters))。
 - 削除と統合の確認は、一覧の `videoCount` を使う。
 
 ## 追加する `reason` の値と `field` {#added-reason-values-and-field}
 
-`Error` は省略可能なプロパティ `field` を得る: `work_info_*`、`person_not_found`、`organization_not_found`、`external_id_taken` の理由が指すプロパティのパスであり、JSON のプロパティ名を `.` でつなぎ、一覧の位置を角括弧に入れたものである: `code`、`dates[1].date`、`people[0].person.id`、`aliases[2].language`、`parentId`。外部の一括操作では、`index` は `items` の中の位置のままで、`field` はその項目の `workInfo` の中のパスである。
+`Error` は省略可能なプロパティ `field` を得る: `work_info_*`、`person_not_found`、`organization_not_found`、`external_id_taken` の理由が指すプロパティのパスであり、JSON のプロパティ名を `.` でつなぎ、一覧の位置を角括弧に入れたものである: `code`、`dates[1].date`、`people[0].person.id`、`aliases[2].language`、`parentId`。外部の一括操作では、`index` は `items` の中の位置のままで、`field` はその項目の `workInfo` の中のパスである。`PUT /api/videos/{id}/details` では、`field` は既存の 2 つの `display_name_*` の理由では `displayName` で、それ以外では `workInfo` の中のパスなので、1 つのメッセージのカタログがエディターと作品情報のルートに使われる。表示名のルート自体は `field` を加えない。
 
 `ErrorReason` は `work_info_control_characters`、`work_info_too_long`、`work_info_too_many`、`work_info_invalid_date`、`work_info_invalid_url`、`work_info_invalid_language`、`work_info_duplicate`、`person_not_found`、`organization_not_found`、`organization_parent_cycle`、`merge_same_person`、`merge_same_organization`、`external_id_taken` を得て、`web/src/i18n/errors.ts` はそれぞれについてフィールドを挙げる英語のメッセージを得る。

@@ -1,6 +1,6 @@
 ---
 source: specs/047-video-work-info/research.md
-sourceHash: 6318c1542aa6056f775092f03a455dc36fbc14fdeec26f3a1553eccc83af4c1e
+sourceHash: 4ab767c9612bc4fd6b3233de26bb331cfbc5c731a308693ead282fbdcaea9238
 ---
 
 # 調査: 動画の作品情報 (コード、日付、人物、組織、URL、外部 ID) {#research-work-information-on-videos-code-dates-people-organizations-urls-external-ids}
@@ -81,7 +81,7 @@ sourceHash: 6318c1542aa6056f775092f03a455dc36fbc14fdeec26f3a1553eccc83af4c1e
 | 項目の種類ごとに 1 つのルート (`/work-info/dates`、`/work-info/people`、…) | 不採用: ページは 1 つのフォームを保存し、外部の操作はオブジェクト全体を送る。7 つのルートはエラーの対応付けとテストを 7 倍にする |
 | マージの意味を持つ `PATCH` | 不採用: そうすると「この一覧を消す」には「そのままにする」とは別の目印が必要になり、画面はそれを必要としない |
 
-**理由**: ページは項目をまとめて編集し、スクレイパーはまとめて書くので、変更の単位はオブジェクトである。置き換えは冪等なので、ネットワークの失敗の後の送り直しは安全である。
+**理由**: エディターは項目をまとめて編集し、スクレイパーはまとめて書くので、変更の単位はオブジェクトである。置き換えは冪等なので、ネットワークの失敗の後の送り直しは安全である。エディター自身はこのルートを呼ばない: 表示名をオブジェクトとともに R-14 のルートで保存する。このルートは、外部の操作の意味と、作品情報だけを書くクライアントに使われる。
 
 ## R-6: 検索ボックスは、コードと、結び付いた人物と組織のすべての名前と別名を照合する {#r-6-the-search-box-matches-the-code-and-every-name-and-alias-of-the-linked-people-and-organizations}
 
@@ -183,3 +183,17 @@ sourceHash: 6318c1542aa6056f775092f03a455dc36fbc14fdeec26f3a1553eccc83af4c1e
 | エンティティの編集は、結び付いたすべての動画の編集時刻を進める | 不採用: 033 R-2 はタグの水準の操作を編集時刻の対象外にしており、人物はタグと同じ水準で編集される |
 
 **理由**: 編集時刻は「所有者がこの動画を最後に編集したのはいつか」に答える。人物の名前の変更は人物の編集である。
+
+## R-14: エディターは表示名と作品情報を、1 つの `PUT /api/videos/{id}/details` で 1 つのトランザクションとして保存する {#r-14-the-editor-saves-the-display-name-and-the-work-information-with-one-put-apivideosiddetails-in-one-transaction}
+
+**決定**: 要件 8 の全画面のエディターは `PUT /api/videos/{id}/details` で保存し、その本文は `{ displayName: string, workInfo: WorkInfoInput }` で、両方とも必須である。`WorkInfoStore.SetDetails` は、表示名を内容の鍵の下に (029 の行と規則)、作品情報をユーザーキーの下に (R-2)、1 つのトランザクションで書く: 規則に反する表示名や規則に反する作品情報のフィールドはすべてをロールバックするので、タイトルが情報なしで保存されることも、その逆もない。表示名を先に確かめ、次に作品情報を `WorkInfo` スキーマの順に確かめ、最初の失敗を `field` (`displayName`、または R-9 と同じく `workInfo` の中のパス) とともに報告する。コミットの後、ストアは名前が変わったときに `VideoOverrideChanged` を、情報が変わったときに `VideoWorkInfoChanged` を発行し (R-11)、どちらかが変わったときに編集時刻を 1 回進める (R-13): 新しい名前では動画の内容の鍵を、新しい情報では、`touchEditedAtForUserKeys` が展開するとおりのユーザーキーのすべてのメンバーの内容の鍵を進める。`PUT /api/videos/{id}/display-name` と `PUT /api/videos/{id}/work-info` は残る: 前者は要件 8 が残すその場でのタイトルの編集に、後者は R-5 と R-9 の外部の意味に使われる ([contracts/screen-api.md、`PUT /api/videos/{id}/details`](contracts/screen-api.md#put-apivideosiddetails))。
+
+| 案 | 判定 |
+| --- | --- |
+| **両方を受け取る 1 つのルート、1 つのトランザクション** | 採用 |
+| エディターが `PUT …/display-name` を送り、その後 `PUT …/work-info` を送る | 不採用: 2 つの間の失敗や閉じたタブは、タイトルを保存し情報を保存しないまま残し、要件 8 はそれを認めない。クライアントは 2 つの要求をアトミックにできない |
+| `PUT …/work-info` の `WorkInfoInput` の省略可能なプロパティとしての `displayName` | 不採用: `WorkInfoInput` は外部の一括の操作の項目であり、その操作にはタイトル用の `POST /api/v1/video-display-names` があるので、共有のスキーマは利用者の半分が送ってはならないプロパティを持つことになる。また「ないなら消す」(R-5) はタイトルには誤りである。タイトルでは、ないことは「そのままにする」を意味しなければならない |
+| 所有者が書くすべてのフィールドに対してマージの意味を持つ `PATCH /api/videos/{id}` | 不採用: 今そのように書く動画のフィールドはなく、「タイトルを消す」には「そのままにする」とは別の目印が必要になり、エディターは常に両方の値を持つので、省略可能にしても得るものがない |
+| `OverrideStore` に置き、`WorkInfoStore` を呼ぶ `SetDetails` | 不採用: ARCHITECTURE.md は、役割の型が別の役割の公開メソッドを呼ぶことを禁じている。表示名の書き込みはすでにパッケージの関数 `registeredContentKeysForVideoIDs`、`displayNamesOf`、`writeDisplayName`、`contentKeysForUserKeys`、`touchEditedAt`、`refreshSearchKeysForContentKeys` であり、`SetDetails` は自身のトランザクションでそれらを呼ぶ。作品情報の SQL は `WorkInfoStore` に属する |
+
+**理由**: メンテナーは、エディターがタイトルと情報を 1 つの単位として保存するよう要件 8 を改めた。API はその画面に従い、その逆ではない。ストアはすでに表示名の書き込みをトランザクションの範囲の関数として持っているので、両方を覆う 1 つのトランザクションは、既存の `SetDisplayName` の形に R-2 の行を加えたものである。残す 2 つのルートは、その場でのタイトルの編集と外部の契約を変えずに保つ。

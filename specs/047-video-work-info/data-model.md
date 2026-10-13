@@ -249,6 +249,7 @@ flowchart LR
 | --- | --- |
 | `Set(videoID, WorkInfo)` | One transaction: normalize, resolve the key, check every referenced id, compare with the stored object, replace the rows of the six tables (no `video_work_info` row when `code` and `description` are both cleared), write `code_key` and `search_version`, call `touchEditedAtForUserKeys` when the object changed, return the video with `WorkInfo` |
 | `SetMany([]WorkInfoChange)` | The same for every item in one transaction; a later item for the same video wins; the first error aborts with `WorkInfoAtError` or `VideoRefNotFoundError` |
+| `SetDetails(videoID, displayName, WorkInfo)` | One transaction ([R-14](research.md#r-14-the-editor-saves-the-display-name-and-the-work-information-with-one-put-apivideosiddetails-in-one-transaction)): `NormalizeDisplayName` first, then `NormalizeWorkInfo`, either error returned before anything is written; resolve the content key (`registeredContentKeysForVideoIDs`) and the user key; check every referenced id; write the display name with `writeDisplayName` and `refreshSearchKeysForContentKeys` when it differs from `displayNamesOf`; replace the six tables' rows as `Set` does when the object differs; advance the edit time once with one `touchEditedAt` call over the deduplicated union of the edited video's content key when the name differs and every member content key of the user key (`contentKeysForUserKeys`, as `touchEditedAtForUserKeys` expands it) when the object differs, so every member of a bundle carries the edit time of the shared object; return the video with `WorkInfo`. After commit, publish `VideoOverrideChanged{VideoID}` when the name changed and `VideoWorkInfoChanged{VideoIDs}` when the object changed; a write that changes neither publishes nothing |
 | `ByUserKeys(keys)` | The objects of [Reads](#reads) |
 
 ## Search
@@ -315,6 +316,8 @@ per page like the tag counts of
 
 - `video_overrides` and the display name stay per content key: the title
   follows the representative, work information follows the bundle (R-2).
+  `SetDetails` writes each under its own key in one transaction and adds no
+  table or column for the pair (R-14).
 - The location `search_key` and `title_key`, and `SearchKeyVersion`, do not
   change; sorting by title does not read work information.
 - Lists and cards do not carry work information; the detail read does.
