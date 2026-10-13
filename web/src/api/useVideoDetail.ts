@@ -92,13 +92,24 @@ export function detailMark(): DetailMark {
  * 塗りは取り直した `favorite` で変える。付け外しの結果の知らせはこの 1 件へ重ねないので、
  * 取り直しの間と取り直しに失敗したときは前の状態のままである。失敗は reject で返す。
  */
-export function useVideoDetail(id: number): {
+export function useVideoDetail(
+  id: number,
+  initial?: Video,
+): {
   state: VideoDetailState;
   refresh: () => Promise<void>;
   replace: (video: Video, mark: DetailMark) => void;
   setFavorite: (favorite: boolean) => Promise<void>;
 } {
-  const [state, setState] = useState<VideoDetailState>({ kind: "loading", id });
+  const [state, setState] = useState<VideoDetailState>(() =>
+    initial !== undefined && initial.id === id
+      ? { kind: "ready", id, video: initial }
+      : { kind: "loading", id },
+  );
+  // 手元にある応答（編集画面の保存の応答）から始める。最初の取得までの間もそれを出し、
+  // 古い値や読み込み中を挟まない（specs/047-video-work-info/ui-design.md「Save」）。
+  // 使うのは最初の 1 回だけで、別の動画へ移ったら使わない。
+  const seed = useRef(initial);
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
   const replaceRef = useRef<(video: Video, mark: DetailMark) => void>(() => undefined);
   const setFavoriteRef = useRef<(favorite: boolean) => Promise<void>>(() =>
@@ -108,7 +119,14 @@ export function useVideoDetail(id: number): {
   const owner = useAudience() === "owner";
 
   useEffect(() => {
-    setState({ kind: "loading", id });
+    // StrictMode が効果を 2 度走らせても同じ動画には使えるよう、別の動画へ移ったときに捨てる。
+    const seeded = seed.current?.id === id ? seed.current : undefined;
+    if (seeded === undefined) seed.current = undefined;
+    setState(
+      seeded === undefined
+        ? { kind: "loading", id }
+        : { kind: "ready", id, video: seeded },
+    );
     if (!Number.isSafeInteger(id) || id < 1) {
       setState({ kind: "missing", id });
       refreshRef.current = () => Promise.resolve();
@@ -121,7 +139,7 @@ export function useVideoDetail(id: number): {
     let controller: AbortController | null = null;
     // 送信中の取り直しを始めたときの loadsStarted の値。
     let started = 0;
-    let current: Video | undefined;
+    let current: Video | undefined = seeded;
     // current を読んだ取得を始めたときの loadsStarted の値と favoriteReadMark の値。
     let currentLoad = 0;
     let currentRead = 0;

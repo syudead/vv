@@ -426,4 +426,20 @@ keys pressed during IME composition are ignored. `layout` places the list:
 | `inline`   | A target picked inside a dialog: the tag admin's merge target                         | Always open in a fixed-height box in the body (`h-combobox-panel`); `chosenId` marks the picked row; `emptyText` fills an empty box; the create row last |
 
 In `dropdown` and `inline`, no row is selected until the arrow keys or the
-pointer select one. Do not use it for values other than tag names.
+pointer select one.
+
+### CreditCommand
+
+Item `credit-command`. `TagCommand`'s sibling for the name of a person or an
+organization: the same `Command`, layouts and row content (name, hint line,
+count at the right, the create row last), with the entity name rules in place
+of the tag name rules: 1 to 200 code points and no control characters, a paste
+with a line break refused with its reason. Both are one base component,
+`NameCommand`, that takes the name rules; screens use `TagCommand` or
+`CreditCommand`, never the base. Unlike `TagCommand`, the create row is offered
+even when a candidate matches the spelling exactly, so a namesake can be
+created as a separate entry, and the caller decides what Enter without arrow
+keys picks (`onCommitSpelling`).
+
+Do not use either for values other than tag names and the names of people and
+organizations.

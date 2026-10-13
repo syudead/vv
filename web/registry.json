@@ -491,6 +491,28 @@
         {
           "path": "src/ui/TagCommand.tsx",
           "type": "registry:ui"
+        },
+        {
+          "path": "src/ui/NameCommand.tsx",
+          "type": "registry:ui"
+        }
+      ],
+      "dependencies": ["lucide-react"]
+    },
+    {
+      "name": "credit-command",
+      "type": "registry:ui",
+      "title": "CreditCommand",
+      "description": "vv component: typing the name of a person or organization to pick one or create one, with the entity-name checks, in a list below the input or a fixed-height list in a dialog. TagCommand's sibling on the same base. Uses command.",
+      "docs": "Usage rules: web/registry/rules/components.md#creditcommand (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/CreditCommand.tsx",
+          "type": "registry:ui"
+        },
+        {
+          "path": "src/ui/NameCommand.tsx",
+          "type": "registry:ui"
         }
       ],
       "dependencies": ["lucide-react"]
@@ -715,6 +737,19 @@
       "files": [
         {
           "path": "src/ui/patterns/editor-dialog.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
+      "name": "form-page",
+      "type": "registry:ui",
+      "title": "FormPage",
+      "description": "Page skeleton for many values saved together on a screen of its own: sticky header band with the actions, a notice line, an aside column and two panels that scroll on their own from lg. Uses field.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#form-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/form-page.tsx",
           "type": "registry:ui"
         }
       ]
@@ -1035,6 +1070,19 @@
       "files": [
         {
           "path": "src/designSystem/blocks/editor-dialog-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "form-page-example",
+      "type": "registry:block",
+      "title": "Form page example",
+      "description": "A working form page: a band with Cancel and Save, an aside naming what is edited, and two panels of fields.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#form-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/form-page-example.tsx",
           "type": "registry:component"
         }
       ]

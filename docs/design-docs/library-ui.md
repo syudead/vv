@@ -453,7 +453,7 @@ flowchart LR
 | Tags | Right below the title as one unit ([014 UI design, Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)) |
 | Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows |
 | Right column | Up to three sections, the playlist panel, `Up next` (a group's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
-| Guests | No tags, visibility toggle, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
+| Guests | No tags, visibility toggle, work details, `Edit details`, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
 
 Width variations stay in CSS, as in
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception):
@@ -470,15 +470,23 @@ aspect ratio from the frame at run time.
 
 ### Information rows
 
-Two rows under the title, above which a divider runs, carry no frames or
-labels.
+Up to three rows under the title, above which a divider runs, carry no
+frames.
 
 | Row | Content |
 | --- | --- |
 | First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated or uploaded image is the thumbnail; actions at the right end |
-| Second | Resolution, container, codec separated by thin rules; smallest and most subdued |
+| Work details | Only when the video has work information, and only for the owner: the set items as `label value` pairs in the first row's `text-sm` and gaps (code, the three dates as stored, the people and organizations of each role, links, IDs), wrapping item by item, with the description folded to three lines under them |
+| Last | Resolution, container, codec separated by thin rules; smallest and most subdued |
 
-The actions are favorite, `Add to playlist`, `Use current frame as thumbnail`,
+The work details row takes words as labels, muted, and the values in the body
+colour. A role, `Links` or `IDs` with more than three entries shows three and
+`+{n} more`, which opens that item in place; a description longer than three
+lines shows `Show more`. A video without work information shows the rows as
+before, and the row adds no prompt to fill it in
+([047 UI design, Video page: work details row](../../specs/047-video-work-info/ui-design.md#video-page-work-details-row)).
+
+The actions are favorite, `Add to playlist`, `Edit details`, `Use current frame as thumbnail`,
 `Edit thumbnail with ComfyUI`, `Upload an image as thumbnail`, `Open file` and
 `Copy path`: icon-only ghost buttons with tooltips. The ComfyUI entry opens the
 thumbnail editor, an `EditorDialog` over the page, and is dimmed with a set-up
@@ -517,6 +525,27 @@ flowchart LR
 Updating the cached list means the library card has changed on return. The
 failure line sits directly below the first information row, like open,
 capture and upload failures, with no toast.
+
+### Details editor
+
+`Edit details` (lucide `Clapperboard`, the owner's only) is a link to
+`/videos/:id/edit`, a full-screen `FormPage` outside the shell and the player
+that edits the display name and every work information item together; the
+title's pencil stays as the quick way to rename. The band holds `Cancel` and
+`Save`; the left column, the skeleton's `aside`, names the video (thumbnail,
+file name, duration, size and resolution, folder) and holds
+`Back to the video`; `Basics` holds the name, the code and the dates
+in a 2×2 grid, the description, links and IDs; `Credits` holds one row per
+role with the chips and a `CreditCommand` picker that finds a person or an
+organization, or makes a chip marked `New` that `Save` creates first. `Save`
+then sends one `PUT /api/videos/{id}/details` and returns to the page with the
+response, focusing `Edit details`; a reason with a `field` stays in the editor
+under that control. `Cancel`, `Back to the video` and the browser's Back ask
+`Discard changes?` when the draft changed. Opened from the page, the editor
+starts from the page's video and returns along the history, so the page's `×`
+still leads to the list; opened by its URL, it reads the video first, and a
+guest is sent to sign in
+([047 UI design, Editor](../../specs/047-video-work-info/ui-design.md#editor)).
 
 ### Player states
 

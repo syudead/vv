@@ -26,6 +26,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `command`                  | Component     | A list narrowed by typing; the inside of a combobox                          |
 | `confirm-dialog`           | Page skeleton | Confirm an action that cannot be undone                                      |
 | `confirm-dialog-example`   | Block         | Copy to start a confirm dialog                                               |
+| `credit-command`           | vv component  | Type the name of a person or organization to pick or create one              |
 | `data-table`               | Section       | A table on a card                                                            |
 | `density`                  | Pattern       | The density a skeleton gives its sections; patterns only                     |
 | `detail-page`              | Page skeleton | One item to view, with its facts beside it                                   |
@@ -42,6 +43,8 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `field`                    | Component     | Label, control, description and error of one form field                      |
 | `form-dialog`              | Page skeleton | A few values asked without leaving the screen                                |
 | `form-dialog-example`      | Block         | Copy to start a form dialog                                                  |
+| `form-page`                | Page skeleton | Many values saved together, on a screen of its own                           |
+| `form-page-example`        | Block         | Copy to start a form page                                                    |
 | `grouped-list`             | Section       | Rows under headings that stick, such as days                                 |
 | `grouped-list-example`     | Block         | Copy to start a list of rows grouped under headings                          |
 | `form-row`                 | Section       | One setting: label, description, control                                     |

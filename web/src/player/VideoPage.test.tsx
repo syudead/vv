@@ -2299,7 +2299,10 @@ describe("VideoPage", () => {
       const add = buttons[0]!;
       const favorite = screen.getByRole("button", { name: "Favorite" });
       expect(favorite.nextElementSibling).toBe(add);
-      expect(add.nextElementSibling).toBe(
+      // 間には作品情報の編集の入口（specs/047-video-work-info/ui-design.md「Video page: entry」）。
+      const details = screen.getByRole("link", { name: "Edit details" });
+      expect(add.nextElementSibling).toBe(details);
+      expect(details.nextElementSibling).toBe(
         screen.getByRole("button", { name: "Use current frame as thumbnail" }),
       );
 
