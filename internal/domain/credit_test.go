@@ -129,3 +129,15 @@ func TestExternalIDIndexFindsTheSentPosition(t *testing.T) {
 		t.Errorf("ExternalIDIndex = %d, want -1", got)
 	}
 }
+
+// NormalizeExternalID は保存と同じく前後の空白を落とし、片方が空か規則に合わない外部 ID を false にする。
+func TestNormalizeExternalIDForLookup(t *testing.T) {
+	if got, ok := NormalizeExternalID(ExternalID{Source: " example ", Value: "　 42 "}); !ok || got != (ExternalID{Source: "example", Value: "42"}) {
+		t.Errorf("NormalizeExternalID = %+v, %v", got, ok)
+	}
+	for _, id := range []ExternalID{{Source: "example", Value: " "}, {Source: "", Value: ""}, {Source: "ex\u0007", Value: "1"}} {
+		if _, ok := NormalizeExternalID(id); ok {
+			t.Errorf("NormalizeExternalID(%+v) が true", id)
+		}
+	}
+}

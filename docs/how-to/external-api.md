@@ -1,7 +1,8 @@
 # Use the external API
 
 With an API token, an external tool such as a scraper reads the video list,
-starts scans, and sets tags, display names and cover thumbnails through
+starts scans, and sets tags, display names, cover thumbnails and work
+information through
 `/api/v1` or the MCP server at `/mcp`. Reasons behind the decisions are in
 [specs/026-external-api/research.md](../../specs/026-external-api/research.md).
 
@@ -65,10 +66,12 @@ curl -H "Authorization: Bearer $TOKEN" "$BASE/api/v1/scans/current"
 | Operation takes a body | Requires `Content-Type: application/json` |
 | Token revoked during a request | The request is cut off |
 
-- The error body is `{ code, message, reason?, limit?, index?, tagId?, tagName? }`.
+- The error body is
+  `{ code, message, reason?, limit?, index?, field?, tagId?, tagName? }`.
   `message` is English text; branch on `code` and `reason`. `tagId` and
   `tagName` come only with a tag name conflict
-  ([Tidy up tags](#tidy-up-tags)).
+  ([Tidy up tags](#tidy-up-tags)); `field` comes only with work information
+  errors ([Set work information](#set-work-information)).
 - The token list on the Settings page shows the last-used time, updated at most
   once a minute.
 
@@ -487,6 +490,116 @@ before `index` are applied, and that item and the rest are not. To continue,
 fix or drop the item at `index` and resend from `index` on; resending an applied
 item only regenerates it at the same position.
 
+## Set work information
+
+A video's work information is its code, description, dates, people,
+organizations, URLs and external IDs. People and organizations are entities of
+their own, which the video references by id. The source of truth is
+[specs/047-video-work-info/contracts/external-api.md](../../specs/047-video-work-info/contracts/external-api.md).
+
+### Write videos
+
+`POST /api/v1/video-work-info` replaces the work information of several
+videos.
+
+```json
+{ "items": [ { "video": { "path": "/media/a.mp4" },
+               "workInfo": { "code": "ABC-123",
+                             "dates": [ { "kind": "release", "date": "2024-06" } ],
+                             "people": [ { "role": "performer", "person": { "id": 7 } } ],
+                             "organizations": [ { "role": "maker", "organization": { "id": 2 } } ],
+                             "urls": [ "https://example.com/abc-123" ],
+                             "externalIds": [ { "source": "example", "value": "abc123" } ] } },
+             { "video": { "id": 12 }, "workInfo": {} } ] }
+```
+
+- Each `workInfo` replaces the stored object. A property that is absent,
+  `null` or empty after trimming is cleared, so `{}` clears everything. To
+  change one field, read the video, change the field and send the whole
+  object.
+- 1 to 20000 items in one transaction. Any error applies nothing and gives
+  `index` in `items`; a later item for the same video wins.
+- The response is `{ items: [{ video: { id, contentKey }, workInfo }] }` in the
+  order of `items`. Repeating a request returns `200` and changes nothing,
+  including `updatedAt`.
+- Every video read (`GET /api/v1/videos`, `GET /api/v1/videos/lookup`) carries
+  `workInfo`. In this API an unset `code` or `description` is `null` and an
+  empty list is `[]`.
+
+The fields follow these rules; the full list is in
+[data-model.md, Fields](../../specs/047-video-work-info/data-model.md#fields).
+
+| Field | Rule |
+| --- | --- |
+| `code` | At most 100 characters |
+| `description` | At most 10,000 characters; line feeds allowed |
+| `dates[]` | `kind` is `release`, `recorded` or `published`, one per kind; `date` is `YYYY`, `YYYY-MM` or `YYYY-MM-DD` |
+| `people[]` | `role` is `performer`, `director`, `photographer` or `streamer`; `person.id` exists; up to 100 per role |
+| `organizations[]` | `role` is `maker` or `label`; `organization.id` exists; up to 20 per role |
+| `urls[]` | Up to 20 absolute `http` or `https` URLs of at most 2,048 characters, no repeats |
+| `externalIds[]` | Up to 20; `source` at most 50 characters, `value` at most 200, no repeats |
+
+No string may contain control characters. A broken rule returns `400` with a
+`work_info_*` reason, `field` (the path inside that item's `workInfo`, such as
+`people[0].person.id`) and, for a limit, `limit`. A person or organization id
+that does not exist returns `404` (`person_not_found` or
+`organization_not_found`) with `field`; a video that cannot be found returns
+`404` (`video_not_found`).
+
+### Manage people and organizations
+
+People live under `/api/v1/people` and organizations under
+`/api/v1/organizations`, with the same five operations. An organization also
+has `parent`, which is `null` at the root, and accepts `parentId`.
+
+| Operation | Request | Response |
+| --- | --- | --- |
+| List | `GET …?q=&sort=&cursor=&limit=`, as [List tags](#list-tags) | `{ items, total, totalAll, nextCursor? }` |
+| Look up | `GET …?source=example&externalId=42` | The one entity holding that external ID in `items`, or empty `items` |
+| Create | `POST …` with `{ name, aliases?, externalIds?, parentId? }` | `200` and the entity |
+| Update | `POST …/update` with `{ id, …fields }` | `200` and the entity; absent fields stay, a given list replaces the stored one, `null` empties it |
+| Merge | `POST …/merge` with `{ targetId, sourceIds }` | `{ person or organization, notFoundIds }`; sources become aliases of the target |
+| Delete | `POST …/delete` with `{ ids }` | `{ deletedIds, notFoundIds }` in `ids` order |
+
+- An external ID names at most one entity of a kind. Creating or updating an
+  entity with an external ID that another entity holds returns `409`
+  (`external_id_taken`, `field: externalIds[i]`).
+- `sourceIds` and `ids` take 1 to 20000 ids; outside that range is `400`
+  (`work_info_too_many`, `field`, `limit`). A merge whose sources include
+  `targetId` is `400` (`merge_same_person` or `merge_same_organization`).
+
+### Example: write what a scraper found
+
+Look each performer up by the external site's ID, create the person only when
+the lookup is empty, then write the video once with the ids.
+
+```mermaid
+sequenceDiagram
+  participant S as Scraper
+  participant V as VVMDM
+  S->>V: GET /api/v1/people?source=example&externalId=42
+  alt items is empty
+    S->>V: POST /api/v1/people
+  end
+  S->>V: POST /api/v1/video-work-info with the person's id
+```
+
+```sh
+# 1. Look the performer up by the external ID.
+ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  "$BASE/api/v1/people?source=example&externalId=42" | jq '.items[0].id // empty')
+
+# 2. Create the performer only when the lookup found none.
+[ -n "$ID" ] || ID=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" "$BASE/api/v1/people" \
+  -d '{"name":"山田 花子","externalIds":[{"source":"example","value":"42"}]}' | jq '.id')
+
+# 3. Write the video with the id.
+curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  "$BASE/api/v1/video-work-info" \
+  -d '{"items":[{"video":{"contentKey":"…"},"workInfo":{"code":"ABC-123","people":[{"role":"performer","person":{"id":'"$ID"'}}]}}]}'
+```
+
 ## Example: integrate a scraper
 
 This flow looks up newly scanned videos on an external site and tags them with
@@ -564,6 +677,12 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `batch_tags` | `POST /api/v1/tags/batch` |
 | `list_rejected_tag_names` | `GET /api/v1/tags/rejected-names`; `limit` defaults to 100 |
 | `forget_rejected_tag_name` | `DELETE /api/v1/tags/rejected-names` |
+| `update_video_work_info` | `POST /api/v1/video-work-info` |
+| `list_people`, `list_organizations` | `GET /api/v1/people`, `GET /api/v1/organizations`; `limit` defaults to 100 in the tool |
+| `create_person`, `create_organization` | `POST /api/v1/people`, `POST /api/v1/organizations` |
+| `update_person`, `update_organization` | `POST /api/v1/people/update`, `POST /api/v1/organizations/update` |
+| `merge_people`, `merge_organizations` | `POST /api/v1/people/merge`, `POST /api/v1/organizations/merge` |
+| `delete_people`, `delete_organizations` | `POST /api/v1/people/delete`, `POST /api/v1/organizations/delete` |
 
 - Tool arguments have the shape of the operation's query and body, and the
   structured result the shape of its response body. An operation error is a

@@ -591,7 +591,10 @@ func requiresOtherJSONBody(r *http.Request) bool {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
 			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 			"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists":
+			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists",
+			"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
+			"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
+			"/api/v1/organizations/merge", "/api/v1/organizations/delete":
 			return true
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/"); ok {

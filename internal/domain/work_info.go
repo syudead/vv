@@ -551,10 +551,18 @@ func (VideoWorkInfoChanged) event() {}
 // 一覧の位置を載せるために使う。
 func ExternalIDIndex(raw []ExternalID, id ExternalID) int {
 	for i, entry := range raw {
-		normalized, keep, err := normalizeExternalID("", entry)
-		if err == nil && keep && normalized == id {
+		if normalized, ok := NormalizeExternalID(entry); ok && normalized == id {
 			return i
 		}
 	}
 	return -1
+}
+
+// NormalizeExternalID は外部 ID 1 件を保存と同じ手順で整え、両方の半分が空でなく規則に合えば true を
+// 返す。外部 ID での検索（外部連携 API の GET /api/v1/people?source=…&externalId=…）が保存済みの綴りと
+// 同じ形で照らすのにも使う。規則に合わない外部 ID はどの実体も持ちえないので、呼び手は何にも当たらない
+// ものとして扱う。
+func NormalizeExternalID(id ExternalID) (ExternalID, bool) {
+	normalized, keep, err := normalizeExternalID("", id)
+	return normalized, keep && err == nil
 }

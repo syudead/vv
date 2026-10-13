@@ -57,11 +57,7 @@ func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.Lis
 // limit が 1〜200 の外、q が 100 文字を超えるときは 400 を書いて false を返す。
 // カーソルの中身は保存層が解く（解けなければ ErrInvalidCursor）。
 func (s *server) parseTagListQuery(w http.ResponseWriter, params gen.ListTagsParams) (domain.TagListQuery, bool) {
-	var sort *string
-	if params.Sort != nil {
-		value := string(*params.Sort)
-		sort = &value
-	}
+	sort := sortParam(params.Sort)
 	query, problem := buildTagListQuery(params.Q, params.Tentative, params.Unused, sort, params.Cursor, params.Limit)
 	if !s.acceptTagListQuery(w, problem) {
 		return domain.TagListQuery{}, false
@@ -85,6 +81,15 @@ func (s *server) acceptTagListQuery(w http.ResponseWriter, problem tagListProble
 		return false
 	}
 	return true
+}
+
+// sortParam は生成された並び順の引数を buildTagListQuery の文字列にする。省いたものは nil。
+func sortParam[T ~string](sort *T) *string {
+	if sort == nil {
+		return nil
+	}
+	value := string(*sort)
+	return &value
 }
 
 // tagListProblem は buildTagListQuery が断った理由である。

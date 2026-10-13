@@ -14,6 +14,33 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+// Defines values for CreditSort.
+const (
+	CreditSortCountAsc    CreditSort = "countAsc"
+	CreditSortCountDesc   CreditSort = "countDesc"
+	CreditSortCreatedAsc  CreditSort = "createdAsc"
+	CreditSortCreatedDesc CreditSort = "createdDesc"
+	CreditSortName        CreditSort = "name"
+)
+
+// Valid indicates whether the value is a known member of the CreditSort enum.
+func (e CreditSort) Valid() bool {
+	switch e {
+	case CreditSortCountAsc:
+		return true
+	case CreditSortCountDesc:
+		return true
+	case CreditSortCreatedAsc:
+		return true
+	case CreditSortCreatedDesc:
+		return true
+	case CreditSortName:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for ErrorCode.
 const (
 	ErrorCodeConflict                  ErrorCode = "conflict"
@@ -49,10 +76,16 @@ const (
 	DisplayNameControlCharacters ErrorReason = "display_name_control_characters"
 	DisplayNameTooLong           ErrorReason = "display_name_too_long"
 	DurationUnknown              ErrorReason = "duration_unknown"
+	ExternalIdTaken              ErrorReason = "external_id_taken"
 	FileUnavailable              ErrorReason = "file_unavailable"
 	InvalidCursor                ErrorReason = "invalid_cursor"
+	MergeSameOrganization        ErrorReason = "merge_same_organization"
+	MergeSamePerson              ErrorReason = "merge_same_person"
 	MergeSameTag                 ErrorReason = "merge_same_tag"
 	NoScan                       ErrorReason = "no_scan"
+	OrganizationNotFound         ErrorReason = "organization_not_found"
+	OrganizationParentCycle      ErrorReason = "organization_parent_cycle"
+	PersonNotFound               ErrorReason = "person_not_found"
 	TagMergeRequired             ErrorReason = "tag_merge_required"
 	TagNameControlCharacters     ErrorReason = "tag_name_control_characters"
 	TagNameEmpty                 ErrorReason = "tag_name_empty"
@@ -64,6 +97,14 @@ const (
 	TooManyTags                  ErrorReason = "too_many_tags"
 	TooManyVideos                ErrorReason = "too_many_videos"
 	VideoNotFound                ErrorReason = "video_not_found"
+	WorkInfoControlCharacters    ErrorReason = "work_info_control_characters"
+	WorkInfoDuplicate            ErrorReason = "work_info_duplicate"
+	WorkInfoEmpty                ErrorReason = "work_info_empty"
+	WorkInfoInvalidDate          ErrorReason = "work_info_invalid_date"
+	WorkInfoInvalidLanguage      ErrorReason = "work_info_invalid_language"
+	WorkInfoInvalidUrl           ErrorReason = "work_info_invalid_url"
+	WorkInfoTooLong              ErrorReason = "work_info_too_long"
+	WorkInfoTooMany              ErrorReason = "work_info_too_many"
 )
 
 // Valid indicates whether the value is a known member of the ErrorReason enum.
@@ -75,13 +116,25 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case DurationUnknown:
 		return true
+	case ExternalIdTaken:
+		return true
 	case FileUnavailable:
 		return true
 	case InvalidCursor:
 		return true
+	case MergeSameOrganization:
+		return true
+	case MergeSamePerson:
+		return true
 	case MergeSameTag:
 		return true
 	case NoScan:
+		return true
+	case OrganizationNotFound:
+		return true
+	case OrganizationParentCycle:
+		return true
+	case PersonNotFound:
 		return true
 	case TagMergeRequired:
 		return true
@@ -104,6 +157,22 @@ func (e ErrorReason) Valid() bool {
 	case TooManyVideos:
 		return true
 	case VideoNotFound:
+		return true
+	case WorkInfoControlCharacters:
+		return true
+	case WorkInfoDuplicate:
+		return true
+	case WorkInfoEmpty:
+		return true
+	case WorkInfoInvalidDate:
+		return true
+	case WorkInfoInvalidLanguage:
+		return true
+	case WorkInfoInvalidUrl:
+		return true
+	case WorkInfoTooLong:
+		return true
+	case WorkInfoTooMany:
 		return true
 	default:
 		return false
@@ -160,25 +229,25 @@ func (e TagBatchRequestAction) Valid() bool {
 
 // Defines values for TagSort.
 const (
-	CountAsc    TagSort = "countAsc"
-	CountDesc   TagSort = "countDesc"
-	CreatedAsc  TagSort = "createdAsc"
-	CreatedDesc TagSort = "createdDesc"
-	Name        TagSort = "name"
+	TagSortCountAsc    TagSort = "countAsc"
+	TagSortCountDesc   TagSort = "countDesc"
+	TagSortCreatedAsc  TagSort = "createdAsc"
+	TagSortCreatedDesc TagSort = "createdDesc"
+	TagSortName        TagSort = "name"
 )
 
 // Valid indicates whether the value is a known member of the TagSort enum.
 func (e TagSort) Valid() bool {
 	switch e {
-	case CountAsc:
+	case TagSortCountAsc:
 		return true
-	case CountDesc:
+	case TagSortCountDesc:
 		return true
-	case CreatedAsc:
+	case TagSortCreatedAsc:
 		return true
-	case CreatedDesc:
+	case TagSortCreatedDesc:
 		return true
-	case Name:
+	case TagSortName:
 		return true
 	default:
 		return false
@@ -224,12 +293,147 @@ func (e VideoTagsRequestAction) Valid() bool {
 	}
 }
 
+// Defines values for WorkDateKind.
+const (
+	Published WorkDateKind = "published"
+	Recorded  WorkDateKind = "recorded"
+	Release   WorkDateKind = "release"
+)
+
+// Valid indicates whether the value is a known member of the WorkDateKind enum.
+func (e WorkDateKind) Valid() bool {
+	switch e {
+	case Published:
+		return true
+	case Recorded:
+		return true
+	case Release:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkOrganizationRole.
+const (
+	Label WorkOrganizationRole = "label"
+	Maker WorkOrganizationRole = "maker"
+)
+
+// Valid indicates whether the value is a known member of the WorkOrganizationRole enum.
+func (e WorkOrganizationRole) Valid() bool {
+	switch e {
+	case Label:
+		return true
+	case Maker:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkPersonRole.
+const (
+	Director     WorkPersonRole = "director"
+	Performer    WorkPersonRole = "performer"
+	Photographer WorkPersonRole = "photographer"
+	Streamer     WorkPersonRole = "streamer"
+)
+
+// Valid indicates whether the value is a known member of the WorkPersonRole enum.
+func (e WorkPersonRole) Valid() bool {
+	switch e {
+	case Director:
+		return true
+	case Performer:
+		return true
+	case Photographer:
+		return true
+	case Streamer:
+		return true
+	default:
+		return false
+	}
+}
+
+// Alias 人物か団体の別名 1 件（specs/047-video-work-info/data-model.md「Fields」）
+type Alias struct {
+	// Language BCP 47 の構文の言語タグ。無ければ省く
+	Language *string `json:"language,omitempty"`
+	Name     string  `json:"name"`
+}
+
+// CreditDeleteRequest defines model for CreditDeleteRequest.
+type CreditDeleteRequest struct {
+	// Ids 消す実体の id。1〜20,000 件。範囲外は `work_info_too_many`（field は ids）
+	Ids []int64 `json:"ids"`
+}
+
+// CreditDeleteResponse 2 つは重ならず、どちらも `ids` に現れた順で重複が無い。無ければ []
+type CreditDeleteResponse struct {
+	// DeletedIds 消した実体
+	DeletedIds []int64 `json:"deletedIds"`
+
+	// NotFoundIds 無かった実体
+	NotFoundIds []int64 `json:"notFoundIds"`
+}
+
+// CreditIdRef 書き込みで人物か団体 1 件を指す参照
+type CreditIdRef struct {
+	Id int64 `json:"id"`
+}
+
+// CreditInput 人物か団体を作るときの本文。parentId は団体だけが使う
+type CreditInput struct {
+	Aliases     *[]Alias      `json:"aliases,omitempty"`
+	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
+	Name        string        `json:"name"`
+
+	// ParentId 親の団体の id。団体だけで、人物に送ると 400 invalid_request
+	ParentId *int64 `json:"parentId,omitempty"`
+}
+
+// CreditMergeRequest defines model for CreditMergeRequest.
+type CreditMergeRequest struct {
+	// SourceIds 統合元の id。1〜20,000 件。範囲外は `work_info_too_many`（field は sourceIds）
+	SourceIds []int64 `json:"sourceIds"`
+
+	// TargetId 結び付き・名前・外部 ID を受け取る実体
+	TargetId int64 `json:"targetId"`
+}
+
+// CreditRef 人物か団体 1 件への参照。name はその実体の今の名前
+type CreditRef struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// CreditSort 人物と団体の一覧の並び順。タグの一覧（TagSort）と同じ 5 つで、値が同じものは名前の自然順、それも同じなら id
+type CreditSort string
+
+// CreditUpdateRequest 人物か団体の書き換えの本文。id のほかはどれも省いてよく、省いたものは今のまま残す。一覧は丸ごと
+// 置き換え、null は一覧を空にする。parentId は団体だけが使い、null は親を外す
+type CreditUpdateRequest struct {
+	Aliases     *[]Alias      `json:"aliases,omitempty"`
+	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
+
+	// Id 書き換える実体
+	Id   int64   `json:"id"`
+	Name *string `json:"name,omitempty"`
+
+	// ParentId 親の団体の id。null は親を外す。人物に送ると 400 invalid_request
+	ParentId *int64 `json:"parentId,omitempty"`
+}
+
 // Error 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
 type Error struct {
 	// Code 機械可読なエラー種別。
 	Code ErrorCode `json:"code"`
 
-	// Index 原因になった要素の位置（0 から）。タグ名の誤りでは tags の、表示名・サムネイルの操作では items の、それ以外では videos の位置を指す（contracts/external-api.md §4）
+	// Field reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く （people[0].person.id・aliases[2].language・externalIds[1]・parentId）。作品情報の一括操作では その項目の workInfo の中の経路である。work_info_*・person_not_found・organization_not_found・ external_id_taken のときだけ入る（specs/047-video-work-info/contracts/screen-api.md 「Added reason values and field」）
+	Field *string `json:"field,omitempty"`
+
+	// Index 原因になった要素の位置（0 から）。タグ名の誤りでは tags の、表示名・サムネイル・作品情報の 操作では items の、それ以外では videos の位置を指す（contracts/external-api.md §4）
 	Index *int `json:"index,omitempty"`
 
 	// Limit reason の上限値。上限を持つ reason のときだけ入る
@@ -253,6 +457,12 @@ type ErrorCode string
 
 // ErrorReason 同じ code の中で状況を区別する下位の理由。
 type ErrorReason string
+
+// ExternalId 外部の情報源での識別子 1 件
+type ExternalId struct {
+	Source string `json:"source"`
+	Value  string `json:"value"`
+}
 
 // ExternalScan defines model for ExternalScan.
 type ExternalScan struct {
@@ -308,9 +518,14 @@ type ExternalVideo struct {
 	// Title 有効な題名。表示名があればそれ、無ければ代表の所在（locations の先頭）の題名
 	Title string `json:"title"`
 
-	// UpdatedAt vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル）を最後に編集した日時。
-	// 一度も編集していなければ addedAt と同じ。この API の video-tags・display-names も進める
+	// UpdatedAt vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル・作品情報）を最後に編集した日時。
+	// 一度も編集していなければ addedAt と同じ。この API の video-tags・display-names・
+	// video-work-info も進める
 	UpdatedAt time.Time `json:"updatedAt"`
+
+	// WorkInfo 動画の作品情報（specs/047-video-work-info/contracts/external-api.md「ExternalVideo changes」）。
+	// 画面の API と同じ 7 つのプロパティで、この API では未設定の code・description は null、空の一覧は []
+	WorkInfo WorkInfo `json:"workInfo"`
 }
 
 // ExternalVideoLocation defines model for ExternalVideoLocation.
@@ -342,6 +557,88 @@ type ExternalVideoTag struct {
 
 	// Tentative 仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）
 	Tentative bool `json:"tentative"`
+}
+
+// Organization 団体 1 件。Person と同じ項目に親の団体が加わる
+type Organization struct {
+	// Aliases 名前の自然順。無ければ []
+	Aliases   []Alias   `json:"aliases"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// ExternalIds (source, value) の順。無ければ []
+	ExternalIds []ExternalId `json:"externalIds"`
+	Id          int64        `json:"id"`
+	Name        string       `json:"name"`
+
+	// Parent 親の団体（CreditRef の形）。根の団体では null
+	Parent *struct {
+		Id   int64  `json:"id"`
+		Name string `json:"name"`
+	} `json:"parent"`
+
+	// VideoCount この団体をどれかの役割で結ぶ、表示中の動画の数
+	VideoCount int `json:"videoCount"`
+}
+
+// OrganizationList 団体の一覧
+type OrganizationList struct {
+	Items []Organization `json:"items"`
+
+	// NextCursor 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 条件（q、または外部 ID）に合う団体の数。ページングとは独立に返る
+	Total int `json:"total"`
+
+	// TotalAll 全部の団体の数
+	TotalAll int `json:"totalAll"`
+}
+
+// OrganizationMergeResponse defines model for OrganizationMergeResponse.
+type OrganizationMergeResponse struct {
+	// NotFoundIds 無かったので飛ばした統合元。無ければ []
+	NotFoundIds []int64 `json:"notFoundIds"`
+
+	// Organization 団体 1 件。Person と同じ項目に親の団体が加わる
+	Organization Organization `json:"organization"`
+}
+
+// Person 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
+type Person struct {
+	// Aliases 名前の自然順。無ければ []
+	Aliases   []Alias   `json:"aliases"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// ExternalIds (source, value) の順。無ければ []
+	ExternalIds []ExternalId `json:"externalIds"`
+	Id          int64        `json:"id"`
+	Name        string       `json:"name"`
+
+	// VideoCount この人物をどれかの役割で結ぶ、表示中の動画の数
+	VideoCount int `json:"videoCount"`
+}
+
+// PersonList 人物の一覧
+type PersonList struct {
+	Items []Person `json:"items"`
+
+	// NextCursor 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 条件（q、または外部 ID）に合う人物の数。ページングとは独立に返る
+	Total int `json:"total"`
+
+	// TotalAll 全部の人物の数
+	TotalAll int `json:"totalAll"`
+}
+
+// PersonMergeResponse defines model for PersonMergeResponse.
+type PersonMergeResponse struct {
+	// NotFoundIds 無かったので飛ばした統合元。無ければ []
+	NotFoundIds []int64 `json:"notFoundIds"`
+
+	// Person 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
+	Person Person `json:"person"`
 }
 
 // RejectedTagNameForgetResult defines model for RejectedTagNameForgetResult.
@@ -576,11 +873,212 @@ type VideoThumbnailsResponse struct {
 	Items []VideoThumbnailsItem `json:"items"`
 }
 
+// VideoWorkInfoChange defines model for VideoWorkInfoChange.
+type VideoWorkInfoChange struct {
+	// Video 動画の指定。id・contentKey・path のちょうど 1 つを持つ。path は正規化せず、登録フォルダの下の 今の所在の path とバイト列で比べる
+	Video VideoRef `json:"video"`
+
+	// WorkInfo 作品情報の書き込み 1 件。画面の API の WorkInfoInput と同じ形で、項目の規則も同じ
+	// （specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」、data-model.md「Fields」）。
+	// どのプロパティも省いてよく null も受け付ける。省いたものと null は解除で、全体を置き換える
+	WorkInfo WorkInfoInput `json:"workInfo"`
+}
+
+// VideoWorkInfoItem defines model for VideoWorkInfoItem.
+type VideoWorkInfoItem struct {
+	Video VideoTagsVideo `json:"video"`
+
+	// WorkInfo 動画の作品情報（specs/047-video-work-info/contracts/external-api.md「ExternalVideo changes」）。
+	// 画面の API と同じ 7 つのプロパティで、この API では未設定の code・description は null、空の一覧は []
+	WorkInfo WorkInfo `json:"workInfo"`
+}
+
+// VideoWorkInfoRequest defines model for VideoWorkInfoRequest.
+type VideoWorkInfoRequest struct {
+	// Items 1〜20000 件。範囲外は `too_many_videos`
+	Items []VideoWorkInfoChange `json:"items"`
+}
+
+// VideoWorkInfoResponse defines model for VideoWorkInfoResponse.
+type VideoWorkInfoResponse struct {
+	// Items items の順
+	Items []VideoWorkInfoItem `json:"items"`
+}
+
+// WorkDate defines model for WorkDate.
+type WorkDate struct {
+	// Date YYYY・YYYY-MM・YYYY-MM-DD（日まであれば暦にある日）
+	//
+	// Examples: 2024, 2024-02, 2024-02-29
+	Date string `json:"date"`
+
+	// Kind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+	Kind WorkDateKind `json:"kind"`
+}
+
+// WorkDateKind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+type WorkDateKind string
+
+// WorkInfo 動画の作品情報（specs/047-video-work-info/contracts/external-api.md「ExternalVideo changes」）。
+// 画面の API と同じ 7 つのプロパティで、この API では未設定の code・description は null、空の一覧は []
+type WorkInfo struct {
+	// Code 品番
+	Code *string `json:"code"`
+
+	// Dates 種類の順（release・recorded・published）
+	Dates []WorkDate `json:"dates"`
+
+	// Description 説明。改行を含みうる
+	Description *string `json:"description"`
+
+	// ExternalIds (source, value) の順
+	ExternalIds []ExternalId `json:"externalIds"`
+
+	// Organizations 役割の順、同じ役割の中は入力した順。name は団体の今の名前
+	Organizations []WorkOrganization `json:"organizations"`
+
+	// People 役割の順、同じ役割の中は入力した順。name は人物の今の名前
+	People []WorkPerson `json:"people"`
+
+	// Urls 入力した順
+	Urls []string `json:"urls"`
+}
+
+// WorkInfoInput 作品情報の書き込み 1 件。画面の API の WorkInfoInput と同じ形で、項目の規則も同じ
+// （specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」、data-model.md「Fields」）。
+// どのプロパティも省いてよく null も受け付ける。省いたものと null は解除で、全体を置き換える
+type WorkInfoInput struct {
+	Code          *string                  `json:"code,omitempty"`
+	Dates         *[]WorkDate              `json:"dates,omitempty"`
+	Description   *string                  `json:"description,omitempty"`
+	ExternalIds   *[]ExternalId            `json:"externalIds,omitempty"`
+	Organizations *[]WorkOrganizationInput `json:"organizations,omitempty"`
+	People        *[]WorkPersonInput       `json:"people,omitempty"`
+	Urls          *[]string                `json:"urls,omitempty"`
+}
+
+// WorkOrganization defines model for WorkOrganization.
+type WorkOrganization struct {
+	// Organization 人物か団体 1 件への参照。name はその実体の今の名前
+	Organization CreditRef `json:"organization"`
+
+	// Role 動画での団体の役割
+	Role WorkOrganizationRole `json:"role"`
+}
+
+// WorkOrganizationInput defines model for WorkOrganizationInput.
+type WorkOrganizationInput struct {
+	// Organization 書き込みで人物か団体 1 件を指す参照
+	Organization CreditIdRef `json:"organization"`
+
+	// Role 動画での団体の役割
+	Role WorkOrganizationRole `json:"role"`
+}
+
+// WorkOrganizationRole 動画での団体の役割
+type WorkOrganizationRole string
+
+// WorkPerson defines model for WorkPerson.
+type WorkPerson struct {
+	// Person 人物か団体 1 件への参照。name はその実体の今の名前
+	Person CreditRef `json:"person"`
+
+	// Role 動画での人物の役割
+	Role WorkPersonRole `json:"role"`
+}
+
+// WorkPersonInput defines model for WorkPersonInput.
+type WorkPersonInput struct {
+	// Person 書き込みで人物か団体 1 件を指す参照
+	Person CreditIdRef `json:"person"`
+
+	// Role 動画での人物の役割
+	Role WorkPersonRole `json:"role"`
+}
+
+// WorkPersonRole 動画での人物の役割
+type WorkPersonRole string
+
+// CreditCursor defines model for CreditCursor.
+type CreditCursor = string
+
+// CreditExternalId defines model for CreditExternalId.
+type CreditExternalId = string
+
+// CreditLimit defines model for CreditLimit.
+type CreditLimit = int
+
+// CreditQuery defines model for CreditQuery.
+type CreditQuery = string
+
+// CreditSource defines model for CreditSource.
+type CreditSource = string
+
+// CreditDeleteInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+type CreditDeleteInvalid = Error
+
+// CreditExternalIdTaken 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+type CreditExternalIdTaken = Error
+
+// CreditInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+type CreditInvalid = Error
+
+// CreditListInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+type CreditListInvalid = Error
+
+// CreditMergeInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+type CreditMergeInvalid = Error
+
+// CreditNotFound 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+type CreditNotFound = Error
+
 // Internal 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
 type Internal = Error
 
 // Unauthenticated 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
 type Unauthenticated = Error
+
+// ListOrganizationsParams defines parameters for ListOrganizations.
+type ListOrganizationsParams struct {
+	// Q 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする
+	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort 並び順
+	Sort *CreditSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Cursor 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する
+	Cursor *CreditCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Source 外部 ID の情報源。`externalId` と組で渡すと、その外部 ID を持つ実体だけを返す
+	Source *CreditSource `form:"source,omitempty" json:"source,omitempty"`
+
+	// ExternalId 外部 ID の値。`source` と組で渡す
+	ExternalId *CreditExternalId `form:"externalId,omitempty" json:"externalId,omitempty"`
+}
+
+// ListPeopleParams defines parameters for ListPeople.
+type ListPeopleParams struct {
+	// Q 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする
+	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort 並び順
+	Sort *CreditSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Cursor 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する
+	Cursor *CreditCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Source 外部 ID の情報源。`externalId` と組で渡すと、その外部 ID を持つ実体だけを返す
+	Source *CreditSource `form:"source,omitempty" json:"source,omitempty"`
+
+	// ExternalId 外部 ID の値。`source` と組で渡す
+	ExternalId *CreditExternalId `form:"externalId,omitempty" json:"externalId,omitempty"`
+}
 
 // ListTagsParams defines parameters for ListTags.
 type ListTagsParams struct {
@@ -639,6 +1137,30 @@ type LookupVideoParams struct {
 	Path *string `form:"path,omitempty" json:"path,omitempty"`
 }
 
+// CreateOrganizationJSONRequestBody defines body for CreateOrganization for application/json ContentType.
+type CreateOrganizationJSONRequestBody = CreditInput
+
+// DeleteOrganizationsJSONRequestBody defines body for DeleteOrganizations for application/json ContentType.
+type DeleteOrganizationsJSONRequestBody = CreditDeleteRequest
+
+// MergeOrganizationsJSONRequestBody defines body for MergeOrganizations for application/json ContentType.
+type MergeOrganizationsJSONRequestBody = CreditMergeRequest
+
+// UpdateOrganizationJSONRequestBody defines body for UpdateOrganization for application/json ContentType.
+type UpdateOrganizationJSONRequestBody = CreditUpdateRequest
+
+// CreatePersonJSONRequestBody defines body for CreatePerson for application/json ContentType.
+type CreatePersonJSONRequestBody = CreditInput
+
+// DeletePeopleJSONRequestBody defines body for DeletePeople for application/json ContentType.
+type DeletePeopleJSONRequestBody = CreditDeleteRequest
+
+// MergePeopleJSONRequestBody defines body for MergePeople for application/json ContentType.
+type MergePeopleJSONRequestBody = CreditMergeRequest
+
+// UpdatePersonJSONRequestBody defines body for UpdatePerson for application/json ContentType.
+type UpdatePersonJSONRequestBody = CreditUpdateRequest
+
 // BatchTagsJSONRequestBody defines body for BatchTags for application/json ContentType.
 type BatchTagsJSONRequestBody = TagBatchRequest
 
@@ -660,8 +1182,41 @@ type UpdateVideoTagsJSONRequestBody = VideoTagsRequest
 // UpdateVideoThumbnailsJSONRequestBody defines body for UpdateVideoThumbnails for application/json ContentType.
 type UpdateVideoThumbnailsJSONRequestBody = VideoThumbnailsRequest
 
+// UpdateVideoWorkInfoJSONRequestBody defines body for UpdateVideoWorkInfo for application/json ContentType.
+type UpdateVideoWorkInfoJSONRequestBody = VideoWorkInfoRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListOrganizations 団体の一覧を返す、または外部 ID で団体を 1 件引く
+	// (GET /organizations)
+	ListOrganizations(w http.ResponseWriter, r *http.Request, params ListOrganizationsParams)
+	// CreateOrganization 団体を作る
+	// (POST /organizations)
+	CreateOrganization(w http.ResponseWriter, r *http.Request)
+	// DeleteOrganizations 団体を消す
+	// (POST /organizations/delete)
+	DeleteOrganizations(w http.ResponseWriter, r *http.Request)
+	// MergeOrganizations 複数の団体を 1 つへ統合する
+	// (POST /organizations/merge)
+	MergeOrganizations(w http.ResponseWriter, r *http.Request)
+	// UpdateOrganization 団体を書き換える
+	// (POST /organizations/update)
+	UpdateOrganization(w http.ResponseWriter, r *http.Request)
+	// ListPeople 人物の一覧を返す、または外部 ID で人物を 1 件引く
+	// (GET /people)
+	ListPeople(w http.ResponseWriter, r *http.Request, params ListPeopleParams)
+	// CreatePerson 人物を作る
+	// (POST /people)
+	CreatePerson(w http.ResponseWriter, r *http.Request)
+	// DeletePeople 人物を消す
+	// (POST /people/delete)
+	DeletePeople(w http.ResponseWriter, r *http.Request)
+	// MergePeople 複数の人物を 1 人へ統合する
+	// (POST /people/merge)
+	MergePeople(w http.ResponseWriter, r *http.Request)
+	// UpdatePerson 人物を書き換える
+	// (POST /people/update)
+	UpdatePerson(w http.ResponseWriter, r *http.Request)
 	// StartScan スキャンを始める
 	// (POST /scans)
 	StartScan(w http.ResponseWriter, r *http.Request)
@@ -698,6 +1253,9 @@ type ServerInterface interface {
 	// UpdateVideoThumbnails 複数の動画の代表サムネイルの位置を設定・解除する
 	// (POST /video-thumbnails)
 	UpdateVideoThumbnails(w http.ResponseWriter, r *http.Request)
+	// UpdateVideoWorkInfo 複数の動画の作品情報をまるごと置き換える
+	// (POST /video-work-info)
+	UpdateVideoWorkInfo(w http.ResponseWriter, r *http.Request)
 	// ListVideos 動画の一覧をページを分けて返す
 	// (GET /videos)
 	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
@@ -714,6 +1272,314 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListOrganizations operation middleware
+func (siw *ServerInterfaceWrapper) ListOrganizations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOrganizationsParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "source" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "source", r.URL.Query(), &params.Source, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "source"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "source", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "externalId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "externalId", r.URL.Query(), &params.ExternalId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "externalId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "externalId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrganizations(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateOrganization operation middleware
+func (siw *ServerInterfaceWrapper) CreateOrganization(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateOrganization(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteOrganizations operation middleware
+func (siw *ServerInterfaceWrapper) DeleteOrganizations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteOrganizations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MergeOrganizations operation middleware
+func (siw *ServerInterfaceWrapper) MergeOrganizations(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MergeOrganizations(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOrganization operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOrganization(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOrganization(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPeople operation middleware
+func (siw *ServerInterfaceWrapper) ListPeople(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPeopleParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "source" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "source", r.URL.Query(), &params.Source, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "source"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "source", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "externalId" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "externalId", r.URL.Query(), &params.ExternalId, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "externalId"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "externalId", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPeople(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePerson operation middleware
+func (siw *ServerInterfaceWrapper) CreatePerson(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePerson(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePeople operation middleware
+func (siw *ServerInterfaceWrapper) DeletePeople(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePeople(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MergePeople operation middleware
+func (siw *ServerInterfaceWrapper) MergePeople(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MergePeople(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdatePerson operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePerson(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePerson(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // StartScan operation middleware
 func (siw *ServerInterfaceWrapper) StartScan(w http.ResponseWriter, r *http.Request) {
@@ -1018,6 +1884,20 @@ func (siw *ServerInterfaceWrapper) UpdateVideoThumbnails(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// UpdateVideoWorkInfo operation middleware
+func (siw *ServerInterfaceWrapper) UpdateVideoWorkInfo(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateVideoWorkInfo(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListVideos operation middleware
 func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Request) {
 
@@ -1248,6 +2128,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/video-display-names", wrapper.UpdateVideoDisplayNames)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/video-thumbnails", wrapper.UpdateVideoThumbnails)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/video-work-info", wrapper.UpdateVideoWorkInfo)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tags/merge", wrapper.MergeTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tags/rename", wrapper.RenameTag)
@@ -1255,6 +2136,16 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tags/batch", wrapper.BatchTags)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tags/rejected-names", wrapper.ForgetRejectedTagName)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tags/rejected-names", wrapper.ListRejectedTagNames)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/people", wrapper.ListPeople)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/people", wrapper.CreatePerson)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/people/update", wrapper.UpdatePerson)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/people/merge", wrapper.MergePeople)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/people/delete", wrapper.DeletePeople)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/organizations", wrapper.ListOrganizations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/organizations", wrapper.CreateOrganization)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/organizations/update", wrapper.UpdateOrganization)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/organizations/merge", wrapper.MergeOrganizations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/organizations/delete", wrapper.DeleteOrganizations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/scans", wrapper.StartScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/scans/current", wrapper.GetCurrentScan)
 
