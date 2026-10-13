@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/external-api.md
-sourceHash: bdf48c1a061523d62fdccbbfd3da5ae9a7196411a305c41caa7ef56d5b2c64d7
+sourceHash: f10be89634feade4d042160954d91760be81eb15d8d456aa803641800090a384
 ---
 
 # 外部 API を使う {#use-the-external-api}
@@ -434,7 +434,7 @@ flowchart LR
 
 ### 例: スクレイパーが見つけたものを書き込む {#example-write-what-a-scraper-found}
 
-各出演者を外部サイトの ID で照会し、照会が空のときだけ人物を作成し、それから id を付けて動画を 1 回書き込む。
+各出演者を外部サイトの ID で照会し、照会が空のときだけ人物を作成し、それから id を付けて動画を 1 回書き込む。照会と作成の間に別のクライアントが同じ人物を作成すると、作成は `409` (`external_id_taken`) を返す。その人物をもう一度照会し、その id を使う。
 
 ```mermaid
 sequenceDiagram
@@ -443,19 +443,27 @@ sequenceDiagram
   S->>V: GET /api/v1/people?source=example&externalId=42
   alt items is empty
     S->>V: POST /api/v1/people
+    opt 409 external_id_taken
+      S->>V: GET /api/v1/people?source=example&externalId=42
+    end
   end
   S->>V: 人物の id を付けて POST /api/v1/video-work-info
 ```
 
 ```sh
 # 1. Look the performer up by the external ID.
-ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
-  "$BASE/api/v1/people?source=example&externalId=42" | jq '.items[0].id // empty')
+lookup() {
+  curl -s -H "Authorization: Bearer $TOKEN" \
+    "$BASE/api/v1/people?source=example&externalId=42" | jq '.items[0].id // empty'
+}
+ID=$(lookup)
 
-# 2. Create the performer only when the lookup found none.
+# 2. Create the performer only when the lookup found none. A 409 response has no
+#    id: another client created the person first, so look it up again.
 [ -n "$ID" ] || ID=$(curl -s -X POST -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" "$BASE/api/v1/people" \
-  -d '{"name":"山田 花子","externalIds":[{"source":"example","value":"42"}]}' | jq '.id')
+  -d '{"name":"山田 花子","externalIds":[{"source":"example","value":"42"}]}' | jq '.id // empty')
+[ -n "$ID" ] || ID=$(lookup)
 
 # 3. Write the video with the id.
 curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
