@@ -258,6 +258,9 @@ type Options struct {
 	Tags Tags
 	// Credits は人物と団体の保存先。nilなら /api/people* と /api/organizations* は500を返す。
 	Credits Credits
+	// WorkInfo は動画の作品情報の保存先。nilなら作品情報の書き込みの経路は500を返し、
+	// 動画1件の応答に workInfo が載らない。
+	WorkInfo WorkInfo
 	// Visibility は動画の公開フラグの保存先。nilなら切り替えの経路は500を返す。
 	Visibility Visibility
 	// Favorites はお気に入りの保存先。nilなら付け外しの経路は500を返す。
@@ -356,6 +359,7 @@ type server struct {
 	mediaFolders MediaFolders
 	tags         Tags
 	credits      Credits
+	workInfo     WorkInfo
 	visibility   Visibility
 	favorites    Favorites
 	playlists    Playlists
@@ -441,6 +445,7 @@ func NewRouter(opts Options) http.Handler {
 		mediaFolders:           opts.MediaFolders,
 		tags:                   opts.Tags,
 		credits:                opts.Credits,
+		workInfo:               opts.WorkInfo,
 		visibility:             opts.Visibility,
 		favorites:              opts.Favorites,
 		playlists:              opts.Playlists,
@@ -629,7 +634,7 @@ func requiresOtherJSONBody(r *http.Request) bool {
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/"); ok {
 			id, rest, found := strings.Cut(suffix, "/")
-			return found && id != "" && (rest == "progress" || rest == "display-name" || rest == "thumbnail-position")
+			return found && id != "" && isVideoJSONPut(rest)
 		}
 	case http.MethodPatch:
 		// PATCH /api/playlists/{id}（specs/044-playlists/contracts/screen-api.md）。
@@ -646,6 +651,15 @@ func requiresOtherJSONBody(r *http.Request) bool {
 			}
 			return !strings.Contains(id, "/")
 		}
+	}
+	return false
+}
+
+// isVideoJSONPut は PUT /api/videos/{id}/<rest> のうち本文を持つものかを返す。
+func isVideoJSONPut(rest string) bool {
+	switch rest {
+	case "progress", "display-name", "thumbnail-position", "work-info", "details":
+		return true
 	}
 	return false
 }

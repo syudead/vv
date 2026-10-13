@@ -660,6 +660,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/work-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 動画の作品情報をまるごと置き換える
+         * @description 所有者だけ。本文の作品情報で保存済みのものを置き換える。省いた・null の・前後の空白を除いて空の
+         *     項目は解除し、`{}` はすべてを解除する。人物と団体は id で指す。規則に合わない最初の項目を
+         *     `field` 付きの誤りで返し、何も書かない。応答は `GET /api/videos/{id}` と同じ形の `Video` で、
+         *     `workInfo` が反映済み（すべて解除したときは無い）。変わったときは確定後に同じ利用者データの鍵の
+         *     各動画の `video` が `/api/events` に流れる
+         *     （specs/047-video-work-info/contracts/screen-api.md「PUT /api/videos/{id}/work-info」）。
+         */
+        put: operations["setVideoWorkInfo"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 動画の表示名と作品情報を 1 回で保存する
+         * @description 所有者だけ。全画面の編集画面の保存で、表示名（`PUT /api/videos/{id}/display-name` の規則）と
+         *     作品情報（`PUT /api/videos/{id}/work-info` の規則）を 1 つの取引で書き、どちらかが規則に
+         *     合わなければどちらも書かない。表示名を先に、次に作品情報を `WorkInfo` の項目の順に確かめ、
+         *     最初の誤りだけを返す。表示名の誤りの `field` は `displayName`、作品情報の誤りの `field` は
+         *     `workInfo` の中の位置である。応答は `GET /api/videos/{id}` と同じ形の `Video`
+         *     （specs/047-video-work-info/contracts/screen-api.md「PUT /api/videos/{id}/details」）。
+         */
+        put: operations["setVideoDetails"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/thumbnail-position": {
         parameters: {
             query?: never;
@@ -2917,6 +2967,95 @@ export interface components {
             source: string;
             value: string;
         };
+        /**
+         * @description 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+         * @enum {string}
+         */
+        WorkDateKind: "release" | "recorded" | "published";
+        /**
+         * @description 動画での人物の役割
+         * @enum {string}
+         */
+        WorkPersonRole: "performer" | "director" | "photographer" | "streamer";
+        /**
+         * @description 動画での団体の役割
+         * @enum {string}
+         */
+        WorkOrganizationRole: "maker" | "label";
+        WorkDate: {
+            kind: components["schemas"]["WorkDateKind"];
+            /**
+             * @description YYYY・YYYY-MM・YYYY-MM-DD（日まであれば暦にある日）
+             * @example 2024
+             * @example 2024-02
+             * @example 2024-02-29
+             */
+            date: string;
+        };
+        WorkPerson: {
+            role: components["schemas"]["WorkPersonRole"];
+            person: components["schemas"]["CreditRef"];
+        };
+        WorkOrganization: {
+            role: components["schemas"]["WorkOrganizationRole"];
+            organization: components["schemas"]["CreditRef"];
+        };
+        /**
+         * @description 動画の作品情報（specs/047-video-work-info/contracts/screen-api.md「WorkInfo schema」）。
+         *     一覧は必ずあり、空なら []。単一の値は未設定なら無い
+         */
+        WorkInfo: {
+            /** @description 品番 */
+            code?: string;
+            /** @description 説明。改行を含みうる */
+            description?: string;
+            /** @description 種類の順（release・recorded・published） */
+            dates: components["schemas"]["WorkDate"][];
+            /** @description 役割の順、同じ役割の中は入力した順。name は人物の今の名前 */
+            people: components["schemas"]["WorkPerson"][];
+            /** @description 役割の順、同じ役割の中は入力した順。name は団体の今の名前 */
+            organizations: components["schemas"]["WorkOrganization"][];
+            /** @description 入力した順 */
+            urls: string[];
+            /** @description (source, value) の順 */
+            externalIds: components["schemas"]["ExternalId"][];
+        };
+        /** @description 書き込みで人物か団体 1 件を指す参照 */
+        CreditIdRef: {
+            /** Format: int64 */
+            id: number;
+        };
+        WorkPersonInput: {
+            role: components["schemas"]["WorkPersonRole"];
+            person: components["schemas"]["CreditIdRef"];
+        };
+        WorkOrganizationInput: {
+            role: components["schemas"]["WorkOrganizationRole"];
+            organization: components["schemas"]["CreditIdRef"];
+        };
+        /**
+         * @description 作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
+         *     WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
+         *     解除で、全体を置き換える
+         */
+        WorkInfoInput: {
+            code?: string | null;
+            description?: string | null;
+            dates?: components["schemas"]["WorkDate"][] | null;
+            people?: components["schemas"]["WorkPersonInput"][] | null;
+            organizations?: components["schemas"]["WorkOrganizationInput"][] | null;
+            urls?: string[] | null;
+            externalIds?: components["schemas"]["ExternalId"][] | null;
+        };
+        /**
+         * @description 全画面の編集画面の保存の本文（specs/047-video-work-info/contracts/screen-api.md
+         *     「PUT /api/videos/{id}/details」）。両方とも必須
+         */
+        VideoDetailsInput: {
+            /** @description 新しい表示名。前後の空白を取り除いて空なら解除する */
+            displayName: string;
+            workInfo: components["schemas"]["WorkInfoInput"];
+        };
         /** @description 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」） */
         Person: {
             /** Format: int64 */
@@ -3359,7 +3498,7 @@ export interface components {
         };
         /**
          * @description ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-         *     `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+         *     `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
          *     （specs/016-single-account-auth/contracts/guest-api.md §1、
          *     specs/029-video-overrides/contracts/screen-api.md §0）。
          */
@@ -3485,6 +3624,12 @@ export interface components {
              *     （specs/035-favorites/data-model.md §3）
              */
             favorite?: boolean;
+            /**
+             * @description 作品情報。GET /api/videos/{id} と、作品情報を書く所有者の PUT（work-info・details）の
+             *     応答にだけ入り、行の無い動画とゲストの応答では無い。一覧の項目・関連動画・ライブラリの
+             *     項目には入らない（specs/047-video-work-info/contracts/screen-api.md「Video changes」）
+             */
+            workInfo?: components["schemas"]["WorkInfo"];
             /**
              * @description シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
              *     seekThumbnailUrl と同じ条件のときだけ入る。done = スプライトが完成している、
@@ -4972,6 +5117,66 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DisplayNameUpdate"];
+            };
+        };
+        responses: {
+            /** @description 反映後の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setVideoWorkInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkInfoInput"];
+            };
+        };
+        responses: {
+            /** @description 反映後の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setVideoDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoDetailsInput"];
             };
         };
         responses: {

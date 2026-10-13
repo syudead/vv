@@ -231,12 +231,8 @@ func (s *server) readCreditPatch(w http.ResponseWriter, r *http.Request, kind do
 // あったか（値が null でも）を答える関数を返す。encoding/json はプロパティ名を大文字小文字を区別せずに
 // target へ当てるので、有無も strings.EqualFold で比べる（Aliases は aliases として読まれ、有るとも答える）。
 func (s *server) readJSONBodyFields(w http.ResponseWriter, r *http.Request, target any) (func(name string) bool, bool) {
-	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
-	if err != nil {
-		s.invalidBody(w, err, "Cannot read the body.")
-		return nil, false
-	}
-	if !s.decodeJSONBody(w, r, bytes.NewReader(raw), target) {
+	raw, ok := s.readJSONBodyRaw(w, r, target)
+	if !ok {
 		return nil, false
 	}
 	var fields map[string]json.RawMessage
@@ -245,13 +241,34 @@ func (s *server) readJSONBodyFields(w http.ResponseWriter, r *http.Request, targ
 		return nil, false
 	}
 	return func(name string) bool {
-		for key := range fields {
-			if strings.EqualFold(key, name) {
-				return true
-			}
-		}
-		return false
+		_, present := jsonProperty(fields, name)
+		return present
 	}, true
+}
+
+// readJSONBodyRaw は readJSONBody と同じく本文を target に読み、読んだ本文そのものも返す。生成型では
+// 失われるプロパティの有無を、呼び出し側が本文から確かめるのに使う。
+func (s *server) readJSONBodyRaw(w http.ResponseWriter, r *http.Request, target any) ([]byte, bool) {
+	raw, err := io.ReadAll(io.LimitReader(r.Body, 1<<20))
+	if err != nil {
+		s.invalidBody(w, err, "Cannot read the body.")
+		return nil, false
+	}
+	if !s.decodeJSONBody(w, r, bytes.NewReader(raw), target) {
+		return nil, false
+	}
+	return raw, true
+}
+
+// jsonProperty は JSON オブジェクトのプロパティ name の値と、あったか（値が null でも）を返す。
+// encoding/json と同じく名前の大文字小文字を区別しない。
+func jsonProperty(fields map[string]json.RawMessage, name string) (json.RawMessage, bool) {
+	for key, value := range fields {
+		if strings.EqualFold(key, name) {
+			return value, true
+		}
+	}
+	return nil, false
 }
 
 func (s *server) deleteCredit(w http.ResponseWriter, r *http.Request, api creditKindAPI, id int64) {

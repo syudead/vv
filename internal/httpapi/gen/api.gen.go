@@ -1380,6 +1380,69 @@ func (e WatchHistoryFilter) Valid() bool {
 	}
 }
 
+// Defines values for WorkDateKind.
+const (
+	Published WorkDateKind = "published"
+	Recorded  WorkDateKind = "recorded"
+	Release   WorkDateKind = "release"
+)
+
+// Valid indicates whether the value is a known member of the WorkDateKind enum.
+func (e WorkDateKind) Valid() bool {
+	switch e {
+	case Published:
+		return true
+	case Recorded:
+		return true
+	case Release:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkOrganizationRole.
+const (
+	Label WorkOrganizationRole = "label"
+	Maker WorkOrganizationRole = "maker"
+)
+
+// Valid indicates whether the value is a known member of the WorkOrganizationRole enum.
+func (e WorkOrganizationRole) Valid() bool {
+	switch e {
+	case Label:
+		return true
+	case Maker:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkPersonRole.
+const (
+	Director     WorkPersonRole = "director"
+	Performer    WorkPersonRole = "performer"
+	Photographer WorkPersonRole = "photographer"
+	Streamer     WorkPersonRole = "streamer"
+)
+
+// Valid indicates whether the value is a known member of the WorkPersonRole enum.
+func (e WorkPersonRole) Valid() bool {
+	switch e {
+	case Director:
+		return true
+	case Performer:
+		return true
+	case Photographer:
+		return true
+	case Streamer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TranscodeVideoParamsQuality.
 const (
 	N1080p TranscodeVideoParamsQuality = "1080p"
@@ -1569,6 +1632,11 @@ type CreatedAPIToken struct {
 
 	// Token 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。
 	Token APIToken `json:"token"`
+}
+
+// CreditIdRef 書き込みで人物か団体 1 件を指す参照
+type CreditIdRef struct {
+	Id int64 `json:"id"`
 }
 
 // CreditInput 人物か団体を作るときの本文。parentId は団体だけが使う
@@ -1919,7 +1987,7 @@ type LibraryItem struct {
 	Kind  LibraryItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -2095,7 +2163,7 @@ type PlaylistItem struct {
 	Kind PlaylistItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -2180,7 +2248,7 @@ type PlaylistStep struct {
 	ItemId int64 `json:"itemId"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video Video `json:"video"`
@@ -2795,7 +2863,7 @@ type VersionCandidatePage struct {
 }
 
 // Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 // （specs/016-single-account-auth/contracts/guest-api.md §1、
 // specs/029-video-overrides/contracts/screen-api.md §0）。
 type Video struct {
@@ -2921,6 +2989,11 @@ type Video struct {
 
 	// Width 表示される向きの幅（回転の印を反映済み）
 	Width *int `json:"width,omitempty"`
+
+	// WorkInfo 作品情報。GET /api/videos/{id} と、作品情報を書く所有者の PUT（work-info・details）の
+	// 応答にだけ入り、行の無い動画とゲストの応答では無い。一覧の項目・関連動画・ライブラリの
+	// 項目には入らない（specs/047-video-work-info/contracts/screen-api.md「Video changes」）
+	WorkInfo *WorkInfo `json:"workInfo,omitempty"`
 }
 
 // VideoPreviewState defines model for Video.PreviewState.
@@ -2960,6 +3033,18 @@ type VideoBundleRequest struct {
 type VideoChanged struct {
 	// Id 状態が変わった動画の識別子
 	Id int64 `json:"id"`
+}
+
+// VideoDetailsInput 全画面の編集画面の保存の本文（specs/047-video-work-info/contracts/screen-api.md
+// 「PUT /api/videos/{id}/details」）。両方とも必須
+type VideoDetailsInput struct {
+	// DisplayName 新しい表示名。前後の空白を取り除いて空なら解除する
+	DisplayName string `json:"displayName"`
+
+	// WorkInfo 作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
+	// WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
+	// 解除で、全体を置き換える
+	WorkInfo WorkInfoInput `json:"workInfo"`
 }
 
 // VideoEncoder ライブ変換が実際に使う映像エンコード方式
@@ -3181,7 +3266,7 @@ type WatchHistoryEntry struct {
 	Title string `json:"title"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -3198,6 +3283,100 @@ type WatchHistoryPage struct {
 	// NextCursor 続きがあるときだけ入る
 	NextCursor *string `json:"nextCursor,omitempty"`
 }
+
+// WorkDate defines model for WorkDate.
+type WorkDate struct {
+	// Date YYYY・YYYY-MM・YYYY-MM-DD（日まであれば暦にある日）
+	//
+	// Examples: 2024, 2024-02, 2024-02-29
+	Date string `json:"date"`
+
+	// Kind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+	Kind WorkDateKind `json:"kind"`
+}
+
+// WorkDateKind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+type WorkDateKind string
+
+// WorkInfo 動画の作品情報（specs/047-video-work-info/contracts/screen-api.md「WorkInfo schema」）。
+// 一覧は必ずあり、空なら []。単一の値は未設定なら無い
+type WorkInfo struct {
+	// Code 品番
+	Code *string `json:"code,omitempty"`
+
+	// Dates 種類の順（release・recorded・published）
+	Dates []WorkDate `json:"dates"`
+
+	// Description 説明。改行を含みうる
+	Description *string `json:"description,omitempty"`
+
+	// ExternalIds (source, value) の順
+	ExternalIds []ExternalId `json:"externalIds"`
+
+	// Organizations 役割の順、同じ役割の中は入力した順。name は団体の今の名前
+	Organizations []WorkOrganization `json:"organizations"`
+
+	// People 役割の順、同じ役割の中は入力した順。name は人物の今の名前
+	People []WorkPerson `json:"people"`
+
+	// Urls 入力した順
+	Urls []string `json:"urls"`
+}
+
+// WorkInfoInput 作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
+// WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
+// 解除で、全体を置き換える
+type WorkInfoInput struct {
+	Code          *string                  `json:"code,omitempty"`
+	Dates         *[]WorkDate              `json:"dates,omitempty"`
+	Description   *string                  `json:"description,omitempty"`
+	ExternalIds   *[]ExternalId            `json:"externalIds,omitempty"`
+	Organizations *[]WorkOrganizationInput `json:"organizations,omitempty"`
+	People        *[]WorkPersonInput       `json:"people,omitempty"`
+	Urls          *[]string                `json:"urls,omitempty"`
+}
+
+// WorkOrganization defines model for WorkOrganization.
+type WorkOrganization struct {
+	// Organization 人物か団体 1 件への参照。name はその実体の今の名前
+	Organization CreditRef `json:"organization"`
+
+	// Role 動画での団体の役割
+	Role WorkOrganizationRole `json:"role"`
+}
+
+// WorkOrganizationInput defines model for WorkOrganizationInput.
+type WorkOrganizationInput struct {
+	// Organization 書き込みで人物か団体 1 件を指す参照
+	Organization CreditIdRef `json:"organization"`
+
+	// Role 動画での団体の役割
+	Role WorkOrganizationRole `json:"role"`
+}
+
+// WorkOrganizationRole 動画での団体の役割
+type WorkOrganizationRole string
+
+// WorkPerson defines model for WorkPerson.
+type WorkPerson struct {
+	// Person 人物か団体 1 件への参照。name はその実体の今の名前
+	Person CreditRef `json:"person"`
+
+	// Role 動画での人物の役割
+	Role WorkPersonRole `json:"role"`
+}
+
+// WorkPersonInput defines model for WorkPersonInput.
+type WorkPersonInput struct {
+	// Person 書き込みで人物か団体 1 件を指す参照
+	Person CreditIdRef `json:"person"`
+
+	// Role 動画での人物の役割
+	Role WorkPersonRole `json:"role"`
+}
+
+// WorkPersonRole 動画での人物の役割
+type WorkPersonRole string
 
 // APITokenId defines model for APITokenId.
 type APITokenId = int64
@@ -3765,6 +3944,9 @@ type SummarizeVideoTagsJSONRequestBody = VideoTagsSummaryRequest
 // UpdateVideoVisibilityJSONRequestBody defines body for UpdateVideoVisibility for application/json ContentType.
 type UpdateVideoVisibilityJSONRequestBody = VideoVisibilityRequest
 
+// SetVideoDetailsJSONRequestBody defines body for SetVideoDetails for application/json ContentType.
+type SetVideoDetailsJSONRequestBody = VideoDetailsInput
+
 // SetVideoDisplayNameJSONRequestBody defines body for SetVideoDisplayName for application/json ContentType.
 type SetVideoDisplayNameJSONRequestBody = DisplayNameUpdate
 
@@ -3779,6 +3961,9 @@ type UploadThumbnailImageMultipartRequestBody = UploadThumbnailImageRequest
 
 // SetVideoThumbnailPositionJSONRequestBody defines body for SetVideoThumbnailPosition for application/json ContentType.
 type SetVideoThumbnailPositionJSONRequestBody = ThumbnailPositionUpdate
+
+// SetVideoWorkInfoJSONRequestBody defines body for SetVideoWorkInfo for application/json ContentType.
+type SetVideoWorkInfoJSONRequestBody = WorkInfoInput
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -4061,6 +4246,9 @@ type ServerInterface interface {
 	// AutoTagVideo 動画 1 本を自動タグ付けの判定に回す
 	// (POST /api/videos/{id}/auto-tag)
 	AutoTagVideo(w http.ResponseWriter, r *http.Request, id VideoId)
+	// SetVideoDetails 動画の表示名と作品情報を 1 回で保存する
+	// (PUT /api/videos/{id}/details)
+	SetVideoDetails(w http.ResponseWriter, r *http.Request, id VideoId)
 	// SetVideoDisplayName 動画の表示名を設定・解除する
 	// (PUT /api/videos/{id}/display-name)
 	SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -4133,6 +4321,9 @@ type ServerInterface interface {
 	// ListVideoVersions 動画の集まりの全バージョンを返す
 	// (GET /api/videos/{id}/versions)
 	ListVideoVersions(w http.ResponseWriter, r *http.Request, id VideoId)
+	// SetVideoWorkInfo 動画の作品情報をまるごと置き換える
+	// (PUT /api/videos/{id}/work-info)
+	SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
 	// ClearWatchHistory 視聴履歴を全件消す
 	// (DELETE /api/watch-history)
 	ClearWatchHistory(w http.ResponseWriter, r *http.Request)
@@ -6872,6 +7063,32 @@ func (siw *ServerInterfaceWrapper) AutoTagVideo(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// SetVideoDetails operation middleware
+func (siw *ServerInterfaceWrapper) SetVideoDetails(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetVideoDetails(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetVideoDisplayName operation middleware
 func (siw *ServerInterfaceWrapper) SetVideoDisplayName(w http.ResponseWriter, r *http.Request) {
 
@@ -7728,6 +7945,32 @@ func (siw *ServerInterfaceWrapper) ListVideoVersions(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// SetVideoWorkInfo operation middleware
+func (siw *ServerInterfaceWrapper) SetVideoWorkInfo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetVideoWorkInfo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClearWatchHistory operation middleware
 func (siw *ServerInterfaceWrapper) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -8072,6 +8315,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/seek-thumbnail/{sheet}", wrapper.GetVideoSeekThumbnailSheet)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/progress", wrapper.PutVideoProgress)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/display-name", wrapper.SetVideoDisplayName)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/work-info", wrapper.SetVideoWorkInfo)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/details", wrapper.SetVideoDetails)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/thumbnail-position", wrapper.SetVideoThumbnailPosition)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.RevertThumbnailImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.UploadThumbnailImage)
