@@ -213,7 +213,7 @@ uses it, by the "Edit the thumbnail from the video page" unit.
 
 | Change | Item | What it is |
 | --- | --- | --- |
-| `EditorDialog` skeleton | `editor-dialog`, block `editor-dialog-example` | A modal `Dialog` that fills the viewport edge to edge on `bg-background`: a header band `navbar` high with a bottom border (title, a muted detail after it, the close `×` as a `ghost` `icon-sm` `Button`), a `stage` slot and an `aside` slot. From `lg` the stage fills the rest and the aside is a column `detail-aside` wide (`detail-aside-wide` from `xl`) with a left border; below `lg` the stage sits under the band, capped at the named step `editor-stage` (about 45% of the viewport's height), and the aside follows it. The aside has a `footer` slot that holds the main actions: at the aside's bottom from `lg`, stuck to the viewport's bottom below `lg`. The stage centres its content on `bg-muted` with `p-4`. Esc and the `×` call `onClose`, which the screen may answer with a `ConfirmDialog`. Use it for a task on one image that needs the whole window; a form stays a `FormDialog` |
+| `EditorDialog` skeleton | `editor-dialog`, block `editor-dialog-example` | A modal `Dialog` that fills the viewport edge to edge on `bg-background`: a header band `navbar` high with a bottom border (title, a muted detail after it, the close `×` as a `ghost` `icon-sm` `Button`), a `stage` slot and an `aside` slot. From `lg` the stage fills the rest and the aside is a column `editor-aside` wide (`editor-aside-wide` from `xl`) with a left border; below `lg` the stage sits under the band, capped at the named step `editor-stage` (about 45% of the viewport's height), and the aside follows it. The aside has a `footer` slot that holds the main actions: at the aside's bottom from `lg`, stuck to the viewport's bottom below `lg`. The stage centres its content on `bg-muted` with `p-4`. Esc and the `×` call `onClose`, which the screen may answer with a `ConfirmDialog`. Use it for a task on one image that needs the whole window; a form stays a `FormDialog` |
 
 The named step `editor-stage` is added to `tokens.css`, as `player-height` is.
 No colour token is added: the paint layer is the `primary` colour at
@@ -464,8 +464,8 @@ judged are 360px, 768px and 1280px, with the editor also at 1440px.
 
 | Width | Settings section | Editor |
 | --- | --- | --- |
-| 1440px | As 1280px | Stage left, aside `detail-aside-wide` right; Compare's two boxes side by side, each about 470 px wide |
-| 1280px | Label and hint left, control right (`FormRow`) | Stage left, aside `detail-aside` right; the footer at the aside's bottom; the tool row on one line |
+| 1440px | As 1280px | Stage left, aside `editor-aside-wide` right; Compare's two boxes side by side, each about 470 px wide |
+| 1280px | Label and hint left, control right (`FormRow`) | Stage left, aside `editor-aside` right; the footer at the aside's bottom; the tool row on one line |
 | 768px | As 1280px | Stage on top, capped at `editor-stage`; the aside below it; the footer stuck to the bottom; Compare side by side |
 | 360px | Label, hint and control stacked; the provider items stacked | As 768px, with Compare's boxes stacked; the tool row wraps to two lines; `Change and generate again` and `Discard` share one line under `Use as thumbnail`; no horizontal scroll |
 
