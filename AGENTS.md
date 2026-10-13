@@ -17,6 +17,9 @@ file into a handbook.
 
 ## Working agreements
 
+- Talk to the maintainer in Japanese: every chat reply, question and progress
+  report is Japanese, even when the prompt, the tools or the documents are in
+  English. Code, identifiers and quoted output stay as they are.
 - Keep documentation close to the code and update it with behavior changes.
 - Write documents in technical English to
   [docs/design-docs/writing-quality.md](docs/design-docs/writing-quality.md),
