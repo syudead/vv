@@ -22,12 +22,20 @@ import (
 // フォルダの直下の本数が変わるので、同じ取引の中でフォルダの索引を作り直す（research.md R-4）。
 
 // userDataTables は利用者データの鍵で引く表と、鍵以外の列である。束ねる・解くときに
-// 値を別の鍵へ写すのに使う。
+// 値を別の鍵へ写すのに使う。作品情報の 6 表（specs/047-video-work-info/data-model.md「Bundles and
+// succession」）も表ごとに写す。束ねる先の鍵には行が無く、解いて残る 1 本へ戻すときは replaceUserData が
+// 6 表とも消してから写すので、2 本の動画の値が混ざらない。
 var userDataTables = []struct{ table, columns string }{
 	{"playback_progress", "position_ms, duration_ms, completed, updated_at"},
 	{"video_tags", "tag_id, created_at"},
 	{"public_videos", "published_at"},
 	{"video_favorites", "favorited_at"},
+	{"video_work_info", "code, code_key, description, search_version"},
+	{"video_work_dates", "kind, date"},
+	{"video_work_urls", "position, url"},
+	{"video_work_external_ids", "source, value"},
+	{"video_work_people", "role, position, person_id"},
+	{"video_work_organizations", "role, position, organization_id"},
 }
 
 // bundleRef は動画が属する集まりである。

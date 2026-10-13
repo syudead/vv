@@ -41,6 +41,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertFavoriteInvariant(t, db)
 		assertPlaylistInvariant(t, db)
 		assertCreditInvariant(t, db)
+		assertWorkInfoInvariant(t, db)
 	})
 	return db
 }
@@ -593,6 +594,45 @@ func assertCreditInvariant(t *testing.T, db *DB) {
 
 	for _, tables := range creditTablesByKind {
 		assertCreditNameKeys(t, db, tables)
+	}
+}
+
+// assertWorkInfoInvariant は動画ごとの作品情報の表の規則を確かめる（specs/047-video-work-info/data-model.md
+// 「Rules」）。video_work_info の行は品番か説明を持ち、今の版の行の code_key は品番の畳み込みである。
+// 位置が 0 … n-1 であることは assertCreditInvariant が確かめる。
+func assertWorkInfoInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'video_work_info'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("作品情報の不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+	for _, violation := range violations(t, db, `select 'video_work_info の ' || content_key || ' が品番も説明も持たない'
+		from video_work_info where coalesce(code, '') = '' and coalesce(description, '') = ''`) {
+		t.Error(violation)
+	}
+	rows, err := db.sql.Query(`select content_key, coalesce(code, ''), code_key from video_work_info where search_version = ?`,
+		domain.SearchKeyVersion)
+	if err != nil {
+		t.Fatalf("作品情報の不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var key, code, codeKey string
+		if err := rows.Scan(&key, &code, &codeKey); err != nil {
+			t.Fatalf("作品情報の不変条件を検査できない: %v", err)
+		}
+		if codeKey != domain.FoldForMatch(code) {
+			t.Errorf("video_work_info の %s の code_key %q が品番 %q の畳み込みと違う", key, codeKey, code)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("作品情報の不変条件を検査できない: %v", err)
 	}
 }
 

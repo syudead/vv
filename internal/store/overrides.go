@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"database/sql"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -152,21 +151,9 @@ func (s *OverrideStore) SetDisplayNames(ctx context.Context, changes []domain.Di
 			ids = append(ids, target.id)
 		}
 	}
-	encoded, err := json.Marshal(ids)
-	if err != nil {
-		return nil, fmt.Errorf("cannot build video ids: %w", err)
-	}
-	byID, err := readVideosByIDs(ctx, tx, string(encoded))
+	out, err := readTargetVideos(ctx, tx, targets)
 	if err != nil {
 		return nil, err
-	}
-	out := make([]domain.Video, 0, len(targets))
-	for _, target := range targets {
-		video, ok := byID[target.id]
-		if !ok {
-			return nil, fmt.Errorf("cannot read the video (id=%d): %w", target.id, domain.ErrNotFound)
-		}
-		out = append(out, video)
 	}
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("cannot update the display names: %w", err)
