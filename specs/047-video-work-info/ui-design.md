@@ -113,8 +113,26 @@ skeleton fits a page of many values saved together, so one is added to the
 design system first, as 045 added `EditorDialog`
 ([Changes to the design system](#changes-to-the-design-system)).
 
+**The editor uses the screen's width: a narrow column that says which video
+is being edited, a `Basics` panel and a `Credits` panel, side by side from
+`lg`.** One centred column `max-w-2xl` was rejected by the maintainer as
+wasting the screen: thirteen fields stacked in 42rem reach past 1280×820 at
+`Dates`, so the owner scrolls to find the roles, and two thirds of the window
+are empty. Three columns put every field on the screen at once for typical
+content, and each panel scrolls inside itself when a list is long, so the
+band and the other panels stay where they are. The split follows what the
+fields are: `Basics` holds the texts and dates the owner types; `Credits`
+holds the six roles, which are chips and a picker and need the width more
+than a text field does, so the right panel is slightly wider. The left column
+exists because the editor has no player: the thumbnail, the file name and the
+file facts say which video is open, the way the video page's facts do, and
+the link back is the same way out as `Cancel`. The columns stack below `lg`,
+where side by side would squeeze a picker to nothing, and the page then
+scrolls as one under the band, as the video page does below `lg`
+([library-ui.md, Width breakpoints](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception)).
+
 **`Cancel` and `Save` sit in the editor's band, not under the last field.**
-The column may hold a hundred chips; the band is sticky at every width, so
+A panel may hold a hundred chips; the band is sticky at every width, so
 saving never needs a scroll to the bottom, and the top band is where the video
 page has trained the eye to find the way out
 ([012, Video header](../012-video-detail-ia/ui-design.md#video-header)). The
@@ -192,6 +210,10 @@ dates, URLs and IDs are user data and are embedded untranslated.
 | --- | --- | --- |
 | Band title (`h1`) and `document.title` | Edit details | `document.title` is `Edit details · {title}` |
 | Band detail | {title} | The video's current title, muted, after the band title |
+| Left column (`aside`) accessible name | Video | The thumbnail's `alt` is empty; the file name, `{length} · {size} · {resolution}` and the location are user data |
+| Left column link | Back to the video | A router `Link`; acts as `Cancel` ([Leaving](#leaving)) |
+| Panel legends | Basics / Credits | `FieldLegend`s of the two panels |
+| Group labels in `Credits` | People / Organizations | `FieldLegend variant="label"` over each group of roles |
 | Field labels | Name / Code / Description / Released / Recorded / Published / Performers / Directors / Photographers / Streamers / Makers / Labels / Links / IDs | Visible `FieldLabel`s; role labels are always plural in the editor |
 | Name placeholder | The file-name title itself | User data; not translated. As the in-place editor's placeholder (029) |
 | Date placeholder | YYYY-MM-DD | The three date fields; `YYYY` and `YYYY-MM` are accepted too, said in the description below the fields: `A year or a year and month is enough.` |
@@ -206,7 +228,7 @@ dates, URLs and IDs are user data and are embedded untranslated.
 | Link rows | Link / Remove link / Add link | The row input's `aria-label`, its `×`, the button under the rows |
 | ID rows | Source / Value / Remove ID / Add ID | |
 | Band buttons | Cancel / Save | Save reads `Saving…` with a spinner while sending |
-| Failure line | Couldn't save the details: {reason} | At the top of the column; `{reason}` from [Error reasons](#error-reasons) |
+| Failure line | Couldn't save the details: {reason} | Under the band, above the columns; `{reason}` from [Error reasons](#error-reasons) |
 | Created but not saved | {n} people were created, but the details weren't saved: {reason} | The failure line when a `POST` succeeded and the `PUT` failed; the chips keep their ids, so `Save` again sends only the `PUT` |
 | Discard confirmation | Discard changes? / The changes to "{title}" haven't been saved. / Keep editing / Discard | `ConfirmDialog` title, text, cancel and action |
 | Loading failed | Couldn't load the video: {reason} | `ErrorState` with `Retry` |
@@ -304,14 +326,19 @@ page unit uses them, as 045 added `EditorDialog`.
 
 | Change | What it is |
 | --- | --- |
-| `FormPage` skeleton, registry item `form-page`, block `form-page-example` | A page, not a dialog, that fills the window on `bg-background` for a form of many values saved together, which `FormDialog` (a few fields) and `SettingsPage` (each row saves itself) do not cover: a header band `navbar` high, `sticky top-0` at every width, with a bottom border and the video page band's `bg-background/90 backdrop-blur-md`, holding the `title` (the page's `h1`, `text-lg font-semibold`), a muted `detail` after it (`text-sm text-muted-foreground`, `truncate`, hidden below `sm`), and an `actions` slot at the right end for `Cancel` and the one `default` button; a body of one column `max-w-2xl`, centred, `px-4` (`px-6` from `sm`) and `py-6`, whose children are `Field`s and `FieldSet`s `gap-6` apart; library density. It owns the band, the column and the gaps, as every skeleton does; the screen passes content into the slots. Its row in patterns.md's skeleton table reads "Fills in many values saved together, on a screen of its own", and the Settings page rule's last sentence becomes `A group of values saved together belongs in a FormDialog, or in a FormPage when it is more than a few.` |
+| `FormPage` skeleton, registry item `form-page`, block `form-page-example` | A page, not a dialog, that fills the window on `bg-background` for a form of many values saved together, which `FormDialog` (a few fields) and `SettingsPage` (each row saves itself) do not cover: a header band `navbar` high, `sticky top-0` at every width, with a bottom border and the video page band's `bg-background/90 backdrop-blur-md`, holding the `title` (the page's `h1`, `text-lg font-semibold`), a muted `detail` after it (`text-sm text-muted-foreground`, `truncate`, hidden below `sm`), and an `actions` slot at the right end for `Cancel` and the one `default` button; a `notice` slot under the band for the failure line; a body with `px-4` (`px-6` from `sm`) and `py-6` holding an optional `aside` and the `panels` (each a `FieldSet` with a `FieldLegend`, its fields `gap-4` apart), laid out by the named utility `grid-cols-form-page` from `lg`: the aside a column `form-page-aside` wide (16.25rem) at the left, then the panels in the ratio 5:6, the columns `gap-6` apart; from `lg` the page keeps the viewport's height and each panel scrolls inside itself (`min-h-0 overflow-y-auto`), below `lg` the aside and the panels stack in order and the page scrolls as one under the band; library density. It owns the band, the grid, the panel scrolling and the gaps, as every skeleton does; the screen passes content into the slots. Its row in patterns.md's skeleton table reads "Fills in many values saved together, on a screen of its own", and the Settings page rule's last sentence becomes `A group of values saved together belongs in a FormDialog, or in a FormPage when it is more than a few.` |
 | `CreditCommand`, a vv component and registry item `credit-command` | `TagCommand`'s `Command` with the entity name rules (1 to 200 code points, no control characters, a paste with a line break refused with its reason) in place of the tag name rules, with the same `dropdown` and `inline` layouts and the same row content (name, hint line, count at the right, the create row last). The implementation makes it and `TagCommand` one base component that takes the name rules, so no code is copied (AGENTS.md). components.md's `TagCommand` section gains the sibling and its last sentence becomes `Do not use either for values other than tag names and the names of people and organizations.` |
 | `Combobox`, first use on a screen | The parent organization field of the details dialog. No change to the component |
 
-No token is added, nothing is added to `pairs` in
-`web/src/theme/tokens.test.ts` (`foreground` and `muted-foreground` on
-`background`, `popover` and `card` are already listed), and no section is
-added. Icons are lucide `Clapperboard` (the edit entry), `User` (a person
+`tokens.css` gains one named step, `form-page-aside` (16.25rem, the editor's
+left column), and one named utility, `grid-cols-form-page`
+(`var(--spacing-form-page-aside) minmax(0, 5fr) minmax(0, 6fr)`), as
+foundations.md asks for a width the scale lacks; both are listed in
+foundations.md's named steps and utilities. No colour token is added, nothing
+is added to `pairs` in `web/src/theme/tokens.test.ts` (`foreground` and
+`muted-foreground` on `background`, `popover` and `card` are already listed),
+and no section is added. Icons are lucide `Clapperboard` (the edit entry),
+`ArrowLeft` (`Back to the video`), `User` (a person
 chip), `Building2` (an organization chip and the `Organizations` sidebar
 entry), `Users` (the `People` sidebar entry), `IdCard` (`Edit details` on the
 list screens), and the tag screen's `Pencil`, `Ellipsis`, `Merge` and
@@ -399,36 +426,44 @@ sign in with `next` set to the editor (plan, Structure decision). Opened from
 the entry it starts from the page's `Video`; opened by its URL it reads
 `GET /api/videos/{id}` first ([States](#states-1)).
 
-The diagram shows the screen's parts, top to bottom.
+The diagram shows the screen's parts from `lg`: the band, then three columns
+side by side.
 
 ```mermaid
 flowchart TB
-  band["Band: Edit details · {title} · Cancel · Save"] --> col["One column, max-w-2xl"]
-  col --> name[Name]
-  name --> work[Code, Description]
-  work --> dates[Dates: Released, Recorded, Published]
-  dates --> people[People: Performers, Directors, Photographers, Streamers]
-  people --> orgs[Organizations: Makers, Labels]
-  orgs --> lists[Links, IDs]
+  band["Band: Edit details · {title} · Cancel · Save"] --> grid
+  subgraph grid["Three columns from lg, each panel scrolling inside itself"]
+    direction LR
+    aside["Video (form-page-aside wide): thumbnail · file name · length, size, resolution · location · Back to the video"]
+    basics["Basics (5fr): Name · Code, Released, Recorded, Published in a 2×2 grid · Description, filling the rest · Links · IDs"]
+    credits["Credits (6fr): People — Performers, Directors, Photographers, Streamers · Organizations — Makers, Labels; one row per role, label at the left"]
+    aside ~~~ basics ~~~ credits
+  end
 ```
+
+Below `lg` the same three parts stack in that order and the page scrolls as
+one under the band ([Responsive behaviour](#responsive-behaviour)).
 
 ### Screen
 
 | Part | Form |
 | --- | --- |
 | Band | The skeleton's band: `Edit details` as the `h1`, the video's current title as the detail, and at the right end `Cancel` (`ghost` `sm`) then `Save` (`default` `sm`, the only `default` button on the screen). No logo, breadcrumb or `×` |
-| Column | The skeleton's column; the fields below in this order, `gap-6` apart. A `FieldSet` with a `FieldLegend` groups the three dates (`Dates`), the four people roles (`People`) and the two organization roles (`Organizations`), its fields `gap-4` apart inside, so the thirteen fields read as six groups. Controls are the skeleton's library density (`sm`) |
-| Failure line | The video page's failure line (`role="alert"`, `text-sm text-destructive`, lucide `AlertCircle` first) as the first child of the column, above `Name`, so it is visible under the band that holds `Save`. It clears on the next `Save` and on leaving |
+| Grid | The skeleton's `grid-cols-form-page` from `lg`: the left column `form-page-aside` wide, `Basics` and `Credits` in the ratio 5:6, `gap-6` apart. From `lg` the page is the viewport's height, so the band never leaves the top and each panel scrolls inside itself when its content is taller; below `lg` the three stack and the page scrolls as one. Controls are the skeleton's library density (`sm`) |
+| Left column | An `aside` named `Video`, `text-sm`, its parts `gap-3` apart, top to bottom: the thumbnail (`rounded-md`, the column's width, `aspect-video`, `object-cover`, the video page's placeholder when there is none), the file name (`font-medium`, `wrap-anywhere`), one muted line `{length} · {size} · {resolution}` (`text-muted-foreground tabular-nums`; the resolution absent while the probe is pending or failed), the location (`text-muted-foreground`, `wrap-anywhere`, the folder and file as the video page's file row shows them), and `Back to the video`: a `link` `sm` `Button asChild` with lucide `ArrowLeft` first, `text-muted-foreground`, `hover:text-primary`. Nothing in the column is editable, and it never scrolls: its content is bounded |
+| `Basics` panel | A `FieldSet` with the `FieldLegend` `Basics`, a flex column, its fields `gap-4` apart, in this order: `Name`; `Code`, `Released`, `Recorded` and `Published` in a `grid grid-cols-2 gap-4` from `sm` (`Code` and `Released` on the first row, `Recorded` and `Published` on the second; stacked below `sm`) with one `FieldDescription` under the grid; `Description`, which takes the height the other fields leave (`flex-1`); then `Links` and `IDs` |
+| `Credits` panel | A `FieldSet` with the `FieldLegend` `Credits`, holding two groups `gap-6` apart: `People` with the four people roles and `Organizations` with the two organization roles, each a nested `FieldSet` whose `FieldLegend variant="label"` is the group name. The roles of a group are rows of a `grid grid-cols-term gap-x-4 gap-y-3 items-start`: the role's `FieldLabel` in the first column (one line, `pt-1.5` so it aligns with the first chip), the chips and the picker in the second |
+| Failure line | The video page's failure line (`role="alert"`, `text-sm text-destructive`, lucide `AlertCircle` first) in the skeleton's `notice` slot under the band and above the columns, so it is visible under the band that holds `Save` at every scroll position of the panels. It clears on the next `Save` and on leaving |
 
 ### Fields
 
 | Field | Control | Initial value |
 | --- | --- | --- |
 | Name | `Input`; the placeholder is the file-name title, so an empty field says in place what the page will show. No description: the placeholder is the explanation, as in 029 | The display name when one is set, else empty |
-| Code | `Input` | The stored code |
-| Description | `Textarea`, growing with its content from three rows | The stored text |
-| Released, Recorded, Published | Three `Input`s in one row, three columns from `sm`, stacked below; placeholder `YYYY-MM-DD`; one `FieldDescription` under the row: `A year or a year and month is enough.` | The stored text of each kind |
-| Performers, Directors, Photographers, Streamers | A chip row and a picker input on one wrapping line, the shape of the video page's tags: `secondary` `Badge` chips (the name, no link, and the `×` named `Remove {name}`), then the `CreditCommand` `dropdown` input (`w-combobox`) at the end of the line | The linked people of that role, in position order |
+| Code | `Input`, the first cell of the 2×2 grid | The stored code |
+| Released, Recorded, Published | Three `Input`s, the other cells of the 2×2 grid; placeholder `YYYY-MM-DD`; one `FieldDescription` under the grid: `A year or a year and month is enough.` | The stored text of each kind |
+| Description | `Textarea` filling the panel's remaining height, at least three rows (`min-h-20`), its own text scrolling inside it; it does not grow with its content, so `Links` and `IDs` keep their place under it. When `Links` and `IDs` grow past the panel's height the panel scrolls and the `Textarea` stays at its minimum | The stored text |
+| Performers, Directors, Photographers, Streamers | A chip row and a picker input on one wrapping line in the row's second column, the shape of the video page's tags: `secondary` `Badge` chips (the name, no link, and the `×` named `Remove {name}`), then the `CreditCommand` `dropdown` input (`w-combobox`) at the end of the line | The linked people of that role, in position order |
 | Makers, Labels | The same, for organizations | |
 | Links | One `Input` per URL with a `ghost` `icon-sm` `×` (`Remove link`) at its right, then `Add link` (`outline` `sm`, lucide `Plus`) under the rows; no row while the list is empty | The stored URLs in order |
 | IDs | One row per external ID: `Source` and `Value` `Input`s side by side (`Source` a third of the row), the `×` (`Remove ID`), then `Add ID` | The stored IDs |
@@ -508,7 +543,7 @@ server writes both or neither
 | --- | --- |
 | Sending | `Save` reads `Saving…` with a spinning `LoaderCircle`, `aria-disabled`; every field is `readOnly` and the pickers and `×`s do not act; `Cancel` is `aria-disabled` until the `POST`s and the `PUT` have all answered. A `POST` already sent cannot be withdrawn, so leaving under it would leave a person or organization linked to nothing, and leaving under the `PUT` would show the page with the old title and items until the notification arrives; waiting lets the save end on the page, or in the failure line below |
 | Saved (`200`) | The editor returns to `/videos/:id` with the response `Video`, so the page shows the new title, the row with the saved items (none when everything was cleared) and `document.title` at once, with no flash of the old values, and the focus lands on the entry. No toast: the page is the result |
-| `400` with `field` | The reason under the control the path names (`displayName` to `Name`, `code`, `description`, `dates[i].date` to the date field of that kind, `urls[i]`, `externalIds[i].source` or `.value` to that row's input, `people[i].person.id` to that chip's `×`), with `aria-invalid` on it, the column scrolled so the control is under the band, and the focus moved there; the editor stays open with every value kept, and nothing was written, the name included. A path with no control shows on the failure line with the path in inline code |
+| `400` with `field` | The reason under the control the path names (`displayName` to `Name`, `code`, `description`, `dates[i].date` to the date field of that kind, `urls[i]`, `externalIds[i].source` or `.value` to that row's input, `people[i].person.id` to that chip's `×`), with `aria-invalid` on it, its panel (the page, below `lg`) scrolled so the control is in view, and the focus moved there; the editor stays open with every value kept, and nothing was written, the name included. A path with no control shows on the failure line with the path in inline code |
 | `404 person_not_found` or `organization_not_found` with `field` | The same, at the chip, which the owner removes; another tab deleted that entry |
 | A `POST` failed | The failure line `Couldn't save the details: {reason}`; chips whose `POST` succeeded lose their `New` mark and keep their ids, so a second `Save` creates nothing twice |
 | The `PUT` failed after a `POST` succeeded | The failure line `{n} people were created, but the details weren't saved: {reason}`; a second `Save` sends only the `PUT`. `Cancel` from here leaves and keeps the created entries, which the line has just named and which the discard confirmation does not mention; they stay on the list screen with `0 videos`, where the owner can delete them |
@@ -521,7 +556,7 @@ The diagram shows the ways out.
 
 ```mermaid
 flowchart LR
-  cancel[Cancel, or the browser's Back] --> changed{Draft changed?}
+  cancel[Cancel, Back to the video, or the browser's Back] --> changed{Draft changed?}
   changed -->|no| page[Video page]
   changed -->|yes| confirm[Discard changes?]
   confirm -->|Discard| page
@@ -534,6 +569,7 @@ flowchart LR
 | Changed | The draft differs from the loaded values after trimming: a text that differs, a chip added or removed (an unsaved `New` chip counts), a link or ID row that differs, an empty added row not counted |
 | `Cancel`, unchanged | Returns to the page at once, sending nothing |
 | `Cancel`, changed | A `ConfirmDialog` `Discard changes?` ([Words](#editor)) with `Keep editing` and a `destructive` `Discard`; `Discard` returns to the page, sending nothing and leaving no new chip behind; `Keep editing` and Esc close the dialog and return the focus to `Cancel` |
+| `Back to the video` | The same as `Cancel`, from the left column: the link's navigation is held until the draft is unchanged or `Discard` is chosen; `Keep editing` returns the focus to the link |
 | The browser's Back | The same as `Cancel`: unchanged leaves, changed asks first and stays on the editor while the dialog is open |
 | A reload or a closed tab | While the draft is changed, the browser's own leave prompt (`beforeunload`); otherwise nothing |
 | Return target | `/videos/:id` with the `from` and `trail` the entry carried, so the page's `×` still returns to the list the owner came from; opened by its URL, the editor returns to `/videos/:id` without state, and the page then returns to `/` as it does when opened by its URL. The focus lands on the entry |
@@ -542,9 +578,9 @@ flowchart LR
 
 | State | What the editor shows |
 | --- | --- |
-| Loading (opened by its URL) | The band with an empty detail, `Cancel` pressable and `Save` `aria-disabled`; the column shows every field's label with a `Skeleton` the control's height (`h-8`, `w-full`) in its place, so nothing jumps when the values arrive. Opened from the entry there is no loading: the page's `Video` is the draft's source |
+| Loading (opened by its URL) | The band with an empty detail, `Cancel` pressable and `Save` `aria-disabled`; the left column shows a `Skeleton` in the thumbnail's place and two text-line `Skeleton`s, and the panels show every field's label with a `Skeleton` the control's height (`h-8`, `w-full`) in its place, so nothing jumps when the values arrive. Opened from the entry there is no loading: the page's `Video` is the draft's source |
 | Loaded | The fields with their initial values; the focus on `Name` |
-| Load failed | An `ErrorState` in the column, `Couldn't load the video: {reason}`, with `Retry`; `Save` `aria-disabled` |
+| Load failed | An `ErrorState` in the body in place of the columns, `Couldn't load the video: {reason}`, with `Retry`; `Save` `aria-disabled` |
 | Gone (`404 video_not_found`, on load or on `Save`) | An `ErrorState` `This video no longer exists.` without `Retry`; `Save` `aria-disabled`; `Cancel` returns to the page, which shows its own gone layer |
 | Guest | Sent to `/login?next=/videos/:id/edit` before anything is drawn; after signing in the editor opens |
 
@@ -684,13 +720,14 @@ reloads the list from the top, as the tag page does for `tag_not_found`.
 ## Responsive behaviour
 
 Only Tailwind's default breakpoints are used, switched in CSS. The widths
-judged are 360px, 768px and 1280px (the list screens at 1280×800).
+judged are 360px, 768px and 1280px (the editor at 1280×820, the list screens
+at 1280×800). The editor's columns switch at `lg`, as the video page's do.
 
 | Width | Video page | Editor | Library | List screens |
 | --- | --- | --- | --- | --- |
-| 1280px | The file row on one line with the entry as one more icon in the action group; the work details row under it, a code, a date and two performers on one line; the description at `max-w-prose` | The band with the title, the detail and `Cancel` and `Save` at its right end; the column `max-w-2xl` centred with the page's background on both sides; the three date fields in one row; the pickers at `w-combobox` at the end of their chip lines; `Source` and `Value` side by side | The active filter row centred above the count, tag chips then entity chips | As 036 at 1280px, without the `Filter` button and the checkbox column |
-| 768px | As 1280px; the work details row may wrap to two lines before the description | As 1280px; the column fills the width less its padding | As 1280px | As 036 at 768px |
-| 360px | The action group (favorite, playlist, details, capture, edit, upload, open, copy) stays on one line with the facts wrapping above it; the work details row wraps item by item, a long performer list after a comma and a long name within itself; links truncate; no horizontal scroll (the Issue's edge case, acceptance criterion in the browser test) | The band keeps the title and the two buttons on one line, the detail hidden; the date fields stack; each picker input takes its own line under its chips; `Source` and `Value` stay side by side; no horizontal scroll with a 200-character name chip | The chips wrap | As 036 at 360px: the name column about 160px, one `Actions` menu, no horizontal scroll; the details dialog's alias rows stack `Alias` over `Language` |
+| 1280px | The file row on one line with the entry as one more icon in the action group; the work details row under it, a code, a date and two performers on one line; the description at `max-w-prose` | The band with the title, the detail and `Cancel` and `Save` at its right end; under it the left column (`form-page-aside`), `Basics` and `Credits` side by side, `gap-6` apart, filling the width; at 1280×820 every field is on the screen with typical content (a name, a code, three dates, a short description, two links, two IDs, a few names per role) and the page does not scroll; `Code` and the three dates in a 2×2 grid; the six role rows with their labels in one column at the left and the pickers at `w-combobox` at the end of their chip lines; `Source` and `Value` side by side; a long list scrolls its own panel while the band and the other columns stay | The active filter row centred above the count, tag chips then entity chips | As 036 at 1280px, without the `Filter` button and the checkbox column |
+| 768px | As 1280px; the work details row may wrap to two lines before the description | Below `lg`: the left column, `Basics` and `Credits` stack in that order, each filling the width less its padding, and the page scrolls as one under the sticky band; no panel scrolls inside itself; the thumbnail keeps the left column's `form-page-aside` width rather than filling the row; the 2×2 grid and the role rows keep their shape | As 1280px | As 036 at 768px |
+| 360px | The action group (favorite, playlist, details, capture, edit, upload, open, copy) stays on one line with the facts wrapping above it; the work details row wraps item by item, a long performer list after a comma and a long name within itself; links truncate; no horizontal scroll (the Issue's edge case, acceptance criterion in the browser test) | The band keeps the title and the two buttons on one line, the detail hidden; the three parts stack as at 768px; `Code` and the dates stack one per line; a role's label stays in its own column at the left with the chips wrapping beside it, and each picker input takes its own line under its chips; `Source` and `Value` stay side by side; no horizontal scroll with a 200-character name chip | The chips wrap | As 036 at 360px: the name column about 160px, one `Actions` menu, no horizontal scroll; the details dialog's alias rows stack `Alias` over `Language` |
 
 ## Review criteria
 
@@ -704,9 +741,11 @@ Judged by looking at the running screen in vv's one dark scheme
    body colour, so a glance picks up `AB-123`, `2024-03-01` and the names
    before the words `Code` and `Released`. The entry is one muted icon among
    the action group's icons, with no fill, border or `primary` colour. In the
-   editor the eye goes band title → `Name` → the groups in order, and `Save`
-   is the only filled button; the legends `Dates`, `People` and
-   `Organizations` read before their fields. On the list screens the names
+   editor the eye goes band title → `Name` → down `Basics` → across to
+   `Credits`, and `Save` is the only filled button; the legends `Basics` and
+   `Credits` read before their fields, and `People` and `Organizations`
+   before their rows; the left column is read last, as muted facts under a
+   thumbnail, and nothing in it looks editable. On the list screens the names
    are read first, then the heading and `New person`, then counts and
    aliases, as on the tag screen.
 2. **Information density**: a video with a code, a release date and two
@@ -716,18 +755,22 @@ Judged by looking at the running screen in vv's one dark scheme
    shows three entries and `+{n} more`; a 10,000-character description is
    three lines and `Show more`.
    A video with nothing set is unchanged in every pixel of the rows, and the
-   action group gains exactly one icon. The editor shows `Name` through
-   `Dates` without scrolling at 1280×800, and `Save` stays in view at every
-   scroll position. About 12 rows show under the band of a list screen at
-   1280×800.
+   action group gains exactly one icon. At 1280×820 the editor shows every
+   field, `Name` through `Labels`, `Links` and `IDs`, with typical content and
+   no page scroll, the three columns filling the width with no empty band of
+   background beside them; a role with twenty chips scrolls the `Credits`
+   panel alone, and `Save` stays in view at every scroll position. About 12
+   rows show under the band of a list screen at 1280×800.
 3. **Spacing rhythm**: the work details row's gaps between items equal the
    file row's (`gap-x-4`, `gap-x-5` from `sm`), the gap between a label and
    its value equals the gap between a fact's icon and its value, and the
    area's `gap-3` separates the row from the file row above and the technical
    line below; no extra space appears around the description. In the editor
-   the groups are `gap-6` apart and the fields inside a group `gap-4`, the
-   band is the video page band's height, and the chips and picker sit on one
-   line with the tag row's `gap-1.5`.
+   the three columns are `gap-6` apart, the fields inside a panel `gap-4`,
+   the two groups of `Credits` `gap-6` apart and their role rows `gap-y-3`,
+   with every role label starting at the same x and its baseline level with
+   the first chip; the band is the video page band's height, and the chips
+   and picker sit on one line with the tag row's `gap-1.5`.
 4. **Typography**: labels and values are the file row's `text-sm`; dates,
    codes and IDs are `tabular-nums`; the description is the same size, never
    larger or bolder than the facts, and the fold control reads as a link, not
@@ -759,7 +802,7 @@ Judged by looking at the running screen in vv's one dark scheme
    A namesake can be created beside an existing person and the two rows on
    `/people` differ by count.
 8. **Saving as one**: a new name and an invalid date saved together leave the
-   editor open with the reason under `Recorded`, the column scrolled to it,
+   editor open with the reason under `Recorded`, `Basics` scrolled to it,
    every value kept, and the page's title unchanged when the editor is left;
    a name over the limit with a valid object shows the reason under `Name`
    and writes no work information. `Cancel` with a changed draft asks
@@ -779,8 +822,9 @@ Judged by looking at the running screen in vv's one dark scheme
 11. **Phone width**: at 360px the video page shows no horizontal scroll with
     a long description, twenty performers and a 200-character name; the
     action group is one line; the editor's band keeps `Cancel` and `Save`
-    in view with the date fields stacked and a 200-character chip wrapping
-    inside the column; on `/people` the row actions are one `Actions` menu.
+    in view with the three parts stacked, `Code` and the dates one per line
+    and a 200-character chip wrapping beside its role label; on `/people`
+    the row actions are one `Actions` menu.
 12. **Guest**: signed out, the same video page shows no work details row and
     no entry; `/videos/:id/edit` redirects to sign in; the sidebar shows no
     `People` or `Organizations`; `/people` redirects to sign in;
@@ -790,8 +834,12 @@ Judged by looking at the running screen in vv's one dark scheme
     icons; the description is shown whole or opens in a dialog; an empty video
     shows empty fields, a placeholder row or a `No work details yet` line;
     editing opens a dialog or a form under the player; the editor shows the
-    sidebar, the logo or a breadcrumb; `Save` is only at the bottom of the
-    column; the `Name` field is prefilled with the file name; the title is
+    sidebar, the logo or a breadcrumb; the editor is one centred column with
+    the background empty on both sides at 1280px, or the page scrolls at
+    1280×820 with typical content, or a long role list scrolls the whole page
+    instead of its panel; the role labels sit above their chips instead of
+    beside them; `Save` is only at the bottom of a panel; the `Name` field is
+    prefilled with the file name; the title is
     saved while the work information fails, or the other way round; `Cancel`
     with a changed draft leaves without asking, or Esc leaves the editor; a
     cancelled edit that sent no `Save` leaves a new person on `/people`;
@@ -812,7 +860,9 @@ names and announcements are decided, as in 036 and 046.
 - The entry is a link named `Edit details`. The editor's `h1` is the band
   title `Edit details`; every field has a visible `FieldLabel`, every `×` an
   `aria-label`; the picker input is named by its placeholder and the `New`
-  mark is read after the name; a `FieldSet`'s `FieldLegend` names its group.
+  mark is read after the name; a `FieldSet`'s `FieldLegend` names its panel
+  or group, and the left column is an `aside` named `Video` whose thumbnail
+  has an empty `alt`, because the file name beside it says the same thing.
   On open the focus is on `Name`; on return to the page it is on the entry.
 - A field's reason uses `FieldError` with `aria-invalid` on the control; the
   failure line is `role="alert"`; the fold control's text says its action.
