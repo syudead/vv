@@ -114,7 +114,8 @@ func TestFitThumbnailSource(t *testing.T) {
 	}{
 		{name: "16:9 の動画に 4000×3000", width: 4000, height: 3000, aspect: 16.0 / 9.0, wantWidth: 2048, wantHeight: 1152},
 		{name: "16:9 の動画に 1280×720", width: 1280, height: 720, aspect: 16.0 / 9.0, wantWidth: 1280, wantHeight: 720},
-		{name: "大きさの分からない動画に 1001×1000", width: 1001, height: 1000, aspect: 0, wantWidth: 1000, wantHeight: 1000},
+		{name: "大きさの分からない動画に 1001×1000", width: 1001, height: 1000, aspect: 0, wantWidth: 1001, wantHeight: 1000},
+		{name: "16:9 の動画に 16×9", width: 16, height: 9, aspect: 16.0 / 9.0, wantWidth: 16, wantHeight: 9},
 		{name: "16:9 の動画に 1×1", width: 1, height: 1, aspect: 16.0 / 9.0, wantWidth: 1, wantHeight: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -150,14 +151,18 @@ func TestFitThumbnailSourceSize(t *testing.T) {
 		{width: 1280, height: 720, aspect: 16.0 / 9.0, wantW: 1280, wantH: 720},
 		{width: 1000, height: 1000, aspect: 16.0 / 9.0, wantW: 1000, wantH: 562},
 		{width: 3000, height: 4000, aspect: 9.0 / 16.0, wantW: 1152, wantH: 2048},
-		{width: 1920, height: 1080, aspect: 9.0 / 16.0, wantW: 606, wantH: 1080},
+		{width: 1920, height: 1080, aspect: 9.0 / 16.0, wantW: 607, wantH: 1080},
 		{width: 5000, height: 2500, aspect: 0, wantW: 2048, wantH: 1024},
 		{width: 640, height: 480, aspect: 0, wantW: 640, wantH: 480},
-		// 奇数の辺は切り下げ、切り抜いた大きさを超えない。
-		{width: 1001, height: 1000, aspect: 0, wantW: 1000, wantH: 1000},
-		{width: 1001, height: 1001, aspect: 16.0 / 9.0, wantW: 1000, wantH: 562},
-		{width: 1125, height: 2001, aspect: 9.0 / 16.0, wantW: 1124, wantH: 2000},
-		// 2px に満たない辺は 1px のまま。拡大しないので、その大きさでは aspect を表せない。
+		// 奇数の辺は偶数に丸めず、切り抜いた大きさを超えない整数に切り下げる。
+		{width: 1001, height: 1000, aspect: 0, wantW: 1001, wantH: 1000},
+		{width: 1001, height: 1001, aspect: 16.0 / 9.0, wantW: 1001, wantH: 563},
+		{width: 1125, height: 2001, aspect: 9.0 / 16.0, wantW: 1125, wantH: 2000},
+		// 動画と同じ比率の小さな画像は、行も列も欠けずにそのままの大きさで残る。
+		{width: 16, height: 9, aspect: 16.0 / 9.0, wantW: 16, wantH: 9},
+		{width: 9, height: 16, aspect: 9.0 / 16.0, wantW: 9, wantH: 16},
+		{width: 17, height: 9, aspect: 16.0 / 9.0, wantW: 16, wantH: 9},
+		// 1px に満たない辺は 1px にする。拡大しないので、その大きさでは aspect を表せない。
 		{width: 1, height: 1, aspect: 16.0 / 9.0, wantW: 1, wantH: 1},
 		{width: 1, height: 1, aspect: 0, wantW: 1, wantH: 1},
 		{width: 3, height: 1, aspect: 9.0 / 16.0, wantW: 1, wantH: 1},
