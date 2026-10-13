@@ -96,6 +96,13 @@ type OverrideStore struct{ db *DB }
 // 通して使う。
 type VersionStore struct{ db *DB }
 
+// CreditStore は人物と団体（名前・別名・外部 ID・団体の親）の一覧・読み出し・作成・更新・統合・削除と、
+// その名前の照合用の鍵の作り直しを受け持つ（credits.go・credit_listing.go、
+// specs/047-video-work-info/data-model.md「Entities」）。2 つの種類を domain.CreditKind で受け、
+// SQL は 1 回だけ書く。TagStore と同じく、共有する SQLite 接続と読み取り用の接続 read だけを持ち、
+// ライブラリ索引の型や通知には依存せず、ドメインイベントを発行しない（R-11）。
+type CreditStore struct{ sql, read *sql.DB }
+
 func (db *DB) Ingest() *IngestStore       { return &IngestStore{db: db} }
 func (db *DB) Library() *LibraryStore     { return &LibraryStore{db: db} }
 func (db *DB) Scans() *ScanStore          { return &ScanStore{db: db} }
@@ -113,3 +120,4 @@ func (db *DB) FolderGroups() *FolderGroupStore { return &FolderGroupStore{db: db
 func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
 func (db *DB) AutoTags() *AutoTagStore         { return &AutoTagStore{db: db} }
 func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
+func (db *DB) Credits() *CreditStore           { return &CreditStore{sql: db.sql, read: db.read} }

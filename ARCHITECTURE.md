@@ -116,9 +116,9 @@ transaction. Database constraints (one running scan, one unfinished job per
 kind and video) are the final guard against races.
 
 **Store roles.** `store.DB` opens SQLite, runs migrations and hands out role
-types (`IngestStore`, `LibraryStore`, `TagStore`, `AuthStore`, …). Each
-business operation belongs to exactly one role, so calling it through the wrong
-role does not compile. No role calls another role's public methods; work that
+types (`IngestStore`, `LibraryStore`, `TagStore`, `CreditStore`, `AuthStore`,
+…). Each business operation belongs to exactly one role, so calling it through
+the wrong role does not compile. No role calls another role's public methods; work that
 spans roles runs in one transaction through package-private helpers. SQL never
 leaves `internal/store`.
 
@@ -140,10 +140,11 @@ visible only when complete (it is generated under `.tmp` and renamed into
 place), and it is removed only when the last video referencing its content goes.
 
 **User data survives a rebuild.** Playback positions, watch history, tags,
-public flags, favorites, playlist items, owner edits and applied thumbnail
-images are keyed by values a rescan reproduces (the content key, a version
-bundle's key, a folder's absolute path), never by `videos.id`, and carry no
-foreign key to `videos`. Which tables are rebuildable is in
+public flags, favorites, playlist items, owner edits, applied thumbnail images
+and work information are keyed by values a rescan reproduces (the content key,
+a version bundle's key, a folder's absolute path), never by `videos.id`, and
+carry no foreign key to `videos`. People and organizations are entities with
+ids of their own that work information refers to. Which tables are rebuildable is in
 [Data and recovery](docs/how-to/running-vv.md#data-and-recovery).
 
 **Every read knows its viewer.** Each store read that returns videos, locations

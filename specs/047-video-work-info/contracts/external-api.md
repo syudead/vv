@@ -92,7 +92,7 @@ in this API `parent` is `null` at the root and every list is `[]` when empty.
 | --- | --- | --- |
 | `400` | `invalid_request` | `sort` outside the five values, `limit` outside 1 to 200, `q` over 100 characters, `source` without `externalId` or the reverse |
 | `400` | `invalid_request` / `invalid_cursor` | `cursor` unreadable or made under another `sort` |
-| `400` | `invalid_request` / `work_info_*`, `field`, `limit` | A name, alias, language, external ID or list breaks its rule ([data-model.md, Fields](../data-model.md#fields)) |
+| `400` | `invalid_request` / `work_info_*`, `field`, `limit` | A name, alias, language, external ID or list breaks its rule ([data-model.md, Fields](../data-model.md#fields)); a name empty after trimming, or an external ID with exactly one empty half, is `work_info_empty` with `field` `name`, `externalIds[i].source` or `externalIds[i].value` |
 | `400` | `invalid_request` / `work_info_too_many`, `field`, `limit` | `sourceIds` or `ids` empty or over 20,000 entries, or a merge that would leave the target with over 50 `aliases` or 20 `externalIds`. Nothing changes |
 | `400` | `invalid_request` / `merge_same_person` | `sourceIds` contains `targetId`. Nothing changes |
 | `400` | `invalid_request` / `organization_parent_cycle` | `parentId` is the organization or one of its descendants, or a merge source is an ancestor of `targetId`. Nothing changes |
@@ -104,7 +104,7 @@ Every operation returns a JSON body, so every MCP tool has a result
 `createPerson` answers `200`, not `201`, for the same reason as the other
 external writes.
 
-`Error` gains the optional `field`, and `ErrorReason` gets the thirteen values
+`Error` gains the optional `field`, and `ErrorReason` gets the fourteen values
 of [screen-api.md, Added `reason` values and `field`](screen-api.md#added-reason-values-and-field).
 
 ## MCP tools
