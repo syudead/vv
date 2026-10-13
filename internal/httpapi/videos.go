@@ -39,7 +39,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
 		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
-		favorite: params.Favorite,
+		favorite: params.Favorite, person: params.Person, organization: params.Organization,
 	})
 	if !ok {
 		return
@@ -71,6 +71,9 @@ type videoQueryParams struct {
 	limit    *int
 	tag      *[]int64
 	favorite *bool
+	// person と organization は人物・団体の id による絞り込み（specs/047-video-work-info/research.md R-7）。
+	person       *int64
+	organization *int64
 }
 
 // parseVideoQuery は一覧のパラメータを検査して問い合わせにする。誤りなら 400 を書いて
@@ -110,10 +113,34 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	if query.TagIDs, ok = s.parseTagFilter(w, params.tag); !ok {
 		return domain.VideoQuery{}, false
 	}
+	if query.Person, query.Organization, ok = s.parseCreditFilters(w, params.person, params.organization); !ok {
+		return domain.VideoQuery{}, false
+	}
 	if !s.checkAudienceQuery(w, audience, query) {
 		return domain.VideoQuery{}, false
 	}
 	return query, true
+}
+
+// parseCreditFilters は一覧の person と organization を検査する。指定が無ければ 0 を返す。
+// 正の整数でない値は 400 を書いて ok = false を返す。実体の有無は確かめない（当たらなければ
+// 空の一覧になる、specs/047-video-work-info/contracts/screen-api.md）。
+func (s *server) parseCreditFilters(w http.ResponseWriter, person, organization *int64) (personID, organizationID int64, ok bool) {
+	for _, filter := range []struct {
+		name  string
+		value *int64
+		out   *int64
+	}{{"person", person, &personID}, {"organization", organization, &organizationID}} {
+		if filter.value == nil {
+			continue
+		}
+		if *filter.value < 1 {
+			s.invalidRequest(w, filter.name+" must be a positive integer.")
+			return 0, 0, false
+		}
+		*filter.out = *filter.value
+	}
+	return personID, organizationID, true
 }
 
 // writeVideoPage は一覧1ページを応答に書く。各項目には再生位置・タグと、一覧に

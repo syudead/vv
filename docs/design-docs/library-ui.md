@@ -658,6 +658,25 @@ and the page never filters the pages it has loaded
 ([`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) keeps them in the
 URL).
 
+The list routes (`GET /api/videos`, `GET /api/library` and
+`GET /api/library/ids`) take these conditions, each ANDed with the others:
+
+| Parameter | Keeps | Guest |
+| --- | --- | --- |
+| `query` | Videos whose title or relative path matches the search expression | Allowed; tag names are not matched |
+| `tag` | Videos that carry every listed tag | `400 guest_filter_not_allowed` |
+| `watch` | Videos in that watch state (`all` keeps every video) | Only `all` |
+| `playable` | Videos that play in the browser | Allowed |
+| `favorite` | Favorite videos and favorite groups | `400 guest_filter_not_allowed` |
+| `person` | Videos linked to that person in any role | `400 guest_filter_not_allowed` |
+| `organization` | Videos linked to that organization in any role | `400 guest_filter_not_allowed` |
+
+`query`, `tag`, `person` and `organization` apply to each group member, so a
+group matched only in part lists its matched members as video items. A
+`person` or `organization` id with no entity gives an empty list, and a value
+that is not a positive integer is `400 invalid_request`
+([047 screen-api.md](../../specs/047-video-work-info/contracts/screen-api.md#list-parameters-person-and-organization)).
+
 Only the server knows which videos and groups belong to a folder and match the
 filters, so a page that filtered locally would show a different set from
 `total`. For the same reason a re-fetched list item never guesses its place:
