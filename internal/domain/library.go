@@ -131,6 +131,12 @@ type VideoQuery struct {
 	TagIDs []int64
 	// FavoriteOnly はお気に入りの項目だけにする（specs/035-favorites/research.md R-3）。
 	FavoriteOnly bool
+	// Performer はこの名前の出演者を持つ動画だけにする。Maker はメーカーがこの値の動画だけに
+	// する。どちらも NormalizeWorkInfoFilter で整えた値で、照合形（FoldForMatch）が保存した
+	// 照合形と等しいものに当たる。空なら絞り込まない
+	// （specs/047-video-work-info/contracts/screen-api.md「List parameters `performer` and `maker`」）。
+	Performer string
+	Maker     string
 }
 
 // VideoPage は一覧1ページ分である。

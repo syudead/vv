@@ -167,3 +167,19 @@ func TestWorkInfoEqual(t *testing.T) {
 		t.Error("nil と空の出演者が違うとされた")
 	}
 }
+
+// 一覧の performer・maker の値は前後の空白を除き、空か 200 符号位置を超えれば誤りにする。
+func TestNormalizeWorkInfoFilter(t *testing.T) {
+	limit := strings.Repeat("あ", WorkInfoFilterMaxLength)
+	for input, want := range map[string]string{"  山田\u3000": "山田", limit: limit, " " + limit + "\t": limit} {
+		got, err := NormalizeWorkInfoFilter(input)
+		if err != nil || got != want {
+			t.Errorf("NormalizeWorkInfoFilter(%q) = %q, %v, want %q", input, got, err, want)
+		}
+	}
+	for _, input := range []string{"", " \u3000\t", limit + "い"} {
+		if _, err := NormalizeWorkInfoFilter(input); !errors.Is(err, ErrInvalidWorkInfoFilter) {
+			t.Errorf("NormalizeWorkInfoFilter(%q) = %v, want ErrInvalidWorkInfoFilter", input, err)
+		}
+	}
+}

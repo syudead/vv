@@ -39,7 +39,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
 		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
-		favorite: params.Favorite,
+		favorite: params.Favorite, performer: params.Performer, maker: params.Maker,
 	})
 	if !ok {
 		return
@@ -62,15 +62,17 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 
 // videoQueryParams は一覧の経路（listVideos・listLibrary）が共通に受けるパラメータである。
 type videoQueryParams struct {
-	query    *string
-	watch    *gen.WatchFilter
-	playable *bool
-	sort     *gen.VideoSort
-	seed     *int64
-	cursor   *string
-	limit    *int
-	tag      *[]int64
-	favorite *bool
+	query     *string
+	watch     *gen.WatchFilter
+	playable  *bool
+	sort      *gen.VideoSort
+	seed      *int64
+	cursor    *string
+	limit     *int
+	tag       *[]int64
+	favorite  *bool
+	performer *string
+	maker     *string
 }
 
 // parseVideoQuery は一覧のパラメータを検査して問い合わせにする。誤りなら 400 を書いて
@@ -107,7 +109,7 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	if query.Query, ok = s.parseSearchQuery(w, params.query); !ok {
 		return domain.VideoQuery{}, false
 	}
-	if query.TagIDs, ok = s.parseTagFilter(w, params.tag); !ok {
+	if !s.parseMatchFilters(w, &query, params) {
 		return domain.VideoQuery{}, false
 	}
 	if !s.checkAudienceQuery(w, audience, query) {
@@ -263,6 +265,36 @@ func (s *server) parseSearchQuery(w http.ResponseWriter, query *string) (string,
 		return "", false
 	}
 	return *query, true
+}
+
+// parseMatchFilters は当たった動画を決める絞り込み（タグ・出演者・メーカー）を検査して query に
+// 写す。誤りなら 400 を書いて false を返す。
+func (s *server) parseMatchFilters(w http.ResponseWriter, query *domain.VideoQuery, params videoQueryParams) bool {
+	var ok bool
+	if query.TagIDs, ok = s.parseTagFilter(w, params.tag); !ok {
+		return false
+	}
+	if query.Performer, ok = s.parseWorkInfoFilter(w, "performer", params.performer); !ok {
+		return false
+	}
+	query.Maker, ok = s.parseWorkInfoFilter(w, "maker", params.maker)
+	return ok
+}
+
+// parseWorkInfoFilter は一覧の performer・maker の値を整える。指定が無ければ空を返す。前後の
+// 空白を除いて空になる値と domain.WorkInfoFilterMaxLength を超える値は 400 を書いて false を
+// 返す（specs/047-video-work-info/contracts/screen-api.md「List parameters `performer` and `maker`」）。
+func (s *server) parseWorkInfoFilter(w http.ResponseWriter, name string, value *string) (string, bool) {
+	if value == nil {
+		return "", true
+	}
+	normalized, err := domain.NormalizeWorkInfoFilter(*value)
+	if err != nil {
+		s.invalidRequest(w, fmt.Sprintf("%s must be between 1 and %d characters after trimming spaces.",
+			name, domain.WorkInfoFilterMaxLength))
+		return "", false
+	}
+	return normalized, true
 }
 
 // parseTagFilter は絞り込みに使うタグの id の個数を検査する。17 個以上は 400 を

@@ -165,6 +165,8 @@ func TestCheckVideoQuery(t *testing.T) {
 		{FavoriteOnly: true},
 		{Sort: SortFavoritedAsc},
 		{Sort: SortFavoritedDesc},
+		{Performer: "name"},
+		{Maker: "maker"},
 	}
 	for _, q := range allowed {
 		if err := AudienceGuest.CheckVideoQuery(q); err != nil {

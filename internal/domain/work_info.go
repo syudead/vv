@@ -170,13 +170,18 @@ func normalizeWorkInfoText(field WorkInfoField, input string, maxLength int, all
 			return "", &InvalidWorkInfoError{Field: field, Problem: WorkInfoControlCharacters}
 		}
 	}
-	trimmed := strings.TrimFunc(input, func(r rune) bool {
-		return unicode.Is(unicode.White_Space, r)
-	})
+	trimmed := trimWorkInfoSpace(input)
 	if utf8.RuneCountInString(trimmed) > maxLength {
 		return "", &InvalidWorkInfoError{Field: field, Problem: WorkInfoTooLong, Limit: maxLength}
 	}
 	return trimmed, nil
+}
+
+// trimWorkInfoSpace は作品情報の値の前後の空白（Unicode の White_Space）を取り除く。
+func trimWorkInfoSpace(input string) string {
+	return strings.TrimFunc(input, func(r rune) bool {
+		return unicode.Is(unicode.White_Space, r)
+	})
 }
 
 // releaseDateLength は YYYY-MM-DD の長さである。
@@ -277,3 +282,23 @@ type VideoWorkInfoChanged struct {
 }
 
 func (VideoWorkInfoChanged) event() {}
+
+// WorkInfoFilterMaxLength は一覧の performer・maker の値の長さの上限（符号位置数）である。
+// 出演者名とメーカーの上限と同じ値にする。
+const WorkInfoFilterMaxLength = 200
+
+// ErrInvalidWorkInfoFilter は一覧の performer・maker として受け付けられない値を表す。API では
+// invalid_request（400）になる。
+var ErrInvalidWorkInfoFilter = errors.New("invalid performer or maker filter")
+
+// NormalizeWorkInfoFilter は一覧の performer・maker の値を整える
+// （specs/047-video-work-info/contracts/screen-api.md「List parameters `performer` and `maker`」）。
+// 保存する値と同じく前後の空白を取り除き、空になるか WorkInfoFilterMaxLength を超えれば
+// ErrInvalidWorkInfoFilter を返す。照合形にするのは保存層である。
+func NormalizeWorkInfoFilter(input string) (string, error) {
+	trimmed := trimWorkInfoSpace(input)
+	if trimmed == "" || utf8.RuneCountInString(trimmed) > WorkInfoFilterMaxLength {
+		return "", ErrInvalidWorkInfoFilter
+	}
+	return trimmed, nil
+}

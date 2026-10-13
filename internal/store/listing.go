@@ -84,10 +84,25 @@ type listSpec struct {
 	tagIDs []int64
 	// favoriteOnly はお気に入りだけにする（specs/035-favorites/data-model.md §5）。
 	favoriteOnly bool
-	sort         domain.VideoSort
-	seed         int64
-	cursor       string
-	limit        int
+	// performer・maker は出演者・メーカーの絞り込みの値（domain.VideoQuery と同じ）。空なら
+	// 絞り込まない（specs/047-video-work-info/data-model.md「Lists」）。
+	performer string
+	maker     string
+	sort      domain.VideoSort
+	seed      int64
+	cursor    string
+	limit     int
+}
+
+// libraryQuerySpec はライブラリの一覧の問い合わせ q を、存在を確かめたタグの id tagIDs とともに
+// 見る人 audience の listSpec にする。
+func libraryQuerySpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int64) listSpec {
+	return listSpec{
+		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
+		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
+		performer: q.Performer, maker: q.Maker,
+		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
+	}
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
@@ -113,11 +128,7 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 	if err != nil {
 		return domain.VideoPage{}, err
 	}
-	page, err := listVideoPageTx(ctx, tx, listSpec{
-		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
-		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
-	})
+	page, err := listVideoPageTx(ctx, tx, libraryQuerySpec(audience, q, tagIDs))
 	if err != nil {
 		return domain.VideoPage{}, err
 	}

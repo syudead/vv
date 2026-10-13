@@ -112,18 +112,18 @@ func (s *server) SummarizeVideoTags(w http.ResponseWriter, r *http.Request) {
 }
 
 // parseIDsQuery は「すべて選択」の経路（listLibraryIds）のパラメータを
-// 検査して問い合わせにする。誤りなら 400 を書いて false を返す。
-func (s *server) parseIDsQuery(w http.ResponseWriter, search *string, watch *gen.WatchFilter, playable *bool, tag *[]int64, favorite *bool) (domain.VideoQuery, bool) {
-	query := domain.VideoQuery{FavoriteOnly: favorite != nil && *favorite}
-	filters, ok := s.parseListFilters(w, listFilterParams{watch: watch, playable: playable})
+// 検査して問い合わせにする。並び順・カーソル・件数は使わない。誤りなら 400 を書いて false を返す。
+func (s *server) parseIDsQuery(w http.ResponseWriter, params videoQueryParams) (domain.VideoQuery, bool) {
+	query := domain.VideoQuery{FavoriteOnly: params.favorite != nil && *params.favorite}
+	filters, ok := s.parseListFilters(w, listFilterParams{watch: params.watch, playable: params.playable})
 	if !ok {
 		return domain.VideoQuery{}, false
 	}
 	query.Watch, query.PlayableOnly = filters.watch, filters.playableOnly
-	if query.Query, ok = s.parseSearchQuery(w, search); !ok {
+	if query.Query, ok = s.parseSearchQuery(w, params.query); !ok {
 		return domain.VideoQuery{}, false
 	}
-	if query.TagIDs, ok = s.parseTagFilter(w, tag); !ok {
+	if !s.parseMatchFilters(w, &query, params) {
 		return domain.VideoQuery{}, false
 	}
 	return query, true
