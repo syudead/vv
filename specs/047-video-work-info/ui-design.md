@@ -153,6 +153,7 @@ dates, URLs and IDs are user data and are embedded untranslated.
 | Link item | {url without its scheme} | Full URL in `title`; opens in a new tab |
 | ID item | {source}: {value} | |
 | Description, fold control | Show more / Show less | `link` `sm` `Button` after the folded text |
+| A list item's hidden entries | +{n} more / Show fewer | `link` `sm` `Button` after the first three entries; `aria-label` `Show all {count} {label}` (`Show all 12 performers`) |
 | Entry, name and tooltip | Edit work details | `player.workInfo.edit` |
 
 ### Video page, form
@@ -291,6 +292,7 @@ before.
 | People, organizations | The names of one role, in position order, joined by `, `. Each name is a router `Link` to `/?person=<id>` or `/?organization=<id>` in the body colour, `hover:text-primary`, no underline at rest, as the name link of a tag chip. The item wraps after a comma; a name wraps with `wrap-anywhere` |
 | Links | One link per URL, the text being the URL without its scheme, `truncate` at `max-w-xs`, the full URL in `title`, `target="_blank"` with `rel="noreferrer"`, lucide `ExternalLink` (`size-3`) after the text. Several are joined by `, ` |
 | IDs | `{source}: {value}` pairs joined by `, `, `tabular-nums` |
+| Long lists | A role, `Links` or `IDs` with more than three entries shows its first three and then `+{n} more`, a `link` `sm` `Button` in `text-muted-foreground`, `hover:text-primary`, inside the same item. Pressing it shows every entry of that item in place, followed by `Show fewer`, and moves the focus to the fourth entry. Not remembered, as the description. The limits allow 100 names per role and 20 links and IDs, so without this cap the row's height would grow with the counts, which the Issue's `UI品質` (`項目が多くても情報欄が縦に間延びしない`) rules out; folding each list rather than the whole row keeps every kind of item visible |
 | Description | A `p` under the `ul`, `text-sm text-foreground whitespace-pre-line max-w-prose`, so line feeds show and a line stays readable in the wide left column; folded as below |
 
 ### Folded description
@@ -399,11 +401,11 @@ flowchart LR
 
 | Aspect | Rule |
 | --- | --- |
-| Candidates | Every keystroke requests `GET /api/people?q={input}&limit=8` (or `/api/organizations`), the previous request aborted; the previous rows stay until the new ones arrive, with the small spinner at the input's right end, as the merge dialog's target list |
+| Candidates | Every keystroke requests `GET /api/people?q={input}&limit=8` (or `/api/organizations`), the previous request aborted, with `q` cut to the input's first 100 characters, because the list contract accepts at most 100 while a name may have 200; every match of the full name contains that prefix, so the cut narrows nothing away and the name stays valid to create; the previous rows stay until the new ones arrive, with the small spinner at the input's right end, as the merge dialog's target list |
 | Row content | The name; `Alias: {alias}` under it when the input matched an alias and not the name; `{n} videos` at the right. People already in this role's chips, and the form's unsaved new chips, are not listed as matches |
-| Exact match | A candidate whose name or alias equals the input under the search fold comes first |
+| Exact match | A candidate whose name or alias equals the whole input under the search fold comes first. The eight rows are one page of substring matches in name order, so an exact match can be missing from them ([contracts/screen-api.md](contracts/screen-api.md#people-and-organizations) has no separate exact result); see Enter below |
 | Create row | `Create "{name}"`, last, offered for every non-empty name that is not an unsaved new chip already, even when an exact match exists ([Why this shape](#why-this-shape)). Choosing it adds a chip marked `New`; nothing is sent yet. The same name typed into another role offers that unsaved chip as a match row (marked `New`, no count) instead of a second create row |
-| Enter without arrows | The exact match when there is one, otherwise the create row; an empty name shows `Enter a name` under the input |
+| Enter without arrows | The exact match when the rows hold one. When they do not and the response had a `nextCursor` (more matches than the rows), the picker first requests the same `q` without `limit`, which returns every match, with the input's spinner, and picks the exact match from that response if there is one; only when no exact match exists anywhere does Enter take the create row, so Enter never creates a namesake of an existing entry. A failure of that request shows the `Request failed` line and adds no chip. An empty name shows `Enter a name` under the input |
 | Name rules | Checked as typed: over 200 code points, or a control character, shows the reason under the input and the picker does not act; a paste with a line break is refused with its reason, as the tag picker |
 | Request failed | `Couldn't search people: {reason}` under the input in the picker's reason format; the last rows stay and the next keystroke searches again |
 
@@ -425,12 +427,12 @@ flowchart LR
 
 | Situation | What the form shows |
 | --- | --- |
-| Sending | `Save` reads `Saving…` with a spinning `LoaderCircle`, `aria-disabled`; every field is `readOnly` and the pickers and `×`s do not act; `Cancel` stays pressable and returns to the row without waiting (a response that arrives is used only to replace the video) |
+| Sending | `Save` reads `Saving…` with a spinning `LoaderCircle`, `aria-disabled`; every field is `readOnly` and the pickers and `×`s do not act. A save without new chips sends only the `PUT`, and `Cancel` stays pressable and returns to the row without waiting (a response that arrives is used only to replace the video), as the title editor. A save with new chips makes `Cancel` `aria-disabled` too until the `POST`s and the `PUT` have all answered: a `POST` already sent cannot be withdrawn, so closing the form under it would leave a person or organization linked to nothing; waiting lets the `PUT` link it, or ends in the failure line below, which names what was created |
 | Saved (`200`) | The response `Video` replaces the page's video, the form closes, the row shows the saved items (none when everything was cleared) and the focus returns to the entry. No toast: the row is the result |
 | `400` with `field` | The reason under the control the path names (`code`, `description`, `dates[i].date` to the date field of that kind, `urls[i]`, `externalIds[i].source` or `.value` to that row's input, `people[i].person.id` to that chip's `×`), with `aria-invalid` on it, and the focus moved there; the form stays open with every value kept. A path with no control shows on the failure line with the path in inline code |
 | `404 person_not_found` or `organization_not_found` with `field` | The same, at the chip, which the owner removes; another tab deleted that entry |
 | A `POST` failed | The failure line `Couldn't save the work details: {reason}`; chips whose `POST` succeeded lose their `New` mark and keep their ids, so a second `Save` creates nothing twice |
-| The `PUT` failed after a `POST` succeeded | The failure line `{n} people were created, but the work details weren't saved: {reason}`; a second `Save` sends only the `PUT` |
+| The `PUT` failed after a `POST` succeeded | The failure line `{n} people were created, but the work details weren't saved: {reason}`; a second `Save` sends only the `PUT`. `Cancel` from here closes the form and keeps the created entries, which the line has just named; they stay on the list screen with `0 videos`, where the owner can delete them |
 | `404 video_not_found` | The video is refetched, as 029 |
 | Nothing changed | The `PUT` is still sent; the server returns `200` and leaves `updatedAt` ([contracts/screen-api.md](contracts/screen-api.md#put-apivideosidwork-info)); the form closes |
 
@@ -455,8 +457,8 @@ row is drawn while any tag, person or organization applies.
 
 | Aspect | Rule |
 | --- | --- |
-| Name | Read with `GET /api/people/{id}`; a `Skeleton` (`w-12`) stands in the chip until it arrives, as a tag chip before the tag list loads |
-| `404` | The parameter leaves the URL, the chip goes, the list reloads, and a toast says the entity no longer exists ([Words](#library)); the tag and the other entity filter stay |
+| Name | Read with `GET /api/people/{id}` for a `person` chip and `GET /api/organizations/{id}` for an `organization` chip, because the two kinds have separate id spaces; a `Skeleton` (`w-12`) stands in the chip until it arrives, as a tag chip before the tag list loads |
+| `404` (`person_not_found` or `organization_not_found` from that read) | The parameter leaves the URL, the chip goes, the list reloads, and a toast says the entity no longer exists ([Words](#library)); the tag and the other entity filter stay |
 | Removing | Pressing the chip removes only that parameter; the focus moves to the next chip, else the previous, else the search field |
 | `Clear filters` | Removes `person` and `organization` with `q`, `watch`, `playable` and `tag`; the sort stays. The filter button's count does not include them, as it does not include tags |
 | Both set | One person and one organization at most; the chips sit in that order after the tags |
@@ -532,13 +534,20 @@ it: renaming stays on the row.
 source ([036, Merge dialog](../036-tag-admin-scale/ui-design.md#merge-dialog)):
 a `FormDialog` `Merge "{name}"`, the target label, a `CreditCommand` in
 `inline` layout whose candidates come from `GET /api/people?q=&limit=8`
+(`q` cut to 100 characters, as the [Picker](#picker))
 without the source and without a create row, the chosen target marked in the
 list, `source → target` in the footer, and the confirmation text with the
 source's `videoCount` once a target is chosen. `Merge` is `default` and
 disabled until then. On `200` the dialog closes, the source row leaves, the
-target row is rewritten from the response (or inserted at its sort position
-when it was not loaded), the toast reads `Merged "{source}" into "{target}"`,
-and the focus moves to the target's name. `organization_parent_cycle` and
+toast reads `Merged "{source}" into "{target}"`, and the target follows
+[036's merge result](../036-tag-admin-scale/ui-design.md#merge-dialog): it is
+rewritten from the response and placed at its sort position when that
+position falls inside the loaded rows (always, once no `nextCursor`
+remains), and otherwise is not in the loaded rows (a loaded target row
+leaves them), so the next page returns it once, in its order. The focus
+moves to the target's name when its row is loaded, otherwise to the row
+after the removed source, else the previous row, else the create button.
+`organization_parent_cycle` and
 `work_info_too_many` (over 50 aliases or 20 IDs) show as the dialog's failure
 line, and nothing changes.
 
@@ -590,8 +599,10 @@ Judged by looking at the running screen in vv's one dark scheme
    then counts and aliases, as on the tag screen.
 2. **Information density**: a video with a code, a release date and two
    performers adds one line to the information area at 1280px; a video with
-   every item set adds at most three wrapped lines and the folded
-   description; a 10,000-character description is three lines and `Show more`.
+   every item set adds a few wrapped lines and the folded description, and
+   the row is as tall with 100 performers as with four, because each list
+   shows three entries and `+{n} more`; a 10,000-character description is
+   three lines and `Show more`.
    A video with nothing set is unchanged in every pixel of the rows, and the
    action group gains exactly one icon. About 12 rows show under the band of
    a list screen at 1280×800.
@@ -648,7 +659,8 @@ Judged by looking at the running screen in vv's one dark scheme
     icons; the description is shown whole or opens in a dialog; an empty video
     shows empty fields, a placeholder row or a `No work details yet` line;
     editing opens a dialog; a picker's list is clipped inside a dialog; a
-    cancelled edit leaves a new person on `/people`; an existing name
+    cancelled edit that sent no `Save` leaves a new person on `/people`;
+    `Cancel` closes the form while a `POST` is in flight; an existing name
     suppresses the create row; the entity chip in the library has the tag
     icon; the list screens have a checkbox column or a selection bar; the
     `Save` of the details dialog is red; `Merge` is pressable before a target
