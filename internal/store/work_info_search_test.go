@@ -77,3 +77,33 @@ func TestSearchFollowsRenamedPerson(t *testing.T) {
 		t.Errorf("古い名前 = %v, want なし", got)
 	}
 }
+
+// 集まりの代表以外のバージョンから書いた作品情報も集まりの利用者データの鍵に載るので、ライブラリの
+// 項目（ListLibrary）では品番・人物・団体の名前の語で代表の 1 件が出て、除外語にすると集まりごと
+// 除かれる（data-model.md「Search」、specs/030-video-versions/data-model.md §3）。
+func TestLibrarySearchMatchesWorkInfoOfTheBundle(t *testing.T) {
+	db := migratedDB(t)
+	paths := upsertAll(t, db,
+		listingFile(fixturePath("/media/alpha.mp4"), "alpha", "key-a", 1),
+		listingFile(fixturePath("/media/bravo.mp4"), "bravo", "key-b", 2),
+		listingFile(fixturePath("/media/charlie.mp4"), "charlie", "key-c", 3),
+	)
+	a, b, c := paths[fixturePath("/media/alpha.mp4")], paths[fixturePath("/media/bravo.mp4")], paths[fixturePath("/media/charlie.mp4")]
+	bundle(t, db, a, a, b)
+	person := createPerson(t, db, "山田花子", "やまだはなこ")
+	maker := createOrganization(t, db, "メーカーA", nil)
+	setWorkInfo(t, db, b, domain.WorkInfo{
+		Code:          "AB-12",
+		People:        []domain.WorkPerson{performer(person.ID)},
+		Organizations: []domain.WorkOrganization{{Role: domain.OrganizationMaker, Organization: domain.CreditRef{ID: maker.ID}}},
+	})
+
+	for _, query := range []string{"ab-12", "ヤマダ", "めーかーa"} {
+		if got := libraryItemIDs(t, db, domain.AudienceOwner, domain.VideoQuery{Query: query}); !slices.Equal(got, []int64{a}) {
+			t.Errorf("%q の ListLibrary = %v, want [%d]", query, got, a)
+		}
+		if got := libraryItemIDs(t, db, domain.AudienceOwner, domain.VideoQuery{Query: "-" + query}); !slices.Equal(got, []int64{c}) {
+			t.Errorf("-%q の ListLibrary = %v, want [%d]", query, got, c)
+		}
+	}
+}
