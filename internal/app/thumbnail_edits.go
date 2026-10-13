@@ -172,7 +172,9 @@ func NewThumbnailEdits(opts ThumbnailEditsOptions) *ThumbnailEdits {
 // いなければ domain.ErrThumbnailEditNotReady、内容を読めていない動画は domain.ErrNotFound、
 // コマの位置は domain.CheckThumbnailPosition の誤り（位置が無ければ
 // domain.ErrThumbnailPositionOutOfRange）、画像を用意できなければ
-// domain.ErrThumbnailFrameUnavailable を返す。path は動画のファイルである。
+// domain.ErrThumbnailFrameUnavailable を返す。path は動画のファイルで、開けなかった動画では空で
+// ある。空のパスでコマが要るとき（今のサムネイルが適用した画像でないとき）は
+// domain.ErrMediaFileUnavailable を返す。
 func (e *ThumbnailEdits) Start(
 	ctx context.Context, video domain.Video, path string, start domain.ThumbnailEditStart,
 ) (domain.ThumbnailEdit, error) {
@@ -247,6 +249,9 @@ func (e *ThumbnailEdits) currentThumbnail(
 			return thumbnailEditImage{}, errors.Join(domain.ErrThumbnailFrameUnavailable, err)
 		}
 		return thumbnailEditImage{frame: frame}, nil
+	}
+	if path == "" {
+		return thumbnailEditImage{}, domain.ErrMediaFileUnavailable
 	}
 	if selection.PositionMs != nil {
 		return e.frameAt(ctx, path, *selection.PositionMs)

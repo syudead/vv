@@ -69,13 +69,20 @@ func (s *server) StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id g
 		return
 	}
 	// 読む元は配信と同じ規則で決め、symlink を辿った先のパスを渡す（SetVideoThumbnailPosition）。
+	// 今のサムネイルから始める編集は、適用した画像があればファイルを読まないので、ファイルを
+	// 開けなくても空のパスで進め、コマが要るときだけ Start が domain.ErrMediaFileUnavailable を返す
+	// （specs/046-thumbnail-image-upload/ui-design.md: プレイヤーが出ない動画でも始められる）。
 	_, path, ok := s.resolveMediaFile(r, video)
-	if !ok {
+	if !ok && start.Source == domain.ThumbnailEditFromFrame {
 		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
 		return
 	}
 	edit, err := s.thumbnailEdits.Start(r.Context(), video, path, start)
 	if err != nil {
+		if errors.Is(err, domain.ErrMediaFileUnavailable) {
+			s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
+			return
+		}
 		if !s.thumbnailEditError(w, err) {
 			s.thumbnailPositionError(w, video, err)
 		}
