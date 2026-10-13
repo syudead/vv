@@ -1,17 +1,21 @@
 # Contract: Work information, people and organizations in the screen API
 
 Source of truth: `api/openapi.yaml`, the operations `setVideoWorkInfo`,
-`listPeople`, `getPerson`, `createPerson`, `updatePerson`, `deletePerson`,
-`mergePeople` and their `Organization` counterparts, the schemas `WorkInfo`,
-`WorkInfoInput`, `Person`, `Organization`, `CreditInput`, `CreditPatch`,
-`CreditList`, and the `person` and `organization` parameters of `listVideos`,
-`listLibrary` and `listLibraryIds`. This document covers only what this
-feature adds. The decisions are
+`setVideoDetails`, `listPeople`, `getPerson`, `createPerson`, `updatePerson`,
+`deletePerson`, `mergePeople` and their `Organization` counterparts, the
+schemas `WorkInfo`, `WorkInfoInput`, `VideoDetailsInput`, `Person`,
+`Organization`, `CreditInput`, `CreditPatch`, `CreditList`, and the `person`
+and `organization` parameters of `listVideos`, `listLibrary` and
+`listLibraryIds`. This document covers only what this feature adds;
+`PUT /api/videos/{id}/display-name`
+([029 screen-api.md](../../029-video-overrides/contracts/screen-api.md)) is
+unchanged and keeps serving the in-place title edit. The decisions are
 [research.md R-4](../research.md#r-4-a-video-write-references-people-and-organizations-by-id-creation-has-its-own-route),
 [R-5](../research.md#r-5-one-put-that-replaces-the-whole-work-information-object),
 [R-7](../research.md#r-7-person-and-organization-list-parameters-by-id-matching-every-role),
-[R-8](../research.md#r-8-entity-edits-are-a-patch-of-optional-fields-a-merge-that-moves-links-and-a-delete-that-detaches)
-and [R-10](../research.md#r-10-guests-receive-no-work-information-in-responses-search-or-filters).
+[R-8](../research.md#r-8-entity-edits-are-a-patch-of-optional-fields-a-merge-that-moves-links-and-a-delete-that-detaches),
+[R-10](../research.md#r-10-guests-receive-no-work-information-in-responses-search-or-filters)
+and [R-14](../research.md#r-14-the-editor-saves-the-display-name-and-the-work-information-with-one-put-apivideosiddetails-in-one-transaction).
 Every route here is owner only (the default class in `accessRoutes`); routes
 with a body join `requiresJSONBody` and the mapping in
 `openapi_routes_test.go`.
@@ -51,6 +55,10 @@ the references carry a name.
 
 `operationId: setVideoWorkInfo`. The body is a
 [`WorkInfoInput`](#workinfoinput-schema); the object replaces what is stored.
+The editor does not call it (it calls
+[`PUT /api/videos/{id}/details`](#put-apivideosiddetails)); it exists for a
+client that writes the work information alone, with the semantics the
+external operation shares.
 
 | Situation | Response |
 | --- | --- |
@@ -72,17 +80,56 @@ is reported and nothing is written. A write that changes nothing returns `200`
 and does not advance `updatedAt`. After a change commits, `video` for every
 video under the same user key is sent on `/api/events`.
 
+## `PUT /api/videos/{id}/details`
+
+`operationId: setVideoDetails`. The save of the full-screen editor
+([R-14](../research.md#r-14-the-editor-saves-the-display-name-and-the-work-information-with-one-put-apivideosiddetails-in-one-transaction)).
+The body is a `VideoDetailsInput`:
+
+| Field | Type | Required | Rule |
+| --- | --- | --- | --- |
+| `displayName` | string | Yes | The rule of `PUT /api/videos/{id}/display-name` ([029 screen-api.md](../../029-video-overrides/contracts/screen-api.md)): trimmed, empty clears the display name and the title falls back to the file title; a missing property is `400 invalid_request` as there |
+| `workInfo` | [`WorkInfoInput`](#workinfoinput-schema) | Yes | Replaces the stored object as `PUT /api/videos/{id}/work-info` does; `{}` clears everything |
+
+Both are written in one transaction, or neither is.
+
+| Situation | Response |
+| --- | --- |
+| Saved | `200` `Video` with `title`, `displayName` and `workInfo` applied (`displayName` absent when cleared, `workInfo` absent when everything cleared) |
+| `displayName` breaks its rule | `400 invalid_request` / `display_name_control_characters` or `display_name_too_long` (with `limit`), `field: displayName`; nothing is written |
+| A `workInfo` field breaks its rule, or names a missing person or organization | The response of [`PUT /api/videos/{id}/work-info`](#put-apivideosidwork-info) for that field, with `field` the path inside `workInfo` (`code`, `dates[0].date`, `people[0].person.id`); nothing is written, the display name included |
+| The video does not exist, or has no location under the media folders | `404 not_found` / `video_not_found` |
+| Guest | `401 unauthenticated` (returned by the boundary) |
+
+`displayName` is checked first, then `workInfo` in the order of the
+[`WorkInfo` schema](#workinfo-schema), and only the first failure is reported.
+A save that changes neither value returns `200`, advances nothing and sends
+nothing; a save that changes either advances `updatedAt` once: for the
+video when the display name changed, and for every video under the user key
+when the work information changed. After a change
+commits, `/api/events` carries `video` for the id when the display name
+changed and `video` for every video under the user key when the work
+information changed; an open video page refetches on either.
+
 ```mermaid
 sequenceDiagram
   participant P as Video page
+  participant D as Editor (full screen)
   participant S as Server
   participant E as /api/events
-  P->>S: POST /api/people (a new performer, when needed)
-  S-->>P: 201 Person
-  P->>S: PUT /api/videos/{id}/work-info
-  S-->>P: 200 Video with workInfo
-  S-->>E: video for each id under the key
-  E-->>P: refetch (other tabs and the list)
+  P->>D: open the editor (title and work information loaded from the page's Video)
+  D->>S: POST /api/people (a new performer, when needed)
+  S-->>D: 201 Person
+  D->>S: PUT /api/videos/{id}/details { displayName, workInfo }
+  alt a field fails
+    S-->>D: 400 or 404 with field; nothing written
+    D->>D: show the message at the field, keep every value
+  else saved
+    S-->>D: 200 Video with title, displayName and workInfo
+    D->>P: close; the page shows the response
+    S-->>E: video for the id and for each id under the key
+    E-->>P: refetch (other tabs and the list)
+  end
 ```
 
 ## List parameters `person` and `organization`
@@ -178,10 +225,11 @@ CreditList:
 | `POST /api/people/{id}/merge` | `{ sourceIds: int64[] }`, 1 to 20,000 entries | `200 { person: Person, notFoundIds: int64[] }` | `400 work_info_too_many` with `field: sourceIds` and `limit`; `400 work_info_too_many` with `field: aliases` (limit 50) or `externalIds` (limit 20) when the merged entity would hold more; `400 merge_same_person`; `404 person_not_found` (the target). Nothing changes on an error |
 | `GET /api/organizations` and the five others | As above, with `Organization`, `organization_not_found`, `merge_same_organization` | — | `POST` and `PATCH` add `404 organization_not_found` with `field: parentId` when the parent does not exist, and `400 organization_parent_cycle` when `parentId` is the organization or a descendant; merge adds `400 organization_parent_cycle` when a source is the target's parent or another ancestor, because its children would move under the target |
 
-- The video page's combobox reads `GET /api/people?q=…&limit=…` for
+- The editor's combobox reads `GET /api/people?q=…&limit=…` for
   candidates (names and aliases match) and shows the id's current name; a
   pick sends the id, and `Create "…"` sends `POST /api/people { name }` first
-  (R-4).
+  (R-4). A person created this way exists even when the editor's save then
+  fails or is abandoned; the people screen lists it.
 - The list screens read pages of 100 with `nextCursor`, as the tag page does
   ([036 screen-api.md, `GET /api/tags` parameters](../../036-tag-admin-scale/contracts/screen-api.md#get-apitags-parameters)).
 - The delete and merge confirmations use `videoCount` from the list.
@@ -193,7 +241,11 @@ CreditList:
 `external_id_taken` reason refers to, as the JSON property names joined by `.` with list positions in brackets:
 `code`, `dates[1].date`, `people[0].person.id`, `aliases[2].language`,
 `parentId`. In the external bulk operation `index` stays the position in
-`items`, and `field` is the path inside that item's `workInfo`.
+`items`, and `field` is the path inside that item's `workInfo`. In
+`PUT /api/videos/{id}/details`, `field` is `displayName` for the two existing
+`display_name_*` reasons and otherwise the path inside `workInfo`, so one
+message catalog serves the editor and the work-info route; the display-name
+route itself does not add `field`.
 
 `ErrorReason` gains `work_info_control_characters`, `work_info_too_long`,
 `work_info_too_many`, `work_info_invalid_date`, `work_info_invalid_url`,

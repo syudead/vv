@@ -124,9 +124,12 @@ in [data-model.md, Fields](data-model.md#fields) and returns one
 | One route per item kind (`/work-info/dates`, `/work-info/people`, …) | Rejected: the page saves one form and the external operation sends whole objects; seven routes multiply the error mapping and the tests by seven |
 | `PATCH` with merge semantics | Rejected: "clear this list" then needs a sentinel distinct from "leave it", which the screen never needs |
 
-**Rationale**: The page edits the items together and a scraper writes them
+**Rationale**: The editor edits the items together and a scraper writes them
 together, so the unit of change is the object; replacement is idempotent, so a
-resend after a network failure is safe.
+resend after a network failure is safe. The editor itself does not call this
+route: it saves the display name with the object through the route of R-14,
+and this route serves the external operation's semantics and a client that
+writes the work information alone.
 
 ## R-6: The search box matches the code and every name and alias of the linked people and organizations
 
@@ -293,3 +296,40 @@ or organization leaves every video's edit time alone.
 
 **Rationale**: The edit time answers "when did the owner last edit this
 video"; a rename of a person is an edit of the person.
+
+## R-14: The editor saves the display name and the work information with one `PUT /api/videos/{id}/details` in one transaction
+
+**Decision**: The full-screen editor of requirement 8 saves with
+`PUT /api/videos/{id}/details`, whose body is
+`{ displayName: string, workInfo: WorkInfoInput }`, both required.
+`WorkInfoStore.SetDetails` writes the display name under the content key
+(the rows and rules of 029) and the work information under the user key (R-2)
+in one transaction: a display name that breaks its rule or a work information
+field that breaks its rule rolls back everything, so the title is never saved
+without the information or the other way round. The display name is checked
+first, then the work information in the order of the `WorkInfo` schema, and
+the first failure is reported with `field` (`displayName`, or the path inside
+`workInfo` as in R-9). After commit the store publishes `VideoOverrideChanged`
+when the name changed and `VideoWorkInfoChanged` when the information changed
+(R-11), and advances the edit time once when either changed (R-13): the
+content key of the video for a new name, and every member content key of the
+user key for new information, as `touchEditedAtForUserKeys` expands it.
+`PUT /api/videos/{id}/display-name` and `PUT /api/videos/{id}/work-info`
+stay: the first serves the in-place title edit that requirement 8 keeps, the
+second the external semantics of R-5 and R-9
+([contracts/screen-api.md, `PUT /api/videos/{id}/details`](contracts/screen-api.md#put-apivideosiddetails)).
+
+| Option | Verdict |
+| --- | --- |
+| **One route taking both, one transaction** | Chosen |
+| The editor sends `PUT …/display-name` and then `PUT …/work-info` | Rejected: a failure or a closed tab between the two leaves the title saved and the information not, which requirement 8 rules out; a client cannot make two requests atomic |
+| `displayName` as an optional property of `WorkInfoInput` on `PUT …/work-info` | Rejected: `WorkInfoInput` is the item of the external bulk operation, which has `POST /api/v1/video-display-names` for titles, so the shared schema would carry a property half its users must not send; and "absent clears" (R-5) is wrong for a title, where absent has to mean "leave it" |
+| `PATCH /api/videos/{id}` with merge semantics for every owner-written field | Rejected: no video field is written that way today, "clear the title" needs a sentinel distinct from "leave it", and the editor always holds both values, so optionality buys nothing |
+| `SetDetails` on `OverrideStore`, calling into `WorkInfoStore` | Rejected: ARCHITECTURE.md forbids a role type calling another role's public methods; the display name write is already the package functions `registeredContentKeysForVideoIDs`, `displayNamesOf`, `writeDisplayName`, `contentKeysForUserKeys`, `touchEditedAt` and `refreshSearchKeysForContentKeys`, which `SetDetails` calls in its own transaction, and the work information SQL belongs to `WorkInfoStore` |
+
+**Rationale**: The maintainer revised requirement 8 so that the editor saves
+the title and the information as one unit; the API follows that screen, not
+the other way round. The store already has the display name write as
+transaction-scoped functions, so one transaction covering both is the
+existing shape of `SetDisplayName` plus the rows of R-2, and the two kept
+routes keep the in-place title edit and the external contract unchanged.
