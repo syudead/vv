@@ -192,8 +192,8 @@ A field with no value has no item (requirement 3). The order is fixed:
 
 | Item | Value | Rule |
 | --- | --- | --- |
-| Code | The code as entered | `tabular-nums`; `whitespace-nowrap` as the first row's items, because a code is short |
-| Released | The date through `formatDate`, as the first row's dates | `title` holds the stored `YYYY-MM-DD`; no popover, because there is no time to show |
+| Code | The code as entered | `tabular-nums`; the item is `min-w-0 max-w-full` and the value `wrap-anywhere`, so a code that fits stays on one line and a code of up to 100 code points breaks inside the row instead of overflowing it. `whitespace-nowrap`, the first row's rule, is not used: a code is free text, not a number of known width |
+| Released | The stored day in the first row's date style (`dateStyle: "medium"`), through a new `formatCalendarDate` in `web/src/i18n/format.ts` that formats the `YYYY-MM-DD` in the UTC time zone | `title` holds the stored `YYYY-MM-DD`; no popover, because there is no time to show. `formatDate` is not used: it reads the string as an instant at UTC midnight and formats it in the browser's time zone, so west of UTC it shows the day before the stored one, which the form's date input does not. A unit test with a west-of-UTC time zone, including a year below 100, pins the stored day |
 | Maker | A `Link` to `/?maker=<name>` | Body colour, `underline decoration-muted-foreground underline-offset-4`, `decoration-foreground` on hover; `wrap-anywhere` so a long name breaks instead of overflowing; accessible name `Videos by {name}` |
 | Performers | One `Link` per name, in the entered order, to `/?performer=<name>` | The same link form; the names sit in an inner `flex flex-wrap gap-x-3 gap-y-1`, so a list of twenty names wraps inside the item and the item wraps inside the row; accessible name `Videos with {name}` |
 | Source | A `Link` to the URL, `target="_blank"` `rel="noopener noreferrer"` | The URL's text, `max-w-full min-w-0 truncate`, with lucide `ExternalLink` (`size-3.5`, `aria-hidden`) after it; `title` is the full URL |
@@ -248,10 +248,14 @@ stateDiagram-v2
   Sending --> Row: Cancel
 ```
 
-The form is a `form` of `Field`s in a `FieldGroup`, `max-w-2xl` so a wide
+The form is a `form` of `Field`s in a `FieldGroup` with `noValidate`, `max-w-2xl` so a wide
 player does not stretch a ten-character code across the column, `gap-4`
-between fields (the video page's gap). The fields, in the order of the
-`WorkInfo` schema:
+between fields (the video page's gap). `noValidate` turns off the browser's
+constraint check, so a value the `url` or `date` input rejects (a source
+without a scheme, a typed date in a browser that draws a text field) reaches
+the server and its reason shows under the field as a `FieldError`, rather
+than as the browser's own bubble, which the form could not word or place. The
+fields, in the order of the `WorkInfo` schema:
 
 | Field | Control | Rule |
 | --- | --- | --- |
@@ -259,7 +263,7 @@ between fields (the video page's gap). The fields, in the order of the
 | Released | `Input type="date"` | The browser's picker gives the day; the value is `YYYY-MM-DD` as the API takes it. The server's calendar check still decides, and its reason shows under the field |
 | Maker | `Input type="text"` | `autoComplete="off"` |
 | Performers | `Textarea`, three rows, growing with its content | One name per line (`FieldDescription`); on save the lines are trimmed, empty lines dropped and the rest sent in order, so a line feed never reaches the API as a control character. The current values open one per line |
-| Source | `Input type="url"`, `inputMode="url"` | `placeholder` `https://` |
+| Source | `Input type="url"`, `inputMode="url"` | `placeholder` `https://`; the browser does not check it (the form's `noValidate`), so `example.com` is sent and comes back as `work_info_invalid_url` under the field |
 | Description | `Textarea`, four rows, growing with its content | Line feeds are kept |
 
 From `sm`, Code, Released and Maker share one line in three columns of equal
@@ -368,7 +372,7 @@ judged are 360px, 768px and 1280px.
 | --- | --- | --- | --- |
 | 1280px | Code, Released, Maker, Performers and Source on one line under the first row when the names are few, the entry at the right end; a long performer list wraps the row to a second line before the entry; the description block under it at the player's width, folded to three lines | `max-w-2xl` at the column's left edge: Code, Released and Maker in one line of three columns, the three wide fields under them, Save and Cancel at the left | One line: the label, the tag chips, the performer chip, the maker chip |
 | 768px | As 1280px; the row wraps to two lines with three or more performers; the description spans the content width | As 1280px, the form at the content width when narrower than `max-w-2xl` | As 1280px; wraps when the chips do not fit |
-| 360px | Each field takes one or two lines of the wrapping row; a long maker or performer name breaks inside its link; the source URL truncates to the row's width; the entry sits at the end of the last line or alone on the next; the description's three clamped lines and `Show more` stay inside the viewport; no horizontal scroll (the Issue's Edge Case) | Every field stacks at the full width; the date input is the browser's; Save and Cancel stay on one line | The label on its own line, then the chips wrapping, each at most `max-w-chip-label` wide; no horizontal scroll |
+| 360px | Each field takes one or two lines of the wrapping row; a long maker or performer name breaks inside its link, and a code of 100 code points breaks inside its item; the source URL truncates to the row's width; the entry sits at the end of the last line or alone on the next; the description's three clamped lines and `Show more` stay inside the viewport; no horizontal scroll (the Issue's Edge Case) | Every field stacks at the full width; the date input is the browser's; Save and Cancel stay on one line | The label on its own line, then the chips wrapping, each at most `max-w-chip-label` wide; no horizontal scroll |
 
 ## Review criteria
 
@@ -421,8 +425,9 @@ Judged by looking at the running screen in vv's one dark scheme
    `Clear filters` removes it with the rest; the chip's text truncates at
    `max-w-chip-label` for a long name.
 8. **Phone width**: at 360px nothing in the row, the description, the form or
-   the filter row scrolls sideways; the form's fields stack and the date input
-   opens the device's picker.
+   the filter row scrolls sideways, including with a code of 100 code points
+   and a long maker name; the form's fields stack and the date input opens the
+   device's picker.
 9. **Guest**: signed out, the same video page has no work row, no description
    block, no entry and no form, and the library shows no chip for a
    `performer` or `maker` URL, only its error state.
