@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: ba7f9fb334f2b075550492e32c03efa85d01b963ae7d6befc445fa74f6b26a5f
+sourceHash: ec13afa211f10bb96839e2e687f3500f046237ac0c95cf66a405ecf227b1b77e
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -322,7 +322,7 @@ flowchart LR
 
 ### 詳細エディター {#details-editor}
 
-`Edit details`（lucide の `Clapperboard`、所有者だけ）は `/videos/:id/edit` へのリンクである。そこはシェルとプレーヤーの外にある全画面の `FormPage` で、表示名とすべての作品情報の項目をまとめて編集する。タイトルの鉛筆は、名前を変える手早い方法として残る。帯は `Cancel` と `Save` を持つ。左の列は動画を示し（サムネイル、ファイル名、基本情報、フォルダ）、`Back to the video` を持つ。`Basics` は、2×2 のグリッドに置いた名前、コード、日付と、説明、リンク、ID を持つ。`Credits` は役割ごとに 1 行を持ち、その行はチップと、人物か組織を探すか、`Save` が先に作成する `New` の印付きのチップを作る `CreditCommand` のピッカーを持つ。続いて `Save` は `PUT /api/videos/{id}/details` を 1 回送り、応答とともにページに戻って入口にフォーカスを置く。`field` を持つ理由は、エディターの中のその入力欄の下に残る。`Cancel`、`Back to the video`、ブラウザーの戻る操作は、下書きが変わっているときに `Discard changes?` と尋ねる。ページから開いたエディターはページの動画から始まり、履歴をたどって戻るので、ページの `×` は引き続き一覧へ向かう。URL から開いたときは先に動画を読み込み、ゲストはサインインへ送られる（[047 UI 設計、Editor](../../specs/047-video-work-info/ui-design.md#editor)）。
+`Edit details`（lucide の `Clapperboard`、所有者だけ）は `/videos/:id/edit` へのリンクである。そこはシェルとプレーヤーの外にある全画面の `FormPage` で、表示名とすべての作品情報の項目をまとめて編集する。タイトルの鉛筆は、名前を変える手早い方法として残る。帯は `Cancel` と `Save` を持つ。左の列は雛形の `aside` であり、動画を示し（サムネイル、ファイル名、長さ、サイズと解像度、フォルダ）、`Back to the video` を持つ。`Basics` は、2×2 のグリッドに置いた名前、コード、日付と、説明、リンク、ID を持つ。`Credits` は役割ごとに 1 行を持ち、その行はチップと、人物か組織を探すか、`Save` が先に作成する `New` の印付きのチップを作る `CreditCommand` のピッカーを持つ。続いて `Save` は `PUT /api/videos/{id}/details` を 1 回送り、応答とともにページに戻って `Edit details` にフォーカスを置く。`field` を持つ理由は、エディターの中のその入力欄の下に残る。`Cancel`、`Back to the video`、ブラウザーの戻る操作は、下書きが変わっているときに `Discard changes?` と尋ねる。ページから開いたエディターはページの動画から始まり、履歴をたどって戻るので、ページの `×` は引き続き一覧へ向かう。URL から開いたときは先に動画を読み込み、ゲストはサインインへ送られる（[047 UI 設計、Editor](../../specs/047-video-work-info/ui-design.md#editor)）。
 
 ### プレーヤーの状態 {#player-states}
 
