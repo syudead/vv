@@ -679,6 +679,13 @@ the same value as the parameter, and are refused for guests
 ([047 screen-api.md](../../specs/047-video-work-info/contracts/screen-api.md#list-parameters-performer-and-maker)).
 `total` counts with every condition applied.
 
+For the owner, a search term matches a video's title and path, its tag names
+and synonyms, and its work code, maker and performer names; the description,
+the release date and the source URL never match. A guest's term matches the
+title and path only, so names the guest cannot see do not leak through which
+videos a search returns
+([`search.go`](../../internal/store/search.go)).
+
 Only the server knows which videos and groups belong to a folder and match the
 filters, so a page that filtered locally would show a different set from
 `total`. For the same reason a re-fetched list item never guesses its place:
