@@ -106,6 +106,9 @@ func TestListFiltersRejectInvalidPerformerAndMaker(t *testing.T) {
 			rec := f.env.get(path + "?" + query)
 			assertErrorBody(t, "ゲストの "+path+"?"+query, rec.Code, rec.Body.Bytes(),
 				wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonGuestFilterNotAllowed})
+			if body := rec.Body.String(); !strings.Contains(body, "performer") || !strings.Contains(body, "maker") {
+				t.Errorf("ゲストの %s?%s: message が出演者とメーカーに触れない: %s", path, query, body)
+			}
 		}
 	}
 }

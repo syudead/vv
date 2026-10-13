@@ -153,7 +153,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 // データに依る条件を指定したら 400 を書いて false を返す（contracts/guest-api.md §3）。
 func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audience, query domain.VideoQuery) bool {
 	if err := audience.CheckVideoQuery(query); err != nil {
-		s.invalidRequestReason(w, reasonGuestFilterNotAllowed, "Sign in to filter by watch status, tags, or favorites, or to sort by last played or date favorited.")
+		s.invalidRequestReason(w, reasonGuestFilterNotAllowed, "Sign in to filter by watch status, tags, favorites, performer, or maker, or to sort by last played or date favorited.")
 		return false
 	}
 	return true
