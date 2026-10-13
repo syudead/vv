@@ -1,13 +1,13 @@
 ---
 source: specs/017-folder-groups/ui-design.md
-sourceHash: 55f4b3cde64a5ef13ee18450b3a60b61157403b8d36eef3c15b54f1da708bf3b
+sourceHash: c43423b1b728898d8cccdc768d36d8a0ccc8ae8fbaddab7050a2306f7d70b871
 ---
 
 # UI 設計: フォルダのグループを 1 件として一覧に出し、続けて再生する {#ui-design-listing-a-folder-group-as-one-entry-and-playing-it-continuously}
 
 **機能**: [親 Issue #326](https://github.com/syudead/vv/issues/326)
 
-出典: 見た目の規則、シェル、一覧の密度は [ライブラリ UI: 見た目の規則と一覧の構造](../../docs/design-docs/library-ui.md) と [`web/src/index.css`](../../web/src/index.css) の `@theme` に従う。動画ページの構造と再生終了のレイヤーは [012 の ui-design.md](../012-video-detail-ia/ui-design.md) に従う。フォルダ画面の構造は [011 の ui-design.md](../011-folder-browser/ui-design.md) と [013 の ui-design.md「フォルダ画面」](../013-library-search/ui-design.md#folder-screen) に従う。タグチップ、選択バー、コンボボックスは [014 の ui-design.md](../014-video-tags/ui-design.md) に従う。ゲスト向けの縮退は [016 の ui-design.md「ゲスト向けの縮退」](../016-single-account-auth/ui-design.md#guest-degradation) に従う。画面が使う応答とルートは [contracts/library-api.md](contracts/library-api.md) と [contracts/folder-groups-api.md](contracts/folder-groups-api.md) で決まっており、グループの視聴状態と開くメンバーの決め方は [data-model.md の「グループの視聴の状態と開くメンバー」](data-model.md#group-watch-state-and-the-member-to-open) にある。この文書はそれらを蒸し返さない。
+出典: 見た目の規則、シェル、一覧の密度は [ライブラリ UI: 見た目の規則と一覧の構造](../../docs/design-docs/library-ui.md) と [`web/src/index.css`](../../web/src/index.css) の `@theme` に従う。動画ページの構造と再生終了のレイヤーは [012 の ui-design.md](../012-video-detail-ia/ui-design.md) に従う。フォルダ画面の構造は [011 の ui-design.md](../011-folder-browser/ui-design.md) と [013 の ui-design.md「フォルダ画面」](../013-library-search/ui-design.md#folder-screen) に従う。タグチップ、選択バー、コンボボックスは [014 の ui-design.md](../014-video-tags/ui-design.md) に従う。ゲスト向けの縮退は [016 の ui-design.md「ゲスト向けの縮退」](../016-single-account-auth/ui-design.md#guest-degradation) に従う。画面が使う応答とルートは [contracts/library-api.md](contracts/library-api.md) と [contracts/folder-groups-api.md](contracts/folder-groups-api.md) で決まっており、グループの視聴状態と開くメンバーの決め方は [data-model.md「グループの視聴の状態と開くメンバー」](data-model.md#group-watch-state-and-the-member-to-open) にある。この文書はそれらを蒸し返さない。
 
 この文書が定めるのは、グループカード、フォルダ由来のタグの区別、動画ページのメンバー一覧と自動再生の通知、フォルダ画面と動画ページのまとめ方の操作が、既存の画面に**加えるもの、または変えるもの**だけである。色、角丸、影のトークンは新しく加えず、`tokens.test.ts` の `pairs` にも何も加えない (後述の「アクセシビリティ」)。
 
@@ -20,7 +20,7 @@ sourceHash: 55f4b3cde64a5ef13ee18450b3a60b61157403b8d36eef3c15b54f1da708bf3b
 | 選択バー | `N 件を選択中` の N と `タグを外す` の候補が変わる (要件 21 と 13)。操作の並びは変わらない |
 | 動画ページ (`/videos/:id`) | グループのメンバーを開いたときだけ: 題名の上の 1 行 (「グループの行」)、関連動画の列の上のメンバー一覧と区切り (「メンバー一覧」)、再生終了時の通知 (「自動再生の通知」)。グループ外の動画のページは変わらない (要件 27 の後半、受け入れ条件 17) |
 | フォルダ画面 (`/folders/{rootId}/…`) | `動画 N` 見出し行の右端のまとめ方メニュー (「フォルダのまとめ方メニュー」)。一覧は引き続き動画を 1 本ずつ表示する (要件 22)。最上位 (`/folders`) と検索結果には何も加えない |
-| ゲスト | グループカードは視聴状態と視聴済みの本数を省く。まとめ方メニュー、動画ページのメニュー、タグは表示しない ([data-model.md の「閲覧者ごとの見え方」](data-model.md#visibility-per-audience)) |
+| ゲスト | グループカードは視聴状態と視聴済みの本数を省く。まとめ方メニュー、動画ページのメニュー、タグは表示しない ([data-model.md「閲覧者ごとの見え方」](data-model.md#visibility-per-audience)) |
 
 ## グループカード {#group-card}
 
@@ -30,7 +30,7 @@ sourceHash: 55f4b3cde64a5ef13ee18450b3a60b61157403b8d36eef3c15b54f1da708bf3b
 
 | 部分 | 形 |
 | --- | --- |
-| **フォルダの絵** | 共通の `FolderArt` (`web/src/videoList/FolderArt.tsx`) をそのまま使う。タブ付きの背面パネルの上に、`previews` (サムネイルを生成済みのメンバー最大 4 本、順番どおり) が斜めに重なり、それぞれが次の 1 枚の上に来るので先頭が一番上になる。マウスを横に動かすと、その位置の 1 枚が前に出てプレビューを再生する。メンバーのサムネイルがなければ背面パネルだけを描く |
+| **フォルダの絵** | 共通の `FolderArt` (`web/src/videoList/FolderArt.tsx`) をそのまま使う。タブ付きの背面パネルの上に、`previews` (サムネイルを生成済みのメンバー最大 4 本、順番どおり) が斜めに重なり、各 1 枚が次の 1 枚の上に来るので先頭が一番上になる。マウスを横に動かすと、その位置の 1 枚が前に出てプレビューを再生する。メンバーのサムネイルがなければ背面パネルだけを描く |
 | **本数と長さのバッジ** | 背面パネルの右下 (`right-5 bottom-4`) に、動画カードの長さと同じ面 (`bg-navbar/85`、`text-[11px]`、`tabular-nums`) で `12 本`、続けて合計の長さ。前に出た画像より上 (`z-20`) にあり、操作できない (`pointer-events-none`)。合計の長さ (`durationMs`) がなければ本数だけを表示する。視聴済みの本数は数字では表示しない。絵がすでにフォルダを示しているので、lucide の `Folder` マークも置かない |
 | **左上** | 選択チェックボックス (今と同じ位置) |
 | **下部の進捗** | `watchState = inProgress` のときだけ: 動画カードと同じ `h-[5px]` のバーで、`bg-accent` の幅は `watchedCount / videoCount`。`watchedCount = 0` で視聴中 (最初のメンバーを途中まで見た) のときはバーの溝 (`bg-fg-subtle/50`) だけが見え、「見始めた」ことを示す。`role="progressbar"` の `aria-valuenow` は同じ比率で、アクセシブルネームは `視聴済みの本数の割合`。`unwatched` と `watched` では表示しない |
@@ -125,17 +125,17 @@ sourceHash: 55f4b3cde64a5ef13ee18450b3a60b61157403b8d36eef3c15b54f1da708bf3b
 `RelatedVideos.group` があるときの右の列 (`lg` 未満では下) (要件 26)。
 
 - 列の最初の見出し (`h2`、`text-sm font-semibold text-fg`) は `続けて再生` で、その右に `text-xs text-fg-muted tabular-nums` の `3 / 12` を置く (`flex items-baseline justify-between`)。これで、自動で続く範囲が、区切りに達する前に先頭で読める。
-- その下に、メンバーを順番どおりに並べる (数千本でも切らない。Edge Case `大きなグループ`)。関連動画の応答は、現在のメンバーの周りの最大 100 本の窓だけを運ぶ (contracts/folder-groups-api.md §3)。一覧は残りを `GET /api/videos/{id}/group-members` で 100 本ずつ読む (issue 674、後述の「窓の外の読み込み」)。各行は今の関連動画の行の密度 (サムネイル `w-40`、長さのバッジ、題名 `text-sm font-medium`、行間の `gap-3`、ホバーの `bg-hover-wash`) を持ち (`UI品質` の「情報密度」)、次を加える:
+- その下に、メンバーを順番どおりに並べる (数千本でも切らない。Edge Case `大きなグループ`)。関連動画の応答は、現在のメンバーの周りの最大 100 本の窓だけを運ぶ (contracts/folder-groups-api.md §3)。一覧は残りを `GET /api/videos/{id}/group-members` で 100 本ずつ読む (issue 674、後述の「窓の外の読み込み」)。各メンバーは関連動画と同じようなカード (長さのバッジを持つサムネイル、その下に `text-sm font-medium` の題名、ホバーの `bg-hover-wash`。[Library UI, Video page](../../docs/design-docs/library-ui.md)) で、次を加える:
 
 | メンバー | 形 |
 | --- | --- |
-| すべての行 | 先頭 (サムネイルの左) に `w-5 text-right text-xs text-fg-muted tabular-nums` で順番の番号を置く。数えなくても今の位置と残りが読める |
+| すべてのカード | サムネイルの左上に順番の番号を置く (`VideoThumbnailMark`、`bg-overlay` の上に `text-xs tabular-nums`)。数えなくても今の位置と残りが読める |
 | 視聴済み | 題名を `text-fg-muted` にし、その右に lucide の `Check` (`size-3.5`、`text-success`)。視覚的に隠した `視聴済み` を読み上げ、アイコンは `aria-hidden` |
 | 途中まで視聴 | 今と同じ下部の進捗バー |
-| **再生中** | リンクではない。`aria-current="true"`、面 `bg-active-wash`、左に `border-l-2 border-accent` (行の `-m-1.5 p-1.5` の輪郭の左端) を持つ行。題名の前に視覚的に隠した `再生中` を置く。操作できないので、ホバーの面は変わらない |
+| **再生中** | リンクではない。`aria-current="true"`、面 `bg-accent`、カードの `-m-1.5 p-1.5` の輪郭の周りに `ring-2 ring-primary ring-inset` を持つカード。題名の前に視覚的に隠した `再生中` を置く。操作できないので、ホバーの面は変わらない |
 
 - **区切り**: メンバー一覧と関連動画の間に `border-t border-border` の線を 1 本引き、その上下に `pt-5` と `pb-2` を置く (行間の `gap-3` より 1 段大きい。`UI品質` の「余白のリズム」)。線の下は `h2` の `関連動画` (今の見出し)、続けて今の関連動画 (同じグループのメンバーは含まない。contracts/folder-groups-api.md の [動画のグループと関連動画](contracts/folder-groups-api.md#groups-of-videos-and-related-videos))。関連動画が 0 本なら、区切りも `関連動画` の見出しも現れない。
-- `lg` 以上でのスクロール: 012 と同じく、列の最初の見出し行 (ここでは `続けて再生`) は上端にとどまり、その下のすべて (メンバー一覧 → 区切り → `関連動画` → 関連動画) は 1 つのコンテナの中でスクロールする。ページを開いたとき (別のメンバーへの移動を含む)、`scrollIntoView({ block: "nearest" })` でコンテナだけをスクロールし、現在のメンバーの行をその中に見せる (Edge Case `大きなグループ`、受け入れ条件 `数百本`)。ページと左の列は動かない。`lg` 未満ではページは動かない (プレーヤーが画面の上端から外れてしまう)。
+- `lg` 以上でのスクロール: 列の中のすべて (プレイリストがあるときはそのパネル → メンバー一覧 → 区切り → `関連動画` → 関連動画) は 1 つのコンテナの中でスクロールし、各セクションの見出し (`続けて再生`、`関連動画`) は、そのセクションが見えている間だけ上端にとどまる。ページを開いたとき (別のメンバーへの移動を含む)、`scrollIntoView({ block: "center" })` でコンテナだけをスクロールし、現在のメンバーのカードをその中央に置いて、前後のカードも見えるようにする (Edge Case `大きなグループ`、受け入れ条件 `数百本`)。ページと左の列は動かない。`lg` 未満ではページは動かない (プレーヤーが画面の上端から外れてしまう)。
 - **窓の外の読み込み**: 順番の番号と `3 / 12` は、窓の中ではなくグループ全体 (`offset` と `total`) で数える。
 
   | 端 | `lg` 以上 | `lg` 未満 |
@@ -162,7 +162,7 @@ sourceHash: 55f4b3cde64a5ef13ee18450b3a60b61157403b8d36eef3c15b54f1da708bf3b
 | --- | --- |
 | 1 行目 | `text-xs font-semibold text-accent` の `続けて再生`、その右に `text-xs text-fg-muted tabular-nums` の `5 秒後` (残り秒数、1 秒ごとに減る) |
 | 次のメンバーへのリンク | サムネイル (`w-56`、`sm` 未満では隠す) と題名 (`text-base font-semibold`、2 行に切り詰め)。今の `次の動画` と同じ形 |
-| カウントダウンのバー | 全幅の `h-1 rounded-full bg-fg-subtle/50` の溝で、`bg-accent` の残りが 5 秒かけて右から縮む。動きを減らす設定ではバーは残るが、滑らかな縮みは止まり、秒数が減るたびに段階的に縮む (`motion-reduce:transition-none`。状態は見えたままで、止まるのは動きだけ。[library-ui.md の「幅のブレークポイントは CSS に置き、サイドバーは例外とする」](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception) と 012 の「操作の詳細」) |
+| カウントダウンのバー | 全幅の `h-1 rounded-full bg-fg-subtle/50` の溝で、`bg-accent` の残りが 5 秒かけて右から縮む。動きを減らす設定ではバーは残るが、滑らかな縮みは止まり、秒数が減るたびに段階的に縮む (`motion-reduce:transition-none`。状態は見えたままで、止まるのは動きだけ。[library-ui.md「幅のブレークポイントは CSS に置き、サイドバーは例外とする」](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception) と 012 の「操作の詳細」) |
 | 操作 | **左**に副次的な `取り消す` (lucide の `X`)、その右に主要な `今すぐ再生` (`Play`)。DOM の順も同じなので、Tab は先に `取り消す` に着く (`UI品質` の「操作の優先度」) |
 
 - カウントダウンは通知が現れてから 5 秒である。0 になると次のメンバーを開き (`state.from` を引き継ぐ)、再生を始める。

@@ -261,10 +261,10 @@ describe("RelatedVideos", () => {
       const [memberList, relatedList] = lists as [HTMLElement, HTMLElement];
       const rows = within(memberList).getAllByRole("listitem");
       expect(rows.map((row) => row.textContent)).toEqual([
-        "11:05ep01",
-        "21:05ep02",
-        "31:05Now playingep03",
-        "41:05ep04",
+        "1:051ep01",
+        "1:052ep02",
+        "1:053Now playingep03",
+        "1:054ep04",
       ]);
       // 境目は「関連動画」の見出しの前にある。
       const separator = screen.getByRole("separator");
@@ -277,7 +277,7 @@ describe("RelatedVideos", () => {
       ).toBeDefined();
     });
 
-    it("今のメンバーはリンクにせず aria-current で示し、面と左の線で強調する", () => {
+    it("今のメンバーはリンクにせず aria-current で示し、面と枠で強調する", () => {
       renderGroup(13);
       const current = screen
         .getAllByRole("listitem")
@@ -286,8 +286,8 @@ describe("RelatedVideos", () => {
       expect(current && within(current).queryByRole("link")).toBeNull();
       const surface = current?.firstElementChild;
       expect(surface?.className).toContain("bg-accent");
-      expect(surface?.className).toContain("border-l-2");
-      expect(surface?.className).toContain("border-primary");
+      expect(surface?.className).toContain("ring-2");
+      expect(surface?.className).toContain("ring-primary");
       expect(screen.queryByRole("link", { name: /ep03/ })).toBeNull();
     });
 
@@ -319,7 +319,7 @@ describe("RelatedVideos", () => {
       const scrolled: Element[] = [];
       const original = Element.prototype.scrollIntoView;
       Element.prototype.scrollIntoView = function (this: Element, options) {
-        expect(options).toEqual({ block: "nearest" });
+        expect(options).toEqual({ block: "center" });
         scrolled.push(this);
       };
       try {
