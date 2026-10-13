@@ -658,6 +658,27 @@ and the page never filters the pages it has loaded
 ([`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) keeps them in the
 URL).
 
+| Condition | Parameter | Applied to |
+| --- | --- | --- |
+| Search | `query` | Each member video, before grouping |
+| Tags (all of them) | `tag` | Each member video, before grouping; library lists only |
+| Performer | `performer` | Each member video, before grouping; library lists only |
+| Maker | `maker` | Each member video, before grouping; library lists only |
+| Playable | `playable` | Each item, after grouping |
+| Watch state | `watch` | Each item, after grouping |
+| Favorites | `favorite` | Each item, after grouping |
+| Sort and shuffle seed | `sort`, `seed` | Item order |
+
+A condition applied before grouping decides which members match: a group
+whose members all match is one item, and a group matched only in part lists
+its matched members as video items
+([027 library-api.md](../../specs/027-partial-group-search/contracts/library-api.md#how-get-apilibrary-builds-items)).
+Folder lists do not take the conditions marked "library lists only".
+`performer` and `maker` match a video whose performer name or maker folds to
+the same value as the parameter, and are refused for guests
+([047 screen-api.md](../../specs/047-video-work-info/contracts/screen-api.md#list-parameters-performer-and-maker)).
+`total` counts with every condition applied.
+
 For the owner, a search term matches a video's title and path, its tag names
 and synonyms, and its work code, maker and performer names; the description,
 the release date and the source URL never match. A guest's term matches the

@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 4b8fc5666821beeb404c788678dadba58751922dfc47cffe502ae418a8387c3e
+sourceHash: 5a02a056ddf7b89eec22cbd75342d08660c5c3d447ff7d59d3bd710a10ab3a10
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -420,6 +420,19 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 ## サーバーが適用する一覧の条件 {#list-conditions-applied-by-the-server}
 
 一覧の条件（検索、絞り込み、並び順、シャッフルのシード）はすべてサーバーが適用し、ページは読み込んだページを決して絞り込まない（[`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) が条件を URL に保つ）。
+
+| 条件 | パラメーター | 適用する対象 |
+| --- | --- | --- |
+| 検索 | `query` | グループにまとめる前の、メンバーの動画 1 本ずつ |
+| タグ（すべて） | `tag` | グループにまとめる前の、メンバーの動画 1 本ずつ。ライブラリの一覧だけ |
+| 出演者 | `performer` | グループにまとめる前の、メンバーの動画 1 本ずつ。ライブラリの一覧だけ |
+| メーカー | `maker` | グループにまとめる前の、メンバーの動画 1 本ずつ。ライブラリの一覧だけ |
+| 再生可否 | `playable` | グループにまとめた後の、項目 1 つずつ |
+| 視聴状態 | `watch` | グループにまとめた後の、項目 1 つずつ |
+| お気に入り | `favorite` | グループにまとめた後の、項目 1 つずつ |
+| 並び順とシャッフルのシード | `sort`、`seed` | 項目の順番 |
+
+グループにまとめる前に適用する条件は、どのメンバーが合うかを決める。メンバーがすべて合うグループは 1 つの項目になり、一部だけが合うグループは、合ったメンバーを動画の項目として並べる（[027 library-api.md](../../specs/027-partial-group-search/contracts/library-api.md#how-get-apilibrary-builds-items)）。フォルダの一覧は「ライブラリの一覧だけ」と記した条件を受け付けない。`performer` と `maker` は、出演者名かメーカーを畳み込むとパラメーターと同じ値になる動画に合い、ゲストには拒否される（[047 screen-api.md](../../specs/047-video-work-info/contracts/screen-api.md#list-parameters-performer-and-maker)）。`total` はすべての条件を適用して数える。
 
 所有者の場合、検索語は動画の題名とパス、タグの名前と同義語、品番、メーカー名、出演者名に一致する。説明、発売日、出典 URL には決して一致しない。ゲストの検索語は題名とパスにだけ一致するので、ゲストに見えない名前が、検索がどの動画を返すかを通じて漏れることはない（[`search.go`](../../internal/store/search.go)）。
 

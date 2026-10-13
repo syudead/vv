@@ -134,8 +134,9 @@ export interface paths {
          *
          *     ゲストでは公開の動画だけを対象にし、`query` はタグの名前とシノニムに照合しない。
          *     所有者のデータに依る条件（`watch` が `all` 以外、`sort` が `playedAsc`・
-         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true）は
-         *     `400` `invalid_request` にする（guest-api.md §3、specs/035-favorites/contracts/screen-api.md §2）。
+         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`performer`、
+         *     `maker`）は `400` `invalid_request` にする（guest-api.md §3、
+         *     specs/035-favorites/contracts/screen-api.md §2、specs/047-video-work-info/contracts/screen-api.md）。
          */
         get: operations["listVideos"];
         put?: never;
@@ -158,7 +159,7 @@ export interface paths {
          * @description `listVideos` と同じ条件で、当たった動画を項目にまとめて返す
          *     （specs/027-partial-group-search/contracts/library-api.md §1。値の作り方は
          *     specs/017-folder-groups/data-model.md §5）。
-         *     `query` と `tag` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
+         *     `query`・`tag`・`performer`・`maker` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
          *     全メンバーが当たればグループの項目1件に、一部だけが当たれば当たったメンバーを
          *     それぞれ動画の項目にする。グループに属さない動画は動画の項目になる。
          *     絞り込みが無ければどのグループも全メンバーが当たる。グループの値は全メンバーから
@@ -176,8 +177,9 @@ export interface paths {
          *
          *     ゲストでは公開のメンバーだけを数え（「全メンバー」も公開のメンバー）、公開の
          *     メンバーが1本のグループは動画の項目にし、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
-         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true は `400` `invalid_request` にする
-         *     （data-model.md §7、specs/035-favorites/contracts/screen-api.md §2）。
+         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`performer`、`maker` は
+         *     `400` `invalid_request` にする（data-model.md §7、specs/035-favorites/contracts/screen-api.md §2、
+         *     specs/047-video-work-info/contracts/screen-api.md）。
          */
         get: operations["listLibrary"];
         put?: never;
@@ -197,7 +199,7 @@ export interface paths {
         };
         /**
          * 絞り込みに合う項目の動画の id を返す
-         * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`・`favorite`）に合う項目の、
+         * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`・`favorite`・`performer`・`maker`）に合う項目の、
          *     動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
          *     一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
          *     だけが入る。並びは決めない。「すべて選択」用
@@ -3715,6 +3717,19 @@ export interface components {
         /** @description プレイリストの項目の識別子 */
         PlaylistItemId: number;
         /**
+         * @description この名前の出演者を持つ動画だけにする。前後の空白を除いた値の照合形（全角・半角、大文字・
+         *     小文字、ひらがな・カタカナの違いを畳んだ形）が出演者名の照合形と等しいものに当たる。
+         *     ほかの絞り込みと AND で組み合わさり、`total` も絞り込み後に数える。当たる動画が無ければ
+         *     空の一覧を返す。前後の空白を除いて空になる値と 200 文字（符号位置）を超える値は `400`
+         *     `invalid_request`（specs/047-video-work-info/contracts/screen-api.md）
+         */
+        PerformerFilter: string;
+        /**
+         * @description メーカーがこの値の動画だけにする。照合・組み合わせ・誤りは `performer` と同じ
+         *     （specs/047-video-work-info/contracts/screen-api.md）
+         */
+        MakerFilter: string;
+        /**
          * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
          *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
          */
@@ -3925,6 +3940,19 @@ export interface operations {
                  *     missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
                  */
                 tag?: number[];
+                /**
+                 * @description この名前の出演者を持つ動画だけにする。前後の空白を除いた値の照合形（全角・半角、大文字・
+                 *     小文字、ひらがな・カタカナの違いを畳んだ形）が出演者名の照合形と等しいものに当たる。
+                 *     ほかの絞り込みと AND で組み合わさり、`total` も絞り込み後に数える。当たる動画が無ければ
+                 *     空の一覧を返す。前後の空白を除いて空になる値と 200 文字（符号位置）を超える値は `400`
+                 *     `invalid_request`（specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                performer?: components["parameters"]["PerformerFilter"];
+                /**
+                 * @description メーカーがこの値の動画だけにする。照合・組み合わせ・誤りは `performer` と同じ
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                maker?: components["parameters"]["MakerFilter"];
             };
             header?: never;
             path?: never;
@@ -3982,6 +4010,19 @@ export interface operations {
                  *     missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
                  */
                 tag?: number[];
+                /**
+                 * @description この名前の出演者を持つ動画だけにする。前後の空白を除いた値の照合形（全角・半角、大文字・
+                 *     小文字、ひらがな・カタカナの違いを畳んだ形）が出演者名の照合形と等しいものに当たる。
+                 *     ほかの絞り込みと AND で組み合わさり、`total` も絞り込み後に数える。当たる動画が無ければ
+                 *     空の一覧を返す。前後の空白を除いて空になる値と 200 文字（符号位置）を超える値は `400`
+                 *     `invalid_request`（specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                performer?: components["parameters"]["PerformerFilter"];
+                /**
+                 * @description メーカーがこの値の動画だけにする。照合・組み合わせ・誤りは `performer` と同じ
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                maker?: components["parameters"]["MakerFilter"];
             };
             header?: never;
             path?: never;
@@ -4014,6 +4055,19 @@ export interface operations {
                 favorite?: boolean;
                 /** @description 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す */
                 tag?: number[];
+                /**
+                 * @description この名前の出演者を持つ動画だけにする。前後の空白を除いた値の照合形（全角・半角、大文字・
+                 *     小文字、ひらがな・カタカナの違いを畳んだ形）が出演者名の照合形と等しいものに当たる。
+                 *     ほかの絞り込みと AND で組み合わさり、`total` も絞り込み後に数える。当たる動画が無ければ
+                 *     空の一覧を返す。前後の空白を除いて空になる値と 200 文字（符号位置）を超える値は `400`
+                 *     `invalid_request`（specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                performer?: components["parameters"]["PerformerFilter"];
+                /**
+                 * @description メーカーがこの値の動画だけにする。照合・組み合わせ・誤りは `performer` と同じ
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                maker?: components["parameters"]["MakerFilter"];
             };
             header?: never;
             path?: never;

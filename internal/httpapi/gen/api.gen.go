@@ -3008,8 +3008,14 @@ type FolderPath = string
 // FolderRootId defines model for FolderRootId.
 type FolderRootId = int64
 
+// MakerFilter defines model for MakerFilter.
+type MakerFilter = string
+
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
+
+// PerformerFilter defines model for PerformerFilter.
+type PerformerFilter = string
 
 // PlaylistId defines model for PlaylistId.
 type PlaylistId = int64
@@ -3165,6 +3171,17 @@ type ListLibraryParams struct {
 	// 最大16個、17個以上は400。存在しない id は条件から落とし、応答の
 	// missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+
+	// Performer この名前の出演者を持つ動画だけにする。前後の空白を除いた値の照合形（全角・半角、大文字・
+	// 小文字、ひらがな・カタカナの違いを畳んだ形）が出演者名の照合形と等しいものに当たる。
+	// ほかの絞り込みと AND で組み合わさり、`total` も絞り込み後に数える。当たる動画が無ければ
+	// 空の一覧を返す。前後の空白を除いて空になる値と 200 文字（符号位置）を超える値は `400`
+	// `invalid_request`（specs/047-video-work-info/contracts/screen-api.md）
+	Performer *PerformerFilter `form:"performer,omitempty" json:"performer,omitempty"`
+
+	// Maker メーカーがこの値の動画だけにする。照合・組み合わせ・誤りは `performer` と同じ
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Maker *MakerFilter `form:"maker,omitempty" json:"maker,omitempty"`
 }
 
 // ListLibraryIdsParams defines parameters for ListLibraryIds.
@@ -3179,6 +3196,17 @@ type ListLibraryIdsParams struct {
 
 	// Tag 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+
+	// Performer この名前の出演者を持つ動画だけにする。前後の空白を除いた値の照合形（全角・半角、大文字・
+	// 小文字、ひらがな・カタカナの違いを畳んだ形）が出演者名の照合形と等しいものに当たる。
+	// ほかの絞り込みと AND で組み合わさり、`total` も絞り込み後に数える。当たる動画が無ければ
+	// 空の一覧を返す。前後の空白を除いて空になる値と 200 文字（符号位置）を超える値は `400`
+	// `invalid_request`（specs/047-video-work-info/contracts/screen-api.md）
+	Performer *PerformerFilter `form:"performer,omitempty" json:"performer,omitempty"`
+
+	// Maker メーカーがこの値の動画だけにする。照合・組み合わせ・誤りは `performer` と同じ
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Maker *MakerFilter `form:"maker,omitempty" json:"maker,omitempty"`
 }
 
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
@@ -3298,6 +3326,17 @@ type ListVideosParams struct {
 	// 最大16個、17個以上は400。存在しない id は条件から落とし、応答の
 	// missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+
+	// Performer この名前の出演者を持つ動画だけにする。前後の空白を除いた値の照合形（全角・半角、大文字・
+	// 小文字、ひらがな・カタカナの違いを畳んだ形）が出演者名の照合形と等しいものに当たる。
+	// ほかの絞り込みと AND で組み合わさり、`total` も絞り込み後に数える。当たる動画が無ければ
+	// 空の一覧を返す。前後の空白を除いて空になる値と 200 文字（符号位置）を超える値は `400`
+	// `invalid_request`（specs/047-video-work-info/contracts/screen-api.md）
+	Performer *PerformerFilter `form:"performer,omitempty" json:"performer,omitempty"`
+
+	// Maker メーカーがこの値の動画だけにする。照合・組み合わせ・誤りは `performer` と同じ
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Maker *MakerFilter `form:"maker,omitempty" json:"maker,omitempty"`
 }
 
 // ListVideoGroupMembersParams defines parameters for ListVideoGroupMembers.
@@ -4556,6 +4595,32 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "performer" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "performer", r.URL.Query(), &params.Performer, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "performer"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "performer", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maker" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maker", r.URL.Query(), &params.Maker, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maker"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maker", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListLibrary(w, r, params)
 	}))
@@ -4637,6 +4702,32 @@ func (siw *ServerInterfaceWrapper) ListLibraryIds(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "performer" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "performer", r.URL.Query(), &params.Performer, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "performer"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "performer", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maker" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maker", r.URL.Query(), &params.Maker, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maker"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maker", Err: err})
 		}
 		return
 	}
@@ -6126,6 +6217,32 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "performer" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "performer", r.URL.Query(), &params.Performer, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "performer"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "performer", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maker" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maker", r.URL.Query(), &params.Maker, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maker"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maker", Err: err})
 		}
 		return
 	}

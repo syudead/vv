@@ -202,9 +202,10 @@ func (a Audience) String() string {
 
 // CheckVideoQuery は、見る人がこの一覧の条件を使えるかを確かめる
 // （specs/016-single-account-auth/contracts/guest-api.md §3）。所有者はすべて
-// 使える。ゲストは所有者のデータ（再生位置・タグ・お気に入り）に依る条件、つまり `all` 以外の
-// 視聴状態、再生日時とお気に入りにした日時の並べ替え、タグとお気に入りの絞り込みを使えず、
-// ErrGuestQueryNotAllowed を返す（specs/035-favorites/research.md R-5）。
+// 使える。ゲストは所有者のデータ（再生位置・タグ・お気に入り・作品情報）に依る条件、つまり `all` 以外の
+// 視聴状態、再生日時とお気に入りにした日時の並べ替え、タグ・お気に入り・出演者・メーカーの絞り込みを
+// 使えず、ErrGuestQueryNotAllowed を返す（specs/035-favorites/research.md R-5、
+// specs/047-video-work-info/research.md R-7）。
 func (a Audience) CheckVideoQuery(q VideoQuery) error {
 	if a.IsOwner() {
 		return nil
@@ -218,7 +219,7 @@ func (a Audience) CheckVideoQuery(q VideoQuery) error {
 	case SortPlayedAsc, SortPlayedDesc, SortFavoritedAsc, SortFavoritedDesc:
 		return ErrGuestQueryNotAllowed
 	}
-	if len(q.TagIDs) > 0 || q.FavoriteOnly {
+	if len(q.TagIDs) > 0 || q.FavoriteOnly || q.Performer != "" || q.Maker != "" {
 		return ErrGuestQueryNotAllowed
 	}
 	return nil
