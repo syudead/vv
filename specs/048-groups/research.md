@@ -158,7 +158,7 @@ that order.
 the group's items (child groups and videos) in their saved order. The groups
 the owner went through are carried as `?trail=<id>,<id>`; the server answers
 the trail's names and cuts it at the first pair that is no longer a parent and
-child ([contracts/screen-api.md](contracts/screen-api.md#get-apigroupsid)).
+child ([contracts/screen-api.md](contracts/screen-api.md#statuses)).
 
 | Option | Verdict |
 | --- | --- |
