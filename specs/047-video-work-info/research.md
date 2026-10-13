@@ -311,7 +311,9 @@ first, then the work information in the order of the `WorkInfo` schema, and
 the first failure is reported with `field` (`displayName`, or the path inside
 `workInfo` as in R-9). After commit the store publishes `VideoOverrideChanged`
 when the name changed and `VideoWorkInfoChanged` when the information changed
-(R-11), and advances the edit time once when either changed (R-13).
+(R-11), and advances the edit time once when either changed (R-13): the
+content key of the video for a new name, and every member content key of the
+user key for new information, as `touchEditedAtForUserKeys` expands it.
 `PUT /api/videos/{id}/display-name` and `PUT /api/videos/{id}/work-info`
 stay: the first serves the in-place title edit that requirement 8 keeps, the
 second the external semantics of R-5 and R-9
@@ -323,7 +325,7 @@ second the external semantics of R-5 and R-9
 | The editor sends `PUT …/display-name` and then `PUT …/work-info` | Rejected: a failure or a closed tab between the two leaves the title saved and the information not, which requirement 8 rules out; a client cannot make two requests atomic |
 | `displayName` as an optional property of `WorkInfoInput` on `PUT …/work-info` | Rejected: `WorkInfoInput` is the item of the external bulk operation, which has `POST /api/v1/video-display-names` for titles, so the shared schema would carry a property half its users must not send; and "absent clears" (R-5) is wrong for a title, where absent has to mean "leave it" |
 | `PATCH /api/videos/{id}` with merge semantics for every owner-written field | Rejected: no video field is written that way today, "clear the title" needs a sentinel distinct from "leave it", and the editor always holds both values, so optionality buys nothing |
-| `SetDetails` on `OverrideStore`, calling into `WorkInfoStore` | Rejected: ARCHITECTURE.md forbids a role type calling another role's public methods; the display name write is already the package functions `registeredContentKeysForVideoIDs`, `displayNamesOf`, `writeDisplayName`, `touchEditedAt` and `refreshSearchKeysForContentKeys`, which `SetDetails` calls in its own transaction, and the work information SQL belongs to `WorkInfoStore` |
+| `SetDetails` on `OverrideStore`, calling into `WorkInfoStore` | Rejected: ARCHITECTURE.md forbids a role type calling another role's public methods; the display name write is already the package functions `registeredContentKeysForVideoIDs`, `displayNamesOf`, `writeDisplayName`, `contentKeysForUserKeys`, `touchEditedAt` and `refreshSearchKeysForContentKeys`, which `SetDetails` calls in its own transaction, and the work information SQL belongs to `WorkInfoStore` |
 
 **Rationale**: The maintainer revised requirement 8 so that the editor saves
 the title and the information as one unit; the API follows that screen, not

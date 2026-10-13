@@ -104,7 +104,9 @@ Both are written in one transaction, or neither is.
 `displayName` is checked first, then `workInfo` in the order of the
 [`WorkInfo` schema](#workinfo-schema), and only the first failure is reported.
 A save that changes neither value returns `200`, advances nothing and sends
-nothing; a save that changes either advances `updatedAt` once. After a change
+nothing; a save that changes either advances `updatedAt` once: for the
+video when the display name changed, and for every video under the user key
+when the work information changed. After a change
 commits, `/api/events` carries `video` for the id when the display name
 changed and `video` for every video under the user key when the work
 information changed; an open video page refetches on either.

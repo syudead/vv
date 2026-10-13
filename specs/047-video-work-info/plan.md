@@ -279,7 +279,10 @@ clears; bundling
 two videos showing the representative's values on the bundle, and unbundling
 giving the member its own values back; `SetDetails` with a new display name
 and a new object reading both back, advancing `updatedAt` once and publishing
-`VideoOverrideChanged` and `VideoWorkInfoChanged`; `SetDetails` with a valid
+`VideoOverrideChanged` and `VideoWorkInfoChanged`; `SetDetails` on a bundle
+member with a new object advancing `updatedAt` of every member of the bundle,
+and with only a new display name advancing it for that member alone;
+`SetDetails` with a valid
 display name and an invalid date leaving the stored display name and rows
 unchanged and publishing nothing; `SetDetails` with a display name over the
 limit and a valid object the same; `SetDetails` with both values unchanged
@@ -427,6 +430,8 @@ opens the editor, as `ui-design.md` decides; the editor route
 name and every work information item, with the combobox that picks an
 existing person or organization or creates one (R-4), saving with one
 `PUT /api/videos/{id}/details` (R-14) and returning to the page; the
+`ownerOnlyPath` predicate of `web/src/auth/AuthGate.tsx` covering
+`/videos/:id/edit`, so a guest opening it is redirected to `/login`; the
 folded description; the error line naming the `field`; the catalog text; and
 the `video` notification refreshing the page. The in-place title edit of
 `VideoTitle.tsx` and its `PUT /api/videos/{id}/display-name` stay as they
@@ -449,7 +454,8 @@ entered value, shows the message at that item, and the page's title is
 unchanged when the editor is left; a `400` with `field: displayName` shows
 the message at the display name; the in-place title edit on the page still
 sends `PUT /api/videos/{id}/display-name`; a guest sees no items, no edit
-entry, and is sent away from `/videos/:id/edit`; a `video` notification
+entry, and opening `/videos/:id/edit` is redirected to `/login` by
+`AuthGate`; a `video` notification
 refetches the page and shows a value written elsewhere. The unit changes a
 screen, so the implementation checks the visuals and the interaction at the
 widths `ui-design.md` names.
