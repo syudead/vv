@@ -6,9 +6,9 @@ import {
   Hash,
   type LucideIcon,
 } from "lucide-react";
-import type { Ref, RefObject } from "react";
+import type { ReactNode, Ref, RefObject } from "react";
 
-import { t } from "../i18n";
+import { t, type UiText } from "../i18n";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { FilterCheckbox, FilterPopover } from "../videoList/FilterMenu";
 import type { HistoryMode } from "../videoList/listCriteria";
@@ -98,10 +98,85 @@ export default function TagToolbar({
   onSortChange,
   sortDisabled,
 }: TagToolbarProps) {
+  const filterCount = (tentativeOnly ? 1 : 0) + (unusedOnly ? 1 : 0);
+
+  return (
+    <AdminListToolbar
+      query={query}
+      onQueryCommit={onQueryCommit}
+      searchRef={searchRef}
+      searchDisabled={searchDisabled}
+      searchLabel={t.tags.search.label}
+      searchPlaceholder={t.tags.search.placeholder}
+      sort={sort}
+      onSortChange={onSortChange}
+      sortDisabled={sortDisabled}
+      compactSortName="tag-compact-sort"
+    >
+      <FilterPopover
+        count={filterCount}
+        disabled={filterDisabled}
+        canClear={filterCount > 0}
+        onClear={onClearFilters}
+        triggerRef={filterRef}
+      >
+        <div className="flex flex-col gap-3">
+          <FilterCheckbox
+            checked={tentativeOnly}
+            onCheckedChange={onTentativeOnlyChange}
+            label={t.tags.tentativeOnly}
+            hint={t.tags.tentativeOnlyHint}
+          />
+          <FilterCheckbox
+            checked={unusedOnly}
+            onCheckedChange={onUnusedOnlyChange}
+            label={t.tags.unusedOnly}
+            hint={t.tags.unusedOnlyHint}
+          />
+        </div>
+      </FilterPopover>
+    </AdminListToolbar>
+  );
+}
+
+export interface AdminListToolbarProps {
+  query: string;
+  onQueryCommit: (next: string, mode: HistoryMode) => void;
+  searchRef: RefObject<HTMLInputElement | null>;
+  searchDisabled: boolean;
+  searchLabel: UiText;
+  searchPlaceholder: UiText;
+  sort: TagListSort;
+  onSortChange: (sort: TagListSort) => void;
+  sortDisabled: boolean;
+  /** 狭い幅の「Sort」のまとめのラジオの name。画面ごとに変える。 */
+  compactSortName: string;
+  /** 検索欄と並び順の間に置く絞り込み（タグの「Filter」）。 */
+  children?: ReactNode;
+}
+
+/**
+ * AdminListToolbar は管理表の画面の、共通トップバーの中央に置く検索欄と並び順である。
+ * タグの画面（`TagToolbar`、「Filter」を足す）と人物・団体の画面（`web/src/credits/`）が
+ * 使う。並び順の種類（Name・Video count・Date created）と向きは両方の画面で同じである
+ * （specs/047-video-work-info/ui-design.md「People and organizations screens」）。
+ */
+export function AdminListToolbar({
+  query,
+  onQueryCommit,
+  searchRef,
+  searchDisabled,
+  searchLabel,
+  searchPlaceholder,
+  sort,
+  onSortChange,
+  sortDisabled,
+  compactSortName,
+  children,
+}: AdminListToolbarProps) {
   const kind = tagSortKind(sort);
   const direction = tagSortDirection(sort);
   const options = tagSortOptions();
-  const filterCount = (tentativeOnly ? 1 : 0) + (unusedOnly ? 1 : 0);
 
   return (
     <Toolbar
@@ -111,8 +186,8 @@ export default function TagToolbar({
           query={query}
           onCommit={onQueryCommit}
           inputRef={searchRef}
-          label={t.tags.search.label}
-          placeholder={t.tags.search.placeholder}
+          label={searchLabel}
+          placeholder={searchPlaceholder}
           syntaxHelp={false}
           // 打鍵ごとに引き直す（前の要求は打ち切る。specs/036-tag-admin-scale/research.md R-1）。
           debounceMs={0}
@@ -127,7 +202,7 @@ export default function TagToolbar({
           compactLabelled: true,
           compact: (
             <CompactSortView
-              name="tag-compact-sort"
+              name={compactSortName}
               heading={t.tags.sort.heading}
               value={activeOption(sort)}
               options={options}
@@ -201,28 +276,7 @@ export default function TagToolbar({
       ]}
       viewLabel={t.tags.sort.compact}
     >
-      <FilterPopover
-        count={filterCount}
-        disabled={filterDisabled}
-        canClear={filterCount > 0}
-        onClear={onClearFilters}
-        triggerRef={filterRef}
-      >
-        <div className="flex flex-col gap-3">
-          <FilterCheckbox
-            checked={tentativeOnly}
-            onCheckedChange={onTentativeOnlyChange}
-            label={t.tags.tentativeOnly}
-            hint={t.tags.tentativeOnlyHint}
-          />
-          <FilterCheckbox
-            checked={unusedOnly}
-            onCheckedChange={onUnusedOnlyChange}
-            label={t.tags.unusedOnly}
-            hint={t.tags.unusedOnlyHint}
-          />
-        </div>
-      </FilterPopover>
+      {children}
     </Toolbar>
   );
 }

@@ -116,6 +116,39 @@ function videos(count: number): string {
   });
 }
 
+/**
+ * creditKindTexts は人物・団体の管理画面の、種類で言い分ける文言である
+ * （specs/047-video-work-info/ui-design.md「People and organizations screens」）。
+ * `one`・`many` は数える名詞、`title` は見出しの名詞、`target` は統合先の欄の名札である。
+ */
+function creditKindTexts(one: string, many: string, title: string, target: string) {
+  const count = (n: number) =>
+    selectPlural(n, {
+      one: `${formatNumber(n)} ${one}`,
+      other: `${formatNumber(n)} ${many}`,
+    });
+  return {
+    title,
+    count,
+    filteredCount: (shown: number, total: number) =>
+      `${formatNumber(shown)} of ${count(total)}`,
+    newButton: `New ${one}`,
+    search: `Search ${many}`,
+    mergeInto: `Merge into another ${one}…`,
+    mergeTarget: target,
+    noCandidates: `No matching ${many}`,
+    searchFailed: (reason: string) => `Couldn't search ${many}: ${reason}`,
+    gone: `This ${one} no longer exists, so the list was reloaded`,
+    emptyTitle: `No ${many} yet`,
+    noMatches: (query: string) => `No ${many} match "${query}"`,
+    loadFailed: (reason: string) => `Couldn't load ${many}: ${reason}`,
+    staleList: (reason: string) =>
+      `Couldn't load ${many}: ${reason}. The list below may not match the current search and sort.`,
+    loadingMore: `Loading more ${many}…`,
+    listChanged: `${title} were added or removed elsewhere, so the rest of this list may be out of date.`,
+  };
+}
+
 const errorCodes = {
   not_found: "It wasn't found.",
   invalid_request: "The request wasn't valid.",
@@ -1161,6 +1194,90 @@ export const en = {
       merge: "Merge",
     },
   },
+  // 人物と団体の管理画面（specs/047-video-work-info/ui-design.md「Words」の「People and
+  // organizations screens」）。並び順の文言はタグの画面（tags.sort）と同じものを使う。
+  credits: {
+    person: creditKindTexts("person", "people", "People", "Person to merge into"),
+    organization: creditKindTexts(
+      "organization",
+      "organizations",
+      "Organizations",
+      "Organization to merge into",
+    ),
+    loading: "Loading…",
+    columns: {
+      name: "Name",
+      videos: "Videos",
+    },
+    empty: {
+      description: "Add them from a video's details, or create one here.",
+    },
+    clearSearch: "Clear search",
+    create: {
+      label: "Name",
+      placeholder: "Name",
+    },
+    row: {
+      open: (name: string) => `Open the library filtered by ${name}`,
+      aliases: (list: string) => `Aliases: ${list}`,
+      aliasWithLanguage: (alias: string, language: string) => `${alias} (${language})`,
+      partOf: (parent: string) => `Part of ${parent}`,
+      // 名前の下の 1 行の、親と別名の区切り。
+      secondLine: (parts: readonly string[]) => parts.join(" · "),
+      videoCount: videos,
+      renameLabel: (name: string) => `New name for "${name}"`,
+      rename: "Rename",
+      details: "Edit details",
+      more: "More actions",
+      delete: "Delete…",
+      actions: "Actions",
+    },
+    details: {
+      title: (name: string) => `Edit "${name}"`,
+      aliases: "Aliases",
+      externalIds: "External IDs",
+      parent: "Parent organization",
+      alias: "Alias",
+      language: "Language",
+      languagePlaceholder: "ja",
+      languageDescription: "Optional. A language tag such as ja or en-US.",
+      removeAlias: "Remove alias",
+      addAlias: "Add alias",
+      source: "Source",
+      value: "Value",
+      removeId: "Remove ID",
+      addId: "Add ID",
+      parentNone: "None",
+      parentSearch: "Search organizations",
+      parentEmpty: "No matching organizations",
+      parentsFailed: (reason: string) => `Couldn't load organizations: ${reason}`,
+      submit: "Save",
+      submitting: "Saving…",
+    },
+    mergeDialog: {
+      title: (name: string) => `Merge "${name}"`,
+      aliasHint: (alias: string) => `Alias: ${alias}`,
+      videoCount: videos,
+      warning: (source: string, count: number, target: string) =>
+        count === 0
+          ? `"${source}" isn't on any videos. Its name, aliases and IDs become aliases and IDs of "${target}", and it leaves the list. This can't be undone.`
+          : `The ${videos(count)} with "${source}" get "${target}" instead. "${source}"'s name, aliases and IDs become aliases and IDs of "${target}", and "${source}" leaves the list. This can't be undone.`,
+      submit: "Merge",
+      submitting: "Merging…",
+    },
+    merged: (source: string, target: string) => `Merged "${source}" into "${target}"`,
+    deleteDialog: {
+      title: (name: string) => `Delete "${name}"?`,
+      text: (name: string, count: number) =>
+        count === 0
+          ? `"${name}" isn't on any videos. This can't be undone.`
+          : `"${name}" will be removed from ${videos(count)}. This can't be undone.`,
+      organizationNote: "Organizations inside it stay and lose their parent.",
+      submit: "Delete",
+      submitting: "Deleting…",
+    },
+    deleted: (name: string) => `Deleted "${name}"`,
+  },
   folderGrouping: {
     ungrouped: (name: string) => `Ungrouped "${name}"`,
     tagged: (name: string, created: boolean) =>
@@ -1861,6 +1978,8 @@ export const en = {
       library: "Library",
       folders: "Folders",
       tags: "Tags",
+      people: "People",
+      organizations: "Organizations",
       history: "History",
       playlists: "Playlists",
       duplicates: "Duplicates",

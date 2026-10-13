@@ -15,7 +15,6 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 
-import type { Tag } from "../api/tags";
 import type { TagRowRefs } from "./TagRow";
 
 export type FocusTarget = "rename" | "synonyms" | "name" | "menu";
@@ -55,22 +54,30 @@ function rowFocusables(row: Element): HTMLElement[] {
  * （specs/036-tag-admin-scale/research.md R-2）。描いていない行へのフォーカスの移動と、
  * 描いている範囲の端での Tab の受け渡しも持つ（ui-design.md「Keyboard across
  * virtualized rows」）。`fallbackFocus` は、行へ移せないときの最後の行き先である。
+ *
+ * 人物・団体の管理画面（`web/src/credits/`）も同じ行の描き方とフォーカスの規則で使う。
+ * 行は `rowIdAttribute`（既定は `data-tag-id`）に id を持ち、`TagRowRefs` の
+ * `synonymsButton` には行の 2 つ目のアイコンのボタン（タグの「Synonyms」、人物・団体の
+ * 「Edit details」）を登録する。
  */
-export function useVirtualTagRows({
+export function useVirtualTagRows<R extends { id: number }>({
   visibleRows,
   renamingId,
   scrollMargin,
   rowsTop,
   fallbackFocus,
+  rowIdAttribute = "data-tag-id",
 }: {
   /** 並べる行（差し込んで残した改名中の行を含む）。 */
-  visibleRows: readonly Tag[];
+  visibleRows: readonly R[];
   renamingId: number | null;
   /** 一覧の上端の文書の中での位置（px）。 */
   scrollMargin: number;
   /** 行へスクロールするときに上から差し引く高さ（帯と列の見出し、px）。 */
   rowsTop: number;
   fallbackFocus: () => void;
+  /** 行の要素が id を持つ属性の名前。 */
+  rowIdAttribute?: string;
 }) {
   const fallbackRef = useRef(fallbackFocus);
   useLayoutEffect(() => {
@@ -149,7 +156,7 @@ export function useVirtualTagRows({
   function renderRow(id: number): number {
     const index = visibleRowsRef.current.findIndex((tag) => tag.id === id);
     if (index === -1) return -1;
-    const drawn = listRef.current?.querySelector(`[data-tag-id="${String(id)}"]`);
+    const drawn = listRef.current?.querySelector(`[${rowIdAttribute}="${String(id)}"]`);
     if (drawn !== null && drawn !== undefined) return -1;
     flushSync(() => setPinnedRowId(id));
     return index;
@@ -206,13 +213,13 @@ export function useVirtualTagRows({
    * 前にその行の位置へスクロールする。
    */
   function focusAfterRemoval(
-    order: readonly Tag[],
+    order: readonly R[],
     removedId: number,
     alsoGone: ReadonlySet<number> = new Set(),
     fallback: () => void = focusFallback,
   ) {
     const index = order.findIndex((tag) => tag.id === removedId);
-    const stays = (tag: Tag) => tag.id !== removedId && !alsoGone.has(tag.id);
+    const stays = (tag: R) => tag.id !== removedId && !alsoGone.has(tag.id);
     const candidates = [
       ...order.slice(index + 1).filter(stays),
       ...order.slice(0, Math.max(index, 0)).reverse().filter(stays),
@@ -249,7 +256,7 @@ export function useVirtualTagRows({
     return isShown(preferred) ? preferred : refs?.actionsButton;
   }
 
-  const visibleRowsRef = useRef<readonly Tag[]>(visibleRows);
+  const visibleRowsRef = useRef<readonly R[]>(visibleRows);
   useLayoutEffect(() => {
     visibleRowsRef.current = visibleRows;
   }, [visibleRows]);
@@ -308,9 +315,9 @@ export function useVirtualTagRows({
    */
   function handleListFocus(event: FocusEvent<HTMLTableSectionElement>) {
     focusInListRef.current = true;
-    const row = (event.target as Element).closest<HTMLElement>("[data-tag-id]");
+    const row = (event.target as Element).closest<HTMLElement>(`[${rowIdAttribute}]`);
     if (row === null || !event.currentTarget.contains(row)) return;
-    setPinnedRowId(Number(row.dataset.tagId));
+    setPinnedRowId(Number(row.getAttribute(rowIdAttribute)));
   }
 
   /**

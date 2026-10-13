@@ -28,14 +28,21 @@ export function routePath(pathname: string): string {
 }
 
 /**
- * ownerOnlyPath は所有者だけの画面（設定・タグの管理・視聴履歴・プレイリスト・重複の候補・
- * 動画の作品情報の編集画面）かを返す。pathname は routePath 済み。
+ * ownerOnlyPath は所有者だけの画面（設定・タグの管理・人物と団体の管理・視聴履歴・
+ * プレイリスト・重複の候補・動画の作品情報の編集画面）かを返す。pathname は routePath 済み。
  */
 function ownerOnlyPath(pathname: string): boolean {
   return (
-    ["/settings", "/tags", "/history", "/playlists", "/duplicates"].some(
-      (path) => pathname === path || pathname.startsWith(`${path}/`),
-    ) || isVideoEditPath(pathname)
+    [
+      "/settings",
+      "/tags",
+      "/people",
+      "/organizations",
+      "/history",
+      "/playlists",
+      "/duplicates",
+    ].some((path) => pathname === path || pathname.startsWith(`${path}/`)) ||
+    isVideoEditPath(pathname)
   );
 }
 

@@ -93,6 +93,9 @@ describe("AuthGate", () => {
   it.each([
     ["/settings", "/login?next=%2Fsettings"],
     ["/tags", "/login?next=%2Ftags"],
+    // 人物と団体の管理画面（specs/047-video-work-info/ui-design.md「Sidebar」）。
+    ["/people", "/login?next=%2Fpeople"],
+    ["/organizations?q=a", "/login?next=%2Forganizations%3Fq%3Da"],
     ["/duplicates", "/login?next=%2Fduplicates"],
     ["/history", "/login?next=%2Fhistory"],
     ["/history?watch=watched", "/login?next=%2Fhistory%3Fwatch%3Dwatched"],

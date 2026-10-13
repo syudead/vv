@@ -15,7 +15,7 @@ export type TagChoice = NameChoice;
 export type TagCommandLayout = NameCommandLayout;
 
 // 文言は表示の時点のカタログから引く（擬似ロケールがカタログを差し替えるため）。
-const tagNameRules: NameRules = {
+export const tagNameRules: NameRules = {
   reason: nameReason,
   get required() {
     return t.tagName.required;

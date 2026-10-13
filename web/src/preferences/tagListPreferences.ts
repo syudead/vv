@@ -7,7 +7,9 @@ import {
 /**
  * TagListPreferences はタグ管理画面の端末の設定である。並び順だけを残し、
  * 「Tentative only」「Unused only」と検索語は残さない
- * （specs/036-tag-admin-scale/research.md R-7）。
+ * （specs/036-tag-admin-scale/research.md R-7）。人物・団体の管理画面も同じ形を
+ * 種類ごとの鍵で残す（specs/047-video-work-info/ui-design.md「People and organizations
+ * screens」の Sort）。
  */
 export interface TagListPreferences {
   sort: TagListSort;
@@ -22,9 +24,24 @@ export const tagListDefaults: TagListPreferences = { sort: defaultTagListSort };
  * 壊れているときは既定（名前の順）にする（`readViewPreferences` と同じ）。
  */
 export function readTagListPreferences(storage?: Storage): TagListPreferences {
+  return readListSortPreferences(storageKey, storage);
+}
+
+export function writeTagListPreferences(
+  value: TagListPreferences,
+  storage?: Storage,
+): void {
+  writeListSortPreferences(storageKey, value, storage);
+}
+
+/** readListSortPreferences は `readTagListPreferences` の、保存の鍵を受け取る形である。 */
+export function readListSortPreferences(
+  key: string,
+  storage?: Storage,
+): TagListPreferences {
   let raw: string | null;
   try {
-    raw = (storage ?? window.localStorage).getItem(storageKey);
+    raw = (storage ?? window.localStorage).getItem(key);
   } catch {
     return { ...tagListDefaults };
   }
@@ -44,13 +61,15 @@ export function readTagListPreferences(storage?: Storage): TagListPreferences {
   return { sort: isTagListSort(value.sort) ? value.sort : tagListDefaults.sort };
 }
 
-export function writeTagListPreferences(
+/** writeListSortPreferences は `writeTagListPreferences` の、保存の鍵を受け取る形である。 */
+export function writeListSortPreferences(
+  key: string,
   value: TagListPreferences,
   storage?: Storage,
 ): void {
   try {
     const stored: TagListPreferences = { sort: value.sort };
-    (storage ?? window.localStorage).setItem(storageKey, JSON.stringify(stored));
+    (storage ?? window.localStorage).setItem(key, JSON.stringify(stored));
   } catch {
     // 保存できなくても今の画面では並び順を使える
   }
