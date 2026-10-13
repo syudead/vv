@@ -1,5 +1,6 @@
 import { ExternalLink } from "lucide-react";
 import { Fragment, type ReactNode, useLayoutEffect, useRef, useState } from "react";
+import { Link } from "react-router";
 
 import {
   type WorkInfo as WorkInfoValue,
@@ -67,6 +68,29 @@ function Item({ label, children }: { label: UiText; children: ReactNode }) {
 }
 
 /**
+ * CreditLink は人物・団体の名前で、押すとそれで絞ったライブラリ（`/?person=<id>`・
+ * `/?organization=<id>`）を開く（ui-design.md「Video page: work details row」、
+ * 「Library: filter by a person or organization」）。本文の色で、上に乗ると `primary`。
+ */
+function CreditLink({
+  kind,
+  credit,
+}: {
+  kind: "person" | "organization";
+  credit: { id: number; name: string };
+}) {
+  return (
+    <Link
+      to={`/?${kind}=${String(credit.id)}`}
+      aria-label={t.player.workInfo.showVideosWith(credit.name)}
+      className="text-foreground hover:text-primary"
+    >
+      {credit.name}
+    </Link>
+  );
+}
+
+/**
  * ListItem はいくつもの値を `, ` でつないだ項目である。4 つ以上あれば先頭の 3 つと
  * 「+{n} more」を出し、押すとその項目のすべてを出してフォーカスを 4 つ目へ移す
  * （ui-design.md「Work details row」の Long lists）。開いたことは覚えない。
@@ -87,7 +111,9 @@ function ListItem({
   useLayoutEffect(() => {
     if (!open || !focusFourth.current) return;
     focusFourth.current = false;
-    fourth.current?.focus();
+    // 4 つ目が名前のリンクならそのリンクへ、そうでなければ値そのものへ移す。
+    const entry = fourth.current;
+    (entry?.querySelector<HTMLElement>("a[href]") ?? entry)?.focus();
   }, [open]);
 
   return (
@@ -226,7 +252,7 @@ export default function WorkInfo({ info }: { info: WorkInfoValue | undefined }) 
               label={personRoleLabel(role, names.length)}
               entries={names.map((entry) => ({
                 key: String(entry.person.id),
-                node: entry.person.name,
+                node: <CreditLink kind="person" credit={entry.person} />,
               }))}
             />
           ))}
@@ -236,7 +262,7 @@ export default function WorkInfo({ info }: { info: WorkInfoValue | undefined }) 
               label={organizationRoleLabel(role, names.length)}
               entries={names.map((entry) => ({
                 key: String(entry.organization.id),
-                node: entry.organization.name,
+                node: <CreditLink kind="organization" credit={entry.organization} />,
               }))}
             />
           ))}

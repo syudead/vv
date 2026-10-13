@@ -335,9 +335,27 @@ export const MAX_TAG_FILTER_COUNT = 16;
  * 無い（フォルダ画面のタグ絞り込みは対象外。
  * specs/014-video-tags/contracts/tags-api.md §5）。
  */
-export interface ListVideosParams extends ListFilterParams {
+export interface ListVideosParams extends ListFilterParams, CreditFilterParams {
   /** 絞り込むタグの id（すべて持つ動画だけにする AND）。最大16個。書く順は問わない。 */
   tag?: number[];
+}
+
+/**
+ * CreditFilterParams は人物・団体での絞り込みである（listVideos・listLibrary・
+ * listLibraryIds。specs/047-video-work-info/contracts/screen-api.md「List parameters
+ * `person` and `organization`」）。どの役割でもその id に結び付いた動画だけにする。
+ */
+export interface CreditFilterParams {
+  person?: number;
+  organization?: number;
+}
+
+/** setCreditFilter は人物・団体の絞り込みを問い合わせに載せる。 */
+function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): void {
+  if (params.person !== undefined) query.set("person", String(params.person));
+  if (params.organization !== undefined) {
+    query.set("organization", String(params.organization));
+  }
 }
 
 /** setListFilters は共通の条件を問い合わせに載せる。 */
@@ -370,6 +388,7 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   const query = new URLSearchParams();
   setListFilters(query, params);
   setTagFilter(query, params.tag);
+  setCreditFilter(query, params);
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
 
@@ -405,6 +424,7 @@ export async function listLibrary(
   const query = new URLSearchParams();
   setListFilters(query, params);
   setTagFilter(query, params.tag);
+  setCreditFilter(query, params);
   const page = await request<components["schemas"]["LibraryPage"]>(
     `/api/library?${query.toString()}`,
     { signal: params.signal },
@@ -419,7 +439,7 @@ export async function listLibrary(
 }
 
 /** ListLibraryIdsParams は「すべて選択」用の全件 id の問い合わせ条件である。 */
-export interface ListLibraryIdsParams {
+export interface ListLibraryIdsParams extends CreditFilterParams {
   query?: string;
   watch?: WatchFilter;
   playable?: boolean;
@@ -446,6 +466,7 @@ export function listLibraryIds(
   if (params.playable === true) query.set("playable", "true");
   if (params.favorite === true) query.set("favorite", "true");
   setTagFilter(query, params.tag);
+  setCreditFilter(query, params);
   return request<VideoIdsResponse>(`/api/library/ids?${query.toString()}`, {
     signal: params.signal,
   });

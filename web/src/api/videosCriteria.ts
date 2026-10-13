@@ -35,6 +35,13 @@ export interface VideosCriteria {
    * specs/014-video-tags/contracts/tags-api.md §5）。
    */
   tag?: number[];
+  /**
+   * 絞り込む人物・団体の id（tag と同じく listFolderVideos には渡さない。
+   * specs/047-video-work-info/contracts/screen-api.md「List parameters `person` and
+   * `organization`」）。
+   */
+  person?: number;
+  organization?: number;
 }
 
 /** criteriaKey は条件を値で比べるための文字列にする。 */
@@ -48,5 +55,7 @@ export function criteriaKey(criteria: VideosCriteria): string {
     criteria.sort === "random" ? (criteria.seed ?? null) : null,
     criteria.scope ?? "direct",
     criteria.tag ?? [],
+    criteria.person ?? null,
+    criteria.organization ?? null,
   ]);
 }

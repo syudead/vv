@@ -795,10 +795,15 @@ export const en = {
     deletedTagsRemoved: "Removed deleted tags from the filter",
     selectAllFailed: (reason: string) => `Couldn't select everything: ${reason}`,
     activeTags: {
-      label: "Filtering by tags",
+      // 人物・団体のチップも並ぶ（specs/047-video-work-info/ui-design.md「Words」の Library）。
+      label: "Filtering by",
       list: "Tags in the filter",
       remove: "Remove the tag filter",
       removeNamed: (name: string) => `Remove the filter for ${name}`,
+      removePerson: "Remove the person filter",
+      removeOrganization: "Remove the organization filter",
+      personGone: "Removed a person who no longer exists from the filter",
+      organizationGone: "Removed an organization that no longer exists from the filter",
     },
     tagRow: {
       label: "Tags",
@@ -1616,6 +1621,7 @@ export const en = {
       links: "Links",
       ids: "IDs",
       externalId: (source: string, value: string) => `${source}: ${value}`,
+      showVideosWith: (name: string) => `Show videos with ${name}`,
       more: (count: number) => `+${formatNumber(count)} more`,
       showAll: (count: number, label: string) =>
         `Show all ${formatNumber(count)} ${label.toLowerCase()}`,

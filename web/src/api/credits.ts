@@ -89,7 +89,10 @@ export function createCredit(
   });
 }
 
-/** getCredit は人物か団体を 1 件読む（`GET /api/people/{id}`・`GET /api/organizations/{id}`）。 */
+/**
+ * getCredit は人物か団体を 1 件読む（`GET /api/people/{id}`・`GET /api/organizations/{id}`）。
+ * 無ければ `404`（`person_not_found`・`organization_not_found`）の RequestFailed になる。
+ */
 export function getCredit(
   kind: CreditKind,
   id: number,
