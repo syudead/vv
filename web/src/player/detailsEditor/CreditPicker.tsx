@@ -80,7 +80,10 @@ export default function CreditPicker({
   const folded = foldForMatch(trimmed);
 
   useEffect(() => {
+    // 新しい綴りは、Enter の後の読み直し（resolving）も打ち切る。その finally は打ち切られた
+    // 要求では resolving を戻さないので、ここで戻す。
     request.current?.abort();
+    setResolving(false);
     if (trimmed === "") {
       setSearching(false);
       return;

@@ -95,6 +95,9 @@ function useLeaving(id: number, changed: boolean, saving: boolean) {
   const savingRef = useRef(saving);
   savingRef.current = saving;
   const leaving = useRef(false);
+  // URL で開いた編集画面を足した項目から離れるときは、下の編集画面の項目まで戻ってから
+  // それを `/videos/:id` へ置き換える。置き換えるのは戻り着いた後である。
+  const replaceOnArrival = useRef(false);
   const sentinelSeen = useRef(false);
   const handledKey = useRef<string | null>(null);
   const [confirm, setConfirm] = useState<"cancel" | "back" | null>(null);
@@ -113,8 +116,14 @@ function useLeaving(id: number, changed: boolean, saving: boolean) {
       leaving.current = true;
       setConfirm(null);
       handBackToPage(id, video);
+      const onSentinel = isSentinel(locationRef.current.state);
       if (openedFromPage(locationRef.current.state)) {
-        void navigate(isSentinel(locationRef.current.state) ? -2 : -1);
+        void navigate(onSentinel ? -2 : -1);
+      } else if (onSentinel) {
+        // 足した項目だけを置き換えると、下の編集画面の項目が残り、動画ページの Back が
+        // 編集画面を開き直してしまう。
+        replaceOnArrival.current = true;
+        void navigate(-1);
       } else {
         void navigate(`/videos/${String(id)}`, { replace: true });
       }
@@ -135,6 +144,11 @@ function useLeaving(id: number, changed: boolean, saving: boolean) {
       return;
     }
     // Back で足した項目から戻ってきた。
+    if (replaceOnArrival.current) {
+      replaceOnArrival.current = false;
+      void navigate(`/videos/${String(id)}`, { replace: true });
+      return;
+    }
     if (leaving.current) return;
     if (savingRef.current) {
       pushSentinel();
@@ -145,7 +159,7 @@ function useLeaving(id: number, changed: boolean, saving: boolean) {
       return;
     }
     leave();
-  }, [leave, location.key, location.state, pushSentinel]);
+  }, [id, leave, location.key, location.state, navigate, pushSentinel]);
 
   useEffect(() => {
     if (!changed) return;
@@ -215,9 +229,16 @@ function loadingPanels() {
  * VideoDetailsEditor は全画面の編集画面（`/videos/:id/edit`）で、表示名と作品情報のすべてを
  * 1 回の `Save` で直す（specs/047-video-work-info/ui-design.md「Editor」）。AppShell と
  * プレイヤーの外に置き、所有者だけが開ける（AuthGate の ownerOnlyPath）。
+ *
+ * 経路の id が変わっても React Router は同じ要素を使い続けるので、id ごとに作り直す。
+ * そうしないと読み込み・下書き・離れ方が前の動画のまま残り、Save が前の動画へ書く。
  */
 export default function VideoDetailsEditor() {
   const id = parseId(useParams().id);
+  return <DetailsEditor key={id} id={id} />;
+}
+
+function DetailsEditor({ id }: { id: number }) {
   const { load, setLoad, retry } = useVideoLoad(id);
   const [changed, setChanged] = useState(false);
   const [saving, setSaving] = useState(false);

@@ -39,6 +39,8 @@ const video: Video = {
   },
 };
 
+const video8: Video = { ...video, id: 8, title: "別の動画", displayName: "Eight" };
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -72,9 +74,17 @@ function Where() {
 function Back() {
   const navigate = useNavigate();
   return (
-    <button type="button" onClick={() => void navigate(-1)}>
-      Browser back
-    </button>
+    <>
+      <button type="button" onClick={() => void navigate(-1)}>
+        Browser back
+      </button>
+      <button type="button" onClick={() => void navigate(1)}>
+        Browser forward
+      </button>
+      <button type="button" onClick={() => void navigate("/videos/8/edit")}>
+        Open video 8
+      </button>
+    </>
   );
 }
 
@@ -122,6 +132,9 @@ describe("VideoDetailsEditor", () => {
         init?.body === undefined ? undefined : JSON.parse(String(init.body));
       if (url === "/api/videos/7" && method === "GET")
         return Promise.resolve(server.video());
+      if (url === "/api/videos/8" && method === "GET")
+        return Promise.resolve(json(video8));
+      if (url === "/api/videos/8/details") return Promise.resolve(json(video8));
       if (url.startsWith("/api/people") && method === "GET")
         return Promise.resolve(server.people(new URL(url, "http://localhost")));
       if (url === "/api/people" && method === "POST")
@@ -298,5 +311,82 @@ describe("VideoDetailsEditor", () => {
     // URL で開いたので、動画ページへ置き換える。
     await waitFor(() => expect(where()).toBe("/videos/7"));
     expect(server.details).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Browser back" }));
+    expect(where()).toBe("/");
+  });
+
+  it("URL で開いた編集画面を Cancel で離れると、動画ページの Back は前のページへ戻る", async () => {
+    await opened();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(where()).toBe("/videos/7"));
+    await user.click(screen.getByRole("button", { name: "Browser back" }));
+    expect(where()).toBe("/");
+    expect(screen.getByText("library")).toBeDefined();
+  });
+
+  it("URL で開いた編集画面を Save で離れると、動画ページの Back は前のページへ戻る", async () => {
+    await opened();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(where()).toBe("/videos/7"));
+    expect(server.details).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole("button", { name: "Browser back" }));
+    expect(where()).toBe("/");
+    // 前へ進むと動画ページに戻り、編集画面は開き直さない。
+    await user.click(screen.getByRole("button", { name: "Browser forward" }));
+    expect(where()).toBe("/videos/7");
+  });
+
+  it("経路の id が変わると、その動画を読み直して保存する", async () => {
+    await opened();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Open video 8" }));
+    await waitFor(() =>
+      expect(screen.getByRole<HTMLInputElement>("textbox", { name: "Name" }).value).toBe(
+        "Eight",
+      ),
+    );
+    await user.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.map(([input]) => String(input))).toContain(
+        "/api/videos/8/details",
+      ),
+    );
+    expect(server.details).not.toHaveBeenCalled();
+  });
+
+  it("Enter の後の読み直しの間に綴りを変えても、新しい候補を選べる", async () => {
+    server.people.mockImplementation((url) =>
+      url.searchParams.get("q") === "Dana"
+        ? json({ items: [person(11, "Dana")], total: 1, totalAll: 1 })
+        : json({ items: [person(10, "Danny")], total: 9, totalAll: 9, nextCursor: "c" }),
+    );
+    const answer = fetchMock.getMockImplementation()!;
+    fetchMock.mockImplementation((input, init) => {
+      const url = new URL(String(input), "http://localhost");
+      if (url.pathname !== "/api/people" || url.searchParams.has("limit"))
+        return answer(input, init);
+      // limit なしの読み直しは答えないまま、次の綴りで打ち切られる。
+      return new Promise<Response>((_, reject) => {
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("aborted", "AbortError")),
+        );
+      });
+    });
+    await opened();
+    const user = userEvent.setup();
+    const picker = screen.getByRole("combobox", { name: "Add a performer" });
+    await user.type(picker, "Dan");
+    await screen.findByRole("option", { name: /^Danny/ });
+    await user.keyboard("{Enter}");
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) => String(input) === "/api/people?q=Dan"),
+      ).toBe(true),
+    );
+    await user.type(picker, "a");
+    await user.click(await screen.findByRole("option", { name: /^Dana/ }));
+    expect(await screen.findByRole("button", { name: "Remove Dana" })).toBeDefined();
   });
 });

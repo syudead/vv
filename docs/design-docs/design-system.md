@@ -375,12 +375,12 @@ compare two images; `FormDialog` stays the dialog for a form
 ([045 UI design, Changes to the design system](../../specs/045-comfyui-thumbnails/ui-design.md#changes-to-the-design-system)).
 
 `FormPage` is a page, not a dialog, for many values saved together on a screen
-of its own, such as the details of a video: a sticky header band holding the
-title, a muted detail and the actions, a `notice` line under it, then an
-`aside` and two panels laid out by the named utility `grid-cols-form-page`
-from `lg` (the aside the named step `form-page-aside` wide, the panels in the
-ratio 5:6), where the page keeps the viewport's height and each panel scrolls
-inside itself; below `lg` the parts stack and the page scrolls as one.
+of its own, such as the details of a video. A sticky header band holds the
+title, a muted detail and the actions, and a `notice` line sits under it.
+Below them, from `lg`, the named utility `grid-cols-form-page` lays out an
+`aside` the named step `form-page-aside` wide and two panels in the ratio 5:6;
+the page keeps the viewport's height and each panel scrolls inside itself.
+Below `lg` the parts stack and the page scrolls as one.
 `FormDialog` holds a few fields and `SettingsPage` saves each row by itself,
 so neither fits a form of a dozen fields saved with one button
 ([047 UI design, Changes to the design system](../../specs/047-video-work-info/ui-design.md#changes-to-the-design-system)).

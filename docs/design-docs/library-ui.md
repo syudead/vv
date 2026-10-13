@@ -532,13 +532,14 @@ capture and upload failures, with no toast.
 `/videos/:id/edit`, a full-screen `FormPage` outside the shell and the player
 that edits the display name and every work information item together; the
 title's pencil stays as the quick way to rename. The band holds `Cancel` and
-`Save`; the left column names the video (thumbnail, file name, facts, folder)
-and holds `Back to the video`; `Basics` holds the name, the code and the dates
+`Save`; the left column, the skeleton's `aside`, names the video (thumbnail,
+file name, duration, size and resolution, folder) and holds
+`Back to the video`; `Basics` holds the name, the code and the dates
 in a 2×2 grid, the description, links and IDs; `Credits` holds one row per
 role with the chips and a `CreditCommand` picker that finds a person or an
 organization, or makes a chip marked `New` that `Save` creates first. `Save`
 then sends one `PUT /api/videos/{id}/details` and returns to the page with the
-response, focusing the entry; a reason with a `field` stays in the editor
+response, focusing `Edit details`; a reason with a `field` stays in the editor
 under that control. `Cancel`, `Back to the video` and the browser's Back ask
 `Discard changes?` when the draft changed. Opened from the page, the editor
 starts from the page's video and returns along the history, so the page's `×`
