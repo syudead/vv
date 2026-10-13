@@ -226,8 +226,8 @@ says.
 ### Selection bar
 
 Two actions join the bar after "Add to playlist" and before "Visibility":
-"New group" (lucide `Group` + text) and "Add to group" (lucide `FolderPlus`
-+ text), both `ghost` `sm` with their text whole at every width. The order
+"New group" (lucide `Group` + text) and "Add to group"
+(lucide `FolderPlus` + text), both `ghost` `sm` with their text whole at every width. The order
 is count → Add tag → Remove tag → Favorite → Add to playlist → New group →
 Add to group → Visibility → Bundle as versions → divider → Select all. On
 the group page, "Remove from group" (lucide `FolderMinus` + text) follows
