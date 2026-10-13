@@ -63,19 +63,28 @@ func (s *server) parseTagListQuery(w http.ResponseWriter, params gen.ListTagsPar
 		sort = &value
 	}
 	query, problem := buildTagListQuery(params.Q, params.Tentative, params.Unused, sort, params.Cursor, params.Limit)
-	switch problem {
-	case tagListSortUnknown:
-		s.invalidRequest(w, "Unknown sort order.")
-		return domain.TagListQuery{}, false
-	case tagListLimitOutOfRange:
-		s.invalidRequest(w, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
-		return domain.TagListQuery{}, false
-	case tagListSearchTooLong:
-		s.invalidRequestLimit(w, reasonSearchTooLong, maxQueryLength,
-			fmt.Sprintf("Search text must be at most %d characters.", maxQueryLength))
+	if !s.acceptTagListQuery(w, problem) {
 		return domain.TagListQuery{}, false
 	}
 	return query, true
+}
+
+// acceptTagListQuery は buildTagListQuery の断った理由を 400 として書き、断っていれば false を返す。
+// タグの一覧と人物・団体の一覧（credits.go）が同じ書き方を使う。
+func (s *server) acceptTagListQuery(w http.ResponseWriter, problem tagListProblem) bool {
+	switch problem {
+	case tagListSortUnknown:
+		s.invalidRequest(w, "Unknown sort order.")
+		return false
+	case tagListLimitOutOfRange:
+		s.invalidRequest(w, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
+		return false
+	case tagListSearchTooLong:
+		s.invalidRequestLimit(w, reasonSearchTooLong, maxQueryLength,
+			fmt.Sprintf("Search text must be at most %d characters.", maxQueryLength))
+		return false
+	}
+	return true
 }
 
 // tagListProblem は buildTagListQuery が断った理由である。

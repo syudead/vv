@@ -410,6 +410,7 @@ func run(opts runOptions) error {
 		Scans:            scans,
 		MediaFolders:     mediaFolders,
 		Tags:             db.Tags(),
+		Credits:          db.Credits(),
 		Visibility:       db.Visibility(),
 		Favorites:        db.Favorites(),
 		Playlists:        db.Playlists(),

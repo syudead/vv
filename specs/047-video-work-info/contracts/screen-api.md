@@ -211,10 +211,25 @@ CreditInput:                            # POST body
 CreditPatch:                            # PATCH body; every property optional, lists nullable
   properties: { name, aliases, externalIds, parentId }    # parentId null clears
 
-CreditList:
+CreditList:                             # published as PersonList and OrganizationList
   required: [items, total, totalAll]
   properties: { items, total, totalAll, nextCursor }
+
+CreditMergeRequest:
+  required: [sourceIds]
+  properties: { sourceIds }
+
+PersonMergeResponse:       { person: Person, notFoundIds: int64[] }
+OrganizationMergeResponse: { organization: Organization, notFoundIds: int64[] }
 ```
+
+`CreditList` is published as two schemas, `PersonList` with `Person` items
+and `OrganizationList` with `Organization` items, so each generated client
+type names its item type; the two have the same properties. A `parentId` in
+the body of `POST /api/people` or `PATCH /api/people/{id}` is
+`400 invalid_request`, because a person has no parent. In a `PATCH`, `null`
+for `aliases` or `externalIds` empties the list, `null` for `parentId`
+removes the parent, and `null` for `name` is `400 invalid_request`.
 
 | Route | Body or parameters | Success | Errors |
 | --- | --- | --- | --- |
@@ -253,5 +268,7 @@ route itself does not add `field`.
 `work_info_invalid_language`, `work_info_duplicate`, `work_info_empty`, `person_not_found`,
 `organization_not_found`, `organization_parent_cycle`, `merge_same_person`,
 `merge_same_organization` and `external_id_taken`, and
-`web/src/i18n/errors.ts` gets an English message for each that names the
-field.
+the `reason` table of `web/src/i18n/en.ts`, which `web/src/i18n/errors.ts`
+reads, gets an English message for each. The message names no field; the
+screen shows it under the control that `field` names
+([ui-design.md, Error reasons](../ui-design.md#error-reasons)).

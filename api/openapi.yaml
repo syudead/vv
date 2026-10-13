@@ -2432,6 +2432,288 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/people:
+    get:
+      operationId: listPeople
+      summary: 人物を一覧する
+      description: |
+        所有者だけ。`q` は名前と別名に部分一致し、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
+        続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
+        （specs/047-video-work-info/contracts/screen-api.md「People and organizations」）。
+      parameters:
+        - $ref: "#/components/parameters/CreditQuery"
+        - $ref: "#/components/parameters/CreditSort"
+        - $ref: "#/components/parameters/CreditCursor"
+        - $ref: "#/components/parameters/CreditLimit"
+      responses:
+        "200":
+          description: 人物の一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+    post:
+      operationId: createPerson
+      summary: 人物を 1 件作る
+      description: |
+        所有者だけ。項目の規則に合わなければ 400 で `reason`（`work_info_*`）と `field` を返し、他の人物が持つ
+        外部 ID なら 409 `external_id_taken`（`field: externalIds[i]`）。`parentId` は送れない（400 `invalid_request`）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreditInput"
+      responses:
+        "201":
+          description: 作った人物
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/people/{id}:
+    get:
+      operationId: getPerson
+      summary: 人物を 1 件返す
+      description: 所有者だけ。無ければ 404 `person_not_found`。
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      responses:
+        "200":
+          description: 人物
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updatePerson
+      summary: 人物の名前・別名・外部 ID を書き換える
+      description: |
+        所有者だけ。送ったプロパティだけを置き換え、一覧は丸ごと置き換える（`null` は空にする）。何も変わらなければ
+        書かずに今の状態を返す。誤りは作成と同じで、無ければ 404 `person_not_found`。`parentId` は送れない（400 `invalid_request`）。
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreditPatch"
+      responses:
+        "200":
+          description: 書き換えた後の人物
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Person"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deletePerson
+      summary: 人物を 1 件消す
+      description: 所有者だけ。動画との結び付きも外す。無ければ 404 `person_not_found`。
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      responses:
+        "204":
+          description: 消した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/people/{id}/merge:
+    post:
+      operationId: mergePeople
+      summary: sourceIds の人物を id の人物へ統合する
+      description: |
+        所有者だけ。統合元（1 件以上 20,000 件以下）の結び付き・名前・外部 ID を 1 つの取引で統合先へ移し、
+        統合元を消す。無い統合元は飛ばして `notFoundIds` に載せる。`sourceIds` の件数が範囲の外なら 400
+        `work_info_too_many`（`field: sourceIds`）、統合先を含めば 400 `merge_same_person`、統合後の別名か
+        外部 ID が上限を超えれば 400 `work_info_too_many`（`field: aliases` か `externalIds`）、統合先が無ければ
+        404 `person_not_found`。誤りのときは何も変えない。
+      parameters:
+        - $ref: "#/components/parameters/PersonId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreditMergeRequest"
+      responses:
+        "200":
+          description: 統合後の統合先と、もう無かった統合元
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PersonMergeResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/organizations:
+    get:
+      operationId: listOrganizations
+      summary: 団体を一覧する
+      description: |
+        所有者だけ。`q` は名前と別名に部分一致し、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
+        続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
+        （specs/047-video-work-info/contracts/screen-api.md「People and organizations」）。
+      parameters:
+        - $ref: "#/components/parameters/CreditQuery"
+        - $ref: "#/components/parameters/CreditSort"
+        - $ref: "#/components/parameters/CreditCursor"
+        - $ref: "#/components/parameters/CreditLimit"
+      responses:
+        "200":
+          description: 団体の一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationList"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+    post:
+      operationId: createOrganization
+      summary: 団体を 1 件作る
+      description: |
+        所有者だけ。項目の規則に合わなければ 400 で `reason`（`work_info_*`）と `field` を返し、他の団体が持つ
+        外部 ID なら 409 `external_id_taken`（`field: externalIds[i]`）。`parentId` の団体が無ければ 404 `organization_not_found`（`field: parentId`）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreditInput"
+      responses:
+        "201":
+          description: 作った団体
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/organizations/{id}:
+    get:
+      operationId: getOrganization
+      summary: 団体を 1 件返す
+      description: 所有者だけ。無ければ 404 `organization_not_found`。
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      responses:
+        "200":
+          description: 団体
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: updateOrganization
+      summary: 団体の名前・別名・外部 ID を書き換える
+      description: |
+        所有者だけ。送ったプロパティだけを置き換え、一覧は丸ごと置き換える（`null` は空にする）。何も変わらなければ
+        書かずに今の状態を返す。誤りは作成と同じで、無ければ 404 `organization_not_found`。`parentId` の団体が無ければ 404 `organization_not_found`（`field: parentId`）、自分か子孫なら 400 `organization_parent_cycle`。
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreditPatch"
+      responses:
+        "200":
+          description: 書き換えた後の団体
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Organization"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteOrganization
+      summary: 団体を 1 件消す
+      description: 所有者だけ。動画との結び付きも外す。無ければ 404 `organization_not_found`。
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      responses:
+        "204":
+          description: 消した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/organizations/{id}/merge:
+    post:
+      operationId: mergeOrganizations
+      summary: sourceIds の団体を id の団体へ統合する
+      description: |
+        所有者だけ。統合元（1 件以上 20,000 件以下）の結び付き・名前・外部 ID を 1 つの取引で統合先へ移し、
+        統合元を消す。無い統合元は飛ばして `notFoundIds` に載せる。`sourceIds` の件数が範囲の外なら 400
+        `work_info_too_many`（`field: sourceIds`）、統合先を含めば 400 `merge_same_organization`、統合後の別名か
+        外部 ID が上限を超えれば 400 `work_info_too_many`（`field: aliases` か `externalIds`）、統合先が無ければ
+        404 `organization_not_found`。統合元が統合先の親か祖先なら 400 `organization_parent_cycle`。誤りのときは何も変えない。
+      parameters:
+        - $ref: "#/components/parameters/OrganizationId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreditMergeRequest"
+      responses:
+        "200":
+          description: 統合後の統合先と、もう無かった統合元
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizationMergeResponse"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/video-tags:
     post:
       operationId: updateVideoTags
@@ -3439,6 +3721,53 @@ components:
         type: integer
         format: int64
         minimum: 1
+    PersonId:
+      name: id
+      in: path
+      required: true
+      description: 人物の識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    OrganizationId:
+      name: id
+      in: path
+      required: true
+      description: 団体の識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    CreditQuery:
+      name: q
+      in: query
+      description: |
+        検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする
+      schema:
+        type: string
+        maxLength: 100
+    CreditSort:
+      name: sort
+      in: query
+      description: 並び順
+      schema:
+        $ref: "#/components/schemas/CreditSort"
+    CreditCursor:
+      name: cursor
+      in: query
+      description: |
+        前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する
+      schema:
+        type: string
+    CreditLimit:
+      name: limit
+      in: query
+      description: 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
     FolderRootId:
       name: rootId
       in: path
@@ -4378,6 +4707,230 @@ components:
           format: int64
         name:
           type: string
+
+    CreditRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      description: 人物か団体 1 件への参照。name はその実体の今の名前
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+
+    Alias:
+      type: object
+      required: [name]
+      additionalProperties: false
+      description: 人物か団体の別名 1 件（specs/047-video-work-info/data-model.md「Fields」）
+      properties:
+        name:
+          type: string
+        language:
+          type: string
+          description: BCP 47 の構文の言語タグ。無ければ省く
+
+    ExternalId:
+      type: object
+      required: [source, value]
+      additionalProperties: false
+      description: 外部の情報源での識別子 1 件
+      properties:
+        source:
+          type: string
+        value:
+          type: string
+
+    Person:
+      type: object
+      required: [id, name, aliases, externalIds, videoCount, createdAt]
+      additionalProperties: false
+      description: 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        aliases:
+          type: array
+          description: 名前の自然順
+          items:
+            $ref: "#/components/schemas/Alias"
+        externalIds:
+          type: array
+          description: (source, value) の順
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        videoCount:
+          type: integer
+          description: この人物をどれかの役割で結ぶ、表示中の動画の数
+        createdAt:
+          type: string
+          format: date-time
+
+    Organization:
+      type: object
+      required: [id, name, aliases, externalIds, videoCount, createdAt]
+      additionalProperties: false
+      description: 団体 1 件。Person と同じ項目に親の団体が加わる
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        aliases:
+          type: array
+          description: 名前の自然順
+          items:
+            $ref: "#/components/schemas/Alias"
+        externalIds:
+          type: array
+          description: (source, value) の順
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        videoCount:
+          type: integer
+          description: この団体をどれかの役割で結ぶ、表示中の動画の数
+        createdAt:
+          type: string
+          format: date-time
+        parent:
+          $ref: "#/components/schemas/CreditRef"
+          description: 親の団体。根の団体では省く
+
+    CreditInput:
+      type: object
+      required: [name]
+      additionalProperties: false
+      description: 人物か団体を作るときの本文。parentId は団体だけが使う
+      properties:
+        name:
+          type: string
+        aliases:
+          type: array
+          items:
+            $ref: "#/components/schemas/Alias"
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        parentId:
+          type: integer
+          format: int64
+          description: 親の団体の id。団体だけで、人物に送ると 400 invalid_request
+
+    CreditPatch:
+      type: object
+      additionalProperties: false
+      description: |
+        人物か団体の書き換えの本文。どのプロパティも省いてよく、省いたものは今のまま残す。一覧は丸ごと
+        置き換え、null は一覧を空にする。parentId は団体だけが使い、null は親を外す
+      properties:
+        name:
+          type: string
+        aliases:
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/Alias"
+        externalIds:
+          type: [array, "null"]
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        parentId:
+          type: [integer, "null"]
+          format: int64
+          description: 親の団体の id。null は親を外す。人物に送ると 400 invalid_request
+
+    CreditMergeRequest:
+      type: object
+      required: [sourceIds]
+      additionalProperties: false
+      properties:
+        sourceIds:
+          type: array
+          description: 統合元の id。1 件以上 20,000 件以下
+          items:
+            type: integer
+            format: int64
+
+    PersonList:
+      type: object
+      required: [items, total, totalAll]
+      additionalProperties: false
+      description: 人物の一覧（契約の CreditList の人物の形）
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Person"
+        total:
+          type: integer
+          description: 条件（q）に合う人物の数。ページングとは独立に返る
+        totalAll:
+          type: integer
+          description: 全部の人物の数
+        nextCursor:
+          type: string
+          description: 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+
+    OrganizationList:
+      type: object
+      required: [items, total, totalAll]
+      additionalProperties: false
+      description: 団体の一覧（契約の CreditList の団体の形）
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/Organization"
+        total:
+          type: integer
+          description: 条件（q）に合う団体の数。ページングとは独立に返る
+        totalAll:
+          type: integer
+          description: 全部の団体の数
+        nextCursor:
+          type: string
+          description: 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+
+    PersonMergeResponse:
+      type: object
+      required: [person, notFoundIds]
+      additionalProperties: false
+      properties:
+        person:
+          $ref: "#/components/schemas/Person"
+        notFoundIds:
+          type: array
+          description: もう無かった統合元
+          items:
+            type: integer
+            format: int64
+
+    OrganizationMergeResponse:
+      type: object
+      required: [organization, notFoundIds]
+      additionalProperties: false
+      properties:
+        organization:
+          $ref: "#/components/schemas/Organization"
+        notFoundIds:
+          type: array
+          description: もう無かった統合元
+          items:
+            type: integer
+            format: int64
+
+    CreditSort:
+      type: string
+      enum: [name, countDesc, countAsc, createdDesc, createdAsc]
+      default: name
+      description: |
+        人物と団体の一覧の並び順。タグの一覧（TagSort）と同じ 5 つで、値が同じものは名前の自然順、それも同じなら id
 
     VideoTagsAction:
       type: string
@@ -5925,6 +6478,13 @@ components:
           description: >-
             reason の上限値。契約の表で limit を返す reason のときだけ入る
             （specs/023-english-i18n/contracts/error-api.md §1）
+        field:
+          type: string
+          description: >-
+            reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く
+            （aliases[0].language・externalIds[1]・parentId）。work_info_*・person_not_found・
+            organization_not_found・external_id_taken のときだけ入る
+            （specs/047-video-work-info/contracts/screen-api.md「Added reason values and field」）
         tagName:
           type: string
           description: >-
@@ -6001,3 +6561,17 @@ components:
         - run_failed
         - no_output
         - timed_out
+        - work_info_control_characters
+        - work_info_too_long
+        - work_info_too_many
+        - work_info_invalid_date
+        - work_info_invalid_url
+        - work_info_invalid_language
+        - work_info_duplicate
+        - work_info_empty
+        - person_not_found
+        - organization_not_found
+        - organization_parent_cycle
+        - merge_same_person
+        - merge_same_organization
+        - external_id_taken
