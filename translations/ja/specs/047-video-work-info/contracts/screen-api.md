@@ -1,6 +1,6 @@
 ---
 source: specs/047-video-work-info/contracts/screen-api.md
-sourceHash: c3f3e50e2b26fb29273fe5cdf31d43700b8338534c3c0d4d12c1761933c5fbf3
+sourceHash: a44309c82843e5a560ab6bd7603173420347d882d028d1240991884b7bc327cd
 ---
 
 # 契約: 画面の API の作品情報、人物、組織 {#contract-work-information-people-and-organizations-in-the-screen-api}
@@ -162,10 +162,19 @@ CreditInput:                            # POST body
 CreditPatch:                            # PATCH body; every property optional, lists nullable
   properties: { name, aliases, externalIds, parentId }    # parentId null clears
 
-CreditList:
+CreditList:                             # published as PersonList and OrganizationList
   required: [items, total, totalAll]
   properties: { items, total, totalAll, nextCursor }
+
+CreditMergeRequest:
+  required: [sourceIds]
+  properties: { sourceIds }
+
+PersonMergeResponse:       { person: Person, notFoundIds: int64[] }
+OrganizationMergeResponse: { organization: Organization, notFoundIds: int64[] }
 ```
+
+`CreditList` は 2 つのスキーマ、つまり `Person` の項目を持つ `PersonList` と `Organization` の項目を持つ `OrganizationList` として公開し、生成されるクライアントの各型がその項目の型を名指すようにする。2 つは同じプロパティを持つ。`POST /api/people` か `PATCH /api/people/{id}` の本文の `parentId` は `400 invalid_request` である。人物は親を持たないからである。`PATCH` では、`aliases` か `externalIds` の `null` はその一覧を空にし、`parentId` の `null` は親を外し、`name` の `null` は `400 invalid_request` である。
 
 | ルート | 本文またはパラメータ | 成功 | エラー |
 | --- | --- | --- | --- |
@@ -185,4 +194,4 @@ CreditList:
 
 `Error` は省略可能なプロパティ `field` を得る: `work_info_*`、`person_not_found`、`organization_not_found`、`external_id_taken` の理由が指すプロパティのパスであり、JSON のプロパティ名を `.` でつなぎ、一覧の位置を角括弧に入れたものである: `code`、`dates[1].date`、`people[0].person.id`、`aliases[2].language`、`parentId`。外部の一括操作では、`index` は `items` の中の位置のままで、`field` はその項目の `workInfo` の中のパスである。`PUT /api/videos/{id}/details` では、`field` は既存の 2 つの `display_name_*` の理由では `displayName` で、それ以外では `workInfo` の中のパスなので、1 つのメッセージのカタログがエディターと作品情報のルートに使われる。表示名のルート自体は `field` を加えない。
 
-`ErrorReason` は `work_info_control_characters`、`work_info_too_long`、`work_info_too_many`、`work_info_invalid_date`、`work_info_invalid_url`、`work_info_invalid_language`、`work_info_duplicate`、`work_info_empty`、`person_not_found`、`organization_not_found`、`organization_parent_cycle`、`merge_same_person`、`merge_same_organization`、`external_id_taken` を得て、`web/src/i18n/errors.ts` はそれぞれについてフィールドを挙げる英語のメッセージを得る。
+`ErrorReason` は `work_info_control_characters`、`work_info_too_long`、`work_info_too_many`、`work_info_invalid_date`、`work_info_invalid_url`、`work_info_invalid_language`、`work_info_duplicate`、`work_info_empty`、`person_not_found`、`organization_not_found`、`organization_parent_cycle`、`merge_same_person`、`merge_same_organization`、`external_id_taken` を得て、`web/src/i18n/errors.ts` が読む `web/src/i18n/en.ts` の `reason` の表は、それぞれの英語のメッセージを得る。メッセージは欄を名指さない。画面は `field` が名指す操作要素の下にそれを表示する ([ui-design.md、エラーの理由](../ui-design.md#error-reasons))。
