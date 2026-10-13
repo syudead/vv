@@ -134,7 +134,8 @@ export interface paths {
          *
          *     ゲストでは公開の動画だけを対象にし、`query` はタグの名前とシノニムに照合しない。
          *     所有者のデータに依る条件（`watch` が `all` 以外、`sort` が `playedAsc`・
-         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true）は
+         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、
+         *     `organization`）は
          *     `400` `invalid_request` にする（guest-api.md §3、specs/035-favorites/contracts/screen-api.md §2）。
          */
         get: operations["listVideos"];
@@ -158,7 +159,7 @@ export interface paths {
          * @description `listVideos` と同じ条件で、当たった動画を項目にまとめて返す
          *     （specs/027-partial-group-search/contracts/library-api.md §1。値の作り方は
          *     specs/017-folder-groups/data-model.md §5）。
-         *     `query` と `tag` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
+         *     `query`・`tag`・`person`・`organization` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
          *     全メンバーが当たればグループの項目1件に、一部だけが当たれば当たったメンバーを
          *     それぞれ動画の項目にする。グループに属さない動画は動画の項目になる。
          *     絞り込みが無ければどのグループも全メンバーが当たる。グループの値は全メンバーから
@@ -176,7 +177,8 @@ export interface paths {
          *
          *     ゲストでは公開のメンバーだけを数え（「全メンバー」も公開のメンバー）、公開の
          *     メンバーが1本のグループは動画の項目にし、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
-         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true は `400` `invalid_request` にする
+         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、`organization` は
+         *     `400` `invalid_request` にする
          *     （data-model.md §7、specs/035-favorites/contracts/screen-api.md §2）。
          */
         get: operations["listLibrary"];
@@ -197,7 +199,8 @@ export interface paths {
         };
         /**
          * 絞り込みに合う項目の動画の id を返す
-         * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`・`favorite`）に合う項目の、
+         * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`・`favorite`・`person`・
+         *     `organization`）に合う項目の、
          *     動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
          *     一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
          *     だけが入る。並びは決めない。「すべて選択」用
@@ -4117,6 +4120,19 @@ export interface components {
         ThumbnailEditId: string;
         /** @description 動画の識別子 */
         VideoId: number;
+        /**
+         * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+         *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+         *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+         *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+         *     （specs/047-video-work-info/contracts/screen-api.md）
+         */
+        PersonFilter: number;
+        /**
+         * @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+         *     （specs/047-video-work-info/contracts/screen-api.md）
+         */
+        OrganizationFilter: number;
         /** @description メディアフォルダの識別子 */
         MediaFolderId: number;
         /** @description API トークンの識別子 */
@@ -4356,6 +4372,19 @@ export interface operations {
                  *     missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
                  */
                 tag?: number[];
+                /**
+                 * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+                 *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+                 *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+                 *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                person?: components["parameters"]["PersonFilter"];
+                /**
+                 * @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                organization?: components["parameters"]["OrganizationFilter"];
             };
             header?: never;
             path?: never;
@@ -4413,6 +4442,19 @@ export interface operations {
                  *     missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
                  */
                 tag?: number[];
+                /**
+                 * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+                 *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+                 *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+                 *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                person?: components["parameters"]["PersonFilter"];
+                /**
+                 * @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                organization?: components["parameters"]["OrganizationFilter"];
             };
             header?: never;
             path?: never;
@@ -4445,6 +4487,19 @@ export interface operations {
                 favorite?: boolean;
                 /** @description 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す */
                 tag?: number[];
+                /**
+                 * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+                 *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+                 *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+                 *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                person?: components["parameters"]["PersonFilter"];
+                /**
+                 * @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                organization?: components["parameters"]["OrganizationFilter"];
             };
             header?: never;
             path?: never;

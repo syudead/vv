@@ -131,6 +131,12 @@ type VideoQuery struct {
 	TagIDs []int64
 	// FavoriteOnly はお気に入りの項目だけにする（specs/035-favorites/research.md R-3）。
 	FavoriteOnly bool
+	// Person は、どの役割でもこの人物に結び付いた動画だけにする人物の id である。
+	// 0 は絞り込まない。実体の無い id は何にも当たらない
+	// （specs/047-video-work-info/research.md R-7）。
+	Person int64
+	// Organization は Person と同じ形の、団体の id による絞り込みである。
+	Organization int64
 }
 
 // VideoPage は一覧1ページ分である。
