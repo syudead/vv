@@ -141,7 +141,7 @@ function SheetPreview({ src, onStart }: { src: string; onStart?: () => void }) {
  * 最前面に出て、プレビュー動画があればそれを流す（フォルダの中身の下見）。
  * 装飾なので読み上げない。
  *
- * 置き場所（`relative` で 16:9 の箱）いっぱいに描く。先頭の4件だけを重ねる。
+ * 置き場所（`relative` で 16:9 の箱）いっぱいに描く。先頭の4件だけを、先頭ほど手前に重ねる。
  *
  * ライブラリの格子では、動画のカードと同じ一覧のプレビューの調整
  * （usePreviewCoordination）に加わる。`onPreviewStart` を渡すと、流し始めた1枚の
@@ -237,10 +237,12 @@ export default function FolderArt({
               className={cn(
                 "absolute aspect-video overflow-hidden rounded-sm border border-input bg-navbar transition-all duration-200 ease-out-quart motion-reduce:transition-none",
                 "w-folder-preview",
-                isFront && "z-10 shadow-card-hover",
+                isFront && "shadow-card-hover",
               )}
               // 位置と傾きは 1 枚ごとに決まるので style で渡す（幅は w-folder-preview）。
+              // 重なりは先頭ほど手前にし、前に出した1枚はどれよりも手前にする。
               style={{
+                zIndex: isFront ? shown.length + 1 : shown.length - index,
                 left: `${String(isFront ? frontPlace.left : place.left)}%`,
                 top: `${String(isFront ? frontPlace.top : place.top)}%`,
                 transform: isFront ? "scale(1.12)" : `rotate(${String(place.rotate)}deg)`,
