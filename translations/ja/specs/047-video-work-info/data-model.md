@@ -1,6 +1,6 @@
 ---
 source: specs/047-video-work-info/data-model.md
-sourceHash: 11bb541d5ff8645c654e66a4d9eea3274a43d10c8a7f6d682689064ab0ed3f42
+sourceHash: caedab70de6462d0fc28c8e5c54a3f47e5fce96df9e2303d431289a21738243b
 ---
 
 # データモデル: 動画の作品情報 {#data-model-work-information-on-videos}
@@ -158,6 +158,20 @@ down は 12 のテーブルを削除する。どれもユーザーデータで�
 | 組織の `parentId` | `organizations.parent_id` | 存在する組織で、その組織自身でもその子孫の 1 つでもないもの。`null` で消す。人物は親を持たず、`CreditStore` は人物の `parentId` を読まない |
 
 消した単一の値のフィールドは `null` である。`video_work_info` の行は、`code` か `description` が設定されている間だけ存在する。
+
+動画の規則は次の場合も決める。どれも上の規則と同じである:
+
+| 場合 | 規則 |
+| --- | --- |
+| `date` が前後の空白を取り除いて空になる `dates[]` の項目 | 捨てるので、種類ごとに 1 項目の規則には数えない |
+| 繰り返した日付の種類 | `Duplicate` で、`field` は `dates[i].kind` |
+| 1 つの役割の中で繰り返した人物か組織 | `Duplicate` で、`field` は `people[i].person.id` か `organizations[i].organization.id` |
+| 項目数の上限を超えた役割 | `TooMany` で、`field` は `people` (上限 100) か `organizations` (上限 20) |
+| 形式より長い `date`、または 1 桁の月か日 | `InvalidDate` |
+| 集合の外にある `kind` か `role` | `Problem` を持たず `ErrInvalidWorkInfo` を包むエラー。生成したスキーマの検査が先に拒否する |
+| 存在しない人物か組織 | すべてのフィールドの規則の後に、送られた順に、人物を組織より先に検査する。`field` は送られたとおりの一覧での位置 |
+
+`(role, position)` の役割の順は、役割の集合の順である: `performer`、`director`、`photographer`、`streamer`、次に `maker`、`label`。`NormalizeWorkInfo` は一覧を [読み取り](#reads) の読み取りの順で返すので、ストアは書き込みを保存したオブジェクトとそのまま比べる。
 
 ## エンティティ {#entities}
 
