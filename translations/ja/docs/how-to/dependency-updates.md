@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: ba7ad389c41c37d784dea305fa3f34f55530a1eba9b9607ace74034c3fc45dc8
+sourceHash: 8e5c5227c28ffb0bc4663a547858773bb7f4a5f77141414a10f7e6f2b8c4cd1a
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
