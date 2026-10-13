@@ -103,6 +103,42 @@ describe("errorText", () => {
     );
   });
 
+  it("names the work information field and embeds its limit", async () => {
+    const failure = await toRequestFailed(
+      json(
+        {
+          code: "invalid_request",
+          message: "description must be at most 10000 characters",
+          reason: "work_info_too_long",
+          field: "description",
+          limit: 10000,
+        },
+        400,
+      ),
+    );
+    expect(failure.field).toBe("description");
+    expect(errorText(failure)).toBe(
+      "The description is too long: up to 10,000 characters.",
+    );
+    expect(
+      errorText(
+        new RequestFailed(400, "invalid_request", "", {
+          reason: "work_info_control_characters",
+          field: "performers",
+        }),
+      ),
+    ).toBe("A performer name can't contain control characters.");
+    expect(
+      errorText(
+        new RequestFailed(400, "invalid_request", "", {
+          reason: "too_many_performers",
+          field: "performers",
+          limit: 100,
+        }),
+      ),
+    ).toBe("Too many performers: up to 100.");
+  });
+
   it("uses the code when there is no reason, and ignores the server message", () => {
     expect(errorText(new RequestFailed(401, "invalid_credentials", "Wrong."))).toBe(
       "The username or password is incorrect.",

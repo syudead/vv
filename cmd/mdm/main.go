@@ -416,6 +416,7 @@ func run(opts runOptions) error {
 		PlaylistPlayback: db.Playlists(),
 		WatchHistory:     playbackStore,
 		Overrides:        db.Overrides(),
+		WorkInfo:         db.WorkInfo(),
 		Versions:         db.Versions(),
 		// 代表サムネイルの位置は、取り込みの job と同じ生成の錠の中で作り直して記録する。
 		ThumbnailPicker: ingest,

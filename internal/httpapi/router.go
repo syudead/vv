@@ -268,6 +268,9 @@ type Options struct {
 	WatchHistory WatchHistory
 	// Overrides は動画の表示名の保存先。nilなら表示名の設定の経路は500を返す。
 	Overrides OverrideStore
+	// WorkInfo は動画の作品情報の保存先。nilなら作品情報の設定の経路は500を返し、
+	// 動画1件の応答には workInfo が載らない。
+	WorkInfo WorkInfoStore
 	// ThumbnailPicker は代表サムネイルの位置の設定先。nilなら位置の設定の経路は500を返す。
 	ThumbnailPicker ThumbnailPicker
 	// Versions は同じ動画の別バージョンの集まりの保存先。nilならバージョンと束ねの経路は500を返す。
@@ -360,6 +363,7 @@ type server struct {
 	playlistPlayback PlaylistPlaybackReader
 	watchHistory     WatchHistory
 	overrides        OverrideStore
+	workInfo         WorkInfoStore
 	thumbnails       ThumbnailPicker
 	versions         VersionStore
 	folders          Folders
@@ -442,6 +446,7 @@ func NewRouter(opts Options) http.Handler {
 		playlistPlayback:       opts.PlaylistPlayback,
 		watchHistory:           opts.WatchHistory,
 		overrides:              opts.Overrides,
+		workInfo:               opts.WorkInfo,
 		thumbnails:             opts.ThumbnailPicker,
 		versions:               opts.Versions,
 		folders:                opts.Folders,
@@ -569,6 +574,11 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 	})
 }
 
+// videoJSONPutRoutes は JSON の本文を受ける PUT /api/videos/{id}/<段> の段である。
+var videoJSONPutRoutes = map[string]bool{
+	"progress": true, "display-name": true, "thumbnail-position": true, "work-info": true,
+}
+
 func requiresJSONBody(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost:
@@ -619,7 +629,7 @@ func requiresJSONBody(r *http.Request) bool {
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/"); ok {
 			id, rest, found := strings.Cut(suffix, "/")
-			return found && id != "" && (rest == "progress" || rest == "display-name" || rest == "thumbnail-position")
+			return found && id != "" && videoJSONPutRoutes[rest]
 		}
 	case http.MethodPatch:
 		// PATCH /api/playlists/{id}（specs/044-playlists/contracts/screen-api.md）。
@@ -769,6 +779,11 @@ const (
 	reasonContentChanged                = gen.ErrorReasonContentChanged
 	reasonThumbnailUploadTooLarge       = gen.ErrorReasonThumbnailUploadTooLarge
 	reasonThumbnailUploadInvalid        = gen.ErrorReasonThumbnailUploadInvalid
+	reasonWorkInfoControlCharacters     = gen.ErrorReasonWorkInfoControlCharacters
+	reasonWorkInfoTooLong               = gen.ErrorReasonWorkInfoTooLong
+	reasonWorkInfoInvalidDate           = gen.ErrorReasonWorkInfoInvalidDate
+	reasonWorkInfoInvalidURL            = gen.ErrorReasonWorkInfoInvalidUrl
+	reasonTooManyPerformers             = gen.ErrorReasonTooManyPerformers
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの

@@ -13,6 +13,7 @@ import { formatList, formatNumber, selectPlural } from "./intl";
 
 type ErrorCode = components["schemas"]["Error"]["code"];
 type ErrorReason = components["schemas"]["ErrorReason"];
+type WorkInfoField = components["schemas"]["WorkInfoField"];
 type ProbeErrorCode = components["schemas"]["ProbeErrorCode"];
 type ScanErrorCode = components["schemas"]["ScanErrorCode"];
 type ScanActivityKind = components["schemas"]["ScanActivityKind"];
@@ -27,10 +28,30 @@ type ComfyUIModel = components["schemas"]["ComfyUIModel"];
 export interface ErrorDetails {
   limit?: number;
   tagName?: string;
+  /** field は作品情報の理由が指す項目（specs/047-video-work-info/contracts/screen-api.md）。 */
+  field?: string;
 }
 
 /** ErrorEntry は既知のエラー 1 つの文である。値を埋め込む文は関数にする。 */
 export type ErrorEntry = string | ((details: ErrorDetails) => string);
+
+/** workInfoFieldNames は作品情報の誤りの文の主語である（specs/047-video-work-info/ui-design.md）。 */
+const workInfoFieldNames = {
+  code: "The code",
+  releaseDate: "The release date",
+  maker: "The maker",
+  performers: "A performer name",
+  description: "The description",
+  sourceUrl: "The source URL",
+} satisfies Record<WorkInfoField, string>;
+
+/** workInfoFieldName は誤りの本文の field を文の主語にする。知らない項目は総称にする。 */
+function workInfoFieldName(field: string | undefined): string {
+  if (field !== undefined && Object.hasOwn(workInfoFieldNames, field)) {
+    return workInfoFieldNames[field as WorkInfoField];
+  }
+  return "A field";
+}
 
 function characters(limit: number): string {
   return selectPlural(limit, {
@@ -249,6 +270,18 @@ const errorReasons = {
   thumbnail_upload_invalid:
     "The file isn't a PNG, JPEG or still WebP, or it can't be read.",
   content_changed: "The video changed in the meantime.",
+  work_info_control_characters: ({ field }) =>
+    `${workInfoFieldName(field)} can't contain control characters.`,
+  work_info_too_long: ({ field, limit }) =>
+    limit === undefined
+      ? `${workInfoFieldName(field)} is too long.`
+      : `${workInfoFieldName(field)} is too long: up to ${characters(limit)}.`,
+  too_many_performers: ({ limit }) =>
+    limit === undefined
+      ? "Too many performers."
+      : `Too many performers: up to ${formatNumber(limit)}.`,
+  work_info_invalid_date: "The release date isn't a calendar date in YYYY-MM-DD.",
+  work_info_invalid_url: "The source must be an http:// or https:// address.",
   unreachable: "ComfyUI can't be reached",
   unauthorized: "Comfy Cloud rejected the API key",
   insufficient_credits: "Comfy Cloud has no credits left",

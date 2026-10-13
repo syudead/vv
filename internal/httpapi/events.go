@@ -144,6 +144,12 @@ func (e *Events) Handle(event domain.Event) {
 		for _, id := range event.VideoIDs {
 			e.VideoChanged(id)
 		}
+	case domain.VideoWorkInfoChanged:
+		// 作品情報の変化は、同じ利用者データの鍵の各動画の video の知らせにする。動画ページが
+		// 作品情報を読み直す（specs/047-video-work-info/research.md R-8）。
+		for _, id := range event.VideoIDs {
+			e.VideoChanged(id)
+		}
 	case domain.AutoTagApplied:
 		// 自動タグ付けの結果は、一覧と動画ページにタグを読み直させる（docs/design-docs/auto-tagging.md）。
 		for _, id := range event.VideoIDs {

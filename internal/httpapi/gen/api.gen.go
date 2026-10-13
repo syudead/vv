@@ -294,6 +294,7 @@ const (
 	ErrorReasonThumbnailUploadTooLarge       ErrorReason = "thumbnail_upload_too_large"
 	ErrorReasonTimedOut                      ErrorReason = "timed_out"
 	ErrorReasonTooFewVideos                  ErrorReason = "too_few_videos"
+	ErrorReasonTooManyPerformers             ErrorReason = "too_many_performers"
 	ErrorReasonTooManyTagFilters             ErrorReason = "too_many_tag_filters"
 	ErrorReasonTooManyTags                   ErrorReason = "too_many_tags"
 	ErrorReasonTooManyVideos                 ErrorReason = "too_many_videos"
@@ -302,6 +303,10 @@ const (
 	ErrorReasonUnreachable                   ErrorReason = "unreachable"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
 	ErrorReasonVideoNotFound                 ErrorReason = "video_not_found"
+	ErrorReasonWorkInfoControlCharacters     ErrorReason = "work_info_control_characters"
+	ErrorReasonWorkInfoInvalidDate           ErrorReason = "work_info_invalid_date"
+	ErrorReasonWorkInfoInvalidUrl            ErrorReason = "work_info_invalid_url"
+	ErrorReasonWorkInfoTooLong               ErrorReason = "work_info_too_long"
 	ErrorReasonWorkflowRejected              ErrorReason = "workflow_rejected"
 )
 
@@ -418,6 +423,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonTooFewVideos:
 		return true
+	case ErrorReasonTooManyPerformers:
+		return true
 	case ErrorReasonTooManyTagFilters:
 		return true
 	case ErrorReasonTooManyTags:
@@ -433,6 +440,14 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonUsernameLength:
 		return true
 	case ErrorReasonVideoNotFound:
+		return true
+	case ErrorReasonWorkInfoControlCharacters:
+		return true
+	case ErrorReasonWorkInfoInvalidDate:
+		return true
+	case ErrorReasonWorkInfoInvalidUrl:
+		return true
+	case ErrorReasonWorkInfoTooLong:
 		return true
 	case ErrorReasonWorkflowRejected:
 		return true
@@ -1311,6 +1326,36 @@ func (e WatchHistoryFilter) Valid() bool {
 	}
 }
 
+// Defines values for WorkInfoField.
+const (
+	Code        WorkInfoField = "code"
+	Description WorkInfoField = "description"
+	Maker       WorkInfoField = "maker"
+	Performers  WorkInfoField = "performers"
+	ReleaseDate WorkInfoField = "releaseDate"
+	SourceUrl   WorkInfoField = "sourceUrl"
+)
+
+// Valid indicates whether the value is a known member of the WorkInfoField enum.
+func (e WorkInfoField) Valid() bool {
+	switch e {
+	case Code:
+		return true
+	case Description:
+		return true
+	case Maker:
+		return true
+	case Performers:
+		return true
+	case ReleaseDate:
+		return true
+	case SourceUrl:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TranscodeVideoParamsQuality.
 const (
 	N1080p TranscodeVideoParamsQuality = "1080p"
@@ -1537,6 +1582,9 @@ type EncoderUnavailableReason string
 type Error struct {
 	// Code 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 	Code ErrorCode `json:"code"`
+
+	// Field 理由が指す作品情報の項目（WorkInfo の項目名）。Error.field として、work_info_* と too_many_performers のときだけ入る（specs/047-video-work-info/contracts/screen-api.md）
+	Field *WorkInfoField `json:"field,omitempty"`
 
 	// Limit reason の上限値。契約の表で limit を返す reason のときだけ入る （specs/023-english-i18n/contracts/error-api.md §1）
 	Limit *int `json:"limit,omitempty"`
@@ -1798,9 +1846,10 @@ type LibraryItem struct {
 	Kind  LibraryItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// specs/029-video-overrides/contracts/screen-api.md §0、
+	// specs/047-video-work-info/research.md R-7）。
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -1895,9 +1944,10 @@ type PlaylistItem struct {
 	Kind PlaylistItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// specs/029-video-overrides/contracts/screen-api.md §0、
+	// specs/047-video-work-info/research.md R-7）。
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -1980,9 +2030,10 @@ type PlaylistStep struct {
 	ItemId int64 `json:"itemId"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// specs/029-video-overrides/contracts/screen-api.md §0、
+	// specs/047-video-work-info/research.md R-7）。
 	Video Video `json:"video"`
 }
 
@@ -2595,9 +2646,10 @@ type VersionCandidatePage struct {
 }
 
 // Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 // （specs/016-single-account-auth/contracts/guest-api.md §1、
-// specs/029-video-overrides/contracts/screen-api.md §0）。
+// specs/029-video-overrides/contracts/screen-api.md §0、
+// specs/047-video-work-info/research.md R-7）。
 type Video struct {
 	AddedAt time.Time `json:"addedAt"`
 
@@ -2707,7 +2759,7 @@ type Video struct {
 	// UnplayableReason playable = false の理由。判定前は省略される
 	UnplayableReason *VideoUnplayableReason `json:"unplayableReason,omitempty"`
 
-	// UpdatedAt vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル）を最後に編集した日時。
+	// UpdatedAt vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル・作品情報）を最後に編集した日時。
 	// 一度も編集していなければ addedAt と同じ（specs/033-video-dates/data-model.md §3）
 	UpdatedAt time.Time `json:"updatedAt"`
 
@@ -2721,6 +2773,11 @@ type Video struct {
 
 	// Width 表示される向きの幅（回転の印を反映済み）
 	Width *int `json:"width,omitempty"`
+
+	// WorkInfo 動画の作品情報。`GET /api/videos/{id}` と、`Video` を返す所有者の `PUT` の応答にだけ入り、
+	// ゲストの応答と、どの項目も設定されていないときは無い。一覧の項目・関連動画・ライブラリの項目には
+	// 載らない（specs/047-video-work-info/contracts/screen-api.md）
+	WorkInfo *WorkInfo `json:"workInfo,omitempty"`
 }
 
 // VideoPreviewState defines model for Video.PreviewState.
@@ -2981,9 +3038,10 @@ type WatchHistoryEntry struct {
 	Title string `json:"title"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// specs/029-video-overrides/contracts/screen-api.md §0、
+	// specs/047-video-work-info/research.md R-7）。
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -2997,6 +3055,56 @@ type WatchHistoryPage struct {
 
 	// NextCursor 続きがあるときだけ入る
 	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// WorkInfo 動画の作品情報。`GET /api/videos/{id}` と、`Video` を返す所有者の `PUT` の応答にだけ入り、
+// ゲストの応答と、どの項目も設定されていないときは無い。一覧の項目・関連動画・ライブラリの項目には
+// 載らない（specs/047-video-work-info/contracts/screen-api.md）
+type WorkInfo struct {
+	// Code 品番。設定されているときだけ入る（100 符号位置まで）
+	Code *string `json:"code,omitempty"`
+
+	// Description 説明。改行を含みうる。設定されているときだけ入る（10,000 符号位置まで）
+	Description *string `json:"description,omitempty"`
+
+	// Maker メーカー。設定されているときだけ入る（200 符号位置まで）
+	Maker *string `json:"maker,omitempty"`
+
+	// Performers 出演者。入力した順で、いなければ空配列（100 人まで、1 人 200 符号位置まで）
+	Performers []string `json:"performers"`
+
+	// ReleaseDate 発売日（`YYYY-MM-DD` の暦日）。設定されているときだけ入る
+	ReleaseDate *string `json:"releaseDate,omitempty"`
+
+	// SourceUrl 出典の http・https の URL。設定されているときだけ入る（2,048 符号位置まで）
+	SourceUrl *string `json:"sourceUrl,omitempty"`
+}
+
+// WorkInfoField 理由が指す作品情報の項目（WorkInfo の項目名）。Error.field として、work_info_* と too_many_performers のときだけ入る（specs/047-video-work-info/contracts/screen-api.md）
+type WorkInfoField string
+
+// WorkInfoInput `setVideoWorkInfo` の本文。どの項目も任意で `null` を受け付け、無い・`null`・前後の空白を
+// 取り除いて空のどれもその項目の解除になる。応答の `WorkInfo` と分けるのは、応答では
+// `performers` が必ず入り `null` にならないからである
+// （specs/047-video-work-info/contracts/screen-api.md、research.md R-5）
+type WorkInfoInput struct {
+	// Code 品番
+	Code *string `json:"code,omitempty"`
+
+	// Description 説明。改行だけは制御文字として扱わない
+	Description *string `json:"description,omitempty"`
+
+	// Maker メーカー
+	Maker *string `json:"maker,omitempty"`
+
+	// Performers 出演者。入力した順に保存し、同じ綴りの名前は最初の 1 つを残す
+	Performers *[]string `json:"performers,omitempty"`
+
+	// ReleaseDate 発売日（`YYYY-MM-DD` の暦日）
+	ReleaseDate *string `json:"releaseDate,omitempty"`
+
+	// SourceUrl 出典。ホストを持つ絶対の http・https の URL
+	SourceUrl *string `json:"sourceUrl,omitempty"`
 }
 
 // APITokenId defines model for APITokenId.
@@ -3517,6 +3625,9 @@ type UploadThumbnailImageMultipartRequestBody = UploadThumbnailImageRequest
 // SetVideoThumbnailPositionJSONRequestBody defines body for SetVideoThumbnailPosition for application/json ContentType.
 type SetVideoThumbnailPositionJSONRequestBody = ThumbnailPositionUpdate
 
+// SetVideoWorkInfoJSONRequestBody defines body for SetVideoWorkInfo for application/json ContentType.
+type SetVideoWorkInfoJSONRequestBody = WorkInfoInput
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListApiTokens 発行した API トークンを返す
@@ -3834,6 +3945,9 @@ type ServerInterface interface {
 	// ListVideoVersions 動画の集まりの全バージョンを返す
 	// (GET /api/videos/{id}/versions)
 	ListVideoVersions(w http.ResponseWriter, r *http.Request, id VideoId)
+	// SetVideoWorkInfo 動画の作品情報を置き換える
+	// (PUT /api/videos/{id}/work-info)
+	SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
 	// ClearWatchHistory 視聴履歴を全件消す
 	// (DELETE /api/watch-history)
 	ClearWatchHistory(w http.ResponseWriter, r *http.Request)
@@ -7049,6 +7163,32 @@ func (siw *ServerInterfaceWrapper) ListVideoVersions(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// SetVideoWorkInfo operation middleware
+func (siw *ServerInterfaceWrapper) SetVideoWorkInfo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetVideoWorkInfo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClearWatchHistory operation middleware
 func (siw *ServerInterfaceWrapper) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -7393,6 +7533,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/seek-thumbnail/{sheet}", wrapper.GetVideoSeekThumbnailSheet)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/progress", wrapper.PutVideoProgress)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/display-name", wrapper.SetVideoDisplayName)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/work-info", wrapper.SetVideoWorkInfo)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/thumbnail-position", wrapper.SetVideoThumbnailPosition)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.RevertThumbnailImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.UploadThumbnailImage)

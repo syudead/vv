@@ -660,6 +660,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/work-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 動画の作品情報を置き換える
+         * @description 所有者だけ。本文の作品情報で保存済みの値をまるごと置き換える。項目が無い、`null`、前後の空白を
+         *     取り除いて空のいずれかならその項目を解除する。項目の規則に合わなければ、`WorkInfo` の項目の順で
+         *     最初の項目を `field` に載せた 400 を返し、何も書かない。応答は `GET /api/videos/{id}` と同じ形の
+         *     `Video` で、`workInfo` が反映済みである（すべて解除したときは無い）。値が変わったときだけ、
+         *     確定後に同じ利用者データの鍵の各動画について `/api/events` の `video` が流れる
+         *     （specs/047-video-work-info/contracts/screen-api.md、research.md R-5・R-8）。
+         */
+        put: operations["setVideoWorkInfo"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/thumbnail-position": {
         parameters: {
             query?: never;
@@ -3087,9 +3112,10 @@ export interface components {
         };
         /**
          * @description ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-         *     `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+         *     `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
          *     （specs/016-single-account-auth/contracts/guest-api.md §1、
-         *     specs/029-video-overrides/contracts/screen-api.md §0）。
+         *     specs/029-video-overrides/contracts/screen-api.md §0、
+         *     specs/047-video-work-info/research.md R-7）。
          */
         Video: {
             /** Format: int64 */
@@ -3115,13 +3141,14 @@ export interface components {
              * @enum {string}
              */
             thumbnailImage?: "generated" | "uploaded";
+            workInfo?: components["schemas"]["WorkInfo"];
             /** Format: int64 */
             sizeBytes: number;
             /** Format: date-time */
             addedAt: string;
             /**
              * Format: date-time
-             * @description vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル）を最後に編集した日時。
+             * @description vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル・作品情報）を最後に編集した日時。
              *     一度も編集していなければ addedAt と同じ（specs/033-video-dates/data-model.md §3）
              */
             updatedAt: string;
@@ -3400,6 +3427,48 @@ export interface components {
             /** @description 新しい表示名。前後の空白を取り除いて空なら解除する */
             displayName: string;
         };
+        /**
+         * @description 動画の作品情報。`GET /api/videos/{id}` と、`Video` を返す所有者の `PUT` の応答にだけ入り、
+         *     ゲストの応答と、どの項目も設定されていないときは無い。一覧の項目・関連動画・ライブラリの項目には
+         *     載らない（specs/047-video-work-info/contracts/screen-api.md）
+         */
+        WorkInfo: {
+            /** @description 品番。設定されているときだけ入る（100 符号位置まで） */
+            code?: string;
+            /** @description 発売日（`YYYY-MM-DD` の暦日）。設定されているときだけ入る */
+            releaseDate?: string;
+            /** @description メーカー。設定されているときだけ入る（200 符号位置まで） */
+            maker?: string;
+            /** @description 出演者。入力した順で、いなければ空配列（100 人まで、1 人 200 符号位置まで） */
+            performers: string[];
+            /** @description 説明。改行を含みうる。設定されているときだけ入る（10,000 符号位置まで） */
+            description?: string;
+            /**
+             * Format: uri
+             * @description 出典の http・https の URL。設定されているときだけ入る（2,048 符号位置まで）
+             */
+            sourceUrl?: string;
+        };
+        /**
+         * @description `setVideoWorkInfo` の本文。どの項目も任意で `null` を受け付け、無い・`null`・前後の空白を
+         *     取り除いて空のどれもその項目の解除になる。応答の `WorkInfo` と分けるのは、応答では
+         *     `performers` が必ず入り `null` にならないからである
+         *     （specs/047-video-work-info/contracts/screen-api.md、research.md R-5）
+         */
+        WorkInfoInput: {
+            /** @description 品番 */
+            code?: string | null;
+            /** @description 発売日（`YYYY-MM-DD` の暦日） */
+            releaseDate?: string | null;
+            /** @description メーカー */
+            maker?: string | null;
+            /** @description 出演者。入力した順に保存し、同じ綴りの名前は最初の 1 つを残す */
+            performers?: string[] | null;
+            /** @description 説明。改行だけは制御文字として扱わない */
+            description?: string | null;
+            /** @description 出典。ホストを持つ絶対の http・https の URL */
+            sourceUrl?: string | null;
+        };
         ThumbnailPositionUpdate: {
             /**
              * Format: int64
@@ -3639,12 +3708,18 @@ export interface components {
             limit?: number;
             /** @description 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と tag_merge_required のときだけ入る（specs/023-english-i18n/contracts/error-api.md §1） */
             tagName?: string;
+            field?: components["schemas"]["WorkInfoField"];
         };
+        /**
+         * @description 理由が指す作品情報の項目（WorkInfo の項目名）。Error.field として、work_info_* と too_many_performers のときだけ入る（specs/047-video-work-info/contracts/screen-api.md）
+         * @enum {string}
+         */
+        WorkInfoField: "code" | "releaseDate" | "maker" | "performers" | "description" | "sourceUrl";
         /**
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "work_info_control_characters" | "work_info_too_long" | "work_info_invalid_date" | "work_info_invalid_url" | "too_many_performers" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -4686,6 +4761,36 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DisplayNameUpdate"];
+            };
+        };
+        responses: {
+            /** @description 反映後の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setVideoWorkInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkInfoInput"];
             };
         };
         responses: {

@@ -248,6 +248,11 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	if _, videos := sub.take(); !slices.Equal(videos, []int64{8, 9}) {
 		t.Fatalf("VideoBundleChanged: videos = %v, want [8 9]", videos)
 	}
+	// 作品情報の変化も各動画の video に写す（specs/047-video-work-info/research.md R-8）。
+	events.Handle(domain.VideoWorkInfoChanged{VideoIDs: []int64{10, 11}})
+	if _, videos := sub.take(); !slices.Equal(videos, []int64{10, 11}) {
+		t.Fatalf("VideoWorkInfoChanged: videos = %v, want [10 11]", videos)
+	}
 }
 
 // lockedScans は、送信の goroutine が読むあいだにテストが今の処理を差し替える。
