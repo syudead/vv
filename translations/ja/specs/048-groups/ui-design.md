@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/ui-design.md
-sourceHash: 09792f6c65cf60e7fb153a4f7e0819a08a839e022d599976ee23ef6108e83aad
+sourceHash: b5ea27fcee63c9798f0ebd3e82150ab13b4ca0c999ac6cff462ab80315da2030
 ---
 
 # UI 設計: 任意の動画とグループからなり、複数への所属と入れ子を持つグループ {#ui-design-groups-of-any-videos-and-groups-with-several-memberships-and-nesting}
@@ -243,7 +243,7 @@ flowchart LR
 
 ページ送りは、グリッドの後の番兵がビューポートから 600px 以内に来たとき、ライブラリのグリッドと同じく、応答の `nextCursor` から `GET /api/groups/{id}/items` を読む。失敗したページは、`Retry` 付きの `LoadMoreRow` の `Alert`「Couldn't load more of the group」を出す。
 
-選択はライブラリのものである: カードか行のチェック、子のメンバーを選ぶグループのチェック、グループの `videoIds` (すべての子孫の動画、つまりすべての項目) を選ぶ「Select all」、3 つのグループの操作を持つライブラリの選択バー ([Selection bar](#selection-bar))。「Remove from group」は、動画が選ばれている項目と、子グループのメンバーがすべて選ばれている項目の id で `POST /api/groups/{id}/items/remove` を送り、「Removed 3 items from "{name}"」を出して選択を消す。その行は離れ、残りは番号を振り直す。
+選択はライブラリのものである: カードか行のチェック、子のメンバーを選び、その子を選ばれたグループとして覚えるグループのチェック (`LibrarySelection.groups`)、グループの `videoIds` (すべての子孫の動画) と、選ばれたグループとして、ここまでに一覧に出た子グループを選ぶ「Select all」、3 つのグループの操作を持つライブラリの選択バー ([Selection bar](#selection-bar))。「Remove from group」は「Favorite」と同じように選択を分ける: 子グループの項目はその子が選ばれたグループであるときに取り除かれ、動画の項目はその動画が選ばれていて、選ばれたグループのメンバーでないときに取り除かれる。メンバーがたまたま動画のチェックによってすべて選ばれている子グループは取り除かれないので、直接の項目であり子 C のただ 1 つの動画でもある V だけをチェックすると、V の項目が取り除かれ、C は残る。C を選ぶと、V のカードは C を通して選ばれていると表示されるものの、C が取り除かれ、直接の V は残る。両方を取り除くには、V をもう一度取り除く必要がある。この操作は、ここまでに一覧に出た項目のうちのそれらの項目の id で `POST /api/groups/{id}/items/remove` を送り (まだ読んでいないページの項目は画面上に id を持たず、送られない)、「Removed 3 items from "{name}"」を出して選択を消す。その行は離れ、残りは番号を振り直す。
 
 ### 並べ替え {#reordering}
 
@@ -322,7 +322,7 @@ stateDiagram-v2
 | --- | --- |
 | グループの行 | タイトルの上の 1 行で、その形のまま (lucide `Folder` `size-4`、切り詰めた名前、`·`、「3 / 12」。`text-xs`、`sm` からは `text-sm`、`text-muted-foreground`)。行は `/groups/{id}` への `Link` で、`state.from` を引き継ぎ、アクセシブルな名前は「Group "{name}", video 3 of 12. Open the group」である。動画のページからは経路は空なので、そこでの帯は「Library › {name}」と読める。ゲストにとっても行は同じリンクである |
 | グループの操作 | 所有者には、同じ行の、行の後に: `ghost` `icon-sm` のボタン (lucide `Ellipsis`、`text-muted-foreground`、ツールチップ「Group actions」) で、「Remove from this group」(lucide `FolderMinus`)、「Turn the group into a tag…」(lucide `Tag`)、区切り、「Dissolve…」(lucide `Trash2`、`variant="destructive"`) を持つ `DropdownMenu` を開く。今と同じく、Esc はメニューだけを閉じる |
-| Remove from this group | 動画の項目 (動画の id によってグループの項目とともに読む) で `POST /api/groups/{id}/items/remove`。`200` でトースト「Removed from "{name}"」が出て、動画と関連する動画を `group` なしで読み直すので、行、一覧、矢印は代わりのグループに従うか、なくなる。`404` はトーストなしで同じように読み直す |
+| Remove from this group | 動画が行のグループの直接の項目であるときにだけ描く。所有者には、行を描くときにページがそのグループの項目を読み (`limit` 200 の `GET /api/groups/{id}/items` で、`nextCursor` をたどる)、`video.id` がこの動画の id である `video` の項目が見つかった時点でメニューの項目が現れる。それまでと、動画が子グループを通してだけグループにあるとき (再生の順は子の動画を含むが、取り除くルートはグループ自身の項目の id だけをとる) は、メニューは他の 2 つの項目を持つ。押すと、その項目の id で `POST /api/groups/{id}/items/remove` を送る。`200` でトースト「Removed from "{name}"」が出て、動画と関連する動画を `group` なしで読み直すので、行、一覧、矢印は代わりのグループに従うか、なくなる。`404` はトーストなしで同じように読み直す |
 | Dissolve…、Turn the group into a tag… | グループのページのダイアログ ([Dissolving](#dissolving)、[Turning into a tag](#turning-into-a-tag))。成功するとトーストが出て、動画と関連する動画を `group` なしで読み直し、ページは留まる |
 | 操作のグループ | 「Add to playlist」の後の「Add to group」([Add to group](#add-to-group)) |
 
@@ -366,7 +366,7 @@ stateDiagram-v2
 8. **入れ子と循環**: A のカードからグループ A をグループ B に加えると、2 つのうち B だけが最上位に残り、B のページは A をその絵を持つカードとして挙げる。A のページで、A の動画の 1 本のために選択器で B を選ぶと成功し、B のページで B のカードのために A を選ぶと、選択器は行「Couldn't add to the group: A group can't be put inside itself or inside a group it contains.」とともに開いたままになる (受け入れ条件 3)。
 9. **並べ替え**: リスト表示で、行をハンドルでドラッグするとそれが動き、番号はすぐに振り直され、再読み込みしても同じ順が出る (受け入れ条件 4)。フォーカスのあるハンドルで Space、`↓`、Space を押すと同じことが起き、Esc は順を戻す。グリッドはハンドルを示さず、トップバーの表示の切り替えは 360px でも 1280px でもリストに切り替える。
 10. **両方の種類で同じ見た目**: 自動のグループのカードと、その隣の手作りのグループのカードは、同じ箱、絵、数の面、印を持つ。どちらのページも同じ帯、タイトル、「Play」、「More」、メニューを持つ。唯一の違いは、自動のグループのページの数の下の「From the folder {path}」の行で、フォルダのページを開く。それと、その解散のダイアログの追加の文である (`UI品質`、3 つ目の点。要件 10)。
-11. **グループの中の動画のページ**: 共有された動画をグループ G1 から開くと、タイトルの上に行「G1 · 2 / 8」が出て、`Up next` の一覧は G1 の順になる。G2 から開くと G2 のものが出る。`?group` がないと、行は id の小さいほうのグループを名指す (受け入れ条件 2)。行は今と同じくらい小さく薄い色で、G1 のページを開く。その後の操作のボタンも同じくらい薄い色で、「Remove from this group」はトーストとともに動画を取り除き、その後、行はもう 1 つのグループを名指す。
+11. **グループの中の動画のページ**: 共有された動画をグループ G1 から開くと、タイトルの上に行「G1 · 2 / 8」が出て、`Up next` の一覧は G1 の順になる。G2 から開くと G2 のものが出る。`?group` がないと、行は id の小さいほうのグループを名指す (受け入れ条件 2)。行は今と同じくらい小さく薄い色で、G1 のページを開く。その後の操作のボタンも同じくらい薄い色で、「Remove from this group」はトーストとともに動画を取り除き、その後、行はもう 1 つのグループを名指す。親のページから開いた、子グループを通してだけ親にある動画は親の行を出し、その操作のメニューには「Remove from this group」がない。
 12. **解散**: 子グループのページで「Dissolve」を押すと、トースト「Dissolved "{name}"」とともに親のページに移り、親の数は子の動画の分だけ減り、子の動画はライブラリに残っている。自動のグループのページでは、ダイアログはフォルダの文を持ち、「Dissolve」の後、フォルダのページのメニューは「One by one in the library」と読める (受け入れ条件 6)。解散したグループの URL を開くと、「Back to library」付きの「This group no longer exists」が出る。
 13. **別のタブ**: 2 つ目のタブでグループの名前を変えて行を動かすと、再読み込みなしで、1 つ目のタブの帯とタイトルに新しい名前が、行に新しい順が出る。2 つ目のタブがすでに取り除いた項目を 1 つ目のタブで取り除くと、トースト「The group changed in the meantime, so it was reloaded」が出て、2 つ目のタブが残した行が出る (Edge Case)。
 14. **ゲスト**: ゲストとしてサインインすると、公開の動画を 1 本持つグループは、帯、名前、「1 video」、「Play」、チェックもハンドルも `×` もないただの行とともにそのページを開く。どのカード、行、動画のページ、選択バーも「Add to group」や「New group」を出さない。動画のページのグループの行は、操作のボタンのないリンクである。
