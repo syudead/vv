@@ -471,11 +471,12 @@ test.describe.serial("groups", () => {
     await showList(page);
     await expect.poll(() => itemTitles(page)).toEqual([video1, video2, video3]);
 
-    // 動画3 をキーボードで 1 つ上へ動かす。
+    // 動画3 をキーボードで 1 つ上へ動かす。ハンドルのキーボードの並べ替えは
+    // POST /api/organize/reorder を 1 項目で送る（specs/050-drag-organize/ui-design.md「Group page」）。
     const move = page.waitForResponse(
       (response) =>
         response.request().method() === "POST" &&
-        /\/api\/groups\/\d+\/items\/\d+\/move$/.test(new URL(response.url()).pathname),
+        new URL(response.url()).pathname === "/api/organize/reorder",
     );
     await page.getByRole("button", { name: `Reorder "${video3}"` }).focus();
     await page.keyboard.press("Space");
@@ -487,7 +488,7 @@ test.describe.serial("groups", () => {
       page.getByText(`"${video3}" moved to position 2 of 3.`, { exact: true }),
     ).toBeAttached();
     await page.keyboard.press("Space");
-    expect((await move).status()).toBe(204);
+    expect((await move).status()).toBe(200);
     const reordered = [video1, video3, video2];
     await expect.poll(() => itemTitles(page)).toEqual(reordered);
 

@@ -54,11 +54,14 @@ import { PageHeader } from "../ui/patterns/page-header";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
+import { DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
+import { useUndoToast } from "../videoList/undoToast";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard from "../videoList/VideoCard";
 import { GroupChangedContext } from "./groupChanges";
+import { GroupDragLayer, itemKey } from "./GroupDrag";
 import { type GroupItemEditing, GroupItemList } from "./GroupItemList";
 import { reconcileGroupSelection, selectAllInGroup, selectedItemIds } from "./groupItems";
 import GroupMenu from "./GroupMenu";
@@ -237,6 +240,9 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   const dissolvedByRemoval = useCallback(() => {
     if (name !== undefined) leave(t.groups.dissolved(name));
   }, [leave, name]);
+  // 取り消しの通知は画面を離れると閉じる。取り消したら静かに読み直す
+  // （specs/050-drag-organize/ui-design.md「Undo toast」）。
+  const undo = useUndoToast(refresh);
   const edits = useGroupEdits({
     id,
     update,
@@ -245,6 +251,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     movesSent,
     refresh,
     onDissolved: dissolvedByRemoval,
+    undo,
   });
   const { preferences, save } = useViewPreferences();
   const { view, zoom } = preferences;
@@ -314,7 +321,14 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     if (data !== null) removeSelected(removable, data.group.name, clear);
   }, [clear, data, removable, removeSelected]);
 
-  const { focus } = edits;
+  const { focus, reorder } = edits;
+  const reorderItems = useCallback(
+    (itemIds: readonly number[], after: number | null) => {
+      if (data !== null) reorder(itemIds, after, data.group.name);
+    },
+    [data, reorder],
+  );
+
   const renamed = useCallback(
     (group: LibraryGroup) => {
       update((current) => ({ ...current, group }));
@@ -422,9 +436,17 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
                 owner
                   ? {
                       removing: edits.removing,
-                      onMove: edits.move,
                       onRemove: edits.removeOne,
                       removeRef: edits.removeRef,
+                    }
+                  : undefined
+              }
+              drag={
+                owner
+                  ? {
+                      selectedItems: removable,
+                      onReorder: reorderItems,
+                      onLift: resetPreview,
                     }
                   : undefined
               }
@@ -569,6 +591,13 @@ function FolderLine({ folder }: { folder: VideoFolder }) {
 
 type Selection = ReturnType<typeof useGroupSelection>;
 
+/** GroupItemDragging は所有者のドラッグの並べ替えである（GroupDragLayer に渡す）。 */
+interface GroupItemDragging {
+  selectedItems: readonly number[];
+  onReorder: (itemIds: readonly number[], after: number | null) => void;
+  onLift: () => void;
+}
+
 /**
  * GroupItems はグループの項目を並び順どおりに、格子ならライブラリのカード、リストなら
  * プレイリストの画面の行で並べる（ui-design.md「Body」）。動画は `?group` 付きで、子グループは
@@ -586,6 +615,7 @@ function GroupItems({
   preview,
   onPressTag,
   editing,
+  drag,
 }: {
   id: number;
   data: GroupPageData;
@@ -597,12 +627,43 @@ function GroupItems({
   selectionMode: boolean;
   preview: ReturnType<typeof usePreviewCoordination>["cardProps"];
   onPressTag: (tag: TagRef) => void;
-  /** 所有者のリスト表示の並べ替えと `×`。ゲストには無い。 */
+  /** 所有者のリスト表示の `×`。ゲストには無い。 */
   editing?: GroupItemEditing;
+  /** 所有者のドラッグの並べ替え。ゲストには無い。 */
+  drag?: GroupItemDragging;
 }) {
   const ids = selection.selection.ids;
   const groupSelected = (group: LibraryGroup) =>
     isGroupSelected(selection.selection, group.id);
+  const itemSelected = useCallback(
+    (item: GroupItem) =>
+      item.group !== undefined
+        ? isGroupSelected(selection.selection, item.group.id)
+        : item.video !== undefined && selection.selection.ids.has(item.video.id),
+    [selection.selection],
+  );
+  const withDrag = (list: boolean, body: ReactNode) =>
+    drag === undefined ? (
+      body
+    ) : (
+      <GroupDragLayer
+        items={data.items}
+        list={list}
+        selectedItems={drag.selectedItems}
+        onReorder={drag.onReorder}
+        onLift={drag.onLift}
+      >
+        {body}
+      </GroupDragLayer>
+    );
+  const cell = (item: GroupItem, card: ReactNode) =>
+    drag === undefined ? (
+      card
+    ) : (
+      <DraggableCard key={item.id} id={itemKey(item)}>
+        {card}
+      </DraggableCard>
+    );
   const { toggleVideoSelection, toggleGroupSelection } = selection;
 
   const videoTags = useCallback(
@@ -629,7 +690,8 @@ function GroupItems({
   );
 
   if (view === "list") {
-    return (
+    return withDrag(
+      true,
       <GroupItemList
         items={data.items}
         editing={editing}
@@ -638,48 +700,52 @@ function GroupItems({
           position: index + 1,
           to: groupItemPath(item, data.trail, id),
           backTo: listUrl,
-          selected:
-            item.group !== undefined
-              ? groupSelected(item.group)
-              : item.video !== undefined && ids.has(item.video.id),
+          selected: itemSelected(item),
           selectionMode,
           onSelect: owner ? selection.changeItem : undefined,
         })}
-      />
+      />,
     );
   }
-  return (
+  return withDrag(
+    false,
     // タグの行の幅の見張りは一覧に1つだけ（ライブラリと同じ）。
     <TagRowMeasureProvider>
       <Grid zoom={zoom}>
         {data.items.map((item) =>
-          item.kind === "group" && item.group !== undefined ? (
-            <GroupCard
-              key={item.id}
-              group={item.group}
-              to={groupItemPath(item, data.trail, id)}
-              backTo={listUrl}
-              selected={groupSelected(item.group)}
-              selectionMode={selectionMode}
-              onSelect={owner ? selection.changeGroup : undefined}
-              tagsRow={groupTags}
-              {...preview}
-            />
-          ) : item.video !== undefined ? (
-            <VideoCard
-              key={item.id}
-              video={item.video}
-              to={groupItemPath(item, data.trail, id)}
-              backTo={listUrl}
-              selected={ids.has(item.video.id)}
-              selectionMode={selectionMode}
-              onSelect={owner ? selection.changeVideo : undefined}
-              tagsRow={videoTags}
-              {...preview}
-            />
-          ) : null,
+          item.kind === "group" && item.group !== undefined
+            ? cell(
+                item,
+                <GroupCard
+                  key={item.id}
+                  group={item.group}
+                  to={groupItemPath(item, data.trail, id)}
+                  backTo={listUrl}
+                  selected={groupSelected(item.group)}
+                  selectionMode={selectionMode}
+                  onSelect={owner ? selection.changeGroup : undefined}
+                  tagsRow={groupTags}
+                  {...preview}
+                />,
+              )
+            : item.video !== undefined
+              ? cell(
+                  item,
+                  <VideoCard
+                    key={item.id}
+                    video={item.video}
+                    to={groupItemPath(item, data.trail, id)}
+                    backTo={listUrl}
+                    selected={ids.has(item.video.id)}
+                    selectionMode={selectionMode}
+                    onSelect={owner ? selection.changeVideo : undefined}
+                    tagsRow={videoTags}
+                    {...preview}
+                  />,
+                )
+              : null,
         )}
       </Grid>
-    </TagRowMeasureProvider>
+    </TagRowMeasureProvider>,
   );
 }

@@ -1,11 +1,13 @@
-import type { DragEndEvent } from "@dnd-kit/core";
 import { type MutableRefObject, useCallback, useEffect, useRef, useState } from "react";
 
 import { type LibraryGroup, RequestFailed } from "../api/client";
-import { type GroupItem, moveGroupItem, removeFromGroup } from "../api/groups";
+import { type GroupItem, removeFromGroup } from "../api/groups";
+import { reorderGroup } from "../api/organize";
 import { errorText, t, type UiText } from "../i18n";
-import { dropItem, focusAfterRemove, moveItem } from "../playlists/playlistItems";
+import { focusAfterRemove } from "../playlists/playlistItems";
 import { useToast } from "../ui/Toast";
+import { moveAfter } from "../videoList/cardDragRules";
+import type { UndoToast } from "../videoList/undoToast";
 import type { GroupPageData } from "./useGroupPage";
 
 /** FocusTarget は編集の後にフォーカスを移す先である（項目の `×`、見出し、「More」）。 */
@@ -75,10 +77,12 @@ function useFocusAfterEdit() {
  * useGroupEdits はグループのページの項目の編集である（specs/048-groups/ui-design.md
  * 「Reordering」「Removing one item」「Body」「Edits that fail」）。
  *
- * - 並べ替えは置いたときに番号を振り直してから `move` を 1 回送る。送る要求は置いた順に
+ * - 並べ替えは置いたときに番号を振り直してから、持ち上げた項目を画面の順に `reorder` で
+ *   1 回送る（specs/050-drag-organize/ui-design.md「Group page」）。送る要求は置いた順に
  *   1 つずつ流し（鎖は useGroupPage と共有し、静かな読み直しは鎖が答えてから読む）、
- *   失敗したらサーバーが最後に認めた並びへ戻して知らせる。鎖が空になったら、認めた並びを
- *   見せる（途中の読み直しが移動の前の並びを置いても、行を正しい順に戻す）。
+ *   受け入れられたら「Undo」付きの通知を出し、失敗したらサーバーが最後に認めた並びへ戻して
+ *   知らせる。鎖が空になったら、認めた並びを見せる（途中の読み直しが移動の前の並びを置いても、
+ *   行を正しい順に戻す）。
  * - 行の `×` は確認なしにその項目を外す。外せたら行が消え、フォーカスは次の行の `×`、
  *   無ければ前の行、無ければ見出しへ移る。続きのページが残っていたら、サーバーが位置を
  *   詰めて手元の続き位置が使えなくなるので、先頭から読み直す。
@@ -96,6 +100,7 @@ export function useGroupEdits({
   movesSent,
   refresh,
   onDissolved,
+  undo,
 }: {
   id: number | null;
   update: (change: (data: GroupPageData) => GroupPageData) => void;
@@ -105,6 +110,8 @@ export function useGroupEdits({
   refresh: () => void;
   /** 最後の項目を外してグループが解散されたときに呼ぶ。 */
   onDissolved: () => void;
+  /** 受け入れられた並べ替えの取り消しの通知。 */
+  undo: UndoToast;
 }) {
   const toast = useToast();
   const [removing, setRemoving] = useState<ReadonlySet<number>>(new Set());
@@ -154,38 +161,38 @@ export function useGroupEdits({
     [confirmed, refresh, update],
   );
 
-  const move = useCallback(
-    (event: DragEndEvent, items: readonly GroupItem[]) => {
-      if (id === null || event.over === null) return;
-      const itemId = Number(event.active.id);
-      const drop = dropItem(items, itemId, Number(event.over.id));
-      if (drop === null) return;
-      update((data) => ({ ...data, items: drop.items }));
+  const { offer } = undo;
+  const reorder = useCallback(
+    (itemIds: readonly number[], after: number | null, name: string) => {
+      if (id === null || itemIds.length === 0) return;
+      const moved = new Set(itemIds);
+      const byId = (item: GroupItem) => item.id;
+      update((data) => ({ ...data, items: moveAfter(data.items, moved, after, byId) }));
       const ticket = generation.current;
-      const { afterItemId } = drop;
       queued.current += 1;
       moves.current = moves.current.then(async () => {
         try {
           if (ticket !== generation.current) return;
           movesSent.current += 1;
-          await moveGroupItem(id, itemId, afterItemId);
+          const { undoToken } = await reorderGroup(id, itemIds, after);
           if (ticket !== generation.current) return;
-          confirmed.current = moveItem(confirmed.current, itemId, afterItemId);
+          confirmed.current = moveAfter(confirmed.current, moved, after, byId);
           if (queued.current === 1)
             update((data) => ({ ...data, items: confirmed.current }));
+          offer(t.organize.done.reordered(name), undoToken);
         } catch (error) {
           if (ticket !== generation.current) return;
           generation.current += 1;
           if (!isNotFound(error)) {
             update((data) => ({ ...data, items: confirmed.current }));
           }
-          failed(error, t.groups.item.moveFailed);
+          failed(error, t.organize.failed.reorder);
         } finally {
           queued.current -= 1;
         }
       });
     },
-    [confirmed, failed, id, moves, movesSent, update],
+    [confirmed, failed, id, moves, movesSent, offer, update],
   );
 
   const removeOne = useCallback(
@@ -245,7 +252,7 @@ export function useGroupEdits({
   return {
     removing,
     removingSelected,
-    move,
+    reorder,
     removeOne,
     removeSelected,
     titleRef: focus.titleRef,

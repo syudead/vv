@@ -1,8 +1,15 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UiText } from "../i18n";
-import { ToastProvider, toastDuration, useToast } from "./Toast";
+import {
+  actionToastDuration,
+  type ToastAction,
+  ToastProvider,
+  toastDuration,
+  useToast,
+} from "./Toast";
 
 function Harness() {
   const toast = useToast();
@@ -13,6 +20,48 @@ function Harness() {
           {message}
         </button>
       ))}
+    </>
+  );
+}
+
+/** ActionHarness はアクション付きの通知を出すボタン（「first」「second」）を描く。 */
+function ActionHarness({ action }: { action: ToastAction }) {
+  const toast = useToast();
+  return (
+    <>
+      {(["first", "second"] as const).map((message) => (
+        <button
+          key={message}
+          type="button"
+          onClick={() => toast(message as UiText, { action })}
+        >
+          {message}
+        </button>
+      ))}
+    </>
+  );
+}
+
+/** DismissHarness は通知「first」「second」を出し、「close second」で second の閉じる関数を呼ぶ。 */
+function DismissHarness() {
+  const toast = useToast();
+  const [closeSecond, setCloseSecond] = useState<() => void>(() => () => undefined);
+  return (
+    <>
+      <button type="button" onClick={() => toast("first" as UiText)}>
+        first
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          setCloseSecond(() => toast("second" as UiText, { duration: 60_000 }))
+        }
+      >
+        second
+      </button>
+      <button type="button" onClick={closeSecond}>
+        close second
+      </button>
     </>
   );
 }
@@ -118,6 +167,31 @@ describe("ToastProvider", () => {
     expect(visible()).toEqual([]);
   });
 
+  it("closes a toast through its dismiss function after a placement change re-queued it", () => {
+    const { rerender } = render(
+      <ToastProvider>
+        <DismissHarness />
+      </ToastProvider>,
+    );
+    press("first");
+    press("second");
+    advance(10);
+    expect(visible()).toEqual(["second", "first"]);
+
+    // 再生画面では 1 件だけ出すので、second は新しい id で待ちに戻る。
+    rerender(
+      <ToastProvider placement="playback">
+        <DismissHarness />
+      </ToastProvider>,
+    );
+    advance(settle);
+    expect(visible()).toEqual(["first"]);
+    press("close second");
+
+    advance(toastDuration + settle);
+    expect(visible()).toEqual([]);
+  });
+
   it("shows at most three queued toasts after leaving playback", () => {
     const { rerender } = render(
       <ToastProvider placement="playback">
@@ -139,5 +213,69 @@ describe("ToastProvider", () => {
     advance(toastDuration);
     advance(10);
     expect(visible()).toContain("fourth");
+  });
+
+  describe("with an action", () => {
+    const label = "Undo" as UiText;
+
+    it("stays 8 seconds with the action at its end", () => {
+      render(
+        <ToastProvider>
+          <ActionHarness action={{ label, run: () => Promise.resolve() }} />
+        </ToastProvider>,
+      );
+      press("first");
+      advance(10);
+      expect(screen.getByRole("button", { name: "Undo" })).toBeDefined();
+
+      advance(toastDuration + settle);
+      expect(visible()).toEqual(["first"]);
+      advance(actionToastDuration - toastDuration + settle);
+      expect(visible()).toEqual([]);
+    });
+
+    it("replaces the previous toast with an action, so one action shows", () => {
+      render(
+        <ToastProvider>
+          <ActionHarness action={{ label, run: () => Promise.resolve() }} />
+        </ToastProvider>,
+      );
+      press("first");
+      advance(10);
+      press("second");
+      advance(settle);
+      expect(visible()).toEqual(["second"]);
+      advance(settle);
+      expect(screen.getAllByRole("button", { name: "Undo" })).toHaveLength(1);
+    });
+
+    it("disables the action while it runs and closes the toast when it ends", async () => {
+      let finish: () => void = () => undefined;
+      const run = vi.fn(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      render(
+        <ToastProvider>
+          <ActionHarness action={{ label, run }} />
+        </ToastProvider>,
+      );
+      press("first");
+      advance(10);
+      const action = screen.getByRole("button", { name: "Undo" });
+      fireEvent.click(action);
+      fireEvent.click(action);
+
+      expect(run).toHaveBeenCalledTimes(1);
+      expect((action as HTMLButtonElement).disabled).toBe(true);
+      await act(async () => {
+        finish();
+        await Promise.resolve();
+      });
+      advance(settle);
+      expect(visible()).toEqual([]);
+    });
   });
 });
