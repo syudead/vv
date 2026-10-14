@@ -96,6 +96,12 @@ type OverrideStore struct{ db *DB }
 // 通して使う。
 type VersionStore struct{ db *DB }
 
+// GroupStore は任意のグループの作成・改名・追加・取り外し・並べ替え・解散・タグ化を受け持つ
+// （group_edits.go、specs/048-groups/data-model.md「Edits」）。確定後に domain.GroupsChanged を
+// 発行するため、発行先を持つ *DB を通して使う。自動グループをフォルダとそろえる同期は、索引を
+// 作り直す各取引の中で syncFolderGroups が行う（groups.go）。
+type GroupStore struct{ db *DB }
+
 func (db *DB) Ingest() *IngestStore       { return &IngestStore{db: db} }
 func (db *DB) Library() *LibraryStore     { return &LibraryStore{db: db} }
 func (db *DB) Scans() *ScanStore          { return &ScanStore{db: db} }
@@ -113,3 +119,4 @@ func (db *DB) FolderGroups() *FolderGroupStore { return &FolderGroupStore{db: db
 func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
 func (db *DB) AutoTags() *AutoTagStore         { return &AutoTagStore{db: db} }
 func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
+func (db *DB) Groups() *GroupStore             { return &GroupStore{db: db} }

@@ -51,7 +51,7 @@ func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath str
 	if err := writeOverride(ctx, tx, folderPath, mode); err != nil {
 		return domain.FolderGrouping{}, err
 	}
-	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	changedGroups, err := dissolveUngroupedAndRebuild(ctx, tx, folderPath, mode)
 	if err != nil {
 		return domain.FolderGrouping{}, err
 	}
@@ -100,7 +100,7 @@ func (s *FolderGroupStore) TagFolderGroup(ctx context.Context, folderPath string
 	if err := writeOverride(ctx, tx, folderPath, domain.FolderGroupUngroup); err != nil {
 		return domain.FolderGroupTag{}, err
 	}
-	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	changedGroups, err := dissolveUngroupedAndRebuild(ctx, tx, folderPath, domain.FolderGroupUngroup)
 	if err != nil {
 		return domain.FolderGroupTag{}, err
 	}
@@ -175,6 +175,25 @@ func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]d
 		out[i] = byKey[key]
 	}
 	return out, nil
+}
+
+// dissolveUngroupedAndRebuild は、例外 mode が ungroup ならフォルダ folderPath の自動グループを
+// 解散と同じ経路（dissolveFolderGroup）で消し、索引を作り直して、変わったグループとその祖先の id を
+// 返す（specs/048-groups/research.md R-4）。auto と groupDirect は作り直しの同期が、規則が成り立てば
+// 新しいグループを作る。
+func dissolveUngroupedAndRebuild(ctx context.Context, tx *sql.Tx, folderPath string, mode domain.FolderGroupMode) ([]int64, error) {
+	var dissolved []int64
+	if mode == domain.FolderGroupUngroup {
+		var err error
+		if dissolved, err = dissolveFolderGroup(ctx, tx, folderPath); err != nil {
+			return nil, err
+		}
+	}
+	rebuilt, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeIDs(append(dissolved, rebuilt...)), nil
 }
 
 // writeOverride はフォルダ folderPath の例外を mode にする。mode が空なら外す。
