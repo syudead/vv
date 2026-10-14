@@ -41,7 +41,7 @@ reads them back ([R-1](research.md#r-1-undo-restores-the-rows-the-operation-chan
 | --- | --- |
 | Reorder | `group_items` of G |
 | Move | `groups`, `group_items` (by `group_id` and by `child_id`), `group_exclusions` and `group_favorites` of `from`, `to` and every ancestor the dissolve cascade can reach; `playlist_items` of every playlist holding one of them; `folder_group_overrides` of their folders |
-| Group | `groups` of the new group; `group_items` of the new group and of `from` |
+| Group | `groups` of the new group; `group_items` of the new group and of `from`; `group_exclusions` of `from`, which leaving folder members of an automatic `from` write |
 | Merge | Move's rows for the dragged groups, their parents and the target |
 | Bundle | `video_bundles` and `video_bundle_members` of every absorbed bundle and the new one; `group_items`, `group_exclusions` and `playlist_items` of every absorbed key and the new key, by whole group or playlist; the user data rows `copyUserData` writes under the new key; `video_version_candidates` the bundle prunes |
 

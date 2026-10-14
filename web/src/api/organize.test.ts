@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RequestFailed } from "./client";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
-import { mergeGroups, reorderGroup, undoOrganize } from "./organize";
+import {
+  groupVideos,
+  mergeGroups,
+  moveCards,
+  reorderGroup,
+  undoOrganize,
+} from "./organize";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -53,6 +59,96 @@ describe("organize API", () => {
         body: { groupId: 7, itemIds: [13] },
       },
     ]);
+  });
+
+  it("groupVideos は動画を画面の順に送り、from が null なら送らない。新しいグループの id を返し、一覧の控えを捨てる", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ undoToken: "t1", groupId: 30 }))
+      .mockResolvedValueOnce(json({ undoToken: "t2", groupId: 31 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    holdSnapshot();
+    await expect(groupVideos([5, 3], 4, 7)).resolves.toEqual({
+      undoToken: "t1",
+      groupId: 30,
+    });
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    await expect(groupVideos([5], 4, null)).resolves.toEqual({
+      undoToken: "t2",
+      groupId: 31,
+    });
+
+    expect(sent(fetchMock)).toEqual([
+      {
+        url: "/api/organize/group",
+        method: "POST",
+        body: {
+          items: [
+            { kind: "video", id: 5 },
+            { kind: "video", id: 3 },
+          ],
+          target: 4,
+          from: 7,
+        },
+      },
+      {
+        url: "/api/organize/group",
+        method: "POST",
+        body: { items: [{ kind: "video", id: 5 }], target: 4 },
+      },
+    ]);
+  });
+
+  it("moveCards はカードを画面の順に送り、null の from と to は送らない。トークンを返し、一覧の控えを捨てる", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ undoToken: "t1" }))
+      .mockResolvedValueOnce(json({ undoToken: "t2" }))
+      .mockResolvedValueOnce(json({ undoToken: "t3" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const items = [
+      { kind: "group" as const, id: 4 },
+      { kind: "video" as const, id: 9 },
+    ];
+    holdSnapshot();
+    await expect(moveCards(items, { from: 2, to: 3 })).resolves.toEqual({
+      undoToken: "t1",
+    });
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    await expect(moveCards(items, { from: 2, to: null })).resolves.toEqual({
+      undoToken: "t2",
+    });
+    await expect(moveCards(items, { from: null, to: 3 })).resolves.toEqual({
+      undoToken: "t3",
+    });
+
+    expect(sent(fetchMock)).toEqual([
+      { url: "/api/organize/move", method: "POST", body: { items, from: 2, to: 3 } },
+      { url: "/api/organize/move", method: "POST", body: { items, from: 2 } },
+      { url: "/api/organize/move", method: "POST", body: { items, to: 3 } },
+    ]);
+  });
+
+  it("moveCards の 409 group_cycle は RequestFailed になり、一覧の控えを残す", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          json({ code: "conflict", reason: "group_cycle", message: "cycle" }, 409),
+        ),
+    );
+
+    holdSnapshot();
+    await expect(
+      moveCards([{ kind: "group", id: 1 }], { from: null, to: 2 }),
+    ).rejects.toMatchObject({
+      status: 409,
+      reason: "group_cycle",
+    });
+    expect(takeListSnapshot({ query: "" })).toBeDefined();
   });
 
   it("mergeGroups はカードを画面の順に into と送り、トークンを返し、一覧の控えを捨てる", async () => {

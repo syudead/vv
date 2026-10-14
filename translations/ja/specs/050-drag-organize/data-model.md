@@ -1,6 +1,6 @@
 ---
 source: specs/050-drag-organize/data-model.md
-sourceHash: 5d2b0f4ff2df27d4608c84e7f2efbac05966acedd1befdfd240d697209ce3ae3
+sourceHash: 7e76fb51c98185aacee266054c48aeb0b6fcfe3d4ccf1ccf73f599767f05d6ce
 ---
 
 # データモデル: ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる {#data-model-drag-and-drop-to-reorder-group-merge-and-bundle}
@@ -30,7 +30,7 @@ sourceHash: 5d2b0f4ff2df27d4608c84e7f2efbac05966acedd1befdfd240d697209ce3ae3
 | --- | --- |
 | 並べ替え | G の `group_items` |
 | 移動 | `from`、`to`、解散の連鎖が届きうるすべての祖先の `groups`、`group_items` (`group_id` と `child_id` による)、`group_exclusions`、`group_favorites`。それらのどれかを持つすべてのプレイリストの `playlist_items`。それらのフォルダの `folder_group_overrides` |
-| グループ作成 | 新しいグループの `groups`。新しいグループと `from` の `group_items` |
+| グループ作成 | 新しいグループの `groups`。新しいグループと `from` の `group_items`。`from` の `group_exclusions` (自動の `from` からフォルダのメンバーが離れるときに書かれる) |
 | 統合 | ドラッグしたグループ、その親、対象についての移動の行 |
 | まとめ | 吸収したすべてのまとまりと新しいまとまりの `video_bundles` と `video_bundle_members`。吸収したすべてのキーと新しいキーの `group_items`、`group_exclusions`、`playlist_items` を、グループかプレイリストの全体で。`copyUserData` が新しいキーの下に書くユーザーデータの行。まとめが取り除く `video_version_candidates` |
 

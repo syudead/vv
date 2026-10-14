@@ -1,6 +1,10 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"strings"
+	"unicode"
+)
 
 // ドラッグの操作とその取り消し（specs/050-drag-organize/data-model.md「Operations」「Undo image」）。
 // 操作は 1 つの取引で行い、変えた行の前後の像を返す。取り消しは、今の行が後の像と等しいときだけ
@@ -21,6 +25,17 @@ type OrganizeResult struct {
 	GroupID   int64
 }
 
+// GroupNameFromTitle は「グループにする」が作るグループの名前を、落とした先の動画の題名 title から
+// 決める。先頭の Unicode White_Space を除き、先頭 GroupNameMaxLength 符号位置に切ってから
+// ValidateGroupName で整える（specs/050-drag-organize/data-model.md「Rules」）。先に空白を除くのは、
+// 長い空白で始まる題名が空白だけに切られて空の名前にならないためである。
+func GroupNameFromTitle(title string) (string, error) {
+	trimmed := strings.TrimLeftFunc(title, func(r rune) bool {
+		return unicode.Is(unicode.White_Space, r)
+	})
+	return ValidateGroupName(cutGroupName(trimmed))
+}
+
 // OrganizeRefKind はドラッグしたカードの種類である。
 type OrganizeRefKind string
 
@@ -31,7 +46,8 @@ const (
 	OrganizeGroup OrganizeRefKind = "group"
 )
 
-// OrganizeRef はドラッグしたカード 1 枚である（research.md R-4）。操作は画面の順の並びで受け取る。
+// OrganizeRef はドラッグしたカード 1 枚である（specs/050-drag-organize/research.md R-4）。操作は
+// カードを画面の順の並びで受け取る。
 type OrganizeRef struct {
 	Kind OrganizeRefKind
 	ID   int64
@@ -74,4 +90,13 @@ func PlanGroupMerge(target int64, playlists, parents []GroupMergeHolder, edges [
 		}
 	}
 	return plan
+}
+
+// OrganizeMove はカードの移動の入力である（data-model.md「Operations」の Move）。From はカードを
+// ドラッグして出した開いているグループ、To は入れるグループで、どちらも 0 なら無い。To が無ければ
+// From から外すだけ（ライブラリに落とした）である。
+type OrganizeMove struct {
+	Items []OrganizeRef
+	From  int64
+	To    int64
 }

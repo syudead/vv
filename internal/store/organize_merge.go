@@ -176,12 +176,6 @@ func mergeImage(ctx context.Context, tx *sql.Tx, groups []int64, into int64) (un
 	return image, nil
 }
 
-// imageScopeSpec は newImageScope の入力 1 つである。
-type imageScopeSpec struct {
-	table, column string
-	key           any
-}
-
 // appendScopeSpecs は表 table の列 column が ids の各値の範囲を specs に足す。
 func appendScopeSpecs(specs []imageScopeSpec, table, column string, ids []int64) []imageScopeSpec {
 	for _, id := range ids {

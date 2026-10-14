@@ -109,13 +109,21 @@ func (s *server) CreateGroup(w http.ResponseWriter, r *http.Request) {
 	s.writeGroup(w, r, http.StatusCreated, group, err, "Could not create the group.")
 }
 
-// RenameGroup はグループの名前を変える（PATCH /api/groups/{id}）。
+// RenameGroup はグループの名前を変える（PATCH /api/groups/{id}）。undoToken があり、ドラッグの操作の
+// 先があれば、名前の変更をそのトークンの取り消しに含めるため internal/app の Organizer を通す
+// （specs/050-drag-organize/contracts/screen-api.md）。応答と誤りはどちらでも同じである。
 func (s *server) RenameGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
-	var body gen.GroupName
+	var body gen.GroupRename
 	if !s.readJSONBody(w, r, &body) || !s.groupsConfigured(w) {
 		return
 	}
-	group, err := s.groups.RenameGroup(r.Context(), id, body.Name)
+	var group domain.Group
+	var err error
+	if body.UndoToken != nil && *body.UndoToken != "" && s.organizer != nil {
+		group, err = s.organizer.RenameGroup(r.Context(), id, body.Name, *body.UndoToken)
+	} else {
+		group, err = s.groups.RenameGroup(r.Context(), id, body.Name)
+	}
 	s.writeGroup(w, r, http.StatusOK, group, err, "Could not rename the group.")
 }
 

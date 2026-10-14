@@ -13,14 +13,7 @@ import (
 )
 
 // マージ（specs/050-drag-organize/data-model.md「Operations」の Merge、research.md R-5）の保存層の
-// テスト。
-
-func groupRef(id int64) domain.OrganizeRef {
-	return domain.OrganizeRef{Kind: domain.OrganizeGroup, ID: id}
-}
-func videoRef(id int64) domain.OrganizeRef {
-	return domain.OrganizeRef{Kind: domain.OrganizeVideo, ID: id}
-}
+// テスト。groupRef と videoRef は organize_move_test.go のものを使う。
 
 // merge は items を into へマージし、取り消しの像を返す。
 func merge(t *testing.T, db *DB, into int64, items ...domain.OrganizeRef) []byte {
@@ -74,8 +67,8 @@ func groupFavorite(t *testing.T, db *DB, id int64) bool {
 	return favorite
 }
 
-// organizeSnapshot はマージが書く表を、更新日時（取り消しも進める）を除いて 1 つの文字列にする。
-func organizeSnapshot(t *testing.T, db *DB) string {
+// mergeSnapshot はマージが書く表を、更新日時（取り消しも進める）を除いて 1 つの文字列にする。
+func mergeSnapshot(t *testing.T, db *DB) string {
 	t.Helper()
 	var b strings.Builder
 	for _, query := range []string{
@@ -114,7 +107,7 @@ func TestOrganizeMergeHandsOverAndUndoes(t *testing.T) {
 	playlist := playlistWith(t, db, "P", domain.PlaylistAdd{VideoIDs: []int64{ya}, GroupIDs: []int64{x}})
 	playlistBefore := playlistEntryIDs(t, db, playlist)
 	qItem := groupItemID(t, db, q, fmt.Sprintf("g:%d", x))
-	before := organizeSnapshot(t, db)
+	before := mergeSnapshot(t, db)
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
 
@@ -141,7 +134,7 @@ func TestOrganizeMergeHandsOverAndUndoes(t *testing.T) {
 	}
 
 	undo(t, db, image)
-	if after := organizeSnapshot(t, db); after != before {
+	if after := mergeSnapshot(t, db); after != before {
 		t.Fatalf("rows after undo:\n%s\nwant\n%s", after, before)
 	}
 	if groupFavorite(t, db, y) || !groupFavorite(t, db, x) {
@@ -160,7 +153,7 @@ func TestOrganizeMergeRemovesWhereTargetIsThere(t *testing.T) {
 	both := createGroup(t, db, "Both", domain.GroupAdd{VideoIDs: []int64{looseVideo(t, db, "b1")}, GroupIDs: []int64{x, y}})
 	playlist := playlistWith(t, db, "P", domain.PlaylistAdd{GroupIDs: []int64{y, x}})
 	playlistBefore := playlistEntryIDs(t, db, playlist)
-	before := organizeSnapshot(t, db)
+	before := mergeSnapshot(t, db)
 
 	image := merge(t, db, y, groupRef(x))
 
@@ -174,7 +167,7 @@ func TestOrganizeMergeRemovesWhereTargetIsThere(t *testing.T) {
 	}
 
 	undo(t, db, image)
-	if after := organizeSnapshot(t, db); after != before {
+	if after := mergeSnapshot(t, db); after != before {
 		t.Fatalf("rows after undo:\n%s\nwant\n%s", after, before)
 	}
 }
@@ -186,7 +179,7 @@ func TestOrganizeMergeMixedSelection(t *testing.T) {
 	ya, v, xa := looseVideo(t, db, "ya"), looseVideo(t, db, "v"), looseVideo(t, db, "xa")
 	y := createGroup(t, db, "Y", domain.GroupAdd{VideoIDs: []int64{ya}})
 	x := createGroup(t, db, "X", domain.GroupAdd{VideoIDs: []int64{xa, v}})
-	before := organizeSnapshot(t, db)
+	before := mergeSnapshot(t, db)
 
 	image := merge(t, db, y, videoRef(v), groupRef(x), videoRef(v))
 	assertEntries(t, db, y, "v:ya", "v:v", "v:xa")
@@ -195,7 +188,7 @@ func TestOrganizeMergeMixedSelection(t *testing.T) {
 	}
 
 	undo(t, db, image)
-	if after := organizeSnapshot(t, db); after != before {
+	if after := mergeSnapshot(t, db); after != before {
 		t.Fatalf("rows after undo:\n%s\nwant\n%s", after, before)
 	}
 }
@@ -210,7 +203,7 @@ func TestOrganizeMergeAutomaticGroupWritesUngroup(t *testing.T) {
 	rebuildIndex(t, db)
 	auto := readGroups(t, db)[0].ID
 	y := createGroup(t, db, "Y", domain.GroupAdd{VideoIDs: []int64{looseVideo(t, db, "ya")}})
-	before := organizeSnapshot(t, db)
+	before := mergeSnapshot(t, db)
 
 	image := merge(t, db, y, groupRef(auto))
 	assertEntries(t, db, y, "v:ya", "v:k1", "v:k2")
@@ -223,7 +216,7 @@ func TestOrganizeMergeAutomaticGroupWritesUngroup(t *testing.T) {
 	}
 
 	undo(t, db, image)
-	if after := organizeSnapshot(t, db); after != before {
+	if after := mergeSnapshot(t, db); after != before {
 		t.Fatalf("rows after undo:\n%s\nwant\n%s", after, before)
 	}
 	if grouping := folderGroupingOf(t, db, show); grouping.Mode != "" || grouping.GroupID != auto {
@@ -241,7 +234,7 @@ func TestOrganizeMergeRefusals(t *testing.T) {
 	parent := createGroup(t, db, "Parent", domain.GroupAdd{GroupIDs: []int64{y}})
 	grand := createGroup(t, db, "Grand", domain.GroupAdd{GroupIDs: []int64{parent}})
 	other := createGroup(t, db, "Other", domain.GroupAdd{VideoIDs: []int64{looseVideo(t, db, "o")}})
-	before := organizeSnapshot(t, db)
+	before := mergeSnapshot(t, db)
 	missing := int64(999999)
 	for name, c := range map[string]struct {
 		into  int64
@@ -259,7 +252,7 @@ func TestOrganizeMergeRefusals(t *testing.T) {
 			t.Errorf("%s: error = %v, want %v", name, err, c.want)
 		}
 	}
-	if after := organizeSnapshot(t, db); after != before {
+	if after := mergeSnapshot(t, db); after != before {
 		t.Fatalf("refused merge wrote:\n%s\nwant\n%s", after, before)
 	}
 }
@@ -274,11 +267,11 @@ func TestOrganizeMergeUndoConflicts(t *testing.T) {
 	if _, err := db.Groups().AddGroupItems(ctx, y, domain.GroupAdd{VideoIDs: []int64{looseVideo(t, db, "late")}}); err != nil {
 		t.Fatal(err)
 	}
-	before := organizeSnapshot(t, db)
+	before := mergeSnapshot(t, db)
 	if err := db.Organize().Undo(ctx, image); !errors.Is(err, domain.ErrUndoConflict) {
 		t.Fatalf("Undo error = %v, want ErrUndoConflict", err)
 	}
-	if after := organizeSnapshot(t, db); after != before {
+	if after := mergeSnapshot(t, db); after != before {
 		t.Fatalf("conflicting undo wrote:\n%s\nwant\n%s", after, before)
 	}
 }
@@ -294,11 +287,11 @@ func TestOrganizeMergeUndoConflictsOnTargetRename(t *testing.T) {
 	if _, err := db.Groups().RenameGroup(ctx, y, "Renamed"); err != nil {
 		t.Fatal(err)
 	}
-	before := organizeSnapshot(t, db)
+	before := mergeSnapshot(t, db)
 	if err := db.Organize().Undo(ctx, image); !errors.Is(err, domain.ErrUndoConflict) {
 		t.Fatalf("Undo error = %v, want ErrUndoConflict", err)
 	}
-	if after := organizeSnapshot(t, db); after != before {
+	if after := mergeSnapshot(t, db); after != before {
 		t.Fatalf("conflicting undo wrote:\n%s\nwant\n%s", after, before)
 	}
 }
@@ -319,7 +312,7 @@ func TestOrganizeMergeKeepsAnEmptiedTarget(t *testing.T) {
 			if _, err := db.sql.Exec(`delete from group_items where group_id = ?`, x); err != nil {
 				t.Fatal(err)
 			}
-			before := organizeSnapshot(t, db)
+			before := mergeSnapshot(t, db)
 
 			image := merge(t, db, y, groupRef(x))
 			if !groupExists(t, db, y) {
@@ -331,7 +324,7 @@ func TestOrganizeMergeKeepsAnEmptiedTarget(t *testing.T) {
 			assertEntries(t, db, y)
 
 			undo(t, db, image)
-			if after := organizeSnapshot(t, db); after != before {
+			if after := mergeSnapshot(t, db); after != before {
 				t.Fatalf("rows after undo:\n%s\nwant\n%s", after, before)
 			}
 		})
