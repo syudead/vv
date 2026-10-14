@@ -17,7 +17,9 @@ import {
   generateThumbnailEditFixtures,
   generateThumbnailUploadFixtures,
   generateWorkInfoFixtures,
+  generateWorkInfoPluginFixtures,
 } from "./media-fixtures.mjs";
+import { buildWorkInfoPlugin } from "./work-info-plugin.mjs";
 import { FAKE_COMFYUI_PORT } from "./fake-comfyui.mjs";
 
 const webRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -38,6 +40,9 @@ const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
 const scanIssuesMediaDir = path.join(runRoot, "scan-issues-media");
 const thumbnailEditMediaDir = path.join(runRoot, "thumbnail-edit-media");
 const workInfoMediaDir = path.join(runRoot, "work-info-media");
+const workInfoPluginsMediaDir = path.join(runRoot, "work-info-plugins-media");
+// work-info-plugins.e2e.ts が設定画面から上げる作品情報プラグイン。動画のフォルダの外に置く。
+const workInfoPlugin = path.join(runRoot, "plugins", "e2e-works.wasm");
 // ページから上げる画像は動画のフォルダの外に置き、スキャンが拾わないようにする。
 const thumbnailUploadDir = path.join(runRoot, "thumbnail-uploads");
 // Go のビルドキャッシュは実行をまたいで使い回す。実行ごとの runRoot に置くと
@@ -70,6 +75,9 @@ function run() {
     generateThumbnailEditFixtures(thumbnailEditMediaDir);
     generateThumbnailUploadFixtures(thumbnailUploadDir);
     generateWorkInfoFixtures(workInfoMediaDir);
+    generateWorkInfoPluginFixtures(workInfoPluginsMediaDir);
+    mkdirSync(path.dirname(workInfoPlugin), { recursive: true });
+    buildWorkInfoPlugin(repoRoot, workInfoPlugin, { ...process.env, GOCACHE: goCache });
     const mediaContract = spawnSync(
       "go",
       ["test", "./internal/media", "-run", "^TestVideoEncode.*WithFFmpeg$", "-count=1"],
@@ -122,6 +130,8 @@ function run() {
           MDM_E2E_THUMBNAIL_EDIT_MEDIA_DIR: thumbnailEditMediaDir,
           MDM_E2E_THUMBNAIL_UPLOAD_DIR: thumbnailUploadDir,
           MDM_E2E_WORK_INFO_MEDIA_DIR: workInfoMediaDir,
+          MDM_E2E_WORK_INFO_PLUGINS_MEDIA_DIR: workInfoPluginsMediaDir,
+          MDM_E2E_WORK_INFO_PLUGIN: workInfoPlugin,
           MDM_E2E_COMFYUI_URL: `http://127.0.0.1:${String(FAKE_COMFYUI_PORT)}`,
         },
         stdio: "inherit",

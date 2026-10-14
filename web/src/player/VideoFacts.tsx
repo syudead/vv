@@ -41,6 +41,7 @@ import { technicalSummary } from "./properties";
 import EditEntry from "./thumbnailEdit/EditEntry";
 import UploadEntry, { useThumbnailUpload } from "./thumbnailUpload/UploadEntry";
 import DetailsEntry, { type DetailsEntryProps } from "./detailsEditor/DetailsEntry";
+import FetchEntry from "./workInfoFetch/FetchEntry";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
 import WorkInfo from "./WorkInfo";
 
@@ -286,7 +287,8 @@ export default function VideoFacts({
     onReplace: (video: Video, mark: DetailMark) => void;
     onRefresh: () => void;
   };
-  /** サムネイルの編集画面を開いた・閉じた。 */
+  /** サムネイルの編集画面か作品情報の取得のダイアログを開いた・閉じた。開いている間、
+   *  動画ページのキーを止める。 */
   onEditingChange?: (open: boolean) => void;
   /** 作品情報の編集画面の入口に載せる戻り先と、開いたときに入口へフォーカスを置くか。 */
   details?: DetailsEntryProps["details"];
@@ -392,6 +394,17 @@ export default function VideoFacts({
             {/* 「Add to playlist」の後、サムネイルの操作の前に置く。所有者にだけ、プレイヤーが
                 出ていなくても置く（specs/047-video-work-info/ui-design.md「Video page: entry」）。 */}
             <DetailsEntry video={video} owner={owner} details={details} />
+            {/* 「Edit details」の後、「Use current frame as thumbnail」の前に置き、詳細を埋める
+                2 つの道を並べる。所有者にだけ、承認済みのプラグインがあるときだけ出る
+                （specs/049-work-info-plugins/ui-design.md「Video page: fetch entry」）。 */}
+            {owner && (
+              <FetchEntry
+                video={video}
+                capture={capture}
+                onApplied={(applied, mark) => onChanged?.(applied, mark)}
+                onDialogChange={onEditingChange}
+              />
+            )}
             {owner && capture !== undefined && (
               <CaptureButton
                 capture={capture}

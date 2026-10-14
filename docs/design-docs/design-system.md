@@ -385,6 +385,13 @@ Below `lg` the parts stack and the page scrolls as one.
 so neither fits a form of a dozen fields saved with one button
 ([047 UI design, Changes to the design system](../../specs/047-video-work-info/ui-design.md#changes-to-the-design-system)).
 
+`FormDialog` takes `size="wide"` for a form that sets values side by side for
+comparison, such as the current and the fetched details of a video: it stops
+at `max-w-2xl` instead of `max-w-lg`, and below `sm` it spans the screen with
+the 16px margin as the default size does. Without `cancelLabel` its footer
+holds only the submit button, for a last step whose only action is closing
+([049 UI design, Changes to the design system](../../specs/049-work-info-plugins/ui-design.md#changes-to-the-design-system)).
+
 The showcase (`/design-system`) renders every example block, the list page in
 each of its states, and the dialogs behind their buttons, so the maintainer
 confirms the patterns at 1440px and 390px.

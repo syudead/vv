@@ -1,0 +1,431 @@
+import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { useEffect, useState } from "react";
+import { MemoryRouter, Route, Routes } from "react-router";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { setRenderedAudience as forgetAudience, type Video } from "../api/client";
+import { installFakeEventSource } from "../api/fakeEventSource";
+import type { WorkInfoPlugin } from "../api/workInfoPlugins";
+import { type Audience, AudienceProvider } from "../auth/audience";
+import { ToastProvider } from "../ui/Toast";
+import { TooltipProvider } from "../ui/shadcn/tooltip";
+import type { PlayerControls } from "./playerControls";
+import VideoPage from "./VideoPage";
+
+// 動画ページの作品情報の取得（specs/049-work-info-plugins/ui-design.md「Video page: fetch
+// entry」「Fetch dialog」）。プラグインの実行はサーバーのものなので、ここでは偽のサーバーが
+// 検索・取得・反映に答える。
+
+vi.mock("./VideoPlayer", () => ({
+  default: function VideoPlayerMock(props: {
+    onControls: (controls: PlayerControls | null) => void;
+  }) {
+    const [initial] = useState(props);
+    useEffect(() => () => initial.onControls(null), [initial]);
+    return <div data-testid="video-player" />;
+  },
+  canStartPlayback: () => true,
+  initialPlayerStatus: {
+    loading: false,
+    reconnecting: false,
+    playing: false,
+    userActive: true,
+    ended: false,
+    stalled: false,
+    positioned: false,
+  },
+}));
+
+const video: Video = {
+  id: 7,
+  title: "テスト動画",
+  public: false,
+  sizeBytes: 1_000,
+  addedAt: "2026-09-01T00:00:00Z",
+  updatedAt: "2026-09-01T00:00:00Z",
+  fileCreatedAt: "2026-09-01T00:00:00Z",
+  playable: true,
+  probeState: "done",
+  thumbnailState: "done",
+  thumbnailUrl: "/api/videos/7/thumbnail",
+  previewState: "done",
+  durationMs: 242_000,
+  width: 1920,
+  height: 1080,
+  container: "mp4",
+  videoCodec: "h264",
+  audioCodec: "aac",
+  location: { path: "/media/テスト動画.mp4", openable: false },
+  tags: [{ id: 1, name: "既存", manual: true, fromFolder: false, tentative: false }],
+};
+
+const works: WorkInfoPlugin = {
+  id: 3,
+  name: "works",
+  fileName: "works.wasm",
+  operations: ["search", "fetch"],
+  digest: "d",
+  state: "approved",
+  settings: [
+    { key: "token", label: "API token", secret: true, required: true, set: true },
+  ],
+  network: true,
+  updatedAt: 0,
+};
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+function failure(status: number, body: Record<string, unknown>): Response {
+  return json({ message: "failed", ...body }, status);
+}
+
+const workUrl = "https://works.example/w/1";
+
+/** server は経路ごとの応答を差し替えられる偽のサーバーである。 */
+const server = {
+  video,
+  plugins: [works] as WorkInfoPlugin[],
+  search: vi.fn<(body: unknown) => Response>(),
+  fetch: vi.fn<(body: unknown) => Response>(),
+  apply: vi.fn<(body: unknown) => Response>(),
+  requests: [] as string[],
+};
+
+function renderPage(audience: Audience = "owner") {
+  return render(
+    <TooltipProvider>
+      <ToastProvider>
+        <MemoryRouter initialEntries={["/videos/7"]}>
+          <AudienceProvider audience={audience}>
+            <Routes>
+              <Route path="/videos/:id" element={<VideoPage />} />
+            </Routes>
+          </AudienceProvider>
+        </MemoryRouter>
+      </ToastProvider>
+    </TooltipProvider>,
+  );
+}
+
+async function openPage(audience: Audience = "owner") {
+  renderPage(audience);
+  await screen.findByRole("heading", { level: 1, name: "テスト動画" });
+}
+
+function entry() {
+  return screen.findByRole("button", { name: "Fetch work info from a plugin" });
+}
+
+async function openDialog() {
+  await openPage();
+  const user = userEvent.setup();
+  await user.click(await entry());
+  const dialog = await screen.findByRole("dialog", { name: "Fetch work info" });
+  return { user, dialog };
+}
+
+/** fetchFromUrl は URL を打って取得し、比較の段を開く。 */
+async function fetchFromUrl() {
+  const opened = await openDialog();
+  const query = within(opened.dialog).getByRole("textbox", {
+    name: "Search words or the work's page URL",
+  });
+  await opened.user.clear(query);
+  await opened.user.type(query, workUrl);
+  await opened.user.click(within(opened.dialog).getByRole("button", { name: "Fetch" }));
+  await within(opened.dialog).findByRole("checkbox", { name: "Title" });
+  return opened;
+}
+
+function heading() {
+  // ダイアログが開いている間、後ろのページは読み上げから隠れる。
+  return screen.getByRole("heading", { level: 1, hidden: true });
+}
+
+describe("VideoPage work-info fetch", () => {
+  const fetchMock = vi.fn<typeof fetch>();
+
+  beforeEach(() => {
+    server.video = video;
+    server.plugins = [works];
+    server.search.mockReset();
+    server.fetch.mockReset();
+    server.apply.mockReset();
+    server.fetch.mockImplementation(() =>
+      json(
+        { fetchId: "F1", expiresAt: 0, title: "取得した題名", tags: ["既存", "新しい"] },
+        201,
+      ),
+    );
+    server.requests = [];
+    installFakeEventSource();
+    forgetAudience(null);
+    fetchMock.mockReset();
+    fetchMock.mockImplementation((input, init) => {
+      const url = String(input);
+      const method = init?.method ?? "GET";
+      server.requests.push(`${method} ${url.split("?")[0]!}`);
+      const body: unknown =
+        typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
+      if (url === "/api/auth/session") return Promise.resolve(json({ state: "owner" }));
+      if (url === "/api/work-info-plugins")
+        return Promise.resolve(json({ plugins: server.plugins }));
+      if (url === "/api/work-info-plugins/3/search")
+        return Promise.resolve(server.search(body));
+      if (url === "/api/videos/7/work-info-fetches")
+        return Promise.resolve(server.fetch(body));
+      if (url === "/api/videos/7/work-info-fetches/F1/apply")
+        return Promise.resolve(server.apply(body));
+      if (url === "/api/thumbnail-edits/readiness")
+        return Promise.resolve(json({ connection: true }));
+      if (url === "/api/videos/7") return Promise.resolve(json(server.video));
+      if (url === "/api/videos/7/related") return Promise.resolve(json({ items: [] }));
+      if (url === "/api/videos/7/subtitles")
+        return Promise.resolve(json({ subtitles: [] }));
+      if (url === "/api/tags") return Promise.resolve(json([]));
+      return Promise.resolve(json({}));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("ゲストには取得の入口が無く、プラグインの一覧も読まない", async () => {
+    await openPage("guest");
+    expect(
+      screen.queryByRole("button", { name: "Fetch work info from a plugin" }),
+    ).toBeNull();
+    expect(server.requests).not.toContain("GET /api/work-info-plugins");
+  });
+
+  it("承認済みのプラグインが無ければ、所有者にも入口を出さない", async () => {
+    server.plugins = [
+      { ...works, state: "unapproved" },
+      { ...works, id: 4, state: "invalid" },
+    ];
+    await openPage();
+    await waitFor(() => expect(server.requests).toContain("GET /api/work-info-plugins"));
+    expect(
+      screen.queryByRole("button", { name: "Fetch work info from a plugin" }),
+    ).toBeNull();
+  });
+
+  it("入口は Edit details の後、サムネイルの操作の前にある", async () => {
+    await openPage();
+    const fetchEntry = await entry();
+    const details = screen.getByRole("link", { name: "Edit details" });
+    expect(
+      details.compareDocumentPosition(fetchEntry) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    // 後ろの操作はサムネイルの編集（プレイヤーの有無に依らず所有者に出る）。
+    const edit = screen.getByRole("button", { name: "Edit thumbnail with ComfyUI" });
+    expect(
+      fetchEntry.compareDocumentPosition(edit) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  it("語で検索し、候補を選び、題名とタグを反映すると、ページが応答の動画を示してトーストを出す", async () => {
+    server.search.mockImplementation(() =>
+      json({
+        candidates: [
+          { url: workUrl, title: "候補の作品", detail: "2024 · 映画" },
+          { url: "https://other.example/w/2", title: "別の作品" },
+        ],
+      }),
+    );
+    server.apply.mockImplementation(() =>
+      json({
+        video: { ...video, title: "取得した題名" },
+        skippedTags: [],
+      }),
+    );
+    const { user, dialog } = await openDialog();
+    const query = within(dialog).getByRole("textbox", {
+      name: "Search words or the work's page URL",
+    });
+    expect(query).toHaveProperty("value", "テスト動画");
+    await user.click(within(dialog).getByRole("button", { name: "Search" }));
+    expect(server.search).toHaveBeenCalledWith({ query: "テスト動画" });
+    await within(dialog).findByText("2 matches");
+    expect(within(dialog).getByText("works.example")).toBeDefined();
+    await user.click(within(dialog).getByRole("button", { name: /候補の作品/ }));
+    await within(dialog).findByRole("checkbox", { name: "Title" });
+    expect(server.fetch).toHaveBeenCalledWith({ pluginId: 3, url: workUrl });
+    // 取得した値は「既存」が動画に付いているので 1 つだけ新しい。
+    expect(within(dialog).getByText("1 new")).toBeDefined();
+    expect(within(dialog).getByRole("checkbox", { name: "Title" })).toHaveProperty(
+      "ariaChecked",
+      "true",
+    );
+    expect(
+      within(dialog).getByRole("button", { name: "Back to the matches" }),
+    ).toBeDefined();
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    expect(server.apply).toHaveBeenCalledWith({ fields: ["title", "tags"] });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(heading().textContent).toBe("取得した題名");
+    expect(await screen.findByText("Applied to the video.")).toBeDefined();
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByRole("button", {
+          name: "Fetch work info from a plugin",
+        }),
+      ),
+    );
+  });
+
+  it("値の無い項目と今と同じ項目は選べず、その理由を出す", async () => {
+    server.fetch.mockImplementation(() =>
+      json({ fetchId: "F1", expiresAt: 0, tags: ["既存"] }, 201),
+    );
+    const { dialog } = await fetchFromUrl();
+    const title = within(dialog).getByRole("checkbox", { name: "Title" });
+    const tags = within(dialog).getByRole("checkbox", { name: "Tags" });
+    expect(title).toHaveProperty("disabled", true);
+    expect(title).toHaveProperty("ariaChecked", "false");
+    expect(tags).toHaveProperty("disabled", true);
+    expect(within(dialog).getByText("Not in the result")).toBeDefined();
+    expect(within(dialog).getByText("Same as now")).toBeDefined();
+    expect(within(dialog).getByRole("button", { name: "Apply selected" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+  });
+
+  it("プラグインの失敗は理由とプラグインの文を出し、動画を変えない", async () => {
+    server.fetch.mockImplementation(() =>
+      failure(502, { code: "plugin_failed", pluginMessage: "rate limited" }),
+    );
+    const { user, dialog } = await openDialog();
+    const query = within(dialog).getByRole("textbox", {
+      name: "Search words or the work's page URL",
+    });
+    await user.clear(query);
+    await user.type(query, workUrl);
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toContain("Couldn't fetch: The plugin failed.");
+    expect(alert.textContent).toContain('The plugin said: "rate limited"');
+    expect(query).toHaveProperty("value", workUrl);
+    expect(server.apply).not.toHaveBeenCalled();
+    expect(heading().textContent).toBe("テスト動画");
+  });
+
+  it("足りない設定は警告と Open Settings を出す", async () => {
+    server.search.mockImplementation(() =>
+      failure(409, { code: "plugin_settings_missing", settingKeys: ["token"] }),
+    );
+    const { user, dialog } = await openDialog();
+    await user.click(within(dialog).getByRole("button", { name: "Search" }));
+    const alert = await within(dialog).findByRole("alert");
+    expect(alert.textContent).toContain("works needs API token first.");
+    expect(
+      within(alert).getByRole("link", { name: "Open Settings" }).getAttribute("href"),
+    ).toBe("/settings#work-info-plugins");
+  });
+
+  it("期限切れの結果は知らせと Fetch again を出し、動画を変えず、取り直すと新しい比較になる", async () => {
+    server.apply.mockImplementationOnce(() =>
+      failure(409, { code: "work_info_fetch_stale" }),
+    );
+    const { user, dialog } = await fetchFromUrl();
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    await within(dialog).findByText(
+      "This result is out of date. Fetch it again to apply it.",
+    );
+    expect(within(dialog).getByRole("button", { name: "Apply selected" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(heading().textContent).toBe("テスト動画");
+    await user.click(within(dialog).getByRole("button", { name: "Fetch again" }));
+    await waitFor(() => expect(server.fetch).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(
+        within(dialog).queryByText(
+          "This result is out of date. Fetch it again to apply it.",
+        ),
+      ).toBeNull(),
+    );
+    expect(server.fetch).toHaveBeenLastCalledWith({ pluginId: 3, url: workUrl });
+    expect(within(dialog).getByRole("button", { name: "Apply selected" })).toHaveProperty(
+      "disabled",
+      false,
+    );
+  });
+
+  it("付けなかったタグがあれば、結果の段で却下したものを先に並べ、Done で閉じる", async () => {
+    server.apply.mockImplementation(() =>
+      json({
+        video: { ...video, title: "取得した題名" },
+        skippedTags: [
+          { name: "悪い名前", reason: "invalid" },
+          { name: "却下した", reason: "rejected" },
+        ],
+      }),
+    );
+    const { user, dialog } = await fetchFromUrl();
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    await within(dialog).findByText("Applied, but some tags were left out");
+    expect(
+      within(dialog)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual([
+      "却下した — you rejected this tag before",
+      "悪い名前 — not a valid tag name",
+    ]);
+    expect(heading().textContent).toBe("取得した題名");
+    expect(within(dialog).queryByRole("button", { name: "Cancel" })).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("承認を外されたプラグインの失敗では一覧を読み直し、残りが無ければ閉じた後に入口が消える", async () => {
+    server.search.mockImplementation(() => {
+      server.plugins = [{ ...works, state: "unapproved" }];
+      return failure(409, { code: "plugin_not_approved" });
+    });
+    const { user, dialog } = await openDialog();
+    await user.click(within(dialog).getByRole("button", { name: "Search" }));
+    await within(dialog).findByText(/The plugin is no longer approved/);
+    await waitFor(() =>
+      expect(
+        server.requests.filter((r) => r === "GET /api/work-info-plugins"),
+      ).toHaveLength(2),
+    );
+    await waitFor(() =>
+      expect(within(dialog).getByRole("button", { name: "Search" })).toHaveProperty(
+        "disabled",
+        true,
+      ),
+    );
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(
+      screen.queryByRole("button", { name: "Fetch work info from a plugin" }),
+    ).toBeNull();
+  });
+
+  it("取得しかできないプラグインに URL でない文を渡すと、欄の誤りを出して送らない", async () => {
+    server.plugins = [{ ...works, operations: ["fetch"] }];
+    const { user, dialog } = await openDialog();
+    const query = within(dialog).getByRole("textbox", { name: "The work's page URL" });
+    expect(query).toHaveProperty("value", "");
+    await user.type(query, "作品の名前");
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+    expect(
+      within(dialog).getByText("Paste a page URL starting with http:// or https://."),
+    ).toBeDefined();
+    expect(server.fetch).not.toHaveBeenCalled();
+  });
+});
