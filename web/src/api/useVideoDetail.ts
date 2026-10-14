@@ -67,6 +67,31 @@ function withGroupOf(saved: Video, current: Video | undefined, group?: number): 
   return video;
 }
 
+/**
+ * groupEventConcerns は、`group` の知らせ（変わったグループとその祖先の id、ids）が動画ページの
+ * グループの行や関連動画のグループの並びに関わるかを返す（specs/048-groups/research.md R-13）。
+ * shown は表示中のグループ、group は動画を開いたグループ（`?group`）の id である。
+ *
+ * サーバーは、開いたグループが動画を持てばそれを、そうでなければ動画を直接の項目に持つ
+ * グループのうち id のいちばん小さいものを文脈にする（research.md R-9、
+ * internal/store/related.go の groupContext）。
+ * - 表示中のグループが無い: 動画がどこかのグループに足されたかもしれないので、いつも関わる。
+ * - 開いたグループが知らせにある: 中身が変わったか、動画が足されて文脈になったかもしれない。
+ * - 開いたグループを表示中: 文脈は他のグループの変化では替わらないので、それだけを見る。
+ * - それ以外（フォールバック中）: 表示中のグループか、それより id の小さいグループが知らせに
+ *   あれば関わる。より小さいグループに動画が足されると、文脈がそちらへ替わる。
+ */
+function groupEventConcerns(
+  ids: readonly number[],
+  shown: number | undefined,
+  group?: number,
+): boolean {
+  if (shown === undefined) return true;
+  if (group !== undefined && ids.includes(group)) return true;
+  if (shown === group) return false;
+  return ids.some((changed) => changed <= shown);
+}
+
 /** loadsStarted は、どの画面でも動画 1 件の取得を始めるたびに進める通し番号である。 */
 let loadsStarted = 0;
 
@@ -160,7 +185,7 @@ export function useVideoDetail(
   const setFavoriteRef = useRef<(favorite: boolean) => Promise<void>>(() =>
     Promise.resolve(),
   );
-  // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない。
+  // 変化の知らせ（/api/events）のうち video は所有者だけのもので、ゲストには group だけが届く。
   const owner = useAudience() === "owner";
 
   // 取得に渡すグループ。下の取得の効果より先に置き、動画が変わったときもその取得から新しい値を使う。
@@ -340,12 +365,20 @@ export function useVideoDetail(
       return undefined;
     });
 
-    // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
+    // グループの名前・項目・並び順が変わったら、グループの行（位置・本数・前後）を取り直す
+    // （specs/048-groups/research.md R-13）。
+    const onGroup = (ids: readonly number[]) => {
+      if (groupEventConcerns(ids, current?.group?.id, contextRef.current.group))
+        void load();
+    };
+    // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。ゲストには group だけが
+    // 届くので、group だけを購読する（specs/048-groups/contracts/screen-api.md「/api/events」）。
     const unsubscribe = owner
       ? subscribeServerEvents({
           video: (changed) => {
             if (changed === id) void load();
           },
+          group: onGroup,
           // つなぎ直したときは、切れていた間の知らせを受け取っていないので取り直す。
           // 最初の接続では、開いたときの取得と同じ内容を2回続けて取らないよう、まだ準備中
           // （取得とつながるまでの間に準備が済んだかもしれない）のときだけ取り直す（issue 674）。
@@ -354,7 +387,12 @@ export function useVideoDetail(
               void load();
           },
         })
-      : () => undefined;
+      : subscribeServerEvents({
+          group: onGroup,
+          open: (reconnected) => {
+            if (reconnected) void load();
+          },
+        });
     void load();
     return () => {
       alive = false;
@@ -390,6 +428,12 @@ export type RelatedState =
       related: RelatedVideos;
       /** 続きのページの読み込み。省くと `idle`。 */
       more?: "idle" | "loading" | "failed";
+      /**
+       * 最初のページを読んだ回数（同じ動画・同じ開いたグループの間で数える）。グループの知らせで
+       * 読み直すたびに増える。グループの並びの画面はこれで作り直し、窓の外に読み足した古い
+       * メンバーと読み足し中の要求を捨てる。省くと 0。
+       */
+      generation?: number;
     }
   | { kind: "failed"; id: number };
 
@@ -437,21 +481,63 @@ export function useRelatedVideos(
       setState({ kind: "ready", id, related: { items: [] }, more: "idle" });
       return;
     }
-    const controller = new AbortController();
-    void (async () => {
+    let controller = new AbortController();
+    // 一度でも並びを出したか。出した後の読み直しは、読み込み中に戻さず今の並びを見せ続け、
+    // 失敗しても今の並びを残す。
+    let shownOnce = false;
+    let generation = 0;
+    const show = (related: RelatedVideos) => {
+      shownOnce = true;
+      generation += 1;
+      setState({ kind: "ready", id, related, more: "idle", generation });
+    };
+    const load = async () => {
+      const mine = controller;
       try {
-        const related = await getRelatedVideos(id, controller.signal, undefined, group);
-        setState({ kind: "ready", id, related, more: "idle" });
+        const related = await getRelatedVideos(id, mine.signal, undefined, group);
+        if (mine.signal.aborted) return;
+        show(related);
       } catch (failure) {
-        if (isAborted(failure)) return;
+        if (mine.signal.aborted || isAborted(failure)) return;
         if (failure instanceof RequestFailed && failure.status === 404) {
-          setState({ kind: "ready", id, related: { items: [] }, more: "idle" });
+          show({ items: [] });
           return;
         }
-        setState({ kind: "failed", id });
+        if (!shownOnce) setState({ kind: "failed", id });
       }
-    })();
+    };
+    // 開いたグループか並びのグループの名前・項目・並び順が変わったら、最初のページから読み直す
+    // （specs/048-groups/research.md R-13）。送信中の取得と続きの取得は打ち切る。続きの取得を
+    // 打ち切ったら、その読み込み中の印も外す。読み直しが失敗して今の並びを残しても、続きを
+    // もう一度読めるようにする。
+    const reload = () => {
+      controller.abort();
+      if (moreAbort.current !== null) {
+        moreAbort.current.abort();
+        moreAbort.current = null;
+        setState((previous) =>
+          previous.kind === "ready" && previous.more === "loading"
+            ? { ...previous, more: "idle" }
+            : previous,
+        );
+      }
+      controller = new AbortController();
+      void load();
+    };
+    // ゲストにも group は届く（specs/048-groups/contracts/screen-api.md「/api/events」）。
+    const unsubscribe = subscribeServerEvents({
+      group: (ids) => {
+        const current = stateRef.current;
+        const shown = current.kind === "ready" ? current.related.group?.id : undefined;
+        if (groupEventConcerns(ids, shown, group)) reload();
+      },
+      open: (reconnected) => {
+        if (reconnected) reload();
+      },
+    });
+    void load();
     return () => {
+      unsubscribe();
       controller.abort();
       moreAbort.current?.abort();
       moreAbort.current = null;

@@ -273,15 +273,32 @@ export function useVideos(
   // （specs/048-groups/contracts/screen-api.md「/api/events」）。video と取り込みの知らせは
   // 所有者のもの（specs/016-single-account-auth/ui-design.md「Top bar」）。
   const owner = useAudience() === "owner";
+  // refreshInPlace は下の useVideoPages が返すので、知らせの購読からは参照で呼ぶ。
+  const refreshInPlaceRef = useRef<() => void>(() => undefined);
   useEffect(() => {
     const queue = refreshQueue.current;
     // グループの名前か項目が変わった（specs/048-groups/research.md R-13）。表示中の
     // グループの項目だけを取り直す。ページの取得中は、そのページのために覚えておく。
+    // ライブラリのいちばん上は、他のグループに入っていないグループと、どのグループにも
+    // 入っていない動画からなる（specs/048-groups/data-model.md「Library items」）。別の画面で
+    // グループを作る・項目を足す・解散すると、表示中でないグループが現れたり動画がいちばん上から
+    // 外れたりするので、表示中のグループの取り直しでは足りず、読み込み済みのページを条件を
+    // 保ったまま読み直す（親 Issue 1040 の Edge Cases「もう一方の画面は最新の内容に更新される」）。
+    // ページの取得中なら、refreshInPlace がその取得のあとでやり直す。
     const group = (ids: readonly number[]) => {
+      if (libraryRef.current) {
+        refreshInPlaceRef.current();
+        return;
+      }
       if (pageLoading.current) {
         for (const id of ids) groupsChangedWhileLoading.current.add(id);
       }
       refreshGroups(groupsIn(itemsRef.current, ids));
+    };
+    // つなぎ直したときは、切れていた間のグループの変化を取り戻す。ライブラリは構成ごと読み直す。
+    const regroup = () => {
+      if (libraryRef.current) refreshInPlaceRef.current();
+      else refreshGroups(shownGroupIds(itemsRef.current));
     };
     const unsubscribe = owner
       ? subscribeServerEvents({
@@ -299,7 +316,7 @@ export function useVideos(
           open: (reconnected) => {
             if (reconnected) {
               refreshItems(shownVideoIds(itemsRef.current));
-              refreshGroups(shownGroupIds(itemsRef.current));
+              regroup();
             } else {
               refreshProcessingItems();
             }
@@ -307,9 +324,8 @@ export function useVideos(
         })
       : subscribeServerEvents({
           group,
-          // つなぎ直したときは、切れていた間のグループの変化を取り戻す。
           open: (reconnected) => {
-            if (reconnected) refreshGroups(shownGroupIds(itemsRef.current));
+            if (reconnected) regroup();
           },
         });
     // 復元した一覧は、別の画面にいた間に準備が進んでいることがある。
@@ -368,6 +384,7 @@ export function useVideos(
     loading,
     loadingMore,
   });
+  refreshInPlaceRef.current = refreshInPlace;
 
   return {
     items,
