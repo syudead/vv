@@ -55,6 +55,11 @@ func (s *fakePluginStore) WorkInfoPlugin(_ context.Context, id int64) (domain.Wo
 	return *s.plugin, nil
 }
 
+func (s *fakePluginStore) WorkInfoPluginModule(ctx context.Context, id int64) (domain.WorkInfoPlugin, []byte, error) {
+	plugin, err := s.WorkInfoPlugin(ctx, id)
+	return plugin, nil, err
+}
+
 func (s *fakePluginStore) SaveWorkInfoPlugin(_ context.Context, upload domain.WorkInfoPluginUpload, now time.Time) (domain.WorkInfoPlugin, bool, error) {
 	s.uploads = append(s.uploads, upload)
 	replaced := s.plugin != nil && upload.Manifest.Name != "" && s.plugin.Manifest.Name == upload.Manifest.Name

@@ -328,6 +328,18 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 // writeVideoDetail は動画1件の詳細を GET /api/videos/{id} の形で書く。表示名の設定の
 // 応答も同じ形にする（specs/029-video-overrides/contracts/screen-api.md §1）。
 func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video domain.Video) {
+	payload, err := s.videoDetail(r, video)
+	if err != nil {
+		s.internalError(w, "Could not load the video.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+// videoDetail は動画1件の詳細を GET /api/videos/{id} の形にする。要求の見る人に合わせて項目を絞る。
+// 作品情報の取得の結果の反映の応答も、これを video に入れる。
+func (s *server) videoDetail(r *http.Request, video domain.Video) (gen.Video, error) {
 	progress := s.progressFor(r.Context(), []domain.Video{video})
 	tags := s.tagsFor(r.Context(), []domain.Video{video})
 	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.UserKey), tags, video.UserKey)
@@ -345,8 +357,7 @@ func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video 
 		// 位置と本数だけを使うので、メンバーの詳細は読まない。
 		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, domain.GroupWindow{})
 		if err != nil {
-			s.internalError(w, "Could not load the video.", err)
-			return
+			return gen.Video{}, err
 		}
 		if grouped {
 			payload.Group = &gen.VideoGroupRef{
@@ -363,15 +374,12 @@ func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video 
 	if video.HasSeekThumbnail() && s.catalog != nil {
 		state, err := s.catalog.SeekThumbnailState(r.Context(), video)
 		if err != nil {
-			s.internalError(w, "Could not load the video.", err)
-			return
+			return gen.Video{}, err
 		}
 		apiState := gen.VideoSeekThumbnailState(state)
 		payload.SeekThumbnailState = &apiState
 	}
-
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, forAudience(audienceFrom(r.Context()), payload), s.logger)
+	return forAudience(audienceFrom(r.Context()), payload), nil
 }
 
 // detailFolder は動画1件の応答に載せる、代表の所在が置かれたフォルダを作る。

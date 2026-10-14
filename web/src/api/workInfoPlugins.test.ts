@@ -2,10 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RequestFailed } from "./client";
 import {
+  applyWorkInfoFetch,
   approveWorkInfoPlugin,
   deleteWorkInfoPlugin,
+  fetchWorkInfo,
   listWorkInfoPlugins,
   revokeWorkInfoPluginApproval,
+  searchWorkInfo,
   setWorkInfoPluginSettings,
   uploadWorkInfoPlugin,
   type WorkInfoPlugin,
@@ -107,5 +110,92 @@ describe("work-info plugins API", () => {
         .mockResolvedValue(json({ code: "not_found", message: "x" }, 404)),
     );
     await expect(deleteWorkInfoPlugin(9)).rejects.toBeInstanceOf(RequestFailed);
+  });
+
+  it("検索・取得・反映をそれぞれの経路へ送り、応答を返す", async () => {
+    const candidates = [{ url: "https://example.com/1", title: "One" }];
+    const fetched = {
+      fetchId: "f/1",
+      expiresAt: 1_800_000_600,
+      title: "One",
+      tags: ["drama"],
+    };
+    const applied = {
+      video: { id: 7 },
+      skippedTags: [{ name: "spoiler", reason: "rejected" }],
+    };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ candidates }))
+      .mockResolvedValueOnce(json(fetched, 201))
+      .mockResolvedValueOnce(json(applied));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await searchWorkInfo(4, "one")).toEqual(candidates);
+    expect(await fetchWorkInfo(7, 4, "https://example.com/1")).toEqual(fetched);
+    expect(await applyWorkInfoFetch(7, "f/1", ["title", "tags"])).toEqual(applied);
+
+    const sent = fetchMock.mock.calls.map(([input, init]) => ({
+      url: String(input),
+      method: init?.method,
+      body:
+        typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : undefined,
+    }));
+    expect(sent).toEqual([
+      { url: "/api/work-info-plugins/4/search", method: "POST", body: { query: "one" } },
+      {
+        url: "/api/videos/7/work-info-fetches",
+        method: "POST",
+        body: { pluginId: 4, url: "https://example.com/1" },
+      },
+      {
+        url: "/api/videos/7/work-info-fetches/f%2F1/apply",
+        method: "POST",
+        body: { fields: ["title", "tags"] },
+      },
+    ]);
+  });
+
+  it("実行の失敗は pluginMessage・host・settingKeys を持つ RequestFailed になる", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn<typeof fetch>()
+        .mockResolvedValueOnce(
+          json(
+            {
+              code: "plugin_failed",
+              reason: "network_error",
+              message: "The plugin could not reach a site.",
+              host: "example.com",
+              pluginMessage: "timeout",
+            },
+            502,
+          ),
+        )
+        .mockResolvedValueOnce(
+          json(
+            {
+              code: "plugin_settings_missing",
+              message: "x",
+              settingKeys: ["apiKey"],
+            },
+            409,
+          ),
+        ),
+    );
+    const failed = (await searchWorkInfo(4, "one").catch(
+      (e: unknown) => e,
+    )) as RequestFailed;
+    expect(failed).toBeInstanceOf(RequestFailed);
+    expect([failed.reason, failed.host, failed.pluginMessage]).toEqual([
+      "network_error",
+      "example.com",
+      "timeout",
+    ]);
+    const missing = (await fetchWorkInfo(7, 4, "https://example.com/").catch(
+      (e: unknown) => e,
+    )) as RequestFailed;
+    expect(missing.settingKeys).toEqual(["apiKey"]);
   });
 });

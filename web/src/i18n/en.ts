@@ -27,6 +27,8 @@ type ComfyUIModel = components["schemas"]["ComfyUIModel"];
 export interface ErrorDetails {
   limit?: number;
   tagName?: string;
+  /** 作品情報プラグインの要求を拒んだか届かなかったホスト（specs/049-work-info-plugins/ui-design.md）。 */
+  host?: string;
 }
 
 /** ErrorEntry は既知のエラー 1 つの文である。値を埋め込む文は関数にする。 */
@@ -184,6 +186,13 @@ const errorCodes = {
   plugin_too_large: "The plugin file is too large: up to 16 MB.",
   plugin_changed: "The plugin was replaced. Review it again before approving.",
   plugin_unusable: "This plugin has a problem and can't be used.",
+  plugin_not_approved: "The plugin is no longer approved.",
+  plugin_settings_missing: "The plugin needs settings first.",
+  plugin_failed: "The plugin failed.",
+  plugin_timed_out: "The plugin didn't finish in 30 seconds and was stopped.",
+  plugin_busy: "Another plugin is running. Try again in a moment.",
+  operation_unsupported: "The plugin can't do that.",
+  work_info_fetch_stale: "The result is out of date. Fetch it again.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {
@@ -313,6 +322,17 @@ const errorReasons = {
   merge_same_person: "A person can't be merged into themselves.",
   merge_same_organization: "An organization can't be merged into itself.",
   external_id_taken: "Another entry already has this ID.",
+  // 作品情報プラグインの実行の失敗（specs/049-work-info-plugins/ui-design.md の Error text）。
+  blocked_address: ({ host }) =>
+    host === undefined
+      ? "The plugin tried to reach VVMDM itself or a device on your network."
+      : `The plugin tried to reach ${host}, which is VVMDM itself or a device on your network.`,
+  network_error: ({ host }) =>
+    host === undefined
+      ? "The plugin couldn't reach a site."
+      : `The plugin couldn't reach ${host}.`,
+  memory_exceeded: "The plugin used more than 128 MB of memory and was stopped.",
+  output_too_large: "The plugin's answer was over 1 MB.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

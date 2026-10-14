@@ -115,6 +115,21 @@ describe("errorText", () => {
     );
   });
 
+  it("names the host a work-info plugin could not reach", () => {
+    const failure = new RequestFailed(502, "plugin_failed", "x", {
+      reason: "blocked_address",
+      host: "192.168.1.2",
+    });
+    expect(errorText(failure)).toBe(
+      "The plugin tried to reach 192.168.1.2, which is VVMDM itself or a device on your network.",
+    );
+    expect(
+      errorText(
+        new RequestFailed(502, "plugin_failed", "x", { reason: "network_error" }),
+      ),
+    ).toBe("The plugin couldn't reach a site.");
+  });
+
   it("falls back to the code when the reason is unknown", () => {
     const failure = new RequestFailed(404, "not_found", "Gone.", { reason: "brand_new" });
     expect(errorText(failure)).toBe("It wasn't found.");

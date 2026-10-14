@@ -60,6 +60,25 @@ func (s *WorkInfoPluginStore) WorkInfoPlugin(ctx context.Context, id int64) (dom
 	return readWorkInfoPlugin(ctx, s.sql, id)
 }
 
+// WorkInfoPluginModule はプラグイン id の行と、そのモジュールのバイト列を同じスナップショットから返す。
+// 問題のある行のモジュールは nil である。無ければ domain.ErrNotFound を返す。
+func (s *WorkInfoPluginStore) WorkInfoPluginModule(ctx context.Context, id int64) (domain.WorkInfoPlugin, []byte, error) {
+	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.WorkInfoPlugin{}, nil, fmt.Errorf("cannot read the work-info plugin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	plugin, err := readWorkInfoPlugin(ctx, tx, id)
+	if err != nil {
+		return domain.WorkInfoPlugin{}, nil, err
+	}
+	var module []byte
+	if err := tx.QueryRowContext(ctx, `select module from work_info_plugins where id = ?`, id).Scan(&module); err != nil {
+		return domain.WorkInfoPlugin{}, nil, fmt.Errorf("cannot read the work-info plugin module: %w", err)
+	}
+	return plugin, module, nil
+}
+
 // SaveWorkInfoPlugin はアップロード upload を保存し、保存した行と、既存の行を差し替えたかを返す。
 //
 // マニフェストの名前が既存の行と同じなら、1 つの取引でその行のモジュール・メタデータ・ダイジェスト・
