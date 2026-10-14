@@ -19,15 +19,16 @@ export type LoadRefusal = "thumbnail_upload_invalid" | "thumbnail_upload_too_lar
 export type LoadResult = { image: UploadImage } | { refusal: LoadRefusal };
 
 /**
- * loadUploadImage はファイルを復号する。見出しがアニメーションの WebP を名乗るか、復号できなければ
- * `thumbnail_upload_invalid`、見出しか復号した画像が 1 億 2000 万画素を越えれば
+ * loadUploadImage はファイルを復号する。見出しが PNG・JPEG・WebP と読めないか、アニメーションの
+ * WebP を名乗るか、復号できなければ `thumbnail_upload_invalid`、見出しか復号した画像が 1 億 2000 万画素を越えれば
  * `thumbnail_upload_too_large` で断る。見出しで断れるものは復号の前に断る。
  */
 export async function loadUploadImage(file: Blob): Promise<LoadResult> {
   const head = new Uint8Array(await file.slice(0, HEADER_READ_BYTES).arrayBuffer());
   const header = readImageHeader(head);
-  if (header?.animated === true) return { refusal: "thumbnail_upload_invalid" };
-  if (header !== null && header.width * header.height > UPLOAD_MAX_PIXELS)
+  // サーバーには描いた PNG しか届かないので、PNG・JPEG・WebP と確かめられない画像はここで断る。
+  if (header === null || header.animated) return { refusal: "thumbnail_upload_invalid" };
+  if (header.width * header.height > UPLOAD_MAX_PIXELS)
     return { refusal: "thumbnail_upload_too_large" };
   let bitmap: ImageBitmap;
   try {
@@ -44,7 +45,7 @@ export async function loadUploadImage(file: Blob): Promise<LoadResult> {
 
 /**
  * drawComposition は `canvas` を送る画像の大きさにし、比率 `aspect`（`null` は画像自身）の枠へ
- * 画像を形 `fit` で描く。余白は黒の上に、枠を覆うまで広げてぼかした画像を半分の濃さで重ねる。
+ * 画像を形 `fit` で描く。描く前に全体を黒で塗る。余白は黒の上に、枠を覆うまで広げてぼかした画像を半分の濃さで重ねる。
  * サムネイルは透けない JPEG になり、明るいテーマにも暗いテーマにも同じファイルを出すので、
  * テーマの色は使わない。ぼかしを描けないブラウザーでは黒だけになり、プレビューも同じになる。
  */
@@ -61,11 +62,11 @@ export function drawComposition(
   if (context === null) return;
   context.imageSmoothingQuality = "high";
   const placed = placeImage(image, size, fit);
-  if (placed.width < size.width || placed.height < size.height) {
-    context.fillStyle = "black";
-    context.fillRect(0, 0, size.width, size.height);
+  // 毎回黒で塗り直し、前の描画を残さない。透ける画像の透けた部分も、保存する JPEG と同じく黒になる。
+  context.fillStyle = "black";
+  context.fillRect(0, 0, size.width, size.height);
+  if (placed.width < size.width || placed.height < size.height)
     drawBackdrop(context, image, size);
-  }
   context.drawImage(image.bitmap, placed.x, placed.y, placed.width, placed.height);
 }
 

@@ -235,6 +235,9 @@ the thumbnail is what the preview showed
 | `Whole image` (default) | The whole image, centred; the rest of the frame is black under a blurred copy of the image at half opacity. An image within 1 px of the frame's aspect fills it |
 | `Fill frame` | The image covers the frame at zoom 1× to 4×; the owner moves it, and it never leaves a gap |
 
+Every drawing starts from a black canvas, so the transparent parts of an image
+show black in the preview, as they do in the stored JPEG.
+
 The server's fit then finds an image already at the video's aspect, so the
 centre crop of the fit removes nothing, and the stored source keeps the same
 framing for an edit from the current thumbnail.
@@ -247,7 +250,8 @@ framing for an edit from the current thumbnail.
 | The original's resolution on the canvas | Some browsers cap a canvas far below 120 megapixels, and the stored source keeps at most 2048 px anyway |
 
 The server never sees the original, so the page refuses it before the preview
-for the server's reasons: a file it cannot decode or a WebP whose `VP8X` header
-sets the animation flag (`thumbnail_upload_invalid`), and an image over 120
+for the server's reasons: a file whose header is not a PNG, JPEG or WebP one,
+a file it cannot decode, or a WebP whose `VP8X` header sets the animation flag
+(`thumbnail_upload_invalid`), and an image over 120
 megapixels by its header or its decoded size (`thumbnail_upload_too_large`).
 The server still checks the PNG it receives.
