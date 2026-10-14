@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/ui-design.md
-sourceHash: b480522630d69fc818a6865a79399fac7592dab47485f532cdb60f02f778bed3
+sourceHash: ab249f9b59b6fd704d3383e354b45eed73a0bb47bc179c7ce931697778e39396
 ---
 
 # UI デザイン: 外部のサービスから作品情報を取得する作品情報プラグイン {#ui-design-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -74,7 +74,7 @@ flowchart LR
 | 拒否、大きすぎる | Choose a file up to 16 MB. | 何かを送る前 |
 | 追加の失敗 | Couldn't add the plugin: {reason} | 節の失敗の行 |
 | 追加した (トースト) | Added {name}. Approve it to use it. | `{name}` は名前。名前がないときはファイル名 |
-| 置き換えた (トースト) | Replaced {name}. Approve it again to use it. | アップロードしたプラグインの id がすでに一覧にあった |
+| 置き換えた (トースト) | Replaced {name}. Approve it again to use it. | アップロードが `200` で返された。`201` は一覧の内容にかかわらず Added を表示する |
 | 追加したが使えない (トースト) | Added {name}, but it can't be used. | `state: invalid` |
 | 空 | No plugins yet | `EmptyState` のタイトル |
 | 空のときのヒント | Add a .wasm plugin file to fetch titles and tags on the video page. | `EmptyState` の説明 |
@@ -226,7 +226,7 @@ flowchart LR
 
 ### 追加 {#adding}
 
-`Add plugin` はブラウザのファイル選択を `.wasm` ファイルに限って開く。16 MiB を超えるファイルは、何かを送る前に節の失敗の行で拒否する。ファイルを送る間、ボタンは回転して `Adding…` と表示し、行の操作は使えるままである。`201` か `200` のとき一覧を読み直し、トーストが何が起きたかを伝え ([文言、Settings の節の文言](#settings-section-text))、フォーカスは追加した行の最初の操作に移る。失敗すると、ヘッダーの下の `destructive` の `Alert` である節の失敗の行を、次の追加まで表示する。問題のあるファイルも `invalid` の行として追加する (Issue の境界ケース)。
+`Add plugin` はブラウザのファイル選択を `.wasm` ファイルに限って開く。16 MiB を超えるファイルは、何かを送る前に節の失敗の行で拒否する。ファイルを送る間、ボタンは回転して `Adding…` と表示し、行の操作は使えるままである。`201` か `200` のとき一覧を読み直し、トーストが何が起きたかをそのステータスで伝え (画面 API の定めのとおり `201` は追加、`200` は置き換えであり、古い可能性のある画面上の一覧によらない) ([文言、Settings の節の文言](#settings-section-text))、フォーカスは追加した行の最初の操作に移る。失敗すると、ヘッダーの下の `destructive` の `Alert` である節の失敗の行を、次の追加まで表示する。問題のあるファイルも `invalid` の行として追加する (Issue の境界ケース)。
 
 ### プラグインの行 {#plugin-row}
 

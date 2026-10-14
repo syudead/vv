@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/data-model.md
-sourceHash: 0254c98a61f7915c35379ff57ca972a3dca1851b9f3d2487a5b01877d4d24625
+sourceHash: 124a5f0ffa3dfa3594d8e2044127811da8a114262d03b482353b546944ea4884
 ---
 
 # データモデル: 作品情報プラグイン {#data-model-work-info-plugins}
@@ -9,7 +9,7 @@ sourceHash: 0254c98a61f7915c35379ff57ca972a3dca1851b9f3d2487a5b01877d4d24625
 
 ## マイグレーション {#migration}
 
-`00043_work_info_plugins.sql` が `work_info_plugins` と `work_info_plugin_settings` を作り、`00047_work_info_plugin_generation.sql` が `work_info_plugins.generation` を加える。別のマイグレーションが先に `main` に入ったら、それぞれの番号は次の空いている番号に移る。
+この機能はマイグレーションを 2 つ加える。`00046_work_info_plugins.sql` が `work_info_plugins` と `work_info_plugin_settings` を作り、`00047_work_info_plugin_generation.sql` が `work_info_plugins.generation` を加える。統合のマージより前に別のマイグレーションが `main` に入ったら、それぞれの番号は次の空いている番号に移る。
 
 ## `work_info_plugins` {#work_info_plugins}
 

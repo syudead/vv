@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/plan.md
-sourceHash: e77271062ba635f6ea003f5a8a282d6632894539344cb94b8bcccdb1b8a0ca88
+sourceHash: ca601fb20a5c455646063b35ccbb0079e1d2b709f5f8cf4f41c91384fa1e4a2f
 ---
 
 # 実装計画: 外部のサービスから作品情報を取得する作品情報プラグイン {#implementation-plan-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -62,7 +62,7 @@ Issue は `ui` ラベルを持つので、`design` ステージが 2 つの画�
 **この機能に固有の文脈**:
 
 - 新しい Go の依存は 1 つ、`github.com/tetratelabs/wazero` である。それ自身の依存を持たず、コンテナと Windows アプリのために `CGO_ENABLED=0` でビルドできる ([R-1](research.md#r-1-wazero-runs-the-plugins-inside-the-vv-process))。新しい Web の依存はない。
-- マイグレーションは 1 つ、`00043_work_info_plugins.sql` ([data-model.md、マイグレーション](data-model.md#migration))。
+- マイグレーションは 2 つ。テーブルのための `00046_work_info_plugins.sql` と、プラグインの世代のための `00047_work_info_plugin_generation.sql` ([data-model.md、マイグレーション](data-model.md#migration))。
 - 所有者の設定以外の誰かが宛先を選ぶ、vv で最初の外向きの HTTP である。ComfyUI と Ollama のクライアントは意図して LAN のアドレスに到達し、今後もそうする。アドレスの確認はプラグインのアダプターの中にだけある。
 - テストとブラウザーテストは、`internal/wasmplugin/testdata/` の下のソースから `GOOS=wasip1 GOARCH=wasm` でプラグインをビルドする ([R-12](research.md#r-12-test-plugins-are-built-from-go-sources-when-the-tests-run))。
 
@@ -108,7 +108,7 @@ specs/049-work-info-plugins/
 | --- | --- |
 | `internal/domain` | 設定の宣言とその規則を伴うマニフェスト、プラグインの状態と問題、実行の要求と結果の型、上限、実行の失敗、取得した結果 |
 | `internal/wasmplugin` (新しいアダプター) | モジュールの検査、上限を伴う wazero での実行、`vv` ホスト関数、HTTP クライアントとそのアドレスの確認 |
-| `internal/store` | マイグレーション、`WorkInfoPluginStore`、`OverrideStore` の適用の操作 |
+| `internal/store` | 両方のマイグレーション、`WorkInfoPluginStore`、`OverrideStore` の適用の操作 |
 | `internal/app` | `WorkInfoPlugins`: アップロード、承認、承認の取り消し、削除、検索、結果のキャッシュを伴う取得、適用。ランタイムのポート |
 | `internal/httpapi`、`api/openapi.yaml` | [contracts/screen-api.md](contracts/screen-api.md) のルート、`Error.pluginMessage` と `Error.host` |
 | `cmd/mdm` | ランタイム、ストアの役割、ユースケースの組み立て |
@@ -116,7 +116,7 @@ specs/049-work-info-plugins/
 | `web/e2e` | ブラウザーテスト |
 | `docs/`、`ARCHITECTURE.md`、`.golangci.yml` | 設計文書、プラグインの作者向けの手引き、サブシステムの地図とアダプターの一覧、depguard |
 
-**新しいパス**: `internal/wasmplugin/`、`internal/wasmplugin/testdata/`、`internal/store/migrations/00043_work_info_plugins.sql`、`internal/store/work_info_plugins.go`、`internal/app/work_info_plugins.go`、`internal/httpapi/work_info_plugins.go`、`web/src/settings/WorkInfoPluginsSection.tsx`、`web/src/player/workInfoFetch/`、`web/e2e/work-info-plugins.e2e.ts`、`docs/design-docs/work-info-plugins.md`、`docs/how-to/work-info-plugins.md`。
+**新しいパス**: `internal/wasmplugin/`、`internal/wasmplugin/testdata/`、`internal/store/migrations/00046_work_info_plugins.sql`、`internal/store/migrations/00047_work_info_plugin_generation.sql`、`internal/store/work_info_plugins.go`、`internal/app/work_info_plugins.go`、`internal/httpapi/work_info_plugins.go`、`web/src/settings/WorkInfoPluginsSection.tsx`、`web/src/player/workInfoFetch/`、`web/e2e/work-info-plugins.e2e.ts`、`docs/design-docs/work-info-plugins.md`、`docs/how-to/work-info-plugins.md`。
 
 **構成の決定**: ランタイムと、アドレスの確認を伴う HTTP クライアントは 1 つのアダプター `internal/wasmplugin` である。クライアントはホスト関数に仕えるためだけにあり、アダプターは互いを import できないからである。既存のプロバイダーのアダプターは、制限のない自分のクライアントを持ち続ける。取得のダイアログは、046 がアップロードの入口でそうしたように、`web/src/player/` の下の `thumbnailEdit/` の隣にある独自のディレクトリである。
 
@@ -153,7 +153,7 @@ flowchart LR
 
 ### 画面の API で作品情報プラグインを追加、承認、削除する {#add-approve-and-remove-work-info-plugins-through-the-screen-api}
 
-**範囲**: 両方のテーブルを伴うマイグレーションと `WorkInfoPluginStore` ([data-model.md](data-model.md))。アップロード (検査、保存、まだ宣言されている設定の値を保つ名前による置き換え)、ダイジェストによる承認、承認の取り消し、削除、設定の値の書き込み ([R-13](research.md#r-13-plugin-settings-are-declared-in-the-manifest-and-passed-only-in-that-plugins-request)) のための `app.WorkInfoPlugins`。046 と共有するマルチパートの読み取りを伴うルート `GET`/`POST /api/work-info-plugins`、`PUT`/`DELETE …/{id}/approval`、`PUT …/{id}/settings`、`DELETE …/{id}` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。`cmd/mdm` での組み立て。running-vv.md の Data and recovery のプラグインのテーブル。
+**範囲**: テーブルのマイグレーションと、両方のテーブルを伴う `WorkInfoPluginStore` ([data-model.md](data-model.md))。アップロード (検査、保存、まだ宣言されている設定の値を保つ名前による置き換え)、ダイジェストによる承認、承認の取り消し、削除、設定の値の書き込み ([R-13](research.md#r-13-plugin-settings-are-declared-in-the-manifest-and-passed-only-in-that-plugins-request)) のための `app.WorkInfoPlugins`。046 と共有するマルチパートの読み取りを伴うルート `GET`/`POST /api/work-info-plugins`、`PUT`/`DELETE …/{id}/approval`、`PUT …/{id}/settings`、`DELETE …/{id}` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。`cmd/mdm` での組み立て。running-vv.md の Data and recovery のプラグインのテーブル。
 
 **依存**: 作品情報プラグインを WebAssembly のサンドボックスで実行する。
 
@@ -169,11 +169,11 @@ flowchart LR
 
 ### 画面の API で作品情報を検索、取得、適用する {#search-fetch-and-apply-work-information-through-the-screen-api}
 
-**範囲**: `app.WorkInfoPlugins` で、宣言された操作を持つ承認済みのプラグインに限って、要求の中にそのプラグインの設定の値を入れ、必須のものが未設定のときは実行の前に `plugin_settings_missing` として、ランタイムのポートを通じて検索と取得をすること、動画、ダイジェスト、世代に結び付いた 10 分間の結果のキャッシュ ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))、タグ名の規則でタグ名を絞った適用。プラグインの行のダイジェスト、承認、世代を読み直し、それから表示名と仮のタグを 1 つのトランザクションで書き、拒否した名前を報告する `OverrideStore` の操作 ([R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported))。検索、取得、適用のルート、`Error.pluginMessage`、`Error.host`、`Error.settingKeys` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。
+**範囲**: 世代のマイグレーション ([data-model.md、マイグレーション](data-model.md#migration))。`app.WorkInfoPlugins` で、宣言された操作を持つ承認済みのプラグインに限って、要求の中にそのプラグインの設定の値を入れ、必須のものが未設定のときは実行の前に `plugin_settings_missing` として、ランタイムのポートを通じて検索と取得をすること、動画、ダイジェスト、世代に結び付いた 10 分間の結果のキャッシュ ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))、タグ名の規則でタグ名を絞った適用。プラグインの行のダイジェスト、承認、世代を読み直し、それから表示名と仮のタグを 1 つのトランザクションで書き、拒否した名前を報告する `OverrideStore` の操作 ([R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported))。検索、取得、適用のルート、`Error.pluginMessage`、`Error.host`、`Error.settingKeys` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。
 
 **依存**: 画面の API で作品情報プラグインを追加、承認、削除する。
 
-**受け入れ**: `task check` が通り、`task generate` による差分がない。偽のランタイムによる app とストアのテストで、検索の候補が返されること、実行の要求がそのプラグイン自身の設定の値を持ち、別のプラグインのものを持たないこと、欠けている必須の設定がランタイムを呼ばずに `plugin_settings_missing` で返されること、取得が動画を変えないこと、`title` と `tags` だけを適用すると表示名が変わり、タグが仮のものとして加わり、それ以外は何も変わらないこと、拒否した名前と無効な名前が `skippedTags` で報告され、付けられないこと、失敗した適用が両方のフィールドを変えないこと、未承認のプラグインが `plugin_not_approved` で返されること、10 分の後、置き換えの後、承認の取り消しの後の適用が `work_info_fetch_stale` で返されること、app の確認の後で適用のトランザクションの前にプラグインが置き換えられるストアのテストが何も書かず `work_info_fetch_stale` で返されることを示す。ハンドラーのテストで、契約の各実行の失敗がそのステータスとフィールドで返されること、すべてのルートがゲストに `401` `unauthenticated` を返すことを示す。
+**受け入れ**: `task check` が通り、`task generate` による差分がない。偽のランタイムによる app とストアのテストで、検索の候補が返されること、実行の要求がそのプラグイン自身の設定の値を持ち、別のプラグインのものを持たないこと、欠けている必須の設定がランタイムを呼ばずに `plugin_settings_missing` で返されること、取得が動画を変えないこと、`title` と `tags` だけを適用すると表示名が変わり、タグが仮のものとして加わり、それ以外は何も変わらないこと、拒否した名前と無効な名前が `skippedTags` で報告され、付けられないこと、失敗した適用が両方のフィールドを変えないこと、未承認のプラグインが `plugin_not_approved` で返されること、10 分の後、置き換えの後、承認の取り消しの後、同じバイト列を再アップロードして再び承認した後、承認を取り消して同じダイジェストで再び承認した後の適用が `work_info_fetch_stale` で返されること、app の確認の後で適用のトランザクションの前にプラグインが置き換えられるストアのテストが何も書かず `work_info_fetch_stale` で返されることを示す。ハンドラーのテストで、契約の各実行の失敗がそのステータスとフィールドで返されること、すべてのルートがゲストに `401` `unauthenticated` を返すことを示す。
 
 ### 動画のページでプラグインから作品情報を取得する {#fetch-work-information-from-a-plugin-on-the-video-page}
 
