@@ -430,6 +430,39 @@ func TestTagGroupAttachesToDescendantsAndDissolves(t *testing.T) {
 	}
 }
 
+// 旧ルートのタグ化（TagFolderGroup）も、自動グループに手で足した動画と子グループの動画へタグを
+// 手で付けてから解散する。フォルダ由来のメンバーには従来どおりフォルダ名のタグだけが付く。フォルダ由来のタグを得ないメンバーがタグもグループも失わない。
+func TestTagFolderGroupAttachesToHandAddedMembers(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	show := fixturePath("/media/Show")
+	upsertFolderVideo(t, db, fixturePath("/media/Show/1.mp4"), "k1")
+	upsertFolderVideo(t, db, fixturePath("/media/Show/2.mp4"), "k2")
+	rebuildIndex(t, db)
+	id := readGroups(t, db)[0].ID
+	extra, nested := looseVideo(t, db, "kx"), looseVideo(t, db, "ky")
+	child := createGroup(t, db, "Child", domain.GroupAdd{VideoIDs: []int64{nested}})
+	if _, err := db.Groups().AddGroupItems(ctx, id, domain.GroupAdd{VideoIDs: []int64{extra}, GroupIDs: []int64{child}}); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := db.FolderGroups().TagFolderGroup(ctx, show)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keys, err := queryStringsForTest(db, `select content_key from video_tags where tag_id = ? and tentative = 0 order by content_key`, result.Tag.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// k1 と k2 はフォルダ名からタグを得るので、手では付けない。
+	if !slices.Equal(keys, []string{"kx", "ky"}) {
+		t.Fatalf("tagged keys = %v", keys)
+	}
+	if groupExists(t, db, id) || !groupExists(t, db, child) {
+		t.Fatal("only the folder's group should be dissolved")
+	}
+}
+
 // 各操作が、変えたグループとその祖先の id で GroupsChanged を確定後に出す。解散では元の親と
 // その祖先も入る。失敗した操作と何も変えない操作は出さない。
 func TestGroupEditsPublishGroupsChanged(t *testing.T) {
@@ -478,6 +511,14 @@ func TestGroupEditsPublishGroupsChanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	expect("remove", child, parent, top)
+	before := groupTablesSnapshot(t, db)
+	if _, err := groups.RemoveGroupItems(ctx, child, nil); err != nil {
+		t.Fatal(err)
+	}
+	expect("remove nothing")
+	if after := groupTablesSnapshot(t, db); after != before {
+		t.Fatalf("an empty removal wrote:\n%s\nwant\n%s", after, before)
+	}
 	if _, err := groups.AddGroupItems(ctx, child, domain.GroupAdd{GroupIDs: []int64{top}}); !errors.Is(err, domain.ErrGroupCycle) {
 		t.Fatal(err)
 	}
