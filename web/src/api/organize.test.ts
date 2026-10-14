@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RequestFailed } from "./client";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
-import { bundleOnto, moveCards, reorderGroup, undoOrganize } from "./organize";
+import { bundleOnto, groupVideos, moveCards, reorderGroup, undoOrganize } from "./organize";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -51,6 +51,45 @@ describe("organize API", () => {
         url: "/api/organize/reorder",
         method: "POST",
         body: { groupId: 7, itemIds: [13] },
+      },
+    ]);
+  });
+
+  it("groupVideos は動画を画面の順に送り、from が null なら送らない。新しいグループの id を返し、一覧の控えを捨てる", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ undoToken: "t1", groupId: 30 }))
+      .mockResolvedValueOnce(json({ undoToken: "t2", groupId: 31 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    holdSnapshot();
+    await expect(groupVideos([5, 3], 4, 7)).resolves.toEqual({
+      undoToken: "t1",
+      groupId: 30,
+    });
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    await expect(groupVideos([5], 4, null)).resolves.toEqual({
+      undoToken: "t2",
+      groupId: 31,
+    });
+
+    expect(sent(fetchMock)).toEqual([
+      {
+        url: "/api/organize/group",
+        method: "POST",
+        body: {
+          items: [
+            { kind: "video", id: 5 },
+            { kind: "video", id: 3 },
+          ],
+          target: 4,
+          from: 7,
+        },
+      },
+      {
+        url: "/api/organize/group",
+        method: "POST",
+        body: { items: [{ kind: "video", id: 5 }], target: 4 },
       },
     ]);
   });

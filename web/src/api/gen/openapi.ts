@@ -2376,7 +2376,11 @@ export interface paths {
         /**
          * グループの名前を変える
          * @description 所有者だけ。名前の規則は作成と同じで、応答の `name` は前後の空白を取り除いた名前である。
-         *     グループが無ければ 404 `not_found`。
+         *     グループが無ければ 404 `not_found`。`undoToken` が、このグループを作った
+         *     `POST /api/organize/group` の生きているトークンなら、名前を変えた後の行をそのトークンの
+         *     取り消しの像にするので、取り消しは名前を変えたグループを消す
+         *     （specs/050-drag-organize/contracts/screen-api.md）。それ以外のトークンは何も変えず、応答と
+         *     誤りはトークンが無いときと同じで、トークンが原因で失敗することはない。
          */
         patch: operations["renameGroup"];
         trace?: never;
@@ -2499,6 +2503,31 @@ export interface paths {
          *     そのグループに無ければ 404 `group_target_not_found` で、何も書かない。
          */
         post: operations["organizeReorder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organize/group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ドラッグした動画と落とした先の動画のグループを作り、取り消しのトークンを返す
+         * @description 所有者だけ。落とした先の動画 `target` の題名を先頭 100 文字に切った名前で新しいグループを作り、
+         *     `target`、続いて `items` の動画を画面の順に入れる。`from` があれば、新しいグループが
+         *     `from` の中で `target` の位置を取り、`target` と `items` は `from` から抜ける
+         *     （specs/050-drag-organize/research.md R-6）。1 つの取引で行い、応答の `groupId` が新しい
+         *     グループ、`undoToken` で取り消せる。`items` が空かグループを含めば 400 `invalid_request`。
+         *     動画か `from` が無いか、動画が `from` に無ければ 404 `group_target_not_found` で、何も書かない。
+         */
+        post: operations["organizeGroup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3694,6 +3723,13 @@ export interface components {
             /** @description グループの名前。サーバーが前後の空白を取り除いてから長さを数える */
             name: string;
         };
+        /** @description PATCH /api/groups/{id} の本文（specs/050-drag-organize/contracts/screen-api.md） */
+        GroupRename: {
+            /** @description グループの名前。サーバーが前後の空白を取り除いてから長さを数える */
+            name: string;
+            /** @description このグループを作った POST /api/organize/group の `undoToken`。名前の変更をその取り消しに含める */
+            undoToken?: string;
+        };
         /** @description GET /api/groups の応答 */
         GroupListPage: {
             /** @description 見る人に見せるグループを、どの深さのものも自然な名前の順に */
@@ -3746,6 +3782,19 @@ export interface components {
              * @description この項目のすぐ後ろへ移す。無ければ先頭へ移す
              */
             after?: number;
+        };
+        OrganizeGroup: {
+            items: components["schemas"]["OrganizeRefs"];
+            /**
+             * Format: int64
+             * @description 落とした先の動画
+             */
+            target: number;
+            /**
+             * Format: int64
+             * @description 新しいグループを置く、開いているグループ
+             */
+            from?: number;
         };
         OrganizeMove: {
             items: components["schemas"]["OrganizeRefs"];
@@ -8158,7 +8207,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GroupName"];
+                "application/json": components["schemas"]["GroupRename"];
             };
         };
         responses: {
@@ -8344,6 +8393,33 @@ export interface operations {
         };
         responses: {
             /** @description 並べ替えた。取り消しのトークン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    organizeGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeGroup"];
+            };
+        };
+        responses: {
+            /** @description グループを作った。新しいグループの id と取り消しのトークン */
             200: {
                 headers: {
                     [name: string]: unknown;

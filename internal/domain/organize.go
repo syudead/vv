@@ -1,6 +1,10 @@
 package domain
 
-import "errors"
+import (
+	"errors"
+	"strings"
+	"unicode"
+)
 
 // ドラッグの操作とその取り消し（specs/050-drag-organize/data-model.md「Operations」「Undo image」）。
 // 操作は 1 つの取引で行い、変えた行の前後の像を返す。取り消しは、今の行が後の像と等しいときだけ
@@ -19,6 +23,17 @@ var ErrUndoExpired = errors.New("undo expired")
 type OrganizeResult struct {
 	UndoToken string
 	GroupID   int64
+}
+
+// GroupNameFromTitle は「グループにする」が作るグループの名前を、落とした先の動画の題名 title から
+// 決める。先頭の Unicode White_Space を除き、先頭 GroupNameMaxLength 符号位置に切ってから
+// ValidateGroupName で整える（specs/050-drag-organize/data-model.md「Rules」）。先に空白を除くのは、
+// 長い空白で始まる題名が空白だけに切られて空の名前にならないためである。
+func GroupNameFromTitle(title string) (string, error) {
+	trimmed := strings.TrimLeftFunc(title, func(r rune) bool {
+		return unicode.Is(unicode.White_Space, r)
+	})
+	return ValidateGroupName(cutGroupName(trimmed))
 }
 
 // OrganizeRefKind はドラッグしたカードの種類である。

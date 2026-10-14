@@ -2017,6 +2017,15 @@ type GroupRef struct {
 	Name string `json:"name"`
 }
 
+// GroupRename PATCH /api/groups/{id} の本文（specs/050-drag-organize/contracts/screen-api.md）
+type GroupRename struct {
+	// Name グループの名前。サーバーが前後の空白を取り除いてから長さを数える
+	Name string `json:"name"`
+
+	// UndoToken このグループを作った POST /api/organize/group の `undoToken`。名前の変更をその取り消しに含める
+	UndoToken *string `json:"undoToken,omitempty"`
+}
+
 // GroupTagResult defines model for GroupTagResult.
 type GroupTagResult struct {
 	// Created タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false
@@ -2239,6 +2248,18 @@ type OrganizeBundle struct {
 
 	// VideoIds ドラッグした動画の id
 	VideoIds []int64 `json:"videoIds"`
+}
+
+// OrganizeGroup defines model for OrganizeGroup.
+type OrganizeGroup struct {
+	// From 新しいグループを置く、開いているグループ
+	From *int64 `json:"from,omitempty"`
+
+	// Items ドラッグしたカード。画面の順
+	Items OrganizeRefs `json:"items"`
+
+	// Target 落とした先の動画
+	Target int64 `json:"target"`
 }
 
 // OrganizeMove defines model for OrganizeMove.
@@ -4131,7 +4152,7 @@ type SetFolderGroupingJSONRequestBody = FolderGroupingRequest
 type CreateGroupJSONRequestBody = GroupCreate
 
 // RenameGroupJSONRequestBody defines body for RenameGroup for application/json ContentType.
-type RenameGroupJSONRequestBody = GroupName
+type RenameGroupJSONRequestBody = GroupRename
 
 // AddGroupItemsJSONRequestBody defines body for AddGroupItems for application/json ContentType.
 type AddGroupItemsJSONRequestBody = GroupMembers
@@ -4159,6 +4180,9 @@ type MergeOrganizationsJSONRequestBody = CreditMergeRequest
 
 // OrganizeBundleJSONRequestBody defines body for OrganizeBundle for application/json ContentType.
 type OrganizeBundleJSONRequestBody = OrganizeBundle
+
+// OrganizeGroupJSONRequestBody defines body for OrganizeGroup for application/json ContentType.
+type OrganizeGroupJSONRequestBody = OrganizeGroup
 
 // OrganizeMoveJSONRequestBody defines body for OrganizeMove for application/json ContentType.
 type OrganizeMoveJSONRequestBody = OrganizeMove
@@ -4390,6 +4414,9 @@ type ServerInterface interface {
 	// OrganizeBundle 動画を落とした先の動画を代表にしてバージョンとしてまとめ、取り消しのトークンを返す
 	// (POST /api/organize/bundle)
 	OrganizeBundle(w http.ResponseWriter, r *http.Request)
+	// OrganizeGroup ドラッグした動画と落とした先の動画のグループを作り、取り消しのトークンを返す
+	// (POST /api/organize/group)
+	OrganizeGroup(w http.ResponseWriter, r *http.Request)
 	// OrganizeMove カードをグループへ入れるか、グループの間で動かすか、グループから外し、取り消しのトークンを返す
 	// (POST /api/organize/move)
 	OrganizeMove(w http.ResponseWriter, r *http.Request)
@@ -6075,6 +6102,20 @@ func (siw *ServerInterfaceWrapper) OrganizeBundle(w http.ResponseWriter, r *http
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.OrganizeBundle(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OrganizeGroup operation middleware
+func (siw *ServerInterfaceWrapper) OrganizeGroup(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OrganizeGroup(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9182,6 +9223,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/items/{itemId}/move", wrapper.MoveGroupItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/tag", wrapper.TagGroup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/reorder", wrapper.OrganizeReorder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/group", wrapper.OrganizeGroup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/move", wrapper.OrganizeMove)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/bundle", wrapper.OrganizeBundle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/undo", wrapper.OrganizeUndo)

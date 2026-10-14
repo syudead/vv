@@ -21,6 +21,13 @@ type Organizer interface {
 	// Reorder はグループ groupID の項目 itemIDs を、その順のまままとめて項目 afterItemID の
 	// すぐ後ろへ移す（nil なら先頭）。
 	Reorder(ctx context.Context, groupID int64, itemIDs []int64, afterItemID *int64) (domain.OrganizeResult, error)
+	// Group は動画 targetID に videoIDs を落としてグループを作る（fromID があればその中の
+	// targetID の位置に置く）。結果の GroupID が新しいグループである。
+	Group(ctx context.Context, videoIDs []int64, targetID int64, fromID *int64) (domain.OrganizeResult, error)
+	// RenameGroup はグループ id の名前を name にし、token がそのグループを作った「グループにする」の
+	// 生きているトークンなら、名前の変更をその取り消しに含める。応答と誤りは Groups.RenameGroup と
+	// 同じで、トークンが原因で失敗しない。
+	RenameGroup(ctx context.Context, id int64, name, token string) (domain.Group, error)
 	// Move はカードを move.To へ足し、move.From から外す。ドラッグしたグループが To か To の祖先なら
 	// domain.ErrGroupCycle。
 	Move(ctx context.Context, move domain.OrganizeMove) (domain.OrganizeResult, error)
@@ -59,6 +66,46 @@ func (s *server) OrganizeReorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeOrganizeResult(w, result)
+}
+
+// OrganizeGroup はドラッグした動画と落とした先の動画のグループを作る（POST /api/organize/group）。
+func (s *server) OrganizeGroup(w http.ResponseWriter, r *http.Request) {
+	var body gen.OrganizeGroup
+	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
+		return
+	}
+	videoIDs, ok := s.organizeVideoIDs(w, body.Items)
+	if !ok || !s.organizerConfigured(w) {
+		return
+	}
+	result, err := s.organizer.Group(r.Context(), videoIDs, body.Target, body.From)
+	if err != nil {
+		s.writeGroupError(w, err, "Could not make the group.")
+		return
+	}
+	s.writeOrganizeResult(w, result)
+}
+
+// organizeVideoIDs はドラッグしたカード items を動画の id にする。空か多すぎるか、動画でない
+// カードがあれば 400 を書いて false を返す。
+func (s *server) organizeVideoIDs(w http.ResponseWriter, items gen.OrganizeRefs) ([]int64, bool) {
+	switch {
+	case len(items) == 0:
+		s.invalidRequest(w, "items must contain at least one item.")
+		return nil, false
+	case len(items) > maxVideoTagsIDs:
+		s.invalidRequest(w, fmt.Sprintf("items must contain at most %d items.", maxVideoTagsIDs))
+		return nil, false
+	}
+	ids := make([]int64, 0, len(items))
+	for _, item := range items {
+		if item.Kind != gen.OrganizeRefKindVideo {
+			s.invalidRequest(w, "items must contain only videos.")
+			return nil, false
+		}
+		ids = append(ids, item.Id)
+	}
+	return ids, true
 }
 
 // OrganizeMove はカードをグループへ入れるか、グループの間で動かすか、グループから外す
