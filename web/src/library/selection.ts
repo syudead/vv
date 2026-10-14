@@ -63,20 +63,44 @@ export function toggleVideo(selection: LibrarySelection, id: number): LibrarySel
 }
 
 /**
- * setGroup はグループの全メンバーを選択に入れて、グループとして覚える。外すときは全メンバーを
- * 外す（グループも外れる）。
+ * setGroup はグループの全メンバーを選択に入れて、グループとして覚える。外すときはグループを外し、
+ * メンバーのうち、選んだままの別のグループのメンバーでもあるものを残して外す（deselectGroup）。
  */
 export function setGroup(
   selection: LibrarySelection,
   group: SelectedGroup,
   selected: boolean,
 ): LibrarySelection {
-  if (!selected) return removeIds(selection, group.videoIds);
+  if (!selected) return deselectGroup(selection, group);
   const ids = new Set(selection.ids);
   for (const id of group.videoIds) ids.add(id);
   const groups = new Map(selection.groups);
   groups.set(group.id, copyGroup(group));
   return { ids, groups };
+}
+
+/**
+ * deselectGroup はグループを選択から外す。メンバーを 2 つのグループが共有するとき、選んだままの
+ * 別のグループのメンバーは残すので、そのグループも選んだままになる
+ * （specs/048-groups/ui-design.md「Selection with shared members」）。
+ */
+function deselectGroup(
+  selection: LibrarySelection,
+  group: SelectedGroup,
+): LibrarySelection {
+  const kept = new Set<number>();
+  for (const [key, other] of selection.groups) {
+    if (key === group.id) continue;
+    for (const id of other.videoIds) kept.add(id);
+  }
+  const removed = removeIds(
+    selection,
+    group.videoIds.filter((id) => !kept.has(id)),
+  );
+  if (!removed.groups.has(group.id)) return removed;
+  const groups = new Map(removed.groups);
+  groups.delete(group.id);
+  return { ids: removed.ids, groups };
 }
 
 /** copyGroup は選んだグループを、呼び出し側の値と切り離して覚える。 */

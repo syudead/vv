@@ -97,7 +97,7 @@ func (s *GroupStore) AddGroupItems(ctx context.Context, id int64, add domain.Gro
 // RemoveGroupItems はグループ id の項目 itemIDs を消して詰め直す。自動グループのフォルダ由来の
 // 項目（from_folder = 1）は除外を書き、作り直しで戻らないようにする。動画・子グループそのものには
 // 触れない。項目が 1 つも残らなければ、同じ取引でそのグループを解散し（DissolveGroup と同じ道筋。
-// 自動グループなら ungroup を書く）、dissolved に true を返す。グループが無ければ
+// 自動グループなら ungroup を書き、空になった親も解散する）、dissolved に true を返す。グループが無ければ
 // domain.ErrGroupNotFound、項目のどれかがそのグループに無ければ domain.ErrGroupTargetNotFound で、
 // 何も消さない。itemIDs が空なら更新日時も進めず、知らせない。
 func (s *GroupStore) RemoveGroupItems(ctx context.Context, id int64, itemIDs []int64) (group domain.Group, dissolved bool, err error) {
@@ -156,7 +156,8 @@ func (s *GroupStore) MoveGroupItem(ctx context.Context, id, itemID int64, afterI
 
 // DissolveGroup はグループ id を解散する（research.md R-4）。グループの行と項目を消し、子グループと
 // 動画は残し、親からその項目を消して親を詰め直す。自動グループならそのフォルダに ungroup を書き、
-// 同じ取引で索引を作り直すので、作り直しでもう作られない。無ければ domain.ErrGroupNotFound。
+// 同じ取引で索引を作り直すので、作り直しでもう作られない。それで項目が 1 つも残らなくなった親も、
+// 祖先へ向かって同じ取引で解散する（dissolveGroup）。無ければ domain.ErrGroupNotFound。
 func (s *GroupStore) DissolveGroup(ctx context.Context, id int64) error {
 	return s.write(ctx, "dissolve the group", func(tx *sql.Tx) ([]int64, error) {
 		return dissolveGroupAndRebuild(ctx, tx, id)
@@ -167,6 +168,7 @@ func (s *GroupStore) DissolveGroup(ctx context.Context, id int64) error {
 // domain.NormalizeTagName に通し、名前かシノニムで引けたタグを使うか新しく作り、子孫の全動画の
 // 項目の鍵に手で付け（video_tags）、グループを解散する。1 つの取引で行う。名前がタグ名の規則に
 // 合わなければ domain.ErrInvalidTagName、無ければ domain.ErrGroupNotFound で、何も書かない。
+// 解散で項目が 1 つも残らなくなった親も解散する（DissolveGroup と同じ）。
 func (s *GroupStore) TagGroup(ctx context.Context, id int64) (domain.GroupTag, error) {
 	var out domain.GroupTag
 	err := s.write(ctx, "turn the group into a tag", func(tx *sql.Tx) ([]int64, error) {
@@ -383,8 +385,8 @@ func countGroupItems(ctx context.Context, tx *sql.Tx, id int64) (int, error) {
 	return count, nil
 }
 
-// dissolveGroupAndRebuild はグループ id を解散し（dissolveGroup）、自動グループだったなら書いた
-// ungroup をフォルダの索引に映すため同じ取引で作り直す。変えたグループとその祖先の id を返す。
+// dissolveGroupAndRebuild はグループ id を解散し（dissolveGroup。空になった親も解散する）、自動
+// グループを解散したなら書いた ungroup をフォルダの索引に映すため同じ取引で作り直す。変えたグループとその祖先の id を返す。
 func dissolveGroupAndRebuild(ctx context.Context, tx *sql.Tx, id int64) ([]int64, error) {
 	changed, automatic, err := dissolveGroup(ctx, tx, id)
 	if err != nil || !automatic {
@@ -397,54 +399,99 @@ func dissolveGroupAndRebuild(ctx context.Context, tx *sql.Tx, id int64) ([]int64
 	return normalizeIDs(append(changed, rebuilt...)), nil
 }
 
-// dissolveGroup はグループ id の行と項目を消し（R-4）、子グループと動画は残す。親からその項目を
+// dissolveGroup はグループ id を dissolveOneGroup で解散し、それで項目が 1 つも残らなくなった親も
+// 同じ道筋で解散する。祖先へ向かって繰り返す（項目を取り除いて空になったグループと同じく、空の
+// グループは残さない。specs/048-groups/data-model.md「Edits」）。解散したグループと、元の親とその
+// 祖先の id と、自動グループを 1 つでも解散したかを返す。id が無ければ domain.ErrGroupNotFound。
+// フォルダの索引の作り直しは呼び出し側が行う。
+func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, bool, error) {
+	var changed []int64
+	automatic := false
+	for queue := []int64{id}; len(queue) > 0; queue = queue[1:] {
+		result, err := dissolveOneGroup(ctx, tx, queue[0])
+		if err != nil {
+			return nil, false, err
+		}
+		changed = append(changed, result.changed...)
+		automatic = automatic || result.automatic
+		emptied, err := emptyGroups(ctx, tx, result.parents)
+		if err != nil {
+			return nil, false, err
+		}
+		queue = append(queue, emptied...)
+	}
+	return normalizeIDs(changed), automatic, nil
+}
+
+// emptyGroups はグループ ids のうち、項目が 1 つも無いものの id を返す。
+func emptyGroups(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, error) {
+	var out []int64
+	for _, id := range ids {
+		count, err := countGroupItems(ctx, tx, id)
+		if err != nil {
+			return nil, err
+		}
+		if count == 0 {
+			out = append(out, id)
+		}
+	}
+	return out, nil
+}
+
+// dissolvedGroup は dissolveOneGroup が 1 つのグループを解散した結果である。
+type dissolvedGroup struct {
+	changed   []int64 // 解散したグループと、元の親とその祖先の id
+	parents   []int64 // 元の親の id
+	automatic bool    // 自動グループだったか
+}
+
+// dissolveOneGroup はグループ id の行と項目を消し（R-4）、子グループと動画は残す。親からその項目を
 // 消して親を詰め直し、親の更新日時を進める。グループのお気に入りとプレイリストの項目も外部キーで
 // 消え（specs/048-groups/research.md R-10）、項目を失ったプレイリストを詰め直して更新日時を進める。
-// 自動グループなら同じ取引でそのフォルダに ungroup を
-// 書く。id と、元の親とその祖先の id と、自動グループだったかを返す。無ければ
-// domain.ErrGroupNotFound。フォルダの索引の作り直しは呼び出し側が行う。
-func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, bool, error) {
+// 自動グループなら同じ取引でそのフォルダに ungroup を書く。無ければ domain.ErrGroupNotFound。
+// 項目を失った親の解散は dissolveGroup が行う。
+func dissolveOneGroup(ctx context.Context, tx *sql.Tx, id int64) (dissolvedGroup, error) {
 	group, err := groupSummary(ctx, tx, id)
 	if err != nil {
-		return nil, false, err
+		return dissolvedGroup{}, err
 	}
 	parents, err := queryInt64s(ctx, tx, `select distinct group_id from group_items where child_id = ? order by group_id`, id)
 	if err != nil {
-		return nil, false, fmt.Errorf("cannot read the parent groups: %w", err)
+		return dissolvedGroup{}, fmt.Errorf("cannot read the parent groups: %w", err)
 	}
 	changed, err := groupsWithAncestors(ctx, tx, parents)
 	if err != nil {
-		return nil, false, err
+		return dissolvedGroup{}, err
 	}
 	playlists, err := queryInt64s(ctx, tx, `select distinct playlist_id from playlist_items where group_id = ? order by playlist_id`, id)
 	if err != nil {
-		return nil, false, fmt.Errorf("cannot read the playlists: %w", err)
+		return dissolvedGroup{}, fmt.Errorf("cannot read the playlists: %w", err)
 	}
 	// 子グループの項目（child_id）、このグループの項目、お気に入り、プレイリストの項目は外部キーの
 	// on delete cascade で消える。
 	if _, err := tx.ExecContext(ctx, `delete from groups where id = ?`, id); err != nil {
-		return nil, false, fmt.Errorf("cannot dissolve the group: %w", err)
+		return dissolvedGroup{}, fmt.Errorf("cannot dissolve the group: %w", err)
 	}
 	if err := renumberPositions(ctx, tx, groupPositions, parents); err != nil {
-		return nil, false, err
+		return dissolvedGroup{}, err
 	}
 	if err := renumberPlaylists(ctx, tx, playlists); err != nil {
-		return nil, false, err
+		return dissolvedGroup{}, err
 	}
 	for _, playlistID := range playlists {
 		if err := touchPlaylist(ctx, tx, playlistID); err != nil {
-			return nil, false, err
+			return dissolvedGroup{}, err
 		}
 	}
 	if err := touchGroups(ctx, tx, parents, groupNow().UnixMilli()); err != nil {
-		return nil, false, err
+		return dissolvedGroup{}, err
 	}
 	if group.Automatic {
 		if err := writeOverride(ctx, tx, group.OriginFolder, domain.FolderGroupUngroup); err != nil {
-			return nil, false, err
+			return dissolvedGroup{}, err
 		}
 	}
-	return normalizeIDs(append(changed, id)), group.Automatic, nil
+	return dissolvedGroup{changed: normalizeIDs(append(changed, id)), parents: parents, automatic: group.Automatic}, nil
 }
 
 // dissolveFolderGroup はフォルダ folderPath の自動グループがあれば dissolveGroup で解散し、変えた

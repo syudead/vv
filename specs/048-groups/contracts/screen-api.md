@@ -97,7 +97,7 @@ GroupItemRemove:
 | `GET /api/groups/{id}/items?cursor=&limit=` | `200` | `GroupItemPage`; `limit` 1 to 200, default 100 |
 | | `400 invalid_cursor` | Unreadable cursor |
 | `PATCH /api/groups/{id}` | `200` | `LibraryGroup` with the trimmed name |
-| `DELETE /api/groups/{id}` | `204` | Dissolved ([R-4](../research.md#r-4-dissolving-deletes-the-group-for-an-automatic-group-it-writes-ungroup)) |
+| `DELETE /api/groups/{id}` | `204` | Dissolved, with every ancestor the dissolve leaves with no item ([R-4](../research.md#r-4-dissolving-deletes-the-group-for-an-automatic-group-it-writes-ungroup), [data-model.md, Edits](../data-model.md#edits)) |
 | `POST /api/groups/{id}/items` | `200` | `LibraryGroup` after the add |
 | | `404 group_target_not_found` | A video or group in the body does not exist |
 | | `409 group_cycle` | A group in the body is this group or one of its ancestors |

@@ -152,7 +152,7 @@ The paths and their changes are those of
 | Add | Appends in request order; an item already in the group is skipped; a removed folder member's exclusion is deleted and it returns with `from_folder = 0` |
 | Remove | Deletes the items; for a `from_folder = 1` item of an automatic group, writes its exclusion; renumbers. When no item is left, dissolves the group in the same transaction as the Dissolve row does (the maintainer's decision of 2026-10-14: an empty group does not exist), so the remove route answers `204` ([contracts/screen-api.md](contracts/screen-api.md#statuses)) |
 | Move | Moves one item after another item or to the top; renumbers ([044 R-3](../044-playlists/research.md#r-3-dense-integer-positions-reordered-by-move-after)) |
-| Dissolve | [R-4](research.md#r-4-dissolving-deletes-the-group-for-an-automatic-group-it-writes-ungroup); child groups and videos stay; parents lose the item and are renumbered |
+| Dissolve | [R-4](research.md#r-4-dissolving-deletes-the-group-for-an-automatic-group-it-writes-ungroup); child groups and videos stay; parents lose the item and are renumbered. A parent left with no item is dissolved the same way in the same transaction, and so on up its ancestors, an automatic parent with its `ungroup` override (the maintainer's decision of 2026-10-14, the rule of the Remove row applied to parents). This holds for every dissolve: `DELETE`, the last item removed, Turn into a tag and the folder menu's `Don't group` |
 | Turn into a tag | [R-11](research.md#r-11-turning-a-group-into-a-tag-attaches-the-tag-by-hand-then-dissolves) |
 | Nest | `ValidateNesting(parent, child, edges)`: `ErrGroupCycle` when the child is the parent or one of its ancestors |
 | Missing target | A video id, group id or item id that does not resolve is `ErrGroupTargetNotFound` and nothing is written ([R-12](research.md#r-12-edits-are-positional-and-fail-whole-when-a-target-is-gone)) |
@@ -161,8 +161,8 @@ A video id resolves to its user key through `userKeysForVideoIDs`, so adding
 two versions of one bundle adds one item. Every edit sets `updated_at` on the
 groups it changes and publishes `GroupsChanged` with them and every ancestor
 of them, because a parent shows its child's name and its descendants' count
-and length; for dissolve, the event also names the former parents and their
-ancestors.
+and length; for dissolve, the event also names every group the dissolve
+removed, the former parents and their ancestors.
 
 ## Play order
 

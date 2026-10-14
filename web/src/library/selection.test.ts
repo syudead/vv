@@ -64,6 +64,27 @@ describe("LibrarySelection", () => {
     expect(cleared.groups.size).toBe(0);
   });
 
+  it("メンバーを共有する 2 つのグループの片方を外すと、もう片方のメンバーとグループは残る", () => {
+    const g1 = { id: 1, videoIds: [11, 12] };
+    const g2 = { id: 2, videoIds: [12, 13] };
+    const both = setGroup(setGroup(emptySelection, g1, true), g2, true);
+    const deselected = setGroup(both, g1, false);
+    expect(Array.from(deselected.ids).sort()).toEqual([12, 13]);
+    expect(Array.from(deselected.groups.keys())).toEqual([2]);
+    expect(favoriteTargets(deselected)).toEqual({ videoIds: [], groupIds: [2] });
+    const toggled = toggleGroup(both, g1);
+    expect(sameSelection(toggled, deselected)).toBe(true);
+  });
+
+  it("共有するメンバーしか持たないグループを外しても、グループだけが外れて動画は残る", () => {
+    const inner = { id: 1, videoIds: [12] };
+    const outer = { id: 2, videoIds: [11, 12] };
+    const both = setGroup(setGroup(emptySelection, outer, true), inner, true);
+    const deselected = setGroup(both, inner, false);
+    expect(Array.from(deselected.ids).sort()).toEqual([11, 12]);
+    expect(Array.from(deselected.groups.keys())).toEqual([2]);
+  });
+
   it("「すべて選択」の応答は ids と groups の両方が同じときだけ同じ選択とみなす", () => {
     const all = fromSelectAll([1, 101, 102, 103], [{ id: 5, videoIds: series.videoIds }]);
     expect(

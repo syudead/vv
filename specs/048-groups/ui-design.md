@@ -241,6 +241,16 @@ is exactly one group: a group of one group adds a level and nothing else.
 The selection stays after "Add to group" and is cleared after "New group"
 ([New group](#new-group)).
 
+### Selection with shared members
+
+A video can be a member of two group cards in one list, so two selected
+groups can share members. Unchecking a group card removes the group and only
+those of its members that are not members of another group card still
+selected; the other selected group cards stay selected (the maintainer's
+decision of 2026-10-14). With G1 holding A and B and G2 holding B and C, both
+checked, unchecking G1 leaves B, C and G2 selected and removes A. Checking a
+group card is unchanged ([017 UI design, Pressing and selection](../017-folder-groups/ui-design.md#pressing-and-selection)).
+
 ### New group
 
 "New group" opens a `FormDialog` titled "New group" whose description says
@@ -458,6 +468,13 @@ automatic group's difference is spoken (requirement 13).
 | `404` | Already dissolved: the same as `204` without the toast |
 | Other failure | A `destructive` `Alert` "Couldn't dissolve the group: {reason}" under the description; the dialog stays open |
 | Cancel, Esc | Nothing changes |
+
+A parent that the dissolve leaves with no item is dissolved with it, up the
+ancestors ([data-model.md, Edits](data-model.md#edits)); the same holds when
+the last item is removed and when the group is turned into a tag. The dialog
+does not say so: the parent held nothing else, so no video or other group is
+lost. When the trail's last group was dissolved this way, the screen it
+leaves for shows the gone state, which names what happened.
 
 ### Turning into a tag
 
