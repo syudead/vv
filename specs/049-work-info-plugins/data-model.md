@@ -1,0 +1,82 @@
+# Data model: Work-info plugins
+
+The rest of the model is unchanged:
+[internal/store/migrations/](../../internal/store/migrations/). A fetched
+result is held in memory, not stored
+([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest)).
+
+## Migration
+
+`00043_work_info_plugins.sql` creates `work_info_plugins`. If another
+migration lands on `main` first, the number moves to the next free one.
+
+## `work_info_plugins`
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `id` | integer | No | Primary key; the screen API addresses a plugin by it |
+| `name` | text | Yes | The manifest's `name`, unique; null when the manifest could not be read |
+| `file_name` | text | No | The uploaded file's name, shown when `name` is null |
+| `version` | text | Yes | The manifest's `version` |
+| `description` | text | Yes | The manifest's `description` |
+| `contract` | integer | Yes | The manifest's contract version |
+| `operations` | text | Yes | The manifest's operations, comma-separated (`search`, `fetch`) |
+| `module` | blob | Yes | The module; null when `problem` is set |
+| `digest` | text | No | Lowercase hex SHA-256 of the uploaded bytes |
+| `problem` | text | Yes | Why the plugin cannot be approved (table below); null for a usable plugin |
+| `approved_digest` | text | Yes | The digest the owner approved |
+| `added_at` | integer | No | Unix seconds of the first upload |
+| `updated_at` | integer | No | Unix seconds of the last upload or approval change |
+
+**Relationships**: None. The table is owner data: it is not rebuilt by a
+rescan and is listed as kept in
+[Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery).
+
+| `problem` | Upload that sets it |
+| --- | --- |
+| `not_wasm` | The bytes do not compile as a WebAssembly module |
+| `manifest_missing` | No `vv.plugin` custom section |
+| `manifest_invalid` | The section is not the JSON of [the manifest](contracts/plugin-contract.md#manifest), or a field breaks its rule |
+| `contract_unsupported` | `contract` is not a version this vv runs (only `1`) |
+| `import_unsupported` | The module imports something outside `wasi_snapshot_preview1` and `vv` |
+| `start_missing` | The module exports no `_start` |
+
+## Rules
+
+| Rule | Enforced in |
+| --- | --- |
+| A plugin is approved exactly when `problem` is null and `approved_digest = digest` | `internal/domain` (state), `internal/store` (the read) |
+| An upload whose manifest names an existing `name` replaces that row's module, metadata, digest and problem, and keeps `approved_digest`, which no longer matches | `internal/store`, in one transaction |
+| An upload without a readable name is a new row | `internal/store` |
+| Approving writes `approved_digest` only when the request's digest equals `digest` and `problem` is null; otherwise `plugin_changed` or `plugin_unusable` | `internal/app` decides, `internal/store` re-reads inside its transaction |
+| Revoking clears `approved_digest` | `internal/store` |
+| `name` is 1 to 64 characters of `a-z`, `0-9`, `-` and `.`; `version` is 1 to 32 characters; `description` is at most 500 characters | `internal/domain` |
+| `module` is at most 16 MiB | `internal/domain`, `internal/httpapi` (body limit) |
+
+## State transitions
+
+The diagram shows a plugin's state and what changes it; `invalid` is any row
+with a `problem`.
+
+```mermaid
+stateDiagram-v2
+  [*] --> unapproved: upload, usable
+  [*] --> invalid: upload, problem
+  unapproved --> approved: approve with current digest
+  approved --> unapproved: revoke
+  approved --> unapproved: replace
+  approved --> invalid: replace with problem
+  unapproved --> invalid: replace with problem
+  invalid --> unapproved: replace, usable
+  unapproved --> [*]: delete
+  approved --> [*]: delete
+  invalid --> [*]: delete
+```
+
+## What does not change
+
+The display name (`video_overrides`), tags and rejected tag names keep their
+tables; applying a fetched result writes them through the existing rules
+([R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported)).
+Work information from 047 is not written: fields other than the title and the
+tags are out of scope in the Issue.
