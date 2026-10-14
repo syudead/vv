@@ -110,7 +110,7 @@ major updates included.
 ```mermaid
 flowchart TD
   start[Daily run] --> watch[Check main after the routine's merges]
-  watch -->|E2E or Docker image broke| revert[Revert PR, merged]
+  watch -->|E2E or Docker image broke| broken[needs-human on the merged PR, merges paused]
   watch --> list[Open Renovate PRs]
   list --> kind{State}
   kind -->|checks green, not major| skip[Renovate merges]
@@ -131,8 +131,9 @@ flowchart TD
   changes on the PR: what each one affects in the repository, how the PR
   handles it, and the verdict `safe to merge`.
 - When an update the routine merged breaks Browser E2E or the Docker image on
-  `main`, the next run reverts it. When Renovate opens the same version again,
-  the routine labels it `needs-human`.
+  `main`, the next run comments the failed job on the merged PR and labels it
+  `needs-human`. The routine does not revert it. Until a person removes that
+  label, the routine keeps fixing PRs but merges none.
 - Each run that changes anything lists what it did in a comment on Renovate's
   Dependency Dashboard Issue.
 
@@ -142,6 +143,8 @@ flowchart TD
   green, when the new version has a bug with no workaround in this repository,
   or when the failure also happens on `main`. The PR comments say why. Remove
   the label to hand the PR back to the routine.
+- A merged PR labelled `needs-human` broke `main`. Fix or revert it yourself,
+  then remove the label so the routine merges again.
 - To pause an update, close the PR (the same version is not opened again) or set
   `enabled: false` in `packageRules` in `renovate.json`.
 

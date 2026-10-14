@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: d2e3056b92d05ea7eca1cbbd58024f0675947f8d72b0cd6a694cba7838efe90f
+sourceHash: 3847fa9e1743096ddcea994db862e5ffb52ba917dacd805e3e85f0359e873f2c
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
@@ -77,7 +77,7 @@ Claude Code の Routine が、[renovate-triage](../../.agents/skills/renovate-tr
 ```mermaid
 flowchart TD
   start[毎日の実行] --> watch[ルーチンのマージ後の main を確認]
-  watch -->|E2E か Docker イメージが壊れた| revert[revert の PR をマージ]
+  watch -->|E2E か Docker イメージが壊れた| broken[マージされた PR に needs-human、マージを停止]
   watch --> list[開いた Renovate の PR]
   list --> kind{状態}
   kind -->|チェックが緑、メジャーでない| skip[Renovate がマージ]
@@ -94,12 +94,13 @@ flowchart TD
 
 - PR ごとに 1 つのワーカーが、PR 自身のブランチで修正し、1 回の実行で 1 回 push する。その push で CI が実行され、CI が緑なら翌日の実行が PR をマージする。
 - メジャー更新は、ワーカーが破壊的変更の表を PR に投稿した後にだけマージされる。表には、それぞれがリポジトリの何に影響するか、PR がそれをどう扱うか、判定 `safe to merge` を書く。
-- ルーチンがマージした更新が `main` で Browser E2E か Docker イメージを壊すと、次の実行がそれを revert する。Renovate が同じバージョンを再び開くと、ルーチンはそれに `needs-human` ラベルを付ける。
+- ルーチンがマージした更新が `main` で Browser E2E か Docker イメージを壊すと、次の実行がマージされた PR に失敗したジョブをコメントし、`needs-human` ラベルを付ける。ルーチンはそれを revert しない。人がそのラベルを外すまで、ルーチンは PR の修正を続けるが、どれもマージしない。
 - 何かを変えた実行はそれぞれ、したことを Renovate の Dependency Dashboard Issue へのコメントに列挙する。
 
 ## 人の対応が必要な Renovate の PR {#renovate-prs-that-need-a-person}
 
 - ルーチンは、3 回試しても緑にならなかったとき、新しいバージョンにこのリポジトリで回避策のないバグがあるとき、または失敗が `main` でも起きるときに、PR に `needs-human` ラベルを付ける。PR のコメントに理由がある。ラベルを外すと、PR はルーチンに戻る。
+- `needs-human` ラベルの付いたマージ済みの PR は `main` を壊した。自分で修正するか revert し、その後、ルーチンが再びマージするようにラベルを外す。
 - 更新を止めるには、PR を閉じる（同じバージョンは再び開かれない）か、`renovate.json` の `packageRules` に `enabled: false` を設定する。
 
 ## 設定を変える {#changing-the-configuration}

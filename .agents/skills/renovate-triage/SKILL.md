@@ -10,8 +10,8 @@ required checks pass ([dependency-updates.md](../../../docs/how-to/dependency-up
 This skill handles the rest without a person: a Renovate PR with a failed
 check, a conflict, or a major update. The maintainer has delegated the merge of
 these PRs into `main`, major updates included, under the gates below. Nothing
-else is delegated: this skill merges only Renovate PRs and the reverts it opens
-for them.
+else is delegated: this skill merges only Renovate PRs, and never reverts a
+merge.
 
 The skill is an orchestrator. It derives the state from GitHub, hands each PR
 that needs work to one `renovate-pr-fixer` worker (`renovate_pr_fixer` on
@@ -24,11 +24,11 @@ GitHub is the state. Do not write a state file or a tracking Issue.
 
 | Name | On | Meaning |
 | --- | --- | --- |
-| `needs-human` label | Renovate PR | The routine gave up on it. Skip it until a person removes the label |
+| `needs-human` label | Renovate PR | The routine gave up on it. Skip it until a person removes the label. On a merged PR: the update broke `main` |
 | `<!-- renovate-triage -->` | Comment | Written by this routine. The first line of every comment it posts |
 | `<!-- renovate-triage:attempt -->` | Comment | Posted by a worker with each push to a Renovate branch |
 | `<!-- renovate-triage:merged -->` | Comment | Posted on a PR right before the routine merges it; marks the PRs the post-merge watch checks |
-| `<!-- renovate-triage:reverted -->` | Comment | Posted on a Renovate PR whose merge the routine reverted |
+| `<!-- renovate-triage:broke-main -->` | Comment | Posted on a merged PR whose update broke `main` |
 
 Create `needs-human` when it does not exist.
 
@@ -48,12 +48,17 @@ the push to `main` at its merge commit:
 
 - **Green, or still running**: nothing to do.
 - **`Browser E2E` or `Docker image` failed**, and the same job passed on the
-  first parent of the merge commit: the update broke `main`. Open a revert PR
-  of the merge commit from `revert/renovate-<PR number>`, wait for its required
-  checks, and merge it. Then post `renovate-triage:reverted` on the original
-  PR, naming the failed job, and report it.
+  first parent of the merge commit: the update broke `main`. Unless the PR
+  already has a `renovate-triage:broke-main` comment, post one naming the
+  failed job and linking its run, label the PR `needs-human`, and report it.
+  Do not revert the merge and do not try to fix `main`; a person decides.
 - **Failed on the first parent too**: `main` was already red; not this
-  update's failure. Report it once and leave it.
+  update's failure. Nothing to do.
+
+While any merged PR from the last 7 days has both `needs-human` and a
+`renovate-triage:broke-main` comment, `main` is treated as broken: this run
+still lists, fixes and reports PRs, but merges none. Merges resume once a
+person removes the label.
 
 ### List the open Renovate PRs
 
@@ -74,13 +79,9 @@ comment, and has all required checks green and no conflict straight to the
 [merge gates](#merge-gates). Renovate does not merge a branch someone else has
 committed to.
 
-Label `needs-human`, with one comment saying why, a PR that:
-
-- updates the same dependency to the same version as a PR that carries a
-  `renovate-triage:reverted` comment. Search closed Renovate PRs with the same
-  title.
-- already has three `renovate-triage:attempt` comments and still fails a
-  check: three fixes did not get it green.
+Label `needs-human`, with one comment saying why, a PR that already has three
+`renovate-triage:attempt` comments and still fails a check: three fixes did
+not get it green.
 
 ### Hand each remaining PR to a worker
 
@@ -105,7 +106,9 @@ Act on the worker's `STATUS` line
 
 ### Merge gates
 
-Merge a Renovate PR only when all of these hold on its current head commit:
+Merge a Renovate PR only when `main` is not treated as broken
+([Watch what earlier runs merged](#watch-what-earlier-runs-merged)) and all of
+these hold on its current head commit:
 
 - GitHub reports it mergeable, with no conflict.
 - Every check run on the head commit has concluded `success`, `skipped` or
@@ -126,12 +129,11 @@ and merge with a merge commit, as the repository does for other PRs.
 
 When the run did anything, add one comment to the Renovate "Dependency
 Dashboard" Issue: one line per PR merged, fixed, labelled `needs-human` or
-reverted, each with the PR link. When the run did nothing, post nothing.
+found to have broken `main`, each with the PR link. When the run did nothing, post nothing.
 
 ## Never
 
-- Merge a PR that is not by `app/renovate`, except a revert this routine
-  opened in [Watch what earlier runs merged](#watch-what-earlier-runs-merged).
+- Merge a PR that is not by `app/renovate`, or revert a merged one.
 - Skip, disable, loosen or quarantine a test or a check, or re-run a failed
   check to get it green.
 - Change `renovate.json` to stop an update. That is the maintainer's call;
