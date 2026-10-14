@@ -103,30 +103,34 @@ one PR:
 
 A Claude Code Routine runs the
 [renovate-triage](../../.agents/skills/renovate-triage/SKILL.md) skill every
-day at 07:47 JST. It handles every open Renovate PR that Renovate does not
-merge itself, and merges it into `main` when it passes the gates in the skill,
-major updates included.
+day at 07:47 JST. It takes every open Renovate PR to one of two ends within
+the same run: merged into `main` through the gates in the skill, major updates
+included, or labelled `needs-human`. Nothing is left for the next run.
 
 ```mermaid
 flowchart TD
   start[Daily run] --> watch[Check main after the routine's merges]
   watch -->|E2E or Docker image broke| broken[needs-human on the merged PR, merges paused]
-  watch --> list[Open Renovate PRs]
-  list --> kind{State}
-  kind -->|checks green, not major| skip[Renovate merges]
-  kind -->|conflict| rebase[Renovate rebases, or worker merges main]
-  kind -->|failed check| fix[Worker fixes the root cause]
-  kind -->|major| review[Worker reviews breaking changes and adapts code]
-  fix --> next[Next run applies the gates]
-  rebase --> next
-  review --> gate{Gates pass?}
-  next --> gate
+  watch --> pr[Next open Renovate PR]
+  pr --> ci{CI running?}
+  ci -->|yes| wait[Wait for CI]
+  wait --> ci
+  ci -->|no| state{Green, and major update reviewed?}
+  state -->|yes| gate{Gates pass?}
   gate -->|yes| merge[Routine merges]
-  gate -->|no, after 3 attempts| human[needs-human label]
+  state -->|no| worker[Worker merges main, fixes or reviews, pushes]
+  worker -->|pushed, attempt 1-3| wait
+  worker -->|blocked, or 3 attempts failed| human[needs-human label]
+  merge --> pr
+  human --> pr
 ```
 
-- One worker per PR fixes it on the PR's own branch, with one push per run. CI
-  runs on that push, and the next day's run merges the PR when CI is green.
+- The routine takes the PRs one at a time. A worker brings the PR's branch up
+  to date with `main`, fixes it and pushes; the routine waits for CI on that
+  push in the same run and merges the PR when it is green. A PR still red
+  after three pushes gets `needs-human`.
+- The routine also merges green PRs that Renovate would merge later on its own
+  schedule, so none waits for the next day.
 - A major update is merged only after the worker posts a table of its breaking
   changes on the PR: what each one affects in the repository, how the PR
   handles it, and the verdict `safe to merge`.
