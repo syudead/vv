@@ -173,14 +173,23 @@ func nonZeroIDs(ids ...int64) []int64 {
 }
 
 // Undo は操作が返した像 image の前の状態へ戻す（research.md R-1）。今の行が後の像と等しくなければ
-// domain.ErrUndoConflict で、何も書かない。戻したグループとその祖先を確定後に知らせる。
+// domain.ErrUndoConflict で、何も書かない。確定後に、集まりを戻した動画を domain.VideoBundleChanged
+// で、戻したグループとその祖先を domain.GroupsChanged で知らせる。
 func (s *OrganizeStore) Undo(ctx context.Context, image []byte) error {
 	decoded, err := decodeUndoImage(image)
 	if err != nil {
 		return err
 	}
-	return writeGroups(ctx, s.db, "undo", func(tx *sql.Tx) ([]int64, error) {
-		return restoreUndoImage(ctx, tx, decoded)
+	return writeWithEvents(ctx, s.db, "undo", func(tx *sql.Tx) ([]domain.Event, error) {
+		changed, err := restoreUndoImage(ctx, tx, decoded)
+		if err != nil {
+			return nil, err
+		}
+		var events []domain.Event
+		if len(decoded.Videos) > 0 {
+			events = append(events, domain.VideoBundleChanged{VideoIDs: decoded.Videos})
+		}
+		return append(events, groupsChangedEvents(changed)...), nil
 	})
 }
 

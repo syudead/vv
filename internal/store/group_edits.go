@@ -210,19 +210,28 @@ func (s *GroupStore) write(ctx context.Context, verb string, fn func(*sql.Tx) ([
 // writeGroups は GroupStore.write の本体で、グループを変える役割（GroupStore・OrganizeStore）が
 // 共有する。
 func writeGroups(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) ([]int64, error)) error {
+	return writeWithEvents(ctx, db, verb, func(tx *sql.Tx) ([]domain.Event, error) {
+		changed, err := fn(tx)
+		return groupsChangedEvents(changed), err
+	})
+}
+
+// writeWithEvents は fn を 1 つの書き込み取引で行い、確定できたときだけ fn が返した知らせを
+// 発行する。fn が誤りを返せば巻き戻し、何も書かない。
+func writeWithEvents(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) ([]domain.Event, error)) error {
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("cannot %s: %w", verb, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	changed, err := fn(tx)
+	events, err := fn(tx)
 	if err != nil {
 		return err
 	}
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("cannot %s: %w", verb, err)
 	}
-	db.publishEvents(groupsChangedEvents(changed)...)
+	db.publishEvents(events...)
 	return nil
 }
 
