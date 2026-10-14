@@ -92,6 +92,10 @@ export function useUrlCriteria<C>(
   const navigate = useNavigate();
   const { criteria, hasExplicitSort } = parse(new URLSearchParams(location.search));
   const latest = useRef({ location, criteria, hasExplicitSort });
+  // 描き直す前に続けて呼ばれても、同じ URL の項目を重ねて積まないよう、書いたばかりの
+  // クエリを覚える。位置が変わった描画で忘れる。
+  const written = useRef<string | null>(null);
+  if (latest.current.location !== location) written.current = null;
   latest.current = { location, criteria, hasExplicitSort };
   const serializeRef = useRef(serialize);
 
@@ -104,8 +108,13 @@ export function useUrlCriteria<C>(
       } = latest.current;
       const write = (next: C, how: HistoryMode) => {
         const search = serializeRef.current(next).toString();
+        const target = search === "" ? "" : `?${search}`;
+        // 履歴に積むのは今の URL と違うときだけ。Radix のタブは1回の押下で値の変更を
+        // 2度通すことがあり、そのまま積むと「戻る」が同じ画面に留まる。
+        if (how === "push" && target === (written.current ?? current.search)) return;
+        written.current = target;
         navigate(
-          { pathname: current.pathname, search: search === "" ? "" : `?${search}` },
+          { pathname: current.pathname, search: target },
           { replace: how === "replace" },
         );
       };
