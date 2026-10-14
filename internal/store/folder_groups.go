@@ -51,7 +51,7 @@ func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath str
 	if err := writeOverride(ctx, tx, folderPath, mode); err != nil {
 		return domain.FolderGrouping{}, err
 	}
-	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	changedGroups, err := dissolveUngroupedAndRebuild(ctx, tx, folderPath, mode)
 	if err != nil {
 		return domain.FolderGrouping{}, err
 	}
@@ -69,7 +69,9 @@ func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath str
 // TagFolderGroup はフォルダ folderPath（絶対パス）のグループをタグに変える
 // （POST /api/folders/{rootId}/grouping/tag、specs/017-folder-groups/data-model.md §4）。
 // 1つの取引で、フォルダ名を domain.NormalizeTagName に通し、名前かシノニムで引けた
-// タグを使うか新しく作り、そのフォルダに ungroup を書き、索引を作り直す。
+// タグを使うか新しく作り、そのフォルダの自動グループの子孫の全動画に手で付け（手で足したメンバーと
+// 子グループの動画も失わないように、specs/048-groups/research.md R-11）、そのフォルダに ungroup を
+// 書き、自動グループを解散して索引を作り直す。
 //
 // そのフォルダが今グループでなければ domain.ErrNotFolderGroup、フォルダ名がタグ名の
 // 規則に合わなければ domain.ErrInvalidTagName を返し、どちらも何も書かない。
@@ -97,10 +99,13 @@ func (s *FolderGroupStore) TagFolderGroup(ctx context.Context, folderPath string
 	if err != nil {
 		return domain.FolderGroupTag{}, err
 	}
+	if err := attachTagToFolderGroup(ctx, tx, folderPath, tag.ID); err != nil {
+		return domain.FolderGroupTag{}, err
+	}
 	if err := writeOverride(ctx, tx, folderPath, domain.FolderGroupUngroup); err != nil {
 		return domain.FolderGroupTag{}, err
 	}
-	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	changedGroups, err := dissolveUngroupedAndRebuild(ctx, tx, folderPath, domain.FolderGroupUngroup)
 	if err != nil {
 		return domain.FolderGroupTag{}, err
 	}
@@ -175,6 +180,25 @@ func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]d
 		out[i] = byKey[key]
 	}
 	return out, nil
+}
+
+// dissolveUngroupedAndRebuild は、例外 mode が ungroup ならフォルダ folderPath の自動グループを
+// 解散と同じ経路（dissolveFolderGroup）で消し、索引を作り直して、変わったグループとその祖先の id を
+// 返す（specs/048-groups/research.md R-4）。auto と groupDirect は作り直しの同期が、規則が成り立てば
+// 新しいグループを作る。
+func dissolveUngroupedAndRebuild(ctx context.Context, tx *sql.Tx, folderPath string, mode domain.FolderGroupMode) ([]int64, error) {
+	var dissolved []int64
+	if mode == domain.FolderGroupUngroup {
+		var err error
+		if dissolved, err = dissolveFolderGroup(ctx, tx, folderPath); err != nil {
+			return nil, err
+		}
+	}
+	rebuilt, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeIDs(append(dissolved, rebuilt...)), nil
 }
 
 // writeOverride はフォルダ folderPath の例外を mode にする。mode が空なら外す。

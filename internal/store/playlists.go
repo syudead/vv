@@ -421,28 +421,15 @@ func (s *PlaylistStore) MovePlaylistItem(ctx context.Context, id, itemID int64, 
 	if err := ensurePlaylist(ctx, tx, id); err != nil {
 		return err
 	}
-	order, err := playlistItemOrder(ctx, tx, id)
+	moved, err := moveItemAfter(ctx, tx, playlistPositions, id, itemID, afterItemID)
+	if errors.Is(err, errPositionItemNotFound) {
+		return domain.ErrPlaylistItemNotFound
+	}
 	if err != nil {
 		return err
 	}
-	from := slices.Index(order, itemID)
-	if from < 0 {
-		return domain.ErrPlaylistItemNotFound
-	}
-	if afterItemID != nil && !slices.Contains(order, *afterItemID) {
-		return domain.ErrPlaylistItemNotFound
-	}
-	if afterItemID != nil && *afterItemID == itemID {
+	if !moved {
 		return tx.Commit()
-	}
-	order = slices.Delete(order, from, from+1)
-	to := 0
-	if afterItemID != nil {
-		to = slices.Index(order, *afterItemID) + 1
-	}
-	order = slices.Insert(order, to, itemID)
-	if err := writePlaylistOrder(ctx, tx, order); err != nil {
-		return err
 	}
 	if err := touchPlaylist(ctx, tx, id); err != nil {
 		return err
@@ -637,39 +624,12 @@ func playlistItemOrder(ctx context.Context, tx *sql.Tx, id int64) ([]int64, erro
 	return positionOrder(ctx, tx, playlistPositions, id)
 }
 
-// writePlaylistOrder は order の項目の位置を、その並びの 0 からの番号にする。
-func writePlaylistOrder(ctx context.Context, tx *sql.Tx, order []int64) error {
-	return writePositionOrder(ctx, tx, playlistPositions, order)
-}
-
 // orderedUserKeys は videoIDs を要求の順に利用者データの鍵へ引き直し、重複を除いて返す。
 // 引けない id は除く（userKeysForVideoIDs と同じ条件）。
 func orderedUserKeys(ctx context.Context, tx *sql.Tx, videoIDs []int64) ([]string, error) {
-	if len(videoIDs) == 0 {
-		return nil, nil
-	}
-	encoded, err := json.Marshal(videoIDs)
+	byID, err := userKeysByVideoID(ctx, tx, videoIDs, true)
 	if err != nil {
-		return nil, fmt.Errorf("cannot build video ids: %w", err)
-	}
-	rows, err := tx.QueryContext(ctx, `select v.id, `+userKeyExpr("v")+` from videos v
-		where v.id in (select value from json_each(?)) and v.content_key <> '' and `+
-		registeredVideoCondition("v"), string(encoded))
-	if err != nil {
-		return nil, fmt.Errorf("cannot map video ids to user keys: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	byID := map[int64]string{}
-	for rows.Next() {
-		var id int64
-		var key string
-		if err := rows.Scan(&id, &key); err != nil {
-			return nil, fmt.Errorf("cannot map video ids to user keys: %w", err)
-		}
-		byID[id] = key
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot map video ids to user keys: %w", err)
+		return nil, err
 	}
 	var keys []string
 	for _, id := range videoIDs {

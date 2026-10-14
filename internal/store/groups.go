@@ -82,7 +82,7 @@ func folderSyncFolders(ctx context.Context, tx *sql.Tx, index domain.FolderIndex
 	for _, folder := range index.Folders {
 		ids = append(ids, folder.VideoIDs...)
 	}
-	keys, err := userKeysByVideoID(ctx, tx, ids)
+	keys, err := userKeysByVideoID(ctx, tx, ids, false)
 	if err != nil {
 		return nil, err
 	}
@@ -104,8 +104,9 @@ func folderSyncFolders(ctx context.Context, tx *sql.Tx, index domain.FolderIndex
 }
 
 // userKeysByVideoID は動画の id ごとの利用者データの鍵を返す。無い id と空の content_key の
-// 動画は入らない。
-func userKeysByVideoID(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]string, error) {
+// 動画は入らない。registeredOnly なら、いまライブラリにある動画（registeredVideoCondition、
+// userKeysForVideoIDs と同じ条件）だけを引く。
+func userKeysByVideoID(ctx context.Context, tx *sql.Tx, ids []int64, registeredOnly bool) (map[int64]string, error) {
 	keys := make(map[int64]string, len(ids))
 	if len(ids) == 0 {
 		return keys, nil
@@ -114,8 +115,12 @@ func userKeysByVideoID(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]
 	if err != nil {
 		return nil, fmt.Errorf("cannot build video ids: %w", err)
 	}
+	condition := "1 = 1"
+	if registeredOnly {
+		condition = registeredVideoCondition("v")
+	}
 	rows, err := tx.QueryContext(ctx, `select v.id, `+userKeyExpr("v")+` from videos v
-		where v.id in (select value from json_each(?)) and v.content_key <> ''`, string(encoded))
+		where v.id in (select value from json_each(?)) and v.content_key <> '' and `+condition, string(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("cannot map video ids to user keys: %w", err)
 	}
