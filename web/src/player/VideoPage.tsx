@@ -833,7 +833,7 @@ export default function VideoPage() {
                 video={video}
                 owner={owner}
                 onSaved={(saved, mark) => {
-                  replace(saved, mark);
+                  replace(saved, mark, "keep");
                   // グループの並びにあるこの動画の題名も、画面の題名とそろえる。
                   renameRelated(saved);
                 }}
@@ -878,7 +878,7 @@ export default function VideoPage() {
               owner={owner}
               capture={capture}
               onChanged={(saved, mark) => {
-                replace(saved, mark);
+                replace(saved, mark, "keep");
                 // グループの並びにあるこの動画のサムネイルも、画面のサムネイルとそろえる。
                 rethumbRelated(saved);
               }}
@@ -899,7 +899,8 @@ export default function VideoPage() {
                   backTo,
                   autoplay: status.playing || status.ended,
                 },
-                onReplace: replace,
+                // 外した動画は固有の作品情報に戻るので、束の作品情報を残さず取り直す。
+                onReplace: (removed, mark) => replace(removed, mark, "refetch"),
                 onRefresh: () => void refresh(),
               }}
             />

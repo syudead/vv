@@ -43,6 +43,10 @@ const done: Video = {
   tags: [],
 };
 
+function workInfoCoded(code: string): NonNullable<Video["workInfo"]> {
+  return { code, dates: [], people: [], organizations: [], urls: [], externalIds: [] };
+}
+
 async function flush() {
   await act(async () => {
     await vi.advanceTimersByTimeAsync(0);
@@ -144,6 +148,7 @@ describe("useVideoDetail", () => {
       result.current.replace(
         { ...done, title: "新しい名前", displayName: "新しい名前" },
         mark,
+        "keep",
       ),
     );
     expect(result.current.state).toMatchObject({ video: { title: "新しい名前" } });
@@ -153,8 +158,59 @@ describe("useVideoDetail", () => {
     expect(result.current.state).toMatchObject({ video: { title: "新しい名前" } });
 
     // 別の動画の応答は捨てる。
-    act(() => result.current.replace({ ...done, id: 8, title: "別の動画" }, mark));
+    act(() =>
+      result.current.replace({ ...done, id: 8, title: "別の動画" }, mark, "keep"),
+    );
     expect(result.current.state).toMatchObject({ id: 7, video: { title: "新しい名前" } });
+  });
+
+  it("replace の keep は、応答に無い作品情報に手元の値を残す", async () => {
+    getVideo.mockResolvedValue({ ...done, workInfo: workInfoCoded("AB-123") });
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
+    await flush();
+
+    act(() =>
+      result.current.replace(
+        { ...done, title: "新しい名前", displayName: "新しい名前" },
+        detailMark(),
+        "keep",
+      ),
+    );
+    expect(result.current.state).toMatchObject({
+      video: { title: "新しい名前", workInfo: { code: "AB-123" } },
+    });
+    expect(getVideo).toHaveBeenCalledTimes(1);
+  });
+
+  it("replace の refetch は手元の作品情報を残さず、先に終わった取り直しの後でも取り直す", async () => {
+    // 束から外す: 束の作品情報（BUNDLE）を出している動画が、外すと固有の作品情報（OWN）に戻る。
+    const own: Video = { ...done, workInfo: workInfoCoded("OWN") };
+    let answer: ((video: Video) => void) | undefined;
+    getVideo
+      .mockResolvedValueOnce({ ...done, workInfo: workInfoCoded("BUNDLE") })
+      .mockResolvedValueOnce(own)
+      .mockImplementationOnce(() => new Promise<Video>((resolve) => (answer = resolve)));
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
+    await flush();
+
+    // 外す要求を送り、その応答より先に `video` の知らせの取り直しが終わる。
+    const mark = detailMark();
+    await emitServerEvent("video", { id: 7 });
+    await flush();
+    expect(result.current.state).toMatchObject({ video: { workInfo: { code: "OWN" } } });
+
+    // 外した応答は `workInfo` を載せない。手元の作品情報を残さず、取り直す。
+    act(() => result.current.replace({ ...done, title: "外した" }, mark, "refetch"));
+    const replaced = result.current.state;
+    expect(
+      replaced.kind === "ready" ? replaced.video.workInfo : "not ready",
+    ).toBeUndefined();
+    expect(getVideo).toHaveBeenCalledTimes(3);
+
+    await act(async () => answer?.({ ...own, title: "外した" }));
+    expect(result.current.state).toMatchObject({
+      video: { title: "外した", workInfo: { code: "OWN" } },
+    });
   });
 
   it("replace は要求の間に反映した公開の切り替えを巻き戻さず、要求の後に始めた取り直しを残す", async () => {
@@ -191,6 +247,7 @@ describe("useVideoDetail", () => {
       result.current.replace(
         { ...done, public: false, title: "新しい名前", displayName: "新しい名前" },
         mark,
+        "keep",
       ),
     );
     expect(result.current.state).toMatchObject({
