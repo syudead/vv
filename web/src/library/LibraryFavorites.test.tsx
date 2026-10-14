@@ -696,8 +696,9 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
     expect(names.indexOf("Favorite")).toBe(names.indexOf("Remove tag") + 1);
-    // 「Favorite」と「Visibility」の間は「Add to playlist」（specs/044-playlists/ui-design.md）。
-    expect(names.indexOf("Visibility")).toBe(names.indexOf("Favorite") + 2);
+    // 「Favorite」と「Visibility」の間は「Add to playlist」（specs/044-playlists/ui-design.md）と
+    // 「New group」「Add to group」（specs/048-groups/ui-design.md）。
+    expect(names.indexOf("Visibility")).toBe(names.indexOf("Favorite") + 4);
 
     await favoriteSelection(user);
     expect(await screen.findByText("Added 3 items to favorites")).toBeDefined();

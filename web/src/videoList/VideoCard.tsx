@@ -24,6 +24,7 @@ import {
   isNarrowVideo,
   watchedRatio,
 } from "../lib/format";
+import AddToGroupButton from "../groups/AddToGroupButton";
 import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { ScrubBand, type ScrubPreview, useScrubPreview } from "../ui/ScrubPreview";
@@ -127,6 +128,20 @@ function VideoAddToPlaylist({
     <AddToPlaylistButton
       variant={variant}
       label={t.list.card.addToPlaylist(video.title)}
+      videoIds={[video.id]}
+    />
+  );
+}
+
+/**
+ * VideoAddToGroup は動画のカード・行の「Add to group」である（所有者だけ。
+ * specs/048-groups/ui-design.md「Group card and row」）。ハートと同じところにだけ描く。
+ */
+function VideoAddToGroup({ video, variant }: { video: Video; variant: "card" | "row" }) {
+  return (
+    <AddToGroupButton
+      variant={variant}
+      label={t.list.card.addToGroup(video.title)}
       videoIds={[video.id]}
     />
   );
@@ -425,6 +440,7 @@ function VideoCard(props: VideoCardProps) {
         // ポインタが入ったらホバープレビューを止め、ここからはプレビューを始めない。
         // 足す操作はハートの左（specs/044-playlists/ui-design.md「Add to playlist」）。
         <VideoThumbnailMark data-preview-checkbox="true" onPointerEnter={release}>
+          <VideoAddToGroup video={video} variant="card" />
           <VideoAddToPlaylist video={video} variant="card" />
           <VideoFavorite video={video} variant="card" />
         </VideoThumbnailMark>
@@ -515,6 +531,12 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
           <VideoAddToPlaylist video={video} variant="row" />
+        </TableCell>
+      )}
+      {/* 「Add to group」は「Add to playlist」の列の直後の列（specs/048-groups/ui-design.md）。 */}
+      {owner && (
+        <TableCell className="hidden w-8 px-0 sm:table-cell">
+          <VideoAddToGroup video={video} variant="row" />
         </TableCell>
       )}
       <TableCell className="hidden w-16 pr-4 text-right sm:table-cell">
