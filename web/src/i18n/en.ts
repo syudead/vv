@@ -209,6 +209,9 @@ const errorReasons = {
     "The media folders were changed elsewhere. Reload and try again.",
   root_group_not_taggable: "A media folder's own group can't be turned into a tag.",
   folder_not_group: "This folder is no longer a group.",
+  group_target_not_found:
+    "A video, group or item was removed in the meantime. Reload and try again.",
+  group_cycle: "A group can't be put inside itself or a group inside it.",
   probe_info_missing: "This video is missing the information needed for this.",
   seek_preview_generating: "The seek preview is still being generated.",
   transcode_unavailable: "This video can't be converted for playback.",
