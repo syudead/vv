@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: 1958b122494f327fa97ae1f7669dcb1766813614f76259927a278f5d893508e6
+sourceHash: d2e3056b92d05ea7eca1cbbd58024f0675947f8d72b0cd6a694cba7838efe90f
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
@@ -9,22 +9,23 @@ sourceHash: 1958b122494f327fa97ae1f7669dcb1766813614f76259927a278f5d893508e6
 
 ## Renovate がすること {#what-renovate-does}
 
-Renovate は、PR を自分でマージするかを更新ごとに決める。
+Renovate は、PR を自分でマージするかを更新ごとに決める。開いたまま残した PR は [Renovate のルーチン](#the-renovate-routine) に渡る。
 
 ```mermaid
 flowchart LR
   upd[更新を検出] --> excl{除外対象?}
   excl -->|はい| none[PR なし]
   excl -->|いいえ| major{メジャー更新?}
-  major -->|はい| person[人がマージ]
+  major -->|はい| routine[ルーチンが修正してマージ]
   major -->|いいえ| checks{チェック通過?}
   checks -->|はい| auto[Renovate がマージ]
-  checks -->|いいえ| person
+  checks -->|いいえ| routine
+  routine -->|できない| person[needs-human: 人が判断]
 ```
 
 - PR は毎週月曜の早朝（JST）に 6 つのグループで開く。Go モジュール、web の npm、tools の npm、GitHub Actions、mise のツール、コンテナイメージである。脆弱性修正の PR はいつでも開く。
-- マイナー、パッチ、ピン留め、ダイジェストのピン留め（`pinDigest`）、ダイジェスト、ロックファイル保守の更新は、必須の `Checks` ジョブが通ると自動でマージされる。Browser E2E と Docker イメージは、マージ後の `main` への push で実行される。
-- メジャー更新は、人が破壊的変更を読んでからマージする。
+- マイナー、パッチ、ピン留め、ダイジェストのピン留め（`pinDigest`）、ダイジェスト、ロックファイル保守の更新は、必須の `Checks` ジョブが通ると自動でマージされる。
+- Renovate の PR は Browser E2E を実行し、Docker イメージを公開せずにビルドする。その他の PR は、それらを `main` へのマージ後にだけ実行する。
 - GitHub Actions はコミットハッシュに固定し、タグ名をコメントに書く（`config:best-practices` の既定）。
 - `Dockerfile` のベースイメージは `tag@sha256:digest` として固定する。タグの指す内容が変わると、Renovate がダイジェスト更新の PR を開く。
 - `renovate.json` は Renovate のロックファイル生成に使う npm を 11.x に制限するが、この制限はローカル開発と CI には適用されない。npm 12 は現在、ロックファイルのみの更新中に `@tailwindcss/oxide-wasm32-wasi` の tarball で失敗する（[npm issue #9800](https://github.com/npm/cli/issues/9800)）。npm がこの失敗を修正したら、この制限を見直す。
@@ -69,9 +70,36 @@ shadcn CLI は `web/package.json` の devDependency `shadcn` であり、Renovat
 2. `npx shadcn@latest`、`pnpm dlx shadcn@latest`、`bunx --bun shadcn@latest` をすべて `npm --prefix web exec shadcn --` に置き換え、`.agents/skills/shadcn/VENDORED.md` のコミットを更新する。
 3. `task test-web` を実行する。`shadcn@` が残っている間、`vendoredSkill.test.ts` は失敗する。
 
+## Renovate のルーチン {#the-renovate-routine}
+
+Claude Code の Routine が、[renovate-triage](../../.agents/skills/renovate-triage/SKILL.md) スキルを毎日 07:47 JST に実行する。ルーチンは、Renovate が自分でマージしない開いた Renovate の PR をすべて扱い、スキルのゲートを通ったものを、メジャー更新も含めて `main` にマージする。
+
+```mermaid
+flowchart TD
+  start[毎日の実行] --> watch[ルーチンのマージ後の main を確認]
+  watch -->|E2E か Docker イメージが壊れた| revert[revert の PR をマージ]
+  watch --> list[開いた Renovate の PR]
+  list --> kind{状態}
+  kind -->|チェックが緑、メジャーでない| skip[Renovate がマージ]
+  kind -->|競合| rebase[Renovate がリベース、またはワーカーが main をマージ]
+  kind -->|チェック失敗| fix[ワーカーが根本原因を修正]
+  kind -->|メジャー| review[ワーカーが破壊的変更を確認してコードを合わせる]
+  fix --> next[次の実行がゲートを適用]
+  rebase --> next
+  review --> gate{ゲート通過?}
+  next --> gate
+  gate -->|はい| merge[ルーチンがマージ]
+  gate -->|いいえ、3 回試した後| human[needs-human ラベル]
+```
+
+- PR ごとに 1 つのワーカーが、PR 自身のブランチで修正し、1 回の実行で 1 回 push する。その push で CI が実行され、CI が緑なら翌日の実行が PR をマージする。
+- メジャー更新は、ワーカーが破壊的変更の表を PR に投稿した後にだけマージされる。表には、それぞれがリポジトリの何に影響するか、PR がそれをどう扱うか、判定 `safe to merge` を書く。
+- ルーチンがマージした更新が `main` で Browser E2E か Docker イメージを壊すと、次の実行がそれを revert する。Renovate が同じバージョンを再び開くと、ルーチンはそれに `needs-human` ラベルを付ける。
+- 何かを変えた実行はそれぞれ、したことを Renovate の Dependency Dashboard Issue へのコメントに列挙する。
+
 ## 人の対応が必要な Renovate の PR {#renovate-prs-that-need-a-person}
 
-- 開いたまま残る PR は、CI が失敗しているか、競合しているか、メジャー更新である。Renovate の Dependency Dashboard Issue がそれらを一覧にする。
+- ルーチンは、3 回試しても緑にならなかったとき、新しいバージョンにこのリポジトリで回避策のないバグがあるとき、または失敗が `main` でも起きるときに、PR に `needs-human` ラベルを付ける。PR のコメントに理由がある。ラベルを外すと、PR はルーチンに戻る。
 - 更新を止めるには、PR を閉じる（同じバージョンは再び開かれない）か、`renovate.json` の `packageRules` に `enabled: false` を設定する。
 
 ## 設定を変える {#changing-the-configuration}

@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/development.md
-sourceHash: 4f30230eb5f5c1862fcdc4c689cd9c5086134d34ac33200df017f179a903fec0
+sourceHash: 1bd1e3bd3ca54dafdbd4d3b36565c843d7353f73fd8d6c9f83653c73e99f90ee
 ---
 
 # 開発 {#development}
@@ -59,11 +59,11 @@ flowchart LR
   code -->|はい| groups[並列グループで task check]
   docs --> checks[Checks ジョブ]
   groups --> checks
-  code -->|はい| push{main への push か}
+  code -->|はい| push{main への push か Renovate の PR か}
   push -->|はい| more[4 グループで E2E と Docker イメージのビルド]
 ```
 
-「いいえ」は、Markdown、`docs/`、`specs/` だけが変更されたことを意味する。コードの変更では、CI は `task check` のサブタスクを並列の `Checks (<group>)` ジョブとして実行する。生成ファイル、マイグレーション、Windows のビルドの確認と組み合わせた Go の lint、Go のテスト、SPA のビルドの確認（`task build-check-web`）と組み合わせた Web の lint、3 つのシャードに分けた Vitest スイート（`task test-web-report -- --shard=1/3`）だ。`task test-web` はビルドの確認とスイート全体を実行する。`task check` に追加する確認は、`.github/workflows/ci.yml` のこれらのグループのいずれかにも入れる。Go のビルドキャッシュを復元するのは Go のグループだけで、それぞれが `main` への push で自分のコピーを保存する。Vitest はファイル単位でシャードに分けるため、一つのシャードの大半を占めるまで大きくなったテストファイルは、`web/src/tags/TagsPage*.test.tsx` が共有の `web/src/testing/tagsPage.tsx` を中心に分けられているように、トピックごとに分割する。`main` への push はマージされたプルリクエストなので、ブラウザ E2E と Docker イメージのビルドはプルリクエストでは決して実行されない。プルリクエストでは `Browser E2E` は実行されずに成功する。
+「いいえ」は、Markdown、`docs/`、`specs/` だけが変更されたことを意味する。コードの変更では、CI は `task check` のサブタスクを並列の `Checks (<group>)` ジョブとして実行する。生成ファイル、マイグレーション、Windows のビルドの確認と組み合わせた Go の lint、Go のテスト、SPA のビルドの確認（`task build-check-web`）と組み合わせた Web の lint、3 つのシャードに分けた Vitest スイート（`task test-web-report -- --shard=1/3`）だ。`task test-web` はビルドの確認とスイート全体を実行する。`task check` に追加する確認は、`.github/workflows/ci.yml` のこれらのグループのいずれかにも入れる。Go のビルドキャッシュを復元するのは Go のグループだけで、それぞれが `main` への push で自分のコピーを保存する。Vitest はファイル単位でシャードに分けるため、一つのシャードの大半を占めるまで大きくなったテストファイルは、`web/src/tags/TagsPage*.test.tsx` が共有の `web/src/testing/tagsPage.tsx` を中心に分けられているように、トピックごとに分割する。`main` への push はマージされたプルリクエストなので、ブラウザ E2E と Docker イメージのビルドはプルリクエストでは実行されない。プルリクエストでは `Browser E2E` は実行されずに成功する。Renovate の PR（head ブランチが `renovate/*`）は例外で、イメージを公開せずに両方を実行する。Renovate のルーチンが人を介さずにそれらをマージするためである（[dependency-updates.md](dependency-updates.md)）。
 
 Go と Vitest のテストグループは、`task test-go` と `task test-web-unit` と同じテストを `task test-go-report` と `task test-web-report` で実行し、これらはカバレッジと JUnit のテスト結果も `reports/` の下に書き出す。CI は、テストが失敗したときも、それらを `main` への push の E2E の結果と合わせて [Codecov](https://app.codecov.io/gh/syudead/vv) にアップロードする。コードを変更する各プルリクエストで、Codecov は変更行のカバレッジをコメントし、失敗したテストと不安定なテストの名前を示し、`go` と `web` のフラグごとに情報提供の patch ステータスを設定する。マージはブロックしない（[`.github/codecov.yml`](../../.github/codecov.yml)）。フラグ別とコンポーネント別のカバレッジは Codecov の Flags と Components のページにある。新しいプッシュは、プルリクエストでは実行中の CI 実行をキャンセルするが、`main` ではキャンセルしない。そのため `main` のすべてのコミットが Codecov に届く。アップロードは GitHub OIDC で認証するため、リポジトリに Codecov のトークンは不要だが、codecov.io に GitHub でサインインして Codecov GitHub App をインストールし、リポジトリを一度有効にする必要がある。アップロードが失敗しても確認は失敗しない。
 
