@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"crypto/rand"
+	"errors"
 	"fmt"
 	"io"
 	"slices"
@@ -21,6 +22,10 @@ const (
 	undoLifetime = 10 * time.Minute
 	// undoCapacity は同時に持つトークンの数の上限である。超えたら古いものから忘れる。
 	undoCapacity = 100
+	// undoMaxBytes は持っている像の合計のバイト数の上限である。像はグループの全項目を前後の 2 回
+	// 持つので、大きなグループを続けて動かすと件数の上限だけではメモリを抑えられない。超えたら古い
+	// ものから忘れる。いちばん新しい像はこの上限より大きくても持つ（その操作の取り消しを残すため）。
+	undoMaxBytes = 64 << 20
 	// undoTokenBytes はトークンの乱数のバイト数である。
 	undoTokenBytes = 16
 )
@@ -45,7 +50,7 @@ type OrganizerOptions struct {
 }
 
 // Organizer はドラッグの操作を保存先へ渡し、その取り消しの像をトークンで持つ（R-2）。トークンは
-// 1 回だけ使え、10 分で切れ、同時に持つのは 100 件までである。
+// 1 回だけ使え、10 分で切れ、同時に持つのは 100 件かつ像の合計 undoMaxBytes までである。
 type Organizer struct {
 	store  OrganizeStore
 	now    func() time.Time
@@ -54,6 +59,8 @@ type Organizer struct {
 	mu sync.Mutex
 	// entries は持っているトークンで、作った順に並ぶ。
 	entries []undoEntry
+	// bytes は entries の像の合計のバイト数である。
+	bytes int
 }
 
 // undoEntry はトークン 1 つと、その操作の像である。
@@ -76,63 +83,88 @@ func NewOrganizer(opts OrganizerOptions) *Organizer {
 }
 
 // Reorder はグループの項目をまとめて並べ替え、取り消しのトークンを返す。
+// トークンは保存先の操作より先に作る。乱数が読めなければ何も書かずに失敗し、並びが変わったのに
+// トークンを返せない、ということが起きない。
 func (o *Organizer) Reorder(ctx context.Context, groupID int64, itemIDs []int64, afterItemID *int64) (domain.OrganizeResult, error) {
+	token, err := o.newToken()
+	if err != nil {
+		return domain.OrganizeResult{}, err
+	}
 	image, err := o.store.Reorder(ctx, groupID, itemIDs, afterItemID)
 	if err != nil {
 		return domain.OrganizeResult{}, err
 	}
-	token, err := o.keep(image)
-	if err != nil {
-		return domain.OrganizeResult{}, err
-	}
+	o.keep(undoEntry{token: token, image: image, created: o.now()})
 	return domain.OrganizeResult{UndoToken: token}, nil
 }
 
 // Undo はトークン token の操作の前の状態へ戻す。トークンが無い、使い済み、または 10 分より古ければ
-// domain.ErrUndoExpired。トークンは結果にかかわらずこの 1 回で使い済みになる。行が変わっていれば
-// 保存先の domain.ErrUndoConflict をそのまま返す。
+// domain.ErrUndoExpired。取り消しが済むか、行が変わっていて保存先が domain.ErrUndoConflict を
+// 返せば、トークンは使い済みになる。それ以外の誤り（取引の中断など）では何も書かれていないので、
+// トークンを戻して同じトークンでやり直せるようにする。使っている間は持っていないので、同じ
+// トークンの 2 つ目の取り消しは ErrUndoExpired である。
 func (o *Organizer) Undo(ctx context.Context, token string) error {
-	image, ok := o.take(token)
+	entry, ok := o.take(token)
 	if !ok {
 		return domain.ErrUndoExpired
 	}
-	return o.store.Undo(ctx, image)
+	err := o.store.Undo(ctx, entry.image)
+	if err != nil && !errors.Is(err, domain.ErrUndoConflict) {
+		o.keep(entry)
+	}
+	return err
 }
 
-// keep は像 image を新しいトークンで持ち、そのトークンを返す。切れたものを忘れ、上限を超えれば
-// いちばん古いものを忘れる。
-func (o *Organizer) keep(image []byte) (string, error) {
+// newToken は新しいトークンを作る。
+func (o *Organizer) newToken() (string, error) {
 	raw := make([]byte, undoTokenBytes)
 	if _, err := io.ReadFull(o.random, raw); err != nil {
 		return "", fmt.Errorf("cannot create an undo token: %w", err)
 	}
-	token := sessionTokenEncoding.EncodeToString(raw)
+	return sessionTokenEncoding.EncodeToString(raw), nil
+}
+
+// keep は entry を作った順の位置に持つ。切れたものを忘れ、件数かバイト数の上限を超えれば
+// いちばん古いものから忘れる。いちばん新しいものは忘れない。
+func (o *Organizer) keep(entry undoEntry) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.forgetExpired()
-	o.entries = append(o.entries, undoEntry{token: token, image: image, created: o.now()})
-	if extra := len(o.entries) - undoCapacity; extra > 0 {
-		o.entries = slices.Delete(o.entries, 0, extra)
+	i := slices.IndexFunc(o.entries, func(e undoEntry) bool { return e.created.After(entry.created) })
+	if i < 0 {
+		i = len(o.entries)
 	}
-	return token, nil
+	o.entries = slices.Insert(o.entries, i, entry)
+	o.bytes += len(entry.image)
+	for len(o.entries) > 1 && (len(o.entries) > undoCapacity || o.bytes > undoMaxBytes) {
+		o.bytes -= len(o.entries[0].image)
+		o.entries = slices.Delete(o.entries, 0, 1)
+	}
 }
 
-// take はトークン token の像を取り出して忘れる。無いか切れていれば false。
-func (o *Organizer) take(token string) ([]byte, bool) {
+// take はトークン token の項目を取り出して忘れる。無いか切れていれば false。
+func (o *Organizer) take(token string) (undoEntry, bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	o.forgetExpired()
 	i := slices.IndexFunc(o.entries, func(e undoEntry) bool { return e.token == token })
 	if i < 0 {
-		return nil, false
+		return undoEntry{}, false
 	}
-	image := o.entries[i].image
+	entry := o.entries[i]
+	o.bytes -= len(entry.image)
 	o.entries = slices.Delete(o.entries, i, i+1)
-	return image, true
+	return entry, true
 }
 
 // forgetExpired は 10 分より古いトークンを忘れる。呼び出し側が mu を持つ。
 func (o *Organizer) forgetExpired() {
 	now := o.now()
-	o.entries = slices.DeleteFunc(o.entries, func(e undoEntry) bool { return !now.Before(e.created.Add(undoLifetime)) })
+	o.entries = slices.DeleteFunc(o.entries, func(e undoEntry) bool {
+		expired := !now.Before(e.created.Add(undoLifetime))
+		if expired {
+			o.bytes -= len(e.image)
+		}
+		return expired
+	})
 }

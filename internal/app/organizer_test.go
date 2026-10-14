@@ -12,15 +12,21 @@ import (
 )
 
 // fakeOrganizeStore は操作ごとに "image-<n>" の像を返し、取り消しで受け取った像を覚える。
+// imageSize が 0 でなければ、像をそのバイト数に伸ばす。
 type fakeOrganizeStore struct {
-	reorders int
-	undone   [][]byte
-	undoErr  error
+	reorders  int
+	undone    [][]byte
+	undoErr   error
+	imageSize int
 }
 
 func (f *fakeOrganizeStore) Reorder(_ context.Context, _ int64, _ []int64, _ *int64) ([]byte, error) {
 	f.reorders++
-	return fmt.Appendf(nil, "image-%d", f.reorders), nil
+	image := fmt.Appendf(nil, "image-%d", f.reorders)
+	if f.imageSize > len(image) {
+		image = append(image, make([]byte, f.imageSize-len(image))...)
+	}
+	return image, nil
 }
 
 func (f *fakeOrganizeStore) Undo(_ context.Context, image []byte) error {
@@ -79,6 +85,59 @@ func TestOrganizerConflictUsesTheToken(t *testing.T) {
 	}
 	if err := o.Undo(context.Background(), token); !errors.Is(err, domain.ErrUndoExpired) {
 		t.Fatalf("second Undo error = %v", err)
+	}
+}
+
+// 取引の中断のように保存先が何も書かずに失敗したら、トークンは残り、同じトークンでやり直せる。
+func TestOrganizerKeepsTheTokenWhenTheUndoFails(t *testing.T) {
+	store := &fakeOrganizeStore{undoErr: context.Canceled}
+	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
+	token := reorderToken(t, o)
+	if err := o.Undo(context.Background(), token); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Undo error = %v", err)
+	}
+	store.undoErr = nil
+	if err := o.Undo(context.Background(), token); err != nil {
+		t.Fatalf("retried Undo error = %v", err)
+	}
+	if err := o.Undo(context.Background(), token); !errors.Is(err, domain.ErrUndoExpired) {
+		t.Fatalf("third Undo error = %v", err)
+	}
+}
+
+// トークンが作れなければ、保存先は並べ替えない。
+func TestOrganizerCreatesTheTokenBeforeTheStoreWrites(t *testing.T) {
+	store := &fakeOrganizeStore{}
+	o := NewOrganizer(OrganizerOptions{Store: store, Random: bytes.NewReader(nil)})
+	if _, err := o.Reorder(context.Background(), 1, []int64{2}, nil); err == nil {
+		t.Fatal("Reorder succeeded without randomness")
+	}
+	if store.reorders != 0 || len(o.entries) != 0 {
+		t.Fatalf("reorders = %d, entries = %d", store.reorders, len(o.entries))
+	}
+}
+
+// 像の合計が undoMaxBytes を超えると古いトークンから忘れる。いちばん新しい像は上限より大きくても持つ。
+func TestOrganizerBoundsTheJournalInBytes(t *testing.T) {
+	store := &fakeOrganizeStore{imageSize: undoMaxBytes/2 + 1}
+	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
+	oldest, newest := reorderToken(t, o), reorderToken(t, o)
+	if err := o.Undo(context.Background(), oldest); !errors.Is(err, domain.ErrUndoExpired) {
+		t.Fatalf("Undo of the oldest error = %v", err)
+	}
+	if o.bytes != undoMaxBytes/2+1 {
+		t.Fatalf("bytes = %d", o.bytes)
+	}
+	if err := o.Undo(context.Background(), newest); err != nil {
+		t.Fatalf("Undo of the newest error = %v", err)
+	}
+	if o.bytes != 0 {
+		t.Fatalf("bytes after the undo = %d", o.bytes)
+	}
+
+	store.imageSize = undoMaxBytes + 1
+	if err := o.Undo(context.Background(), reorderToken(t, o)); err != nil {
+		t.Fatalf("Undo of an image over the limit error = %v", err)
 	}
 }
 
