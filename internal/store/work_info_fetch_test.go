@@ -232,6 +232,30 @@ func TestApplyFetchedWorkInfoFailureWritesNeitherField(t *testing.T) {
 	}
 }
 
+// 自動タグ付けが提案した付与と同じタグを取り込んでも、提案は確定せずに残る。取り込みは仮の付け方
+// だからである（Issue #968 の要件 6、docs/design-docs/auto-tagging.md）。
+func TestApplyFetchedWorkInfoKeepsASuggestedTagSuggested(t *testing.T) {
+	ctx := context.Background()
+	db, ids := overrideFixture(t)
+	plugin := approvedPlugin(t, db, "example", "d1")
+	tagID := createTagsNamed(t, db, "drama")["drama"]
+	if _, err := db.sql.Exec(`insert into video_tags (content_key, tag_id, created_at, tentative) values (?, ?, 0, 1)`,
+		"key-alpha", tagID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+		VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Tags: []string{"drama", "comedy"},
+	}); err != nil {
+		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
+	}
+	if got := tentativeOf(t, db, "key-alpha", tagID); got != 1 {
+		t.Fatalf("suggested drama tentative = %d; want 1 (still a suggestion)", got)
+	}
+	if got := tentativeOf(t, db, "key-alpha", tagIDByName(t, db, "comedy")); got != 0 {
+		t.Fatalf("comedy assignment tentative = %d; want 0", got)
+	}
+}
+
 // 行とモジュールは同じ読み出しで返り、問題のある行のモジュールは無い。
 func TestWorkInfoPluginModuleReturnsTheRowAndBytes(t *testing.T) {
 	ctx := context.Background()

@@ -53,7 +53,7 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 		return domain.VideoTagsOutcome{}, err
 	}
 	keys := uniqueUserKeys(targets)
-	skipped, err := writeVideoTagsByName(ctx, tx, keys, action, normalized, tentative, time.Now())
+	skipped, err := writeVideoTagsByName(ctx, tx, keys, action, normalized, tagWrite{tentative: tentative}, time.Now())
 	if err != nil {
 		return domain.VideoTagsOutcome{}, err
 	}
@@ -77,19 +77,27 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 	return domain.VideoTagsOutcome{Items: out, SkippedNames: skipped}, nil
 }
 
+// tagWrite は writeVideoTagsByName の書き方である。tentative は無い名前を仮のタグとして作る
+// （resolveTagNames）。keepSuggested は、自動タグ付けが提案した（video_tags.tentative = 1 の）付与に
+// 同じタグを付けるとき、提案のまま残す。偽なら手で付けたのと同じく確定する（docs/design-docs/auto-tagging.md）。
+type tagWrite struct {
+	tentative     bool
+	keepSuggested bool
+}
+
 // writeVideoTagsByName は利用者データの鍵 keys の手で付けたタグを、整えた名前 names で action の通りに
 // 書き換え、飛ばした（却下した）名前を返す。名前の引き当て（resolveTagNames）と書き込みと更新日時は
 // 呼び出し側の取引 tx で行う。更新日時は手で付けたタグが実際に変わった鍵（集まりなら全メンバー）だけを
 // 進める（specs/033-video-dates/research.md R-3）。外部連携の一括操作と、作品情報の取得の結果の反映
 // （ApplyFetchedWorkInfo）が共有する。
 func writeVideoTagsByName(
-	ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, names []string, tentative bool, now time.Time,
+	ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, names []string, mode tagWrite, now time.Time,
 ) ([]string, error) {
-	tagIDs, skipped, err := resolveTagNames(ctx, tx, action, names, tentative)
+	tagIDs, skipped, err := resolveTagNames(ctx, tx, action, names, mode.tentative)
 	if err != nil {
 		return nil, err
 	}
-	changed, err := applyManualTags(ctx, tx, keys, action, tagIDs, now)
+	changed, err := applyManualTags(ctx, tx, keys, action, tagIDs, mode.keepSuggested, now)
 	if err != nil {
 		return nil, err
 	}
@@ -224,13 +232,16 @@ func uniqueUserKeys(targets []taggableVideo) []string {
 }
 
 // applyManualTags は利用者データの鍵 keys の手で付けたタグ（video_tags の行）を action の通りに
-// 書き換え、行が実際に変わる鍵を重複なく keys の順で返す。
+// 書き換え、行が実際に変わる鍵を重複なく keys の順で返す。add・replace は、自動タグ付けが提案した
+// 付与に同じタグを付けると確定する。keepSuggested が真なら提案のまま残す。
 // 動画とタグの組を 1 行ずつ送らず、json_each で渡した集合に対する文の数を一定に保つ。上限の
 // 20000 件 × 100 件でも文の数が増えず、書き込みの鍵を持つ時間を SQLite の中の処理だけに抑える。
 // 変わる鍵は書き込みの前に 1 文で求め（changedManualTagKeys）、返る行を鍵の数までに抑える
 // （specs/033-video-dates/research.md R-3）。書き込みは同じ取引で行うので、求めた鍵と実際に
 // 変わる行は食い違わない。
-func applyManualTags(ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, tagIDs []int64, now time.Time) ([]string, error) {
+func applyManualTags(
+	ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, tagIDs []int64, keepSuggested bool, now time.Time,
+) ([]string, error) {
 	encodedKeys, err := json.Marshal(keys)
 	if err != nil {
 		return nil, fmt.Errorf("cannot build content keys: %w", err)
@@ -255,10 +266,14 @@ func applyManualTags(ctx context.Context, tx *sql.Tx, keys []string, action doma
 		}
 		fallthrough
 	case domain.VideoTagsAdd:
+		onConflict := `do update set tentative = 0 where video_tags.tentative = 1`
+		if keepSuggested {
+			onConflict = `do nothing`
+		}
 		if _, err := tx.ExecContext(ctx,
 			`insert into video_tags (content_key, tag_id, created_at)
 			 select k.value, t.value, ? from json_each(?) as k cross join json_each(?) as t where true
-			 on conflict (content_key, tag_id) do update set tentative = 0 where video_tags.tentative = 1`,
+			 on conflict (content_key, tag_id) `+onConflict,
 			now.Unix(), string(encodedKeys), string(encodedTags),
 		); err != nil {
 			return nil, fmt.Errorf("cannot add the video tags: %w", err)
