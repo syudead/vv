@@ -122,7 +122,8 @@ const server = {
   probe: vi.fn<() => Response>(),
   open: vi.fn<() => Response>(),
   /** フォルダの経路（/api/folders/…）とグループの書き込み（/api/groups/…）の応答。 */
-  grouping: vi.fn<(method: string, url: string, body: unknown) => Response>(),
+  grouping:
+    vi.fn<(method: string, url: string, body: unknown) => Response | Promise<Response>>(),
   /** GET /api/groups/{id}/items が返すグループの直接の項目。無いグループは 404。 */
   groupItems: new Map<number, GroupItem[]>(),
   /** PUT /api/videos/{id}/display-name の応答。 */
@@ -1325,6 +1326,39 @@ describe("VideoPage", () => {
             ),
           ).toBe(true),
         );
+      });
+
+      it("外す要求の間に別の動画へ移ったら、応答で前の動画へ引き戻さない", async () => {
+        const user = userEvent.setup();
+        server.groupItems.set(1, [{ id: 52, kind: "video", video: listed(ep02) }]);
+        server.videos.set(8, [{ ...related(8, "後続の動画"), location: video.location }]);
+        let answer: ((response: Response) => void) | undefined;
+        server.grouping.mockImplementation(
+          () =>
+            new Promise<Response>((resolve) => {
+              answer = resolve;
+            }),
+        );
+        renderPage("12?group=1", "/?q=series");
+        await ready();
+        await user.click(await actionsButton());
+        await user.click(
+          await screen.findByRole("menuitem", { name: "Remove from this group" }),
+        );
+        await waitFor(() => expect(answer).toBeDefined());
+        await user.click(screen.getByRole("link", { name: "別の動画" }));
+        await waitFor(() =>
+          expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+            "後続の動画",
+          ),
+        );
+
+        await act(async () => {
+          answer?.(json({ id: 1, name: "series" }));
+          await Promise.resolve();
+        });
+        expect(await screen.findByText('Removed from "series"')).toBeDefined();
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("後続の動画");
       });
 
       it("外す要求の 404 はトーストなしで読み直す", async () => {

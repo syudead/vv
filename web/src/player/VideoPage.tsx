@@ -21,7 +21,6 @@ import {
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
 import type { PlaylistStep } from "../api/playlists";
-import { groupContextOf, videoInGroupPath } from "../groups/groupPaths";
 import { t } from "../i18n";
 import { itemTitle } from "../playlists/playlistItems";
 import PlaylistPanel from "../playlists/PlaylistPanel";
@@ -49,6 +48,7 @@ import {
 } from "./pageDecisions";
 import type { PlaybackFailureKind } from "./playbackRecovery";
 import RelatedVideos, { type MemberTarget } from "./RelatedVideos";
+import { useVideoGroupContext } from "./useVideoGroupContext";
 import StallWarning from "./StallWarning";
 import {
   CreatingLine,
@@ -118,27 +118,22 @@ export default function VideoPage() {
   // 動画を開いたグループ（`?group`）。読み取りに渡し、グループの行・矢印・メンバーの並び・予告を
   // その再生順に従わせる。プレイリストの文脈はグループより優先するので、その間は使わない
   // （specs/048-groups/ui-design.md「Video page」、research.md R-9）。
-  const groupContext =
-    playlistQuery === null ? groupContextOf(location.search) : undefined;
-  // この画面から別の動画を開く場所。`?group` があれば残す。
-  const videoTo = (videoId: number) =>
-    groupContext === undefined
-      ? `/videos/${String(videoId)}`
-      : videoInGroupPath(videoId, groupContext);
+  const groupContext = useVideoGroupContext(playlistQuery !== null);
+  const { videoTo } = groupContext;
 
   const {
     state: detailState,
     refresh,
     replace,
     setFavorite,
-  } = useVideoDetail(id, groupContext);
+  } = useVideoDetail(id, groupContext.group);
   const {
     state: relatedState,
     retry: retryRelated,
     loadMore: loadMoreRelated,
     rename: renameRelated,
     rethumb: rethumbRelated,
-  } = useRelatedVideos(id, groupContext);
+  } = useRelatedVideos(id, groupContext.group);
   const detail = detailState.id === id ? detailState : { kind: "loading" as const, id };
   const related =
     relatedState.id === id ? relatedState : { kind: "loading" as const, id };
@@ -543,7 +538,7 @@ export default function VideoPage() {
             ? undefined
             : nextVideo
         }
-        to={nextVideo === undefined ? undefined : videoTo(nextVideo.id)}
+        to={groupContext.nextTo(nextVideo)}
         linkState={linkState}
         takeFocus={endedTakesFocus}
         onReplay={() => controls?.restart()}
@@ -610,29 +605,12 @@ export default function VideoPage() {
           state: { ...linkState, autoplay: status.playing || status.ended },
         })
       : undefined;
-  // `?group` で開いた動画のメンバーの行は、そのグループの文脈を保って開く。
-  const groupMemberTarget: MemberTarget | undefined =
-    groupContext === undefined
-      ? undefined
-      : (memberId) => ({ to: videoTo(memberId), state: linkState });
-
   // グループの操作（外す・タグ化・解散）の後に、動画と関連動画を `group` なしで読み直す。
-  // `?group` があれば URL から外す（読み取りは問い合わせに従って読み直す）。無ければそのまま
-  // 取り直す。どちらも再生は止めない（ui-design.md「Video page」）。
-  const readWithoutGroup = () => {
-    if (groupContext === undefined) {
+  const readWithoutGroup = () =>
+    groupContext.readWithoutGroup(() => {
       void refresh();
       retryRelated();
-      return;
-    }
-    const params = new URLSearchParams(location.search);
-    params.delete("group");
-    const search = params.size === 0 ? "" : `?${params.toString()}`;
-    void navigate(
-      { pathname: location.pathname, search },
-      { replace: true, state: location.state as unknown },
-    );
-  };
+    });
   const skippedTitle =
     video?.title ?? (currentItem === undefined ? "" : itemTitle(currentItem));
   // 飛ばしたのは今の訪問の間だけ覚える。別の項目へ移れば忘れ、自動再生で同じ項目に
@@ -823,8 +801,9 @@ export default function VideoPage() {
               linkState={linkState}
               onRetry={retryRelated}
               onLoadMore={loadMoreRelated}
-              memberTarget={groupMemberTarget}
-              groupContext={groupContext}
+              // `?group` で開いた動画のメンバーの行は、そのグループの文脈を保って開く。
+              memberTarget={groupContext.memberTarget(linkState)}
+              groupContext={groupContext.group}
             />
           )
         }

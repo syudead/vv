@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Ellipsis, Folder, FolderMinus, Tag, Trash2 } from "lucide-react";
 import { Link } from "react-router";
 
@@ -117,6 +117,18 @@ function GroupActions({
   const itemId = useDirectItem(group.id, videoId);
   const [dialog, setDialog] = useState<"tag" | "dissolve" | null>(null);
   const [removing, setRemoving] = useState(false);
+  // 要求の間に別の動画へ移るか画面を離れたら、応答で読み直させない。読み直しは操作を始めた
+  // ときの動画の URL へ移るので、利用者を前の動画へ引き戻してしまう。
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  const changed = () => {
+    if (mounted.current) onChanged();
+  };
 
   const remove = (id: number) => {
     setRemoving(true);
@@ -125,14 +137,14 @@ function GroupActions({
         setRemoving(false);
         clearListSnapshot();
         toast(t.player.group.removed(group.name));
-        onChanged();
+        changed();
       },
       (error: unknown) => {
         setRemoving(false);
         // 項目かグループがもう無い。トーストなしで読み直し、今の所属に合わせる。
         if (error instanceof RequestFailed && error.status === 404) {
           clearListSnapshot();
-          onChanged();
+          changed();
           return;
         }
         toast(t.player.group.removeFailed(errorText(error)));
@@ -143,7 +155,7 @@ function GroupActions({
   // 窓が途中で解散を知ったときは、トーストなしで読み直す。
   const gone = () => {
     setDialog(null);
-    onChanged();
+    changed();
   };
 
   return (
@@ -190,7 +202,7 @@ function GroupActions({
           onTagged={(result) => {
             setDialog(null);
             toast(taggedMessage(result));
-            onChanged();
+            changed();
           }}
           onGone={gone}
         />
@@ -202,7 +214,7 @@ function GroupActions({
           onDissolved={() => {
             setDialog(null);
             toast(t.groups.dissolved(group.name));
-            onChanged();
+            changed();
           }}
           onGone={gone}
         />

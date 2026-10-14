@@ -53,6 +53,20 @@ export function isProcessing(video: Video): boolean {
   );
 }
 
+/**
+ * withGroupOf は、変更の要求の応答 `saved` のグループを手元の 1 件 `current` のものに揃える。
+ * 変更の要求は `group` を受け取らないので、応答のグループはいつも id のいちばん小さいもので
+ * ある。動画を開いたグループ（`group`）があるときにそれを採ると、グループの行が関連動画の
+ * 再生順と食い違う（specs/048-groups/research.md R-9）。`group` が無ければ応答のまま。
+ */
+function withGroupOf(saved: Video, current: Video | undefined, group?: number): Video {
+  if (group === undefined || current === undefined) return saved;
+  const video = { ...saved };
+  if (current.group === undefined) delete video.group;
+  else video.group = current.group;
+  return video;
+}
+
 /** loadsStarted は、どの画面でも動画 1 件の取得を始めるたびに進める通し番号である。 */
 let loadsStarted = 0;
 
@@ -86,6 +100,8 @@ export function detailMark(): DetailMark {
  * - 要求の間に反映した公開の切り替えとお気に入りの付け外しは、応答の `public`・`favorite`
  *   より優先する。どちらもサーバーから知らせが来ないので、ここで巻き戻すと直らない。
  * - 別の動画の応答は捨てる。
+ * - 動画を開いたグループ（`group`）があるときは、応答のグループではなく手元のグループを残す
+ *   （withGroupOf）。
  *
  * `setFavorite` は表示中の動画のお気に入りを `PUT /api/favorites` で付け外しし、成功したら
  * 取り直して、その取得が終わったら解決する（specs/035-favorites/ui-design.md「Video page」）。
@@ -208,7 +224,10 @@ export function useVideoDetail(
         settle();
       }
       const video = withFavoriteSince(
-        withVisibilitySince(saved, mark.visibility),
+        withVisibilitySince(
+          withGroupOf(saved, current, contextRef.current.group),
+          mark.visibility,
+        ),
         mark.favorite,
       );
       current = video;

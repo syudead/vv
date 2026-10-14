@@ -270,8 +270,10 @@ function RelatedSections({
     const group = state.related.group;
     return (
       <GroupedRelated
-        // 別のメンバーへ移ったら、読み足した分を捨てて新しい窓から始める。
-        key={state.id}
+        // 別のメンバーへ移ったら、または同じ動画のまま応答のグループが替わったら（`?group`、
+        // そのフォールバック、グループの操作の後の読み直し）、読み足した分と読み足し中の要求を
+        // 捨てて新しい窓から始める。
+        key={`${String(state.id)}:${String(group.id)}`}
         currentId={state.id}
         members={group.items}
         offset={group.offset}

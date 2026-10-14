@@ -9,6 +9,7 @@ import {
   loadingCrumbs,
   parseGroupId,
   parseTrail,
+  searchWithoutGroup,
   trailCrumbs,
   videoInGroupPath,
 } from "./groupPaths";
@@ -74,6 +75,14 @@ describe("groupContextOf", () => {
     expect(groupContextOf("")).toBeUndefined();
     expect(groupContextOf("?group=0")).toBeUndefined();
     expect(groupContextOf("?group=x")).toBeUndefined();
+  });
+});
+
+describe("searchWithoutGroup", () => {
+  it("?group だけを外し、ほかの問い合わせは残す", () => {
+    expect(searchWithoutGroup("?group=7")).toBe("");
+    expect(searchWithoutGroup("?t=12&group=7")).toBe("?t=12");
+    expect(searchWithoutGroup("")).toBe("");
   });
 });
 

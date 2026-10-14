@@ -737,6 +737,40 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
       expect(memberRows()[101]?.textContent).toContain("ep 3051");
     });
 
+    it("同じ動画のまま応答のグループが替わったら、前のグループで読み足した行を捨てる", async () => {
+      wide(false);
+      vi.mocked(listVideoGroupMembers).mockResolvedValue({
+        items: [member(3050), member(3051)],
+        offset: 3049,
+        total: 6000,
+      });
+      const stateOf = (groupId: number): RelatedState => ({
+        kind: "ready",
+        id: 3000,
+        related: {
+          items: [],
+          group: { id: groupId, name: "big", items: window, offset: 2949, total: 6000 },
+        },
+      });
+      const tree = (state: RelatedState) => (
+        <MemoryRouter>
+          <RelatedVideos
+            state={state}
+            linkState={linkState}
+            onRetry={vi.fn()}
+            onLoadMore={vi.fn()}
+          />
+        </MemoryRouter>
+      );
+      const { rerender } = render(tree(stateOf(1)));
+      await reachEdge(0);
+      expect(memberRows()).toHaveLength(102);
+
+      rerender(tree(stateOf(2)));
+      expect(memberRows()).toHaveLength(100);
+      expect(screen.queryByText("ep 3051")).toBeNull();
+    });
+
     it("狭い画面では、前のメンバーをボタンで読む", async () => {
       wide(false);
       vi.mocked(listVideoGroupMembers).mockResolvedValue({

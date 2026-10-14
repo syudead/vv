@@ -88,6 +88,17 @@ export function videoInGroupPath(videoId: number, groupId: number): string {
 }
 
 /**
+ * searchWithoutGroup は動画ページの問い合わせから `?group` を外したものである。ほかの問い合わせは
+ * 残し、何も残らなければ空文字を返す（グループの操作の後に `group` なしで読み直す。ui-design.md
+ * 「Video page」）。
+ */
+export function searchWithoutGroup(search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete(GROUP_PARAM);
+  return params.size === 0 ? "" : `?${params.toString()}`;
+}
+
+/**
  * trailCrumbs は道筋の帯の段である。「Library」、応答の `trail` の各グループ（その手前で
  * 切った道筋付きのリンク）、開いているグループの名前（現在地、リンクにしない）の順。
  */

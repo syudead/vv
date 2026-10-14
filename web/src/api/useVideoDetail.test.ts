@@ -97,6 +97,35 @@ describe("useVideoDetail", () => {
     expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), undefined);
   });
 
+  it("group があるとき replace は応答のグループではなく手元のグループを残す", async () => {
+    const picks = { id: 9, name: "picks", position: 2, count: 3 };
+    const series = { id: 1, name: "series", position: 1, count: 5 };
+    getVideo.mockResolvedValue({ ...done, group: picks });
+    const { result, rerender } = renderHook(
+      ({ group }: { group?: number }) => useVideoDetail(7, group),
+      { initialProps: { group: 9 } as { group?: number } },
+    );
+    await flush();
+
+    // 変更の要求は group を受け取らず、応答は id のいちばん小さいグループを返す。
+    act(() =>
+      result.current.replace(
+        { ...done, title: "新しい名前", group: series },
+        detailMark(),
+      ),
+    );
+    expect(result.current.state).toMatchObject({
+      video: { title: "新しい名前", group: picks },
+    });
+
+    // group が無ければ応答のまま。
+    getVideo.mockResolvedValue({ ...done, group: series });
+    rerender({ group: undefined });
+    await flush();
+    act(() => result.current.replace({ ...done, group: series }, detailMark()));
+    expect(result.current.state).toMatchObject({ video: { group: series } });
+  });
+
   it("ゲストでは変化の知らせ（/api/events）を購読しない", async () => {
     getVideo.mockResolvedValue(done);
     // AudienceProvider の外の既定はゲストである。
