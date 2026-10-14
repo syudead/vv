@@ -34,13 +34,13 @@ Create `needs-human` when it does not exist.
 
 ## Procedure
 
-### 1. Preflight
+### Preflight
 
 Check that the session can read and write PRs, Issues and labels, push to
 `renovate/*` branches, and merge into `main`. Stop and report when one is
 missing; change nothing.
 
-### 2. Watch what earlier runs merged
+### Watch what earlier runs merged
 
 List the Renovate PRs (author `app/renovate`) merged in the last 7 days that
 carry a `renovate-triage:merged` comment. For each, read the CI workflow run of
@@ -55,7 +55,7 @@ the push to `main` at its merge commit:
 - **Failed on the first parent too**: `main` was already red; not this
   update's failure. Report it once and leave it.
 
-### 3. List the open Renovate PRs
+### List the open Renovate PRs
 
 List the open PRs by `app/renovate`. Request only number, title, labels, head
 branch, head commit, mergeable state, the check runs of the head commit, and
@@ -71,7 +71,7 @@ Skip a PR that:
 
 Send a PR that is not a major update, has a `renovate-triage:attempt`
 comment, and has all required checks green and no conflict straight to the
-merge gates (step 5). Renovate does not merge a branch someone else has
+[merge gates](#merge-gates). Renovate does not merge a branch someone else has
 committed to.
 
 Label `needs-human`, with one comment saying why, a PR that:
@@ -82,7 +82,7 @@ Label `needs-human`, with one comment saying why, a PR that:
 - already has three `renovate-triage:attempt` comments and still fails a
   check: three fixes did not get it green.
 
-### 4. Hand each remaining PR to a worker
+### Hand each remaining PR to a worker
 
 Run one `renovate-pr-fixer` per PR, one at a time. Concurrent workers on
 lockfiles conflict with each other. Use this brief:
@@ -103,7 +103,7 @@ Act on the worker's `STATUS` line
 | `READY` | Apply the merge gates now |
 | `BLOCKED` | Label `needs-human`. The worker has already commented why |
 
-### 5. Merge gates
+### Merge gates
 
 Merge a Renovate PR only when all of these hold on its current head commit:
 
@@ -122,7 +122,7 @@ Merge a Renovate PR only when all of these hold on its current head commit:
 Then post `<!-- renovate-triage:merged -->` with one line on what was merged,
 and merge with a merge commit, as the repository does for other PRs.
 
-### 6. Report
+### Report
 
 When the run did anything, add one comment to the Renovate "Dependency
 Dashboard" Issue: one line per PR merged, fixed, labelled `needs-human` or
@@ -131,7 +131,7 @@ reverted, each with the PR link. When the run did nothing, post nothing.
 ## Never
 
 - Merge a PR that is not by `app/renovate`, except a revert this routine
-  opened in step 2.
+  opened in [Watch what earlier runs merged](#watch-what-earlier-runs-merged).
 - Skip, disable, loosen or quarantine a test or a check, or re-run a failed
   check to get it green.
 - Change `renovate.json` to stop an update. That is the maintainer's call;
