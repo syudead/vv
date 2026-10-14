@@ -1,10 +1,19 @@
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LibraryGroup, LibraryItem, Video } from "../api/client";
-import { clearListSnapshot } from "../api/listSnapshot";
+import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
+import { clearListSnapshot, takeListSnapshot } from "../api/listSnapshot";
 import { __resetTagsForTest } from "../api/tags";
 import { AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
@@ -74,6 +83,10 @@ const server = {
   writes: [] as Write[],
   /** true の間、束ねる要求は 400 too_many_videos で失敗する。 */
   tooManyVideos: false,
+  /** 「Make a group」の前の一覧（取り消しで戻す）。 */
+  before: [] as LibraryItem[],
+  /** 置くと次の束ねる要求は、これが解けるまで答えない。 */
+  holdBundle: null as Promise<void> | null,
 };
 
 /** organize は「Make a group」と「Bundle as versions」に契約どおり答える。 */
@@ -86,6 +99,7 @@ function organize(path: string, body: unknown): Response | undefined {
     );
     const name = targetItem?.kind === "video" ? targetItem.video.title : "";
     const made = group(90, name, [target, ...lifted]);
+    server.before = server.items;
     server.items = server.items.flatMap((item): LibraryItem[] => {
       if (item.kind !== "video") return [item];
       if (item.video.id === target) return [{ kind: "group", group: made }];
@@ -106,6 +120,10 @@ function organize(path: string, body: unknown): Response | undefined {
     );
     return json({ undoToken: "token-bundle" });
   }
+  if (path === "/api/organize/undo") {
+    server.items = server.before;
+    return new Response(null, { status: 204 });
+  }
   if (path === "/api/groups/90") {
     const { name } = body as { name: string };
     server.items = server.items.map((item) =>
@@ -124,8 +142,10 @@ const fetchMock = vi.fn<typeof fetch>((input, init) => {
   if (method !== "GET") {
     const body = JSON.parse(String(init?.body)) as unknown;
     server.writes.push({ method, path: url.pathname, body });
+    const hold = url.pathname === "/api/organize/bundle" ? server.holdBundle : null;
+    server.holdBundle = null;
     const answer = organize(url.pathname, body);
-    if (answer !== undefined) return Promise.resolve(answer);
+    if (answer !== undefined) return (hold ?? Promise.resolve()).then(() => answer);
   }
   if (url.pathname === "/api/scans/current") return Promise.resolve(json({}, 404));
   if (url.pathname === "/api/media-folders") return Promise.resolve(json([{}]));
@@ -191,7 +211,10 @@ beforeEach(() => {
   localStorage.clear();
   server.writes = [];
   server.tooManyVideos = false;
+  server.before = [];
+  server.holdBundle = null;
   vi.stubGlobal("fetch", fetchMock);
+  installFakeEventSource();
   vi.stubGlobal(
     "IntersectionObserver",
     class {
@@ -259,6 +282,86 @@ describe("LibraryPage drag a video onto a video", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("名前の欄を開いている間に一覧が読み直されても、欄は入力ごと残る", async () => {
+    await open();
+    const user = userEvent.setup();
+    await user.click(
+      within(await dropAOnB()).getByRole("menuitem", { name: "Make a group" }),
+    );
+    const field = await screen.findByRole("textbox", { name: "Group name" });
+    await user.clear(field);
+    await user.type(field, "Tri");
+    // 新しいグループの知らせで、ライブラリは一覧を読み直す（サーバーの一覧は A と B の代わりに
+    // グループを持つ）。
+    await emitServerEvent("group", { ids: [90] });
+    await waitFor(() => expect(fetchMock.mock.calls.length).toBeGreaterThan(0));
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const kept = screen.getByRole("textbox", { name: "Group name" });
+    expect((kept as HTMLInputElement).value).toBe("Tri");
+    expect(document.activeElement).toBe(kept);
+    expect(cardTitles()).toEqual(["Tri", "C"]);
+  });
+
+  it("名前の欄を開いたまま Undo を押すと、欄が閉じて A と B が戻る", async () => {
+    await open();
+    const user = userEvent.setup();
+    await user.click(
+      within(await dropAOnB()).getByRole("menuitem", { name: "Make a group" }),
+    );
+    await screen.findByRole("textbox", { name: "Group name" });
+    fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+
+    expect(await screen.findByText("Undone")).toBeDefined();
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Group name" })).toBeNull(),
+    );
+    await waitFor(() => expect(cardTitles()).toEqual(["A", "B", "C"]));
+    expect(server.writes.some((each) => each.method === "PATCH")).toBe(false);
+  });
+
+  it("作った直後のカードを押しても古い一覧を控えにせず、読み直した後の一覧を控えにする", async () => {
+    await open();
+    const user = userEvent.setup();
+    await user.click(
+      within(await dropAOnB()).getByRole("menuitem", { name: "Make a group" }),
+    );
+    const field = await screen.findByRole("textbox", { name: "Group name" });
+    await user.click(field);
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+
+    await user.keyboard("{Escape}");
+    await screen.findByRole("heading", { name: "B" });
+    await user.click(screen.getByRole("heading", { name: "C" }));
+    const snapshot = takeListSnapshot({ query: "" });
+    expect(snapshot?.items.map((item) => item.kind)).toEqual(["group", "video"]);
+  });
+
+  it("選んだ 2 枚を落として失敗したら、カードと選択を戻す", async () => {
+    await open();
+    server.tooManyVideos = true;
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox", { name: 'Select "A"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select "C"' }));
+    await user.click(
+      within(await dropAOnB()).getByRole("menuitem", { name: "Bundle as versions" }),
+    );
+
+    expect(
+      await screen.findByText("Couldn't bundle: Select between 1 and 20 videos."),
+    ).toBeDefined();
+    expect(cardTitles()).toEqual(["A", "B", "C"]);
+    expect(screen.getByRole("region", { name: "Selection actions" })).toBeDefined();
+    expect(
+      screen.getByRole("checkbox", { name: 'Select "A"' }).getAttribute("aria-checked"),
+    ).toBe("true");
+    expect(
+      screen.getByRole("checkbox", { name: 'Select "C"' }).getAttribute("aria-checked"),
+    ).toBe("true");
+  });
+
   it("「Bundle as versions」は B を代表に束ねて A を消し、ダイアログを開かない", async () => {
     await open();
     await userEvent
@@ -295,6 +398,33 @@ describe("LibraryPage drag a video onto a video", () => {
     ).toBeDefined();
     expect(cardTitles()).toEqual(["A", "B", "C"]);
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  it("画面を離れた後に答えた要求は、取り消しの通知を出さない", async () => {
+    await open();
+    let answer = () => undefined as void;
+    server.holdBundle = new Promise<void>((resolve) => {
+      answer = resolve;
+    });
+    const user = userEvent.setup();
+    await user.click(
+      within(await dropAOnB()).getByRole("menuitem", { name: "Bundle as versions" }),
+    );
+    await waitFor(() =>
+      expect(server.writes.some((each) => each.path === "/api/organize/bundle")).toBe(
+        true,
+      ),
+    );
+    // 動画の画面へ移ると、ライブラリは消える（経路は無いので何も描かない）。
+    await user.click(screen.getByRole("link", { name: "C" }));
+    await waitFor(() => expect(screen.queryByRole("link", { name: "C" })).toBeNull());
+    await act(async () => {
+      answer();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+    expect(screen.queryByText(/Bundled 2 videos/)).toBeNull();
   });
 
   it("Esc でメニューを閉じると何も送らず、A と B はそのまま", async () => {

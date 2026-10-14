@@ -117,6 +117,11 @@ function libraryGroupItem(group: LibraryGroup): LibraryItem {
   return { kind: "group", group };
 }
 
+/** itemGroup は項目がグループならそのグループである。 */
+function itemGroup(item: LibraryItem): LibraryGroup | undefined {
+  return item.kind === "group" ? item.group : undefined;
+}
+
 /** ライブラリだけが URL に持つ条件（タグ、人物、団体）。 */
 const libraryParams = [TAG_PARAM, PERSON_PARAM, ORGANIZATION_PARAM];
 
@@ -380,6 +385,7 @@ export default function LibraryPage() {
     items: moves.visible,
     keyOf: itemKey,
     videoOf: itemVideo,
+    groupOf: itemGroup,
     from: null,
     groupItem: libraryGroupItem,
     reread: refreshInPlace,

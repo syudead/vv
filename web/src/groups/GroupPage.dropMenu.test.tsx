@@ -1,7 +1,8 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
+import { emitServerEvent } from "../api/fakeEventSource";
 import { dropOn, layoutCards, lift, moveTo, release } from "../testing/cardDrag";
 import { renderPage, seed, server, setUpGroupPageServer } from "../testing/groupPage";
 
@@ -53,6 +54,30 @@ describe("GroupPage drop a video on a video", () => {
     const field = await screen.findByRole("textbox", { name: "Group name" });
     expect((field as HTMLInputElement).value).toBe("Episode 1");
     expect(cardTitles()).toEqual(["Episode 1", "Extras"]);
+  });
+
+  it("名前の欄を開いている間にグループが読み直されても、欄は入力ごと残る", async () => {
+    await openGrid();
+    const user = userEvent.setup();
+    dropOn("Episode 2", 2, 0);
+    await user.click(
+      within(await screen.findByRole("menu")).getByRole("menuitem", {
+        name: "Make a group",
+      }),
+    );
+    const field = await screen.findByRole("textbox", { name: "Group name" });
+    await user.clear(field);
+    await user.type(field, "Pilot");
+    // 開いているグループの知らせで読み直す。サーバーの項目は Episode 1 の位置に新しいグループを持つ。
+    await emitServerEvent("group", { ids: [60, 1] });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const kept = screen.getByRole("textbox", { name: "Group name" });
+    expect((kept as HTMLInputElement).value).toBe("Pilot");
+    expect(document.activeElement).toBe(kept);
+    expect(cardTitles()).toEqual(["Pilot", "Extras"]);
   });
 
   it("名前の欄の Esc は何も送らずに閉じ、読み直したグループを出す", async () => {

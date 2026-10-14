@@ -11,6 +11,7 @@ import type { UndoToast } from "./undoToast";
 import { useGroupNaming } from "./useGroupNaming";
 import {
   applyDropOverlay,
+  type DropOverlay,
   provisionalGroup,
   provisionalGroupName,
   videoOnto,
@@ -37,6 +38,8 @@ export interface VideoDropsOptions<T> {
   keyOf: (item: T) => string;
   /** 項目が動画ならその動画。 */
   videoOf: (item: T) => Video | undefined;
+  /** 項目がグループならそのグループ。グループのカードを置く画面（`groupItem` のある画面）が渡す。 */
+  groupOf?: (item: T) => LibraryGroup | undefined;
   /** 開いているグループ（グループのページ）。新しいグループはその中で落とした先の位置を取る。 */
   from: number | null;
   /**
@@ -46,7 +49,7 @@ export interface VideoDropsOptions<T> {
   groupItem: ((group: LibraryGroup, itemId: number) => T) | null;
   /** 一覧を静かに読み直す。 */
   reread: () => void;
-  /** 操作を受け付けたら呼ぶ（選択を解く）。 */
+  /** サーバーが操作を受け付けたら呼ぶ（選択を解く）。失敗した操作では呼ばず、選択は残る。 */
   onAccepted?: () => void;
   undo: UndoToast;
 }
@@ -57,18 +60,66 @@ function isTargetGone(error: unknown): boolean {
 }
 
 /**
+ * overlayOf は見せている結果 `shown` を並びに重ねる値を返す。読み直した並びがもう落とした先を
+ * 持たず、代わりに答えで分かった新しいグループを持てば（知らせで読み直した）、仮の項目がその
+ * サーバーの項目の位置と中身を取る。項目の鍵が変わらないので、名前の欄は入力ごと残る。
+ */
+function overlayOf<T>(
+  shown: Shown,
+  items: readonly T[],
+  keyOf: (item: T) => string,
+  groupOf: ((item: T) => LibraryGroup | undefined) | undefined,
+  groupItem: ((group: LibraryGroup, itemId: number) => T) | null,
+): DropOverlay<T> {
+  const made = shown.group;
+  if (made === null || groupItem === null) {
+    return { target: shown.target, lifted: shown.lifted, made: null };
+  }
+  if (items.some((item) => keyOf(item) === shown.target)) {
+    return {
+      target: shown.target,
+      lifted: shown.lifted,
+      made: groupItem(made, shown.itemId),
+    };
+  }
+  const landed = items.find((item) => groupOf?.(item)?.id === made.id);
+  const group = landed === undefined ? undefined : groupOf?.(landed);
+  if (landed === undefined || group === undefined) {
+    return {
+      target: shown.target,
+      lifted: shown.lifted,
+      made: groupItem(made, shown.itemId),
+    };
+  }
+  return {
+    target: keyOf(landed),
+    lifted: shown.lifted,
+    made: groupItem({ ...group, name: made.name }, shown.itemId),
+  };
+}
+
+/**
  * useVideoDrops は動画を動画に落としたときのメニューと 2 つの操作である。結果はすぐ見せ
  * （`shown`）、失敗したら戻して理由を出し、受け付けたら取り消しの通知を出す。「Make a group」の
  * 後は新しいグループの名前の欄を開き（`nameFieldFor` か、フォルダ画面では `attached` の窓）、
- * 欄が閉じたら読み直す。束ねた後はすぐ読み直す。
+ * 欄が閉じたら読み直す。束ねた後はすぐ読み直す。取り消したら見せていた結果と名前の欄を外す。
+ * 画面を離れた後に答えた要求は何も見せない（トークンは忘れる。ui-design.md「Undo toast」の Gone）。
  */
 export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
-  const { items, keyOf, videoOf, from, groupItem, reread, onAccepted, undo } = options;
+  const { items, keyOf, videoOf, groupOf, from, groupItem, reread, onAccepted, undo } =
+    options;
   const toast = useToast();
   const [shownDrop, setShownDrop] = useState<Shown | null>(null);
   const [nameTarget, setNameTarget] = useState<string | null>(null);
   const tempId = useRef(0);
   const awaitingRead = useRef(false);
+  const alive = useRef(true);
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+    };
+  }, []);
 
   // 読み直した一覧が届いたら、見せていた結果を外す（サーバーの値がそれを持つ）。
   useEffect(() => {
@@ -125,7 +176,18 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
     [videoAt],
   );
 
-  const { start } = naming;
+  const { start, discard } = naming;
+  // 取り消しの要求が答えたら、名前の欄を何も送らずに閉じる。取り消せたら見せていた結果も外す
+  // （読み直しが元の並びを持ってくる）。取り消せなかったら読み直しを待つ。
+  const undone = useCallback(
+    (ok: boolean) => {
+      discard();
+      setNameTarget(null);
+      if (ok) setShownDrop(null);
+      else awaitingRead.current = true;
+    },
+    [discard],
+  );
   const { offer } = undo;
   const makeGroup = useCallback(
     ({ lifted, target }: VideoDropChoice) => {
@@ -137,11 +199,12 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
       if (groupItem !== null) {
         setShownDrop({ target, lifted: new Set(lifted), group: made, itemId: made.id });
       }
-      onAccepted?.();
       const ids = videos.map((video) => video.id);
       groupVideos(ids, targetVideo.id, from).then(
         ({ undoToken, groupId }) => {
-          offer(t.organize.done.grouped(made.name), undoToken);
+          if (!alive.current) return;
+          onAccepted?.();
+          offer(t.organize.done.grouped(made.name), undoToken, undone);
           if (groupId === undefined) {
             readAgain();
             return;
@@ -158,10 +221,23 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
             undoToken,
           });
         },
-        (error: unknown) => failed(error, t.organize.failed.group),
+        (error: unknown) => {
+          if (alive.current) failed(error, t.organize.failed.group);
+        },
       );
     },
-    [failed, from, groupItem, liftedVideos, offer, onAccepted, readAgain, start, videoAt],
+    [
+      failed,
+      from,
+      groupItem,
+      liftedVideos,
+      offer,
+      onAccepted,
+      readAgain,
+      start,
+      undone,
+      videoAt,
+    ],
   );
 
   const bundle = useCallback(
@@ -170,16 +246,23 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
       if (targetVideo === undefined) return;
       const ids = liftedVideos(lifted).map((video) => video.id);
       setShownDrop({ target, lifted: new Set(lifted), group: null, itemId: 0 });
-      onAccepted?.();
       bundleOnto(ids, targetVideo.id).then(
         ({ undoToken }) => {
-          offer(t.versions.bundle.bundled(ids.length + 1, targetVideo.title), undoToken);
+          if (!alive.current) return;
+          onAccepted?.();
+          offer(
+            t.versions.bundle.bundled(ids.length + 1, targetVideo.title),
+            undoToken,
+            undone,
+          );
           readAgain();
         },
-        (error: unknown) => failed(error, t.versions.bundle.failed),
+        (error: unknown) => {
+          if (alive.current) failed(error, t.versions.bundle.failed);
+        },
       );
     },
-    [failed, liftedVideos, offer, onAccepted, readAgain, videoAt],
+    [failed, liftedVideos, offer, onAccepted, readAgain, undone, videoAt],
   );
 
   const isVideo = useCallback((key: string) => videoAt(key) !== undefined, [videoAt]);
@@ -197,21 +280,17 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
     [isVideo],
   );
 
-  const shown = useMemo(() => {
-    const made = shownDrop?.group ?? null;
-    const overlay =
-      shownDrop === null
-        ? null
-        : {
-            target: shownDrop.target,
-            lifted: shownDrop.lifted,
-            made:
-              made === null || groupItem === null
-                ? null
-                : groupItem(made, shownDrop.itemId),
-          };
-    return applyDropOverlay(items, keyOf, overlay);
-  }, [groupItem, items, keyOf, shownDrop]);
+  const shown = useMemo(
+    () =>
+      applyDropOverlay(
+        items,
+        keyOf,
+        shownDrop === null
+          ? null
+          : overlayOf(shownDrop, items, keyOf, groupOf, groupItem),
+      ),
+    [groupItem, groupOf, items, keyOf, shownDrop],
+  );
 
   const field = naming.naming;
   const nameFieldFor = useCallback(

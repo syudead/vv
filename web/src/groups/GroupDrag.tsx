@@ -99,7 +99,12 @@ export function GroupDragLayer({
   dropOnto?: GroupDropOnto;
   children: ReactNode;
 }) {
-  const { order, byKey, nameOf: itemName, preview } = useOrderedItemDrag(items, itemKey, list);
+  const {
+    order,
+    byKey,
+    nameOf: itemName,
+    preview,
+  } = useOrderedItemDrag(items, itemKey, list);
 
   const liftedFor = useCallback(
     (key: string) => liftedKeys(order, key, selectedItems.map(String)),

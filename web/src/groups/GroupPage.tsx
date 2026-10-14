@@ -97,6 +97,11 @@ function itemVideo(item: GroupItem): Video | undefined {
   return item.kind === "video" ? item.video : undefined;
 }
 
+/** itemGroup は項目が子グループならそのグループである。 */
+function itemGroup(item: GroupItem): LibraryGroup | undefined {
+  return item.kind === "group" ? item.group : undefined;
+}
+
 /** newGroupItem は「Make a group」の新しいグループを、仮の項目 `itemId` として置く。 */
 function newGroupItem(group: LibraryGroup, itemId: number): GroupItem {
   return { id: itemId, kind: "group", group };
@@ -144,6 +149,7 @@ function useGroupPageDrops({
     items: data?.items ?? noItems,
     keyOf: itemKey,
     videoOf: itemVideo,
+    groupOf: itemGroup,
     from: id,
     groupItem: newGroupItem,
     reread: refresh,
@@ -808,8 +814,7 @@ function GroupItems({
           selected: itemSelected(item),
           selectionMode,
           onSelect: owner ? selection.changeItem : undefined,
-          nameField:
-            item.group === undefined ? undefined : nameFieldFor?.(item.group.id),
+          nameField: item.group === undefined ? undefined : nameFieldFor?.(item.group.id),
         })}
       />
     );

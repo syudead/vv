@@ -32,11 +32,24 @@ function codePoints(value: string): number {
 }
 
 /**
+ * whiteSpace は Unicode の White_Space（Go の unicode.White_Space）である。JS の `trim` が削る
+ * 集合とは U+0085 と U+FEFF で食い違うので、サーバーと同じ集合を明示する。
+ */
+const whiteSpace =
+  "\t\n\v\f\r \u0085\u00A0\u1680\u2000-\u200A\u2028\u2029\u202F\u205F\u3000";
+const leadingWhiteSpace = new RegExp(`^[${whiteSpace}]+`, "u");
+const trailingWhiteSpace = new RegExp(`[${whiteSpace}]+$`, "u");
+
+/**
  * provisionalGroupName はサーバーが「Make a group」の新しいグループに付ける名前である。落とした先の
- * 題名の先頭 100 コードポイントを、前後の空白を削ったもの（data-model.md「Operations」の Group）。
+ * 題名の先頭の空白を除き、先頭 100 コードポイントに切り、末尾の空白を除いたもの
+ * （domain.GroupNameFromTitle、data-model.md「Operations」の Group）。順序もサーバーと同じにする。
  */
 export function provisionalGroupName(title: string): string {
-  return Array.from(title).slice(0, groupNameLimit).join("").trim();
+  const cut = Array.from(title.replace(leadingWhiteSpace, ""))
+    .slice(0, groupNameLimit)
+    .join("");
+  return cut.replace(trailingWhiteSpace, "");
 }
 
 /** NameFieldOutcome は名前の欄で Enter を押した結果である。 */

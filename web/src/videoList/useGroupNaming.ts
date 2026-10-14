@@ -18,6 +18,7 @@ export interface GroupNaming {
  * 「The new group's name」）。変えた名前は `onShowName` ですぐ見せてから、作ったときのトークン付きの
  * PATCH /api/groups/{id} で送る。失敗したら「Couldn't rename the group: {reason}」を出し、仮の名前を
  * 見せ直す。欄が閉じたら、送っている名前が答えてから `onClosed` を呼ぶ（画面はそこで読み直す）。
+ * `discard` は欄を `onClosed` を呼ばずに閉じる（取り消しでグループが消えた）。
  */
 export function useGroupNaming({
   onShowName,
@@ -63,5 +64,10 @@ export function useGroupNaming({
     void sending.current.then(() => latest.current.onClosed());
   }, []);
 
-  return { naming, start, rename, close };
+  const discard = useCallback(() => {
+    open.current = false;
+    setNaming(null);
+  }, []);
+
+  return { naming, start, rename, close, discard };
 }

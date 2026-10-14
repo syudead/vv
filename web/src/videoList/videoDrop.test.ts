@@ -50,6 +50,12 @@ describe("provisionalGroupName", () => {
     const long = `${"😀".repeat(99)} x${"y".repeat(10)}`;
     expect(Array.from(provisionalGroupName(long))).toHaveLength(99);
   });
+
+  it("サーバーと同じく先頭の空白を除いてから 100 コードポイントに切る（domain.GroupNameFromTitle）", () => {
+    expect(provisionalGroupName(`${" ".repeat(100)}Trip`)).toBe("Trip");
+    expect(provisionalGroupName(`\u3000\tTrip${" ".repeat(100)}x`)).toBe("Trip");
+    expect(provisionalGroupName(`${"a".repeat(99)} b`)).toBe("a".repeat(99));
+  });
 });
 
 describe("nameFieldOutcome", () => {
