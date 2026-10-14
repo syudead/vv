@@ -17,15 +17,22 @@ Read [README.md](README.md) first. Input is one native child Issue.
    and keep ownership of every later step in this workflow. If that worker is
    unavailable, use an equivalent bounded worker when the host supports one, or
    perform this step locally.
+   Then delegate the tests to the `test-writer` worker with the child Issue,
+   the diff, the feature branch as the base and the same write scope, or follow
+   [test-writing](../../test-writing/SKILL.md) locally when no such worker is
+   available; the implementer adds no tests of its own.
 5. Run focused checks and the repository checks required by the change,
    including the pre-push check from `AGENTS.md`. For UI work, check the result
    against the review criteria in `ui-design.md`. Leave browser e2e to the
    PR's CI unless a local run tells you something sooner
-   ([checks before a push](README.md#checks-before-a-push)).
+   ([checks before a push](README.md#checks-before-a-push)). Then run
+   [quality-check](../../quality-check/SKILL.md) through the `quality-checker`
+   worker, or locally, with the feature branch as the base, and fix every
+   finding.
 6. Push and open a feature-branch PR with `Refs #<child>`. Fill every section
    of [the repository PR template](../../../../.github/pull_request_template.md):
    the behaviour before and after as a table, a diagram when a flow or state
-   changes, decisions made during implementation, the documents and their
+   changes, the level table of the tests, decisions made during implementation, the documents and their
    translations, the checks, and what was left. Stop.
 7. After human merge, the maintainer closes the child as completed. This means
    implemented on the feature branch; the parent closes only when the

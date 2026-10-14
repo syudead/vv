@@ -216,6 +216,13 @@ tasks:
     cmds:
       - npm --prefix web run test:unit -- --coverage --coverage.reportsDirectory=../reports/web-coverage --reporter=default --reporter=junit --outputFile.junit=../reports/web-junit.xml {{.CLI_ARGS}}
 
+  # ブランチが足したテストを、レベルと所要時間とともに表にする（docs/design-docs/go-testing.md）。
+  # 後ろの引数は scripts/testcost へ渡す（-measure で足したテストだけを流して測る）。
+  test-cost:
+    desc: List the tests this branch adds, with their level (and duration with -- -measure).
+    cmds:
+      - go run ./scripts/testcost {{.CLI_ARGS}}
+
   # 複雑度と重複を、各ツールの出力のまま指標ごとに reports/quality/<指標>/ に残す。
   # CI は指標ごとの job で並列に流し、artifact に残す（.github/workflows/ci.yml の quality）。
   quality-metrics:

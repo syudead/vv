@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: b92aea1fc64697ec3594b61e3948c8810c31d0f71628b20a284a0f73284865a5
+sourceHash: 4aed9f0a2a1c7916e977d91ce7ca4a789f45536894ddeff9c38abf19eecde70e
 ---
 
 # 設計文書 {#design-documents}
@@ -38,6 +38,7 @@ sourceHash: b92aea1fc64697ec3594b61e3948c8810c31d0f71628b20a284a0f73284865a5
 - [関連動画と前後の動画](related-videos.md)
 - [画面の文言と書式 (i18n)](i18n.md)
 - [Web のテストレベル](web-testing.md)
+- [Go のテストレベル](go-testing.md)
 - [テストと CI の品質監視](test-quality-monitoring.md)
 - [複雑度と重複](complexity-and-duplication.md)
 - [VVMDM のブランドと画面の UI 設計](../../specs/022-vvmdm-brand/ui-design.md)

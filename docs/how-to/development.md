@@ -119,6 +119,14 @@ same name for 90 days
 a failed measure does not fail the run. `task quality-metrics` runs all three on
 a local machine.
 
+`task test-cost` lists the Go, Vitest and Playwright tests the branch adds
+since its merge base with `origin/main`, committed or not, and the Go tests it
+adds lines to, such as a new subtest or table case, with the level of each
+([Go test levels](../design-docs/go-testing.md),
+[Web test levels](../design-docs/web-testing.md)).
+`task test-cost -- -measure` also runs the added Go and Vitest tests and adds
+their durations; `-base <ref>` compares with another branch.
+
 On the first day of each month the `Mutation testing` workflow
 ([`.github/workflows/mutation-testing.yml`](../../.github/workflows/mutation-testing.yml))
 measures whether the Go tests catch injected bugs. It runs
