@@ -9,6 +9,7 @@
     "test": "node --test translate/*.test.mjs"
   },
   "devDependencies": {
+    "esbuild": "0.28.2",
     "github-slugger": "2.0.0",
     "mermaid": "12.1.0",
     "remark-frontmatter": "5.0.0",
