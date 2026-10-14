@@ -71,20 +71,21 @@ screen sees are in
 | --- | --- | --- |
 | Module size | 16 MiB | The upload is refused (`plugin_too_large`) |
 | Linear memory | 128 MiB (2048 pages) | The run traps |
-| Tables | 100,000 elements each; a table without a declared maximum gets that maximum from vv before compiling | The upload is refused (`table_too_large`) when a table's minimum, or its declared maximum, exceeds 100,000 |
+| Tables | 100,000 elements across all of a module's tables; a table without a declared maximum gets a maximum of 100,000 from vv before compiling | The upload is refused (`table_too_large`) when the tables sum to more than 100,000, each counted at its declared maximum or, without one, at the larger of its minimum and 100,000 |
 | Run time | 30 s, HTTP included | The module is closed |
 | Standard output | 1 MiB | The run is stopped |
 | Standard error | 64 KiB kept, the rest discarded | Written to the server log only |
 | Runs at the same time | 1; a second run waits up to 10 s | The second run is refused |
 
-**Rationale**: A table's elements are host memory outside wazero's page cap,
-so vv refuses a table whose minimum or declared maximum exceeds 100,000 and
-caps one without a maximum, as Go's `wasip1` linker writes it
-(`writeTableSec` in `cmd/link/internal/wasm/asm.go`), at 100,000 before
-compiling; other compile-time allocations grow with the module, which the
-16 MiB cap bounds. One run at a time keeps the plugins' memory within one
-module's 128 MiB, which a single-owner server can spare and which gives the Go
-`wasip1` heap room to parse a 1 MiB page (64 MiB was too tight). Go's runtime
+**Rationale**: Table elements are host memory outside wazero's page cap,
+and wazero allows up to 2^27 tables per module, so vv bounds the module's
+total of 100,000 elements and caps a table without a maximum, as Go's
+`wasip1` linker writes it (`writeTableSec` in
+`cmd/link/internal/wasm/asm.go`), at 100,000 before compiling; other
+compile-time allocations grow with the module, which the 16 MiB cap bounds.
+One run at a time keeps the plugins' memory within one module's 128 MiB,
+which a single-owner server can spare and which gives the Go `wasip1` heap
+room to parse a 1 MiB page (64 MiB was too tight). Go's runtime
 needs a clock and a random source, and neither reaches outside the process.
 
 ## R-5: Plugins reach the network only through vv, and only public addresses
