@@ -54,11 +54,12 @@ func newNetClient() *netClient {
 	dialer := &net.Dialer{Control: c.control}
 	c.dial = dialer.DialContext
 	transport := &http.Transport{
-		Proxy:             nil,
-		DialContext:       c.dialContext,
-		ForceAttemptHTTP2: true,
-		MaxIdleConns:      8,
-		IdleConnTimeout:   30 * time.Second,
+		Proxy:                  nil,
+		DialContext:            c.dialContext,
+		ForceAttemptHTTP2:      true,
+		MaxIdleConns:           8,
+		IdleConnTimeout:        30 * time.Second,
+		MaxResponseHeaderBytes: domain.WorkInfoPluginHTTPMaxHeaderBytes,
 	}
 	c.client = &http.Client{
 		Transport: transport,

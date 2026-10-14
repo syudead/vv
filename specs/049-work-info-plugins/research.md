@@ -127,9 +127,10 @@ addresses of the server's own interfaces. The ranges are one table in
 | Honour `HTTP_PROXY` from the environment | No: the dial check would see only the proxy | Rejected |
 
 Per run, vv allows 16 requests, `GET` and `POST`, `http` and `https`, 5
-redirects per request, 10 s per request, and 4 MiB per response body. The body
-reaches the plugin as bytes with the response headers, so the plugin decodes
-the page's character set itself (vv cannot know it before parsing the page).
+redirects per request, 10 s per request, 1 MiB of response headers and 4 MiB
+per response body. The body reaches the plugin as bytes with the response
+headers, so the plugin decodes the page's character set itself (vv cannot know
+it before parsing the page).
 
 ## R-6: Plugins are rows in SQLite, and approval is bound to the module's digest
 

@@ -69,6 +69,13 @@ func newTestSite(t *testing.T) *testSite {
 	mux.HandleFunc("/big", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write(make([]byte, 5<<20))
 	})
+	mux.HandleFunc("/big-headers", func(w http.ResponseWriter, _ *http.Request) {
+		value := strings.Repeat("x", 64<<10)
+		for i := range domain.WorkInfoPluginHTTPMaxHeaderBytes/len(value) + 1 {
+			w.Header().Set("X-Big-"+strconv.Itoa(i), value)
+		}
+		_, _ = w.Write([]byte("hello"))
+	})
 	mux.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
 		select {
 		case <-time.After(11 * time.Second):
@@ -193,6 +200,9 @@ func TestHTTPAnswersEachLimitWithItsErrorCode(t *testing.T) {
 
 	info, err = runHTTP(t, rt, get("http://site.test/big"), 1, false)
 	wantCodes(t, info, err, "-6")
+
+	info, err = runHTTP(t, rt, get("http://site.test/big-headers"), 1, false)
+	wantCodes(t, info, err, "-3")
 
 	for _, bad := range []string{
 		`{"method":"PUT","url":"http://site.test/page"}`,
