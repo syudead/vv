@@ -20,14 +20,14 @@ func newFavoritesFixture(t *testing.T) *libraryFixture {
 	return newLibraryFixture(t)
 }
 
-// favoritesBody は PUT /api/favorites の本文を作る。folders は登録フォルダの id と相対パスの組。
-func favoritesBody(favorite bool, videoIDs []int64, folders ...gen.VideoFolder) string {
+// favoritesBody は PUT /api/favorites の本文を作る。groupIDs はグループの id。
+func favoritesBody(favorite bool, videoIDs []int64, groupIDs ...int64) string {
 	body := map[string]any{"favorite": favorite}
 	if videoIDs != nil {
 		body["videoIds"] = videoIDs
 	}
-	if folders != nil {
-		body["folders"] = folders
+	if groupIDs != nil {
+		body["groupIds"] = groupIDs
 	}
 	out, err := json.Marshal(body)
 	if err != nil {
@@ -70,7 +70,7 @@ func (f *libraryFixture) groupFavorite(t *testing.T, rel string) bool {
 // グループのメンバーは変わらない（受け入れ条件 7）。外すと false に戻る。
 func TestUpdateFavoritesSetsVideosAndGroups(t *testing.T) {
 	f := newFavoritesFixture(t)
-	show := gen.VideoFolder{RootId: f.rootID, Path: "show"}
+	show := f.groupID(t, "show")
 
 	// 重複は 1 つに数え、既に同じ状態のものも誤りにしない。
 	for round := range 2 {
@@ -78,7 +78,7 @@ func TestUpdateFavoritesSetsVideosAndGroups(t *testing.T) {
 		if rec.Code != http.StatusOK {
 			t.Fatalf("付ける %d 回目: status = %d: %s", round, rec.Code, rec.Body)
 		}
-		if got := decode[gen.FavoritesResponse](t, rec); got.AppliedVideos != 2 || got.AppliedFolders != 1 {
+		if got := decode[gen.FavoritesResponse](t, rec); got.AppliedVideos != 2 || got.AppliedGroups != 1 {
 			t.Errorf("付ける %d 回目: 応答 = %+v, want 2・1", round, got)
 		}
 		if got := rec.Header().Get("Cache-Control"); got != cacheNoStore {
@@ -98,7 +98,7 @@ func TestUpdateFavoritesSetsVideosAndGroups(t *testing.T) {
 	}
 
 	rec := f.putFavorites(favoritesBody(false, []int64{f.ids["solo"]}, show), f.owner)
-	if got := decode[gen.FavoritesResponse](t, rec); rec.Code != http.StatusOK || got.AppliedVideos != 1 || got.AppliedFolders != 1 {
+	if got := decode[gen.FavoritesResponse](t, rec); rec.Code != http.StatusOK || got.AppliedVideos != 1 || got.AppliedGroups != 1 {
 		t.Fatalf("外す: status = %d・応答 = %+v", rec.Code, got)
 	}
 	if f.videoFavorite(t, "solo") || f.groupFavorite(t, "show") {
@@ -109,26 +109,22 @@ func TestUpdateFavoritesSetsVideosAndGroups(t *testing.T) {
 	}
 }
 
-// 無い登録フォルダ・今グループでないフォルダ・無い id は誤りにせず数えない。
+// 無い動画の id・無いグループの id は誤りにせず数えない。
 func TestUpdateFavoritesSkipsMissingTargets(t *testing.T) {
 	f := newFavoritesFixture(t)
-	rec := f.putFavorites(favoritesBody(true, []int64{99999},
-		gen.VideoFolder{RootId: 999, Path: "show"},
-		gen.VideoFolder{RootId: f.rootID, Path: "none"},
-		gen.VideoFolder{RootId: f.rootID, Path: ""},
-	), f.owner)
+	rec := f.putFavorites(favoritesBody(true, []int64{99999}, 99999, 0, -1), f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
-	if got := decode[gen.FavoritesResponse](t, rec); got.AppliedVideos != 0 || got.AppliedFolders != 0 {
+	if got := decode[gen.FavoritesResponse](t, rec); got.AppliedVideos != 0 || got.AppliedGroups != 0 {
 		t.Errorf("応答 = %+v, want 0・0", got)
 	}
 }
 
-// 合計が 0 か 20000 を超えれば too_many_videos、不正なパスは invalid_folder_path で、何も変えない。
+// 合計が 0 か 20000 を超えれば too_many_videos で、何も変えない。
 func TestUpdateFavoritesRejectsInvalidRequests(t *testing.T) {
 	f := newFavoritesFixture(t)
-	show := gen.VideoFolder{RootId: f.rootID, Path: "show"}
+	show := f.groupID(t, "show")
 
 	ids := make([]int64, maxVideoTagsIDs)
 	for i := range ids {
@@ -137,9 +133,9 @@ func TestUpdateFavoritesRejectsInvalidRequests(t *testing.T) {
 	}
 	for label, body := range map[string]string{
 		"どちらも無い":         `{"favorite":true}`,
-		"どちらも空":          `{"videoIds":[],"folders":[],"favorite":true}`,
+		"どちらも空":          `{"videoIds":[],"groupIds":[],"favorite":true}`,
 		"動画だけで 20001":    favoritesBody(true, append(append([]int64{}, ids...), 2_000_000)),
-		"動画とフォルダで 20001": favoritesBody(true, ids, show),
+		"動画とグループで 20001": favoritesBody(true, ids, show),
 	} {
 		rec := f.putFavorites(body, f.owner)
 		assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), wantError{
@@ -151,11 +147,9 @@ func TestUpdateFavoritesRejectsInvalidRequests(t *testing.T) {
 		t.Errorf("重複を含む 20000: status = %d: %s", rec.Code, rec.Body)
 	}
 
-	for _, path := range []string{"../show", "/show", "show/", "a//b", "."} {
-		rec := f.putFavorites(favoritesBody(true, []int64{f.ids["p1"]}, gen.VideoFolder{RootId: f.rootID, Path: path}), f.owner)
-		assertErrorBody(t, "パス "+path, rec.Code, rec.Body.Bytes(), wantError{
-			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidFolderPath,
-		})
+	if rec := f.putFavorites(fmt.Sprintf(`{"videoIds":[%d],"folders":[{"rootId":%d,"path":"show"}],"favorite":true}`,
+		f.ids["p1"], f.rootID), f.owner); rec.Code != http.StatusBadRequest {
+		t.Errorf("廃止した folders: status = %d, want 400", rec.Code)
 	}
 	if f.videoFavorite(t, "p1") {
 		t.Error("誤りの要求で p1 がお気に入りになった")
@@ -172,7 +166,7 @@ func TestUpdateFavoritesRejectsInvalidRequests(t *testing.T) {
 // ゲストは付け外しできず（401）、応答に favorite が無い（受け入れ条件 10）。
 func TestFavoritesHiddenFromGuests(t *testing.T) {
 	f := newFavoritesFixture(t)
-	show := gen.VideoFolder{RootId: f.rootID, Path: "show"}
+	show := f.groupID(t, "show")
 
 	assertUnauthenticated(t, "ゲストの PUT", f.putFavorites(favoritesBody(true, []int64{f.ids["solo"]})))
 	if f.videoFavorite(t, "solo") {
@@ -302,27 +296,22 @@ func TestFavoriteInRelatedVideos(t *testing.T) {
 	}
 }
 
-// folders の上限 20000 件を深いパスで送っても、本文の大きさで断らない。rootName が違うだけの
-// 同じフォルダは 1 つに数える（rootId と path の組が同一性）。
-func TestUpdateFavoritesAcceptsFullFolderBatch(t *testing.T) {
+// groupIds の上限 20000 件を送っても断らない。同じグループの重複は 1 つに数える。
+func TestUpdateFavoritesAcceptsFullGroupBatch(t *testing.T) {
 	f := newFavoritesFixture(t)
-	rootName := "Library"
-	folders := make([]gen.VideoFolder, 0, maxVideoTagsIDs+1)
-	for i := range maxVideoTagsIDs {
-		folders = append(folders, gen.VideoFolder{RootId: f.rootID, Path: fmt.Sprintf("season/collection/episode-%05d", i)})
+	show := f.groupID(t, "show")
+	groupIDs := make([]int64, 0, maxVideoTagsIDs+1)
+	groupIDs = append(groupIDs, show)
+	for i := 1; i < maxVideoTagsIDs; i++ {
+		groupIDs = append(groupIDs, int64(1_000_000+i))
 	}
-	folders[0].Path = "show"
-	// 上限ちょうどの 20000 件に、rootName だけが違う重複を足す。
-	folders = append(folders, gen.VideoFolder{RootId: f.rootID, Path: "show", RootName: &rootName})
-	body := favoritesBody(true, nil, folders...)
-	if len(body) <= 1<<20 {
-		t.Fatalf("本文 %d バイトが既定の上限 1 MiB に収まり、確かめにならない", len(body))
-	}
-	rec := f.putFavorites(body, f.owner)
+	// 上限ちょうどの 20000 件に、重複を足す。
+	groupIDs = append(groupIDs, show)
+	rec := f.putFavorites(favoritesBody(true, nil, groupIDs...), f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
-	if got := decode[gen.FavoritesResponse](t, rec); got.AppliedVideos != 0 || got.AppliedFolders != 1 {
+	if got := decode[gen.FavoritesResponse](t, rec); got.AppliedVideos != 0 || got.AppliedGroups != 1 {
 		t.Errorf("応答 = %+v, want 0・1", got)
 	}
 	if !f.groupFavorite(t, "show") {
@@ -333,8 +322,8 @@ func TestUpdateFavoritesAcceptsFullFolderBatch(t *testing.T) {
 // 上限を超えた本文は、上限を示して断る。
 func TestUpdateFavoritesRejectsOversizedBody(t *testing.T) {
 	f := newFavoritesFixture(t)
-	body := fmt.Sprintf(`{"videoIds":[%d],"favorite":true,"folders":[{"rootId":%d,"path":"%s"}]}`,
-		f.ids["p1"], f.rootID, strings.Repeat("a", favoritesBodyLimit))
+	body := fmt.Sprintf(`{"videoIds":[%d%s],"favorite":true}`,
+		f.ids["p1"], strings.Repeat(",1", favoritesBodyLimit/2))
 	rec := f.putFavorites(body, f.owner)
 	assertStatus(t, "大きすぎる本文", rec, http.StatusBadRequest)
 	if !strings.Contains(rec.Body.String(), strconv.Itoa(favoritesBodyLimit)) {

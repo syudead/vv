@@ -1,7 +1,7 @@
 import { CheckCheck, Layers, ListPlus, Minus, Plus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
-import { type FolderRef, maxBundleSelection, type VideoVersions } from "../api/client";
+import { maxBundleSelection, type VideoVersions } from "../api/client";
 import { maxVideoTagsSelection } from "../api/tags";
 import { t } from "../i18n";
 import PlaylistPicker from "../playlists/PlaylistPicker";
@@ -31,9 +31,7 @@ export interface SelectionBarProps {
    * グループ（specs/035-favorites/research.md R-7）。上限はこの 2 つの合計で判定する。
    */
   favoriteVideoIds: readonly number[];
-  favoriteFolders: readonly FolderRef[];
-  /** 「すべて選択」で読み込んでいない選んだグループ。送る前にフォルダを引く（withGroupFolders）。 */
-  favoriteUnreadGroupIds?: readonly number[];
+  favoriteGroupIds: readonly number[];
   /** 「すべて選択」の要求の間 true（ui-design.md「Selection bar」の「Layout」）。 */
   selectingAll: boolean;
   onSelectAll: () => void;
@@ -62,8 +60,7 @@ export default function SelectionBar({
   allSelected,
   selectedIds,
   favoriteVideoIds,
-  favoriteFolders,
-  favoriteUnreadGroupIds = [],
+  favoriteGroupIds,
   selectingAll,
   onSelectAll,
   onClear,
@@ -81,13 +78,12 @@ export default function SelectionBar({
   // （Devin の指摘2、docs/design-docs/library-ui.md §6）。
   const overLimitId = useId();
   const overLimit = count > maxVideoTagsSelection;
-  // お気に入りの上限は送る数（videoIds と folders の合計）で判定する。メンバーが上限を超える
-  // グループ 1 つは、タグ・公開では押せないままで、お気に入りは folders 1 つとして押せる
+  // お気に入りの上限は送る数（videoIds と groupIds の合計）で判定する。メンバーが上限を超える
+  // グループ 1 つは、タグ・公開では押せないままで、お気に入りは groupIds 1 つとして押せる
   // （specs/035-favorites/ui-design.md「Selection bar」）。
   const favoriteOverLimitId = useId();
   const favoriteOverLimit =
-    favoriteVideoIds.length + favoriteFolders.length + favoriteUnreadGroupIds.length >
-    maxVideoTagsSelection;
+    favoriteVideoIds.length + favoriteGroupIds.length > maxVideoTagsSelection;
 
   // 束ねる操作は 2 本以上で現れ、画面の側だけの上限 maxBundleSelection を超えると
   // disabled にして理由を添える（specs/030-video-versions/ui-design.md「Bundle action」）。
@@ -195,8 +191,7 @@ export default function SelectionBar({
 
         <FavoriteMenu
           videoIds={favoriteVideoIds}
-          folders={favoriteFolders}
-          unreadGroupIds={favoriteUnreadGroupIds}
+          groupIds={favoriteGroupIds}
           overLimit={favoriteOverLimit}
           overLimitId={favoriteOverLimitId}
         />
@@ -224,8 +219,7 @@ export default function SelectionBar({
             open={playlistOpen}
             onOpenChange={setPlaylistOpen}
             videoIds={favoriteVideoIds}
-            folders={favoriteFolders}
-            unreadGroupIds={favoriteUnreadGroupIds}
+            groupIds={favoriteGroupIds}
             side="top"
             align="start"
           />

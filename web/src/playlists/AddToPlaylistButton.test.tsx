@@ -142,7 +142,7 @@ describe("AddToPlaylistButton", () => {
     await user.click(screen.getByRole("option", { name: "Anime" }));
     expect(await screen.findByText('Added 1 item to "Anime"')).toBeDefined();
     expect(server.posts).toEqual([
-      { path: "/api/playlists/1/items", body: { videoIds: [7], folders: [] } },
+      { path: "/api/playlists/1/items", body: { videoIds: [7], groupIds: [] } },
     ]);
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
@@ -168,7 +168,7 @@ describe("AddToPlaylistButton", () => {
     expect(await screen.findByText('Added 1 item to "Later"')).toBeDefined();
     expect(server.posts).toEqual([
       { path: "/api/playlists", body: { name: "Later" } },
-      { path: "/api/playlists/90/items", body: { videoIds: [7], folders: [] } },
+      { path: "/api/playlists/90/items", body: { videoIds: [7], groupIds: [] } },
     ]);
   });
 
@@ -246,8 +246,8 @@ describe("AddToPlaylistButton", () => {
     expect(await screen.findByText('Added 1 item to "Weekend"')).toBeDefined();
     expect(server.posts).toEqual([
       { path: "/api/playlists", body: { name: "Weekend" } },
-      { path: "/api/playlists/90/items", body: { videoIds: [7], folders: [] } },
-      { path: "/api/playlists/90/items", body: { videoIds: [7], folders: [] } },
+      { path: "/api/playlists/90/items", body: { videoIds: [7], groupIds: [] } },
+      { path: "/api/playlists/90/items", body: { videoIds: [7], groupIds: [] } },
     ]);
   });
 
@@ -285,10 +285,10 @@ describe("AddToPlaylistButton", () => {
     expect(await screen.findByText('Added 1 item to "A"')).toBeDefined();
     expect(server.posts).toEqual([
       { path: "/api/playlists", body: { name: "A" } },
-      { path: "/api/playlists/90/items", body: { videoIds: [7], folders: [] } },
+      { path: "/api/playlists/90/items", body: { videoIds: [7], groupIds: [] } },
       { path: "/api/playlists", body: { name: "B" } },
-      { path: "/api/playlists/91/items", body: { videoIds: [7], folders: [] } },
-      { path: "/api/playlists/90/items", body: { videoIds: [7], folders: [] } },
+      { path: "/api/playlists/91/items", body: { videoIds: [7], groupIds: [] } },
+      { path: "/api/playlists/90/items", body: { videoIds: [7], groupIds: [] } },
     ]);
   });
 
@@ -319,9 +319,9 @@ describe("AddToPlaylistButton", () => {
     expect(await screen.findByText('Added 1 item to "Weekend"')).toBeDefined();
     expect(server.posts).toEqual([
       { path: "/api/playlists", body: { name: "Weekend" } },
-      { path: "/api/playlists/90/items", body: { videoIds: [7], folders: [] } },
+      { path: "/api/playlists/90/items", body: { videoIds: [7], groupIds: [] } },
       { path: "/api/playlists", body: { name: "Weekend" } },
-      { path: "/api/playlists/91/items", body: { videoIds: [7], folders: [] } },
+      { path: "/api/playlists/91/items", body: { videoIds: [7], groupIds: [] } },
     ]);
   });
 
@@ -371,7 +371,7 @@ describe("AddToPlaylistButton", () => {
     await user.keyboard("{Enter}");
     expect(await screen.findByText('Added 1 item to "B"')).toBeDefined();
     expect(server.posts.slice(4)).toEqual([
-      { path: "/api/playlists/90/items", body: { videoIds: [7], folders: [] } },
+      { path: "/api/playlists/90/items", body: { videoIds: [7], groupIds: [] } },
     ]);
   });
 
@@ -401,7 +401,7 @@ describe("AddToPlaylistButton", () => {
     expect(await screen.findByText('Added 1 item to "Tonight"')).toBeDefined();
     expect(server.posts).toEqual([
       { path: "/api/playlists", body: { name: "Tonight" } },
-      { path: "/api/playlists/90/items", body: { videoIds: [7], folders: [] } },
+      { path: "/api/playlists/90/items", body: { videoIds: [7], groupIds: [] } },
     ]);
   });
 

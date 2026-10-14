@@ -16,9 +16,10 @@ import (
 )
 
 // プレイリスト（specs/044-playlists/data-model.md「Store operations」、research.md R-1〜R-5・R-11）。
-// 項目は動画の利用者データの鍵（userKeyExpr）かグループのフォルダの鍵（domain.FolderKey）で持ち、
-// ライブラリへの外部キーを持たない。鍵が今ライブラリの動画やグループに引けない項目は、読み出しから
-// 外すだけで消さない（R-4）。位置はプレイリストの中で 0 から詰めた整数で、書き込みのたびに
+// 項目は動画の利用者データの鍵（userKeyExpr）かグループの id で持つ（specs/048-groups/research.md
+// R-10）。動画への外部キーは持たず、鍵が今ライブラリの動画に引けない項目や、見せる動画を持たない
+// グループの項目は、読み出しから外すだけで消さない（R-4）。グループの項目はグループの解散で外部キーの
+// on delete cascade により消え、解散が詰め直す（dissolveGroup）。位置はプレイリストの中で 0 から詰めた整数で、書き込みのたびに
 // 詰め直す（R-3）。どの操作もドメインイベントを発行しない（R-10）。
 
 // playlistNow は名前と項目の変更の時刻の元である。試験が時計を止めるために差し替える。
@@ -31,15 +32,20 @@ func playlistItemVideoExpr(alias string) string {
 		else ` + shownVideoForKeyExpr(alias+`.content_key`, domain.AudienceOwner) + ` end)`
 }
 
+// playlistGroupVideos は、プレイリストの項目（別名 alias）のグループの、所有者に見せる子孫の動画を
+// 再生順の鍵とともに返す副問い合わせの頭（`with gtree, gdesc`）である。呼び出し側は gdesc
+// （root_id, video_id, sort_key）を読む select 文を続ける。グループの読み出し（loadGroups）と同じ
+// groupDescendantsCTE を使うので、見せるかと再生順がライブラリのグループと食い違わない。
+func playlistGroupVideos(alias string) string {
+	return `with ` + groupDescendantsCTE(`select `+alias+`.group_id as id`, domain.AudienceOwner)
+}
+
 // playlistItemShownCondition は、プレイリストの項目（別名 alias）を見せるかの条件句である。
-// 動画の項目は playlistItemVideoExpr が引けるとき、グループの項目はそのフォルダの鍵が今
-// グループ（folder_groups.path_key）にあり、所有者に見えるメンバーを持つとき見せる（R-4）。
-// shownPlaylistItems も同じ条件で項目を選ぶので、メンバーを失ったグループの行が索引の作り直し
-// まで残っても、件数と Playlist の項目が食い違わない。
+// 動画の項目は playlistItemVideoExpr が引けるとき、グループの項目はそのグループが所有者に見せる
+// 子孫の動画を持つとき見せる（R-4、specs/048-groups/data-model.md「Play order」）。
+// shownPlaylistItems も同じ条件で項目を選ぶので、件数と Playlist の項目が食い違わない。
 func playlistItemShownCondition(alias string) string {
-	return `((` + alias + `.folder_key is not null and exists (select 1 from folder_groups pg
-		join folder_group_members pgm on pgm.group_id = pg.id join videos pgv on pgv.id = pgm.video_id
-		where pg.path_key = ` + alias + `.folder_key and ` + visibleVideoCondition("pgv", domain.AudienceOwner) + `))
+	return `((` + alias + `.group_id is not null and exists (` + playlistGroupVideos(alias) + ` select 1 from gdesc))
 		or ` + playlistItemVideoExpr(alias) + ` is not null)`
 }
 
@@ -138,16 +144,13 @@ func playlistListVersion(total int, updatedAtSum int64) string {
 }
 
 // playlistCoverVideoExpr は、プレイリストの項目（別名 alias）の絵柄に差し込む動画の id を返す式である。
-// 動画の項目は playlistItemVideoExpr の動画、グループの項目はそのグループの所有者に見えるメンバーの
-// うち並び（folder_group_members.position）の順で最初のサムネイル生成済みのもの。グループの項目は
-// playlistItemShownCondition と同じ条件（folder_groups.path_key にあり、見えるメンバーを持つ）で
-// 引くので、見せない項目は NULL になる。
+// 動画の項目は playlistItemVideoExpr の動画、グループの項目はそのグループの所有者に見せる子孫の
+// 動画のうち再生順で最初のサムネイル生成済みのもの。グループの項目は playlistItemShownCondition と
+// 同じ子孫（playlistGroupVideos）から引くので、見せない項目は NULL になる。
 func playlistCoverVideoExpr(alias string) string {
 	return `(case when ` + alias + `.content_key is not null then ` + playlistItemVideoExpr(alias) + `
-		else (select pgv.id from folder_groups pg
-			join folder_group_members pgm on pgm.group_id = pg.id join videos pgv on pgv.id = pgm.video_id
-			where pg.path_key = ` + alias + `.folder_key and ` + visibleVideoCondition("pgv", domain.AudienceOwner) + `
-				and pgv.thumbnail_state = ? order by pgm.position limit 1) end)`
+		else (` + playlistGroupVideos(alias) + ` select d.video_id from gdesc d join videos pgv on pgv.id = d.video_id
+			where pgv.thumbnail_state = ? order by d.sort_key limit 1) end)`
 }
 
 // playlistCovers はプレイリスト id の一覧のカードの絵柄に差し込むサムネイルを返す（domain.Playlist.Covers）。
@@ -333,9 +336,9 @@ func (s *PlaylistStore) PlaylistPlayback(ctx context.Context, id, itemID, videoI
 }
 
 // AddPlaylistItems は add の動画とグループを、プレイリスト id の末尾に要求の順（動画、次に
-// フォルダ）で足す（R-5）。動画の id は利用者データの鍵へ引き直し（同じ集まりの id は 1 つの
-// 項目になる）、フォルダは domain.FolderKey で整えて今グループのものだけを使う（SetFavorites と
-// 同じ）。引けた鍵が既にプレイリストにあれば Existing に数え、何も変えない。プレイリストが
+// グループ）で足す（R-5）。動画の id は利用者データの鍵へ引き直し（同じ集まりの id は 1 つの
+// 項目になる）、グループは今あるもの（existingGroupIDs）だけを使う（SetFavorites と同じ）。
+// 引けた鍵やグループが既にプレイリストにあれば Existing に数え、何も変えない。プレイリストが
 // 無ければ domain.ErrPlaylistNotFound。足したときだけ更新日時を進める。
 func (s *PlaylistStore) AddPlaylistItems(ctx context.Context, id int64, add domain.PlaylistAdd) (domain.PlaylistAdded, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
@@ -351,16 +354,9 @@ func (s *PlaylistStore) AddPlaylistItems(ctx context.Context, id int64, add doma
 	if err != nil {
 		return domain.PlaylistAdded{}, err
 	}
-	groups, err := groupFolderKeys(ctx, tx, add.FolderPaths)
+	groupIDs, err := existingGroupIDs(ctx, tx, add.GroupIDs)
 	if err != nil {
 		return domain.PlaylistAdded{}, err
-	}
-	var folderKeys []string
-	for _, path := range add.FolderPaths {
-		key := domain.FolderKey(path)
-		if slices.Contains(groups, key) && !slices.Contains(folderKeys, key) {
-			folderKeys = append(folderKeys, key)
-		}
 	}
 
 	var next int
@@ -369,7 +365,7 @@ func (s *PlaylistStore) AddPlaylistItems(ctx context.Context, id int64, add doma
 	}
 	now := playlistNow().UnixMilli()
 	var added domain.PlaylistAdded
-	insert := func(column, key string) error {
+	insert := func(column string, key any) error {
 		result, err := tx.ExecContext(ctx, `insert or ignore into playlist_items
 			(playlist_id, `+column+`, position, added_at) values (?, ?, ?, ?)`, id, key, next, now)
 		if err != nil {
@@ -392,8 +388,8 @@ func (s *PlaylistStore) AddPlaylistItems(ctx context.Context, id int64, add doma
 			return domain.PlaylistAdded{}, err
 		}
 	}
-	for _, key := range folderKeys {
-		if err := insert("folder_key", key); err != nil {
+	for _, groupID := range groupIDs {
+		if err := insert("group_id", groupID); err != nil {
 			return domain.PlaylistAdded{}, err
 		}
 	}
@@ -641,11 +637,10 @@ func orderedUserKeys(ctx context.Context, tx *sql.Tx, videoIDs []int64) ([]strin
 }
 
 // shownPlaylistItems はプレイリスト id の見せる項目（playlistItemShownCondition）を位置の順に、
-// 所有者として読んだ動画かグループと合わせて返す。グループの値は、そのフォルダの鍵を origin_folder に
-// 持つグループから読む（specs/048-groups/data-model.md。項目をグループの id で持つまでのつなぎ）。
+// 所有者として読んだ動画かグループと合わせて返す。グループの値とメンバーの並びは loadGroups の
+// 再生順である（specs/048-groups/data-model.md「Play order」）。
 func shownPlaylistItems(ctx context.Context, tx *sql.Tx, id int64) ([]domain.PlaylistItem, error) {
-	rows, err := tx.QueryContext(ctx, `select i.id, `+playlistItemVideoExpr("i")+`,
-		(select pg.id from groups pg where pg.origin_folder = i.folder_key)
+	rows, err := tx.QueryContext(ctx, `select i.id, `+playlistItemVideoExpr("i")+`, i.group_id
 		from playlist_items i where i.playlist_id = ? and `+playlistItemShownCondition("i")+`
 		order by i.position, i.id`, id)
 	if err != nil {

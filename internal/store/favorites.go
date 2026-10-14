@@ -5,15 +5,17 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
 // お気に入り（specs/035-favorites/data-model.md §1〜§4、research.md R-1）。動画のお気に入りは
-// 利用者データの鍵（userKeyExpr）に結ぶ video_favorites の行、グループのお気に入りはフォルダの
-// 鍵（domain.FolderKey）に結ぶ folder_favorites の行の有無で表す。どちらも作り直せない利用者
-// データで、生成物の片付け・フォルダの索引の作り直し・メディアフォルダの削除は触れない。
+// 利用者データの鍵（userKeyExpr）に結ぶ video_favorites の行、グループのお気に入りはグループの
+// id に結ぶ group_favorites の行の有無で表す（specs/048-groups/research.md R-10）。どちらも作り直せない
+// 利用者データで、生成物の片付け・フォルダの索引の作り直し・メディアフォルダの削除は触れない。
+// group_favorites の行はグループの解散で外部キーの on delete cascade により消える。
 
 // favoriteColumn は動画（videos）がお気に入りかを 0/1 で返す列の式である。domain.Video.Favorite
 // に写す。形は publicColumn と同じである。
@@ -27,9 +29,9 @@ var favoriteNow = time.Now
 // 返す（data-model.md §4）。
 //
 // 動画の id は利用者データの鍵へ引き直し（userKeysForVideoIDs）、その鍵に書く。Videos は鍵の数で
-// なく、鍵を引けた異なる id の数である。フォルダは domain.FolderKey で整え、いまグループの
-// フォルダ（folder_groups.path_key にあるもの）だけを書く。ライブラリに無い id・今グループで
-// ないフォルダは数えず誤りにしない。既に同じ状態のものは数え、日時は変えない。
+// なく、鍵を引けた異なる id の数である。グループは今あるもの（existingGroupIDs）だけを書く。
+// ライブラリに無い動画の id・無いグループの id は数えず誤りにしない。既に同じ状態のものは数え、
+// 日時は変えない。
 //
 // favorited_at は Unix ミリ秒で、取引の中で max(今の時刻, 2 表の最大値 + 1) を 1 度だけ求め、
 // この取引の対象すべてに使う。動画の更新日時（video_edits）は進めない（research.md R-8）。
@@ -49,7 +51,7 @@ func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.Favorite
 	if err != nil {
 		return domain.FavoriteApplied{}, err
 	}
-	folders, err := groupFolderKeys(ctx, tx, change.FolderPaths)
+	groups, err := existingGroupIDs(ctx, tx, change.GroupIDs)
 	if err != nil {
 		return domain.FavoriteApplied{}, err
 	}
@@ -58,16 +60,16 @@ func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.Favorite
 	if err != nil {
 		return domain.FavoriteApplied{}, fmt.Errorf("cannot build user keys: %w", err)
 	}
-	encodedFolders, err := json.Marshal(nonNil(folders))
+	encodedGroups, err := json.Marshal(nonNil(groups))
 	if err != nil {
-		return domain.FavoriteApplied{}, fmt.Errorf("cannot build folder keys: %w", err)
+		return domain.FavoriteApplied{}, fmt.Errorf("cannot build group ids: %w", err)
 	}
 
 	if change.Favorite {
 		var at int64
 		if err := tx.QueryRowContext(ctx, `select max(?, coalesce((select max(m) from (
 				select max(favorited_at) as m from video_favorites
-				union all select max(favorited_at) from folder_favorites)), 0) + 1)`,
+				union all select max(favorited_at) from group_favorites)), 0) + 1)`,
 			favoriteNow().UnixMilli()).Scan(&at); err != nil {
 			return domain.FavoriteApplied{}, fmt.Errorf("cannot decide the favorited time: %w", err)
 		}
@@ -75,25 +77,25 @@ func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.Favorite
 			select distinct value, ? from json_each(?) where value <> ''`, at, string(encodedKeys)); err != nil {
 			return domain.FavoriteApplied{}, fmt.Errorf("cannot update video favorites: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, `insert or ignore into folder_favorites (path, favorited_at)
-			select distinct value, ? from json_each(?)`, at, string(encodedFolders)); err != nil {
-			return domain.FavoriteApplied{}, fmt.Errorf("cannot update folder favorites: %w", err)
+		if _, err := tx.ExecContext(ctx, `insert or ignore into group_favorites (group_id, favorited_at)
+			select distinct value, ? from json_each(?)`, at, string(encodedGroups)); err != nil {
+			return domain.FavoriteApplied{}, fmt.Errorf("cannot update group favorites: %w", err)
 		}
 	} else {
 		if _, err := tx.ExecContext(ctx, `delete from video_favorites
 			where content_key in (select value from json_each(?))`, string(encodedKeys)); err != nil {
 			return domain.FavoriteApplied{}, fmt.Errorf("cannot update video favorites: %w", err)
 		}
-		if _, err := tx.ExecContext(ctx, `delete from folder_favorites
-			where path in (select value from json_each(?))`, string(encodedFolders)); err != nil {
-			return domain.FavoriteApplied{}, fmt.Errorf("cannot update folder favorites: %w", err)
+		if _, err := tx.ExecContext(ctx, `delete from group_favorites
+			where group_id in (select value from json_each(?))`, string(encodedGroups)); err != nil {
+			return domain.FavoriteApplied{}, fmt.Errorf("cannot update group favorites: %w", err)
 		}
 	}
 
 	if err := tx.Commit(); err != nil {
 		return domain.FavoriteApplied{}, fmt.Errorf("cannot update favorites: %w", err)
 	}
-	return domain.FavoriteApplied{Videos: videos, Folders: len(folders)}, nil
+	return domain.FavoriteApplied{Videos: videos, Groups: len(groups)}, nil
 }
 
 // countMappedVideoIDs は videoIDs のうち、userKeysForVideoIDs が鍵を引ける異なる id の数を返す
@@ -115,36 +117,24 @@ func countMappedVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64) (int
 	return count, nil
 }
 
-// groupFolderKeys は paths を domain.FolderKey で整え、いまグループのフォルダ（folder_groups.path_key
-// にあるもの）だけを重複なしで返す。
-func groupFolderKeys(ctx context.Context, tx *sql.Tx, paths []string) ([]string, error) {
-	if len(paths) == 0 {
+// existingGroupIDs は ids のうち今あるグループの id を、最初に現れた順に重複なしで返す。
+func existingGroupIDs(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, error) {
+	if len(ids) == 0 {
 		return nil, nil
 	}
-	keys := make([]string, 0, len(paths))
-	for _, path := range paths {
-		keys = append(keys, domain.FolderKey(path))
-	}
-	encoded, err := json.Marshal(keys)
+	encoded, err := json.Marshal(ids)
 	if err != nil {
-		return nil, fmt.Errorf("cannot build folder keys: %w", err)
+		return nil, fmt.Errorf("cannot build group ids: %w", err)
 	}
-	rows, err := tx.QueryContext(ctx, `select distinct g.path_key from folder_groups g
-		where g.path_key in (select value from json_each(?))`, string(encoded))
+	found, err := queryInt64s(ctx, tx, `select id from groups where id in (select value from json_each(?))`, string(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the groups: %w", err)
 	}
-	defer func() { _ = rows.Close() }()
-	var out []string
-	for rows.Next() {
-		var key string
-		if err := rows.Scan(&key); err != nil {
-			return nil, fmt.Errorf("cannot read the groups: %w", err)
+	var out []int64
+	for _, id := range ids {
+		if slices.Contains(found, id) && !slices.Contains(out, id) {
+			out = append(out, id)
 		}
-		out = append(out, key)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read the groups: %w", err)
 	}
 	return out, nil
 }

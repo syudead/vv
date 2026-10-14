@@ -69,7 +69,7 @@ const topGroupsSelect = `select g.id from groups g where not exists (select 1 fr
 
 // favoriteGroupsSelect は、お気に入りにしたグループ（どの深さでも）の id を 1 列 id で返す
 // select 文である。
-var favoriteGroupsSelect = `select g.id from groups g where ` + groupFavoritedAtExpr("g") + ` is not null`
+const favoriteGroupsSelect = `select group_id as id from group_favorites`
 
 // libraryItemsCTE は項目の表 `items(group_id, id, video_id, path, added_at, mtime, created_at,
 // title_key, duration_ms, size_bytes, played_at, favorited_at, watch_state)` と、グループの項目に

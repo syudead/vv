@@ -376,7 +376,9 @@ func dissolveGroupAndRebuild(ctx context.Context, tx *sql.Tx, id int64) ([]int64
 }
 
 // dissolveGroup はグループ id の行と項目を消し（R-4）、子グループと動画は残す。親からその項目を
-// 消して親を詰め直し、親の更新日時を進める。自動グループなら同じ取引でそのフォルダに ungroup を
+// 消して親を詰め直し、親の更新日時を進める。グループのお気に入りとプレイリストの項目も外部キーで
+// 消え（specs/048-groups/research.md R-10）、項目を失ったプレイリストを詰め直して更新日時を進める。
+// 自動グループなら同じ取引でそのフォルダに ungroup を
 // 書く。id と、元の親とその祖先の id と、自動グループのフォルダの鍵（手で作ったグループなら空）を
 // 返す。無ければ domain.ErrGroupNotFound。フォルダの索引の作り直しは呼び出し側が行う。
 func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, string, error) {
@@ -392,12 +394,25 @@ func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, string, 
 	if err != nil {
 		return nil, "", err
 	}
-	// 子グループの項目（child_id）と、このグループの項目は外部キーの on delete cascade で消える。
+	playlists, err := queryInt64s(ctx, tx, `select distinct playlist_id from playlist_items where group_id = ? order by playlist_id`, id)
+	if err != nil {
+		return nil, "", fmt.Errorf("cannot read the playlists: %w", err)
+	}
+	// 子グループの項目（child_id）、このグループの項目、お気に入り、プレイリストの項目は外部キーの
+	// on delete cascade で消える。
 	if _, err := tx.ExecContext(ctx, `delete from groups where id = ?`, id); err != nil {
 		return nil, "", fmt.Errorf("cannot dissolve the group: %w", err)
 	}
 	if err := renumberPositions(ctx, tx, groupPositions, parents); err != nil {
 		return nil, "", err
+	}
+	if err := renumberPlaylists(ctx, tx, playlists); err != nil {
+		return nil, "", err
+	}
+	for _, playlistID := range playlists {
+		if err := touchPlaylist(ctx, tx, playlistID); err != nil {
+			return nil, "", err
+		}
 	}
 	if err := touchGroups(ctx, tx, parents, groupNow().UnixMilli()); err != nil {
 		return nil, "", err

@@ -329,7 +329,7 @@ export default function LibraryPage() {
           apply(latestCriteria, "replace", serializeTagIds(remaining));
           return;
         }
-        const selected = fromSelectAll(response.ids, response.groups ?? [], items);
+        const selected = fromSelectAll(response.ids, response.groups ?? []);
         setSelection(selected);
         setSelectAllSelection(selected);
       })
@@ -340,7 +340,7 @@ export default function LibraryPage() {
       .finally(() => {
         if (selectAllSeq.current === seq) setSelectingAll(false);
       });
-  }, [apply, favorite, items, playable, query, tagIds, toast, watch]);
+  }, [apply, favorite, playable, query, tagIds, toast, watch]);
 
   // 選択バーで一括して外したタグが、今の絞り込み（tagIds）に含まれているとき
   // の方針（Devin の指摘4、docs/design-docs/library-ui.md §6）。外した動画は
@@ -752,8 +752,7 @@ export default function LibraryPage() {
             allSelected={allSelected}
             selectedIds={selectedIdsArray}
             favoriteVideoIds={favoriteSelection.videoIds}
-            favoriteFolders={favoriteSelection.folders}
-            favoriteUnreadGroupIds={favoriteSelection.unreadGroupIds}
+            favoriteGroupIds={favoriteSelection.groupIds}
             selectingAll={selectingAll}
             onSelectAll={selectAll}
             onClear={clearSelection}

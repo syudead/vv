@@ -31,7 +31,7 @@ func newPlaybackFixture(t *testing.T) playbackFixture {
 	}
 	f := playbackFixture{db: db, a: ids[fixturePath("/media/mixed/x.mp4")], b: ids[fixturePath("/media/mixed/sub/y.mp4")]}
 	f.id = createPlaylist(t, db, "連続再生")
-	addToPlaylist(t, db, f.id, domain.PlaylistAdd{VideoIDs: []int64{f.a}, FolderPaths: []string{fixturePath("/media/show")}})
+	addToPlaylist(t, db, f.id, domain.PlaylistAdd{VideoIDs: []int64{f.a}, GroupIDs: []int64{groupIDOf(t, db, fixturePath("/media/show"))}})
 	addVideos(t, db, f.id, f.b)
 	_, items := readPlaylist(t, db, f.id)
 	if len(items) != 3 || items[1].Group == nil {
@@ -117,11 +117,11 @@ func TestPlaylistPlaybackSkipsAHiddenItem(t *testing.T) {
 	}
 }
 
-// 再生中にグループが解消されて今の項目が隠れると、位置は 0 で、前後と次はその位置の前後の
-// 見せる項目になる。
+// 再生中にグループの動画がすべて無くなって今の項目が隠れると、位置は 0 で、前後と次はその位置の
+// 前後の見せる項目になる。
 func TestPlaylistPlaybackKeepsTheHiddenCurrentItemsPlace(t *testing.T) {
 	f := newPlaybackFixture(t)
-	if err := f.db.FolderGroups().SetOverride(context.Background(), fixturePath("/media/show"), domain.FolderGroupUngroup); err != nil {
+	if err := f.db.ScanIndex().DeleteVideos(context.Background(), f.members); err != nil {
 		t.Fatal(err)
 	}
 	got := f.playback(t, f.itemG, f.members[1])
