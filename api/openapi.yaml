@@ -3858,6 +3858,66 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/organize/reorder:
+    post:
+      operationId: organizeReorder
+      summary: グループの項目をまとめて並べ替え、取り消しのトークンを返す
+      description: |
+        所有者だけ。グループ `groupId` の項目 `itemIds` を画面の順のまままとめて項目 `after` の
+        すぐ後ろへ移す。`after` が無ければ先頭へ移す。1 つの取引で行い、応答の `undoToken` で
+        取り消せる（specs/050-drag-organize/contracts/screen-api.md）。`itemIds` が空か `after` が
+        `itemIds` の中にあれば 400 `invalid_request`。グループ・項目・`after` のどれかが無いか
+        そのグループに無ければ 404 `group_target_not_found` で、何も書かない。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizeReorder"
+      responses:
+        "200":
+          description: 並べ替えた。取り消しのトークン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizeResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/organize/undo:
+    post:
+      operationId: organizeUndo
+      summary: ドラッグの操作を取り消す
+      description: |
+        所有者だけ。`token` の操作の前の状態へ戻す（specs/050-drag-organize/research.md R-1）。操作の
+        後で行が変わっていれば 409 `undo_conflict` で、何も書かない。トークンが無い、使い済み、
+        または 10 分より古ければ 410 `undo_expired`。トークンは 1 回だけ使える。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizeUndo"
+      responses:
+        "204":
+          description: 取り消した
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "410":
+          description: 取り消しのトークンが無い、使い済み、または 10 分より古い
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/folders/{rootId}/grouping:
     put:
       operationId: setFolderGrouping
@@ -6122,6 +6182,72 @@ components:
             type: integer
             format: int64
 
+    OrganizeRef:
+      type: object
+      required: [kind, id]
+      additionalProperties: false
+      description: ドラッグしたカード 1 枚（specs/050-drag-organize/research.md R-4）
+      properties:
+        kind:
+          type: string
+          enum: [video, group]
+        id:
+          type: integer
+          format: int64
+          description: 動画かグループの id
+
+    OrganizeRefs:
+      type: array
+      description: ドラッグしたカード。画面の順
+      minItems: 1
+      maxItems: 20000
+      items:
+        $ref: "#/components/schemas/OrganizeRef"
+
+    OrganizeResult:
+      type: object
+      required: [undoToken]
+      additionalProperties: false
+      properties:
+        undoToken:
+          type: string
+          description: この操作を取り消すトークン（POST /api/organize/undo）。10 分有効で、1 回だけ使える
+        groupId:
+          type: integer
+          format: int64
+          description: 新しいグループの id。/api/organize/group だけが返す
+
+    OrganizeReorder:
+      type: object
+      required: [groupId, itemIds]
+      additionalProperties: false
+      properties:
+        groupId:
+          type: integer
+          format: int64
+          description: 開いているグループ
+        itemIds:
+          type: array
+          description: 移す項目の id（動画やグループの id ではない）。画面の順
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        after:
+          type: integer
+          format: int64
+          description: この項目のすぐ後ろへ移す。無ければ先頭へ移す
+
+    OrganizeUndo:
+      type: object
+      required: [token]
+      additionalProperties: false
+      properties:
+        token:
+          type: string
+          description: 操作の応答の `undoToken`
+
     GroupTagResult:
       type: object
       required: [tag, created]
@@ -7328,6 +7454,8 @@ components:
         - work_info_invalid_language
         - work_info_duplicate
         - work_info_empty
+        - undo_conflict
+        - undo_expired
         - person_not_found
         - organization_not_found
         - organization_parent_cycle

@@ -325,6 +325,8 @@ const errorReasons = {
   work_info_invalid_language: "Enter a language tag such as ja or en-US.",
   work_info_duplicate: "Already listed.",
   work_info_empty: "This can't be empty.",
+  undo_conflict: "It changed in the meantime, so it can't be undone.",
+  undo_expired: "This can no longer be undone.",
   person_not_found: "This person no longer exists.",
   organization_not_found: "This organization no longer exists.",
   organization_parent_cycle:

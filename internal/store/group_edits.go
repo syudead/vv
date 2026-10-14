@@ -201,7 +201,13 @@ func (s *GroupStore) TagGroup(ctx context.Context, id int64) (domain.GroupTag, e
 // write は fn を 1 つの書き込み取引で行い、確定できたときだけ fn が返したグループの id を
 // domain.GroupsChanged で知らせる。fn が誤りを返せば巻き戻し、何も書かない。
 func (s *GroupStore) write(ctx context.Context, verb string, fn func(*sql.Tx) ([]int64, error)) error {
-	tx, err := s.db.sql.BeginTx(ctx, nil)
+	return writeGroups(ctx, s.db, verb, fn)
+}
+
+// writeGroups は GroupStore.write の本体で、グループを変える役割（GroupStore・OrganizeStore）が
+// 共有する。
+func writeGroups(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) ([]int64, error)) error {
+	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("cannot %s: %w", verb, err)
 	}
@@ -213,7 +219,7 @@ func (s *GroupStore) write(ctx context.Context, verb string, fn func(*sql.Tx) ([
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("cannot %s: %w", verb, err)
 	}
-	s.db.publishEvents(groupsChangedEvents(changed)...)
+	db.publishEvents(groupsChangedEvents(changed)...)
 	return nil
 }
 

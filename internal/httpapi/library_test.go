@@ -14,6 +14,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 	"github.com/syudead/vv/internal/store"
@@ -61,6 +62,7 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 			Playback: db.Playback(), Tags: db.Tags(), Visibility: db.Visibility(),
 			Favorites: db.Favorites(), Versions: db.Versions(), Playlists: db.Playlists(), Groups: db.Groups(),
 			PlaylistPlayback: db.Playlists(),
+			Organizer:        app.NewOrganizer(app.OrganizerOptions{Store: db.Organize()}),
 		})
 	})
 	db := f.env.db
