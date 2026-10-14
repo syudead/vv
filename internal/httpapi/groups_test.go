@@ -388,3 +388,46 @@ func TestGroupWritesOwnerOnly(t *testing.T) {
 		t.Errorf("ゲストが作ったグループ = %v", got)
 	}
 }
+
+// videoIds・groupIds・itemIds の上限 20000 は、契約の maxItems どおり重複を除く前の配列の長さで
+// 数える。同じ id を 20001 個並べた本文も 400 too_many_videos である。
+func TestGroupWritesCountLimitBeforeDeduplicating(t *testing.T) {
+	f := newLibraryFixture(t)
+	mix := f.createGroup(t, "Mix", []int64{f.ids["solo"]}, nil)
+	ids, _ := f.groupItemIDs(t, mix.Id)
+	tooMany := wantError{
+		status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyVideos, limit: maxVideoTagsIDs,
+	}
+	repeat := func(id int64) []int64 { return slices.Repeat([]int64{id}, maxVideoTagsIDs+1) }
+	for _, tc := range []struct {
+		label, target string
+		body          map[string]any
+	}{
+		{"作成の videoIds", "/api/groups", map[string]any{"name": "Dup", "videoIds": repeat(f.ids["solo"])}},
+		{"追加の groupIds", groupWritePath(mix.Id, "/items"), map[string]any{"groupIds": repeat(f.groupID(t, "pair"))}},
+		{"除去の itemIds", groupWritePath(mix.Id, "/items/remove"), map[string]any{"itemIds": repeat(ids[0])}},
+	} {
+		assertGroupError(t, tc.label, f.groupRequest(http.MethodPost, tc.target, groupJSON(tc.body), f.owner), tooMany)
+	}
+	if got, _ := f.groupItemIDs(t, mix.Id); !slices.Equal(got, ids) {
+		t.Errorf("拒んだあとの項目 = %v, want %v", got, ids)
+	}
+}
+
+// お気に入りの自動グループから項目を全部外しても、応答の favorite はお気に入りのまま true である。
+func TestRemovingEveryItemKeepsGroupFavorite(t *testing.T) {
+	f := newLibraryFixture(t)
+	pair := f.groupID(t, "pair")
+	rec := f.putFavorites(favoritesBody(true, nil, gen.VideoFolder{RootId: f.rootID, Path: "pair"}), f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("お気に入り: status = %d: %s", rec.Code, rec.Body)
+	}
+	ids, _ := f.groupItemIDs(t, pair)
+	rec = f.groupRequest(http.MethodPost, groupWritePath(pair, "/items/remove"), groupJSON(map[string]any{"itemIds": ids}), f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("全部の除去: status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.LibraryGroup](t, rec); got.VideoCount != 0 || got.Favorite == nil || !*got.Favorite {
+		t.Errorf("空にしたお気に入りの応答 = %+v", got)
+	}
+}

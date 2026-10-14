@@ -151,14 +151,15 @@ func (s *server) RemoveGroupItems(w http.ResponseWriter, r *http.Request, id gen
 	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
 		return
 	}
+	// 上限は契約の maxItems どおり、重複を除く前の配列の長さで数える。
+	if len(body.ItemIds) > maxVideoTagsIDs {
+		s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
+			fmt.Sprintf("itemIds must contain at most %d items.", maxVideoTagsIDs))
+		return
+	}
 	itemIDs := uniqueInt64s(body.ItemIds)
 	if len(itemIDs) == 0 {
 		s.invalidRequest(w, "itemIds must contain at least one item.")
-		return
-	}
-	if len(itemIDs) > maxVideoTagsIDs {
-		s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
-			fmt.Sprintf("itemIds must contain at most %d items.", maxVideoTagsIDs))
 		return
 	}
 	if !s.groupsConfigured(w) {
@@ -222,18 +223,20 @@ func (s *server) groupsConfigured(w http.ResponseWriter) bool {
 func (s *server) groupAdd(w http.ResponseWriter, videoIDs, groupIDs *[]int64) (domain.GroupAdd, bool) {
 	var add domain.GroupAdd
 	if videoIDs != nil {
-		add.VideoIDs = uniqueInt64s(*videoIDs)
+		add.VideoIDs = *videoIDs
 	}
 	if groupIDs != nil {
-		add.GroupIDs = uniqueInt64s(*groupIDs)
+		add.GroupIDs = *groupIDs
 	}
-	if len(add.VideoIDs)+len(add.GroupIDs) == 0 {
-		s.invalidRequest(w, "videoIds or groupIds must contain at least one item.")
-		return domain.GroupAdd{}, false
-	}
+	// 上限は契約の maxItems どおり、重複を除く前の配列の長さで数える。
 	if len(add.VideoIDs) > maxVideoTagsIDs || len(add.GroupIDs) > maxVideoTagsIDs {
 		s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
 			fmt.Sprintf("videoIds and groupIds must each contain at most %d items.", maxVideoTagsIDs))
+		return domain.GroupAdd{}, false
+	}
+	add.VideoIDs, add.GroupIDs = uniqueInt64s(add.VideoIDs), uniqueInt64s(add.GroupIDs)
+	if len(add.VideoIDs)+len(add.GroupIDs) == 0 {
+		s.invalidRequest(w, "videoIds or groupIds must contain at least one item.")
 		return domain.GroupAdd{}, false
 	}
 	return add, true
@@ -278,7 +281,8 @@ func (s *server) presentWrittenGroup(ctx context.Context, audience domain.Audien
 }
 
 // emptyGroup は見せる動画の無いグループの値である。folder は自動グループのフォルダが登録フォルダの
-// 下にあるときだけ載せる（ほかのグループの値と同じ）。
+// 下にあるときだけ載せる（ほかのグループの値と同じ）。お気に入りは動画が無くても残るので、保存層の
+// 値を載せる。
 func (s *server) emptyGroup(ctx context.Context, audience domain.Audience, group domain.Group) (gen.LibraryGroup, error) {
 	out := gen.LibraryGroup{
 		Id: group.ID, Name: group.Name, Previews: []gen.FolderPreview{}, VideoIds: []int64{}, Tags: []gen.VideoTag{},
@@ -293,7 +297,7 @@ func (s *server) emptyGroup(ctx context.Context, audience domain.Audience, group
 		}
 	}
 	if audience.IsOwner() {
-		state, watched, favorite := gen.LibraryGroupWatchStateUnwatched, 0, false
+		state, watched, favorite := gen.LibraryGroupWatchStateUnwatched, 0, group.Favorite
 		out.WatchState, out.WatchedCount, out.Favorite = &state, &watched, &favorite
 	}
 	return out, nil

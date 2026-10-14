@@ -100,7 +100,7 @@ func decodeGroupListCursor(cursor string) (*groupListCandidate, error) {
 
 // groupListCandidates は、after より後ろ（nil なら最初から）のグループのうち名前が query を含む
 // ものを、一覧の順に返す。大文字小文字の区別は SQLite の lower() では ASCII にしか効かないので、
-// 名前を読んでから Go の strings.ToLower で比べる。
+// 名前を読んでから domain.FoldKey で比べる（strings.ToLower では `Σ` と `ς` が同じにならない）。
 func groupListCandidates(ctx context.Context, tx *sql.Tx, query string, after *groupListCandidate) ([]groupListCandidate, error) {
 	where, args := "", []any{}
 	if after != nil {
@@ -112,7 +112,7 @@ func groupListCandidates(ctx context.Context, tx *sql.Tx, query string, after *g
 		return nil, fmt.Errorf("cannot read the groups: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	needle := strings.ToLower(strings.TrimSpace(query))
+	needle := domain.FoldKey(strings.TrimSpace(query))
 	var out []groupListCandidate
 	for rows.Next() {
 		var candidate groupListCandidate
@@ -120,7 +120,7 @@ func groupListCandidates(ctx context.Context, tx *sql.Tx, query string, after *g
 		if err := rows.Scan(&candidate.id, &name, &candidate.titleKey); err != nil {
 			return nil, fmt.Errorf("cannot read the groups: %w", err)
 		}
-		if needle == "" || strings.Contains(strings.ToLower(name), needle) {
+		if needle == "" || strings.Contains(domain.FoldKey(name), needle) {
 			out = append(out, candidate)
 		}
 	}

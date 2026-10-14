@@ -27,6 +27,9 @@ type Group struct {
 	OriginFolder string
 	// UpdatedAt は名前か項目を最後に変えた時刻（Unix ミリ秒）である。
 	UpdatedAt int64
+	// Favorite は所有者がグループをお気に入りにしたか（specs/035-favorites/data-model.md §2）。
+	// 見せる動画が無くなっても残る。
+	Favorite bool
 }
 
 // GroupRef はグループを指す id と名前である。
