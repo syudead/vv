@@ -161,6 +161,24 @@ async function waitForVideos(request: APIRequestContext, titles: readonly string
     .toBe(true);
 }
 
+/**
+ * restoreAutoGrouping はフォルダ relativePath（登録フォルダからの相対）の例外を外して自動に
+ * 戻す。自動グループの解散は、そのフォルダの例外 ungroup をパスに書き、登録フォルダを外しても
+ * 消えない。前の試行の 6 と afterAll が書いた例外が残ると、CI のリトライの再スキャンで自動
+ * グループが作られないので、試行の初めに戻す。戻すと同じ取引で自動グループが作り直される。
+ */
+async function restoreAutoGrouping(
+  request: APIRequestContext,
+  rootId: number,
+  relativePath: string,
+) {
+  const response = await request.put(
+    `/api/folders/${String(rootId)}/grouping?path=${encodeURIComponent(relativePath)}`,
+    { headers: mutationHeaders, data: { mode: "auto" } },
+  );
+  expect(response.status()).toBe(200);
+}
+
 /** groupsNamed は API から、name という名前のグループをすべて読む。 */
 async function groupsNamed(request: APIRequestContext, name: string) {
   const response = await request.get(
@@ -298,6 +316,9 @@ test.describe.serial("groups", () => {
     folder = (await created.json()) as MediaFolder;
     await rescan(request);
     await waitForVideos(request, allTitles);
+    for (const relativePath of [autoFolder, dissolvedFolder]) {
+      await restoreAutoGrouping(request, folder.id, relativePath);
+    }
   });
 
   test.afterAll(async ({ request }) => {
