@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 
@@ -96,7 +97,7 @@ func (s *server) readThumbnailUpload(w http.ResponseWriter, r *http.Request) ([]
 	tooLarge := func() {
 		s.thumbnailUploadError(w, &domain.ThumbnailUploadTooLargeError{Limit: domain.ThumbnailUploadMaxBytes})
 	}
-	ok := s.readMultipart(w, r, thumbnailUploadMaxBody, tooLarge, func(name string, part io.Reader) bool {
+	ok := s.readMultipart(w, r, thumbnailUploadMaxBody, tooLarge, func(name string, part *multipart.Part) bool {
 		if name != "image" {
 			s.invalidRequest(w, "Only image may be sent.")
 			return false

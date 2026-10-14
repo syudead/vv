@@ -197,6 +197,9 @@ const (
 	ErrorCodeNotFound                    ErrorCode = "not_found"
 	ErrorCodeOpenUnavailable             ErrorCode = "open_unavailable"
 	ErrorCodeOverlappingMediaDirectories ErrorCode = "overlapping_media_directories"
+	ErrorCodePluginChanged               ErrorCode = "plugin_changed"
+	ErrorCodePluginTooLarge              ErrorCode = "plugin_too_large"
+	ErrorCodePluginUnusable              ErrorCode = "plugin_unusable"
 	ErrorCodeProbeNotFailed              ErrorCode = "probe_not_failed"
 	ErrorCodeProviderFailed              ErrorCode = "provider_failed"
 	ErrorCodeScanInProgress              ErrorCode = "scan_in_progress"
@@ -240,6 +243,12 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeOpenUnavailable:
 		return true
 	case ErrorCodeOverlappingMediaDirectories:
+		return true
+	case ErrorCodePluginChanged:
+		return true
+	case ErrorCodePluginTooLarge:
+		return true
+	case ErrorCodePluginUnusable:
 		return true
 	case ErrorCodeProbeNotFailed:
 		return true
@@ -1401,6 +1410,78 @@ func (e WorkDateKind) Valid() bool {
 	}
 }
 
+// Defines values for WorkInfoOperation.
+const (
+	Fetch  WorkInfoOperation = "fetch"
+	Search WorkInfoOperation = "search"
+)
+
+// Valid indicates whether the value is a known member of the WorkInfoOperation enum.
+func (e WorkInfoOperation) Valid() bool {
+	switch e {
+	case Fetch:
+		return true
+	case Search:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkInfoPluginProblem.
+const (
+	ContractUnsupported WorkInfoPluginProblem = "contract_unsupported"
+	ExportInvalid       WorkInfoPluginProblem = "export_invalid"
+	ImportUnsupported   WorkInfoPluginProblem = "import_unsupported"
+	ManifestInvalid     WorkInfoPluginProblem = "manifest_invalid"
+	ManifestMissing     WorkInfoPluginProblem = "manifest_missing"
+	NotWasm             WorkInfoPluginProblem = "not_wasm"
+	TableTooLarge       WorkInfoPluginProblem = "table_too_large"
+)
+
+// Valid indicates whether the value is a known member of the WorkInfoPluginProblem enum.
+func (e WorkInfoPluginProblem) Valid() bool {
+	switch e {
+	case ContractUnsupported:
+		return true
+	case ExportInvalid:
+		return true
+	case ImportUnsupported:
+		return true
+	case ManifestInvalid:
+		return true
+	case ManifestMissing:
+		return true
+	case NotWasm:
+		return true
+	case TableTooLarge:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkInfoPluginState.
+const (
+	Approved   WorkInfoPluginState = "approved"
+	Invalid    WorkInfoPluginState = "invalid"
+	Unapproved WorkInfoPluginState = "unapproved"
+)
+
+// Valid indicates whether the value is a known member of the WorkInfoPluginState enum.
+func (e WorkInfoPluginState) Valid() bool {
+	switch e {
+	case Approved:
+		return true
+	case Invalid:
+		return true
+	case Unapproved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkOrganizationRole.
 const (
 	Label WorkOrganizationRole = "label"
@@ -1495,6 +1576,12 @@ type Alias struct {
 	// Language BCP 47 の構文の言語タグ。無ければ省く
 	Language *string `json:"language,omitempty"`
 	Name     string  `json:"name"`
+}
+
+// ApproveWorkInfoPluginRequest defines model for ApproveWorkInfoPluginRequest.
+type ApproveWorkInfoPluginRequest struct {
+	// Digest 一覧で見た digest
+	Digest string `json:"digest"`
 }
 
 // AuthRedirect defines model for AuthRedirect.
@@ -2531,6 +2618,12 @@ type SeekThumbnailSprite struct {
 	Sheets []string `json:"sheets"`
 }
 
+// SetWorkInfoPluginSettingsRequest defines model for SetWorkInfoPluginSettingsRequest.
+type SetWorkInfoPluginSettingsRequest struct {
+	// Values キーから新しい値へ。null はその値を消し、省いたキーはそのまま残す
+	Values map[string]*string `json:"values"`
+}
+
 // SetupRequest defines model for SetupRequest.
 type SetupRequest struct {
 	// Password 1〜1024 バイト
@@ -2836,6 +2929,12 @@ type UpdateTranscodingSettingsRequest struct {
 type UploadThumbnailImageRequest struct {
 	// Image サムネイルにする画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）
 	Image openapi_types.File `json:"image"`
+}
+
+// UploadWorkInfoPluginRequest defines model for UploadWorkInfoPluginRequest.
+type UploadWorkInfoPluginRequest struct {
+	// Module 作品情報プラグインの WebAssembly モジュール（16 MiB まで）。ファイル名は残す
+	Module openapi_types.File `json:"module"`
 }
 
 // VersionCandidate 「同じ動画かもしれない」2 本の組（specs/030-video-versions/contracts/screen-api.md §5）
@@ -3336,6 +3435,70 @@ type WorkInfoInput struct {
 	Urls          *[]string                `json:"urls,omitempty"`
 }
 
+// WorkInfoOperation プラグインの操作（specs/049-work-info-plugins/contracts/plugin-contract.md）
+type WorkInfoOperation string
+
+// WorkInfoPlugin 作品情報プラグイン 1 つ（specs/049-work-info-plugins/contracts/screen-api.md の WorkInfoPlugin）
+type WorkInfoPlugin struct {
+	Description *string `json:"description,omitempty"`
+
+	// Digest モジュールの SHA-256（小文字の 16 進）。承認のときに送り返す
+	Digest string `json:"digest"`
+
+	// FileName アップロードしたファイルの名前
+	FileName string `json:"fileName"`
+	Id       int64  `json:"id"`
+
+	// Name マニフェストの name。マニフェストを読めなかったときは無い
+	Name *string `json:"name,omitempty"`
+
+	// Network 取り決めの版 1 では常に真。プラグインはインターネットのサイトに届く
+	Network bool `json:"network"`
+
+	// Operations マニフェストの operations。invalid のプラグインでは空
+	Operations []WorkInfoOperation `json:"operations"`
+
+	// Problem プラグインを承認できない理由（specs/049-work-info-plugins/data-model.md の work_info_plugins）
+	Problem *WorkInfoPluginProblem `json:"problem,omitempty"`
+
+	// Settings 宣言の順の設定。invalid のプラグインでは空
+	Settings []WorkInfoPluginSetting `json:"settings"`
+
+	// State プラグインの状態（specs/049-work-info-plugins/data-model.md の State transitions）
+	State WorkInfoPluginState `json:"state"`
+
+	// UpdatedAt 最後のアップロードか承認の変更の時刻（Unix 秒）
+	UpdatedAt int64   `json:"updatedAt"`
+	Version   *string `json:"version,omitempty"`
+}
+
+// WorkInfoPluginList defines model for WorkInfoPluginList.
+type WorkInfoPluginList struct {
+	// Plugins 名前、次にファイル名の順
+	Plugins []WorkInfoPlugin `json:"plugins"`
+}
+
+// WorkInfoPluginProblem プラグインを承認できない理由（specs/049-work-info-plugins/data-model.md の work_info_plugins）
+type WorkInfoPluginProblem string
+
+// WorkInfoPluginSetting マニフェストが宣言する設定の 1 つと、その値の有無。`value` は `secret` が偽で値があるときだけ入る
+// （specs/049-work-info-plugins/research.md R-13）
+type WorkInfoPluginSetting struct {
+	Key      string `json:"key"`
+	Label    string `json:"label"`
+	Required bool   `json:"required"`
+	Secret   bool   `json:"secret"`
+
+	// Set 値が保存されているか
+	Set bool `json:"set"`
+
+	// Value 保存された値。秘密の設定では入らない
+	Value *string `json:"value,omitempty"`
+}
+
+// WorkInfoPluginState プラグインの状態（specs/049-work-info-plugins/data-model.md の State transitions）
+type WorkInfoPluginState string
+
 // WorkOrganization defines model for WorkOrganization.
 type WorkOrganization struct {
 	// Organization 人物か団体 1 件への参照。name はその実体の今の名前
@@ -3432,6 +3595,9 @@ type VideoTagId = int64
 // WatchHistoryEntryId defines model for WatchHistoryEntryId.
 type WatchHistoryEntryId = int64
 
+// WorkInfoPluginId defines model for WorkInfoPluginId.
+type WorkInfoPluginId = int64
+
 // Conflict defines model for Conflict.
 type Conflict = Error
 
@@ -3443,6 +3609,9 @@ type InvalidRequest = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// PluginTooLarge defines model for PluginTooLarge.
+type PluginTooLarge = Error
 
 // ProviderFailed defines model for ProviderFailed.
 type ProviderFailed = Error
@@ -4004,6 +4173,15 @@ type SetVideoThumbnailPositionJSONRequestBody = ThumbnailPositionUpdate
 // SetVideoWorkInfoJSONRequestBody defines body for SetVideoWorkInfo for application/json ContentType.
 type SetVideoWorkInfoJSONRequestBody = WorkInfoInput
 
+// UploadWorkInfoPluginMultipartRequestBody defines body for UploadWorkInfoPlugin for multipart/form-data ContentType.
+type UploadWorkInfoPluginMultipartRequestBody = UploadWorkInfoPluginRequest
+
+// ApproveWorkInfoPluginJSONRequestBody defines body for ApproveWorkInfoPlugin for application/json ContentType.
+type ApproveWorkInfoPluginJSONRequestBody = ApproveWorkInfoPluginRequest
+
+// SetWorkInfoPluginSettingsJSONRequestBody defines body for SetWorkInfoPluginSettings for application/json ContentType.
+type SetWorkInfoPluginSettingsJSONRequestBody = SetWorkInfoPluginSettingsRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListApiTokens 発行した API トークンを返す
@@ -4375,6 +4553,24 @@ type ServerInterface interface {
 	// DeleteWatchHistoryEntry 視聴履歴を 1 件消す
 	// (DELETE /api/watch-history/{id})
 	DeleteWatchHistoryEntry(w http.ResponseWriter, r *http.Request, id WatchHistoryEntryId)
+	// ListWorkInfoPlugins 作品情報プラグインを一覧する
+	// (GET /api/work-info-plugins)
+	ListWorkInfoPlugins(w http.ResponseWriter, r *http.Request)
+	// UploadWorkInfoPlugin 作品情報プラグインを追加するか、同じ名前のものを差し替える
+	// (POST /api/work-info-plugins)
+	UploadWorkInfoPlugin(w http.ResponseWriter, r *http.Request)
+	// DeleteWorkInfoPlugin 作品情報プラグインを消す
+	// (DELETE /api/work-info-plugins/{id})
+	DeleteWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
+	// RevokeWorkInfoPluginApproval 作品情報プラグインの承認を取り消す
+	// (DELETE /api/work-info-plugins/{id}/approval)
+	RevokeWorkInfoPluginApproval(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
+	// ApproveWorkInfoPlugin 所有者が見たモジュールを承認する
+	// (PUT /api/work-info-plugins/{id}/approval)
+	ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
+	// SetWorkInfoPluginSettings 作品情報プラグインの設定の値を書く
+	// (PUT /api/work-info-plugins/{id}/settings)
+	SetWorkInfoPluginSettings(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
 }
 
 // ServerInterfaceWrapper converts contexts to parameters.
@@ -8285,6 +8481,138 @@ func (siw *ServerInterfaceWrapper) DeleteWatchHistoryEntry(w http.ResponseWriter
 	handler.ServeHTTP(w, r)
 }
 
+// ListWorkInfoPlugins operation middleware
+func (siw *ServerInterfaceWrapper) ListWorkInfoPlugins(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListWorkInfoPlugins(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UploadWorkInfoPlugin operation middleware
+func (siw *ServerInterfaceWrapper) UploadWorkInfoPlugin(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UploadWorkInfoPlugin(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteWorkInfoPlugin operation middleware
+func (siw *ServerInterfaceWrapper) DeleteWorkInfoPlugin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WorkInfoPluginId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteWorkInfoPlugin(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevokeWorkInfoPluginApproval operation middleware
+func (siw *ServerInterfaceWrapper) RevokeWorkInfoPluginApproval(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WorkInfoPluginId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevokeWorkInfoPluginApproval(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApproveWorkInfoPlugin operation middleware
+func (siw *ServerInterfaceWrapper) ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WorkInfoPluginId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApproveWorkInfoPlugin(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetWorkInfoPluginSettings operation middleware
+func (siw *ServerInterfaceWrapper) SetWorkInfoPluginSettings(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WorkInfoPluginId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetWorkInfoPluginSettings(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -8473,6 +8801,12 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/api-tokens", wrapper.CreateApiToken)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/api-tokens/{id}", wrapper.DeleteApiToken)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins", wrapper.ListWorkInfoPlugins)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins", wrapper.UploadWorkInfoPlugin)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}", wrapper.DeleteWorkInfoPlugin)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.RevokeWorkInfoPluginApproval)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.ApproveWorkInfoPlugin)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/settings", wrapper.SetWorkInfoPluginSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags", wrapper.CreateTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}", wrapper.DeleteTag)

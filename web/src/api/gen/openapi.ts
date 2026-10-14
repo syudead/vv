@@ -1420,6 +1420,108 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/work-info-plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 作品情報プラグインを一覧する
+         * @description 所有者だけ。名前、次にファイル名の順で返す（名前を読めなかったプラグインは名前のあるものの後）。
+         *     秘密の設定の値は返さず、`set` だけを返す。プラグインの変化はイベントで流れないので、設定画面と
+         *     動画ページはこれを読み直す（specs/049-work-info-plugins/contracts/screen-api.md、research.md R-11・R-13）。
+         */
+        get: operations["listWorkInfoPlugins"];
+        put?: never;
+        /**
+         * 作品情報プラグインを追加するか、同じ名前のものを差し替える
+         * @description 所有者だけ。`multipart/form-data` の `module`（WebAssembly モジュール、16 MiB まで）を 1 つ受け取り、
+         *     実行せずに検査して保存する。ファイル名は残す。マニフェストの `name` が既存のプラグインと同じなら
+         *     その行を差し替えて `200`、それ以外は新しい行で `201` を返す。差し替えたプラグインは承認前に戻り、
+         *     新しいマニフェストが宣言するキーの設定の値だけが残る。使えないファイルも保存し、`state: invalid` と
+         *     `problem` を付けて返す。`module` が無いか 2 つ以上なら `400` `invalid_request`、16 MiB を超えれば
+         *     `413` `plugin_too_large`（`limit`）を返し、何も書かない
+         *     （specs/049-work-info-plugins/contracts/screen-api.md、data-model.md の Rules）。
+         */
+        post: operations["uploadWorkInfoPlugin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-info-plugins/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 作品情報プラグインを消す
+         * @description 所有者だけ。設定の値も一緒に消える。無ければ `404` `not_found`。
+         */
+        delete: operations["deleteWorkInfoPlugin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-info-plugins/{id}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 所有者が見たモジュールを承認する
+         * @description 所有者だけ。`digest` は一覧の `digest` である。無ければ `404` `not_found`、保存されたモジュールの
+         *     ダイジェストが違えば `409` `plugin_changed`、プラグインが `invalid` なら `409` `plugin_unusable` を
+         *     返し、何も書かない（specs/049-work-info-plugins/research.md R-7）。
+         */
+        put: operations["approveWorkInfoPlugin"];
+        post?: never;
+        /**
+         * 作品情報プラグインの承認を取り消す
+         * @description 所有者だけ。無ければ `404` `not_found`。承認していなくても `200` を返す。
+         */
+        delete: operations["revokeWorkInfoPluginApproval"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-info-plugins/{id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 作品情報プラグインの設定の値を書く
+         * @description 所有者だけ。`values` のキーごとに値を書き、`null`（と空の文字列）はその値を消し、省いたキーの値は
+         *     そのまま残す。承認は変わらない。マニフェストが宣言しないキーか 2000 文字を超える値があれば `400`
+         *     `invalid_request`、無ければ `404` `not_found`、プラグインが `invalid` なら `409` `plugin_unusable` を
+         *     返し、何も書かない。応答の秘密の設定は `set` だけを持つ
+         *     （specs/049-work-info-plugins/research.md R-13）。
+         */
+        put: operations["setWorkInfoPluginSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -2728,6 +2830,82 @@ export interface components {
              * @description サムネイルにする画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）
              */
             image: string;
+        };
+        UploadWorkInfoPluginRequest: {
+            /**
+             * Format: binary
+             * @description 作品情報プラグインの WebAssembly モジュール（16 MiB まで）。ファイル名は残す
+             */
+            module: string;
+        };
+        /**
+         * @description プラグインの状態（specs/049-work-info-plugins/data-model.md の State transitions）
+         * @enum {string}
+         */
+        WorkInfoPluginState: "approved" | "unapproved" | "invalid";
+        /**
+         * @description プラグインを承認できない理由（specs/049-work-info-plugins/data-model.md の work_info_plugins）
+         * @enum {string}
+         */
+        WorkInfoPluginProblem: "not_wasm" | "manifest_missing" | "manifest_invalid" | "contract_unsupported" | "import_unsupported" | "export_invalid" | "table_too_large";
+        /**
+         * @description プラグインの操作（specs/049-work-info-plugins/contracts/plugin-contract.md）
+         * @enum {string}
+         */
+        WorkInfoOperation: "search" | "fetch";
+        /**
+         * @description マニフェストが宣言する設定の 1 つと、その値の有無。`value` は `secret` が偽で値があるときだけ入る
+         *     （specs/049-work-info-plugins/research.md R-13）
+         */
+        WorkInfoPluginSetting: {
+            key: string;
+            label: string;
+            secret: boolean;
+            required: boolean;
+            /** @description 値が保存されているか */
+            set: boolean;
+            /** @description 保存された値。秘密の設定では入らない */
+            value?: string;
+        };
+        /** @description 作品情報プラグイン 1 つ（specs/049-work-info-plugins/contracts/screen-api.md の WorkInfoPlugin） */
+        WorkInfoPlugin: {
+            /** Format: int64 */
+            id: number;
+            /** @description マニフェストの name。マニフェストを読めなかったときは無い */
+            name?: string;
+            /** @description アップロードしたファイルの名前 */
+            fileName: string;
+            version?: string;
+            description?: string;
+            /** @description マニフェストの operations。invalid のプラグインでは空 */
+            operations: components["schemas"]["WorkInfoOperation"][];
+            /** @description モジュールの SHA-256（小文字の 16 進）。承認のときに送り返す */
+            digest: string;
+            state: components["schemas"]["WorkInfoPluginState"];
+            problem?: components["schemas"]["WorkInfoPluginProblem"];
+            /** @description 宣言の順の設定。invalid のプラグインでは空 */
+            settings: components["schemas"]["WorkInfoPluginSetting"][];
+            /** @description 取り決めの版 1 では常に真。プラグインはインターネットのサイトに届く */
+            network: boolean;
+            /**
+             * Format: int64
+             * @description 最後のアップロードか承認の変更の時刻（Unix 秒）
+             */
+            updatedAt: number;
+        };
+        WorkInfoPluginList: {
+            /** @description 名前、次にファイル名の順 */
+            plugins: components["schemas"]["WorkInfoPlugin"][];
+        };
+        ApproveWorkInfoPluginRequest: {
+            /** @description 一覧で見た digest */
+            digest: string;
+        };
+        SetWorkInfoPluginSettingsRequest: {
+            /** @description キーから新しい値へ。null はその値を消し、省いたキーはそのまま残す */
+            values: {
+                [key: string]: string | null;
+            };
         };
         /**
          * @description 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
@@ -4051,7 +4229,7 @@ export interface components {
              * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable";
             /** @description 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0） */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -4105,6 +4283,15 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description 作品情報プラグインのモジュールが上限（limit）を超える */
+        PluginTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
         /** @description 画像編集の提供元（ComfyUI）が入力の受け取りか実行の受け付けに失敗した */
         ProviderFailed: {
             headers: {
@@ -4137,6 +4324,8 @@ export interface components {
         MediaFolderId: number;
         /** @description API トークンの識別子 */
         APITokenId: number;
+        /** @description 作品情報プラグインの識別子 */
+        WorkInfoPluginId: number;
         /** @description プレイリストの識別子 */
         PlaylistId: number;
         /** @description 視聴履歴の 1 件の識別子 */
@@ -6239,6 +6428,174 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listWorkInfoPlugins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 作品情報プラグインの一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPluginList"];
+                };
+            };
+        };
+    };
+    uploadWorkInfoPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["UploadWorkInfoPluginRequest"];
+            };
+        };
+        responses: {
+            /** @description 差し替えたプラグイン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            /** @description 追加したプラグイン */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PluginTooLarge"];
+        };
+    };
+    deleteWorkInfoPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作品情報プラグインの識別子 */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    approveWorkInfoPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作品情報プラグインの識別子 */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveWorkInfoPluginRequest"];
+            };
+        };
+        responses: {
+            /** @description 承認したプラグイン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    revokeWorkInfoPluginApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作品情報プラグインの識別子 */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 承認を取り消したプラグイン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setWorkInfoPluginSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作品情報プラグインの識別子 */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetWorkInfoPluginSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 書いた後のプラグイン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listTags: {
