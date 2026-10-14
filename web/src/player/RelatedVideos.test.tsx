@@ -731,6 +731,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
         3049,
         100,
         expect.anything(),
+        undefined,
       );
       expect(memberRows()).toHaveLength(102);
       expect(memberRows()[101]?.textContent).toContain("ep 3051");
@@ -751,6 +752,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
         2849,
         100,
         expect.anything(),
+        undefined,
       );
       expect(memberRows()).toHaveLength(200);
       expect(memberRows()[0]?.textContent).toContain("2850");
@@ -781,6 +783,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
           2849,
           100,
           expect.anything(),
+          undefined,
         );
         // 2 本増えた分（20px）だけ下へずらす。
         expect(scroller.scrollTop).toBe(60);

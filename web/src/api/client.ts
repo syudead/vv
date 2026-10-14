@@ -506,9 +506,26 @@ export function getGroup(id: number, signal?: AbortSignal): Promise<GroupDetail>
   return request<GroupDetail>(`/api/groups/${String(id)}`, { signal });
 }
 
-/** getVideo は動画1件の詳細を取得する。 */
-export function getVideo(id: number, signal?: AbortSignal): Promise<Video> {
-  return request<Video>(`/api/videos/${id}`, { signal });
+/**
+ * groupQuery は動画の読み取りに付ける問い合わせである。`group` は動画を開いたグループの id で、
+ * 省けば何も付けない（specs/048-groups/research.md R-9）。
+ */
+function groupQuery(params: Record<string, string>, group: number | undefined): string {
+  const query = new URLSearchParams(params);
+  if (group !== undefined) query.set("group", String(group));
+  return query.size === 0 ? "" : `?${query.toString()}`;
+}
+
+/**
+ * getVideo は動画1件の詳細を取得する。`group` を渡すと、動画の `group` をそのグループの
+ * 再生順で答えさせる（research.md R-9）。
+ */
+export function getVideo(
+  id: number,
+  signal?: AbortSignal,
+  group?: number,
+): Promise<Video> {
+  return request<Video>(`/api/videos/${id}${groupQuery({}, group)}`, { signal });
 }
 
 /**
@@ -609,32 +626,34 @@ export async function uploadThumbnailImage(
 /**
  * getRelatedVideos は動画詳細画面の関連動画を近さの順に 1 ページ取得する。`cursor` を省くと
  * 先頭のページで、次の動画の id とグループも載る。続きは応答の `nextCursor` を渡して読む。
+ * `group` は動画を開いたグループの id で、グループ・前後をその再生順で答えさせる（R-9）。
  */
 export function getRelatedVideos(
   id: number,
   signal?: AbortSignal,
   cursor?: string,
+  group?: number,
 ): Promise<RelatedVideos> {
-  const query =
-    cursor === undefined ? "" : `?${new URLSearchParams({ cursor }).toString()}`;
+  const query = groupQuery(cursor === undefined ? {} : { cursor }, group);
   return request<RelatedVideos>(`/api/videos/${String(id)}/related${query}`, { signal });
 }
 
 /**
  * listVideoGroupMembers は動画が属するグループのメンバーを、グループの中の並びで
  * offset 本目（0 始まり）から最大 limit 本取得する。関連動画の group の窓の外を読む。
+ * `group` は動画を開いたグループの id で、関連動画の読み取りと同じものを渡す（R-9）。
  */
 export function listVideoGroupMembers(
   id: number,
   offset: number,
   limit: number,
   signal?: AbortSignal,
+  group?: number,
 ): Promise<GroupMemberPage> {
-  const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
-  return request<GroupMemberPage>(
-    `/api/videos/${String(id)}/group-members?${query.toString()}`,
-    { signal },
-  );
+  const query = groupQuery({ offset: String(offset), limit: String(limit) }, group);
+  return request<GroupMemberPage>(`/api/videos/${String(id)}/group-members${query}`, {
+    signal,
+  });
 }
 
 /**

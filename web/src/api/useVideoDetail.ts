@@ -91,8 +91,15 @@ export function detailMark(): DetailMark {
  * 取り直して、その取得が終わったら解決する（specs/035-favorites/ui-design.md「Video page」）。
  * 塗りは取り直した `favorite` で変える。付け外しの結果の知らせはこの 1 件へ重ねないので、
  * 取り直しの間と取り直しに失敗したときは前の状態のままである。失敗は reject で返す。
+ *
+ * `group` は動画を開いたグループの id で、取得のたびに渡す（specs/048-groups/research.md R-9）。
+ * 同じ動画のまま `group` だけが変わったら、読み込み中に戻さずに取り直す（グループの操作の後に
+ * `group` なしで読み直すとき、再生を止めない）。
  */
-export function useVideoDetail(id: number): {
+export function useVideoDetail(
+  id: number,
+  group?: number,
+): {
   state: VideoDetailState;
   refresh: () => Promise<void>;
   replace: (video: Video, mark: DetailMark) => void;
@@ -106,6 +113,14 @@ export function useVideoDetail(id: number): {
   );
   // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない。
   const owner = useAudience() === "owner";
+
+  // 取得に渡すグループ。下の取得の効果より先に置き、動画が変わったときもその取得から新しい値を使う。
+  const contextRef = useRef({ id, group });
+  useEffect(() => {
+    const previous = contextRef.current;
+    contextRef.current = { id, group };
+    if (previous.id === id && previous.group !== group) void refreshRef.current();
+  }, [id, group]);
 
   useEffect(() => {
     setState({ kind: "loading", id });
@@ -148,7 +163,10 @@ export function useVideoDetail(id: number): {
       const loadStarted = started;
       try {
         const video = withFavoriteSince(
-          withVisibilitySince(await getVideo(id, mine.signal), mark),
+          withVisibilitySince(
+            await getVideo(id, mine.signal, contextRef.current.group),
+            mark,
+          ),
           favorite,
         );
         if (!alive || controller !== mine) return;
@@ -320,8 +338,14 @@ export type RelatedState =
  * 同じ動画へ写す（並びは基準の動画も含む）。取り直さずに、並びの題名を画面の題名とそろえる。
  * `rethumb` は、基準の動画の代表サムネイルを指定・解除した応答を同じように写し、
  * 並びのサムネイル（URL の版が変わる）を画面のサムネイルとそろえる。
+ *
+ * `group` は動画を開いたグループの id で、どのページの取得にも渡す（research.md R-9）。
+ * 変われば最初のページから読み直す。
  */
-export function useRelatedVideos(id: number): {
+export function useRelatedVideos(
+  id: number,
+  group?: number,
+): {
   state: RelatedState;
   retry: () => void;
   loadMore: () => void;
@@ -335,6 +359,10 @@ export function useRelatedVideos(id: number): {
     stateRef.current = state;
   }, [state]);
   const moreAbort = useRef<AbortController | null>(null);
+  const groupRef = useRef(group);
+  useEffect(() => {
+    groupRef.current = group;
+  }, [group]);
 
   useEffect(() => {
     setState({ kind: "loading", id });
@@ -345,7 +373,7 @@ export function useRelatedVideos(id: number): {
     const controller = new AbortController();
     void (async () => {
       try {
-        const related = await getRelatedVideos(id, controller.signal);
+        const related = await getRelatedVideos(id, controller.signal, undefined, group);
         setState({ kind: "ready", id, related, more: "idle" });
       } catch (failure) {
         if (isAborted(failure)) return;
@@ -361,7 +389,7 @@ export function useRelatedVideos(id: number): {
       moreAbort.current?.abort();
       moreAbort.current = null;
     };
-  }, [attempt, id]);
+  }, [attempt, id, group]);
 
   const loadMore = useCallback(() => {
     const current = stateRef.current;
@@ -373,7 +401,7 @@ export function useRelatedVideos(id: number): {
     const loading = { ...current, more: "loading" as const };
     stateRef.current = loading;
     setState(loading);
-    getRelatedVideos(current.id, controller.signal, cursor).then(
+    getRelatedVideos(current.id, controller.signal, cursor, groupRef.current).then(
       (page) => {
         if (controller.signal.aborted) return;
         setState((previous) => {

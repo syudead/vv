@@ -82,6 +82,21 @@ describe("useVideoDetail", () => {
     vi.unstubAllGlobals();
   });
 
+  it("group を取得に渡し、同じ動画で group だけが変わったら読み込み中に戻さずに取り直す", async () => {
+    getVideo.mockResolvedValue(done);
+    const { result, rerender } = renderHook(
+      ({ group }: { group?: number }) => useVideoDetail(7, group),
+      { initialProps: { group: 3 } as { group?: number } },
+    );
+    await flush();
+    expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), 3);
+    rerender({ group: undefined });
+    expect(result.current.state).toMatchObject({ kind: "ready" });
+    await flush();
+    expect(getVideo).toHaveBeenCalledTimes(2);
+    expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), undefined);
+  });
+
   it("ゲストでは変化の知らせ（/api/events）を購読しない", async () => {
     getVideo.mockResolvedValue(done);
     // AudienceProvider の外の既定はゲストである。
@@ -607,12 +622,24 @@ describe("useRelatedVideos", () => {
     expect(result.current.state).toMatchObject({ more: "failed" });
     act(() => result.current.loadMore());
     await act(async () => undefined);
-    expect(getRelatedVideos).toHaveBeenNthCalledWith(3, 7, expect.anything(), "c1");
+    expect(getRelatedVideos).toHaveBeenNthCalledWith(
+      3,
+      7,
+      expect.anything(),
+      "c1",
+      undefined,
+    );
     expect(ids()).toEqual([1, 2, 3]);
 
     act(() => result.current.loadMore());
     await act(async () => undefined);
-    expect(getRelatedVideos).toHaveBeenNthCalledWith(4, 7, expect.anything(), "c2");
+    expect(getRelatedVideos).toHaveBeenNthCalledWith(
+      4,
+      7,
+      expect.anything(),
+      "c2",
+      undefined,
+    );
     expect(ids()).toEqual([1, 2, 3, 4]);
     // 最初のページの次の動画は残し、続きが無くなったら読まない。
     expect(result.current.state).toMatchObject({ related: { nextId: 1 }, more: "idle" });

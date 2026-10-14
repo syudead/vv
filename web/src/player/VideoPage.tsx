@@ -21,6 +21,7 @@ import {
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
 import type { PlaylistStep } from "../api/playlists";
+import { groupContextOf, videoInGroupPath } from "../groups/groupPaths";
 import { t } from "../i18n";
 import { itemTitle } from "../playlists/playlistItems";
 import PlaylistPanel from "../playlists/PlaylistPanel";
@@ -114,15 +115,30 @@ export default function VideoPage() {
   const itemId = playlistQuery?.itemId ?? 0;
   // 別の項目へ移ったときも、別の動画へ移ったときと同じに扱う（R-7）。
   const pageKey = `${String(id)}:${String(itemId)}`;
+  // 動画を開いたグループ（`?group`）。読み取りに渡し、グループの行・矢印・メンバーの並び・予告を
+  // その再生順に従わせる。プレイリストの文脈はグループより優先するので、その間は使わない
+  // （specs/048-groups/ui-design.md「Video page」、research.md R-9）。
+  const groupContext =
+    playlistQuery === null ? groupContextOf(location.search) : undefined;
+  // この画面から別の動画を開く場所。`?group` があれば残す。
+  const videoTo = (videoId: number) =>
+    groupContext === undefined
+      ? `/videos/${String(videoId)}`
+      : videoInGroupPath(videoId, groupContext);
 
-  const { state: detailState, refresh, replace, setFavorite } = useVideoDetail(id);
+  const {
+    state: detailState,
+    refresh,
+    replace,
+    setFavorite,
+  } = useVideoDetail(id, groupContext);
   const {
     state: relatedState,
     retry: retryRelated,
     loadMore: loadMoreRelated,
     rename: renameRelated,
     rethumb: rethumbRelated,
-  } = useRelatedVideos(id);
+  } = useRelatedVideos(id, groupContext);
   const detail = detailState.id === id ? detailState : { kind: "loading" as const, id };
   const related =
     relatedState.id === id ? relatedState : { kind: "loading" as const, id };
@@ -340,7 +356,7 @@ export default function VideoPage() {
 
   const playNext = () => {
     if (nextVideo === undefined) return;
-    void navigate(`/videos/${String(nextVideo.id)}`, {
+    void navigate(videoTo(nextVideo.id), {
       state: { ...linkState, autoplay: true },
     });
   };
@@ -353,7 +369,7 @@ export default function VideoPage() {
       : {
           title: findVideo(targetId)?.title,
           go: () =>
-            void navigate(`/videos/${String(targetId)}`, {
+            void navigate(videoTo(targetId), {
               state: { ...linkState, autoplay: keepPlaying },
             }),
         };
@@ -508,6 +524,7 @@ export default function VideoPage() {
       <AutoplayNotice
         key={`${String(id)}:${String(nextVideo.id)}`}
         next={nextVideo}
+        to={videoTo(nextVideo.id)}
         linkState={linkState}
         takeFocus={endedTakesFocus}
         watchEvents={owner}
@@ -526,6 +543,7 @@ export default function VideoPage() {
             ? undefined
             : nextVideo
         }
+        to={nextVideo === undefined ? undefined : videoTo(nextVideo.id)}
         linkState={linkState}
         takeFocus={endedTakesFocus}
         onReplay={() => controls?.restart()}
@@ -592,6 +610,29 @@ export default function VideoPage() {
           state: { ...linkState, autoplay: status.playing || status.ended },
         })
       : undefined;
+  // `?group` で開いた動画のメンバーの行は、そのグループの文脈を保って開く。
+  const groupMemberTarget: MemberTarget | undefined =
+    groupContext === undefined
+      ? undefined
+      : (memberId) => ({ to: videoTo(memberId), state: linkState });
+
+  // グループの操作（外す・タグ化・解散）の後に、動画と関連動画を `group` なしで読み直す。
+  // `?group` があれば URL から外す（読み取りは問い合わせに従って読み直す）。無ければそのまま
+  // 取り直す。どちらも再生は止めない（ui-design.md「Video page」）。
+  const readWithoutGroup = () => {
+    if (groupContext === undefined) {
+      void refresh();
+      retryRelated();
+      return;
+    }
+    const params = new URLSearchParams(location.search);
+    params.delete("group");
+    const search = params.size === 0 ? "" : `?${params.toString()}`;
+    void navigate(
+      { pathname: location.pathname, search },
+      { replace: true, state: location.state as unknown },
+    );
+  };
   const skippedTitle =
     video?.title ?? (currentItem === undefined ? "" : itemTitle(currentItem));
   // 飛ばしたのは今の訪問の間だけ覚える。別の項目へ移れば忘れ、自動再生で同じ項目に
@@ -782,6 +823,8 @@ export default function VideoPage() {
               linkState={linkState}
               onRetry={retryRelated}
               onLoadMore={loadMoreRelated}
+              memberTarget={groupMemberTarget}
+              groupContext={groupContext}
             />
           )
         }
@@ -809,13 +852,12 @@ export default function VideoPage() {
               {video.group !== undefined && (
                 <GroupLine
                   group={video.group}
+                  videoId={video.id}
                   owner={owner}
-                  onChanged={() => {
-                    // group が無くなるので、この行・メンバーの並び・前後が
-                    // ふつうの動画の形に戻る（ui-design.md「Group line」）。
-                    void refresh();
-                    retryRelated();
-                  }}
+                  backTo={backTo}
+                  // 行・メンバーの並び・前後が、残ったグループ（id のいちばん小さいもの）に
+                  // 従うか、ふつうの動画の形に戻る。
+                  onChanged={readWithoutGroup}
                 />
               )}
               <VideoTitle

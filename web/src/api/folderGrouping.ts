@@ -54,16 +54,11 @@ export async function setFolderGrouping(
   });
 }
 
-/** ungroupedMessage はまとめを解除したことを伝える文言である（ui-design.md「Group line」）。 */
-export function ungroupedMessage(name: string): UiText {
-  return t.folderGrouping.ungrouped(name);
-}
-
 /**
  * groupingFailure は、まとめ方の操作の失敗を利用者に伝える文言と、画面が取り直すべきかを返す。
  * 409 はほかのタブで先に変わったことを表すので、画面の状態を取り直す。
- * `notFoundMessage` は 404 のときの文言で、画面ごとに違う（ui-design.md「Folder grouping menu」
- * は「このフォルダは見つかりません」、「Group line」は「変更できませんでした」）。
+ * `notFoundMessage` は 404 のときの文言である（ui-design.md「Folder grouping menu」は
+ * 「このフォルダは見つかりません」）。
  */
 export function groupingFailure(
   failure: unknown,
