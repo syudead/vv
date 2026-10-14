@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/data-model.md
-sourceHash: 9be4aa113ce793aa3596095e8d107d8f8b76b96927ddbe656ef307b8b547de88
+sourceHash: 7e2a8febd356f0069525b0b525c7aca239bf523aa991705c53ec171f55a51964
 ---
 
 # データモデル: 任意の動画とグループからなるグループ {#data-model-groups-of-any-videos-and-groups}
@@ -123,7 +123,7 @@ drop table folder_groups;
 | 作成 | `ValidateGroupName`。項目は要求から順に (動画、次にグループ)。`origin_folder` は null |
 | 名前の変更 | `ValidateGroupName`。`title_key` も追従する |
 | 追加 | 要求の順に末尾に付ける。すでにグループにある項目は飛ばす。取り除いたフォルダのメンバーの除外は削除し、そのメンバーは `from_folder = 0` で戻る |
-| 取り除く | 項目を削除する。自動のグループの `from_folder = 1` の項目では、その除外を書く。番号を振り直す。項目が残らないときは、解散の行と同じように同じトランザクションでグループを解散する (2026-10-14 のメンテナーの決定: 空のグループは存在しない)。そのため、取り除くルートは `204` を返す ([contracts/screen-api.md](contracts/screen-api.md#statuses)) |
+| 取り除く | 項目を削除する。自動のグループの `from_folder = 1` の項目では、その除外を書く。番号を振り直す。項目が残らないときは、解散の行と同じように同じトランザクションでグループを解散する (2026-10-14 のメンテナーの決定: 編集が空のグループを残すことはない。上のスキャンの同期は、項目のない状態にした自動のグループをそのまま保つ)。そのため、取り除くルートは `204` を返す ([contracts/screen-api.md](contracts/screen-api.md#statuses)) |
 | 移動 | 1 つの項目を別の項目の後ろか先頭に移す。番号を振り直す ([044 R-3](../044-playlists/research.md#r-3-dense-integer-positions-reordered-by-move-after)) |
 | 解散 | [R-4](research.md#r-4-dissolving-deletes-the-group-for-an-automatic-group-it-writes-ungroup)。子グループと動画は残る。親は項目を失い、番号を振り直す。項目が残らない親も同じトランザクションで同じように解散し、その祖先へと順に上っていく。自動の親はその `ungroup` の上書きとともに解散する (2026-10-14 のメンテナーの決定であり、取り除くの行の規則を親に当てはめたもの)。これはすべての解散に当てはまる: `DELETE`、最後の項目の取り除き、タグへの変換、フォルダのメニューの `Don't group` |
 | タグへの変換 | [R-11](research.md#r-11-turning-a-group-into-a-tag-attaches-the-tag-by-hand-then-dissolves) |
