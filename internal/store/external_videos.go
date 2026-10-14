@@ -173,11 +173,20 @@ func loadExternalVideos(ctx context.Context, tx *sql.Tx, ids []int64) ([]domain.
 	if err != nil {
 		return nil, err
 	}
+	// 作品情報もタグと同じ鍵で、同じスナップショットから引く（specs/047-video-work-info/data-model.md
+	// 「Reads」）。行の無い鍵の動画は WorkInfo が nil のままで、API の層が空の作品情報として書く。
+	infos, err := workInfoByUserKeys(ctx, tx, userKeys)
+	if err != nil {
+		return nil, err
+	}
 
 	for _, id := range ids {
 		video, ok := byID[id]
 		if !ok || len(locations[id]) == 0 {
 			continue
+		}
+		if info, ok := infos[video.UserKey]; ok && video.UserKey != "" {
+			video.WorkInfo = &info
 		}
 		item := domain.ExternalVideo{Video: video, Locations: locations[id], Tags: []domain.VideoTag{}}
 		if video.UserKey != "" && tags[video.UserKey] != nil {

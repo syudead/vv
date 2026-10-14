@@ -2299,7 +2299,10 @@ describe("VideoPage", () => {
       const add = buttons[0]!;
       const favorite = screen.getByRole("button", { name: "Favorite" });
       expect(favorite.nextElementSibling).toBe(add);
-      expect(add.nextElementSibling).toBe(
+      // 間には作品情報の編集の入口（specs/047-video-work-info/ui-design.md「Video page: entry」）。
+      const details = screen.getByRole("link", { name: "Edit details" });
+      expect(add.nextElementSibling).toBe(details);
+      expect(details.nextElementSibling).toBe(
         screen.getByRole("button", { name: "Use current frame as thumbnail" }),
       );
 
@@ -2949,11 +2952,25 @@ describe("VideoPage", () => {
       );
     });
 
-    it("今の動画を外すと閉じ、応答の動画で差し替えて自分のタグに戻す（受け入れ条件 9）", async () => {
-      server.videos.set(20, [versionB]);
+    it("今の動画を外すと閉じ、応答の動画で差し替えて自分のタグと作品情報に戻す（受け入れ条件 9）", async () => {
+      // 束の作品情報（BUNDLE）は、外すと B 固有の作品情報（OWN）に戻る。外した応答は
+      // workInfo を載せないので、取り直した動画で OWN を出す（specs/047-video-work-info）。
+      const coded = (code: string) => ({
+        code,
+        dates: [],
+        people: [],
+        organizations: [],
+        urls: [],
+        externalIds: [],
+      });
+      const removed: Video = { ...versionB, versions: undefined, tags: [tagY] };
+      server.videos.set(20, [
+        { ...versionB, workInfo: coded("BUNDLE") },
+        { ...removed, workInfo: coded("OWN") },
+      ]);
       server.versions.mockImplementation((method, id, suffix) => {
         if (method === "POST" && suffix === "/unbundle" && id === 20) {
-          return json({ ...versionB, versions: undefined, tags: [tagY] });
+          return json(removed);
         }
         return json({ representativeId: 7, items: [versionA, versionB, versionC] });
       });
@@ -2977,6 +2994,9 @@ describe("VideoPage", () => {
       expect(screen.queryByRole("button", { name: /versions of this video/ })).toBeNull();
       expect(screen.getByRole("link", { name: /Y/ })).toBeDefined();
       expect(screen.queryByRole("link", { name: /Filter by X/ })).toBeNull();
+      const workDetails = await screen.findByRole("list", { name: "Work details" });
+      expect(await within(workDetails).findByText("OWN")).toBeDefined();
+      expect(within(workDetails).queryByText("BUNDLE")).toBeNull();
     });
 
     it("別のタブで先に変わった失敗は一覧の下に 1 行出し、一覧と動画を取り直す", async () => {

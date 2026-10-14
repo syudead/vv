@@ -70,22 +70,35 @@ func (s *server) SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id 
 }
 
 // invalidDisplayName は表示名の規則違反を reason 付きの 400 にする
-// （contracts/screen-api.md §1・§3）。
+// （contracts/screen-api.md §1・§3）。この経路は field を付けない。
 func (s *server) invalidDisplayName(w http.ResponseWriter, err error) {
-	var invalid *domain.InvalidDisplayNameError
-	if !errors.As(err, &invalid) {
+	failure, ok := displayNameFailureOf(err)
+	if !ok {
 		s.invalidRequest(w, "The display name cannot be used.")
 		return
 	}
+	s.writeWorkInfoFailure(w, failure)
+}
+
+// displayNameFailureOf は *domain.InvalidDisplayNameError を API の形にする。field は空のまま返し、
+// 付けるかどうかは経路が決める（PUT /api/videos/{id}/details だけが displayName を付ける）。
+func displayNameFailureOf(err error) (workInfoFailure, bool) {
+	var invalid *domain.InvalidDisplayNameError
+	if !errors.As(err, &invalid) {
+		return workInfoFailure{}, false
+	}
+	failure := workInfoFailure{status: http.StatusBadRequest, code: string(codeInvalidRequest)}
 	switch invalid.Problem {
 	case domain.DisplayNameControlCharacters:
-		s.invalidRequestReason(w, reasonDisplayNameControlCharacters, "Display names cannot contain control characters.")
+		failure.reason = string(reasonDisplayNameControlCharacters)
+		failure.message = "Display names cannot contain control characters."
 	case domain.DisplayNameTooLong:
-		s.invalidRequestLimit(w, reasonDisplayNameTooLong, domain.DisplayNameMaxLength,
-			"Display names must be at most "+strconv.Itoa(domain.DisplayNameMaxLength)+" characters.")
+		failure.reason, failure.limit = string(reasonDisplayNameTooLong), domain.DisplayNameMaxLength
+		failure.message = "Display names must be at most " + strconv.Itoa(domain.DisplayNameMaxLength) + " characters."
 	default:
-		s.invalidRequest(w, "The display name cannot be used.")
+		return workInfoFailure{}, false
 	}
+	return failure, true
 }
 
 // ThumbnailPicker は代表サムネイルの位置の設定先である。internal/app の *Ingest が

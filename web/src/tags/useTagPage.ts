@@ -1,8 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 
-import { listTagPage, tagPageLimit } from "../api/tags";
+import { listTagPage, type Tag, tagPageLimit } from "../api/tags";
 import { errorText, type UiText } from "../i18n";
-import { appendUniqueTags, type TagPageRows, type TagRowsQuery } from "./tagPageRows";
+import {
+  appendUniqueTags,
+  type ListRow,
+  type ListRowsQuery,
+  type PageRows,
+  type TagRowsQuery,
+} from "./tagPageRows";
 
 /**
  * MoreState は一覧の末尾の続きの状態である（specs/036-tag-admin-scale/ui-design.md
@@ -20,6 +26,52 @@ export const moreIdle: MoreState = { kind: "idle" };
 /** TagPageQuery は読む条件である。`search` は打った検索語、`query` はその照合形。 */
 export type TagPageQuery = TagRowsQuery & { search: string };
 
+/** RowsPage はサーバーが返す 1 ページである（`GET /api/tags`・`/api/people` などの応答）。 */
+export interface RowsPage<R> {
+  items: R[];
+  total: number;
+  totalAll: number;
+  nextCursor?: string;
+}
+
+/**
+ * FetchRowsPage は 1 ページを読む。`query` は行の条件、`search` は打った検索語（空でない
+ * 照合形のときにサーバーへ送る語）、`cursor` は続きのときだけ渡す。
+ */
+export type FetchRowsPage<R, Q> = (
+  query: Q,
+  search: string,
+  cursor: string | undefined,
+  signal: AbortSignal,
+) => Promise<RowsPage<R>>;
+
+const initialTagQuery: TagPageQuery = {
+  query: "",
+  search: "",
+  tentativeOnly: false,
+  unusedOnly: false,
+  sort: "name",
+};
+
+function fetchTagPage(
+  query: TagRowsQuery,
+  search: string,
+  cursor: string | undefined,
+  signal: AbortSignal,
+): Promise<RowsPage<Tag>> {
+  return listTagPage(
+    {
+      q: query.query === "" ? undefined : search.trim(),
+      tentative: query.tentativeOnly,
+      unused: query.unusedOnly,
+      sort: query.sort,
+      cursor,
+      limit: tagPageLimit,
+    },
+    signal,
+  );
+}
+
 /**
  * useTagPage はタグ管理画面の一覧を、条件ごとに `GET /api/tags` から 100 件ずつ読む
  * （specs/036-tag-admin-scale/data-model.md §4、research.md R-1・R-11）。操作の結果は
@@ -27,8 +79,22 @@ export type TagPageQuery = TagRowsQuery & { search: string };
  * `onFirstPage` は先頭のページを受けて差し替えたあとに呼ぶ。
  */
 export function useTagPage(onFirstPage: () => void) {
+  return usePagedRows<Tag, TagRowsQuery>(fetchTagPage, initialTagQuery, onFirstPage);
+}
+
+/**
+ * usePagedRows は `useTagPage` の、読み方（`fetchPage`）と最初の条件を受け取る形である。
+ * 人物・団体の管理画面（`web/src/credits/`）も同じ先頭・続き・局所の反映の規則で読む。
+ * `fetchPage` と `initialQuery` は最初に受けたものを使い続ける。
+ */
+export function usePagedRows<R extends ListRow, Q extends ListRowsQuery>(
+  fetchPage: FetchRowsPage<R, Q>,
+  initialQuery: Q & { search: string },
+  onFirstPage: () => void,
+) {
+  const fetchPageRef = useRef(fetchPage);
   /** page は読み込んだ行と件数である。先頭のページをまだ一度も受けていなければ undefined。 */
-  const [page, setPage] = useState<TagPageRows | undefined>(undefined);
+  const [page, setPage] = useState<PageRows<R, Q> | undefined>(undefined);
   /**
    * loadError は先頭のページの失敗である。一覧を持っていなければ失敗の表示、
    * 持っていれば帯の中の「Stale list」の箱になる（ui-design.md「Stale list」）。
@@ -48,7 +114,7 @@ export function useTagPage(onFirstPage: () => void) {
    * pageRef・moreRef・firstPendingRef・loadErrorRef は、要求の応答のあとや
    * 続きのきっかけで今の状態を読むための控えである。描くたびに差し替える。
    */
-  const pageRef = useRef<TagPageRows | undefined>(page);
+  const pageRef = useRef<PageRows<R, Q> | undefined>(page);
   const moreRef = useRef<MoreState>(more);
   const firstPendingRef = useRef(firstPending);
   const loadErrorRef = useRef<UiText | null>(loadError);
@@ -76,13 +142,7 @@ export function useTagPage(onFirstPage: () => void) {
   const firstAbortRef = useRef<AbortController | null>(null);
   const moreAbortRef = useRef<AbortController | null>(null);
   /** queryRef は最後に読み直しを始めた条件である。「Retry」「Reload」が同じ条件で読む。 */
-  const queryRef = useRef<TagPageQuery>({
-    query: "",
-    search: "",
-    tentativeOnly: false,
-    unusedOnly: false,
-    sort: "name",
-  });
+  const queryRef = useRef<Q & { search: string }>(initialQuery);
 
   /**
    * reload は今の条件（`queryRef`）で先頭のページを読み直す。進行中の要求
@@ -99,22 +159,14 @@ export function useTagPage(onFirstPage: () => void) {
       const generation = generationRef.current;
       const controller = new AbortController();
       firstAbortRef.current = controller;
-      const { search: searched, ...query } = queryRef.current;
+      const { search: searched, ...rest } = queryRef.current;
+      const query = rest as unknown as Q;
       const mutation = mutationRef.current;
       firstPendingRef.current = true;
       setFirstPending(true);
       moreRef.current = moreIdle;
       setMore(moreIdle);
-      return listTagPage(
-        {
-          q: query.query === "" ? undefined : searched.trim(),
-          tentative: query.tentativeOnly,
-          unused: query.unusedOnly,
-          sort: query.sort,
-          limit: tagPageLimit,
-        },
-        controller.signal,
-      ).then(
+      return fetchPageRef.current(query, searched, undefined, controller.signal).then(
         (result) => {
           if (generation !== generationRef.current) return;
           // 送ったあとに局所の反映があった。応答はその変更を映していないかもしれない。
@@ -144,7 +196,7 @@ export function useTagPage(onFirstPage: () => void) {
 
   /** load は条件を変えて先頭のページを読み直す。 */
   const load = useCallback(
-    (query: TagPageQuery): Promise<void> => {
+    (query: Q & { search: string }): Promise<void> => {
       queryRef.current = query;
       return reload();
     },
@@ -170,54 +222,50 @@ export function useTagPage(onFirstPage: () => void) {
       moreAbortRef.current = controller;
       moreRef.current = { kind: "loading" };
       setMore(moreRef.current);
-      const { query } = current;
-      listTagPage(
-        {
-          q: query.query === "" ? undefined : queryRef.current.search.trim(),
-          tentative: query.tentativeOnly,
-          unused: query.unusedOnly,
-          sort: query.sort,
-          cursor: current.nextCursor,
-          limit: tagPageLimit,
-        },
-        controller.signal,
-      ).then(
-        (result) => {
-          if (generation !== generationRef.current) return;
-          if (mutation !== mutationRef.current) {
-            // 送ったあとに局所の反映があった。応答の行と件数はその変更の前かもしれない
-            // ので捨て、同じカーソルで読み直す（keyset なので、境より後ろの今の行が返る）。
+      fetchPageRef
+        .current(
+          current.query,
+          queryRef.current.search,
+          current.nextCursor,
+          controller.signal,
+        )
+        .then(
+          (result) => {
+            if (generation !== generationRef.current) return;
+            if (mutation !== mutationRef.current) {
+              // 送ったあとに局所の反映があった。応答の行と件数はその変更の前かもしれない
+              // ので捨て、同じカーソルで読み直す（keyset なので、境より後ろの今の行が返る）。
+              moreRef.current = moreIdle;
+              setMore(moreIdle);
+              run();
+              return;
+            }
+            if (result.totalAll !== pageRef.current?.totalAll) {
+              moreRef.current = { kind: "inconsistent" };
+              setMore(moreRef.current);
+              return;
+            }
+            setPage((latest) =>
+              latest === undefined
+                ? latest
+                : {
+                    ...latest,
+                    rows: appendUniqueTags(latest.rows, result.items),
+                    total: result.total,
+                    nextCursor: result.nextCursor,
+                    boundary:
+                      result.nextCursor === undefined ? undefined : result.items.at(-1),
+                  },
+            );
             moreRef.current = moreIdle;
             setMore(moreIdle);
-            run();
-            return;
-          }
-          if (result.totalAll !== pageRef.current?.totalAll) {
-            moreRef.current = { kind: "inconsistent" };
+          },
+          (failure: unknown) => {
+            if (generation !== generationRef.current) return;
+            moreRef.current = { kind: "failed", error: errorText(failure) };
             setMore(moreRef.current);
-            return;
-          }
-          setPage((latest) =>
-            latest === undefined
-              ? latest
-              : {
-                  ...latest,
-                  rows: appendUniqueTags(latest.rows, result.items),
-                  total: result.total,
-                  nextCursor: result.nextCursor,
-                  boundary:
-                    result.nextCursor === undefined ? undefined : result.items.at(-1),
-                },
-          );
-          moreRef.current = moreIdle;
-          setMore(moreIdle);
-        },
-        (failure: unknown) => {
-          if (generation !== generationRef.current) return;
-          moreRef.current = { kind: "failed", error: errorText(failure) };
-          setMore(moreRef.current);
-        },
-      );
+          },
+        );
     };
     run();
   }, []);
@@ -234,7 +282,7 @@ export function useTagPage(onFirstPage: () => void) {
    * 先頭のページ・続きの応答を捨てて読み直させるため、`mutationRef` を進める。
    */
   const applyLocal = useCallback(
-    (update: (current: TagPageRows | undefined) => TagPageRows | undefined) => {
+    (update: (current: PageRows<R, Q> | undefined) => PageRows<R, Q> | undefined) => {
       mutationRef.current += 1;
       setPage(update);
     },

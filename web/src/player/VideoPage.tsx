@@ -31,6 +31,7 @@ import { Separator } from "../ui/shadcn/separator";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
 import AutoplayNotice, { type AutoplayPhase } from "./AutoplayNotice";
+import { clearPageHandoff, peekPageHandoff } from "./detailsEditor/handoff";
 import EndedOverlay from "./EndedOverlay";
 import GroupLine from "./GroupLine";
 import NeighborArrows from "./NeighborArrows";
@@ -115,7 +116,15 @@ export default function VideoPage() {
   // 別の項目へ移ったときも、別の動画へ移ったときと同じに扱う（R-7）。
   const pageKey = `${String(id)}:${String(itemId)}`;
 
-  const { state: detailState, refresh, replace, setFavorite } = useVideoDetail(id);
+  // 編集画面から戻ったときの控え（保存の応答と、入口へフォーカスを戻すこと）。
+  const [detailsHandoff] = useState(() => peekPageHandoff(id));
+  useEffect(() => clearPageHandoff(), []);
+  const {
+    state: detailState,
+    refresh,
+    replace,
+    setFavorite,
+  } = useVideoDetail(id, detailsHandoff?.video);
   const {
     state: relatedState,
     retry: retryRelated,
@@ -824,7 +833,7 @@ export default function VideoPage() {
                 video={video}
                 owner={owner}
                 onSaved={(saved, mark) => {
-                  replace(saved, mark);
+                  replace(saved, mark, "keep");
                   // グループの並びにあるこの動画の題名も、画面の題名とそろえる。
                   renameRelated(saved);
                 }}
@@ -869,12 +878,19 @@ export default function VideoPage() {
               owner={owner}
               capture={capture}
               onChanged={(saved, mark) => {
-                replace(saved, mark);
+                replace(saved, mark, "keep");
                 // グループの並びにあるこの動画のサムネイルも、画面のサムネイルとそろえる。
                 rethumbRelated(saved);
               }}
               onStale={() => void refresh()}
               onEditingChange={setEditingThumbnail}
+              // 作品情報の編集画面の入口。戻り先（from・trail）を載せて開き、編集画面から
+              // 戻ったときはそこへフォーカスを戻す（specs/047-video-work-info/ui-design.md
+              // 「Video page: entry」）。
+              details={{
+                linkState: { from: backTo, trail },
+                focusEntry: detailsHandoff !== null && detailsHandoff.id === video.id,
+              }}
               // 付け外しの後は動画を取り直し、取り直した `favorite` で塗りを確かめる
               // （specs/035-favorites/ui-design.md「Video page」）。
               onFavorite={setFavorite}
@@ -883,7 +899,8 @@ export default function VideoPage() {
                   backTo,
                   autoplay: status.playing || status.ended,
                 },
-                onReplace: replace,
+                // 外した動画は固有の作品情報に戻るので、束の作品情報を残さず取り直す。
+                onReplace: (removed, mark) => replace(removed, mark, "refetch"),
                 onRefresh: () => void refresh(),
               }}
             />

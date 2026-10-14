@@ -90,6 +90,33 @@ func (e ComfyUIProvider) Valid() bool {
 	}
 }
 
+// Defines values for CreditSort.
+const (
+	CreditSortCountAsc    CreditSort = "countAsc"
+	CreditSortCountDesc   CreditSort = "countDesc"
+	CreditSortCreatedAsc  CreditSort = "createdAsc"
+	CreditSortCreatedDesc CreditSort = "createdDesc"
+	CreditSortName        CreditSort = "name"
+)
+
+// Valid indicates whether the value is a known member of the CreditSort enum.
+func (e CreditSort) Valid() bool {
+	switch e {
+	case CreditSortCountAsc:
+		return true
+	case CreditSortCountDesc:
+		return true
+	case CreditSortCreatedAsc:
+		return true
+	case CreditSortCreatedDesc:
+		return true
+	case CreditSortName:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for EncoderAvailabilityState.
 const (
 	EncoderAvailabilityStateAvailable   EncoderAvailabilityState = "available"
@@ -252,6 +279,7 @@ const (
 	ErrorReasonDisplayNameTooLong            ErrorReason = "display_name_too_long"
 	ErrorReasonDurationUnknown               ErrorReason = "duration_unknown"
 	ErrorReasonEncoderUnavailable            ErrorReason = "encoder_unavailable"
+	ErrorReasonExternalIdTaken               ErrorReason = "external_id_taken"
 	ErrorReasonFileUnavailable               ErrorReason = "file_unavailable"
 	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
 	ErrorReasonFolderNotGroup                ErrorReason = "folder_not_group"
@@ -261,6 +289,8 @@ const (
 	ErrorReasonInvalidFolderPath             ErrorReason = "invalid_folder_path"
 	ErrorReasonListenFailed                  ErrorReason = "listen_failed"
 	ErrorReasonMediaFoldersChanged           ErrorReason = "media_folders_changed"
+	ErrorReasonMergeSameOrganization         ErrorReason = "merge_same_organization"
+	ErrorReasonMergeSamePerson               ErrorReason = "merge_same_person"
 	ErrorReasonMergeSameTag                  ErrorReason = "merge_same_tag"
 	ErrorReasonMissingModels                 ErrorReason = "missing_models"
 	ErrorReasonNameIsSynonym                 ErrorReason = "name_is_synonym"
@@ -270,7 +300,10 @@ const (
 	ErrorReasonNotBundled                    ErrorReason = "not_bundled"
 	ErrorReasonNotFolderGroup                ErrorReason = "not_folder_group"
 	ErrorReasonOpenNotLocal                  ErrorReason = "open_not_local"
+	ErrorReasonOrganizationNotFound          ErrorReason = "organization_not_found"
+	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
+	ErrorReasonPersonNotFound                ErrorReason = "person_not_found"
 	ErrorReasonProbeInfoMissing              ErrorReason = "probe_info_missing"
 	ErrorReasonRelativeDirectoryPath         ErrorReason = "relative_directory_path"
 	ErrorReasonRepresentativeNotSelected     ErrorReason = "representative_not_selected"
@@ -302,6 +335,14 @@ const (
 	ErrorReasonUnreachable                   ErrorReason = "unreachable"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
 	ErrorReasonVideoNotFound                 ErrorReason = "video_not_found"
+	ErrorReasonWorkInfoControlCharacters     ErrorReason = "work_info_control_characters"
+	ErrorReasonWorkInfoDuplicate             ErrorReason = "work_info_duplicate"
+	ErrorReasonWorkInfoEmpty                 ErrorReason = "work_info_empty"
+	ErrorReasonWorkInfoInvalidDate           ErrorReason = "work_info_invalid_date"
+	ErrorReasonWorkInfoInvalidLanguage       ErrorReason = "work_info_invalid_language"
+	ErrorReasonWorkInfoInvalidUrl            ErrorReason = "work_info_invalid_url"
+	ErrorReasonWorkInfoTooLong               ErrorReason = "work_info_too_long"
+	ErrorReasonWorkInfoTooMany               ErrorReason = "work_info_too_many"
 	ErrorReasonWorkflowRejected              ErrorReason = "workflow_rejected"
 )
 
@@ -334,6 +375,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonEncoderUnavailable:
 		return true
+	case ErrorReasonExternalIdTaken:
+		return true
 	case ErrorReasonFileUnavailable:
 		return true
 	case ErrorReasonFolderNotFound:
@@ -351,6 +394,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonListenFailed:
 		return true
 	case ErrorReasonMediaFoldersChanged:
+		return true
+	case ErrorReasonMergeSameOrganization:
+		return true
+	case ErrorReasonMergeSamePerson:
 		return true
 	case ErrorReasonMergeSameTag:
 		return true
@@ -370,7 +417,13 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonOpenNotLocal:
 		return true
+	case ErrorReasonOrganizationNotFound:
+		return true
+	case ErrorReasonOrganizationParentCycle:
+		return true
 	case ErrorReasonPasswordLength:
+		return true
+	case ErrorReasonPersonNotFound:
 		return true
 	case ErrorReasonProbeInfoMissing:
 		return true
@@ -433,6 +486,22 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonUsernameLength:
 		return true
 	case ErrorReasonVideoNotFound:
+		return true
+	case ErrorReasonWorkInfoControlCharacters:
+		return true
+	case ErrorReasonWorkInfoDuplicate:
+		return true
+	case ErrorReasonWorkInfoEmpty:
+		return true
+	case ErrorReasonWorkInfoInvalidDate:
+		return true
+	case ErrorReasonWorkInfoInvalidLanguage:
+		return true
+	case ErrorReasonWorkInfoInvalidUrl:
+		return true
+	case ErrorReasonWorkInfoTooLong:
+		return true
+	case ErrorReasonWorkInfoTooMany:
 		return true
 	case ErrorReasonWorkflowRejected:
 		return true
@@ -1311,6 +1380,69 @@ func (e WatchHistoryFilter) Valid() bool {
 	}
 }
 
+// Defines values for WorkDateKind.
+const (
+	Published WorkDateKind = "published"
+	Recorded  WorkDateKind = "recorded"
+	Release   WorkDateKind = "release"
+)
+
+// Valid indicates whether the value is a known member of the WorkDateKind enum.
+func (e WorkDateKind) Valid() bool {
+	switch e {
+	case Published:
+		return true
+	case Recorded:
+		return true
+	case Release:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkOrganizationRole.
+const (
+	Label WorkOrganizationRole = "label"
+	Maker WorkOrganizationRole = "maker"
+)
+
+// Valid indicates whether the value is a known member of the WorkOrganizationRole enum.
+func (e WorkOrganizationRole) Valid() bool {
+	switch e {
+	case Label:
+		return true
+	case Maker:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkPersonRole.
+const (
+	Director     WorkPersonRole = "director"
+	Performer    WorkPersonRole = "performer"
+	Photographer WorkPersonRole = "photographer"
+	Streamer     WorkPersonRole = "streamer"
+)
+
+// Valid indicates whether the value is a known member of the WorkPersonRole enum.
+func (e WorkPersonRole) Valid() bool {
+	switch e {
+	case Director:
+		return true
+	case Performer:
+		return true
+	case Photographer:
+		return true
+	case Streamer:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for TranscodeVideoParamsQuality.
 const (
 	N1080p TranscodeVideoParamsQuality = "1080p"
@@ -1356,6 +1488,13 @@ type AddTagSynonymRequest struct {
 	// MergeTagId 統合を承諾したタグのid（contracts/tags-api.md §3）
 	MergeTagId *int64 `json:"mergeTagId,omitempty"`
 	Name       string `json:"name"`
+}
+
+// Alias 人物か団体の別名 1 件（specs/047-video-work-info/data-model.md「Fields」）
+type Alias struct {
+	// Language BCP 47 の構文の言語タグ。無ければ省く
+	Language *string `json:"language,omitempty"`
+	Name     string  `json:"name"`
 }
 
 // AuthRedirect defines model for AuthRedirect.
@@ -1495,6 +1634,47 @@ type CreatedAPIToken struct {
 	Token APIToken `json:"token"`
 }
 
+// CreditIdRef 書き込みで人物か団体 1 件を指す参照
+type CreditIdRef struct {
+	Id int64 `json:"id"`
+}
+
+// CreditInput 人物か団体を作るときの本文。parentId は団体だけが使う
+type CreditInput struct {
+	Aliases     *[]Alias      `json:"aliases,omitempty"`
+	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
+	Name        string        `json:"name"`
+
+	// ParentId 親の団体の id。団体だけで、人物に送ると 400 invalid_request
+	ParentId *int64 `json:"parentId,omitempty"`
+}
+
+// CreditMergeRequest defines model for CreditMergeRequest.
+type CreditMergeRequest struct {
+	// SourceIds 統合元の id。1 件以上 20,000 件以下
+	SourceIds []int64 `json:"sourceIds"`
+}
+
+// CreditPatch 人物か団体の書き換えの本文。どのプロパティも省いてよく、省いたものは今のまま残す。一覧は丸ごと
+// 置き換え、null は一覧を空にする。parentId は団体だけが使い、null は親を外す
+type CreditPatch struct {
+	Aliases     *[]Alias      `json:"aliases,omitempty"`
+	ExternalIds *[]ExternalId `json:"externalIds,omitempty"`
+	Name        *string       `json:"name,omitempty"`
+
+	// ParentId 親の団体の id。null は親を外す。人物に送ると 400 invalid_request
+	ParentId *int64 `json:"parentId,omitempty"`
+}
+
+// CreditRef 人物か団体 1 件への参照。name はその実体の今の名前
+type CreditRef struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// CreditSort 人物と団体の一覧の並び順。タグの一覧（TagSort）と同じ 5 つで、値が同じものは名前の自然順、それも同じなら id
+type CreditSort string
+
 // DirectoryEntry defines model for DirectoryEntry.
 type DirectoryEntry struct {
 	Name string `json:"name"`
@@ -1538,6 +1718,9 @@ type Error struct {
 	// Code 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 	Code ErrorCode `json:"code"`
 
+	// Field reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く （aliases[0].language・externalIds[1]・parentId）。work_info_*・person_not_found・ organization_not_found・external_id_taken のときだけ入る （specs/047-video-work-info/contracts/screen-api.md「Added reason values and field」）
+	Field *string `json:"field,omitempty"`
+
 	// Limit reason の上限値。契約の表で limit を返す reason のときだけ入る （specs/023-english-i18n/contracts/error-api.md §1）
 	Limit *int `json:"limit,omitempty"`
 
@@ -1556,6 +1739,12 @@ type ErrorCode string
 
 // ErrorReason 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
 type ErrorReason string
+
+// ExternalId 外部の情報源での識別子 1 件
+type ExternalId struct {
+	Source string `json:"source"`
+	Value  string `json:"value"`
+}
 
 // FavoritesRequest defines model for FavoritesRequest.
 type FavoritesRequest struct {
@@ -1798,7 +1987,7 @@ type LibraryItem struct {
 	Kind  LibraryItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -1865,6 +2054,85 @@ type OllamaSettings struct {
 	Model string `json:"model"`
 }
 
+// Organization 団体 1 件。Person と同じ項目に親の団体が加わる
+type Organization struct {
+	// Aliases 名前の自然順
+	Aliases   []Alias   `json:"aliases"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// ExternalIds (source, value) の順
+	ExternalIds []ExternalId `json:"externalIds"`
+	Id          int64        `json:"id"`
+	Name        string       `json:"name"`
+
+	// Parent 親の団体。根の団体では省く
+	Parent *CreditRef `json:"parent,omitempty"`
+
+	// VideoCount この団体をどれかの役割で結ぶ、表示中の動画の数
+	VideoCount int `json:"videoCount"`
+}
+
+// OrganizationList 団体の一覧（契約の CreditList の団体の形）
+type OrganizationList struct {
+	Items []Organization `json:"items"`
+
+	// NextCursor 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 条件（q）に合う団体の数。ページングとは独立に返る
+	Total int `json:"total"`
+
+	// TotalAll 全部の団体の数
+	TotalAll int `json:"totalAll"`
+}
+
+// OrganizationMergeResponse defines model for OrganizationMergeResponse.
+type OrganizationMergeResponse struct {
+	// NotFoundIds もう無かった統合元
+	NotFoundIds []int64 `json:"notFoundIds"`
+
+	// Organization 団体 1 件。Person と同じ項目に親の団体が加わる
+	Organization Organization `json:"organization"`
+}
+
+// Person 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
+type Person struct {
+	// Aliases 名前の自然順
+	Aliases   []Alias   `json:"aliases"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// ExternalIds (source, value) の順
+	ExternalIds []ExternalId `json:"externalIds"`
+	Id          int64        `json:"id"`
+	Name        string       `json:"name"`
+
+	// VideoCount この人物をどれかの役割で結ぶ、表示中の動画の数
+	VideoCount int `json:"videoCount"`
+}
+
+// PersonList 人物の一覧（契約の CreditList の人物の形）
+type PersonList struct {
+	Items []Person `json:"items"`
+
+	// NextCursor 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Total 条件（q）に合う人物の数。ページングとは独立に返る
+	Total int `json:"total"`
+
+	// TotalAll 全部の人物の数
+	TotalAll int `json:"totalAll"`
+}
+
+// PersonMergeResponse defines model for PersonMergeResponse.
+type PersonMergeResponse struct {
+	// NotFoundIds もう無かった統合元
+	NotFoundIds []int64 `json:"notFoundIds"`
+
+	// Person 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
+	Person Person `json:"person"`
+}
+
 // Playlist プレイリスト 1 つ。`PlaylistSummary` の欄に見せる項目を足したもの
 type Playlist struct {
 	Id int64 `json:"id"`
@@ -1895,7 +2163,7 @@ type PlaylistItem struct {
 	Kind PlaylistItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -1980,7 +2248,7 @@ type PlaylistStep struct {
 	ItemId int64 `json:"itemId"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video Video `json:"video"`
@@ -2595,7 +2863,7 @@ type VersionCandidatePage struct {
 }
 
 // Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 // （specs/016-single-account-auth/contracts/guest-api.md §1、
 // specs/029-video-overrides/contracts/screen-api.md §0）。
 type Video struct {
@@ -2721,6 +2989,11 @@ type Video struct {
 
 	// Width 表示される向きの幅（回転の印を反映済み）
 	Width *int `json:"width,omitempty"`
+
+	// WorkInfo 作品情報。GET /api/videos/{id} と、作品情報を書く所有者の PUT（work-info・details）の
+	// 応答にだけ入り、行の無い動画とゲストの応答では無い。一覧の項目・関連動画・ライブラリの
+	// 項目には入らない（specs/047-video-work-info/contracts/screen-api.md「Video changes」）
+	WorkInfo *WorkInfo `json:"workInfo,omitempty"`
 }
 
 // VideoPreviewState defines model for Video.PreviewState.
@@ -2760,6 +3033,18 @@ type VideoBundleRequest struct {
 type VideoChanged struct {
 	// Id 状態が変わった動画の識別子
 	Id int64 `json:"id"`
+}
+
+// VideoDetailsInput 全画面の編集画面の保存の本文（specs/047-video-work-info/contracts/screen-api.md
+// 「PUT /api/videos/{id}/details」）。両方とも必須
+type VideoDetailsInput struct {
+	// DisplayName 新しい表示名。前後の空白を取り除いて空なら解除する
+	DisplayName string `json:"displayName"`
+
+	// WorkInfo 作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
+	// WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
+	// 解除で、全体を置き換える
+	WorkInfo WorkInfoInput `json:"workInfo"`
 }
 
 // VideoEncoder ライブ変換が実際に使う映像エンコード方式
@@ -2981,7 +3266,7 @@ type WatchHistoryEntry struct {
 	Title string `json:"title"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、
 	// specs/029-video-overrides/contracts/screen-api.md §0）。
 	Video *Video `json:"video,omitempty"`
@@ -2999,8 +3284,111 @@ type WatchHistoryPage struct {
 	NextCursor *string `json:"nextCursor,omitempty"`
 }
 
+// WorkDate defines model for WorkDate.
+type WorkDate struct {
+	// Date YYYY・YYYY-MM・YYYY-MM-DD（日まであれば暦にある日）
+	//
+	// Examples: 2024, 2024-02, 2024-02-29
+	Date string `json:"date"`
+
+	// Kind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+	Kind WorkDateKind `json:"kind"`
+}
+
+// WorkDateKind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+type WorkDateKind string
+
+// WorkInfo 動画の作品情報（specs/047-video-work-info/contracts/screen-api.md「WorkInfo schema」）。
+// 一覧は必ずあり、空なら []。単一の値は未設定なら無い
+type WorkInfo struct {
+	// Code 品番
+	Code *string `json:"code,omitempty"`
+
+	// Dates 種類の順（release・recorded・published）
+	Dates []WorkDate `json:"dates"`
+
+	// Description 説明。改行を含みうる
+	Description *string `json:"description,omitempty"`
+
+	// ExternalIds (source, value) の順
+	ExternalIds []ExternalId `json:"externalIds"`
+
+	// Organizations 役割の順、同じ役割の中は入力した順。name は団体の今の名前
+	Organizations []WorkOrganization `json:"organizations"`
+
+	// People 役割の順、同じ役割の中は入力した順。name は人物の今の名前
+	People []WorkPerson `json:"people"`
+
+	// Urls 入力した順
+	Urls []string `json:"urls"`
+}
+
+// WorkInfoInput 作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
+// WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
+// 解除で、全体を置き換える
+type WorkInfoInput struct {
+	Code          *string                  `json:"code,omitempty"`
+	Dates         *[]WorkDate              `json:"dates,omitempty"`
+	Description   *string                  `json:"description,omitempty"`
+	ExternalIds   *[]ExternalId            `json:"externalIds,omitempty"`
+	Organizations *[]WorkOrganizationInput `json:"organizations,omitempty"`
+	People        *[]WorkPersonInput       `json:"people,omitempty"`
+	Urls          *[]string                `json:"urls,omitempty"`
+}
+
+// WorkOrganization defines model for WorkOrganization.
+type WorkOrganization struct {
+	// Organization 人物か団体 1 件への参照。name はその実体の今の名前
+	Organization CreditRef `json:"organization"`
+
+	// Role 動画での団体の役割
+	Role WorkOrganizationRole `json:"role"`
+}
+
+// WorkOrganizationInput defines model for WorkOrganizationInput.
+type WorkOrganizationInput struct {
+	// Organization 書き込みで人物か団体 1 件を指す参照
+	Organization CreditIdRef `json:"organization"`
+
+	// Role 動画での団体の役割
+	Role WorkOrganizationRole `json:"role"`
+}
+
+// WorkOrganizationRole 動画での団体の役割
+type WorkOrganizationRole string
+
+// WorkPerson defines model for WorkPerson.
+type WorkPerson struct {
+	// Person 人物か団体 1 件への参照。name はその実体の今の名前
+	Person CreditRef `json:"person"`
+
+	// Role 動画での人物の役割
+	Role WorkPersonRole `json:"role"`
+}
+
+// WorkPersonInput defines model for WorkPersonInput.
+type WorkPersonInput struct {
+	// Person 書き込みで人物か団体 1 件を指す参照
+	Person CreditIdRef `json:"person"`
+
+	// Role 動画での人物の役割
+	Role WorkPersonRole `json:"role"`
+}
+
+// WorkPersonRole 動画での人物の役割
+type WorkPersonRole string
+
 // APITokenId defines model for APITokenId.
 type APITokenId = int64
+
+// CreditCursor defines model for CreditCursor.
+type CreditCursor = string
+
+// CreditLimit defines model for CreditLimit.
+type CreditLimit = int
+
+// CreditQuery defines model for CreditQuery.
+type CreditQuery = string
 
 // FolderPath defines model for FolderPath.
 type FolderPath = string
@@ -3010,6 +3398,18 @@ type FolderRootId = int64
 
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
+
+// OrganizationFilter defines model for OrganizationFilter.
+type OrganizationFilter = int64
+
+// OrganizationId defines model for OrganizationId.
+type OrganizationId = int64
+
+// PersonFilter defines model for PersonFilter.
+type PersonFilter = int64
+
+// PersonId defines model for PersonId.
+type PersonId = int64
 
 // PlaylistId defines model for PlaylistId.
 type PlaylistId = int64
@@ -3165,6 +3565,17 @@ type ListLibraryParams struct {
 	// 最大16個、17個以上は400。存在しない id は条件から落とし、応答の
 	// missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+
+	// Person 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+	// 組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+	// `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+	// ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
+
+	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
 }
 
 // ListLibraryIdsParams defines parameters for ListLibraryIds.
@@ -3179,11 +3590,52 @@ type ListLibraryIdsParams struct {
 
 	// Tag 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+
+	// Person 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+	// 組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+	// `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+	// ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
+
+	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
 }
 
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
 type DeleteMediaFolderParams struct {
 	Version int64 `form:"version" json:"version"`
+}
+
+// ListOrganizationsParams defines parameters for ListOrganizations.
+type ListOrganizationsParams struct {
+	// Q 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする
+	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort 並び順
+	Sort *CreditSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Cursor 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する
+	Cursor *CreditCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListPeopleParams defines parameters for ListPeople.
+type ListPeopleParams struct {
+	// Q 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする
+	Q *CreditQuery `form:"q,omitempty" json:"q,omitempty"`
+
+	// Sort 並び順
+	Sort *CreditSort `form:"sort,omitempty" json:"sort,omitempty"`
+
+	// Cursor 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する
+	Cursor *CreditCursor `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
+	Limit *CreditLimit `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
 // ListPlaylistsParams defines parameters for ListPlaylists.
@@ -3298,6 +3750,17 @@ type ListVideosParams struct {
 	// 最大16個、17個以上は400。存在しない id は条件から落とし、応答の
 	// missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
+
+	// Person 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+	// 組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+	// `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+	// ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
+
+	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+	// （specs/047-video-work-info/contracts/screen-api.md）
+	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
 }
 
 // ListVideoGroupMembersParams defines parameters for ListVideoGroupMembers.
@@ -3433,6 +3896,24 @@ type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 // UpdateMediaFolderJSONRequestBody defines body for UpdateMediaFolder for application/json ContentType.
 type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
 
+// CreateOrganizationJSONRequestBody defines body for CreateOrganization for application/json ContentType.
+type CreateOrganizationJSONRequestBody = CreditInput
+
+// UpdateOrganizationJSONRequestBody defines body for UpdateOrganization for application/json ContentType.
+type UpdateOrganizationJSONRequestBody = CreditPatch
+
+// MergeOrganizationsJSONRequestBody defines body for MergeOrganizations for application/json ContentType.
+type MergeOrganizationsJSONRequestBody = CreditMergeRequest
+
+// CreatePersonJSONRequestBody defines body for CreatePerson for application/json ContentType.
+type CreatePersonJSONRequestBody = CreditInput
+
+// UpdatePersonJSONRequestBody defines body for UpdatePerson for application/json ContentType.
+type UpdatePersonJSONRequestBody = CreditPatch
+
+// MergePeopleJSONRequestBody defines body for MergePeople for application/json ContentType.
+type MergePeopleJSONRequestBody = CreditMergeRequest
+
 // CreatePlaylistJSONRequestBody defines body for CreatePlaylist for application/json ContentType.
 type CreatePlaylistJSONRequestBody = PlaylistName
 
@@ -3502,6 +3983,9 @@ type SummarizeVideoTagsJSONRequestBody = VideoTagsSummaryRequest
 // UpdateVideoVisibilityJSONRequestBody defines body for UpdateVideoVisibility for application/json ContentType.
 type UpdateVideoVisibilityJSONRequestBody = VideoVisibilityRequest
 
+// SetVideoDetailsJSONRequestBody defines body for SetVideoDetails for application/json ContentType.
+type SetVideoDetailsJSONRequestBody = VideoDetailsInput
+
 // SetVideoDisplayNameJSONRequestBody defines body for SetVideoDisplayName for application/json ContentType.
 type SetVideoDisplayNameJSONRequestBody = DisplayNameUpdate
 
@@ -3516,6 +4000,9 @@ type UploadThumbnailImageMultipartRequestBody = UploadThumbnailImageRequest
 
 // SetVideoThumbnailPositionJSONRequestBody defines body for SetVideoThumbnailPosition for application/json ContentType.
 type SetVideoThumbnailPositionJSONRequestBody = ThumbnailPositionUpdate
+
+// SetVideoWorkInfoJSONRequestBody defines body for SetVideoWorkInfo for application/json ContentType.
+type SetVideoWorkInfoJSONRequestBody = WorkInfoInput
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -3594,6 +4081,42 @@ type ServerInterface interface {
 	// UpdateMediaFolder メディアフォルダ1件のpathを変更する
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
+	// ListOrganizations 団体を一覧する
+	// (GET /api/organizations)
+	ListOrganizations(w http.ResponseWriter, r *http.Request, params ListOrganizationsParams)
+	// CreateOrganization 団体を 1 件作る
+	// (POST /api/organizations)
+	CreateOrganization(w http.ResponseWriter, r *http.Request)
+	// DeleteOrganization 団体を 1 件消す
+	// (DELETE /api/organizations/{id})
+	DeleteOrganization(w http.ResponseWriter, r *http.Request, id OrganizationId)
+	// GetOrganization 団体を 1 件返す
+	// (GET /api/organizations/{id})
+	GetOrganization(w http.ResponseWriter, r *http.Request, id OrganizationId)
+	// UpdateOrganization 団体の名前・別名・外部 ID を書き換える
+	// (PATCH /api/organizations/{id})
+	UpdateOrganization(w http.ResponseWriter, r *http.Request, id OrganizationId)
+	// MergeOrganizations sourceIds の団体を id の団体へ統合する
+	// (POST /api/organizations/{id}/merge)
+	MergeOrganizations(w http.ResponseWriter, r *http.Request, id OrganizationId)
+	// ListPeople 人物を一覧する
+	// (GET /api/people)
+	ListPeople(w http.ResponseWriter, r *http.Request, params ListPeopleParams)
+	// CreatePerson 人物を 1 件作る
+	// (POST /api/people)
+	CreatePerson(w http.ResponseWriter, r *http.Request)
+	// DeletePerson 人物を 1 件消す
+	// (DELETE /api/people/{id})
+	DeletePerson(w http.ResponseWriter, r *http.Request, id PersonId)
+	// GetPerson 人物を 1 件返す
+	// (GET /api/people/{id})
+	GetPerson(w http.ResponseWriter, r *http.Request, id PersonId)
+	// UpdatePerson 人物の名前・別名・外部 ID を書き換える
+	// (PATCH /api/people/{id})
+	UpdatePerson(w http.ResponseWriter, r *http.Request, id PersonId)
+	// MergePeople sourceIds の人物を id の人物へ統合する
+	// (POST /api/people/{id}/merge)
+	MergePeople(w http.ResponseWriter, r *http.Request, id PersonId)
 	// ListPlaylists プレイリストを更新日時の新しい順に返す
 	// (GET /api/playlists)
 	ListPlaylists(w http.ResponseWriter, r *http.Request, params ListPlaylistsParams)
@@ -3762,6 +4285,9 @@ type ServerInterface interface {
 	// AutoTagVideo 動画 1 本を自動タグ付けの判定に回す
 	// (POST /api/videos/{id}/auto-tag)
 	AutoTagVideo(w http.ResponseWriter, r *http.Request, id VideoId)
+	// SetVideoDetails 動画の表示名と作品情報を 1 回で保存する
+	// (PUT /api/videos/{id}/details)
+	SetVideoDetails(w http.ResponseWriter, r *http.Request, id VideoId)
 	// SetVideoDisplayName 動画の表示名を設定・解除する
 	// (PUT /api/videos/{id}/display-name)
 	SetVideoDisplayName(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -3834,6 +4360,9 @@ type ServerInterface interface {
 	// ListVideoVersions 動画の集まりの全バージョンを返す
 	// (GET /api/videos/{id}/versions)
 	ListVideoVersions(w http.ResponseWriter, r *http.Request, id VideoId)
+	// SetVideoWorkInfo 動画の作品情報をまるごと置き換える
+	// (PUT /api/videos/{id}/work-info)
+	SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
 	// ClearWatchHistory 視聴履歴を全件消す
 	// (DELETE /api/watch-history)
 	ClearWatchHistory(w http.ResponseWriter, r *http.Request)
@@ -4556,6 +5085,32 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "person" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "person", r.URL.Query(), &params.Person, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "person"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "organization" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organization", r.URL.Query(), &params.Organization, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListLibrary(w, r, params)
 	}))
@@ -4637,6 +5192,32 @@ func (siw *ServerInterfaceWrapper) ListLibraryIds(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tag"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tag", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "person" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "person", r.URL.Query(), &params.Person, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "person"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "organization" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organization", r.URL.Query(), &params.Organization, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
 		}
 		return
 	}
@@ -4739,6 +5320,386 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMediaFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOrganizations operation middleware
+func (siw *ServerInterfaceWrapper) ListOrganizations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListOrganizationsParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOrganizations(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateOrganization operation middleware
+func (siw *ServerInterfaceWrapper) CreateOrganization(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateOrganization(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteOrganization operation middleware
+func (siw *ServerInterfaceWrapper) DeleteOrganization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteOrganization(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOrganization operation middleware
+func (siw *ServerInterfaceWrapper) GetOrganization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOrganization(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOrganization operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOrganization(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOrganization(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MergeOrganizations operation middleware
+func (siw *ServerInterfaceWrapper) MergeOrganizations(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id OrganizationId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MergeOrganizations(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListPeople operation middleware
+func (siw *ServerInterfaceWrapper) ListPeople(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListPeopleParams
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "sort", r.URL.Query(), &params.Sort, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "sort"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListPeople(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreatePerson operation middleware
+func (siw *ServerInterfaceWrapper) CreatePerson(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreatePerson(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeletePerson operation middleware
+func (siw *ServerInterfaceWrapper) DeletePerson(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeletePerson(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPerson operation middleware
+func (siw *ServerInterfaceWrapper) GetPerson(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPerson(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdatePerson operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePerson(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePerson(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// MergePeople operation middleware
+func (siw *ServerInterfaceWrapper) MergePeople(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id PersonId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MergePeople(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6130,6 +7091,32 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 		return
 	}
 
+	// ------------- Optional query parameter "person" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "person", r.URL.Query(), &params.Person, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "person"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "person", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "organization" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "organization", r.URL.Query(), &params.Organization, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListVideos(w, r, params)
 	}))
@@ -6184,6 +7171,32 @@ func (siw *ServerInterfaceWrapper) AutoTagVideo(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AutoTagVideo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetVideoDetails operation middleware
+func (siw *ServerInterfaceWrapper) SetVideoDetails(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetVideoDetails(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7049,6 +8062,32 @@ func (siw *ServerInterfaceWrapper) ListVideoVersions(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
+// SetVideoWorkInfo operation middleware
+func (siw *ServerInterfaceWrapper) SetVideoWorkInfo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetVideoWorkInfo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClearWatchHistory operation middleware
 func (siw *ServerInterfaceWrapper) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -7393,6 +8432,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/seek-thumbnail/{sheet}", wrapper.GetVideoSeekThumbnailSheet)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/progress", wrapper.PutVideoProgress)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/display-name", wrapper.SetVideoDisplayName)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/work-info", wrapper.SetVideoWorkInfo)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/details", wrapper.SetVideoDetails)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/videos/{id}/thumbnail-position", wrapper.SetVideoThumbnailPosition)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.RevertThumbnailImage)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/thumbnail-image", wrapper.UploadThumbnailImage)
@@ -7445,6 +8486,18 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags/rejected-names", wrapper.ListRejectedTagNames)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/batch", wrapper.BatchTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/impact", wrapper.TagImpact)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people", wrapper.ListPeople)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people", wrapper.CreatePerson)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/people/{id}", wrapper.DeletePerson)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people/{id}", wrapper.GetPerson)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/people/{id}", wrapper.UpdatePerson)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people/{id}/merge", wrapper.MergePeople)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations", wrapper.ListOrganizations)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organizations", wrapper.CreateOrganization)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/organizations/{id}", wrapper.DeleteOrganization)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/organizations/{id}", wrapper.GetOrganization)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/organizations/{id}", wrapper.UpdateOrganization)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organizations/{id}/merge", wrapper.MergeOrganizations)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags", wrapper.UpdateVideoTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-tags/summary", wrapper.SummarizeVideoTags)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/video-visibility", wrapper.UpdateVideoVisibility)

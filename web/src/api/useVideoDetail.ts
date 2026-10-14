@@ -68,6 +68,23 @@ export function detailMark(): DetailMark {
 }
 
 /**
+ * ReplaceWorkInfo は、`workInfo` を載せない変更の応答で動画を差し替えるときの作品情報の扱いである。
+ * - `keep`: 手元の作品情報を残す。作品情報を変えない変更（表示名・代表サムネイル）の応答に使う。
+ * - `refetch`: 手元の作品情報を残さず、差し替えた後に動画を取り直して作品情報を読む。作品情報が
+ *   変わる変更（束から外すと、外した動画は束ねる前の固有の作品情報に戻る）の応答に使う。
+ */
+export type ReplaceWorkInfo = "keep" | "refetch";
+
+/**
+ * withWorkInfoOf は、`workInfo` を載せない変更の応答 saved に、手元の動画 current の作品情報を
+ * 戻す。応答が `workInfo` を持つとき、手元に無いときは saved のままである。
+ */
+function withWorkInfoOf(saved: Video, current: Video | undefined): Video {
+  if (saved.workInfo !== undefined || current?.workInfo === undefined) return saved;
+  return { ...saved, workInfo: current.workInfo };
+}
+
+/**
  * useVideoDetail は動画 1 件を取得し、その動画が変わったという知らせを受けたら
  * 取り直す。一定間隔では問い合わせない。
  *
@@ -85,6 +102,11 @@ export function detailMark(): DetailMark {
  *   要求の後に始めた取り直しは残す（公開の一部反映で始めた取り直しなど）。
  * - 要求の間に反映した公開の切り替えとお気に入りの付け外しは、応答の `public`・`favorite`
  *   より優先する。どちらもサーバーから知らせが来ないので、ここで巻き戻すと直らない。
+ * - replace に渡る応答（表示名・代表サムネイル・束から外す）は契約上 `workInfo` を載せない
+ *   （specs/047-video-work-info/contracts/screen-api.md「Video changes」）。`workInfo` が
+ *   `keep` なら、応答に無い作品情報は手元の値を残す（そのまま置くと情報欄から作品情報が消える）。
+ *   `refetch` なら手元の値を残さず、差し替えた後に取り直す。束から外した動画は束の作品情報から
+ *   固有の作品情報に戻るので、手元の値を残すと別の作品情報を出し、詳細の保存で上書きしかねない。
  * - 別の動画の応答は捨てる。
  *
  * `setFavorite` は表示中の動画のお気に入りを `PUT /api/favorites` で付け外しし、成功したら
@@ -92,15 +114,28 @@ export function detailMark(): DetailMark {
  * 塗りは取り直した `favorite` で変える。付け外しの結果の知らせはこの 1 件へ重ねないので、
  * 取り直しの間と取り直しに失敗したときは前の状態のままである。失敗は reject で返す。
  */
-export function useVideoDetail(id: number): {
+export function useVideoDetail(
+  id: number,
+  initial?: Video,
+): {
   state: VideoDetailState;
   refresh: () => Promise<void>;
-  replace: (video: Video, mark: DetailMark) => void;
+  replace: (video: Video, mark: DetailMark, workInfo: ReplaceWorkInfo) => void;
   setFavorite: (favorite: boolean) => Promise<void>;
 } {
-  const [state, setState] = useState<VideoDetailState>({ kind: "loading", id });
+  const [state, setState] = useState<VideoDetailState>(() =>
+    initial !== undefined && initial.id === id
+      ? { kind: "ready", id, video: initial }
+      : { kind: "loading", id },
+  );
+  // 手元にある応答（編集画面の保存の応答）から始める。最初の取得までの間もそれを出し、
+  // 古い値や読み込み中を挟まない（specs/047-video-work-info/ui-design.md「Save」）。
+  // 使うのは最初の 1 回だけで、別の動画へ移ったら使わない。
+  const seed = useRef(initial);
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const replaceRef = useRef<(video: Video, mark: DetailMark) => void>(() => undefined);
+  const replaceRef = useRef<
+    (video: Video, mark: DetailMark, workInfo: ReplaceWorkInfo) => void
+  >(() => undefined);
   const setFavoriteRef = useRef<(favorite: boolean) => Promise<void>>(() =>
     Promise.resolve(),
   );
@@ -108,7 +143,14 @@ export function useVideoDetail(id: number): {
   const owner = useAudience() === "owner";
 
   useEffect(() => {
-    setState({ kind: "loading", id });
+    // StrictMode が効果を 2 度走らせても同じ動画には使えるよう、別の動画へ移ったときに捨てる。
+    const seeded = seed.current?.id === id ? seed.current : undefined;
+    if (seeded === undefined) seed.current = undefined;
+    setState(
+      seeded === undefined
+        ? { kind: "loading", id }
+        : { kind: "ready", id, video: seeded },
+    );
     if (!Number.isSafeInteger(id) || id < 1) {
       setState({ kind: "missing", id });
       refreshRef.current = () => Promise.resolve();
@@ -121,7 +163,7 @@ export function useVideoDetail(id: number): {
     let controller: AbortController | null = null;
     // 送信中の取り直しを始めたときの loadsStarted の値。
     let started = 0;
-    let current: Video | undefined;
+    let current: Video | undefined = seeded;
     // current を読んだ取得を始めたときの loadsStarted の値と favoriteReadMark の値。
     let currentLoad = 0;
     let currentRead = 0;
@@ -182,7 +224,7 @@ export function useVideoDetail(id: number): {
         void load();
       });
 
-    replaceRef.current = (saved, mark) => {
+    replaceRef.current = (saved, mark, workInfo) => {
       if (!alive || saved.id !== id) return;
       if (controller !== null && started <= mark.load) {
         controller.abort();
@@ -190,13 +232,18 @@ export function useVideoDetail(id: number): {
         settle();
       }
       const video = withFavoriteSince(
-        withVisibilitySince(saved, mark.visibility),
+        withVisibilitySince(
+          workInfo === "keep" ? withWorkInfoOf(saved, current) : saved,
+          mark.visibility,
+        ),
         mark.favorite,
       );
       current = video;
       // 保存の応答はいつ読んだ値か分からないので、代表へは知らせない（setFavorite）。
       currentLoad = 0;
       setState({ kind: "ready", id, video });
+      // 先に終わった `video` の知らせの取り直しを、この応答で上書きしたかもしれないので取り直す。
+      if (workInfo === "refetch") void load();
     };
 
     setFavoriteRef.current = async (favorite) => {
@@ -286,7 +333,8 @@ export function useVideoDetail(id: number): {
 
   const refresh = useCallback(() => refreshRef.current(), []);
   const replace = useCallback(
-    (video: Video, mark: DetailMark) => replaceRef.current(video, mark),
+    (video: Video, mark: DetailMark, workInfo: ReplaceWorkInfo) =>
+      replaceRef.current(video, mark, workInfo),
     [],
   );
   const setFavorite = useCallback(

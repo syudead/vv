@@ -21,6 +21,7 @@ import {
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
+import type { CreditKind } from "../api/credits";
 import { groupRef, itemKey } from "../api/libraryItems";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
@@ -56,6 +57,15 @@ import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import ActiveTagFilters from "./ActiveTagFilters";
+import {
+  clearedCredits,
+  creditSignature,
+  hasFilterChips,
+  ORGANIZATION_PARAM,
+  PERSON_PARAM,
+  useCreditFilter,
+  withoutCredit,
+} from "./creditCriteria";
 import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
 import { GroupCard, GroupRow } from "./GroupCard";
@@ -87,6 +97,9 @@ import {
 
 const skeletonCount = 12;
 
+/** ライブラリだけが URL に持つ条件（タグ、人物、団体）。 */
+const libraryParams = [TAG_PARAM, PERSON_PARAM, ORGANIZATION_PARAM];
+
 export default function LibraryPage() {
   const location = useLocation();
   const toast = useToast();
@@ -98,11 +111,13 @@ export default function LibraryPage() {
   // タグ絞り込み（`tag`）はライブラリだけが持つ条件で、共有の ListCriteria には
   // 含めない。useListCriteria の画面固有の
   // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
-  const { criteria, apply } = useListCriteria(preferences.sort, TAG_PARAM);
+  // 人物・団体（`person`・`organization`）も同じ口で運ぶ（specs/047-video-work-info/
+  // ui-design.md「Library: filter by a person or organization」）。
+  const { criteria, apply } = useListCriteria(preferences.sort, libraryParams);
   const { query, watch, playable, favorite, sort } = criteria;
   // タグの値が変わらない限り同じ配列を使い、タグと無関係な URL の変更でも
-  // タグの操作の関数とカードの memo を保つ。ゲストはタグで絞り込めない（URL に残った
-  // `tag` は useListCriteria が取り除く）。
+  // タグの操作の関数とカードの memo を保つ。ゲストはタグ・人物・団体で絞り込めない
+  // （URL に残った値は useListCriteria が取り除く）。
   const rawTagKey = JSON.stringify(
     new URLSearchParams(location.search).getAll(TAG_PARAM),
   );
@@ -110,6 +125,7 @@ export default function LibraryPage() {
     () => (owner ? parseTagParam(JSON.parse(rawTagKey) as string[]) : []),
     [owner, rawTagKey],
   );
+  const credits = useCreditFilter(location.search, owner);
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
   const { activePreviewId, previewResetEpoch, startPreview, resetPreview } =
@@ -163,7 +179,10 @@ export default function LibraryPage() {
   const clearAll = useCallback(() => {
     resetPreview();
     const cleared = clearTagConditions(criteria);
-    apply(cleared.criteria, "push", []);
+    apply(cleared.criteria, "push", {
+      [TAG_PARAM]: serializeTagIds(cleared.tag),
+      ...clearedCredits,
+    });
   }, [apply, criteria, resetPreview]);
 
   // --- タグ絞り込み（list-url.md §2） ---
@@ -171,6 +190,34 @@ export default function LibraryPage() {
   // 最新の条件を ref から読んで参照を保ち、無関係な描画でカードを描き直させない。
   const latestConditions = useRef({ criteria, tagIds });
   latestConditions.current = { criteria, tagIds };
+  const applyTags = useCallback(
+    (next: ListCriteria, mode: HistoryMode, ids: readonly number[]) =>
+      apply(next, mode, { [TAG_PARAM]: serializeTagIds(ids) }),
+    [apply],
+  );
+
+  // --- 人物・団体の絞り込み（047 ui-design.md「Library: filter by a person or organization」） ---
+  // チップを押すとそのパラメータだけを外す。タグともう一方の種類は残る。
+  const removeCredit = useCallback(
+    (kind: CreditKind) => {
+      resetPreview();
+      apply(latestConditions.current.criteria, "push", withoutCredit(kind));
+    },
+    [apply, resetPreview],
+  );
+  // 名前を読んだら `404` だった（もう無い）人物・団体は、履歴を増やさずに URL から外して
+  // 知らせる。条件が変わるので一覧も読み直される。
+  const creditGone = useCallback(
+    (kind: CreditKind) => {
+      toast(
+        kind === "person"
+          ? t.library.activeTags.personGone
+          : t.library.activeTags.organizationGone,
+      );
+      apply(latestConditions.current.criteria, "replace", withoutCredit(kind));
+    },
+    [apply, toast],
+  );
   const pressTag = useCallback(
     (tag: TagRef) => {
       const { criteria: current, tagIds: currentTagIds } = latestConditions.current;
@@ -180,16 +227,16 @@ export default function LibraryPage() {
         return;
       }
       resetPreview();
-      apply(current, "push", serializeTagIds(addTagId(currentTagIds, tag.id)));
+      applyTags(current, "push", addTagId(currentTagIds, tag.id));
     },
-    [apply, resetPreview, toast],
+    [applyTags, resetPreview, toast],
   );
   const removeActiveTag = useCallback(
     (id: number) => {
       resetPreview();
-      apply(criteria, "push", serializeTagIds(removeTagId(tagIds, id)));
+      applyTags(criteria, "push", removeTagId(tagIds, id));
     },
-    [apply, criteria, resetPreview, tagIds],
+    [applyTags, criteria, resetPreview, tagIds],
   );
   // --- 大きさ切替で読んでいた位置を保つ ---
   const { listRef: list, capture: captureAnchor } = useZoomAnchor(zoom);
@@ -204,7 +251,9 @@ export default function LibraryPage() {
   );
 
   // --- 一覧の取得（戻ってきたときはスナップショットから復元） ---
-  const [restored] = useState(() => takeListSnapshot({ ...criteria, tags: tagIds }));
+  const [restored] = useState(() =>
+    takeListSnapshot({ ...criteria, tags: tagIds, ...credits }),
+  );
   const {
     items,
     total,
@@ -219,7 +268,7 @@ export default function LibraryPage() {
     reload,
     refreshInPlace,
     staleGroups,
-  } = useVideos({ ...criteria, tag: tagIds }, restored, "library");
+  } = useVideos({ ...criteria, tag: tagIds, ...credits }, restored, "library");
 
   // 絞り込みはサーバーが一覧の条件として適用する。
   // 再生から戻って視聴状態が変わった項目も、その場では一覧から外さない。
@@ -316,7 +365,7 @@ export default function LibraryPage() {
   const selectAll = useCallback(() => {
     const seq = (selectAllSeq.current += 1);
     setSelectingAll(true);
-    listLibraryIds({ query, watch, playable, favorite, tag: tagIds })
+    listLibraryIds({ query, watch, playable, favorite, tag: tagIds, ...credits })
       .then((response) => {
         // 応答が届くまでの間に、手動の選択操作・別の「すべて選択」・条件の
         // 変化（下の conditionsSignature の効果も selectAllSeq を進める）が
@@ -333,7 +382,7 @@ export default function LibraryPage() {
           const remaining = latestTagIds.filter((id) => !missing.includes(id));
           toast(t.library.deletedTagsRemoved);
           refreshTags().catch(() => undefined);
-          apply(latestCriteria, "replace", serializeTagIds(remaining));
+          applyTags(latestCriteria, "replace", remaining);
           return;
         }
         const selected = fromSelectAll(response.ids, response.groups ?? []);
@@ -347,7 +396,7 @@ export default function LibraryPage() {
       .finally(() => {
         if (selectAllSeq.current === seq) setSelectingAll(false);
       });
-  }, [apply, favorite, playable, query, tagIds, toast, watch]);
+  }, [applyTags, credits, favorite, playable, query, tagIds, toast, watch]);
 
   // 選択バーで一括して外したタグが、今の絞り込み（tagIds）に含まれているとき
   // の方針（Devin の指摘4、docs/design-docs/library-ui.md §6）。外した動画は
@@ -383,7 +432,11 @@ export default function LibraryPage() {
   // （ui-design.md「Active tag filters」）。条件の違う一覧で選んだ動画が、見えない
   // まま選択に残らないようにするため。同じ動画がたまたま両方の条件に一致しても
   // 解除する。
-  const conditionsSignature = `${criteriaKey(criteria)}\u0000${tagIds.join(",")}`;
+  const conditionsSignature = [
+    criteriaKey(criteria),
+    tagIds.join(","),
+    creditSignature(credits),
+  ].join("\u0000");
   const knownConditionsSignature = useRef(conditionsSignature);
   useEffect(() => {
     if (knownConditionsSignature.current === conditionsSignature) return;
@@ -478,7 +531,7 @@ export default function LibraryPage() {
 
   const saveSnapshot = useCallback(() => {
     saveListSnapshot(
-      { ...criteria, tags: tagIds },
+      { ...criteria, tags: tagIds, ...credits },
       {
         items,
         total,
@@ -489,7 +542,7 @@ export default function LibraryPage() {
         staleGroups: staleGroups(),
       },
     );
-  }, [criteria, cursor, hasMore, items, staleGroups, tagIds, total]);
+  }, [credits, criteria, cursor, hasMore, items, staleGroups, tagIds, total]);
 
   // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -527,14 +580,14 @@ export default function LibraryPage() {
     if (remaining.length === tagIds.length) return;
     toast(t.library.deletedTagsRemoved);
     refreshTags().catch(() => undefined);
-    apply(criteria, "replace", serializeTagIds(remaining));
-  }, [apply, criteria, missingTagIds, tagIds, toast]);
+    applyTags(criteria, "replace", remaining);
+  }, [applyTags, criteria, missingTagIds, tagIds, toast]);
 
   // 控えから一覧を戻したときは一覧の要求をしないので missingTagIds が届かない。
   // 画面が開くときに取り直す共有のタグの一覧と URL の tag を突き合わせ、無い id が
   // あれば同じく伝えて取り除く。マウント時に1回だけ行う。
-  const mountRef = useRef({ criteria, tagIds, apply, toast });
-  mountRef.current = { criteria, tagIds, apply, toast };
+  const mountRef = useRef({ criteria, tagIds, apply: applyTags, toast });
+  mountRef.current = { criteria, tagIds, apply: applyTags, toast };
   useEffect(() => {
     if (restored === undefined || mountRef.current.tagIds.length === 0) return;
     let alive = true;
@@ -550,7 +603,7 @@ export default function LibraryPage() {
         const remaining = current.filter((id) => known.has(id));
         if (remaining.length === current.length) return;
         mountRef.current.toast(t.library.deletedTagsRemoved);
-        currentApply(currentCriteria, "replace", serializeTagIds(remaining));
+        currentApply(currentCriteria, "replace", remaining);
       })
       .catch(() => undefined);
     return () => {
@@ -567,7 +620,7 @@ export default function LibraryPage() {
 
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
-  const conditioned = hasTagConditions(criteria, tagIds);
+  const conditioned = hasTagConditions(criteria, tagIds, credits);
   const selectionMode = selectedIds.size > 0;
   const resultStatus = loading ? t.list.loading : t.library.resultCount(total);
 
@@ -744,10 +797,13 @@ export default function LibraryPage() {
         </TopBarPortal>
       }
       band={
-        tagIds.length > 0 && (
+        hasFilterChips(tagIds, credits) && (
           <ActiveTagFilters
             tagIds={tagIds}
             onRemove={removeActiveTag}
+            credits={credits}
+            onRemoveCredit={removeCredit}
+            onCreditGone={creditGone}
             searchFieldRef={searchField}
           />
         )

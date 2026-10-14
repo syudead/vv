@@ -191,6 +191,9 @@ type Video struct {
 	// Versions は集まりのメンバーのときだけ、詳細の読み出しが埋める集まりの要約である。
 	// 一覧の読み出しでは nil。
 	Versions *VideoVersionsRef
+	// WorkInfo は利用者データの鍵の作品情報である（specs/047-video-work-info/data-model.md「Reads」）。
+	// 詳細と外部連携の読み出し、作品情報を書いた操作の戻り値が埋め、一覧の読み出しと行の無い動画では nil。
+	WorkInfo *WorkInfo
 
 	DurationMs *int64
 	Width      *int

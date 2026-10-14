@@ -59,21 +59,9 @@ func (e *externalServer) internalError(w http.ResponseWriter, message string, er
 // 同じ規則（buildTagListQuery）で読み、画面と同じ TagStore.ListTags を呼ぶ。limit を省いた
 // 要求は今までどおり条件に合う全件を返し、nextCursor を付けない。
 func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request, params extgen.ListTagsParams) {
-	var sort *string
-	if params.Sort != nil {
-		value := string(*params.Sort)
-		sort = &value
-	}
+	sort := sortParam(params.Sort)
 	query, problem := buildTagListQuery(params.Q, params.Tentative, params.Unused, sort, params.Cursor, params.Limit)
-	switch problem {
-	case tagListSortUnknown:
-		e.invalidRequest(w, nil, "Unknown sort order. Use name, countDesc, countAsc, createdDesc or createdAsc.")
-		return
-	case tagListLimitOutOfRange:
-		e.invalidRequest(w, nil, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
-		return
-	case tagListSearchTooLong:
-		e.invalidRequest(w, nil, fmt.Sprintf("q must be at most %d characters.", maxQueryLength))
+	if !e.acceptListQuery(w, problem) {
 		return
 	}
 	if e.s.tags == nil {
@@ -100,6 +88,23 @@ func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request, params
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, body, e.s.logger)
+}
+
+// acceptListQuery は buildTagListQuery が断った理由を 400 invalid_request にして false を返す。タグと
+// 人物・団体の一覧が同じ規則で引数を読む。
+func (e *externalServer) acceptListQuery(w http.ResponseWriter, problem tagListProblem) bool {
+	switch problem {
+	case tagListSortUnknown:
+		e.invalidRequest(w, nil, "Unknown sort order. Use name, countDesc, countAsc, createdDesc or createdAsc.")
+		return false
+	case tagListLimitOutOfRange:
+		e.invalidRequest(w, nil, fmt.Sprintf("limit must be between 1 and %d.", domain.MaxTagPageLimit))
+		return false
+	case tagListSearchTooLong:
+		e.invalidRequest(w, nil, fmt.Sprintf("q must be at most %d characters.", maxQueryLength))
+		return false
+	}
+	return true
 }
 
 // toExternalTag は domain.Tag を外部連携 API の形へ写す。シノニムが無ければ [] にする。

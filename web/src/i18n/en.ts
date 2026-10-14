@@ -116,6 +116,39 @@ function videos(count: number): string {
   });
 }
 
+/**
+ * creditKindTexts は人物・団体の管理画面の、種類で言い分ける文言である
+ * （specs/047-video-work-info/ui-design.md「People and organizations screens」）。
+ * `one`・`many` は数える名詞、`title` は見出しの名詞、`target` は統合先の欄の名札である。
+ */
+function creditKindTexts(one: string, many: string, title: string, target: string) {
+  const count = (n: number) =>
+    selectPlural(n, {
+      one: `${formatNumber(n)} ${one}`,
+      other: `${formatNumber(n)} ${many}`,
+    });
+  return {
+    title,
+    count,
+    filteredCount: (shown: number, total: number) =>
+      `${formatNumber(shown)} of ${count(total)}`,
+    newButton: `New ${one}`,
+    search: `Search ${many}`,
+    mergeInto: `Merge into another ${one}…`,
+    mergeTarget: target,
+    noCandidates: `No matching ${many}`,
+    searchFailed: (reason: string) => `Couldn't search ${many}: ${reason}`,
+    gone: `This ${one} no longer exists, so the list was reloaded`,
+    emptyTitle: `No ${many} yet`,
+    noMatches: (query: string) => `No ${many} match "${query}"`,
+    loadFailed: (reason: string) => `Couldn't load ${many}: ${reason}`,
+    staleList: (reason: string) =>
+      `Couldn't load ${many}: ${reason}. The list below may not match the current search and sort.`,
+    loadingMore: `Loading more ${many}…`,
+    listChanged: `${title} were added or removed elsewhere, so the rest of this list may be out of date.`,
+  };
+}
+
 const errorCodes = {
   not_found: "It wasn't found.",
   invalid_request: "The request wasn't valid.",
@@ -258,6 +291,25 @@ const errorReasons = {
   run_failed: "The edit failed in ComfyUI",
   no_output: "ComfyUI returned no image",
   timed_out: "No result after 10 minutes",
+  // 作品情報と人物・団体の理由は項目名を入れない。画面が `field` の示す入力の下に出す
+  // （specs/047-video-work-info/ui-design.md「Error reasons」）。
+  work_info_control_characters: "Contains characters that can't be used.",
+  work_info_too_long: ({ limit }) =>
+    limit === undefined ? "Too long." : `Too long: up to ${characters(limit)}.`,
+  work_info_too_many: ({ limit }) =>
+    limit === undefined ? "Too many." : `Too many: up to ${formatNumber(limit)}.`,
+  work_info_invalid_date: "Enter a date as YYYY, YYYY-MM or YYYY-MM-DD.",
+  work_info_invalid_url: "Enter a full web address starting with http:// or https://.",
+  work_info_invalid_language: "Enter a language tag such as ja or en-US.",
+  work_info_duplicate: "Already listed.",
+  work_info_empty: "This can't be empty.",
+  person_not_found: "This person no longer exists.",
+  organization_not_found: "This organization no longer exists.",
+  organization_parent_cycle:
+    "The parent can't be the organization itself or one inside it.",
+  merge_same_person: "A person can't be merged into themselves.",
+  merge_same_organization: "An organization can't be merged into itself.",
+  external_id_taken: "Another entry already has this ID.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -430,6 +482,7 @@ export const en = {
         centeredForm: "Centered form",
         dialogs: "Form dialog and confirm dialog",
         editorDialog: "Editor dialog",
+        formPage: "Form page",
         groupedList: "Grouped list",
         listState: (state: string) => `List page: ${state}`,
       },
@@ -572,6 +625,17 @@ export const en = {
       editImageNotesHint: "Optional: what to change in the image.",
       editImageApply: "Apply",
       close: "Close",
+      formPageTitle: "Edit details",
+      formPageAside: "Video",
+      formPageFile: "harbour-at-dusk.mp4",
+      formPageFacts: "49:10 · 2.4 GB · 1920 × 1080",
+      formPageBasics: "Basics",
+      formPageMore: "More",
+      formPageName: "Name",
+      formPageNotes: "Description",
+      formPageNotesHint: "Shown under the video's details.",
+      formPageCode: "Code",
+      save: "Save",
     },
   },
   app: {
@@ -731,10 +795,15 @@ export const en = {
     deletedTagsRemoved: "Removed deleted tags from the filter",
     selectAllFailed: (reason: string) => `Couldn't select everything: ${reason}`,
     activeTags: {
-      label: "Filtering by tags",
+      // 人物・団体のチップも並ぶ（specs/047-video-work-info/ui-design.md「Words」の Library）。
+      label: "Filtering by",
       list: "Tags in the filter",
       remove: "Remove the tag filter",
       removeNamed: (name: string) => `Remove the filter for ${name}`,
+      removePerson: "Remove the person filter",
+      removeOrganization: "Remove the organization filter",
+      personGone: "Removed a person who no longer exists from the filter",
+      organizationGone: "Removed an organization that no longer exists from the filter",
     },
     tagRow: {
       label: "Tags",
@@ -1130,6 +1199,90 @@ export const en = {
       merge: "Merge",
     },
   },
+  // 人物と団体の管理画面（specs/047-video-work-info/ui-design.md「Words」の「People and
+  // organizations screens」）。並び順の文言はタグの画面（tags.sort）と同じものを使う。
+  credits: {
+    person: creditKindTexts("person", "people", "People", "Person to merge into"),
+    organization: creditKindTexts(
+      "organization",
+      "organizations",
+      "Organizations",
+      "Organization to merge into",
+    ),
+    loading: "Loading…",
+    columns: {
+      name: "Name",
+      videos: "Videos",
+    },
+    empty: {
+      description: "Add them from a video's details, or create one here.",
+    },
+    clearSearch: "Clear search",
+    create: {
+      label: "Name",
+      placeholder: "Name",
+    },
+    row: {
+      open: (name: string) => `Open the library filtered by ${name}`,
+      aliases: (list: string) => `Aliases: ${list}`,
+      aliasWithLanguage: (alias: string, language: string) => `${alias} (${language})`,
+      partOf: (parent: string) => `Part of ${parent}`,
+      // 名前の下の 1 行の、親と別名の区切り。
+      secondLine: (parts: readonly string[]) => parts.join(" · "),
+      videoCount: videos,
+      renameLabel: (name: string) => `New name for "${name}"`,
+      rename: "Rename",
+      details: "Edit details",
+      more: "More actions",
+      delete: "Delete…",
+      actions: "Actions",
+    },
+    details: {
+      title: (name: string) => `Edit "${name}"`,
+      aliases: "Aliases",
+      externalIds: "External IDs",
+      parent: "Parent organization",
+      alias: "Alias",
+      language: "Language",
+      languagePlaceholder: "ja",
+      languageDescription: "Optional. A language tag such as ja or en-US.",
+      removeAlias: "Remove alias",
+      addAlias: "Add alias",
+      source: "Source",
+      value: "Value",
+      removeId: "Remove ID",
+      addId: "Add ID",
+      parentNone: "None",
+      parentSearch: "Search organizations",
+      parentEmpty: "No matching organizations",
+      parentsFailed: (reason: string) => `Couldn't load organizations: ${reason}`,
+      submit: "Save",
+      submitting: "Saving…",
+    },
+    mergeDialog: {
+      title: (name: string) => `Merge "${name}"`,
+      aliasHint: (alias: string) => `Alias: ${alias}`,
+      videoCount: videos,
+      warning: (source: string, count: number, target: string) =>
+        count === 0
+          ? `"${source}" isn't on any videos. Its name, aliases and IDs become aliases and IDs of "${target}", and it leaves the list. This can't be undone.`
+          : `The ${videos(count)} with "${source}" get "${target}" instead. "${source}"'s name, aliases and IDs become aliases and IDs of "${target}", and "${source}" leaves the list. This can't be undone.`,
+      submit: "Merge",
+      submitting: "Merging…",
+    },
+    merged: (source: string, target: string) => `Merged "${source}" into "${target}"`,
+    deleteDialog: {
+      title: (name: string) => `Delete "${name}"?`,
+      text: (name: string, count: number) =>
+        count === 0
+          ? `"${name}" isn't on any videos. This can't be undone.`
+          : `"${name}" will be removed from ${videos(count)}. This can't be undone.`,
+      organizationNote: "Organizations inside it stay and lose their parent.",
+      submit: "Delete",
+      submitting: "Deleting…",
+    },
+    deleted: (name: string) => `Deleted "${name}"`,
+  },
   folderGrouping: {
     ungrouped: (name: string) => `Ungrouped "${name}"`,
     tagged: (name: string, created: boolean) =>
@@ -1446,6 +1599,102 @@ export const en = {
       fileNameTitle: (name: string) => `File name: ${name}`,
       saveFailed: (reason: string) => `Couldn't save the name: ${reason}`,
     },
+    // 情報欄の作品情報の行と編集の入口（specs/047-video-work-info/ui-design.md「Words」の
+    // Video page, work details row）。役割の名前は 1 人なら単数、2 人以上なら複数。
+    workInfo: {
+      label: "Work details",
+      code: "Code",
+      released: "Released",
+      recorded: "Recorded",
+      published: "Published",
+      performer: (count: number) =>
+        selectPlural(count, { one: "Performer", other: "Performers" }),
+      director: (count: number) =>
+        selectPlural(count, { one: "Director", other: "Directors" }),
+      photographer: (count: number) =>
+        selectPlural(count, { one: "Photographer", other: "Photographers" }),
+      streamer: (count: number) =>
+        selectPlural(count, { one: "Streamer", other: "Streamers" }),
+      maker: (count: number) => selectPlural(count, { one: "Maker", other: "Makers" }),
+      labelRole: (count: number) =>
+        selectPlural(count, { one: "Label", other: "Labels" }),
+      links: "Links",
+      ids: "IDs",
+      externalId: (source: string, value: string) => `${source}: ${value}`,
+      showVideosWith: (name: string) => `Show videos with ${name}`,
+      more: (count: number) => `+${formatNumber(count)} more`,
+      showAll: (count: number, label: string) =>
+        `Show all ${formatNumber(count)} ${label.toLowerCase()}`,
+      showFewer: "Show fewer",
+      showMore: "Show more",
+      showLess: "Show less",
+      edit: "Edit details",
+    },
+    // 全画面の編集画面（specs/047-video-work-info/ui-design.md「Words」の Editor）。
+    detailsEditor: {
+      title: "Edit details",
+      documentTitle: (title: string) => `Edit details · ${title}`,
+      video: "Video",
+      back: "Back to the video",
+      basics: "Basics",
+      credits: "Credits",
+      people: "People",
+      organizations: "Organizations",
+      name: "Name",
+      code: "Code",
+      description: "Description",
+      released: "Released",
+      recorded: "Recorded",
+      published: "Published",
+      performers: "Performers",
+      directors: "Directors",
+      photographers: "Photographers",
+      streamers: "Streamers",
+      makers: "Makers",
+      labels: "Labels",
+      links: "Links",
+      ids: "IDs",
+      datePlaceholder: "YYYY-MM-DD",
+      dateHint: "A year or a year and month is enough.",
+      addPerformer: "Add a performer",
+      addDirector: "Add a director",
+      addPhotographer: "Add a photographer",
+      addStreamer: "Add a streamer",
+      addMaker: "Add a maker",
+      addLabel: "Add a label",
+      create: (name: string) => `Create "${name}"`,
+      alias: (alias: string) => `Alias: ${alias}`,
+      videoCount: videos,
+      remove: (name: string) => `Remove ${name}`,
+      newMark: "New",
+      newChip: (name: string) => `${name}, new`,
+      link: "Link",
+      removeLink: "Remove link",
+      addLink: "Add link",
+      source: "Source",
+      value: "Value",
+      removeId: "Remove ID",
+      addId: "Add ID",
+      cancel: "Cancel",
+      save: "Save",
+      saving: "Saving…",
+      saveFailed: (reason: string) => `Couldn't save the details: ${reason}`,
+      createdNotSaved: (count: number, reason: string) =>
+        selectPlural(count, {
+          one: `1 person was created, but the details weren't saved: ${reason}`,
+          other: `${formatNumber(count)} people were created, but the details weren't saved: ${reason}`,
+        }),
+      searchPeopleFailed: (reason: string) => `Couldn't search people: ${reason}`,
+      searchOrganizationsFailed: (reason: string) =>
+        `Couldn't search organizations: ${reason}`,
+      discardTitle: "Discard changes?",
+      discardText: (title: string) => `The changes to "${title}" haven't been saved.`,
+      keepEditing: "Keep editing",
+      discard: "Discard",
+      loadFailed: (reason: string) => `Couldn't load the video: ${reason}`,
+      gone: "This video no longer exists.",
+      retry: "Retry",
+    },
     visibility: {
       label: "Show to people who aren't signed in",
       public: "Public",
@@ -1686,6 +1935,12 @@ export const en = {
     tooLong: (limit: number, length: number) =>
       `Use ${characters(limit)} or fewer (currently ${formatNumber(length)})`,
   },
+  // 人物・団体の名前を打つ CreditCommand の理由（specs/047-video-work-info/ui-design.md「Words」）。
+  creditName: {
+    required: "Enter a name",
+    controlCharacters: "Line breaks and tabs aren't allowed",
+    tooLong: (limit: number) => `Up to ${characters(limit)}`,
+  },
   auth: {
     gate: {
       unreachable: "Can't connect to the server",
@@ -1729,6 +1984,8 @@ export const en = {
       library: "Library",
       folders: "Folders",
       tags: "Tags",
+      people: "People",
+      organizations: "Organizations",
       history: "History",
       playlists: "Playlists",
       duplicates: "Duplicates",

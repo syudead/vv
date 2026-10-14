@@ -66,3 +66,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Auto-import of changed media folders (setting, problem notice, quiet result notice): UI](../../specs/042-folder-watch-import/ui-design.md)
 - [Watch history screen (day groups, removing one entry, clearing the history): UI](../../specs/043-watch-history/ui-design.md)
 - [Setting a local image as the thumbnail and editing the current thumbnail with ComfyUI (upload entry, uploaded item, source menu): UI](../../specs/046-thumbnail-image-upload/ui-design.md)
+- [Work information on videos (work details row, in-place editor, person and organization filter, people and organizations screens): UI](../../specs/047-video-work-info/ui-design.md)

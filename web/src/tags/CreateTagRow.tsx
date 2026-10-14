@@ -1,12 +1,13 @@
 import { useEffect, useRef } from "react";
 
-import { t } from "../i18n";
+import { t, type UiText } from "../i18n";
 import { isComposingKeyEvent } from "../lib/ime";
 import { Button } from "../ui/shadcn/button";
 import { Field, FieldError } from "../ui/shadcn/field";
 import { Input } from "../ui/shadcn/input";
 import { Spinner } from "../ui/shadcn/spinner";
 import { TableCell, TableRow } from "../ui/shadcn/table";
+import type { NameRules } from "../ui/NameCommand";
 import { useTagNameField, type TagFieldError } from "./tagNameField";
 
 /**
@@ -14,6 +15,8 @@ import { useTagNameField, type TagFieldError } from "./tagNameField";
  * （ui-design.md「Create and rename」）。候補の一覧は持たない、名前1つだけの
  * 入力で、検証と理由の出し方は `ui/TagCommand` と同じにする。表の行（`TableRow`）で、
  * 1 つの欄が列をすべてまたぐ。
+ *
+ * 人物・団体の管理画面も、名前の規則（`rules`）と文言を渡して同じ行を使う。
  */
 export default function CreateTagRow({
   columnCount,
@@ -22,6 +25,9 @@ export default function CreateTagRow({
   onCancel,
   onSubmit,
   onDraftChange,
+  rules,
+  label = t.tags.create.label,
+  placeholder = t.tags.create.placeholder,
 }: {
   /** 表の列の数。作成の欄はすべての列をまたぐ。 */
   columnCount: number;
@@ -31,8 +37,13 @@ export default function CreateTagRow({
   onSubmit: (name: string) => void;
   /** 値が変わるたびに呼ぶ。呼び出し元はこれで直前の失敗の表示を消す。 */
   onDraftChange?: () => void;
+  /** 名前の規則。省くとタグの名前の規則。 */
+  rules?: NameRules;
+  /** 入力の読み上げ名。 */
+  label?: UiText;
+  placeholder?: UiText;
 }) {
-  const field = useTagNameField("", onDraftChange);
+  const field = useTagNameField("", onDraftChange, rules);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
@@ -74,8 +85,8 @@ export default function CreateTagRow({
                   cancel();
                 }
               }}
-              placeholder={t.tags.create.placeholder}
-              aria-label={t.tags.create.label}
+              placeholder={placeholder}
+              aria-label={label}
               aria-describedby={
                 field.reason !== null
                   ? "tag-create-reason"

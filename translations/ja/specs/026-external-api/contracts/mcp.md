@@ -1,6 +1,6 @@
 ---
 source: specs/026-external-api/contracts/mcp.md
-sourceHash: ec35e4b16a70bb24c05b1d1c19baa78567f7a8f84c19d4fbd4315562bcd5b8f5
+sourceHash: ea39611429b769a739e4ea5fa78f9c016441ac56f1f9e6b4f318e2e95b608da4
 ---
 
 # 契約: `/mcp` の MCP サーバー {#contract-mcp-server-at-mcp}
@@ -21,7 +21,7 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 
 ## ツール {#tools}
 
-入力と出力（構造化された内容）は、[external-api.md](external-api.md) の同じ操作のパラメータと本文、および応答本文と同じ形を持つ。エラーは `isError: true` を持つツール結果として返り、その本文は外部 API のエラーと同じ `{ code, message, reason?, limit?, index?, tagId?, tagName? }` である。
+入力と出力（構造化された内容）は、[external-api.md](external-api.md) の同じ操作のパラメータと本文、および応答本文と同じ形を持つ。エラーは `isError: true` を持つツール結果として返り、その本文は外部 API のエラーと同じ `{ code, message, reason?, limit?, index?, field?, tagId?, tagName? }` である。
 
 | ツール | 操作 |
 | --- | --- |
@@ -39,8 +39,14 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `batch_tags` | `POST /api/v1/tags/batch` |
 | `list_rejected_tag_names` | `GET /api/v1/tags/rejected-names` |
 | `forget_rejected_tag_name` | `DELETE /api/v1/tags/rejected-names` |
+| `update_video_work_info` | `POST /api/v1/video-work-info` |
+| `list_people`、`list_organizations` | `GET /api/v1/people`、`GET /api/v1/organizations`。ツールでは `limit` の既定は 100 |
+| `create_person`、`create_organization` | `POST /api/v1/people`、`POST /api/v1/organizations` |
+| `update_person`、`update_organization` | `POST /api/v1/people/update`、`POST /api/v1/organizations/update` |
+| `merge_people`、`merge_organizations` | `POST /api/v1/people/merge`、`POST /api/v1/organizations/merge` |
+| `delete_people`、`delete_organizations` | `POST /api/v1/people/delete`、`POST /api/v1/organizations/delete` |
 
-`update_video_display_names` と `update_video_thumbnails` は 029 で追加された（[specs/029-video-overrides/contracts/external-api.md、MCP ツール](../../029-video-overrides/contracts/external-api.md#mcp-tools)）。039 は `list_tags` の一覧パラメータとその既定の `limit`、およびツール `merge_tags`、`rename_tag`、`update_tag_synonyms`、`batch_tags`、`list_rejected_tag_names`、`forget_rejected_tag_name` を追加した（[specs/039-external-tag-admin/contracts/external-api.md、MCP ツール](../../039-external-tag-admin/contracts/external-api.md#mcp-tools)）。
+`update_video_display_names` と `update_video_thumbnails` は 029 で追加された（[specs/029-video-overrides/contracts/external-api.md、MCP ツール](../../029-video-overrides/contracts/external-api.md#mcp-tools)）。039 は `list_tags` の一覧パラメータとその既定の `limit`、およびツール `merge_tags`、`rename_tag`、`update_tag_synonyms`、`batch_tags`、`list_rejected_tag_names`、`forget_rejected_tag_name` を追加した（[specs/039-external-tag-admin/contracts/external-api.md、MCP ツール](../../039-external-tag-admin/contracts/external-api.md#mcp-tools)）。047 は `update_video_work_info`、人物と組織それぞれの 5 つのツール、および `list_videos` と `get_video` の出力の `workInfo` を追加した（[specs/047-video-work-info/contracts/external-api.md、MCP ツール](../../047-video-work-info/contracts/external-api.md#mcp-tools)）。
 
 | ツール | ヒント | 理由 |
 | --- | --- | --- |
@@ -52,4 +58,8 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `rename_tag` | `destructiveHint: false`、`idempotentHint: true` | — |
 | `update_tag_synonyms` | `destructiveHint: true`、`idempotentHint: true` | `remove` は名前を外す。`mergeTagId` 付きの `add` はタグを統合する。 |
 | `batch_tags` | `destructiveHint: true`、`idempotentHint: true` | `reject` と `delete` はタグを削除する。 |
+| `update_video_work_info` | `destructiveHint: true`、`idempotentHint: true` | 消した項目は失われる。 |
+| `create_person`、`create_organization` | `destructiveHint: false`、`idempotentHint: false` | 呼び出しごとに 1 つ作成する。 |
+| `update_person`、`update_organization` | `destructiveHint: true`、`idempotentHint: true` | 与えた一覧は保存した一覧を置き換える。 |
+| `merge_people`、`merge_organizations`、`delete_people`、`delete_organizations` | `destructiveHint: true`、`idempotentHint: true` | 統合した統合元と削除したエンティティはなくなる。 |
 | `forget_rejected_tag_name` | `destructiveHint: true`、`idempotentHint: true` | その名前は、仮のタグとしての付与で飛ばされなくなる。 |

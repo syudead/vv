@@ -184,6 +184,12 @@ export function useVideoPages({
           cursor: from,
           signal: controller.signal,
         };
+        // フォルダの一覧（listFolderVideos）は受け取らない、一覧だけの条件。
+        const listOnly = {
+          tag: current.tag,
+          person: current.person,
+          organization: current.organization,
+        };
         const fetchOne = (cursorFrom: string | undefined) =>
           target !== undefined
             ? listFolderVideos({
@@ -193,8 +199,8 @@ export function useVideoPages({
                 cursor: cursorFrom,
               })
             : libraryRef.current
-              ? listLibrary({ ...params, cursor: cursorFrom, tag: current.tag })
-              : listVideos({ ...params, cursor: cursorFrom, tag: current.tag });
+              ? listLibrary({ ...params, ...listOnly, cursor: cursorFrom })
+              : listVideos({ ...params, ...listOnly, cursor: cursorFrom });
         const toPage = (fetched: Awaited<ReturnType<typeof fetchOne>>) => ({
           ...fetched,
           items: fetched.items.map((item): LibraryItem => {

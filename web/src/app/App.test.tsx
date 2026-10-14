@@ -227,6 +227,8 @@ describe("App", () => {
       "History",
       "Playlists",
       "Tags",
+      "People",
+      "Organizations",
       "Duplicates",
       "Settings",
       "Sign out",

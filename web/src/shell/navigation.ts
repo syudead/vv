@@ -1,10 +1,12 @@
 import {
+  Building2,
   Folder,
   History,
   Layers,
   Library,
   ListVideo,
   Tags,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -19,7 +21,7 @@ export interface NavEntry {
   /** 行き先より下の URL（`/folders/3/A` など）でも選択中にする。 */
   matchDescendants?: boolean;
   /**
-   * 所有者のデータ（タグ・視聴履歴・プレイリスト・候補）に依る項目。ゲストには出さない
+   * 所有者のデータ（タグ・人物と団体・視聴履歴・プレイリスト・候補）に依る項目。ゲストには出さない
    * （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
    */
   ownerOnly?: boolean;
@@ -54,6 +56,20 @@ export function navEntries(): readonly NavEntry[] {
       ownerOnly: true,
     },
     { id: "tags", label: t.shell.nav.tags, icon: Tags, to: "/tags", ownerOnly: true },
+    {
+      id: "people",
+      label: t.shell.nav.people,
+      icon: Users,
+      to: "/people",
+      ownerOnly: true,
+    },
+    {
+      id: "organizations",
+      label: t.shell.nav.organizations,
+      icon: Building2,
+      to: "/organizations",
+      ownerOnly: true,
+    },
     {
       id: "duplicates",
       label: t.shell.nav.duplicates,
