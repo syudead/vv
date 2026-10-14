@@ -144,6 +144,7 @@ var accessRoutes = map[string]access{
 	"GET /api/folders/{rootId}":                   accessGuest,
 	"GET /api/folders/{rootId}/videos":            accessGuest,
 	"GET /api/library":                            accessGuest,
+	"GET /api/groups":                             accessGuest,
 	"GET /api/groups/{id}":                        accessGuest,
 	"GET /api/groups/{id}/items":                  accessGuest,
 	"GET /api/events":                             accessGuest,
