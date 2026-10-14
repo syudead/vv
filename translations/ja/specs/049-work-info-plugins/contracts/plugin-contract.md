@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/contracts/plugin-contract.md
-sourceHash: 8e5db885f8156fd084dce05c4cc7052be95c4a8599439e583bdd5acb00ebb27d
+sourceHash: ac8114348a05645a0e80e2124d4a34ac86ce59bdcb4b3f555074c4b6a9808f2d
 ---
 
 # 契約: 作品情報プラグインの契約、バージョン 1 {#contract-work-info-plugin-contract-version-1}
@@ -28,7 +28,7 @@ sequenceDiagram
 | 項目 | 規則 |
 | --- | --- |
 | 形式 | `_start` を引数も戻り値もない関数として、`memory` をメモリとして export する、`wasip1` 向けにビルドした WebAssembly のコアモジュール |
-| テーブル | それぞれが最大 100,000 要素以下の最大値を宣言する |
+| テーブル | それぞれの最小値は 100,000 要素以下であり、宣言された最大値があればそれも 100,000 以下である。宣言された最大値のないテーブル (Go の `wasip1` リンカーが書く形) は受け入れ、コンパイル前に vv が 100,000 に制限する |
 | import | `wasi_snapshot_preview1` と `vv` だけ。それ以外があるとアップロードは `import_unsupported` になる |
 | WASI | 事前に開かれたディレクトリ、環境変数、引数はない。時計と乱数は動く。stdin が要求を持ち、stdout が応答を受け、stderr はサーバーのログに行く |
 | 上限 | [R-4](../research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits) と [R-5](../research.md#r-5-plugins-reach-the-network-only-through-vv-and-only-public-addresses) の値 |

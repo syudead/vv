@@ -30,7 +30,7 @@ sequenceDiagram
 | Item | Rule |
 | --- | --- |
 | Format | A WebAssembly core module built for `wasip1` that exports `_start` as a function with no parameters and no results, and `memory` as a memory |
-| Tables | Each declares a maximum of at most 100,000 elements |
+| Tables | Each has a minimum of at most 100,000 elements, and a declared maximum, when it has one, of at most 100,000; a table without a declared maximum (as Go's `wasip1` linker writes it) is accepted and capped at 100,000 by vv before compiling |
 | Imports | Only `wasi_snapshot_preview1` and `vv`; anything else makes the upload `import_unsupported` |
 | WASI | No preopened directories, no environment variables, no arguments; clocks and random work; stdin holds the request, stdout takes the response, stderr goes to the server log |
 | Limits | The values in [R-4](../research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits) and [R-5](../research.md#r-5-plugins-reach-the-network-only-through-vv-and-only-public-addresses) |

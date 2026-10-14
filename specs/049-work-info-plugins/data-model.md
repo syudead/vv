@@ -42,7 +42,7 @@ rescan and is listed as kept in
 | `contract_unsupported` | `contract` is not a version this vv runs (only `1`) |
 | `import_unsupported` | The module imports something outside `wasi_snapshot_preview1` and `vv` |
 | `export_invalid` | The module does not export `_start` as a function taking and returning nothing, or does not export `memory` as a memory |
-| `table_too_large` | A table declares no maximum, or one over 100,000 elements |
+| `table_too_large` | A table's minimum, or its declared maximum, is over 100,000 elements (a table without a declared maximum is accepted and capped at 100,000) |
 
 ## `work_info_plugin_settings`
 
