@@ -70,7 +70,9 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	rejected := []string{}
 	changed := []int64{apply.VideoID}
 	if len(apply.Tags) > 0 {
-		rejected, err = writeVideoTagsByName(ctx, tx, userKeys[:1], domain.VideoTagsAdd, apply.Tags, true, now)
+		// 取り込みは仮の付け方なので、自動タグ付けの提案を確定しない（Issue #968 の要件 6）。
+		rejected, err = writeVideoTagsByName(ctx, tx, userKeys[:1], domain.VideoTagsAdd, apply.Tags,
+			tagWrite{tentative: true, keepSuggested: true}, now)
 		if err != nil {
 			return domain.Video{}, nil, err
 		}
