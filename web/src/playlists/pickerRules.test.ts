@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PlaylistSummary } from "../api/playlists";
-import { matchPlaylists, nameTooLong, resultText } from "./pickerRules";
+import { matchNames, nameTooLong, resultText } from "./pickerRules";
 
 function playlist(id: number, name: string): PlaylistSummary {
   return { id, name, itemCount: 0, updatedAt: "2026-10-01T00:00:00Z" };
@@ -27,9 +27,22 @@ describe("ピッカーの規則（specs/044-playlists/ui-design.md「Add to play
 
   it("打った文字を大文字小文字を区別せずに含むものを、API の順のまま返す", () => {
     const all = [playlist(3, "Tonight"), playlist(2, "Anime"), playlist(1, "night owl")];
-    expect(matchPlaylists(all, "").map((p) => p.id)).toEqual([3, 2, 1]);
-    expect(matchPlaylists(all, "NIGHT").map((p) => p.id)).toEqual([3, 1]);
-    expect(matchPlaylists(all, "zzz")).toEqual([]);
+    expect(matchNames(all, "").map((p) => p.id)).toEqual([3, 2, 1]);
+    expect(matchNames(all, "NIGHT").map((p) => p.id)).toEqual([3, 1]);
+    expect(matchNames(all, "zzz")).toEqual([]);
+  });
+
+  it("大文字小文字はサーバーと同じ Unicode の単純な折り畳みで比べる", () => {
+    const all = [playlist(1, "Σ mix"), playlist(2, "\u212Aelvin"), playlist(3, "straße")];
+    // Σ・σ・ς は 1 つの組、Kelvin 記号は K と k の組（toLowerCase では ς が外れる）。
+    expect(matchNames(all, "ς").map((p) => p.id)).toEqual([1]);
+    expect(matchNames(all, "σ").map((p) => p.id)).toEqual([1]);
+    expect(matchNames(all, "kel").map((p) => p.id)).toEqual([2]);
+    // ß → SS は 2 文字になる変換なので単純な折り畳みに入らない。ı は I と組にならない。
+    expect(matchNames(all, "strasse")).toEqual([]);
+    expect(
+      matchNames([playlist(4, "\u0131"), playlist(5, "I")], "i").map((p) => p.id),
+    ).toEqual([5]);
   });
 
   it("名前の上限は符号位置で 100 まで", () => {

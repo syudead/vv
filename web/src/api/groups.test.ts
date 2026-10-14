@@ -1,17 +1,18 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RequestFailed } from "./client";
-import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 import {
   addToGroup,
   createGroup,
   dissolveGroup,
+  listAllGroups,
   listGroups,
   moveGroupItem,
   removeFromGroup,
   renameGroup,
   tagGroup,
 } from "./groups";
+import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -43,6 +44,11 @@ const group = {
   videoIds: [1],
   tags: [],
 };
+
+/** holdSnapshot はライブラリの一覧の控えを 1 つ置く（動画ページへ離れたときと同じ）。 */
+function holdSnapshot() {
+  saveListSnapshot({ query: "" }, { items: [], total: 0, hasMore: false, scrollY: 0 });
+}
 
 describe("groups API", () => {
   it("listGroups は q・cursor・limit を付け、空の q は送らない", async () => {
@@ -143,11 +149,6 @@ describe("groups API", () => {
   });
 
   it("改名・項目の削除・並べ替えの成功はライブラリの一覧の控えを捨て、失敗は残す", async () => {
-    const hold = () =>
-      saveListSnapshot(
-        { query: "" },
-        { items: [], total: 0, hasMore: false, scrollY: 0 },
-      );
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(json({ ...group, name: "Renamed" }))
@@ -156,17 +157,77 @@ describe("groups API", () => {
       .mockResolvedValueOnce(json({ code: "internal", message: "x" }, 500));
     vi.stubGlobal("fetch", fetchMock);
 
-    hold();
+    holdSnapshot();
     await renameGroup(7, "Renamed");
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
-    hold();
+    holdSnapshot();
     await removeFromGroup(7, [11]);
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
-    hold();
+    holdSnapshot();
     await moveGroupItem(7, 11, 12);
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
-    hold();
+    holdSnapshot();
     await expect(moveGroupItem(7, 11, 12)).rejects.toBeInstanceOf(RequestFailed);
     expect(takeListSnapshot({ query: "" })).toBeDefined();
+  });
+
+  it("listAllGroups はページの数で打ち切らず nextCursor が尽きるまで辿る", async () => {
+    // 200 件のページを 101 回（2 万件を超える）。
+    const pages = 101;
+    const fetchMock = vi.fn<typeof fetch>((input) => {
+      const cursor = new URL(String(input), "http://x").searchParams.get("cursor");
+      const page = cursor === null ? 0 : Number(cursor);
+      const next = page + 1 < pages ? { nextCursor: String(page + 1) } : {};
+      return Promise.resolve(json({ groups: [{ ...group, id: page + 1 }], ...next }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const groups = await listAllGroups();
+
+    expect(groups).toHaveLength(pages);
+    expect(groups.at(-1)?.id).toBe(pages);
+  });
+
+  it("listAllGroups は同じカーソルが二度返ったら欠けた一覧を返さずに失敗する", async () => {
+    const fetchMock = vi.fn<typeof fetch>(() =>
+      Promise.resolve(json({ groups: [group], nextCursor: "loop" })),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(listAllGroups()).rejects.toThrow();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("createGroup・addToGroup は成功と 404 で一覧の控えを捨て、ほかの失敗では残す", async () => {
+    const notFound = {
+      code: "not_found",
+      reason: "group_target_not_found",
+      message: "x",
+    };
+    const cycle = { code: "conflict", reason: "group_cycle", message: "x" };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json(group, 201))
+      .mockResolvedValueOnce(json(group))
+      .mockResolvedValueOnce(json(notFound, 404))
+      .mockResolvedValueOnce(json(cycle, 409));
+    vi.stubGlobal("fetch", fetchMock);
+    const snapshot = () => takeListSnapshot({ query: "" });
+
+    holdSnapshot();
+    await createGroup("Mix", { videoIds: [1] });
+    expect(snapshot()).toBeUndefined();
+
+    holdSnapshot();
+    await addToGroup(7, { videoIds: [1] });
+    expect(snapshot()).toBeUndefined();
+
+    holdSnapshot();
+    await addToGroup(7, { videoIds: [9] }).catch(() => undefined);
+    expect(snapshot()).toBeUndefined();
+
+    holdSnapshot();
+    await addToGroup(7, { groupIds: [3] }).catch(() => undefined);
+    expect(snapshot()).toBeDefined();
   });
 });

@@ -25,6 +25,7 @@ import { itemKey } from "../api/libraryItems";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
+import { GroupChangedContext } from "../groups/groupChanges";
 import { errorText, t } from "../i18n";
 import {
   readViewPreferences,
@@ -650,6 +651,7 @@ export default function LibraryPage() {
               <TableHead className="pr-4">{t.library.columns.title}</TableHead>
               {owner && <TableHead className="w-8" />}
               {owner && <TableHead className="hidden w-8 sm:table-cell" />}
+              {owner && <TableHead className="hidden w-8 sm:table-cell" />}
               <TableHead className="hidden w-16 pr-4 sm:table-cell" />
               <TableHead className="w-list-number pr-4 text-right">
                 {t.library.columns.duration}
@@ -680,78 +682,86 @@ export default function LibraryPage() {
   );
 
   return (
-    <ListPage
-      header={
-        <PageHeader
-          title={t.library.title}
-          count={
-            initialLoadFailed ? undefined : (
-              <span role="status" aria-label={t.library.resultsLabel} aria-live="polite">
-                {resultStatus}
-              </span>
-            )
-          }
-        />
-      }
-      toolbar={
-        <TopBarPortal>
-          <LibraryToolbar
-            query={query}
-            onQueryCommit={commitQuery}
-            searchRef={searchField}
-            sort={sort}
-            onSortChange={changeSort}
-            onShuffle={shuffle}
-            watch={watch}
-            onWatchChange={changeWatch}
-            playable={playable}
-            onPlayableChange={changePlayable}
-            favorite={favorite}
-            onFavoriteChange={changeFavorite}
-            canClear={conditioned}
-            onClear={clearAll}
-            view={view}
-            onViewChange={(next) => {
-              resetPreview();
-              savePreferences({ ...preferences, view: next });
-            }}
-            zoom={zoom}
-            onZoomChange={changeZoom}
+    // 「New group」「Add to group」で足したものはいちばん上から外れるので、一覧をその場で
+    // 読み直す（specs/048-groups/ui-design.md「Add to group」の Result）。
+    <GroupChangedContext value={refreshInPlace}>
+      <ListPage
+        header={
+          <PageHeader
+            title={t.library.title}
+            count={
+              initialLoadFailed ? undefined : (
+                <span
+                  role="status"
+                  aria-label={t.library.resultsLabel}
+                  aria-live="polite"
+                >
+                  {resultStatus}
+                </span>
+              )
+            }
           />
-        </TopBarPortal>
-      }
-      band={
-        tagIds.length > 0 && (
-          <ActiveTagFilters
-            tagIds={tagIds}
-            onRemove={removeActiveTag}
-            searchFieldRef={searchField}
-          />
-        )
-      }
-      selectionBar={
-        owner && (
-          <SelectionBar
-            count={selectedIds.size}
-            allSelected={allSelected}
-            selectedIds={selectedIdsArray}
-            favoriteVideoIds={favoriteSelection.videoIds}
-            favoriteGroupIds={favoriteSelection.groupIds}
-            selectingAll={selectingAll}
-            onSelectAll={selectAll}
-            onClear={clearSelection}
-            onTagRemoved={onTagRemoved}
-            onBundled={onBundled}
-          />
-        )
-      }
-    >
-      {body}
-      {loadingMore && <LoadMoreRow status="loading" label={t.list.loading} />}
-      {error !== null && items.length > 0 && (
-        <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
-      )}
-      <div ref={sentinel} aria-hidden="true" className="h-px" />
-    </ListPage>
+        }
+        toolbar={
+          <TopBarPortal>
+            <LibraryToolbar
+              query={query}
+              onQueryCommit={commitQuery}
+              searchRef={searchField}
+              sort={sort}
+              onSortChange={changeSort}
+              onShuffle={shuffle}
+              watch={watch}
+              onWatchChange={changeWatch}
+              playable={playable}
+              onPlayableChange={changePlayable}
+              favorite={favorite}
+              onFavoriteChange={changeFavorite}
+              canClear={conditioned}
+              onClear={clearAll}
+              view={view}
+              onViewChange={(next) => {
+                resetPreview();
+                savePreferences({ ...preferences, view: next });
+              }}
+              zoom={zoom}
+              onZoomChange={changeZoom}
+            />
+          </TopBarPortal>
+        }
+        band={
+          tagIds.length > 0 && (
+            <ActiveTagFilters
+              tagIds={tagIds}
+              onRemove={removeActiveTag}
+              searchFieldRef={searchField}
+            />
+          )
+        }
+        selectionBar={
+          owner && (
+            <SelectionBar
+              count={selectedIds.size}
+              allSelected={allSelected}
+              selectedIds={selectedIdsArray}
+              favoriteVideoIds={favoriteSelection.videoIds}
+              favoriteGroupIds={favoriteSelection.groupIds}
+              selectingAll={selectingAll}
+              onSelectAll={selectAll}
+              onClear={clearSelection}
+              onTagRemoved={onTagRemoved}
+              onBundled={onBundled}
+            />
+          )
+        }
+      >
+        {body}
+        {loadingMore && <LoadMoreRow status="loading" label={t.list.loading} />}
+        {error !== null && items.length > 0 && (
+          <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
+        )}
+        <div ref={sentinel} aria-hidden="true" className="h-px" />
+      </ListPage>
+    </GroupChangedContext>
   );
 }

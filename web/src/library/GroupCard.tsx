@@ -8,6 +8,7 @@ import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
+import AddToGroupButton from "../groups/AddToGroupButton";
 import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { Checkbox } from "../ui/shadcn/checkbox";
@@ -137,6 +138,26 @@ function GroupAddToPlaylist({
 }
 
 /**
+ * GroupAddToGroup はグループのカード・行の「Add to group」である（所有者だけ。
+ * specs/048-groups/ui-design.md「Group card and row」）。グループの id を送る。
+ */
+function GroupAddToGroup({
+  group,
+  variant,
+}: {
+  group: LibraryGroup;
+  variant: "card" | "row";
+}) {
+  return (
+    <AddToGroupButton
+      variant={variant}
+      label={t.library.group.addToGroup(group.name)}
+      groupIds={[group.id]}
+    />
+  );
+}
+
+/**
  * GroupCard はライブラリの格子でグループを1枚で出すカードである。動画のカード
  * （VideoCard）と同じ箱・同じ大きさで、サムネイルの枠にはフォルダ画面のフォルダカードと
  * 同じフォルダの絵柄（FolderArt）を描き、右下の面に本数と合計の長さを重ねる。
@@ -244,6 +265,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
         // （ui-design.md「Placement」）。
         <VideoThumbnailMark className="z-30">
+          <GroupAddToGroup group={group} variant="card" />
           <GroupAddToPlaylist group={group} variant="card" />
           <GroupFavorite group={group} variant="card" />
         </VideoThumbnailMark>
@@ -336,6 +358,11 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
           <GroupAddToPlaylist group={group} variant="row" />
+        </TableCell>
+      )}
+      {owner && (
+        <TableCell className="hidden w-8 px-0 sm:table-cell">
+          <GroupAddToGroup group={group} variant="row" />
         </TableCell>
       )}
       <TableCell className="hidden w-16 pr-4 text-right text-xs text-muted-foreground tabular-nums sm:table-cell">

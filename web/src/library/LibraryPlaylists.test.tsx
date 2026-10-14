@@ -229,7 +229,8 @@ describe("ライブラリからプレイリストに足す（specs/044-playlists
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
     expect(names.indexOf("Add to playlist")).toBe(names.indexOf("Favorite") + 1);
-    expect(names.indexOf("Visibility")).toBe(names.indexOf("Add to playlist") + 1);
+    // 間に「New group」「Add to group」（specs/048-groups/ui-design.md「Selection bar」）。
+    expect(names.indexOf("Visibility")).toBe(names.indexOf("Add to playlist") + 3);
 
     await user.click(within(bar).getByRole("button", { name: "Add to playlist" }));
     await choose(user);

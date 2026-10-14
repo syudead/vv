@@ -57,6 +57,7 @@ import { Grid } from "../videoList/Grid";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard from "../videoList/VideoCard";
+import { GroupChangedContext } from "./groupChanges";
 import { type GroupItemEditing, GroupItemList } from "./GroupItemList";
 import { reconcileGroupSelection, selectAllInGroup, selectedItemIds } from "./groupItems";
 import GroupMenu from "./GroupMenu";
@@ -302,117 +303,129 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     [focus, update],
   );
 
+  // 足した先がこのグループのときだけ、項目が末尾に増えるので読み直す。新しく作ったグループは
+  // いちばん上のグループで、このグループの項目は変わらない（ui-design.md「Add to group」の
+  // Result、「New group」）。
+  const groupChanged = useCallback(
+    (targetId: number | null) => {
+      if (targetId !== null && targetId === id) refresh();
+    },
+    [id, refresh],
+  );
+
   return (
-    <ListPage
-      header={
-        <GroupHeader
-          state={state}
-          trail={trail}
-          id={id}
-          listUrl={listUrl}
-          menu={
-            owner &&
-            data !== null && (
-              <GroupMenu
-                group={data.group}
-                trail={data.trail}
-                moreRef={edits.moreRef}
-                onRenamed={renamed}
-                onGone={markGone}
-              />
-            )
-          }
-          titleRef={edits.titleRef}
-        />
-      }
-      toolbar={
-        <TopBarPortal>
-          <Toolbar
-            placement="topBar"
-            view={viewControls(view, changeView, zoom, changeZoom)}
-            viewLabel={t.library.view.label}
-          />
-        </TopBarPortal>
-      }
-      selectionBar={
-        owner &&
-        data !== null && (
-          <SelectionBar
-            count={selection.selection.ids.size}
-            allSelected={selection.allSelected}
-            selectedIds={selectedIds}
-            favoriteVideoIds={favorites.videoIds}
-            favoriteGroupIds={favorites.groupIds}
-            selectingAll={false}
-            onSelectAll={selection.selectAll}
-            onClear={selection.clear}
-            onTagRemoved={refresh}
-            onBundled={afterBulk}
-            removeFromGroup={{
-              count: removable.length,
-              pending: edits.removingSelected,
-              onRemove: removeChosen,
-            }}
-          />
-        )
-      }
-    >
-      {state.kind === "loading" && (
-        <LoadingState
-          label={t.list.loading}
-          layout={view === "grid" ? "grid" : "table"}
-          size={zoom}
-          count={view === "grid" ? skeletonCount : 6}
-        />
-      )}
-      {state.kind === "failed" && (
-        <ErrorState
-          title={t.groups.detail.loadFailed}
-          retryLabel={t.common.retry}
-          onRetry={reload}
-        />
-      )}
-      {state.kind === "gone" && <GoneState />}
-      {data !== null && data.items.length === 0 && data.nextCursor === undefined && (
-        <EmptyGroup />
-      )}
-      {data !== null && id !== null && data.items.length > 0 && (
-        <div ref={listRef}>
-          <GroupItems
+    <GroupChangedContext value={groupChanged}>
+      <ListPage
+        header={
+          <GroupHeader
+            state={state}
+            trail={trail}
             id={id}
-            data={data}
-            view={view}
-            zoom={zoom}
             listUrl={listUrl}
-            owner={owner}
-            selection={selection}
-            selectionMode={selectionMode}
-            preview={preview.cardProps}
-            onPressTag={pressTag}
-            editing={
-              owner
-                ? {
-                    removing: edits.removing,
-                    onMove: edits.move,
-                    onRemove: edits.removeOne,
-                    removeRef: edits.removeRef,
-                  }
-                : undefined
+            menu={
+              owner &&
+              data !== null && (
+                <GroupMenu
+                  group={data.group}
+                  trail={data.trail}
+                  moreRef={edits.moreRef}
+                  onRenamed={renamed}
+                  onGone={markGone}
+                />
+              )
             }
+            titleRef={edits.titleRef}
           />
-        </div>
-      )}
-      {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}
-      {more === "failed" && (
-        <LoadMoreRow
-          status="failed"
-          title={t.player.related.moreFailed}
-          retryLabel={t.common.retry}
-          onRetry={loadMore}
-        />
-      )}
-      <div ref={sentinel} aria-hidden="true" className="h-px" />
-    </ListPage>
+        }
+        toolbar={
+          <TopBarPortal>
+            <Toolbar
+              placement="topBar"
+              view={viewControls(view, changeView, zoom, changeZoom)}
+              viewLabel={t.library.view.label}
+            />
+          </TopBarPortal>
+        }
+        selectionBar={
+          owner &&
+          data !== null && (
+            <SelectionBar
+              count={selection.selection.ids.size}
+              allSelected={selection.allSelected}
+              selectedIds={selectedIds}
+              favoriteVideoIds={favorites.videoIds}
+              favoriteGroupIds={favorites.groupIds}
+              selectingAll={false}
+              onSelectAll={selection.selectAll}
+              onClear={selection.clear}
+              onTagRemoved={refresh}
+              onBundled={afterBulk}
+              removeFromGroup={{
+                count: removable.length,
+                pending: edits.removingSelected,
+                onRemove: removeChosen,
+              }}
+            />
+          )
+        }
+      >
+        {state.kind === "loading" && (
+          <LoadingState
+            label={t.list.loading}
+            layout={view === "grid" ? "grid" : "table"}
+            size={zoom}
+            count={view === "grid" ? skeletonCount : 6}
+          />
+        )}
+        {state.kind === "failed" && (
+          <ErrorState
+            title={t.groups.detail.loadFailed}
+            retryLabel={t.common.retry}
+            onRetry={reload}
+          />
+        )}
+        {state.kind === "gone" && <GoneState />}
+        {data !== null && data.items.length === 0 && data.nextCursor === undefined && (
+          <EmptyGroup />
+        )}
+        {data !== null && id !== null && data.items.length > 0 && (
+          <div ref={listRef}>
+            <GroupItems
+              id={id}
+              data={data}
+              view={view}
+              zoom={zoom}
+              listUrl={listUrl}
+              owner={owner}
+              selection={selection}
+              selectionMode={selectionMode}
+              preview={preview.cardProps}
+              onPressTag={pressTag}
+              editing={
+                owner
+                  ? {
+                      removing: edits.removing,
+                      onMove: edits.move,
+                      onRemove: edits.removeOne,
+                      removeRef: edits.removeRef,
+                    }
+                  : undefined
+              }
+            />
+          </div>
+        )}
+        {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}
+        {more === "failed" && (
+          <LoadMoreRow
+            status="failed"
+            title={t.player.related.moreFailed}
+            retryLabel={t.common.retry}
+            onRetry={loadMore}
+          />
+        )}
+        <div ref={sentinel} aria-hidden="true" className="h-px" />
+      </ListPage>
+    </GroupChangedContext>
   );
 }
 

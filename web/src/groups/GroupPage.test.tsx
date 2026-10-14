@@ -876,4 +876,53 @@ describe("GroupPage", () => {
     await waitFor(() => expect(document.querySelectorAll("article")).toHaveLength(1));
     expectCatalogTextOnly(document.body, ["Season", "Extras", "Bonus", "1:00"]);
   });
+
+  it("「Add to group」はこのグループへ足したときだけ読み直し、カードのグループ自身はピッカーに出さない（ui-design.md「Add to group」）", async () => {
+    seed();
+    const base = globalThis.fetch;
+    const adds: { path: string; body: unknown }[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>((input, init) => {
+        const url = new URL(String(input), "http://localhost");
+        if (url.pathname === "/api/groups" && (init?.method ?? "GET") === "GET") {
+          return Promise.resolve(
+            json({
+              groups: [server.groups.get(5)?.group, server.groups.get(1)?.group],
+            }),
+          );
+        }
+        if (init?.method === "POST") {
+          adds.push({ path: url.pathname, body: JSON.parse(String(init.body)) });
+          return Promise.resolve(json(server.groups.get(1)?.group));
+        }
+        return base(input, init);
+      }),
+    );
+    const user = userEvent.setup();
+    renderPage("/groups/1");
+    await screen.findByRole("heading", { level: 1, name: "Season" });
+
+    await user.click(
+      screen.getByRole("button", { name: 'Add group "Extras" to a group' }),
+    );
+    const list = await screen.findByRole("listbox", { name: "Groups" });
+    expect(within(list).queryByRole("option", { name: "Extras" })).toBeNull();
+    await user.keyboard("{Escape}");
+
+    // 別のグループへ足しても、このグループの項目は変わらないので読み直さない。
+    await user.click(screen.getByRole("button", { name: 'Add "Episode 1" to a group' }));
+    await user.click(await screen.findByRole("option", { name: "Extras" }));
+    expect(await screen.findByText('Added to "Extras"')).toBeDefined();
+    expect(server.reads.get(1)).toBe(1);
+
+    // このグループへ足すと、末尾に増えるので読み直す。
+    await user.click(screen.getByRole("button", { name: 'Add "Episode 2" to a group' }));
+    await user.click(await screen.findByRole("option", { name: "Season" }));
+    await waitFor(() => expect(server.reads.get(1)).toBe(2));
+    expect(adds).toEqual([
+      { path: "/api/groups/5/items", body: { videoIds: [10], groupIds: [] } },
+      { path: "/api/groups/1/items", body: { videoIds: [11], groupIds: [] } },
+    ]);
+  });
 });
