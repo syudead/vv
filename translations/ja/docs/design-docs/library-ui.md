@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: d3483b38e568925f2f1a9cc856b8d07650f776873e3ca24252c55caee7c53fc1
+sourceHash: 15017b677b2937fcde6d3acec4774e8d72bdc328fc2007bf83a4904efb676ba0
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -221,7 +221,7 @@ flowchart LR
   kind -->|グループ| refetch[グループを取得し直す]
 ```
 
-グループは `GET /api/folders/{rootId}/group` で取得し直す。
+グループは `GET /api/groups/{id}` で取得し直す。
 
 ハートの左、同じ角に、オフのハートとちょうど同じときに表示される所有者の `Add to playlist` コントロールがあり、プレイリストのピッカーを開く。状態を持たないので、ハートが角に最も近いままになる（[`AddToPlaylistButton.tsx`](../../web/src/playlists/AddToPlaylistButton.tsx)、[044 UI 設計、Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist)）。
 
