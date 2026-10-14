@@ -192,9 +192,10 @@ type VideoCatalog interface {
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
 	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error)
-	// VideoGroup は動画が属するグループを、見る人に見せてよいメンバーだけで返す。
-	// メンバーの詳細は window の範囲だけを読む。見る人に見せるグループが無ければ false。
-	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, window domain.GroupWindow) (domain.VideoGroup, bool, error)
+	// VideoGroup は動画の文脈のグループ（contextID は動画を開いたグループ、無ければ 0）を、
+	// 見る人に見せてよい動画の再生順で返す。詳細は window の範囲だけを読む。動画がどの
+	// グループにも無ければ false。
+	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, contextID int64, window domain.GroupWindow) (domain.VideoGroup, bool, error)
 	// RetryProbe は読み取りに失敗した動画を読み取り直す。失敗していなければ
 	// domain.ErrProbeNotFailed を返す。
 	RetryProbe(ctx context.Context, video domain.Video) error

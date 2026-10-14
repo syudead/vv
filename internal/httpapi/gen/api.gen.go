@@ -2171,22 +2171,17 @@ type RejectedTagNameList struct {
 	Total int `json:"total"`
 }
 
-// RelatedGroup 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
-// メンバーが1本だけなら省く（specs/017-folder-groups/contracts/folder-groups-api.md §3）
+// RelatedGroup 基準の動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+// メンバーはそのグループの再生順の動画で、ゲストの応答では公開の動画だけで作る
 type RelatedGroup struct {
-	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
-	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
-	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
-	// グループのフォルダそのものを指す
-	Folder VideoFolder `json:"folder"`
+	// Id グループの識別子
+	Id int64 `json:"id"`
 
 	// Items 基準の動画を中ほどに置いた、グループの中の並びで連続するメンバーの窓（基準の動画を
 	// 含む）。グループの端では窓を内側へ寄せる。窓の外は `listVideoGroupMembers` で読む
 	Items []Video `json:"items"`
 
-	// Name フォルダ名
+	// Name グループの名前
 	Name string `json:"name"`
 
 	// Offset items の先頭のメンバーの、グループの中の並びの位置（0 始まり）
@@ -2198,8 +2193,8 @@ type RelatedGroup struct {
 
 // RelatedVideos defines model for RelatedVideos.
 type RelatedVideos struct {
-	// Group 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
-	// メンバーが1本だけなら省く（specs/017-folder-groups/contracts/folder-groups-api.md §3）
+	// Group 基準の動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+	// メンバーはそのグループの再生順の動画で、ゲストの応答では公開の動画だけで作る
 	Group *RelatedGroup `json:"group,omitempty"`
 
 	// Items 関連動画の近さの順の 1 ページ。基準の動画がグループのメンバーなら、同じグループの
@@ -2291,7 +2286,7 @@ type ScanActivity struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder（自動グループ）・Video.group.folder（自動グループ、GET /api/videos/{id}）では
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
@@ -2317,7 +2312,7 @@ type ScanIssue struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder（自動グループ）・Video.group.folder（自動グループ、GET /api/videos/{id}）では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
@@ -2767,14 +2762,14 @@ type Video struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder（自動グループ）・Video.group.folder（自動グループ、GET /api/videos/{id}）では
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
-	// Group 動画が属するグループ。GET /api/videos/{id} の応答にだけ、メンバーのときだけ入る
-	// （location と同じ扱いで、一覧の項目には入らない）。ゲストの応答では公開のメンバー
-	// だけで数え、公開のメンバーが1本だけなら省く
-	// （specs/017-folder-groups/contracts/folder-groups-api.md §3）
+	// Group 動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+	// GET /api/videos/{id} の応答にだけ、動画がグループにあるときだけ入る（location と同じ扱いで、
+	// 一覧の項目には入らない）。位置と本数はそのグループの再生順（子グループは深さ優先、同じ動画は
+	// 最初の 1 回）で数え、ゲストの応答では公開の動画だけで数える
 	Group *VideoGroupRef `json:"group,omitempty"`
 
 	// Height 表示される向きの高さ（回転の印を反映済み）
@@ -2907,7 +2902,7 @@ type VideoEncoderChoice string
 // GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 // 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 // 今の処理のファイルのフォルダを指す。
-// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+// LibraryGroup.folder（自動グループ）・Video.group.folder（自動グループ、GET /api/videos/{id}）では
 // グループのフォルダそのものを指す
 type VideoFolder struct {
 	// Path 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字
@@ -2921,26 +2916,25 @@ type VideoFolder struct {
 	RootName *string `json:"rootName,omitempty"`
 }
 
-// VideoGroupRef 動画が属するグループ。GET /api/videos/{id} の応答にだけ、メンバーのときだけ入る
-// （location と同じ扱いで、一覧の項目には入らない）。ゲストの応答では公開のメンバー
-// だけで数え、公開のメンバーが1本だけなら省く
-// （specs/017-folder-groups/contracts/folder-groups-api.md §3）
+// VideoGroupRef 動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+// GET /api/videos/{id} の応答にだけ、動画がグループにあるときだけ入る（location と同じ扱いで、
+// 一覧の項目には入らない）。位置と本数はそのグループの再生順（子グループは深さ優先、同じ動画は
+// 最初の 1 回）で数え、ゲストの応答では公開の動画だけで数える
 type VideoGroupRef struct {
-	// Count グループのメンバーの本数
+	// Count グループの再生順の動画の本数
 	Count int `json:"count"`
 
-	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
-	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
-	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
-	// グループのフォルダそのものを指す
-	Folder VideoFolder `json:"folder"`
+	// Folder 自動グループのフォルダ。LibraryGroup の folder と同じく、フォルダから自動でできた
+	// グループで、そのフォルダが登録フォルダの下にあるときだけ入る
+	Folder *VideoFolder `json:"folder,omitempty"`
 
-	// Name フォルダ名
+	// Id グループの識別子
+	Id int64 `json:"id"`
+
+	// Name グループの名前
 	Name string `json:"name"`
 
-	// Position グループの中の並びで何本目か（1 始まり）
+	// Position グループの再生順で何本目か（1 始まり）
 	Position int `json:"position"`
 }
 
@@ -3163,6 +3157,9 @@ type TagId = int64
 
 // ThumbnailEditId defines model for ThumbnailEditId.
 type ThumbnailEditId = string
+
+// VideoGroupContext defines model for VideoGroupContext.
+type VideoGroupContext = int64
 
 // VideoId defines model for VideoId.
 type VideoId = int64
@@ -3463,8 +3460,23 @@ type ListVideosParams struct {
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
 }
 
+// GetVideoParams defines parameters for GetVideo.
+type GetVideoParams struct {
+	// Group 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
+	// このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
+	// 持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
+	// 答える（specs/048-groups/research.md R-9）
+	Group *VideoGroupContext `form:"group,omitempty" json:"group,omitempty"`
+}
+
 // ListVideoGroupMembersParams defines parameters for ListVideoGroupMembers.
 type ListVideoGroupMembersParams struct {
+	// Group 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
+	// このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
+	// 持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
+	// 答える（specs/048-groups/research.md R-9）
+	Group *VideoGroupContext `form:"group,omitempty" json:"group,omitempty"`
+
 	// Offset 返す最初のメンバーの、グループの中の並びの位置（0 始まり）
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
 
@@ -3480,6 +3492,12 @@ type GetVideoPreviewParams struct {
 
 // GetRelatedVideosParams defines parameters for GetRelatedVideos.
 type GetRelatedVideosParams struct {
+	// Group 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
+	// このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
+	// 持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
+	// 答える（specs/048-groups/research.md R-9）
+	Group *VideoGroupContext `form:"group,omitempty" json:"group,omitempty"`
+
 	// Cursor 前の応答の `nextCursor`。省くと先頭から返す
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
@@ -3963,7 +3981,7 @@ type ServerInterface interface {
 	ListVideos(w http.ResponseWriter, r *http.Request, params ListVideosParams)
 	// GetVideo 動画1件の詳細を返す
 	// (GET /api/videos/{id})
-	GetVideo(w http.ResponseWriter, r *http.Request, id VideoId)
+	GetVideo(w http.ResponseWriter, r *http.Request, id VideoId, params GetVideoParams)
 	// AutoTagVideo 動画 1 本を自動タグ付けの判定に回す
 	// (POST /api/videos/{id}/auto-tag)
 	AutoTagVideo(w http.ResponseWriter, r *http.Request, id VideoId)
@@ -6654,8 +6672,24 @@ func (siw *ServerInterfaceWrapper) GetVideo(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetVideoParams
+
+	// ------------- Optional query parameter "group" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "group", r.URL.Query(), &params.Group, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "group"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetVideo(w, r, id)
+		siw.Handler.GetVideo(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -6734,6 +6768,19 @@ func (siw *ServerInterfaceWrapper) ListVideoGroupMembers(w http.ResponseWriter, 
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListVideoGroupMembersParams
+
+	// ------------- Optional query parameter "group" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "group", r.URL.Query(), &params.Group, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "group"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		}
+		return
+	}
 
 	// ------------- Optional query parameter "offset" -------------
 
@@ -6935,6 +6982,19 @@ func (siw *ServerInterfaceWrapper) GetRelatedVideos(w http.ResponseWriter, r *ht
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetRelatedVideosParams
+
+	// ------------- Optional query parameter "group" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "group", r.URL.Query(), &params.Group, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "group"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		}
+		return
+	}
 
 	// ------------- Optional query parameter "cursor" -------------
 

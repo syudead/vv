@@ -213,7 +213,6 @@ describe("RelatedVideos", () => {
   });
 
   describe("グループのメンバーの並び", () => {
-    const folder = { rootId: 1, path: "series" };
     const watched = {
       positionMs: 65_000,
       completed: true,
@@ -242,7 +241,7 @@ describe("RelatedVideos", () => {
         related: {
           items,
           group: {
-            folder,
+            id: 1,
             name: "series",
             items: members,
             offset: 0,
@@ -328,7 +327,7 @@ describe("RelatedVideos", () => {
           id: 299,
           related: {
             items: [],
-            group: { folder, name: "big", items: many, offset: 0, total: many.length },
+            group: { id: 1, name: "big", items: many, offset: 0, total: many.length },
           },
         });
         expect(screen.getAllByRole("listitem")).toHaveLength(300);
@@ -625,7 +624,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
       related: {
         items: [scrubItem(2)],
         group: {
-          folder: { rootId: 1, path: "series" },
+          id: 1,
           name: "series",
           items: [scrubItem(11), scrubItem(12), scrubItem(13)],
           offset: 0,
@@ -640,7 +639,6 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
   });
 
   describe("大きなグループの窓（issue 674）", () => {
-    const folder = { rootId: 1, path: "big" };
     const member = (position: number) =>
       item(position, { title: `ep ${String(position)}` });
     // 6,000 本のうち、今の動画 3000 を中ほどに置いた 2950〜3049 本目の窓。
@@ -681,7 +679,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
         id: 3000,
         related: {
           items: [],
-          group: { folder, name: "big", items: window, offset: 2949, total: 6000 },
+          group: { id: 1, name: "big", items: window, offset: 2949, total: 6000 },
         },
       });
     }
@@ -909,7 +907,7 @@ describe("関連動画の続き（issue 931）", () => {
           items: [item(2)],
           nextCursor: "c1",
           group: {
-            folder: { rootId: 1, path: "show" },
+            id: 1,
             name: "show",
             items: [item(10), item(11)],
             offset: 0,
@@ -943,7 +941,7 @@ describe("関連動画の続き（issue 931）", () => {
           items: [],
           nextCursor: "c1",
           group: {
-            folder: { rootId: 1, path: "show" },
+            id: 1,
             name: "show",
             items: [item(10), item(11)],
             offset: 0,

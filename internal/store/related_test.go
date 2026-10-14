@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"reflect"
+	"runtime"
 	"slices"
 	"testing"
 
@@ -109,5 +110,46 @@ func TestVideosByIDsKeepsOrder(t *testing.T) {
 	empty, err := db.Library().VideosByIDs(context.Background(), domain.AudienceOwner, nil)
 	if err != nil || len(empty) != 0 {
 		t.Fatalf("empty = %v, %v", empty, err)
+	}
+}
+
+// 登録フォルダ `/` の直下の自動グループは origin_folder が空文字になる。それを手で作ったグループ
+// （origin_folder が NULL）と取り違えず、動画のグループにフォルダ（登録フォルダそのもの）を載せる。
+func TestVideoGroupLocatesRootFolderGroup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("登録フォルダ `/` は Unix だけのもの")
+	}
+	db, ids := folderFixture(t,
+		sampleFile("/a.mp4", "a", "key-a", 1, 0),
+		sampleFile("/b.mp4", "b", "key-b", 1, 0),
+	)
+	ctx := context.Background()
+	result, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values ('/', 1, 0, 0)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rootID, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	auto := insertGroup(t, db, "root", "key-a", "key-b")
+	if _, err := db.sql.Exec(`update groups set origin_folder = ? where id = ?`, domain.FolderKey("/"), auto); err != nil {
+		t.Fatal(err)
+	}
+	group, found, err := db.Library().VideoGroup(ctx, domain.AudienceOwner, ids["/a.mp4"], 0, domain.GroupWindow{})
+	if err != nil || !found {
+		t.Fatalf("VideoGroup = %v, %v", found, err)
+	}
+	if group.ID != auto || group.Folder == nil || *group.Folder != (domain.VideoFolder{RootID: rootID}) {
+		t.Errorf("group = id %d, folder %+v; want id %d, folder {RootID:%d Path:}", group.ID, group.Folder, auto, rootID)
+	}
+
+	// 手で作ったグループにはフォルダを載せない。
+	if _, err := db.sql.Exec(`update groups set origin_folder = null where id = ?`, auto); err != nil {
+		t.Fatal(err)
+	}
+	group, found, err = db.Library().VideoGroup(ctx, domain.AudienceOwner, ids["/a.mp4"], 0, domain.GroupWindow{})
+	if err != nil || !found || group.Folder != nil {
+		t.Errorf("手で作ったグループ = found %v, folder %+v, err %v; want found, no folder", found, group.Folder, err)
 	}
 }

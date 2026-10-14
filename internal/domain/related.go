@@ -18,9 +18,12 @@ type RelatedVideos struct {
 }
 
 // RelatedPage は関連動画のどのページを読むかである。After が nil なら最初のページ。
+// GroupID は動画を開いたグループの id（無ければ 0）で、最初のページのグループと前後を
+// 文脈のグループで答える（specs/048-groups/research.md R-9）。
 type RelatedPage struct {
-	After *RelatedCursor
-	Limit int
+	After   *RelatedCursor
+	Limit   int
+	GroupID int64
 }
 
 // GroupMemberWindow は、関連動画の応答に載せるグループのメンバーの本数の上限である。
@@ -56,14 +59,18 @@ func (w GroupWindow) Start(total, position int) int {
 	return max(0, min(start, total))
 }
 
-// VideoGroup は動画1本が属するグループを、見る人に見せてよいメンバーだけで表したもの
-// である（specs/017-folder-groups/contracts/folder-groups-api.md §3・data-model.md §7）。
+// VideoGroup は動画1本の文脈のグループ（specs/048-groups/research.md R-9）を、見る人に
+// 見せてよい動画の再生順（GroupPlayOrder）で表したものである。この型の「メンバー」は
+// その再生順の動画を指す。
 type VideoGroup struct {
-	// Folder はグループのフォルダそのもの（LocateFolder）。
-	Folder VideoFolder
-	// Name はフォルダ名。
+	// ID はグループの id。
+	ID int64
+	// Folder は自動グループのフォルダ（LocateFolder）。手で作ったグループと、フォルダが
+	// 登録フォルダの下に無い自動グループでは nil。
+	Folder *VideoFolder
+	// Name はグループの名前。
 	Name string
-	// MemberIDs は見せてよいメンバーの id をグループの中の並びで持つ。基準の動画を含む。
+	// MemberIDs は見せてよい動画の id を再生順で持つ。基準の動画を含む。
 	MemberIDs []int64
 	// Offset は Members の先頭が MemberIDs の何番目（0 始まり）かである。
 	Offset int
