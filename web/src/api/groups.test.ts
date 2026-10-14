@@ -138,6 +138,23 @@ describe("groups API", () => {
     ]);
   });
 
+  it("renameGroup は undoToken を渡したときだけ本文に入れる", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ ...group, name: "Trip" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await renameGroup(7, "Trip", { undoToken: "t1" });
+
+    expect(sent(fetchMock)).toEqual([
+      {
+        url: "/api/groups/7",
+        method: "PATCH",
+        body: { name: "Trip", undoToken: "t1" },
+      },
+    ]);
+  });
+
   it("dissolveGroup・moveGroupItem は失敗を RequestFailed で返す", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

@@ -2059,19 +2059,33 @@ export const en = {
     drop: {
       putIn: "Put in",
       refused: "Can't drop here",
+      groupOrBundle: "Group or bundle…",
+    },
+    // 落とした先に開くメニュー。名前は落とした先のカードの題名か名前。
+    menu: {
+      label: (name: string) => `Dropped on "${name}"`,
+      makeGroup: "Make a group",
+    },
+    // 「Make a group」の後の、新しいグループの名前の欄。hint は仮の名前を埋め込む。
+    name: {
+      label: "Group name",
+      hint: (name: string) => `Enter keeps the name, Esc keeps "${name}"`,
     },
     done: {
       reordered: (name: string) => `Reordered "${name}"`,
+      grouped: (name: string) => `Made the group "${name}"`,
       moved: (count: number, name: string) => `Moved ${items(count)} to "${name}"`,
       movedOut: (count: number, name: string) => `Moved ${items(count)} out of "${name}"`,
     },
     failed: {
       reorder: (reason: string) => `Couldn't reorder: ${reason}`,
+      group: (reason: string) => `Couldn't make the group: ${reason}`,
       move: (reason: string) => `Couldn't move: ${reason}`,
     },
-    // ドラッグの層の読み上げの案内（dnd-kit の screenReaderInstructions）。
+    // ドラッグの層の読み上げの案内（dnd-kit の screenReaderInstructions、描かない）。カードは
+    // キーボードでは持ち上がらず、キーボードでは 048 のメニューを使う（research.md R-7）。
     instructions:
-      "Press and move a card to pick it up, then drop it on a group to put it in.",
+      "Press and move a card to pick it up, then drop it on another card or a group to organize. With the keyboard, use the card's buttons instead.",
     undo: "Undo",
     undone: "Undone",
     undoFailed: {

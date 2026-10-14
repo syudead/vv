@@ -56,12 +56,18 @@ import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { crumbKey, CrumbDropTarget, DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
-import { useUndoToast } from "../videoList/undoToast";
+import { type UndoToast, useUndoToast } from "../videoList/undoToast";
+import { useVideoDrops } from "../videoList/useVideoDrops";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard from "../videoList/VideoCard";
 import { GroupChangedContext } from "./groupChanges";
-import { GroupDragLayer, itemKey, type MoveDestination } from "./GroupDrag";
+import {
+  GroupDragLayer,
+  type GroupDropOnto,
+  itemKey,
+  type MoveDestination,
+} from "./GroupDrag";
 import { type GroupItemEditing, GroupItemList } from "./GroupItemList";
 import { reconcileGroupSelection, selectAllInGroup, selectedItemIds } from "./groupItems";
 import GroupMenu from "./GroupMenu";
@@ -83,8 +89,23 @@ const skeletonCount = 12;
 /** noTrail は読めていない間の道筋（ライブラリへ移る）。描画ごとに作らない。 */
 const noTrail: readonly GroupRef[] = [];
 
-/** noItems は読めていない間の項目である。描画ごとに作らない。 */
+/** noItems は読めていない間の項目。描画ごとに作らない。 */
 const noItems: readonly GroupItem[] = [];
+
+/** itemVideo は項目が動画ならその動画である（ドラッグの落とし方を決める）。 */
+function itemVideo(item: GroupItem): Video | undefined {
+  return item.kind === "video" ? item.video : undefined;
+}
+
+/** itemGroup は項目が子グループならそのグループである。 */
+function itemGroup(item: GroupItem): LibraryGroup | undefined {
+  return item.kind === "group" ? item.group : undefined;
+}
+
+/** newGroupItem は「Make a group」の新しいグループを、仮の項目 `itemId` として置く。 */
+function newGroupItem(group: LibraryGroup, itemId: number): GroupItem {
+  return { id: itemId, kind: "group", group };
+}
 
 /**
  * GroupPage はグループ 1 つを開いた画面（`/groups/{id}?trail=`）である
@@ -104,6 +125,52 @@ export default function GroupPage() {
   return (
     <GroupScreen key={`${params.id ?? ""}?${trail.join(",")}`} id={id} trail={trail} />
   );
+}
+
+/**
+ * useGroupPageDrops は動画を動画に落としたときの「Make a group」と「Bundle as versions」である。
+ * 新しいグループは落とした先の項目の位置を取る（specs/050-drag-organize/ui-design.md
+ * 「Group page」、R-6）。`shownData` はサーバーが答える前の結果を重ねた中身である。
+ */
+function useGroupPageDrops({
+  data,
+  id,
+  refresh,
+  clear,
+  undo,
+}: {
+  data: GroupPageData | null;
+  id: number | null;
+  refresh: () => void;
+  clear: () => void;
+  undo: UndoToast;
+}) {
+  const drops = useVideoDrops({
+    items: data?.items ?? noItems,
+    keyOf: itemKey,
+    videoOf: itemVideo,
+    groupOf: itemGroup,
+    from: id,
+    groupItem: newGroupItem,
+    reread: refresh,
+    onAccepted: clear,
+    undo,
+  });
+  const shownItems = drops.shown;
+  const shownData = useMemo(
+    () => (data === null ? null : { ...data, items: shownItems as GroupItem[] }),
+    [data, shownItems],
+  );
+  const dropOnto = useMemo(
+    (): GroupDropOnto => ({
+      onto: drops.onto,
+      onDrop: drops.hold,
+      held: drops.held,
+      attached: drops.attached,
+    }),
+    [drops.attached, drops.held, drops.hold, drops.onto],
+  );
+  return { shownData, dropOnto, nameFieldFor: drops.nameFieldFor };
 }
 
 /** useDocumentTitle は名前が分かっている間だけ、窓の題をその名前にする。 */
@@ -309,6 +376,15 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   );
 
   const { clear } = selection;
+
+  const { shownData, dropOnto, nameFieldFor } = useGroupPageDrops({
+    data,
+    id,
+    refresh,
+    clear,
+    undo,
+  });
+
   const afterBulk = useCallback(() => {
     clear();
     refresh();
@@ -432,11 +508,11 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
         />
       )}
       {state.kind === "gone" && <GoneState />}
-      {data !== null && id !== null && data.items.length > 0 && (
+      {shownData !== null && id !== null && shownData.items.length > 0 && (
         <div ref={listRef}>
           <GroupItems
             id={id}
-            data={data}
+            data={shownData}
             view={view}
             zoom={zoom}
             listUrl={listUrl}
@@ -455,6 +531,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
                 : undefined
             }
             draggable={owner}
+            nameFieldFor={nameFieldFor}
           />
         </div>
       )}
@@ -477,7 +554,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     <GroupChangedContext value={groupChanged}>
       {owner ? (
         <GroupDragLayer
-          items={data?.items ?? noItems}
+          items={shownData?.items ?? noItems}
           list={view === "list"}
           trail={data?.trail ?? noTrail}
           name={data?.group.name ?? ""}
@@ -485,6 +562,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
           onReorder={reorderItems}
           onMove={moveItems}
           onLift={resetPreview}
+          dropOnto={dropOnto}
         >
           {page}
         </GroupDragLayer>
@@ -661,6 +739,7 @@ function GroupItems({
   onPressTag,
   editing,
   draggable,
+  nameFieldFor,
 }: {
   id: number;
   data: GroupPageData;
@@ -676,6 +755,8 @@ function GroupItems({
   editing?: GroupItemEditing;
   /** 所有者ならカードを持ち上げられる（GroupDragLayer の中で描く）。ゲストには無い。 */
   draggable: boolean;
+  /** 作ったばかりのグループの名前の欄（useVideoDrops）。所有者だけが渡す。 */
+  nameFieldFor?: (groupId: number) => ReactNode;
 }) {
   const ids = selection.selection.ids;
   const groupSelected = (group: LibraryGroup) =>
@@ -733,6 +814,7 @@ function GroupItems({
           selected: itemSelected(item),
           selectionMode,
           onSelect: owner ? selection.changeItem : undefined,
+          nameField: item.group === undefined ? undefined : nameFieldFor?.(item.group.id),
         })}
       />
     );
@@ -754,6 +836,7 @@ function GroupItems({
                   selectionMode={selectionMode}
                   onSelect={owner ? selection.changeGroup : undefined}
                   tagsRow={groupTags}
+                  nameField={nameFieldFor?.(item.group.id)}
                   {...preview}
                 />,
               )

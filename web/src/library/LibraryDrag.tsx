@@ -1,31 +1,37 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { LibraryGroup, LibraryItem } from "../api/client";
-import { itemKey } from "../api/libraryItems";
+import { groupKey, itemKey, videoKey } from "../api/libraryItems";
 import { moveCards, type OrganizeRef } from "../api/organize";
 import { errorText, t, type UiText } from "../i18n";
 import { useToast } from "../ui/Toast";
-import { VideoThumbnail, VideoThumbnailImage } from "../ui/VideoThumbnail";
 import {
-  CardDragFace,
+  type CardAttachment,
   type CardDrop,
   CardDragLayer,
+  type HeldDrop,
   useCardDrag,
 } from "../videoList/cardDrag";
 import { liftedKeys, type OntoAnswer } from "../videoList/cardDragRules";
-import FolderArt from "../videoList/FolderArt";
+import { useOrderedItemDrag } from "../videoList/OrderedItemFace";
 import { useUndoToast } from "../videoList/undoToast";
 import { VideoRow, type VideoCardProps } from "../videoList/VideoCard";
 import { type GroupCardProps, GroupRow } from "./GroupCard";
 import { favoriteTargets, type LibrarySelection } from "./selection";
 
 // ライブラリのドラッグである（specs/050-drag-organize/ui-design.md「Library」）。所有者の格子と
-// リストを包み、動画だけをグループのカードの上に落とすと、そのグループへ移す。ライブラリは
-// 並べ替えないので、カード全体が「上」になる。
+// リストを包み、動画だけをグループのカードの上に落とすと、そのグループへ移す。動画のカードの
+// 上に落としたときの扱いは画面が決める（`onto`、`onDrop`）。ライブラリは並べ替えないので、
+// カード全体が「上」になる。
 
-/** itemName は項目の名前である（読み上げと写しの題名）。 */
-function itemName(item: LibraryItem): string {
-  return item.kind === "video" ? item.video.title : item.group.name;
+/**
+ * selectedKeys は選択から持ち上げるカードの鍵を返す。「Favorite」と同じ分け方で、選んだ
+ * グループはグループのカード、選んだグループのメンバーでない動画は動画のカードになる
+ * （specs/050-drag-organize/ui-design.md「Lifting」）。
+ */
+export function selectedKeys(selection: LibrarySelection): string[] {
+  const { videoIds, groupIds } = favoriteTargets(selection);
+  return [...groupIds.map(groupKey), ...videoIds.map(videoKey)];
 }
 
 /** refOf は項目を移す操作で指す値である。 */
@@ -33,39 +39,6 @@ function refOf(item: LibraryItem): OrganizeRef {
   return item.kind === "video"
     ? { kind: "video", id: item.video.id }
     : { kind: "group", id: item.group.id };
-}
-
-/**
- * ItemFace は持ち上げた項目の写しの中身である。格子では動画のサムネイルかグループの
- * フォルダの絵柄、リストでは行のサムネイル（グループは最初のメンバーの 1 枚）。
- */
-function ItemFace({ item, list }: { item: LibraryItem; list: boolean }) {
-  if (item.kind === "group" && !list) {
-    return (
-      <CardDragFace
-        title={item.group.name}
-        thumbnail={
-          <VideoThumbnail>
-            <FolderArt previews={item.group.previews} />
-          </VideoThumbnail>
-        }
-      />
-    );
-  }
-  const src =
-    item.kind === "group"
-      ? item.group.previews[0]?.thumbnailUrl
-      : item.video.thumbnailUrl;
-  return (
-    <CardDragFace
-      title={itemName(item)}
-      thumbnail={
-        <VideoThumbnail>
-          {src !== undefined && <VideoThumbnailImage src={src} />}
-        </VideoThumbnail>
-      }
-    />
-  );
 }
 
 /**
@@ -77,71 +50,57 @@ export function LibraryDragLayer({
   items,
   list,
   selection,
+  onto: ontoVideo,
+  onDrop,
   onMove,
   onLift,
+  held,
+  attached,
   children,
 }: {
+  /** 画面に出している項目（画面の順）。 */
   items: readonly LibraryItem[];
   list: boolean;
   selection: LibrarySelection;
+  /** 動画のカードの上に落とせるか（グループのカードはこの層が決める）。 */
+  onto: (target: string, lifted: readonly string[]) => OntoAnswer<UiText>;
+  /** 動画のカードの上に落とした。 */
+  onDrop: (drop: CardDrop) => void;
   /** 項目 `moved`（画面の順）をグループ `to` へ移す。 */
   onMove: (moved: readonly LibraryItem[], to: LibraryGroup) => void;
   onLift: () => void;
+  held: HeldDrop | null;
+  attached: CardAttachment | null;
   children: ReactNode;
 }) {
-  const order = useMemo(() => items.map(itemKey), [items]);
-  const byKey = useMemo(
-    () => new Map(items.map((item) => [itemKey(item), item])),
-    [items],
-  );
-  const selectedKeys = useMemo(() => {
-    const { videoIds, groupIds } = favoriteTargets(selection);
-    const videos = new Set(videoIds);
-    const groups = new Set(groupIds);
-    return items
-      .filter((item) =>
-        item.kind === "video" ? videos.has(item.video.id) : groups.has(item.group.id),
-      )
-      .map(itemKey);
-  }, [items, selection]);
-
+  const { order, byKey, nameOf, preview } = useOrderedItemDrag(items, itemKey, list);
+  const selected = useMemo(() => selectedKeys(selection), [selection]);
   const liftedFor = useCallback(
-    (key: string) => liftedKeys(order, key, selectedKeys),
-    [order, selectedKeys],
-  );
-  const nameOf = useCallback(
-    (key: string) => {
-      const item = byKey.get(key);
-      return item === undefined ? "" : itemName(item);
-    },
-    [byKey],
+    (key: string) => liftedKeys(order, key, selected),
+    [order, selected],
   );
   const onto = useCallback(
     (target: string, lifted: readonly string[]): OntoAnswer<UiText> => {
-      if (byKey.get(target)?.kind !== "group") return null;
+      if (byKey.get(target)?.kind !== "group") return ontoVideo(target, lifted);
       if (!lifted.every((key) => byKey.get(key)?.kind === "video")) return null;
       return { label: t.organize.drop.putIn };
     },
-    [byKey],
-  );
-  const preview = useCallback(
-    (key: string) => {
-      const item = byKey.get(key);
-      return item === undefined ? null : <ItemFace item={item} list={list} />;
-    },
-    [byKey, list],
+    [byKey, ontoVideo],
   );
   const drop = useCallback(
-    ({ lifted, sign }: CardDrop) => {
-      if (sign.kind !== "onto") return;
-      const target = byKey.get(sign.key);
-      if (target?.kind !== "group") return;
+    (drop: CardDrop) => {
+      const { lifted, sign } = drop;
+      const target = sign.kind === "onto" ? byKey.get(sign.key) : undefined;
+      if (target?.kind !== "group") {
+        onDrop(drop);
+        return;
+      }
       onMove(
         lifted.flatMap((key) => byKey.get(key) ?? []),
         target.group,
       );
     },
-    [byKey, onMove],
+    [byKey, onDrop, onMove],
   );
 
   return (
@@ -156,6 +115,8 @@ export function LibraryDragLayer({
       onDrop={drop}
       onLift={onLift}
       instructions={t.organize.instructions}
+      held={held}
+      attached={attached}
     >
       {children}
     </CardDragLayer>
@@ -164,13 +125,13 @@ export function LibraryDragLayer({
 
 /** DraggableVideoRow はライブラリのリスト表示の、持ち上げられる動画の行である。 */
 export function DraggableVideoRow(props: Omit<VideoCardProps, "drag">) {
-  const drag = useCardDrag(itemKey({ kind: "video", video: props.video }));
+  const drag = useCardDrag(videoKey(props.video.id));
   return <VideoRow {...props} drag={drag} />;
 }
 
 /** DraggableGroupRow はライブラリのリスト表示の、持ち上げられるグループの行である。 */
 export function DraggableGroupRow(props: Omit<GroupCardProps, "drag">) {
-  const drag = useCardDrag(itemKey({ kind: "group", group: props.group }));
+  const drag = useCardDrag(groupKey(props.group.id));
   return <GroupRow {...props} drag={drag} />;
 }
 

@@ -20,9 +20,22 @@ export function folderRefKey(folder: FolderRef): string {
  * グループの id で指す。
  */
 export function itemKey(item: LibraryItem): string {
-  return item.kind === "video"
-    ? `video\0${String(item.video.id)}`
-    : `group\0${String(item.group.id)}`;
+  return item.kind === "video" ? videoKey(item.video.id) : groupKey(item.group.id);
+}
+
+/** videoKey は動画 `id` の項目の itemKey である。 */
+export function videoKey(id: number): string {
+  return `video\0${String(id)}`;
+}
+
+/** groupKey はグループ `id` の項目の itemKey である。 */
+export function groupKey(id: number): string {
+  return `group\0${String(id)}`;
+}
+
+/** itemVideo は項目が動画ならその動画、グループなら undefined である。 */
+export function itemVideo(item: LibraryItem): Video | undefined {
+  return item.kind === "video" ? item.video : undefined;
 }
 
 /** itemVideos は項目のうち動画の項目の動画だけを、並びの順に返す。 */

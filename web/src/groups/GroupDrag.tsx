@@ -2,16 +2,16 @@ import { type ReactNode, useCallback, useMemo } from "react";
 
 import type { GroupItem, GroupRef } from "../api/groups";
 import { t, type UiText } from "../i18n";
-import { VideoThumbnail, VideoThumbnailImage } from "../ui/VideoThumbnail";
 import {
-  CardDragFace,
+  type CardAttachment,
   type CardDrop,
   CardDragLayer,
   crumbIndexOf,
+  type HeldDrop,
 } from "../videoList/cardDrag";
 import { liftedKeys, type OntoAnswer, reorderDrop } from "../videoList/cardDragRules";
-import FolderArt from "../videoList/FolderArt";
-import { orderedItemTitle, rowFacts } from "../videoList/ItemRowCells";
+import { orderedItemTitle } from "../videoList/ItemRowCells";
+import { useOrderedItemDrag } from "../videoList/OrderedItemFace";
 import { reorderAnnouncements } from "../videoList/reorder";
 
 /** itemKey は項目のドラッグの鍵である（項目の id）。 */
@@ -19,35 +19,12 @@ export function itemKey(item: GroupItem): string {
   return String(item.id);
 }
 
-/**
- * ItemFace は持ち上げた項目の写しの中身である。格子では動画のサムネイルか子グループの
- * フォルダの絵柄、リストでは行のサムネイル（ui-design.md「Lifting」）。
- */
-function ItemFace({ item, list }: { item: GroupItem; list: boolean }) {
-  const title = orderedItemTitle(item);
-  if (!list && item.kind === "group" && item.group !== undefined) {
-    return (
-      <CardDragFace
-        title={title}
-        thumbnail={
-          <VideoThumbnail>
-            <FolderArt previews={item.group.previews} />
-          </VideoThumbnail>
-        }
-      />
-    );
-  }
-  const { thumbnailUrl } = rowFacts(item);
-  return (
-    <CardDragFace
-      title={title}
-      thumbnail={
-        <VideoThumbnail>
-          {thumbnailUrl !== undefined && <VideoThumbnailImage src={thumbnailUrl} />}
-        </VideoThumbnail>
-      }
-    />
-  );
+/** GroupDropOnto は動画のカードの上に落とす規則と、そこへ落としたときの画面の扱いである。 */
+export interface GroupDropOnto {
+  onto: (target: string, lifted: readonly string[]) => OntoAnswer<UiText>;
+  onDrop: (drop: CardDrop) => void;
+  held: HeldDrop | null;
+  attached: CardAttachment | null;
 }
 
 /** MoveDestination はグループのページから項目を移す先である。 */
@@ -86,6 +63,8 @@ function allVideos(items: readonly (GroupItem | undefined)[]): boolean {
  * - カードか行の間に落とすと、持ち上げた項目を画面の順のまま、その間の前の項目（先頭なら
  *   無し）の後ろへ並べ替える。
  * - 動画だけを子グループのカードの上に落とすと、その子グループへ移す（「Put in」）。
+ * - 動画のカードの上に落とせるか、落としたら何をするかは `dropOnto` が決める
+ *   （「Make a group」「Bundle as versions」のメニュー）。
  * - 道筋の「Library」の段に落とすとライブラリへ出し、祖先の段に落とすとその祖先へ移す。
  *   開いているグループの段と畳んだ「…」は拒否。
  *
@@ -101,6 +80,7 @@ export function GroupDragLayer({
   onReorder,
   onMove,
   onLift,
+  dropOnto,
   children,
 }: {
   items: readonly GroupItem[];
@@ -116,41 +96,36 @@ export function GroupDragLayer({
   /** 項目 `moved`（画面の順）を `to` へ移す。 */
   onMove: (moved: readonly GroupItem[], to: MoveDestination) => void;
   onLift: () => void;
+  dropOnto?: GroupDropOnto;
   children: ReactNode;
 }) {
-  const order = useMemo(() => items.map(itemKey), [items]);
-  const byKey = useMemo(
-    () => new Map(items.map((item) => [itemKey(item), item])),
-    [items],
-  );
+  const {
+    order,
+    byKey,
+    nameOf: itemName,
+    preview,
+  } = useOrderedItemDrag(items, itemKey, list);
 
   const liftedFor = useCallback(
     (key: string) => liftedKeys(order, key, selectedItems.map(String)),
     [order, selectedItems],
   );
   const nameOf = useCallback(
-    (key: string) => {
-      const item = byKey.get(key);
-      if (item === undefined) return crumbName(crumbIndexOf(key), trail, name);
-      return orderedItemTitle(item);
-    },
-    [byKey, name, trail],
+    (key: string) =>
+      byKey.has(key) ? itemName(key) : crumbName(crumbIndexOf(key), trail, name),
+    [byKey, itemName, name, trail],
   );
+  const { onto: ontoVideo } = dropOnto ?? {};
   const onto = useCallback(
     (target: string, lifted: readonly string[]): OntoAnswer<UiText> => {
       const item = byKey.get(target);
-      if (item?.kind !== "group" || item.group === undefined) return null;
+      if (item?.kind !== "group" || item.group === undefined) {
+        return ontoVideo?.(target, lifted) ?? null;
+      }
       if (!allVideos(lifted.map((key) => byKey.get(key)))) return null;
       return { label: t.organize.drop.putIn };
     },
-    [byKey],
-  );
-  const preview = useCallback(
-    (key: string) => {
-      const item = byKey.get(key);
-      return item === undefined ? null : <ItemFace item={item} list={list} />;
-    },
-    [byKey, list],
+    [byKey, ontoVideo],
   );
   const drop = useCallback(
     ({ lifted, sign }: CardDrop) => {
@@ -159,6 +134,8 @@ export function GroupDragLayer({
         const target = byKey.get(sign.key)?.group;
         if (target !== undefined) {
           onMove(moved, { kind: "group", id: target.id, name: target.name });
+        } else {
+          dropOnto?.onDrop({ lifted, sign });
         }
         return;
       }
@@ -175,7 +152,7 @@ export function GroupDragLayer({
         result.after === null ? null : Number(result.after),
       );
     },
-    [byKey, onMove, onReorder, order, trail],
+    [byKey, dropOnto, onMove, onReorder, order, trail],
   );
   const handle = useMemo(
     () =>
@@ -200,6 +177,8 @@ export function GroupDragLayer({
       onLift={onLift}
       handle={handle}
       instructions={t.groups.item.reorderInstructions}
+      held={dropOnto?.held}
+      attached={dropOnto?.attached}
     >
       {children}
     </CardDragLayer>
