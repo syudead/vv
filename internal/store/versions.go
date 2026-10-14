@@ -107,6 +107,9 @@ type bundlePlan struct {
 // 動画があれば domain.ErrNotFound。
 func planBundle(ctx context.Context, tx *sql.Tx, ids []int64, representativeID int64) (bundlePlan, error) {
 	var plan bundlePlan
+	// absorbed は absorbedBundles の集合である。POST /api/video-bundles は 20000 本を受け付けるので、
+	// 並びを走査すると二乗になる。
+	absorbed := map[int64]struct{}{}
 	for _, id := range ids {
 		key, err := bundlableContentKey(ctx, tx, id)
 		if err != nil {
@@ -127,9 +130,10 @@ func planBundle(ctx context.Context, tx *sql.Tx, ids []int64, representativeID i
 			plan.absorbedKeys = append(plan.absorbedKeys, key)
 			continue
 		}
-		if slices.Contains(plan.absorbedBundles, bundle.id) {
+		if _, seen := absorbed[bundle.id]; seen {
 			continue
 		}
+		absorbed[bundle.id] = struct{}{}
 		plan.absorbedBundles = append(plan.absorbedBundles, bundle.id)
 		keys, err := bundleMemberKeys(ctx, tx, bundle.id)
 		if err != nil {

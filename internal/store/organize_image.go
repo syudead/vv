@@ -21,17 +21,19 @@ import (
 // imageScopeColumns は像に読んでよい範囲である。表ごとに、範囲を選ぶ列を挙げる。表と列の名前は
 // SQL に埋め込むので、像を読み戻すときもこの表に無い名前は受け付けない。親の表（行を消すと子の
 // 行が外部キーで消える表）を足すときは、範囲の並びで子より前に置く（restoreUndoImage）。利用者
-// データの表（userDataTables）は、束ねるときに新しい鍵へ写す行を content_key で持つ。
+// データの表（userDataTables）は、束ねるときに新しい鍵へ写す行を content_key で持つ。グループと
+// プレイリストの項目と除外も content_key で持てるので、束ねた新しい鍵を後から指した行は後の像と
+// 違い、取り消しは domain.ErrUndoConflict になる。
 var imageScopeColumns = buildImageScopeColumns()
 
 // buildImageScopeColumns は imageScopeColumns を作る。
 func buildImageScopeColumns() map[string][]string {
 	columns := map[string][]string{
 		"groups":                   {"id"},
-		"group_items":              {"group_id", "child_id"},
-		"group_exclusions":         {"group_id"},
+		"group_items":              {"group_id", "child_id", "content_key"},
+		"group_exclusions":         {"group_id", "content_key"},
 		"group_favorites":          {"group_id"},
-		"playlist_items":           {"playlist_id", "group_id"},
+		"playlist_items":           {"playlist_id", "group_id", "content_key"},
 		"folder_group_overrides":   {"path"},
 		"video_bundles":            {"id"},
 		"video_bundle_members":     {"bundle_id"},

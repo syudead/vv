@@ -45,11 +45,15 @@ func (s *OrganizeStore) Bundle(ctx context.Context, videoIDs []int64, targetID i
 		if err := image.captureBefore(ctx, tx); err != nil {
 			return nil, err
 		}
+		lastGroup, err := maxGroupID(ctx, tx)
+		if err != nil {
+			return nil, err
+		}
 		outcome, err := applyBundle(ctx, tx, plan)
 		if err != nil {
 			return nil, err
 		}
-		if err := image.addCreatedBundle(outcome); err != nil {
+		if err := image.addCreatedBundle(ctx, tx, outcome, lastGroup); err != nil {
 			return nil, err
 		}
 		if err := image.captureAfter(ctx, tx); err != nil {
@@ -113,14 +117,46 @@ func bundleImage(ctx context.Context, tx *sql.Tx, plan bundlePlan) (undoImage, e
 	return image, nil
 }
 
-// addCreatedBundle は束ねた後で、新しい集まりの video_bundles と video_bundle_members、新しい鍵へ
-// 写した利用者データの範囲を足す。どれも束ねる前には無かった行なので、前の像は空である。
-func (image *undoImage) addCreatedBundle(outcome bundleOutcome) error {
+// addCreatedBundle は束ねた後で、束ねが作った行の範囲を足す。どれも束ねる前には無かった行なので、
+// 前の像は空で、取り消しが消す。代表が移ってフォルダの索引が作った自動グループ（id が lastGroup より
+// 大きいグループ）の行とそれを指す行（groupReferenceScopes と group_exclusions）、新しい集まりの
+// video_bundles と video_bundle_members、新しい鍵へ写した利用者データ、新しい鍵を指す group_items・
+// group_exclusions・playlist_items である。最後の 3 つは、付け替えた項目（グループとプレイリストの
+// 全体の範囲にもある）のほかに、束ねた後で新しい鍵を足した行を後の像との違いとして見つける
+// （data-model.md「Undo image」）。
+func (image *undoImage) addCreatedBundle(ctx context.Context, tx *sql.Tx, outcome bundleOutcome, lastGroup int64) error {
+	created, err := queryInt64s(ctx, tx, `select id from groups where id > ? order by id`, lastGroup)
+	if err != nil {
+		return fmt.Errorf("cannot read the created groups: %w", err)
+	}
+	for _, id := range created {
+		scopes, err := groupReferenceScopes(id)
+		if err != nil {
+			return err
+		}
+		image.Scopes = append(image.Scopes, scopes...)
+		if err := image.addScopes([]imageScopeSpec{{"group_exclusions", "group_id", id}}); err != nil {
+			return err
+		}
+	}
 	specs := []imageScopeSpec{{"video_bundles", "id", outcome.bundleID}, {"video_bundle_members", "bundle_id", outcome.bundleID}}
 	for _, t := range userDataTables {
 		specs = append(specs, imageScopeSpec{t.table, "content_key", outcome.userKey})
 	}
+	for _, table := range []string{"group_items", "group_exclusions", "playlist_items"} {
+		specs = append(specs, imageScopeSpec{table, "content_key", outcome.userKey})
+	}
 	return image.addScopes(specs)
+}
+
+// maxGroupID は今あるグループの最大の id を返す（無ければ 0）。groups.id は autoincrement なので、
+// この後で作られたグループはどれもこれより大きい id を持つ。
+func maxGroupID(ctx context.Context, tx *sql.Tx) (int64, error) {
+	var id int64
+	if err := tx.QueryRowContext(ctx, `select coalesce(max(id), 0) from groups`).Scan(&id); err != nil {
+		return 0, fmt.Errorf("cannot read the groups: %w", err)
+	}
+	return id, nil
 }
 
 // addScopes は specs の範囲を像の終わりに足す。

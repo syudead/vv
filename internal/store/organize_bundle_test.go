@@ -162,13 +162,7 @@ func TestOrganizeBundleUndoConflictsAfterChange(t *testing.T) {
 	db, ids := versionFixture(t)
 	image := organizeBundle(t, db, ids["b"], ids["a"])
 	attachNamedTag(t, db, "Later", ids["a"])
-	after := bundleSnapshot(t, db)
-	if err := db.Organize().Undo(context.Background(), image); !errors.Is(err, domain.ErrUndoConflict) {
-		t.Fatalf("Undo error = %v, want ErrUndoConflict", err)
-	}
-	if got := bundleSnapshot(t, db); !slices.Equal(got, after) {
-		t.Fatalf("拒まれた取り消しが書いた:\n%v\nwant\n%v", got, after)
-	}
+	assertBundleUndoConflicts(t, db, "タグを付けたあと", image)
 }
 
 // 落とした先だけ・無い動画・展開して 20 本を超える集まりは誤りで、何も書かない。
@@ -205,4 +199,96 @@ func TestOrganizeBundleRefusals(t *testing.T) {
 	if got := bundleSnapshot(t, db); !slices.Equal(got, before) {
 		t.Fatalf("拒まれた束ねが書いた:\n%v\nwant\n%v", got, before)
 	}
+}
+
+// 束ねたあとで新しい鍵を別のグループやプレイリストに足すと、取り消しは ErrUndoConflict で何も書かない
+// （data-model.md「Undo image」: 後から足された参照は後の像と違う）。
+func TestOrganizeBundleUndoConflictsAfterLaterReference(t *testing.T) {
+	db, ids := versionFixture(t)
+	ctx := context.Background()
+
+	image := organizeBundle(t, db, ids["b"], ids["a"])
+	playlist := createPlaylist(t, db, "Later")
+	if _, err := db.Playlists().AddPlaylistItems(ctx, playlist, domain.PlaylistAdd{VideoIDs: []int64{ids["b"]}}); err != nil {
+		t.Fatal(err)
+	}
+	assertBundleUndoConflicts(t, db, "プレイリストに足したあと", image)
+
+	if _, err := db.Versions().Unbundle(ctx, ids["a"]); err != nil {
+		t.Fatal(err)
+	}
+	image = organizeBundle(t, db, ids["b"], ids["a"])
+	createGroup(t, db, "Later", domain.GroupAdd{VideoIDs: []int64{ids["a"]}})
+	assertBundleUndoConflicts(t, db, "グループに足したあと", image)
+}
+
+// assertBundleUndoConflicts は image の取り消しが ErrUndoConflict で、何も書かないことを確かめる。
+func assertBundleUndoConflicts(t *testing.T, db *DB, label string, image []byte) {
+	t.Helper()
+	after := bundleSnapshot(t, db)
+	if err := db.Organize().Undo(context.Background(), image); !errors.Is(err, domain.ErrUndoConflict) {
+		t.Fatalf("%s: Undo error = %v, want ErrUndoConflict", label, err)
+	}
+	if got := bundleSnapshot(t, db); !slices.Equal(got, after) {
+		t.Fatalf("%s: 拒まれた取り消しが書いた:\n%v\nwant\n%v", label, got, after)
+	}
+}
+
+// 代表が移って自動グループが生まれるか項目を得るとき、取り消しはその自動グループを消し、項目を外す。
+// フォルダ X の A と Y の B が A を代表に 1 つの集まりで、Y に C がある。A の集まりを B を代表に
+// 束ね直すと Y に 2 本が見えて自動グループができ、取り消すと消える。Y に D もあって自動グループが
+// 先にあれば、束ねで B の項目が足され、取り消しで外れる。
+func TestOrganizeBundleUndoRemovesFolderGroupChanges(t *testing.T) {
+	for _, tc := range []struct {
+		label  string
+		extra  bool
+		before int
+	}{
+		{"自動グループが生まれる", false, 0},
+		{"自動グループに項目が足される", true, 1},
+	} {
+		t.Run(tc.label, func(t *testing.T) {
+			db := migratedDB(t)
+			a := upsertFolderVideo(t, db, fixturePath("/media/X/a.mp4"), "key-a")
+			b := upsertFolderVideo(t, db, fixturePath("/media/Y/b.mp4"), "key-b")
+			upsertFolderVideo(t, db, fixturePath("/media/Y/c.mp4"), "key-c")
+			if tc.extra {
+				upsertFolderVideo(t, db, fixturePath("/media/Y/d.mp4"), "key-d")
+			}
+			bundle(t, db, a, a, b)
+			rebuildIndex(t, db)
+			if got := len(readGroups(t, db)); got != tc.before {
+				t.Fatalf("束ねる前の自動グループの数 = %d, want %d", got, tc.before)
+			}
+			before := bundleSnapshot(t, db)
+
+			image := organizeBundle(t, db, b, a)
+			groups := readGroups(t, db)
+			if len(groups) != 1 {
+				t.Fatalf("束ねたあとの自動グループ = %+v, want 1 個", groups)
+			}
+			if got := groupItemKeys(t, db, groups[0].ID); len(got) != tc.before+2 || !slices.Contains(got, ownerVideo(t, db, b).UserKey) {
+				t.Fatalf("束ねたあとの自動グループの項目 = %v", got)
+			}
+
+			undoImageForTest(t, db, image)
+			if got := bundleSnapshot(t, db); !slices.Equal(got, before) {
+				t.Fatalf("取り消しのあと:\n%v\nwant\n%v", got, before)
+			}
+			rebuildIndex(t, db)
+			if got := bundleSnapshot(t, db); !slices.Equal(got, before) {
+				t.Fatalf("取り消して作り直したあと:\n%v\nwant\n%v", got, before)
+			}
+		})
+	}
+}
+
+// groupItemKeys はグループ groupID の項目の content_key を位置の順に返す。
+func groupItemKeys(t *testing.T, db *DB, groupID int64) []string {
+	t.Helper()
+	keys, err := queryStringsForTest(db, `select content_key from group_items where group_id = ? and content_key is not null order by position`, groupID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return keys
 }

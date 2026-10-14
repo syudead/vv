@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RequestFailed } from "./client";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
-import { bundleOnto, groupVideos, moveCards, reorderGroup, undoOrganize } from "./organize";
+import {
+  bundleOnto,
+  groupVideos,
+  moveCards,
+  reorderGroup,
+  undoOrganize,
+} from "./organize";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

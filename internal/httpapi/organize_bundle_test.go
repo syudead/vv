@@ -57,6 +57,8 @@ func TestOrganizeBundleErrors(t *testing.T) {
 		want  wantError
 	}{
 		{"videoIds なし", map[string]any{"target": f.ids["p2"]}, wantGroupInvalid},
+		{"target なし", map[string]any{"videoIds": []int64{f.ids["p1"]}}, wantGroupInvalid},
+		{"target が 0", map[string]any{"videoIds": []int64{f.ids["p1"]}, "target": 0}, wantGroupInvalid},
 		{"空の videoIds", map[string]any{"videoIds": []int64{}, "target": f.ids["p2"]}, wantGroupInvalid},
 		{"落とした先だけ", map[string]any{"videoIds": []int64{f.ids["p2"]}, "target": f.ids["p2"]}, wantGroupInvalid},
 		{"知らない欄", map[string]any{"videoIds": []int64{f.ids["p1"]}, "target": f.ids["p2"], "from": 1}, wantGroupInvalid},

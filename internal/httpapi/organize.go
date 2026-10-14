@@ -153,6 +153,10 @@ func (s *server) OrganizeBundle(w http.ResponseWriter, r *http.Request) {
 	}
 	ids := uniqueInt64s(append([]int64{body.Target}, body.VideoIds...))
 	switch {
+	case body.Target <= 0:
+		// 動画の id は 1 から始まる。省かれた必須の欄（0 になる）を無い動画と取り違えて 404 にしない。
+		s.invalidRequest(w, "target is required.")
+		return
 	case len(body.VideoIds) == 0 || len(ids) < 2:
 		s.invalidRequest(w, "videoIds must contain a video other than the target.")
 		return
