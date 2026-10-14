@@ -631,14 +631,20 @@ export async function revertThumbnailImage(
  * （specs/046-thumbnail-image-upload/contracts/screen-api.md）。Content-Type はブラウザが境界と
  * ともに付けるので、ここでは付けない。
  *
+ * `contentVersion` はプレビューを開いたときの動画の `contentVersion` で、そのあと内容が替わって
+ * いれば 409 `content_changed` で失敗し、何も適用されない
+ * （docs/design-docs/thumbnail-editing.md「Uploaded images」）。
+ *
  * 成功したら `setVideoThumbnailPosition` と同じ理由で一覧の控えを捨てる。
  */
 export async function uploadThumbnailImage(
   id: number,
   image: Blob,
+  contentVersion: string,
   signal?: AbortSignal,
 ): Promise<Video> {
   const form = new FormData();
+  form.append("contentVersion", contentVersion);
   form.append("image", image, image instanceof File ? image.name : "image");
   const video = await request<Video>(`/api/videos/${String(id)}/thumbnail-image`, {
     method: "POST",

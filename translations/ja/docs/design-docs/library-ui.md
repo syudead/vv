@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 64f7ce2068aa55fa23efcc0a7b4d56f338cd5aae3ba959fe39d80e55b03a046e
+sourceHash: 66787ce6888dcae1edea15e0b92697eaee78f0ccafc62b1065230caa87a3bcca
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -306,7 +306,7 @@ flowchart LR
 
 作品の詳細の行は、ラベルに控えめな色の語を使い、値を本文の色で示す。項目が 3 つを超える役割、`Links`、`IDs` は 3 つと `+{n} more` を示し、それを押すとその項目がその場で開く。3 行より長い説明は `Show more` を示す。作品情報のない動画は以前と同じ行を示し、この行は入力を促す表示を加えない（[047 UI 設計、Video page: work details row](../../specs/047-video-work-info/ui-design.md#video-page-work-details-row)）。
 
-操作は、お気に入り、`Add to playlist`、`Add to group`、`Edit details`、`Use current frame as thumbnail`、`Edit thumbnail with ComfyUI`、`Upload an image as thumbnail`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。ComfyUI の入口は、ページの上に開く `EditorDialog` であるサムネイルエディターを開き、ComfyUI の接続が保存されるまでは設定用のポップオーバーを伴って淡く表示される。その入口で生成された画像がサムネイルである間、サムネイルの項目はその画像を `Use the frame instead` とともに示す（[045 UI 設計](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)）。アップロードの入口は、プレイヤーが表示されないときも所有者のものであり、ComfyUI に依存しない。ブラウザーのファイル選択を PNG、JPEG、WebP 向けに開き、それ以外の種類や 64 MB を超えるファイルは何かを送る前に失敗の行で拒み、送っている間は回転表示になる。アップロードされた画像がサムネイルである間、サムネイルの項目はその画像を `ImageUp` アイコン、`Uploaded thumbnail` というラベル、同じ `Use the frame instead` とともに示す。サムネイルの操作は一度に 1 つだけ送る。キャプチャ、`×`、アップロードのいずれかが送っている間、ほかの操作は `aria-disabled` になる（[046 UI 設計](../../specs/046-thumbnail-image-upload/ui-design.md#video-page-upload-entry)）。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
+操作は、お気に入り、`Add to playlist`、`Add to group`、`Edit details`、`Use current frame as thumbnail`、`Edit thumbnail with ComfyUI`、`Upload an image as thumbnail`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。ComfyUI の入口は、ページの上に開く `EditorDialog` であるサムネイルエディターを開き、ComfyUI の接続が保存されるまでは設定用のポップオーバーを伴って淡く表示される。その入口で生成された画像がサムネイルである間、サムネイルの項目はその画像を `Use the frame instead` とともに示す（[045 UI 設計](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)）。アップロードの入口は、プレイヤーが表示されないときも所有者のものであり、ComfyUI に依存しない。ブラウザーのファイル選択を PNG、JPEG、WebP 向けに開き、それ以外の種類や 64 MB を超えるファイルは何かを送る前に失敗の行で拒み、選んだファイルを読んでいる間と送っている間は回転表示になる。読めるファイルは `Preview thumbnail` を開く。これは `EditorDialog` で、その表示領域は画像を、カードの 16:9 のサムネイル枠の中に、保存されるとおりに示す。`Whole image`（既定）か `Fill frame` で、後者は `Zoom` を加え、所有者が画像をドラッグするか、矢印キーで動かし `+` と `-` でズームできるようにする。`Use as thumbnail` はダイアログを閉じて送る。`Cancel`、`×`、Esc は何も送らない（[サムネイル編集](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)）。アップロードされた画像がサムネイルである間、サムネイルの項目はその画像を `ImageUp` アイコン、`Uploaded thumbnail` というラベル、同じ `Use the frame instead` とともに示す。サムネイルの操作は一度に 1 つだけ送る。キャプチャ、`×`、アップロードのいずれかが送っている間、ほかの操作は `aria-disabled` になる（[046 UI 設計](../../specs/046-thumbnail-image-upload/ui-design.md#video-page-upload-entry)）。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
 
 所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `Toggle` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。`Add to playlist`、続いて `Add to group` が同じ条件でその後に続く。
 

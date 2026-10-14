@@ -453,12 +453,12 @@ describe("uploadThumbnailImage", () => {
       jsonResponse({ code: "invalid_request", reason: "thumbnail_upload_invalid" }, 400),
     );
     hold();
-    await expect(uploadThumbnailImage(7, image)).rejects.toThrow();
+    await expect(uploadThumbnailImage(7, image, "abc")).rejects.toThrow();
     expect(takeListSnapshot(key)).toBeDefined();
 
     fetch.mockResolvedValueOnce(jsonResponse({ id: 7, thumbnailImage: "uploaded" }));
     hold();
-    await expect(uploadThumbnailImage(7, image, signal)).resolves.toMatchObject({
+    await expect(uploadThumbnailImage(7, image, "abc", signal)).resolves.toMatchObject({
       id: 7,
       thumbnailImage: "uploaded",
     });
@@ -471,6 +471,7 @@ describe("uploadThumbnailImage", () => {
     const sent = (init?.body as FormData).get("image");
     expect(sent).toBeInstanceOf(File);
     expect((sent as File).name).toBe("photo.jpg");
+    expect((init?.body as FormData).get("contentVersion")).toBe("abc");
   });
 });
 

@@ -18,26 +18,30 @@ routine must not touch.
 Read the PR body for the updated packages, their old and new versions, and the
 release notes Renovate links.
 
+Then merge `origin/main` into the branch (`git merge origin/main`; never
+rebase), so local checks run against today's `main` and not the one the branch
+was cut from. A Renovate branch is often far behind, and checking it as it is
+fails on changes from `main` the PR has nothing to do with. Do not wait for
+Renovate to rebase; that only happens on its own schedule. When the merge of
+`main` turns out to be the only change and it makes the failed checks pass
+locally, push it: `main` already had the fix, and CI must run on the new head.
+Do not push it only when the head's checks were already all green (a major
+update review with nothing to change).
+
 ## Conflicts
 
-- **The branch has only Renovate's commits**: ask Renovate to rebase. Edit the
-  PR body to tick the `rebase-check` box
-  (`- [ ] <!-- rebase-check -->` becomes `- [x] <!-- rebase-check -->`) and
-  return `PUSHED`. Renovate rebases and regenerates the lockfiles on its next
-  run.
-- **The branch already has commits from this routine**: Renovate no longer
-  rebases it. Merge `origin/main` into the branch; do not rebase. Resolve a
-  conflict in a lockfile or `go.sum` by taking `main`'s side and regenerating
-  it:
+Resolve a conflict from that merge in a lockfile or `go.sum` by taking
+`main`'s side and regenerating it:
 
-  | File | Regenerate with |
-  | --- | --- |
-  | `go.sum` | `go mod tidy` |
-  | `web/package-lock.json` | `npx --yes npm@11 install --package-lock-only` in `web/` |
-  | `tools/package-lock.json` | `npx --yes npm@11 install --package-lock-only` in `tools/` |
+| File | Regenerate with |
+| --- | --- |
+| `go.sum` | `go mod tidy` |
+| `web/package-lock.json` | `npx --yes npm@11 install --package-lock-only` in `web/` |
+| `tools/package-lock.json` | `npx --yes npm@11 install --package-lock-only` in `tools/` |
+| `docs-site/package-lock.json` | `npx --yes npm@11 install --package-lock-only` in `docs-site/` |
 
-  npm 11 matches the constraint in `renovate.json`. Never edit a lockfile by
-  hand. Resolve a conflict in the code by keeping both sides' behaviour.
+npm 11 matches the constraint in `renovate.json`. Never edit a lockfile by
+hand. Resolve a conflict in the code by keeping both sides' behaviour.
 
 ## Failed checks
 
@@ -102,8 +106,10 @@ under `docs/`, `specs/` or `ARCHITECTURE.md` changed, hand it to the
 `doc-translator` subagent and commit its `translations/ja/` output.
 
 Commit with a Conventional Commit message (`fix(deps): ...` for a code fix,
-`build(deps): ...` for a lockfile or merge fix). Push once per run with
-`git push origin <branch>`, never with force. Then post one comment:
+`build(deps): ...` for a lockfile or merge fix). Push once, at the end of
+the worker's run, with `git push origin <branch>`, never with force. The
+orchestrator waits for CI and runs a new worker when it fails again. Then post
+one comment:
 
 ```markdown
 <!-- renovate-triage:attempt -->
@@ -121,7 +127,7 @@ COMMIT: <pushed commit, or ->
 REASON: <one line>
 ```
 
-- `PUSHED`: a commit was pushed, or a rebase was requested. CI has to run again.
+- `PUSHED`: a commit was pushed. CI has to run again.
 - `READY`: nothing needed a change. The checks are green, and for a major
   update the review comment says `safe to merge`.
 - `BLOCKED`: the routine cannot get this PR green without a person. Post the
