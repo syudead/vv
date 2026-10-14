@@ -2260,6 +2260,9 @@ export interface paths {
          *
          *     接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
          *     変化を取り戻せる。`video` と `group` は切れていた間の分を送り直さない。
+         *
+         *     ゲストには `group` だけを送る（specs/048-groups/contracts/screen-api.md）。`scan` と
+         *     `video` は所有者だけに送る。
          */
         get: operations["streamEvents"];
         put?: never;

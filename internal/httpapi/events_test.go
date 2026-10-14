@@ -170,6 +170,41 @@ func TestStreamEventsSendsGroupChanges(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
+// guestEventsAuth はアカウントが設定済みで、どの要求もセッションを持たない（ゲストになる）
+// 認証の代わりである。
+type guestEventsAuth struct{ ownerAuth }
+
+func (guestEventsAuth) CheckSession(context.Context, string) (time.Time, bool, error) {
+	return time.Time{}, false, nil
+}
+
+func (guestEventsAuth) State(context.Context, string) (AuthState, error) { return AuthStateGuest, nil }
+
+// ゲストにも group を送り、scan と video は送らない（specs/048-groups/contracts/screen-api.md
+// 「/api/events」）。
+func TestStreamEventsSendsOnlyGroupToGuests(t *testing.T) {
+	events := NewEvents()
+	handler := newTestServer(t, Options{
+		Scans: &lockedScans{current: domain.Scan{ID: 1}}, Events: events, Auth: guestEventsAuth{},
+	})
+	stream, resp := openEvents(t, handler)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("ゲストの /api/events = %d, want 200", resp.StatusCode)
+	}
+	expectNoEvent(t, stream)
+
+	events.VideoChanged(9)
+	events.ScanChanged()
+	expectNoEvent(t, stream)
+
+	events.GroupsChanged([]int64{3})
+	event := nextEvent(t, stream)
+	if event.name != "group" || event.data != `{"ids":[3]}` {
+		t.Fatalf("ゲストへのイベント = %+v, want group [3]", event)
+	}
+	expectNoEvent(t, stream)
+}
+
 // 送る前に重なった知らせは1回にまとめる。遅い接続のために知らせを溜め込まない。
 func TestStreamEventsCoalescesPendingChanges(t *testing.T) {
 	events := NewEvents()

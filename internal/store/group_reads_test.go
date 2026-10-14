@@ -142,6 +142,53 @@ func TestListLibraryMatchesOverDescendants(t *testing.T) {
 	}
 }
 
+// 丸ごと当たるグループのカードにある動画も、一部だけが当たる別のグループからは 1 本で並ぶ
+// （research.md R-6）。件数と「すべて選択」の id も同じ項目を数える。
+func TestListLibraryKeepsPartialMatchBesideWholeGroup(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	insertGroup(t, db, "C", itemKeyOf("/media/solo.mp4"))
+	insertGroup(t, db, "D", itemKeyOf("/media/solo.mp4"), itemKeyOf("/media/pair/p2.mp4"))
+
+	q := domain.VideoQuery{Query: "solo"}
+	if names := ownerLibraryNames(t, db, q); !slices.Equal(names, []string{"group:C", "solo"}) {
+		t.Errorf("solo の検索 = %v, want [group:C solo]", names)
+	}
+	page, err := db.Library().ListLibrary(ctx, domain.AudienceOwner, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if page.Total != 2 {
+		t.Errorf("solo の検索の件数 = %d, want 2", page.Total)
+	}
+	selection, _, err := db.Library().LibraryIDs(ctx, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{ids[fixturePath("/media/solo.mp4")]}; !slices.Equal(selection.VideoIDs, want) || len(selection.Groups) != 1 {
+		t.Errorf("solo の検索の id = videos %v, groups %+v; want videos %v and 1 group", selection.VideoIDs, selection.Groups, want)
+	}
+}
+
+// 入れ子の深さに上限は無い（research.md R-5）。いちばん深いグループの動画もいちばん上の
+// グループの再生順に入る。
+func TestGroupReadsDescendantsAtAnyDepth(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	top := insertGroup(t, db, "deep", itemKeyOf("/media/solo.mp4"))
+	for range 80 {
+		top = insertGroup(t, db, "deep", top)
+	}
+	page, err := db.Library().Group(ctx, domain.AudienceOwner, top, nil)
+	if err != nil {
+		t.Fatalf("81 段のグループ: %v", err)
+	}
+	if want := []int64{ids[fixturePath("/media/solo.mp4")]}; !slices.Equal(memberIDs(page.Group), want) {
+		t.Errorf("81 段のグループの再生順 = %v, want %v", memberIDs(page.Group), want)
+	}
+
+}
+
 // 見える動画のないグループは並ばず、そのグループの画面は ErrNotFound である。
 func TestGroupWithoutVisibleVideoIsNotShown(t *testing.T) {
 	db, _ := itemsFixture(t)

@@ -201,6 +201,9 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	// 動画の変化を取りこぼす。
 	sub, unsubscribe := s.events.subscribe()
 	defer unsubscribe()
+	// ゲストには group だけを送る。scan と video は所有者の取り込みと非公開の動画を運ぶ
+	// （specs/048-groups/contracts/screen-api.md「/api/events」）。
+	guest := !audienceFrom(r.Context()).IsOwner()
 
 	controller := http.NewResponseController(w)
 
@@ -233,7 +236,7 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case <-sub.ready:
-			if err := s.writePendingEvents(ctx, w, sub); err != nil {
+			if err := s.writePendingEvents(ctx, w, sub, guest); err != nil {
 				if ctx.Err() == nil {
 					s.logger.Warn("cannot send a change notification", slog.Any("error", err))
 				}
@@ -246,9 +249,13 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writePendingEvents はまだ送っていない変化を、今の内容で書き出す。
-func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, sub *eventSubscriber) error {
+// writePendingEvents はまだ送っていない変化を、今の内容で書き出す。guest なら group だけを書く。
+func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, sub *eventSubscriber, guest bool) error {
 	pending := sub.take()
+	if guest {
+		pending.scan = false
+		pending.videos = nil
+	}
 	if pending.scan && s.scans != nil {
 		current, err := s.scans.CurrentScan(ctx)
 		switch {

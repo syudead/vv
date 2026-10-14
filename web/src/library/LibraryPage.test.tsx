@@ -1832,7 +1832,9 @@ describe("LibraryPage", () => {
         ([input]) => new URL(String(input), "http://localhost").pathname,
       );
       expect(paths.every((path) => path === "/api/library")).toBe(true);
-      expect(FakeEventSource.instances).toHaveLength(0);
+      // /api/events はゲストにも group だけを送るので、グループの変化のために 1 本つなぐ
+      // （specs/048-groups/contracts/screen-api.md「/api/events」）。
+      expect(FakeEventSource.instances).toHaveLength(1);
     });
 
     it("URL に残った watch・最近再生した順・tag は既定に丸めて要求し、URL も直す", async () => {

@@ -106,13 +106,18 @@ beforeEach(() => {
 });
 
 describe("useVideos（一覧の読み込み）", () => {
-  it("ゲストでは変化の知らせ（/api/events）を購読しない", async () => {
+  it("ゲストは変化の知らせ（/api/events）のうち group だけを受け取る", async () => {
     // AudienceProvider の外の既定はゲストである。
     renderHook(() => useVideos({ sort: "addedDesc" }));
     await waitFor(() => {
       expect(calls).toHaveLength(1);
     });
-    expect(FakeEventSource.instances).toHaveLength(0);
+    await act(async () => {
+      calls[0]?.resolve(page([1, 2]));
+    });
+    expect(FakeEventSource.instances).toHaveLength(1);
+    await emitServerEvent("video", { id: 2 });
+    expect(getVideo).not.toHaveBeenCalled();
   });
 
   it("loadMore は直前の応答の nextCursor をそのまま次の要求へ渡す", async () => {
@@ -1723,6 +1728,40 @@ describe("useVideos のグループの項目", () => {
     getGroup.mockResolvedValueOnce(detail(group({ name: "新しい名前" })));
 
     await emitServerEvent("group", { ids: [3, 7, 99] });
+
+    await waitFor(() => expect(groups(result.current.items)[0]?.name).toBe("新しい名前"));
+    expect(getGroup).toHaveBeenCalledTimes(1);
+    expect(getGroup.mock.calls[0]?.[0]).toBe(7);
+  });
+
+  it("ゲストにも group イベントで表示中のグループを取り直す（specs/048-groups/contracts/screen-api.md）", async () => {
+    const { result } = renderHook(() =>
+      useVideos({ sort: "addedDesc" }, restoredWithGroup()),
+    );
+    getGroup.mockResolvedValueOnce(detail(group({ name: "新しい名前" })));
+
+    await emitServerEvent("group", { ids: [7] });
+
+    await waitFor(() => expect(groups(result.current.items)[0]?.name).toBe("新しい名前"));
+    expect(getGroup).toHaveBeenCalledTimes(1);
+  });
+
+  it("ページの取得中に届いた group イベントは、ページを反映したあとでそのページのグループを取り直す", async () => {
+    const { result } = renderHook(() => useVideos({ sort: "addedDesc" }), {
+      wrapper: OwnerAudience,
+    });
+    await waitFor(() => expect(calls).toHaveLength(1));
+
+    await emitServerEvent("group", { ids: [7] });
+    expect(getGroup).not.toHaveBeenCalled();
+    getGroup.mockResolvedValueOnce(detail(group({ name: "新しい名前" })));
+
+    await act(async () => {
+      calls[0]?.resolve({
+        items: [{ kind: "group", group: group() }],
+        total: 1,
+      } as unknown as VideoPage);
+    });
 
     await waitFor(() => expect(groups(result.current.items)[0]?.name).toBe("新しい名前"));
     expect(getGroup).toHaveBeenCalledTimes(1);

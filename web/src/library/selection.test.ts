@@ -40,13 +40,18 @@ describe("LibrarySelection", () => {
     expect(favoriteTargets(selection)).toEqual({
       videoIds: [1],
       folders: [{ rootId: 3, path: "series" }],
+      unreadGroupIds: [],
     });
   });
 
   it("メンバーを 1 本外すと、グループではなく残ったメンバーを動画として送り、戻してもグループに戻らない", () => {
     const grouped = setGroup(emptySelection, series, true);
     const removed = setVideo(grouped, 102, false);
-    expect(favoriteTargets(removed)).toEqual({ videoIds: [101, 103], folders: [] });
+    expect(favoriteTargets(removed)).toEqual({
+      videoIds: [101, 103],
+      folders: [],
+      unreadGroupIds: [],
+    });
     const back = toggleVideo(removed, 102);
     expect(back.ids.size).toBe(3);
     expect(back.groups.size).toBe(0);
@@ -81,6 +86,7 @@ describe("LibrarySelection", () => {
     expect(favoriteTargets(reconciled)).toEqual({
       videoIds: [1, 101, 102, 103],
       folders: [],
+      unreadGroupIds: [],
     });
   });
 
@@ -91,6 +97,7 @@ describe("LibrarySelection", () => {
     expect(favoriteTargets(shrunk)).toEqual({
       videoIds: [103],
       folders: [{ rootId: 3, path: "series" }],
+      unreadGroupIds: [],
     });
     const grown = reconcileGroups(selection, [groupItem([101, 102, 103, 104])]);
     expect(grown.groups.size).toBe(0);
@@ -107,10 +114,12 @@ describe("LibrarySelection", () => {
       [groupItem([101, 102, 103])],
     );
     expect(all.groups.get(5)?.folder).toEqual({ rootId: 3, path: "series" });
-    // フォルダの分からないグループはお気に入りに送らず、そのメンバーも動画として送らない。
+    // 読み込んでいないグループは送る前にフォルダを引くので、そのメンバーは動画として送らない。
+    expect(all.groups.get(6)?.unread).toBe(true);
     expect(favoriteTargets(all)).toEqual({
       videoIds: [],
       folders: [{ rootId: 3, path: "series" }],
+      unreadGroupIds: [6],
     });
     // 後から読み込んだ項目で、フォルダを覚え直す。
     const later = reconcileGroups(all, [
@@ -124,6 +133,8 @@ describe("LibrarySelection", () => {
       },
     ]);
     expect(later.groups.get(6)?.folder).toEqual({ rootId: 3, path: "x" });
+    expect(later.groups.get(6)?.unread).toBeUndefined();
+    expect(favoriteTargets(later).unreadGroupIds).toEqual([]);
   });
 
   it("変化が無ければ同じ選択を返す", () => {

@@ -176,6 +176,8 @@ export function useVideos(
   // 受けた動画を覚えておき、ページを反映したあとで取り直す（pageLoading・
   // tagsChangedWhileLoading は上で宣言済み）。
   const changedWhileLoading = useRef(new Set<number>());
+  // group の知らせも同じく、取得中のページに初めて現れるグループのために覚えておく。
+  const groupsChangedWhileLoading = useRef(new Set<number>());
 
   // 切り替えが一部の動画にしか反映されなかったときは、どれが切り替わったか
   // 分からないので、表示中の該当の動画をサーバーから取り直す（更新の知らせと
@@ -272,11 +274,20 @@ export function useVideos(
     [notifyIfIdle, refreshGroups, settleUncertainReason],
   );
 
-  // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない
-  // （specs/016-single-account-auth/ui-design.md「Top bar」）。
+  // 変化の知らせ（/api/events）。ゲストには group だけが届くので、group だけを購読する
+  // （specs/048-groups/contracts/screen-api.md「/api/events」）。video と取り込みの知らせは
+  // 所有者のもの（specs/016-single-account-auth/ui-design.md「Top bar」）。
   const owner = useAudience() === "owner";
   useEffect(() => {
     const queue = refreshQueue.current;
+    // グループの名前か項目が変わった（specs/048-groups/research.md R-13）。表示中の
+    // グループの項目だけを取り直す。ページの取得中は、そのページのために覚えておく。
+    const group = (ids: readonly number[]) => {
+      if (pageLoading.current) {
+        for (const id of ids) groupsChangedWhileLoading.current.add(id);
+      }
+      refreshGroups(groupsIn(itemsRef.current, ids));
+    };
     const unsubscribe = owner
       ? subscribeServerEvents({
           video: (id) => {
@@ -286,11 +297,7 @@ export function useVideos(
             if (shownVideoIds(itemsRef.current).includes(id)) refreshItems([id]);
             refreshGroupsWith([id]);
           },
-          // グループの名前か項目が変わった（specs/048-groups/research.md R-13）。表示中の
-          // グループの項目だけを取り直す。
-          group: (ids) => {
-            refreshGroups(groupsIn(itemsRef.current, ids));
-          },
+          group,
           // つなぎ直したときは、切れていた間の知らせを受け取っていない。準備が
           // 済んだ動画も消えているかもしれないので、表示中の項目をすべて取り直す
           // （消えていれば一覧から外れる）。最初の接続では、準備中の項目だけでよい。
@@ -303,7 +310,13 @@ export function useVideos(
             }
           },
         })
-      : () => undefined;
+      : subscribeServerEvents({
+          group,
+          // つなぎ直したときは、切れていた間のグループの変化を取り戻す。
+          open: (reconnected) => {
+            if (reconnected) refreshGroups(shownGroupIds(itemsRef.current));
+          },
+        });
     // 復元した一覧は、別の画面にいた間に準備が進んでいることがある。
     refreshProcessingItems();
     // 控えの後にメンバーが変わったグループも取り直す（ListSnapshot.staleGroups）。
@@ -347,6 +360,7 @@ export function useVideos(
     resyncAttempted,
     pageLoading,
     changedWhileLoading,
+    groupsChangedWhileLoading,
     progressChangedWhileLoading,
     favoriteFoldersChangedWhileLoading,
     tagsChangedWhileLoading,

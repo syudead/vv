@@ -5,12 +5,14 @@ import { groupFolder } from "../api/libraryItems";
  * SelectedGroup はグループのカードのチェック（または「すべて選択」の応答の `groups`）で
  * グループとして選んだものである（specs/035-favorites/research.md R-7）。グループの id で
  * 指す（specs/048-groups/contracts/screen-api.md）。`folder` は自動グループのフォルダで、
- * お気に入りがまだフォルダで送るために持つ。分からない（手で作ったグループ、「すべて選択」で
- * 読み込んでいないグループ）ときは無い。
+ * お気に入りがまだフォルダで送るために持つ。手で作ったグループと、「すべて選択」で読み込んで
+ * いないグループでは無い。`unread` は後者で、送る前に `GET /api/groups/{id}` でフォルダを
+ * 引く（groupFolders.ts の withGroupFolders）。
  */
 export interface SelectedGroup {
   id: number;
   folder?: FolderRef;
+  unread?: true;
   videoIds: readonly number[];
 }
 
@@ -83,13 +85,12 @@ export function setGroup(
 
 /** copyGroup は選んだグループを、呼び出し側の値と切り離して覚える。 */
 function copyGroup(group: SelectedGroup): SelectedGroup {
-  return group.folder === undefined
-    ? { id: group.id, videoIds: group.videoIds }
-    : {
-        id: group.id,
-        folder: { rootId: group.folder.rootId, path: group.folder.path },
-        videoIds: group.videoIds,
-      };
+  const copy: SelectedGroup = { id: group.id, videoIds: group.videoIds };
+  if (group.folder !== undefined) {
+    copy.folder = { rootId: group.folder.rootId, path: group.folder.path };
+  }
+  if (group.unread === true) copy.unread = true;
+  return copy;
 }
 
 /** selectedGroupOf はグループの項目をグループとして選ぶときの値にする。 */
@@ -113,27 +114,30 @@ export function toggleGroup(
 
 /**
  * fromSelectAll は「すべて選択」の応答（`ids` と `groups`）を選択にする。応答の `groups` は
- * フォルダを持たないので、読み込んだ項目 `items` にあるグループのフォルダで補う。
+ * フォルダを持たないので、読み込んだ項目 `items` にあるグループのフォルダで補う。読み込んで
+ * いないグループは `unread` にする。
  */
 export function fromSelectAll(
   ids: readonly number[],
   groups: readonly { id: number; videoIds: readonly number[] }[],
   items: readonly LibraryItem[] = [],
 ): LibrarySelection {
-  const folders = new Map<number, FolderRef>();
+  const loaded = new Map<number, LibraryGroup>();
   for (const item of items) {
-    const folder = item.kind === "group" ? groupFolder(item.group) : undefined;
-    if (item.kind === "group" && folder !== undefined) folders.set(item.group.id, folder);
+    if (item.kind === "group") loaded.set(item.group.id, item.group);
   }
   const selected = new Map<number, SelectedGroup>();
   for (const group of groups) {
+    const shown = loaded.get(group.id);
     selected.set(
       group.id,
-      copyGroup({
-        id: group.id,
-        folder: folders.get(group.id),
-        videoIds: group.videoIds,
-      }),
+      shown === undefined
+        ? { id: group.id, unread: true, videoIds: group.videoIds }
+        : copyGroup({
+            id: group.id,
+            folder: groupFolder(shown),
+            videoIds: group.videoIds,
+          }),
     );
   }
   return { ids: new Set(ids), groups: selected };
@@ -179,6 +183,7 @@ export function reconcileGroups(
     if (!observed.every((id) => selection.ids.has(id))) {
       edit().delete(key);
     } else if (
+      current.unread === true ||
       observed.length !== current.videoIds.length ||
       observed.some((id, index) => current.videoIds[index] !== id) ||
       (folder === undefined) !== (current.folder === undefined) ||
@@ -201,19 +206,23 @@ export function sameSelection(a: LibrarySelection, b: LibrarySelection): boolean
 
 /**
  * favoriteTargets は一括のお気に入りで送るものである（R-7）。`folders` はフォルダの分かる
- * 選んだグループ、`videoIds` は選んだ id のうち選んだグループのメンバーでないもの。フォルダの
- * 分からないグループは送らない（お気に入りはまだフォルダで送る）。
+ * 選んだグループ、`unreadGroupIds` は「すべて選択」で読み込んでいないグループで、送る前に
+ * フォルダを引く（withGroupFolders）。`videoIds` は選んだ id のうち選んだグループのメンバーで
+ * ないもの。フォルダの無い（手で作った）グループは送らない（お気に入りはまだフォルダで送る）。
  */
 export function favoriteTargets(selection: LibrarySelection): {
   videoIds: number[];
   folders: FolderRef[];
+  unreadGroupIds: number[];
 } {
   const members = new Set<number>();
   const folders: FolderRef[] = [];
+  const unreadGroupIds: number[] = [];
   for (const group of selection.groups.values()) {
     if (group.folder !== undefined) folders.push(group.folder);
+    else if (group.unread === true) unreadGroupIds.push(group.id);
     for (const id of group.videoIds) members.add(id);
   }
   const videoIds = Array.from(selection.ids).filter((id) => !members.has(id));
-  return { videoIds, folders };
+  return { videoIds, folders, unreadGroupIds };
 }

@@ -10,6 +10,7 @@ import {
 } from "../api/playlists";
 import { maxVideoTagsSelection } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
+import { withGroupFolders } from "../library/groupFolders";
 import { overLimitMessage } from "../library/selectionErrors";
 import { Button } from "../ui/shadcn/button";
 import { Command, CommandInput, CommandItem, CommandList } from "../ui/shadcn/command";
@@ -48,6 +49,7 @@ export default function PlaylistPicker({
   onOpenChange,
   videoIds,
   folders,
+  unreadGroupIds = [],
   side = "bottom",
   align = "end",
 }: {
@@ -55,6 +57,8 @@ export default function PlaylistPicker({
   onOpenChange: (open: boolean) => void;
   videoIds: readonly number[];
   folders: readonly FolderRef[];
+  /** 「すべて選択」で読み込んでいないグループ。送る前にフォルダを引いて `folders` に足す。 */
+  unreadGroupIds?: readonly number[];
   side?: "top" | "bottom";
   align?: "start" | "end";
 }) {
@@ -136,7 +140,10 @@ export default function PlaylistPicker({
     const memory = created.current;
     setFailure(null);
     // 開いている間に選択が増えて上限を超えたら、送らずに理由を出す（「Favorite」と同じ）。
-    if (videoIds.length + folders.length > maxVideoTagsSelection) {
+    if (
+      videoIds.length + folders.length + unreadGroupIds.length >
+      maxVideoTagsSelection
+    ) {
       setFailure(overLimitMessage());
       return;
     }
@@ -144,7 +151,11 @@ export default function PlaylistPicker({
     let playlist: { id: number; name: string } | null = null;
     try {
       playlist = "id" in target ? target : await createOnce(memory, target.create);
-      const result = await addToPlaylist(playlist.id, videoIds, folders);
+      const result = await addToPlaylist(
+        playlist.id,
+        videoIds,
+        await withGroupFolders(folders, unreadGroupIds),
+      );
       // 足したことは、ピッカーを閉じた後でもトーストで伝える。
       toast(resultText(result, playlist.name));
       if (current()) onOpenChange(false);

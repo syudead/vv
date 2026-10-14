@@ -115,6 +115,9 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		roots = favoriteGroupsSelect
 		videoFavorite = ` and fav.content_key is not null`
 	}
+	// 当たった動画は、どのグループにも無いか、一部だけが当たるグループのどれかにあれば動画の項目に
+	// なる。別のグループが丸ごと当たってそのカードに入っていても、部分一致のグループからは 1 本で
+	// 並ぶ（research.md R-6）。
 	// whole は materialized にする。インライン展開されると、相関副問い合わせ（グループの本数）が
 	// mv と not exists から当たった動画1本ごとに評価され、グループの本数の2乗で時間が増える
 	// （issue 674）。
@@ -150,7 +153,9 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		from matched join videos on videos.id = matched.video_id
 		join video_locations loc on loc.path = matched.path` + progressJoin("videos") + `
 		left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''
-		where not exists (select 1 from gm join whole on whole.group_id = gm.group_id where gm.video_id = matched.video_id)` +
+		where (not exists (select 1 from gm where gm.video_id = matched.video_id)
+			or exists (select 1 from gm where gm.video_id = matched.video_id
+				and gm.group_id not in (select group_id from whole)))` +
 		videoPlayable + videoFavorite + `
 		union all
 		select g.id, g.id * 2 + 1, null, null,

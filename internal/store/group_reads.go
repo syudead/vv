@@ -32,24 +32,23 @@ func shownVideoForKeyExpr(key string, audience domain.Audience) string {
 // 文字列にしてつなぐと、鍵のバイト順が深さ優先の順（親の項目の位置、その中の位置、…）になる。
 const groupSortWidth = 10
 
-// groupMaxDepth はたどる子グループの深さの上限である。書き込みが循環を拒む（research.md R-5）
-// ので届かないが、壊れた行があっても問い合わせが終わるように置く。
-const groupMaxDepth = 64
-
 // groupDescendantsCTE は、グループ id を 1 列 id で返す select 文 roots の各グループについて、
 // 見る人に見せる子孫の動画を再生順の鍵とともに返す with 句の部品
-// `gtree(root_id, group_id, sort_path, depth)` と `gdesc(root_id, video_id, sort_key)` を返す
+// `gtree(root_id, group_id, sort_path, seen)` と `gdesc(root_id, video_id, sort_key)` を返す
 // （research.md R-7）。gdesc は根と動画の組ごとに 1 行で、sort_key は深さ優先で最初に現れた
 // 位置の鍵である。見せる動画の無い根は gdesc に現れない。呼び出し側は先頭に with を付けるか、
 // ほかの with 句の部品に続けてつなぐ。
+// 入れ子の深さに上限は無い（research.md R-5）。書き込みが循環を拒むが、seen にたどった道の
+// グループ id を ",id," の形でためて、同じ道に戻る子をたどらないので、壊れた行があっても終わる。
 func groupDescendantsCTE(roots string, audience domain.Audience) string {
 	width := strconv.Itoa(groupSortWidth)
-	return `gtree(root_id, group_id, sort_path, depth) as (
-		select id, id, '', 0 from (` + roots + `)
+	return `gtree(root_id, group_id, sort_path, seen) as (
+		select id, id, '', ',' || id || ',' from (` + roots + `)
 		union all
-		select t.root_id, gi.child_id, t.sort_path || printf('%0` + width + `d', gi.position), t.depth + 1
+		select t.root_id, gi.child_id, t.sort_path || printf('%0` + width + `d', gi.position),
+			t.seen || gi.child_id || ','
 		from gtree t join group_items gi on gi.group_id = t.group_id
-		where gi.child_id is not null and t.depth < ` + strconv.Itoa(groupMaxDepth) + `),
+		where gi.child_id is not null and instr(t.seen, ',' || gi.child_id || ',') = 0),
 	gdesc(root_id, video_id, sort_key) as materialized (
 		select root_id, video_id, min(sort_key) from (
 			select t.root_id, ` + shownVideoForKeyExpr("gi.content_key", audience) + ` as video_id,

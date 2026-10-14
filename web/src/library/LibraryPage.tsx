@@ -753,6 +753,7 @@ export default function LibraryPage() {
             selectedIds={selectedIdsArray}
             favoriteVideoIds={favoriteSelection.videoIds}
             favoriteFolders={favoriteSelection.folders}
+            favoriteUnreadGroupIds={favoriteSelection.unreadGroupIds}
             selectingAll={selectingAll}
             onSelectAll={selectAll}
             onClear={clearSelection}

@@ -32,6 +32,8 @@ export interface SelectionBarProps {
    */
   favoriteVideoIds: readonly number[];
   favoriteFolders: readonly FolderRef[];
+  /** 「すべて選択」で読み込んでいない選んだグループ。送る前にフォルダを引く（withGroupFolders）。 */
+  favoriteUnreadGroupIds?: readonly number[];
   /** 「すべて選択」の要求の間 true（ui-design.md「Selection bar」の「Layout」）。 */
   selectingAll: boolean;
   onSelectAll: () => void;
@@ -61,6 +63,7 @@ export default function SelectionBar({
   selectedIds,
   favoriteVideoIds,
   favoriteFolders,
+  favoriteUnreadGroupIds = [],
   selectingAll,
   onSelectAll,
   onClear,
@@ -83,7 +86,8 @@ export default function SelectionBar({
   // （specs/035-favorites/ui-design.md「Selection bar」）。
   const favoriteOverLimitId = useId();
   const favoriteOverLimit =
-    favoriteVideoIds.length + favoriteFolders.length > maxVideoTagsSelection;
+    favoriteVideoIds.length + favoriteFolders.length + favoriteUnreadGroupIds.length >
+    maxVideoTagsSelection;
 
   // 束ねる操作は 2 本以上で現れ、画面の側だけの上限 maxBundleSelection を超えると
   // disabled にして理由を添える（specs/030-video-versions/ui-design.md「Bundle action」）。
@@ -192,6 +196,7 @@ export default function SelectionBar({
         <FavoriteMenu
           videoIds={favoriteVideoIds}
           folders={favoriteFolders}
+          unreadGroupIds={favoriteUnreadGroupIds}
           overLimit={favoriteOverLimit}
           overLimitId={favoriteOverLimitId}
         />
@@ -220,6 +225,7 @@ export default function SelectionBar({
             onOpenChange={setPlaylistOpen}
             videoIds={favoriteVideoIds}
             folders={favoriteFolders}
+            unreadGroupIds={favoriteUnreadGroupIds}
             side="top"
             align="start"
           />
