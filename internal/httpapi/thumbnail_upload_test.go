@@ -126,11 +126,27 @@ func (uploadArtifacts) RemoveContent(string) error {
 	return nil
 }
 
-// uploadBody は image を image 部分（extra があればその部分も）にした multipart の本文と Content-Type を返す。
+// uploadContentVersion は試験の動画の内容（content-key-<名前>）の版で、どの動画にも合う。
+const uploadContentVersion = "content-key-"
+
+// uploadBody は image を image 部分、uploadContentVersion を contentVersion 部分（extra があればその
+// 部分も）にした multipart の本文と Content-Type を返す。
 func uploadBody(t *testing.T, image []byte, extra ...string) (*bytes.Buffer, string) {
+	t.Helper()
+	version := uploadContentVersion
+	return uploadBodyVersion(t, image, &version, extra...)
+}
+
+// uploadBodyVersion は uploadBody の contentVersion を version にする。nil なら送らない。
+func uploadBodyVersion(t *testing.T, image []byte, version *string, extra ...string) (*bytes.Buffer, string) {
 	t.Helper()
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
+	if version != nil {
+		if err := writer.WriteField("contentVersion", *version); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if image != nil {
 		part, err := writer.CreateFormFile("image", "photo")
 		if err != nil {
@@ -294,6 +310,27 @@ func TestUploadThumbnailImageRejects(t *testing.T) {
 			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 		f.assertNothingWritten(t, name)
 	}
+
+	// contentVersion の無い本文と 64 バイトを越える contentVersion も形の誤りである。
+	long := strings.Repeat("x", 65)
+	for name, version := range map[string]*string{"contentVersion なし": nil, "長い contentVersion": &long} {
+		body, contentType := uploadBodyVersion(t, uploadTestPNG(t), version)
+		rec := f.uploadWith(context.Background(), "a", body, contentType, f.owner)
+		assertErrorBody(t, name, rec.Code, rec.Body.Bytes(),
+			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+		f.assertNothingWritten(t, name)
+	}
+}
+
+// プレビューを開いたあとに内容が替わった動画（contentVersion が今の内容と違う）には適用しない。
+func TestUploadThumbnailImageRefusesStaleContentVersion(t *testing.T) {
+	f := newGuestFixture(t, true)
+	stale := "content-old-"
+	body, contentType := uploadBodyVersion(t, uploadTestPNG(t), &stale)
+	rec := f.uploadWith(context.Background(), "a", body, contentType, f.owner)
+	assertErrorBody(t, "古い内容", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonContentChanged})
+	f.assertNothingWritten(t, "古い内容")
 }
 
 // ちょうど 64 MiB の image 部分は大きさで断られない（後ろを埋めた PNG は最後まで読める）。
@@ -331,6 +368,15 @@ func TestUploadThumbnailImageCutOffBody(t *testing.T) {
 		t.Errorf("status = %d: %s", rec.Code, rec.Body)
 	}
 	f.assertNothingWritten(t, "途中で切れた本文")
+
+	// image 部分を読んでいる途中で切れても同じである。
+	body, contentType = uploadBody(t, uploadTestPNG(t))
+	start := bytes.Index(body.Bytes(), []byte("\x89PNG"))
+	cut = io.MultiReader(bytes.NewReader(body.Bytes()[:start+4]), errReader{errors.New("connection reset")})
+	rec = f.uploadWith(context.Background(), "a", cut, contentType, f.owner)
+	assertErrorBody(t, "image の途中で切れた本文", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	f.assertNothingWritten(t, "image の途中で切れた本文")
 }
 
 type errReader struct{ err error }

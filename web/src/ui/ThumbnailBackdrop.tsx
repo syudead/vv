@@ -5,6 +5,10 @@
  * 並ぶと一覧が空いて見える。余白をその画像の色で埋めて、横長の動画と同じ密度に見せる。
  * 親は `relative` と `overflow-hidden` を持ち、手前の画像は `relative` で重ねる。
  */
+/** thumbnailBackdropClass はぼかした背景の見た目で、手元の画像のプレビューの canvas も使う。 */
+export const thumbnailBackdropClass =
+  "pointer-events-none absolute inset-0 h-full w-full scale-125 object-cover opacity-50 blur-xl";
+
 export default function ThumbnailBackdrop({ src }: { src: string }) {
   return (
     <img
@@ -14,7 +18,7 @@ export default function ThumbnailBackdrop({ src }: { src: string }) {
       loading="lazy"
       decoding="async"
       data-thumbnail-backdrop=""
-      className="pointer-events-none absolute inset-0 h-full w-full scale-125 object-cover opacity-50 blur-xl"
+      className={thumbnailBackdropClass}
     />
   );
 }

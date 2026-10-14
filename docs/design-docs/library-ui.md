@@ -523,7 +523,15 @@ thumbnail, the thumbnail item shows that image with `Use the frame instead`
 The upload entry is the owner's even when the player is not shown, and does not
 depend on ComfyUI. It opens the browser's file picker for PNG, JPEG and WebP,
 refuses another type or a file over 64 MB on the failure line before sending
-anything, and spins while it sends. While an uploaded image is the thumbnail,
+anything, and spins while it reads the picked file and while it sends. A
+readable file opens `Preview thumbnail`, an `EditorDialog` whose stage shows
+the image in the card's 16:9 thumbnail frame exactly as it will be stored:
+`Whole image` (the default) or `Fill frame`, which adds `Zoom` and lets the
+owner drag the image, or move it with the arrow keys and zoom with `+` and
+`-`. `Use as thumbnail` closes it and sends; `Cancel`, `×` and Esc send
+nothing
+([thumbnail editing](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)).
+While an uploaded image is the thumbnail,
 the thumbnail item shows it with an `ImageUp` icon, the label
 `Uploaded thumbnail` and the same `Use the frame instead`. One thumbnail
 action sends at a time: while the capture, a `×` or the upload sends, the

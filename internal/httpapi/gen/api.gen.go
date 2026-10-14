@@ -2942,6 +2942,9 @@ type UpdateTranscodingSettingsRequest struct {
 
 // UploadThumbnailImageRequest defines model for UploadThumbnailImageRequest.
 type UploadThumbnailImageRequest struct {
+	// ContentVersion プレビューを開いたときに画面が持っていた動画の `contentVersion`
+	ContentVersion string `json:"contentVersion"`
+
 	// Image サムネイルにする画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）
 	Image openapi_types.File `json:"image"`
 }
@@ -2982,6 +2985,11 @@ type Video struct {
 
 	// Container Examples: mp4, webm, mkv
 	Container *string `json:"container,omitempty"`
+
+	// ContentVersion 動画の内容の版（内容鍵の先頭 12 文字で、`thumbnailUrl` の版の先頭と同じ値）。所有者の応答にだけ入る。
+	// 画像のアップロードに添え、プレビューを開いてから内容が替わった動画への適用を断るのに使う
+	// （docs/design-docs/thumbnail-editing.md「Uploaded images」）
+	ContentVersion *string `json:"contentVersion,omitempty"`
 
 	// DisplayAspectRatio 表示される横÷縦の比率。回転と画素の縦横比（SAR）を反映し、縦長の動画は 1 未満になる。
 	// 解析前・取得不能の場合は省略される

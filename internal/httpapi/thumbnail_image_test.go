@@ -57,6 +57,10 @@ func TestRevertThumbnailImage(t *testing.T) {
 	if original.ThumbnailImage != nil {
 		t.Fatalf("前提: thumbnailImage = %v", *original.ThumbnailImage)
 	}
+	// 所有者の応答の内容の版は thumbnailUrl の版の先頭と同じである。
+	if original.ContentVersion == nil || !strings.Contains(thumbnailURLOf(original), "?v="+*original.ContentVersion) {
+		t.Errorf("contentVersion = %v, thumbnailUrl = %q", original.ContentVersion, thumbnailURLOf(original))
+	}
 
 	f.applyImage(t, "a")
 	applied := decode[gen.Video](t, env.get(f.videoPath("a", ""), f.owner))
