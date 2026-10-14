@@ -31,6 +31,9 @@ type Organizer interface {
 	// Move はカードを move.To へ足し、move.From から外す。ドラッグしたグループが To か To の祖先なら
 	// domain.ErrGroupCycle。
 	Move(ctx context.Context, move domain.OrganizeMove) (domain.OrganizeResult, error)
+	// Merge はドラッグしたカード items を画面の順にたどり、グループはグループ into へマージし、
+	// 動画は into の末尾へ足す。ドラッグしたグループが into か into の祖先なら domain.ErrGroupCycle。
+	Merge(ctx context.Context, items []domain.OrganizeRef, into int64) (domain.OrganizeResult, error)
 	// Undo はトークン token の操作を取り消す。行が変わっていれば domain.ErrUndoConflict、トークンが
 	// 無い・使い済み・古ければ domain.ErrUndoExpired。
 	Undo(ctx context.Context, token string) error
@@ -170,6 +173,31 @@ func optionalID(id *int64) int64 {
 		return 0
 	}
 	return *id
+}
+
+// OrganizeMerge はドラッグしたグループと動画をグループへマージする（POST /api/organize/merge）。
+func (s *server) OrganizeMerge(w http.ResponseWriter, r *http.Request) {
+	var body gen.OrganizeMerge
+	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
+		return
+	}
+	items, problem := organizeRefs(body.Items)
+	if problem == "" && !slices.ContainsFunc(items, func(item domain.OrganizeRef) bool { return item.Kind == domain.OrganizeGroup }) {
+		problem = "items must contain at least one group."
+	}
+	if problem != "" {
+		s.invalidRequest(w, problem)
+		return
+	}
+	if !s.organizerConfigured(w) {
+		return
+	}
+	result, err := s.organizer.Merge(r.Context(), items, body.Into)
+	if err != nil {
+		s.writeGroupError(w, err, "Could not merge the groups.")
+		return
+	}
+	s.writeOrganizeResult(w, result)
 }
 
 // OrganizeUndo はドラッグの操作を取り消す（POST /api/organize/undo）。
