@@ -20,14 +20,27 @@ import (
 
 // imageScopeColumns は像に読んでよい範囲である。表ごとに、範囲を選ぶ列を挙げる。表と列の名前は
 // SQL に埋め込むので、像を読み戻すときもこの表に無い名前は受け付けない。親の表（行を消すと子の
-// 行が外部キーで消える表）を足すときは、範囲の並びで子より前に置く（restoreUndoImage）。
-var imageScopeColumns = map[string][]string{
-	"groups":                 {"id"},
-	"group_items":            {"group_id", "child_id"},
-	"group_exclusions":       {"group_id"},
-	"group_favorites":        {"group_id"},
-	"playlist_items":         {"playlist_id", "group_id"},
-	"folder_group_overrides": {"path"},
+// 行が外部キーで消える表）を足すときは、範囲の並びで子より前に置く（restoreUndoImage）。利用者
+// データの表（userDataTables）は、束ねるときに新しい鍵へ写す行を content_key で持つ。
+var imageScopeColumns = buildImageScopeColumns()
+
+// buildImageScopeColumns は imageScopeColumns を作る。
+func buildImageScopeColumns() map[string][]string {
+	columns := map[string][]string{
+		"groups":                   {"id"},
+		"group_items":              {"group_id", "child_id"},
+		"group_exclusions":         {"group_id"},
+		"group_favorites":          {"group_id"},
+		"playlist_items":           {"playlist_id", "group_id"},
+		"folder_group_overrides":   {"path"},
+		"video_bundles":            {"id"},
+		"video_bundle_members":     {"bundle_id"},
+		"video_version_candidates": {"key_a"},
+	}
+	for _, t := range userDataTables {
+		columns[t.table] = append(columns[t.table], "content_key")
+	}
+	return columns
 }
 
 // imageCell は行の 1 つの値である。どれも nil なら NULL。SQLite の 4 つの型をそのまま持ち、
@@ -85,13 +98,14 @@ type imageScope struct {
 }
 
 // undoImage は操作 1 つの像である。Groups は取り消しの後で更新日時を進めて知らせるグループ、
-// Playlists は詰め直して更新日時を進めるプレイリスト、RebuildFolders はフォルダの索引を作り直すか
-// で、どれも操作が同じことをしたものである。
+// Playlists は詰め直して更新日時を進めるプレイリスト、RebuildFolders はフォルダの索引を作り直すか、
+// Videos は domain.VideoBundleChanged で知らせる動画で、どれも操作が同じことをしたものである。
 type undoImage struct {
 	Scopes         []imageScope `json:"scopes"`
 	Groups         []int64      `json:"groups,omitempty"`
 	Playlists      []int64      `json:"playlists,omitempty"`
 	RebuildFolders bool         `json:"rebuildFolders,omitempty"`
+	Videos         []int64      `json:"videos,omitempty"`
 }
 
 // newImageScope は表 table の列 column が key の範囲を作る。imageScopeColumns に無い組は誤りである。
@@ -119,11 +133,15 @@ func (image *undoImage) captureBefore(ctx context.Context, tx *sql.Tx) error {
 }
 
 // captureAfter は image の各範囲の今の行を後の像として読む。操作が書いた後、同じ取引で呼ぶ。
+// 書いた後で足した範囲（操作が作った行の範囲で、前の像は無い）は、ここで列の名前も読む。
 func (image *undoImage) captureAfter(ctx context.Context, tx *sql.Tx) error {
 	for i := range image.Scopes {
-		_, rows, err := readImageRows(ctx, tx, image.Scopes[i])
+		columns, rows, err := readImageRows(ctx, tx, image.Scopes[i])
 		if err != nil {
 			return err
+		}
+		if image.Scopes[i].Columns == nil {
+			image.Scopes[i].Columns = columns
 		}
 		image.Scopes[i].After = rows
 	}
@@ -384,12 +402,8 @@ func groupsImage(ctx context.Context, tx *sql.Tx, ids []int64) (undoImage, error
 		specs = append(specs, imageScopeSpec{"folder_group_overrides", "path", domain.FolderKey(folder)})
 	}
 	image := undoImage{Scopes: make([]imageScope, 0, len(specs))}
-	for _, spec := range specs {
-		scope, err := newImageScope(spec.table, spec.column, spec.key)
-		if err != nil {
-			return undoImage{}, err
-		}
-		image.Scopes = append(image.Scopes, scope)
+	if err := image.addScopes(specs); err != nil {
+		return undoImage{}, err
 	}
 	return image, nil
 }

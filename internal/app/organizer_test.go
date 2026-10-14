@@ -33,6 +33,10 @@ func (f *fakeOrganizeStore) Move(ctx context.Context, _ domain.OrganizeMove) ([]
 	return f.Reorder(ctx, 0, nil, nil)
 }
 
+func (f *fakeOrganizeStore) Bundle(ctx context.Context, _ []int64, _ int64) ([]byte, error) {
+	return f.Reorder(ctx, 0, nil, nil)
+}
+
 func (f *fakeOrganizeStore) Undo(_ context.Context, image []byte) error {
 	f.undone = append(f.undone, image)
 	return f.undoErr
@@ -187,6 +191,9 @@ func TestOrganizerReturnsStoreErrors(t *testing.T) {
 	if _, err := o.Move(context.Background(), domain.OrganizeMove{To: 1}); !errors.Is(err, domain.ErrGroupCycle) {
 		t.Fatalf("Move error = %v", err)
 	}
+	if _, err := o.Bundle(context.Background(), []int64{1}, 2); !errors.Is(err, domain.ErrTooManyVersions) {
+		t.Fatalf("Bundle error = %v", err)
+	}
 	if len(o.entries) != 0 {
 		t.Fatalf("entries = %d", len(o.entries))
 	}
@@ -200,6 +207,10 @@ func (failingOrganizeStore) Reorder(context.Context, int64, []int64, *int64) ([]
 
 func (failingOrganizeStore) Move(context.Context, domain.OrganizeMove) ([]byte, error) {
 	return nil, domain.ErrGroupCycle
+}
+
+func (failingOrganizeStore) Bundle(context.Context, []int64, int64) ([]byte, error) {
+	return nil, domain.ErrTooManyVersions
 }
 
 func (failingOrganizeStore) Undo(context.Context, []byte) error { return nil }

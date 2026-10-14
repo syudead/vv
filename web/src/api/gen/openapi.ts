@@ -2531,6 +2531,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organize/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 動画を落とした先の動画を代表にしてバージョンとしてまとめ、取り消しのトークンを返す
+         * @description 所有者だけ。ドラッグした動画 `videoIds` を落とした先の動画 `target` と 1 つの集まりに束ね、
+         *     `target` を代表にする（代表を選ぶダイアログは無い）。既に集まりに属する動画は、その集まりの
+         *     全メンバーごと移る。規則は `POST /api/video-bundles` と同じで、1 つの取引で行い、応答の
+         *     `undoToken` で取り消せる（specs/050-drag-organize/contracts/screen-api.md）。`target` の
+         *     ほかに動画が無ければ 400 `invalid_request`、集まりを展開して 20 本を超えれば 400
+         *     `too_many_videos`、動画がいまライブラリに無ければ 404 `group_target_not_found` で、どれも
+         *     何も書かない。
+         */
+        post: operations["organizeBundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organize/undo": {
         parameters: {
             query?: never;
@@ -3733,6 +3759,15 @@ export interface components {
              * @description カードを入れるグループ。無ければライブラリ（`from` から外すだけ）
              */
             to?: number;
+        };
+        OrganizeBundle: {
+            /** @description ドラッグした動画の id */
+            videoIds: number[];
+            /**
+             * Format: int64
+             * @description 落とした先の動画。新しい集まりの代表になる
+             */
+            target: number;
         };
         OrganizeUndo: {
             /** @description 操作の応答の `undoToken` */
@@ -8348,6 +8383,33 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    organizeBundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeBundle"];
+            };
+        };
+        responses: {
+            /** @description 束ねた。取り消しのトークン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     organizeUndo: {
