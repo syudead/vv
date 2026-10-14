@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/ui-design.md
-sourceHash: 5000cfb34fbd33bba81fab2aa11850d8a0ca7af9363ee8717b5ff196f80ee556
+sourceHash: ec4933a7d47387bbe9f29201064c53248a245e4539382ce4d83f931ba0596092
 ---
 
 # UI デザイン: 外部のサービスから作品情報を取得する作品情報プラグイン {#ui-design-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -303,7 +303,7 @@ stateDiagram-v2
 
 ## 取得のダイアログ {#fetch-dialog}
 
-`size="wide"` の `FormDialog` で、題は `Fetch work info` である。一つのウィンドウに三つのステップを持つので、どのステップで閉じても実行は破棄され、何も変わらない (要件 5)。
+`size="wide"` の `FormDialog` で、題は `Fetch work info` である。一つのウィンドウに三つのステップを持つ。適用が成功する前に閉じると実行は破棄され、何も変わらない (要件 5)。結果のステップは適用の後に来るので、そこで閉じても適用したものは保たれる。
 
 図はステップと、ステップの間の移り方を示す。
 

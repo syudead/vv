@@ -419,8 +419,9 @@ the fetch dialog.
 ## Fetch dialog
 
 A `FormDialog` with `size="wide"`, titled `Fetch work info`. It holds three
-steps in one window, so closing it at any step discards the run and changes
-nothing (requirement 5).
+steps in one window. Closing it before a successful apply discards the run
+and changes nothing (requirement 5); the result step comes after the apply,
+so closing it keeps what was applied.
 
 The diagram shows the steps and what moves between them.
 
