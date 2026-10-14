@@ -175,7 +175,7 @@ flowchart LR
 
 **Scope**: Add wazero and the adapter `internal/wasmplugin` with depguard and
 ARCHITECTURE.md entries; inspecting a module (compile, the `vv.plugin`
-manifest with its setting declarations, imports, the `_start` and `memory` exports and their types, the table sizes, with a table without a declared maximum capped at 100,000 elements before compiling) into a manifest or a problem; running a fresh
+manifest with its setting declarations, imports, the `_start` and `memory` exports and their types, the tables' total size of at most 100,000 elements, with a table without a declared maximum capped at 100,000 elements before compiling) into a manifest or a problem; running a fresh
 instance per run with the request on stdin and the response from stdout, no
 files, environment or arguments, the limits and the one-run slot of
 [R-4](research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits);
@@ -197,7 +197,8 @@ variable getting nothing, and a second concurrent run refused after 10 s;
 inspection tests show each `problem` of
 [data-model.md](data-model.md#work_info_plugins) for its malformed module
 (a duplicate setting key and an 11th setting declaration, a `_start` with a parameter, no exported `memory`, a table whose minimum is
-over 100,000 elements and one whose declared maximum is 1,000,000 included)
+over 100,000 elements, one whose declared maximum is 1,000,000, and three
+tables each declaring a maximum of 40,000 included)
 and a manifest for a good one, without running it; a table without a declared
 maximum, as Go's `wasip1` linker writes it, is accepted, and a module whose
 table declares no maximum and whose `_start` grows it by 100,000 and then by
