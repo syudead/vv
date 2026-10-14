@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"slices"
 )
 
 // positionTable は、親ごとに 0 から詰めた位置（position）を持つ項目の表である。プレイリストの
@@ -69,4 +71,32 @@ func deleteRekeyDuplicates(ctx context.Context, tx *sql.Tx, t positionTable, fro
 		return fmt.Errorf("cannot move the %s items: %w", t.noun, err)
 	}
 	return nil
+}
+
+// errPositionItemNotFound は、移す項目か目印の項目が親の項目に無いことを表す。呼び出し側が
+// それぞれの domain の誤りに読み替える。
+var errPositionItemNotFound = errors.New("item not in its parent")
+
+// moveItemAfter は親 parentID の項目 itemID を、項目 afterItemID のすぐ後ろへ移し（nil なら
+// 先頭）、親を 0 から詰め直す（specs/044-playlists/research.md R-3）。どちらかの項目が親に
+// 無ければ errPositionItemNotFound。itemID の後ろへ自分を移すのは何も変えず、false を返す。
+func moveItemAfter(ctx context.Context, tx *sql.Tx, t positionTable, parentID, itemID int64, afterItemID *int64) (bool, error) {
+	order, err := positionOrder(ctx, tx, t, parentID)
+	if err != nil {
+		return false, err
+	}
+	from := slices.Index(order, itemID)
+	if from < 0 || (afterItemID != nil && !slices.Contains(order, *afterItemID)) {
+		return false, errPositionItemNotFound
+	}
+	if afterItemID != nil && *afterItemID == itemID {
+		return false, nil
+	}
+	order = slices.Delete(order, from, from+1)
+	to := 0
+	if afterItemID != nil {
+		to = slices.Index(order, *afterItemID) + 1
+	}
+	order = slices.Insert(order, to, itemID)
+	return true, writePositionOrder(ctx, tx, t, order)
 }
