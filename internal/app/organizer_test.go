@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"runtime"
+	"sync"
 	"testing"
 	"time"
 
@@ -441,5 +442,82 @@ func waitForWaiters(t *testing.T, o *Organizer, n int) {
 			t.Fatalf("waiters = %d, want %d", waiting, n)
 		}
 		runtime.Gosched()
+	}
+}
+
+// 同じトークンの名前変更が重なれば、後の名前変更は前のものが終わるのを待ち、前の名前変更の像を
+// 受け取って像を進める。取り消しは両方の名前変更の後の像で取り消す。
+func TestOrganizerConcurrentRenamesBothAdvanceTheImage(t *testing.T) {
+	store := &fakeOrganizeStore{renameEntered: make(chan struct{}), renameRelease: make(chan struct{})}
+	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
+	result := groupToken(t, o)
+
+	first := make(chan error, 1)
+	go func() {
+		_, err := o.RenameGroup(context.Background(), result.GroupID, "Renamed", result.UndoToken)
+		first <- err
+	}()
+	<-store.renameEntered
+	second := make(chan error, 1)
+	go func() {
+		_, err := o.RenameGroup(context.Background(), result.GroupID, "Renamed", result.UndoToken)
+		second <- err
+	}()
+	waitForWaiters(t, o, 1)
+	close(store.renameRelease)
+	if err := <-first; err != nil {
+		t.Fatal(err)
+	}
+	<-store.renameEntered
+	if err := <-second; err != nil {
+		t.Fatal(err)
+	}
+	if len(store.renames) != 2 || string(store.renames[1].image) != "renamed-1" {
+		t.Fatalf("renames = %+v", store.renames)
+	}
+	if err := o.Undo(context.Background(), result.UndoToken); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.undone) != 1 || string(store.undone[0]) != "renamed-2" {
+		t.Fatalf("undone = %q", store.undone)
+	}
+}
+
+// steppingClock は時刻を読むたびに、step が残っていればそれだけ進める（一度だけ）。
+type steppingClock struct {
+	mu   sync.Mutex
+	now  time.Time
+	step time.Duration
+}
+
+func (c *steppingClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	now := c.now
+	c.now = c.now.Add(c.step)
+	c.step = 0
+	return now
+}
+
+// 名前変更がトークンを取る途中で 10 分を越えても、その項目を持ったまま名前を変え、戻すときに
+// 切れたトークンとして忘れる。後の取り消しは待たずに ErrUndoExpired である。
+func TestOrganizerRenameAtTheExpiryHoldsTheEntry(t *testing.T) {
+	clock := &steppingClock{now: time.Unix(1000, 0)}
+	store := &fakeOrganizeStore{}
+	o := NewOrganizer(OrganizerOptions{Store: store, Now: clock.Now})
+	result := groupToken(t, o)
+	clock.mu.Lock()
+	clock.now = clock.now.Add(undoLifetime - time.Nanosecond)
+	clock.step = time.Nanosecond
+	clock.mu.Unlock()
+	renameGroup(t, o, result.GroupID, result.UndoToken)
+	if len(store.renames) != 1 || string(store.renames[0].image) != "group-1" {
+		t.Fatalf("renames = %+v", store.renames)
+	}
+	if len(o.held) != 0 {
+		t.Fatalf("held = %v", o.held)
+	}
+	if err := o.Undo(context.Background(), result.UndoToken); !errors.Is(err, domain.ErrUndoExpired) {
+		t.Fatalf("Undo error = %v", err)
 	}
 }

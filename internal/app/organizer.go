@@ -131,12 +131,12 @@ func (o *Organizer) Group(ctx context.Context, videoIDs []int64, targetID int64,
 
 // RenameGroup はグループ id の名前を name にする（data-model.md「Rename under an undo token」）。
 // token が、グループ id を作った「グループにする」の生きているトークンなら、名前を変える間その
-// 項目を持ち（同じトークンの取り消しは待つ）、保存先が返した像をトークンの像にする。トークンと
+// 項目を持ち（同じトークンの取り消しと名前変更は待つ）、保存先が返した像をトークンの像にする。トークンと
 // 10 分はそのままで、像が返らなければ古い像のままである。トークンが無い・使い済み・切れている・
 // 「グループにする」のものでない・別のグループのものなら、トークンに触れずに 048 の名前変更として
 // 動く。応答と誤りは 048 の名前変更と同じで、トークンが原因で失敗することはない。
 func (o *Organizer) RenameGroup(ctx context.Context, id int64, name, token string) (domain.Group, error) {
-	entry, ok := o.hold(token, id)
+	entry, ok := o.hold(ctx, token, id)
 	if !ok {
 		group, _, err := o.store.RenameGroup(ctx, id, name, nil)
 		return group, err
@@ -206,13 +206,23 @@ func (o *Organizer) keepLocked(entry undoEntry) {
 // いれば、戻されるまで待ってから取り出す。無いか切れていれば false。待つ間に ctx が終われば
 // ctx の誤り。
 func (o *Organizer) takeWhenReleased(ctx context.Context, token string) (undoEntry, bool, error) {
+	if err := o.lockReleased(ctx, token); err != nil {
+		return undoEntry{}, false, err
+	}
+	defer o.mu.Unlock()
+	entry, ok := o.takeLocked(token)
+	return entry, ok, nil
+}
+
+// lockReleased は mu を取り、トークン token をトークン付きの名前変更が持っていれば、戻される
+// まで待つ。nil を返したときは mu を持ったままで、呼び出し側が外す。待つ間に ctx が終われば
+// mu を持たずに ctx の誤りを返す。
+func (o *Organizer) lockReleased(ctx context.Context, token string) error {
 	for {
 		o.mu.Lock()
 		released, held := o.held[token]
 		if !held {
-			entry, ok := o.takeLocked(token)
-			o.mu.Unlock()
-			return entry, ok, nil
+			return nil
 		}
 		o.waiters++
 		o.mu.Unlock()
@@ -224,22 +234,27 @@ func (o *Organizer) takeWhenReleased(ctx context.Context, token string) (undoEnt
 		o.waiters--
 		o.mu.Unlock()
 		if err := ctx.Err(); err != nil {
-			return undoEntry{}, false, err
+			return err
 		}
 	}
 }
 
 // hold はトークン token の項目が「グループにする」がグループ groupID を作ったものなら、それを
-// 取り出して使っている印を付ける。そうでなければ何もせずに false。戻すのは release である。
-func (o *Organizer) hold(token string, groupID int64) (undoEntry, bool) {
-	o.mu.Lock()
+// 取り出して使っている印を付ける。同じトークンを別のトークン付きの名前変更が持っていれば、戻される
+// まで待つ（後の名前変更も像を進めるため）。そうでなければ何もせずに false で、待つ間に ctx が
+// 終わったときも false である（名前変更は 048 のものとして動き、ctx の誤りは保存先が返す）。
+// 戻すのは release である。
+func (o *Organizer) hold(ctx context.Context, token string, groupID int64) (undoEntry, bool) {
+	if err := o.lockReleased(ctx, token); err != nil {
+		return undoEntry{}, false
+	}
 	defer o.mu.Unlock()
 	o.forgetExpired()
 	i := slices.IndexFunc(o.entries, func(e undoEntry) bool { return e.token == token })
 	if i < 0 || o.entries[i].groupID != groupID {
 		return undoEntry{}, false
 	}
-	entry, _ := o.takeLocked(token)
+	entry := o.removeAt(i)
 	o.held[token] = make(chan struct{})
 	return entry, true
 }
@@ -262,10 +277,15 @@ func (o *Organizer) takeLocked(token string) (undoEntry, bool) {
 	if i < 0 {
 		return undoEntry{}, false
 	}
+	return o.removeAt(i), true
+}
+
+// removeAt は entries の i 番目の項目を取り出して忘れる。期限は見ない。呼び出し側が mu を持つ。
+func (o *Organizer) removeAt(i int) undoEntry {
 	entry := o.entries[i]
 	o.bytes -= len(entry.image)
 	o.entries = slices.Delete(o.entries, i, i+1)
-	return entry, true
+	return entry
 }
 
 // forgetExpired は 10 分より古いトークンを忘れる。呼び出し側が mu を持つ。

@@ -10,7 +10,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -204,12 +203,17 @@ func placeGroupAt(ctx context.Context, tx *sql.Tx, fromID, childID int64, leavin
 	if err != nil {
 		return fmt.Errorf("cannot add to the group: %w", err)
 	}
+	leavingSet := make(map[int64]struct{}, len(leaving))
+	for _, itemID := range leaving {
+		leavingSet[itemID] = struct{}{}
+	}
 	placed := make([]int64, 0, len(order)+1-len(leaving))
 	for _, itemID := range order {
+		_, left := leavingSet[itemID]
 		switch {
 		case itemID == leaving[0]:
 			placed = append(placed, childItem)
-		case slices.Contains(leaving, itemID):
+		case left:
 		default:
 			placed = append(placed, itemID)
 		}
