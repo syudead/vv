@@ -511,7 +511,7 @@ describe("VideoPage のプレイリストの文脈", () => {
     const member1 = videoOf(41, "member-one");
     const member3 = videoOf(43, "member-three");
     const group = {
-      folder: { rootId: 1, path: "series" },
+      id: 1,
       name: "series",
       items: [member1, second, member3],
       offset: 0,
@@ -542,7 +542,7 @@ describe("VideoPage のプレイリストの文脈", () => {
 
   it("単体の動画の項目では、メンバーの行は今までどおり動画だけを開く", async () => {
     const group = {
-      folder: { rootId: 1, path: "series" },
+      id: 1,
       name: "series",
       items: [videoOf(41, "member-one"), second],
       offset: 0,

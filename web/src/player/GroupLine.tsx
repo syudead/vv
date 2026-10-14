@@ -24,7 +24,9 @@ import { useToast } from "../ui/Toast";
  * 「Group line」）。題名より小さく従の色にし、題名より先に目に入らないようにする。
  * 見出しの帯のパンくずが同じフォルダへのリンクを持つので、グループ名はリンクにしない。
  *
- * 所有者では行全体をまとめ方のメニューの引き金にする（要件 29）。ゲストでは押せない文字の行。
+ * 所有者では、フォルダから自動でできたグループ（group.folder がある）の行全体をまとめ方の
+ * メニューの引き金にする（要件 29）。メニューはフォルダの経路で書くので、手で作ったグループと
+ * ゲストでは押せない文字の行にする。
  */
 export default function GroupLine({
   group,
@@ -50,29 +52,39 @@ export default function GroupLine({
       </span>
     </>
   );
-  if (!owner) {
+  if (!owner || group.folder === undefined) {
     return (
       <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground sm:text-sm [&_svg]:size-4">
         {content}
       </p>
     );
   }
-  return <GroupLineMenu group={group} onChanged={onChanged} content={content} />;
+  return (
+    <GroupLineMenu
+      group={group}
+      folder={group.folder}
+      onChanged={onChanged}
+      content={content}
+    />
+  );
 }
 
 /** GroupLineMenu は所有者の Group line で、「まとめを解除」「グループをタグに変える」を開く。 */
 function GroupLineMenu({
   group,
+  folder: { rootId, path },
   onChanged,
   content,
 }: {
   group: NonNullable<Video["group"]>;
+  /** 自動グループのフォルダ。まとめ方の経路はこれで指す。 */
+  folder: NonNullable<NonNullable<Video["group"]>["folder"]>;
   onChanged: () => void;
   content: ReactNode;
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const folder = { rootId: group.folder.rootId, path: group.folder.path };
+  const folder = { rootId, path };
 
   const run = async (tagging: boolean) => {
     setBusy(true);
@@ -119,7 +131,7 @@ function GroupLineMenu({
           {t.player.group.ungroup}
         </DropdownMenuItem>
         {/* 登録フォルダそのもののグループはタグに変えられない（contracts §2）。 */}
-        {group.folder.path !== "" && (
+        {path !== "" && (
           <DropdownMenuItem onSelect={() => void run(true)}>
             <Tag aria-hidden="true" />
             {t.player.group.toTag}
