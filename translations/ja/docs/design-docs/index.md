@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: b92aea1fc64697ec3594b61e3948c8810c31d0f71628b20a284a0f73284865a5
+sourceHash: f14c4a95a0b7d9ab969c0722f12058930d5db17aa3d0e7ac9f1bd9102751bbc1
 ---
 
 # 設計文書 {#design-documents}
@@ -66,3 +66,4 @@ sourceHash: b92aea1fc64697ec3594b61e3948c8810c31d0f71628b20a284a0f73284865a5
 - [ローカルの画像をサムネイルにし、今のサムネイルを ComfyUI で編集する (アップロードの入口、アップロードした画像の項目、編集の元のメニュー): UI](../../specs/046-thumbnail-image-upload/ui-design.md)
 - [動画の作品情報 (作品の詳細の行、その場での編集、人物と組織による絞り込み、人物と組織の画面): UI](../../specs/047-video-work-info/ui-design.md)
 - [任意の動画とグループのグループ (経路を持つグループのページ、New group、Add to group、動画のページのグループの文脈): UI](../../specs/048-groups/ui-design.md)
+- [ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる (ドロップの表示、ドロップのメニュー、新しいグループの名前欄、取り消しのトースト): UI](../../specs/050-drag-organize/ui-design.md)

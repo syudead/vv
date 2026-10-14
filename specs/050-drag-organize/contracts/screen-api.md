@@ -109,6 +109,28 @@ Puts back the state before the operation the token names (requirement 12).
 
 **Response**: `204`.
 
+## `PATCH /api/groups/{id}` with an undo token
+
+048's rename gains one optional body field, so that "Make a group" and the
+rename from its name field undo as one unit (requirement 12). Without the
+field the route is 048's, unchanged. The body becomes its own schema,
+`GroupRename`, because `GroupName` is also the body of `POST /api/groups`,
+which takes no token.
+
+| Field | Type | Required | Meaning |
+| --- | --- | --- | --- |
+| `name` | string | yes | As 048's `GroupName` |
+| `undoToken` | string | no | `undoToken` of the `/group` that created group `id` |
+
+When the rename succeeds and `undoToken` names a live `/group` operation
+whose new group is `id`, the server replaces that token's after image with
+the rows as they are after the rename, so the token's undo still deletes the
+group ([data-model.md, Rename under an undo token](../data-model.md#rename-under-an-undo-token)).
+A token that is unknown, used, older than 10 minutes, from another operation
+or for another group changes nothing: the rename still happens, and the token
+keeps its old image. The response and the errors are 048's; the field never
+makes a rename fail.
+
 ## Errors
 
 | Route | Status | `code` | When |
