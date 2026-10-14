@@ -42,6 +42,10 @@ func (f *fakeOrganizeStore) Move(ctx context.Context, _ domain.OrganizeMove) ([]
 	return f.Reorder(ctx, 0, nil, nil)
 }
 
+func (f *fakeOrganizeStore) Merge(_ context.Context, items []domain.OrganizeRef, into int64) ([]byte, error) {
+	return fmt.Appendf(nil, "merge-%d-%d", len(items), into), nil
+}
+
 func (f *fakeOrganizeStore) Undo(_ context.Context, image []byte) error {
 	f.undone = append(f.undone, image)
 	return f.undoErr
@@ -230,6 +234,9 @@ func TestOrganizerReturnsStoreErrors(t *testing.T) {
 	if _, err := o.Move(context.Background(), domain.OrganizeMove{To: 1}); !errors.Is(err, domain.ErrGroupCycle) {
 		t.Fatalf("Move error = %v", err)
 	}
+	if _, err := o.Merge(context.Background(), nil, 1); !errors.Is(err, domain.ErrGroupCycle) {
+		t.Fatalf("Merge error = %v", err)
+	}
 	if len(o.entries) != 0 {
 		t.Fatalf("entries = %d", len(o.entries))
 	}
@@ -245,7 +252,28 @@ func (failingOrganizeStore) Move(context.Context, domain.OrganizeMove) ([]byte, 
 	return nil, domain.ErrGroupCycle
 }
 
+func (failingOrganizeStore) Merge(context.Context, []domain.OrganizeRef, int64) ([]byte, error) {
+	return nil, domain.ErrGroupCycle
+}
+
 func (failingOrganizeStore) Undo(context.Context, []byte) error { return nil }
+
+// マージはトークンを返し、その取り消しはマージの像を保存先へ返す。
+func TestOrganizerMergeKeepsItsImage(t *testing.T) {
+	store := &fakeOrganizeStore{}
+	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
+	items := []domain.OrganizeRef{{Kind: domain.OrganizeVideo, ID: 3}, {Kind: domain.OrganizeGroup, ID: 4}}
+	result, err := o.Merge(context.Background(), items, 9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Undo(context.Background(), result.UndoToken); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.undone) != 1 || !bytes.Equal(store.undone[0], []byte("merge-2-9")) {
+		t.Fatalf("undone = %q", store.undone)
+	}
+}
 
 func (failingOrganizeStore) Group(context.Context, []int64, int64, *int64) (int64, []byte, error) {
 	return 0, nil, domain.ErrGroupTargetNotFound

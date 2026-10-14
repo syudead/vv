@@ -353,10 +353,7 @@ func appendGroupMemberList(ctx context.Context, tx *sql.Tx, id int64, members []
 	start := next
 	for _, member := range members {
 		if member.Child == 0 {
-			if _, err := tx.ExecContext(ctx, `delete from group_exclusions where group_id = ? and content_key = ?`, id, member.Key); err != nil {
-				return 0, fmt.Errorf("cannot add to the group: %w", err)
-			}
-			if next, err = insertGroupItem(ctx, tx, id, "content_key", member.Key, next); err != nil {
+			if next, err = appendGroupContent(ctx, tx, id, member.Key, next); err != nil {
 				return 0, err
 			}
 			continue
@@ -370,6 +367,16 @@ func appendGroupMemberList(ctx context.Context, tx *sql.Tx, id int64, members []
 		}
 	}
 	return next - start, nil
+}
+
+// appendGroupContent は利用者データの鍵 key の動画を、グループ id の位置 position に手で足す項目と
+// して入れ、次の位置を返す。所有者が外したフォルダ由来のメンバーなら除外を消す。既に項目にあれば
+// 何も足さず、position をそのまま返す。
+func appendGroupContent(ctx context.Context, tx *sql.Tx, id int64, key string, position int) (int, error) {
+	if _, err := tx.ExecContext(ctx, `delete from group_exclusions where group_id = ? and content_key = ?`, id, key); err != nil {
+		return 0, fmt.Errorf("cannot add to the group: %w", err)
+	}
+	return insertGroupItem(ctx, tx, id, "content_key", key, position)
 }
 
 // insertGroupItem はグループ id の位置 position に、列 column（content_key か child_id。定数で
@@ -488,6 +495,12 @@ func dissolveGroupAndRebuild(ctx context.Context, tx *sql.Tx, id int64) ([]int64
 // 祖先の id と、自動グループを 1 つでも解散したかを返す。id が無ければ domain.ErrGroupNotFound。
 // フォルダの索引の作り直しは呼び出し側が行う。
 func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, bool, error) {
+	return dissolveGroupKeeping(ctx, tx, id, 0)
+}
+
+// dissolveGroupKeeping は dissolveGroup と同じく解散するが、空になってもグループ keep（0 なら無し）は
+// 解散しない（マージ先を残すため）。
+func dissolveGroupKeeping(ctx context.Context, tx *sql.Tx, id, keep int64) ([]int64, bool, error) {
 	var changed []int64
 	automatic := false
 	for queue := []int64{id}; len(queue) > 0; queue = queue[1:] {
@@ -497,7 +510,7 @@ func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, bool, er
 		}
 		changed = append(changed, result.changed...)
 		automatic = automatic || result.automatic
-		emptied, err := emptyGroups(ctx, tx, result.parents)
+		emptied, err := emptyGroups(ctx, tx, slices.DeleteFunc(result.parents, func(parent int64) bool { return parent == keep }))
 		if err != nil {
 			return nil, false, err
 		}

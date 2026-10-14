@@ -2,7 +2,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RequestFailed } from "./client";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
-import { groupVideos, moveCards, reorderGroup, undoOrganize } from "./organize";
+import {
+  groupVideos,
+  mergeGroups,
+  moveCards,
+  reorderGroup,
+  undoOrganize,
+} from "./organize";
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -143,6 +149,38 @@ describe("organize API", () => {
       reason: "group_cycle",
     });
     expect(takeListSnapshot({ query: "" })).toBeDefined();
+  });
+
+  it("mergeGroups はカードを画面の順に into と送り、トークンを返し、一覧の控えを捨てる", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ undoToken: "t3" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    holdSnapshot();
+    await expect(
+      mergeGroups(
+        [
+          { kind: "video", id: 5 },
+          { kind: "group", id: 8 },
+        ],
+        9,
+      ),
+    ).resolves.toEqual({ undoToken: "t3" });
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    expect(sent(fetchMock)).toEqual([
+      {
+        url: "/api/organize/merge",
+        method: "POST",
+        body: {
+          items: [
+            { kind: "video", id: 5 },
+            { kind: "group", id: 8 },
+          ],
+          into: 9,
+        },
+      },
+    ]);
   });
 
   it("undoOrganize はトークンを送って 204 で終わり、一覧の控えを捨てる", async () => {
