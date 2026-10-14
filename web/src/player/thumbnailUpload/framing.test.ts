@@ -15,6 +15,8 @@ describe("frameAspect", () => {
   it("表示上の比率、なければ幅と高さ、どちらも無ければ null を返す", () => {
     expect(frameAspect({ displayAspectRatio: 2, width: 100, height: 100 })).toBe(2);
     expect(frameAspect({ width: 1080, height: 1920 })).toBeCloseTo(0.5625);
+    expect(frameAspect({ displayAspectRatio: 0, width: 400, height: 200 })).toBe(2);
+    expect(frameAspect({ width: 0, height: 100 })).toBeNull();
     expect(frameAspect({})).toBeNull();
   });
 });
@@ -25,6 +27,10 @@ describe("compositionSize", () => {
     expect(compositionSize({ width: 10, height: 10 }, 9 / 16)).toEqual({
       width: 1152,
       height: 2048,
+    });
+    expect(compositionSize({ width: 600, height: 300 }, null)).toEqual({
+      width: 2048,
+      height: 1024,
     });
     expect(compositionSize({ width: 300, height: 600 }, null)).toEqual({
       width: 1024,

@@ -368,6 +368,15 @@ func TestUploadThumbnailImageCutOffBody(t *testing.T) {
 		t.Errorf("status = %d: %s", rec.Code, rec.Body)
 	}
 	f.assertNothingWritten(t, "途中で切れた本文")
+
+	// image 部分を読んでいる途中で切れても同じである。
+	body, contentType = uploadBody(t, uploadTestPNG(t))
+	start := bytes.Index(body.Bytes(), []byte("\x89PNG"))
+	cut = io.MultiReader(bytes.NewReader(body.Bytes()[:start+4]), errReader{errors.New("connection reset")})
+	rec = f.uploadWith(context.Background(), "a", cut, contentType, f.owner)
+	assertErrorBody(t, "image の途中で切れた本文", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+	f.assertNothingWritten(t, "image の途中で切れた本文")
 }
 
 type errReader struct{ err error }

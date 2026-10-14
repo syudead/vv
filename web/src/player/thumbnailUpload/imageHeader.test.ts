@@ -99,8 +99,42 @@ describe("readImageHeader", () => {
     expect(readImageHeader(vp8)).toEqual({ width: 640, height: 360, animated: false });
   });
 
+  it("JPEG の区切りの前の詰め物は飛ばし、DHT・JPG・DAC は大きさとして読まない", () => {
+    const jpeg = bytes(
+      [0xff, 0xd8],
+      [0xff, 0xff, 0xc8],
+      be16(4),
+      [0, 0],
+      [0xff, 0xcc],
+      be16(4),
+      [0, 0],
+      [0xff, 0xc2],
+      be16(17),
+      [8],
+      be16(20),
+      be16(30),
+      [3],
+    );
+    expect(readImageHeader(jpeg)).toEqual({ width: 30, height: 20, animated: false });
+  });
+
+  it("見出しが途中で切れていれば null を返す", () => {
+    expect(readImageHeader(bytes([0x89], "PNG\r\n\x1a\n"))).toBeNull();
+    expect(readImageHeader(bytes("RIFF", [0, 0, 0, 0], "WEBP", "VP8X", [10]))).toBeNull();
+    expect(readImageHeader(bytes("RIFF", [0, 0, 0, 0], "WEBP", "VP8L", [5]))).toBeNull();
+    expect(readImageHeader(bytes("RIFF", [0, 0, 0, 0], "WEBP", "VP8 ", [10]))).toBeNull();
+    expect(
+      readImageHeader(bytes("RIFF", [0, 0, 0, 0], "WEBP", "ALPH", [0, 0, 0, 0])),
+    ).toBeNull();
+  });
+
   it("形式が分からないか大きさが見つからなければ null を返す", () => {
     expect(readImageHeader(bytes("GIF89a"))).toBeNull();
     expect(readImageHeader(bytes([0xff, 0xd8], [0xff, 0xe1], be16(100)))).toBeNull();
+    // 区切りが 0xFF で始まらない JPEG は壊れている。
+    expect(
+      readImageHeader(bytes([0xff, 0xd8], [0x00, 0xe1], be16(4), [0, 0, 0, 0, 0])),
+    ).toBeNull();
+    expect(readImageHeader(bytes("RIFF", [0, 0, 0, 0], "AVI "))).toBeNull();
   });
 });
