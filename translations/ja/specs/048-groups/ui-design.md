@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/ui-design.md
-sourceHash: b5ea27fcee63c9798f0ebd3e82150ab13b4ca0c999ac6cff462ab80315da2030
+sourceHash: 1587f2ba0cb1fd5ed6e91eeeb31083b3065f576378ba1ad0572bfe23cfcd1aac
 ---
 
 # UI 設計: 任意の動画とグループからなり、複数への所属と入れ子を持つグループ {#ui-design-groups-of-any-videos-and-groups-with-several-memberships-and-nesting}
@@ -186,7 +186,7 @@ flowchart LR
 
 | 部分 | 形 |
 | --- | --- |
-| 一覧 | 所有者が持つすべてのグループを名前の自然な順で、それぞれ lucide `Folder` 付きで。文字を打っている間は、大文字と小文字を区別せずに、名前がトリムした文字を含むグループ。選んだグループそのものは除く。グループは自分自身を持てないからである。選んだグループの子孫は挙がり、サーバーが拒む ([Cycle](#cycle))。グループは画面の API の一覧の読み取り (名前の絞り込みとカーソル付きの `GET /api/groups` を、最後のページまでたどる) から来る。これは [contracts/screen-api.md](contracts/screen-api.md) がまだ持たず、計画の改訂が加える |
+| 一覧 | 所有者が持つすべてのグループを名前の自然な順で、それぞれ lucide `Folder` 付きで。文字を打っている間は、大文字と小文字を区別せずに、名前がトリムした文字を含むグループ。選んだグループそのものは除く。グループは自分自身を持てないからである。選んだグループの子孫は挙がり、サーバーが拒む ([Cycle](#cycle))。グループは画面の API の一覧の読み取り (名前の絞り込みとカーソル付きの `GET /api/groups` を、最後のページまでたどる。[contracts/screen-api.md](contracts/screen-api.md#statuses)) から来る |
 | 作成の行 | トリムした文字が空でなく、どのグループの名前もそれと等しくない間、最初に lucide `Plus` 付きの「Create "{name}"」。一致がないときは唯一の行である |
 | 100 コードポイントを超える打った名前 | 理由の行「Use a name of up to 100 characters」。Enter も押すことも何もしない |
 | グループも文字もない | 一覧の場所に「No groups yet. Type a name to create one.」 |

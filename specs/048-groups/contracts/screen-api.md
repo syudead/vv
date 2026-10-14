@@ -14,6 +14,7 @@ the `/api/*` default. The `POST` and `PATCH` routes join `requiresJSONBody`.
 
 | Route | Purpose |
 | --- | --- |
+| `GET /api/groups` | Every group shown to the viewer, for the "Add to group" picker |
 | `POST /api/groups` | Create a group from videos and groups |
 | `GET /api/groups/{id}` | One group, its trail and its first page of items |
 | `GET /api/groups/{id}/items` | A later page of items |
@@ -66,6 +67,12 @@ GroupItemPage:
     items: { type: array, items: { $ref: GroupItem } }
     nextCursor: { type: string }
 
+GroupListPage:                    # GET /api/groups
+  required: [groups]
+  properties:
+    groups: { type: array, items: { $ref: LibraryGroup } }   # natural name order, at every depth
+    nextCursor: { type: string }
+
 GroupItemMove:
   properties:
     after: { type: integer, format: int64 }   # item id; absent moves to the top
@@ -80,6 +87,8 @@ GroupItemRemove:
 
 | Route | Status | When |
 | --- | --- | --- |
+| `GET /api/groups?q=&cursor=&limit=` | `200` | `GroupListPage`: the groups shown to the viewer, at every depth, whose name contains the trimmed `q` ignoring case (every group when `q` is empty); `limit` 1 to 200, default 100 |
+| | `400 invalid_cursor` | Unreadable cursor |
 | `POST /api/groups` | `201` | `LibraryGroup` of the new group |
 | | `400 invalid_request` | Empty or over-long name, or no member |
 | | `404 group_target_not_found` | A video or group in the body does not exist; nothing is created |
@@ -126,4 +135,4 @@ child item, up to the first that is not, and ends at `{id}`'s parent
 
 | Kind | When |
 | --- | --- |
-| `group` | After a group write or a sync that changed groups; carries their ids ([R-13](../research.md#r-13-a-group-event-tells-open-screens-to-read-again)). Guests receive it too, with no name |
+| `group` | After a group write or a sync that changed groups; carries their ids and their ancestors' ids ([R-13](../research.md#r-13-a-group-event-tells-open-screens-to-read-again)). Guests receive it too, with no name |

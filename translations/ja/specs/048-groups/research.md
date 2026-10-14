@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/research.md
-sourceHash: e654b396626719c4ad72eff4683a993d85ff568e719aa86509982523f73ebc92
+sourceHash: 623d6dbddae6dec492134e3c99c6814a902844849417285de8c2a95f208fa324
 ---
 
 # 調査: 任意の動画とグループからなり、複数への所属と入れ子を持つグループ {#research-groups-of-any-videos-and-groups-with-several-memberships-and-nesting}
@@ -154,7 +154,7 @@ flowchart LR
 
 ## R-13: `group` イベントが開いている画面に読み直させる {#r-13-a-group-event-tells-open-screens-to-read-again}
 
-**決定**: グループのすべての書き込みと、グループを変えるすべての同期は、コミットの後に `domain.GroupsChanged{GroupIDs}` を発行し、`/api/events` はそれらの id とともに `group` を送る。グループのページ、グループのカード、動画のページのグループの行は、それを受けてグループを読み直す。
+**決定**: グループのすべての書き込みと、グループを変えるすべての同期は、コミットの後に `domain.GroupsChanged{GroupIDs}` を発行し、`/api/events` はそれらの id とともに `group` を送る。id は変わったグループのすべての祖先を含む。親は子の名前と、子孫の数と長さを見せるからである。グループのページ、グループのカード、動画のページのグループの行は、それを受けてグループを読み直す。
 
 | 案 | 判定 |
 | --- | --- |

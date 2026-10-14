@@ -287,7 +287,7 @@ flowchart LR
 
 | Part | Form |
 | --- | --- |
-| List | Every group the owner has, in natural name order, each with lucide `Folder`; the groups whose name contains the trimmed text, ignoring case, while text is typed. The selected groups themselves are left out, because a group cannot hold itself; a descendant of a selected group is listed and refused by the server ([Cycle](#cycle)). The groups come from a list read of the screen API (`GET /api/groups` with a name filter and a cursor, followed to the last page), which [contracts/screen-api.md](contracts/screen-api.md) does not hold yet and a plan revision adds |
+| List | Every group the owner has, in natural name order, each with lucide `Folder`; the groups whose name contains the trimmed text, ignoring case, while text is typed. The selected groups themselves are left out, because a group cannot hold itself; a descendant of a selected group is listed and refused by the server ([Cycle](#cycle)). The groups come from a list read of the screen API (`GET /api/groups` with a name filter and a cursor, followed to the last page; [contracts/screen-api.md](contracts/screen-api.md#statuses)) |
 | Create row | First while the trimmed text is not empty and no group's name equals it, "Create "{name}"" with lucide `Plus`; with no match it is the only row |
 | Typed name over 100 code points | The reason line "Use a name of up to 100 characters"; neither Enter nor a press acts |
 | No groups and no text | "No groups yet. Type a name to create one." in place of the list |

@@ -127,8 +127,9 @@ automatic group (its `origin_folder`, its items and exclusions) and the
 
 "Direct videos" counts every location of the folder index, so a folder whose
 rule does not group it (one direct video, a child folder) still feeds an
-existing group's additions and removals. Every changed group's id goes into
-one `GroupsChanged` event after commit.
+existing group's additions and removals. Every changed group's id, and the id
+of every ancestor of a changed group, goes into one `GroupsChanged` event
+after commit.
 
 ## Succession and bundling
 
@@ -158,8 +159,10 @@ The paths and their changes are those of
 
 A video id resolves to its user key through `userKeysForVideoIDs`, so adding
 two versions of one bundle adds one item. Every edit sets `updated_at` on the
-groups it changes and publishes `GroupsChanged` with them and, for dissolve,
-their former parents.
+groups it changes and publishes `GroupsChanged` with them and every ancestor
+of them, because a parent shows its child's name and its descendants' count
+and length; for dissolve, the event also names the former parents and their
+ancestors.
 
 ## Play order
 
