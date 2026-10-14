@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/external-api.md
-sourceHash: f10be89634feade4d042160954d91760be81eb15d8d456aa803641800090a384
+sourceHash: 9514cf16b62bb155a330668028f07ce87fc53d51b9302d06fe9617ffdda1c02e
 ---
 
 # 外部 API を使う {#use-the-external-api}
@@ -474,6 +474,8 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 ## 例: スクレイパーを連携させる {#example-integrate-a-scraper}
 
 この流れは、新しくスキャンされた動画を外部サイトで調べ、見つかった情報でタグを付ける。
+
+代わりにクライアントを動かさずに、所有者が動画のページから 1 本の動画のタイトルとタグを取得できるようにするには、[作品情報プラグイン](work-info-plugins.md)を書く。
 
 ```mermaid
 sequenceDiagram
