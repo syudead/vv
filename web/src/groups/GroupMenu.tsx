@@ -1,12 +1,10 @@
 import { Ellipsis, Pencil, Tag, Trash2 } from "lucide-react";
-import { type Ref, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router";
+import { type Ref, useState } from "react";
 
 import type { LibraryGroup } from "../api/client";
-import { type GroupRef, renameGroup, taggedMessage } from "../api/groups";
+import { renameGroup, taggedMessage } from "../api/groups";
 import { t, type UiText } from "../i18n";
 import { playlistName } from "../playlists/playlistName";
-import { useToast } from "../ui/Toast";
 import { Button } from "../ui/shadcn/button";
 import {
   DropdownMenu,
@@ -18,7 +16,6 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import RenameDialog from "../videoList/RenameDialog";
 import DissolveGroupDialog from "./DissolveGroupDialog";
-import { parentPagePath } from "./groupPaths";
 import GroupTagDialog from "./GroupTagDialog";
 
 type Dialog = "rename" | "tag" | "dissolve" | null;
@@ -29,38 +26,29 @@ type Dialog = "rename" | "tag" | "dissolve" | null;
  * 窓を持つ。
  *
  * 改名できたら `onRenamed` に新しい値を渡し、フォーカスは「More」へ戻す。グループが終わったら
- * （解散、タグ化）道筋の親かライブラリへ移り、そこでトーストを出す。もう無かった（`404`）とき、
- * 解散は同じく移ってトーストを出さず、改名とタグ化は `onGone` で無くなった状態を見せる。
+ * （解散、タグ化）`onLeave` で道筋の親かライブラリへ移り、そこでトーストを出す。もう無かった
+ * （`404`）とき、解散は同じく移ってトーストを出さず、改名とタグ化は `onGone` で無くなった状態を
+ * 見せる。
  */
 export default function GroupMenu({
   group,
-  trail,
   moreRef,
   onRenamed,
+  onLeave,
   onGone,
 }: {
   group: LibraryGroup;
-  trail: readonly GroupRef[];
   moreRef: Ref<HTMLButtonElement>;
   onRenamed: (group: LibraryGroup) => void;
+  /** 解散かタグ化の後に画面を離れる（useLeaveGroup）。 */
+  onLeave: (message?: UiText) => void;
   onGone: () => void;
 }) {
-  const navigate = useNavigate();
-  const toast = useToast();
   const [dialog, setDialog] = useState<Dialog>(null);
-  /** 画面が出ている間だけ true。離れた後に答えた要求は、移った先の画面を動かさない。 */
-  const shown = useRef(true);
-  useEffect(() => {
-    shown.current = true;
-    return () => {
-      shown.current = false;
-    };
-  }, []);
 
   const leave = (message?: UiText) => {
     setDialog(null);
-    if (message !== undefined) toast(message);
-    if (shown.current) void navigate(parentPagePath(trail));
+    onLeave(message);
   };
   const gone = () => {
     setDialog(null);

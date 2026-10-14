@@ -215,7 +215,8 @@ async function dropSnapshotAfter<T>(sent: Promise<T>): Promise<T> {
 
 /**
  * removeFromGroup は項目（動画やグループの id ではない）を外し、外した後の値を返す
- * （POST /api/groups/{id}/items/remove）。グループに無い項目があれば 404
+ * （POST /api/groups/{id}/items/remove）。最後の項目を外すとサーバーはグループを解散して本文の
+ * 無い `204` を返すので、そのときは `null` を返す。グループに無い項目があれば 404
  * `group_target_not_found` の RequestFailed になり、何も外されない。成功したら一覧の控えを
  * 捨てる（ライブラリのカードの本数とプレビューが変わり、外した項目が上に出ることもある）。
  */
@@ -223,13 +224,16 @@ export async function removeFromGroup(
   id: number,
   itemIds: readonly number[],
   signal?: AbortSignal,
-): Promise<LibraryGroup> {
-  const group = await request<LibraryGroup>(`${groupPath(id)}/items/remove`, {
+): Promise<LibraryGroup | null> {
+  const response = await apiFetch(`${groupPath(id)}/items/remove`, {
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify({ itemIds: Array.from(itemIds) }),
     signal,
   });
+  if (!response.ok) throw await toRequestFailed(response);
+  const group =
+    response.status === 204 ? null : ((await response.json()) as LibraryGroup);
   clearListSnapshot();
   return group;
 }

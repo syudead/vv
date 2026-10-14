@@ -1746,12 +1746,6 @@ export const en = {
       play: "Play",
       playFor: (name: string) => `Play "${name}"`,
       table: "Items",
-      empty: {
-        title: "No items yet",
-        description:
-          "Add videos and groups with Add to group on a card, on the video page, or in the selection bar.",
-        action: "Open library",
-      },
       gone: {
         title: "This group no longer exists",
         description: "It was dissolved, maybe in another tab.",

@@ -11,7 +11,7 @@ import {
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import type { LibraryGroup, TagRef, Video, VideoFolder } from "../api/client";
-import type { GroupItem } from "../api/groups";
+import type { GroupItem, GroupRef } from "../api/groups";
 import { useRootFolderName } from "../api/useFolderListing";
 import { useAudience } from "../auth/audience";
 import Breadcrumbs from "../folders/Breadcrumbs";
@@ -72,8 +72,12 @@ import {
 } from "./groupPaths";
 import { useGroupEdits } from "./useGroupEdits";
 import { type GroupPageData, useGroupPage } from "./useGroupPage";
+import { useLeaveGroup } from "./useLeaveGroup";
 
 const skeletonCount = 12;
+
+/** noTrail は読めていない間の道筋（ライブラリへ移る）。描画ごとに作らない。 */
+const noTrail: readonly GroupRef[] = [];
 
 /**
  * GroupPage はグループ 1 つを開いた画面（`/groups/{id}?trail=`）である
@@ -225,7 +229,22 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     markGone,
   } = useGroupPage(id, trail);
   const data = state.kind === "ready" ? state.data : null;
-  const edits = useGroupEdits({ id, update, confirmed, moves, movesSent, refresh });
+  // 解散、タグ化、最後の項目を外したときは、道筋の親かライブラリへ移ってトーストを出す
+  // （ui-design.md「Dissolving」「Removing one item」）。
+  const leave = useLeaveGroup(data?.trail ?? noTrail);
+  const name = data?.group.name;
+  const dissolvedByRemoval = useCallback(() => {
+    if (name !== undefined) leave(t.groups.dissolved(name));
+  }, [leave, name]);
+  const edits = useGroupEdits({
+    id,
+    update,
+    confirmed,
+    moves,
+    movesSent,
+    refresh,
+    onDissolved: dissolvedByRemoval,
+  });
   const { preferences, save } = useViewPreferences();
   const { view, zoom } = preferences;
   const preview = usePreviewCoordination();
@@ -327,9 +346,9 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
               data !== null && (
                 <GroupMenu
                   group={data.group}
-                  trail={data.trail}
                   moreRef={edits.moreRef}
                   onRenamed={renamed}
+                  onLeave={leave}
                   onGone={markGone}
                 />
               )
@@ -385,9 +404,6 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
           />
         )}
         {state.kind === "gone" && <GoneState />}
-        {data !== null && data.items.length === 0 && data.nextCursor === undefined && (
-          <EmptyGroup />
-        )}
         {data !== null && id !== null && data.items.length > 0 && (
           <div ref={listRef}>
             <GroupItems
@@ -439,22 +455,6 @@ function GoneState() {
       action={
         <Button size="sm" asChild>
           <Link to="/">{t.groups.detail.gone.action}</Link>
-        </Button>
-      }
-    />
-  );
-}
-
-/** EmptyGroup は項目の無いグループの本体である。 */
-function EmptyGroup() {
-  return (
-    <EmptyState
-      icon={<Folder aria-hidden="true" />}
-      title={t.groups.detail.empty.title}
-      description={t.groups.detail.empty.description}
-      action={
-        <Button size="sm" asChild>
-          <Link to="/">{t.groups.detail.empty.action}</Link>
         </Button>
       }
     />
@@ -522,7 +522,8 @@ function GroupHeader({
         }
         count={t.groups.detail.count(group.videoCount, formatDuration(group.durationMs))}
         description={group.folder !== undefined && <FolderLine folder={group.folder} />}
-        // 「Play」を先に、所有者の「More」を後に置く。空のグループは「Play」を出さない。
+        // 「Play」を先に、所有者の「More」を後に置く。項目の無い応答には「Play」を出さない
+        // （最後の項目を外したグループは解散されるので、所有者の画面には普段出ない）。
         actions={
           <>
             {state.data.items.length > 0 && (

@@ -83,6 +83,8 @@ function useFocusAfterEdit() {
  *   無ければ前の行、無ければ見出しへ移る。続きのページが残っていたら、サーバーが位置を
  *   詰めて手元の続き位置が使えなくなるので、先頭から読み直す。
  * - 選択バーの「Remove from group」は選んだ項目をまとめて外し、件数を知らせる。
+ * - 最後の項目を外すとサーバーがグループを解散する（`204`、data-model.md「Edits」）。外した行は
+ *   見せず、`onDissolved` で画面を解散と同じ結末（道筋の親へ移ってトースト）へ渡す。
  * - どれも `404 group_target_not_found` なら表示を保ったまま読み直し、変わっていたと知らせる。
  *   ほかの `404`（グループが無い）は読み直しが無くなった状態を見せる。
  */
@@ -93,6 +95,7 @@ export function useGroupEdits({
   moves,
   movesSent,
   refresh,
+  onDissolved,
 }: {
   id: number | null;
   update: (change: (data: GroupPageData) => GroupPageData) => void;
@@ -100,6 +103,8 @@ export function useGroupEdits({
   moves: MutableRefObject<Promise<void>>;
   movesSent: MutableRefObject<number>;
   refresh: () => void;
+  /** 最後の項目を外してグループが解散されたときに呼ぶ。 */
+  onDissolved: () => void;
 }) {
   const toast = useToast();
   const [removing, setRemoving] = useState<ReadonlySet<number>>(new Set());
@@ -196,6 +201,10 @@ export function useGroupEdits({
       removeFromGroup(id, [item.id]).then(
         (group) => {
           done();
+          if (group === null) {
+            onDissolved();
+            return;
+          }
           const target = focusAfterRemove(items, item.id);
           removed([item.id], group);
           focus.focus(target ?? "title");
@@ -206,7 +215,7 @@ export function useGroupEdits({
         },
       );
     },
-    [failed, focus, id, removed, removing],
+    [failed, focus, id, onDissolved, removed, removing],
   );
 
   const removeSelected = useCallback(
@@ -216,6 +225,10 @@ export function useGroupEdits({
       removeFromGroup(id, itemIds).then(
         (group) => {
           setRemovingSelected(false);
+          if (group === null) {
+            onDissolved();
+            return;
+          }
           removed(itemIds, group);
           onRemoved();
           toast(t.groups.removed(itemIds.length, name));
@@ -226,7 +239,7 @@ export function useGroupEdits({
         },
       );
     },
-    [failed, id, removed, removingSelected, toast],
+    [failed, id, onDissolved, removed, removingSelected, toast],
   );
 
   return {

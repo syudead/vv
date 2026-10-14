@@ -154,6 +154,11 @@ function write(url: URL, method: string, body: unknown): Promise<Response> | und
       return targetGone();
     }
     stored.items = stored.items.filter((item) => !itemIds.includes(item.id));
+    // 最後の項目を外したグループは解散され、本文の無い 204 で答える（data-model.md「Edits」）。
+    if (stored.items.length === 0) {
+      server.groups.delete(id);
+      return Promise.resolve(new Response(null, { status: 204 }));
+    }
     return Promise.resolve(json(summarize(stored)));
   }
   const move = /^\/items\/(\d+)\/move$/.exec(rest);
@@ -573,17 +578,6 @@ describe("GroupPage", () => {
     expect(document.querySelectorAll("article")).toHaveLength(4);
   });
 
-  it("項目の無いグループは空の状態を出し、「Play」を出さない", async () => {
-    server.groups.set(3, {
-      group: group(3, "Empty", { videoCount: 0, videoIds: [], durationMs: undefined }),
-      items: [],
-    });
-    renderPage("/groups/3");
-    expect(await screen.findByText("No items yet")).toBeDefined();
-    expect(screen.getByText("0 videos")).toBeDefined();
-    expect(screen.queryByRole("link", { name: /^Play/ })).toBeNull();
-  });
-
   it("キーボードで項目を動かすと、上にある項目で move を送り、読み直しても新しい順で出る", async () => {
     seed();
     layoutRows();
@@ -701,23 +695,50 @@ describe("GroupPage", () => {
     expect(listTitles()).toEqual(["Extras", "Episode 1", "Episode 2"]);
   });
 
-  it("最後の項目を外したグループは、読み直しが 404 でも空の状態のまま", async () => {
+  it("行の × で最後の項目を外すとグループは解散され、道筋の親へ移ってトーストを出す", async () => {
     seed();
     const user = userEvent.setup();
     await openList(user, "/groups/5?trail=1");
     await user.click(
       screen.getByRole("button", { name: 'Remove "Bonus" from the group' }),
     );
-    expect(await screen.findByText("No items yet")).toBeDefined();
-    expect(screen.getByRole("button", { name: "More" })).toBeDefined();
 
-    // 見える動画の無いグループは 404 になる（plan.md）。外した後の知らせの読み直しでも
-    // 「無くなった」とは見せない。
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Season" }),
+    ).toBeDefined();
+    expect(screen.getByText('Dissolved "Extras"')).toBeDefined();
+    expect(screen.queryByText(/^Removed /)).toBeNull();
+    expect(screen.queryByText(/Couldn't remove/)).toBeNull();
+    expect(server.writes).toEqual([
+      { method: "POST", path: "/api/groups/5/items/remove", body: { itemIds: [201] } },
+    ]);
+    expect(crumbs()).toEqual(["Library", "Season"]);
+  });
+
+  it("「Remove from group」で全部の項目を外すとグループは解散され、ライブラリへ移る", async () => {
+    seed();
+    const user = userEvent.setup();
+    renderPage("/groups/5");
+    await screen.findByRole("heading", { level: 1, name: "Extras" });
+    await user.click(screen.getByRole("checkbox", { name: 'Select "Bonus"' }));
+    await user.click(screen.getByRole("button", { name: "Remove from group" }));
+
+    expect(await screen.findByText("Library")).toBeDefined();
+    expect(screen.getByText('Dissolved "Extras"')).toBeDefined();
+    expect(screen.queryByText(/^Removed /)).toBeNull();
+    expect(server.groups.has(5)).toBe(false);
+  });
+
+  it("別のタブで解散されたグループは、知らせの読み直しの 404 で無くなったと見せる", async () => {
+    seed();
+    renderPage("/groups/5?trail=1");
+    await screen.findByRole("heading", { level: 1, name: "Extras" });
+
     server.groups.delete(5);
     await emitServerEvent("group", { ids: [1, 5] });
-    await waitFor(() => expect(server.reads.get(5)).toBe(2));
-    expect(screen.getByText("No items yet")).toBeDefined();
-    expect(screen.queryByText("This group no longer exists")).toBeNull();
+    expect(await screen.findByText("This group no longer exists")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "More" })).toBeNull();
+    expect(screen.queryByRole("link", { name: /^Play/ })).toBeNull();
   });
 
   it("選んだ 2 項目を「Remove from group」で外し、件数を知らせて選択を外す", async () => {

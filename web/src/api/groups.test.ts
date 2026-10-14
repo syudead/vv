@@ -171,6 +171,17 @@ describe("groups API", () => {
     expect(takeListSnapshot({ query: "" })).toBeDefined();
   });
 
+  it("removeFromGroup は最後の項目を外した 204 で null を返し、一覧の控えを捨てる", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    holdSnapshot();
+    await expect(removeFromGroup(7, [11])).resolves.toBeNull();
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+  });
+
   it("listAllGroups はページの数で打ち切らず nextCursor が尽きるまで辿る", async () => {
     // 200 件のページを 101 回（2 万件を超える）。
     const pages = 101;

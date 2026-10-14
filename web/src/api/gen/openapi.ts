@@ -2210,8 +2210,10 @@ export interface paths {
         /**
          * グループから項目を外す
          * @description 所有者だけ。項目を外して残りを詰め直す。動画と子グループそのものは残る。自動グループの
-         *     フォルダ由来の項目は、フォルダの作り直しでも戻らない。項目のどれかがこのグループに無ければ
-         *     404 `group_target_not_found` で、何も外さない。グループが無ければ 404 `not_found`。
+         *     フォルダ由来の項目は、フォルダの作り直しでも戻らない。項目が 1 つも残らなければ、そのグループは
+         *     `DELETE /api/groups/{id}` と同じく解散され（自動グループならフォルダに `ungroup` を書く）、
+         *     本文の無い 204 を返す。項目のどれかがこのグループに無ければ 404 `group_target_not_found` で、
+         *     何も外さない。グループが無ければ 404 `not_found`。
          */
         post: operations["removeGroupItems"];
         delete?: never;
@@ -7214,7 +7216,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 外したあとのグループ */
+            /** @description 外したあとのグループ（項目が残るとき） */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -7222,6 +7224,13 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["LibraryGroup"];
                 };
+            };
+            /** @description 最後の項目を外したので、グループを解散した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];

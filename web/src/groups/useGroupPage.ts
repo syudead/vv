@@ -29,15 +29,6 @@ const videoRefreshDelayMs = 300;
 /** maxRefreshPages は読み直しで続きのページを辿る回数の上限である（100 件ずつ）。 */
 const maxRefreshPages = 50;
 
-/** isEmptyGroup は読めたグループの項目が 1 つも無い（続きも無い）ときに true を返す。 */
-function isEmptyGroup(state: GroupPageState): boolean {
-  return (
-    state.kind === "ready" &&
-    state.data.items.length === 0 &&
-    state.data.nextCursor === undefined
-  );
-}
-
 /** isGone は応答がグループの無いこと（404）を表すかを返す。 */
 function isGone(error: unknown): boolean {
   return error instanceof RequestFailed && error.status === 404;
@@ -80,11 +71,6 @@ async function readThrough(
  * 並べ替えは `moves` の鎖で 1 つずつ送り、送るたびに `movesSent` を進める。静かな読み直しは
  * 鎖が答えてから読み、読む間に移動を送っていたらその結果を捨てて読み直す（移動の前の並びで
  * 置いた行を上書きしない）。
- *
- * 所有者が最後の項目を外して空にしたグループは、読み直しで `404` になる（plan.md: 見える動画の
- * 無いグループは `404`）。空の中身を見せている間の静かな読み直しの `404` は、無くなったとは
- * 見せずに空の状態のままにする（ui-design.md「States」の Content → Empty。plan.md と
- * ui-design.md の食い違いは PR に未決の問いとして残した）。
  */
 export function useGroupPage(id: number | null, trail: readonly number[]) {
   const [state, setState] = useState<GroupPageState>(
@@ -137,7 +123,6 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
         (error: unknown) => {
           if (isAborted(error) || controller.signal.aborted) return;
           reading.current = null;
-          if (isGone(error) && quiet && isEmptyGroup(stateRef.current)) return;
           if (isGone(error)) show({ kind: "gone" });
           else if (!quiet || stateRef.current.kind !== "ready") show({ kind: "failed" });
         },

@@ -96,10 +96,12 @@ func (s *GroupStore) AddGroupItems(ctx context.Context, id int64, add domain.Gro
 
 // RemoveGroupItems はグループ id の項目 itemIDs を消して詰め直す。自動グループのフォルダ由来の
 // 項目（from_folder = 1）は除外を書き、作り直しで戻らないようにする。動画・子グループそのものには
-// 触れない。グループが無ければ domain.ErrGroupNotFound、項目のどれかがそのグループに無ければ
-// domain.ErrGroupTargetNotFound で、何も消さない。itemIDs が空なら更新日時も進めず、知らせない。
-func (s *GroupStore) RemoveGroupItems(ctx context.Context, id int64, itemIDs []int64) (domain.Group, error) {
-	err := s.write(ctx, "remove the group items", func(tx *sql.Tx) ([]int64, error) {
+// 触れない。項目が 1 つも残らなければ、同じ取引でそのグループを解散し（DissolveGroup と同じ道筋。
+// 自動グループなら ungroup を書く）、dissolved に true を返す。グループが無ければ
+// domain.ErrGroupNotFound、項目のどれかがそのグループに無ければ domain.ErrGroupTargetNotFound で、
+// 何も消さない。itemIDs が空なら更新日時も進めず、知らせない。
+func (s *GroupStore) RemoveGroupItems(ctx context.Context, id int64, itemIDs []int64) (group domain.Group, dissolved bool, err error) {
+	err = s.write(ctx, "remove the group items", func(tx *sql.Tx) ([]int64, error) {
 		if _, err := groupSummary(ctx, tx, id); err != nil {
 			return nil, err
 		}
@@ -112,15 +114,24 @@ func (s *GroupStore) RemoveGroupItems(ctx context.Context, id int64, itemIDs []i
 				return nil, err
 			}
 		}
+		left, err := countGroupItems(ctx, tx, id)
+		if err != nil {
+			return nil, err
+		}
+		if left == 0 {
+			dissolved = true
+			return dissolveGroupAndRebuild(ctx, tx, id)
+		}
 		if err := renumberPositions(ctx, tx, groupPositions, []int64{id}); err != nil {
 			return nil, err
 		}
 		return touchedGroupsWithAncestors(ctx, tx, []int64{id})
 	})
-	if err != nil {
-		return domain.Group{}, err
+	if err != nil || dissolved {
+		return domain.Group{}, dissolved, err
 	}
-	return s.summary(ctx, id)
+	group, err = s.summary(ctx, id)
+	return group, false, err
 }
 
 // MoveGroupItem はグループ id の項目 itemID を、項目 afterItemID のすぐ後ろへ移し（nil なら
@@ -251,9 +262,9 @@ func appendGroupMembers(ctx context.Context, tx *sql.Tx, id int64, add domain.Gr
 	if err != nil {
 		return 0, err
 	}
-	var next int
-	if err := tx.QueryRowContext(ctx, `select count(*) from group_items where group_id = ?`, id).Scan(&next); err != nil {
-		return 0, fmt.Errorf("cannot read the group items: %w", err)
+	next, err := countGroupItems(ctx, tx, id)
+	if err != nil {
+		return 0, err
 	}
 	start := next
 	for _, key := range keys {
@@ -361,6 +372,15 @@ func removeGroupItem(ctx context.Context, tx *sql.Tx, id, itemID int64) error {
 		return fmt.Errorf("cannot remove the group item: %w", err)
 	}
 	return nil
+}
+
+// countGroupItems はグループ id の項目の数を返す。
+func countGroupItems(ctx context.Context, tx *sql.Tx, id int64) (int, error) {
+	var count int
+	if err := tx.QueryRowContext(ctx, `select count(*) from group_items where group_id = ?`, id).Scan(&count); err != nil {
+		return 0, fmt.Errorf("cannot read the group items: %w", err)
+	}
+	return count, nil
 }
 
 // dissolveGroupAndRebuild はグループ id を解散し（dissolveGroup）、自動グループだったなら書いた
