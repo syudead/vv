@@ -328,8 +328,13 @@ Ungroup, group a folder's direct videos and turn a group into a tag are not on
 the card. They sit in the owner's menu at the right end of a folder page's
 `Videos N` heading row
 ([`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)) and
-on the video page's group name row. After an action the cached library list is
-discarded and reloads on the next visit.
+on the video page's group name row. The folder menu offers "Turn the group into
+a tag…" only when the folder has an automatic group, including a registered
+folder's own group, and opens the confirmation dialog that every entry point
+shares ([`GroupTagDialog.tsx`](../../web/src/groups/GroupTagDialog.tsx),
+[048 UI design, Turning into a tag](../../specs/048-groups/ui-design.md#turning-into-a-tag)).
+After an action the cached library list is discarded and reloads on the next
+visit.
 
 ### Favorite mark
 

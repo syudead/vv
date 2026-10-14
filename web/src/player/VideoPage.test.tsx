@@ -120,7 +120,7 @@ const server = {
   subtitles: new Map<number, () => Response>(),
   probe: vi.fn<() => Response>(),
   open: vi.fn<() => Response>(),
-  /** フォルダのまとめ方の経路（PUT …/grouping・POST …/grouping/tag）の応答。 */
+  /** フォルダのまとめ方の経路（PUT …/grouping）とグループのタグ化（POST /api/groups/{id}/tag）の応答。 */
   grouping: vi.fn<(method: string, url: string, body: unknown) => Response>(),
   /** PUT /api/videos/{id}/display-name の応答。 */
   displayName: vi.fn<(body: unknown) => Response>(),
@@ -239,7 +239,7 @@ describe("VideoPage", () => {
       const method = init?.method ?? "GET";
       if (url === "/api/auth/session")
         return Promise.resolve(json({ state: server.session }));
-      if (url.startsWith("/api/folders/")) {
+      if (url.startsWith("/api/folders/") || url.startsWith("/api/groups/")) {
         const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
         return Promise.resolve(server.grouping(method, url, body));
       }
@@ -1229,9 +1229,7 @@ describe("VideoPage", () => {
 
       it("「まとめを解除」で PUT を送り、トーストで伝え、動画と関連動画を取り直してふつうの形に戻す（受け入れ条件 3）", async () => {
         const user = userEvent.setup();
-        server.grouping.mockImplementation(() =>
-          json({ mode: "ungroup", grouped: false, taggable: false }),
-        );
+        server.grouping.mockImplementation(() => json({ mode: "ungroup" }));
         await openMember();
         saveListSnapshot(
           { query: "series" },
@@ -1264,14 +1262,10 @@ describe("VideoPage", () => {
         expect(takeListSnapshot({ query: "series" })).toBeUndefined();
       });
 
-      it("「グループをタグに変える」で POST を送り、既存のタグなら「付け」と伝える（受け入れ条件 5）", async () => {
+      it("「グループをタグに変える」でグループの id に POST を送り、既存のタグなら「付け」と伝える（受け入れ条件 5）", async () => {
         const user = userEvent.setup();
         server.grouping.mockImplementation(() =>
-          json({
-            tag: { id: 4, name: "series" },
-            created: false,
-            grouping: { mode: "ungroup", grouped: false, taggable: false },
-          }),
+          json({ tag: { id: 4, name: "series" }, created: false }),
         );
         await openMember();
         ungroupOnServer();
@@ -1280,11 +1274,11 @@ describe("VideoPage", () => {
           await screen.findByRole("menuitem", { name: "Turn the group into a tag" }),
         );
         expect(
-          await screen.findByText('Added the tag "series" and ungrouped'),
+          await screen.findByText('Added the tag "series" and dissolved the group'),
         ).toBeDefined();
         expect(server.grouping).toHaveBeenCalledWith(
           "POST",
-          "/api/folders/1/grouping/tag?path=series",
+          "/api/groups/1/tag",
           undefined,
         );
         await waitFor(() => {
@@ -1347,7 +1341,7 @@ describe("VideoPage", () => {
         expect(await screen.findByText("Couldn't make the change")).toBeDefined();
       });
 
-      it("登録フォルダそのもののグループでは「グループをタグに変える」を出さない", async () => {
+      it("登録フォルダそのもののグループでも「グループをタグに変える」を出す（research.md R-11）", async () => {
         const user = userEvent.setup();
         const rootFolder = { rootId: 1, path: "" };
         server.videos.set(12, [
@@ -1367,7 +1361,7 @@ describe("VideoPage", () => {
           within(menu)
             .getAllByRole("menuitem")
             .map((item) => item.textContent),
-        ).toEqual(["Ungroup"]);
+        ).toEqual(["Ungroup", "Turn the group into a tag"]);
       });
 
       it("メニューが開いている間の Esc はメニューだけを閉じ、再生画面のままフォーカスを引き金へ戻す", async () => {

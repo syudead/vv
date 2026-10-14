@@ -360,7 +360,7 @@ func TestManualUseForgetsRejectedName(t *testing.T) {
 }
 
 // 受け入れ条件 14: グループのタグ化も手での作成で、却下した名前から外す。
-func TestTagFolderGroupForgetsRejectedName(t *testing.T) {
+func TestTagGroupForgetsRejectedName(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	upsertFolderVideo(t, db, fixturePath("/media/Show/a.mp4"), "key-a")
@@ -370,7 +370,7 @@ func TestTagFolderGroupForgetsRejectedName(t *testing.T) {
 	}
 	rejectName(t, db, "Show")
 
-	result, err := db.FolderGroups().TagFolderGroup(ctx, fixturePath("/media/Show"))
+	result, err := db.Groups().TagGroup(ctx, groupIDOf(t, db, fixturePath("/media/Show")))
 	if err != nil {
 		t.Fatal(err)
 	}

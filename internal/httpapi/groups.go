@@ -287,7 +287,7 @@ func (s *server) emptyGroup(ctx context.Context, audience domain.Audience, group
 	out := gen.LibraryGroup{
 		Id: group.ID, Name: group.Name, Previews: []gen.FolderPreview{}, VideoIds: []int64{}, Tags: []gen.VideoTag{},
 	}
-	if group.OriginFolder != "" && s.folders != nil {
+	if group.Automatic && s.folders != nil {
 		roots, err := s.folders.ListMediaFolders(ctx)
 		if err != nil {
 			return gen.LibraryGroup{}, err

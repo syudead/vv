@@ -24,7 +24,10 @@ type Group struct {
 	ID   int64
 	Name string
 	// OriginFolder は自動グループのフォルダの鍵（FolderKey）。手で作ったグループでは空である。
+	// 登録フォルダ `/` の自動グループの鍵も空なので、自動かどうかは Automatic で分ける。
 	OriginFolder string
+	// Automatic はフォルダから自動でできたグループ（origin_folder が NULL でない）か。
+	Automatic bool
 	// UpdatedAt は名前か項目を最後に変えた時刻（Unix ミリ秒）である。
 	UpdatedAt int64
 	// Favorite は所有者がグループをお気に入りにしたか（specs/035-favorites/data-model.md §2）。

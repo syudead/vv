@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -359,7 +360,7 @@ func TestDissolveAutomaticGroupWritesUngroup(t *testing.T) {
 		t.Fatal(err)
 	}
 	grouping := folderGroupingOf(t, db, show)
-	if grouping.Mode != domain.FolderGroupUngroup || grouping.Grouped {
+	if grouping.Mode != domain.FolderGroupUngroup || grouping.GroupID != 0 {
 		t.Fatalf("grouping after dissolve = %+v", grouping)
 	}
 	rebuildIndex(t, db)
@@ -380,6 +381,30 @@ func TestDissolveAutomaticGroupWritesUngroup(t *testing.T) {
 	}
 	if groupExists(t, db, recreated) {
 		t.Fatal("ungroup kept the folder's group")
+	}
+}
+
+// 登録フォルダ `/` の自動グループは origin_folder が空文字になる。それを手で作ったグループ
+// （NULL）と取り違えず、解散でそのフォルダに ungroup を書くので、次の作り直しで作り直されない。
+func TestDissolveRootFolderGroupWritesUngroup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("登録フォルダ `/` は Unix だけのもの")
+	}
+	db := migratedDB(t)
+	id := createGroup(t, db, "root", domain.GroupAdd{VideoIDs: []int64{looseVideo(t, db, "ka")}})
+	if _, err := db.sql.Exec(`update groups set origin_folder = ? where id = ?`, domain.FolderKey("/"), id); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Groups().DissolveGroup(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	overrides, err := queryStringsForTest(db, `select path || '|' || mode from folder_group_overrides order by path`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"|" + string(domain.FolderGroupUngroup)}; !slices.Equal(overrides, want) {
+		t.Fatalf("overrides = %q, want %q", overrides, want)
 	}
 }
 
@@ -427,39 +452,6 @@ func TestTagGroupAttachesToDescendantsAndDissolves(t *testing.T) {
 	}
 	if result2.Created || result2.Tag.ID != result.Tag.ID {
 		t.Fatalf("second tag = %+v, first %+v", result2, result)
-	}
-}
-
-// 旧ルートのタグ化（TagFolderGroup）も、自動グループに手で足した動画と子グループの動画へタグを
-// 手で付けてから解散する。フォルダ由来のメンバーには従来どおりフォルダ名のタグだけが付く。フォルダ由来のタグを得ないメンバーがタグもグループも失わない。
-func TestTagFolderGroupAttachesToHandAddedMembers(t *testing.T) {
-	db := migratedDB(t)
-	ctx := context.Background()
-	show := fixturePath("/media/Show")
-	upsertFolderVideo(t, db, fixturePath("/media/Show/1.mp4"), "k1")
-	upsertFolderVideo(t, db, fixturePath("/media/Show/2.mp4"), "k2")
-	rebuildIndex(t, db)
-	id := readGroups(t, db)[0].ID
-	extra, nested := looseVideo(t, db, "kx"), looseVideo(t, db, "ky")
-	child := createGroup(t, db, "Child", domain.GroupAdd{VideoIDs: []int64{nested}})
-	if _, err := db.Groups().AddGroupItems(ctx, id, domain.GroupAdd{VideoIDs: []int64{extra}, GroupIDs: []int64{child}}); err != nil {
-		t.Fatal(err)
-	}
-
-	result, err := db.FolderGroups().TagFolderGroup(ctx, show)
-	if err != nil {
-		t.Fatal(err)
-	}
-	keys, err := queryStringsForTest(db, `select content_key from video_tags where tag_id = ? and tentative = 0 order by content_key`, result.Tag.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// k1 と k2 はフォルダ名からタグを得るので、手では付けない。
-	if !slices.Equal(keys, []string{"kx", "ky"}) {
-		t.Fatalf("tagged keys = %v", keys)
-	}
-	if groupExists(t, db, id) || !groupExists(t, db, child) {
-		t.Fatal("only the folder's group should be dissolved")
 	}
 }
 
