@@ -43,6 +43,18 @@ const (
 	WorkInfoPluginMaxTags = 100
 )
 
+// 作品情報プラグインの HTTP 要求の上限である（research.md R-5、plugin-contract.md の Host functions）。
+const (
+	// WorkInfoPluginHTTPMaxRequests は 1 回の実行で送れる要求の数である。
+	WorkInfoPluginHTTPMaxRequests = 16
+	// WorkInfoPluginHTTPMaxRedirects は 1 つの要求でたどるリダイレクトの数である。
+	WorkInfoPluginHTTPMaxRedirects = 5
+	// WorkInfoPluginHTTPTimeout は 1 つの要求の、本文を読み終えるまでの時間の上限である。
+	WorkInfoPluginHTTPTimeout = 10 * time.Second
+	// WorkInfoPluginHTTPMaxBodyBytes は 1 つの応答の本文の上限である。
+	WorkInfoPluginHTTPMaxBodyBytes = 4 << 20
+)
+
 // ErrWorkInfoPluginTooLarge はモジュールが WorkInfoPluginModuleMaxBytes を超えることを表す。
 var ErrWorkInfoPluginTooLarge = errors.New("work-info plugin module is larger than 16 MiB")
 
@@ -312,20 +324,32 @@ const (
 	WorkInfoRunOutputTooLarge WorkInfoRunFailure = "output_too_large"
 	// WorkInfoRunBusy は別の実行が WorkInfoPluginBusyWait の間、枠を空けなかったことを表す。
 	WorkInfoRunBusy WorkInfoRunFailure = "busy"
+	// WorkInfoRunBlockedAddress はプラグインが vv、LAN か他の公開でないアドレスに要求を送ろうとしたことを表す。
+	// プラグインが何を返しても実行はこの失敗になる（research.md R-5）。
+	WorkInfoRunBlockedAddress WorkInfoRunFailure = "blocked_address"
+	// WorkInfoRunNetworkError は要求の接続が失敗し、そのあとプラグインも失敗したことを表す。
+	WorkInfoRunNetworkError WorkInfoRunFailure = "network_error"
 )
 
 // WorkInfoRunError は実行の失敗である。PluginMessage はプラグインが報告した誤りの文の
-// 先頭 WorkInfoPluginMessageMaxRunes 文字で、Failure が WorkInfoRunFailed のときだけ入りうる。
+// 先頭 WorkInfoPluginMessageMaxRunes 文字で、Failure が WorkInfoRunFailed か
+// WorkInfoRunNetworkError のときだけ入りうる。Host は拒んだか届かなかったホストで、Failure が
+// WorkInfoRunBlockedAddress か WorkInfoRunNetworkError のときだけ入る（contracts/screen-api.md の Run failures）。
 type WorkInfoRunError struct {
 	Failure       WorkInfoRunFailure
 	PluginMessage string
+	Host          string
 }
 
 func (e *WorkInfoRunError) Error() string {
-	if e.PluginMessage != "" {
-		return "work-info plugin run failed: " + string(e.Failure) + ": " + e.PluginMessage
+	msg := "work-info plugin run failed: " + string(e.Failure)
+	if e.Host != "" {
+		msg += ": host " + e.Host
 	}
-	return "work-info plugin run failed: " + string(e.Failure)
+	if e.PluginMessage != "" {
+		msg += ": " + e.PluginMessage
+	}
+	return msg
 }
 
 // responseJSON はプラグインの標準出力の JSON の形である（plugin-contract.md の Response）。
