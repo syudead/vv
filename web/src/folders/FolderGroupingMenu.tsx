@@ -7,9 +7,9 @@ import {
   type FolderGroupingMode,
   groupingFailure,
   setFolderGrouping,
-  taggedMessage,
-  tagFolderGroup,
 } from "../api/folderGrouping";
+import { taggedMessage } from "../api/groups";
+import GroupTagDialog from "../groups/GroupTagDialog";
 import { t } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import {
@@ -33,8 +33,11 @@ const modes: readonly FolderGroupingMode[] = ["auto", "ungroup", "groupDirect"];
  * 「Folder grouping menu」、要件 7・11・22）。
  *
  * ラジオは応答の `grouping` を `onGroupingChange` で返すだけで、一覧は読み直させない。
- * タグ化の成功は `onTagged` で、画面に動画の一覧を読み直させる。409 は `onConflict` で
- * フォルダの一覧を取り直させる。どちらの操作も、成功すると一覧の控えを捨てる（api/folderGrouping）。
+ * 「Turn the group into a tag…」は `grouping.groupId`（そのフォルダの自動グループ）があるときだけ
+ * 描き、共有のタグの窓（GroupTagDialog）を開く（specs/048-groups/ui-design.md「Folder grouping
+ * menu」）。成功は `onTagged` で画面に動画の一覧を読み直させ、窓からの 404（途中で解散された）と
+ * ラジオの 409 は `onStale` でフォルダの `grouping` を読み直させる。どちらの操作も、成功すると
+ * 一覧の控えを捨てる（api/folderGrouping、api/groups）。
  */
 export default function FolderGroupingMenu({
   folder,
@@ -42,27 +45,28 @@ export default function FolderGroupingMenu({
   grouping,
   onGroupingChange,
   onTagged,
-  onConflict,
+  onStale,
 }: {
   folder: FolderRef;
-  /** フォルダの名前（失敗の文言に使う）。 */
+  /** フォルダの名前（失敗の文言と、自動グループの名前としてタグの窓に使う）。 */
   name: string;
   grouping: FolderGrouping;
   onGroupingChange: (grouping: FolderGrouping) => void;
   onTagged: () => void;
-  onConflict: () => void;
+  onStale: () => void;
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
+  const [tagging, setTagging] = useState(false);
 
-  const fail = (failure: unknown, tagging: boolean) => {
+  const fail = (failure: unknown) => {
     const { message, conflict } = groupingFailure(failure, {
       name,
-      tagging,
+      tagging: false,
       notFoundMessage: t.folders.notFound.title,
     });
     toast(message);
-    if (conflict) onConflict();
+    if (conflict) onStale();
   };
 
   // 同じ値を選び直しても送る（ui-design.md「Folder grouping menu」。応答は 200）。
@@ -71,78 +75,83 @@ export default function FolderGroupingMenu({
     try {
       onGroupingChange(await setFolderGrouping(folder, mode));
     } catch (failure) {
-      fail(failure, false);
+      fail(failure);
     } finally {
       setBusy(false);
     }
   };
 
-  const toTag = async () => {
-    setBusy(true);
-    try {
-      const result = await tagFolderGroup(folder);
-      toast(taggedMessage(result));
-      onGroupingChange(result.grouping);
-      onTagged();
-    } catch (failure) {
-      fail(failure, true);
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  const Icon = busy ? LoaderCircle : grouping.grouped ? Group : Ungroup;
+  const groupId = grouping.groupId;
+  const grouped = groupId !== undefined;
+  const Icon = busy ? LoaderCircle : grouped ? Group : Ungroup;
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          disabled={busy}
-          aria-busy={busy}
-          aria-label={
-            busy
-              ? t.folders.grouping.changing
-              : t.folders.grouping.trigger(grouping.grouped)
-          }
-        >
-          <Icon
-            aria-hidden="true"
-            className={busy ? "animate-spin motion-reduce:animate-none" : undefined}
-          />
-          {busy
-            ? t.folders.grouping.changingShort
-            : grouping.grouped
-              ? t.folders.grouping.grouped
-              : t.folders.grouping.ungrouped}
-          <ChevronDown aria-hidden="true" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="max-w-popover-wide">
-        <DropdownMenuLabel>{t.folders.grouping.heading}</DropdownMenuLabel>
-        <DropdownMenuRadioGroup
-          value={grouping.mode}
-          onValueChange={(mode) => void choose(mode as FolderGroupingMode)}
-        >
-          {modes.map((mode) => (
-            <DropdownMenuRadioItem key={mode} value={mode}>
-              {t.folders.grouping.modes[mode]}
-            </DropdownMenuRadioItem>
-          ))}
-        </DropdownMenuRadioGroup>
-        <p className="px-2 pt-1 pb-1.5 text-xs text-muted-foreground">
-          {t.folders.grouping.autoHint}
-        </p>
-        {grouping.taggable && (
-          <>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onSelect={() => void toTag()}>
-              <Tag aria-hidden="true" />
-              {t.folders.grouping.toTag}
-            </DropdownMenuItem>
-          </>
-        )}
-      </DropdownMenuContent>
-    </DropdownMenu>
+    <>
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="sm"
+            disabled={busy}
+            aria-busy={busy}
+            aria-label={
+              busy ? t.folders.grouping.changing : t.folders.grouping.trigger(grouped)
+            }
+          >
+            <Icon
+              aria-hidden="true"
+              className={busy ? "animate-spin motion-reduce:animate-none" : undefined}
+            />
+            {busy
+              ? t.folders.grouping.changingShort
+              : grouped
+                ? t.folders.grouping.grouped
+                : t.folders.grouping.ungrouped}
+            <ChevronDown aria-hidden="true" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end" className="max-w-popover-wide">
+          <DropdownMenuLabel>{t.folders.grouping.heading}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={grouping.mode}
+            onValueChange={(mode) => void choose(mode as FolderGroupingMode)}
+          >
+            {modes.map((mode) => (
+              <DropdownMenuRadioItem key={mode} value={mode}>
+                {t.folders.grouping.modes[mode]}
+              </DropdownMenuRadioItem>
+            ))}
+          </DropdownMenuRadioGroup>
+          <p className="px-2 pt-1 pb-1.5 text-xs text-muted-foreground">
+            {t.folders.grouping.autoHint}
+          </p>
+          {grouped && (
+            <>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setTagging(true)}>
+                <Tag aria-hidden="true" />
+                {t.folders.grouping.toTag}
+              </DropdownMenuItem>
+            </>
+          )}
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {tagging && groupId !== undefined && (
+        <GroupTagDialog
+          group={{ id: groupId, name }}
+          onClose={() => setTagging(false)}
+          onTagged={(result) => {
+            setTagging(false);
+            toast(taggedMessage(result));
+            // タグにすると自動グループは解散し、そのフォルダに ungroup が書かれる（research.md R-4・R-11）。
+            onGroupingChange({ mode: "ungroup" });
+            onTagged();
+          }}
+          onGone={() => {
+            setTagging(false);
+            onStale();
+          }}
+        />
+      )}
+    </>
   );
 }

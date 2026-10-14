@@ -201,14 +201,11 @@ const errorReasons = {
   relative_directory_path: "The path must be absolute.",
   video_not_found: "The video wasn't found.",
   folder_not_found: "The folder wasn't found.",
-  not_folder_group: "This folder isn't a group.",
   no_scan: "No scan has run yet.",
   directory_not_found: "That folder wasn't found.",
   file_unavailable: "The video file can't be opened.",
   media_folders_changed:
     "The media folders were changed elsewhere. Reload and try again.",
-  root_group_not_taggable: "A media folder's own group can't be turned into a tag.",
-  folder_not_group: "This folder is no longer a group.",
   group_target_not_found:
     "A video, group or item was removed in the meantime. Reload and try again.",
   group_cycle: "A group can't be put inside itself or a group inside it.",
@@ -864,7 +861,7 @@ export const en = {
       changingShort: "Changing…",
       autoHint:
         "Automatic: groups folders below a media folder that have no subfolders and 2 or more videos",
-      toTag: "Turn the group into a tag",
+      toTag: "Turn the group into a tag…",
     },
   },
   tags: {
@@ -1133,12 +1130,24 @@ export const en = {
       merge: "Merge",
     },
   },
-  folderGrouping: {
-    ungrouped: (name: string) => `Ungrouped "${name}"`,
+  // グループをタグに変える確認の窓と、その成功のトースト（specs/048-groups/ui-design.md
+  // 「Turning into a tag」「Words」）。グループページ、動画ページ、フォルダのメニューが共有する。
+  groups: {
+    tagDialog: {
+      title: (name: string) => `Turn "${name}" into a tag?`,
+      description: (name: string) =>
+        `The tag "${name}" is added to every video in the group, and the group is dissolved.`,
+      submit: "Turn into a tag",
+      submitting: "Turning into a tag…",
+      failed: (reason: string) => `Couldn't turn the group into a tag: ${reason}`,
+    },
     tagged: (name: string, created: boolean) =>
       created
-        ? `Created the tag "${name}" and ungrouped`
-        : `Added the tag "${name}" and ungrouped`,
+        ? `Created the tag "${name}" and dissolved the group`
+        : `Added the tag "${name}" and dissolved the group`,
+  },
+  folderGrouping: {
+    ungrouped: (name: string) => `Ungrouped "${name}"`,
     cannotTag: (name: string) =>
       `"${name}" can't be used as a tag name, so it can't become a tag`,
     notGroup: "This folder is no longer a group",

@@ -125,6 +125,8 @@ describe("groups API", () => {
       { url: "/api/groups/7/items/11/move", method: "POST", body: {} },
       { url: "/api/groups/7", method: "DELETE", body: undefined },
       { url: "/api/groups/7/tag", method: "POST", body: undefined },
+      // タグ化の後は共有のタグの一覧を取り直す（タグが増えるか、本数が変わる）。
+      { url: "/api/tags", method: "GET", body: undefined },
     ]);
   });
 

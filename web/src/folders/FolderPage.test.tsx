@@ -1406,14 +1406,14 @@ describe("FolderPage", () => {
         path: "series",
         name: "series",
         videoCount: 2,
-        grouping: { mode: "auto", grouped: true, taggable: true },
+        grouping: { mode: "auto", groupId: 7 },
       }),
       folders: [],
     };
     const rootWithVideos: FolderListing = {
       folder: summary({
         videoCount: 1,
-        grouping: { mode: "auto", grouped: false, taggable: false },
+        grouping: { mode: "auto" },
       }),
       folders: [],
     };
@@ -1427,7 +1427,7 @@ describe("FolderPage", () => {
         const method = init?.method ?? "GET";
         requests.push(url);
         if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
-        if (url.includes("/grouping")) {
+        if (url.includes("/grouping") || url.startsWith("/api/groups/")) {
           writes.push({
             method,
             url,
@@ -1468,7 +1468,7 @@ describe("FolderPage", () => {
     }
 
     it("「動画 N」の行に今のまとめ方を出し、ラジオで PUT を送って応答で文言を変え、ライブラリの控えを捨てる（受け入れ条件 3・4・5）", async () => {
-      respond(() => json({ mode: "ungroup", grouped: false, taggable: false }));
+      respond(() => json({ mode: "ungroup" }));
       const user = userEvent.setup();
       renderFolders("/folders/3/series");
       const button = await trigger(true);
@@ -1497,7 +1497,7 @@ describe("FolderPage", () => {
         ["Group this folder's videos", "false"],
       ]);
       expect(
-        within(menu).getByRole("menuitem", { name: "Turn the group into a tag" }),
+        within(menu).getByRole("menuitem", { name: "Turn the group into a tag…" }),
       ).toBeDefined();
       await user.click(within(menu).getByRole("menuitemradio", { name: "Don't group" }));
 
@@ -1518,17 +1518,17 @@ describe("FolderPage", () => {
       expect(
         requests.filter((url) => url.startsWith("/api/folders/3/videos?")).length,
       ).toBe(videoReads);
-      // タグに変えられないフォルダでは項目を出さない。
+      // 自動グループの無いフォルダ（応答に groupId が無い）では項目を出さない。
       await user.click(await trigger(false));
       expect(
         within(await screen.findByRole("menu")).queryByRole("menuitem", {
-          name: "Turn the group into a tag",
+          name: "Turn the group into a tag…",
         }),
       ).toBeNull();
     });
 
     it("同じ値を選び直しても送る", async () => {
-      respond(() => json({ mode: "auto", grouped: true, taggable: true }));
+      respond(() => json({ mode: "auto", groupId: 7 }));
       const user = userEvent.setup();
       renderFolders("/folders/3/series");
       await user.click(await trigger(true));
@@ -1544,14 +1544,8 @@ describe("FolderPage", () => {
       );
     });
 
-    it("グループをタグに変えるとトーストで伝え、動画の一覧を読み直し、ライブラリの控えを捨てる", async () => {
-      respond(() =>
-        json({
-          tag: { id: 5, name: "series" },
-          created: true,
-          grouping: { mode: "ungroup", grouped: false, taggable: false },
-        }),
-      );
+    it("グループをタグに変えると、確かめてから送り、トーストで伝え、動画の一覧を読み直し、ライブラリの控えを捨てる", async () => {
+      respond(() => json({ tag: { id: 5, name: "series" }, created: true }));
       const user = userEvent.setup();
       renderFolders("/folders/3/series");
       await user.click(await trigger(true));
@@ -1560,16 +1554,28 @@ describe("FolderPage", () => {
       ).length;
       holdLibrarySnapshot();
       await user.click(
-        await screen.findByRole("menuitem", { name: "Turn the group into a tag" }),
+        await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
       );
 
+      const dialog = await screen.findByRole("alertdialog", {
+        name: 'Turn "series" into a tag?',
+      });
       expect(
-        await screen.findByText('Created the tag "series" and ungrouped'),
+        within(dialog).getByText(
+          'The tag "series" is added to every video in the group, and the group is dissolved.',
+        ),
+      ).toBeDefined();
+      expect(writes).toEqual([]);
+      await user.click(within(dialog).getByRole("button", { name: "Turn into a tag" }));
+
+      expect(
+        await screen.findByText('Created the tag "series" and dissolved the group'),
       ).toBeDefined();
       expect(writes.map(({ method, url }) => [method, url])).toEqual([
-        ["POST", "/api/folders/3/grouping/tag?path=series"],
+        ["POST", "/api/groups/7/tag"],
       ]);
-      expect(await trigger(false)).toBeDefined();
+      expect((await trigger(false)).textContent).toBe("One by one in the library");
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
       await waitFor(() =>
         expect(
           requests.filter((url) => url.startsWith("/api/folders/3/videos?")).length,
@@ -1581,13 +1587,7 @@ describe("FolderPage", () => {
     it("タグ化の後、元の位置が続きのページにあれば、そこに届くまで読んでスクロールの位置を戻す", async () => {
       const pageHeight = 3000;
       let loadedPages = 0;
-      respond(() =>
-        json({
-          tag: { id: 5, name: "series" },
-          created: true,
-          grouping: { mode: "ungroup", grouped: false, taggable: false },
-        }),
-      );
+      respond(() => json({ tag: { id: 5, name: "series" }, created: true }));
       const base = fetchMock.getMockImplementation();
       fetchMock.mockImplementation((input, init) => {
         const url = String(input);
@@ -1618,8 +1618,9 @@ describe("FolderPage", () => {
         renderFolders("/folders/3/series");
         await user.click(await trigger(true));
         await user.click(
-          await screen.findByRole("menuitem", { name: "Turn the group into a tag" }),
+          await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
         );
+        await user.click(await screen.findByRole("button", { name: "Turn into a tag" }));
         // 7000px に届くのは 3 ページ目を読んだ後（3 × 3000 − 768）。4 ページ目は読まない。
         await waitFor(() => expect(loadedPages).toBe(3));
         await waitFor(() =>
@@ -1635,38 +1636,44 @@ describe("FolderPage", () => {
       }
     });
 
-    it("タグ化の失敗をトーストで伝え、引き金を戻す", async () => {
+    it("タグ化の失敗は窓の中に出し、窓を開いたままにする", async () => {
       respond(() => json({ code: "invalid_request", message: "invalid tag name" }, 400));
       const user = userEvent.setup();
       renderFolders("/folders/3/series");
       await user.click(await trigger(true));
       await user.click(
-        await screen.findByRole("menuitem", { name: "Turn the group into a tag" }),
+        await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
       );
+      const dialog = await screen.findByRole("alertdialog");
+      await user.click(within(dialog).getByRole("button", { name: "Turn into a tag" }));
       expect(
-        await screen.findByText(
-          "\"series\" can't be used as a tag name, so it can't become a tag",
-        ),
+        await within(dialog).findByText(/^Couldn't turn the group into a tag: /),
       ).toBeDefined();
-      const button = await trigger(true);
-      await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
+      expect(screen.getByRole("alertdialog")).toBe(dialog);
+      await waitFor(() =>
+        expect(
+          (
+            within(dialog).getByRole("button", {
+              name: "Turn into a tag",
+            }) as HTMLButtonElement
+          ).disabled,
+        ).toBe(false),
+      );
     });
 
-    it("409 では「もうグループではありません」と伝え、フォルダの一覧を取り直す", async () => {
-      respond(() => json({ code: "conflict", message: "x" }, 409));
+    it("窓からの 404（途中で解散された）は窓を閉じ、フォルダの grouping を読み直す", async () => {
+      respond(() => json({ code: "not_found", message: "x" }, 404));
       const user = userEvent.setup();
       renderFolders("/folders/3/series");
       await user.click(await trigger(true));
       const listingReads = requests.filter(
         (url) => url === "/api/folders/3?path=series",
       ).length;
-      holdLibrarySnapshot();
       await user.click(
-        await screen.findByRole("menuitem", { name: "Turn the group into a tag" }),
+        await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
       );
-      expect(await screen.findByText("This folder is no longer a group")).toBeDefined();
-      // ほかのタブで先に変わったので、ライブラリの控えも古い。次に開くときは読み直させる。
-      expect(takeListSnapshot({ query: "" })).toBeUndefined();
+      await user.click(await screen.findByRole("button", { name: "Turn into a tag" }));
+      await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
       await waitFor(() =>
         expect(
           requests.filter((url) => url === "/api/folders/3?path=series").length,
@@ -1689,7 +1696,7 @@ describe("FolderPage", () => {
     });
 
     it("登録フォルダそのものの画面にも出し、送るときは path を省く", async () => {
-      respond(() => json({ mode: "groupDirect", grouped: true, taggable: false }));
+      respond(() => json({ mode: "groupDirect", groupId: 9 }));
       const user = userEvent.setup();
       renderFolders("/folders/3");
       await user.click(await trigger(false));
@@ -1698,6 +1705,11 @@ describe("FolderPage", () => {
       );
       expect(await trigger(true)).toBeDefined();
       expect(writes.map(({ url }) => url)).toEqual(["/api/folders/3/grouping"]);
+      // 登録フォルダ自身のグループもタグに変えられる（research.md R-11）。
+      await user.click(await trigger(true));
+      expect(
+        await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
+      ).toBeDefined();
     });
 
     it("検索結果と最上位には出さない", async () => {
@@ -1750,7 +1762,7 @@ describe("FolderPage の英語の画面（specs/023-english-i18n）", () => {
       name: "旅行",
       videoCount: 2,
       folderCount: 1,
-      grouping: { mode: "auto", grouped: true, taggable: true },
+      grouping: { mode: "auto", groupId: 7 },
     }),
     folders: [
       summary({

@@ -170,7 +170,7 @@ func (s *GroupStore) TagGroup(ctx context.Context, id int64) (domain.GroupTag, e
 		if out.Tag, out.Created, err = findOrCreateTag(ctx, tx, normalized); err != nil {
 			return nil, err
 		}
-		keys, err := descendantContentKeys(ctx, tx, id, false)
+		keys, err := descendantContentKeys(ctx, tx, id)
 		if err != nil {
 			return nil, err
 		}
@@ -437,23 +437,6 @@ func dissolveFolderGroup(ctx context.Context, tx *sql.Tx, folderPath string) ([]
 	return changed, err
 }
 
-// attachTagToFolderGroup はフォルダ folderPath の自動グループがあれば、手で足したメンバーと子孫の
-// グループの動画の項目の鍵に tagID を手で付ける（research.md R-11）。それらはフォルダ由来のタグを
-// 得ないので、解散の前に付けておかないとタグもグループも失う。フォルダ由来の項目は従来どおり
-// フォルダ名のタグを得るので手では付けない（specs/017-folder-groups/data-model.md §4）。無ければ
-// 何もしない。
-func attachTagToFolderGroup(ctx context.Context, tx *sql.Tx, folderPath string, tagID int64) error {
-	id, err := folderGroupID(ctx, tx, folderPath)
-	if err != nil || id == 0 {
-		return err
-	}
-	keys, err := descendantContentKeys(ctx, tx, id, true)
-	if err != nil {
-		return err
-	}
-	return attachTagToUserKeys(ctx, tx, keys, tagID, groupNow())
-}
-
 // folderGroupID はフォルダ folderPath の自動グループの id を返す。無ければ 0。
 func folderGroupID(ctx context.Context, tx *sql.Tx, folderPath string) (int64, error) {
 	var id int64
@@ -468,17 +451,14 @@ func folderGroupID(ctx context.Context, tx *sql.Tx, folderPath string) (int64, e
 }
 
 // descendantContentKeys はグループ id とその子孫のグループの動画の項目の鍵を、重複なく返す。
-// exceptFolderItems なら、グループ id 自身のフォルダ由来の項目（from_folder = 1）の鍵を除く。
-func descendantContentKeys(ctx context.Context, tx *sql.Tx, id int64, exceptFolderItems bool) ([]string, error) {
+func descendantContentKeys(ctx context.Context, tx *sql.Tx, id int64) ([]string, error) {
 	rows, err := tx.QueryContext(ctx, `with recursive down(id) as (
 			select ?1
 			union
 			select i.child_id from group_items i join down on i.group_id = down.id where i.child_id is not null)
 		select distinct content_key from group_items
 		where content_key is not null and group_id in (select id from down)
-		  and content_key not in (select content_key from group_items
-		    where ?2 and group_id = ?1 and from_folder = 1 and content_key is not null)
-		order by content_key`, id, exceptFolderItems)
+		order by content_key`, id)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the group videos: %w", err)
 	}

@@ -157,9 +157,10 @@ the same `404` as missing ones
 **Only a scan reads the media folders' files.** Only a scan opens the files
 in the media folders, and only a user-started scan walks them whole. The
 folder watcher (`internal/watcher`) reads directory entries only, to place a
-watch on each directory, and never opens a file. The folder index (folder
-groups and folder names), folder browsing and the import status are derived
-from SQLite, never from the filesystem.
+watch on each directory, and never opens a file. The folder index (the
+folder names above each video), the folder members of automatic groups, folder
+browsing and the import status are derived from SQLite, never from the
+filesystem.
 
 ## Subsystem map
 
