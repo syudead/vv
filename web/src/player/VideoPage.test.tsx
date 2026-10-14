@@ -1972,7 +1972,7 @@ describe("VideoPage", () => {
         if (String(input) !== "/api/favorites") return answered!(input, init);
         const body = JSON.parse(String(init?.body)) as {
           videoIds: number[];
-          folders: unknown[];
+          groupIds: unknown[];
           favorite: boolean;
         };
         bodies.push(body);
@@ -2006,7 +2006,7 @@ describe("VideoPage", () => {
       ).length;
     }
 
-    const applied = () => json({ appliedVideos: 1, appliedFolders: 0 });
+    const applied = () => json({ appliedVideos: 1, appliedGroups: 0 });
 
     it("右端の操作の先頭（撮るボタンの左）に置く", async () => {
       server.videos.set(7, [owned]);
@@ -2047,7 +2047,7 @@ describe("VideoPage", () => {
       expect(favoriteButton().getAttribute("aria-disabled")).toBe("true");
       expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
       fireEvent.click(favoriteButton());
-      expect(bodies).toEqual([{ videoIds: [7], folders: [], favorite: true }]);
+      expect(bodies).toEqual([{ videoIds: [7], groupIds: [], favorite: true }]);
 
       await act(async () => answers[0]!(applied()));
       await waitFor(() => expect(videoRequests(7)).toBe(before + 1));
@@ -2068,7 +2068,7 @@ describe("VideoPage", () => {
 
       // もう一度押すと外す。
       fireEvent.click(favoriteButton());
-      expect(bodies[1]).toEqual({ videoIds: [7], folders: [], favorite: false });
+      expect(bodies[1]).toEqual({ videoIds: [7], groupIds: [], favorite: false });
       await act(async () => answers[1]!(applied()));
       await waitFor(() =>
         expect(favoriteButton().getAttribute("aria-pressed")).toBe("false"),
@@ -2320,7 +2320,7 @@ describe("VideoPage", () => {
       fireEvent.click(add);
       fireEvent.click(await screen.findByRole("option", { name: "Tonight" }));
       expect(await screen.findByText('Added 1 item to "Tonight"')).toBeDefined();
-      expect(bodies).toEqual([{ videoIds: [7], folders: [] }]);
+      expect(bodies).toEqual([{ videoIds: [7], groupIds: [] }]);
     });
 
     it("ゲストには出さず、プレイリストを読まない（受け入れ条件 9）", async () => {

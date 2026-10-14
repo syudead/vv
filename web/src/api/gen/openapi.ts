@@ -1662,13 +1662,13 @@ export interface paths {
         get?: never;
         /**
          * 動画とグループのお気に入りを付け外しする
-         * @description 所有者だけ。`videoIds` の動画と `folders` のグループのお気に入りを `favorite` にそろえる。
-         *     `videoIds` と `folders` の合計（重複は 1 つに数える）が 1 以上 20000 以下でなければ 400
-         *     `too_many_videos`（`POST /api/video-tags` と同じ上限）、`folders` の `path` が不正なら 400
-         *     `invalid_folder_path` で、何も変えない。ライブラリに無い id、登録フォルダに無い `rootId`、
-         *     今グループでないフォルダは誤りにせず数えない。既に同じ状態のものは誤りにせず数え、付いている
-         *     ものに付けてもお気に入りにした日時は変えない。`folders` にグループを入れてもメンバーの動画には
-         *     付かない。処理は 1 つのトランザクションで、全部に反映するか 1 つも反映しない。確定後の
+         * @description 所有者だけ。`videoIds` の動画と `groupIds` のグループのお気に入りを `favorite` にそろえる。
+         *     `videoIds` と `groupIds` の合計（重複は 1 つに数える）が 1 以上 20000 以下でなければ 400
+         *     `too_many_videos`（`POST /api/video-tags` と同じ上限）で、何も変えない。ライブラリに無い
+         *     動画の id と無いグループの id は誤りにせず数えない。既に同じ状態のものは誤りにせず数え、
+         *     付いているものに付けてもお気に入りにした日時は変えない。`groupIds` にグループを入れても
+         *     その動画には付かない。グループのお気に入りはグループの解散で消える
+         *     （specs/048-groups/research.md R-10）。処理は 1 つのトランザクションで、全部に反映するか 1 つも反映しない。確定後の
          *     `/api/events` の知らせは無い（specs/035-favorites/contracts/screen-api.md §1）。
          */
         put: operations["updateFavorites"];
@@ -1754,11 +1754,11 @@ export interface paths {
         put?: never;
         /**
          * プレイリストの末尾に動画とグループを足す
-         * @description 所有者だけ。`videoIds` の動画、次に `folders` のグループを要求の順で末尾に足す
-         *     （specs/044-playlists/research.md R-5）。ライブラリに無い id、登録フォルダに無い `rootId`、
-         *     今グループでないフォルダはどちらの数にも入らず、重複は 1 度だけ数える。既にプレイリストに
-         *     あるものは `existing` に数え、何も変えない。両方が空なら 400 `invalid_request`、`folders` の
-         *     `path` が不正なら 400 `invalid_folder_path`、重複を除いた合計が 20000 を超えれば 400
+         * @description 所有者だけ。`videoIds` の動画、次に `groupIds` のグループを要求の順で末尾に足す
+         *     （specs/044-playlists/research.md R-5、specs/048-groups/research.md R-10）。ライブラリに無い
+         *     動画の id と無いグループの id はどちらの数にも入らず、重複は 1 度だけ数える。既にプレイリストに
+         *     あるものは `existing` に数え、何も変えない。グループの項目はグループの解散で消える。
+         *     両方が空なら 400 `invalid_request`、重複を除いた合計が 20000 を超えれば 400
          *     `too_many_videos`（`PUT /api/favorites` と同じ上限）。プレイリストが無ければ 404 `not_found`。
          */
         post: operations["addPlaylistItems"];
@@ -2909,8 +2909,8 @@ export interface components {
         FavoritesRequest: {
             /** @description お気に入りを付け外しする動画の id */
             videoIds?: number[];
-            /** @description お気に入りを付け外しするグループのフォルダ */
-            folders?: components["schemas"]["VideoFolder"][];
+            /** @description お気に入りを付け外しするグループの id（specs/048-groups/research.md R-10） */
+            groupIds?: number[];
             /** @description true でお気に入りにし、false で外す */
             favorite: boolean;
         };
@@ -2920,8 +2920,8 @@ export interface components {
              *     既に同じ状態だったものを含む）
              */
             appliedVideos: number;
-            /** @description folders のうちいまグループのフォルダの数（既に同じ状態だったものを含む） */
-            appliedFolders: number;
+            /** @description groupIds のうちいまある異なるグループの数（既に同じ状態だったものを含む） */
+            appliedGroups: number;
         };
         /** @description プレイリスト 1 つの要約（specs/044-playlists/contracts/screen-api.md） */
         PlaylistSummary: {
@@ -2992,8 +2992,8 @@ export interface components {
         PlaylistItemsAdd: {
             /** @description 足す動画の id */
             videoIds?: number[];
-            /** @description 足すグループのフォルダ（`PUT /api/favorites` と同じ形） */
-            folders?: components["schemas"]["VideoFolder"][];
+            /** @description 足すグループの id（`PUT /api/favorites` と同じ形） */
+            groupIds?: number[];
         };
         PlaylistItemsAdded: {
             /** @description 末尾に足した項目の数 */

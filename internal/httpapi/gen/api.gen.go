@@ -1586,8 +1586,8 @@ type FavoritesRequest struct {
 	// Favorite true でお気に入りにし、false で外す
 	Favorite bool `json:"favorite"`
 
-	// Folders お気に入りを付け外しするグループのフォルダ
-	Folders *[]VideoFolder `json:"folders,omitempty"`
+	// GroupIds お気に入りを付け外しするグループの id（specs/048-groups/research.md R-10）
+	GroupIds *[]int64 `json:"groupIds,omitempty"`
 
 	// VideoIds お気に入りを付け外しする動画の id
 	VideoIds *[]int64 `json:"videoIds,omitempty"`
@@ -1595,8 +1595,8 @@ type FavoritesRequest struct {
 
 // FavoritesResponse defines model for FavoritesResponse.
 type FavoritesResponse struct {
-	// AppliedFolders folders のうちいまグループのフォルダの数（既に同じ状態だったものを含む）
-	AppliedFolders int `json:"appliedFolders"`
+	// AppliedGroups groupIds のうちいまある異なるグループの数（既に同じ状態だったものを含む）
+	AppliedGroups int `json:"appliedGroups"`
 
 	// AppliedVideos videoIds のうちいまライブラリにある異なる動画の id の数（同じ集まりの id も 1 本ずつ数え、
 	// 既に同じ状態だったものを含む）
@@ -2047,8 +2047,8 @@ type PlaylistItemMove struct {
 
 // PlaylistItemsAdd defines model for PlaylistItemsAdd.
 type PlaylistItemsAdd struct {
-	// Folders 足すグループのフォルダ（`PUT /api/favorites` と同じ形）
-	Folders *[]VideoFolder `json:"folders,omitempty"`
+	// GroupIds 足すグループの id（`PUT /api/favorites` と同じ形）
+	GroupIds *[]int64 `json:"groupIds,omitempty"`
 
 	// VideoIds 足す動画の id
 	VideoIds *[]int64 `json:"videoIds,omitempty"`

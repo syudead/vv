@@ -70,7 +70,7 @@ func readPlaylist(t *testing.T, db *DB, id int64) (domain.Playlist, []domain.Pla
 	}
 	// 登録フォルダは項目と同じスナップショットから読むので、見せるグループはどれもその下にある。
 	for _, item := range items {
-		if item.Group != nil {
+		if item.Group != nil && item.Group.Path != "" {
 			if _, ok := domain.LocateFolder(roots, item.Group.Path); !ok {
 				t.Errorf("グループ %s が返した登録フォルダ %+v の下に無い", item.Group.Path, roots)
 			}
@@ -79,7 +79,8 @@ func readPlaylist(t *testing.T, db *DB, id int64) (domain.Playlist, []domain.Pla
 	return playlist, items
 }
 
-// playlistEntries はプレイリストの見せる項目を、動画なら "v:<id>"、グループなら "g:<パス>" で返す。
+// playlistEntries はプレイリストの見せる項目を、動画なら "v:<id>"、自動グループなら "g:<パス>"、
+// 手で作ったグループなら "g:#<id>" で返す。
 func playlistEntries(t *testing.T, db *DB, id int64) []string {
 	t.Helper()
 	_, items := readPlaylist(t, db, id)
@@ -87,8 +88,10 @@ func playlistEntries(t *testing.T, db *DB, id int64) []string {
 	for _, item := range items {
 		if item.Video != nil {
 			out = append(out, "v:"+itoa(item.Video.ID))
-		} else {
+		} else if item.Group.Path != "" {
 			out = append(out, "g:"+item.Group.Path)
+		} else {
+			out = append(out, "g:#"+itoa(item.Group.ID))
 		}
 	}
 	return out
@@ -150,8 +153,8 @@ func TestPlaylistAddsAVideoToTwoPlaylists(t *testing.T) {
 	}
 }
 
-// 動画とグループは要求の順（動画、次にフォルダ）で末尾に並び、ライブラリに無い id とグループで
-// ないフォルダはどちらの数にも入らない。グループは所有者の値で読む。
+// 動画とグループは要求の順（動画、次にグループ）で末尾に並び、ライブラリに無い動画の id と無い
+// グループの id はどちらの数にも入らない。グループは所有者の値で読む。
 func TestPlaylistAppendsInRequestOrder(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
@@ -160,8 +163,8 @@ func TestPlaylistAppendsInRequestOrder(t *testing.T) {
 	addVideos(t, db, id, solo)
 
 	added := addToPlaylist(t, db, id, domain.PlaylistAdd{
-		VideoIDs:    []int64{x, 99_999, solo, x},
-		FolderPaths: []string{pair, fixturePath("/media/mixed"), show, pair},
+		VideoIDs: []int64{x, 99_999, solo, x},
+		GroupIDs: []int64{groupIDOf(t, db, pair), 99_999, groupIDOf(t, db, show), groupIDOf(t, db, pair)},
 	})
 	if added != (domain.PlaylistAdded{Added: 3, Existing: 1}) {
 		t.Errorf("added = %+v, want added 3, existing 1", added)
@@ -313,7 +316,7 @@ func TestPlaylistHidesAGroupWithoutMembers(t *testing.T) {
 	ctx := context.Background()
 	solo, show := ids[fixturePath("/media/solo.mp4")], fixturePath("/media/show")
 	id := createPlaylist(t, db, "空のグループ")
-	addToPlaylist(t, db, id, domain.PlaylistAdd{VideoIDs: []int64{solo}, FolderPaths: []string{show}})
+	addToPlaylist(t, db, id, domain.PlaylistAdd{VideoIDs: []int64{solo}, GroupIDs: []int64{groupIDOf(t, db, show)}})
 	_, items := readPlaylist(t, db, id)
 	var members []int64
 	for _, video := range items[1].Group.Members {
@@ -343,7 +346,8 @@ func TestPlaylistHidesAGroupWithoutMembers(t *testing.T) {
 }
 
 // 動画の場所がなくなった項目は読み出しから外れ、中身を再スキャンすると元の位置で読める。グループの
-// 項目は、フォルダのグループ化を解くと外れ、自動に戻すと戻る（R-4、Edge Case）。
+// 項目は、フォルダのグループ化を解くとグループの解散で消え、自動に戻して新しいグループができても
+// 戻らない（R-4、specs/048-groups/research.md R-4・R-10）。
 func TestPlaylistHidesItemsUntilTheyResolveAgain(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -351,7 +355,7 @@ func TestPlaylistHidesItemsUntilTheyResolveAgain(t *testing.T) {
 	solo, x := ids[soloPath], ids[fixturePath("/media/mixed/x.mp4")]
 	show := fixturePath("/media/show")
 	id := createPlaylist(t, db, "戻る")
-	addToPlaylist(t, db, id, domain.PlaylistAdd{VideoIDs: []int64{x, solo}, FolderPaths: []string{show}})
+	addToPlaylist(t, db, id, domain.PlaylistAdd{VideoIDs: []int64{x, solo}, GroupIDs: []int64{groupIDOf(t, db, show)}})
 	addToPlaylist(t, db, id, domain.PlaylistAdd{VideoIDs: []int64{ids[fixturePath("/media/mixed/sub/y.mp4")]}})
 	y := ids[fixturePath("/media/mixed/sub/y.mp4")]
 
@@ -382,7 +386,7 @@ func TestPlaylistHidesItemsUntilTheyResolveAgain(t *testing.T) {
 	if err := db.FolderGroups().ClearOverride(ctx, show); err != nil {
 		t.Fatal(err)
 	}
-	if got := playlistEntries(t, db, id); !slices.Equal(got, []string{"v:" + itoa(x), "v:" + itoa(back), "g:" + show, "v:" + itoa(y)}) {
+	if got := playlistEntries(t, db, id); !slices.Equal(got, videoEntries(x, back, y)) {
 		t.Errorf("自動に戻したあと = %v", got)
 	}
 }
@@ -845,7 +849,7 @@ func TestListPlaylistsCovers(t *testing.T) {
 	empty := createPlaylist(t, db, "空")
 	id := createPlaylist(t, db, "絵柄")
 	// p2 にはサムネイルが無いので飛ばす。show はサムネイル生成済みのメンバーのうち並びの先頭。
-	addToPlaylist(t, db, id, domain.PlaylistAdd{VideoIDs: []int64{p2}, FolderPaths: []string{show}})
+	addToPlaylist(t, db, id, domain.PlaylistAdd{VideoIDs: []int64{p2}, GroupIDs: []int64{groupIDOf(t, db, show)}})
 	addVideos(t, db, id, x, solo, y)
 
 	_, items := readPlaylist(t, db, id)

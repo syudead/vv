@@ -85,15 +85,15 @@ type PlaylistItem struct {
 	Group *LibraryGroup
 }
 
-// PlaylistAdd はプレイリストへの追加の入力である。VideoIDs の動画と FolderPaths のフォルダ
-// （絶対パス）のグループを、この順で末尾に足す（research.md R-5）。
+// PlaylistAdd はプレイリストへの追加の入力である。VideoIDs の動画と GroupIDs のグループを、
+// この順で末尾に足す（research.md R-5、specs/048-groups/research.md R-10）。
 type PlaylistAdd struct {
-	VideoIDs    []int64
-	FolderPaths []string
+	VideoIDs []int64
+	GroupIDs []int64
 }
 
 // PlaylistAdded は追加の結果である。Added は末尾に足した項目の数、Existing は引けたが既に
-// プレイリストにあった項目の数である。ライブラリに無い id と今グループでないフォルダは
+// プレイリストにあった項目の数である。ライブラリに無い動画の id と無いグループの id は
 // どちらにも数えない。
 type PlaylistAdded struct {
 	Added    int
@@ -211,7 +211,8 @@ func (i PlaylistItem) start() *PlaylistStep {
 // 動画 current から、今の位置と次に開く動画を決める（specs/044-playlists/data-model.md
 // 「Playback order」、research.md R-6）。順序の規則はすべてここにある。
 //
-//   - グループの項目では、今の動画がそのメンバーなら、グループの並びで後ろのメンバーへ進む。
+//   - グループの項目では、今の動画がそのメンバーなら、グループの再生順（GroupPlayOrder、
+//     LibraryGroup.Members の順）で後ろのメンバーへ進む。
 //     開始より後ろの見終わったメンバーも再生する（要件 7）。後ろのメンバーが無いか、今の動画が
 //     もうメンバーでなければ、次の見せる項目へ進む。
 //   - 次の見せる項目の開始の動画は、動画の項目ならその動画、グループの項目なら GroupOpenIndex の

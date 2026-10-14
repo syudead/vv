@@ -1,4 +1,4 @@
-import type { FolderRef, LibraryGroup, LibraryItem, Video } from "./client";
+import type { FolderRef, LibraryItem, Video } from "./client";
 
 /**
  * 一覧の項目（LibraryItem）を読み分ける小さな道具である。一覧の保持
@@ -8,17 +8,6 @@ import type { FolderRef, LibraryGroup, LibraryItem, Video } from "./client";
 /** videoItem は動画1件を動画の項目に包む（GET /api/videos・フォルダの動画の応答）。 */
 export function videoItem(video: Video): LibraryItem {
   return { kind: "video", video };
-}
-
-/**
- * groupFolder は自動グループのフォルダである。手で作ったグループと、フォルダが登録フォルダの
- * 下に無いグループでは undefined になる（specs/048-groups/contracts/screen-api.md）。
- * お気に入りはまだフォルダで送るので、そのために使う。
- */
-export function groupFolder(group: LibraryGroup): FolderRef | undefined {
-  return group.folder === undefined
-    ? undefined
-    : { rootId: group.folder.rootId, path: group.folder.path };
 }
 
 /** folderRefKey はフォルダを値で比べるための文字列にする。 */
@@ -73,20 +62,4 @@ export function groupsIn(
   return items.flatMap((item) =>
     item.kind === "group" && targets.has(item.group.id) ? [item.group.id] : [],
   );
-}
-
-/** groupsAtFolders は、自動グループのフォルダが `folders` にあるグループの項目の id を返す。 */
-export function groupsAtFolders(
-  items: readonly LibraryItem[],
-  folders: Iterable<FolderRef>,
-): number[] {
-  const wanted = new Set(Array.from(folders, folderRefKey));
-  if (wanted.size === 0) return [];
-  return items.flatMap((item) => {
-    if (item.kind !== "group") return [];
-    const folder = groupFolder(item.group);
-    return folder !== undefined && wanted.has(folderRefKey(folder))
-      ? [item.group.id]
-      : [];
-  });
 }
