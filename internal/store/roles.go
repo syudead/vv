@@ -110,6 +110,13 @@ type CreditStore struct{ sql, read *sql.DB }
 // 発行するため、OverrideStore と同じく発行先を持つ *DB を通して使う。
 type WorkInfoStore struct{ db *DB }
 
+// WorkInfoPluginStore は作品情報プラグインの行（追加・名前による差し替え・承認・取り消し・削除）と、
+// プラグインごとの設定の値を受け持つ（work_info_plugins.go、specs/049-work-info-plugins/data-model.md）。
+// 承認と値の書き込みの判断は internal/app が行い、ここは取引の中で行を読み直して同じ規則を確かめる。
+// 共有する SQLite 接続と、一覧のための読み取り用の接続 read だけを持ち、ライブラリ索引の型や通知には
+// 依存せず、ドメインイベントを発行しない（plan.md の Constitution Check）。
+type WorkInfoPluginStore struct{ sql, read *sql.DB }
+
 func (db *DB) Ingest() *IngestStore       { return &IngestStore{db: db} }
 func (db *DB) Library() *LibraryStore     { return &LibraryStore{db: db} }
 func (db *DB) Scans() *ScanStore          { return &ScanStore{db: db} }
@@ -129,3 +136,6 @@ func (db *DB) AutoTags() *AutoTagStore         { return &AutoTagStore{db: db} }
 func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
 func (db *DB) Credits() *CreditStore           { return &CreditStore{sql: db.sql, read: db.read} }
 func (db *DB) WorkInfo() *WorkInfoStore        { return &WorkInfoStore{db: db} }
+func (db *DB) WorkInfoPlugins() *WorkInfoPluginStore {
+	return &WorkInfoPluginStore{sql: db.sql, read: db.read}
+}

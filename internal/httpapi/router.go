@@ -306,6 +306,8 @@ type Options struct {
 	ThumbnailEdits ThumbnailEdits
 	// ThumbnailUploads は手元の画像のサムネイルへのアップロード。nil なら該当の経路は 500 を返す。
 	ThumbnailUploads ThumbnailUploads
+	// WorkInfoPlugins は作品情報プラグインの登録。nil なら該当の経路は 500 を返す。
+	WorkInfoPlugins WorkInfoPlugins
 	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
 	// 解析情報の無い動画は変換のたびに解析する。
 	TranscodeProbes TranscodeProbeWriter
@@ -382,6 +384,7 @@ type server struct {
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
 	thumbnailUploads  ThumbnailUploads
+	workInfoPlugins   WorkInfoPlugins
 	// thumbnailUploadBuffers はアップロードの本文が同時に占めるメモリの枠である（thumbnail_upload.go）。
 	thumbnailUploadBuffers *semaphore.Weighted
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
@@ -419,6 +422,7 @@ type server struct {
 //	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
 //	/api/settings/*  → JSON（所有者が設定画面で選ぶ値。同上）
 //	/api/api-tokens* → JSON（所有者が設定画面で管理する API トークン。同上）
+//	/api/work-info-plugins* → JSON と multipart（所有者が設定画面で管理する作品情報プラグイン。同上）
 //	/api/v1/*        → JSON（外部連携 API。api/external-v1.yaml から生成した経路で、Bearer だけ）
 //	/mcp             → MCP（Streamable HTTP の stateless。外部連携 API のツール、Bearer だけ）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
@@ -467,6 +471,7 @@ func NewRouter(opts Options) http.Handler {
 		comfyUI:                opts.ComfyUI,
 		thumbnailEdits:         opts.ThumbnailEdits,
 		thumbnailUploads:       opts.ThumbnailUploads,
+		workInfoPlugins:        opts.WorkInfoPlugins,
 		thumbnailUploadBuffers: newThumbnailUploadBuffers(),
 		transcodeStarts:        newTranscodeStarts(),
 		artifacts:              opts.Artifacts,
@@ -580,7 +585,7 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 }
 
 func requiresJSONBody(r *http.Request) bool {
-	return requiresCreditJSONBody(r.Method, r.URL.Path) || requiresOtherJSONBody(r)
+	return requiresCreditJSONBody(r.Method, r.URL.Path) || isWorkInfoPluginJSONPut(r) || requiresOtherJSONBody(r)
 }
 
 // requiresOtherJSONBody は人物と団体の経路（requiresCreditJSONBody）を除く、本文を持つ経路を返す。
@@ -656,6 +661,17 @@ func requiresOtherJSONBody(r *http.Request) bool {
 		}
 	}
 	return false
+}
+
+// isWorkInfoPluginJSONPut は r が PUT /api/work-info-plugins/{id}/approval か
+// PUT /api/work-info-plugins/{id}/settings かを返す（specs/049-work-info-plugins/contracts/screen-api.md）。
+func isWorkInfoPluginJSONPut(r *http.Request) bool {
+	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/work-info-plugins/")
+	if r.Method != http.MethodPut || !ok {
+		return false
+	}
+	id, rest, found := strings.Cut(suffix, "/")
+	return found && id != "" && (rest == "approval" || rest == "settings")
 }
 
 // isVideoJSONPut は PUT /api/videos/{id}/<rest> のうち本文を持つものかを返す。
@@ -766,6 +782,9 @@ const (
 	codeTagMergeRequired            = gen.ErrorCodeTagMergeRequired
 	codeTagNotTentative             = gen.ErrorCodeTagNotTentative
 	codeProviderFailed              = gen.ErrorCodeProviderFailed
+	codePluginTooLarge              = gen.ErrorCodePluginTooLarge
+	codePluginChanged               = gen.ErrorCodePluginChanged
+	codePluginUnusable              = gen.ErrorCodePluginUnusable
 )
 
 // エラーの reason の正本も api/openapi.yaml の ErrorReason である。生成された

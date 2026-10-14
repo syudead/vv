@@ -181,6 +181,9 @@ const errorCodes = {
   login_throttled: "Too many sign-in attempts. Wait a moment and try again.",
   account_already_configured: "The account is already set up.",
   provider_failed: "ComfyUI couldn't start the edit.",
+  plugin_too_large: "The plugin file is too large: up to 16 MB.",
+  plugin_changed: "The plugin was replaced. Review it again before approving.",
+  plugin_unusable: "This plugin has a problem and can't be used.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {

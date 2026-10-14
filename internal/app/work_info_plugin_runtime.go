@@ -10,7 +10,8 @@ import (
 // internal/wasmplugin の *Runtime が満たす（specs/049-work-info-plugins/plan.md の Constitution Check、
 // research.md R-1〜R-4）。
 type WorkInfoPluginRuntime interface {
-	// Inspect はモジュールを実行せずに検査し、マニフェストか、承認できない理由を返す。
+	// Inspect はモジュールを実行せずに検査し、マニフェストか、承認できない理由を返す。マニフェストを
+	// 読めたあとの検査で問題が見つかったときは、読めたマニフェストも問題と一緒に返す。
 	// モジュールが domain.WorkInfoPluginModuleMaxBytes を超えるときは domain.ErrWorkInfoPluginTooLarge を返す。
 	Inspect(ctx context.Context, module []byte) (domain.WorkInfoPluginManifest, domain.WorkInfoPluginProblem, error)
 	// Run はダイジェスト digest のモジュールを新しいインスタンスで 1 回動かし、要求への応答を返す。

@@ -271,11 +271,25 @@ func TestInspectReportsEachProblem(t *testing.T) {
 			if problem != tc.want {
 				t.Fatalf("problem = %q, want %q", problem, tc.want)
 			}
-			if manifest.Name != "" {
-				t.Fatalf("manifest = %+v, want none with a problem", manifest)
+			// マニフェストを読めたあとの問題（import・export・テーブル）は、読めた名前も返す。
+			wantName := ""
+			if readsManifest(tc.want) {
+				wantName = "example.works"
+			}
+			if manifest.Name != wantName {
+				t.Fatalf("manifest name = %q, want %q with problem %q", manifest.Name, wantName, tc.want)
 			}
 		})
 	}
+}
+
+// readsManifest は、問題 problem がマニフェストを読めたあとの検査で見つかるものかを返す。
+func readsManifest(problem domain.WorkInfoPluginProblem) bool {
+	switch problem {
+	case domain.WorkInfoPluginImportUnsupported, domain.WorkInfoPluginExportInvalid, domain.WorkInfoPluginTableTooLarge:
+		return true
+	}
+	return false
 }
 
 func TestInspectAcceptsTableWithoutAMaximum(t *testing.T) {
