@@ -160,11 +160,21 @@ export function DraggableGroupRow(props: Omit<GroupCardProps, "drag">) {
 
 const noKeys: ReadonlySet<string> = new Set();
 
-/** pruned は `hidden` のうち、もう一覧に無い項目の鍵を除く（見せるときに隠す必要が無い）。 */
-function pruned(hidden: ReadonlySet<string>, items: readonly LibraryItem[]) {
+/**
+ * pruned は `hidden` のうち、もう一覧に無い項目の鍵（見せるときに隠す必要が無い）と、受け入れられた
+ * 操作の項目の鍵 `released` を除く。読み直した一覧がまだ持つ項目はサーバーの答えなので見せる
+ * （ほかのグループにも入っている動画は、グループへ足した後も一覧に残る。048 research.md R-6）。
+ */
+function pruned(
+  hidden: ReadonlySet<string>,
+  items: readonly LibraryItem[],
+  released: ReadonlySet<string>,
+) {
   if (hidden.size === 0) return hidden;
   const present = new Set(items.map(itemKey));
-  const kept = new Set(Array.from(hidden).filter((key) => present.has(key)));
+  const kept = new Set(
+    Array.from(hidden).filter((key) => present.has(key) && !released.has(key)),
+  );
   return kept.size === hidden.size ? hidden : kept;
 }
 
@@ -186,8 +196,9 @@ interface LibraryOperation {
  * `merge` を送る。要求は落とした順に 1 つずつ送るので、
  * 「Undo」の通知はいつも最後に落とした移動のものになる。受け入れられたら「Undo」付きの通知を
  * 出して一覧をその場で読み直し、失敗したら隠した項目を戻して知らせる。画面を離れた後は
- * どちらの通知も出さない。隠した項目は、読み直した一覧から消えたら覚えるのをやめ、取り消しの
- * 後は、まだ答えを待っている移動の項目を除いてすべて見せる。
+ * どちらの通知も出さない。隠した項目は、読み直した一覧から消えたら覚えるのをやめ、受け入れられた
+ * 操作の項目は次の一覧で見せる（一覧がまだ持つなら、それがサーバーの答え）。取り消しの後は、
+ * まだ答えを待っている移動の項目を除いてすべて見せる。
  */
 export function useLibraryMoves(
   items: readonly LibraryItem[],
@@ -200,6 +211,8 @@ export function useLibraryMoves(
   /** 落とした順に移動を送る鎖と、答えを待っている移動の項目の鍵。 */
   const chain = useRef<Promise<void>>(Promise.resolve());
   const pending = useRef(new Set<string>());
+  /** 受け入れられて、次の一覧で見せる項目の鍵。 */
+  const released = useRef(new Set<string>());
   useEffect(() => {
     shown.current = true;
     return () => {
@@ -208,7 +221,9 @@ export function useLibraryMoves(
   }, []);
 
   useEffect(() => {
-    setHidden((current) => pruned(current, items));
+    const done = released.current;
+    released.current = new Set();
+    setHidden((current) => pruned(current, items, done));
   }, [items]);
 
   const afterUndo = useCallback(() => {
@@ -231,6 +246,7 @@ export function useLibraryMoves(
         operation.send().then(
           ({ undoToken }) => {
             settle();
+            for (const key of keys) released.current.add(key);
             if (!shown.current) return;
             offer(operation.done, undoToken);
             refreshInPlace();

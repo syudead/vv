@@ -3,6 +3,7 @@ import {
   type KeyboardEvent,
   type ReactNode,
   useCallback,
+  useEffect,
   useMemo,
   useState,
 } from "react";
@@ -87,7 +88,9 @@ export interface DropChoice {
  * useDropMenu は落とした先のカードにメニューを開く。`hold` は落とし方を受け、`accepts` が true
  * なら印を保って（`held`）メニューを開き、true を返す（画面はほかの落とし方として扱わない）。
  * メニューの間は持ち上げたカードは半透明、落とした先は輪と札のまま残る。メニューは `menu` が
- * 選んだ操作の値と閉じる関数から描き、落とした先のカードに重ねる（`attached`）。
+ * 選んだ操作の値と閉じる関数から描き、落とした先のカードに重ねる（`attached`）。落とした先が
+ * `accepts` を満たさなくなったら（別の画面の操作や知らせで一覧が変わり、落とした先のカードが
+ * 消えた）、メニューと印を外す。
  */
 export function useDropMenu(
   accepts: (drop: CardDrop) => boolean,
@@ -103,6 +106,10 @@ export function useDropMenu(
     [accepts],
   );
   const close = useCallback(() => setHeld(null), []);
+  useEffect(() => {
+    if (held === null || held.sign.kind === "refused") return;
+    if (!accepts({ lifted: held.lifted, sign: held.sign })) setHeld(null);
+  }, [accepts, held]);
   const attached = useMemo((): CardAttachment | null => {
     if (held === null) return null;
     const choice = { lifted: held.lifted, target: held.sign.key };

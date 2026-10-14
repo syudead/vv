@@ -17,7 +17,7 @@ import { clearListSnapshot, takeListSnapshot } from "../api/listSnapshot";
 import { __resetTagsForTest } from "../api/tags";
 import { AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
-import { dropOn, layoutCards } from "../testing/cardDrag";
+import { dropOn, layoutCards, openedMenu } from "../testing/cardDrag";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
@@ -202,7 +202,7 @@ async function open() {
 /** dropAOnB は A を B に落とし、開いたメニューを返す。 */
 async function dropAOnB() {
   dropOn("A", 0, 1);
-  return screen.findByRole("menu");
+  return openedMenu();
 }
 
 beforeEach(() => {

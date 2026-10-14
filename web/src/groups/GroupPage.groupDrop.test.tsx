@@ -2,7 +2,7 @@ import { act, fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
-import { layoutCards, lift, moveTo, release } from "../testing/cardDrag";
+import { layoutCards, lift, moveTo, openedMenu, release } from "../testing/cardDrag";
 import {
   group,
   renderPage,
@@ -47,11 +47,7 @@ async function dropClipsOnExtras() {
   moveTo(1);
   expect(screen.getByText("Put in or merge…")).toBeDefined();
   release(1);
-  // dnd-kit は落とした後 50ms のクリックを止めるので、その後に項目を押す。
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 60));
-  });
-  const menu = await screen.findByRole("menu");
+  const menu = await openedMenu();
   expect(within(menu).getByText('Dropped on "Extras"')).toBeDefined();
   return menu;
 }
