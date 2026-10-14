@@ -77,7 +77,8 @@ the plugin SDK and samples; and LAN databases or local files as sources.
   dependencies of its own and builds with `CGO_ENABLED=0` for the container
   and the Windows app ([R-1](research.md#r-1-wazero-runs-the-plugins-inside-the-vv-process)).
   No new Web dependency.
-- One migration, `00043_work_info_plugins.sql`
+- Two migrations, `00046_work_info_plugins.sql` for the tables and
+  `00047_work_info_plugin_generation.sql` for the plugin generation
   ([data-model.md, Migration](data-model.md#migration)).
 - The first outbound HTTP in vv whose destination someone other than the
   owner's configuration chooses; the ComfyUI and Ollama clients reach LAN
@@ -132,7 +133,7 @@ app.
 | --- | --- |
 | `internal/domain` | The manifest with its setting declarations and its rules, plugin state and problems, the run request and result types, the limits, the run failures, the fetched result |
 | `internal/wasmplugin` (new adapter) | Inspecting a module, running it in wazero with the limits, the `vv` host functions, the HTTP client and its address check |
-| `internal/store` | The migration, `WorkInfoPluginStore`, the apply operation on `OverrideStore` |
+| `internal/store` | Both migrations, `WorkInfoPluginStore`, the apply operation on `OverrideStore` |
 | `internal/app` | `WorkInfoPlugins`: upload, approve, revoke, delete, search, fetch with its result cache, apply; the runtime port |
 | `internal/httpapi`, `api/openapi.yaml` | The routes of [contracts/screen-api.md](contracts/screen-api.md), `Error.pluginMessage` and `Error.host` |
 | `cmd/mdm` | Wiring the runtime, the store role and the use case |
@@ -141,7 +142,8 @@ app.
 | `docs/`, `ARCHITECTURE.md`, `.golangci.yml` | The design document, the plugin authors' guide, the subsystem map and adapter list, depguard |
 
 **New paths**: `internal/wasmplugin/`, `internal/wasmplugin/testdata/`,
-`internal/store/migrations/00043_work_info_plugins.sql`,
+`internal/store/migrations/00046_work_info_plugins.sql`,
+`internal/store/migrations/00047_work_info_plugin_generation.sql`,
 `internal/store/work_info_plugins.go`, `internal/app/work_info_plugins.go`,
 `internal/httpapi/work_info_plugins.go`,
 `web/src/settings/WorkInfoPluginsSection.tsx`,
@@ -228,7 +230,7 @@ answered with their error codes.
 
 ### Add, approve and remove work-info plugins through the screen API
 
-**Scope**: The migration and `WorkInfoPluginStore` with both tables
+**Scope**: The tables' migration and `WorkInfoPluginStore` with both tables
 ([data-model.md](data-model.md)); `app.WorkInfoPlugins` for upload (inspect,
 store, replace by name keeping the values of still-declared settings),
 approve with the digest, revoke, delete and writing setting values
@@ -273,7 +275,9 @@ the widths `ui-design.md` names.
 
 ### Search, fetch and apply work information through the screen API
 
-**Scope**: In `app.WorkInfoPlugins`, search and fetch through the runtime
+**Scope**: The generation migration
+([data-model.md, Migration](data-model.md#migration)); in
+`app.WorkInfoPlugins`, search and fetch through the runtime
 port, only for approved plugins with the declared operation, with that
 plugin's setting values in the request and `plugin_settings_missing` before
 the run when a required one is unset, the 10-minute
@@ -301,8 +305,10 @@ leaving the video unchanged, applying only `title` and `tags` changing the
 display name and adding the tags as tentative with nothing else changed, a
 rejected name and an invalid name reported in `skippedTags` and not attached,
 a failed apply leaving both fields unchanged, an unapproved plugin answered
-`plugin_not_approved`, applying after 10 minutes, after a replacement and
-after a revoke answered `work_info_fetch_stale`, a store test where the
+`plugin_not_approved`, applying after 10 minutes, after a replacement,
+after a revoke, after a re-upload of the same bytes approved again and after
+a revoke with the same digest approved again answered
+`work_info_fetch_stale`, a store test where the
 plugin is replaced after the app's check but before the apply's transaction
 writing nothing and answering `work_info_fetch_stale`; handler tests show each run
 failure of the contract with its status and fields, and every route answering

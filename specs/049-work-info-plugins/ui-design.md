@@ -124,7 +124,7 @@ name on screen is `VVMDM`.
 | Refused, too large | Choose a file up to 16 MB. | Before anything is sent |
 | Add failed | Couldn't add the plugin: {reason} | Section failure line |
 | Added (toast) | Added {name}. Approve it to use it. | `{name}` is the name, or the file name when there is none |
-| Replaced (toast) | Replaced {name}. Approve it again to use it. | The uploaded plugin's id was already in the list |
+| Replaced (toast) | Replaced {name}. Approve it again to use it. | The upload was answered `200`; `201` shows Added, whatever the list held |
 | Added, unusable (toast) | Added {name}, but it can't be used. | `state: invalid` |
 | Empty | No plugins yet | `EmptyState` title |
 | Empty hint | Add a .wasm plugin file to fetch titles and tags on the video page. | `EmptyState` description |
@@ -296,7 +296,8 @@ media folders.
 over 16 MiB is refused on the section's failure line before anything is
 sent. While the file is sent the button spins and reads `Adding…`, and the
 rows' actions stay usable. On `201` or `200` the list is read again, the
-toast names what happened ([Words, Settings section text](#settings-section-text)), and the focus moves
+toast names what happened by that status (`201` added, `200` replaced, as
+the screen API defines them, not by the list on screen, which can be stale) ([Words, Settings section text](#settings-section-text)), and the focus moves
 to the added row's first action. A failure shows the section's failure line,
 a `destructive` `Alert` under the header, until the next add. A file with a
 problem is still added, as an `invalid` row (the Issue's edge cases).

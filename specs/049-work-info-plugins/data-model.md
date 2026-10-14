@@ -7,10 +7,11 @@ result is held in memory, not stored
 
 ## Migration
 
-`00043_work_info_plugins.sql` creates `work_info_plugins` and
-`work_info_plugin_settings`, and `00047_work_info_plugin_generation.sql` adds
-`work_info_plugins.generation`. If another migration lands on `main` first,
-each number moves to the next free one.
+The feature adds two migrations. `00046_work_info_plugins.sql` creates
+`work_info_plugins` and `work_info_plugin_settings`, and
+`00047_work_info_plugin_generation.sql` adds `work_info_plugins.generation`.
+If another migration lands on `main` before the integration merge, each
+number moves to the next free one.
 
 ## `work_info_plugins`
 
