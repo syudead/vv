@@ -1093,14 +1093,14 @@ describe("VideoPage", () => {
       ...video,
       id,
       title,
-      group: { folder, name: "series", position, count: 3 },
+      group: { id: 1, folder, name: "series", position, count: 3 },
     });
     const ep01 = member(11, "ep01", 1);
     const ep02 = member(12, "ep02", 2);
     const ep03 = member(13, "ep03", 3);
     const listed = (value: Video): Video => ({ ...value, group: undefined });
     const group = {
-      folder,
+      id: 1,
       name: "series",
       items: [ep01, ep02, ep03].map(listed),
       offset: 0,
@@ -1170,6 +1170,18 @@ describe("VideoPage", () => {
       );
       expect(within(line as HTMLElement).queryByRole("link")).toBeNull();
       expect(screen.getByTitle("series")).toBeDefined();
+    });
+
+    it("手で作ったグループ（folder が無い）では、所有者でもメニューを出さず文字の行にする", async () => {
+      server.videos.set(12, [
+        { ...ep02, group: { id: 9, name: "picks", position: 2, count: 3 } },
+      ]);
+      await openMember();
+      const title = screen.getByRole("heading", { level: 1 });
+      const line = title.parentElement?.parentElement?.previousElementSibling;
+      expect(line?.textContent).toBe("picks·2 / 3");
+      expect(line?.tagName).toBe("P");
+      expect(screen.queryByRole("button", { name: /Grouping menu/ })).toBeNull();
     });
 
     it("表示名を保存すると、グループのメンバーの並びにあるこの動画の題名も置き換わる", async () => {
@@ -1341,7 +1353,7 @@ describe("VideoPage", () => {
         server.videos.set(12, [
           {
             ...ep02,
-            group: { folder: rootFolder, name: "movies", position: 2, count: 3 },
+            group: { id: 1, folder: rootFolder, name: "movies", position: 2, count: 3 },
           },
         ]);
         await openMember();
@@ -2229,6 +2241,7 @@ describe("VideoPage", () => {
         {
           ...owned,
           group: {
+            id: 1,
             folder: { rootId: 1, path: "series" },
             name: "series",
             position: 1,
@@ -2258,6 +2271,7 @@ describe("VideoPage", () => {
         {
           ...owned,
           group: {
+            id: 1,
             folder: { rootId: 1, path: "series" },
             name: "series",
             position: 1,
@@ -3419,7 +3433,7 @@ describe("VideoPage", () => {
         ...video,
         id,
         title,
-        group: { folder, name: "series", position, count: 3 },
+        group: { id: 1, folder, name: "series", position, count: 3 },
       });
       const members = [
         member(11, "ep01", 1),
@@ -3427,7 +3441,7 @@ describe("VideoPage", () => {
         member(13, "ep03", 3),
       ];
       const group = {
-        folder,
+        id: 1,
         name: "series",
         items: members.map((value) => ({ ...value, group: undefined })),
         offset: 0,

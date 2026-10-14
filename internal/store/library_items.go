@@ -21,17 +21,6 @@ import (
 //  3. グループの値は見せてよい子孫の動画の全部から数える
 //  4. 再生可否と視聴状態の絞り込みを項目に掛け、項目の値で並べて keyset で区切る
 
-// minGroupMembers は、見る人にグループとして見せるのに要る、見せてよいメンバーの数である。
-// 動画ページのグループ（VideoGroup、フォルダの索引のグループ）だけが使う。ライブラリと
-// グループの画面は、所有者にもゲストにも見せる動画が 1 本あれば見せる
-// （specs/048-groups/research.md R-6）。
-func minGroupMembers(audience domain.Audience) int {
-	if audience.IsOwner() {
-		return 1
-	}
-	return 2
-}
-
 // memberConditions はメンバー単位の絞り込み（再生可否とタグの AND）を、videos に
 // 対する条件句の並びと引数にする（GET /api/videos の一覧が使う）。
 func memberConditions(spec listSpec) ([]string, []any) {
