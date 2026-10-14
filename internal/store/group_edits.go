@@ -217,9 +217,10 @@ func (s *GroupStore) summary(ctx context.Context, id int64) (domain.Group, error
 // groupSummary はグループ id の要約を読む。無ければ domain.ErrGroupNotFound。
 func groupSummary(ctx context.Context, tx *sql.Tx, id int64) (domain.Group, error) {
 	var group domain.Group
-	err := tx.QueryRowContext(ctx, `select g.id, g.name, coalesce(g.origin_folder, ''), g.updated_at, `+
-		groupFavoritedAtExpr("g")+` is not null from groups g where g.id = ?`, id).
-		Scan(&group.ID, &group.Name, &group.OriginFolder, &group.UpdatedAt, &group.Favorite)
+	// 登録フォルダ `/` の自動グループの鍵は空文字なので、自動かどうかは NULL かどうかで分ける。
+	err := tx.QueryRowContext(ctx, `select g.id, g.name, coalesce(g.origin_folder, ''), g.origin_folder is not null, `+
+		`g.updated_at, `+groupFavoritedAtExpr("g")+` is not null from groups g where g.id = ?`, id).
+		Scan(&group.ID, &group.Name, &group.OriginFolder, &group.Automatic, &group.UpdatedAt, &group.Favorite)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Group{}, domain.ErrGroupNotFound
 	}
@@ -365,8 +366,8 @@ func removeGroupItem(ctx context.Context, tx *sql.Tx, id, itemID int64) error {
 // dissolveGroupAndRebuild はグループ id を解散し（dissolveGroup）、自動グループだったなら書いた
 // ungroup をフォルダの索引に映すため同じ取引で作り直す。変えたグループとその祖先の id を返す。
 func dissolveGroupAndRebuild(ctx context.Context, tx *sql.Tx, id int64) ([]int64, error) {
-	changed, origin, err := dissolveGroup(ctx, tx, id)
-	if err != nil || origin == "" {
+	changed, automatic, err := dissolveGroup(ctx, tx, id)
+	if err != nil || !automatic {
 		return changed, err
 	}
 	rebuilt, err := rebuildFolderIndex(ctx, tx)
@@ -380,50 +381,50 @@ func dissolveGroupAndRebuild(ctx context.Context, tx *sql.Tx, id int64) ([]int64
 // 消して親を詰め直し、親の更新日時を進める。グループのお気に入りとプレイリストの項目も外部キーで
 // 消え（specs/048-groups/research.md R-10）、項目を失ったプレイリストを詰め直して更新日時を進める。
 // 自動グループなら同じ取引でそのフォルダに ungroup を
-// 書く。id と、元の親とその祖先の id と、自動グループのフォルダの鍵（手で作ったグループなら空）を
-// 返す。無ければ domain.ErrGroupNotFound。フォルダの索引の作り直しは呼び出し側が行う。
-func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, string, error) {
+// 書く。id と、元の親とその祖先の id と、自動グループだったかを返す。無ければ
+// domain.ErrGroupNotFound。フォルダの索引の作り直しは呼び出し側が行う。
+func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, bool, error) {
 	group, err := groupSummary(ctx, tx, id)
 	if err != nil {
-		return nil, "", err
+		return nil, false, err
 	}
 	parents, err := queryInt64s(ctx, tx, `select distinct group_id from group_items where child_id = ? order by group_id`, id)
 	if err != nil {
-		return nil, "", fmt.Errorf("cannot read the parent groups: %w", err)
+		return nil, false, fmt.Errorf("cannot read the parent groups: %w", err)
 	}
 	changed, err := groupsWithAncestors(ctx, tx, parents)
 	if err != nil {
-		return nil, "", err
+		return nil, false, err
 	}
 	playlists, err := queryInt64s(ctx, tx, `select distinct playlist_id from playlist_items where group_id = ? order by playlist_id`, id)
 	if err != nil {
-		return nil, "", fmt.Errorf("cannot read the playlists: %w", err)
+		return nil, false, fmt.Errorf("cannot read the playlists: %w", err)
 	}
 	// 子グループの項目（child_id）、このグループの項目、お気に入り、プレイリストの項目は外部キーの
 	// on delete cascade で消える。
 	if _, err := tx.ExecContext(ctx, `delete from groups where id = ?`, id); err != nil {
-		return nil, "", fmt.Errorf("cannot dissolve the group: %w", err)
+		return nil, false, fmt.Errorf("cannot dissolve the group: %w", err)
 	}
 	if err := renumberPositions(ctx, tx, groupPositions, parents); err != nil {
-		return nil, "", err
+		return nil, false, err
 	}
 	if err := renumberPlaylists(ctx, tx, playlists); err != nil {
-		return nil, "", err
+		return nil, false, err
 	}
 	for _, playlistID := range playlists {
 		if err := touchPlaylist(ctx, tx, playlistID); err != nil {
-			return nil, "", err
+			return nil, false, err
 		}
 	}
 	if err := touchGroups(ctx, tx, parents, groupNow().UnixMilli()); err != nil {
-		return nil, "", err
+		return nil, false, err
 	}
-	if group.OriginFolder != "" {
+	if group.Automatic {
 		if err := writeOverride(ctx, tx, group.OriginFolder, domain.FolderGroupUngroup); err != nil {
-			return nil, "", err
+			return nil, false, err
 		}
 	}
-	return normalizeIDs(append(changed, id)), group.OriginFolder, nil
+	return normalizeIDs(append(changed, id)), group.Automatic, nil
 }
 
 // dissolveFolderGroup はフォルダ folderPath の自動グループがあれば dissolveGroup で解散し、変えた

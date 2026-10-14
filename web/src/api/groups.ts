@@ -4,6 +4,7 @@ import {
   type GroupDetail,
   type LibraryGroup,
   request,
+  RequestFailed,
   toRequestFailed,
 } from "./client";
 import type { components } from "./gen/openapi";
@@ -206,16 +207,22 @@ export async function moveGroupItem(
  * 何も変わらない。
  *
  * 成功したら一覧の控えを捨て（ライブラリのカードが変わる）、共有のタグの一覧も取り直す（タグが
- * 増えるか、本数が変わる）。
+ * 増えるか、本数が変わる）。404（途中で解散された）でも、控えにそのカードが残るので捨てる。
  */
 export async function tagGroup(
   id: number,
   signal?: AbortSignal,
 ): Promise<GroupTagResult> {
-  const result = await request<GroupTagResult>(`${groupPath(id)}/tag`, {
-    method: "POST",
-    signal,
-  });
+  let result: GroupTagResult;
+  try {
+    result = await request<GroupTagResult>(`${groupPath(id)}/tag`, {
+      method: "POST",
+      signal,
+    });
+  } catch (failure) {
+    if (failure instanceof RequestFailed && failure.status === 404) clearListSnapshot();
+    throw failure;
+  }
   clearListSnapshot();
   refreshTags().catch(() => undefined);
   return result;

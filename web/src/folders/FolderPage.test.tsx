@@ -1419,14 +1419,23 @@ describe("FolderPage", () => {
     };
     const writes: { method: string; url: string; body: unknown }[] = [];
 
-    /** respond は、まとめ方の経路の応答を差し替えた偽のサーバーを入れる。 */
-    function respond(grouping: (method: string, url: string) => Response) {
+    /**
+     * respond は、まとめ方の経路の応答を差し替えた偽のサーバーを入れる。`readGroup` は
+     * タグの窓を開く前のグループの読み出し（GET /api/groups/{id}）の応答で、既定は名前「series」。
+     */
+    function respond(
+      grouping: (method: string, url: string) => Response,
+      readGroup: () => Response = () => groupDetail("series"),
+    ) {
       writes.length = 0;
       fetchMock.mockImplementation((input, init) => {
         const url = String(input);
         const method = init?.method ?? "GET";
         requests.push(url);
         if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+        if (method === "GET" && /^\/api\/groups\/\d+$/.test(url)) {
+          return Promise.resolve(readGroup());
+        }
         if (url.includes("/grouping") || url.startsWith("/api/groups/")) {
           writes.push({
             method,
@@ -1445,6 +1454,11 @@ describe("FolderPage", () => {
         if (url === "/api/tags") return Promise.resolve(json([]));
         return Promise.resolve(json({ code: "not_found", message: "x" }, 404));
       });
+    }
+
+    /** groupDetail は GET /api/groups/{id} の応答（窓が使うのは名前だけ）。 */
+    function groupDetail(name: string) {
+      return json({ group: { id: 7, name }, trail: [], items: [] });
     }
 
     /** holdLibrarySnapshot はライブラリの一覧の控えを置く（再生画面から戻る前の状態）。 */
@@ -1672,13 +1686,63 @@ describe("FolderPage", () => {
       await user.click(
         await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
       );
-      await user.click(await screen.findByRole("button", { name: "Turn into a tag" }));
+      const submit = await screen.findByRole("button", { name: "Turn into a tag" });
+      holdLibrarySnapshot();
+      await user.click(submit);
       await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
       await waitFor(() =>
         expect(
           requests.filter((url) => url === "/api/folders/3?path=series").length,
         ).toBe(listingReads + 1),
       );
+      // 解散済みのグループのカードを控えから出さない。
+      expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    });
+
+    it("窓には改名した後の今のグループの名前を出す", async () => {
+      respond(
+        () => json({ tag: { id: 5, name: "Favorites" }, created: true }),
+        () => groupDetail("Favorites"),
+      );
+      const user = userEvent.setup();
+      renderFolders("/folders/3/series");
+      await user.click(await trigger(true));
+      await user.click(
+        await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
+      );
+      const dialog = await screen.findByRole("alertdialog", {
+        name: 'Turn "Favorites" into a tag?',
+      });
+      expect(requests).toContain("/api/groups/7");
+      await user.click(within(dialog).getByRole("button", { name: "Turn into a tag" }));
+      expect(
+        await screen.findByText('Created the tag "Favorites" and dissolved the group'),
+      ).toBeDefined();
+    });
+
+    it("窓を開く前の読み出しが 404 なら窓を開かず、フォルダの grouping を読み直して控えを捨てる", async () => {
+      respond(
+        () => json({}),
+        () => json({ code: "not_found", message: "x" }, 404),
+      );
+      const user = userEvent.setup();
+      renderFolders("/folders/3/series");
+      await user.click(await trigger(true));
+      const listingReads = requests.filter(
+        (url) => url === "/api/folders/3?path=series",
+      ).length;
+      holdLibrarySnapshot();
+      await user.click(
+        await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
+      );
+      await waitFor(() =>
+        expect(
+          requests.filter((url) => url === "/api/folders/3?path=series").length,
+        ).toBe(listingReads + 1),
+      );
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+      expect(writes).toEqual([]);
+      expect(takeListSnapshot({ query: "" })).toBeUndefined();
     });
 
     it("404 は「このフォルダは見つかりません」、ほかは「変更できませんでした」", async () => {

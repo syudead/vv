@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -380,6 +381,30 @@ func TestDissolveAutomaticGroupWritesUngroup(t *testing.T) {
 	}
 	if groupExists(t, db, recreated) {
 		t.Fatal("ungroup kept the folder's group")
+	}
+}
+
+// 登録フォルダ `/` の自動グループは origin_folder が空文字になる。それを手で作ったグループ
+// （NULL）と取り違えず、解散でそのフォルダに ungroup を書くので、次の作り直しで作り直されない。
+func TestDissolveRootFolderGroupWritesUngroup(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("登録フォルダ `/` は Unix だけのもの")
+	}
+	db := migratedDB(t)
+	id := createGroup(t, db, "root", domain.GroupAdd{VideoIDs: []int64{looseVideo(t, db, "ka")}})
+	if _, err := db.sql.Exec(`update groups set origin_folder = ? where id = ?`, domain.FolderKey("/"), id); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Groups().DissolveGroup(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	overrides, err := queryStringsForTest(db, `select path || '|' || mode from folder_group_overrides order by path`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"|" + string(domain.FolderGroupUngroup)}; !slices.Equal(overrides, want) {
+		t.Fatalf("overrides = %q, want %q", overrides, want)
 	}
 }
 

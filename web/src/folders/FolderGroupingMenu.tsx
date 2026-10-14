@@ -1,7 +1,7 @@
 import { ChevronDown, Group, LoaderCircle, Tag, Ungroup } from "lucide-react";
 import { useState } from "react";
 
-import type { FolderRef } from "../api/client";
+import { type FolderRef, getGroup, RequestFailed } from "../api/client";
 import {
   type FolderGrouping,
   type FolderGroupingMode,
@@ -9,8 +9,9 @@ import {
   setFolderGrouping,
 } from "../api/folderGrouping";
 import { taggedMessage } from "../api/groups";
+import { clearListSnapshot } from "../api/listSnapshot";
 import GroupTagDialog from "../groups/GroupTagDialog";
-import { t } from "../i18n";
+import { errorText, t } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import {
   DropdownMenu,
@@ -35,7 +36,8 @@ const modes: readonly FolderGroupingMode[] = ["auto", "ungroup", "groupDirect"];
  * ラジオは応答の `grouping` を `onGroupingChange` で返すだけで、一覧は読み直させない。
  * 「Turn the group into a tag…」は `grouping.groupId`（そのフォルダの自動グループ）があるときだけ
  * 描き、共有のタグの窓（GroupTagDialog）を開く（specs/048-groups/ui-design.md「Folder grouping
- * menu」）。成功は `onTagged` で画面に動画の一覧を読み直させ、窓からの 404（途中で解散された）と
+ * menu」）。グループは改名できるので、窓の名前は開く前に `GET /api/groups/{id}` で読んだ今の名前に
+ * する（タグはその名前で作られる）。その読み出しの 404 は窓からの 404 と同じに扱う。成功は `onTagged` で画面に動画の一覧を読み直させ、窓からの 404（途中で解散された）と
  * ラジオの 409 は `onStale` でフォルダの `grouping` を読み直させる。どちらの操作も、成功すると
  * 一覧の控えを捨てる（api/folderGrouping、api/groups）。
  */
@@ -48,7 +50,7 @@ export default function FolderGroupingMenu({
   onStale,
 }: {
   folder: FolderRef;
-  /** フォルダの名前（失敗の文言と、自動グループの名前としてタグの窓に使う）。 */
+  /** フォルダの名前（失敗の文言に使う）。 */
   name: string;
   grouping: FolderGrouping;
   onGroupingChange: (grouping: FolderGrouping) => void;
@@ -57,7 +59,7 @@ export default function FolderGroupingMenu({
 }) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
-  const [tagging, setTagging] = useState(false);
+  const [tagging, setTagging] = useState<{ id: number; name: string } | null>(null);
 
   const fail = (failure: unknown) => {
     const { message, conflict } = groupingFailure(failure, {
@@ -78,6 +80,23 @@ export default function FolderGroupingMenu({
       fail(failure);
     } finally {
       setBusy(false);
+    }
+  };
+
+  // グループが途中で解散された。ライブラリの控えにはまだそのカードがあるので捨てる。
+  const gone = () => {
+    setTagging(null);
+    clearListSnapshot();
+    onStale();
+  };
+
+  const openTagDialog = async (id: number) => {
+    try {
+      const detail = await getGroup(id);
+      setTagging({ id, name: detail.group.name });
+    } catch (failure) {
+      if (failure instanceof RequestFailed && failure.status === 404) gone();
+      else toast(t.groups.tagDialog.failed(errorText(failure)));
     }
   };
 
@@ -127,7 +146,11 @@ export default function FolderGroupingMenu({
           {grouped && (
             <>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onSelect={() => setTagging(true)}>
+              <DropdownMenuItem
+                onSelect={() => {
+                  if (groupId !== undefined) void openTagDialog(groupId);
+                }}
+              >
                 <Tag aria-hidden="true" />
                 {t.folders.grouping.toTag}
               </DropdownMenuItem>
@@ -135,21 +158,18 @@ export default function FolderGroupingMenu({
           )}
         </DropdownMenuContent>
       </DropdownMenu>
-      {tagging && groupId !== undefined && (
+      {tagging !== null && (
         <GroupTagDialog
-          group={{ id: groupId, name }}
-          onClose={() => setTagging(false)}
+          group={tagging}
+          onClose={() => setTagging(null)}
           onTagged={(result) => {
-            setTagging(false);
+            setTagging(null);
             toast(taggedMessage(result));
             // タグにすると自動グループは解散し、そのフォルダに ungroup が書かれる（research.md R-4・R-11）。
             onGroupingChange({ mode: "ungroup" });
             onTagged();
           }}
-          onGone={() => {
-            setTagging(false);
-            onStale();
-          }}
+          onGone={gone}
         />
       )}
     </>

@@ -1130,22 +1130,6 @@ export const en = {
       merge: "Merge",
     },
   },
-  // グループをタグに変える確認の窓と、その成功のトースト（specs/048-groups/ui-design.md
-  // 「Turning into a tag」「Words」）。グループページ、動画ページ、フォルダのメニューが共有する。
-  groups: {
-    tagDialog: {
-      title: (name: string) => `Turn "${name}" into a tag?`,
-      description: (name: string) =>
-        `The tag "${name}" is added to every video in the group, and the group is dissolved.`,
-      submit: "Turn into a tag",
-      submitting: "Turning into a tag…",
-      failed: (reason: string) => `Couldn't turn the group into a tag: ${reason}`,
-    },
-    tagged: (name: string, created: boolean) =>
-      created
-        ? `Created the tag "${name}" and dissolved the group`
-        : `Added the tag "${name}" and dissolved the group`,
-  },
   folderGrouping: {
     ungrouped: (name: string) => `Ungrouped "${name}"`,
     cannotTag: (name: string) =>
@@ -1692,8 +1676,8 @@ export const en = {
       failed: (reason: string) => `Couldn't add to the playlist: ${reason}`,
     },
   },
-  // グループのページ（/groups/{id}。specs/048-groups/ui-design.md「Words」）。名前とパス
-  // （利用者のデータ）はそのまま埋め込む。
+  // グループのページ（/groups/{id}）と、グループをタグに変える窓（specs/048-groups/ui-design.md
+  // 「Words」）。名前とパス（利用者のデータ）はそのまま埋め込む。
   groups: {
     // 道筋の帯（Breadcrumb）の名前。
     trail: "Group path",
@@ -1721,6 +1705,20 @@ export const en = {
       },
       loadFailed: "Couldn't load the group",
     },
+    // グループをタグに変える確認の窓と、その成功のトースト（ui-design.md「Turning into a tag」
+    // 「Words」）。グループページ、動画ページ、フォルダのメニューが共有する。
+    tagDialog: {
+      title: (name: string) => `Turn "${name}" into a tag?`,
+      description: (name: string) =>
+        `The tag "${name}" is added to every video in the group, and the group is dissolved.`,
+      submit: "Turn into a tag",
+      submitting: "Turning into a tag…",
+      failed: (reason: string) => `Couldn't turn the group into a tag: ${reason}`,
+    },
+    tagged: (name: string, created: boolean) =>
+      created
+        ? `Created the tag "${name}" and dissolved the group`
+        : `Added the tag "${name}" and dissolved the group`,
   },
   tagName: {
     required: "Enter a name",
