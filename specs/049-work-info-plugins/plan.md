@@ -199,7 +199,9 @@ inspection tests show each `problem` of
 (a duplicate setting key and an 11th setting declaration, a `_start` with a parameter, no exported `memory`, a table whose minimum is
 over 100,000 elements and one whose declared maximum is 1,000,000 included)
 and a manifest for a good one, without running it; a table without a declared
-maximum, as Go's `wasip1` linker writes it, is accepted.
+maximum, as Go's `wasip1` linker writes it, is accepted, and a module whose
+table declares no maximum and whose `_start` grows it by 100,000 and then by
+one more element gets `-1` from the second `table.grow`.
 
 ### Let work-info plugins reach public internet sites only
 

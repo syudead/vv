@@ -77,22 +77,15 @@ screen sees are in
 | Standard error | 64 KiB kept, the rest discarded | Written to the server log only |
 | Runs at the same time | 1; a second run waits up to 10 s | The second run is refused |
 
-**Rationale**: wazero's page cap limits only linear memory, and a table's
-elements are host memory sized by the module's own declaration, so a module
-declaring a huge table could exhaust the process; vv reads the table section
-at inspection and refuses a table whose minimum or declared maximum exceeds
-100,000 elements. A table without a declared maximum is not refused: Go's
-`wasip1` linker writes its function table with a minimum and no maximum
-(`cmd/link/internal/wasm/asm.go`, `writeTableSec`), so requiring one would
-reject every Go-built plugin. vv instead sets that table's maximum to 100,000
-before compiling, so the module cannot grow it past the cap at run time; a Go
-program's table minimum is its function count, well under the cap.
-Other compile-time
-allocations grow with the module's size, which the 16 MiB cap bounds. One run
-at a time bounds the plugins' memory to one module's cap, which a single-owner server can spare; the Go `wasip1` runtime needs
-headroom for its heap, so 64 MiB was too tight for a 1 MiB page parsed in
-memory. A clock and random source are provided because Go's runtime needs
-them; neither reaches outside the process.
+**Rationale**: A table's elements are host memory outside wazero's page cap,
+so vv refuses a table whose minimum or declared maximum exceeds 100,000 and
+caps one without a maximum, as Go's `wasip1` linker writes it
+(`writeTableSec` in `cmd/link/internal/wasm/asm.go`), at 100,000 before
+compiling; other compile-time allocations grow with the module, which the
+16 MiB cap bounds. One run at a time keeps the plugins' memory within one
+module's 128 MiB, which a single-owner server can spare and which gives the Go
+`wasip1` heap room to parse a 1 MiB page (64 MiB was too tight). Go's runtime
+needs a clock and a random source, and neither reaches outside the process.
 
 ## R-5: Plugins reach the network only through vv, and only public addresses
 
