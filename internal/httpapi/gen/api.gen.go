@@ -254,7 +254,6 @@ const (
 	ErrorReasonEncoderUnavailable            ErrorReason = "encoder_unavailable"
 	ErrorReasonFileUnavailable               ErrorReason = "file_unavailable"
 	ErrorReasonFolderNotFound                ErrorReason = "folder_not_found"
-	ErrorReasonFolderNotGroup                ErrorReason = "folder_not_group"
 	ErrorReasonGroupCycle                    ErrorReason = "group_cycle"
 	ErrorReasonGroupTargetNotFound           ErrorReason = "group_target_not_found"
 	ErrorReasonGuestFilterNotAllowed         ErrorReason = "guest_filter_not_allowed"
@@ -270,13 +269,11 @@ const (
 	ErrorReasonNoOutput                      ErrorReason = "no_output"
 	ErrorReasonNoScan                        ErrorReason = "no_scan"
 	ErrorReasonNotBundled                    ErrorReason = "not_bundled"
-	ErrorReasonNotFolderGroup                ErrorReason = "not_folder_group"
 	ErrorReasonOpenNotLocal                  ErrorReason = "open_not_local"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
 	ErrorReasonProbeInfoMissing              ErrorReason = "probe_info_missing"
 	ErrorReasonRelativeDirectoryPath         ErrorReason = "relative_directory_path"
 	ErrorReasonRepresentativeNotSelected     ErrorReason = "representative_not_selected"
-	ErrorReasonRootGroupNotTaggable          ErrorReason = "root_group_not_taggable"
 	ErrorReasonRunFailed                     ErrorReason = "run_failed"
 	ErrorReasonSearchTooLong                 ErrorReason = "search_too_long"
 	ErrorReasonSeekPreviewGenerating         ErrorReason = "seek_preview_generating"
@@ -340,8 +337,6 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonFolderNotFound:
 		return true
-	case ErrorReasonFolderNotGroup:
-		return true
 	case ErrorReasonGroupCycle:
 		return true
 	case ErrorReasonGroupTargetNotFound:
@@ -372,8 +367,6 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonNotBundled:
 		return true
-	case ErrorReasonNotFolderGroup:
-		return true
 	case ErrorReasonOpenNotLocal:
 		return true
 	case ErrorReasonPasswordLength:
@@ -383,8 +376,6 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonRelativeDirectoryPath:
 		return true
 	case ErrorReasonRepresentativeNotSelected:
-		return true
-	case ErrorReasonRootGroupNotTaggable:
 		return true
 	case ErrorReasonRunFailed:
 		return true
@@ -1603,31 +1594,17 @@ type FavoritesResponse struct {
 	AppliedVideos int `json:"appliedVideos"`
 }
 
-// FolderGroupTagResult defines model for FolderGroupTagResult.
-type FolderGroupTagResult struct {
-	// Created タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false
-	Created bool `json:"created"`
-
-	// Grouping フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
-	// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
-	Grouping FolderGrouping `json:"grouping"`
-
-	// Tag 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
-	Tag TagRef `json:"tag"`
-}
-
 // FolderGrouping フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
-// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1、
+// specs/048-groups/contracts/screen-api.md「Routes and schemas changed」）
 type FolderGrouping struct {
-	// Grouped いまこのフォルダの直下がグループか
-	Grouped bool `json:"grouped"`
+	// GroupId このフォルダの自動グループの id。無ければ省く。`POST /api/groups/{id}/tag` で
+	// タグに変えられる
+	GroupId *int64 `json:"groupId,omitempty"`
 
 	// Mode フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
 	// `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
 	Mode FolderGroupingMode `json:"mode"`
-
-	// Taggable グループで、登録フォルダそのものではない（グループをタグに変えられる）
-	Taggable bool `json:"taggable"`
 }
 
 // FolderGroupingMode フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
@@ -1668,7 +1645,8 @@ type FolderSummary struct {
 	FolderCount int `json:"folderCount"`
 
 	// Grouping フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
-	// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+	// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1、
+	// specs/048-groups/contracts/screen-api.md「Routes and schemas changed」）
 	Grouping *FolderGrouping `json:"grouping,omitempty"`
 
 	// Name 表示名。相対パスの最後の段、登録フォルダ自身は絶対パスの最後の段
@@ -3211,13 +3189,6 @@ type SetFolderGroupingParams struct {
 	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
 }
 
-// TagFolderGroupParams defines parameters for TagFolderGroup.
-type TagFolderGroupParams struct {
-	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
-	// 登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
-	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
-}
-
 // ListFolderVideosParams defines parameters for ListFolderVideos.
 type ListFolderVideosParams struct {
 	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
@@ -3760,9 +3731,6 @@ type ServerInterface interface {
 	// SetFolderGrouping フォルダのまとめ方の例外を付ける・外す
 	// (PUT /api/folders/{rootId}/grouping)
 	SetFolderGrouping(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params SetFolderGroupingParams)
-	// TagFolderGroup グループをタグに変える
-	// (POST /api/folders/{rootId}/grouping/tag)
-	TagFolderGroup(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params TagFolderGroupParams)
 	// ListFolderVideos フォルダの動画を返す
 	// (GET /api/folders/{rootId}/videos)
 	ListFolderVideos(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params ListFolderVideosParams)
@@ -4387,48 +4355,6 @@ func (siw *ServerInterfaceWrapper) SetFolderGrouping(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetFolderGrouping(w, r, rootId, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// TagFolderGroup operation middleware
-func (siw *ServerInterfaceWrapper) TagFolderGroup(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "rootId" -------------
-	var rootId FolderRootId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "rootId", r.PathValue("rootId"), &rootId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rootId", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params TagFolderGroupParams
-
-	// ------------- Optional query parameter "path" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.TagFolderGroup(w, r, rootId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -8038,7 +7964,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/items/{itemId}/move", wrapper.MoveGroupItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/tag", wrapper.TagGroup)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/folders/{rootId}/grouping/tag", wrapper.TagFolderGroup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current/issues", wrapper.ListCurrentScanIssues)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/events", wrapper.StreamEvents)

@@ -217,14 +217,11 @@ const errorReasons = {
   relative_directory_path: "The path must be absolute.",
   video_not_found: "The video wasn't found.",
   folder_not_found: "The folder wasn't found.",
-  not_folder_group: "This folder isn't a group.",
   no_scan: "No scan has run yet.",
   directory_not_found: "That folder wasn't found.",
   file_unavailable: "The video file can't be opened.",
   media_folders_changed:
     "The media folders were changed elsewhere. Reload and try again.",
-  root_group_not_taggable: "A media folder's own group can't be turned into a tag.",
-  folder_not_group: "This folder is no longer a group.",
   group_target_not_found:
     "A video, group or item was removed in the meantime. Reload and try again.",
   group_cycle: "A group can't be put inside itself or a group inside it.",
@@ -882,7 +879,7 @@ export const en = {
       changingShort: "Changing…",
       autoHint:
         "Automatic: groups folders below a media folder that have no subfolders and 2 or more videos",
-      toTag: "Turn the group into a tag",
+      toTag: "Turn the group into a tag…",
     },
   },
   tags: {
@@ -1153,10 +1150,6 @@ export const en = {
   },
   folderGrouping: {
     ungrouped: (name: string) => `Ungrouped "${name}"`,
-    tagged: (name: string, created: boolean) =>
-      created
-        ? `Created the tag "${name}" and ungrouped`
-        : `Added the tag "${name}" and ungrouped`,
     cannotTag: (name: string) =>
       `"${name}" can't be used as a tag name, so it can't become a tag`,
     notGroup: "This folder is no longer a group",
@@ -1692,8 +1685,8 @@ export const en = {
       failed: (reason: string) => `Couldn't add to the playlist: ${reason}`,
     },
   },
-  // グループのページ（/groups/{id}。specs/048-groups/ui-design.md「Words」）。名前とパス
-  // （利用者のデータ）はそのまま埋め込む。
+  // グループのページ（/groups/{id}）と、グループをタグに変える窓（specs/048-groups/ui-design.md
+  // 「Words」）。名前とパス（利用者のデータ）はそのまま埋め込む。
   groups: {
     // 道筋の帯（Breadcrumb）の名前。
     trail: "Group path",
@@ -1753,8 +1746,8 @@ export const en = {
       failed: (reason: string) => `Couldn't dissolve the group: ${reason}`,
     },
     dissolved: (name: string) => `Dissolved "${name}"`,
-    // グループをタグに変える確認の窓と、その成功のトースト（「Turning into a tag」）。
-    // グループページ、動画ページ、フォルダのメニューが共有する。
+    // グループをタグに変える確認の窓と、その成功のトースト（ui-design.md「Turning into a tag」
+    // 「Words」）。グループページ、動画ページ、フォルダのメニューが共有する。
     tagDialog: {
       title: (name: string) => `Turn "${name}" into a tag?`,
       description: (name: string) =>

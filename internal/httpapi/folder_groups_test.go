@@ -17,16 +17,12 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// フォルダのまとめ方の例外とグループのタグ化
-// （specs/017-folder-groups/contracts/folder-groups-api.md §1・§2）を、本物の認証・
-// 保存層・経路をつないで確かめる。フォルダの構成は newLibraryFixture のとおり。
+// フォルダのまとめ方の例外（specs/017-folder-groups/contracts/folder-groups-api.md §1）と、
+// フォルダの自動グループのタグ化（specs/048-groups/research.md R-11）を、本物の認証・保存層・
+// 経路をつないで確かめる。フォルダの構成は newLibraryFixture のとおり。
 
 func (f *libraryFixture) groupingPath(rel string) string {
 	return "/api/folders/" + strconv.FormatInt(f.rootID, 10) + "/grouping?path=" + url.QueryEscape(rel)
-}
-
-func (f *libraryFixture) groupingTagPath(rel string) string {
-	return "/api/folders/" + strconv.FormatInt(f.rootID, 10) + "/grouping/tag?path=" + url.QueryEscape(rel)
 }
 
 // groupingResult は変更の経路の応答である。
@@ -40,9 +36,22 @@ func (f *libraryFixture) putGrouping(rel, body string) groupingResult {
 	return groupingResult{code: rec.Code, body: rec.Body.Bytes()}
 }
 
-func (f *libraryFixture) postGroupingTag(rel string) groupingResult {
-	rec := f.env.serve(authRequest{method: http.MethodPost, target: f.groupingTagPath(rel), cookies: []*http.Cookie{f.owner}})
-	return groupingResult{code: rec.Code, body: rec.Body.Bytes()}
+// folderGroupID はフォルダ rel の grouping が名指す自動グループの id を返す。無ければ失敗にする。
+func (f *libraryFixture) folderGroupID(t *testing.T, rel string) int64 {
+	t.Helper()
+	grouping := f.ownerFolder(t, rel).Folder.Grouping
+	if grouping == nil || grouping.GroupId == nil {
+		t.Fatalf("フォルダ %q の grouping に groupId が無い: %+v", rel, grouping)
+	}
+	return *grouping.GroupId
+}
+
+// assertGrouping は grouping の mode と、groupId の有無が want どおりかを確かめる。
+func assertGrouping(t *testing.T, label string, got *gen.FolderGrouping, mode gen.FolderGroupingMode, hasGroup bool) {
+	t.Helper()
+	if got == nil || got.Mode != mode || (got.GroupId != nil) != hasGroup {
+		t.Errorf("%s: grouping = %+v, want mode %s, groupId あり %v", label, got, mode, hasGroup)
+	}
 }
 
 func decodeBytes[T any](t *testing.T, body []byte) T {
@@ -104,9 +113,8 @@ func TestSetFolderGrouping(t *testing.T) {
 	if res.code != http.StatusOK {
 		t.Fatalf("ungroup: status = %d: %s", res.code, res.body)
 	}
-	if got := decodeBytes[gen.FolderGrouping](t, res.body); got != (gen.FolderGrouping{Mode: gen.FolderGroupingModeUngroup}) {
-		t.Errorf("ungroup の応答 = %+v", got)
-	}
+	got := decodeBytes[gen.FolderGrouping](t, res.body)
+	assertGrouping(t, "ungroup の応答", &got, gen.FolderGroupingModeUngroup, false)
 	// ライブラリはグループ（specs/048-groups）から読む。ungroup は show の自動グループを解くので、
 	// メンバーは動画として並ぶ（specs/048-groups/research.md R-4）。
 	if names := f.ownerLibraryNames(t); !slices.Equal(names, []string{"ep1", "ep10", "ep2", "group:pair", "solo"}) {
@@ -118,19 +126,27 @@ func TestSetFolderGrouping(t *testing.T) {
 	}
 
 	res = f.putGrouping("show", `{"mode":"auto"}`)
-	if got := decodeBytes[gen.FolderGrouping](t, res.body); res.code != http.StatusOK || got != (gen.FolderGrouping{Mode: gen.FolderGroupingModeAuto, Grouped: true, Taggable: true}) {
-		t.Errorf("auto: status = %d, 応答 = %+v", res.code, got)
+	got = decodeBytes[gen.FolderGrouping](t, res.body)
+	if res.code != http.StatusOK {
+		t.Errorf("auto: status = %d", res.code)
 	}
+	assertGrouping(t, "auto の応答", &got, gen.FolderGroupingModeAuto, true)
 	if names := f.ownerLibraryNames(t); !slices.Equal(names, []string{"group:pair", "group:show", "solo"}) {
 		t.Errorf("auto の後の項目 = %v", names)
+	}
+	// groupId はそのフォルダの自動グループで、フォルダの読み出しも同じ id を返す。
+	if got.GroupId != nil && *got.GroupId != f.folderGroupID(t, "show") {
+		t.Errorf("auto の応答の groupId = %d, フォルダの groupId = %d", *got.GroupId, f.folderGroupID(t, "show"))
 	}
 
 	// 直下をまとめる: 子フォルダを持つ登録フォルダそのものでも、直下の動画がグループになる。
 	f.addVideo(t, "solo2")
 	res = f.putGrouping("", `{"mode":"groupDirect"}`)
-	if got := decodeBytes[gen.FolderGrouping](t, res.body); res.code != http.StatusOK || got != (gen.FolderGrouping{Mode: gen.FolderGroupingModeGroupDirect, Grouped: true}) {
-		t.Errorf("登録フォルダの groupDirect: status = %d, 応答 = %+v（taggable は false）", res.code, got)
+	got = decodeBytes[gen.FolderGrouping](t, res.body)
+	if res.code != http.StatusOK {
+		t.Errorf("登録フォルダの groupDirect: status = %d", res.code)
 	}
+	assertGrouping(t, "登録フォルダの groupDirect の応答", &got, gen.FolderGroupingModeGroupDirect, true)
 	root := filepath.Base(f.mediaDir)
 	if names := f.ownerLibraryNames(t); !slices.Equal(names, []string{"group:" + root, "group:pair", "group:show"}) {
 		t.Errorf("groupDirect の後の項目 = %v", names)
@@ -138,13 +154,9 @@ func TestSetFolderGrouping(t *testing.T) {
 
 	// FolderSummary.grouping は所有者の応答に入る。
 	listing := f.ownerFolder(t, "")
-	if listing.Folder.Grouping == nil || *listing.Folder.Grouping != (gen.FolderGrouping{Mode: gen.FolderGroupingModeGroupDirect, Grouped: true}) {
-		t.Errorf("登録フォルダの grouping = %+v", listing.Folder.Grouping)
-	}
+	assertGrouping(t, "登録フォルダ", listing.Folder.Grouping, gen.FolderGroupingModeGroupDirect, true)
 	for _, child := range listing.Folders {
-		if child.Grouping == nil || *child.Grouping != (gen.FolderGrouping{Mode: gen.FolderGroupingModeAuto, Grouped: true, Taggable: true}) {
-			t.Errorf("子フォルダ %s の grouping = %+v", child.Name, child.Grouping)
-		}
+		assertGrouping(t, "子フォルダ "+child.Name, child.Grouping, gen.FolderGroupingModeAuto, true)
 	}
 	roots := decode[gen.RootFolderListing](t, f.env.get("/api/folders", f.owner))
 	if len(roots.Folders) != 1 || roots.Folders[0].Grouping == nil || roots.Folders[0].Grouping.Mode != gen.FolderGroupingModeGroupDirect {
@@ -171,128 +183,55 @@ func TestSetFolderGrouping(t *testing.T) {
 	}
 }
 
-// 受け入れ条件 4・5 のサーバー側: タグ化の後にメンバーが単体に戻ってそれぞれにタグが
-// 付き、同名のタグやシノニムがあればそれを使う。
-func TestTagFolderGroup(t *testing.T) {
-	t.Run("同名のタグを使う", func(t *testing.T) {
-		f := newLibraryFixture(t)
-		before := tagCount(t, f)
-		res := f.postGroupingTag("show")
-		if res.code != http.StatusOK {
-			t.Fatalf("status = %d: %s", res.code, res.body)
+// 要件 15 のサーバー側: フォルダの grouping が名指す自動グループを POST /api/groups/{id}/tag で
+// タグに変えると、メンバーが単体に戻ってフォルダ由来のタグを得て、grouping は ungroup になり
+// groupId が消える。登録フォルダそのもののグループも変えられる（research.md R-11）。旧ルートは無い。
+func TestTagFolderAutomaticGroup(t *testing.T) {
+	f := newLibraryFixture(t)
+	before := tagCount(t, f)
+	rec := f.groupRequest(http.MethodPost, groupWritePath(f.folderGroupID(t, "show"), "/tag"), "", f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+	}
+	if got := decode[gen.GroupTagResult](t, rec); got.Tag.Id != f.folder || got.Tag.Name != "show" || got.Created {
+		t.Errorf("応答 = %+v", got)
+	}
+	if after := tagCount(t, f); after != before {
+		t.Errorf("タグの数 = %d, want %d", after, before)
+	}
+	if names := f.ownerLibraryNames(t); !slices.Equal(names, []string{"ep1", "ep10", "ep2", "group:pair", "solo"}) {
+		t.Fatalf("タグ化の後の項目 = %v", names)
+	}
+	page := decode[gen.VideoPage](t, f.env.get("/api/videos", f.owner))
+	for _, item := range page.Items {
+		if strings.HasPrefix(item.Title, "ep") && !slices.ContainsFunc(item.Tags, func(tag gen.VideoTag) bool { return tag.Id == f.folder }) {
+			t.Errorf("%s のタグ = %+v, want show", item.Title, item.Tags)
 		}
-		got := decodeBytes[gen.FolderGroupTagResult](t, res.body)
-		if got.Tag.Id != f.folder || got.Tag.Name != "show" || got.Created || got.Grouping != (gen.FolderGrouping{Mode: gen.FolderGroupingModeUngroup}) {
-			t.Errorf("応答 = %+v", got)
-		}
-		if after := tagCount(t, f); after != before {
-			t.Errorf("タグの数 = %d, want %d", after, before)
-		}
-		// タグにしたグループは解け、メンバーにはフォルダ由来のタグが付く（TestSetFolderGrouping と同じ）。
-		library := decode[gen.LibraryPage](t, f.env.get("/api/library", f.owner))
-		if names := libraryItemNames(library); !slices.Equal(names, []string{"ep1", "ep10", "ep2", "group:pair", "solo"}) {
-			t.Fatalf("タグ化の後の項目 = %v", names)
-		}
-		page := decode[gen.VideoPage](t, f.env.get("/api/videos", f.owner))
-		for _, item := range page.Items {
-			if !strings.HasPrefix(item.Title, "ep") {
-				continue
-			}
-			if !slices.ContainsFunc(item.Tags, func(tag gen.VideoTag) bool { return tag.Id == f.folder && tag.FromFolder }) {
-				t.Errorf("%s のタグ = %+v, want show（フォルダ由来）", item.Title, item.Tags)
-			}
-		}
-		if listing := f.ownerFolder(t, "show"); listing.Folder.Grouping == nil || *listing.Folder.Grouping != (gen.FolderGrouping{Mode: gen.FolderGroupingModeUngroup}) {
-			t.Errorf("タグ化の後の grouping = %+v", listing.Folder.Grouping)
-		}
-		// もうグループではないので、2回目は 409。
-		res = f.postGroupingTag("show")
-		assertErrorBody(t, "2回目", res.code, res.body,
-			wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonFolderNotGroup})
-	})
+	}
+	assertGrouping(t, "タグ化の後", f.ownerFolder(t, "show").Folder.Grouping, gen.FolderGroupingModeUngroup, false)
 
-	t.Run("シノニムで引けたタグを使う", func(t *testing.T) {
-		f := newLibraryFixture(t)
-		if _, err := f.env.db.Tags().AddSynonym(context.Background(), f.manual, "pair", nil); err != nil {
-			t.Fatal(err)
-		}
-		res := f.postGroupingTag("pair")
-		got := decodeBytes[gen.FolderGroupTagResult](t, res.body)
-		if res.code != http.StatusOK || got.Tag.Id != f.manual || got.Tag.Name != "手" || got.Created {
-			t.Errorf("status = %d, 応答 = %+v", res.code, got)
-		}
-	})
+	// 登録フォルダそのもののグループ。
+	f.addVideo(t, "solo2")
+	if res := f.putGrouping("", `{"mode":"groupDirect"}`); res.code != http.StatusOK {
+		t.Fatalf("groupDirect: status = %d", res.code)
+	}
+	rec = f.groupRequest(http.MethodPost, groupWritePath(f.folderGroupID(t, ""), "/tag"), "", f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("登録フォルダのグループ: status = %d: %s", rec.Code, rec.Body)
+	}
+	assertGrouping(t, "登録フォルダのタグ化の後", f.ownerFolder(t, "").Folder.Grouping, gen.FolderGroupingModeUngroup, false)
 
-	t.Run("無ければ作る", func(t *testing.T) {
-		f := newLibraryFixture(t)
-		before := tagCount(t, f)
-		res := f.postGroupingTag("pair")
-		got := decodeBytes[gen.FolderGroupTagResult](t, res.body)
-		if res.code != http.StatusOK || got.Tag.Name != "pair" || !got.Created {
-			t.Fatalf("status = %d, 応答 = %+v", res.code, got)
-		}
-		if after := tagCount(t, f); after != before+1 {
-			t.Errorf("タグの数 = %d, want %d", after, before+1)
-		}
-		video := decode[gen.Video](t, f.env.get("/api/videos/"+strconv.FormatInt(f.ids["p2"], 10), f.owner))
-		if !slices.ContainsFunc(video.Tags, func(tag gen.VideoTag) bool { return tag.Id == got.Tag.Id && tag.FromFolder && !tag.Manual }) {
-			t.Errorf("p2 のタグ = %+v", video.Tags)
-		}
-	})
-
-	t.Run("タグ名に使えないフォルダ名", func(t *testing.T) {
-		f := newLibraryFixture(t)
-		long := strings.Repeat("a", domain.TagNameMaxLength+1)
-		f.addVideo(t, long+"/x1")
-		f.addVideo(t, long+"/x2")
-		before := tagCount(t, f)
-		res := f.postGroupingTag(long)
-		assertErrorBody(t, "長すぎるフォルダ名", res.code, res.body, wantError{
-			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest,
-			reason: reasonTagNameTooLong, limit: domain.TagNameMaxLength,
-		})
-		if after := tagCount(t, f); after != before {
-			t.Errorf("タグの数 = %d, want %d", after, before)
-		}
-		if listing := f.ownerFolder(t, long); listing.Folder.Grouping == nil || *listing.Folder.Grouping != (gen.FolderGrouping{Mode: gen.FolderGroupingModeAuto, Grouped: true, Taggable: true}) {
-			t.Errorf("例外が書かれた: grouping = %+v", listing.Folder.Grouping)
-		}
-	})
-
-	t.Run("グループでないフォルダと登録フォルダそのもの", func(t *testing.T) {
-		f := newLibraryFixture(t)
-		if res := f.putGrouping("pair", `{"mode":"ungroup"}`); res.code != http.StatusOK {
-			t.Fatalf("ungroup: status = %d", res.code)
-		}
-		before := tagCount(t, f)
-		res := f.postGroupingTag("pair")
-		assertErrorBody(t, "グループでないフォルダ", res.code, res.body,
-			wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonFolderNotGroup})
-		f.addVideo(t, "solo2")
-		if res := f.putGrouping("", `{"mode":"groupDirect"}`); res.code != http.StatusOK {
-			t.Fatalf("groupDirect: status = %d", res.code)
-		}
-		res = f.postGroupingTag("")
-		assertErrorBody(t, "登録フォルダそのもの", res.code, res.body,
-			wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonRootGroupNotTaggable})
-		if after := tagCount(t, f); after != before {
-			t.Errorf("タグの数 = %d, want %d", after, before)
-		}
-		res = f.postGroupingTag("gone")
-		assertErrorBody(t, "フォルダが無い", res.code, res.body,
-			wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFolderNotFound})
-		res = f.postGroupingTag("/show")
-		assertErrorBody(t, "パスが不正", res.code, res.body,
-			wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidFolderPath})
-	})
+	old := f.env.serve(authRequest{method: http.MethodPost, target: "/api/folders/" + strconv.FormatInt(f.rootID, 10) + "/grouping/tag?path=pair", cookies: []*http.Cookie{f.owner}})
+	if old.Code == http.StatusOK {
+		t.Errorf("旧ルート POST …/grouping/tag が残っている: status = %d", old.Code)
+	}
 }
 
-// ゲストは2つの変更の経路で 401 になり、FolderSummary に grouping が入らない。
+// ゲストは変更の経路で 401 になり、FolderSummary に grouping が入らない。
 func TestFolderGroupingForGuest(t *testing.T) {
 	f := newLibraryFixture(t)
 
 	assertUnauthenticated(t, "PUT grouping", f.env.serve(authRequest{method: http.MethodPut, target: f.groupingPath("show"), body: `{"mode":"ungroup"}`}))
-	assertUnauthenticated(t, "POST grouping/tag", f.env.serve(authRequest{method: http.MethodPost, target: f.groupingTagPath("show")}))
 	if names := f.ownerLibraryNames(t); !slices.Equal(names, []string{"group:pair", "group:show", "solo"}) {
 		t.Errorf("ゲストの要求で一覧が変わった: %v", names)
 	}

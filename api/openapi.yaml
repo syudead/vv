@@ -3527,33 +3527,6 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /api/folders/{rootId}/grouping/tag:
-    post:
-      operationId: tagFolderGroup
-      summary: グループをタグに変える
-      description: |
-        1つの取引で、フォルダ名を `NormalizeTagName` に通し、名前かシノニムで引けたタグを使うか
-        新しく作り、そのフォルダに `ungroup` を書き、索引を作り直す
-        （specs/017-folder-groups/contracts/folder-groups-api.md §2）。本文は無い。
-        フォルダ名がタグ名の規則に合わなければ `400` `invalid_request` で、タグも例外も作らない。
-        そのフォルダが今グループでないか、登録フォルダそのものなら `409` `conflict`。
-      parameters:
-        - $ref: "#/components/parameters/FolderRootId"
-        - $ref: "#/components/parameters/FolderPath"
-      responses:
-        "200":
-          description: 使ったタグと、変更後のまとめ方
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/FolderGroupTagResult"
-        "400":
-          $ref: "#/components/responses/InvalidRequest"
-        "404":
-          $ref: "#/components/responses/NotFound"
-        "409":
-          $ref: "#/components/responses/Conflict"
-
   /api/scans/current:
     get:
       operationId: getCurrentScan
@@ -5477,20 +5450,21 @@ components:
 
     FolderGrouping:
       type: object
-      required: [mode, grouped, taggable]
+      required: [mode]
       additionalProperties: false
       description: |
         フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
-        ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+        ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1、
+        specs/048-groups/contracts/screen-api.md「Routes and schemas changed」）
       properties:
         mode:
           $ref: "#/components/schemas/FolderGroupingMode"
-        grouped:
-          type: boolean
-          description: いまこのフォルダの直下がグループか
-        taggable:
-          type: boolean
-          description: グループで、登録フォルダそのものではない（グループをタグに変えられる）
+        groupId:
+          type: integer
+          format: int64
+          description: |
+            このフォルダの自動グループの id。無ければ省く。`POST /api/groups/{id}/tag` で
+            タグに変えられる
 
     FolderGroupingRequest:
       type: object
@@ -5499,19 +5473,6 @@ components:
       properties:
         mode:
           $ref: "#/components/schemas/FolderGroupingMode"
-
-    FolderGroupTagResult:
-      type: object
-      required: [tag, created, grouping]
-      additionalProperties: false
-      properties:
-        tag:
-          $ref: "#/components/schemas/TagRef"
-        created:
-          type: boolean
-          description: タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false
-        grouping:
-          $ref: "#/components/schemas/FolderGrouping"
 
     FolderListing:
       type: object
@@ -6482,13 +6443,10 @@ components:
         - relative_directory_path
         - video_not_found
         - folder_not_found
-        - not_folder_group
         - no_scan
         - directory_not_found
         - file_unavailable
         - media_folders_changed
-        - root_group_not_taggable
-        - folder_not_group
         - group_target_not_found
         - group_cycle
         - probe_info_missing

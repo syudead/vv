@@ -763,13 +763,10 @@ const (
 	reasonRelativeDirectoryPath         = gen.ErrorReasonRelativeDirectoryPath
 	reasonVideoNotFound                 = gen.ErrorReasonVideoNotFound
 	reasonFolderNotFound                = gen.ErrorReasonFolderNotFound
-	reasonNotFolderGroup                = gen.ErrorReasonNotFolderGroup
 	reasonNoScan                        = gen.ErrorReasonNoScan
 	reasonDirectoryNotFound             = gen.ErrorReasonDirectoryNotFound
 	reasonFileUnavailable               = gen.ErrorReasonFileUnavailable
 	reasonMediaFoldersChanged           = gen.ErrorReasonMediaFoldersChanged
-	reasonRootGroupNotTaggable          = gen.ErrorReasonRootGroupNotTaggable
-	reasonFolderNotGroup                = gen.ErrorReasonFolderNotGroup
 	reasonGroupTargetNotFound           = gen.ErrorReasonGroupTargetNotFound
 	reasonGroupCycle                    = gen.ErrorReasonGroupCycle
 	reasonProbeInfoMissing              = gen.ErrorReasonProbeInfoMissing
