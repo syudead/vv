@@ -1,4 +1,4 @@
-# Work-info plugins: sandbox and limits
+# Work-info plugins: sandbox, limits and network
 
 VVMDM runs work-info plugins, WebAssembly modules that read work information
 from external sites, inside its own process with wazero; the adapter is
@@ -8,7 +8,7 @@ from external sites, inside its own process with wazero; the adapter is
 The plugin contract is
 [contracts/plugin-contract.md](../../specs/049-work-info-plugins/contracts/plugin-contract.md),
 and the reasons for each choice are in the feature's
-[research.md](../../specs/049-work-info-plugins/research.md) (R-1 to R-4).
+[research.md](../../specs/049-work-info-plugins/research.md) (R-1 to R-5).
 
 The diagram shows what a module goes through, from upload to a run's result.
 
@@ -66,8 +66,8 @@ Each run starts a fresh instance, writes the request JSON to standard input
 and reads the response JSON from standard output
 ([`run.go`](../../internal/wasmplugin/run.go)). The instance gets clocks and a
 random source, and no preopened directory, environment variable or argument.
-The `vv` host functions `http_send`, `http_meta` and `http_body` answer `-1`
-until vv's HTTP client is added.
+Its only way to the network is the `vv` host functions, described in
+[Plugins reach only public internet addresses](#plugins-reach-only-public-internet-addresses).
 
 | Limit | Value | When it is reached |
 | --- | --- | --- |
@@ -94,3 +94,71 @@ only when it compiles with more than one worker, so a run compiles with two.
 | A separate process per run | The container and the Windows app would need different OS sandboxes |
 | Running a `describe` operation at upload | The name and version shown for approval would come from unapproved code |
 | Several runs at the same time | Each run may use 128 MiB, and one at a time bounds the plugins' memory to one module's |
+
+## Plugins reach only public internet addresses
+
+A plugin has no sockets; vv performs each of its HTTP requests through the
+`vv` host functions `http_send`, `http_meta` and `http_body`
+([`host.go`](../../internal/wasmplugin/host.go)), with its own HTTP client
+([`netclient.go`](../../internal/wasmplugin/netclient.go)). The client
+resolves the URL's host and checks every resolved address in the dialer's
+control hook, just before each connection, so a redirect and a DNS answer go
+through the same check as the first request.
+
+The diagram shows one `http_send`, from the plugin's request to its handle or
+error.
+
+```mermaid
+flowchart LR
+  send[http_send] --> valid{Valid request, under 16 sent?}
+  valid -->|no| err1[-1 or -5]
+  valid -->|yes| resolve[Resolve the host]
+  resolve --> dial{Each address allowed at dial?}
+  dial -->|no| refuse[-2, host recorded]
+  dial -->|yes| site[Internet site]
+  site -->|redirect, up to 5| resolve
+  site --> body{Body within 4 MiB and 10 s?}
+  body -->|yes| handle[Handle for http_meta and http_body]
+  body -->|no| err2[-6 or -4]
+  refuse --> fail[Run fails: blocked_address]
+```
+
+An address is allowed only when, after an IPv4-mapped IPv6 address is turned
+back into IPv4, it is global unicast (for IPv6, inside `2000::/3`), it lies in
+none of the ranges of `refusedPrefixes`, and it is not an address of the
+server's own interfaces ([`address.go`](../../internal/wasmplugin/address.go)).
+`refusedPrefixes` is one table: every range of the IANA IPv4 and IPv6
+Special-Purpose Address Registries whose "Globally Reachable" is not `True`,
+plus `fec0::/10` and the prefixes that embed an IPv4 address (`64:ff9b::/96`,
+`2001::/32`, `2002::/16`). The server's interfaces are read at each check,
+because they can change while vv runs.
+
+A refused request answers `-2` to the plugin and makes the whole run fail with
+`blocked_address` and the refused host, whatever the plugin writes afterwards,
+so a plugin cannot hide from the owner that it tried to reach vv or the LAN. A
+request that fails to connect answers `-3`; when the plugin then fails, the
+run fails with `network_error` and the first host that could not be reached,
+because the owner can act on the host and not on the plugin's message alone.
+
+| Limit | Value | When it is reached |
+| --- | --- | --- |
+| Requests | 16 per run, `GET` and `POST`, `http` and `https` | A 17th request answers `-5`; another method or scheme answers `-1` |
+| Redirects | 5 per request | The sixth redirect response is handed to the plugin as it is |
+| Time | 10 s per request, from sending to the last byte of the body | The request answers `-4` |
+| Response body | 4 MiB | The request answers `-6` |
+
+The client ignores `HTTP_PROXY` and the other proxy variables, because a
+proxy would make the dial check see only the proxy's address. It drops `Host`
+and the hop-by-hop headers a plugin sets, and sends a `User-Agent` of its own
+when the plugin sets none. The body reaches the plugin as bytes with the
+response headers, so the plugin decodes the page's character set itself.
+
+The address check lives only in this adapter. The ComfyUI and Ollama clients
+keep reaching the LAN, where those services run.
+
+| Rejected | Why |
+| --- | --- |
+| Resolving and checking the host name before the request | The connection resolves the name again and may get another answer, and a redirect skips the check |
+| A host-name allowlist per plugin | A public name can resolve to a LAN address |
+| Returning the refusal to the plugin only | The plugin could ignore it, and the owner would not see that it tried |
+| Separate connect, TLS and header timeouts | A slow site could then answer `-3` instead of `-4` before the 10 s request limit |

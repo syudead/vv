@@ -46,11 +46,35 @@ func (r *Runtime) Run(ctx context.Context, digest string, module []byte, req dom
 	defer release()
 	deadline, cancel := context.WithTimeoutCause(ctx, domain.WorkInfoPluginRunTimeout, errTimedOut)
 	defer cancel()
-	output, err := r.run.run(ctx, deadline, digest, module, input)
-	if err != nil {
+	session := &httpSession{net: r.run.net}
+	output, err := r.run.run(ctx, deadline, digest, module, input, session)
+	var result domain.WorkInfoRunResult
+	if err == nil {
+		result, err = domain.ParseWorkInfoResponse(req.Operation, output)
+	}
+	if err = session.outcome(err); err != nil {
 		return domain.WorkInfoRunResult{}, err
 	}
-	return domain.ParseWorkInfoResponse(req.Operation, output)
+	return result, nil
+}
+
+// outcome は実行の誤り err に、実行の HTTP で起きたことを重ねる（contracts/screen-api.md の Run failures）。
+// 呼び出し元の ctx の誤りはそのまま返す。要求を拒んでいれば、プラグインが何を返しても
+// blocked_address にする。届かなかった要求があってプラグインが失敗したなら network_error にする。
+func (s *httpSession) outcome(err error) error {
+	var runErr *domain.WorkInfoRunError
+	if err != nil && !errors.As(err, &runErr) {
+		return err
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	switch {
+	case s.refused != "":
+		return &domain.WorkInfoRunError{Failure: domain.WorkInfoRunBlockedAddress, Host: s.refused}
+	case runErr != nil && runErr.Failure == domain.WorkInfoRunFailed && s.unreachable != "":
+		return &domain.WorkInfoRunError{Failure: domain.WorkInfoRunNetworkError, Host: s.unreachable, PluginMessage: runErr.PluginMessage}
+	}
+	return err
 }
 
 // acquire は実行の枠を取り、返す関数で空ける。
@@ -72,6 +96,7 @@ func (r *Runtime) acquire(ctx context.Context) (func(), error) {
 type runner struct {
 	logger *slog.Logger
 	rt     wazero.Runtime
+	net    *netClient
 	cache  map[string]wazero.CompiledModule
 	order  []string
 }
@@ -91,16 +116,17 @@ func newRunner(ctx context.Context, logger *slog.Logger) (*runner, error) {
 		_ = rt.Close(ctx)
 		return nil, fmt.Errorf("instantiate vv host module: %w", err)
 	}
-	return &runner{logger: logger, rt: rt, cache: map[string]wazero.CompiledModule{}}, nil
+	return &runner{logger: logger, rt: rt, net: newNetClient(), cache: map[string]wazero.CompiledModule{}}, nil
 }
 
 func (rn *runner) close(ctx context.Context) error {
+	rn.net.close()
 	return rn.rt.Close(ctx)
 }
 
 // run はモジュールを 1 回動かす。parent は呼び出し元の ctx、deadline はそれに実行の時間の上限を
-// 付けたもので、コンパイルとインスタンスの両方を止める。
-func (rn *runner) run(parent, deadline context.Context, digest string, module, input []byte) ([]byte, error) {
+// 付けたもので、コンパイルとインスタンスの両方を止める。vv のホスト関数は session を使う。
+func (rn *runner) run(parent, deadline context.Context, digest string, module, input []byte, session *httpSession) ([]byte, error) {
 	compiled, err := rn.compiled(deadline, digest, module)
 	if err != nil {
 		if stop := stopped(parent, deadline); stop != nil {
@@ -108,7 +134,7 @@ func (rn *runner) run(parent, deadline context.Context, digest string, module, i
 		}
 		return nil, err
 	}
-	runCtx, cancel := context.WithCancelCause(deadline)
+	runCtx, cancel := context.WithCancelCause(context.WithValue(deadline, sessionKey{}, session))
 	defer cancel(nil)
 
 	memory := &cappedMemory{limit: memoryLimitBytes, exceed: func() { cancel(errMemoryExceeded) }}
