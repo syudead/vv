@@ -428,9 +428,10 @@ describe("VideoPage work information", () => {
     expect(server.details).not.toHaveBeenCalled();
   });
 
-  it("ページの題名のその場編集は今も PUT /api/videos/{id}/display-name を送る", async () => {
+  it("ページの題名のその場編集は今も PUT /api/videos/{id}/display-name を送り、作品情報の行を残す", async () => {
+    // display-name の応答は契約上 workInfo を載せない（contracts/screen-api.md「Video changes」）。
     server.displayName.mockImplementation(() =>
-      json({ ...withInfo, title: "Quick", displayName: "Quick" }),
+      json({ ...plain, title: "Quick", displayName: "Quick" }),
     );
     await openPage();
     const user = userEvent.setup();
@@ -442,6 +443,8 @@ describe("VideoPage work information", () => {
     await waitFor(() =>
       expect(server.displayName).toHaveBeenCalledWith({ displayName: "Quick" }),
     );
+    expect(await screen.findByRole("heading", { level: 1, name: "Quick" })).toBeDefined();
+    expect(within(workDetails()).getByText("AB-123")).toBeDefined();
     expect(puts()).toHaveLength(0);
   });
 

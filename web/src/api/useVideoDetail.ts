@@ -68,6 +68,15 @@ export function detailMark(): DetailMark {
 }
 
 /**
+ * withWorkInfoOf は、`workInfo` を載せない変更の応答 saved に、手元の動画 current の作品情報を
+ * 戻す。応答が `workInfo` を持つとき、手元に無いときは saved のままである。
+ */
+function withWorkInfoOf(saved: Video, current: Video | undefined): Video {
+  if (saved.workInfo !== undefined || current?.workInfo === undefined) return saved;
+  return { ...saved, workInfo: current.workInfo };
+}
+
+/**
  * useVideoDetail は動画 1 件を取得し、その動画が変わったという知らせを受けたら
  * 取り直す。一定間隔では問い合わせない。
  *
@@ -85,6 +94,10 @@ export function detailMark(): DetailMark {
  *   要求の後に始めた取り直しは残す（公開の一部反映で始めた取り直しなど）。
  * - 要求の間に反映した公開の切り替えとお気に入りの付け外しは、応答の `public`・`favorite`
  *   より優先する。どちらもサーバーから知らせが来ないので、ここで巻き戻すと直らない。
+ * - 応答に無い作品情報（`workInfo`）は手元の値を残す。replace に渡る応答（表示名・代表サムネイル・
+ *   束から外す）は契約上 `workInfo` を載せないので、そのまま置くと情報欄から作品情報が消える
+ *   （specs/047-video-work-info/contracts/screen-api.md「Video changes」）。作品情報の変化は
+ *   `video` の知らせの取り直しで届く。
  * - 別の動画の応答は捨てる。
  *
  * `setFavorite` は表示中の動画のお気に入りを `PUT /api/favorites` で付け外しし、成功したら
@@ -208,7 +221,7 @@ export function useVideoDetail(
         settle();
       }
       const video = withFavoriteSince(
-        withVisibilitySince(saved, mark.visibility),
+        withVisibilitySince(withWorkInfoOf(saved, current), mark.visibility),
         mark.favorite,
       );
       current = video;
