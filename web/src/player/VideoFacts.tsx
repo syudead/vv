@@ -233,6 +233,85 @@ function DateFact({
   );
 }
 
+type ThumbnailSending = ReturnType<typeof useThumbnailPosition>["sending"];
+
+/**
+ * ThumbnailFacts は所有者に出すサムネイルの項目である。上げた画像や生成した画像なら元に戻す
+ * 項目を、そうでなくコマの位置を選んでいればその位置と既定へ戻す項目を出す。
+ */
+function ThumbnailFacts({
+  video,
+  sending,
+  locked,
+  onSend,
+}: {
+  video: Video;
+  sending: ThumbnailSending;
+  locked: boolean;
+  onSend: ReturnType<typeof useThumbnailPosition>["send"];
+}) {
+  if (video.thumbnailImage !== undefined) {
+    return (
+      <ImageThumbnailFact
+        origin={video.thumbnailImage}
+        url={video.thumbnailUrl}
+        reverting={sending === "revert"}
+        locked={locked}
+        onRevert={() => onSend("revert")}
+      />
+    );
+  }
+  if (video.thumbnailPositionMs === undefined) return null;
+  return (
+    <ThumbnailFact
+      url={video.thumbnailUrl}
+      positionMs={video.thumbnailPositionMs}
+      clearing={sending === "clear"}
+      locked={locked}
+      onClear={() => onSend(null)}
+    />
+  );
+}
+
+/**
+ * ListActions は所有者に出す、動画を集める操作である。お気に入りのハートの直後に
+ * 「Add to playlist」（specs/044-playlists/ui-design.md「Add to playlist」）、その直後に
+ * 「Add to group」（specs/048-groups/ui-design.md「Add to group」）を置く。
+ */
+function ListActions({
+  video,
+  favorite,
+  onFavorite,
+  onFailed,
+}: {
+  video: Video;
+  favorite: boolean;
+  onFavorite: (favorite: boolean) => Promise<void>;
+  onFailed: (reason: UiText) => void;
+}) {
+  return (
+    <>
+      <FavoriteToggle
+        variant="page"
+        favorite={favorite}
+        label={t.player.facts.favorite}
+        onToggle={() => onFavorite(!favorite)}
+        onFailed={onFailed}
+      />
+      <AddToPlaylistButton
+        variant="page"
+        label={t.playlists.add.label}
+        videoIds={[video.id]}
+      />
+      <AddToGroupButton
+        variant="page"
+        label={t.list.card.addToGroup(video.title)}
+        videoIds={[video.id]}
+      />
+    </>
+  );
+}
+
 /**
  * VideoFacts は題名とタグの下の 2 行である（ui-design「Video facts」）。
  *
@@ -346,58 +425,28 @@ export default function VideoFacts({
               }
             />
           )}
-          {owner && video.thumbnailImage !== undefined && (
-            <ImageThumbnailFact
-              origin={video.thumbnailImage}
-              url={video.thumbnailUrl}
-              reverting={thumbnail.sending === "revert"}
+          {owner && (
+            <ThumbnailFacts
+              video={video}
+              sending={thumbnail.sending}
               locked={uploadBusy}
-              onRevert={() => thumbnail.send("revert")}
+              onSend={thumbnail.send}
             />
           )}
-          {owner &&
-            video.thumbnailImage === undefined &&
-            video.thumbnailPositionMs !== undefined && (
-              <ThumbnailFact
-                url={video.thumbnailUrl}
-                positionMs={video.thumbnailPositionMs}
-                clearing={thumbnail.sending === "clear"}
-                locked={uploadBusy}
-                onClear={() => thumbnail.send(null)}
-              />
-            )}
         </ul>
         {hasActions && (
           <div ref={actionsRef} className="ml-auto flex shrink-0 items-center">
             {favorite !== undefined && (
-              <FavoriteToggle
-                variant="page"
+              <ListActions
+                video={video}
                 favorite={favorite}
-                label={f.favorite}
-                onToggle={async () => {
+                onFavorite={async (next) => {
                   setFailure(null);
                   // 塗りは取り直した `favorite` で確かめる（R-6、033「Refresh after edits」）。
                   // 取り直しが終わるまで送信中のままにし、前の状態から重ねて送らない。
-                  await onFavorite?.(!favorite);
+                  await onFavorite?.(next);
                 }}
                 onFailed={(reason) => setFailure(f.favoriteFailed(reason))}
-              />
-            )}
-            {/* お気に入りの直後に置く。ハートと同じく所有者にだけ出る
-                （specs/044-playlists/ui-design.md「Add to playlist」）。 */}
-            {favorite !== undefined && (
-              <AddToPlaylistButton
-                variant="page"
-                label={t.playlists.add.label}
-                videoIds={[video.id]}
-              />
-            )}
-            {/* 「Add to playlist」の直後（specs/048-groups/ui-design.md「Add to group」）。 */}
-            {favorite !== undefined && (
-              <AddToGroupButton
-                variant="page"
-                label={t.list.card.addToGroup(video.title)}
-                videoIds={[video.id]}
               />
             )}
             {/* 「Add to group」の後、サムネイルの操作の前に置く。所有者にだけ、プレイヤーが
