@@ -1,18 +1,18 @@
 import { type ReactNode, useCallback, useMemo } from "react";
 
 import type { GroupItem, GroupRef } from "../api/groups";
-import { t } from "../i18n";
-import { VideoThumbnail, VideoThumbnailImage } from "../ui/VideoThumbnail";
+import { t, type UiText } from "../i18n";
 import {
-  CardDragFace,
+  type CardAttachment,
   type CardDrop,
   CardDragLayer,
   crumbIndexOf,
+  type HeldDrop,
 } from "../videoList/cardDrag";
-import { liftedKeys, reorderDrop } from "../videoList/cardDragRules";
+import { liftedKeys, type OntoAnswer, reorderDrop } from "../videoList/cardDragRules";
+import { orderedItemTitle } from "../videoList/ItemRowCells";
 import { useGroupDrops } from "../videoList/dropMenu";
-import FolderArt from "../videoList/FolderArt";
-import { orderedItemTitle, rowFacts } from "../videoList/ItemRowCells";
+import { useOrderedItemDrag } from "../videoList/OrderedItemFace";
 import { reorderAnnouncements } from "../videoList/reorder";
 
 /** itemKey は項目のドラッグの鍵である（項目の id）。 */
@@ -20,35 +20,12 @@ export function itemKey(item: GroupItem): string {
   return String(item.id);
 }
 
-/**
- * ItemFace は持ち上げた項目の写しの中身である。格子では動画のサムネイルか子グループの
- * フォルダの絵柄、リストでは行のサムネイル（ui-design.md「Lifting」）。
- */
-function ItemFace({ item, list }: { item: GroupItem; list: boolean }) {
-  const title = orderedItemTitle(item);
-  if (!list && item.kind === "group" && item.group !== undefined) {
-    return (
-      <CardDragFace
-        title={title}
-        thumbnail={
-          <VideoThumbnail>
-            <FolderArt previews={item.group.previews} />
-          </VideoThumbnail>
-        }
-      />
-    );
-  }
-  const { thumbnailUrl } = rowFacts(item);
-  return (
-    <CardDragFace
-      title={title}
-      thumbnail={
-        <VideoThumbnail>
-          {thumbnailUrl !== undefined && <VideoThumbnailImage src={thumbnailUrl} />}
-        </VideoThumbnail>
-      }
-    />
-  );
+/** GroupDropOnto は動画のカードの上に落とす規則と、そこへ落としたときの画面の扱いである。 */
+export interface GroupDropOnto {
+  onto: (target: string, lifted: readonly string[]) => OntoAnswer<UiText>;
+  onDrop: (drop: CardDrop) => void;
+  held: HeldDrop | null;
+  attached: CardAttachment | null;
 }
 
 /** MoveDestination はグループのページから項目を移す先である。 */
@@ -101,6 +78,8 @@ function groupDestination(item: GroupItem | undefined): GroupDestination | null 
  * - 動画だけを子グループのカードの上に落とすと、その子グループへ移す（「Put in」）。
  * - 子グループを含む項目を子グループのカードの上に落とすと、「Put in as a child group」
  *   （その子グループへ移す）と「Merge」（その子グループへマージする）のメニューを開く。
+ * - 動画のカードの上に落とせるか、落としたら何をするかは `dropOnto` が決める
+ *   （「Make a group」「Bundle as versions」のメニュー）。
  * - 道筋の「Library」の段に落とすとライブラリへ出し、祖先の段に落とすとその祖先へ移す。
  *   開いているグループの段と畳んだ「…」は拒否。
  *
@@ -117,6 +96,7 @@ export function GroupDragLayer({
   onMove,
   onMerge,
   onLift,
+  dropOnto,
   children,
 }: {
   items: readonly GroupItem[];
@@ -134,34 +114,26 @@ export function GroupDragLayer({
   /** 項目 `merged`（画面の順、子グループを含む）を子グループ `into` へマージする。 */
   onMerge: (merged: readonly GroupItem[], into: GroupDestination) => void;
   onLift: () => void;
+  dropOnto?: GroupDropOnto;
   children: ReactNode;
 }) {
-  const order = useMemo(() => items.map(itemKey), [items]);
-  const byKey = useMemo(
-    () => new Map(items.map((item) => [itemKey(item), item])),
-    [items],
-  );
+  const {
+    order,
+    byKey,
+    nameOf: itemName,
+    preview,
+  } = useOrderedItemDrag(items, itemKey, list);
 
   const liftedFor = useCallback(
     (key: string) => liftedKeys(order, key, selectedItems.map(String)),
     [order, selectedItems],
   );
   const nameOf = useCallback(
-    (key: string) => {
-      const item = byKey.get(key);
-      if (item === undefined) return crumbName(crumbIndexOf(key), trail, name);
-      return orderedItemTitle(item);
-    },
-    [byKey, name, trail],
+    (key: string) =>
+      byKey.has(key) ? itemName(key) : crumbName(crumbIndexOf(key), trail, name),
+    [byKey, itemName, name, trail],
   );
-  const preview = useCallback(
-    (key: string) => {
-      const item = byKey.get(key);
-      return item === undefined ? null : <ItemFace item={item} list={list} />;
-    },
-    [byKey, list],
-  );
-  const drops = useGroupDrops({
+  const groups = useGroupDrops({
     byKey,
     groupOf: groupDestination,
     isGroup: isChildGroup,
@@ -169,13 +141,21 @@ export function GroupDragLayer({
     onMove,
     onMerge,
   });
-  const dropOnto = drops.drop;
+  const { onto: ontoGroup, drop: dropOnGroup } = groups;
+  const { onto: ontoVideo } = dropOnto ?? {};
+  const onto = useCallback(
+    (target: string, lifted: readonly string[]): OntoAnswer<UiText> =>
+      groupDestination(byKey.get(target)) === null
+        ? (ontoVideo?.(target, lifted) ?? null)
+        : ontoGroup(target, lifted),
+    [byKey, ontoGroup, ontoVideo],
+  );
   const drop = useCallback(
-    (dropped: CardDrop) => {
-      const { lifted, sign } = dropped;
+    ({ lifted, sign }: CardDrop) => {
       const moved = lifted.flatMap((key) => byKey.get(key) ?? []);
       if (sign.kind === "onto") {
-        dropOnto(dropped);
+        if (groupDestination(byKey.get(sign.key)) !== null) dropOnGroup({ lifted, sign });
+        else dropOnto?.onDrop({ lifted, sign });
         return;
       }
       if (sign.kind === "crumb") {
@@ -191,7 +171,7 @@ export function GroupDragLayer({
         result.after === null ? null : Number(result.after),
       );
     },
-    [byKey, dropOnto, onMove, onReorder, order, trail],
+    [byKey, dropOnGroup, dropOnto, onMove, onReorder, order, trail],
   );
   const handle = useMemo(
     () =>
@@ -208,7 +188,7 @@ export function GroupDragLayer({
       order={order}
       liftedFor={liftedFor}
       reorder
-      onto={drops.onto}
+      onto={onto}
       nameOf={nameOf}
       preview={preview}
       list={list}
@@ -216,8 +196,8 @@ export function GroupDragLayer({
       onLift={onLift}
       handle={handle}
       instructions={t.groups.item.reorderInstructions}
-      held={drops.held}
-      attached={drops.attached}
+      held={dropOnto?.held ?? groups.held}
+      attached={dropOnto?.attached ?? groups.attached}
     >
       {children}
     </CardDragLayer>

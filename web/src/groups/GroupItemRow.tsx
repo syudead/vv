@@ -1,4 +1,4 @@
-import { memo, type Ref } from "react";
+import { memo, type ReactNode, type Ref } from "react";
 import { Link } from "react-router";
 
 import type { GroupItem } from "../api/groups";
@@ -33,6 +33,8 @@ export interface GroupItemRowProps {
   drag?: CardDragBinding;
   /** 行の `×`。所有者だけが渡す。 */
   remove?: GroupItemRemove;
+  /** 名前の位置に出す欄。「Make a group」で作ったばかりの子グループだけが持つ。 */
+  nameField?: ReactNode;
 }
 
 /** GroupItemRemove は行の `×` に渡す値である。 */
@@ -74,6 +76,7 @@ export const GroupItemRow = memo(function GroupItemRow({
   onSelect,
   drag,
   remove,
+  nameField,
 }: GroupItemRowProps) {
   const title = orderedItemTitle(item);
   const facts = rowFacts(item);
@@ -121,25 +124,27 @@ export const GroupItemRow = memo(function GroupItemRow({
       <TableCell className="w-full max-w-0 pr-2 whitespace-normal sm:pr-4">
         {/* リンクの after: を行（relative）いっぱいに広げ、行のどこを押しても開く。チェックは
             z-10 でその上に置く。 */}
-        <Link
-          to={to}
-          state={{ from: backTo }}
-          title={title}
-          aria-label={linkLabel(item)}
-          onClick={(event) => {
-            if (selectionMode && onSelect !== undefined) {
-              event.preventDefault();
-              onSelect(item, !selected);
-            }
-          }}
-          className={cn(
-            "line-clamp-2 rounded-sm text-sm font-medium break-all after:absolute after:inset-0 hover:text-primary",
-            facts.state === "watched" ? "text-muted-foreground" : "text-foreground",
-            dragging && "pointer-events-none",
-          )}
-        >
-          {title}
-        </Link>
+        {nameField ?? (
+          <Link
+            to={to}
+            state={{ from: backTo }}
+            title={title}
+            aria-label={linkLabel(item)}
+            onClick={(event) => {
+              if (selectionMode && onSelect !== undefined) {
+                event.preventDefault();
+                onSelect(item, !selected);
+              }
+            }}
+            className={cn(
+              "line-clamp-2 rounded-sm text-sm font-medium break-all after:absolute after:inset-0 hover:text-primary",
+              facts.state === "watched" ? "text-muted-foreground" : "text-foreground",
+              dragging && "pointer-events-none",
+            )}
+          >
+            {title}
+          </Link>
+        )}
         <ItemTitleExtras facts={facts} />
         {drag !== undefined && <CardDropMark sign={drag.sign} axis="y" list />}
         {drag?.attachment}

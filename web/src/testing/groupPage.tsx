@@ -138,6 +138,41 @@ export const targetGone = () =>
 export const groupNotFound = () =>
   Promise.resolve(json({ code: "not_found", message: "x" }, 404));
 
+/**
+ * makeGroup は POST /api/organize/group に答える。新しいグループ（id 60）は落とした先の動画、
+ * 続いて持ち上げた動画を持ち、`from` の中で落とした先の項目の位置を取る（R-6）。
+ */
+function makeGroup(body: unknown): Promise<Response> {
+  const { items, target, from } = body as {
+    items: { id: number }[];
+    target: number;
+    from?: number;
+  };
+  const stored = from === undefined ? undefined : server.groups.get(from);
+  if (stored === undefined) return targetGone();
+  const lifted = new Set(items.map((each) => each.id));
+  const targetItem = stored.items.find((item) => item.video?.id === target);
+  const members = [target, ...lifted];
+  const made = group(60, targetItem?.video?.title ?? "", {
+    videoCount: members.length,
+    videoIds: members,
+    openVideoId: target,
+  });
+  server.groups.set(60, {
+    group: made,
+    items: members.map((id, index) => ({
+      id: 600 + index,
+      kind: "video",
+      video: video(id),
+    })),
+  });
+  stored.items = stored.items.flatMap((item): GroupItem[] => {
+    if (item.video?.id === target) return [{ id: 160, kind: "group", group: made }];
+    return item.video !== undefined && lifted.has(item.video.id) ? [] : [item];
+  });
+  return Promise.resolve(json({ undoToken: "token-group", groupId: 60 }));
+}
+
 /** keepImage は操作の前のグループ `ids` を、新しいトークンで覚えてそのトークンを返す。 */
 function keepImage(ids: readonly number[]): string {
   const token = `token-${String(server.undo.size + 1)}`;
@@ -243,7 +278,7 @@ function mergeRefs({ items, into }: { items: MoveBody["items"]; into: number }) 
   return Promise.resolve(json({ undoToken: token }));
 }
 
-/** organize は POST /api/organize/reorder・/move・/merge・/undo に、メモリ上のグループを変えて答える。 */
+/** organize は POST /api/organize/reorder・/move・/merge・/group・/undo に、メモリ上のグループを変えて答える。 */
 function organize(path: string, body: unknown): Promise<Response> | undefined {
   if (path === "/api/organize/move") return moveRefs(body as MoveBody);
   if (path === "/api/organize/merge") {
@@ -272,6 +307,7 @@ function organize(path: string, body: unknown): Promise<Response> | undefined {
     stored.items = [...others.slice(0, index), ...moving, ...others.slice(index)];
     return Promise.resolve(json({ undoToken: token }));
   }
+  if (path === "/api/organize/group") return makeGroup(body);
   if (path === "/api/organize/undo") {
     if (server.undoAnswer !== null) return Promise.resolve(server.undoAnswer());
     const images = server.undo.get((body as { token: string }).token);

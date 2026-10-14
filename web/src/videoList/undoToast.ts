@@ -20,8 +20,12 @@ export function undoFailedText(error: unknown): UiText {
 
 /** UndoToast は画面が使う取り消しの通知である（useUndoToast の戻り値）。 */
 export interface UndoToast {
-  /** 受け入れられた操作の通知 `message` を、トークン `token` の「Undo」付きで出す。 */
-  offer: (message: UiText, token: string) => void;
+  /**
+   * 受け入れられた操作の通知 `message` を、トークン `token` の「Undo」付きで出す。`onSettled` は
+   * 「Undo」の要求が答えたら、一覧を読み直す前に、取り消せたかを受けて呼ぶ（画面がまだ重ねている
+   * 操作の結果を外す）。
+   */
+  offer: (message: UiText, token: string, onSettled?: (undone: boolean) => void) => void;
   /**
    * carry は今の通知とトークンを、この画面を離れても残す。操作の結果として画面が移るとき
    * （開いているグループが解散した）に、移る前に呼ぶ（ui-design.md「Undo toast」の Carried）。
@@ -52,19 +56,22 @@ export function useUndoToast(reload: () => void): UndoToast {
   );
 
   const offer = useCallback(
-    (message: UiText, token: string) => {
+    (message: UiText, token: string, onSettled?: (undone: boolean) => void) => {
       carried.current = false;
       dismiss.current = toast(message, {
         action: {
           label: t.organize.undo,
           run: async () => {
+            let undone = false;
             try {
               await undoOrganize(token);
+              undone = true;
               toast(t.organize.undone);
             } catch (error) {
               toast(undoFailedText(error));
             }
             dismiss.current = null;
+            onSettled?.(undone);
             reloadRef.current();
           },
         },

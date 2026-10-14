@@ -791,6 +791,22 @@ export function CardDropMark({
   );
 }
 
+/**
+ * dragRowProps はリストの行（TableRow）を層に加える props である。行のクラス `className` に、
+ * 持ち上げたら半透明にするクラスを足す。`drag` が無ければ行はそのまま。
+ */
+export function dragRowProps(drag: CardDragBinding | undefined, className: string) {
+  return {
+    ref: drag?.ref,
+    ...drag?.listeners,
+    className: cn(
+      className,
+      drag !== undefined && "relative motion-reduce:transition-none",
+      drag?.lifted === true && "opacity-50",
+    ),
+  };
+}
+
 /** RowDropMarks はリストの行の印と、行に重ねたもの（メニューの位置の目印）である。 */
 export function RowDropMarks({ drag }: { drag: CardDragBinding | undefined }) {
   if (drag === undefined) return null;

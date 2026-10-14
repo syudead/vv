@@ -21,7 +21,7 @@ import {
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
 import { groupPagePath } from "../groups/groupPaths";
-import { type CardDragBinding, RowDropMarks } from "../videoList/cardDrag";
+import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/cardDrag";
 import FolderArt from "../videoList/FolderArt";
 
 /**
@@ -55,7 +55,12 @@ export interface GroupCardProps {
   onPreviewReset?: () => void;
   /** 題名の下のタグの行（格子表示だけ）。VideoCard の tagsRow と同じく関数で受ける。 */
   tagsRow?: (group: LibraryGroup) => ReactNode;
-  /** リスト表示の行をドラッグの層に加える値。所有者のライブラリの行だけが渡す。 */
+  /**
+   * 名前の位置に出す欄。「Make a group」で作ったばかりのグループだけが持つ
+   * （specs/050-drag-organize/ui-design.md「The new group's name」）。欄の間、名前はリンクの外に出る。
+   */
+  nameField?: ReactNode;
+  /** リストの行をドラッグの層に加える値（useCardDrag）。所有者のライブラリのリスト表示だけが渡す。 */
   drag?: CardDragBinding;
 }
 
@@ -180,6 +185,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
     onPreviewStart,
     onPreviewReset,
     tagsRow,
+    nameField,
   } = props;
   const { state, ratio, duration, countText, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
@@ -254,16 +260,19 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
           )}
         </VideoThumbnail>
 
-        <h3
-          title={group.name}
-          className={cn(
-            "line-clamp-2 text-sm font-medium break-all",
-            state === "watched" ? "text-muted-foreground" : "text-foreground",
-          )}
-        >
-          {group.name}
-        </h3>
+        {nameField === undefined && (
+          <h3
+            title={group.name}
+            className={cn(
+              "line-clamp-2 text-sm font-medium break-all",
+              state === "watched" ? "text-muted-foreground" : "text-foreground",
+            )}
+          >
+            {group.name}
+          </h3>
+        )}
       </Link>
+      {nameField}
       {owner && (
         // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
         // （ui-design.md「Placement」）。
@@ -290,6 +299,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
     selected,
     selectionMode,
     onSelect,
+    nameField,
     drag,
   } = props;
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
@@ -299,17 +309,11 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
 
   return (
     <TableRow
-      ref={drag?.ref}
-      {...drag?.listeners}
+      {...dragRowProps(drag, "group")}
       data-group-id={group.id}
       data-group-root={group.folder?.rootId}
       data-group-path={group.folder?.path}
       data-state={selected ? "selected" : undefined}
-      className={cn(
-        "group",
-        drag !== undefined && "relative",
-        drag?.lifted === true && "opacity-50",
-      )}
     >
       {onSelect !== undefined && (
         <TableCell className="w-10 pl-3">
@@ -338,23 +342,25 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
         </VideoThumbnail>
       </TableCell>
       <TableCell className="min-w-0 pr-4 whitespace-normal">
-        <Link
-          to={to}
-          state={{ from: backTo }}
-          aria-label={label}
-          onClick={(event) => {
-            if (selectionMode) {
-              event.preventDefault();
-              onSelect?.(group, !selected);
-            }
-          }}
-          className={cn(
-            "line-clamp-2 rounded-sm text-sm font-medium break-all hover:text-primary",
-            state === "watched" ? "text-muted-foreground" : "text-foreground",
-          )}
-        >
-          {group.name}
-        </Link>
+        {nameField ?? (
+          <Link
+            to={to}
+            state={{ from: backTo }}
+            aria-label={label}
+            onClick={(event) => {
+              if (selectionMode) {
+                event.preventDefault();
+                onSelect?.(group, !selected);
+              }
+            }}
+            className={cn(
+              "line-clamp-2 rounded-sm text-sm font-medium break-all hover:text-primary",
+              state === "watched" ? "text-muted-foreground" : "text-foreground",
+            )}
+          >
+            {group.name}
+          </Link>
+        )}
         <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
           <Folder aria-hidden="true" className="size-3 shrink-0" />
           {groupCountText(group.videoCount)}

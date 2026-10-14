@@ -994,7 +994,7 @@ describe("FolderPage", () => {
     expect(
       screen.getByRole("heading", { level: 2, name: "Search results" }),
     ).toBeDefined();
-    const status = screen.getByRole("status");
+    const status = screen.getByText("2 videos");
     expect(status.textContent).toBe("2 videos");
     expect(status.classList.contains("sr-only")).toBe(false);
 
@@ -1779,7 +1779,7 @@ describe("FolderPage", () => {
     it("検索結果と最上位には出さない", async () => {
       respond(() => json({}));
       renderFolders("/folders/3/series?q=ep");
-      await screen.findByRole("status");
+      await screen.findAllByRole("status");
       await waitFor(() =>
         expect(requests.some((url) => url.includes("query=ep"))).toBe(true),
       );

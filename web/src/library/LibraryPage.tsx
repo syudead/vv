@@ -24,7 +24,7 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import type { CreditKind } from "../api/credits";
-import { itemKey } from "../api/libraryItems";
+import { itemKey, itemVideo } from "../api/libraryItems";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
@@ -54,6 +54,8 @@ import {
 } from "../videoList/listCriteria";
 import { DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
+import { useUndoToast } from "../videoList/undoToast";
+import { useVideoDrops } from "../videoList/useVideoDrops";
 import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { GuestEmpty, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { useListCriteria } from "../videoList/useListCriteria";
@@ -109,6 +111,16 @@ import {
 } from "./tagCriteria";
 
 const skeletonCount = 12;
+
+/** libraryGroupItem は「Make a group」の新しいグループの項目である。 */
+function libraryGroupItem(group: LibraryGroup): LibraryItem {
+  return { kind: "group", group };
+}
+
+/** itemGroup は項目がグループならそのグループである。 */
+function itemGroup(item: LibraryItem): LibraryGroup | undefined {
+  return item.kind === "group" ? item.group : undefined;
+}
 
 /** ライブラリだけが URL に持つ条件（タグ、人物、団体）。 */
 const libraryParams = [TAG_PARAM, PERSON_PARAM, ORGANIZATION_PARAM];
@@ -364,8 +376,23 @@ export default function LibraryPage() {
     setSelectAllSelection(null);
   }, [invalidateSelectAll]);
 
-  // --- ドラッグでグループへ移すかマージする（specs/050-drag-organize/ui-design.md「Library」） ---
+  // --- ドラッグ（specs/050-drag-organize/ui-design.md「Library」） ---
+  // グループへ落として移すかマージした項目はすぐ隠し、動画を動画に落とした結果はすぐ見せる。
+  // 取り消しの通知は画面を離れると閉じる。
   const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
+  const undo = useUndoToast(refreshInPlace);
+  const drops = useVideoDrops({
+    items: moves.visible,
+    keyOf: itemKey,
+    videoOf: itemVideo,
+    groupOf: itemGroup,
+    from: null,
+    groupItem: libraryGroupItem,
+    reread: refreshInPlace,
+    onAccepted: clearSelection,
+    undo,
+  });
+  const shown = drops.shown;
 
   // --- 「すべて選択」 ---
   // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。応答の `groups` は
@@ -521,6 +548,9 @@ export default function LibraryPage() {
   }, [reload, scan.finished]);
 
   const saveSnapshot = useCallback(() => {
+    // 落とした結果をまだ重ねている間（サーバーの答えか読み直しの前）の一覧は控えにしない。
+    // 操作の成功は控えを捨てるので、ここで古い並びを覚え直すと戻ったときにそれが出てしまう。
+    if (shown !== items) return;
     saveListSnapshot(
       { ...criteria, tags: tagIds, ...credits },
       {
@@ -533,7 +563,7 @@ export default function LibraryPage() {
         staleGroups: staleGroups(),
       },
     );
-  }, [credits, criteria, cursor, hasMore, items, staleGroups, tagIds, total]);
+  }, [credits, criteria, cursor, hasMore, items, shown, staleGroups, tagIds, total]);
 
   // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -658,6 +688,7 @@ export default function LibraryPage() {
     onPreviewStart: startPreview,
     onPreviewReset: resetPreview,
     tagsRow: renderGroupTagsRow,
+    nameField: drops.nameFieldFor(group.id),
   });
 
   const rowProps = (video: Video) => ({
@@ -700,12 +731,16 @@ export default function LibraryPage() {
   const withDrag = (content: ReactNode) =>
     owner ? (
       <LibraryDragLayer
-        items={moves.visible}
+        items={shown}
         list={view === "list"}
         selection={selection}
+        onto={drops.onto}
+        onDrop={drops.hold}
         onMove={moves.move}
         onMerge={moves.merge}
         onLift={resetPreview}
+        held={drops.held}
+        attached={drops.attached}
       >
         {content}
       </LibraryDragLayer>
@@ -739,7 +774,7 @@ export default function LibraryPage() {
             <Grid zoom={zoom}>
               {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
                 見出しは設けない（ui-design.md「Screen boundary」、要件 15）。 */}
-              {moves.visible.map(card)}
+              {shown.map(card)}
             </Grid>
           </TagRowMeasureProvider>
         ) : (
@@ -767,7 +802,7 @@ export default function LibraryPage() {
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>{moves.visible.map(row)}</TableBody>
+            <TableBody>{shown.map(row)}</TableBody>
           </DataTable>
         ),
       )}

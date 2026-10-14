@@ -75,12 +75,24 @@ export function DropMenu({
   );
 }
 
+/** DropChoice は落とした先のメニューで選んだ操作の値である。 */
+export interface DropChoice {
+  /** 持ち上げたカード（画面の順）。 */
+  lifted: readonly string[];
+  /** 落とした先のカード。 */
+  target: string;
+}
+
 /**
- * useHeldDrop は落とした後にメニューを開いている間の印を保つ。`hold` は落とし方を受け、
- * `accepts` が true なら保って true を返す（画面はほかの落とし方として扱わない）。メニューの間は
- * 持ち上げたカードは半透明、落とした先は輪と札のまま残る（CardDragLayer の `held`）。
+ * useDropMenu は落とした先のカードにメニューを開く。`hold` は落とし方を受け、`accepts` が true
+ * なら印を保って（`held`）メニューを開き、true を返す（画面はほかの落とし方として扱わない）。
+ * メニューの間は持ち上げたカードは半透明、落とした先は輪と札のまま残る。メニューは `menu` が
+ * 選んだ操作の値と閉じる関数から描き、落とした先のカードに重ねる（`attached`）。
  */
-export function useHeldDrop(accepts: (drop: CardDrop) => boolean) {
+export function useDropMenu(
+  accepts: (drop: CardDrop) => boolean,
+  menu: (choice: DropChoice, close: () => void) => ReactNode,
+) {
   const [held, setHeld] = useState<HeldDrop | null>(null);
   const hold = useCallback(
     (drop: CardDrop) => {
@@ -91,15 +103,12 @@ export function useHeldDrop(accepts: (drop: CardDrop) => boolean) {
     [accepts],
   );
   const close = useCallback(() => setHeld(null), []);
-  return { held, hold, close };
-}
-
-/** GroupDropChoice はグループをグループに落としたメニューで選んだ操作の値である。 */
-interface GroupDropChoice {
-  /** 持ち上げたカード（画面の順）。 */
-  lifted: readonly string[];
-  /** 落とした先のグループのカード。 */
-  target: string;
+  const attached = useMemo((): CardAttachment | null => {
+    if (held === null) return null;
+    const choice = { lifted: held.lifted, target: held.sign.key };
+    return { key: choice.target, node: menu(choice, close) };
+  }, [close, held, menu]);
+  return { held, attached, hold };
 }
 
 /**
@@ -116,30 +125,25 @@ function useGroupDropMenu({
 }: {
   accepts: (drop: CardDrop) => boolean;
   nameOf: (key: string) => string;
-  onNest: (choice: GroupDropChoice) => void;
-  onMerge: (choice: GroupDropChoice) => void;
+  onNest: (choice: DropChoice) => void;
+  onMerge: (choice: DropChoice) => void;
 }) {
-  const { held, hold, close } = useHeldDrop(accepts);
-  const attached = useMemo((): CardAttachment | null => {
-    if (held === null) return null;
-    const choice = { lifted: held.lifted, target: held.sign.key };
-    return {
-      key: choice.target,
-      node: (
-        <DropMenu name={nameOf(choice.target)} onClose={close}>
-          <DropdownMenuItem onSelect={() => onNest(choice)}>
-            <FolderInput aria-hidden="true" />
-            {t.organize.menu.nest}
-          </DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => onMerge(choice)}>
-            <Merge aria-hidden="true" />
-            {t.organize.menu.merge}
-          </DropdownMenuItem>
-        </DropMenu>
-      ),
-    };
-  }, [close, held, nameOf, onMerge, onNest]);
-  return { held, attached, hold };
+  const menu = useCallback(
+    (choice: DropChoice, close: () => void) => (
+      <DropMenu name={nameOf(choice.target)} onClose={close}>
+        <DropdownMenuItem onSelect={() => onNest(choice)}>
+          <FolderInput aria-hidden="true" />
+          {t.organize.menu.nest}
+        </DropdownMenuItem>
+        <DropdownMenuItem onSelect={() => onMerge(choice)}>
+          <Merge aria-hidden="true" />
+          {t.organize.menu.merge}
+        </DropdownMenuItem>
+      </DropMenu>
+    ),
+    [nameOf, onMerge, onNest],
+  );
+  return useDropMenu(accepts, menu);
 }
 
 /**
@@ -185,7 +189,7 @@ export function useGroupDrops<I, G>({
   /** chosen は選んだ操作 `run` に、持ち上げた項目と落とした先のグループを渡す。 */
   const chosen = useCallback(
     (run: (moved: readonly I[], to: G) => void) =>
-      ({ lifted, target }: GroupDropChoice) => {
+      ({ lifted, target }: DropChoice) => {
         const to = groupOf(byKey.get(target));
         if (to === null) return;
         run(
