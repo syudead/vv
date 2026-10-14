@@ -2058,6 +2058,7 @@ export const en = {
   organize: {
     drop: {
       putIn: "Put in",
+      putInOrMerge: "Put in or merge…",
       refused: "Can't drop here",
       groupOrBundle: "Group or bundle…",
     },
@@ -2065,6 +2066,8 @@ export const en = {
     menu: {
       label: (name: string) => `Dropped on "${name}"`,
       makeGroup: "Make a group",
+      nest: "Put in as a child group",
+      merge: "Merge",
     },
     // 「Make a group」の後の、新しいグループの名前の欄。hint は仮の名前を埋め込む。
     name: {
@@ -2076,11 +2079,15 @@ export const en = {
       grouped: (name: string) => `Made the group "${name}"`,
       moved: (count: number, name: string) => `Moved ${items(count)} to "${name}"`,
       movedOut: (count: number, name: string) => `Moved ${items(count)} out of "${name}"`,
+      // mixed は動画もいっしょにマージしたとき（数は項目で数える）。
+      merged: (count: number, name: string, mixed: boolean) =>
+        `Merged ${mixed ? items(count) : groupsCount(count)} into "${name}"`,
     },
     failed: {
       reorder: (reason: string) => `Couldn't reorder: ${reason}`,
       group: (reason: string) => `Couldn't make the group: ${reason}`,
       move: (reason: string) => `Couldn't move: ${reason}`,
+      merge: (reason: string) => `Couldn't merge: ${reason}`,
     },
     // ドラッグの層の読み上げの案内（dnd-kit の screenReaderInstructions、描かない）。カードは
     // キーボードでは持ち上がらず、キーボードでは 048 のメニューを使う（research.md R-7）。

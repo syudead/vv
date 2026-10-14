@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react";
+import { act, fireEvent, screen } from "@testing-library/react";
 import { vi } from "vitest";
 
 // ドラッグの層（videoList/cardDrag.tsx）のページテストの道具である。jsdom は配置を持たないので、
@@ -36,7 +36,8 @@ function pointOn(index: number, ratio: number) {
   return { clientX: index * step + cardWidth * ratio, clientY: cardHeight / 2 };
 }
 
-const mouse = { pointerType: "mouse", isPrimary: true, button: 0, pointerId: 1 };
+/** mouse はマウスのポインタの出来事の共通の値である。 */
+export const mouse = { pointerType: "mouse", isPrimary: true, button: 0, pointerId: 1 };
 
 /** lift は名前 `name` のリンク（左から `index` 番目のカード）を押し、持ち上がるまで動かす。 */
 export function lift(name: string | RegExp, index: number) {
@@ -60,4 +61,20 @@ export function dropOn(name: string | RegExp, from: number, to: number) {
   lift(name, from);
   moveTo(to);
   release(to);
+}
+
+/**
+ * afterDrop は落とした後、dnd-kit が document で click を止める間（50ms）を待つ。落とした先に開いた
+ * メニューの項目は、この後に押す（押すのが早いとクリックが届かず、何も送らないまま終わる）。
+ */
+export async function afterDrop() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  });
+}
+
+/** openedMenu は落とした先に開いたメニューを、afterDrop を待ってから返す。 */
+export async function openedMenu(): Promise<HTMLElement> {
+  await afterDrop();
+  return screen.findByRole("menu");
 }

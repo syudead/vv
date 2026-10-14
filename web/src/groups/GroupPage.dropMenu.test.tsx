@@ -3,7 +3,14 @@ import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
 import { emitServerEvent } from "../api/fakeEventSource";
-import { dropOn, layoutCards, lift, moveTo, release } from "../testing/cardDrag";
+import {
+  dropOn,
+  layoutCards,
+  lift,
+  moveTo,
+  openedMenu,
+  release,
+} from "../testing/cardDrag";
 import { renderPage, seed, server, setUpGroupPageServer } from "../testing/groupPage";
 
 setUpGroupPageServer();
@@ -35,7 +42,7 @@ describe("GroupPage drop a video on a video", () => {
   it("「Make a group」は from 付きで送り、新しいグループのカードを落とした先の位置に出す", async () => {
     await openGrid();
     dropOn("Episode 2", 2, 0);
-    const menu = await screen.findByRole("menu");
+    const menu = await openedMenu();
     expect(within(menu).getByText('Dropped on "Episode 1"')).toBeDefined();
     await userEvent
       .setup()
@@ -61,7 +68,7 @@ describe("GroupPage drop a video on a video", () => {
     const user = userEvent.setup();
     dropOn("Episode 2", 2, 0);
     await user.click(
-      within(await screen.findByRole("menu")).getByRole("menuitem", {
+      within(await openedMenu()).getByRole("menuitem", {
         name: "Make a group",
       }),
     );
@@ -85,7 +92,7 @@ describe("GroupPage drop a video on a video", () => {
     const user = userEvent.setup();
     dropOn("Episode 2", 2, 0);
     await user.click(
-      within(await screen.findByRole("menu")).getByRole("menuitem", {
+      within(await openedMenu()).getByRole("menuitem", {
         name: "Make a group",
       }),
     );

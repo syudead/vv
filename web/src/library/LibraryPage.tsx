@@ -377,8 +377,8 @@ export default function LibraryPage() {
   }, [invalidateSelectAll]);
 
   // --- ドラッグ（specs/050-drag-organize/ui-design.md「Library」） ---
-  // グループへ落とした項目はすぐ隠し、動画を動画に落とした結果はすぐ見せる。取り消しの通知は
-  // 画面を離れると閉じる。
+  // グループへ落として移すかマージした項目はすぐ隠し、動画を動画に落とした結果はすぐ見せる。
+  // 取り消しの通知は画面を離れると閉じる。
   const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
   const undo = useUndoToast(refreshInPlace);
   const drops = useVideoDrops({
@@ -737,6 +737,7 @@ export default function LibraryPage() {
         onto={drops.onto}
         onDrop={drops.hold}
         onMove={moves.move}
+        onMerge={moves.merge}
         onLift={resetPreview}
         held={drops.held}
         attached={drops.attached}

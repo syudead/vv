@@ -8,7 +8,7 @@ import { installFakeEventSource } from "../api/fakeEventSource";
 import { clearListSnapshot } from "../api/listSnapshot";
 import { AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
-import { layoutCards, lift, moveTo, release } from "../testing/cardDrag";
+import { layoutCards, lift, moveTo, openedMenu, release } from "../testing/cardDrag";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import FolderPage from "./FolderPage";
@@ -120,7 +120,7 @@ async function dropXOnY() {
   moveTo(1);
   expect(screen.queryByLabelText(/items$/)).toBeNull();
   release(1);
-  return screen.findByRole("menu");
+  return openedMenu();
 }
 
 beforeEach(() => {

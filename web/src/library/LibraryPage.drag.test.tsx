@@ -1,4 +1,12 @@
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -8,6 +16,15 @@ import { clearListSnapshot } from "../api/listSnapshot";
 import { __resetTagsForTest } from "../api/tags";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
+import {
+  afterDrop,
+  layoutCards,
+  lift,
+  mouse,
+  moveTo,
+  openedMenu,
+  release,
+} from "../testing/cardDrag";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
@@ -66,7 +83,7 @@ function json(body: unknown, status = 200): Response {
 interface Server {
   items: LibraryItem[];
   writes: { path: string; body: unknown }[];
-  /** 置くと POST /api/organize/move がこの応答を返し、何も変えない。 */
+  /** 置くと POST /api/organize/move と /merge がこの応答を返す（一覧はこの関数が変えたとおり）。 */
   moveAnswer: (() => Response) | null;
   /** 取り消しのトークンごとの、操作の前の一覧。 */
   undo: Map<string, LibraryItem[]>;
@@ -115,6 +132,12 @@ function install(items: LibraryItem[]): Server {
     if (url.pathname === "/api/library") {
       return Promise.resolve(json({ items: server.items, total: server.items.length }));
     }
+    if (url.pathname === "/api/organize/merge") {
+      server.writes.push({ path: url.pathname, body });
+      if (server.moveAnswer !== null) return Promise.resolve(server.moveAnswer());
+      // マージしたグループと足した動画は、どちらもいちばん上から外れる。
+      return Promise.resolve(move(server, body as Parameters<typeof move>[1]));
+    }
     if (url.pathname === "/api/organize/move") {
       server.writes.push({ path: url.pathname, body });
       const hold = server.hold ?? Promise.resolve();
@@ -151,54 +174,6 @@ function renderLibrary(audience: Audience = "owner") {
   );
 }
 
-const cardWidth = 190;
-const cardHeight = 150;
-const step = 200;
-
-/** layoutCards は格子のカード（ドラッグの包み）を左から 200px ずつ、同じ高さに置く。 */
-function layoutCards() {
-  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
-    this: Element,
-  ) {
-    const card = this.closest("[data-drag-card]");
-    const index =
-      card === null ? 0 : Array.from(card.parentElement?.children ?? []).indexOf(card);
-    const left = index * step;
-    return {
-      x: left,
-      y: 0,
-      top: 0,
-      left,
-      right: left + cardWidth,
-      bottom: cardHeight,
-      width: card === null ? 0 : cardWidth,
-      height: card === null ? 0 : cardHeight,
-      toJSON: () => ({}),
-    } as DOMRect;
-  });
-}
-
-const mouse = { pointerType: "mouse", isPrimary: true, button: 0, pointerId: 1 };
-
-function pointOn(index: number, ratio: number) {
-  return { clientX: index * step + cardWidth * ratio, clientY: cardHeight / 2 };
-}
-
-/** lift はカード `title` のリンクを押し、持ち上がるまで動かす。 */
-function lift(title: string | RegExp, index: number) {
-  const link = screen.getByRole("link", { name: title });
-  fireEvent.pointerDown(link, { ...mouse, ...pointOn(index, 0.5) });
-  fireEvent.pointerMove(document, { ...mouse, ...pointOn(index, 0.4) });
-}
-
-function moveTo(index: number, ratio = 0.5) {
-  fireEvent.pointerMove(document, { ...mouse, ...pointOn(index, ratio) });
-}
-
-function release(index: number, ratio = 0.5) {
-  fireEvent.pointerUp(document, { ...mouse, ...pointOn(index, ratio) });
-}
-
 function cardTitles(): string[] {
   return Array.from(document.querySelectorAll("article")).map(
     (card) => card.querySelector("h3")?.textContent ?? "",
@@ -217,13 +192,6 @@ function held(server: Server): () => Promise<void> {
       await Promise.resolve();
     });
   };
-}
-
-/** afterDrag は落とした後に dnd-kit がクリックを止める間（50ms）を待つ。 */
-async function afterDrag() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 60));
-  });
 }
 
 function moves(server: Server) {
@@ -429,7 +397,7 @@ describe("LibraryPage drag into a group", () => {
     moveTo(0);
     release(0);
     expect(cardTitles()).toEqual(["Trip", "Clip 3"]);
-    await afterDrag();
+    await afterDrop();
     fireEvent.click(screen.getByRole("button", { name: "Undo" }));
 
     await screen.findByText("Undone");
@@ -447,7 +415,7 @@ describe("LibraryPage drag into a group", () => {
     moveTo(1);
     release(1);
     await waitFor(() => expect(moves(server)).toHaveLength(1));
-    await afterDrag();
+    await afterDrop();
 
     fireEvent.click(screen.getByRole("link", { name: "Clip 3" }));
     await screen.findByText("Player");
@@ -514,5 +482,191 @@ describe("LibraryPage drag into a group", () => {
     });
     expect(document.querySelector("[data-drag-card]")).toBeNull();
     expect(server.writes).toEqual([]);
+  });
+});
+
+describe("LibraryPage drop a group on a group", () => {
+  async function openTwoGroups() {
+    layoutCards();
+    renderLibrary();
+    await screen.findByRole("link", { name: "Clip 2" });
+  }
+
+  /** twoGroups は「Clip 1」「Trip」（グループ 7）「Beach」（グループ 8）「Clip 2」を並べる。 */
+  function twoGroups() {
+    return install([
+      { kind: "video", video: video(1) },
+      { kind: "group", group: group(7, "Trip", [20, 21]) },
+      { kind: "group", group: group(8, "Beach", [30]) },
+      { kind: "video", video: video(2) },
+    ]);
+  }
+
+  function merges(server: Server) {
+    return server.writes
+      .filter((each) => each.path === "/api/organize/merge")
+      .map((each) => each.body);
+  }
+
+  /** dropTripOnBeach は「Trip」を「Beach」に落とし、開いたメニューを返す。 */
+  async function dropTripOnBeach() {
+    lift(/^Trip/, 1);
+    moveTo(2);
+    expect(screen.getByText("Put in or merge…")).toBeDefined();
+    release(2);
+    const menu = await openedMenu();
+    expect(within(menu).getByText('Dropped on "Beach"')).toBeDefined();
+    return menu;
+  }
+
+  it("マージした後も一覧に残る動画（ほかのグループにも入っている）は、読み直しで見せる", async () => {
+    const server = twoGroups();
+    // Clip 1 はほかのグループにも入っているので、Beach に足した後もいちばん上に残る
+    // （specs/048-groups/research.md R-6）。
+    server.moveAnswer = () => {
+      server.items = server.items.filter(
+        (item) => item.kind !== "group" || item.group.id !== 7,
+      );
+      return json({ undoToken: "token-kept" });
+    };
+    await openTwoGroups();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox", { name: 'Select "Clip 1"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select the group "Trip"' }));
+    const menu = await dropTripOnBeach();
+
+    await user.click(within(menu).getByRole("menuitem", { name: "Merge" }));
+
+    expect(await screen.findByText('Merged 2 items into "Beach"')).toBeDefined();
+    expect(merges(server)).toEqual([
+      {
+        items: [
+          { kind: "video", id: 1 },
+          { kind: "group", id: 7 },
+        ],
+        into: 8,
+      },
+    ]);
+    await waitFor(() => expect(cardTitles()).toEqual(["Clip 1", "Beach", "Clip 2"]));
+  });
+
+  it("「Merge」は into の merge を送り、マージしたグループのカードが消える", async () => {
+    const server = twoGroups();
+    await openTwoGroups();
+    const user = userEvent.setup();
+    const menu = await dropTripOnBeach();
+    expect(
+      within(menu)
+        .getAllByRole("menuitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Put in as a child group", "Merge"]);
+
+    await user.click(within(menu).getByRole("menuitem", { name: "Merge" }));
+
+    expect(cardTitles()).toEqual(["Clip 1", "Beach", "Clip 2"]);
+    await waitFor(() =>
+      expect(merges(server)).toEqual([{ items: [{ kind: "group", id: 7 }], into: 8 }]),
+    );
+    expect(await screen.findByText('Merged 1 group into "Beach"')).toBeDefined();
+    expect(moves(server)).toEqual([]);
+  });
+
+  it("「Put in as a child group」は to の move を送る", async () => {
+    const server = twoGroups();
+    await openTwoGroups();
+    const user = userEvent.setup();
+    const menu = await dropTripOnBeach();
+
+    await user.click(
+      within(menu).getByRole("menuitem", { name: "Put in as a child group" }),
+    );
+
+    expect(cardTitles()).toEqual(["Clip 1", "Beach", "Clip 2"]);
+    await waitFor(() =>
+      expect(moves(server)).toEqual([{ items: [{ kind: "group", id: 7 }], to: 8 }]),
+    );
+    expect(merges(server)).toEqual([]);
+  });
+
+  it.each([
+    ["Merge", "/api/organize/merge"],
+    ["Put in as a child group", "/api/organize/move"],
+  ] as const)(
+    "動画とグループの選択で「%s」を選ぶと、すべてのカードを画面の順で 1 回の要求に送る",
+    async (choice, path) => {
+      const server = twoGroups();
+      await openTwoGroups();
+      const user = userEvent.setup();
+      await user.click(screen.getByRole("checkbox", { name: 'Select "Clip 2"' }));
+      await user.click(screen.getByRole("checkbox", { name: 'Select the group "Trip"' }));
+      await user.click(screen.getByRole("checkbox", { name: 'Select "Clip 1"' }));
+      const menu = await dropTripOnBeach();
+
+      await user.click(within(menu).getByRole("menuitem", { name: choice }));
+
+      expect(cardTitles()).toEqual(["Beach"]);
+      await waitFor(() => expect(server.writes).toHaveLength(1));
+      const items = [
+        { kind: "video", id: 1 },
+        { kind: "group", id: 7 },
+        { kind: "video", id: 2 },
+      ];
+      expect(server.writes[0]).toEqual({
+        path,
+        body: path === "/api/organize/merge" ? { items, into: 8 } : { items, to: 8 },
+      });
+      expect(
+        await screen.findByText(
+          choice === "Merge" ? 'Merged 3 items into "Beach"' : 'Moved 3 items to "Beach"',
+        ),
+      ).toBeDefined();
+    },
+  );
+
+  it("Esc でメニューを閉じると何も送らず、カードは元のまま", async () => {
+    const server = twoGroups();
+    await openTwoGroups();
+    const user = userEvent.setup();
+    await dropTripOnBeach();
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(screen.queryByRole("menu")).toBeNull());
+    expect(server.writes).toEqual([]);
+    expect(cardTitles()).toEqual(["Clip 1", "Trip", "Beach", "Clip 2"]);
+    expect(document.querySelector("[data-drag-card].opacity-50")).toBeNull();
+  });
+
+  it("Undo でマージしたグループのカードが戻る", async () => {
+    const server = twoGroups();
+    await openTwoGroups();
+    const user = userEvent.setup();
+    const menu = await dropTripOnBeach();
+    await user.click(within(menu).getByRole("menuitem", { name: "Merge" }));
+    await screen.findByText('Merged 1 group into "Beach"');
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+
+    expect(await screen.findByText("Undone")).toBeDefined();
+    expect(server.writes.map((each) => each.path)).toEqual([
+      "/api/organize/merge",
+      "/api/organize/undo",
+    ]);
+    await waitFor(() =>
+      expect(cardTitles()).toEqual(["Clip 1", "Trip", "Beach", "Clip 2"]),
+    );
+  });
+
+  it("失敗した merge は消したカードを戻し、Undo を出さずに知らせる", async () => {
+    const server = twoGroups();
+    server.moveAnswer = () => json({ code: "internal", message: "x" }, 500);
+    await openTwoGroups();
+    const user = userEvent.setup();
+    const menu = await dropTripOnBeach();
+    await user.click(within(menu).getByRole("menuitem", { name: "Merge" }));
+
+    expect(await screen.findByText(/^Couldn't merge:/)).toBeDefined();
+    expect(cardTitles()).toEqual(["Clip 1", "Trip", "Beach", "Clip 2"]);
+    expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
   });
 });

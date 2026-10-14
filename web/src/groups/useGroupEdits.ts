@@ -2,13 +2,13 @@ import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 
 
 import { type LibraryGroup, RequestFailed } from "../api/client";
 import { type GroupItem, removeFromGroup } from "../api/groups";
-import { moveCards, type OrganizeRef, reorderGroup } from "../api/organize";
+import { mergeGroups, moveCards, type OrganizeRef, reorderGroup } from "../api/organize";
 import { errorText, t, type UiText } from "../i18n";
 import { focusAfterRemove } from "../playlists/playlistItems";
 import { useToast } from "../ui/Toast";
 import { moveAfter } from "../videoList/cardDragRules";
 import type { UndoToast } from "../videoList/undoToast";
-import type { MoveDestination } from "./GroupDrag";
+import type { GroupDestination, MoveDestination } from "./GroupDrag";
 import type { GroupPageData } from "./useGroupPage";
 
 /** FocusTarget は編集の後にフォーカスを移す先である（項目の `×`、見出し、「More」）。 */
@@ -117,6 +117,10 @@ function useFocusAfterEdit() {
  *   読み直し、失敗したら外す前に見せていた項目と本数に戻して知らせる。すべての項目を
  *   移すとサーバーがグループを解散するので、通知とトークンを持ち越して `onDissolved` へ渡す
  *   （specs/050-drag-organize/ui-design.md「Undo toast」の Carried）。
+ * - 子グループを含む項目を子グループへマージすると、マージした子グループの項目を画面から外して
+ *   から `merge` で 1 回送る（並べ替えと同じ鎖）。動画の項目は `merge` が開いているグループから
+ *   外さないので残る。受け入れられたら「Undo」付きの通知を出して読み直し、失敗したら外す前の
+ *   項目に戻して知らせる。
  * - 選択バーの「Remove from group」は選んだ項目をまとめて外し、件数を知らせる。
  * - 最後の項目を外すとサーバーがグループを解散する（`204`、data-model.md「Edits」）。外した行は
  *   見せず、`onDissolved` で画面を解散と同じ結末（道筋の親へ移ってトースト）へ渡す。
@@ -222,6 +226,26 @@ export function useGroupEdits({
     [moves, movesSent],
   );
 
+  /**
+   * restore は送った編集の失敗を見せる。グループが無い（`404`）のでなければ、項目をサーバーが
+   * 最後に認めたものに、見出しを `group()`（無ければ今のまま）に戻す。
+   */
+  const restore = useCallback(
+    (message: (reason: string) => UiText, group: () => LibraryGroup | undefined) =>
+      (error: unknown) => {
+        if (!isNotFound(error)) {
+          const shown = group();
+          update((data) => ({
+            ...data,
+            group: shown ?? data.group,
+            items: confirmed.current,
+          }));
+        }
+        failed(error, message);
+      },
+    [confirmed, failed, update],
+  );
+
   const { offer, carry } = undo;
   const reorder = useCallback(
     (itemIds: readonly number[], after: number | null, name: string) => {
@@ -238,15 +262,10 @@ export function useGroupEdits({
             update((data) => ({ ...data, items: confirmed.current }));
           offer(t.organize.done.reordered(name), undoToken);
         },
-        (error) => {
-          if (!isNotFound(error)) {
-            update((data) => ({ ...data, items: confirmed.current }));
-          }
-          failed(error, t.organize.failed.reorder);
-        },
+        restore(t.organize.failed.reorder, () => undefined),
       );
     },
-    [confirmed, enqueue, failed, id, offer, update],
+    [confirmed, enqueue, id, offer, restore, update],
   );
 
   const move = useCallback(
@@ -280,20 +299,37 @@ export function useGroupEdits({
           carry();
           onDissolved();
         },
-        (error) => {
-          if (!isNotFound(error)) {
-            const group = shown.group;
-            update((data) => ({
-              ...data,
-              group: group ?? data.group,
-              items: confirmed.current,
-            }));
-          }
-          failed(error, t.organize.failed.move);
-        },
+        restore(t.organize.failed.move, () => shown.group),
       );
     },
-    [carry, confirmed, enqueue, failed, id, offer, onDissolved, refresh, update],
+    [carry, confirmed, enqueue, id, offer, onDissolved, refresh, restore, update],
+  );
+
+  const merge = useCallback(
+    (merged: readonly GroupItem[], into: GroupDestination) => {
+      if (id === null || merged.length === 0) return;
+      const gone = new Set(
+        merged.filter((item) => item.kind === "group").map((item) => item.id),
+      );
+      const keep = (item: GroupItem) => !gone.has(item.id);
+      update((data) => ({ ...data, items: data.items.filter(keep) }));
+      const message = t.organize.done.merged(
+        merged.length,
+        into.name,
+        merged.some((item) => item.kind === "video"),
+      );
+      enqueue(
+        async (alive) => {
+          const { undoToken } = await mergeGroups(merged.flatMap(refOf), into.id);
+          if (!alive()) return;
+          confirmed.current = confirmed.current.filter(keep);
+          offer(message, undoToken);
+          refresh();
+        },
+        restore(t.organize.failed.merge, () => undefined),
+      );
+    },
+    [confirmed, enqueue, id, offer, refresh, restore, update],
   );
 
   const removeOne = useCallback(
@@ -355,6 +391,7 @@ export function useGroupEdits({
     removingSelected,
     reorder,
     move,
+    merge,
     removeOne,
     removeSelected,
     titleRef: focus.titleRef,
