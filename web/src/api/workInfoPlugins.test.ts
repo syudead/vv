@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RequestFailed } from "./client";
+import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
+import { __resetTagsForTest, subscribeTags } from "./tags";
 import {
   applyWorkInfoFetch,
   approveWorkInfoPlugin,
@@ -23,6 +25,7 @@ function json(body: unknown, status = 200): Response {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  __resetTagsForTest();
 });
 
 const plugin: WorkInfoPlugin = {
@@ -197,5 +200,41 @@ describe("work-info plugins API", () => {
       (e: unknown) => e,
     )) as RequestFailed;
     expect(missing.settingKeys).toEqual(["apiKey"]);
+  });
+
+  it("反映が成功したら一覧の控えを捨て、タグを付けたなら共有のタグの一覧を取り直す", async () => {
+    const key = { query: "old" };
+    const hold = () =>
+      saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
+    const applied = { video: { id: 7 }, skippedTags: [] };
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json({ message: "stale", code: "work_info_fetch_stale" }, 409),
+      )
+      .mockResolvedValueOnce(json(applied))
+      .mockResolvedValueOnce(json(applied))
+      .mockResolvedValue(json({ items: [] }));
+    vi.stubGlobal("fetch", fetchMock);
+    const listener = vi.fn();
+    const unsubscribe = subscribeTags(listener);
+    const tagReads = () =>
+      fetchMock.mock.calls.filter(([input]) => String(input) === "/api/tags").length;
+
+    hold();
+    await expect(applyWorkInfoFetch(7, "f1", ["title"])).rejects.toThrow();
+    expect(takeListSnapshot(key)).toBeDefined();
+
+    hold();
+    await applyWorkInfoFetch(7, "f1", ["title"]);
+    expect(takeListSnapshot(key)).toBeUndefined();
+    expect(tagReads()).toBe(0);
+
+    hold();
+    await applyWorkInfoFetch(7, "f2", ["tags"]);
+    expect(takeListSnapshot(key)).toBeUndefined();
+    expect(tagReads()).toBe(1);
+    await vi.waitFor(() => expect(listener).toHaveBeenCalled());
+    unsubscribe();
   });
 });

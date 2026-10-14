@@ -706,7 +706,7 @@
       "name": "form-dialog",
       "type": "registry:ui",
       "title": "FormDialog",
-      "description": "Dialog skeleton at most 32rem wide: title, fields, Cancel and one primary action. Uses dialog.",
+      "description": "Dialog skeleton at most 32rem wide (42rem with size=\"wide\"): title, fields, Cancel (optional) and one primary action. Uses dialog.",
       "docs": "Usage rules: web/registry/rules/patterns.md#form-dialog (item vv-rules).",
       "files": [
         {

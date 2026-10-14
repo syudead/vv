@@ -879,8 +879,10 @@ export default function VideoPage() {
               capture={capture}
               onChanged={(saved, mark) => {
                 replace(saved, mark, "keep");
-                // グループの並びにあるこの動画のサムネイルも、画面のサムネイルとそろえる。
+                // グループの並びにあるこの動画のサムネイルと題名も、画面のものとそろえる
+                // （作品情報の取得の反映は題名を変える）。
                 rethumbRelated(saved);
+                renameRelated(saved);
               }}
               onStale={() => void refresh()}
               onEditingChange={setEditingThumbnail}

@@ -25,6 +25,7 @@ type ComfyUIModel = components["schemas"]["ComfyUIModel"];
 type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
 type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 type WorkInfoOperation = components["schemas"]["WorkInfoOperation"];
+type SkippedTagReason = components["schemas"]["SkippedTag"]["reason"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
@@ -1655,6 +1656,62 @@ export const en = {
       showMore: "Show more",
       showLess: "Show less",
       edit: "Edit details",
+    },
+    // 作品情報プラグインからの取得（specs/049-work-info-plugins/ui-design.md「Words」の
+    // Video page text）。
+    workInfoFetch: {
+      entry: "Fetch work info from a plugin",
+      title: "Fetch work info",
+      description: "Nothing changes until you apply.",
+      plugin: "Plugin",
+      queryBoth: "Search words or the work's page URL",
+      querySearch: "Search words",
+      queryFetch: "The work's page URL",
+      notUrl: "Paste a page URL starting with http:// or https://.",
+      search: "Search",
+      fetch: "Fetch",
+      searching: "Searching…",
+      fetching: "Fetching…",
+      matches: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} match`,
+          other: `${formatNumber(count)} matches`,
+        }),
+      matchList: "Matches",
+      openPage: "Open page",
+      noMatches: "No matches.",
+      noMatchesFetch: "No matches. Try other words or paste the work's page URL.",
+      source: (plugin: string) => `From ${plugin} · `,
+      back: "Back to the matches",
+      now: "Now",
+      fetched: "Fetched",
+      fields: { title: "Title", tags: "Tags" },
+      notInResult: "Not in the result",
+      sameAsNow: "Same as now",
+      onVideo: "On the video",
+      tentative: "Tentative",
+      newCount: (count: number) => `${formatNumber(count)} new`,
+      more: (count: number) => `+${formatNumber(count)} more`,
+      showFewer: "Show fewer",
+      apply: "Apply selected",
+      applying: "Applying…",
+      applied: "Applied to the video.",
+      resultTitle: "Applied, but some tags were left out",
+      // 1 行は「{name} — {理由}」で、名前だけを太くする。
+      skipped: {
+        rejected: "you rejected this tag before",
+        invalid: "not a valid tag name",
+      } satisfies Record<SkippedTagReason, string>,
+      done: "Done",
+      stale: "This result is out of date. Fetch it again to apply it.",
+      fetchAgain: "Fetch again",
+      settingsMissing: (plugin: string, labels: readonly string[]) =>
+        `${plugin} needs ${formatList(labels)} first.`,
+      openSettings: "Open Settings",
+      searchFailed: (reason: string) => `Couldn't search: ${reason}`,
+      fetchFailed: (reason: string) => `Couldn't fetch: ${reason}`,
+      applyFailed: (reason: string) => `Couldn't apply: ${reason}`,
+      pluginSaid: (message: string) => `The plugin said: "${message}"`,
     },
     // 全画面の編集画面（specs/047-video-work-info/ui-design.md「Words」の Editor）。
     detailsEditor: {
