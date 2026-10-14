@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/contracts/plugin-contract.md
-sourceHash: fbec020134c9e29315248e71034f3197edb25d9eba9dac59958b89f93afb2d7d
+sourceHash: 8e5db885f8156fd084dce05c4cc7052be95c4a8599439e583bdd5acb00ebb27d
 ---
 
 # 契約: 作品情報プラグインの契約、バージョン 1 {#contract-work-info-plugin-contract-version-1}
@@ -44,6 +44,7 @@ sequenceDiagram
 | `version` | string | はい | 1 から 32 文字。所有者に表示する |
 | `description` | string | いいえ | 最大 500 文字 |
 | `operations` | string の配列 | はい | `search` と `fetch` の空でない部分集合 |
+| `settings` | object の配列 | いいえ | 最大 10 個の `{"key", "label", "secret", "required"}` の宣言。`key` は `A-Z`、`a-z`、`0-9`、`_` からなり英字で始まる 1 から 32 文字で、一意である。`label` は所有者に表示する 1 から 60 文字。`secret` と `required` の既定値は `false` |
 
 ## 要求 {#request}
 
@@ -53,6 +54,8 @@ vv は 1 つの JSON オブジェクトを標準入力に書き、それを閉�
 | --- | --- |
 | `search` | `{"contract": 1, "operation": "search", "query": "<1 to 200 characters>"}` |
 | `fetch` | `{"contract": 1, "operation": "fetch", "url": "<an http or https URL of at most 2048 characters>"}` |
+
+どちらの操作も、所有者が値を設定した宣言済みのキーをすべて、そしてそれだけを含む `"settings": {"<key>": "<value>"}` も持つ。`required` のキーが未設定のあいだ、実行は始まらない。
 
 ## 応答 {#response}
 

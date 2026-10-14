@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/data-model.md
-sourceHash: 52c7bc52c61094a177848acce2516551122decdcc4fd319dbd1dc941d267a485
+sourceHash: 4348750ec41170605bfdf35e2aec6c7703fec1e36c5c5f697c013473e6550381
 ---
 
 # データモデル: 作品情報プラグイン {#data-model-work-info-plugins}
@@ -9,7 +9,7 @@ sourceHash: 52c7bc52c61094a177848acce2516551122decdcc4fd319dbd1dc941d267a485
 
 ## マイグレーション {#migration}
 
-`00043_work_info_plugins.sql` が `work_info_plugins` を作る。別のマイグレーションが先に `main` に入ったら、番号は次の空いている番号に移る。
+`00043_work_info_plugins.sql` が `work_info_plugins` と `work_info_plugin_settings` を作る。別のマイグレーションが先に `main` に入ったら、番号は次の空いている番号に移る。
 
 ## `work_info_plugins` {#work_info_plugins}
 
@@ -22,6 +22,7 @@ sourceHash: 52c7bc52c61094a177848acce2516551122decdcc4fd319dbd1dc941d267a485
 | `description` | text | はい | マニフェストの `description` |
 | `contract` | integer | はい | マニフェストの契約のバージョン |
 | `operations` | text | はい | マニフェストの操作。カンマ区切り (`search`、`fetch`) |
+| `settings` | text | はい | マニフェストの設定の宣言の JSON ([契約](contracts/plugin-contract.md#manifest)) |
 | `module` | blob | はい | モジュール。`problem` が設定されているときは null |
 | `digest` | text | いいえ | アップロードしたバイト列の SHA-256 の小文字の 16 進 |
 | `problem` | text | はい | プラグインを承認できない理由 (下の表)。使えるプラグインでは null |
@@ -41,6 +42,19 @@ sourceHash: 52c7bc52c61094a177848acce2516551122decdcc4fd319dbd1dc941d267a485
 | `export_invalid` | モジュールが `_start` を何も受け取らず何も返さない関数として export しないか、`memory` をメモリとして export しない |
 | `table_too_large` | テーブルが最大値を宣言しないか、100,000 要素を超える最大値を宣言する |
 
+## `work_info_plugin_settings` {#work_info_plugin_settings}
+
+所有者が入力した値 ([R-13](research.md#r-13-plugin-settings-are-declared-in-the-manifest-and-passed-only-in-that-plugins-request))。
+
+| フィールド | 型 | Null | 意味 |
+| --- | --- | --- | --- |
+| `plugin_id` | integer | いいえ | プラグイン。主キーの一部 |
+| `key` | text | いいえ | プラグインのマニフェストが宣言するキー。主キーの一部 |
+| `value` | text | いいえ | 値。最大 2000 文字 |
+| `updated_at` | integer | いいえ | Unix 秒 |
+
+**関係**: `plugin_id` は `on delete cascade` で `work_info_plugins.id` を参照するので、プラグインを削除するとその値も削除される。テーブルは `work_info_plugins` と同じく所有者のデータである。
+
 ## 規則 {#rules}
 
 | 規則 | 強制する場所 |
@@ -50,6 +64,9 @@ sourceHash: 52c7bc52c61094a177848acce2516551122decdcc4fd319dbd1dc941d267a485
 | 読める名前のないアップロードは新しい行になる | `internal/store` |
 | 承認が `approved_digest` を書くのは、要求のダイジェストが `digest` と等しく、`problem` が null のときだけである。そうでなければ `plugin_changed` か `plugin_unusable` | `internal/app` が判断し、`internal/store` がそのトランザクションの中で読み直す |
 | 承認の取り消しは `approved_digest` を消す | `internal/store` |
+| 置き換えは、新しいマニフェストが宣言するキーの値を保ち、残りを削除する。`problem` のある置き換えは、宣言を読めていないのですべてを保つ | `internal/store`、アップロードのトランザクションの中で |
+| 値を書けるのは、プラグインが宣言するキーに対してだけである。値を書いても `approved_digest` には触れない | `internal/app` が判断し、`internal/store` が書く |
+| 秘密の値は、そのプラグインの実行の要求の中を除いて、決して `internal/app` の外に出ない | `internal/app`、`internal/httpapi` (応答の型は秘密のための値のフィールドを持たない) |
 | 取得した結果の適用は、同じトランザクションの中で、プラグインの行がまだ存在し、承認済みで、結果を取得したときのダイジェストを持つときを除いて何も書かない | `internal/store` (`OverrideStore` の適用) |
 | `name` は `a-z`、`0-9`、`-`、`.` からなる 1 から 64 文字。`version` は 1 から 32 文字。`description` は最大 500 文字 | `internal/domain` |
 | `module` は最大 16 MiB | `internal/domain`、`internal/httpapi` (本文の上限) |

@@ -19,6 +19,7 @@ external API and MCP do not change.
 | `digest` | string | SHA-256 of the module, sent back when approving ([R-7](../research.md#r-7-approving-names-the-digest-the-owner-saw)) |
 | `state` | `approved` / `unapproved` / `invalid` | [data-model.md, State transitions](../data-model.md#state-transitions) |
 | `problem` | string enum, optional | Present for `invalid` ([data-model.md](../data-model.md#work_info_plugins)) |
+| `settings` | array | One entry per declared setting: `key`, `label`, `secret`, `required`, `set` (whether a value is stored), and `value` only when `secret` is false ([R-13](../research.md#r-13-plugin-settings-are-declared-in-the-manifest-and-passed-only-in-that-plugins-request)) |
 | `network` | boolean | Always `true` in contract 1: the plugin can reach internet sites (requirement 2) |
 | `updatedAt` | integer | Unix seconds |
 
@@ -66,6 +67,23 @@ Approves the module the owner saw.
 
 Revokes the approval. **Response**: `200` with the `WorkInfoPlugin`; `404`
 `not_found`.
+
+## `PUT /api/work-info-plugins/{id}/settings`
+
+Writes setting values. Approval does not change.
+
+| Field | In | Type | Required | Meaning |
+| --- | --- | --- | --- | --- |
+| `values` | body | object of string or null | Yes | Key to new value; `null` deletes the value; keys left out keep theirs |
+
+**Response**: `200` with the `WorkInfoPlugin`, whose secret entries show only
+`set`.
+
+| Status | `code` | When |
+| --- | --- | --- |
+| 400 | `invalid_request` | A key the manifest does not declare, or a value over 2000 characters |
+| 404 | `not_found` | No such plugin |
+| 409 | `plugin_unusable` | The plugin is `invalid` |
 
 ## `DELETE /api/work-info-plugins/{id}`
 
@@ -134,14 +152,15 @@ The result is consumed.
 Search and fetch answer a failed run with these. The video is never changed.
 `Error.message` stays vv's own English sentence
 ([023 error-api](../../023-english-i18n/contracts/error-api.md#every-message-in-english)),
-so `Error` gains two optional fields for what came from outside vv:
-`pluginMessage` (the first 300 characters of the plugin's own error message)
-and `host` (the host that was refused or unreachable).
+so `Error` gains three optional fields: `pluginMessage` (the first 300 characters of the plugin's own error
+message), `host` (the host that was refused or unreachable) and
+`settingKeys` (the missing setting keys).
 
 | Status | `code` | `reason` | When |
 | --- | --- | --- | --- |
 | 404 | `not_found` | — | No such plugin |
 | 409 | `plugin_not_approved` | — | The plugin is not approved |
+| 409 | `plugin_settings_missing` | — | A `required` setting has no value; `Error.settingKeys` lists the keys, and the module did not run |
 | 502 | `plugin_failed` | — | The plugin reported an error (`pluginMessage`), exited non-zero or wrote an invalid response |
 | 502 | `plugin_failed` | `blocked_address` | The plugin tried to reach vv, the LAN or another non-public address (`host`) |
 | 502 | `plugin_failed` | `network_error` | A request failed to connect and the plugin failed (`host`) |

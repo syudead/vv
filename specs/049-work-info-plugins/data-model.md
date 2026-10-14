@@ -7,7 +7,8 @@ result is held in memory, not stored
 
 ## Migration
 
-`00043_work_info_plugins.sql` creates `work_info_plugins`. If another
+`00043_work_info_plugins.sql` creates `work_info_plugins` and
+`work_info_plugin_settings`. If another
 migration lands on `main` first, the number moves to the next free one.
 
 ## `work_info_plugins`
@@ -21,6 +22,7 @@ migration lands on `main` first, the number moves to the next free one.
 | `description` | text | Yes | The manifest's `description` |
 | `contract` | integer | Yes | The manifest's contract version |
 | `operations` | text | Yes | The manifest's operations, comma-separated (`search`, `fetch`) |
+| `settings` | text | Yes | The manifest's setting declarations as JSON ([contract](contracts/plugin-contract.md#manifest)) |
 | `module` | blob | Yes | The module; null when `problem` is set |
 | `digest` | text | No | Lowercase hex SHA-256 of the uploaded bytes |
 | `problem` | text | Yes | Why the plugin cannot be approved (table below); null for a usable plugin |
@@ -42,6 +44,22 @@ rescan and is listed as kept in
 | `export_invalid` | The module does not export `_start` as a function taking and returning nothing, or does not export `memory` as a memory |
 | `table_too_large` | A table declares no maximum, or one over 100,000 elements |
 
+## `work_info_plugin_settings`
+
+The values the owner entered
+([R-13](research.md#r-13-plugin-settings-are-declared-in-the-manifest-and-passed-only-in-that-plugins-request)).
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `plugin_id` | integer | No | The plugin; part of the primary key |
+| `key` | text | No | A key the plugin's manifest declares; part of the primary key |
+| `value` | text | No | The value, at most 2000 characters |
+| `updated_at` | integer | No | Unix seconds |
+
+**Relationships**: `plugin_id` references `work_info_plugins.id` with
+`on delete cascade`, so deleting a plugin deletes its values. The table is
+owner data like `work_info_plugins`.
+
 ## Rules
 
 | Rule | Enforced in |
@@ -51,6 +69,9 @@ rescan and is listed as kept in
 | An upload without a readable name is a new row | `internal/store` |
 | Approving writes `approved_digest` only when the request's digest equals `digest` and `problem` is null; otherwise `plugin_changed` or `plugin_unusable` | `internal/app` decides, `internal/store` re-reads inside its transaction |
 | Revoking clears `approved_digest` | `internal/store` |
+| A replacement keeps the values of keys the new manifest declares and deletes the rest; a replacement with a `problem` keeps them all, since no declaration was read | `internal/store`, in the upload's transaction |
+| A value can be written only for a key the plugin declares; writing one does not touch `approved_digest` | `internal/app` decides, `internal/store` writes |
+| A secret value never leaves `internal/app` except in that plugin's run request | `internal/app`, `internal/httpapi` (response types carry no value field for secrets) |
 | Applying a fetched result writes nothing unless, inside the same transaction, the plugin row still exists, is approved, and has the digest the result was fetched with | `internal/store` (`OverrideStore`'s apply) |
 | `name` is 1 to 64 characters of `a-z`, `0-9`, `-` and `.`; `version` is 1 to 32 characters; `description` is at most 500 characters | `internal/domain` |
 | `module` is at most 16 MiB | `internal/domain`, `internal/httpapi` (body limit) |

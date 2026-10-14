@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/contracts/screen-api.md
-sourceHash: 3d3753b05ddfd83c85e7b75c8f08ce55f38ec1cea044a6d53a49e6d0d321083f
+sourceHash: dfab1482c1c66a85c63f152be5942789fe545e87e3c90ba2baee78dd2cf17c09
 ---
 
 # 契約: 作品情報プラグインの画面の API {#contract-work-info-plugin-screen-api}
@@ -19,6 +19,7 @@ sourceHash: 3d3753b05ddfd83c85e7b75c8f08ce55f38ec1cea044a6d53a49e6d0d321083f
 | `digest` | string | モジュールの SHA-256。承認するときに送り返す ([R-7](../research.md#r-7-approving-names-the-digest-the-owner-saw)) |
 | `state` | `approved` / `unapproved` / `invalid` | [data-model.md、状態の遷移](../data-model.md#state-transitions) |
 | `problem` | string の列挙、省略可 | `invalid` のときにある ([data-model.md](../data-model.md#work_info_plugins)) |
+| `settings` | 配列 | 宣言された設定ごとに 1 項目: `key`、`label`、`secret`、`required`、`set` (値が保存されているか)、そして `secret` が false のときだけ `value` ([R-13](../research.md#r-13-plugin-settings-are-declared-in-the-manifest-and-passed-only-in-that-plugins-request)) |
 | `network` | boolean | 契約 1 では常に `true`: プラグインはインターネットのサイトに到達できる (要件 2) |
 | `updatedAt` | integer | Unix 秒 |
 
@@ -62,6 +63,22 @@ sourceHash: 3d3753b05ddfd83c85e7b75c8f08ce55f38ec1cea044a6d53a49e6d0d321083f
 ## `DELETE /api/work-info-plugins/{id}/approval` {#delete-apiwork-info-pluginsidapproval}
 
 承認を取り消す。**応答**: `WorkInfoPlugin` を伴う `200`。`404` `not_found`。
+
+## `PUT /api/work-info-plugins/{id}/settings` {#put-apiwork-info-pluginsidsettings}
+
+設定の値を書く。承認は変わらない。
+
+| フィールド | 場所 | 型 | 必須 | 意味 |
+| --- | --- | --- | --- | --- |
+| `values` | 本文 | string か null のオブジェクト | はい | キーから新しい値へ。`null` は値を削除する。省いたキーは値を保つ |
+
+**応答**: `WorkInfoPlugin` を伴う `200`。その秘密の項目は `set` だけを示す。
+
+| ステータス | `code` | いつ |
+| --- | --- | --- |
+| 400 | `invalid_request` | マニフェストが宣言していないキー、または 2000 文字を超える値 |
+| 404 | `not_found` | そのプラグインがない |
+| 409 | `plugin_unusable` | プラグインが `invalid` である |
 
 ## `DELETE /api/work-info-plugins/{id}` {#delete-apiwork-info-pluginsid}
 
@@ -119,12 +136,13 @@ sourceHash: 3d3753b05ddfd83c85e7b75c8f08ce55f38ec1cea044a6d53a49e6d0d321083f
 
 ## 実行の失敗 {#run-failures}
 
-検索と取得は、失敗した実行にこれらで答える。動画は決して変えない。`Error.message` は vv 自身の英語の文のままである ([023 error-api](../../023-english-i18n/contracts/error-api.md#every-message-in-english)) ので、`Error` は vv の外から来たもののために省略できる 2 つのフィールドを得る: `pluginMessage` (プラグイン自身のエラーメッセージの最初の 300 文字) と `host` (拒否された、または到達できなかったホスト)。
+検索と取得は、失敗した実行にこれらで答える。動画は決して変えない。`Error.message` は vv 自身の英語の文のままである ([023 error-api](../../023-english-i18n/contracts/error-api.md#every-message-in-english)) ので、`Error` は省略できる 3 つのフィールドを得る: `pluginMessage` (プラグイン自身のエラーメッセージの最初の 300 文字)、`host` (拒否された、または到達できなかったホスト)、`settingKeys` (欠けている設定のキー)。
 
 | ステータス | `code` | `reason` | いつ |
 | --- | --- | --- | --- |
 | 404 | `not_found` | — | そのプラグインがない |
 | 409 | `plugin_not_approved` | — | プラグインが承認されていない |
+| 409 | `plugin_settings_missing` | — | `required` の設定に値がない。`Error.settingKeys` がそのキーを挙げ、モジュールは実行されなかった |
 | 502 | `plugin_failed` | — | プラグインがエラーを報告した (`pluginMessage`)、0 以外で終了した、または無効な応答を書いた |
 | 502 | `plugin_failed` | `blocked_address` | プラグインが vv、LAN、または他の公開されていないアドレスに到達しようとした (`host`) |
 | 502 | `plugin_failed` | `network_error` | 要求が接続に失敗し、プラグインが失敗した (`host`) |

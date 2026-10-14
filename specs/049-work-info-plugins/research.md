@@ -220,3 +220,32 @@ with a small helper; no `.wasm` file is checked in.
 | --- | --- |
 | **Build from source at test time** | Chosen |
 | Commit the `.wasm` fixtures | Rejected: binary files cannot be reviewed, and a fixture would drift from its source |
+
+## R-13: Plugin settings are declared in the manifest and passed only in that plugin's request
+
+**Decision**: A plugin declares the settings it needs (an API key, a
+language) in its manifest; the owner enters the values on the settings
+screen; vv stores them per plugin and passes them only to that plugin's runs,
+as `settings` in the request JSON
+([contracts/plugin-contract.md, Request](contracts/plugin-contract.md#request)).
+
+| Option | Verdict |
+| --- | --- |
+| **Declared in the manifest, passed in the request JSON** | Chosen |
+| WASI environment variables per plugin | Rejected: requirement 7 keeps the environment out of reach, and an always-empty environment is the simplest rule to test; the JSON also carries the declaration's `secret` and `required` |
+| Values built into the module | Rejected: changing a key means rebuilding, replacing and approving again, which is why requirement 11 exists |
+| Encrypting stored values | Rejected: the key would sit beside the database in the same data directory; the ComfyUI API key is stored the same way |
+
+| Case | Behaviour |
+| --- | --- |
+| A value marked `secret` | Written by the owner, never returned by the API or shown on the screen; the list says only whether it is set |
+| A value is changed | Approval stays, since it is bound to the module's digest ([R-6](#r-6-plugins-are-rows-in-sqlite-and-approval-is-bound-to-the-modules-digest)) |
+| The plugin is replaced | Values of keys the new manifest still declares are kept; the others are deleted in the same transaction |
+| A `required` value is missing | Search and fetch fail with `plugin_settings_missing` before the module runs |
+| The server log | Never contains a value; standard error is the plugin's own output and is logged as written |
+
+**Rationale**: Most external work-information databases need a key
+(the Issue's `背景`), and a per-plugin store keeps one plugin's key out of
+every other plugin's run. A plugin can still send its own key to any public
+site; the approval prompt names the settings it receives (requirement 2), and
+that choice stays with the owner.

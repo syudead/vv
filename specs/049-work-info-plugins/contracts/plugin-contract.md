@@ -47,6 +47,7 @@ ignored.
 | `version` | string | Yes | 1 to 32 characters, shown to the owner |
 | `description` | string | No | At most 500 characters |
 | `operations` | string array | Yes | A non-empty subset of `search` and `fetch` |
+| `settings` | object array | No | At most 10 declarations of `{"key", "label", "secret", "required"}`: `key` is 1 to 32 characters of `A-Z`, `a-z`, `0-9`, `_` starting with a letter and unique; `label` is 1 to 60 characters shown to the owner; `secret` and `required` default to `false` |
 
 ## Request
 
@@ -56,6 +57,10 @@ vv writes one JSON object to standard input and closes it.
 | --- | --- |
 | `search` | `{"contract": 1, "operation": "search", "query": "<1 to 200 characters>"}` |
 | `fetch` | `{"contract": 1, "operation": "fetch", "url": "<an http or https URL of at most 2048 characters>"}` |
+
+Both operations also carry `"settings": {"<key>": "<value>"}` with every
+declared key the owner has set, and only those; a run never starts while a
+`required` key is unset.
 
 ## Response
 

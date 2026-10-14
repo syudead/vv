@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/plan.md
-sourceHash: 634518fbc4a2ecb0f54f1710fc997709059fce0f5b72ad625508499f87d8309f
+sourceHash: f6453fd82f9a996d6ce70339fcea652fca03ab7911918f908d6c564e7c5f8df6
 ---
 
 # 実装計画: 外部のサービスから作品情報を取得する作品情報プラグイン {#implementation-plan-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -36,11 +36,12 @@ flowchart LR
 | ネットワーク | vv 自身の HTTP クライアント。接続のたびにアドレスを確かめ、拒否された要求は実行を失敗させる ([R-5](research.md#r-5-plugins-reach-the-network-only-through-vv-and-only-public-addresses)) |
 | 保存と承認 | blob の行。承認したダイジェストがモジュールのダイジェストと等しいとき承認済み。承認はダイジェストを指定する ([R-6](research.md#r-6-plugins-are-rows-in-sqlite-and-approval-is-bound-to-the-modules-digest)、[R-7](research.md#r-7-approving-names-the-digest-the-owner-saw)、[data-model.md](data-model.md)) |
 | 取得と適用 | 動画とダイジェストに結び付いた、メモリ上の 10 分間の結果。タイトルとタグを 1 つのトランザクションで適用し、飛ばした名前を報告する ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest)、[R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported)、[contracts/screen-api.md](contracts/screen-api.md)) |
+| プラグインの設定 | マニフェストで宣言し、設定画面でプラグインごとに入力し、そのプラグインの要求の中でだけ渡す。秘密の値は決して返さない ([R-13](research.md#r-13-plugin-settings-are-declared-in-the-manifest-and-passed-only-in-that-plugins-request)) |
 | 動画のページの入口 | プラグインの一覧に承認済みのプラグインがあるとき表示する。候補はテキストだけ ([R-10](research.md#r-10-search-candidates-are-text-only)、[R-11](research.md#r-11-the-video-page-reads-the-plugin-list-to-decide-whether-to-show-the-fetch-action)) |
 
-Issue は `ui` ラベルを持つので、`design` ステージが 2 つの画面の単位の前に `ui-design.md` を書く。それが扱うのは、設定画面のプラグインの節 (追加、承認の状態、名前、バージョン、ネットワークの通知を伴う承認の確認、理由を伴う無効なプラグイン、承認の取り消し、削除) と、動画のページの副次的な取得の操作、プラグインの選択、URL か検索か、候補の一覧、選択を伴う比較の行、適用、飛ばしたタグの通知、失敗と古い状態である。
+Issue は `ui` ラベルを持つので、`design` ステージが 2 つの画面の単位の前に `ui-design.md` を書く。それが扱うのは、設定画面のプラグインの節 (追加、承認の状態、名前、バージョン、ネットワークの通知、受け取る設定を伴う承認の確認、理由を伴う無効なプラグイン、秘密のものは決して表示し返さない設定の値の入力、承認の取り消し、削除) と、動画のページの副次的な取得の操作、プラグインの選択、URL か検索か、候補の一覧、選択を伴う比較の行、適用、飛ばしたタグの通知、失敗と古い状態である。
 
-親 Issue の `対象外` のとおり、範囲外: プラグインの入手元と、そのインストール、更新、更新の通知。取り込み時の取得、一括の取得、確認の待ち行列。取得した画像をサムネイルに使うこと。タイトルとタグ以外のフィールドの適用。JavaScript で描画されるページ。そして、どのサービスのプラグイン、プラグインの SDK、サンプル。
+親 Issue の `対象外` のとおり、範囲外: プラグインの入手元と、そのインストール、更新、更新の通知。取り込み時の取得、一括の取得、確認の待ち行列。取得した画像をサムネイルに使うこと。タイトルとタグ以外のフィールドの適用。JavaScript で描画されるページ。そして、どのサービスのプラグイン、プラグインの SDK、サンプル。そして、入手元としての LAN のデータベースやローカルのファイル。
 
 ## 技術的な文脈 {#technical-context}
 
@@ -105,7 +106,7 @@ specs/049-work-info-plugins/
 
 | 境界 | この機能で担うもの |
 | --- | --- |
-| `internal/domain` | マニフェストとその規則、プラグインの状態と問題、実行の要求と結果の型、上限、実行の失敗、取得した結果 |
+| `internal/domain` | 設定の宣言とその規則を伴うマニフェスト、プラグインの状態と問題、実行の要求と結果の型、上限、実行の失敗、取得した結果 |
 | `internal/wasmplugin` (新しいアダプター) | モジュールの検査、上限を伴う wazero での実行、`vv` ホスト関数、HTTP クライアントとそのアドレスの確認 |
 | `internal/store` | マイグレーション、`WorkInfoPluginStore`、`OverrideStore` の適用の操作 |
 | `internal/app` | `WorkInfoPlugins`: アップロード、承認、承認の取り消し、削除、検索、結果のキャッシュを伴う取得、適用。ランタイムのポート |
@@ -136,11 +137,11 @@ flowchart LR
 
 ### 作品情報プラグインを WebAssembly のサンドボックスで実行する {#run-work-info-plugins-in-a-webassembly-sandbox}
 
-**範囲**: wazero と、depguard と ARCHITECTURE.md の項目を伴うアダプター `internal/wasmplugin` を加える。モジュールを検査し (コンパイル、`vv.plugin` マニフェスト、import、`_start` と `memory` の export とその型、テーブルの最大値)、マニフェストか問題にする。実行ごとに新しいインスタンスを、要求を stdin に、応答を stdout から受けて、ファイル、環境、引数なしに、[R-4](research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits) の上限と 1 つの実行の枠で実行する。ドメインの型と実行の失敗。登録はするが次の単位まで `-1` を返す `vv` ホスト関数。[R-12](research.md#r-12-test-plugins-are-built-from-go-sources-when-the-tests-run) のフィクスチャをビルドするヘルパー。索引からリンクした `docs/design-docs/work-info-plugins.md` (サンドボックスと上限)。
+**範囲**: wazero と、depguard と ARCHITECTURE.md の項目を伴うアダプター `internal/wasmplugin` を加える。モジュールを検査し (コンパイル、設定の宣言を伴う `vv.plugin` マニフェスト、import、`_start` と `memory` の export とその型、テーブルの最大値)、マニフェストか問題にする。実行ごとに新しいインスタンスを、要求を stdin に、応答を stdout から受けて、ファイル、環境、引数なしに、[R-4](research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits) の上限と 1 つの実行の枠で実行する。ドメインの型と実行の失敗。登録はするが次の単位まで `-1` を返す `vv` ホスト関数。[R-12](research.md#r-12-test-plugins-are-built-from-go-sources-when-the-tests-run) のフィクスチャをビルドするヘルパー。索引からリンクした `docs/design-docs/work-info-plugins.md` (サンドボックスと上限)。
 
 **依存**: なし。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task build-windows-check` がビルドできる。ビルドしたプラグインによるアダプターのテストで、echo プラグインの応答が読み戻されること、無限に繰り返すプラグインが 30 秒で止められ、メモリを増やすプラグインが 128 MiB で止められ、それぞれが失敗を伴い、次の実行が成功すること、2 MiB を書くプラグインが `output_too_large` で止められること、`/etc/hostname` を開くか環境変数を読むプラグインが何も得ないこと、同時の 2 つ目の実行が 10 秒後に拒否されることを示す。検査のテストで、[data-model.md](data-model.md#work_info_plugins) の各 `problem` がその不正なモジュール (引数を持つ `_start`、`memory` を export しないもの、最大値のないテーブル、1,000,000 要素のテーブルを含む) に対して、マニフェストが正しいモジュールに対して、それを実行せずに得られることを示す。
+**受け入れ**: `task check` と `task check-docs` が通り、`task build-windows-check` がビルドできる。ビルドしたプラグインによるアダプターのテストで、echo プラグインの応答が読み戻されること、無限に繰り返すプラグインが 30 秒で止められ、メモリを増やすプラグインが 128 MiB で止められ、それぞれが失敗を伴い、次の実行が成功すること、2 MiB を書くプラグインが `output_too_large` で止められること、`/etc/hostname` を開くか環境変数を読むプラグインが何も得ないこと、同時の 2 つ目の実行が 10 秒後に拒否されることを示す。検査のテストで、[data-model.md](data-model.md#work_info_plugins) の各 `problem` がその不正なモジュール (重複した設定のキーと 11 個目の設定の宣言、引数を持つ `_start`、`memory` を export しないもの、最大値のないテーブル、1,000,000 要素のテーブルを含む) に対して、マニフェストが正しいモジュールに対して、それを実行せずに得られることを示す。
 
 ### 作品情報プラグインが公開されたインターネットのサイトにだけ到達できるようにする {#let-work-info-plugins-reach-public-internet-sites-only}
 
@@ -152,39 +153,39 @@ flowchart LR
 
 ### 画面の API で作品情報プラグインを追加、承認、削除する {#add-approve-and-remove-work-info-plugins-through-the-screen-api}
 
-**範囲**: マイグレーションと `WorkInfoPluginStore` ([data-model.md](data-model.md))。アップロード (検査、保存、名前による置き換え)、ダイジェストによる承認、承認の取り消し、削除のための `app.WorkInfoPlugins`。046 と共有するマルチパートの読み取りを伴うルート `GET`/`POST /api/work-info-plugins`、`PUT`/`DELETE …/{id}/approval`、`DELETE …/{id}` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。`cmd/mdm` での組み立て。running-vv.md の Data and recovery のプラグインのテーブル。
+**範囲**: 両方のテーブルを伴うマイグレーションと `WorkInfoPluginStore` ([data-model.md](data-model.md))。アップロード (検査、保存、まだ宣言されている設定の値を保つ名前による置き換え)、ダイジェストによる承認、承認の取り消し、削除、設定の値の書き込み ([R-13](research.md#r-13-plugin-settings-are-declared-in-the-manifest-and-passed-only-in-that-plugins-request)) のための `app.WorkInfoPlugins`。046 と共有するマルチパートの読み取りを伴うルート `GET`/`POST /api/work-info-plugins`、`PUT`/`DELETE …/{id}/approval`、`PUT …/{id}/settings`、`DELETE …/{id}` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。`cmd/mdm` での組み立て。running-vv.md の Data and recovery のプラグインのテーブル。
 
 **依存**: 作品情報プラグインを WebAssembly のサンドボックスで実行する。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task generate` による差分がない。ストアと app のテストで、アップロードが `unapproved` として一覧されること、一覧のダイジェストによる承認がそれを `approved` にすること、同じ名前のアップロードが新しいダイジェストでそれを再び `unapproved` にすること、古いダイジェストによる承認が `plugin_changed` で返されること、壊れたファイルが問題とともに `invalid` として一覧され、`plugin_unusable` で拒否されること、承認の取り消しと削除を示す。ハンドラーのテストで、17 MiB のパートが `413` `plugin_too_large` で返されること、すべてのルートがゲストに `403` を返すことを示す。
+**受け入れ**: `task check` と `task check-docs` が通り、`task generate` による差分がない。ストアと app のテストで、アップロードが `unapproved` として一覧されること、一覧のダイジェストによる承認がそれを `approved` にすること、同じ名前のアップロードが新しいダイジェストでそれを再び `unapproved` にすること、古いダイジェストによる承認が `plugin_changed` で返されること、壊れたファイルが問題とともに `invalid` として一覧され、`plugin_unusable` で拒否されること、承認の取り消しと削除、プラグインが `approved` のまま設定の値が書かれること、置き換えがまだ宣言されているキーの値を保ち、もう宣言されていないキーの値を削除すること、プラグインの削除がその値を削除することを示す。ハンドラーのテストで、17 MiB のパートが `413` `plugin_too_large` で返されること、宣言されていないキーが `400` で返されること、`set` が `true` のあいだ秘密の値がどの応答の本文にもないこと、すべてのルートがゲストに `403` を返すことを示す。
 
 ### 設定画面で作品情報プラグインを管理する {#manage-work-info-plugins-on-the-settings-screen}
 
-**範囲**: `ui-design.md` が定める設定ページの `WorkInfoPluginsSection`: 状態、名前、バージョンかファイル名、問題、ネットワークの通知を伴う一覧、追加、承認、承認の取り消し、削除。カタログのテキスト。
+**範囲**: `ui-design.md` が定める設定ページの `WorkInfoPluginsSection`: 状態、名前、バージョンかファイル名、問題、ネットワークの通知、プラグインが受け取る設定を伴う一覧、秘密のものは決して表示し返さない設定の値の入力、追加、承認、承認の取り消し、削除。カタログのテキスト。
 
 **依存**: 画面の API で作品情報プラグインを追加、承認、削除する。`design` ステージ。
 
-**受け入れ**: `task check` が通る。ページテストで、追加したプラグインが名前、バージョン、ネットワークの通知とともに未承認として一覧されること、承認がそれを承認済みに切り替えること、無効なプラグインが承認の操作なしに理由を表示すること、失敗した要求が節の中に表示されることを示す。画面は `ui-design.md` が挙げる幅で目で確かめる。
+**受け入れ**: `task check` が通る。ページテストで、追加したプラグインが名前、バージョン、ネットワークの通知とともに未承認として一覧されること、承認がそれを承認済みに切り替えること、無効なプラグインが承認の操作なしに理由を表示すること、秘密の設定が保存され、その後は設定済みとしてだけ表示されること、失敗した要求が節の中に表示されることを示す。画面は `ui-design.md` が挙げる幅で目で確かめる。
 
 ### 画面の API で作品情報を検索、取得、適用する {#search-fetch-and-apply-work-information-through-the-screen-api}
 
-**範囲**: `app.WorkInfoPlugins` で、宣言された操作を持つ承認済みのプラグインに限ってランタイムのポートを通じて検索と取得をすること、動画とダイジェストに結び付いた 10 分間の結果のキャッシュ ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))、タグ名の規則でタグ名を絞った適用。プラグインの行のダイジェストと承認を読み直し、それから表示名と仮のタグを 1 つのトランザクションで書き、拒否した名前を報告する `OverrideStore` の操作 ([R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported))。検索、取得、適用のルート、`Error.pluginMessage` と `Error.host` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。
+**範囲**: `app.WorkInfoPlugins` で、宣言された操作を持つ承認済みのプラグインに限って、要求の中にそのプラグインの設定の値を入れ、必須のものが未設定のときは実行の前に `plugin_settings_missing` として、ランタイムのポートを通じて検索と取得をすること、動画とダイジェストに結び付いた 10 分間の結果のキャッシュ ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))、タグ名の規則でタグ名を絞った適用。プラグインの行のダイジェストと承認を読み直し、それから表示名と仮のタグを 1 つのトランザクションで書き、拒否した名前を報告する `OverrideStore` の操作 ([R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported))。検索、取得、適用のルート、`Error.pluginMessage`、`Error.host`、`Error.settingKeys` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。
 
 **依存**: 画面の API で作品情報プラグインを追加、承認、削除する。
 
-**受け入れ**: `task check` が通り、`task generate` による差分がない。偽のランタイムによる app とストアのテストで、検索の候補が返されること、取得が動画を変えないこと、`title` と `tags` だけを適用すると表示名が変わり、タグが仮のものとして加わり、それ以外は何も変わらないこと、拒否した名前と無効な名前が `skippedTags` で報告され、付けられないこと、失敗した適用が両方のフィールドを変えないこと、未承認のプラグインが `plugin_not_approved` で返されること、10 分の後、置き換えの後、承認の取り消しの後の適用が `work_info_fetch_stale` で返されること、app の確認の後で適用のトランザクションの前にプラグインが置き換えられるストアのテストが何も書かず `work_info_fetch_stale` で返されることを示す。ハンドラーのテストで、契約の各実行の失敗がそのステータスとフィールドで返されること、すべてのルートがゲストに `403` を返すことを示す。
+**受け入れ**: `task check` が通り、`task generate` による差分がない。偽のランタイムによる app とストアのテストで、検索の候補が返されること、実行の要求がそのプラグイン自身の設定の値を持ち、別のプラグインのものを持たないこと、欠けている必須の設定がランタイムを呼ばずに `plugin_settings_missing` で返されること、取得が動画を変えないこと、`title` と `tags` だけを適用すると表示名が変わり、タグが仮のものとして加わり、それ以外は何も変わらないこと、拒否した名前と無効な名前が `skippedTags` で報告され、付けられないこと、失敗した適用が両方のフィールドを変えないこと、未承認のプラグインが `plugin_not_approved` で返されること、10 分の後、置き換えの後、承認の取り消しの後の適用が `work_info_fetch_stale` で返されること、app の確認の後で適用のトランザクションの前にプラグインが置き換えられるストアのテストが何も書かず `work_info_fetch_stale` で返されることを示す。ハンドラーのテストで、契約の各実行の失敗がそのステータスとフィールドで返されること、すべてのルートがゲストに `403` を返すことを示す。
 
 ### 動画のページでプラグインから作品情報を取得する {#fetch-work-information-from-a-plugin-on-the-video-page}
 
-**範囲**: `ui-design.md` が定める `web/src/player/workInfoFetch/` の取得の操作とダイアログ: 承認済みのプラグインが一覧にあるときだけ所有者に表示し ([R-11](research.md#r-11-the-video-page-reads-the-plugin-list-to-decide-whether-to-show-the-fetch-action))、プラグインの選択、URL か検索か、候補、比較の行、適用、飛ばしたタグの通知、失敗と古い状態。カタログのテキスト。ネットワークなしに用意したデータで答えるフィクスチャのプラグインによるブラウザーテスト `web/e2e/work-info-plugins.e2e.ts`。
+**範囲**: `ui-design.md` が定める `web/src/player/workInfoFetch/` の取得の操作とダイアログ: 承認済みのプラグインが一覧にあるときだけ所有者に表示し ([R-11](research.md#r-11-the-video-page-reads-the-plugin-list-to-decide-whether-to-show-the-fetch-action))、プラグインの選択、URL か検索か、候補、比較の行、適用、飛ばしたタグの通知、失敗と古い状態。カタログのテキスト。ネットワークなしに用意したデータで答え、必須の秘密の設定を宣言するフィクスチャのプラグインによるブラウザーテスト `web/e2e/work-info-plugins.e2e.ts`。
 
 **依存**: 画面の API で作品情報を検索、取得、適用する。設定画面で作品情報プラグインを管理する。`design` ステージ。
 
-**受け入れ**: `task check` が通り、CI の `Browser E2E` が新しいテストとともに通る。そのテストは、設定画面でフィクスチャのプラグインを追加し、承認の前には取得の操作がなく、後にはあることを見て、検索し、候補を選び、タイトルとタグだけを適用し、新しい表示名と仮のタグを見る。ページテストで、ゲストや承認済みのプラグインがないときに取得の操作がないこと、値のないフィールドが選べないこと、プラグインの失敗と古い結果がそれぞれ動画を変えずに表示されることを示す。画面は `ui-design.md` が挙げる幅で目で確かめる。
+**受け入れ**: `task check` が通り、CI の `Browser E2E` が新しいテストとともに通る。そのテストは、設定画面でフィクスチャのプラグインを追加し、その秘密の設定を入力し、承認の前には取得の操作がなく、後にはあることを見て、検索し、候補を選び、タイトルとタグだけを適用し、新しい表示名と仮のタグを見る。そのタグの 1 つは、フィクスチャが秘密の値を受け取ったときだけ返すものである。ページテストで、ゲストや承認済みのプラグインがないときに取得の操作がないこと、値のないフィールドが選べないこと、プラグインの失敗と古い結果がそれぞれ動画を変えずに表示されることを示す。画面は `ui-design.md` が挙げる幅で目で確かめる。
 
 ### プラグインの作者に作品情報プラグインの契約を公開する {#publish-the-work-info-plugin-contract-for-plugin-authors}
 
-**範囲**: `docs/how-to/work-info-plugins.md`: `wasip1` モジュールのビルド、`vv.plugin` セクションの追加、要求、応答、ホスト関数、上限とアドレスの規則。これらは [contracts/plugin-contract.md](contracts/plugin-contract.md) から移し、その後 contracts/plugin-contract.md はそこへリンクする。external-api.md の連携の例からそれへのリンク。
+**範囲**: `docs/how-to/work-info-plugins.md`: `wasip1` モジュールのビルド、設定の宣言を伴う `vv.plugin` セクションの追加、設定を伴う要求、応答とホスト関数、上限とアドレスの規則。これらは [contracts/plugin-contract.md](contracts/plugin-contract.md) から移し、その後 contracts/plugin-contract.md はそこへリンクする。external-api.md の連携の例からそれへのリンク。
 
 **依存**: 作品情報プラグインが公開されたインターネットのサイトにだけ到達できるようにする。
 
