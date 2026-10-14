@@ -1,4 +1,5 @@
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -10,6 +11,7 @@ import { useLocation } from "react-router";
 
 import {
   type LibraryGroup,
+  type LibraryItem,
   listLibraryIds,
   type TagRef,
   type Video,
@@ -50,6 +52,7 @@ import {
   type ListCriteria,
   newSeed,
 } from "../videoList/listCriteria";
+import { DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
 import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { GuestEmpty, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
@@ -70,6 +73,12 @@ import {
 import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
 import { GroupCard, GroupRow } from "./GroupCard";
+import {
+  DraggableGroupRow,
+  DraggableVideoRow,
+  LibraryDragLayer,
+  useLibraryMoves,
+} from "./LibraryDrag";
 import LibraryToolbar from "./LibraryToolbar";
 import {
   emptySelection,
@@ -354,6 +363,9 @@ export default function LibraryPage() {
     // （ui-design.md「Pressing and selection」）。
     setSelectAllSelection(null);
   }, [invalidateSelectAll]);
+
+  // --- ドラッグでグループへ移す（specs/050-drag-organize/ui-design.md「Library」） ---
+  const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
 
   // --- 「すべて選択」 ---
   // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。応答の `groups` は
@@ -661,6 +673,45 @@ export default function LibraryPage() {
     tagsRow: renderTagsRow,
   });
 
+  // 所有者のカードと行はドラッグの層に加わる。ゲストは今のまま。
+  const card = (item: LibraryItem) => {
+    const node =
+      item.kind === "video" ? (
+        <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
+      ) : (
+        <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
+      );
+    return owner ? (
+      <DraggableCard key={itemKey(item)} id={itemKey(item)}>
+        {node}
+      </DraggableCard>
+    ) : (
+      node
+    );
+  };
+  const row = (item: LibraryItem) => {
+    if (item.kind === "video") {
+      const Row = owner ? DraggableVideoRow : VideoRow;
+      return <Row key={itemKey(item)} {...rowProps(item.video)} />;
+    }
+    const Row = owner ? DraggableGroupRow : GroupRow;
+    return <Row key={itemKey(item)} {...groupProps(item.group)} />;
+  };
+  const withDrag = (content: ReactNode) =>
+    owner ? (
+      <LibraryDragLayer
+        items={moves.visible}
+        list={view === "list"}
+        selection={selection}
+        onMove={moves.move}
+        onLift={resetPreview}
+      >
+        {content}
+      </LibraryDragLayer>
+    ) : (
+      content
+    );
+
   const body = initialLoadFailed ? (
     <LoadFailed reason={error} onRetry={reload} />
   ) : empty ? (
@@ -680,56 +731,44 @@ export default function LibraryPage() {
     />
   ) : (
     <div ref={list} onClick={saveSnapshot}>
-      {view === "grid" ? (
-        // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
-        <TagRowMeasureProvider>
-          <Grid zoom={zoom}>
-            {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
+      {withDrag(
+        view === "grid" ? (
+          // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
+          <TagRowMeasureProvider>
+            <Grid zoom={zoom}>
+              {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
                 見出しは設けない（ui-design.md「Screen boundary」、要件 15）。 */}
-            {items.map((item) =>
-              item.kind === "video" ? (
-                <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
-              ) : (
-                <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
-              ),
-            )}
-          </Grid>
-        </TagRowMeasureProvider>
-      ) : (
-        <DataTable label={t.library.title}>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              {owner && <TableHead className="w-10" />}
-              <TableHead className="w-list-thumb-cell" />
-              <TableHead className="pr-4">{t.library.columns.title}</TableHead>
-              {owner && <TableHead className="w-8" />}
-              {owner && <TableHead className="hidden w-8 sm:table-cell" />}
-              {owner && <TableHead className="hidden w-8 sm:table-cell" />}
-              <TableHead className="hidden w-16 pr-4 sm:table-cell" />
-              <TableHead className="w-list-number pr-4 text-right">
-                {t.library.columns.duration}
-              </TableHead>
-              <TableHead className="hidden w-list-number pr-4 text-right md:table-cell">
-                {t.library.columns.quality}
-              </TableHead>
-              <TableHead className="hidden w-list-number-wide pr-4 text-right md:table-cell">
-                {t.library.columns.size}
-              </TableHead>
-              <TableHead className="hidden w-list-date pr-3 text-right lg:table-cell">
-                {t.library.columns.added}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((item) =>
-              item.kind === "video" ? (
-                <VideoRow key={itemKey(item)} {...rowProps(item.video)} />
-              ) : (
-                <GroupRow key={itemKey(item)} {...groupProps(item.group)} />
-              ),
-            )}
-          </TableBody>
-        </DataTable>
+              {moves.visible.map(card)}
+            </Grid>
+          </TagRowMeasureProvider>
+        ) : (
+          <DataTable label={t.library.title}>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                {owner && <TableHead className="w-10" />}
+                <TableHead className="w-list-thumb-cell" />
+                <TableHead className="pr-4">{t.library.columns.title}</TableHead>
+                {owner && <TableHead className="w-8" />}
+                {owner && <TableHead className="hidden w-8 sm:table-cell" />}
+                {owner && <TableHead className="hidden w-8 sm:table-cell" />}
+                <TableHead className="hidden w-16 pr-4 sm:table-cell" />
+                <TableHead className="w-list-number pr-4 text-right">
+                  {t.library.columns.duration}
+                </TableHead>
+                <TableHead className="hidden w-list-number pr-4 text-right md:table-cell">
+                  {t.library.columns.quality}
+                </TableHead>
+                <TableHead className="hidden w-list-number-wide pr-4 text-right md:table-cell">
+                  {t.library.columns.size}
+                </TableHead>
+                <TableHead className="hidden w-list-date pr-3 text-right lg:table-cell">
+                  {t.library.columns.added}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>{moves.visible.map(row)}</TableBody>
+          </DataTable>
+        ),
       )}
     </div>
   );
