@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/ui-design.md
-sourceHash: ab249f9b59b6fd704d3383e354b45eed73a0bb47bc179c7ce931697778e39396
+sourceHash: 69eca6935713b09d200f2252fd0570b36be89d3cbe4fbfef1348225bd52b3a3c
 ---
 
 # UI デザイン: 外部のサービスから作品情報を取得する作品情報プラグイン {#ui-design-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -186,6 +186,7 @@ flowchart LR
 | 再取得 | Fetch again | `Alert` の操作の中の `outline` `sm` |
 | 設定の欠落 | {plugin} needs {labels} first. | `/settings#work-info-plugins` への `Open Settings` の `link` ボタンを伴う `warning` の `Alert` |
 | 実行の失敗 | Couldn't {search or fetch}: {reason} | `destructive` の `Alert`。`{reason}` は [エラーの理由](#error-reasons) から |
+| 適用の失敗 | Couldn't apply: {reason} | 比較の上の `destructive` の `Alert`。`{reason}` は [エラーの理由](#error-reasons) から |
 | プラグイン自身のメッセージ | The plugin said: "{message}" | 失敗の二行目、控えめ、`pluginMessage` があるときだけ |
 
 ### エラーの理由 {#error-reasons}
@@ -346,6 +347,8 @@ stateDiagram-v2
 | ページを開く | URL への `ghost` `icon-sm` のリンクで、新しいタブで開く。行の右端、行のボタンの外に置く |
 | 取得中 | 選んだ行は右端に `Spinner` を示す。他の行とクエリは無効になる |
 
+プラグインが取得できない (探すだけの) とき、行はボタンではない。タイトル、詳細、ホストを普通の文字で示し、`Open page` が唯一の操作である。
+
 候補がないときは、一覧の代わりに控えめな一行 `No matches…` を表示する。
 
 ### 比較 {#compare}
@@ -373,7 +376,7 @@ stateDiagram-v2
 | `200`、何も飛ばさない | ダイアログが閉じ、応答の `Video` がページの動画を置き換え、トースト `Applied to the video.` を表示し、フォーカスは入口に戻る |
 | `200`、名前を飛ばした | 上と同じくページの動画を置き換える。ダイアログは [結果](#result) に移る |
 | `work_info_fetch_stale` | ダイアログは比較に留まり、その上に `Stale` の `Alert` と `Fetch again` を表示する。これは同じプラグインと URL で実行し、新しい比較を開く。`Apply selected` は無効になる (Issue の境界ケース) |
-| その他の失敗 | 比較の上に `destructive` の `Alert`。選択は保たれる。動画は変わらない |
+| その他の失敗 | 比較の上に `destructive` の `Alert` `Couldn't apply: {reason}` を表示する。選択は保たれる。動画は変わらない |
 
 ### 結果 {#result}
 
