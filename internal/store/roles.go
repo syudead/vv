@@ -102,6 +102,20 @@ type VersionStore struct{ db *DB }
 // 作り直す各取引の中で syncFolderGroups が行う（groups.go）。
 type GroupStore struct{ db *DB }
 
+// CreditStore は人物と団体（名前・別名・外部 ID・団体の親）の一覧・読み出し・作成・更新・統合・削除と、
+// その名前の照合用の鍵の作り直しを受け持つ（credits.go・credit_listing.go、
+// specs/047-video-work-info/data-model.md「Entities」）。2 つの種類を domain.CreditKind で受け、
+// SQL は 1 回だけ書く。TagStore と同じく、共有する SQLite 接続と読み取り用の接続 read だけを持ち、
+// ライブラリ索引の型や通知には依存せず、ドメインイベントを発行しない（R-11）。
+type CreditStore struct{ sql, read *sql.DB }
+
+// WorkInfoStore は動画の作品情報（品番・説明・日付・人物・団体・URL・外部 ID）の書き込みと、利用者データの
+// 鍵の集合からの読み出しを受け持つ（work_info.go、specs/047-video-work-info/data-model.md「Writes
+// (WorkInfoStore)」）。全画面の編集画面の保存（SetDetails）は表示名も同じ取引で、OverrideStore を呼ばずに
+// パッケージ内の関数で書く（R-14）。確定後に domain.VideoWorkInfoChanged（と domain.VideoOverrideChanged）を
+// 発行するため、OverrideStore と同じく発行先を持つ *DB を通して使う。
+type WorkInfoStore struct{ db *DB }
+
 func (db *DB) Ingest() *IngestStore       { return &IngestStore{db: db} }
 func (db *DB) Library() *LibraryStore     { return &LibraryStore{db: db} }
 func (db *DB) Scans() *ScanStore          { return &ScanStore{db: db} }
@@ -120,3 +134,5 @@ func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
 func (db *DB) AutoTags() *AutoTagStore         { return &AutoTagStore{db: db} }
 func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
 func (db *DB) Groups() *GroupStore             { return &GroupStore{db: db} }
+func (db *DB) Credits() *CreditStore           { return &CreditStore{sql: db.sql, read: db.read} }
+func (db *DB) WorkInfo() *WorkInfoStore        { return &WorkInfoStore{db: db} }

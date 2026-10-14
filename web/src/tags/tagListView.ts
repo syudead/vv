@@ -1,5 +1,5 @@
 import { t, type UiText } from "../i18n";
-import type { TagPageRows } from "./tagPageRows";
+import type { ListRow, ListRowsQuery, PageRows, TagPageRows } from "./tagPageRows";
 import { moreIdle, type MoreState } from "./useTagPage";
 
 /**
@@ -9,9 +9,15 @@ import { moreIdle, type MoreState } from "./useTagPage";
 export type TagListEmpty =
   "tags" | "noUnused" | "noUnusedMatch" | "noTentative" | "noTentativeMatch" | "noMatch";
 
-/** TagListViewInput は一覧の見え方を決める状態である。 */
+/**
+ * TagListViewInput は一覧の見え方を決める状態である。人物・団体の画面も、絞り込みの無い
+ * 条件（`tentativeOnly`・`unusedOnly` を持たない）で同じ規則を使う。そのときの空の状態は
+ * `tags`（1 件も無い）か `noMatch` である。
+ */
 export interface TagListViewInput {
-  page: TagPageRows | undefined;
+  page:
+    | PageRows<ListRow, ListRowsQuery & { tentativeOnly?: boolean; unusedOnly?: boolean }>
+    | undefined;
   loadError: UiText | null;
   more: MoreState;
   /** 並べる行の数（差し込んで残した改名中の行を含む）。 */
@@ -54,7 +60,7 @@ export function tagListView({
   if (page === undefined) {
     return { empty: null, showRows: false, staleList, tail, noTags };
   }
-  const { tentativeOnly, unusedOnly, query } = page.query;
+  const { tentativeOnly = false, unusedOnly = false, query } = page.query;
   const searching = query !== "";
   const emptyTags = page.totalAll === 0 && !creating && !tentativeOnly && !unusedOnly;
   const moreToShow = page.nextCursor !== undefined && page.total > 0;

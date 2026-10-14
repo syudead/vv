@@ -11,6 +11,7 @@ import ScanProgressIndicator from "../shell/ScanProgressIndicator";
 import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import { isVideoEditPath } from "../lib/videoEditPath";
 import { deferredRoute, matchesBelowPath, matchesExactPath } from "./deferredRoute";
 
 // 一覧と再生画面のほかは使うときだけ読み込む（deferredRoute）。再生画面から
@@ -22,6 +23,13 @@ const SettingsPage = await deferredRoute(
   "/settings",
 );
 const TagsPage = await deferredRoute(() => import("../tags/TagsPage"), "/tags");
+// 人物と団体の管理画面（specs/047-video-work-info/ui-design.md「People and organizations
+// screens」）。1 つの部品が種類を受けて両方を描く。
+const PeoplePage = await deferredRoute(() => import("../credits/PeoplePage"), "/people");
+const OrganizationsPage = await deferredRoute(
+  () => import("../credits/OrganizationsPage"),
+  "/organizations",
+);
 const HistoryPage = await deferredRoute(
   () => import("../history/HistoryPage"),
   "/history",
@@ -39,6 +47,12 @@ const GroupPage = await deferredRoute(() => import("../groups/GroupPage"), "/gro
 const DuplicatesPage = await deferredRoute(
   () => import("../versions/DuplicatesPage"),
   "/duplicates",
+);
+// 動画の作品情報と表示名の編集画面（specs/047-video-work-info/ui-design.md「Editor」）。
+// 再生画面を開くたびの読み込みに、編集画面の部品を加えない。
+const VideoDetailsEditor = await deferredRoute(
+  () => import("../player/detailsEditor/VideoDetailsEditor"),
+  isVideoEditPath,
 );
 const SetupPage = await deferredRoute(() => import("../auth/SetupPage"), "/setup");
 const LoginPage = await deferredRoute(() => import("../auth/LoginPage"), "/login");
@@ -95,6 +109,22 @@ function AppRoutes() {
           }
         />
         <Route
+          path="/people"
+          element={
+            <AppShell>
+              <PeoplePage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/organizations"
+          element={
+            <AppShell>
+              <OrganizationsPage />
+            </AppShell>
+          }
+        />
+        <Route
           path="/history"
           element={
             <AppShell>
@@ -135,6 +165,8 @@ function AppRoutes() {
           }
         />
         <Route path="/videos/:id" element={<VideoPage />} />
+        {/* 編集画面は再生画面と同じくシェルの外に置く。 */}
+        <Route path="/videos/:id/edit" element={<VideoDetailsEditor />} />
         {DesignSystemPage && (
           <Route
             path="/design-system"

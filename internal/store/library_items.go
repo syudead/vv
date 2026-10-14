@@ -21,15 +21,46 @@ import (
 //  3. グループの値は見せてよい子孫の動画の全部から数える
 //  4. 再生可否と視聴状態の絞り込みを項目に掛け、項目の値で並べて keyset で区切る
 
-// memberConditions はメンバー単位の絞り込み（再生可否とタグの AND）を、videos に
+// memberConditions はメンバー単位の絞り込み（再生可否と matchConditions）を、videos に
 // 対する条件句の並びと引数にする（GET /api/videos の一覧が使う）。
 func memberConditions(spec listSpec) ([]string, []any) {
 	var conditions []string
 	if spec.playableOnly {
 		conditions = append(conditions, playableCondition)
 	}
-	tags, args := tagConditions(spec)
-	return append(conditions, tags...), args
+	matches, args := matchConditions(spec)
+	return append(conditions, matches...), args
+}
+
+// matchConditions は当たった動画（matched）を決める段の絞り込み、つまりタグの AND と
+// 人物・団体の絞り込みを、videos に対する条件句の並びと引数にする
+// （specs/047-video-work-info/data-model.md の Lists）。
+func matchConditions(spec listSpec) ([]string, []any) {
+	conditions, args := tagConditions(spec)
+	works, workArgs := workInfoConditions(spec)
+	return append(conditions, works...), append(args, workArgs...)
+}
+
+// workInfoConditions は人物と団体の絞り込みを、videos に対する条件句の並びと引数にする。
+// 役割は問わず、利用者データの鍵（userKeyExpr）に結び付いた行があれば当たる。実体の無い
+// id は何にも当たらない（specs/047-video-work-info/data-model.md の Lists）。
+func workInfoConditions(spec listSpec) ([]string, []any) {
+	var conditions []string
+	var args []any
+	// 内容の識別子が空の動画は利用者データを持たない（videoHasTagCondition と同じ扱い）。
+	link := func(table, alias, column string) string {
+		return `(videos.content_key <> '' and exists (select 1 from ` + table + ` ` + alias + ` where ` + alias +
+			`.content_key = ` + userKeyExpr("videos") + ` and ` + alias + `.` + column + ` = ?))`
+	}
+	if spec.personID != 0 {
+		conditions = append(conditions, link("video_work_people", "vp", "person_id"))
+		args = append(args, spec.personID)
+	}
+	if spec.organizationID != 0 {
+		conditions = append(conditions, link("video_work_organizations", "vo", "organization_id"))
+		args = append(args, spec.organizationID)
+	}
+	return conditions, args
 }
 
 // tagConditions はタグの AND を、videos に対する条件句の並びと引数にする。
@@ -78,8 +109,8 @@ const favoriteGroupsSelect = `select group_id as id from group_favorites`
 func libraryItemsCTE(spec listSpec) (string, []any) {
 	audience := spec.scope.audience
 	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
-	conditions, tagArgs := tagConditions(spec)
-	args = append(args, tagArgs...)
+	conditions, matchArgs := matchConditions(spec)
+	args = append(args, matchArgs...)
 	where := ""
 	if len(conditions) > 0 {
 		where = ` where ` + strings.Join(conditions, " and ")
@@ -207,11 +238,7 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	page, err := listLibraryPageTx(ctx, tx, listSpec{
-		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
-		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
-	})
+	page, err := listLibraryPageTx(ctx, tx, libraryListSpec(audience, q, tagIDs))
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
@@ -424,10 +451,8 @@ func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) (dom
 	if err != nil {
 		return domain.LibrarySelection{}, nil, err
 	}
-	cte, args := libraryItemsCTE(listSpec{
-		scope: libraryScope(domain.AudienceOwner), expr: domain.ParseSearchQuery(q.Query),
-		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
-	})
+	// 並び順・カーソル・件数は使わない（libraryItemsCTE は読まない）。
+	cte, args := libraryItemsCTE(libraryListSpec(domain.AudienceOwner, q, tagIDs))
 	watchClause, watchArgs := itemWatchCondition(q.Watch)
 	and := ""
 	if watchClause != "" {

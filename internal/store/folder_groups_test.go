@@ -444,10 +444,10 @@ func TestFolderGroupings(t *testing.T) {
 	}
 }
 
-// 移行 00044 はフォルダの索引のグループの表を落とす。Down は空の表を戻し、前の版が次の起動で
+// 移行 00045 はフォルダの索引のグループの表を落とす。Down は空の表を戻し、前の版が次の起動で
 // 索引を作り直すよう、索引を古いと記録する（specs/048-groups/data-model.md「Migration」）。
 func TestDropFolderGroupsMigration(t *testing.T) {
-	db, provider := migrateTo(t, 43)
+	db, provider := migrateTo(t, 44)
 	ctx := context.Background()
 	execSQL(t, db, `insert into folder_index_state (id, version, search_version, stale) values (1, 3, 1, 0)`)
 	execSQL(t, db, `insert into folder_groups (id, path_key, path, name, title_key) values (1, '/m/show', '/m/Show', 'Show', 'show')`)
@@ -461,14 +461,14 @@ func TestDropFolderGroupsMigration(t *testing.T) {
 		return n
 	}
 
-	if _, err := provider.UpTo(ctx, 44); err != nil {
+	if _, err := provider.UpTo(ctx, 45); err != nil {
 		t.Fatal(err)
 	}
 	if n := countTables(); n != 0 {
 		t.Fatalf("Up のあとも %d 表が残った", n)
 	}
 
-	if _, err := provider.DownTo(ctx, 43); err != nil {
+	if _, err := provider.DownTo(ctx, 44); err != nil {
 		t.Fatal(err)
 	}
 	if n := countTables(); n != 2 {

@@ -18,7 +18,7 @@ import (
 )
 
 // naturalSortKeyFunction は domain.NaturalSortKey を SQLite から呼ぶ名前である。移行
-// 00042_groups.sql が、100 文字に切ったフォルダグループの名前の title_key を作るのに使う
+// 00043_groups.sql が、100 文字に切ったフォルダグループの名前の title_key を作るのに使う
 // （SQL では照合形を作れない）。登録の仕方は vv_shuffle_key（listing.go）と同じで、select の
 // 中でしか使わず、スキーマには残らない。
 const naturalSortKeyFunction = "vv_natural_sort_key"

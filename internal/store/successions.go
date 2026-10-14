@@ -243,7 +243,11 @@ func moveBundleMember(ctx context.Context, tx *sql.Tx, bundle bundleRef, oldKey,
 // moveUserData は鍵 from の再生位置・公開の設定・お気に入り・更新日時・タグ・視聴履歴・プレイリストとグループの項目を
 // 鍵 to へ付け替え、項目を付け替えたグループとその祖先の id を返す。
 // 再生位置・公開の設定・お気に入り・更新日時は from に行があれば to の行を置き換え、タグと視聴履歴は和にする。
+// 作品情報は 6 表を 1 つの物として、from にどれかの行があれば to の作品情報を置き換える（moveWorkInfo）。
 func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, error) {
+	if err := moveWorkInfo(ctx, tx, from, to); err != nil {
+		return nil, err
+	}
 	for _, table := range []string{"playback_progress", "public_videos", "video_favorites", "video_edits"} {
 		if _, err := tx.ExecContext(ctx, `delete from `+table+` where content_key = ?
 			and exists (select 1 from `+table+` where content_key = ?)`, to, from); err != nil {

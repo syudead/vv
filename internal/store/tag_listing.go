@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"strconv"
 	"strings"
 	"time"
 
@@ -28,7 +27,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 	if sort == "" {
 		sort = domain.TagSortName
 	}
-	order, ok := tagListOrders[sort]
+	order, ok := adminListOrders[sort]
 	if !ok {
 		return domain.TagPage{}, fmt.Errorf("unknown tag sort order: %q", sort)
 	}
@@ -38,7 +37,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 	var cursorArgs []any
 	if limit > 0 && query.Cursor != "" {
 		var err error
-		cursorClause, cursorArgs, err = order.cursorCondition(sort, query.Cursor)
+		cursorClause, cursorArgs, err = order.cursorCondition(tagCursorKind, sort, query.Cursor)
 		if err != nil {
 			return domain.TagPage{}, err
 		}
@@ -56,22 +55,8 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 		return domain.TagPage{}, fmt.Errorf("cannot count tags: %w", err)
 	}
 
-	// 条件に合う数（total）は窓関数でカーソルを掛ける前の listed 全体について数え、
-	// ページの行と同じ問い合わせで返す。listed の本数の集計を 2 回走らせない。
-	statement := listed + ` select id, name, tentative, created_at, sort_key, video_count, total from (
-		select id, name, tentative, created_at, sort_key, video_count, count(*) over () as total from listed
-	)`
-	args := listedArgs
-	if cursorClause != "" {
-		statement += ` where ` + cursorClause
-		args = append(args, cursorArgs...)
-	}
-	statement += ` order by ` + order.orderBy
-	if limit > 0 {
-		// 続きがあるかを知るために 1 件多く取る。
-		statement += ` limit ?`
-		args = append(args, limit+1)
-	}
+	statement, args := order.pageStatement(listed, listedArgs,
+		`id, name, tentative, created_at, sort_key, video_count`, cursorClause, cursorArgs, limit)
 
 	items, keys, total, err := readListedTags(ctx, tx, statement, args)
 	if err != nil {
@@ -87,7 +72,9 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 	}
 	if limit > 0 && len(items) > limit {
 		items = items[:limit]
-		page.NextCursor = order.encodeCursor(sort, items[limit-1], keys[limit-1])
+		last := items[limit-1]
+		page.NextCursor = order.encodeCursor(tagCursorKind, sort,
+			adminListRow{id: last.ID, videoCount: last.VideoCount, createdAt: last.CreatedAt, sortKey: keys[limit-1]})
 	}
 	if err := addSynonymsToPage(ctx, tx, items); err != nil {
 		return domain.TagPage{}, err
@@ -235,90 +222,6 @@ func addSynonymsToPage(ctx context.Context, tx *sql.Tx, items []domain.Tag) erro
 	return nil
 }
 
-// tagListOrder はタグの一覧の並び順 1 つ分である（data-model.md §2 の表）。値の
-// 向きと名前の向きが違うので、keyset の条件は行値の比較 1 つではなく展開した形で書く。
-type tagListOrder struct {
-	// value は名前の前に比べる listed の列。名前の順では空。
-	value string
-	// desc は value を降順に並べる。名前（sort_key, id）はいつも昇順。
-	desc    bool
-	orderBy string
-}
-
-func newTagListOrder(value string, desc bool) tagListOrder {
-	order := tagListOrder{value: value, desc: desc, orderBy: `sort_key asc, id asc`}
-	if value != "" {
-		direction := ` asc`
-		if desc {
-			direction = ` desc`
-		}
-		order.orderBy = value + direction + `, ` + order.orderBy
-	}
-	return order
-}
-
-var tagListOrders = map[domain.TagSort]tagListOrder{
-	domain.TagSortName:        newTagListOrder("", false),
-	domain.TagSortCountDesc:   newTagListOrder("video_count", true),
-	domain.TagSortCountAsc:    newTagListOrder("video_count", false),
-	domain.TagSortCreatedDesc: newTagListOrder("created_at", true),
-	domain.TagSortCreatedAsc:  newTagListOrder("created_at", false),
-}
-
-// tagCursorKind はタグの一覧のカーソルの先頭に置き、動画の一覧のカーソルと取り違え
-// ないようにする。
+// tagCursorKind はタグの一覧のカーソルの先頭に置き、動画の一覧や人物・団体の一覧のカーソルと
+// 取り違えないようにする。
 const tagCursorKind = "tags"
-
-// tagCursorValue は名前の前に比べる値（本数・作った日の Unix 秒）である。
-func (o tagListOrder) tagCursorValue(tag domain.Tag) string {
-	switch o.value {
-	case "video_count":
-		return strconv.Itoa(tag.VideoCount)
-	case "created_at":
-		return strconv.FormatInt(tag.CreatedAt.Unix(), 10)
-	default:
-		return ""
-	}
-}
-
-// encodeCursor は「種類・並び順の名前・値・id・名前の鍵」を包む。名前の鍵は最後に置く。
-func (o tagListOrder) encodeCursor(sort domain.TagSort, last domain.Tag, sortKey string) string {
-	return packCursor(tagCursorKind, string(sort), o.tagCursorValue(last), strconv.FormatInt(last.ID, 10), sortKey)
-}
-
-// cursorCondition はカーソルより後ろだけを取る条件を返す。別の並び順のカーソルや
-// 解釈できないものは ErrInvalidCursor。
-func (o tagListOrder) cursorCondition(sort domain.TagSort, cursor string) (string, []any, error) {
-	parts, err := unpackCursor(cursor, 5)
-	if err != nil {
-		return "", nil, err
-	}
-	if parts[0] != tagCursorKind {
-		return "", nil, fmt.Errorf("%w: cursor is not for tags", domain.ErrInvalidCursor)
-	}
-	if parts[1] != string(sort) {
-		return "", nil, fmt.Errorf("%w: cursor is for a different sort order", domain.ErrInvalidCursor)
-	}
-	id, err := strconv.ParseInt(parts[3], 10, 64)
-	if err != nil {
-		return "", nil, fmt.Errorf("%w: cannot parse the id", domain.ErrInvalidCursor)
-	}
-	sortKey := parts[4]
-	nameAfter := `(sort_key, id) > (?, ?)`
-	if o.value == "" {
-		if parts[2] != "" {
-			return "", nil, fmt.Errorf("%w: unexpected sort value", domain.ErrInvalidCursor)
-		}
-		return nameAfter, []any{sortKey, id}, nil
-	}
-	value, err := strconv.ParseInt(parts[2], 10, 64)
-	if err != nil {
-		return "", nil, fmt.Errorf("%w: cannot parse the sort value", domain.ErrInvalidCursor)
-	}
-	op := ` > `
-	if o.desc {
-		op = ` < `
-	}
-	clause := `(` + o.value + op + `? or (` + o.value + ` = ? and ` + nameAfter + `))`
-	return clause, []any{value, value, sortKey, id}, nil
-}

@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 30ef6fb05b1cc86b40b4f46a840f62ce890f8373a623e173c681e02ba6d014b2
+sourceHash: c491ad0ce06aaf4bcec8386d8bed369945bfaab1153524c5d1822e0a153636c1
 ---
 
 # 設計文書 {#design-documents}
@@ -64,4 +64,5 @@ sourceHash: 30ef6fb05b1cc86b40b4f46a840f62ce890f8373a623e173c681e02ba6d014b2
 - [変更されたメディアフォルダの自動取り込み (設定、問題の知らせ、静かな結果の知らせ): UI](../../specs/042-folder-watch-import/ui-design.md)
 - [視聴履歴の画面 (日のグループ、エントリを 1 つ削除する、履歴を消す): UI](../../specs/043-watch-history/ui-design.md)
 - [ローカルの画像をサムネイルにし、今のサムネイルを ComfyUI で編集する (アップロードの入口、アップロードした画像の項目、編集の元のメニュー): UI](../../specs/046-thumbnail-image-upload/ui-design.md)
+- [動画の作品情報 (作品の詳細の行、その場での編集、人物と組織による絞り込み、人物と組織の画面): UI](../../specs/047-video-work-info/ui-design.md)
 - [任意の動画とグループのグループ (経路を持つグループのページ、New group、Add to group、動画のページのグループの文脈): UI](../../specs/048-groups/ui-design.md)

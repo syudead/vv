@@ -99,7 +99,7 @@ func TestExistingGroupIDsKeepsRequestOrderWithoutDuplicates(t *testing.T) {
 // グループでないフォルダのものは落としてプレイリストを詰め直す。Down は folder_favorites を空で戻し、
 // 自動グループの項目をフォルダの鍵へ戻す。
 func TestGroupKeysMigrationConvertsFolderKeys(t *testing.T) {
-	db, provider := migrateTo(t, 42)
+	db, provider := migrateTo(t, 43)
 	ctx := context.Background()
 	execSQL(t, db, `insert into groups (id, name, title_key, origin_folder, created_at, updated_at) values
 		(7, 'Show', ?, '/m/show', 1, 1), (8, 'Mine', ?, null, 1, 1)`,
@@ -111,7 +111,7 @@ func TestGroupKeysMigrationConvertsFolderKeys(t *testing.T) {
 		(1, 1, 'key-a', null, 0, 1), (2, 1, null, '/m/gone', 1, 1), (3, 1, null, '/m/show', 2, 1), (4, 1, 'key-b', null, 3, 1),
 		(5, 2, 'key-a', null, 0, 1), (6, 1, null, '/m/gone2', 4, 1)`)
 
-	if _, err := provider.UpTo(ctx, 43); err != nil {
+	if _, err := provider.UpTo(ctx, 44); err != nil {
 		t.Fatal(err)
 	}
 	favorites, err := queryStringsForTest(db, `select group_id || ':' || favorited_at from group_favorites order by group_id`)
@@ -149,7 +149,7 @@ func TestGroupKeysMigrationConvertsFolderKeys(t *testing.T) {
 	if id := insertForTest(t, db, `insert into playlist_items (playlist_id, group_id, position, added_at) values (1, 8, 3, 1)`); id != 7 {
 		t.Errorf("移行のあとに足した項目の id = %d, want 7", id)
 	}
-	if _, err := provider.DownTo(ctx, 42); err != nil {
+	if _, err := provider.DownTo(ctx, 43); err != nil {
 		t.Fatal(err)
 	}
 	items, err = queryStringsForTest(db, `select id || ':' || coalesce(content_key, folder_key) || ':' || position

@@ -487,9 +487,10 @@ test.describe.serial("library search", () => {
       page.getByRole("button", { name: "Ascending. Press for descending" }),
     ).toBeFocused();
 
-    // 残りのツールバーの操作を越えて、最初の結果のカードへ着く。
+    // 残りのツールバーの操作とレールの項目（人物・団体の 2 つを含む 10 個）を越えて、
+    // 最初の結果のカードへ着く。
     const first = page.locator("[data-video-id]").first();
-    for (let i = 0; i < 12; i += 1) {
+    for (let i = 0; i < 20; i += 1) {
       await page.keyboard.press("Tab");
       const inResults = await focused().evaluate(
         (element) => element.closest("[data-video-id]") !== null,

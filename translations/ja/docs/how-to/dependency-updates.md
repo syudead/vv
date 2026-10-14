@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: 8e5c5227c28ffb0bc4663a547858773bb7f4a5f77141414a10f7e6f2b8c4cd1a
+sourceHash: 1958b122494f327fa97ae1f7669dcb1766813614f76259927a278f5d893508e6
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
@@ -27,6 +27,7 @@ flowchart LR
 - メジャー更新は、人が破壊的変更を読んでからマージする。
 - GitHub Actions はコミットハッシュに固定し、タグ名をコメントに書く（`config:best-practices` の既定）。
 - `Dockerfile` のベースイメージは `tag@sha256:digest` として固定する。タグの指す内容が変わると、Renovate がダイジェスト更新の PR を開く。
+- `renovate.json` は Renovate のロックファイル生成に使う npm を 11.x に制限するが、この制限はローカル開発と CI には適用されない。npm 12 は現在、ロックファイルのみの更新中に `@tailwindcss/oxide-wasm32-wasi` の tarball で失敗する（[npm issue #9800](https://github.com/npm/cli/issues/9800)）。npm がこの失敗を修正したら、この制限を見直す。
 
 ## 除外する依存関係 {#excluded-dependencies}
 

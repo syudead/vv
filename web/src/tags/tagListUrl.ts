@@ -70,24 +70,40 @@ export function useTagListCriteria(preferredSort: TagListSort): {
   criteria: TagListCriteria;
   apply: (change: Partial<TagListCriteria>, mode: HistoryMode) => void;
 } {
+  return useUrlCriteria(
+    (params) => parseTagListCriteria(params, preferredSort),
+    serializeTagListCriteria,
+  );
+}
+
+/**
+ * useUrlCriteria は `useTagListCriteria` の、URL の読み書き（`parse`・`serialize`）を受け取る
+ * 形である。人物・団体の管理画面（`web/src/credits/`）も同じ履歴の規則で `q` と `sort` を
+ * 載せる。`serialize` は最初に受けたものを使い続ける。
+ */
+export function useUrlCriteria<C>(
+  parse: (params: URLSearchParams) => { criteria: C; hasExplicitSort: boolean },
+  serialize: (criteria: C) => URLSearchParams,
+): {
+  criteria: C;
+  apply: (change: Partial<C>, mode: HistoryMode) => void;
+} {
   const location = useLocation();
   const navigate = useNavigate();
-  const { criteria, hasExplicitSort } = parseTagListCriteria(
-    new URLSearchParams(location.search),
-    preferredSort,
-  );
+  const { criteria, hasExplicitSort } = parse(new URLSearchParams(location.search));
   const latest = useRef({ location, criteria, hasExplicitSort });
   latest.current = { location, criteria, hasExplicitSort };
+  const serializeRef = useRef(serialize);
 
   const apply = useCallback(
-    (change: Partial<TagListCriteria>, mode: HistoryMode) => {
+    (change: Partial<C>, mode: HistoryMode) => {
       const {
         location: current,
         criteria: now,
         hasExplicitSort: explicit,
       } = latest.current;
-      const write = (next: TagListCriteria, how: HistoryMode) => {
-        const search = serializeTagListCriteria(next).toString();
+      const write = (next: C, how: HistoryMode) => {
+        const search = serializeRef.current(next).toString();
         navigate(
           { pathname: current.pathname, search: search === "" ? "" : `?${search}` },
           { replace: how === "replace" },

@@ -141,14 +141,14 @@ async function findCards(): Promise<HTMLElement[]> {
   return cards();
 }
 
-/** 最後に作られた IntersectionObserver の知らせ先。 */
+/** 見張っている（observe から disconnect までの）IntersectionObserver の知らせ先。 */
 let intersect: IntersectionObserverCallback | undefined;
 /** 作られた IntersectionObserver の数。 */
 let observers = 0;
 
 /**
- * reachEnd は格子の末尾の見張りが画面に近づいたことにする。見張りは描いた後の effect で付くので、
- * カードが出た直後にはまだ無いことがある。付くのを待ってから知らせる。
+ * reachEnd は格子の末尾の見張りが画面に近づいたことにする。見張りは描画の後の effect で
+ * 付くので、カードが見えた時点ではまだ無いことがある。付くのを待ってから知らせる。
  */
 async function reachEnd() {
   await waitFor(() => expect(intersect).toBeDefined());
@@ -180,12 +180,17 @@ beforeEach(() => {
   vi.stubGlobal(
     "IntersectionObserver",
     class {
+      private readonly callback: IntersectionObserverCallback;
       constructor(callback: IntersectionObserverCallback) {
-        intersect = callback;
+        this.callback = callback;
         observers += 1;
       }
-      observe() {}
-      disconnect() {}
+      observe() {
+        intersect = this.callback;
+      }
+      disconnect() {
+        if (intersect === this.callback) intersect = undefined;
+      }
     },
   );
   install();
@@ -415,10 +420,9 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
     await reachEnd();
     await waitFor(() => expect(cards()).toHaveLength(5));
     expect(server.listUrls).toHaveLength(3);
-    // 続きが無くなれば見張りを付け直さず、同じ要求を繰り返さない。
-    const seen = observers;
-    await reachEnd();
-    expect(observers).toBe(seen);
+    // 続きが無くなれば見張りを外して付け直さず、同じ要求を繰り返さない。
+    await waitFor(() => expect(intersect).toBeUndefined());
+    expect(observers).toBe(2);
     expect(server.listUrls).toHaveLength(3);
     expect(document.querySelector('[data-slot="load-more-row"]')).toBeNull();
   });

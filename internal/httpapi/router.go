@@ -257,6 +257,11 @@ type Options struct {
 	MediaFolders MediaFolders
 	// Tags はタグの取得と個別操作。nilなら該当経路は500を返す。
 	Tags Tags
+	// Credits は人物と団体の保存先。nilなら /api/people* と /api/organizations* は500を返す。
+	Credits Credits
+	// WorkInfo は動画の作品情報の保存先。nilなら作品情報の書き込みの経路は500を返し、
+	// 動画1件の応答に workInfo が載らない。
+	WorkInfo WorkInfo
 	// Visibility は動画の公開フラグの保存先。nilなら切り替えの経路は500を返す。
 	Visibility Visibility
 	// Favorites はお気に入りの保存先。nilなら付け外しの経路は500を返す。
@@ -356,6 +361,8 @@ type server struct {
 	scans        Scans
 	mediaFolders MediaFolders
 	tags         Tags
+	credits      Credits
+	workInfo     WorkInfo
 	visibility   Visibility
 	favorites    Favorites
 	playlists    Playlists
@@ -412,6 +419,7 @@ type server struct {
 //	/api/folders*    → JSON（同上）
 //	/api/library*    → JSON（同上）
 //	/api/tags*       → JSON（同上）
+//	/api/people*・/api/organizations* → JSON（所有者が管理する人物と団体。同上）
 //	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
 //	/api/settings/*  → JSON（所有者が設定画面で選ぶ値。同上）
 //	/api/api-tokens* → JSON（所有者が設定画面で管理する API トークン。同上）
@@ -440,6 +448,8 @@ func NewRouter(opts Options) http.Handler {
 		scans:                  opts.Scans,
 		mediaFolders:           opts.MediaFolders,
 		tags:                   opts.Tags,
+		credits:                opts.Credits,
+		workInfo:               opts.WorkInfo,
 		visibility:             opts.Visibility,
 		favorites:              opts.Favorites,
 		playlists:              opts.Playlists,
@@ -575,13 +585,21 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 }
 
 func requiresJSONBody(r *http.Request) bool {
+	return requiresCreditJSONBody(r.Method, r.URL.Path) || requiresOtherJSONBody(r)
+}
+
+// requiresOtherJSONBody は人物と団体の経路（requiresCreditJSONBody）を除く、本文を持つ経路を返す。
+func requiresOtherJSONBody(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost:
 		switch r.URL.Path {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
 			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 			"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists", "/api/groups":
+			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists", "/api/groups",
+			"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
+			"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
+			"/api/v1/organizations/merge", "/api/v1/organizations/delete":
 			return true
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/"); ok {
@@ -629,7 +647,7 @@ func requiresJSONBody(r *http.Request) bool {
 		}
 		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/"); ok {
 			id, rest, found := strings.Cut(suffix, "/")
-			return found && id != "" && (rest == "progress" || rest == "display-name" || rest == "thumbnail-position")
+			return found && id != "" && isVideoJSONPut(rest)
 		}
 	case http.MethodPatch:
 		// PATCH /api/playlists/{id}（specs/044-playlists/contracts/screen-api.md）。
@@ -667,6 +685,46 @@ func groupItemsBodyPath(segments []string) bool {
 		return segments[2] == "remove"
 	case 4:
 		return segments[2] != "" && segments[3] == "move"
+	}
+	return false
+}
+
+// isVideoJSONPut は PUT /api/videos/{id}/<rest> のうち本文を持つものかを返す。
+func isVideoJSONPut(rest string) bool {
+	switch rest {
+	case "progress", "display-name", "thumbnail-position", "work-info", "details":
+		return true
+	}
+	return false
+}
+
+// requiresCreditJSONBody は人物と団体の経路のうち本文を持つもの（POST /api/people、
+// PATCH /api/people/{id}、POST /api/people/{id}/merge と団体の同じ 3 つ）を返す
+// （specs/047-video-work-info/contracts/screen-api.md「People and organizations」）。
+func requiresCreditJSONBody(method, path string) bool {
+	var rest string
+	found := false
+	for _, prefix := range []string{"/api/people", "/api/organizations"} {
+		if suffix, ok := strings.CutPrefix(path, prefix); ok {
+			rest, found = suffix, true
+			break
+		}
+	}
+	if !found {
+		return false
+	}
+	if rest == "" {
+		return method == http.MethodPost
+	}
+	segments := strings.Split(strings.TrimPrefix(rest, "/"), "/")
+	if !strings.HasPrefix(rest, "/") || segments[0] == "" {
+		return false
+	}
+	switch len(segments) {
+	case 1:
+		return method == http.MethodPatch
+	case 2:
+		return method == http.MethodPost && segments[1] == "merge"
 	}
 	return false
 }

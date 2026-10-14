@@ -123,7 +123,7 @@ func moveLocation(t *testing.T, db *DB, from, to, key string) {
 // 移行は今のフォルダグループごとに、その名前、利用者データの鍵のメンバー、その順番を持つ
 // グループを 1 つ作る。Down は表を落とす。
 func TestGroupsMigrationSeedsFromFolderGroups(t *testing.T) {
-	db, provider := migrateTo(t, 41)
+	db, provider := migrateTo(t, 42)
 	ctx := context.Background()
 	for _, key := range []string{"key-a", "key-b", "key-c", "", "key-d"} {
 		execSQL(t, db, `insert into videos(content_key, probe_state, thumbnail_state, preview_state, seek_thumbnail_state)
@@ -138,7 +138,7 @@ func TestGroupsMigrationSeedsFromFolderGroups(t *testing.T) {
 	execSQL(t, db, `insert into folder_group_members (video_id, group_id, position) values
 		(2, 10, 0), (4, 10, 1), (3, 10, 2), (1, 10, 3), (5, 20, 0)`)
 
-	if _, err := provider.UpTo(ctx, 42); err != nil {
+	if _, err := provider.UpTo(ctx, 43); err != nil {
 		t.Fatal(err)
 	}
 	groups := readGroups(t, db)
@@ -158,7 +158,7 @@ func TestGroupsMigrationSeedsFromFolderGroups(t *testing.T) {
 	}
 	assertGroupPositions(t, db)
 
-	if _, err := provider.DownTo(ctx, 41); err != nil {
+	if _, err := provider.DownTo(ctx, 42); err != nil {
 		t.Fatal(err)
 	}
 	var tables int
@@ -174,11 +174,11 @@ func TestGroupsMigrationSeedsFromFolderGroups(t *testing.T) {
 // 旧 folder_groups.name には長さの上限が無い。101 文字以上の名前は、同期が新しく作るときと同じく
 // 先頭 100 文字に切り、title_key も切った名前から作る。境目をまたぐ数字の並びも切った名前で数える。
 func TestGroupsMigrationCutsLongFolderGroupNames(t *testing.T) {
-	db, provider := migrateTo(t, 41)
+	db, provider := migrateTo(t, 42)
 	long := strings.Repeat("あ", 99) + "12 end"
 	execSQL(t, db, `insert into folder_groups (id, path_key, path, name, title_key) values (10, '/m/long', '/m/long', ?, ?)`,
 		long, domain.NaturalSortKey(long))
-	if _, err := provider.UpTo(context.Background(), 42); err != nil {
+	if _, err := provider.UpTo(context.Background(), 43); err != nil {
 		t.Fatal(err)
 	}
 	var name, titleKey string

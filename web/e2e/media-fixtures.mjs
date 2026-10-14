@@ -460,6 +460,30 @@ export function generateTagsFixtures(root) {
 }
 
 /**
+ * WORK_INFO_VIDEOS は generateWorkInfoFixtures が作る動画の題名で、作品情報の流れ
+ * （specs/047-video-work-info、子 #1030）を web/e2e/work-info.e2e.ts で確かめる。
+ * 作品情報は中身を見ないので、色合いだけを変えた短い無音のクリップで足りる。
+ */
+export const WORK_INFO_VIDEOS = ["作品動画A", "作品動画B", "作品動画C", "作品動画D"];
+
+export function generateWorkInfoFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  WORK_INFO_VIDEOS.forEach((title, index) =>
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=10:duration=2",
+      "-vf",
+      `hue=h=${String(40 + index * 80)}`,
+      ...h264,
+      "-an",
+      path.join(root, `${title}.mp4`),
+    ]),
+  );
+}
+
+/**
  * generateTagsFixtures が作る動画の本数（タグ動画A〜D と、タグ埋めの動画）。
  * web/e2e/tags.e2e.ts の videoCount と同じ数にする。
  */

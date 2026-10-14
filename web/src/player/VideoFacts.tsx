@@ -41,7 +41,9 @@ import { factTrigger } from "./factTrigger";
 import { technicalSummary } from "./properties";
 import EditEntry from "./thumbnailEdit/EditEntry";
 import UploadEntry, { useThumbnailUpload } from "./thumbnailUpload/UploadEntry";
+import DetailsEntry, { type DetailsEntryProps } from "./detailsEditor/DetailsEntry";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
+import WorkInfo from "./WorkInfo";
 
 /**
  * useOpenFile はサーバーの PC で動画ファイルを開き、開けなかったときの文言を持つ。
@@ -269,6 +271,7 @@ export default function VideoFacts({
   onFavorite,
   versions,
   onEditingChange,
+  details,
 }: {
   video: Video;
   owner?: boolean;
@@ -286,6 +289,8 @@ export default function VideoFacts({
   };
   /** サムネイルの編集画面を開いた・閉じた。 */
   onEditingChange?: (open: boolean) => void;
+  /** 作品情報の編集画面の入口に載せる戻り先と、開いたときに入口へフォーカスを置くか。 */
+  details?: DetailsEntryProps["details"];
 }) {
   const [failure, setFailure] = useState<UiText | null>(null);
   useEffect(() => setFailure(null), [video.id]);
@@ -393,6 +398,9 @@ export default function VideoFacts({
                 videoIds={[video.id]}
               />
             )}
+            {/* 「Add to group」の後、サムネイルの操作の前に置く。所有者にだけ、プレイヤーが
+                出ていなくても置く（specs/047-video-work-info/ui-design.md「Video page: entry」）。 */}
+            <DetailsEntry video={video} owner={owner} details={details} />
             {owner && capture !== undefined && (
               <CaptureButton
                 capture={capture}
@@ -443,6 +451,8 @@ export default function VideoFacts({
           {failure}
         </p>
       )}
+      {/* 作品情報の行は、ファイルの行（と失敗の行）の後、技術の行の前に置く。 */}
+      <WorkInfo info={video.workInfo} />
       <TechnicalLine summary={technical} />
     </div>
   );

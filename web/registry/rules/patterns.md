@@ -13,16 +13,17 @@ sample text and data with the screen's own, keeping the structure.
 
 ## Choosing the skeleton
 
-| The screen                                                 | Skeleton         | Item               | Example block              |
-| ---------------------------------------------------------- | ---------------- | ------------------ | -------------------------- |
-| Lists many items the viewer browses, filters and selects   | `ListPage`       | `list-page`        | `list-page-example`        |
-| Manages records in rows with bulk actions                  | `AdminTablePage` | `admin-table-page` | `admin-table-page-example` |
-| Changes settings, one value per row                        | `SettingsPage`   | `settings-page`    | `settings-page-example`    |
-| Shows one item to view, with its facts beside it           | `DetailPage`     | `detail-page`      | `detail-page-example`      |
-| Exists only to submit one form (sign-in, first setup)      | `CenteredForm`   | `centered-form`    | `centered-form-example`    |
-| Asks for a few values without leaving the current screen   | `FormDialog`     | `form-dialog`      | `form-dialog-example`      |
-| Asks the viewer to confirm an action that cannot be undone | `ConfirmDialog`  | `confirm-dialog`   | `confirm-dialog-example`   |
-| Works on one image that needs the whole window             | `EditorDialog`   | `editor-dialog`    | `editor-dialog-example`    |
+| The screen                                                  | Skeleton         | Item               | Example block              |
+| ----------------------------------------------------------- | ---------------- | ------------------ | -------------------------- |
+| Lists many items the viewer browses, filters and selects    | `ListPage`       | `list-page`        | `list-page-example`        |
+| Manages records in rows with bulk actions                   | `AdminTablePage` | `admin-table-page` | `admin-table-page-example` |
+| Changes settings, one value per row                         | `SettingsPage`   | `settings-page`    | `settings-page-example`    |
+| Shows one item to view, with its facts beside it            | `DetailPage`     | `detail-page`      | `detail-page-example`      |
+| Exists only to submit one form (sign-in, first setup)       | `CenteredForm`   | `centered-form`    | `centered-form-example`    |
+| Asks for a few values without leaving the current screen    | `FormDialog`     | `form-dialog`      | `form-dialog-example`      |
+| Asks the viewer to confirm an action that cannot be undone  | `ConfirmDialog`  | `confirm-dialog`   | `confirm-dialog-example`   |
+| Works on one image that needs the whole window              | `EditorDialog`   | `editor-dialog`    | `editor-dialog-example`    |
+| Fills in many values saved together, on a screen of its own | `FormPage`       | `form-page`        | `form-page-example`        |
 
 The states of a list or table are shown in `list-states-example`.
 
@@ -111,7 +112,8 @@ the header and then `PageSection`s `gap-8` apart.
   sign out) is an `outline` `sm` button in its own `FormRow`.
 
 Do not put a save button at the end of the page: each row takes effect when it
-changes. A group of values saved together belongs in a `FormDialog`.
+changes. A group of values saved together belongs in a `FormDialog`, or in a
+`FormPage` when it is more than a few.
 
 ## Detail page
 
@@ -207,6 +209,33 @@ that had it before, and `initialFocus` names the element focused on open.
 
 Use it for a task on one image that needs the whole window, such as painting
 over a video frame or comparing two images. A form stays a `FormDialog`.
+
+## Form page
+
+Item `form-page`. `FormPage` is a page of its own, not a dialog, that fills
+the window on `bg-background` for a form of many values saved together. A
+header band `navbar` high, sticky at the top at every width, with a bottom
+border and `bg-background/90 backdrop-blur-md`, holds the `title` (the page's
+`h1`, `text-lg font-semibold`), a muted `detail` after it (`text-sm`,
+truncated, hidden below `sm`) and the `actions` at its right end. Under the
+band sit the `notice` and then the body, `px-4` (`px-6` from `sm`) and `py-6`.
+
+| Width      | Layout                                                                                                                                                                                                         |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| From `lg`  | `grid-cols-form-page`: the `aside` a column `form-page-aside` wide at the left, then the two panels in the ratio 5:6, `gap-6` apart. The page keeps the viewport's height and each panel scrolls inside itself |
+| Below `lg` | The aside and the panels stack in that order, `gap-6` apart, and the page scrolls as one under the band                                                                                                        |
+
+| Slot      | Put in it                                                                                                                               | Never                                         |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------- |
+| `actions` | `Cancel` (`ghost` `sm`) then the one `default` `sm` button that saves                                                                   | A close `×`, a logo or a breadcrumb           |
+| `notice`  | The failure line of the save (`role="alert"`, `text-sm text-destructive`), so it stays under the band that holds the save               | Field errors; they go under their field       |
+| `aside`   | What is being edited, read only: an image, a name and its facts, and the link back; named by `asideLabel`                               | Inputs                                        |
+| `panels`  | Up to two, each a `legend` and its `content`: the fields in the order they are filled; the skeleton wraps each in a `FieldSet`, `gap-4` | A card or a border around a panel             |
+| `status`  | A state block (`ErrorState`) in place of the columns when the values could not be loaded                                                | The loading layout; draw `Skeleton`s in place |
+
+Library density: `sm` controls. Use it when a form has more than a few fields
+or holds lists of chips, so it would scroll inside a `FormDialog`. Leaving
+with unsaved changes asks first with a `ConfirmDialog`.
 
 ## Sections
 
