@@ -184,11 +184,18 @@ function pruned(hidden: ReadonlySet<string>, items: readonly LibraryItem[]) {
   return kept.size === hidden.size ? hidden : kept;
 }
 
+/** without は `hidden` から `keys` を除く。 */
+function without(hidden: ReadonlySet<string>, keys: readonly string[]) {
+  return new Set(Array.from(hidden).filter((key) => !keys.includes(key)));
+}
+
 /**
  * useLibraryMoves はライブラリでグループへ落とした項目を移す（research.md R-8）。落とした
- * 項目はすぐ一覧から隠し、選択を解き、`move` を送る。受け入れられたら「Undo」付きの通知を
- * 出して一覧をその場で読み直し、失敗したら隠した項目を戻して知らせる。隠した項目は、
- * 読み直した一覧から消えたら覚えるのをやめ、取り消しの後はすべて見せる。
+ * 項目はすぐ一覧から隠し、選択を解き、`move` を送る。要求は落とした順に 1 つずつ送るので、
+ * 「Undo」の通知はいつも最後に落とした移動のものになる。受け入れられたら「Undo」付きの通知を
+ * 出して一覧をその場で読み直し、失敗したら隠した項目を戻して知らせる。画面を離れた後は
+ * どちらの通知も出さない。隠した項目は、読み直した一覧から消えたら覚えるのをやめ、取り消しの
+ * 後は、まだ答えを待っている移動の項目を除いてすべて見せる。
  */
 export function useLibraryMoves(
   items: readonly LibraryItem[],
@@ -198,6 +205,9 @@ export function useLibraryMoves(
   const toast = useToast();
   const [hidden, setHidden] = useState<ReadonlySet<string>>(noKeys);
   const shown = useRef(true);
+  /** 落とした順に移動を送る鎖と、答えを待っている移動の項目の鍵。 */
+  const chain = useRef<Promise<void>>(Promise.resolve());
+  const pending = useRef(new Set<string>());
   useEffect(() => {
     shown.current = true;
     return () => {
@@ -210,7 +220,7 @@ export function useLibraryMoves(
   }, [items]);
 
   const afterUndo = useCallback(() => {
-    setHidden(noKeys);
+    setHidden(pending.current.size === 0 ? noKeys : new Set(pending.current));
     refreshInPlace();
   }, [refreshInPlace]);
   const { offer } = useUndoToast(afterUndo);
@@ -219,21 +229,27 @@ export function useLibraryMoves(
     (moved: readonly LibraryItem[], to: LibraryGroup) => {
       if (moved.length === 0) return;
       const keys = moved.map(itemKey);
+      for (const key of keys) pending.current.add(key);
+      const settle = () => {
+        for (const key of keys) pending.current.delete(key);
+      };
       setHidden((current) => new Set([...current, ...keys]));
       clearSelection();
-      moveCards(moved.map(refOf), { from: null, to: to.id }).then(
-        ({ undoToken }) => {
-          if (!shown.current) return;
-          offer(t.organize.done.moved(moved.length, to.name), undoToken);
-          refreshInPlace();
-        },
-        (error: unknown) => {
-          setHidden(
-            (current) =>
-              new Set(Array.from(current).filter((key) => !keys.includes(key))),
-          );
-          toast(t.organize.failed.move(errorText(error)));
-        },
+      chain.current = chain.current.then(() =>
+        moveCards(moved.map(refOf), { from: null, to: to.id }).then(
+          ({ undoToken }) => {
+            settle();
+            if (!shown.current) return;
+            offer(t.organize.done.moved(moved.length, to.name), undoToken);
+            refreshInPlace();
+          },
+          (error: unknown) => {
+            settle();
+            if (!shown.current) return;
+            setHidden((current) => without(current, keys));
+            toast(t.organize.failed.move(errorText(error)));
+          },
+        ),
       );
     },
     [clearSelection, offer, refreshInPlace, toast],

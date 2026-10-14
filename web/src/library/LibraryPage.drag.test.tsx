@@ -70,6 +70,8 @@ interface Server {
   moveAnswer: (() => Response) | null;
   /** 取り消しのトークンごとの、操作の前の一覧。 */
   undo: Map<string, LibraryItem[]>;
+  /** 置くと次の POST /api/organize/move 1 つは、これが解けるまで答えない。 */
+  hold: Promise<void> | null;
 }
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -77,7 +79,7 @@ const fetchMock = vi.fn<typeof fetch>();
 /** move は POST /api/organize/move を受け、動かした項目を一覧から外す。 */
 function move(server: Server, body: { items: { kind: string; id: number }[] }) {
   if (server.moveAnswer !== null) return server.moveAnswer();
-  const token = `token-${String(server.undo.size + 1)}`;
+  const token = `token-${body.items.map((ref) => String(ref.id)).join(",")}`;
   server.undo.set(token, server.items);
   server.items = server.items.filter(
     (item) =>
@@ -91,7 +93,13 @@ function move(server: Server, body: { items: { kind: string; id: number }[] }) {
 }
 
 function install(items: LibraryItem[]): Server {
-  const server: Server = { items, writes: [], moveAnswer: null, undo: new Map() };
+  const server: Server = {
+    items,
+    writes: [],
+    moveAnswer: null,
+    undo: new Map(),
+    hold: null,
+  };
   fetchMock.mockImplementation((input, init) => {
     const url = new URL(String(input), "http://localhost");
     const body =
@@ -109,7 +117,9 @@ function install(items: LibraryItem[]): Server {
     }
     if (url.pathname === "/api/organize/move") {
       server.writes.push({ path: url.pathname, body });
-      return Promise.resolve(move(server, body as Parameters<typeof move>[1]));
+      const hold = server.hold ?? Promise.resolve();
+      server.hold = null;
+      return hold.then(() => move(server, body as Parameters<typeof move>[1]));
     }
     if (url.pathname === "/api/organize/undo") {
       server.writes.push({ path: url.pathname, body });
@@ -193,6 +203,27 @@ function cardTitles(): string[] {
   return Array.from(document.querySelectorAll("article")).map(
     (card) => card.querySelector("h3")?.textContent ?? "",
   );
+}
+
+/** held は次の move を止め、止めを解く関数を返す。 */
+function held(server: Server): () => Promise<void> {
+  let open = () => {};
+  server.hold = new Promise((resolve) => {
+    open = resolve;
+  });
+  return async () => {
+    open();
+    await act(async () => {
+      await Promise.resolve();
+    });
+  };
+}
+
+/** afterDrag は落とした後に dnd-kit がクリックを止める間（50ms）を待つ。 */
+async function afterDrag() {
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 60));
+  });
 }
 
 function moves(server: Server) {
@@ -350,6 +381,82 @@ describe("LibraryPage drag into a group", () => {
     expect(await screen.findByText(/^Couldn't move:/)).toBeDefined();
     expect(cardTitles()).toEqual(["Clip 1", "Trip", "Clip 2", "Clip 3"]);
     expect(screen.queryByRole("button", { name: "Undo" })).toBeNull();
+  });
+
+  it("前の move が答えるまで次の move を送らず、Undo は最後に落とした移動を取り消す", async () => {
+    const server = library();
+    await openLibrary();
+    const open = held(server);
+    lift("Clip 1", 0);
+    moveTo(1);
+    release(1);
+    // Clip 1 が隠れたので Trip が先頭、Clip 2 が 2 番目にある。
+    lift("Clip 2", 1);
+    moveTo(0);
+    release(0);
+
+    expect(cardTitles()).toEqual(["Trip", "Clip 3"]);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(moves(server)).toEqual([{ items: [{ kind: "video", id: 1 }], to: 7 }]);
+
+    await open();
+    await waitFor(() =>
+      expect(moves(server)).toEqual([
+        { items: [{ kind: "video", id: 1 }], to: 7 },
+        { items: [{ kind: "video", id: 2 }], to: 7 },
+      ]),
+    );
+    await waitFor(() => expect(server.items).toHaveLength(2));
+    fireEvent.click(await screen.findByRole("button", { name: "Undo" }));
+
+    await screen.findByText("Undone");
+    expect(server.writes.at(-1)?.body).toEqual({ token: "token-2" });
+  });
+
+  it("取り消しても、答えを待っている移動のカードは隠したままにする", async () => {
+    const server = library();
+    await openLibrary();
+    lift("Clip 1", 0);
+    moveTo(1);
+    release(1);
+    await screen.findByText('Moved 1 item to "Trip"');
+    await waitFor(() => expect(cardTitles()).toEqual(["Trip", "Clip 2", "Clip 3"]));
+
+    const open = held(server);
+    lift("Clip 2", 1);
+    moveTo(0);
+    release(0);
+    expect(cardTitles()).toEqual(["Trip", "Clip 3"]);
+    await afterDrag();
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+
+    await screen.findByText("Undone");
+    await waitFor(() => expect(cardTitles()).toEqual(["Clip 1", "Trip", "Clip 3"]));
+    await open();
+    await waitFor(() => expect(moves(server)).toHaveLength(2));
+  });
+
+  it("ライブラリを離れた後に失敗した move は、行った先で知らせない", async () => {
+    const server = library();
+    server.moveAnswer = () => json({ code: "internal", message: "x" }, 500);
+    await openLibrary();
+    const open = held(server);
+    lift("Clip 1", 0);
+    moveTo(1);
+    release(1);
+    await waitFor(() => expect(moves(server)).toHaveLength(1));
+    await afterDrag();
+
+    fireEvent.click(screen.getByRole("link", { name: "Clip 3" }));
+    await screen.findByText("Player");
+    await open();
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.queryByText(/^Couldn't move:/)).toBeNull();
   });
 
   it("リストの行も、グループの行に落とすと to 付きの move を送る", async () => {
