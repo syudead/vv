@@ -32,7 +32,13 @@ sequenceDiagram
 
 ## Steps
 
-1. Write the plugin as a Go `main` package. It reads the
+1. In a new directory, create a Go module for the plugin:
+
+   ```bash
+   go mod init example.com/title-plugin
+   ```
+
+2. Write the plugin as `main.go`, a Go `main` package. It reads the
    [request](#request) from standard input, calls the
    [host functions](#host-functions) for HTTP, and writes the
    [response](#response) to standard output. This one fetches the work's page
@@ -42,11 +48,11 @@ sequenceDiagram
    package main
 
    import (
-   	"encoding/json"
-   	"html"
-   	"os"
-   	"regexp"
-   	"unsafe"
+       "encoding/json"
+       "html"
+       "os"
+       "regexp"
+       "unsafe"
    )
 
    //go:wasmimport vv http_send
@@ -59,78 +65,78 @@ sequenceDiagram
    func httpBody(handle int32, buf unsafe.Pointer, bufCap uint32) int32
 
    type request struct {
-   	Operation string            `json:"operation"`
-   	URL       string            `json:"url"`
-   	Settings  map[string]string `json:"settings"`
+       Operation string            `json:"operation"`
+       URL       string            `json:"url"`
+       Settings  map[string]string `json:"settings"`
    }
 
    var titleTag = regexp.MustCompile(`(?is)<title[^>]*>(.*?)</title>`)
 
    func main() {
-   	var req request
-   	if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil {
-   		fail("unreadable request")
-   		return
-   	}
-   	page, ok := get(req.URL)
-   	if !ok {
-   		fail("could not read " + req.URL)
-   		return
-   	}
-   	info := map[string]any{}
-   	if m := titleTag.FindSubmatch(page); m != nil {
-   		info["title"] = html.UnescapeString(string(m[1]))
-   	}
-   	reply(map[string]any{"workInfo": info})
+       var req request
+       if err := json.NewDecoder(os.Stdin).Decode(&req); err != nil {
+           fail("unreadable request")
+           return
+       }
+       page, ok := get(req.URL)
+       if !ok {
+           fail("could not read " + req.URL)
+           return
+       }
+       info := map[string]any{}
+       if m := titleTag.FindSubmatch(page); m != nil {
+           info["title"] = html.UnescapeString(string(m[1]))
+       }
+       reply(map[string]any{"workInfo": info})
    }
 
    // get sends a GET request and returns the body of a 200 response.
    func get(url string) ([]byte, bool) {
-   	req, _ := json.Marshal(map[string]string{"method": "GET", "url": url})
-   	handle := httpSend(unsafe.Pointer(&req[0]), uint32(len(req)))
-   	if handle < 0 {
-   		return nil, false
-   	}
-   	var meta struct {
-   		Status int `json:"status"`
-   	}
-   	if json.Unmarshal(read(httpMeta, handle), &meta) != nil || meta.Status != 200 {
-   		return nil, false
-   	}
-   	return read(httpBody, handle), true
+       req, _ := json.Marshal(map[string]string{"method": "GET", "url": url})
+       handle := httpSend(unsafe.Pointer(&req[0]), uint32(len(req)))
+       if handle < 0 {
+           return nil, false
+       }
+       var meta struct {
+           Status int `json:"status"`
+       }
+       if json.Unmarshal(read(httpMeta, handle), &meta) != nil || meta.Status != 200 {
+           return nil, false
+       }
+       return read(httpBody, handle), true
    }
 
    // read asks for the length with an empty buffer, then reads into a buffer of that size.
    func read(fn func(int32, unsafe.Pointer, uint32) int32, handle int32) []byte {
-   	var probe [1]byte
-   	n := fn(handle, unsafe.Pointer(&probe[0]), 0)
-   	if n <= 0 {
-   		return nil
-   	}
-   	buf := make([]byte, n)
-   	fn(handle, unsafe.Pointer(&buf[0]), uint32(n))
-   	return buf
+       var probe [1]byte
+       n := fn(handle, unsafe.Pointer(&probe[0]), 0)
+       if n <= 0 {
+           return nil
+       }
+       buf := make([]byte, n)
+       fn(handle, unsafe.Pointer(&buf[0]), uint32(n))
+       return buf
    }
 
    func fail(message string) {
-   	reply(map[string]any{"error": map[string]any{"message": message}})
+       reply(map[string]any{"error": map[string]any{"message": message}})
    }
 
    func reply(v any) {
-   	_ = json.NewEncoder(os.Stdout).Encode(v)
+       _ = json.NewEncoder(os.Stdout).Encode(v)
    }
    ```
 
    Report a failure as an `error` response and exit normally: a non-zero exit
    also fails the run, but the owner then sees no message.
 
-2. Build the module:
+3. Build the module:
 
    ```bash
    GOOS=wasip1 GOARCH=wasm go build -o plugin.wasm .
    ```
 
-3. Write the [manifest](#manifest) as `manifest.json`:
+4. Write the [manifest](#manifest) as `manifest.json`:
 
    ```json
    {
@@ -142,7 +148,7 @@ sequenceDiagram
    }
    ```
 
-4. Save this program as `addsection/main.go`. It appends the manifest to the
+5. Save this program as `addsection/main.go`. It appends the manifest to the
    module as a custom section named `vv.plugin`:
 
    ```go
@@ -151,41 +157,41 @@ sequenceDiagram
    package main
 
    import (
-   	"encoding/binary"
-   	"log"
-   	"os"
+       "encoding/binary"
+       "log"
+       "os"
    )
 
    func main() {
-   	module, err := os.ReadFile(os.Args[1])
-   	if err != nil {
-   		log.Fatal(err)
-   	}
-   	manifest, err := os.ReadFile(os.Args[2])
-   	if err != nil {
-   		log.Fatal(err)
-   	}
-   	const name = "vv.plugin"
-   	payload := binary.AppendUvarint(nil, uint64(len(name)))
-   	payload = append(payload, name...)
-   	payload = append(payload, manifest...)
-   	module = append(module, 0) // custom section id
-   	module = binary.AppendUvarint(module, uint64(len(payload)))
-   	module = append(module, payload...)
-   	if err := os.WriteFile(os.Args[1], module, 0o644); err != nil {
-   		log.Fatal(err)
-   	}
+       module, err := os.ReadFile(os.Args[1])
+       if err != nil {
+           log.Fatal(err)
+       }
+       manifest, err := os.ReadFile(os.Args[2])
+       if err != nil {
+           log.Fatal(err)
+       }
+       const name = "vv.plugin"
+       payload := binary.AppendUvarint(nil, uint64(len(name)))
+       payload = append(payload, name...)
+       payload = append(payload, manifest...)
+       module = append(module, 0) // custom section id
+       module = binary.AppendUvarint(module, uint64(len(payload)))
+       module = append(module, payload...)
+       if err := os.WriteFile(os.Args[1], module, 0o644); err != nil {
+           log.Fatal(err)
+       }
    }
    ```
 
-5. Add the section to the freshly built module. Run it once per build, since
+6. Add the section to the freshly built module. Run it once per build, since
    each run appends another section:
 
    ```bash
    go run ./addsection plugin.wasm manifest.json
    ```
 
-6. In VVMDM, open **Settings**, choose **Add plugin** in the **Work-info
+7. In VVMDM, open **Settings**, choose **Add plugin** in the **Work-info
    plugins** section, and pick `plugin.wasm`. Review the plugin and approve
    it.
 
@@ -325,10 +331,10 @@ the refused host, whatever the plugin writes afterwards. VVMDM ignores
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `manifest_missing` | The module has no `vv.plugin` section | Run step 5 on the built module |
+| `manifest_missing` | The module has no `vv.plugin` section | Run step 6 on the built module |
 | `manifest_invalid` | The section is not a JSON object, or a field breaks a [Manifest](#manifest) rule | Fix `manifest.json`, rebuild, and add the section again |
 | `contract_unsupported` | `contract` is not `1` | Set `"contract": 1` |
-| `import_unsupported` | The module imports something other than WASI and `vv` functions, or uses another signature | Build for `wasip1` and declare the host functions as in step 1 |
+| `import_unsupported` | The module imports something other than WASI and `vv` functions, or uses another signature | Build for `wasip1` and declare the host functions as in step 2 |
 | `export_invalid` | `_start` or `memory` is missing or has another type | Build a command (`package main`) rather than a library |
 | `table_too_large` | The module's tables exceed 100,000 elements | Reduce the module's tables |
 | The fetch fails with `plugin_failed` and no message | The plugin exited non-zero or wrote output outside [Response](#response) | Write an `error` response and exit normally |
