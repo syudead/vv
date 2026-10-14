@@ -30,6 +30,7 @@ import { errorText, formatDate, formatDateTime, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
+import AddToGroupButton from "../groups/AddToGroupButton";
 import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { Button } from "../ui/shadcn/button";
@@ -381,6 +382,14 @@ export default function VideoFacts({
               <AddToPlaylistButton
                 variant="page"
                 label={t.playlists.add.label}
+                videoIds={[video.id]}
+              />
+            )}
+            {/* 「Add to playlist」の直後（specs/048-groups/ui-design.md「Add to group」）。 */}
+            {favorite !== undefined && (
+              <AddToGroupButton
+                variant="page"
+                label={t.list.card.addToGroup(video.title)}
                 videoIds={[video.id]}
               />
             )}

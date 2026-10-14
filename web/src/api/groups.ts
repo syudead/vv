@@ -2,6 +2,7 @@ import {
   apiFetch,
   type GroupDetail,
   type LibraryGroup,
+  MAX_PAGE_SIZE,
   request,
   toRequestFailed,
 } from "./client";
@@ -97,6 +98,26 @@ export function listGroups({
   return request<GroupListPage>(query === "" ? "/api/groups" : `/api/groups?${query}`, {
     signal,
   });
+}
+
+/** maxGroupListPages は listAllGroups が辿るページ数の上限である（最大の件数のページで）。 */
+const maxGroupListPages = 100;
+
+/**
+ * listAllGroups は見る人に見せるグループの全部を、`nextCursor` が尽きるまで最大の件数
+ * （MAX_PAGE_SIZE）のページで辿って取得する。名前で選ぶ「Add to group」のピッカーが、一覧の
+ * 全部を手元で絞るのに使う（specs/048-groups/ui-design.md「Add to group」）。
+ */
+export async function listAllGroups(signal?: AbortSignal): Promise<LibraryGroup[]> {
+  const groups: LibraryGroup[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < maxGroupListPages; page += 1) {
+    const answer = await listGroups({ cursor, limit: MAX_PAGE_SIZE, signal });
+    groups.push(...answer.groups);
+    cursor = answer.nextCursor;
+    if (cursor === undefined) break;
+  }
+  return groups;
 }
 
 /**

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { PlaylistSummary } from "../api/playlists";
-import { matchPlaylists, nameTooLong, resultText } from "./pickerRules";
+import { matchNames, nameTooLong, resultText } from "./pickerRules";
 
 function playlist(id: number, name: string): PlaylistSummary {
   return { id, name, itemCount: 0, updatedAt: "2026-10-01T00:00:00Z" };
@@ -27,9 +27,9 @@ describe("ピッカーの規則（specs/044-playlists/ui-design.md「Add to play
 
   it("打った文字を大文字小文字を区別せずに含むものを、API の順のまま返す", () => {
     const all = [playlist(3, "Tonight"), playlist(2, "Anime"), playlist(1, "night owl")];
-    expect(matchPlaylists(all, "").map((p) => p.id)).toEqual([3, 2, 1]);
-    expect(matchPlaylists(all, "NIGHT").map((p) => p.id)).toEqual([3, 1]);
-    expect(matchPlaylists(all, "zzz")).toEqual([]);
+    expect(matchNames(all, "").map((p) => p.id)).toEqual([3, 2, 1]);
+    expect(matchNames(all, "NIGHT").map((p) => p.id)).toEqual([3, 1]);
+    expect(matchNames(all, "zzz")).toEqual([]);
   });
 
   it("名前の上限は符号位置で 100 まで", () => {

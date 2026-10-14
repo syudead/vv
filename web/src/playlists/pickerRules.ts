@@ -1,7 +1,8 @@
-import type { PlaylistItemsAdded, PlaylistSummary } from "../api/playlists";
+import type { PlaylistItemsAdded } from "../api/playlists";
 import { t, type UiText } from "../i18n";
 
-// 「Add to playlist」のピッカーの規則（specs/044-playlists/ui-design.md「Add to playlist」）。
+// 「Add to playlist」と「Add to group」のピッカーの規則（specs/044-playlists/ui-design.md
+// 「Add to playlist」、specs/048-groups/ui-design.md「Add to group」）。
 
 /** maxNameLength はプレイリストの名前の上限（トリム後の符号位置の数、research.md R-11）。 */
 const maxNameLength = 100;
@@ -11,14 +12,14 @@ export function nameTooLong(trimmed: string): boolean {
   return Array.from(trimmed).length > maxNameLength;
 }
 
-/** matchPlaylists は名前に打った文字（大文字小文字を区別しない）を含むものを API の順に返す。 */
-export function matchPlaylists(
-  playlists: readonly PlaylistSummary[],
+/** matchNames は名前に打った文字（大文字小文字を区別しない）を含むものを読んだ順に返す。 */
+export function matchNames<T extends { name: string }>(
+  rows: readonly T[],
   trimmed: string,
-): PlaylistSummary[] {
-  if (trimmed === "") return [...playlists];
+): T[] {
+  if (trimmed === "") return [...rows];
   const needle = trimmed.toLowerCase();
-  return playlists.filter((playlist) => playlist.name.toLowerCase().includes(needle));
+  return rows.filter((row) => row.name.toLowerCase().includes(needle));
 }
 
 /** resultText は追加の応答 `added` と `existing` からトーストの 1 文を作る（「Words」）。 */

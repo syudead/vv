@@ -60,6 +60,13 @@ function folders(count: number): string {
   });
 }
 
+function groupsCount(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} group`,
+    other: `${formatNumber(count)} groups`,
+  });
+}
+
 function tagCount(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} tag`,
@@ -209,9 +216,8 @@ const errorReasons = {
     "The media folders were changed elsewhere. Reload and try again.",
   root_group_not_taggable: "A media folder's own group can't be turned into a tag.",
   folder_not_group: "This folder is no longer a group.",
-  group_target_not_found:
-    "A video, group or item was removed in the meantime. Reload and try again.",
-  group_cycle: "A group can't be put inside itself or a group inside it.",
+  group_target_not_found: "A video or group in the request no longer exists.",
+  group_cycle: "A group can't be put inside itself or inside a group it contains.",
   probe_info_missing: "This video is missing the information needed for this.",
   seek_preview_generating: "The seek preview is still being generated.",
   transcode_unavailable: "This video can't be converted for playback.",
@@ -700,6 +706,8 @@ export const en = {
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
       // プレイリストに足す操作の読み上げ名（specs/044-playlists/ui-design.md「Words」）。
       addToPlaylist: (title: string) => `Add "${title}" to a playlist`,
+      // グループに足す操作の読み上げ名（specs/048-groups/ui-design.md「Words」）。
+      addToGroup: (title: string) => `Add "${title}" to a group`,
       watchedRatio: "Watched portion",
       // 帯にいる間の時刻の表示。位置と長さは formatDuration で整えた文字列
       // （specs/032-card-scrub-preview/ui-design.md「Words」）。
@@ -760,6 +768,7 @@ export const en = {
       select: (name: string) => `Select the group "${name}"`,
       favorite: (name: string) => `Favorite group "${name}"`,
       addToPlaylist: (name: string) => `Add group "${name}" to a playlist`,
+      addToGroup: (name: string) => `Add group "${name}" to a group`,
       label: (name: string, count: number, watched: number) =>
         watched >= 1
           ? `${name}, group of ${videos(count)}, ${formatNumber(watched)} watched`
@@ -799,6 +808,9 @@ export const en = {
       favoritesRemoved: (count: number) => `Removed ${items(count)} from favorites`,
       favoritesFailed: (reason: string) => `Couldn't change the favorites: ${reason}`,
       addToPlaylist: "Add to playlist",
+      newGroup: "New group",
+      newGroupNeedsMore: "Select at least one video, or a group and something else",
+      addToGroup: "Add to group",
       visibility: "Visibility",
       makePublic: "Make public",
       makePrivate: "Make private",
@@ -1688,6 +1700,39 @@ export const en = {
   groups: {
     // 道筋の帯（Breadcrumb）の名前。
     trail: "Group path",
+    nameLabel: "Name",
+    // プレイリストの名前と同じ規則（research.md R-14）。
+    nameRule: "Use a name of 1 to 100 characters.",
+    created: (name: string) => `Created "${name}"`,
+    // 選択バーの「New group」の窓。説明は何がグループになるかを言う。グループ 1 つだけの選択では
+    // 開かないので、「1 group becomes one group」は出ない。
+    newDialog: {
+      title: "New group",
+      description: (videoCount: number, groupCount: number) => {
+        const parts: string[] = [];
+        if (videoCount > 0) parts.push(videos(videoCount));
+        if (groupCount > 0) parts.push(groupsCount(groupCount));
+        const verb = videoCount + groupCount === 1 ? "becomes" : "become";
+        return `${parts.join(" and ")} ${verb} one group`;
+      },
+      submit: "Create",
+      submitting: "Creating…",
+      failed: (reason: string) => `Couldn't create the group: ${reason}`,
+    },
+    // 「Add to group」のピッカー（カード・行・動画ページ・選択バーで共有）。
+    add: {
+      label: "Add to group",
+      search: "Search or create a group",
+      list: "Groups",
+      create: (name: string) => `Create "${name}"`,
+      none: "No groups yet. Type a name to create one.",
+      nameTooLong: "Use a name of up to 100 characters",
+      loading: "Loading…",
+      loadFailed: "Couldn't load the groups",
+      // 既にあるものはサーバーが数えずに飛ばすので、件数は言わない。
+      added: (name: string) => `Added to "${name}"`,
+      failed: (reason: string) => `Couldn't add to the group: ${reason}`,
+    },
     detail: {
       // 見出しの件数（「12 videos · 1:32:10」）。長さはサーバーの合計を formatDuration で
       // 整えた文字列で、分からなければ空にして件数だけにする。

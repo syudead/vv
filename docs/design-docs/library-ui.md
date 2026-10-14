@@ -361,15 +361,18 @@ flowchart LR
 A group is refetched with `GET /api/groups/{id}`.
 
 Left of the heart, in the same corner and shown exactly when the off heart is,
-the owner's `Add to playlist` control opens the playlist picker; it has no
-state, so the heart stays nearest the corner
-([`AddToPlaylistButton.tsx`](../../web/src/playlists/AddToPlaylistButton.tsx),
-[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist)).
+the owner's `Add to playlist` control opens the playlist picker, and left of
+it `Add to group` opens the group picker; neither has state, so the heart
+stays nearest the corner
+([`PickerButton.tsx`](../../web/src/library/PickerButton.tsx),
+[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist),
+[048 UI design, Add to group](../../specs/048-groups/ui-design.md#add-to-group)).
 
 ### List view and selection
 
-List view (library only) shows title, favorite (owner), add to playlist
-(owner, from `sm`; below it the card and the selection bar offer it), watched,
+List view (library only) shows title, favorite (owner), add to playlist and
+add to group (owner, from `sm`; below it the card and the selection bar offer
+them), watched,
 duration, quality, size and date added. A group row uses the
 same columns: first member's thumbnail, Folder marker and count under the
 title, `3 / 12` watched, total duration and size, empty quality
@@ -389,9 +392,10 @@ so they read on devices without hover; the design-system bar
 fit.
 
 Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
-`Favorite`, `Add to playlist`, `Visibility`, `Bundle as versions` (2 or more
-videos), a separator and `Select all`. The actions sit at the right end; those
-that do not fit move to the right end of the next line.
+`Favorite`, `Add to playlist`, `New group`, `Add to group`, `Visibility`,
+`Bundle as versions` (2 or more videos), a separator and `Select all`. The
+actions sit at the right end; those that do not fit move to the right end of
+the next line.
 
 Details: tag actions in
 [014 UI design, Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar),
@@ -399,8 +403,10 @@ the visibility menu in
 [016 UI design, Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar),
 `Favorite` and wrapping in
 [035 UI design, Selection bar](../../specs/035-favorites/ui-design.md#selection-bar),
-and `Add to playlist`, which sends what `Favorite` sends, in
-[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist).
+`Add to playlist`, which sends what `Favorite` sends, in
+[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist),
+and `New group` and `Add to group`, which send the same, in
+[048 UI design, Selection bar](../../specs/048-groups/ui-design.md#selection-bar).
 
 `Favorite` decides per selected group whether to send it as a group:
 
@@ -482,7 +488,8 @@ labels.
 | First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated or uploaded image is the thumbnail; actions at the right end |
 | Second | Resolution, container, codec separated by thin rules; smallest and most subdued |
 
-The actions are favorite, `Add to playlist`, `Use current frame as thumbnail`,
+The actions are favorite, `Add to playlist`, `Add to group`,
+`Use current frame as thumbnail`,
 `Edit thumbnail with ComfyUI`, `Upload an image as thumbnail`, `Open file` and
 `Copy path`: icon-only ghost buttons with tooltips. The ComfyUI entry opens the
 thumbnail editor, an `EditorDialog` over the page, and is dimmed with a set-up
@@ -508,7 +515,8 @@ The owner's favorite toggle opens the right-hand action group, left of
 it first; even so, it is no more prominent than the title: on is a small
 `bg-primary-soft` fill with the pink heart. It is absent on group rows and for
 guests ([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
-`Add to playlist` follows it, under the same conditions.
+`Add to playlist` and then `Add to group` follow it, under the same
+conditions.
 
 ```mermaid
 flowchart LR
