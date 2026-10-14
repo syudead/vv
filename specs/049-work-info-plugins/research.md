@@ -71,7 +71,7 @@ screen sees are in
 | --- | --- | --- |
 | Module size | 16 MiB | The upload is refused (`plugin_too_large`) |
 | Linear memory | 128 MiB (2048 pages) | The run traps |
-| Tables | Each table declares a maximum of at most 100,000 elements | The upload is refused (`table_too_large`) |
+| Tables | 100,000 elements each; a table without a declared maximum gets that maximum from vv before compiling | The upload is refused (`table_too_large`) when a table's minimum, or its declared maximum, exceeds 100,000 |
 | Run time | 30 s, HTTP included | The module is closed |
 | Standard output | 1 MiB | The run is stopped |
 | Standard error | 64 KiB kept, the rest discarded | Written to the server log only |
@@ -80,8 +80,14 @@ screen sees are in
 **Rationale**: wazero's page cap limits only linear memory, and a table's
 elements are host memory sized by the module's own declaration, so a module
 declaring a huge table could exhaust the process; vv reads the table section
-at inspection and requires a declared maximum (a Go `wasip1` program's table
-is fixed at its function count, well under the cap). Other compile-time
+at inspection and refuses a table whose minimum or declared maximum exceeds
+100,000 elements. A table without a declared maximum is not refused: Go's
+`wasip1` linker writes its function table with a minimum and no maximum
+(`cmd/link/internal/wasm/asm.go`, `writeTableSec`), so requiring one would
+reject every Go-built plugin. vv instead sets that table's maximum to 100,000
+before compiling, so the module cannot grow it past the cap at run time; a Go
+program's table minimum is its function count, well under the cap.
+Other compile-time
 allocations grow with the module's size, which the 16 MiB cap bounds. One run
 at a time bounds the plugins' memory to one module's cap, which a single-owner server can spare; the Go `wasip1` runtime needs
 headroom for its heap, so 64 MiB was too tight for a 1 MiB page parsed in
