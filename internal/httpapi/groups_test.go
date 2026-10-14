@@ -199,7 +199,8 @@ func TestAddGroupItemsStatuses(t *testing.T) {
 }
 
 // POST /api/groups/{id}/items/remove: 200 で外した後の値。グループに無い項目は 404
-// group_target_not_found で何も外さない。全部外したグループは本数 0 の値で返る。
+// group_target_not_found で何も外さない。全部外したグループは解散され、本文の無い 204 で、その後の
+// GET は 404。外した動画は残る。
 func TestRemoveGroupItemsStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	pair := f.groupID(t, "pair")
@@ -224,12 +225,12 @@ func TestRemoveGroupItemsStatuses(t *testing.T) {
 		t.Errorf("除去の応答 = %v", got.VideoIds)
 	}
 	rec = remove(mix.Id, ids[:2])
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusNoContent || rec.Body.Len() != 0 {
 		t.Fatalf("全部の除去: status = %d: %s", rec.Code, rec.Body)
 	}
-	if got := decode[gen.LibraryGroup](t, rec); got.Id != mix.Id || got.Name != "Mix" || got.VideoCount != 0 ||
-		len(got.VideoIds) != 0 || got.WatchState == nil || *got.WatchState != gen.LibraryGroupWatchStateUnwatched {
-		t.Errorf("空にした応答 = %+v", got)
+	f.assertGroupMissing(t, "空にしたグループ", mix.Id)
+	if rec := f.env.get(groupWritePath(pair, ""), f.owner); rec.Code != http.StatusOK {
+		t.Errorf("外した子グループ pair: status = %d, want 200", rec.Code)
 	}
 	if rec := f.env.get("/api/videos/"+strconv.FormatInt(f.ids["solo"], 10), f.owner); rec.Code != http.StatusOK {
 		t.Errorf("外した動画 solo: status = %d, want 200", rec.Code)
@@ -315,8 +316,8 @@ func TestListGroupsStatuses(t *testing.T) {
 	f.createGroup(t, "Emptied", []int64{f.ids["ep10"]}, nil)
 	emptied := decode[gen.GroupListPage](t, f.env.get("/api/groups?q=emptied", f.owner)).Groups[0].Id
 	ids, _ := f.groupItemIDs(t, emptied)
-	if rec := f.groupRequest(http.MethodPost, groupWritePath(emptied, "/items/remove"), groupJSON(map[string]any{"itemIds": ids}), f.owner); rec.Code != http.StatusOK {
-		t.Fatalf("空にする: status = %d: %s", rec.Code, rec.Body)
+	if rec := f.groupRequest(http.MethodPost, groupWritePath(emptied, "/items/remove"), groupJSON(map[string]any{"itemIds": ids}), f.owner); rec.Code != http.StatusNoContent {
+		t.Fatalf("空にする（解散）: status = %d: %s", rec.Code, rec.Body)
 	}
 
 	rec := f.env.get("/api/groups", f.owner)
@@ -414,8 +415,9 @@ func TestGroupWritesCountLimitBeforeDeduplicating(t *testing.T) {
 	}
 }
 
-// お気に入りの自動グループから項目を全部外しても、応答の favorite はお気に入りのまま true である。
-func TestRemovingEveryItemKeepsGroupFavorite(t *testing.T) {
+// お気に入りの自動グループから項目を全部外すと、そのグループは解散されて（204）お気に入りからも
+// 消え、フォルダの grouping は ungroup になる（specs/048-groups/data-model.md「Edits」の Remove）。
+func TestRemovingEveryItemDissolvesGroup(t *testing.T) {
 	f := newLibraryFixture(t)
 	pair := f.groupID(t, "pair")
 	rec := f.putFavorites(favoritesBody(true, nil, pair), f.owner)
@@ -424,10 +426,12 @@ func TestRemovingEveryItemKeepsGroupFavorite(t *testing.T) {
 	}
 	ids, _ := f.groupItemIDs(t, pair)
 	rec = f.groupRequest(http.MethodPost, groupWritePath(pair, "/items/remove"), groupJSON(map[string]any{"itemIds": ids}), f.owner)
-	if rec.Code != http.StatusOK {
+	if rec.Code != http.StatusNoContent {
 		t.Fatalf("全部の除去: status = %d: %s", rec.Code, rec.Body)
 	}
-	if got := decode[gen.LibraryGroup](t, rec); got.VideoCount != 0 || got.Favorite == nil || !*got.Favorite {
-		t.Errorf("空にしたお気に入りの応答 = %+v", got)
+	f.assertGroupMissing(t, "空にしたお気に入りのグループ", pair)
+	if got := libraryItemNames(f.libraryPage(t, "favorite=true")); len(got) != 0 {
+		t.Errorf("お気に入りに残った = %+v", got)
 	}
+	assertGrouping(t, "空にしたフォルダ", f.ownerFolder(t, "pair").Folder.Grouping, gen.FolderGroupingModeUngroup, false)
 }

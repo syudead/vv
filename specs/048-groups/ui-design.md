@@ -165,9 +165,6 @@ User data (a group name, a title, a path) is embedded as an argument.
 | Removed in bulk | Removed {N items} from "{name}" | `groups.removed(count, name)`; a toast after the selection bar's action |
 | Move failed, remove failed | Couldn't move the item: {reason}; Couldn't remove from the group: {reason} | `groups.item.moveFailed`, `groups.item.removeFailed`; toasts |
 | Target gone | The group changed in the meantime, so it was reloaded | `groups.reloaded`; a toast after a `404 group_target_not_found` ([Edits that fail](#edits-that-fail)) |
-| Empty group title | No items yet | `groups.detail.empty.title` |
-| Empty group description | Add videos and groups with Add to group on a card, on the video page, or in the selection bar. | `groups.detail.empty.description` |
-| Empty group action | Open library | `groups.detail.empty.action`; a link to `/` |
 | Gone title | This group no longer exists | `groups.detail.gone.title` |
 | Gone description | It was dissolved, maybe in another tab. | `groups.detail.gone.description` |
 | Gone action | Back to library | `groups.detail.gone.action`; a link to `/` |
@@ -393,7 +390,11 @@ selected through C; removing both takes a second removal of V. The action
 sends `POST /api/groups/{id}/items/remove` with the ids of those items among
 the items listed so far (an item on a page not read yet has no id on the
 screen and is not sent), then shows "Removed 3 items from "{name}"" and
-clears the selection; the rows leave and the rest renumber.
+clears the selection; the rows leave and the rest renumber. When the
+selection was every item, the server dissolves the group and answers `204`
+([Removing one item](#removing-one-item)): the screen leaves as
+[Dissolving](#dissolving) does, with the toast "Dissolved "{name}"" in place
+of the count.
 
 ### Reordering
 
@@ -419,6 +420,15 @@ else the previous row's, else the title. For a folder member of an
 automatic group the server records the removal so a rescan does not bring it
 back (requirement 11); the screen says nothing more, because the row leaving
 is the same result either way.
+
+Removing the last item dissolves the group: an empty group does not exist
+(the maintainer's decision of 2026-10-14, which keeps plan.md's rule that a
+group with no visible video is `404`;
+[data-model.md, Edits](data-model.md#edits)). The server answers `204` with
+no body, and the screen leaves as [Dissolving](#dissolving) does: for the
+trail's last group or the library, with the toast "Dissolved "{name}"". The
+group page therefore never shows an empty group; a `404` on any read,
+including a quiet one after a `group` event, is the gone state.
 
 ### Renaming
 
@@ -487,15 +497,13 @@ The diagram shows the body's states and what moves it between them.
 stateDiagram-v2
   [*] --> Loading
   Loading --> Content: items
-  Loading --> Empty: no items
   Loading --> Gone: 404
   Loading --> LoadFailed: request failed
   LoadFailed --> Loading: Retry
   Content --> Content: move, remove, rename, group event
-  Content --> Empty: last item removed
+  Content --> Gone: 404 on a read
   Content --> Loading: 404 on an edit
-  Content --> Gone: Dissolve or tag confirmed
-  Empty --> Gone: Dissolve or tag confirmed
+  Content --> Gone: Dissolve or tag confirmed, last item removed
 ```
 
 | State | What the screen shows |
@@ -503,7 +511,6 @@ stateDiagram-v2
 | Loading | The band with the crumbs known from `?trail` as skeletons and "Library"; `LoadingState` of the current view in the body; the header with a `Skeleton` line in the title's place and no count or actions |
 | Load failed | `ErrorState` with "Couldn't load the group" and `Retry`; the band "Library" alone; the header without actions |
 | Gone | `EmptyState` with lucide `FolderX`, "This group no longer exists", "It was dissolved, maybe in another tab." and the `default` `sm` "Back to library"; the band "Library" alone; the header's title is "Library" with no count or actions, so the screen names nothing it cannot show |
-| Empty | `EmptyState` with lucide `Folder`, "No items yet", "Add videos and groups with Add to group on a card, on the video page, or in the selection bar." and the `default` `sm` "Open library"; the header shows the name, "0 videos" and "More" but no "Play". A guest never sees it: a group with no visible video is `404` for them |
 | Content | The grid or the list; the header with the count, "Play" and "More"; the selection bar while something is selected |
 | Loading more, load more failed | The `LoadMoreRow` after the items |
 | Renaming, dissolving, turning into a tag | The dialog in its `pending` form over the unchanged body |
@@ -523,7 +530,7 @@ context still overrides the group ([044 UI design, Video page in a playlist](../
 | --- | --- |
 | Group line | One line above the title, in its form (lucide `Folder` `size-4`, the name truncated, `·`, "3 / 12"; `text-xs`, `text-sm` from `sm`, `text-muted-foreground`). The line is a `Link` to `/groups/{id}` with `state.from` carried over and the accessible name "Group "{name}", video 3 of 12. Open the group"; from the video page the trail is empty, so the band there reads "Library › {name}". For a guest the line is the same link |
 | Group actions | For the owner, after the line on the same row: a `ghost` `icon-sm` button (lucide `Ellipsis`, `text-muted-foreground`, tooltip "Group actions") opening a `DropdownMenu` with "Remove from this group" (lucide `FolderMinus`), "Turn the group into a tag…" (lucide `Tag`), a separator and "Dissolve…" (lucide `Trash2`, `variant="destructive"`). Esc closes only the menu, as today |
-| Remove from this group | Drawn only when the video is a direct item of the line's group. For the owner the page reads that group's items (`GET /api/groups/{id}/items` with `limit` 200, following `nextCursor`) when the line is drawn, and the menu item appears once a `video` item whose `video.id` is this video's id is found; until then, and when the video is in the group only through a child group (the play order includes the child's videos, but the remove route takes only the group's own item ids), the menu holds the other two items. Pressing it sends `POST /api/groups/{id}/items/remove` with that item's id; on `200` the toast "Removed from "{name}"" shows and the video and related videos are read again without `group`, so the line, the list and the arrows follow the fallback group or go; a `404` reads again the same way with no toast |
+| Remove from this group | Drawn only when the video is a direct item of the line's group. For the owner the page reads that group's items (`GET /api/groups/{id}/items` with `limit` 200, following `nextCursor`) when the line is drawn, and the menu item appears once a `video` item whose `video.id` is this video's id is found; until then, and when the video is in the group only through a child group (the play order includes the child's videos, but the remove route takes only the group's own item ids), the menu holds the other two items. Pressing it sends `POST /api/groups/{id}/items/remove` with that item's id; on `200` the toast "Removed from "{name}"" shows and the video and related videos are read again without `group`, so the line, the list and the arrows follow the fallback group or go; on `204` (the video was the last item, so the group was dissolved; [Removing one item](#removing-one-item)) the same with the toast "Dissolved "{name}""; a `404` reads again the same way with no toast |
 | Dissolve…, Turn the group into a tag… | The group page's dialogs ([Dissolving](#dissolving), [Turning into a tag](#turning-into-a-tag)); on success the toast shows and the video and related videos are read again without `group`, and the page stays |
 | Action group | "Add to group" after "Add to playlist" ([Add to group](#add-to-group)) |
 

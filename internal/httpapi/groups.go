@@ -27,8 +27,9 @@ type Groups interface {
 	// AddGroupItems は add をグループ id の末尾に足す。add のグループが id 自身か id の祖先なら
 	// domain.ErrGroupCycle。
 	AddGroupItems(ctx context.Context, id int64, add domain.GroupAdd) (domain.Group, error)
-	// RemoveGroupItems はグループ id の項目 itemIDs を外す。
-	RemoveGroupItems(ctx context.Context, id int64, itemIDs []int64) (domain.Group, error)
+	// RemoveGroupItems はグループ id の項目 itemIDs を外す。項目が 1 つも残らなければグループを
+	// 解散し、dissolved に true を返す。
+	RemoveGroupItems(ctx context.Context, id int64, itemIDs []int64) (group domain.Group, dissolved bool, err error)
 	// MoveGroupItem は項目 itemID を項目 afterItemID のすぐ後ろ（nil なら先頭）へ移す。
 	MoveGroupItem(ctx context.Context, id, itemID int64, afterItemID *int64) error
 	// DissolveGroup はグループ id を解散する。
@@ -145,7 +146,8 @@ func (s *server) AddGroupItems(w http.ResponseWriter, r *http.Request, id gen.Gr
 	s.writeGroup(w, r, http.StatusOK, group, err, "Could not add to the group.")
 }
 
-// RemoveGroupItems はグループから項目を外す（POST /api/groups/{id}/items/remove）。
+// RemoveGroupItems はグループから項目を外す（POST /api/groups/{id}/items/remove）。最後の項目を外して
+// 空になったグループは解散されるので、本文の無い 204 を返す（specs/048-groups/data-model.md「Edits」）。
 func (s *server) RemoveGroupItems(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
 	var body gen.GroupItemRemove
 	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
@@ -165,7 +167,12 @@ func (s *server) RemoveGroupItems(w http.ResponseWriter, r *http.Request, id gen
 	if !s.groupsConfigured(w) {
 		return
 	}
-	group, err := s.groups.RemoveGroupItems(r.Context(), id, itemIDs)
+	group, dissolved, err := s.groups.RemoveGroupItems(r.Context(), id, itemIDs)
+	if err == nil && dissolved {
+		w.Header().Set("Cache-Control", cacheNoStore)
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
 	s.writeGroup(w, r, http.StatusOK, group, err, "Could not remove the group items.")
 }
 
@@ -244,8 +251,8 @@ func (s *server) groupAdd(w http.ResponseWriter, videoIDs, groupIDs *[]int64) (d
 
 // writeGroup は書き込んだあとのグループを LibraryGroup にして返す。err があれば writeGroupError で
 // 応答にし、failure はその 500 の文である。値は GET /api/groups/{id} と
-// 同じく子孫の動画から作る。項目が無いなどで見せる動画の無いグループは、ライブラリには出ないが
-// 書き込みの結果としては返すので、本数 0 の値にする。
+// 同じく子孫の動画から作る。見せる動画の無いグループ（子グループの解散で項目を失った親など）は、
+// ライブラリには出ないが書き込みの結果としては返すので、本数 0 の値にする。
 func (s *server) writeGroup(w http.ResponseWriter, r *http.Request, status int, group domain.Group, err error, failure string) {
 	if err != nil {
 		s.writeGroupError(w, err, failure)

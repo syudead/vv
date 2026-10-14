@@ -3420,8 +3420,10 @@ paths:
       summary: グループから項目を外す
       description: |
         所有者だけ。項目を外して残りを詰め直す。動画と子グループそのものは残る。自動グループの
-        フォルダ由来の項目は、フォルダの作り直しでも戻らない。項目のどれかがこのグループに無ければ
-        404 `group_target_not_found` で、何も外さない。グループが無ければ 404 `not_found`。
+        フォルダ由来の項目は、フォルダの作り直しでも戻らない。項目が 1 つも残らなければ、そのグループは
+        `DELETE /api/groups/{id}` と同じく解散され（自動グループならフォルダに `ungroup` を書く）、
+        本文の無い 204 を返す。項目のどれかがこのグループに無ければ 404 `group_target_not_found` で、
+        何も外さない。グループが無ければ 404 `not_found`。
       parameters:
         - $ref: "#/components/parameters/GroupId"
       requestBody:
@@ -3432,11 +3434,13 @@ paths:
               $ref: "#/components/schemas/GroupItemRemove"
       responses:
         "200":
-          description: 外したあとのグループ
+          description: 外したあとのグループ（項目が残るとき）
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/LibraryGroup"
+        "204":
+          description: 最後の項目を外したので、グループを解散した
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "403":

@@ -149,6 +149,40 @@ describe("groups API", () => {
     await expect(moveGroupItem(7, 11, 11)).rejects.toBeInstanceOf(RequestFailed);
   });
 
+  it("改名・項目の削除・並べ替えの成功はライブラリの一覧の控えを捨て、失敗は残す", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ ...group, name: "Renamed" }))
+      .mockResolvedValueOnce(json(group))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json({ code: "internal", message: "x" }, 500));
+    vi.stubGlobal("fetch", fetchMock);
+
+    holdSnapshot();
+    await renameGroup(7, "Renamed");
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    holdSnapshot();
+    await removeFromGroup(7, [11]);
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    holdSnapshot();
+    await moveGroupItem(7, 11, 12);
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    holdSnapshot();
+    await expect(moveGroupItem(7, 11, 12)).rejects.toBeInstanceOf(RequestFailed);
+    expect(takeListSnapshot({ query: "" })).toBeDefined();
+  });
+
+  it("removeFromGroup は最後の項目を外した 204 で null を返し、一覧の控えを捨てる", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(new Response(null, { status: 204 }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    holdSnapshot();
+    await expect(removeFromGroup(7, [11])).resolves.toBeNull();
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+  });
+
   it("findVideoItem は 200 件ずつ nextCursor を追い、動画の直接の項目の id を返す", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

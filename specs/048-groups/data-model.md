@@ -150,7 +150,7 @@ The paths and their changes are those of
 | Create | `ValidateGroupName`; items from the request in order (videos, then groups); `origin_folder` null |
 | Rename | `ValidateGroupName`; `title_key` follows |
 | Add | Appends in request order; an item already in the group is skipped; a removed folder member's exclusion is deleted and it returns with `from_folder = 0` |
-| Remove | Deletes the items; for a `from_folder = 1` item of an automatic group, writes its exclusion; renumbers |
+| Remove | Deletes the items; for a `from_folder = 1` item of an automatic group, writes its exclusion; renumbers. When no item is left, dissolves the group in the same transaction as the Dissolve row does (the maintainer's decision of 2026-10-14: an empty group does not exist), so the remove route answers `204` ([contracts/screen-api.md](contracts/screen-api.md#statuses)) |
 | Move | Moves one item after another item or to the top; renumbers ([044 R-3](../044-playlists/research.md#r-3-dense-integer-positions-reordered-by-move-after)) |
 | Dissolve | [R-4](research.md#r-4-dissolving-deletes-the-group-for-an-automatic-group-it-writes-ungroup); child groups and videos stay; parents lose the item and are renumbered |
 | Turn into a tag | [R-11](research.md#r-11-turning-a-group-into-a-tag-attaches-the-tag-by-hand-then-dissolves) |

@@ -7,6 +7,7 @@ import {
   groupItemPath,
   groupPagePath,
   loadingCrumbs,
+  parentPagePath,
   parseGroupId,
   parseTrail,
   searchWithoutGroup,
@@ -121,5 +122,17 @@ describe("folderDisplayPath", () => {
     );
     expect(folderDisplayPath({ rootId: 1, path: "" }, "Media")).toBe("Media");
     expect(folderDisplayPath({ rootId: 1, path: "anime/s1" })).toBe("anime/s1");
+  });
+});
+
+describe("parentPagePath", () => {
+  it("道筋の最後のグループをその手前の道筋付きで、道筋が無ければライブラリを返す", () => {
+    expect(parentPagePath([])).toBe("/");
+    expect(
+      parentPagePath([
+        { id: 1, name: "A" },
+        { id: 5, name: "B" },
+      ]),
+    ).toBe("/groups/5?trail=1");
   });
 });

@@ -231,7 +231,7 @@ func TestGroupEditsFailWholeOnMissingTargets(t *testing.T) {
 			_, err := groups.AddGroupItems(ctx, id, domain.GroupAdd{VideoIDs: []int64{w}, GroupIDs: []int64{missing}})
 			return err
 		}(),
-		"除去: 無い項目": func() error { _, err := groups.RemoveGroupItems(ctx, id, []int64{item, missing}); return err }(),
+		"除去: 無い項目": func() error { _, _, err := groups.RemoveGroupItems(ctx, id, []int64{item, missing}); return err }(),
 		"移動: 無い項目": groups.MoveGroupItem(ctx, id, missing, nil),
 		"移動: 無い目印": groups.MoveGroupItem(ctx, id, item, &missing),
 	} {
@@ -244,7 +244,7 @@ func TestGroupEditsFailWholeOnMissingTargets(t *testing.T) {
 			_, err := groups.AddGroupItems(ctx, missing, domain.GroupAdd{VideoIDs: []int64{w}})
 			return err
 		}(),
-		"除去": func() error { _, err := groups.RemoveGroupItems(ctx, missing, []int64{item}); return err }(),
+		"除去": func() error { _, _, err := groups.RemoveGroupItems(ctx, missing, []int64{item}); return err }(),
 		"移動": groups.MoveGroupItem(ctx, missing, item, nil),
 		"解散": groups.DissolveGroup(ctx, missing),
 		"タグ": func() error { _, err := groups.TagGroup(ctx, missing); return err }(),
@@ -280,7 +280,7 @@ func TestMoveAndRemoveGroupItems(t *testing.T) {
 	}
 	assertEntries(t, db, id, "v:kc", "v:kb", "v:ka")
 
-	if _, err := db.Groups().RemoveGroupItems(ctx, id, []int64{ic, ia}); err != nil {
+	if _, _, err := db.Groups().RemoveGroupItems(ctx, id, []int64{ic, ia}); err != nil {
 		t.Fatal(err)
 	}
 	assertEntries(t, db, id, "v:kb")
@@ -300,7 +300,7 @@ func TestRemovingFolderMemberWritesExclusion(t *testing.T) {
 	id := readGroups(t, db)[0].ID
 	origin := domain.FolderKey(fixturePath("/media/Show"))
 
-	if _, err := db.Groups().RemoveGroupItems(ctx, id, []int64{groupItemID(t, db, id, "v:k1")}); err != nil {
+	if _, _, err := db.Groups().RemoveGroupItems(ctx, id, []int64{groupItemID(t, db, id, "v:k1")}); err != nil {
 		t.Fatal(err)
 	}
 	if got := groupExclusions(t, db, id); !slices.Equal(got, []string{"k1"}) {
@@ -317,6 +317,59 @@ func TestRemovingFolderMemberWritesExclusion(t *testing.T) {
 	}
 	rebuildIndex(t, db)
 	assertGroupRows(t, db, []groupRow{{ID: id, Name: "Show", Origin: origin, Items: []groupItem{{Key: "k2", Folder: true}, {Key: "k1"}}}})
+}
+
+// 最後の項目を外したグループは、同じ取引で解散される（要求者の判断「空になったら解散する」）。
+// 親からその項目が消えて詰め直され、GroupsChanged は解散と同じく元の親とその祖先を名指す。
+// 自動グループならそのフォルダに ungroup を書き、作り直しで戻らない。項目が残る除去は解散しない。
+func TestRemovingTheLastItemDissolvesTheGroup(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	a, b := looseVideo(t, db, "ka"), looseVideo(t, db, "kb")
+	child := createGroup(t, db, "Child", domain.GroupAdd{VideoIDs: []int64{a, b}})
+	parent := createGroup(t, db, "Parent", domain.GroupAdd{GroupIDs: []int64{child}, VideoIDs: []int64{a}})
+	top := createGroup(t, db, "Top", domain.GroupAdd{GroupIDs: []int64{parent}})
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+
+	group, dissolved, err := db.Groups().RemoveGroupItems(ctx, child, []int64{groupItemID(t, db, child, "v:ka")})
+	if err != nil || dissolved || group.ID != child {
+		t.Fatalf("removing one of two: group = %+v, dissolved = %v, err = %v", group, dissolved, err)
+	}
+	recorder.events = nil
+
+	group, dissolved, err = db.Groups().RemoveGroupItems(ctx, child, []int64{groupItemID(t, db, child, "v:kb")})
+	if err != nil || !dissolved || group.ID != 0 {
+		t.Fatalf("removing the last item: group = %+v, dissolved = %v, err = %v", group, dissolved, err)
+	}
+	if groupExists(t, db, child) {
+		t.Fatal("the emptied group still exists")
+	}
+	assertEntries(t, db, parent, "v:ka")
+	want := []domain.Event{domain.GroupsChanged{GroupIDs: []int64{child, parent, top}}}
+	if !reflect.DeepEqual(recorder.events, want) {
+		t.Fatalf("events = %+v, want %+v", recorder.events, want)
+	}
+	if _, err := db.Library().GetVideo(ctx, domain.AudienceOwner, b); err != nil {
+		t.Fatalf("video of the dissolved group: %v", err)
+	}
+
+	show := fixturePath("/media/Show")
+	upsertFolderVideo(t, db, fixturePath("/media/Show/1.mp4"), "k1")
+	upsertFolderVideo(t, db, fixturePath("/media/Show/2.mp4"), "k2")
+	rebuildIndex(t, db)
+	auto := readGroups(t, db)[len(readGroups(t, db))-1].ID
+	if _, dissolved, err := db.Groups().RemoveGroupItems(ctx, auto,
+		[]int64{groupItemID(t, db, auto, "v:k1"), groupItemID(t, db, auto, "v:k2")}); err != nil || !dissolved {
+		t.Fatalf("emptying the automatic group: dissolved = %v, err = %v", dissolved, err)
+	}
+	if grouping := folderGroupingOf(t, db, show); grouping.Mode != domain.FolderGroupUngroup || grouping.GroupID != 0 {
+		t.Fatalf("grouping after emptying = %+v", grouping)
+	}
+	rebuildIndex(t, db)
+	if groupExists(t, db, auto) {
+		t.Fatal("the rebuild recreated the emptied automatic group")
+	}
 }
 
 // 解散で子グループと動画は残り、親から項目が消えて詰め直される。
@@ -499,12 +552,12 @@ func TestGroupEditsPublishGroupsChanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	expect("move", child, parent, top)
-	if _, err := groups.RemoveGroupItems(ctx, child, []int64{groupItemID(t, db, child, "v:kb")}); err != nil {
+	if _, _, err := groups.RemoveGroupItems(ctx, child, []int64{groupItemID(t, db, child, "v:kb")}); err != nil {
 		t.Fatal(err)
 	}
 	expect("remove", child, parent, top)
 	before := groupTablesSnapshot(t, db)
-	if _, err := groups.RemoveGroupItems(ctx, child, nil); err != nil {
+	if _, _, err := groups.RemoveGroupItems(ctx, child, nil); err != nil {
 		t.Fatal(err)
 	}
 	expect("remove nothing")

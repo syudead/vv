@@ -1,4 +1,4 @@
-import { memo } from "react";
+import { memo, type Ref } from "react";
 import { Link } from "react-router";
 
 import type { GroupItem } from "../api/groups";
@@ -13,6 +13,12 @@ import {
   orderedItemTitle,
   rowFacts,
 } from "../videoList/ItemRowCells";
+import {
+  RemoveItemButton,
+  ReorderHandle,
+  type SortableRow,
+  useSortableRow,
+} from "../videoList/reorder";
 
 export interface GroupItemRowProps {
   item: GroupItem;
@@ -27,6 +33,18 @@ export interface GroupItemRowProps {
   selectionMode: boolean;
   /** 選択を入れる・外す。選択を持たない見る人（ゲスト）では省き、チェックを描かない。 */
   onSelect?: (item: GroupItem, selected: boolean) => void;
+  /** 持ち上げられる行の値。所有者のリスト表示だけが渡し、ハンドルを描く。 */
+  sortable?: SortableRow;
+  /** 行の `×`。所有者だけが渡す。 */
+  remove?: GroupItemRemove;
+}
+
+/** GroupItemRemove は行の `×` に渡す値である。 */
+export interface GroupItemRemove {
+  /** 外す要求を送っている間 true。 */
+  removing: boolean;
+  onRemove: (item: GroupItem) => void;
+  buttonRef: Ref<HTMLButtonElement>;
 }
 
 /** selectLabel はチェックの読み上げ名である。ライブラリの行と同じ文言。 */
@@ -46,8 +64,8 @@ function linkLabel(item: GroupItem) {
 /**
  * GroupItemRow はグループのページのリスト表示の 1 行である（specs/048-groups/ui-design.md
  * 「Body」）。プレイリストの画面の行に、ライブラリの選択のチェックを前に足す: チェック、番号、
- * サムネイル、題名（子グループは「12 videos」の行）、`sm` から視聴済み、長さ。ハンドルと `×` は
- * 編集の単位が足す。
+ * サムネイル、題名（子グループは「12 videos」の行）、`sm` から視聴済み、長さ。所有者には番号の
+ * 前にハンドル、後ろに `×`「Remove from group」を描く（「Reordering」「Removing one item」）。
  */
 export const GroupItemRow = memo(function GroupItemRow({
   item,
@@ -57,15 +75,23 @@ export const GroupItemRow = memo(function GroupItemRow({
   selected,
   selectionMode,
   onSelect,
+  sortable,
+  remove,
 }: GroupItemRowProps) {
   const title = orderedItemTitle(item);
   const facts = rowFacts(item);
+  const dragging = sortable?.isDragging === true;
 
   return (
     <TableRow
+      ref={sortable?.rowRef}
       data-item-id={item.id}
       data-state={selected ? "selected" : undefined}
-      className="group relative"
+      style={sortable?.style}
+      className={cn(
+        "group relative motion-reduce:transition-none",
+        dragging && "z-10 bg-popover shadow-elevated hover:bg-popover",
+      )}
     >
       {onSelect !== undefined && (
         <TableCell className="w-10 pl-3">
@@ -83,8 +109,16 @@ export const GroupItemRow = memo(function GroupItemRow({
         </TableCell>
       )}
       <TableCell className={cn("w-0 pr-0", onSelect === undefined ? "pl-3" : "pl-0")}>
-        <span className="block min-w-4 text-right text-xs text-muted-foreground tabular-nums">
-          {formatNumber(position)}
+        <span className="flex items-center gap-1">
+          {sortable !== undefined && (
+            <ReorderHandle
+              handle={sortable.handle}
+              label={t.groups.item.reorder(title)}
+            />
+          )}
+          <span className="block min-w-4 text-right text-xs text-muted-foreground tabular-nums">
+            {formatNumber(position)}
+          </span>
         </span>
       </TableCell>
       <ItemThumbnailCell item={item} facts={facts} />
@@ -105,6 +139,7 @@ export const GroupItemRow = memo(function GroupItemRow({
           className={cn(
             "line-clamp-2 rounded-sm text-sm font-medium break-all after:absolute after:inset-0 hover:text-primary",
             facts.state === "watched" ? "text-muted-foreground" : "text-foreground",
+            dragging && "pointer-events-none",
           )}
         >
           {title}
@@ -112,6 +147,26 @@ export const GroupItemRow = memo(function GroupItemRow({
         <ItemTitleExtras facts={facts} />
       </TableCell>
       <ItemWatchedAndDurationCells item={item} facts={facts} />
+      {remove !== undefined && (
+        <TableCell className="w-0 pr-1 pl-0 sm:pr-3">
+          <RemoveItemButton
+            removing={remove.removing}
+            label={t.groups.item.removeFor(title)}
+            tooltip={t.groups.item.remove}
+            onRemove={() => remove.onRemove(item)}
+            buttonRef={remove.buttonRef}
+          />
+        </TableCell>
+      )}
     </TableRow>
   );
 });
+
+/**
+ * SortableGroupItemRow は所有者のリスト表示の、持ち上げられる 1 行である。DndContext と
+ * SortableContext の中で描く。
+ */
+export function SortableGroupItemRow(props: Omit<GroupItemRowProps, "sortable">) {
+  const sortable = useSortableRow(props.item.id);
+  return <GroupItemRow {...props} sortable={sortable} />;
+}

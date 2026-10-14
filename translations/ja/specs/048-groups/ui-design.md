@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/ui-design.md
-sourceHash: 1587f2ba0cb1fd5ed6e91eeeb31083b3065f576378ba1ad0572bfe23cfcd1aac
+sourceHash: b6905f9da4b8f5097915f340343b02800aa00c92094b36f991d52cf9423b85ee
 ---
 
 # UI 設計: 任意の動画とグループからなり、複数への所属と入れ子を持つグループ {#ui-design-groups-of-any-videos-and-groups-with-several-memberships-and-nesting}
@@ -102,9 +102,6 @@ flowchart LR
 | まとめて取り除いた | Removed {N items} from "{name}" | `groups.removed(count, name)`。選択バーの操作の後のトースト |
 | 移動の失敗、取り除きの失敗 | Couldn't move the item: {reason}; Couldn't remove from the group: {reason} | `groups.item.moveFailed`、`groups.item.removeFailed`。トースト |
 | 対象がない | The group changed in the meantime, so it was reloaded | `groups.reloaded`。`404 group_target_not_found` の後のトースト ([Edits that fail](#edits-that-fail)) |
-| 空のグループのタイトル | No items yet | `groups.detail.empty.title` |
-| 空のグループの説明 | Add videos and groups with Add to group on a card, on the video page, or in the selection bar. | `groups.detail.empty.description` |
-| 空のグループの操作 | Open library | `groups.detail.empty.action`。`/` へのリンク |
 | 消えたときのタイトル | This group no longer exists | `groups.detail.gone.title` |
 | 消えたときの説明 | It was dissolved, maybe in another tab. | `groups.detail.gone.description` |
 | 消えたときの操作 | Back to library | `groups.detail.gone.action`。`/` へのリンク |
@@ -243,7 +240,7 @@ flowchart LR
 
 ページ送りは、グリッドの後の番兵がビューポートから 600px 以内に来たとき、ライブラリのグリッドと同じく、応答の `nextCursor` から `GET /api/groups/{id}/items` を読む。失敗したページは、`Retry` 付きの `LoadMoreRow` の `Alert`「Couldn't load more of the group」を出す。
 
-選択はライブラリのものである: カードか行のチェック、子のメンバーを選び、その子を選ばれたグループとして覚えるグループのチェック (`LibrarySelection.groups`)、グループの `videoIds` (すべての子孫の動画) と、選ばれたグループとして、ここまでに一覧に出た子グループを選ぶ「Select all」、3 つのグループの操作を持つライブラリの選択バー ([Selection bar](#selection-bar))。「Remove from group」は「Favorite」と同じように選択を分ける: 子グループの項目はその子が選ばれたグループであるときに取り除かれ、動画の項目はその動画が選ばれていて、選ばれたグループのメンバーでないときに取り除かれる。メンバーがたまたま動画のチェックによってすべて選ばれている子グループは取り除かれないので、直接の項目であり子 C のただ 1 つの動画でもある V だけをチェックすると、V の項目が取り除かれ、C は残る。C を選ぶと、V のカードは C を通して選ばれていると表示されるものの、C が取り除かれ、直接の V は残る。両方を取り除くには、V をもう一度取り除く必要がある。この操作は、ここまでに一覧に出た項目のうちのそれらの項目の id で `POST /api/groups/{id}/items/remove` を送り (まだ読んでいないページの項目は画面上に id を持たず、送られない)、「Removed 3 items from "{name}"」を出して選択を消す。その行は離れ、残りは番号を振り直す。
+選択はライブラリのものである: カードか行のチェック、子のメンバーを選び、その子を選ばれたグループとして覚えるグループのチェック (`LibrarySelection.groups`)、グループの `videoIds` (すべての子孫の動画) と、選ばれたグループとして、ここまでに一覧に出た子グループを選ぶ「Select all」、3 つのグループの操作を持つライブラリの選択バー ([Selection bar](#selection-bar))。「Remove from group」は「Favorite」と同じように選択を分ける: 子グループの項目はその子が選ばれたグループであるときに取り除かれ、動画の項目はその動画が選ばれていて、選ばれたグループのメンバーでないときに取り除かれる。メンバーがたまたま動画のチェックによってすべて選ばれている子グループは取り除かれないので、直接の項目であり子 C のただ 1 つの動画でもある V だけをチェックすると、V の項目が取り除かれ、C は残る。C を選ぶと、V のカードは C を通して選ばれていると表示されるものの、C が取り除かれ、直接の V は残る。両方を取り除くには、V をもう一度取り除く必要がある。この操作は、ここまでに一覧に出た項目のうちのそれらの項目の id で `POST /api/groups/{id}/items/remove` を送り (まだ読んでいないページの項目は画面上に id を持たず、送られない)、「Removed 3 items from "{name}"」を出して選択を消す。その行は離れ、残りは番号を振り直す。選択がすべての項目だったときは、サーバーがグループを解散して `204` を返す ([Removing one item](#removing-one-item)): 画面は [Dissolving](#dissolving) と同じように離れ、数の代わりにトースト「Dissolved "{name}"」を出す。
 
 ### 並べ替え {#reordering}
 
@@ -252,6 +249,8 @@ flowchart LR
 ### 項目を 1 つ取り除く {#removing-one-item}
 
 行の `×` は、その項目で `POST /api/groups/{id}/items/remove` をすぐに送る。確認も成功のトーストもない: 行が離れることが結果であり、動画かグループはライブラリに残る (要件 7)。送信中、`×` は `Spinner` 付きで `disabled` になる。`200` で行が離れ、残りは番号を振り直し、数が変わり、フォーカスは次の行の `×`、なければ前の行のもの、なければタイトルに移る。自動のグループのフォルダのメンバーでは、サーバーが取り除いたことを記録するので、再スキャンがそれを戻さない (要件 11)。画面はそれ以上何も言わない。行が離れることはどちらでも同じ結果だからである。
+
+最後の項目を取り除くと、グループは解散する: 空のグループは存在しない (2026-10-14 のメンテナーの決定であり、見える動画のないグループは `404` であるという plan.md の規則を保つ。[data-model.md、Edits](data-model.md#edits))。サーバーは本文なしで `204` を返し、画面は [Dissolving](#dissolving) と同じように、経路の最後のグループかライブラリへ、トースト「Dissolved "{name}"」とともに離れる。そのため、グループのページは空のグループを決して出さない。`group` イベントの後の静かな読み取りを含め、どの読み取りでの `404` も消えた状態である。
 
 ### 名前の変更 {#renaming}
 
@@ -293,15 +292,13 @@ flowchart LR
 stateDiagram-v2
   [*] --> Loading
   Loading --> Content: 項目がある
-  Loading --> Empty: 項目がない
   Loading --> Gone: 404
   Loading --> LoadFailed: 要求が失敗
   LoadFailed --> Loading: Retry
   Content --> Content: 移動、取り除き、名前の変更、group イベント
-  Content --> Empty: 最後の項目を取り除く
+  Content --> Gone: 読み取りで 404
   Content --> Loading: 編集で 404
-  Content --> Gone: Dissolve かタグへの変換を確定
-  Empty --> Gone: Dissolve かタグへの変換を確定
+  Content --> Gone: Dissolve かタグへの変換を確定、最後の項目を取り除く
 ```
 
 | 状態 | 画面が出すもの |
@@ -309,7 +306,6 @@ stateDiagram-v2
 | 読み込み中 | 帯は、`?trail` からわかるパンくずをスケルトンとして、「Library」とともに出す。本体に今の表示の `LoadingState`。ヘッダーはタイトルの場所に `Skeleton` の行を持ち、数も操作も持たない |
 | 読み込みの失敗 | 「Couldn't load the group」と `Retry` を持つ `ErrorState`。帯は「Library」だけ。ヘッダーは操作を持たない |
 | 消えた | lucide `FolderX`、「This group no longer exists」、「It was dissolved, maybe in another tab.」、`default` `sm` の「Back to library」を持つ `EmptyState`。帯は「Library」だけ。ヘッダーのタイトルは「Library」で、数も操作もないので、画面は出せないものを何も名指さない |
-| 空 | lucide `Folder`、「No items yet」、「Add videos and groups with Add to group on a card, on the video page, or in the selection bar.」、`default` `sm` の「Open library」を持つ `EmptyState`。ヘッダーは名前、「0 videos」、「More」を出すが、「Play」は出さない。ゲストはこれを決して見ない: 見える動画のないグループは、ゲストには `404` である |
 | 内容 | グリッドかリスト。ヘッダーは数、「Play」、「More」を持つ。何かを選んでいる間は選択バー |
 | 続きの読み込み中、続きの読み込みの失敗 | 項目の後の `LoadMoreRow` |
 | 名前の変更中、解散中、タグへの変換中 | 変わらない本体の上の、`pending` の形のダイアログ |
@@ -322,7 +318,7 @@ stateDiagram-v2
 | --- | --- |
 | グループの行 | タイトルの上の 1 行で、その形のまま (lucide `Folder` `size-4`、切り詰めた名前、`·`、「3 / 12」。`text-xs`、`sm` からは `text-sm`、`text-muted-foreground`)。行は `/groups/{id}` への `Link` で、`state.from` を引き継ぎ、アクセシブルな名前は「Group "{name}", video 3 of 12. Open the group」である。動画のページからは経路は空なので、そこでの帯は「Library › {name}」と読める。ゲストにとっても行は同じリンクである |
 | グループの操作 | 所有者には、同じ行の、行の後に: `ghost` `icon-sm` のボタン (lucide `Ellipsis`、`text-muted-foreground`、ツールチップ「Group actions」) で、「Remove from this group」(lucide `FolderMinus`)、「Turn the group into a tag…」(lucide `Tag`)、区切り、「Dissolve…」(lucide `Trash2`、`variant="destructive"`) を持つ `DropdownMenu` を開く。今と同じく、Esc はメニューだけを閉じる |
-| Remove from this group | 動画が行のグループの直接の項目であるときにだけ描く。所有者には、行を描くときにページがそのグループの項目を読み (`limit` 200 の `GET /api/groups/{id}/items` で、`nextCursor` をたどる)、`video.id` がこの動画の id である `video` の項目が見つかった時点でメニューの項目が現れる。それまでと、動画が子グループを通してだけグループにあるとき (再生の順は子の動画を含むが、取り除くルートはグループ自身の項目の id だけをとる) は、メニューは他の 2 つの項目を持つ。押すと、その項目の id で `POST /api/groups/{id}/items/remove` を送る。`200` でトースト「Removed from "{name}"」が出て、動画と関連する動画を `group` なしで読み直すので、行、一覧、矢印は代わりのグループに従うか、なくなる。`404` はトーストなしで同じように読み直す |
+| Remove from this group | 動画が行のグループの直接の項目であるときにだけ描く。所有者には、行を描くときにページがそのグループの項目を読み (`limit` 200 の `GET /api/groups/{id}/items` で、`nextCursor` をたどる)、`video.id` がこの動画の id である `video` の項目が見つかった時点でメニューの項目が現れる。それまでと、動画が子グループを通してだけグループにあるとき (再生の順は子の動画を含むが、取り除くルートはグループ自身の項目の id だけをとる) は、メニューは他の 2 つの項目を持つ。押すと、その項目の id で `POST /api/groups/{id}/items/remove` を送る。`200` でトースト「Removed from "{name}"」が出て、動画と関連する動画を `group` なしで読み直すので、行、一覧、矢印は代わりのグループに従うか、なくなる。`204` (動画が最後の項目だったので、グループは解散した。[Removing one item](#removing-one-item)) では、トースト「Dissolved "{name}"」とともに同じことをする。`404` はトーストなしで同じように読み直す |
 | Dissolve…、Turn the group into a tag… | グループのページのダイアログ ([Dissolving](#dissolving)、[Turning into a tag](#turning-into-a-tag))。成功するとトーストが出て、動画と関連する動画を `group` なしで読み直し、ページは留まる |
 | 操作のグループ | 「Add to playlist」の後の「Add to group」([Add to group](#add-to-group)) |
 

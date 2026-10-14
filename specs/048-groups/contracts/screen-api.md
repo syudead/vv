@@ -101,7 +101,8 @@ GroupItemRemove:
 | `POST /api/groups/{id}/items` | `200` | `LibraryGroup` after the add |
 | | `404 group_target_not_found` | A video or group in the body does not exist |
 | | `409 group_cycle` | A group in the body is this group or one of its ancestors |
-| `POST /api/groups/{id}/items/remove` | `200` | `LibraryGroup` after the removal |
+| `POST /api/groups/{id}/items/remove` | `200` | `LibraryGroup` after the removal, when an item is left |
+| | `204` | No item was left, so the group was dissolved as `DELETE` does ([R-4](../research.md#r-4-dissolving-deletes-the-group-for-an-automatic-group-it-writes-ungroup), [data-model.md, Edits](../data-model.md#edits)); no body |
 | | `404 group_target_not_found` | An item id is not in the group; nothing is removed |
 | `POST /api/groups/{id}/items/{itemId}/move` | `204` | Moved |
 | | `400 invalid_request` | `after` is the item itself |
