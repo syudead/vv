@@ -113,14 +113,22 @@ export function selectedGroupOf(group: LibraryGroup): SelectedGroup {
   return copyGroup(group);
 }
 
-/** toggleGroup は全メンバーが選択に入っていれば外し、そうでなければグループとして選ぶ。 */
+/**
+ * isGroupSelected はグループのカードのチェックの状態である。グループとして選んだもの（`groups`）
+ * にあるときだけ true で、メンバーの動画が選択に入っているかでは決めない。メンバーを共有する
+ * 別のグループを選んだままこのグループを外すと、メンバーは選択に残るが、このカードは外れて
+ * 見え、もう一度押せば選べる（specs/048-groups/ui-design.md「Selection with shared members」）。
+ */
+export function isGroupSelected(selection: LibrarySelection, groupId: number): boolean {
+  return selection.groups.has(groupId);
+}
+
+/** toggleGroup はグループとして選んでいれば外し、そうでなければグループとして選ぶ。 */
 export function toggleGroup(
   selection: LibrarySelection,
   group: SelectedGroup,
 ): LibrarySelection {
-  const all =
-    group.videoIds.length > 0 && group.videoIds.every((id) => selection.ids.has(id));
-  return setGroup(selection, group, !all);
+  return setGroup(selection, group, !isGroupSelected(selection, group.id));
 }
 
 /** fromSelectAll は「すべて選択」の応答（`ids` と `groups`）を選択にする。 */

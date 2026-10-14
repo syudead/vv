@@ -2054,7 +2054,13 @@ describe("LibraryPage", () => {
           );
         }
         if (url.pathname === "/api/library/ids") {
-          return Promise.resolve(json({ ids: [1, ...memberIds, 2] }));
+          // グループの項目は `groups` にも入る（specs/035-favorites/contracts/screen-api.md §3）。
+          return Promise.resolve(
+            json({
+              ids: [1, ...memberIds, 2],
+              groups: [{ id: server.group.id, videoIds: server.group.videoIds }],
+            }),
+          );
         }
         if (url.pathname === "/api/groups/7") {
           return Promise.resolve(json({ group: server.group, trail: [], items: [] }));

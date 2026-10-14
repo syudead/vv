@@ -79,6 +79,7 @@ import {
   reconcileGroups,
   sameSelection,
   selectedGroupOf,
+  isGroupSelected,
   setGroup,
   setVideo,
   toggleGroup,
@@ -336,8 +337,8 @@ export default function LibraryPage() {
     },
     [invalidateSelectAll],
   );
-  // 選択中にグループのカードのタグを押したときの切り替え。全メンバーが選択に
-  // 入っていれば外し、そうでなければグループとして選ぶ。
+  // 選択中にグループのカードのタグを押したときの切り替え。グループとして選んで
+  // いれば外し、そうでなければグループとして選ぶ（selection.ts の isGroupSelected）。
   const toggleGroupSelection = useCallback(
     (group: LibraryGroup) => {
       invalidateSelectAll();
@@ -637,8 +638,7 @@ export default function LibraryPage() {
   const groupProps = (group: LibraryGroup) => ({
     group,
     backTo: listUrl,
-    selected:
-      group.videoIds.length > 0 && group.videoIds.every((id) => selectedIds.has(id)),
+    selected: isGroupSelected(selection, group.id),
     selectionMode,
     onSelect: owner ? changeGroupSelection : undefined,
     activePreviewId,

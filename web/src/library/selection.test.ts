@@ -5,6 +5,7 @@ import {
   emptySelection,
   favoriteTargets,
   fromSelectAll,
+  isGroupSelected,
   reconcileGroups,
   sameSelection,
   setGroup,
@@ -55,7 +56,7 @@ describe("LibrarySelection", () => {
     expect(sameSelection(back, grouped)).toBe(false);
   });
 
-  it("タグの行の切り替えは、全メンバーが入っていれば外し、そうでなければグループとして選ぶ", () => {
+  it("タグの行の切り替えは、グループとして選んでいれば外し、そうでなければグループとして選ぶ", () => {
     const partly = setVideo(emptySelection, 101, true);
     const grouped = toggleGroup(partly, series);
     expect(grouped.groups.size).toBe(1);
@@ -83,6 +84,38 @@ describe("LibrarySelection", () => {
     const deselected = setGroup(both, inner, false);
     expect(Array.from(deselected.ids).sort()).toEqual([11, 12]);
     expect(Array.from(deselected.groups.keys())).toEqual([2]);
+  });
+
+  it("全メンバーを共有するグループを外すと、動画は残ってもカードは外れて見え、もう一度選べる", () => {
+    // G1={B}・G2={B,C}（B=12、C=13）。
+    const g1 = { id: 1, videoIds: [12] };
+    const g2 = { id: 2, videoIds: [12, 13] };
+    const both = setGroup(setGroup(emptySelection, g1, true), g2, true);
+    expect(isGroupSelected(both, 1)).toBe(true);
+    expect(isGroupSelected(both, 2)).toBe(true);
+
+    const deselected = setGroup(both, g1, false);
+    expect(Array.from(deselected.ids).sort()).toEqual([12, 13]);
+    expect(isGroupSelected(deselected, 1)).toBe(false);
+    expect(isGroupSelected(deselected, 2)).toBe(true);
+    expect(favoriteTargets(deselected)).toEqual({ videoIds: [], groupIds: [2] });
+
+    const toggledOff = toggleGroup(both, g1);
+    expect(sameSelection(toggledOff, deselected)).toBe(true);
+    const reselected = toggleGroup(toggledOff, g1);
+    expect(isGroupSelected(reselected, 1)).toBe(true);
+    expect(sameSelection(reselected, both)).toBe(true);
+  });
+
+  it("メンバーを動画のチェックで全部選んでも、グループのカードは選んだと見えない", () => {
+    const videos = series.videoIds.reduce(
+      (selection, id) => setVideo(selection, id, true),
+      emptySelection,
+    );
+    expect(isGroupSelected(videos, series.id)).toBe(false);
+    const grouped = toggleGroup(videos, series);
+    expect(isGroupSelected(grouped, series.id)).toBe(true);
+    expect(grouped.ids.size).toBe(3);
   });
 
   it("「すべて選択」の応答は ids と groups の両方が同じときだけ同じ選択とみなす", () => {

@@ -248,8 +248,11 @@ groups can share members. Unchecking a group card removes the group and only
 those of its members that are not members of another group card still
 selected; the other selected group cards stay selected (the maintainer's
 decision of 2026-10-14). With G1 holding A and B and G2 holding B and C, both
-checked, unchecking G1 leaves B, C and G2 selected and removes A. Checking a
-group card is unchanged ([017 UI design, Pressing and selection](../017-folder-groups/ui-design.md#pressing-and-selection)).
+checked, unchecking G1 leaves B, C and G2 selected and removes A. A card
+shows checked only while its group is selected as a group, not because its
+members are selected, so G1 shows unchecked and checking it again selects it;
+with G1 holding only B, unchecking G1 removes no video and still unchecks it.
+Checking a group card is unchanged ([017 UI design, Pressing and selection](../017-folder-groups/ui-design.md#pressing-and-selection)).
 
 ### New group
 
@@ -393,7 +396,8 @@ far, and the library's selection bar with the three group actions
 as "Favorite" does: a child group item is removed when that child is a
 selected group, and a video item when its video is selected and is not a
 member of a selected group. A child group whose members happen to be all
-selected through video checks is not removed, so checking only V, which is
+selected through video checks is not a selected group: its card does not
+show selected and it is not removed. Checking only V, which is
 both a direct item and the one video of child C, removes V's item and keeps C.
 Selecting C removes C and keeps the direct V, although V's card shows
 selected through C; removing both takes a second removal of V. The action

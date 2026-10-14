@@ -27,6 +27,7 @@ import {
   type LibrarySelection,
   sameSelection,
   selectedGroupOf,
+  isGroupSelected,
   setGroup,
   setVideo,
   toggleGroup,
@@ -601,7 +602,7 @@ function GroupItems({
 }) {
   const ids = selection.selection.ids;
   const groupSelected = (group: LibraryGroup) =>
-    group.videoIds.length > 0 && group.videoIds.every((videoId) => ids.has(videoId));
+    isGroupSelected(selection.selection, group.id);
   const { toggleVideoSelection, toggleGroupSelection } = selection;
 
   const videoTags = useCallback(
