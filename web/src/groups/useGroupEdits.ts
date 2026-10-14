@@ -13,13 +13,14 @@ export type FocusTarget = number | "title" | "more";
 
 /**
  * isTargetGone は編集の対象（項目、`after`）がもう無いこと（`404 group_target_not_found`、
- * research.md R-12）を表すかを返す。
+ * research.md R-12）を表すかを返す。サーバーは `code` を `not_found` にし、どの 404 かを
+ * `reason` に入れる（グループそのものが無いときは `reason` が無い）。
  */
 function isTargetGone(error: unknown): boolean {
   return (
     error instanceof RequestFailed &&
     error.status === 404 &&
-    error.code === "group_target_not_found"
+    error.reason === "group_target_not_found"
   );
 }
 
@@ -75,9 +76,12 @@ function useFocusAfterEdit() {
  * 「Reordering」「Removing one item」「Body」「Edits that fail」）。
  *
  * - 並べ替えは置いたときに番号を振り直してから `move` を 1 回送る。送る要求は置いた順に
- *   1 つずつ流し、失敗したらサーバーが最後に認めた並びへ戻して知らせる。
+ *   1 つずつ流し（鎖は useGroupPage と共有し、静かな読み直しは鎖が答えてから読む）、
+ *   失敗したらサーバーが最後に認めた並びへ戻して知らせる。鎖が空になったら、認めた並びを
+ *   見せる（途中の読み直しが移動の前の並びを置いても、行を正しい順に戻す）。
  * - 行の `×` は確認なしにその項目を外す。外せたら行が消え、フォーカスは次の行の `×`、
- *   無ければ前の行、無ければ見出しへ移る。
+ *   無ければ前の行、無ければ見出しへ移る。続きのページが残っていたら、サーバーが位置を
+ *   詰めて手元の続き位置が使えなくなるので、先頭から読み直す。
  * - 選択バーの「Remove from group」は選んだ項目をまとめて外し、件数を知らせる。
  * - どれも `404 group_target_not_found` なら表示を保ったまま読み直し、変わっていたと知らせる。
  *   ほかの `404`（グループが無い）は読み直しが無くなった状態を見せる。
@@ -86,20 +90,24 @@ export function useGroupEdits({
   id,
   update,
   confirmed,
+  moves,
+  movesSent,
   refresh,
 }: {
   id: number | null;
   update: (change: (data: GroupPageData) => GroupPageData) => void;
   confirmed: MutableRefObject<readonly GroupItem[]>;
+  moves: MutableRefObject<Promise<void>>;
+  movesSent: MutableRefObject<number>;
   refresh: () => void;
 }) {
   const toast = useToast();
   const [removing, setRemoving] = useState<ReadonlySet<number>>(new Set());
   const [removingSelected, setRemovingSelected] = useState(false);
   const focus = useFocusAfterEdit();
-  /** 送る移動を置いた順に 1 つずつ流す鎖と、失敗で残りを捨てるための世代。 */
-  const moves = useRef<Promise<void>>(Promise.resolve());
+  /** 失敗で鎖の残りを捨てるための世代と、鎖で待っているか送っている移動の数。 */
   const generation = useRef(0);
+  const queued = useRef(0);
 
   useEffect(
     () => () => {
@@ -130,9 +138,15 @@ export function useGroupEdits({
     (itemIds: readonly number[], group: LibraryGroup) => {
       const gone = new Set(itemIds);
       confirmed.current = confirmed.current.filter((item) => !gone.has(item.id));
-      update((data) => withoutItems(data, gone, group));
+      let paged = false;
+      update((data) => {
+        paged = data.nextCursor !== undefined;
+        return withoutItems(data, gone, group);
+      });
+      // サーバーは外した後に位置を詰める。位置で決まる続き位置は、読んでいない項目を飛ばす。
+      if (paged) refresh();
     },
-    [confirmed, update],
+    [confirmed, refresh, update],
   );
 
   const move = useCallback(
@@ -144,12 +158,16 @@ export function useGroupEdits({
       update((data) => ({ ...data, items: drop.items }));
       const ticket = generation.current;
       const { afterItemId } = drop;
+      queued.current += 1;
       moves.current = moves.current.then(async () => {
-        if (ticket !== generation.current) return;
         try {
+          if (ticket !== generation.current) return;
+          movesSent.current += 1;
           await moveGroupItem(id, itemId, afterItemId);
           if (ticket !== generation.current) return;
           confirmed.current = moveItem(confirmed.current, itemId, afterItemId);
+          if (queued.current === 1)
+            update((data) => ({ ...data, items: confirmed.current }));
         } catch (error) {
           if (ticket !== generation.current) return;
           generation.current += 1;
@@ -157,10 +175,12 @@ export function useGroupEdits({
             update((data) => ({ ...data, items: confirmed.current }));
           }
           failed(error, t.groups.item.moveFailed);
+        } finally {
+          queued.current -= 1;
         }
       });
     },
-    [confirmed, failed, id, update],
+    [confirmed, failed, id, moves, movesSent, update],
   );
 
   const removeOne = useCallback(

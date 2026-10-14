@@ -77,6 +77,9 @@ async function readThrough(
  *
  * 編集の単位は `update` で並んでいる中身を先に変え（並べ替え、外す、改名）、`confirmed` に
  * サーバーが最後に認めた並びを持つ。読み込みと続きのページはそれを読んだ並びで置き換える。
+ * 並べ替えは `moves` の鎖で 1 つずつ送り、送るたびに `movesSent` を進める。静かな読み直しは
+ * 鎖が答えてから読み、読む間に移動を送っていたらその結果を捨てて読み直す（移動の前の並びで
+ * 置いた行を上書きしない）。
  *
  * 所有者が最後の項目を外して空にしたグループは、読み直しで `404` になる（plan.md: 見える動画の
  * 無いグループは `404`）。空の中身を見せている間の静かな読み直しの `404` は、無くなったとは
@@ -92,6 +95,13 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
   /** サーバーが最後に認めた並び。並べ替えの失敗でここへ戻す。 */
   const confirmed = useRef<readonly GroupItem[]>([]);
   const reading = useRef<AbortController | null>(null);
+  /** 並べ替えを置いた順に 1 つずつ送る鎖（useGroupEdits が足す）と、送った移動の数。 */
+  const moves = useRef<Promise<void>>(Promise.resolve());
+  const movesSent = useRef(0);
+  /** 画面（id）が変わるたびに進む。鎖を待った読み直しが、離れた後に読まないように使う。 */
+  const epoch = useRef(0);
+  /** 読む間に移動を送った読み直しを、鎖が答えてからやり直す（refresh。read より後に決まる）。 */
+  const requery = useRef<() => void>(() => undefined);
   const trailKey = trail.join(",");
 
   const show = useCallback((next: GroupPageState) => {
@@ -111,10 +121,16 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
       if (!quiet) show({ kind: "loading" });
       setMore("idle");
       const trailIds = trailKey === "" ? [] : trailKey.split(",").map(Number);
+      const sentBefore = movesSent.current;
       readThrough(id, trailIds, atLeast, controller.signal).then(
         (data) => {
           if (controller.signal.aborted) return;
           reading.current = null;
+          if (quiet && movesSent.current !== sentBefore) {
+            // 読む間に送った移動が、読んだ並びに入っていないかもしれない。
+            requery.current();
+            return;
+          }
           confirmed.current = data.items;
           show({ kind: "ready", data });
         },
@@ -131,7 +147,16 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
   );
 
   const reload = useCallback(() => read(false), [read]);
-  const refresh = useCallback(() => read(true), [read]);
+  /** refresh は静かに読み直す。送っている移動が答えてから読む。 */
+  const refresh = useCallback(() => {
+    const ticket = epoch.current;
+    void moves.current.then(() => {
+      if (ticket === epoch.current) read(true);
+    });
+  }, [read]);
+  useEffect(() => {
+    requery.current = refresh;
+  }, [refresh]);
 
   const loadMore = useCallback(() => {
     const current = stateRef.current;
@@ -206,6 +231,7 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
     });
     reload();
     return () => {
+      epoch.current += 1;
       unsubscribe();
       clearTimeout(videoTimer);
       reading.current?.abort();
@@ -221,5 +247,16 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
     show({ kind: "gone" });
   }, [show]);
 
-  return { state, more, reload, refresh, loadMore, update, confirmed, markGone };
+  return {
+    state,
+    more,
+    reload,
+    refresh,
+    loadMore,
+    update,
+    confirmed,
+    moves,
+    movesSent,
+    markGone,
+  };
 }

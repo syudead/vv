@@ -121,18 +121,23 @@ export function createGroup(
   });
 }
 
-/** renameGroup はグループの名前を変え、前後を削った名前の値を返す（PATCH /api/groups/{id}）。 */
-export function renameGroup(
+/**
+ * renameGroup はグループの名前を変え、前後を削った名前の値を返す（PATCH /api/groups/{id}）。
+ * 成功したら一覧の控えを捨てる（ライブラリのカードの名前が変わる）。
+ */
+export async function renameGroup(
   id: number,
   name: string,
   signal?: AbortSignal,
 ): Promise<LibraryGroup> {
-  return request<LibraryGroup>(groupPath(id), {
+  const group = await request<LibraryGroup>(groupPath(id), {
     method: "PATCH",
     headers: jsonHeaders,
     body: JSON.stringify({ name }),
     signal,
   });
+  clearListSnapshot();
+  return group;
 }
 
 /**
@@ -167,25 +172,29 @@ export function addToGroup(
 /**
  * removeFromGroup は項目（動画やグループの id ではない）を外し、外した後の値を返す
  * （POST /api/groups/{id}/items/remove）。グループに無い項目があれば 404
- * `group_target_not_found` の RequestFailed になり、何も外されない。
+ * `group_target_not_found` の RequestFailed になり、何も外されない。成功したら一覧の控えを
+ * 捨てる（ライブラリのカードの本数とプレビューが変わり、外した項目が上に出ることもある）。
  */
-export function removeFromGroup(
+export async function removeFromGroup(
   id: number,
   itemIds: readonly number[],
   signal?: AbortSignal,
 ): Promise<LibraryGroup> {
-  return request<LibraryGroup>(`${groupPath(id)}/items/remove`, {
+  const group = await request<LibraryGroup>(`${groupPath(id)}/items/remove`, {
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify({ itemIds: Array.from(itemIds) }),
     signal,
   });
+  clearListSnapshot();
+  return group;
 }
 
 /**
  * moveGroupItem は項目 `itemId` を項目 `after` のすぐ後ろへ移す。`null` なら先頭へ移す
  * （POST /api/groups/{id}/items/{itemId}/move）。項目か `after` がグループに無ければ 404
- * `group_target_not_found` の RequestFailed になる。
+ * `group_target_not_found` の RequestFailed になる。成功したら一覧の控えを捨てる（ライブラリの
+ * カードのプレビューと最初に開く動画が並びで決まる）。
  */
 export async function moveGroupItem(
   id: number,
@@ -200,6 +209,7 @@ export async function moveGroupItem(
     signal,
   });
   if (!response.ok) throw await toRequestFailed(response);
+  clearListSnapshot();
 }
 
 /**

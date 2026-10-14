@@ -211,10 +211,20 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   const location = useLocation();
   const navigate = useNavigate();
   const owner = useAudience() === "owner";
-  const { state, more, reload, refresh, loadMore, update, confirmed, markGone } =
-    useGroupPage(id, trail);
+  const {
+    state,
+    more,
+    reload,
+    refresh,
+    loadMore,
+    update,
+    confirmed,
+    moves,
+    movesSent,
+    markGone,
+  } = useGroupPage(id, trail);
   const data = state.kind === "ready" ? state.data : null;
-  const edits = useGroupEdits({ id, update, confirmed, refresh });
+  const edits = useGroupEdits({ id, update, confirmed, moves, movesSent, refresh });
   const { preferences, save } = useViewPreferences();
   const { view, zoom } = preferences;
   const preview = usePreviewCoordination();
@@ -339,7 +349,8 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
             onTagRemoved={refresh}
             onBundled={afterBulk}
             removeFromGroup={{
-              disabled: removable.length === 0 || edits.removingSelected,
+              count: removable.length,
+              pending: edits.removingSelected,
               onRemove: removeChosen,
             }}
           />

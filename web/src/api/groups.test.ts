@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { RequestFailed } from "./client";
+import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 import {
   addToGroup,
   createGroup,
@@ -139,5 +140,33 @@ describe("groups API", () => {
 
     await expect(dissolveGroup(7)).rejects.toBeInstanceOf(RequestFailed);
     await expect(moveGroupItem(7, 11, 11)).rejects.toBeInstanceOf(RequestFailed);
+  });
+
+  it("改名・項目の削除・並べ替えの成功はライブラリの一覧の控えを捨て、失敗は残す", async () => {
+    const hold = () =>
+      saveListSnapshot(
+        { query: "" },
+        { items: [], total: 0, hasMore: false, scrollY: 0 },
+      );
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ ...group, name: "Renamed" }))
+      .mockResolvedValueOnce(json(group))
+      .mockResolvedValueOnce(new Response(null, { status: 204 }))
+      .mockResolvedValueOnce(json({ code: "internal", message: "x" }, 500));
+    vi.stubGlobal("fetch", fetchMock);
+
+    hold();
+    await renameGroup(7, "Renamed");
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    hold();
+    await removeFromGroup(7, [11]);
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    hold();
+    await moveGroupItem(7, 11, 12);
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    hold();
+    await expect(moveGroupItem(7, 11, 12)).rejects.toBeInstanceOf(RequestFailed);
+    expect(takeListSnapshot({ query: "" })).toBeDefined();
   });
 });

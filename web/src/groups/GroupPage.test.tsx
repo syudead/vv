@@ -117,8 +117,11 @@ function summarize(stored: StoredGroup): LibraryGroup {
   return stored.group;
 }
 
+// サーバーは code を not_found にし、どの 404 かを reason に入れる（writeGroupError）。
 const targetGone = () =>
-  Promise.resolve(json({ code: "group_target_not_found", message: "x" }, 404));
+  Promise.resolve(
+    json({ code: "not_found", reason: "group_target_not_found", message: "x" }, 404),
+  );
 const groupNotFound = () =>
   Promise.resolve(json({ code: "not_found", message: "x" }, 404));
 
@@ -648,6 +651,54 @@ describe("GroupPage", () => {
         'Remove "Extras" from the group',
       ),
     );
+  });
+
+  it("続きのページが残るグループで項目を外すと、詰めた位置に合わせて先頭から読み直す", async () => {
+    seed();
+    const stored = server.groups.get(1) as StoredGroup;
+    stored.nextCursor = "c1";
+    const user = userEvent.setup();
+    await openList(user);
+    expect(server.reads.get(1)).toBe(1);
+
+    await user.click(
+      screen.getByRole("button", { name: 'Remove "Episode 1" from the group' }),
+    );
+
+    await waitFor(() => expect(server.reads.get(1)).toBe(2));
+    await waitFor(() => expect(listTitles()).toEqual(["Extras", "Episode 2"]));
+    expect(server.pageRequests).toEqual([]);
+  });
+
+  it("送っている移動の間に届いた知らせの読み直しは、移動が答えてから読み、行を戻さない", async () => {
+    seed();
+    layoutRows();
+    const user = userEvent.setup();
+    await openList(user);
+    const fetchMock = vi.mocked(fetch);
+    const original = fetchMock.getMockImplementation() as typeof fetch;
+    let answer: (() => void) | null = null;
+    fetchMock.mockImplementation((input, init) =>
+      String(input).endsWith("/move")
+        ? new Promise<Response>((resolve) => {
+            answer = () => resolve(original(input, init));
+          })
+        : original(input, init),
+    );
+
+    await moveFirstDown(user);
+    await waitFor(() => expect(answer).not.toBeNull());
+    // 移動はまだサーバーに届いていない。その間に知らせが届く。
+    await emitServerEvent("group", { ids: [1] });
+    expect(server.reads.get(1)).toBe(1);
+    expect(listTitles()).toEqual(["Extras", "Episode 1", "Episode 2"]);
+
+    await act(async () => {
+      answer?.();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(server.reads.get(1)).toBe(2));
+    expect(listTitles()).toEqual(["Extras", "Episode 1", "Episode 2"]);
   });
 
   it("最後の項目を外したグループは、読み直しが 404 でも空の状態のまま", async () => {

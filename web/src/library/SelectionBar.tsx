@@ -49,10 +49,13 @@ export interface SelectionBarProps {
   onBundled: (versions: VideoVersions) => void;
   /**
    * グループのページだけが渡す「Remove from group」（specs/048-groups/ui-design.md
-   * 「Selection bar」）。外す項目が無い間と、送っている間は押せない。
+   * 「Selection bar」）。`count` は外す項目の数で、0 の間と送っている間（`pending`）は押せない。
+   * `itemIds` の上限（20000、contracts/screen-api.md）を超える間は、「Favorite」と同じ理由を
+   * 添えて押せない（分けて送らない。docs/design-docs/library-ui.md §6）。
    */
   removeFromGroup?: {
-    disabled: boolean;
+    count: number;
+    pending: boolean;
     onRemove: () => void;
   };
 }
@@ -235,16 +238,7 @@ export default function SelectionBar({
         </Popover>
 
         {/* グループのページだけ。「Add to group」の後、「Visibility」の前に置く。 */}
-        {removeFromGroup !== undefined && (
-          <WithTooltip label={t.library.selection.removeFromGroup}>
-            <SelectionAction
-              icon={<FolderMinus aria-hidden="true" />}
-              label={t.library.selection.removeFromGroup}
-              disabled={removeFromGroup.disabled}
-              onClick={removeFromGroup.onRemove}
-            />
-          </WithTooltip>
-        )}
+        {removeFromGroup !== undefined && <RemoveFromGroupAction {...removeFromGroup} />}
 
         <VisibilityMenu
           selectedIds={selectedIds}
@@ -299,5 +293,38 @@ export default function SelectionBar({
         </WithTooltip>
       </SelectionBarSection>
     </div>
+  );
+}
+
+/**
+ * RemoveFromGroupAction は選択バーの「Remove from group」である（specs/048-groups/ui-design.md
+ * 「Selection bar」）。外す項目が無い間と送っている間は押せない。`itemIds` の上限を超える間は、
+ * 「Favorite」と同じ理由を添えて押せない。
+ */
+function RemoveFromGroupAction({
+  count,
+  pending,
+  onRemove,
+}: NonNullable<SelectionBarProps["removeFromGroup"]>) {
+  const overLimitId = useId();
+  const overLimit = count > maxVideoTagsSelection;
+  return (
+    <>
+      <WithTooltip label={t.library.selection.removeFromGroup}>
+        <SelectionAction
+          icon={<FolderMinus aria-hidden="true" />}
+          label={t.library.selection.removeFromGroup}
+          disabled={count === 0 || pending || overLimit}
+          title={overLimit ? overLimitMessage() : undefined}
+          aria-describedby={overLimit ? overLimitId : undefined}
+          onClick={onRemove}
+        />
+      </WithTooltip>
+      {overLimit && (
+        <span id={overLimitId} className="sr-only">
+          {overLimitMessage()}
+        </span>
+      )}
+    </>
   );
 }
