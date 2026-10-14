@@ -65,7 +65,7 @@ owner data like `work_info_plugins`.
 | Rule | Enforced in |
 | --- | --- |
 | A plugin is approved exactly when `problem` is null and `approved_digest = digest` | `internal/domain` (state), `internal/store` (the read) |
-| An upload whose manifest names an existing `name` replaces that row's module, metadata, digest and problem, and keeps `approved_digest`, which no longer matches | `internal/store`, in one transaction |
+| An upload whose manifest names an existing `name` replaces that row's module, metadata, digest and problem, and clears `approved_digest`, so the replacement returns to unapproved | `internal/store`, in one transaction |
 | An upload without a readable name is a new row | `internal/store` |
 | Approving writes `approved_digest` only when the request's digest equals `digest` and `problem` is null; otherwise `plugin_changed` or `plugin_unusable` | `internal/app` decides, `internal/store` re-reads inside its transaction |
 | Revoking clears `approved_digest` | `internal/store` |
