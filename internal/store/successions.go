@@ -73,23 +73,30 @@ func releaseContentIndex(ctx context.Context, tx *sql.Tx, released []domain.Dele
 
 // applyReadySuccessions は done で閉じる走査の取引で呼ぶ。全行を判定してよい状態（ready = 1）
 // にし、新しい中身の尺が分かっている行を判定する。引き継いだとき知らせる動画の id を返す。
-func applyReadySuccessions(ctx context.Context, tx *sql.Tx) ([]int64, error) {
+func applyReadySuccessions(ctx context.Context, tx *sql.Tx) (succession, error) {
 	if _, err := tx.ExecContext(ctx, `update video_successions set ready = 1`); err != nil {
-		return nil, fmt.Errorf("cannot mark the successions ready: %w", err)
+		return succession{}, fmt.Errorf("cannot mark the successions ready: %w", err)
 	}
 	ready, err := judgeableSuccessions(ctx, tx)
 	if err != nil {
-		return nil, err
+		return succession{}, err
 	}
-	var changed []int64
+	var changed succession
 	for _, p := range ready {
-		ids, err := applySuccession(ctx, tx, p.newKey, p.durationMs)
+		one, err := applySuccession(ctx, tx, p.newKey, p.durationMs)
 		if err != nil {
-			return nil, err
+			return succession{}, err
 		}
-		changed = append(changed, ids...)
+		changed.videoIDs = append(changed.videoIDs, one.videoIDs...)
+		changed.groupIDs = append(changed.groupIDs, one.groupIDs...)
 	}
-	return normalizeIDs(changed), nil
+	return succession{videoIDs: normalizeIDs(changed.videoIDs), groupIDs: normalizeIDs(changed.groupIDs)}, nil
+}
+
+// succession は引き継ぎで、確定後に知らせる動画とグループの id である。
+type succession struct {
+	videoIDs []int64
+	groupIDs []int64
 }
 
 // judgeableSuccession は判定する記録の新しい鍵と、その動画の尺である。
@@ -124,90 +131,91 @@ func judgeableSuccessions(ctx context.Context, tx *sql.Tx) ([]judgeableSuccessio
 // applySuccession は contentKey の判定してよい（ready = 1）記録を読んで消し、尺が合い、前の
 // 中身を参照する動画が無ければ、前の中身の利用者データと集まりの位置を新しい中身へ付け替える
 // （data-model.md §5）。引き継いだとき、確定後に domain.VideoBundleChanged で知らせる動画の
-// id を返す（引き継がなければ空）。
-func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, durationMs int64) ([]int64, error) {
+// id と、フォルダの索引の作り直しで変わったグループの id を返す（引き継がなければ空）。
+func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, durationMs int64) (succession, error) {
 	if contentKey == "" {
-		return nil, nil
+		return succession{}, nil
 	}
 	var oldKey string
 	var oldDurationMs int64
 	err := tx.QueryRowContext(ctx, `select old_key, old_duration_ms from video_successions
 		where new_key = ? and ready = 1`, contentKey).Scan(&oldKey, &oldDurationMs)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+		return succession{}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("cannot read the succession: %w", err)
+		return succession{}, fmt.Errorf("cannot read the succession: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `delete from video_successions where new_key = ?`, contentKey); err != nil {
-		return nil, fmt.Errorf("cannot remove the succession: %w", err)
+		return succession{}, fmt.Errorf("cannot remove the succession: %w", err)
 	}
 	if !domain.DurationsMatch(oldDurationMs, durationMs) {
-		return nil, nil
+		return succession{}, nil
 	}
 	var referenced int
 	if err := tx.QueryRowContext(ctx, `select exists(select 1 from videos where content_key = ?)`, oldKey).Scan(&referenced); err != nil {
-		return nil, fmt.Errorf("cannot read the previous content: %w", err)
+		return succession{}, fmt.Errorf("cannot read the previous content: %w", err)
 	}
 	if referenced != 0 {
-		return nil, nil
+		return succession{}, nil
 	}
 	var newID int64
 	err = tx.QueryRowContext(ctx, `select id from videos where content_key = ?`, contentKey).Scan(&newID)
 	if errors.Is(err, sql.ErrNoRows) {
-		return nil, nil
+		return succession{}, nil
 	}
 	if err != nil {
-		return nil, fmt.Errorf("cannot read the succeeding video: %w", err)
+		return succession{}, fmt.Errorf("cannot read the succeeding video: %w", err)
 	}
 
 	// 付け替えで隠れていた項目が見えるようになったプレイリストは、終わりに更新日時を進める。
 	shapes, err := snapshotPlaylistShapes(ctx, tx, []string{oldKey, contentKey})
 	if err != nil {
-		return nil, err
+		return succession{}, err
 	}
 	bundle, bundled, err := bundleOf(ctx, tx, oldKey)
 	if err != nil {
-		return nil, err
+		return succession{}, err
 	}
 	if bundled {
 		if err := moveBundleMember(ctx, tx, bundle, oldKey, contentKey); err != nil {
-			return nil, err
+			return succession{}, err
 		}
 	}
 	// 集まりのメンバーだった場合も、前の鍵自身の行（集まりに入る前の値）を付け替える。
 	if err := moveUserData(ctx, tx, oldKey, contentKey); err != nil {
-		return nil, err
+		return succession{}, err
 	}
 	if err := moveDismissals(ctx, tx, oldKey, contentKey); err != nil {
-		return nil, err
+		return succession{}, err
 	}
 	// 付け替えた集まりと却下で、新しい鍵の候補が同じ集まりや却下の組になりうる（data-model.md §1 の
 	// 不変条件）。
 	if err := pruneVersionCandidates(ctx, tx); err != nil {
-		return nil, err
+		return succession{}, err
 	}
 
 	changed := []int64{newID}
+	var changedGroups []int64
 	if bundled {
 		keys, err := bundleMemberKeys(ctx, tx, bundle.id)
 		if err != nil {
-			return nil, err
+			return succession{}, err
 		}
 		ids, err := videoIDsForContentKeys(ctx, tx, keys)
 		if err != nil {
-			return nil, err
+			return succession{}, err
 		}
 		changed = append(changed, ids...)
 		// 見せる動画（data-model.md §4）が変わりうるので、束ねる操作と同じく作り直す。
-		if err := rebuildFolderIndex(ctx, tx); err != nil {
-			return nil, err
+		if changedGroups, err = rebuildFolderIndex(ctx, tx); err != nil {
+			return succession{}, err
 		}
 	}
 	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
-		return nil, err
+		return succession{}, err
 	}
-	return normalizeIDs(changed), nil
+	return succession{videoIDs: normalizeIDs(changed), groupIDs: changedGroups}, nil
 }
 
 // moveBundleMember は集まりのメンバーの鍵 oldKey を newKey に付け替え、代表だったなら代表も
@@ -231,7 +239,7 @@ func moveBundleMember(ctx context.Context, tx *sql.Tx, bundle bundleRef, oldKey,
 	return nil
 }
 
-// moveUserData は鍵 from の再生位置・公開の設定・お気に入り・更新日時・タグ・視聴履歴・プレイリストの項目を
+// moveUserData は鍵 from の再生位置・公開の設定・お気に入り・更新日時・タグ・視聴履歴・プレイリストとグループの項目を
 // 鍵 to へ付け替える。
 // 再生位置・公開の設定・お気に入り・更新日時は from に行があれば to の行を置き換え、タグと視聴履歴は和にする。
 func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
@@ -262,8 +270,9 @@ func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	if _, err := tx.ExecContext(ctx, `update watch_history set content_key = ? where content_key = ?`, to, from); err != nil {
 		return fmt.Errorf("cannot move the watch_history values: %w", err)
 	}
-	// プレイリストの項目は移し、同じプレイリストで重なれば前の位置を残す（specs/044-playlists/research.md R-2）。
-	return rekeyPlaylistItems(ctx, tx, from, to)
+	// プレイリストとグループの項目は移し、同じプレイリストやグループで重なれば前の位置を残す
+	// （specs/044-playlists/research.md R-2、specs/048-groups/data-model.md「Succession and bundling」）。
+	return rekeyUserItems(ctx, tx, from, to)
 }
 
 // moveDismissals は「違う動画」の組の鍵 from を to に付け替える。組は並べ直し、重複は 1 つにし、
@@ -321,12 +330,13 @@ func dismissalsOf(ctx context.Context, tx *sql.Tx, key string) ([]dismissal, err
 	return out, nil
 }
 
-// successionEvents は引き継ぎで知らせる動画の id を、確定後に発行する変化にする。
-func successionEvents(ids []int64) []domain.Event {
-	if len(ids) == 0 {
-		return nil
+// successionEvents は引き継ぎで知らせる動画とグループの id を、確定後に発行する変化にする。
+func successionEvents(changed succession) []domain.Event {
+	var events []domain.Event
+	if len(changed.videoIDs) > 0 {
+		events = append(events, domain.VideoBundleChanged{VideoIDs: changed.videoIDs})
 	}
-	return []domain.Event{domain.VideoBundleChanged{VideoIDs: ids}}
+	return append(events, groupsChangedEvents(changed.groupIDs)...)
 }
 
 // normalizeIDs は id を小さい順に並べ、重複を除く。

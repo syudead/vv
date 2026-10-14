@@ -58,7 +58,8 @@ type Publisher interface {
 // 変わったこと（domain.ProcessingChanged）、動画の行が消えたこと
 // （domain.VideoIngestChanged）と、それで内容の識別子の参照が無くなったこと
 // （domain.ContentUnreferenced）、動画の上書きが変わったこと
-// （domain.VideoOverrideChanged）である。どれも取引が確定した後にだけ発行し、
+// （domain.VideoOverrideChanged）、フォルダの索引の作り直しで自動グループが変わったこと
+// （domain.GroupsChanged）である。どれも取引が確定した後にだけ発行し、
 // ロールバックした取引からは発行しない。
 func (db *DB) PublishTo(publisher Publisher) {
 	db.publisherMu.Lock()
@@ -81,6 +82,14 @@ type changes struct {
 	// issues は、問題の行を直接書かずに問題の一覧が変わりうることを表す（動画の行の
 	// 削除による連鎖、メディアフォルダの変更）。発行する知らせには出ない。
 	issues bool
+	// groups は、フォルダの索引の作り直しで変わったグループとその祖先の id である
+	// （rebuildFolderIndex）。
+	groups []int64
+}
+
+// groupsChanged は、変わったグループの id を記録する。確定後に domain.GroupsChanged で知らせる。
+func (c *changes) groupsChanged(ids []int64) {
+	c.groups = normalizeIDs(append(c.groups, ids...))
 }
 
 // issuesChanged は、問題の一覧に出る件が変わりうることを記録する。commit が直近の
@@ -144,7 +153,7 @@ func (c *changes) events() []domain.Event {
 	if c.processing {
 		events = append(events, domain.ProcessingChanged{})
 	}
-	return events
+	return append(events, groupsChangedEvents(c.groups)...)
 }
 
 // commit は取引を確定し、確定できたときだけ集めた変化を発行する。確定前に

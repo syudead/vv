@@ -51,7 +51,8 @@ func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath str
 	if err := writeOverride(ctx, tx, folderPath, mode); err != nil {
 		return domain.FolderGrouping{}, err
 	}
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
 		return domain.FolderGrouping{}, err
 	}
 	groupings, err := folderGroupings(ctx, tx, []string{folderPath})
@@ -61,6 +62,7 @@ func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath str
 	if err := tx.Commit(); err != nil {
 		return domain.FolderGrouping{}, fmt.Errorf("cannot save the folder grouping: %w", err)
 	}
+	s.db.publishEvents(groupsChangedEvents(changedGroups)...)
 	return groupings[0], nil
 }
 
@@ -98,7 +100,8 @@ func (s *FolderGroupStore) TagFolderGroup(ctx context.Context, folderPath string
 	if err := writeOverride(ctx, tx, folderPath, domain.FolderGroupUngroup); err != nil {
 		return domain.FolderGroupTag{}, err
 	}
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
 		return domain.FolderGroupTag{}, err
 	}
 	groupings, err := folderGroupings(ctx, tx, []string{folderPath})
@@ -108,6 +111,7 @@ func (s *FolderGroupStore) TagFolderGroup(ctx context.Context, folderPath string
 	if err := tx.Commit(); err != nil {
 		return domain.FolderGroupTag{}, fmt.Errorf("cannot convert the group to tags: %w", err)
 	}
+	s.db.publishEvents(groupsChangedEvents(changedGroups)...)
 	return domain.FolderGroupTag{Tag: tag, Created: created, Grouping: groupings[0]}, nil
 }
 
@@ -232,10 +236,15 @@ func (s *ScanIndexStore) rebuildFolderIndexTx(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.db.publishEvents(groupsChangedEvents(changedGroups)...)
+	return nil
 }
 
 // markFolderIndexStale は索引が古いことを記録する。行が無ければ版 0 で作るので、
@@ -250,26 +259,33 @@ func markFolderIndexStale(ctx context.Context, q queryExecer) error {
 
 // rebuildFolderIndex は、登録フォルダの下の全所在と例外を読み、
 // domain.BuildFolderIndex を通して、グループとフォルダ名の表を丸ごと書き直す
-// （specs/017-folder-groups/data-model.md §3）。呼び出し側の書き込み取引の中で
-// 行うので、読み出しは作り直しの前か後のどちらかだけを見る。ファイルシステムは読まない。
-func rebuildFolderIndex(ctx context.Context, tx *sql.Tx) error {
+// （specs/017-folder-groups/data-model.md §3）。同じ取引で自動グループをフォルダとそろえ
+// （syncFolderGroups、specs/048-groups/data-model.md「Automatic group sync」）、変わった
+// グループとその祖先の id を返す。呼び出し側は確定の後に groupsChangedEvents で知らせる。
+// 呼び出し側の書き込み取引の中で行うので、読み出しは作り直しの前か後のどちらかだけを見る。
+// ファイルシステムは読まない。
+func rebuildFolderIndex(ctx context.Context, tx *sql.Tx) ([]int64, error) {
 	roots, err := listMediaFolders(ctx, tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	locations, err := folderIndexLocations(ctx, tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	overrides, err := folderGroupOverrides(ctx, tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	index := domain.BuildFolderIndex(roots, locations, overrides)
 	if err := writeFolderIndex(ctx, tx, index); err != nil {
-		return fmt.Errorf("cannot save the folder index: %w", err)
+		return nil, fmt.Errorf("cannot save the folder index: %w", err)
 	}
-	return nil
+	changed, err := syncFolderGroups(ctx, tx, index, overrides)
+	if err != nil {
+		return nil, fmt.Errorf("cannot sync the folder groups: %w", err)
+	}
+	return changed, nil
 }
 
 // folderIndexLocations は索引の入力にする所在を返す。所有者から見た見せる動画

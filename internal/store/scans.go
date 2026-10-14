@@ -165,7 +165,7 @@ func (s *ScanStore) FinishScan(ctx context.Context, id int64, state domain.ScanS
 	//
 	// 監視の走査は読み直したディレクトリしか見ていないので、done でも判定しない。後継の
 	// 判定は done で閉じた手動の走査だけが行う（specs/042-folder-watch-import/research.md R-9）。
-	var succeeded []int64
+	var succeeded succession
 	if state == domain.ScanDone {
 		var origin string
 		if err := tx.QueryRowContext(ctx, `select origin from scans where id = ?`, id).Scan(&origin); err != nil {

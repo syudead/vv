@@ -45,7 +45,7 @@ type bundleRef struct {
 // 既に集まりに属する動画は、その集まりの全メンバーごと新しい集まりへ移す。集まりの値は
 // 代表の利用者データの鍵（代表が集まりに属していればその集まりの鍵）の行を新しい鍵へ写す。
 // メンバーを移し終えた吸収した集まりの行は消すが、その鍵の値は消さない（Edge Case
-// 「集まり同士を束ねる」）。プレイリストの項目は、吸い込んだ各鍵から新しい鍵へ移す（写さない）。
+// 「集まり同士を束ねる」）。プレイリストとグループの項目は、吸い込んだ各鍵から新しい鍵へ移す（写さない）。
 // 同じ集まりになった組の候補を消す。全体を 1 つの取引で行い、確定後に domain.VideoBundleChanged を
 // 1 回発行する。
 func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representativeID int64) (domain.VideoVersions, error) {
@@ -64,7 +64,7 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 	defer func() { _ = tx.Rollback() }()
 
 	var members []string
-	// 集まりに吸い込む利用者データの鍵（メンバーの content_key と吸い込む集まりの鍵）。プレイリストの
+	// 集まりに吸い込む利用者データの鍵（メンバーの content_key と吸い込む集まりの鍵）。プレイリストとグループの
 	// 項目はこれらの鍵から集まりの鍵へ移す（specs/044-playlists/research.md R-2）。
 	var absorbedKeys []string
 	absorbed := map[int64]bool{}
@@ -128,7 +128,7 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 		return domain.VideoVersions{}, err
 	}
 	for _, key := range absorbedKeys {
-		if err := rekeyPlaylistItems(ctx, tx, key, userKey); err != nil {
+		if err := rekeyUserItems(ctx, tx, key, userKey); err != nil {
 			return domain.VideoVersions{}, err
 		}
 	}
@@ -150,7 +150,8 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 		return domain.VideoVersions{}, err
 	}
 
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
 		return domain.VideoVersions{}, err
 	}
 	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
@@ -167,7 +168,7 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 	if err := tx.Commit(); err != nil {
 		return domain.VideoVersions{}, fmt.Errorf("cannot bundle the videos: %w", err)
 	}
-	s.db.publishEvents(domain.VideoBundleChanged{VideoIDs: changed})
+	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}}, groupsChangedEvents(changedGroups)...)...)
 	return versions, nil
 }
 
@@ -199,7 +200,8 @@ func (s *VersionStore) MakeRepresentative(ctx context.Context, videoID int64) (d
 		return domain.VideoVersions{}, fmt.Errorf("cannot change the representative: %w", err)
 	}
 
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
 		return domain.VideoVersions{}, err
 	}
 	versions, err := videoVersions(ctx, tx, domain.AudienceOwner, videoID)
@@ -217,7 +219,7 @@ func (s *VersionStore) MakeRepresentative(ctx context.Context, videoID int64) (d
 	if err := tx.Commit(); err != nil {
 		return domain.VideoVersions{}, fmt.Errorf("cannot change the representative: %w", err)
 	}
-	s.db.publishEvents(domain.VideoBundleChanged{VideoIDs: changed})
+	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}}, groupsChangedEvents(changedGroups)...)...)
 	return versions, nil
 }
 
@@ -269,9 +271,9 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 			if err := replaceUserData(ctx, tx, bundle.userKey, remaining[0]); err != nil {
 				return domain.Video{}, err
 			}
-			// プレイリストの項目は集まりの鍵から残った 1 本へ移す。他のメンバーが残るときは集まりに
+			// プレイリストとグループの項目は集まりの鍵から残った 1 本へ移す。他のメンバーが残るときは集まりに
 			// 残し、外したメンバーには項目を持たせない（specs/044-playlists/research.md R-2）。
-			if err := rekeyPlaylistItems(ctx, tx, bundle.userKey, remaining[0]); err != nil {
+			if err := rekeyUserItems(ctx, tx, bundle.userKey, remaining[0]); err != nil {
 				return domain.Video{}, err
 			}
 		}
@@ -290,7 +292,8 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 		}
 	}
 
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
 		return domain.Video{}, err
 	}
 	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
@@ -303,7 +306,7 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 	if err := tx.Commit(); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot unbundle the video: %w", err)
 	}
-	s.db.publishEvents(domain.VideoBundleChanged{VideoIDs: changed})
+	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}}, groupsChangedEvents(changedGroups)...)...)
 	return video, nil
 }
 
