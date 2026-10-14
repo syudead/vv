@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/data-model.md
-sourceHash: 51b0de50f6a3a5b6eacd86b6ba821bd0a1f10cd360e3252d13a3ae4b6504a260
+sourceHash: 124a5f0ffa3dfa3594d8e2044127811da8a114262d03b482353b546944ea4884
 ---
 
 # データモデル: 作品情報プラグイン {#data-model-work-info-plugins}
@@ -9,7 +9,7 @@ sourceHash: 51b0de50f6a3a5b6eacd86b6ba821bd0a1f10cd360e3252d13a3ae4b6504a260
 
 ## マイグレーション {#migration}
 
-`00043_work_info_plugins.sql` が `work_info_plugins` と `work_info_plugin_settings` を作る。別のマイグレーションが先に `main` に入ったら、番号は次の空いている番号に移る。
+この機能はマイグレーションを 2 つ加える。`00046_work_info_plugins.sql` が `work_info_plugins` と `work_info_plugin_settings` を作り、`00047_work_info_plugin_generation.sql` が `work_info_plugins.generation` を加える。統合のマージより前に別のマイグレーションが `main` に入ったら、それぞれの番号は次の空いている番号に移る。
 
 ## `work_info_plugins` {#work_info_plugins}
 
@@ -27,6 +27,7 @@ sourceHash: 51b0de50f6a3a5b6eacd86b6ba821bd0a1f10cd360e3252d13a3ae4b6504a260
 | `digest` | text | いいえ | アップロードしたバイト列の SHA-256 の小文字の 16 進 |
 | `problem` | text | はい | プラグインを承認できない理由 (下の表)。使えるプラグインでは null |
 | `approved_digest` | text | はい | 所有者が承認したダイジェスト |
+| `generation` | integer | いいえ | 0 から始まり、置き換えるアップロードと承認の取り消しのたびに 1 増える。取得した結果は、取得したときの値を記録する |
 | `added_at` | integer | いいえ | 最初のアップロードの Unix 秒 |
 | `updated_at` | integer | いいえ | 最後のアップロードか承認の変更の Unix 秒 |
 
@@ -60,14 +61,14 @@ sourceHash: 51b0de50f6a3a5b6eacd86b6ba821bd0a1f10cd360e3252d13a3ae4b6504a260
 | 規則 | 強制する場所 |
 | --- | --- |
 | プラグインが承認済みであるのは、ちょうど `problem` が null で `approved_digest = digest` のときである | `internal/domain` (状態)、`internal/store` (読み取り) |
-| マニフェストが既存の `name` を挙げるアップロードは、その行のモジュール、メタデータ、ダイジェスト、問題を置き換え、`approved_digest` を消す。そのため置き換えたものは未承認に戻る | `internal/store`、1 つのトランザクションで |
+| マニフェストが既存の `name` を挙げるアップロードは、その行のモジュール、メタデータ、ダイジェスト、問題を置き換え、`approved_digest` を消して `generation` に 1 を加える。そのため置き換えたものは未承認に戻る | `internal/store`、1 つのトランザクションで |
 | 読める名前のないアップロードは新しい行になる | `internal/store` |
 | 承認が `approved_digest` を書くのは、要求のダイジェストが `digest` と等しく、`problem` が null のときだけである。そうでなければ `plugin_changed` か `plugin_unusable` | `internal/app` が判断し、`internal/store` がそのトランザクションの中で読み直す |
-| 承認の取り消しは `approved_digest` を消す | `internal/store` |
+| 承認の取り消しは `approved_digest` を消し、`generation` に 1 を加える | `internal/store` |
 | 置き換えは、新しいマニフェストが宣言するキーの値を保ち、残りを削除する。`problem` のある置き換えは、宣言を読めていないのですべてを保つ | `internal/store`、アップロードのトランザクションの中で |
 | 値を書けるのは、プラグインが宣言するキーに対してだけである。値を書いても `approved_digest` には触れない | `internal/app` が判断し、`internal/store` が書く |
 | 秘密の値は、そのプラグインの実行の要求の中を除いて、決して `internal/app` の外に出ない | `internal/app`、`internal/httpapi` (応答の型は秘密のための値のフィールドを持たない) |
-| 取得した結果の適用は、同じトランザクションの中で、プラグインの行がまだ存在し、承認済みで、結果を取得したときのダイジェストを持つときを除いて何も書かない | `internal/store` (`OverrideStore` の適用) |
+| 取得した結果の適用は、同じトランザクションの中で、プラグインの行がまだ存在し、承認済みで、結果を取得したときのダイジェストと `generation` を持つときを除いて何も書かない | `internal/store` (`OverrideStore` の適用) |
 | `name` は `a-z`、`0-9`、`-`、`.` からなる 1 から 64 文字。`version` は 1 から 32 文字。`description` は最大 500 文字 | `internal/domain` |
 | `module` は最大 16 MiB | `internal/domain`、`internal/httpapi` (本文の上限) |
 
