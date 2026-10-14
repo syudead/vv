@@ -413,6 +413,7 @@ func run(opts runOptions) error {
 		ThumbnailPicker: ingest,
 		Folders:         libraryStore,
 		FolderGroups:    db.FolderGroups(),
+		Groups:          db.Groups(),
 		Library:         libraryStore,
 		// 外部連携 API の動画の一覧と引き当ても、画面の一覧と同じ LibraryStore が読む。
 		ExternalVideos: libraryStore,

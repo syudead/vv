@@ -42,6 +42,23 @@ const (
 	GroupItemsMaxLimit     = 200
 )
 
+// GroupListDefaultLimit と GroupListMaxLimit は、グループの一覧（GET /api/groups）1 ページの件数の
+// 既定と上限である（specs/048-groups/contracts/screen-api.md「Statuses」）。
+const (
+	GroupListDefaultLimit = 100
+	GroupListMaxLimit     = 200
+)
+
+// GroupListPage はグループの一覧 1 ページである（GET /api/groups）。
+type GroupListPage struct {
+	// Groups は見る人に見せるグループを、どの深さのものも自然な名前の順（同じなら id の順）に持つ。
+	Groups []LibraryGroup
+	// NextCursor は次のページの取得に渡す。これ以上無ければ空。
+	NextCursor string
+	// Roots は登録フォルダの一覧である。グループと同じ読み取りスナップショットから読む。
+	Roots []MediaFolder
+}
+
 // GroupItem はグループの項目 1 件である。Video と Group のちょうど一方を持つ。
 type GroupItem struct {
 	// ID は項目（group_items.id）の id で、動画やグループの id ではない。

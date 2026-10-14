@@ -2098,6 +2098,39 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/groups": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 見る人に見せるグループを名前の順に返す
+         * @description 「Add to group」のピッカーの一覧（specs/048-groups/contracts/screen-api.md）。見る人に見せる
+         *     グループを、どの深さのものも自然な名前の順（同じなら id の順）に、`cursor` の次から最大
+         *     `limit` 件返す。`q` は前後の空白を取り除き、名前が大文字小文字を区別せずにそれを含むものだけに
+         *     絞る（空なら全部）。グループの値は `getGroup` と同じで、ゲストでは公開の動画だけから作り、
+         *     見る人に見せる動画の無いグループは入らない。読めない `cursor` は 400 `invalid_cursor`、
+         *     `limit` が範囲の外なら 400 `invalid_request`。
+         */
+        get: operations["listGroups"];
+        put?: never;
+        /**
+         * 動画とグループからグループを作る
+         * @description 所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）で、同じ名前のグループが
+         *     あってもよい（specs/048-groups/research.md R-14）。`videoIds` の動画、次に `groupIds` の
+         *     グループを要求の順に項目にする。名前が空か長すぎるか、メンバーが無ければ 400
+         *     `invalid_request`。本文の動画かグループのどれかが無ければ 404 `group_target_not_found` で、
+         *     何も作らない（R-12）。
+         */
+        post: operations["createGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/groups/{id}": {
         parameters: {
             query?: never;
@@ -2119,10 +2152,21 @@ export interface paths {
         get: operations["getGroup"];
         put?: never;
         post?: never;
-        delete?: never;
+        /**
+         * グループを解散する
+         * @description 所有者だけ。グループとその項目を消す。子グループと動画は残り、親からこのグループの項目が
+         *     消える。自動グループならそのフォルダに `ungroup` を書く（specs/048-groups/research.md R-4）。
+         *     グループが無ければ 404 `not_found`。
+         */
+        delete: operations["dissolveGroup"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * グループの名前を変える
+         * @description 所有者だけ。名前の規則は作成と同じで、応答の `name` は前後の空白を取り除いた名前である。
+         *     グループが無ければ 404 `not_found`。
+         */
+        patch: operations["renameGroup"];
         trace?: never;
     };
     "/api/groups/{id}/items": {
@@ -2140,7 +2184,83 @@ export interface paths {
          */
         get: operations["listGroupItems"];
         put?: never;
-        post?: never;
+        /**
+         * グループの末尾に動画とグループを足す
+         * @description 所有者だけ。`videoIds` の動画、次に `groupIds` のグループを要求の順で末尾に足す。既に項目に
+         *     あるものは飛ばす（specs/048-groups/research.md R-12）。両方が空なら 400 `invalid_request`。
+         *     本文の動画かグループのどれかが無ければ 404 `group_target_not_found`、本文のグループがこの
+         *     グループかその祖先なら 409 `group_cycle` で、どちらも何も足さない。グループが無ければ 404
+         *     `not_found`。
+         */
+        post: operations["addGroupItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{id}/items/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * グループから項目を外す
+         * @description 所有者だけ。項目を外して残りを詰め直す。動画と子グループそのものは残る。自動グループの
+         *     フォルダ由来の項目は、フォルダの作り直しでも戻らない。項目のどれかがこのグループに無ければ
+         *     404 `group_target_not_found` で、何も外さない。グループが無ければ 404 `not_found`。
+         */
+        post: operations["removeGroupItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{id}/items/{itemId}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * グループの項目 1 つを並べ替える
+         * @description 所有者だけ。項目を `after` の項目のすぐ後ろへ移す。`after` が無ければ先頭へ移す
+         *     （specs/048-groups/research.md R-12）。`after` が項目自身なら 400 `invalid_request`、項目か
+         *     `after` がこのグループに無ければ 404 `group_target_not_found`。グループが無ければ 404
+         *     `not_found`。
+         */
+        post: operations["moveGroupItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{id}/tag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * グループをタグに変える
+         * @description 所有者だけ。1 つの取引で、グループの名前を `NormalizeTagName` に通し、名前かシノニムで
+         *     引けたタグを使うか新しく作り、子孫の全動画に手で付け、グループを解散する
+         *     （specs/048-groups/research.md R-11）。本文は無い。名前がタグ名の規則に合わなければ 400
+         *     `invalid_request` で、何も変えない。グループが無ければ 404 `not_found`。
+         */
+        post: operations["tagGroup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3065,6 +3185,49 @@ export interface components {
              */
             favorite?: boolean;
         };
+        /** @description グループの項目に足す動画とグループ。動画、次にグループの順に、それぞれ要求の順で足す */
+        GroupMembers: {
+            /** @description 足す動画の id */
+            videoIds?: number[];
+            /** @description 足すグループの id */
+            groupIds?: number[];
+        };
+        /** @description POST /api/groups の本文。`GroupMembers` に名前を足したもの */
+        GroupCreate: {
+            /** @description グループの名前。サーバーが前後の空白を取り除いてから長さを数える */
+            name: string;
+            /** @description 項目にする動画の id */
+            videoIds?: number[];
+            /** @description 項目にするグループの id */
+            groupIds?: number[];
+        };
+        GroupName: {
+            /** @description グループの名前。サーバーが前後の空白を取り除いてから長さを数える */
+            name: string;
+        };
+        /** @description GET /api/groups の応答 */
+        GroupListPage: {
+            /** @description 見る人に見せるグループを、どの深さのものも自然な名前の順に */
+            groups: components["schemas"]["LibraryGroup"][];
+            /** @description 続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        GroupItemMove: {
+            /**
+             * Format: int64
+             * @description この項目のすぐ後ろへ移す。無ければ先頭へ移す
+             */
+            after?: number;
+        };
+        GroupItemRemove: {
+            /** @description 外す項目の id（動画やグループの id ではない） */
+            itemIds: number[];
+        };
+        GroupTagResult: {
+            tag: components["schemas"]["TagRef"];
+            /** @description タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false */
+            created: boolean;
+        };
         /** @description グループを指す id と名前 */
         GroupRef: {
             /** Format: int64 */
@@ -3726,7 +3889,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -3786,6 +3949,8 @@ export interface components {
         APITokenId: number;
         /** @description グループの識別子 */
         GroupId: number;
+        /** @description グループの項目の識別子。動画やグループの id ではない */
+        GroupItemId: number;
         /** @description プレイリストの識別子 */
         PlaylistId: number;
         /** @description 視聴履歴の 1 件の識別子 */
@@ -6818,6 +6983,61 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    listGroups: {
+        parameters: {
+            query?: {
+                /** @description 名前に含む文字列。前後の空白を取り除き、大文字小文字を区別しない */
+                q?: string;
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description グループ 1 ページ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupListPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    createGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupCreate"];
+            };
+        };
+        responses: {
+            /** @description 作ったグループ */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryGroup"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     getGroup: {
         parameters: {
             query?: {
@@ -6850,6 +7070,59 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
+    dissolveGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 解散した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupName"];
+            };
+        };
+        responses: {
+            /** @description 名前を変えたあとのグループ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryGroup"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listGroupItems: {
         parameters: {
             query?: {
@@ -6877,6 +7150,123 @@ export interface operations {
                 };
             };
             400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addGroupItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupMembers"];
+            };
+        };
+        responses: {
+            /** @description 足したあとのグループ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryGroup"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeGroupItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupItemRemove"];
+            };
+        };
+        responses: {
+            /** @description 外したあとのグループ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryGroup"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    moveGroupItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+                /** @description グループの項目の識別子。動画やグループの id ではない */
+                itemId: components["parameters"]["GroupItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupItemMove"];
+            };
+        };
+        responses: {
+            /** @description 移した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    tagGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 使ったタグ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupTagResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };

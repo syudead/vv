@@ -26,6 +26,10 @@ type LibraryItems interface {
 	// GroupItems はグループ id の項目の続きのページを返す（GET /api/groups/{id}/items）。
 	// 読めないカーソルは domain.ErrInvalidCursor である。
 	GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int) (domain.GroupPage, error)
+	// ListGroups は見る人に見せるグループを、どの深さのものも自然な名前の順に、名前が query を
+	// 大文字小文字を区別せずに含むものだけ 1 ページ返す（GET /api/groups）。読めないカーソルは
+	// domain.ErrInvalidCursor である。
+	ListGroups(ctx context.Context, audience domain.Audience, query, cursor string, limit int) (domain.GroupListPage, error)
 }
 
 // ListLibrary はライブラリの項目の一覧を返す（GET /api/library）。パラメータの検査と

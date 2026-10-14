@@ -3184,6 +3184,77 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/groups:
+    get:
+      operationId: listGroups
+      security:
+        - sessionCookie: []
+        - {}
+      summary: 見る人に見せるグループを名前の順に返す
+      description: |
+        「Add to group」のピッカーの一覧（specs/048-groups/contracts/screen-api.md）。見る人に見せる
+        グループを、どの深さのものも自然な名前の順（同じなら id の順）に、`cursor` の次から最大
+        `limit` 件返す。`q` は前後の空白を取り除き、名前が大文字小文字を区別せずにそれを含むものだけに
+        絞る（空なら全部）。グループの値は `getGroup` と同じで、ゲストでは公開の動画だけから作り、
+        見る人に見せる動画の無いグループは入らない。読めない `cursor` は 400 `invalid_cursor`、
+        `limit` が範囲の外なら 400 `invalid_request`。
+      parameters:
+        - name: q
+          in: query
+          description: 名前に含む文字列。前後の空白を取り除き、大文字小文字を区別しない
+          schema:
+            type: string
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: グループ 1 ページ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupListPage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+    post:
+      operationId: createGroup
+      summary: 動画とグループからグループを作る
+      description: |
+        所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）で、同じ名前のグループが
+        あってもよい（specs/048-groups/research.md R-14）。`videoIds` の動画、次に `groupIds` の
+        グループを要求の順に項目にする。名前が空か長すぎるか、メンバーが無ければ 400
+        `invalid_request`。本文の動画かグループのどれかが無ければ 404 `group_target_not_found` で、
+        何も作らない（R-12）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupCreate"
+      responses:
+        "201":
+          description: 作ったグループ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryGroup"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/groups/{id}:
     get:
       operationId: getGroup
@@ -3227,6 +3298,49 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "404":
           $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: renameGroup
+      summary: グループの名前を変える
+      description: |
+        所有者だけ。名前の規則は作成と同じで、応答の `name` は前後の空白を取り除いた名前である。
+        グループが無ければ 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupName"
+      responses:
+        "200":
+          description: 名前を変えたあとのグループ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryGroup"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    delete:
+      operationId: dissolveGroup
+      summary: グループを解散する
+      description: |
+        所有者だけ。グループとその項目を消す。子グループと動画は残り、親からこのグループの項目が
+        消える。自動グループならそのフォルダに `ungroup` を書く（specs/048-groups/research.md R-4）。
+        グループが無ければ 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "204":
+          description: 解散した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/groups/{id}/items:
     get:
@@ -3263,6 +3377,121 @@ paths:
                 $ref: "#/components/schemas/GroupItemPage"
         "400":
           $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    post:
+      operationId: addGroupItems
+      summary: グループの末尾に動画とグループを足す
+      description: |
+        所有者だけ。`videoIds` の動画、次に `groupIds` のグループを要求の順で末尾に足す。既に項目に
+        あるものは飛ばす（specs/048-groups/research.md R-12）。両方が空なら 400 `invalid_request`。
+        本文の動画かグループのどれかが無ければ 404 `group_target_not_found`、本文のグループがこの
+        グループかその祖先なら 409 `group_cycle` で、どちらも何も足さない。グループが無ければ 404
+        `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupMembers"
+      responses:
+        "200":
+          description: 足したあとのグループ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryGroup"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/groups/{id}/items/remove:
+    post:
+      operationId: removeGroupItems
+      summary: グループから項目を外す
+      description: |
+        所有者だけ。項目を外して残りを詰め直す。動画と子グループそのものは残る。自動グループの
+        フォルダ由来の項目は、フォルダの作り直しでも戻らない。項目のどれかがこのグループに無ければ
+        404 `group_target_not_found` で、何も外さない。グループが無ければ 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupItemRemove"
+      responses:
+        "200":
+          description: 外したあとのグループ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryGroup"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/groups/{id}/items/{itemId}/move:
+    post:
+      operationId: moveGroupItem
+      summary: グループの項目 1 つを並べ替える
+      description: |
+        所有者だけ。項目を `after` の項目のすぐ後ろへ移す。`after` が無ければ先頭へ移す
+        （specs/048-groups/research.md R-12）。`after` が項目自身なら 400 `invalid_request`、項目か
+        `after` がこのグループに無ければ 404 `group_target_not_found`。グループが無ければ 404
+        `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - $ref: "#/components/parameters/GroupItemId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GroupItemMove"
+      responses:
+        "204":
+          description: 移した
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/groups/{id}/tag:
+    post:
+      operationId: tagGroup
+      summary: グループをタグに変える
+      description: |
+        所有者だけ。1 つの取引で、グループの名前を `NormalizeTagName` に通し、名前かシノニムで
+        引けたタグを使うか新しく作り、子孫の全動画に手で付け、グループを解散する
+        （specs/048-groups/research.md R-11）。本文は無い。名前がタグ名の規則に合わなければ 400
+        `invalid_request` で、何も変えない。グループが無ければ 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+      responses:
+        "200":
+          description: 使ったタグ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupTagResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
         "404":
           $ref: "#/components/responses/NotFound"
 
@@ -3470,6 +3699,15 @@ components:
       in: path
       required: true
       description: グループの識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    GroupItemId:
+      name: itemId
+      in: path
+      required: true
+      description: グループの項目の識別子。動画やグループの id ではない
       schema:
         type: integer
         format: int64
@@ -4981,6 +5219,111 @@ components:
             所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
             所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
 
+    GroupMembers:
+      type: object
+      additionalProperties: false
+      description: グループの項目に足す動画とグループ。動画、次にグループの順に、それぞれ要求の順で足す
+      properties:
+        videoIds:
+          type: array
+          description: 足す動画の id
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        groupIds:
+          type: array
+          description: 足すグループの id
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    GroupCreate:
+      type: object
+      required: [name]
+      additionalProperties: false
+      description: POST /api/groups の本文。`GroupMembers` に名前を足したもの
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: グループの名前。サーバーが前後の空白を取り除いてから長さを数える
+        videoIds:
+          type: array
+          description: 項目にする動画の id
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        groupIds:
+          type: array
+          description: 項目にするグループの id
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    GroupName:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: グループの名前。サーバーが前後の空白を取り除いてから長さを数える
+
+    GroupListPage:
+      type: object
+      required: [groups]
+      additionalProperties: false
+      description: GET /api/groups の応答
+      properties:
+        groups:
+          type: array
+          description: 見る人に見せるグループを、どの深さのものも自然な名前の順に
+          items:
+            $ref: "#/components/schemas/LibraryGroup"
+        nextCursor:
+          type: string
+          description: 続きがあるときだけ入る
+
+    GroupItemMove:
+      type: object
+      additionalProperties: false
+      properties:
+        after:
+          type: integer
+          format: int64
+          description: この項目のすぐ後ろへ移す。無ければ先頭へ移す
+
+    GroupItemRemove:
+      type: object
+      required: [itemIds]
+      additionalProperties: false
+      properties:
+        itemIds:
+          type: array
+          description: 外す項目の id（動画やグループの id ではない）
+          minItems: 1
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+
+    GroupTagResult:
+      type: object
+      required: [tag, created]
+      additionalProperties: false
+      properties:
+        tag:
+          $ref: "#/components/schemas/TagRef"
+        created:
+          type: boolean
+          description: タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false
     GroupRef:
       type: object
       required: [id, name]
@@ -6121,6 +6464,8 @@ components:
         - media_folders_changed
         - root_group_not_taggable
         - folder_not_group
+        - group_target_not_found
+        - group_cycle
         - probe_info_missing
         - seek_preview_generating
         - transcode_unavailable
