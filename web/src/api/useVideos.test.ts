@@ -25,16 +25,20 @@ import type { VideosCriteria } from "./useVideos";
  * **このテストが同じ内容で通ること**が、既存の振る舞いを保った証拠になる。
  */
 
-const { listVideos, listFolderVideos, getVideo, getGroup } = vi.hoisted(() => ({
-  listVideos: vi.fn(),
-  listFolderVideos: vi.fn(),
-  getVideo: vi.fn(),
-  getGroup: vi.fn(),
-}));
+const { listVideos, listLibrary, listFolderVideos, getVideo, getGroup } = vi.hoisted(
+  () => ({
+    listVideos: vi.fn(),
+    listLibrary: vi.fn(),
+    listFolderVideos: vi.fn(),
+    getVideo: vi.fn(),
+    getGroup: vi.fn(),
+  }),
+);
 
 vi.mock("./client", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./client")>()),
   listVideos,
+  listLibrary,
   listFolderVideos,
   getVideo,
   getGroup,
@@ -81,6 +85,7 @@ beforeEach(() => {
   installFakeEventSource();
   getVideo.mockReset();
   getGroup.mockReset();
+  listLibrary.mockReset();
   listVideos.mockReset();
   listVideos.mockImplementation((params: ListVideosParams = {}) => {
     let settle: ((value: VideoPage) => void) | null = null;
@@ -1732,6 +1737,38 @@ describe("useVideos のグループの項目", () => {
     await waitFor(() => expect(groups(result.current.items)[0]?.name).toBe("新しい名前"));
     expect(getGroup).toHaveBeenCalledTimes(1);
     expect(getGroup.mock.calls[0]?.[0]).toBe(7);
+  });
+
+  it("ライブラリは group イベントで、表示中でないグループでも読み込み済みのページを条件を保ったまま読み直す", async () => {
+    // ライブラリの取得も calls に記録する（応答を後から決められる）。
+    listLibrary.mockImplementation((params: ListVideosParams) => listVideos(params));
+    const { result } = renderHook(
+      () => useVideos({ sort: "addedDesc", query: "旅" }, undefined, "library"),
+      { wrapper: OwnerAudience },
+    );
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => {
+      calls[0]?.resolve(page([10, 2]));
+    });
+    expect(result.current.items.map((entry) => entry.kind)).toEqual(["video", "video"]);
+
+    // 別の画面で動画 10 から新しいグループ 7 を作った。グループ 7 はまだ表示していない。
+    await emitServerEvent("group", { ids: [7] });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    expect(getGroup).not.toHaveBeenCalled();
+    expect(calls[1]?.params).toMatchObject({ sort: "addedDesc", query: "旅" });
+    expect(calls[1]?.params.cursor).toBeUndefined();
+    // 読み直しの間も今の項目を見せる。
+    expect(result.current.items).toHaveLength(2);
+
+    await act(async () => {
+      calls[1]?.resolve({
+        items: [{ kind: "group", group: group({ videoIds: [10] }) }, videoItem(item(2))],
+        total: 2,
+      } as unknown as VideoPage);
+    });
+    expect(result.current.items.map((entry) => entry.kind)).toEqual(["group", "video"]);
+    expect(groups(result.current.items)[0]?.id).toBe(7);
   });
 
   it("ゲストにも group イベントで表示中のグループを取り直す（specs/048-groups/contracts/screen-api.md）", async () => {
