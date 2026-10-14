@@ -207,6 +207,24 @@ func TestOrganizeMoveUndoConflicts(t *testing.T) {
 	assertSnapshot(t, db, "conflicting undo wrote", before)
 }
 
+// 移動の後で戻すグループを、操作の前には無かったプレイリストに入れたなら、取り消しは
+// ErrUndoConflict で、プレイリストの項目は連鎖削除で消えずに残る（data-model.md「Undo image」）。
+func TestOrganizeMoveUndoConflictsWithLaterPlaylistItem(t *testing.T) {
+	db := migratedDB(t)
+	k1, k2 := looseVideo(t, db, "k1"), looseVideo(t, db, "k2")
+	from := createGroup(t, db, "From", domain.GroupAdd{VideoIDs: []int64{k1, k2}})
+	to := createGroup(t, db, "To", domain.GroupAdd{VideoIDs: []int64{k2}})
+	image := moveCards(t, db, domain.OrganizeMove{Items: []domain.OrganizeRef{videoRef(k1)}, From: from, To: to})
+	playlist := createPlaylist(t, db, "Later")
+	addToPlaylist(t, db, playlist, domain.PlaylistAdd{GroupIDs: []int64{to}})
+
+	before := organizeSnapshot(t, db)
+	if err := db.Organize().Undo(context.Background(), image); !errors.Is(err, domain.ErrUndoConflict) {
+		t.Fatalf("Undo error = %v, want ErrUndoConflict", err)
+	}
+	assertSnapshot(t, db, "conflicting undo wrote", before)
+}
+
 // 自動グループのフォルダメンバーを外すと除外が書かれ、取り消すと除外が消えて同じ項目が戻る。
 // 最後のメンバーまで外すと解散して ungroup が書かれ、取り消すと例外が消えてグループが同じ id で
 // 戻り、作り直しでもそのまま残る。

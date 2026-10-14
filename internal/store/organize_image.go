@@ -26,7 +26,7 @@ var imageScopeColumns = map[string][]string{
 	"group_items":            {"group_id", "child_id"},
 	"group_exclusions":       {"group_id"},
 	"group_favorites":        {"group_id"},
-	"playlist_items":         {"playlist_id"},
+	"playlist_items":         {"playlist_id", "group_id"},
 	"folder_group_overrides": {"path"},
 }
 
@@ -348,9 +348,11 @@ func finishUndo(ctx context.Context, tx *sql.Tx, image undoImage) ([]int64, erro
 
 // groupsImage はグループ ids の行と、それらを指す行の範囲を、親の表を先にして並べた像を作る
 // （data-model.md「Undo image」の Move）。グループごとに groups、group_items（group_id と child_id
-// の両方）、group_exclusions、group_favorites を、それらを持つプレイリストの playlist_items を
-// 丸ごと、自動グループのフォルダの folder_group_overrides を持つ。取り消しはグループの行を消して
-// 入れ直すので、外部キーで一緒に消える行はどれもこの範囲に入っている。
+// の両方）、group_exclusions、group_favorites、playlist_items（group_id）を、それらを持つ
+// プレイリストの playlist_items を丸ごと、自動グループのフォルダの folder_group_overrides を持つ。
+// 取り消しはグループの行を消して入れ直すので、外部キーで一緒に消える行はどれもこの範囲に入っている。
+// playlist_items を group_id でも持つのは、操作の後でグループを別のプレイリストに入れた行を後の像との
+// 違いとして見つけ、連鎖削除で消す代わりに ErrUndoConflict にするためである。
 func groupsImage(ctx context.Context, tx *sql.Tx, ids []int64) (undoImage, error) {
 	ids = normalizeIDs(slices.Clone(ids))
 	encoded, err := json.Marshal(ids)
@@ -369,7 +371,8 @@ func groupsImage(ctx context.Context, tx *sql.Tx, ids []int64) (undoImage, error
 	}
 	var specs []imageScopeSpec
 	for _, spec := range []imageScopeSpec{{"groups", "id", nil}, {"group_items", "group_id", nil},
-		{"group_items", "child_id", nil}, {"group_exclusions", "group_id", nil}, {"group_favorites", "group_id", nil}} {
+		{"group_items", "child_id", nil}, {"group_exclusions", "group_id", nil}, {"group_favorites", "group_id", nil},
+		{"playlist_items", "group_id", nil}} {
 		for _, id := range ids {
 			specs = append(specs, imageScopeSpec{spec.table, spec.column, id})
 		}
@@ -409,7 +412,7 @@ func (image *undoImage) finishGroupsImage(groups []int64) {
 		}
 		switch scope.Table {
 		case "playlist_items":
-			if scope.Key.Int != nil {
+			if scope.Column == "playlist_id" && scope.Key.Int != nil {
 				image.Playlists = append(image.Playlists, *scope.Key.Int)
 			}
 		case "folder_group_overrides":

@@ -70,6 +70,11 @@ func (s *server) OrganizeMove(w http.ResponseWriter, r *http.Request) {
 	case problem != "":
 		s.invalidRequest(w, problem)
 		return
+	case !namedGroupID(body.From) || !namedGroupID(body.To):
+		// グループの id は 1 から始まる。明示した 0 以下を省略と取り違えると、無い移動先を
+		// ライブラリへ外すことにしてしまう。
+		s.writeGroupError(w, domain.ErrGroupTargetNotFound, "Could not move the cards.")
+		return
 	case from == 0 && to == 0:
 		s.invalidRequest(w, "Name the group the cards leave or the group they join.")
 		return
@@ -105,6 +110,11 @@ func organizeRefs(refs gen.OrganizeRefs) ([]domain.OrganizeRef, string) {
 		out = append(out, domain.OrganizeRef{Kind: domain.OrganizeRefKind(ref.Kind), ID: ref.Id})
 	}
 	return out, ""
+}
+
+// namedGroupID は省ける id が、省かれたか、あり得るグループの id（1 以上）かを返す。
+func namedGroupID(id *int64) bool {
+	return id == nil || *id > 0
 }
 
 // optionalID は省ける id を、無ければ 0 にする。

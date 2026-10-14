@@ -163,8 +163,9 @@ func TestOrganizeMoveAndUndo(t *testing.T) {
 	f.assertGroupNames(t, "解散の取り消しのあと", b.Id, "ep1")
 }
 
-// 本文の誤りは 400 invalid_request、無いグループ・from に無いカードは 404 group_target_not_found、
-// 自分の子孫へ動かすグループは 409 group_cycle で、どれも何も変えない。ゲストは 401 である。
+// 本文の誤りは 400 invalid_request、無いグループ（明示した 0 以下の id も）・from に無いカードは
+// 404 group_target_not_found、自分の子孫へ動かすグループは 409 group_cycle で、どれも何も変えない。
+// ゲストは 401 である。
 func TestOrganizeMoveErrors(t *testing.T) {
 	f := newLibraryFixture(t)
 	inner := f.createGroup(t, "Inner", []int64{f.ids["solo"]}, nil)
@@ -187,6 +188,9 @@ func TestOrganizeMoveErrors(t *testing.T) {
 		{"from も to も無い", map[string]any{"items": []any{solo}}, wantGroupInvalid},
 		{"from と to が同じ", map[string]any{"items": []any{solo}, "from": inner.Id, "to": inner.Id}, wantGroupInvalid},
 		{"無い to", map[string]any{"items": []any{solo}, "to": 999999}, wantGroupTargetNotFound},
+		{"0 の to", map[string]any{"items": []any{solo}, "from": inner.Id, "to": 0}, wantGroupTargetNotFound},
+		{"0 の from", map[string]any{"items": []any{solo}, "from": 0, "to": outer.Id}, wantGroupTargetNotFound},
+		{"負の to", map[string]any{"items": []any{solo}, "from": inner.Id, "to": -1}, wantGroupTargetNotFound},
 		{"from に無い", map[string]any{"items": []any{solo}, "from": outer.Id, "to": inner.Id}, wantGroupTargetNotFound},
 		{"子孫へ", map[string]any{"items": []any{map[string]any{"kind": "group", "id": outer.Id}}, "to": inner.Id}, cycle},
 	} {
