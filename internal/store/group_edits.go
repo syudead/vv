@@ -29,14 +29,8 @@ func (s *GroupStore) CreateGroup(ctx context.Context, name string, add domain.Gr
 	}
 	var id int64
 	err = s.write(ctx, "create the group", func(tx *sql.Tx) ([]int64, error) {
-		now := groupNow().UnixMilli()
-		result, err := tx.ExecContext(ctx, `insert into groups (name, title_key, created_at, updated_at) values (?, ?, ?, ?)`,
-			name, domain.NaturalSortKey(name), now, now)
-		if err != nil {
-			return nil, fmt.Errorf("cannot create the group: %w", err)
-		}
-		if id, err = result.LastInsertId(); err != nil {
-			return nil, fmt.Errorf("cannot create the group: %w", err)
+		if id, err = insertManualGroup(ctx, tx, name); err != nil {
+			return nil, err
 		}
 		if _, err := appendGroupMembers(ctx, tx, id, add); err != nil {
 			return nil, err
@@ -49,6 +43,22 @@ func (s *GroupStore) CreateGroup(ctx context.Context, name string, add domain.Gr
 	return s.summary(ctx, id)
 }
 
+// insertManualGroup は整えた名前 name の、項目の無い手で作るグループの行を入れ、その id を返す。
+// origin_folder は持たない。CreateGroup と「グループにする」（OrganizeStore.Group）が共有する。
+func insertManualGroup(ctx context.Context, tx *sql.Tx, name string) (int64, error) {
+	now := groupNow().UnixMilli()
+	result, err := tx.ExecContext(ctx, `insert into groups (name, title_key, created_at, updated_at) values (?, ?, ?, ?)`,
+		name, domain.NaturalSortKey(name), now, now)
+	if err != nil {
+		return 0, fmt.Errorf("cannot create the group: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("cannot create the group: %w", err)
+	}
+	return id, nil
+}
+
 // RenameGroup はグループ id の名前を name（domain.ValidateGroupName で整える）にし、title_key も
 // 合わせる。無ければ domain.ErrGroupNotFound。
 func (s *GroupStore) RenameGroup(ctx context.Context, id int64, name string) (domain.Group, error) {
@@ -57,19 +67,26 @@ func (s *GroupStore) RenameGroup(ctx context.Context, id int64, name string) (do
 		return domain.Group{}, err
 	}
 	err = s.write(ctx, "rename the group", func(tx *sql.Tx) ([]int64, error) {
-		if _, err := groupSummary(ctx, tx, id); err != nil {
-			return nil, err
-		}
-		if _, err := tx.ExecContext(ctx, `update groups set name = ?, title_key = ? where id = ?`,
-			name, domain.NaturalSortKey(name), id); err != nil {
-			return nil, fmt.Errorf("cannot rename the group: %w", err)
-		}
-		return touchedGroupsWithAncestors(ctx, tx, []int64{id})
+		return renameGroup(ctx, tx, id, name)
 	})
 	if err != nil {
 		return domain.Group{}, err
 	}
 	return s.summary(ctx, id)
+}
+
+// renameGroup はグループ id の名前を、整えた名前 name にし、title_key も合わせて更新日時を進め、
+// それとその祖先の id を返す。無ければ domain.ErrGroupNotFound。GroupStore.RenameGroup と、
+// 取り消しのトークン付きの名前変更（OrganizeStore.RenameGroup）が共有する。
+func renameGroup(ctx context.Context, tx *sql.Tx, id int64, name string) ([]int64, error) {
+	if _, err := groupSummary(ctx, tx, id); err != nil {
+		return nil, err
+	}
+	if _, err := tx.ExecContext(ctx, `update groups set name = ?, title_key = ? where id = ?`,
+		name, domain.NaturalSortKey(name), id); err != nil {
+		return nil, fmt.Errorf("cannot rename the group: %w", err)
+	}
+	return touchedGroupsWithAncestors(ctx, tx, []int64{id})
 }
 
 // AddGroupItems は add の動画、次にグループを、グループ id の末尾に要求の順で足す。既に項目に
@@ -211,7 +228,12 @@ func writeGroups(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) ([]i
 
 // summary はグループ id の要約を、確定した後の状態から読む。
 func (s *GroupStore) summary(ctx context.Context, id int64) (domain.Group, error) {
-	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	return committedGroupSummary(ctx, s.db, id)
+}
+
+// committedGroupSummary は GroupStore.summary の本体で、グループを変える役割が共有する。
+func committedGroupSummary(ctx context.Context, db *DB, id int64) (domain.Group, error) {
+	tx, err := db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.Group{}, fmt.Errorf("cannot read the group: %w", err)
 	}

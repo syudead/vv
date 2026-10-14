@@ -3662,7 +3662,11 @@ paths:
       summary: グループの名前を変える
       description: |
         所有者だけ。名前の規則は作成と同じで、応答の `name` は前後の空白を取り除いた名前である。
-        グループが無ければ 404 `not_found`。
+        グループが無ければ 404 `not_found`。`undoToken` が、このグループを作った
+        `POST /api/organize/group` の生きているトークンなら、名前を変えた後の行をそのトークンの
+        取り消しの像にするので、取り消しは名前を変えたグループを消す
+        （specs/050-drag-organize/contracts/screen-api.md）。それ以外のトークンは何も変えず、応答と
+        誤りはトークンが無いときと同じで、トークンが原因で失敗することはない。
       parameters:
         - $ref: "#/components/parameters/GroupId"
       requestBody:
@@ -3670,7 +3674,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GroupName"
+              $ref: "#/components/schemas/GroupRename"
       responses:
         "200":
           description: 名前を変えたあとのグループ
@@ -3877,6 +3881,37 @@ paths:
       responses:
         "200":
           description: 並べ替えた。取り消しのトークン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizeResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/organize/group:
+    post:
+      operationId: organizeGroup
+      summary: ドラッグした動画と落とした先の動画のグループを作り、取り消しのトークンを返す
+      description: |
+        所有者だけ。落とした先の動画 `target` の題名を先頭 100 文字に切った名前で新しいグループを作り、
+        `target`、続いて `items` の動画を画面の順に入れる。`from` があれば、新しいグループが
+        `from` の中で `target` の位置を取り、`target` と `items` は `from` から抜ける
+        （specs/050-drag-organize/research.md R-6）。1 つの取引で行い、応答の `groupId` が新しい
+        グループ、`undoToken` で取り消せる。`items` が空かグループを含めば 400 `invalid_request`。
+        動画か `from` が無いか、動画が `from` に無ければ 404 `group_target_not_found` で、何も書かない。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizeGroup"
+      responses:
+        "200":
+          description: グループを作った。新しいグループの id と取り消しのトークン
           content:
             application/json:
               schema:
@@ -6178,6 +6213,21 @@ components:
           maxLength: 100
           description: グループの名前。サーバーが前後の空白を取り除いてから長さを数える
 
+    GroupRename:
+      type: object
+      required: [name]
+      additionalProperties: false
+      description: PATCH /api/groups/{id} の本文（specs/050-drag-organize/contracts/screen-api.md）
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: グループの名前。サーバーが前後の空白を取り除いてから長さを数える
+        undoToken:
+          type: string
+          description: このグループを作った POST /api/organize/group の `undoToken`。名前の変更をその取り消しに含める
+
     GroupListPage:
       type: object
       required: [groups]
@@ -6272,6 +6322,22 @@ components:
           type: integer
           format: int64
           description: この項目のすぐ後ろへ移す。無ければ先頭へ移す
+
+    OrganizeGroup:
+      type: object
+      required: [items, target]
+      additionalProperties: false
+      properties:
+        items:
+          $ref: "#/components/schemas/OrganizeRefs"
+        target:
+          type: integer
+          format: int64
+          description: 落とした先の動画
+        from:
+          type: integer
+          format: int64
+          description: 新しいグループを置く、開いているグループ
 
     OrganizeMove:
       type: object
