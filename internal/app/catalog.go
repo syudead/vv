@@ -30,9 +30,10 @@ type CatalogIndexStore interface {
 	// 動画 selfID について返す。
 	RelatedCandidates(ctx context.Context, audience domain.Audience, selfID int64) ([]domain.RelatedCandidate, error)
 	VideosByIDs(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.Video, error)
-	// VideoGroup は動画 id が属するグループを、見る人に見せてよいメンバーだけで返す。
-	// メンバーの詳細は window の範囲だけを読む。見る人に見せるグループが無ければ false。
-	VideoGroup(ctx context.Context, audience domain.Audience, id int64, window domain.GroupWindow) (domain.VideoGroup, bool, error)
+	// VideoGroup は動画 id の文脈のグループ（contextID は動画を開いたグループ、無ければ 0。
+	// specs/048-groups/research.md R-9）を、見る人に見せてよい動画の再生順で返す。詳細は
+	// window の範囲だけを読む。動画がどのグループにも無ければ false。
+	VideoGroup(ctx context.Context, audience domain.Audience, id, contextID int64, window domain.GroupWindow) (domain.VideoGroup, bool, error)
 }
 
 // ArtifactFiles は生成物が今あるかを答える。internal/artifacts の *Store が
@@ -136,11 +137,12 @@ func (c *Catalog) SeekThumbnailState(ctx context.Context, video domain.Video) (d
 	return domain.SeekThumbnailPending, nil
 }
 
-// VideoGroup は動画が属するグループを、見る人に見せてよいメンバーだけで返す
-// （GET /api/videos/{id} の group と GET /api/videos/{id}/group-members）。メンバーの詳細は
-// window の範囲だけを読む。見る人に見せるグループが無ければ false。
-func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
-	return c.index.VideoGroup(ctx, audience, video.ID, window)
+// VideoGroup は動画の文脈のグループ（contextID は動画を開いたグループ、無ければ 0。
+// specs/048-groups/research.md R-9）を、見る人に見せてよい動画の再生順で返す
+// （GET /api/videos/{id} の group と GET /api/videos/{id}/group-members）。詳細は window の
+// 範囲だけを読む。動画がどのグループにも無ければ false。
+func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, contextID int64, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
+	return c.index.VideoGroup(ctx, audience, video.ID, contextID, window)
 }
 
 // RelatedVideos は関連動画の 1 ページを返す（issue 931）。
@@ -151,9 +153,9 @@ func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, vide
 // ゲストには公開の動画だけが並ぶ。基準の動画が手がかりに無ければ（読む間に消えた）、
 // 関連動画は空にする。
 //
-// 動画がグループのメンバーなら（specs/017-folder-groups/contracts/folder-groups-api.md §3）、
-// 同じグループのメンバーは並べる前に除く。最初のページだけがグループの窓を載せ、次と前の
-// 動画をグループの中の並びにする。グループに属さない動画の次の動画は、関連動画の並びの
+// 動画がグループにあれば、文脈のグループ（page.GroupID、specs/048-groups/research.md R-9）の
+// 再生順の動画は並べる前に除く。最初のページだけがグループの窓を載せ、次と前の動画を
+// その再生順にする。グループに属さない動画の次の動画は、関連動画の並びの
 // 先頭である。前の動画は返さない（画面が見てきた順から決める）。
 func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error) {
 	first := page.After == nil
@@ -161,7 +163,7 @@ func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, v
 	if first {
 		window = domain.GroupWindow{Limit: domain.GroupMemberWindow, Around: true}
 	}
-	group, grouped, err := c.index.VideoGroup(ctx, audience, video.ID, window)
+	group, grouped, err := c.index.VideoGroup(ctx, audience, video.ID, page.GroupID, window)
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}

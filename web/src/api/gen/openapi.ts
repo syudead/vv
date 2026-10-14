@@ -257,10 +257,10 @@ export interface paths {
          *     渡して続きを読む。続きは返した位置より後の動画だけなので、読む間に動画が足されたり
          *     消えたりしても、同じ動画が二重に出ない。
          *     `cursor` を付けない最初の要求だけが `nextId`・`prevId`・`group` を持つ。この動画が
-         *     グループのメンバーなら、group にこの動画を中ほどに置いた最大 100 本のメンバーの窓を
-         *     載せ、nextId・prevId をグループの中の並びにする
-         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）。窓の外のメンバーは
-         *     `listVideoGroupMembers` で読む。
+         *     グループにあれば、文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）
+         *     の再生順で、group にこの動画を中ほどに置いた最大 100 本のメンバーの窓を載せ、
+         *     nextId・prevId をその再生順の前後にする。窓の外のメンバーは `listVideoGroupMembers` で
+         *     読む。
          */
         get: operations["getRelatedVideos"];
         put?: never;
@@ -280,11 +280,10 @@ export interface paths {
         };
         /**
          * 動画が属するグループのメンバーを、並びの範囲で返す
-         * @description この動画が属するグループの見せてよいメンバーを、グループの中の並びで `offset` 本目
-         *     （0 始まり）から最大 `limit` 本返す。メンバーの選び方と形は関連動画の group と同じで、
-         *     ゲストには公開のメンバーだけで数える
-         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）。グループのメンバーでない、
-         *     または見る人に見せるグループが無ければ `404`。`offset` が本数以上なら items は空。
+         * @description 文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）の見せてよい
+         *     動画を、その再生順で `offset` 本目（0 始まり）から最大 `limit` 本返す。メンバーの選び方と
+         *     形は関連動画の group と同じで、ゲストには公開の動画だけで数える。動画がどのグループにも
+         *     無ければ `404`。`offset` が本数以上なら items は空。
          */
         get: operations["listVideoGroupMembers"];
         put?: never;
@@ -3362,18 +3361,27 @@ export interface components {
             openable: boolean;
         };
         /**
-         * @description 動画が属するグループ。GET /api/videos/{id} の応答にだけ、メンバーのときだけ入る
-         *     （location と同じ扱いで、一覧の項目には入らない）。ゲストの応答では公開のメンバー
-         *     だけで数え、公開のメンバーが1本だけなら省く
-         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）
+         * @description 動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+         *     GET /api/videos/{id} の応答にだけ、動画がグループにあるときだけ入る（location と同じ扱いで、
+         *     一覧の項目には入らない）。位置と本数はそのグループの再生順（子グループは深さ優先、同じ動画は
+         *     最初の 1 回）で数え、ゲストの応答では公開の動画だけで数える
          */
         VideoGroupRef: {
-            folder: components["schemas"]["VideoFolder"];
-            /** @description フォルダ名 */
+            /**
+             * Format: int64
+             * @description グループの識別子
+             */
+            id: number;
+            /**
+             * @description 自動グループのフォルダ。LibraryGroup の folder と同じく、フォルダから自動でできた
+             *     グループで、そのフォルダが登録フォルダの下にあるときだけ入る
+             */
+            folder?: components["schemas"]["VideoFolder"];
+            /** @description グループの名前 */
             name: string;
-            /** @description グループの中の並びで何本目か（1 始まり） */
+            /** @description グループの再生順で何本目か（1 始まり） */
             position: number;
-            /** @description グループのメンバーの本数 */
+            /** @description グループの再生順の動画の本数 */
             count: number;
         };
         /**
@@ -3430,12 +3438,16 @@ export interface components {
             videoIds: number[];
         };
         /**
-         * @description 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
-         *     メンバーが1本だけなら省く（specs/017-folder-groups/contracts/folder-groups-api.md §3）
+         * @description 基準の動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+         *     メンバーはそのグループの再生順の動画で、ゲストの応答では公開の動画だけで作る
          */
         RelatedGroup: {
-            folder: components["schemas"]["VideoFolder"];
-            /** @description フォルダ名 */
+            /**
+             * Format: int64
+             * @description グループの識別子
+             */
+            id: number;
+            /** @description グループの名前 */
             name: string;
             /**
              * @description 基準の動画を中ほどに置いた、グループの中の並びで連続するメンバーの窓（基準の動画を
@@ -3778,6 +3790,13 @@ export interface components {
     parameters: {
         /** @description サムネイルの編集のセッションの識別子 */
         ThumbnailEditId: string;
+        /**
+         * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
+         *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
+         *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
+         *     答える（specs/048-groups/research.md R-9）
+         */
+        VideoGroupContext: number;
         /** @description 動画の識別子 */
         VideoId: number;
         /** @description メディアフォルダの識別子 */
@@ -4119,7 +4138,15 @@ export interface operations {
     };
     getVideo: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
+                 *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
+                 *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
+                 *     答える（specs/048-groups/research.md R-9）
+                 */
+                group?: components["parameters"]["VideoGroupContext"];
+            };
             header?: never;
             path: {
                 /** @description 動画の識別子 */
@@ -4144,6 +4171,13 @@ export interface operations {
     getRelatedVideos: {
         parameters: {
             query?: {
+                /**
+                 * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
+                 *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
+                 *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
+                 *     答える（specs/048-groups/research.md R-9）
+                 */
+                group?: components["parameters"]["VideoGroupContext"];
                 /** @description 前の応答の `nextCursor`。省くと先頭から返す */
                 cursor?: string;
                 /** @description 返す件数の上限 */
@@ -4173,6 +4207,13 @@ export interface operations {
     listVideoGroupMembers: {
         parameters: {
             query?: {
+                /**
+                 * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
+                 *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
+                 *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
+                 *     答える（specs/048-groups/research.md R-9）
+                 */
+                group?: components["parameters"]["VideoGroupContext"];
                 /** @description 返す最初のメンバーの、グループの中の並びの位置（0 始まり） */
                 offset?: number;
                 /** @description 返す本数の上限 */

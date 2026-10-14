@@ -16,7 +16,7 @@ import (
 // メンバーなら、最初のページにこの動画を中ほどに置いたグループのメンバーの窓も関連動画と
 // 同じ形で載せる。
 func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetRelatedVideosParams) {
-	page := domain.RelatedPage{Limit: domain.DefaultRelatedPageSize}
+	page := domain.RelatedPage{Limit: domain.DefaultRelatedPageSize, GroupID: groupContext(params.Group)}
 	if params.Limit != nil {
 		if *params.Limit < 1 || *params.Limit > domain.MaxRelatedPageSize {
 			s.invalidRequest(w, "limit must be between 1 and 100.")
@@ -57,7 +57,7 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 	payload := gen.RelatedVideos{Items: present(r.Context(), related.Items)}
 	if group := related.Group; group != nil {
 		payload.Group = &gen.RelatedGroup{
-			Folder: gen.VideoFolder{RootId: group.Folder.RootID, Path: group.Folder.Path},
+			Id:     group.ID,
 			Name:   group.Name,
 			Items:  present(r.Context(), group.Members),
 			Offset: group.Offset,
@@ -81,9 +81,9 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 	writeJSON(w, http.StatusOK, payload, s.logger)
 }
 
-// ListVideoGroupMembers は動画が属するグループのメンバーを、並びの範囲で返す
-// （GET /api/videos/{id}/group-members、specs/017-folder-groups/contracts/folder-groups-api.md §3）。
-// 関連動画の group の窓の外を、画面がスクロールに合わせて読む。
+// ListVideoGroupMembers は動画の文脈のグループの動画を、再生順の範囲で返す
+// （GET /api/videos/{id}/group-members、specs/048-groups/research.md R-9）。関連動画の group の
+// 窓の外を、画面がスクロールに合わせて読む。
 func (s *server) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.ListVideoGroupMembersParams) {
 	window := domain.GroupWindow{Limit: domain.GroupMemberWindow}
 	if params.Offset != nil {
@@ -109,13 +109,13 @@ func (s *server) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	audience := audienceFrom(r.Context())
-	group, grouped, err := s.catalog.VideoGroup(r.Context(), audience, video, window)
+	group, grouped, err := s.catalog.VideoGroup(r.Context(), audience, video, groupContext(params.Group), window)
 	if err != nil {
 		s.internalError(w, "Could not load the group members.", err)
 		return
 	}
 	if !grouped {
-		s.notFound(w, "The video is not a member of a group.")
+		s.notFound(w, "The video is not in a group.")
 		return
 	}
 	present := s.presenter(r.Context(), audience, group.Members)
@@ -140,4 +140,13 @@ func (s *server) presenter(ctx context.Context, audience domain.Audience, shown 
 		}
 		return out
 	}
+}
+
+// apiGroupFolder は文脈のグループのフォルダを応答の形にする。自動グループのフォルダが登録
+// フォルダの下に無いときと、手で作ったグループでは nil である。
+func apiGroupFolder(folder *domain.VideoFolder) *gen.VideoFolder {
+	if folder == nil {
+		return nil
+	}
+	return &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
 }
