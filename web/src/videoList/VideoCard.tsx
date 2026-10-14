@@ -39,6 +39,7 @@ import {
   VideoThumbnailNotice,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
+import { type CardDragBinding, dragRowProps, RowDropMarks } from "./cardDrag";
 import { CardMedia, useCardPreview } from "./cardPreview";
 
 export interface VideoCardProps {
@@ -76,6 +77,11 @@ export interface VideoCardProps {
    * 新しい要素になり、無関係な状態変化でも全カードが作り直されてしまう（N4）。
    */
   tagsRow?: (video: Video) => ReactNode;
+  /**
+   * リストの行をドラッグの層に加える値（useCardDrag）。所有者のライブラリのリスト表示だけが
+   * 渡す（specs/050-drag-organize/ui-design.md「Library」）。格子のカードは DraggableCard で包む。
+   */
+  drag?: CardDragBinding;
 }
 
 function useCardState(video: Video) {
@@ -454,16 +460,16 @@ export default memo(VideoCard);
 
 /** VideoRow はリスト表示の 1 行。 */
 export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
-  const { video, backTo, to, selected, selectionMode, onSelect } = props;
+  const { video, backTo, to, selected, selectionMode, onSelect, drag } = props;
   const { duration, unplayable, state, ratio, quality } = useCardState(video);
   const publicMark = usePublicMark(video);
   const owner = useAudience() === "owner";
 
   return (
     <TableRow
+      {...dragRowProps(drag, "group")}
       data-video-id={video.id}
       data-state={selected ? "selected" : undefined}
-      className="group"
     >
       {/* 選択を持たない画面（ゲストの一覧）では、選択の列ごと描かない。 */}
       {onSelect !== undefined && (
@@ -520,6 +526,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
             {unplayable}
           </span>
         )}
+        <RowDropMarks drag={drag} />
       </TableCell>
       {/* お気に入りは題名の列の直後の列（ui-design.md「List view row」）。ゲストには列ごと描かない。 */}
       {owner && (

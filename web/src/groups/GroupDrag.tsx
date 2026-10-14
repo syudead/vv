@@ -1,12 +1,16 @@
 import { type ReactNode, useCallback, useMemo } from "react";
 
 import type { GroupItem } from "../api/groups";
-import { t } from "../i18n";
-import { VideoThumbnail, VideoThumbnailImage } from "../ui/VideoThumbnail";
-import { CardDragFace, type CardDrop, CardDragLayer } from "../videoList/cardDrag";
-import { liftedKeys, reorderDrop } from "../videoList/cardDragRules";
-import FolderArt from "../videoList/FolderArt";
-import { orderedItemTitle, rowFacts } from "../videoList/ItemRowCells";
+import { t, type UiText } from "../i18n";
+import {
+  type CardAttachment,
+  type CardDrop,
+  CardDragLayer,
+  type HeldDrop,
+} from "../videoList/cardDrag";
+import { liftedKeys, type OntoAnswer, reorderDrop } from "../videoList/cardDragRules";
+import { orderedItemTitle } from "../videoList/ItemRowCells";
+import { useOrderedItemDrag } from "../videoList/OrderedItemFace";
 import { reorderAnnouncements } from "../videoList/reorder";
 
 /** itemKey は項目のドラッグの鍵である（項目の id）。 */
@@ -14,41 +18,19 @@ export function itemKey(item: GroupItem): string {
   return String(item.id);
 }
 
-/**
- * ItemFace は持ち上げた項目の写しの中身である。格子では動画のサムネイルか子グループの
- * フォルダの絵柄、リストでは行のサムネイル（ui-design.md「Lifting」）。
- */
-function ItemFace({ item, list }: { item: GroupItem; list: boolean }) {
-  const title = orderedItemTitle(item);
-  if (!list && item.kind === "group" && item.group !== undefined) {
-    return (
-      <CardDragFace
-        title={title}
-        thumbnail={
-          <VideoThumbnail>
-            <FolderArt previews={item.group.previews} />
-          </VideoThumbnail>
-        }
-      />
-    );
-  }
-  const { thumbnailUrl } = rowFacts(item);
-  return (
-    <CardDragFace
-      title={title}
-      thumbnail={
-        <VideoThumbnail>
-          {thumbnailUrl !== undefined && <VideoThumbnailImage src={thumbnailUrl} />}
-        </VideoThumbnail>
-      }
-    />
-  );
+/** GroupDropOnto はカードの上に落とす規則と、そこへ落としたときの画面の扱いである。 */
+export interface GroupDropOnto {
+  onto: (target: string, lifted: readonly string[]) => OntoAnswer<UiText>;
+  onDrop: (drop: CardDrop) => void;
+  held: HeldDrop | null;
+  attached: CardAttachment | null;
 }
 
 /**
  * GroupDragLayer はグループのページの所有者の格子とリストを包むドラッグの層である
  * （specs/050-drag-organize/ui-design.md「Group page」）。カードか行の間に落とすと、持ち上げた
- * 項目を画面の順のまま、その間の前の項目（先頭なら無し）の後ろへ並べ替える。選択した項目
+ * 項目を画面の順のまま、その間の前の項目（先頭なら無し）の後ろへ並べ替える。カードの上に
+ * 落とせるか、落としたら何をするかは `dropOnto` が決める。選択した項目
  * （「Remove from group」と同じ分け方。選んだ子グループのメンバーの動画の直接の項目は、
  * チェックが見えていても入らない）を持ち上げると、選択したすべてがいっしょに動く。
  */
@@ -58,6 +40,7 @@ export function GroupDragLayer({
   selectedItems,
   onReorder,
   onLift,
+  dropOnto,
   children,
 }: {
   items: readonly GroupItem[];
@@ -67,35 +50,21 @@ export function GroupDragLayer({
   /** 項目 `itemIds` を画面の順のまま項目 `after`（null は先頭）の後ろへ移す。 */
   onReorder: (itemIds: readonly number[], after: number | null) => void;
   onLift: () => void;
+  dropOnto?: GroupDropOnto;
   children: ReactNode;
 }) {
-  const order = useMemo(() => items.map(itemKey), [items]);
-  const byKey = useMemo(
-    () => new Map(items.map((item) => [itemKey(item), item])),
-    [items],
-  );
+  const { order, nameOf, preview } = useOrderedItemDrag(items, itemKey, list);
 
   const liftedFor = useCallback(
     (key: string) => liftedKeys(order, key, selectedItems.map(String)),
     [order, selectedItems],
   );
-  const nameOf = useCallback(
-    (key: string) => {
-      const item = byKey.get(key);
-      return item === undefined ? "" : orderedItemTitle(item);
-    },
-    [byKey],
-  );
-  const preview = useCallback(
-    (key: string) => {
-      const item = byKey.get(key);
-      return item === undefined ? null : <ItemFace item={item} list={list} />;
-    },
-    [byKey, list],
-  );
   const drop = useCallback(
     ({ lifted, sign }: CardDrop) => {
-      if (sign.kind !== "between") return;
+      if (sign.kind !== "between") {
+        dropOnto?.onDrop({ lifted, sign });
+        return;
+      }
       const result = reorderDrop(order, new Set(lifted), sign.key, sign.side);
       if (result === null) return;
       onReorder(
@@ -103,7 +72,7 @@ export function GroupDragLayer({
         result.after === null ? null : Number(result.after),
       );
     },
-    [onReorder, order],
+    [dropOnto, onReorder, order],
   );
   const handle = useMemo(
     () =>
@@ -127,6 +96,9 @@ export function GroupDragLayer({
       onLift={onLift}
       handle={handle}
       instructions={t.groups.item.reorderInstructions}
+      onto={dropOnto?.onto}
+      held={dropOnto?.held}
+      attached={dropOnto?.attached}
     >
       {children}
     </CardDragLayer>

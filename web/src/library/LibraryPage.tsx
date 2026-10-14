@@ -1,4 +1,5 @@
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -10,6 +11,7 @@ import { useLocation } from "react-router";
 
 import {
   type LibraryGroup,
+  type LibraryItem,
   listLibraryIds,
   type TagRef,
   type Video,
@@ -22,7 +24,7 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import type { CreditKind } from "../api/credits";
-import { itemKey } from "../api/libraryItems";
+import { itemKey, itemVideo } from "../api/libraryItems";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
@@ -50,7 +52,10 @@ import {
   type ListCriteria,
   newSeed,
 } from "../videoList/listCriteria";
+import { DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
+import { useUndoToast } from "../videoList/undoToast";
+import { useVideoDrops } from "../videoList/useVideoDrops";
 import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { GuestEmpty, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { useListCriteria } from "../videoList/useListCriteria";
@@ -70,6 +75,7 @@ import {
 import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
 import { GroupCard, GroupRow } from "./GroupCard";
+import { DraggableGroupRow, DraggableVideoRow, LibraryDragLayer } from "./LibraryDrag";
 import LibraryToolbar from "./LibraryToolbar";
 import {
   emptySelection,
@@ -100,6 +106,11 @@ import {
 } from "./tagCriteria";
 
 const skeletonCount = 12;
+
+/** libraryGroupItem は「Make a group」の新しいグループの項目である。 */
+function libraryGroupItem(group: LibraryGroup): LibraryItem {
+  return { kind: "group", group };
+}
 
 /** ライブラリだけが URL に持つ条件（タグ、人物、団体）。 */
 const libraryParams = [TAG_PARAM, PERSON_PARAM, ORGANIZATION_PARAM];
@@ -590,6 +601,21 @@ export default function LibraryPage() {
     };
   }, [restored]);
 
+  // --- ドラッグ（specs/050-drag-organize/ui-design.md「Library」） ---
+  // 取り消しの通知は画面を離れると閉じる。動画を動画に落とした結果はすぐ見せる。
+  const undo = useUndoToast(refreshInPlace);
+  const drops = useVideoDrops({
+    items,
+    keyOf: itemKey,
+    videoOf: itemVideo,
+    from: null,
+    groupItem: libraryGroupItem,
+    reread: refreshInPlace,
+    onAccepted: clearSelection,
+    undo,
+  });
+  const shown = drops.shown;
+
   const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
   const allSelected = useMemo(
     () => selectAllSelection !== null && sameSelection(selectAllSelection, selection),
@@ -646,6 +672,7 @@ export default function LibraryPage() {
     onPreviewStart: startPreview,
     onPreviewReset: resetPreview,
     tagsRow: renderGroupTagsRow,
+    nameField: drops.nameFieldFor(group.id),
   });
 
   const rowProps = (video: Video) => ({
@@ -660,6 +687,25 @@ export default function LibraryPage() {
     onPreviewReset: resetPreview,
     tagsRow: renderTagsRow,
   });
+
+  // 所有者の一覧だけをドラッグの層で包む（ゲストは何も持ち上げない）。
+  const withDrag = (content: ReactNode) =>
+    owner ? (
+      <LibraryDragLayer
+        items={shown}
+        list={view === "list"}
+        selection={selection}
+        onto={drops.onto}
+        onDrop={drops.hold}
+        onLift={resetPreview}
+        held={drops.held}
+        attached={drops.attached}
+      >
+        {content}
+      </LibraryDragLayer>
+    ) : (
+      content
+    );
 
   const body = initialLoadFailed ? (
     <LoadFailed reason={error} onRetry={reload} />
@@ -680,56 +726,67 @@ export default function LibraryPage() {
     />
   ) : (
     <div ref={list} onClick={saveSnapshot}>
-      {view === "grid" ? (
-        // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
-        <TagRowMeasureProvider>
-          <Grid zoom={zoom}>
-            {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
+      {withDrag(
+        view === "grid" ? (
+          // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
+          <TagRowMeasureProvider>
+            <Grid zoom={zoom}>
+              {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
                 見出しは設けない（ui-design.md「Screen boundary」、要件 15）。 */}
-            {items.map((item) =>
-              item.kind === "video" ? (
-                <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
-              ) : (
-                <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
-              ),
-            )}
-          </Grid>
-        </TagRowMeasureProvider>
-      ) : (
-        <DataTable label={t.library.title}>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              {owner && <TableHead className="w-10" />}
-              <TableHead className="w-list-thumb-cell" />
-              <TableHead className="pr-4">{t.library.columns.title}</TableHead>
-              {owner && <TableHead className="w-8" />}
-              {owner && <TableHead className="hidden w-8 sm:table-cell" />}
-              {owner && <TableHead className="hidden w-8 sm:table-cell" />}
-              <TableHead className="hidden w-16 pr-4 sm:table-cell" />
-              <TableHead className="w-list-number pr-4 text-right">
-                {t.library.columns.duration}
-              </TableHead>
-              <TableHead className="hidden w-list-number pr-4 text-right md:table-cell">
-                {t.library.columns.quality}
-              </TableHead>
-              <TableHead className="hidden w-list-number-wide pr-4 text-right md:table-cell">
-                {t.library.columns.size}
-              </TableHead>
-              <TableHead className="hidden w-list-date pr-3 text-right lg:table-cell">
-                {t.library.columns.added}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {items.map((item) =>
-              item.kind === "video" ? (
-                <VideoRow key={itemKey(item)} {...rowProps(item.video)} />
-              ) : (
-                <GroupRow key={itemKey(item)} {...groupProps(item.group)} />
-              ),
-            )}
-          </TableBody>
-        </DataTable>
+              {shown.map((item) => {
+                const card =
+                  item.kind === "video" ? (
+                    <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
+                  ) : (
+                    <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
+                  );
+                return owner ? (
+                  <DraggableCard key={itemKey(item)} id={itemKey(item)}>
+                    {card}
+                  </DraggableCard>
+                ) : (
+                  card
+                );
+              })}
+            </Grid>
+          </TagRowMeasureProvider>
+        ) : (
+          <DataTable label={t.library.title}>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                {owner && <TableHead className="w-10" />}
+                <TableHead className="w-list-thumb-cell" />
+                <TableHead className="pr-4">{t.library.columns.title}</TableHead>
+                {owner && <TableHead className="w-8" />}
+                {owner && <TableHead className="hidden w-8 sm:table-cell" />}
+                {owner && <TableHead className="hidden w-8 sm:table-cell" />}
+                <TableHead className="hidden w-16 pr-4 sm:table-cell" />
+                <TableHead className="w-list-number pr-4 text-right">
+                  {t.library.columns.duration}
+                </TableHead>
+                <TableHead className="hidden w-list-number pr-4 text-right md:table-cell">
+                  {t.library.columns.quality}
+                </TableHead>
+                <TableHead className="hidden w-list-number-wide pr-4 text-right md:table-cell">
+                  {t.library.columns.size}
+                </TableHead>
+                <TableHead className="hidden w-list-date pr-3 text-right lg:table-cell">
+                  {t.library.columns.added}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {shown.map((item) => {
+                if (item.kind === "video") {
+                  const Row = owner ? DraggableVideoRow : VideoRow;
+                  return <Row key={itemKey(item)} {...rowProps(item.video)} />;
+                }
+                const Row = owner ? DraggableGroupRow : GroupRow;
+                return <Row key={itemKey(item)} {...groupProps(item.group)} />;
+              })}
+            </TableBody>
+          </DataTable>
+        ),
       )}
     </div>
   );

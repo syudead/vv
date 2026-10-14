@@ -103,11 +103,32 @@ interface Probe {
   rects: readonly ClientRect[];
 }
 
-interface LayerValue {
-  drag: DragState | null;
+/**
+ * HeldDrop は落とした後も画面が保つ印である。落とした先のメニューが開いている間、持ち上げた
+ * カードは半透明のまま、落とした先は輪と札のまま残る（ui-design.md「Drop menus」）。
+ */
+export interface HeldDrop {
+  lifted: readonly string[];
+  sign: CardSign;
 }
 
-const LayerContext = createContext<LayerValue>({ drag: null });
+/** CardAttachment はカード `key` に重ねて描くもの（落とした先のメニュー、名前の欄の窓）である。 */
+export interface CardAttachment {
+  key: string;
+  node: ReactNode;
+}
+
+interface LayerValue {
+  drag: DragState | null;
+  held: HeldDrop | null;
+  attached: CardAttachment | null;
+}
+
+const LayerContext = createContext<LayerValue>({
+  drag: null,
+  held: null,
+  attached: null,
+});
 
 /** controlSelector はカードの中で、持ち上げずにそれ自身の操作をする要素である。 */
 const controlSelector =
@@ -122,6 +143,9 @@ const handleAttribute = "data-drag-handle";
  */
 function startsOnControl(target: EventTarget | null, currentTarget: EventTarget | null) {
   if (!(target instanceof Element) || !(currentTarget instanceof Element)) return false;
+  // カードに重ねた窓やメニュー（ポータル）の中の出来事も React ではカードへ伝わる。カードの
+  // 中に無い場所からは持ち上げない。
+  if (!currentTarget.contains(target)) return true;
   const control = target.closest(controlSelector);
   return control !== null && control !== currentTarget && currentTarget.contains(control);
 }
@@ -309,6 +333,10 @@ export interface CardDragLayerProps {
   handle?: { announcements: Announcements };
   /** dnd-kit の操作の案内（読み上げ用）。ハンドルを持つ画面はそのキーボードの案内を渡す。 */
   instructions: UiText;
+  /** 落とした後も保つ印（メニューを開いている間）。持ち上げている間は持ち上げの印が先。 */
+  held?: HeldDrop | null;
+  /** カード 1 枚に重ねて描くもの。 */
+  attached?: CardAttachment | null;
   children: ReactNode;
 }
 
@@ -425,7 +453,14 @@ function useEscapeMarked(active: boolean) {
  * DraggableCard で、リストの行は useCardDrag で層に加わる。
  */
 export function CardDragLayer(props: CardDragLayerProps) {
-  const { order, list = false, instructions, children } = props;
+  const {
+    order,
+    list = false,
+    instructions,
+    held = null,
+    attached = null,
+    children,
+  } = props;
   const sensors = useCardSensors();
   const [drag, setDrag] = useState<DragState | null>(null);
   const current = useRef<DragState | null>(null);
@@ -501,7 +536,7 @@ export function CardDragLayer(props: CardDragLayerProps) {
   const announcements = useAnnouncements(latest, announced, probe);
   useEscapeMarked(drag !== null);
 
-  const value = useMemo(() => ({ drag }), [drag]);
+  const value = useMemo(() => ({ drag, held, attached }), [attached, drag, held]);
   const handleMode = drag?.mode === "handle";
   const refused = drag?.sign?.kind === "refused";
 
@@ -562,11 +597,13 @@ export interface CardDragBinding {
   /** このカードに出す印。 */
   sign: CardSign | null;
   axis: Axis;
+  /** このカードに重ねて描くもの（CardAttachment）。 */
+  attachment: ReactNode;
 }
 
 /** useCardDrag はカード `key` を層に加える。CardDragLayer の中で使う。 */
 export function useCardDrag(key: string): CardDragBinding {
-  const { drag } = useContext(LayerContext);
+  const { drag, held, attached } = useContext(LayerContext);
   const {
     attributes,
     listeners,
@@ -593,11 +630,21 @@ export function useCardDrag(key: string): CardDragBinding {
       !handleMode || transform === null
         ? undefined
         : { transform: `translate3d(0, ${String(transform.y)}px, 0)`, transition },
-    lifted: drag !== null && !handleMode && drag.liftedSet.has(key),
+    lifted:
+      drag === null
+        ? held?.lifted.includes(key) === true
+        : !handleMode && drag.liftedSet.has(key),
     sorting: handleMode && isDragging,
-    sign: drag?.sign !== null && drag?.sign.key === key ? drag.sign : null,
+    sign: signOf(key, drag, held),
     axis: drag?.axis ?? "x",
+    attachment: attached?.key === key ? attached.node : null,
   };
+}
+
+/** signOf はカード `key` に出す印である。持ち上げている間はその印、無ければ保った印。 */
+function signOf(key: string, drag: DragState | null, held: HeldDrop | null) {
+  const sign = drag === null ? (held?.sign ?? null) : drag.sign;
+  return sign !== null && sign.key === key ? sign : null;
 }
 
 /**
@@ -658,6 +705,33 @@ export function CardDropMark({
 }
 
 /**
+ * dragRowProps はリストの行（TableRow）を層に加える props である。行のクラス `className` に、
+ * 持ち上げたら半透明にするクラスを足す。`drag` が無ければ行はそのまま。
+ */
+export function dragRowProps(drag: CardDragBinding | undefined, className: string) {
+  return {
+    ref: drag?.ref,
+    ...drag?.listeners,
+    className: cn(
+      className,
+      drag !== undefined && "relative motion-reduce:transition-none",
+      drag?.lifted === true && "opacity-50",
+    ),
+  };
+}
+
+/** RowDropMarks はリストの行の印と、行に重ねたもの（メニューの位置の目印）である。 */
+export function RowDropMarks({ drag }: { drag: CardDragBinding | undefined }) {
+  if (drag === undefined) return null;
+  return (
+    <>
+      <CardDropMark sign={drag.sign} axis="y" list />
+      {drag.attachment}
+    </>
+  );
+}
+
+/**
  * DraggableCard は格子のカード 1 枚を層に加える。カード（`article`）を包み、持ち上げたら
  * 半透明にし、印を重ねる。包みは格子の 1 枡で、中のカードを枡の高さまで伸ばす。
  */
@@ -675,6 +749,7 @@ export function DraggableCard({ id, children }: { id: string; children: ReactNod
     >
       {children}
       <CardDropMark sign={drag.sign} axis={drag.axis} />
+      {drag.attachment}
     </div>
   );
 }

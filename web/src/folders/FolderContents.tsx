@@ -1,12 +1,12 @@
 import type { ReactNode } from "react";
 
 import type { FolderSummary, Video } from "../api/client";
-import { itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
 import { t } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
 import { CardGrid } from "../ui/patterns/card-grid";
+import FolderVideoGrid from "./FolderVideoGrid";
 import { hasConditions, type ListCriteria } from "../videoList/listCriteria";
 import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
@@ -102,8 +102,11 @@ export default function FolderContents({
               <CardsLoading zoom={zoom} count={6} />
             ) : (
               <TagRowMeasureProvider>
-                <CardGrid size={zoom}>
-                  {itemVideos(videos.items).map((video) => (
+                <FolderVideoGrid
+                  videos={videos}
+                  zoom={zoom}
+                  onLift={preview.onPreviewReset}
+                  card={(video) => (
                     <VideoCard
                       key={video.id}
                       video={video}
@@ -113,8 +116,8 @@ export default function FolderContents({
                       {...preview}
                       tagsRow={tagsRow}
                     />
-                  ))}
-                </CardGrid>
+                  )}
+                />
               </TagRowMeasureProvider>
             )}
             <MoreRow
