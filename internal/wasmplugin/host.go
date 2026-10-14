@@ -153,7 +153,8 @@ func (s *httpSession) do(req *http.Request) (*response, int32) {
 	defer func() { _ = resp.Body.Close() }()
 	body, err := io.ReadAll(io.LimitReader(resp.Body, domain.WorkInfoPluginHTTPMaxBodyBytes+1))
 	if err != nil {
-		return nil, s.failure(req, err)
+		// resp.Request はリダイレクトの最後の要求で、本文を送ってきたホストを持つ。
+		return nil, s.failure(resp.Request, err)
 	}
 	if len(body) > domain.WorkInfoPluginHTTPMaxBodyBytes {
 		return nil, hostBodyTooLarge
@@ -253,7 +254,31 @@ func buildRequest(ctx context.Context, raw []byte) (*http.Request, bool) {
 	return req, true
 }
 
-// validHeader はヘッダーの名前と値に、要求を壊す文字が無いかを確かめる。
+// validHeader はヘッダーの名前が RFC 9110 の token で、値に HTAB 以外の制御文字が無いかを
+// 確かめる。net/http はこれに外れるヘッダーの要求を送らずに失敗させるので、そのヘッダーは
+// 落とす（接続の失敗の -3 にしない）。
 func validHeader(name, value string) bool {
-	return name != "" && !strings.ContainsAny(name, " \t\r\n:") && !strings.ContainsAny(value, "\r\n\x00")
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		if !isTokenByte(name[i]) {
+			return false
+		}
+	}
+	for i := 0; i < len(value); i++ {
+		if b := value[i]; b < ' ' && b != '\t' || b == 0x7f {
+			return false
+		}
+	}
+	return true
+}
+
+// isTokenByte は b が RFC 9110 の tchar かを返す。
+func isTokenByte(b byte) bool {
+	switch {
+	case 'a' <= b && b <= 'z', 'A' <= b && b <= 'Z', '0' <= b && b <= '9':
+		return true
+	}
+	return strings.IndexByte("!#$%&'*+-.^_`|~", b) >= 0
 }

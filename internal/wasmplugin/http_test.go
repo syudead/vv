@@ -23,8 +23,9 @@ import (
 // testNames はテストの resolver が返す名前とアドレスである。site.test は公開のアドレスに、
 // lan.test は LAN のアドレスに解決される。
 var testNames = map[string]string{
-	"site.test": "93.184.215.14",
-	"lan.test":  "192.168.1.20",
+	"site.test":  "93.184.215.14",
+	"other.test": "93.184.215.15",
+	"lan.test":   "192.168.1.20",
 }
 
 // testSite はテストのサイトである。届いた要求のホストと User-Agent を記録する。
@@ -49,6 +50,17 @@ func newTestSite(t *testing.T) *testSite {
 	})
 	mux.HandleFunc("/to-lan", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "http://192.168.1.20/page", http.StatusFound)
+	})
+	mux.HandleFunc("/to-broken", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://other.test/broken", http.StatusFound)
+	})
+	mux.HandleFunc("/broken", func(w http.ResponseWriter, _ *http.Request) {
+		// 本文の途中で接続を切る。
+		w.Header().Set("Content-Length", "100")
+		_, _ = w.Write([]byte("short"))
+		if conn, _, err := http.NewResponseController(w).Hijack(); err == nil {
+			_ = conn.Close()
+		}
 	})
 	mux.HandleFunc("/hop/{n}", func(w http.ResponseWriter, r *http.Request) {
 		n, _ := strconv.Atoi(r.PathValue("n"))
@@ -192,6 +204,10 @@ func TestHTTPAnswersEachLimitWithItsErrorCode(t *testing.T) {
 		wantCodes(t, info, err, "-1")
 	}
 
+	// 不正なヘッダーは要求を壊さずに落とす。
+	info, err = runHTTP(t, rt, `{"method":"GET","url":"http://site.test/page","headers":{"X-\u00dc":"1","X-Ctl":"a\u0001b"}}`, 1, false)
+	wantCodes(t, info, err, "0")
+
 	info, err = runHTTP(t, rt, get("http://site.test/hop/0"), 1, false)
 	wantCodes(t, info, err, "0")
 	if !strings.Contains(info.Tags[1], `"status":302`) || !strings.Contains(info.Tags[1], `"url":"http://site.test/hop/5"`) {
@@ -224,5 +240,45 @@ func TestHTTPUnreachableHostIsReportedWhenThePluginFails(t *testing.T) {
 	wantFailure(t, err, domain.WorkInfoRunNetworkError)
 	if runErr := runErrorOf(err); runErr.Host != "missing.test" || runErr.PluginMessage != "gave up" {
 		t.Fatalf("network error = %+v, want host missing.test and the plugin's message", runErr)
+	}
+}
+
+func TestHTTPBodyFailureAfterARedirectReportsTheRedirectHost(t *testing.T) {
+	site := newTestSite(t)
+	rt := newNetTestRuntime(t, site)
+
+	_, err := runHTTP(t, rt, get("http://site.test/to-broken"), 1, true)
+	wantFailure(t, err, domain.WorkInfoRunNetworkError)
+	if host := runErrorOf(err).Host; host != "other.test" {
+		t.Fatalf("host = %q, want other.test, the host that sent the broken body", host)
+	}
+}
+
+func TestHTTPDialLeavesTimeForTheNextAddress(t *testing.T) {
+	site := newTestSite(t)
+	nc := newNetClient()
+	nc.lookup = func(context.Context, string) ([]netip.Addr, error) {
+		return []netip.Addr{netip.MustParseAddr("2606:4700::1"), netip.MustParseAddr("93.184.215.14")}, nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), domain.WorkInfoPluginHTTPTimeout)
+	defer cancel()
+	overall, _ := ctx.Deadline()
+	var firstDeadline time.Time
+	nc.dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+		if strings.HasPrefix(address, "[2606:4700::1]") {
+			// パケットを捨てるアドレスとして、与えられた期限を記録して時間切れにする。
+			firstDeadline, _ = ctx.Deadline()
+			return nil, context.DeadlineExceeded
+		}
+		var d net.Dialer
+		return d.DialContext(ctx, network, site.Listener.Addr().String())
+	}
+	conn, err := nc.dialContext(ctx, "tcp", "site.test:80")
+	if err != nil {
+		t.Fatalf("dialContext: %v, want the second address", err)
+	}
+	_ = conn.Close()
+	if left := overall.Sub(firstDeadline); left < domain.WorkInfoPluginHTTPTimeout/3 {
+		t.Fatalf("first address got until %v before the request's deadline, want about half of the request's time left", left)
 	}
 }

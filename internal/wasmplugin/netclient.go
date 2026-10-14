@@ -88,7 +88,9 @@ func (c *netClient) control(_, address string, _ syscall.RawConn) error {
 }
 
 // dialContext は Transport の接続である。URL のホストを解決し、解決したアドレスに順に接続する。
-// 拒まれたアドレスがあれば、残りを試さずにホスト名を付けた *refusedError を返す。
+// 1 つのアドレスは残りの時間を残りのアドレスで分けた分だけ試すので、パケットを捨てる先頭の
+// アドレスが要求の時間を使い切らない。拒まれたアドレスがあれば、残りを試さずにホスト名を
+// 付けた *refusedError を返す。
 func (c *netClient) dialContext(ctx context.Context, network, address string) (net.Conn, error) {
 	host, port, err := net.SplitHostPort(address)
 	if err != nil {
@@ -101,9 +103,9 @@ func (c *netClient) dialContext(ctx context.Context, network, address string) (n
 		return nil, err
 	}
 	var errs []error
-	for _, a := range addrs {
+	for i, a := range addrs {
 		target := net.JoinHostPort(a.Unmap().String(), port)
-		conn, err := c.dial(ctx, network, target)
+		conn, err := c.dialOne(ctx, network, target, len(addrs)-i)
 		if errors.Is(err, errAddressRefused) {
 			return nil, &refusedError{host: host, addr: target}
 		}
@@ -116,4 +118,22 @@ func (c *netClient) dialContext(ctx context.Context, network, address string) (n
 		return nil, fmt.Errorf("resolve %s: no addresses", host)
 	}
 	return nil, errors.Join(errs...)
+}
+
+// minDialShare は 1 つのアドレスに与える接続の時間の下限である。残りの時間がこれより短いときは
+// 残りの時間をすべて与える。net.Dialer が複数のアドレスを順に試すときの下限と同じ値である。
+const minDialShare = 2 * time.Second
+
+// dialOne は target に接続する。ctx に期限があれば、その残りを remaining 個のアドレスで分けた
+// 時間（minDialShare 以上）をこの接続の期限にする。
+func (c *netClient) dialOne(ctx context.Context, network, target string, remaining int) (net.Conn, error) {
+	deadline, ok := ctx.Deadline()
+	if !ok || remaining <= 1 {
+		return c.dial(ctx, network, target)
+	}
+	left := time.Until(deadline)
+	share := max(left/time.Duration(remaining), min(minDialShare, left))
+	dialCtx, cancel := context.WithTimeout(ctx, share)
+	defer cancel()
+	return c.dial(dialCtx, network, target)
 }
