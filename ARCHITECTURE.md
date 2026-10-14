@@ -116,9 +116,9 @@ transaction. Database constraints (one running scan, one unfinished job per
 kind and video) are the final guard against races.
 
 **Store roles.** `store.DB` opens SQLite, runs migrations and hands out role
-types (`IngestStore`, `LibraryStore`, `TagStore`, `AuthStore`, …). Each
-business operation belongs to exactly one role, so calling it through the wrong
-role does not compile. No role calls another role's public methods; work that
+types (`IngestStore`, `LibraryStore`, `TagStore`, `CreditStore`, `AuthStore`,
+…). Each business operation belongs to exactly one role, so calling it through
+the wrong role does not compile. No role calls another role's public methods; work that
 spans roles runs in one transaction through package-private helpers. SQL never
 leaves `internal/store`.
 
@@ -140,10 +140,12 @@ visible only when complete (it is generated under `.tmp` and renamed into
 place), and it is removed only when the last video referencing its content goes.
 
 **User data survives a rebuild.** Playback positions, watch history, tags,
-public flags, favorites, playlist items, owner edits and applied thumbnail
-images are keyed by values a rescan reproduces (the content key, a version
-bundle's key, a folder's absolute path), never by `videos.id`, and carry no
-foreign key to `videos`. Which tables are rebuildable is in
+public flags, favorites, playlist items, groups and their items, owner edits,
+applied thumbnail images and work information are keyed by values a rescan
+reproduces (the content key, a version bundle's key, a folder's absolute path)
+or by their own ids, never by `videos.id`, and carry no foreign key to
+`videos`. People and organizations are entities with ids of their own that
+work information refers to. Which tables are rebuildable is in
 [Data and recovery](docs/how-to/running-vv.md#data-and-recovery).
 
 **Every read knows its viewer.** Each store read that returns videos, locations
@@ -157,9 +159,10 @@ the same `404` as missing ones
 **Only a scan reads the media folders' files.** Only a scan opens the files
 in the media folders, and only a user-started scan walks them whole. The
 folder watcher (`internal/watcher`) reads directory entries only, to place a
-watch on each directory, and never opens a file. The folder index (folder
-groups and folder names), folder browsing and the import status are derived
-from SQLite, never from the filesystem.
+watch on each directory, and never opens a file. The folder index (the
+folder names above each video), the folder members of automatic groups, folder
+browsing and the import status are derived from SQLite, never from the
+filesystem.
 
 ## Subsystem map
 
@@ -207,6 +210,7 @@ The SPA under `web/src` is split by responsibility rather than by widget.
 | `app/` | Routes |
 | `shell/` | Top bar, sidebar, scan state, the frame around a screen |
 | `library/`, `folders/`, `settings/`, `tags/`, `player/`, `versions/` | Their product flows |
+| `credits/` | The people and organizations admin screens: one page that takes the kind, built from the tag admin screen's list pieces in `tags/` |
 | `videoList/` | List pieces the library and folder screens share |
 | `ui/` | Reusable primitives, published as the shadcn registry in `web/registry.json` ([design-system.md](docs/design-docs/design-system.md)) |
 | `hooks/` | Hooks the registry components share, such as `use-mobile` |

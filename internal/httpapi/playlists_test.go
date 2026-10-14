@@ -38,13 +38,13 @@ func playlistNameBody(name string) string {
 }
 
 // playlistAddBody は POST /api/playlists/{id}/items の本文を作る。
-func playlistAddBody(videoIDs []int64, folders ...gen.VideoFolder) string {
+func playlistAddBody(videoIDs []int64, groupIDs ...int64) string {
 	body := map[string]any{}
 	if videoIDs != nil {
 		body["videoIds"] = videoIDs
 	}
-	if folders != nil {
-		body["folders"] = folders
+	if groupIDs != nil {
+		body["groupIds"] = groupIDs
 	}
 	out, err := json.Marshal(body)
 	if err != nil {
@@ -220,16 +220,15 @@ func TestPlaylistListPaging(t *testing.T) {
 	})
 }
 
-// 追加は 200 で added と existing を返し、要求の順（動画、次にフォルダ）で末尾に足す。ライブラリに
-// 無い id と今グループでないフォルダはどちらにも数えない。読み出しの項目は所有者の値を持つ。
+// 追加は 200 で added と existing を返し、要求の順（動画、次にグループ）で末尾に足す。ライブラリに
+// 無い動画の id と無いグループの id はどちらにも数えない。読み出しの項目は所有者の値を持つ。
 func TestPlaylistAddAndRead(t *testing.T) {
 	f := newLibraryFixture(t)
 	playlist := f.createPlaylist(t, "まとめ")
-	show := gen.VideoFolder{RootId: f.rootID, Path: "show"}
+	show := f.groupID(t, "show")
 
 	rec := f.playlistRequest(http.MethodPost, playlistPath(playlist.Id, "/items"), playlistAddBody(
-		[]int64{f.ids["solo"], f.ids["ep2"], 99999, f.ids["solo"]},
-		show, gen.VideoFolder{RootId: f.rootID, Path: "none"}, gen.VideoFolder{RootId: 999, Path: "pair"}, show,
+		[]int64{f.ids["solo"], f.ids["ep2"], 99999, f.ids["solo"]}, show, 99999, show,
 	), f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("追加: status = %d: %s", rec.Code, rec.Body)
@@ -349,7 +348,7 @@ func TestPlaylistDelete(t *testing.T) {
 }
 
 // 追加の要求の誤り: どちらも空は invalid_request、重複を除いて 20000 を超えれば too_many_videos、
-// 不正なパスは invalid_folder_path で、何も足さない。
+// 廃止した folders は知らない欄として 400 で、何も足さない。
 func TestPlaylistAddRejectsInvalidRequests(t *testing.T) {
 	f := newLibraryFixture(t)
 	playlist := f.createPlaylist(t, "まとめ")
@@ -359,7 +358,7 @@ func TestPlaylistAddRejectsInvalidRequests(t *testing.T) {
 
 	for label, body := range map[string]string{
 		"どちらも無い": `{}`,
-		"どちらも空":  `{"videoIds":[],"folders":[]}`,
+		"どちらも空":  `{"videoIds":[],"groupIds":[]}`,
 	} {
 		rec := add(body)
 		assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
@@ -369,21 +368,18 @@ func TestPlaylistAddRejectsInvalidRequests(t *testing.T) {
 	for i := range ids {
 		ids[i] = int64(1_000_000 + i)
 	}
-	show := gen.VideoFolder{RootId: f.rootID, Path: "show"}
+	show := f.groupID(t, "show")
 	for label, body := range map[string]string{
 		"動画だけで 20001":    playlistAddBody(append(append([]int64{}, ids...), 2_000_000)),
-		"動画とフォルダで 20001": playlistAddBody(ids, show),
+		"動画とグループで 20001": playlistAddBody(ids, show),
 	} {
 		rec := add(body)
 		assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), wantError{
 			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyVideos, limit: maxVideoTagsIDs,
 		})
 	}
-	for _, path := range []string{"../show", "/show", "show/", "a//b", "."} {
-		rec := add(playlistAddBody([]int64{f.ids["p1"]}, gen.VideoFolder{RootId: f.rootID, Path: path}))
-		assertErrorBody(t, "パス "+path, rec.Code, rec.Body.Bytes(), wantError{
-			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidFolderPath,
-		})
+	if rec := add(fmt.Sprintf(`{"videoIds":[%d],"folders":[{"rootId":%d,"path":"show"}]}`, f.ids["p1"], f.rootID)); rec.Code != http.StatusBadRequest {
+		t.Errorf("廃止した folders: status = %d, want 400", rec.Code)
 	}
 	if read := f.getPlaylist(t, playlist.Id); len(read.Items) != 0 {
 		t.Errorf("誤りの要求で項目が足された: %v", playlistItemNames(read))
@@ -434,7 +430,7 @@ func TestPlaylistListCovers(t *testing.T) {
 	}
 	playlist := f.createPlaylist(t, "絵柄")
 	rec := f.playlistRequest(http.MethodPost, playlistPath(playlist.Id, "/items"), playlistAddBody(
-		[]int64{f.ids["solo"]}, gen.VideoFolder{RootId: f.rootID, Path: "show"},
+		[]int64{f.ids["solo"]}, f.groupID(t, "show"),
 	), f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("追加: status = %d: %s", rec.Code, rec.Body)

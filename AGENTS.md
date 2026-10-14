@@ -17,6 +17,10 @@ file into a handbook.
 
 ## Working agreements
 
+- Talk to the maintainer in Japanese: every chat reply, question and progress
+  report is Japanese, even when the prompt, the tools or the documents are in
+  English. Internal reasoning may stay in English. Code, code comments,
+  identifiers and quoted output stay as they are.
 - Keep documentation close to the code and update it with behavior changes.
 - Write documents in technical English to
   [docs/design-docs/writing-quality.md](docs/design-docs/writing-quality.md),
@@ -61,7 +65,9 @@ file into a handbook.
   level each behaviour is tested at.
 - Give every pushed working branch a pull request as its review target.
 - Dependency updates (Renovate) follow
-  [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md).
+  [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md). The
+  daily Renovate routine runs `.agents/skills/renovate-triage`, which may merge
+  Renovate PRs into `main`, major updates included, under that skill's gates.
 - SDD work starts when the maintainer hands over a parent Issue or native
   sub-issue URL, and runs `plan → design → plan-to-issues → implement →
   integrate`, with `design` only for `ui` Issues. Use

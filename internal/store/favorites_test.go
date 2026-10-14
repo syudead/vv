@@ -32,7 +32,7 @@ func favoriteVideos(t *testing.T, db *DB, favorite bool, ids ...int64) domain.Fa
 }
 
 // favoritedAt は表 table の鍵 key の favorited_at を返す。行が無ければ -1。
-func favoritedAt(t *testing.T, db *DB, table, column, key string) int64 {
+func favoritedAt(t *testing.T, db *DB, table, column string, key any) int64 {
 	t.Helper()
 	var at int64
 	err := db.sql.QueryRow(`select favorited_at from `+table+` where `+column+` = ?`, key).Scan(&at)
@@ -95,14 +95,14 @@ func listedFavorites(t *testing.T, db *DB) map[int64]bool {
 
 func folderGroupFavorite(t *testing.T, db *DB, dir string) bool {
 	t.Helper()
-	group, err := db.Library().FolderGroup(context.Background(), domain.AudienceOwner, dir)
+	page, err := db.Library().Group(context.Background(), domain.AudienceOwner, groupIDOf(t, db, dir), nil)
 	if err != nil {
 		t.Fatalf("グループ %s を読めない: %v", dir, err)
 	}
-	return group.Favorite
+	return page.Group.Favorite
 }
 
-// 付けると GetVideo・ListVideos・ListLibrary の Video.Favorite と ListLibrary・FolderGroup の
+// 付けると GetVideo・ListVideos・ListLibrary の Video.Favorite と ListLibrary・Group の
 // LibraryGroup.Favorite が真になり、外すと偽に戻る（受け入れ条件 1）。グループに付けてもメンバーは
 // 偽、メンバーに付けてもグループは偽（受け入れ条件 3、要件 4）。
 func TestSetFavoritesReflectsInReads(t *testing.T) {
@@ -112,9 +112,9 @@ func TestSetFavoritesReflectsInReads(t *testing.T) {
 	show, pair := fixturePath("/media/show"), fixturePath("/media/pair")
 
 	applied := setFavorites(t, db, domain.FavoriteChange{
-		VideoIDs: []int64{solo, p1}, FolderPaths: []string{show}, Favorite: true,
+		VideoIDs: []int64{solo, p1}, GroupIDs: []int64{groupIDOf(t, db, show)}, Favorite: true,
 	})
-	if applied != (domain.FavoriteApplied{Videos: 2, Folders: 1}) {
+	if applied != (domain.FavoriteApplied{Videos: 2, Groups: 1}) {
 		t.Fatalf("applied = %+v", applied)
 	}
 
@@ -147,9 +147,9 @@ func TestSetFavoritesReflectsInReads(t *testing.T) {
 	}
 
 	applied = setFavorites(t, db, domain.FavoriteChange{
-		VideoIDs: []int64{solo, p1}, FolderPaths: []string{show}, Favorite: false,
+		VideoIDs: []int64{solo, p1}, GroupIDs: []int64{groupIDOf(t, db, show)}, Favorite: false,
 	})
-	if applied != (domain.FavoriteApplied{Videos: 2, Folders: 1}) {
+	if applied != (domain.FavoriteApplied{Videos: 2, Groups: 1}) {
 		t.Fatalf("外したときの applied = %+v", applied)
 	}
 	if ownerVideo(t, db, solo).Favorite || listedFavorites(t, db)[p1] || folderGroupFavorite(t, db, show) {
@@ -159,13 +159,13 @@ func TestSetFavoritesReflectsInReads(t *testing.T) {
 	if videos[solo] || groups[show] {
 		t.Errorf("外したのに ListLibrary の Favorite が真: %v / %v", videos, groups)
 	}
-	if n := favoriteRowCount(t, db, "video_favorites") + favoriteRowCount(t, db, "folder_favorites"); n != 0 {
+	if n := favoriteRowCount(t, db, "video_favorites") + favoriteRowCount(t, db, "group_favorites"); n != 0 {
 		t.Errorf("外したあとに %d 行残った", n)
 	}
 }
 
-// ライブラリに無い id・今グループでないフォルダ・登録フォルダの外のパスは数えず誤りにしない。
-// 既に同じ状態のものは数え、日時を変えない。同じフォルダの重複は 1 つに数える（Edge Case）。
+// ライブラリに無い動画の id・無いグループの id は数えず誤りにしない。既に同じ状態のものは数え、
+// 日時を変えない。同じグループの重複は 1 つに数える（Edge Case）。
 func TestSetFavoritesCountsOnlyApplicable(t *testing.T) {
 	db, ids := itemsFixture(t)
 	freezeFavoriteClock(t, fixedTime)
@@ -173,27 +173,27 @@ func TestSetFavoritesCountsOnlyApplicable(t *testing.T) {
 	show := fixturePath("/media/show")
 
 	applied := setFavorites(t, db, domain.FavoriteChange{
-		VideoIDs:    []int64{solo, solo, 999_999},
-		FolderPaths: []string{show, show, fixturePath("/media/mixed"), fixturePath("/other/show"), fixturePath("/media/missing")},
-		Favorite:    true,
+		VideoIDs: []int64{solo, solo, 999_999},
+		GroupIDs: []int64{groupIDOf(t, db, show), groupIDOf(t, db, show), 999_999},
+		Favorite: true,
 	})
-	if applied != (domain.FavoriteApplied{Videos: 1, Folders: 1}) {
+	if applied != (domain.FavoriteApplied{Videos: 1, Groups: 1}) {
 		t.Fatalf("applied = %+v, want {1 1}", applied)
 	}
-	if favoriteRowCount(t, db, "video_favorites") != 1 || favoriteRowCount(t, db, "folder_favorites") != 1 {
+	if favoriteRowCount(t, db, "video_favorites") != 1 || favoriteRowCount(t, db, "group_favorites") != 1 {
 		t.Fatalf("行の数が 1・1 でない")
 	}
 	videoAt := favoritedAt(t, db, "video_favorites", "content_key", ownerVideo(t, db, solo).UserKey)
-	folderAt := favoritedAt(t, db, "folder_favorites", "path", domain.FolderKey(show))
+	folderAt := favoritedAt(t, db, "group_favorites", "group_id", groupIDOf(t, db, show))
 
-	applied = setFavorites(t, db, domain.FavoriteChange{VideoIDs: []int64{solo}, FolderPaths: []string{show}, Favorite: true})
-	if applied != (domain.FavoriteApplied{Videos: 1, Folders: 1}) {
+	applied = setFavorites(t, db, domain.FavoriteChange{VideoIDs: []int64{solo}, GroupIDs: []int64{groupIDOf(t, db, show)}, Favorite: true})
+	if applied != (domain.FavoriteApplied{Videos: 1, Groups: 1}) {
 		t.Errorf("既に付いているものの applied = %+v, want {1 1}", applied)
 	}
 	if got := favoritedAt(t, db, "video_favorites", "content_key", ownerVideo(t, db, solo).UserKey); got != videoAt {
 		t.Errorf("付け直しで動画の favorited_at が %d から %d に変わった", videoAt, got)
 	}
-	if got := favoritedAt(t, db, "folder_favorites", "path", domain.FolderKey(show)); got != folderAt {
+	if got := favoritedAt(t, db, "group_favorites", "group_id", groupIDOf(t, db, show)); got != folderAt {
 		t.Errorf("付け直しでグループの favorited_at が %d から %d に変わった", folderAt, got)
 	}
 
@@ -232,11 +232,11 @@ func TestFavoritedAtIncreasesWithFrozenClock(t *testing.T) {
 	show := fixturePath("/media/show")
 
 	favoriteVideos(t, db, true, solo)
-	setFavorites(t, db, domain.FavoriteChange{FolderPaths: []string{show}, Favorite: true})
+	setFavorites(t, db, domain.FavoriteChange{GroupIDs: []int64{groupIDOf(t, db, show)}, Favorite: true})
 	favoriteVideos(t, db, true, x)
 
 	first := favoritedAt(t, db, "video_favorites", "content_key", ownerVideo(t, db, solo).UserKey)
-	second := favoritedAt(t, db, "folder_favorites", "path", domain.FolderKey(show))
+	second := favoritedAt(t, db, "group_favorites", "group_id", groupIDOf(t, db, show))
 	third := favoritedAt(t, db, "video_favorites", "content_key", ownerVideo(t, db, x).UserKey)
 	if first != fixedTime.UnixMilli() || first >= second || second >= third {
 		t.Errorf("favorited_at = %d, %d, %d; want 止めた時刻 %d から増える", first, second, third, fixedTime.UnixMilli())
@@ -350,11 +350,11 @@ func TestFavoritesSurviveIndexChanges(t *testing.T) {
 	ctx := context.Background()
 	solo := ids[fixturePath("/media/solo.mp4")]
 	setFavorites(t, db, domain.FavoriteChange{
-		VideoIDs: []int64{solo}, FolderPaths: []string{fixturePath("/media/show")}, Favorite: true,
+		VideoIDs: []int64{solo}, GroupIDs: []int64{groupIDOf(t, db, fixturePath("/media/show"))}, Favorite: true,
 	})
 	assertRows := func(step string) {
 		t.Helper()
-		if favoriteRowCount(t, db, "video_favorites") != 1 || favoriteRowCount(t, db, "folder_favorites") != 1 {
+		if favoriteRowCount(t, db, "video_favorites") != 1 || favoriteRowCount(t, db, "group_favorites") != 1 {
 			t.Errorf("%s のあとに行が消えた", step)
 		}
 	}

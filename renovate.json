@@ -8,6 +8,7 @@
   "semanticCommitType": "build",
   "semanticCommitScope": "deps",
   "postUpdateOptions": ["gomodTidy"],
+  "constraints": { "npm": "^11.19.0" },
   "lockFileMaintenance": { "enabled": true },
   "vulnerabilityAlerts": {
     "labels": ["security"],
@@ -16,9 +17,16 @@
   "packageRules": [
     {
       "description": "メジャー以外は CI が通れば自動マージする。",
-      "matchUpdateTypes": ["minor", "patch", "pin", "digest", "lockFileMaintenance"],
+      "matchUpdateTypes": ["minor", "patch", "pin", "pinDigest", "digest", "lockFileMaintenance"],
       "automerge": true,
       "automergeType": "pr"
+    },
+    {
+      "description": "ホスティング用 Compose の latest は main の最新イメージを追うため、digest に固定しない。",
+      "matchManagers": ["docker-compose"],
+      "matchFileNames": ["compose.hosting.yaml"],
+      "matchDepNames": ["ghcr.io/syudead/vv"],
+      "enabled": false
     },
     {
       "description": "Go と Node のランタイム版は go.mod と揃えて人が決める。mise は go を golang/go、node を nodejs という packageName で扱うので、両manager に効く depName で指定する。同じタグのダイジェスト更新は止めない。",

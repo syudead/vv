@@ -441,14 +441,14 @@ func countOf(values []string, value string) int {
 
 // 検索式は所在1行に対する条件句になる。3文字以上は MATCH、1〜2文字は instr で、
 // 除外は not、OR は括弧で包んだ or、項どうしは and で結ぶ。語1つごとの条件は、
-// 所在の条件とタグ名への instr の OR に広がる
+// 所在の条件とタグ名・作品情報への instr の OR に広がる
 // （specs/014-video-tags/data-model.md §7）。
 func TestSearchExprCondition(t *testing.T) {
 	clause, args := searchExprCondition(domain.ParseSearchQuery(`京都 -2023 夏休み OR 花 -"a b" ab"c`), "l", domain.AudienceOwner)
 
 	fts := `l.id in (select rowid from location_search_fts where location_search_fts match ?)`
 	instr := `instr(l.search_key, ?) > 0`
-	tag := tagNameMatchCondition("l")
+	tag := tagNameMatchCondition("l") + ` or ` + workInfoMatchCondition("l")
 	want := `(` + instr + ` or ` + tag + `)` +
 		` and not (` + fts + ` or ` + tag + `)` +
 		` and ((` + fts + ` or ` + tag + `) or (` + instr + ` or ` + tag + `))` +
@@ -458,15 +458,16 @@ func TestSearchExprCondition(t *testing.T) {
 		t.Errorf("clause =\n%s\nwant\n%s", clause, want)
 	}
 	// 所在の条件の引数の直後に、同じ語（FoldForMatch 済みでフレーズの引用は無い）が
-	// タグ名の照合の引数として、手で付けた分とフォルダ名の分の2つ続く
-	// （017 の data-model.md §4）。
+	// タグ名の照合の引数として、手で付けた分とフォルダ名の分の2つ続き
+	// （017 の data-model.md §4）、作品情報の品番・人物・団体の分の3つが続く
+	// （047 の data-model.md「Search」）。
 	wantArgs := []any{
-		"京都", "京都", "京都",
-		`"2023"`, "2023", "2023",
-		`"夏休ミ"`, "夏休ミ", "夏休ミ",
-		"花", "花", "花",
-		`"a b"`, "a b", "a b",
-		`"ab""c"`, `ab"c`, `ab"c`,
+		"京都", "京都", "京都", "京都", "京都", "京都",
+		`"2023"`, "2023", "2023", "2023", "2023", "2023",
+		`"夏休ミ"`, "夏休ミ", "夏休ミ", "夏休ミ", "夏休ミ", "夏休ミ",
+		"花", "花", "花", "花", "花", "花",
+		`"a b"`, "a b", "a b", "a b", "a b", "a b",
+		`"ab""c"`, `ab"c`, `ab"c`, `ab"c`, `ab"c`, `ab"c`,
 	}
 	if fmt.Sprint(args) != fmt.Sprint(wantArgs) {
 		t.Errorf("args = %q, want %q", args, wantArgs)

@@ -80,7 +80,7 @@ func TestSetVideoDisplayNameAppliesAndClears(t *testing.T) {
 	if saved.Location == nil || saved.Progress == nil || len(saved.Tags) != 1 {
 		t.Errorf("設定の応答が詳細と同じ形でない: %+v", saved)
 	}
-	if _, videos := sub.take(); !slices.Equal(videos, []int64{f.ids["a"]}) {
+	if videos := sub.take().videos; !slices.Equal(videos, []int64{f.ids["a"]}) {
 		t.Errorf("/api/events の video = %v, want [%d]", videos, f.ids["a"])
 	}
 
@@ -132,7 +132,7 @@ func TestSetVideoDisplayNameAppliesAndClears(t *testing.T) {
 	if got := decode[gen.Video](t, env.get(f.videoPath("a", ""))); got.Title != "a" {
 		t.Errorf("解除の後のゲストの詳細の title = %q, want a", got.Title)
 	}
-	if _, videos := sub.take(); !slices.Contains(videos, f.ids["a"]) {
+	if videos := sub.take().videos; !slices.Contains(videos, f.ids["a"]) {
 		t.Errorf("解除の後の /api/events の video = %v", videos)
 	}
 }

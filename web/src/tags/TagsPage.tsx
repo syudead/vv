@@ -1,14 +1,5 @@
 import { Plus } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import {
@@ -77,6 +68,8 @@ import TagListHead from "./TagListHead";
 import TagsTabs, { tagsPanelId, tagsTabId } from "./TagsTabs";
 import { useTagPage } from "./useTagPage";
 import { ROW_OVERSCAN, useVirtualTagRows } from "./useVirtualTagRows";
+import { useAdminTableBand, useListScrollMargin } from "./useAdminTableBand";
+import { virtualBodyRows } from "./virtualBodyRows";
 import TopBarPortal from "../shell/TopBarPortal";
 import TagToolbar from "./TagToolbar";
 
@@ -224,34 +217,15 @@ export default function TagsPage() {
   const unusedChipRef = useRef<HTMLButtonElement | null>(null);
   /** listBoxRef は帯の下の一覧の箱（作成の行・行・空の状態を入れる）である。 */
   const listBoxRef = useRef<HTMLDivElement | null>(null);
-  /** scrollMargin は、一覧の上端の文書の中での位置（px）である。 */
-  const [scrollMargin, setScrollMargin] = useState(0);
-  /**
-   * bandRef は上部バーの下に留める帯（見出しか選択バー・タブ・絞り込みのチップ）で、
-   * stuckBottom は留まったときの帯の下端の表示域の中での位置（`top` の上部バーの高さ＋
-   * 帯の高さ、px）である。行へスクロールするときに、行が帯の下に隠れないよう
-   * これを差し引く（ui-design.md「Band」）。帯の高さは幅で変わるので測り直す。
-   */
-  const bandRef = useRef<HTMLDivElement | null>(null);
-  const [stuckBottom, setStuckBottom] = useState(0);
-  /**
-   * 表の列の見出しは帯の直下（stuckBottom）に貼り付く。行へスクロールするときは、
-   * 帯に加えて見出しの高さ（headHeight）も差し引く。
-   */
-  const [headHeight, setHeadHeight] = useState(0);
-  // 列の見出しの高さを測る。表が無い間（読み込み中・空）は 0。
-  const headRef = useCallback((head: HTMLTableSectionElement | null) => {
-    if (head === null) return;
-    const measure = () => setHeadHeight(head.offsetHeight);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(head);
-    return () => {
-      observer.disconnect();
-      setHeadHeight(0);
-    };
-  }, []);
-  const rowsTop = stuckBottom + headHeight;
+  const {
+    bandRef,
+    headRef,
+    stuckBottom,
+    rowsTop,
+    scrollMargin,
+    setScrollMargin,
+    scrollListToTop: scrollBoxToTop,
+  } = useAdminTableBand();
 
   /**
    * filtersRef は今描いている「Tentative only」「Unused only」である。要求の応答を
@@ -291,10 +265,7 @@ export default function TagsPage() {
    * 「Band」）。条件を変えて先頭のページが届いたときと「新しいタグ」で使う。
    */
   function scrollListToTop() {
-    const listTop = listBoxRef.current?.getBoundingClientRect().top;
-    if (listTop !== undefined && listTop < stuckBottom) {
-      window.scrollTo({ top: Math.max(0, window.scrollY + listTop - stuckBottom) });
-    }
+    scrollBoxToTop(listBoxRef.current);
   }
 
   /**
@@ -475,41 +446,7 @@ export default function TagsPage() {
   // 一覧の上端は作成の行の有無やツールバーの折り返しで動くので、文書の
   // 大きさが変わるたびに測り直す。
   const hasList = page !== undefined && visibleRows.length > 0 && onTagsTab;
-  useLayoutEffect(() => {
-    const list = listRef.current;
-    if (!hasList || list === null) return;
-    const measure = () =>
-      setScrollMargin(list.getBoundingClientRect().top + window.scrollY);
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(document.body);
-    return () => observer.disconnect();
-  }, [hasList, listRef]);
-
-  // 帯の下端（上部バー＋帯の高さ）を測る。帯は幅や選択で高さが変わる。
-  useLayoutEffect(() => {
-    const band = bandRef.current;
-    if (band === null) return;
-    const measure = () => {
-      const top = Number.parseFloat(getComputedStyle(band).top);
-      setStuckBottom((Number.isFinite(top) ? top : 0) + band.offsetHeight);
-    };
-    measure();
-    const observer = new ResizeObserver(measure);
-    observer.observe(band);
-    return () => observer.disconnect();
-  }, []);
-
-  // ブラウザがフォーカスした要素を表示域へ寄せるときも、帯の下に隠さない。
-  // 文書のスクロールはこの画面のものではないので、離れるときに戻す。
-  useEffect(() => {
-    const root = document.documentElement;
-    const previous = root.style.scrollPaddingTop;
-    root.style.scrollPaddingTop = `${String(rowsTop)}px`;
-    return () => {
-      root.style.scrollPaddingTop = previous;
-    };
-  }, [rowsTop]);
+  useListScrollMargin(listRef, hasList, setScrollMargin);
 
   /**
    * applied は読み込んだ行の条件である。件数の行と空の状態は、入力中の条件ではなく
@@ -1209,41 +1146,31 @@ export default function TagsPage() {
   // 作成・改名の送信中はタブを切り替えない（押せなくし、矢印でも移らない）。
   const tabsLocked = createPending || renamePending;
 
-  /**
-   * 仮想化した行を表の中に描く。描かない行の高さは、行の間と前後に置く空の行で保つ
-   * （行を absolute で重ねると、表の列の幅がそろわないため）。
-   */
-  const scrollStart = virtualizer.options.scrollMargin;
-  const bodyRows: ReactNode[] = [];
-  let cursor = scrollStart;
-  for (const item of virtualItems) {
-    const gap = item.start - cursor;
-    if (gap > 0) {
-      bodyRows.push(<SpacerRow key={`gap-${String(item.index)}`} height={gap} />);
-    }
-    const tag = visibleRows[item.index]!;
-    bodyRows.push(
-      <TagRow
-        key={item.key}
-        index={item.index}
-        measureRef={virtualizer.measureElement}
-        tag={tag}
-        renaming={renamingId === tag.id}
-        pending={renamingId === tag.id && renamePending}
-        blockStart={createPending || (renamePending && renamingId !== tag.id)}
-        error={renamingId === tag.id ? renameError : null}
-        registerRefs={registerRefs}
-        confirming={confirming.has(tag.id)}
-        selected={selected.has(tag.id)}
-        {...rowHandlers}
-      />,
-    );
-    cursor = item.end;
-  }
-  const listEnd = scrollStart + virtualizer.getTotalSize();
-  if (virtualItems.length > 0 && listEnd > cursor) {
-    bodyRows.push(<SpacerRow key="gap-end" height={listEnd - cursor} />);
-  }
+  const bodyRows = virtualBodyRows({
+    items: virtualItems,
+    scrollStart: virtualizer.options.scrollMargin,
+    totalSize: virtualizer.getTotalSize(),
+    columnCount: tagColumnCount,
+    renderRow: (item) => {
+      const tag = visibleRows[item.index]!;
+      return (
+        <TagRow
+          key={item.key}
+          index={item.index}
+          measureRef={virtualizer.measureElement}
+          tag={tag}
+          renaming={renamingId === tag.id}
+          pending={renamingId === tag.id && renamePending}
+          blockStart={createPending || (renamePending && renamingId !== tag.id)}
+          error={renamingId === tag.id ? renameError : null}
+          registerRefs={registerRefs}
+          confirming={confirming.has(tag.id)}
+          selected={selected.has(tag.id)}
+          {...rowHandlers}
+        />
+      );
+    },
+  });
 
   return (
     <AdminTablePage
@@ -1517,12 +1444,3 @@ export default function TagsPage() {
 
 /** tagColumnCount は表の列の数（チェック・名前・本数・操作）。 */
 const tagColumnCount = 4;
-
-/** SpacerRow は描かない行の高さを保つ空の行である。読み上げない。 */
-function SpacerRow({ height }: { height: number }) {
-  return (
-    <tr aria-hidden="true" style={{ height }}>
-      <td colSpan={tagColumnCount} className="p-0" />
-    </tr>
-  );
-}

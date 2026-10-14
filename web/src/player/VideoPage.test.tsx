@@ -13,6 +13,7 @@ import {
 } from "../api/client";
 import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { updateFavorites } from "../api/favorites";
+import type { GroupItem } from "../api/groups";
 import { saveListSnapshot, takeListSnapshot } from "../api/listSnapshot";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { reloadPage } from "../auth/pageNavigation";
@@ -120,8 +121,11 @@ const server = {
   subtitles: new Map<number, () => Response>(),
   probe: vi.fn<() => Response>(),
   open: vi.fn<() => Response>(),
-  /** フォルダのまとめ方の経路（PUT …/grouping・POST …/grouping/tag）の応答。 */
-  grouping: vi.fn<(method: string, url: string, body: unknown) => Response>(),
+  /** フォルダの経路（/api/folders/…）とグループの書き込み（/api/groups/…）の応答。 */
+  grouping:
+    vi.fn<(method: string, url: string, body: unknown) => Response | Promise<Response>>(),
+  /** GET /api/groups/{id}/items が返すグループの直接の項目。無いグループは 404。 */
+  groupItems: new Map<number, GroupItem[]>(),
   /** PUT /api/videos/{id}/display-name の応答。 */
   displayName: vi.fn<(body: unknown) => Response>(),
   /** PUT /api/videos/{id}/thumbnail-position の応答。 */
@@ -169,10 +173,20 @@ function renderPage(
   let state: Record<string, unknown> | undefined =
     from === undefined ? undefined : autoplay ? { from, autoplay } : { from };
   if (trail !== undefined) state = { ...state, trail };
+  // `id` は問い合わせ（`12?group=1`）を含められる。
+  const [pathId, search] = id.split("?");
   return render(
     <TooltipProvider>
       <ToastProvider>
-        <MemoryRouter initialEntries={[{ pathname: `/videos/${id}`, state }]}>
+        <MemoryRouter
+          initialEntries={[
+            {
+              pathname: `/videos/${pathId ?? ""}`,
+              search: search === undefined ? "" : `?${search}`,
+              state,
+            },
+          ]}
+        >
           <AudienceProvider audience={audience}>
             <Link to="/videos/8">別の動画</Link>
             <Link to="/videos/invalid">無効な動画</Link>
@@ -180,6 +194,7 @@ function renderPage(
               <Route path="/videos/:id" element={<VideoPage />} />
               <Route path="/" element={<Screen name="ライブラリ" />} />
               <Route path="/folders/*" element={<Screen name="フォルダ" />} />
+              <Route path="/groups/:id" element={<Screen name="グループ" />} />
             </Routes>
           </AudienceProvider>
         </MemoryRouter>
@@ -226,6 +241,7 @@ describe("VideoPage", () => {
     server.probe.mockReset();
     server.open.mockReset();
     server.grouping.mockReset();
+    server.groupItems.clear();
     server.displayName.mockReset();
     server.thumbnailPosition.mockReset();
     server.versions.mockReset();
@@ -239,12 +255,22 @@ describe("VideoPage", () => {
       const method = init?.method ?? "GET";
       if (url === "/api/auth/session")
         return Promise.resolve(json({ state: server.session }));
-      if (url.startsWith("/api/folders/")) {
+      const items = /^\/api\/groups\/(\d+)\/items\?limit=200$/.exec(url);
+      if (items !== null && method === "GET") {
+        const found = server.groupItems.get(Number(items[1]));
+        return Promise.resolve(
+          found === undefined
+            ? json({ code: "not_found", message: "x" }, 404)
+            : json({ items: found }),
+        );
+      }
+      if (url.startsWith("/api/folders/") || url.startsWith("/api/groups/")) {
         const body = typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
         return Promise.resolve(server.grouping(method, url, body));
       }
       if (url === "/api/tags") return Promise.resolve(json([]));
-      const match = /^\/api\/videos\/(\d+)(\/[a-z-]+)?$/.exec(url);
+      // 動画を開いたグループ（`?group=`）だけの問い合わせは、無いときと同じ応答にする。
+      const match = /^\/api\/videos\/(\d+)(\/[a-z-]+)?(?:\?group=\d+)?$/.exec(url);
       if (match === null) return Promise.resolve(json({}));
       const id = Number(match[1]);
       const suffix = match[2];
@@ -1093,14 +1119,14 @@ describe("VideoPage", () => {
       ...video,
       id,
       title,
-      group: { folder, name: "series", position, count: 3 },
+      group: { id: 1, folder, name: "series", position, count: 3 },
     });
     const ep01 = member(11, "ep01", 1);
     const ep02 = member(12, "ep02", 2);
     const ep03 = member(13, "ep03", 3);
     const listed = (value: Video): Video => ({ ...value, group: undefined });
     const group = {
-      folder,
+      id: 1,
       name: "series",
       items: [ep01, ep02, ep03].map(listed),
       offset: 0,
@@ -1157,19 +1183,32 @@ describe("VideoPage", () => {
       ).length;
     }
 
-    it("題名の上にグループ名と何本目かの1行を出す。所有者ではまとめ方のメニューの引き金にする", async () => {
+    const lineLabel = 'Group "series", video 2 of 3. Open the group';
+    const groupLine = () => screen.findByRole("link", { name: lineLabel });
+    const actionsButton = () => screen.findByRole("button", { name: "Group actions" });
+
+    it("題名の上にグループ名と何本目かの1行を出し、グループのページへのリンクにする", async () => {
       await openMember();
-      const title = screen.getByRole("heading", { level: 1 });
-      // 所有者の題名は編集ボタンと 1 行に並び、ファイル名の行とまとまりを作る
-      // （specs/029-video-overrides/ui-design.md「File name line」）。その前の行である。
-      const line = title.parentElement?.parentElement?.previousElementSibling;
-      expect(line?.textContent).toBe("series·2 / 3");
-      expect(line?.tagName).toBe("BUTTON");
-      expect(line?.getAttribute("aria-label")).toBe(
-        'Group "series", video 2 of 3. Grouping menu',
-      );
-      expect(within(line as HTMLElement).queryByRole("link")).toBeNull();
+      const link = await groupLine();
+      expect(link.textContent).toBe("series·2 / 3");
+      expect(link.getAttribute("href")).toBe("/groups/1");
       expect(screen.getByTitle("series")).toBeDefined();
+      // 行の後の同じ並びに、グループ操作のボタンを置く。
+      expect(link.nextElementSibling).toBe(await actionsButton());
+      fireEvent.click(link);
+      expect(screen.getByTestId("screen").textContent).toBe("グループ /groups/1");
+    });
+
+    it("手で作ったグループ（folder が無い）も同じリンクと操作のボタンにする", async () => {
+      server.videos.set(12, [
+        { ...ep02, group: { id: 9, name: "picks", position: 2, count: 3 } },
+      ]);
+      await openMember();
+      const link = await screen.findByRole("link", {
+        name: 'Group "picks", video 2 of 3. Open the group',
+      });
+      expect(link.getAttribute("href")).toBe("/groups/9");
+      expect(await actionsButton()).toBeDefined();
     });
 
     it("表示名を保存すると、グループのメンバーの並びにあるこの動画の題名も置き換わる", async () => {
@@ -1193,54 +1232,30 @@ describe("VideoPage", () => {
       expect(within(members()).queryByText("ep02")).toBeNull();
     });
 
-    it("ゲストでは Group line を押せない文字の行にする", async () => {
+    it("ゲストにも同じリンクを出し、グループ操作のボタンとグループの項目の読み取りは無い", async () => {
       renderPage("12", "/", "guest");
-      const title = await ready();
-      const line = title.previousElementSibling;
-      expect(line?.textContent).toBe("series·2 / 3");
-      expect(line?.tagName).toBe("P");
-      expect(screen.queryByRole("button", { name: /Grouping menu/ })).toBeNull();
+      const link = await groupLine();
+      expect(link.getAttribute("href")).toBe("/groups/1");
+      expect(screen.queryByRole("button", { name: "Group actions" })).toBeNull();
+      expect(
+        fetchMock.mock.calls.some(([input]) => String(input).startsWith("/api/groups/")),
+      ).toBe(false);
     });
 
-    describe("Group line のメニュー（ui-design.md「Group line」）", () => {
+    describe("グループ操作（ui-design.md「Video page」）", () => {
       const single = (value: Video): Video => ({ ...value, group: undefined });
-      const lineButton = () =>
-        screen.findByRole("button", {
-          name: 'Group "series", video 2 of 3. Grouping menu',
-        });
+      const menuTexts = async () =>
+        within(await screen.findByRole("menu"))
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent);
 
-      /** ungroupOnServer は、操作の後の取り直しでグループでなくなった応答を返させる。 */
-      function ungroupOnServer() {
+      /** leaveOnServer は、操作の後の取り直しでグループに属さない応答を返させる。 */
+      function leaveOnServer() {
         server.videos.set(12, [single(ep02)]);
         server.related.set(12, { items: [related(8, "後続の動画")], nextId: 8 });
       }
 
-      it("「まとめを解除」で PUT を送り、トーストで伝え、動画と関連動画を取り直してふつうの形に戻す（受け入れ条件 3）", async () => {
-        const user = userEvent.setup();
-        server.grouping.mockImplementation(() =>
-          json({ mode: "ungroup", grouped: false, taggable: false }),
-        );
-        await openMember();
-        saveListSnapshot(
-          { query: "series" },
-          { items: [], total: 0, hasMore: false, scrollY: 0 },
-        );
-        ungroupOnServer();
-        await user.click(await lineButton());
-        const menu = await screen.findByRole("menu");
-        expect(
-          within(menu)
-            .getAllByRole("menuitem")
-            .map((item) => item.textContent),
-        ).toEqual(["Ungroup", "Turn the group into a tag"]);
-        await user.click(within(menu).getByRole("menuitem", { name: "Ungroup" }));
-
-        expect(await screen.findByText('Ungrouped "series"')).toBeDefined();
-        expect(server.grouping).toHaveBeenCalledWith(
-          "PUT",
-          "/api/folders/1/grouping?path=series",
-          { mode: "ungroup" },
-        );
+      async function expectPlainVideo() {
         await waitFor(() => {
           const heading = screen.getByRole("heading", { level: 1 });
           expect(heading.previousElementSibling).toBeNull();
@@ -1248,120 +1263,196 @@ describe("VideoPage", () => {
         await waitFor(() =>
           expect(screen.queryByRole("heading", { level: 2, name: "Up next" })).toBeNull(),
         );
-        // 閉じてライブラリを開くと、控えではなく読み直した一覧が出る。
-        expect(takeListSnapshot({ query: "series" })).toBeUndefined();
+      }
+
+      it("直接の項目なら「Remove from this group」を先頭に、区切りの後に「Dissolve…」を出す", async () => {
+        const user = userEvent.setup();
+        server.groupItems.set(1, [{ id: 52, kind: "video", video: listed(ep02) }]);
+        await openMember();
+        await waitFor(() =>
+          expect(
+            fetchMock.mock.calls.some(
+              ([input]) => String(input) === "/api/groups/1/items?limit=200",
+            ),
+          ).toBe(true),
+        );
+        await user.click(await actionsButton());
+        await waitFor(async () =>
+          expect(await menuTexts()).toEqual([
+            "Remove from this group",
+            "Turn the group into a tag…",
+            "Dissolve…",
+          ]),
+        );
+        expect(screen.getByRole("separator")).toBeDefined();
       });
 
-      it("「グループをタグに変える」で POST を送り、既存のタグなら「付け」と伝える（受け入れ条件 5）", async () => {
+      it("子グループを通してだけ入っている動画には「Remove from this group」を出さない", async () => {
         const user = userEvent.setup();
+        server.groupItems.set(1, [
+          { id: 51, kind: "video", video: listed(ep01) },
+          { id: 53, kind: "group" },
+        ]);
+        await openMember();
+        await user.click(await actionsButton());
+        expect(await menuTexts()).toEqual(["Turn the group into a tag…", "Dissolve…"]);
+      });
+
+      it("「Remove from this group」でその項目を外し、トーストで伝え、group なしで読み直す", async () => {
+        const user = userEvent.setup();
+        server.groupItems.set(1, [{ id: 52, kind: "video", video: listed(ep02) }]);
+        server.grouping.mockImplementation(() => json({ id: 1, name: "series" }));
+        renderPage("12?group=1", "/?q=series");
+        await ready();
+        await screen.findByRole("heading", { level: 2, name: "Up next" });
+        await user.click(await actionsButton());
+        leaveOnServer();
+        await user.click(
+          await screen.findByRole("menuitem", { name: "Remove from this group" }),
+        );
+        expect(await screen.findByText('Removed from "series"')).toBeDefined();
+        expect(server.grouping).toHaveBeenCalledWith(
+          "POST",
+          "/api/groups/1/items/remove",
+          { itemIds: [52] },
+        );
+        await expectPlainVideo();
+        // 読み直しは group を運ばない。
+        expect(videoRequests(12)).toBeGreaterThan(0);
+        await waitFor(() =>
+          expect(
+            fetchMock.mock.calls.some(
+              ([input]) => String(input) === "/api/videos/12/related",
+            ),
+          ).toBe(true),
+        );
+      });
+
+      it("外す要求の間に別の動画へ移ったら、応答で前の動画へ引き戻さない", async () => {
+        const user = userEvent.setup();
+        server.groupItems.set(1, [{ id: 52, kind: "video", video: listed(ep02) }]);
+        server.videos.set(8, [{ ...related(8, "後続の動画"), location: video.location }]);
+        let answer: ((response: Response) => void) | undefined;
+        server.grouping.mockImplementation(
+          () =>
+            new Promise<Response>((resolve) => {
+              answer = resolve;
+            }),
+        );
+        renderPage("12?group=1", "/?q=series");
+        await ready();
+        await user.click(await actionsButton());
+        await user.click(
+          await screen.findByRole("menuitem", { name: "Remove from this group" }),
+        );
+        await waitFor(() => expect(answer).toBeDefined());
+        await user.click(screen.getByRole("link", { name: "別の動画" }));
+        await waitFor(() =>
+          expect(screen.getByRole("heading", { level: 1 }).textContent).toBe(
+            "後続の動画",
+          ),
+        );
+
+        await act(async () => {
+          answer?.(json({ id: 1, name: "series" }));
+          await Promise.resolve();
+        });
+        expect(await screen.findByText('Removed from "series"')).toBeDefined();
+        expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("後続の動画");
+      });
+
+      it("外す要求の 404 はトーストなしで読み直す", async () => {
+        const user = userEvent.setup();
+        server.groupItems.set(1, [{ id: 52, kind: "video", video: listed(ep02) }]);
         server.grouping.mockImplementation(() =>
-          json({
-            tag: { id: 4, name: "series" },
-            created: false,
-            grouping: { mode: "ungroup", grouped: false, taggable: false },
-          }),
+          json({ code: "group_target_not_found", message: "x" }, 404),
         );
         await openMember();
-        ungroupOnServer();
-        await user.click(await lineButton());
+        const before = videoRequests(12);
+        await user.click(await actionsButton());
+        leaveOnServer();
         await user.click(
-          await screen.findByRole("menuitem", { name: "Turn the group into a tag" }),
+          await screen.findByRole("menuitem", { name: "Remove from this group" }),
         );
+        await waitFor(() => expect(videoRequests(12)).toBe(before + 1));
+        await expectPlainVideo();
+        expect(screen.queryByText('Removed from "series"')).toBeNull();
+      });
+
+      it("「Turn the group into a tag…」は共有の窓で確かめ、グループの id に POST を送る（受け入れ条件 5）", async () => {
+        const user = userEvent.setup();
+        server.grouping.mockImplementation(() =>
+          json({ tag: { id: 4, name: "series" }, created: false }),
+        );
+        await openMember();
+        saveListSnapshot(
+          { query: "series" },
+          { items: [], total: 0, hasMore: false, scrollY: 0 },
+        );
+        await user.click(await actionsButton());
+        await user.click(
+          await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
+        );
+        const dialog = await screen.findByRole("alertdialog");
+        expect(within(dialog).getByText('Turn "series" into a tag?')).toBeDefined();
+        leaveOnServer();
+        await user.click(within(dialog).getByRole("button", { name: "Turn into a tag" }));
         expect(
-          await screen.findByText('Added the tag "series" and ungrouped'),
+          await screen.findByText('Added the tag "series" and dissolved the group'),
         ).toBeDefined();
         expect(server.grouping).toHaveBeenCalledWith(
           "POST",
-          "/api/folders/1/grouping/tag?path=series",
+          "/api/groups/1/tag",
           undefined,
         );
-        await waitFor(() => {
-          const heading = screen.getByRole("heading", { level: 1 });
-          expect(heading.previousElementSibling).toBeNull();
-        });
-      });
-
-      it("タグ化の失敗をトーストで伝え、画面を変えない", async () => {
-        const user = userEvent.setup();
-        server.grouping.mockImplementation(() =>
-          json({ code: "invalid_request", message: "x" }, 400),
-        );
-        await openMember();
-        await user.click(await lineButton());
-        await user.click(
-          await screen.findByRole("menuitem", { name: "Turn the group into a tag" }),
-        );
-        expect(
-          await screen.findByText(
-            "\"series\" can't be used as a tag name, so it can't become a tag",
-          ),
-        ).toBeDefined();
-        const button = await lineButton();
-        await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
-        expect(screen.getByRole("heading", { level: 2, name: "Up next" })).toBeDefined();
-      });
-
-      it("409 では「もうグループではありません」と伝え、動画と関連動画を取り直す", async () => {
-        const user = userEvent.setup();
-        server.grouping.mockImplementation(() =>
-          json({ code: "conflict", message: "x" }, 409),
-        );
-        await openMember();
-        saveListSnapshot(
-          { query: "series" },
-          { items: [], total: 0, hasMore: false, scrollY: 0 },
-        );
-        const before = videoRequests(12);
-        ungroupOnServer();
-        await user.click(await lineButton());
-        await user.click(await screen.findByRole("menuitem", { name: "Ungroup" }));
-        expect(await screen.findByText("This folder is no longer a group")).toBeDefined();
-        // ほかのタブで先に変わったので、ライブラリの控えも古い。次に開くときは読み直させる。
+        await expectPlainVideo();
+        expect(screen.queryByRole("alertdialog")).toBeNull();
         expect(takeListSnapshot({ query: "series" })).toBeUndefined();
-        await waitFor(() => expect(videoRequests(12)).toBe(before + 1));
-        await waitFor(() =>
-          expect(screen.queryByRole("heading", { level: 2, name: "Up next" })).toBeNull(),
-        );
       });
 
-      it("404 やほかの失敗は「変更できませんでした」", async () => {
+      it("「Dissolve…」は自動グループのフォルダの文を添えた窓で確かめ、DELETE を送ってページに留まる", async () => {
+        const user = userEvent.setup();
+        server.grouping.mockImplementation(() => new Response(null, { status: 204 }));
+        await openMember();
+        await user.click(await actionsButton());
+        await user.click(await screen.findByRole("menuitem", { name: "Dissolve…" }));
+        const dialog = await screen.findByRole("alertdialog");
+        expect(within(dialog).getByText('Dissolve "series"?')).toBeDefined();
+        expect(
+          within(dialog).getByText(/Its folder is no longer grouped automatically/),
+        ).toBeDefined();
+        leaveOnServer();
+        await user.click(within(dialog).getByRole("button", { name: "Dissolve" }));
+        expect(await screen.findByText('Dissolved "series"')).toBeDefined();
+        expect(server.grouping).toHaveBeenCalledWith(
+          "DELETE",
+          "/api/groups/1",
+          undefined,
+        );
+        await expectPlainVideo();
+        expect(screen.queryByTestId("screen")).toBeNull();
+      });
+
+      it("解散の失敗は窓の中に出し、窓を開いたままにする", async () => {
         const user = userEvent.setup();
         server.grouping.mockImplementation(() =>
-          json({ code: "not_found", message: "x" }, 404),
+          json({ code: "internal", message: "x" }, 500),
         );
         await openMember();
-        await user.click(await lineButton());
-        await user.click(await screen.findByRole("menuitem", { name: "Ungroup" }));
-        expect(await screen.findByText("Couldn't make the change")).toBeDefined();
-      });
-
-      it("登録フォルダそのもののグループでは「グループをタグに変える」を出さない", async () => {
-        const user = userEvent.setup();
-        const rootFolder = { rootId: 1, path: "" };
-        server.videos.set(12, [
-          {
-            ...ep02,
-            group: { folder: rootFolder, name: "movies", position: 2, count: 3 },
-          },
-        ]);
-        await openMember();
-        await user.click(
-          await screen.findByRole("button", {
-            name: 'Group "movies", video 2 of 3. Grouping menu',
-          }),
-        );
-        const menu = await screen.findByRole("menu");
+        await user.click(await actionsButton());
+        await user.click(await screen.findByRole("menuitem", { name: "Dissolve…" }));
+        const dialog = await screen.findByRole("alertdialog");
+        await user.click(within(dialog).getByRole("button", { name: "Dissolve" }));
         expect(
-          within(menu)
-            .getAllByRole("menuitem")
-            .map((item) => item.textContent),
-        ).toEqual(["Ungroup"]);
+          await within(dialog).findByText(/^Couldn't dissolve the group: /),
+        ).toBeDefined();
+        expect(screen.getByRole("alertdialog")).toBeDefined();
       });
 
-      it("メニューが開いている間の Esc はメニューだけを閉じ、再生画面のままフォーカスを引き金へ戻す", async () => {
+      it("メニューが開いている間の Esc はメニューだけを閉じ、再生画面のままフォーカスをボタンへ戻す", async () => {
         const user = userEvent.setup();
         await openMember();
-        const button = await lineButton();
+        const button = await actionsButton();
         button.focus();
         await user.keyboard("{Enter}");
         await screen.findByRole("menu");
@@ -1371,6 +1462,58 @@ describe("VideoPage", () => {
         expect(document.activeElement).toBe(button);
         await user.keyboard("{Escape}");
         expect(screen.getByTestId("screen").textContent).toBe("ライブラリ /?q=series");
+      });
+    });
+
+    describe("開いたグループ（?group。research.md R-9）", () => {
+      const urls = () => fetchMock.mock.calls.map(([input]) => String(input));
+
+      it("?group=1 なら読み取りが group=1 を運び、予告がそのグループの次の動画を名指し、進んでも ?group=1 が残る", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        renderPage("12?group=1", "/?q=series");
+        await ready();
+        await screen.findByRole("heading", { level: 2, name: "Up next" });
+        expect(urls()).toContain("/api/videos/12?group=1");
+        expect(urls()).toContain("/api/videos/12/related?group=1");
+        expect(urls()).not.toContain("/api/videos/12");
+        // メンバーの行も ?group を保つ。
+        const members = document.getElementById("group-heading")!.closest("section")!;
+        expect(
+          within(members).getByRole("link", { name: /ep03/ }).getAttribute("href"),
+        ).toBe("/videos/13?group=1");
+        expect((await groupLine()).getAttribute("href")).toBe("/groups/1");
+        await screen.findByTestId("video-player");
+        end();
+        expect(
+          screen
+            .getAllByRole("status")
+            .filter((node) => node.textContent === announcement),
+        ).toHaveLength(1);
+        await advance(5000);
+        await waitFor(() => expect(player().video.id).toBe(13));
+        expect(urls()).toContain("/api/videos/13?group=1");
+        expect(urls()).toContain("/api/videos/13/related?group=1");
+      });
+
+      it("?group のある矢印は同じ group を保って開く", async () => {
+        renderPage("12?group=1", "/?q=series");
+        await ready();
+        await screen.findByRole("heading", { level: 2, name: "Up next" });
+        fireEvent.click(screen.getByRole("button", { name: "Next video: ep03" }));
+        await waitFor(() => expect(player().video.id).toBe(13));
+        expect(urls()).toContain("/api/videos/13?group=1");
+      });
+
+      it("問い合わせが無ければ読み取りは group を運ばない", async () => {
+        await openMember();
+        await screen.findByRole("link", { name: /ep03/ });
+        expect(urls()).toContain("/api/videos/12");
+        expect(urls()).toContain("/api/videos/12/related");
+        expect(urls().some((url) => url.includes("group="))).toBe(false);
+        const members = document.getElementById("group-heading")!.closest("section")!;
+        expect(
+          within(members).getByRole("link", { name: /ep03/ }).getAttribute("href"),
+        ).toBe("/videos/13");
       });
     });
 
@@ -1960,7 +2103,7 @@ describe("VideoPage", () => {
         if (String(input) !== "/api/favorites") return answered!(input, init);
         const body = JSON.parse(String(init?.body)) as {
           videoIds: number[];
-          folders: unknown[];
+          groupIds: unknown[];
           favorite: boolean;
         };
         bodies.push(body);
@@ -1994,7 +2137,7 @@ describe("VideoPage", () => {
       ).length;
     }
 
-    const applied = () => json({ appliedVideos: 1, appliedFolders: 0 });
+    const applied = () => json({ appliedVideos: 1, appliedGroups: 0 });
 
     it("右端の操作の先頭（撮るボタンの左）に置く", async () => {
       server.videos.set(7, [owned]);
@@ -2035,7 +2178,7 @@ describe("VideoPage", () => {
       expect(favoriteButton().getAttribute("aria-disabled")).toBe("true");
       expect(favoriteButton().getAttribute("aria-pressed")).toBe("false");
       fireEvent.click(favoriteButton());
-      expect(bodies).toEqual([{ videoIds: [7], folders: [], favorite: true }]);
+      expect(bodies).toEqual([{ videoIds: [7], groupIds: [], favorite: true }]);
 
       await act(async () => answers[0]!(applied()));
       await waitFor(() => expect(videoRequests(7)).toBe(before + 1));
@@ -2056,7 +2199,7 @@ describe("VideoPage", () => {
 
       // もう一度押すと外す。
       fireEvent.click(favoriteButton());
-      expect(bodies[1]).toEqual({ videoIds: [7], folders: [], favorite: false });
+      expect(bodies[1]).toEqual({ videoIds: [7], groupIds: [], favorite: false });
       await act(async () => answers[1]!(applied()));
       await waitFor(() =>
         expect(favoriteButton().getAttribute("aria-pressed")).toBe("false"),
@@ -2229,6 +2372,7 @@ describe("VideoPage", () => {
         {
           ...owned,
           group: {
+            id: 1,
             folder: { rootId: 1, path: "series" },
             name: "series",
             position: 1,
@@ -2258,6 +2402,7 @@ describe("VideoPage", () => {
         {
           ...owned,
           group: {
+            id: 1,
             folder: { rootId: 1, path: "series" },
             name: "series",
             position: 1,
@@ -2299,14 +2444,20 @@ describe("VideoPage", () => {
       const add = buttons[0]!;
       const favorite = screen.getByRole("button", { name: "Favorite" });
       expect(favorite.nextElementSibling).toBe(add);
-      expect(add.nextElementSibling).toBe(
+      // 「Add to group」が直後に入る（specs/048-groups/ui-design.md「Video page」）。
+      const addToGroup = screen.getByRole("button", { name: /to a group$/ });
+      expect(add.nextElementSibling).toBe(addToGroup);
+      // その後に作品情報の編集の入口（specs/047-video-work-info/ui-design.md「Video page: entry」）。
+      const details = screen.getByRole("link", { name: "Edit details" });
+      expect(addToGroup.nextElementSibling).toBe(details);
+      expect(details.nextElementSibling).toBe(
         screen.getByRole("button", { name: "Use current frame as thumbnail" }),
       );
 
       fireEvent.click(add);
       fireEvent.click(await screen.findByRole("option", { name: "Tonight" }));
       expect(await screen.findByText('Added 1 item to "Tonight"')).toBeDefined();
-      expect(bodies).toEqual([{ videoIds: [7], folders: [] }]);
+      expect(bodies).toEqual([{ videoIds: [7], groupIds: [] }]);
     });
 
     it("ゲストには出さず、プレイリストを読まない（受け入れ条件 9）", async () => {
@@ -2949,11 +3100,25 @@ describe("VideoPage", () => {
       );
     });
 
-    it("今の動画を外すと閉じ、応答の動画で差し替えて自分のタグに戻す（受け入れ条件 9）", async () => {
-      server.videos.set(20, [versionB]);
+    it("今の動画を外すと閉じ、応答の動画で差し替えて自分のタグと作品情報に戻す（受け入れ条件 9）", async () => {
+      // 束の作品情報（BUNDLE）は、外すと B 固有の作品情報（OWN）に戻る。外した応答は
+      // workInfo を載せないので、取り直した動画で OWN を出す（specs/047-video-work-info）。
+      const coded = (code: string) => ({
+        code,
+        dates: [],
+        people: [],
+        organizations: [],
+        urls: [],
+        externalIds: [],
+      });
+      const removed: Video = { ...versionB, versions: undefined, tags: [tagY] };
+      server.videos.set(20, [
+        { ...versionB, workInfo: coded("BUNDLE") },
+        { ...removed, workInfo: coded("OWN") },
+      ]);
       server.versions.mockImplementation((method, id, suffix) => {
         if (method === "POST" && suffix === "/unbundle" && id === 20) {
-          return json({ ...versionB, versions: undefined, tags: [tagY] });
+          return json(removed);
         }
         return json({ representativeId: 7, items: [versionA, versionB, versionC] });
       });
@@ -2977,6 +3142,9 @@ describe("VideoPage", () => {
       expect(screen.queryByRole("button", { name: /versions of this video/ })).toBeNull();
       expect(screen.getByRole("link", { name: /Y/ })).toBeDefined();
       expect(screen.queryByRole("link", { name: /Filter by X/ })).toBeNull();
+      const workDetails = await screen.findByRole("list", { name: "Work details" });
+      expect(await within(workDetails).findByText("OWN")).toBeDefined();
+      expect(within(workDetails).queryByText("BUNDLE")).toBeNull();
     });
 
     it("別のタブで先に変わった失敗は一覧の下に 1 行出し、一覧と動画を取り直す", async () => {
@@ -3404,7 +3572,7 @@ describe("VideoPage", () => {
       expectCatalogTextOnly(document.body, userData);
     });
 
-    it("再生終了・グループの予告・Group line のメニューの文言がカタログから出る", async () => {
+    it("再生終了・グループの予告・グループ操作のメニューの文言がカタログから出る", async () => {
       enablePseudoLocale();
       const ended = renderPage();
       await ready();
@@ -3419,7 +3587,7 @@ describe("VideoPage", () => {
         ...video,
         id,
         title,
-        group: { folder, name: "series", position, count: 3 },
+        group: { id: 1, folder, name: "series", position, count: 3 },
       });
       const members = [
         member(11, "ep01", 1),
@@ -3427,7 +3595,7 @@ describe("VideoPage", () => {
         member(13, "ep03", 3),
       ];
       const group = {
-        folder,
+        id: 1,
         name: "series",
         items: members.map((value) => ({ ...value, group: undefined })),
         offset: 0,
@@ -3441,8 +3609,8 @@ describe("VideoPage", () => {
       await screen.findByRole("heading", { level: 2, name: /Up next/ });
       expectCatalogTextOnly(document.body, userData);
 
-      await user.click(screen.getByRole("button", { name: /Grouping menu/ }));
-      await screen.findByRole("menuitem", { name: /Ungroup/ });
+      await user.click(screen.getByRole("button", { name: /Group actions/ }));
+      await screen.findByRole("menuitem", { name: /Dissolve/ });
       expectCatalogTextOnly(document.body, userData);
       await user.keyboard("{Escape}");
 

@@ -61,6 +61,18 @@ func getJSON[T any](t *testing.T, f *libraryFixture, target string, cookies ...*
 	return decode[T](t, rec), raw
 }
 
+// groupRefString は動画の group を比べられる文字列にする（folder はポインタなので中身で書く）。
+func groupRefString(ref *gen.VideoGroupRef) string {
+	if ref == nil {
+		return "省略"
+	}
+	folder := "無し"
+	if ref.Folder != nil {
+		folder = fmt.Sprintf("%d:%s", ref.Folder.RootId, ref.Folder.Path)
+	}
+	return fmt.Sprintf("id=%d folder=%s name=%s %d/%d", ref.Id, folder, ref.Name, ref.Position, ref.Count)
+}
+
 func idPtrString(id *int64) string {
 	if id == nil {
 		return "省略"
@@ -74,21 +86,22 @@ func idPtrString(id *int64) string {
 func TestVideoGroupForOwner(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	members := []int64{f.ids["ep1"], f.ids["ep2"], f.ids["ep10"]}
+	show := f.groupID(t, "show")
 
 	for index, id := range members {
 		video, _ := getJSON[gen.Video](t, f, videoPath(id), f.owner)
 		want := gen.VideoGroupRef{
-			Folder: gen.VideoFolder{RootId: f.rootID, Path: "show"}, Name: "show", Position: index + 1, Count: 3,
+			Id: show, Folder: &gen.VideoFolder{RootId: f.rootID, Path: "show"}, Name: "show", Position: index + 1, Count: 3,
 		}
-		if video.Group == nil || *video.Group != want {
-			t.Errorf("動画 %d の group = %+v, want %+v", id, video.Group, want)
+		if got := groupRefString(video.Group); got != groupRefString(&want) {
+			t.Errorf("動画 %d の group = %s, want %s", id, got, groupRefString(&want))
 		}
 
 		related, _ := getJSON[gen.RelatedVideos](t, f, relatedPath(id), f.owner)
 		if related.Group == nil {
 			t.Fatalf("動画 %d の関連動画に group が無い", id)
 		}
-		if related.Group.Name != "show" || related.Group.Folder != (gen.VideoFolder{RootId: f.rootID, Path: "show"}) {
+		if related.Group.Name != "show" || related.Group.Id != show {
 			t.Errorf("関連動画の group = %+v", related.Group)
 		}
 		if got := videoIDs(related.Group.Items); !slices.Equal(got, members) {
@@ -152,19 +165,20 @@ func TestVideoGroupAbsentForNonMember(t *testing.T) {
 	}
 }
 
-// ゲスト: group と前後は公開のメンバーだけで作る。公開のメンバーが1本のグループ（pair）は
-// group を省き、グループに属さない動画と同じ応答にする（data-model.md §7）。
+// ゲスト: group と前後は公開のメンバーだけで作る。公開の動画が1本のグループ（pair）も、
+// 再生順が空でないので見せる（specs/048-groups/data-model.md「Visibility」）。
 func TestVideoGroupForGuest(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	public := []int64{f.ids["ep1"], f.ids["ep2"]}
+	show := f.groupID(t, "show")
 
 	for index, id := range public {
 		video, _ := getJSON[gen.Video](t, f, videoPath(id))
 		want := gen.VideoGroupRef{
-			Folder: gen.VideoFolder{RootId: f.rootID, Path: "show"}, Name: "show", Position: index + 1, Count: 2,
+			Id: show, Folder: &gen.VideoFolder{RootId: f.rootID, Path: "show"}, Name: "show", Position: index + 1, Count: 2,
 		}
-		if video.Group == nil || *video.Group != want {
-			t.Errorf("ゲストの動画 %d の group = %+v, want %+v", id, video.Group, want)
+		if got := groupRefString(video.Group); got != groupRefString(&want) {
+			t.Errorf("ゲストの動画 %d の group = %s, want %s", id, got, groupRefString(&want))
 		}
 	}
 
@@ -187,22 +201,18 @@ func TestVideoGroupForGuest(t *testing.T) {
 		t.Errorf("ゲストの関連動画 = %v, want p1 と solo", got)
 	}
 
-	// pair は公開のメンバーが p1 だけなので、ゲストにはグループが無い。
+	// pair は公開の動画が p1 だけで、ゲストには 1 本のグループである。前後は無い。
 	p1 := f.ids["p1"]
-	video, raw := getJSON[gen.Video](t, f, videoPath(p1))
-	if _, ok := raw["group"]; ok || video.Group != nil {
-		t.Errorf("ゲストの p1 の group = %+v, want 省略", video.Group)
+	video, _ := getJSON[gen.Video](t, f, videoPath(p1))
+	if video.Group == nil || video.Group.Count != 1 || video.Group.Position != 1 {
+		t.Errorf("ゲストの p1 の group = %s, want 1/1", groupRefString(video.Group))
 	}
-	pair, rawPair := getJSON[gen.RelatedVideos](t, f, relatedPath(p1))
-	if _, ok := rawPair["group"]; ok || pair.Group != nil {
-		t.Errorf("ゲストの p1 の関連動画の group = %+v, want 省略", pair.Group)
+	pair, _ := getJSON[gen.RelatedVideos](t, f, relatedPath(p1))
+	if pair.Group == nil || !slices.Equal(videoIDs(pair.Group.Items), []int64{p1}) {
+		t.Errorf("ゲストの p1 の関連動画の group = %+v, want p1 だけ", pair.Group)
 	}
-	// グループに属さない動画と同じく、公開の動画だけが近さの順に並び、次の動画はその先頭。
-	if got := videoIDs(pair.Items); !slices.Equal(got, []int64{f.ids["solo"], f.ids["ep2"], f.ids["ep1"]}) {
-		t.Errorf("ゲストの p1 の関連動画 = %v", got)
-	}
-	if idPtrString(pair.NextId) != strconv.FormatInt(f.ids["solo"], 10) || pair.PrevId != nil {
-		t.Errorf("ゲストの p1 の前後 = %s・%s, want 省略・solo", idPtrString(pair.PrevId), idPtrString(pair.NextId))
+	if pair.NextId != nil || pair.PrevId != nil {
+		t.Errorf("ゲストの p1 の前後 = %s・%s, want 省略・省略", idPtrString(pair.PrevId), idPtrString(pair.NextId))
 	}
 
 	// 所有者には pair が2本のグループである。

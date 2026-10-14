@@ -1,13 +1,4 @@
-import { ArrowRight, Search } from "lucide-react";
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useId,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useEffectEvent, useId, useMemo, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
 import {
@@ -21,11 +12,12 @@ import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
 import { FormDialog } from "../ui/patterns/form-dialog";
 import { Badge } from "../ui/shadcn/badge";
-import { Field, FieldError, FieldLabel, FieldTitle } from "../ui/shadcn/field";
+import { Field, FieldTitle } from "../ui/shadcn/field";
 import { Spinner } from "../ui/shadcn/spinner";
 import TagCommand, { type TagChoice } from "../ui/TagCommand";
 import TentativeMark from "../ui/TentativeMark";
 import { DialogError } from "./DialogError";
+import { MergeSummary, MergeTargetField } from "./MergeParts";
 
 /**
  * MergeTagDialog は統合の確認の窓である。統合元（`sources`）を 1 件以上持ち、行の
@@ -76,13 +68,6 @@ export default function MergeTagDialog({
   const cancel = useRef<HTMLButtonElement>(null);
   const mergeButton = useRef<HTMLButtonElement>(null);
   const sourcesHeadingId = useId();
-  const searchErrorId = useId();
-  // 見える名札が指す入力の id。cmdk が入力に自分の id を付けるので、描いた入力から読む。
-  const targetLabelId = useId();
-  const [targetInputId, setTargetInputId] = useState<string | undefined>(undefined);
-  const targetInputRef = useCallback((node: HTMLInputElement | null) => {
-    if (node !== null) setTargetInputId(node.id);
-  }, []);
   const [value, setValue] = useState("");
   const [target, setTarget] = useState<Tag | null>(null);
   const [pending, setPending] = useState(false);
@@ -306,47 +291,30 @@ export default function MergeTagDialog({
           </ul>
         </Field>
       )}
-      <Field data-invalid={searchError !== null || undefined}>
-        <FieldLabel id={targetLabelId} htmlFor={targetInputId}>
-          {t.tags.mergeDialog.target}
-        </FieldLabel>
-        {/*
-          統合先の候補はサーバーの検索で引き、入力の下の本文の中に高さを固定して並べる
-          （ui-design.md「Merge dialog」「Target candidates」）。名前の検証と完全一致の扱いは
-          ui/TagCommand（inline）が持つ。Esc は窓が閉じる。
-        */}
-        <TagCommand
-          layout="inline"
-          label={t.tags.mergeDialog.target}
-          labelledBy={targetLabelId}
-          placeholder={null}
-          inputRef={targetInputRef}
-          icon={<Search aria-hidden="true" />}
-          chosenId={target === null ? undefined : String(target.id)}
-          emptyText={
-            searching || searchError !== null
-              ? undefined
-              : t.tags.mergeDialog.noCandidates
-          }
-          value={value}
-          onValueChange={(next) => {
-            setValue(next);
-            setTarget(null);
-            setError(null);
-          }}
-          choices={options}
-          exactChoice={exactOption}
-          onSelect={selectTarget}
-          frameClassName="w-full"
-          busy={searching}
-          describedBy={searchError !== null ? searchErrorId : undefined}
-        />
-        {searchError !== null && (
-          <FieldError id={searchErrorId} role="status" aria-live="polite">
-            {t.tags.mergeDialog.searchFailed(searchError)}
-          </FieldError>
-        )}
-      </Field>
+      {/*
+        統合先の候補はサーバーの検索で引き、入力の下の本文の中に高さを固定して並べる
+        （ui-design.md「Merge dialog」「Target candidates」）。名前の検証と完全一致の扱いは
+        ui/TagCommand（inline）が持つ。
+      */}
+      <MergeTargetField
+        Command={TagCommand}
+        label={t.tags.mergeDialog.target}
+        value={value}
+        onValueChange={(next) => {
+          setValue(next);
+          setTarget(null);
+          setError(null);
+        }}
+        choices={options}
+        exactChoice={exactOption}
+        onSelect={selectTarget}
+        chosenId={target === null ? undefined : String(target.id)}
+        searching={searching}
+        searchError={
+          searchError === null ? null : t.tags.mergeDialog.searchFailed(searchError)
+        }
+        emptyText={t.tags.mergeDialog.noCandidates}
+      />
       {target !== null && effective.length === 0 && (
         <p className="text-sm text-muted-foreground">
           {t.tags.mergeDialog.onlyTarget(target.name)}
@@ -379,18 +347,14 @@ export default function MergeTagDialog({
       {message !== null && <p className="text-sm text-muted-foreground">{message}</p>}
       {target !== null && effective.length > 0 && (
         // 統合元 → 統合先（ui-design.md「Merge dialog」）。
-        <p className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
-          <span className="min-w-0 truncate">
-            {effective.length === 1
+        <MergeSummary
+          source={
+            effective.length === 1
               ? effective[0]!.name
-              : t.tags.mergeDialog.summarySources(effective.length)}
-          </span>
-          <ArrowRight aria-hidden="true" className="size-4 shrink-0" />
-          <span className="sr-only"> → </span>
-          <span className="min-w-0 truncate font-medium text-foreground">
-            {target.name}
-          </span>
-        </p>
+              : t.tags.mergeDialog.summarySources(effective.length)
+          }
+          target={target.name}
+        />
       )}
       {error !== null && <DialogError message={error} />}
     </FormDialog>

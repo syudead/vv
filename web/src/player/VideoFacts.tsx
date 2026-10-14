@@ -29,7 +29,8 @@ import { detailMark, type DetailMark } from "../api/useVideoDetail";
 import { errorText, formatDate, formatDateTime, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
-import { formatBytes, formatDuration } from "../lib/format";
+import { formatBytes, formatDuration, isNarrowVideo } from "../lib/format";
+import AddToGroupButton from "../groups/AddToGroupButton";
 import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { Button } from "../ui/shadcn/button";
@@ -40,7 +41,10 @@ import { factTrigger } from "./factTrigger";
 import { technicalSummary } from "./properties";
 import EditEntry from "./thumbnailEdit/EditEntry";
 import UploadEntry, { useThumbnailUpload } from "./thumbnailUpload/UploadEntry";
+import UploadPreview from "./thumbnailUpload/UploadPreview";
+import DetailsEntry, { type DetailsEntryProps } from "./detailsEditor/DetailsEntry";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
+import WorkInfo from "./WorkInfo";
 
 /**
  * useOpenFile はサーバーの PC で動画ファイルを開き、開けなかったときの文言を持つ。
@@ -268,6 +272,7 @@ export default function VideoFacts({
   onFavorite,
   versions,
   onEditingChange,
+  details,
 }: {
   video: Video;
   owner?: boolean;
@@ -285,12 +290,15 @@ export default function VideoFacts({
   };
   /** サムネイルの編集画面を開いた・閉じた。 */
   onEditingChange?: (open: boolean) => void;
+  /** 作品情報の編集画面の入口に載せる戻り先と、開いたときに入口へフォーカスを置くか。 */
+  details?: DetailsEntryProps["details"];
 }) {
   const [failure, setFailure] = useState<UiText | null>(null);
   useEffect(() => setFailure(null), [video.id]);
   const open = useOpenFileRequest(video.id, setFailure);
   const thumbnail = useThumbnailPosition(video.id, setFailure, onChanged, onStale);
-  const upload = useThumbnailUpload(video.id, setFailure, onChanged, onStale);
+  const upload = useThumbnailUpload(video, setFailure, onChanged, onStale);
+  const uploadBusy = upload.sending || upload.preparing;
   const toast = useToast();
   const location = video.location;
   const duration = formatDuration(video.durationMs);
@@ -343,7 +351,7 @@ export default function VideoFacts({
               origin={video.thumbnailImage}
               url={video.thumbnailUrl}
               reverting={thumbnail.sending === "revert"}
-              locked={upload.sending}
+              locked={uploadBusy}
               onRevert={() => thumbnail.send("revert")}
             />
           )}
@@ -354,7 +362,7 @@ export default function VideoFacts({
                 url={video.thumbnailUrl}
                 positionMs={video.thumbnailPositionMs}
                 clearing={thumbnail.sending === "clear"}
-                locked={upload.sending}
+                locked={uploadBusy}
                 onClear={() => thumbnail.send(null)}
               />
             )}
@@ -384,11 +392,22 @@ export default function VideoFacts({
                 videoIds={[video.id]}
               />
             )}
+            {/* 「Add to playlist」の直後（specs/048-groups/ui-design.md「Add to group」）。 */}
+            {favorite !== undefined && (
+              <AddToGroupButton
+                variant="page"
+                label={t.list.card.addToGroup(video.title)}
+                videoIds={[video.id]}
+              />
+            )}
+            {/* 「Add to group」の後、サムネイルの操作の前に置く。所有者にだけ、プレイヤーが
+                出ていなくても置く（specs/047-video-work-info/ui-design.md「Video page: entry」）。 */}
+            <DetailsEntry video={video} owner={owner} details={details} />
             {owner && capture !== undefined && (
               <CaptureButton
                 capture={capture}
                 sending={thumbnail.sending === "capture"}
-                locked={upload.sending}
+                locked={uploadBusy}
                 onCapture={(positionMs) => thumbnail.send(positionMs)}
               />
             )}
@@ -407,9 +426,20 @@ export default function VideoFacts({
             )}
             {owner && (
               <UploadEntry
-                sending={upload.sending}
+                sending={uploadBusy}
                 locked={thumbnail.sending !== null}
-                onFile={upload.upload}
+                onFile={upload.choose}
+              />
+            )}
+            {upload.preview !== null && (
+              <UploadPreview
+                image={upload.preview.image}
+                name={upload.preview.name}
+                aspect={upload.preview.aspect}
+                narrow={isNarrowVideo(video)}
+                applying={upload.applying}
+                onApply={upload.apply}
+                onCancel={upload.cancel}
               />
             )}
             {location?.openable === true && (
@@ -434,6 +464,8 @@ export default function VideoFacts({
           {failure}
         </p>
       )}
+      {/* 作品情報の行は、ファイルの行（と失敗の行）の後、技術の行の前に置く。 */}
+      <WorkInfo info={video.workInfo} />
       <TechnicalLine summary={technical} />
     </div>
   );

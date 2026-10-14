@@ -4,11 +4,11 @@ import { Link } from "react-router";
 
 import type { LibraryGroup } from "../api/client";
 import { updateFavorites } from "../api/favorites";
-import { groupRef } from "../api/libraryItems";
 import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatBytes, formatDuration } from "../lib/format";
+import AddToGroupButton from "../groups/AddToGroupButton";
 import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { Checkbox } from "../ui/shadcn/checkbox";
@@ -20,6 +20,7 @@ import {
   VideoThumbnailMark,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
+import { groupPagePath } from "../groups/groupPaths";
 import FolderArt from "../videoList/FolderArt";
 
 /**
@@ -29,8 +30,14 @@ import FolderArt from "../videoList/FolderArt";
  */
 export interface GroupCardProps {
   group: LibraryGroup;
-  /** 遷移元の一覧 URL。再生画面の「戻る」がここへ帰る。 */
+  /** 遷移元の一覧 URL。開いた先の「戻る」がここへ帰る。 */
   backTo: string;
+  /**
+   * カードと行の名前が開く場所。省くとそのグループのページ（`/groups/{id}`、道筋なし）で、
+   * ライブラリはこれを使う。グループのページは道筋を 1 段伸ばした場所を渡す
+   * （specs/048-groups/ui-design.md「Group card and row」「Body」）。
+   */
+  to?: string;
   /** 全メンバーが選択に入っているときだけ true（ui-design.md「Pressing and selection」）。 */
   selected: boolean;
   selectionMode: boolean;
@@ -88,7 +95,8 @@ export function groupLinkLabel(
 
 /**
  * GroupFavorite はグループのカード・行のお気に入りの付け外しである（所有者だけ。
- * specs/035-favorites/ui-design.md「Card」）。グループのフォルダを送り、メンバーには付けない。
+ * specs/035-favorites/ui-design.md「Card」）。グループの id を送り、メンバーには付けない
+ * （specs/048-groups/research.md R-10）。
  */
 function GroupFavorite({
   group,
@@ -102,7 +110,7 @@ function GroupFavorite({
     <FavoriteToggle
       favorite={favorite}
       label={t.library.group.favorite(group.name)}
-      onToggle={() => updateFavorites([], [groupRef(group)], !favorite)}
+      onToggle={() => updateFavorites([], [group.id], !favorite)}
       variant={variant}
     />
   );
@@ -110,7 +118,8 @@ function GroupFavorite({
 
 /**
  * GroupAddToPlaylist はグループのカード・行の「Add to playlist」である（所有者だけ。
- * specs/044-playlists/ui-design.md「Add to playlist」）。グループのフォルダを送る。
+ * specs/044-playlists/ui-design.md「Add to playlist」）。グループの id を送る
+ * （specs/048-groups/research.md R-10）。
  */
 function GroupAddToPlaylist({
   group,
@@ -123,25 +132,43 @@ function GroupAddToPlaylist({
     <AddToPlaylistButton
       variant={variant}
       label={t.library.group.addToPlaylist(group.name)}
-      folders={[groupRef(group)]}
+      groupIds={[group.id]}
     />
   );
 }
 
-function groupPath(group: LibraryGroup): string {
-  return `/videos/${String(group.openVideoId)}`;
+/**
+ * GroupAddToGroup はグループのカード・行の「Add to group」である（所有者だけ。
+ * specs/048-groups/ui-design.md「Group card and row」）。グループの id を送る。
+ */
+function GroupAddToGroup({
+  group,
+  variant,
+}: {
+  group: LibraryGroup;
+  variant: "card" | "row";
+}) {
+  return (
+    <AddToGroupButton
+      variant={variant}
+      label={t.library.group.addToGroup(group.name)}
+      groupIds={[group.id]}
+    />
+  );
 }
 
 /**
  * GroupCard はライブラリの格子でグループを1枚で出すカードである。動画のカード
  * （VideoCard）と同じ箱・同じ大きさで、サムネイルの枠にはフォルダ画面のフォルダカードと
  * 同じフォルダの絵柄（FolderArt）を描き、右下の面に本数と合計の長さを重ねる。
- * カード全体が開くメンバーの再生画面への1つのリンクである（要件 16・17・23）。
+ * カード全体がグループのページへの1つのリンクである（specs/048-groups/research.md R-8。
+ * 017 の「最初の未視聴のメンバーを開く」を置き換える）。
  */
 export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
   const {
     group,
     backTo,
+    to = groupPagePath(group.id),
     selected,
     selectionMode,
     onSelect,
@@ -158,8 +185,9 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 
   return (
     <article
-      data-group-root={group.folder.rootId}
-      data-group-path={group.folder.path}
+      data-group-id={group.id}
+      data-group-root={group.folder?.rootId}
+      data-group-path={group.folder?.path}
       className={cn(
         "group relative flex min-w-0 flex-col gap-2",
         selectionMode && "select-none",
@@ -186,7 +214,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
       )}
 
       <Link
-        to={groupPath(group)}
+        to={to}
         state={{ from: backTo }}
         aria-label={label}
         onClick={(event) => {
@@ -237,6 +265,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
         // （ui-design.md「Placement」）。
         <VideoThumbnailMark className="z-30">
+          <GroupAddToGroup group={group} variant="card" />
           <GroupAddToPlaylist group={group} variant="card" />
           <GroupFavorite group={group} variant="card" />
         </VideoThumbnailMark>
@@ -251,7 +280,14 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
  * グループの値を出す（ui-design.md「List view row」）。
  */
 export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
-  const { group, backTo, selected, selectionMode, onSelect } = props;
+  const {
+    group,
+    backTo,
+    to = groupPagePath(group.id),
+    selected,
+    selectionMode,
+    onSelect,
+  } = props;
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
   // リスト表示は今回変えない。サムネイルは先頭のメンバーの1枚（previews の先頭）を使う。
@@ -259,8 +295,9 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
 
   return (
     <TableRow
-      data-group-root={group.folder.rootId}
-      data-group-path={group.folder.path}
+      data-group-id={group.id}
+      data-group-root={group.folder?.rootId}
+      data-group-path={group.folder?.path}
       data-state={selected ? "selected" : undefined}
       className="group"
     >
@@ -292,7 +329,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
       </TableCell>
       <TableCell className="min-w-0 pr-4 whitespace-normal">
         <Link
-          to={groupPath(group)}
+          to={to}
           state={{ from: backTo }}
           aria-label={label}
           onClick={(event) => {
@@ -321,6 +358,11 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
           <GroupAddToPlaylist group={group} variant="row" />
+        </TableCell>
+      )}
+      {owner && (
+        <TableCell className="hidden w-8 px-0 sm:table-cell">
+          <GroupAddToGroup group={group} variant="row" />
         </TableCell>
       )}
       <TableCell className="hidden w-16 pr-4 text-right text-xs text-muted-foreground tabular-nums sm:table-cell">

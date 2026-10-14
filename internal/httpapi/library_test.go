@@ -59,7 +59,7 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 		return adjust(Options{
 			Videos: library, Folders: library, Library: library, FolderGroups: db.FolderGroups(),
 			Playback: db.Playback(), Tags: db.Tags(), Visibility: db.Visibility(),
-			Favorites: db.Favorites(), Versions: db.Versions(), Playlists: db.Playlists(),
+			Favorites: db.Favorites(), Versions: db.Versions(), Playlists: db.Playlists(), Groups: db.Groups(),
 			PlaylistPlayback: db.Playlists(),
 		})
 	})
@@ -134,8 +134,16 @@ func previewIDs(previews []gen.FolderPreview) []int64 {
 	return ids
 }
 
-func (f *libraryFixture) groupPath(rel string) string {
-	return "/api/folders/" + strconv.FormatInt(f.rootID, 10) + "/group?path=" + url.QueryEscape(rel)
+// groupID は所有者のライブラリの一覧から、名前 name のグループの id を返す。
+func (f *libraryFixture) groupID(t *testing.T, name string) int64 {
+	t.Helper()
+	return libraryGroupNamed(t, decode[gen.LibraryPage](t, f.env.get("/api/library", f.owner)), name).Id
+}
+
+// groupPath は名前 name のグループの GET /api/groups/{id} の経路である。
+func (f *libraryFixture) groupPath(t *testing.T, name string) string {
+	t.Helper()
+	return "/api/groups/" + strconv.FormatInt(f.groupID(t, name), 10)
 }
 
 // libraryItemNames は項目を「group:名前」か動画の題名にして並べ替えて返す。
@@ -272,8 +280,8 @@ func (l strayGroupLibrary) ListLibrary(ctx context.Context, audience domain.Audi
 }
 
 // 一覧の項目・total・カーソルと、グループの folder は同じスナップショットから作る。
-// 登録フォルダを別に読めなくてもグループは落ちず、登録フォルダの下に無いグループは
-// 黙って落とさずに 500 にする（items が total と食い違わない）。
+// 登録フォルダを別に読めなくてもグループは落ちず、フォルダが登録フォルダの下に無いグループは
+// folder を省いて返す（specs/048-groups/contracts/screen-api.md）。
 func TestListLibraryResolvesGroupFoldersFromSameSnapshot(t *testing.T) {
 	f := newLibraryFixtureWith(t, func(options Options) Options {
 		options.Folders = failingRootsFolders{options.Folders}
@@ -287,7 +295,7 @@ func TestListLibraryResolvesGroupFoldersFromSameSnapshot(t *testing.T) {
 	if names := libraryItemNames(page); !slices.Equal(names, []string{"group:pair", "group:show", "solo"}) || page.Total != 3 {
 		t.Fatalf("項目 = %v・total %d", names, page.Total)
 	}
-	if show := libraryGroupNamed(t, page, "show"); show.Folder.RootId != f.rootID || show.Folder.Path != "show" {
+	if show := libraryGroupNamed(t, page, "show"); show.Folder == nil || show.Folder.RootId != f.rootID || show.Folder.Path != "show" {
 		t.Errorf("folder = %+v", show.Folder)
 	}
 
@@ -295,8 +303,12 @@ func TestListLibraryResolvesGroupFoldersFromSameSnapshot(t *testing.T) {
 		options.Library = strayGroupLibrary{options.Library}
 		return options
 	})
-	if rec := stray.env.get("/api/library", stray.owner); rec.Code != http.StatusInternalServerError {
-		t.Errorf("登録フォルダの下に無いグループ: status = %d: %s", rec.Code, rec.Body)
+	rec = stray.env.get("/api/library", stray.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("登録フォルダの下に無いグループ: status = %d: %s", rec.Code, rec.Body)
+	}
+	if show := libraryGroupNamed(t, decode[gen.LibraryPage](t, rec), "show"); show.Folder != nil {
+		t.Errorf("登録フォルダの下に無いグループの folder = %+v, want 無し", show.Folder)
 	}
 }
 
@@ -330,9 +342,9 @@ func TestListLibraryIdsFollowItems(t *testing.T) {
 	})
 }
 
-// ゲストには公開のメンバーだけで数えた項目を返し、公開のメンバーが1本のグループは
-// 動画の項目にする。視聴の値とタグは出さず、所有者のデータに依る条件は 400、
-// 「すべて選択」は 401 である（data-model.md §7）。
+// ゲストには公開のメンバーだけで数えた項目を返し、公開のメンバーが1本のグループも
+// グループの項目にする（specs/048-groups/research.md R-6）。視聴の値とタグは出さず、所有者の
+// データに依る条件は 400、「すべて選択」は 401 である（data-model.md §7）。
 func TestListLibraryForGuest(t *testing.T) {
 	f := newLibraryFixture(t)
 	rec := f.env.get("/api/library")
@@ -340,8 +352,11 @@ func TestListLibraryForGuest(t *testing.T) {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
 	}
 	page := decode[gen.LibraryPage](t, rec)
-	if names := libraryItemNames(page); !slices.Equal(names, []string{"group:show", "p1", "solo"}) || page.Total != 3 {
+	if names := libraryItemNames(page); !slices.Equal(names, []string{"group:pair", "group:show", "solo"}) || page.Total != 3 {
 		t.Fatalf("ゲストの項目 = %v・total %d", names, page.Total)
+	}
+	if pair := libraryGroupNamed(t, page, "pair"); !slices.Equal(pair.VideoIds, []int64{f.ids["p1"]}) {
+		t.Errorf("ゲストの pair = %+v, want 公開の p1 だけ", pair)
 	}
 	show := libraryGroupNamed(t, page, "show")
 	if show.VideoCount != 2 || !slices.Equal(show.VideoIds, []int64{f.ids["ep1"], f.ids["ep2"]}) || show.OpenVideoId != f.ids["ep1"] {
@@ -378,7 +393,7 @@ func TestListLibraryForGuest(t *testing.T) {
 		if err := json.Unmarshal(group["previews"], &previews); err != nil {
 			t.Fatal(err)
 		}
-		if ids := previewIDs(previews); !slices.Equal(ids, []int64{f.ids["ep2"]}) {
+		if ids := previewIDs(previews); string(group["name"]) == `"show"` && !slices.Equal(ids, []int64{f.ids["ep2"]}) {
 			t.Errorf("ゲストのグループの絵柄のサムネイル = %v, want 公開の ep2 だけ", ids)
 		}
 	}
@@ -394,45 +409,72 @@ func TestListLibraryForGuest(t *testing.T) {
 	assertUnauthenticated(t, "ゲストの /api/library/ids", f.env.get("/api/library/ids"))
 }
 
-// グループ1件は絞り込みに関係なく全メンバーから作り、グループでないフォルダは 404、
-// パスの規則違反は 400 である。ゲストは公開のメンバーが2本以上なければ 404。
-func TestGetFolderGroup(t *testing.T) {
+// グループの画面は絞り込みに関係なく子孫の動画の全部から作ったグループと、項目を位置の順に返し、
+// 無いグループは 404 である。ゲストは公開の動画だけで読み、公開の動画が 1 本でも読める
+// （specs/048-groups/contracts/screen-api.md「Statuses」）。
+func TestGetGroup(t *testing.T) {
 	f := newLibraryFixture(t)
+	path := f.groupPath(t, "show")
 
-	rec := f.env.get(f.groupPath("show"), f.owner)
+	rec := f.env.get(path+"?trail=999", f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("status = %d: %s", rec.Code, rec.Body)
-	}
-	show := decode[gen.LibraryGroup](t, rec)
-	if show.Name != "show" || show.VideoCount != 3 || show.Folder.Path != "show" || show.OpenVideoId != f.ids["ep2"] {
-		t.Errorf("show = %+v", show)
 	}
 	if rec.Header().Get("Cache-Control") != cacheNoStore {
 		t.Errorf("Cache-Control = %q", rec.Header().Get("Cache-Control"))
 	}
-	if pair := decode[gen.LibraryGroup](t, f.env.get(f.groupPath("pair"), f.owner)); pair.VideoCount != 2 {
-		t.Errorf("pair = %+v", pair)
+	detail := decode[gen.GroupDetail](t, rec)
+	show := detail.Group
+	if show.Name != "show" || show.VideoCount != 3 || show.Folder == nil || show.Folder.Path != "show" || show.OpenVideoId != f.ids["ep2"] {
+		t.Errorf("show = %+v", show)
 	}
-	for _, rel := range []string{"", "none", "show/ep1.mp4"} {
-		rec := f.env.get(f.groupPath(rel), f.owner)
-		assertErrorBody(t, rel, rec.Code, rec.Body.Bytes(),
-			wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonNotFolderGroup})
+	if len(detail.Trail) != 0 || detail.NextCursor != nil {
+		t.Errorf("trail = %+v, nextCursor = %v; want 空・無し", detail.Trail, detail.NextCursor)
 	}
-	rec = f.env.get(f.groupPath("../show"), f.owner)
-	assertErrorBody(t, "規則違反のパス", rec.Code, rec.Body.Bytes(),
-		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidFolderPath})
-	rec = f.env.get("/api/folders/999/group?path=show", f.owner)
-	assertErrorBody(t, "無い登録フォルダ", rec.Code, rec.Body.Bytes(),
-		wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound, reason: reasonFolderNotFound})
+	var titles []string
+	for _, item := range detail.Items {
+		if item.Kind != gen.GroupItemKindVideo || item.Video == nil {
+			t.Fatalf("項目 = %+v, want 動画", item)
+		}
+		titles = append(titles, item.Video.Title)
+	}
+	if !slices.Equal(titles, []string{"ep1", "ep2", "ep10"}) {
+		t.Errorf("項目 = %v, want [ep1 ep2 ep10]", titles)
+	}
 
-	guest := f.env.get(f.groupPath("show"))
+	// 続きのページはカーソルで読み、読めないカーソルと範囲外の limit は 400。
+	first := decode[gen.GroupItemPage](t, f.env.get(path+"/items?limit=2", f.owner))
+	if len(first.Items) != 2 || first.NextCursor == nil {
+		t.Fatalf("1 ページ目 = %+v", first)
+	}
+	second := decode[gen.GroupItemPage](t, f.env.get(path+"/items?limit=2&cursor="+url.QueryEscape(*first.NextCursor), f.owner))
+	if len(second.Items) != 1 || second.Items[0].Video == nil || second.Items[0].Video.Title != "ep10" || second.NextCursor != nil {
+		t.Errorf("2 ページ目 = %+v", second)
+	}
+	rec = f.env.get(path+"/items?cursor=broken", f.owner)
+	assertErrorBody(t, "読めないカーソル", rec.Code, rec.Body.Bytes(),
+		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidCursor})
+	for _, query := range []string{"limit=0", "limit=201"} {
+		if rec := f.env.get(path+"/items?"+query, f.owner); rec.Code != http.StatusBadRequest {
+			t.Errorf("%s: status = %d, want 400", query, rec.Code)
+		}
+	}
+	if rec := f.env.get(path+"?trail=x", f.owner); rec.Code != http.StatusBadRequest {
+		t.Errorf("読めない trail: status = %d, want 400", rec.Code)
+	}
+	for _, target := range []string{"/api/groups/999999", "/api/groups/999999/items"} {
+		rec := f.env.get(target, f.owner)
+		assertErrorBody(t, target, rec.Code, rec.Body.Bytes(), wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
+	}
+
+	guest := f.env.get(path)
 	if guest.Code != http.StatusOK {
 		t.Fatalf("ゲストの show: status = %d: %s", guest.Code, guest.Body)
 	}
-	if got := decode[gen.LibraryGroup](t, guest); got.VideoCount != 2 || got.WatchState != nil || len(got.Tags) != 0 {
+	if got := decode[gen.GroupDetail](t, guest); got.Group.VideoCount != 2 || got.Group.WatchState != nil || len(got.Group.Tags) != 0 || len(got.Items) != 2 {
 		t.Errorf("ゲストの show = %+v", got)
 	}
-	if rec := f.env.get(f.groupPath("pair")); rec.Code != http.StatusNotFound {
-		t.Errorf("ゲストの pair（公開1本）: status = %d, want 404", rec.Code)
+	if rec := f.env.get(f.groupPath(t, "pair")); rec.Code != http.StatusOK {
+		t.Errorf("ゲストの pair（公開1本）: status = %d, want 200", rec.Code)
 	}
 }

@@ -103,6 +103,11 @@ as empty spacer rows so the columns stay aligned. The page passes the fixed top
 bar's height (`--spacing-navbar`) to the virtualizer and to
 `scroll-padding-top`, so a focused row never hides under the top bar
 ([036 UI design, Band](../../specs/036-tag-admin-scale/ui-design.md)).
+The people and organizations admin lists (`/people`, `/organizations`) are
+built the same way from the same pieces in `web/src/tags/`: pages of 100
+read from the server, rows drawn near the viewport, and local updates after
+rename, details, merge and delete
+([047 UI design, People and organizations screens](../../specs/047-video-work-info/ui-design.md#people-and-organizations-screens-1)).
 
 ### The window owns scrolling
 
@@ -184,7 +189,7 @@ flowchart LR
 The top bar ([`TopBar.tsx`](../../web/src/shell/TopBar.tsx)) holds ☰ (below
 640px only) and the logo, and no scan control (see
 [Scan entry and progress](#scan-entry-and-progress)). The library, the folder
-pages and the tags page insert their toolbar after them: the design-system
+pages and the admin pages (tags, people, organizations) insert their toolbar after them: the design-system
 `Toolbar` with
 `placement="topBar"`, rendered through
 [`TopBarPortal.tsx`](../../web/src/shell/TopBarPortal.tsx). The page body
@@ -196,7 +201,12 @@ page's `h1` is for screen readers only and no visible title repeats it
 ([design-system.md, Page patterns](design-system.md#page-patterns)).
 The tags page is an `AdminTablePage`: a centered `max-w-4xl` column whose
 header (or, while rows are selected, the selection bar) and tabs stick under
-the top bar, and the table's column header sticks right under them.
+the top bar, and the table's column header sticks right under them. The
+people and organizations pages are one `AdminTablePage` component that takes
+the kind; they have the same header and column header, without the filter,
+tabs, checkbox column and selection bar, and a details dialog (aliases,
+external IDs and, for an organization, the parent) in place of the synonyms
+dialog.
 On the library and folder pages, changing the search, a filter, a tag or the
 sort order scrolls the page back to the top, so the new list starts from its
 first card. Returning from the player still restores the saved position.
@@ -303,7 +313,7 @@ Video card behaviour:
 | Case | Behaviour |
 | --- | --- |
 | Tag pressed in the library | Filters by the tag |
-| Tag pressed on a folder page | Opens `/?tag=<id>` |
+| Tag pressed on a folder page or a group page | Opens `/?tag=<id>` |
 | Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full ([041 UI design](../../specs/041-tag-overflow-list/ui-design.md#the-list)) |
 | Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag` ([017 UI design](../../specs/017-folder-groups/ui-design.md)) |
 | Hover preview | One at a time on any screen |
@@ -317,15 +327,25 @@ The library reads `GET /api/library`, which mixes folder groups in with videos;
 folder pages and their search results list videos one by one. A group card
 shows a panel with the count (`12 videos`) and total duration, a watched-share
 bar only while some members are in progress, the group name and the members'
-tags. Pressing it opens the member to continue (`/videos/{openVideoId}`).
+tags. Pressing it opens the group page (`/groups/{id}`), which lists the
+group's child groups and videos in their saved order under a sticky trail band
+([048 UI design, Group page](../../specs/048-groups/ui-design.md#group-page)).
+On that page a child group opens with `?trail` one group longer, and a video
+opens with `?group`, so the video page follows that group.
 Guests see no watch status, watched count or bar.
 
 Ungroup, group a folder's direct videos and turn a group into a tag are not on
 the card. They sit in the owner's menu at the right end of a folder page's
 `Videos N` heading row
-([`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)) and
-on the video page's group name row. After an action the cached library list is
-discarded and reloads on the next visit.
+([`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)), and
+turning into a tag and dissolving also sit in the video page's group actions
+([Group members](#group-members)). The folder menu offers "Turn the group into
+a tag…" only when the folder has an automatic group, including a registered
+folder's own group, and opens the confirmation dialog that every entry point
+shares ([`GroupTagDialog.tsx`](../../web/src/groups/GroupTagDialog.tsx),
+[048 UI design, Turning into a tag](../../specs/048-groups/ui-design.md#turning-into-a-tag)).
+After an action the cached library list is discarded and reloads on the next
+visit.
 
 ### Favorite mark
 
@@ -354,18 +374,21 @@ flowchart LR
   kind -->|group| refetch[Refetch the group]
 ```
 
-A group is refetched with `GET /api/folders/{rootId}/group`.
+A group is refetched with `GET /api/groups/{id}`.
 
 Left of the heart, in the same corner and shown exactly when the off heart is,
-the owner's `Add to playlist` control opens the playlist picker; it has no
-state, so the heart stays nearest the corner
-([`AddToPlaylistButton.tsx`](../../web/src/playlists/AddToPlaylistButton.tsx),
-[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist)).
+the owner's `Add to playlist` control opens the playlist picker, and left of
+it `Add to group` opens the group picker; neither has state, so the heart
+stays nearest the corner
+([`PickerButton.tsx`](../../web/src/library/PickerButton.tsx),
+[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist),
+[048 UI design, Add to group](../../specs/048-groups/ui-design.md#add-to-group)).
 
 ### List view and selection
 
-List view (library only) shows title, favorite (owner), add to playlist
-(owner, from `sm`; below it the card and the selection bar offer it), watched,
+List view (library only) shows title, favorite (owner), add to playlist and
+add to group (owner, from `sm`; below it the card and the selection bar offer
+them), watched,
 duration, quality, size and date added. A group row uses the
 same columns: first member's thumbnail, Folder marker and count under the
 title, `3 / 12` watched, total duration and size, empty quality
@@ -385,9 +408,10 @@ so they read on devices without hover; the design-system bar
 fit.
 
 Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
-`Favorite`, `Add to playlist`, `Visibility`, `Bundle as versions` (2 or more
-videos), a separator and `Select all`. The actions sit at the right end; those
-that do not fit move to the right end of the next line.
+`Favorite`, `Add to playlist`, `New group`, `Add to group`, `Visibility`,
+`Bundle as versions` (2 or more videos), a separator and `Select all`. The
+actions sit at the right end; those that do not fit move to the right end of
+the next line.
 
 Details: tag actions in
 [014 UI design, Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar),
@@ -395,8 +419,10 @@ the visibility menu in
 [016 UI design, Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar),
 `Favorite` and wrapping in
 [035 UI design, Selection bar](../../specs/035-favorites/ui-design.md#selection-bar),
-and `Add to playlist`, which sends what `Favorite` sends, in
-[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist).
+`Add to playlist`, which sends what `Favorite` sends, in
+[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist),
+and `New group` and `Add to group`, which send the same, in
+[048 UI design, Selection bar](../../specs/048-groups/ui-design.md#selection-bar).
 
 `Favorite` decides per selected group whether to send it as a group:
 
@@ -453,7 +479,7 @@ flowchart LR
 | Tags | Right below the title as one unit ([014 UI design, Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)) |
 | Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows |
 | Right column | Up to three sections, the playlist panel, `Up next` (a group's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
-| Guests | No tags, visibility toggle, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
+| Guests | No tags, visibility toggle, work details, `Edit details`, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
 
 Width variations stay in CSS, as in
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception):
@@ -470,15 +496,24 @@ aspect ratio from the frame at run time.
 
 ### Information rows
 
-Two rows under the title, above which a divider runs, carry no frames or
-labels.
+Up to three rows under the title, above which a divider runs, carry no
+frames.
 
 | Row | Content |
 | --- | --- |
 | First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated or uploaded image is the thumbnail; actions at the right end |
-| Second | Resolution, container, codec separated by thin rules; smallest and most subdued |
+| Work details | Only when the video has work information, and only for the owner: the set items as `label value` pairs in the first row's `text-sm` and gaps (code, the three dates as stored, the people and organizations of each role, links, IDs), wrapping item by item, with the description folded to three lines under them |
+| Last | Resolution, container, codec separated by thin rules; smallest and most subdued |
 
-The actions are favorite, `Add to playlist`, `Use current frame as thumbnail`,
+The work details row takes words as labels, muted, and the values in the body
+colour. A role, `Links` or `IDs` with more than three entries shows three and
+`+{n} more`, which opens that item in place; a description longer than three
+lines shows `Show more`. A video without work information shows the rows as
+before, and the row adds no prompt to fill it in
+([047 UI design, Video page: work details row](../../specs/047-video-work-info/ui-design.md#video-page-work-details-row)).
+
+The actions are favorite, `Add to playlist`, `Add to group`, `Edit details`,
+`Use current frame as thumbnail`,
 `Edit thumbnail with ComfyUI`, `Upload an image as thumbnail`, `Open file` and
 `Copy path`: icon-only ghost buttons with tooltips. The ComfyUI entry opens the
 thumbnail editor, an `EditorDialog` over the page, and is dimmed with a set-up
@@ -488,7 +523,15 @@ thumbnail, the thumbnail item shows that image with `Use the frame instead`
 The upload entry is the owner's even when the player is not shown, and does not
 depend on ComfyUI. It opens the browser's file picker for PNG, JPEG and WebP,
 refuses another type or a file over 64 MB on the failure line before sending
-anything, and spins while it sends. While an uploaded image is the thumbnail,
+anything, and spins while it reads the picked file and while it sends. A
+readable file opens `Preview thumbnail`, an `EditorDialog` whose stage shows
+the image in the card's 16:9 thumbnail frame exactly as it will be stored:
+`Whole image` (the default) or `Fill frame`, which adds `Zoom` and lets the
+owner drag the image, or move it with the arrow keys and zoom with `+` and
+`-`. `Use as thumbnail` closes it and sends; `Cancel`, `×` and Esc send
+nothing
+([thumbnail editing](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)).
+While an uploaded image is the thumbnail,
 the thumbnail item shows it with an `ImageUp` icon, the label
 `Uploaded thumbnail` and the same `Use the frame instead`. One thumbnail
 action sends at a time: while the capture, a `×` or the upload sends, the
@@ -504,7 +547,8 @@ The owner's favorite toggle opens the right-hand action group, left of
 it first; even so, it is no more prominent than the title: on is a small
 `bg-primary-soft` fill with the pink heart. It is absent on group rows and for
 guests ([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
-`Add to playlist` follows it, under the same conditions.
+`Add to playlist` and then `Add to group` follow it, under the same
+conditions.
 
 ```mermaid
 flowchart LR
@@ -517,6 +561,27 @@ flowchart LR
 Updating the cached list means the library card has changed on return. The
 failure line sits directly below the first information row, like open,
 capture and upload failures, with no toast.
+
+### Details editor
+
+`Edit details` (lucide `Clapperboard`, the owner's only) is a link to
+`/videos/:id/edit`, a full-screen `FormPage` outside the shell and the player
+that edits the display name and every work information item together; the
+title's pencil stays as the quick way to rename. The band holds `Cancel` and
+`Save`; the left column, the skeleton's `aside`, names the video (thumbnail,
+file name, duration, size and resolution, folder) and holds
+`Back to the video`; `Basics` holds the name, the code and the dates
+in a 2×2 grid, the description, links and IDs; `Credits` holds one row per
+role with the chips and a `CreditCommand` picker that finds a person or an
+organization, or makes a chip marked `New` that `Save` creates first. `Save`
+then sends one `PUT /api/videos/{id}/details` and returns to the page with the
+response, focusing `Edit details`; a reason with a `field` stays in the editor
+under that control. `Cancel`, `Back to the video` and the browser's Back ask
+`Discard changes?` when the draft changed. Opened from the page, the editor
+starts from the page's video and returns along the history, so the page's `×`
+still leads to the list; opened by its URL, it reads the video first, and a
+guest is sent to sign in
+([047 UI design, Editor](../../specs/047-video-work-info/ui-design.md#editor)).
 
 ### Player states
 
@@ -632,14 +697,19 @@ and it closes the popover, not the page.
 
 A video in a group only gains parts on the same page; a video outside any group
 is unchanged ([017 UI design, Video page](../../specs/017-folder-groups/ui-design.md#video-page)).
+The group is the one the video was opened from (`?group=<id>`, passed to the
+video, related-video and member reads), or else the group with the smallest id
+that holds the video directly; a playlist context overrides both
+([048 UI design, Video page](../../specs/048-groups/ui-design.md#video-page)).
 
 | Part | Rule |
 | --- | --- |
-| Above the title | Group name and position in the group |
+| Above the title | Group name and position in the group, as a link to the group page |
 | Related videos column | `Up next` member list and a divider at the top |
 | Playback ended | Next-member notice instead of the layer: 5 s, cancellable, Esc cancels |
-| Group name row (owner) | Menu with `Ungroup` and `Turn the group into a tag`; Esc closes only the menu |
-| After a menu action | Video and related videos refetched; page returns to the plain form |
+| Member rows, handles, notice | Keep `?group` on the video they open |
+| Group actions (owner) | `Ellipsis` button after the line: `Remove from this group` (only for a direct item), `Turn the group into a tag…`, `Dissolve…`; Esc closes only the menu |
+| After an action | Video and related videos read again without `group`; the page stays |
 | Previous/next handles | Move within the group |
 
 `matchMedia` reads the `lg` width only to scroll the current member's row into
@@ -657,6 +727,38 @@ The server applies every list condition (search, filters, sort, shuffle seed),
 and the page never filters the pages it has loaded
 ([`listCriteria.ts`](../../web/src/videoList/listCriteria.ts) keeps them in the
 URL).
+
+The list routes (`GET /api/videos`, `GET /api/library` and
+`GET /api/library/ids`) take these conditions, each ANDed with the others.
+`GET /api/library/ids` is owner-only and answers a guest `401`, so the Guest
+column applies to `GET /api/videos` and `GET /api/library`:
+
+| Parameter | Keeps | Guest |
+| --- | --- | --- |
+| `query` | Videos the search expression matches (see below) | Allowed; matches only the title and relative path |
+| `tag` | Videos that carry every listed tag | `400 guest_filter_not_allowed` |
+| `watch` | Videos in that watch state (`all` keeps every video) | Only `all` |
+| `playable` | Videos that play in the browser | Allowed |
+| `favorite` | Favorite videos and favorite groups | `400 guest_filter_not_allowed` |
+| `person` | Videos linked to that person in any role | `400 guest_filter_not_allowed` |
+| `organization` | Videos linked to that organization in any role | `400 guest_filter_not_allowed` |
+
+`query`, `tag`, `person` and `organization` apply to each group member, so a
+group matched only in part lists its matched members as video items. A
+`person` or `organization` id with no entity gives an empty list, and a value
+that is not a positive integer is `400 invalid_request`
+([047 screen-api.md](../../specs/047-video-work-info/contracts/screen-api.md#list-parameters-person-and-organization)).
+
+For the owner, a search term matches a video when it appears in the title or
+relative path of one of its locations, in a name or synonym of one of its
+tags, in its work code, or in a name or alias of a person or organization
+linked to its work information. Matching uses the folded form
+(`domain.FoldForMatch`), so width, letter case and hiragana or katakana do not
+matter. The description, dates, URLs and external IDs are not matched. A guest
+search matches only the title and relative path, so names a guest cannot see
+do not decide which public videos are returned
+([`search.go`](../../internal/store/search.go),
+[047 data-model.md, Search](../../specs/047-video-work-info/data-model.md#search)).
 
 Only the server knows which videos and groups belong to a folder and match the
 filters, so a page that filtered locally would show a different set from

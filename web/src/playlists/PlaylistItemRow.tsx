@@ -1,89 +1,18 @@
-import { useSortable } from "@dnd-kit/sortable";
-import { AlertTriangle, Check, Folder, GripVertical, X } from "lucide-react";
 import type { Ref } from "react";
 import { Link } from "react-router";
 
 import type { PlaylistItem } from "../api/playlists";
 import { formatNumber, t } from "../i18n";
 import { cn } from "../lib/cn";
-import {
-  formatDuration,
-  isNarrowVideo,
-  unplayableText,
-  watchedRatio,
-  watchState,
-} from "../lib/format";
-import { Button } from "../ui/shadcn/button";
-import { Spinner } from "../ui/shadcn/spinner";
 import { TableCell, TableRow } from "../ui/shadcn/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
-import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
 import {
-  VideoThumbnail,
-  VideoThumbnailDuration,
-  VideoThumbnailImage,
-  VideoThumbnailProgress,
-} from "../ui/VideoThumbnail";
-import { itemDurationMs, itemTitle, playTarget } from "./playlistItems";
-
-interface RowFacts {
-  thumbnailUrl: string | undefined;
-  narrow: boolean;
-  state: "unwatched" | "inProgress" | "watched";
-  /** 進み具合の棒の割合（0〜1）。見ている途中でなければ null。 */
-  ratio: number | null;
-  /** グループの「3 / 12」。グループでなければ null。 */
-  groupProgress: string | null;
-  /** グループの 2 行目（「12 videos」）。 */
-  groupCount: string | null;
-  unplayable: string | null;
-}
-
-/** rowFacts は行に出す値を、動画とグループで同じ形にそろえる（library のリスト表示と同じ値）。 */
-function rowFacts(item: PlaylistItem): RowFacts {
-  const group = item.group;
-  if (item.kind === "group" && group !== undefined) {
-    const watched = group.watchedCount ?? 0;
-    const state = group.watchState ?? "unwatched";
-    return {
-      thumbnailUrl: group.previews[0]?.thumbnailUrl,
-      narrow: false,
-      state,
-      ratio:
-        state === "inProgress" && group.videoCount > 0
-          ? Math.min(watched / group.videoCount, 1)
-          : null,
-      groupProgress:
-        state === "inProgress"
-          ? String(t.library.group.progress(watched, group.videoCount))
-          : null,
-      groupCount: String(t.library.group.count(group.videoCount)),
-      unplayable: null,
-    };
-  }
-  const video = item.video;
-  if (video === undefined) {
-    return {
-      thumbnailUrl: undefined,
-      narrow: false,
-      state: "unwatched",
-      ratio: null,
-      groupProgress: null,
-      groupCount: null,
-      unplayable: null,
-    };
-  }
-  const unplayable = unplayableText(video);
-  return {
-    thumbnailUrl: video.thumbnailUrl,
-    narrow: isNarrowVideo(video),
-    state: watchState(video),
-    ratio: watchedRatio(video),
-    groupProgress: null,
-    groupCount: null,
-    unplayable: unplayable === null ? null : String(unplayable),
-  };
-}
+  ItemThumbnailCell,
+  ItemTitleExtras,
+  ItemWatchedAndDurationCells,
+  rowFacts,
+} from "../videoList/ItemRowCells";
+import { RemoveItemButton, ReorderHandle, useSortableRow } from "../videoList/reorder";
+import { itemTitle, playTarget } from "./playlistItems";
 
 /**
  * PlaylistItemRow はプレイリストの画面の 1 行である（specs/044-playlists/ui-design.md「Rows」）。
@@ -109,30 +38,16 @@ export default function PlaylistItemRow({
   onRemove: (item: PlaylistItem) => void;
   removeRef: Ref<HTMLButtonElement>;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id });
+  const { rowRef, style, isDragging, handle } = useSortableRow(item.id);
   const title = itemTitle(item);
   const facts = rowFacts(item);
   const target = playTarget(playlistId, item);
-  const duration = formatDuration(itemDurationMs(item));
 
   return (
     <TableRow
-      ref={setNodeRef}
+      ref={rowRef}
       data-item-id={item.id}
-      // 位置は持ち上げている間だけ実行時に決まる値なので style で渡す。横には動かさない。
-      style={
-        transform === null
-          ? { transition }
-          : { transform: `translate3d(0, ${String(transform.y)}px, 0)`, transition }
-      }
+      style={style}
       className={cn(
         "relative motion-reduce:transition-none",
         isDragging && "z-10 bg-popover shadow-elevated hover:bg-popover",
@@ -140,44 +55,13 @@ export default function PlaylistItemRow({
     >
       <TableCell className="w-0 pr-0 pl-1">
         <span className="flex items-center gap-1">
-          <Button
-            ref={setActivatorNodeRef}
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="relative z-10 cursor-grab touch-none text-muted-foreground"
-            {...attributes}
-            {...listeners}
-            aria-label={t.playlists.item.reorder(title)}
-          >
-            <GripVertical aria-hidden="true" />
-          </Button>
+          <ReorderHandle handle={handle} label={t.playlists.item.reorder(title)} />
           <span className="min-w-4 text-right text-xs text-muted-foreground tabular-nums">
             {formatNumber(position)}
           </span>
         </span>
       </TableCell>
-      <TableCell className="w-list-thumb-cell">
-        <VideoThumbnail className="w-list-thumb rounded-sm">
-          {facts.thumbnailUrl !== undefined && facts.narrow && (
-            <ThumbnailBackdrop src={facts.thumbnailUrl} />
-          )}
-          {facts.thumbnailUrl !== undefined && (
-            <VideoThumbnailImage src={facts.thumbnailUrl} />
-          )}
-          {duration !== "" && <VideoThumbnailDuration>{duration}</VideoThumbnailDuration>}
-          {facts.ratio !== null && (
-            <VideoThumbnailProgress
-              value={Math.round(facts.ratio * 100)}
-              aria-label={
-                item.kind === "group"
-                  ? t.library.group.watchedRatio
-                  : t.list.card.watchedRatio
-              }
-            />
-          )}
-        </VideoThumbnail>
-      </TableCell>
+      <ItemThumbnailCell item={item} facts={facts} />
       <TableCell className="w-full max-w-0 pr-2 whitespace-normal sm:pr-4">
         {target === null ? (
           <span title={title} className="line-clamp-2 text-sm font-medium break-all">
@@ -200,51 +84,17 @@ export default function PlaylistItemRow({
             {title}
           </Link>
         )}
-        {facts.groupCount !== null && (
-          <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
-            <Folder aria-hidden="true" className="size-3 shrink-0" />
-            {facts.groupCount}
-          </span>
-        )}
-        {facts.unplayable !== null && (
-          <span className="mt-0.5 flex items-center gap-1 text-xs text-warning">
-            <AlertTriangle aria-hidden="true" className="size-3 shrink-0" />
-            {facts.unplayable}
-          </span>
-        )}
+        <ItemTitleExtras facts={facts} />
       </TableCell>
-      <TableCell className="hidden w-16 pr-4 text-right text-xs text-muted-foreground tabular-nums sm:table-cell">
-        {facts.state === "watched" && (
-          <Check
-            className="ml-auto size-4 text-success"
-            aria-label={t.list.card.watched}
-          />
-        )}
-        {facts.groupProgress}
-      </TableCell>
-      {/* 狭い幅ではサムネイルの長さだけを出し、題名の幅を残す。 */}
-      <TableCell className="hidden w-0 pr-2 text-right tabular-nums sm:table-cell">
-        {duration}
-      </TableCell>
+      <ItemWatchedAndDurationCells item={item} facts={facts} />
       <TableCell className="w-0 pr-1 pl-0 sm:pr-3">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              ref={removeRef}
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="relative z-10 text-muted-foreground"
-              disabled={removing}
-              aria-busy={removing || undefined}
-              aria-label={t.playlists.item.removeFor(title)}
-              onClick={() => onRemove(item)}
-            >
-              {removing ? <Spinner aria-hidden="true" /> : <X aria-hidden="true" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t.playlists.item.remove}</TooltipContent>
-        </Tooltip>
+        <RemoveItemButton
+          removing={removing}
+          label={t.playlists.item.removeFor(title)}
+          tooltip={t.playlists.item.remove}
+          onRemove={() => onRemove(item)}
+          buttonRef={removeRef}
+        />
       </TableCell>
     </TableRow>
   );

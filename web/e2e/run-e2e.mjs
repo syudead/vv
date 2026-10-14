@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   generateFolderFixtures,
   generateFolderSearchFixtures,
+  generateGroupsFixtures,
   generateGuestFixtures,
   generateHistoryFixtures,
   generateMediaFixtures,
@@ -16,6 +17,7 @@ import {
   generateTagsFixtures,
   generateThumbnailEditFixtures,
   generateThumbnailUploadFixtures,
+  generateWorkInfoFixtures,
 } from "./media-fixtures.mjs";
 import { FAKE_COMFYUI_PORT } from "./fake-comfyui.mjs";
 
@@ -31,11 +33,15 @@ const searchMediaDir = path.join(runRoot, "search-media");
 const foldersSearchMediaDir = path.join(runRoot, "folders-search-media");
 const tagsMediaDir = path.join(runRoot, "tags-media");
 const guestMediaDir = path.join(runRoot, "guest-media");
+const groupsMediaDir = path.join(runRoot, "groups-media");
+// 再スキャンの前にテストが写す 1 本は、登録フォルダの外に置く。
+const groupsSpareDir = path.join(runRoot, "groups-spare");
 const historyMediaDir = path.join(runRoot, "history-media");
 const playlistsMediaDir = path.join(runRoot, "playlists-media");
 const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
 const scanIssuesMediaDir = path.join(runRoot, "scan-issues-media");
 const thumbnailEditMediaDir = path.join(runRoot, "thumbnail-edit-media");
+const workInfoMediaDir = path.join(runRoot, "work-info-media");
 // ページから上げる画像は動画のフォルダの外に置き、スキャンが拾わないようにする。
 const thumbnailUploadDir = path.join(runRoot, "thumbnail-uploads");
 // Go のビルドキャッシュは実行をまたいで使い回す。実行ごとの runRoot に置くと
@@ -61,12 +67,14 @@ function run() {
     generateFolderSearchFixtures(foldersSearchMediaDir);
     generateTagsFixtures(tagsMediaDir);
     generateGuestFixtures(guestMediaDir);
+    generateGroupsFixtures(groupsMediaDir, groupsSpareDir);
     generateHistoryFixtures(historyMediaDir);
     generatePlaylistsFixtures(playlistsMediaDir);
     generateScanProgressFixtures(scanProgressMediaDir);
     generateScanIssueFixtures(scanIssuesMediaDir);
     generateThumbnailEditFixtures(thumbnailEditMediaDir);
     generateThumbnailUploadFixtures(thumbnailUploadDir);
+    generateWorkInfoFixtures(workInfoMediaDir);
     const mediaContract = spawnSync(
       "go",
       ["test", "./internal/media", "-run", "^TestVideoEncode.*WithFFmpeg$", "-count=1"],
@@ -112,12 +120,15 @@ function run() {
           MDM_E2E_SEARCH_MEDIA_DIR: searchMediaDir,
           MDM_E2E_TAGS_MEDIA_DIR: tagsMediaDir,
           MDM_E2E_GUEST_MEDIA_DIR: guestMediaDir,
+          MDM_E2E_GROUPS_MEDIA_DIR: groupsMediaDir,
+          MDM_E2E_GROUPS_SPARE_DIR: groupsSpareDir,
           MDM_E2E_HISTORY_MEDIA_DIR: historyMediaDir,
           MDM_E2E_PLAYLISTS_MEDIA_DIR: playlistsMediaDir,
           MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
           MDM_E2E_SCAN_ISSUES_MEDIA_DIR: scanIssuesMediaDir,
           MDM_E2E_THUMBNAIL_EDIT_MEDIA_DIR: thumbnailEditMediaDir,
           MDM_E2E_THUMBNAIL_UPLOAD_DIR: thumbnailUploadDir,
+          MDM_E2E_WORK_INFO_MEDIA_DIR: workInfoMediaDir,
           MDM_E2E_COMFYUI_URL: `http://127.0.0.1:${String(FAKE_COMFYUI_PORT)}`,
         },
         stdio: "inherit",

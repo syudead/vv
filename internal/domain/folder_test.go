@@ -225,3 +225,33 @@ func TestLocateVideoFolderWindows(t *testing.T) {
 		}
 	}
 }
+
+// フォルダの鍵（自動グループの origin_folder）から登録フォルダと相対パスを求める。登録フォルダ
+// `/` や `D:\` の鍵は末尾の区切りが落ちていても、その登録フォルダそのものを指す。
+func TestLocateFolderKey(t *testing.T) {
+	cases := []struct {
+		roots   []MediaFolder
+		key     string
+		windows bool
+		want    VideoFolder
+		ok      bool
+	}{
+		{[]MediaFolder{{ID: 1, Path: "/media/a/"}}, "/media/a", false, VideoFolder{RootID: 1}, true},
+		{[]MediaFolder{{ID: 1, Path: "/media/a"}}, "/media/a/B", false, VideoFolder{RootID: 1, Path: "B"}, true},
+		{[]MediaFolder{{ID: 1, Path: "/media/a"}, {ID: 3, Path: "/"}}, "", false, VideoFolder{RootID: 3}, true},
+		{[]MediaFolder{{ID: 3, Path: "/"}}, "/srv", false, VideoFolder{RootID: 3, Path: "srv"}, true},
+		{[]MediaFolder{{ID: 1, Path: "/media/a"}}, "", false, VideoFolder{}, false},
+		{[]MediaFolder{{ID: 2, Path: `D:\`}}, "d:", true, VideoFolder{RootID: 2}, true},
+		{[]MediaFolder{{ID: 2, Path: `D:\`}}, `d:\show`, true, VideoFolder{RootID: 2, Path: "show"}, true},
+	}
+	for _, tc := range cases {
+		separator := '/'
+		if tc.windows {
+			separator = '\\'
+		}
+		got, ok := locateFolderKeyFor(tc.roots, tc.key, tc.windows, separator)
+		if ok != tc.ok || got != tc.want {
+			t.Errorf("locateFolderKey(%q) = %+v, %v; want %+v, %v", tc.key, got, ok, tc.want, tc.ok)
+		}
+	}
+}

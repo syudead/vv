@@ -1,6 +1,8 @@
 package store
 
-// フォルダのグループの索引と、フォルダごとの例外（specs/017-folder-groups/data-model.md §1〜§3）。
+// フォルダの索引（動画ごとの祖先フォルダ名）と、フォルダごとの例外（specs/017-folder-groups/data-model.md
+// §1〜§3）。グループそのものは groups と group_items が持ち、作り直しの同期（syncFolderGroups）が
+// フォルダとそろえる（specs/048-groups/research.md R-1）。
 // 例外の書き換えは FolderGroupStore、スキャンの後と起動時の作り直しは ScanIndexStore、
 // メディアフォルダの変更に伴う作り直しは SettingsStore、束ねの変更に伴う作り直しは
 // VersionStore（specs/030-video-versions/research.md R-4）が受け持ち、どれも
@@ -51,7 +53,8 @@ func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath str
 	if err := writeOverride(ctx, tx, folderPath, mode); err != nil {
 		return domain.FolderGrouping{}, err
 	}
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
+	changedGroups, err := dissolveUngroupedAndRebuild(ctx, tx, folderPath, mode)
+	if err != nil {
 		return domain.FolderGrouping{}, err
 	}
 	groupings, err := folderGroupings(ctx, tx, []string{folderPath})
@@ -61,54 +64,8 @@ func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath str
 	if err := tx.Commit(); err != nil {
 		return domain.FolderGrouping{}, fmt.Errorf("cannot save the folder grouping: %w", err)
 	}
+	s.db.publishEvents(groupsChangedEvents(changedGroups)...)
 	return groupings[0], nil
-}
-
-// TagFolderGroup はフォルダ folderPath（絶対パス）のグループをタグに変える
-// （POST /api/folders/{rootId}/grouping/tag、specs/017-folder-groups/data-model.md §4）。
-// 1つの取引で、フォルダ名を domain.NormalizeTagName に通し、名前かシノニムで引けた
-// タグを使うか新しく作り、そのフォルダに ungroup を書き、索引を作り直す。
-//
-// そのフォルダが今グループでなければ domain.ErrNotFolderGroup、フォルダ名がタグ名の
-// 規則に合わなければ domain.ErrInvalidTagName を返し、どちらも何も書かない。
-// 登録フォルダそのものかどうかは呼び出し側が確かめる。
-func (s *FolderGroupStore) TagFolderGroup(ctx context.Context, folderPath string) (domain.FolderGroupTag, error) {
-	tx, err := s.db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return domain.FolderGroupTag{}, err
-	}
-	defer func() { _ = tx.Rollback() }()
-
-	var name string
-	err = tx.QueryRowContext(ctx, `select name from folder_groups where path_key = ?`, domain.FolderKey(folderPath)).Scan(&name)
-	if errors.Is(err, sql.ErrNoRows) {
-		return domain.FolderGroupTag{}, domain.ErrNotFolderGroup
-	}
-	if err != nil {
-		return domain.FolderGroupTag{}, fmt.Errorf("cannot read groups: %w", err)
-	}
-	normalized, err := domain.NormalizeTagName(name)
-	if err != nil {
-		return domain.FolderGroupTag{}, err
-	}
-	tag, created, err := findOrCreateTag(ctx, tx, normalized)
-	if err != nil {
-		return domain.FolderGroupTag{}, err
-	}
-	if err := writeOverride(ctx, tx, folderPath, domain.FolderGroupUngroup); err != nil {
-		return domain.FolderGroupTag{}, err
-	}
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
-		return domain.FolderGroupTag{}, err
-	}
-	groupings, err := folderGroupings(ctx, tx, []string{folderPath})
-	if err != nil {
-		return domain.FolderGroupTag{}, err
-	}
-	if err := tx.Commit(); err != nil {
-		return domain.FolderGroupTag{}, fmt.Errorf("cannot convert the group to tags: %w", err)
-	}
-	return domain.FolderGroupTag{Tag: tag, Created: created, Grouping: groupings[0]}, nil
 }
 
 // FolderGroupings はフォルダ folderPaths（絶対パス）それぞれのまとめ方を、同じ
@@ -132,7 +89,8 @@ func (s *FolderGroupStore) FolderGroupings(ctx context.Context, folderPaths []st
 	return groupings, nil
 }
 
-// folderGroupings はフォルダそれぞれの例外と、いまグループかどうかを引く。
+// folderGroupings はフォルダそれぞれの例外と、そのフォルダの自動グループ（groups.origin_folder）の
+// id を引く。
 func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]domain.FolderGrouping, error) {
 	keys := make([]string, len(folderPaths))
 	for i, path := range folderPaths {
@@ -144,10 +102,10 @@ func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]d
 	}
 	rows, err := tx.QueryContext(ctx, `
 		with wanted(folder_key) as (select distinct value from json_each(?))
-		select w.folder_key, o.mode, g.id is not null
+		select w.folder_key, o.mode, g.id
 		  from wanted w
 		  left join folder_group_overrides o on o.path = w.folder_key
-		  left join folder_groups g on g.path_key = w.folder_key`, string(encoded))
+		  left join groups g on g.origin_folder = w.folder_key`, string(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read folder groupings: %w", err)
 	}
@@ -156,12 +114,11 @@ func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]d
 	for rows.Next() {
 		var key string
 		var mode sql.NullString
-		var grouping domain.FolderGrouping
-		if err := rows.Scan(&key, &mode, &grouping.Grouped); err != nil {
+		var groupID sql.NullInt64
+		if err := rows.Scan(&key, &mode, &groupID); err != nil {
 			return nil, fmt.Errorf("cannot read folder groupings: %w", err)
 		}
-		grouping.Mode = domain.FolderGroupMode(mode.String)
-		byKey[key] = grouping
+		byKey[key] = domain.FolderGrouping{Mode: domain.FolderGroupMode(mode.String), GroupID: groupID.Int64}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot read folder groupings: %w", err)
@@ -171,6 +128,25 @@ func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]d
 		out[i] = byKey[key]
 	}
 	return out, nil
+}
+
+// dissolveUngroupedAndRebuild は、例外 mode が ungroup ならフォルダ folderPath の自動グループを
+// 解散と同じ経路（dissolveFolderGroup）で消し、索引を作り直して、変わったグループとその祖先の id を
+// 返す（specs/048-groups/research.md R-4）。auto と groupDirect は作り直しの同期が、規則が成り立てば
+// 新しいグループを作る。
+func dissolveUngroupedAndRebuild(ctx context.Context, tx *sql.Tx, folderPath string, mode domain.FolderGroupMode) ([]int64, error) {
+	var dissolved []int64
+	if mode == domain.FolderGroupUngroup {
+		var err error
+		if dissolved, err = dissolveFolderGroup(ctx, tx, folderPath); err != nil {
+			return nil, err
+		}
+	}
+	rebuilt, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	return normalizeIDs(append(dissolved, rebuilt...)), nil
 }
 
 // writeOverride はフォルダ folderPath の例外を mode にする。mode が空なら外す。
@@ -232,10 +208,15 @@ func (s *ScanIndexStore) rebuildFolderIndexTx(ctx context.Context) error {
 		return err
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
 		return err
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return err
+	}
+	s.db.publishEvents(groupsChangedEvents(changedGroups)...)
+	return nil
 }
 
 // markFolderIndexStale は索引が古いことを記録する。行が無ければ版 0 で作るので、
@@ -249,27 +230,34 @@ func markFolderIndexStale(ctx context.Context, q queryExecer) error {
 }
 
 // rebuildFolderIndex は、登録フォルダの下の全所在と例外を読み、
-// domain.BuildFolderIndex を通して、グループとフォルダ名の表を丸ごと書き直す
-// （specs/017-folder-groups/data-model.md §3）。呼び出し側の書き込み取引の中で
-// 行うので、読み出しは作り直しの前か後のどちらかだけを見る。ファイルシステムは読まない。
-func rebuildFolderIndex(ctx context.Context, tx *sql.Tx) error {
+// domain.BuildFolderIndex を通して、フォルダ名の表を丸ごと書き直す
+// （specs/017-folder-groups/data-model.md §3）。同じ取引で自動グループをフォルダとそろえ
+// （syncFolderGroups、specs/048-groups/data-model.md「Automatic group sync」）、変わった
+// グループとその祖先の id を返す。呼び出し側は確定の後に groupsChangedEvents で知らせる。
+// 呼び出し側の書き込み取引の中で行うので、読み出しは作り直しの前か後のどちらかだけを見る。
+// ファイルシステムは読まない。
+func rebuildFolderIndex(ctx context.Context, tx *sql.Tx) ([]int64, error) {
 	roots, err := listMediaFolders(ctx, tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	locations, err := folderIndexLocations(ctx, tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	overrides, err := folderGroupOverrides(ctx, tx)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	index := domain.BuildFolderIndex(roots, locations, overrides)
 	if err := writeFolderIndex(ctx, tx, index); err != nil {
-		return fmt.Errorf("cannot save the folder index: %w", err)
+		return nil, fmt.Errorf("cannot save the folder index: %w", err)
 	}
-	return nil
+	changed, err := syncFolderGroups(ctx, tx, index, overrides)
+	if err != nil {
+		return nil, fmt.Errorf("cannot sync the folder groups: %w", err)
+	}
+	return changed, nil
 }
 
 // folderIndexLocations は索引の入力にする所在を返す。所有者から見た見せる動画
@@ -318,40 +306,8 @@ func folderGroupOverrides(ctx context.Context, tx *sql.Tx) (map[string]domain.Fo
 }
 
 func writeFolderIndex(ctx context.Context, tx *sql.Tx, index domain.FolderIndex) error {
-	for _, statement := range []string{
-		`delete from folder_group_members`,
-		`delete from folder_groups`,
-		`delete from video_folder_names`,
-	} {
-		if _, err := tx.ExecContext(ctx, statement); err != nil {
-			return err
-		}
-	}
-
-	insertGroup, err := tx.PrepareContext(ctx, `insert into folder_groups (path_key, path, name, title_key) values (?, ?, ?, ?)`)
-	if err != nil {
+	if _, err := tx.ExecContext(ctx, `delete from video_folder_names`); err != nil {
 		return err
-	}
-	defer func() { _ = insertGroup.Close() }()
-	insertMember, err := tx.PrepareContext(ctx, `insert into folder_group_members (video_id, group_id, position) values (?, ?, ?)`)
-	if err != nil {
-		return err
-	}
-	defer func() { _ = insertMember.Close() }()
-	for _, group := range index.Groups {
-		res, err := insertGroup.ExecContext(ctx, group.Key, group.Path, group.Name, group.TitleKey)
-		if err != nil {
-			return err
-		}
-		groupID, err := res.LastInsertId()
-		if err != nil {
-			return err
-		}
-		for position, videoID := range group.VideoIDs {
-			if _, err := insertMember.ExecContext(ctx, videoID, groupID, position); err != nil {
-				return err
-			}
-		}
 	}
 
 	insertName, err := tx.PrepareContext(ctx, `insert into video_folder_names (video_id, name) values (?, ?)`)

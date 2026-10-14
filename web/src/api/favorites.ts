@@ -1,6 +1,5 @@
-import { type FolderRef, request } from "./client";
+import { request } from "./client";
 import type { components } from "./gen/openapi";
-import { folderRefKey } from "./libraryItems";
 import { applyFavoritesToListSnapshot, holdListSnapshot } from "./listSnapshot";
 
 // 型は api/openapi.yaml からの生成物を使う（specs/035-favorites/contracts/screen-api.md §1・§5）。
@@ -12,13 +11,14 @@ export type FavoritesResponse = components["schemas"]["FavoritesResponse"];
  *
  * - `videoIds` は付け外しが確かに反映された動画で、一覧の項目と控えの `favorite` を
  *   取り直さずに差し替える。
- * - `folders` は要求に含めたグループのフォルダで、一覧はそのグループの項目を
- *   `GET /api/folders/{rootId}/group` で取り直す（404 なら外す。017「Refresh and removal」）。
- *   グループの値はサーバーが持つので、反映の数にかかわらず取り直す。
+ * - `groupIds` は要求に含めたグループの id で、一覧はそのグループの項目を
+ *   `GET /api/groups/{id}` で取り直す（404 なら外す。017「Refresh and removal」）。
+ *   グループの値はサーバーが持つので、反映の数にかかわらず取り直す
+ *   （specs/048-groups/research.md R-10）。
  */
 export interface FavoritesChange {
   videoIds: readonly number[];
-  folders: readonly FolderRef[];
+  groupIds: readonly number[];
   favorite: boolean;
 }
 
@@ -54,7 +54,7 @@ const applied = new Map<number, number>();
  */
 let changes = 0;
 const latestVideos = new Map<number, { favorite: boolean; change: number }>();
-const latestGroups = new Map<string, { favorite: boolean; change: number }>();
+const latestGroups = new Map<number, { favorite: boolean; change: number }>();
 
 /** tail は最後に送った（または送る順番を待っている）付け外しが決着する Promise である。 */
 let tail: Promise<void> | undefined;
@@ -62,8 +62,8 @@ let tail: Promise<void> | undefined;
 function record(
   videoIds: readonly number[],
   uncertainIds: readonly number[],
-  folders: readonly FolderRef[],
-  foldersCertain: boolean,
+  groupIds: readonly number[],
+  groupsCertain: boolean,
   favorite: boolean,
   sequence: number,
 ): void {
@@ -77,14 +77,13 @@ function record(
   changes += 1;
   for (const videoId of fresh) latestVideos.set(videoId, { favorite, change: changes });
   for (const videoId of uncertain) latestVideos.delete(videoId);
-  for (const folder of folders) {
-    const key = folderRefKey(folder);
-    if (foldersCertain) latestGroups.set(key, { favorite, change: changes });
-    else latestGroups.delete(key);
+  for (const groupId of groupIds) {
+    if (groupsCertain) latestGroups.set(groupId, { favorite, change: changes });
+    else latestGroups.delete(groupId);
   }
-  if (fresh.length > 0 || folders.length > 0) {
-    applyFavoritesToListSnapshot(fresh, folders, favorite);
-    for (const listener of listeners) listener({ videoIds: fresh, folders, favorite });
+  if (fresh.length > 0 || groupIds.length > 0) {
+    applyFavoritesToListSnapshot(fresh, groupIds, favorite);
+    for (const listener of listeners) listener({ videoIds: fresh, groupIds, favorite });
   }
   if (uncertain.length > 0) {
     // 取り直しが決着するまで一覧の控えを取らせない（visibility の recordUncertain と同じ理由）。
@@ -167,26 +166,26 @@ export function withFavoriteSince<T extends { id: number; favorite?: boolean }>(
 }
 
 /** withGroupFavoriteSince はグループの項目の `favorite` を withFavoriteSince と同じく補正する。 */
-export function withGroupFavoriteSince<
-  T extends { folder: FolderRef; favorite?: boolean },
->(group: T, mark: number): T {
-  const change = latestGroups.get(
-    folderRefKey({ rootId: group.folder.rootId, path: group.folder.path }),
-  );
+export function withGroupFavoriteSince<T extends { id: number; favorite?: boolean }>(
+  group: T,
+  mark: number,
+): T {
+  const change = latestGroups.get(group.id);
   if (change === undefined || change.change <= mark) return group;
   if (group.favorite === change.favorite) return group;
   return { ...group, favorite: change.favorite };
 }
 
 /**
- * updateFavorites は `videoIds` の動画と `folders` のグループのお気に入りを `favorite` に
- * そろえる（PUT /api/favorites、specs/035-favorites/contracts/screen-api.md §1）。カード・行の
+ * updateFavorites は `videoIds` の動画と `groupIds` のグループのお気に入りを `favorite` に
+ * そろえる（PUT /api/favorites、specs/035-favorites/contracts/screen-api.md §1、
+ * specs/048-groups/research.md R-10）。カード・行の
  * 1 件も、選択バーの一括も、これを使う。前の付け外しが決着するまで送るのを待ち、成功したら
  * 結果を画面へ知らせる。
  */
 export function updateFavorites(
   videoIds: readonly number[],
-  folders: readonly FolderRef[],
+  groupIds: readonly number[],
   favorite: boolean,
   signal?: AbortSignal,
 ): Promise<FavoritesResponse> {
@@ -205,21 +204,19 @@ export function updateFavorites(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         videoIds: Array.from(videoIds),
-        folders: folders.map((folder) => ({ rootId: folder.rootId, path: folder.path })),
+        groupIds: Array.from(groupIds),
         favorite,
       }),
       signal,
     });
     const unique = Array.from(new Set(videoIds));
-    const uniqueFolders = Array.from(
-      new Map(folders.map((folder) => [folderRefKey(folder), folder])).values(),
-    );
+    const uniqueGroups = Array.from(new Set(groupIds));
     const videosCertain = result.appliedVideos >= unique.length;
     record(
       videosCertain ? unique : [],
       videosCertain ? [] : unique,
-      uniqueFolders,
-      result.appliedFolders >= uniqueFolders.length,
+      uniqueGroups,
+      result.appliedGroups >= uniqueGroups.length,
       favorite,
       sequence,
     );

@@ -40,6 +40,9 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertTagSortKeyInvariant(t, db)
 		assertFavoriteInvariant(t, db)
 		assertPlaylistInvariant(t, db)
+		assertGroupInvariant(t, db)
+		assertCreditInvariant(t, db)
+		assertWorkInfoInvariant(t, db)
 	})
 	return db
 }
@@ -439,18 +442,18 @@ func assertRepresentativeInvariant(t *testing.T, db *DB) {
 }
 
 // assertFavoriteInvariant はお気に入りの不変条件を確かめる（specs/035-favorites/data-model.md §1）。
-// video_favorites に空の content_key の行は無く、folder_favorites.path は domain.FolderKey(path) と
-// 等しい（整えた鍵しか書かない）。
+// video_favorites に空の content_key の行は無い。グループのお気に入り（group_favorites）は
+// グループの id で持ち、外部キーが行の有無を保つ（specs/048-groups/research.md R-10）。
 func assertFavoriteInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
 	var present int
 	if err := db.sql.QueryRow(
-		`select count(*) from sqlite_master where type = 'table' and name in ('video_favorites', 'folder_favorites')`,
+		`select count(*) from sqlite_master where type = 'table' and name = 'video_favorites'`,
 	).Scan(&present); err != nil {
 		t.Fatalf("お気に入りの不変条件を検査できない（スキーマを確認できない）: %v", err)
 	}
-	if present < 2 {
+	if present == 0 {
 		return
 	}
 
@@ -461,29 +464,11 @@ func assertFavoriteInvariant(t *testing.T, db *DB) {
 	if count != 0 {
 		t.Errorf("video_favorites に空の content_key の行が %d 行ある", count)
 	}
-
-	rows, err := db.sql.Query(`select path from folder_favorites`)
-	if err != nil {
-		t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var path string
-		if err := rows.Scan(&path); err != nil {
-			t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
-		}
-		if key := domain.FolderKey(path); key != path {
-			t.Errorf("folder_favorites の path %q が FolderKey %q と違う", path, key)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
-	}
 }
 
 // assertPlaylistInvariant はプレイリストの不変条件を確かめる（specs/044-playlists/data-model.md
-// 「Migration」）。1 つのプレイリストの項目の位置は 0 … n-1 で、folder_key は domain.FolderKey(folder_key)
-// と等しい（整えた鍵しか書かない）。
+// 「Migration」）。1 つのプレイリストの項目の位置は 0 … n-1 である。グループの項目はグループの id で
+// 持ち、外部キーが行の有無を保つ（specs/048-groups/research.md R-10）。
 func assertPlaylistInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -516,23 +501,233 @@ func assertPlaylistInvariant(t *testing.T, db *DB) {
 	if err := rows.Err(); err != nil {
 		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
 	}
-	_ = rows.Close()
+}
 
-	keys, err := db.sql.Query(`select folder_key from playlist_items where folder_key is not null`)
-	if err != nil {
-		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+// assertGroupInvariant は、グループの不変条件（specs/048-groups/data-model.md「Migration」）を
+// 確かめる。1 つのグループの項目の位置が 0 … n-1 に詰まっている、origin_folder が
+// domain.FolderKey(origin_folder) と等しい、どのグループも自分の子孫にならない。
+func assertGroupInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'group_items'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("グループの不変条件を検査できない（スキーマを確認できない）: %v", err)
 	}
-	defer func() { _ = keys.Close() }()
-	for keys.Next() {
+	if present == 0 {
+		return
+	}
+	assertGroupPositions(t, db)
+	assertGroupOriginFolders(t, db)
+	assertGroupAcyclic(t, db)
+}
+
+func assertGroupPositions(t *testing.T, db *DB) {
+	t.Helper()
+	rows, err := db.sql.Query(`select group_id, count(*), min(position), max(position), count(distinct position)
+		from group_items group by group_id`)
+	if err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id, count, low, high, distinct int64
+		if err := rows.Scan(&id, &count, &low, &high, &distinct); err != nil {
+			t.Fatalf("グループの不変条件を検査できない: %v", err)
+		}
+		if low != 0 || high != count-1 || distinct != count {
+			t.Errorf("グループ %d の位置が 0 … %d に詰まっていない（min %d、max %d、異なる位置 %d）",
+				id, count-1, low, high, distinct)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
+	}
+}
+
+func assertGroupOriginFolders(t *testing.T, db *DB) {
+	t.Helper()
+	rows, err := db.sql.Query(`select origin_folder from groups where origin_folder is not null`)
+	if err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
 		var key string
-		if err := keys.Scan(&key); err != nil {
-			t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+		if err := rows.Scan(&key); err != nil {
+			t.Fatalf("グループの不変条件を検査できない: %v", err)
 		}
 		if folded := domain.FolderKey(key); folded != key {
-			t.Errorf("playlist_items の folder_key %q が FolderKey %q と違う", key, folded)
+			t.Errorf("groups の origin_folder %q が FolderKey %q と違う", key, folded)
 		}
 	}
-	if err := keys.Err(); err != nil {
-		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+	if err := rows.Err(); err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
 	}
+}
+
+func assertGroupAcyclic(t *testing.T, db *DB) {
+	t.Helper()
+	rows, err := db.sql.Query(`with recursive down(root, id) as (
+			select group_id, child_id from group_items where child_id is not null
+			union
+			select down.root, i.child_id from down join group_items i on i.group_id = down.id where i.child_id is not null)
+		select distinct root from down where root = id`)
+	if err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("グループの不変条件を検査できない: %v", err)
+		}
+		t.Errorf("グループ %d が自分の子孫になっている", id)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
+	}
+}
+
+// assertCreditInvariant は人物・団体の表の規則を確かめる（specs/047-video-work-info/data-model.md
+// 「Rules」のうち実体に関わるもの）。正規の名前の行がちょうど 1 つ、正規の行の language は null、
+// 団体の親の連鎖は根で終わる、別名 50 件・外部 ID 20 件以下、(source, value) は種類ごとに 1 実体、
+// 結び付きの位置は (content_key, role) ごとに 0 … n-1、名前の鍵は今の版の畳み込み。どの検査も
+// 違反を 1 行 1 件の説明として返す問い合わせで、行が無ければ守られている。
+func assertCreditInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'people'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("人物・団体の不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+
+	var checks []string
+	for _, tables := range creditTablesByKind {
+		checks = append(checks, tables.q(`
+			select '{entity} ' || e.id || ' の正規の名前の行が ' || count(n.name) || ' 行'
+			  from {entity} e left join {names} n on n.{id} = e.id and n.canonical = 1
+			 group by e.id having count(n.name) <> 1`),
+			tables.q(`select '{names} の正規の行 ' || {id} || ' に language がある' from {names}
+			 where canonical = 1 and language is not null`),
+			tables.q(`select '{entity} ' || {id} || ' の別名が ' || count(*) || ' 件' from {names}
+			 where canonical = 0 group by {id} having count(*) > 50`),
+			tables.q(`select '{entity} ' || {id} || ' の外部 ID が ' || count(*) || ' 件' from {ext}
+			 group by {id} having count(*) > 20`),
+			tables.q(`select '{ext} の ' || source || ':' || value || ' を ' || count(*) || ' 実体が持つ' from {ext}
+			 group by source, value having count(*) > 1`),
+			tables.q(`select '{links} の ' || content_key || ' ' || role || ' の位置が詰まっていない' from {links}
+			 group by content_key, role
+			having min(position) <> 0 or max(position) <> count(*) - 1 or count(distinct position) <> count(*)`))
+	}
+	checks = append(checks, `
+		with recursive chain (start, id, depth) as (
+			select id, parent_id, 1 from organizations where parent_id is not null
+			union all
+			select c.start, o.parent_id, c.depth + 1 from chain c join organizations o on o.id = c.id
+			 where o.parent_id is not null and c.depth <= (select count(*) from organizations)
+		)
+		select distinct '団体 ' || start || ' の親の連鎖が輪になる' from chain where id = start`,
+		`select 'video_work_urls の ' || content_key || ' の位置が詰まっていない' from video_work_urls
+		  group by content_key
+		 having min(position) <> 0 or max(position) <> count(*) - 1 or count(distinct position) <> count(*)`)
+	for _, check := range checks {
+		for _, violation := range violations(t, db, check) {
+			t.Error(violation)
+		}
+	}
+
+	for _, tables := range creditTablesByKind {
+		assertCreditNameKeys(t, db, tables)
+	}
+}
+
+// assertWorkInfoInvariant は動画ごとの作品情報の表の規則を確かめる（specs/047-video-work-info/data-model.md
+// 「Rules」）。video_work_info の行は品番か説明を持ち、今の版の行の code_key は品番の畳み込みである。
+// 位置が 0 … n-1 であることは assertCreditInvariant が確かめる。
+func assertWorkInfoInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'video_work_info'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("作品情報の不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+	for _, violation := range violations(t, db, `select 'video_work_info の ' || content_key || ' が品番も説明も持たない'
+		from video_work_info where coalesce(code, '') = '' and coalesce(description, '') = ''`) {
+		t.Error(violation)
+	}
+	rows, err := db.sql.Query(`select content_key, coalesce(code, ''), code_key from video_work_info where search_version = ?`,
+		domain.SearchKeyVersion)
+	if err != nil {
+		t.Fatalf("作品情報の不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var key, code, codeKey string
+		if err := rows.Scan(&key, &code, &codeKey); err != nil {
+			t.Fatalf("作品情報の不変条件を検査できない: %v", err)
+		}
+		if codeKey != domain.FoldForMatch(code) {
+			t.Errorf("video_work_info の %s の code_key %q が品番 %q の畳み込みと違う", key, codeKey, code)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("作品情報の不変条件を検査できない: %v", err)
+	}
+}
+
+// assertCreditNameKeys は今の版の名前の行の search_key と sort_key が名前の畳み込みであることを確かめる。
+func assertCreditNameKeys(t *testing.T, db *DB, tables creditTables) {
+	t.Helper()
+	rows, err := db.sql.Query(tables.q(`select name, search_key, sort_key from {names} where search_version = ?`),
+		domain.SearchKeyVersion)
+	if err != nil {
+		t.Fatalf("人物・団体の不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var name, searchKey, sortKey string
+		if err := rows.Scan(&name, &searchKey, &sortKey); err != nil {
+			t.Fatalf("人物・団体の不変条件を検査できない: %v", err)
+		}
+		if searchKey != domain.FoldForMatch(name) || sortKey != domain.NaturalSortKey(name) {
+			t.Errorf("%s の %q の鍵が今の版の畳み込みと違う", tables.names, name)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("人物・団体の不変条件を検査できない: %v", err)
+	}
+}
+
+// violations は違反を 1 列の文字列で返す問い合わせの行を読み切る。
+func violations(t *testing.T, db *DB, query string) []string {
+	t.Helper()
+	rows, err := db.sql.Query(query)
+	if err != nil {
+		t.Fatalf("問い合わせに失敗した: %v\n%s", err, query)
+	}
+	defer func() { _ = rows.Close() }()
+	var values []string
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			t.Fatalf("問い合わせの行を読めない: %v", err)
+		}
+		values = append(values, value)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("問い合わせの行を読めない: %v", err)
+	}
+	return values
 }

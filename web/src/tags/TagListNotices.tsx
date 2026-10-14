@@ -9,9 +9,12 @@ import { Button } from "../ui/shadcn/button";
  * TagLoadingMore は一覧の末尾の続きの読み込み中である（specs/036-tag-admin-scale/
  * ui-design.md「Loading more」）。表の後ろに状態の部品 `LoadMoreRow` の Spinner の行を
  * 置く（web/registry/rules/patterns.md の States）。
+ *
+ * この組の知らせは人物・団体の管理画面（`web/src/credits/`）も使い、文言だけを渡す。
+ * 渡さなければタグの文言である。
  */
-export function TagLoadingMore() {
-  return <LoadMoreRow status="loading" label={t.tags.loadingMore} />;
+export function TagLoadingMore({ label = t.tags.loadingMore }: { label?: UiText }) {
+  return <LoadMoreRow status="loading" label={label} />;
 }
 
 /**
@@ -40,11 +43,17 @@ export function TagLoadMoreFailed({
  * 失敗ではないので destructive にせず既定の `Alert` にする。「Reload」で先頭から読み直す
  * （ui-design.md「Loading more」、research.md R-11）。
  */
-export function TagListChanged({ onReload }: { onReload: () => void }) {
+export function TagListChanged({
+  onReload,
+  message = t.tags.listChanged,
+}: {
+  onReload: () => void;
+  message?: UiText;
+}) {
   return (
     <Alert role="status">
       <RefreshCw aria-hidden="true" />
-      <AlertTitle>{t.tags.listChanged}</AlertTitle>
+      <AlertTitle>{message}</AlertTitle>
       <AlertAction>
         <Button variant="outline" size="sm" onClick={onReload}>
           {t.tags.reloadList}
@@ -62,15 +71,17 @@ export function TagListChanged({ onReload }: { onReload: () => void }) {
 export function TagLoadFailed({
   pending,
   onRetry,
+  title = t.tags.loadFailed,
 }: {
   pending: boolean;
   onRetry: () => void;
+  title?: UiText;
 }) {
   return (
     <Alert data-state="error" variant="destructive">
       <CircleAlert aria-hidden="true" />
       <AlertTitle>
-        <h2>{t.tags.loadFailed}</h2>
+        <h2>{title}</h2>
       </AlertTitle>
       <AlertAction>
         <Button variant="outline" size="sm" onClick={onRetry} disabled={pending}>
@@ -91,15 +102,17 @@ export function TagStaleList({
   reason,
   pending,
   onRetry,
+  message = t.tags.staleList,
 }: {
   reason: UiText;
   pending: boolean;
   onRetry: () => void;
+  message?: (reason: UiText) => UiText;
 }) {
   return (
     <Alert variant="destructive">
       <CircleAlert aria-hidden="true" />
-      <AlertTitle>{t.tags.staleList(reason)}</AlertTitle>
+      <AlertTitle>{message(reason)}</AlertTitle>
       <AlertAction>
         <Button variant="outline" size="sm" onClick={onRetry} disabled={pending}>
           <RotateCw aria-hidden="true" />

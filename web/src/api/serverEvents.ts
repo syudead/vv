@@ -1,11 +1,18 @@
 import { getAuthSession } from "./auth";
-import { reloadIfNoLongerOwner, type Scan, type VideoChanged } from "./client";
+import {
+  type GroupChanged,
+  reloadIfNoLongerOwner,
+  type Scan,
+  type VideoChanged,
+} from "./client";
 
 /**
  * ServerEventHandlers はサーバーから届く変化の受け取り先である。
  *
  * - `scan`: 直近の取り込みが変わった（済みの本数と今の処理を含む）
  * - `video`: 動画の状態が変わった（最新の内容は取り直す）
+ * - `group`: グループの名前か項目が変わった。変わったグループとその祖先の id を受け取る
+ *   （specs/048-groups/research.md R-13。最新の内容は取り直す）
  * - `open`: つながった、またはつなぎ直した。切れていた間の変化を取り直す合図。
  *   `reconnected` は、この購読者がつながった状態を前にも見ていたかを表す。
  *   つなぎ直しでは、切れていた間の `video` を受け取っていない。
@@ -13,6 +20,7 @@ import { reloadIfNoLongerOwner, type Scan, type VideoChanged } from "./client";
 export interface ServerEventHandlers {
   scan?: (scan: Scan) => void;
   video?: (id: number) => void;
+  group?: (ids: readonly number[]) => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -67,6 +75,10 @@ function connect(): void {
   current.addEventListener("video", (event) => {
     const changed = parse<VideoChanged>(event);
     if (changed !== undefined) dispatch("video", changed.id);
+  });
+  current.addEventListener("group", (event) => {
+    const changed = parse<GroupChanged>(event);
+    if (changed !== undefined) dispatch("group", changed.ids);
   });
   current.addEventListener("error", () => {
     // 接続中の切断はブラウザが自分でつなぎ直す。CLOSED は諦めた状態

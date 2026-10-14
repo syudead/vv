@@ -2,7 +2,9 @@ import { useState, type ClipboardEvent, type FormEvent } from "react";
 
 import { RequestFailed } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
-import { nameReason, newlinePattern } from "../lib/tagName";
+import { newlinePattern } from "../lib/tagName";
+import type { NameRules } from "../ui/NameCommand";
+import { tagNameRules } from "../ui/TagCommand";
 
 /**
  * TagFieldError は、作成・改名の入力の下に出すサーバー側の失敗を運ぶ。
@@ -70,14 +72,21 @@ export function tagFieldError(
  * `onChange` は、値が実際に変わるたび（`setValue` が呼ばれるたび）に呼ぶ。
  * 呼び出し元はこれで、直前の送信の失敗（`tag_name_taken` など）を、入力を
  * 打ち直した時点で消す（Devin の指摘: 失敗の行が編集後も残っていた）。
+ *
+ * `rules` は名前の規則で、既定はタグの名前の規則。人物・団体の管理画面の作成・改名は
+ * 人物・団体の名前の規則（`creditNameRules`）を渡す。
  */
-export function useTagNameField(initial = "", onChange?: () => void) {
+export function useTagNameField(
+  initial = "",
+  onChange?: () => void,
+  rules: NameRules = tagNameRules,
+) {
   const [value, setValueState] = useState(initial);
-  const [reason, setReason] = useState<UiText | null>(nameReason(initial));
+  const [reason, setReason] = useState<UiText | null>(rules.reason(initial));
 
   function setValue(next: string): void {
     setValueState(next);
-    setReason(nameReason(next));
+    setReason(rules.reason(next));
     onChange?.();
   }
 
@@ -85,7 +94,7 @@ export function useTagNameField(initial = "", onChange?: () => void) {
     const text = event.clipboardData.getData("text");
     if (newlinePattern.test(text)) {
       event.preventDefault();
-      setReason(t.tagName.controlCharacters);
+      setReason(rules.controlCharacters);
     }
   }
 
@@ -95,7 +104,7 @@ export function useTagNameField(initial = "", onChange?: () => void) {
     const text = native.data ?? "";
     if (newlinePattern.test(text)) {
       event.preventDefault();
-      setReason(t.tagName.controlCharacters);
+      setReason(rules.controlCharacters);
     }
   }
 
@@ -104,7 +113,7 @@ export function useTagNameField(initial = "", onChange?: () => void) {
     if (reason !== null) return null;
     const trimmed = value.trim();
     if (trimmed === "") {
-      setReason(t.tagName.required);
+      setReason(rules.required);
       return null;
     }
     return trimmed;

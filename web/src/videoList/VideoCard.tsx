@@ -24,6 +24,7 @@ import {
   isNarrowVideo,
   watchedRatio,
 } from "../lib/format";
+import AddToGroupButton from "../groups/AddToGroupButton";
 import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { ScrubBand, type ScrubPreview, useScrubPreview } from "../ui/ScrubPreview";
@@ -44,6 +45,11 @@ export interface VideoCardProps {
   video: Video;
   /** 遷移元の一覧 URL。再生画面の「戻る」がここへ帰る。 */
   backTo: string;
+  /**
+   * カードと行が開く場所。省くとその動画の再生画面（`/videos/{id}`）。グループのページは
+   * `?group` を付けた場所を渡す（specs/048-groups/ui-design.md「Body」）。
+   */
+  to?: string;
   selected: boolean;
   selectionMode: boolean;
   /** 選択を持たない画面（フォルダ画面）では省き、チェックを描かない。 */
@@ -122,6 +128,20 @@ function VideoAddToPlaylist({
     <AddToPlaylistButton
       variant={variant}
       label={t.list.card.addToPlaylist(video.title)}
+      videoIds={[video.id]}
+    />
+  );
+}
+
+/**
+ * VideoAddToGroup は動画のカード・行の「Add to group」である（所有者だけ。
+ * specs/048-groups/ui-design.md「Group card and row」）。ハートと同じところにだけ描く。
+ */
+function VideoAddToGroup({ video, variant }: { video: Video; variant: "card" | "row" }) {
+  return (
+    <AddToGroupButton
+      variant={variant}
+      label={t.list.card.addToGroup(video.title)}
       videoIds={[video.id]}
     />
   );
@@ -260,6 +280,7 @@ function VideoCard(props: VideoCardProps) {
   const {
     video,
     backTo,
+    to,
     selected,
     selectionMode,
     onSelect,
@@ -319,7 +340,7 @@ function VideoCard(props: VideoCardProps) {
       {/* リンクは flex-1 で伸ばし、同じ格子の行で高いカードとの差を引き受ける。タグの行を
           カードの下端へそろえつつ、その間の余白も押せる（開く・選択する）範囲に含めるためである。 */}
       <Link
-        to={`/videos/${String(video.id)}`}
+        to={to ?? `/videos/${String(video.id)}`}
         state={{ from: backTo }}
         aria-label={
           location === undefined
@@ -419,6 +440,7 @@ function VideoCard(props: VideoCardProps) {
         // ポインタが入ったらホバープレビューを止め、ここからはプレビューを始めない。
         // 足す操作はハートの左（specs/044-playlists/ui-design.md「Add to playlist」）。
         <VideoThumbnailMark data-preview-checkbox="true" onPointerEnter={release}>
+          <VideoAddToGroup video={video} variant="card" />
           <VideoAddToPlaylist video={video} variant="card" />
           <VideoFavorite video={video} variant="card" />
         </VideoThumbnailMark>
@@ -432,7 +454,7 @@ export default memo(VideoCard);
 
 /** VideoRow はリスト表示の 1 行。 */
 export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
-  const { video, backTo, selected, selectionMode, onSelect } = props;
+  const { video, backTo, to, selected, selectionMode, onSelect } = props;
   const { duration, unplayable, state, ratio, quality } = useCardState(video);
   const publicMark = usePublicMark(video);
   const owner = useAudience() === "owner";
@@ -477,7 +499,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       </TableCell>
       <TableCell className="min-w-0 pr-4 whitespace-normal">
         <Link
-          to={`/videos/${String(video.id)}`}
+          to={to ?? `/videos/${String(video.id)}`}
           state={{ from: backTo }}
           onClick={(event) => {
             if (selectionMode) {
@@ -509,6 +531,12 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
           <VideoAddToPlaylist video={video} variant="row" />
+        </TableCell>
+      )}
+      {/* 「Add to group」は「Add to playlist」の列の直後の列（specs/048-groups/ui-design.md）。 */}
+      {owner && (
+        <TableCell className="hidden w-8 px-0 sm:table-cell">
+          <VideoAddToGroup video={video} variant="row" />
         </TableCell>
       )}
       <TableCell className="hidden w-16 pr-4 text-right sm:table-cell">

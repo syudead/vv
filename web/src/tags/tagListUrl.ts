@@ -70,26 +70,51 @@ export function useTagListCriteria(preferredSort: TagListSort): {
   criteria: TagListCriteria;
   apply: (change: Partial<TagListCriteria>, mode: HistoryMode) => void;
 } {
+  return useUrlCriteria(
+    (params) => parseTagListCriteria(params, preferredSort),
+    serializeTagListCriteria,
+  );
+}
+
+/**
+ * useUrlCriteria は `useTagListCriteria` の、URL の読み書き（`parse`・`serialize`）を受け取る
+ * 形である。人物・団体の管理画面（`web/src/credits/`）も同じ履歴の規則で `q` と `sort` を
+ * 載せる。`serialize` は最初に受けたものを使い続ける。
+ */
+export function useUrlCriteria<C>(
+  parse: (params: URLSearchParams) => { criteria: C; hasExplicitSort: boolean },
+  serialize: (criteria: C) => URLSearchParams,
+): {
+  criteria: C;
+  apply: (change: Partial<C>, mode: HistoryMode) => void;
+} {
   const location = useLocation();
   const navigate = useNavigate();
-  const { criteria, hasExplicitSort } = parseTagListCriteria(
-    new URLSearchParams(location.search),
-    preferredSort,
-  );
+  const { criteria, hasExplicitSort } = parse(new URLSearchParams(location.search));
   const latest = useRef({ location, criteria, hasExplicitSort });
+  // 描き直す前に続けて呼ばれても、同じ URL の項目を重ねて積まないよう、書いたばかりの
+  // クエリを覚える。位置が変わった描画で忘れる。
+  const written = useRef<string | null>(null);
+  if (latest.current.location !== location) written.current = null;
   latest.current = { location, criteria, hasExplicitSort };
+  const serializeRef = useRef(serialize);
 
   const apply = useCallback(
-    (change: Partial<TagListCriteria>, mode: HistoryMode) => {
+    (change: Partial<C>, mode: HistoryMode) => {
       const {
         location: current,
         criteria: now,
         hasExplicitSort: explicit,
       } = latest.current;
-      const write = (next: TagListCriteria, how: HistoryMode) => {
-        const search = serializeTagListCriteria(next).toString();
+      const write = (next: C, how: HistoryMode) => {
+        const search = serializeRef.current(next).toString();
+        const target = search === "" ? "" : `?${search}`;
+        // 履歴に積むのは今の URL と違うときだけ。Radix のタブは1回の押下で値の変更を
+        // 2度通すことがあり、そのまま積むと「戻る」が同じ画面に留まる。
+        if (how === "push" && target === (written.current ?? current.search)) return;
+        written.current = target;
         navigate(
-          { pathname: current.pathname, search: search === "" ? "" : `?${search}` },
+          { pathname: current.pathname, search: target },
           { replace: how === "replace" },
         );
       };

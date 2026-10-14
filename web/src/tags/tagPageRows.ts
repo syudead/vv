@@ -4,15 +4,36 @@ import { compareNaturalSortKeys, naturalSortKey } from "../lib/naturalSortKey";
 import type { TagListSort } from "./tagListOrder";
 
 /**
+ * ListRow は、サーバーのページで読んで並べる管理画面の 1 行（タグ、人物、団体）の、並び順と
+ * 位置の計算が読む部分である。タグの画面と人物・団体の画面（`web/src/credits/`）が、行の
+ * 置き直しと件数の数え直しをこのモジュールで共有する（specs/047-video-work-info/plan.md の
+ * Structure decision）。
+ */
+export interface ListRow {
+  id: number;
+  name: string;
+  videoCount: number;
+  createdAt: string;
+}
+
+/** ListRowsQuery は、読み込んだ行を受けたときの条件の、どの画面にもある部分である。 */
+export interface ListRowsQuery {
+  /** 検索語の照合形（`foldForMatch` を掛けて前後の空白を落としたもの）。空なら絞らない。 */
+  query: string;
+  sort: TagListSort;
+}
+
+/** RowMatcher は、1 行が条件に合うかをサーバーと同じ規則で決める。 */
+export type RowMatcher<R, Q> = (row: R, query: Q) => boolean;
+
+/**
  * TagRowsQuery は、読み込んだ行（`rows`）をサーバーから受けたときの条件である
  * （specs/036-tag-admin-scale/data-model.md §4「条件」）。`query` は検索語に
  * `foldForMatch` を掛けて前後の空白を落とした照合形で、空なら絞らない。
  */
-export interface TagRowsQuery {
-  query: string;
+export interface TagRowsQuery extends ListRowsQuery {
   tentativeOnly: boolean;
   unusedOnly: boolean;
-  sort: TagListSort;
 }
 
 /**
@@ -35,7 +56,7 @@ export function matchesTagQuery(tag: Tag, query: TagRowsQuery): boolean {
  * createdSeconds は作った日時の Unix 秒である。サーバーは `tags.created_at`（秒）で
  * 並べるので、同じ秒のタグは名前の順になる（research.md R-8）。読めなければ 0。
  */
-function createdSeconds(tag: Tag): number {
+function createdSeconds(tag: ListRow): number {
   const time = Date.parse(tag.createdAt);
   return Number.isNaN(time) ? 0 : Math.floor(time / 1000);
 }
@@ -46,11 +67,11 @@ function createdSeconds(tag: Tag): number {
  * （`naturalSortKey`）、それも同じなら `id` で比べる。`keys` は鍵の控えで、同じ
  * タグの鍵を何度も作らない。
  */
-export function compareTagsForSort(
-  a: Tag,
-  b: Tag,
+export function compareTagsForSort<R extends ListRow>(
+  a: R,
+  b: R,
   sort: TagListSort,
-  keys: (tag: Tag) => string = (tag) => naturalSortKey(tag.name),
+  keys: (tag: R) => string = (tag) => naturalSortKey(tag.name),
 ): number {
   let byValue = 0;
   switch (sort) {
@@ -80,13 +101,13 @@ export function compareTagsForSort(
  * `rows` に無いものとする）。行は並び順で並んでいるので二分探索で探し、比べる
  * 名前の鍵は `tag` の分を 1 回だけ作る。
  */
-export function insertionIndex(
-  rows: readonly Tag[],
-  tag: Tag,
+export function insertionIndex<R extends ListRow>(
+  rows: readonly R[],
+  tag: R,
   sort: TagListSort,
 ): number {
   const ownKey = naturalSortKey(tag.name);
-  const keys = (item: Tag) => (item === tag ? ownKey : naturalSortKey(item.name));
+  const keys = (item: R) => (item === tag ? ownKey : naturalSortKey(item.name));
   let low = 0;
   let high = rows.length;
   while (low < high) {
@@ -106,12 +127,12 @@ export function insertionIndex(
  * ので、範囲の中へ動いた行は画面が置かなければ抜ける（data-model.md §4「操作の
  * あとの反映」、research.md R-12）。
  */
-export function placeTag(
-  rows: readonly Tag[],
-  tag: Tag,
+export function placeTag<R extends ListRow>(
+  rows: readonly R[],
+  tag: R,
   sort: TagListSort,
-  boundary: Tag | undefined,
-): Tag[] {
+  boundary: R | undefined,
+): R[] {
   const rest = rows.filter((item) => item.id !== tag.id);
   if (boundary !== undefined && compareTagsForSort(tag, boundary, sort) > 0) return rest;
   const index = insertionIndex(rest, tag, sort);
@@ -123,24 +144,27 @@ export function placeTag(
  * 足す（`web/src/api/videosData.ts` の `appendUnique` と同じ。research.md R-11）。
  * 足すものが無ければ受け取った配列をそのまま返す。
  */
-export function appendUniqueTags(rows: readonly Tag[], next: readonly Tag[]): Tag[] {
+export function appendUniqueTags<R extends ListRow>(
+  rows: readonly R[],
+  next: readonly R[],
+): R[] {
   const seen = new Set(rows.map((tag) => tag.id));
-  const added: Tag[] = [];
+  const added: R[] = [];
   for (const tag of next) {
     if (seen.has(tag.id)) continue;
     seen.add(tag.id);
     added.push(tag);
   }
-  return added.length === 0 ? (rows as Tag[]) : [...rows, ...added];
+  return added.length === 0 ? (rows as R[]) : [...rows, ...added];
 }
 
 /**
- * TagPageRows は読み込んだ行と件数である（data-model.md §4「ページ」）。`total` は
- * 条件に合うタグの数、`totalAll` は全部のタグの数で、どちらも読み込んでいない
- * タグを含む。`nextCursor` は続きがあるときだけ入る。
+ * PageRows は読み込んだ行と件数である（data-model.md §4「ページ」）。`total` は
+ * 条件に合う行の数、`totalAll` は全部の数で、どちらも読み込んでいない行を含む。
+ * `nextCursor` は続きがあるときだけ入る。
  */
-export interface TagPageRows {
-  rows: Tag[];
+export interface PageRows<R extends ListRow, Q extends ListRowsQuery> {
+  rows: R[];
   total: number;
   totalAll: number;
   nextCursor: string | undefined;
@@ -149,9 +173,12 @@ export interface TagPageRows {
    * 状態）である。続きが無ければ undefined。操作のあとに置く行が読み込んだ範囲の
    * 中かを、これと比べて決める（`placeTag`）。
    */
-  boundary: Tag | undefined;
-  query: TagRowsQuery;
+  boundary: R | undefined;
+  query: Q;
 }
+
+/** TagPageRows はタグ管理画面の読み込んだ行と件数である。 */
+export type TagPageRows = PageRows<Tag, TagRowsQuery>;
 
 /**
  * replaceTag は、タグ 1 件が書き換わった（確定・改名・統合先）ことを読み込んだ行へ
@@ -164,12 +191,21 @@ export function replaceTag(
   before: Tag | undefined,
   after: Tag,
 ): TagPageRows {
+  return replaceRow(page, before, after, matchesTagQuery);
+}
+
+/** replaceRow は `replaceTag` の、条件の判定（`matches`）を受け取る形である。 */
+export function replaceRow<R extends ListRow, Q extends ListRowsQuery>(
+  page: PageRows<R, Q>,
+  before: R | undefined,
+  after: R,
+  matches: RowMatcher<R, Q>,
+): PageRows<R, Q> {
   // 読み込んだ行にあったタグはサーバーが条件に合うとしたもので、照らし直さない。
   const was =
     before !== undefined &&
-    (page.rows.some((tag) => tag.id === before.id) ||
-      matchesTagQuery(before, page.query));
-  const now = matchesTagQuery(after, page.query);
+    (page.rows.some((tag) => tag.id === before.id) || matches(before, page.query));
+  const now = matches(after, page.query);
   const rows = now
     ? placeTag(page.rows, after, page.query.sort, page.boundary)
     : page.rows.filter((tag) => tag.id !== after.id);
@@ -182,6 +218,15 @@ export function replaceTag(
  * 合っていたものだけを `total` から引く。
  */
 export function removeTags(page: TagPageRows, removed: readonly Tag[]): TagPageRows {
+  return removeRows(page, removed, matchesTagQuery);
+}
+
+/** removeRows は `removeTags` の、条件の判定（`matches`）を受け取る形である。 */
+export function removeRows<R extends ListRow, Q extends ListRowsQuery>(
+  page: PageRows<R, Q>,
+  removed: readonly R[],
+  matches: RowMatcher<R, Q>,
+): PageRows<R, Q> {
   if (removed.length === 0) return page;
   const ids = new Set(removed.map((tag) => tag.id));
   const rows = page.rows.filter((tag) => !ids.has(tag.id));
@@ -189,7 +234,7 @@ export function removeTags(page: TagPageRows, removed: readonly Tag[]): TagPageR
   const loaded = page.rows.length - rows.length;
   const loadedIds = new Set(page.rows.map((tag) => tag.id));
   const others = removed.filter(
-    (tag) => !loadedIds.has(tag.id) && matchesTagQuery(tag, page.query),
+    (tag) => !loadedIds.has(tag.id) && matches(tag, page.query),
   ).length;
   return {
     ...page,
@@ -225,6 +270,15 @@ export function confirmTags(page: TagPageRows, ids: ReadonlySet<number>): TagPag
  * 増やし、合わなければ `totalAll` だけを増やす。
  */
 export function addTag(page: TagPageRows, created: Tag): TagPageRows {
-  const next = replaceTag(page, undefined, created);
+  return addRow(page, created, matchesTagQuery);
+}
+
+/** addRow は `addTag` の、条件の判定（`matches`）を受け取る形である。 */
+export function addRow<R extends ListRow, Q extends ListRowsQuery>(
+  page: PageRows<R, Q>,
+  created: R,
+  matches: RowMatcher<R, Q>,
+): PageRows<R, Q> {
+  const next = replaceRow(page, undefined, created, matches);
   return { ...next, totalAll: page.totalAll + 1 };
 }

@@ -134,7 +134,8 @@ export interface paths {
          *
          *     ゲストでは公開の動画だけを対象にし、`query` はタグの名前とシノニムに照合しない。
          *     所有者のデータに依る条件（`watch` が `all` 以外、`sort` が `playedAsc`・
-         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true）は
+         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、
+         *     `organization`）は
          *     `400` `invalid_request` にする（guest-api.md §3、specs/035-favorites/contracts/screen-api.md §2）。
          */
         get: operations["listVideos"];
@@ -158,7 +159,7 @@ export interface paths {
          * @description `listVideos` と同じ条件で、当たった動画を項目にまとめて返す
          *     （specs/027-partial-group-search/contracts/library-api.md §1。値の作り方は
          *     specs/017-folder-groups/data-model.md §5）。
-         *     `query` と `tag` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
+         *     `query`・`tag`・`person`・`organization` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
          *     全メンバーが当たればグループの項目1件に、一部だけが当たれば当たったメンバーを
          *     それぞれ動画の項目にする。グループに属さない動画は動画の項目になる。
          *     絞り込みが無ければどのグループも全メンバーが当たる。グループの値は全メンバーから
@@ -176,7 +177,8 @@ export interface paths {
          *
          *     ゲストでは公開のメンバーだけを数え（「全メンバー」も公開のメンバー）、公開の
          *     メンバーが1本のグループは動画の項目にし、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
-         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true は `400` `invalid_request` にする
+         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、`organization` は
+         *     `400` `invalid_request` にする
          *     （data-model.md §7、specs/035-favorites/contracts/screen-api.md §2）。
          */
         get: operations["listLibrary"];
@@ -197,7 +199,8 @@ export interface paths {
         };
         /**
          * 絞り込みに合う項目の動画の id を返す
-         * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`・`favorite`）に合う項目の、
+         * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`・`favorite`・`person`・
+         *     `organization`）に合う項目の、
          *     動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
          *     一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
          *     だけが入る。並びは決めない。「すべて選択」用
@@ -257,10 +260,10 @@ export interface paths {
          *     渡して続きを読む。続きは返した位置より後の動画だけなので、読む間に動画が足されたり
          *     消えたりしても、同じ動画が二重に出ない。
          *     `cursor` を付けない最初の要求だけが `nextId`・`prevId`・`group` を持つ。この動画が
-         *     グループのメンバーなら、group にこの動画を中ほどに置いた最大 100 本のメンバーの窓を
-         *     載せ、nextId・prevId をグループの中の並びにする
-         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）。窓の外のメンバーは
-         *     `listVideoGroupMembers` で読む。
+         *     グループにあれば、文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）
+         *     の再生順で、group にこの動画を中ほどに置いた最大 100 本のメンバーの窓を載せ、
+         *     nextId・prevId をその再生順の前後にする。窓の外のメンバーは `listVideoGroupMembers` で
+         *     読む。
          */
         get: operations["getRelatedVideos"];
         put?: never;
@@ -280,11 +283,10 @@ export interface paths {
         };
         /**
          * 動画が属するグループのメンバーを、並びの範囲で返す
-         * @description この動画が属するグループの見せてよいメンバーを、グループの中の並びで `offset` 本目
-         *     （0 始まり）から最大 `limit` 本返す。メンバーの選び方と形は関連動画の group と同じで、
-         *     ゲストには公開のメンバーだけで数える
-         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）。グループのメンバーでない、
-         *     または見る人に見せるグループが無ければ `404`。`offset` が本数以上なら items は空。
+         * @description 文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）の見せてよい
+         *     動画を、その再生順で `offset` 本目（0 始まり）から最大 `limit` 本返す。メンバーの選び方と
+         *     形は関連動画の group と同じで、ゲストには公開の動画だけで数える。動画がどのグループにも
+         *     無ければ `404`。`offset` が本数以上なら items は空。
          */
         get: operations["listVideoGroupMembers"];
         put?: never;
@@ -660,6 +662,56 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/videos/{id}/work-info": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 動画の作品情報をまるごと置き換える
+         * @description 所有者だけ。本文の作品情報で保存済みのものを置き換える。省いた・null の・前後の空白を除いて空の
+         *     項目は解除し、`{}` はすべてを解除する。人物と団体は id で指す。規則に合わない最初の項目を
+         *     `field` 付きの誤りで返し、何も書かない。応答は `GET /api/videos/{id}` と同じ形の `Video` で、
+         *     `workInfo` が反映済み（すべて解除したときは無い）。変わったときは確定後に同じ利用者データの鍵の
+         *     各動画の `video` が `/api/events` に流れる
+         *     （specs/047-video-work-info/contracts/screen-api.md「PUT /api/videos/{id}/work-info」）。
+         */
+        put: operations["setVideoWorkInfo"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/details": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 動画の表示名と作品情報を 1 回で保存する
+         * @description 所有者だけ。全画面の編集画面の保存で、表示名（`PUT /api/videos/{id}/display-name` の規則）と
+         *     作品情報（`PUT /api/videos/{id}/work-info` の規則）を 1 つの取引で書き、どちらかが規則に
+         *     合わなければどちらも書かない。表示名を先に、次に作品情報を `WorkInfo` の項目の順に確かめ、
+         *     最初の誤りだけを返す。表示名の誤りの `field` は `displayName`、作品情報の誤りの `field` は
+         *     `workInfo` の中の位置である。応答は `GET /api/videos/{id}` と同じ形の `Video`
+         *     （specs/047-video-work-info/contracts/screen-api.md「PUT /api/videos/{id}/details」）。
+         */
+        put: operations["setVideoDetails"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/videos/{id}/thumbnail-position": {
         parameters: {
             query?: never;
@@ -708,7 +760,7 @@ export interface paths {
          *     見出しが 1 億 2000 万画素を越えれば 400 `thumbnail_upload_too_large`（`limit` に越えた上限）、
          *     PNG・JPEG・WebP でない、アニメーションの WebP、最後まで読めない画像は 400
          *     `thumbnail_upload_invalid`、動画が無ければ 404 `video_not_found`、要求を始めたときから動画が消えたか
-         *     別の内容になれば 409 `content_changed`、ffmpeg が合わせられなければ 409 `thumbnail_image_invalid`
+         *     別の内容になるか `contentVersion` が今の内容と違えば 409 `content_changed`、ffmpeg が合わせられなければ 409 `thumbnail_image_invalid`
          *     を返し、どの誤りでも何も書かない。本文が届き終わったあとの確かめと適用は、接続が切れても 5 分を
          *     上限に最後まで行う。確定後に `/api/events` の `video` が流れる
          *     （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-1・R-2）。
@@ -1581,6 +1633,166 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 人物を一覧する
+         * @description 所有者だけ。`q` は名前と別名に部分一致し、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
+         *     続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
+         *     （specs/047-video-work-info/contracts/screen-api.md「People and organizations」）。
+         */
+        get: operations["listPeople"];
+        put?: never;
+        /**
+         * 人物を 1 件作る
+         * @description 所有者だけ。項目の規則に合わなければ 400 で `reason`（`work_info_*`）と `field` を返し、他の人物が持つ
+         *     外部 ID なら 409 `external_id_taken`（`field: externalIds[i]`）。`parentId` は送れない（400 `invalid_request`）。
+         */
+        post: operations["createPerson"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/people/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 人物を 1 件返す
+         * @description 所有者だけ。無ければ 404 `person_not_found`。
+         */
+        get: operations["getPerson"];
+        put?: never;
+        post?: never;
+        /**
+         * 人物を 1 件消す
+         * @description 所有者だけ。動画との結び付きも外す。無ければ 404 `person_not_found`。
+         */
+        delete: operations["deletePerson"];
+        options?: never;
+        head?: never;
+        /**
+         * 人物の名前・別名・外部 ID を書き換える
+         * @description 所有者だけ。送ったプロパティだけを置き換え、一覧は丸ごと置き換える（`null` は空にする）。何も変わらなければ
+         *     書かずに今の状態を返す。誤りは作成と同じで、無ければ 404 `person_not_found`。`parentId` は送れない（400 `invalid_request`）。
+         */
+        patch: operations["updatePerson"];
+        trace?: never;
+    };
+    "/api/people/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * sourceIds の人物を id の人物へ統合する
+         * @description 所有者だけ。統合元（1 件以上 20,000 件以下）の結び付き・名前・外部 ID を 1 つの取引で統合先へ移し、
+         *     統合元を消す。無い統合元は飛ばして `notFoundIds` に載せる。`sourceIds` の件数が範囲の外なら 400
+         *     `work_info_too_many`（`field: sourceIds`）、統合先を含めば 400 `merge_same_person`、統合後の別名か
+         *     外部 ID が上限を超えれば 400 `work_info_too_many`（`field: aliases` か `externalIds`）、統合先が無ければ
+         *     404 `person_not_found`。誤りのときは何も変えない。
+         */
+        post: operations["mergePeople"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 団体を一覧する
+         * @description 所有者だけ。`q` は名前と別名に部分一致し、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
+         *     続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
+         *     （specs/047-video-work-info/contracts/screen-api.md「People and organizations」）。
+         */
+        get: operations["listOrganizations"];
+        put?: never;
+        /**
+         * 団体を 1 件作る
+         * @description 所有者だけ。項目の規則に合わなければ 400 で `reason`（`work_info_*`）と `field` を返し、他の団体が持つ
+         *     外部 ID なら 409 `external_id_taken`（`field: externalIds[i]`）。`parentId` の団体が無ければ 404 `organization_not_found`（`field: parentId`）。
+         */
+        post: operations["createOrganization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organizations/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 団体を 1 件返す
+         * @description 所有者だけ。無ければ 404 `organization_not_found`。
+         */
+        get: operations["getOrganization"];
+        put?: never;
+        post?: never;
+        /**
+         * 団体を 1 件消す
+         * @description 所有者だけ。動画との結び付きも外す。無ければ 404 `organization_not_found`。
+         */
+        delete: operations["deleteOrganization"];
+        options?: never;
+        head?: never;
+        /**
+         * 団体の名前・別名・外部 ID を書き換える
+         * @description 所有者だけ。送ったプロパティだけを置き換え、一覧は丸ごと置き換える（`null` は空にする）。何も変わらなければ
+         *     書かずに今の状態を返す。誤りは作成と同じで、無ければ 404 `organization_not_found`。`parentId` の団体が無ければ 404 `organization_not_found`（`field: parentId`）、自分か子孫なら 400 `organization_parent_cycle`。
+         */
+        patch: operations["updateOrganization"];
+        trace?: never;
+    };
+    "/api/organizations/{id}/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * sourceIds の団体を id の団体へ統合する
+         * @description 所有者だけ。統合元（1 件以上 20,000 件以下）の結び付き・名前・外部 ID を 1 つの取引で統合先へ移し、
+         *     統合元を消す。無い統合元は飛ばして `notFoundIds` に載せる。`sourceIds` の件数が範囲の外なら 400
+         *     `work_info_too_many`（`field: sourceIds`）、統合先を含めば 400 `merge_same_organization`、統合後の別名か
+         *     外部 ID が上限を超えれば 400 `work_info_too_many`（`field: aliases` か `externalIds`）、統合先が無ければ
+         *     404 `organization_not_found`。統合元が統合先の親か祖先なら 400 `organization_parent_cycle`。誤りのときは何も変えない。
+         */
+        post: operations["mergeOrganizations"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/video-tags": {
         parameters: {
             query?: never;
@@ -1663,13 +1875,13 @@ export interface paths {
         get?: never;
         /**
          * 動画とグループのお気に入りを付け外しする
-         * @description 所有者だけ。`videoIds` の動画と `folders` のグループのお気に入りを `favorite` にそろえる。
-         *     `videoIds` と `folders` の合計（重複は 1 つに数える）が 1 以上 20000 以下でなければ 400
-         *     `too_many_videos`（`POST /api/video-tags` と同じ上限）、`folders` の `path` が不正なら 400
-         *     `invalid_folder_path` で、何も変えない。ライブラリに無い id、登録フォルダに無い `rootId`、
-         *     今グループでないフォルダは誤りにせず数えない。既に同じ状態のものは誤りにせず数え、付いている
-         *     ものに付けてもお気に入りにした日時は変えない。`folders` にグループを入れてもメンバーの動画には
-         *     付かない。処理は 1 つのトランザクションで、全部に反映するか 1 つも反映しない。確定後の
+         * @description 所有者だけ。`videoIds` の動画と `groupIds` のグループのお気に入りを `favorite` にそろえる。
+         *     `videoIds` と `groupIds` の合計（重複は 1 つに数える）が 1 以上 20000 以下でなければ 400
+         *     `too_many_videos`（`POST /api/video-tags` と同じ上限）で、何も変えない。ライブラリに無い
+         *     動画の id と無いグループの id は誤りにせず数えない。既に同じ状態のものは誤りにせず数え、
+         *     付いているものに付けてもお気に入りにした日時は変えない。`groupIds` にグループを入れても
+         *     その動画には付かない。グループのお気に入りはグループの解散で消える
+         *     （specs/048-groups/research.md R-10）。処理は 1 つのトランザクションで、全部に反映するか 1 つも反映しない。確定後の
          *     `/api/events` の知らせは無い（specs/035-favorites/contracts/screen-api.md §1）。
          */
         put: operations["updateFavorites"];
@@ -1755,11 +1967,11 @@ export interface paths {
         put?: never;
         /**
          * プレイリストの末尾に動画とグループを足す
-         * @description 所有者だけ。`videoIds` の動画、次に `folders` のグループを要求の順で末尾に足す
-         *     （specs/044-playlists/research.md R-5）。ライブラリに無い id、登録フォルダに無い `rootId`、
-         *     今グループでないフォルダはどちらの数にも入らず、重複は 1 度だけ数える。既にプレイリストに
-         *     あるものは `existing` に数え、何も変えない。両方が空なら 400 `invalid_request`、`folders` の
-         *     `path` が不正なら 400 `invalid_folder_path`、重複を除いた合計が 20000 を超えれば 400
+         * @description 所有者だけ。`videoIds` の動画、次に `groupIds` のグループを要求の順で末尾に足す
+         *     （specs/044-playlists/research.md R-5、specs/048-groups/research.md R-10）。ライブラリに無い
+         *     動画の id と無いグループの id はどちらの数にも入らず、重複は 1 度だけ数える。既にプレイリストに
+         *     あるものは `existing` に数え、何も変えない。グループの項目はグループの解散で消える。
+         *     両方が空なら 400 `invalid_request`、重複を除いた合計が 20000 を超えれば 400
          *     `too_many_videos`（`PUT /api/favorites` と同じ上限）。プレイリストが無ければ 404 `not_found`。
          */
         post: operations["addPlaylistItems"];
@@ -2098,7 +2310,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/folders/{rootId}/group": {
+    "/api/groups": {
         parameters: {
             query?: never;
             header?: never;
@@ -2106,17 +2318,163 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * フォルダのグループ1件を返す
-         * @description 一覧に残っているグループのカードを取り直すための経路
-         *     （specs/017-folder-groups/contracts/library-api.md §3）。絞り込みに関係なく、
-         *     グループの全メンバーから作る。そのフォルダが今グループでないか無いときは 404。
-         *
-         *     ゲストでは公開のメンバーだけから作り、公開のメンバーが2本以上なければ 404 にする
-         *     （data-model.md §7）。
+         * 見る人に見せるグループを名前の順に返す
+         * @description 「Add to group」のピッカーの一覧（specs/048-groups/contracts/screen-api.md）。見る人に見せる
+         *     グループを、どの深さのものも自然な名前の順（同じなら id の順）に、`cursor` の次から最大
+         *     `limit` 件返す。`q` は前後の空白を取り除き、名前が大文字小文字を区別せずにそれを含むものだけに
+         *     絞る（空なら全部）。グループの値は `getGroup` と同じで、ゲストでは公開の動画だけから作り、
+         *     見る人に見せる動画の無いグループは入らない。読めない `cursor` は 400 `invalid_cursor`、
+         *     `limit` が範囲の外なら 400 `invalid_request`。
          */
-        get: operations["getFolderGroup"];
+        get: operations["listGroups"];
+        put?: never;
+        /**
+         * 動画とグループからグループを作る
+         * @description 所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）で、同じ名前のグループが
+         *     あってもよい（specs/048-groups/research.md R-14）。`videoIds` の動画、次に `groupIds` の
+         *     グループを要求の順に項目にする。名前が空か長すぎるか、メンバーが無ければ 400
+         *     `invalid_request`。本文の動画かグループのどれかが無ければ 404 `group_target_not_found` で、
+         *     何も作らない（R-12）。
+         */
+        post: operations["createGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * グループ 1 つと、その道筋と項目の最初のページを返す
+         * @description グループの値（`LibraryGroup`）、`trail` のうち今も親と子の組が続く部分、項目（子グループと
+         *     動画）の最初の 1 ページ（100 件）を位置の順に返す（specs/048-groups/contracts/screen-api.md）。
+         *     項目は見る人に見せるものだけで、見る人に引けない動画と、見る人に見せる動画の無い子グループは
+         *     入らない。続きは `listGroupItems` で読む。
+         *
+         *     グループの値は子孫の動画を再生順（子グループは深さ優先、同じ動画は最初の 1 回）で数える
+         *     （specs/048-groups/research.md R-7）。ゲストでは公開の動画だけから作る。無いグループと、
+         *     見る人に見せる動画の無いグループは 404 `not_found`。
+         */
+        get: operations["getGroup"];
         put?: never;
         post?: never;
+        /**
+         * グループを解散する
+         * @description 所有者だけ。グループとその項目を消す。子グループと動画は残り、親からこのグループの項目が
+         *     消える。自動グループならそのフォルダに `ungroup` を書く（specs/048-groups/research.md R-4）。
+         *     グループが無ければ 404 `not_found`。
+         */
+        delete: operations["dissolveGroup"];
+        options?: never;
+        head?: never;
+        /**
+         * グループの名前を変える
+         * @description 所有者だけ。名前の規則は作成と同じで、応答の `name` は前後の空白を取り除いた名前である。
+         *     グループが無ければ 404 `not_found`。
+         */
+        patch: operations["renameGroup"];
+        trace?: never;
+    };
+    "/api/groups/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * グループの項目の続きのページを返す
+         * @description `getGroup` と同じ項目を、前の応答の `nextCursor` の続きから位置の順に返す。読めない
+         *     カーソルは 400 `invalid_cursor`。グループの扱いは `getGroup` と同じで、無いか見せないときは
+         *     404 `not_found`。
+         */
+        get: operations["listGroupItems"];
+        put?: never;
+        /**
+         * グループの末尾に動画とグループを足す
+         * @description 所有者だけ。`videoIds` の動画、次に `groupIds` のグループを要求の順で末尾に足す。既に項目に
+         *     あるものは飛ばす（specs/048-groups/research.md R-12）。両方が空なら 400 `invalid_request`。
+         *     本文の動画かグループのどれかが無ければ 404 `group_target_not_found`、本文のグループがこの
+         *     グループかその祖先なら 409 `group_cycle` で、どちらも何も足さない。グループが無ければ 404
+         *     `not_found`。
+         */
+        post: operations["addGroupItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{id}/items/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * グループから項目を外す
+         * @description 所有者だけ。項目を外して残りを詰め直す。動画と子グループそのものは残る。自動グループの
+         *     フォルダ由来の項目は、フォルダの作り直しでも戻らない。項目が 1 つも残らなければ、そのグループは
+         *     `DELETE /api/groups/{id}` と同じく解散され（自動グループならフォルダに `ungroup` を書く）、
+         *     本文の無い 204 を返す。項目のどれかがこのグループに無ければ 404 `group_target_not_found` で、
+         *     何も外さない。グループが無ければ 404 `not_found`。
+         */
+        post: operations["removeGroupItems"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{id}/items/{itemId}/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * グループの項目 1 つを並べ替える
+         * @description 所有者だけ。項目を `after` の項目のすぐ後ろへ移す。`after` が無ければ先頭へ移す
+         *     （specs/048-groups/research.md R-12）。`after` が項目自身なら 400 `invalid_request`、項目か
+         *     `after` がこのグループに無ければ 404 `group_target_not_found`。グループが無ければ 404
+         *     `not_found`。
+         */
+        post: operations["moveGroupItem"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{id}/tag": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * グループをタグに変える
+         * @description 所有者だけ。1 つの取引で、グループの名前を `NormalizeTagName` に通し、名前かシノニムで
+         *     引けたタグを使うか新しく作り、子孫の全動画に手で付け、グループを解散する
+         *     （specs/048-groups/research.md R-11）。本文は無い。名前がタグ名の規則に合わなければ 400
+         *     `invalid_request` で、何も変えない。グループが無ければ 404 `not_found`。
+         */
+        post: operations["tagGroup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2140,30 +2498,6 @@ export interface paths {
          */
         put: operations["setFolderGrouping"];
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/folders/{rootId}/grouping/tag": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * グループをタグに変える
-         * @description 1つの取引で、フォルダ名を `NormalizeTagName` に通し、名前かシノニムで引けたタグを使うか
-         *     新しく作り、そのフォルダに `ungroup` を書き、索引を作り直す
-         *     （specs/017-folder-groups/contracts/folder-groups-api.md §2）。本文は無い。
-         *     フォルダ名がタグ名の規則に合わなければ `400` `invalid_request` で、タグも例外も作らない。
-         *     そのフォルダが今グループでないか、登録フォルダそのものなら `409` `conflict`。
-         */
-        post: operations["tagFolderGroup"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2230,9 +2564,15 @@ export interface paths {
          *       走査の変化、仕事の成否（済みの本数が変わる）、今の処理の変化で送る
          *     - `video`: 動画の状態が変わった。data は `VideoChanged`。最新の内容は
          *       `GET /api/videos/{id}` で取る
+         *     - `group`: グループの名前か項目が変わった。data は `GroupChanged` で、変わったグループと
+         *       その祖先の id を運ぶ（specs/048-groups/research.md R-13）。最新の内容は
+         *       `GET /api/groups/{id}` で取る
          *
          *     接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-         *     変化を取り戻せる。`video` は切れていた間の分を送り直さない。
+         *     変化を取り戻せる。`video` と `group` は切れていた間の分を送り直さない。
+         *
+         *     ゲストには `group` だけを送る（specs/048-groups/contracts/screen-api.md）。`scan` と
+         *     `video` は所有者だけに送る。
          */
         get: operations["streamEvents"];
         put?: never;
@@ -2515,6 +2855,8 @@ export interface components {
              * @description サムネイルにする画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）
              */
             image: string;
+            /** @description プレビューを開いたときに画面が持っていた動画の `contentVersion` */
+            contentVersion: string;
         };
         /**
          * @description 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
@@ -2740,6 +3082,207 @@ export interface components {
             id?: number;
             name?: string;
         };
+        /** @description 人物か団体 1 件への参照。name はその実体の今の名前 */
+        CreditRef: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description 人物か団体の別名 1 件（specs/047-video-work-info/data-model.md「Fields」） */
+        Alias: {
+            name: string;
+            /** @description BCP 47 の構文の言語タグ。無ければ省く */
+            language?: string;
+        };
+        /** @description 外部の情報源での識別子 1 件 */
+        ExternalId: {
+            source: string;
+            value: string;
+        };
+        /**
+         * @description 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+         * @enum {string}
+         */
+        WorkDateKind: "release" | "recorded" | "published";
+        /**
+         * @description 動画での人物の役割
+         * @enum {string}
+         */
+        WorkPersonRole: "performer" | "director" | "photographer" | "streamer";
+        /**
+         * @description 動画での団体の役割
+         * @enum {string}
+         */
+        WorkOrganizationRole: "maker" | "label";
+        WorkDate: {
+            kind: components["schemas"]["WorkDateKind"];
+            /**
+             * @description YYYY・YYYY-MM・YYYY-MM-DD（日まであれば暦にある日）
+             * @example 2024
+             * @example 2024-02
+             * @example 2024-02-29
+             */
+            date: string;
+        };
+        WorkPerson: {
+            role: components["schemas"]["WorkPersonRole"];
+            person: components["schemas"]["CreditRef"];
+        };
+        WorkOrganization: {
+            role: components["schemas"]["WorkOrganizationRole"];
+            organization: components["schemas"]["CreditRef"];
+        };
+        /**
+         * @description 動画の作品情報（specs/047-video-work-info/contracts/screen-api.md「WorkInfo schema」）。
+         *     一覧は必ずあり、空なら []。単一の値は未設定なら無い
+         */
+        WorkInfo: {
+            /** @description 品番 */
+            code?: string;
+            /** @description 説明。改行を含みうる */
+            description?: string;
+            /** @description 種類の順（release・recorded・published） */
+            dates: components["schemas"]["WorkDate"][];
+            /** @description 役割の順、同じ役割の中は入力した順。name は人物の今の名前 */
+            people: components["schemas"]["WorkPerson"][];
+            /** @description 役割の順、同じ役割の中は入力した順。name は団体の今の名前 */
+            organizations: components["schemas"]["WorkOrganization"][];
+            /** @description 入力した順 */
+            urls: string[];
+            /** @description (source, value) の順 */
+            externalIds: components["schemas"]["ExternalId"][];
+        };
+        /** @description 書き込みで人物か団体 1 件を指す参照 */
+        CreditIdRef: {
+            /** Format: int64 */
+            id: number;
+        };
+        WorkPersonInput: {
+            role: components["schemas"]["WorkPersonRole"];
+            person: components["schemas"]["CreditIdRef"];
+        };
+        WorkOrganizationInput: {
+            role: components["schemas"]["WorkOrganizationRole"];
+            organization: components["schemas"]["CreditIdRef"];
+        };
+        /**
+         * @description 作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
+         *     WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
+         *     解除で、全体を置き換える
+         */
+        WorkInfoInput: {
+            code?: string | null;
+            description?: string | null;
+            dates?: components["schemas"]["WorkDate"][] | null;
+            people?: components["schemas"]["WorkPersonInput"][] | null;
+            organizations?: components["schemas"]["WorkOrganizationInput"][] | null;
+            urls?: string[] | null;
+            externalIds?: components["schemas"]["ExternalId"][] | null;
+        };
+        /**
+         * @description 全画面の編集画面の保存の本文（specs/047-video-work-info/contracts/screen-api.md
+         *     「PUT /api/videos/{id}/details」）。両方とも必須
+         */
+        VideoDetailsInput: {
+            /** @description 新しい表示名。前後の空白を取り除いて空なら解除する */
+            displayName: string;
+            workInfo: components["schemas"]["WorkInfoInput"];
+        };
+        /** @description 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」） */
+        Person: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description 名前の自然順 */
+            aliases: components["schemas"]["Alias"][];
+            /** @description (source, value) の順 */
+            externalIds: components["schemas"]["ExternalId"][];
+            /** @description この人物をどれかの役割で結ぶ、表示中の動画の数 */
+            videoCount: number;
+            /** Format: date-time */
+            createdAt: string;
+        };
+        /** @description 団体 1 件。Person と同じ項目に親の団体が加わる */
+        Organization: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description 名前の自然順 */
+            aliases: components["schemas"]["Alias"][];
+            /** @description (source, value) の順 */
+            externalIds: components["schemas"]["ExternalId"][];
+            /** @description この団体をどれかの役割で結ぶ、表示中の動画の数 */
+            videoCount: number;
+            /** Format: date-time */
+            createdAt: string;
+            /** @description 親の団体。根の団体では省く */
+            parent?: components["schemas"]["CreditRef"];
+        };
+        /** @description 人物か団体を作るときの本文。parentId は団体だけが使う */
+        CreditInput: {
+            name: string;
+            aliases?: components["schemas"]["Alias"][];
+            externalIds?: components["schemas"]["ExternalId"][];
+            /**
+             * Format: int64
+             * @description 親の団体の id。団体だけで、人物に送ると 400 invalid_request
+             */
+            parentId?: number;
+        };
+        /**
+         * @description 人物か団体の書き換えの本文。どのプロパティも省いてよく、省いたものは今のまま残す。一覧は丸ごと
+         *     置き換え、null は一覧を空にする。parentId は団体だけが使い、null は親を外す
+         */
+        CreditPatch: {
+            name?: string;
+            aliases?: components["schemas"]["Alias"][] | null;
+            externalIds?: components["schemas"]["ExternalId"][] | null;
+            /**
+             * Format: int64
+             * @description 親の団体の id。null は親を外す。人物に送ると 400 invalid_request
+             */
+            parentId?: number | null;
+        };
+        CreditMergeRequest: {
+            /** @description 統合元の id。1 件以上 20,000 件以下 */
+            sourceIds: number[];
+        };
+        /** @description 人物の一覧（契約の CreditList の人物の形） */
+        PersonList: {
+            items: components["schemas"]["Person"][];
+            /** @description 条件（q）に合う人物の数。ページングとは独立に返る */
+            total: number;
+            /** @description 全部の人物の数 */
+            totalAll: number;
+            /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        /** @description 団体の一覧（契約の CreditList の団体の形） */
+        OrganizationList: {
+            items: components["schemas"]["Organization"][];
+            /** @description 条件（q）に合う団体の数。ページングとは独立に返る */
+            total: number;
+            /** @description 全部の団体の数 */
+            totalAll: number;
+            /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        PersonMergeResponse: {
+            person: components["schemas"]["Person"];
+            /** @description もう無かった統合元 */
+            notFoundIds: number[];
+        };
+        OrganizationMergeResponse: {
+            organization: components["schemas"]["Organization"];
+            /** @description もう無かった統合元 */
+            notFoundIds: number[];
+        };
+        /**
+         * @description 人物と団体の一覧の並び順。タグの一覧（TagSort）と同じ 5 つで、値が同じものは名前の自然順、それも同じなら id
+         * @default name
+         * @enum {string}
+         */
+        CreditSort: "name" | "countDesc" | "countAsc" | "createdDesc" | "createdAsc";
         /** @enum {string} */
         VideoTagsAction: "add" | "remove";
         VideoTagsRequest: {
@@ -2760,8 +3303,8 @@ export interface components {
         FavoritesRequest: {
             /** @description お気に入りを付け外しする動画の id */
             videoIds?: number[];
-            /** @description お気に入りを付け外しするグループのフォルダ */
-            folders?: components["schemas"]["VideoFolder"][];
+            /** @description お気に入りを付け外しするグループの id（specs/048-groups/research.md R-10） */
+            groupIds?: number[];
             /** @description true でお気に入りにし、false で外す */
             favorite: boolean;
         };
@@ -2771,8 +3314,8 @@ export interface components {
              *     既に同じ状態だったものを含む）
              */
             appliedVideos: number;
-            /** @description folders のうちいまグループのフォルダの数（既に同じ状態だったものを含む） */
-            appliedFolders: number;
+            /** @description groupIds のうちいまある異なるグループの数（既に同じ状態だったものを含む） */
+            appliedGroups: number;
         };
         /** @description プレイリスト 1 つの要約（specs/044-playlists/contracts/screen-api.md） */
         PlaylistSummary: {
@@ -2843,8 +3386,8 @@ export interface components {
         PlaylistItemsAdd: {
             /** @description 足す動画の id */
             videoIds?: number[];
-            /** @description 足すグループのフォルダ（`PUT /api/favorites` と同じ形） */
-            folders?: components["schemas"]["VideoFolder"][];
+            /** @description 足すグループの id（`PUT /api/favorites` と同じ形） */
+            groupIds?: number[];
         };
         PlaylistItemsAdded: {
             /** @description 末尾に足した項目の数 */
@@ -2883,7 +3426,7 @@ export interface components {
             /** @description tag のうち存在しなかった id。1つも無ければ省略される */
             missingTagIds?: number[];
             /**
-             * @description 条件に合うグループの項目。各要素のフォルダと、そのグループの全メンバーの id（ids にも含まれる）。
+             * @description 条件に合うグループの項目。各要素のグループの id と、その再生順の動画の id（ids にも含まれる）。
              *     listLibraryIds の応答にだけ入り、1 つも無ければ省略される
              *     （specs/035-favorites/contracts/screen-api.md §3）
              */
@@ -2891,8 +3434,12 @@ export interface components {
         };
         /** @description GET /api/library/ids のグループの項目 1 件 */
         LibraryGroupIds: {
-            folder: components["schemas"]["VideoFolder"];
-            /** @description グループの全メンバーの id */
+            /**
+             * Format: int64
+             * @description グループの識別子
+             */
+            id: number;
+            /** @description グループの再生順の、見せてよい動画の id */
             videoIds: number[];
         };
         DirectoryEntry: {
@@ -2962,14 +3509,23 @@ export interface components {
             group?: components["schemas"]["LibraryGroup"];
         };
         /**
-         * @description グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
-         *     （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
-         *     グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
-         *     `lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+         * @description グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+         *     同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+         *     「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+         *     `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
          */
         LibraryGroup: {
-            folder: components["schemas"]["VideoFolder"];
-            /** @description フォルダ名 */
+            /**
+             * Format: int64
+             * @description グループの識別子
+             */
+            id: number;
+            /**
+             * @description 自動グループのフォルダ。フォルダから自動でできたグループで、そのフォルダが登録フォルダの
+             *     下にあるときだけ入る。手で作ったグループには無く、画面はこれで 2 つを見分ける
+             */
+            folder?: components["schemas"]["VideoFolder"];
+            /** @description グループの名前 */
             name: string;
             videoCount: number;
             /** @description 完了したメンバーの数。所有者の応答にだけ入る */
@@ -3022,6 +3578,88 @@ export interface components {
              */
             favorite?: boolean;
         };
+        /** @description グループの項目に足す動画とグループ。動画、次にグループの順に、それぞれ要求の順で足す */
+        GroupMembers: {
+            /** @description 足す動画の id */
+            videoIds?: number[];
+            /** @description 足すグループの id */
+            groupIds?: number[];
+        };
+        /** @description POST /api/groups の本文。`GroupMembers` に名前を足したもの */
+        GroupCreate: {
+            /** @description グループの名前。サーバーが前後の空白を取り除いてから長さを数える */
+            name: string;
+            /** @description 項目にする動画の id */
+            videoIds?: number[];
+            /** @description 項目にするグループの id */
+            groupIds?: number[];
+        };
+        GroupName: {
+            /** @description グループの名前。サーバーが前後の空白を取り除いてから長さを数える */
+            name: string;
+        };
+        /** @description GET /api/groups の応答 */
+        GroupListPage: {
+            /** @description 見る人に見せるグループを、どの深さのものも自然な名前の順に */
+            groups: components["schemas"]["LibraryGroup"][];
+            /** @description 続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        GroupItemMove: {
+            /**
+             * Format: int64
+             * @description この項目のすぐ後ろへ移す。無ければ先頭へ移す
+             */
+            after?: number;
+        };
+        GroupItemRemove: {
+            /** @description 外す項目の id（動画やグループの id ではない） */
+            itemIds: number[];
+        };
+        GroupTagResult: {
+            tag: components["schemas"]["TagRef"];
+            /** @description タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false */
+            created: boolean;
+        };
+        /** @description グループを指す id と名前 */
+        GroupRef: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description グループの項目 1 件。`kind` に応じて `video` か `group` のちょうど一方が入る */
+        GroupItem: {
+            /**
+             * Format: int64
+             * @description 項目の識別子。動画やグループの id ではない
+             */
+            id: number;
+            /** @enum {string} */
+            kind: "video" | "group";
+            video?: components["schemas"]["Video"];
+            group?: components["schemas"]["LibraryGroup"];
+        };
+        /** @description GET /api/groups/{id} の応答 */
+        GroupDetail: {
+            group: components["schemas"]["LibraryGroup"];
+            /** @description 要求の `trail` のうち親と子の組が続く部分。外側から順で、最後はこのグループの親 */
+            trail: components["schemas"]["GroupRef"][];
+            /** @description 項目の最初のページ。位置の順で、見る人に見せる項目だけ */
+            items: components["schemas"]["GroupItem"][];
+            /** @description 続きがあるときだけ入る。`listGroupItems` に渡す */
+            nextCursor?: string;
+        };
+        /** @description GET /api/groups/{id}/items の応答 */
+        GroupItemPage: {
+            items: components["schemas"]["GroupItem"][];
+            /** @description 続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        /** @description /api/events の `group` の data */
+        GroupChanged: {
+            /** @description 名前か項目が変わったグループと、その祖先のグループの id。小さい順 */
+            ids: number[];
+        };
         FolderPreview: {
             /** Format: int64 */
             videoId: number;
@@ -3058,23 +3696,20 @@ export interface components {
         FolderGroupingMode: "auto" | "ungroup" | "groupDirect";
         /**
          * @description フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
-         *     ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+         *     ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1、
+         *     specs/048-groups/contracts/screen-api.md「Routes and schemas changed」）
          */
         FolderGrouping: {
             mode: components["schemas"]["FolderGroupingMode"];
-            /** @description いまこのフォルダの直下がグループか */
-            grouped: boolean;
-            /** @description グループで、登録フォルダそのものではない（グループをタグに変えられる） */
-            taggable: boolean;
+            /**
+             * Format: int64
+             * @description このフォルダの自動グループの id。無ければ省く。`POST /api/groups/{id}/tag` で
+             *     タグに変えられる
+             */
+            groupId?: number;
         };
         FolderGroupingRequest: {
             mode: components["schemas"]["FolderGroupingMode"];
-        };
-        FolderGroupTagResult: {
-            tag: components["schemas"]["TagRef"];
-            /** @description タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false */
-            created: boolean;
-            grouping: components["schemas"]["FolderGrouping"];
         };
         FolderListing: {
             folder: components["schemas"]["FolderSummary"];
@@ -3087,7 +3722,7 @@ export interface components {
         };
         /**
          * @description ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-         *     `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+         *     `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
          *     （specs/016-single-account-auth/contracts/guest-api.md §1、
          *     specs/029-video-overrides/contracts/screen-api.md §0）。
          */
@@ -3108,6 +3743,12 @@ export interface components {
              * @description 代表サムネイルにする場面の位置（ミリ秒）。設定されているときだけ、所有者の応答にだけ入る
              */
             thumbnailPositionMs?: number;
+            /**
+             * @description 動画の内容の版（内容鍵の先頭 12 文字で、`thumbnailUrl` の版の先頭と同じ値）。所有者の応答にだけ入る。
+             *     画像のアップロードに添え、プレビューを開いてから内容が替わった動画への適用を断るのに使う
+             *     （docs/design-docs/thumbnail-editing.md「Uploaded images」）
+             */
+            contentVersion?: string;
             /**
              * @description 所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
              *     `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る
@@ -3214,6 +3855,12 @@ export interface components {
              */
             favorite?: boolean;
             /**
+             * @description 作品情報。GET /api/videos/{id} と、作品情報を書く所有者の PUT（work-info・details）の
+             *     応答にだけ入り、行の無い動画とゲストの応答では無い。一覧の項目・関連動画・ライブラリの
+             *     項目には入らない（specs/047-video-work-info/contracts/screen-api.md「Video changes」）
+             */
+            workInfo?: components["schemas"]["WorkInfo"];
+            /**
              * @description シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
              *     seekThumbnailUrl と同じ条件のときだけ入る。done = スプライトが完成している、
              *     pending = 生成を待っている、または生成中（保存した状態が done なのに置き場が
@@ -3252,7 +3899,7 @@ export interface components {
          *     GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
          *     登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
          *     今の処理のファイルのフォルダを指す。
-         *     LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+         *     LibraryGroup.folder（自動グループ）・Video.group.folder（自動グループ、GET /api/videos/{id}）では
          *     グループのフォルダそのものを指す
          */
         VideoFolder: {
@@ -3280,18 +3927,27 @@ export interface components {
             openable: boolean;
         };
         /**
-         * @description 動画が属するグループ。GET /api/videos/{id} の応答にだけ、メンバーのときだけ入る
-         *     （location と同じ扱いで、一覧の項目には入らない）。ゲストの応答では公開のメンバー
-         *     だけで数え、公開のメンバーが1本だけなら省く
-         *     （specs/017-folder-groups/contracts/folder-groups-api.md §3）
+         * @description 動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+         *     GET /api/videos/{id} の応答にだけ、動画がグループにあるときだけ入る（location と同じ扱いで、
+         *     一覧の項目には入らない）。位置と本数はそのグループの再生順（子グループは深さ優先、同じ動画は
+         *     最初の 1 回）で数え、ゲストの応答では公開の動画だけで数える
          */
         VideoGroupRef: {
-            folder: components["schemas"]["VideoFolder"];
-            /** @description フォルダ名 */
+            /**
+             * Format: int64
+             * @description グループの識別子
+             */
+            id: number;
+            /**
+             * @description 自動グループのフォルダ。LibraryGroup の folder と同じく、フォルダから自動でできた
+             *     グループで、そのフォルダが登録フォルダの下にあるときだけ入る
+             */
+            folder?: components["schemas"]["VideoFolder"];
+            /** @description グループの名前 */
             name: string;
-            /** @description グループの中の並びで何本目か（1 始まり） */
+            /** @description グループの再生順で何本目か（1 始まり） */
             position: number;
-            /** @description グループのメンバーの本数 */
+            /** @description グループの再生順の動画の本数 */
             count: number;
         };
         /**
@@ -3348,12 +4004,16 @@ export interface components {
             videoIds: number[];
         };
         /**
-         * @description 基準の動画が属するグループ。ゲストの応答では公開のメンバーだけで作り、公開の
-         *     メンバーが1本だけなら省く（specs/017-folder-groups/contracts/folder-groups-api.md §3）
+         * @description 基準の動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+         *     メンバーはそのグループの再生順の動画で、ゲストの応答では公開の動画だけで作る
          */
         RelatedGroup: {
-            folder: components["schemas"]["VideoFolder"];
-            /** @description フォルダ名 */
+            /**
+             * Format: int64
+             * @description グループの識別子
+             */
+            id: number;
+            /** @description グループの名前 */
             name: string;
             /**
              * @description 基準の動画を中ほどに置いた、グループの中の並びで連続するメンバーの窓（基準の動画を
@@ -3637,6 +4297,8 @@ export interface components {
             reason?: components["schemas"]["ErrorReason"];
             /** @description reason の上限値。契約の表で limit を返す reason のときだけ入る （specs/023-english-i18n/contracts/error-api.md §1） */
             limit?: number;
+            /** @description reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く （aliases[0].language・externalIds[1]・parentId）。work_info_*・person_not_found・ organization_not_found・external_id_taken のときだけ入る （specs/047-video-work-info/contracts/screen-api.md「Added reason values and field」） */
+            field?: string;
             /** @description 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と tag_merge_required のときだけ入る（specs/023-english-i18n/contracts/error-api.md §1） */
             tagName?: string;
         };
@@ -3644,7 +4306,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -3696,12 +4358,36 @@ export interface components {
     parameters: {
         /** @description サムネイルの編集のセッションの識別子 */
         ThumbnailEditId: string;
+        /**
+         * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
+         *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
+         *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
+         *     答える（specs/048-groups/research.md R-9）
+         */
+        VideoGroupContext: number;
         /** @description 動画の識別子 */
         VideoId: number;
+        /**
+         * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+         *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+         *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+         *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+         *     （specs/047-video-work-info/contracts/screen-api.md）
+         */
+        PersonFilter: number;
+        /**
+         * @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+         *     （specs/047-video-work-info/contracts/screen-api.md）
+         */
+        OrganizationFilter: number;
         /** @description メディアフォルダの識別子 */
         MediaFolderId: number;
         /** @description API トークンの識別子 */
         APITokenId: number;
+        /** @description グループの識別子 */
+        GroupId: number;
+        /** @description グループの項目の識別子。動画やグループの id ではない */
+        GroupItemId: number;
         /** @description プレイリストの識別子 */
         PlaylistId: number;
         /** @description 視聴履歴の 1 件の識別子 */
@@ -3710,6 +4396,18 @@ export interface components {
         VideoTagId: number;
         /** @description タグの識別子 */
         TagId: number;
+        /** @description 人物の識別子 */
+        PersonId: number;
+        /** @description 団体の識別子 */
+        OrganizationId: number;
+        /** @description 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする */
+        CreditQuery: string;
+        /** @description 並び順 */
+        CreditSort: components["schemas"]["CreditSort"];
+        /** @description 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する */
+        CreditCursor: string;
+        /** @description 1 ページの件数。省くと全件を返し、`nextCursor` は入らない */
+        CreditLimit: number;
         /** @description フォルダが属する登録済みメディアフォルダの識別子 */
         FolderRootId: number;
         /** @description プレイリストの項目の識別子 */
@@ -3925,6 +4623,19 @@ export interface operations {
                  *     missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
                  */
                 tag?: number[];
+                /**
+                 * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+                 *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+                 *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+                 *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                person?: components["parameters"]["PersonFilter"];
+                /**
+                 * @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                organization?: components["parameters"]["OrganizationFilter"];
             };
             header?: never;
             path?: never;
@@ -3982,6 +4693,19 @@ export interface operations {
                  *     missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
                  */
                 tag?: number[];
+                /**
+                 * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+                 *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+                 *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+                 *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                person?: components["parameters"]["PersonFilter"];
+                /**
+                 * @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                organization?: components["parameters"]["OrganizationFilter"];
             };
             header?: never;
             path?: never;
@@ -4014,6 +4738,19 @@ export interface operations {
                 favorite?: boolean;
                 /** @description 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す */
                 tag?: number[];
+                /**
+                 * @description 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
+                 *     組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
+                 *     `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
+                 *     ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                person?: components["parameters"]["PersonFilter"];
+                /**
+                 * @description 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
+                 *     （specs/047-video-work-info/contracts/screen-api.md）
+                 */
+                organization?: components["parameters"]["OrganizationFilter"];
             };
             header?: never;
             path?: never;
@@ -4035,7 +4772,15 @@ export interface operations {
     };
     getVideo: {
         parameters: {
-            query?: never;
+            query?: {
+                /**
+                 * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
+                 *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
+                 *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
+                 *     答える（specs/048-groups/research.md R-9）
+                 */
+                group?: components["parameters"]["VideoGroupContext"];
+            };
             header?: never;
             path: {
                 /** @description 動画の識別子 */
@@ -4060,6 +4805,13 @@ export interface operations {
     getRelatedVideos: {
         parameters: {
             query?: {
+                /**
+                 * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
+                 *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
+                 *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
+                 *     答える（specs/048-groups/research.md R-9）
+                 */
+                group?: components["parameters"]["VideoGroupContext"];
                 /** @description 前の応答の `nextCursor`。省くと先頭から返す */
                 cursor?: string;
                 /** @description 返す件数の上限 */
@@ -4089,6 +4841,13 @@ export interface operations {
     listVideoGroupMembers: {
         parameters: {
             query?: {
+                /**
+                 * @description 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
+                 *     このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
+                 *     持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
+                 *     答える（specs/048-groups/research.md R-9）
+                 */
+                group?: components["parameters"]["VideoGroupContext"];
                 /** @description 返す最初のメンバーの、グループの中の並びの位置（0 始まり） */
                 offset?: number;
                 /** @description 返す本数の上限 */
@@ -4686,6 +5445,66 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["DisplayNameUpdate"];
+            };
+        };
+        responses: {
+            /** @description 反映後の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setVideoWorkInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkInfoInput"];
+            };
+        };
+        responses: {
+            /** @description 反映後の動画 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Video"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setVideoDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VideoDetailsInput"];
             };
         };
         responses: {
@@ -6055,6 +6874,338 @@ export interface operations {
             403: components["responses"]["Forbidden"];
         };
     };
+    listPeople: {
+        parameters: {
+            query?: {
+                /** @description 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする */
+                q?: components["parameters"]["CreditQuery"];
+                /** @description 並び順 */
+                sort?: components["parameters"]["CreditSort"];
+                /** @description 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する */
+                cursor?: components["parameters"]["CreditCursor"];
+                /** @description 1 ページの件数。省くと全件を返し、`nextCursor` は入らない */
+                limit?: components["parameters"]["CreditLimit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 人物の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    createPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditInput"];
+            };
+        };
+        responses: {
+            /** @description 作った人物 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getPerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 人物の識別子 */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 人物 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deletePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 人物の識別子 */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updatePerson: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 人物の識別子 */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditPatch"];
+            };
+        };
+        responses: {
+            /** @description 書き換えた後の人物 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Person"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    mergePeople: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 人物の識別子 */
+                id: components["parameters"]["PersonId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description 統合後の統合先と、もう無かった統合元 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonMergeResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listOrganizations: {
+        parameters: {
+            query?: {
+                /** @description 検索語。照合形にして前後の空白を落とし、空でなければ名前か別名に部分一致する実体だけにする */
+                q?: components["parameters"]["CreditQuery"];
+                /** @description 並び順 */
+                sort?: components["parameters"]["CreditSort"];
+                /** @description 前回の応答が返した `nextCursor`。同じ `q`・`sort` で続けて使う。`limit` を省いたときは無視する */
+                cursor?: components["parameters"]["CreditCursor"];
+                /** @description 1 ページの件数。省くと全件を返し、`nextCursor` は入らない */
+                limit?: components["parameters"]["CreditLimit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 団体の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    createOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditInput"];
+            };
+        };
+        responses: {
+            /** @description 作った団体 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    getOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 団体の識別子 */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 団体 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 団体の識別子 */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateOrganization: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 団体の識別子 */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditPatch"];
+            };
+        };
+        responses: {
+            /** @description 書き換えた後の団体 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Organization"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    mergeOrganizations: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 団体の識別子 */
+                id: components["parameters"]["OrganizationId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreditMergeRequest"];
+            };
+        };
+        responses: {
+            /** @description 統合後の統合先と、もう無かった統合元 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizationMergeResponse"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     updateVideoTags: {
         parameters: {
             query?: never;
@@ -6734,19 +7885,75 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    getFolderGroup: {
+    listGroups: {
+        parameters: {
+            query?: {
+                /** @description 名前に含む文字列。前後の空白を取り除き、大文字小文字を区別しない */
+                q?: string;
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description グループ 1 ページ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupListPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    createGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupCreate"];
+            };
+        };
+        responses: {
+            /** @description 作ったグループ */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryGroup"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getGroup: {
         parameters: {
             query?: {
                 /**
-                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
-                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+                 * @description 画面が通ってきたグループの id を外側から順に `,` で区切って並べたもの
+                 *     （specs/048-groups/research.md R-8）。応答の `trail` は、このグループから外へ向かって
+                 *     親と子の組が続く部分で、組が崩れた所より外側を捨てる
                  */
-                path?: components["parameters"]["FolderPath"];
+                trail?: number[];
             };
             header?: never;
             path: {
-                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
-                rootId: components["parameters"]["FolderRootId"];
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
             };
             cookie?: never;
         };
@@ -6758,10 +7965,217 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
+                    "application/json": components["schemas"]["GroupDetail"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    dissolveGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 解散した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupName"];
+            };
+        };
+        responses: {
+            /** @description 名前を変えたあとのグループ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
                     "application/json": components["schemas"]["LibraryGroup"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listGroupItems: {
+        parameters: {
+            query?: {
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 項目 1 ページ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupItemPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    addGroupItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupMembers"];
+            };
+        };
+        responses: {
+            /** @description 足したあとのグループ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryGroup"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    removeGroupItems: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupItemRemove"];
+            };
+        };
+        responses: {
+            /** @description 外したあとのグループ（項目が残るとき） */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LibraryGroup"];
+                };
+            };
+            /** @description 最後の項目を外したので、グループを解散した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    moveGroupItem: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+                /** @description グループの項目の識別子。動画やグループの id ではない */
+                itemId: components["parameters"]["GroupItemId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["GroupItemMove"];
+            };
+        };
+        responses: {
+            /** @description 移した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    tagGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 使ったタグ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupTagResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };
@@ -6798,38 +8212,6 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
-        };
-    };
-    tagFolderGroup: {
-        parameters: {
-            query?: {
-                /**
-                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
-                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
-                 */
-                path?: components["parameters"]["FolderPath"];
-            };
-            header?: never;
-            path: {
-                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
-                rootId: components["parameters"]["FolderRootId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 使ったタグと、変更後のまとめ方 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FolderGroupTagResult"];
-                };
-            };
-            400: components["responses"]["InvalidRequest"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
         };
     };
     getCurrentScan: {

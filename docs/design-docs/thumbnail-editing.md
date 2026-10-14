@@ -169,7 +169,9 @@ the thumbnail through the same `Ingest.ApplyThumbnailImage`, with origin
 ([R-1](../../specs/046-thumbnail-image-upload/research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image),
 [contract](../../specs/046-thumbnail-image-upload/contracts/screen-api.md#post-apivideosidthumbnail-image)).
 It needs no ComfyUI connection and holds no session. The route reads the
-video's content key before the body, holds the `image` part in memory and
+video's content key before the body, and answers `409 content_changed` without
+applying when the body's `contentVersion` (the owner-only `Video` field the page
+held when the preview opened) is not that content's. It holds the `image` part in memory and
 writes nothing to disk before the fitted image is published, so a request cut
 off before its body arrives leaves nothing behind. Once the body has arrived,
 the check and the apply run under a context detached from the client and
@@ -218,3 +220,38 @@ not stop uploads to other videos. A generated image's apply does not take the
 gate; its input is the provider's output, already bounded by the edit's
 checks. The lock orders an upload with a position change and a generated
 image's apply, and the one confirmed last stays.
+
+### The page frames the image before it is sent
+
+Picking a file does not upload it. The page decodes the file and draws it on a
+canvas at the video's display aspect, 2048 px on the long side (the image's own
+aspect when the video's is unknown), and the preview shows that canvas in the
+card's thumbnail frame. `Use as thumbnail` uploads the same drawing as a PNG, so
+the thumbnail is what the preview showed
+([web/src/player/thumbnailUpload/](../../web/src/player/thumbnailUpload/)).
+
+| Fit | Drawing |
+| --- | --- |
+| `Whole image` (default) | The whole image, centred; the rest of the frame is black under a blurred copy of the image at half opacity. An image within 1 px of the frame's aspect fills it |
+| `Fill frame` | The image covers the frame at zoom 1× to 4×; the owner moves it, and it never leaves a gap |
+
+Every drawing starts from a black canvas, so the transparent parts of an image
+show black in the preview, as they do in the stored JPEG.
+
+The server's fit then finds an image already at the video's aspect, so the
+centre crop of the fit removes nothing, and the stored source keeps the same
+framing for an edit from the current thumbnail.
+
+| Rejected | Why |
+| --- | --- |
+| Send the original with a crop rectangle and let ffmpeg compose | The preview and the result would come from two drawings; Go and ffmpeg also ignore a JPEG's EXIF orientation, which the browser applies |
+| Store the image at its own aspect and let each frame letterbox it | Cards place the scrub frames and the narrow-video backdrop on the video's aspect ([045 R-7](../../specs/045-comfyui-thumbnails/research.md#r-7-the-generated-image-is-fitted-to-the-videos-frame-before-it-is-stored)) |
+| A margin in the theme's colour | The JPEG has no transparency and the same file serves both themes |
+| The original's resolution on the canvas | Some browsers cap a canvas far below 120 megapixels, and the stored source keeps at most 2048 px anyway |
+
+The server never sees the original, so the page refuses it before the preview
+for the server's reasons: a file whose header is not a PNG, JPEG or WebP one,
+a file it cannot decode, or a WebP whose `VP8X` header sets the animation flag
+(`thumbnail_upload_invalid`), and an image over 120
+megapixels by its header or its decoded size (`thumbnail_upload_too_large`).
+The server still checks the PNG it receives.

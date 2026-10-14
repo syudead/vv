@@ -121,6 +121,8 @@ export type CreatedAPIToken = components["schemas"]["CreatedAPIToken"];
 export type LibraryItem =
   { kind: "video"; video: Video } | { kind: "group"; group: LibraryGroup };
 export type VideoChanged = components["schemas"]["VideoChanged"];
+export type GroupChanged = components["schemas"]["GroupChanged"];
+export type GroupDetail = components["schemas"]["GroupDetail"];
 
 // 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
 // これだけを待つ。
@@ -138,6 +140,8 @@ export interface RequestFailedDetails {
   reason?: string;
   limit?: number;
   tagName?: string;
+  /** 理由が指すプロパティの経路（`code`・`dates[0].date`。specs/047-video-work-info/contracts/screen-api.md）。 */
+  field?: string;
 }
 
 /**
@@ -152,6 +156,7 @@ export class RequestFailed extends Error {
   readonly reason: string | undefined;
   readonly limit: number | undefined;
   readonly tagName: string | undefined;
+  readonly field: string | undefined;
 
   constructor(
     status: number,
@@ -166,6 +171,7 @@ export class RequestFailed extends Error {
     this.reason = details.reason;
     this.limit = details.limit;
     this.tagName = details.tagName;
+    this.field = details.field;
   }
 }
 
@@ -291,6 +297,7 @@ export async function toRequestFailed(response: Response): Promise<RequestFailed
       reason: typeof body.reason === "string" ? body.reason : undefined,
       limit: typeof body.limit === "number" ? body.limit : undefined,
       tagName: typeof body.tagName === "string" ? body.tagName : undefined,
+      field: typeof body.field === "string" ? body.field : undefined,
     },
   );
 }
@@ -330,9 +337,27 @@ export const MAX_TAG_FILTER_COUNT = 16;
  * 無い（フォルダ画面のタグ絞り込みは対象外。
  * specs/014-video-tags/contracts/tags-api.md §5）。
  */
-export interface ListVideosParams extends ListFilterParams {
+export interface ListVideosParams extends ListFilterParams, CreditFilterParams {
   /** 絞り込むタグの id（すべて持つ動画だけにする AND）。最大16個。書く順は問わない。 */
   tag?: number[];
+}
+
+/**
+ * CreditFilterParams は人物・団体での絞り込みである（listVideos・listLibrary・
+ * listLibraryIds。specs/047-video-work-info/contracts/screen-api.md「List parameters
+ * `person` and `organization`」）。どの役割でもその id に結び付いた動画だけにする。
+ */
+export interface CreditFilterParams {
+  person?: number;
+  organization?: number;
+}
+
+/** setCreditFilter は人物・団体の絞り込みを問い合わせに載せる。 */
+function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): void {
+  if (params.person !== undefined) query.set("person", String(params.person));
+  if (params.organization !== undefined) {
+    query.set("organization", String(params.organization));
+  }
 }
 
 /** setListFilters は共通の条件を問い合わせに載せる。 */
@@ -365,6 +390,7 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   const query = new URLSearchParams();
   setListFilters(query, params);
   setTagFilter(query, params.tag);
+  setCreditFilter(query, params);
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
 
@@ -400,6 +426,7 @@ export async function listLibrary(
   const query = new URLSearchParams();
   setListFilters(query, params);
   setTagFilter(query, params.tag);
+  setCreditFilter(query, params);
   const page = await request<components["schemas"]["LibraryPage"]>(
     `/api/library?${query.toString()}`,
     { signal: params.signal },
@@ -414,7 +441,7 @@ export async function listLibrary(
 }
 
 /** ListLibraryIdsParams は「すべて選択」用の全件 id の問い合わせ条件である。 */
-export interface ListLibraryIdsParams {
+export interface ListLibraryIdsParams extends CreditFilterParams {
   query?: string;
   watch?: WatchFilter;
   playable?: boolean;
@@ -441,6 +468,7 @@ export function listLibraryIds(
   if (params.playable === true) query.set("playable", "true");
   if (params.favorite === true) query.set("favorite", "true");
   setTagFilter(query, params.tag);
+  setCreditFilter(query, params);
   return request<VideoIdsResponse>(`/api/library/ids?${query.toString()}`, {
     signal: params.signal,
   });
@@ -496,24 +524,34 @@ export function listFolderVideos(params: ListFolderVideosParams): Promise<VideoP
 }
 
 /**
- * getFolderGroup はフォルダのグループ1件を、絞り込みに関係なく全メンバーから取得する
- * （一覧に残っているグループの項目の取り直し。specs/017-folder-groups/contracts/library-api.md §3）。
- * そのフォルダが今グループでないか無いときは 404 の RequestFailed で失敗する。
+ * getGroup はグループ 1 つを、絞り込みに関係なく子孫の動画の全部から作って取得する
+ * （GET /api/groups/{id}。一覧に残っているグループの項目の取り直しにも使う。
+ * specs/048-groups/contracts/screen-api.md）。無いか見せないときは 404 の RequestFailed で失敗する。
  */
-export function getFolderGroup(
-  folder: FolderRef,
-  signal?: AbortSignal,
-): Promise<LibraryGroup> {
-  const query = folderQuery(folder);
-  const suffix = query.size === 0 ? "" : `?${query.toString()}`;
-  return request<LibraryGroup>(`/api/folders/${String(folder.rootId)}/group${suffix}`, {
-    signal,
-  });
+export function getGroup(id: number, signal?: AbortSignal): Promise<GroupDetail> {
+  return request<GroupDetail>(`/api/groups/${String(id)}`, { signal });
 }
 
-/** getVideo は動画1件の詳細を取得する。 */
-export function getVideo(id: number, signal?: AbortSignal): Promise<Video> {
-  return request<Video>(`/api/videos/${id}`, { signal });
+/**
+ * groupQuery は動画の読み取りに付ける問い合わせである。`group` は動画を開いたグループの id で、
+ * 省けば何も付けない（specs/048-groups/research.md R-9）。
+ */
+function groupQuery(params: Record<string, string>, group: number | undefined): string {
+  const query = new URLSearchParams(params);
+  if (group !== undefined) query.set("group", String(group));
+  return query.size === 0 ? "" : `?${query.toString()}`;
+}
+
+/**
+ * getVideo は動画1件の詳細を取得する。`group` を渡すと、動画の `group` をそのグループの
+ * 再生順で答えさせる（research.md R-9）。
+ */
+export function getVideo(
+  id: number,
+  signal?: AbortSignal,
+  group?: number,
+): Promise<Video> {
+  return request<Video>(`/api/videos/${id}${groupQuery({}, group)}`, { signal });
 }
 
 /**
@@ -593,14 +631,20 @@ export async function revertThumbnailImage(
  * （specs/046-thumbnail-image-upload/contracts/screen-api.md）。Content-Type はブラウザが境界と
  * ともに付けるので、ここでは付けない。
  *
+ * `contentVersion` はプレビューを開いたときの動画の `contentVersion` で、そのあと内容が替わって
+ * いれば 409 `content_changed` で失敗し、何も適用されない
+ * （docs/design-docs/thumbnail-editing.md「Uploaded images」）。
+ *
  * 成功したら `setVideoThumbnailPosition` と同じ理由で一覧の控えを捨てる。
  */
 export async function uploadThumbnailImage(
   id: number,
   image: Blob,
+  contentVersion: string,
   signal?: AbortSignal,
 ): Promise<Video> {
   const form = new FormData();
+  form.append("contentVersion", contentVersion);
   form.append("image", image, image instanceof File ? image.name : "image");
   const video = await request<Video>(`/api/videos/${String(id)}/thumbnail-image`, {
     method: "POST",
@@ -614,32 +658,34 @@ export async function uploadThumbnailImage(
 /**
  * getRelatedVideos は動画詳細画面の関連動画を近さの順に 1 ページ取得する。`cursor` を省くと
  * 先頭のページで、次の動画の id とグループも載る。続きは応答の `nextCursor` を渡して読む。
+ * `group` は動画を開いたグループの id で、グループ・前後をその再生順で答えさせる（R-9）。
  */
 export function getRelatedVideos(
   id: number,
   signal?: AbortSignal,
   cursor?: string,
+  group?: number,
 ): Promise<RelatedVideos> {
-  const query =
-    cursor === undefined ? "" : `?${new URLSearchParams({ cursor }).toString()}`;
+  const query = groupQuery(cursor === undefined ? {} : { cursor }, group);
   return request<RelatedVideos>(`/api/videos/${String(id)}/related${query}`, { signal });
 }
 
 /**
  * listVideoGroupMembers は動画が属するグループのメンバーを、グループの中の並びで
  * offset 本目（0 始まり）から最大 limit 本取得する。関連動画の group の窓の外を読む。
+ * `group` は動画を開いたグループの id で、関連動画の読み取りと同じものを渡す（R-9）。
  */
 export function listVideoGroupMembers(
   id: number,
   offset: number,
   limit: number,
   signal?: AbortSignal,
+  group?: number,
 ): Promise<GroupMemberPage> {
-  const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
-  return request<GroupMemberPage>(
-    `/api/videos/${String(id)}/group-members?${query.toString()}`,
-    { signal },
-  );
+  const query = groupQuery({ offset: String(offset), limit: String(limit) }, group);
+  return request<GroupMemberPage>(`/api/videos/${String(id)}/group-members${query}`, {
+    signal,
+  });
 }
 
 /**

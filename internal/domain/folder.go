@@ -374,6 +374,26 @@ func locateFolderFor(roots []MediaFolder, folderPath string, windows bool, separ
 	return locateFor(roots, folderPath, windows, separator, false)
 }
 
+// LocateFolderKey はフォルダの鍵（FolderKey、自動グループの origin_folder）から、そのフォルダを
+// 含む登録フォルダと相対パスを LocateFolder と同じに求める。鍵は末尾の区切りを落とすので、
+// 登録フォルダ `/` の鍵は空文字になり、LocateFolder では見つからない。そのときは鍵が同じ登録
+// フォルダそのものを返す。
+func LocateFolderKey(roots []MediaFolder, key string) (VideoFolder, bool) {
+	return locateFolderKeyFor(roots, key, runtime.GOOS == "windows", filepath.Separator)
+}
+
+func locateFolderKeyFor(roots []MediaFolder, key string, windows bool, separator rune) (VideoFolder, bool) {
+	if folder, ok := locateFolderFor(roots, key, windows, separator); ok {
+		return folder, true
+	}
+	for _, root := range roots {
+		if folderKeyFor(root.Path, windows, separator) == key {
+			return VideoFolder{RootID: root.ID}, true
+		}
+	}
+	return VideoFolder{}, false
+}
+
 func locateFor(roots []MediaFolder, path string, windows bool, separator rune, dropLast bool) (VideoFolder, bool) {
 	separators := registrationSeparatorsFor(windows, separator)
 	for _, root := range roots {

@@ -53,6 +53,45 @@ export function isProcessing(video: Video): boolean {
   );
 }
 
+/**
+ * withGroupOf は、変更の要求の応答 `saved` のグループを手元の 1 件 `current` のものに揃える。
+ * 変更の要求は `group` を受け取らないので、応答のグループはいつも id のいちばん小さいもので
+ * ある。動画を開いたグループ（`group`）があるときにそれを採ると、グループの行が関連動画の
+ * 再生順と食い違う（specs/048-groups/research.md R-9）。`group` が無ければ応答のまま。
+ */
+function withGroupOf(saved: Video, current: Video | undefined, group?: number): Video {
+  if (group === undefined || current === undefined) return saved;
+  const video = { ...saved };
+  if (current.group === undefined) delete video.group;
+  else video.group = current.group;
+  return video;
+}
+
+/**
+ * groupEventConcerns は、`group` の知らせ（変わったグループとその祖先の id、ids）が動画ページの
+ * グループの行や関連動画のグループの並びに関わるかを返す（specs/048-groups/research.md R-13）。
+ * shown は表示中のグループ、group は動画を開いたグループ（`?group`）の id である。
+ *
+ * サーバーは、開いたグループが動画を持てばそれを、そうでなければ動画を直接の項目に持つ
+ * グループのうち id のいちばん小さいものを文脈にする（research.md R-9、
+ * internal/store/related.go の groupContext）。
+ * - 表示中のグループが無い: 動画がどこかのグループに足されたかもしれないので、いつも関わる。
+ * - 開いたグループが知らせにある: 中身が変わったか、動画が足されて文脈になったかもしれない。
+ * - 開いたグループを表示中: 文脈は他のグループの変化では替わらないので、それだけを見る。
+ * - それ以外（フォールバック中）: 表示中のグループか、それより id の小さいグループが知らせに
+ *   あれば関わる。より小さいグループに動画が足されると、文脈がそちらへ替わる。
+ */
+function groupEventConcerns(
+  ids: readonly number[],
+  shown: number | undefined,
+  group?: number,
+): boolean {
+  if (shown === undefined) return true;
+  if (group !== undefined && ids.includes(group)) return true;
+  if (shown === group) return false;
+  return ids.some((changed) => changed <= shown);
+}
+
 /** loadsStarted は、どの画面でも動画 1 件の取得を始めるたびに進める通し番号である。 */
 let loadsStarted = 0;
 
@@ -65,6 +104,23 @@ export type DetailMark = { load: number; visibility: number; favorite: number };
 /** detailMark は変更の要求（表示名の保存）を送る直前に呼び、その時点の印を返す。 */
 export function detailMark(): DetailMark {
   return { load: loadsStarted, visibility: visibilityMark(), favorite: favoriteMark() };
+}
+
+/**
+ * ReplaceWorkInfo は、`workInfo` を載せない変更の応答で動画を差し替えるときの作品情報の扱いである。
+ * - `keep`: 手元の作品情報を残す。作品情報を変えない変更（表示名・代表サムネイル）の応答に使う。
+ * - `refetch`: 手元の作品情報を残さず、差し替えた後に動画を取り直して作品情報を読む。作品情報が
+ *   変わる変更（束から外すと、外した動画は束ねる前の固有の作品情報に戻る）の応答に使う。
+ */
+export type ReplaceWorkInfo = "keep" | "refetch";
+
+/**
+ * withWorkInfoOf は、`workInfo` を載せない変更の応答 saved に、手元の動画 current の作品情報を
+ * 戻す。応答が `workInfo` を持つとき、手元に無いときは saved のままである。
+ */
+function withWorkInfoOf(saved: Video, current: Video | undefined): Video {
+  if (saved.workInfo !== undefined || current?.workInfo === undefined) return saved;
+  return { ...saved, workInfo: current.workInfo };
 }
 
 /**
@@ -85,30 +141,70 @@ export function detailMark(): DetailMark {
  *   要求の後に始めた取り直しは残す（公開の一部反映で始めた取り直しなど）。
  * - 要求の間に反映した公開の切り替えとお気に入りの付け外しは、応答の `public`・`favorite`
  *   より優先する。どちらもサーバーから知らせが来ないので、ここで巻き戻すと直らない。
+ * - replace に渡る応答（表示名・代表サムネイル・束から外す）は契約上 `workInfo` を載せない
+ *   （specs/047-video-work-info/contracts/screen-api.md「Video changes」）。`workInfo` が
+ *   `keep` なら、応答に無い作品情報は手元の値を残す（そのまま置くと情報欄から作品情報が消える）。
+ *   `refetch` なら手元の値を残さず、差し替えた後に取り直す。束から外した動画は束の作品情報から
+ *   固有の作品情報に戻るので、手元の値を残すと別の作品情報を出し、詳細の保存で上書きしかねない。
  * - 別の動画の応答は捨てる。
+ * - 動画を開いたグループ（`group`）があるときは、応答のグループではなく手元のグループを残す
+ *   （withGroupOf）。
  *
  * `setFavorite` は表示中の動画のお気に入りを `PUT /api/favorites` で付け外しし、成功したら
  * 取り直して、その取得が終わったら解決する（specs/035-favorites/ui-design.md「Video page」）。
  * 塗りは取り直した `favorite` で変える。付け外しの結果の知らせはこの 1 件へ重ねないので、
  * 取り直しの間と取り直しに失敗したときは前の状態のままである。失敗は reject で返す。
+ *
+ * `group` は動画を開いたグループの id で、取得のたびに渡す（specs/048-groups/research.md R-9）。
+ * 同じ動画のまま `group` だけが変わったら、読み込み中に戻さずに取り直す（グループの操作の後に
+ * `group` なしで読み直すとき、再生を止めない）。
  */
-export function useVideoDetail(id: number): {
+export function useVideoDetail(
+  id: number,
+  group?: number,
+  initial?: Video,
+): {
   state: VideoDetailState;
   refresh: () => Promise<void>;
-  replace: (video: Video, mark: DetailMark) => void;
+  replace: (video: Video, mark: DetailMark, workInfo: ReplaceWorkInfo) => void;
   setFavorite: (favorite: boolean) => Promise<void>;
 } {
-  const [state, setState] = useState<VideoDetailState>({ kind: "loading", id });
+  const [state, setState] = useState<VideoDetailState>(() =>
+    initial !== undefined && initial.id === id
+      ? { kind: "ready", id, video: initial }
+      : { kind: "loading", id },
+  );
+  // 手元にある応答（編集画面の保存の応答）から始める。最初の取得までの間もそれを出し、
+  // 古い値や読み込み中を挟まない（specs/047-video-work-info/ui-design.md「Save」）。
+  // 使うのは最初の 1 回だけで、別の動画へ移ったら使わない。
+  const seed = useRef(initial);
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
-  const replaceRef = useRef<(video: Video, mark: DetailMark) => void>(() => undefined);
+  const replaceRef = useRef<
+    (video: Video, mark: DetailMark, workInfo: ReplaceWorkInfo) => void
+  >(() => undefined);
   const setFavoriteRef = useRef<(favorite: boolean) => Promise<void>>(() =>
     Promise.resolve(),
   );
-  // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない。
+  // 変化の知らせ（/api/events）のうち video は所有者だけのもので、ゲストには group だけが届く。
   const owner = useAudience() === "owner";
 
+  // 取得に渡すグループ。下の取得の効果より先に置き、動画が変わったときもその取得から新しい値を使う。
+  const contextRef = useRef({ id, group });
   useEffect(() => {
-    setState({ kind: "loading", id });
+    const previous = contextRef.current;
+    contextRef.current = { id, group };
+    if (previous.id === id && previous.group !== group) void refreshRef.current();
+  }, [id, group]);
+
+  useEffect(() => {
+    // StrictMode が効果を 2 度走らせても同じ動画には使えるよう、別の動画へ移ったときに捨てる。
+    const seeded = seed.current?.id === id ? seed.current : undefined;
+    if (seeded === undefined) seed.current = undefined;
+    setState(
+      seeded === undefined
+        ? { kind: "loading", id }
+        : { kind: "ready", id, video: seeded },
+    );
     if (!Number.isSafeInteger(id) || id < 1) {
       setState({ kind: "missing", id });
       refreshRef.current = () => Promise.resolve();
@@ -121,7 +217,7 @@ export function useVideoDetail(id: number): {
     let controller: AbortController | null = null;
     // 送信中の取り直しを始めたときの loadsStarted の値。
     let started = 0;
-    let current: Video | undefined;
+    let current: Video | undefined = seeded;
     // current を読んだ取得を始めたときの loadsStarted の値と favoriteReadMark の値。
     let currentLoad = 0;
     let currentRead = 0;
@@ -148,7 +244,10 @@ export function useVideoDetail(id: number): {
       const loadStarted = started;
       try {
         const video = withFavoriteSince(
-          withVisibilitySince(await getVideo(id, mine.signal), mark),
+          withVisibilitySince(
+            await getVideo(id, mine.signal, contextRef.current.group),
+            mark,
+          ),
           favorite,
         );
         if (!alive || controller !== mine) return;
@@ -182,7 +281,7 @@ export function useVideoDetail(id: number): {
         void load();
       });
 
-    replaceRef.current = (saved, mark) => {
+    replaceRef.current = (saved, mark, workInfo) => {
       if (!alive || saved.id !== id) return;
       if (controller !== null && started <= mark.load) {
         controller.abort();
@@ -190,13 +289,23 @@ export function useVideoDetail(id: number): {
         settle();
       }
       const video = withFavoriteSince(
-        withVisibilitySince(saved, mark.visibility),
+        withVisibilitySince(
+          workInfo === "keep"
+            ? withWorkInfoOf(
+                withGroupOf(saved, current, contextRef.current.group),
+                current,
+              )
+            : withGroupOf(saved, current, contextRef.current.group),
+          mark.visibility,
+        ),
         mark.favorite,
       );
       current = video;
       // 保存の応答はいつ読んだ値か分からないので、代表へは知らせない（setFavorite）。
       currentLoad = 0;
       setState({ kind: "ready", id, video });
+      // 先に終わった `video` の知らせの取り直しを、この応答で上書きしたかもしれないので取り直す。
+      if (workInfo === "refetch") void load();
     };
 
     setFavoriteRef.current = async (favorite) => {
@@ -256,12 +365,20 @@ export function useVideoDetail(id: number): {
       return undefined;
     });
 
-    // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。
+    // グループの名前・項目・並び順が変わったら、グループの行（位置・本数・前後）を取り直す
+    // （specs/048-groups/research.md R-13）。
+    const onGroup = (ids: readonly number[]) => {
+      if (groupEventConcerns(ids, current?.group?.id, contextRef.current.group))
+        void load();
+    };
+    // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。ゲストには group だけが
+    // 届くので、group だけを購読する（specs/048-groups/contracts/screen-api.md「/api/events」）。
     const unsubscribe = owner
       ? subscribeServerEvents({
           video: (changed) => {
             if (changed === id) void load();
           },
+          group: onGroup,
           // つなぎ直したときは、切れていた間の知らせを受け取っていないので取り直す。
           // 最初の接続では、開いたときの取得と同じ内容を2回続けて取らないよう、まだ準備中
           // （取得とつながるまでの間に準備が済んだかもしれない）のときだけ取り直す（issue 674）。
@@ -270,7 +387,12 @@ export function useVideoDetail(id: number): {
               void load();
           },
         })
-      : () => undefined;
+      : subscribeServerEvents({
+          group: onGroup,
+          open: (reconnected) => {
+            if (reconnected) void load();
+          },
+        });
     void load();
     return () => {
       alive = false;
@@ -286,7 +408,8 @@ export function useVideoDetail(id: number): {
 
   const refresh = useCallback(() => refreshRef.current(), []);
   const replace = useCallback(
-    (video: Video, mark: DetailMark) => replaceRef.current(video, mark),
+    (video: Video, mark: DetailMark, workInfo: ReplaceWorkInfo) =>
+      replaceRef.current(video, mark, workInfo),
     [],
   );
   const setFavorite = useCallback(
@@ -305,6 +428,12 @@ export type RelatedState =
       related: RelatedVideos;
       /** 続きのページの読み込み。省くと `idle`。 */
       more?: "idle" | "loading" | "failed";
+      /**
+       * 最初のページを読んだ回数（同じ動画・同じ開いたグループの間で数える）。グループの知らせで
+       * 読み直すたびに増える。グループの並びの画面はこれで作り直し、窓の外に読み足した古い
+       * メンバーと読み足し中の要求を捨てる。省くと 0。
+       */
+      generation?: number;
     }
   | { kind: "failed"; id: number };
 
@@ -320,8 +449,14 @@ export type RelatedState =
  * 同じ動画へ写す（並びは基準の動画も含む）。取り直さずに、並びの題名を画面の題名とそろえる。
  * `rethumb` は、基準の動画の代表サムネイルを指定・解除した応答を同じように写し、
  * 並びのサムネイル（URL の版が変わる）を画面のサムネイルとそろえる。
+ *
+ * `group` は動画を開いたグループの id で、どのページの取得にも渡す（research.md R-9）。
+ * 変われば最初のページから読み直す。
  */
-export function useRelatedVideos(id: number): {
+export function useRelatedVideos(
+  id: number,
+  group?: number,
+): {
   state: RelatedState;
   retry: () => void;
   loadMore: () => void;
@@ -335,6 +470,10 @@ export function useRelatedVideos(id: number): {
     stateRef.current = state;
   }, [state]);
   const moreAbort = useRef<AbortController | null>(null);
+  const groupRef = useRef(group);
+  useEffect(() => {
+    groupRef.current = group;
+  }, [group]);
 
   useEffect(() => {
     setState({ kind: "loading", id });
@@ -342,26 +481,68 @@ export function useRelatedVideos(id: number): {
       setState({ kind: "ready", id, related: { items: [] }, more: "idle" });
       return;
     }
-    const controller = new AbortController();
-    void (async () => {
+    let controller = new AbortController();
+    // 一度でも並びを出したか。出した後の読み直しは、読み込み中に戻さず今の並びを見せ続け、
+    // 失敗しても今の並びを残す。
+    let shownOnce = false;
+    let generation = 0;
+    const show = (related: RelatedVideos) => {
+      shownOnce = true;
+      generation += 1;
+      setState({ kind: "ready", id, related, more: "idle", generation });
+    };
+    const load = async () => {
+      const mine = controller;
       try {
-        const related = await getRelatedVideos(id, controller.signal);
-        setState({ kind: "ready", id, related, more: "idle" });
+        const related = await getRelatedVideos(id, mine.signal, undefined, group);
+        if (mine.signal.aborted) return;
+        show(related);
       } catch (failure) {
-        if (isAborted(failure)) return;
+        if (mine.signal.aborted || isAborted(failure)) return;
         if (failure instanceof RequestFailed && failure.status === 404) {
-          setState({ kind: "ready", id, related: { items: [] }, more: "idle" });
+          show({ items: [] });
           return;
         }
-        setState({ kind: "failed", id });
+        if (!shownOnce) setState({ kind: "failed", id });
       }
-    })();
+    };
+    // 開いたグループか並びのグループの名前・項目・並び順が変わったら、最初のページから読み直す
+    // （specs/048-groups/research.md R-13）。送信中の取得と続きの取得は打ち切る。続きの取得を
+    // 打ち切ったら、その読み込み中の印も外す。読み直しが失敗して今の並びを残しても、続きを
+    // もう一度読めるようにする。
+    const reload = () => {
+      controller.abort();
+      if (moreAbort.current !== null) {
+        moreAbort.current.abort();
+        moreAbort.current = null;
+        setState((previous) =>
+          previous.kind === "ready" && previous.more === "loading"
+            ? { ...previous, more: "idle" }
+            : previous,
+        );
+      }
+      controller = new AbortController();
+      void load();
+    };
+    // ゲストにも group は届く（specs/048-groups/contracts/screen-api.md「/api/events」）。
+    const unsubscribe = subscribeServerEvents({
+      group: (ids) => {
+        const current = stateRef.current;
+        const shown = current.kind === "ready" ? current.related.group?.id : undefined;
+        if (groupEventConcerns(ids, shown, group)) reload();
+      },
+      open: (reconnected) => {
+        if (reconnected) reload();
+      },
+    });
+    void load();
     return () => {
+      unsubscribe();
       controller.abort();
       moreAbort.current?.abort();
       moreAbort.current = null;
     };
-  }, [attempt, id]);
+  }, [attempt, id, group]);
 
   const loadMore = useCallback(() => {
     const current = stateRef.current;
@@ -373,7 +554,7 @@ export function useRelatedVideos(id: number): {
     const loading = { ...current, more: "loading" as const };
     stateRef.current = loading;
     setState(loading);
-    getRelatedVideos(current.id, controller.signal, cursor).then(
+    getRelatedVideos(current.id, controller.signal, cursor, groupRef.current).then(
       (page) => {
         if (controller.signal.aborted) return;
         setState((previous) => {

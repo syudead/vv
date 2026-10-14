@@ -39,7 +39,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 	query, ok := s.parseVideoQuery(w, audience, videoQueryParams{
 		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
-		favorite: params.Favorite,
+		favorite: params.Favorite, person: params.Person, organization: params.Organization,
 	})
 	if !ok {
 		return
@@ -71,6 +71,9 @@ type videoQueryParams struct {
 	limit    *int
 	tag      *[]int64
 	favorite *bool
+	// person と organization は人物・団体の id による絞り込み（specs/047-video-work-info/research.md R-7）。
+	person       *int64
+	organization *int64
 }
 
 // parseVideoQuery は一覧のパラメータを検査して問い合わせにする。誤りなら 400 を書いて
@@ -110,10 +113,34 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	if query.TagIDs, ok = s.parseTagFilter(w, params.tag); !ok {
 		return domain.VideoQuery{}, false
 	}
+	if query.Person, query.Organization, ok = s.parseCreditFilters(w, params.person, params.organization); !ok {
+		return domain.VideoQuery{}, false
+	}
 	if !s.checkAudienceQuery(w, audience, query) {
 		return domain.VideoQuery{}, false
 	}
 	return query, true
+}
+
+// parseCreditFilters は一覧の person と organization を検査する。指定が無ければ 0 を返す。
+// 正の整数でない値は 400 を書いて ok = false を返す。実体の有無は確かめない（当たらなければ
+// 空の一覧になる、specs/047-video-work-info/contracts/screen-api.md）。
+func (s *server) parseCreditFilters(w http.ResponseWriter, person, organization *int64) (personID, organizationID int64, ok bool) {
+	for _, filter := range []struct {
+		name  string
+		value *int64
+		out   *int64
+	}{{"person", person, &personID}, {"organization", organization, &organizationID}} {
+		if filter.value == nil {
+			continue
+		}
+		if *filter.value < 1 {
+			s.invalidRequest(w, filter.name+" must be a positive integer.")
+			return 0, 0, false
+		}
+		*filter.out = *filter.value
+	}
+	return personID, organizationID, true
 }
 
 // writeVideoPage は一覧1ページを応答に書く。各項目には再生位置・タグと、一覧に
@@ -161,7 +188,8 @@ func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audie
 // 再生位置・読み取りの誤りとそのコード（誤りは絶対パスを含みうる）を出さず、タグを空の配列にする
 // （contracts/guest-api.md §1、親 Issue 要件 18）。ファイル名由来の題名・表示名・代表サムネイルの
 // 位置と適用した画像の有無も出さず、ゲストは title で表示名だけを受け取る
-// （specs/029-video-overrides/contracts/screen-api.md §0）。
+// （specs/029-video-overrides/contracts/screen-api.md §0）。作品情報も出さない
+// （specs/047-video-work-info/research.md R-10）。
 // 所有者にはそのまま返す。
 func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	if audience.IsOwner() {
@@ -176,7 +204,9 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.DisplayName = nil
 	video.ThumbnailPositionMs = nil
 	video.ThumbnailImage = nil
+	video.ContentVersion = nil
 	video.Favorite = nil
+	video.WorkInfo = nil
 	return video
 }
 
@@ -280,18 +310,41 @@ func (s *server) parseTagFilter(w http.ResponseWriter, tag *[]int64) ([]int64, b
 	return *tag, true
 }
 
-// GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。
-func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
+// GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。group は動画を開いたグループで、
+// 応答の group をそのグループで答える（specs/048-groups/research.md R-9）。
+func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoParams) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
 		return
 	}
-	s.writeVideoDetail(w, r, video)
+	// 作品情報は動画 1 件の応答にだけ載せる（specs/047-video-work-info/contracts/screen-api.md
+	// 「Video changes」）。一覧・関連動画・ライブラリの項目は読まない。
+	video, err := s.workInfoForDetail(r.Context(), video)
+	if err != nil {
+		s.internalError(w, "Could not load the video.", err)
+		return
+	}
+	s.writeVideoDetailIn(w, r, video, groupContext(params.Group))
+}
+
+// groupContext は問い合わせの group を文脈のグループの id にする。省かれていれば 0 である。
+func groupContext(group *gen.VideoGroupContext) int64 {
+	if group == nil {
+		return 0
+	}
+	return *group
 }
 
 // writeVideoDetail は動画1件の詳細を GET /api/videos/{id} の形で書く。表示名の設定の
-// 応答も同じ形にする（specs/029-video-overrides/contracts/screen-api.md §1）。
+// 応答も同じ形にする（specs/029-video-overrides/contracts/screen-api.md §1）。group は
+// 文脈の無い動画と同じく、id のいちばん小さいグループで答える。
 func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video domain.Video) {
+	s.writeVideoDetailIn(w, r, video, 0)
+}
+
+// writeVideoDetailIn は writeVideoDetail と同じ応答を、group を文脈のグループ contextID
+// （無ければ 0）で答えて書く。
+func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, video domain.Video, contextID int64) {
 	progress := s.progressFor(r.Context(), []domain.Video{video})
 	tags := s.tagsFor(r.Context(), []domain.Video{video})
 	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.UserKey), tags, video.UserKey)
@@ -301,18 +354,21 @@ func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video 
 	// forAudience がゲストの応答から外す。
 	payload.Location = &gen.VideoLocation{Path: video.Path, Openable: s.canOpen(r)}
 	payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
-	// グループも動画1件の応答にだけ載せる。ゲストには公開のメンバーだけで数えたものが
-	// 返り、公開のメンバーが1本なら無い（specs/017-folder-groups/contracts/folder-groups-api.md §3）。
+	// 作品情報は、読んだ（または書いた）経路が video に埋めたときだけ載せる。
+	payload.WorkInfo = toAPIWorkInfo(video.WorkInfo)
+	// グループも動画1件の応答にだけ載せる。文脈のグループの再生順で数え、ゲストには公開の
+	// 動画だけで数えたものが返る（specs/048-groups/research.md R-9）。
 	if s.catalog != nil {
 		// 位置と本数だけを使うので、メンバーの詳細は読まない。
-		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, domain.GroupWindow{})
+		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, contextID, domain.GroupWindow{})
 		if err != nil {
 			s.internalError(w, "Could not load the video.", err)
 			return
 		}
 		if grouped {
 			payload.Group = &gen.VideoGroupRef{
-				Folder:   gen.VideoFolder{RootId: group.Folder.RootID, Path: group.Folder.Path},
+				Id:       group.ID,
+				Folder:   apiGroupFolder(group.Folder),
 				Name:     group.Name,
 				Position: group.Position(video.ID),
 				Count:    group.Total(),
@@ -491,6 +547,12 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 	if video.ThumbnailPositionMs != nil {
 		position := *video.ThumbnailPositionMs
 		out.ThumbnailPositionMs = &position
+	}
+	// 内容の版はアップロードに添えて送り返す値で、所有者の応答にだけ入る
+	// （docs/design-docs/thumbnail-editing.md「Uploaded images」）。
+	if video.ContentKey != "" {
+		contentVersion := thumbnailVersion(video.ContentKey)
+		out.ContentVersion = &contentVersion
 	}
 	// 適用した画像の出どころも所有者の応答にだけ入る（specs/046-thumbnail-image-upload/contracts/screen-api.md）。
 	if video.ThumbnailImageRevision != 0 && video.ThumbnailImageOrigin != "" {

@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/running-vv.md
-sourceHash: 27fec3975f8e3c077f5f9a608b46260b0d9542920f5055ae6c0161b835858f51
+sourceHash: e16b124f956e44b56cae9383653c195f6ff6ef0a7664e7684595f8f67437b7bd
 ---
 
 # VVMDM を動かす {#running-vvmdm}
@@ -256,13 +256,13 @@ Docker の構成では、アプリケーションのデータを `vv_data` ボ�
 
 | 分類 | テーブルとファイル | 復旧の手段 |
 | --- | --- | --- |
-| 再構築できるインデックス | `videos`、`video_locations`、`location_search_fts`、`jobs`、`scans`、`scan_videos`、`scan_issues`、フォルダのインデックス（`folder_groups`、`folder_group_members`、`video_folder_names`、`folder_index_state`）、`video_transcode_probes`、`video_successions`、`video_fingerprints`、`video_version_candidates`、生成されたサムネイルとプレビュー | 登録済みのメディアフォルダを再びスキャンする |
-| ユーザーデータ | `playback_progress`、`watch_history`、`tags`、`tag_names`、`video_tags`、`auto_tag_rejections`、`rejected_tag_names`、`public_videos`、`video_overrides`、`thumbnail_images`、`video_edits`、`video_favorites`、`folder_favorites`、`playlists`、`playlist_items`、`video_bundles`、`video_bundle_members`、`video_version_dismissals`、`folder_group_overrides` | バックアップのみ |
+| 再構築できるインデックス | `videos`、`video_locations`、`location_search_fts`、`jobs`、`scans`、`scan_videos`、`scan_issues`、フォルダのインデックス（`video_folder_names`、`folder_index_state`）、`video_transcode_probes`、`video_successions`、`video_fingerprints`、`video_version_candidates`、生成されたサムネイルとプレビュー | 登録済みのメディアフォルダを再びスキャンする |
+| ユーザーデータ | `playback_progress`、`watch_history`、`tags`、`tag_names`、`video_tags`、`auto_tag_rejections`、`rejected_tag_names`、`public_videos`、`video_overrides`、`thumbnail_images`、`video_edits`、`video_favorites`、`group_favorites`、`playlists`、`playlist_items`、`groups`、`group_items`、`group_exclusions`、`video_bundles`、`video_bundle_members`、`video_version_dismissals`、`folder_group_overrides`、作品情報（`video_work_info`、`video_work_dates`、`video_work_urls`、`video_work_external_ids`、`video_work_people`、`video_work_organizations`）、人物と組織（`people`、`people_names`、`people_external_ids`、`organizations`、`organization_names`、`organization_external_ids`） | バックアップのみ |
 | 設定 | `account`、`media_folders`、`settings`、`api_tokens` | バックアップ、または設定し直す |
 | 自動タグ付けの記録 | `auto_tag_queue` | Settings の Auto-tagging で動画をタグ付けし直す。所有者が外したタグが戻ることがある ([自動タグ付け](../design-docs/auto-tagging.md)) |
 | セッション | `sessions` | ログインし直す |
 
-ユーザーデータは再スキャンで再現される値（内容の鍵、バージョンのまとまりの鍵、フォルダの絶対パス）をキーにし、動画の行の id をキーにすることはないため、インデックスを再構築しても残る。メディアフォルダを登録するまでスキャンは開始できず、失った API トークンは発行し直す必要がある。
+ユーザーデータは再スキャンで再現される値（内容の鍵、バージョンのまとまりの鍵、フォルダの絶対パス）または自身の id をキーにし、動画の行の id をキーにすることはないため、インデックスを再構築しても残る。メディアフォルダを登録するまでスキャンは開始できず、失った API トークンは発行し直す必要がある。
 
 VVMDM をリセットまたは更新する前に、`mdm.db` を含む `vv_data` ボリューム**全体**をバックアップする:
 

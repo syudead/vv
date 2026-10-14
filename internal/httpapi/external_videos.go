@@ -128,6 +128,7 @@ func toExternalVideo(item domain.ExternalVideo) extgen.ExternalVideo {
 		FileCreatedAt:       item.Video.FileCreatedAt.UTC(),
 		Locations:           make([]extgen.ExternalVideoLocation, 0, len(item.Locations)),
 		Tags:                toExternalVideoTags(item.Tags),
+		WorkInfo:            toExternalWorkInfo(item.Video.WorkInfo),
 	}
 	for _, path := range item.Locations {
 		out.Locations = append(out.Locations, extgen.ExternalVideoLocation{Path: path, FileName: filepath.Base(path)})

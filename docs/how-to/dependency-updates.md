@@ -6,30 +6,37 @@ here.
 
 ## What Renovate does
 
-Renovate decides per update whether it merges the PR itself.
+Renovate decides per update whether it merges the PR itself. The PRs it leaves
+open go to [the Renovate routine](#the-renovate-routine).
 
 ```mermaid
 flowchart LR
   upd[Update found] --> excl{Excluded?}
   excl -->|yes| none[No PR]
   excl -->|no| major{Major update?}
-  major -->|yes| person[Person merges]
+  major -->|yes| routine[Routine fixes and merges]
   major -->|no| checks{Checks pass?}
   checks -->|yes| auto[Renovate merges]
-  checks -->|no| person
+  checks -->|no| routine
+  routine -->|cannot| person[needs-human: person decides]
 ```
 
 - PRs open early every Monday morning (JST) in 6 groups: Go modules, web npm,
   tools npm, GitHub Actions, mise tools and container images. Vulnerability fix
   PRs open at any time.
-- Minor, patch, pin, digest and lockfile maintenance updates are merged
-  automatically once the required `Checks` job passes. Browser E2E and the
-  Docker image run on the push to `main` after the merge.
-- A person reads the breaking changes of a major update before merging it.
+- Minor, patch, pin, digest pinning (`pinDigest`), digest and lockfile maintenance updates are merged
+  automatically once the required `Checks` job passes.
+- Renovate PRs run Browser E2E and build the Docker image without publishing
+  it. Other PRs run them only after the merge to `main`.
 - GitHub Actions are pinned to commit hashes, with the tag name in a comment
   (the `config:best-practices` default).
 - Base images in `Dockerfile` are pinned as `tag@sha256:digest`; when the
   content behind a tag changes, Renovate opens a digest update PR.
+- `renovate.json` constrains npm to 11.x for Renovate's lockfile generation;
+  local development and CI do not inherit this constraint. npm 12 currently
+  fails on the `@tailwindcss/oxide-wasm32-wasi` tarball during lockfile-only
+  updates ([npm issue #9800](https://github.com/npm/cli/issues/9800)). Revisit
+  the constraint when npm fixes that failure.
 
 ## Excluded dependencies
 
@@ -37,6 +44,7 @@ flowchart LR
 | --- | --- | --- |
 | `golang` / `node` images in `Dockerfile`; `go` / `node` in `mise.toml` | Version updates are excluded; digest updates of the `Dockerfile` images stay in scope | The runtime version must match the `go` line in `go.mod`, so a person changes them together |
 | `task` and `jq` in `mise.toml`; `alpine` in `Dockerfile` | In scope, in the mise tools and container images groups | — |
+| `ghcr.io/syudead/vv:latest` in `compose.hosting.yaml` | Excluded | `latest` follows the image published from `main`; pinning its digest would stop that behavior |
 | FFmpeg bundled in the Windows zip (`ffmpegVersion` and `ffmpegSHA256` in `scripts/build/windows_app.go`) | Raised by a person ([Raise the bundled FFmpeg version](#raise-the-bundled-ffmpeg-version)) | Renovate does not read these constants |
 | Dependabot security updates | Disabled in the repository settings | Renovate's `vulnerabilityAlerts` does the same job |
 
@@ -91,10 +99,58 @@ one PR:
    the commit in `.agents/skills/shadcn/VENDORED.md`.
 3. Run `task test-web`; `vendoredSkill.test.ts` fails while `shadcn@` remains.
 
+## The Renovate routine
+
+A Claude Code Routine runs the
+[renovate-triage](../../.agents/skills/renovate-triage/SKILL.md) skill every
+day at 07:47 JST. It takes every open Renovate PR to one of two ends within
+the same run: merged into `main` through the gates in the skill, major updates
+included, or labelled `needs-human`. Nothing is left for the next run.
+
+```mermaid
+flowchart TD
+  start[Daily run] --> watch[Check main after the routine's merges]
+  watch -->|E2E or Docker image broke| broken[needs-human on the merged PR, merges paused]
+  watch --> pr[Next open Renovate PR]
+  pr --> ci{CI running?}
+  ci -->|yes| wait[Wait for CI]
+  wait --> ci
+  ci -->|no| state{Green, and major update reviewed?}
+  state -->|yes| gate{Gates pass?}
+  gate -->|yes| merge[Routine merges]
+  state -->|no| worker[Worker merges main, fixes or reviews, pushes]
+  worker -->|pushed, attempt 1-3| wait
+  worker -->|blocked, or 3 attempts failed| human[needs-human label]
+  merge --> pr
+  human --> pr
+```
+
+- The routine takes the PRs one at a time. A worker brings the PR's branch up
+  to date with `main`, fixes it and pushes; the routine waits for CI on that
+  push in the same run and merges the PR when it is green. A PR still red
+  after three pushes gets `needs-human`. When `main` has moved since a green
+  PR's checks ran, for example because the routine just merged another PR,
+  the routine updates the branch and waits for CI again before merging.
+- The routine also merges green PRs that Renovate would merge later on its own
+  schedule, so none waits for the next day.
+- A major update is merged only after the worker posts a table of its breaking
+  changes on the PR: what each one affects in the repository, how the PR
+  handles it, and the verdict `safe to merge`.
+- When an update the routine merged breaks Browser E2E or the Docker image on
+  `main`, the next run comments the failed job on the merged PR and labels it
+  `needs-human`. The routine does not revert it. Until a person removes that
+  label, the routine keeps fixing PRs but merges none.
+- Each run that changes anything lists what it did in a comment on Renovate's
+  Dependency Dashboard Issue.
+
 ## Renovate PRs that need a person
 
-- A PR left open has a CI failure, a conflict, or is a major update; Renovate's
-  Dependency Dashboard Issue lists them.
+- The routine labels a PR `needs-human` when three attempts did not get it
+  green, when the new version has a bug with no workaround in this repository,
+  or when the failure also happens on `main`. The PR comments say why. Remove
+  the label to hand the PR back to the routine.
+- A merged PR labelled `needs-human` broke `main`. Fix or revert it yourself,
+  then remove the label so the routine merges again.
 - To pause an update, close the PR (the same version is not opened again) or set
   `enabled: false` in `packageRules` in `renovate.json`.
 

@@ -266,6 +266,7 @@ describe("控えの中のグループの項目", () => {
   const groupItem: LibraryItem = {
     kind: "group",
     group: {
+      id: 7,
       folder: { rootId: 3, path: "A/B" },
       name: "B",
       videoCount: 2,
@@ -299,7 +300,7 @@ describe("控えの中のグループの項目", () => {
     });
 
     const restored = takeListSnapshot({ query: "" });
-    expect(restored?.staleGroups).toEqual([{ rootId: 3, path: "A/B" }]);
+    expect(restored?.staleGroups).toEqual([7]);
     expect(restored?.items[1]).toBe(groupItem);
     expect(itemVideos(restored?.items ?? [])[0]?.progress).toBeUndefined();
   });
@@ -320,7 +321,7 @@ describe("控えの中のグループの項目", () => {
     );
 
     const restored = takeListSnapshot({ query: "" });
-    expect(restored?.staleGroups).toEqual([{ rootId: 3, path: "A/B" }]);
+    expect(restored?.staleGroups).toEqual([7]);
     expect(restored?.items[1]).toBe(groupItem);
   });
 
