@@ -40,6 +40,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertTagSortKeyInvariant(t, db)
 		assertFavoriteInvariant(t, db)
 		assertPlaylistInvariant(t, db)
+		assertGroupInvariant(t, db)
 		assertCreditInvariant(t, db)
 		assertWorkInfoInvariant(t, db)
 	})
@@ -441,18 +442,18 @@ func assertRepresentativeInvariant(t *testing.T, db *DB) {
 }
 
 // assertFavoriteInvariant はお気に入りの不変条件を確かめる（specs/035-favorites/data-model.md §1）。
-// video_favorites に空の content_key の行は無く、folder_favorites.path は domain.FolderKey(path) と
-// 等しい（整えた鍵しか書かない）。
+// video_favorites に空の content_key の行は無い。グループのお気に入り（group_favorites）は
+// グループの id で持ち、外部キーが行の有無を保つ（specs/048-groups/research.md R-10）。
 func assertFavoriteInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
 	var present int
 	if err := db.sql.QueryRow(
-		`select count(*) from sqlite_master where type = 'table' and name in ('video_favorites', 'folder_favorites')`,
+		`select count(*) from sqlite_master where type = 'table' and name = 'video_favorites'`,
 	).Scan(&present); err != nil {
 		t.Fatalf("お気に入りの不変条件を検査できない（スキーマを確認できない）: %v", err)
 	}
-	if present < 2 {
+	if present == 0 {
 		return
 	}
 
@@ -463,29 +464,11 @@ func assertFavoriteInvariant(t *testing.T, db *DB) {
 	if count != 0 {
 		t.Errorf("video_favorites に空の content_key の行が %d 行ある", count)
 	}
-
-	rows, err := db.sql.Query(`select path from folder_favorites`)
-	if err != nil {
-		t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var path string
-		if err := rows.Scan(&path); err != nil {
-			t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
-		}
-		if key := domain.FolderKey(path); key != path {
-			t.Errorf("folder_favorites の path %q が FolderKey %q と違う", path, key)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
-	}
 }
 
 // assertPlaylistInvariant はプレイリストの不変条件を確かめる（specs/044-playlists/data-model.md
-// 「Migration」）。1 つのプレイリストの項目の位置は 0 … n-1 で、folder_key は domain.FolderKey(folder_key)
-// と等しい（整えた鍵しか書かない）。
+// 「Migration」）。1 つのプレイリストの項目の位置は 0 … n-1 である。グループの項目はグループの id で
+// 持ち、外部キーが行の有無を保つ（specs/048-groups/research.md R-10）。
 func assertPlaylistInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -518,24 +501,92 @@ func assertPlaylistInvariant(t *testing.T, db *DB) {
 	if err := rows.Err(); err != nil {
 		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
 	}
-	_ = rows.Close()
+}
 
-	keys, err := db.sql.Query(`select folder_key from playlist_items where folder_key is not null`)
-	if err != nil {
-		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+// assertGroupInvariant は、グループの不変条件（specs/048-groups/data-model.md「Migration」）を
+// 確かめる。1 つのグループの項目の位置が 0 … n-1 に詰まっている、origin_folder が
+// domain.FolderKey(origin_folder) と等しい、どのグループも自分の子孫にならない。
+func assertGroupInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'group_items'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("グループの不変条件を検査できない（スキーマを確認できない）: %v", err)
 	}
-	defer func() { _ = keys.Close() }()
-	for keys.Next() {
+	if present == 0 {
+		return
+	}
+	assertGroupPositions(t, db)
+	assertGroupOriginFolders(t, db)
+	assertGroupAcyclic(t, db)
+}
+
+func assertGroupPositions(t *testing.T, db *DB) {
+	t.Helper()
+	rows, err := db.sql.Query(`select group_id, count(*), min(position), max(position), count(distinct position)
+		from group_items group by group_id`)
+	if err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id, count, low, high, distinct int64
+		if err := rows.Scan(&id, &count, &low, &high, &distinct); err != nil {
+			t.Fatalf("グループの不変条件を検査できない: %v", err)
+		}
+		if low != 0 || high != count-1 || distinct != count {
+			t.Errorf("グループ %d の位置が 0 … %d に詰まっていない（min %d、max %d、異なる位置 %d）",
+				id, count-1, low, high, distinct)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
+	}
+}
+
+func assertGroupOriginFolders(t *testing.T, db *DB) {
+	t.Helper()
+	rows, err := db.sql.Query(`select origin_folder from groups where origin_folder is not null`)
+	if err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
 		var key string
-		if err := keys.Scan(&key); err != nil {
-			t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+		if err := rows.Scan(&key); err != nil {
+			t.Fatalf("グループの不変条件を検査できない: %v", err)
 		}
 		if folded := domain.FolderKey(key); folded != key {
-			t.Errorf("playlist_items の folder_key %q が FolderKey %q と違う", key, folded)
+			t.Errorf("groups の origin_folder %q が FolderKey %q と違う", key, folded)
 		}
 	}
-	if err := keys.Err(); err != nil {
-		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
+	if err := rows.Err(); err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
+	}
+}
+
+func assertGroupAcyclic(t *testing.T, db *DB) {
+	t.Helper()
+	rows, err := db.sql.Query(`with recursive down(root, id) as (
+			select group_id, child_id from group_items where child_id is not null
+			union
+			select down.root, i.child_id from down join group_items i on i.group_id = down.id where i.child_id is not null)
+		select distinct root from down where root = id`)
+	if err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			t.Fatalf("グループの不変条件を検査できない: %v", err)
+		}
+		t.Errorf("グループ %d が自分の子孫になっている", id)
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("グループの不変条件を検査できない: %v", err)
 	}
 }
 

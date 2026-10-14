@@ -414,7 +414,7 @@ jobs:
           - group: library
             files: e2e/card-scrub.e2e.ts e2e/folders.e2e.ts e2e/guest.e2e.ts e2e/history.e2e.ts e2e/hover-preview.e2e.ts e2e/playlists.e2e.ts e2e/thumbnail-edit.e2e.ts
           - group: scan and search
-            files: e2e/auth.e2e.ts e2e/scan-issues.e2e.ts e2e/scan-progress.e2e.ts e2e/search.e2e.ts e2e/settings.e2e.ts e2e/work-info.e2e.ts
+            files: e2e/auth.e2e.ts e2e/groups.e2e.ts e2e/scan-issues.e2e.ts e2e/scan-progress.e2e.ts e2e/search.e2e.ts e2e/settings.e2e.ts e2e/work-info.e2e.ts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 

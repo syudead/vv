@@ -46,6 +46,7 @@ const seriesFolder = { rootId: 3, path: "series" };
 
 function seriesGroup(extra: Partial<LibraryGroup> = {}): LibraryGroup {
   return {
+    id: 7,
     folder: seriesFolder,
     name: "series",
     videoCount: 3,
@@ -75,7 +76,7 @@ function json(body: unknown, status = 200): Response {
 
 interface AddBody {
   videoIds: number[];
-  folders: { rootId: number; path: string }[];
+  groupIds: number[];
 }
 
 const fetchMock = vi.fn<typeof fetch>();
@@ -112,7 +113,7 @@ function install(items: LibraryItem[]): { adds: AddBody[] } {
       const body = JSON.parse(String(init?.body)) as AddBody;
       server.adds.push(body);
       return Promise.resolve(
-        json({ added: body.videoIds.length + body.folders.length, existing: 0 }),
+        json({ added: body.videoIds.length + body.groupIds.length, existing: 0 }),
       );
     }
     throw new Error(`unexpected request: ${method} ${url.toString()}`);
@@ -194,11 +195,11 @@ describe("ライブラリからプレイリストに足す（specs/044-playlists
     expect(trigger.className).not.toContain("opacity-0");
     await choose(user);
     expect(await screen.findByText('Added 1 item to "Tonight"')).toBeDefined();
-    expect(server.adds).toEqual([{ videoIds: [1], folders: [] }]);
+    expect(server.adds).toEqual([{ videoIds: [1], groupIds: [] }]);
     expect(screen.queryByText("再生画面")).toBeNull();
   });
 
-  it("グループのカードからは、そのグループのフォルダを送る", async () => {
+  it("グループのカードからは、そのグループの id を送る", async () => {
     const server = install([{ kind: "group", group: seriesGroup() }]);
     const user = userEvent.setup();
     renderLibrary();
@@ -207,10 +208,10 @@ describe("ライブラリからプレイリストに足す（specs/044-playlists
     );
     await choose(user);
     expect(await screen.findByText('Added 1 item to "Tonight"')).toBeDefined();
-    expect(server.adds).toEqual([{ videoIds: [], folders: [seriesFolder] }]);
+    expect(server.adds).toEqual([{ videoIds: [], groupIds: [7] }]);
   });
 
-  it("動画 2 本とグループ 1 つを選ぶと、2 つの id とフォルダを 1 回の要求で送り、選択は残る", async () => {
+  it("動画 2 本とグループ 1 つを選ぶと、2 つの動画の id とグループの id を 1 回の要求で送り、選択は残る", async () => {
     const server = install([
       { kind: "video", video: video(1) },
       { kind: "video", video: video(2) },
@@ -228,12 +229,13 @@ describe("ライブラリからプレイリストに足す（specs/044-playlists
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
     expect(names.indexOf("Add to playlist")).toBe(names.indexOf("Favorite") + 1);
-    expect(names.indexOf("Visibility")).toBe(names.indexOf("Add to playlist") + 1);
+    // 間に「New group」「Add to group」（specs/048-groups/ui-design.md「Selection bar」）。
+    expect(names.indexOf("Visibility")).toBe(names.indexOf("Add to playlist") + 3);
 
     await user.click(within(bar).getByRole("button", { name: "Add to playlist" }));
     await choose(user);
     expect(await screen.findByText('Added 3 items to "Tonight"')).toBeDefined();
-    expect(server.adds).toEqual([{ videoIds: [1, 2], folders: [seriesFolder] }]);
+    expect(server.adds).toEqual([{ videoIds: [1, 2], groupIds: [7] }]);
     expect(screen.getByText("5 videos selected")).toBeDefined();
   });
 
@@ -279,7 +281,7 @@ describe("ライブラリからプレイリストに足す（specs/044-playlists
 
     await user.click(trigger);
     await choose(user);
-    await waitFor(() => expect(server.adds).toEqual([{ videoIds: [1], folders: [] }]));
+    await waitFor(() => expect(server.adds).toEqual([{ videoIds: [1], groupIds: [] }]));
   });
 
   it("ゲストのカードと行には追加の操作が無い", async () => {

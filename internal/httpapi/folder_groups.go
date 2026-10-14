@@ -2,15 +2,15 @@ package httpapi
 
 import (
 	"context"
-	"errors"
 	"net/http"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// フォルダのまとめ方の例外と、グループをタグに変える操作
-// （specs/017-folder-groups/contracts/folder-groups-api.md §1・§2）。
+// フォルダのまとめ方の例外（specs/017-folder-groups/contracts/folder-groups-api.md §1）。
+// フォルダの自動グループをタグに変えるのは POST /api/groups/{id}/tag である
+// （specs/048-groups/research.md R-11）。
 
 // FolderGroups はフォルダのまとめ方の保存先である。internal/store の
 // *FolderGroupStore がこれを満たす。どの操作も1つの取引で済むので、internal/app は
@@ -20,9 +20,6 @@ type FolderGroups interface {
 	FolderGroupings(ctx context.Context, folderPaths []string) ([]domain.FolderGrouping, error)
 	// SetFolderGrouping はフォルダの例外を mode にし（空なら外し）、変更後のまとめ方を返す。
 	SetFolderGrouping(ctx context.Context, folderPath string, mode domain.FolderGroupMode) (domain.FolderGrouping, error)
-	// TagFolderGroup はフォルダのグループをタグに変える。グループでなければ
-	// domain.ErrNotFolderGroup、フォルダ名がタグ名に使えなければ domain.ErrInvalidTagName。
-	TagFolderGroup(ctx context.Context, folderPath string) (domain.FolderGroupTag, error)
 }
 
 // SetFolderGrouping はフォルダのまとめ方の例外を付け外しする
@@ -59,50 +56,7 @@ func (s *server) SetFolderGrouping(w http.ResponseWriter, r *http.Request, rootI
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, apiFolderGrouping(grouping, rel), s.logger)
-}
-
-// TagFolderGroup はフォルダのグループをタグに変える（POST /api/folders/{rootId}/grouping/tag）。
-// 判定は 400（パス）→ 404（フォルダが無い）→ 409（登録フォルダそのもの・グループでない）
-// → 400（フォルダ名がタグ名に使えない）の順に行う。
-func (s *server) TagFolderGroup(w http.ResponseWriter, r *http.Request, rootID gen.FolderRootId, params gen.TagFolderGroupParams) {
-	root, rel, ok := s.resolveFolderRoot(w, r, rootID, params.Path)
-	if !ok {
-		return
-	}
-	dir, ok := s.existingFolderDir(w, r, root, rel)
-	if !ok {
-		return
-	}
-	// 登録フォルダの名前はフォルダ由来のタグの照合に入らないので、タグにしても中の
-	// 動画にそのタグが付かない（data-model.md §4）。
-	if rel == "" {
-		s.conflictReason(w, reasonRootGroupNotTaggable, "The group of a media folder itself cannot be turned into a tag.")
-		return
-	}
-	if s.folderGroups == nil {
-		s.internalError(w, "Folder grouping storage is not configured.", nil)
-		return
-	}
-
-	result, err := s.folderGroups.TagFolderGroup(r.Context(), dir)
-	switch {
-	case errors.Is(err, domain.ErrNotFolderGroup):
-		s.conflictReason(w, reasonFolderNotGroup, "This folder is no longer a group. Reopen the folder.")
-		return
-	case errors.Is(err, domain.ErrInvalidTagName):
-		s.invalidTagName(w, err, "This folder name cannot be used as a tag name. ")
-		return
-	case err != nil:
-		s.folderError(w, r, "Could not turn the group into a tag.", err)
-		return
-	}
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.FolderGroupTagResult{
-		Tag:      toAPITagRef(result.Tag),
-		Created:  result.Created,
-		Grouping: apiFolderGrouping(result.Grouping, rel),
-	}, s.logger)
+	writeJSON(w, http.StatusOK, apiFolderGrouping(grouping), s.logger)
 }
 
 // existingFolderDir は、フォルダが無ければ 404 を書いて false を返し、あれば絶対パスを
@@ -141,15 +95,14 @@ func (s *server) folderGroupings(ctx context.Context, audience domain.Audience, 
 	}
 	out := make([]*gen.FolderGrouping, len(folders))
 	for i, grouping := range groupings {
-		view := apiFolderGrouping(grouping, folders[i].Path)
+		view := apiFolderGrouping(grouping)
 		out[i] = &view
 	}
 	return out, nil
 }
 
-// apiFolderGrouping はまとめ方を契約の形へ写す。rel は登録フォルダからの相対パスで、
-// 空なら登録フォルダそのもの（タグに変えられない）である。
-func apiFolderGrouping(grouping domain.FolderGrouping, rel string) gen.FolderGrouping {
+// apiFolderGrouping はまとめ方を契約の形へ写す。自動グループが無ければ groupId を省く。
+func apiFolderGrouping(grouping domain.FolderGrouping) gen.FolderGrouping {
 	mode := gen.FolderGroupingModeAuto
 	switch grouping.Mode {
 	case domain.FolderGroupUngroup:
@@ -157,11 +110,11 @@ func apiFolderGrouping(grouping domain.FolderGrouping, rel string) gen.FolderGro
 	case domain.FolderGroupDirect:
 		mode = gen.FolderGroupingModeGroupDirect
 	}
-	return gen.FolderGrouping{
-		Mode:     mode,
-		Grouped:  grouping.Grouped,
-		Taggable: grouping.Grouped && rel != "",
+	out := gen.FolderGrouping{Mode: mode}
+	if grouping.GroupID != 0 {
+		out.GroupId = &grouping.GroupID
 	}
+	return out
 }
 
 // domainFolderGroupMode は契約のまとめ方を保存する例外へ写す。auto は空（例外なし）である。

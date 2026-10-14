@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"net/http"
-	"path/filepath"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -33,7 +32,7 @@ func newPlaylistPlaybackFixture(t *testing.T) *playlistPlaybackFixture {
 	}
 	f.id = playlist.ID
 	if _, err := playlists.AddPlaylistItems(ctx, f.id, domain.PlaylistAdd{
-		VideoIDs: []int64{f.ids["solo"]}, FolderPaths: []string{filepath.Join(f.mediaDir, "show")},
+		VideoIDs: []int64{f.ids["solo"]}, GroupIDs: []int64{f.groupID(t, "show")},
 	}); err != nil {
 		t.Fatal(err)
 	}

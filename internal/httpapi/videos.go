@@ -309,8 +309,9 @@ func (s *server) parseTagFilter(w http.ResponseWriter, tag *[]int64) ([]int64, b
 	return *tag, true
 }
 
-// GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。
-func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
+// GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。group は動画を開いたグループで、
+// 応答の group をそのグループで答える（specs/048-groups/research.md R-9）。
+func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoParams) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
 		return
@@ -322,12 +323,27 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 		s.internalError(w, "Could not load the video.", err)
 		return
 	}
-	s.writeVideoDetail(w, r, video)
+	s.writeVideoDetailIn(w, r, video, groupContext(params.Group))
+}
+
+// groupContext は問い合わせの group を文脈のグループの id にする。省かれていれば 0 である。
+func groupContext(group *gen.VideoGroupContext) int64 {
+	if group == nil {
+		return 0
+	}
+	return *group
 }
 
 // writeVideoDetail は動画1件の詳細を GET /api/videos/{id} の形で書く。表示名の設定の
-// 応答も同じ形にする（specs/029-video-overrides/contracts/screen-api.md §1）。
+// 応答も同じ形にする（specs/029-video-overrides/contracts/screen-api.md §1）。group は
+// 文脈の無い動画と同じく、id のいちばん小さいグループで答える。
 func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video domain.Video) {
+	s.writeVideoDetailIn(w, r, video, 0)
+}
+
+// writeVideoDetailIn は writeVideoDetail と同じ応答を、group を文脈のグループ contextID
+// （無ければ 0）で答えて書く。
+func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, video domain.Video, contextID int64) {
 	progress := s.progressFor(r.Context(), []domain.Video{video})
 	tags := s.tagsFor(r.Context(), []domain.Video{video})
 	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.UserKey), tags, video.UserKey)
@@ -339,18 +355,19 @@ func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video 
 	payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
 	// 作品情報は、読んだ（または書いた）経路が video に埋めたときだけ載せる。
 	payload.WorkInfo = toAPIWorkInfo(video.WorkInfo)
-	// グループも動画1件の応答にだけ載せる。ゲストには公開のメンバーだけで数えたものが
-	// 返り、公開のメンバーが1本なら無い（specs/017-folder-groups/contracts/folder-groups-api.md §3）。
+	// グループも動画1件の応答にだけ載せる。文脈のグループの再生順で数え、ゲストには公開の
+	// 動画だけで数えたものが返る（specs/048-groups/research.md R-9）。
 	if s.catalog != nil {
 		// 位置と本数だけを使うので、メンバーの詳細は読まない。
-		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, domain.GroupWindow{})
+		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, contextID, domain.GroupWindow{})
 		if err != nil {
 			s.internalError(w, "Could not load the video.", err)
 			return
 		}
 		if grouped {
 			payload.Group = &gen.VideoGroupRef{
-				Folder:   gen.VideoFolder{RootId: group.Folder.RootID, Path: group.Folder.Path},
+				Id:       group.ID,
+				Folder:   apiGroupFolder(group.Folder),
 				Name:     group.Name,
 				Position: group.Position(video.ID),
 				Count:    group.Total(),

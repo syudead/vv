@@ -47,7 +47,7 @@ func (s *IngestStore) ApplyProbe(
 	if err != nil {
 		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
 	}
-	var succeeded []int64
+	var succeeded succession
 	if count == 1 {
 		if probe.Transcode != nil {
 			if err := upsertTranscodeProbe(ctx, tx, id, probe.Source, *probe.Transcode, now); err != nil {

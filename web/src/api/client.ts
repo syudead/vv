@@ -121,6 +121,8 @@ export type CreatedAPIToken = components["schemas"]["CreatedAPIToken"];
 export type LibraryItem =
   { kind: "video"; video: Video } | { kind: "group"; group: LibraryGroup };
 export type VideoChanged = components["schemas"]["VideoChanged"];
+export type GroupChanged = components["schemas"]["GroupChanged"];
+export type GroupDetail = components["schemas"]["GroupDetail"];
 
 // 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
 // これだけを待つ。
@@ -522,24 +524,34 @@ export function listFolderVideos(params: ListFolderVideosParams): Promise<VideoP
 }
 
 /**
- * getFolderGroup はフォルダのグループ1件を、絞り込みに関係なく全メンバーから取得する
- * （一覧に残っているグループの項目の取り直し。specs/017-folder-groups/contracts/library-api.md §3）。
- * そのフォルダが今グループでないか無いときは 404 の RequestFailed で失敗する。
+ * getGroup はグループ 1 つを、絞り込みに関係なく子孫の動画の全部から作って取得する
+ * （GET /api/groups/{id}。一覧に残っているグループの項目の取り直しにも使う。
+ * specs/048-groups/contracts/screen-api.md）。無いか見せないときは 404 の RequestFailed で失敗する。
  */
-export function getFolderGroup(
-  folder: FolderRef,
-  signal?: AbortSignal,
-): Promise<LibraryGroup> {
-  const query = folderQuery(folder);
-  const suffix = query.size === 0 ? "" : `?${query.toString()}`;
-  return request<LibraryGroup>(`/api/folders/${String(folder.rootId)}/group${suffix}`, {
-    signal,
-  });
+export function getGroup(id: number, signal?: AbortSignal): Promise<GroupDetail> {
+  return request<GroupDetail>(`/api/groups/${String(id)}`, { signal });
 }
 
-/** getVideo は動画1件の詳細を取得する。 */
-export function getVideo(id: number, signal?: AbortSignal): Promise<Video> {
-  return request<Video>(`/api/videos/${id}`, { signal });
+/**
+ * groupQuery は動画の読み取りに付ける問い合わせである。`group` は動画を開いたグループの id で、
+ * 省けば何も付けない（specs/048-groups/research.md R-9）。
+ */
+function groupQuery(params: Record<string, string>, group: number | undefined): string {
+  const query = new URLSearchParams(params);
+  if (group !== undefined) query.set("group", String(group));
+  return query.size === 0 ? "" : `?${query.toString()}`;
+}
+
+/**
+ * getVideo は動画1件の詳細を取得する。`group` を渡すと、動画の `group` をそのグループの
+ * 再生順で答えさせる（research.md R-9）。
+ */
+export function getVideo(
+  id: number,
+  signal?: AbortSignal,
+  group?: number,
+): Promise<Video> {
+  return request<Video>(`/api/videos/${id}${groupQuery({}, group)}`, { signal });
 }
 
 /**
@@ -640,32 +652,34 @@ export async function uploadThumbnailImage(
 /**
  * getRelatedVideos は動画詳細画面の関連動画を近さの順に 1 ページ取得する。`cursor` を省くと
  * 先頭のページで、次の動画の id とグループも載る。続きは応答の `nextCursor` を渡して読む。
+ * `group` は動画を開いたグループの id で、グループ・前後をその再生順で答えさせる（R-9）。
  */
 export function getRelatedVideos(
   id: number,
   signal?: AbortSignal,
   cursor?: string,
+  group?: number,
 ): Promise<RelatedVideos> {
-  const query =
-    cursor === undefined ? "" : `?${new URLSearchParams({ cursor }).toString()}`;
+  const query = groupQuery(cursor === undefined ? {} : { cursor }, group);
   return request<RelatedVideos>(`/api/videos/${String(id)}/related${query}`, { signal });
 }
 
 /**
  * listVideoGroupMembers は動画が属するグループのメンバーを、グループの中の並びで
  * offset 本目（0 始まり）から最大 limit 本取得する。関連動画の group の窓の外を読む。
+ * `group` は動画を開いたグループの id で、関連動画の読み取りと同じものを渡す（R-9）。
  */
 export function listVideoGroupMembers(
   id: number,
   offset: number,
   limit: number,
   signal?: AbortSignal,
+  group?: number,
 ): Promise<GroupMemberPage> {
-  const query = new URLSearchParams({ offset: String(offset), limit: String(limit) });
-  return request<GroupMemberPage>(
-    `/api/videos/${String(id)}/group-members?${query.toString()}`,
-    { signal },
-  );
+  const query = groupQuery({ offset: String(offset), limit: String(limit) }, group);
+  return request<GroupMemberPage>(`/api/videos/${String(id)}/group-members${query}`, {
+    signal,
+  });
 }
 
 /**

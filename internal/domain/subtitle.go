@@ -68,7 +68,7 @@ func SubtitleSidecars(videoFileName string, entries []SidecarEntry) []SubtitleSi
 		if !ok {
 			continue
 		}
-		key := foldKey(norm.NFC.String(candidate.Label))
+		key := FoldKey(norm.NFC.String(candidate.Label))
 		if current, exists := chosen[key]; !exists || preferSidecar(candidate, current) {
 			chosen[key] = candidate
 		}
@@ -162,9 +162,9 @@ func equalFoldRune(a, b rune) bool {
 	return false
 }
 
-// foldKey は s の各文字を Unicode の単純な case folding で同じとみなす文字のうち最小の
+// FoldKey は s の各文字を Unicode の単純な case folding で同じとみなす文字のうち最小の
 // ものに置き換える。equalFoldRune で等しい 2 つの文字列は同じ鍵になる（`Σ`・`σ`・`ς`）。
-func foldKey(s string) string {
+func FoldKey(s string) string {
 	var b strings.Builder
 	b.Grow(len(s))
 	for _, r := range s {

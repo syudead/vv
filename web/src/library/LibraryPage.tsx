@@ -22,10 +22,11 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import type { CreditKind } from "../api/credits";
-import { groupRef, itemKey } from "../api/libraryItems";
+import { itemKey } from "../api/libraryItems";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
+import { GroupChangedContext } from "../groups/groupChanges";
 import { errorText, t } from "../i18n";
 import {
   readViewPreferences,
@@ -77,6 +78,8 @@ import {
   type LibrarySelection,
   reconcileGroups,
   sameSelection,
+  selectedGroupOf,
+  isGroupSelected,
   setGroup,
   setVideo,
   toggleGroup,
@@ -84,6 +87,7 @@ import {
 } from "./selection";
 import SelectionBar from "./SelectionBar";
 import { TagRowMeasureProvider } from "./TagRowMeasure";
+import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
 import {
   addTagId,
   clearConditions as clearTagConditions,
@@ -329,24 +333,16 @@ export default function LibraryPage() {
   const changeGroupSelection = useCallback(
     (group: LibraryGroup, selected: boolean) => {
       invalidateSelectAll();
-      setSelection((current) =>
-        setGroup(
-          current,
-          { folder: groupRef(group), videoIds: group.videoIds },
-          selected,
-        ),
-      );
+      setSelection((current) => setGroup(current, selectedGroupOf(group), selected));
     },
     [invalidateSelectAll],
   );
-  // 選択中にグループのカードのタグを押したときの切り替え。全メンバーが選択に
-  // 入っていれば外し、そうでなければグループとして選ぶ。
+  // 選択中にグループのカードのタグを押したときの切り替え。グループとして選んで
+  // いれば外し、そうでなければグループとして選ぶ（selection.ts の isGroupSelected）。
   const toggleGroupSelection = useCallback(
     (group: LibraryGroup) => {
       invalidateSelectAll();
-      setSelection((current) =>
-        toggleGroup(current, { folder: groupRef(group), videoIds: group.videoIds }),
-      );
+      setSelection((current) => toggleGroup(current, selectedGroupOf(group)));
     },
     [invalidateSelectAll],
   );
@@ -445,24 +441,7 @@ export default function LibraryPage() {
   }, [clearSelection, conditionsSignature]);
   useScrollTopOnChange(conditionsSignature);
 
-  useEffect(() => {
-    if (selectedIds.size === 0) return;
-    const onKey = (event: KeyboardEvent) => {
-      // 選択バーのタグ操作の Combobox・ポップオーバーが Esc を自分の操作として
-      // 使ったとき（候補の一覧や吹き出しを閉じる）は、preventDefault 済みなので
-      // ここでは見送り、選択を解除しない（ui-design.md「Combobox」）。
-      if (event.key !== "Escape" || event.defaultPrevented) return;
-      // 選択バーから開いた窓（「Bundle as versions」）の Esc は窓を閉じるだけにし、
-      // 選択を残す（specs/030-video-versions/ui-design.md「Bundle dialog」）。窓が開いて
-      // いるかはフォーカスの位置によらずに見る。送る間は押したボタンが disabled になって
-      // フォーカスが body に落ちるので、event.target で見ると選択を解除して窓ごと消し、
-      // 送り終えた後の一覧の取り直しとトーストまで失ってしまうため。
-      if (document.querySelector('[aria-modal="true"]') !== null) return;
-      clearSelection();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [clearSelection, selectedIds.size]);
+  useEscapeClearsSelection(selectedIds.size > 0, clearSelection);
 
   // --- スクロール位置の復元 ---
   const pendingScroll = useRef(restored?.scrollY);
@@ -659,8 +638,7 @@ export default function LibraryPage() {
   const groupProps = (group: LibraryGroup) => ({
     group,
     backTo: listUrl,
-    selected:
-      group.videoIds.length > 0 && group.videoIds.every((id) => selectedIds.has(id)),
+    selected: isGroupSelected(selection, group.id),
     selectionMode,
     onSelect: owner ? changeGroupSelection : undefined,
     activePreviewId,
@@ -726,6 +704,7 @@ export default function LibraryPage() {
               <TableHead className="pr-4">{t.library.columns.title}</TableHead>
               {owner && <TableHead className="w-8" />}
               {owner && <TableHead className="hidden w-8 sm:table-cell" />}
+              {owner && <TableHead className="hidden w-8 sm:table-cell" />}
               <TableHead className="hidden w-16 pr-4 sm:table-cell" />
               <TableHead className="w-list-number pr-4 text-right">
                 {t.library.columns.duration}
@@ -756,81 +735,89 @@ export default function LibraryPage() {
   );
 
   return (
-    <ListPage
-      header={
-        <PageHeader
-          title={t.library.title}
-          count={
-            initialLoadFailed ? undefined : (
-              <span role="status" aria-label={t.library.resultsLabel} aria-live="polite">
-                {resultStatus}
-              </span>
-            )
-          }
-        />
-      }
-      toolbar={
-        <TopBarPortal>
-          <LibraryToolbar
-            query={query}
-            onQueryCommit={commitQuery}
-            searchRef={searchField}
-            sort={sort}
-            onSortChange={changeSort}
-            onShuffle={shuffle}
-            watch={watch}
-            onWatchChange={changeWatch}
-            playable={playable}
-            onPlayableChange={changePlayable}
-            favorite={favorite}
-            onFavoriteChange={changeFavorite}
-            canClear={conditioned}
-            onClear={clearAll}
-            view={view}
-            onViewChange={(next) => {
-              resetPreview();
-              savePreferences({ ...preferences, view: next });
-            }}
-            zoom={zoom}
-            onZoomChange={changeZoom}
+    // 「New group」「Add to group」で足したものはいちばん上から外れるので、一覧をその場で
+    // 読み直す（specs/048-groups/ui-design.md「Add to group」の Result）。
+    <GroupChangedContext value={refreshInPlace}>
+      <ListPage
+        header={
+          <PageHeader
+            title={t.library.title}
+            count={
+              initialLoadFailed ? undefined : (
+                <span
+                  role="status"
+                  aria-label={t.library.resultsLabel}
+                  aria-live="polite"
+                >
+                  {resultStatus}
+                </span>
+              )
+            }
           />
-        </TopBarPortal>
-      }
-      band={
-        hasFilterChips(tagIds, credits) && (
-          <ActiveTagFilters
-            tagIds={tagIds}
-            onRemove={removeActiveTag}
-            credits={credits}
-            onRemoveCredit={removeCredit}
-            onCreditGone={creditGone}
-            searchFieldRef={searchField}
-          />
-        )
-      }
-      selectionBar={
-        owner && (
-          <SelectionBar
-            count={selectedIds.size}
-            allSelected={allSelected}
-            selectedIds={selectedIdsArray}
-            favoriteVideoIds={favoriteSelection.videoIds}
-            favoriteFolders={favoriteSelection.folders}
-            selectingAll={selectingAll}
-            onSelectAll={selectAll}
-            onClear={clearSelection}
-            onTagRemoved={onTagRemoved}
-            onBundled={onBundled}
-          />
-        )
-      }
-    >
-      {body}
-      {loadingMore && <LoadMoreRow status="loading" label={t.list.loading} />}
-      {error !== null && items.length > 0 && (
-        <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
-      )}
-      <div ref={sentinel} aria-hidden="true" className="h-px" />
-    </ListPage>
+        }
+        toolbar={
+          <TopBarPortal>
+            <LibraryToolbar
+              query={query}
+              onQueryCommit={commitQuery}
+              searchRef={searchField}
+              sort={sort}
+              onSortChange={changeSort}
+              onShuffle={shuffle}
+              watch={watch}
+              onWatchChange={changeWatch}
+              playable={playable}
+              onPlayableChange={changePlayable}
+              favorite={favorite}
+              onFavoriteChange={changeFavorite}
+              canClear={conditioned}
+              onClear={clearAll}
+              view={view}
+              onViewChange={(next) => {
+                resetPreview();
+                savePreferences({ ...preferences, view: next });
+              }}
+              zoom={zoom}
+              onZoomChange={changeZoom}
+            />
+          </TopBarPortal>
+        }
+        band={
+          hasFilterChips(tagIds, credits) && (
+            <ActiveTagFilters
+              tagIds={tagIds}
+              onRemove={removeActiveTag}
+              credits={credits}
+              onRemoveCredit={removeCredit}
+              onCreditGone={creditGone}
+              searchFieldRef={searchField}
+            />
+          )
+        }
+        selectionBar={
+          owner && (
+            <SelectionBar
+              count={selectedIds.size}
+              allSelected={allSelected}
+              selectedIds={selectedIdsArray}
+              favoriteVideoIds={favoriteSelection.videoIds}
+              favoriteGroupIds={favoriteSelection.groupIds}
+              selectingAll={selectingAll}
+              onSelectAll={selectAll}
+              onClear={clearSelection}
+              onTagRemoved={onTagRemoved}
+              onBundled={onBundled}
+            />
+          )
+        }
+      >
+        {body}
+        {loadingMore && <LoadMoreRow status="loading" label={t.list.loading} />}
+        {error !== null && items.length > 0 && (
+          <LoadMoreFailed reason={error} onRetry={retryLoadMore} />
+        )}
+        <div ref={sentinel} aria-hidden="true" className="h-px" />
+      </ListPage>
+    </GroupChangedContext>
   );
 }

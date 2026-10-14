@@ -294,6 +294,17 @@ describe("VideoPage のプレイリストの文脈", () => {
     expect(location()).toBe("/videos/12?playlist=5&item=22");
   });
 
+  it("`?group` があってもプレイリストの文脈を優先し、読み取りに group を運ばない（048 ui-design.md「Video page」）", async () => {
+    renderPage("/videos/12?playlist=5&item=22&group=9");
+    await line();
+    expect(calls("/api/playlists/5/playback?item=22&video=12")).toBe(1);
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("group="))).toBe(
+      false,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Next item: third" }));
+    expect(location()).toBe("/videos/13?playlist=5&item=23");
+  });
+
   it("最初の項目に前の矢印は無い", async () => {
     renderPage("/videos/11?playlist=5&item=21");
     await line();
@@ -511,7 +522,7 @@ describe("VideoPage のプレイリストの文脈", () => {
     const member1 = videoOf(41, "member-one");
     const member3 = videoOf(43, "member-three");
     const group = {
-      folder: { rootId: 1, path: "series" },
+      id: 1,
       name: "series",
       items: [member1, second, member3],
       offset: 0,
@@ -542,7 +553,7 @@ describe("VideoPage のプレイリストの文脈", () => {
 
   it("単体の動画の項目では、メンバーの行は今までどおり動画だけを開く", async () => {
     const group = {
-      folder: { rootId: 1, path: "series" },
+      id: 1,
       name: "series",
       items: [videoOf(41, "member-one"), second],
       offset: 0,

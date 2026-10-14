@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 4c42576a149908879184e2b6c10f31a6e59848bd23893a9c01974ce075f28619
+sourceHash: 64f7ce2068aa55fa23efcc0a7b4d56f338cd5aae3ba959fe39d80e55b03a046e
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -185,7 +185,7 @@ flowchart LR
 | 場合 | 振る舞い |
 | --- | --- |
 | ライブラリでタグを押す | そのタグで絞り込む |
-| フォルダのページでタグを押す | `/?tag=<id>` を開く |
+| フォルダのページかグループのページでタグを押す | `/?tag=<id>` を開く |
 | 行に収まらないタグ | `+N` にまとめる。その上でマウスを止めるか押すと、隠れたタグを折り返すチップとしてビューポートの中に開き、収まらないときはスクロールし、どの名前も省略せずに示す（[041 UI 設計](../../specs/041-tag-overflow-list/ui-design.md#the-list)） |
 | フォルダ名だけから来たタグ | 同じ大きさ、塗りなし、破線の枠線、Folder の印。動画ページでは × がなく、`Remove tag` の候補にならない（[017 UI 設計](../../specs/017-folder-groups/ui-design.md)） |
 | ホバーのプレビュー | どの画面でも一度に 1 つ |
@@ -193,9 +193,9 @@ flowchart LR
 
 フォルダカードは名前を最大 2 行で表示し、完全な名前は `title` に入れる。所有者にはメディアフォルダのパスも見え、末尾を優先して切り詰め、完全なパスは `title` に入れる。登録した空のルートは、そこにファイルを置いて取り込むよう案内する。
 
-ライブラリは `GET /api/library` を読み、これはフォルダのグループを動画に混ぜて返す。フォルダのページとその検索結果は動画を 1 本ずつ並べる。グループカードは、件数（`12 videos`）と合計の長さを示すパネル、一部のメンバーが視聴途中のときだけ出る視聴済みの割合のバー、グループ名、メンバーのタグを表示する。押すと続きを見るメンバー（`/videos/{openVideoId}`）を開く。ゲストには視聴状態、視聴済み数、バーが見えない。
+ライブラリは `GET /api/library` を読み、これはフォルダのグループを動画に混ぜて返す。フォルダのページとその検索結果は動画を 1 本ずつ並べる。グループカードは、件数（`12 videos`）と合計の長さを示すパネル、一部のメンバーが視聴途中のときだけ出る視聴済みの割合のバー、グループ名、メンバーのタグを表示する。押すとグループのページ（`/groups/{id}`）を開く。このページは、貼り付く経路の帯の下に、グループの子グループと動画を保存した順に並べる（[048 UI 設計、Group page](../../specs/048-groups/ui-design.md#group-page)）。そのページでは、子グループは 1 グループ長い `?trail` で開き、動画は `?group` で開くので、動画のページはそのグループに従う。ゲストには視聴状態、視聴済み数、バーが見えない。
 
-グループの解除、フォルダ直下の動画のグループ化、グループのタグへの変換はカードにない。これらは、フォルダのページの `Videos N` 見出し行の右端にある所有者のメニュー（[`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)）と、動画ページのグループ名の行にある。操作の後、キャッシュしたライブラリの一覧は破棄され、次に訪れたときに読み直す。
+グループの解除、フォルダ直下の動画のグループ化、グループのタグへの変換はカードにない。これらは、フォルダのページの `Videos N` 見出し行の右端にある所有者のメニュー（[`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)）にあり、タグへの変換と解散は動画ページのグループの操作（[グループのメンバー](#group-members)）にもある。フォルダのメニューが "Turn the group into a tag…" を出すのは、登録済みのフォルダ自身のグループを含め、フォルダに自動のグループがあるときだけであり、この項目はすべての入口が共有する確認ダイアログを開く（[`GroupTagDialog.tsx`](../../web/src/groups/GroupTagDialog.tsx)、[048 UI 設計、Turning into a tag](../../specs/048-groups/ui-design.md#turning-into-a-tag)）。操作の後、キャッシュしたライブラリの一覧は破棄され、次に訪れたときに読み直す。
 
 ### お気に入りの印 {#favorite-mark}
 
@@ -221,13 +221,13 @@ flowchart LR
   kind -->|グループ| refetch[グループを取得し直す]
 ```
 
-グループは `GET /api/folders/{rootId}/group` で取得し直す。
+グループは `GET /api/groups/{id}` で取得し直す。
 
-ハートの左、同じ角に、オフのハートとちょうど同じときに表示される所有者の `Add to playlist` コントロールがあり、プレイリストのピッカーを開く。状態を持たないので、ハートが角に最も近いままになる（[`AddToPlaylistButton.tsx`](../../web/src/playlists/AddToPlaylistButton.tsx)、[044 UI 設計、Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist)）。
+ハートの左、同じ角に、オフのハートとちょうど同じときに表示される所有者の `Add to playlist` コントロールがあり、プレイリストのピッカーを開く。その左の `Add to group` はグループのピッカーを開く。どちらも状態を持たないので、ハートが角に最も近いままになる（[`PickerButton.tsx`](../../web/src/library/PickerButton.tsx)、[044 UI 設計、Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist)、[048 UI 設計、Add to group](../../specs/048-groups/ui-design.md#add-to-group)）。
 
 ### リスト表示と選択 {#list-view-and-selection}
 
-リスト表示（ライブラリだけ）は、タイトル、お気に入り（所有者）、プレイリストへの追加（所有者、`sm` から。それより下ではカードと選択バーがこれを提供する）、視聴済み、長さ、画質、サイズ、追加日を表示する。グループの行は同じ列を使う。最初のメンバーのサムネイル、タイトルの下に Folder の印と件数、`3 / 12` の視聴済み、合計の長さとサイズ、空の画質だ（[017 UI 設計、List view row](../../specs/017-folder-groups/ui-design.md)）。
+リスト表示（ライブラリだけ）は、タイトル、お気に入り（所有者）、プレイリストへの追加とグループへの追加（所有者、`sm` から。それより下ではカードと選択バーがこれらを提供する）、視聴済み、長さ、画質、サイズ、追加日を表示する。グループの行は同じ列を使う。最初のメンバーのサムネイル、タイトルの下に Folder の印と件数、`3 / 12` の視聴済み、合計の長さとサイズ、空の画質だ（[017 UI 設計、List view row](../../specs/017-folder-groups/ui-design.md)）。
 
 選択はライブラリと所有者だけのものだ。チェックは、グリッドではホバーかフォーカスのときに（ホバーできない環境では常に）、リスト表示では常に薄く、選択中はすべての項目に表示する。グループのチェックが何を選ぶかは [017 UI 設計、Pressing and selection](../../specs/017-folder-groups/ui-design.md#pressing-and-selection) にある。
 
@@ -235,9 +235,9 @@ flowchart LR
 
 選択バーは、最初の項目を選んだときから画面の下端に固定され、ツールバーを動かしたり大きさを変えたりしない。操作名は決して短縮しないので、ホバーのない機器でも読める。デザインシステムのバー（`SelectionBar`、最大 `max-w-4xl`）は、操作名が収まらないときは 2 行目へ折り返す。
 
-項目は順に、解除、`N selected`、`Add tag`、`Remove tag`、`Favorite`、`Add to playlist`、`Visibility`、`Bundle as versions`（動画 2 本以上）、区切り、`Select all` だ。操作は右端に置き、収まらないものは次の行の右端へ移る。
+項目は順に、解除、`N selected`、`Add tag`、`Remove tag`、`Favorite`、`Add to playlist`、`New group`、`Add to group`、`Visibility`、`Bundle as versions`（動画 2 本以上）、区切り、`Select all` だ。操作は右端に置き、収まらないものは次の行の右端へ移る。
 
-詳細: タグ操作は [014 UI 設計、Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar)、公開範囲のメニューは [016 UI 設計、Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar)、`Favorite` と折り返しは [035 UI 設計、Selection bar](../../specs/035-favorites/ui-design.md#selection-bar)、`Favorite` と同じものを送る `Add to playlist` は [044 UI 設計、Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist) にある。
+詳細: タグ操作は [014 UI 設計、Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar)、公開範囲のメニューは [016 UI 設計、Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar)、`Favorite` と折り返しは [035 UI 設計、Selection bar](../../specs/035-favorites/ui-design.md#selection-bar)、`Favorite` と同じものを送る `Add to playlist` は [044 UI 設計、Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist)、同じものを送る `New group` と `Add to group` は [048 UI 設計、Selection bar](../../specs/048-groups/ui-design.md#selection-bar) にある。
 
 `Favorite` は、選択したグループごとに、グループとして送るかを決める。
 
@@ -306,9 +306,9 @@ flowchart LR
 
 作品の詳細の行は、ラベルに控えめな色の語を使い、値を本文の色で示す。項目が 3 つを超える役割、`Links`、`IDs` は 3 つと `+{n} more` を示し、それを押すとその項目がその場で開く。3 行より長い説明は `Show more` を示す。作品情報のない動画は以前と同じ行を示し、この行は入力を促す表示を加えない（[047 UI 設計、Video page: work details row](../../specs/047-video-work-info/ui-design.md#video-page-work-details-row)）。
 
-操作は、お気に入り、`Add to playlist`、`Edit details`、`Use current frame as thumbnail`、`Edit thumbnail with ComfyUI`、`Upload an image as thumbnail`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。ComfyUI の入口は、ページの上に開く `EditorDialog` であるサムネイルエディターを開き、ComfyUI の接続が保存されるまでは設定用のポップオーバーを伴って淡く表示される。その入口で生成された画像がサムネイルである間、サムネイルの項目はその画像を `Use the frame instead` とともに示す（[045 UI 設計](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)）。アップロードの入口は、プレイヤーが表示されないときも所有者のものであり、ComfyUI に依存しない。ブラウザーのファイル選択を PNG、JPEG、WebP 向けに開き、それ以外の種類や 64 MB を超えるファイルは何かを送る前に失敗の行で拒み、送っている間は回転表示になる。アップロードされた画像がサムネイルである間、サムネイルの項目はその画像を `ImageUp` アイコン、`Uploaded thumbnail` というラベル、同じ `Use the frame instead` とともに示す。サムネイルの操作は一度に 1 つだけ送る。キャプチャ、`×`、アップロードのいずれかが送っている間、ほかの操作は `aria-disabled` になる（[046 UI 設計](../../specs/046-thumbnail-image-upload/ui-design.md#video-page-upload-entry)）。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
+操作は、お気に入り、`Add to playlist`、`Add to group`、`Edit details`、`Use current frame as thumbnail`、`Edit thumbnail with ComfyUI`、`Upload an image as thumbnail`、`Open file`、`Copy path` だ。ツールチップ付きの、アイコンだけのゴーストボタンである。ComfyUI の入口は、ページの上に開く `EditorDialog` であるサムネイルエディターを開き、ComfyUI の接続が保存されるまでは設定用のポップオーバーを伴って淡く表示される。その入口で生成された画像がサムネイルである間、サムネイルの項目はその画像を `Use the frame instead` とともに示す（[045 UI 設計](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)）。アップロードの入口は、プレイヤーが表示されないときも所有者のものであり、ComfyUI に依存しない。ブラウザーのファイル選択を PNG、JPEG、WebP 向けに開き、それ以外の種類や 64 MB を超えるファイルは何かを送る前に失敗の行で拒み、送っている間は回転表示になる。アップロードされた画像がサムネイルである間、サムネイルの項目はその画像を `ImageUp` アイコン、`Uploaded thumbnail` というラベル、同じ `Use the frame instead` とともに示す。サムネイルの操作は一度に 1 つだけ送る。キャプチャ、`×`、アップロードのいずれかが送っている間、ほかの操作は `aria-disabled` になる（[046 UI 設計](../../specs/046-thumbnail-image-upload/ui-design.md#video-page-upload-entry)）。日付は日付だけを表示し、時刻は `title` 属性と、日付を押すと開くポップオーバーにある。パンくずがすでに所在を示すので、タイトルの下にパスは出さない。
 
-所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `Toggle` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。`Add to playlist` は同じ条件でその後に続く。
+所有者のお気に入りの切り替えは右側の操作のまとまりの先頭にあり、`Use current frame as thumbnail` の左に置く（`FavoriteToggle` の `page` 形式: `Toggle` の `sm`、`aria-pressed`）。まとまりの中で状態を持つ唯一のコントロールなので、目が最初にそこへ向く。それでもタイトルより目立つことはない。オンは小さな `bg-primary-soft` の塗りにピンクのハートだ。グループの行とゲストにはない（[035 UI 設計、Video page](../../specs/035-favorites/ui-design.md#video-page)）。`Add to playlist`、続いて `Add to group` が同じ条件でその後に続く。
 
 ```mermaid
 flowchart LR
@@ -409,15 +409,16 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 
 ### グループのメンバー {#group-members}
 
-グループに属する動画は、同じページに部品が加わるだけだ。どのグループにも属さない動画は変わらない（[017 UI 設計、Video page](../../specs/017-folder-groups/ui-design.md#video-page)）。
+グループに属する動画は、同じページに部品が加わるだけだ。どのグループにも属さない動画は変わらない（[017 UI 設計、Video page](../../specs/017-folder-groups/ui-design.md#video-page)）。グループは、動画を開いた元のグループ（`?group=<id>`。動画、関連動画、メンバーの読み込みに渡す）であり、それがなければ動画を直接含むグループのうち id が最小のものだ。プレイリストの文脈はどちらよりも優先する（[048 UI 設計、Video page](../../specs/048-groups/ui-design.md#video-page)）。
 
 | 部品 | ルール |
 | --- | --- |
-| タイトルの上 | グループ名と、グループ内の位置 |
+| タイトルの上 | グループ名と、グループ内の位置。グループのページへのリンクになる |
 | 関連動画の列 | 先頭に `Up next` のメンバー一覧と区切り線 |
 | 再生の終了 | レイヤーの代わりに次のメンバーの通知。5 秒、取り消せる、Esc で取り消す |
-| グループ名の行（所有者） | `Ungroup` と `Turn the group into a tag` のメニュー。Esc はメニューだけを閉じる |
-| メニューの操作の後 | 動画と関連動画を取得し直し、ページは通常の形に戻る |
+| メンバーの行、ハンドル、通知 | 開く動画に `?group` を引き継ぐ |
+| グループの操作（所有者） | 行の後ろの `Ellipsis` ボタン: `Remove from this group`（直接の項目のときだけ）、`Turn the group into a tag…`、`Dissolve…`。Esc はメニューだけを閉じる |
+| 操作の後 | 動画と関連動画を `group` なしで読み直す。ページはそのまま残る |
 | 前後のハンドル | グループ内で移動する |
 
 `matchMedia` が `lg` の幅を読むのは、広い画面で現在のメンバーの行を見える位置へスクロールするためだけだ。狭い幅でスクロールするとページ全体が動き、プレーヤーが隠れる。

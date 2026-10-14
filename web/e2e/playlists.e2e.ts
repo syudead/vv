@@ -464,14 +464,24 @@ test.describe.serial("playlists", () => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1280, height: 800 });
     await page.goto(librarySearch);
-    // メンバーは全部見終わっているので、グループのカードは最初のメンバーを開く。
+    // グループのカードはグループのページを開き、そのメンバーは開いたグループを文脈に持つ
+    // （specs/048-groups/research.md R-8・R-9）。
     await page
       .locator("article[data-group-root]")
       .filter({ hasText: groupName })
       .getByRole("link")
       .first()
       .click();
-    await expect(page).toHaveURL(`/videos/${String(video(member1).id)}`);
+    await expect(page).toHaveURL(/\/groups\/\d+$/);
+    await page
+      .locator("article[data-video-id]")
+      .filter({ has: page.locator("h3", { hasText: member1 }) })
+      .getByRole("link")
+      .first()
+      .click();
+    await expect(page).toHaveURL(
+      new RegExp(`/videos/${String(video(member1).id)}\\?group=\\d+$`),
+    );
     await expect(page.getByRole("link", { name: /^Playlist "/ })).toHaveCount(0);
     await page.waitForFunction(() => {
       const element = document.querySelector<HTMLVideoElement>("video.vjs-tech");
@@ -481,9 +491,10 @@ test.describe.serial("playlists", () => {
 
     // グループの自動再生のまま、次のメンバーを予告して進む（8）。
     await expectNotice(page, member2);
-    await expect(page).toHaveURL(`/videos/${String(video(member2).id)}`, {
-      timeout: 20_000,
-    });
+    await expect(page).toHaveURL(
+      new RegExp(`/videos/${String(video(member2).id)}\\?group=\\d+$`),
+      { timeout: 20_000 },
+    );
     await expect(page.getByRole("link", { name: /^Playlist "/ })).toHaveCount(0);
   });
 

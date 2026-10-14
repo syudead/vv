@@ -70,8 +70,13 @@ screen, so a group looks like "a folder of matching content".
   `watchedCount` is 1 or more. For guests it stops at the count.
 - Checking the selection checkbox (accessible name
   `「〈名〉」のグループを選択`) adds every member in `videoIds` to the selection;
-  unchecking removes every member. The card looks selected when every member is
-  selected (requirement 21). N in the selection bar's `N 件を選択中` is the
+  unchecking removes every member, except a member that another selected group
+  card shares
+  ([048 UI design, Selection with shared members](../048-groups/ui-design.md#selection-with-shared-members)).
+  The card looks selected while it is selected as a group: checking it
+  selects it, and unchecking it or unchecking any of its members unselects
+  it, so a card whose members are all selected through other checks does not
+  look selected (requirement 21). N in the selection bar's `N 件を選択中` is the
   number of videos (members are counted), not cards, because tag add and
   remove and `公開` act on that number.
 - So the selection bar's Select all is not disabled by comparing the selected

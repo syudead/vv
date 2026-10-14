@@ -224,7 +224,7 @@ func mergeTagsInto(ctx context.Context, tx queryExecer, targetID int64, sourceID
 
 // findOrCreateTag は整えた名前 normalized をシノニムを含めて引き、無ければ同じ
 // トランザクションの中で確定したタグとして作る。作ったかどうかも返す。名前でタグを付ける
-// 操作と、グループをタグに変える操作（folder_groups.go）が共有する。
+// 操作と、グループをタグに変える操作（group_edits.go）が共有する。
 func findOrCreateTag(ctx context.Context, tx *sql.Tx, normalized string) (domain.TagRef, bool, error) {
 	lookup, found, err := lookupTagName(ctx, tx, normalized)
 	if err != nil {

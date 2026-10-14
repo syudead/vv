@@ -2,9 +2,9 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { useAudience } from "../auth/audience";
 import type { UiText } from "../i18n";
-import type { FolderRef, TagRef } from "./client";
+import type { TagRef } from "./client";
 import { subscribeFavorites, subscribeFavoritesStale } from "./favorites";
-import { folderRefKey, groupRef } from "./libraryItems";
+import { folderRefKey, groupsIn, shownGroupIds } from "./libraryItems";
 import { subscribeProgress } from "./progressEvents";
 import { subscribeServerEvents } from "./serverEvents";
 import { useGroupRefresh } from "./useGroupRefresh";
@@ -102,9 +102,6 @@ export function useVideos(
   // 当たるグループを取り直す（fetchPage。Devin の指摘、PR 357）。
   const progressChangedWhileLoading = useRef(new Set<number>());
 
-  // ページの取得中にお気に入りを付け外したグループのフォルダである（下の subscribeFavorites）。
-  const favoriteFoldersChangedWhileLoading = useRef(new Map<string, FolderRef>());
-
   // 再生画面で保存された再生位置を、表示中の項目へ反映する。復元した一覧は
   // 再生前の中身なので、戻ったあとに届く離脱時の保存もここで受ける。
   useEffect(
@@ -176,6 +173,8 @@ export function useVideos(
   // 受けた動画を覚えておき、ページを反映したあとで取り直す（pageLoading・
   // tagsChangedWhileLoading は上で宣言済み）。
   const changedWhileLoading = useRef(new Set<number>());
+  // group の知らせも同じく、取得中のページに初めて現れるグループのために覚えておく。
+  const groupsChangedWhileLoading = useRef(new Set<number>());
 
   // 切り替えが一部の動画にしか反映されなかったときは、どれが切り替わったか
   // 分からないので、表示中の該当の動画をサーバーから取り直す（更新の知らせと
@@ -245,45 +244,62 @@ export function useVideos(
   // お気に入りの付け外しの結果も一覧を読み直さずに反映する（specs/035-favorites/research.md R-6）。
   // 動画の項目は `favorite` をその場で差し替える。メンバーの付け外しはグループの値を
   // 変えないので、グループは取り直さない（要件 4）。付け外したグループの項目は
-  // `GET /api/folders/{rootId}/group` で取り直し、404 なら外す（useGroupRefresh）。
+  // `GET /api/groups/{id}` で取り直し、404 なら外す（useGroupRefresh）。
   // お気に入りのみで絞った一覧や「Date favorited」の並びでも、その場では外さず並べ替えない。
   //
   // 確かに反映された動画は、一部反映の取り直しに失敗してお気に入りの印が確かでなかった
   // ものでも、これで確かになる（公開状態の理由は残す。useItemRefresh の uncertain）。
   // ページの取得中に付け外したグループは、取得中のページに初めて現れることがあるので
-  // 覚えておき、ページを反映したあとで取り直す（useVideoPages の fetchPage）。
-  // 反映の数が 0 の（もうグループでない）フォルダも、取り直して 404 で外すために覚える。
+  // group の知らせと同じく覚えておき、ページを反映したあとで取り直す（useVideoPages の
+  // fetchPage）。反映の数が 0 の（もう無い）グループも、取り直して 404 で外すために覚える。
   useEffect(
     () =>
-      subscribeFavorites(({ videoIds, folders, favorite }) => {
+      subscribeFavorites(({ videoIds, groupIds, favorite }) => {
         if (videoIds.length > 0) {
           settleUncertainReason(videoIds, "favorite");
           dispatch({ type: "favorite", videoIds, favorite });
           notifyIfIdle();
         }
-        if (folders.length === 0) return;
+        if (groupIds.length === 0) return;
         if (pageLoading.current) {
-          for (const folder of folders) {
-            favoriteFoldersChangedWhileLoading.current.set(folderRefKey(folder), folder);
-          }
+          for (const id of groupIds) groupsChangedWhileLoading.current.add(id);
         }
-        const wanted = new Set(folders.map(folderRefKey));
-        refreshGroups(
-          itemsRef.current.flatMap((item) =>
-            item.kind === "group" && wanted.has(folderRefKey(groupRef(item.group)))
-              ? [groupRef(item.group)]
-              : [],
-          ),
-        );
+        refreshGroups(groupsIn(itemsRef.current, groupIds));
       }),
     [notifyIfIdle, refreshGroups, settleUncertainReason],
   );
 
-  // 変化の知らせ（/api/events）は所有者だけのものなので、ゲストでは購読しない
-  // （specs/016-single-account-auth/ui-design.md「Top bar」）。
+  // 変化の知らせ（/api/events）。ゲストには group だけが届くので、group だけを購読する
+  // （specs/048-groups/contracts/screen-api.md「/api/events」）。video と取り込みの知らせは
+  // 所有者のもの（specs/016-single-account-auth/ui-design.md「Top bar」）。
   const owner = useAudience() === "owner";
+  // refreshInPlace は下の useVideoPages が返すので、知らせの購読からは参照で呼ぶ。
+  const refreshInPlaceRef = useRef<() => void>(() => undefined);
   useEffect(() => {
     const queue = refreshQueue.current;
+    // グループの名前か項目が変わった（specs/048-groups/research.md R-13）。表示中の
+    // グループの項目だけを取り直す。ページの取得中は、そのページのために覚えておく。
+    // ライブラリのいちばん上は、他のグループに入っていないグループと、どのグループにも
+    // 入っていない動画からなる（specs/048-groups/data-model.md「Library items」）。別の画面で
+    // グループを作る・項目を足す・解散すると、表示中でないグループが現れたり動画がいちばん上から
+    // 外れたりするので、表示中のグループの取り直しでは足りず、読み込み済みのページを条件を
+    // 保ったまま読み直す（親 Issue 1040 の Edge Cases「もう一方の画面は最新の内容に更新される」）。
+    // ページの取得中なら、refreshInPlace がその取得のあとでやり直す。
+    const group = (ids: readonly number[]) => {
+      if (libraryRef.current) {
+        refreshInPlaceRef.current();
+        return;
+      }
+      if (pageLoading.current) {
+        for (const id of ids) groupsChangedWhileLoading.current.add(id);
+      }
+      refreshGroups(groupsIn(itemsRef.current, ids));
+    };
+    // つなぎ直したときは、切れていた間のグループの変化を取り戻す。ライブラリは構成ごと読み直す。
+    const regroup = () => {
+      if (libraryRef.current) refreshInPlaceRef.current();
+      else refreshGroups(shownGroupIds(itemsRef.current));
+    };
     const unsubscribe = owner
       ? subscribeServerEvents({
           video: (id) => {
@@ -293,36 +309,29 @@ export function useVideos(
             if (shownVideoIds(itemsRef.current).includes(id)) refreshItems([id]);
             refreshGroupsWith([id]);
           },
+          group,
           // つなぎ直したときは、切れていた間の知らせを受け取っていない。準備が
           // 済んだ動画も消えているかもしれないので、表示中の項目をすべて取り直す
           // （消えていれば一覧から外れる）。最初の接続では、準備中の項目だけでよい。
           open: (reconnected) => {
             if (reconnected) {
               refreshItems(shownVideoIds(itemsRef.current));
-              refreshGroups(
-                itemsRef.current.flatMap((item) =>
-                  item.kind === "group" ? [groupRef(item.group)] : [],
-                ),
-              );
+              regroup();
             } else {
               refreshProcessingItems();
             }
           },
         })
-      : () => undefined;
+      : subscribeServerEvents({
+          group,
+          open: (reconnected) => {
+            if (reconnected) regroup();
+          },
+        });
     // 復元した一覧は、別の画面にいた間に準備が進んでいることがある。
     refreshProcessingItems();
     // 控えの後にメンバーが変わったグループも取り直す（ListSnapshot.staleGroups）。
-    const stale = new Set(staleGroups.current.map(folderRefKey));
-    if (stale.size > 0) {
-      refreshGroups(
-        itemsRef.current.flatMap((item) =>
-          item.kind === "group" && stale.has(folderRefKey(groupRef(item.group)))
-            ? [groupRef(item.group)]
-            : [],
-        ),
-      );
-    }
+    refreshGroups(groupsIn(itemsRef.current, staleGroups.current));
     const groups = groupQueue.current;
     return () => {
       unsubscribe();
@@ -362,8 +371,8 @@ export function useVideos(
     resyncAttempted,
     pageLoading,
     changedWhileLoading,
+    groupsChangedWhileLoading,
     progressChangedWhileLoading,
-    favoriteFoldersChangedWhileLoading,
     tagsChangedWhileLoading,
     groups,
     itemRefresh,
@@ -375,6 +384,7 @@ export function useVideos(
     loading,
     loadingMore,
   });
+  refreshInPlaceRef.current = refreshInPlace;
 
   return {
     items,

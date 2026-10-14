@@ -88,7 +88,7 @@ func TestSetVideoWorkInfoSavesAndReads(t *testing.T) {
 	if saved.Location == nil || len(saved.Tags) != 1 {
 		t.Errorf("保存の応答が詳細と同じ形でない: %+v", saved)
 	}
-	if _, videos := sub.take(); !slices.Equal(videos, []int64{f.ids["a"]}) {
+	if videos := sub.take().videos; !slices.Equal(videos, []int64{f.ids["a"]}) {
 		t.Errorf("/api/events の video = %v, want [%d]", videos, f.ids["a"])
 	}
 
@@ -117,7 +117,7 @@ func TestSetVideoWorkInfoSavesAndReads(t *testing.T) {
 	if value, ok := rawVideo(t, rec)["workInfo"]; ok {
 		t.Errorf("解除の応答に workInfo = %s", value)
 	}
-	if _, videos := sub.take(); !slices.Contains(videos, f.ids["a"]) {
+	if videos := sub.take().videos; !slices.Contains(videos, f.ids["a"]) {
 		t.Errorf("解除の後の /api/events の video = %v", videos)
 	}
 	if value, ok := rawVideo(t, f.env.get(f.videoPath("a", ""), f.owner))["workInfo"]; ok {
@@ -242,7 +242,7 @@ func TestSetVideoDetails(t *testing.T) {
 	if saved.WorkInfo == nil || saved.WorkInfo.Code == nil || *saved.WorkInfo.Code != "ABC-1" {
 		t.Errorf("保存の応答の workInfo = %+v", saved.WorkInfo)
 	}
-	if _, videos := sub.take(); !slices.Contains(videos, f.ids["a"]) {
+	if videos := sub.take().videos; !slices.Contains(videos, f.ids["a"]) {
 		t.Errorf("/api/events の video = %v", videos)
 	}
 	detail := decode[gen.Video](t, f.env.get(f.videoPath("a", ""), f.owner))

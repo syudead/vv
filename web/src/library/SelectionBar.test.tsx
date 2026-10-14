@@ -186,8 +186,8 @@ type BarProps = React.ComponentProps<typeof SelectionBar>;
 
 /** barElement はお気に入りの送る先を省くと、空にする（お気に入りを扱わない試験）。 */
 function barElement(
-  props: Omit<BarProps, "favoriteVideoIds" | "favoriteFolders"> &
-    Partial<Pick<BarProps, "favoriteVideoIds" | "favoriteFolders">>,
+  props: Omit<BarProps, "favoriteVideoIds" | "favoriteGroupIds"> &
+    Partial<Pick<BarProps, "favoriteVideoIds" | "favoriteGroupIds">>,
 ) {
   return (
     <TooltipProvider>
@@ -195,7 +195,7 @@ function barElement(
         <SelectionBar
           {...props}
           favoriteVideoIds={props.favoriteVideoIds ?? []}
-          favoriteFolders={props.favoriteFolders ?? []}
+          favoriteGroupIds={props.favoriteGroupIds ?? []}
         />
       </ToastProvider>
     </TooltipProvider>
@@ -345,6 +345,39 @@ describe("SelectionBar", () => {
     expect(
       (screen.getByRole("button", { name: "Remove tag" }) as HTMLButtonElement).disabled,
     ).toBe(false);
+  });
+
+  it("グループのページの「Remove from group」は、外す項目が 20,000 件を超えると disabled で理由が読める", () => {
+    install();
+    const onRemove = vi.fn();
+    const { rerender } = renderBar({
+      removeFromGroup: { count: 20000, pending: false, onRemove },
+    });
+    const button = () =>
+      screen.getByRole("button", { name: "Remove from group" }) as HTMLButtonElement;
+    expect(button().disabled).toBe(false);
+    expect(button().getAttribute("aria-describedby")).toBeNull();
+
+    rerender(
+      barElement({
+        count: 3,
+        allSelected: false,
+        selectedIds: [1, 2, 3],
+        selectingAll: false,
+        onSelectAll: vi.fn(),
+        onClear: vi.fn(),
+        onTagRemoved: vi.fn(),
+        onBundled: vi.fn(),
+        removeFromGroup: { count: 20001, pending: false, onRemove },
+      }),
+    );
+    expect(button().disabled).toBe(true);
+    expect(button().title).toBe("Select between 1 and 20,000 videos.");
+    const describedBy = button().getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    expect(document.getElementById(describedBy!)?.textContent).toBe(
+      "Select between 1 and 20,000 videos.",
+    );
   });
 
   // トリガを disabled にするだけでは、すでに開いているポップオーバーから

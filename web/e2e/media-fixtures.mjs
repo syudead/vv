@@ -792,3 +792,56 @@ export function generatePlaylistsFixtures(root) {
     clip(path.join(group, `${name}.mp4`), 190 + index * 60);
   }
 }
+
+/**
+ * generateGroupsFixtures は、任意のグループの流れ（specs/048-groups、子 #1059）を確かめる
+ * 動画を作る（web/e2e/groups.e2e.ts）。「フォルダ1」〜「フォルダ3」は 1 本ずつなので
+ * グループにならず、登録フォルダの直下の 2 本も単体の動画になる。「自動のグループ」と
+ * 「解散するグループ」は直下に 2 本以上あるので自動グループになる。`spare` の 1 本は
+ * 登録フォルダの外に置き、テストが再スキャンの前に「自動のグループ」へ写す。
+ * 中身で同じ動画とみなされないよう、ほかの組と違う長さとコマの速さにし、色合いを変える。
+ */
+export const GROUPS_SPREAD = [
+  ["フォルダ1", "グループ確認の動画1"],
+  ["フォルダ2", "グループ確認の動画2"],
+  ["フォルダ3", "グループ確認の動画3"],
+];
+export const GROUPS_SINGLES = ["グループ確認の単体A", "グループ確認の単体B"];
+export const GROUPS_AUTO = "自動のグループ";
+export const GROUPS_AUTO_MEMBERS = [
+  "グループ確認の自動1",
+  "グループ確認の自動2",
+  "グループ確認の自動3",
+];
+export const GROUPS_DISSOLVED = "解散するグループ";
+export const GROUPS_DISSOLVED_MEMBERS = ["グループ確認の解散1", "グループ確認の解散2"];
+export const GROUPS_SPARE = "グループ確認の自動4";
+
+export function generateGroupsFixtures(root, spare) {
+  let hue = 0;
+  const clip = (dir, name) => {
+    mkdirSync(dir, { recursive: true });
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=12:duration=3",
+      "-vf",
+      `hue=h=${String(hue)}`,
+      ...h264,
+      "-an",
+      "-movflags",
+      "+faststart",
+      path.join(dir, `${name}.mp4`),
+    ]);
+    hue += 29;
+  };
+
+  for (const [folder, name] of GROUPS_SPREAD) clip(path.join(root, folder), name);
+  for (const name of GROUPS_SINGLES) clip(root, name);
+  for (const name of GROUPS_AUTO_MEMBERS) clip(path.join(root, GROUPS_AUTO), name);
+  for (const name of GROUPS_DISSOLVED_MEMBERS) {
+    clip(path.join(root, GROUPS_DISSOLVED), name);
+  }
+  clip(spare, GROUPS_SPARE);
+}

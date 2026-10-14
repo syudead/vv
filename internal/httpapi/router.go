@@ -192,9 +192,10 @@ type VideoCatalog interface {
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
 	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error)
-	// VideoGroup は動画が属するグループを、見る人に見せてよいメンバーだけで返す。
-	// メンバーの詳細は window の範囲だけを読む。見る人に見せるグループが無ければ false。
-	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, window domain.GroupWindow) (domain.VideoGroup, bool, error)
+	// VideoGroup は動画の文脈のグループ（contextID は動画を開いたグループ、無ければ 0）を、
+	// 見る人に見せてよい動画の再生順で返す。詳細は window の範囲だけを読む。動画がどの
+	// グループにも無ければ false。
+	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, contextID int64, window domain.GroupWindow) (domain.VideoGroup, bool, error)
 	// RetryProbe は読み取りに失敗した動画を読み取り直す。失敗していなければ
 	// domain.ErrProbeNotFailed を返す。
 	RetryProbe(ctx context.Context, video domain.Video) error
@@ -282,6 +283,8 @@ type Options struct {
 	// FolderGroups はフォルダのまとめ方の保存先。nilならまとめ方の変更とグループの
 	// タグ化の経路は500を返し、フォルダの応答には grouping が載らない。
 	FolderGroups FolderGroups
+	// Groups はグループの編集の保存先。nilならグループの作成と編集の経路は500を返す。
+	Groups Groups
 	// Library はライブラリの項目（動画とグループ）の問い合わせ先。nilなら
 	// /api/library*・グループ1件の経路は500を返す。
 	Library LibraryItems
@@ -371,6 +374,7 @@ type server struct {
 	versions         VersionStore
 	folders          Folders
 	folderGroups     FolderGroups
+	groups           Groups
 	library          LibraryItems
 	transcoder       Transcoder
 	// transcodeSettings はライブ変換の映像エンコード方式の設定（nil なら software）。
@@ -456,6 +460,7 @@ func NewRouter(opts Options) http.Handler {
 		versions:               opts.Versions,
 		folders:                opts.Folders,
 		folderGroups:           opts.FolderGroups,
+		groups:                 opts.Groups,
 		library:                opts.Library,
 		transcoder:             opts.Transcoder,
 		transcodeProbes:        opts.TranscodeProbes,
@@ -591,7 +596,7 @@ func requiresOtherJSONBody(r *http.Request) bool {
 		case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
 			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 			"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists",
+			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists", "/api/groups",
 			"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 			"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
 			"/api/v1/organizations/merge", "/api/v1/organizations/delete":
@@ -612,6 +617,11 @@ func requiresOtherJSONBody(r *http.Request) bool {
 				return segments[0] != "" && segments[1] == "items" && segments[2] != "" && segments[3] == "move"
 			}
 			return false
+		}
+		// POST /api/groups/{id}/items・…/items/remove・…/items/{itemId}/move
+		// （specs/048-groups/contracts/screen-api.md）。POST /api/groups/{id}/tag は本文を持たない。
+		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/groups/"); ok {
+			return groupItemsBodyPath(strings.Split(suffix, "/"))
 		}
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
 			rest, found := strings.CutSuffix(id, "/merge")
@@ -644,6 +654,10 @@ func requiresOtherJSONBody(r *http.Request) bool {
 		if id, ok := strings.CutPrefix(r.URL.Path, "/api/playlists/"); ok {
 			return id != "" && !strings.Contains(id, "/")
 		}
+		// PATCH /api/groups/{id}（specs/048-groups/contracts/screen-api.md）。
+		if id, ok := strings.CutPrefix(r.URL.Path, "/api/groups/"); ok {
+			return id != "" && !strings.Contains(id, "/")
+		}
 		// /api/tags/rejected-names・/api/tags/batch・/api/tags/impact は {id} の段ではない別の経路で、
 		// PATCH を持たない（specs/031-tentative-tags/contracts/screen-api.md §3、
 		// specs/036-tag-admin-scale/contracts/screen-api.md §1）。
@@ -654,6 +668,23 @@ func requiresOtherJSONBody(r *http.Request) bool {
 			}
 			return !strings.Contains(id, "/")
 		}
+	}
+	return false
+}
+
+// groupItemsBodyPath は /api/groups/ の後ろを / で分けた段が、本文を持つ項目の POST
+// （{id}/items・{id}/items/remove・{id}/items/{itemId}/move）かを返す。
+func groupItemsBodyPath(segments []string) bool {
+	if len(segments) < 2 || segments[0] == "" || segments[1] != "items" {
+		return false
+	}
+	switch len(segments) {
+	case 2:
+		return true
+	case 3:
+		return segments[2] == "remove"
+	case 4:
+		return segments[2] != "" && segments[3] == "move"
 	}
 	return false
 }
@@ -790,13 +821,12 @@ const (
 	reasonRelativeDirectoryPath         = gen.ErrorReasonRelativeDirectoryPath
 	reasonVideoNotFound                 = gen.ErrorReasonVideoNotFound
 	reasonFolderNotFound                = gen.ErrorReasonFolderNotFound
-	reasonNotFolderGroup                = gen.ErrorReasonNotFolderGroup
 	reasonNoScan                        = gen.ErrorReasonNoScan
 	reasonDirectoryNotFound             = gen.ErrorReasonDirectoryNotFound
 	reasonFileUnavailable               = gen.ErrorReasonFileUnavailable
 	reasonMediaFoldersChanged           = gen.ErrorReasonMediaFoldersChanged
-	reasonRootGroupNotTaggable          = gen.ErrorReasonRootGroupNotTaggable
-	reasonFolderNotGroup                = gen.ErrorReasonFolderNotGroup
+	reasonGroupTargetNotFound           = gen.ErrorReasonGroupTargetNotFound
+	reasonGroupCycle                    = gen.ErrorReasonGroupCycle
 	reasonProbeInfoMissing              = gen.ErrorReasonProbeInfoMissing
 	reasonSeekPreviewGenerating         = gen.ErrorReasonSeekPreviewGenerating
 	reasonTranscodeUnavailable          = gen.ErrorReasonTranscodeUnavailable

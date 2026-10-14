@@ -2,7 +2,6 @@ package domain
 
 import (
 	"cmp"
-	"errors"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -16,7 +15,9 @@ import (
 //
 // 2: 束ねた動画（specs/030-video-versions）の代表以外のバージョンの所在を索引に入れない
 // 規則に合わせて作り直す（specs/030-video-versions/research.md R-4）。
-const FolderIndexVersion = 2
+// 3: 自動グループ（specs/048-groups/data-model.md「Automatic group sync」）を最初の起動で
+// フォルダとそろえる。
+const FolderIndexVersion = 3
 
 // FolderGroupMode はフォルダごとの例外である。値は保存する
 // folder_group_overrides.mode と同じ。
@@ -35,28 +36,14 @@ func (m FolderGroupMode) Valid() bool {
 	return m == FolderGroupUngroup || m == FolderGroupDirect
 }
 
-// ErrNotFolderGroup は、グループに対する操作（グループをタグに変える）の対象の
-// フォルダが今グループでないことを表す（specs/017-folder-groups/contracts/folder-groups-api.md §2）。
-var ErrNotFolderGroup = errors.New("the folder is not a group")
-
 // FolderGrouping はフォルダ1つのまとめ方の今の状態である
 // （specs/017-folder-groups/contracts/folder-groups-api.md §1）。
 type FolderGrouping struct {
 	// Mode はそのフォルダに付いた例外。例外が無ければ空（自動）である。
 	Mode FolderGroupMode
-	// Grouped は、いまそのフォルダの直下がグループかどうかである。
-	Grouped bool
-}
-
-// FolderGroupTag はグループをタグに変えた結果である
-// （specs/017-folder-groups/contracts/folder-groups-api.md §2）。
-type FolderGroupTag struct {
-	// Tag は使ったタグ（名前かシノニムで引けたもの、または新しく作ったもの）。
-	Tag TagRef
-	// Created はタグを新しく作ったかどうかである。
-	Created bool
-	// Grouping は変更後のまとめ方である。
-	Grouping FolderGrouping
+	// GroupID はそのフォルダの自動グループ（groups.origin_folder がそのフォルダ）の id である。
+	// 無ければ 0（specs/048-groups/contracts/screen-api.md「Routes and schemas changed」）。
+	GroupID int64
 }
 
 // FolderIndexLocation は索引を作るのに要る所在1件である。
@@ -88,6 +75,23 @@ type FolderIndex struct {
 	// FolderNames は動画ごとの祖先フォルダ名（NormalizeTagName を通したもの）を、
 	// 重複を除いて名前の順に持つ。名前の無い動画は入らない。
 	FolderNames map[int64][]string
+	// Folders は直下に所在を持つフォルダすべてを Key の順に持つ。規則がグループにしない
+	// フォルダも入る。自動グループの同期（PlanFolderGroupSync）の入力である。
+	Folders []FolderVideos
+}
+
+// FolderVideos は直下に所在を持つフォルダ1つである。
+type FolderVideos struct {
+	// Key はフォルダを指す鍵（FolderKey）。
+	Key string
+	// Name はフォルダ名（FolderGroupAssignment.Name と同じ）。
+	Name string
+	// Grouped は 017 の規則がこのフォルダをグループにするかどうかである。
+	Grouped bool
+	// VideoIDs は直下の動画の id をファイル名の自然順に持つ。代表の所在に限らず、
+	// 所在のどれかが直下にある動画をすべて、1度ずつ持つ
+	// （specs/048-groups/data-model.md「Automatic group sync」）。
+	VideoIDs []int64
 }
 
 // FolderKey はフォルダの絶対パスを、フォルダを同一視する鍵にする。末尾の区切りを
@@ -133,6 +137,9 @@ type folderState struct {
 	rel      string
 	hasChild bool
 	direct   []siblingEntry
+	// located は所在のどれかが直下にある動画で、1本につき最初の所在の1件である。
+	located     []siblingEntry
+	locatedSeen map[int64]struct{}
 }
 
 func buildFolderIndexFor(roots []MediaFolder, locations []FolderIndexLocation, overrides map[string]FolderGroupMode, windows bool, separator rune) FolderIndex {
@@ -181,9 +188,17 @@ func buildFolderIndexFor(roots []MediaFolder, locations []FolderIndexLocation, o
 			folderOf(entry, depth).hasChild = true
 		}
 		parentState := folderOf(entry, parent)
+		fileName := entry.segments[len(entry.segments)-1]
+		if _, seen := parentState.locatedSeen[entry.videoID]; !seen {
+			if parentState.locatedSeen == nil {
+				parentState.locatedSeen = map[int64]struct{}{}
+			}
+			parentState.locatedSeen[entry.videoID] = struct{}{}
+			parentState.located = append(parentState.located, siblingEntry{id: entry.videoID, name: fileName})
+		}
 		if _, seen := represented[entry.videoID]; !seen {
 			represented[entry.videoID] = struct{}{}
-			parentState.direct = append(parentState.direct, siblingEntry{id: entry.videoID, name: entry.segments[len(entry.segments)-1]})
+			parentState.direct = append(parentState.direct, siblingEntry{id: entry.videoID, name: fileName})
 		}
 		// 祖先フォルダ名は、代表に限らずすべての所在から取る。
 		for _, segment := range entry.segments[:len(entry.segments)-1] {
@@ -197,23 +212,22 @@ func buildFolderIndexFor(roots []MediaFolder, locations []FolderIndexLocation, o
 		}
 	}
 
-	index := FolderIndex{Groups: []FolderGroupAssignment{}, FolderNames: make(map[int64][]string, len(names))}
+	index := FolderIndex{Groups: []FolderGroupAssignment{}, FolderNames: make(map[int64][]string, len(names)), Folders: []FolderVideos{}}
 	for key, state := range folders {
-		if !groupsFolder(key, state, overrides, rootKeys) {
+		grouped := groupsFolder(key, state, overrides, rootKeys)
+		name := FolderName(state.root.Path, state.rel)
+		if len(state.located) > 0 {
+			index.Folders = append(index.Folders, FolderVideos{Key: key, Name: name, Grouped: grouped, VideoIDs: sortedSiblingIDs(state.located)})
+		}
+		if !grouped {
 			continue
 		}
-		members := slices.Clone(state.direct)
-		slices.SortFunc(members, compareSiblings)
-		ids := make([]int64, 0, len(members))
-		for _, member := range members {
-			ids = append(ids, member.id)
-		}
-		name := FolderName(state.root.Path, state.rel)
 		index.Groups = append(index.Groups, FolderGroupAssignment{
-			Key: key, Path: state.path, Name: name, TitleKey: NaturalSortKey(name), VideoIDs: ids,
+			Key: key, Path: state.path, Name: name, TitleKey: NaturalSortKey(name), VideoIDs: sortedSiblingIDs(state.direct),
 		})
 	}
 	slices.SortFunc(index.Groups, func(a, b FolderGroupAssignment) int { return strings.Compare(a.Key, b.Key) })
+	slices.SortFunc(index.Folders, func(a, b FolderVideos) int { return strings.Compare(a.Key, b.Key) })
 	for videoID, list := range names {
 		slices.Sort(list)
 		index.FolderNames[videoID] = list
@@ -266,6 +280,17 @@ func placeLocation(roots []MediaFolder, location FolderIndexLocation, separators
 		return entry, true
 	}
 	return folderIndexLocation{}, false
+}
+
+// sortedSiblingIDs は同じディレクトリの動画の id を compareSiblings の順に返す。
+func sortedSiblingIDs(entries []siblingEntry) []int64 {
+	sorted := slices.Clone(entries)
+	slices.SortFunc(sorted, compareSiblings)
+	ids := make([]int64, 0, len(sorted))
+	for _, entry := range sorted {
+		ids = append(ids, entry.id)
+	}
+	return ids
 }
 
 type siblingEntry struct {

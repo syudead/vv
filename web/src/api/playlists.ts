@@ -1,11 +1,4 @@
-import {
-  apiFetch,
-  type FolderRef,
-  MAX_PAGE_SIZE,
-  PAGE_SIZE,
-  request,
-  toRequestFailed,
-} from "./client";
+import { apiFetch, MAX_PAGE_SIZE, PAGE_SIZE, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 
 // プレイリストの画面 API（specs/044-playlists/contracts/screen-api.md「Client use」）。
@@ -134,13 +127,14 @@ export async function deletePlaylist(id: number, signal?: AbortSignal): Promise<
 }
 
 /**
- * addToPlaylist は `videoIds` の動画と `folders` のグループを、この順でプレイリストの末尾に足す
- * （POST /api/playlists/{id}/items）。既にあるものは `existing` に数えられ、何も変わらない。
+ * addToPlaylist は `videoIds` の動画と `groupIds` のグループを、この順でプレイリストの末尾に足す
+ * （POST /api/playlists/{id}/items、specs/048-groups/research.md R-10）。既にあるものは
+ * `existing` に数えられ、何も変わらない。
  */
 export function addToPlaylist(
   id: number,
   videoIds: readonly number[],
-  folders: readonly FolderRef[],
+  groupIds: readonly number[],
   signal?: AbortSignal,
 ): Promise<PlaylistItemsAdded> {
   return request<PlaylistItemsAdded>(`${playlistPath(id)}/items`, {
@@ -148,7 +142,7 @@ export function addToPlaylist(
     headers: jsonHeaders,
     body: JSON.stringify({
       videoIds: Array.from(videoIds),
-      folders: folders.map((folder) => ({ rootId: folder.rootId, path: folder.path })),
+      groupIds: Array.from(groupIds),
     }),
     signal,
   });

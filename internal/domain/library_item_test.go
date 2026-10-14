@@ -66,7 +66,7 @@ func TestNewLibraryGroupAggregates(t *testing.T) {
 		{ID: 3, SizeBytes: 30, AddedAt: base.Add(time.Minute), DurationMs: &duration},
 	}
 	progress := []*Progress{nil, {PositionMs: 10, UpdatedAt: base.Add(2 * time.Hour)}, {Completed: true, UpdatedAt: base}}
-	group := NewLibraryGroup("/m/g", "g", members, progress)
+	group := NewLibraryGroup(1, "/m/g", "g", members, progress)
 	if group.SizeBytes != 60 || group.DurationMs == nil || *group.DurationMs != 3000 {
 		t.Errorf("大きさ・長さ = %d・%v", group.SizeBytes, group.DurationMs)
 	}
@@ -80,7 +80,7 @@ func TestNewLibraryGroupAggregates(t *testing.T) {
 		t.Errorf("開く・状態・本数 = %d・%s・%d", group.OpenVideoID, group.WatchState, group.WatchedCount)
 	}
 
-	empty := NewLibraryGroup("/m/g", "g", members[:1], []*Progress{nil})
+	empty := NewLibraryGroup(1, "/m/g", "g", members[:1], []*Progress{nil})
 	if empty.DurationMs != nil || empty.LastPlayedAt != nil {
 		t.Errorf("長さ・再生の無いグループ = %v・%v, want どちらも無い", empty.DurationMs, empty.LastPlayedAt)
 	}

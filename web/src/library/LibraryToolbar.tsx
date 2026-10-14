@@ -24,6 +24,56 @@ function viewOptions() {
   ] as const;
 }
 
+/**
+ * viewControls は表示形式の切り替えと大きさ（格子表示のときだけ）の 2 つである。表示形式は
+ * `lg`、大きさは `xl` から行に並ぶ。ライブラリと、検索・絞り込み・並べ替えを持たない
+ * グループのページ（specs/048-groups/ui-design.md「Body」）が使う。
+ */
+export function viewControls(
+  view: ViewMode,
+  onViewChange: (value: ViewMode) => void,
+  zoom: Zoom,
+  onZoomChange: (value: Zoom) => void,
+): ToolbarViewControl[] {
+  const controls: ToolbarViewControl[] = [
+    {
+      id: "view",
+      label: t.library.view.label,
+      inlineFrom: "lg",
+      control: (
+        <IconToggleGroup
+          label={t.library.view.label}
+          value={view}
+          onValueChange={onViewChange}
+          options={viewOptions()}
+        />
+      ),
+      compact: (
+        <IconToggleGroup
+          label={t.library.view.compact}
+          value={view}
+          onValueChange={onViewChange}
+          options={viewOptions()}
+        />
+      ),
+    },
+  ];
+  // 大きさは格子表示のときだけ意味を持つ。
+  if (view === "grid") {
+    controls.push({
+      id: "size",
+      label: t.list.cardSize,
+      inlineFrom: "xl",
+      hideBelowSm: true,
+      control: (
+        <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-zoom" tooltip />
+      ),
+      compact: <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-full" />,
+    });
+  }
+  return controls;
+}
+
 export interface LibraryToolbarProps {
   query: string;
   onQueryCommit: (next: string, mode: HistoryMode) => void;
@@ -88,41 +138,8 @@ export default function LibraryToolbar({
       ),
       compactLabelled: true,
     },
-    {
-      id: "view",
-      label: t.library.view.label,
-      inlineFrom: "lg",
-      control: (
-        <IconToggleGroup
-          label={t.library.view.label}
-          value={view}
-          onValueChange={onViewChange}
-          options={viewOptions()}
-        />
-      ),
-      compact: (
-        <IconToggleGroup
-          label={t.library.view.compact}
-          value={view}
-          onValueChange={onViewChange}
-          options={viewOptions()}
-        />
-      ),
-    },
+    ...viewControls(view, onViewChange, zoom, onZoomChange),
   ];
-  // 大きさは格子表示のときだけ意味を持つ。
-  if (view === "grid") {
-    controls.push({
-      id: "size",
-      label: t.list.cardSize,
-      inlineFrom: "xl",
-      hideBelowSm: true,
-      control: (
-        <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-zoom" tooltip />
-      ),
-      compact: <ZoomSlider zoom={zoom} onZoomChange={onZoomChange} className="w-full" />,
-    });
-  }
 
   return (
     <Toolbar
