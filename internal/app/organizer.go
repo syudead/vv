@@ -50,7 +50,11 @@ type OrganizeStore interface {
 	// Bundle は動画 videoIDs を落とした先の動画 targetID と束ね、targetID を代表にする。動画が無ければ
 	// domain.ErrGroupTargetNotFound、集まりを展開して多すぎれば domain.ErrTooManyVersions。
 	Bundle(ctx context.Context, videoIDs []int64, targetID int64) ([]byte, error)
-	// Undo は像 image の前の状態へ戻す。行が変わっていれば domain.ErrUndoConflict で、何も書かない。
+	// Merge はドラッグしたカード items を画面の順にたどり、グループはグループ into へマージし、
+	// 動画は into の末尾へ足す（specs/050-drag-organize/research.md R-5）。into・グループ・動画が
+	// 無ければ domain.ErrGroupTargetNotFound、グループが into か into の祖先なら domain.ErrGroupCycle。
+	Merge(ctx context.Context, items []domain.OrganizeRef, into int64) ([]byte, error)
+
 	Undo(ctx context.Context, image []byte) error
 }
 
@@ -119,6 +123,12 @@ func (o *Organizer) Move(ctx context.Context, move domain.OrganizeMove) (domain.
 // Bundle は動画を落とした先の動画を代表にして束ね、取り消しのトークンを返す。
 func (o *Organizer) Bundle(ctx context.Context, videoIDs []int64, targetID int64) (domain.OrganizeResult, error) {
 	return o.run(func() ([]byte, error) { return o.store.Bundle(ctx, videoIDs, targetID) })
+}
+
+// Merge はドラッグしたカードをグループ into へマージし、取り消しのトークンを返す。トークンは
+// Reorder と同じく保存先の操作より先に作る。
+func (o *Organizer) Merge(ctx context.Context, items []domain.OrganizeRef, into int64) (domain.OrganizeResult, error) {
+	return o.run(func() ([]byte, error) { return o.store.Merge(ctx, items, into) })
 }
 
 // run は保存先の操作 operation を行い、返した像をトークンで持つ。トークンは操作より先に作る
