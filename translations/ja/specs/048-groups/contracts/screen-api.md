@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/contracts/screen-api.md
-sourceHash: 091f0458868a5304a82ad1c7de4053d708b9e76bab5a6d89f2fb6370a8de1256
+sourceHash: 9d30b6dde3b5e55a47037e9c789b81bf0486e99dcfb1ff347d543ac2691c5ba3
 ---
 
 # 契約: グループの画面の API {#contract-screen-api-for-groups}
@@ -13,6 +13,7 @@ sourceHash: 091f0458868a5304a82ad1c7de4053d708b9e76bab5a6d89f2fb6370a8de1256
 
 | ルート | 目的 |
 | --- | --- |
+| `GET /api/groups` | 閲覧者に見せるすべてのグループ。「Add to group」のピッカー用 |
 | `POST /api/groups` | 動画とグループからグループを作る |
 | `GET /api/groups/{id}` | 1 つのグループ、その経路、項目の最初のページ |
 | `GET /api/groups/{id}/items` | 項目の後のページ |
@@ -65,6 +66,12 @@ GroupItemPage:
     items: { type: array, items: { $ref: GroupItem } }
     nextCursor: { type: string }
 
+GroupListPage:                    # GET /api/groups
+  required: [groups]
+  properties:
+    groups: { type: array, items: { $ref: LibraryGroup } }   # natural name order, at every depth
+    nextCursor: { type: string }
+
 GroupItemMove:
   properties:
     after: { type: integer, format: int64 }   # item id; absent moves to the top
@@ -79,6 +86,8 @@ GroupItemRemove:
 
 | ルート | ステータス | 条件 |
 | --- | --- | --- |
+| `GET /api/groups?q=&cursor=&limit=` | `200` | `GroupListPage`: 閲覧者に見せるグループのうち、すべての深さで、名前が大文字と小文字を区別せずにトリムした `q` を含むもの (`q` が空ならすべてのグループ)。`limit` は 1 から 200、既定は 100 |
+| | `400 invalid_cursor` | 読めないカーソル |
 | `POST /api/groups` | `201` | 新しいグループの `LibraryGroup` |
 | | `400 invalid_request` | 名前が空か長すぎる、またはメンバーがない |
 | | `404 group_target_not_found` | 本文の動画かグループが存在しない。何も作らない |
@@ -122,4 +131,4 @@ GroupItemRemove:
 
 | 種類 | 条件 |
 | --- | --- |
-| `group` | グループの書き込みか、グループを変えた同期の後。それらの id を運ぶ ([R-13](../research.md#r-13-a-group-event-tells-open-screens-to-read-again))。ゲストも、名前なしで受け取る |
+| `group` | グループの書き込みか、グループを変えた同期の後。それらの id とその祖先の id を運ぶ ([R-13](../research.md#r-13-a-group-event-tells-open-screens-to-read-again))。ゲストも、名前なしで受け取る |

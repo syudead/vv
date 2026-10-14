@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/data-model.md
-sourceHash: 2e557ff9ec49a86a65d586f83f030fa43f106a6bc1074afcb8d43e9cd8a1368f
+sourceHash: 83d5d6b8db2b35c97d8aa043d9c08571af57d435609915c52e011b1f2e05bf06
 ---
 
 # データモデル: 任意の動画とグループからなるグループ {#data-model-groups-of-any-videos-and-groups}
@@ -108,7 +108,7 @@ drop table folder_groups;
 | グループを持つフォルダを、規則がもうまとめない | 変更なし。上の 2 行だけが当てはまる (エッジケース: メンバーが 1 つのグループ) |
 | 項目が 1 つも残らないグループ | 残し、[Visibility](#visibility) で隠す |
 
-「直下の動画」はフォルダの索引のすべての場所を数えるので、規則がまとめないフォルダ (直下の動画が 1 本、子フォルダがある) も、既存のグループの追加と取り除きには引き続き使われる。変わったすべてのグループの id は、コミットの後の 1 つの `GroupsChanged` イベントに入る。
+「直下の動画」はフォルダの索引のすべての場所を数えるので、規則がまとめないフォルダ (直下の動画が 1 本、子フォルダがある) も、既存のグループの追加と取り除きには引き続き使われる。変わったすべてのグループの id と、変わったグループのすべての祖先の id は、コミットの後の 1 つの `GroupsChanged` イベントに入る。
 
 ## 継承とまとめること {#succession-and-bundling}
 
@@ -130,7 +130,7 @@ drop table folder_groups;
 | 入れ子 | `ValidateNesting(parent, child, edges)`: 子が親かその祖先の 1 つであるとき `ErrGroupCycle` |
 | 存在しない対象 | 解決しない動画の id、グループの id、項目の id は `ErrGroupTargetNotFound` で、何も書かない ([R-12](research.md#r-12-edits-are-positional-and-fail-whole-when-a-target-is-gone)) |
 
-動画の id は `userKeysForVideoIDs` を通じてそのユーザーキーに解決するので、1 つのまとまりの 2 つのバージョンを加えると項目が 1 つ加わる。どの編集も、変えるグループに `updated_at` を設定し、それらのグループと、解散ではその元の親を載せて `GroupsChanged` を発行する。
+動画の id は `userKeysForVideoIDs` を通じてそのユーザーキーに解決するので、1 つのまとまりの 2 つのバージョンを加えると項目が 1 つ加わる。どの編集も、変えるグループに `updated_at` を設定し、それらのグループとそのすべての祖先を載せて `GroupsChanged` を発行する。親は子の名前と、子孫の数と長さを見せるからである。解散では、イベントは元の親とその祖先も挙げる。
 
 ## 再生の順序 {#play-order}
 

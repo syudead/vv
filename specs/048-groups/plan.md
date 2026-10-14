@@ -245,7 +245,8 @@ passes; existing library page tests pass with the id-keyed selection.
 
 ### Add the group edit routes to the screen API
 
-**Scope**: `POST /api/groups`, `PATCH` and `DELETE /api/groups/{id}`, add,
+**Scope**: `GET /api/groups` (the picker's list), `POST /api/groups`,
+`PATCH` and `DELETE /api/groups/{id}`, add,
 remove, move and tag, their schemas and handlers, `requiresJSONBody`, the
 wiring in `cmd/mdm`, and their client functions in `web/src/api/groups.ts`
 ([contracts/screen-api.md, Statuses](contracts/screen-api.md#statuses)).

@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/plan.md
-sourceHash: b94141ee9898666a2c7581dd49205a7671ba4c947f433e33a619b2a1542eb2bd
+sourceHash: 213b78bad4f81726d110fdcd3d566c31ff1654a877ba62a41584821a0f14c2af
 ---
 
 # 実装計画: 任意の動画とグループからなり、複数への所属と入れ子を持つグループ {#implementation-plan-groups-of-any-videos-and-groups-with-several-memberships-and-nesting}
@@ -167,7 +167,7 @@ flowchart LR
 
 ### グループの編集のルートを画面の API に加える {#add-the-group-edit-routes-to-the-screen-api}
 
-**範囲**: `POST /api/groups`、`PATCH` と `DELETE /api/groups/{id}`、追加、取り除くこと、移動、タグ、それらのスキーマとハンドラー、`requiresJSONBody`、`cmd/mdm` での配線、`web/src/api/groups.ts` のそれらのクライアント関数 ([contracts/screen-api.md、Statuses](contracts/screen-api.md#statuses))。
+**範囲**: `GET /api/groups` (ピッカーの一覧)、`POST /api/groups`、`PATCH` と `DELETE /api/groups/{id}`、追加、取り除くこと、移動、タグ、それらのスキーマとハンドラー、`requiresJSONBody`、`cmd/mdm` での配線、`web/src/api/groups.ts` のそれらのクライアント関数 ([contracts/screen-api.md、Statuses](contracts/screen-api.md#statuses))。
 
 **依存**: ストアで、入れ子、解散、タグへの変換を含めてグループを編集する。ライブラリとグループのページをグループから読む。
 

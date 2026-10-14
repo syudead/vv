@@ -234,7 +234,9 @@ nothing.
 
 **Decision**: Every group write and every sync that changes a group publishes
 `domain.GroupsChanged{GroupIDs}` after commit, and `/api/events` sends
-`group` with those ids. A group page, a group card and the video page's group
+`group` with those ids. The ids include every ancestor of a changed group,
+because a parent shows its child's name and its descendants' count and
+length. A group page, a group card and the video page's group
 line read their group again on it.
 
 | Option | Verdict |
