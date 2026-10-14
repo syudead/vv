@@ -134,11 +134,13 @@ func resolveMergeStep(ctx context.Context, tx *sql.Tx, item domain.OrganizeRef, 
 	return mergeStep{}, fmt.Errorf("unknown card kind %q", item.Kind)
 }
 
-// mergeImage はマージの取り消しの像の範囲を作る（data-model.md「Undo image」の Merge の行）。消える
-// かもしれないグループ（ドラッグしたグループと、解散が届きうるその祖先すべて）は、グループの行、
-// 項目、それを指す項目、除外、お気に入り、それを持つプレイリストの全項目と、自動グループのフォルダの
-// 例外を持つ。祖先は親をすべて含むので、親の項目もこの範囲に入る。残る into は項目・除外・
-// お気に入りを持つ。親の表（groups）の範囲を子の表より前に置く（restoreUndoImage）。
+// mergeImage はマージの取り消しの像の範囲を作る（data-model.md「Undo image」の Merge の行で、Move と
+// 同じ行）。消えるかもしれないグループ（ドラッグしたグループと、解散が届きうるその祖先すべて）と
+// into は、グループの行、項目、それを指す項目、除外、お気に入り、それを持つプレイリストの全項目と、
+// 自動グループのフォルダの例外を持つ。祖先は親をすべて含むので、親の項目もこの範囲に入る。into の
+// グループの行は更新日時を進めるので、後で into を改名すれば取り消しは domain.ErrUndoConflict に
+// なる。取り消しは into の行も消して入れ直すので、外部キーで消える into を指す行も範囲に入れる。
+// 親の表（groups）の範囲を子の表より前に置く（restoreUndoImage）。
 func mergeImage(ctx context.Context, tx *sql.Tx, groups []int64, into int64) (undoImage, error) {
 	deletable, err := groupsWithAncestors(ctx, tx, groups)
 	if err != nil {
@@ -148,17 +150,17 @@ func mergeImage(ctx context.Context, tx *sql.Tx, groups []int64, into int64) (un
 	if !slices.Contains(deletable, into) {
 		kept = append(slices.Clone(deletable), into)
 	}
-	playlists, folders, err := mergeImageHolders(ctx, tx, deletable)
+	playlists, folders, err := mergeImageHolders(ctx, tx, kept)
 	if err != nil {
 		return undoImage{}, err
 	}
 	var specs []imageScopeSpec
-	specs = appendScopeSpecs(specs, "groups", "id", deletable)
+	specs = appendScopeSpecs(specs, "groups", "id", kept)
 	specs = appendScopeSpecs(specs, "group_items", "group_id", kept)
-	specs = appendScopeSpecs(specs, "group_items", "child_id", deletable)
+	specs = appendScopeSpecs(specs, "group_items", "child_id", kept)
 	specs = appendScopeSpecs(specs, "group_exclusions", "group_id", kept)
 	specs = appendScopeSpecs(specs, "group_favorites", "group_id", kept)
-	specs = appendScopeSpecs(specs, "playlist_items", "group_id", deletable)
+	specs = appendScopeSpecs(specs, "playlist_items", "group_id", kept)
 	specs = appendScopeSpecs(specs, "playlist_items", "playlist_id", playlists)
 	for _, folder := range folders {
 		specs = append(specs, imageScopeSpec{table: "folder_group_overrides", column: "path", key: folder})
@@ -247,20 +249,21 @@ func applyMerge(ctx context.Context, tx *sql.Tx, steps []mergeStep, into int64) 
 }
 
 // finishMerge はマージで空になった親を解散し、自動グループを消したならフォルダの索引を作り直し、
-// 今もある into と親の更新日時を進めて、変えたグループとその祖先の id を返す。
+// 今もある into と親の更新日時を進めて、変えたグループとその祖先の id を返す。into はマージ先として
+// 残す（要件 8）ので、空になっても、解散が祖先へ届いても解散しない。
 func finishMerge(ctx context.Context, tx *sql.Tx, into int64, outcome mergeOutcome) ([]int64, error) {
 	changed := slices.Clone(outcome.deleted)
 	present, err := existingGroups(ctx, tx, normalizeIDs(slices.Clone(outcome.removedFrom)))
 	if err != nil {
 		return nil, err
 	}
-	emptied, err := emptyGroups(ctx, tx, present)
+	emptied, err := emptyGroups(ctx, tx, slices.DeleteFunc(present, func(id int64) bool { return id == into }))
 	if err != nil {
 		return nil, err
 	}
 	automatic := outcome.automatic
 	for _, id := range emptied {
-		dissolved, wasAutomatic, err := dissolveGroup(ctx, tx, id)
+		dissolved, wasAutomatic, err := dissolveGroupKeeping(ctx, tx, id, into)
 		if err != nil {
 			return nil, err
 		}

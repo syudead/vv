@@ -282,3 +282,58 @@ func TestOrganizeMergeUndoConflicts(t *testing.T) {
 		t.Fatalf("conflicting undo wrote:\n%s\nwant\n%s", after, before)
 	}
 }
+
+// マージの後で、ドラッグしたグループの祖先ではない Y を改名すると、取り消しは ErrUndoConflict で
+// 何も変えない（data-model.md「Undo image」: Merge は Move と同じく Y の groups の行を持つ）。
+func TestOrganizeMergeUndoConflictsOnTargetRename(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	y := createGroup(t, db, "Y", domain.GroupAdd{VideoIDs: []int64{looseVideo(t, db, "ya")}})
+	x := createGroup(t, db, "X", domain.GroupAdd{VideoIDs: []int64{looseVideo(t, db, "xa")}})
+	image := merge(t, db, y, groupRef(x))
+	if _, err := db.Groups().RenameGroup(ctx, y, "Renamed"); err != nil {
+		t.Fatal(err)
+	}
+	before := organizeSnapshot(t, db)
+	if err := db.Organize().Undo(ctx, image); !errors.Is(err, domain.ErrUndoConflict) {
+		t.Fatalf("Undo error = %v, want ErrUndoConflict", err)
+	}
+	if after := organizeSnapshot(t, db); after != before {
+		t.Fatalf("conflicting undo wrote:\n%s\nwant\n%s", after, before)
+	}
+}
+
+// マージ先の Y は、マージで空になっても、空になった子の解散が Y へ届いても残る（要件 8 で消えるのは
+// 落としたグループだけ）。取り消しは元のとおりに戻す。
+func TestOrganizeMergeKeepsAnEmptiedTarget(t *testing.T) {
+	for name, nested := range map[string]bool{"Y が X だけを持つ": false, "Y が X だけを持つ子だけを持つ": true} {
+		t.Run(name, func(t *testing.T) {
+			db := migratedDB(t)
+			x := createGroup(t, db, "X", domain.GroupAdd{VideoIDs: []int64{looseVideo(t, db, "lone")}})
+			holder := x
+			if nested {
+				holder = createGroup(t, db, "P", domain.GroupAdd{GroupIDs: []int64{x}})
+			}
+			y := createGroup(t, db, "Y", domain.GroupAdd{GroupIDs: []int64{holder}})
+			// X を空にする（項目を取り除く操作は空のグループを解散するので、行を直接消す）。
+			if _, err := db.sql.Exec(`delete from group_items where group_id = ?`, x); err != nil {
+				t.Fatal(err)
+			}
+			before := organizeSnapshot(t, db)
+
+			image := merge(t, db, y, groupRef(x))
+			if !groupExists(t, db, y) {
+				t.Fatal("the merge dissolved its target")
+			}
+			if groupExists(t, db, x) || (nested && groupExists(t, db, holder)) {
+				t.Fatal("the merged group or the emptied parent was kept")
+			}
+			assertEntries(t, db, y)
+
+			undo(t, db, image)
+			if after := organizeSnapshot(t, db); after != before {
+				t.Fatalf("rows after undo:\n%s\nwant\n%s", after, before)
+			}
+		})
+	}
+}

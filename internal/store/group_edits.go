@@ -418,6 +418,12 @@ func dissolveGroupAndRebuild(ctx context.Context, tx *sql.Tx, id int64) ([]int64
 // 祖先の id と、自動グループを 1 つでも解散したかを返す。id が無ければ domain.ErrGroupNotFound。
 // フォルダの索引の作り直しは呼び出し側が行う。
 func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, bool, error) {
+	return dissolveGroupKeeping(ctx, tx, id, 0)
+}
+
+// dissolveGroupKeeping は dissolveGroup と同じく解散するが、空になってもグループ keep（0 なら無し）は
+// 解散しない（マージ先を残すため）。
+func dissolveGroupKeeping(ctx context.Context, tx *sql.Tx, id, keep int64) ([]int64, bool, error) {
 	var changed []int64
 	automatic := false
 	for queue := []int64{id}; len(queue) > 0; queue = queue[1:] {
@@ -427,7 +433,7 @@ func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, bool, er
 		}
 		changed = append(changed, result.changed...)
 		automatic = automatic || result.automatic
-		emptied, err := emptyGroups(ctx, tx, result.parents)
+		emptied, err := emptyGroups(ctx, tx, slices.DeleteFunc(result.parents, func(parent int64) bool { return parent == keep }))
 		if err != nil {
 			return nil, false, err
 		}
