@@ -60,7 +60,13 @@ const uploads = {
   jpeg: { file: "thumbnail-upload.jpg", color: [0, 90, 255] as RGB },
   webp: { file: "thumbnail-upload.webp", color: [255, 200, 0] as RGB },
 };
-type Upload = (typeof uploads)[keyof typeof uploads];
+// media-fixtures.mjs の THUMBNAIL_UPLOAD_SPLIT と同じファイルと色。縦長で、上下で色が違う。
+const split = {
+  file: "thumbnail-upload-split.png",
+  top: [220, 30, 30] as RGB,
+  bottom: [255, 255, 255] as RGB,
+};
+type Upload = { file: string };
 // 動画（testsrc2 の 320×180）の縦横比。
 const videoAspect = 16 / 9;
 // contracts/workflow.md の既定の指示。塗って指示を空にしたときに送られる。
@@ -269,11 +275,21 @@ async function rescan(request: APIRequestContext) {
   await waitForScan(request, ((await scan.json()) as { id: number }).id);
 }
 
+/** Adjust はプレビューで収め方を変える手順である。 */
+type Adjust = (preview: Locator, page: Page) => Promise<void>;
+
+/** fillFrame はプレビューを「Fill frame」（枠いっぱいに広げる）にする。 */
+const fillFrame: Adjust = async (preview) => {
+  await preview.getByRole("radio", { name: "Fill frame" }).click();
+  await expect(preview.getByRole("slider", { name: "Zoom" })).toBeVisible();
+};
+
 /**
  * uploadFromPage は開いている動画ページの「Upload an image as thumbnail」からファイルピッカーで
- * upload を選び、送信が 200 で答えるまで待つ。
+ * upload を選び、開いたプレビューで adjust（無ければ既定の「Whole image」のまま）してから
+ * 「Use as thumbnail」を押し、送信が 200 で答えるまで待つ。プレビューを開いただけでは何も送らない。
  */
-async function uploadFromPage(page: Page, upload: Upload) {
+async function uploadFromPage(page: Page, upload: Upload, adjust?: Adjust) {
   const root = process.env.MDM_E2E_THUMBNAIL_UPLOAD_DIR;
   if (root === undefined)
     throw new Error("MDM_E2E_THUMBNAIL_UPLOAD_DIR is not configured");
@@ -281,15 +297,50 @@ async function uploadFromPage(page: Page, upload: Upload) {
   await expect(entry).toBeVisible();
   await expect(entry).not.toHaveAttribute("aria-disabled", "true");
   const chooser = page.waitForEvent("filechooser");
+  let posted = 0;
+  const route = `/api/videos/${String(target().id)}/thumbnail-image`;
+  const count = (request: { method: () => string; url: () => string }) => {
+    if (request.method() === "POST" && new URL(request.url()).pathname === route)
+      posted++;
+  };
+  page.on("request", count);
+  await entry.click();
+  await (await chooser).setFiles(path.join(root, upload.file));
+  const preview = page.getByRole("dialog", { name: "Preview thumbnail" });
+  await expect(preview).toBeVisible();
+  await expect(preview.getByRole("radio", { name: "Whole image" })).toHaveAttribute(
+    "aria-checked",
+    "true",
+  );
+  if (adjust !== undefined) await adjust(preview, page);
+  expect(posted).toBe(0);
+  page.off("request", count);
   const sent = page.waitForResponse(
     (response) =>
       response.request().method() === "POST" &&
-      new URL(response.url()).pathname ===
-        `/api/videos/${String(target().id)}/thumbnail-image`,
+      new URL(response.url()).pathname === route,
   );
-  await entry.click();
-  await (await chooser).setFiles(path.join(root, upload.file));
+  await preview.getByRole("button", { name: "Use as thumbnail" }).click();
   expect((await sent).status()).toBe(200);
+  await expect(preview).toBeHidden();
+}
+
+/**
+ * containedIn は img の画像が、真ん中は color で左右の端は color でない（全体を収めた縦長の
+ * 画像の余白）なら true を返す。まだ読み込んでいなければ null を返す。
+ */
+async function containedIn(image: Locator, color: RGB): Promise<boolean | null> {
+  const pixels = await pixelsAt(image, [
+    [0.5, 0.2],
+    [0.5, 0.5],
+    [0.5, 0.8],
+    [0.05, 0.5],
+    [0.95, 0.5],
+  ]);
+  if (pixels === null) return null;
+  const inside = pixels.slice(0, 3).every((pixel) => near(pixel, color));
+  const margins = pixels.slice(3).every((pixel) => !near(pixel, color));
+  return inside && margins;
 }
 
 /** expectUploadedItem は動画ページの情報の行が、一色 color の上げた画像の項目を出すまで待つ。 */
@@ -580,7 +631,8 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
 
   // 046 受け入れ条件 1・3: ページから PNG・JPEG・WebP をそれぞれ上げると、ライブラリの
   // カード・動画ページ・別の動画の関連動画のサムネイルになり、読み直しとフルスキャンの後も
-  // 残る。縦長の PNG は動画の形に切り抜かれ、帯の無いままカードを埋める。
+  // 残る。動画と同じ比率の JPEG・WebP は既定の「Whole image」のまま余白なく枠を埋め、縦長の
+  // PNG は「Fill frame」で動画の形に切り抜かれ、帯の無いままカードを埋める。
   test("3 形式の画像をページから上げるとサムネイルになり、読み直しとスキャンの後も残る", async ({
     page,
     request,
@@ -592,7 +644,7 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
       const before = await readVideo(request);
       await page.goto(`/videos/${String(target().id)}`);
       await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
-      await uploadFromPage(page, upload);
+      await uploadFromPage(page, upload, upload === uploads.png ? fillFrame : undefined);
       await expectUploadedItem(page, upload.color);
       const after = await readVideo(request);
       expect(after.thumbnailImage).toBe("uploaded");
@@ -632,6 +684,60 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
     }
   });
 
+  // 手元の画像の収め方（docs/design-docs/thumbnail-editing.md「Uploaded images」）: 縦長の画像を
+  // そのまま適用すると、カードには動画の形の枠に画像全体が余白付きで出る。「Fill frame」で
+  // 画像を下へ引いて上端を見せると、サムネイルには上半分の色だけが出る。やめると何も送らない。
+  test("全体を収めて適用でき、枠いっぱいに広げて動かした範囲だけがサムネイルになる", async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(120_000);
+    await page.goto(`/videos/${String(target().id)}`);
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
+    await uploadFromPage(page, uploads.png);
+    await expectLibraryImage(
+      page,
+      request,
+      (image) => containedIn(image, uploads.png.color),
+      true,
+    );
+    await expectLibraryImage(
+      page,
+      request,
+      async (image) => {
+        const aspect = await naturalAspect(image);
+        return aspect === null ? null : Math.abs(aspect - videoAspect) < 0.02;
+      },
+      true,
+    );
+
+    // やめると何も送らず、サムネイルは変わらない。
+    const before = await readVideo(request);
+    await page.goto(`/videos/${String(target().id)}`);
+    const root = process.env.MDM_E2E_THUMBNAIL_UPLOAD_DIR ?? "";
+    const chooser = page.waitForEvent("filechooser");
+    await page.getByRole("button", { name: "Upload an image as thumbnail" }).click();
+    await (await chooser).setFiles(path.join(root, split.file));
+    const preview = page.getByRole("dialog", { name: "Preview thumbnail" });
+    await preview.getByRole("button", { name: "Cancel", exact: true }).click();
+    await expect(preview).toBeHidden();
+    expect((await readVideo(request)).thumbnailUrl).toBe(before.thumbnailUrl);
+
+    await uploadFromPage(page, split, async (dialog, current) => {
+      await fillFrame(dialog, current);
+      const stage = dialog.getByRole("img", { name: /Drag or use the arrow keys/ });
+      const box = await stage.boundingBox();
+      if (box === null) throw new Error("the preview has no box");
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await current.mouse.move(x, y);
+      await current.mouse.down();
+      await current.mouse.move(x, y + box.height, { steps: 8 });
+      await current.mouse.up();
+    });
+    await expectLibraryImage(page, request, (image) => solidIn(image, split.top), true);
+  });
+
   // 046 受け入れ条件 4・7: 「Use the frame instead」と新しいキャプチャで、上げた画像から
   // コマのサムネイルに戻る。上げた画像がサムネイルの間も、ゲストには入口も項目も出ない。
   test("Use the frame instead と新しいキャプチャで上げた画像からコマに戻る", async ({
@@ -655,7 +761,7 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
     );
 
     await page.goto(`/videos/${String(target().id)}`);
-    await uploadFromPage(page, uploads.png);
+    await uploadFromPage(page, uploads.png, fillFrame);
     await expectUploadedItem(page, uploads.png.color);
     await expectGuestSeesNoThumbnailControls(browser);
 

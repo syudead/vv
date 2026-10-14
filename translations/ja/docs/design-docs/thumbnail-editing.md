@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/thumbnail-editing.md
-sourceHash: acdc8796002cd8168faba302949e213c13a392bb1f46bac156517a96e30be09d
+sourceHash: 70cb7efb7afb8a48de600284aab2010fdc2dd4266266bb525e242f6a26788344
 ---
 
 # サムネイル編集のセッション {#thumbnail-editing-sessions}
@@ -93,7 +93,7 @@ stateDiagram-v2
 
 ## アップロードした画像 {#uploaded-images}
 
-`POST /api/videos/{id}/thumbnail-image` は、所有者の端末にある画像を、同じ `Ingest.ApplyThumbnailImage` を通して origin `uploaded` でサムネイルにする ([R-1](../../specs/046-thumbnail-image-upload/research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image)、[契約](../../specs/046-thumbnail-image-upload/contracts/screen-api.md#post-apivideosidthumbnail-image))。ComfyUI 接続を必要とせず、セッションも持たない。ルートは本文より前に動画の内容の鍵を読み、`image` パートをメモリに保持し、収まる大きさに合わせた画像を公開するまでディスクに何も書かないので、本文が届く前に切れたリクエストは何も残さない。本文が届いた後は、検査と適用をクライアントから切り離した 5 分を上限とするコンテキストの下で実行するので、ページが離れても、送信し終えたアップロードは中断されない。この 5 分は生成のロックを待つ時間の上限でもある。待っている間にコンテキストが終わった適用は自分の順番を手放して何も書かず、ロックは他のものに対する順序を保つ。
+`POST /api/videos/{id}/thumbnail-image` は、所有者の端末にある画像を、同じ `Ingest.ApplyThumbnailImage` を通して origin `uploaded` でサムネイルにする ([R-1](../../specs/046-thumbnail-image-upload/research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image)、[契約](../../specs/046-thumbnail-image-upload/contracts/screen-api.md#post-apivideosidthumbnail-image))。ComfyUI 接続を必要とせず、セッションも持たない。ルートは本文より前に動画の内容の鍵を読み、本文の `contentVersion`（プレビューが開いたときにページが持っていた、所有者だけが見る `Video` のフィールド）がその内容のものでないときは、適用せずに `409 content_changed` を返す。ルートは `image` パートをメモリに保持し、収まる大きさに合わせた画像を公開するまでディスクに何も書かないので、本文が届く前に切れたリクエストは何も残さない。本文が届いた後は、検査と適用をクライアントから切り離した 5 分を上限とするコンテキストの下で実行するので、ページが離れても、送信し終えたアップロードは中断されない。この 5 分は生成のロックを待つ時間の上限でもある。待っている間にコンテキストが終わった適用は自分の順番を手放して何も書かず、ロックは他のものに対する順序を保つ。
 
 下のゲートが制限するのはデコードで、メモリに保持する本文ではない。本文を読む前に、ルートは上限 65 MiB の本文 4 つ分にあたるプロセス全体の予算から本文のサイズを取り、応答するまでそれを保持する。サイズは、`Content-Length` が上限以内ならその値、そうでなければ上限だ。予算を使い切っていたリクエストは、本文を読む前に、クライアントのコンテキストの下でそこで待つ。
 
@@ -123,3 +123,23 @@ sequenceDiagram
 ```
 
 自分の動画のロックを待つアップロードはゲートを保持しないので、他の動画へのアップロードを止めない。生成した画像の適用はゲートを取らない。その入力はプロバイダの出力で、編集の検査ですでに制限されている。ロックはアップロードを位置の変更や生成した画像の適用と順序付け、最後に確定したものが残る。
+
+### ページは画像を送る前に枠に収める {#the-page-frames-the-image-before-it-is-sent}
+
+ファイルを選んでもアップロードはしない。ページはファイルをデコードし、動画の表示アスペクト比で長辺 2048 px のキャンバスに描き（動画のアスペクト比が不明なときは画像自身のアスペクト比）、プレビューはそのキャンバスをカードのサムネイル枠の中に示す。`Use as thumbnail` は同じ描画を PNG としてアップロードするので、サムネイルはプレビューが示したものになる ([web/src/player/thumbnailUpload/](../../web/src/player/thumbnailUpload/))。
+
+| 収め方 | 描画 |
+| --- | --- |
+| `Whole image`（既定） | 画像全体を中央に置く。枠の残りは黒で、その上に画像をぼかした複製を半透明で重ねる。枠のアスペクト比との差が 1 px 以内の画像は枠を満たす |
+| `Fill frame` | 画像はズーム 1× から 4× で枠を覆う。所有者が画像を動かし、隙間は決してできない |
+
+するとサーバーの合わせ込みは、すでに動画のアスペクト比になった画像を受け取るので、合わせ込みの中央の切り抜きは何も削らず、保存される source は現在のサムネイルから始める編集のために同じ構図を保つ。
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| 元の画像を切り抜きの矩形とともに送り、ffmpeg に合成させる | プレビューと結果が 2 つの別の描画から生じる。また Go と ffmpeg は、ブラウザーが適用する JPEG の EXIF の向きを無視する |
+| 画像を自身のアスペクト比で保存し、各枠にレターボックス表示させる | カードはスクラブのフレームと幅の狭い動画の背景を動画のアスペクト比に配置する ([045 R-7](../../specs/045-comfyui-thumbnails/research.md#r-7-the-generated-image-is-fitted-to-the-videos-frame-before-it-is-stored)) |
+| テーマの色の余白 | JPEG には透明度がなく、同じファイルが両方のテーマに使われる |
+| キャンバス上で元の画像の解像度を使う | 一部のブラウザーはキャンバスを 1 億 2000 万ピクセルよりはるかに小さく制限し、保存される source はどのみち最大 2048 px しか保たない |
+
+サーバーは元の画像を見ないので、ページはサーバーの理由に従ってプレビューの前に拒否する。デコードできないファイルや、`VP8X` ヘッダーがアニメーションのフラグを立てている WebP は `thumbnail_upload_invalid`、ヘッダーまたはデコード後の大きさで 1 億 2000 万ピクセルを超える画像は `thumbnail_upload_too_large` とする。サーバーは受け取った PNG を引き続き検査する。

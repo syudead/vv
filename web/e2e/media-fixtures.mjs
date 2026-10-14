@@ -712,8 +712,8 @@ export const THUMBNAIL_EDIT_NEIGHBOR = "サムネイル編集の隣の動画";
 /**
  * THUMBNAIL_UPLOADS は、手元の画像をサムネイルにする流れ（specs/046-thumbnail-image-upload、
  * 子 #988）でページから上げる画像である。どれも一色で、色は互いにも偽の ComfyUI の出力の色
- * （fake-comfyui.mjs の OUTPUT_COLOR）とも離す。PNG は縦長にして、動画の形に切り抜かれる
- * ことを確かめる。
+ * （fake-comfyui.mjs の OUTPUT_COLOR）とも離す。PNG は縦長にして、全体を収めると余白が付き、
+ * 枠いっぱいに広げると動画の形に切り抜かれることを確かめる。
  */
 export const THUMBNAIL_UPLOADS = {
   png: { file: "thumbnail-upload.png", color: [0, 200, 0], width: 300, height: 400 },
@@ -722,7 +722,20 @@ export const THUMBNAIL_UPLOADS = {
 };
 
 /**
- * generateThumbnailUploadFixtures は THUMBNAIL_UPLOADS の画像を root に置く。PNG と JPEG は
+ * THUMBNAIL_UPLOAD_SPLIT は、上半分と下半分で色の違う縦長の PNG である。枠いっぱいに広げて
+ * 動かした範囲だけがサムネイルになることを、どちらの色が出るかで確かめる
+ * （docs/design-docs/thumbnail-editing.md「Uploaded images」）。
+ */
+export const THUMBNAIL_UPLOAD_SPLIT = {
+  file: "thumbnail-upload-split.png",
+  top: [220, 30, 30],
+  bottom: [255, 255, 255],
+  width: 300,
+  height: 400,
+};
+
+/**
+ * generateThumbnailUploadFixtures は THUMBNAIL_UPLOADS と THUMBNAIL_UPLOAD_SPLIT の画像を root に置く。PNG と JPEG は
  * ffmpeg で作り、WebP はチェックイン済みの e2e/fixtures/thumbnail-upload.webp を写す。
  * ffmpeg のビルドに libwebp が無いことがあるためである（specs/046-thumbnail-image-upload/plan.md）。
  */
@@ -750,6 +763,23 @@ export function generateThumbnailUploadFixtures(root) {
     ),
     path.join(root, THUMBNAIL_UPLOADS.webp.file),
   );
+  const split = THUMBNAIL_UPLOAD_SPLIT;
+  const half = { width: split.width, height: split.height / 2 };
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    solid({ ...half, color: split.top }),
+    "-f",
+    "lavfi",
+    "-i",
+    solid({ ...half, color: split.bottom }),
+    "-filter_complex",
+    "vstack",
+    "-frames:v",
+    "1",
+    path.join(root, split.file),
+  ]);
 }
 
 /**
