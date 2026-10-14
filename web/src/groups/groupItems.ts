@@ -2,6 +2,7 @@ import type { GroupItem } from "../api/groups";
 import {
   emptySelection,
   type LibrarySelection,
+  type SelectedGroup,
   selectedGroupOf,
   setGroup,
 } from "../library/selection";
@@ -41,22 +42,47 @@ export function selectAllInGroup(
 }
 
 /**
- * keepListedGroups は、読み直した項目にもう無い子グループを選んだグループから外す。
- * 選んだ動画の id は削らない（読んでいないページの選択を残す。ライブラリと同じ）。
+ * reconcileGroupSelection は読み直したグループを選択に映す（ui-design.md「Edits that fail」
+ * 「The selection drops the ids no longer listed」）。
+ *
+ * - 選んだ動画は、グループの `videoIds`（子孫の動画のすべて、読んでいないページの分も）に
+ *   もう無いものを外す。読んでいないページの選択は残る。
+ * - 選んだ子グループは、読み直した項目にもう無ければ外す。並んでいれば今のメンバーで
+ *   覚え直し、メンバーが増えて全員が選択に入っていなければ外す（ライブラリの
+ *   `reconcileGroups` と同じ考え方。外したグループのメンバーは選んだ動画として残る）。
+ *
+ * ライブラリの `reconcileGroups` をそのまま使わないのは、子グループのメンバーが直接の
+ * 動画の項目としても並ぶ（Edge Case）ことがあり、その規則だと子グループの選択を誤って外すため。
+ * 変化が無ければ同じ選択を返す。
  */
-export function keepListedGroups(
+export function reconcileGroupSelection(
   selection: LibrarySelection,
+  videoIds: readonly number[],
   items: readonly GroupItem[],
 ): LibrarySelection {
-  if (selection.groups.size === 0) return selection;
-  const listed = new Set(
-    items.flatMap((item) =>
-      item.kind === "group" && item.group !== undefined ? [item.group.id] : [],
-    ),
-  );
-  const groups = new Map(selection.groups);
-  for (const key of groups.keys()) if (!listed.has(key)) groups.delete(key);
-  return groups.size === selection.groups.size
-    ? selection
-    : { ids: selection.ids, groups };
+  const present = new Set(videoIds);
+  const ids = new Set([...selection.ids].filter((id) => present.has(id)));
+  const listed = new Map<number, readonly number[]>();
+  for (const item of items) {
+    if (item.kind === "group" && item.group !== undefined) {
+      listed.set(item.group.id, item.group.videoIds);
+    }
+  }
+  const groups = new Map<number, SelectedGroup>();
+  let changed = ids.size !== selection.ids.size;
+  for (const [key, group] of selection.groups) {
+    const observed = listed.get(key);
+    if (observed === undefined || !observed.every((id) => ids.has(id))) {
+      changed = true;
+      continue;
+    }
+    if (!sameIds(observed, group.videoIds)) changed = true;
+    groups.set(key, { id: key, videoIds: observed });
+  }
+  return changed ? { ids, groups } : selection;
+}
+
+/** sameIds は 2 つの id の並びが同じとき true を返す。 */
+function sameIds(a: readonly number[], b: readonly number[]): boolean {
+  return a.length === b.length && a.every((id, index) => b[index] === id);
 }

@@ -51,7 +51,7 @@ import { Grid } from "../videoList/Grid";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard from "../videoList/VideoCard";
-import { keepListedGroups, selectAllInGroup } from "./groupItems";
+import { reconcileGroupSelection, selectAllInGroup } from "./groupItems";
 import { GroupItemRow } from "./GroupItemRow";
 import {
   folderDisplayPath,
@@ -114,19 +114,24 @@ function useViewPreferences() {
  */
 function useGroupSelection(data: GroupPageData | null) {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
-  const [allSelection, setAllSelection] = useState<LibrarySelection | null>(null);
-  const items = data?.items;
 
-  // 読み直した項目にもう無い子グループは、選んだグループから外す（ui-design.md
-  // 「Edits that fail」）。読んでいないページの選んだ動画は残す。
+  // 読み直したグループにもう無い動画と子グループを選択から外し、選んだ子グループを今の
+  // メンバーで覚え直す（ui-design.md「Edits that fail」）。読んでいないページの選んだ動画は残す。
   useEffect(() => {
-    if (items !== undefined) setSelection((current) => keepListedGroups(current, items));
-  }, [items]);
+    if (data === null) return;
+    setSelection((current) =>
+      reconcileGroupSelection(current, data.group.videoIds, data.items),
+    );
+  }, [data]);
 
-  const clear = useCallback(() => {
-    setSelection(emptySelection);
-    setAllSelection(null);
-  }, []);
+  // 「Select all」が選ぶものは今のグループから決める。読み直しで動画や子グループが増えれば
+  // 選択と一致しなくなり、ボタンはまた押せる。
+  const all = useMemo(
+    () => (data === null ? null : selectAllInGroup(data.group.videoIds, data.items)),
+    [data],
+  );
+
+  const clear = useCallback(() => setSelection(emptySelection), []);
   const changeVideo = useCallback(
     (videoId: number, selected: boolean) =>
       setSelection((current) => setVideo(current, videoId, selected)),
@@ -157,17 +162,14 @@ function useGroupSelection(data: GroupPageData | null) {
     [changeGroup, changeVideo],
   );
   const selectAll = useCallback(() => {
-    if (data === null) return;
-    const all = selectAllInGroup(data.group.videoIds, data.items);
-    setSelection(all);
-    setAllSelection(all);
-  }, [data]);
+    if (all !== null) setSelection(all);
+  }, [all]);
 
   useEscapeClearsSelection(selection.ids.size > 0, clear);
 
   return {
     selection,
-    allSelected: allSelection !== null && sameSelection(allSelection, selection),
+    allSelected: all !== null && sameSelection(all, selection),
     clear,
     changeVideo,
     changeGroup,
@@ -281,8 +283,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
             allSelected={selection.allSelected}
             selectedIds={selectedIds}
             favoriteVideoIds={favorites.videoIds}
-            favoriteFolders={favorites.folders}
-            favoriteUnreadGroupIds={favorites.unreadGroupIds}
+            favoriteGroupIds={favorites.groupIds}
             selectingAll={false}
             onSelectAll={selection.selectAll}
             onClear={selection.clear}
