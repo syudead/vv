@@ -47,17 +47,46 @@ export function readGroupPage(
 
 /**
  * listGroupItems はグループの項目の続きを 1 ページ取得する（GET /api/groups/{id}/items）。
- * `cursor` は前の応答の `nextCursor` で、中身は解釈しない。
+ * `cursor` は前の応答の `nextCursor` で、中身は解釈しない。省くと先頭のページ。`limit` を省くと
+ * サーバーの既定の件数。
  */
 export function listGroupItems(
   id: number,
-  cursor: string,
+  cursor: string | undefined,
   signal?: AbortSignal,
+  limit?: number,
 ): Promise<GroupItemPage> {
-  const query = new URLSearchParams({ cursor });
-  return request<GroupItemPage>(`${groupPath(id)}/items?${query.toString()}`, {
-    signal,
-  });
+  const query = new URLSearchParams();
+  if (cursor !== undefined) query.set("cursor", cursor);
+  if (limit !== undefined) query.set("limit", String(limit));
+  const search = query.size === 0 ? "" : `?${query.toString()}`;
+  return request<GroupItemPage>(`${groupPath(id)}/items${search}`, { signal });
+}
+
+/** directItemPageSize は直接の項目を探すときの 1 ページの件数（api/openapi.yaml の上限）である。 */
+const directItemPageSize = 200;
+
+/**
+ * findVideoItem はグループ `id` の直接の項目から動画 `videoId` の項目を探し、その項目の id を
+ * 返す。`nextCursor` を追って全部を読み、無ければ undefined（子グループを通してだけ入っている
+ * 動画も undefined。外す経路はグループ自身の項目しか取らない。specs/048-groups/ui-design.md
+ * 「Video page」）。
+ */
+export async function findVideoItem(
+  id: number,
+  videoId: number,
+  signal?: AbortSignal,
+): Promise<number | undefined> {
+  let cursor: string | undefined;
+  do {
+    const page = await listGroupItems(id, cursor, signal, directItemPageSize);
+    const item = page.items.find(
+      (each) => each.kind === "video" && each.video?.id === videoId,
+    );
+    if (item !== undefined) return item.id;
+    cursor = page.nextCursor;
+  } while (cursor !== undefined);
+  return undefined;
 }
 
 /** 作成と追加で項目にする動画とグループ。動画、次にグループの順に、それぞれこの順で足す。 */

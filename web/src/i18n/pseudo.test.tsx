@@ -13,7 +13,7 @@ import {
 
 function CatalogCard({ title, count }: { title: string; count: number }) {
   return (
-    <article aria-label={t.folderGrouping.ungrouped(title)}>
+    <article aria-label={t.groups.dissolved(title)}>
       <h2>{title}</h2>
       <p>
         {t.count.videos(count)} · {formatNumber(count)}

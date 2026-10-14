@@ -5,6 +5,7 @@ import {
   addToGroup,
   createGroup,
   dissolveGroup,
+  findVideoItem,
   listAllGroups,
   listGroups,
   moveGroupItem,
@@ -180,6 +181,36 @@ describe("groups API", () => {
     holdSnapshot();
     await expect(removeFromGroup(7, [11])).resolves.toBeNull();
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
+  });
+
+  it("findVideoItem は 200 件ずつ nextCursor を追い、動画の直接の項目の id を返す", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json({
+          items: [{ id: 21, kind: "group", group: { ...group, id: 9 } }],
+          nextCursor: "c1",
+        }),
+      )
+      .mockResolvedValueOnce(
+        json({ items: [{ id: 22, kind: "video", video: { id: 4 } }] }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(findVideoItem(7, 4)).resolves.toBe(22);
+    expect(sent(fetchMock).map((each) => each.url)).toEqual([
+      "/api/groups/7/items?limit=200",
+      "/api/groups/7/items?cursor=c1&limit=200",
+    ]);
+  });
+
+  it("findVideoItem は直接の項目に無ければ undefined", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(
+        json({ items: [{ id: 21, kind: "video", video: { id: 3 } }] }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    await expect(findVideoItem(7, 4)).resolves.toBeUndefined();
   });
 
   it("listAllGroups はページの数で打ち切らず nextCursor が尽きるまで辿る", async () => {

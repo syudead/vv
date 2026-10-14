@@ -67,12 +67,35 @@ export function groupItemPath(
   return videoInGroupPath(item.video?.id ?? 0, id);
 }
 
+/** GROUP_PARAM は動画ページを開いたグループの id を載せる問い合わせの名前である（research.md R-9）。 */
+const GROUP_PARAM = "group";
+
+/**
+ * groupContextOf は動画ページの URL の問い合わせから、動画を開いたグループの id を読む。
+ * 無いか正の整数でなければ undefined（読み取りに `group` を渡さない）。
+ */
+export function groupContextOf(search: string): number | undefined {
+  const raw = new URLSearchParams(search).get(GROUP_PARAM);
+  return parseGroupId(raw ?? undefined) ?? undefined;
+}
+
 /**
  * videoInGroupPath はグループ `groupId` のページから開く動画ページの場所である。`?group` で
  * 再生画面の `Up next` がそのグループの順に従う（research.md R-9）。
  */
 export function videoInGroupPath(videoId: number, groupId: number): string {
-  return `/videos/${String(videoId)}?group=${String(groupId)}`;
+  return `/videos/${String(videoId)}?${GROUP_PARAM}=${String(groupId)}`;
+}
+
+/**
+ * searchWithoutGroup は動画ページの問い合わせから `?group` を外したものである。ほかの問い合わせは
+ * 残し、何も残らなければ空文字を返す（グループの操作の後に `group` なしで読み直す。ui-design.md
+ * 「Video page」）。
+ */
+export function searchWithoutGroup(search: string): string {
+  const params = new URLSearchParams(search);
+  params.delete(GROUP_PARAM);
+  return params.size === 0 ? "" : `?${params.toString()}`;
 }
 
 /**
