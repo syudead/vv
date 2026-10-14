@@ -6,12 +6,8 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 )
-
-// goTestDecl は足された行のうち、トップレベルのテスト関数の宣言に一致する。
-var goTestDecl = regexp.MustCompile(`^func (Test\w+)\(\w+ \*testing\.T\)`)
 
 // 呼び出しの名前から、テストが用意する重い資源を見分ける。名前はパッケージの
 // テストファイルにある補助関数をたどった先まで含める（newGuestFixture →
@@ -24,36 +20,61 @@ var (
 	httpCalls         = []string{"newTestServer", "NewRouter", "httptest.NewRecorder", "httptest.NewServer"}
 )
 
-// goTests は 1 つの _test.go で足されたテスト関数を、パッケージの補助関数を
-// たどって分かる資源からレベルを付けて返す。
-func goTests(file string, lines []string) ([]*addedTest, error) {
-	var names []string
-	for _, line := range lines {
-		if m := goTestDecl.FindStringSubmatch(line); m != nil {
-			names = append(names, m[1])
-		}
-	}
-	if len(names) == 0 {
-		return nil, nil
+// goTests は 1 つの _test.go で、足された行を含むトップレベルのテスト関数を、
+// パッケージの補助関数をたどって分かる資源からレベルを付けて返す。既存のテストへ
+// subtest や表の行を足しただけの変更も、そのテストとして数える。
+func goTests(file string, lines []addedLine) ([]*addedTest, error) {
+	touched, err := touchedTests(file, lines)
+	if err != nil || len(touched) == 0 {
+		return nil, err
 	}
 	dir := filepath.Dir(file)
 	calls, err := packageCalls(dir)
 	if err != nil {
 		return nil, err
 	}
-	tests := make([]*addedTest, 0, len(names))
-	for _, name := range names {
-		// 文字列の中の "func Test..." の行は宣言ではない。
-		if _, declared := calls[name]; !declared {
-			continue
-		}
-		reached := reach(calls, name)
-		tests = append(tests, &addedTest{
-			File: file, Name: name, Package: dir,
-			Level: goLevel(dir, reached),
-		})
+	tests := make([]*addedTest, 0, len(touched))
+	for _, t := range touched {
+		t.Package = dir
+		t.Level = goLevel(dir, reach(calls, t.Name))
+		tests = append(tests, t)
 	}
 	return tests, nil
+}
+
+// touchedTests は file のトップレベルのテスト関数のうち、足された行を含むものを
+// 宣言の順に返す。宣言の行が足されていなければ、既存のテストへの追加（Changed）とする。
+func touchedTests(file string, lines []addedLine) ([]*addedTest, error) {
+	fset := token.NewFileSet()
+	parsed, err := parser.ParseFile(fset, file, nil, parser.SkipObjectResolution)
+	if err != nil {
+		return nil, err
+	}
+	added := map[int]bool{}
+	for _, line := range lines {
+		added[line.N] = true
+	}
+	var tests []*addedTest
+	for _, decl := range parsed.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Recv != nil || !strings.HasPrefix(fn.Name.Name, "Test") {
+			continue
+		}
+		first, last := fset.Position(fn.Pos()).Line, fset.Position(fn.End()).Line
+		if anyIn(added, first, last) {
+			tests = append(tests, &addedTest{File: file, Name: fn.Name.Name, Changed: !added[first]})
+		}
+	}
+	return tests, nil
+}
+
+func anyIn(lines map[int]bool, first, last int) bool {
+	for n := first; n <= last; n++ {
+		if lines[n] {
+			return true
+		}
+	}
+	return false
 }
 
 // goLevel は、テストが届く呼び出しからレベルを決める。重い資源を優先する。
@@ -63,7 +84,7 @@ func goLevel(dir string, reached map[string]bool) level {
 	switch {
 	case hasAny(reached, ffmpegCalls):
 		return levelMedia
-	case usesDB && hasAny(reached, httpCalls):
+	case hasAny(reached, httpCalls):
 		return levelHTTP
 	case usesDB:
 		return levelStore

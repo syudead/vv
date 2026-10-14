@@ -18,7 +18,7 @@ var (
 
 // webTests は 1 つの Vitest のファイルで足されたテストを、ファイルが何を描画するかで
 // レベルを付けて返す。
-func webTests(file string, lines []string) ([]*addedTest, error) {
+func webTests(file string, lines []addedLine) ([]*addedTest, error) {
 	names := webTestNames(lines)
 	if len(names) == 0 {
 		return nil, nil
@@ -36,7 +36,7 @@ func webTests(file string, lines []string) ([]*addedTest, error) {
 }
 
 // e2eTests は Playwright のファイルで足されたテストを返す。
-func e2eTests(file string, lines []string) []*addedTest {
+func e2eTests(file string, lines []addedLine) []*addedTest {
 	var tests []*addedTest
 	for _, name := range webTestNames(lines) {
 		tests = append(tests, &addedTest{File: file, Name: name, Level: levelE2E})
@@ -44,10 +44,10 @@ func e2eTests(file string, lines []string) []*addedTest {
 	return tests
 }
 
-func webTestNames(lines []string) []string {
+func webTestNames(lines []addedLine) []string {
 	var names []string
 	for _, line := range lines {
-		if m := webTestDecl.FindStringSubmatch(line); m != nil {
+		if m := webTestDecl.FindStringSubmatch(line.Text); m != nil {
 			names = append(names, m[2])
 		}
 	}

@@ -50,7 +50,7 @@ func collect(base string) ([]*addedTest, error) {
 }
 
 // testsInFile は 1 つのファイルで足されたテストを、ファイルの種類ごとに読む。
-func testsInFile(file string, lines []string) ([]*addedTest, error) {
+func testsInFile(file string, lines []addedLine) ([]*addedTest, error) {
 	switch kindOf(file) {
 	case goTestFile:
 		return goTests(file, lines)

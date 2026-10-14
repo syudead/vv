@@ -55,8 +55,8 @@ flowchart LR
 6. **Pull request.** Push and open a pull request to `main` that fills
    [the PR template](../../../.github/pull_request_template.md), with
    `Closes #<Issue>`, the level table under `テスト` and the output of
-   `task test-cost -- -measure`. Then drive the pull request until its checks
-   pass.
+   `task test-cost -- -base origin/main -measure`. Then drive the pull request
+   until its checks pass.
 
 One run takes one Issue to one pull request. When the maintainer hands over
 several Issues, run them one after another, each on its own branch.

@@ -15,21 +15,29 @@ func TestParseDiffKeepsAddedLinesOfTestFiles(t *testing.T) {
 		"+++ b/internal/store/a_test.go",
 		"@@ -1,0 +2,1 @@",
 		"+func TestA(t *testing.T) {",
+		"@@ -9 +10,2 @@",
 		"-func TestOld(t *testing.T) {",
+		"+	{name: \"case\"},",
+		"+	{name: \"another\"},",
 		"diff --git a/internal/store/a.go b/internal/store/a.go",
 		"+++ b/internal/store/a.go",
 		"+func TestNotATest(t *testing.T) {",
 		"+++ b/web/src/x.test.ts",
+		"@@ -0,0 +1 @@",
 		"+it(\"x\", () => {",
 	}, "\n")
 
 	got := parseDiff(diff)
-	want := map[string][]string{
-		"internal/store/a_test.go": {"func TestA(t *testing.T) {"},
-		"web/src/x.test.ts":        {"it(\"x\", () => {"},
+	want := map[string][]addedLine{
+		"internal/store/a_test.go": {
+			{N: 2, Text: "func TestA(t *testing.T) {"},
+			{N: 10, Text: "	{name: \"case\"},"},
+			{N: 11, Text: "	{name: \"another\"},"},
+		},
+		"web/src/x.test.ts": {{N: 1, Text: "it(\"x\", () => {"}},
 	}
 	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("parseDiff = %q, want %q", got, want)
+		t.Fatalf("parseDiff = %v, want %v", got, want)
 	}
 }
 
@@ -60,7 +68,7 @@ func TestWebTestNames(t *testing.T) {
 		`  describe("not a test", () => {`,
 	}
 	want := []string{"plain", "single quotes", "template", "each %s", "skipped"}
-	if got := webTestNames(lines); !reflect.DeepEqual(got, want) {
+	if got := webTestNames(wholeFile(strings.Join(lines, "\n"))); !reflect.DeepEqual(got, want) {
 		t.Fatalf("webTestNames = %q, want %q", got, want)
 	}
 }
@@ -101,24 +109,34 @@ func (e *env) serve() { newTestServer(e.t, Options{}) }
 func TestPure(t *testing.T) { _ = os.Open("x") }
 func TestStore(t *testing.T) { fixture(t) }
 func TestHTTP(t *testing.T) { e := fixture(t); e.serve() }
+func TestHTTPOverFakes(t *testing.T) { newTestServer(t, Options{}) }
 func TestMedia(t *testing.T) { requireFFmpeg(t); fixture(t) }
-`)
-	lines := []string{
-		"func TestPure(t *testing.T) { _ = os.Open(\"x\") }",
-		"func TestStore(t *testing.T) { fixture(t) }",
-		"func TestHTTP(t *testing.T) { e := fixture(t); e.serve() }",
-		"func TestMedia(t *testing.T) { requireFFmpeg(t); fixture(t) }",
-		"	TestNotDeclared(t)",
+func TestUntouched(t *testing.T) { fixture(t) }
+func TestCasesAdded(t *testing.T) {
+	for _, tc := range []string{
+		"old",
+		"new",
+	} {
+		fixture(t)
 	}
+}
+
+var s = "func TestInString(t *testing.T) {}"
+`)
+	// 宣言の行（3〜7 行目）、既存のテストに足した表の行（12 行目）、文字列の中の行（18 行目）。
+	lines := []addedLine{{N: 3}, {N: 4}, {N: 5}, {N: 6}, {N: 7}, {N: 12}, {N: 18}}
 	tests, err := goTests(filepath.Join(dir, "a_test.go"), lines)
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := map[string]level{}
+	got := map[string]string{}
 	for _, test := range tests {
-		got[test.Name] = test.Level
+		got[displayName(test)] = test.Level.String()
 	}
-	want := map[string]level{"TestPure": levelLogic, "TestStore": levelStore, "TestHTTP": levelHTTP, "TestMedia": levelMedia}
+	want := map[string]string{
+		"TestPure": "logic", "TestStore": "store", "TestHTTP": "http", "TestHTTPOverFakes": "http",
+		"TestMedia": "media", "TestCasesAdded (cases added)": "store",
+	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("levels = %v, want %v", got, want)
 	}

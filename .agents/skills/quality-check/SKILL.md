@@ -7,7 +7,9 @@ description: "Check a finished diff against the repository's mechanical rules (t
 
 These are the rules a reviewer would otherwise raise one at a time and that a
 command can decide. Each check names its command; run it on the whole diff
-against the base branch, and report what the command printed, not an opinion.
+against `<base>`, the branch the pull request targets (`origin/main`, or
+`origin/<feature branch>` for an SDD child), and report what the command
+printed, not an opinion.
 Meaning, scope and agreement with the Issue belong to
 [self-review](../self-review/SKILL.md), not here.
 
@@ -15,7 +17,7 @@ Meaning, scope and agreement with the Issue belong to
 
 | # | Check | Command | Finding when |
 | --- | --- | --- | --- |
-| Q-1 | Test levels | `task test-cost -- -measure` | A store, http, media, page or e2e row has no row in the level table supplied by the parent, or its reason is that the rule lives in the page or handler ([test-writing](../test-writing/SKILL.md)) |
+| Q-1 | Test levels | `task test-cost -- -base <base> -measure` | A store, http, media, page or e2e row has no row in the level table supplied by the parent, or its reason is that the rule lives in the page or handler ([test-writing](../test-writing/SKILL.md)) |
 | Q-2 | Slow tests | Same output | An added test takes over 1 s without a stated reason |
 | Q-3 | Waiting and snapshots | `git diff <base> -- '*_test.go' '*.test.ts' '*.test.tsx' '*.e2e.ts' \| grep -nE '^\+.*(time\.Sleep\|toMatchSnapshot\|toMatchInlineSnapshot\|waitForTimeout)'` | Any added line matches |
 | Q-4 | Go complexity | `task complexity-go`, then the rows of `reports/quality/complexity-go/gocyclo.txt` for functions the diff adds or changes | A changed function outside tests and generated code is over 25 |

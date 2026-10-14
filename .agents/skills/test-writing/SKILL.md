@@ -47,15 +47,19 @@ lengthens the CI run of every later pull request: a Web page test costs about
    and see it fail. Otherwise revert the implementing lines, run the test, see
    it fail, and restore them. A test that passes either way is deleted or
    rewritten.
-6. Run `task test-cost -- -measure`. Every row it prints at store, http,
-   media, page or e2e level must be in the level table with its reason, and a
-   test over 1 s states why it needs that long or is cut down.
+6. Run `task test-cost -- -base <base> -measure`, where `<base>` is the
+   branch the pull request targets: `origin/main`, or `origin/<feature branch>`
+   for an SDD child, so tests already merged into the feature branch are not
+   listed again. Every row it prints at store, http, media, page or e2e level,
+   including a Go test marked `(cases added)`, must be in the level table with
+   its reason, and a test over 1 s states why it needs that long or is cut
+   down.
 7. Run the focused tests of the changed packages and files.
 
 ## Return
 
 - The level table.
-- The output of `task test-cost -- -measure`.
+- The output of `task test-cost -- -base <base> -measure`.
 - The focused test commands and their results, including the failing run of
   step 5.
 - Any blocker: a behaviour that cannot be tested at the level the policy sets

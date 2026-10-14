@@ -34,6 +34,7 @@ type addedTest struct {
 	Name    string
 	Package string // Go のテストだけ。go test に渡すディレクトリ。
 	Level   level
+	Changed bool    // 既存のテストに行を足した（Go だけ）。
 	Seconds float64 // -measure で測れたときだけ 0 より大きい。
 	Missing bool    // -measure で結果に名前が見つからなかった。
 }
@@ -49,7 +50,7 @@ func render(tests []*addedTest, measured bool) string {
 	var b strings.Builder
 	b.WriteString("| Level | Test | File | Seconds |\n| --- | --- | --- | --- |\n")
 	for _, t := range sorted {
-		fmt.Fprintf(&b, "| %s | %s | `%s` | %s |\n", t.Level, escape(t.Name), t.File, seconds(t, measured))
+		fmt.Fprintf(&b, "| %s | %s | `%s` | %s |\n", t.Level, escape(displayName(t)), t.File, seconds(t, measured))
 	}
 	b.WriteString("\n")
 	b.WriteString(summary(sorted, measured))
@@ -95,6 +96,13 @@ func seconds(t *addedTest, measured bool) string {
 	default:
 		return fmt.Sprintf("%.2f", t.Seconds)
 	}
+}
+
+func displayName(t *addedTest) string {
+	if t.Changed {
+		return t.Name + " (cases added)"
+	}
+	return t.Name
 }
 
 func escape(s string) string {
