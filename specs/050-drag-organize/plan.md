@@ -80,7 +80,7 @@ folder screen's drag, judged against the parent Issue's `UI品質`.
 | User data survives a rebuild (ARCHITECTURE.md) | Pass: no table is added; the journal is memory only and undo restores rows by their own ids and keys |
 | Every read knows its viewer (ARCHITECTURE.md) | Pass: every route is a write, owner only by the `/api/*` default; guests get no drag |
 | Do not hand-edit generated files (AGENTS.md) | Pass: `api/openapi.yaml` changes, then `task generate` |
-| Complexity 25 or less, no copied code (AGENTS.md) | Pass: the operations reuse `appendGroupMembers`, `dissolveGroup`, `moveItemAfter` and the bundle body as shared helpers; the drag layer extends `videoList/reorder.tsx` rather than copying it |
+| Complexity 25 or less, no copied code (AGENTS.md) | Pass: `appendGroupMembers` is generalised to take one ordered list of videos and groups (it appends all videos before all groups today, which would break screen order), and the operations share it with `GroupStore`'s add along with `dissolveGroup`, `moveItemAfter` and the bundle body as shared helpers; the drag layer extends `videoList/reorder.tsx` rather than copying it |
 | Read design-system.md before a screen; test at the lowest level (AGENTS.md) | Pass: screens follow `ui-design.md`; rules get domain tests, operations and undo store tests, screens page tests, the acceptance criteria one browser test |
 
 No violation, so no complexity tracking.
@@ -195,7 +195,9 @@ with reordering a group.
 tests show: A dropped on B makes a group named B's title holding B then A
 (acceptance criterion 2); with `from`, the group takes B's position and A and
 B leave `from`; a 120-character title is cut to 100; undo deletes the group
-and puts A and B back at their positions.
+and puts A and B back at their positions; after the new group is favorited,
+added to a playlist or put in another group, undo is `ErrUndoConflict` and
+changes nothing.
 
 ### Merge dragged groups into a target group in one operation
 
@@ -210,7 +212,8 @@ tests cover the plan's rows (a parent that already holds Y, a parent that is
 Y's descendant, a playlist holding both); store tests show: Y ends with its
 items then X's in order and X is gone (acceptance criterion 4); a favorited X
 leaves Y favorited; X's playlist item and parent item become Y's at X's
-position; a merged automatic X writes `ungroup`; undo restores X with its id,
+position; a selection of a video and X in that order appends the video then
+X's items in one transaction; a merged automatic X writes `ungroup`; undo restores X with its id,
 items, favorite, playlist items and parents, and Y as it was.
 
 ### Bundle a dragged video with its target as the representative in one operation
@@ -306,7 +309,7 @@ interaction review against `ui-design.md`. `task check` passes; page tests
 show: X on Y with "Merge" sends `merge` with `into` Y and X's card leaves
 (acceptance criterion 4); with "Put in as a child group" it sends `move` with
 `to` Y (acceptance criterion 5); a selection of videos and groups dropped on a
-group offers the menu for its groups and moves its videos.
+group sends one request, `merge` or `move`, with every card in screen order.
 
 ### Cover drag organizing in a browser test
 

@@ -1,6 +1,6 @@
 ---
 source: specs/050-drag-organize/data-model.md
-sourceHash: b879f0aa8a5b15da0729a505e586da0a41fe4e53ae1662afca36d29950abc266
+sourceHash: 1cff7c6d981cf95ce0dcc02d4d5ed024b0d2375486bf35b4fc00fdc09d663af4
 ---
 
 # データモデル: ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる {#data-model-drag-and-drop-to-reorder-group-merge-and-bundle}
@@ -16,7 +16,7 @@ sourceHash: b879f0aa8a5b15da0729a505e586da0a41fe4e53ae1662afca36d29950abc266
 | 並べ替え | グループ G のドラッグした項目が、画面の順で、G の 1 つの項目の後か先頭へまとまって動く。位置は `0 … n-1` のまま |
 | 移動 | ドラッグしたカードを画面の順で `to` に付け加え、すでにあるものは飛ばす。`from` があるときは、それらを `from` から取り除く。`to` がないと、取り除きだけが起きる (ライブラリにドロップした)。フォルダのメンバーを取り除くとその除外を書き、最後の項目を取り除くと、048 の Remove と同じように `from` を解散する |
 | グループ作成 | 対象のタイトルを 100 文字に切ったものを名前とし、対象とその後にドラッグした動画を持つグループを作る ([R-6](research.md#r-6-make-a-group-puts-the-new-group-where-the-target-was))。`from` があると、新しいグループは `from` の中の対象の位置を取り、対象とドラッグした項目は `from` を離れる |
-| 統合 | ドラッグした各グループについて画面の順に [R-5](research.md#r-5-a-merge-hands-the-dropped-groups-favorites-playlist-items-and-parents-to-the-target) |
+| 統合 | ドラッグしたカードを画面の順にたどる: グループは [R-5](research.md#r-5-a-merge-hands-the-dropped-groups-favorites-playlist-items-and-parents-to-the-target) のとおりに統合し、動画は移動と同じように対象に付け加える。そのため、混ざった選択は 1 つのトランザクション、1 つのトークンになる |
 | まとめ | 対象を代表とする `VersionStore.Bundle` の規則 ([030 データモデル](../030-video-versions/data-model.md))。すでにまとまっている動画はそのまとまり全体を連れてくる (エッジケース) |
 | 取り消し | 今の行が変更後イメージと等しいとき、変更前イメージを書き戻し、それから操作と同じようにフォルダの索引を作り直し、触れたプレイリストの番号を振り直す。そうでなければ `ErrUndoConflict` で、何も書かれない |
 
@@ -33,6 +33,8 @@ sourceHash: b879f0aa8a5b15da0729a505e586da0a41fe4e53ae1662afca36d29950abc266
 | グループ作成 | 新しいグループの `groups`。新しいグループと `from` の `group_items` |
 | 統合 | ドラッグしたグループ、その親、対象についての移動の行 |
 | まとめ | 吸収したすべてのまとまりと新しいまとまりの `video_bundles` と `video_bundle_members`。吸収したすべてのキーと新しいキーの `group_items`、`group_exclusions`、`playlist_items` を、グループかプレイリストの全体で。`copyUserData` が新しいキーの下に書くユーザーデータの行。まとめが取り除く `video_version_candidates` |
+
+どのイメージも、取り消しが削除するか作り直すグループを参照する行も含む: `child_id` による `group_items`、`group_id` による `group_favorites` と `playlist_items`。そのため、操作の後に加わった参照 (新しいグループをお気に入りにした、プレイリストに加えた、別のグループに入れた) は変更後イメージと異なり、取り消しはそれを落とす連鎖削除ではなく `ErrUndoConflict` になる。
 
 削除したグループかまとまりを戻すときは、古い id で挿入し直す。SQLite の `autoincrement` はその id を二度と払い出さないので、その id は空いている。
 

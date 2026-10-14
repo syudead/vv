@@ -82,11 +82,12 @@ Makes a group of dragged videos and the target video (requirement 5).
 
 ## `POST /api/organize/merge`
 
-Merges dragged groups into the target (requirement 8).
+Merges dragged groups into the target and appends dragged videos to it, in one
+transaction (requirement 8).
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
-| `groupIds` | int64[] | yes | Dragged groups in screen order |
+| `items` | `OrganizeRefs` | yes | Dragged cards, at least one group |
 | `into` | int64 | yes | The group dropped on |
 
 ## `POST /api/organize/bundle`
@@ -112,7 +113,7 @@ Puts back the state before the operation the token names (requirement 12).
 
 | Route | Status | `code` | When |
 | --- | --- | --- | --- |
-| Every operation | `400` | `invalid_request` | An empty list, a group in `/group` or `/bundle`, or `after` among `itemIds` |
+| Every operation | `400` | `invalid_request` | An empty list, a group in `/group` or `/bundle`, no group in `/merge`, or `after` among `itemIds` |
 | Every operation | `404` | `group_target_not_found` | A video, group or item does not exist, or is not in `from` or `groupId`; nothing is written |
 | `/move`, `/merge` | `409` | `group_cycle` | A dragged group is the target or one of its ancestors |
 | `/bundle` | `400` | `too_many_videos` | More than 20 videos after expanding bundles, as `POST /api/video-bundles` |

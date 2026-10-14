@@ -1,6 +1,6 @@
 ---
 source: specs/050-drag-organize/contracts/screen-api.md
-sourceHash: 0afd51fe929722d2bb090227ede51cd39b9e7107aea4acd4adf1680140b777b8
+sourceHash: 2ccd6a32ed2f5050db8b700c6c09b84ec7bcd310a4638dedfe6a338e1aa44774
 ---
 
 # 契約: ドラッグ操作と取り消しの画面の API {#contract-screen-api-for-drag-operations-and-undo}
@@ -82,11 +82,11 @@ OrganizeResult:
 
 ## `POST /api/organize/merge` {#post-apiorganizemerge}
 
-ドラッグしたグループを対象に統合する (要件 8)。
+ドラッグしたグループを対象に統合し、ドラッグした動画を対象に付け加える。これを 1 つのトランザクションで行う (要件 8)。
 
 | フィールド | 型 | 必須 | 意味 |
 | --- | --- | --- | --- |
-| `groupIds` | int64[] | はい | 画面の順のドラッグしたグループ |
+| `items` | `OrganizeRefs` | はい | ドラッグしたカード。少なくとも 1 つのグループを含む |
 | `into` | int64 | はい | ドロップ先のグループ |
 
 ## `POST /api/organize/bundle` {#post-apiorganizebundle}
@@ -112,7 +112,7 @@ OrganizeResult:
 
 | ルート | ステータス | `code` | 条件 |
 | --- | --- | --- | --- |
-| どの操作も | `400` | `invalid_request` | 空の一覧、`/group` か `/bundle` の中のグループ、または `itemIds` の中にある `after` |
+| どの操作も | `400` | `invalid_request` | 空の一覧、`/group` か `/bundle` の中のグループ、`/merge` の中にグループがないこと、または `itemIds` の中にある `after` |
 | どの操作も | `404` | `group_target_not_found` | 動画、グループ、項目が存在しないか、`from` か `groupId` にない。何も書かれない |
 | `/move`、`/merge` | `409` | `group_cycle` | ドラッグしたグループが対象か、その祖先の 1 つである |
 | `/bundle` | `400` | `too_many_videos` | まとまりを展開した後に動画が 20 本を超える。`POST /api/video-bundles` と同じ |

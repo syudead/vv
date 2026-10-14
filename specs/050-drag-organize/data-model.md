@@ -22,7 +22,7 @@ does not resolve, or a dragged card not in `from`, is
 | Reorder | The dragged items of group G, in screen order, move together after one item of G, or to the top; positions stay `0 … n-1` |
 | Move | Appends the dragged cards to `to` in screen order, skipping those already there; when `from` is set, removes them from `from`. Without `to`, only the removal happens (dropped on the library). Removing a folder member writes its exclusion and removing the last item dissolves `from`, as 048's Remove does |
 | Group | Creates a group named by the target's title cut to 100 characters, holding the target and then the dragged videos ([R-6](research.md#r-6-make-a-group-puts-the-new-group-where-the-target-was)); with `from`, the new group takes the target's position in `from` and the target and the dragged items leave `from` |
-| Merge | [R-5](research.md#r-5-a-merge-hands-the-dropped-groups-favorites-playlist-items-and-parents-to-the-target), for each dragged group in screen order |
+| Merge | Walks the dragged cards in screen order: a group is merged as [R-5](research.md#r-5-a-merge-hands-the-dropped-groups-favorites-playlist-items-and-parents-to-the-target) says, a video is appended to the target as Move does, so a mixed selection is one transaction and one token |
 | Bundle | `VersionStore.Bundle`'s rules with the target as the representative ([030 data-model](../030-video-versions/data-model.md)); already bundled videos bring their whole bundle (Edge Case) |
 | Undo | Writes the before image back when the current rows equal the after image, then rebuilds the folder index and renumbers touched playlists as the operation did; otherwise `ErrUndoConflict` and nothing is written |
 
@@ -44,6 +44,8 @@ reads them back ([R-1](research.md#r-1-undo-restores-the-rows-the-operation-chan
 | Group | `groups` of the new group; `group_items` of the new group and of `from` |
 | Merge | Move's rows for the dragged groups, their parents and the target |
 | Bundle | `video_bundles` and `video_bundle_members` of every absorbed bundle and the new one; `group_items`, `group_exclusions` and `playlist_items` of every absorbed key and the new key, by whole group or playlist; the user data rows `copyUserData` writes under the new key; `video_version_candidates` the bundle prunes |
+
+Every image also covers the rows that reference a group the undo would delete or recreate: `group_items` by `child_id`, `group_favorites` and `playlist_items` by `group_id`. A reference added after the operation (the new group favorited, added to a playlist or put in another group) therefore differs from the after image, and the undo is `ErrUndoConflict` instead of a cascade that drops it.
 
 Restoring a deleted group or bundle reinserts it with its old id; SQLite's
 `autoincrement` never hands that id out again, so it is free.
