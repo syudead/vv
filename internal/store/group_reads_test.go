@@ -5,6 +5,7 @@ import (
 	"errors"
 	"slices"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -187,6 +188,33 @@ func TestGroupReadsDescendantsAtAnyDepth(t *testing.T) {
 		t.Errorf("81 段のグループの再生順 = %v, want %v", memberIDs(page.Group), want)
 	}
 
+}
+
+// 複数の親に入った子グループ（ダイヤモンド状の階層）は、たどれる道ごとに展開し直さない。各段の
+// 2 つのグループがどちらも次の段の 2 つを持つ 40 段の階層は、道が 2^40 本あるが、すぐに読める。
+// 再生順は深さ優先で最初に現れた位置のままである（research.md R-7）。
+func TestGroupReadsSharedChildGroupsOnce(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	left := insertGroup(t, db, "left", itemKeyOf("/media/solo.mp4"))
+	right := insertGroup(t, db, "right", itemKeyOf("/media/mixed/x.mp4"))
+	for range 40 {
+		left, right = insertGroup(t, db, "left", left, right), insertGroup(t, db, "right", right, left)
+	}
+	top := insertGroup(t, db, "top", left, right)
+	page, err := db.Library().Group(ctx, domain.AudienceOwner, top, nil)
+	if err != nil {
+		t.Fatalf("ダイヤモンド状の 40 段のグループ: %v", err)
+	}
+	want := []int64{ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]}
+	if got := memberIDs(page.Group); !slices.Equal(got, want) {
+		t.Errorf("再生順 = %v, want %v", got, want)
+	}
+	names := ownerLibraryNames(t, db, domain.VideoQuery{})
+	if !slices.Contains(names, "group:top") {
+		t.Errorf("ライブラリのいちばん上 = %v, want group:top を含む", names)
+	}
 }
 
 // 見える動画のないグループは並ばず、そのグループの画面は ErrNotFound である。
