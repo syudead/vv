@@ -20,6 +20,12 @@ import (
 //go:wasmimport vv http_send
 func httpSend(ptr unsafe.Pointer, n uint32) int32
 
+//go:wasmimport vv http_meta
+func httpMeta(handle int32, ptr unsafe.Pointer, n uint32) int32
+
+//go:wasmimport vv http_body
+func httpBody(handle int32, ptr unsafe.Pointer, n uint32) int32
+
 type request struct {
 	Contract  int               `json:"contract"`
 	Operation string            `json:"operation"`
@@ -67,10 +73,7 @@ func main() {
 			"tags":  append(os.Environ(), os.Args...),
 		}})
 	case "http":
-		body := []byte(`{"method":"GET","url":"https://example.com/"}`)
-		reply(map[string]any{"workInfo": map[string]any{
-			"title": strconv.Itoa(int(httpSend(unsafe.Pointer(&body[0]), uint32(len(body))))),
-		}})
+		fetchPages(req.Settings)
 	case "fail":
 		reply(map[string]any{"error": map[string]any{"message": strings.Repeat("m", 400)}})
 	case "exit":
@@ -97,6 +100,48 @@ func echo(req request) {
 	}
 	sort.Strings(tags)
 	reply(map[string]any{"workInfo": map[string]any{"title": req.URL, "tags": tags}})
+}
+
+// fetchPages は設定 request の http_send の要求を count 回（既定 1 回）送り、どの誤りも無視する。
+// 題名は最後に成功した応答の本文、タグは各回の http_send の戻り値（codes=）と、その応答の
+// http_meta の JSON（meta=）である。設定 fail が空でなければ、そのあと誤りを報告して失敗する。
+func fetchPages(settings map[string]string) {
+	count, err := strconv.Atoi(settings["count"])
+	if err != nil {
+		count = 1
+	}
+	request := []byte(settings["request"])
+	codes := make([]string, 0, count)
+	last := int32(-1)
+	for range count {
+		h := httpSend(unsafe.Pointer(&request[0]), uint32(len(request)))
+		codes = append(codes, strconv.Itoa(int(h)))
+		if h >= 0 {
+			last = h
+		}
+	}
+	if settings["fail"] != "" {
+		reply(map[string]any{"error": map[string]any{"message": "gave up"}})
+		return
+	}
+	info := map[string]any{"tags": []string{"codes=" + strings.Join(codes, ",")}}
+	if last >= 0 {
+		info["title"] = string(readAll(last, httpBody))
+		info["tags"] = append(info["tags"].([]string), "meta="+string(readAll(last, httpMeta)))
+	}
+	reply(map[string]any{"workInfo": info})
+}
+
+// readAll は http_meta か http_body を、まず空の buffer で呼んで長さを知り、その大きさで呼び直す。
+func readAll(handle int32, read func(int32, unsafe.Pointer, uint32) int32) []byte {
+	var probe [1]byte
+	n := read(handle, unsafe.Pointer(&probe[0]), 0)
+	if n <= 0 {
+		return nil
+	}
+	buf := make([]byte, n)
+	read(handle, unsafe.Pointer(&buf[0]), uint32(n))
+	return buf
 }
 
 func errText(err error) string {

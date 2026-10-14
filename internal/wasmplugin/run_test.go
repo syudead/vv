@@ -166,14 +166,6 @@ func TestRunReportsPluginFailures(t *testing.T) {
 	wantFailure(t, err, domain.WorkInfoRunFailed)
 }
 
-func TestRunHostFunctionsAnswerUnavailable(t *testing.T) {
-	rt := newTestRuntime(t)
-	got, err := rt.Run(context.Background(), probeDigest, probeModule(t), fetchMode("http"))
-	if err != nil || got.WorkInfo.Title != "-1" {
-		t.Fatalf("Run(http) = %+v, %v; want http_send to return -1", got.WorkInfo, err)
-	}
-}
-
 // syncBuffer は複数の goroutine から書かれるログの受け皿である。
 type syncBuffer struct {
 	mu  sync.Mutex
@@ -308,7 +300,7 @@ func TestRunCountsCompilingTowardTheRunTimeout(t *testing.T) {
 	deadline, cancel := context.WithTimeoutCause(context.Background(), 0, errTimedOut)
 	defer cancel()
 
-	_, err = rt.run.run(context.Background(), deadline, "uncompiled", module, input)
+	_, err = rt.run.run(context.Background(), deadline, "uncompiled", module, input, &httpSession{})
 	wantFailure(t, err, domain.WorkInfoRunTimedOut)
 	if _, ok := rt.run.cache["uncompiled"]; ok {
 		t.Fatalf("the module was compiled after the run's time ran out")
