@@ -69,9 +69,17 @@ function withGroupOf(saved: Video, current: Video | undefined, group?: number): 
 
 /**
  * groupEventConcerns は、`group` の知らせ（変わったグループとその祖先の id、ids）が動画ページの
- * グループの行や関連動画のグループの並びに関わるかを返す。開いたグループ（`group`）か表示中の
- * グループ（`shown`）が変わったとき、または表示中のグループが無い（動画がどこかのグループに
- * 足されたかもしれない）ときに関わる（specs/048-groups/research.md R-13）。
+ * グループの行や関連動画のグループの並びに関わるかを返す（specs/048-groups/research.md R-13）。
+ * shown は表示中のグループ、group は動画を開いたグループ（`?group`）の id である。
+ *
+ * サーバーは、開いたグループが動画を持てばそれを、そうでなければ動画を直接の項目に持つ
+ * グループのうち id のいちばん小さいものを文脈にする（research.md R-9、
+ * internal/store/related.go の groupContext）。
+ * - 表示中のグループが無い: 動画がどこかのグループに足されたかもしれないので、いつも関わる。
+ * - 開いたグループが知らせにある: 中身が変わったか、動画が足されて文脈になったかもしれない。
+ * - 開いたグループを表示中: 文脈は他のグループの変化では替わらないので、それだけを見る。
+ * - それ以外（フォールバック中）: 表示中のグループか、それより id の小さいグループが知らせに
+ *   あれば関わる。より小さいグループに動画が足されると、文脈がそちらへ替わる。
  */
 function groupEventConcerns(
   ids: readonly number[],
@@ -79,7 +87,9 @@ function groupEventConcerns(
   group?: number,
 ): boolean {
   if (shown === undefined) return true;
-  return ids.includes(shown) || (group !== undefined && ids.includes(group));
+  if (group !== undefined && ids.includes(group)) return true;
+  if (shown === group) return false;
+  return ids.some((changed) => changed <= shown);
 }
 
 /** loadsStarted は、どの画面でも動画 1 件の取得を始めるたびに進める通し番号である。 */
@@ -418,6 +428,12 @@ export type RelatedState =
       related: RelatedVideos;
       /** 続きのページの読み込み。省くと `idle`。 */
       more?: "idle" | "loading" | "failed";
+      /**
+       * 最初のページを読んだ回数（同じ動画・同じ開いたグループの間で数える）。グループの知らせで
+       * 読み直すたびに増える。グループの並びの画面はこれで作り直し、窓の外に読み足した古い
+       * メンバーと読み足し中の要求を捨てる。省くと 0。
+       */
+      generation?: number;
     }
   | { kind: "failed"; id: number };
 
@@ -469,29 +485,42 @@ export function useRelatedVideos(
     // 一度でも並びを出したか。出した後の読み直しは、読み込み中に戻さず今の並びを見せ続け、
     // 失敗しても今の並びを残す。
     let shownOnce = false;
+    let generation = 0;
+    const show = (related: RelatedVideos) => {
+      shownOnce = true;
+      generation += 1;
+      setState({ kind: "ready", id, related, more: "idle", generation });
+    };
     const load = async () => {
       const mine = controller;
       try {
         const related = await getRelatedVideos(id, mine.signal, undefined, group);
         if (mine.signal.aborted) return;
-        shownOnce = true;
-        setState({ kind: "ready", id, related, more: "idle" });
+        show(related);
       } catch (failure) {
         if (mine.signal.aborted || isAborted(failure)) return;
         if (failure instanceof RequestFailed && failure.status === 404) {
-          shownOnce = true;
-          setState({ kind: "ready", id, related: { items: [] }, more: "idle" });
+          show({ items: [] });
           return;
         }
         if (!shownOnce) setState({ kind: "failed", id });
       }
     };
     // 開いたグループか並びのグループの名前・項目・並び順が変わったら、最初のページから読み直す
-    // （specs/048-groups/research.md R-13）。送信中の取得と続きの取得は打ち切る。
+    // （specs/048-groups/research.md R-13）。送信中の取得と続きの取得は打ち切る。続きの取得を
+    // 打ち切ったら、その読み込み中の印も外す。読み直しが失敗して今の並びを残しても、続きを
+    // もう一度読めるようにする。
     const reload = () => {
       controller.abort();
-      moreAbort.current?.abort();
-      moreAbort.current = null;
+      if (moreAbort.current !== null) {
+        moreAbort.current.abort();
+        moreAbort.current = null;
+        setState((previous) =>
+          previous.kind === "ready" && previous.more === "loading"
+            ? { ...previous, more: "idle" }
+            : previous,
+        );
+      }
       controller = new AbortController();
       void load();
     };

@@ -162,8 +162,9 @@ describe("useVideoDetail", () => {
     });
     await flush();
 
-    // 関わらないグループの知らせでは取り直さない。
-    await emitServerEvent("group", { ids: [3, 5] });
+    // 関わらないグループの知らせでは取り直さない。開いたグループ 4 は動画を持たず、表示中の
+    // グループ 9 はフォールバックなので、9 より id の大きいグループは文脈を替えない。
+    await emitServerEvent("group", { ids: [12, 15] });
     await flush();
     expect(getVideo).toHaveBeenCalledTimes(1);
 
@@ -179,6 +180,37 @@ describe("useVideoDetail", () => {
     await emitServerEvent("group", { ids: [4] });
     await flush();
     expect(getVideo).toHaveBeenCalledTimes(3);
+  });
+
+  it("フォールバックのグループを表示中なら、それより id の小さいグループの知らせでも取り直す（research.md R-9）", async () => {
+    const picks = { id: 9, name: "picks", position: 1, count: 3 };
+    getVideo.mockResolvedValue({ ...done, group: picks });
+    renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
+    await flush();
+
+    await emitServerEvent("group", { ids: [12] });
+    await flush();
+    expect(getVideo).toHaveBeenCalledTimes(1);
+
+    // グループ 3 に動画が足されると、文脈は id のいちばん小さいグループ 3 に替わる。
+    await emitServerEvent("group", { ids: [3] });
+    await flush();
+    expect(getVideo).toHaveBeenCalledTimes(2);
+  });
+
+  it("開いたグループを表示中なら、他のグループの知らせでは取り直さない", async () => {
+    const picks = { id: 9, name: "picks", position: 1, count: 3 };
+    getVideo.mockResolvedValue({ ...done, group: picks });
+    renderHook(() => useVideoDetail(7, 9), { wrapper: OwnerAudience });
+    await flush();
+
+    await emitServerEvent("group", { ids: [3, 12] });
+    await flush();
+    expect(getVideo).toHaveBeenCalledTimes(1);
+
+    await emitServerEvent("group", { ids: [9] });
+    await flush();
+    expect(getVideo).toHaveBeenCalledTimes(2);
   });
 
   it("グループに入っていない動画は、どの group の知らせでも取り直す（足されたかもしれない）", async () => {
@@ -688,7 +720,7 @@ describe("useRelatedVideos", () => {
     await act(async () => undefined);
     expect(getRelatedVideos).toHaveBeenCalledTimes(1);
 
-    await emitServerEvent("group", { ids: [3] });
+    await emitServerEvent("group", { ids: [12] });
     await act(async () => undefined);
     expect(getRelatedVideos).toHaveBeenCalledTimes(1);
 
@@ -710,6 +742,58 @@ describe("useRelatedVideos", () => {
     expect(result.current.state).toMatchObject({
       kind: "ready",
       related: { prevId: 8, group: { items: [{ id: 8 }, { id: 7 }] } },
+      // 同じグループのまま読み直したので、グループの並びの画面を作り直す印が進む。
+      generation: 2,
+    });
+  });
+
+  it("続きの取得中に group の知らせで読み直し、それが失敗しても、続きをもう一度読める", async () => {
+    const video = (id: number): Video => ({ ...done, id, title: `v${String(id)}` });
+    const picks = { id: 9, name: "picks", items: [video(7)], offset: 0, total: 1 };
+    getRelatedVideos.mockResolvedValueOnce({
+      items: [video(1)],
+      group: picks,
+      nextCursor: "c1",
+    });
+    const { result } = renderHook(() => useRelatedVideos(7), { wrapper: OwnerAudience });
+    await act(async () => undefined);
+
+    let signal: AbortSignal | undefined;
+    getRelatedVideos.mockImplementationOnce(
+      (_id: number, s: AbortSignal) =>
+        new Promise((_resolve, reject) => {
+          signal = s;
+          s.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        }),
+    );
+    act(() => result.current.loadMore());
+    expect(result.current.state).toMatchObject({ more: "loading" });
+
+    getRelatedVideos.mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"));
+    await emitServerEvent("group", { ids: [9] });
+    await act(async () => undefined);
+    expect(signal?.aborted).toBe(true);
+    // 読み直しは失敗したが、今の並びを残し、続きの読み込み中の印は外す。
+    expect(result.current.state).toMatchObject({
+      kind: "ready",
+      related: { items: [{ id: 1 }], nextCursor: "c1" },
+      more: "idle",
+    });
+
+    getRelatedVideos.mockResolvedValueOnce({ items: [video(2)] });
+    act(() => result.current.loadMore());
+    await act(async () => undefined);
+    expect(getRelatedVideos).toHaveBeenLastCalledWith(
+      7,
+      expect.anything(),
+      "c1",
+      undefined,
+    );
+    expect(result.current.state).toMatchObject({
+      related: { items: [{ id: 1 }, { id: 2 }] },
+      more: "idle",
     });
   });
 

@@ -272,8 +272,9 @@ function RelatedSections({
       <GroupedRelated
         // 別のメンバーへ移ったら、または同じ動画のまま応答のグループが替わったら（`?group`、
         // そのフォールバック、グループの操作の後の読み直し）、読み足した分と読み足し中の要求を
-        // 捨てて新しい窓から始める。
-        key={`${String(state.id)}:${String(group.id)}`}
+        // 捨てて新しい窓から始める。同じグループのまま最初のページを読み直したとき（グループの
+        // 知らせ）も、generation が替わるので同じように始め直す。
+        key={`${String(state.id)}:${String(group.id)}:${String(state.generation ?? 0)}`}
         currentId={state.id}
         members={group.items}
         offset={group.offset}

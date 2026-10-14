@@ -771,6 +771,55 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
       expect(screen.queryByText("ep 3051")).toBeNull();
     });
 
+    it("同じグループのまま最初のページを読み直したら（generation）、読み足した行と読み足し中の要求を捨てる", async () => {
+      wide(false);
+      vi.mocked(listVideoGroupMembers).mockResolvedValueOnce({
+        items: [member(3050), member(3051)],
+        offset: 3049,
+        total: 6000,
+      });
+      const stateOf = (generation: number): RelatedState => ({
+        kind: "ready",
+        id: 3000,
+        related: {
+          items: [],
+          group: { id: 1, name: "big", items: window, offset: 2949, total: 6000 },
+        },
+        generation,
+      });
+      const tree = (state: RelatedState) => (
+        <MemoryRouter>
+          <RelatedVideos
+            state={state}
+            linkState={linkState}
+            onRetry={vi.fn()}
+            onLoadMore={vi.fn()}
+          />
+        </MemoryRouter>
+      );
+      const { rerender } = render(tree(stateOf(1)));
+      await reachEdge(0);
+      expect(memberRows()).toHaveLength(102);
+
+      // グループの知らせで読み直した（別の画面で ep 3051 を外した）。
+      rerender(tree(stateOf(2)));
+      expect(memberRows()).toHaveLength(100);
+      expect(screen.queryByText("ep 3051")).toBeNull();
+
+      // 読み足し中に読み直したら、その要求を打ち切り、応答を足さない。
+      let signal: AbortSignal | undefined;
+      vi.mocked(listVideoGroupMembers).mockImplementationOnce(
+        (_id, _start, _limit, s) => {
+          signal = s;
+          return new Promise(() => undefined);
+        },
+      );
+      await reachEdge(0);
+      expect(signal?.aborted).toBe(false);
+      rerender(tree(stateOf(3)));
+      expect(signal?.aborted).toBe(true);
+    });
+
     it("狭い画面では、前のメンバーをボタンで読む", async () => {
       wide(false);
       vi.mocked(listVideoGroupMembers).mockResolvedValue({
