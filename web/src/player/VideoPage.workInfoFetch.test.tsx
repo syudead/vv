@@ -94,6 +94,7 @@ const server = {
   search: vi.fn<(body: unknown) => Response>(),
   fetch: vi.fn<(body: unknown) => Response>(),
   apply: vi.fn<(body: unknown) => Response>(),
+  related: { items: [] } as unknown,
   requests: [] as string[],
 };
 
@@ -163,6 +164,7 @@ describe("VideoPage work-info fetch", () => {
         201,
       ),
     );
+    server.related = { items: [] };
     server.requests = [];
     installFakeEventSource();
     forgetAudience(null);
@@ -185,7 +187,7 @@ describe("VideoPage work-info fetch", () => {
       if (url === "/api/thumbnail-edits/readiness")
         return Promise.resolve(json({ connection: true }));
       if (url === "/api/videos/7") return Promise.resolve(json(server.video));
-      if (url === "/api/videos/7/related") return Promise.resolve(json({ items: [] }));
+      if (url === "/api/videos/7/related") return Promise.resolve(json(server.related));
       if (url === "/api/videos/7/subtitles")
         return Promise.resolve(json({ subtitles: [] }));
       if (url === "/api/tags") return Promise.resolve(json([]));
@@ -427,5 +429,82 @@ describe("VideoPage work-info fetch", () => {
       within(dialog).getByText("Paste a page URL starting with http:// or https://."),
     ).toBeDefined();
     expect(server.fetch).not.toHaveBeenCalled();
+  });
+
+  it("検索だけのプラグインの候補は押せる行にせず、取得を送らない", async () => {
+    server.plugins = [{ ...works, operations: ["search"] }];
+    server.search.mockImplementation(() =>
+      json({ candidates: [{ url: workUrl, title: "候補の作品" }] }),
+    );
+    const { user, dialog } = await openDialog();
+    await user.click(within(dialog).getByRole("button", { name: "Search" }));
+    await within(dialog).findByText("1 match");
+    expect(within(dialog).getByText("候補の作品")).toBeDefined();
+    expect(within(dialog).queryByRole("button", { name: /候補の作品/ })).toBeNull();
+    expect(
+      within(dialog).getByRole("link", { name: "Open page" }).getAttribute("href"),
+    ).toBe(workUrl);
+    await user.click(within(dialog).getByText("候補の作品"));
+    expect(server.fetch).not.toHaveBeenCalled();
+  });
+
+  it("選んでいたプラグインが一覧から消えたら、残りのプラグインへ移って前の候補を捨てる", async () => {
+    const other: WorkInfoPlugin = { ...works, id: 4, name: "other" };
+    server.plugins = [works, other];
+    server.search.mockImplementation(() =>
+      json({ candidates: [{ url: workUrl, title: "候補の作品" }] }),
+    );
+    server.fetch.mockImplementation(() => {
+      server.plugins = [other];
+      return failure(404, { code: "not_found" });
+    });
+    const { user, dialog } = await openDialog();
+    await user.click(within(dialog).getByRole("button", { name: "Search" }));
+    await user.click(await within(dialog).findByRole("button", { name: /候補の作品/ }));
+    await within(dialog).findByRole("alert");
+    await waitFor(() =>
+      expect(within(dialog).queryByRole("button", { name: /候補の作品/ })).toBeNull(),
+    );
+    expect(within(dialog).getByText("other")).toBeDefined();
+    expect(server.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("反映した題名をグループの並びにあるこの動画にも写す", async () => {
+    const group = {
+      folder: { rootId: 1, path: "series" },
+      name: "series",
+      position: 0,
+      count: 2,
+    };
+    const member: Video = {
+      ...video,
+      id: 8,
+      title: "次の回",
+      group: { ...group, position: 1 },
+    };
+    server.video = { ...video, group };
+    server.related = {
+      items: [],
+      nextId: 8,
+      group: {
+        folder: group.folder,
+        name: "series",
+        items: [server.video, member],
+        offset: 0,
+        total: 2,
+      },
+    };
+    server.apply.mockImplementation(() =>
+      json({ video: { ...server.video, title: "取得した題名" }, skippedTags: [] }),
+    );
+    const { user, dialog } = await fetchFromUrl();
+    const aside = document.querySelector("aside");
+    expect(aside?.textContent).toContain("テスト動画");
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() =>
+      expect(document.querySelector("aside")?.textContent).toContain("取得した題名"),
+    );
+    expect(document.querySelector("aside")?.textContent).not.toContain("テスト動画");
   });
 });

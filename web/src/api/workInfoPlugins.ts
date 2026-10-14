@@ -1,5 +1,7 @@
 import { apiFetch, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
+import { clearListSnapshot } from "./listSnapshot";
+import { afterTagsAppliedByName } from "./tags";
 
 // 作品情報プラグインの画面 API（specs/049-work-info-plugins/contracts/screen-api.md）。型は
 // api/openapi.yaml からの生成物を使う。どの経路も所有者だけである。プラグインの変化はイベントで
@@ -143,15 +145,22 @@ export function fetchWorkInfo(
  * applyWorkInfoFetch は取得の結果 `fetchId` のうち `fields` の項目を動画に反映する
  * （POST …/work-info-fetches/{fetchId}/apply）。応答は反映後の動画と付けなかったタグの名前である。結果は
  * 使い切りで、期限切れか取得の後にプラグインが変わっていれば 409 `work_info_fetch_stale` で失敗する。
+ * 成功したら一覧の控えを捨て、タグを付けたなら共有のタグの一覧も取り直す。
  */
-export function applyWorkInfoFetch(
+export async function applyWorkInfoFetch(
   videoId: number,
   fetchId: string,
   fields: readonly WorkInfoField[],
   signal?: AbortSignal,
 ): Promise<WorkInfoFetchApplied> {
-  return request<WorkInfoFetchApplied>(
+  const applied = await request<WorkInfoFetchApplied>(
     `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}/apply`,
     { method: "POST", headers: jsonHeaders, body: JSON.stringify({ fields }), signal },
   );
+  // 控えは離れた一覧の題名とタグを持ち、一覧が外れている間の `video` 通知では直らないので、
+  // 捨てて戻ったときに読み直させる（setVideoDetails と同じ）。タグを付けたなら、作られた
+  // タグを候補に出すため共有のタグの一覧も取り直す（attachVideoTagByName と同じ）。
+  if (fields.includes("tags")) afterTagsAppliedByName();
+  else clearListSnapshot();
+  return applied;
 }

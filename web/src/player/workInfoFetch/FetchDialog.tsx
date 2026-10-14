@@ -19,6 +19,7 @@ import { Spinner } from "../../ui/shadcn/spinner";
 import { useToast } from "../../ui/Toast";
 import CompareStep, { type Fetched } from "./CompareStep";
 import {
+  canFetch,
   initialQuery,
   initialSelection,
   orderSkipped,
@@ -85,6 +86,12 @@ function useFetchFlow({
   const [query, setQuery] = useState(() => initialQuery(plugins[0], video.title));
   const [notUrl, setNotUrl] = useState(false);
   const [candidates, setCandidates] = useState<WorkInfoCandidate[] | null>(null);
+  if (plugin?.id !== pluginId) {
+    // 選んでいたプラグインが一覧から消えた（承認を外されたか消された）ので、先頭へ移る。
+    // 候補は消えたプラグインの答えなので、プラグインを選び直したときと同じく捨てる。
+    setPluginId(plugin?.id);
+    setCandidates(null);
+  }
   const [running, setRunning] = useState<Running | null>(null);
   const [failure, setFailure] = useState<RunFailure | null>(null);
   const [step, setStep] = useState<Step>("find");
@@ -213,7 +220,9 @@ function useFetchFlow({
       setNotUrl(false);
     },
     choose: (url: string) => {
-      if (plugin !== undefined && running === null) void run(plugin, "fetch", url, true);
+      // 候補を選ぶことはその URL の取得なので、取得できないプラグインでは走らせない。
+      if (plugin !== undefined && canFetch(plugin) && running === null)
+        void run(plugin, "fetch", url, true);
     },
     toggle: (field: WorkInfoField, on: boolean) =>
       setSelection((current) =>

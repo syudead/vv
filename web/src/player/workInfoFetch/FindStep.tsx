@@ -131,40 +131,62 @@ function FailureAlert({ failure }: { failure: RunFailure }) {
   );
 }
 
+function CandidateText({ candidate }: { candidate: WorkInfoCandidate }) {
+  return (
+    <>
+      <span title={candidate.title} className="line-clamp-2 text-sm text-foreground">
+        {candidate.title}
+      </span>
+      {candidate.detail !== undefined && candidate.detail !== "" && (
+        <span className="w-full truncate text-xs text-muted-foreground">
+          {candidate.detail}
+        </span>
+      )}
+      <span className="w-full truncate text-xs text-muted-foreground">
+        {hostOf(candidate.url)}
+      </span>
+    </>
+  );
+}
+
+/**
+ * CandidateRow は候補の 1 行である。行を押すとその URL を取得するので、取得できない
+ * （検索だけの）プラグインでは行を押せる形にせず、文と `Open page` だけを出す。
+ */
 function CandidateRow({
   candidate,
+  choosable,
   running,
   onChoose,
 }: {
   candidate: WorkInfoCandidate;
+  choosable: boolean;
   running: Running | null;
   onChoose: (url: string) => void;
 }) {
   const text = t.player.workInfoFetch;
   const chosen = running?.url === candidate.url;
   const busy = running !== null;
+  const layout =
+    "h-auto min-w-0 flex-1 flex-col items-start gap-0.5 px-2 py-1.5 text-left";
   return (
     <li className="flex items-center gap-1 py-1">
-      <Button
-        variant="ghost"
-        className="h-auto min-w-0 flex-1 flex-col items-start gap-0.5 px-2 py-1.5 text-left font-normal whitespace-normal"
-        aria-disabled={busy || undefined}
-        onClick={() => {
-          if (!busy) onChoose(candidate.url);
-        }}
-      >
-        <span title={candidate.title} className="line-clamp-2 text-sm text-foreground">
-          {candidate.title}
-        </span>
-        {candidate.detail !== undefined && candidate.detail !== "" && (
-          <span className="w-full truncate text-xs text-muted-foreground">
-            {candidate.detail}
-          </span>
-        )}
-        <span className="w-full truncate text-xs text-muted-foreground">
-          {hostOf(candidate.url)}
-        </span>
-      </Button>
+      {choosable ? (
+        <Button
+          variant="ghost"
+          className={`${layout} font-normal whitespace-normal`}
+          aria-disabled={busy || undefined}
+          onClick={() => {
+            if (!busy) onChoose(candidate.url);
+          }}
+        >
+          <CandidateText candidate={candidate} />
+        </Button>
+      ) : (
+        <div className={`flex ${layout}`}>
+          <CandidateText candidate={candidate} />
+        </div>
+      )}
       {chosen && <Spinner aria-hidden="true" role={undefined} />}
       <ActionButton label={text.openPage} asChild>
         <a href={candidate.url} target="_blank" rel="noopener noreferrer">
@@ -196,6 +218,7 @@ function Candidates({
     );
   }
   const shown = candidates.slice(0, MAX_CANDIDATES);
+  const choosable = plugin !== undefined && canFetch(plugin);
   return (
     <section aria-labelledby={headingId} className="flex flex-col gap-1">
       <h3 id={headingId} className="text-sm text-muted-foreground">
@@ -206,6 +229,7 @@ function Candidates({
           <CandidateRow
             key={candidate.url}
             candidate={candidate}
+            choosable={choosable}
             running={running}
             onChoose={onChoose}
           />
