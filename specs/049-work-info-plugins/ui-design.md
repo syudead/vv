@@ -264,7 +264,7 @@ message come from `Error`
 
 ## Changes to the design system
 
-One option is added to `FormDialog` in the registry, its rules file
+Two options are added to `FormDialog` in the registry, its rules file
 ([patterns.md, Form dialog](../../web/registry/rules/patterns.md#form-dialog))
 and [design-system.md](../../docs/design-docs/design-system.md#page-patterns)
 before the fetch dialog uses it, by the "Fetch work information from a plugin
