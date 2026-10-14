@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 1ffe48947327ae64476b7299d81cd16de48c14b189a06da9cc23e970ae8ff674
+sourceHash: 3ff1ddf45cc64d672310b2003dc4f24d1cc9905a3b3214b579b99d3af8b693be
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -195,7 +195,7 @@ flowchart LR
 
 ライブラリは `GET /api/library` を読み、これはフォルダのグループを動画に混ぜて返す。フォルダのページとその検索結果は動画を 1 本ずつ並べる。グループカードは、件数（`12 videos`）と合計の長さを示すパネル、一部のメンバーが視聴途中のときだけ出る視聴済みの割合のバー、グループ名、メンバーのタグを表示する。押すとグループのページ（`/groups/{id}`）を開く。このページは、貼り付く経路の帯の下に、グループの子グループと動画を保存した順に並べる（[048 UI 設計、Group page](../../specs/048-groups/ui-design.md#group-page)）。そのページでは、子グループは 1 グループ長い `?trail` で開き、動画は `?group` で開くので、動画のページはそのグループに従う。ゲストには視聴状態、視聴済み数、バーが見えない。
 
-グループの解除、フォルダ直下の動画のグループ化、グループのタグへの変換はカードにない。これらは、フォルダのページの `Videos N` 見出し行の右端にある所有者のメニュー（[`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)）と、動画ページのグループ名の行にある。フォルダのメニューが "Turn the group into a tag…" を出すのは、登録済みのフォルダ自身のグループを含め、フォルダに自動のグループがあるときだけであり、この項目はすべての入口が共有する確認ダイアログを開く（[`GroupTagDialog.tsx`](../../web/src/groups/GroupTagDialog.tsx)、[048 UI 設計、Turning into a tag](../../specs/048-groups/ui-design.md#turning-into-a-tag)）。操作の後、キャッシュしたライブラリの一覧は破棄され、次に訪れたときに読み直す。
+グループの解除、フォルダ直下の動画のグループ化、グループのタグへの変換はカードにない。これらは、フォルダのページの `Videos N` 見出し行の右端にある所有者のメニュー（[`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)）にあり、タグへの変換と解散は動画ページのグループの操作（[グループのメンバー](#group-members)）にもある。フォルダのメニューが "Turn the group into a tag…" を出すのは、登録済みのフォルダ自身のグループを含め、フォルダに自動のグループがあるときだけであり、この項目はすべての入口が共有する確認ダイアログを開く（[`GroupTagDialog.tsx`](../../web/src/groups/GroupTagDialog.tsx)、[048 UI 設計、Turning into a tag](../../specs/048-groups/ui-design.md#turning-into-a-tag)）。操作の後、キャッシュしたライブラリの一覧は破棄され、次に訪れたときに読み直す。
 
 ### お気に入りの印 {#favorite-mark}
 
@@ -402,15 +402,16 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 
 ### グループのメンバー {#group-members}
 
-グループに属する動画は、同じページに部品が加わるだけだ。どのグループにも属さない動画は変わらない（[017 UI 設計、Video page](../../specs/017-folder-groups/ui-design.md#video-page)）。
+グループに属する動画は、同じページに部品が加わるだけだ。どのグループにも属さない動画は変わらない（[017 UI 設計、Video page](../../specs/017-folder-groups/ui-design.md#video-page)）。グループは、動画を開いた元のグループ（`?group=<id>`。動画、関連動画、メンバーの読み込みに渡す）であり、それがなければ動画を直接含むグループのうち id が最小のものだ。プレイリストの文脈はどちらよりも優先する（[048 UI 設計、Video page](../../specs/048-groups/ui-design.md#video-page)）。
 
 | 部品 | ルール |
 | --- | --- |
-| タイトルの上 | グループ名と、グループ内の位置 |
+| タイトルの上 | グループ名と、グループ内の位置。グループのページへのリンクになる |
 | 関連動画の列 | 先頭に `Up next` のメンバー一覧と区切り線 |
 | 再生の終了 | レイヤーの代わりに次のメンバーの通知。5 秒、取り消せる、Esc で取り消す |
-| グループ名の行（所有者） | `Ungroup` と `Turn the group into a tag` のメニュー。Esc はメニューだけを閉じる |
-| メニューの操作の後 | 動画と関連動画を取得し直し、ページは通常の形に戻る |
+| メンバーの行、ハンドル、通知 | 開く動画に `?group` を引き継ぐ |
+| グループの操作（所有者） | 行の後ろの `Ellipsis` ボタン: `Remove from this group`（直接の項目のときだけ）、`Turn the group into a tag…`、`Dissolve…`。Esc はメニューだけを閉じる |
+| 操作の後 | 動画と関連動画を `group` なしで読み直す。ページはそのまま残る |
 | 前後のハンドル | グループ内で移動する |
 
 `matchMedia` が `lg` の幅を読むのは、広い画面で現在のメンバーの行を見える位置へスクロールするためだけだ。狭い幅でスクロールするとページ全体が動き、プレーヤーが隠れる。
