@@ -8,8 +8,9 @@ result is held in memory, not stored
 ## Migration
 
 `00043_work_info_plugins.sql` creates `work_info_plugins` and
-`work_info_plugin_settings`. If another
-migration lands on `main` first, the number moves to the next free one.
+`work_info_plugin_settings`, and `00047_work_info_plugin_generation.sql` adds
+`work_info_plugins.generation`. If another migration lands on `main` first,
+each number moves to the next free one.
 
 ## `work_info_plugins`
 
@@ -27,6 +28,7 @@ migration lands on `main` first, the number moves to the next free one.
 | `digest` | text | No | Lowercase hex SHA-256 of the uploaded bytes |
 | `problem` | text | Yes | Why the plugin cannot be approved (table below); null for a usable plugin |
 | `approved_digest` | text | Yes | The digest the owner approved |
+| `generation` | integer | No | Starts at 0 and grows by 1 on each replacing upload and each revoke; a fetch result records the value it was fetched under |
 | `added_at` | integer | No | Unix seconds of the first upload |
 | `updated_at` | integer | No | Unix seconds of the last upload or approval change |
 
@@ -65,14 +67,14 @@ owner data like `work_info_plugins`.
 | Rule | Enforced in |
 | --- | --- |
 | A plugin is approved exactly when `problem` is null and `approved_digest = digest` | `internal/domain` (state), `internal/store` (the read) |
-| An upload whose manifest names an existing `name` replaces that row's module, metadata, digest and problem, and clears `approved_digest`, so the replacement returns to unapproved | `internal/store`, in one transaction |
+| An upload whose manifest names an existing `name` replaces that row's module, metadata, digest and problem, clears `approved_digest` and adds 1 to `generation`, so the replacement returns to unapproved | `internal/store`, in one transaction |
 | An upload without a readable name is a new row | `internal/store` |
 | Approving writes `approved_digest` only when the request's digest equals `digest` and `problem` is null; otherwise `plugin_changed` or `plugin_unusable` | `internal/app` decides, `internal/store` re-reads inside its transaction |
-| Revoking clears `approved_digest` | `internal/store` |
+| Revoking clears `approved_digest` and adds 1 to `generation` | `internal/store` |
 | A replacement keeps the values of keys the new manifest declares and deletes the rest; a replacement with a `problem` keeps them all, since no declaration was read | `internal/store`, in the upload's transaction |
 | A value can be written only for a key the plugin declares; writing one does not touch `approved_digest` | `internal/app` decides, `internal/store` writes |
 | A secret value never leaves `internal/app` except in that plugin's run request | `internal/app`, `internal/httpapi` (response types carry no value field for secrets) |
-| Applying a fetched result writes nothing unless, inside the same transaction, the plugin row still exists, is approved, and has the digest the result was fetched with | `internal/store` (`OverrideStore`'s apply) |
+| Applying a fetched result writes nothing unless, inside the same transaction, the plugin row still exists, is approved, and has the digest and the `generation` the result was fetched with | `internal/store` (`OverrideStore`'s apply) |
 | `name` is 1 to 64 characters of `a-z`, `0-9`, `-` and `.`; `version` is 1 to 32 characters; `description` is at most 500 characters | `internal/domain` |
 | `module` is at most 16 MiB | `internal/domain`, `internal/httpapi` (body limit) |
 

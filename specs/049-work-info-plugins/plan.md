@@ -36,7 +36,7 @@ flowchart LR
 | Isolation and limits | No files, environment or arguments; 128 MiB, 30 s, 1 MiB output, one run at a time ([R-4](research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits)) |
 | Network | vv's own HTTP client, address checked at every dial, a refused request fails the run ([R-5](research.md#r-5-plugins-reach-the-network-only-through-vv-and-only-public-addresses)) |
 | Storage and approval | Blob rows; approved when the approved digest equals the module's digest; approving names the digest ([R-6](research.md#r-6-plugins-are-rows-in-sqlite-and-approval-is-bound-to-the-modules-digest), [R-7](research.md#r-7-approving-names-the-digest-the-owner-saw), [data-model.md](data-model.md)) |
-| Fetch and apply | A 10-minute in-memory result bound to the video and the digest; title and tags applied in one transaction, skipped names reported ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest), [R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported), [contracts/screen-api.md](contracts/screen-api.md)) |
+| Fetch and apply | A 10-minute in-memory result bound to the video, the digest and the plugin's generation; title and tags applied in one transaction, skipped names reported ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest), [R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported), [contracts/screen-api.md](contracts/screen-api.md)) |
 | Plugin settings | Declared in the manifest, entered per plugin on the settings screen, passed only in that plugin's request; secret values never returned ([R-13](research.md#r-13-plugin-settings-are-declared-in-the-manifest-and-passed-only-in-that-plugins-request)) |
 | Video page entry | Shown when the plugin list holds an approved plugin; candidates are text only ([R-10](research.md#r-10-search-candidates-are-text-only), [R-11](research.md#r-11-the-video-page-reads-the-plugin-list-to-decide-whether-to-show-the-fetch-action)) |
 
@@ -277,10 +277,11 @@ the widths `ui-design.md` names.
 port, only for approved plugins with the declared operation, with that
 plugin's setting values in the request and `plugin_settings_missing` before
 the run when a required one is unset, the 10-minute
-result cache bound to video and digest
+result cache bound to video, digest and generation
 ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest)),
 and the apply with tag names filtered by the tag-name rule; the
-`OverrideStore` operation re-reading the plugin row's digest and approval,
+`OverrideStore` operation re-reading the plugin row's digest, approval and
+generation,
 then writing the display name and tentative tags in one transaction and
 reporting rejected names
 ([R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported));

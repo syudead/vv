@@ -124,7 +124,7 @@ name on screen is `VVMDM`.
 | Refused, too large | Choose a file up to 16 MB. | Before anything is sent |
 | Add failed | Couldn't add the plugin: {reason} | Section failure line |
 | Added (toast) | Added {name}. Approve it to use it. | `{name}` is the name, or the file name when there is none |
-| Replaced (toast) | Replaced {name}. Approve it again to use it. | `200` from the upload |
+| Replaced (toast) | Replaced {name}. Approve it again to use it. | The uploaded plugin's id was already in the list |
 | Added, unusable (toast) | Added {name}, but it can't be used. | `state: invalid` |
 | Empty | No plugins yet | `EmptyState` title |
 | Empty hint | Add a .wasm plugin file to fetch titles and tags on the video page. | `EmptyState` description |
@@ -350,7 +350,9 @@ published; the prompt does not explain it further.
 
 A `FormDialog` opened by `Settings`, with one `Field` per declared setting in
 the manifest's order: the label, `Required` after it when declared, and an
-`Input` with `maxLength` 2000.
+`Input` that stops at 2000 characters counted as Unicode code points, as the
+server counts them. It does not use `maxLength`, which counts UTF-16 units and
+would stop an emoji value early.
 
 | Setting | Field |
 | --- | --- |
@@ -358,8 +360,8 @@ the manifest's order: the label, `Required` after it when declared, and an
 | Secret, not saved | `Input type="password"`, `autocomplete="off"`, empty; hint `Not set.` |
 | Secret, saved | The same input, empty; hint `Saved. Type a new value to replace it.` and `Forget`. An empty field keeps the saved value. `Forget` empties and disables the input and shows `Removed when you save.` with `Undo` |
 
-`Save` sends only the keys that changed (`null` for a deleted value) with
-`pending`. On `200` the dialog closes with the toast, and the row's settings
+`Save` is disabled while no key has changed, and sends only the keys that
+changed (`null` for a deleted value) with `pending`. On `200` the dialog closes with the toast, and the row's settings
 summary and required line update from the response; the approval badge does
 not change (requirement 11). A failure shows the `Save failed` `Alert` in the
 dialog and keeps every typed value. A secret value is never put back into a
