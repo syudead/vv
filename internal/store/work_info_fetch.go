@@ -19,10 +19,11 @@ import (
 // 動画と、却下した名前なので付けなかったタグの名前（apply.Tags の順、重複なし）を返す。
 //
 // 取引の中で、プラグイン apply.PluginID の行がまだあり、問題が無く、承認済みで、ダイジェストが
-// apply.Digest のままであることを読み直す。外れれば domain.ErrWorkInfoFetchStale で、何も書かない。
+// apply.Digest、世代が apply.Generation のままであることを読み直す。外れれば domain.ErrWorkInfoFetchStale で、何も書かない。
 // 動画が無いか登録フォルダの下に所在が無ければ domain.ErrNotFound である。題名は
 // domain.NormalizeDisplayName で整え、規則に合わなければ *domain.InvalidDisplayNameError で何も書かない。
-// 確定後に domain.VideoOverrideChanged を 1 回発行する。
+// 確定後に、反映先と、タグを付けたなら同じ利用者データの鍵を読む動画（集まりの他のメンバー）のそれぞれに
+// domain.VideoOverrideChanged を発行する。
 func (s *OverrideStore) ApplyFetchedWorkInfo(
 	ctx context.Context, apply domain.FetchedWorkInfoApply,
 ) (domain.Video, []string, error) {
@@ -41,7 +42,7 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := checkFetchedPlugin(ctx, tx, apply.PluginID, apply.Digest); err != nil {
+	if err := checkFetchedPlugin(ctx, tx, apply); err != nil {
 		return domain.Video{}, nil, err
 	}
 	contentKeys, err := registeredContentKeysForVideoIDs(ctx, tx, []int64{apply.VideoID})
@@ -67,9 +68,14 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 		}
 	}
 	rejected := []string{}
+	changed := []int64{apply.VideoID}
 	if len(apply.Tags) > 0 {
 		rejected, err = writeVideoTagsByName(ctx, tx, userKeys[:1], domain.VideoTagsAdd, apply.Tags, true, now)
 		if err != nil {
+			return domain.Video{}, nil, err
+		}
+		// タグは利用者データの鍵に付くので、集まりなら他のメンバーのタグも変わる。
+		if changed, err = videoIDsForUserKeys(ctx, tx, userKeys[:1]); err != nil {
 			return domain.Video{}, nil, err
 		}
 	}
@@ -80,20 +86,35 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	if err := tx.Commit(); err != nil {
 		return domain.Video{}, nil, fmt.Errorf("cannot apply the fetched work information: %w", err)
 	}
-	s.db.publishEvents(domain.VideoOverrideChanged{VideoID: apply.VideoID})
+	s.db.publishEvents(appliedWorkInfoEvents(apply.VideoID, changed)...)
 	return video, rejected, nil
 }
 
-// checkFetchedPlugin は取引 tx の中でプラグイン id の行を読み直し、行が無いか、問題があるか、承認済みで
-// ないか、ダイジェストが digest でなければ domain.ErrWorkInfoFetchStale を返す。
-func checkFetchedPlugin(ctx context.Context, tx *sql.Tx, id int64, digest string) error {
+// appliedWorkInfoEvents は反映先 videoID と、タグを書いた鍵を読む動画 changed（集まりの全メンバー）の
+// それぞれに domain.VideoOverrideChanged を 1 つずつ、反映先を先に返す。画面への知らせで各動画を読み直させる。
+func appliedWorkInfoEvents(videoID int64, changed []int64) []domain.Event {
+	events := []domain.Event{domain.VideoOverrideChanged{VideoID: videoID}}
+	for _, id := range changed {
+		if id != videoID {
+			events = append(events, domain.VideoOverrideChanged{VideoID: id})
+		}
+	}
+	return events
+}
+
+// checkFetchedPlugin は取引 tx の中でプラグイン apply.PluginID の行を読み直し、行が無いか、問題があるか、
+// 承認済みでないか、ダイジェストが apply.Digest でないか、世代が apply.Generation でなければ
+// domain.ErrWorkInfoFetchStale を返す。世代は、取得のあとに同じバイト列で差し替えて再承認したことや、
+// 取り消して再承認したことを見分ける（research.md R-8）。
+func checkFetchedPlugin(ctx context.Context, tx *sql.Tx, apply domain.FetchedWorkInfoApply) error {
 	var (
 		current           string
 		problem, approved sql.NullString
+		generation        int64
 	)
 	err := tx.QueryRowContext(ctx,
-		`select digest, problem, approved_digest from work_info_plugins where id = ?`, id,
-	).Scan(&current, &problem, &approved)
+		`select digest, problem, approved_digest, generation from work_info_plugins where id = ?`, apply.PluginID,
+	).Scan(&current, &problem, &approved, &generation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.ErrWorkInfoFetchStale
 	}
@@ -101,7 +122,7 @@ func checkFetchedPlugin(ctx context.Context, tx *sql.Tx, id int64, digest string
 		return fmt.Errorf("cannot read the work-info plugin: %w", err)
 	}
 	state := domain.WorkInfoPluginStateOf(domain.WorkInfoPluginProblem(problem.String), current, approved.String)
-	if state != domain.WorkInfoPluginApproved || current != digest {
+	if state != domain.WorkInfoPluginApproved || current != apply.Digest || generation != apply.Generation {
 		return domain.ErrWorkInfoFetchStale
 	}
 	return nil

@@ -92,6 +92,38 @@ func TestApplyFetchedWorkInfoWritesTitleAndTentativeTags(t *testing.T) {
 	}
 }
 
+// 束のメンバーにタグを反映すると、タグは束の鍵に付くので、束の全メンバーに動画の知らせが届く。
+// 題名だけなら反映先だけである。
+func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
+	ctx := context.Background()
+	db, ids := versionFixture(t)
+	bundle(t, db, ids["a"], ids["a"], ids["b"])
+	plugin := approvedPlugin(t, db, "example", "d1")
+
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+	if _, _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+		VideoID: ids["b"], PluginID: plugin.ID, Digest: "d1", Tags: []string{"drama"},
+	}); err != nil {
+		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
+	}
+	want := []domain.Event{domain.VideoOverrideChanged{VideoID: ids["b"]}, domain.VideoOverrideChanged{VideoID: ids["a"]}}
+	if !slices.Equal(recorder.events, want) {
+		t.Fatalf("events = %v; want %v", recorder.events, want)
+	}
+
+	recorder.events = nil
+	title := "Fetched"
+	if _, _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+		VideoID: ids["b"], PluginID: plugin.ID, Digest: "d1", Title: &title,
+	}); err != nil {
+		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
+	}
+	if want := []domain.Event{domain.VideoOverrideChanged{VideoID: ids["b"]}}; !slices.Equal(recorder.events, want) {
+		t.Fatalf("title-only events = %v; want %v", recorder.events, want)
+	}
+}
+
 // タグだけを選ぶと表示名は変わらない。
 func TestApplyFetchedWorkInfoTagsOnlyKeepsTheDisplayName(t *testing.T) {
 	ctx := context.Background()
@@ -109,7 +141,8 @@ func TestApplyFetchedWorkInfoTagsOnlyKeepsTheDisplayName(t *testing.T) {
 }
 
 // app の確認の後で反映の取引の前にプラグインが差し替えられたか、承認を取り消されたか、消されると、
-// 取引の中の読み直しで work_info_fetch_stale になり、何も書かない（R-8）。
+// 取引の中の読み直しで work_info_fetch_stale になり、何も書かない（R-8）。同じダイジェストに戻して再承認しても、
+// 行の世代が変わるので古い結果のままである。
 func TestApplyFetchedWorkInfoRechecksThePluginInsideTheTransaction(t *testing.T) {
 	for _, tc := range []struct {
 		name   string
@@ -123,6 +156,22 @@ func TestApplyFetchedWorkInfoRechecksThePluginInsideTheTransaction(t *testing.T)
 			t.Helper()
 			savePlugin(t, db.WorkInfoPlugins(), pluginUpload("example", "d2"))
 			if _, err := db.WorkInfoPlugins().ApproveWorkInfoPlugin(context.Background(), id, "d2", pluginNow); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"replaced with the same bytes and approved again", func(t *testing.T, db *DB, id int64) {
+			t.Helper()
+			savePlugin(t, db.WorkInfoPlugins(), pluginUpload("example", "d1"))
+			if _, err := db.WorkInfoPlugins().ApproveWorkInfoPlugin(context.Background(), id, "d1", pluginNow); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{"revoked and approved again", func(t *testing.T, db *DB, id int64) {
+			t.Helper()
+			if _, err := db.WorkInfoPlugins().RevokeWorkInfoPlugin(context.Background(), id, pluginNow); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.WorkInfoPlugins().ApproveWorkInfoPlugin(context.Background(), id, "d1", pluginNow); err != nil {
 				t.Fatal(err)
 			}
 		}},
@@ -146,7 +195,8 @@ func TestApplyFetchedWorkInfoRechecksThePluginInsideTheTransaction(t *testing.T)
 			tags := allTagCount(t, db)
 			title := "Fetched"
 			_, _, err := db.Overrides().ApplyFetchedWorkInfo(context.Background(), domain.FetchedWorkInfoApply{
-				VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Title: &title, Tags: []string{"drama"},
+				VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Generation: plugin.Generation,
+				Title: &title, Tags: []string{"drama"},
 			})
 			if !errors.Is(err, domain.ErrWorkInfoFetchStale) {
 				t.Fatalf("err = %v; want ErrWorkInfoFetchStale", err)

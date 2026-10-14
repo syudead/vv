@@ -77,7 +77,8 @@ func (a *fakeFetchApplier) ApplyFetchedWorkInfo(ctx context.Context, apply domai
 		return domain.Video{}, nil, a.err
 	}
 	plugin, err := a.plugins.WorkInfoPlugin(ctx, apply.PluginID)
-	if err != nil || plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != apply.Digest {
+	if err != nil || plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != apply.Digest ||
+		plugin.Generation != apply.Generation {
 		return domain.Video{}, nil, domain.ErrWorkInfoFetchStale
 	}
 	if apply.Title != nil {
@@ -308,6 +309,9 @@ func TestApplyWorkInfoFetchRefusals(t *testing.T) {
 			e.store.plugins[1].Digest, e.store.plugins[1].ApprovedDigest = "d1b", "d1b"
 		}, domain.ErrWorkInfoFetchStale, false},
 		{"revoked", fetchVideo, title, func(e *fetchEnv) { e.store.plugins[1].ApprovedDigest = "" },
+			domain.ErrWorkInfoFetchStale, false},
+		// 同じバイト列の差し替えか取り消しのあとに同じダイジェストを再承認すると、行の世代だけが変わる（R-8）。
+		{"approved again with the same digest", fetchVideo, title, func(e *fetchEnv) { e.store.plugins[1].Generation++ },
 			domain.ErrWorkInfoFetchStale, false},
 		{"deleted", fetchVideo, title, func(e *fetchEnv) { delete(e.store.plugins, 1) },
 			domain.ErrWorkInfoFetchStale, false},

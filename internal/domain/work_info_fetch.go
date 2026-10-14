@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 	"unicode"
-	"unicode/utf8"
 )
 
 // 作品情報プラグインの検索・取得と、取得の結果の反映の値と規則である
@@ -15,8 +14,8 @@ import (
 const (
 	// WorkInfoSearchQueryMaxRunes は検索の語の、前後の空白を除いたあとの長さの上限（文字数）である。
 	WorkInfoSearchQueryMaxRunes = 200
-	// WorkInfoFetchURLMaxBytes は取得する作品の URL の長さの上限である。
-	WorkInfoFetchURLMaxBytes = 2048
+	// WorkInfoFetchURLMaxRunes は取得する作品の URL の長さの上限（文字数）である（contracts/screen-api.md）。
+	WorkInfoFetchURLMaxRunes = 2048
 	// WorkInfoFetchLifetime は取得の結果をメモリに持つ時間である（research.md R-8）。
 	WorkInfoFetchLifetime = 10 * time.Minute
 )
@@ -78,10 +77,10 @@ func NormalizeWorkInfoSearchQuery(query string) (string, error) {
 	return trimmed, nil
 }
 
-// CheckWorkInfoFetchURL は取得の URL が host を持つ http・https の絶対 URL で、WorkInfoFetchURLMaxBytes
-// 以下かを確かめる。外れれば ErrWorkInfoRunInvalid を返す。
+// CheckWorkInfoFetchURL は取得の URL が正しい UTF-8 で WorkInfoFetchURLMaxRunes 文字以下の、host を持つ
+// http・https の絶対 URL かを確かめる。上限はバイト数ではなく文字数で数える。外れれば ErrWorkInfoRunInvalid を返す。
 func CheckWorkInfoFetchURL(raw string) error {
-	if len(raw) > WorkInfoFetchURLMaxBytes || !utf8.ValidString(raw) || !isWorkURL(raw) {
+	if !runeCountBetween(raw, 1, WorkInfoFetchURLMaxRunes) || !isWorkURL(raw) {
 		return ErrWorkInfoRunInvalid
 	}
 	return nil
@@ -123,12 +122,15 @@ type SkippedTag struct {
 }
 
 // FetchedWorkInfoApply は取得の結果のうち選んだ項目を動画に書く要求である。保存先は 1 つの取引の中で、
-// プラグイン PluginID の行がまだあり、承認済みで、ダイジェストが Digest のままであることを読み直してから
-// 書く（data-model.md の Rules）。
+// プラグイン PluginID の行がまだあり、承認済みで、ダイジェストが Digest、世代が Generation のままであることを
+// 読み直してから書く（data-model.md の Rules、research.md R-8）。
 type FetchedWorkInfoApply struct {
 	VideoID  int64
 	PluginID int64
 	Digest   string
+	// Generation は取得した時のプラグインの行の世代である。取得のあとの差し替えと承認の取り消し（同じ
+	// ダイジェストの再承認を含む）で変わる。
+	Generation int64
 	// Title は表示名に書く題名である。nil なら表示名は変えない。
 	Title *string
 	// Tags は仮のタグとして付ける、タグ名の規則で整えた名前である。空ならタグは変えない。

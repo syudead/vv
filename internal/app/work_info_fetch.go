@@ -79,7 +79,8 @@ func (p *WorkInfoPlugins) FetchWorkInfo(
 		tags = []string{}
 	}
 	fetch := &workInfoFetch{
-		videoID: videoID, pluginID: plugin.ID, digest: plugin.Digest, title: title, tags: tags,
+		videoID: videoID, pluginID: plugin.ID, digest: plugin.Digest, generation: plugin.Generation,
+		title: title, tags: tags,
 		expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
 	}
 	id := p.fetches.add(fetch, p.now())
@@ -151,10 +152,13 @@ func (p *WorkInfoPlugins) applyFetch(
 		return domain.WorkInfoApplied{}, domain.ErrWorkInfoFetchStale
 	case err != nil:
 		return domain.WorkInfoApplied{}, err
-	case plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != fetch.digest:
+	case plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != fetch.digest ||
+		plugin.Generation != fetch.generation:
 		return domain.WorkInfoApplied{}, domain.ErrWorkInfoFetchStale
 	}
-	apply := domain.FetchedWorkInfoApply{VideoID: fetch.videoID, PluginID: fetch.pluginID, Digest: fetch.digest}
+	apply := domain.FetchedWorkInfoApply{
+		VideoID: fetch.videoID, PluginID: fetch.pluginID, Digest: fetch.digest, Generation: fetch.generation,
+	}
 	if slices.Contains(fields, domain.WorkInfoFieldTitle) {
 		title := fetch.title
 		apply.Title = &title
@@ -213,13 +217,15 @@ func skippedTags(names []string, invalid map[string]bool, rejected []string) []d
 }
 
 // workInfoFetch はメモリに持つ取得の結果である。title は表示名の規則を通った題名で、空は値が無い。
+// digest と generation は取得した時のプラグインの行の値である（research.md R-8）。
 type workInfoFetch struct {
-	videoID   int64
-	pluginID  int64
-	digest    string
-	title     string
-	tags      []string
-	expiresAt time.Time
+	videoID    int64
+	pluginID   int64
+	digest     string
+	generation int64
+	title      string
+	tags       []string
+	expiresAt  time.Time
 }
 
 // hasValue は結果に項目 field の値があるかを返す。知らない項目は偽である。

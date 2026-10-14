@@ -3,8 +3,10 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -198,6 +200,29 @@ func TestWorkInfoApplyAnswers(t *testing.T) {
 		e.plugins.err = tc.err
 		status, body := e.post(applyPath, `{"fields":["title"]}`, e.owner)
 		assertErrorBody(t, tc.err.Error(), status, body, tc.want)
+	}
+}
+
+// 反映は確定しているので、応答の詳細のうちグループを読めなくても 200 と付けなかったタグを返し、
+// 読めなかったことを記録する。500 にすると、使い切った結果を画面が再送できない。
+func TestWorkInfoApplySucceedsWhenTheDetailIsPartlyUnreadable(t *testing.T) {
+	plugins := &scriptedPlugins{applied: domain.WorkInfoApplied{
+		Video:       domain.Video{ID: 7, Title: "Fetched", DisplayName: "Fetched"},
+		SkippedTags: []domain.SkippedTag{{Name: "spoiler", Reason: domain.SkippedTagRejected}},
+	}}
+	catalog := &fakeCatalog{groupErr: errors.New("database is locked")}
+	env := newAuthEnvWith(t, t.TempDir(), func(*store.DB) Options {
+		return Options{WorkInfoPlugins: plugins, Catalog: catalog}
+	})
+	owner := env.setup()
+	rec := env.serve(authRequest{method: http.MethodPost, target: applyPath, body: `{"fields":["title"]}`, cookies: []*http.Cookie{owner}})
+	var applied gen.WorkInfoFetchApplied
+	if rec.Code != http.StatusOK || json.Unmarshal(rec.Body.Bytes(), &applied) != nil || applied.Video.Id != 7 ||
+		applied.Video.Group != nil || len(applied.SkippedTags) != 1 {
+		t.Fatalf("apply = %d %s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(env.logs.String(), "database is locked") {
+		t.Fatalf("the unreadable detail was not logged: %s", env.logs.String())
 	}
 }
 
