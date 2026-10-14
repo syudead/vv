@@ -1,6 +1,6 @@
 ---
 source: specs/050-drag-organize/data-model.md
-sourceHash: 1cff7c6d981cf95ce0dcc02d4d5ed024b0d2375486bf35b4fc00fdc09d663af4
+sourceHash: 5d2b0f4ff2df27d4608c84e7f2efbac05966acedd1befdfd240d697209ce3ae3
 ---
 
 # データモデル: ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる {#data-model-drag-and-drop-to-reorder-group-merge-and-bundle}
@@ -38,6 +38,18 @@ sourceHash: 1cff7c6d981cf95ce0dcc02d4d5ed024b0d2375486bf35b4fc00fdc09d663af4
 
 削除したグループかまとまりを戻すときは、古い id で挿入し直す。SQLite の `autoincrement` はその id を二度と払い出さないので、その id は空いている。
 
+## 取り消しトークンの下での名前変更 {#rename-under-an-undo-token}
+
+グループ作成の操作が作ったグループの名前変更を、その操作のトークンとともに送ると ([contracts/screen-api.md](contracts/screen-api.md#patch-apigroupsid-with-an-undo-token))、トークンの変更後イメージを更新するので、作成と名前変更は 1 つの単位として取り消される。グループへのそれ以外の変更は、トークンのない名前変更も含めて、イメージをそのままにし、取り消しはこれまでどおり `ErrUndoConflict` になる。
+
+| 段階 | 規則 |
+| --- | --- |
+| 探す | `app.Organizer` はトークンの項目を取り出し、呼び出しの間それを保持するので、同じトークンの取り消しは待つ。項目がない、使われた、期限切れ、グループ作成の操作ではない、または別のグループのものであるときは手放し、名前変更は 048 のものとして実行される |
+| 名前変更 | `OrganizeStore` の 1 つのトランザクション: `GroupStore.RenameGroup` と同じようにグループの名前を変え、名前変更の直前に今の行がまだ変更後イメージと等しいときは、古い `groups` の行を名前を変えた行に置き換えた変更後イメージを返す。そうでなければイメージを返さない |
+| 保つ | Organizer は返されたイメージを項目に格納し、項目はそのトークンと 10 分を保つ。イメージがないときは、項目は古いイメージを保つ |
+
+変更前イメージには触れない: 取り消しは、名前が何であれ、引き続きグループをその項目とともに削除し、対象とドラッグした動画を元に戻す。
+
 ## 規則 {#rules}
 
 | 規則 | 強制する場所 |
@@ -46,8 +58,9 @@ sourceHash: 1cff7c6d981cf95ce0dcc02d4d5ed024b0d2375486bf35b4fc00fdc09d663af4
 | 対象のタイトルからの新しいグループの名前 | 100 文字に切った後の `domain.ValidateGroupName` |
 | プレイリストと親での統合の置き換え | `domain.PlanGroupMerge`。`OrganizeStore` が適用する |
 | 取り消しトークンは 1 回だけ使われ、10 分生き、同時に最大 100 個 | `app.Organizer` |
+| グループ作成の操作のトークン付きの名前変更は、そのトークンの変更後イメージを更新する | `app.Organizer`、`OrganizeStore` ([取り消しトークンの下での名前変更](#rename-under-an-undo-token)) |
 | どの操作とどの取り消しの後も、触れた各グループの位置は `0 … n-1` | `internal/store/invariants_test.go` (既存の規則) |
 
 ## 変わらないもの {#what-does-not-change}
 
-既存のグループ、バージョン、お気に入りのルートはその振る舞いを保ち、取り消しトークンを返さない: 048 と 030 のメニューとダイアログはそのままで、上の操作を通るのはドロップだけである。
+既存のグループ、バージョン、お気に入りのルートはその振る舞いを保ち、取り消しトークンを返さない: 048 と 030 のメニューとダイアログはそのままで、上の操作を通るのはドロップだけである。加わるのは 048 の名前変更の省略可能な `undoToken` だけで、それを送るのは新しいグループの名前欄だけである。それがなければ名前変更は 048 のものである。

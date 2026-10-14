@@ -1,6 +1,6 @@
 ---
 source: specs/050-drag-organize/contracts/screen-api.md
-sourceHash: 2ccd6a32ed2f5050db8b700c6c09b84ec7bcd310a4638dedfe6a338e1aa44774
+sourceHash: 82f9492b9f814ffe56933ef144df80d7f54be9ff5dcba1d3317f5d2203f6b2bb
 ---
 
 # 契約: ドラッグ操作と取り消しの画面の API {#contract-screen-api-for-drag-operations-and-undo}
@@ -107,6 +107,17 @@ OrganizeResult:
 | `token` | string | はい | 操作の `undoToken` |
 
 **応答**: `204`。
+
+## 取り消しトークン付きの `PATCH /api/groups/{id}` {#patch-apigroupsid-with-an-undo-token}
+
+048 の名前変更に省略可能な本文のフィールドが 1 つ加わり、"Make a group" とその名前欄からの名前変更が 1 つの単位として取り消される (要件 12)。このフィールドがなければ、ルートは 048 のもので変わらない。本文は独自のスキーマ `GroupRename` になる。`GroupName` はトークンを受け取らない `POST /api/groups` の本文でもあるからである。
+
+| フィールド | 型 | 必須 | 意味 |
+| --- | --- | --- | --- |
+| `name` | string | はい | 048 の `GroupName` と同じ |
+| `undoToken` | string | いいえ | グループ `id` を作った `/group` の `undoToken` |
+
+名前変更が成功し、`undoToken` が、新しいグループが `id` である有効な `/group` の操作を指すとき、サーバーはそのトークンの変更後イメージを名前変更の後の行で置き換えるので、トークンの取り消しは引き続きグループを削除する ([data-model.md、取り消しトークンの下での名前変更](../data-model.md#rename-under-an-undo-token))。未知の、使われた、10 分より古い、別の操作の、または別のグループのトークンは何も変えない: 名前変更はそれでも行われ、トークンは古いイメージを保つ。応答とエラーは 048 のものである。このフィールドが名前変更を失敗させることはない。
 
 ## エラー {#errors}
 
