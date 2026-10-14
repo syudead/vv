@@ -3888,6 +3888,41 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/organize/merge:
+    post:
+      operationId: organizeMerge
+      summary: ドラッグしたグループをグループへマージし、取り消しのトークンを返す
+      description: |
+        所有者だけ。`items` を画面の順にたどり、グループはグループ `into` へマージし、動画は `into` の
+        末尾へ足す（既にあれば飛ばす）。グループ X のマージは X の項目を順に `into` の末尾へ足し、X が
+        お気に入りなら `into` をお気に入りにし、X を持つプレイリストと親グループの項目を X の位置で
+        `into` に置き換えて（そこにすでに `into` があるか、`into` が親自身か親の祖先なら X の項目を
+        消す）、X を消す（specs/050-drag-organize/research.md R-5）。1 つの取引で行い、応答の
+        `undoToken` で取り消せる。`items` にグループが無ければ 400 `invalid_request`。`into`・
+        グループ・動画のどれかが無ければ 404 `group_target_not_found`、ドラッグしたグループが `into`
+        そのものか `into` の祖先なら 409 `group_cycle` で、どれも何も書かない。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizeMerge"
+      responses:
+        "200":
+          description: マージした。取り消しのトークン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizeResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/organize/undo:
     post:
       operationId: organizeUndo
@@ -6238,6 +6273,18 @@ components:
           type: integer
           format: int64
           description: この項目のすぐ後ろへ移す。無ければ先頭へ移す
+
+    OrganizeMerge:
+      type: object
+      required: [items, into]
+      additionalProperties: false
+      properties:
+        items:
+          $ref: "#/components/schemas/OrganizeRefs"
+        into:
+          type: integer
+          format: int64
+          description: 落とした先のグループ。`items` は少なくとも 1 つのグループを含む
 
     OrganizeUndo:
       type: object

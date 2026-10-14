@@ -21,6 +21,9 @@ type Organizer interface {
 	// Reorder はグループ groupID の項目 itemIDs を、その順のまままとめて項目 afterItemID の
 	// すぐ後ろへ移す（nil なら先頭）。
 	Reorder(ctx context.Context, groupID int64, itemIDs []int64, afterItemID *int64) (domain.OrganizeResult, error)
+	// Merge はドラッグしたカード items を画面の順にたどり、グループはグループ into へマージし、
+	// 動画は into の末尾へ足す。ドラッグしたグループが into か into の祖先なら domain.ErrGroupCycle。
+	Merge(ctx context.Context, items []domain.OrganizeRef, into int64) (domain.OrganizeResult, error)
 	// Undo はトークン token の操作を取り消す。行が変わっていれば domain.ErrUndoConflict、トークンが
 	// 無い・使い済み・古ければ domain.ErrUndoExpired。
 	Undo(ctx context.Context, token string) error
@@ -52,6 +55,53 @@ func (s *server) OrganizeReorder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeOrganizeResult(w, result)
+}
+
+// OrganizeMerge はドラッグしたグループと動画をグループへマージする（POST /api/organize/merge）。
+func (s *server) OrganizeMerge(w http.ResponseWriter, r *http.Request) {
+	var body gen.OrganizeMerge
+	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
+		return
+	}
+	items, ok := s.organizeRefs(w, body.Items)
+	if !ok {
+		return
+	}
+	if !slices.ContainsFunc(items, func(item domain.OrganizeRef) bool { return item.Kind == domain.OrganizeGroup }) {
+		s.invalidRequest(w, "items must contain at least one group.")
+		return
+	}
+	if !s.organizerConfigured(w) {
+		return
+	}
+	result, err := s.organizer.Merge(r.Context(), items, body.Into)
+	if err != nil {
+		s.writeGroupError(w, err, "Could not merge the groups.")
+		return
+	}
+	s.writeOrganizeResult(w, result)
+}
+
+// organizeRefs はドラッグしたカードの並び refs を確かめて domain の形にする。空か 20000 枚を
+// 超えるか、知らない種類があれば 400 を書いて false を返す。
+func (s *server) organizeRefs(w http.ResponseWriter, refs gen.OrganizeRefs) ([]domain.OrganizeRef, bool) {
+	switch {
+	case len(refs) == 0:
+		s.invalidRequest(w, "items must contain at least one card.")
+		return nil, false
+	case len(refs) > maxVideoTagsIDs:
+		s.invalidRequest(w, fmt.Sprintf("items must contain at most %d cards.", maxVideoTagsIDs))
+		return nil, false
+	}
+	out := make([]domain.OrganizeRef, 0, len(refs))
+	for _, ref := range refs {
+		if !ref.Kind.Valid() {
+			s.invalidRequest(w, "kind must be video or group.")
+			return nil, false
+		}
+		out = append(out, domain.OrganizeRef{Kind: domain.OrganizeRefKind(ref.Kind), ID: ref.Id})
+	}
+	return out, true
 }
 
 // OrganizeUndo はドラッグの操作を取り消す（POST /api/organize/undo）。

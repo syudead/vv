@@ -36,6 +36,10 @@ type OrganizeStore interface {
 	// Reorder はグループ groupID の項目 itemIDs を、その順のまままとめて項目 afterItemID の
 	// すぐ後ろへ移す（nil なら先頭）。グループや項目が無ければ domain.ErrGroupTargetNotFound。
 	Reorder(ctx context.Context, groupID int64, itemIDs []int64, afterItemID *int64) ([]byte, error)
+	// Merge はドラッグしたカード items を画面の順にたどり、グループはグループ into へマージし、
+	// 動画は into の末尾へ足す（specs/050-drag-organize/research.md R-5）。into・グループ・動画が
+	// 無ければ domain.ErrGroupTargetNotFound、グループが into か into の祖先なら domain.ErrGroupCycle。
+	Merge(ctx context.Context, items []domain.OrganizeRef, into int64) ([]byte, error)
 	// Undo は像 image の前の状態へ戻す。行が変わっていれば domain.ErrUndoConflict で、何も書かない。
 	Undo(ctx context.Context, image []byte) error
 }
@@ -86,11 +90,23 @@ func NewOrganizer(opts OrganizerOptions) *Organizer {
 // トークンは保存先の操作より先に作る。乱数が読めなければ何も書かずに失敗し、並びが変わったのに
 // トークンを返せない、ということが起きない。
 func (o *Organizer) Reorder(ctx context.Context, groupID int64, itemIDs []int64, afterItemID *int64) (domain.OrganizeResult, error) {
+	return o.run(func() ([]byte, error) { return o.store.Reorder(ctx, groupID, itemIDs, afterItemID) })
+}
+
+// Merge はドラッグしたカードをグループ into へマージし、取り消しのトークンを返す。トークンは
+// Reorder と同じく保存先の操作より先に作る。
+func (o *Organizer) Merge(ctx context.Context, items []domain.OrganizeRef, into int64) (domain.OrganizeResult, error) {
+	return o.run(func() ([]byte, error) { return o.store.Merge(ctx, items, into) })
+}
+
+// run は保存先の操作 operation を、先に作ったトークンで包む。乱数が読めなければ何も書かずに失敗し、
+// 操作が成功したらその像をトークンで持つ。
+func (o *Organizer) run(operation func() ([]byte, error)) (domain.OrganizeResult, error) {
 	token, err := o.newToken()
 	if err != nil {
 		return domain.OrganizeResult{}, err
 	}
-	image, err := o.store.Reorder(ctx, groupID, itemIDs, afterItemID)
+	image, err := operation()
 	if err != nil {
 		return domain.OrganizeResult{}, err
 	}

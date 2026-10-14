@@ -7,6 +7,7 @@ import { clearListSnapshot } from "./listSnapshot";
 // トークン（`undoToken`）を返す。トークンは 10 分有効で、1 回だけ使える。
 
 export type OrganizeResult = components["schemas"]["OrganizeResult"];
+export type OrganizeRef = components["schemas"]["OrganizeRef"];
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -32,6 +33,29 @@ export async function reorderGroup(
     method: "POST",
     headers: jsonHeaders,
     body: JSON.stringify(body),
+    signal,
+  });
+  clearListSnapshot();
+  return result;
+}
+
+/**
+ * mergeGroups はドラッグしたカード `items`（画面の順。少なくとも 1 つのグループ）をグループ `into` へ
+ * マージする（POST /api/organize/merge）。グループはその項目を `into` の末尾へ渡してお気に入り・
+ * プレイリストの項目・親を `into` に引き継いで消え、動画は `into` の末尾へ足される。1 つの取引で、
+ * トークンも 1 つである。ドラッグしたグループが `into` か `into` の祖先なら 409 `group_cycle`、
+ * どれかが無ければ 404 `group_target_not_found` の RequestFailed になり、何も変わらない。成功したら
+ * 一覧の控えを捨てる。
+ */
+export async function mergeGroups(
+  items: readonly OrganizeRef[],
+  into: number,
+  signal?: AbortSignal,
+): Promise<OrganizeResult> {
+  const result = await request<OrganizeResult>("/api/organize/merge", {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ items: Array.from(items), into }),
     signal,
   });
   clearListSnapshot();

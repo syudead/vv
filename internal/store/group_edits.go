@@ -276,10 +276,7 @@ func appendGroupMembers(ctx context.Context, tx *sql.Tx, id int64, add domain.Gr
 	}
 	start := next
 	for _, key := range keys {
-		if _, err := tx.ExecContext(ctx, `delete from group_exclusions where group_id = ? and content_key = ?`, id, key); err != nil {
-			return 0, fmt.Errorf("cannot add to the group: %w", err)
-		}
-		if next, err = insertGroupItem(ctx, tx, id, "content_key", key, next); err != nil {
+		if next, err = appendGroupContent(ctx, tx, id, key, next); err != nil {
 			return 0, err
 		}
 	}
@@ -318,6 +315,16 @@ func groupAddKeys(ctx context.Context, tx *sql.Tx, videoIDs []int64) ([]string, 
 		}
 	}
 	return keys, nil
+}
+
+// appendGroupContent は利用者データの鍵 key の動画を、グループ id の位置 position に手で足す項目と
+// して入れ、次の位置を返す。所有者が外したフォルダ由来のメンバーなら除外を消す。既に項目にあれば
+// 何も足さず、position をそのまま返す。
+func appendGroupContent(ctx context.Context, tx *sql.Tx, id int64, key string, position int) (int, error) {
+	if _, err := tx.ExecContext(ctx, `delete from group_exclusions where group_id = ? and content_key = ?`, id, key); err != nil {
+		return 0, fmt.Errorf("cannot add to the group: %w", err)
+	}
+	return insertGroupItem(ctx, tx, id, "content_key", key, position)
 }
 
 // insertGroupItem はグループ id の位置 position に、列 column（content_key か child_id。定数で

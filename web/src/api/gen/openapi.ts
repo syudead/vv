@@ -2505,6 +2505,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organize/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ドラッグしたグループをグループへマージし、取り消しのトークンを返す
+         * @description 所有者だけ。`items` を画面の順にたどり、グループはグループ `into` へマージし、動画は `into` の
+         *     末尾へ足す（既にあれば飛ばす）。グループ X のマージは X の項目を順に `into` の末尾へ足し、X が
+         *     お気に入りなら `into` をお気に入りにし、X を持つプレイリストと親グループの項目を X の位置で
+         *     `into` に置き換えて（そこにすでに `into` があるか、`into` が親自身か親の祖先なら X の項目を
+         *     消す）、X を消す（specs/050-drag-organize/research.md R-5）。1 つの取引で行い、応答の
+         *     `undoToken` で取り消せる。`items` にグループが無ければ 400 `invalid_request`。`into`・
+         *     グループ・動画のどれかが無ければ 404 `group_target_not_found`、ドラッグしたグループが `into`
+         *     そのものか `into` の祖先なら 409 `group_cycle` で、どれも何も書かない。
+         */
+        post: operations["organizeMerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organize/undo": {
         parameters: {
             query?: never;
@@ -3694,6 +3721,14 @@ export interface components {
              * @description この項目のすぐ後ろへ移す。無ければ先頭へ移す
              */
             after?: number;
+        };
+        OrganizeMerge: {
+            items: components["schemas"]["OrganizeRefs"];
+            /**
+             * Format: int64
+             * @description 落とした先のグループ。`items` は少なくとも 1 つのグループを含む
+             */
+            into: number;
         };
         OrganizeUndo: {
             /** @description 操作の応答の `undoToken` */
@@ -8281,6 +8316,34 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    organizeMerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeMerge"];
+            };
+        };
+        responses: {
+            /** @description マージした。取り消しのトークン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     organizeUndo: {

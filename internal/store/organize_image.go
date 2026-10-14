@@ -21,7 +21,12 @@ import (
 // SQL に埋め込むので、像を読み戻すときもこの表に無い名前は受け付けない。親の表（行を消すと子の
 // 行が外部キーで消える表）を足すときは、範囲の並びで子より前に置く（restoreUndoImage）。
 var imageScopeColumns = map[string][]string{
-	"group_items": {"group_id", "child_id"},
+	"groups":                 {"id"},
+	"group_items":            {"group_id", "child_id"},
+	"group_exclusions":       {"group_id"},
+	"group_favorites":        {"group_id"},
+	"playlist_items":         {"playlist_id", "group_id"},
+	"folder_group_overrides": {"path"},
 }
 
 // imageCell は行の 1 つの値である。どれも nil なら NULL。SQLite の 4 つの型をそのまま持ち、
