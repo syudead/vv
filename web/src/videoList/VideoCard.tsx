@@ -44,6 +44,11 @@ export interface VideoCardProps {
   video: Video;
   /** 遷移元の一覧 URL。再生画面の「戻る」がここへ帰る。 */
   backTo: string;
+  /**
+   * カードと行が開く場所。省くとその動画の再生画面（`/videos/{id}`）。グループのページは
+   * `?group` を付けた場所を渡す（specs/048-groups/ui-design.md「Body」）。
+   */
+  to?: string;
   selected: boolean;
   selectionMode: boolean;
   /** 選択を持たない画面（フォルダ画面）では省き、チェックを描かない。 */
@@ -260,6 +265,7 @@ function VideoCard(props: VideoCardProps) {
   const {
     video,
     backTo,
+    to,
     selected,
     selectionMode,
     onSelect,
@@ -319,7 +325,7 @@ function VideoCard(props: VideoCardProps) {
       {/* リンクは flex-1 で伸ばし、同じ格子の行で高いカードとの差を引き受ける。タグの行を
           カードの下端へそろえつつ、その間の余白も押せる（開く・選択する）範囲に含めるためである。 */}
       <Link
-        to={`/videos/${String(video.id)}`}
+        to={to ?? `/videos/${String(video.id)}`}
         state={{ from: backTo }}
         aria-label={
           location === undefined
@@ -432,7 +438,7 @@ export default memo(VideoCard);
 
 /** VideoRow はリスト表示の 1 行。 */
 export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
-  const { video, backTo, selected, selectionMode, onSelect } = props;
+  const { video, backTo, to, selected, selectionMode, onSelect } = props;
   const { duration, unplayable, state, ratio, quality } = useCardState(video);
   const publicMark = usePublicMark(video);
   const owner = useAudience() === "owner";
@@ -477,7 +483,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
       </TableCell>
       <TableCell className="min-w-0 pr-4 whitespace-normal">
         <Link
-          to={`/videos/${String(video.id)}`}
+          to={to ?? `/videos/${String(video.id)}`}
           state={{ from: backTo }}
           onClick={(event) => {
             if (selectionMode) {

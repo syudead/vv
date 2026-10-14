@@ -303,7 +303,7 @@ Video card behaviour:
 | Case | Behaviour |
 | --- | --- |
 | Tag pressed in the library | Filters by the tag |
-| Tag pressed on a folder page | Opens `/?tag=<id>` |
+| Tag pressed on a folder page or a group page | Opens `/?tag=<id>` |
 | Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full ([041 UI design](../../specs/041-tag-overflow-list/ui-design.md#the-list)) |
 | Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag` ([017 UI design](../../specs/017-folder-groups/ui-design.md)) |
 | Hover preview | One at a time on any screen |
@@ -317,7 +317,11 @@ The library reads `GET /api/library`, which mixes folder groups in with videos;
 folder pages and their search results list videos one by one. A group card
 shows a panel with the count (`12 videos`) and total duration, a watched-share
 bar only while some members are in progress, the group name and the members'
-tags. Pressing it opens the member to continue (`/videos/{openVideoId}`).
+tags. Pressing it opens the group page (`/groups/{id}`), which lists the
+group's child groups and videos in their saved order under a sticky trail band
+([048 UI design, Group page](../../specs/048-groups/ui-design.md#group-page)).
+On that page a child group opens with `?trail` one group longer, and a video
+opens with `?group`, so the video page follows that group.
 Guests see no watch status, watched count or bar.
 
 Ungroup, group a folder's direct videos and turn a group into a tag are not on
