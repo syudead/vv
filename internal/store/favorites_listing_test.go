@@ -43,7 +43,7 @@ func TestListLibraryFavoriteOnlyBuildsItemsPerFavorite(t *testing.T) {
 
 	// 受け入れ条件 5: G がお気に入りなら G のグループの項目 1 件で、メンバーは動画の項目にならない。
 	favoriteVideos(t, db, false, ep1)
-	setFavorites(t, db, domain.FavoriteChange{FolderPaths: []string{show}, Favorite: true})
+	setFavorites(t, db, domain.FavoriteChange{GroupIDs: []int64{groupIDOf(t, db, show)}, Favorite: true})
 	if names := favoriteLibrary(t, db, domain.VideoQuery{}); !slices.Equal(names, []string{"group:show"}) {
 		t.Errorf("G だけ = %v, want [group:show]", names)
 	}
@@ -55,7 +55,7 @@ func TestListLibraryFavoriteOnlyBuildsItemsPerFavorite(t *testing.T) {
 	}
 
 	// 要件 9: A・B・C の全部に付けて G に付けないと、3 本の動画の項目。
-	setFavorites(t, db, domain.FavoriteChange{FolderPaths: []string{show}, Favorite: false})
+	setFavorites(t, db, domain.FavoriteChange{GroupIDs: []int64{groupIDOf(t, db, show)}, Favorite: false})
 	favoriteVideos(t, db, true, ep2, ep10)
 	if names := favoriteLibrary(t, db, domain.VideoQuery{}); !slices.Equal(names, []string{"ep1", "ep10", "ep2"}) {
 		t.Errorf("A・B・C = %v, want [ep1 ep10 ep2]", names)
@@ -66,7 +66,7 @@ func TestListLibraryFavoriteOnlyBuildsItemsPerFavorite(t *testing.T) {
 		t.Errorf("A・B・C の未視聴 = %v, want [ep2]", names)
 	}
 	// G がお気に入りなら G は途中なので、未視聴の項目は無い。
-	setFavorites(t, db, domain.FavoriteChange{FolderPaths: []string{show}, Favorite: true})
+	setFavorites(t, db, domain.FavoriteChange{GroupIDs: []int64{groupIDOf(t, db, show)}, Favorite: true})
 	if names := favoriteLibrary(t, db, domain.VideoQuery{Watch: domain.WatchUnwatched}); len(names) != 0 {
 		t.Errorf("G の未視聴 = %v, want 空", names)
 	}
@@ -89,7 +89,7 @@ func TestListLibraryFavoriteOnlyWithTags(t *testing.T) {
 	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{ep2, ep10}, two.ID); err != nil {
 		t.Fatal(err)
 	}
-	setFavorites(t, db, domain.FavoriteChange{VideoIDs: []int64{ep1, ep2}, FolderPaths: []string{fixturePath("/media/show")}, Favorite: true})
+	setFavorites(t, db, domain.FavoriteChange{VideoIDs: []int64{ep1, ep2}, GroupIDs: []int64{groupIDOf(t, db, fixturePath("/media/show"))}, Favorite: true})
 	if names := favoriteLibrary(t, db, domain.VideoQuery{TagIDs: []int64{two.ID}}); !slices.Equal(names, []string{"ep2"}) {
 		t.Errorf("タグ two のお気に入り = %v, want [ep2]", names)
 	}
@@ -103,7 +103,7 @@ func TestLibraryIDsSplitsFavoriteItems(t *testing.T) {
 	solo, p1 := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/pair/p1.mp4")]
 	show := fixturePath("/media/show")
 
-	setFavorites(t, db, domain.FavoriteChange{VideoIDs: []int64{solo, p1}, FolderPaths: []string{show}, Favorite: true})
+	setFavorites(t, db, domain.FavoriteChange{VideoIDs: []int64{solo, p1}, GroupIDs: []int64{groupIDOf(t, db, show)}, Favorite: true})
 	selection, _, err := db.Library().LibraryIDs(ctx, domain.VideoQuery{FavoriteOnly: true})
 	if err != nil {
 		t.Fatal(err)
@@ -147,7 +147,7 @@ func TestListVideosFavoriteOnly(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
 	ep1, solo := ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/solo.mp4")]
-	setFavorites(t, db, domain.FavoriteChange{VideoIDs: []int64{ep1, solo}, FolderPaths: []string{fixturePath("/media/pair")}, Favorite: true})
+	setFavorites(t, db, domain.FavoriteChange{VideoIDs: []int64{ep1, solo}, GroupIDs: []int64{groupIDOf(t, db, fixturePath("/media/pair"))}, Favorite: true})
 
 	got := pageIDs(t, db, domain.VideoQuery{FavoriteOnly: true, Limit: 1})
 	slices.Sort(got)
@@ -192,7 +192,7 @@ func TestListLibraryFavoritedOrder(t *testing.T) {
 	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
 	favoriteVideos(t, db, true, solo)
 	favoriteVideos(t, db, true, x)
-	setFavorites(t, db, domain.FavoriteChange{FolderPaths: []string{fixturePath("/media/pair")}, Favorite: true})
+	setFavorites(t, db, domain.FavoriteChange{GroupIDs: []int64{groupIDOf(t, db, fixturePath("/media/pair"))}, Favorite: true})
 
 	for _, tc := range []struct {
 		sort domain.VideoSort

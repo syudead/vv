@@ -420,7 +420,7 @@ describe("useVideoDetail", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>().mockResolvedValue(
-        new Response(JSON.stringify({ appliedVideos: 1, appliedFolders: 0 }), {
+        new Response(JSON.stringify({ appliedVideos: 1, appliedGroups: 0 }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),
@@ -436,7 +436,7 @@ describe("useVideoDetail", () => {
     });
 
     expect(result.current.state).toMatchObject({ video: { id: 12, favorite: true } });
-    expect(changes).toContainEqual({ videoIds: [11], folders: [], favorite: true });
+    expect(changes).toContainEqual({ videoIds: [11], groupIds: [], favorite: true });
     unsubscribe();
   });
 
@@ -454,7 +454,7 @@ describe("useVideoDetail", () => {
       "fetch",
       vi.fn<typeof fetch>().mockImplementation(() =>
         Promise.resolve(
-          new Response(JSON.stringify({ appliedVideos: 1, appliedFolders: 0 }), {
+          new Response(JSON.stringify({ appliedVideos: 1, appliedGroups: 0 }), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           }),
@@ -473,7 +473,7 @@ describe("useVideoDetail", () => {
     });
 
     expect(result.current.state).toMatchObject({ video: { id: 12, favorite: false } });
-    expect(changes).toEqual([{ videoIds: [12], folders: [], favorite: true }]);
+    expect(changes).toEqual([{ videoIds: [12], groupIds: [], favorite: true }]);
     unsubscribe();
   });
 
@@ -490,7 +490,7 @@ describe("useVideoDetail", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn<typeof fetch>().mockResolvedValue(
-        new Response(JSON.stringify({ appliedVideos: 1, appliedFolders: 0 }), {
+        new Response(JSON.stringify({ appliedVideos: 1, appliedGroups: 0 }), {
           status: 200,
           headers: { "Content-Type": "application/json" },
         }),
@@ -505,7 +505,7 @@ describe("useVideoDetail", () => {
       await result.current.setFavorite(true);
     });
 
-    expect(changes).toEqual([{ videoIds: [11], folders: [], favorite: true }]);
+    expect(changes).toEqual([{ videoIds: [11], groupIds: [], favorite: true }]);
     unsubscribe();
   });
 });

@@ -1,13 +1,12 @@
 import type {
   FolderListing,
-  FolderRef,
   LibraryItem,
   Progress,
   TagRef,
   VideoSort,
   WatchFilter,
 } from "./client";
-import { groupsAtFolders, groupsWithMembers } from "./libraryItems";
+import { groupsIn, groupsWithMembers } from "./libraryItems";
 import { applyTagToTags } from "./tagOrder";
 
 /**
@@ -243,7 +242,7 @@ export function applyVisibilityToListSnapshot(
  */
 export function applyFavoritesToListSnapshot(
   videoIds: readonly number[],
-  folders: readonly FolderRef[],
+  groupIds: readonly number[],
   favorite: boolean,
 ): void {
   if (held === undefined) return;
@@ -266,7 +265,7 @@ export function applyFavoritesToListSnapshot(
       ),
     };
   }
-  held = withStaleGroups(next, groupsAtFolders(next.items, folders));
+  held = withStaleGroups(next, groupsIn(next.items, groupIds));
 }
 
 /**

@@ -4,7 +4,6 @@ import { Link } from "react-router";
 
 import type { LibraryGroup } from "../api/client";
 import { updateFavorites } from "../api/favorites";
-import { groupFolder } from "../api/libraryItems";
 import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
@@ -95,8 +94,8 @@ export function groupLinkLabel(
 
 /**
  * GroupFavorite はグループのカード・行のお気に入りの付け外しである（所有者だけ。
- * specs/035-favorites/ui-design.md「Card」）。グループのフォルダを送り、メンバーには付けない。
- * お気に入りはまだフォルダで送るので、フォルダの無いグループには出さない。
+ * specs/035-favorites/ui-design.md「Card」）。グループの id を送り、メンバーには付けない
+ * （specs/048-groups/research.md R-10）。
  */
 function GroupFavorite({
   group,
@@ -106,13 +105,11 @@ function GroupFavorite({
   variant: "card" | "row";
 }) {
   const favorite = group.favorite === true;
-  const folder = groupFolder(group);
-  if (folder === undefined) return null;
   return (
     <FavoriteToggle
       favorite={favorite}
       label={t.library.group.favorite(group.name)}
-      onToggle={() => updateFavorites([], [folder], !favorite)}
+      onToggle={() => updateFavorites([], [group.id], !favorite)}
       variant={variant}
     />
   );
@@ -120,8 +117,8 @@ function GroupFavorite({
 
 /**
  * GroupAddToPlaylist はグループのカード・行の「Add to playlist」である（所有者だけ。
- * specs/044-playlists/ui-design.md「Add to playlist」）。グループのフォルダを送る。
- * プレイリストの項目はまだフォルダで持つので、フォルダの無いグループには出さない。
+ * specs/044-playlists/ui-design.md「Add to playlist」）。グループの id を送る
+ * （specs/048-groups/research.md R-10）。
  */
 function GroupAddToPlaylist({
   group,
@@ -130,13 +127,11 @@ function GroupAddToPlaylist({
   group: LibraryGroup;
   variant: "card" | "row";
 }) {
-  const folder = groupFolder(group);
-  if (folder === undefined) return null;
   return (
     <AddToPlaylistButton
       variant={variant}
       label={t.library.group.addToPlaylist(group.name)}
-      folders={[folder]}
+      groupIds={[group.id]}
     />
   );
 }

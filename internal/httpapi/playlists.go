@@ -217,36 +217,25 @@ func (s *server) AddPlaylistItems(w http.ResponseWriter, r *http.Request, id gen
 	if body.VideoIds != nil {
 		videoIDs = uniqueInt64s(*body.VideoIds)
 	}
-	var folders []gen.VideoFolder
-	if body.Folders != nil {
-		folders = uniqueVideoFolders(*body.Folders)
+	var groupIDs []int64
+	if body.GroupIds != nil {
+		groupIDs = uniqueInt64s(*body.GroupIds)
 	}
-	total := len(videoIDs) + len(folders)
+	total := len(videoIDs) + len(groupIDs)
 	if total == 0 {
-		s.invalidRequest(w, "videoIds or folders must contain at least one item.")
+		s.invalidRequest(w, "videoIds or groupIds must contain at least one item.")
 		return
 	}
 	if total > maxVideoTagsIDs {
 		s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
-			fmt.Sprintf("videoIds and folders must contain at most %d items in total.", maxVideoTagsIDs))
+			fmt.Sprintf("videoIds and groupIds must contain at most %d items in total.", maxVideoTagsIDs))
 		return
-	}
-	for _, folder := range folders {
-		if err := domain.ValidateFolderPath(folder.Path); err != nil {
-			s.invalidRequestReason(w, reasonInvalidFolderPath,
-				"Invalid folder path. Empty segments, leading or trailing /, ., and .. are not allowed.")
-			return
-		}
 	}
 	if s.playlists == nil {
 		s.internalError(w, "Playlist storage is not configured.", nil)
 		return
 	}
-	paths, ok := s.favoriteFolderPaths(w, r, folders)
-	if !ok {
-		return
-	}
-	added, err := s.playlists.AddPlaylistItems(r.Context(), id, domain.PlaylistAdd{VideoIDs: videoIDs, FolderPaths: paths})
+	added, err := s.playlists.AddPlaylistItems(r.Context(), id, domain.PlaylistAdd{VideoIDs: videoIDs, GroupIDs: groupIDs})
 	if err != nil {
 		s.writePlaylistError(w, err, "Could not add to the playlist.")
 		return

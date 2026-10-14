@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/running-vv.md
-sourceHash: 702bbfc88bf50def49281a580c7b9b0601b177b250e0785b18d22c1a877fc28b
+sourceHash: a969becbf11476fa1f9969e5141bbb0e2ef10cd77810b8490a93b3d9df4ed0ae
 ---
 
 # VVMDM を動かす {#running-vvmdm}
@@ -257,7 +257,7 @@ Docker の構成では、アプリケーションのデータを `vv_data` ボ�
 | 分類 | テーブルとファイル | 復旧の手段 |
 | --- | --- | --- |
 | 再構築できるインデックス | `videos`、`video_locations`、`location_search_fts`、`jobs`、`scans`、`scan_videos`、`scan_issues`、フォルダのインデックス（`folder_groups`、`folder_group_members`、`video_folder_names`、`folder_index_state`）、`video_transcode_probes`、`video_successions`、`video_fingerprints`、`video_version_candidates`、生成されたサムネイルとプレビュー | 登録済みのメディアフォルダを再びスキャンする |
-| ユーザーデータ | `playback_progress`、`watch_history`、`tags`、`tag_names`、`video_tags`、`auto_tag_rejections`、`rejected_tag_names`、`public_videos`、`video_overrides`、`thumbnail_images`、`video_edits`、`video_favorites`、`folder_favorites`、`playlists`、`playlist_items`、`groups`、`group_items`、`group_exclusions`、`video_bundles`、`video_bundle_members`、`video_version_dismissals`、`folder_group_overrides` | バックアップのみ |
+| ユーザーデータ | `playback_progress`、`watch_history`、`tags`、`tag_names`、`video_tags`、`auto_tag_rejections`、`rejected_tag_names`、`public_videos`、`video_overrides`、`thumbnail_images`、`video_edits`、`video_favorites`、`group_favorites`、`playlists`、`playlist_items`、`groups`、`group_items`、`group_exclusions`、`video_bundles`、`video_bundle_members`、`video_version_dismissals`、`folder_group_overrides` | バックアップのみ |
 | 設定 | `account`、`media_folders`、`settings`、`api_tokens` | バックアップ、または設定し直す |
 | 自動タグ付けの記録 | `auto_tag_queue` | Settings の Auto-tagging で動画をタグ付けし直す。所有者が外したタグが戻ることがある ([自動タグ付け](../design-docs/auto-tagging.md)) |
 | セッション | `sessions` | ログインし直す |

@@ -147,13 +147,13 @@ describe("playlists API", () => {
     expect((failure as RequestFailed).status).toBe(400);
   });
 
-  it("addToPlaylist は videoIds と folders を送り、added と existing を返す", async () => {
+  it("addToPlaylist は videoIds と groupIds を送り、added と existing を返す", async () => {
     const fetchMock = vi.fn<typeof fetch>(() =>
       Promise.resolve(json({ added: 2, existing: 1 })),
     );
     vi.stubGlobal("fetch", fetchMock);
 
-    expect(await addToPlaylist(3, [1, 2], [{ rootId: 4, path: "show" }])).toEqual({
+    expect(await addToPlaylist(3, [1, 2], [4])).toEqual({
       added: 2,
       existing: 1,
     });
@@ -161,7 +161,7 @@ describe("playlists API", () => {
       {
         url: "/api/playlists/3/items",
         method: "POST",
-        body: { videoIds: [1, 2], folders: [{ rootId: 4, path: "show" }] },
+        body: { videoIds: [1, 2], groupIds: [4] },
       },
     ]);
   });

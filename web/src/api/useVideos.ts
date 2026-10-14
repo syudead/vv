@@ -2,9 +2,9 @@ import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 
 import { useAudience } from "../auth/audience";
 import type { UiText } from "../i18n";
-import type { FolderRef, TagRef } from "./client";
+import type { TagRef } from "./client";
 import { subscribeFavorites, subscribeFavoritesStale } from "./favorites";
-import { folderRefKey, groupsAtFolders, groupsIn, shownGroupIds } from "./libraryItems";
+import { folderRefKey, groupsIn, shownGroupIds } from "./libraryItems";
 import { subscribeProgress } from "./progressEvents";
 import { subscribeServerEvents } from "./serverEvents";
 import { useGroupRefresh } from "./useGroupRefresh";
@@ -101,9 +101,6 @@ export function useVideos(
   // グループは保存前の値を持つことがあるので、ページを反映したあとでメンバーに
   // 当たるグループを取り直す（fetchPage。Devin の指摘、PR 357）。
   const progressChangedWhileLoading = useRef(new Set<number>());
-
-  // ページの取得中にお気に入りを付け外したグループのフォルダである（下の subscribeFavorites）。
-  const favoriteFoldersChangedWhileLoading = useRef(new Map<string, FolderRef>());
 
   // 再生画面で保存された再生位置を、表示中の項目へ反映する。復元した一覧は
   // 再生前の中身なので、戻ったあとに届く離脱時の保存もここで受ける。
@@ -253,23 +250,21 @@ export function useVideos(
   // 確かに反映された動画は、一部反映の取り直しに失敗してお気に入りの印が確かでなかった
   // ものでも、これで確かになる（公開状態の理由は残す。useItemRefresh の uncertain）。
   // ページの取得中に付け外したグループは、取得中のページに初めて現れることがあるので
-  // 覚えておき、ページを反映したあとで取り直す（useVideoPages の fetchPage）。
-  // 反映の数が 0 の（もうグループでない）フォルダも、取り直して 404 で外すために覚える。
+  // group の知らせと同じく覚えておき、ページを反映したあとで取り直す（useVideoPages の
+  // fetchPage）。反映の数が 0 の（もう無い）グループも、取り直して 404 で外すために覚える。
   useEffect(
     () =>
-      subscribeFavorites(({ videoIds, folders, favorite }) => {
+      subscribeFavorites(({ videoIds, groupIds, favorite }) => {
         if (videoIds.length > 0) {
           settleUncertainReason(videoIds, "favorite");
           dispatch({ type: "favorite", videoIds, favorite });
           notifyIfIdle();
         }
-        if (folders.length === 0) return;
+        if (groupIds.length === 0) return;
         if (pageLoading.current) {
-          for (const folder of folders) {
-            favoriteFoldersChangedWhileLoading.current.set(folderRefKey(folder), folder);
-          }
+          for (const id of groupIds) groupsChangedWhileLoading.current.add(id);
         }
-        refreshGroups(groupsAtFolders(itemsRef.current, folders));
+        refreshGroups(groupsIn(itemsRef.current, groupIds));
       }),
     [notifyIfIdle, refreshGroups, settleUncertainReason],
   );
@@ -362,7 +357,6 @@ export function useVideos(
     changedWhileLoading,
     groupsChangedWhileLoading,
     progressChangedWhileLoading,
-    favoriteFoldersChangedWhileLoading,
     tagsChangedWhileLoading,
     groups,
     itemRefresh,

@@ -440,18 +440,18 @@ func assertRepresentativeInvariant(t *testing.T, db *DB) {
 }
 
 // assertFavoriteInvariant はお気に入りの不変条件を確かめる（specs/035-favorites/data-model.md §1）。
-// video_favorites に空の content_key の行は無く、folder_favorites.path は domain.FolderKey(path) と
-// 等しい（整えた鍵しか書かない）。
+// video_favorites に空の content_key の行は無い。グループのお気に入り（group_favorites）は
+// グループの id で持ち、外部キーが行の有無を保つ（specs/048-groups/research.md R-10）。
 func assertFavoriteInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
 	var present int
 	if err := db.sql.QueryRow(
-		`select count(*) from sqlite_master where type = 'table' and name in ('video_favorites', 'folder_favorites')`,
+		`select count(*) from sqlite_master where type = 'table' and name = 'video_favorites'`,
 	).Scan(&present); err != nil {
 		t.Fatalf("お気に入りの不変条件を検査できない（スキーマを確認できない）: %v", err)
 	}
-	if present < 2 {
+	if present == 0 {
 		return
 	}
 
@@ -462,29 +462,11 @@ func assertFavoriteInvariant(t *testing.T, db *DB) {
 	if count != 0 {
 		t.Errorf("video_favorites に空の content_key の行が %d 行ある", count)
 	}
-
-	rows, err := db.sql.Query(`select path from folder_favorites`)
-	if err != nil {
-		t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
-	}
-	defer func() { _ = rows.Close() }()
-	for rows.Next() {
-		var path string
-		if err := rows.Scan(&path); err != nil {
-			t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
-		}
-		if key := domain.FolderKey(path); key != path {
-			t.Errorf("folder_favorites の path %q が FolderKey %q と違う", path, key)
-		}
-	}
-	if err := rows.Err(); err != nil {
-		t.Fatalf("お気に入りの不変条件を検査できない: %v", err)
-	}
 }
 
 // assertPlaylistInvariant はプレイリストの不変条件を確かめる（specs/044-playlists/data-model.md
-// 「Migration」）。1 つのプレイリストの項目の位置は 0 … n-1 で、folder_key は domain.FolderKey(folder_key)
-// と等しい（整えた鍵しか書かない）。
+// 「Migration」）。1 つのプレイリストの項目の位置は 0 … n-1 である。グループの項目はグループの id で
+// 持ち、外部キーが行の有無を保つ（specs/048-groups/research.md R-10）。
 func assertPlaylistInvariant(t *testing.T, db *DB) {
 	t.Helper()
 
@@ -515,25 +497,6 @@ func assertPlaylistInvariant(t *testing.T, db *DB) {
 		}
 	}
 	if err := rows.Err(); err != nil {
-		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
-	}
-	_ = rows.Close()
-
-	keys, err := db.sql.Query(`select folder_key from playlist_items where folder_key is not null`)
-	if err != nil {
-		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
-	}
-	defer func() { _ = keys.Close() }()
-	for keys.Next() {
-		var key string
-		if err := keys.Scan(&key); err != nil {
-			t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
-		}
-		if folded := domain.FolderKey(key); folded != key {
-			t.Errorf("playlist_items の folder_key %q が FolderKey %q と違う", key, folded)
-		}
-	}
-	if err := keys.Err(); err != nil {
 		t.Fatalf("プレイリストの不変条件を検査できない: %v", err)
 	}
 }

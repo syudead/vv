@@ -418,7 +418,7 @@ func TestGroupWritesCountLimitBeforeDeduplicating(t *testing.T) {
 func TestRemovingEveryItemKeepsGroupFavorite(t *testing.T) {
 	f := newLibraryFixture(t)
 	pair := f.groupID(t, "pair")
-	rec := f.putFavorites(favoritesBody(true, nil, gen.VideoFolder{RootId: f.rootID, Path: "pair"}), f.owner)
+	rec := f.putFavorites(favoritesBody(true, nil, pair), f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("お気に入り: status = %d: %s", rec.Code, rec.Body)
 	}

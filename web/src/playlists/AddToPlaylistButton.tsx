@@ -1,7 +1,6 @@
 import { ListPlus } from "lucide-react";
 import { useState } from "react";
 
-import type { FolderRef } from "../api/client";
 import type { UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { Button } from "../ui/shadcn/button";
@@ -9,8 +8,7 @@ import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import PlaylistPicker from "./PlaylistPicker";
 
-const noFolders: readonly FolderRef[] = [];
-const noVideos: readonly number[] = [];
+const noIds: readonly number[] = [];
 
 /**
  * AddToPlaylistButton はカード・リスト表示の行・動画ページの「Add to playlist」の引き金と
@@ -28,14 +26,14 @@ const noVideos: readonly number[] = [];
 export default function AddToPlaylistButton({
   variant,
   label,
-  videoIds = noVideos,
-  folders = noFolders,
+  videoIds = noIds,
+  groupIds = noIds,
 }: {
   variant: "card" | "row" | "page";
   /** 読み上げ名。`page` ではツールチップの文言でもある。 */
   label: UiText;
   videoIds?: readonly number[];
-  folders?: readonly FolderRef[];
+  groupIds?: readonly number[];
 }) {
   const [open, setOpen] = useState(false);
   const picker = (
@@ -43,7 +41,7 @@ export default function AddToPlaylistButton({
       open={open}
       onOpenChange={setOpen}
       videoIds={videoIds}
-      folders={folders}
+      groupIds={groupIds}
     />
   );
 

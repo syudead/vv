@@ -22,7 +22,7 @@ func newFavoriteListFixture(t *testing.T) *libraryFixture {
 	t.Helper()
 	f := newLibraryFixture(t)
 	steps := []string{
-		favoritesBody(true, nil, gen.VideoFolder{RootId: f.rootID, Path: "show"}),
+		favoritesBody(true, nil, f.groupID(t, "show")),
 		favoritesBody(true, []int64{f.ids["p1"]}),
 		favoritesBody(true, []int64{f.ids["solo"]}),
 	}

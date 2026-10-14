@@ -406,7 +406,7 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 		}
 	}
 	for path, at := range groupFavorited {
-		if _, err := db.sql.Exec(`insert into folder_favorites (path, favorited_at) values (?, ?)`, domain.FolderKey(path), at); err != nil {
+		if _, err := db.sql.Exec(`insert into group_favorites (group_id, favorited_at) values (?, ?)`, groupIDOf(t, db, path), at); err != nil {
 			t.Fatal(err)
 		}
 	}

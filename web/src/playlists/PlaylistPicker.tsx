@@ -1,7 +1,7 @@
 import { ListVideo, Plus } from "lucide-react";
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
-import { type FolderRef, isAborted, RequestFailed } from "../api/client";
+import { isAborted, RequestFailed } from "../api/client";
 import {
   addToPlaylist,
   createPlaylist,
@@ -10,7 +10,6 @@ import {
 } from "../api/playlists";
 import { maxVideoTagsSelection } from "../api/tags";
 import { errorText, t, type UiText } from "../i18n";
-import { withGroupFolders } from "../library/groupFolders";
 import { overLimitMessage } from "../library/selectionErrors";
 import { Button } from "../ui/shadcn/button";
 import { Command, CommandInput, CommandItem, CommandList } from "../ui/shadcn/command";
@@ -37,7 +36,7 @@ type Pending = { kind: "playlist"; id: number } | { kind: "create" } | null;
  * - 開くたびに `GET /api/playlists` を `nextCursor` が尽きるまで読み（listAllPlaylists）、打った文字を
  *   名前に含むものを API の順に出す。
  *   打った名前と同じ名前のプレイリストが無ければ、先頭に「Create "{name}"」の行を出す。
- * - 行を選ぶと `videoIds` と `folders` を `POST /api/playlists/{id}/items` で送る。作成の行は
+ * - 行を選ぶと `videoIds` と `groupIds` を `POST /api/playlists/{id}/items` で送る。作成の行は
  *   `POST /api/playlists` の後に、その新しいプレイリストへ足す。足すのに失敗した後に同じ名前で
  *   作成の行をもう一度選ぶと、開いている間に作ったその名前のプレイリストへ足し直す（別の名前を
  *   挟んでも同じ）。そのプレイリストが消えていた（404）なら覚えを捨て、次は作り直す。
@@ -48,17 +47,14 @@ export default function PlaylistPicker({
   open,
   onOpenChange,
   videoIds,
-  folders,
-  unreadGroupIds = [],
+  groupIds,
   side = "bottom",
   align = "end",
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   videoIds: readonly number[];
-  folders: readonly FolderRef[];
-  /** 「すべて選択」で読み込んでいないグループ。送る前にフォルダを引いて `folders` に足す。 */
-  unreadGroupIds?: readonly number[];
+  groupIds: readonly number[];
   side?: "top" | "bottom";
   align?: "start" | "end";
 }) {
@@ -132,7 +128,7 @@ export default function PlaylistPicker({
     return playlist;
   }
 
-  // 送るものは、この描画の props（videoIds・folders）で決まる。送っている間に選択が
+  // 送るものは、この描画の props（videoIds・groupIds）で決まる。送っている間に選択が
   // 変わっても、この呼び出しの値は変わらない。
   async function send(target: { id: number; name: string } | { create: string }) {
     const mine = session.current;
@@ -140,10 +136,7 @@ export default function PlaylistPicker({
     const memory = created.current;
     setFailure(null);
     // 開いている間に選択が増えて上限を超えたら、送らずに理由を出す（「Favorite」と同じ）。
-    if (
-      videoIds.length + folders.length + unreadGroupIds.length >
-      maxVideoTagsSelection
-    ) {
+    if (videoIds.length + groupIds.length > maxVideoTagsSelection) {
       setFailure(overLimitMessage());
       return;
     }
@@ -151,11 +144,7 @@ export default function PlaylistPicker({
     let playlist: { id: number; name: string } | null = null;
     try {
       playlist = "id" in target ? target : await createOnce(memory, target.create);
-      const result = await addToPlaylist(
-        playlist.id,
-        videoIds,
-        await withGroupFolders(folders, unreadGroupIds),
-      );
+      const result = await addToPlaylist(playlist.id, videoIds, groupIds);
       // 足したことは、ピッカーを閉じた後でもトーストで伝える。
       toast(resultText(result, playlist.name));
       if (current()) onOpenChange(false);

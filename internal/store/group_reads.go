@@ -60,10 +60,9 @@ func groupDescendantsCTE(roots string, audience domain.Audience) string {
 }
 
 // groupFavoritedAtExpr は、グループ（別名 alias の groups）をお気に入りにした時刻を返す式である。
-// お気に入りでなければ NULL になる。お気に入りはまだフォルダの鍵（folder_favorites）で持つので、
-// 自動グループのフォルダで引く（specs/048-groups/research.md R-10 の移行までのつなぎ）。
+// お気に入りでなければ NULL になる（group_favorites、specs/048-groups/research.md R-10）。
 func groupFavoritedAtExpr(alias string) string {
-	return `(select ff.favorited_at from folder_favorites ff where ff.path = ` + alias + `.origin_folder)`
+	return `(select gf.favorited_at from group_favorites gf where gf.group_id = ` + alias + `.id)`
 }
 
 // loadGroups はグループの id ごとに、見せてよい子孫の動画を再生順に読み、グループの項目を作る。

@@ -1,25 +1,21 @@
-import type { FolderRef, LibraryGroup, LibraryItem } from "../api/client";
-import { groupFolder } from "../api/libraryItems";
+import type { LibraryGroup, LibraryItem } from "../api/client";
 
 /**
  * SelectedGroup はグループのカードのチェック（または「すべて選択」の応答の `groups`）で
  * グループとして選んだものである（specs/035-favorites/research.md R-7）。グループの id で
- * 指す（specs/048-groups/contracts/screen-api.md）。`folder` は自動グループのフォルダで、
- * お気に入りがまだフォルダで送るために持つ。手で作ったグループと、「すべて選択」で読み込んで
- * いないグループでは無い。`unread` は後者で、送る前に `GET /api/groups/{id}` でフォルダを
- * 引く（groupFolders.ts の withGroupFolders）。
+ * 指し、お気に入りとプレイリストへの追加もその id を `groupIds` で送る
+ * （specs/048-groups/research.md R-10）。
  */
 export interface SelectedGroup {
   id: number;
-  folder?: FolderRef;
-  unread?: true;
   videoIds: readonly number[];
 }
 
 /**
  * LibrarySelection はライブラリの選択である。`ids` は選んだ動画の id の集合（グループは
  * メンバーを数える）で、タグ・公開・束ねる操作はこれを送る。`groups` はグループとして
- * 選んだもの（グループの id ごと）で、一括のお気に入りだけがこれを `folders` として送る。
+ * 選んだもの（グループの id ごと）で、一括のお気に入りとプレイリストへの追加がこれを
+ * `groupIds` として送る。
  * グループのメンバーを 1 本でも外したグループは `groups` から外れ、残ったメンバーは
  * 動画として扱われる。
  */
@@ -85,21 +81,12 @@ export function setGroup(
 
 /** copyGroup は選んだグループを、呼び出し側の値と切り離して覚える。 */
 function copyGroup(group: SelectedGroup): SelectedGroup {
-  const copy: SelectedGroup = { id: group.id, videoIds: group.videoIds };
-  if (group.folder !== undefined) {
-    copy.folder = { rootId: group.folder.rootId, path: group.folder.path };
-  }
-  if (group.unread === true) copy.unread = true;
-  return copy;
+  return { id: group.id, videoIds: group.videoIds };
 }
 
 /** selectedGroupOf はグループの項目をグループとして選ぶときの値にする。 */
 export function selectedGroupOf(group: LibraryGroup): SelectedGroup {
-  return copyGroup({
-    id: group.id,
-    folder: groupFolder(group),
-    videoIds: group.videoIds,
-  });
+  return copyGroup(group);
 }
 
 /** toggleGroup は全メンバーが選択に入っていれば外し、そうでなければグループとして選ぶ。 */
@@ -112,48 +99,27 @@ export function toggleGroup(
   return setGroup(selection, group, !all);
 }
 
-/**
- * fromSelectAll は「すべて選択」の応答（`ids` と `groups`）を選択にする。応答の `groups` は
- * フォルダを持たないので、読み込んだ項目 `items` にあるグループのフォルダで補う。読み込んで
- * いないグループは `unread` にする。
- */
+/** fromSelectAll は「すべて選択」の応答（`ids` と `groups`）を選択にする。 */
 export function fromSelectAll(
   ids: readonly number[],
-  groups: readonly { id: number; videoIds: readonly number[] }[],
-  items: readonly LibraryItem[] = [],
+  groups: readonly SelectedGroup[],
 ): LibrarySelection {
-  const loaded = new Map<number, LibraryGroup>();
-  for (const item of items) {
-    if (item.kind === "group") loaded.set(item.group.id, item.group);
-  }
   const selected = new Map<number, SelectedGroup>();
-  for (const group of groups) {
-    const shown = loaded.get(group.id);
-    selected.set(
-      group.id,
-      shown === undefined
-        ? { id: group.id, unread: true, videoIds: group.videoIds }
-        : copyGroup({
-            id: group.id,
-            folder: groupFolder(shown),
-            videoIds: group.videoIds,
-          }),
-    );
-  }
+  for (const group of groups) selected.set(group.id, copyGroup(group));
   return { ids: new Set(ids), groups: selected };
 }
 
 /**
  * reconcileGroups は、読み込んだ項目から分かったグループの変化を選んだグループに映す。
  * 選択を解かずに一覧を取り直す（取り込みの完了など）と、選んだグループがいちばん上の項目で
- * なくなったり、メンバーが変わったりする。そのまま `folders` に載せると、サーバーはグループで
- * ないフォルダを飛ばし、メンバーは `videoIds` から除かれているので何も付かない。
+ * なくなったり、メンバーが変わったりする。そのまま `groupIds` に載せると、メンバーは `videoIds`
+ * から除かれているので、選んだ動画でなくグループに付いてしまう。
  *
  * - 選んだグループのメンバーが動画の項目として載っていれば、そのグループは今の一覧では
  *   グループの項目でない（同じグループのカードとそのメンバーの項目は同時に出ない。
  *   specs/027-partial-group-search/contracts/library-api.md §1）。グループから外し、
  *   メンバーは選んだ動画として残す。
- * - 同じ id のグループの項目が載っていれば、そのメンバーとフォルダで覚え直す。全メンバーが
+ * - 同じ id のグループの項目が載っていれば、そのメンバーで覚え直す。全メンバーが
  *   選択に入っていなければ（メンバーが増えた）グループから外す（removeIds と同じ考え方）。
  *
  * id の集合は変えない（読み込んでいない項目の選択を削らない）。変化が無ければ同じ選択を返す。
@@ -179,18 +145,13 @@ export function reconcileGroups(
     const current = (groups ?? selection.groups).get(key);
     if (current === undefined) continue;
     const observed = item.group.videoIds;
-    const folder = groupFolder(item.group);
     if (!observed.every((id) => selection.ids.has(id))) {
       edit().delete(key);
     } else if (
-      current.unread === true ||
       observed.length !== current.videoIds.length ||
-      observed.some((id, index) => current.videoIds[index] !== id) ||
-      (folder === undefined) !== (current.folder === undefined) ||
-      (folder !== undefined &&
-        (folder.rootId !== current.folder?.rootId || folder.path !== current.folder.path))
+      observed.some((id, index) => current.videoIds[index] !== id)
     ) {
-      edit().set(key, copyGroup({ id: key, folder, videoIds: observed }));
+      edit().set(key, copyGroup({ id: key, videoIds: observed }));
     }
   }
   return groups === null ? selection : { ids: selection.ids, groups };
@@ -205,24 +166,19 @@ export function sameSelection(a: LibrarySelection, b: LibrarySelection): boolean
 }
 
 /**
- * favoriteTargets は一括のお気に入りで送るものである（R-7）。`folders` はフォルダの分かる
- * 選んだグループ、`unreadGroupIds` は「すべて選択」で読み込んでいないグループで、送る前に
- * フォルダを引く（withGroupFolders）。`videoIds` は選んだ id のうち選んだグループのメンバーで
- * ないもの。フォルダの無い（手で作った）グループは送らない（お気に入りはまだフォルダで送る）。
+ * favoriteTargets は一括のお気に入りとプレイリストへの追加で送るものである（R-7）。`groupIds` は
+ * 選んだグループ、`videoIds` は選んだ id のうち選んだグループのメンバーでないもの。
  */
 export function favoriteTargets(selection: LibrarySelection): {
   videoIds: number[];
-  folders: FolderRef[];
-  unreadGroupIds: number[];
+  groupIds: number[];
 } {
   const members = new Set<number>();
-  const folders: FolderRef[] = [];
-  const unreadGroupIds: number[] = [];
+  const groupIds: number[] = [];
   for (const group of selection.groups.values()) {
-    if (group.folder !== undefined) folders.push(group.folder);
-    else if (group.unread === true) unreadGroupIds.push(group.id);
+    groupIds.push(group.id);
     for (const id of group.videoIds) members.add(id);
   }
   const videoIds = Array.from(selection.ids).filter((id) => !members.has(id));
-  return { videoIds, folders, unreadGroupIds };
+  return { videoIds, groupIds };
 }
