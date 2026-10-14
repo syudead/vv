@@ -64,8 +64,10 @@ folder screen's drag, judged against the parent Issue's `UI品質`.
 
 - No migration ([data-model.md](data-model.md)); one new store role,
   `OrganizeStore`, and one new use case, `app.Organizer`.
-- Six routes and two error codes added
-  ([contracts/screen-api.md](contracts/screen-api.md)); no route changes.
+- Six routes and two error codes added, and one route changed: 048's
+  `PATCH /api/groups/{id}` takes an optional `undoToken` in its own body
+  schema, `GroupRename`
+  ([contracts/screen-api.md](contracts/screen-api.md#patch-apigroupsid-with-an-undo-token)).
 - The folder screen has no selection today, so it drags one card at a time;
   requirement 11 applies where selection exists (library and group page).
 
@@ -109,9 +111,9 @@ tests or in the browser test below.
 | Boundary | What it owns in this feature |
 | --- | --- |
 | `internal/domain` | `PlanGroupMerge`, the new group's name, `ErrUndoConflict`, `ErrUndoExpired` |
-| `internal/store` | `OrganizeStore`: the five operations, their images and the restore |
-| `internal/app` | `Organizer`: the undo journal |
-| `internal/httpapi`, `api/openapi.yaml`, `cmd/mdm` | The six routes, the error codes, the wiring |
+| `internal/store` | `OrganizeStore`: the five operations, their images, the restore, and the rename under an undo token |
+| `internal/app` | `Organizer`: the undo journal, and the rename under an undo token |
+| `internal/httpapi`, `api/openapi.yaml`, `cmd/mdm` | The six routes, the error codes, the rename's `undoToken`, the wiring |
 | `web/src/api` | `organize.ts`, the client of the six routes |
 | `web/src/videoList`, `web/src/ui` | The drag layer; the toast action |
 | `web/src/library`, `web/src/groups`, `web/src/folders`, `web/src/i18n` | Drops on each screen, the drop menus, the catalog text |
@@ -186,7 +188,13 @@ item; a folder member taken out writes its exclusion, and undo removes it.
 ### Make a group from a dragged video and its target in one operation
 
 **Scope**: `POST /api/organize/group` with the Group rule
-([R-6](research.md#r-6-make-a-group-puts-the-new-group-where-the-target-was)).
+([R-6](research.md#r-6-make-a-group-puts-the-new-group-where-the-target-was)),
+and the rename under that operation's token: the optional `undoToken` of
+`PATCH /api/groups/{id}` in the `GroupRename` schema, the handler passing it
+to `app.Organizer`, and the Organizer and `OrganizeStore` steps that replace
+the token's after image
+([contracts/screen-api.md](contracts/screen-api.md#patch-apigroupsid-with-an-undo-token),
+[data-model.md, Rename under an undo token](data-model.md#rename-under-an-undo-token)).
 
 **Dependencies**: Undo drag operations with a server-side journal, starting
 with reordering a group.
@@ -196,8 +204,14 @@ tests show: A dropped on B makes a group named B's title holding B then A
 (acceptance criterion 2); with `from`, the group takes B's position and A and
 B leave `from`; a 120-character title is cut to 100; undo deletes the group
 and puts A and B back at their positions; after the new group is favorited,
-added to a playlist or put in another group, undo is `ErrUndoConflict` and
-changes nothing.
+added to a playlist, put in another group or renamed without the token, undo
+is `ErrUndoConflict` and changes nothing; after a rename with the token, undo
+deletes the renamed group and puts A and B back; app tests show a rename with
+a token that is unknown, used, expired, from a reorder or for another group
+renames the group and keeps the token's image, and an undo of that token
+during its rename waits for it; handler tests show `PATCH /api/groups/{id}`
+without `undoToken` answers as 048's, and with it answers the same and never
+fails because of the token.
 
 ### Merge dragged groups into a target group in one operation
 
