@@ -26,7 +26,7 @@ function render(entry: Entry, details: ErrorDetails): UiText {
 /**
  * errorText は失敗を画面に出す英語の文言にする。順は次のとおり。
  *
- * 1. 既知の `reason`、なければ既知の `code`: カタログの文（`limit`・`tagName` を埋め込む）
+ * 1. 既知の `reason`、なければ既知の `code`: カタログの文（`limit`・`tagName`・`host` を埋め込む）
  * 2. 未知の `code` で `message` がある: サーバーの英語の `message`
  * 3. 本文が JSON でない・空・`message` が無い: `Request failed (HTTP <status>)`
  * 4. fetch 自体の失敗: サーバーに届かなかったことを表す概要（ブラウザの文言は出さない）
@@ -35,7 +35,11 @@ function render(entry: Entry, details: ErrorDetails): UiText {
  */
 export function errorText(error: unknown): UiText {
   if (error instanceof RequestFailed) {
-    const details: ErrorDetails = { limit: error.limit, tagName: error.tagName };
+    const details: ErrorDetails = {
+      limit: error.limit,
+      tagName: error.tagName,
+      host: error.host,
+    };
     const entry =
       lookup(t.errors.reason, error.reason) ?? lookup(t.errors.code, error.code);
     if (entry !== undefined) return render(entry, details);

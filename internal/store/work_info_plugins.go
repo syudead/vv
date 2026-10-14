@@ -18,7 +18,7 @@ import (
 
 // workInfoPluginColumns は行を読む列である。モジュールのバイト列は読まない。
 const workInfoPluginColumns = `id, name, file_name, version, description, contract, operations, settings,
-	digest, problem, approved_digest, added_at, updated_at`
+	digest, problem, approved_digest, added_at, updated_at, generation`
 
 // ListWorkInfoPlugins はすべてのプラグインを、名前、次にファイル名の順で返す。名前を読めなかった
 // プラグインは名前のあるものの後に、ファイル名の順で並ぶ。
@@ -58,6 +58,25 @@ func (s *WorkInfoPluginStore) ListWorkInfoPlugins(ctx context.Context) ([]domain
 // WorkInfoPlugin はプラグイン id を返す。無ければ domain.ErrNotFound を返す。
 func (s *WorkInfoPluginStore) WorkInfoPlugin(ctx context.Context, id int64) (domain.WorkInfoPlugin, error) {
 	return readWorkInfoPlugin(ctx, s.sql, id)
+}
+
+// WorkInfoPluginModule はプラグイン id の行と、そのモジュールのバイト列を同じスナップショットから返す。
+// 問題のある行のモジュールは nil である。無ければ domain.ErrNotFound を返す。
+func (s *WorkInfoPluginStore) WorkInfoPluginModule(ctx context.Context, id int64) (domain.WorkInfoPlugin, []byte, error) {
+	tx, err := s.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.WorkInfoPlugin{}, nil, fmt.Errorf("cannot read the work-info plugin: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	plugin, err := readWorkInfoPlugin(ctx, tx, id)
+	if err != nil {
+		return domain.WorkInfoPlugin{}, nil, err
+	}
+	var module []byte
+	if err := tx.QueryRowContext(ctx, `select module from work_info_plugins where id = ?`, id).Scan(&module); err != nil {
+		return domain.WorkInfoPlugin{}, nil, fmt.Errorf("cannot read the work-info plugin module: %w", err)
+	}
+	return plugin, module, nil
 }
 
 // SaveWorkInfoPlugin はアップロード upload を保存し、保存した行と、既存の行を差し替えたかを返す。
@@ -195,7 +214,7 @@ func replaceWorkInfoPlugin(
 ) error {
 	if _, err := tx.ExecContext(ctx, `update work_info_plugins set
 		file_name = ?, version = ?, description = ?, contract = ?, operations = ?, settings = ?, module = ?,
-		digest = ?, problem = ?, approved_digest = null, updated_at = ?
+		digest = ?, problem = ?, approved_digest = null, updated_at = ?, generation = generation + 1
 		where id = ?`,
 		upload.FileName, cols.version, cols.description, cols.contract, cols.operations, cols.settings,
 		cols.module, upload.Digest, cols.problem, now.Unix(), id); err != nil {
@@ -239,7 +258,8 @@ func (s *WorkInfoPluginStore) ApproveWorkInfoPlugin(
 func (s *WorkInfoPluginStore) RevokeWorkInfoPlugin(ctx context.Context, id int64, now time.Time) (domain.WorkInfoPlugin, error) {
 	return s.changeWorkInfoPlugin(ctx, id, func(tx *sql.Tx, _ domain.WorkInfoPlugin) error {
 		_, err := tx.ExecContext(ctx,
-			`update work_info_plugins set approved_digest = null, updated_at = ? where id = ?`, now.Unix(), id)
+			`update work_info_plugins set approved_digest = null, updated_at = ?, generation = generation + 1
+				where id = ?`, now.Unix(), id)
 		return err
 	})
 }
@@ -388,7 +408,7 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 		addedAt, updatedAt                               int64
 	)
 	err := row.Scan(&plugin.ID, &name, &plugin.FileName, &version, &description, &contract, &operations,
-		&settings, &plugin.Digest, &problem, &approved, &addedAt, &updatedAt)
+		&settings, &plugin.Digest, &problem, &approved, &addedAt, &updatedAt, &plugin.Generation)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.WorkInfoPlugin{}, err
 	}

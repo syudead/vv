@@ -87,6 +87,8 @@ type AutoTagStore struct{ db *DB }
 // 動画を返す読み出しがそれを Video.Title などへ写すのは、各役割の読み出しである。
 // VisibilityStore と同じく SQL 接続を使うが、確定後に domain.VideoOverrideChanged を
 // 発行するため、発行先を持つ *DB を通して使う。ライブラリ索引の型には依存しない。
+// 作品情報プラグインの取得の結果の反映（work_info_fetch.go）も受け持ち、表示名と仮のタグを
+// 1 つの取引で書く（specs/049-work-info-plugins/research.md R-9）。
 type OverrideStore struct{ db *DB }
 
 // VersionStore は同じ動画の別バージョンの集まりを束ねる・代表を替える・外す操作と、

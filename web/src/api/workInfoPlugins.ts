@@ -10,6 +10,11 @@ export type WorkInfoPluginSetting = components["schemas"]["WorkInfoPluginSetting
 export type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
 export type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 export type WorkInfoPluginList = components["schemas"]["WorkInfoPluginList"];
+export type WorkInfoCandidate = components["schemas"]["WorkInfoCandidate"];
+export type WorkInfoFetch = components["schemas"]["WorkInfoFetch"];
+export type WorkInfoField = components["schemas"]["WorkInfoField"];
+export type WorkInfoFetchApplied = components["schemas"]["WorkInfoFetchApplied"];
+export type SkippedTag = components["schemas"]["SkippedTag"];
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -96,4 +101,57 @@ export async function deleteWorkInfoPlugin(
 ): Promise<void> {
   const response = await apiFetch(pluginPath(id), { method: "DELETE", signal });
   if (!response.ok) throw await toRequestFailed(response);
+}
+
+/**
+ * searchWorkInfo は承認済みのプラグインの search で作品を探し、候補を返す（POST …/{id}/search）。`query` は
+ * 前後の空白を除いて 1〜200 文字である。失敗は Run failures の RequestFailed（`pluginMessage`・`host`・
+ * `settingKeys` を持ちうる）で、`search` を持たないプラグインは 409 `operation_unsupported` である。
+ */
+export async function searchWorkInfo(
+  id: number,
+  query: string,
+  signal?: AbortSignal,
+): Promise<WorkInfoCandidate[]> {
+  const result = await request<components["schemas"]["WorkInfoSearchResult"]>(
+    `${pluginPath(id)}/search`,
+    { method: "POST", headers: jsonHeaders, body: JSON.stringify({ query }), signal },
+  );
+  return result.candidates;
+}
+
+/**
+ * fetchWorkInfo は承認済みのプラグイン `pluginId` の fetch で作品の `url` から動画 `videoId` の作品情報を取る
+ * （POST /api/videos/{id}/work-info-fetches）。結果はサーバーが 10 分持ち、動画は変わらない。動画が無ければ
+ * 404 `not_found` で、実行の失敗は searchWorkInfo と同じである。
+ */
+export function fetchWorkInfo(
+  videoId: number,
+  pluginId: number,
+  url: string,
+  signal?: AbortSignal,
+): Promise<WorkInfoFetch> {
+  return request<WorkInfoFetch>(`/api/videos/${String(videoId)}/work-info-fetches`, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify({ pluginId, url }),
+    signal,
+  });
+}
+
+/**
+ * applyWorkInfoFetch は取得の結果 `fetchId` のうち `fields` の項目を動画に反映する
+ * （POST …/work-info-fetches/{fetchId}/apply）。応答は反映後の動画と付けなかったタグの名前である。結果は
+ * 使い切りで、期限切れか取得の後にプラグインが変わっていれば 409 `work_info_fetch_stale` で失敗する。
+ */
+export function applyWorkInfoFetch(
+  videoId: number,
+  fetchId: string,
+  fields: readonly WorkInfoField[],
+  signal?: AbortSignal,
+): Promise<WorkInfoFetchApplied> {
+  return request<WorkInfoFetchApplied>(
+    `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}/apply`,
+    { method: "POST", headers: jsonHeaders, body: JSON.stringify({ fields }), signal },
+  );
 }

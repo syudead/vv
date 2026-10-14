@@ -196,8 +196,14 @@ const (
 	ErrorCodeMediaFoldersNotConfigured   ErrorCode = "media_folders_not_configured"
 	ErrorCodeNotFound                    ErrorCode = "not_found"
 	ErrorCodeOpenUnavailable             ErrorCode = "open_unavailable"
+	ErrorCodeOperationUnsupported        ErrorCode = "operation_unsupported"
 	ErrorCodeOverlappingMediaDirectories ErrorCode = "overlapping_media_directories"
+	ErrorCodePluginBusy                  ErrorCode = "plugin_busy"
 	ErrorCodePluginChanged               ErrorCode = "plugin_changed"
+	ErrorCodePluginFailed                ErrorCode = "plugin_failed"
+	ErrorCodePluginNotApproved           ErrorCode = "plugin_not_approved"
+	ErrorCodePluginSettingsMissing       ErrorCode = "plugin_settings_missing"
+	ErrorCodePluginTimedOut              ErrorCode = "plugin_timed_out"
 	ErrorCodePluginTooLarge              ErrorCode = "plugin_too_large"
 	ErrorCodePluginUnusable              ErrorCode = "plugin_unusable"
 	ErrorCodeProbeNotFailed              ErrorCode = "probe_not_failed"
@@ -209,6 +215,7 @@ const (
 	ErrorCodeTagNotTentative             ErrorCode = "tag_not_tentative"
 	ErrorCodeUnauthenticated             ErrorCode = "unauthenticated"
 	ErrorCodeUnsupportedMediaDirectory   ErrorCode = "unsupported_media_directory"
+	ErrorCodeWorkInfoFetchStale          ErrorCode = "work_info_fetch_stale"
 )
 
 // Valid indicates whether the value is a known member of the ErrorCode enum.
@@ -242,9 +249,21 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeOpenUnavailable:
 		return true
+	case ErrorCodeOperationUnsupported:
+		return true
 	case ErrorCodeOverlappingMediaDirectories:
 		return true
+	case ErrorCodePluginBusy:
+		return true
 	case ErrorCodePluginChanged:
+		return true
+	case ErrorCodePluginFailed:
+		return true
+	case ErrorCodePluginNotApproved:
+		return true
+	case ErrorCodePluginSettingsMissing:
+		return true
+	case ErrorCodePluginTimedOut:
 		return true
 	case ErrorCodePluginTooLarge:
 		return true
@@ -268,6 +287,8 @@ func (e ErrorCode) Valid() bool {
 		return true
 	case ErrorCodeUnsupportedMediaDirectory:
 		return true
+	case ErrorCodeWorkInfoFetchStale:
+		return true
 	default:
 		return false
 	}
@@ -279,6 +300,7 @@ const (
 	ErrorReasonApiTokenNameEmpty             ErrorReason = "api_token_name_empty"
 	ErrorReasonApiTokenNameTooLong           ErrorReason = "api_token_name_too_long"
 	ErrorReasonAutoTaggingOff                ErrorReason = "auto_tagging_off"
+	ErrorReasonBlockedAddress                ErrorReason = "blocked_address"
 	ErrorReasonComfyuiApiKeyMissing          ErrorReason = "comfyui_api_key_missing"
 	ErrorReasonComfyuiUrlInvalid             ErrorReason = "comfyui_url_invalid"
 	ErrorReasonContentChanged                ErrorReason = "content_changed"
@@ -298,12 +320,14 @@ const (
 	ErrorReasonInvalidFolderPath             ErrorReason = "invalid_folder_path"
 	ErrorReasonListenFailed                  ErrorReason = "listen_failed"
 	ErrorReasonMediaFoldersChanged           ErrorReason = "media_folders_changed"
+	ErrorReasonMemoryExceeded                ErrorReason = "memory_exceeded"
 	ErrorReasonMergeSameOrganization         ErrorReason = "merge_same_organization"
 	ErrorReasonMergeSamePerson               ErrorReason = "merge_same_person"
 	ErrorReasonMergeSameTag                  ErrorReason = "merge_same_tag"
 	ErrorReasonMissingModels                 ErrorReason = "missing_models"
 	ErrorReasonNameIsSynonym                 ErrorReason = "name_is_synonym"
 	ErrorReasonNameIsTag                     ErrorReason = "name_is_tag"
+	ErrorReasonNetworkError                  ErrorReason = "network_error"
 	ErrorReasonNoOutput                      ErrorReason = "no_output"
 	ErrorReasonNoScan                        ErrorReason = "no_scan"
 	ErrorReasonNotBundled                    ErrorReason = "not_bundled"
@@ -311,6 +335,7 @@ const (
 	ErrorReasonOpenNotLocal                  ErrorReason = "open_not_local"
 	ErrorReasonOrganizationNotFound          ErrorReason = "organization_not_found"
 	ErrorReasonOrganizationParentCycle       ErrorReason = "organization_parent_cycle"
+	ErrorReasonOutputTooLarge                ErrorReason = "output_too_large"
 	ErrorReasonPasswordLength                ErrorReason = "password_length"
 	ErrorReasonPersonNotFound                ErrorReason = "person_not_found"
 	ErrorReasonProbeInfoMissing              ErrorReason = "probe_info_missing"
@@ -366,6 +391,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonAutoTaggingOff:
 		return true
+	case ErrorReasonBlockedAddress:
+		return true
 	case ErrorReasonComfyuiApiKeyMissing:
 		return true
 	case ErrorReasonComfyuiUrlInvalid:
@@ -404,6 +431,8 @@ func (e ErrorReason) Valid() bool {
 		return true
 	case ErrorReasonMediaFoldersChanged:
 		return true
+	case ErrorReasonMemoryExceeded:
+		return true
 	case ErrorReasonMergeSameOrganization:
 		return true
 	case ErrorReasonMergeSamePerson:
@@ -415,6 +444,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonNameIsSynonym:
 		return true
 	case ErrorReasonNameIsTag:
+		return true
+	case ErrorReasonNetworkError:
 		return true
 	case ErrorReasonNoOutput:
 		return true
@@ -429,6 +460,8 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonOrganizationNotFound:
 		return true
 	case ErrorReasonOrganizationParentCycle:
+		return true
+	case ErrorReasonOutputTooLarge:
 		return true
 	case ErrorReasonPasswordLength:
 		return true
@@ -885,6 +918,24 @@ func (e ScanStatus) Valid() bool {
 	case ScanStatusPartial:
 		return true
 	case ScanStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SkippedTagReason.
+const (
+	SkippedTagReasonInvalid  SkippedTagReason = "invalid"
+	SkippedTagReasonRejected SkippedTagReason = "rejected"
+)
+
+// Valid indicates whether the value is a known member of the SkippedTagReason enum.
+func (e SkippedTagReason) Valid() bool {
+	switch e {
+	case SkippedTagReasonInvalid:
+		return true
+	case SkippedTagReasonRejected:
 		return true
 	default:
 		return false
@@ -1410,6 +1461,24 @@ func (e WorkDateKind) Valid() bool {
 	}
 }
 
+// Defines values for WorkInfoField.
+const (
+	Tags  WorkInfoField = "tags"
+	Title WorkInfoField = "title"
+)
+
+// Valid indicates whether the value is a known member of the WorkInfoField enum.
+func (e WorkInfoField) Valid() bool {
+	switch e {
+	case Tags:
+		return true
+	case Title:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkInfoOperation.
 const (
 	Fetch  WorkInfoOperation = "fetch"
@@ -1463,19 +1532,19 @@ func (e WorkInfoPluginProblem) Valid() bool {
 
 // Defines values for WorkInfoPluginState.
 const (
-	Approved   WorkInfoPluginState = "approved"
-	Invalid    WorkInfoPluginState = "invalid"
-	Unapproved WorkInfoPluginState = "unapproved"
+	WorkInfoPluginStateApproved   WorkInfoPluginState = "approved"
+	WorkInfoPluginStateInvalid    WorkInfoPluginState = "invalid"
+	WorkInfoPluginStateUnapproved WorkInfoPluginState = "unapproved"
 )
 
 // Valid indicates whether the value is a known member of the WorkInfoPluginState enum.
 func (e WorkInfoPluginState) Valid() bool {
 	switch e {
-	case Approved:
+	case WorkInfoPluginStateApproved:
 		return true
-	case Invalid:
+	case WorkInfoPluginStateInvalid:
 		return true
-	case Unapproved:
+	case WorkInfoPluginStateUnapproved:
 		return true
 	default:
 		return false
@@ -1576,6 +1645,12 @@ type Alias struct {
 	// Language BCP 47 の構文の言語タグ。無ければ省く
 	Language *string `json:"language,omitempty"`
 	Name     string  `json:"name"`
+}
+
+// ApplyWorkInfoFetchRequest defines model for ApplyWorkInfoFetchRequest.
+type ApplyWorkInfoFetchRequest struct {
+	// Fields 反映する項目。空にできず、どれも結果に値がなければならない
+	Fields []WorkInfoField `json:"fields"`
 }
 
 // ApproveWorkInfoPluginRequest defines model for ApproveWorkInfoPluginRequest.
@@ -1808,14 +1883,23 @@ type Error struct {
 	// Field reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く （aliases[0].language・externalIds[1]・parentId）。work_info_*・person_not_found・ organization_not_found・external_id_taken のときだけ入る （specs/047-video-work-info/contracts/screen-api.md「Added reason values and field」）
 	Field *string `json:"field,omitempty"`
 
+	// Host 作品情報プラグインの要求を拒んだか届かなかったホスト。reason が blocked_address か network_error の ときだけ入る
+	Host *string `json:"host,omitempty"`
+
 	// Limit reason の上限値。契約の表で limit を返す reason のときだけ入る （specs/023-english-i18n/contracts/error-api.md §1）
 	Limit *int `json:"limit,omitempty"`
 
 	// Message 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0）
 	Message string `json:"message"`
 
+	// PluginMessage 作品情報プラグインが報告した誤りの文の先頭 300 文字（翻訳しないプラグインの文）。plugin_failed のとき だけ入りうる（specs/049-work-info-plugins/contracts/screen-api.md の Run failures）
+	PluginMessage *string `json:"pluginMessage,omitempty"`
+
 	// Reason 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
 	Reason *ErrorReason `json:"reason,omitempty"`
+
+	// SettingKeys 値の無い必須の設定のキー（宣言の順）。plugin_settings_missing のときだけ入る
+	SettingKeys *[]string `json:"settingKeys,omitempty"`
 
 	// TagName 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と tag_merge_required のときだけ入る（specs/023-english-i18n/contracts/error-api.md §1）
 	TagName *string `json:"tagName,omitempty"`
@@ -2633,6 +2717,17 @@ type SetupRequest struct {
 	Username string `json:"username"`
 }
 
+// SkippedTag defines model for SkippedTag.
+type SkippedTag struct {
+	Name string `json:"name"`
+
+	// Reason 付けなかった理由。rejected は却下した名前、invalid はタグ名の規則に合わない名前
+	Reason SkippedTagReason `json:"reason"`
+}
+
+// SkippedTagReason 付けなかった理由。rejected は却下した名前、invalid はタグ名の規則に合わない名前
+type SkippedTagReason string
+
 // StartAutoTaggingRequest defines model for StartAutoTaggingRequest.
 type StartAutoTaggingRequest struct {
 	Scope StartAutoTaggingRequestScope `json:"scope"`
@@ -3422,6 +3517,55 @@ type WorkInfo struct {
 	Urls []string `json:"urls"`
 }
 
+// WorkInfoCandidate 検索の候補 1 つ。文字だけで、画像は持たない（specs/049-work-info-plugins/research.md R-10）
+type WorkInfoCandidate struct {
+	// Detail 候補を見分ける説明の 1 行
+	Detail *string `json:"detail,omitempty"`
+	Title  string  `json:"title"`
+
+	// Url 作品の URL（http か https）。取得にそのまま渡す
+	Url string `json:"url"`
+}
+
+// WorkInfoFetch メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8）
+type WorkInfoFetch struct {
+	// ExpiresAt 結果が消える時刻（Unix 秒）
+	ExpiresAt int64 `json:"expiresAt"`
+
+	// FetchId 結果の識別子。反映に使う
+	FetchId string `json:"fetchId"`
+
+	// Tags 取得したタグの名前。空でもよい
+	Tags []string `json:"tags"`
+
+	// Title 表示名の規則を通った題名。プラグインが返さなかったか規則に外れれば無い
+	Title *string `json:"title,omitempty"`
+}
+
+// WorkInfoFetchApplied defines model for WorkInfoFetchApplied.
+type WorkInfoFetchApplied struct {
+	// SkippedTags 付けなかったタグの名前。取得の結果の順
+	SkippedTags []SkippedTag `json:"skippedTags"`
+
+	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
+	// （specs/016-single-account-auth/contracts/guest-api.md §1、
+	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	Video Video `json:"video"`
+}
+
+// WorkInfoFetchRequest defines model for WorkInfoFetchRequest.
+type WorkInfoFetchRequest struct {
+	// PluginId 承認済みのプラグイン
+	PluginId int64 `json:"pluginId"`
+
+	// Url 作品の URL（http か https、2048 文字まで）
+	Url string `json:"url"`
+}
+
+// WorkInfoField 動画に反映できる取得の結果の項目
+type WorkInfoField string
+
 // WorkInfoInput 作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
 // WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
 // 解除で、全体を置き換える
@@ -3498,6 +3642,18 @@ type WorkInfoPluginSetting struct {
 
 // WorkInfoPluginState プラグインの状態（specs/049-work-info-plugins/data-model.md の State transitions）
 type WorkInfoPluginState string
+
+// WorkInfoSearchRequest defines model for WorkInfoSearchRequest.
+type WorkInfoSearchRequest struct {
+	// Query 探す語。前後の空白を除いて 1〜200 文字
+	Query string `json:"query"`
+}
+
+// WorkInfoSearchResult defines model for WorkInfoSearchResult.
+type WorkInfoSearchResult struct {
+	// Candidates プラグインが返した順の候補（先頭 50 件まで）
+	Candidates []WorkInfoCandidate `json:"candidates"`
+}
 
 // WorkOrganization defines model for WorkOrganization.
 type WorkOrganization struct {
@@ -3595,6 +3751,9 @@ type VideoTagId = int64
 // WatchHistoryEntryId defines model for WatchHistoryEntryId.
 type WatchHistoryEntryId = int64
 
+// WorkInfoFetchId defines model for WorkInfoFetchId.
+type WorkInfoFetchId = string
+
 // WorkInfoPluginId defines model for WorkInfoPluginId.
 type WorkInfoPluginId = int64
 
@@ -3609,6 +3768,15 @@ type InvalidRequest = Error
 
 // NotFound defines model for NotFound.
 type NotFound = Error
+
+// PluginBusy defines model for PluginBusy.
+type PluginBusy = Error
+
+// PluginFailed defines model for PluginFailed.
+type PluginFailed = Error
+
+// PluginTimedOut defines model for PluginTimedOut.
+type PluginTimedOut = Error
 
 // PluginTooLarge defines model for PluginTooLarge.
 type PluginTooLarge = Error
@@ -4173,11 +4341,20 @@ type SetVideoThumbnailPositionJSONRequestBody = ThumbnailPositionUpdate
 // SetVideoWorkInfoJSONRequestBody defines body for SetVideoWorkInfo for application/json ContentType.
 type SetVideoWorkInfoJSONRequestBody = WorkInfoInput
 
+// FetchWorkInfoJSONRequestBody defines body for FetchWorkInfo for application/json ContentType.
+type FetchWorkInfoJSONRequestBody = WorkInfoFetchRequest
+
+// ApplyWorkInfoFetchJSONRequestBody defines body for ApplyWorkInfoFetch for application/json ContentType.
+type ApplyWorkInfoFetchJSONRequestBody = ApplyWorkInfoFetchRequest
+
 // UploadWorkInfoPluginMultipartRequestBody defines body for UploadWorkInfoPlugin for multipart/form-data ContentType.
 type UploadWorkInfoPluginMultipartRequestBody = UploadWorkInfoPluginRequest
 
 // ApproveWorkInfoPluginJSONRequestBody defines body for ApproveWorkInfoPlugin for application/json ContentType.
 type ApproveWorkInfoPluginJSONRequestBody = ApproveWorkInfoPluginRequest
+
+// SearchWorkInfoJSONRequestBody defines body for SearchWorkInfo for application/json ContentType.
+type SearchWorkInfoJSONRequestBody = WorkInfoSearchRequest
 
 // SetWorkInfoPluginSettingsJSONRequestBody defines body for SetWorkInfoPluginSettings for application/json ContentType.
 type SetWorkInfoPluginSettingsJSONRequestBody = SetWorkInfoPluginSettingsRequest
@@ -4541,6 +4718,12 @@ type ServerInterface interface {
 	// SetVideoWorkInfo 動画の作品情報をまるごと置き換える
 	// (PUT /api/videos/{id}/work-info)
 	SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
+	// FetchWorkInfo 作品情報プラグインの fetch で動画の作品情報を取る
+	// (POST /api/videos/{id}/work-info-fetches)
+	FetchWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
+	// ApplyWorkInfoFetch 取得の結果のうち選んだ項目を動画に反映する
+	// (POST /api/videos/{id}/work-info-fetches/{fetchId}/apply)
+	ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId)
 	// ClearWatchHistory 視聴履歴を全件消す
 	// (DELETE /api/watch-history)
 	ClearWatchHistory(w http.ResponseWriter, r *http.Request)
@@ -4568,6 +4751,9 @@ type ServerInterface interface {
 	// ApproveWorkInfoPlugin 所有者が見たモジュールを承認する
 	// (PUT /api/work-info-plugins/{id}/approval)
 	ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
+	// SearchWorkInfo 作品情報プラグインの search で作品を探す
+	// (POST /api/work-info-plugins/{id}/search)
+	SearchWorkInfo(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
 	// SetWorkInfoPluginSettings 作品情報プラグインの設定の値を書く
 	// (PUT /api/work-info-plugins/{id}/settings)
 	SetWorkInfoPluginSettings(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
@@ -8284,6 +8470,67 @@ func (siw *ServerInterfaceWrapper) SetVideoWorkInfo(w http.ResponseWriter, r *ht
 	handler.ServeHTTP(w, r)
 }
 
+// FetchWorkInfo operation middleware
+func (siw *ServerInterfaceWrapper) FetchWorkInfo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.FetchWorkInfo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ApplyWorkInfoFetch operation middleware
+func (siw *ServerInterfaceWrapper) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fetchId" -------------
+	var fetchId WorkInfoFetchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fetchId", r.PathValue("fetchId"), &fetchId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fetchId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ApplyWorkInfoFetch(w, r, id, fetchId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClearWatchHistory operation middleware
 func (siw *ServerInterfaceWrapper) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -8587,6 +8834,32 @@ func (siw *ServerInterfaceWrapper) ApproveWorkInfoPlugin(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// SearchWorkInfo operation middleware
+func (siw *ServerInterfaceWrapper) SearchWorkInfo(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WorkInfoPluginId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SearchWorkInfo(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SetWorkInfoPluginSettings operation middleware
 func (siw *ServerInterfaceWrapper) SetWorkInfoPluginSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -8807,6 +9080,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.RevokeWorkInfoPluginApproval)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.ApproveWorkInfoPlugin)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/settings", wrapper.SetWorkInfoPluginSettings)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/search", wrapper.SearchWorkInfo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches", wrapper.FetchWorkInfo)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/apply", wrapper.ApplyWorkInfoFetch)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags", wrapper.CreateTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}", wrapper.DeleteTag)

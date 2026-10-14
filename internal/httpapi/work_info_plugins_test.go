@@ -118,20 +118,20 @@ func pluginPath(id int64, rest string) string {
 func TestWorkInfoPluginRoutesAddApproveAndReplace(t *testing.T) {
 	e := newPluginEnv(t)
 	added := decodePlugin(t, "追加", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusCreated)
-	if added.State != gen.Unapproved || added.Name == nil || *added.Name != "example.works" ||
+	if added.State != gen.WorkInfoPluginStateUnapproved || added.Name == nil || *added.Name != "example.works" ||
 		added.FileName != "example.wasm" || !added.Network || len(added.Settings) != 2 || len(added.Operations) != 2 {
 		t.Fatalf("added = %+v", added)
 	}
 
 	approved := decodePlugin(t, "承認", e.json(http.MethodPut, pluginPath(added.Id, "/approval"),
 		`{"digest":"`+added.Digest+`"}`, e.owner), http.StatusOK)
-	if approved.State != gen.Approved {
+	if approved.State != gen.WorkInfoPluginStateApproved {
 		t.Fatalf("approved state = %s", approved.State)
 	}
 
 	changedManifest := strings.Replace(pluginManifest, `"1.0.0"`, `"1.0.1"`, 1)
 	replaced := decodePlugin(t, "差し替え", e.uploadParts([]byte(changedManifest), 1, e.owner), http.StatusOK)
-	if replaced.Id != added.Id || replaced.State != gen.Unapproved || replaced.Digest == added.Digest {
+	if replaced.Id != added.Id || replaced.State != gen.WorkInfoPluginStateUnapproved || replaced.Digest == added.Digest {
 		t.Fatalf("replaced = %+v", replaced)
 	}
 	rec := e.json(http.MethodPut, pluginPath(added.Id, "/approval"), `{"digest":"`+added.Digest+`"}`, e.owner)
@@ -139,7 +139,7 @@ func TestWorkInfoPluginRoutesAddApproveAndReplace(t *testing.T) {
 		wantError{status: http.StatusConflict, code: gen.ErrorCodePluginChanged})
 
 	revoked := decodePlugin(t, "取り消し", e.json(http.MethodDelete, pluginPath(added.Id, "/approval"), "", e.owner), http.StatusOK)
-	if revoked.State != gen.Unapproved {
+	if revoked.State != gen.WorkInfoPluginStateUnapproved {
 		t.Fatalf("revoked state = %s", revoked.State)
 	}
 	if rec := e.json(http.MethodDelete, pluginPath(added.Id, ""), "", e.owner); rec.Code != http.StatusNoContent {
@@ -171,18 +171,18 @@ func TestWorkInfoPluginReplacementNeverRestoresTheApproval(t *testing.T) {
 	approve()
 	broken := decodePlugin(t, "壊れた差し替え",
 		e.uploadParts([]byte(brokenImportPrefix+pluginManifest), 1, e.owner), http.StatusOK)
-	if broken.Id != added.Id || broken.State != gen.Invalid || broken.Problem == nil ||
+	if broken.Id != added.Id || broken.State != gen.WorkInfoPluginStateInvalid || broken.Problem == nil ||
 		*broken.Problem != gen.WorkInfoPluginProblem(domain.WorkInfoPluginImportUnsupported) {
 		t.Fatalf("broken replacement = %+v; want the same row invalid", broken)
 	}
 	back := decodePlugin(t, "承認したバイト列へ戻す", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusOK)
-	if back.Id != added.Id || back.Digest != added.Digest || back.State != gen.Unapproved {
+	if back.Id != added.Id || back.Digest != added.Digest || back.State != gen.WorkInfoPluginStateUnapproved {
 		t.Fatalf("back = %+v; want the same row unapproved", back)
 	}
 
 	approve()
 	same := decodePlugin(t, "同じバイト列", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusOK)
-	if same.Id != added.Id || same.State != gen.Unapproved {
+	if same.Id != added.Id || same.State != gen.WorkInfoPluginStateUnapproved {
 		t.Fatalf("same bytes again = %+v; want the same row unapproved", same)
 	}
 	if list := e.get("/api/work-info-plugins", e.owner); strings.Count(list.Body.String(), `"id":`) != 1 {
@@ -193,7 +193,7 @@ func TestWorkInfoPluginReplacementNeverRestoresTheApproval(t *testing.T) {
 func TestWorkInfoPluginInvalidUploadIsListedAndUnusable(t *testing.T) {
 	e := newPluginEnv(t)
 	broken := decodePlugin(t, "壊れたファイル", e.uploadParts([]byte("not a manifest"), 1, e.owner), http.StatusCreated)
-	if broken.State != gen.Invalid || broken.Problem == nil ||
+	if broken.State != gen.WorkInfoPluginStateInvalid || broken.Problem == nil ||
 		*broken.Problem != gen.WorkInfoPluginProblem(domain.WorkInfoPluginManifestInvalid) || broken.Name != nil ||
 		len(broken.Operations) != 0 {
 		t.Fatalf("broken = %+v", broken)
@@ -233,7 +233,7 @@ func TestWorkInfoPluginSettingsHideSecretValues(t *testing.T) {
 		`{"values":{"apiKey":"`+pluginSecret+`","lang":"ja"}}`, e.owner)
 	written := decodePlugin(t, "設定", rec, http.StatusOK)
 	bodies = append(bodies, rec.Body.String())
-	if written.State != gen.Approved {
+	if written.State != gen.WorkInfoPluginStateApproved {
 		t.Fatalf("設定のあとの状態 = %s, want approved", written.State)
 	}
 	secret, lang := written.Settings[0], written.Settings[1]
