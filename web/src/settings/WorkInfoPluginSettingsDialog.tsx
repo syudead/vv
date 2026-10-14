@@ -4,6 +4,7 @@ import type { WorkInfoPlugin, WorkInfoPluginSetting } from "../api/workInfoPlugi
 import { t, type UiText } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import { Field, FieldDescription, FieldLabel } from "../ui/shadcn/field";
+import { limitCodePoints } from "../lib/codePointLimit";
 import { Input } from "../ui/shadcn/input";
 import {
   draftsOf,
@@ -18,11 +19,13 @@ function SecretHint({
   setting,
   draft,
   hintId,
+  disabled,
   onChange,
 }: {
   setting: WorkInfoPluginSetting;
   draft: SettingDraft;
   hintId: string;
+  disabled: boolean;
   onChange: (draft: SettingDraft) => void;
 }) {
   const text = t.settings.workInfoPlugins.settingsDialog;
@@ -37,6 +40,7 @@ function SecretHint({
           variant="link"
           size="sm"
           className="h-auto p-0"
+          disabled={disabled}
           onClick={() => onChange({ value: "", forgotten: false })}
         >
           {text.undo}
@@ -50,6 +54,7 @@ function SecretHint({
         type="button"
         variant="ghost"
         size="sm"
+        disabled={disabled}
         onClick={() => onChange({ value: "", forgotten: true })}
       >
         {text.forget}
@@ -58,13 +63,20 @@ function SecretHint({
   );
 }
 
+/**
+ * SettingField は設定 1 つの欄である。値の上限はサーバーと同じく符号位置で数える（maxLength は
+ * UTF-16 の単位で数え、絵文字では上限より早く止まる）。disabled は保存を送っている間で、送った
+ * 後の入力が保存されないまま閉じないよう、欄と補助の操作を止める。
+ */
 function SettingField({
   setting,
   draft,
+  disabled,
   onChange,
 }: {
   setting: WorkInfoPluginSetting;
   draft: SettingDraft;
+  disabled: boolean;
   onChange: (draft: SettingDraft) => void;
 }) {
   const text = t.settings.workInfoPlugins.settingsDialog;
@@ -82,14 +94,29 @@ function SettingField({
         id={inputId}
         type={setting.secret ? "password" : "text"}
         autoComplete="off"
-        maxLength={MAX_SETTING_LENGTH}
         value={draft.value}
-        disabled={draft.forgotten}
+        disabled={disabled || draft.forgotten}
         aria-describedby={setting.secret ? hintId : undefined}
-        onChange={(event) => onChange({ value: event.target.value, forgotten: false })}
+        onChange={(event) =>
+          onChange({
+            value: limitCodePoints(
+              event.target.value,
+              MAX_SETTING_LENGTH,
+              draft.value,
+              event.target.selectionEnd ?? undefined,
+            ),
+            forgotten: false,
+          })
+        }
       />
       {setting.secret && (
-        <SecretHint setting={setting} draft={draft} hintId={hintId} onChange={onChange} />
+        <SecretHint
+          setting={setting}
+          draft={draft}
+          hintId={hintId}
+          disabled={disabled}
+          onChange={onChange}
+        />
       )}
     </Field>
   );
@@ -134,6 +161,7 @@ export default function WorkInfoPluginSettingsDialog({
           key={setting.key}
           setting={setting}
           draft={drafts[setting.key] ?? { value: "", forgotten: false }}
+          disabled={pending}
           onChange={(draft) =>
             setDrafts((current) => ({ ...current, [setting.key]: draft }))
           }

@@ -7,7 +7,7 @@ import { t, type UiText } from "../i18n";
 /** MAX_PLUGIN_BYTES は送る前に断るファイルの大きさの上限（16 MiB）である。 */
 export const MAX_PLUGIN_BYTES = 16 * 1024 * 1024;
 
-/** MAX_SETTING_LENGTH は設定の値 1 つの文字数の上限である（screen-api.md）。 */
+/** MAX_SETTING_LENGTH は設定の値 1 つの上限である。サーバーと同じく符号位置で数える（screen-api.md）。 */
 export const MAX_SETTING_LENGTH = 2000;
 
 /** pluginName は行と文言に出す名前である。マニフェストを読めなかったプラグインはファイル名。 */

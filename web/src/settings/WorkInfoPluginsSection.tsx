@@ -216,25 +216,44 @@ function WorkInfoPluginsSectionBody() {
   const addButton = useRef<HTMLButtonElement>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
   const focusAfterRender = useRef<FocusTarget | null>(null);
+  // loads は始めた読み込みの数、changes は操作の応答で行を変えた数である。
+  const loads = useRef(0);
+  const changes = useRef(0);
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    setLoadError(null);
-    try {
-      const list = await listWorkInfoPlugins(signal);
-      setPlugins(list);
-      return list;
-    } catch (failure) {
-      if (signal?.aborted) return undefined;
-      setLoadError(errorText(failure));
-      return undefined;
-    } finally {
-      if (!signal?.aborted) setLoading(false);
-    }
-  }, []);
+  /**
+   * load は一覧を読み直す。後から始めた読み込みがあれば、その結果に任せて何もしない。読む
+   * あいだに操作の応答が行を変えたなら、その一覧は操作の前の行を持ちうるので読み直す
+   * （遅れて届いた一覧が取り消しや削除の結果を巻き戻さないように）。quiet は失敗を節の
+   * 誤りにせず、今の一覧を残す。
+   */
+  const load = useCallback(
+    async ({ signal, quiet = false }: { signal?: AbortSignal; quiet?: boolean } = {}) => {
+      const id = ++loads.current;
+      if (!quiet) setLoadError(null);
+      for (;;) {
+        const changesAtStart = changes.current;
+        try {
+          const list = await listWorkInfoPlugins(signal);
+          if (id !== loads.current) return;
+          if (changes.current !== changesAtStart) continue;
+          setPlugins(list);
+          setLoadError(null);
+          setLoading(false);
+          return;
+        } catch (failure) {
+          if (signal?.aborted || id !== loads.current) return;
+          if (!quiet) setLoadError(errorText(failure));
+          setLoading(false);
+          return;
+        }
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
-    void load(controller.signal);
+    void load({ signal: controller.signal });
     return () => controller.abort();
   }, [load]);
 
@@ -252,8 +271,14 @@ function WorkInfoPluginsSectionBody() {
     return () => window.clearTimeout(timer);
   });
 
+  /** changePlugins は操作の応答で一覧を変え、読みかけの一覧を古いものにする。 */
+  const changePlugins = (change: (current: WorkInfoPlugin[]) => WorkInfoPlugin[]) => {
+    changes.current++;
+    setPlugins(change);
+  };
+
   const replacePlugin = (next: WorkInfoPlugin) =>
-    setPlugins((current) =>
+    changePlugins((current) =>
       current.map((plugin) => (plugin.id === next.id ? next : plugin)),
     );
 
@@ -266,10 +291,16 @@ function WorkInfoPluginsSectionBody() {
     try {
       const before = new Set(plugins.map((plugin) => plugin.id));
       const added = await uploadWorkInfoPlugin(file);
-      await load();
+      // 足した行は応答から先に一覧へ入れる。読み直しが失敗しても、足した行は見えたまま残る。
+      changePlugins((current) =>
+        current.some((plugin) => plugin.id === added.id)
+          ? current.map((plugin) => (plugin.id === added.id ? added : plugin))
+          : [...current, added],
+      );
       clearRowError(added.id);
       focusAfterRender.current = added.id;
       toast(addedToast(added, before.has(added.id)));
+      await load({ quiet: true });
     } catch (failure) {
       setAddError(text().addFailed(errorText(failure)));
     } finally {
@@ -354,7 +385,7 @@ function WorkInfoPluginsSectionBody() {
       await deleteWorkInfoPlugin(target.id);
       // 削除を待つあいだに追加が終わり、一覧が読み直されていることがある。最新の一覧から
       // 対象だけを除き、次の行（無ければ「Add plugin」）へフォーカスを移す。
-      setPlugins((current) => {
+      changePlugins((current) => {
         const index = current.findIndex((plugin) => plugin.id === target.id);
         const remaining = current.filter((plugin) => plugin.id !== target.id);
         const next = remaining[Math.min(Math.max(index, 0), remaining.length - 1)];

@@ -428,6 +428,145 @@ describe("WorkInfoPluginsSection", () => {
     expect(fake.stored().map((item) => item.id)).toEqual([2]);
   });
 
+  it("追加の後の読み直しより先に取り消しが終わっても、遅れて届いた一覧で承認済みに戻らない", async () => {
+    const fake = server([plugin({ id: 1, state: "approved" })]);
+    // 追加の後の一覧は、取り消しの前のサーバーの行を持ったまま、取り消しの後に届く。
+    let release: () => void = () => {};
+    let gets = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const method = init?.method ?? "GET";
+      if (
+        String(input) === "/api/work-info-plugins" &&
+        method === "GET" &&
+        ++gets === 2
+      ) {
+        const stale = json({ plugins: fake.stored() });
+        return new Promise((resolve) => {
+          release = () => resolve(stale);
+        });
+      }
+      return fake.handler(input, init);
+    });
+    const user = userEvent.setup();
+    renderSection();
+    const row = await waitFor(() => rowOf("example.works"));
+
+    choose(wasm("broken.wasm"));
+    await waitFor(() => expect(gets).toBe(2));
+    await user.click(
+      within(row).getByRole("button", { name: "More actions for example.works" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Revoke approval" }));
+    await waitFor(() => expect(within(row).getByText("Not approved")).toBeDefined());
+    release();
+
+    // 追加が終わる（読み直しが済む）まで待つ。
+    await screen.findByRole("button", { name: "Add plugin" });
+    expect(within(rowOf("example.works")).getByText("Not approved")).toBeDefined();
+    expect(within(rowOf("example.works")).queryByText("Approved")).toBeNull();
+  });
+
+  it("追加の後の読み直しが失敗しても、足した行を出し一覧を誤りにしない", async () => {
+    const fake = server([plugin({ id: 1, name: "other.site", fileName: "other.wasm" })]);
+    let gets = 0;
+    fetchMock.mockImplementation((input, init) => {
+      const method = init?.method ?? "GET";
+      if (String(input) === "/api/work-info-plugins" && method === "GET" && ++gets === 2)
+        return Promise.resolve(json({ code: "internal_error", message: "boom" }, 500));
+      return fake.handler(input, init);
+    });
+    renderSection();
+    await waitFor(() => rowOf("other.site"));
+
+    choose(wasm("example.wasm"));
+
+    expect(
+      await screen.findByText("Added example.works. Approve it to use it."),
+    ).toBeDefined();
+    await waitFor(() => expect(gets).toBe(2));
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Add plugin" }).textContent).toBe(
+        "Add plugin",
+      ),
+    );
+    expect(within(rowOf("example.works")).getByText("Not approved")).toBeDefined();
+    expect(rowOf("other.site")).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+  });
+
+  it("保存を送っている間は設定の欄と補助の操作を止める", async () => {
+    const fake = server([
+      plugin({
+        id: 1,
+        settings: [
+          { key: "region", label: "Region", secret: false, required: false, set: false },
+          { key: "apiKey", label: "API key", secret: true, required: false, set: true },
+        ],
+      }),
+    ]);
+    let release: () => void = () => {};
+    fetchMock.mockImplementation((input, init) => {
+      if (init?.method === "PUT" && String(input).endsWith("/settings"))
+        return new Promise((resolve) => {
+          release = () => void fake.handler(input, init).then(resolve);
+        });
+      return fake.handler(input, init);
+    });
+    const user = userEvent.setup();
+    renderSection();
+
+    const row = await waitFor(() => rowOf("example.works"));
+    await user.click(within(row).getByRole("button", { name: "Settings" }));
+    const dialog = screen.getByRole("dialog", { name: "Settings for example.works" });
+    await user.type(within(dialog).getByLabelText("Region"), "jp");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() =>
+      expect(within(dialog).getByLabelText<HTMLInputElement>("Region").disabled).toBe(
+        true,
+      ),
+    );
+    expect(within(dialog).getByLabelText<HTMLInputElement>(/API key/).disabled).toBe(
+      true,
+    );
+    expect(
+      within(dialog).getByRole<HTMLButtonElement>("button", { name: "Forget" }).disabled,
+    ).toBe(true);
+    release();
+    expect(
+      await screen.findByText("Saved the settings for example.works."),
+    ).toBeDefined();
+  });
+
+  it("設定の値の上限はサーバーと同じく符号位置で数える（絵文字も 2000 個まで入る）", async () => {
+    fetchMock.mockImplementation(
+      server([
+        plugin({
+          id: 1,
+          settings: [
+            {
+              key: "region",
+              label: "Region",
+              secret: false,
+              required: false,
+              set: false,
+            },
+          ],
+        }),
+      ]).handler,
+    );
+    const user = userEvent.setup();
+    renderSection();
+
+    const row = await waitFor(() => rowOf("example.works"));
+    await user.click(within(row).getByRole("button", { name: "Settings" }));
+    const input = screen.getByLabelText<HTMLInputElement>("Region");
+    expect(input.maxLength).toBe(-1);
+    fireEvent.change(input, { target: { value: "😀".repeat(2001) } });
+
+    expect(input.value).toBe("😀".repeat(2000));
+  });
+
   it("画面の文言はカタログか利用者のデータだけである", async () => {
     enablePseudoLocale();
     fetchMock.mockImplementation(
