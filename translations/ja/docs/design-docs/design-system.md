@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 3c3dc039f8057c256b3629bf2dec656d3c7a73885c964175fb9e5ff3e972eb3b
+sourceHash: 72f87a68b2f339e5c0a4b45e05ddb13b727175ab56f8a7ed2c433e442295da7b
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -240,6 +240,8 @@ flowchart TD
 `EditorDialog` は、動画のフレームの上に塗り、その結果をフレームと比べるといった 1 枚の画像に対する作業のために、ビューポートを満たす `Dialog` である。ヘッダーの帯、画像のための `stage`、入力のための `aside` から成り、入力の側の `footer` が主な操作を持つ。`lg` 未満では、stage の高さは名前付きの段階 `editor-stage`（ビューポートの高さの約 45%）である。`Dialog` は `max-w-lg` で止まるので、1280 px では 16:9 のフレームの高さが約 290 px になり、塗るにも 2 枚の画像を比べるにも小さすぎる。`FormDialog` はフォームのためのダイアログのままである（[045 UI 設計、Changes to the design system](../../specs/045-comfyui-thumbnails/ui-design.md#changes-to-the-design-system)）。
 
 `FormPage` は、動画の詳細のように、専用の画面でまとめて保存する多くの値のためのページであり、ダイアログではない。上部に貼り付くヘッダーの帯がタイトル、控えめな補足、操作を持ち、その下に `notice` の行がある。その下では、`lg` から名前付きのユーティリティ `grid-cols-form-page` が、名前付きの段階 `form-page-aside` の幅の `aside` と、比が 5:6 の 2 つのパネルを並べ、ページはビューポートの高さを保ち、各パネルは内側でスクロールする。`lg` 未満では各部分が縦に積まれ、ページ全体が 1 つとしてスクロールする。`FormDialog` は少数の入力欄を持ち、`SettingsPage` は各行を個別に保存するので、どちらも 1 つのボタンで保存する十数個の入力欄のフォームには合わない（[047 UI 設計、Changes to the design system](../../specs/047-video-work-info/ui-design.md#changes-to-the-design-system)）。
+
+`FormDialog` は、動画の現在の詳細と取得した詳細のように、値を並べて比べながら設定するフォームのために `size="wide"` を受け取る。このサイズは `max-w-lg` ではなく `max-w-2xl` で止まり、`sm` 未満では既定のサイズと同じく 16px の余白を残して画面に広がる。閉じることだけが操作である最後の段階のために、`cancelLabel` がなければフッターは送信ボタンだけを持つ（[049 UI 設計、Changes to the design system](../../specs/049-work-info-plugins/ui-design.md#changes-to-the-design-system)）。
 
 ショーケース（`/design-system`）は、すべての例のブロック、各状態の一覧ページ、ボタンの後ろにあるダイアログを描画するので、メンテナーはパターンを 1440px と 390px で確認する。
 
