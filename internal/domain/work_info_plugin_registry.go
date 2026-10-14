@@ -51,6 +51,9 @@ type WorkInfoPlugin struct {
 	ApprovedDigest string
 	AddedAt        time.Time
 	UpdatedAt      time.Time
+	// Generation はアップロードによる差し替えと承認の取り消しのたびに増える世代である。取得の結果は
+	// 取得した時の値を持ち、反映で変わっていれば古いとする（research.md R-8）。
+	Generation int64
 	// Values は所有者が入力した設定の値で、キーは宣言の key である。
 	Values map[string]string
 }

@@ -2303,6 +2303,123 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/work-info-plugins/{id}/search:
+    post:
+      operationId: searchWorkInfo
+      summary: 作品情報プラグインの search で作品を探す
+      description: |
+        所有者だけ。承認済みのプラグインの `search` を 1 回動かし、候補（URL・題名・省略できる説明の文字だけ）を
+        返す。`query` は前後の空白を除いて 1〜200 文字で、外れれば `400` `invalid_request`。マニフェストが
+        `search` を宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
+        specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである
+        （research.md R-10・R-13）。
+      parameters:
+        - $ref: "#/components/parameters/WorkInfoPluginId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkInfoSearchRequest"
+      responses:
+        "200":
+          description: 検索の候補
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkInfoSearchResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/PluginFailed"
+        "503":
+          $ref: "#/components/responses/PluginBusy"
+        "504":
+          $ref: "#/components/responses/PluginTimedOut"
+
+  /api/videos/{id}/work-info-fetches:
+    post:
+      operationId: fetchWorkInfo
+      summary: 作品情報プラグインの fetch で動画の作品情報を取る
+      description: |
+        所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を作品の `url`（http か https、2048 文字まで）で
+        1 回動かし、結果を 10 分の間メモリに持って `201` で返す。動画は変えない。`title` は表示名の規則を
+        通ったもので、無いか規則に外れれば省く。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
+        宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
+        specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである（research.md R-8）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkInfoFetchRequest"
+      responses:
+        "201":
+          description: 取得の結果
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkInfoFetch"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+        "502":
+          $ref: "#/components/responses/PluginFailed"
+        "503":
+          $ref: "#/components/responses/PluginBusy"
+        "504":
+          $ref: "#/components/responses/PluginTimedOut"
+
+  /api/videos/{id}/work-info-fetches/{fetchId}/apply:
+    post:
+      operationId: applyWorkInfoFetch
+      summary: 取得の結果のうち選んだ項目を動画に反映する
+      description: |
+        所有者だけ。`fields` の項目（`title` は表示名、`tags` は仮のタグ）を 1 つの取引で書く。結果は使い切りで、
+        成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
+        `skippedTags` で知らせ、付けない。`fields` が空か結果に値の無い項目を含めば `400` `invalid_request`、
+        動画が無いか結果が別の動画のものなら `404` `not_found`、結果が期限切れか不明か、取得の後にプラグインが
+        差し替えられたか承認を取り消されたか消されていれば `409` `work_info_fetch_stale` で、どれも何も
+        書かない。確定後に `/api/events` の `video` が流れる
+        （specs/049-work-info-plugins/contracts/screen-api.md、research.md R-8・R-9）。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - $ref: "#/components/parameters/WorkInfoFetchId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApplyWorkInfoFetchRequest"
+      responses:
+        "200":
+          description: 反映後の動画と、付けなかったタグの名前
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkInfoFetchApplied"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/tags:
     get:
       operationId: listTags
@@ -3946,6 +4063,15 @@ components:
         type: integer
         format: int64
         minimum: 1
+    WorkInfoFetchId:
+      name: fetchId
+      in: path
+      required: true
+      description: 取得の結果の識別子
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 64
     PlaylistId:
       name: id
       in: path
@@ -4083,6 +4209,24 @@ components:
             $ref: "#/components/schemas/Error"
     PluginTooLarge:
       description: 作品情報プラグインのモジュールが上限（limit）を超える
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PluginFailed:
+      description: 作品情報プラグインの実行が失敗した（reason・pluginMessage・host）
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PluginBusy:
+      description: 別の作品情報プラグインの実行が枠を空けなかった
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    PluginTimedOut:
+      description: 作品情報プラグインの実行が 30 秒を超えて止めた
       content:
         application/json:
           schema:
@@ -4681,6 +4825,120 @@ components:
           description: キーから新しい値へ。null はその値を消し、省いたキーはそのまま残す
           additionalProperties:
             type: [string, "null"]
+
+    WorkInfoSearchRequest:
+      type: object
+      required: [query]
+      additionalProperties: false
+      properties:
+        query:
+          type: string
+          description: 探す語。前後の空白を除いて 1〜200 文字
+
+    WorkInfoCandidate:
+      type: object
+      required: [url, title]
+      additionalProperties: false
+      description: 検索の候補 1 つ。文字だけで、画像は持たない（specs/049-work-info-plugins/research.md R-10）
+      properties:
+        url:
+          type: string
+          description: 作品の URL（http か https）。取得にそのまま渡す
+        title:
+          type: string
+        detail:
+          type: string
+          description: 候補を見分ける説明の 1 行
+
+    WorkInfoSearchResult:
+      type: object
+      required: [candidates]
+      additionalProperties: false
+      properties:
+        candidates:
+          type: array
+          description: プラグインが返した順の候補（先頭 50 件まで）
+          items:
+            $ref: "#/components/schemas/WorkInfoCandidate"
+
+    WorkInfoFetchRequest:
+      type: object
+      required: [pluginId, url]
+      additionalProperties: false
+      properties:
+        pluginId:
+          type: integer
+          format: int64
+          description: 承認済みのプラグイン
+        url:
+          type: string
+          description: 作品の URL（http か https、2048 文字まで）
+
+    WorkInfoFetch:
+      type: object
+      required: [fetchId, expiresAt, tags]
+      additionalProperties: false
+      description: メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8）
+      properties:
+        fetchId:
+          type: string
+          description: 結果の識別子。反映に使う
+        expiresAt:
+          type: integer
+          format: int64
+          description: 結果が消える時刻（Unix 秒）
+        title:
+          type: string
+          description: 表示名の規則を通った題名。プラグインが返さなかったか規則に外れれば無い
+        tags:
+          type: array
+          description: 取得したタグの名前。空でもよい
+          items:
+            type: string
+
+    WorkInfoField:
+      type: string
+      description: 動画に反映できる取得の結果の項目
+      enum: [title, tags]
+
+    ApplyWorkInfoFetchRequest:
+      type: object
+      required: [fields]
+      additionalProperties: false
+      properties:
+        fields:
+          type: array
+          description: 反映する項目。空にできず、どれも結果に値がなければならない
+          items:
+            $ref: "#/components/schemas/WorkInfoField"
+
+    SkippedTagReason:
+      type: string
+      description: 付けなかった理由。rejected は却下した名前、invalid はタグ名の規則に合わない名前
+      enum: [rejected, invalid]
+
+    SkippedTag:
+      type: object
+      required: [name, reason]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+        reason:
+          $ref: "#/components/schemas/SkippedTagReason"
+
+    WorkInfoFetchApplied:
+      type: object
+      required: [video, skippedTags]
+      additionalProperties: false
+      properties:
+        video:
+          $ref: "#/components/schemas/Video"
+        skippedTags:
+          type: array
+          description: 付けなかったタグの名前。取得の結果の順
+          items:
+            $ref: "#/components/schemas/SkippedTag"
 
     ThumbnailEditState:
       type: string
@@ -7036,6 +7294,13 @@ components:
             - plugin_too_large
             - plugin_changed
             - plugin_unusable
+            - plugin_not_approved
+            - plugin_settings_missing
+            - plugin_failed
+            - plugin_timed_out
+            - plugin_busy
+            - operation_unsupported
+            - work_info_fetch_stale
         message:
           type: string
           description: >-
@@ -7060,6 +7325,22 @@ components:
           description: >-
             競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と
             tag_merge_required のときだけ入る（specs/023-english-i18n/contracts/error-api.md §1）
+        pluginMessage:
+          type: string
+          description: >-
+            作品情報プラグインが報告した誤りの文の先頭 300 文字（翻訳しないプラグインの文）。plugin_failed のとき
+            だけ入りうる（specs/049-work-info-plugins/contracts/screen-api.md の Run failures）
+        host:
+          type: string
+          description: >-
+            作品情報プラグインの要求を拒んだか届かなかったホスト。reason が blocked_address か network_error の
+            ときだけ入る
+        settingKeys:
+          type: array
+          description: >-
+            値の無い必須の設定のキー（宣言の順）。plugin_settings_missing のときだけ入る
+          items:
+            type: string
     ErrorReason:
       type: string
       description: >-
@@ -7145,3 +7426,7 @@ components:
         - merge_same_person
         - merge_same_organization
         - external_id_taken
+        - blocked_address
+        - network_error
+        - memory_exceeded
+        - output_too_large

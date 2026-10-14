@@ -52,20 +52,9 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 	if err != nil {
 		return domain.VideoTagsOutcome{}, err
 	}
-	tagIDs, skipped, err := resolveTagNames(ctx, tx, action, normalized, tentative)
-	if err != nil {
-		return domain.VideoTagsOutcome{}, err
-	}
-
 	keys := uniqueUserKeys(targets)
-	now := time.Now()
-	changed, err := applyManualTags(ctx, tx, keys, action, tagIDs, now)
+	skipped, err := writeVideoTagsByName(ctx, tx, keys, action, normalized, tentative, time.Now())
 	if err != nil {
-		return domain.VideoTagsOutcome{}, err
-	}
-	// 更新日時は手で付けたタグが実際に変わった鍵（集まりなら全メンバー）だけを進める
-	// （specs/033-video-dates/research.md R-3）。
-	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
 		return domain.VideoTagsOutcome{}, err
 	}
 
@@ -86,6 +75,28 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 		out = append(out, result)
 	}
 	return domain.VideoTagsOutcome{Items: out, SkippedNames: skipped}, nil
+}
+
+// writeVideoTagsByName は利用者データの鍵 keys の手で付けたタグを、整えた名前 names で action の通りに
+// 書き換え、飛ばした（却下した）名前を返す。名前の引き当て（resolveTagNames）と書き込みと更新日時は
+// 呼び出し側の取引 tx で行う。更新日時は手で付けたタグが実際に変わった鍵（集まりなら全メンバー）だけを
+// 進める（specs/033-video-dates/research.md R-3）。外部連携の一括操作と、作品情報の取得の結果の反映
+// （ApplyFetchedWorkInfo）が共有する。
+func writeVideoTagsByName(
+	ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, names []string, tentative bool, now time.Time,
+) ([]string, error) {
+	tagIDs, skipped, err := resolveTagNames(ctx, tx, action, names, tentative)
+	if err != nil {
+		return nil, err
+	}
+	changed, err := applyManualTags(ctx, tx, keys, action, tagIDs, now)
+	if err != nil {
+		return nil, err
+	}
+	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
+		return nil, err
+	}
+	return skipped, nil
 }
 
 // taggableVideo は一括操作の対象に引き当てた動画である。userKey は利用者データの鍵

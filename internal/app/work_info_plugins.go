@@ -25,6 +25,9 @@ type WorkInfoPluginStore interface {
 	ListWorkInfoPlugins(ctx context.Context) ([]domain.WorkInfoPlugin, error)
 	// WorkInfoPlugin はプラグイン id を返す。無ければ domain.ErrNotFound を返す。
 	WorkInfoPlugin(ctx context.Context, id int64) (domain.WorkInfoPlugin, error)
+	// WorkInfoPluginModule はプラグイン id の行と、そのモジュールのバイト列を返す。無ければ
+	// domain.ErrNotFound を返す。
+	WorkInfoPluginModule(ctx context.Context, id int64) (domain.WorkInfoPlugin, []byte, error)
 	// SaveWorkInfoPlugin はアップロードを保存し、保存した行と、同じ名前の行を差し替えたかを返す。
 	SaveWorkInfoPlugin(ctx context.Context, upload domain.WorkInfoPluginUpload, now time.Time) (domain.WorkInfoPlugin, bool, error)
 	// ApproveWorkInfoPlugin はダイジェスト digest を承認する。取引の中で読み直し、無ければ
@@ -44,6 +47,10 @@ type WorkInfoPluginStore interface {
 type WorkInfoPluginsOptions struct {
 	Store   WorkInfoPluginStore
 	Runtime WorkInfoPluginRuntime
+	// Videos は取得の前に動画があるかを確かめる読み出しである。
+	Videos WorkInfoVideos
+	// Applier は取得の結果を動画に書く保存先である。
+	Applier FetchedWorkInfoApplier
 	// Now は今の時刻を返す。nil なら time.Now。
 	Now func() time.Time
 }
@@ -52,7 +59,10 @@ type WorkInfoPluginsOptions struct {
 type WorkInfoPlugins struct {
 	store   WorkInfoPluginStore
 	runtime WorkInfoPluginRuntime
+	videos  WorkInfoVideos
+	applier FetchedWorkInfoApplier
 	now     func() time.Time
+	fetches *workInfoFetches
 }
 
 // NewWorkInfoPlugins は WorkInfoPlugins を作る。
@@ -61,7 +71,10 @@ func NewWorkInfoPlugins(opts WorkInfoPluginsOptions) *WorkInfoPlugins {
 	if now == nil {
 		now = time.Now
 	}
-	return &WorkInfoPlugins{store: opts.Store, runtime: opts.Runtime, now: now}
+	return &WorkInfoPlugins{
+		store: opts.Store, runtime: opts.Runtime, videos: opts.Videos, applier: opts.Applier, now: now,
+		fetches: newWorkInfoFetches(),
+	}
 }
 
 // ListWorkInfoPlugins はすべてのプラグインを、秘密の設定の値を落とした形で返す。

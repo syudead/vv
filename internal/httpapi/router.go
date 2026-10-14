@@ -585,7 +585,8 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 }
 
 func requiresJSONBody(r *http.Request) bool {
-	return requiresCreditJSONBody(r.Method, r.URL.Path) || isWorkInfoPluginJSONPut(r) || requiresOtherJSONBody(r)
+	return requiresCreditJSONBody(r.Method, r.URL.Path) || isWorkInfoPluginJSONBody(r) || isWorkInfoFetchJSONPost(r) ||
+		requiresOtherJSONBody(r)
 }
 
 // requiresOtherJSONBody は人物と団体の経路（requiresCreditJSONBody）を除く、本文を持つ経路を返す。
@@ -663,15 +664,43 @@ func requiresOtherJSONBody(r *http.Request) bool {
 	return false
 }
 
-// isWorkInfoPluginJSONPut は r が PUT /api/work-info-plugins/{id}/approval か
-// PUT /api/work-info-plugins/{id}/settings かを返す（specs/049-work-info-plugins/contracts/screen-api.md）。
-func isWorkInfoPluginJSONPut(r *http.Request) bool {
+// isWorkInfoPluginJSONBody は r が PUT /api/work-info-plugins/{id}/approval、
+// PUT /api/work-info-plugins/{id}/settings か POST /api/work-info-plugins/{id}/search かを返す
+// （specs/049-work-info-plugins/contracts/screen-api.md）。
+func isWorkInfoPluginJSONBody(r *http.Request) bool {
 	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/work-info-plugins/")
-	if r.Method != http.MethodPut || !ok {
+	if !ok {
 		return false
 	}
 	id, rest, found := strings.Cut(suffix, "/")
-	return found && id != "" && (rest == "approval" || rest == "settings")
+	if !found || id == "" {
+		return false
+	}
+	switch r.Method {
+	case http.MethodPut:
+		return rest == "approval" || rest == "settings"
+	case http.MethodPost:
+		return rest == "search"
+	}
+	return false
+}
+
+// isWorkInfoFetchJSONPost は r が POST /api/videos/{id}/work-info-fetches か
+// POST /api/videos/{id}/work-info-fetches/{fetchId}/apply かを返す
+// （specs/049-work-info-plugins/contracts/screen-api.md）。
+func isWorkInfoFetchJSONPost(r *http.Request) bool {
+	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/")
+	if r.Method != http.MethodPost || !ok {
+		return false
+	}
+	segments := strings.Split(suffix, "/")
+	switch len(segments) {
+	case 2:
+		return segments[0] != "" && segments[1] == "work-info-fetches"
+	case 4:
+		return segments[0] != "" && segments[1] == "work-info-fetches" && segments[2] != "" && segments[3] == "apply"
+	}
+	return false
 }
 
 // isVideoJSONPut は PUT /api/videos/{id}/<rest> のうち本文を持つものかを返す。
@@ -785,6 +814,13 @@ const (
 	codePluginTooLarge              = gen.ErrorCodePluginTooLarge
 	codePluginChanged               = gen.ErrorCodePluginChanged
 	codePluginUnusable              = gen.ErrorCodePluginUnusable
+	codePluginNotApproved           = gen.ErrorCodePluginNotApproved
+	codePluginSettingsMissing       = gen.ErrorCodePluginSettingsMissing
+	codePluginFailed                = gen.ErrorCodePluginFailed
+	codePluginTimedOut              = gen.ErrorCodePluginTimedOut
+	codePluginBusy                  = gen.ErrorCodePluginBusy
+	codeOperationUnsupported        = gen.ErrorCodeOperationUnsupported
+	codeWorkInfoFetchStale          = gen.ErrorCodeWorkInfoFetchStale
 )
 
 // エラーの reason の正本も api/openapi.yaml の ErrorReason である。生成された

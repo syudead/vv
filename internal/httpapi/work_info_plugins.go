@@ -37,6 +37,15 @@ type WorkInfoPlugins interface {
 	SetWorkInfoPluginSettings(ctx context.Context, id int64, values map[string]*string) (domain.WorkInfoPluginEntry, error)
 	// DeleteWorkInfoPlugin はプラグインとその設定の値を消す。無ければ domain.ErrNotFound を返す。
 	DeleteWorkInfoPlugin(ctx context.Context, id int64) error
+	// SearchWorkInfo は承認済みのプラグイン id の search で語 query を探す。誤りは workInfoRunError が
+	// 契約の応答にする。
+	SearchWorkInfo(ctx context.Context, id int64, query string) ([]domain.WorkInfoCandidate, error)
+	// FetchWorkInfo は承認済みのプラグイン pluginID の fetch で作品の URL から作品情報を取り、動画 videoID に
+	// 結び付けてメモリに持つ。動画は変えない。
+	FetchWorkInfo(ctx context.Context, videoID, pluginID int64, url string) (domain.WorkInfoFetchResult, error)
+	// ApplyWorkInfoFetch は取得の結果 fetchID のうち fields の項目を動画 videoID に反映する。
+	// domain.ErrWorkInfoApplyInvalid・domain.ErrNotFound・domain.ErrWorkInfoFetchStale を返しうる。
+	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField) (domain.WorkInfoApplied, error)
 }
 
 // workInfoPluginsConfigured は登録がつながっているかを確かめ、無ければ 500 を書いて偽を返す。
