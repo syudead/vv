@@ -2410,7 +2410,10 @@ describe("VideoPage", () => {
       const add = buttons[0]!;
       const favorite = screen.getByRole("button", { name: "Favorite" });
       expect(favorite.nextElementSibling).toBe(add);
-      expect(add.nextElementSibling).toBe(
+      // 「Add to group」が直後に入る（specs/048-groups/ui-design.md「Video page」）。
+      const addToGroup = screen.getByRole("button", { name: /to a group$/ });
+      expect(add.nextElementSibling).toBe(addToGroup);
+      expect(addToGroup.nextElementSibling).toBe(
         screen.getByRole("button", { name: "Use current frame as thumbnail" }),
       );
 

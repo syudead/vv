@@ -3,6 +3,7 @@ import {
   apiFetch,
   type GroupDetail,
   type LibraryGroup,
+  MAX_PAGE_SIZE,
   request,
   RequestFailed,
   toRequestFailed,
@@ -133,6 +134,29 @@ export function listGroups({
 }
 
 /**
+ * listAllGroups は見る人に見せるグループの全部を、`nextCursor` が尽きるまで最大の件数
+ * （MAX_PAGE_SIZE）のページで辿って取得する。名前で選ぶ「Add to group」のピッカーが、一覧の
+ * 全部を手元で絞るのに使う（specs/048-groups/ui-design.md「Add to group」）。グループの数に
+ * 上限は無いので、ページ数では打ち切らない。同じカーソルが二度返ったら、終わらない読みに
+ * なるので欠けた一覧を返さずに失敗にする。
+ */
+export async function listAllGroups(signal?: AbortSignal): Promise<LibraryGroup[]> {
+  const groups: LibraryGroup[] = [];
+  const seen = new Set<string>();
+  let cursor: string | undefined;
+  do {
+    const answer = await listGroups({ cursor, limit: MAX_PAGE_SIZE, signal });
+    groups.push(...answer.groups);
+    cursor = answer.nextCursor;
+    if (cursor !== undefined && seen.has(cursor)) {
+      throw new Error("The group list returned the same cursor twice.");
+    }
+    if (cursor !== undefined) seen.add(cursor);
+  } while (cursor !== undefined);
+  return groups;
+}
+
+/**
  * createGroup は動画とグループからグループを作る（POST /api/groups）。名前が空か長すぎるか、
  * メンバーが無ければ 400 `invalid_request`、動画かグループのどれかが無くなっていれば 404
  * `group_target_not_found` の RequestFailed になり、何も作られない。
@@ -142,12 +166,14 @@ export function createGroup(
   members: GroupMembers,
   signal?: AbortSignal,
 ): Promise<LibraryGroup> {
-  return request<LibraryGroup>("/api/groups", {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify({ name, ...membersBody(members) }),
-    signal,
-  });
+  return dropSnapshotAfter(
+    request<LibraryGroup>("/api/groups", {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify({ name, ...membersBody(members) }),
+      signal,
+    }),
+  );
 }
 
 /** renameGroup はグループの名前を変え、前後を削った名前の値を返す（PATCH /api/groups/{id}）。 */
@@ -185,12 +211,30 @@ export function addToGroup(
   members: GroupMembers,
   signal?: AbortSignal,
 ): Promise<LibraryGroup> {
-  return request<LibraryGroup>(`${groupPath(id)}/items`, {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify(membersBody(members)),
-    signal,
-  });
+  return dropSnapshotAfter(
+    request<LibraryGroup>(`${groupPath(id)}/items`, {
+      method: "POST",
+      headers: jsonHeaders,
+      body: JSON.stringify(membersBody(members)),
+      signal,
+    }),
+  );
+}
+
+/**
+ * dropSnapshotAfter は作成と追加の後に一覧の控えを捨てる。足したものはライブラリのいちばん上から
+ * 外れるが、控えは書き換えないので、動画ページや別のグループのページから足して戻ると古い一覧が
+ * 戻ってしまう。404（途中で対象が無くなった）でも、控えにその項目が残るので捨てる。
+ */
+async function dropSnapshotAfter<T>(sent: Promise<T>): Promise<T> {
+  try {
+    const value = await sent;
+    clearListSnapshot();
+    return value;
+  } catch (failure) {
+    if (failure instanceof RequestFailed && failure.status === 404) clearListSnapshot();
+    throw failure;
+  }
 }
 
 /**
@@ -243,17 +287,9 @@ export async function tagGroup(
   id: number,
   signal?: AbortSignal,
 ): Promise<GroupTagResult> {
-  let result: GroupTagResult;
-  try {
-    result = await request<GroupTagResult>(`${groupPath(id)}/tag`, {
-      method: "POST",
-      signal,
-    });
-  } catch (failure) {
-    if (failure instanceof RequestFailed && failure.status === 404) clearListSnapshot();
-    throw failure;
-  }
-  clearListSnapshot();
+  const result = await dropSnapshotAfter(
+    request<GroupTagResult>(`${groupPath(id)}/tag`, { method: "POST", signal }),
+  );
   refreshTags().catch(() => undefined);
   return result;
 }
