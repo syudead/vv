@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/contracts/screen-api.md
-sourceHash: 39756437432bcd0f3d4f2b0daffcb9dcf81170039f2a20057171a5ee610a6139
+sourceHash: 9953c1b9888061fa7a8efda0b6ea5c5709ccc2d203a86e97934a277227970f12
 ---
 
 # 契約: グループの画面の API {#contract-screen-api-for-groups}
@@ -96,7 +96,7 @@ GroupItemRemove:
 | `GET /api/groups/{id}/items?cursor=&limit=` | `200` | `GroupItemPage`。`limit` は 1 から 200、既定は 100 |
 | | `400 invalid_cursor` | 読めない cursor |
 | `PATCH /api/groups/{id}` | `200` | トリムした名前を持つ `LibraryGroup` |
-| `DELETE /api/groups/{id}` | `204` | 解散した ([R-4](../research.md#r-4-dissolving-deletes-the-group-for-an-automatic-group-it-writes-ungroup)) |
+| `DELETE /api/groups/{id}` | `204` | 解散した。解散で項目が残らなくなったすべての祖先も解散した ([R-4](../research.md#r-4-dissolving-deletes-the-group-for-an-automatic-group-it-writes-ungroup)、[data-model.md、Edits](../data-model.md#edits)) |
 | `POST /api/groups/{id}/items` | `200` | 追加の後の `LibraryGroup` |
 | | `404 group_target_not_found` | 本文の動画かグループが存在しない |
 | | `409 group_cycle` | 本文のグループが、このグループかその祖先の 1 つである |

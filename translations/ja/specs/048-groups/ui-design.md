@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/ui-design.md
-sourceHash: b6905f9da4b8f5097915f340343b02800aa00c92094b36f991d52cf9423b85ee
+sourceHash: ea4e4c7794deb1a6ca37a8943f4fea87bf42c3f449c37c0bcc9360f67413415c
 ---
 
 # UI 設計: 任意の動画とグループからなり、複数への所属と入れ子を持つグループ {#ui-design-groups-of-any-videos-and-groups-with-several-memberships-and-nesting}
@@ -149,6 +149,10 @@ flowchart LR
 
 どちらも「Favorite」が送るものを送る ([035 の UI 設計、Selection bar](../035-favorites/ui-design.md#selection-bar)): `groupIds` は選んだグループ、`videoIds` は選んだ id のうち選んだグループのメンバーではないもの。2 つの数の合計が 20000 を超えると、「Favorite」と同じ理由で `disabled` になる。選択がちょうど 1 つのグループのとき、「New group」も `disabled` になり、ツールチップは「Select at least one video, or a group and something else」(`library.selection.newGroupNeedsMore`) である: 1 つのグループからなるグループは階層を 1 つ増やすだけで、ほかに何も加えない。選択は「Add to group」の後は残り、「New group」の後は消える ([New group](#new-group))。
 
+### メンバーを共有する選択 {#selection-with-shared-members}
+
+1 本の動画は 1 つのリストの 2 枚のグループのカードのメンバーになりうるので、選んだ 2 つのグループがメンバーを共有することがある。グループのカードのチェックを外すと、そのグループと、そのメンバーのうちまだ選ばれている別のグループのカードのメンバーではないものだけが選択から外れる。選ばれている他のグループのカードは選ばれたまま残る (2026-10-14 のメンテナーの決定)。G1 が A と B を持ち、G2 が B と C を持ち、両方がチェックされているとき、G1 のチェックを外すと B、C、G2 が選ばれたまま残り、A が外れる。カードがチェックされて見えるのは、そのグループがグループとして選ばれている間だけであり、メンバーが選ばれているからではない。そのため G1 はチェックされていない表示になり、もう一度チェックすると選ばれる。G1 が B だけを持つときは、G1 のチェックを外すと動画は 1 本も外れないが、チェックは外れる。グループのカードをチェックする動きは変わらない ([017 の UI 設計、Pressing and selection](../017-folder-groups/ui-design.md#pressing-and-selection))。
+
 ### 新しいグループ {#new-group}
 
 「New group」は「New group」というタイトルの `FormDialog` を開く。その説明は何がグループになるかを言い (「3 videos become one group」、「2 videos and 1 group become one group」)、その 1 つの `Field` はプレイリストのダイアログの名前の欄である ([044 の UI 設計、New playlist](../044-playlists/ui-design.md#new-playlist)): `Label`「Name」、`maxLength` のない `Input`、コードポイントの数え方、開いたときのフォーカス。フッターは `Cancel` と `default` の「Create」である。
@@ -240,7 +244,7 @@ flowchart LR
 
 ページ送りは、グリッドの後の番兵がビューポートから 600px 以内に来たとき、ライブラリのグリッドと同じく、応答の `nextCursor` から `GET /api/groups/{id}/items` を読む。失敗したページは、`Retry` 付きの `LoadMoreRow` の `Alert`「Couldn't load more of the group」を出す。
 
-選択はライブラリのものである: カードか行のチェック、子のメンバーを選び、その子を選ばれたグループとして覚えるグループのチェック (`LibrarySelection.groups`)、グループの `videoIds` (すべての子孫の動画) と、選ばれたグループとして、ここまでに一覧に出た子グループを選ぶ「Select all」、3 つのグループの操作を持つライブラリの選択バー ([Selection bar](#selection-bar))。「Remove from group」は「Favorite」と同じように選択を分ける: 子グループの項目はその子が選ばれたグループであるときに取り除かれ、動画の項目はその動画が選ばれていて、選ばれたグループのメンバーでないときに取り除かれる。メンバーがたまたま動画のチェックによってすべて選ばれている子グループは取り除かれないので、直接の項目であり子 C のただ 1 つの動画でもある V だけをチェックすると、V の項目が取り除かれ、C は残る。C を選ぶと、V のカードは C を通して選ばれていると表示されるものの、C が取り除かれ、直接の V は残る。両方を取り除くには、V をもう一度取り除く必要がある。この操作は、ここまでに一覧に出た項目のうちのそれらの項目の id で `POST /api/groups/{id}/items/remove` を送り (まだ読んでいないページの項目は画面上に id を持たず、送られない)、「Removed 3 items from "{name}"」を出して選択を消す。その行は離れ、残りは番号を振り直す。選択がすべての項目だったときは、サーバーがグループを解散して `204` を返す ([Removing one item](#removing-one-item)): 画面は [Dissolving](#dissolving) と同じように離れ、数の代わりにトースト「Dissolved "{name}"」を出す。
+選択はライブラリのものである: カードか行のチェック、子のメンバーを選び、その子を選ばれたグループとして覚えるグループのチェック (`LibrarySelection.groups`)、グループの `videoIds` (すべての子孫の動画) と、選ばれたグループとして、ここまでに一覧に出た子グループを選ぶ「Select all」、3 つのグループの操作を持つライブラリの選択バー ([Selection bar](#selection-bar))。「Remove from group」は「Favorite」と同じように選択を分ける: 子グループの項目はその子が選ばれたグループであるときに取り除かれ、動画の項目はその動画が選ばれていて、選ばれたグループのメンバーでないときに取り除かれる。メンバーがたまたま動画のチェックによってすべて選ばれている子グループは、選ばれたグループではない: そのカードは選ばれていると表示されず、取り除かれない。直接の項目であり子 C のただ 1 つの動画でもある V だけをチェックすると、V の項目が取り除かれ、C は残る。C を選ぶと、V のカードは C を通して選ばれていると表示されるものの、C が取り除かれ、直接の V は残る。両方を取り除くには、V をもう一度取り除く必要がある。この操作は、ここまでに一覧に出た項目のうちのそれらの項目の id で `POST /api/groups/{id}/items/remove` を送り (まだ読んでいないページの項目は画面上に id を持たず、送られない)、「Removed 3 items from "{name}"」を出して選択を消す。その行は離れ、残りは番号を振り直す。選択がすべての項目だったときは、サーバーがグループを解散して `204` を返す ([Removing one item](#removing-one-item)): 画面は [Dissolving](#dissolving) と同じように離れ、数の代わりにトースト「Dissolved "{name}"」を出す。
 
 ### 並べ替え {#reordering}
 
@@ -267,6 +271,8 @@ flowchart LR
 | `404` | すでに解散している: トーストなしで `204` と同じ |
 | その他の失敗 | 説明の下に `destructive` の `Alert`「Couldn't dissolve the group: {reason}」。ダイアログは開いたまま |
 | Cancel、Esc | 何も変わらない |
+
+解散で項目が残らなくなった親は、祖先へと上って、一緒に解散する ([data-model.md、Edits](data-model.md#edits))。最後の項目を取り除いたときと、グループをタグに変えたときも同じである。ダイアログはそのことを言わない: 親はほかに何も持っていなかったので、動画もほかのグループも失われない。経路の最後のグループがこうして解散したとき、画面が移る先は消えた状態を示し、それが何が起きたかを伝える。
 
 ### タグへの変換 {#turning-into-a-tag}
 

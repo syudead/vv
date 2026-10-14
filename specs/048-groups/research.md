@@ -90,7 +90,13 @@ again gets its folder members back into the same group.
 
 **Decision**: Dissolving deletes the `groups` row and its items, favorites and
 playlist items. Dissolving an automatic group also writes the `ungroup`
-override for its folder, in the same transaction. Choosing `Don't group` in the
+override for its folder, in the same transaction. A parent that the dissolve
+leaves with no item is dissolved the same way in that transaction, up the
+ancestors, because an edit or a dissolve never leaves an empty group (the
+maintainer's decision of 2026-10-14). The rule covers removing the last item
+and the dissolve cascade only: the folder group sync still keeps an automatic
+group that a scan leaves with no item, hidden from the library
+([data-model.md, Automatic group sync](data-model.md#automatic-group-sync)). Choosing `Don't group` in the
 folder menu dissolves the folder's group the same way. Choosing `Automatic` or
 `Group this folder's videos` removes or writes the override and runs the sync,
 which creates a new group when the rule holds.

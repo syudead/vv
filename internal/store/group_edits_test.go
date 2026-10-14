@@ -407,7 +407,8 @@ func TestDissolveAutomaticGroupWritesUngroup(t *testing.T) {
 	upsertFolderVideo(t, db, fixturePath("/media/Show/2.mp4"), "k2")
 	rebuildIndex(t, db)
 	id := readGroups(t, db)[0].ID
-	parent := createGroup(t, db, "Parent", domain.GroupAdd{GroupIDs: []int64{id}})
+	loose := looseVideo(t, db, "ka")
+	parent := createGroup(t, db, "Parent", domain.GroupAdd{GroupIDs: []int64{id}, VideoIDs: []int64{loose}})
 
 	if err := db.Groups().DissolveGroup(ctx, id); err != nil {
 		t.Fatal(err)
@@ -417,8 +418,7 @@ func TestDissolveAutomaticGroupWritesUngroup(t *testing.T) {
 		t.Fatalf("grouping after dissolve = %+v", grouping)
 	}
 	rebuildIndex(t, db)
-	assertGroupRows(t, db, []groupRow{{ID: parent, Name: "Parent", Items: []groupItem{}}})
-	assertEntries(t, db, parent)
+	assertEntries(t, db, parent, "v:ka")
 
 	if _, err := db.FolderGroups().SetFolderGrouping(ctx, show, ""); err != nil {
 		t.Fatal(err)
@@ -531,7 +531,7 @@ func TestGroupEditsPublishGroupsChanged(t *testing.T) {
 
 	child := createGroup(t, db, "Child", domain.GroupAdd{VideoIDs: []int64{a}})
 	expect("create", child)
-	parent := createGroup(t, db, "Parent", domain.GroupAdd{GroupIDs: []int64{child}})
+	parent := createGroup(t, db, "Parent", domain.GroupAdd{GroupIDs: []int64{child}, VideoIDs: []int64{b}})
 	expect("create parent", parent)
 	top := createGroup(t, db, "Top", domain.GroupAdd{GroupIDs: []int64{parent}})
 	expect("create top", top)
@@ -576,4 +576,97 @@ func TestGroupEditsPublishGroupsChanged(t *testing.T) {
 		t.Fatal(err)
 	}
 	expect("tag", parent, top)
+	if groupExists(t, db, top) {
+		t.Fatal("the parent emptied by turning its only child into a tag still exists")
+	}
+}
+
+// 解散で項目が 1 つも残らなくなった親も、祖先へ向かって同じ取引で解散する。ほかの項目が残る親は
+// 残る。GroupsChanged は解散したすべてのグループと、その祖先の id を入れる。
+func TestDissolveCascadesToEmptiedParents(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	a, b := looseVideo(t, db, "ka"), looseVideo(t, db, "kb")
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+	expectDissolved := func(name string, dissolve func() error, gone []int64, kept []int64, events ...int64) {
+		t.Helper()
+		recorder.events = nil
+		if err := dissolve(); err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		for _, id := range gone {
+			if groupExists(t, db, id) {
+				t.Fatalf("%s: group %d still exists", name, id)
+			}
+		}
+		for _, id := range kept {
+			if !groupExists(t, db, id) {
+				t.Fatalf("%s: group %d was dissolved", name, id)
+			}
+		}
+		want := []domain.Event{domain.GroupsChanged{GroupIDs: events}}
+		if !reflect.DeepEqual(recorder.events, want) {
+			t.Fatalf("%s: events = %+v, want %+v", name, recorder.events, want)
+		}
+	}
+
+	// 親 1 つ。
+	child := createGroup(t, db, "Child", domain.GroupAdd{VideoIDs: []int64{a}})
+	parent := createGroup(t, db, "Parent", domain.GroupAdd{GroupIDs: []int64{child}})
+	expectDissolved("single parent", func() error { return db.Groups().DissolveGroup(ctx, child) },
+		[]int64{child, parent}, nil, child, parent)
+
+	// 2 段の親。ほかの項目を持つ祖先は残り、項目が詰め直される。
+	child = createGroup(t, db, "Child", domain.GroupAdd{VideoIDs: []int64{a}})
+	middle := createGroup(t, db, "Middle", domain.GroupAdd{GroupIDs: []int64{child}})
+	upper := createGroup(t, db, "Upper", domain.GroupAdd{GroupIDs: []int64{middle}})
+	top := createGroup(t, db, "Top", domain.GroupAdd{GroupIDs: []int64{upper}, VideoIDs: []int64{b}})
+	expectDissolved("chain of two", func() error { return db.Groups().DissolveGroup(ctx, child) },
+		[]int64{child, middle, upper}, []int64{top}, child, middle, upper, top)
+	assertEntries(t, db, top, "v:kb")
+
+	// ほかの項目を持つ親は残る。最後の項目を取り除いた解散でも空の親を解散する。
+	child = createGroup(t, db, "Child", domain.GroupAdd{VideoIDs: []int64{a}})
+	sibling := createGroup(t, db, "Sibling", domain.GroupAdd{GroupIDs: []int64{child}, VideoIDs: []int64{b}})
+	lonely := createGroup(t, db, "Lonely", domain.GroupAdd{GroupIDs: []int64{child}})
+	expectDissolved("remove the last item", func() error {
+		_, _, err := db.Groups().RemoveGroupItems(ctx, child, []int64{groupItemID(t, db, child, "v:ka")})
+		return err
+	}, []int64{child, lonely}, []int64{sibling}, child, sibling, lonely)
+	assertEntries(t, db, sibling, "v:kb")
+}
+
+// 項目を失った自動グループの親も解散と同じ道筋で消え、そのフォルダに ungroup を書くので、作り直しで
+// 戻らない。
+func TestDissolveCascadeToAutomaticParentWritesUngroup(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	show := fixturePath("/media/Show")
+	upsertFolderVideo(t, db, fixturePath("/media/Show/1.mp4"), "k1")
+	upsertFolderVideo(t, db, fixturePath("/media/Show/2.mp4"), "k2")
+	rebuildIndex(t, db)
+	auto := readGroups(t, db)[0].ID
+	child := createGroup(t, db, "Child", domain.GroupAdd{VideoIDs: []int64{looseVideo(t, db, "ka")}})
+	if _, err := db.Groups().AddGroupItems(ctx, auto, domain.GroupAdd{GroupIDs: []int64{child}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.Groups().RemoveGroupItems(ctx, auto,
+		[]int64{groupItemID(t, db, auto, "v:k1"), groupItemID(t, db, auto, "v:k2")}); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Groups().DissolveGroup(ctx, child); err != nil {
+		t.Fatal(err)
+	}
+	if groupExists(t, db, auto) {
+		t.Fatal("the emptied automatic parent still exists")
+	}
+	if grouping := folderGroupingOf(t, db, show); grouping.Mode != domain.FolderGroupUngroup || grouping.GroupID != 0 {
+		t.Fatalf("grouping after the cascade = %+v", grouping)
+	}
+	rebuildIndex(t, db)
+	if len(readGroups(t, db)) != 0 {
+		t.Fatalf("groups after the rebuild = %+v", readGroups(t, db))
+	}
 }
