@@ -44,6 +44,9 @@ type OrganizeStore interface {
 	// 「グループにする」の像で、名前を変える直前の行がその後の像と等しければ、名前を変えた後の像を
 	// 返す。それ以外は像を返さない。
 	RenameGroup(ctx context.Context, id int64, name string, image []byte) (domain.Group, []byte, error)
+	// Move はカードを move.To へ足し、move.From から外す。From・To・カードが無いかカードが From に
+	// 無ければ domain.ErrGroupTargetNotFound、グループの入れ子が循環すれば domain.ErrGroupCycle。
+	Move(ctx context.Context, move domain.OrganizeMove) ([]byte, error)
 	// Undo は像 image の前の状態へ戻す。行が変わっていれば domain.ErrUndoConflict で、何も書かない。
 	Undo(ctx context.Context, image []byte) error
 }
@@ -101,11 +104,23 @@ func NewOrganizer(opts OrganizerOptions) *Organizer {
 // トークンは保存先の操作より先に作る。乱数が読めなければ何も書かずに失敗し、並びが変わったのに
 // トークンを返せない、ということが起きない。
 func (o *Organizer) Reorder(ctx context.Context, groupID int64, itemIDs []int64, afterItemID *int64) (domain.OrganizeResult, error) {
+	return o.run(func() ([]byte, error) { return o.store.Reorder(ctx, groupID, itemIDs, afterItemID) })
+}
+
+// Move はカードをグループへ入れるか、グループの間で動かすか、グループから外し、取り消しの
+// トークンを返す。
+func (o *Organizer) Move(ctx context.Context, move domain.OrganizeMove) (domain.OrganizeResult, error) {
+	return o.run(func() ([]byte, error) { return o.store.Move(ctx, move) })
+}
+
+// run は保存先の操作 operation を行い、返した像をトークンで持つ。トークンは操作より先に作る
+// （Reorder）。
+func (o *Organizer) run(operation func() ([]byte, error)) (domain.OrganizeResult, error) {
 	token, err := o.newToken()
 	if err != nil {
 		return domain.OrganizeResult{}, err
 	}
-	image, err := o.store.Reorder(ctx, groupID, itemIDs, afterItemID)
+	image, err := operation()
 	if err != nil {
 		return domain.OrganizeResult{}, err
 	}

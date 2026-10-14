@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -48,6 +49,127 @@ func (s *OrganizeStore) Reorder(ctx context.Context, groupID int64, itemIDs []in
 		return nil, err
 	}
 	return encoded, nil
+}
+
+// Move はカード move.Items を画面の順にグループ move.To の末尾へ足し（既にあるものは飛ばす）、
+// move.From があればそこから外す（data-model.md「Operations」の Move）。To が無ければ外すだけである。
+// 外すのは RemoveGroupItems と同じで、フォルダ由来のメンバーには除外を書き、最後の項目を外した From は
+// 解散する（空になった祖先も）。取り消しの像（groupsImage。From・To と From の祖先）を返す。From か To
+// が無い、カードの動画やグループが無い、カードが From に無ければ domain.ErrGroupTargetNotFound、
+// ドラッグしたグループが To か To の祖先なら domain.ErrGroupCycle で、どれも何も書かない。From と To が
+// どちらも無いか同じなら誤りである（API はその要求を 400 にする）。
+func (s *OrganizeStore) Move(ctx context.Context, move domain.OrganizeMove) ([]byte, error) {
+	switch {
+	case move.From == 0 && move.To == 0:
+		return nil, errors.New("cannot move the cards: there is no group to leave or join")
+	case move.From == move.To:
+		return nil, errors.New("cannot move the cards into the group they leave")
+	}
+	var encoded []byte
+	err := writeGroups(ctx, s.db, "move the cards", func(tx *sql.Tx) ([]int64, error) {
+		members, fromItems, err := resolveMove(ctx, tx, move)
+		if err != nil {
+			return nil, err
+		}
+		scope, err := groupsWithAncestors(ctx, tx, nonZeroIDs(move.From))
+		if err != nil {
+			return nil, err
+		}
+		image, err := groupsImage(ctx, tx, append(scope, nonZeroIDs(move.To)...))
+		if err != nil {
+			return nil, err
+		}
+		if err := image.captureBefore(ctx, tx); err != nil {
+			return nil, err
+		}
+		changed, err := applyMove(ctx, tx, move, members, fromItems)
+		if err != nil {
+			return nil, err
+		}
+		if err := image.captureAfter(ctx, tx); err != nil {
+			return nil, err
+		}
+		image.finishGroupsImage(append(changed, nonZeroIDs(move.From, move.To)...))
+		if encoded, err = image.encode(); err != nil {
+			return nil, err
+		}
+		return changed, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return encoded, nil
+}
+
+// resolveMove は Move の From と To があるかを確かめ、カードを項目にするもの（resolveGroupMembers）と、
+// From があればそれぞれの From の項目の id を返す。
+func resolveMove(ctx context.Context, tx *sql.Tx, move domain.OrganizeMove) ([]groupMember, []int64, error) {
+	for _, id := range nonZeroIDs(move.From, move.To) {
+		if err := ensureGroupTarget(ctx, tx, id); err != nil {
+			return nil, nil, err
+		}
+	}
+	members, err := resolveGroupMembers(ctx, tx, move.Items)
+	if err != nil || move.From == 0 {
+		return members, nil, err
+	}
+	itemIDs := make([]int64, 0, len(members))
+	for _, member := range members {
+		itemID, err := groupMemberItemID(ctx, tx, move.From, member)
+		if err != nil {
+			return nil, nil, err
+		}
+		itemIDs = append(itemIDs, itemID)
+	}
+	return members, itemIDs, nil
+}
+
+// groupMemberItemID はグループ id の中の member の項目の id を返す。無ければ
+// domain.ErrGroupTargetNotFound。
+func groupMemberItemID(ctx context.Context, tx *sql.Tx, id int64, member groupMember) (int64, error) {
+	column, value := "content_key", any(member.Key)
+	if member.Child != 0 {
+		column, value = "child_id", member.Child
+	}
+	var itemID int64
+	err := tx.QueryRowContext(ctx, `select id from group_items where group_id = ? and `+column+` = ?`, id, value).Scan(&itemID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, domain.ErrGroupTargetNotFound
+	}
+	if err != nil {
+		return 0, fmt.Errorf("cannot read the group item: %w", err)
+	}
+	return itemID, nil
+}
+
+// applyMove は Move の書き込みで、To へ足してから From の項目 fromItems を外す。先に足すので、From を
+// 解散して To の項目が尽きても To は残る。変えたグループとその祖先の id を返す。
+func applyMove(ctx context.Context, tx *sql.Tx, move domain.OrganizeMove, members []groupMember, fromItems []int64) ([]int64, error) {
+	var changed []int64
+	if move.To != 0 {
+		added, err := appendGroupMemberList(ctx, tx, move.To, members)
+		if err != nil {
+			return nil, err
+		}
+		if added > 0 {
+			if changed, err = touchedGroupsWithAncestors(ctx, tx, []int64{move.To}); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if move.From != 0 {
+		removed, _, err := removeGroupItems(ctx, tx, move.From, fromItems)
+		if err != nil {
+			return nil, err
+		}
+		changed = append(changed, removed...)
+	}
+	return normalizeIDs(changed), nil
+}
+
+// nonZeroIDs は ids のうち 0 でないものを返す。
+func nonZeroIDs(ids ...int64) []int64 {
+	return slices.DeleteFunc(ids, func(id int64) bool { return id == 0 })
 }
 
 // Undo は操作が返した像 image の前の状態へ戻す（research.md R-1）。今の行が後の像と等しくなければ
@@ -129,11 +251,20 @@ func (s *OrganizeStore) Group(ctx context.Context, videoIDs []int64, targetID in
 }
 
 // groupOperationMembers は「グループにする」の新しいグループの名前と、項目にする利用者データの鍵を
-// targetID、続いて videoIDs の順に重複なく返す。動画が無ければ domain.ErrGroupTargetNotFound。
+// targetID、続いて videoIDs の順に重複なく返す（resolveGroupMembers）。動画が無ければ
+// domain.ErrGroupTargetNotFound。
 func groupOperationMembers(ctx context.Context, tx *sql.Tx, videoIDs []int64, targetID int64) (string, []string, error) {
-	keys, err := groupAddKeys(ctx, tx, append([]int64{targetID}, videoIDs...))
+	refs := make([]domain.OrganizeRef, 0, len(videoIDs)+1)
+	for _, videoID := range append([]int64{targetID}, videoIDs...) {
+		refs = append(refs, domain.OrganizeRef{Kind: domain.OrganizeVideo, ID: videoID})
+	}
+	members, err := resolveGroupMembers(ctx, tx, refs)
 	if err != nil {
 		return "", nil, err
+	}
+	keys := make([]string, 0, len(members))
+	for _, member := range members {
+		keys = append(keys, member.Key)
 	}
 	target, err := getVideo(ctx, tx, domain.AudienceOwner, targetID)
 	if errors.Is(err, domain.ErrNotFound) {

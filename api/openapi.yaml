@@ -3923,6 +3923,40 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/organize/move:
+    post:
+      operationId: organizeMove
+      summary: カードをグループへ入れるか、グループの間で動かすか、グループから外し、取り消しのトークンを返す
+      description: |
+        所有者だけ。ドラッグしたカード `items` を画面の順のままグループ `to` の末尾へ足し（既に
+        あるものは飛ばす）、`from` があればそこから外す。`to` が無ければ外すだけ（ライブラリに
+        落とした）。フォルダ由来のメンバーを外すと除外を書き、最後の項目を外した `from` は解散する。
+        1 つの取引で行い、応答の `undoToken` で取り消せる（specs/050-drag-organize/contracts/screen-api.md）。
+        `from` と `to` がどちらも無いか同じなら 400 `invalid_request`。`from`・`to`・カードの動画や
+        グループが無いか、カードが `from` に無ければ 404 `group_target_not_found`、ドラッグした
+        グループが `to` か `to` の祖先なら 409 `group_cycle` で、どれも何も書かない。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizeMove"
+      responses:
+        "200":
+          description: 動かした。取り消しのトークン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizeResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/organize/undo:
     post:
       operationId: organizeUndo
@@ -6304,6 +6338,22 @@ components:
           type: integer
           format: int64
           description: 新しいグループを置く、開いているグループ
+
+    OrganizeMove:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          $ref: "#/components/schemas/OrganizeRefs"
+        from:
+          type: integer
+          format: int64
+          description: カードをドラッグして出した開いているグループ
+        to:
+          type: integer
+          format: int64
+          description: カードを入れるグループ。無ければライブラリ（`from` から外すだけ）
 
     OrganizeUndo:
       type: object
