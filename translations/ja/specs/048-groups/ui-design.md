@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/ui-design.md
-sourceHash: b6905f9da4b8f5097915f340343b02800aa00c92094b36f991d52cf9423b85ee
+sourceHash: 852335ec019898fee468c9b3886922a0071dd888c27ea06f16727b066149f1bf
 ---
 
 # UI 設計: 任意の動画とグループからなり、複数への所属と入れ子を持つグループ {#ui-design-groups-of-any-videos-and-groups-with-several-memberships-and-nesting}
@@ -149,6 +149,10 @@ flowchart LR
 
 どちらも「Favorite」が送るものを送る ([035 の UI 設計、Selection bar](../035-favorites/ui-design.md#selection-bar)): `groupIds` は選んだグループ、`videoIds` は選んだ id のうち選んだグループのメンバーではないもの。2 つの数の合計が 20000 を超えると、「Favorite」と同じ理由で `disabled` になる。選択がちょうど 1 つのグループのとき、「New group」も `disabled` になり、ツールチップは「Select at least one video, or a group and something else」(`library.selection.newGroupNeedsMore`) である: 1 つのグループからなるグループは階層を 1 つ増やすだけで、ほかに何も加えない。選択は「Add to group」の後は残り、「New group」の後は消える ([New group](#new-group))。
 
+### メンバーを共有する選択 {#selection-with-shared-members}
+
+1 本の動画は 1 つのリストの 2 枚のグループのカードのメンバーになりうるので、選んだ 2 つのグループがメンバーを共有することがある。グループのカードのチェックを外すと、そのグループと、そのメンバーのうちまだ選ばれている別のグループのカードのメンバーではないものだけが選択から外れる。選ばれている他のグループのカードは選ばれたまま残る (2026-10-14 のメンテナーの決定)。G1 が A と B を持ち、G2 が B と C を持ち、両方がチェックされているとき、G1 のチェックを外すと B、C、G2 が選ばれたまま残り、A が外れる。グループのカードをチェックする動きは変わらない ([017 の UI 設計、Pressing and selection](../017-folder-groups/ui-design.md#pressing-and-selection))。
+
 ### 新しいグループ {#new-group}
 
 「New group」は「New group」というタイトルの `FormDialog` を開く。その説明は何がグループになるかを言い (「3 videos become one group」、「2 videos and 1 group become one group」)、その 1 つの `Field` はプレイリストのダイアログの名前の欄である ([044 の UI 設計、New playlist](../044-playlists/ui-design.md#new-playlist)): `Label`「Name」、`maxLength` のない `Input`、コードポイントの数え方、開いたときのフォーカス。フッターは `Cancel` と `default` の「Create」である。
@@ -267,6 +271,8 @@ flowchart LR
 | `404` | すでに解散している: トーストなしで `204` と同じ |
 | その他の失敗 | 説明の下に `destructive` の `Alert`「Couldn't dissolve the group: {reason}」。ダイアログは開いたまま |
 | Cancel、Esc | 何も変わらない |
+
+解散で項目が残らなくなった親は、祖先へと上って、一緒に解散する ([data-model.md、Edits](data-model.md#edits))。最後の項目を取り除いたときと、グループをタグに変えたときも同じである。ダイアログはそのことを言わない: 親はほかに何も持っていなかったので、動画もほかのグループも失われない。経路の最後のグループがこうして解散したとき、画面が移る先は消えた状態を示し、それが何が起きたかを伝える。
 
 ### タグへの変換 {#turning-into-a-tag}
 

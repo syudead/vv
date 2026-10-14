@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/research.md
-sourceHash: 623d6dbddae6dec492134e3c99c6814a902844849417285de8c2a95f208fa324
+sourceHash: 9198cbde8198b296f428541b1be733e22a336dea075ebdb3613468e73936aa0b
 ---
 
 # 調査: 任意の動画とグループからなり、複数への所属と入れ子を持つグループ {#research-groups-of-any-videos-and-groups-with-several-memberships-and-nesting}
@@ -58,7 +58,7 @@ flowchart LR
 
 ## R-4: 解散はグループを削除する。自動のグループでは `ungroup` を書く {#r-4-dissolving-deletes-the-group-for-an-automatic-group-it-writes-ungroup}
 
-**決定**: 解散は `groups` の行と、その項目、お気に入り、プレイリストの項目を削除する。自動のグループの解散は、同じトランザクションで、そのフォルダの `ungroup` の上書きも書く。フォルダのメニューで `Don't group` を選ぶと、同じようにフォルダのグループを解散する。`Automatic` か `Group this folder's videos` を選ぶと、上書きを取り除くか書いてから同期を実行し、規則が成り立てば同期が新しいグループを作る。
+**決定**: 解散は `groups` の行と、その項目、お気に入り、プレイリストの項目を削除する。自動のグループの解散は、同じトランザクションで、そのフォルダの `ungroup` の上書きも書く。解散で項目が残らなくなった親も、そのトランザクションで同じように解散し、祖先へと上っていく。空のグループは存在しないからである (2026-10-14 のメンテナーの決定)。フォルダのメニューで `Don't group` を選ぶと、同じようにフォルダのグループを解散する。`Automatic` か `Group this folder's videos` を選ぶと、上書きを取り除くか書いてから同期を実行し、規則が成り立てば同期が新しいグループを作る。
 
 | 案 | 判定 |
 | --- | --- |
