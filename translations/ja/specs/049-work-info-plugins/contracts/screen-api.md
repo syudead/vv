@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/contracts/screen-api.md
-sourceHash: 4de537eb9de52dfa838c8f608795016d906b5e97e5efafd93177b769cfdc1e2d
+sourceHash: 3d3753b05ddfd83c85e7b75c8f08ce55f38ec1cea044a6d53a49e6d0d321083f
 ---
 
 # 契約: 作品情報プラグインの画面の API {#contract-work-info-plugin-screen-api}
@@ -115,7 +115,7 @@ sourceHash: 4de537eb9de52dfa838c8f608795016d906b5e97e5efafd93177b769cfdc1e2d
 | --- | --- | --- |
 | 400 | `invalid_request` | `fields` が空か、値のないフィールドを挙げる |
 | 404 | `not_found` | その動画がないか、結果が別の動画のものである |
-| 409 | `work_info_fetch_stale` | 結果の期限が切れたか未知であるか、取得の後にプラグインが置き換えられた、承認を取り消された、または削除された |
+| 409 | `work_info_fetch_stale` | 結果の期限が切れたか未知であるか、取得の後にプラグインが置き換えられた、承認を取り消された、または削除された。これは適用のトランザクションの中で再び確かめる |
 
 ## 実行の失敗 {#run-failures}
 

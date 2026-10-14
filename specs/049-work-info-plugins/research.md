@@ -70,14 +70,20 @@ screen sees are in
 | Limit | Value | When it is reached |
 | --- | --- | --- |
 | Module size | 16 MiB | The upload is refused (`plugin_too_large`) |
-| Memory | 128 MiB (2048 pages) | The run traps |
+| Linear memory | 128 MiB (2048 pages) | The run traps |
+| Tables | Each table declares a maximum of at most 100,000 elements | The upload is refused (`table_too_large`) |
 | Run time | 30 s, HTTP included | The module is closed |
 | Standard output | 1 MiB | The run is stopped |
 | Standard error | 64 KiB kept, the rest discarded | Written to the server log only |
 | Runs at the same time | 1; a second run waits up to 10 s | The second run is refused |
 
-**Rationale**: One run at a time bounds the plugins' memory to one module's
-cap, which a single-owner server can spare; the Go `wasip1` runtime needs
+**Rationale**: wazero's page cap limits only linear memory, and a table's
+elements are host memory sized by the module's own declaration, so a module
+declaring a huge table could exhaust the process; vv reads the table section
+at inspection and requires a declared maximum (a Go `wasip1` program's table
+is fixed at its function count, well under the cap). Other compile-time
+allocations grow with the module's size, which the 16 MiB cap bounds. One run
+at a time bounds the plugins' memory to one module's cap, which a single-owner server can spare; the Go `wasip1` runtime needs
 headroom for its heap, so 64 MiB was too tight for a 1 MiB page parsed in
 memory. A clock and random source are provided because Go's runtime needs
 them; neither reaches outside the process.
@@ -102,11 +108,15 @@ flowchart LR
   refuse --> fail[Run fails: blocked_address]
 ```
 
-A dial is refused when the address, after unmapping an IPv4-mapped IPv6
-address, is not global unicast, is private (RFC 1918, `fc00::/7`), is
-loopback, link-local, multicast or unspecified, lies in `100.64.0.0/10`,
-`192.0.0.0/24`, `198.18.0.0/15`, `64:ff9b::/96` or `2001:db8::/32`, or is an
-address of one of the server's own interfaces.
+A dial is allowed only to an address, after unmapping an IPv4-mapped IPv6
+address, that is global unicast and lies in no range of the IANA IPv4 and IPv6
+Special-Purpose Address Registries whose "Globally Reachable" is not `True`;
+`0.0.0.0/8`, `240.0.0.0/4`, `100.64.0.0/10`, `fc00::/7` and `100::/64` are
+examples. Beyond the registries, vv also refuses `fec0::/10` (deprecated
+site-local, still routed on some LANs), the prefixes that embed an IPv4
+address (`64:ff9b::/96`, `64:ff9b:1::/48`, `2002::/16`, `2001::/32`), and the
+addresses of the server's own interfaces. The ranges are one table in
+`internal/wasmplugin`, and a test dials one address from each.
 
 | Option | Survives DNS rebinding and redirects | Verdict |
 | --- | --- | --- |
@@ -156,6 +166,10 @@ changed since.
 | **In-memory result with an id** | Chosen |
 | The client sends the fetched values back with the apply | Rejected: the server cannot then tell a stale result from a fresh one, which the Issue's edge cases require |
 | A SQLite table of results | Rejected: nothing about a result needs to outlive a restart; the owner fetches again |
+
+The apply re-reads the plugin row's digest and approval inside its own
+transaction, so a replacement, revocation or deletion that commits between
+the check in `internal/app` and the write still makes the apply stale.
 
 **Rationale**: The same shape as the thumbnail edit sessions
 ([thumbnail-editing.md](../../docs/design-docs/thumbnail-editing.md)), with a

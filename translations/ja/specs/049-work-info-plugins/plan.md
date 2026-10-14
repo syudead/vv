@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/plan.md
-sourceHash: b1ab2e6d9041bb90447ceb9bf6f22f505d0fb2260271dc0f7e151b46ed283d93
+sourceHash: 634518fbc4a2ecb0f54f1710fc997709059fce0f5b72ad625508499f87d8309f
 ---
 
 # 実装計画: 外部のサービスから作品情報を取得する作品情報プラグイン {#implementation-plan-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -136,11 +136,11 @@ flowchart LR
 
 ### 作品情報プラグインを WebAssembly のサンドボックスで実行する {#run-work-info-plugins-in-a-webassembly-sandbox}
 
-**範囲**: wazero と、depguard と ARCHITECTURE.md の項目を伴うアダプター `internal/wasmplugin` を加える。モジュールを検査し (コンパイル、`vv.plugin` マニフェスト、import、`_start`)、マニフェストか問題にする。実行ごとに新しいインスタンスを、要求を stdin に、応答を stdout から受けて、ファイル、環境、引数なしに、[R-4](research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits) の上限と 1 つの実行の枠で実行する。ドメインの型と実行の失敗。登録はするが次の単位まで `-1` を返す `vv` ホスト関数。[R-12](research.md#r-12-test-plugins-are-built-from-go-sources-when-the-tests-run) のフィクスチャをビルドするヘルパー。索引からリンクした `docs/design-docs/work-info-plugins.md` (サンドボックスと上限)。
+**範囲**: wazero と、depguard と ARCHITECTURE.md の項目を伴うアダプター `internal/wasmplugin` を加える。モジュールを検査し (コンパイル、`vv.plugin` マニフェスト、import、`_start` と `memory` の export とその型、テーブルの最大値)、マニフェストか問題にする。実行ごとに新しいインスタンスを、要求を stdin に、応答を stdout から受けて、ファイル、環境、引数なしに、[R-4](research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits) の上限と 1 つの実行の枠で実行する。ドメインの型と実行の失敗。登録はするが次の単位まで `-1` を返す `vv` ホスト関数。[R-12](research.md#r-12-test-plugins-are-built-from-go-sources-when-the-tests-run) のフィクスチャをビルドするヘルパー。索引からリンクした `docs/design-docs/work-info-plugins.md` (サンドボックスと上限)。
 
 **依存**: なし。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task build-windows-check` がビルドできる。ビルドしたプラグインによるアダプターのテストで、echo プラグインの応答が読み戻されること、無限に繰り返すプラグインが 30 秒で止められ、メモリを増やすプラグインが 128 MiB で止められ、それぞれが失敗を伴い、次の実行が成功すること、2 MiB を書くプラグインが `output_too_large` で止められること、`/etc/hostname` を開くか環境変数を読むプラグインが何も得ないこと、同時の 2 つ目の実行が 10 秒後に拒否されることを示す。検査のテストで、[data-model.md](data-model.md#work_info_plugins) の各 `problem` がその不正なモジュールに対して、マニフェストが正しいモジュールに対して、それを実行せずに得られることを示す。
+**受け入れ**: `task check` と `task check-docs` が通り、`task build-windows-check` がビルドできる。ビルドしたプラグインによるアダプターのテストで、echo プラグインの応答が読み戻されること、無限に繰り返すプラグインが 30 秒で止められ、メモリを増やすプラグインが 128 MiB で止められ、それぞれが失敗を伴い、次の実行が成功すること、2 MiB を書くプラグインが `output_too_large` で止められること、`/etc/hostname` を開くか環境変数を読むプラグインが何も得ないこと、同時の 2 つ目の実行が 10 秒後に拒否されることを示す。検査のテストで、[data-model.md](data-model.md#work_info_plugins) の各 `problem` がその不正なモジュール (引数を持つ `_start`、`memory` を export しないもの、最大値のないテーブル、1,000,000 要素のテーブルを含む) に対して、マニフェストが正しいモジュールに対して、それを実行せずに得られることを示す。
 
 ### 作品情報プラグインが公開されたインターネットのサイトにだけ到達できるようにする {#let-work-info-plugins-reach-public-internet-sites-only}
 
@@ -148,7 +148,7 @@ flowchart LR
 
 **依存**: 作品情報プラグインを WebAssembly のサンドボックスで実行する。
 
-**受け入れ**: `task check` と `task check-docs` が通る。単体テストで、アドレスの規則が R-5 の各範囲を IPv4 射影の形も含めて拒否し、公開されたアドレスを受け入れることを示す。注入したリゾルバーによるアダプターのテストで、プラグインが vv を通じてページを取得すること、`127.0.0.1` への要求、LAN のアドレスへの要求、LAN のアドレスにリダイレクトするか解決される公開された名前への要求が、プラグインがエラーを無視しても、それぞれ `blocked_address` とホストで実行を失敗させること、17 番目の要求、5 MiB の本文、11 秒の応答がそれぞれのエラーコードで返されることを示す。
+**受け入れ**: `task check` と `task check-docs` が通る。単体テストで、アドレスの規則が R-5 の表のすべての範囲から 1 つずつのアドレス (`0.0.0.0/8` と `fec0::/10` を含む) を IPv4 射影の形も含めて拒否し、公開された IPv4 と IPv6 のアドレスを受け入れることを示す。注入したリゾルバーによるアダプターのテストで、プラグインが vv を通じてページを取得すること、`127.0.0.1` への要求、LAN のアドレスへの要求、LAN のアドレスにリダイレクトするか解決される公開された名前への要求が、プラグインがエラーを無視しても、それぞれ `blocked_address` とホストで実行を失敗させること、17 番目の要求、5 MiB の本文、11 秒の応答がそれぞれのエラーコードで返されることを示す。
 
 ### 画面の API で作品情報プラグインを追加、承認、削除する {#add-approve-and-remove-work-info-plugins-through-the-screen-api}
 
@@ -168,11 +168,11 @@ flowchart LR
 
 ### 画面の API で作品情報を検索、取得、適用する {#search-fetch-and-apply-work-information-through-the-screen-api}
 
-**範囲**: `app.WorkInfoPlugins` で、宣言された操作を持つ承認済みのプラグインに限ってランタイムのポートを通じて検索と取得をすること、動画とダイジェストに結び付いた 10 分間の結果のキャッシュ ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))、タグ名の規則でタグ名を絞った適用。表示名と仮のタグを 1 つのトランザクションで書き、拒否した名前を報告する `OverrideStore` の操作 ([R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported))。検索、取得、適用のルート、`Error.pluginMessage` と `Error.host` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。
+**範囲**: `app.WorkInfoPlugins` で、宣言された操作を持つ承認済みのプラグインに限ってランタイムのポートを通じて検索と取得をすること、動画とダイジェストに結び付いた 10 分間の結果のキャッシュ ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))、タグ名の規則でタグ名を絞った適用。プラグインの行のダイジェストと承認を読み直し、それから表示名と仮のタグを 1 つのトランザクションで書き、拒否した名前を報告する `OverrideStore` の操作 ([R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported))。検索、取得、適用のルート、`Error.pluginMessage` と `Error.host` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。
 
 **依存**: 画面の API で作品情報プラグインを追加、承認、削除する。
 
-**受け入れ**: `task check` が通り、`task generate` による差分がない。偽のランタイムによる app とストアのテストで、検索の候補が返されること、取得が動画を変えないこと、`title` と `tags` だけを適用すると表示名が変わり、タグが仮のものとして加わり、それ以外は何も変わらないこと、拒否した名前と無効な名前が `skippedTags` で報告され、付けられないこと、失敗した適用が両方のフィールドを変えないこと、未承認のプラグインが `plugin_not_approved` で返されること、10 分の後、置き換えの後、承認の取り消しの後の適用が `work_info_fetch_stale` で返されることを示す。ハンドラーのテストで、契約の各実行の失敗がそのステータスとフィールドで返されること、すべてのルートがゲストに `403` を返すことを示す。
+**受け入れ**: `task check` が通り、`task generate` による差分がない。偽のランタイムによる app とストアのテストで、検索の候補が返されること、取得が動画を変えないこと、`title` と `tags` だけを適用すると表示名が変わり、タグが仮のものとして加わり、それ以外は何も変わらないこと、拒否した名前と無効な名前が `skippedTags` で報告され、付けられないこと、失敗した適用が両方のフィールドを変えないこと、未承認のプラグインが `plugin_not_approved` で返されること、10 分の後、置き換えの後、承認の取り消しの後の適用が `work_info_fetch_stale` で返されること、app の確認の後で適用のトランザクションの前にプラグインが置き換えられるストアのテストが何も書かず `work_info_fetch_stale` で返されることを示す。ハンドラーのテストで、契約の各実行の失敗がそのステータスとフィールドで返されること、すべてのルートがゲストに `403` を返すことを示す。
 
 ### 動画のページでプラグインから作品情報を取得する {#fetch-work-information-from-a-plugin-on-the-video-page}
 

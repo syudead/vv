@@ -173,7 +173,7 @@ flowchart LR
 
 **Scope**: Add wazero and the adapter `internal/wasmplugin` with depguard and
 ARCHITECTURE.md entries; inspecting a module (compile, the `vv.plugin`
-manifest, imports, `_start`) into a manifest or a problem; running a fresh
+manifest, imports, the `_start` and `memory` exports and their types, the table maximums) into a manifest or a problem; running a fresh
 instance per run with the request on stdin and the response from stdout, no
 files, environment or arguments, the limits and the one-run slot of
 [R-4](research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits);
@@ -193,8 +193,10 @@ and the next run succeeding, a plugin writing 2 MiB stopped with
 `output_too_large`, a plugin opening `/etc/hostname` or reading an environment
 variable getting nothing, and a second concurrent run refused after 10 s;
 inspection tests show each `problem` of
-[data-model.md](data-model.md#work_info_plugins) for its malformed module and
-a manifest for a good one, without running it.
+[data-model.md](data-model.md#work_info_plugins) for its malformed module
+(a `_start` with a parameter, no exported `memory`, a table without a maximum
+and one of 1,000,000 elements included) and a manifest for a good one,
+without running it.
 
 ### Let work-info plugins reach public internet sites only
 
@@ -209,8 +211,9 @@ the network section of the design document.
 **Dependencies**: Run work-info plugins in a WebAssembly sandbox.
 
 **Acceptance**: `task check` and `task check-docs` pass; unit tests show the
-address rule refusing each range in R-5, IPv4-mapped forms included, and
-accepting a public address; adapter tests with an injected resolver show a
+address rule refusing one address from every range of R-5's table
+(`0.0.0.0/8` and `fec0::/10` included), IPv4-mapped forms included, and
+accepting a public IPv4 and IPv6 address; adapter tests with an injected resolver show a
 plugin fetching a page through vv, a request to `127.0.0.1`, to a LAN
 address, and to a public name that redirects or resolves to a LAN address
 each failing the run with `blocked_address` and the host even when the plugin
@@ -260,8 +263,9 @@ port, only for approved plugins with the declared operation, the 10-minute
 result cache bound to video and digest
 ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest)),
 and the apply with tag names filtered by the tag-name rule; the
-`OverrideStore` operation writing the display name and tentative tags in one
-transaction and reporting rejected names
+`OverrideStore` operation re-reading the plugin row's digest and approval,
+then writing the display name and tentative tags in one transaction and
+reporting rejected names
 ([R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported));
 the search, fetch and apply routes, `Error.pluginMessage` and `Error.host`
 ([contracts/screen-api.md](contracts/screen-api.md)); the client functions.
@@ -275,8 +279,10 @@ leaving the video unchanged, applying only `title` and `tags` changing the
 display name and adding the tags as tentative with nothing else changed, a
 rejected name and an invalid name reported in `skippedTags` and not attached,
 a failed apply leaving both fields unchanged, an unapproved plugin answered
-`plugin_not_approved`, and applying after 10 minutes, after a replacement and
-after a revoke answered `work_info_fetch_stale`; handler tests show each run
+`plugin_not_approved`, applying after 10 minutes, after a replacement and
+after a revoke answered `work_info_fetch_stale`, a store test where the
+plugin is replaced after the app's check but before the apply's transaction
+writing nothing and answering `work_info_fetch_stale`; handler tests show each run
 failure of the contract with its status and fields, and every route answering
 `403` to a guest.
 

@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/data-model.md
-sourceHash: b19dd7ac4688f6cc125f5d5837d8c4f418bfb668203bd4087c20f2447ff63420
+sourceHash: 52c7bc52c61094a177848acce2516551122decdcc4fd319dbd1dc941d267a485
 ---
 
 # データモデル: 作品情報プラグイン {#data-model-work-info-plugins}
@@ -38,7 +38,8 @@ sourceHash: b19dd7ac4688f6cc125f5d5837d8c4f418bfb668203bd4087c20f2447ff63420
 | `manifest_invalid` | セクションが [マニフェスト](contracts/plugin-contract.md#manifest) の JSON でないか、フィールドがその規則を破る |
 | `contract_unsupported` | `contract` がこの vv の実行するバージョンでない (`1` だけ) |
 | `import_unsupported` | モジュールが `wasi_snapshot_preview1` と `vv` の外のものを import する |
-| `start_missing` | モジュールが `_start` を export しない |
+| `export_invalid` | モジュールが `_start` を何も受け取らず何も返さない関数として export しないか、`memory` をメモリとして export しない |
+| `table_too_large` | テーブルが最大値を宣言しないか、100,000 要素を超える最大値を宣言する |
 
 ## 規則 {#rules}
 
@@ -49,6 +50,7 @@ sourceHash: b19dd7ac4688f6cc125f5d5837d8c4f418bfb668203bd4087c20f2447ff63420
 | 読める名前のないアップロードは新しい行になる | `internal/store` |
 | 承認が `approved_digest` を書くのは、要求のダイジェストが `digest` と等しく、`problem` が null のときだけである。そうでなければ `plugin_changed` か `plugin_unusable` | `internal/app` が判断し、`internal/store` がそのトランザクションの中で読み直す |
 | 承認の取り消しは `approved_digest` を消す | `internal/store` |
+| 取得した結果の適用は、同じトランザクションの中で、プラグインの行がまだ存在し、承認済みで、結果を取得したときのダイジェストを持つときを除いて何も書かない | `internal/store` (`OverrideStore` の適用) |
 | `name` は `a-z`、`0-9`、`-`、`.` からなる 1 から 64 文字。`version` は 1 から 32 文字。`description` は最大 500 文字 | `internal/domain` |
 | `module` は最大 16 MiB | `internal/domain`、`internal/httpapi` (本文の上限) |
 

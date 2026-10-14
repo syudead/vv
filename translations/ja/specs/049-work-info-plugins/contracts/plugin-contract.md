@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/contracts/plugin-contract.md
-sourceHash: 65a77b73457d3521b5d8aca7dc9ac354dafb05d8c632d28a6c728bf8e321ccaa
+sourceHash: fbec020134c9e29315248e71034f3197edb25d9eba9dac59958b89f93afb2d7d
 ---
 
 # 契約: 作品情報プラグインの契約、バージョン 1 {#contract-work-info-plugin-contract-version-1}
@@ -27,7 +27,8 @@ sequenceDiagram
 
 | 項目 | 規則 |
 | --- | --- |
-| 形式 | `_start` と `memory` を export する、`wasip1` 向けにビルドした WebAssembly のコアモジュール |
+| 形式 | `_start` を引数も戻り値もない関数として、`memory` をメモリとして export する、`wasip1` 向けにビルドした WebAssembly のコアモジュール |
+| テーブル | それぞれが最大 100,000 要素以下の最大値を宣言する |
 | import | `wasi_snapshot_preview1` と `vv` だけ。それ以外があるとアップロードは `import_unsupported` になる |
 | WASI | 事前に開かれたディレクトリ、環境変数、引数はない。時計と乱数は動く。stdin が要求を持ち、stdout が応答を受け、stderr はサーバーのログに行く |
 | 上限 | [R-4](../research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits) と [R-5](../research.md#r-5-plugins-reach-the-network-only-through-vv-and-only-public-addresses) の値 |

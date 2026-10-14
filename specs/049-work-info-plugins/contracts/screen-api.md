@@ -127,7 +127,7 @@ The result is consumed.
 | --- | --- | --- |
 | 400 | `invalid_request` | `fields` empty, or names a field without a value |
 | 404 | `not_found` | No such video, or the result belongs to another video |
-| 409 | `work_info_fetch_stale` | The result expired or is unknown, or the plugin was replaced, revoked or deleted since the fetch |
+| 409 | `work_info_fetch_stale` | The result expired or is unknown, or the plugin was replaced, revoked or deleted since the fetch, checked again inside the apply's transaction |
 
 ## Run failures
 

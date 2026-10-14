@@ -39,7 +39,8 @@ rescan and is listed as kept in
 | `manifest_invalid` | The section is not the JSON of [the manifest](contracts/plugin-contract.md#manifest), or a field breaks its rule |
 | `contract_unsupported` | `contract` is not a version this vv runs (only `1`) |
 | `import_unsupported` | The module imports something outside `wasi_snapshot_preview1` and `vv` |
-| `start_missing` | The module exports no `_start` |
+| `export_invalid` | The module does not export `_start` as a function taking and returning nothing, or does not export `memory` as a memory |
+| `table_too_large` | A table declares no maximum, or one over 100,000 elements |
 
 ## Rules
 
@@ -50,6 +51,7 @@ rescan and is listed as kept in
 | An upload without a readable name is a new row | `internal/store` |
 | Approving writes `approved_digest` only when the request's digest equals `digest` and `problem` is null; otherwise `plugin_changed` or `plugin_unusable` | `internal/app` decides, `internal/store` re-reads inside its transaction |
 | Revoking clears `approved_digest` | `internal/store` |
+| Applying a fetched result writes nothing unless, inside the same transaction, the plugin row still exists, is approved, and has the digest the result was fetched with | `internal/store` (`OverrideStore`'s apply) |
 | `name` is 1 to 64 characters of `a-z`, `0-9`, `-` and `.`; `version` is 1 to 32 characters; `description` is at most 500 characters | `internal/domain` |
 | `module` is at most 16 MiB | `internal/domain`, `internal/httpapi` (body limit) |
 
