@@ -31,6 +31,7 @@ import { ScrubBand, type ScrubPreview, useScrubPreview } from "../ui/ScrubPrevie
 import { Checkbox } from "../ui/shadcn/checkbox";
 import { TableCell, TableRow } from "../ui/shadcn/table";
 import ThumbnailBackdrop from "../ui/ThumbnailBackdrop";
+import { type CardDragBinding, CardDropMark } from "./cardDrag";
 import {
   VideoThumbnail,
   VideoThumbnailDuration,
@@ -76,6 +77,11 @@ export interface VideoCardProps {
    * 新しい要素になり、無関係な状態変化でも全カードが作り直されてしまう（N4）。
    */
   tagsRow?: (video: Video) => ReactNode;
+  /**
+   * リスト表示の行をドラッグの層に加える値（cardDrag.tsx の useCardDrag）。所有者の
+   * ライブラリの行だけが渡す（specs/050-drag-organize/ui-design.md「Library」）。
+   */
+  drag?: CardDragBinding;
 }
 
 function useCardState(video: Video) {
@@ -454,16 +460,22 @@ export default memo(VideoCard);
 
 /** VideoRow はリスト表示の 1 行。 */
 export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
-  const { video, backTo, to, selected, selectionMode, onSelect } = props;
+  const { video, backTo, to, selected, selectionMode, onSelect, drag } = props;
   const { duration, unplayable, state, ratio, quality } = useCardState(video);
   const publicMark = usePublicMark(video);
   const owner = useAudience() === "owner";
 
   return (
     <TableRow
+      ref={drag?.ref}
+      {...drag?.listeners}
       data-video-id={video.id}
       data-state={selected ? "selected" : undefined}
-      className="group"
+      className={cn(
+        "group",
+        drag !== undefined && "relative",
+        drag?.lifted === true && "opacity-50",
+      )}
     >
       {/* 選択を持たない画面（ゲストの一覧）では、選択の列ごと描かない。 */}
       {onSelect !== undefined && (
@@ -520,6 +532,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
             {unplayable}
           </span>
         )}
+        {drag !== undefined && <CardDropMark sign={drag.sign} axis="y" list />}
       </TableCell>
       {/* お気に入りは題名の列の直後の列（ui-design.md「List view row」）。ゲストには列ごと描かない。 */}
       {owner && (

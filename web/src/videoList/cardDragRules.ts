@@ -14,10 +14,11 @@ export type Zone = Side | "middle";
 /** OntoAnswer は画面がカードの上に落とせるかに答えた値である。null は上に落とす先ではない。 */
 export type OntoAnswer<L> = { label: L } | "refused" | null;
 
-/** DropSign は落とす先の印である（上、間、拒否）。 */
+/** DropSign は落とす先の印である（上、間、道筋の段、拒否）。 */
 export type DropSign<L> =
   | { kind: "onto"; key: string; label: L }
   | { kind: "between"; key: string; side: Side }
+  | { kind: "crumb"; key: string }
   | { kind: "refused"; key: string };
 
 /**

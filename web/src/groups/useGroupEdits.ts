@@ -2,12 +2,13 @@ import { type MutableRefObject, useCallback, useEffect, useRef, useState } from 
 
 import { type LibraryGroup, RequestFailed } from "../api/client";
 import { type GroupItem, removeFromGroup } from "../api/groups";
-import { reorderGroup } from "../api/organize";
+import { moveCards, type OrganizeRef, reorderGroup } from "../api/organize";
 import { errorText, t, type UiText } from "../i18n";
 import { focusAfterRemove } from "../playlists/playlistItems";
 import { useToast } from "../ui/Toast";
 import { moveAfter } from "../videoList/cardDragRules";
 import type { UndoToast } from "../videoList/undoToast";
+import type { MoveDestination } from "./GroupDrag";
 import type { GroupPageData } from "./useGroupPage";
 
 /** FocusTarget は編集の後にフォーカスを移す先である（項目の `×`、見出し、「More」）。 */
@@ -41,6 +42,31 @@ function withoutItems(
     ...data,
     group,
     items: data.items.filter((item) => !removed.has(item.id)),
+  };
+}
+
+/** refOf は項目を移す操作で指す値（動画かグループの id）である。 */
+function refOf(item: GroupItem): OrganizeRef[] {
+  if (item.kind === "group") {
+    return item.group === undefined ? [] : [{ kind: "group", id: item.group.id }];
+  }
+  return item.video === undefined ? [] : [{ kind: "video", id: item.video.id }];
+}
+
+/**
+ * withoutMoved は移した項目を除き、見出しの本数をその分だけ減らした中身である。本数は
+ * 子孫の動画を数えたものなので目安で、移した後の読み直しが正しい値にする。
+ */
+function withoutMoved(data: GroupPageData, moved: readonly GroupItem[]): GroupPageData {
+  const gone = new Set(moved.map((item) => item.id));
+  const lost = moved.reduce(
+    (sum, item) => sum + (item.kind === "group" ? (item.group?.videoCount ?? 0) : 1),
+    0,
+  );
+  return {
+    ...data,
+    group: { ...data.group, videoCount: Math.max(0, data.group.videoCount - lost) },
+    items: data.items.filter((item) => !gone.has(item.id)),
   };
 }
 
@@ -86,6 +112,11 @@ function useFocusAfterEdit() {
  * - 行の `×` は確認なしにその項目を外す。外せたら行が消え、フォーカスは次の行の `×`、
  *   無ければ前の行、無ければ見出しへ移る。続きのページが残っていたら、サーバーが位置を
  *   詰めて手元の続き位置が使えなくなるので、先頭から読み直す。
+ * - ドラッグで子グループ・祖先・ライブラリへ移す項目は、置いたときに画面から外してから
+ *   `move` で 1 回送る（並べ替えと同じ鎖）。受け入れられたら「Undo」付きの通知を出して
+ *   読み直し、失敗したら外す前に見せていた項目と本数に戻して知らせる。すべての項目を
+ *   移すとサーバーがグループを解散するので、通知とトークンを持ち越して `onDissolved` へ渡す
+ *   （specs/050-drag-organize/ui-design.md「Undo toast」の Carried）。
  * - 選択バーの「Remove from group」は選んだ項目をまとめて外し、件数を知らせる。
  * - 最後の項目を外すとサーバーがグループを解散する（`204`、data-model.md「Edits」）。外した行は
  *   見せず、`onDissolved` で画面を解散と同じ結末（道筋の親へ移ってトースト）へ渡す。
@@ -161,38 +192,108 @@ export function useGroupEdits({
     [confirmed, refresh, update],
   );
 
-  const { offer } = undo;
+  /**
+   * enqueue は移動 1 つを鎖の最後に足す。`step` は送って結果を見せ、`alive` が false に
+   * なった（失敗か画面を離れて鎖の残りを捨てた）後は何も見せない。失敗したら鎖の残りを
+   * 捨てて `onError` を呼ぶ。
+   */
+  const enqueue = useCallback(
+    (
+      step: (alive: () => boolean) => Promise<void>,
+      onError: (error: unknown) => void,
+    ) => {
+      const ticket = generation.current;
+      const alive = () => ticket === generation.current;
+      queued.current += 1;
+      moves.current = moves.current.then(async () => {
+        try {
+          if (!alive()) return;
+          movesSent.current += 1;
+          await step(alive);
+        } catch (error) {
+          if (!alive()) return;
+          generation.current += 1;
+          onError(error);
+        } finally {
+          queued.current -= 1;
+        }
+      });
+    },
+    [moves, movesSent],
+  );
+
+  const { offer, carry } = undo;
   const reorder = useCallback(
     (itemIds: readonly number[], after: number | null, name: string) => {
       if (id === null || itemIds.length === 0) return;
       const moved = new Set(itemIds);
       const byId = (item: GroupItem) => item.id;
       update((data) => ({ ...data, items: moveAfter(data.items, moved, after, byId) }));
-      const ticket = generation.current;
-      queued.current += 1;
-      moves.current = moves.current.then(async () => {
-        try {
-          if (ticket !== generation.current) return;
-          movesSent.current += 1;
+      enqueue(
+        async (alive) => {
           const { undoToken } = await reorderGroup(id, itemIds, after);
-          if (ticket !== generation.current) return;
+          if (!alive()) return;
           confirmed.current = moveAfter(confirmed.current, moved, after, byId);
           if (queued.current === 1)
             update((data) => ({ ...data, items: confirmed.current }));
           offer(t.organize.done.reordered(name), undoToken);
-        } catch (error) {
-          if (ticket !== generation.current) return;
-          generation.current += 1;
+        },
+        (error) => {
           if (!isNotFound(error)) {
             update((data) => ({ ...data, items: confirmed.current }));
           }
           failed(error, t.organize.failed.reorder);
-        } finally {
-          queued.current -= 1;
-        }
-      });
+        },
+      );
     },
-    [confirmed, failed, id, moves, movesSent, offer, update],
+    [confirmed, enqueue, failed, id, offer, update],
+  );
+
+  const move = useCallback(
+    (moved: readonly GroupItem[], to: MoveDestination, name: string) => {
+      if (id === null || moved.length === 0) return;
+      const gone = new Set(moved.map((item) => item.id));
+      const shown: { group?: LibraryGroup; whole: boolean } = { whole: false };
+      update((data) => {
+        shown.group = data.group;
+        shown.whole =
+          data.nextCursor === undefined && data.items.every((item) => gone.has(item.id));
+        return withoutMoved(data, moved);
+      });
+      const message =
+        to.kind === "group"
+          ? t.organize.done.moved(moved.length, to.name)
+          : t.organize.done.movedOut(moved.length, name);
+      enqueue(
+        async (alive) => {
+          const { undoToken } = await moveCards(moved.flatMap(refOf), {
+            from: id,
+            to: to.kind === "group" ? to.id : null,
+          });
+          if (!alive()) return;
+          confirmed.current = confirmed.current.filter((item) => !gone.has(item.id));
+          offer(message, undoToken);
+          if (!shown.whole) {
+            refresh();
+            return;
+          }
+          carry();
+          onDissolved();
+        },
+        (error) => {
+          if (!isNotFound(error)) {
+            const group = shown.group;
+            update((data) => ({
+              ...data,
+              group: group ?? data.group,
+              items: confirmed.current,
+            }));
+          }
+          failed(error, t.organize.failed.move);
+        },
+      );
+    },
+    [carry, confirmed, enqueue, failed, id, offer, onDissolved, refresh, update],
   );
 
   const removeOne = useCallback(
@@ -253,6 +354,7 @@ export function useGroupEdits({
     removing,
     removingSelected,
     reorder,
+    move,
     removeOne,
     removeSelected,
     titleRef: focus.titleRef,

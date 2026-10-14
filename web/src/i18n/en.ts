@@ -2057,14 +2057,21 @@ export const en = {
   // （specs/050-drag-organize/ui-design.md「Words」）。
   organize: {
     drop: {
+      putIn: "Put in",
       refused: "Can't drop here",
     },
     done: {
       reordered: (name: string) => `Reordered "${name}"`,
+      moved: (count: number, name: string) => `Moved ${items(count)} to "${name}"`,
+      movedOut: (count: number, name: string) => `Moved ${items(count)} out of "${name}"`,
     },
     failed: {
       reorder: (reason: string) => `Couldn't reorder: ${reason}`,
+      move: (reason: string) => `Couldn't move: ${reason}`,
     },
+    // ドラッグの層の読み上げの案内（dnd-kit の screenReaderInstructions）。
+    instructions:
+      "Press and move a card to pick it up, then drop it on a group to put it in.",
     undo: "Undo",
     undone: "Undone",
     undoFailed: {

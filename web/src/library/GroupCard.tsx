@@ -21,6 +21,7 @@ import {
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
 import { groupPagePath } from "../groups/groupPaths";
+import { type CardDragBinding, CardDropMark } from "../videoList/cardDrag";
 import FolderArt from "../videoList/FolderArt";
 
 /**
@@ -54,6 +55,8 @@ export interface GroupCardProps {
   onPreviewReset?: () => void;
   /** 題名の下のタグの行（格子表示だけ）。VideoCard の tagsRow と同じく関数で受ける。 */
   tagsRow?: (group: LibraryGroup) => ReactNode;
+  /** リスト表示の行をドラッグの層に加える値。所有者のライブラリの行だけが渡す。 */
+  drag?: CardDragBinding;
 }
 
 /**
@@ -287,6 +290,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
     selected,
     selectionMode,
     onSelect,
+    drag,
   } = props;
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
@@ -295,11 +299,17 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
 
   return (
     <TableRow
+      ref={drag?.ref}
+      {...drag?.listeners}
       data-group-id={group.id}
       data-group-root={group.folder?.rootId}
       data-group-path={group.folder?.path}
       data-state={selected ? "selected" : undefined}
-      className="group"
+      className={cn(
+        "group",
+        drag !== undefined && "relative",
+        drag?.lifted === true && "opacity-50",
+      )}
     >
       {onSelect !== undefined && (
         <TableCell className="w-10 pl-3">
@@ -349,6 +359,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           <Folder aria-hidden="true" className="size-3 shrink-0" />
           {groupCountText(group.videoCount)}
         </span>
+        {drag !== undefined && <CardDropMark sign={drag.sign} axis="y" list />}
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">

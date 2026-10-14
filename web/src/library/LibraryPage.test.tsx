@@ -186,7 +186,7 @@ describe("LibraryPage", () => {
   it("一覧と件数だけを出す", async () => {
     renderLibrary();
     expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
-    const status = screen.getByRole("status");
+    const status = screen.getByRole("status", { name: "Search results" });
     expect(status.textContent).toBe("3 items");
     expect(status.classList.contains("sr-only")).toBe(false);
     expect(screen.getByRole("progressbar").getAttribute("aria-valuenow")).toBe("25");
@@ -195,7 +195,9 @@ describe("LibraryPage", () => {
   it("検索語は URL から読み、結果件数だけを出す", async () => {
     renderLibrary("/?q=abc");
     await waitFor(() => {
-      expect(screen.getByRole("status").textContent).toBe("3 items");
+      expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
+        "3 items",
+      );
     });
     await waitFor(() => {
       const calls = fetchMock.mock.calls.map((call) => String(call[0]));
@@ -259,7 +261,7 @@ describe("LibraryPage", () => {
     renderLibrary();
     expect(await screen.findByText("Something went wrong on the server.")).toBeDefined();
     expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("status", { name: "Search results" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(resolveRetry).toBeDefined());
@@ -285,12 +287,14 @@ describe("LibraryPage", () => {
     });
     const user = userEvent.setup();
     renderLibrary();
-    expect((await screen.findByRole("status")).textContent).toBe("3 items");
+    expect(
+      (await screen.findByRole("status", { name: "Search results" })).textContent,
+    ).toBe("3 items");
 
     await user.type(screen.getByRole("searchbox", { name: "Search videos" }), "broken");
 
     expect(await screen.findByText("Something went wrong on the server.")).toBeDefined();
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("status", { name: "Search results" })).toBeNull();
   });
 
   it("視聴状態はサーバーに送り、残りのページを読みに行かず、件数はサーバーの total を出す", async () => {
@@ -322,7 +326,9 @@ describe("LibraryPage", () => {
     await waitFor(() =>
       expect(screen.queryByRole("link", { name: "動画 2" })).toBeNull(),
     );
-    expect(screen.getByRole("status").textContent).toBe("250 items");
+    expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
+      "250 items",
+    );
     const requests = listRequests(fetchMock);
     expect(requests.at(-1)?.searchParams.get("watch")).toBe("unwatched");
     // 選んだ瞬間に続きのページを読みに行かない。
@@ -2093,7 +2099,9 @@ describe("LibraryPage", () => {
       expect(screen.queryByRole("heading", { level: 2 })).toBeNull();
       // メンバーは1本ずつのカードにならない。
       expect(screen.queryByRole("link", { name: "ep01" })).toBeNull();
-      expect(screen.getByRole("status").textContent).toBe("3 items");
+      expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
+        "3 items",
+      );
 
       const card = cards[1] as HTMLElement;
       // 本数と長さはフォルダの絵柄の上に重ね、見終えた本数は数字では出さない。
@@ -2442,7 +2450,9 @@ describe("LibraryPage の英語の画面（specs/023-english-i18n）", () => {
     library = () => page([{ kind: "video", video: kyoto }]);
     const { unmount } = renderPage();
     await screen.findByRole("link", { name: "京都の旅" });
-    expect(screen.getByRole("status").textContent).toBe("1 item");
+    expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
+      "1 item",
+    );
     unmount();
 
     library = () =>
@@ -2452,7 +2462,9 @@ describe("LibraryPage の英語の画面（specs/023-english-i18n）", () => {
       ]);
     renderPage();
     await screen.findByRole("link", { name: "動画 2" });
-    expect(screen.getByRole("status").textContent).toBe("2 items");
+    expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
+      "2 items",
+    );
   });
 
   it("日本語の名前の動画とタグを元の名前のまま出し、その名前で検索できる", async () => {
@@ -2477,7 +2489,11 @@ describe("LibraryPage の英語の画面（specs/023-english-i18n）", () => {
       expect(screen.queryByRole("link", { name: "動画 2" })).toBeNull(),
     );
     expect(await screen.findByRole("link", { name: "京都の旅" })).toBeDefined();
-    await waitFor(() => expect(screen.getByRole("status").textContent).toBe("1 item"));
+    await waitFor(() =>
+      expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
+        "1 item",
+      ),
+    );
     expect(listRequests(fetchMock).at(-1)?.searchParams.get("query")).toBe("京都");
   });
 
