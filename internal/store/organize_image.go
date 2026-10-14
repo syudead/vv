@@ -11,6 +11,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"slices"
 	"strings"
 
@@ -21,7 +22,12 @@ import (
 // SQL に埋め込むので、像を読み戻すときもこの表に無い名前は受け付けない。親の表（行を消すと子の
 // 行が外部キーで消える表）を足すときは、範囲の並びで子より前に置く（restoreUndoImage）。
 var imageScopeColumns = map[string][]string{
-	"group_items": {"group_id", "child_id"},
+	"groups":                 {"id"},
+	"group_items":            {"group_id", "child_id"},
+	"group_exclusions":       {"group_id"},
+	"group_favorites":        {"group_id"},
+	"playlist_items":         {"playlist_id", "group_id"},
+	"folder_group_overrides": {"path"},
 }
 
 // imageCell は行の 1 つの値である。どれも nil なら NULL。SQLite の 4 つの型をそのまま持ち、
@@ -338,4 +344,79 @@ func finishUndo(ctx context.Context, tx *sql.Tx, image undoImage) ([]int64, erro
 		return nil, err
 	}
 	return normalizeIDs(append(changed, touched...)), nil
+}
+
+// groupsImage はグループ ids の行と、それらを指す行の範囲を、親の表を先にして並べた像を作る
+// （data-model.md「Undo image」の Move）。グループごとに groups、group_items（group_id と child_id
+// の両方）、group_exclusions、group_favorites、playlist_items（group_id）を、それらを持つ
+// プレイリストの playlist_items を丸ごと、自動グループのフォルダの folder_group_overrides を持つ。
+// 取り消しはグループの行を消して入れ直すので、外部キーで一緒に消える行はどれもこの範囲に入っている。
+// playlist_items を group_id でも持つのは、操作の後でグループを別のプレイリストに入れた行を後の像との
+// 違いとして見つけ、連鎖削除で消す代わりに ErrUndoConflict にするためである。
+func groupsImage(ctx context.Context, tx *sql.Tx, ids []int64) (undoImage, error) {
+	ids = normalizeIDs(slices.Clone(ids))
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return undoImage{}, fmt.Errorf("cannot build group ids: %w", err)
+	}
+	playlists, err := queryInt64s(ctx, tx, `select distinct playlist_id from playlist_items
+		where group_id in (select value from json_each(?)) order by playlist_id`, string(encoded))
+	if err != nil {
+		return undoImage{}, fmt.Errorf("cannot read the playlists: %w", err)
+	}
+	folders, err := queryStrings(ctx, tx, `select origin_folder from groups
+		where origin_folder is not null and id in (select value from json_each(?)) order by origin_folder`, string(encoded))
+	if err != nil {
+		return undoImage{}, fmt.Errorf("cannot read the folder groups: %w", err)
+	}
+	var specs []imageScopeSpec
+	for _, spec := range []imageScopeSpec{{"groups", "id", nil}, {"group_items", "group_id", nil},
+		{"group_items", "child_id", nil}, {"group_exclusions", "group_id", nil}, {"group_favorites", "group_id", nil},
+		{"playlist_items", "group_id", nil}} {
+		for _, id := range ids {
+			specs = append(specs, imageScopeSpec{spec.table, spec.column, id})
+		}
+	}
+	for _, id := range playlists {
+		specs = append(specs, imageScopeSpec{"playlist_items", "playlist_id", id})
+	}
+	for _, folder := range folders {
+		specs = append(specs, imageScopeSpec{"folder_group_overrides", "path", domain.FolderKey(folder)})
+	}
+	image := undoImage{Scopes: make([]imageScope, 0, len(specs))}
+	for _, spec := range specs {
+		scope, err := newImageScope(spec.table, spec.column, spec.key)
+		if err != nil {
+			return undoImage{}, err
+		}
+		image.Scopes = append(image.Scopes, scope)
+	}
+	return image, nil
+}
+
+// imageScopeSpec は newImageScope の引数である。
+type imageScopeSpec struct {
+	table  string
+	column string
+	key    any
+}
+
+// finishGroupsImage は後の像を読んだ groupsImage の像に、取り消しの後で行うことを書く。groups は
+// 更新日時を進めて知らせるグループ、Playlists は行が変わったプレイリスト（詰め直して更新日時を
+// 進める）、RebuildFolders はフォルダの例外が変わったか（索引を作り直す）である。
+func (image *undoImage) finishGroupsImage(groups []int64) {
+	image.Groups = normalizeIDs(slices.Clone(groups))
+	for _, scope := range image.Scopes {
+		if reflect.DeepEqual(scope.Before, scope.After) {
+			continue
+		}
+		switch scope.Table {
+		case "playlist_items":
+			if scope.Column == "playlist_id" && scope.Key.Int != nil {
+				image.Playlists = append(image.Playlists, *scope.Key.Int)
+			}
+		case "folder_group_overrides":
+			image.RebuildFolders = true
+		}
+	}
 }

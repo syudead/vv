@@ -2232,6 +2232,18 @@ type OrganizationMergeResponse struct {
 	Organization Organization `json:"organization"`
 }
 
+// OrganizeMove defines model for OrganizeMove.
+type OrganizeMove struct {
+	// From カードをドラッグして出した開いているグループ
+	From *int64 `json:"from,omitempty"`
+
+	// Items ドラッグしたカード。画面の順
+	Items OrganizeRefs `json:"items"`
+
+	// To カードを入れるグループ。無ければライブラリ（`from` から外すだけ）
+	To *int64 `json:"to,omitempty"`
+}
+
 // OrganizeRef ドラッグしたカード 1 枚（specs/050-drag-organize/research.md R-4）
 type OrganizeRef struct {
 	// Id 動画かグループの id
@@ -4136,6 +4148,9 @@ type UpdateOrganizationJSONRequestBody = CreditPatch
 // MergeOrganizationsJSONRequestBody defines body for MergeOrganizations for application/json ContentType.
 type MergeOrganizationsJSONRequestBody = CreditMergeRequest
 
+// OrganizeMoveJSONRequestBody defines body for OrganizeMove for application/json ContentType.
+type OrganizeMoveJSONRequestBody = OrganizeMove
+
 // OrganizeReorderJSONRequestBody defines body for OrganizeReorder for application/json ContentType.
 type OrganizeReorderJSONRequestBody = OrganizeReorder
 
@@ -4360,6 +4375,9 @@ type ServerInterface interface {
 	// MergeOrganizations sourceIds の団体を id の団体へ統合する
 	// (POST /api/organizations/{id}/merge)
 	MergeOrganizations(w http.ResponseWriter, r *http.Request, id OrganizationId)
+	// OrganizeMove カードをグループへ入れるか、グループの間で動かすか、グループから外し、取り消しのトークンを返す
+	// (POST /api/organize/move)
+	OrganizeMove(w http.ResponseWriter, r *http.Request)
 	// OrganizeReorder グループの項目をまとめて並べ替え、取り消しのトークンを返す
 	// (POST /api/organize/reorder)
 	OrganizeReorder(w http.ResponseWriter, r *http.Request)
@@ -6028,6 +6046,20 @@ func (siw *ServerInterfaceWrapper) MergeOrganizations(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MergeOrganizations(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OrganizeMove operation middleware
+func (siw *ServerInterfaceWrapper) OrganizeMove(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OrganizeMove(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9121,6 +9153,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/items/{itemId}/move", wrapper.MoveGroupItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/tag", wrapper.TagGroup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/reorder", wrapper.OrganizeReorder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/move", wrapper.OrganizeMove)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/undo", wrapper.OrganizeUndo)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
