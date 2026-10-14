@@ -142,18 +142,17 @@ export function moveAfter<T, K>(
 }
 
 /**
- * liftedKeys は押したカード `pressed` から持ち上げるカードを返す。押したカードが選択に
- * 入っていれば選択したすべて（`selected`、画面の順）、入っていなければそれだけ。
+ * liftedKeys は押したカード `pressed` から持ち上げるカードを返す。押したカードが選択した
+ * カード `selected`（「Favorite」と同じ分け方で、選んだグループのメンバーの動画は入らない）に
+ * あれば選択したすべてを画面の順で、無ければそれだけ（ui-design.md「Lifting」）。
  */
 export function liftedKeys(
   order: readonly string[],
   pressed: string,
-  pressedSelected: boolean,
   selected: readonly string[],
 ): string[] {
-  if (!pressedSelected) return [pressed];
   const keys = new Set(selected);
-  keys.add(pressed);
+  if (!keys.has(pressed)) return [pressed];
   return order.filter((key) => keys.has(key));
 }
 
@@ -166,18 +165,48 @@ export interface Rect {
 }
 
 /**
- * axisOf はカード `rect` の並びの向きを返す。同じ高さに別のカードがあれば 2 列以上の格子
- * （x）、無ければ 1 列の格子かリスト（y）。
+ * axisOf は格子の並びの向きを返す。同じ高さに左の位置が違うカードが 1 組でもあれば 2 列以上の
+ * 格子（x）、無ければ 1 列の格子かリスト（y）。最後の行に 1 枚しか無くても格子全体で決める。
  */
-export function axisOf(rect: Rect, others: Iterable<Rect>): Axis {
-  for (const other of others) {
-    if (
-      other !== rect &&
-      Math.abs(other.top - rect.top) < 1 &&
-      other.left !== rect.left
-    ) {
-      return "x";
-    }
+export function axisOf(rects: Iterable<Rect>): Axis {
+  const leftByRow = new Map<number, number>();
+  for (const rect of rects) {
+    const row = Math.round(rect.top);
+    const left = leftByRow.get(row);
+    if (left !== undefined && Math.abs(left - rect.left) >= 1) return "x";
+    leftByRow.set(row, rect.left);
   }
   return "y";
+}
+
+/** Point は画面上の点である。 */
+export interface Point {
+  x: number;
+  y: number;
+}
+
+/** distanceToRect は点 `at` から箱 `rect` までの距離である。箱の中なら 0。 */
+export function distanceToRect(at: Point, rect: Rect): number {
+  const dx = Math.max(rect.left - at.x, 0, at.x - (rect.left + rect.width));
+  const dy = Math.max(rect.top - at.y, 0, at.y - (rect.top + rect.height));
+  return Math.hypot(dx, dy);
+}
+
+/**
+ * nearestWithin は点 `at` から `reach` 以内でいちばん近い箱の鍵を返す（無ければ null）。
+ * カードの隙間（`gap-3`）に置いた棒の上でもポインタが落とす先を失わないための規則である。
+ */
+export function nearestWithin<K>(
+  at: Point,
+  rects: Iterable<readonly [K, Rect]>,
+  reach: number,
+): K | null {
+  let best: { key: K; distance: number } | null = null;
+  for (const [key, rect] of rects) {
+    const distance = distanceToRect(at, rect);
+    if (distance <= reach && (best === null || distance < best.distance)) {
+      best = { key, distance };
+    }
+  }
+  return best === null ? null : best.key;
 }

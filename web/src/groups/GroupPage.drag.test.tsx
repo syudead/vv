@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   json,
+  layoutRows,
   renderPage,
   seed,
   server,
@@ -116,6 +117,49 @@ describe("GroupPage drag", () => {
     expect(cardTitles()).toEqual(["Episode 1", "Episode 2", "Extras"]);
     await waitFor(() =>
       expect(reorders()).toEqual([{ groupId: 1, itemIds: [101, 103] }]),
+    );
+  });
+
+  it("選んだ子グループのメンバーの直接の動画は、チェックが見えていてもそれだけが動く", async () => {
+    seed();
+    // 「Bonus」（動画 12）は子グループ「Extras」のメンバーで、Season の直接の項目でもある。
+    server.groups.get(1)?.items.push({
+      id: 104,
+      kind: "video",
+      video: video(12, { title: "Bonus" }),
+    });
+    layoutCards();
+    renderPage("/groups/1");
+    await screen.findByRole("heading", { level: 1, name: "Season" });
+    const user = userEvent.setup();
+    await user.click(
+      screen.getByRole("checkbox", { name: /^Select the group "?Extras"?$/ }),
+    );
+    expect(
+      (screen.getByRole("checkbox", { name: /^Select "?Bonus"?$/ }) as HTMLButtonElement)
+        .dataset.state,
+    ).toBe("checked");
+
+    lift("Bonus", 3);
+    moveTo(0, 0.1);
+    expect(screen.queryByLabelText(/items$/)).toBeNull();
+    release(0, 0.1);
+
+    expect(cardTitles()).toEqual(["Bonus", "Episode 1", "Extras", "Episode 2"]);
+    await waitFor(() => expect(reorders()).toEqual([{ groupId: 1, itemIds: [104] }]));
+  });
+
+  it("カードの隙間でも、いちばん近いカードの間に落とせる", async () => {
+    await openGrid();
+    lift("Episode 2", 2);
+    // 1 枚目の右端から 6px（カードの間の gap-3 の中央）。
+    moveTo(0, 1 + 6 / cardWidth);
+    expect(document.querySelector('[data-drop-bar="before"]')).not.toBeNull();
+    release(0, 1 + 6 / cardWidth);
+
+    expect(cardTitles()).toEqual(["Episode 1", "Episode 2", "Extras"]);
+    await waitFor(() =>
+      expect(reorders()).toEqual([{ groupId: 1, itemIds: [103], after: 101 }]),
     );
   });
 
@@ -267,6 +311,24 @@ describe("GroupPage drag", () => {
         .getAllByRole("link")
         .map((link) => link.getAttribute("title")),
     ).toEqual(["Episode 2", "Episode 1", "Extras"]);
+  });
+
+  it("リストのハンドルは 044 のまま 4px で持ち上がる", async () => {
+    seed();
+    layoutRows();
+    const user = userEvent.setup();
+    renderPage("/groups/1");
+    await screen.findByRole("heading", { level: 1 });
+    await user.click(await screen.findByRole("radio", { name: "List" }));
+    const handle = screen.getByRole("button", { name: 'Reorder "Episode 2"' });
+
+    fireEvent.pointerDown(handle, { ...mouse, clientX: 10, clientY: 120 });
+    fireEvent.pointerMove(document, { ...mouse, clientX: 10, clientY: 115 });
+    expect(handle.getAttribute("aria-pressed")).toBe("true");
+
+    fireEvent.pointerMove(document, { ...mouse, clientX: 10, clientY: 5 });
+    fireEvent.pointerUp(document, { ...mouse, clientX: 10, clientY: 5 });
+    await waitFor(() => expect(reorders()).toEqual([{ groupId: 1, itemIds: [103] }]));
   });
 
   it("ゲストにはドラッグが無い", async () => {

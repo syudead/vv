@@ -2,6 +2,7 @@ import {
   type Announcements,
   type ClientRect,
   closestCenter,
+  type Collision,
   type CollisionDetection,
   DndContext,
   type DragEndEvent,
@@ -11,6 +12,7 @@ import {
   type Modifier,
   PointerSensor,
   type PointerSensorOptions,
+  type PointerSensorProps,
   pointerWithin,
   TouchSensor,
   type TouchSensorOptions,
@@ -48,6 +50,7 @@ import {
   type Axis,
   axisOf,
   type DropSign,
+  nearestWithin,
   normalizeBetween,
   type OntoAnswer,
   signFor,
@@ -62,7 +65,9 @@ import { verticalOnly } from "./reorder";
 //
 // - マウスは 8 px 動いたら、タッチは 200 ms 押したら持ち上がる。それより前に離せばクリック、
 //   動かせばスクロールのまま。カードの中の操作（チェック、角の印、タグ、`×`）からは
-//   持ち上がらない。
+//   持ち上がらない。リストのハンドルは 044 のまま 4 px で持ち上がる。
+// - カードの隙間（`gap-3`）では、いちばん近いカードを落とす先にする。間の棒は隙間の中央に
+//   立つので、その上で離しても落とせる。
 // - 持ち上げたカードはその場で半透明になり、写しがポインタに付いてくる。Esc や何も無い所で
 //   離すと何も送らない。
 // - リストのハンドルは 044 の持ち上げ方（行が縦に動き、ほかの行が避ける）とキーボード
@@ -121,7 +126,22 @@ function startsOnControl(target: EventTarget | null, currentTarget: EventTarget 
   return control !== null && control !== currentTarget && currentTarget.contains(control);
 }
 
-/** CardPointerSensor はマウスとペンで持ち上げる。タッチは CardTouchSensor に任せる。 */
+/** onHandle は押した場所がリストのハンドルかを返す。 */
+function onHandle(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest(`[${handleAttribute}]`) !== null;
+}
+
+/** cardDistance はカードと行が持ち上がるまでの距離（px）である。 */
+const cardDistance = 8;
+
+/** handleDistance はリストのハンドルが持ち上がるまでの距離（px）である（044 のまま）。 */
+const handleDistance = 4;
+
+/**
+ * CardPointerSensor はマウスとペンで持ち上げる。カードと行は 8 px、ハンドルは 044 のまま
+ * 4 px 動いたら持ち上がる。dnd-kit は同じ出来事の activator を 1 つしか持てないので、
+ * 1 つのセンサーが押した場所で距離を決める。タッチは CardTouchSensor に任せる。
+ */
 class CardPointerSensor extends PointerSensor {
   static activators = [
     {
@@ -138,6 +158,14 @@ class CardPointerSensor extends PointerSensor {
       },
     },
   ];
+
+  constructor(props: PointerSensorProps) {
+    const distance = onHandle(props.event.target) ? handleDistance : cardDistance;
+    super({
+      ...props,
+      options: { ...props.options, activationConstraint: { distance } },
+    });
+  }
 }
 
 /** CardTouchSensor は 200 ms の長押しで持ち上げる。 */
@@ -161,7 +189,7 @@ class CardTouchSensor extends TouchSensor {
 /** useCardSensors はカードの持ち上げ方である（R-7）。キーボードはハンドルだけが使う。 */
 function useCardSensors() {
   return useSensors(
-    useSensor(CardPointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(CardPointerSensor),
     useSensor(CardTouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
@@ -217,11 +245,43 @@ function sameSign(a: CardSign | null, b: CardSign | null): boolean {
 
 /** modeOf は持ち上げを始めた出来事から持ち上げ方を決める。 */
 function modeOf(event: Event): Mode {
-  if (event instanceof KeyboardEvent) return "handle";
-  const target = event.target;
-  return target instanceof Element && target.closest(`[${handleAttribute}]`) !== null
-    ? "handle"
-    : "cards";
+  return event instanceof KeyboardEvent || onHandle(event.target) ? "handle" : "cards";
+}
+
+/**
+ * gapReach は隙間でいちばん近いカードを落とす先にする距離（px）である。格子の `gap-3`
+ * （12 px）の中のどこからでも、どちらかのカードが 6 px 以内にある。
+ */
+const gapReach = 12;
+
+/**
+ * probeAt はポインタの下か、隙間ならいちばん近い持ち上げていないカードの Probe を返す。
+ * 持ち上げたカードの隣の隙間でも、その向こうのカードの間として落とせる。
+ */
+function probeAt(
+  pointer: { x: number; y: number } | null,
+  collisions: Collision[],
+  droppableRects: ReadonlyMap<UniqueIdentifier, ClientRect>,
+  lifted: ReadonlySet<string>,
+): { probe: Probe | null; collisions: Collision[] } {
+  if (pointer === null) return { probe: null, collisions };
+  let key = collisions[0]?.id ?? null;
+  if (key === null) {
+    const others = Array.from(droppableRects.entries()).filter(
+      ([id]) => !lifted.has(String(id)),
+    );
+    key = nearestWithin(pointer, others, gapReach);
+    if (key !== null) collisions = [{ id: key, data: { value: 0 } }];
+  }
+  const rect = key === null ? undefined : droppableRects.get(key);
+  if (key === null || rect === undefined) return { probe: null, collisions };
+  const probe = {
+    key: String(key),
+    pointer,
+    rect,
+    rects: Array.from(droppableRects.values()),
+  };
+  return { probe, collisions };
 }
 
 export interface CardDragLayerProps {
@@ -259,7 +319,7 @@ function signAt(
   props: CardDragLayerProps,
 ): { sign: CardSign | null; axis: Axis } {
   if (probe === null) return { sign: null, axis: state.axis };
-  const axis = axisOf(probe.rect, probe.rects);
+  const axis = axisOf(probe.rects);
   const onto = props.onto?.(probe.key, state.lifted) ?? null;
   const split = props.reorder && onto === null ? "halves" : "quarters";
   const zone =
@@ -385,19 +445,14 @@ export function CardDragLayer(props: CardDragLayerProps) {
 
   const detect = useCallback<CollisionDetection>((args) => {
     if (current.current?.mode === "handle") return closestCenter(args);
-    const collisions = pointerWithin(args);
-    const first = collisions[0];
-    const rect = first === undefined ? undefined : args.droppableRects.get(first.id);
-    probe.current =
-      first === undefined || rect === undefined || args.pointerCoordinates === null
-        ? null
-        : {
-            key: String(first.id),
-            pointer: args.pointerCoordinates,
-            rect,
-            rects: Array.from(args.droppableRects.values()),
-          };
-    return collisions;
+    const found = probeAt(
+      args.pointerCoordinates,
+      pointerWithin(args),
+      args.droppableRects,
+      current.current?.liftedSet ?? new Set(),
+    );
+    probe.current = found.probe;
+    return found.collisions;
   }, []);
 
   const start = useCallback(

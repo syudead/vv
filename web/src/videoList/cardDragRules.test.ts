@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 
 import {
   axisOf,
+  distanceToRect,
   liftedKeys,
   moveAfter,
+  nearestWithin,
   normalizeBetween,
   reorderDrop,
   signFor,
@@ -122,20 +124,45 @@ describe("moveAfter", () => {
 
 describe("liftedKeys", () => {
   it("lifts the whole selection in screen order when the pressed card is selected", () => {
-    expect(liftedKeys(order, "d", true, ["d", "a"])).toEqual(["a", "d"]);
+    expect(liftedKeys(order, "d", ["d", "a"])).toEqual(["a", "d"]);
   });
 
-  it("lifts the pressed card alone when it is not selected", () => {
-    expect(liftedKeys(order, "b", false, ["d", "a"])).toEqual(["b"]);
+  it("lifts the pressed card alone when it is not among the selected items", () => {
+    // 選んだ子グループのメンバーの動画の直接の項目は、チェックが見えていても選択した項目に
+    // 入らない（「Favorite」の分け方）ので、それだけが持ち上がる。
+    expect(liftedKeys(order, "b", ["d", "a"])).toEqual(["b"]);
   });
 });
 
 describe("axisOf", () => {
   const rect = (left: number, top: number) => ({ left, top, width: 10, height: 10 });
 
-  it("is x when another card shares the row, else y", () => {
-    const first = rect(0, 0);
-    expect(axisOf(first, [first, rect(20, 0)])).toBe("x");
-    expect(axisOf(first, [first, rect(0, 20)])).toBe("y");
+  it("is x when any row holds two cards, even for a last row of one", () => {
+    expect(axisOf([rect(0, 0), rect(20, 0), rect(40, 0), rect(0, 20)])).toBe("x");
+  });
+
+  it("is y for one column and for a single card", () => {
+    expect(axisOf([rect(0, 0), rect(0, 20)])).toBe("y");
+    expect(axisOf([rect(0, 0)])).toBe("y");
+  });
+});
+
+describe("nearestWithin", () => {
+  const rect = (left: number) => ({ left, top: 0, width: 190, height: 150 });
+
+  it("measures the distance to a card's edge, zero inside it", () => {
+    expect(distanceToRect({ x: 50, y: 50 }, rect(0))).toBe(0);
+    expect(distanceToRect({ x: 196, y: 50 }, rect(0))).toBe(6);
+    expect(distanceToRect({ x: 196, y: 50 }, rect(200))).toBe(4);
+  });
+
+  it("picks the closest card within reach of a point in the gap", () => {
+    const cards = [
+      ["a", rect(0)],
+      ["b", rect(200)],
+    ] as const;
+    expect(nearestWithin({ x: 196, y: 50 }, cards, 12)).toBe("b");
+    expect(nearestWithin({ x: 194, y: 50 }, cards, 12)).toBe("a");
+    expect(nearestWithin({ x: 195, y: 400 }, cards, 12)).toBeNull();
   });
 });

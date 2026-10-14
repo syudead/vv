@@ -48,13 +48,13 @@ function ItemFace({ item, list }: { item: GroupItem; list: boolean }) {
 /**
  * GroupDragLayer はグループのページの所有者の格子とリストを包むドラッグの層である
  * （specs/050-drag-organize/ui-design.md「Group page」）。カードか行の間に落とすと、持ち上げた
- * 項目を画面の順のまま、その間の前の項目（先頭なら無し）の後ろへ並べ替える。選択した項目を
- * 持ち上げると、選択したすべて（「Remove from group」と同じ分け方）がいっしょに動く。
+ * 項目を画面の順のまま、その間の前の項目（先頭なら無し）の後ろへ並べ替える。選択した項目
+ * （「Remove from group」と同じ分け方。選んだ子グループのメンバーの動画の直接の項目は、
+ * チェックが見えていても入らない）を持ち上げると、選択したすべてがいっしょに動く。
  */
 export function GroupDragLayer({
   items,
   list,
-  isSelected,
   selectedItems,
   onReorder,
   onLift,
@@ -62,9 +62,7 @@ export function GroupDragLayer({
 }: {
   items: readonly GroupItem[];
   list: boolean;
-  /** 項目が選択に入って見えているか（カードのチェック）。 */
-  isSelected: (item: GroupItem) => boolean;
-  /** 選択した項目の id（画面の順）。 */
+  /** 選択した項目の id（画面の順、「Remove from group」と同じ分け方）。 */
   selectedItems: readonly number[];
   /** 項目 `itemIds` を画面の順のまま項目 `after`（null は先頭）の後ろへ移す。 */
   onReorder: (itemIds: readonly number[], after: number | null) => void;
@@ -78,12 +76,8 @@ export function GroupDragLayer({
   );
 
   const liftedFor = useCallback(
-    (key: string) => {
-      const item = byKey.get(key);
-      const selected = item !== undefined && isSelected(item);
-      return liftedKeys(order, key, selected, selectedItems.map(String));
-    },
-    [byKey, isSelected, order, selectedItems],
+    (key: string) => liftedKeys(order, key, selectedItems.map(String)),
+    [order, selectedItems],
   );
   const nameOf = useCallback(
     (key: string) => {

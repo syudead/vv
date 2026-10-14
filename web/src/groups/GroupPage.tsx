@@ -649,7 +649,6 @@ function GroupItems({
       <GroupDragLayer
         items={data.items}
         list={list}
-        isSelected={itemSelected}
         selectedItems={drag.selectedItems}
         onReorder={drag.onReorder}
         onLift={drag.onLift}

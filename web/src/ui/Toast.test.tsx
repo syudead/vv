@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UiText } from "../i18n";
@@ -37,6 +38,30 @@ function ActionHarness({ action }: { action: ToastAction }) {
           {message}
         </button>
       ))}
+    </>
+  );
+}
+
+/** DismissHarness は通知「first」「second」を出し、「close second」で second の閉じる関数を呼ぶ。 */
+function DismissHarness() {
+  const toast = useToast();
+  const [closeSecond, setCloseSecond] = useState<() => void>(() => () => undefined);
+  return (
+    <>
+      <button type="button" onClick={() => toast("first" as UiText)}>
+        first
+      </button>
+      <button
+        type="button"
+        onClick={() =>
+          setCloseSecond(() => toast("second" as UiText, { duration: 60_000 }))
+        }
+      >
+        second
+      </button>
+      <button type="button" onClick={closeSecond}>
+        close second
+      </button>
     </>
   );
 }
@@ -139,6 +164,31 @@ describe("ToastProvider", () => {
     expect(visible()).toEqual(["first"]);
 
     advance(toastDuration + 200);
+    expect(visible()).toEqual([]);
+  });
+
+  it("closes a toast through its dismiss function after a placement change re-queued it", () => {
+    const { rerender } = render(
+      <ToastProvider>
+        <DismissHarness />
+      </ToastProvider>,
+    );
+    press("first");
+    press("second");
+    advance(10);
+    expect(visible()).toEqual(["second", "first"]);
+
+    // 再生画面では 1 件だけ出すので、second は新しい id で待ちに戻る。
+    rerender(
+      <ToastProvider placement="playback">
+        <DismissHarness />
+      </ToastProvider>,
+    );
+    advance(settle);
+    expect(visible()).toEqual(["first"]);
+    press("close second");
+
+    advance(toastDuration + settle);
     expect(visible()).toEqual([]);
   });
 

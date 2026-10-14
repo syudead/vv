@@ -59,14 +59,30 @@ export function useToast(): ShowToast {
 }
 
 interface ToastItem {
+  /** Sonner に渡す id。配置が変わって出し直すと変わる。 */
   id: string;
+  /** 呼び出し元が閉じるのに使う鍵。出し直しても変わらない。 */
+  handle: string;
   message: UiText;
   options: ToastOptions;
+  /** アクションを実行中か。出し直しても引き継ぐ。 */
+  busy: { running: boolean };
 }
 
-/** ToastActionButton は通知のアクションである。押した後は二度送らない。 */
-function ToastActionButton({ id, action }: { id: string; action: ToastAction }) {
-  const [running, setRunning] = useState(false);
+/**
+ * ToastActionButton は通知のアクションである。押した後は二度送らず、配置が変わって通知を
+ * 出し直しても実行中のままにする。終わったら通知を（出し直した後でも）閉じる。
+ */
+function ToastActionButton({
+  item,
+  action,
+  onDone,
+}: {
+  item: ToastItem;
+  action: ToastAction;
+  onDone: () => void;
+}) {
+  const [running, setRunning] = useState(item.busy.running);
   return (
     <Button
       type="button"
@@ -76,8 +92,9 @@ function ToastActionButton({ id, action }: { id: string; action: ToastAction }) 
       disabled={running}
       aria-busy={running || undefined}
       onClick={() => {
+        item.busy.running = true;
         setRunning(true);
-        void action.run().finally(() => sonner.dismiss(id));
+        void action.run().finally(onDone);
       }}
     >
       {running && <Spinner aria-hidden="true" />}
@@ -159,34 +176,55 @@ export function ToastProvider({
   const limit = useRef<number>(visibleLimit[placement]);
   const wide = useWide();
 
-  // display は Sonner に 1 件を渡す。消えたら（時間切れでも閉じても）待ちから次を出す。
-  const display = useCallback((item: ToastItem) => {
-    shown.current.push(item);
-    const closed = () => {
-      const index = shown.current.findIndex((entry) => entry.id === item.id);
-      if (index === -1) return;
-      shown.current.splice(index, 1);
-      while (shown.current.length < limit.current) {
-        const next = waiting.current.shift();
-        if (next === undefined) return;
-        display(next);
-      }
-    };
-    const { action, duration } = item.options;
-    sonner(item.message, {
-      id: item.id,
-      duration: duration ?? (action === undefined ? toastDuration : actionToastDuration),
-      action:
-        action === undefined ? undefined : (
-          <ToastActionButton id={item.id} action={action} />
-        ),
-      onAutoClose: closed,
-      onDismiss: closed,
-    });
+  // 出しているか待っている、アクションを持つ通知の鍵。次のものが前のものを置き換える。
+  const lastAction = useRef<string | null>(null);
+
+  // dismiss は鍵 `handle` の通知を、待っていれば待ちから外し、出ていれば閉じる。配置が
+  // 変わって出し直した通知も、鍵は同じなので閉じられる。
+  const dismiss = useCallback((handle: string) => {
+    if (lastAction.current === handle) lastAction.current = null;
+    const index = waiting.current.findIndex((entry) => entry.handle === handle);
+    if (index !== -1) {
+      waiting.current.splice(index, 1);
+      return;
+    }
+    const entry = shown.current.find((each) => each.handle === handle);
+    if (entry !== undefined) sonner.dismiss(entry.id);
   }, []);
 
-  // 出しているか待っている、アクションを持つ通知の id。次のものが前のものを置き換える。
-  const lastAction = useRef<string | null>(null);
+  // display は Sonner に 1 件を渡す。消えたら（時間切れでも閉じても）待ちから次を出す。
+  const display = useCallback(
+    (item: ToastItem) => {
+      shown.current.push(item);
+      const closed = () => {
+        const index = shown.current.findIndex((entry) => entry.id === item.id);
+        if (index === -1) return;
+        shown.current.splice(index, 1);
+        while (shown.current.length < limit.current) {
+          const next = waiting.current.shift();
+          if (next === undefined) return;
+          display(next);
+        }
+      };
+      const { action, duration } = item.options;
+      sonner(item.message, {
+        id: item.id,
+        duration:
+          duration ?? (action === undefined ? toastDuration : actionToastDuration),
+        action:
+          action === undefined ? undefined : (
+            <ToastActionButton
+              item={item}
+              action={action}
+              onDone={() => dismiss(item.handle)}
+            />
+          ),
+        onAutoClose: closed,
+        onDismiss: closed,
+      });
+    },
+    [dismiss],
+  );
 
   const enqueue = useCallback(
     (item: ToastItem) => {
@@ -206,25 +244,22 @@ export function ToastProvider({
     [display],
   );
 
-  const dismiss = useCallback((id: string) => {
-    if (lastAction.current === id) lastAction.current = null;
-    const index = waiting.current.findIndex((entry) => entry.id === id);
-    if (index !== -1) {
-      waiting.current.splice(index, 1);
-      return;
-    }
-    sonner.dismiss(id);
-  }, []);
-
   const show = useCallback<ShowToast>(
     (message, options = {}) => {
-      const item = { id: nextToastId(), message, options };
+      const id = nextToastId();
+      const item: ToastItem = {
+        id,
+        handle: id,
+        message,
+        options,
+        busy: { running: false },
+      };
       if (options.action !== undefined) {
         if (lastAction.current !== null) dismiss(lastAction.current);
-        lastAction.current = item.id;
+        lastAction.current = item.handle;
       }
       enqueue(item);
-      return () => dismiss(item.id);
+      return () => dismiss(item.handle);
     },
     [dismiss, enqueue],
   );
@@ -237,12 +272,9 @@ export function ToastProvider({
     const extra = shown.current.splice(limit.current);
     for (const item of extra) sonner.dismiss(item.id);
     // 戻した通知は新しい id で出し直す。同じ id のまま出すと、Sonner は消す途中の
-    // 通知の更新として扱い、消さずに残す。
-    const renamed = extra.map((item) => {
-      const id = nextToastId();
-      if (lastAction.current === item.id) lastAction.current = id;
-      return { ...item, id };
-    });
+    // 通知の更新として扱い、消さずに残す。鍵（handle）は変えないので、呼び出し元の
+    // 閉じる関数は出し直した後も効く。
+    const renamed = extra.map((item) => ({ ...item, id: nextToastId() }));
     waiting.current.unshift(...renamed);
     while (shown.current.length < limit.current) {
       const next = waiting.current.shift();
