@@ -1,9 +1,20 @@
-import { CheckCheck, Layers, ListPlus, Minus, Plus } from "lucide-react";
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  CheckCheck,
+  FolderMinus,
+  FolderPlus,
+  Group,
+  Layers,
+  ListPlus,
+  Minus,
+  Plus,
+} from "lucide-react";
+import { type ReactNode, useEffect, useId, useRef, useState } from "react";
 
-import { type FolderRef, maxBundleSelection, type VideoVersions } from "../api/client";
+import { maxBundleSelection, type VideoVersions } from "../api/client";
 import { maxVideoTagsSelection } from "../api/tags";
-import { t } from "../i18n";
+import GroupPicker from "../groups/GroupPicker";
+import NewGroupDialog from "../groups/NewGroupDialog";
+import { t, type UiText } from "../i18n";
 import PlaylistPicker from "../playlists/PlaylistPicker";
 import { SelectionBar as SelectionBarSection } from "../ui/patterns/selection-bar";
 import { Popover, PopoverTrigger } from "../ui/shadcn/popover";
@@ -15,6 +26,45 @@ import RemoveTagPopover from "./RemoveTagPopover";
 import { SelectionAction, WithTooltip } from "./SelectionAction";
 import { overLimitMessage } from "./selectionErrors";
 import VisibilityMenu from "./VisibilityMenu";
+
+/**
+ * PickerAction は選択バーの、ピッカーを上に開く操作（「Add to playlist」「Add to group」）である。
+ * 送るものは「Favorite」と同じで、上限を超えたら押せなくして理由を添える。
+ */
+function PickerAction({
+  icon,
+  label,
+  overLimit,
+  overLimitId,
+  open,
+  onOpenChange,
+  children,
+}: {
+  icon: ReactNode;
+  label: UiText;
+  overLimit: boolean;
+  overLimitId: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  children: ReactNode;
+}) {
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <WithTooltip label={label}>
+        <PopoverTrigger asChild>
+          <SelectionAction
+            icon={icon}
+            label={label}
+            disabled={overLimit}
+            title={overLimit ? overLimitMessage() : undefined}
+            aria-describedby={overLimit ? overLimitId : undefined}
+          />
+        </PopoverTrigger>
+      </WithTooltip>
+      {children}
+    </Popover>
+  );
+}
 
 export interface SelectionBarProps {
   /** 選んだ動画の本数（グループはメンバーを数える）。 */
@@ -31,7 +81,7 @@ export interface SelectionBarProps {
    * グループ（specs/035-favorites/research.md R-7）。上限はこの 2 つの合計で判定する。
    */
   favoriteVideoIds: readonly number[];
-  favoriteFolders: readonly FolderRef[];
+  favoriteGroupIds: readonly number[];
   /** 「すべて選択」の要求の間 true（ui-design.md「Selection bar」の「Layout」）。 */
   selectingAll: boolean;
   onSelectAll: () => void;
@@ -47,6 +97,17 @@ export interface SelectionBarProps {
    * 解除して一覧を取り直す（specs/030-video-versions/ui-design.md「Bundle dialog」）。
    */
   onBundled: (versions: VideoVersions) => void;
+  /**
+   * グループのページだけが渡す「Remove from group」（specs/048-groups/ui-design.md
+   * 「Selection bar」）。`count` は外す項目の数で、0 の間と送っている間（`pending`）は押せない。
+   * `itemIds` の上限（20000、contracts/screen-api.md）を超える間は、「Favorite」と同じ理由を
+   * 添えて押せない（分けて送らない。docs/design-docs/library-ui.md §6）。
+   */
+  removeFromGroup?: {
+    count: number;
+    pending: boolean;
+    onRemove: () => void;
+  };
 }
 
 /**
@@ -60,16 +121,19 @@ export default function SelectionBar({
   allSelected,
   selectedIds,
   favoriteVideoIds,
-  favoriteFolders,
+  favoriteGroupIds,
   selectingAll,
   onSelectAll,
   onClear,
   onTagRemoved,
   onBundled,
+  removeFromGroup,
 }: SelectionBarProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
+  const [groupOpen, setGroupOpen] = useState(false);
+  const [newGroupOpen, setNewGroupOpen] = useState(false);
   const addTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // `POST /api/video-tags` は videoIds 1件以上 maxVideoTagsSelection 件以下を
@@ -78,12 +142,12 @@ export default function SelectionBar({
   // （Devin の指摘2、docs/design-docs/library-ui.md §6）。
   const overLimitId = useId();
   const overLimit = count > maxVideoTagsSelection;
-  // お気に入りの上限は送る数（videoIds と folders の合計）で判定する。メンバーが上限を超える
-  // グループ 1 つは、タグ・公開では押せないままで、お気に入りは folders 1 つとして押せる
+  // お気に入りの上限は送る数（videoIds と groupIds の合計）で判定する。メンバーが上限を超える
+  // グループ 1 つは、タグ・公開では押せないままで、お気に入りは groupIds 1 つとして押せる
   // （specs/035-favorites/ui-design.md「Selection bar」）。
   const favoriteOverLimitId = useId();
   const favoriteOverLimit =
-    favoriteVideoIds.length + favoriteFolders.length > maxVideoTagsSelection;
+    favoriteVideoIds.length + favoriteGroupIds.length > maxVideoTagsSelection;
 
   // 束ねる操作は 2 本以上で現れ、画面の側だけの上限 maxBundleSelection を超えると
   // disabled にして理由を添える（specs/030-video-versions/ui-design.md「Bundle action」）。
@@ -107,14 +171,30 @@ export default function SelectionBar({
       setAddOpen(false);
       setRemoveOpen(false);
       setPlaylistOpen(false);
+      setGroupOpen(false);
+      setNewGroupOpen(false);
       setBundleOpen(false);
     }
   }, [count]);
 
   // 「Add to playlist」は「Favorite」と同じ数で上限を判定する。開いている間に超えたら閉じる。
   useEffect(() => {
-    if (favoriteOverLimit) setPlaylistOpen(false);
+    if (favoriteOverLimit) {
+      setPlaylistOpen(false);
+      setGroupOpen(false);
+    }
   }, [favoriteOverLimit]);
+
+  // 「New group」はグループ 1 つだけの選択では押せない。グループ 1 つのグループは段を足すだけで
+  // ある（specs/048-groups/ui-design.md「Selection bar」）。
+  const newGroupNeedsMoreId = useId();
+  const newGroupNeedsMore =
+    favoriteGroupIds.length === 1 && favoriteVideoIds.length === 0;
+  const newGroupReason = favoriteOverLimit
+    ? overLimitMessage()
+    : newGroupNeedsMore
+      ? t.library.selection.newGroupNeedsMore
+      : undefined;
 
   // ポップオーバーを開いたままの間に選択が増えて上限を超えたら、両方閉じる
   // （トリガを disabled にするだけでは、開いている最中の分は防げない。
@@ -191,7 +271,7 @@ export default function SelectionBar({
 
         <FavoriteMenu
           videoIds={favoriteVideoIds}
-          folders={favoriteFolders}
+          groupIds={favoriteGroupIds}
           overLimit={favoriteOverLimit}
           overLimitId={favoriteOverLimitId}
         />
@@ -203,27 +283,80 @@ export default function SelectionBar({
 
         {/* 「Favorite」の直後、「Visibility」の前。送るものは「Favorite」と同じで、結果の後も
             選択は残す（specs/044-playlists/ui-design.md「Add to playlist」）。 */}
-        <Popover open={playlistOpen} onOpenChange={setPlaylistOpen}>
-          <WithTooltip label={t.library.selection.addToPlaylist}>
-            <PopoverTrigger asChild>
-              <SelectionAction
-                icon={<ListPlus aria-hidden="true" />}
-                label={t.library.selection.addToPlaylist}
-                disabled={favoriteOverLimit}
-                title={favoriteOverLimit ? overLimitMessage() : undefined}
-                aria-describedby={favoriteOverLimit ? favoriteOverLimitId : undefined}
-              />
-            </PopoverTrigger>
-          </WithTooltip>
+        <PickerAction
+          icon={<ListPlus aria-hidden="true" />}
+          label={t.library.selection.addToPlaylist}
+          overLimit={favoriteOverLimit}
+          overLimitId={favoriteOverLimitId}
+          open={playlistOpen}
+          onOpenChange={setPlaylistOpen}
+        >
           <PlaylistPicker
             open={playlistOpen}
             onOpenChange={setPlaylistOpen}
             videoIds={favoriteVideoIds}
-            folders={favoriteFolders}
+            groupIds={favoriteGroupIds}
             side="top"
             align="start"
           />
-        </Popover>
+        </PickerAction>
+
+        {/* 「Add to playlist」の後、「Visibility」の前。送るものは「Favorite」と同じ。「New group」の
+            後は選択を外し、「Add to group」の後は残す（specs/048-groups/ui-design.md
+            「Selection bar」）。 */}
+        <WithTooltip label={newGroupReason ?? t.library.selection.newGroup}>
+          <SelectionAction
+            icon={<Group aria-hidden="true" />}
+            label={t.library.selection.newGroup}
+            disabled={newGroupReason !== undefined}
+            title={newGroupReason}
+            aria-describedby={
+              favoriteOverLimit
+                ? favoriteOverLimitId
+                : newGroupNeedsMore
+                  ? newGroupNeedsMoreId
+                  : undefined
+            }
+            onClick={() => setNewGroupOpen(true)}
+          />
+        </WithTooltip>
+        {newGroupNeedsMore && (
+          <span id={newGroupNeedsMoreId} className="sr-only">
+            {t.library.selection.newGroupNeedsMore}
+          </span>
+        )}
+        {newGroupOpen && (
+          <NewGroupDialog
+            videoIds={favoriteVideoIds}
+            groupIds={favoriteGroupIds}
+            onClose={() => setNewGroupOpen(false)}
+            onCreated={() => {
+              setNewGroupOpen(false);
+              onClear();
+            }}
+          />
+        )}
+
+        <PickerAction
+          icon={<FolderPlus aria-hidden="true" />}
+          label={t.library.selection.addToGroup}
+          overLimit={favoriteOverLimit}
+          overLimitId={favoriteOverLimitId}
+          open={groupOpen}
+          onOpenChange={setGroupOpen}
+        >
+          <GroupPicker
+            open={groupOpen}
+            onOpenChange={setGroupOpen}
+            videoIds={favoriteVideoIds}
+            groupIds={favoriteGroupIds}
+            side="top"
+            align="start"
+          />
+        </PickerAction>
+
+        {/* グループのページだけ。「Add to group」の後、「Visibility」の前に置く。 */}
+        {removeFromGroup !== undefined && <RemoveFromGroupAction {...removeFromGroup} />}
 
         <VisibilityMenu
           selectedIds={selectedIds}
@@ -278,5 +411,38 @@ export default function SelectionBar({
         </WithTooltip>
       </SelectionBarSection>
     </div>
+  );
+}
+
+/**
+ * RemoveFromGroupAction は選択バーの「Remove from group」である（specs/048-groups/ui-design.md
+ * 「Selection bar」）。外す項目が無い間と送っている間は押せない。`itemIds` の上限を超える間は、
+ * 「Favorite」と同じ理由を添えて押せない。
+ */
+function RemoveFromGroupAction({
+  count,
+  pending,
+  onRemove,
+}: NonNullable<SelectionBarProps["removeFromGroup"]>) {
+  const overLimitId = useId();
+  const overLimit = count > maxVideoTagsSelection;
+  return (
+    <>
+      <WithTooltip label={t.library.selection.removeFromGroup}>
+        <SelectionAction
+          icon={<FolderMinus aria-hidden="true" />}
+          label={t.library.selection.removeFromGroup}
+          disabled={count === 0 || pending || overLimit}
+          title={overLimit ? overLimitMessage() : undefined}
+          aria-describedby={overLimit ? overLimitId : undefined}
+          onClick={onRemove}
+        />
+      </WithTooltip>
+      {overLimit && (
+        <span id={overLimitId} className="sr-only">
+          {overLimitMessage()}
+        </span>
+      )}
+    </>
   );
 }

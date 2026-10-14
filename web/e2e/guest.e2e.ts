@@ -491,8 +491,10 @@ test.describe.serial("guest", () => {
     await page.goto("/");
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
 
+    // `/api/events` はゲストにも `group` の知らせを届けるので、所有者だけのものに数えない
+    // （specs/048-groups/contracts/screen-api.md「/api/events」）。
     const ownerOnly = requests.filter((request) =>
-      /\/api\/(events|scans|processing|media-folders|tags|video-tags|video-visibility|favorites)|\/progress$/.test(
+      /\/api\/(scans|processing|media-folders|tags|video-tags|video-visibility|favorites)|\/progress$/.test(
         request,
       ),
     );

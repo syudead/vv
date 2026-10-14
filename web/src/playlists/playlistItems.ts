@@ -1,5 +1,6 @@
 import type { PlaylistItem } from "../api/playlists";
 import { formatDuration } from "../lib/format";
+import { orderedItemDurationMs, orderedItemTitle } from "../videoList/ItemRowCells";
 import { itemStartVideoId, stepPath } from "./playlistPlayback";
 
 // プレイリストの画面が項目から決める規則（specs/044-playlists/ui-design.md「Playlist screen」）。
@@ -11,19 +12,14 @@ export function playlistPath(id: number): string {
 }
 
 /**
- * itemTitle は項目の名前である。動画は題名、グループはフォルダ名。応答に中身が無い項目
+ * itemTitle は項目の名前である。動画は題名、グループは名前。応答に中身が無い項目
  * （契約上は起きない）は空にする。
  */
-export function itemTitle(item: PlaylistItem): string {
-  if (item.kind === "group") return item.group?.name ?? "";
-  return item.video?.title ?? "";
-}
+export const itemTitle: (item: PlaylistItem) => string = orderedItemTitle;
 
 /** itemDurationMs は項目の長さである。動画の長さか、グループの合計。分からなければ undefined。 */
-export function itemDurationMs(item: PlaylistItem): number | undefined {
-  if (item.kind === "group") return item.group?.durationMs;
-  return item.video?.durationMs;
-}
+export const itemDurationMs: (item: PlaylistItem) => number | undefined =
+  orderedItemDurationMs;
 
 /**
  * playlistDuration は見せる項目の長さの合計を「1:32:10」の形で返す。項目が無いか、長さの

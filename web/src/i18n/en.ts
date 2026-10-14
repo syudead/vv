@@ -66,12 +66,35 @@ function folders(count: number): string {
   });
 }
 
+function groupsCount(count: number): string {
+  return selectPlural(count, {
+    one: `${formatNumber(count)} group`,
+    other: `${formatNumber(count)} groups`,
+  });
+}
+
 function tagCount(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} tag`,
     other: `${formatNumber(count)} tags`,
   });
 }
+
+/**
+ * reorderTexts は並べ替えのキーボードの案内と dnd-kit の読み上げ（持ち上げ・移動・置く・
+ * 取り消し）である。位置は 1 始まり。プレイリストとグループのページが同じ文を使う。
+ */
+const reorderTexts = {
+  reorderInstructions:
+    "Press Space to pick up, the arrow keys to move, Space to drop and Esc to cancel.",
+  pickedUp: (title: string, position: number, count: number) =>
+    `Picked up "${title}", position ${formatNumber(position)} of ${formatNumber(count)}.`,
+  movedTo: (title: string, position: number, count: number) =>
+    `"${title}" moved to position ${formatNumber(position)} of ${formatNumber(count)}.`,
+  dropped: (title: string, position: number, count: number) =>
+    `Dropped "${title}" at position ${formatNumber(position)} of ${formatNumber(count)}.`,
+  cancelled: (title: string) => `Cancelled. "${title}" is back in its place.`,
+};
 
 /** selectedTags は「The 8 selected tags」（1 件は「The selected tag」）である。 */
 function selectedTags(count: number): string {
@@ -250,14 +273,13 @@ const errorReasons = {
   relative_directory_path: "The path must be absolute.",
   video_not_found: "The video wasn't found.",
   folder_not_found: "The folder wasn't found.",
-  not_folder_group: "This folder isn't a group.",
   no_scan: "No scan has run yet.",
   directory_not_found: "That folder wasn't found.",
   file_unavailable: "The video file can't be opened.",
   media_folders_changed:
     "The media folders were changed elsewhere. Reload and try again.",
-  root_group_not_taggable: "A media folder's own group can't be turned into a tag.",
-  folder_not_group: "This folder is no longer a group.",
+  group_target_not_found: "A video or group in the request no longer exists.",
+  group_cycle: "A group can't be put inside itself or inside a group it contains.",
   probe_info_missing: "This video is missing the information needed for this.",
   seek_preview_generating: "The seek preview is still being generated.",
   transcode_unavailable: "This video can't be converted for playback.",
@@ -788,6 +810,8 @@ export const en = {
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
       // プレイリストに足す操作の読み上げ名（specs/044-playlists/ui-design.md「Words」）。
       addToPlaylist: (title: string) => `Add "${title}" to a playlist`,
+      // グループに足す操作の読み上げ名（specs/048-groups/ui-design.md「Words」）。
+      addToGroup: (title: string) => `Add "${title}" to a group`,
       watchedRatio: "Watched portion",
       // 帯にいる間の時刻の表示。位置と長さは formatDuration で整えた文字列
       // （specs/032-card-scrub-preview/ui-design.md「Words」）。
@@ -853,6 +877,7 @@ export const en = {
       select: (name: string) => `Select the group "${name}"`,
       favorite: (name: string) => `Favorite group "${name}"`,
       addToPlaylist: (name: string) => `Add group "${name}" to a playlist`,
+      addToGroup: (name: string) => `Add group "${name}" to a group`,
       label: (name: string, count: number, watched: number) =>
         watched >= 1
           ? `${name}, group of ${videos(count)}, ${formatNumber(watched)} watched`
@@ -892,6 +917,9 @@ export const en = {
       favoritesRemoved: (count: number) => `Removed ${items(count)} from favorites`,
       favoritesFailed: (reason: string) => `Couldn't change the favorites: ${reason}`,
       addToPlaylist: "Add to playlist",
+      newGroup: "New group",
+      newGroupNeedsMore: "Select at least one video, or a group and something else",
+      addToGroup: "Add to group",
       visibility: "Visibility",
       makePublic: "Make public",
       makePrivate: "Make private",
@@ -900,6 +928,8 @@ export const en = {
       visibilityFailed: (reason: string) => `Couldn't change the visibility: ${reason}`,
       bundle: "Bundle as versions",
       bundleOverLimit: (limit: number) => `Bundle up to ${videos(limit)} at a time`,
+      // グループのページだけに出る（specs/048-groups/ui-design.md「Selection bar」）。
+      removeFromGroup: "Remove from group",
     },
   },
   folders: {
@@ -957,7 +987,7 @@ export const en = {
       changingShort: "Changing…",
       autoHint:
         "Automatic: groups folders below a media folder that have no subfolders and 2 or more videos",
-      toTag: "Turn the group into a tag",
+      toTag: "Turn the group into a tag…",
     },
   },
   tags: {
@@ -1311,11 +1341,6 @@ export const en = {
     deleted: (name: string) => `Deleted "${name}"`,
   },
   folderGrouping: {
-    ungrouped: (name: string) => `Ungrouped "${name}"`,
-    tagged: (name: string, created: boolean) =>
-      created
-        ? `Created the tag "${name}" and ungrouped`
-        : `Added the tag "${name}" and ungrouped`,
     cannotTag: (name: string) =>
       `"${name}" can't be used as a tag name, so it can't become a tag`,
     notGroup: "This folder is no longer a group",
@@ -1592,6 +1617,23 @@ export const en = {
       refusedSize: "Choose an image up to 64 MB.",
       failed: (reason: string) => `Couldn't upload the image: ${reason}`,
       uploadedThumbnail: "Uploaded thumbnail",
+      preview: {
+        title: "Preview thumbnail",
+        close: "Cancel and close",
+        fit: "How the image fits",
+        contain: "Whole image",
+        cover: "Fill frame",
+        containHint:
+          "The whole image shows. The rest of the frame is filled with a blurred copy.",
+        coverHint:
+          "The image fills the frame. Drag it to choose what shows, and zoom in to show less.",
+        unknownAspect: "The video's size is unknown, so the image keeps its own shape.",
+        zoom: "Zoom",
+        stage: "Thumbnail preview",
+        stageCover: "Thumbnail preview. Drag or use the arrow keys to move the image.",
+        apply: "Use as thumbnail",
+        cancel: "Cancel",
+      },
     },
     versions: {
       count: (count: number) =>
@@ -1784,11 +1826,16 @@ export const en = {
       private: "Private",
       failed: (reason: string) => `Couldn't change the visibility: ${reason}`,
     },
+    // Group line と、その後のグループ操作（specs/048-groups/ui-design.md「Video page」）。
     group: {
-      menu: (name: string, position: number, count: number) =>
-        `Group "${name}", video ${formatNumber(position)} of ${formatNumber(count)}. Grouping menu`,
-      ungroup: "Ungroup",
-      toTag: "Turn the group into a tag",
+      line: (name: string, position: number, count: number) =>
+        `Group "${name}", video ${formatNumber(position)} of ${formatNumber(count)}. Open the group`,
+      actions: "Group actions",
+      remove: "Remove from this group",
+      toTag: "Turn the group into a tag…",
+      dissolve: "Dissolve…",
+      removed: (name: string) => `Removed from "${name}"`,
+      removeFailed: (reason: string) => `Couldn't remove from the group: ${reason}`,
     },
     tags: {
       heading: "Tags",
@@ -1963,16 +2010,7 @@ export const en = {
     item: {
       playFrom: (title: string) => `Play from ${title}`,
       reorder: (title: string) => `Reorder "${title}"`,
-      reorderInstructions:
-        "Press Space to pick up, the arrow keys to move, Space to drop and Esc to cancel.",
-      // dnd-kit の読み上げ（持ち上げ・移動・置く・取り消し）。位置は 1 始まり。
-      pickedUp: (title: string, position: number, count: number) =>
-        `Picked up "${title}", position ${formatNumber(position)} of ${formatNumber(count)}.`,
-      movedTo: (title: string, position: number, count: number) =>
-        `"${title}" moved to position ${formatNumber(position)} of ${formatNumber(count)}.`,
-      dropped: (title: string, position: number, count: number) =>
-        `Dropped "${title}" at position ${formatNumber(position)} of ${formatNumber(count)}.`,
-      cancelled: (title: string) => `Cancelled. "${title}" is back in its place.`,
+      ...reorderTexts,
       remove: "Remove from playlist",
       removeFor: (title: string) => `Remove "${title}" from the playlist`,
       moveFailed: (reason: string) => `Couldn't move the item: ${reason}`,
@@ -2011,6 +2049,106 @@ export const en = {
       nothing: "Nothing was added",
       failed: (reason: string) => `Couldn't add to the playlist: ${reason}`,
     },
+  },
+  // グループのページ（/groups/{id}）と、グループをタグに変える窓（specs/048-groups/ui-design.md
+  // 「Words」）。名前とパス（利用者のデータ）はそのまま埋め込む。
+  groups: {
+    // 道筋の帯（Breadcrumb）の名前。
+    trail: "Group path",
+    nameLabel: "Name",
+    // プレイリストの名前と同じ規則（research.md R-14）。
+    nameRule: "Use a name of 1 to 100 characters.",
+    created: (name: string) => `Created "${name}"`,
+    // 選択バーの「New group」の窓。説明は何がグループになるかを言う。グループ 1 つだけの選択では
+    // 開かないので、「1 group becomes one group」は出ない。
+    newDialog: {
+      title: "New group",
+      description: (videoCount: number, groupCount: number) => {
+        const parts: string[] = [];
+        if (videoCount > 0) parts.push(videos(videoCount));
+        if (groupCount > 0) parts.push(groupsCount(groupCount));
+        const verb = videoCount + groupCount === 1 ? "becomes" : "become";
+        return `${parts.join(" and ")} ${verb} one group`;
+      },
+      submit: "Create",
+      submitting: "Creating…",
+      failed: (reason: string) => `Couldn't create the group: ${reason}`,
+    },
+    // 「Add to group」のピッカー（カード・行・動画ページ・選択バーで共有）。
+    add: {
+      label: "Add to group",
+      search: "Search or create a group",
+      list: "Groups",
+      create: (name: string) => `Create "${name}"`,
+      none: "No groups yet. Type a name to create one.",
+      nameTooLong: "Use a name of up to 100 characters",
+      loading: "Loading…",
+      loadFailed: "Couldn't load the groups",
+      // 既にあるものはサーバーが数えずに飛ばすので、件数は言わない。
+      added: (name: string) => `Added to "${name}"`,
+      failed: (reason: string) => `Couldn't add to the group: ${reason}`,
+    },
+    detail: {
+      // 見出しの件数（「12 videos · 1:32:10」）。長さはサーバーの合計を formatDuration で
+      // 整えた文字列で、分からなければ空にして件数だけにする。
+      count: (count: number, duration: string) =>
+        duration === "" ? videos(count) : `${videos(count)} · ${duration}`,
+      // 自動グループのフォルダの行（「From the folder {path}」）。後ろのパスはフォルダの
+      // ページへのリンクとして画面が続ける。
+      fromFolder: "From the folder",
+      play: "Play",
+      playFor: (name: string) => `Play "${name}"`,
+      table: "Items",
+      gone: {
+        title: "This group no longer exists",
+        description: "It was dissolved, maybe in another tab.",
+        action: "Back to library",
+      },
+      loadFailed: "Couldn't load the group",
+      rename: "Rename…",
+      toTag: "Turn the group into a tag…",
+      dissolve: "Dissolve…",
+    },
+    item: {
+      reorder: (title: string) => `Reorder "${title}"`,
+      ...reorderTexts,
+      remove: "Remove from group",
+      removeFor: (title: string) => `Remove "${title}" from the group`,
+      moveFailed: (reason: string) => `Couldn't move the item: ${reason}`,
+      removeFailed: (reason: string) => `Couldn't remove from the group: ${reason}`,
+    },
+    removed: (count: number, name: string) => `Removed ${items(count)} from "${name}"`,
+    reloaded: "The group changed in the meantime, so it was reloaded",
+    renameDialog: {
+      title: "Rename group",
+      submit: "Save",
+      submitting: "Saving…",
+      failed: (reason: string) => `Couldn't rename the group: ${reason}`,
+    },
+    dissolveDialog: {
+      title: (name: string) => `Dissolve "${name}"?`,
+      description: "The group is dissolved. Its videos and groups stay in the library.",
+      folder:
+        "Its folder is no longer grouped automatically. Choose Automatic on the folder page to group it again.",
+      submit: "Dissolve",
+      submitting: "Dissolving…",
+      failed: (reason: string) => `Couldn't dissolve the group: ${reason}`,
+    },
+    dissolved: (name: string) => `Dissolved "${name}"`,
+    // グループをタグに変える確認の窓と、その成功のトースト（ui-design.md「Turning into a tag」
+    // 「Words」）。グループページ、動画ページ、フォルダのメニューが共有する。
+    tagDialog: {
+      title: (name: string) => `Turn "${name}" into a tag?`,
+      description: (name: string) =>
+        `The tag "${name}" is added to every video in the group, and the group is dissolved.`,
+      submit: "Turn into a tag",
+      submitting: "Turning into a tag…",
+      failed: (reason: string) => `Couldn't turn the group into a tag: ${reason}`,
+    },
+    tagged: (name: string, created: boolean) =>
+      created
+        ? `Created the tag "${name}" and dissolved the group`
+        : `Added the tag "${name}" and dissolved the group`,
   },
   tagName: {
     required: "Enter a name",

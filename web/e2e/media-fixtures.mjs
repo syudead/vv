@@ -731,8 +731,8 @@ export const THUMBNAIL_EDIT_NEIGHBOR = "サムネイル編集の隣の動画";
 /**
  * THUMBNAIL_UPLOADS は、手元の画像をサムネイルにする流れ（specs/046-thumbnail-image-upload、
  * 子 #988）でページから上げる画像である。どれも一色で、色は互いにも偽の ComfyUI の出力の色
- * （fake-comfyui.mjs の OUTPUT_COLOR）とも離す。PNG は縦長にして、動画の形に切り抜かれる
- * ことを確かめる。
+ * （fake-comfyui.mjs の OUTPUT_COLOR）とも離す。PNG は縦長にして、全体を収めると余白が付き、
+ * 枠いっぱいに広げると動画の形に切り抜かれることを確かめる。
  */
 export const THUMBNAIL_UPLOADS = {
   png: { file: "thumbnail-upload.png", color: [0, 200, 0], width: 300, height: 400 },
@@ -741,7 +741,20 @@ export const THUMBNAIL_UPLOADS = {
 };
 
 /**
- * generateThumbnailUploadFixtures は THUMBNAIL_UPLOADS の画像を root に置く。PNG と JPEG は
+ * THUMBNAIL_UPLOAD_SPLIT は、上半分と下半分で色の違う縦長の PNG である。枠いっぱいに広げて
+ * 動かした範囲だけがサムネイルになることを、どちらの色が出るかで確かめる
+ * （docs/design-docs/thumbnail-editing.md「Uploaded images」）。
+ */
+export const THUMBNAIL_UPLOAD_SPLIT = {
+  file: "thumbnail-upload-split.png",
+  top: [220, 30, 30],
+  bottom: [255, 255, 255],
+  width: 300,
+  height: 400,
+};
+
+/**
+ * generateThumbnailUploadFixtures は THUMBNAIL_UPLOADS と THUMBNAIL_UPLOAD_SPLIT の画像を root に置く。PNG と JPEG は
  * ffmpeg で作り、WebP はチェックイン済みの e2e/fixtures/thumbnail-upload.webp を写す。
  * ffmpeg のビルドに libwebp が無いことがあるためである（specs/046-thumbnail-image-upload/plan.md）。
  */
@@ -769,6 +782,23 @@ export function generateThumbnailUploadFixtures(root) {
     ),
     path.join(root, THUMBNAIL_UPLOADS.webp.file),
   );
+  const split = THUMBNAIL_UPLOAD_SPLIT;
+  const half = { width: split.width, height: split.height / 2 };
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    solid({ ...half, color: split.top }),
+    "-f",
+    "lavfi",
+    "-i",
+    solid({ ...half, color: split.bottom }),
+    "-filter_complex",
+    "vstack",
+    "-frames:v",
+    "1",
+    path.join(root, split.file),
+  ]);
 }
 
 /**
@@ -810,4 +840,57 @@ export function generatePlaylistsFixtures(root) {
   for (const [index, name] of PLAYLIST_GROUP_MEMBERS.entries()) {
     clip(path.join(group, `${name}.mp4`), 190 + index * 60);
   }
+}
+
+/**
+ * generateGroupsFixtures は、任意のグループの流れ（specs/048-groups、子 #1059）を確かめる
+ * 動画を作る（web/e2e/groups.e2e.ts）。「フォルダ1」〜「フォルダ3」は 1 本ずつなので
+ * グループにならず、登録フォルダの直下の 2 本も単体の動画になる。「自動のグループ」と
+ * 「解散するグループ」は直下に 2 本以上あるので自動グループになる。`spare` の 1 本は
+ * 登録フォルダの外に置き、テストが再スキャンの前に「自動のグループ」へ写す。
+ * 中身で同じ動画とみなされないよう、ほかの組と違う長さとコマの速さにし、色合いを変える。
+ */
+export const GROUPS_SPREAD = [
+  ["フォルダ1", "グループ確認の動画1"],
+  ["フォルダ2", "グループ確認の動画2"],
+  ["フォルダ3", "グループ確認の動画3"],
+];
+export const GROUPS_SINGLES = ["グループ確認の単体A", "グループ確認の単体B"];
+export const GROUPS_AUTO = "自動のグループ";
+export const GROUPS_AUTO_MEMBERS = [
+  "グループ確認の自動1",
+  "グループ確認の自動2",
+  "グループ確認の自動3",
+];
+export const GROUPS_DISSOLVED = "解散するグループ";
+export const GROUPS_DISSOLVED_MEMBERS = ["グループ確認の解散1", "グループ確認の解散2"];
+export const GROUPS_SPARE = "グループ確認の自動4";
+
+export function generateGroupsFixtures(root, spare) {
+  let hue = 0;
+  const clip = (dir, name) => {
+    mkdirSync(dir, { recursive: true });
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=12:duration=3",
+      "-vf",
+      `hue=h=${String(hue)}`,
+      ...h264,
+      "-an",
+      "-movflags",
+      "+faststart",
+      path.join(dir, `${name}.mp4`),
+    ]);
+    hue += 29;
+  };
+
+  for (const [folder, name] of GROUPS_SPREAD) clip(path.join(root, folder), name);
+  for (const name of GROUPS_SINGLES) clip(root, name);
+  for (const name of GROUPS_AUTO_MEMBERS) clip(path.join(root, GROUPS_AUTO), name);
+  for (const name of GROUPS_DISSOLVED_MEMBERS) {
+    clip(path.join(root, GROUPS_DISSOLVED), name);
+  }
+  clip(spare, GROUPS_SPARE);
 }

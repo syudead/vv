@@ -24,7 +24,7 @@ Each level proves a different kind of behaviour, at a different cost per test.
 | Logic test | A rule (ordering, filtering, validation, formatting), a hook, or an API module | Nothing, or a hook through `renderHook`; `fetch` stubbed where the module calls it | 0.01 s |
 | Component test | What one component shows and emits for given props | That component inside its providers | 0.10 s |
 | Page test | A flow across components, request ordering, focus moving between parts, URL state | A `*Page` component with `fetch` replaced by a fake server | 0.35 s |
-| E2E test | What only the real server, browser and media show: playback, setup and login, scanning | The app from the Vite development server in Chromium, against the built Go server | Seconds; runs only on a push to `main` |
+| E2E test | What only the real server, browser and media show: playback, setup and login, scanning | The app from the Vite development server in Chromium, against the built Go server | Seconds; runs on a push to `main` and on Renovate PRs |
 
 The costs are the mean worker time per test in a full Vitest run.
 

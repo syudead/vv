@@ -71,7 +71,7 @@ flowchart LR
   code -->|yes| groups[task check in parallel groups]
   docs --> checks[Checks job]
   groups --> checks
-  code -->|yes| push{Push to main?}
+  code -->|yes| push{Push to main or Renovate PR?}
   push -->|yes| more[E2E in four groups and Docker image build]
 ```
 
@@ -86,8 +86,11 @@ restore the Go build cache, and each saves its own copy on a push to `main`.
 Vitest shards by file, so a test file that grows to dominate a shard is split by
 topic, as `web/src/tags/TagsPage*.test.tsx` are around the shared
 `web/src/testing/tagsPage.tsx`. A push to `main` is a
-merged pull request, so browser E2E and the Docker image build never run on a
-pull request; `Browser E2E` passes there without running.
+merged pull request, so browser E2E and the Docker image build do not run on a
+pull request; `Browser E2E` passes there without running. Renovate PRs (head
+branch `renovate/*`) are the exception: they run both, without publishing the
+image, because the Renovate routine merges them without a person
+([dependency-updates.md](dependency-updates.md)).
 
 The Go and Vitest test groups run the same tests as `task test-go` and
 `task test-web-unit` through `task test-go-report` and `task test-web-report`,

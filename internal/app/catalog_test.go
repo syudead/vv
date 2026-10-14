@@ -33,6 +33,8 @@ type fakeCatalogStore struct {
 	groups map[int64]domain.VideoGroup
 	// windows は VideoGroup に渡された窓を順に持つ。
 	windows []domain.GroupWindow
+	// contexts は VideoGroup に渡された文脈のグループの id を順に持つ。
+	contexts []int64
 	// audiences は関連動画の読み出しが受け取った見る人を、呼ばれた順に持つ。
 	audiences []domain.Audience
 }
@@ -88,8 +90,9 @@ func (f *fakeCatalogStore) VideosByIDs(_ context.Context, audience domain.Audien
 
 // VideoGroup は保存層と同じく、groups の全メンバー（Members）から id を並べ、window の
 // 範囲の詳細だけを返す。
-func (f *fakeCatalogStore) VideoGroup(_ context.Context, audience domain.Audience, id int64, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
+func (f *fakeCatalogStore) VideoGroup(_ context.Context, audience domain.Audience, id, contextID int64, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
 	f.audiences = append(f.audiences, audience)
+	f.contexts = append(f.contexts, contextID)
 	f.windows = append(f.windows, window)
 	group, ok := f.groups[id]
 	if !ok {
@@ -417,7 +420,7 @@ func TestRelatedVideosForGroupMember(t *testing.T) {
 	for i := range size {
 		members = append(members, store.videos[int64(i+1)])
 	}
-	group := domain.VideoGroup{Folder: domain.VideoFolder{RootID: 1, Path: "big"}, Name: "big", Members: members}
+	group := domain.VideoGroup{ID: 7, Folder: &domain.VideoFolder{RootID: 1, Path: "big"}, Name: "big", Members: members}
 	groups := map[int64]domain.VideoGroup{}
 	for _, member := range members {
 		groups[member.ID] = group
@@ -456,13 +459,13 @@ func TestRelatedVideosForGroupMember(t *testing.T) {
 	}
 }
 
-// Catalog.VideoGroup は受け取った見る人と窓のまま保存層に問い合わせる。
+// Catalog.VideoGroup は受け取った見る人・文脈のグループ・窓のまま保存層に問い合わせる。
 func TestVideoGroupPassesAudience(t *testing.T) {
 	group := domain.VideoGroup{Name: "g", Members: []domain.Video{probedVideo(1, "a"), probedVideo(2, "b")}}
 	store := &fakeCatalogStore{groups: map[int64]domain.VideoGroup{1: group}}
 	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
 	window := domain.GroupWindow{Offset: 1, Limit: 5}
-	got, ok, err := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(1, "a"), window)
+	got, ok, err := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(1, "a"), 4, window)
 	if err != nil || !ok || got.Name != "g" {
 		t.Fatalf("VideoGroup = %+v・%v・%v", got, ok, err)
 	}
@@ -472,7 +475,10 @@ func TestVideoGroupPassesAudience(t *testing.T) {
 	if !slices.Equal(store.windows, []domain.GroupWindow{window}) {
 		t.Errorf("windows = %v", store.windows)
 	}
-	if _, ok, _ := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(3, "c"), window); ok {
+	if !slices.Equal(store.contexts, []int64{4}) {
+		t.Errorf("contexts = %v, want [4]", store.contexts)
+	}
+	if _, ok, _ := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(3, "c"), 0, window); ok {
 		t.Error("メンバーでない動画にグループがある")
 	}
 }
@@ -490,12 +496,16 @@ func TestRelatedVideosForLargeGroupCarriesAWindow(t *testing.T) {
 		videos[id] = video
 		members = append(members, video)
 	}
-	group := domain.VideoGroup{Folder: domain.VideoFolder{RootID: 1, Path: "big"}, Name: "big", Members: members}
+	group := domain.VideoGroup{ID: 7, Folder: &domain.VideoFolder{RootID: 1, Path: "big"}, Name: "big", Members: members}
 	store := &fakeCatalogStore{videos: videos, groups: map[int64]domain.VideoGroup{200: group}}
 	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
-	got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, videos[200], domain.RelatedPage{Limit: 10})
+	got, err := catalog.RelatedVideos(context.Background(), domain.AudienceOwner, videos[200], domain.RelatedPage{Limit: 10, GroupID: 7})
 	if err != nil {
 		t.Fatal(err)
+	}
+	// 文脈のグループ（research.md R-9）はそのまま保存層に渡す。
+	if !slices.Equal(store.contexts, []int64{7}) {
+		t.Errorf("contexts = %v, want [7]", store.contexts)
 	}
 	if got.Group == nil || got.Group.Total() != size || len(got.Group.Members) != domain.GroupMemberWindow {
 		t.Fatalf("group = %+v", got.Group)

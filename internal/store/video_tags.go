@@ -105,6 +105,15 @@ func attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagI
 	if err != nil {
 		return 0, err
 	}
+	if err := attachTagToUserKeys(ctx, tx, keys, tagID, now); err != nil {
+		return 0, err
+	}
+	return len(keys), nil
+}
+
+// attachTagToUserKeys は利用者データの鍵 keys へ tagID を手で付ける。仮に付いていたタグは
+// 確定する。実際に付いた鍵（集まりなら全メンバー）の更新日時を now にする。
+func attachTagToUserKeys(ctx context.Context, tx *sql.Tx, keys []string, tagID int64, now time.Time) error {
 	changed := make([]string, 0, len(keys))
 	for _, key := range keys {
 		result, err := tx.ExecContext(ctx,
@@ -114,18 +123,15 @@ func attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagI
 			key, tagID, now.Unix(),
 		)
 		if err != nil {
-			return 0, fmt.Errorf("cannot add the tag (tag=%d): %w", tagID, err)
+			return fmt.Errorf("cannot add the tag (tag=%d): %w", tagID, err)
 		}
 		if affected, err := result.RowsAffected(); err != nil {
-			return 0, fmt.Errorf("cannot add the tag (tag=%d): %w", tagID, err)
+			return fmt.Errorf("cannot add the tag (tag=%d): %w", tagID, err)
 		} else if affected > 0 {
 			changed = append(changed, key)
 		}
 	}
-	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
-		return 0, err
-	}
-	return len(keys), nil
+	return touchEditedAtForUserKeys(ctx, tx, changed, now)
 }
 
 // detachTagFromVideoIDs は videoIDs のうちいまライブラリにある動画から tagID

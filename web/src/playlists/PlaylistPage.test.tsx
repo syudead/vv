@@ -36,6 +36,7 @@ function video(id: number, extra: Partial<Video> = {}): Video {
 
 function group(name: string, openVideoId: number): LibraryGroup {
   return {
+    id: openVideoId,
     folder: { rootId: 1, path: name },
     name,
     videoCount: 12,

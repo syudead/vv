@@ -110,7 +110,7 @@ func TestListVideosAndLibraryIDsFilterByPerson(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(selection.Groups) != 1 || selection.Groups[0].Path != fixturePath("/media/show") || len(selection.VideoIDs) != 0 {
+	if len(selection.Groups) != 1 || selection.Groups[0].ID != groupIDOf(t, db, fixturePath("/media/show")) || len(selection.VideoIDs) != 0 {
 		t.Errorf("LibraryIDs（レーベル B） = %+v, want グループ show だけ", selection)
 	}
 }

@@ -313,7 +313,7 @@ Video card behaviour:
 | Case | Behaviour |
 | --- | --- |
 | Tag pressed in the library | Filters by the tag |
-| Tag pressed on a folder page | Opens `/?tag=<id>` |
+| Tag pressed on a folder page or a group page | Opens `/?tag=<id>` |
 | Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full ([041 UI design](../../specs/041-tag-overflow-list/ui-design.md#the-list)) |
 | Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag` ([017 UI design](../../specs/017-folder-groups/ui-design.md)) |
 | Hover preview | One at a time on any screen |
@@ -327,15 +327,25 @@ The library reads `GET /api/library`, which mixes folder groups in with videos;
 folder pages and their search results list videos one by one. A group card
 shows a panel with the count (`12 videos`) and total duration, a watched-share
 bar only while some members are in progress, the group name and the members'
-tags. Pressing it opens the member to continue (`/videos/{openVideoId}`).
+tags. Pressing it opens the group page (`/groups/{id}`), which lists the
+group's child groups and videos in their saved order under a sticky trail band
+([048 UI design, Group page](../../specs/048-groups/ui-design.md#group-page)).
+On that page a child group opens with `?trail` one group longer, and a video
+opens with `?group`, so the video page follows that group.
 Guests see no watch status, watched count or bar.
 
 Ungroup, group a folder's direct videos and turn a group into a tag are not on
 the card. They sit in the owner's menu at the right end of a folder page's
 `Videos N` heading row
-([`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)) and
-on the video page's group name row. After an action the cached library list is
-discarded and reloads on the next visit.
+([`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)), and
+turning into a tag and dissolving also sit in the video page's group actions
+([Group members](#group-members)). The folder menu offers "Turn the group into
+a tag…" only when the folder has an automatic group, including a registered
+folder's own group, and opens the confirmation dialog that every entry point
+shares ([`GroupTagDialog.tsx`](../../web/src/groups/GroupTagDialog.tsx),
+[048 UI design, Turning into a tag](../../specs/048-groups/ui-design.md#turning-into-a-tag)).
+After an action the cached library list is discarded and reloads on the next
+visit.
 
 ### Favorite mark
 
@@ -364,18 +374,21 @@ flowchart LR
   kind -->|group| refetch[Refetch the group]
 ```
 
-A group is refetched with `GET /api/folders/{rootId}/group`.
+A group is refetched with `GET /api/groups/{id}`.
 
 Left of the heart, in the same corner and shown exactly when the off heart is,
-the owner's `Add to playlist` control opens the playlist picker; it has no
-state, so the heart stays nearest the corner
-([`AddToPlaylistButton.tsx`](../../web/src/playlists/AddToPlaylistButton.tsx),
-[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist)).
+the owner's `Add to playlist` control opens the playlist picker, and left of
+it `Add to group` opens the group picker; neither has state, so the heart
+stays nearest the corner
+([`PickerButton.tsx`](../../web/src/library/PickerButton.tsx),
+[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist),
+[048 UI design, Add to group](../../specs/048-groups/ui-design.md#add-to-group)).
 
 ### List view and selection
 
-List view (library only) shows title, favorite (owner), add to playlist
-(owner, from `sm`; below it the card and the selection bar offer it), watched,
+List view (library only) shows title, favorite (owner), add to playlist and
+add to group (owner, from `sm`; below it the card and the selection bar offer
+them), watched,
 duration, quality, size and date added. A group row uses the
 same columns: first member's thumbnail, Folder marker and count under the
 title, `3 / 12` watched, total duration and size, empty quality
@@ -395,9 +408,10 @@ so they read on devices without hover; the design-system bar
 fit.
 
 Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
-`Favorite`, `Add to playlist`, `Visibility`, `Bundle as versions` (2 or more
-videos), a separator and `Select all`. The actions sit at the right end; those
-that do not fit move to the right end of the next line.
+`Favorite`, `Add to playlist`, `New group`, `Add to group`, `Visibility`,
+`Bundle as versions` (2 or more videos), a separator and `Select all`. The
+actions sit at the right end; those that do not fit move to the right end of
+the next line.
 
 Details: tag actions in
 [014 UI design, Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar),
@@ -405,8 +419,10 @@ the visibility menu in
 [016 UI design, Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar),
 `Favorite` and wrapping in
 [035 UI design, Selection bar](../../specs/035-favorites/ui-design.md#selection-bar),
-and `Add to playlist`, which sends what `Favorite` sends, in
-[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist).
+`Add to playlist`, which sends what `Favorite` sends, in
+[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist),
+and `New group` and `Add to group`, which send the same, in
+[048 UI design, Selection bar](../../specs/048-groups/ui-design.md#selection-bar).
 
 `Favorite` decides per selected group whether to send it as a group:
 
@@ -496,7 +512,8 @@ lines shows `Show more`. A video without work information shows the rows as
 before, and the row adds no prompt to fill it in
 ([047 UI design, Video page: work details row](../../specs/047-video-work-info/ui-design.md#video-page-work-details-row)).
 
-The actions are favorite, `Add to playlist`, `Edit details`, `Use current frame as thumbnail`,
+The actions are favorite, `Add to playlist`, `Add to group`, `Edit details`,
+`Use current frame as thumbnail`,
 `Edit thumbnail with ComfyUI`, `Upload an image as thumbnail`, `Open file` and
 `Copy path`: icon-only ghost buttons with tooltips. The ComfyUI entry opens the
 thumbnail editor, an `EditorDialog` over the page, and is dimmed with a set-up
@@ -506,7 +523,15 @@ thumbnail, the thumbnail item shows that image with `Use the frame instead`
 The upload entry is the owner's even when the player is not shown, and does not
 depend on ComfyUI. It opens the browser's file picker for PNG, JPEG and WebP,
 refuses another type or a file over 64 MB on the failure line before sending
-anything, and spins while it sends. While an uploaded image is the thumbnail,
+anything, and spins while it reads the picked file and while it sends. A
+readable file opens `Preview thumbnail`, an `EditorDialog` whose stage shows
+the image in the card's 16:9 thumbnail frame exactly as it will be stored:
+`Whole image` (the default) or `Fill frame`, which adds `Zoom` and lets the
+owner drag the image, or move it with the arrow keys and zoom with `+` and
+`-`. `Use as thumbnail` closes it and sends; `Cancel`, `×` and Esc send
+nothing
+([thumbnail editing](thumbnail-editing.md#the-page-frames-the-image-before-it-is-sent)).
+While an uploaded image is the thumbnail,
 the thumbnail item shows it with an `ImageUp` icon, the label
 `Uploaded thumbnail` and the same `Use the frame instead`. One thumbnail
 action sends at a time: while the capture, a `×` or the upload sends, the
@@ -522,7 +547,8 @@ The owner's favorite toggle opens the right-hand action group, left of
 it first; even so, it is no more prominent than the title: on is a small
 `bg-primary-soft` fill with the pink heart. It is absent on group rows and for
 guests ([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
-`Add to playlist` follows it, under the same conditions.
+`Add to playlist` and then `Add to group` follow it, under the same
+conditions.
 
 ```mermaid
 flowchart LR
@@ -671,14 +697,19 @@ and it closes the popover, not the page.
 
 A video in a group only gains parts on the same page; a video outside any group
 is unchanged ([017 UI design, Video page](../../specs/017-folder-groups/ui-design.md#video-page)).
+The group is the one the video was opened from (`?group=<id>`, passed to the
+video, related-video and member reads), or else the group with the smallest id
+that holds the video directly; a playlist context overrides both
+([048 UI design, Video page](../../specs/048-groups/ui-design.md#video-page)).
 
 | Part | Rule |
 | --- | --- |
-| Above the title | Group name and position in the group |
+| Above the title | Group name and position in the group, as a link to the group page |
 | Related videos column | `Up next` member list and a divider at the top |
 | Playback ended | Next-member notice instead of the layer: 5 s, cancellable, Esc cancels |
-| Group name row (owner) | Menu with `Ungroup` and `Turn the group into a tag`; Esc closes only the menu |
-| After a menu action | Video and related videos refetched; page returns to the plain form |
+| Member rows, handles, notice | Keep `?group` on the video they open |
+| Group actions (owner) | `Ellipsis` button after the line: `Remove from this group` (only for a direct item), `Turn the group into a tag…`, `Dissolve…`; Esc closes only the menu |
+| After an action | Video and related videos read again without `group`; the page stays |
 | Previous/next handles | Move within the group |
 
 `matchMedia` reads the `lg` width only to scroll the current member's row into

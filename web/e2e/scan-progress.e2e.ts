@@ -426,7 +426,9 @@ test("ゲストには右下の表示を出さず、取り込みの状態も問�
   await page.goto("/");
   await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Open the scan status/ })).toHaveCount(0);
-  expect(requests.filter((path) => /^\/api\/(scans|events)/.test(path))).toEqual([]);
+  // `/api/events` はゲストにも `group` の知らせを届けるので購読してよい
+  // （specs/048-groups/contracts/screen-api.md「/api/events」）。取り込みの状態は問い合わせない。
+  expect(requests.filter((path) => /^\/api\/scans/.test(path))).toEqual([]);
   await context.close();
 });
 

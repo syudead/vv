@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: b82ab89721761b0a95853b171ed5e3c02ab7dd019e31a52f4042baf3f9c5a1ef
+sourceHash: 486bc5bbd85365e2c9788f5ce087bb89fc6e75eada4092c7d746cef5866b1551
 ---
 
 # 設計文書 {#design-documents}
@@ -66,4 +66,5 @@ sourceHash: b82ab89721761b0a95853b171ed5e3c02ab7dd019e31a52f4042baf3f9c5a1ef
 - [視聴履歴の画面 (日のグループ、エントリを 1 つ削除する、履歴を消す): UI](../../specs/043-watch-history/ui-design.md)
 - [ローカルの画像をサムネイルにし、今のサムネイルを ComfyUI で編集する (アップロードの入口、アップロードした画像の項目、編集の元のメニュー): UI](../../specs/046-thumbnail-image-upload/ui-design.md)
 - [動画の作品情報 (作品の詳細の行、その場での編集、人物と組織による絞り込み、人物と組織の画面): UI](../../specs/047-video-work-info/ui-design.md)
+- [任意の動画とグループのグループ (経路を持つグループのページ、New group、Add to group、動画のページのグループの文脈): UI](../../specs/048-groups/ui-design.md)
 - [作品情報プラグイン (設定の節、承認の確認、設定の値、取得の入口と比較を持つダイアログ): UI](../../specs/049-work-info-plugins/ui-design.md)

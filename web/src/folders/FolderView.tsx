@@ -228,7 +228,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
           reloadPending.current = true;
           reloadVideos();
         }}
-        onConflict={reloadListing}
+        onStale={reloadListing}
       />
     ) : undefined;
 

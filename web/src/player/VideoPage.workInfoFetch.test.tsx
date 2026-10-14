@@ -471,6 +471,7 @@ describe("VideoPage work-info fetch", () => {
 
   it("反映した題名をグループの並びにあるこの動画にも写す", async () => {
     const group = {
+      id: 1,
       folder: { rootId: 1, path: "series" },
       name: "series",
       position: 0,

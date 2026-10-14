@@ -105,7 +105,7 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 			t.Errorf("項目 %d の versions = %+v", item.Id, item.Versions)
 		}
 	}
-	if _, videos := sub.take(); !slices.Equal(videos, []int64{a, b}) {
+	if videos := sub.take().videos; !slices.Equal(videos, []int64{a, b}) {
 		t.Errorf("束ねたあとの /api/events の video = %v, want [%d %d]", videos, a, b)
 	}
 
@@ -140,7 +140,7 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 	if changed.RepresentativeId != b || !slices.Equal(versionIDs(changed), []int64{b, a}) {
 		t.Errorf("代表を替えた応答: representativeId = %d, items = %v", changed.RepresentativeId, versionIDs(changed))
 	}
-	if _, videos := sub.take(); !slices.Equal(videos, []int64{a, b}) {
+	if videos := sub.take().videos; !slices.Equal(videos, []int64{a, b}) {
 		t.Errorf("代表を替えたあとの /api/events の video = %v, want [%d %d]", videos, a, b)
 	}
 	// 既に代表でも同じ応答。
@@ -172,7 +172,7 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 	if names := tagNames(removed.Tags); !slices.Contains(names, "Y") || slices.Contains(names, "X") {
 		t.Errorf("外した b のタグ = %v, want Y を含み X を含まない", names)
 	}
-	if _, videos := sub.take(); !slices.Equal(videos, []int64{a, b}) {
+	if videos := sub.take().videos; !slices.Equal(videos, []int64{a, b}) {
 		t.Errorf("外したあとの /api/events の video = %v, want [%d %d]", videos, a, b)
 	}
 	// a と b が同じフォルダに並ぶとライブラリではフォルダのグループに畳まれるので、動画ごとの

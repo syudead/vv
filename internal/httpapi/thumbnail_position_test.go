@@ -228,7 +228,7 @@ func TestSetVideoThumbnailPositionAppliesAndClears(t *testing.T) {
 	if got := f.thumbnails.calledPaths(); !slices.Equal(got, []string{resolvedPath(t, filepath.Join(f.mediaDir, "pub", "a.mp4"))}) {
 		t.Errorf("読む元 = %v", got)
 	}
-	if _, videos := sub.take(); !slices.Equal(videos, []int64{f.ids["a"]}) {
+	if videos := sub.take().videos; !slices.Equal(videos, []int64{f.ids["a"]}) {
 		t.Errorf("/api/events の video = %v, want [%d]", videos, f.ids["a"])
 	}
 
@@ -272,7 +272,7 @@ func TestSetVideoThumbnailPositionAppliesAndClears(t *testing.T) {
 		t.Errorf("解除の応答: thumbnailPositionMs = %v, thumbnailUrl = %q, want %q",
 			cleared.ThumbnailPositionMs, thumbnailURLOf(cleared), original)
 	}
-	if _, videos := sub.take(); !slices.Contains(videos, f.ids["a"]) {
+	if videos := sub.take().videos; !slices.Contains(videos, f.ids["a"]) {
 		t.Errorf("解除の後の /api/events の video = %v", videos)
 	}
 }

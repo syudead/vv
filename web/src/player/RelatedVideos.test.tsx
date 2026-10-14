@@ -213,7 +213,6 @@ describe("RelatedVideos", () => {
   });
 
   describe("グループのメンバーの並び", () => {
-    const folder = { rootId: 1, path: "series" };
     const watched = {
       positionMs: 65_000,
       completed: true,
@@ -242,7 +241,7 @@ describe("RelatedVideos", () => {
         related: {
           items,
           group: {
-            folder,
+            id: 1,
             name: "series",
             items: members,
             offset: 0,
@@ -328,7 +327,7 @@ describe("RelatedVideos", () => {
           id: 299,
           related: {
             items: [],
-            group: { folder, name: "big", items: many, offset: 0, total: many.length },
+            group: { id: 1, name: "big", items: many, offset: 0, total: many.length },
           },
         });
         expect(screen.getAllByRole("listitem")).toHaveLength(300);
@@ -625,7 +624,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
       related: {
         items: [scrubItem(2)],
         group: {
-          folder: { rootId: 1, path: "series" },
+          id: 1,
           name: "series",
           items: [scrubItem(11), scrubItem(12), scrubItem(13)],
           offset: 0,
@@ -640,7 +639,6 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
   });
 
   describe("大きなグループの窓（issue 674）", () => {
-    const folder = { rootId: 1, path: "big" };
     const member = (position: number) =>
       item(position, { title: `ep ${String(position)}` });
     // 6,000 本のうち、今の動画 3000 を中ほどに置いた 2950〜3049 本目の窓。
@@ -681,7 +679,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
         id: 3000,
         related: {
           items: [],
-          group: { folder, name: "big", items: window, offset: 2949, total: 6000 },
+          group: { id: 1, name: "big", items: window, offset: 2949, total: 6000 },
         },
       });
     }
@@ -733,9 +731,93 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
         3049,
         100,
         expect.anything(),
+        undefined,
       );
       expect(memberRows()).toHaveLength(102);
       expect(memberRows()[101]?.textContent).toContain("ep 3051");
+    });
+
+    it("同じ動画のまま応答のグループが替わったら、前のグループで読み足した行を捨てる", async () => {
+      wide(false);
+      vi.mocked(listVideoGroupMembers).mockResolvedValue({
+        items: [member(3050), member(3051)],
+        offset: 3049,
+        total: 6000,
+      });
+      const stateOf = (groupId: number): RelatedState => ({
+        kind: "ready",
+        id: 3000,
+        related: {
+          items: [],
+          group: { id: groupId, name: "big", items: window, offset: 2949, total: 6000 },
+        },
+      });
+      const tree = (state: RelatedState) => (
+        <MemoryRouter>
+          <RelatedVideos
+            state={state}
+            linkState={linkState}
+            onRetry={vi.fn()}
+            onLoadMore={vi.fn()}
+          />
+        </MemoryRouter>
+      );
+      const { rerender } = render(tree(stateOf(1)));
+      await reachEdge(0);
+      expect(memberRows()).toHaveLength(102);
+
+      rerender(tree(stateOf(2)));
+      expect(memberRows()).toHaveLength(100);
+      expect(screen.queryByText("ep 3051")).toBeNull();
+    });
+
+    it("同じグループのまま最初のページを読み直したら（generation）、読み足した行と読み足し中の要求を捨てる", async () => {
+      wide(false);
+      vi.mocked(listVideoGroupMembers).mockResolvedValueOnce({
+        items: [member(3050), member(3051)],
+        offset: 3049,
+        total: 6000,
+      });
+      const stateOf = (generation: number): RelatedState => ({
+        kind: "ready",
+        id: 3000,
+        related: {
+          items: [],
+          group: { id: 1, name: "big", items: window, offset: 2949, total: 6000 },
+        },
+        generation,
+      });
+      const tree = (state: RelatedState) => (
+        <MemoryRouter>
+          <RelatedVideos
+            state={state}
+            linkState={linkState}
+            onRetry={vi.fn()}
+            onLoadMore={vi.fn()}
+          />
+        </MemoryRouter>
+      );
+      const { rerender } = render(tree(stateOf(1)));
+      await reachEdge(0);
+      expect(memberRows()).toHaveLength(102);
+
+      // グループの知らせで読み直した（別の画面で ep 3051 を外した）。
+      rerender(tree(stateOf(2)));
+      expect(memberRows()).toHaveLength(100);
+      expect(screen.queryByText("ep 3051")).toBeNull();
+
+      // 読み足し中に読み直したら、その要求を打ち切り、応答を足さない。
+      let signal: AbortSignal | undefined;
+      vi.mocked(listVideoGroupMembers).mockImplementationOnce(
+        (_id, _start, _limit, s) => {
+          signal = s;
+          return new Promise(() => undefined);
+        },
+      );
+      await reachEdge(0);
+      expect(signal?.aborted).toBe(false);
+      rerender(tree(stateOf(3)));
+      expect(signal?.aborted).toBe(true);
     });
 
     it("狭い画面では、前のメンバーをボタンで読む", async () => {
@@ -753,6 +835,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
         2849,
         100,
         expect.anything(),
+        undefined,
       );
       expect(memberRows()).toHaveLength(200);
       expect(memberRows()[0]?.textContent).toContain("2850");
@@ -783,6 +866,7 @@ describe("関連動画のスクラブの帯（specs/032-card-scrub-preview）", 
           2849,
           100,
           expect.anything(),
+          undefined,
         );
         // 2 本増えた分（20px）だけ下へずらす。
         expect(scroller.scrollTop).toBe(60);
@@ -909,7 +993,7 @@ describe("関連動画の続き（issue 931）", () => {
           items: [item(2)],
           nextCursor: "c1",
           group: {
-            folder: { rootId: 1, path: "show" },
+            id: 1,
             name: "show",
             items: [item(10), item(11)],
             offset: 0,
@@ -943,7 +1027,7 @@ describe("関連動画の続き（issue 931）", () => {
           items: [],
           nextCursor: "c1",
           group: {
-            folder: { rootId: 1, path: "show" },
+            id: 1,
             name: "show",
             items: [item(10), item(11)],
             offset: 0,

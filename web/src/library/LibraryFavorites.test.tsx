@@ -47,6 +47,7 @@ const memberIds = [101, 102, 103];
 
 function seriesGroup(extra: Partial<LibraryGroup> = {}): LibraryGroup {
   return {
+    id: 7,
     folder: { rootId: 3, path: "series" },
     name: "series",
     videoCount: 3,
@@ -76,7 +77,7 @@ function json(body: unknown, status = 200): Response {
 
 interface FavoritesBody {
   videoIds: number[];
-  folders: { rootId: number; path: string }[];
+  groupIds: number[];
   favorite: boolean;
 }
 
@@ -85,8 +86,8 @@ interface Server {
   group: LibraryGroup | undefined;
   favoriteRequests: FavoritesBody[];
   libraryRequests: number;
-  /** 次の PUT /api/favorites の appliedFolders を上書きする。 */
-  appliedFolders?: number;
+  /** 次の PUT /api/favorites の appliedGroups を上書きする。 */
+  appliedGroups?: number;
   /** 受け取った `PUT /api/video-visibility`・`POST /api/video-tags` の videoIds。 */
   visibilityRequests: number[][];
   tagRequests: number[][];
@@ -135,7 +136,7 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
       const groups =
         server.group === undefined
           ? []
-          : [{ folder: server.group.folder, videoIds: server.group.videoIds }];
+          : [{ id: server.group.id, videoIds: server.group.videoIds }];
       return Promise.resolve(json({ ids: Array.from(new Set(ids)), groups }));
     }
     if (url.pathname === "/api/video-visibility" && method === "PUT") {
@@ -169,11 +170,11 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
         }),
       );
     }
-    if (url.pathname === "/api/folders/3/group") {
+    if (url.pathname === "/api/groups/7") {
       return Promise.resolve(
         server.group === undefined
           ? json({ code: "not_found" }, 404)
-          : json(server.group),
+          : json({ group: server.group, trail: [], items: [] }),
       );
     }
     if (url.pathname === "/api/favorites" && method === "PUT") {
@@ -185,13 +186,13 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
           server.videos.set(id, { ...current, favorite: body.favorite });
         }
       }
-      if (body.folders.length > 0 && server.group !== undefined) {
+      if (body.groupIds.length > 0 && server.group !== undefined) {
         server.group = { ...server.group, favorite: body.favorite };
       }
-      const appliedFolders = server.appliedFolders ?? body.folders.length;
-      server.appliedFolders = undefined;
+      const appliedGroups = server.appliedGroups ?? body.groupIds.length;
+      server.appliedGroups = undefined;
       return Promise.resolve(
-        json({ appliedVideos: body.videoIds.length, appliedFolders }),
+        json({ appliedVideos: body.videoIds.length, appliedGroups }),
       );
     }
     throw new Error(`unexpected request: ${method} ${url.toString()}`);
@@ -299,7 +300,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     await user.click(toggle);
     await waitFor(() => expect(pressed(toggle)).toBe("true"));
     expect(server.favoriteRequests).toEqual([
-      { videoIds: [1], folders: [], favorite: true },
+      { videoIds: [1], groupIds: [], favorite: true },
     ]);
     expect(toggle.className).toContain("text-favorite");
     expect(toggle.className).not.toContain("text-primary");
@@ -316,7 +317,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     await waitFor(() => expect(pressed(toggle)).toBe("false"));
     expect(server.favoriteRequests[1]).toEqual({
       videoIds: [1],
-      folders: [],
+      groupIds: [],
       favorite: false,
     });
     // 一覧は読み直さない（その場で差し替える）。
@@ -330,7 +331,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     fetchMock.mockImplementation((input, init) => {
       if (String(input) === "/api/favorites") {
         return new Promise<Response>((resolve) => {
-          answer = () => resolve(json({ appliedVideos: 1, appliedFolders: 0 }));
+          answer = () => resolve(json({ appliedVideos: 1, appliedGroups: 0 }));
         });
       }
       return base!(input, init);
@@ -383,7 +384,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     await user.click(toggle);
     await waitFor(() => expect(pressed(toggle)).toBe("true"));
     expect(server.favoriteRequests).toEqual([
-      { videoIds: [1], folders: [], favorite: true },
+      { videoIds: [1], groupIds: [], favorite: true },
     ]);
     // 行のオンもカードと同じ桃色の塗り。面も影も付けない（「List view row」）。
     expect(toggle.className).toContain("text-favorite");
@@ -395,7 +396,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     await waitFor(() => expect(pressed(toggle)).toBe("false"));
   });
 
-  it("グループのカードは folders: [folder] を送り、取り直して印が変わり、メンバーには影響しない", async () => {
+  it("グループのカードは groupIds: [id] を送り、取り直して印が変わり、メンバーには影響しない", async () => {
     const server = install(
       [
         { kind: "video", video: video(101, { title: "ep01" }) },
@@ -410,16 +411,32 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     await user.click(toggle);
     await waitFor(() => expect(pressed(toggle)).toBe("true"));
     expect(server.favoriteRequests).toEqual([
-      { videoIds: [], folders: [{ rootId: 3, path: "series" }], favorite: true },
+      { videoIds: [], groupIds: [7], favorite: true },
     ]);
     const groupFetches = fetchMock.mock.calls.filter(
       ([input]) =>
-        new URL(String(input), "http://localhost").pathname === "/api/folders/3/group",
+        new URL(String(input), "http://localhost").pathname === "/api/groups/7",
     );
     expect(groupFetches).toHaveLength(1);
     expect(pressed(screen.getByRole("button", { name: 'Favorite "ep01"' }))).toBe(
       "false",
     );
+  });
+
+  it("フォルダの無い（手で作った）グループのカードも、その id で付け外しできる", async () => {
+    const { folder: _folder, ...handMade } = seriesGroup({ id: 8, name: "mix" });
+    const server = install([{ kind: "group", group: handMade }], handMade);
+    const user = userEvent.setup();
+    renderLibrary();
+    const toggle = await screen.findByRole("button", { name: 'Favorite group "mix"' });
+    await user.click(toggle);
+    await waitFor(() => expect(server.favoriteRequests).toHaveLength(1));
+    expect(server.favoriteRequests).toEqual([
+      { videoIds: [], groupIds: [8], favorite: true },
+    ]);
+    expect(
+      screen.getByRole("button", { name: 'Add group "mix" to a playlist' }),
+    ).toBeDefined();
   });
 
   it("リスト表示のグループの行でも付け外しできる", async () => {
@@ -433,7 +450,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     await waitFor(() => expect(pressed(toggle)).toBe("true"));
   });
 
-  it("appliedFolders が 0 で、取り直しが 404 なら、そのカードを一覧から外す", async () => {
+  it("appliedGroups が 0 で、取り直しが 404 なら、そのカードを一覧から外す", async () => {
     const server = install(
       [
         { kind: "video", video: video(1) },
@@ -446,7 +463,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     const toggle = await screen.findByRole("button", { name: 'Favorite group "series"' });
     // もうグループではない。
     server.group = undefined;
-    server.appliedFolders = 0;
+    server.appliedGroups = 0;
     await user.click(toggle);
     await waitFor(() =>
       expect(
@@ -511,7 +528,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
 
     // 再生画面にいる間に付ける（再生画面の付け外しと同じ経路）。
     await act(async () => {
-      await updateFavorites([1], [{ rootId: 3, path: "series" }], true);
+      await updateFavorites([1], [7], true);
     });
     await user.click(screen.getByRole("button", { name: "一覧へ戻る" }));
 
@@ -541,19 +558,18 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     });
     renderLibrary();
     await waitFor(() => expect(answerPage).toBeDefined());
-    // ページが届く前に、もうグループでないフォルダを付け外す（appliedFolders: 0）。
+    // ページが届く前に、もうグループでないフォルダを付け外す（appliedGroups: 0）。
     server.group = undefined;
-    server.appliedFolders = 0;
+    server.appliedGroups = 0;
     await act(async () => {
-      await updateFavorites([], [{ rootId: 3, path: "series" }], true);
+      await updateFavorites([], [7], true);
     });
     act(() => answerPage?.());
     await waitFor(() =>
       expect(
         fetchMock.mock.calls.some(
           ([input]) =>
-            new URL(String(input), "http://localhost").pathname ===
-            "/api/folders/3/group",
+            new URL(String(input), "http://localhost").pathname === "/api/groups/7",
         ),
       ).toBe(true),
     );
@@ -579,7 +595,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
         if (path === "/api/favorites" && server.favoriteRequests.length === 0) {
           // 最初の付け外しは反映の数が足りない（サーバーでは付いている）。
           return base!(input, init).then(() =>
-            json({ appliedVideos: 0, appliedFolders: 0 }),
+            json({ appliedVideos: 0, appliedGroups: 0 }),
           );
         }
         return base!(input, init);
@@ -640,7 +656,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
 });
 
 describe("選択バーの一括のお気に入り（specs/035-favorites/ui-design.md「Selection bar」）", () => {
-  const seriesFolder = { rootId: 3, path: "series" };
+  const seriesGroupId = 7;
 
   async function favoriteSelection(user: ReturnType<typeof userEvent.setup>, add = true) {
     await user.click(screen.getByRole("button", { name: "Favorite" }));
@@ -657,7 +673,7 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
     );
   }
 
-  it("動画 2 本とグループ 1 つを付けると、videoIds は 2 本・folders は 1 つで、3 枚の印が付く（受け入れ条件 7）", async () => {
+  it("動画 2 本とグループ 1 つを付けると、videoIds は 2 本・groupIds は 1 つで、3 枚の印が付く（受け入れ条件 7）", async () => {
     const group = seriesGroup();
     const server = install(
       [
@@ -680,13 +696,14 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
     expect(names.indexOf("Favorite")).toBe(names.indexOf("Remove tag") + 1);
-    // 「Favorite」と「Visibility」の間は「Add to playlist」（specs/044-playlists/ui-design.md）。
-    expect(names.indexOf("Visibility")).toBe(names.indexOf("Favorite") + 2);
+    // 「Favorite」と「Visibility」の間は「Add to playlist」（specs/044-playlists/ui-design.md）と
+    // 「New group」「Add to group」（specs/048-groups/ui-design.md）。
+    expect(names.indexOf("Visibility")).toBe(names.indexOf("Favorite") + 4);
 
     await favoriteSelection(user);
     expect(await screen.findByText("Added 3 items to favorites")).toBeDefined();
     expect(server.favoriteRequests).toEqual([
-      { videoIds: [1, 2], folders: [seriesFolder], favorite: true },
+      { videoIds: [1, 2], groupIds: [seriesGroupId], favorite: true },
     ]);
     await waitFor(() =>
       expect(
@@ -722,11 +739,11 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
     await favoriteSelection(user);
     expect(await screen.findByText("Added 2 items to favorites")).toBeDefined();
     expect(server.favoriteRequests).toEqual([
-      { videoIds: [102, 103], folders: [], favorite: true },
+      { videoIds: [102, 103], groupIds: [], favorite: true },
     ]);
   });
 
-  it("「すべて選択」のあとは、応答の groups を folders に、残りを videoIds に送る", async () => {
+  it("「すべて選択」のあとは、応答の groups を groupIds に、残りを videoIds に送る", async () => {
     const group = seriesGroup();
     const server = install(
       [
@@ -750,11 +767,11 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
     await favoriteSelection(user);
     expect(await screen.findByText("Added 3 items to favorites")).toBeDefined();
     expect(server.favoriteRequests).toEqual([
-      { videoIds: [1, 2], folders: [seriesFolder], favorite: true },
+      { videoIds: [1, 2], groupIds: [seriesGroupId], favorite: true },
     ]);
   });
 
-  it("既にお気に入りのものを含めても誤りにならず、トーストは appliedVideos + appliedFolders を数える（Edge Case）", async () => {
+  it("既にお気に入りのものを含めても誤りにならず、トーストは appliedVideos + appliedGroups を数える（Edge Case）", async () => {
     const group = seriesGroup({ favorite: true });
     install(
       [
@@ -792,8 +809,8 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
     await favoriteSelection(user, false);
     expect(await screen.findByText("Removed 2 items from favorites")).toBeDefined();
     expect(server.favoriteRequests).toEqual([
-      { videoIds: [], folders: [seriesFolder], favorite: false },
-      { videoIds: [1], folders: [seriesFolder], favorite: false },
+      { videoIds: [], groupIds: [seriesGroupId], favorite: false },
+      { videoIds: [1], groupIds: [seriesGroupId], favorite: false },
     ]);
     await waitFor(() =>
       expect(
@@ -824,7 +841,7 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
     );
   });
 
-  it("メンバーが 20,000 本を超えるグループ 1 つは、タグ・公開は押せず、お気に入りは folders 1 つとして押せる", async () => {
+  it("メンバーが 20,000 本を超えるグループ 1 つは、タグ・公開は押せず、お気に入りは groupIds 1 つとして押せる", async () => {
     const huge = Array.from({ length: 20_001 }, (_, index) => 100_000 + index);
     const group = seriesGroup({ videoIds: huge, videoCount: huge.length });
     const server = install([{ kind: "group", group }], group);
@@ -847,7 +864,7 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
     await favoriteSelection(user);
     expect(await screen.findByText("Added 1 item to favorites")).toBeDefined();
     expect(server.favoriteRequests).toEqual([
-      { videoIds: [], folders: [seriesFolder], favorite: true },
+      { videoIds: [], groupIds: [seriesGroupId], favorite: true },
     ]);
   });
 
@@ -911,7 +928,7 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
     expect(await screen.findByText("Added 4 items to favorites")).toBeDefined();
     expect(server.favoriteRequests[0]).toEqual({
       videoIds: [102, 103, 1, 101],
-      folders: [],
+      groupIds: [],
       favorite: true,
     });
 
@@ -921,7 +938,7 @@ describe("選択バーの一括のお気に入り（specs/035-favorites/ui-desig
     await waitFor(() => expect(server.favoriteRequests).toHaveLength(2));
     expect(server.favoriteRequests[1]).toEqual({
       videoIds: [1],
-      folders: [seriesFolder],
+      groupIds: [seriesGroupId],
       favorite: true,
     });
   });

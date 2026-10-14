@@ -19,7 +19,7 @@ func playbackGroup(id int64, pattern string, memberIDs ...int64) PlaylistItem {
 	for i, memberID := range memberIDs {
 		members[i] = Video{ID: memberID}
 	}
-	group := NewLibraryGroup("/g", "g", members, progressOf(pattern))
+	group := NewLibraryGroup(1, "/g", "g", members, progressOf(pattern))
 	return PlaylistItem{ID: id * 10, Group: &group}
 }
 

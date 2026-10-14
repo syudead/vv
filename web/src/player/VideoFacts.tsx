@@ -29,7 +29,8 @@ import { detailMark, type DetailMark } from "../api/useVideoDetail";
 import { errorText, formatDate, formatDateTime, t, type UiText } from "../i18n";
 import { copyText } from "../lib/clipboard";
 import { cn } from "../lib/cn";
-import { formatBytes, formatDuration } from "../lib/format";
+import { formatBytes, formatDuration, isNarrowVideo } from "../lib/format";
+import AddToGroupButton from "../groups/AddToGroupButton";
 import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
 import FavoriteToggle from "../ui/FavoriteToggle";
 import { Button } from "../ui/shadcn/button";
@@ -40,6 +41,7 @@ import { factTrigger } from "./factTrigger";
 import { technicalSummary } from "./properties";
 import EditEntry from "./thumbnailEdit/EditEntry";
 import UploadEntry, { useThumbnailUpload } from "./thumbnailUpload/UploadEntry";
+import UploadPreview from "./thumbnailUpload/UploadPreview";
 import DetailsEntry, { type DetailsEntryProps } from "./detailsEditor/DetailsEntry";
 import FetchEntry from "./workInfoFetch/FetchEntry";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
@@ -297,7 +299,8 @@ export default function VideoFacts({
   useEffect(() => setFailure(null), [video.id]);
   const open = useOpenFileRequest(video.id, setFailure);
   const thumbnail = useThumbnailPosition(video.id, setFailure, onChanged, onStale);
-  const upload = useThumbnailUpload(video.id, setFailure, onChanged, onStale);
+  const upload = useThumbnailUpload(video, setFailure, onChanged, onStale);
+  const uploadBusy = upload.sending || upload.preparing;
   const toast = useToast();
   const location = video.location;
   const duration = formatDuration(video.durationMs);
@@ -350,7 +353,7 @@ export default function VideoFacts({
               origin={video.thumbnailImage}
               url={video.thumbnailUrl}
               reverting={thumbnail.sending === "revert"}
-              locked={upload.sending}
+              locked={uploadBusy}
               onRevert={() => thumbnail.send("revert")}
             />
           )}
@@ -361,7 +364,7 @@ export default function VideoFacts({
                 url={video.thumbnailUrl}
                 positionMs={video.thumbnailPositionMs}
                 clearing={thumbnail.sending === "clear"}
-                locked={upload.sending}
+                locked={uploadBusy}
                 onClear={() => thumbnail.send(null)}
               />
             )}
@@ -391,7 +394,15 @@ export default function VideoFacts({
                 videoIds={[video.id]}
               />
             )}
-            {/* 「Add to playlist」の後、サムネイルの操作の前に置く。所有者にだけ、プレイヤーが
+            {/* 「Add to playlist」の直後（specs/048-groups/ui-design.md「Add to group」）。 */}
+            {favorite !== undefined && (
+              <AddToGroupButton
+                variant="page"
+                label={t.list.card.addToGroup(video.title)}
+                videoIds={[video.id]}
+              />
+            )}
+            {/* 「Add to group」の後、サムネイルの操作の前に置く。所有者にだけ、プレイヤーが
                 出ていなくても置く（specs/047-video-work-info/ui-design.md「Video page: entry」）。 */}
             <DetailsEntry video={video} owner={owner} details={details} />
             {/* 「Edit details」の後、「Use current frame as thumbnail」の前に置き、詳細を埋める
@@ -409,7 +420,7 @@ export default function VideoFacts({
               <CaptureButton
                 capture={capture}
                 sending={thumbnail.sending === "capture"}
-                locked={upload.sending}
+                locked={uploadBusy}
                 onCapture={(positionMs) => thumbnail.send(positionMs)}
               />
             )}
@@ -428,9 +439,20 @@ export default function VideoFacts({
             )}
             {owner && (
               <UploadEntry
-                sending={upload.sending}
+                sending={uploadBusy}
                 locked={thumbnail.sending !== null}
-                onFile={upload.upload}
+                onFile={upload.choose}
+              />
+            )}
+            {upload.preview !== null && (
+              <UploadPreview
+                image={upload.preview.image}
+                name={upload.preview.name}
+                aspect={upload.preview.aspect}
+                narrow={isNarrowVideo(video)}
+                applying={upload.applying}
+                onApply={upload.apply}
+                onCancel={upload.cancel}
               />
             )}
             {location?.openable === true && (

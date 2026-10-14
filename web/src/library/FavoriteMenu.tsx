@@ -1,6 +1,5 @@
 import { ChevronDown, Heart, HeartOff } from "lucide-react";
 
-import type { FolderRef } from "../api/client";
 import { updateFavorites } from "../api/favorites";
 import { maxVideoTagsSelection } from "../api/tags";
 import { errorText, t } from "../i18n";
@@ -18,19 +17,19 @@ import { overLimitMessage } from "./selectionErrors";
  * FavoriteMenu は選択バーの「Favorite」である（specs/035-favorites/ui-design.md
  * 「Selection bar」）。選んだ項目の今の状態は示さず、「Add to favorites」「Remove from
  * favorites」の両方を常に押せる。`videoIds` は選んだ id のうち選んだグループのメンバーで
- * ないもの、`folders` は選んだグループで、1 回の `PUT /api/favorites` で送る（research.md
- * R-7）。確定したらトーストで結果を伝え、選択は残す。カードの印は応答の通知
- * （api/favorites.ts）で一覧が差し替える。
+ * ないもの、`groupIds` は選んだグループで、1 回の `PUT /api/favorites` で送る（research.md
+ * R-7、specs/048-groups/research.md R-10）。確定したらトーストで結果を伝え、選択は残す。カードの
+ * 印は応答の通知（api/favorites.ts）で一覧が差し替える。
  */
 export default function FavoriteMenu({
   videoIds,
-  folders,
+  groupIds,
   overLimit,
   overLimitId,
 }: {
   videoIds: readonly number[];
-  folders: readonly FolderRef[];
-  /** 送る数（`videoIds` と `folders` の合計）が上限を超えるとき true。 */
+  groupIds: readonly number[];
+  /** 送る数（`videoIds` と `groupIds` の合計）が上限を超えるとき true。 */
   overLimit: boolean;
   overLimitId: string;
 }) {
@@ -38,13 +37,13 @@ export default function FavoriteMenu({
 
   function apply(favorite: boolean) {
     // 送る直前に最新の数を確かめる（タグ・公開と同じ理由。上限を超えると 400 になる）。
-    if (videoIds.length + folders.length > maxVideoTagsSelection) {
+    if (videoIds.length + groupIds.length > maxVideoTagsSelection) {
       toast(overLimitMessage());
       return;
     }
-    void updateFavorites(videoIds, folders, favorite).then(
+    void updateFavorites(videoIds, groupIds, favorite).then(
       (result) => {
-        const applied = result.appliedVideos + result.appliedFolders;
+        const applied = result.appliedVideos + result.appliedGroups;
         toast(
           favorite
             ? t.library.selection.favoritesAdded(applied)

@@ -1832,7 +1832,9 @@ describe("LibraryPage", () => {
         ([input]) => new URL(String(input), "http://localhost").pathname,
       );
       expect(paths.every((path) => path === "/api/library")).toBe(true);
-      expect(FakeEventSource.instances).toHaveLength(0);
+      // /api/events はゲストにも group だけを送るので、グループの変化のために 1 本つなぐ
+      // （specs/048-groups/contracts/screen-api.md「/api/events」）。
+      expect(FakeEventSource.instances).toHaveLength(1);
     });
 
     it("URL に残った watch・最近再生した順・tag は既定に丸めて要求し、URL も直す", async () => {
@@ -1958,6 +1960,7 @@ describe("LibraryPage", () => {
 
     function seriesGroup(extra: Partial<LibraryGroup> = {}): LibraryGroup {
       return {
+        id: 7,
         folder: { rootId: 3, path: "series" },
         name: "series",
         videoCount: 12,
@@ -1977,7 +1980,10 @@ describe("LibraryPage", () => {
       };
     }
 
-    /** PlayerStub は再生画面の代わりに、開いた id と、元の一覧へ戻る操作を置く。 */
+    /**
+     * PlayerStub は再生画面とグループのページの代わりに、開いた場所と、元の一覧へ戻る操作を
+     * 置く。
+     */
     function PlayerStub() {
       const location = useLocation();
       const navigate = useNavigate();
@@ -2002,6 +2008,7 @@ describe("LibraryPage", () => {
                   <Routes>
                     <Route path="/" element={<LibraryPage />} />
                     <Route path="/videos/:id" element={<PlayerStub />} />
+                    <Route path="/groups/:id" element={<PlayerStub />} />
                   </Routes>
                 </ScanProvider>
               </AudienceProvider>
@@ -2047,10 +2054,16 @@ describe("LibraryPage", () => {
           );
         }
         if (url.pathname === "/api/library/ids") {
-          return Promise.resolve(json({ ids: [1, ...memberIds, 2] }));
+          // グループの項目は `groups` にも入る（specs/035-favorites/contracts/screen-api.md §3）。
+          return Promise.resolve(
+            json({
+              ids: [1, ...memberIds, 2],
+              groups: [{ id: server.group.id, videoIds: server.group.videoIds }],
+            }),
+          );
         }
-        if (url.pathname === "/api/folders/3/group") {
-          return Promise.resolve(json(server.group));
+        if (url.pathname === "/api/groups/7") {
+          return Promise.resolve(json({ group: server.group, trail: [], items: [] }));
         }
         if (url.pathname === "/api/video-tags" && method === "POST") {
           const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
@@ -2113,23 +2126,23 @@ describe("LibraryPage", () => {
       ).toBeDefined();
     });
 
-    it("押すと開くメンバーの再生画面へ移り、戻る先は今の一覧（受け入れ条件14）", async () => {
+    it("押すとそのグループのページへ移り、戻る先は今の一覧（specs/048-groups/research.md R-8）", async () => {
       installGroupList();
       const user = userEvent.setup();
       renderWithPlayer("/?q=ser");
       await user.click(await screen.findByRole("link", { name: ownerLabel }));
-      expect(await screen.findByText("再生画面 /videos/104")).toBeDefined();
+      expect(await screen.findByText("再生画面 /groups/7")).toBeDefined();
       expect(screen.getByRole("button", { name: "一覧へ戻る /?q=ser" })).toBeDefined();
     });
 
-    it("再生から戻ると、カードの視聴状態がメンバーの変化で変わる（受け入れ条件12）", async () => {
+    it("グループのページから戻ると、カードの視聴状態がメンバーの変化で変わる（受け入れ条件12）", async () => {
       const server = installGroupList();
       const user = userEvent.setup();
       renderWithPlayer();
       await user.click(await screen.findByRole("link", { name: ownerLabel }));
-      await screen.findByText("再生画面 /videos/104");
+      await screen.findByText("再生画面 /groups/7");
 
-      // 再生画面で 104 を見終えた。サーバーのグループも 4 本視聴済みになる。
+      // 一覧を離れている間に 104 を見終えた。サーバーのグループも 4 本視聴済みになる。
       server.group = seriesGroup({ watchedCount: 4, openVideoId: 105 });
       act(() => {
         recordSavedProgress(
@@ -2149,7 +2162,7 @@ describe("LibraryPage", () => {
           .getByRole("progressbar", { name: "Share of videos watched" })
           .getAttribute("aria-valuenow"),
       ).toBe("33");
-      expect(link.getAttribute("href")).toBe("/videos/105");
+      expect(link.getAttribute("href")).toBe("/groups/7");
       // 一覧は控えから戻し、グループだけを取り直す。
       const libraryRequests = listRequests(fetchMock);
       expect(libraryRequests).toHaveLength(1);
@@ -2277,11 +2290,11 @@ describe("LibraryPage", () => {
       renderLibrary();
       const link = await screen.findByRole("link", { name: ownerLabel });
       const row = link.closest("tr") as HTMLElement;
-      expect(link.getAttribute("href")).toBe("/videos/104");
+      expect(link.getAttribute("href")).toBe("/groups/7");
       expect(within(row).getByText("12 videos")).toBeDefined();
       expect(within(row).getByText("3 / 12")).toBeDefined();
       expect(within(row).getByText("12:00")).toBeDefined();
-      expect(within(row).getAllByRole("cell")).toHaveLength(10);
+      expect(within(row).getAllByRole("cell")).toHaveLength(11);
     });
 
     it("ゲストのグループのカードには視聴状態と見終えた本数を出さない", async () => {
@@ -2324,6 +2337,7 @@ describe("LibraryPage の英語の画面（specs/023-english-i18n）", () => {
     thumbnailUrl: undefined,
   });
   const group: LibraryGroup = {
+    id: 7,
     folder: { rootId: 3, path: "連続もの" },
     name: "連続もの",
     videoCount: 2,
@@ -2559,6 +2573,7 @@ describe("LibraryPage の束ねる操作（specs/030-video-versions/ui-design.md
   let listed: number[];
   let bundleRequests: { videoIds: number[]; representativeId: number }[];
   const group: LibraryGroup = {
+    id: 7,
     folder: { rootId: 3, path: "連続もの" },
     name: "連続もの",
     videoCount: 2,

@@ -3,29 +3,31 @@ package store
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"path/filepath"
 	"reflect"
-	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// storedGroup は索引の表に書かれたグループ1件である。
+// storedGroup は自動グループ（origin_folder のあるグループ）1件である。Path は origin_folder
+// （domain.FolderKey）、Members は動画の項目を並びの順に動画の id にしたものである。
 type storedGroup struct {
 	Path    string
 	Name    string
 	Members []int64
 }
 
-// storedGroups は folder_groups と folder_group_members を path_key と並びの順に読む。
+// storedGroups は自動グループとその動画の項目を origin_folder と並びの順に読む。
 func storedGroups(t *testing.T, db *DB) []storedGroup {
 	t.Helper()
-	rows, err := db.sql.Query(`select g.id, g.path, g.name, g.title_key, m.video_id
-		from folder_groups g left join folder_group_members m on m.group_id = g.id
-		order by g.path_key, m.position`)
+	rows, err := db.sql.Query(`select g.id, g.origin_folder, g.name, g.title_key, v.id
+		from groups g
+		left join group_items i on i.group_id = g.id and i.content_key is not null
+		left join videos v on v.content_key = i.content_key
+		where g.origin_folder is not null
+		order by g.origin_folder, i.position`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -117,12 +119,12 @@ func TestRebuildFolderIndexAfterScan(t *testing.T) {
 		t.Fatalf("folder names = %v (loose=%d)", names, loose)
 	}
 
-	// 次のスキャンで子フォルダができると、そのフォルダはグループでなくなる。
+	// 次のスキャンで子フォルダができても、一度できた自動グループは残る（specs/048-groups/research.md R-3）。
 	nested := upsertFolderVideo(t, db, fixturePath("/media/Show/Extra/a.mp4"), "extra")
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
-	assertGroups(t, db, nil)
+	assertGroups(t, db, []storedGroup{{Path: fixturePath("/media/Show"), Name: "Show", Members: []int64{one, two, ten}}})
 	if names := storedFolderNames(t, db); !reflect.DeepEqual(names[nested], []string{"Extra", "Show"}) {
 		t.Fatalf("nested folder names = %v", names[nested])
 	}
@@ -156,8 +158,12 @@ func TestRebuildFolderIndexOnMediaFolderChanges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 共有する動画の代表の所在は /aaa/c/1.mp4 に移り、/media/b は1本になる。
-	assertGroups(t, db, []storedGroup{{Path: fixturePath("/aaa/c"), Name: "c", Members: []int64{shared, onlyAAA}}})
+	// 共有する動画の代表の所在は /aaa/c/1.mp4 に移り、/aaa/c のグループができる。一度できた
+	// /media/b の自動グループは残る（specs/048-groups/research.md R-3）。
+	assertGroups(t, db, []storedGroup{
+		{Path: fixturePath("/aaa/c"), Name: "c", Members: []int64{shared, onlyAAA}},
+		{Path: fixturePath("/media/b"), Name: "b", Members: []int64{shared, onlyMedia}},
+	})
 	if names := storedFolderNames(t, db); !reflect.DeepEqual(names[shared], []string{"b", "c"}) {
 		t.Fatalf("shared folder names = %v", names[shared])
 	}
@@ -165,7 +171,11 @@ func TestRebuildFolderIndexOnMediaFolderChanges(t *testing.T) {
 	if err := db.Settings().DeleteMediaFolder(ctx, added.ID, added.Version); err != nil {
 		t.Fatal(err)
 	}
-	assertGroups(t, db, []storedGroup{{Path: fixturePath("/media/b"), Name: "b", Members: []int64{shared, onlyMedia}}})
+	// /aaa の下の所在は索引から外れるので、/aaa/c のグループは空になって残る。
+	assertGroups(t, db, []storedGroup{
+		{Path: fixturePath("/aaa/c"), Name: "c", Members: []int64{}},
+		{Path: fixturePath("/media/b"), Name: "b", Members: []int64{shared, onlyMedia}},
+	})
 	if names := storedFolderNames(t, db); !reflect.DeepEqual(names[shared], []string{"b"}) {
 		t.Fatalf("shared folder names after delete = %v", names[shared])
 	}
@@ -210,10 +220,11 @@ func TestFolderGroupOverrides(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertGroups(t, db, []storedGroup{root, show})
+	// 例外を外しても、一度できた自動グループは残る（specs/048-groups/research.md R-3）。
 	if err := groups.ClearOverride(ctx, fixturePath("/media")); err != nil {
 		t.Fatal(err)
 	}
-	assertGroups(t, db, []storedGroup{show})
+	assertGroups(t, db, []storedGroup{root, show})
 	if err := groups.SetOverride(ctx, fixturePath("/media/Show"), "both"); err == nil {
 		t.Fatal("unknown mode was accepted")
 	}
@@ -224,14 +235,14 @@ func TestFolderGroupOverrides(t *testing.T) {
 	if err := groups.SetOverride(ctx, fixturePath("/media/Show"), domain.FolderGroupUngroup); err != nil {
 		t.Fatal(err)
 	}
-	assertGroups(t, db, nil)
+	assertGroups(t, db, []storedGroup{root})
 
 	// 再スキャン（取り込みと作り直し）の後も例外は効く。
 	c := upsertFolderVideo(t, db, fixturePath("/media/Show/c.mp4"), "c")
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
 		t.Fatal(err)
 	}
-	assertGroups(t, db, nil)
+	assertGroups(t, db, []storedGroup{root})
 
 	// 再オープンの後も例外は残り、索引は作り直さなくてよい。
 	if err := db.Close(); err != nil {
@@ -267,7 +278,7 @@ func TestFolderGroupOverrides(t *testing.T) {
 	if err := db.FolderGroups().ClearOverride(ctx, fixturePath("/media/Nothing")); err != nil {
 		t.Fatal(err)
 	}
-	assertGroups(t, db, nil)
+	assertGroups(t, db, []storedGroup{root})
 }
 
 // 起動時の作り直しは、行が無いとき・版が違うとき・前回が失敗していたときだけ行う。
@@ -384,9 +395,9 @@ func BenchmarkRebuildFolderIndex(b *testing.B) {
 	}
 }
 
-// まとめ方の読み出しと、グループのタグ化（specs/017-folder-groups/data-model.md §4）。
-// タグ化はグループでないフォルダと、タグ名に使えないフォルダ名では何も書かない。
-func TestFolderGroupingsAndTagFolderGroup(t *testing.T) {
+// まとめ方の読み出しは、例外と、そのフォルダの自動グループの id を返す
+// （specs/048-groups/contracts/screen-api.md「Routes and schemas changed」の FolderGrouping）。
+func TestFolderGroupings(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -399,11 +410,14 @@ func TestFolderGroupingsAndTagFolderGroup(t *testing.T) {
 	if _, err := db.Settings().AddMediaFolder(ctx, fixturePath("/media")); err != nil {
 		t.Fatal(err)
 	}
-	long := strings.Repeat("a", domain.TagNameMaxLength+1)
-	for _, path := range []string{fixturePath("/media/Show/a.mp4"), fixturePath("/media/Show/b.mp4"), fixturePath("/media/" + long + "/c.mp4"), fixturePath("/media/" + long + "/d.mp4"), fixturePath("/media/x.mp4")} {
+	for _, path := range []string{fixturePath("/media/Show/a.mp4"), fixturePath("/media/Show/b.mp4"), fixturePath("/media/x.mp4")} {
 		upsertFolderVideo(t, db, path, filepath.Base(path))
 	}
 	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
+		t.Fatal(err)
+	}
+	var showID int64
+	if err := db.sql.QueryRow(`select id from groups where origin_folder = ?`, domain.FolderKey(fixturePath("/media/Show"))).Scan(&showID); err != nil {
 		t.Fatal(err)
 	}
 	groups := db.FolderGroups()
@@ -412,48 +426,59 @@ func TestFolderGroupingsAndTagFolderGroup(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []domain.FolderGrouping{{Grouped: true}, {}, {}}
+	want := []domain.FolderGrouping{{GroupID: showID}, {}, {}}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("groupings = %+v, want %+v", got, want)
 	}
 	grouping, err := groups.SetFolderGrouping(ctx, fixturePath("/media"), domain.FolderGroupDirect)
-	if err != nil || grouping != (domain.FolderGrouping{Mode: domain.FolderGroupDirect, Grouped: false}) {
+	if err != nil || grouping != (domain.FolderGrouping{Mode: domain.FolderGroupDirect}) {
 		// /media の直下は x だけなので、1本ではグループにならない。
 		t.Fatalf("groupDirect = %+v, %v", grouping, err)
 	}
 	if grouping, err := groups.SetFolderGrouping(ctx, fixturePath("/media"), ""); err != nil || grouping != (domain.FolderGrouping{}) {
 		t.Fatalf("auto = %+v, %v", grouping, err)
 	}
+	// ungroup は自動グループを解散するので、id は消える。
+	if grouping, err := groups.SetFolderGrouping(ctx, fixturePath("/media/Show"), domain.FolderGroupUngroup); err != nil || grouping != (domain.FolderGrouping{Mode: domain.FolderGroupUngroup}) {
+		t.Fatalf("ungroup = %+v, %v", grouping, err)
+	}
+}
 
-	countRows := func(table string) int {
+// 移行 00045 はフォルダの索引のグループの表を落とす。Down は空の表を戻し、前の版が次の起動で
+// 索引を作り直すよう、索引を古いと記録する（specs/048-groups/data-model.md「Migration」）。
+func TestDropFolderGroupsMigration(t *testing.T) {
+	db, provider := migrateTo(t, 44)
+	ctx := context.Background()
+	execSQL(t, db, `insert into folder_index_state (id, version, search_version, stale) values (1, 3, 1, 0)`)
+	execSQL(t, db, `insert into folder_groups (id, path_key, path, name, title_key) values (1, '/m/show', '/m/Show', 'Show', 'show')`)
+	countTables := func() int {
 		t.Helper()
 		var n int
-		if err := db.sql.QueryRow(`select count(*) from ` + table).Scan(&n); err != nil {
+		if err := db.sql.QueryRow(`select count(*) from sqlite_master
+			where name in ('folder_groups', 'folder_group_members')`).Scan(&n); err != nil {
 			t.Fatal(err)
 		}
 		return n
 	}
-	if _, err := groups.TagFolderGroup(ctx, fixturePath("/media/")+long); !errors.Is(err, domain.ErrInvalidTagName) {
-		t.Fatalf("タグ名に使えない名前: err = %v", err)
-	}
-	if _, err := groups.TagFolderGroup(ctx, fixturePath("/media/Gone")); !errors.Is(err, domain.ErrNotFolderGroup) {
-		t.Fatalf("グループでないフォルダ: err = %v", err)
-	}
-	if tags, overrides := countRows("tags"), countRows("folder_group_overrides"); tags != 0 || overrides != 0 {
-		t.Fatalf("失敗したタグ化で書かれた: tags %d, overrides %d", tags, overrides)
-	}
 
-	result, err := groups.TagFolderGroup(ctx, fixturePath("/media/Show"))
-	if err != nil {
+	if _, err := provider.UpTo(ctx, 45); err != nil {
 		t.Fatal(err)
 	}
-	if !result.Created || result.Tag.Name != "Show" || result.Grouping != (domain.FolderGrouping{Mode: domain.FolderGroupUngroup}) {
-		t.Fatalf("result = %+v", result)
+	if n := countTables(); n != 0 {
+		t.Fatalf("Up のあとも %d 表が残った", n)
 	}
-	if remaining := storedGroups(t, db); len(remaining) != 1 || remaining[0].Name != long {
-		t.Fatalf("タグ化の後のグループ = %+v, want %s だけ", remaining, long)
+
+	if _, err := provider.DownTo(ctx, 44); err != nil {
+		t.Fatal(err)
 	}
-	if _, err := groups.TagFolderGroup(ctx, fixturePath("/media/Show")); !errors.Is(err, domain.ErrNotFolderGroup) {
-		t.Fatalf("2回目: err = %v", err)
+	if n := countTables(); n != 2 {
+		t.Fatalf("Down のあとの表 = %d, want 2", n)
+	}
+	var rows, stale int
+	if err := db.sql.QueryRow(`select count(*) from folder_groups`).Scan(&rows); err != nil || rows != 0 {
+		t.Fatalf("Down のあとの folder_groups = %d 行, %v; want 0", rows, err)
+	}
+	if err := db.sql.QueryRow(`select stale from folder_index_state where id = 1`).Scan(&stale); err != nil || stale != 1 {
+		t.Fatalf("Down のあとの stale = %d, %v; want 1", stale, err)
 	}
 }
