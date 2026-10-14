@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/ui-design.md
-sourceHash: ec4933a7d47387bbe9f29201064c53248a245e4539382ce4d83f931ba0596092
+sourceHash: ab249f9b59b6fd704d3383e354b45eed73a0bb47bc179c7ce931697778e39396
 ---
 
 # UI デザイン: 外部のサービスから作品情報を取得する作品情報プラグイン {#ui-design-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -74,7 +74,7 @@ flowchart LR
 | 拒否、大きすぎる | Choose a file up to 16 MB. | 何かを送る前 |
 | 追加の失敗 | Couldn't add the plugin: {reason} | 節の失敗の行 |
 | 追加した (トースト) | Added {name}. Approve it to use it. | `{name}` は名前。名前がないときはファイル名 |
-| 置き換えた (トースト) | Replaced {name}. Approve it again to use it. | アップロードの `200` |
+| 置き換えた (トースト) | Replaced {name}. Approve it again to use it. | アップロードが `200` で返された。`201` は一覧の内容にかかわらず Added を表示する |
 | 追加したが使えない (トースト) | Added {name}, but it can't be used. | `state: invalid` |
 | 空 | No plugins yet | `EmptyState` のタイトル |
 | 空のときのヒント | Add a .wasm plugin file to fetch titles and tags on the video page. | `EmptyState` の説明 |
@@ -226,7 +226,7 @@ flowchart LR
 
 ### 追加 {#adding}
 
-`Add plugin` はブラウザのファイル選択を `.wasm` ファイルに限って開く。16 MiB を超えるファイルは、何かを送る前に節の失敗の行で拒否する。ファイルを送る間、ボタンは回転して `Adding…` と表示し、行の操作は使えるままである。`201` か `200` のとき一覧を読み直し、トーストが何が起きたかを伝え ([文言、Settings の節の文言](#settings-section-text))、フォーカスは追加した行の最初の操作に移る。失敗すると、ヘッダーの下の `destructive` の `Alert` である節の失敗の行を、次の追加まで表示する。問題のあるファイルも `invalid` の行として追加する (Issue の境界ケース)。
+`Add plugin` はブラウザのファイル選択を `.wasm` ファイルに限って開く。16 MiB を超えるファイルは、何かを送る前に節の失敗の行で拒否する。ファイルを送る間、ボタンは回転して `Adding…` と表示し、行の操作は使えるままである。`201` か `200` のとき一覧を読み直し、トーストが何が起きたかをそのステータスで伝え (画面 API の定めのとおり `201` は追加、`200` は置き換えであり、古い可能性のある画面上の一覧によらない) ([文言、Settings の節の文言](#settings-section-text))、フォーカスは追加した行の最初の操作に移る。失敗すると、ヘッダーの下の `destructive` の `Alert` である節の失敗の行を、次の追加まで表示する。問題のあるファイルも `invalid` の行として追加する (Issue の境界ケース)。
 
 ### プラグインの行 {#plugin-row}
 
@@ -255,7 +255,7 @@ flowchart LR
 
 ### 設定のダイアログ {#settings-dialog}
 
-`Settings` が開く `FormDialog` で、宣言した設定ごとに一つの `Field` をマニフェストの順に持つ。ラベル、宣言されているときはその後の `Required`、`maxLength` 2000 の `Input` である。
+`Settings` が開く `FormDialog` で、宣言した設定ごとに一つの `Field` をマニフェストの順に持つ。ラベル、宣言されているときはその後の `Required`、Unicode のコードポイントで数えて 2000 文字で止まる `Input` である。数え方はサーバーと同じである。`maxLength` は使わない。これは UTF-16 の単位で数えるので、絵文字の値を早く止めてしまう。
 
 | 設定 | 欄 |
 | --- | --- |
@@ -263,7 +263,7 @@ flowchart LR
 | 秘密、未保存 | `Input type="password"`、`autocomplete="off"`、空。ヒントは `Not set.` |
 | 秘密、保存済み | 同じ入力で、空。ヒントは `Saved. Type a new value to replace it.` と `Forget`。空の欄は保存した値を保つ。`Forget` は入力を空にして無効にし、`Undo` とともに `Removed when you save.` を表示する |
 
-`Save` は変わったキーだけを (削除した値には `null` を) `pending` とともに送る。`200` のときダイアログはトーストとともに閉じ、行の設定の要約と必須の行は応答から更新される。承認のバッジは変わらない (要件 11)。失敗すると、ダイアログに `Save failed` の `Alert` を表示し、入力した値をすべて保つ。秘密の値は、ダイアログでも他のどこでも、決して欄に戻さない (受け入れ条件 8)。
+`Save` は変わったキーがない間は無効で、変わったキーだけを (削除した値には `null` を) `pending` とともに送る。`200` のときダイアログはトーストとともに閉じ、行の設定の要約と必須の行は応答から更新される。承認のバッジは変わらない (要件 11)。失敗すると、ダイアログに `Save failed` の `Alert` を表示し、入力した値をすべて保つ。秘密の値は、ダイアログでも他のどこでも、決して欄に戻さない (受け入れ条件 8)。
 
 ### 削除の確認 {#delete-confirmation}
 

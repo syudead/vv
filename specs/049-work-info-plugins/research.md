@@ -158,8 +158,10 @@ digest.
 
 **Decision**: A fetch answers with a result id; the result stays in memory for
 10 minutes, and applying it fails with `work_info_fetch_stale` when it has
-expired, was dropped by a restart, or the plugin's digest or approval has
-changed since.
+expired, was dropped by a restart, or the plugin's digest, approval or
+`generation` ([data-model.md](data-model.md)) has changed since. A result
+records all three when it is fetched, so re-approving the same digest after a
+fetch still leaves the earlier result stale.
 
 | Option | Verdict |
 | --- | --- |
@@ -167,9 +169,13 @@ changed since.
 | The client sends the fetched values back with the apply | Rejected: the server cannot then tell a stale result from a fresh one, which the Issue's edge cases require |
 | A SQLite table of results | Rejected: nothing about a result needs to outlive a restart; the owner fetches again |
 
-The apply re-reads the plugin row's digest and approval inside its own
-transaction, so a replacement, revocation or deletion that commits between
-the check in `internal/app` and the write still makes the apply stale.
+The digest and the approval alone cannot tell a fetch made before a revoke
+and re-approval, or before a replacement with the same bytes, from one made
+after it; `generation` grows on each replacing upload and each revoke, and
+re-approving needs one of them first. The apply re-reads the plugin row's
+digest, approval and `generation` inside its own transaction, so a
+replacement, revocation or deletion that commits between the check in
+`internal/app` and the write still makes the apply stale.
 
 **Rationale**: The same shape as the thumbnail edit sessions
 ([thumbnail-editing.md](../../docs/design-docs/thumbnail-editing.md)), with a
