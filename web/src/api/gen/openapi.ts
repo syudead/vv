@@ -2481,6 +2481,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organize/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * グループの項目をまとめて並べ替え、取り消しのトークンを返す
+         * @description 所有者だけ。グループ `groupId` の項目 `itemIds` を画面の順のまままとめて項目 `after` の
+         *     すぐ後ろへ移す。`after` が無ければ先頭へ移す。1 つの取引で行い、応答の `undoToken` で
+         *     取り消せる（specs/050-drag-organize/contracts/screen-api.md）。`itemIds` が空か `after` が
+         *     `itemIds` の中にあれば 400 `invalid_request`。グループ・項目・`after` のどれかが無いか
+         *     そのグループに無ければ 404 `group_target_not_found` で、何も書かない。
+         */
+        post: operations["organizeReorder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organize/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ドラッグの操作を取り消す
+         * @description 所有者だけ。`token` の操作の前の状態へ戻す（specs/050-drag-organize/research.md R-1）。操作の
+         *     後で行が変わっていれば 409 `undo_conflict` で、何も書かない。トークンが無い、使い済み、
+         *     または 10 分より古ければ 410 `undo_expired`。トークンは 1 回だけ使える。
+         */
+        post: operations["organizeUndo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/folders/{rootId}/grouping": {
         parameters: {
             query?: never;
@@ -3614,6 +3660,45 @@ export interface components {
             /** @description 外す項目の id（動画やグループの id ではない） */
             itemIds: number[];
         };
+        /** @description ドラッグしたカード 1 枚（specs/050-drag-organize/research.md R-4） */
+        OrganizeRef: {
+            /** @enum {string} */
+            kind: "video" | "group";
+            /**
+             * Format: int64
+             * @description 動画かグループの id
+             */
+            id: number;
+        };
+        /** @description ドラッグしたカード。画面の順 */
+        OrganizeRefs: components["schemas"]["OrganizeRef"][];
+        OrganizeResult: {
+            /** @description この操作を取り消すトークン（POST /api/organize/undo）。10 分有効で、1 回だけ使える */
+            undoToken: string;
+            /**
+             * Format: int64
+             * @description 新しいグループの id。/api/organize/group だけが返す
+             */
+            groupId?: number;
+        };
+        OrganizeReorder: {
+            /**
+             * Format: int64
+             * @description 開いているグループ
+             */
+            groupId: number;
+            /** @description 移す項目の id（動画やグループの id ではない）。画面の順 */
+            itemIds: number[];
+            /**
+             * Format: int64
+             * @description この項目のすぐ後ろへ移す。無ければ先頭へ移す
+             */
+            after?: number;
+        };
+        OrganizeUndo: {
+            /** @description 操作の応答の `undoToken` */
+            token: string;
+        };
         GroupTagResult: {
             tag: components["schemas"]["TagRef"];
             /** @description タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false */
@@ -4298,7 +4383,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -8169,6 +8254,67 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    organizeReorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeReorder"];
+            };
+        };
+        responses: {
+            /** @description 並べ替えた。取り消しのトークン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    organizeUndo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeUndo"];
+            };
+        };
+        responses: {
+            /** @description 取り消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            /** @description 取り消しのトークンが無い、使い済み、または 10 分より古い */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     setFolderGrouping: {

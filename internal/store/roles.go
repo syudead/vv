@@ -102,6 +102,13 @@ type VersionStore struct{ db *DB }
 // 作り直す各取引の中で syncFolderGroups が行う（groups.go）。
 type GroupStore struct{ db *DB }
 
+// OrganizeStore はドラッグの操作（並べ替えなど）と、その取り消しの像と復元を受け持つ（organize.go・
+// organize_image.go、specs/050-drag-organize/data-model.md「Operations」「Undo image」）。操作は
+// グループと集まりの表にまたがるので、GroupStore・VersionStore の公開メソッドを呼ばず、パッケージ
+// 内の関数を共有する。像は organize_image.go だけがバイト列にし、読み戻す。確定後に
+// domain.GroupsChanged を発行するため、発行先を持つ *DB を通して使う。
+type OrganizeStore struct{ db *DB }
+
 // CreditStore は人物と団体（名前・別名・外部 ID・団体の親）の一覧・読み出し・作成・更新・統合・削除と、
 // その名前の照合用の鍵の作り直しを受け持つ（credits.go・credit_listing.go、
 // specs/047-video-work-info/data-model.md「Entities」）。2 つの種類を domain.CreditKind で受け、
@@ -134,5 +141,6 @@ func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
 func (db *DB) AutoTags() *AutoTagStore         { return &AutoTagStore{db: db} }
 func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
 func (db *DB) Groups() *GroupStore             { return &GroupStore{db: db} }
+func (db *DB) Organize() *OrganizeStore        { return &OrganizeStore{db: db} }
 func (db *DB) Credits() *CreditStore           { return &CreditStore{sql: db.sql, read: db.read} }
 func (db *DB) WorkInfo() *WorkInfoStore        { return &WorkInfoStore{db: db} }

@@ -331,6 +331,8 @@ const (
 	ErrorReasonTooManyVideos                 ErrorReason = "too_many_videos"
 	ErrorReasonTranscodeUnavailable          ErrorReason = "transcode_unavailable"
 	ErrorReasonUnauthorized                  ErrorReason = "unauthorized"
+	ErrorReasonUndoConflict                  ErrorReason = "undo_conflict"
+	ErrorReasonUndoExpired                   ErrorReason = "undo_expired"
 	ErrorReasonUnreachable                   ErrorReason = "unreachable"
 	ErrorReasonUsernameLength                ErrorReason = "username_length"
 	ErrorReasonVideoNotFound                 ErrorReason = "video_not_found"
@@ -477,6 +479,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonTranscodeUnavailable:
 		return true
 	case ErrorReasonUnauthorized:
+		return true
+	case ErrorReasonUndoConflict:
+		return true
+	case ErrorReasonUndoExpired:
 		return true
 	case ErrorReasonUnreachable:
 		return true
@@ -663,6 +669,24 @@ func (e LibraryItemKind) Valid() bool {
 	case LibraryItemKindGroup:
 		return true
 	case LibraryItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OrganizeRefKind.
+const (
+	OrganizeRefKindGroup OrganizeRefKind = "group"
+	OrganizeRefKindVideo OrganizeRefKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the OrganizeRefKind enum.
+func (e OrganizeRefKind) Valid() bool {
+	switch e {
+	case OrganizeRefKindGroup:
+		return true
+	case OrganizeRefKindVideo:
 		return true
 	default:
 		return false
@@ -2206,6 +2230,46 @@ type OrganizationMergeResponse struct {
 
 	// Organization 団体 1 件。Person と同じ項目に親の団体が加わる
 	Organization Organization `json:"organization"`
+}
+
+// OrganizeRef ドラッグしたカード 1 枚（specs/050-drag-organize/research.md R-4）
+type OrganizeRef struct {
+	// Id 動画かグループの id
+	Id   int64           `json:"id"`
+	Kind OrganizeRefKind `json:"kind"`
+}
+
+// OrganizeRefKind defines model for OrganizeRef.Kind.
+type OrganizeRefKind string
+
+// OrganizeRefs ドラッグしたカード。画面の順
+type OrganizeRefs = []OrganizeRef
+
+// OrganizeReorder defines model for OrganizeReorder.
+type OrganizeReorder struct {
+	// After この項目のすぐ後ろへ移す。無ければ先頭へ移す
+	After *int64 `json:"after,omitempty"`
+
+	// GroupId 開いているグループ
+	GroupId int64 `json:"groupId"`
+
+	// ItemIds 移す項目の id（動画やグループの id ではない）。画面の順
+	ItemIds []int64 `json:"itemIds"`
+}
+
+// OrganizeResult defines model for OrganizeResult.
+type OrganizeResult struct {
+	// GroupId 新しいグループの id。/api/organize/group だけが返す
+	GroupId *int64 `json:"groupId,omitempty"`
+
+	// UndoToken この操作を取り消すトークン（POST /api/organize/undo）。10 分有効で、1 回だけ使える
+	UndoToken string `json:"undoToken"`
+}
+
+// OrganizeUndo defines model for OrganizeUndo.
+type OrganizeUndo struct {
+	// Token 操作の応答の `undoToken`
+	Token string `json:"token"`
 }
 
 // Person 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
@@ -4072,6 +4136,12 @@ type UpdateOrganizationJSONRequestBody = CreditPatch
 // MergeOrganizationsJSONRequestBody defines body for MergeOrganizations for application/json ContentType.
 type MergeOrganizationsJSONRequestBody = CreditMergeRequest
 
+// OrganizeReorderJSONRequestBody defines body for OrganizeReorder for application/json ContentType.
+type OrganizeReorderJSONRequestBody = OrganizeReorder
+
+// OrganizeUndoJSONRequestBody defines body for OrganizeUndo for application/json ContentType.
+type OrganizeUndoJSONRequestBody = OrganizeUndo
+
 // CreatePersonJSONRequestBody defines body for CreatePerson for application/json ContentType.
 type CreatePersonJSONRequestBody = CreditInput
 
@@ -4290,6 +4360,12 @@ type ServerInterface interface {
 	// MergeOrganizations sourceIds の団体を id の団体へ統合する
 	// (POST /api/organizations/{id}/merge)
 	MergeOrganizations(w http.ResponseWriter, r *http.Request, id OrganizationId)
+	// OrganizeReorder グループの項目をまとめて並べ替え、取り消しのトークンを返す
+	// (POST /api/organize/reorder)
+	OrganizeReorder(w http.ResponseWriter, r *http.Request)
+	// OrganizeUndo ドラッグの操作を取り消す
+	// (POST /api/organize/undo)
+	OrganizeUndo(w http.ResponseWriter, r *http.Request)
 	// ListPeople 人物を一覧する
 	// (GET /api/people)
 	ListPeople(w http.ResponseWriter, r *http.Request, params ListPeopleParams)
@@ -5952,6 +6028,34 @@ func (siw *ServerInterfaceWrapper) MergeOrganizations(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MergeOrganizations(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OrganizeReorder operation middleware
+func (siw *ServerInterfaceWrapper) OrganizeReorder(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OrganizeReorder(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OrganizeUndo operation middleware
+func (siw *ServerInterfaceWrapper) OrganizeUndo(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OrganizeUndo(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9016,6 +9120,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/items/remove", wrapper.RemoveGroupItems)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/items/{itemId}/move", wrapper.MoveGroupItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/tag", wrapper.TagGroup)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/reorder", wrapper.OrganizeReorder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/undo", wrapper.OrganizeUndo)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current/issues", wrapper.ListCurrentScanIssues)
