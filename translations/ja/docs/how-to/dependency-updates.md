@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: 3847fa9e1743096ddcea994db862e5ffb52ba917dacd805e3e85f0359e873f2c
+sourceHash: 613d3c21e240d18a8a47338b2419909462310acd31dde81ea9dd881859f4961e
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
@@ -72,27 +72,28 @@ shadcn CLI は `web/package.json` の devDependency `shadcn` であり、Renovat
 
 ## Renovate のルーチン {#the-renovate-routine}
 
-Claude Code の Routine が、[renovate-triage](../../.agents/skills/renovate-triage/SKILL.md) スキルを毎日 07:47 JST に実行する。ルーチンは、Renovate が自分でマージしない開いた Renovate の PR をすべて扱い、スキルのゲートを通ったものを、メジャー更新も含めて `main` にマージする。
+Claude Code の Routine が、[renovate-triage](../../.agents/skills/renovate-triage/SKILL.md) スキルを毎日 07:47 JST に実行する。ルーチンは、開いた Renovate の PR をすべて、同じ実行のうちに 2 つの終わりのどちらかに至らせる。スキルのゲートを通って `main` にマージされる（メジャー更新も含む）か、`needs-human` ラベルが付くかである。次の実行に残すものはない。
 
 ```mermaid
 flowchart TD
   start[毎日の実行] --> watch[ルーチンのマージ後の main を確認]
   watch -->|E2E か Docker イメージが壊れた| broken[マージされた PR に needs-human、マージを停止]
-  watch --> list[開いた Renovate の PR]
-  list --> kind{状態}
-  kind -->|チェックが緑、メジャーでない| skip[Renovate がマージ]
-  kind -->|競合| rebase[Renovate がリベース、またはワーカーが main をマージ]
-  kind -->|チェック失敗| fix[ワーカーが根本原因を修正]
-  kind -->|メジャー| review[ワーカーが破壊的変更を確認してコードを合わせる]
-  fix --> next[次の実行がゲートを適用]
-  rebase --> next
-  review --> gate{ゲート通過?}
-  next --> gate
+  watch --> pr[次の開いた Renovate の PR]
+  pr --> ci{CI 実行中?}
+  ci -->|はい| wait[CI を待つ]
+  wait --> ci
+  ci -->|いいえ| state{緑で、メジャー更新は確認済み?}
+  state -->|はい| gate{ゲート通過?}
   gate -->|はい| merge[ルーチンがマージ]
-  gate -->|いいえ、3 回試した後| human[needs-human ラベル]
+  state -->|いいえ| worker[ワーカーが main をマージし、修正または確認して push]
+  worker -->|push した、1〜3 回目| wait
+  worker -->|行き詰まった、または 3 回失敗| human[needs-human ラベル]
+  merge --> pr
+  human --> pr
 ```
 
-- PR ごとに 1 つのワーカーが、PR 自身のブランチで修正し、1 回の実行で 1 回 push する。その push で CI が実行され、CI が緑なら翌日の実行が PR をマージする。
+- ルーチンは PR を 1 つずつ扱う。ワーカーが PR のブランチを `main` に追いつかせ、修正して push する。ルーチンは同じ実行のうちにその push の CI を待ち、緑なら PR をマージする。3 回 push しても赤のままの PR には `needs-human` が付く。緑の PR のチェックが走った後に `main` が進んでいたとき（たとえばルーチンが別の PR をマージした直後）、ルーチンはマージの前にブランチを更新し、CI を再び待つ。
+- ルーチンは、Renovate が自身のスケジュールで後からマージするはずの緑の PR もマージするので、翌日まで待つ PR はない。
 - メジャー更新は、ワーカーが破壊的変更の表を PR に投稿した後にだけマージされる。表には、それぞれがリポジトリの何に影響するか、PR がそれをどう扱うか、判定 `safe to merge` を書く。
 - ルーチンがマージした更新が `main` で Browser E2E か Docker イメージを壊すと、次の実行がマージされた PR に失敗したジョブをコメントし、`needs-human` ラベルを付ける。ルーチンはそれを revert しない。人がそのラベルを外すまで、ルーチンは PR の修正を続けるが、どれもマージしない。
 - 何かを変えた実行はそれぞれ、したことを Renovate の Dependency Dashboard Issue へのコメントに列挙する。

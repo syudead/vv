@@ -12,8 +12,8 @@ Fix a failure at its root cause, with a focused test where the behaviour is
 testable. Never skip, disable, loosen or quarantine a test or a check, never
 re-run a check to get past it, and never pin the old version.
 
-Push only to the PR's head branch, once, and only after the pre-push checks
-pass. Never merge, never force-push, never change `renovate.json`, and never
+Push only to the PR's head branch, once per run, and only after the pre-push
+checks pass. Never merge, never force-push, never change `renovate.json`, and never
 touch a PR other than the one in the brief.
 
 End with the return block from the worker page.
