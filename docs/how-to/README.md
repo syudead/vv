@@ -9,6 +9,7 @@ steps themselves; the reasoning behind a decision belongs in `docs/design-docs/`
 - [Hosting VVMDM with the published image](hosting-vv.md)
 - [Development](development.md)
 - [Use the external API](external-api.md)
+- [Write a work-info plugin](work-info-plugins.md)
 - [Set up ComfyUI for thumbnail edits](comfyui-thumbnails.md)
 - [Check a PR in Codespaces](codespaces-preview.md)
 - [Handle dependency updates (Renovate)](dependency-updates.md)

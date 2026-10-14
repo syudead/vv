@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: 902f99c598c132bbdc6b0286f96eb3133e916de2c09ff99e76025e8110da462a
+sourceHash: 9ac10b7b5a6db06344af41a4316f467df2952a26bfb90b1cc09b52bac7ded435
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
 
-VVMDM は、外部のサイトから作品情報を読み取る WebAssembly のモジュールである作品情報プラグインを、自分のプロセスの中で wazero により実行する。アダプタは [`internal/wasmplugin`](../../internal/wasmplugin) で、[`internal/app/work_info_plugin_runtime.go`](../../internal/app/work_info_plugin_runtime.go) の `WorkInfoPluginRuntime` ポートの背後にある。プラグインの契約は [contracts/plugin-contract.md](../../specs/049-work-info-plugins/contracts/plugin-contract.md) で、各選択の理由はこの機能の [research.md](../../specs/049-work-info-plugins/research.md) (R-1 から R-5) にある。
+VVMDM は、外部のサイトから作品情報を読み取る WebAssembly のモジュールである作品情報プラグインを、自分のプロセスの中で wazero により実行する。アダプタは [`internal/wasmplugin`](../../internal/wasmplugin) で、[`internal/app/work_info_plugin_runtime.go`](../../internal/app/work_info_plugin_runtime.go) の `WorkInfoPluginRuntime` ポートの背後にある。プラグインの契約は [作品情報プラグインを書く](../how-to/work-info-plugins.md) で、各選択の理由はこの機能の [research.md](../../specs/049-work-info-plugins/research.md) (R-1 から R-5) にある。
 
 図は、モジュールがアップロードから実行の結果までにたどる過程を示す。
 
@@ -87,7 +87,7 @@ flowchart LR
   refuse --> fail[実行の失敗: blocked_address]
 ```
 
-アドレスが許可されるのは、IPv4 射影 IPv6 アドレスを IPv4 に戻したうえで、グローバルユニキャスト (IPv6 では `2000::/3` の中) であり、`refusedPrefixes` のどの範囲にも含まれず、サーバー自身のインターフェースのアドレスでもないときだけである ([`address.go`](../../internal/wasmplugin/address.go))。`refusedPrefixes` は 1 つの表で、IANA の IPv4 と IPv6 の Special-Purpose Address Registry のうち "Globally Reachable" が `True` でないすべての範囲に、`fec0::/10` と IPv4 アドレスを埋め込むプレフィックス (`64:ff9b::/96`、`64:ff9b:1::/48`、`2001::/32`、`2002::/16`) を加えたものである。サーバーのインターフェースは vv の実行中に変わりうるので、確認のたびに読む。
+アドレスが許可されるのは、IPv4 射影 IPv6 アドレスを IPv4 に戻したうえで、グローバルユニキャスト (IPv6 では `2000::/3` の中) であり、`refusedPrefixes` のどの範囲にも含まれず、サーバー自身のインターフェースのアドレスでもないときだけである ([`address.go`](../../internal/wasmplugin/address.go))。`refusedPrefixes` は 1 つの表で、IANA の IPv4 と IPv6 の Special-Purpose Address Registry のうち "Globally Reachable" が `True` でないすべての範囲に、`fec0::/10` と IPv4 アドレスを埋め込むプレフィックス (`64:ff9b::/96`、`2001::/32`、`2002::/16`) を加えたものである。サーバーのインターフェースは vv の実行中に変わりうるので、確認のたびに読む。
 
 拒否した要求はプラグインに `-2` を返し、プラグインがその後に何を書いても、実行全体を `blocked_address` と拒否したホストで失敗させる。そのため、プラグインは vv や LAN に到達しようとしたことを所有者から隠せない。接続に失敗した要求は `-3` を返す。その後プラグインが失敗したときは、実行は `network_error` と到達できなかった最初のホストで失敗する。所有者はホストには対処できるが、プラグインのメッセージだけでは対処できないからである。
 
