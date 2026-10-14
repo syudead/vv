@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/plan.md
-sourceHash: 1ee6209f08f0f6a84264acefbea5663411277452ef7c63659f40adb95739bbc7
+sourceHash: e77271062ba635f6ea003f5a8a282d6632894539344cb94b8bcccdb1b8a0ca88
 ---
 
 # 実装計画: 外部のサービスから作品情報を取得する作品情報プラグイン {#implementation-plan-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -35,7 +35,7 @@ flowchart LR
 | 隔離と上限 | ファイル、環境、引数はない。128 MiB、30 秒、出力 1 MiB、同時に 1 つの実行 ([R-4](research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits)) |
 | ネットワーク | vv 自身の HTTP クライアント。接続のたびにアドレスを確かめ、拒否された要求は実行を失敗させる ([R-5](research.md#r-5-plugins-reach-the-network-only-through-vv-and-only-public-addresses)) |
 | 保存と承認 | blob の行。承認したダイジェストがモジュールのダイジェストと等しいとき承認済み。承認はダイジェストを指定する ([R-6](research.md#r-6-plugins-are-rows-in-sqlite-and-approval-is-bound-to-the-modules-digest)、[R-7](research.md#r-7-approving-names-the-digest-the-owner-saw)、[data-model.md](data-model.md)) |
-| 取得と適用 | 動画とダイジェストに結び付いた、メモリ上の 10 分間の結果。タイトルとタグを 1 つのトランザクションで適用し、飛ばした名前を報告する ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest)、[R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported)、[contracts/screen-api.md](contracts/screen-api.md)) |
+| 取得と適用 | 動画、ダイジェスト、プラグインの世代に結び付いた、メモリ上の 10 分間の結果。タイトルとタグを 1 つのトランザクションで適用し、飛ばした名前を報告する ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest)、[R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported)、[contracts/screen-api.md](contracts/screen-api.md)) |
 | プラグインの設定 | マニフェストで宣言し、設定画面でプラグインごとに入力し、そのプラグインの要求の中でだけ渡す。秘密の値は決して返さない ([R-13](research.md#r-13-plugin-settings-are-declared-in-the-manifest-and-passed-only-in-that-plugins-request)) |
 | 動画のページの入口 | プラグインの一覧に承認済みのプラグインがあるとき表示する。候補はテキストだけ ([R-10](research.md#r-10-search-candidates-are-text-only)、[R-11](research.md#r-11-the-video-page-reads-the-plugin-list-to-decide-whether-to-show-the-fetch-action)) |
 
@@ -169,7 +169,7 @@ flowchart LR
 
 ### 画面の API で作品情報を検索、取得、適用する {#search-fetch-and-apply-work-information-through-the-screen-api}
 
-**範囲**: `app.WorkInfoPlugins` で、宣言された操作を持つ承認済みのプラグインに限って、要求の中にそのプラグインの設定の値を入れ、必須のものが未設定のときは実行の前に `plugin_settings_missing` として、ランタイムのポートを通じて検索と取得をすること、動画とダイジェストに結び付いた 10 分間の結果のキャッシュ ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))、タグ名の規則でタグ名を絞った適用。プラグインの行のダイジェストと承認を読み直し、それから表示名と仮のタグを 1 つのトランザクションで書き、拒否した名前を報告する `OverrideStore` の操作 ([R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported))。検索、取得、適用のルート、`Error.pluginMessage`、`Error.host`、`Error.settingKeys` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。
+**範囲**: `app.WorkInfoPlugins` で、宣言された操作を持つ承認済みのプラグインに限って、要求の中にそのプラグインの設定の値を入れ、必須のものが未設定のときは実行の前に `plugin_settings_missing` として、ランタイムのポートを通じて検索と取得をすること、動画、ダイジェスト、世代に結び付いた 10 分間の結果のキャッシュ ([R-8](research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))、タグ名の規則でタグ名を絞った適用。プラグインの行のダイジェスト、承認、世代を読み直し、それから表示名と仮のタグを 1 つのトランザクションで書き、拒否した名前を報告する `OverrideStore` の操作 ([R-9](research.md#r-9-the-title-and-the-tags-are-applied-in-one-transaction-and-skipped-names-are-reported))。検索、取得、適用のルート、`Error.pluginMessage`、`Error.host`、`Error.settingKeys` ([contracts/screen-api.md](contracts/screen-api.md))。クライアントの関数。
 
 **依存**: 画面の API で作品情報プラグインを追加、承認、削除する。
 
