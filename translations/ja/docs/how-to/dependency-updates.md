@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/dependency-updates.md
-sourceHash: 03a2fe79f263624f40e26670c619195d8d92e0a2956f803f59a898bcbe4b48f4
+sourceHash: 613d3c21e240d18a8a47338b2419909462310acd31dde81ea9dd881859f4961e
 ---
 
 # 依存関係の更新を扱う（Renovate） {#handle-dependency-updates-renovate}
@@ -92,7 +92,7 @@ flowchart TD
   human --> pr
 ```
 
-- ルーチンは PR を 1 つずつ扱う。ワーカーが PR のブランチを `main` に追いつかせ、修正して push する。ルーチンは同じ実行のうちにその push の CI を待ち、緑なら PR をマージする。3 回 push しても赤のままの PR には `needs-human` が付く。
+- ルーチンは PR を 1 つずつ扱う。ワーカーが PR のブランチを `main` に追いつかせ、修正して push する。ルーチンは同じ実行のうちにその push の CI を待ち、緑なら PR をマージする。3 回 push しても赤のままの PR には `needs-human` が付く。緑の PR のチェックが走った後に `main` が進んでいたとき（たとえばルーチンが別の PR をマージした直後）、ルーチンはマージの前にブランチを更新し、CI を再び待つ。
 - ルーチンは、Renovate が自身のスケジュールで後からマージするはずの緑の PR もマージするので、翌日まで待つ PR はない。
 - メジャー更新は、ワーカーが破壊的変更の表を PR に投稿した後にだけマージされる。表には、それぞれがリポジトリの何に影響するか、PR がそれをどう扱うか、判定 `safe to merge` を書く。
 - ルーチンがマージした更新が `main` で Browser E2E か Docker イメージを壊すと、次の実行がマージされた PR に失敗したジョブをコメントし、`needs-human` ラベルを付ける。ルーチンはそれを revert しない。人がそのラベルを外すまで、ルーチンは PR の修正を続けるが、どれもマージしない。

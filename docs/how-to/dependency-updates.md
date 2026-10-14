@@ -128,7 +128,9 @@ flowchart TD
 - The routine takes the PRs one at a time. A worker brings the PR's branch up
   to date with `main`, fixes it and pushes; the routine waits for CI on that
   push in the same run and merges the PR when it is green. A PR still red
-  after three pushes gets `needs-human`.
+  after three pushes gets `needs-human`. When `main` has moved since a green
+  PR's checks ran, for example because the routine just merged another PR,
+  the routine updates the branch and waits for CI again before merging.
 - The routine also merges green PRs that Renovate would merge later on its own
   schedule, so none waits for the next day.
 - A major update is merged only after the worker posts a table of its breaking

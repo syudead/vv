@@ -86,9 +86,12 @@ lockfiles conflict with each other. For the current PR, repeat:
 1. **Checks queued or running on the head commit**: wait for them
    ([Waiting for CI](#waiting-for-ci)). Never skip a PR because its CI is
    still running.
-2. **Every check green and no conflict**: apply the merge gates. The PR's CI
-   ran on its merge with `main`, so a branch behind `main` needs no update.
-   A major update without the worker's review comment goes to step 3 first.
+2. **Every check green and no conflict**: if `main` has moved since those
+   checks started (this run merged another PR, or anyone pushed to `main`),
+   the checks tested a stale merge. Update the branch with `main` (GitHub's
+   update-branch, merge method; it counts as no attempt) and go back to step 1.
+   Otherwise apply the merge gates. A major update without the worker's review
+   comment goes to step 3 first.
 3. **Anything else** (a failed check, a conflict, a major update not yet
    reviewed): hand it to one `renovate-pr-fixer` with this brief, then act on
    its `STATUS`:
@@ -117,9 +120,10 @@ The checks of a Renovate PR, Browser E2E included, take about 15 minutes.
 Wait inside the run: subscribe to the PR's activity and end the turn until a
 check-suite event for the head commit arrives, or, on a host without such
 events, check the head commit's check runs every 5 minutes from a background
-wait (never a foreground `sleep`). When the checks of one head commit have not
-finished 60 minutes after they started, stop waiting on that PR, label it
-`needs-human` with the stuck check's name, and move on.
+wait (never a foreground `sleep`). Count 60 minutes from when the run started
+waiting on that head commit, whether its checks are queued or running. When
+they have not all finished by then, stop waiting on that PR, label it
+`needs-human` with the unfinished checks' names, and move on.
 
 ### Merge gates
 

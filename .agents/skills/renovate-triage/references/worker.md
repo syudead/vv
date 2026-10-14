@@ -23,8 +23,10 @@ rebase), so local checks run against today's `main` and not the one the branch
 was cut from. A Renovate branch is often far behind, and checking it as it is
 fails on changes from `main` the PR has nothing to do with. Do not wait for
 Renovate to rebase; that only happens on its own schedule. When the merge of
-`main` turns out to be the only change (no conflict, nothing to fix), do not
-push it.
+`main` turns out to be the only change and it makes the failed checks pass
+locally, push it: `main` already had the fix, and CI must run on the new head.
+Do not push it only when the head's checks were already all green (a major
+update review with nothing to change).
 
 ## Conflicts
 
