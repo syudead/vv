@@ -327,8 +327,9 @@ Guests see no watch status, watched count or bar.
 Ungroup, group a folder's direct videos and turn a group into a tag are not on
 the card. They sit in the owner's menu at the right end of a folder page's
 `Videos N` heading row
-([`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)) and
-on the video page's group name row. The folder menu offers "Turn the group into
+([`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)), and
+turning into a tag and dissolving also sit in the video page's group actions
+([Group members](#group-members)). The folder menu offers "Turn the group into
 a tag…" only when the folder has an automatic group, including a registered
 folder's own group, and opens the confirmation dialog that every entry point
 shares ([`GroupTagDialog.tsx`](../../web/src/groups/GroupTagDialog.tsx),
@@ -649,14 +650,19 @@ and it closes the popover, not the page.
 
 A video in a group only gains parts on the same page; a video outside any group
 is unchanged ([017 UI design, Video page](../../specs/017-folder-groups/ui-design.md#video-page)).
+The group is the one the video was opened from (`?group=<id>`, passed to the
+video, related-video and member reads), or else the group with the smallest id
+that holds the video directly; a playlist context overrides both
+([048 UI design, Video page](../../specs/048-groups/ui-design.md#video-page)).
 
 | Part | Rule |
 | --- | --- |
-| Above the title | Group name and position in the group |
+| Above the title | Group name and position in the group, as a link to the group page |
 | Related videos column | `Up next` member list and a divider at the top |
 | Playback ended | Next-member notice instead of the layer: 5 s, cancellable, Esc cancels |
-| Group name row (owner) | Menu with `Ungroup` and `Turn the group into a tag`; Esc closes only the menu |
-| After a menu action | Video and related videos refetched; page returns to the plain form |
+| Member rows, handles, notice | Keep `?group` on the video they open |
+| Group actions (owner) | `Ellipsis` button after the line: `Remove from this group` (only for a direct item), `Turn the group into a tag…`, `Dissolve…`; Esc closes only the menu |
+| After an action | Video and related videos read again without `group`; the page stays |
 | Previous/next handles | Move within the group |
 
 `matchMedia` reads the `lg` width only to scroll the current member's row into

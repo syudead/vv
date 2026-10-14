@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   childGroupPath,
   folderDisplayPath,
+  groupContextOf,
   groupItemPath,
   groupPagePath,
   loadingCrumbs,
   parseGroupId,
   parseTrail,
+  searchWithoutGroup,
   trailCrumbs,
   videoInGroupPath,
 } from "./groupPaths";
@@ -63,6 +65,24 @@ describe("childGroupPath と groupItemPath", () => {
     expect(groupItemPath({ kind: "video", video: { id: 42 } }, trail, 7)).toBe(
       "/videos/42?group=7",
     );
+  });
+});
+
+describe("groupContextOf", () => {
+  it("動画ページの ?group を正の整数として読み、読めなければ undefined", () => {
+    expect(groupContextOf("?group=7")).toBe(7);
+    expect(groupContextOf("?playlist=5&item=2&group=3")).toBe(3);
+    expect(groupContextOf("")).toBeUndefined();
+    expect(groupContextOf("?group=0")).toBeUndefined();
+    expect(groupContextOf("?group=x")).toBeUndefined();
+  });
+});
+
+describe("searchWithoutGroup", () => {
+  it("?group だけを外し、ほかの問い合わせは残す", () => {
+    expect(searchWithoutGroup("?group=7")).toBe("");
+    expect(searchWithoutGroup("?t=12&group=7")).toBe("?t=12");
+    expect(searchWithoutGroup("")).toBe("");
   });
 });
 

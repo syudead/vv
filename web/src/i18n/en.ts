@@ -1143,7 +1143,6 @@ export const en = {
     },
   },
   folderGrouping: {
-    ungrouped: (name: string) => `Ungrouped "${name}"`,
     cannotTag: (name: string) =>
       `"${name}" can't be used as a tag name, so it can't become a tag`,
     notGroup: "This folder is no longer a group",
@@ -1460,11 +1459,16 @@ export const en = {
       private: "Private",
       failed: (reason: string) => `Couldn't change the visibility: ${reason}`,
     },
+    // Group line と、その後のグループ操作（specs/048-groups/ui-design.md「Video page」）。
     group: {
-      menu: (name: string, position: number, count: number) =>
-        `Group "${name}", video ${formatNumber(position)} of ${formatNumber(count)}. Grouping menu`,
-      ungroup: "Ungroup",
-      toTag: "Turn the group into a tag",
+      line: (name: string, position: number, count: number) =>
+        `Group "${name}", video ${formatNumber(position)} of ${formatNumber(count)}. Open the group`,
+      actions: "Group actions",
+      remove: "Remove from this group",
+      toTag: "Turn the group into a tag…",
+      dissolve: "Dissolve…",
+      removed: (name: string) => `Removed from "${name}"`,
+      removeFailed: (reason: string) => `Couldn't remove from the group: ${reason}`,
     },
     tags: {
       heading: "Tags",
@@ -1750,6 +1754,16 @@ export const en = {
       },
       loadFailed: "Couldn't load the group",
     },
+    dissolveDialog: {
+      title: (name: string) => `Dissolve "${name}"?`,
+      description: "The group is dissolved. Its videos and groups stay in the library.",
+      folder:
+        "Its folder is no longer grouped automatically. Choose Automatic on the folder page to group it again.",
+      submit: "Dissolve",
+      submitting: "Dissolving…",
+      failed: (reason: string) => `Couldn't dissolve the group: ${reason}`,
+    },
+    dissolved: (name: string) => `Dissolved "${name}"`,
     // グループをタグに変える確認の窓と、その成功のトースト（ui-design.md「Turning into a tag」
     // 「Words」）。グループページ、動画ページ、フォルダのメニューが共有する。
     tagDialog: {

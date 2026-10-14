@@ -82,6 +82,50 @@ describe("useVideoDetail", () => {
     vi.unstubAllGlobals();
   });
 
+  it("group を取得に渡し、同じ動画で group だけが変わったら読み込み中に戻さずに取り直す", async () => {
+    getVideo.mockResolvedValue(done);
+    const { result, rerender } = renderHook(
+      ({ group }: { group?: number }) => useVideoDetail(7, group),
+      { initialProps: { group: 3 } as { group?: number } },
+    );
+    await flush();
+    expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), 3);
+    rerender({ group: undefined });
+    expect(result.current.state).toMatchObject({ kind: "ready" });
+    await flush();
+    expect(getVideo).toHaveBeenCalledTimes(2);
+    expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), undefined);
+  });
+
+  it("group があるとき replace は応答のグループではなく手元のグループを残す", async () => {
+    const picks = { id: 9, name: "picks", position: 2, count: 3 };
+    const series = { id: 1, name: "series", position: 1, count: 5 };
+    getVideo.mockResolvedValue({ ...done, group: picks });
+    const { result, rerender } = renderHook(
+      ({ group }: { group?: number }) => useVideoDetail(7, group),
+      { initialProps: { group: 9 } as { group?: number } },
+    );
+    await flush();
+
+    // 変更の要求は group を受け取らず、応答は id のいちばん小さいグループを返す。
+    act(() =>
+      result.current.replace(
+        { ...done, title: "新しい名前", group: series },
+        detailMark(),
+      ),
+    );
+    expect(result.current.state).toMatchObject({
+      video: { title: "新しい名前", group: picks },
+    });
+
+    // group が無ければ応答のまま。
+    getVideo.mockResolvedValue({ ...done, group: series });
+    rerender({ group: undefined });
+    await flush();
+    act(() => result.current.replace({ ...done, group: series }, detailMark()));
+    expect(result.current.state).toMatchObject({ video: { group: series } });
+  });
+
   it("ゲストでは変化の知らせ（/api/events）を購読しない", async () => {
     getVideo.mockResolvedValue(done);
     // AudienceProvider の外の既定はゲストである。
@@ -607,12 +651,24 @@ describe("useRelatedVideos", () => {
     expect(result.current.state).toMatchObject({ more: "failed" });
     act(() => result.current.loadMore());
     await act(async () => undefined);
-    expect(getRelatedVideos).toHaveBeenNthCalledWith(3, 7, expect.anything(), "c1");
+    expect(getRelatedVideos).toHaveBeenNthCalledWith(
+      3,
+      7,
+      expect.anything(),
+      "c1",
+      undefined,
+    );
     expect(ids()).toEqual([1, 2, 3]);
 
     act(() => result.current.loadMore());
     await act(async () => undefined);
-    expect(getRelatedVideos).toHaveBeenNthCalledWith(4, 7, expect.anything(), "c2");
+    expect(getRelatedVideos).toHaveBeenNthCalledWith(
+      4,
+      7,
+      expect.anything(),
+      "c2",
+      undefined,
+    );
     expect(ids()).toEqual([1, 2, 3, 4]);
     // 最初のページの次の動画は残し、続きが無くなったら読まない。
     expect(result.current.state).toMatchObject({ related: { nextId: 1 }, more: "idle" });

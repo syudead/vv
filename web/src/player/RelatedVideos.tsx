@@ -222,6 +222,7 @@ export default function RelatedVideos({
   onRetry,
   onLoadMore,
   memberTarget,
+  groupContext,
   leading,
 }: {
   state: RelatedState;
@@ -229,6 +230,8 @@ export default function RelatedVideos({
   onRetry: () => void;
   onLoadMore: () => void;
   memberTarget?: MemberTarget;
+  /** 動画を開いたグループの id（`?group`）。メンバーの続きの読み取りにも渡す（048 research.md R-9）。 */
+  groupContext?: number;
   /** 並びの入れ物の先頭に置く区切り（プレイリストのパネルと境目）。同じ入れ物でスクロールする。 */
   leading?: ReactNode;
 }) {
@@ -241,6 +244,7 @@ export default function RelatedVideos({
         onRetry={onRetry}
         onLoadMore={onLoadMore}
         memberTarget={memberTarget}
+        groupContext={groupContext}
       />
     </div>
   );
@@ -253,19 +257,23 @@ function RelatedSections({
   onRetry,
   onLoadMore,
   memberTarget,
+  groupContext,
 }: {
   state: RelatedState;
   linkState: VideoLinkState;
   onRetry: () => void;
   onLoadMore: () => void;
   memberTarget?: MemberTarget;
+  groupContext?: number;
 }) {
   if (state.kind === "ready" && state.related.group !== undefined) {
     const group = state.related.group;
     return (
       <GroupedRelated
-        // 別のメンバーへ移ったら、読み足した分を捨てて新しい窓から始める。
-        key={state.id}
+        // 別のメンバーへ移ったら、または同じ動画のまま応答のグループが替わったら（`?group`、
+        // そのフォールバック、グループの操作の後の読み直し）、読み足した分と読み足し中の要求を
+        // 捨てて新しい窓から始める。
+        key={`${String(state.id)}:${String(group.id)}`}
         currentId={state.id}
         members={group.items}
         offset={group.offset}
@@ -274,6 +282,7 @@ function RelatedSections({
         linkState={linkState}
         tail={<RelatedTail state={state} onLoadMore={onLoadMore} />}
         memberTarget={memberTarget}
+        groupContext={groupContext}
       />
     );
   }
@@ -354,6 +363,7 @@ function GroupedRelated({
   linkState,
   tail,
   memberTarget,
+  groupContext,
 }: {
   currentId: number;
   members: Video[];
@@ -364,6 +374,7 @@ function GroupedRelated({
   /** 関連動画の並びの続きを読む目印（RelatedTail）。 */
   tail: ReactNode;
   memberTarget: MemberTarget | undefined;
+  groupContext: number | undefined;
 }) {
   const wide = useWideScreen();
   const [before, setBefore] = useState<Video[]>([]);
@@ -401,7 +412,13 @@ function GroupedRelated({
       abort.current = controller;
       setLoading(side);
       setFailed(null);
-      listVideoGroupMembers(currentId, start, limit, controller.signal).then(
+      listVideoGroupMembers(
+        currentId,
+        start,
+        limit,
+        controller.signal,
+        groupContext,
+      ).then(
         (page) => {
           if (controller.signal.aborted) return;
           loadingRef.current = false;
@@ -423,7 +440,7 @@ function GroupedRelated({
         },
       );
     },
-    [currentId, end, first, total],
+    [currentId, end, first, groupContext, total],
   );
 
   // 前を読み足したら、増えた高さだけ入れ物を下へずらし、見ていた行を同じ位置に残す。
