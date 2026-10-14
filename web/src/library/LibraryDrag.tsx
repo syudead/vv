@@ -2,17 +2,18 @@ import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } fro
 
 import type { LibraryGroup, LibraryItem } from "../api/client";
 import { itemKey } from "../api/libraryItems";
-import { moveCards, type OrganizeRef } from "../api/organize";
+import {
+  mergeGroups,
+  moveCards,
+  type OrganizeRef,
+  type OrganizeResult,
+} from "../api/organize";
 import { errorText, t, type UiText } from "../i18n";
 import { useToast } from "../ui/Toast";
 import { VideoThumbnail, VideoThumbnailImage } from "../ui/VideoThumbnail";
-import {
-  CardDragFace,
-  type CardDrop,
-  CardDragLayer,
-  useCardDrag,
-} from "../videoList/cardDrag";
-import { liftedKeys, type OntoAnswer } from "../videoList/cardDragRules";
+import { CardDragFace, CardDragLayer, useCardDrag } from "../videoList/cardDrag";
+import { liftedKeys } from "../videoList/cardDragRules";
+import { useGroupDrops } from "../videoList/dropMenu";
 import FolderArt from "../videoList/FolderArt";
 import { useUndoToast } from "../videoList/undoToast";
 import { VideoRow, type VideoCardProps } from "../videoList/VideoCard";
@@ -20,7 +21,8 @@ import { type GroupCardProps, GroupRow } from "./GroupCard";
 import { favoriteTargets, type LibrarySelection } from "./selection";
 
 // ライブラリのドラッグである（specs/050-drag-organize/ui-design.md「Library」）。所有者の格子と
-// リストを包み、動画だけをグループのカードの上に落とすと、そのグループへ移す。ライブラリは
+// リストを包み、動画だけをグループのカードの上に落とすと、そのグループへ移す。グループを含む
+// カードを落とすと「Put in as a child group」と「Merge」のメニューを開く。ライブラリは
 // 並べ替えないので、カード全体が「上」になる。
 
 /** itemName は項目の名前である（読み上げと写しの題名）。 */
@@ -68,16 +70,28 @@ function ItemFace({ item, list }: { item: LibraryItem; list: boolean }) {
   );
 }
 
+/** isLibraryGroup は項目がグループかを返す。 */
+function isLibraryGroup(item: LibraryItem | undefined): boolean {
+  return item?.kind === "group";
+}
+
+/** libraryGroupOf は項目がグループならそのグループ、でなければ null を返す（落とす先）。 */
+function libraryGroupOf(item: LibraryItem | undefined): LibraryGroup | null {
+  return item?.kind === "group" ? item.group : null;
+}
+
 /**
  * LibraryDragLayer はライブラリの所有者の格子とリストを包むドラッグの層である。選択した
  * カード（「Favorite」と同じ分け方。選んだグループのメンバーの動画は入らない）を持ち上げると、
- * 選択した読み込み済みのカードがすべて画面の順でいっしょに動く。
+ * 選択した読み込み済みのカードがすべて画面の順でいっしょに動く。グループを含むカードを
+ * グループに落とすとメニューを開き、選んだ操作で `onMove` か `onMerge` を呼ぶ。
  */
 export function LibraryDragLayer({
   items,
   list,
   selection,
   onMove,
+  onMerge,
   onLift,
   children,
 }: {
@@ -86,6 +100,8 @@ export function LibraryDragLayer({
   selection: LibrarySelection;
   /** 項目 `moved`（画面の順）をグループ `to` へ移す。 */
   onMove: (moved: readonly LibraryItem[], to: LibraryGroup) => void;
+  /** 項目 `merged`（画面の順、グループを含む）をグループ `into` へマージする。 */
+  onMerge: (merged: readonly LibraryItem[], into: LibraryGroup) => void;
   onLift: () => void;
   children: ReactNode;
 }) {
@@ -116,14 +132,6 @@ export function LibraryDragLayer({
     },
     [byKey],
   );
-  const onto = useCallback(
-    (target: string, lifted: readonly string[]): OntoAnswer<UiText> => {
-      if (byKey.get(target)?.kind !== "group") return null;
-      if (!lifted.every((key) => byKey.get(key)?.kind === "video")) return null;
-      return { label: t.organize.drop.putIn };
-    },
-    [byKey],
-  );
   const preview = useCallback(
     (key: string) => {
       const item = byKey.get(key);
@@ -131,31 +139,29 @@ export function LibraryDragLayer({
     },
     [byKey, list],
   );
-  const drop = useCallback(
-    ({ lifted, sign }: CardDrop) => {
-      if (sign.kind !== "onto") return;
-      const target = byKey.get(sign.key);
-      if (target?.kind !== "group") return;
-      onMove(
-        lifted.flatMap((key) => byKey.get(key) ?? []),
-        target.group,
-      );
-    },
-    [byKey, onMove],
-  );
+  const drops = useGroupDrops({
+    byKey,
+    groupOf: libraryGroupOf,
+    isGroup: isLibraryGroup,
+    nameOf,
+    onMove,
+    onMerge,
+  });
 
   return (
     <CardDragLayer
       order={order}
       liftedFor={liftedFor}
       reorder={false}
-      onto={onto}
+      onto={drops.onto}
       nameOf={nameOf}
       preview={preview}
       list={list}
-      onDrop={drop}
+      onDrop={drops.drop}
       onLift={onLift}
       instructions={t.organize.instructions}
+      held={drops.held}
+      attached={drops.attached}
     >
       {children}
     </CardDragLayer>
@@ -189,9 +195,17 @@ function without(hidden: ReadonlySet<string>, keys: readonly string[]) {
   return new Set(Array.from(hidden).filter((key) => !keys.includes(key)));
 }
 
+/** LibraryOperation はライブラリで落とした項目に送る操作 1 つである。 */
+interface LibraryOperation {
+  send: () => Promise<OrganizeResult>;
+  done: UiText;
+  failed: (reason: string) => UiText;
+}
+
 /**
- * useLibraryMoves はライブラリでグループへ落とした項目を移す（research.md R-8）。落とした
- * 項目はすぐ一覧から隠し、選択を解き、`move` を送る。要求は落とした順に 1 つずつ送るので、
+ * useLibraryMoves はライブラリでグループへ落とした項目を移すかマージする（research.md R-8）。
+ * 落とした項目はすぐ一覧から隠し（マージしたグループのカードも消える）、選択を解き、`move` か
+ * `merge` を送る。要求は落とした順に 1 つずつ送るので、
  * 「Undo」の通知はいつも最後に落とした移動のものになる。受け入れられたら「Undo」付きの通知を
  * 出して一覧をその場で読み直し、失敗したら隠した項目を戻して知らせる。画面を離れた後は
  * どちらの通知も出さない。隠した項目は、読み直した一覧から消えたら覚えるのをやめ、取り消しの
@@ -225,8 +239,8 @@ export function useLibraryMoves(
   }, [refreshInPlace]);
   const { offer } = useUndoToast(afterUndo);
 
-  const move = useCallback(
-    (moved: readonly LibraryItem[], to: LibraryGroup) => {
+  const run = useCallback(
+    (moved: readonly LibraryItem[], operation: LibraryOperation) => {
       if (moved.length === 0) return;
       const keys = moved.map(itemKey);
       for (const key of keys) pending.current.add(key);
@@ -236,18 +250,18 @@ export function useLibraryMoves(
       setHidden((current) => new Set([...current, ...keys]));
       clearSelection();
       chain.current = chain.current.then(() =>
-        moveCards(moved.map(refOf), { from: null, to: to.id }).then(
+        operation.send().then(
           ({ undoToken }) => {
             settle();
             if (!shown.current) return;
-            offer(t.organize.done.moved(moved.length, to.name), undoToken);
+            offer(operation.done, undoToken);
             refreshInPlace();
           },
           (error: unknown) => {
             settle();
             if (!shown.current) return;
             setHidden((current) => without(current, keys));
-            toast(t.organize.failed.move(errorText(error)));
+            toast(operation.failed(errorText(error)));
           },
         ),
       );
@@ -255,10 +269,33 @@ export function useLibraryMoves(
     [clearSelection, offer, refreshInPlace, toast],
   );
 
+  const move = useCallback(
+    (moved: readonly LibraryItem[], to: LibraryGroup) =>
+      run(moved, {
+        send: () => moveCards(moved.map(refOf), { from: null, to: to.id }),
+        done: t.organize.done.moved(moved.length, to.name),
+        failed: t.organize.failed.move,
+      }),
+    [run],
+  );
+  const merge = useCallback(
+    (merged: readonly LibraryItem[], into: LibraryGroup) =>
+      run(merged, {
+        send: () => mergeGroups(merged.map(refOf), into.id),
+        done: t.organize.done.merged(
+          merged.length,
+          into.name,
+          merged.some((item) => item.kind === "video"),
+        ),
+        failed: t.organize.failed.merge,
+      }),
+    [run],
+  );
+
   const visible = useMemo(
     () =>
       hidden.size === 0 ? items : items.filter((item) => !hidden.has(itemKey(item))),
     [hidden, items],
   );
-  return { visible, move };
+  return { visible, move, merge };
 }

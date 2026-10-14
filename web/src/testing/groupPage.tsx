@@ -203,9 +203,52 @@ function moveRefs({ items, from, to }: MoveBody): Promise<Response> {
   return Promise.resolve(json({ undoToken: token }));
 }
 
-/** organize は POST /api/organize/reorder・/move・/undo に、メモリ上のグループを変えて答える。 */
+/**
+ * mergeRefs は POST /api/organize/merge に答える。グループは項目を `into` の末尾へ渡し、親の
+ * 項目から消えてなくなる。動画は `into` の末尾へ足す（どちらもすでにある動画は足さない）。
+ */
+function mergeRefs({ items, into }: { items: MoveBody["items"]; into: number }) {
+  const target = server.groups.get(into);
+  if (
+    target === undefined ||
+    items.some((ref) => ref.kind === "group" && ref.id === into)
+  ) {
+    return targetGone();
+  }
+  const merged = items.filter((ref) => ref.kind === "group").map((ref) => ref.id);
+  const token = keepImage(Array.from(server.groups.keys()));
+  let nextId = 900 + server.writes.length * 10;
+  const append = (item: GroupItem) => {
+    if (
+      target.items.some(
+        (each) => each.video !== undefined && each.video.id === item.video?.id,
+      )
+    ) {
+      return;
+    }
+    nextId += 1;
+    target.items = [...target.items, { ...item, id: nextId }];
+  };
+  for (const ref of items) {
+    if (ref.kind === "video") append({ id: 0, kind: "video", video: video(ref.id) });
+    else server.groups.get(ref.id)?.items.forEach(append);
+  }
+  for (const id of merged) server.groups.delete(id);
+  for (const stored of server.groups.values()) {
+    stored.items = stored.items.filter(
+      (item) => item.group === undefined || !merged.includes(item.group.id),
+    );
+  }
+  summarize(target);
+  return Promise.resolve(json({ undoToken: token }));
+}
+
+/** organize は POST /api/organize/reorder・/move・/merge・/undo に、メモリ上のグループを変えて答える。 */
 function organize(path: string, body: unknown): Promise<Response> | undefined {
   if (path === "/api/organize/move") return moveRefs(body as MoveBody);
+  if (path === "/api/organize/merge") {
+    return mergeRefs(body as { items: MoveBody["items"]; into: number });
+  }
   if (path === "/api/organize/reorder") {
     const { groupId, itemIds, after } = body as {
       groupId: number;

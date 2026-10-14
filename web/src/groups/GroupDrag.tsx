@@ -1,7 +1,7 @@
 import { type ReactNode, useCallback, useMemo } from "react";
 
 import type { GroupItem, GroupRef } from "../api/groups";
-import { t, type UiText } from "../i18n";
+import { t } from "../i18n";
 import { VideoThumbnail, VideoThumbnailImage } from "../ui/VideoThumbnail";
 import {
   CardDragFace,
@@ -9,7 +9,8 @@ import {
   CardDragLayer,
   crumbIndexOf,
 } from "../videoList/cardDrag";
-import { liftedKeys, type OntoAnswer, reorderDrop } from "../videoList/cardDragRules";
+import { liftedKeys, reorderDrop } from "../videoList/cardDragRules";
+import { useGroupDrops } from "../videoList/dropMenu";
 import FolderArt from "../videoList/FolderArt";
 import { orderedItemTitle, rowFacts } from "../videoList/ItemRowCells";
 import { reorderAnnouncements } from "../videoList/reorder";
@@ -51,8 +52,14 @@ function ItemFace({ item, list }: { item: GroupItem; list: boolean }) {
 }
 
 /** MoveDestination はグループのページから項目を移す先である。 */
-export type MoveDestination =
-  { kind: "group"; id: number; name: string } | { kind: "library" };
+export type MoveDestination = GroupDestination | { kind: "library" };
+
+/** GroupDestination は移す先かマージ先のグループである。 */
+export interface GroupDestination {
+  kind: "group";
+  id: number;
+  name: string;
+}
 
 /**
  * destinationOfCrumb は道筋の段 `index`（0 は「Library」、続いて道筋の祖先、最後は開いている
@@ -74,9 +81,15 @@ function crumbName(index: number | null, trail: readonly GroupRef[], name: strin
   return trail[index - 1]?.name ?? name;
 }
 
-/** allVideos は項目がどれも動画かを返す。 */
-function allVideos(items: readonly (GroupItem | undefined)[]): boolean {
-  return items.every((item) => item?.kind === "video");
+/** isChildGroup は項目が子グループかを返す。 */
+function isChildGroup(item: GroupItem | undefined): boolean {
+  return item?.kind === "group";
+}
+
+/** groupDestination は子グループの項目 `item` を移す先にした値である。子グループでなければ null。 */
+function groupDestination(item: GroupItem | undefined): GroupDestination | null {
+  const group = item?.group;
+  return group === undefined ? null : { kind: "group", id: group.id, name: group.name };
 }
 
 /**
@@ -86,6 +99,8 @@ function allVideos(items: readonly (GroupItem | undefined)[]): boolean {
  * - カードか行の間に落とすと、持ち上げた項目を画面の順のまま、その間の前の項目（先頭なら
  *   無し）の後ろへ並べ替える。
  * - 動画だけを子グループのカードの上に落とすと、その子グループへ移す（「Put in」）。
+ * - 子グループを含む項目を子グループのカードの上に落とすと、「Put in as a child group」
+ *   （その子グループへ移す）と「Merge」（その子グループへマージする）のメニューを開く。
  * - 道筋の「Library」の段に落とすとライブラリへ出し、祖先の段に落とすとその祖先へ移す。
  *   開いているグループの段と畳んだ「…」は拒否。
  *
@@ -100,6 +115,7 @@ export function GroupDragLayer({
   selectedItems,
   onReorder,
   onMove,
+  onMerge,
   onLift,
   children,
 }: {
@@ -115,6 +131,8 @@ export function GroupDragLayer({
   onReorder: (itemIds: readonly number[], after: number | null) => void;
   /** 項目 `moved`（画面の順）を `to` へ移す。 */
   onMove: (moved: readonly GroupItem[], to: MoveDestination) => void;
+  /** 項目 `merged`（画面の順、子グループを含む）を子グループ `into` へマージする。 */
+  onMerge: (merged: readonly GroupItem[], into: GroupDestination) => void;
   onLift: () => void;
   children: ReactNode;
 }) {
@@ -136,15 +154,6 @@ export function GroupDragLayer({
     },
     [byKey, name, trail],
   );
-  const onto = useCallback(
-    (target: string, lifted: readonly string[]): OntoAnswer<UiText> => {
-      const item = byKey.get(target);
-      if (item?.kind !== "group" || item.group === undefined) return null;
-      if (!allVideos(lifted.map((key) => byKey.get(key)))) return null;
-      return { label: t.organize.drop.putIn };
-    },
-    [byKey],
-  );
   const preview = useCallback(
     (key: string) => {
       const item = byKey.get(key);
@@ -152,14 +161,21 @@ export function GroupDragLayer({
     },
     [byKey, list],
   );
+  const drops = useGroupDrops({
+    byKey,
+    groupOf: groupDestination,
+    isGroup: isChildGroup,
+    nameOf,
+    onMove,
+    onMerge,
+  });
+  const dropOnto = drops.drop;
   const drop = useCallback(
-    ({ lifted, sign }: CardDrop) => {
+    (dropped: CardDrop) => {
+      const { lifted, sign } = dropped;
       const moved = lifted.flatMap((key) => byKey.get(key) ?? []);
       if (sign.kind === "onto") {
-        const target = byKey.get(sign.key)?.group;
-        if (target !== undefined) {
-          onMove(moved, { kind: "group", id: target.id, name: target.name });
-        }
+        dropOnto(dropped);
         return;
       }
       if (sign.kind === "crumb") {
@@ -175,7 +191,7 @@ export function GroupDragLayer({
         result.after === null ? null : Number(result.after),
       );
     },
-    [byKey, onMove, onReorder, order, trail],
+    [byKey, dropOnto, onMove, onReorder, order, trail],
   );
   const handle = useMemo(
     () =>
@@ -192,7 +208,7 @@ export function GroupDragLayer({
       order={order}
       liftedFor={liftedFor}
       reorder
-      onto={onto}
+      onto={drops.onto}
       nameOf={nameOf}
       preview={preview}
       list={list}
@@ -200,6 +216,8 @@ export function GroupDragLayer({
       onLift={onLift}
       handle={handle}
       instructions={t.groups.item.reorderInstructions}
+      held={drops.held}
+      attached={drops.attached}
     >
       {children}
     </CardDragLayer>

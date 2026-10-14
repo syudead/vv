@@ -21,7 +21,7 @@ import {
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
 import { groupPagePath } from "../groups/groupPaths";
-import { type CardDragBinding, CardDropMark } from "../videoList/cardDrag";
+import { type CardDragBinding, RowDropMarks } from "../videoList/cardDrag";
 import FolderArt from "../videoList/FolderArt";
 
 /**
@@ -359,7 +359,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
           <Folder aria-hidden="true" className="size-3 shrink-0" />
           {groupCountText(group.videoCount)}
         </span>
-        {drag !== undefined && <CardDropMark sign={drag.sign} axis="y" list />}
+        <RowDropMarks drag={drag} />
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">

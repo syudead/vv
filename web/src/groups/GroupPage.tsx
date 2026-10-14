@@ -61,7 +61,12 @@ import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard from "../videoList/VideoCard";
 import { GroupChangedContext } from "./groupChanges";
-import { GroupDragLayer, itemKey, type MoveDestination } from "./GroupDrag";
+import {
+  type GroupDestination,
+  GroupDragLayer,
+  itemKey,
+  type MoveDestination,
+} from "./GroupDrag";
 import { type GroupItemEditing, GroupItemList } from "./GroupItemList";
 import { reconcileGroupSelection, selectAllInGroup, selectedItemIds } from "./groupItems";
 import GroupMenu from "./GroupMenu";
@@ -324,14 +329,14 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     if (data !== null) removeSelected(removable, data.group.name, clear);
   }, [clear, data, removable, removeSelected]);
 
-  const { focus, reorder, move } = edits;
+  const { focus, reorder, move, merge } = edits;
   const reorderItems = useCallback(
     (itemIds: readonly number[], after: number | null) => {
       if (data !== null) reorder(itemIds, after, data.group.name);
     },
     [data, reorder],
   );
-  // 子グループ・祖先・ライブラリへ移した項目は画面から消えるので、選択を解く
+  // 子グループ・祖先・ライブラリへ移したかマージした項目は画面から消えるので、選択を解く
   // （specs/050-drag-organize/ui-design.md「Group page」）。
   const moveItems = useCallback(
     (moved: readonly GroupItem[], to: MoveDestination) => {
@@ -340,6 +345,13 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
       clear();
     },
     [clear, data, move],
+  );
+  const mergeItems = useCallback(
+    (merged: readonly GroupItem[], into: GroupDestination) => {
+      merge(merged, into);
+      clear();
+    },
+    [clear, merge],
   );
 
   const renamed = useCallback(
@@ -484,6 +496,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
           selectedItems={removable}
           onReorder={reorderItems}
           onMove={moveItems}
+          onMerge={mergeItems}
           onLift={resetPreview}
         >
           {page}

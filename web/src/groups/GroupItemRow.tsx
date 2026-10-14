@@ -142,6 +142,7 @@ export const GroupItemRow = memo(function GroupItemRow({
         </Link>
         <ItemTitleExtras facts={facts} />
         {drag !== undefined && <CardDropMark sign={drag.sign} axis="y" list />}
+        {drag?.attachment}
       </TableCell>
       <ItemWatchedAndDurationCells item={item} facts={facts} />
       {remove !== undefined && (

@@ -364,7 +364,7 @@ export default function LibraryPage() {
     setSelectAllSelection(null);
   }, [invalidateSelectAll]);
 
-  // --- ドラッグでグループへ移す（specs/050-drag-organize/ui-design.md「Library」） ---
+  // --- ドラッグでグループへ移すかマージする（specs/050-drag-organize/ui-design.md「Library」） ---
   const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
 
   // --- 「すべて選択」 ---
@@ -704,6 +704,7 @@ export default function LibraryPage() {
         list={view === "list"}
         selection={selection}
         onMove={moves.move}
+        onMerge={moves.merge}
         onLift={resetPreview}
       >
         {content}

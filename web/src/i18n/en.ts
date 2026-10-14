@@ -2058,16 +2058,27 @@ export const en = {
   organize: {
     drop: {
       putIn: "Put in",
+      putInOrMerge: "Put in or merge…",
       refused: "Can't drop here",
+    },
+    // 落とした先に開くメニュー。名前は落とした先のカードの題名か名前。
+    menu: {
+      label: (name: string) => `Dropped on "${name}"`,
+      nest: "Put in as a child group",
+      merge: "Merge",
     },
     done: {
       reordered: (name: string) => `Reordered "${name}"`,
       moved: (count: number, name: string) => `Moved ${items(count)} to "${name}"`,
       movedOut: (count: number, name: string) => `Moved ${items(count)} out of "${name}"`,
+      // mixed は動画もいっしょにマージしたとき（数は項目で数える）。
+      merged: (count: number, name: string, mixed: boolean) =>
+        `Merged ${mixed ? items(count) : groupsCount(count)} into "${name}"`,
     },
     failed: {
       reorder: (reason: string) => `Couldn't reorder: ${reason}`,
       move: (reason: string) => `Couldn't move: ${reason}`,
+      merge: (reason: string) => `Couldn't merge: ${reason}`,
     },
     // ドラッグの層の読み上げの案内（dnd-kit の screenReaderInstructions）。
     instructions:
