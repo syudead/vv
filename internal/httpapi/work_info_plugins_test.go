@@ -21,11 +21,19 @@ import (
 // 作品情報プラグインの経路（specs/049-work-info-plugins/contracts/screen-api.md）は、本物の認証・保存層と
 // app.WorkInfoPlugins で確かめる。検査だけが偽で、送ったバイト列をマニフェストの JSON として読む。
 
-// manifestRuntime は送られたモジュールをマニフェストの JSON として読む検査である。
+// manifestRuntime は送られたモジュールをマニフェストの JSON として読む検査である。brokenImportPrefix で
+// 始まるモジュールは、残りをマニフェストとして読めたあと import の検査で断られたものとして、本物の検査と
+// 同じく読めたマニフェストと問題を一緒に返す。
 type manifestRuntime struct{}
 
+const brokenImportPrefix = "import_unsupported:"
+
 func (manifestRuntime) Inspect(_ context.Context, module []byte) (domain.WorkInfoPluginManifest, domain.WorkInfoPluginProblem, error) {
-	manifest, problem := domain.ParseWorkInfoPluginManifest(module)
+	rest, broken := bytes.CutPrefix(module, []byte(brokenImportPrefix))
+	manifest, problem := domain.ParseWorkInfoPluginManifest(rest)
+	if broken && problem == "" {
+		problem = domain.WorkInfoPluginImportUnsupported
+	}
 	return manifest, problem, nil
 }
 
@@ -146,6 +154,39 @@ func TestWorkInfoPluginRoutesAddApproveAndReplace(t *testing.T) {
 		rec := e.json(req.method, pluginPath(added.Id, req.rest), req.body, e.owner)
 		assertErrorBody(t, req.method+" "+req.rest+" of a deleted plugin", rec.Code, rec.Body.Bytes(),
 			wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
+	}
+}
+
+// 承認済みのプラグインを同じ名前の壊れたモジュールで差し替えると同じ行が invalid になり、承認した
+// バイト列へ戻しても、同じバイト列を送り直しても、承認前に戻る（data-model.md の状態の遷移）。
+func TestWorkInfoPluginReplacementNeverRestoresTheApproval(t *testing.T) {
+	e := newPluginEnv(t)
+	added := decodePlugin(t, "追加", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusCreated)
+	approve := func() {
+		t.Helper()
+		decodePlugin(t, "承認", e.json(http.MethodPut, pluginPath(added.Id, "/approval"),
+			`{"digest":"`+added.Digest+`"}`, e.owner), http.StatusOK)
+	}
+
+	approve()
+	broken := decodePlugin(t, "壊れた差し替え",
+		e.uploadParts([]byte(brokenImportPrefix+pluginManifest), 1, e.owner), http.StatusOK)
+	if broken.Id != added.Id || broken.State != gen.Invalid || broken.Problem == nil ||
+		*broken.Problem != gen.WorkInfoPluginProblem(domain.WorkInfoPluginImportUnsupported) {
+		t.Fatalf("broken replacement = %+v; want the same row invalid", broken)
+	}
+	back := decodePlugin(t, "承認したバイト列へ戻す", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusOK)
+	if back.Id != added.Id || back.Digest != added.Digest || back.State != gen.Unapproved {
+		t.Fatalf("back = %+v; want the same row unapproved", back)
+	}
+
+	approve()
+	same := decodePlugin(t, "同じバイト列", e.uploadParts([]byte(pluginManifest), 1, e.owner), http.StatusOK)
+	if same.Id != added.Id || same.State != gen.Unapproved {
+		t.Fatalf("same bytes again = %+v; want the same row unapproved", same)
+	}
+	if list := e.get("/api/work-info-plugins", e.owner); strings.Count(list.Body.String(), `"id":`) != 1 {
+		t.Fatalf("差し替えが別の行を足した: %s", list.Body)
 	}
 }
 

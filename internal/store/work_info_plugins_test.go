@@ -79,6 +79,38 @@ func TestWorkInfoPluginUploadApproveAndReplace(t *testing.T) {
 	}
 }
 
+// 差し替えは、ダイジェストが承認したときと同じでも承認前に戻す。同じバイト列の再アップロードと、
+// 問題のある差し替えを挟んで承認したバイト列へ戻した差し替えの両方で確かめる。
+func TestWorkInfoPluginReplacementWithTheApprovedDigestIsUnapproved(t *testing.T) {
+	ctx := context.Background()
+	s := migratedDB(t).WorkInfoPlugins()
+	added, _ := savePlugin(t, s, pluginUpload("example", "d1"))
+	approve := func() {
+		t.Helper()
+		if _, err := s.ApproveWorkInfoPlugin(ctx, added.ID, "d1", pluginNow); err != nil {
+			t.Fatalf("Approve: %v", err)
+		}
+	}
+
+	approve()
+	same, replaced := savePlugin(t, s, pluginUpload("example", "d1"))
+	if !replaced || same.ID != added.ID || same.State() != domain.WorkInfoPluginUnapproved {
+		t.Fatalf("same bytes again = %+v, replaced %v; want the same row unapproved", same, replaced)
+	}
+
+	approve()
+	broken := brokenUpload("example.wasm", "b1", domain.WorkInfoPluginImportUnsupported)
+	broken.Manifest = domain.WorkInfoPluginManifest{Contract: 1, Name: "example", Version: "2.0"}
+	invalid, replaced := savePlugin(t, s, broken)
+	if !replaced || invalid.ID != added.ID || invalid.State() != domain.WorkInfoPluginInvalid {
+		t.Fatalf("broken replacement = %+v, replaced %v; want the same row invalid", invalid, replaced)
+	}
+	back, replaced := savePlugin(t, s, pluginUpload("example", "d1"))
+	if !replaced || back.ID != added.ID || back.State() != domain.WorkInfoPluginUnapproved {
+		t.Fatalf("approved bytes back = %+v, replaced %v; want the same row unapproved", back, replaced)
+	}
+}
+
 func TestWorkInfoPluginInvalidIsListedAndCannotBeApproved(t *testing.T) {
 	ctx := context.Background()
 	s := migratedDB(t).WorkInfoPlugins()

@@ -63,7 +63,9 @@ func (s *WorkInfoPluginStore) WorkInfoPlugin(ctx context.Context, id int64) (dom
 // SaveWorkInfoPlugin はアップロード upload を保存し、保存した行と、既存の行を差し替えたかを返す。
 //
 // マニフェストの名前が既存の行と同じなら、1 つの取引でその行のモジュール・メタデータ・ダイジェスト・
-// 問題を置き換え、approved_digest は残す（新しいダイジェストと一致しないので承認前に戻る）。
+// 問題を置き換え、approved_digest を消して承認前に戻す。同じバイト列の再アップロードや、別の中身を
+// 挟んで以前のバイト列へ戻した差し替えでも、ダイジェストの一致で古い承認が戻らないようにする（親 Issue の
+// 「同じ名前のプラグインを追加したときは差し替えとして扱い、承認前に戻る」）。
 // 差し替えでは、新しいマニフェストが宣言するキーの値を残してそれ以外を消す。問題のある差し替えは
 // 宣言を読めていないので、値を全部残す。名前を読めなかったアップロードは新しい行になる
 // （data-model.md の Rules）。
@@ -193,7 +195,7 @@ func replaceWorkInfoPlugin(
 ) error {
 	if _, err := tx.ExecContext(ctx, `update work_info_plugins set
 		file_name = ?, version = ?, description = ?, contract = ?, operations = ?, settings = ?, module = ?,
-		digest = ?, problem = ?, updated_at = ?
+		digest = ?, problem = ?, approved_digest = null, updated_at = ?
 		where id = ?`,
 		upload.FileName, cols.version, cols.description, cols.contract, cols.operations, cols.settings,
 		cols.module, upload.Digest, cols.problem, now.Unix(), id); err != nil {
