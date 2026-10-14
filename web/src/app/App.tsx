@@ -35,6 +35,7 @@ const PlaylistPage = await deferredRoute(
   () => import("../playlists/PlaylistPage"),
   (pathname) => matchesBelowPath(pathname, "/playlists"),
 );
+const GroupPage = await deferredRoute(() => import("../groups/GroupPage"), "/groups");
 const DuplicatesPage = await deferredRoute(
   () => import("../versions/DuplicatesPage"),
   "/duplicates",
@@ -114,6 +115,14 @@ function AppRoutes() {
           element={
             <AppShell>
               <PlaylistPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/groups/:id"
+          element={
+            <AppShell>
+              <GroupPage />
             </AppShell>
           }
         />

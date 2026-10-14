@@ -30,13 +30,18 @@ const collapseFrom = 4;
  *
  * suffix は検索中に現在地の直後へ続ける文字（「内を検索中」など、ui-design.md
  * 「Folder screen」）。段と違って省略しない — 検索中であることを見失わせないためである。
+ *
+ * label は帯の読み上げ名で、省くとフォルダ画面の「Breadcrumbs」。グループのページは同じ帯を
+ * 「Group path」として使う（specs/048-groups/ui-design.md「Trail band」）。
  */
 export default function Breadcrumbs({
   crumbs,
   suffix,
+  label = t.folders.breadcrumbs,
 }: {
   crumbs: (Crumb | undefined)[];
   suffix?: UiText;
+  label?: UiText;
 }) {
   const collapsible = crumbs.length >= collapseFrom;
   const lastIndex = crumbs.length - 1;
@@ -46,7 +51,7 @@ export default function Breadcrumbs({
       data-slot="folder-breadcrumbs"
       className="sticky top-navbar z-35 -mx-3 -mt-3 flex h-10 items-center border-b border-border bg-background px-3 sm:-mx-4 sm:-mt-4 sm:px-4"
     >
-      <Breadcrumb aria-label={t.folders.breadcrumbs} className="min-w-0 flex-1">
+      <Breadcrumb aria-label={label} className="min-w-0 flex-1">
         {/* 上流の一覧は折り返す。フォルダの道筋は一行に保ち、溢れた段を省略記号で切る。 */}
         <BreadcrumbList className="min-w-0 flex-nowrap whitespace-nowrap wrap-normal">
           {crumbs.map((crumb, index) => {
