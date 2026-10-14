@@ -146,8 +146,12 @@ let intersect: IntersectionObserverCallback | undefined;
 /** 作られた IntersectionObserver の数。 */
 let observers = 0;
 
-/** reachEnd は格子の末尾の見張りが画面に近づいたことにする。 */
-function reachEnd() {
+/**
+ * reachEnd は格子の末尾の見張りが画面に近づいたことにする。見張りは描いた後の effect で付くので、
+ * カードが出た直後にはまだ無いことがある。付くのを待ってから知らせる。
+ */
+async function reachEnd() {
+  await waitFor(() => expect(intersect).toBeDefined());
   act(() => {
     intersect?.(
       [{ isIntersecting: true } as IntersectionObserverEntry],
@@ -400,20 +404,20 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
     expect(cardNames()).toEqual(["P1, 1 item", "P2, 2 items"]);
     expect(screen.getByText("5 playlists")).toBeDefined();
     expect(server.listUrls).toEqual(["/api/playlists?limit=60"]);
-    expect(observers).toBe(1);
+    await waitFor(() => expect(observers).toBe(1));
 
-    reachEnd();
+    await reachEnd();
     await waitFor(() => expect(cards()).toHaveLength(4));
     expect(cardNames()[2]).toBe("P3, 3 items");
     expect(server.listUrls[1]).toBe("/api/playlists?cursor=2&limit=60");
     expect(screen.getByText("5 playlists")).toBeDefined();
 
-    reachEnd();
+    await reachEnd();
     await waitFor(() => expect(cards()).toHaveLength(5));
     expect(server.listUrls).toHaveLength(3);
     // 続きが無くなれば見張りを付け直さず、同じ要求を繰り返さない。
     const seen = observers;
-    reachEnd();
+    await reachEnd();
     expect(observers).toBe(seen);
     expect(server.listUrls).toHaveLength(3);
     expect(document.querySelector('[data-slot="load-more-row"]')).toBeNull();
@@ -427,7 +431,7 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
     renderPage();
     await findCards();
 
-    reachEnd();
+    await reachEnd();
     const row = await screen.findByText(/^Couldn't load more: /);
     expect(row.closest('[data-slot="load-more-row"]')?.getAttribute("data-state")).toBe(
       "failed",
@@ -457,7 +461,7 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
     server.items = [moved as PlaylistSummary, ...server.items];
     server.version += 1;
 
-    reachEnd();
+    await reachEnd();
     await waitFor(() => expect(cardNames()).toEqual(["P5, 5 items", "P1, 1 item"]));
     expect(server.listUrls).toEqual([
       "/api/playlists?limit=60",
@@ -467,7 +471,7 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
     expect(screen.getByText("5 playlists")).toBeDefined();
 
     // 読み直した後は見張りが付け直され、続きは新しい並びで足される。
-    reachEnd();
+    await reachEnd();
     await waitFor(() => expect(cards()).toHaveLength(4));
     expect(cardNames()).toEqual([
       "P5, 5 items",
@@ -475,7 +479,7 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
       "P2, 2 items",
       "P3, 3 items",
     ]);
-    reachEnd();
+    await reachEnd();
     await waitFor(() => expect(cards()).toHaveLength(5));
     expect(cardNames()[4]).toBe("P4, 4 items");
   });
@@ -489,7 +493,7 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
 
     // 2 ページ目の要求は応答が返らないまま、プレイリストを作る。
     server.moreStatus = 0;
-    reachEnd();
+    await reachEnd();
     expect(server.listUrls[1]).toBe("/api/playlists?cursor=2&limit=60");
     server.listStatus = 500;
     await user.click(screen.getByRole("button", { name: "New playlist" }));
@@ -519,7 +523,7 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
     );
     expect(server.listUrls[3]).toBe("/api/playlists?limit=60");
     expect(cardNames()).toEqual(["Evening, 0 items", "P1, 1 item"]);
-    reachEnd();
+    await reachEnd();
     await waitFor(() => expect(cards()).toHaveLength(4));
     expect(server.listUrls[4]).toBe("/api/playlists?cursor=2&limit=60");
     expect(cardNames()).toEqual([

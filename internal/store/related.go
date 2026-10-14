@@ -171,9 +171,12 @@ func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience,
 	if err != nil || !found {
 		return domain.VideoGroup{}, false, err
 	}
-	var path, name string
-	if err := tx.QueryRowContext(ctx, `select coalesce(origin_folder, ''), name from groups where id = ?`,
-		groupID).Scan(&path, &name); err != nil {
+	// origin_folder は自動グループだけが持つ。登録フォルダ `/` の自動グループの鍵は空文字なので、
+	// NULL（手で作ったグループ）とは空文字かどうかでなく NULL かどうかで分ける。
+	var origin sql.NullString
+	var name string
+	if err := tx.QueryRowContext(ctx, `select origin_folder, name from groups where id = ?`,
+		groupID).Scan(&origin, &name); err != nil {
 		return domain.VideoGroup{}, false, fmt.Errorf("cannot read the video's group: %w", err)
 	}
 	memberIDs, err := groupPlayOrderIDs(ctx, tx, audience, groupID)
@@ -193,12 +196,12 @@ func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience,
 			return domain.VideoGroup{}, false, err
 		}
 	}
-	if path != "" {
+	if origin.Valid {
 		roots, err := listMediaFolders(ctx, tx)
 		if err != nil {
 			return domain.VideoGroup{}, false, err
 		}
-		if folder, located := domain.LocateFolder(roots, path); located {
+		if folder, located := domain.LocateFolderKey(roots, origin.String); located {
 			group.Folder = &folder
 		}
 	}

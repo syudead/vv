@@ -2223,7 +2223,7 @@ type ScanActivity struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder（自動グループ）・Video.group.folder（自動グループ、GET /api/videos/{id}）では
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
@@ -2249,7 +2249,7 @@ type ScanIssue struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder（自動グループ）・Video.group.folder（自動グループ、GET /api/videos/{id}）では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
@@ -2699,7 +2699,7 @@ type Video struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder（自動グループ）・Video.group.folder（自動グループ、GET /api/videos/{id}）では
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
@@ -2839,7 +2839,7 @@ type VideoEncoderChoice string
 // GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 // 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 // 今の処理のファイルのフォルダを指す。
-// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+// LibraryGroup.folder（自動グループ）・Video.group.folder（自動グループ、GET /api/videos/{id}）では
 // グループのフォルダそのものを指す
 type VideoFolder struct {
 	// Path 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字
