@@ -130,7 +130,7 @@ server's own interfaces ([`address.go`](../../internal/wasmplugin/address.go)).
 `refusedPrefixes` is one table: every range of the IANA IPv4 and IPv6
 Special-Purpose Address Registries whose "Globally Reachable" is not `True`,
 plus `fec0::/10` and the prefixes that embed an IPv4 address (`64:ff9b::/96`,
-`2001::/32`, `2002::/16`). The server's interfaces are read at each check,
+`64:ff9b:1::/48`, `2001::/32`, `2002::/16`). The server's interfaces are read at each check,
 because they can change while vv runs.
 
 A refused request answers `-2` to the plugin and makes the whole run fail with

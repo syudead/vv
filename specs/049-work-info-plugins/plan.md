@@ -251,7 +251,7 @@ value of a still-declared key and deleting one no longer declared, and
 deleting a plugin deleting its values; handler tests show a 17 MiB part
 answered `413` `plugin_too_large`, an undeclared key answered `400`, a secret
 value absent from every response body while `set` is `true`, and every route
-answering `403` to a guest.
+answering `401` `unauthenticated` to a guest.
 
 ### Manage work-info plugins on the settings screen
 
@@ -305,7 +305,7 @@ after a revoke answered `work_info_fetch_stale`, a store test where the
 plugin is replaced after the app's check but before the apply's transaction
 writing nothing and answering `work_info_fetch_stale`; handler tests show each run
 failure of the contract with its status and fields, and every route answering
-`403` to a guest.
+`401` `unauthenticated` to a guest.
 
 ### Fetch work information from a plugin on the video page
 

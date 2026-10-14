@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/data-model.md
-sourceHash: 0cb5f67b373582ccddbf9bfb1c0d5cccbe94e1c2ce7a4ca558c715fa5c55d26d
+sourceHash: 51b0de50f6a3a5b6eacd86b6ba821bd0a1f10cd360e3252d13a3ae4b6504a260
 ---
 
 # データモデル: 作品情報プラグイン {#data-model-work-info-plugins}
@@ -60,7 +60,7 @@ sourceHash: 0cb5f67b373582ccddbf9bfb1c0d5cccbe94e1c2ce7a4ca558c715fa5c55d26d
 | 規則 | 強制する場所 |
 | --- | --- |
 | プラグインが承認済みであるのは、ちょうど `problem` が null で `approved_digest = digest` のときである | `internal/domain` (状態)、`internal/store` (読み取り) |
-| マニフェストが既存の `name` を挙げるアップロードは、その行のモジュール、メタデータ、ダイジェスト、問題を置き換え、`approved_digest` を保つ。それはもう一致しない | `internal/store`、1 つのトランザクションで |
+| マニフェストが既存の `name` を挙げるアップロードは、その行のモジュール、メタデータ、ダイジェスト、問題を置き換え、`approved_digest` を消す。そのため置き換えたものは未承認に戻る | `internal/store`、1 つのトランザクションで |
 | 読める名前のないアップロードは新しい行になる | `internal/store` |
 | 承認が `approved_digest` を書くのは、要求のダイジェストが `digest` と等しく、`problem` が null のときだけである。そうでなければ `plugin_changed` か `plugin_unusable` | `internal/app` が判断し、`internal/store` がそのトランザクションの中で読み直す |
 | 承認の取り消しは `approved_digest` を消す | `internal/store` |
