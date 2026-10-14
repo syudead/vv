@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 15017b677b2937fcde6d3acec4774e8d72bdc328fc2007bf83a4904efb676ba0
+sourceHash: 5c636221fef80435a8875083de8d2128eb01ef23e8d6f0ccf366e3bb330b2c1c
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -195,7 +195,7 @@ flowchart LR
 
 ライブラリは `GET /api/library` を読み、これはフォルダのグループを動画に混ぜて返す。フォルダのページとその検索結果は動画を 1 本ずつ並べる。グループカードは、件数（`12 videos`）と合計の長さを示すパネル、一部のメンバーが視聴途中のときだけ出る視聴済みの割合のバー、グループ名、メンバーのタグを表示する。押すと続きを見るメンバー（`/videos/{openVideoId}`）を開く。ゲストには視聴状態、視聴済み数、バーが見えない。
 
-グループの解除、フォルダ直下の動画のグループ化、グループのタグへの変換はカードにない。これらは、フォルダのページの `Videos N` 見出し行の右端にある所有者のメニュー（[`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)）と、動画ページのグループ名の行にある。操作の後、キャッシュしたライブラリの一覧は破棄され、次に訪れたときに読み直す。
+グループの解除、フォルダ直下の動画のグループ化、グループのタグへの変換はカードにない。これらは、フォルダのページの `Videos N` 見出し行の右端にある所有者のメニュー（[`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)）と、動画ページのグループ名の行にある。フォルダのメニューが "Turn the group into a tag…" を出すのは、登録済みのフォルダ自身のグループを含め、フォルダに自動のグループがあるときだけであり、この項目はすべての入口が共有する確認ダイアログを開く（[`GroupTagDialog.tsx`](../../web/src/groups/GroupTagDialog.tsx)、[048 UI 設計、Turning into a tag](../../specs/048-groups/ui-design.md#turning-into-a-tag)）。操作の後、キャッシュしたライブラリの一覧は破棄され、次に訪れたときに読み直す。
 
 ### お気に入りの印 {#favorite-mark}
 
