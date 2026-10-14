@@ -22,6 +22,9 @@ type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"];
 type ComfyUIProvider = components["schemas"]["ComfyUIProvider"];
 type ComfyUIModel = components["schemas"]["ComfyUIModel"];
+type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
+type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
+type WorkInfoOperation = components["schemas"]["WorkInfoOperation"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
@@ -181,9 +184,9 @@ const errorCodes = {
   login_throttled: "Too many sign-in attempts. Wait a moment and try again.",
   account_already_configured: "The account is already set up.",
   provider_failed: "ComfyUI couldn't start the edit.",
-  plugin_too_large: "The plugin file is too large: up to 16 MB.",
-  plugin_changed: "The plugin was replaced. Review it again before approving.",
-  plugin_unusable: "This plugin has a problem and can't be used.",
+  plugin_too_large: "The file is over 16 MB.",
+  plugin_changed: "The plugin was replaced. Review it again.",
+  plugin_unusable: "The plugin can't be used.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {
@@ -2310,6 +2313,103 @@ export const en = {
       updateForNode: "Update ComfyUI to get this node",
       loading: "Loading the ComfyUI settings",
       loadFailed: (reason: string) => `Couldn't load the ComfyUI settings: ${reason}`,
+    },
+    workInfoPlugins: {
+      heading: "Work-info plugins",
+      description:
+        "Plugins fetch work information from other sites for the video page. Approve a plugin before it can run.",
+      guide: "How plugins work",
+      opensInNewTab: "(opens in a new tab)",
+      list: "Added work-info plugins",
+      loading: "Loading the work-info plugins",
+      loadFailed: (reason: string) => `Couldn't load the work-info plugins: ${reason}`,
+      add: "Add plugin",
+      adding: "Adding…",
+      fileInput: "Plugin file",
+      tooLarge: "Choose a file up to 16 MB.",
+      addFailed: (reason: string) => `Couldn't add the plugin: ${reason}`,
+      added: (name: string) => `Added ${name}. Approve it to use it.`,
+      replaced: (name: string) => `Replaced ${name}. Approve it again to use it.`,
+      addedUnusable: (name: string) => `Added ${name}, but it can't be used.`,
+      empty: "No plugins yet",
+      emptyHint: "Add a .wasm plugin file to fetch titles and tags on the video page.",
+      states: {
+        approved: "Approved",
+        unapproved: "Not approved",
+        invalid: "Can't be used",
+      } satisfies Record<WorkInfoPluginState, string>,
+      version: (version: string) => `v${version}`,
+      operations: {
+        search: "Search",
+        fetch: "Fetch by URL",
+      } satisfies Record<WorkInfoOperation, string>,
+      network: "Reaches internet sites",
+      settingSet: (label: string) => `${label} set`,
+      settingNotSet: (label: string) => `${label} not set`,
+      settingsSummary: (items: readonly string[]) => `Settings: ${items.join(", ")}`,
+      requiredMissing: (labels: readonly string[]) =>
+        `Needs a value: ${labels.join(", ")}`,
+      approve: "Review and approve",
+      settings: "Settings",
+      more: (name: string) => `More actions for ${name}`,
+      revoke: "Revoke approval",
+      delete: "Delete",
+      revoking: "Revoking…",
+      deleting: "Deleting…",
+      rowFailed: (name: string, reason: string) => `Couldn't change ${name}: ${reason}`,
+      problems: {
+        not_wasm: "The file isn't a WebAssembly module.",
+        manifest_missing: "The file has no plugin information for VVMDM.",
+        manifest_invalid: "The plugin information in the file is invalid.",
+        contract_unsupported: "The plugin is made for another version of VVMDM.",
+        import_unsupported: "The plugin asks for functions VVMDM doesn't offer.",
+        export_invalid: "The file isn't a plugin VVMDM can run.",
+        table_too_large: "The plugin asks for more memory tables than VVMDM allows.",
+      } satisfies Record<WorkInfoPluginProblem, string>,
+      approval: {
+        title: (name: string) => `Approve ${name}?`,
+        description:
+          "Approved plugins can run when you fetch work information on a video page.",
+        version: "Version",
+        file: "File",
+        can: "Can",
+        pluginDescription: "Description",
+        digest: "SHA-256",
+        networkTitle: "This plugin can reach any site on the internet",
+        networkBody:
+          "It can send what it fetches and the values of its settings to those sites. VVMDM blocks its requests to VVMDM itself and to devices on your network.",
+        settingsHeading: "Settings it receives",
+        secret: "Secret",
+        required: "Required",
+        noSettings: "It receives no settings.",
+        submit: "Approve",
+        changed:
+          "The plugin was replaced while this was open. Close this and review it again.",
+        failed: (reason: string) => `Couldn't approve the plugin: ${reason}`,
+      },
+      settingsDialog: {
+        title: (name: string) => `Settings for ${name}`,
+        description:
+          "Values are sent only to this plugin when it runs. Changing them keeps the approval.",
+        required: "Required",
+        secretSaved: "Saved. Type a new value to replace it.",
+        secretNotSaved: "Not set.",
+        forget: "Forget",
+        forgotten: "Removed when you save.",
+        undo: "Undo",
+        submit: "Save",
+        saved: (name: string) => `Saved the settings for ${name}.`,
+        saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
+      },
+      deleteDialog: {
+        title: (name: string) => `Delete ${name}?`,
+        description:
+          "The plugin and the values of its settings are removed. Videos keep what was already applied.",
+        submit: "Delete",
+        deleting: "Deleting…",
+        deleted: (name: string) => `Deleted ${name}.`,
+        failed: (reason: string) => `Couldn't delete the plugin: ${reason}`,
+      },
     },
     mediaFolders: {
       heading: "Media folders",
