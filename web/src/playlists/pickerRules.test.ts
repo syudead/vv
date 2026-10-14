@@ -32,6 +32,19 @@ describe("ピッカーの規則（specs/044-playlists/ui-design.md「Add to play
     expect(matchNames(all, "zzz")).toEqual([]);
   });
 
+  it("大文字小文字はサーバーと同じ Unicode の単純な折り畳みで比べる", () => {
+    const all = [playlist(1, "Σ mix"), playlist(2, "\u212Aelvin"), playlist(3, "straße")];
+    // Σ・σ・ς は 1 つの組、Kelvin 記号は K と k の組（toLowerCase では ς が外れる）。
+    expect(matchNames(all, "ς").map((p) => p.id)).toEqual([1]);
+    expect(matchNames(all, "σ").map((p) => p.id)).toEqual([1]);
+    expect(matchNames(all, "kel").map((p) => p.id)).toEqual([2]);
+    // ß → SS は 2 文字になる変換なので単純な折り畳みに入らない。ı は I と組にならない。
+    expect(matchNames(all, "strasse")).toEqual([]);
+    expect(
+      matchNames([playlist(4, "\u0131"), playlist(5, "I")], "i").map((p) => p.id),
+    ).toEqual([5]);
+  });
+
   it("名前の上限は符号位置で 100 まで", () => {
     expect(nameTooLong("a".repeat(100))).toBe(false);
     expect(nameTooLong("a".repeat(101))).toBe(true);
