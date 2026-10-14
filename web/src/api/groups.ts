@@ -5,7 +5,10 @@ import {
   request,
   toRequestFailed,
 } from "./client";
+import { t, type UiText } from "../i18n";
 import type { components } from "./gen/openapi";
+import { clearListSnapshot } from "./listSnapshot";
+import { refreshTags } from "./tags";
 
 // グループの一覧と編集の画面 API（specs/048-groups/contracts/screen-api.md「Statuses」）。型は
 // api/openapi.yaml からの生成物を使う。一覧はゲストも読め、書き込みは所有者だけである。
@@ -133,11 +136,12 @@ export function renameGroup(
 
 /**
  * dissolveGroup はグループを解散する（DELETE /api/groups/{id}）。子グループと動画は残る。
- * 無ければ 404 の RequestFailed。
+ * 無ければ 404 の RequestFailed。成功したら一覧の控えを捨てる（ライブラリのカードが変わる）。
  */
 export async function dissolveGroup(id: number, signal?: AbortSignal): Promise<void> {
   const response = await apiFetch(groupPath(id), { method: "DELETE", signal });
   if (!response.ok) throw await toRequestFailed(response);
+  clearListSnapshot();
 }
 
 /**
@@ -201,7 +205,24 @@ export async function moveGroupItem(
  * tagGroup はグループをタグにする（POST /api/groups/{id}/tag）。子孫の全動画にタグが手で付き、
  * グループは解散する。名前がタグ名に使えなければ 400 `invalid_request` の RequestFailed になり、
  * 何も変わらない。
+ *
+ * 成功したら一覧の控えを捨て（ライブラリのカードが変わる）、共有のタグの一覧も取り直す（タグが
+ * 増えるか、本数が変わる）。
  */
-export function tagGroup(id: number, signal?: AbortSignal): Promise<GroupTagResult> {
-  return request<GroupTagResult>(`${groupPath(id)}/tag`, { method: "POST", signal });
+export async function tagGroup(
+  id: number,
+  signal?: AbortSignal,
+): Promise<GroupTagResult> {
+  const result = await request<GroupTagResult>(`${groupPath(id)}/tag`, {
+    method: "POST",
+    signal,
+  });
+  clearListSnapshot();
+  refreshTags().catch(() => undefined);
+  return result;
+}
+
+/** taggedMessage はグループをタグに変えたことを伝える文言である（specs/048-groups/ui-design.md「Words」）。 */
+export function taggedMessage(result: GroupTagResult): UiText {
+  return t.groups.tagged(result.tag.name, result.created);
 }

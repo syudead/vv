@@ -1,4 +1,4 @@
-import { CheckCheck, Layers, ListPlus, Minus, Plus } from "lucide-react";
+import { CheckCheck, FolderMinus, Layers, ListPlus, Minus, Plus } from "lucide-react";
 import { useEffect, useId, useRef, useState } from "react";
 
 import { maxBundleSelection, type VideoVersions } from "../api/client";
@@ -47,6 +47,14 @@ export interface SelectionBarProps {
    * 解除して一覧を取り直す（specs/030-video-versions/ui-design.md「Bundle dialog」）。
    */
   onBundled: (versions: VideoVersions) => void;
+  /**
+   * グループのページだけが渡す「Remove from group」（specs/048-groups/ui-design.md
+   * 「Selection bar」）。外す項目が無い間と、送っている間は押せない。
+   */
+  removeFromGroup?: {
+    disabled: boolean;
+    onRemove: () => void;
+  };
 }
 
 /**
@@ -66,6 +74,7 @@ export default function SelectionBar({
   onClear,
   onTagRemoved,
   onBundled,
+  removeFromGroup,
 }: SelectionBarProps) {
   const [addOpen, setAddOpen] = useState(false);
   const [removeOpen, setRemoveOpen] = useState(false);
@@ -224,6 +233,18 @@ export default function SelectionBar({
             align="start"
           />
         </Popover>
+
+        {/* グループのページだけ。「Add to group」の後、「Visibility」の前に置く。 */}
+        {removeFromGroup !== undefined && (
+          <WithTooltip label={t.library.selection.removeFromGroup}>
+            <SelectionAction
+              icon={<FolderMinus aria-hidden="true" />}
+              label={t.library.selection.removeFromGroup}
+              disabled={removeFromGroup.disabled}
+              onClick={removeFromGroup.onRemove}
+            />
+          </WithTooltip>
+        )}
 
         <VisibilityMenu
           selectedIds={selectedIds}

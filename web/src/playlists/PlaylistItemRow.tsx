@@ -1,21 +1,17 @@
-import { useSortable } from "@dnd-kit/sortable";
-import { GripVertical, X } from "lucide-react";
 import type { Ref } from "react";
 import { Link } from "react-router";
 
 import type { PlaylistItem } from "../api/playlists";
 import { formatNumber, t } from "../i18n";
 import { cn } from "../lib/cn";
-import { Button } from "../ui/shadcn/button";
-import { Spinner } from "../ui/shadcn/spinner";
 import { TableCell, TableRow } from "../ui/shadcn/table";
-import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import {
   ItemThumbnailCell,
   ItemTitleExtras,
   ItemWatchedAndDurationCells,
   rowFacts,
 } from "../videoList/ItemRowCells";
+import { RemoveItemButton, ReorderHandle, useSortableRow } from "../videoList/reorder";
 import { itemTitle, playTarget } from "./playlistItems";
 
 /**
@@ -42,29 +38,16 @@ export default function PlaylistItemRow({
   onRemove: (item: PlaylistItem) => void;
   removeRef: Ref<HTMLButtonElement>;
 }) {
-  const {
-    attributes,
-    listeners,
-    setNodeRef,
-    setActivatorNodeRef,
-    transform,
-    transition,
-    isDragging,
-  } = useSortable({ id: item.id });
+  const { rowRef, style, isDragging, handle } = useSortableRow(item.id);
   const title = itemTitle(item);
   const facts = rowFacts(item);
   const target = playTarget(playlistId, item);
 
   return (
     <TableRow
-      ref={setNodeRef}
+      ref={rowRef}
       data-item-id={item.id}
-      // 位置は持ち上げている間だけ実行時に決まる値なので style で渡す。横には動かさない。
-      style={
-        transform === null
-          ? { transition }
-          : { transform: `translate3d(0, ${String(transform.y)}px, 0)`, transition }
-      }
+      style={style}
       className={cn(
         "relative motion-reduce:transition-none",
         isDragging && "z-10 bg-popover shadow-elevated hover:bg-popover",
@@ -72,18 +55,7 @@ export default function PlaylistItemRow({
     >
       <TableCell className="w-0 pr-0 pl-1">
         <span className="flex items-center gap-1">
-          <Button
-            ref={setActivatorNodeRef}
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            className="relative z-10 cursor-grab touch-none text-muted-foreground"
-            {...attributes}
-            {...listeners}
-            aria-label={t.playlists.item.reorder(title)}
-          >
-            <GripVertical aria-hidden="true" />
-          </Button>
+          <ReorderHandle handle={handle} label={t.playlists.item.reorder(title)} />
           <span className="min-w-4 text-right text-xs text-muted-foreground tabular-nums">
             {formatNumber(position)}
           </span>
@@ -116,24 +88,13 @@ export default function PlaylistItemRow({
       </TableCell>
       <ItemWatchedAndDurationCells item={item} facts={facts} />
       <TableCell className="w-0 pr-1 pl-0 sm:pr-3">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              ref={removeRef}
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              className="relative z-10 text-muted-foreground"
-              disabled={removing}
-              aria-busy={removing || undefined}
-              aria-label={t.playlists.item.removeFor(title)}
-              onClick={() => onRemove(item)}
-            >
-              {removing ? <Spinner aria-hidden="true" /> : <X aria-hidden="true" />}
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t.playlists.item.remove}</TooltipContent>
-        </Tooltip>
+        <RemoveItemButton
+          removing={removing}
+          label={t.playlists.item.removeFor(title)}
+          tooltip={t.playlists.item.remove}
+          onRemove={() => onRemove(item)}
+          buttonRef={removeRef}
+        />
       </TableCell>
     </TableRow>
   );

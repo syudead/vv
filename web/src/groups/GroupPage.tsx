@@ -1,5 +1,13 @@
 import { Folder, FolderX, Play } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  type Ref,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router";
 
 import type { LibraryGroup, TagRef, Video, VideoFolder } from "../api/client";
@@ -36,7 +44,6 @@ import {
   type Zoom,
 } from "../preferences/viewPreferences";
 import TopBarPortal from "../shell/TopBarPortal";
-import { DataTable } from "../ui/patterns/data-table";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { ErrorState } from "../ui/patterns/error-state";
 import { ListPage } from "../ui/patterns/list-page";
@@ -46,13 +53,13 @@ import { PageHeader } from "../ui/patterns/page-header";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
-import { TableBody } from "../ui/shadcn/table";
 import { Grid } from "../videoList/Grid";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard from "../videoList/VideoCard";
-import { reconcileGroupSelection, selectAllInGroup } from "./groupItems";
-import { GroupItemRow } from "./GroupItemRow";
+import { type GroupItemEditing, GroupItemList } from "./GroupItemList";
+import { reconcileGroupSelection, selectAllInGroup, selectedItemIds } from "./groupItems";
+import GroupMenu from "./GroupMenu";
 import {
   folderDisplayPath,
   groupItemPath,
@@ -62,6 +69,7 @@ import {
   trailCrumbs,
   videoInGroupPath,
 } from "./groupPaths";
+import { useGroupEdits } from "./useGroupEdits";
 import { type GroupPageData, useGroupPage } from "./useGroupPage";
 
 const skeletonCount = 12;
@@ -203,8 +211,10 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   const location = useLocation();
   const navigate = useNavigate();
   const owner = useAudience() === "owner";
-  const { state, more, reload, refresh, loadMore } = useGroupPage(id, trail);
+  const { state, more, reload, refresh, loadMore, update, confirmed, markGone } =
+    useGroupPage(id, trail);
   const data = state.kind === "ready" ? state.data : null;
+  const edits = useGroupEdits({ id, update, confirmed, refresh });
   const { preferences, save } = useViewPreferences();
   const { view, zoom } = preferences;
   const preview = usePreviewCoordination();
@@ -263,9 +273,48 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     refresh();
   }, [clear, refresh]);
 
+  // 「Remove from group」で外す項目（ui-design.md「Body」）。
+  const removable = useMemo(
+    () => (data === null ? [] : selectedItemIds(selection.selection, data.items)),
+    [data, selection.selection],
+  );
+  const { removeSelected } = edits;
+  const removeChosen = useCallback(() => {
+    if (data !== null) removeSelected(removable, data.group.name, clear);
+  }, [clear, data, removable, removeSelected]);
+
+  const { focus } = edits;
+  const renamed = useCallback(
+    (group: LibraryGroup) => {
+      update((current) => ({ ...current, group }));
+      focus("more");
+    },
+    [focus, update],
+  );
+
   return (
     <ListPage
-      header={<GroupHeader state={state} trail={trail} id={id} listUrl={listUrl} />}
+      header={
+        <GroupHeader
+          state={state}
+          trail={trail}
+          id={id}
+          listUrl={listUrl}
+          menu={
+            owner &&
+            data !== null && (
+              <GroupMenu
+                group={data.group}
+                trail={data.trail}
+                moreRef={edits.moreRef}
+                onRenamed={renamed}
+                onGone={markGone}
+              />
+            )
+          }
+          titleRef={edits.titleRef}
+        />
+      }
       toolbar={
         <TopBarPortal>
           <Toolbar
@@ -289,6 +338,10 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
             onClear={selection.clear}
             onTagRemoved={refresh}
             onBundled={afterBulk}
+            removeFromGroup={{
+              disabled: removable.length === 0 || edits.removingSelected,
+              onRemove: removeChosen,
+            }}
           />
         )
       }
@@ -325,6 +378,16 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
             selectionMode={selectionMode}
             preview={preview.cardProps}
             onPressTag={pressTag}
+            editing={
+              owner
+                ? {
+                    removing: edits.removing,
+                    onMove: edits.move,
+                    onRemove: edits.removeOne,
+                    removeRef: edits.removeRef,
+                  }
+                : undefined
+            }
           />
         </div>
       )}
@@ -383,11 +446,16 @@ function GroupHeader({
   trail,
   id,
   listUrl,
+  menu,
+  titleRef,
 }: {
   state: ReturnType<typeof useGroupPage>["state"];
   trail: readonly number[];
   id: number | null;
   listUrl: string;
+  /** 所有者の「More」。ゲストには無い。 */
+  menu: ReactNode;
+  titleRef: Ref<HTMLHeadingElement>;
 }) {
   if (state.kind === "loading") {
     return (
@@ -421,6 +489,7 @@ function GroupHeader({
         crumbs={trailCrumbs(state.data.trail, group.name)}
       />
       <PageHeader
+        titleRef={titleRef}
         // 長い名前は見出しの中で 2 行まで折り返し、全体は title に入れる。
         title={
           <span title={group.name} className="line-clamp-2 whitespace-normal break-words">
@@ -429,19 +498,23 @@ function GroupHeader({
         }
         count={t.groups.detail.count(group.videoCount, formatDuration(group.durationMs))}
         description={group.folder !== undefined && <FolderLine folder={group.folder} />}
+        // 「Play」を先に、所有者の「More」を後に置く。空のグループは「Play」を出さない。
         actions={
-          state.data.items.length > 0 && (
-            <Button size="sm" asChild>
-              <Link
-                to={videoInGroupPath(group.openVideoId, id)}
-                state={{ from: listUrl, autoplay: true }}
-                aria-label={t.groups.detail.playFor(group.name)}
-              >
-                <Play aria-hidden="true" />
-                {t.groups.detail.play}
-              </Link>
-            </Button>
-          )
+          <>
+            {state.data.items.length > 0 && (
+              <Button size="sm" asChild>
+                <Link
+                  to={videoInGroupPath(group.openVideoId, id)}
+                  state={{ from: listUrl, autoplay: true }}
+                  aria-label={t.groups.detail.playFor(group.name)}
+                >
+                  <Play aria-hidden="true" />
+                  {t.groups.detail.play}
+                </Link>
+              </Button>
+            )}
+            {menu}
+          </>
         }
       />
     </>
@@ -486,6 +559,7 @@ function GroupItems({
   selectionMode,
   preview,
   onPressTag,
+  editing,
 }: {
   id: number;
   data: GroupPageData;
@@ -497,6 +571,8 @@ function GroupItems({
   selectionMode: boolean;
   preview: ReturnType<typeof usePreviewCoordination>["cardProps"];
   onPressTag: (tag: TagRef) => void;
+  /** 所有者のリスト表示の並べ替えと `×`。ゲストには無い。 */
+  editing?: GroupItemEditing;
 }) {
   const ids = selection.selection.ids;
   const groupSelected = (group: LibraryGroup) =>
@@ -528,26 +604,22 @@ function GroupItems({
 
   if (view === "list") {
     return (
-      <DataTable label={t.groups.detail.table}>
-        <TableBody>
-          {data.items.map((item, index) => (
-            <GroupItemRow
-              key={item.id}
-              item={item}
-              position={index + 1}
-              to={groupItemPath(item, data.trail, id)}
-              backTo={listUrl}
-              selected={
-                item.group !== undefined
-                  ? groupSelected(item.group)
-                  : item.video !== undefined && ids.has(item.video.id)
-              }
-              selectionMode={selectionMode}
-              onSelect={owner ? selection.changeItem : undefined}
-            />
-          ))}
-        </TableBody>
-      </DataTable>
+      <GroupItemList
+        items={data.items}
+        editing={editing}
+        row={(item, index) => ({
+          item,
+          position: index + 1,
+          to: groupItemPath(item, data.trail, id),
+          backTo: listUrl,
+          selected:
+            item.group !== undefined
+              ? groupSelected(item.group)
+              : item.video !== undefined && ids.has(item.video.id),
+          selectionMode,
+          onSelect: owner ? selection.changeItem : undefined,
+        })}
+      />
     );
   }
   return (

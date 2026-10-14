@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -74,6 +74,8 @@ const server = {
   pageRequests: [] as string[],
   /** true の間、続きのページは 500 で失敗する。 */
   pagesFail: false,
+  /** 書き込みの要求（メソッド、パス、本文）。 */
+  writes: [] as { method: string; path: string; body?: unknown }[],
 };
 
 function json(body: unknown, status = 200): Response {
@@ -106,9 +108,76 @@ function trailOf(id: number, requested: number[]) {
   }));
 }
 
+/** summarize は項目からグループの動画の id と本数を数え直した値を返す。 */
+function summarize(stored: StoredGroup): LibraryGroup {
+  const videoIds = stored.items.flatMap((item) =>
+    item.kind === "group" ? (item.group?.videoIds ?? []) : [item.video?.id ?? 0],
+  );
+  stored.group = { ...stored.group, videoIds, videoCount: videoIds.length };
+  return stored.group;
+}
+
+const targetGone = () =>
+  Promise.resolve(json({ code: "group_target_not_found", message: "x" }, 404));
+const groupNotFound = () =>
+  Promise.resolve(json({ code: "not_found", message: "x" }, 404));
+
+/** write は書き込みの要求に、メモリ上のグループを変えて契約どおりに答える。 */
+function write(url: URL, method: string, body: unknown): Promise<Response> | undefined {
+  const match = /^\/api\/groups\/(\d+)(\/.*)?$/.exec(url.pathname);
+  if (match === null) return undefined;
+  server.writes.push({ method, path: url.pathname, body });
+  const id = Number(match[1]);
+  const rest = match[2] ?? "";
+  const stored = server.groups.get(id);
+  if (stored === undefined) return groupNotFound();
+  if (method === "PATCH" && rest === "") {
+    stored.group = { ...stored.group, name: (body as { name: string }).name };
+    return Promise.resolve(json(stored.group));
+  }
+  if (method === "DELETE" && rest === "") {
+    server.groups.delete(id);
+    return Promise.resolve(new Response(null, { status: 204 }));
+  }
+  if (rest === "/tag") {
+    server.groups.delete(id);
+    return Promise.resolve(
+      json({ tag: { id: 3, name: stored.group.name }, created: true }),
+    );
+  }
+  if (rest === "/items/remove") {
+    const itemIds = (body as { itemIds: number[] }).itemIds;
+    if (!itemIds.every((each) => stored.items.some((item) => item.id === each))) {
+      return targetGone();
+    }
+    stored.items = stored.items.filter((item) => !itemIds.includes(item.id));
+    return Promise.resolve(json(summarize(stored)));
+  }
+  const move = /^\/items\/(\d+)\/move$/.exec(rest);
+  if (move !== null) {
+    const itemId = Number(move[1]);
+    const after = (body as { after?: number }).after ?? null;
+    const moving = stored.items.find((item) => item.id === itemId);
+    if (moving === undefined) return targetGone();
+    const others = stored.items.filter((item) => item.id !== itemId);
+    const index = after === null ? 0 : others.findIndex((item) => item.id === after) + 1;
+    stored.items = [...others.slice(0, index), moving, ...others.slice(index)];
+    return Promise.resolve(new Response(null, { status: 204 }));
+  }
+  return undefined;
+}
+
 function install() {
-  const fetchMock = vi.fn<typeof fetch>((input) => {
+  const fetchMock = vi.fn<typeof fetch>((input, init) => {
     const url = new URL(String(input), "http://localhost");
+    const method = init?.method ?? "GET";
+    if (method !== "GET") {
+      const body =
+        typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : undefined;
+      const answer = write(url, method, body);
+      if (answer !== undefined) return answer;
+    }
+    if (url.pathname === "/api/tags") return Promise.resolve(json([]));
     const detail = /^\/api\/groups\/(\d+)$/.exec(url.pathname);
     if (detail !== null) {
       const id = Number(detail[1]);
@@ -242,6 +311,7 @@ beforeEach(() => {
   server.pages = new Map();
   server.pageRequests = [];
   server.pagesFail = false;
+  server.writes = [];
   vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
   install();
   installFakeEventSource();
@@ -249,7 +319,64 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
+
+// jsdom は配置を持たないので、行の位置を上から 48px ずつに置く。dnd-kit のキーボードの
+// 移動は行の位置から次の行を探す。
+function layoutRows() {
+  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
+    this: Element,
+  ) {
+    const row = this.closest("tr[data-item-id]");
+    const index =
+      row === null ? 0 : Array.from(row.parentElement?.children ?? []).indexOf(row);
+    const top = index * 48;
+    return {
+      x: 0,
+      y: top,
+      top,
+      left: 0,
+      right: 800,
+      bottom: top + 48,
+      width: 800,
+      height: 48,
+      toJSON: () => ({}),
+    } as DOMRect;
+  });
+}
+
+/** listTitles はリスト表示の行の題名を上から返す。 */
+function listTitles(): string[] {
+  const table = screen.getByRole("table", { name: "Items" });
+  return within(table)
+    .getAllByRole("link")
+    .map((link) => link.getAttribute("title") ?? "");
+}
+
+type User = ReturnType<typeof userEvent.setup>;
+
+/** openList はページを開いてリスト表示に切り替える。 */
+async function openList(user: User, initial = "/groups/1") {
+  renderPage(initial);
+  await screen.findByRole("heading", { level: 1 });
+  await user.click(await screen.findByRole("radio", { name: "List" }));
+  return screen.getByRole("table", { name: "Items" });
+}
+
+/** openMenu は見出しの「More」から項目を選ぶ。 */
+async function openMenu(user: User, item: string) {
+  await user.click(await screen.findByRole("button", { name: "More" }));
+  await user.click(await screen.findByRole("menuitem", { name: item }));
+}
+
+/** moveFirstDown はキーボードで「Episode 1」を 1 つ下へ動かす。 */
+async function moveFirstDown(user: User) {
+  screen.getByRole("button", { name: 'Reorder "Episode 1"' }).focus();
+  await user.keyboard("[Space]");
+  await user.keyboard("[ArrowDown]");
+  await user.keyboard("[Space]");
+}
 
 describe("GroupPage", () => {
   it("子グループと動画を応答の順に並べ、見出しに名前と本数と長さを出す", async () => {
@@ -452,6 +579,243 @@ describe("GroupPage", () => {
     expect(await screen.findByText("No items yet")).toBeDefined();
     expect(screen.getByText("0 videos")).toBeDefined();
     expect(screen.queryByRole("link", { name: /^Play/ })).toBeNull();
+  });
+
+  it("キーボードで項目を動かすと、上にある項目で move を送り、読み直しても新しい順で出る", async () => {
+    seed();
+    layoutRows();
+    const user = userEvent.setup();
+    await openList(user);
+    expect(listTitles()).toEqual(["Episode 1", "Extras", "Episode 2"]);
+
+    await moveFirstDown(user);
+
+    await waitFor(() =>
+      expect(server.writes).toEqual([
+        { method: "POST", path: "/api/groups/1/items/101/move", body: { after: 102 } },
+      ]),
+    );
+    expect(listTitles()).toEqual(["Extras", "Episode 1", "Episode 2"]);
+
+    cleanup();
+    renderPage("/groups/1");
+    await screen.findByRole("table", { name: "Items" });
+    expect(listTitles()).toEqual(["Extras", "Episode 1", "Episode 2"]);
+  });
+
+  it("グリッドにはハンドルも × も無い", async () => {
+    seed();
+    renderPage("/groups/1");
+    await screen.findByRole("heading", { level: 1, name: "Season" });
+    expect(screen.queryByRole("button", { name: /^Reorder/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /from the group$/ })).toBeNull();
+  });
+
+  it("並べ替えの失敗は最後に認めた順へ戻して知らせる", async () => {
+    seed();
+    layoutRows();
+    const user = userEvent.setup();
+    await openList(user);
+    const fetchMock = vi.mocked(fetch);
+    const original = fetchMock.getMockImplementation() as typeof fetch;
+    fetchMock.mockImplementation((input, init) =>
+      String(input).endsWith("/move")
+        ? Promise.resolve(json({ code: "internal", message: "x" }, 500))
+        : original(input, init),
+    );
+
+    await moveFirstDown(user);
+
+    expect(await screen.findByText(/^Couldn't move the item:/)).toBeDefined();
+    expect(listTitles()).toEqual(["Episode 1", "Extras", "Episode 2"]);
+  });
+
+  it("行の × は確認なしに外し、件数を変え、フォーカスを次の行の × へ移す", async () => {
+    seed();
+    const user = userEvent.setup();
+    await openList(user);
+    await user.click(
+      screen.getByRole("button", { name: 'Remove "Episode 1" from the group' }),
+    );
+
+    await waitFor(() => expect(listTitles()).toEqual(["Extras", "Episode 2"]));
+    expect(server.writes).toEqual([
+      { method: "POST", path: "/api/groups/1/items/remove", body: { itemIds: [101] } },
+    ]);
+    expect(screen.getByText("2 videos · 1:32:10")).toBeDefined();
+    await waitFor(() =>
+      expect(document.activeElement?.getAttribute("aria-label")).toBe(
+        'Remove "Extras" from the group',
+      ),
+    );
+  });
+
+  it("最後の項目を外したグループは、読み直しが 404 でも空の状態のまま", async () => {
+    seed();
+    const user = userEvent.setup();
+    await openList(user, "/groups/5?trail=1");
+    await user.click(
+      screen.getByRole("button", { name: 'Remove "Bonus" from the group' }),
+    );
+    expect(await screen.findByText("No items yet")).toBeDefined();
+    expect(screen.getByRole("button", { name: "More" })).toBeDefined();
+
+    // 見える動画の無いグループは 404 になる（plan.md）。外した後の知らせの読み直しでも
+    // 「無くなった」とは見せない。
+    server.groups.delete(5);
+    await emitServerEvent("group", { ids: [1, 5] });
+    await waitFor(() => expect(server.reads.get(5)).toBe(2));
+    expect(screen.getByText("No items yet")).toBeDefined();
+    expect(screen.queryByText("This group no longer exists")).toBeNull();
+  });
+
+  it("選んだ 2 項目を「Remove from group」で外し、件数を知らせて選択を外す", async () => {
+    seed();
+    const user = userEvent.setup();
+    renderPage("/groups/1");
+    await screen.findByRole("heading", { level: 1, name: "Season" });
+    await user.click(screen.getByRole("checkbox", { name: 'Select "Episode 1"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select the group "Extras"' }));
+    await user.click(screen.getByRole("button", { name: "Remove from group" }));
+
+    expect(await screen.findByText('Removed 2 items from "Season"')).toBeDefined();
+    expect(server.writes).toEqual([
+      {
+        method: "POST",
+        path: "/api/groups/1/items/remove",
+        body: { itemIds: [101, 102] },
+      },
+    ]);
+    expect(
+      Array.from(document.querySelectorAll("article h3")).map((each) => each.textContent),
+    ).toEqual(["Episode 2"]);
+    expect(screen.queryByRole("region", { name: "Selection actions" })).toBeNull();
+  });
+
+  it("対象が途中で消えていたら、編集の失敗を知らせてグループを読み直す", async () => {
+    seed();
+    const user = userEvent.setup();
+    await openList(user);
+    // 別のタブが Episode 2 を外した。
+    const stored = server.groups.get(1) as StoredGroup;
+    stored.items = stored.items.filter((item) => item.id !== 103);
+    summarize(stored);
+
+    await user.click(
+      screen.getByRole("button", { name: 'Remove "Episode 2" from the group' }),
+    );
+    expect(
+      await screen.findByText("The group changed in the meantime, so it was reloaded"),
+    ).toBeDefined();
+    await waitFor(() => expect(listTitles()).toEqual(["Episode 1", "Extras"]));
+    expect(server.reads.get(1)).toBe(2);
+  });
+
+  it("改名は前後を削った名前を送り、空では送れない", async () => {
+    seed();
+    const user = userEvent.setup();
+    renderPage("/groups/5?trail=1");
+    await screen.findByRole("heading", { level: 1, name: "Extras" });
+    await openMenu(user, "Rename…");
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename group" });
+    const field = within(dialog).getByRole("textbox", { name: "Name" });
+    expect(within(dialog).getByRole("button", { name: "Save" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+    await user.clear(field);
+    await user.type(field, "   ");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+    expect(within(dialog).getByText("Use a name of 1 to 100 characters.")).toBeDefined();
+    expect(server.writes).toEqual([]);
+
+    await user.clear(field);
+    await user.type(field, "  Bonus clips  ");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Bonus clips" }),
+    ).toBeDefined();
+    expect(server.writes).toEqual([
+      { method: "PATCH", path: "/api/groups/5", body: { name: "Bonus clips" } },
+    ]);
+    expect(crumbs()).toEqual(["Library", "Season", "Bonus clips"]);
+    expect(document.title).toBe("Bonus clips");
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("button", { name: "More" })),
+    );
+  });
+
+  it("解散はまず確かめ、確定すると道筋の親へ移ってトーストを出す", async () => {
+    seed();
+    const user = userEvent.setup();
+    renderPage("/groups/5?trail=1");
+    await screen.findByRole("heading", { level: 1, name: "Extras" });
+    await openMenu(user, "Dissolve…");
+
+    const dialog = await screen.findByRole("alertdialog", { name: 'Dissolve "Extras"?' });
+    expect(
+      within(dialog).getByText(
+        "The group is dissolved. Its videos and groups stay in the library.",
+      ),
+    ).toBeDefined();
+    await user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(server.writes).toEqual([]);
+
+    await openMenu(user, "Dissolve…");
+    await user.click(await screen.findByRole("button", { name: "Dissolve" }));
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Season" }),
+    ).toBeDefined();
+    expect(server.writes).toEqual([{ method: "DELETE", path: "/api/groups/5" }]);
+    expect(screen.getByText('Dissolved "Extras"')).toBeDefined();
+    expect(crumbs()).toEqual(["Library", "Season"]);
+  });
+
+  it("道筋の無い自動グループの解散は 2 文目を足し、ライブラリへ移る", async () => {
+    seed();
+    const stored = server.groups.get(1) as StoredGroup;
+    stored.group = { ...stored.group, folder: { rootId: 1, path: "anime/season" } };
+    const user = userEvent.setup();
+    renderPage("/groups/1");
+    await screen.findByRole("heading", { level: 1, name: "Season" });
+    await openMenu(user, "Dissolve…");
+    const dialog = await screen.findByRole("alertdialog", { name: 'Dissolve "Season"?' });
+    expect(within(dialog).getByText(/Choose Automatic on the folder page/)).toBeDefined();
+    await user.click(within(dialog).getByRole("button", { name: "Dissolve" }));
+    expect(await screen.findByText("Library")).toBeDefined();
+  });
+
+  it("タグに変えると確かめてから送り、道筋の親へ移って結果を知らせる", async () => {
+    seed();
+    const user = userEvent.setup();
+    renderPage("/groups/5?trail=1");
+    await screen.findByRole("heading", { level: 1, name: "Extras" });
+    await openMenu(user, "Turn the group into a tag…");
+    const dialog = await screen.findByRole("alertdialog", {
+      name: 'Turn "Extras" into a tag?',
+    });
+    await user.click(within(dialog).getByRole("button", { name: "Turn into a tag" }));
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Season" }),
+    ).toBeDefined();
+    expect(
+      screen.getByText('Created the tag "Extras" and dissolved the group'),
+    ).toBeDefined();
+    expect(server.writes).toEqual([{ method: "POST", path: "/api/groups/5/tag" }]);
+  });
+
+  it("ゲストのリスト表示にはハンドルも × も無い", async () => {
+    seed();
+    const user = userEvent.setup();
+    renderPage("/groups/1", "guest");
+    await screen.findByRole("heading", { level: 1, name: "Season" });
+    await user.click(screen.getByRole("radio", { name: "List" }));
+    expect(screen.queryByRole("button", { name: /^Reorder/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /from the group$/ })).toBeNull();
   });
 
   it("画面の文言はカタログか利用者のデータだけ", async () => {

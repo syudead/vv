@@ -67,6 +67,22 @@ function tagCount(count: number): string {
   });
 }
 
+/**
+ * reorderTexts は並べ替えのキーボードの案内と dnd-kit の読み上げ（持ち上げ・移動・置く・
+ * 取り消し）である。位置は 1 始まり。プレイリストとグループのページが同じ文を使う。
+ */
+const reorderTexts = {
+  reorderInstructions:
+    "Press Space to pick up, the arrow keys to move, Space to drop and Esc to cancel.",
+  pickedUp: (title: string, position: number, count: number) =>
+    `Picked up "${title}", position ${formatNumber(position)} of ${formatNumber(count)}.`,
+  movedTo: (title: string, position: number, count: number) =>
+    `"${title}" moved to position ${formatNumber(position)} of ${formatNumber(count)}.`,
+  dropped: (title: string, position: number, count: number) =>
+    `Dropped "${title}" at position ${formatNumber(position)} of ${formatNumber(count)}.`,
+  cancelled: (title: string) => `Cancelled. "${title}" is back in its place.`,
+};
+
 /** selectedTags は「The 8 selected tags」（1 件は「The selected tag」）である。 */
 function selectedTags(count: number): string {
   return selectPlural(count, {
@@ -807,6 +823,8 @@ export const en = {
       visibilityFailed: (reason: string) => `Couldn't change the visibility: ${reason}`,
       bundle: "Bundle as versions",
       bundleOverLimit: (limit: number) => `Bundle up to ${videos(limit)} at a time`,
+      // グループのページだけに出る（specs/048-groups/ui-design.md「Selection bar」）。
+      removeFromGroup: "Remove from group",
     },
   },
   folders: {
@@ -1634,16 +1652,7 @@ export const en = {
     item: {
       playFrom: (title: string) => `Play from ${title}`,
       reorder: (title: string) => `Reorder "${title}"`,
-      reorderInstructions:
-        "Press Space to pick up, the arrow keys to move, Space to drop and Esc to cancel.",
-      // dnd-kit の読み上げ（持ち上げ・移動・置く・取り消し）。位置は 1 始まり。
-      pickedUp: (title: string, position: number, count: number) =>
-        `Picked up "${title}", position ${formatNumber(position)} of ${formatNumber(count)}.`,
-      movedTo: (title: string, position: number, count: number) =>
-        `"${title}" moved to position ${formatNumber(position)} of ${formatNumber(count)}.`,
-      dropped: (title: string, position: number, count: number) =>
-        `Dropped "${title}" at position ${formatNumber(position)} of ${formatNumber(count)}.`,
-      cancelled: (title: string) => `Cancelled. "${title}" is back in its place.`,
+      ...reorderTexts,
       remove: "Remove from playlist",
       removeFor: (title: string) => `Remove "${title}" from the playlist`,
       moveFailed: (reason: string) => `Couldn't move the item: ${reason}`,
@@ -1711,7 +1720,53 @@ export const en = {
         action: "Back to library",
       },
       loadFailed: "Couldn't load the group",
+      rename: "Rename…",
+      toTag: "Turn the group into a tag…",
+      dissolve: "Dissolve…",
     },
+    // 名前の欄と規則（プレイリストと同じく、前後を削ってコードポイントで 1〜100。R-14）。
+    nameLabel: "Name",
+    nameRule: "Use a name of 1 to 100 characters.",
+    item: {
+      reorder: (title: string) => `Reorder "${title}"`,
+      ...reorderTexts,
+      remove: "Remove from group",
+      removeFor: (title: string) => `Remove "${title}" from the group`,
+      moveFailed: (reason: string) => `Couldn't move the item: ${reason}`,
+      removeFailed: (reason: string) => `Couldn't remove from the group: ${reason}`,
+    },
+    removed: (count: number, name: string) => `Removed ${items(count)} from "${name}"`,
+    reloaded: "The group changed in the meantime, so it was reloaded",
+    renameDialog: {
+      title: "Rename group",
+      submit: "Save",
+      submitting: "Saving…",
+      failed: (reason: string) => `Couldn't rename the group: ${reason}`,
+    },
+    dissolveDialog: {
+      title: (name: string) => `Dissolve "${name}"?`,
+      description: "The group is dissolved. Its videos and groups stay in the library.",
+      folder:
+        "Its folder is no longer grouped automatically. Choose Automatic on the folder page to group it again.",
+      submit: "Dissolve",
+      submitting: "Dissolving…",
+      failed: (reason: string) => `Couldn't dissolve the group: ${reason}`,
+    },
+    dissolved: (name: string) => `Dissolved "${name}"`,
+    // グループをタグに変える確認の窓と、その成功のトースト（「Turning into a tag」）。
+    // グループページ、動画ページ、フォルダのメニューが共有する。
+    tagDialog: {
+      title: (name: string) => `Turn "${name}" into a tag?`,
+      description: (name: string) =>
+        `The tag "${name}" is added to every video in the group, and the group is dissolved.`,
+      submit: "Turn into a tag",
+      submitting: "Turning into a tag…",
+      failed: (reason: string) => `Couldn't turn the group into a tag: ${reason}`,
+    },
+    tagged: (name: string, created: boolean) =>
+      created
+        ? `Created the tag "${name}" and dissolved the group`
+        : `Added the tag "${name}" and dissolved the group`,
   },
   tagName: {
     required: "Enter a name",

@@ -29,6 +29,15 @@ const videoRefreshDelayMs = 300;
 /** maxRefreshPages は読み直しで続きのページを辿る回数の上限である（100 件ずつ）。 */
 const maxRefreshPages = 50;
 
+/** isEmptyGroup は読めたグループの項目が 1 つも無い（続きも無い）ときに true を返す。 */
+function isEmptyGroup(state: GroupPageState): boolean {
+  return (
+    state.kind === "ready" &&
+    state.data.items.length === 0 &&
+    state.data.nextCursor === undefined
+  );
+}
+
 /** isGone は応答がグループの無いこと（404）を表すかを返す。 */
 function isGone(error: unknown): boolean {
   return error instanceof RequestFailed && error.status === 404;
@@ -65,6 +74,14 @@ async function readThrough(
  *
  * 新しい読み込みを始めると、古い読み込みと続きのページの応答は捨てる。読み直しの失敗
  * （404 のほか）は並んでいる中身を残す。404 はグループが無くなったこととして見せる。
+ *
+ * 編集の単位は `update` で並んでいる中身を先に変え（並べ替え、外す、改名）、`confirmed` に
+ * サーバーが最後に認めた並びを持つ。読み込みと続きのページはそれを読んだ並びで置き換える。
+ *
+ * 所有者が最後の項目を外して空にしたグループは、読み直しで `404` になる（plan.md: 見える動画の
+ * 無いグループは `404`）。空の中身を見せている間の静かな読み直しの `404` は、無くなったとは
+ * 見せずに空の状態のままにする（ui-design.md「States」の Content → Empty。plan.md と
+ * ui-design.md の食い違いは PR に未決の問いとして残した）。
  */
 export function useGroupPage(id: number | null, trail: readonly number[]) {
   const [state, setState] = useState<GroupPageState>(
@@ -72,6 +89,8 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
   );
   const [more, setMore] = useState<MorePageState>("idle");
   const stateRef = useRef(state);
+  /** サーバーが最後に認めた並び。並べ替えの失敗でここへ戻す。 */
+  const confirmed = useRef<readonly GroupItem[]>([]);
   const reading = useRef<AbortController | null>(null);
   const trailKey = trail.join(",");
 
@@ -96,11 +115,13 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
         (data) => {
           if (controller.signal.aborted) return;
           reading.current = null;
+          confirmed.current = data.items;
           show({ kind: "ready", data });
         },
         (error: unknown) => {
           if (isAborted(error) || controller.signal.aborted) return;
           reading.current = null;
+          if (isGone(error) && quiet && isEmptyGroup(stateRef.current)) return;
           if (isGone(error)) show({ kind: "gone" });
           else if (!quiet || stateRef.current.kind !== "ready") show({ kind: "failed" });
         },
@@ -127,6 +148,7 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
         const latest = stateRef.current;
         if (latest.kind !== "ready") return;
         setMore("idle");
+        confirmed.current = appendItems(confirmed.current, page.items);
         show({
           kind: "ready",
           data: {
@@ -148,6 +170,16 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
       },
     );
   }, [id, show]);
+
+  /** update は読めた中身を変える（編集の結果を先に見せる）。読めていなければ何もしない。 */
+  const update = useCallback(
+    (change: (data: GroupPageData) => GroupPageData) => {
+      const current = stateRef.current;
+      if (current.kind !== "ready") return;
+      show({ kind: "ready", data: change(current.data) });
+    },
+    [show],
+  );
 
   useEffect(() => {
     let videoTimer: ReturnType<typeof setTimeout> | undefined;
@@ -181,5 +213,13 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
     };
   }, [id, refresh, reload]);
 
-  return { state, more, reload, refresh, loadMore };
+  /** markGone はグループが無くなったこと（編集の窓が受けた 404）を見せる。 */
+  const markGone = useCallback(() => {
+    reading.current?.abort();
+    reading.current = null;
+    setMore("idle");
+    show({ kind: "gone" });
+  }, [show]);
+
+  return { state, more, reload, refresh, loadMore, update, confirmed, markGone };
 }

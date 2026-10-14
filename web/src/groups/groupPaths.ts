@@ -76,6 +76,19 @@ export function videoInGroupPath(videoId: number, groupId: number): string {
 }
 
 /**
+ * parentPagePath はグループが終わった（解散、タグ化）後に移る場所である。道筋の最後の
+ * グループ（その手前で切った道筋付き）、道筋が無ければライブラリ（ui-design.md「Dissolving」）。
+ */
+export function parentPagePath(trail: readonly GroupRef[]): string {
+  const parent = trail[trail.length - 1];
+  if (parent === undefined) return "/";
+  return groupPagePath(
+    parent.id,
+    trail.slice(0, -1).map((each) => each.id),
+  );
+}
+
+/**
  * trailCrumbs は道筋の帯の段である。「Library」、応答の `trail` の各グループ（その手前で
  * 切った道筋付きのリンク）、開いているグループの名前（現在地、リンクにしない）の順。
  */

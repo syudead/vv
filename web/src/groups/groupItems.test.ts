@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest";
 import type { LibraryGroup, Video } from "../api/client";
 import type { GroupItem } from "../api/groups";
 import { emptySelection, setGroup, setVideo } from "../library/selection";
-import { appendItems, reconcileGroupSelection, selectAllInGroup } from "./groupItems";
+import {
+  appendItems,
+  reconcileGroupSelection,
+  selectAllInGroup,
+  selectedItemIds,
+} from "./groupItems";
 
 function videoItem(id: number, videoId: number): GroupItem {
   return { id, kind: "video", video: { id: videoId } as Video };
@@ -81,5 +86,21 @@ describe("reconcileGroupSelection", () => {
     expect(reconcileGroupSelection(selection, [10], [groupItem(1, 20, [10])])).toBe(
       selection,
     );
+  });
+});
+
+describe("selectedItemIds", () => {
+  it("選んだグループの項目と、選んだグループのメンバーでない選んだ動画の項目を返す", () => {
+    // 動画 10 は直接の項目（1）でもあり、子グループ 20 のメンバーでもある（Edge Case）。
+    const items = [videoItem(1, 10), groupItem(2, 20, [10]), videoItem(3, 11)];
+    const onlyVideo = setVideo(emptySelection, 10, true);
+    expect(selectedItemIds(onlyVideo, items)).toEqual([1]);
+
+    const withGroup = setVideo(
+      setGroup(emptySelection, { id: 20, videoIds: [10] }, true),
+      11,
+      true,
+    );
+    expect(selectedItemIds(withGroup, items)).toEqual([2, 3]);
   });
 });

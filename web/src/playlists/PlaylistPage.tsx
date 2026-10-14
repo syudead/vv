@@ -1,21 +1,5 @@
-import {
-  type Announcements,
-  closestCenter,
-  DndContext,
-  type DragEndEvent,
-  KeyboardSensor,
-  type Modifier,
-  PointerSensor,
-  TouchSensor,
-  type UniqueIdentifier,
-  useSensor,
-  useSensors,
-} from "@dnd-kit/core";
-import {
-  SortableContext,
-  sortableKeyboardCoordinates,
-  verticalListSortingStrategy,
-} from "@dnd-kit/sortable";
+import { closestCenter, DndContext, type DragEndEvent } from "@dnd-kit/core";
+import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
 import {
   CircleAlert,
   Ellipsis,
@@ -58,6 +42,11 @@ import { Skeleton } from "../ui/shadcn/skeleton";
 import { Spinner } from "../ui/shadcn/spinner";
 import { TableBody } from "../ui/shadcn/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
+import {
+  reorderAnnouncements,
+  useReorderSensors,
+  verticalOnly,
+} from "../videoList/reorder";
 import PlaylistItemRow from "./PlaylistItemRow";
 import {
   dropItem,
@@ -81,9 +70,6 @@ function parseId(raw: string | undefined): number | null {
   const id = Number(raw);
   return Number.isSafeInteger(id) ? id : null;
 }
-
-/** 持ち上げた行は縦にだけ動かす。 */
-const verticalOnly: Modifier = ({ transform }) => ({ ...transform, x: 0 });
 
 /**
  * PlaylistPage はプレイリスト 1 つの項目を持ち主の決めた順に並べ、そこから再生を始め、並べ替え、
@@ -217,11 +203,7 @@ function PlaylistScreen({ id }: { id: number | null }) {
     return () => clearTimeout(timer);
   }, [focusTarget]);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 4 } }),
-    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 8 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
+  const sensors = useReorderSensors();
 
   function setItems(items: readonly PlaylistItem[]) {
     const current = pageRef.current;
@@ -320,28 +302,11 @@ function PlaylistScreen({ id }: { id: number | null }) {
   const firstTarget = id !== null && first !== undefined ? playTarget(id, first) : null;
 
   // dnd-kit の読み上げ。位置は今の並びでの 1 始まり。
-  const titleOf = (dragId: UniqueIdentifier): string => {
-    const item = ready?.items.find((each) => each.id === Number(dragId));
-    return item === undefined ? "" : itemTitle(item);
-  };
-  const positionOf = (dragId: UniqueIdentifier | undefined): number =>
-    (ready?.items.findIndex((each) => each.id === Number(dragId)) ?? -1) + 1;
-  const count = ready?.items.length ?? 0;
-  const announcements: Announcements = {
-    onDragStart: ({ active }) =>
-      t.playlists.item.pickedUp(titleOf(active.id), positionOf(active.id), count),
-    onDragOver: ({ active, over }) =>
-      over === null
-        ? undefined
-        : t.playlists.item.movedTo(titleOf(active.id), positionOf(over.id), count),
-    onDragEnd: ({ active, over }) =>
-      t.playlists.item.dropped(
-        titleOf(active.id),
-        positionOf(over?.id ?? active.id),
-        count,
-      ),
-    onDragCancel: ({ active }) => t.playlists.item.cancelled(titleOf(active.id)),
-  };
+  const announcements = reorderAnnouncements(
+    ready?.items ?? [],
+    itemTitle,
+    t.playlists.item,
+  );
 
   const header = (() => {
     if (page.kind === "loading") {
