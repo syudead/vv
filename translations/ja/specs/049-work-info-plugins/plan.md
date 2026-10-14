@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/plan.md
-sourceHash: 8f43dc6668acecd7d7f74e00d58ee947a634ff20220690d808a6d341fae44231
+sourceHash: 5cdf31e5332faab8d8bab11418e143ca0290e1b6372cb6aa342735d8dca0cf13
 ---
 
 # 実装計画: 外部のサービスから作品情報を取得する作品情報プラグイン {#implementation-plan-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -141,7 +141,7 @@ flowchart LR
 
 **依存**: なし。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task build-windows-check` がビルドできる。ビルドしたプラグインによるアダプターのテストで、echo プラグインの応答が読み戻されること、無限に繰り返すプラグインが 30 秒で止められ、メモリを増やすプラグインが 128 MiB で止められ、それぞれが失敗を伴い、次の実行が成功すること、2 MiB を書くプラグインが `output_too_large` で止められること、`/etc/hostname` を開くか環境変数を読むプラグインが何も得ないこと、同時の 2 つ目の実行が 10 秒後に拒否されることを示す。検査のテストで、[data-model.md](data-model.md#work_info_plugins) の各 `problem` がその不正なモジュール (重複した設定のキーと 11 個目の設定の宣言、引数を持つ `_start`、`memory` を export しないもの、最小値が 100,000 要素を超えるテーブル、宣言された最大値が 1,000,000 のテーブルを含む) に対して、マニフェストが正しいモジュールに対して、それを実行せずに得られること、Go の `wasip1` リンカーが書く形の、宣言された最大値のないテーブルが受け入れられることを示す。
+**受け入れ**: `task check` と `task check-docs` が通り、`task build-windows-check` がビルドできる。ビルドしたプラグインによるアダプターのテストで、echo プラグインの応答が読み戻されること、無限に繰り返すプラグインが 30 秒で止められ、メモリを増やすプラグインが 128 MiB で止められ、それぞれが失敗を伴い、次の実行が成功すること、2 MiB を書くプラグインが `output_too_large` で止められること、`/etc/hostname` を開くか環境変数を読むプラグインが何も得ないこと、同時の 2 つ目の実行が 10 秒後に拒否されることを示す。検査のテストで、[data-model.md](data-model.md#work_info_plugins) の各 `problem` がその不正なモジュール (重複した設定のキーと 11 個目の設定の宣言、引数を持つ `_start`、`memory` を export しないもの、最小値が 100,000 要素を超えるテーブル、宣言された最大値が 1,000,000 のテーブルを含む) に対して、マニフェストが正しいモジュールに対して、それを実行せずに得られること、Go の `wasip1` リンカーが書く形の、宣言された最大値のないテーブルが受け入れられること、テーブルが最大値を宣言せず、`_start` がそれを 100,000 要素、続けてもう 1 要素増やすモジュールが、2 つ目の `table.grow` から `-1` を得ることを示す。
 
 ### 作品情報プラグインが公開されたインターネットのサイトにだけ到達できるようにする {#let-work-info-plugins-reach-public-internet-sites-only}
 
