@@ -20,3 +20,10 @@ type OrganizeResult struct {
 	UndoToken string
 	GroupID   int64
 }
+
+// GroupNameFromTitle は「グループにする」が作るグループの名前を、落とした先の動画の題名 title から
+// 決める。先頭 GroupNameMaxLength 符号位置に切ってから ValidateGroupName で整える
+// （specs/050-drag-organize/data-model.md「Rules」）。
+func GroupNameFromTitle(title string) (string, error) {
+	return ValidateGroupName(cutGroupName(title))
+}

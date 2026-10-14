@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"runtime"
 	"testing"
 	"time"
 
@@ -18,6 +19,13 @@ type fakeOrganizeStore struct {
 	undone    [][]byte
 	undoErr   error
 	imageSize int
+
+	groups        int
+	renames       []renameCall
+	renameErr     error
+	staleRename   bool
+	renameEntered chan struct{}
+	renameRelease chan struct{}
 }
 
 func (f *fakeOrganizeStore) Reorder(_ context.Context, _ int64, _ []int64, _ *int64) ([]byte, error) {
@@ -32,6 +40,37 @@ func (f *fakeOrganizeStore) Reorder(_ context.Context, _ int64, _ []int64, _ *in
 func (f *fakeOrganizeStore) Undo(_ context.Context, image []byte) error {
 	f.undone = append(f.undone, image)
 	return f.undoErr
+}
+
+// Group は 100 から順のグループの id と "group-<n>" の像を返す。
+func (f *fakeOrganizeStore) Group(_ context.Context, _ []int64, _ int64, _ *int64) (int64, []byte, error) {
+	f.groups++
+	return 99 + int64(f.groups), fmt.Appendf(nil, "group-%d", f.groups), nil
+}
+
+// RenameGroup は受け取った像を覚え、像があって staleRename でなければ "renamed-<n>" の像を返す。
+// renameEntered があれば入ったことを知らせ、renameRelease が閉じるまで待つ。
+func (f *fakeOrganizeStore) RenameGroup(_ context.Context, id int64, name string, image []byte) (domain.Group, []byte, error) {
+	f.renames = append(f.renames, renameCall{id: id, name: name, image: image})
+	if f.renameEntered != nil {
+		f.renameEntered <- struct{}{}
+		<-f.renameRelease
+	}
+	if f.renameErr != nil {
+		return domain.Group{}, nil, f.renameErr
+	}
+	group := domain.Group{ID: id, Name: name}
+	if image == nil || f.staleRename {
+		return group, nil, nil
+	}
+	return group, fmt.Appendf(nil, "renamed-%d", len(f.renames)), nil
+}
+
+// renameCall は保存先の RenameGroup の呼び出し 1 つである。
+type renameCall struct {
+	id    int64
+	name  string
+	image []byte
 }
 
 func newTestOrganizer(store *fakeOrganizeStore, clock *fakeClock) *Organizer {
@@ -180,6 +219,9 @@ func TestOrganizerReturnsStoreErrors(t *testing.T) {
 	if _, err := o.Reorder(context.Background(), 1, []int64{2}, nil); !errors.Is(err, domain.ErrGroupTargetNotFound) {
 		t.Fatalf("Reorder error = %v", err)
 	}
+	if _, err := o.Group(context.Background(), []int64{2}, 1, nil); !errors.Is(err, domain.ErrGroupTargetNotFound) {
+		t.Fatalf("Group error = %v", err)
+	}
 	if len(o.entries) != 0 {
 		t.Fatalf("entries = %d", len(o.entries))
 	}
@@ -192,3 +234,212 @@ func (failingOrganizeStore) Reorder(context.Context, int64, []int64, *int64) ([]
 }
 
 func (failingOrganizeStore) Undo(context.Context, []byte) error { return nil }
+
+func (failingOrganizeStore) Group(context.Context, []int64, int64, *int64) (int64, []byte, error) {
+	return 0, nil, domain.ErrGroupTargetNotFound
+}
+
+func (failingOrganizeStore) RenameGroup(context.Context, int64, string, []byte) (domain.Group, []byte, error) {
+	return domain.Group{}, nil, domain.ErrGroupNotFound
+}
+
+func groupToken(t *testing.T, o *Organizer) domain.OrganizeResult {
+	t.Helper()
+	result, err := o.Group(context.Background(), []int64{2}, 1, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.UndoToken == "" || result.GroupID == 0 {
+		t.Fatalf("result = %+v", result)
+	}
+	return result
+}
+
+func renameGroup(t *testing.T, o *Organizer, id int64, token string) {
+	t.Helper()
+	group, err := o.RenameGroup(context.Background(), id, "Renamed", token)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if group.ID != id || group.Name != "Renamed" {
+		t.Fatalf("group = %+v", group)
+	}
+}
+
+// 「グループにする」は新しいグループの id とトークンを返し、そのトークンの取り消しは操作の像を返す。
+func TestOrganizerGroupReturnsTheNewGroup(t *testing.T) {
+	store := &fakeOrganizeStore{}
+	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
+	result := groupToken(t, o)
+	if result.GroupID != 100 {
+		t.Fatalf("GroupID = %d", result.GroupID)
+	}
+	if err := o.Undo(context.Background(), result.UndoToken); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.undone) != 1 || string(store.undone[0]) != "group-1" {
+		t.Fatalf("undone = %q", store.undone)
+	}
+}
+
+// そのグループを作ったトークン付きの名前変更は、保存先が返した像をトークンの像にする。保存先が
+// 像を返さなければ（行が変わっていた）、トークンは古い像のままである。どちらもトークンは使える。
+func TestOrganizerRenameWithTheTokenReplacesTheImage(t *testing.T) {
+	store := &fakeOrganizeStore{}
+	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
+	result := groupToken(t, o)
+	renameGroup(t, o, result.GroupID, result.UndoToken)
+	if len(store.renames) != 1 || string(store.renames[0].image) != "group-1" {
+		t.Fatalf("renames = %+v", store.renames)
+	}
+	if err := o.Undo(context.Background(), result.UndoToken); err != nil {
+		t.Fatal(err)
+	}
+	if string(store.undone[0]) != "renamed-1" {
+		t.Fatalf("undone = %q", store.undone)
+	}
+
+	store.staleRename = true
+	second := groupToken(t, o)
+	renameGroup(t, o, second.GroupID, second.UndoToken)
+	if err := o.Undo(context.Background(), second.UndoToken); err != nil {
+		t.Fatal(err)
+	}
+	if string(store.undone[1]) != "group-2" {
+		t.Fatalf("undone = %q", store.undone)
+	}
+}
+
+// 名前変更が失敗すれば、その誤りを返し、トークンは古い像のまま残る。
+func TestOrganizerRenameFailureKeepsTheToken(t *testing.T) {
+	store := &fakeOrganizeStore{renameErr: domain.ErrGroupNotFound}
+	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
+	result := groupToken(t, o)
+	if _, err := o.RenameGroup(context.Background(), result.GroupID, "Renamed", result.UndoToken); !errors.Is(err, domain.ErrGroupNotFound) {
+		t.Fatalf("RenameGroup error = %v", err)
+	}
+	if err := o.Undo(context.Background(), result.UndoToken); err != nil {
+		t.Fatal(err)
+	}
+	if string(store.undone[0]) != "group-1" {
+		t.Fatalf("undone = %q", store.undone)
+	}
+}
+
+// 知らない・使い済み・切れた・並べ替えの・別のグループのトークンでの名前変更は、像を渡さずに
+// グループの名前を変え、生きているトークンの像はそのままである。
+func TestOrganizerRenameWithOtherTokensKeepsTheImage(t *testing.T) {
+	clock := &fakeClock{now: time.Unix(1000, 0)}
+	store := &fakeOrganizeStore{}
+	o := newTestOrganizer(store, clock)
+	expired := groupToken(t, o)
+	clock.Advance(10 * time.Minute)
+	used := groupToken(t, o)
+	if err := o.Undo(context.Background(), used.UndoToken); err != nil {
+		t.Fatal(err)
+	}
+	reorder := reorderToken(t, o)
+	other := groupToken(t, o)
+	target := groupToken(t, o)
+
+	for _, c := range []struct {
+		name  string
+		id    int64
+		token string
+	}{
+		{"知らないトークン", target.GroupID, "unknown"},
+		{"使い済みのトークン", used.GroupID, used.UndoToken},
+		{"切れたトークン", expired.GroupID, expired.UndoToken},
+		{"並べ替えのトークン", target.GroupID, reorder},
+		{"別のグループのトークン", target.GroupID, other.UndoToken},
+	} {
+		store.renames = nil
+		renameGroup(t, o, c.id, c.token)
+		if len(store.renames) != 1 || store.renames[0].image != nil {
+			t.Errorf("%s: renames = %+v", c.name, store.renames)
+		}
+	}
+	store.undone = nil
+	for _, token := range []string{reorder, other.UndoToken} {
+		if err := o.Undo(context.Background(), token); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(store.undone) != 2 || string(store.undone[0]) != "image-1" || string(store.undone[1]) != "group-3" {
+		t.Fatalf("undone = %q", store.undone)
+	}
+}
+
+// トークン付きの名前変更の間の同じトークンの取り消しは、名前変更が終わるのを待ち、名前を変えた
+// 後の像で取り消す。
+func TestOrganizerUndoWaitsForTheRename(t *testing.T) {
+	store := &fakeOrganizeStore{renameEntered: make(chan struct{}), renameRelease: make(chan struct{})}
+	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
+	result := groupToken(t, o)
+
+	renamed := make(chan error, 1)
+	go func() {
+		_, err := o.RenameGroup(context.Background(), result.GroupID, "Renamed", result.UndoToken)
+		renamed <- err
+	}()
+	<-store.renameEntered
+	undone := make(chan error, 1)
+	go func() { undone <- o.Undo(context.Background(), result.UndoToken) }()
+	waitForWaiters(t, o, 1)
+	close(store.renameRelease)
+	if err := <-renamed; err != nil {
+		t.Fatal(err)
+	}
+	if err := <-undone; err != nil {
+		t.Fatal(err)
+	}
+	if len(store.undone) != 1 || string(store.undone[0]) != "renamed-1" {
+		t.Fatalf("undone = %q", store.undone)
+	}
+}
+
+// 名前変更を待つ取り消しは、ctx が終われば ctx の誤りを返し、トークンは残る。
+func TestOrganizerUndoStopsWaitingWhenCanceled(t *testing.T) {
+	store := &fakeOrganizeStore{renameEntered: make(chan struct{}), renameRelease: make(chan struct{})}
+	o := newTestOrganizer(store, &fakeClock{now: time.Unix(1000, 0)})
+	result := groupToken(t, o)
+	renamed := make(chan error, 1)
+	go func() {
+		_, err := o.RenameGroup(context.Background(), result.GroupID, "Renamed", result.UndoToken)
+		renamed <- err
+	}()
+	<-store.renameEntered
+	ctx, cancel := context.WithCancel(context.Background())
+	undone := make(chan error, 1)
+	go func() { undone <- o.Undo(ctx, result.UndoToken) }()
+	waitForWaiters(t, o, 1)
+	cancel()
+	if err := <-undone; !errors.Is(err, context.Canceled) {
+		t.Fatalf("Undo error = %v", err)
+	}
+	close(store.renameRelease)
+	if err := <-renamed; err != nil {
+		t.Fatal(err)
+	}
+	if err := o.Undo(context.Background(), result.UndoToken); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// waitForWaiters は取り消しが n 件、名前変更を待ち始めるまで待つ。
+func waitForWaiters(t *testing.T, o *Organizer, n int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		o.mu.Lock()
+		waiting := o.waiters
+		o.mu.Unlock()
+		if waiting >= n {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("waiters = %d, want %d", waiting, n)
+		}
+		runtime.Gosched()
+	}
+}

@@ -10,6 +10,22 @@ export type OrganizeResult = components["schemas"]["OrganizeResult"];
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
+/** postOperation は操作 1 つを送ってその結果を返し、成功したら一覧の控えを捨てる。 */
+async function postOperation(
+  path: string,
+  body: unknown,
+  signal: AbortSignal | undefined,
+): Promise<OrganizeResult> {
+  const result = await request<OrganizeResult>(path, {
+    method: "POST",
+    headers: jsonHeaders,
+    body: JSON.stringify(body),
+    signal,
+  });
+  clearListSnapshot();
+  return result;
+}
+
 /**
  * reorderGroup はグループ `groupId` の項目 `itemIds` を、画面の順のまままとめて項目 `after` の
  * すぐ後ろへ移す。`null` なら先頭へ移す（POST /api/organize/reorder）。グループ・項目・`after` の
@@ -28,14 +44,29 @@ export async function reorderGroup(
     itemIds: Array.from(itemIds),
     ...(after === null ? {} : { after }),
   };
-  const result = await request<OrganizeResult>("/api/organize/reorder", {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify(body),
-    signal,
-  });
-  clearListSnapshot();
-  return result;
+  return postOperation("/api/organize/reorder", body, signal);
+}
+
+/**
+ * groupVideos は動画 `videoIds` を動画 `target` に落として「グループにする」（POST
+ * /api/organize/group）。新しいグループは `target` の題名を先頭 100 文字に切った名前で、`target`、
+ * 続いて `videoIds` を画面の順に持つ。`from` を渡すと、新しいグループが開いているグループ `from` の
+ * 中で `target` の位置を取り、`target` と `videoIds` は `from` から抜ける。応答の `groupId` が新しい
+ * グループである。動画か `from` が無いか、動画が `from` に無ければ 404 `group_target_not_found` の
+ * RequestFailed になり、何も変わらない。成功したら一覧の控えを捨てる。
+ */
+export async function groupVideos(
+  videoIds: readonly number[],
+  target: number,
+  from: number | null,
+  signal?: AbortSignal,
+): Promise<OrganizeResult> {
+  const body = {
+    items: videoIds.map((id) => ({ kind: "video" as const, id })),
+    target,
+    ...(from === null ? {} : { from }),
+  };
+  return postOperation("/api/organize/group", body, signal);
 }
 
 /**

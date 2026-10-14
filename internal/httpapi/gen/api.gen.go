@@ -2017,6 +2017,15 @@ type GroupRef struct {
 	Name string `json:"name"`
 }
 
+// GroupRename PATCH /api/groups/{id} の本文（specs/050-drag-organize/contracts/screen-api.md）
+type GroupRename struct {
+	// Name グループの名前。サーバーが前後の空白を取り除いてから長さを数える
+	Name string `json:"name"`
+
+	// UndoToken このグループを作った POST /api/organize/group の `undoToken`。名前の変更をその取り消しに含める
+	UndoToken *string `json:"undoToken,omitempty"`
+}
+
 // GroupTagResult defines model for GroupTagResult.
 type GroupTagResult struct {
 	// Created タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false
@@ -2230,6 +2239,18 @@ type OrganizationMergeResponse struct {
 
 	// Organization 団体 1 件。Person と同じ項目に親の団体が加わる
 	Organization Organization `json:"organization"`
+}
+
+// OrganizeGroup defines model for OrganizeGroup.
+type OrganizeGroup struct {
+	// From 新しいグループを置く、開いているグループ
+	From *int64 `json:"from,omitempty"`
+
+	// Items ドラッグしたカード。画面の順
+	Items OrganizeRefs `json:"items"`
+
+	// Target 落とした先の動画
+	Target int64 `json:"target"`
 }
 
 // OrganizeRef ドラッグしたカード 1 枚（specs/050-drag-organize/research.md R-4）
@@ -4110,7 +4131,7 @@ type SetFolderGroupingJSONRequestBody = FolderGroupingRequest
 type CreateGroupJSONRequestBody = GroupCreate
 
 // RenameGroupJSONRequestBody defines body for RenameGroup for application/json ContentType.
-type RenameGroupJSONRequestBody = GroupName
+type RenameGroupJSONRequestBody = GroupRename
 
 // AddGroupItemsJSONRequestBody defines body for AddGroupItems for application/json ContentType.
 type AddGroupItemsJSONRequestBody = GroupMembers
@@ -4135,6 +4156,9 @@ type UpdateOrganizationJSONRequestBody = CreditPatch
 
 // MergeOrganizationsJSONRequestBody defines body for MergeOrganizations for application/json ContentType.
 type MergeOrganizationsJSONRequestBody = CreditMergeRequest
+
+// OrganizeGroupJSONRequestBody defines body for OrganizeGroup for application/json ContentType.
+type OrganizeGroupJSONRequestBody = OrganizeGroup
 
 // OrganizeReorderJSONRequestBody defines body for OrganizeReorder for application/json ContentType.
 type OrganizeReorderJSONRequestBody = OrganizeReorder
@@ -4360,6 +4384,9 @@ type ServerInterface interface {
 	// MergeOrganizations sourceIds の団体を id の団体へ統合する
 	// (POST /api/organizations/{id}/merge)
 	MergeOrganizations(w http.ResponseWriter, r *http.Request, id OrganizationId)
+	// OrganizeGroup ドラッグした動画と落とした先の動画のグループを作り、取り消しのトークンを返す
+	// (POST /api/organize/group)
+	OrganizeGroup(w http.ResponseWriter, r *http.Request)
 	// OrganizeReorder グループの項目をまとめて並べ替え、取り消しのトークンを返す
 	// (POST /api/organize/reorder)
 	OrganizeReorder(w http.ResponseWriter, r *http.Request)
@@ -6028,6 +6055,20 @@ func (siw *ServerInterfaceWrapper) MergeOrganizations(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MergeOrganizations(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OrganizeGroup operation middleware
+func (siw *ServerInterfaceWrapper) OrganizeGroup(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OrganizeGroup(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9121,6 +9162,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/items/{itemId}/move", wrapper.MoveGroupItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/tag", wrapper.TagGroup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/reorder", wrapper.OrganizeReorder)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/group", wrapper.OrganizeGroup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/undo", wrapper.OrganizeUndo)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
