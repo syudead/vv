@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import {
   generateFolderFixtures,
   generateFolderSearchFixtures,
+  generateGroupsFixtures,
   generateGuestFixtures,
   generateHistoryFixtures,
   generateMediaFixtures,
@@ -31,6 +32,9 @@ const searchMediaDir = path.join(runRoot, "search-media");
 const foldersSearchMediaDir = path.join(runRoot, "folders-search-media");
 const tagsMediaDir = path.join(runRoot, "tags-media");
 const guestMediaDir = path.join(runRoot, "guest-media");
+const groupsMediaDir = path.join(runRoot, "groups-media");
+// 再スキャンの前にテストが写す 1 本は、登録フォルダの外に置く。
+const groupsSpareDir = path.join(runRoot, "groups-spare");
 const historyMediaDir = path.join(runRoot, "history-media");
 const playlistsMediaDir = path.join(runRoot, "playlists-media");
 const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
@@ -61,6 +65,7 @@ function run() {
     generateFolderSearchFixtures(foldersSearchMediaDir);
     generateTagsFixtures(tagsMediaDir);
     generateGuestFixtures(guestMediaDir);
+    generateGroupsFixtures(groupsMediaDir, groupsSpareDir);
     generateHistoryFixtures(historyMediaDir);
     generatePlaylistsFixtures(playlistsMediaDir);
     generateScanProgressFixtures(scanProgressMediaDir);
@@ -112,6 +117,8 @@ function run() {
           MDM_E2E_SEARCH_MEDIA_DIR: searchMediaDir,
           MDM_E2E_TAGS_MEDIA_DIR: tagsMediaDir,
           MDM_E2E_GUEST_MEDIA_DIR: guestMediaDir,
+          MDM_E2E_GROUPS_MEDIA_DIR: groupsMediaDir,
+          MDM_E2E_GROUPS_SPARE_DIR: groupsSpareDir,
           MDM_E2E_HISTORY_MEDIA_DIR: historyMediaDir,
           MDM_E2E_PLAYLISTS_MEDIA_DIR: playlistsMediaDir,
           MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
