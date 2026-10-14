@@ -615,6 +615,10 @@ curl -X POST -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/jso
 This flow looks up newly scanned videos on an external site and tags them with
 what it finds.
 
+To let the owner fetch a title and tags for one video from the video page
+instead, without running a client, write a
+[work-info plugin](work-info-plugins.md).
+
 ```mermaid
 sequenceDiagram
   participant S as Scraper

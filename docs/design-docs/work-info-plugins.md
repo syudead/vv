@@ -6,7 +6,7 @@ from external sites, inside its own process with wazero; the adapter is
 `WorkInfoPluginRuntime` port in
 [`internal/app/work_info_plugin_runtime.go`](../../internal/app/work_info_plugin_runtime.go).
 The plugin contract is
-[contracts/plugin-contract.md](../../specs/049-work-info-plugins/contracts/plugin-contract.md),
+[Write a work-info plugin](../how-to/work-info-plugins.md),
 and the reasons for each choice are in the feature's
 [research.md](../../specs/049-work-info-plugins/research.md) (R-1 to R-5).
 

@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/README.md
-sourceHash: d206279e117a3bb91921f608e79625e05352e0b45a374a9475bf10bfd1829883
+sourceHash: e3a22af9680b3a5094b5dcc65896fd967c644cae44d8e7602f757fd4d59d1bb4
 ---
 
 # 手順書 {#how-to}
@@ -13,6 +13,7 @@ sourceHash: d206279e117a3bb91921f608e79625e05352e0b45a374a9475bf10bfd1829883
 - [公開イメージで VVMDM をホストする](hosting-vv.md)
 - [開発](development.md)
 - [外部 API を使う](external-api.md)
+- [作品情報プラグインを書く](work-info-plugins.md)
 - [サムネイルの編集のために ComfyUI を準備する](comfyui-thumbnails.md)
 - [Codespaces で PR を確認する](codespaces-preview.md)
 - [依存関係の更新を扱う（Renovate）](dependency-updates.md)
