@@ -149,8 +149,8 @@ func TestListLibraryIdsGroups(t *testing.T) {
 	}
 	group := (*got.Groups)[0]
 	show := libraryGroupNamed(t, f.libraryPage(t, "favorite=true"), "show")
-	if group.Folder != show.Folder {
-		t.Errorf("groups の folder = %+v, want %+v", group.Folder, show.Folder)
+	if group.Id != show.Id {
+		t.Errorf("groups の id = %d, want %d", group.Id, show.Id)
 	}
 	if !slices.Equal(group.VideoIds, show.VideoIds) {
 		t.Errorf("groups の videoIds = %v, want %v", group.VideoIds, show.VideoIds)

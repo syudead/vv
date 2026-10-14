@@ -89,12 +89,12 @@ func titleOf(path string) string {
 	return strings.TrimSuffix(filepath.Base(path), ".mp4")
 }
 
-// itemKey は項目の keyset の id（動画の id か、グループの最初のメンバーの id）である。
+// itemKey は項目の keyset の id（動画の id の 2 倍か、グループの id の 2 倍に 1 を足した値）である。
 func itemKey(item domain.LibraryItem) int64 {
 	if item.Group != nil {
-		return item.Group.Members[0].ID
+		return item.Group.ID*2 + 1
 	}
-	return item.Video.ID
+	return item.Video.ID * 2
 }
 
 // libraryPages は limit 件ずつカーソルで最後まで読み、出た項目を順に返す。どの
@@ -108,9 +108,9 @@ func libraryPages(t *testing.T, db *DB, audience domain.Audience, q domain.Video
 			t.Fatalf("%+v: %v", q, err)
 		}
 		out = append(out, page.Items...)
-		// グループのフォルダは、同じスナップショットの登録フォルダの下にある。
+		// 自動グループのフォルダは、同じスナップショットの登録フォルダの下にある。
 		for _, item := range page.Items {
-			if item.Group == nil {
+			if item.Group == nil || item.Group.Path == "" {
 				continue
 			}
 			if _, ok := domain.LocateFolder(page.Roots, item.Group.Path); !ok {
@@ -372,7 +372,7 @@ func itemSortValue(sort domain.VideoSort, seed int64, item domain.LibraryItem, p
 		value, ok := favorited[video.ID]
 		return lookup(value, ok)
 	}
-	return false, domain.ShuffleKey(seed, video.ID), ""
+	return false, domain.ShuffleKey(seed, itemKey(item)), ""
 }
 
 // 受け入れ条件 10: 17 の並び順すべてで、項目が要件 18 の値で並び、ページをまたいで
@@ -590,8 +590,8 @@ func TestLibraryIDsFollowLibraryItems(t *testing.T) {
 	}
 }
 
-// ゲストには公開のメンバーだけで数えた項目を返す。公開のメンバーが1本のグループは
-// 動画の項目になり、0本のグループは出ない（data-model.md §7）。
+// ゲストには公開のメンバーだけで数えた項目を返す。公開のメンバーが1本のグループもグループの
+// 項目になり、0本のグループは出ない（specs/048-groups/research.md R-6）。
 func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -603,8 +603,11 @@ func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 	items := libraryPages(t, db, domain.AudienceGuest, domain.VideoQuery{Limit: 1})
 	names := itemNames(items)
 	slices.Sort(names)
-	if want := []string{"group:show", "p2", "solo"}; !slices.Equal(names, want) {
+	if want := []string{"group:pair", "group:show", "solo"}; !slices.Equal(names, want) {
 		t.Fatalf("ゲストの項目 = %v, want %v", names, want)
+	}
+	if pair := findGroup(t, items, "pair"); !slices.Equal(memberIDs(pair), []int64{ids[fixturePath("/media/pair/p2.mp4")]}) {
+		t.Errorf("ゲストの pair のメンバー = %v, want [p2]", memberIDs(pair))
 	}
 	show := findGroup(t, items, "show")
 	if want := []int64{ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep10.mp4")]}; !slices.Equal(memberIDs(show), want) {
@@ -632,44 +635,13 @@ func TestListLibraryForGuestCountsPublicMembers(t *testing.T) {
 		t.Errorf("ゲストの ep2 の検索 = %v, want 空", names)
 	}
 
-	if _, err := db.Library().FolderGroup(ctx, domain.AudienceGuest, fixturePath("/media/pair")); !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("ゲストの pair（公開1本）= %v, want ErrNotFound", err)
+	pair, err := db.Library().Group(ctx, domain.AudienceGuest, groupIDOf(t, db, fixturePath("/media/pair")), nil)
+	if err != nil || len(pair.Group.Members) != 1 {
+		t.Errorf("ゲストの pair（公開1本）= %+v, %v", pair.Group, err)
 	}
-	group, err := db.Library().FolderGroup(ctx, domain.AudienceGuest, fixturePath("/media/show"))
-	if err != nil || len(group.Members) != 2 {
+	group, err := db.Library().Group(ctx, domain.AudienceGuest, groupIDOf(t, db, fixturePath("/media/show")), nil)
+	if err != nil || len(group.Group.Members) != 2 || len(group.Items) != 2 {
 		t.Errorf("ゲストの show = %+v, %v", group, err)
-	}
-}
-
-// グループ1件は絞り込みに関係なく全メンバーから作り、グループでないフォルダは
-// ErrNotFound である。
-func TestFolderGroup(t *testing.T) {
-	db, ids := itemsFixture(t)
-	ctx := context.Background()
-	group, err := db.Library().FolderGroup(ctx, domain.AudienceOwner, fixturePath("/media/show/"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if group.Name != "show" || len(group.Members) != 3 || group.OpenVideoID != ids[fixturePath("/media/show/ep10.mp4")] {
-		t.Errorf("show = %+v", group)
-	}
-	for _, dir := range []string{fixturePath("/media/mixed"), fixturePath("/media/mixed/sub"), fixturePath("/media"), fixturePath("/media/none")} {
-		if _, err := db.Library().FolderGroup(ctx, domain.AudienceOwner, dir); !errors.Is(err, domain.ErrNotFound) {
-			t.Errorf("%s = %v, want ErrNotFound", dir, err)
-		}
-	}
-
-	// 「まとめを解除」するとグループでなくなり、メンバーは動画の項目に戻る。
-	if err := db.FolderGroups().SetOverride(ctx, fixturePath("/media/show"), domain.FolderGroupUngroup); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.Library().FolderGroup(ctx, domain.AudienceOwner, fixturePath("/media/show")); !errors.Is(err, domain.ErrNotFound) {
-		t.Errorf("解除した show = %v, want ErrNotFound", err)
-	}
-	names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit}))
-	slices.Sort(names)
-	if want := []string{"ep1", "ep10", "ep2", "group:pair", "solo", "x", "y"}; !slices.Equal(names, want) {
-		t.Errorf("解除後の項目 = %v, want %v", names, want)
 	}
 }
 

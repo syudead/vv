@@ -7,7 +7,7 @@ import type {
   VideoSort,
   WatchFilter,
 } from "./client";
-import { folderRefKey, groupsWithMembers } from "./libraryItems";
+import { groupsAtFolders, groupsWithMembers } from "./libraryItems";
 import { applyTagToTags } from "./tagOrder";
 
 /**
@@ -78,11 +78,11 @@ export interface ListSnapshot {
    */
   scanId?: number;
   /**
-   * 控えを取った後にメンバーの再生位置かタグが変わったグループの項目のフォルダである。
+   * 控えを取った後にメンバーの再生位置かタグが変わったグループの項目の id である。
    * グループの値はメンバーから数えるので、ここでは書き換えずに印だけ付け、一覧が
-   * 控えから戻ったときに `GET /api/folders/{rootId}/group` で取り直す（useVideos）。
+   * 控えから戻ったときに `GET /api/groups/{id}` で取り直す（useVideos）。
    */
-  staleGroups?: FolderRef[];
+  staleGroups?: number[];
 }
 
 /**
@@ -171,13 +171,17 @@ function markStaleGroups(
   snapshot: ListSnapshot,
   videoIds: readonly number[],
 ): ListSnapshot {
-  const stale = groupsWithMembers(snapshot.items, videoIds);
-  if (stale.length === 0) return snapshot;
-  const merged = new Map(
-    (snapshot.staleGroups ?? []).map((folder) => [folderRefKey(folder), folder]),
-  );
-  for (const folder of stale) merged.set(folderRefKey(folder), folder);
-  return { ...snapshot, staleGroups: [...merged.values()] };
+  return withStaleGroups(snapshot, groupsWithMembers(snapshot.items, videoIds));
+}
+
+/** withStaleGroups は控えの取り直しの印に `groupIds` を足す。足すものが無ければ控えのまま返す。 */
+function withStaleGroups(
+  snapshot: ListSnapshot,
+  groupIds: readonly number[],
+): ListSnapshot {
+  if (groupIds.length === 0) return snapshot;
+  const merged = new Set([...(snapshot.staleGroups ?? []), ...groupIds]);
+  return { ...snapshot, staleGroups: [...merged] };
 }
 
 /**
@@ -262,20 +266,7 @@ export function applyFavoritesToListSnapshot(
       ),
     };
   }
-  const wanted = new Set(folders.map(folderRefKey));
-  const stale = next.items.flatMap((item) => {
-    if (item.kind !== "group") return [];
-    const folder = { rootId: item.group.folder.rootId, path: item.group.folder.path };
-    return wanted.has(folderRefKey(folder)) ? [folder] : [];
-  });
-  if (stale.length > 0) {
-    const merged = new Map(
-      (next.staleGroups ?? []).map((folder) => [folderRefKey(folder), folder]),
-    );
-    for (const folder of stale) merged.set(folderRefKey(folder), folder);
-    next = { ...next, staleGroups: [...merged.values()] };
-  }
-  held = next;
+  held = withStaleGroups(next, groupsAtFolders(next.items, folders));
 }
 
 /**

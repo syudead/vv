@@ -2098,7 +2098,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/folders/{rootId}/group": {
+    "/api/groups/{id}": {
         parameters: {
             query?: never;
             header?: never;
@@ -2106,15 +2106,39 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * フォルダのグループ1件を返す
-         * @description 一覧に残っているグループのカードを取り直すための経路
-         *     （specs/017-folder-groups/contracts/library-api.md §3）。絞り込みに関係なく、
-         *     グループの全メンバーから作る。そのフォルダが今グループでないか無いときは 404。
+         * グループ 1 つと、その道筋と項目の最初のページを返す
+         * @description グループの値（`LibraryGroup`）、`trail` のうち今も親と子の組が続く部分、項目（子グループと
+         *     動画）の最初の 1 ページ（100 件）を位置の順に返す（specs/048-groups/contracts/screen-api.md）。
+         *     項目は見る人に見せるものだけで、見る人に引けない動画と、見る人に見せる動画の無い子グループは
+         *     入らない。続きは `listGroupItems` で読む。
          *
-         *     ゲストでは公開のメンバーだけから作り、公開のメンバーが2本以上なければ 404 にする
-         *     （data-model.md §7）。
+         *     グループの値は子孫の動画を再生順（子グループは深さ優先、同じ動画は最初の 1 回）で数える
+         *     （specs/048-groups/research.md R-7）。ゲストでは公開の動画だけから作る。無いグループと、
+         *     見る人に見せる動画の無いグループは 404 `not_found`。
          */
-        get: operations["getFolderGroup"];
+        get: operations["getGroup"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/groups/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * グループの項目の続きのページを返す
+         * @description `getGroup` と同じ項目を、前の応答の `nextCursor` の続きから位置の順に返す。読めない
+         *     カーソルは 400 `invalid_cursor`。グループの扱いは `getGroup` と同じで、無いか見せないときは
+         *     404 `not_found`。
+         */
+        get: operations["listGroupItems"];
         put?: never;
         post?: never;
         delete?: never;
@@ -2230,9 +2254,15 @@ export interface paths {
          *       走査の変化、仕事の成否（済みの本数が変わる）、今の処理の変化で送る
          *     - `video`: 動画の状態が変わった。data は `VideoChanged`。最新の内容は
          *       `GET /api/videos/{id}` で取る
+         *     - `group`: グループの名前か項目が変わった。data は `GroupChanged` で、変わったグループと
+         *       その祖先の id を運ぶ（specs/048-groups/research.md R-13）。最新の内容は
+         *       `GET /api/groups/{id}` で取る
          *
          *     接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-         *     変化を取り戻せる。`video` は切れていた間の分を送り直さない。
+         *     変化を取り戻せる。`video` と `group` は切れていた間の分を送り直さない。
+         *
+         *     ゲストには `group` だけを送る（specs/048-groups/contracts/screen-api.md）。`scan` と
+         *     `video` は所有者だけに送る。
          */
         get: operations["streamEvents"];
         put?: never;
@@ -2883,7 +2913,7 @@ export interface components {
             /** @description tag のうち存在しなかった id。1つも無ければ省略される */
             missingTagIds?: number[];
             /**
-             * @description 条件に合うグループの項目。各要素のフォルダと、そのグループの全メンバーの id（ids にも含まれる）。
+             * @description 条件に合うグループの項目。各要素のグループの id と、その再生順の動画の id（ids にも含まれる）。
              *     listLibraryIds の応答にだけ入り、1 つも無ければ省略される
              *     （specs/035-favorites/contracts/screen-api.md §3）
              */
@@ -2891,8 +2921,12 @@ export interface components {
         };
         /** @description GET /api/library/ids のグループの項目 1 件 */
         LibraryGroupIds: {
-            folder: components["schemas"]["VideoFolder"];
-            /** @description グループの全メンバーの id */
+            /**
+             * Format: int64
+             * @description グループの識別子
+             */
+            id: number;
+            /** @description グループの再生順の、見せてよい動画の id */
             videoIds: number[];
         };
         DirectoryEntry: {
@@ -2962,14 +2996,23 @@ export interface components {
             group?: components["schemas"]["LibraryGroup"];
         };
         /**
-         * @description グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
-         *     （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
-         *     グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
-         *     `lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+         * @description グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+         *     同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+         *     「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+         *     `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
          */
         LibraryGroup: {
-            folder: components["schemas"]["VideoFolder"];
-            /** @description フォルダ名 */
+            /**
+             * Format: int64
+             * @description グループの識別子
+             */
+            id: number;
+            /**
+             * @description 自動グループのフォルダ。フォルダから自動でできたグループで、そのフォルダが登録フォルダの
+             *     下にあるときだけ入る。手で作ったグループには無く、画面はこれで 2 つを見分ける
+             */
+            folder?: components["schemas"]["VideoFolder"];
+            /** @description グループの名前 */
             name: string;
             videoCount: number;
             /** @description 完了したメンバーの数。所有者の応答にだけ入る */
@@ -3021,6 +3064,45 @@ export interface components {
              *     所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
              */
             favorite?: boolean;
+        };
+        /** @description グループを指す id と名前 */
+        GroupRef: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description グループの項目 1 件。`kind` に応じて `video` か `group` のちょうど一方が入る */
+        GroupItem: {
+            /**
+             * Format: int64
+             * @description 項目の識別子。動画やグループの id ではない
+             */
+            id: number;
+            /** @enum {string} */
+            kind: "video" | "group";
+            video?: components["schemas"]["Video"];
+            group?: components["schemas"]["LibraryGroup"];
+        };
+        /** @description GET /api/groups/{id} の応答 */
+        GroupDetail: {
+            group: components["schemas"]["LibraryGroup"];
+            /** @description 要求の `trail` のうち親と子の組が続く部分。外側から順で、最後はこのグループの親 */
+            trail: components["schemas"]["GroupRef"][];
+            /** @description 項目の最初のページ。位置の順で、見る人に見せる項目だけ */
+            items: components["schemas"]["GroupItem"][];
+            /** @description 続きがあるときだけ入る。`listGroupItems` に渡す */
+            nextCursor?: string;
+        };
+        /** @description GET /api/groups/{id}/items の応答 */
+        GroupItemPage: {
+            items: components["schemas"]["GroupItem"][];
+            /** @description 続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        /** @description /api/events の `group` の data */
+        GroupChanged: {
+            /** @description 名前か項目が変わったグループと、その祖先のグループの id。小さい順 */
+            ids: number[];
         };
         FolderPreview: {
             /** Format: int64 */
@@ -3252,7 +3334,7 @@ export interface components {
          *     GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
          *     登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
          *     今の処理のファイルのフォルダを指す。
-         *     LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+         *     LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
          *     グループのフォルダそのものを指す
          */
         VideoFolder: {
@@ -3702,6 +3784,8 @@ export interface components {
         MediaFolderId: number;
         /** @description API トークンの識別子 */
         APITokenId: number;
+        /** @description グループの識別子 */
+        GroupId: number;
         /** @description プレイリストの識別子 */
         PlaylistId: number;
         /** @description 視聴履歴の 1 件の識別子 */
@@ -6734,19 +6818,20 @@ export interface operations {
             404: components["responses"]["NotFound"];
         };
     };
-    getFolderGroup: {
+    getGroup: {
         parameters: {
             query?: {
                 /**
-                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
-                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
+                 * @description 画面が通ってきたグループの id を外側から順に `,` で区切って並べたもの
+                 *     （specs/048-groups/research.md R-8）。応答の `trail` は、このグループから外へ向かって
+                 *     親と子の組が続く部分で、組が崩れた所より外側を捨てる
                  */
-                path?: components["parameters"]["FolderPath"];
+                trail?: number[];
             };
             header?: never;
             path: {
-                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
-                rootId: components["parameters"]["FolderRootId"];
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
             };
             cookie?: never;
         };
@@ -6758,7 +6843,37 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["LibraryGroup"];
+                    "application/json": components["schemas"]["GroupDetail"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listGroupItems: {
+        parameters: {
+            query?: {
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description グループの識別子 */
+                id: components["parameters"]["GroupId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 項目 1 ページ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupItemPage"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

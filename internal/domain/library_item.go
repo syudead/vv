@@ -22,30 +22,27 @@ type LibraryPage struct {
 	Limit int
 	// MissingTagIDs は VideoQuery.TagIDs のうちいまタグとして存在しなかった id。
 	MissingTagIDs []int64
-	// Roots は登録フォルダの一覧である。項目と同じ読み取りスナップショットから読むので、
-	// グループのフォルダはどれもこの中の登録フォルダの下にある（索引は登録フォルダの
-	// 変更と同じ取引で作り直される）。応答の VideoFolder はこれから作る。
+	// Roots は登録フォルダの一覧である。項目と同じ読み取りスナップショットから読む。
+	// 応答の VideoFolder（動画の所在と自動グループのフォルダ）はこれから作る。
 	Roots []MediaFolder
 }
 
 // LibrarySelection は一覧の条件に合う項目の、ページングしない選択である
 // （GET /api/library/ids、specs/035-favorites/data-model.md §5）。動画の項目の id と、
-// グループの項目ごとのフォルダとメンバーの id を分けて持つ。
+// グループの項目ごとの id と再生順の動画の id を分けて持つ（specs/048-groups/data-model.md
+// 「Library items」）。
 type LibrarySelection struct {
 	// VideoIDs は動画の項目の id。
 	VideoIDs []int64
-	// Groups はグループの項目ごとのフォルダとメンバー。
+	// Groups はグループの項目ごとの id と動画。
 	Groups []LibraryGroupSelection
-	// Roots は登録フォルダの一覧である。LibraryPage.Roots と同じく選択と同じ読み取り
-	// スナップショットから読むので、Groups のフォルダはどれもこの中の登録フォルダの下にある。
-	Roots []MediaFolder
 }
 
-// LibraryGroupSelection はグループの項目 1 件のフォルダとメンバーである。
+// LibraryGroupSelection はグループの項目 1 件の id と動画である。
 type LibraryGroupSelection struct {
-	// Path はグループのフォルダの絶対パス。
-	Path string
-	// VideoIDs はグループの見せてよいメンバーの id。
+	// ID はグループの id。
+	ID int64
+	// VideoIDs はグループの再生順（GroupPlayOrder）の、見せてよい動画の id。
 	VideoIDs []int64
 }
 
@@ -59,13 +56,17 @@ func (s LibrarySelection) AllVideoIDs() []int64 {
 }
 
 // LibraryGroup はグループの項目である。値はどれも、絞り込みに関係なく、見る人に
-// 見せてよいメンバーの全部から作る（data-model.md §5 の 3・§7）。
+// 見せてよい子孫の動画の全部から、再生順で作る（specs/048-groups/research.md R-7）。
 type LibraryGroup struct {
-	// Path はグループのフォルダの絶対パス。応答の VideoFolder は LocateFolder で作る。
+	// ID はグループの id。
+	ID int64
+	// Path は自動グループのフォルダ（origin_folder、FolderKey の形）。手で作ったグループでは
+	// 空である。応答の VideoFolder は、登録フォルダの下にあるときだけ LocateFolder で作る。
 	Path string
-	// Name はフォルダ名。
+	// Name はグループの名前。
 	Name string
-	// Members はメンバーをグループの中の並びで持つ。
+	// Members は見せてよい子孫の動画を再生順（子グループは深さ優先、同じ動画は最初の 1 回）で
+	// 持つ。
 	Members []Video
 	// WatchState と WatchedCount は GroupWatch の結果である。
 	WatchState   WatchState
@@ -80,16 +81,16 @@ type LibraryGroup struct {
 	AddedAt time.Time
 	// LastPlayedAt はメンバーの最後に再生した時刻の最大。記録が無ければ nil。
 	LastPlayedAt *time.Time
-	// Favorite はグループのフォルダの鍵が folder_favorites にあるか（specs/035-favorites/
-	// data-model.md §2）。メンバーの Video.Favorite とは独立である。保存層が埋める。
+	// Favorite は所有者がグループをお気に入りにしたか（specs/035-favorites/data-model.md §2）。
+	// メンバーの Video.Favorite とは独立である。保存層が埋める。
 	Favorite bool
 }
 
 // NewLibraryGroup は並んだメンバーと、それぞれの再生の記録（無ければ nil）から
 // グループの項目を作る。progress は members と同じ長さで同じ並びである。
 // ゲストには再生の記録を渡さない（全部 nil）ので、開くメンバーは最初のメンバーになる。
-func NewLibraryGroup(path, name string, members []Video, progress []*Progress) LibraryGroup {
-	group := LibraryGroup{Path: path, Name: name, Members: members}
+func NewLibraryGroup(id int64, path, name string, members []Video, progress []*Progress) LibraryGroup {
+	group := LibraryGroup{ID: id, Path: path, Name: name, Members: members}
 	group.WatchState, group.WatchedCount = GroupWatch(progress)
 	if index := GroupOpenIndex(progress); index < len(members) {
 		group.OpenVideoID = members[index].ID

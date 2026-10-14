@@ -3,6 +3,7 @@ import { ChevronDown, Heart, HeartOff } from "lucide-react";
 import type { FolderRef } from "../api/client";
 import { updateFavorites } from "../api/favorites";
 import { maxVideoTagsSelection } from "../api/tags";
+import { withGroupFolders } from "./groupFolders";
 import { errorText, t } from "../i18n";
 import {
   DropdownMenu,
@@ -19,17 +20,20 @@ import { overLimitMessage } from "./selectionErrors";
  * 「Selection bar」）。選んだ項目の今の状態は示さず、「Add to favorites」「Remove from
  * favorites」の両方を常に押せる。`videoIds` は選んだ id のうち選んだグループのメンバーで
  * ないもの、`folders` は選んだグループで、1 回の `PUT /api/favorites` で送る（research.md
- * R-7）。確定したらトーストで結果を伝え、選択は残す。カードの印は応答の通知
+ * R-7）。`unreadGroupIds` は「すべて選択」で読み込んでいないグループで、送る前にフォルダを引いて
+ * `folders` に足す（withGroupFolders）。確定したらトーストで結果を伝え、選択は残す。カードの印は応答の通知
  * （api/favorites.ts）で一覧が差し替える。
  */
 export default function FavoriteMenu({
   videoIds,
   folders,
+  unreadGroupIds = [],
   overLimit,
   overLimitId,
 }: {
   videoIds: readonly number[];
   folders: readonly FolderRef[];
+  unreadGroupIds?: readonly number[];
   /** 送る数（`videoIds` と `folders` の合計）が上限を超えるとき true。 */
   overLimit: boolean;
   overLimitId: string;
@@ -38,21 +42,26 @@ export default function FavoriteMenu({
 
   function apply(favorite: boolean) {
     // 送る直前に最新の数を確かめる（タグ・公開と同じ理由。上限を超えると 400 になる）。
-    if (videoIds.length + folders.length > maxVideoTagsSelection) {
+    if (
+      videoIds.length + folders.length + unreadGroupIds.length >
+      maxVideoTagsSelection
+    ) {
       toast(overLimitMessage());
       return;
     }
-    void updateFavorites(videoIds, folders, favorite).then(
-      (result) => {
-        const applied = result.appliedVideos + result.appliedFolders;
-        toast(
-          favorite
-            ? t.library.selection.favoritesAdded(applied)
-            : t.library.selection.favoritesRemoved(applied),
-        );
-      },
-      (error: unknown) => toast(t.library.selection.favoritesFailed(errorText(error))),
-    );
+    void withGroupFolders(folders, unreadGroupIds)
+      .then((all) => updateFavorites(videoIds, all, favorite))
+      .then(
+        (result) => {
+          const applied = result.appliedVideos + result.appliedFolders;
+          toast(
+            favorite
+              ? t.library.selection.favoritesAdded(applied)
+              : t.library.selection.favoritesRemoved(applied),
+          );
+        },
+        (error: unknown) => toast(t.library.selection.favoritesFailed(errorText(error))),
+      );
   }
 
   return (

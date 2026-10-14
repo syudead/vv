@@ -528,6 +528,24 @@ func (e FolderWatchState) Valid() bool {
 	}
 }
 
+// Defines values for GroupItemKind.
+const (
+	GroupItemKindGroup GroupItemKind = "group"
+	GroupItemKindVideo GroupItemKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the GroupItemKind enum.
+func (e GroupItemKind) Valid() bool {
+	switch e {
+	case GroupItemKindGroup:
+		return true
+	case GroupItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HealthStatus.
 const (
 	Degraded HealthStatus = "degraded"
@@ -1683,6 +1701,60 @@ type FolderWatchProblem string
 // FolderWatchState off は切れているか、メディアフォルダが無い。starting は監視を張っている最中。active は すべてのディレクトリを監視している。limited は問題がある
 type FolderWatchState string
 
+// GroupChanged /api/events の `group` の data
+type GroupChanged struct {
+	// Ids 名前か項目が変わったグループと、その祖先のグループの id。小さい順
+	Ids []int64 `json:"ids"`
+}
+
+// GroupDetail GET /api/groups/{id} の応答
+type GroupDetail struct {
+	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+	Group LibraryGroup `json:"group"`
+
+	// Items 項目の最初のページ。位置の順で、見る人に見せる項目だけ
+	Items []GroupItem `json:"items"`
+
+	// NextCursor 続きがあるときだけ入る。`listGroupItems` に渡す
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Trail 要求の `trail` のうち親と子の組が続く部分。外側から順で、最後はこのグループの親
+	Trail []GroupRef `json:"trail"`
+}
+
+// GroupItem グループの項目 1 件。`kind` に応じて `video` か `group` のちょうど一方が入る
+type GroupItem struct {
+	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+	Group *LibraryGroup `json:"group,omitempty"`
+
+	// Id 項目の識別子。動画やグループの id ではない
+	Id   int64         `json:"id"`
+	Kind GroupItemKind `json:"kind"`
+
+	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
+	// `thumbnailPositionMs`・`thumbnailImage` を省き、`tags` を空の配列にする
+	// （specs/016-single-account-auth/contracts/guest-api.md §1、
+	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	Video *Video `json:"video,omitempty"`
+}
+
+// GroupItemKind defines model for GroupItem.Kind.
+type GroupItemKind string
+
+// GroupItemPage GET /api/groups/{id}/items の応答
+type GroupItemPage struct {
+	Items []GroupItem `json:"items"`
+
+	// NextCursor 続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
 // GroupMemberPage グループのメンバーの、グループの中の並びで連続する範囲
 type GroupMemberPage struct {
 	Items []Video `json:"items"`
@@ -1692,6 +1764,12 @@ type GroupMemberPage struct {
 
 	// Total 見せてよいメンバーの本数
 	Total int `json:"total"`
+}
+
+// GroupRef グループを指す id と名前
+type GroupRef struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
 }
 
 // Health defines model for Health.
@@ -1714,10 +1792,10 @@ type Health struct {
 // HealthStatus ok = 保存層まで疎通、degraded = プロセスのみ生存
 type HealthStatus string
 
-// LibraryGroup グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
-// （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
-// グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
-// `lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+// LibraryGroup グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 type LibraryGroup struct {
 	// AddedAt メンバーの追加日時の最大
 	AddedAt time.Time `json:"addedAt"`
@@ -1729,18 +1807,17 @@ type LibraryGroup struct {
 	// 所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
 	Favorite *bool `json:"favorite,omitempty"`
 
-	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
-	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
-	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
-	// グループのフォルダそのものを指す
-	Folder VideoFolder `json:"folder"`
+	// Folder 自動グループのフォルダ。フォルダから自動でできたグループで、そのフォルダが登録フォルダの
+	// 下にあるときだけ入る。手で作ったグループには無く、画面はこれで 2 つを見分ける
+	Folder *VideoFolder `json:"folder,omitempty"`
+
+	// Id グループの識別子
+	Id int64 `json:"id"`
 
 	// LastPlayedAt メンバーの最後に再生した時刻の最大。無ければ省く
 	LastPlayedAt *time.Time `json:"lastPlayedAt,omitempty"`
 
-	// Name フォルダ名
+	// Name グループの名前
 	Name string `json:"name"`
 
 	// OpenVideoId 押したときに開くメンバー。並びの順で途中まで見た最初のメンバー、無ければ最初の
@@ -1776,24 +1853,19 @@ type LibraryGroupWatchState string
 
 // LibraryGroupIds GET /api/library/ids のグループの項目 1 件
 type LibraryGroupIds struct {
-	// Folder 所在が置かれたフォルダ。一覧（listVideos・listFolderVideos）では一覧に出す所在の、
-	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
-	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
-	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
-	// グループのフォルダそのものを指す
-	Folder VideoFolder `json:"folder"`
+	// Id グループの識別子
+	Id int64 `json:"id"`
 
-	// VideoIds グループの全メンバーの id
+	// VideoIds グループの再生順の、見せてよい動画の id
 	VideoIds []int64 `json:"videoIds"`
 }
 
 // LibraryItem ライブラリの項目1件。`kind` に応じて `video` か `group` のちょうど一方が入る
 type LibraryItem struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
-	// （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
-	// グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
-	// `lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup   `json:"group,omitempty"`
 	Kind  LibraryItemKind `json:"kind"`
 
@@ -1884,10 +1956,10 @@ type Playlist struct {
 
 // PlaylistItem プレイリストの項目 1 つ。`kind` に応じて `video` か `group` のちょうど一方が入る
 type PlaylistItem struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
-	// （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
-	// グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
-	// `lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup `json:"group,omitempty"`
 
 	// Id 並べ替えと取り外しに使う項目の識別子
@@ -2043,7 +2115,7 @@ type RelatedGroup struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
@@ -2156,7 +2228,7 @@ type ScanActivity struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
@@ -2182,7 +2254,7 @@ type ScanIssue struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
@@ -2632,7 +2704,7 @@ type Video struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
@@ -2772,7 +2844,7 @@ type VideoEncoderChoice string
 // GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 // 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 // 今の処理のファイルのフォルダを指す。
-// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 // グループのフォルダそのものを指す
 type VideoFolder struct {
 	// Path 登録フォルダからその所在が置かれたフォルダまでの `/` 区切りの相対パス。直下は空文字
@@ -2798,7 +2870,7 @@ type VideoGroupRef struct {
 	// GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
 	// 登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
 	// 今の処理のファイルのフォルダを指す。
-	// LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+	// LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
 	// グループのフォルダそのものを指す
 	Folder VideoFolder `json:"folder"`
 
@@ -2811,7 +2883,7 @@ type VideoGroupRef struct {
 
 // VideoIdsResponse defines model for VideoIdsResponse.
 type VideoIdsResponse struct {
-	// Groups 条件に合うグループの項目。各要素のフォルダと、そのグループの全メンバーの id（ids にも含まれる）。
+	// Groups 条件に合うグループの項目。各要素のグループの id と、その再生順の動画の id（ids にも含まれる）。
 	// listLibraryIds の応答にだけ入り、1 つも無ければ省略される
 	// （specs/035-favorites/contracts/screen-api.md §3）
 	Groups *[]LibraryGroupIds `json:"groups,omitempty"`
@@ -3008,6 +3080,9 @@ type FolderPath = string
 // FolderRootId defines model for FolderRootId.
 type FolderRootId = int64
 
+// GroupId defines model for GroupId.
+type GroupId = int64
+
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
 
@@ -3066,13 +3141,6 @@ type GetFolderParams struct {
 	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
 }
 
-// GetFolderGroupParams defines parameters for GetFolderGroup.
-type GetFolderGroupParams struct {
-	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
-	// 登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
-	Path *FolderPath `form:"path,omitempty" json:"path,omitempty"`
-}
-
 // SetFolderGroupingParams defines parameters for SetFolderGrouping.
 type SetFolderGroupingParams struct {
 	// Path 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
@@ -3121,6 +3189,23 @@ type ListFolderVideosParams struct {
 	// ほかの並び順では無視する
 	Seed *int64 `form:"seed,omitempty" json:"seed,omitempty"`
 
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// GetGroupParams defines parameters for GetGroup.
+type GetGroupParams struct {
+	// Trail 画面が通ってきたグループの id を外側から順に `,` で区切って並べたもの
+	// （specs/048-groups/research.md R-8）。応答の `trail` は、このグループから外へ向かって
+	// 親と子の組が続く部分で、組が崩れた所より外側を捨てる
+	Trail *[]int64 `form:"trail,omitempty" json:"trail,omitempty"`
+}
+
+// ListGroupItemsParams defines parameters for ListGroupItems.
+type ListGroupItemsParams struct {
 	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
@@ -3561,9 +3646,6 @@ type ServerInterface interface {
 	// GetFolder フォルダ1件と、その直下の子フォルダを返す
 	// (GET /api/folders/{rootId})
 	GetFolder(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params GetFolderParams)
-	// GetFolderGroup フォルダのグループ1件を返す
-	// (GET /api/folders/{rootId}/group)
-	GetFolderGroup(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params GetFolderGroupParams)
 	// SetFolderGrouping フォルダのまとめ方の例外を付ける・外す
 	// (PUT /api/folders/{rootId}/grouping)
 	SetFolderGrouping(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params SetFolderGroupingParams)
@@ -3573,6 +3655,12 @@ type ServerInterface interface {
 	// ListFolderVideos フォルダの動画を返す
 	// (GET /api/folders/{rootId}/videos)
 	ListFolderVideos(w http.ResponseWriter, r *http.Request, rootId FolderRootId, params ListFolderVideosParams)
+	// GetGroup グループ 1 つと、その道筋と項目の最初のページを返す
+	// (GET /api/groups/{id})
+	GetGroup(w http.ResponseWriter, r *http.Request, id GroupId, params GetGroupParams)
+	// ListGroupItems グループの項目の続きのページを返す
+	// (GET /api/groups/{id}/items)
+	ListGroupItems(w http.ResponseWriter, r *http.Request, id GroupId, params ListGroupItemsParams)
 	// GetHealth 稼働状態とビルド情報を返す
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
@@ -4131,48 +4219,6 @@ func (siw *ServerInterfaceWrapper) GetFolder(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r)
 }
 
-// GetFolderGroup operation middleware
-func (siw *ServerInterfaceWrapper) GetFolderGroup(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-	_ = err
-
-	// ------------- Path parameter "rootId" -------------
-	var rootId FolderRootId
-
-	err = runtime.BindStyledParameterWithOptions("simple", "rootId", r.PathValue("rootId"), &rootId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "rootId", Err: err})
-		return
-	}
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetFolderGroupParams
-
-	// ------------- Optional query parameter "path" -------------
-
-	err = runtime.BindQueryParameterWithOptions("form", true, false, "path", r.URL.Query(), &params.Path, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
-	if err != nil {
-		var requiredError *runtime.RequiredParameterError
-		if errors.As(err, &requiredError) {
-			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "path"})
-		} else {
-			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "path", Err: err})
-		}
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetFolderGroup(w, r, rootId, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // SetFolderGrouping operation middleware
 func (siw *ServerInterfaceWrapper) SetFolderGrouping(w http.ResponseWriter, r *http.Request) {
 
@@ -4407,6 +4453,103 @@ func (siw *ServerInterfaceWrapper) ListFolderVideos(w http.ResponseWriter, r *ht
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListFolderVideos(w, r, rootId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetGroup operation middleware
+func (siw *ServerInterfaceWrapper) GetGroup(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id GroupId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetGroupParams
+
+	// ------------- Optional query parameter "trail" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, false, "trail", r.URL.Query(), &params.Trail, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "trail"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trail", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetGroup(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListGroupItems operation middleware
+func (siw *ServerInterfaceWrapper) ListGroupItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id GroupId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListGroupItemsParams
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListGroupItems(w, r, id, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -7469,7 +7612,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}", wrapper.GetFolder)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}/videos", wrapper.ListFolderVideos)
-	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}/group", wrapper.GetFolderGroup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/groups/{id}", wrapper.GetGroup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/groups/{id}/items", wrapper.ListGroupItems)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/folders/{rootId}/grouping/tag", wrapper.TagFolderGroup)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)

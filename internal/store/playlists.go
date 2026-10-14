@@ -25,24 +25,17 @@ import (
 var playlistNow = time.Now
 
 // playlistItemVideoExpr は、プレイリストの項目（別名 alias の playlist_items）の動画の項目が
-// 所有者に見せる動画の id を返す式である。集まりの鍵なら集まりの実効の代表、そうでなければ
-// 集まりに属さない同じ content_key の動画で、ライブラリに無ければ NULL になる。グループの
-// 項目でも NULL になる。
+// 所有者に見せる動画の id を返す式である（shownVideoForKeyExpr）。グループの項目では NULL になる。
 func playlistItemVideoExpr(alias string) string {
-	bundleID := `(select pb.id from video_bundles pb where pb.user_key = ` + alias + `.content_key)`
 	return `(case when ` + alias + `.content_key is null then null
-		when exists (select 1 from video_bundles pb where pb.user_key = ` + alias + `.content_key) then ` +
-		effectiveRepresentativeExpr(bundleID, domain.AudienceOwner) + `
-		else (select pv.id from videos pv where pv.content_key = ` + alias + `.content_key and pv.content_key <> ''
-			and not exists (select 1 from video_bundle_members pm where pm.content_key = pv.content_key)
-			and ` + visibleVideoCondition("pv", domain.AudienceOwner) + ` order by pv.id limit 1) end)`
+		else ` + shownVideoForKeyExpr(alias+`.content_key`, domain.AudienceOwner) + ` end)`
 }
 
 // playlistItemShownCondition は、プレイリストの項目（別名 alias）を見せるかの条件句である。
 // 動画の項目は playlistItemVideoExpr が引けるとき、グループの項目はそのフォルダの鍵が今
 // グループ（folder_groups.path_key）にあり、所有者に見えるメンバーを持つとき見せる（R-4）。
-// メンバーの条件は loadGroups と同じで、メンバーを失ったグループの行が索引の作り直しまで
-// 残っても、件数と Playlist の項目が食い違わない。
+// shownPlaylistItems も同じ条件で項目を選ぶので、メンバーを失ったグループの行が索引の作り直し
+// まで残っても、件数と Playlist の項目が食い違わない。
 func playlistItemShownCondition(alias string) string {
 	return `((` + alias + `.folder_key is not null and exists (select 1 from folder_groups pg
 		join folder_group_members pgm on pgm.group_id = pg.id join videos pgv on pgv.id = pgm.video_id
@@ -647,12 +640,14 @@ func orderedUserKeys(ctx context.Context, tx *sql.Tx, videoIDs []int64) ([]strin
 	return keys, nil
 }
 
-// shownPlaylistItems はプレイリスト id の見せる項目を位置の順に、所有者として読んだ動画か
-// グループと合わせて返す。
+// shownPlaylistItems はプレイリスト id の見せる項目（playlistItemShownCondition）を位置の順に、
+// 所有者として読んだ動画かグループと合わせて返す。グループの値は、そのフォルダの鍵を origin_folder に
+// 持つグループから読む（specs/048-groups/data-model.md。項目をグループの id で持つまでのつなぎ）。
 func shownPlaylistItems(ctx context.Context, tx *sql.Tx, id int64) ([]domain.PlaylistItem, error) {
 	rows, err := tx.QueryContext(ctx, `select i.id, `+playlistItemVideoExpr("i")+`,
-		(select pg.id from folder_groups pg where pg.path_key = i.folder_key)
-		from playlist_items i where i.playlist_id = ? order by i.position, i.id`, id)
+		(select pg.id from groups pg where pg.origin_folder = i.folder_key)
+		from playlist_items i where i.playlist_id = ? and `+playlistItemShownCondition("i")+`
+		order by i.position, i.id`, id)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the playlist items: %w", err)
 	}
@@ -715,6 +710,11 @@ func shownPlaylistItems(ctx context.Context, tx *sql.Tx, id int64) ([]domain.Pla
 
 // ownerVideosByID は ids の動画を所有者として読み、id ごとに返す。
 func ownerVideosByID(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]domain.Video, error) {
+	return videosByID(ctx, tx, domain.AudienceOwner, ids)
+}
+
+// videosByID は ids の動画を見る人（audience）の代表の所在で読み、id ごとに返す。
+func videosByID(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids []int64) (map[int64]domain.Video, error) {
 	out := map[int64]domain.Video{}
 	if len(ids) == 0 {
 		return out, nil
@@ -723,21 +723,21 @@ func ownerVideosByID(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]do
 	if err != nil {
 		return nil, fmt.Errorf("cannot build video ids: %w", err)
 	}
-	rows, err := tx.QueryContext(ctx, `select `+videoColumns(domain.AudienceOwner)+` from videos`+
-		representativeJoin(domain.AudienceOwner)+` where videos.id in (select value from json_each(?))`, string(encoded))
+	rows, err := tx.QueryContext(ctx, `select `+videoColumns(audience)+` from videos`+
+		representativeJoin(audience)+` where videos.id in (select value from json_each(?))`, string(encoded))
 	if err != nil {
-		return nil, fmt.Errorf("cannot read the playlist videos: %w", err)
+		return nil, fmt.Errorf("cannot read the videos: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 	for rows.Next() {
 		video, err := scanVideo(rows)
 		if err != nil {
-			return nil, fmt.Errorf("cannot read the playlist videos: %w", err)
+			return nil, fmt.Errorf("cannot read the videos: %w", err)
 		}
 		out[video.ID] = video
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read the playlist videos: %w", err)
+		return nil, fmt.Errorf("cannot read the videos: %w", err)
 	}
 	return out, nil
 }

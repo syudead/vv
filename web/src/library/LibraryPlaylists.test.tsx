@@ -46,6 +46,7 @@ const seriesFolder = { rootId: 3, path: "series" };
 
 function seriesGroup(extra: Partial<LibraryGroup> = {}): LibraryGroup {
   return {
+    id: 7,
     folder: seriesFolder,
     name: "series",
     videoCount: 3,

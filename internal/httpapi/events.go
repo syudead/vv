@@ -44,6 +44,7 @@ type eventSubscriber struct {
 	mu     sync.Mutex
 	scan   bool
 	videos map[int64]struct{}
+	groups map[int64]struct{}
 	// ready は送るものがあることを知らせる。容量1で、重なった知らせはまとまる。
 	ready chan struct{}
 }
@@ -58,22 +59,36 @@ func (s *eventSubscriber) mark(update func(*eventSubscriber)) {
 	}
 }
 
+// pendingEvents はまだ送っていない変化である。
+type pendingEvents struct {
+	scan   bool
+	videos []int64
+	groups []int64
+}
+
 // take はまだ送っていない変化を取り出して空にする。
-func (s *eventSubscriber) take() (scan bool, videos []int64) {
+func (s *eventSubscriber) take() pendingEvents {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	scan = s.scan
-	for id := range s.videos {
-		videos = append(videos, id)
-	}
-	slices.Sort(videos)
+	pending := pendingEvents{scan: s.scan, videos: sortedIDs(s.videos), groups: sortedIDs(s.groups)}
 	s.scan = false
 	clear(s.videos)
-	return scan, videos
+	clear(s.groups)
+	return pending
+}
+
+// sortedIDs は集合の id を小さい順に返す。空なら nil である。
+func sortedIDs(set map[int64]struct{}) []int64 {
+	var ids []int64
+	for id := range set {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	return ids
 }
 
 func (e *Events) subscribe() (*eventSubscriber, func()) {
-	sub := &eventSubscriber{videos: map[int64]struct{}{}, ready: make(chan struct{}, 1)}
+	sub := &eventSubscriber{videos: map[int64]struct{}{}, groups: map[int64]struct{}{}, ready: make(chan struct{}, 1)}
 	// つないだ直後に今の状態を1回送る。切れていた間の変化を取り戻すためである。
 	sub.mark(func(s *eventSubscriber) { s.scan = true })
 	e.mu.Lock()
@@ -122,6 +137,19 @@ func (e *Events) VideoChanged(id int64) {
 	e.publish(func(s *eventSubscriber) { s.videos[id] = struct{}{} })
 }
 
+// GroupsChanged はグループの名前か項目が変わったことを知らせる（specs/048-groups/research.md R-13）。
+// ids は変わったグループとその祖先の id である。
+func (e *Events) GroupsChanged(ids []int64) {
+	if len(ids) == 0 {
+		return
+	}
+	e.publish(func(s *eventSubscriber) {
+		for _, id := range ids {
+			s.groups[id] = struct{}{}
+		}
+	})
+}
+
 // Handle は状態の変化を、画面へ送る知らせに置き換える。cmd/mdm が
 // domain.Event の購読として登録する。知らせる対象ではない変化は無視する。
 func (e *Events) Handle(event domain.Event) {
@@ -149,6 +177,10 @@ func (e *Events) Handle(event domain.Event) {
 		for _, id := range event.VideoIDs {
 			e.VideoChanged(id)
 		}
+	case domain.GroupsChanged:
+		// グループの変化は group の知らせにする。グループの画面・カード・動画ページのグループの行が
+		// 読み直す（specs/048-groups/research.md R-13）。
+		e.GroupsChanged(event.GroupIDs)
 	}
 }
 
@@ -169,6 +201,9 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	// 動画の変化を取りこぼす。
 	sub, unsubscribe := s.events.subscribe()
 	defer unsubscribe()
+	// ゲストには group だけを送る。scan と video は所有者の取り込みと非公開の動画を運ぶ
+	// （specs/048-groups/contracts/screen-api.md「/api/events」）。
+	guest := !audienceFrom(r.Context()).IsOwner()
 
 	controller := http.NewResponseController(w)
 
@@ -201,7 +236,7 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		case <-sub.ready:
-			if err := s.writePendingEvents(ctx, w, sub); err != nil {
+			if err := s.writePendingEvents(ctx, w, sub, guest); err != nil {
 				if ctx.Err() == nil {
 					s.logger.Warn("cannot send a change notification", slog.Any("error", err))
 				}
@@ -214,10 +249,14 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writePendingEvents はまだ送っていない変化を、今の内容で書き出す。
-func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, sub *eventSubscriber) error {
-	scan, videos := sub.take()
-	if scan && s.scans != nil {
+// writePendingEvents はまだ送っていない変化を、今の内容で書き出す。guest なら group だけを書く。
+func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, sub *eventSubscriber, guest bool) error {
+	pending := sub.take()
+	if guest {
+		pending.scan = false
+		pending.videos = nil
+	}
+	if pending.scan && s.scans != nil {
 		current, err := s.scans.CurrentScan(ctx)
 		switch {
 		case errors.Is(err, domain.ErrNotFound):
@@ -229,8 +268,15 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 			}
 		}
 	}
-	for _, id := range videos {
+	for _, id := range pending.videos {
 		if err := writeEvent(w, "video", gen.VideoChanged{Id: id}); err != nil {
+			return err
+		}
+	}
+	if len(pending.groups) > 0 {
+		// 変わったグループは 1 つの知らせにまとめる。名前は載せない（ゲストに見せないグループの
+		// 名前を運ばない）。
+		if err := writeEvent(w, "group", gen.GroupChanged{Ids: pending.groups}); err != nil {
 			return err
 		}
 	}

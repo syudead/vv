@@ -4,7 +4,7 @@ import { Link } from "react-router";
 
 import type { LibraryGroup } from "../api/client";
 import { updateFavorites } from "../api/favorites";
-import { groupRef } from "../api/libraryItems";
+import { groupFolder } from "../api/libraryItems";
 import { useAudience } from "../auth/audience";
 import { formatRelative, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
@@ -89,6 +89,7 @@ export function groupLinkLabel(
 /**
  * GroupFavorite はグループのカード・行のお気に入りの付け外しである（所有者だけ。
  * specs/035-favorites/ui-design.md「Card」）。グループのフォルダを送り、メンバーには付けない。
+ * お気に入りはまだフォルダで送るので、フォルダの無いグループには出さない。
  */
 function GroupFavorite({
   group,
@@ -98,11 +99,13 @@ function GroupFavorite({
   variant: "card" | "row";
 }) {
   const favorite = group.favorite === true;
+  const folder = groupFolder(group);
+  if (folder === undefined) return null;
   return (
     <FavoriteToggle
       favorite={favorite}
       label={t.library.group.favorite(group.name)}
-      onToggle={() => updateFavorites([], [groupRef(group)], !favorite)}
+      onToggle={() => updateFavorites([], [folder], !favorite)}
       variant={variant}
     />
   );
@@ -111,6 +114,7 @@ function GroupFavorite({
 /**
  * GroupAddToPlaylist はグループのカード・行の「Add to playlist」である（所有者だけ。
  * specs/044-playlists/ui-design.md「Add to playlist」）。グループのフォルダを送る。
+ * プレイリストの項目はまだフォルダで持つので、フォルダの無いグループには出さない。
  */
 function GroupAddToPlaylist({
   group,
@@ -119,11 +123,13 @@ function GroupAddToPlaylist({
   group: LibraryGroup;
   variant: "card" | "row";
 }) {
+  const folder = groupFolder(group);
+  if (folder === undefined) return null;
   return (
     <AddToPlaylistButton
       variant={variant}
       label={t.library.group.addToPlaylist(group.name)}
-      folders={[groupRef(group)]}
+      folders={[folder]}
     />
   );
 }
@@ -158,8 +164,9 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 
   return (
     <article
-      data-group-root={group.folder.rootId}
-      data-group-path={group.folder.path}
+      data-group-id={group.id}
+      data-group-root={group.folder?.rootId}
+      data-group-path={group.folder?.path}
       className={cn(
         "group relative flex min-w-0 flex-col gap-2",
         selectionMode && "select-none",
@@ -259,8 +266,9 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
 
   return (
     <TableRow
-      data-group-root={group.folder.rootId}
-      data-group-path={group.folder.path}
+      data-group-id={group.id}
+      data-group-root={group.folder?.rootId}
+      data-group-path={group.folder?.path}
       data-state={selected ? "selected" : undefined}
       className="group"
     >

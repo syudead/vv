@@ -55,11 +55,11 @@ func (f *libraryFixture) videoFavorite(t *testing.T, name string) bool {
 
 func (f *libraryFixture) groupFavorite(t *testing.T, rel string) bool {
 	t.Helper()
-	rec := f.env.get(f.groupPath(rel), f.owner)
+	rec := f.env.get(f.groupPath(t, rel), f.owner)
 	if rec.Code != http.StatusOK {
 		t.Fatalf("グループ %s: status = %d: %s", rel, rec.Code, rec.Body)
 	}
-	group := decode[gen.LibraryGroup](t, rec)
+	group := decode[gen.GroupDetail](t, rec).Group
 	if group.Favorite == nil {
 		t.Fatalf("所有者のグループ %s に favorite が無い: %s", rel, rec.Body)
 	}
@@ -194,7 +194,7 @@ func TestFavoritesHiddenFromGuests(t *testing.T) {
 	}
 	assertGuestVideo(t, "ゲストの詳細", detail)
 
-	rec = f.env.get(f.groupPath("show"))
+	rec = f.env.get(f.groupPath(t, "show"))
 	if rec.Code != http.StatusOK {
 		t.Fatalf("ゲストのグループ: status = %d: %s", rec.Code, rec.Body)
 	}

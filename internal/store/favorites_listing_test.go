@@ -95,7 +95,7 @@ func TestListLibraryFavoriteOnlyWithTags(t *testing.T) {
 	}
 }
 
-// LibraryIDs は ListLibrary と同じ項目を、動画の項目の id とグループのフォルダ・メンバーに分けて返す。
+// LibraryIDs は ListLibrary と同じ項目を、動画の項目の id とグループの id・再生順の動画に分けて返す。
 func TestLibraryIDsSplitsFavoriteItems(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -115,9 +115,10 @@ func TestLibraryIDsSplitsFavoriteItems(t *testing.T) {
 	if !slices.Equal(videoIDs, want) {
 		t.Errorf("動画の項目の id = %v, want %v", videoIDs, want)
 	}
-	if len(selection.Groups) != 1 || selection.Groups[0].Path != show ||
+	showID := groupIDOf(t, db, show)
+	if len(selection.Groups) != 1 || selection.Groups[0].ID != showID ||
 		!slices.Equal(selection.Groups[0].VideoIDs, []int64{ep1, ep2, ep10}) {
-		t.Errorf("グループ = %+v, want [{%s [%d %d %d]}]", selection.Groups, show, ep1, ep2, ep10)
+		t.Errorf("グループ = %+v, want [{%d [%d %d %d]}]", selection.Groups, showID, ep1, ep2, ep10)
 	}
 
 	// 絞り込みが無ければ、グループの項目は show と pair、動画の項目はグループに属さない 3 本。
@@ -125,30 +126,18 @@ func TestLibraryIDsSplitsFavoriteItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var paths []string
+	var groupIDs []int64
 	for _, group := range selection.Groups {
-		paths = append(paths, group.Path)
+		groupIDs = append(groupIDs, group.ID)
 	}
-	slices.Sort(paths)
-	if wantPaths := []string{fixturePath("/media/pair"), show}; !slices.Equal(paths, wantPaths) {
-		t.Errorf("グループのフォルダ = %v, want %v", paths, wantPaths)
+	slices.Sort(groupIDs)
+	wantIDs := []int64{groupIDOf(t, db, fixturePath("/media/pair")), showID}
+	slices.Sort(wantIDs)
+	if !slices.Equal(groupIDs, wantIDs) {
+		t.Errorf("グループの id = %v, want %v", groupIDs, wantIDs)
 	}
 	if len(selection.VideoIDs) != 3 {
 		t.Errorf("動画の項目の id = %v, want 3 本", selection.VideoIDs)
-	}
-
-	// 登録フォルダは選択と同じスナップショットから返り、どのグループのフォルダもその下にある。
-	roots, err := db.Library().ListMediaFolders(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !slices.Equal(selection.Roots, roots) {
-		t.Errorf("登録フォルダ = %+v, want %+v", selection.Roots, roots)
-	}
-	for _, group := range selection.Groups {
-		if _, ok := domain.LocateFolder(selection.Roots, group.Path); !ok {
-			t.Errorf("グループ %s が登録フォルダの下に無い", group.Path)
-		}
 	}
 }
 

@@ -20,8 +20,8 @@ import {
 } from "./client";
 import { favoriteMark, withFavoriteSince, withGroupFavoriteSince } from "./favorites";
 import {
-  folderRefKey,
-  groupRef,
+  groupsAtFolders,
+  groupsIn,
   groupsWithMembers,
   itemKey,
   videoItem,
@@ -56,6 +56,7 @@ interface VideoPagesParams {
   resyncAttempted: RefObject<boolean>;
   pageLoading: RefObject<boolean>;
   changedWhileLoading: RefObject<Set<number>>;
+  groupsChangedWhileLoading: RefObject<Set<number>>;
   favoriteFoldersChangedWhileLoading: RefObject<Map<string, FolderRef>>;
   progressChangedWhileLoading: RefObject<Set<number>>;
   tagsChangedWhileLoading: RefObject<
@@ -92,6 +93,7 @@ export function useVideoPages({
   resyncAttempted,
   pageLoading,
   changedWhileLoading,
+  groupsChangedWhileLoading,
   favoriteFoldersChangedWhileLoading,
   progressChangedWhileLoading,
   tagsChangedWhileLoading,
@@ -133,6 +135,7 @@ export function useVideoPages({
       if (keep !== undefined) keepInFlight.current = controller;
       pageLoading.current = true;
       changedWhileLoading.current.clear();
+      groupsChangedWhileLoading.current.clear();
       progressChangedWhileLoading.current.clear();
       favoriteFoldersChangedWhileLoading.current.clear();
       if (replace) {
@@ -282,15 +285,10 @@ export function useVideoPages({
         // 現れたなら取り直す。付け外しの前に読まれたかもしれず、反映の数が 0 の
         // （もうグループでない）ものは withGroupFavoriteSince では直せない（404 で外す）。
         const favoriteFolders = favoriteFoldersChangedWhileLoading.current;
-        if (favoriteFolders.size > 0) {
-          refreshGroups(
-            page.items.flatMap((item) => {
-              if (item.kind !== "group") return [];
-              const folder = groupRef(item.group);
-              return favoriteFolders.has(folderRefKey(folder)) ? [folder] : [];
-            }),
-          );
-        }
+        refreshGroups(groupsAtFolders(page.items, favoriteFolders.values()));
+        // group の知らせ（名前・項目の変化）も、取得中に届いたものはこのページのグループを取り直す。
+        refreshGroups(groupsIn(page.items, groupsChangedWhileLoading.current));
+        groupsChangedWhileLoading.current.clear();
         changedWhileLoading.current.clear();
         progressChangedWhileLoading.current.clear();
         favoriteFolders.clear();
@@ -396,6 +394,7 @@ export function useVideoPages({
     // 条件が変わっても作り直さない（読み直しは下の effect が key・folderKey で起こす）。
     [
       changedWhileLoading,
+      groupsChangedWhileLoading,
       criteriaRef,
       favoriteFoldersChangedWhileLoading,
       dispatch,
