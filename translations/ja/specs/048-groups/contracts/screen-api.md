@@ -1,6 +1,6 @@
 ---
 source: specs/048-groups/contracts/screen-api.md
-sourceHash: 9d30b6dde3b5e55a47037e9c789b81bf0486e99dcfb1ff347d543ac2691c5ba3
+sourceHash: 39756437432bcd0f3d4f2b0daffcb9dcf81170039f2a20057171a5ee610a6139
 ---
 
 # 契約: グループの画面の API {#contract-screen-api-for-groups}
@@ -100,7 +100,8 @@ GroupItemRemove:
 | `POST /api/groups/{id}/items` | `200` | 追加の後の `LibraryGroup` |
 | | `404 group_target_not_found` | 本文の動画かグループが存在しない |
 | | `409 group_cycle` | 本文のグループが、このグループかその祖先の 1 つである |
-| `POST /api/groups/{id}/items/remove` | `200` | 取り除いた後の `LibraryGroup` |
+| `POST /api/groups/{id}/items/remove` | `200` | 項目が残るとき、取り除いた後の `LibraryGroup` |
+| | `204` | 項目が残らなかったので、`DELETE` と同じようにグループを解散した ([R-4](../research.md#r-4-dissolving-deletes-the-group-for-an-automatic-group-it-writes-ungroup)、[data-model.md、Edits](../data-model.md#edits))。本文はない |
 | | `404 group_target_not_found` | 項目の id がグループにない。何も取り除かない |
 | `POST /api/groups/{id}/items/{itemId}/move` | `204` | 移動した |
 | | `400 invalid_request` | `after` が項目自身である |
