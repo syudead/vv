@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/work-info-plugins.md
-sourceHash: be3b2c7fb76ffc4468760ad1b2d9632f51028b620ac7d946128363fe507430be
+sourceHash: cb8b62ae46c1cf64cd73208410b23c9fbab09eb2fcc6627fd7fae75b9e9adc64
 ---
 
 # 作品情報プラグインを書く {#write-a-work-info-plugin}
@@ -30,7 +30,13 @@ sequenceDiagram
 
 ## 手順 {#steps}
 
-1. プラグインを Go の `main` パッケージとして書く。標準入力から [要求](#request) を読み、HTTP のために [ホスト関数](#host-functions) を呼び、標準出力に [応答](#response) を書く。この例は作品のページを取得し、その `<title>` を返す:
+1. 新しいディレクトリで、プラグインの Go モジュールを作る:
+
+   ```bash
+   go mod init example.com/title-plugin
+   ```
+
+2. プラグインを `main.go` として、Go の `main` パッケージで書く。標準入力から [要求](#request) を読み、HTTP のために [ホスト関数](#host-functions) を呼び、標準出力に [応答](#response) を書く。この例は作品のページを取得し、その `<title>` を返す:
 
    ```go
    package main
@@ -117,13 +123,13 @@ sequenceDiagram
 
    失敗は `error` の応答として報告し、正常に終了する。0 以外の終了コードでも実行は失敗するが、そのとき所有者にはメッセージが表示されない。
 
-2. モジュールをビルドする:
+3. モジュールをビルドする:
 
    ```bash
    GOOS=wasip1 GOARCH=wasm go build -o plugin.wasm .
    ```
 
-3. [マニフェスト](#manifest) を `manifest.json` として書く:
+4. [マニフェスト](#manifest) を `manifest.json` として書く:
 
    ```json
    {
@@ -135,7 +141,7 @@ sequenceDiagram
    }
    ```
 
-4. 次のプログラムを `addsection/main.go` として保存する。マニフェストを `vv.plugin` という名前のカスタムセクションとしてモジュールに追加する:
+5. 次のプログラムを `addsection/main.go` として保存する。マニフェストを `vv.plugin` という名前のカスタムセクションとしてモジュールに追加する:
 
    ```go
    // Command addsection appends a vv.plugin custom section holding a manifest file
@@ -170,13 +176,13 @@ sequenceDiagram
    }
    ```
 
-5. ビルドしたばかりのモジュールにセクションを追加する。実行するたびに別のセクションが追加されるので、ビルドごとに 1 回だけ実行する:
+6. ビルドしたばかりのモジュールにセクションを追加する。実行するたびに別のセクションが追加されるので、ビルドごとに 1 回だけ実行する:
 
    ```bash
    go run ./addsection plugin.wasm manifest.json
    ```
 
-6. VVMDM で **Settings** を開き、**Work-info plugins** の節で **Add plugin** を選び、`plugin.wasm` を選ぶ。プラグインを確認し、承認する。
+7. VVMDM で **Settings** を開き、**Work-info plugins** の節で **Add plugin** を選び、`plugin.wasm` を選ぶ。プラグインを確認し、承認する。
 
 ## 結果を確認する {#check-the-result}
 
@@ -292,10 +298,10 @@ VVMDM は 1 つの JSON オブジェクトを標準入力に書き、それを�
 
 | 症状 | 原因 | 対処 |
 | --- | --- | --- |
-| `manifest_missing` | モジュールに `vv.plugin` セクションがない | ビルドしたモジュールに手順 5 を実行する |
+| `manifest_missing` | モジュールに `vv.plugin` セクションがない | ビルドしたモジュールに手順 6 を実行する |
 | `manifest_invalid` | セクションが JSON オブジェクトでないか、フィールドが [マニフェスト](#manifest) の規則に反する | `manifest.json` を直し、ビルドし直し、セクションをもう一度追加する |
 | `contract_unsupported` | `contract` が `1` でない | `"contract": 1` を設定する |
-| `import_unsupported` | モジュールが WASI と `vv` の関数以外のものを import するか、別のシグネチャを使う | `wasip1` 向けにビルドし、手順 1 のようにホスト関数を宣言する |
+| `import_unsupported` | モジュールが WASI と `vv` の関数以外のものを import するか、別のシグネチャを使う | `wasip1` 向けにビルドし、手順 2 のようにホスト関数を宣言する |
 | `export_invalid` | `_start` か `memory` がないか、別の型である | ライブラリではなくコマンド (`package main`) をビルドする |
 | `table_too_large` | モジュールのテーブルが 100,000 要素を超える | モジュールのテーブルを減らす |
 | 取得が `plugin_failed` で失敗し、メッセージがない | プラグインが 0 以外の終了コードで終了したか、[応答](#response) の外の出力を書いた | `error` の応答を書き、正常に終了する |
