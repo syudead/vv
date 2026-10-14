@@ -8,6 +8,7 @@ import {
   type DragEndEvent,
   DragOverlay,
   type DragStartEvent,
+  type DroppableContainer,
   KeyboardSensor,
   type Modifier,
   PointerSensor,
@@ -17,6 +18,7 @@ import {
   TouchSensor,
   type TouchSensorOptions,
   type UniqueIdentifier,
+  useDroppable,
   useSensor,
   useSensors,
 } from "@dnd-kit/core";
@@ -72,6 +74,8 @@ import { verticalOnly } from "./reorder";
 //   離すと何も送らない。
 // - リストのハンドルは 044 の持ち上げ方（行が縦に動き、ほかの行が避ける）とキーボード
 //   （Space、矢印、Space）を保ち、1 項目の並べ替えとして落とす。
+// - 道筋の帯の段（CrumbDropTarget）も落とす先になる。段は帯が貼り付いて動くので、当たり判定の
+//   たびにその場の箱で測る。
 
 /** CardSign はカードに出す印である（上、間、拒否）。 */
 export type CardSign = DropSign<UiText>;
@@ -101,6 +105,73 @@ interface Probe {
   pointer: { x: number; y: number };
   rect: ClientRect;
   rects: readonly ClientRect[];
+  /** ポインタの下が道筋の段なら、その段が拒否か。カードなら省く。 */
+  crumb?: { refused: boolean };
+}
+
+/** crumbPrefix は道筋の段の鍵の頭である。カードの鍵と混ざらない。 */
+const crumbPrefix = "crumb:";
+
+/** crumbKey は道筋の `index` 番目（0 始まり）の段の鍵である。 */
+export function crumbKey(index: number | "ellipsis"): string {
+  return `${crumbPrefix}${String(index)}`;
+}
+
+/** crumbIndexOf は段の鍵から段の番号を返す。段の鍵でないか、畳んだ「…」なら null。 */
+export function crumbIndexOf(key: string): number | null {
+  if (!key.startsWith(crumbPrefix)) return null;
+  const index = Number(key.slice(crumbPrefix.length));
+  return Number.isInteger(index) ? index : null;
+}
+
+/** isCrumb は落とす先が道筋の段かを返す。 */
+function isCrumb(id: UniqueIdentifier): boolean {
+  return String(id).startsWith(crumbPrefix);
+}
+
+/** CrumbData は道筋の段の落とす先に添える値である。 */
+interface CrumbData {
+  refused: boolean;
+}
+
+/**
+ * crumbAt はポインタの下の道筋の段の Probe を返す。段の箱は今の場所で測る（帯は上に
+ * 貼り付くので、持ち上げたときに測った箱とスクロールの量からは決まらない）。
+ */
+function crumbAt(
+  pointer: { x: number; y: number } | null,
+  containers: readonly DroppableContainer[],
+): Probe | null {
+  if (pointer === null) return null;
+  for (const container of containers) {
+    const node = container.node.current;
+    if (!isCrumb(container.id) || node === null) continue;
+    const box = node.getBoundingClientRect();
+    const within =
+      box.width > 0 &&
+      pointer.x >= box.left &&
+      pointer.x <= box.right &&
+      pointer.y >= box.top &&
+      pointer.y <= box.bottom;
+    if (!within) continue;
+    const data = container.data.current as CrumbData | undefined;
+    const rect = {
+      top: box.top,
+      left: box.left,
+      width: box.width,
+      height: box.height,
+      bottom: box.bottom,
+      right: box.right,
+    };
+    return {
+      key: String(container.id),
+      pointer,
+      rect,
+      rects: [],
+      crumb: { refused: data?.refused ?? true },
+    };
+  }
+  return null;
 }
 
 /**
@@ -347,6 +418,10 @@ function signAt(
   props: CardDragLayerProps,
 ): { sign: CardSign | null; axis: Axis } {
   if (probe === null) return { sign: null, axis: state.axis };
+  if (probe.crumb !== undefined) {
+    const kind = probe.crumb.refused ? "refused" : "crumb";
+    return { sign: { kind, key: probe.key }, axis: state.axis };
+  }
   const axis = axisOf(probe.rects);
   const onto = props.onto?.(probe.key, state.lifted) ?? null;
   const split = props.reorder && onto === null ? "halves" : "quarters";
@@ -390,11 +465,12 @@ function useAnnouncements(
           ? undefined
           : t.organize.announce.over(props.nameOf(sign.key), t.organize.drop.refused);
       }
-      if (sign.kind === "onto") {
+      if (sign.kind === "onto" || sign.kind === "crumb") {
         const name = props.nameOf(sign.key);
+        const label = sign.kind === "onto" ? sign.label : t.organize.drop.putIn;
         return ended
           ? t.organize.announce.dropped(name)
-          : t.organize.announce.over(name, sign.label);
+          : t.organize.announce.over(name, label);
       }
       const position = insertPosition(props.order, sign.key, sign.side);
       return ended
@@ -479,11 +555,22 @@ export function CardDragLayer(props: CardDragLayerProps) {
   }, []);
 
   const detect = useCallback<CollisionDetection>((args) => {
-    if (current.current?.mode === "handle") return closestCenter(args);
+    const cards = args.droppableContainers.filter((each) => !isCrumb(each.id));
+    if (current.current?.mode === "handle") {
+      return closestCenter({ ...args, droppableContainers: cards });
+    }
+    const crumb = crumbAt(args.pointerCoordinates, args.droppableContainers);
+    if (crumb !== null) {
+      probe.current = crumb;
+      return [{ id: crumb.key, data: { value: 0 } }];
+    }
+    const cardRects = new Map(
+      Array.from(args.droppableRects).filter(([id]) => !isCrumb(id)),
+    );
     const found = probeAt(
       args.pointerCoordinates,
-      pointerWithin(args),
-      args.droppableRects,
+      pointerWithin({ ...args, droppableContainers: cards }),
+      cardRects,
       current.current?.liftedSet ?? new Set(),
     );
     probe.current = found.probe;
@@ -661,7 +748,7 @@ export function CardDropMark({
   axis: Axis;
   list?: boolean;
 }) {
-  if (sign === null || sign.kind === "refused") return null;
+  if (sign === null || sign.kind === "refused" || sign.kind === "crumb") return null;
   if (sign.kind === "onto") {
     return (
       <>
@@ -816,5 +903,38 @@ function CardDragPreview({
         )
       )}
     </div>
+  );
+}
+
+/**
+ * CrumbDropTarget は道筋の帯の段 1 つを落とす先にする（ui-design.md「Indicators」の Crumb）。
+ * 落とせる段の上では段の文字に `primary-soft` の地を敷き、帯のほかの所は変えない。`refused`
+ * の段（開いているグループ、畳んだ「…」）は印を出さず、写しに拒否の Badge を出す。
+ * CardDragLayer の中で使う。
+ */
+export function CrumbDropTarget({
+  id,
+  refused,
+  children,
+}: {
+  id: string;
+  refused: boolean;
+  children: ReactNode;
+}) {
+  const { drag } = useContext(LayerContext);
+  const data = useMemo<CrumbData>(() => ({ refused }), [refused]);
+  const { setNodeRef } = useDroppable({ id, data });
+  const active = drag?.sign?.kind === "crumb" && drag.sign.key === id;
+  return (
+    <span
+      ref={setNodeRef}
+      data-crumb-drop={active ? "active" : ""}
+      className={cn(
+        "-mx-1 flex min-w-0 rounded-sm px-1",
+        active && "bg-primary-soft text-primary",
+      )}
+    >
+      {children}
+    </span>
   );
 }

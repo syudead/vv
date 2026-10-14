@@ -261,7 +261,7 @@ describe("LibraryPage", () => {
     renderLibrary();
     expect(await screen.findByText("Something went wrong on the server.")).toBeDefined();
     expect(screen.getByRole("button", { name: "Retry" })).toBeDefined();
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("status", { name: "Search results" })).toBeNull();
 
     await user.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() => expect(resolveRetry).toBeDefined());
@@ -294,7 +294,7 @@ describe("LibraryPage", () => {
     await user.type(screen.getByRole("searchbox", { name: "Search videos" }), "broken");
 
     expect(await screen.findByText("Something went wrong on the server.")).toBeDefined();
-    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.queryByRole("status", { name: "Search results" })).toBeNull();
   });
 
   it("視聴状態はサーバーに送り、残りのページを読みに行かず、件数はサーバーの total を出す", async () => {

@@ -60,6 +60,12 @@ export function group(
   };
 }
 
+/** StoredImage は取り消しで戻すグループ 1 つの、操作の前の値である。 */
+interface StoredImage {
+  groupId: number;
+  stored: StoredGroup;
+}
+
 export interface StoredGroup {
   group: LibraryGroup;
   items: GroupItem[];
@@ -79,8 +85,8 @@ export const server = {
   pagesFail: false,
   /** 書き込みの要求（メソッド、パス、本文）。 */
   writes: [] as { method: string; path: string; body?: unknown }[],
-  /** 取り消しのトークンごとの、操作の前のグループの項目。 */
-  undo: new Map<string, { groupId: number; items: GroupItem[] }>(),
+  /** 取り消しのトークンごとの、操作の前のグループ（解散したグループも戻す）。 */
+  undo: new Map<string, StoredImage[]>(),
   /** 置くと POST /api/organize/undo がこの応答を返し、何も戻さない。 */
   undoAnswer: null as (() => Response) | null,
 };
@@ -167,9 +173,74 @@ function makeGroup(body: unknown): Promise<Response> {
   return Promise.resolve(json({ undoToken: "token-group", groupId: 60 }));
 }
 
-/** write は書き込みの要求に、メモリ上のグループを変えて契約どおりに答える。 */
-/** organize は POST /api/organize/reorder と /undo に、メモリ上のグループを変えて答える。 */
+/** keepImage は操作の前のグループ `ids` を、新しいトークンで覚えてそのトークンを返す。 */
+function keepImage(ids: readonly number[]): string {
+  const token = `token-${String(server.undo.size + 1)}`;
+  server.undo.set(
+    token,
+    ids.flatMap((groupId) => {
+      const stored = server.groups.get(groupId);
+      return stored === undefined ? [] : [{ groupId, stored: { ...stored } }];
+    }),
+  );
+  return token;
+}
+
+interface MoveBody {
+  items: { kind: "video" | "group"; id: number }[];
+  from?: number;
+  to?: number;
+}
+
+/** refMatches は項目が操作の指す動画かグループかを返す。 */
+function refMatches(item: GroupItem, ref: MoveBody["items"][number]): boolean {
+  return ref.kind === "video"
+    ? item.kind === "video" && item.video?.id === ref.id
+    : item.kind === "group" && item.group?.id === ref.id;
+}
+
+/**
+ * moveRefs は POST /api/organize/move に答える。`from` から外し、`to` の末尾へ足す（すでに
+ * ある動画は足さない）。`from` が空になったら解散する。
+ */
+function moveRefs({ items, from, to }: MoveBody): Promise<Response> {
+  const source = from === undefined ? undefined : server.groups.get(from);
+  const target = to === undefined ? undefined : server.groups.get(to);
+  if ((from !== undefined && source === undefined) || (to !== undefined && !target)) {
+    return targetGone();
+  }
+  if (items.some((ref) => ref.kind === "group" && ref.id === to)) {
+    return Promise.resolve(
+      json({ code: "conflict", reason: "group_cycle", message: "x" }, 409),
+    );
+  }
+  const token = keepImage([from, to].filter((each) => each !== undefined));
+  let nextId = 900 + server.writes.length * 10;
+  if (source !== undefined && from !== undefined) {
+    source.items = source.items.filter(
+      (item) => !items.some((ref) => refMatches(item, ref)),
+    );
+    if (source.items.length === 0) server.groups.delete(from);
+  }
+  if (target !== undefined) {
+    for (const ref of items) {
+      if (target.items.some((item) => refMatches(item, ref))) continue;
+      nextId += 1;
+      target.items = [
+        ...target.items,
+        ref.kind === "video"
+          ? { id: nextId, kind: "video", video: video(ref.id) }
+          : { id: nextId, kind: "group", group: server.groups.get(ref.id)?.group },
+      ];
+    }
+    summarize(target);
+  }
+  return Promise.resolve(json({ undoToken: token }));
+}
+
+/** organize は POST /api/organize/reorder・/move・/group・/undo に、メモリ上のグループを変えて答える。 */
 function organize(path: string, body: unknown): Promise<Response> | undefined {
+  if (path === "/api/organize/move") return moveRefs(body as MoveBody);
   if (path === "/api/organize/reorder") {
     const { groupId, itemIds, after } = body as {
       groupId: number;
@@ -183,8 +254,7 @@ function organize(path: string, body: unknown): Promise<Response> | undefined {
     ) {
       return targetGone();
     }
-    const token = `token-${String(server.undo.size + 1)}`;
-    server.undo.set(token, { groupId, items: stored.items });
+    const token = keepImage([groupId]);
     const moving = itemIds.map(
       (each) => stored.items.find((item) => item.id === each) as GroupItem,
     );
@@ -197,14 +267,13 @@ function organize(path: string, body: unknown): Promise<Response> | undefined {
   if (path === "/api/organize/group") return makeGroup(body);
   if (path === "/api/organize/undo") {
     if (server.undoAnswer !== null) return Promise.resolve(server.undoAnswer());
-    const image = server.undo.get((body as { token: string }).token);
-    const stored = image === undefined ? undefined : server.groups.get(image.groupId);
-    if (image === undefined || stored === undefined) {
+    const images = server.undo.get((body as { token: string }).token);
+    if (images === undefined) {
       return Promise.resolve(
         json({ code: "not_found", reason: "undo_expired", message: "x" }, 410),
       );
     }
-    stored.items = image.items;
+    for (const { groupId, stored } of images) server.groups.set(groupId, stored);
     return Promise.resolve(new Response(null, { status: 204 }));
   }
   return undefined;

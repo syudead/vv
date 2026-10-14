@@ -75,7 +75,12 @@ import {
 import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
 import { GroupCard, GroupRow } from "./GroupCard";
-import { DraggableGroupRow, DraggableVideoRow, LibraryDragLayer } from "./LibraryDrag";
+import {
+  DraggableGroupRow,
+  DraggableVideoRow,
+  LibraryDragLayer,
+  useLibraryMoves,
+} from "./LibraryDrag";
 import LibraryToolbar from "./LibraryToolbar";
 import {
   emptySelection,
@@ -366,6 +371,23 @@ export default function LibraryPage() {
     setSelectAllSelection(null);
   }, [invalidateSelectAll]);
 
+  // --- ドラッグ（specs/050-drag-organize/ui-design.md「Library」） ---
+  // グループへ落とした項目はすぐ隠し、動画を動画に落とした結果はすぐ見せる。取り消しの通知は
+  // 画面を離れると閉じる。
+  const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
+  const undo = useUndoToast(refreshInPlace);
+  const drops = useVideoDrops({
+    items: moves.visible,
+    keyOf: itemKey,
+    videoOf: itemVideo,
+    from: null,
+    groupItem: libraryGroupItem,
+    reread: refreshInPlace,
+    onAccepted: clearSelection,
+    undo,
+  });
+  const shown = drops.shown;
+
   // --- 「すべて選択」 ---
   // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。応答の `groups` は
   // 選んだグループにする（035 research.md R-7）。
@@ -520,6 +542,9 @@ export default function LibraryPage() {
   }, [reload, scan.finished]);
 
   const saveSnapshot = useCallback(() => {
+    // 落とした結果をまだ重ねている間（サーバーの答えか読み直しの前）の一覧は控えにしない。
+    // 操作の成功は控えを捨てるので、ここで古い並びを覚え直すと戻ったときにそれが出てしまう。
+    if (shown !== items) return;
     saveListSnapshot(
       { ...criteria, tags: tagIds, ...credits },
       {
@@ -532,7 +557,7 @@ export default function LibraryPage() {
         staleGroups: staleGroups(),
       },
     );
-  }, [credits, criteria, cursor, hasMore, items, staleGroups, tagIds, total]);
+  }, [credits, criteria, cursor, hasMore, items, shown, staleGroups, tagIds, total]);
 
   // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -600,21 +625,6 @@ export default function LibraryPage() {
       alive = false;
     };
   }, [restored]);
-
-  // --- ドラッグ（specs/050-drag-organize/ui-design.md「Library」） ---
-  // 取り消しの通知は画面を離れると閉じる。動画を動画に落とした結果はすぐ見せる。
-  const undo = useUndoToast(refreshInPlace);
-  const drops = useVideoDrops({
-    items,
-    keyOf: itemKey,
-    videoOf: itemVideo,
-    from: null,
-    groupItem: libraryGroupItem,
-    reread: refreshInPlace,
-    onAccepted: clearSelection,
-    undo,
-  });
-  const shown = drops.shown;
 
   const selectedIdsArray = useMemo(() => Array.from(selectedIds), [selectedIds]);
   const allSelected = useMemo(
@@ -688,7 +698,30 @@ export default function LibraryPage() {
     tagsRow: renderTagsRow,
   });
 
-  // 所有者の一覧だけをドラッグの層で包む（ゲストは何も持ち上げない）。
+  // 所有者のカードと行はドラッグの層に加わる。ゲストは今のまま。
+  const card = (item: LibraryItem) => {
+    const node =
+      item.kind === "video" ? (
+        <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
+      ) : (
+        <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
+      );
+    return owner ? (
+      <DraggableCard key={itemKey(item)} id={itemKey(item)}>
+        {node}
+      </DraggableCard>
+    ) : (
+      node
+    );
+  };
+  const row = (item: LibraryItem) => {
+    if (item.kind === "video") {
+      const Row = owner ? DraggableVideoRow : VideoRow;
+      return <Row key={itemKey(item)} {...rowProps(item.video)} />;
+    }
+    const Row = owner ? DraggableGroupRow : GroupRow;
+    return <Row key={itemKey(item)} {...groupProps(item.group)} />;
+  };
   const withDrag = (content: ReactNode) =>
     owner ? (
       <LibraryDragLayer
@@ -697,6 +730,7 @@ export default function LibraryPage() {
         selection={selection}
         onto={drops.onto}
         onDrop={drops.hold}
+        onMove={moves.move}
         onLift={resetPreview}
         held={drops.held}
         attached={drops.attached}
@@ -733,21 +767,7 @@ export default function LibraryPage() {
             <Grid zoom={zoom}>
               {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
                 見出しは設けない（ui-design.md「Screen boundary」、要件 15）。 */}
-              {shown.map((item) => {
-                const card =
-                  item.kind === "video" ? (
-                    <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
-                  ) : (
-                    <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
-                  );
-                return owner ? (
-                  <DraggableCard key={itemKey(item)} id={itemKey(item)}>
-                    {card}
-                  </DraggableCard>
-                ) : (
-                  card
-                );
-              })}
+              {shown.map(card)}
             </Grid>
           </TagRowMeasureProvider>
         ) : (
@@ -775,16 +795,7 @@ export default function LibraryPage() {
                 </TableHead>
               </TableRow>
             </TableHeader>
-            <TableBody>
-              {shown.map((item) => {
-                if (item.kind === "video") {
-                  const Row = owner ? DraggableVideoRow : VideoRow;
-                  return <Row key={itemKey(item)} {...rowProps(item.video)} />;
-                }
-                const Row = owner ? DraggableGroupRow : GroupRow;
-                return <Row key={itemKey(item)} {...groupProps(item.group)} />;
-              })}
-            </TableBody>
+            <TableBody>{shown.map(row)}</TableBody>
           </DataTable>
         ),
       )}

@@ -2057,6 +2057,7 @@ export const en = {
   // （specs/050-drag-organize/ui-design.md「Words」）。
   organize: {
     drop: {
+      putIn: "Put in",
       refused: "Can't drop here",
       groupOrBundle: "Group or bundle…",
     },
@@ -2073,15 +2074,18 @@ export const en = {
     done: {
       reordered: (name: string) => `Reordered "${name}"`,
       grouped: (name: string) => `Made the group "${name}"`,
+      moved: (count: number, name: string) => `Moved ${items(count)} to "${name}"`,
+      movedOut: (count: number, name: string) => `Moved ${items(count)} out of "${name}"`,
     },
     failed: {
       reorder: (reason: string) => `Couldn't reorder: ${reason}`,
       group: (reason: string) => `Couldn't make the group: ${reason}`,
+      move: (reason: string) => `Couldn't move: ${reason}`,
     },
-    // 並べ替えの無い画面の dnd-kit の案内（読み上げ用、描かない）。カードはキーボードでは
-    // 持ち上がらず、キーボードでは 048 のメニューを使う（research.md R-7）。
+    // ドラッグの層の読み上げの案内（dnd-kit の screenReaderInstructions、描かない）。カードは
+    // キーボードでは持ち上がらず、キーボードでは 048 のメニューを使う（research.md R-7）。
     instructions:
-      "Drag a card onto another card to organize. With the keyboard, use the card's buttons instead.",
+      "Press and move a card to pick it up, then drop it on another card or a group to organize. With the keyboard, use the card's buttons instead.",
     undo: "Undo",
     undone: "Undone",
     undoFailed: {
