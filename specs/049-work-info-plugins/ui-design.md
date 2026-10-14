@@ -237,6 +237,7 @@ One line under an `invalid` row, `text-destructive`, from its `problem`
 | Fetch again | Fetch again | `outline` `sm` in the `Alert`'s action |
 | Settings missing | {plugin} needs {labels} first. | `warning` `Alert` with an `Open Settings` `link` button to `/settings#work-info-plugins` |
 | Run failed | Couldn't {search or fetch}: {reason} | `destructive` `Alert`; `{reason}` from [Error reasons](#error-reasons) |
+| Apply failed | Couldn't apply: {reason} | `destructive` `Alert` above the comparison; `{reason}` from [Error reasons](#error-reasons) |
 | Plugin's own message | The plugin said: "{message}" | Second line of the failure, muted, only with `pluginMessage` |
 
 ### Error reasons
@@ -471,6 +472,9 @@ in the plugin's order, up to 50, inside the dialog's scrolling body
 | Open page | A `ghost` `icon-sm` link to the URL, new tab, at the row's right end, outside the row's button |
 | Fetching | The chosen row shows a `Spinner` at its right end; the other rows and the query are disabled |
 
+When the plugin cannot fetch (search only), a row is not a button: it shows the
+title, detail and host as plain text, and `Open page` is its only action.
+
 With no candidates, one muted line, `No matches…`, in place of the list.
 
 ### Compare
@@ -509,7 +513,7 @@ sends the selected fields with `pending`
 | `200`, nothing skipped | The dialog closes, the response `Video` replaces the page's video, the toast `Applied to the video.` shows, the focus returns to the entry |
 | `200`, names skipped | The page's video is replaced as above; the dialog moves to the [result](#result) |
 | `work_info_fetch_stale` | The dialog stays on the comparison with the `Stale` `Alert` above it and `Fetch again`, which runs the same plugin and URL and opens a new comparison; `Apply selected` is disabled (the Issue's edge cases) |
-| Another failure | A `destructive` `Alert` above the comparison; the selection is kept; the video is unchanged |
+| Another failure | A `destructive` `Alert`, `Couldn't apply: {reason}`, above the comparison; the selection is kept; the video is unchanged |
 
 ### Result
 
