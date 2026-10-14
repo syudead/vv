@@ -1980,7 +1980,10 @@ describe("LibraryPage", () => {
       };
     }
 
-    /** PlayerStub は再生画面の代わりに、開いた id と、元の一覧へ戻る操作を置く。 */
+    /**
+     * PlayerStub は再生画面とグループのページの代わりに、開いた場所と、元の一覧へ戻る操作を
+     * 置く。
+     */
     function PlayerStub() {
       const location = useLocation();
       const navigate = useNavigate();
@@ -2005,6 +2008,7 @@ describe("LibraryPage", () => {
                   <Routes>
                     <Route path="/" element={<LibraryPage />} />
                     <Route path="/videos/:id" element={<PlayerStub />} />
+                    <Route path="/groups/:id" element={<PlayerStub />} />
                   </Routes>
                 </ScanProvider>
               </AudienceProvider>
@@ -2116,23 +2120,23 @@ describe("LibraryPage", () => {
       ).toBeDefined();
     });
 
-    it("押すと開くメンバーの再生画面へ移り、戻る先は今の一覧（受け入れ条件14）", async () => {
+    it("押すとそのグループのページへ移り、戻る先は今の一覧（specs/048-groups/research.md R-8）", async () => {
       installGroupList();
       const user = userEvent.setup();
       renderWithPlayer("/?q=ser");
       await user.click(await screen.findByRole("link", { name: ownerLabel }));
-      expect(await screen.findByText("再生画面 /videos/104")).toBeDefined();
+      expect(await screen.findByText("再生画面 /groups/7")).toBeDefined();
       expect(screen.getByRole("button", { name: "一覧へ戻る /?q=ser" })).toBeDefined();
     });
 
-    it("再生から戻ると、カードの視聴状態がメンバーの変化で変わる（受け入れ条件12）", async () => {
+    it("グループのページから戻ると、カードの視聴状態がメンバーの変化で変わる（受け入れ条件12）", async () => {
       const server = installGroupList();
       const user = userEvent.setup();
       renderWithPlayer();
       await user.click(await screen.findByRole("link", { name: ownerLabel }));
-      await screen.findByText("再生画面 /videos/104");
+      await screen.findByText("再生画面 /groups/7");
 
-      // 再生画面で 104 を見終えた。サーバーのグループも 4 本視聴済みになる。
+      // 一覧を離れている間に 104 を見終えた。サーバーのグループも 4 本視聴済みになる。
       server.group = seriesGroup({ watchedCount: 4, openVideoId: 105 });
       act(() => {
         recordSavedProgress(
@@ -2152,7 +2156,7 @@ describe("LibraryPage", () => {
           .getByRole("progressbar", { name: "Share of videos watched" })
           .getAttribute("aria-valuenow"),
       ).toBe("33");
-      expect(link.getAttribute("href")).toBe("/videos/105");
+      expect(link.getAttribute("href")).toBe("/groups/7");
       // 一覧は控えから戻し、グループだけを取り直す。
       const libraryRequests = listRequests(fetchMock);
       expect(libraryRequests).toHaveLength(1);
@@ -2280,7 +2284,7 @@ describe("LibraryPage", () => {
       renderLibrary();
       const link = await screen.findByRole("link", { name: ownerLabel });
       const row = link.closest("tr") as HTMLElement;
-      expect(link.getAttribute("href")).toBe("/videos/104");
+      expect(link.getAttribute("href")).toBe("/groups/7");
       expect(within(row).getByText("12 videos")).toBeDefined();
       expect(within(row).getByText("3 / 12")).toBeDefined();
       expect(within(row).getByText("12:00")).toBeDefined();

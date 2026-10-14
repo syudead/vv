@@ -20,6 +20,7 @@ import {
   VideoThumbnailMark,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
+import { groupPagePath } from "../groups/groupPaths";
 import FolderArt from "../videoList/FolderArt";
 
 /**
@@ -29,8 +30,14 @@ import FolderArt from "../videoList/FolderArt";
  */
 export interface GroupCardProps {
   group: LibraryGroup;
-  /** 遷移元の一覧 URL。再生画面の「戻る」がここへ帰る。 */
+  /** 遷移元の一覧 URL。開いた先の「戻る」がここへ帰る。 */
   backTo: string;
+  /**
+   * カードと行の名前が開く場所。省くとそのグループのページ（`/groups/{id}`、道筋なし）で、
+   * ライブラリはこれを使う。グループのページは道筋を 1 段伸ばした場所を渡す
+   * （specs/048-groups/ui-design.md「Group card and row」「Body」）。
+   */
+  to?: string;
   /** 全メンバーが選択に入っているときだけ true（ui-design.md「Pressing and selection」）。 */
   selected: boolean;
   selectionMode: boolean;
@@ -134,20 +141,18 @@ function GroupAddToPlaylist({
   );
 }
 
-function groupPath(group: LibraryGroup): string {
-  return `/videos/${String(group.openVideoId)}`;
-}
-
 /**
  * GroupCard はライブラリの格子でグループを1枚で出すカードである。動画のカード
  * （VideoCard）と同じ箱・同じ大きさで、サムネイルの枠にはフォルダ画面のフォルダカードと
  * 同じフォルダの絵柄（FolderArt）を描き、右下の面に本数と合計の長さを重ねる。
- * カード全体が開くメンバーの再生画面への1つのリンクである（要件 16・17・23）。
+ * カード全体がグループのページへの1つのリンクである（specs/048-groups/research.md R-8。
+ * 017 の「最初の未視聴のメンバーを開く」を置き換える）。
  */
 export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
   const {
     group,
     backTo,
+    to = groupPagePath(group.id),
     selected,
     selectionMode,
     onSelect,
@@ -193,7 +198,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
       )}
 
       <Link
-        to={groupPath(group)}
+        to={to}
         state={{ from: backTo }}
         aria-label={label}
         onClick={(event) => {
@@ -258,7 +263,14 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
  * グループの値を出す（ui-design.md「List view row」）。
  */
 export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
-  const { group, backTo, selected, selectionMode, onSelect } = props;
+  const {
+    group,
+    backTo,
+    to = groupPagePath(group.id),
+    selected,
+    selectionMode,
+    onSelect,
+  } = props;
   const { watchedCount, state, ratio, duration, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
   // リスト表示は今回変えない。サムネイルは先頭のメンバーの1枚（previews の先頭）を使う。
@@ -300,7 +312,7 @@ export const GroupRow = memo(function GroupRow(props: GroupCardProps) {
       </TableCell>
       <TableCell className="min-w-0 pr-4 whitespace-normal">
         <Link
-          to={groupPath(group)}
+          to={to}
           state={{ from: backTo }}
           aria-label={label}
           onClick={(event) => {

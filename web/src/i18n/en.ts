@@ -1680,6 +1680,36 @@ export const en = {
       failed: (reason: string) => `Couldn't add to the playlist: ${reason}`,
     },
   },
+  // グループのページ（/groups/{id}。specs/048-groups/ui-design.md「Words」）。名前とパス
+  // （利用者のデータ）はそのまま埋め込む。
+  groups: {
+    // 道筋の帯（Breadcrumb）の名前。
+    trail: "Group path",
+    detail: {
+      // 見出しの件数（「12 videos · 1:32:10」）。長さはサーバーの合計を formatDuration で
+      // 整えた文字列で、分からなければ空にして件数だけにする。
+      count: (count: number, duration: string) =>
+        duration === "" ? videos(count) : `${videos(count)} · ${duration}`,
+      // 自動グループのフォルダの行（「From the folder {path}」）。後ろのパスはフォルダの
+      // ページへのリンクとして画面が続ける。
+      fromFolder: "From the folder",
+      play: "Play",
+      playFor: (name: string) => `Play "${name}"`,
+      table: "Items",
+      empty: {
+        title: "No items yet",
+        description:
+          "Add videos and groups with Add to group on a card, on the video page, or in the selection bar.",
+        action: "Open library",
+      },
+      gone: {
+        title: "This group no longer exists",
+        description: "It was dissolved, maybe in another tab.",
+        action: "Back to library",
+      },
+      loadFailed: "Couldn't load the group",
+    },
+  },
   tagName: {
     required: "Enter a name",
     controlCharacters: "Line breaks and tabs aren't allowed",
