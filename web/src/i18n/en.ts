@@ -673,6 +673,7 @@ export const en = {
   },
   count: {
     videos,
+    items,
   },
   video: {
     unplayable: {
@@ -2051,6 +2052,38 @@ export const en = {
       created
         ? `Created the tag "${name}" and dissolved the group`
         : `Added the tag "${name}" and dissolved the group`,
+  },
+  // ドラッグで並べ替え・グループ化・マージ・バージョン化する操作と、その取り消しの通知
+  // （specs/050-drag-organize/ui-design.md「Words」）。
+  organize: {
+    drop: {
+      refused: "Can't drop here",
+    },
+    done: {
+      reordered: (name: string) => `Reordered "${name}"`,
+    },
+    failed: {
+      reorder: (reason: string) => `Couldn't reorder: ${reason}`,
+    },
+    undo: "Undo",
+    undone: "Undone",
+    undoFailed: {
+      conflict: "Couldn't undo: it changed in the meantime",
+      expired: "This can no longer be undone",
+      other: (reason: string) => `Couldn't undo: ${reason}`,
+    },
+    // dnd-kit の読み上げ。位置は 1 始まり。
+    announce: {
+      pickedUp: (title: string, count: number) =>
+        count === 1 ? `Picked up "${title}"` : `Picked up ${items(count)}`,
+      over: (name: string, label: string) => `Over "${name}": ${label}`,
+      between: (position: number, count: number) =>
+        `Between cards, position ${formatNumber(position)} of ${formatNumber(count)}`,
+      dropped: (name: string) => `Dropped on "${name}"`,
+      droppedAt: (position: number, count: number) =>
+        `Dropped at position ${formatNumber(position)} of ${formatNumber(count)}`,
+      cancelled: "Cancelled, nothing changed",
+    },
   },
   tagName: {
     required: "Enter a name",

@@ -13,12 +13,8 @@ import {
   orderedItemTitle,
   rowFacts,
 } from "../videoList/ItemRowCells";
-import {
-  RemoveItemButton,
-  ReorderHandle,
-  type SortableRow,
-  useSortableRow,
-} from "../videoList/reorder";
+import { type CardDragBinding, CardDropMark, useCardDrag } from "../videoList/cardDrag";
+import { RemoveItemButton, ReorderHandle } from "../videoList/reorder";
 
 export interface GroupItemRowProps {
   item: GroupItem;
@@ -33,8 +29,8 @@ export interface GroupItemRowProps {
   selectionMode: boolean;
   /** 選択を入れる・外す。選択を持たない見る人（ゲスト）では省き、チェックを描かない。 */
   onSelect?: (item: GroupItem, selected: boolean) => void;
-  /** 持ち上げられる行の値。所有者のリスト表示だけが渡し、ハンドルを描く。 */
-  sortable?: SortableRow;
+  /** ドラッグの層に加わる行の値。所有者のリスト表示だけが渡し、ハンドルを描く。 */
+  drag?: CardDragBinding;
   /** 行の `×`。所有者だけが渡す。 */
   remove?: GroupItemRemove;
 }
@@ -65,7 +61,8 @@ function linkLabel(item: GroupItem) {
  * GroupItemRow はグループのページのリスト表示の 1 行である（specs/048-groups/ui-design.md
  * 「Body」）。プレイリストの画面の行に、ライブラリの選択のチェックを前に足す: チェック、番号、
  * サムネイル、題名（子グループは「12 videos」の行）、`sm` から視聴済み、長さ。所有者には番号の
- * 前にハンドル、後ろに `×`「Remove from group」を描く（「Reordering」「Removing one item」）。
+ * 前にハンドル、後ろに `×`「Remove from group」を描き、行のどこからでも持ち上げられる
+ * （「Reordering」「Removing one item」、specs/050-drag-organize/ui-design.md「Group page」）。
  */
 export const GroupItemRow = memo(function GroupItemRow({
   item,
@@ -75,22 +72,24 @@ export const GroupItemRow = memo(function GroupItemRow({
   selected,
   selectionMode,
   onSelect,
-  sortable,
+  drag,
   remove,
 }: GroupItemRowProps) {
   const title = orderedItemTitle(item);
   const facts = rowFacts(item);
-  const dragging = sortable?.isDragging === true;
+  const dragging = drag?.sorting === true;
 
   return (
     <TableRow
-      ref={sortable?.rowRef}
+      ref={drag?.ref}
+      {...drag?.listeners}
       data-item-id={item.id}
       data-state={selected ? "selected" : undefined}
-      style={sortable?.style}
+      style={drag?.style}
       className={cn(
         "group relative motion-reduce:transition-none",
         dragging && "z-10 bg-popover shadow-elevated hover:bg-popover",
+        drag?.lifted === true && "opacity-50",
       )}
     >
       {onSelect !== undefined && (
@@ -110,11 +109,8 @@ export const GroupItemRow = memo(function GroupItemRow({
       )}
       <TableCell className={cn("w-0 pr-0", onSelect === undefined ? "pl-3" : "pl-0")}>
         <span className="flex items-center gap-1">
-          {sortable !== undefined && (
-            <ReorderHandle
-              handle={sortable.handle}
-              label={t.groups.item.reorder(title)}
-            />
+          {drag !== undefined && (
+            <ReorderHandle handle={drag.handle} label={t.groups.item.reorder(title)} />
           )}
           <span className="block min-w-4 text-right text-xs text-muted-foreground tabular-nums">
             {formatNumber(position)}
@@ -145,6 +141,7 @@ export const GroupItemRow = memo(function GroupItemRow({
           {title}
         </Link>
         <ItemTitleExtras facts={facts} />
+        {drag !== undefined && <CardDropMark sign={drag.sign} axis="y" list />}
       </TableCell>
       <ItemWatchedAndDurationCells item={item} facts={facts} />
       {remove !== undefined && (
@@ -163,10 +160,10 @@ export const GroupItemRow = memo(function GroupItemRow({
 });
 
 /**
- * SortableGroupItemRow は所有者のリスト表示の、持ち上げられる 1 行である。DndContext と
- * SortableContext の中で描く。
+ * DraggableGroupItemRow は所有者のリスト表示の、持ち上げられる 1 行である。ドラッグの層
+ * （GroupDragLayer）の中で描く。
  */
-export function SortableGroupItemRow(props: Omit<GroupItemRowProps, "sortable">) {
-  const sortable = useSortableRow(props.item.id);
-  return <GroupItemRow {...props} sortable={sortable} />;
+export function DraggableGroupItemRow(props: Omit<GroupItemRowProps, "drag">) {
+  const drag = useCardDrag(String(props.item.id));
+  return <GroupItemRow {...props} drag={drag} />;
 }
