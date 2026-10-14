@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/plan.md
-sourceHash: f6453fd82f9a996d6ce70339fcea652fca03ab7911918f908d6c564e7c5f8df6
+sourceHash: 8f43dc6668acecd7d7f74e00d58ee947a634ff20220690d808a6d341fae44231
 ---
 
 # 実装計画: 外部のサービスから作品情報を取得する作品情報プラグイン {#implementation-plan-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -137,11 +137,11 @@ flowchart LR
 
 ### 作品情報プラグインを WebAssembly のサンドボックスで実行する {#run-work-info-plugins-in-a-webassembly-sandbox}
 
-**範囲**: wazero と、depguard と ARCHITECTURE.md の項目を伴うアダプター `internal/wasmplugin` を加える。モジュールを検査し (コンパイル、設定の宣言を伴う `vv.plugin` マニフェスト、import、`_start` と `memory` の export とその型、テーブルの最大値)、マニフェストか問題にする。実行ごとに新しいインスタンスを、要求を stdin に、応答を stdout から受けて、ファイル、環境、引数なしに、[R-4](research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits) の上限と 1 つの実行の枠で実行する。ドメインの型と実行の失敗。登録はするが次の単位まで `-1` を返す `vv` ホスト関数。[R-12](research.md#r-12-test-plugins-are-built-from-go-sources-when-the-tests-run) のフィクスチャをビルドするヘルパー。索引からリンクした `docs/design-docs/work-info-plugins.md` (サンドボックスと上限)。
+**範囲**: wazero と、depguard と ARCHITECTURE.md の項目を伴うアダプター `internal/wasmplugin` を加える。モジュールを検査し (コンパイル、設定の宣言を伴う `vv.plugin` マニフェスト、import、`_start` と `memory` の export とその型、テーブルの大きさ。宣言された最大値のないテーブルはコンパイル前に 100,000 要素に制限する)、マニフェストか問題にする。実行ごとに新しいインスタンスを、要求を stdin に、応答を stdout から受けて、ファイル、環境、引数なしに、[R-4](research.md#r-4-each-run-has-no-files-no-environment-and-fixed-limits) の上限と 1 つの実行の枠で実行する。ドメインの型と実行の失敗。登録はするが次の単位まで `-1` を返す `vv` ホスト関数。[R-12](research.md#r-12-test-plugins-are-built-from-go-sources-when-the-tests-run) のフィクスチャをビルドするヘルパー。索引からリンクした `docs/design-docs/work-info-plugins.md` (サンドボックスと上限)。
 
 **依存**: なし。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task build-windows-check` がビルドできる。ビルドしたプラグインによるアダプターのテストで、echo プラグインの応答が読み戻されること、無限に繰り返すプラグインが 30 秒で止められ、メモリを増やすプラグインが 128 MiB で止められ、それぞれが失敗を伴い、次の実行が成功すること、2 MiB を書くプラグインが `output_too_large` で止められること、`/etc/hostname` を開くか環境変数を読むプラグインが何も得ないこと、同時の 2 つ目の実行が 10 秒後に拒否されることを示す。検査のテストで、[data-model.md](data-model.md#work_info_plugins) の各 `problem` がその不正なモジュール (重複した設定のキーと 11 個目の設定の宣言、引数を持つ `_start`、`memory` を export しないもの、最大値のないテーブル、1,000,000 要素のテーブルを含む) に対して、マニフェストが正しいモジュールに対して、それを実行せずに得られることを示す。
+**受け入れ**: `task check` と `task check-docs` が通り、`task build-windows-check` がビルドできる。ビルドしたプラグインによるアダプターのテストで、echo プラグインの応答が読み戻されること、無限に繰り返すプラグインが 30 秒で止められ、メモリを増やすプラグインが 128 MiB で止められ、それぞれが失敗を伴い、次の実行が成功すること、2 MiB を書くプラグインが `output_too_large` で止められること、`/etc/hostname` を開くか環境変数を読むプラグインが何も得ないこと、同時の 2 つ目の実行が 10 秒後に拒否されることを示す。検査のテストで、[data-model.md](data-model.md#work_info_plugins) の各 `problem` がその不正なモジュール (重複した設定のキーと 11 個目の設定の宣言、引数を持つ `_start`、`memory` を export しないもの、最小値が 100,000 要素を超えるテーブル、宣言された最大値が 1,000,000 のテーブルを含む) に対して、マニフェストが正しいモジュールに対して、それを実行せずに得られること、Go の `wasip1` リンカーが書く形の、宣言された最大値のないテーブルが受け入れられることを示す。
 
 ### 作品情報プラグインが公開されたインターネットのサイトにだけ到達できるようにする {#let-work-info-plugins-reach-public-internet-sites-only}
 

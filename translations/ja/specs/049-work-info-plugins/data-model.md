@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/data-model.md
-sourceHash: 4348750ec41170605bfdf35e2aec6c7703fec1e36c5c5f697c013473e6550381
+sourceHash: 6a03b8ba80974d44ada1cba54387d171b4effab3408f7a859be1862f70b1336f
 ---
 
 # データモデル: 作品情報プラグイン {#data-model-work-info-plugins}
@@ -40,7 +40,7 @@ sourceHash: 4348750ec41170605bfdf35e2aec6c7703fec1e36c5c5f697c013473e6550381
 | `contract_unsupported` | `contract` がこの vv の実行するバージョンでない (`1` だけ) |
 | `import_unsupported` | モジュールが `wasi_snapshot_preview1` と `vv` の外のものを import する |
 | `export_invalid` | モジュールが `_start` を何も受け取らず何も返さない関数として export しないか、`memory` をメモリとして export しない |
-| `table_too_large` | テーブルが最大値を宣言しないか、100,000 要素を超える最大値を宣言する |
+| `table_too_large` | テーブルの最小値か、宣言された最大値が 100,000 要素を超える (宣言された最大値のないテーブルは受け入れ、100,000 に制限する) |
 
 ## `work_info_plugin_settings` {#work_info_plugin_settings}
 
