@@ -73,7 +73,8 @@ func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain
 		return domain.MediaFolder{}, err
 	}
 	// 新しい登録の下の所在がグループに入りうる。
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
 		return domain.MediaFolder{}, err
 	}
 	// 登録外の所在しか無かった待ちの仕事が、この登録で取り出せるようになる。
@@ -83,6 +84,7 @@ func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain
 	}
 	// 眠っているワーカーを起こさないと、次に仕事が積まれるまで止まったままになる。
 	var c changes
+	c.groupsChanged(changedGroups)
 	c.jobsQueued(domain.JobKinds...)
 	// 登録フォルダの中にあるかで、問題の一覧に出る件が変わる。
 	c.issuesChanged()
@@ -139,7 +141,8 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 	if err := refreshSearchKeysUnder(ctx, tx, cleaned); err != nil {
 		return domain.MediaFolder{}, err
 	}
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
 		return domain.MediaFolder{}, err
 	}
 	// 付け替え先で着手できるようになった仕事の動画を、直近の取り込みの対象に加える。
@@ -147,6 +150,7 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 		return domain.MediaFolder{}, err
 	}
 	var c changes
+	c.groupsChanged(changedGroups)
 	c.videosDeleted(released)
 	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
 	c.jobsQueued(domain.JobKinds...)
@@ -191,10 +195,12 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 		return err
 	}
 	// 登録外になった所在はグループにもフォルダ名にも入らない。
-	if err := rebuildFolderIndex(ctx, tx); err != nil {
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
 		return err
 	}
 	var c changes
+	c.groupsChanged(changedGroups)
 	// 登録を外して消えた動画の生成物を片付けさせる。
 	c.videosDeleted(released)
 	// 動画の行が残っても、登録外になった所在の仕事は残りとして数えなくなる。

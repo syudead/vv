@@ -6,10 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-	"strings"
 	"time"
-	"unicode"
-	"unicode/utf8"
 )
 
 // プレイリスト（specs/044-playlists/data-model.md「domain values added」）。
@@ -147,13 +144,11 @@ func (e *InvalidPlaylistNameError) Unwrap() error { return ErrInvalidPlaylistNam
 // PlaylistNameMaxLength 符号位置を超えれば *InvalidPlaylistNameError である。同じ名前は
 // 重複してよい（research.md R-11）。
 func ValidatePlaylistName(input string) (string, error) {
-	trimmed := strings.TrimFunc(input, func(r rune) bool {
-		return unicode.Is(unicode.White_Space, r)
-	})
-	if trimmed == "" {
+	trimmed, problem := checkName(input, PlaylistNameMaxLength)
+	switch problem {
+	case nameEmpty:
 		return "", &InvalidPlaylistNameError{Problem: PlaylistNameEmpty}
-	}
-	if utf8.RuneCountInString(trimmed) > PlaylistNameMaxLength {
+	case nameTooLong:
 		return "", &InvalidPlaylistNameError{Problem: PlaylistNameTooLong}
 	}
 	return trimmed, nil

@@ -344,14 +344,14 @@ that scanning cannot restore, next to an index that a scan rebuilds:
 | Category | Tables and files | Recovered by |
 | --- | --- | --- |
 | Rebuildable index | `videos`, `video_locations`, `location_search_fts`, `jobs`, `scans`, `scan_videos`, `scan_issues`, the folder index (`folder_groups`, `folder_group_members`, `video_folder_names`, `folder_index_state`), `video_transcode_probes`, `video_successions`, `video_fingerprints`, `video_version_candidates`, and the generated thumbnails and previews | Scanning the registered media folders again |
-| User data | `playback_progress`, `watch_history`, `tags`, `tag_names`, `video_tags`, `auto_tag_rejections`, `rejected_tag_names`, `public_videos`, `video_overrides`, `thumbnail_images`, `video_edits`, `video_favorites`, `folder_favorites`, `playlists`, `playlist_items`, `video_bundles`, `video_bundle_members`, `video_version_dismissals`, `folder_group_overrides` | A backup only |
+| User data | `playback_progress`, `watch_history`, `tags`, `tag_names`, `video_tags`, `auto_tag_rejections`, `rejected_tag_names`, `public_videos`, `video_overrides`, `thumbnail_images`, `video_edits`, `video_favorites`, `folder_favorites`, `playlists`, `playlist_items`, `groups`, `group_items`, `group_exclusions`, `video_bundles`, `video_bundle_members`, `video_version_dismissals`, `folder_group_overrides` | A backup only |
 | Configuration | `account`, `media_folders`, `settings`, `api_tokens` | A backup, or setting it up again |
 | Auto-tagging record | `auto_tag_queue` | Tagging the videos again under Settings, Auto-tagging; tags the owner removed can come back ([auto-tagging](../design-docs/auto-tagging.md)) |
 | Session | `sessions` | Logging in again |
 
 User data is keyed by values a rescan reproduces (the content key, a version
-bundle's key, a folder's absolute path), never by a video row's id, so it
-survives a rebuild of the index. A scan cannot start until a media folder is
+bundle's key, a folder's absolute path) or by its own ids, never by a video
+row's id, so it survives a rebuild of the index. A scan cannot start until a media folder is
 registered, and a lost API token has to be issued again.
 
 Back up the **whole** `vv_data` volume, including `mdm.db`, before resetting

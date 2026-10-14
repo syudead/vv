@@ -511,12 +511,8 @@ func rekeyPlaylistItems(ctx context.Context, tx *sql.Tx, from, to string) error 
 	if len(affected) == 0 {
 		return nil
 	}
-	if _, err := tx.ExecContext(ctx, `delete from playlist_items where content_key in (?1, ?2)
-		and exists (select 1 from playlist_items o where o.playlist_id = playlist_items.playlist_id
-			and o.content_key in (?1, ?2) and o.id <> playlist_items.id
-			and (o.position < playlist_items.position or (o.position = playlist_items.position and o.id < playlist_items.id)))`,
-		from, to); err != nil {
-		return fmt.Errorf("cannot move the playlist items: %w", err)
+	if err := deleteRekeyDuplicates(ctx, tx, playlistPositions, from, to); err != nil {
+		return err
 	}
 	if _, err := tx.ExecContext(ctx, `update playlist_items set content_key = ? where content_key = ?`, to, from); err != nil {
 		return fmt.Errorf("cannot move the playlist items: %w", err)
@@ -600,19 +596,9 @@ func playlistShape(ctx context.Context, tx *sql.Tx, id int64) (string, error) {
 }
 
 // renumberPlaylists は playlistIDs のプレイリストの項目の位置を、今の並び（位置、同じなら id）の
-// まま 0 から詰め直す。並びを先に読み切ってから書く。位置を相関副問い合わせで数える 1 文の
-// update は、同じ文で既に書き換えた行の位置を数えてしまい、位置が重なる。
+// まま 0 から詰め直す。
 func renumberPlaylists(ctx context.Context, tx *sql.Tx, playlistIDs []int64) error {
-	for _, id := range playlistIDs {
-		order, err := playlistItemOrder(ctx, tx, id)
-		if err != nil {
-			return err
-		}
-		if err := writePlaylistOrder(ctx, tx, order); err != nil {
-			return err
-		}
-	}
-	return nil
+	return renumberPositions(ctx, tx, playlistPositions, playlistIDs)
 }
 
 // ensurePlaylist はプレイリスト id があるかを確かめ、無ければ domain.ErrPlaylistNotFound を返す。
@@ -655,21 +641,12 @@ func playlistSummary(ctx context.Context, tx *sql.Tx, id int64) (domain.Playlist
 
 // playlistItemOrder はプレイリスト id の全項目（見せない項目も含む）の id を位置の順に返す。
 func playlistItemOrder(ctx context.Context, tx *sql.Tx, id int64) ([]int64, error) {
-	ids, err := queryInt64s(ctx, tx, `select id from playlist_items where playlist_id = ? order by position, id`, id)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the playlist items: %w", err)
-	}
-	return ids, nil
+	return positionOrder(ctx, tx, playlistPositions, id)
 }
 
 // writePlaylistOrder は order の項目の位置を、その並びの 0 からの番号にする。
 func writePlaylistOrder(ctx context.Context, tx *sql.Tx, order []int64) error {
-	for position, itemID := range order {
-		if _, err := tx.ExecContext(ctx, `update playlist_items set position = ? where id = ?`, position, itemID); err != nil {
-			return fmt.Errorf("cannot reorder the playlist: %w", err)
-		}
-	}
-	return nil
+	return writePositionOrder(ctx, tx, playlistPositions, order)
 }
 
 // orderedUserKeys は videoIDs を要求の順に利用者データの鍵へ引き直し、重複を除いて返す。
