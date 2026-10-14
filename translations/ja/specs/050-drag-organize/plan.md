@@ -1,6 +1,6 @@
 ---
 source: specs/050-drag-organize/plan.md
-sourceHash: 4336079a7f35ae808765b9afe6b2ab37bf20becb6aadbb5709668a9fbebe78ef
+sourceHash: b6d400689284629b4a2aeb8da7a419251ec9adc298ebf095181d07042f9107b3
 ---
 
 # 実装計画: ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる {#implementation-plan-drag-and-drop-to-reorder-group-merge-and-bundle}
@@ -58,7 +58,7 @@ Issue には `ui` ラベルがあるので、画面の単位より前に `design
 **この機能に固有の文脈**:
 
 - マイグレーションはない ([data-model.md](data-model.md))。新しいストアの役割が 1 つ、`OrganizeStore`、新しいユースケースが 1 つ、`app.Organizer`。
-- 6 つのルートと 2 つのエラーコードを加える ([contracts/screen-api.md](contracts/screen-api.md))。変わるルートはない。
+- 6 つのルートと 2 つのエラーコードを加え、1 つのルートを変える: 048 の `PATCH /api/groups/{id}` は、自身の本文のスキーマ `GroupRename` で省略できる `undoToken` を受け取る ([contracts/screen-api.md](contracts/screen-api.md#patch-apigroupsid-with-an-undo-token))。
 - フォルダの画面には今は選択がないので、1 度に 1 枚のカードをドラッグする。要件 11 は選択がある場所 (ライブラリとグループのページ) に当てはまる。
 
 ## 憲章の確認 {#constitution-check}
@@ -99,9 +99,9 @@ specs/050-drag-organize/
 | 境界 | この機能で持つもの |
 | --- | --- |
 | `internal/domain` | `PlanGroupMerge`、新しいグループの名前、`ErrUndoConflict`、`ErrUndoExpired` |
-| `internal/store` | `OrganizeStore`: 5 つの操作、そのイメージ、戻す処理 |
-| `internal/app` | `Organizer`: 取り消しの記録 |
-| `internal/httpapi`、`api/openapi.yaml`、`cmd/mdm` | 6 つのルート、エラーコード、配線 |
+| `internal/store` | `OrganizeStore`: 5 つの操作、そのイメージ、戻す処理、取り消しトークンの下での名前の変更 |
+| `internal/app` | `Organizer`: 取り消しの記録、取り消しトークンの下での名前の変更 |
+| `internal/httpapi`、`api/openapi.yaml`、`cmd/mdm` | 6 つのルート、エラーコード、名前の変更の `undoToken`、配線 |
 | `web/src/api` | `organize.ts`、6 つのルートのクライアント |
 | `web/src/videoList`、`web/src/ui` | ドラッグ層。トーストのアクション |
 | `web/src/library`、`web/src/groups`、`web/src/folders`、`web/src/i18n` | 各画面でのドロップ、ドロップのメニュー、カタログの文言 |
@@ -152,11 +152,11 @@ flowchart LR
 
 ### 1 つの操作で、ドラッグした動画とその対象からグループを作る {#make-a-group-from-a-dragged-video-and-its-target-in-one-operation}
 
-**範囲**: グループ作成の規則を持つ `POST /api/organize/group` ([R-6](research.md#r-6-make-a-group-puts-the-new-group-where-the-target-was))。
+**範囲**: グループ作成の規則を持つ `POST /api/organize/group` ([R-6](research.md#r-6-make-a-group-puts-the-new-group-where-the-target-was))、およびその操作のトークンの下での名前の変更: `GroupRename` スキーマにある `PATCH /api/groups/{id}` の省略できる `undoToken`、それを `app.Organizer` に渡すハンドラー、トークンの変更後イメージを置き換える Organizer と `OrganizeStore` の手順 ([contracts/screen-api.md](contracts/screen-api.md#patch-apigroupsid-with-an-undo-token)、[data-model.md、Rename under an undo token](data-model.md#rename-under-an-undo-token))。
 
 **依存**: サーバー側の記録でドラッグ操作を取り消せるようにし、グループの並べ替えから始める。
 
-**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ストアのテストが次を示す: B にドロップした A は、B のタイトルを名前とし、B、A の順に持つグループを作る (受け入れ条件 2)。`from` があると、グループは B の位置を取り、A と B は `from` を離れる。120 文字のタイトルは 100 文字に切られる。取り消しはグループを削除し、A と B をそれぞれの位置に戻す。新しいグループをお気に入りにした、プレイリストに加えた、別のグループに入れた後では、取り消しは `ErrUndoConflict` で、何も変えない。
+**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ストアのテストが次を示す: B にドロップした A は、B のタイトルを名前とし、B、A の順に持つグループを作る (受け入れ条件 2)。`from` があると、グループは B の位置を取り、A と B は `from` を離れる。120 文字のタイトルは 100 文字に切られる。取り消しはグループを削除し、A と B をそれぞれの位置に戻す。新しいグループをお気に入りにした、プレイリストに加えた、別のグループに入れた、トークンなしで名前を変えた後では、取り消しは `ErrUndoConflict` で、何も変えない。トークン付きで名前を変えた後では、取り消しは名前を変えたグループを削除し、A と B を戻す。アプリのテストが次を示す: 未知の、使用済みの、期限切れの、並べ替えのものである、または別のグループのためのトークンを付けた名前の変更は、グループの名前を変え、トークンのイメージを保つ。名前の変更の最中にそのトークンを取り消すと、取り消しは名前の変更を待つ。ハンドラーのテストが次を示す: `undoToken` のない `PATCH /api/groups/{id}` は 048 のとおりに応答し、ある場合も同じ応答を返し、トークンが原因で失敗することはない。
 
 ### 1 つの操作で、ドラッグしたグループを対象のグループに統合する {#merge-dragged-groups-into-a-target-group-in-one-operation}
 
