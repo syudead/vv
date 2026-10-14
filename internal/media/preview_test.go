@@ -47,6 +47,8 @@ func TestPreviewArgsAreSilentBrowserCompatibleAndFastStart(t *testing.T) {
 }
 
 func TestGeneratePreviewProducesBrowserCompatibleFastStartAsset(t *testing.T) {
+	t.Parallel()
+
 	requireFFmpeg(t)
 	dir := t.TempDir()
 	source := makePreviewSource(t, dir, 10)
@@ -94,6 +96,8 @@ func TestGeneratePreviewProducesBrowserCompatibleFastStartAsset(t *testing.T) {
 }
 
 func TestGeneratePreviewSamplesAcrossWholeTimeline(t *testing.T) {
+	t.Parallel()
+
 	requireFFmpeg(t)
 	dir := t.TempDir()
 	timeline := filepath.Join(dir, "timeline.mp4")
@@ -175,6 +179,8 @@ func TestPreviewArgsSeekEachSegmentOnInput(t *testing.T) {
 }
 
 func TestGeneratePreviewSkipsSegmentsPastVideoEnd(t *testing.T) {
+	t.Parallel()
+
 	requireFFmpeg(t)
 	dir := t.TempDir()
 	// 映像 10 秒・音声 12 秒。容器の長さ 12 秒で区間を選ぶと、末尾の 2 区間は映像の後ろになる。
@@ -218,6 +224,8 @@ func TestGeneratePreviewSkipsSegmentsPastVideoEnd(t *testing.T) {
 }
 
 func TestGeneratePreviewFailsWhenNoSegmentHasFrames(t *testing.T) {
+	t.Parallel()
+
 	requireFFmpeg(t)
 	dir := t.TempDir()
 	// 4fps・15 秒でキーフレームが先頭だけの MPEG-TS。索引が無いのでシークが
@@ -234,6 +242,8 @@ func TestGeneratePreviewFailsWhenNoSegmentHasFrames(t *testing.T) {
 }
 
 func TestGeneratePreviewKeepsRotatedPortrait(t *testing.T) {
+	t.Parallel()
+
 	requireFFmpeg(t)
 	dir := t.TempDir()
 	landscape := filepath.Join(dir, "landscape.mp4")

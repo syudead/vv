@@ -2,6 +2,9 @@ package store
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"sync"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -40,4 +43,71 @@ func CountVideoJobsForTest(ctx context.Context, db *DB, kind domain.JobKind, vid
 	err := db.sql.QueryRowContext(ctx,
 		`select count(*) from jobs where kind = ? and video_id = ?`, string(kind), videoID).Scan(&count)
 	return count, err
+}
+
+// migratedImage は、すべてのマイグレーションを適用したデータベースファイルの中身を
+// 1 プロセスに 1 回だけ作って持つ。マイグレーションの適用は 1 回に 70ms ほどかかり、
+// テストごとに適用すると保存層や HTTP のテストの時間の半分ほどを占める。
+var migratedImage struct {
+	once  sync.Once
+	bytes []byte
+	err   error
+}
+
+// OpenMigratedForTest は、すべてのマイグレーションを適用したデータベースを dataDir に
+// 置いて開く。Open と Migrate を続けて呼んだのと同じ状態になるが、適用はプロセスで
+// 最初の 1 回だけ行い、以降はその結果のファイルを写す。dataDir にデータベースが
+// すでにあれば（再起動を模すテスト）、写さずに開いて未適用の分を適用する。
+// マイグレーションそのものを確かめるテストは Open と Migrate を使う。呼び出し側は
+// 必ず Close を呼ぶこと。テスト専用。
+func OpenMigratedForTest(dataDir string) (*DB, error) {
+	if _, err := os.Stat(DatabasePath(dataDir)); err == nil {
+		return openAndMigrate(dataDir)
+	}
+	migratedImage.once.Do(func() {
+		migratedImage.bytes, migratedImage.err = buildMigratedImage()
+	})
+	if migratedImage.err != nil {
+		return nil, migratedImage.err
+	}
+	if err := os.WriteFile(DatabasePath(dataDir), migratedImage.bytes, 0o600); err != nil {
+		return nil, fmt.Errorf("cannot write the migrated database: %w", err)
+	}
+	return Open(dataDir)
+}
+
+// buildMigratedImage は一時ディレクトリでマイグレーションを適用し、WAL を本体へ
+// 書き戻してから、データベースファイルの中身を返す。
+func buildMigratedImage() ([]byte, error) {
+	dir, err := os.MkdirTemp("", "mdm-migrated-")
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
+
+	db, err := openAndMigrate(dir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := db.sql.Exec(`pragma wal_checkpoint(truncate)`); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := db.Close(); err != nil {
+		return nil, err
+	}
+	return os.ReadFile(DatabasePath(dir))
+}
+
+// openAndMigrate は dataDir のデータベースを開き、未適用のマイグレーションを適用する。
+func openAndMigrate(dataDir string) (*DB, error) {
+	db, err := Open(dataDir)
+	if err != nil {
+		return nil, err
+	}
+	if _, err := Migrate(context.Background(), db); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	return db, nil
 }
