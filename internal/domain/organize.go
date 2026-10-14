@@ -100,3 +100,12 @@ type OrganizeMove struct {
 	From  int64
 	To    int64
 }
+
+// MaxOrganizeBundleVideos は「バージョンとしてまとめる」ドロップが 1 つの集まりにできる動画の
+// 本数の上限である。既にまとまっている動画はその集まりの全メンバーを数える
+// （specs/050-drag-organize/ui-design.md「Bundle limit」）。
+const MaxOrganizeBundleVideos = 20
+
+// ErrTooManyVersions は、まとまりを展開した動画が MaxOrganizeBundleVideos を超えることを表す。
+// 何も書かない。API では 400 too_many_videos である。
+var ErrTooManyVersions = errors.New("too many videos to bundle")

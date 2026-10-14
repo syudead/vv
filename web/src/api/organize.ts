@@ -127,6 +127,25 @@ export async function mergeGroups(
 }
 
 /**
+ * bundleOnto はドラッグした動画 `videoIds` を落とした先の動画 `target` と 1 つの集まりに束ね、`target` を
+ * 代表にする。代表を選ぶダイアログは無い（POST /api/organize/bundle）。既にまとまっている動画は、その
+ * 集まりの全メンバーごと移る。`target` のほかに動画が無ければ 400 `invalid_request`、集まりを展開して
+ * 20 本を超えれば 400 `too_many_videos`、動画が無ければ 404 `group_target_not_found` の RequestFailed に
+ * なり、どれも何も変わらない。成功したら一覧の控えを捨てる。
+ */
+export async function bundleOnto(
+  videoIds: readonly number[],
+  target: number,
+  signal?: AbortSignal,
+): Promise<OrganizeResult> {
+  return postOperation(
+    "/api/organize/bundle",
+    { videoIds: Array.from(videoIds), target },
+    signal,
+  );
+}
+
+/**
  * undoOrganize はトークン `token` の操作を取り消す（POST /api/organize/undo）。操作の後で行が
  * 変わっていれば 409 `undo_conflict`、トークンが無い・使い済み・10 分より古ければ 410
  * `undo_expired` の RequestFailed になり、どちらも何も変わらない。成功したら一覧の控えを捨てる。

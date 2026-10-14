@@ -71,117 +71,182 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	var members []string
-	// 集まりに吸い込む利用者データの鍵（メンバーの content_key と吸い込む集まりの鍵）。プレイリストとグループの
-	// 項目はこれらの鍵から集まりの鍵へ移す（specs/044-playlists/research.md R-2）。
-	var absorbedKeys []string
-	absorbed := map[int64]bool{}
-	var representativeKey, representativeUserKey string
-	for _, id := range ids {
-		key, err := bundlableContentKey(ctx, tx, id)
-		if err != nil {
-			return domain.VideoVersions{}, err
-		}
-		bundle, bundled, err := bundleOf(ctx, tx, key)
-		if err != nil {
-			return domain.VideoVersions{}, err
-		}
-		if id == representativeID {
-			representativeKey, representativeUserKey = key, key
-			if bundled {
-				representativeUserKey = bundle.userKey
-			}
-		}
-		if !bundled {
-			members = append(members, key)
-			absorbedKeys = append(absorbedKeys, key)
-			continue
-		}
-		if absorbed[bundle.id] {
-			continue
-		}
-		absorbed[bundle.id] = true
-		keys, err := bundleMemberKeys(ctx, tx, bundle.id)
-		if err != nil {
-			return domain.VideoVersions{}, err
-		}
-		members = append(members, keys...)
-		absorbedKeys = append(absorbedKeys, bundle.userKey)
-		absorbedKeys = append(absorbedKeys, keys...)
-	}
-	slices.Sort(members)
-	members = slices.Compact(members)
-	// 項目がまとまった、見せるかが変わったプレイリストは、終わりに更新日時を進める。
-	shapes, err := snapshotPlaylistShapes(ctx, tx, absorbedKeys)
+	plan, err := planBundle(ctx, tx, ids, representativeID)
 	if err != nil {
 		return domain.VideoVersions{}, err
 	}
-
-	now := time.Now().Unix()
-	result, err := tx.ExecContext(ctx,
-		`insert into video_bundles (user_key, representative_key, created_at, updated_at) values ('bundle:new', ?, ?, ?)`,
-		representativeKey, now, now)
+	outcome, err := applyBundle(ctx, tx, plan)
 	if err != nil {
-		return domain.VideoVersions{}, fmt.Errorf("cannot create the bundle: %w", err)
-	}
-	bundleID, err := result.LastInsertId()
-	if err != nil {
-		return domain.VideoVersions{}, fmt.Errorf("cannot create the bundle: %w", err)
-	}
-	userKey := bundleUserKey(bundleID)
-	if _, err := tx.ExecContext(ctx, `update video_bundles set user_key = ? where id = ?`, userKey, bundleID); err != nil {
-		return domain.VideoVersions{}, fmt.Errorf("cannot create the bundle: %w", err)
-	}
-	if err := copyUserData(ctx, tx, representativeUserKey, userKey); err != nil {
-		return domain.VideoVersions{}, err
-	}
-	var rekeyedGroups []int64
-	for _, key := range absorbedKeys {
-		ids, err := rekeyUserItems(ctx, tx, key, userKey)
-		if err != nil {
-			return domain.VideoVersions{}, err
-		}
-		rekeyedGroups = append(rekeyedGroups, ids...)
-	}
-	for _, key := range members {
-		if _, err := tx.ExecContext(ctx,
-			`insert into video_bundle_members (content_key, bundle_id, added_at) values (?, ?, ?)
-			 on conflict (content_key) do update set bundle_id = excluded.bundle_id`,
-			key, bundleID, now); err != nil {
-			return domain.VideoVersions{}, fmt.Errorf("cannot add a version to the bundle: %w", err)
-		}
-	}
-	for id := range absorbed {
-		if _, err := tx.ExecContext(ctx, `delete from video_bundles where id = ?`, id); err != nil {
-			return domain.VideoVersions{}, fmt.Errorf("cannot remove the absorbed bundle: %w", err)
-		}
-	}
-	// 同じ集まりになった組は候補から消す（data-model.md §7）。
-	if err := pruneVersionCandidates(ctx, tx); err != nil {
-		return domain.VideoVersions{}, err
-	}
-
-	changedGroups, err := rebuildFolderIndex(ctx, tx)
-	if err != nil {
-		return domain.VideoVersions{}, err
-	}
-	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
 		return domain.VideoVersions{}, err
 	}
 	versions, err := videoVersions(ctx, tx, domain.AudienceOwner, representativeID)
 	if err != nil {
 		return domain.VideoVersions{}, err
 	}
-	changed, err := videoIDsForContentKeys(ctx, tx, members)
-	if err != nil {
-		return domain.VideoVersions{}, err
-	}
 	if err := tx.Commit(); err != nil {
 		return domain.VideoVersions{}, fmt.Errorf("cannot bundle the videos: %w", err)
 	}
-	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}},
-		groupsChangedEvents(normalizeIDs(append(rekeyedGroups, changedGroups...)))...)...)
+	s.db.publishEvents(outcome.events()...)
 	return versions, nil
+}
+
+// bundlePlan は束ねる前に読んだ、束ねる内容である。members は新しい集まりの全メンバーの content_key
+// （重複なし、順に並ぶ）、absorbedKeys は新しい集まりの鍵へ項目を移す利用者データの鍵（メンバーの
+// content_key と吸い込む集まりの鍵）、absorbedBundles は吸い込んで消す集まりの id（初めに現れた順）、
+// representativeKey は代表の content_key、representativeUserKey は新しい集まりへ値を写す鍵である。
+type bundlePlan struct {
+	members               []string
+	absorbedKeys          []string
+	absorbedBundles       []int64
+	representativeKey     string
+	representativeUserKey string
+}
+
+// planBundle は ids の動画（重複なし、2 本以上）を representativeID を代表に束ねる内容を読む
+// （VersionStore.Bundle と OrganizeStore.Bundle が共有する）。何も書かない。いまライブラリに無い
+// 動画があれば domain.ErrNotFound。
+func planBundle(ctx context.Context, tx *sql.Tx, ids []int64, representativeID int64) (bundlePlan, error) {
+	var plan bundlePlan
+	// absorbed は absorbedBundles の集合である。POST /api/video-bundles は 20000 本を受け付けるので、
+	// 並びを走査すると二乗になる。
+	absorbed := map[int64]struct{}{}
+	for _, id := range ids {
+		key, err := bundlableContentKey(ctx, tx, id)
+		if err != nil {
+			return bundlePlan{}, err
+		}
+		bundle, bundled, err := bundleOf(ctx, tx, key)
+		if err != nil {
+			return bundlePlan{}, err
+		}
+		if id == representativeID {
+			plan.representativeKey, plan.representativeUserKey = key, key
+			if bundled {
+				plan.representativeUserKey = bundle.userKey
+			}
+		}
+		if !bundled {
+			plan.members = append(plan.members, key)
+			plan.absorbedKeys = append(plan.absorbedKeys, key)
+			continue
+		}
+		if _, seen := absorbed[bundle.id]; seen {
+			continue
+		}
+		absorbed[bundle.id] = struct{}{}
+		plan.absorbedBundles = append(plan.absorbedBundles, bundle.id)
+		keys, err := bundleMemberKeys(ctx, tx, bundle.id)
+		if err != nil {
+			return bundlePlan{}, err
+		}
+		plan.members = append(plan.members, keys...)
+		plan.absorbedKeys = append(plan.absorbedKeys, bundle.userKey)
+		plan.absorbedKeys = append(plan.absorbedKeys, keys...)
+	}
+	slices.Sort(plan.members)
+	plan.members = slices.Compact(plan.members)
+	return plan, nil
+}
+
+// bundleOutcome は applyBundle が書いた結果である。bundleID と userKey は新しい集まりの id と鍵、
+// changedGroups は項目を付け替えたかフォルダの索引で変わったグループとその祖先、changedVideos は
+// 新しい集まりのメンバーの動画の id である。
+type bundleOutcome struct {
+	bundleID      int64
+	userKey       string
+	changedGroups []int64
+	changedVideos []int64
+}
+
+// events は確定後に発行する知らせである。
+func (o bundleOutcome) events() []domain.Event {
+	return append([]domain.Event{domain.VideoBundleChanged{VideoIDs: o.changedVideos}},
+		groupsChangedEvents(o.changedGroups)...)
+}
+
+// applyBundle は planBundle の内容で束ねる（data-model.md §8）。新しい集まりを作って代表の値を写し、
+// プレイリストとグループの項目を吸い込んだ各鍵から新しい鍵へ移し（写さない）、メンバーを移して
+// 吸い込んだ集まりの行を消す（その鍵の値は消さない）。同じ集まりになった組の候補を消し、フォルダの
+// 索引を作り直し、形の変わったプレイリストの更新日時を進める。呼び出し側の取引の中で行う。
+func applyBundle(ctx context.Context, tx *sql.Tx, plan bundlePlan) (bundleOutcome, error) {
+	// 項目がまとまった、見せるかが変わったプレイリストは、終わりに更新日時を進める。
+	shapes, err := snapshotPlaylistShapes(ctx, tx, plan.absorbedKeys)
+	if err != nil {
+		return bundleOutcome{}, err
+	}
+	now := time.Now().Unix()
+	bundleID, userKey, err := createBundle(ctx, tx, plan.representativeKey, now)
+	if err != nil {
+		return bundleOutcome{}, err
+	}
+	if err := copyUserData(ctx, tx, plan.representativeUserKey, userKey); err != nil {
+		return bundleOutcome{}, err
+	}
+	var rekeyedGroups []int64
+	for _, key := range plan.absorbedKeys {
+		ids, err := rekeyUserItems(ctx, tx, key, userKey)
+		if err != nil {
+			return bundleOutcome{}, err
+		}
+		rekeyedGroups = append(rekeyedGroups, ids...)
+	}
+	if err := moveBundleMembers(ctx, tx, plan, bundleID, now); err != nil {
+		return bundleOutcome{}, err
+	}
+	// 同じ集まりになった組は候補から消す（data-model.md §7）。
+	if err := pruneVersionCandidates(ctx, tx); err != nil {
+		return bundleOutcome{}, err
+	}
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
+		return bundleOutcome{}, err
+	}
+	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
+		return bundleOutcome{}, err
+	}
+	changed, err := videoIDsForContentKeys(ctx, tx, plan.members)
+	if err != nil {
+		return bundleOutcome{}, err
+	}
+	return bundleOutcome{bundleID: bundleID, userKey: userKey,
+		changedGroups: normalizeIDs(append(rekeyedGroups, changedGroups...)), changedVideos: changed}, nil
+}
+
+// createBundle は代表 representativeKey の新しい集まりの行を作り、その id と利用者データの鍵を返す。
+func createBundle(ctx context.Context, tx *sql.Tx, representativeKey string, now int64) (int64, string, error) {
+	result, err := tx.ExecContext(ctx,
+		`insert into video_bundles (user_key, representative_key, created_at, updated_at) values ('bundle:new', ?, ?, ?)`,
+		representativeKey, now, now)
+	if err != nil {
+		return 0, "", fmt.Errorf("cannot create the bundle: %w", err)
+	}
+	bundleID, err := result.LastInsertId()
+	if err != nil {
+		return 0, "", fmt.Errorf("cannot create the bundle: %w", err)
+	}
+	userKey := bundleUserKey(bundleID)
+	if _, err := tx.ExecContext(ctx, `update video_bundles set user_key = ? where id = ?`, userKey, bundleID); err != nil {
+		return 0, "", fmt.Errorf("cannot create the bundle: %w", err)
+	}
+	return bundleID, userKey, nil
+}
+
+// moveBundleMembers は plan のメンバーを集まり bundleID へ移し、吸い込んだ集まりの行を消す。
+func moveBundleMembers(ctx context.Context, tx *sql.Tx, plan bundlePlan, bundleID, now int64) error {
+	for _, key := range plan.members {
+		if _, err := tx.ExecContext(ctx,
+			`insert into video_bundle_members (content_key, bundle_id, added_at) values (?, ?, ?)
+			 on conflict (content_key) do update set bundle_id = excluded.bundle_id`,
+			key, bundleID, now); err != nil {
+			return fmt.Errorf("cannot add a version to the bundle: %w", err)
+		}
+	}
+	for _, id := range plan.absorbedBundles {
+		if _, err := tx.ExecContext(ctx, `delete from video_bundles where id = ?`, id); err != nil {
+			return fmt.Errorf("cannot remove the absorbed bundle: %w", err)
+		}
+	}
+	return nil
 }
 
 // MakeRepresentative は videoID の動画をその集まりの代表にする（data-model.md §8）。

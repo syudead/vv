@@ -31,6 +31,10 @@ type Organizer interface {
 	// Move はカードを move.To へ足し、move.From から外す。ドラッグしたグループが To か To の祖先なら
 	// domain.ErrGroupCycle。
 	Move(ctx context.Context, move domain.OrganizeMove) (domain.OrganizeResult, error)
+	// Bundle は動画 videoIDs を落とした先の動画 targetID と束ね、targetID を代表にする。動画が無ければ
+	// domain.ErrGroupTargetNotFound、集まりを展開して domain.MaxOrganizeBundleVideos 本を超えれば
+	// domain.ErrTooManyVersions。
+	Bundle(ctx context.Context, videoIDs []int64, targetID int64) (domain.OrganizeResult, error)
 	// Merge はドラッグしたカード items を画面の順にたどり、グループはグループ into へマージし、
 	// 動画は into の末尾へ足す。ドラッグしたグループが into か into の祖先なら domain.ErrGroupCycle。
 	Merge(ctx context.Context, items []domain.OrganizeRef, into int64) (domain.OrganizeResult, error)
@@ -141,6 +145,50 @@ func (s *server) OrganizeMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.writeOrganizeResult(w, result)
+}
+
+// OrganizeBundle は動画を落とした先の動画を代表にして束ねる（POST /api/organize/bundle）。代表を
+// 選ぶダイアログは無い。
+func (s *server) OrganizeBundle(w http.ResponseWriter, r *http.Request) {
+	var body gen.OrganizeBundle
+	if !s.readJSONBody(w, r, &body) {
+		return
+	}
+	ids := uniqueInt64s(append([]int64{body.Target}, body.VideoIds...))
+	switch {
+	case body.Target <= 0:
+		// 動画の id は 1 から始まる。省かれた必須の欄（0 になる）を無い動画と取り違えて 404 にしない。
+		s.invalidRequest(w, "target is required.")
+		return
+	case len(body.VideoIds) == 0 || len(ids) < 2:
+		s.invalidRequest(w, "videoIds must contain a video other than the target.")
+		return
+	case len(ids) > domain.MaxOrganizeBundleVideos:
+		s.tooManyBundleVideos(w)
+		return
+	}
+	if !s.organizerConfigured(w) {
+		return
+	}
+	result, err := s.organizer.Bundle(r.Context(), body.VideoIds, body.Target)
+	switch {
+	case errors.Is(err, domain.ErrTooManyVersions):
+		s.tooManyBundleVideos(w)
+		return
+	case errors.Is(err, domain.ErrTooFewVersions):
+		s.invalidRequest(w, "videoIds must contain a video other than the target.")
+		return
+	case err != nil:
+		s.writeGroupError(w, err, "Could not bundle the videos.")
+		return
+	}
+	s.writeOrganizeResult(w, result)
+}
+
+// tooManyBundleVideos はまとまりを展開した動画が多すぎることを 400 too_many_videos で返す。
+func (s *server) tooManyBundleVideos(w http.ResponseWriter) {
+	s.invalidRequestLimit(w, reasonTooManyVideos, domain.MaxOrganizeBundleVideos,
+		fmt.Sprintf("Bundle at most %d videos at a time.", domain.MaxOrganizeBundleVideos))
 }
 
 // organizeRefs はドラッグしたカードの本文を domain の並びにする。空か多すぎるか、知らない種類が

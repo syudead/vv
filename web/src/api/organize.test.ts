@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { RequestFailed } from "./client";
 import { saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 import {
+  bundleOnto,
   groupVideos,
   mergeGroups,
   moveCards,
@@ -181,6 +182,49 @@ describe("organize API", () => {
         },
       },
     ]);
+  });
+
+  it("bundleOnto は動画と落とした先を送ってトークンを返し、一覧の控えを捨てる", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ undoToken: "t1" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    holdSnapshot();
+    await expect(bundleOnto([9, 4], 5)).resolves.toEqual({ undoToken: "t1" });
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    expect(sent(fetchMock)).toEqual([
+      {
+        url: "/api/organize/bundle",
+        method: "POST",
+        body: { videoIds: [9, 4], target: 5 },
+      },
+    ]);
+  });
+
+  it("bundleOnto の 400 too_many_videos は limit 付きの RequestFailed になり、一覧の控えを残す", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>().mockResolvedValueOnce(
+        json(
+          {
+            code: "invalid_request",
+            reason: "too_many_videos",
+            limit: 20,
+            message: "too many",
+          },
+          400,
+        ),
+      ),
+    );
+
+    holdSnapshot();
+    await expect(bundleOnto([9], 5)).rejects.toMatchObject({
+      status: 400,
+      reason: "too_many_videos",
+      limit: 20,
+    });
+    expect(takeListSnapshot({ query: "" })).toBeDefined();
   });
 
   it("undoOrganize はトークンを送って 204 で終わり、一覧の控えを捨てる", async () => {

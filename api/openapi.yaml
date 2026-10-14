@@ -3992,6 +3992,38 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/organize/bundle:
+    post:
+      operationId: organizeBundle
+      summary: 動画を落とした先の動画を代表にしてバージョンとしてまとめ、取り消しのトークンを返す
+      description: |
+        所有者だけ。ドラッグした動画 `videoIds` を落とした先の動画 `target` と 1 つの集まりに束ね、
+        `target` を代表にする（代表を選ぶダイアログは無い）。既に集まりに属する動画は、その集まりの
+        全メンバーごと移る。規則は `POST /api/video-bundles` と同じで、1 つの取引で行い、応答の
+        `undoToken` で取り消せる（specs/050-drag-organize/contracts/screen-api.md）。`target` の
+        ほかに動画が無ければ 400 `invalid_request`、集まりを展開して 20 本を超えれば 400
+        `too_many_videos`、動画がいまライブラリに無ければ 404 `group_target_not_found` で、どれも
+        何も書かない。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/OrganizeBundle"
+      responses:
+        "200":
+          description: 束ねた。取り消しのトークン
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OrganizeResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/organize/undo:
     post:
       operationId: organizeUndo
@@ -6401,6 +6433,24 @@ components:
           type: integer
           format: int64
           description: 落とした先のグループ。`items` は少なくとも 1 つのグループを含む
+
+    OrganizeBundle:
+      type: object
+      required: [videoIds, target]
+      additionalProperties: false
+      properties:
+        videoIds:
+          type: array
+          description: ドラッグした動画の id
+          minItems: 1
+          maxItems: 20
+          items:
+            type: integer
+            format: int64
+        target:
+          type: integer
+          format: int64
+          description: 落とした先の動画。新しい集まりの代表になる
 
     OrganizeUndo:
       type: object

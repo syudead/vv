@@ -2241,6 +2241,15 @@ type OrganizationMergeResponse struct {
 	Organization Organization `json:"organization"`
 }
 
+// OrganizeBundle defines model for OrganizeBundle.
+type OrganizeBundle struct {
+	// Target 落とした先の動画。新しい集まりの代表になる
+	Target int64 `json:"target"`
+
+	// VideoIds ドラッグした動画の id
+	VideoIds []int64 `json:"videoIds"`
+}
+
 // OrganizeGroup defines model for OrganizeGroup.
 type OrganizeGroup struct {
 	// From 新しいグループを置く、開いているグループ
@@ -4178,6 +4187,9 @@ type UpdateOrganizationJSONRequestBody = CreditPatch
 // MergeOrganizationsJSONRequestBody defines body for MergeOrganizations for application/json ContentType.
 type MergeOrganizationsJSONRequestBody = CreditMergeRequest
 
+// OrganizeBundleJSONRequestBody defines body for OrganizeBundle for application/json ContentType.
+type OrganizeBundleJSONRequestBody = OrganizeBundle
+
 // OrganizeGroupJSONRequestBody defines body for OrganizeGroup for application/json ContentType.
 type OrganizeGroupJSONRequestBody = OrganizeGroup
 
@@ -4411,6 +4423,9 @@ type ServerInterface interface {
 	// MergeOrganizations sourceIds の団体を id の団体へ統合する
 	// (POST /api/organizations/{id}/merge)
 	MergeOrganizations(w http.ResponseWriter, r *http.Request, id OrganizationId)
+	// OrganizeBundle 動画を落とした先の動画を代表にしてバージョンとしてまとめ、取り消しのトークンを返す
+	// (POST /api/organize/bundle)
+	OrganizeBundle(w http.ResponseWriter, r *http.Request)
 	// OrganizeGroup ドラッグした動画と落とした先の動画のグループを作り、取り消しのトークンを返す
 	// (POST /api/organize/group)
 	OrganizeGroup(w http.ResponseWriter, r *http.Request)
@@ -6088,6 +6103,20 @@ func (siw *ServerInterfaceWrapper) MergeOrganizations(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.MergeOrganizations(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OrganizeBundle operation middleware
+func (siw *ServerInterfaceWrapper) OrganizeBundle(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OrganizeBundle(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9226,6 +9255,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/group", wrapper.OrganizeGroup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/move", wrapper.OrganizeMove)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/merge", wrapper.OrganizeMerge)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/bundle", wrapper.OrganizeBundle)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/undo", wrapper.OrganizeUndo)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/folders/{rootId}/grouping", wrapper.SetFolderGrouping)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/scans/current", wrapper.GetCurrentScan)
