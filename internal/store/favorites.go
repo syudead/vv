@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -130,10 +129,16 @@ func existingGroupIDs(ctx context.Context, tx *sql.Tx, ids []int64) ([]int64, er
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the groups: %w", err)
 	}
+	// 要求は最大 20,000 件なので、集合で引いて線形時間に保つ。
+	pending := make(map[int64]bool, len(found))
+	for _, id := range found {
+		pending[id] = true
+	}
 	var out []int64
 	for _, id := range ids {
-		if slices.Contains(found, id) && !slices.Contains(out, id) {
+		if pending[id] {
 			out = append(out, id)
+			delete(pending, id)
 		}
 	}
 	return out, nil

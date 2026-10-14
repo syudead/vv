@@ -75,6 +75,26 @@ func TestHandMadeGroupIsFavoritedAndPlayedFromAPlaylist(t *testing.T) {
 	}
 }
 
+// existingGroupIDs は今あるグループの id だけを、最初に現れた順に重複なしで返す。
+func TestExistingGroupIDsKeepsRequestOrderWithoutDuplicates(t *testing.T) {
+	db, _ := itemsFixture(t)
+	ctx := context.Background()
+	first := createGroup(t, db, "first", domain.GroupAdd{})
+	second := createGroup(t, db, "second", domain.GroupAdd{})
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	got, err := existingGroupIDs(ctx, tx, []int64{second, 999_999, first, second, first})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []int64{second, first}; !slices.Equal(got, want) {
+		t.Errorf("existingGroupIDs = %v, want %v", got, want)
+	}
+}
+
 // 移行は今のフォルダグループのお気に入りとプレイリストのグループの項目をそのグループのものにし、
 // グループでないフォルダのものは落としてプレイリストを詰め直す。Down は folder_favorites を空で戻し、
 // 自動グループの項目をフォルダの鍵へ戻す。
@@ -85,9 +105,11 @@ func TestGroupKeysMigrationConvertsFolderKeys(t *testing.T) {
 		(7, 'Show', ?, '/m/show', 1, 1), (8, 'Mine', ?, null, 1, 1)`,
 		domain.NaturalSortKey("Show"), domain.NaturalSortKey("Mine"))
 	execSQL(t, db, `insert into folder_favorites (path, favorited_at) values ('/m/show', 50), ('/m/gone', 60)`)
-	execSQL(t, db, `insert into playlists (id, name, created_at, updated_at) values (1, 'P', 1, 1)`)
+	execSQL(t, db, `insert into playlists (id, name, created_at, updated_at) values (1, 'P', 1, 1), (2, 'Q', 1, 1)`)
+	// id の最も大きい項目 6 が落ちても、新しい項目は id 6 を使い回さない。
 	execSQL(t, db, `insert into playlist_items (id, playlist_id, content_key, folder_key, position, added_at) values
-		(1, 1, 'key-a', null, 0, 1), (2, 1, null, '/m/gone', 1, 1), (3, 1, null, '/m/show', 2, 1), (4, 1, 'key-b', null, 3, 1)`)
+		(1, 1, 'key-a', null, 0, 1), (2, 1, null, '/m/gone', 1, 1), (3, 1, null, '/m/show', 2, 1), (4, 1, 'key-b', null, 3, 1),
+		(5, 2, 'key-a', null, 0, 1), (6, 1, null, '/m/gone2', 4, 1)`)
 
 	if _, err := provider.UpTo(ctx, 43); err != nil {
 		t.Fatal(err)
@@ -100,7 +122,7 @@ func TestGroupKeysMigrationConvertsFolderKeys(t *testing.T) {
 		t.Errorf("group_favorites = %v, want [7:50]", favorites)
 	}
 	items, err := queryStringsForTest(db, `select id || ':' || coalesce(content_key, 'g' || group_id) || ':' || position
-		from playlist_items order by position`)
+		from playlist_items where playlist_id = 1 order by position`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,14 +137,23 @@ func TestGroupKeysMigrationConvertsFolderKeys(t *testing.T) {
 		t.Errorf("folder_favorites が残った")
 	}
 	assertPlaylistInvariant(t, db)
+	afterUp := playlistUpdatedAtForTest(t, db, 1)
+	if afterUp <= 1 {
+		t.Errorf("項目を落としたプレイリストの updated_at = %d, want > 1", afterUp)
+	}
+	if got := playlistUpdatedAtForTest(t, db, 2); got != 1 {
+		t.Errorf("項目を落とさないプレイリストの updated_at = %d, want 1", got)
+	}
 
 	// 手で作ったグループの項目は Down で落ちる。
-	execSQL(t, db, `insert into playlist_items (playlist_id, group_id, position, added_at) values (1, 8, 3, 1)`)
+	if id := insertForTest(t, db, `insert into playlist_items (playlist_id, group_id, position, added_at) values (1, 8, 3, 1)`); id != 7 {
+		t.Errorf("移行のあとに足した項目の id = %d, want 7", id)
+	}
 	if _, err := provider.DownTo(ctx, 42); err != nil {
 		t.Fatal(err)
 	}
 	items, err = queryStringsForTest(db, `select id || ':' || coalesce(content_key, folder_key) || ':' || position
-		from playlist_items order by position`)
+		from playlist_items where playlist_id = 1 order by position`)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,10 +163,40 @@ func TestGroupKeysMigrationConvertsFolderKeys(t *testing.T) {
 	if n := favoriteRowCount(t, db, "folder_favorites"); n != 0 {
 		t.Errorf("Down のあとの folder_favorites = %d 行, want 0", n)
 	}
+	if got := playlistUpdatedAtForTest(t, db, 1); got <= afterUp {
+		t.Errorf("Down で項目を落としたプレイリストの updated_at = %d, want > %d", got, afterUp)
+	}
+	if id := insertForTest(t, db, `insert into playlist_items (playlist_id, content_key, position, added_at) values (2, 'key-c', 1, 1)`); id != 8 {
+		t.Errorf("Down のあとに足した項目の id = %d, want 8", id)
+	}
 	if err := db.sql.QueryRow(`select count(*) from sqlite_master where name = 'group_favorites'`).Scan(&tables); err != nil {
 		t.Fatal(err)
 	}
 	if tables != 0 {
 		t.Errorf("Down のあとも group_favorites が残った")
 	}
+}
+
+// playlistUpdatedAtForTest はプレイリスト id の updated_at を読む。
+func playlistUpdatedAtForTest(t *testing.T, db *DB, id int64) int64 {
+	t.Helper()
+	var updatedAt int64
+	if err := db.sql.QueryRow(`select updated_at from playlists where id = ?`, id).Scan(&updatedAt); err != nil {
+		t.Fatal(err)
+	}
+	return updatedAt
+}
+
+// insertForTest は query を実行し、足した行の id を返す。
+func insertForTest(t *testing.T, db *DB, query string) int64 {
+	t.Helper()
+	result, err := db.sql.Exec(query)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return id
 }

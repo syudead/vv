@@ -42,6 +42,23 @@ select i.id, i.playlist_id, i.content_key, g.id,
   left join groups g on i.folder_key is not null and g.origin_folder = i.folder_key
  where i.content_key is not null or g.id is not null;
 
+-- 項目を落としたプレイリストは更新日時を前の値より後へ進める。同じ更新日時なら同じ並びという約束
+-- （specs/044-playlists/ui-design.md「One order」）を保つため。
+update playlists
+   set updated_at = max(cast((julianday('now') - 2440587.5) * 86400000 as integer), updated_at + 1)
+ where id in (select i.playlist_id
+                from playlist_items i
+               where i.folder_key is not null
+                 and not exists (select 1 from groups g where g.origin_folder = i.folder_key));
+
+-- 採番を前の表の続きから行う。末尾の項目を落としても、消えた項目の id を新しい項目に使い回さない。
+insert into sqlite_sequence (name, seq)
+select 'playlist_items_new', 0
+ where not exists (select 1 from sqlite_sequence where name = 'playlist_items_new');
+update sqlite_sequence
+   set seq = max(seq, coalesce((select seq from sqlite_sequence where name = 'playlist_items'), 0))
+ where name = 'playlist_items_new';
+
 drop index if exists playlist_items_content_idx;
 drop index if exists playlist_items_order_idx;
 drop table playlist_items;
@@ -80,6 +97,20 @@ select i.id, i.playlist_id, i.content_key, g.origin_folder,
   from playlist_items i
   left join groups g on g.id = i.group_id
  where i.content_key is not null or g.origin_folder is not null;
+
+update playlists
+   set updated_at = max(cast((julianday('now') - 2440587.5) * 86400000 as integer), updated_at + 1)
+ where id in (select i.playlist_id
+                from playlist_items i
+                join groups g on g.id = i.group_id
+               where g.origin_folder is null);
+
+insert into sqlite_sequence (name, seq)
+select 'playlist_items_old', 0
+ where not exists (select 1 from sqlite_sequence where name = 'playlist_items_old');
+update sqlite_sequence
+   set seq = max(seq, coalesce((select seq from sqlite_sequence where name = 'playlist_items'), 0))
+ where name = 'playlist_items_old';
 
 drop index if exists playlist_items_group_idx;
 drop index if exists playlist_items_content_idx;
