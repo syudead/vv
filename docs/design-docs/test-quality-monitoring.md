@@ -26,7 +26,7 @@ Each measure has one home, and each is the output of an existing tool.
 | Measure | Tool | Measured | Kept in |
 | --- | --- | --- | --- |
 | Line coverage, by `go` and `web` flag, by component and by file | Go `-coverprofile`, Vitest v8 | Every push to `main` and every pull request | [Codecov](https://app.codecov.io/gh/syudead/vv) |
-| Duration and outcome of every test; flaky tests | JUnit from gotestsum, Vitest and Playwright | Same; E2E on pushes to `main` only | Codecov Test Analytics |
+| Duration and outcome of every test; flaky tests | JUnit from gotestsum, Vitest and Playwright | Same; E2E on pushes to `main` and on Renovate PRs | Codecov Test Analytics |
 | Cyclomatic complexity of every Go function | gocyclo | Every push to `main` and every pull request | `gocyclo.txt` in the `complexity-go` artifact |
 | Cyclomatic complexity of every Web function | The ESLint `complexity` rule with a maximum of 0 | Same | `eslint.json` in the `complexity-web` artifact |
 | Duplicated code, by location | jscpd | Same | `jscpd-report.json` in the `duplication` artifact |
