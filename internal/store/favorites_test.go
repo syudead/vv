@@ -95,14 +95,14 @@ func listedFavorites(t *testing.T, db *DB) map[int64]bool {
 
 func folderGroupFavorite(t *testing.T, db *DB, dir string) bool {
 	t.Helper()
-	group, err := db.Library().FolderGroup(context.Background(), domain.AudienceOwner, dir)
+	page, err := db.Library().Group(context.Background(), domain.AudienceOwner, groupIDOf(t, db, dir), nil)
 	if err != nil {
 		t.Fatalf("グループ %s を読めない: %v", dir, err)
 	}
-	return group.Favorite
+	return page.Group.Favorite
 }
 
-// 付けると GetVideo・ListVideos・ListLibrary の Video.Favorite と ListLibrary・FolderGroup の
+// 付けると GetVideo・ListVideos・ListLibrary の Video.Favorite と ListLibrary・Group の
 // LibraryGroup.Favorite が真になり、外すと偽に戻る（受け入れ条件 1）。グループに付けてもメンバーは
 // 偽、メンバーに付けてもグループは偽（受け入れ条件 3、要件 4）。
 func TestSetFavoritesReflectsInReads(t *testing.T) {

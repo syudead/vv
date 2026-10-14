@@ -354,7 +354,7 @@ flowchart LR
   kind -->|group| refetch[Refetch the group]
 ```
 
-A group is refetched with `GET /api/folders/{rootId}/group`.
+A group is refetched with `GET /api/groups/{id}`.
 
 Left of the heart, in the same corner and shown exactly when the off heart is,
 the owner's `Add to playlist` control opens the playlist picker; it has no

@@ -21,7 +21,7 @@ import {
   saveListSnapshot,
   takeListSnapshot,
 } from "../api/listSnapshot";
-import { groupRef, itemKey } from "../api/libraryItems";
+import { itemKey } from "../api/libraryItems";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
@@ -67,6 +67,7 @@ import {
   type LibrarySelection,
   reconcileGroups,
   sameSelection,
+  selectedGroupOf,
   setGroup,
   setVideo,
   toggleGroup,
@@ -280,13 +281,7 @@ export default function LibraryPage() {
   const changeGroupSelection = useCallback(
     (group: LibraryGroup, selected: boolean) => {
       invalidateSelectAll();
-      setSelection((current) =>
-        setGroup(
-          current,
-          { folder: groupRef(group), videoIds: group.videoIds },
-          selected,
-        ),
-      );
+      setSelection((current) => setGroup(current, selectedGroupOf(group), selected));
     },
     [invalidateSelectAll],
   );
@@ -295,9 +290,7 @@ export default function LibraryPage() {
   const toggleGroupSelection = useCallback(
     (group: LibraryGroup) => {
       invalidateSelectAll();
-      setSelection((current) =>
-        toggleGroup(current, { folder: groupRef(group), videoIds: group.videoIds }),
-      );
+      setSelection((current) => toggleGroup(current, selectedGroupOf(group)));
     },
     [invalidateSelectAll],
   );
@@ -336,7 +329,7 @@ export default function LibraryPage() {
           apply(latestCriteria, "replace", serializeTagIds(remaining));
           return;
         }
-        const selected = fromSelectAll(response.ids, response.groups ?? []);
+        const selected = fromSelectAll(response.ids, response.groups ?? [], items);
         setSelection(selected);
         setSelectAllSelection(selected);
       })
@@ -347,7 +340,7 @@ export default function LibraryPage() {
       .finally(() => {
         if (selectAllSeq.current === seq) setSelectingAll(false);
       });
-  }, [apply, favorite, playable, query, tagIds, toast, watch]);
+  }, [apply, favorite, items, playable, query, tagIds, toast, watch]);
 
   // 選択バーで一括して外したタグが、今の絞り込み（tagIds）に含まれているとき
   // の方針（Devin の指摘4、docs/design-docs/library-ui.md §6）。外した動画は

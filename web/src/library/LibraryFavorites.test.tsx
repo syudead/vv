@@ -47,6 +47,7 @@ const memberIds = [101, 102, 103];
 
 function seriesGroup(extra: Partial<LibraryGroup> = {}): LibraryGroup {
   return {
+    id: 7,
     folder: { rootId: 3, path: "series" },
     name: "series",
     videoCount: 3,
@@ -135,7 +136,7 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
       const groups =
         server.group === undefined
           ? []
-          : [{ folder: server.group.folder, videoIds: server.group.videoIds }];
+          : [{ id: server.group.id, videoIds: server.group.videoIds }];
       return Promise.resolve(json({ ids: Array.from(new Set(ids)), groups }));
     }
     if (url.pathname === "/api/video-visibility" && method === "PUT") {
@@ -169,11 +170,11 @@ function install(items: LibraryItem[], group?: LibraryGroup): Server {
         }),
       );
     }
-    if (url.pathname === "/api/folders/3/group") {
+    if (url.pathname === "/api/groups/7") {
       return Promise.resolve(
         server.group === undefined
           ? json({ code: "not_found" }, 404)
-          : json(server.group),
+          : json({ group: server.group, trail: [], items: [] }),
       );
     }
     if (url.pathname === "/api/favorites" && method === "PUT") {
@@ -414,7 +415,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
     ]);
     const groupFetches = fetchMock.mock.calls.filter(
       ([input]) =>
-        new URL(String(input), "http://localhost").pathname === "/api/folders/3/group",
+        new URL(String(input), "http://localhost").pathname === "/api/groups/7",
     );
     expect(groupFetches).toHaveLength(1);
     expect(pressed(screen.getByRole("button", { name: 'Favorite "ep01"' }))).toBe(
@@ -552,8 +553,7 @@ describe("ライブラリのお気に入りの付け外し（specs/035-favorites
       expect(
         fetchMock.mock.calls.some(
           ([input]) =>
-            new URL(String(input), "http://localhost").pathname ===
-            "/api/folders/3/group",
+            new URL(String(input), "http://localhost").pathname === "/api/groups/7",
         ),
       ).toBe(true),
     );

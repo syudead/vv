@@ -25,11 +25,11 @@ import type { VideosCriteria } from "./useVideos";
  * **このテストが同じ内容で通ること**が、既存の振る舞いを保った証拠になる。
  */
 
-const { listVideos, listFolderVideos, getVideo, getFolderGroup } = vi.hoisted(() => ({
+const { listVideos, listFolderVideos, getVideo, getGroup } = vi.hoisted(() => ({
   listVideos: vi.fn(),
   listFolderVideos: vi.fn(),
   getVideo: vi.fn(),
-  getFolderGroup: vi.fn(),
+  getGroup: vi.fn(),
 }));
 
 vi.mock("./client", async (importOriginal) => ({
@@ -37,7 +37,7 @@ vi.mock("./client", async (importOriginal) => ({
   listVideos,
   listFolderVideos,
   getVideo,
-  getFolderGroup,
+  getGroup,
 }));
 
 const { useVideos } = await import("./useVideos");
@@ -80,7 +80,7 @@ beforeEach(() => {
   calls = [];
   installFakeEventSource();
   getVideo.mockReset();
-  getFolderGroup.mockReset();
+  getGroup.mockReset();
   listVideos.mockReset();
   listVideos.mockImplementation((params: ListVideosParams = {}) => {
     let settle: ((value: VideoPage) => void) | null = null;
@@ -1573,9 +1573,10 @@ describe("useVideos の公開の反映", () => {
 // グループの更新: グループの項目はメンバーの変化で1件取り直し、404 なら外す。
 // 今の一覧の経路はグループを返さないので、控えからの復元でグループの項目を入れる。
 describe("useVideos のグループの項目", () => {
-  /** group はフォルダ A/B の、動画 10・11・12 をメンバーに持つグループを作る。 */
+  /** group はフォルダ A/B の自動グループ 7 で、動画 10・11・12 をメンバーに持つ。 */
   function group(overrides: Partial<LibraryGroup> = {}): LibraryGroup {
     return {
+      id: 7,
       folder: { rootId: 3, path: "A/B" },
       name: "B",
       videoCount: 3,
@@ -1597,7 +1598,7 @@ describe("useVideos のグループの項目", () => {
   }
 
   /** restoredWithGroup は動画 1、グループ、動画 2 の順の控えを作る。 */
-  function restoredWithGroup(staleGroups?: { rootId: number; path: string }[]) {
+  function restoredWithGroup(staleGroups?: number[]) {
     const items: LibraryItem[] = [
       videoItem(ready(1)),
       { kind: "group", group: group() },
@@ -1610,16 +1611,20 @@ describe("useVideos のグループの項目", () => {
     return items.flatMap((entry) => (entry.kind === "group" ? [entry.group] : []));
   }
 
-  /** deferredGroup は応答を後から決められる getFolderGroup の1回分である。 */
+  /** detail は GET /api/groups/{id} の応答である。 */
+  function detail(value: LibraryGroup) {
+    return { group: value, trail: [], items: [] };
+  }
+
+  /** deferredGroup は応答を後から決められる getGroup の1回分である。 */
   function deferredGroup() {
     let settle: (value: LibraryGroup) => void = () => undefined;
     let fail: (reason: unknown) => void = () => undefined;
-    getFolderGroup.mockImplementationOnce(
-      () =>
-        new Promise<LibraryGroup>((resolve, reject) => {
-          settle = resolve;
-          fail = reject;
-        }),
+    getGroup.mockImplementationOnce(() =>
+      new Promise<LibraryGroup>((resolve, reject) => {
+        settle = resolve;
+        fail = reject;
+      }).then(detail),
     );
     return {
       resolve: (value: LibraryGroup) => settle(value),
@@ -1643,8 +1648,8 @@ describe("useVideos のグループの項目", () => {
       );
     });
 
-    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
-    expect(getFolderGroup.mock.calls[0]?.[0]).toEqual({ rootId: 3, path: "A/B" });
+    await waitFor(() => expect(getGroup).toHaveBeenCalledTimes(1));
+    expect(getGroup.mock.calls[0]?.[0]).toBe(7);
     // 取り直しの間、項目は変えない（骨組みにもしない）。
     expect(groups(result.current.items)[0]).toBe(before);
 
@@ -1680,7 +1685,7 @@ describe("useVideos のグループの項目", () => {
       fromFolder: false,
       tentative: false,
     };
-    getFolderGroup.mockResolvedValueOnce(group({ tags: [tag] }));
+    getGroup.mockResolvedValueOnce(detail(group({ tags: [tag] })));
 
     act(() => {
       recordAppliedVideoTags(
@@ -1692,7 +1697,7 @@ describe("useVideos のグループの項目", () => {
     });
 
     await waitFor(() => expect(groups(result.current.items)[0]?.tags).toEqual([tag]));
-    expect(getFolderGroup).toHaveBeenCalledTimes(1);
+    expect(getGroup).toHaveBeenCalledTimes(1);
   });
 
   it("メンバーの video イベントで、そのグループを取り直す", async () => {
@@ -1700,14 +1705,28 @@ describe("useVideos のグループの項目", () => {
       () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
       { wrapper: OwnerAudience },
     );
-    getFolderGroup.mockResolvedValueOnce(group({ durationMs: 9000 }));
+    getGroup.mockResolvedValueOnce(detail(group({ durationMs: 9000 })));
 
     await emitServerEvent("video", { id: 10 });
 
     await waitFor(() => expect(groups(result.current.items)[0]?.durationMs).toBe(9000));
-    expect(getFolderGroup).toHaveBeenCalledTimes(1);
+    expect(getGroup).toHaveBeenCalledTimes(1);
     // メンバーは動画の項目ではないので、動画1件の取り直しはしない。
     expect(getVideo).not.toHaveBeenCalled();
+  });
+
+  it("group イベントは、表示中のグループの id だけを取り直す（specs/048-groups/research.md R-13）", async () => {
+    const { result } = renderHook(
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
+      { wrapper: OwnerAudience },
+    );
+    getGroup.mockResolvedValueOnce(detail(group({ name: "新しい名前" })));
+
+    await emitServerEvent("group", { ids: [3, 7, 99] });
+
+    await waitFor(() => expect(groups(result.current.items)[0]?.name).toBe("新しい名前"));
+    expect(getGroup).toHaveBeenCalledTimes(1);
+    expect(getGroup.mock.calls[0]?.[0]).toBe(7);
   });
 
   it("メンバーでない動画の変化では取りに行かない", async () => {
@@ -1732,7 +1751,7 @@ describe("useVideos のグループの項目", () => {
     });
     await emitServerEvent("video", { id: 99 });
 
-    expect(getFolderGroup).not.toHaveBeenCalled();
+    expect(getGroup).not.toHaveBeenCalled();
   });
 
   it("取り直しが 404 なら、その項目を一覧から外し、total は次に読むまで変えない", async () => {
@@ -1741,9 +1760,7 @@ describe("useVideos のグループの項目", () => {
       () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
       { wrapper: OwnerAudience },
     );
-    getFolderGroup.mockRejectedValueOnce(
-      new RequestFailed(404, "not_found", "見つかりません"),
-    );
+    getGroup.mockRejectedValueOnce(new RequestFailed(404, "not_found", "見つかりません"));
 
     await emitServerEvent("video", { id: 11 });
 
@@ -1759,46 +1776,45 @@ describe("useVideos のグループの項目", () => {
       () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
       { wrapper: OwnerAudience },
     );
-    getFolderGroup.mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"));
+    getGroup.mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"));
 
     await emitServerEvent("video", { id: 11 });
 
-    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getGroup).toHaveBeenCalledTimes(1));
     expect(groups(result.current.items)).toEqual([group()]);
   });
 
   it("控えの後にメンバーが変わったグループは、戻ったときに取り直す", async () => {
-    getFolderGroup.mockResolvedValueOnce(group({ watchedCount: 1 }));
+    getGroup.mockResolvedValueOnce(detail(group({ watchedCount: 1 })));
     const { result } = renderHook(
       () =>
         useVideos(
           { sort: "addedDesc" },
           restoredWithGroup([
-            { rootId: 3, path: "A/B" },
+            7,
             // 一覧に無いグループは取りに行かない。
-            { rootId: 3, path: "gone" },
+            99,
           ]),
         ),
       { wrapper: OwnerAudience },
     );
 
     await waitFor(() => expect(groups(result.current.items)[0]?.watchedCount).toBe(1));
-    expect(getFolderGroup).toHaveBeenCalledTimes(1);
-    expect(getFolderGroup.mock.calls[0]?.[0]).toEqual({ rootId: 3, path: "A/B" });
+    expect(getGroup).toHaveBeenCalledTimes(1);
+    expect(getGroup.mock.calls[0]?.[0]).toBe(7);
     expect(listVideos).not.toHaveBeenCalled();
   });
 
   it("取り直しが済むまでは、控えに残す取り直しの印としてグループを返す", async () => {
     const pending = deferredGroup();
     const { result } = renderHook(
-      () =>
-        useVideos({ sort: "addedDesc" }, restoredWithGroup([{ rootId: 3, path: "A/B" }])),
+      () => useVideos({ sort: "addedDesc" }, restoredWithGroup([7])),
       { wrapper: OwnerAudience },
     );
-    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getGroup).toHaveBeenCalledTimes(1));
 
     // 取り直しの途中で動画を開いても、次の控えから戻ったときに取り直せる。
-    expect(result.current.staleGroups()).toEqual([{ rootId: 3, path: "A/B" }]);
+    expect(result.current.staleGroups()).toEqual([7]);
 
     await act(async () => {
       pending.resolve(group({ watchedCount: 1 }));
@@ -1813,14 +1829,12 @@ describe("useVideos のグループの項目", () => {
       { wrapper: OwnerAudience },
     );
     expect(result.current.staleGroups()).toEqual([]);
-    getFolderGroup.mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"));
+    getGroup.mockRejectedValueOnce(new RequestFailed(500, "internal", "失敗"));
 
     await emitServerEvent("video", { id: 11 });
-    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getGroup).toHaveBeenCalledTimes(1));
 
-    await waitFor(() =>
-      expect(result.current.staleGroups()).toEqual([{ rootId: 3, path: "A/B" }]),
-    );
+    await waitFor(() => expect(result.current.staleGroups()).toEqual([7]));
   });
 
   it("取り直しが 404 で外れたグループは、印として返さない", async () => {
@@ -1829,9 +1843,7 @@ describe("useVideos のグループの項目", () => {
       () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
       { wrapper: OwnerAudience },
     );
-    getFolderGroup.mockRejectedValueOnce(
-      new RequestFailed(404, "not_found", "見つかりません"),
-    );
+    getGroup.mockRejectedValueOnce(new RequestFailed(404, "not_found", "見つかりません"));
 
     await emitServerEvent("video", { id: 11 });
 
@@ -1846,7 +1858,7 @@ describe("useVideos のグループの項目", () => {
     );
     const pending = deferredGroup();
     await emitServerEvent("video", { id: 11 });
-    await waitFor(() => expect(getFolderGroup).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(getGroup).toHaveBeenCalledTimes(1));
 
     rerender({ sort: "titleAsc" });
     await waitFor(() => expect(calls).toHaveLength(1));

@@ -107,7 +107,10 @@ func TestSetFolderGrouping(t *testing.T) {
 	if got := decodeBytes[gen.FolderGrouping](t, res.body); got != (gen.FolderGrouping{Mode: gen.FolderGroupingModeUngroup}) {
 		t.Errorf("ungroup の応答 = %+v", got)
 	}
-	if names := f.ownerLibraryNames(t); !slices.Equal(names, []string{"ep1", "ep10", "ep2", "group:pair", "solo"}) {
+	// ライブラリはグループ（specs/048-groups）から読む。ungroup は今あるグループを消さず、
+	// 新しく作らせないだけなので、show のグループは残る（グループを解く書き込みは
+	// 「Edit groups in the store」のユニットが ungroup に結ぶ）。
+	if names := f.ownerLibraryNames(t); !slices.Equal(names, []string{"group:pair", "group:show", "solo"}) {
 		t.Errorf("ungroup の後の項目 = %v", names)
 	}
 	// 同じ値の再設定も 200。
@@ -186,16 +189,15 @@ func TestTagFolderGroup(t *testing.T) {
 		if after := tagCount(t, f); after != before {
 			t.Errorf("タグの数 = %d, want %d", after, before)
 		}
-		page := decode[gen.LibraryPage](t, f.env.get("/api/library", f.owner))
-		if names := libraryItemNames(page); !slices.Equal(names, []string{"ep1", "ep10", "ep2", "group:pair", "solo"}) {
-			t.Fatalf("タグ化の後の項目 = %v", names)
-		}
+		// メンバーにはフォルダ由来のタグが付く。ライブラリはグループから読むので、ungroup を書いても
+		// show のグループは残る（TestSetFolderGrouping と同じ）。
+		page := decode[gen.VideoPage](t, f.env.get("/api/videos", f.owner))
 		for _, item := range page.Items {
-			if item.Video == nil || !strings.HasPrefix(item.Video.Title, "ep") {
+			if !strings.HasPrefix(item.Title, "ep") {
 				continue
 			}
-			if !slices.ContainsFunc(item.Video.Tags, func(tag gen.VideoTag) bool { return tag.Id == f.folder && tag.FromFolder }) {
-				t.Errorf("%s のタグ = %+v, want show（フォルダ由来）", item.Video.Title, item.Video.Tags)
+			if !slices.ContainsFunc(item.Tags, func(tag gen.VideoTag) bool { return tag.Id == f.folder && tag.FromFolder }) {
+				t.Errorf("%s のタグ = %+v, want show（フォルダ由来）", item.Title, item.Tags)
 			}
 		}
 		if listing := f.ownerFolder(t, "show"); listing.Folder.Grouping == nil || *listing.Folder.Grouping != (gen.FolderGrouping{Mode: gen.FolderGroupingModeUngroup}) {

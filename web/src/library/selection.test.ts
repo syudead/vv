@@ -14,14 +14,22 @@ import {
 } from "./selection";
 
 /** 選択の持ち方（specs/035-favorites/research.md R-7）。 */
-const series = { folder: { rootId: 3, path: "series" }, videoIds: [101, 102, 103] };
+const series = {
+  id: 5,
+  folder: { rootId: 3, path: "series" },
+  videoIds: [101, 102, 103],
+};
 
 function videoItem(id: number): LibraryItem {
   return { kind: "video", video: { id } as Video };
 }
 
 function groupItem(videoIds: number[]): LibraryItem {
-  const group = { folder: { rootId: 3, path: "series" }, videoIds } as LibraryGroup;
+  const group = {
+    id: 5,
+    folder: { rootId: 3, path: "series" },
+    videoIds,
+  } as LibraryGroup;
   return { kind: "group", group };
 }
 
@@ -55,7 +63,7 @@ describe("LibrarySelection", () => {
   });
 
   it("「すべて選択」の応答は ids と groups の両方が同じときだけ同じ選択とみなす", () => {
-    const all = fromSelectAll([1, 101, 102, 103], [series]);
+    const all = fromSelectAll([1, 101, 102, 103], [{ id: 5, videoIds: series.videoIds }]);
     expect(
       sameSelection(all, setGroup(setVideo(emptySelection, 1, true), series, true)),
     ).toBe(true);
@@ -79,7 +87,7 @@ describe("LibrarySelection", () => {
   it("取り直したグループのメンバーが減っても全員選択中ならグループのまま覚え直し、増えたら外す", () => {
     const selection = setGroup(emptySelection, series, true);
     const shrunk = reconcileGroups(selection, [groupItem([101, 102])]);
-    expect(shrunk.groups.get("3\0series")?.videoIds).toEqual([101, 102]);
+    expect(shrunk.groups.get(5)?.videoIds).toEqual([101, 102]);
     expect(favoriteTargets(shrunk)).toEqual({
       videoIds: [103],
       folders: [{ rootId: 3, path: "series" }],
@@ -87,6 +95,35 @@ describe("LibrarySelection", () => {
     const grown = reconcileGroups(selection, [groupItem([101, 102, 103, 104])]);
     expect(grown.groups.size).toBe(0);
     expect(favoriteTargets(grown).videoIds).toEqual([101, 102, 103]);
+  });
+
+  it("「すべて選択」の groups はフォルダを持たないので、読み込んだグループの項目のフォルダで補う", () => {
+    const all = fromSelectAll(
+      [101, 102, 103, 201],
+      [
+        { id: 5, videoIds: [101, 102, 103] },
+        { id: 6, videoIds: [201] },
+      ],
+      [groupItem([101, 102, 103])],
+    );
+    expect(all.groups.get(5)?.folder).toEqual({ rootId: 3, path: "series" });
+    // フォルダの分からないグループはお気に入りに送らず、そのメンバーも動画として送らない。
+    expect(favoriteTargets(all)).toEqual({
+      videoIds: [],
+      folders: [{ rootId: 3, path: "series" }],
+    });
+    // 後から読み込んだ項目で、フォルダを覚え直す。
+    const later = reconcileGroups(all, [
+      {
+        kind: "group",
+        group: {
+          id: 6,
+          folder: { rootId: 3, path: "x" },
+          videoIds: [201],
+        } as LibraryGroup,
+      },
+    ]);
+    expect(later.groups.get(6)?.folder).toEqual({ rootId: 3, path: "x" });
   });
 
   it("変化が無ければ同じ選択を返す", () => {

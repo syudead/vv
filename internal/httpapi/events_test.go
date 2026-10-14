@@ -144,6 +144,32 @@ func TestStreamEventsSendsCurrentStateThenOnlyChanges(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
+// グループの変化は group のイベント 1 件になり、変わったグループとその祖先の id を小さい順に
+// 運ぶ（specs/048-groups/research.md R-13）。名前は載せない。
+func TestStreamEventsSendsGroupChanges(t *testing.T) {
+	events := NewEvents()
+	handler := newTestServer(t, Options{Scans: &lockedScans{current: domain.Scan{ID: 1}}, Events: events})
+	stream, _ := openEvents(t, handler)
+	if first := nextEvent(t, stream); first.name != "scan" {
+		t.Fatalf("最初のイベント = %q, want scan", first.name)
+	}
+
+	events.Handle(domain.GroupsChanged{GroupIDs: []int64{4, 2}})
+	event := nextEvent(t, stream)
+	if event.name != "group" {
+		t.Fatalf("イベント = %q, want group", event.name)
+	}
+	var changed gen.GroupChanged
+	if err := json.Unmarshal([]byte(event.data), &changed); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(changed.Ids, []int64{2, 4}) || strings.Contains(event.data, "name") {
+		t.Errorf("group = %s, want ids [2 4]", event.data)
+	}
+	events.Handle(domain.GroupsChanged{})
+	expectNoEvent(t, stream)
+}
+
 // 送る前に重なった知らせは1回にまとめる。遅い接続のために知らせを溜め込まない。
 func TestStreamEventsCoalescesPendingChanges(t *testing.T) {
 	events := NewEvents()
@@ -157,7 +183,8 @@ func TestStreamEventsCoalescesPendingChanges(t *testing.T) {
 	}
 	events.VideoChanged(2)
 
-	scan, videos := sub.take()
+	pending := sub.take()
+	scan, videos := pending.scan, pending.videos
 	if !scan {
 		t.Error("scan = false, want true")
 	}
@@ -219,34 +246,40 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 
 	events.Handle(domain.JobsQueued{Kinds: domain.JobKinds})
 	events.Handle(domain.ContentUnreferenced{ContentKeys: []string{"k"}})
-	if scan, videos := sub.take(); scan || len(videos) != 0 {
-		t.Fatalf("知らせない変化で知らせた: scan=%v videos=%v", scan, videos)
+	if pending := sub.take(); pending.scan || len(pending.videos) != 0 || len(pending.groups) != 0 {
+		t.Fatalf("知らせない変化で知らせた: %+v", pending)
 	}
 
 	events.Handle(domain.ScanChanged{})
-	if scan, _ := sub.take(); !scan {
+	if !sub.take().scan {
 		t.Fatal("ScanChanged: scan=false")
 	}
 	events.Handle(domain.ProcessingChanged{})
-	if scan, _ := sub.take(); !scan {
+	if !sub.take().scan {
 		t.Fatal("ProcessingChanged: scan=false")
 	}
 	// 同じ動画の続けての変化は1つにまとまる。
 	events.Handle(domain.VideoIngestChanged{VideoID: 5, Stage: domain.JobProbe})
 	events.Handle(domain.VideoIngestChanged{VideoID: 5, Stage: domain.JobThumbnail})
 	events.Handle(domain.VideoIngestChanged{VideoID: 6})
-	if _, videos := sub.take(); !slices.Equal(videos, []int64{5, 6}) {
+	if videos := sub.take().videos; !slices.Equal(videos, []int64{5, 6}) {
 		t.Fatalf("videos = %v, want [5 6]", videos)
 	}
 	// 上書きの変化も video に写す（specs/029-video-overrides/research.md R-7）。
 	events.Handle(domain.VideoOverrideChanged{VideoID: 7})
-	if _, videos := sub.take(); !slices.Equal(videos, []int64{7}) {
+	if videos := sub.take().videos; !slices.Equal(videos, []int64{7}) {
 		t.Fatalf("VideoOverrideChanged: videos = %v, want [7]", videos)
 	}
 	// 束ねの変化は各動画の video に写す（specs/030-video-versions/research.md R-9）。
 	events.Handle(domain.VideoBundleChanged{VideoIDs: []int64{8, 9}})
-	if _, videos := sub.take(); !slices.Equal(videos, []int64{8, 9}) {
+	if videos := sub.take().videos; !slices.Equal(videos, []int64{8, 9}) {
 		t.Fatalf("VideoBundleChanged: videos = %v, want [8 9]", videos)
+	}
+	// グループの変化は group に写し、続けての変化は 1 つにまとまる（specs/048-groups/research.md R-13）。
+	events.Handle(domain.GroupsChanged{GroupIDs: []int64{3, 1}})
+	events.Handle(domain.GroupsChanged{GroupIDs: []int64{1, 2}})
+	if pending := sub.take(); !slices.Equal(pending.groups, []int64{1, 2, 3}) || len(pending.videos) != 0 {
+		t.Fatalf("GroupsChanged: %+v, want groups [1 2 3]", pending)
 	}
 }
 
@@ -353,11 +386,12 @@ func TestScanActivityChangedMarksOnlyScan(t *testing.T) {
 	for range 20 {
 		events.Handle(domain.ScanActivityChanged{})
 	}
-	scan, videos := sub.take()
+	pending := sub.take()
+	scan, videos := pending.scan, pending.videos
 	if !scan || len(videos) != 0 {
 		t.Errorf("scan = %v, videos = %v, want scan だけ", scan, videos)
 	}
-	if scan, _ := sub.take(); scan {
+	if sub.take().scan {
 		t.Error("まとめたあとにも scan が残っている")
 	}
 }

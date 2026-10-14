@@ -39,6 +39,7 @@ function item(id: number, favorite = false): Video {
 
 function group(): LibraryGroup {
   return {
+    id: 7,
     folder: { rootId: 3, path: "series" },
     name: "series",
     videoCount: 2,
@@ -136,7 +137,7 @@ describe("updateFavorites", () => {
     expect(snapshot?.items[0]).toEqual(videoItem(item(5, true)));
     // グループの値はそのままにし、戻ったときに取り直す。
     expect(snapshot?.items[1]).toEqual({ kind: "group", group: group() });
-    expect(snapshot?.staleGroups).toEqual([series]);
+    expect(snapshot?.staleGroups).toEqual([7]);
   });
 
   it("一部の動画にしか反映されなければ、変えた扱いにせず取り直させる", async () => {

@@ -190,10 +190,9 @@ func (s *server) GetPlaylist(w http.ResponseWriter, r *http.Request, id gen.Play
 		case item.Group != nil:
 			group, ok := lookup.group(ctx, audience, roots, *item.Group)
 			if !ok {
-				// 同じスナップショットの登録フォルダの下に無いグループは索引の不整合である。
-				// 黙って落とすと items が itemCount と食い違うので、要求を失敗させる（一覧と同じ）。
-				s.internalError(w, "Could not load the playlist.",
-					fmt.Errorf("group folder is not under any media folder: %s", item.Group.Path))
+				// 見せる動画の無いグループは項目にならない。黙って落とすと items が itemCount と
+				// 食い違うので、要求を失敗させる（一覧と同じ）。
+				s.internalError(w, "Could not load the playlist.", fmt.Errorf("group %d has no video", item.Group.ID))
 				return
 			}
 			out.Items = append(out.Items, gen.PlaylistItem{Id: item.ID, Kind: gen.PlaylistItemKindGroup, Group: &group})

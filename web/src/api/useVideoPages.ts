@@ -19,13 +19,7 @@ import {
   type TagRef,
 } from "./client";
 import { favoriteMark, withFavoriteSince, withGroupFavoriteSince } from "./favorites";
-import {
-  folderRefKey,
-  groupRef,
-  groupsWithMembers,
-  itemKey,
-  videoItem,
-} from "./libraryItems";
+import { groupsAtFolders, groupsWithMembers, itemKey, videoItem } from "./libraryItems";
 import type { useGroupRefresh } from "./useGroupRefresh";
 import type { useItemRefresh } from "./useItemRefresh";
 import type { VideosCriteria } from "./videosCriteria";
@@ -282,15 +276,7 @@ export function useVideoPages({
         // 現れたなら取り直す。付け外しの前に読まれたかもしれず、反映の数が 0 の
         // （もうグループでない）ものは withGroupFavoriteSince では直せない（404 で外す）。
         const favoriteFolders = favoriteFoldersChangedWhileLoading.current;
-        if (favoriteFolders.size > 0) {
-          refreshGroups(
-            page.items.flatMap((item) => {
-              if (item.kind !== "group") return [];
-              const folder = groupRef(item.group);
-              return favoriteFolders.has(folderRefKey(folder)) ? [folder] : [];
-            }),
-          );
-        }
+        refreshGroups(groupsAtFolders(page.items, favoriteFolders.values()));
         changedWhileLoading.current.clear();
         progressChangedWhileLoading.current.clear();
         favoriteFolders.clear();

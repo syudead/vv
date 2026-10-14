@@ -17,12 +17,15 @@ type LibraryItems interface {
 	// ListLibrary は見る人に見せる項目1ページを返す（GET /api/library）。
 	ListLibrary(ctx context.Context, audience domain.Audience, q domain.VideoQuery) (domain.LibraryPage, error)
 	// LibraryIDs は ListLibrary と同じ条件（並び順・カーソル・件数を除く）に合う項目の、
-	// 動画の項目の id と、グループの項目ごとのフォルダと全メンバーの id を返す
+	// 動画の項目の id と、グループの項目ごとのグループの id と再生順の動画の id を返す
 	// （GET /api/library/ids、所有者だけ）。
 	LibraryIDs(ctx context.Context, q domain.VideoQuery) (selection domain.LibrarySelection, missingTagIDs []int64, err error)
-	// FolderGroup はフォルダ dir（絶対パス）のグループを、見せてよい全メンバーから作って
-	// 返す。今グループでなければ domain.ErrNotFound である。
-	FolderGroup(ctx context.Context, audience domain.Audience, dir string) (domain.LibraryGroup, error)
+	// Group は見る人に見せるグループ id と、その道筋と項目の最初のページを返す
+	// （GET /api/groups/{id}）。無いか見せないときは domain.ErrNotFound である。
+	Group(ctx context.Context, audience domain.Audience, id int64, trail []int64) (domain.GroupPage, error)
+	// GroupItems はグループ id の項目の続きのページを返す（GET /api/groups/{id}/items）。
+	// 読めないカーソルは domain.ErrInvalidCursor である。
+	GroupItems(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int) (domain.GroupPage, error)
 }
 
 // ListLibrary はライブラリの項目の一覧を返す（GET /api/library）。パラメータの検査と
@@ -79,10 +82,9 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		}
 		group, ok := lookup.group(r.Context(), audience, roots, *item.Group)
 		if !ok {
-			// 同じスナップショットの登録フォルダの下に無いグループは索引の不整合である。
-			// 黙って落とすと items が total・カーソルと食い違うので、要求を失敗させる。
-			s.internalError(w, "Could not load the list.",
-				fmt.Errorf("group folder is not under any media folder: %s", item.Group.Path))
+			// 見せる動画の無いグループは項目にならない。黙って落とすと items が total・カーソルと
+			// 食い違うので、要求を失敗させる。
+			s.internalError(w, "Could not load the list.", fmt.Errorf("group %d has no video", item.Group.ID))
 			return
 		}
 		payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindGroup, Group: &group})
@@ -101,7 +103,8 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 
 // ListLibraryIds は絞り込みに合う項目の動画の id を返す（GET /api/library/ids、
 // 「すべて選択」用。specs/017-folder-groups/contracts/library-api.md §2）。グループの
-// 項目は groups にもフォルダとメンバーとして書く（specs/035-favorites/contracts/screen-api.md §3）。
+// 項目は groups にもグループの id と再生順の動画として書く（specs/035-favorites/contracts/screen-api.md §3、
+// specs/048-groups/contracts/screen-api.md）。
 func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params gen.ListLibraryIdsParams) {
 	if s.library == nil {
 		s.internalError(w, "Library queries are not configured.", nil)
@@ -116,69 +119,23 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 		s.internalError(w, "Could not load the ids.", err)
 		return
 	}
-	groups, err := libraryGroupIDs(selection.Roots, selection.Groups)
-	if err != nil {
-		s.internalError(w, "Could not load the ids.", err)
-		return
-	}
-	s.writeVideoIDs(w, selection.AllVideoIDs(), missingTagIDs, groups)
+	s.writeVideoIDs(w, selection.AllVideoIDs(), missingTagIDs, libraryGroupIDs(selection.Groups))
 }
 
-// libraryGroupIDs はグループの項目を応答の LibraryGroupIds にする。フォルダは
-// GET /api/library の LibraryGroup.folder と同じく、選択と同じスナップショットの登録フォルダ
-// roots から求める。その下に無いグループは、ListLibrary と同じく索引の不整合として誤りにする
-// （黙って落とすと ids と groups が食い違う）。
-func libraryGroupIDs(roots []domain.MediaFolder, groups []domain.LibraryGroupSelection) ([]gen.LibraryGroupIds, error) {
+// libraryGroupIDs はグループの項目を応答の LibraryGroupIds にする。
+func libraryGroupIDs(groups []domain.LibraryGroupSelection) []gen.LibraryGroupIds {
 	if len(groups) == 0 {
-		return nil, nil
+		return nil
 	}
 	out := make([]gen.LibraryGroupIds, 0, len(groups))
 	for _, group := range groups {
-		folder, ok := domain.LocateFolder(roots, group.Path)
-		if !ok {
-			return nil, fmt.Errorf("group folder is not under any media folder: %s", group.Path)
-		}
 		ids := group.VideoIDs
 		if ids == nil {
 			ids = []int64{}
 		}
-		out = append(out, gen.LibraryGroupIds{
-			Folder:   gen.VideoFolder{RootId: folder.RootID, Path: folder.Path},
-			VideoIds: ids,
-		})
+		out = append(out, gen.LibraryGroupIds{Id: group.ID, VideoIds: ids})
 	}
-	return out, nil
-}
-
-// GetFolderGroup はフォルダのグループ1件を返す（GET /api/folders/{rootId}/group、
-// contracts/library-api.md §3）。
-func (s *server) GetFolderGroup(w http.ResponseWriter, r *http.Request, rootID gen.FolderRootId, params gen.GetFolderGroupParams) {
-	if s.library == nil {
-		s.internalError(w, "Group queries are not configured.", nil)
-		return
-	}
-	roots, root, rel, ok := s.resolveFolderRootIn(w, r, rootID, params.Path)
-	if !ok {
-		return
-	}
-	audience := audienceFrom(r.Context())
-	group, err := s.library.FolderGroup(r.Context(), audience, domain.FolderDir(root.Path, rel))
-	switch {
-	case errors.Is(err, domain.ErrNotFound):
-		s.notFoundReason(w, reasonNotFolderGroup, "The folder is not a group.")
-		return
-	case err != nil:
-		s.folderError(w, r, "Could not load the group.", err)
-		return
-	}
-
-	payload, ok := s.itemLookups(r.Context(), nil, group.Members).group(r.Context(), audience, roots, group)
-	if !ok {
-		s.notFoundReason(w, reasonNotFolderGroup, "The folder is not a group.")
-		return
-	}
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, payload, s.logger)
+	return out
 }
 
 // itemLookup は項目に載せる再生位置とタグをまとめて引いたものである。
@@ -205,12 +162,11 @@ func (l itemLookup) video(ctx context.Context, audience domain.Audience, roots [
 	return forAudience(audience, item)
 }
 
-// group はグループの項目を応答の形にする。グループのフォルダを登録フォルダから
-// 引けなければ false を返す。ゲストには視聴の値を載せず、タグを空にする
-// （data-model.md §7）。
+// group はグループの項目を応答の形にする。見せる動画が無ければ false を返す。folder は
+// 自動グループのフォルダが登録フォルダ roots の下にあるときだけ載せる（specs/048-groups/
+// contracts/screen-api.md）。ゲストには視聴の値を載せず、タグを空にする（data-model.md §7）。
 func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, group domain.LibraryGroup) (gen.LibraryGroup, bool) {
-	folder, ok := domain.LocateFolder(roots, group.Path)
-	if !ok || len(group.Members) == 0 {
+	if len(group.Members) == 0 {
 		return gen.LibraryGroup{}, false
 	}
 	ids := make([]int64, 0, len(group.Members))
@@ -218,7 +174,7 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 		ids = append(ids, member.ID)
 	}
 	out := gen.LibraryGroup{
-		Folder:      gen.VideoFolder{RootId: folder.RootID, Path: folder.Path},
+		Id:          group.ID,
 		Name:        group.Name,
 		VideoCount:  len(group.Members),
 		DurationMs:  group.DurationMs,
@@ -228,6 +184,11 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 		OpenVideoId: group.OpenVideoID,
 		VideoIds:    ids,
 		Tags:        []gen.VideoTag{},
+	}
+	if group.Path != "" {
+		if folder, ok := domain.LocateFolder(roots, group.Path); ok {
+			out.Folder = &gen.VideoFolder{RootId: folder.RootID, Path: folder.Path}
+		}
 	}
 	if !audience.IsOwner() {
 		return out, true

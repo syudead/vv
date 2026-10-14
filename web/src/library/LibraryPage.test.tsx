@@ -1958,6 +1958,7 @@ describe("LibraryPage", () => {
 
     function seriesGroup(extra: Partial<LibraryGroup> = {}): LibraryGroup {
       return {
+        id: 7,
         folder: { rootId: 3, path: "series" },
         name: "series",
         videoCount: 12,
@@ -2049,8 +2050,8 @@ describe("LibraryPage", () => {
         if (url.pathname === "/api/library/ids") {
           return Promise.resolve(json({ ids: [1, ...memberIds, 2] }));
         }
-        if (url.pathname === "/api/folders/3/group") {
-          return Promise.resolve(json(server.group));
+        if (url.pathname === "/api/groups/7") {
+          return Promise.resolve(json({ group: server.group, trail: [], items: [] }));
         }
         if (url.pathname === "/api/video-tags" && method === "POST") {
           const body = JSON.parse(String(init?.body)) as { videoIds: number[] };
@@ -2324,6 +2325,7 @@ describe("LibraryPage の英語の画面（specs/023-english-i18n）", () => {
     thumbnailUrl: undefined,
   });
   const group: LibraryGroup = {
+    id: 7,
     folder: { rootId: 3, path: "連続もの" },
     name: "連続もの",
     videoCount: 2,
@@ -2559,6 +2561,7 @@ describe("LibraryPage の束ねる操作（specs/030-video-versions/ui-design.md
   let listed: number[];
   let bundleRequests: { videoIds: number[]; representativeId: number }[];
   const group: LibraryGroup = {
+    id: 7,
     folder: { rootId: 3, path: "連続もの" },
     name: "連続もの",
     videoCount: 2,

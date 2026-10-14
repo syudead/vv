@@ -4,7 +4,7 @@ import { useAudience } from "../auth/audience";
 import type { UiText } from "../i18n";
 import type { FolderRef, TagRef } from "./client";
 import { subscribeFavorites, subscribeFavoritesStale } from "./favorites";
-import { folderRefKey, groupRef } from "./libraryItems";
+import { folderRefKey, groupsAtFolders, groupsIn, shownGroupIds } from "./libraryItems";
 import { subscribeProgress } from "./progressEvents";
 import { subscribeServerEvents } from "./serverEvents";
 import { useGroupRefresh } from "./useGroupRefresh";
@@ -245,7 +245,7 @@ export function useVideos(
   // お気に入りの付け外しの結果も一覧を読み直さずに反映する（specs/035-favorites/research.md R-6）。
   // 動画の項目は `favorite` をその場で差し替える。メンバーの付け外しはグループの値を
   // 変えないので、グループは取り直さない（要件 4）。付け外したグループの項目は
-  // `GET /api/folders/{rootId}/group` で取り直し、404 なら外す（useGroupRefresh）。
+  // `GET /api/groups/{id}` で取り直し、404 なら外す（useGroupRefresh）。
   // お気に入りのみで絞った一覧や「Date favorited」の並びでも、その場では外さず並べ替えない。
   //
   // 確かに反映された動画は、一部反映の取り直しに失敗してお気に入りの印が確かでなかった
@@ -267,14 +267,7 @@ export function useVideos(
             favoriteFoldersChangedWhileLoading.current.set(folderRefKey(folder), folder);
           }
         }
-        const wanted = new Set(folders.map(folderRefKey));
-        refreshGroups(
-          itemsRef.current.flatMap((item) =>
-            item.kind === "group" && wanted.has(folderRefKey(groupRef(item.group)))
-              ? [groupRef(item.group)]
-              : [],
-          ),
-        );
+        refreshGroups(groupsAtFolders(itemsRef.current, folders));
       }),
     [notifyIfIdle, refreshGroups, settleUncertainReason],
   );
@@ -293,17 +286,18 @@ export function useVideos(
             if (shownVideoIds(itemsRef.current).includes(id)) refreshItems([id]);
             refreshGroupsWith([id]);
           },
+          // グループの名前か項目が変わった（specs/048-groups/research.md R-13）。表示中の
+          // グループの項目だけを取り直す。
+          group: (ids) => {
+            refreshGroups(groupsIn(itemsRef.current, ids));
+          },
           // つなぎ直したときは、切れていた間の知らせを受け取っていない。準備が
           // 済んだ動画も消えているかもしれないので、表示中の項目をすべて取り直す
           // （消えていれば一覧から外れる）。最初の接続では、準備中の項目だけでよい。
           open: (reconnected) => {
             if (reconnected) {
               refreshItems(shownVideoIds(itemsRef.current));
-              refreshGroups(
-                itemsRef.current.flatMap((item) =>
-                  item.kind === "group" ? [groupRef(item.group)] : [],
-                ),
-              );
+              refreshGroups(shownGroupIds(itemsRef.current));
             } else {
               refreshProcessingItems();
             }
@@ -313,16 +307,7 @@ export function useVideos(
     // 復元した一覧は、別の画面にいた間に準備が進んでいることがある。
     refreshProcessingItems();
     // 控えの後にメンバーが変わったグループも取り直す（ListSnapshot.staleGroups）。
-    const stale = new Set(staleGroups.current.map(folderRefKey));
-    if (stale.size > 0) {
-      refreshGroups(
-        itemsRef.current.flatMap((item) =>
-          item.kind === "group" && stale.has(folderRefKey(groupRef(item.group)))
-            ? [groupRef(item.group)]
-            : [],
-        ),
-      );
-    }
+    refreshGroups(groupsIn(itemsRef.current, staleGroups.current));
     const groups = groupQueue.current;
     return () => {
       unsubscribe();

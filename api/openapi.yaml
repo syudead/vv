@@ -3184,30 +3184,83 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
-  /api/folders/{rootId}/group:
+  /api/groups/{id}:
     get:
-      operationId: getFolderGroup
+      operationId: getGroup
       security:
         - sessionCookie: []
         - {}
-      summary: フォルダのグループ1件を返す
+      summary: グループ 1 つと、その道筋と項目の最初のページを返す
       description: |
-        一覧に残っているグループのカードを取り直すための経路
-        （specs/017-folder-groups/contracts/library-api.md §3）。絞り込みに関係なく、
-        グループの全メンバーから作る。そのフォルダが今グループでないか無いときは 404。
+        グループの値（`LibraryGroup`）、`trail` のうち今も親と子の組が続く部分、項目（子グループと
+        動画）の最初の 1 ページ（100 件）を位置の順に返す（specs/048-groups/contracts/screen-api.md）。
+        項目は見る人に見せるものだけで、見る人に引けない動画と、見る人に見せる動画の無い子グループは
+        入らない。続きは `listGroupItems` で読む。
 
-        ゲストでは公開のメンバーだけから作り、公開のメンバーが2本以上なければ 404 にする
-        （data-model.md §7）。
+        グループの値は子孫の動画を再生順（子グループは深さ優先、同じ動画は最初の 1 回）で数える
+        （specs/048-groups/research.md R-7）。ゲストでは公開の動画だけから作る。無いグループと、
+        見る人に見せる動画の無いグループは 404 `not_found`。
       parameters:
-        - $ref: "#/components/parameters/FolderRootId"
-        - $ref: "#/components/parameters/FolderPath"
+        - $ref: "#/components/parameters/GroupId"
+        - name: trail
+          in: query
+          description: |
+            画面が通ってきたグループの id を外側から順に `,` で区切って並べたもの
+            （specs/048-groups/research.md R-8）。応答の `trail` は、このグループから外へ向かって
+            親と子の組が続く部分で、組が崩れた所より外側を捨てる
+          style: form
+          explode: false
+          schema:
+            type: array
+            maxItems: 100
+            items:
+              type: integer
+              format: int64
       responses:
         "200":
           description: グループ
           content:
             application/json:
               schema:
-                $ref: "#/components/schemas/LibraryGroup"
+                $ref: "#/components/schemas/GroupDetail"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/groups/{id}/items:
+    get:
+      operationId: listGroupItems
+      security:
+        - sessionCookie: []
+        - {}
+      summary: グループの項目の続きのページを返す
+      description: |
+        `getGroup` と同じ項目を、前の応答の `nextCursor` の続きから位置の順に返す。読めない
+        カーソルは 400 `invalid_cursor`。グループの扱いは `getGroup` と同じで、無いか見せないときは
+        404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/GroupId"
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: 項目 1 ページ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GroupItemPage"
         "400":
           $ref: "#/components/responses/InvalidRequest"
         "404":
@@ -3337,9 +3390,12 @@ paths:
           走査の変化、仕事の成否（済みの本数が変わる）、今の処理の変化で送る
         - `video`: 動画の状態が変わった。data は `VideoChanged`。最新の内容は
           `GET /api/videos/{id}` で取る
+        - `group`: グループの名前か項目が変わった。data は `GroupChanged` で、変わったグループと
+          その祖先の id を運ぶ（specs/048-groups/research.md R-13）。最新の内容は
+          `GET /api/groups/{id}` で取る
 
         接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-        変化を取り戻せる。`video` は切れていた間の分を送り直さない。
+        変化を取り戻せる。`video` と `group` は切れていた間の分を送り直さない。
       responses:
         "200":
           description: イベントの流れ
@@ -3399,6 +3455,15 @@ components:
       in: path
       required: true
       description: API トークンの識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    GroupId:
+      name: id
+      in: path
+      required: true
+      description: グループの識別子
       schema:
         type: integer
         format: int64
@@ -4675,7 +4740,7 @@ components:
         groups:
           type: array
           description: |
-            条件に合うグループの項目。各要素のフォルダと、そのグループの全メンバーの id（ids にも含まれる）。
+            条件に合うグループの項目。各要素のグループの id と、その再生順の動画の id（ids にも含まれる）。
             listLibraryIds の応答にだけ入り、1 つも無ければ省略される
             （specs/035-favorites/contracts/screen-api.md §3）
           items:
@@ -4683,15 +4748,17 @@ components:
 
     LibraryGroupIds:
       type: object
-      required: [folder, videoIds]
+      required: [id, videoIds]
       additionalProperties: false
       description: GET /api/library/ids のグループの項目 1 件
       properties:
-        folder:
-          $ref: "#/components/schemas/VideoFolder"
+        id:
+          type: integer
+          format: int64
+          description: グループの識別子
         videoIds:
           type: array
-          description: グループの全メンバーの id
+          description: グループの再生順の、見せてよい動画の id
           items:
             type: integer
             format: int64
@@ -4829,19 +4896,26 @@ components:
 
     LibraryGroup:
       type: object
-      required: [folder, name, videoCount, sizeBytes, addedAt, previews, openVideoId, videoIds, tags]
+      required: [id, name, videoCount, sizeBytes, addedAt, previews, openVideoId, videoIds, tags]
       additionalProperties: false
       description: |
-        グループの項目。値はどれも、見る人に見せてよい全メンバーから作る
-        （specs/017-folder-groups/data-model.md §5・§6・§7）。グループは `folder` で指し、
-        グループの id は出さない。ゲストの応答では `watchedCount`・`watchState`・
-        `lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+        グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+        同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+        「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+        `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
       properties:
+        id:
+          type: integer
+          format: int64
+          description: グループの識別子
         folder:
           $ref: "#/components/schemas/VideoFolder"
+          description: |
+            自動グループのフォルダ。フォルダから自動でできたグループで、そのフォルダが登録フォルダの
+            下にあるときだけ入る。手で作ったグループには無く、画面はこれで 2 つを見分ける
         name:
           type: string
-          description: フォルダ名
+          description: グループの名前
         videoCount:
           type: integer
         watchedCount:
@@ -4900,6 +4974,85 @@ components:
           description: |
             所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
             所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
+
+    GroupRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      description: グループを指す id と名前
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+
+    GroupItem:
+      type: object
+      required: [id, kind]
+      additionalProperties: false
+      description: グループの項目 1 件。`kind` に応じて `video` か `group` のちょうど一方が入る
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: 項目の識別子。動画やグループの id ではない
+        kind:
+          type: string
+          enum: [video, group]
+        video:
+          $ref: "#/components/schemas/Video"
+        group:
+          $ref: "#/components/schemas/LibraryGroup"
+
+    GroupDetail:
+      type: object
+      required: [group, trail, items]
+      additionalProperties: false
+      description: GET /api/groups/{id} の応答
+      properties:
+        group:
+          $ref: "#/components/schemas/LibraryGroup"
+        trail:
+          type: array
+          description: 要求の `trail` のうち親と子の組が続く部分。外側から順で、最後はこのグループの親
+          items:
+            $ref: "#/components/schemas/GroupRef"
+        items:
+          type: array
+          description: 項目の最初のページ。位置の順で、見る人に見せる項目だけ
+          items:
+            $ref: "#/components/schemas/GroupItem"
+        nextCursor:
+          type: string
+          description: 続きがあるときだけ入る。`listGroupItems` に渡す
+
+    GroupItemPage:
+      type: object
+      required: [items]
+      additionalProperties: false
+      description: GET /api/groups/{id}/items の応答
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/GroupItem"
+        nextCursor:
+          type: string
+          description: 続きがあるときだけ入る
+
+    GroupChanged:
+      type: object
+      required: [ids]
+      additionalProperties: false
+      description: /api/events の `group` の data
+      properties:
+        ids:
+          type: array
+          description: 名前か項目が変わったグループと、その祖先のグループの id。小さい順
+          items:
+            type: integer
+            format: int64
 
     FolderPreview:
       type: object
@@ -5237,7 +5390,7 @@ components:
         GET /api/videos/{id} では代表の所在（location）のフォルダを指す。所在がどの
         登録フォルダにも含まれなければ省かれる。ScanIssue.folder では問題の所在の、ScanActivity.folder では
         今の処理のファイルのフォルダを指す。
-        LibraryGroup.folder・LibraryGroupIds.folder（GET /api/library/ids）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
+        LibraryGroup.folder（自動グループ）・Video.group.folder（GET /api/videos/{id}）・RelatedGroup.folder では
         グループのフォルダそのものを指す
       properties:
         rootId:

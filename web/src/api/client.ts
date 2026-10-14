@@ -121,6 +121,8 @@ export type CreatedAPIToken = components["schemas"]["CreatedAPIToken"];
 export type LibraryItem =
   { kind: "video"; video: Video } | { kind: "group"; group: LibraryGroup };
 export type VideoChanged = components["schemas"]["VideoChanged"];
+export type GroupChanged = components["schemas"]["GroupChanged"];
+export type GroupDetail = components["schemas"]["GroupDetail"];
 
 // 1ページの件数。既定は契約（api/openapi.yaml）と同じ 60 で、最初の画面は
 // これだけを待つ。
@@ -496,19 +498,12 @@ export function listFolderVideos(params: ListFolderVideosParams): Promise<VideoP
 }
 
 /**
- * getFolderGroup はフォルダのグループ1件を、絞り込みに関係なく全メンバーから取得する
- * （一覧に残っているグループの項目の取り直し。specs/017-folder-groups/contracts/library-api.md §3）。
- * そのフォルダが今グループでないか無いときは 404 の RequestFailed で失敗する。
+ * getGroup はグループ 1 つを、絞り込みに関係なく子孫の動画の全部から作って取得する
+ * （GET /api/groups/{id}。一覧に残っているグループの項目の取り直しにも使う。
+ * specs/048-groups/contracts/screen-api.md）。無いか見せないときは 404 の RequestFailed で失敗する。
  */
-export function getFolderGroup(
-  folder: FolderRef,
-  signal?: AbortSignal,
-): Promise<LibraryGroup> {
-  const query = folderQuery(folder);
-  const suffix = query.size === 0 ? "" : `?${query.toString()}`;
-  return request<LibraryGroup>(`/api/folders/${String(folder.rootId)}/group${suffix}`, {
-    signal,
-  });
+export function getGroup(id: number, signal?: AbortSignal): Promise<GroupDetail> {
+  return request<GroupDetail>(`/api/groups/${String(id)}`, { signal });
 }
 
 /** getVideo は動画1件の詳細を取得する。 */

@@ -35,6 +35,38 @@ type GroupRef struct {
 	Name string
 }
 
+// GroupItemsDefaultLimit と GroupItemsMaxLimit は、グループの項目 1 ページの件数の既定と上限である
+// （specs/048-groups/contracts/screen-api.md「Statuses」）。
+const (
+	GroupItemsDefaultLimit = 100
+	GroupItemsMaxLimit     = 200
+)
+
+// GroupItem はグループの項目 1 件である。Video と Group のちょうど一方を持つ。
+type GroupItem struct {
+	// ID は項目（group_items.id）の id で、動画やグループの id ではない。
+	ID    int64
+	Video *Video
+	Group *LibraryGroup
+}
+
+// GroupPage はグループ 1 つと、その項目 1 ページである（GET /api/groups/{id} と
+// GET /api/groups/{id}/items）。
+type GroupPage struct {
+	// Group はグループの値（LibraryGroup）である。
+	Group LibraryGroup
+	// Items は見せる項目を位置の順に持つ 1 ページである。見る人に引けない動画の項目と、
+	// 見る人に見せる動画の無い子グループの項目は入らない（data-model.md「Visibility」）。
+	Items []GroupItem
+	// Trail は要求の trail のうち、親と子の組が続く部分である（research.md R-8）。外側から順に
+	// 持ち、最後はグループの親である。
+	Trail []GroupRef
+	// NextCursor は次のページの取得に渡す。これ以上無ければ空。
+	NextCursor string
+	// Roots は登録フォルダの一覧である。項目と同じ読み取りスナップショットから読む。
+	Roots []MediaFolder
+}
+
 // GroupsChanged はグループの名前か項目が変わったことを表す（research.md R-13）。GroupIDs は
 // 変わったグループと、その祖先のグループの id で、小さい順に重複なく持つ。取引の確定後に
 // 発行する。

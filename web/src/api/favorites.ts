@@ -13,7 +13,7 @@ export type FavoritesResponse = components["schemas"]["FavoritesResponse"];
  * - `videoIds` は付け外しが確かに反映された動画で、一覧の項目と控えの `favorite` を
  *   取り直さずに差し替える。
  * - `folders` は要求に含めたグループのフォルダで、一覧はそのグループの項目を
- *   `GET /api/folders/{rootId}/group` で取り直す（404 なら外す。017「Refresh and removal」）。
+ *   `GET /api/groups/{id}` で取り直す（404 なら外す。017「Refresh and removal」）。
  *   グループの値はサーバーが持つので、反映の数にかかわらず取り直す。
  */
 export interface FavoritesChange {
@@ -166,10 +166,14 @@ export function withFavoriteSince<T extends { id: number; favorite?: boolean }>(
   return { ...video, favorite: change.favorite };
 }
 
-/** withGroupFavoriteSince はグループの項目の `favorite` を withFavoriteSince と同じく補正する。 */
+/**
+ * withGroupFavoriteSince はグループの項目の `favorite` を withFavoriteSince と同じく補正する。
+ * お気に入りはまだフォルダで送るので、フォルダの無い（手で作った）グループはそのまま返す。
+ */
 export function withGroupFavoriteSince<
-  T extends { folder: FolderRef; favorite?: boolean },
+  T extends { folder?: FolderRef; favorite?: boolean },
 >(group: T, mark: number): T {
+  if (group.folder === undefined) return group;
   const change = latestGroups.get(
     folderRefKey({ rootId: group.folder.rootId, path: group.folder.path }),
   );

@@ -1,6 +1,6 @@
 import type { UiText } from "../i18n";
-import type { FolderRef, LibraryGroup, LibraryItem, TagRef, Video } from "./client";
-import { folderRefKey, groupRef, itemKey, itemVideos, videoItem } from "./libraryItems";
+import type { LibraryGroup, LibraryItem, TagRef, Video } from "./client";
+import { itemKey, itemVideos, videoItem } from "./libraryItems";
 import { applyTagToTags } from "./tagOrder";
 
 /**
@@ -25,15 +25,15 @@ export interface VideosSeed {
   cursor?: string;
   hasMore: boolean;
   /**
-   * 控えを取った後にメンバーが変わったグループの項目（ListSnapshot.staleGroups）。
+   * 控えを取った後にメンバーが変わったグループの項目の id（ListSnapshot.staleGroups）。
    * 戻ったときにこれを取り直す。
    */
-  staleGroups?: readonly FolderRef[];
+  staleGroups?: readonly number[];
 }
 
 /**
  * appendUnique は続きのページから、既に出ている項目を捨てて足す（list-api.md §5）。
- * 動画の項目は動画の id、グループの項目はフォルダで比べる（itemKey）。
+ * 動画の項目は動画の id、グループの項目はグループの id で比べる（itemKey）。
  */
 function appendUnique(current: LibraryItem[], next: LibraryItem[]): LibraryItem[] {
   const seen = new Set(current.map(itemKey));
@@ -96,8 +96,8 @@ export type VideosDataAction =
   | { type: "favorite"; videoIds: readonly number[]; favorite: boolean }
   | { type: "refresh"; videoId: number; video: Video }
   | { type: "remove"; videoId: number }
-  | { type: "refreshGroup"; folderKey: string; group: LibraryGroup }
-  | { type: "removeGroup"; folderKey: string }
+  | { type: "refreshGroup"; groupId: number; group: LibraryGroup }
+  | { type: "removeGroup"; groupId: number }
   | {
       type: "page";
       page: {
@@ -187,7 +187,7 @@ export function videosDataReducer(
     }
     case "refreshGroup": {
       const isTarget = (item: LibraryItem) =>
-        item.kind === "group" && folderRefKey(groupRef(item.group)) === action.folderKey;
+        item.kind === "group" && item.group.id === action.groupId;
       if (!state.items.some(isTarget)) return state;
       return {
         ...state,
@@ -198,7 +198,7 @@ export function videosDataReducer(
     }
     case "removeGroup": {
       const isTarget = (item: LibraryItem) =>
-        item.kind === "group" && folderRefKey(groupRef(item.group)) === action.folderKey;
+        item.kind === "group" && item.group.id === action.groupId;
       if (!state.items.some(isTarget)) return state;
       // total は次に一覧を読むまでそのままにする（ui-design.md「Refresh and removal」）。
       return { ...state, items: state.items.filter((item) => !isTarget(item)) };
@@ -275,8 +275,8 @@ export interface VideosState {
   refreshInPlace: () => void;
   /**
    * staleGroups は、取り直しを求めたがまだ済んでいない表示中のグループの項目の
-   * フォルダを返す（取り直しの待ち・途中・一時的な失敗）。一覧の控えを取るときに
+   * id を返す（取り直しの待ち・途中・一時的な失敗）。一覧の控えを取るときに
    * ListSnapshot.staleGroups へ渡し、戻ったときに取り直させる。
    */
-  staleGroups: () => FolderRef[];
+  staleGroups: () => number[];
 }
