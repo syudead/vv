@@ -33,28 +33,54 @@ func shownVideoForKeyExpr(key string, audience domain.Audience) string {
 const groupSortWidth = 10
 
 // groupDescendantsCTE は、グループ id を 1 列 id で返す select 文 roots の各グループについて、
-// 見る人に見せる子孫の動画を再生順の鍵とともに返す with 句の部品
-// `gtree(root_id, group_id, sort_path, seen)` と `gdesc(root_id, video_id, sort_key)` を返す
-// （research.md R-7）。gdesc は根と動画の組ごとに 1 行で、sort_key は深さ優先で最初に現れた
-// 位置の鍵である。見せる動画の無い根は gdesc に現れない。呼び出し側は先頭に with を付けるか、
-// ほかの with 句の部品に続けてつなぐ。
-// 入れ子の深さに上限は無い（research.md R-5）。書き込みが循環を拒むが、seen にたどった道の
-// グループ id を ",id," の形でためて、同じ道に戻る子をたどらないので、壊れた行があっても終わる。
+// 見る人に見せる子孫の動画を再生順の鍵とともに返す with 句の部品を返す（research.md R-7）。
+// 呼び出し側が読むのは `gdesc(root_id, video_id, sort_key)` だけで、根と動画の組ごとに 1 行、
+// sort_key は深さ優先で最初に現れた位置の鍵である。見せる動画の無い根は gdesc に現れない。
+// 呼び出し側は先頭に with を付けるか、ほかの with 句の部品に続けてつなぐ。roots は 1 度だけ
+// 埋め込むので、位置で結び付ける ? を持ってよい。
+//
+// 複数の親に入った子グループ（ダイヤモンド状の階層）を、たどれる道ごとに展開すると、行数が段数に
+// 対して指数的に増える。そこで道ではなく、根と子孫のグループの組ごとに 1 本だけ、深さ優先で最初に
+// 現れる道（位置の鍵がいちばん小さい道）を求める。
+//   - gclos(anc, descendant) は根から届くグループの推移閉包（自分自身を含む）。union で重複を
+//     捨てるので、行数はグループの組の数で抑えられ、壊れた行の循環があっても終わる。
+//   - gpath は根から目的のグループへ、目的に届く項目のうち位置のいちばん小さいものを 1 段ずつ選んで
+//     進む。どの道も同じグループを 2 度通らない（通るなら循環）ので、どの位置の鍵も別の道の鍵の
+//     接頭辞にならず、最初の道の鍵に中の位置を足した鍵が、すべての道の鍵のうち最小になる。
+//     seen は壊れた行の循環で止めるためのもの。
+//
+// 入れ子の深さに上限は無い（research.md R-5）。
 func groupDescendantsCTE(roots string, audience domain.Audience) string {
 	width := strconv.Itoa(groupSortWidth)
-	return `gtree(root_id, group_id, sort_path, seen) as (
-		select id, id, '', ',' || id || ',' from (` + roots + `)
+	return `groots(id) as (select distinct id from (` + roots + `)),
+	gnodes(id) as (
+		select id from groots
+		union
+		select gi.child_id from gnodes n join group_items gi on gi.group_id = n.id
+		where gi.child_id is not null),
+	gclos(anc, descendant) as materialized (
+		select id, id from gnodes
+		union
+		select c.anc, gi.child_id from gclos c join group_items gi on gi.group_id = c.descendant
+		where gi.child_id is not null),
+	gpath(root_id, group_id, target, sort_path, seen) as (
+		select r.id, r.id, c.descendant, '', ',' || r.id || ','
+		from groots r join gclos c on c.anc = r.id
 		union all
-		select t.root_id, gi.child_id, t.sort_path || printf('%0` + width + `d', gi.position),
-			t.seen || gi.child_id || ','
-		from gtree t join group_items gi on gi.group_id = t.group_id
-		where gi.child_id is not null and instr(t.seen, ',' || gi.child_id || ',') = 0),
+		select p.root_id, gi.child_id, p.target, p.sort_path || printf('%0` + width + `d', gi.position),
+			p.seen || gi.child_id || ','
+		from gpath p join group_items gi on gi.group_id = p.group_id
+		where p.group_id <> p.target and gi.child_id is not null
+			and instr(p.seen, ',' || gi.child_id || ',') = 0
+			and gi.position = (select min(n.position) from group_items n
+				join gclos nc on nc.anc = n.child_id and nc.descendant = p.target
+				where n.group_id = p.group_id)),
 	gdesc(root_id, video_id, sort_key) as materialized (
 		select root_id, video_id, min(sort_key) from (
 			select t.root_id, ` + shownVideoForKeyExpr("gi.content_key", audience) + ` as video_id,
 				t.sort_path || printf('%0` + width + `d', gi.position) as sort_key
-			from gtree t join group_items gi on gi.group_id = t.group_id
-			where gi.content_key is not null)
+			from gpath t join group_items gi on gi.group_id = t.target
+			where t.group_id = t.target and gi.content_key is not null)
 		where video_id is not null
 		group by root_id, video_id)`
 }

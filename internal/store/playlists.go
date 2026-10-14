@@ -33,7 +33,7 @@ func playlistItemVideoExpr(alias string) string {
 }
 
 // playlistGroupVideos は、プレイリストの項目（別名 alias）のグループの、所有者に見せる子孫の動画を
-// 再生順の鍵とともに返す副問い合わせの頭（`with gtree, gdesc`）である。呼び出し側は gdesc
+// 再生順の鍵とともに返す副問い合わせの頭（`with ... gdesc`）である。呼び出し側は gdesc
 // （root_id, video_id, sort_key）を読む select 文を続ける。グループの読み出し（loadGroups）と同じ
 // groupDescendantsCTE を使うので、見せるかと再生順がライブラリのグループと食い違わない。
 func playlistGroupVideos(alias string) string {
