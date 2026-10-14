@@ -204,6 +204,26 @@ describe("WorkInfoPluginsSection", () => {
     expect(within(rowOf("example.works")).getByText("Not approved")).toBeDefined();
   });
 
+  it("差し替えかどうかは一覧ではなく応答の状態コードで決める", async () => {
+    // 別のタブで足されて一覧にまだ無いプラグインでも、200 なら差し替えと知らせる。
+    const replaced = plugin({ id: 7 });
+    fetchMock.mockImplementation(
+      server([], (method, url) =>
+        method === "POST" && url === "/api/work-info-plugins"
+          ? json(replaced, 200)
+          : undefined,
+      ).handler,
+    );
+    renderSection();
+    await screen.findByText("No plugins yet");
+
+    choose(wasm("example.wasm"));
+
+    expect(
+      await screen.findByText("Replaced example.works. Approve it again to use it."),
+    ).toBeDefined();
+  });
+
   it("承認の確認は事実と注意を出し、表示した digest を送って承認済みに変える", async () => {
     const digest = "b".repeat(64);
     const fake = server([

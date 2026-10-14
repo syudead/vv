@@ -283,7 +283,7 @@ character set itself, from the `Content-Type` header or the page.
 | --- | --- |
 | `-1` | The request JSON is invalid (method, scheme, URL) |
 | `-2` | The address was refused; the run fails with `blocked_address` whatever the plugin returns |
-| `-3` | The connection or TLS failed |
+| `-3` | The connection or TLS failed, or the response headers exceeded 1 MiB |
 | `-4` | The request took longer than 10 s |
 | `-5` | The run has made 16 requests already |
 | `-6` | The body exceeded 4 MiB |
@@ -305,6 +305,7 @@ A run stops at the first limit it reaches.
 | HTTP requests | 16 per run, `GET` and `POST`, `http` and `https` | `http_send` returns `-5`, or `-1` for another method or scheme |
 | Redirects | 5 per request | The sixth redirect response is handed to the plugin as it is |
 | Request time | 10 s, from sending to the last byte of the body | `http_send` returns `-4` |
+| Response headers | 1 MiB | `http_send` returns `-3` |
 | Response body | 4 MiB | `http_send` returns `-6` |
 
 ## Addresses

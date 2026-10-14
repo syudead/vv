@@ -36,19 +36,23 @@ export async function listWorkInfoPlugins(
  * uploadWorkInfoPlugin は `.wasm` のファイルを `multipart/form-data` の `module` で送り、プラグインを
  * 追加するか、マニフェストの名前が同じプラグインと差し替える（POST /api/work-info-plugins）。使えない
  * ファイルも `state: "invalid"` で返る。16 MiB を超えれば 413 `plugin_too_large` で失敗する。Content-Type は
- * ブラウザが境界とともに付けるので、ここでは付けない。
+ * ブラウザが境界とともに付けるので、ここでは付けない。`replaced` は応答が `200`（差し替え）だったかで、
+ * `201` なら追加である。画面が持つ一覧ではなく、この状態コードで追加と差し替えを見分ける。
  */
-export function uploadWorkInfoPlugin(
+export async function uploadWorkInfoPlugin(
   module: File,
   signal?: AbortSignal,
-): Promise<WorkInfoPlugin> {
+): Promise<{ plugin: WorkInfoPlugin; replaced: boolean }> {
   const form = new FormData();
   form.append("module", module, module.name);
-  return request<WorkInfoPlugin>("/api/work-info-plugins", {
+  const response = await apiFetch("/api/work-info-plugins", {
     method: "POST",
     body: form,
     signal,
   });
+  if (!response.ok) throw await toRequestFailed(response);
+  const plugin = (await response.json()) as WorkInfoPlugin;
+  return { plugin, replaced: response.status === 200 };
 }
 
 /**

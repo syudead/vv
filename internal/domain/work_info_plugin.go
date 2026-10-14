@@ -53,6 +53,9 @@ const (
 	WorkInfoPluginHTTPTimeout = 10 * time.Second
 	// WorkInfoPluginHTTPMaxBodyBytes は 1 つの応答の本文の上限である。
 	WorkInfoPluginHTTPMaxBodyBytes = 4 << 20
+	// WorkInfoPluginHTTPMaxHeaderBytes は 1 つの応答のヘッダーの上限である。超えた応答は届かなかった
+	// ものとして扱う。http_meta はヘッダーを実行の間 vv の側に持つので、本文より小さく抑える。
+	WorkInfoPluginHTTPMaxHeaderBytes = 1 << 20
 )
 
 // ErrWorkInfoPluginTooLarge はモジュールが WorkInfoPluginModuleMaxBytes を超えることを表す。

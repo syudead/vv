@@ -145,6 +145,7 @@ because the owner can act on the host and not on the plugin's message alone.
 | Requests | 16 per run, `GET` and `POST`, `http` and `https` | A 17th request answers `-5`; another method or scheme answers `-1` |
 | Redirects | 5 per request | The sixth redirect response is handed to the plugin as it is |
 | Time | 10 s per request, from sending to the last byte of the body | The request answers `-4` |
+| Response headers | 1 MiB | The request answers `-3` |
 | Response body | 4 MiB | The request answers `-6` |
 
 The client ignores `HTTP_PROXY` and the other proxy variables, because a

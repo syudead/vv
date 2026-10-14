@@ -289,8 +289,7 @@ function WorkInfoPluginsSectionBody() {
     setAdding(true);
     setAddError(null);
     try {
-      const before = new Set(plugins.map((plugin) => plugin.id));
-      const added = await uploadWorkInfoPlugin(file);
+      const { plugin: added, replaced } = await uploadWorkInfoPlugin(file);
       // 足した行は応答から先に一覧へ入れる。読み直しが失敗しても、足した行は見えたまま残る。
       changePlugins((current) =>
         current.some((plugin) => plugin.id === added.id)
@@ -299,7 +298,7 @@ function WorkInfoPluginsSectionBody() {
       );
       clearRowError(added.id);
       focusAfterRender.current = added.id;
-      toast(addedToast(added, before.has(added.id)));
+      toast(addedToast(added, replaced));
       await load({ quiet: true });
     } catch (failure) {
       setAddError(text().addFailed(errorText(failure)));

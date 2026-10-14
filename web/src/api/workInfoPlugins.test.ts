@@ -86,19 +86,21 @@ describe("work-info plugins API", () => {
     const fetchMock = vi
       .fn<typeof fetch>()
       .mockResolvedValueOnce(json(plugin, 201))
+      .mockResolvedValueOnce(json(plugin, 200))
       .mockResolvedValueOnce(
         json({ code: "plugin_too_large", message: "too large", limit: 16 << 20 }, 413),
       );
     vi.stubGlobal("fetch", fetchMock);
     const file = new File([new Uint8Array([0, 97, 115, 109])], "example.wasm");
 
-    expect(await uploadWorkInfoPlugin(file)).toEqual(plugin);
+    expect(await uploadWorkInfoPlugin(file)).toEqual({ plugin, replaced: false });
     const [input, init] = fetchMock.mock.calls[0] ?? [];
     expect(String(input)).toBe("/api/work-info-plugins");
     expect(init?.method).toBe("POST");
     const module = (init?.body as FormData).get("module");
     expect(module).toBeInstanceOf(File);
     expect((module as File).name).toBe("example.wasm");
+    expect(await uploadWorkInfoPlugin(file)).toEqual({ plugin, replaced: true });
 
     const failure = await uploadWorkInfoPlugin(file).catch((error: unknown) => error);
     expect(failure).toBeInstanceOf(RequestFailed);
