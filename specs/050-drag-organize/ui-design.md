@@ -56,10 +56,12 @@ screen apart from its video cards becoming draggable; the video page and
 every other detail screen, which drag nothing (requirement 13). No token is
 added, and the contrast pairs in `web/src/theme/tokens.test.ts` gain nothing:
 the indicators use `primary`, `primary-soft` and `overlay` where cards already
-use them. The design system changes in one place: the `Sonner` rule in
+use them. The design system changes in two places. The `Sonner` rule in
 [components.md](../../web/registry/rules/components.md#sonner) gains the undo
 form, a notice with one action that stays 8 seconds
 ([Undo toast](#undo-toast)), and `useToast` takes that action (R-9).
+`Breadcrumbs` gains an option that keeps its first crumb
+below `md`, which the group page sets ([Group page](#group-page)).
 
 ## Why this shape
 
@@ -134,7 +136,7 @@ User data (a title, a group name) is embedded as an argument. `items`,
 | Bundle item disabled | Bundle up to 20 videos at a time | `library.selection.bundleOverLimit(20)`; a tooltip on the `disabled` item |
 | Menu items, group on group | Put in as a child group; Merge | `organize.menu.nest`, `organize.menu.merge` |
 | Name field, accessible name | Group name | `organize.name.label` |
-| Name field, keyboard hint | Enter keeps the name, Esc keeps "{title}" | `organize.name.hint(title)`; `aria-describedby`, not drawn |
+| Name field, keyboard hint | Enter keeps the name, Esc keeps "{name}" | `organize.name.hint(name)`, with the provisional name ([The new group's name](#the-new-groups-name)); `aria-describedby`, not drawn |
 | Name field rule | Use a name of 1 to 100 characters. | `groups.nameRule` |
 | Rename failed | Couldn't rename the group: {reason} | `groups.renameDialog.failed`; a toast |
 | Undo toast, reorder | Reordered "{name}" | `organize.done.reordered(name)` |
@@ -266,12 +268,29 @@ half opacity until an item is chosen or the menu closes.
 
 | Menu | Items | Sends |
 | --- | --- | --- |
-| Video on video | "Make a group" (lucide `Group`); "Bundle as versions" (lucide `Layers`), `disabled` with the tooltip "Bundle up to 20 videos at a time" when the lifted videos and the target are more than 20 | `group` with `target` the video and, on the group page, `from`; or `bundle` with `target` the video as the representative, with no dialog (requirement 6) |
+| Video on video | "Make a group" (lucide `Group`); "Bundle as versions" (lucide `Layers`), `disabled` with the tooltip "Bundle up to 20 videos at a time" when the lifted cards and the target are more than 20 cards ([Bundle limit](#bundle-limit)) | `group` with `target` the video and, on the group page, `from`; or `bundle` with `target` the video as the representative, with no dialog (requirement 6) |
 | Group on group | "Put in as a child group" (lucide `FolderInput`); "Merge" (lucide `Merge`) | `move` with `to` the group (and `from` on the group page); or `merge` with `into` the group, every lifted card in screen order in one request |
 
 Esc, a press outside and Tab away close the menu, the cards return to full
 opacity and nothing is sent. The menu has no third item and no "Cancel":
 closing is cancelling, as every menu.
+
+### Bundle limit
+
+The screen counts cards, not versions: a list item carries no version count
+(`VideoVersionsRef` is only on `GET /api/videos/{id}`), and a card that is
+already a bundle's representative brings every member of its bundle
+([data-model.md, Operations](data-model.md#operations), Bundle). The menu
+therefore disables "Bundle as versions" only when the cards alone are over
+20, which can never succeed, and leaves the rest to the server, which counts
+after expanding bundles. Reading every card's versions before the menu opens
+was rejected: a drop would wait on up to 20 requests before the menu could
+show.
+
+| Case | Behaviour |
+| --- | --- |
+| More than 20 cards, the target among them | The item is `disabled` with the tooltip "Bundle up to 20 videos at a time"; nothing is sent |
+| 20 cards or fewer that expand to more than 20 videos (a bundle of 12 dropped on a bundle of 10) | The item is enabled. `bundle` answers `400 too_many_videos`; the screen puts the lifted cards back and shows "Couldn't bundle: {reason}" with the reason `errorCodes.too_many_videos` (limit 20), and no undo toast. Nothing is written (contract `/bundle`) |
 
 ## The new group's name
 
@@ -279,8 +298,13 @@ After "Make a group" the screen shows the new group's card where the target
 was (R-6; on the group page at the target's item position, in the library
 at the target's place until the next read puts it where the sort does), and
 the card's name is an `Input` (`h-8 text-sm`, the card's title width) with
-the target's title as its value, selected, focused, named "Group name". The
-diagram shows what the field does.
+the provisional name as its value, selected, focused, named "Group name". The
+provisional name is the name the server gave the group: the target's title
+cut to its first 100 code points and trimmed, as `domain.ValidateGroupName`
+keeps it ([data-model.md, Operations](data-model.md#operations), Group). A
+title over 100 code points therefore starts the field at its first 100, never
+at the whole title, so the field never starts in its over-100 error and Esc
+keeps what the server stored. The diagram shows what the field does.
 
 ```mermaid
 stateDiagram-v2
@@ -295,14 +319,17 @@ stateDiagram-v2
 
 | Event | Behaviour |
 | --- | --- |
-| Enter with a changed, trimmed name of 1 to 100 code points | `PATCH /api/groups/{id}` (048's rename); the card's title shows the new name at once; a failure shows the toast "Couldn't rename the group: {reason}" and the title returns to the provisional name |
+| Enter with a changed, trimmed name of 1 to 100 code points | `PATCH /api/groups/{id}` (048's rename) with the "Make a group" `undoToken` in the body; the card's title shows the new name at once; a failure shows the toast "Couldn't rename the group: {reason}" and the title returns to the provisional name. The undo toast stays as it is, and its Undo still removes the group: the server folds a rename that carries the token into that operation ([contracts/screen-api.md](contracts/screen-api.md#patch-apigroupsid-with-an-undo-token)) |
 | Enter with the name unchanged or empty after trimming, Esc, focus leaving | The field becomes the card's title with the provisional name; nothing is sent |
 | Over 100 code points | "Use a name of 1 to 100 characters." under the field as a `FieldError`; Enter does nothing until the text changes |
 | Folder screen | The same field in a `Popover` of `w-popover` anchored under the target card, because the folder lists videos one by one and draws no group card; Enter and Esc close it the same way, and the two cards stay as the folder's videos |
 
 The field is the only text control on a card, and only for the seconds after
 the drop; a card is never otherwise editable in place. The undo toast shows
-beside it: Undo removes the group, name and all.
+beside it: Undo removes the group, name and all, also after a rename from
+this field. A rename of the new group anywhere else (the 048 rename dialog,
+another tab) carries no token, so it is a change made elsewhere and the undo
+fails with "Couldn't undo: it changed in the meantime" (Edge Case).
 
 ## Undo toast
 
@@ -313,7 +340,8 @@ Every operation that the server accepts ends in one toast with the action
 ```mermaid
 stateDiagram-v2
   [*] --> Shown: 200 undoToken
-  Shown --> Gone: 8 s, dismissed, screen left
+  Shown --> Gone: 8 s, dismissed, the owner leaves
+  Shown --> Shown: the drop dissolves the open group
   Shown --> Replaced: next drop accepted
   Shown --> Undoing: Undo pressed
   Undoing --> Undone: 204
@@ -330,7 +358,8 @@ stateDiagram-v2
 | Undoing | "Undo" is `disabled` with a `Spinner` in the toast; `POST /api/organize/undo` |
 | Undone | The toast closes, the plain toast "Undone" shows for 2.8 seconds, and the screen reads its list again so the cards return where they were, the new group's card leaves, or the merged group's card returns; on the group page the band, the title and the count follow the response |
 | Failed | The toast closes and a failure toast shows: "Couldn't undo: it changed in the meantime" for `409`, "This can no longer be undone" for `410`, else the reason; the screen reads its list again, so it shows what the server has (Edge Case) |
-| Gone | The toast timed out, was dismissed, or the screen was left (a route change): the token is forgotten and the operation stays (Edge Case) |
+| Gone | The toast timed out, was dismissed, or the owner left the screen (a route change the owner makes: a link, the sidebar, Back): the token is forgotten and the operation stays (Edge Case) |
+| Carried | A drop that takes every item out of the open group dissolves it, and the screen leaves for the parent or the library as [048 Dissolving](../048-groups/ui-design.md#dissolving) does. That route change is the operation's own result, not the owner leaving, so the undo toast and its token stay through it, keep their 8 seconds from the drop, and Undo works on the screen it lands on |
 
 A failed operation shows no undo toast: the screen restores what it showed
 before the drop and a failure toast names the reason (Edge Case). A `404
@@ -350,15 +379,25 @@ keyboard path (Space, arrows, Space) keeps the 044 form and sends the same
 rule that reordering is done without a filter holds without a state.
 
 The trail band's crumbs are drop targets ([Indicators](#indicators)): the
-"Library" crumb and each ancestor. Below `md` the collapsed "…" is not a
-target, and the crumb before the name is, so the way up is always one drop
-away. A child group's card is a target like a group card in the library.
+"Library" crumb and each ancestor. Below `md`, from four crumbs on, the
+group page's band keeps "Library" and collapses only the ancestors between
+it and the parent: "Library › … › {parent} › {name}". The folder band's form
+"… › {parent} › {name}"
+([048 Trail band](../048-groups/ui-design.md#trail-band)) would hide the
+"Library" crumb on a phone, so taking a card out of a deep group would have
+no target there (requirement 10). `Breadcrumbs` gains an option to keep its
+first crumb, which the group page sets and the folder screen does not; the
+band stays one line, and every crumb but the current one truncates as it
+does today. The collapsed "…" is not a target; "Library" and the crumb
+before the name are, so both the library and the level above are always one
+drop away. A child group's card is a target like a group card in the
+library.
 
 | Drop | Screen |
 | --- | --- |
 | Reorder | The cards or rows take the new order; the numbers renumber; the selection stays |
 | Into a child group, merge into a child, make a group | The lifted cards leave or become the new card; the selection is cleared; the child's card is read again on its `group` event so its art follows |
-| Out to a crumb | The lifted cards leave, the count lowers and the selection is cleared. When the lifted cards were every item, the server dissolves the group and the screen leaves as [048 Dissolving](../048-groups/ui-design.md#dissolving) does; the undo toast comes along, and Undo brings the group back, which the screen then shows through its `group` event |
+| Out to a crumb | The lifted cards leave, the count lowers and the selection is cleared. When the lifted cards were every item, the server dissolves the group and the screen leaves as [048 Dissolving](../048-groups/ui-design.md#dissolving) does; the undo toast and its token come along ([Undo toast](#undo-toast), Carried), and Undo brings the group back, which the screen then shows through its `group` event |
 
 ## Library
 
@@ -397,7 +436,7 @@ mouse at 1280px and 768px and with touch at 360px and 768px.
 
 | Width | Layout |
 | --- | --- |
-| 360px | The grid is one column: the between zones are a card's top and bottom quarters and the bar is horizontal, the card's width; the onto label is centred on the thumbnail and fits on one line. The preview is the card's width less the gutters, so it covers the card under it and the ring of the target is still seen at its edges. The menu is `min-w-menu`, under the target card, inside the viewport; the name popover is `w-popover`, inside the viewport. The undo toast sits under the top bar at the right, the width the notices have there, with "Undo" on the same line as the text; it covers the top row's right edge only while it shows, and a drag can start under it. The trail band's crumbs are one line; a drop on the crumb before the name goes up one level |
+| 360px | The grid is one column: the between zones are a card's top and bottom quarters and the bar is horizontal, the card's width; the onto label is centred on the thumbnail and fits on one line. The preview is the card's width less the gutters, so it covers the card under it and the ring of the target is still seen at its edges. The menu is `min-w-menu`, under the target card, inside the viewport; the name popover is `w-popover`, inside the viewport. The undo toast sits under the top bar at the right, the width the notices have there, with "Undo" on the same line as the text; it covers the top row's right edge only while it shows, and a drag can start under it. The trail band's crumbs are one line, "Library › … › {parent} › {name}" from four crumbs on; a drop on "Library" takes the cards out to the library and a drop on the crumb before the name goes up one level |
 | 768px | Two or three columns by the zoom: the bars are vertical in the gaps; a bar never stands at a row's end beyond the last card, because the place after the last card of a row is the place before the first card of the next. The list view's rows lift from anywhere on them and from the handle. The toast is still at the top right |
 | 1280px | The library's columns at the chosen zoom; the preview's shadow is seen against the cards it passes; the ring and the label are seen on a `card-0` card without hiding its title. The undo toast is at the bottom centre above the selection bar, so a drag to the top rows and to the trail band never crosses it; with the selection bar shown, the toast sits above the bar and both are readable |
 
@@ -455,7 +494,10 @@ mouse at 1280px and 768px and with touch at 360px and 768px.
    last; dropping three selected cards on B puts them in B in their order;
    dropping a card on the "Library" crumb removes it from A and the library
    shows it at the top level; dropping the last card on the crumb leaves the
-   page with the 048 toast and the undo toast beside it.
+   page with the 048 toast and the undo toast beside it, and its Undo
+   brings A back. At 360px on the page of C in Library › A › B › C, the
+   band reads "Library › … › B › C" and dropping a card on "Library" takes it
+   out to the library.
 9. **Undo** (acceptance criterion 8; `UI品質`, the fourth point): after each
    operation above, the toast sits at the bottom centre above the selection
    bar at 1280px and under the top bar at the right at 360px, carries one
@@ -463,9 +505,11 @@ mouse at 1280px and 768px and with touch at 360px and 768px.
    needs; pressing "Undo" within that time puts every card, group, favorite
    and name back as before and shows "Undone"; a second drop while the toast
    shows replaces it, so one "Undo" is on screen; after the toast is gone, or
-   after moving to another screen, no undo is offered. Changing the group in
-   a second tab before pressing "Undo" shows "Couldn't undo: it changed in
-   the meantime" and leaves the second tab's change in place.
+   after moving to another screen, no undo is offered. After "Make a
+   group" and a rename in the name field, Undo removes the renamed group.
+   Changing the group in a second tab before pressing "Undo" shows "Couldn't
+   undo: it changed in the meantime" and leaves the second tab's change in
+   place.
 10. **Failures**: with the server stopped, a drop puts the cards back where
     they were within the round trip and shows "Couldn't move: {reason}"
     with no "Undo"; nothing stays half done.

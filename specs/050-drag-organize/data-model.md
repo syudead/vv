@@ -50,6 +50,23 @@ Every image also covers the rows that reference a group the undo would delete or
 Restoring a deleted group or bundle reinserts it with its old id; SQLite's
 `autoincrement` never hands that id out again, so it is free.
 
+## Rename under an undo token
+
+A rename of the group a Group operation created, sent with that operation's
+token ([contracts/screen-api.md](contracts/screen-api.md#patch-apigroupsid-with-an-undo-token)),
+updates the token's after image, so the creation and the rename undo as one
+unit. Any other change to the group, a rename without the token among them,
+leaves the image as it is, and the undo is `ErrUndoConflict` as before.
+
+| Step | Rule |
+| --- | --- |
+| Find | `app.Organizer` takes the token's entry and holds it for the call, so an undo of the same token waits; an entry that is missing, used, expired, not a Group operation or for another group is let go, and the rename runs as 048's |
+| Rename | One transaction of `OrganizeStore`: it renames the group as `GroupStore.RenameGroup` does, and when the current rows still equal the after image just before the rename, returns the after image with the renamed `groups` row in place of the old one; otherwise it returns no image |
+| Keep | The Organizer stores the returned image in the entry, which keeps its token and its 10 minutes; with no image, the entry keeps its old one |
+
+The before image is not touched: the undo still deletes the group with its
+items and puts the target and the dragged videos back, whatever its name.
+
 ## Rules
 
 | Rule | Enforced in |
@@ -58,10 +75,13 @@ Restoring a deleted group or bundle reinserts it with its old id; SQLite's
 | The new group's name from the target's title | `domain.ValidateGroupName` after cutting to 100 characters |
 | Merge's replacement in playlists and parents | `domain.PlanGroupMerge`, applied by `OrganizeStore` |
 | An undo token is used once and lives 10 minutes, at most 100 at a time | `app.Organizer` |
+| A rename with a Group operation's token updates that token's after image | `app.Organizer`, `OrganizeStore` ([Rename under an undo token](#rename-under-an-undo-token)) |
 | After every operation and every undo, the positions of each touched group are `0 … n-1` | `internal/store/invariants_test.go` (existing rule) |
 
 ## What does not change
 
 The existing group, version and favorite routes keep their behaviour and
 return no undo token: the menus and dialogs of 048 and 030 stay as they are,
-and only drops go through the operations above.
+and only drops go through the operations above. The one addition is the
+optional `undoToken` of 048's rename, which only the new group's name field
+sends; without it the rename is 048's.
