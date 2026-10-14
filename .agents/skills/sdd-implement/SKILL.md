@@ -15,8 +15,9 @@ does not require an Issue, parent Issue, feature directory, or PR.
 For Issue handoff work, delegate the bounded implementation step to the
 repository's `subissue-implementer` role when the selected host provides it.
 In Codex this agent is named `subissue_implementer`; in Claude it is named
-`subissue-implementer`. The parent agent still owns branch management, full
-validation, fixes, push, and the pull request.
+`subissue-implementer`. Its tests go to the `test-writer` role
+([test-writing](../test-writing/SKILL.md)). The parent agent still owns branch
+management, full validation, fixes, push, and the pull request.
 
 Name the feature directory explicitly only when the request uses one.
 ## User Input

@@ -40,6 +40,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Related videos and the previous and next video](related-videos.md)
 - [Screen text and formatting (i18n)](i18n.md)
 - [Web test levels](web-testing.md)
+- [Go test levels](go-testing.md)
 - [Test and CI quality monitoring](test-quality-monitoring.md)
 - [Complexity and duplication](complexity-and-duplication.md)
 - [VVMDM brand and screen UI design](../../specs/022-vvmdm-brand/ui-design.md)

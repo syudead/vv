@@ -60,9 +60,15 @@ file into a handbook.
 - Before building or changing a screen, read
   [docs/design-docs/design-system.md](docs/design-docs/design-system.md); it
   routes to the registry of components, tokens and rules every screen uses.
-- Before writing or moving Web tests, read
-  [docs/design-docs/web-testing.md](docs/design-docs/web-testing.md) for the
-  level each behaviour is tested at.
+- Before writing or moving tests, read
+  [docs/design-docs/web-testing.md](docs/design-docs/web-testing.md) (Web) or
+  [docs/design-docs/go-testing.md](docs/design-docs/go-testing.md) (Go) for the
+  level each behaviour is tested at, and follow
+  `.agents/skills/test-writing`: every slow test states why the level below
+  would not fail, because each one lengthens every later CI run.
+- An ordinary Issue (not an SDD parent or child) goes through
+  `.agents/skills/issue-work`: triage, implementation, `test-writer`,
+  `task check`, `quality-checker`, one PR to `main`.
 - Give every pushed working branch a pull request as its review target.
 - Dependency updates (Renovate) follow
   [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md). The

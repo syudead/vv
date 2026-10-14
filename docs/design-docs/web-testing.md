@@ -26,7 +26,9 @@ Each level proves a different kind of behaviour, at a different cost per test.
 | Page test | A flow across components, request ordering, focus moving between parts, URL state | A `*Page` component with `fetch` replaced by a fake server | 0.35 s |
 | E2E test | What only the real server, browser and media show: playback, setup and login, scanning | The app from the Vite development server in Chromium, against the built Go server | Seconds; runs on a push to `main` and on Renovate PRs |
 
-The costs are the mean worker time per test in a full Vitest run.
+The costs are the mean worker time per test in a full Vitest run. Page tests
+are a third of the 2,262 tests and four fifths of the worker time: 354 s of
+447 s in one run on four cores.
 
 E2E does not cover the production Vite build or its embedding in the Go binary:
 `task test-web` builds the SPA, and no test serves that build.
@@ -80,6 +82,13 @@ test keeps one case that shows the page uses it. Which empty state the tag admin
 screen shows is such a rule: it lives in
 [`tagListView.ts`](../../web/src/tags/tagListView.ts) with logic tests, and the
 component that renders each empty state has a component test.
+
+## Checking the cost of a change
+
+`task test-cost` lists the page, component, logic and E2E tests a branch adds;
+a pull request states for each page and E2E test why the level below it would
+not fail, as for Go
+([Checking the cost of a change](go-testing.md#checking-the-cost-of-a-change)).
 
 ## Existing tests
 

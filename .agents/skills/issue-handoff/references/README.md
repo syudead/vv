@@ -19,7 +19,9 @@ directory; do not reinstate one.
 
 Project-scoped workers may perform a bounded part of a run when the selected
 host supports them. The repository provides matching Codex and Claude workers:
-`subissue-implementer` for child-Issue implementation and focused checks.
+`subissue-implementer` for child-Issue implementation and focused checks,
+`test-writer` for the tests of that implementation, and `quality-checker` for
+the mechanical checks before the push.
 `sdd-stage-worker` and
 `pr-review-fixer` exist for `sdd-autopilot` only, and there they push and open
 PRs themselves. The other workers do not own the handoff, persist its state,
