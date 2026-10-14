@@ -217,8 +217,9 @@ func (s *GroupStore) summary(ctx context.Context, id int64) (domain.Group, error
 // groupSummary はグループ id の要約を読む。無ければ domain.ErrGroupNotFound。
 func groupSummary(ctx context.Context, tx *sql.Tx, id int64) (domain.Group, error) {
 	var group domain.Group
-	err := tx.QueryRowContext(ctx, `select id, name, coalesce(origin_folder, ''), updated_at from groups where id = ?`, id).
-		Scan(&group.ID, &group.Name, &group.OriginFolder, &group.UpdatedAt)
+	err := tx.QueryRowContext(ctx, `select g.id, g.name, coalesce(g.origin_folder, ''), g.updated_at, `+
+		groupFavoritedAtExpr("g")+` is not null from groups g where g.id = ?`, id).
+		Scan(&group.ID, &group.Name, &group.OriginFolder, &group.UpdatedAt, &group.Favorite)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.Group{}, domain.ErrGroupNotFound
 	}
