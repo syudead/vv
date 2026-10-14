@@ -1,11 +1,11 @@
 ---
 source: specs/049-work-info-plugins/contracts/screen-api.md
-sourceHash: dfab1482c1c66a85c63f152be5942789fe545e87e3c90ba2baee78dd2cf17c09
+sourceHash: 1e01f005adc1725e04c96b99609dffb8976b4dab073411a5c9b83563ba32840e
 ---
 
 # 契約: 作品情報プラグインの画面の API {#contract-work-info-plugin-screen-api}
 
-正本: [api/openapi.yaml](../../../api/openapi.yaml)。Go と TypeScript は `task generate` で生成する。以下の操作はすべて所有者だけのもの (`security` キーなし) なので、他の所有者のルートと同じく、ゲストは `403` を受け取る。エラーは `Error` とその `code` を使う ([023 error-api](../../023-english-i18n/contracts/error-api.md))。外部 API と MCP は変わらない。
+正本: [api/openapi.yaml](../../../api/openapi.yaml)。Go と TypeScript は `task generate` で生成する。以下の操作はすべて所有者だけのもの (`security` キーなし) なので、他の所有者のルートと同じく、ゲストは `401` `unauthenticated` を受け取る。エラーは `Error` とその `code` を使う ([023 error-api](../../023-english-i18n/contracts/error-api.md))。外部 API と MCP は変わらない。
 
 ## `WorkInfoPlugin` {#workinfoplugin}
 
