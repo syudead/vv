@@ -301,6 +301,15 @@ func (t tableLimits) needsCap(limit uint64) bool {
 	return !t.hasMax && t.min <= limit
 }
 
+// elements はテーブルが持ちうる要素数の上限である。宣言した最大値か、最大値を宣言しなければ
+// capTables が書き足す limit を返す。
+func (t tableLimits) elements(limit uint64) uint64 {
+	if t.hasMax {
+		return t.max
+	}
+	return limit
+}
+
 // capTables は最大値を宣言しないテーブルに最大値 limit を書き足したモジュールのバイト列を返す。
 // 書き足すテーブルが無ければ module をそのまま返す。module は layout を読んだバイト列である。
 func capTables(module []byte, layout moduleLayout, limit uint64) []byte {

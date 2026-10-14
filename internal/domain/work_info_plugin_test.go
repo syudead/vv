@@ -19,6 +19,10 @@ func TestParseWorkInfoPluginManifest(t *testing.T) {
 		{"not an object", `[1]`, WorkInfoPluginManifestInvalid},
 		{"no contract", `{"name":"p","version":"1","operations":["fetch"]}`, WorkInfoPluginManifestInvalid},
 		{"contract 2 with other fields broken", `{"contract":2}`, WorkInfoPluginContractUnsupported},
+		{"contract 2 with fields of other types", `{"contract":2,"name":7,"operations":{"fetch":true}}`, WorkInfoPluginContractUnsupported},
+		{"contract not a number", `{"contract":"1","name":"p","version":"1","operations":["fetch"]}`, WorkInfoPluginManifestInvalid},
+		{"contract 1 with a field of another type", `{"contract":1,"name":"p","version":"1","operations":{"fetch":true}}`, WorkInfoPluginManifestInvalid},
+		{"null", `null`, WorkInfoPluginManifestInvalid},
 		{"name with upper case", `{"contract":1,"name":"P","version":"1","operations":["fetch"]}`, WorkInfoPluginManifestInvalid},
 		{"name of 65 characters", `{"contract":1,"name":"` + strings.Repeat("a", 65) + `","version":"1","operations":["fetch"]}`, WorkInfoPluginManifestInvalid},
 		{"empty version", `{"contract":1,"name":"p","version":"","operations":["fetch"]}`, WorkInfoPluginManifestInvalid},
@@ -85,6 +89,13 @@ func TestParseWorkInfoResponseKeepsTheFirstCandidatesAndUniqueTags(t *testing.T)
 		t.Fatalf("search result = %d candidates, %v", len(got.Candidates), err)
 	}
 
+	// 保持しない 51 件目以降は確かめないので、不正でも検索を失敗させない。
+	candidates = append(candidates[:WorkInfoPluginMaxCandidates], `{"url":"ftp://e.test/","title":""}`)
+	got, err = ParseWorkInfoResponse(WorkInfoSearch, []byte(`{"candidates":[`+strings.Join(candidates, ",")+`]}`))
+	if err != nil || len(got.Candidates) != WorkInfoPluginMaxCandidates {
+		t.Fatalf("search result with an invalid 51st candidate = %d candidates, %v", len(got.Candidates), err)
+	}
+
 	tags := []string{`"a"`, `"a"`}
 	for i := range 120 {
 		tags = append(tags, fmt.Sprintf(`"t%d"`, i))
@@ -108,6 +119,8 @@ func TestParseWorkInfoResponseFailures(t *testing.T) {
 		{"search shape for fetch", WorkInfoFetch, `{"candidates":[]}`},
 		{"candidate without a title", WorkInfoSearch, `{"candidates":[{"url":"https://e.test/"}]}`},
 		{"candidate with another scheme", WorkInfoSearch, `{"candidates":[{"url":"ftp://e.test/","title":"t"}]}`},
+		{"candidate without a host", WorkInfoSearch, `{"candidates":[{"url":"https:///work","title":"t"}]}`},
+		{"candidate with an opaque URL", WorkInfoSearch, `{"candidates":[{"url":"https:e.test/work","title":"t"}]}`},
 		{"error", WorkInfoFetch, `{"error":{"message":"not found"}}`},
 	}
 	for _, tc := range cases {

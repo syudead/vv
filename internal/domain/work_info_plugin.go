@@ -22,9 +22,9 @@ const (
 	WorkInfoPluginModuleMaxBytes = 16 << 20
 	// WorkInfoPluginMemoryLimitPages は 1 回の実行の線形メモリの上限（64 KiB のページ数）である。
 	WorkInfoPluginMemoryLimitPages = 2048
-	// WorkInfoPluginTableMaxElements は各テーブルの要素数の上限である。最大値を宣言しないテーブルには vv がこれを最大値として書き足す。
+	// WorkInfoPluginTableMaxElements は各テーブルと、モジュールの全テーブルの合計の要素数の上限である。最大値を宣言しないテーブルには vv がこれを最大値として書き足す。
 	WorkInfoPluginTableMaxElements = 100_000
-	// WorkInfoPluginRunTimeout は 1 回の実行の時間の上限で、HTTP の時間も含む。
+	// WorkInfoPluginRunTimeout は 1 回の実行の時間の上限で、実行の枠を取ってからのコンパイルと HTTP の時間も含む。
 	WorkInfoPluginRunTimeout = 30 * time.Second
 	// WorkInfoPluginOutputMaxBytes は標準出力の上限である。超えた実行は止める。
 	WorkInfoPluginOutputMaxBytes = 1 << 20
@@ -63,7 +63,8 @@ const (
 	WorkInfoPluginImportUnsupported WorkInfoPluginProblem = "import_unsupported"
 	// WorkInfoPluginExportInvalid は _start（引数も戻り値も無い関数）か memory（メモリ）を export しないことを表す。
 	WorkInfoPluginExportInvalid WorkInfoPluginProblem = "export_invalid"
-	// WorkInfoPluginTableTooLarge はテーブルの最小値か、宣言した最大値が WorkInfoPluginTableMaxElements を超えることを表す。
+	// WorkInfoPluginTableTooLarge はテーブルの最小値か、宣言した最大値か、全テーブルの要素数の合計（最大値の無いテーブルは
+	// WorkInfoPluginTableMaxElements で数える）が WorkInfoPluginTableMaxElements を超えることを表す。
 	WorkInfoPluginTableTooLarge WorkInfoPluginProblem = "table_too_large"
 )
 
@@ -128,7 +129,6 @@ func (m WorkInfoPluginManifest) Supports(op WorkInfoOperation) bool {
 
 // manifestJSON は vv.plugin セクションの JSON の形である。知らない項目は無視する。
 type manifestJSON struct {
-	Contract    json.RawMessage         `json:"contract"`
 	Name        string                  `json:"name"`
 	Version     string                  `json:"version"`
 	Description string                  `json:"description"`
@@ -140,16 +140,20 @@ type manifestJSON struct {
 // 読めなければ manifest_invalid、contract が 1 でなければ contract_unsupported を返す。
 // contract は他の項目より先に確かめる。後の版は他の項目の形を変えうるからである。
 func ParseWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, WorkInfoPluginProblem) {
-	var raw manifestJSON
-	if err := json.Unmarshal(data, &raw); err != nil || !isJSONObject(data) {
+	var top map[string]json.RawMessage
+	if err := json.Unmarshal(data, &top); err != nil || top == nil {
 		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
 	}
 	var contract int
-	if len(raw.Contract) == 0 || json.Unmarshal(raw.Contract, &contract) != nil {
+	if raw, ok := top["contract"]; !ok || json.Unmarshal(raw, &contract) != nil {
 		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
 	}
 	if contract != WorkInfoPluginContract {
 		return WorkInfoPluginManifest{}, WorkInfoPluginContractUnsupported
+	}
+	var raw manifestJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
 	}
 	m := WorkInfoPluginManifest{
 		Contract:    contract,
@@ -368,22 +372,14 @@ func ParseWorkInfoResponse(op WorkInfoOperation, output []byte) (WorkInfoRunResu
 
 func parseCandidates(raw responseJSON) (WorkInfoRunResult, error) {
 	candidates := make([]WorkInfoCandidate, 0, min(len(raw.Candidates), WorkInfoPluginMaxCandidates))
-	for _, c := range raw.Candidates {
-		if c.Title == "" || !hasHTTPScheme(c.URL) {
+	// 保持するのは先頭 WorkInfoPluginMaxCandidates 件だけなので、それより後の候補は確かめない。
+	for _, c := range raw.Candidates[:min(len(raw.Candidates), WorkInfoPluginMaxCandidates)] {
+		if c.Title == "" || !isWorkURL(c.URL) {
 			return WorkInfoRunResult{}, &WorkInfoRunError{Failure: WorkInfoRunFailed}
 		}
-		if len(candidates) < WorkInfoPluginMaxCandidates {
-			candidates = append(candidates, WorkInfoCandidate{URL: c.URL, Title: c.Title, Detail: c.Detail})
-		}
+		candidates = append(candidates, WorkInfoCandidate{URL: c.URL, Title: c.Title, Detail: c.Detail})
 	}
 	return WorkInfoRunResult{Candidates: candidates}, nil
-}
-
-// hasHTTPScheme は s が http か https の URL の形かを返す。URL の解釈は使う側が行う。
-func hasHTTPScheme(s string) bool {
-	lower := bytes.ToLower([]byte(s))
-	return bytes.HasPrefix(lower, []byte("http://")) && len(s) > len("http://") ||
-		bytes.HasPrefix(lower, []byte("https://")) && len(s) > len("https://")
 }
 
 // firstUniqueTags は重複を除いた先頭 WorkInfoPluginMaxTags 件のタグを返す。

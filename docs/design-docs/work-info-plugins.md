@@ -45,7 +45,7 @@ sections from the bytes.
 | `contract` is `1`, checked before the other fields | `contract_unsupported` |
 | Every import is a `wasi_snapshot_preview1` or `vv` function with the same signature as vv's | `import_unsupported` |
 | `_start` takes and returns nothing, and `memory` is exported | `export_invalid` |
-| Every table's minimum, and its declared maximum when it has one, is 100,000 elements or less | `table_too_large` |
+| Every table's minimum, and its declared maximum when it has one, is 100,000 elements or less, and so is the sum over all tables of each table's declared maximum, or 100,000 for a table without one | `table_too_large` |
 
 ## Tables get a maximum before compiling
 
@@ -56,7 +56,9 @@ bytes before it is compiled, both at inspection and before a run
 
 Table elements are host memory outside the linear memory cap, so an uncapped
 `table.grow` could use the server's memory without bound. Refusing such tables
-would refuse every Go-built plugin.
+would refuse every Go-built plugin. For the same reason the cap holds for the
+module as a whole: many tables, each within 100,000 elements, would otherwise
+add up past it.
 
 ## A run has no files, no environment and fixed limits
 
@@ -70,8 +72,8 @@ until vv's HTTP client is added.
 | Limit | Value | When it is reached |
 | --- | --- | --- |
 | Module size | 16 MiB | `Inspect` returns `domain.ErrWorkInfoPluginTooLarge` |
-| Linear memory | 128 MiB (2048 pages) | `memory.grow` returns `-1` and the run fails with `memory_exceeded` |
-| Run time | 30 s, HTTP included | The module is closed and the run fails with `timed_out` |
+| Linear memory | 128 MiB (2048 pages) | `memory.grow` returns `-1`, the module is closed and the run fails with `memory_exceeded`, even when the plugin goes on to exit successfully |
+| Run time | 30 s from taking the run slot, compiling and HTTP included | The compile or the module is stopped and the run fails with `timed_out` |
 | Standard output | 1 MiB | The run is stopped with `output_too_large` |
 | Standard error | 64 KiB kept, the rest discarded | Written to the server log only |
 | Runs at the same time | 1; a second run waits up to 10 s | The second run fails with `busy` |
@@ -79,8 +81,13 @@ until vv's HTTP client is added.
 The memory cap is enforced by vv's memory allocator rather than by wazero's
 page limit, because wazero refuses a `memory.grow` past its limit before the
 allocator sees it, and vv could then not tell a memory failure from any other
-non-zero exit. A run whose response is a plugin error, a non-zero exit or
-output outside the contract fails with `plugin_failed`.
+non-zero exit. When a run reaches both the output and the memory limit, the
+first one reached decides the failure. A run whose response is a plugin error,
+a non-zero exit or output outside the contract fails with `plugin_failed`.
+
+The run time starts when the run takes the slot, so compiling a module that is
+not cached yet counts toward it. wazero checks the context between functions
+only when it compiles with more than one worker, so a run compiles with two.
 
 | Rejected | Why |
 | --- | --- |

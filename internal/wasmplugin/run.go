@@ -20,14 +20,19 @@ import (
 // memoryLimitBytes は 1 回の実行の線形メモリの上限である。
 const memoryLimitBytes = domain.WorkInfoPluginMemoryLimitPages * 65536
 
+// compileWorkers は実行の前のコンパイルで並べる数である。wazero は 2 以上のときだけ関数ごとに
+// ctx を確かめるので、1 にすると実行の時間の上限でコンパイルを止められない。
+const compileWorkers = 2
+
 var (
 	errTimedOut       = errors.New("work-info plugin run timed out")
 	errOutputTooLarge = errors.New("work-info plugin output exceeded its limit")
+	errMemoryExceeded = errors.New("work-info plugin memory exceeded its limit")
 )
 
 // Run はモジュールを新しいインスタンスで 1 回動かす。要求の JSON を標準入力に書いて閉じ、
 // 標準出力の応答を読む。同時に動く実行は 1 本で、2 本目は枠を最大 domain.WorkInfoPluginBusyWait 待つ
-// （research.md R-2・R-4）。失敗は *domain.WorkInfoRunError で返し、呼び出し元の ctx が
+// （research.md R-2・R-4）。時間の上限は枠を取ったときから数え、コンパイルも含む。失敗は *domain.WorkInfoRunError で返し、呼び出し元の ctx が
 // 終わったときはその誤りを返す。
 func (r *Runtime) Run(ctx context.Context, digest string, module []byte, req domain.WorkInfoRunRequest) (domain.WorkInfoRunResult, error) {
 	input, err := json.Marshal(req)
@@ -39,7 +44,9 @@ func (r *Runtime) Run(ctx context.Context, digest string, module []byte, req dom
 		return domain.WorkInfoRunResult{}, err
 	}
 	defer release()
-	output, err := r.run.run(ctx, digest, module, input)
+	deadline, cancel := context.WithTimeoutCause(ctx, domain.WorkInfoPluginRunTimeout, errTimedOut)
+	defer cancel()
+	output, err := r.run.run(ctx, deadline, digest, module, input)
 	if err != nil {
 		return domain.WorkInfoRunResult{}, err
 	}
@@ -91,17 +98,20 @@ func (rn *runner) close(ctx context.Context) error {
 	return rn.rt.Close(ctx)
 }
 
-func (rn *runner) run(ctx context.Context, digest string, module, input []byte) ([]byte, error) {
-	compiled, err := rn.compiled(ctx, digest, module)
+// run はモジュールを 1 回動かす。parent は呼び出し元の ctx、deadline はそれに実行の時間の上限を
+// 付けたもので、コンパイルとインスタンスの両方を止める。
+func (rn *runner) run(parent, deadline context.Context, digest string, module, input []byte) ([]byte, error) {
+	compiled, err := rn.compiled(deadline, digest, module)
 	if err != nil {
+		if stop := stopped(parent, deadline); stop != nil {
+			return nil, stop
+		}
 		return nil, err
 	}
-	runCtx, cancelTimeout := context.WithTimeoutCause(ctx, domain.WorkInfoPluginRunTimeout, errTimedOut)
-	defer cancelTimeout()
-	runCtx, cancel := context.WithCancelCause(runCtx)
+	runCtx, cancel := context.WithCancelCause(deadline)
 	defer cancel(nil)
 
-	memory := &cappedMemory{limit: memoryLimitBytes}
+	memory := &cappedMemory{limit: memoryLimitBytes, exceed: func() { cancel(errMemoryExceeded) }}
 	stdout := &limitedOutput{limit: domain.WorkInfoPluginOutputMaxBytes, exceed: func() { cancel(errOutputTooLarge) }}
 	stderr := &keptOutput{limit: domain.WorkInfoPluginStderrKeptBytes}
 	config := wazero.NewModuleConfig().
@@ -115,10 +125,10 @@ func (rn *runner) run(ctx context.Context, digest string, module, input []byte) 
 		WithRandSource(rand.Reader)
 	mod, err := rn.rt.InstantiateModule(experimental.WithMemoryAllocator(runCtx, memory), compiled, config)
 	if mod != nil {
-		_ = mod.Close(ctx)
+		_ = mod.Close(parent)
 	}
 	rn.logStderr(digest, stderr)
-	if failure := runFailure(ctx, runCtx, err, stdout.exceeded, memory.exceeded); failure != nil {
+	if failure := runFailure(parent, runCtx, err); failure != nil {
 		if err != nil {
 			rn.logger.Info("work-info plugin run failed", "digest", digest, "error", err)
 		}
@@ -127,22 +137,35 @@ func (rn *runner) run(ctx context.Context, digest string, module, input []byte) 
 	return stdout.buf.Bytes(), nil
 }
 
-// runFailure は実行の終わり方を失敗に対応させる。出力の超過は、プラグインが書き込みの誤りを
-// 無視して成功で終わっても失敗にする。
-func runFailure(parent, runCtx context.Context, err error, outputExceeded, memoryExceeded bool) error {
+// runFailure は実行の終わり方を失敗に対応させる。出力とメモリの上限は、超えたときに runCtx を
+// その理由で止めるので、最初に当たった上限が runCtx の cause に残る。どちらも、プラグインが
+// 書き込みの誤りや memory.grow の -1 を受け流して成功で終わっても失敗にする。
+func runFailure(parent, runCtx context.Context, err error) error {
+	cause := context.Cause(runCtx)
 	switch {
-	case outputExceeded:
+	case errors.Is(cause, errOutputTooLarge):
 		return &domain.WorkInfoRunError{Failure: domain.WorkInfoRunOutputTooLarge}
+	case errors.Is(cause, errMemoryExceeded):
+		return &domain.WorkInfoRunError{Failure: domain.WorkInfoRunMemoryExceeded}
 	case err == nil:
 		return nil
+	}
+	if stop := stopped(parent, runCtx); stop != nil {
+		return stop
+	}
+	return &domain.WorkInfoRunError{Failure: domain.WorkInfoRunFailed}
+}
+
+// stopped は、呼び出し元の ctx が終わっていればその誤りを、実行の時間の上限に当たっていれば
+// timed_out を返す。どちらでもなければ nil を返す。
+func stopped(parent, runCtx context.Context) error {
+	switch {
 	case parent.Err() != nil:
 		return parent.Err()
 	case errors.Is(context.Cause(runCtx), errTimedOut):
 		return &domain.WorkInfoRunError{Failure: domain.WorkInfoRunTimedOut}
-	case memoryExceeded:
-		return &domain.WorkInfoRunError{Failure: domain.WorkInfoRunMemoryExceeded}
 	default:
-		return &domain.WorkInfoRunError{Failure: domain.WorkInfoRunFailed}
+		return nil
 	}
 }
 
@@ -157,7 +180,7 @@ func (rn *runner) compiled(ctx context.Context, digest string, module []byte) (w
 		rn.logger.Info("work-info plugin is malformed", "digest", digest, "error", err)
 		return nil, &domain.WorkInfoRunError{Failure: domain.WorkInfoRunFailed}
 	}
-	c, err := rn.rt.CompileModule(ctx, capTables(module, layout, domain.WorkInfoPluginTableMaxElements))
+	c, err := rn.rt.CompileModule(experimental.WithCompilationWorkers(ctx, compileWorkers), capTables(module, layout, domain.WorkInfoPluginTableMaxElements))
 	if err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
@@ -244,11 +267,12 @@ func (w *keptOutput) Write(p []byte) (int, error) {
 }
 
 // cappedMemory はプラグインの線形メモリを limit バイトまで確保する。超える大きさを求められたら
-// 断り（memory.grow は -1 を返す）、超えたことを記録する。wazero が実行ごとに 1 つ使う。
+// 断り（memory.grow は -1 を返す）、exceed を呼んで実行を止める。wazero が実行ごとに 1 つ使う。
 type cappedMemory struct {
 	limit    uint64
 	buf      []byte
 	exceeded bool
+	exceed   func()
 }
 
 func (m *cappedMemory) Allocate(capacity, _ uint64) experimental.LinearMemory {
@@ -258,7 +282,10 @@ func (m *cappedMemory) Allocate(capacity, _ uint64) experimental.LinearMemory {
 
 func (m *cappedMemory) Reallocate(size uint64) []byte {
 	if size > m.limit {
-		m.exceeded = true
+		if !m.exceeded {
+			m.exceeded = true
+			m.exceed()
+		}
 		return nil
 	}
 	if size > uint64(cap(m.buf)) {

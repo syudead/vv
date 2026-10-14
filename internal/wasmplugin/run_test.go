@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"strings"
@@ -262,6 +263,55 @@ func TestRunCapsATableWithoutAMaximum(t *testing.T) {
 	got, err := rt.Run(context.Background(), "table-grow", module, fetch())
 	if err != nil || got.WorkInfo.Title != "capped" {
 		t.Fatalf("Run = %+v, %v; want the second table.grow to return -1", got.WorkInfo, err)
+	}
+}
+
+// memoryGrowSpec は _start で線形メモリを上限を超える大きさに増やし、memory.grow が -1 を
+// 返したら標準出力に正しい応答を書いて成功で終わるモジュールである。
+func memoryGrowSpec() moduleSpec {
+	s := goodSpec()
+	s.imports = []testImport{funcImport("wasi_snapshot_preview1", "fd_write", typeFdWrite)}
+	var code []byte
+	// メモリは 1 ページで始まるので、上限のページ数だけ増やすと上限を 1 ページ超える。
+	code = append(append(code, 0x41), sleb(domain.WorkInfoPluginMemoryLimitPages)...)
+	code = append(code, 0x40, 0x00) // memory.grow
+	code = append(append(code, 0x41), sleb(-1)...)
+	code = append(code, 0x47, 0x04, 0x40, 0x00, 0x0b) // i32.ne; if; unreachable; end
+	// fd_write(1, iovs=0, 1, nwritten=8)
+	code = append(code, 0x41, 0x01, 0x41, 0x00, 0x41, 0x01, 0x41, 0x08, 0x10, 0x00, 0x1a)
+	s.code = code
+
+	response := []byte(`{"workInfo":{"title":"survived"}}`)
+	data := binary.LittleEndian.AppendUint32(nil, 16)
+	data = binary.LittleEndian.AppendUint32(data, uint32(len(response)))
+	data = append(data, make([]byte, 8)...)
+	s.data = append(data, response...)
+	return s
+}
+
+func TestRunFailsAPluginThatSurvivesARefusedMemoryGrow(t *testing.T) {
+	rt := newTestRuntime(t)
+	got, err := rt.Run(context.Background(), "memory-grow", memoryGrowSpec().bytes(), fetch())
+	if err == nil {
+		t.Fatalf("Run = %+v, want memory_exceeded", got.WorkInfo)
+	}
+	wantFailure(t, err, domain.WorkInfoRunMemoryExceeded)
+}
+
+func TestRunCountsCompilingTowardTheRunTimeout(t *testing.T) {
+	rt := newTestRuntime(t)
+	module := probeModule(t)
+	input, err := json.Marshal(search("echo"))
+	if err != nil {
+		t.Fatalf("encode request: %v", err)
+	}
+	deadline, cancel := context.WithTimeoutCause(context.Background(), 0, errTimedOut)
+	defer cancel()
+
+	_, err = rt.run.run(context.Background(), deadline, "uncompiled", module, input)
+	wantFailure(t, err, domain.WorkInfoRunTimedOut)
+	if _, ok := rt.run.cache["uncompiled"]; ok {
+		t.Fatalf("the module was compiled after the run's time ran out")
 	}
 }
 

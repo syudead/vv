@@ -176,13 +176,20 @@ func checkExports(compiled wazero.CompiledModule) domain.WorkInfoPluginProblem {
 	return ""
 }
 
-// checkTables は、どのテーブルも最小値と、宣言するなら最大値が上限以下かを確かめる。
-// 最大値を宣言しないテーブルは、コンパイルの前に capTables が上限を最大値にしている。
+// checkTables は、どのテーブルも最小値と、宣言するなら最大値が上限以下で、全テーブルの要素数の
+// 合計も上限以下かを確かめる。合計では、各テーブルを宣言した最大値で数え、最大値を宣言しない
+// テーブルは capTables がコンパイルの前に書き足す上限で数える。テーブルの要素は線形メモリの外の
+// ホストのメモリなので、テーブルを並べてもモジュール全体で上限を超えないようにする。
 func checkTables(layout moduleLayout) domain.WorkInfoPluginProblem {
+	var total uint64
 	for _, t := range layout.tables {
 		if t.min > domain.WorkInfoPluginTableMaxElements || t.hasMax && t.max > domain.WorkInfoPluginTableMaxElements {
 			return domain.WorkInfoPluginTableTooLarge
 		}
+		total += t.elements(domain.WorkInfoPluginTableMaxElements)
+	}
+	if total > domain.WorkInfoPluginTableMaxElements {
+		return domain.WorkInfoPluginTableTooLarge
 	}
 	return ""
 }

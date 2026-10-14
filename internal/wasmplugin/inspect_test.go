@@ -242,6 +242,25 @@ func TestInspectReportsEachProblem(t *testing.T) {
 			s.tables = [][]byte{binary.AppendUvarint([]byte{0x70, 0x01, 0x00}, 1_000_000)}
 			return s.bytes()
 		}, domain.WorkInfoPluginTableTooLarge},
+		{"tables each within 100,000 whose maximums sum over it", func() []byte {
+			s := goodSpec()
+			s.tables = [][]byte{maxTable(60_000), maxTable(60_000)}
+			return s.bytes()
+		}, domain.WorkInfoPluginTableTooLarge},
+		{"many small tables whose maximums sum over 100,000", func() []byte {
+			s := goodSpec()
+			s.tables = nil
+			for range 11 {
+				s.tables = append(s.tables, maxTable(10_000))
+			}
+			return s.bytes()
+		}, domain.WorkInfoPluginTableTooLarge},
+		{"table without a maximum beside another table", func() []byte {
+			s := goodSpec()
+			// 最大値の無いテーブルは vv が書き足す 100,000 で数えるので、もう 1 要素で合計を超える。
+			s.tables = [][]byte{binary.AppendUvarint([]byte{0x70, 0x00}, 1), maxTable(1)}
+			return s.bytes()
+		}, domain.WorkInfoPluginTableTooLarge},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -276,6 +295,20 @@ func TestInspectAcceptsTableAtTheLimit(t *testing.T) {
 	if _, problem, err := rt.Inspect(context.Background(), s.bytes()); err != nil || problem != "" {
 		t.Fatalf("Inspect = problem %q, err %v; want none", problem, err)
 	}
+}
+
+func TestInspectAcceptsTablesSummingToTheLimit(t *testing.T) {
+	rt := newTestRuntime(t)
+	s := goodSpec()
+	s.tables = [][]byte{maxTable(60_000), maxTable(domain.WorkInfoPluginTableMaxElements - 60_000)}
+	if _, problem, err := rt.Inspect(context.Background(), s.bytes()); err != nil || problem != "" {
+		t.Fatalf("Inspect = problem %q, err %v; want none", problem, err)
+	}
+}
+
+// maxTable は最小値 0、最大値 n の funcref のテーブルの宣言である。
+func maxTable(n uint64) []byte {
+	return binary.AppendUvarint([]byte{0x70, 0x01, 0x00}, n)
 }
 
 func TestInspectRefusesModuleOver16MiB(t *testing.T) {
