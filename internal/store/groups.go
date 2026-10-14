@@ -7,12 +7,38 @@ package store
 import (
 	"context"
 	"database/sql"
+	"database/sql/driver"
 	"encoding/json"
 	"fmt"
 	"time"
 
+	"modernc.org/sqlite"
+
 	"github.com/syudead/vv/internal/domain"
 )
+
+// naturalSortKeyFunction は domain.NaturalSortKey を SQLite から呼ぶ名前である。移行
+// 00042_groups.sql が、100 文字に切ったフォルダグループの名前の title_key を作るのに使う
+// （SQL では照合形を作れない）。登録の仕方は vv_shuffle_key（listing.go）と同じで、select の
+// 中でしか使わず、スキーマには残らない。
+const naturalSortKeyFunction = "vv_natural_sort_key"
+
+func init() {
+	err := sqlite.RegisterDeterministicScalarFunction(naturalSortKeyFunction, 1,
+		func(_ *sqlite.FunctionContext, args []driver.Value) (driver.Value, error) {
+			switch value := args[0].(type) {
+			case string:
+				return domain.NaturalSortKey(value), nil
+			case []byte:
+				return domain.NaturalSortKey(string(value)), nil
+			default:
+				return nil, fmt.Errorf("%s: the title is not text: %T", naturalSortKeyFunction, args[0])
+			}
+		})
+	if err != nil {
+		panic(fmt.Sprintf("cannot register %s: %v", naturalSortKeyFunction, err))
+	}
+}
 
 // syncFolderGroups は、作り直したフォルダの索引 index と例外 overrides から
 // domain.PlanFolderGroupSync で変更を決め、自動グループに書く（data-model.md「Automatic group
@@ -276,27 +302,28 @@ func groupsChangedEvents(ids []int64) []domain.Event {
 // （data-model.md「Succession and bundling」、R-2）。行は写さずに移す。1 つのグループに鍵 to の
 // 項目が 2 つになるときは位置の大きい方を消してそのグループを詰め直し、どちらかが手で足した
 // 項目（from_folder = 0）なら残す項目も 0 にする。付け替えの後で鍵 to の項目を持つグループの
-// 鍵 to の除外は、項目が見えているので消す。
-func rekeyGroupItems(ctx context.Context, tx *sql.Tx, from, to string) error {
+// 鍵 to の除外は、項目が見えているので消す。変えたグループとその祖先の id を返し、呼び出し側が
+// 確定後に GroupsChanged で知らせる（R-13）。
+func rekeyGroupItems(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, error) {
 	if from == "" || to == "" || from == to {
-		return nil
+		return nil, nil
 	}
 	affected, err := queryInt64s(ctx, tx, `select group_id from group_items where content_key = ?1
 		union select group_id from group_exclusions where content_key = ?1`, from)
 	if err != nil {
-		return fmt.Errorf("cannot move the group items: %w", err)
+		return nil, fmt.Errorf("cannot move the group items: %w", err)
 	}
 	if len(affected) == 0 {
-		return nil
+		return nil, nil
 	}
 	if _, err := tx.ExecContext(ctx, `update group_items set from_folder = 0
 		where content_key in (?1, ?2) and from_folder = 1
 		and exists (select 1 from group_items o where o.group_id = group_items.group_id
 			and o.content_key in (?1, ?2) and o.id <> group_items.id and o.from_folder = 0)`, from, to); err != nil {
-		return fmt.Errorf("cannot move the group items: %w", err)
+		return nil, fmt.Errorf("cannot move the group items: %w", err)
 	}
 	if err := deleteRekeyDuplicates(ctx, tx, groupPositions, from, to); err != nil {
-		return err
+		return nil, err
 	}
 	for _, statement := range []string{
 		`update group_items set content_key = ?2 where content_key = ?1`,
@@ -307,20 +334,24 @@ func rekeyGroupItems(ctx context.Context, tx *sql.Tx, from, to string) error {
 			and exists (select 1 from group_items i where i.group_id = group_exclusions.group_id and i.content_key = ?2)`,
 	} {
 		if _, err := tx.ExecContext(ctx, statement, from, to); err != nil {
-			return fmt.Errorf("cannot move the group items: %w", err)
+			return nil, fmt.Errorf("cannot move the group items: %w", err)
 		}
 	}
 	if err := renumberPositions(ctx, tx, groupPositions, affected); err != nil {
-		return err
+		return nil, err
 	}
-	return touchGroups(ctx, tx, affected, time.Now().UnixMilli())
+	if err := touchGroups(ctx, tx, affected, time.Now().UnixMilli()); err != nil {
+		return nil, err
+	}
+	return groupsWithAncestors(ctx, tx, affected)
 }
 
-// rekeyUserItems はプレイリストとグループの項目を、利用者データの鍵 from から to へ付け替える。
-// 同じパスの引き継ぎと束ねの各経路が、ほかの利用者データを付け替える取引の中で呼ぶ。
-func rekeyUserItems(ctx context.Context, tx *sql.Tx, from, to string) error {
+// rekeyUserItems はプレイリストとグループの項目を、利用者データの鍵 from から to へ付け替え、
+// 変えたグループとその祖先の id を返す。同じパスの引き継ぎと束ねの各経路が、ほかの利用者データを
+// 付け替える取引の中で呼ぶ。
+func rekeyUserItems(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, error) {
 	if err := rekeyPlaylistItems(ctx, tx, from, to); err != nil {
-		return err
+		return nil, err
 	}
 	return rekeyGroupItems(ctx, tx, from, to)
 }

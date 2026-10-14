@@ -183,7 +183,8 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 		}
 	}
 	// 集まりのメンバーだった場合も、前の鍵自身の行（集まりに入る前の値）を付け替える。
-	if err := moveUserData(ctx, tx, oldKey, contentKey); err != nil {
+	rekeyedGroups, err := moveUserData(ctx, tx, oldKey, contentKey)
+	if err != nil {
 		return succession{}, err
 	}
 	if err := moveDismissals(ctx, tx, oldKey, contentKey); err != nil {
@@ -215,7 +216,7 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
 		return succession{}, err
 	}
-	return succession{videoIDs: normalizeIDs(changed), groupIDs: changedGroups}, nil
+	return succession{videoIDs: normalizeIDs(changed), groupIDs: normalizeIDs(append(rekeyedGroups, changedGroups...))}, nil
 }
 
 // moveBundleMember は集まりのメンバーの鍵 oldKey を newKey に付け替え、代表だったなら代表も
@@ -240,35 +241,35 @@ func moveBundleMember(ctx context.Context, tx *sql.Tx, bundle bundleRef, oldKey,
 }
 
 // moveUserData は鍵 from の再生位置・公開の設定・お気に入り・更新日時・タグ・視聴履歴・プレイリストとグループの項目を
-// 鍵 to へ付け替える。
+// 鍵 to へ付け替え、項目を付け替えたグループとその祖先の id を返す。
 // 再生位置・公開の設定・お気に入り・更新日時は from に行があれば to の行を置き換え、タグと視聴履歴は和にする。
-func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
+func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, error) {
 	for _, table := range []string{"playback_progress", "public_videos", "video_favorites", "video_edits"} {
 		if _, err := tx.ExecContext(ctx, `delete from `+table+` where content_key = ?
 			and exists (select 1 from `+table+` where content_key = ?)`, to, from); err != nil {
-			return fmt.Errorf("cannot move the %s values: %w", table, err)
+			return nil, fmt.Errorf("cannot move the %s values: %w", table, err)
 		}
 		if _, err := tx.ExecContext(ctx, `update `+table+` set content_key = ? where content_key = ?`, to, from); err != nil {
-			return fmt.Errorf("cannot move the %s values: %w", table, err)
+			return nil, fmt.Errorf("cannot move the %s values: %w", table, err)
 		}
 	}
 	if _, err := tx.ExecContext(ctx, `insert or ignore into video_tags (content_key, tag_id, created_at, tentative)
 		select ?, tag_id, created_at, tentative from video_tags where content_key = ?`, to, from); err != nil {
-		return fmt.Errorf("cannot move the video_tags values: %w", err)
+		return nil, fmt.Errorf("cannot move the video_tags values: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `delete from video_tags where content_key = ?`, from); err != nil {
-		return fmt.Errorf("cannot move the video_tags values: %w", err)
+		return nil, fmt.Errorf("cannot move the video_tags values: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `insert or ignore into auto_tag_rejections (content_key, tag_id, rejected_at)
 		select ?, tag_id, rejected_at from auto_tag_rejections where content_key = ?`, to, from); err != nil {
-		return fmt.Errorf("cannot move the auto_tag_rejections values: %w", err)
+		return nil, fmt.Errorf("cannot move the auto_tag_rejections values: %w", err)
 	}
 	if _, err := tx.ExecContext(ctx, `delete from auto_tag_rejections where content_key = ?`, from); err != nil {
-		return fmt.Errorf("cannot move the auto_tag_rejections values: %w", err)
+		return nil, fmt.Errorf("cannot move the auto_tag_rejections values: %w", err)
 	}
 	// 視聴履歴は 1 行が視聴 1 回なので、to に既にある行も残す（specs/043-watch-history/data-model.md）。
 	if _, err := tx.ExecContext(ctx, `update watch_history set content_key = ? where content_key = ?`, to, from); err != nil {
-		return fmt.Errorf("cannot move the watch_history values: %w", err)
+		return nil, fmt.Errorf("cannot move the watch_history values: %w", err)
 	}
 	// プレイリストとグループの項目は移し、同じプレイリストやグループで重なれば前の位置を残す
 	// （specs/044-playlists/research.md R-2、specs/048-groups/data-model.md「Succession and bundling」）。

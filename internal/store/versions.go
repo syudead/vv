@@ -127,10 +127,13 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 	if err := copyUserData(ctx, tx, representativeUserKey, userKey); err != nil {
 		return domain.VideoVersions{}, err
 	}
+	var rekeyedGroups []int64
 	for _, key := range absorbedKeys {
-		if err := rekeyUserItems(ctx, tx, key, userKey); err != nil {
+		ids, err := rekeyUserItems(ctx, tx, key, userKey)
+		if err != nil {
 			return domain.VideoVersions{}, err
 		}
+		rekeyedGroups = append(rekeyedGroups, ids...)
 	}
 	for _, key := range members {
 		if _, err := tx.ExecContext(ctx,
@@ -168,7 +171,8 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 	if err := tx.Commit(); err != nil {
 		return domain.VideoVersions{}, fmt.Errorf("cannot bundle the videos: %w", err)
 	}
-	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}}, groupsChangedEvents(changedGroups)...)...)
+	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}},
+		groupsChangedEvents(normalizeIDs(append(rekeyedGroups, changedGroups...)))...)...)
 	return versions, nil
 }
 
@@ -265,6 +269,7 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 		return domain.Video{}, fmt.Errorf("cannot unbundle the video: %w", err)
 	}
 	remaining := slices.DeleteFunc(slices.Clone(members), func(member string) bool { return member == key })
+	var rekeyedGroups []int64
 	switch {
 	case len(remaining) <= 1:
 		if len(remaining) == 1 {
@@ -273,7 +278,7 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 			}
 			// プレイリストとグループの項目は集まりの鍵から残った 1 本へ移す。他のメンバーが残るときは集まりに
 			// 残し、外したメンバーには項目を持たせない（specs/044-playlists/research.md R-2）。
-			if err := rekeyUserItems(ctx, tx, bundle.userKey, remaining[0]); err != nil {
+			if rekeyedGroups, err = rekeyUserItems(ctx, tx, bundle.userKey, remaining[0]); err != nil {
 				return domain.Video{}, err
 			}
 		}
@@ -306,7 +311,8 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 	if err := tx.Commit(); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot unbundle the video: %w", err)
 	}
-	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}}, groupsChangedEvents(changedGroups)...)...)
+	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}},
+		groupsChangedEvents(normalizeIDs(append(rekeyedGroups, changedGroups...)))...)...)
 	return video, nil
 }
 

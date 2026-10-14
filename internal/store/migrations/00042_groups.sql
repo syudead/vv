@@ -45,8 +45,10 @@ create table group_exclusions (
 ) without rowid;
 
 -- 今のフォルダの索引のグループを、そのまま自動グループにする。作成と更新の時刻は移行の時刻。
+-- folder_groups.name には長さの上限が無いので、同期が新しく作るときと同じく先頭 100 文字に切り
+-- （domain.cutGroupName）、title_key は切った名前から vv_natural_sort_key（internal/store/groups.go）で作り直す。
 insert into groups (name, title_key, origin_folder, created_at, updated_at)
-select name, title_key, path_key,
+select substr(name, 1, 100), vv_natural_sort_key(substr(name, 1, 100)), path_key,
        cast((julianday('now') - 2440587.5) * 86400000 as integer),
        cast((julianday('now') - 2440587.5) * 86400000 as integer)
   from folder_groups

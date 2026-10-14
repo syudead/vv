@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -167,6 +168,26 @@ func TestGroupsMigrationSeedsFromFolderGroups(t *testing.T) {
 	}
 	if tables != 0 {
 		t.Errorf("Down のあとも %d 表が残った", tables)
+	}
+}
+
+// 旧 folder_groups.name には長さの上限が無い。101 文字以上の名前は、同期が新しく作るときと同じく
+// 先頭 100 文字に切り、title_key も切った名前から作る。境目をまたぐ数字の並びも切った名前で数える。
+func TestGroupsMigrationCutsLongFolderGroupNames(t *testing.T) {
+	db, provider := migrateTo(t, 41)
+	long := strings.Repeat("あ", 99) + "12 end"
+	execSQL(t, db, `insert into folder_groups (id, path_key, path, name, title_key) values (10, '/m/long', '/m/long', ?, ?)`,
+		long, domain.NaturalSortKey(long))
+	if _, err := provider.UpTo(context.Background(), 42); err != nil {
+		t.Fatal(err)
+	}
+	var name, titleKey string
+	if err := db.sql.QueryRow(`select name, title_key from groups where origin_folder = '/m/long'`).Scan(&name, &titleKey); err != nil {
+		t.Fatal(err)
+	}
+	want := strings.Repeat("あ", 99) + "1"
+	if name != want || titleKey != domain.NaturalSortKey(want) {
+		t.Fatalf("name, title_key = %q, %q; want %q, %q", name, titleKey, want, domain.NaturalSortKey(want))
 	}
 }
 
@@ -386,6 +407,38 @@ func TestSuccessionRekeysGroupItems(t *testing.T) {
 	assertGroupRows(t, db, []groupRow{{ID: id, Name: "Show", Origin: origin, Items: folderItems("key-b", "key-x")}})
 	rebuildIndex(t, db)
 	assertGroupRows(t, db, []groupRow{{ID: id, Name: "Show", Origin: origin, Items: folderItems("key-b", "key-x")}})
+}
+
+// 束ねとその解除で項目を付け替えたグループは、作り直しで変わらなくても、祖先と合わせて
+// GroupsChanged で知らせる（R-13）。
+func TestBundlingPublishesRekeyedGroups(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	a := upsertFolderVideo(t, db, fixturePath("/media/Show/1.mp4"), "ka")
+	upsertFolderVideo(t, db, fixturePath("/media/Show/2.mp4"), "kx")
+	b := upsertFolderVideo(t, db, fixturePath("/media/loose.mp4"), "kb")
+	rebuildIndex(t, db)
+	id := readGroups(t, db)[0].ID
+	execSQL(t, db, `insert into groups (id, name, title_key, created_at, updated_at) values (100, 'Parent', 'parent', 1, 1)`)
+	execSQL(t, db, `insert into group_items (group_id, child_id, position) values (100, ?, 0)`, id)
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+	want := domain.GroupsChanged{GroupIDs: []int64{id, 100}}
+
+	if _, err := db.Versions().Bundle(ctx, []int64{a, b}, a); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(recorder.events, func(e domain.Event) bool { return reflect.DeepEqual(e, want) }) {
+		t.Fatalf("bundle events = %+v, want %+v", recorder.events, want)
+	}
+
+	recorder.events = nil
+	if _, err := db.Versions().Unbundle(ctx, b); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.ContainsFunc(recorder.events, func(e domain.Event) bool { return reflect.DeepEqual(e, want) }) {
+		t.Fatalf("unbundle events = %+v, want %+v", recorder.events, want)
+	}
 }
 
 // 同期で変わったグループとその祖先の id を、確定後に 1 つの GroupsChanged で知らせる。
