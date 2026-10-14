@@ -327,7 +327,7 @@ func TestPlaylistHidesAGroupWithoutMembers(t *testing.T) {
 		t.Fatal(err)
 	}
 	var groups int
-	if err := db.sql.QueryRow(`select count(*) from folder_groups where path_key = ?`, domain.FolderKey(show)).Scan(&groups); err != nil {
+	if err := db.sql.QueryRow(`select count(*) from groups where origin_folder = ?`, domain.FolderKey(show)).Scan(&groups); err != nil {
 		t.Fatal(err)
 	}
 	if groups != 1 {

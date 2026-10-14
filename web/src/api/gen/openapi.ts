@@ -2289,30 +2289,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/folders/{rootId}/grouping/tag": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * グループをタグに変える
-         * @description 1つの取引で、フォルダ名を `NormalizeTagName` に通し、名前かシノニムで引けたタグを使うか
-         *     新しく作り、そのフォルダに `ungroup` を書き、索引を作り直す
-         *     （specs/017-folder-groups/contracts/folder-groups-api.md §2）。本文は無い。
-         *     フォルダ名がタグ名の規則に合わなければ `400` `invalid_request` で、タグも例外も作らない。
-         *     そのフォルダが今グループでないか、登録フォルダそのものなら `409` `conflict`。
-         */
-        post: operations["tagFolderGroup"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/scans/current": {
         parameters: {
             query?: never;
@@ -3302,23 +3278,20 @@ export interface components {
         FolderGroupingMode: "auto" | "ungroup" | "groupDirect";
         /**
          * @description フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
-         *     ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+         *     ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1、
+         *     specs/048-groups/contracts/screen-api.md「Routes and schemas changed」）
          */
         FolderGrouping: {
             mode: components["schemas"]["FolderGroupingMode"];
-            /** @description いまこのフォルダの直下がグループか */
-            grouped: boolean;
-            /** @description グループで、登録フォルダそのものではない（グループをタグに変えられる） */
-            taggable: boolean;
+            /**
+             * Format: int64
+             * @description このフォルダの自動グループの id。無ければ省く。`POST /api/groups/{id}/tag` で
+             *     タグに変えられる
+             */
+            groupId?: number;
         };
         FolderGroupingRequest: {
             mode: components["schemas"]["FolderGroupingMode"];
-        };
-        FolderGroupTagResult: {
-            tag: components["schemas"]["TagRef"];
-            /** @description タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false */
-            created: boolean;
-            grouping: components["schemas"]["FolderGrouping"];
         };
         FolderListing: {
             folder: components["schemas"]["FolderSummary"];
@@ -3901,7 +3874,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "not_folder_group" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "root_group_not_taggable" | "folder_not_group" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -7344,38 +7317,6 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
-        };
-    };
-    tagFolderGroup: {
-        parameters: {
-            query?: {
-                /**
-                 * @description 登録済みメディアフォルダからの `/` 区切りの相対パス。省略時と空文字は
-                 *     登録フォルダそのもの。空の段・先頭や末尾の `/`・`.`・`..` は受け付けない
-                 */
-                path?: components["parameters"]["FolderPath"];
-            };
-            header?: never;
-            path: {
-                /** @description フォルダが属する登録済みメディアフォルダの識別子 */
-                rootId: components["parameters"]["FolderRootId"];
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 使ったタグと、変更後のまとめ方 */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["FolderGroupTagResult"];
-                };
-            };
-            400: components["responses"]["InvalidRequest"];
-            404: components["responses"]["NotFound"];
-            409: components["responses"]["Conflict"];
         };
     };
     getCurrentScan: {

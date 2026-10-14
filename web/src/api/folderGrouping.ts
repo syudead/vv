@@ -2,14 +2,12 @@ import { t, type UiText } from "../i18n";
 import { type FolderRef, RequestFailed, request } from "./client";
 import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
-import { refreshTags } from "./tags";
 
-// フォルダのまとめ方の例外と、グループをタグに変える操作
-// （specs/017-folder-groups/contracts/folder-groups-api.md §1・§2）。
+// フォルダのまとめ方の例外（specs/017-folder-groups/contracts/folder-groups-api.md §1）。
+// フォルダの自動グループをタグに変えるのは groups.ts の tagGroup（POST /api/groups/{id}/tag）である。
 
 export type FolderGrouping = components["schemas"]["FolderGrouping"];
 export type FolderGroupingMode = components["schemas"]["FolderGroupingMode"];
-export type FolderGroupTagResult = components["schemas"]["FolderGroupTagResult"];
 
 /** groupingPath はフォルダの経路に、相対パスの問い合わせを付ける。登録フォルダ自身では省く。 */
 function groupingPath(folder: FolderRef, suffix: string): string {
@@ -56,31 +54,9 @@ export async function setFolderGrouping(
   });
 }
 
-/**
- * tagFolderGroup はグループをタグに変える（フォルダ名のタグを使うか作り、まとめを解除する）。
- *
- * 成功したら（409 でも）一覧の控えを捨て、成功したときは共有のタグの一覧も取り直す（タグが増えるか、本数が変わる）。
- */
-export async function tagFolderGroup(
-  folder: FolderRef,
-  signal?: AbortSignal,
-): Promise<FolderGroupTagResult> {
-  const result = await sendGrouping<FolderGroupTagResult>(groupingPath(folder, "/tag"), {
-    method: "POST",
-    signal,
-  });
-  refreshTags().catch(() => undefined);
-  return result;
-}
-
 /** ungroupedMessage はまとめを解除したことを伝える文言である（ui-design.md「Group line」）。 */
 export function ungroupedMessage(name: string): UiText {
   return t.folderGrouping.ungrouped(name);
-}
-
-/** taggedMessage はグループをタグに変えたことを伝える文言である（ui-design.md「Group line」）。 */
-export function taggedMessage(result: FolderGroupTagResult): UiText {
-  return t.folderGrouping.tagged(result.tag.name, result.created);
 }
 
 /**

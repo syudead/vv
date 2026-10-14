@@ -5,10 +5,9 @@ import type { Video } from "../api/client";
 import {
   groupingFailure,
   setFolderGrouping,
-  taggedMessage,
-  tagFolderGroup,
   ungroupedMessage,
 } from "../api/folderGrouping";
+import { taggedMessage, tagGroup } from "../api/groups";
 import { t } from "../i18n";
 import { Button } from "../ui/shadcn/button";
 import {
@@ -69,7 +68,10 @@ export default function GroupLine({
   );
 }
 
-/** GroupLineMenu は所有者の Group line で、「まとめを解除」「グループをタグに変える」を開く。 */
+/**
+ * GroupLineMenu は所有者の Group line で、「まとめを解除」「グループをタグに変える」を開く。
+ * タグ化はグループの id で POST /api/groups/{id}/tag を送る（specs/048-groups/research.md R-11）。
+ */
 function GroupLineMenu({
   group,
   folder: { rootId, path },
@@ -90,7 +92,7 @@ function GroupLineMenu({
     setBusy(true);
     try {
       if (tagging) {
-        toast(taggedMessage(await tagFolderGroup(folder)));
+        toast(taggedMessage(await tagGroup(group.id)));
       } else {
         await setFolderGrouping(folder, "ungroup");
         toast(ungroupedMessage(group.name));
@@ -130,13 +132,11 @@ function GroupLineMenu({
           <Ungroup aria-hidden="true" />
           {t.player.group.ungroup}
         </DropdownMenuItem>
-        {/* 登録フォルダそのもののグループはタグに変えられない（contracts §2）。 */}
-        {path !== "" && (
-          <DropdownMenuItem onSelect={() => void run(true)}>
-            <Tag aria-hidden="true" />
-            {t.player.group.toTag}
-          </DropdownMenuItem>
-        )}
+        {/* 登録フォルダそのもののグループもタグに変えられる（specs/048-groups/research.md R-11）。 */}
+        <DropdownMenuItem onSelect={() => void run(true)}>
+          <Tag aria-hidden="true" />
+          {t.player.group.toTag}
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );

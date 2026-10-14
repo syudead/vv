@@ -1,11 +1,15 @@
+import { t, type UiText } from "../i18n";
 import {
   apiFetch,
   type GroupDetail,
   type LibraryGroup,
   request,
+  RequestFailed,
   toRequestFailed,
 } from "./client";
 import type { components } from "./gen/openapi";
+import { clearListSnapshot } from "./listSnapshot";
+import { refreshTags } from "./tags";
 
 // グループの一覧と編集の画面 API（specs/048-groups/contracts/screen-api.md「Statuses」）。型は
 // api/openapi.yaml からの生成物を使う。一覧はゲストも読め、書き込みは所有者だけである。
@@ -201,7 +205,30 @@ export async function moveGroupItem(
  * tagGroup はグループをタグにする（POST /api/groups/{id}/tag）。子孫の全動画にタグが手で付き、
  * グループは解散する。名前がタグ名に使えなければ 400 `invalid_request` の RequestFailed になり、
  * 何も変わらない。
+ *
+ * 成功したら一覧の控えを捨て（ライブラリのカードが変わる）、共有のタグの一覧も取り直す（タグが
+ * 増えるか、本数が変わる）。404（途中で解散された）でも、控えにそのカードが残るので捨てる。
  */
-export function tagGroup(id: number, signal?: AbortSignal): Promise<GroupTagResult> {
-  return request<GroupTagResult>(`${groupPath(id)}/tag`, { method: "POST", signal });
+export async function tagGroup(
+  id: number,
+  signal?: AbortSignal,
+): Promise<GroupTagResult> {
+  let result: GroupTagResult;
+  try {
+    result = await request<GroupTagResult>(`${groupPath(id)}/tag`, {
+      method: "POST",
+      signal,
+    });
+  } catch (failure) {
+    if (failure instanceof RequestFailed && failure.status === 404) clearListSnapshot();
+    throw failure;
+  }
+  clearListSnapshot();
+  refreshTags().catch(() => undefined);
+  return result;
+}
+
+/** taggedMessage はグループをタグに変えたことを伝える文言である（specs/048-groups/ui-design.md「Words」）。 */
+export function taggedMessage(result: GroupTagResult): UiText {
+  return t.groups.tagged(result.tag.name, result.created);
 }
