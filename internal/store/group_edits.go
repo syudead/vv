@@ -109,23 +109,9 @@ func (s *GroupStore) RemoveGroupItems(ctx context.Context, id int64, itemIDs []i
 		if len(ids) == 0 {
 			return nil, nil
 		}
-		for _, itemID := range ids {
-			if err := removeGroupItem(ctx, tx, id, itemID); err != nil {
-				return nil, err
-			}
-		}
-		left, err := countGroupItems(ctx, tx, id)
-		if err != nil {
-			return nil, err
-		}
-		if left == 0 {
-			dissolved = true
-			return dissolveGroupAndRebuild(ctx, tx, id)
-		}
-		if err := renumberPositions(ctx, tx, groupPositions, []int64{id}); err != nil {
-			return nil, err
-		}
-		return touchedGroupsWithAncestors(ctx, tx, []int64{id})
+		var changed []int64
+		changed, dissolved, err = removeGroupItems(ctx, tx, id, ids)
+		return changed, err
 	})
 	if err != nil || dissolved {
 		return domain.Group{}, dissolved, err
@@ -258,14 +244,82 @@ func touchedGroupsWithAncestors(ctx context.Context, tx *sql.Tx, ids []int64) ([
 }
 
 // appendGroupMembers は add の動画、次にグループを、グループ id の末尾に要求の順で足し、足した
-// 項目の数を返す。動画の id は利用者データの鍵へ引き直すので、1 つの集まりの 2 つのバージョンは
-// 1 つの項目になる。引けない動画か無いグループは domain.ErrGroupTargetNotFound、入れ子の循環は
-// domain.ErrGroupCycle で、呼び出し側が取引を巻き戻す。
+// 項目の数を返す（resolveGroupMembers・appendGroupMemberList）。引けない動画か無いグループは
+// domain.ErrGroupTargetNotFound、入れ子の循環は domain.ErrGroupCycle で、呼び出し側が取引を巻き戻す。
 func appendGroupMembers(ctx context.Context, tx *sql.Tx, id int64, add domain.GroupAdd) (int, error) {
-	keys, err := groupAddKeys(ctx, tx, add.VideoIDs)
+	refs := make([]domain.OrganizeRef, 0, len(add.VideoIDs)+len(add.GroupIDs))
+	for _, videoID := range add.VideoIDs {
+		refs = append(refs, domain.OrganizeRef{Kind: domain.OrganizeVideo, ID: videoID})
+	}
+	for _, groupID := range add.GroupIDs {
+		refs = append(refs, domain.OrganizeRef{Kind: domain.OrganizeGroup, ID: groupID})
+	}
+	members, err := resolveGroupMembers(ctx, tx, refs)
 	if err != nil {
 		return 0, err
 	}
+	return appendGroupMemberList(ctx, tx, id, members)
+}
+
+// groupMember は項目にする動画かグループ 1 つである。動画なら Key（利用者データの鍵）、グループ
+// なら Child（グループの id）を持つ。
+type groupMember struct {
+	Key   string
+	Child int64
+}
+
+// resolveGroupMembers はカード refs を並びの順に項目にするものへ引き直し、重複を除いて返す。動画の
+// id は利用者データの鍵へ引き直すので、1 つの集まりの 2 つのバージョンは 1 つになる。いまライブラリ
+// に無い動画か無いグループが 1 つでもあれば domain.ErrGroupTargetNotFound である。
+func resolveGroupMembers(ctx context.Context, tx *sql.Tx, refs []domain.OrganizeRef) ([]groupMember, error) {
+	var videoIDs []int64
+	for _, ref := range refs {
+		if ref.Kind == domain.OrganizeVideo {
+			videoIDs = append(videoIDs, ref.ID)
+		}
+	}
+	keys, err := userKeysByVideoID(ctx, tx, videoIDs, true)
+	if err != nil {
+		return nil, err
+	}
+	members := make([]groupMember, 0, len(refs))
+	seen := make(map[groupMember]bool, len(refs))
+	for _, ref := range refs {
+		member, err := resolveGroupMember(ctx, tx, ref, keys)
+		if err != nil {
+			return nil, err
+		}
+		if !seen[member] {
+			seen[member] = true
+			members = append(members, member)
+		}
+	}
+	return members, nil
+}
+
+// resolveGroupMember はカード ref 1 枚を項目にするものへ引き直す。動画は keys（動画の id から鍵）で
+// 引く。
+func resolveGroupMember(ctx context.Context, tx *sql.Tx, ref domain.OrganizeRef, keys map[int64]string) (groupMember, error) {
+	switch ref.Kind {
+	case domain.OrganizeVideo:
+		key, ok := keys[ref.ID]
+		if !ok {
+			return groupMember{}, domain.ErrGroupTargetNotFound
+		}
+		return groupMember{Key: key}, nil
+	case domain.OrganizeGroup:
+		if err := ensureGroupTarget(ctx, tx, ref.ID); err != nil {
+			return groupMember{}, err
+		}
+		return groupMember{Child: ref.ID}, nil
+	}
+	return groupMember{}, fmt.Errorf("unknown card kind %q", ref.Kind)
+}
+
+// appendGroupMemberList は members を並びの順にグループ id の末尾に足し、足した項目の数を返す。
+// 既に項目にあるものは飛ばす。所有者が外したフォルダ由来のメンバーは除外を消し、手で足した項目と
+// して戻す。グループが id 自身か id の祖先なら domain.ErrGroupCycle で、呼び出し側が取引を巻き戻す。
+func appendGroupMemberList(ctx context.Context, tx *sql.Tx, id int64, members []groupMember) (int, error) {
 	edges, err := groupEdges(ctx, tx)
 	if err != nil {
 		return 0, err
@@ -275,49 +329,25 @@ func appendGroupMembers(ctx context.Context, tx *sql.Tx, id int64, add domain.Gr
 		return 0, err
 	}
 	start := next
-	for _, key := range keys {
-		if _, err := tx.ExecContext(ctx, `delete from group_exclusions where group_id = ? and content_key = ?`, id, key); err != nil {
-			return 0, fmt.Errorf("cannot add to the group: %w", err)
+	for _, member := range members {
+		if member.Child == 0 {
+			if _, err := tx.ExecContext(ctx, `delete from group_exclusions where group_id = ? and content_key = ?`, id, member.Key); err != nil {
+				return 0, fmt.Errorf("cannot add to the group: %w", err)
+			}
+			if next, err = insertGroupItem(ctx, tx, id, "content_key", member.Key, next); err != nil {
+				return 0, err
+			}
+			continue
 		}
-		if next, err = insertGroupItem(ctx, tx, id, "content_key", key, next); err != nil {
+		if err := domain.ValidateNesting(id, member.Child, edges); err != nil {
 			return 0, err
 		}
-	}
-	for _, child := range add.GroupIDs {
-		if _, err := groupSummary(ctx, tx, child); errors.Is(err, domain.ErrGroupNotFound) {
-			return 0, domain.ErrGroupTargetNotFound
-		} else if err != nil {
-			return 0, err
-		}
-		if err := domain.ValidateNesting(id, child, edges); err != nil {
-			return 0, err
-		}
-		edges = append(edges, domain.GroupEdge{Parent: id, Child: child})
-		if next, err = insertGroupItem(ctx, tx, id, "child_id", child, next); err != nil {
+		edges = append(edges, domain.GroupEdge{Parent: id, Child: member.Child})
+		if next, err = insertGroupItem(ctx, tx, id, "child_id", member.Child, next); err != nil {
 			return 0, err
 		}
 	}
 	return next - start, nil
-}
-
-// groupAddKeys は videoIDs を要求の順に利用者データの鍵へ引き直し、重複を除いて返す。いまライブラリ
-// に無い id が 1 つでもあれば domain.ErrGroupTargetNotFound である。
-func groupAddKeys(ctx context.Context, tx *sql.Tx, videoIDs []int64) ([]string, error) {
-	byID, err := userKeysByVideoID(ctx, tx, videoIDs, true)
-	if err != nil {
-		return nil, err
-	}
-	keys := make([]string, 0, len(videoIDs))
-	for _, videoID := range videoIDs {
-		key, ok := byID[videoID]
-		if !ok {
-			return nil, domain.ErrGroupTargetNotFound
-		}
-		if !slices.Contains(keys, key) {
-			keys = append(keys, key)
-		}
-	}
-	return keys, nil
 }
 
 // insertGroupItem はグループ id の位置 position に、列 column（content_key か child_id。定数で
@@ -380,6 +410,31 @@ func removeGroupItem(ctx context.Context, tx *sql.Tx, id, itemID int64) error {
 		return fmt.Errorf("cannot remove the group item: %w", err)
 	}
 	return nil
+}
+
+// removeGroupItems はグループ id の項目 itemIDs を removeGroupItem で消す。項目が 1 つも残らなければ
+// そのグループを解散し（dissolveGroupAndRebuild）、dissolved に true を返す。残れば詰め直して更新日時を
+// 進める。変えたグループとその祖先の id を返す。項目のどれかがそのグループに無ければ
+// domain.ErrGroupTargetNotFound で、呼び出し側が取引を巻き戻す。
+func removeGroupItems(ctx context.Context, tx *sql.Tx, id int64, itemIDs []int64) (changed []int64, dissolved bool, err error) {
+	for _, itemID := range itemIDs {
+		if err := removeGroupItem(ctx, tx, id, itemID); err != nil {
+			return nil, false, err
+		}
+	}
+	left, err := countGroupItems(ctx, tx, id)
+	if err != nil {
+		return nil, false, err
+	}
+	if left == 0 {
+		changed, err = dissolveGroupAndRebuild(ctx, tx, id)
+		return changed, err == nil, err
+	}
+	if err := renumberPositions(ctx, tx, groupPositions, []int64{id}); err != nil {
+		return nil, false, err
+	}
+	changed, err = touchedGroupsWithAncestors(ctx, tx, []int64{id})
+	return changed, false, err
 }
 
 // countGroupItems はグループ id の項目の数を返す。

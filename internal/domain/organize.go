@@ -20,3 +20,29 @@ type OrganizeResult struct {
 	UndoToken string
 	GroupID   int64
 }
+
+// OrganizeRefKind はドラッグしたカードの種類である。
+type OrganizeRefKind string
+
+const (
+	// OrganizeVideo は動画のカードで、OrganizeRef.ID は動画の id である。
+	OrganizeVideo OrganizeRefKind = "video"
+	// OrganizeGroup はグループのカードで、OrganizeRef.ID はグループの id である。
+	OrganizeGroup OrganizeRefKind = "group"
+)
+
+// OrganizeRef はドラッグしたカード 1 枚である（specs/050-drag-organize/research.md R-4）。操作は
+// カードを画面の順の並びで受け取る。
+type OrganizeRef struct {
+	Kind OrganizeRefKind
+	ID   int64
+}
+
+// OrganizeMove はカードの移動の入力である（data-model.md「Operations」の Move）。From はカードを
+// ドラッグして出した開いているグループ、To は入れるグループで、どちらも 0 なら無い。To が無ければ
+// From から外すだけ（ライブラリに落とした）である。
+type OrganizeMove struct {
+	Items []OrganizeRef
+	From  int64
+	To    int64
+}

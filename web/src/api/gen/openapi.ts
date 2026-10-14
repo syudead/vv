@@ -2505,6 +2505,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/organize/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * カードをグループへ入れるか、グループの間で動かすか、グループから外し、取り消しのトークンを返す
+         * @description 所有者だけ。ドラッグしたカード `items` を画面の順のままグループ `to` の末尾へ足し（既に
+         *     あるものは飛ばす）、`from` があればそこから外す。`to` が無ければ外すだけ（ライブラリに
+         *     落とした）。フォルダ由来のメンバーを外すと除外を書き、最後の項目を外した `from` は解散する。
+         *     1 つの取引で行い、応答の `undoToken` で取り消せる（specs/050-drag-organize/contracts/screen-api.md）。
+         *     `from` と `to` がどちらも無いか同じなら 400 `invalid_request`。`from`・`to`・カードの動画や
+         *     グループが無いか、カードが `from` に無ければ 404 `group_target_not_found`、ドラッグした
+         *     グループが `to` か `to` の祖先なら 409 `group_cycle` で、どれも何も書かない。
+         */
+        post: operations["organizeMove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/organize/undo": {
         parameters: {
             query?: never;
@@ -3694,6 +3720,19 @@ export interface components {
              * @description この項目のすぐ後ろへ移す。無ければ先頭へ移す
              */
             after?: number;
+        };
+        OrganizeMove: {
+            items: components["schemas"]["OrganizeRefs"];
+            /**
+             * Format: int64
+             * @description カードをドラッグして出した開いているグループ
+             */
+            from?: number;
+            /**
+             * Format: int64
+             * @description カードを入れるグループ。無ければライブラリ（`from` から外すだけ）
+             */
+            to?: number;
         };
         OrganizeUndo: {
             /** @description 操作の応答の `undoToken` */
@@ -8281,6 +8320,34 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    organizeMove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeMove"];
+            };
+        };
+        responses: {
+            /** @description 動かした。取り消しのトークン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     organizeUndo: {
