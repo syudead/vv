@@ -18,6 +18,9 @@ const (
 	VersionJudgementUndecided VersionJudgement = "undecided"
 	// VersionJudgementFailed は判定に失敗した組で、RetryAt を過ぎると取り出せる。
 	VersionJudgementFailed VersionJudgement = "failed"
+	// VersionJudgementNoConnection はモデルが要るのに Ollama の接続が保存されていない組で、要求を送らず、
+	// 接続が保存されるまで取り出されない（research.md R-13）。
+	VersionJudgementNoConnection VersionJudgement = "no_connection"
 )
 
 // VersionJudgeJob は取り出した候補の 1 組である。Keys は key_a < key_b の内容の鍵、Fingerprints は
@@ -40,7 +43,27 @@ const (
 	VersionUndecided
 	// VersionFailed は判定に失敗した。Error を持つ。
 	VersionFailed
+	// VersionNoConnection はモデルが要るのに接続が保存されていない（research.md R-13）。
+	VersionNoConnection
 )
+
+// String はログに出す名前である。
+func (v VersionVerdict) String() string {
+	switch v {
+	case VersionSame:
+		return "same"
+	case VersionDifferent:
+		return "different"
+	case VersionUndecided:
+		return "undecided"
+	case VersionFailed:
+		return "failed"
+	case VersionNoConnection:
+		return "no_connection"
+	default:
+		return "unknown"
+	}
+}
 
 // VersionJudgeResult は取り出した組の判定の結果である。Probability は VersionUndecided のときの
 // モデルの答え（無ければ nil）、Error は VersionFailed のときの提供元のメッセージ。

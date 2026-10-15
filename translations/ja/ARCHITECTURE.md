@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: 57161abb21e6d210f0cad9a87dfddd6574e19b4469908f6567bbf8c2993bd236
+sourceHash: 2996af2c1b6f52d8e2ccb05c1aac1c4dfbd89829f41de720d5b9739977b2e310
 ---
 
 # アーキテクチャ {#architecture}
@@ -60,7 +60,7 @@ flowchart LR
 | 層 | パッケージ | 担当 | インポートしてはならないもの |
 | --- | --- | --- | --- |
 | ドメイン | `internal/domain` | 値の型と純粋な規則。ストアが強制する業務ルールを含む | `net/http`、`database/sql`、`os`、`os/exec`、SQLite ドライバ、他のすべての `internal/*` パッケージ |
-| アプリケーション | `internal/app` | ユースケース (スキャン、自動取り込み、取り込み、カタログ、メディアフォルダ、エンコーダの選択、認証、自動タグ付け) | `net/http`、`database/sql`、`os/exec`、SQLite ドライバ、すべてのアダプタ |
+| アプリケーション | `internal/app` | ユースケース (スキャン、自動取り込み、取り込み、カタログ、メディアフォルダ、エンコーダの選択、認証、自動タグ付け、重複判定) | `net/http`、`database/sql`、`os/exec`、SQLite ドライバ、すべてのアダプタ |
 | アダプタ | `internal/httpapi`、`store`、`media`、`artifacts`、`mediafs`、`opener`、`scanner`、`watcher`、`jobs`、`password`、`ollama`、`comfyui`、`wasmplugin` | 外部とのやり取り | 互いと `internal/app` |
 | アダプタと並ぶもの | `internal/eventbus`、`internal/desktop` | プロセス内のイベント配信、デスクトップアプリの OS 側 | `cmd/mdm` だけがインポートする |
 
@@ -121,6 +121,7 @@ flowchart LR
 | `internal/app` (`ComfyUIConnection`)、`internal/comfyui` | 画像編集のプロバイダ。セルフホストの ComfyUI と Comfy Cloud の両方を扱う 1 つのアダプタと、その接続設定およびテスト | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
 | `internal/app` (`WorkInfoPluginRuntime`、`WorkInfoPlugins`)、`internal/store` (`WorkInfoPluginStore`、`OverrideStore.ApplyFetchedWorkInfo`)、`internal/wasmplugin` | 作品情報プラグイン。WebAssembly モジュールを実行せずに検査すること、ファイルも環境もなく固定の制限がある wazero のサンドボックスで実行すること、その HTTP 要求を公開インターネットのアドレスにだけ到達するように実行すること、モジュールのダイジェストに結び付いた承認とプラグインごとの設定値を持つ、所有者のプラグインの行、および検索すること、10 分間保持するメモリ上の結果へ取得すること、選んだタイトルとタグを、プラグインの承認を確認し直す 1 つのトランザクションで適用すること | [work-info-plugins.md](docs/design-docs/work-info-plugins.md) |
 | `internal/app` (`AutoTagger`) | 動画に合う既存のタグを分類器のポートに問い合わせることと、そのキュー | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
+| `internal/app` (`VersionJudge`)、`internal/store` (`VersionStore.ClaimJudgement`、`ApplyJudgement`) | 重複の候補を、フレームごとの指紋と、異なる連続区間については分類器のポートから判定すること。所有者の操作と同じように組をまとめるか退けること | [duplicate-judging.md](docs/design-docs/duplicate-judging.md) |
 | `internal/opener` | サーバー PC の既定のアプリで動画を開く。ループバックからのリクエストのみ | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
 | `internal/password` | PHC 文字列での Argon2id ハッシュ化 | [016 data-model](specs/016-single-account-auth/data-model.md) |
 | `internal/app` (`Auth`) | 初期設定、ログインの試行制限、セッション、API トークン | [016 data-model](specs/016-single-account-auth/data-model.md)、[026 data-model](specs/026-external-api/data-model.md) |

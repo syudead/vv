@@ -335,3 +335,73 @@ func TestVersionJudgingSetting(t *testing.T) {
 		}
 	}
 }
+
+// 接続が無くてモデルに聞けない組は no_connection になって取り出されず、一覧に残る。接続の保存で
+// 待ちに戻る（research.md R-13）。
+func TestJudgementNoConnectionWaitsForConnection(t *testing.T) {
+	db, _ := judgementFixture(t)
+	ctx := context.Background()
+	job := claimJudgement(t, db)
+	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionNoConnection})
+
+	if judgement, attempts, retryAt, _ := candidateJudgement(t, db); judgement == nil || *judgement != "no_connection" ||
+		attempts != 0 || retryAt != nil {
+		t.Fatalf("判定 = %v, attempts %d, retry_at %v, want no_connection, 0, null", judgement, attempts, retryAt)
+	}
+	if pairs, _ := candidatePairs(t, db); len(pairs) != 1 {
+		t.Errorf("no_connection の組が一覧から消えた: %v", pairs)
+	}
+	expectNoClaim(t, db, "no_connection の組")
+
+	reset, err := db.Versions().ResetNoConnectionJudgements(ctx)
+	if err != nil || reset != 1 {
+		t.Fatalf("ResetNoConnectionJudgements = %d, %v, want 1", reset, err)
+	}
+	claimJudgement(t, db)
+}
+
+// 次に取り出せる時刻は failed の行の retry_at のうち最も早いもので、無ければ見つからない（R-5）。
+func TestNextJudgementRetry(t *testing.T) {
+	db, _ := judgementFixture(t)
+	ctx := context.Background()
+	if _, found, err := db.Versions().NextJudgementRetry(ctx); err != nil || found {
+		t.Fatalf("失敗の無いとき = %v, %v, want 見つからない", found, err)
+	}
+	job := claimJudgement(t, db)
+	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "down"})
+	_, _, retryAt, _ := candidateJudgement(t, db)
+	next, found, err := db.Versions().NextJudgementRetry(ctx)
+	if err != nil || !found || next.Unix() != *retryAt {
+		t.Errorf("NextJudgementRetry = %v, %v, %v, want %d", next, found, err, *retryAt)
+	}
+}
+
+// 取り出せない failed の組（両側の登録の所在が無くなった組）は次の再試行の時刻に数えない。数えると
+// 取り出せない組の時刻を過ぎたあと、ワーカーが毎秒問い合わせ続ける（R-5）。
+func TestNextJudgementRetryIgnoresUnclaimablePairs(t *testing.T) {
+	db, _ := judgementFixture(t)
+	ctx := context.Background()
+	job := claimJudgement(t, db)
+	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "down"})
+	if _, err := db.sql.Exec(`delete from media_folders`); err != nil {
+		t.Fatal(err)
+	}
+	if next, found, err := db.Versions().NextJudgementRetry(ctx); err != nil || found {
+		t.Errorf("NextJudgementRetry = %v, %v, %v, want 見つからない", next, found, err)
+	}
+}
+
+// Ollama の接続先は、行を保存したときだけ保存済みである。既定の接続先に倒した値は数えない（R-13）。
+func TestOllamaConnectionSaved(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	if saved, err := db.Settings().OllamaConnectionSaved(ctx); err != nil || saved {
+		t.Fatalf("保存の前 = %v, %v, want 未保存", saved, err)
+	}
+	if err := db.Settings().SaveOllamaSettings(ctx, domain.DefaultOllamaSettings()); err != nil {
+		t.Fatal(err)
+	}
+	if saved, err := db.Settings().OllamaConnectionSaved(ctx); err != nil || !saved {
+		t.Errorf("保存のあと = %v, %v, want 保存済み", saved, err)
+	}
+}

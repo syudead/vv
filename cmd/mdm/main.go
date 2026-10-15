@@ -307,6 +307,19 @@ func run(opts runOptions) error {
 	if err := autoTagger.Recover(backgroundCtx); err != nil {
 		logger.Warn("could not requeue interrupted auto-tagging jobs", slog.Any("error", err))
 	}
+	// 重複の自動判定。「同じ動画かもしれない」候補を指紋のコマごとに比べ、食い違う区間だけを判定の口に
+	// 聞く（docs/design-docs/duplicate-judging.md）。Ollama の接続先の保存で、接続を待っていた組を再開する。
+	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
+		Store:      db.Versions(),
+		Settings:   settingsStore,
+		Classifier: classifier,
+		Frames:     artifactStore,
+		Logger:     logger,
+	})
+	if err := versionJudge.Recover(backgroundCtx); err != nil {
+		logger.Warn("could not requeue interrupted duplicate judgements", slog.Any("error", err))
+	}
+	ollamaConnection.OnSaved(versionJudge.ConnectionSaved)
 	subscriptions := subscribeEvents(bus, eventSubscribers{
 		Screen:           events.Handle,
 		Workers:          wakers,
@@ -314,6 +327,7 @@ func run(opts runOptions) error {
 		ImagesFinished: func(videoID int64) {
 			autoTagger.VideoImagesFinished(backgroundCtx, videoID)
 		},
+		VersionJudge: versionJudge,
 	})
 	// ライブ変換の映像エンコード方式の起動時の確認の寿命。停止の指示で止める。
 	checksCtx, stopChecks := context.WithCancel(backgroundCtx)
@@ -326,6 +340,7 @@ func run(opts runOptions) error {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
 	}
 	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
+	workersDone.Go(func() { versionJudge.Run(backgroundCtx) })
 	// 読まれないセッションと時間切れの実行を片付け、止めるときは進んでいる実行を中止する。
 	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })
 	// ここから先は、どこで戻っても（待ち受けを開けない・待ち受けを失った・停止の

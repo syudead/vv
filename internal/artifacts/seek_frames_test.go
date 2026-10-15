@@ -11,6 +11,8 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/syudead/vv/internal/domain"
 )
 
 // numberedSheetWriter は 1 コマ 32 × 18 の 10 × 10 のシートを sheets 枚書く。コマ k は
@@ -68,6 +70,58 @@ func TestSeekFramesSpreadAcrossSheets(t *testing.T) {
 		if diff := int(gray.Y) - want[i]; diff < -3 || diff > 3 {
 			t.Errorf("コマ %d の明るさ = %d, want %d", i, gray.Y, want[i])
 		}
+	}
+}
+
+// 指定した組のコマを、a のコマを左、b のコマを右に並べた 1 コマの 2 倍の幅の JPEG で返す
+// （specs/054-auto-dup/research.md R-2）。
+func TestSeekFramePairsSideBySide(t *testing.T) {
+	const other = "ef56ab78:1234"
+	store := New(t.TempDir())
+	for _, contentKey := range []string{key, other} {
+		if err := publishSeek(store, contentKey, spriteLayout, numberedSheetWriter(t, 2)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	pairs := []domain.FramePair{{A: 3, B: 40}, {A: 120, B: 7}}
+	images, err := store.SeekFramePairs(key, other, pairs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(images) != len(pairs) {
+		t.Fatalf("画像の数 = %d", len(images))
+	}
+	for i, data := range images {
+		img, err := jpeg.Decode(bytes.NewReader(data))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if b := img.Bounds(); b.Dx() != 64 || b.Dy() != 18 {
+			t.Fatalf("画像 %d の大きさ = %v, want 64 × 18", i, b)
+		}
+		for _, side := range []struct {
+			x    int
+			want int
+		}{{16, pairs[i].A}, {48, pairs[i].B}} {
+			gray := color.GrayModel.Convert(img.At(side.x, 9)).(color.Gray)
+			if diff := int(gray.Y) - side.want; diff < -3 || diff > 3 {
+				t.Errorf("画像 %d の x=%d の明るさ = %d, want %d", i, side.x, gray.Y, side.want)
+			}
+		}
+	}
+}
+
+// 片方のシーク用プレビューが無ければ fs.ErrNotExist、範囲外のコマは誤り。
+func TestSeekFramePairsErrors(t *testing.T) {
+	store := New(t.TempDir())
+	if err := publishSeek(store, key, spriteLayout, numberedSheetWriter(t, 2)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.SeekFramePairs(key, "ef56ab78:1234", []domain.FramePair{{}}); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("無い側: err = %v", err)
+	}
+	if _, err := store.SeekFramePairs(key, key, []domain.FramePair{{A: 150}}); err == nil {
+		t.Error("範囲外のコマで誤りにならない")
 	}
 }
 

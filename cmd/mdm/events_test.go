@@ -40,9 +40,13 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 		wakers[kind] = &countingWaker{}
 		workers[kind] = wakers[kind]
 	}
-	subs := subscribeEvents(bus, eventSubscribers{Workers: workers})
+	judge := &countingWaker{}
+	subs := subscribeEvents(bus, eventSubscribers{Workers: workers, VersionJudge: judge})
 
 	bus.Publish(domain.JobsQueued{Kinds: []domain.JobKind{domain.JobProbe, domain.JobPreview}})
+	// 重複の判定のワーカーは、仕事の終わりと候補の変化で起こす。
+	bus.Publish(domain.ProcessingChanged{})
+	bus.Publish(domain.VersionCandidatesChanged{})
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobProbe})
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1, Stage: domain.JobThumbnail})
 	bus.Publish(domain.VideoIngestChanged{VideoID: 1})
@@ -54,6 +58,9 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 		domain.JobSeekThumbnail: 3,
 	}
 	check := func() bool {
+		if judge.woken.Load() != 2 {
+			return false
+		}
 		for kind, w := range wakers {
 			if w.woken.Load() != want[kind] {
 				return false
@@ -73,6 +80,9 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 		if got := w.woken.Load(); got != want[kind] {
 			t.Errorf("%s の起床 = %d, want %d", kind, got, want[kind])
 		}
+	}
+	if got := judge.woken.Load(); got != 2 {
+		t.Errorf("重複の判定の起床 = %d, want 2", got)
 	}
 }
 
