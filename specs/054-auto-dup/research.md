@@ -29,7 +29,7 @@ settings, the connection test and a later provider serve both features.
 on the left and frame `i` of video B on the right, both taken from the seek
 preview at the middle of 4 equal parts of each video. The request has no facts.
 
-The trial below used two 20 s synthetic videos, A at 640×360 and B the same
+The trial below used three 20 s synthetic videos: A at 640×360, B the same
 footage re-encoded at 320×180 (same), and C sharing only A's first 4 s
 (different), with the question in [R-3](#r-3-the-question-wording-and-two-fixed-thresholds).
 Each cell is P(yes) from Workers AI on 2026-10-15.
@@ -82,28 +82,33 @@ clearly different pairs leave the list. The trial is synthetic footage; the
 [quickstart](quickstart.md) repeats it on real files before the thresholds
 are final.
 
-## R-4: Judgements live in their own table beside the candidates
 
-**Decision**: `video_version_judgements` holds the state of each judged
-candidate, and a candidate with no row is waiting to be judged
-([data-model.md](data-model.md#video_version_judgements)).
+## R-4: The judgement is columns on the candidate row
+
+**Decision**: `video_version_candidates` gains the judgement state, attempts,
+retry time, message and probability, and a candidate whose state is null is
+waiting ([data-model.md](data-model.md#video_version_candidates)). Rebuilding
+a key's candidates resets their judgements, so they are asked again.
 
 | Option | Verdict |
 | --- | --- |
-| **A judgement table that cascades from the candidate** | Chosen |
-| A state column on `video_version_candidates` | Rejected: rebuilding a key's candidates deletes and reinserts its rows, and the column would reset with every fingerprint rebuild |
+| **Columns on the candidate row** | Chosen |
+| A separate judgement table that cascades from the candidate | Rejected: the rebuild deletes the candidate rows, so the cascade loses the judgement just the same, at the cost of a second table and a foreign key |
 | Queue rows written when a candidate is inserted, as `auto_tag_queue` is | Rejected: turning the feature on would leave the candidates found while it was off unjudged |
 
-**Rationale**: Deriving the queue from candidates means turning the feature on
-judges every waiting candidate, and the cascade removes a judgement with its
-candidate, so no row outlives the pair it is about. Judgements are index data:
-asking again rebuilds them.
+**Rationale**: A judgement lives and dies with its candidate, and deriving the
+queue from candidates means turning the feature on judges every waiting one.
+A key's candidates are rebuilt when its fingerprint is written again (a new
+sprite or a new `FingerprintVersion`) and when it is removed from a bundle
+([R-8](#r-8-removing-a-version-records-the-pairs-and-rebuilds-its-candidates)); judging
+those pairs again then is cheaper than carrying old answers across a changed
+fingerprint. Judgements are index data: asking the model again rebuilds them.
 
 ## R-5: A failed judgement retries on a backoff that never ends
 
 **Decision**: A failed judgement becomes claimable again 10 minutes, 1 hour and
 6 hours after its first, second and third failure, and every 24 hours after
-that.
+that; the count of failures survives a claim and a restart.
 
 ```mermaid
 stateDiagram-v2
@@ -127,28 +132,32 @@ owner. The candidate stays in the list throughout, so a slow retry costs only
 the time the owner waits, and with Ollama stopped each candidate sends at most
 one request a day.
 
-## R-6: Bundling a "same" pair is refused when it would join a different pair
+## R-6: A "same" pair joins two sides unless a pair across them is known to differ
 
-**Decision**: The store bundles a "same" pair only if no two members of the
-resulting bundle are a dismissed pair or an unbundled pair; otherwise the
-judgement is recorded as undecidable and the candidate stays.
+**Decision**: The store bundles a "same" pair, with each side's bundle if it
+has one, unless a video on one side and a video on the other are a dismissed
+pair or an unbundled pair; then the judgement becomes undecidable and the
+candidate stays. Pairs within one side, and pairs across the sides that are
+unjudged or undecidable, do not block.
 
 ```mermaid
 flowchart LR
-  same[Same video] --> members[Union of both bundles]
-  members --> check{Any pair dismissed or unbundled?}
+  same[Same video] --> cross[Pairs across the two sides]
+  cross --> check{Any dismissed or unbundled?}
   check -->|yes| undecided[Undecidable, stays listed]
   check -->|no| bundle[Bundle]
 ```
 
 | Option | Verdict |
 | --- | --- |
-| **Check the whole resulting bundle in the transaction** | Chosen |
-| Check only the judged pair | Rejected: A–B and B–C both "same" with A–C dismissed would bundle A and C, breaking the Edge Case for conflicting judgements |
-| Judge every pair of a group together | Rejected: the classifier sees one pair per request, and candidates arrive one fingerprint at a time |
+| **Check the pairs across the two sides** | Chosen |
+| Check every pair of the resulting bundle | Rejected: an owner who removed B from {A, B} and bundled them again by hand would leave (A, B) recorded, and every new copy of A would stay undecidable for good |
+| Check only the judged pair | Rejected: A–B and B–C "same" with A–C dismissed would bundle A and C, breaking the Edge Case for conflicting judgements |
+| Also block on an unjudged or undecidable pair across the sides | Rejected: two "same" answers through B already say A and C are the same video, and waiting on A–C would leave most groups of three unbundled |
 
-**Rationale**: The domain decides from the member set and the recorded pairs;
-the store re-reads both inside its transaction
+**Rationale**: Only a recorded "different" contradicts a bundle; the owner's
+own bundles are taken as they are. The domain decides from the two member
+sets and the recorded pairs; the store re-reads them inside its transaction
 ([ARCHITECTURE.md](../../ARCHITECTURE.md#cross-cutting-invariants)), so a
 dismissal saved by the owner while the model was answering still wins.
 
@@ -170,12 +179,12 @@ dialog, which has no default; the rule picks what an owner bundling a
 re-encode would pick, and keeps a choice already made. Tags, position and
 visibility then follow `VersionStore.Bundle` unchanged (requirement 2).
 
-## R-8: Removing a version records the pairs and lists them again
+## R-8: Removing a version records the pairs and rebuilds its candidates
 
 **Decision**: "Remove from versions" writes the removed video paired with each
 other member into `video_version_unbundles` (user data), and rebuilds the
 removed video's candidates in the same transaction; an unbundled pair is never
-judged, so it stays in the list for the owner.
+judged, so a pair that is a candidate stays in the list for the owner.
 
 | Option | Verdict |
 | --- | --- |
@@ -184,23 +193,61 @@ judged, so it stays in the list for the owner.
 | Exclude unbundled pairs from candidates | Rejected: the owner could then never bundle them from the list |
 
 **Rationale**: Requirement 6 only forbids bundling the pair automatically.
-Rebuilding the candidates at once shows the pair again without waiting for a
-fingerprint, which today never comes back on its own. The records follow a
+Rebuilding at once lists the pair again without waiting for a fingerprint,
+which today never comes back on its own; a pair the owner bundled by hand that
+never matched by fingerprint does not become a candidate. The rebuild also
+resets the removed video's other judgements (R-4). The records follow a
 content change at the same path as dismissals do (030 R-5).
 
-## R-9: List items carry the existing `versions` summary
+## R-9: List items carry the existing `versions` summary, read per page
 
 **Decision**: Every screen-API response that returns a `Video` fills
-`versions` (`VideoVersionsRef`) for a bundle member, list items included; the
-card shows the mark from it.
+`versions` (`VideoVersionsRef`) for a bundle member, list items included, and
+a list reads it for the whole page in one query; the card shows the mark from
+it.
 
 | Option | Verdict |
 | --- | --- |
-| **`versions` on every `Video`** | Chosen |
+| **`versions` on every `Video`, one query per page** | Chosen |
+| `bundleVersionsRef` for each item, as the detail reads it | Rejected: one query per item, up to the page size on every list |
 | A new boolean `hasVersions` on list items | Rejected: a second field for what `versions.count` already says |
-| Fill it only on the listed endpoints | Rejected: groups, folders and search read through different queries, and one missed list shows no mark |
+| Fill it only on the library and search endpoints | Rejected: groups and folders read through different queries, and one missed list shows no mark |
 
 **Rationale**: The external API keeps its own schema and does not show bundles
 (030 R-10), so it is unchanged. This supersedes "Bundling is not marked on
 cards" in [030 ui-design.md](../030-video-versions/ui-design.md); the
 `design` stage decides the mark.
+
+## R-10: The Duplicates page refreshes on a candidates notification
+
+**Decision**: A new domain event `VersionCandidatesChanged`, published after a
+judgement result or a removal from versions commits, becomes a new screen
+notification `candidates`, and the Duplicates page refetches on it.
+
+| Option | Verdict |
+| --- | --- |
+| **A `candidates` notification** | Chosen |
+| Refetch on every `scan` notification | Rejected: `scan` comes once per finished job during an import, and the page would refetch for each |
+| Refetch on `video` notifications | Rejected: a dismissal changes no video, so its pair would stay on screen |
+
+**Rationale**: Judging runs after the import ends, when the page's current rule
+(refetch when a scan finishes) no longer fires, so an open page would keep
+offering pairs already decided. The worker also wakes on this event, so
+candidates listed again by a removal are judged without waiting for the next
+job.
+
+## R-11: The default model is left as it is, and Settings names the one that bundles
+
+**Decision**: The model stays `clef-flash` by default; the Settings section for
+this feature says that bundling needs the `clef` model, and that with a
+smaller one most pairs stay for the owner.
+
+| Option | Verdict |
+| --- | --- |
+| **Keep the default, say it in Settings** | Chosen |
+| Change the default model to `clef` | Rejected: it is 27B, and auto-tagging, which shares the setting, would become slower on every machine |
+| A separate model setting for judging | Rejected: the provider owns the model ([ai-layer.md](../../docs/design-docs/ai-layer.md#adding-a-provider)), and a per-feature model would be a provider setting inside a feature |
+
+**Rationale**: With `clef-flash` the feature still removes clearly different
+pairs (0.09 in the trial) and never bundles wrongly; an owner who wants
+bundling learns the remedy where they turn the feature on.

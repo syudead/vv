@@ -10,7 +10,7 @@ error shape is
 
 | Field | Before | After |
 | --- | --- | --- |
-| `versions` (`VideoVersionsRef {count, representativeId}`) | Only in `GET /api/videos/{id}` | In every screen-API response that returns a `Video` for a bundle member, list items included ([R-9](../research.md#r-9-list-items-carry-the-existing-versions-summary)). `count` is still the number of versions with a location the viewer may see |
+| `versions` (`VideoVersionsRef {count, representativeId}`) | Only in `GET /api/videos/{id}` | In every screen-API response that returns a `Video` for a bundle member, list items included ([R-9](../research.md#r-9-list-items-carry-the-existing-versions-summary-read-per-page)). `count` is still the number of versions with a location the viewer may see |
 
 Guests get it under the same rule as the detail does today. `api/external-v1.yaml`
 is unchanged.
@@ -40,13 +40,13 @@ retries ([R-5](../research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-n
 
 | Route | Change |
 | --- | --- |
-| `POST /api/videos/{id}/unbundle` | Also records the unbundled pairs and returns them to the candidates ([R-8](../research.md#r-8-removing-a-version-records-the-pairs-and-lists-them-again)); the response is unchanged |
+| `POST /api/videos/{id}/unbundle` | Also records the unbundled pairs and rebuilds the removed video's candidates, so its pairs that match by fingerprint are listed again ([R-8](../research.md#r-8-removing-a-version-records-the-pairs-and-rebuilds-its-candidates)); the response is unchanged |
 | `GET /api/version-candidates` | Unchanged shape; candidates the model judged same or different are gone from it |
 
-## Notifications
+## `GET /api/events`: `candidates`
 
-An automatic bundle publishes `domain.VideoBundleChanged`, so screens receive
-the `video` notification as for a bundle by hand (030 R-9). An automatic
-"different videos" changes the candidates, and the worker publishes
-`ProcessingChanged` after it, so the Duplicates page refetches on `scan` as it
-does after a fingerprint job.
+A new notification kind with no payload, sent after a judgement result or a
+removal from versions changes the candidates
+([R-10](../research.md#r-10-the-duplicates-page-refreshes-on-a-candidates-notification)).
+The Duplicates page refetches on it. An automatic bundle also sends the `video`
+notification for each member, as a bundle by hand does (030 R-9).
