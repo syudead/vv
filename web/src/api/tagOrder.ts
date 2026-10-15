@@ -88,11 +88,17 @@ export function applyTagToTags(
   const withoutExisting = tags.filter((candidate) => candidate.id !== tag.id);
   if (action === "remove") {
     if (existing?.fromFolder !== true) return withoutExisting;
-    // 残る行も同じ位置のまま、サーバーが返した最新の name と tentative を映す
+    // 残る行も同じ位置のまま、サーバーが返した最新の name・tentative・kind を映す
     // （別のタブで確定された直後などに古い仮の表示が残らないようにする）。
     return tags.map((candidate) =>
       candidate.id === tag.id
-        ? { ...candidate, name: tag.name, manual: false, tentative: tag.tentative }
+        ? {
+            ...candidate,
+            name: tag.name,
+            manual: false,
+            tentative: tag.tentative,
+            kind: tag.kind,
+          }
         : candidate,
     );
   }
@@ -102,6 +108,7 @@ export function applyTagToTags(
     manual: true,
     fromFolder: existing?.fromFolder ?? false,
     tentative: tag.tentative,
+    kind: tag.kind,
   };
   // 既に付いていた同じ id の行も、いったん外してから挿し直す。改名やシノニムから
   // の付与で名前が変わっていれば、その最新の名前が並びにも反映される。

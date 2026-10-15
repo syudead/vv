@@ -18,6 +18,7 @@ function json(body: unknown, status = 200): Response {
 }
 
 const suggested: VideoTag = {
+  kind: null,
   id: 5,
   name: "cat",
   manual: true,
@@ -26,6 +27,7 @@ const suggested: VideoTag = {
   unconfirmed: true,
 };
 const kept: VideoTag = {
+  kind: null,
   id: 6,
   name: "dog",
   manual: true,

@@ -47,6 +47,7 @@ export function takenResponse(submitted: string, ownerName: string): Response {
 
 export function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
   return {
+    kind: null,
     synonyms: [],
     videoCount: 0,
     tentative: false,

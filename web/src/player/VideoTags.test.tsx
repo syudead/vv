@@ -18,6 +18,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
   return {
+    kind: null,
     synonyms: [],
     videoCount: 0,
     tentative: false,
@@ -176,7 +177,14 @@ describe("VideoTags", () => {
   it("外すボタンを押すとタグが消える。読み上げ名は「<名>をこの動画から外す」（受け入れ条件2）", async () => {
     install();
     renderTags(7, [
-      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      {
+        kind: null,
+        id: 1,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+      },
     ]);
 
     const removeButton = await screen.findByRole("button", {
@@ -190,7 +198,14 @@ describe("VideoTags", () => {
   it("タグの名前は /?tag=<id> へのリンクで、読み上げ名は「<名>で絞り込む」（issue 269）", async () => {
     install();
     renderTags(7, [
-      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      {
+        kind: null,
+        id: 1,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+      },
     ]);
 
     const link = await screen.findByRole("link", { name: "Filter by 旅行" });
@@ -203,8 +218,22 @@ describe("VideoTags", () => {
     install();
     server.detachFails = true;
     renderTags(7, [
-      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
-      { id: 2, name: "Anime", manual: true, fromFolder: false, tentative: false },
+      {
+        kind: null,
+        id: 1,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+      },
+      {
+        kind: null,
+        id: 2,
+        name: "Anime",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+      },
     ]);
 
     const removeButton = await screen.findByRole("button", {
@@ -225,8 +254,22 @@ describe("VideoTags", () => {
     install();
     server.attachDelay = () => undefined;
     renderTags(7, [
-      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
-      { id: 2, name: "Anime", manual: true, fromFolder: false, tentative: false },
+      {
+        kind: null,
+        id: 1,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+      },
+      {
+        kind: null,
+        id: 2,
+        name: "Anime",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+      },
     ]);
 
     const removeButton = await screen.findByRole("button", {
@@ -250,8 +293,22 @@ describe("VideoTags", () => {
     install();
     server.attachDelay = () => undefined;
     renderTags(7, [
-      { id: 2, name: "Anime", manual: true, fromFolder: true, tentative: false },
-      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      {
+        kind: null,
+        id: 2,
+        name: "Anime",
+        manual: true,
+        fromFolder: true,
+        tentative: false,
+      },
+      {
+        kind: null,
+        id: 1,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+      },
     ]);
 
     const removeButton = await screen.findByRole("button", {
@@ -281,8 +338,22 @@ describe("VideoTags", () => {
     it("名前の後ろに目印を置き、面・高さ・× は確定したタグと同じ", async () => {
       install();
       renderTags(7, [
-        { id: 1, name: "高画質", manual: true, fromFolder: false, tentative: true },
-        { id: 2, name: "旅行", manual: true, fromFolder: false, tentative: false },
+        {
+          kind: null,
+          id: 1,
+          name: "高画質",
+          manual: true,
+          fromFolder: false,
+          tentative: true,
+        },
+        {
+          kind: null,
+          id: 2,
+          name: "旅行",
+          manual: true,
+          fromFolder: false,
+          tentative: false,
+        },
       ]);
 
       const link = await screen.findByRole("link", {
@@ -319,7 +390,14 @@ describe("VideoTags", () => {
     it("× で仮のタグを今と同じに外せる", async () => {
       install();
       renderTags(7, [
-        { id: 1, name: "高画質", manual: true, fromFolder: false, tentative: true },
+        {
+          kind: null,
+          id: 1,
+          name: "高画質",
+          manual: true,
+          fromFolder: false,
+          tentative: true,
+        },
       ]);
       fireEvent.click(
         await screen.findByRole("button", { name: "Remove 高画質 from this video" }),
@@ -330,7 +408,14 @@ describe("VideoTags", () => {
     it("フォルダ由来だけの仮のタグは Folder の目印 → 名前 → 仮の目印の順", async () => {
       install();
       renderTags(7, [
-        { id: 4, name: "京都", manual: false, fromFolder: true, tentative: true },
+        {
+          kind: null,
+          id: 4,
+          name: "京都",
+          manual: false,
+          fromFolder: true,
+          tentative: true,
+        },
       ]);
       const link = await screen.findByRole("link", {
         name: "Filter by 京都 (from the folder name, tentative)",
@@ -368,8 +453,22 @@ describe("VideoTags", () => {
     it("フォルダ由来だけのタグは×を出さず、破線の形のリンクで出す（受け入れ条件6）", async () => {
       install();
       renderTags(7, [
-        { id: 4, name: "京都", manual: false, fromFolder: true, tentative: false },
-        { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+        {
+          kind: null,
+          id: 4,
+          name: "京都",
+          manual: false,
+          fromFolder: true,
+          tentative: false,
+        },
+        {
+          kind: null,
+          id: 1,
+          name: "旅行",
+          manual: true,
+          fromFolder: false,
+          tentative: false,
+        },
       ]);
 
       const link = await screen.findByRole("link", {
@@ -399,9 +498,30 @@ describe("VideoTags", () => {
       install();
       server.attachDelay = () => undefined;
       renderTags(7, [
-        { id: 2, name: "Anime", manual: true, fromFolder: false, tentative: false },
-        { id: 1, name: "旅行", manual: true, fromFolder: true, tentative: false },
-        { id: 3, name: "Drama", manual: true, fromFolder: false, tentative: false },
+        {
+          kind: null,
+          id: 2,
+          name: "Anime",
+          manual: true,
+          fromFolder: false,
+          tentative: false,
+        },
+        {
+          kind: null,
+          id: 1,
+          name: "旅行",
+          manual: true,
+          fromFolder: true,
+          tentative: false,
+        },
+        {
+          kind: null,
+          id: 3,
+          name: "Drama",
+          manual: true,
+          fromFolder: false,
+          tentative: false,
+        },
       ]);
 
       fireEvent.click(
@@ -434,9 +554,30 @@ describe("VideoTags", () => {
     it("外した後のフォーカスは破線のチップを飛ばして次の×へ移る", async () => {
       install();
       renderTags(7, [
-        { id: 2, name: "Anime", manual: true, fromFolder: false, tentative: false },
-        { id: 4, name: "京都", manual: false, fromFolder: true, tentative: false },
-        { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+        {
+          kind: null,
+          id: 2,
+          name: "Anime",
+          manual: true,
+          fromFolder: false,
+          tentative: false,
+        },
+        {
+          kind: null,
+          id: 4,
+          name: "京都",
+          manual: false,
+          fromFolder: true,
+          tentative: false,
+        },
+        {
+          kind: null,
+          id: 1,
+          name: "旅行",
+          manual: true,
+          fromFolder: false,
+          tentative: false,
+        },
       ]);
 
       fireEvent.click(
@@ -451,9 +592,30 @@ describe("VideoTags", () => {
     it("次にも前にも×が無ければ、破線のチップを飛ばして「タグを追加」の入力へ移る", async () => {
       install();
       renderTags(7, [
-        { id: 4, name: "京都", manual: false, fromFolder: true, tentative: false },
-        { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
-        { id: 5, name: "夏", manual: false, fromFolder: true, tentative: false },
+        {
+          kind: null,
+          id: 4,
+          name: "京都",
+          manual: false,
+          fromFolder: true,
+          tentative: false,
+        },
+        {
+          kind: null,
+          id: 1,
+          name: "旅行",
+          manual: true,
+          fromFolder: false,
+          tentative: false,
+        },
+        {
+          kind: null,
+          id: 5,
+          name: "夏",
+          manual: false,
+          fromFolder: true,
+          tentative: false,
+        },
       ]);
 
       fireEvent.click(
@@ -467,8 +629,22 @@ describe("VideoTags", () => {
       const user = userEvent.setup();
       install();
       renderTags(7, [
-        { id: 1, name: "旅行", manual: false, fromFolder: true, tentative: false },
-        { id: 3, name: "Drama", manual: true, fromFolder: false, tentative: false },
+        {
+          kind: null,
+          id: 1,
+          name: "旅行",
+          manual: false,
+          fromFolder: true,
+          tentative: false,
+        },
+        {
+          kind: null,
+          id: 3,
+          name: "Drama",
+          manual: true,
+          fromFolder: false,
+          tentative: false,
+        },
       ]);
 
       await user.click(addInput());
@@ -533,7 +709,14 @@ describe("VideoTags", () => {
 
     // 付与を映した情報が届いた後は、その後の情報に従う（別の画面で外された）。
     rerenderWith([
-      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      {
+        kind: null,
+        id: 1,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+      },
     ]);
     rerenderWith([]);
     await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
@@ -766,6 +949,7 @@ describe("VideoTags", () => {
       7,
       [
         {
+          kind: null,
           id: 99,
           name: "もう無いタグ",
           manual: true,
@@ -793,7 +977,14 @@ describe("VideoTags", () => {
     const user = userEvent.setup();
     install();
     renderTags(7, [
-      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      {
+        kind: null,
+        id: 1,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+      },
     ]);
 
     await user.click(addInput());

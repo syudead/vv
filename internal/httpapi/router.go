@@ -118,6 +118,14 @@ type Tags interface {
 	// タグ管理画面のまとめての操作と、その確認に出す数（specs/036-tag-admin-scale/data-model.md §2）。
 	BatchTags(ctx context.Context, action domain.TagBatchAction, ids []int64) (domain.TagBatchOutcome, error)
 	TagImpact(ctx context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error)
+
+	// タグの種類（specs/051-tag-kinds/contracts/screen-api.md）。名前の規則違反は
+	// domain.ErrInvalidTagName、名前の重複は *domain.TagKindNameConflict、無い id は
+	// domain.ErrTagKindNotFound を返す。
+	ListTagKinds(ctx context.Context) ([]domain.TagKind, error)
+	CreateTagKind(ctx context.Context, name string) (domain.TagKind, error)
+	RenameTagKind(ctx context.Context, id int64, name string) (domain.TagKind, error)
+	DeleteTagKind(ctx context.Context, id int64) error
 }
 
 // Transcoder は1 request分のfragmented MP4を生成する。internal/media の
@@ -614,7 +622,8 @@ func requiresOtherJSONBody(r *http.Request) bool {
 // requiresPostJSONBody は POST の経路のうち本文を持つものかを返す。
 func requiresPostJSONBody(path string) bool {
 	switch path {
-	case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
+	case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/tag-kinds",
+		"/api/video-tags", "/api/video-tags/summary",
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
 		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists", "/api/groups",
@@ -686,6 +695,10 @@ func requiresPatchJSONBody(path string) bool {
 	}
 	// PATCH /api/groups/{id}（specs/048-groups/contracts/screen-api.md）。
 	if id, ok := strings.CutPrefix(path, "/api/groups/"); ok {
+		return id != "" && !strings.Contains(id, "/")
+	}
+	// PATCH /api/tag-kinds/{id}（specs/051-tag-kinds/contracts/screen-api.md）。
+	if id, ok := strings.CutPrefix(path, "/api/tag-kinds/"); ok {
 		return id != "" && !strings.Contains(id, "/")
 	}
 	// /api/tags/rejected-names・/api/tags/batch・/api/tags/impact は {id} の段ではない別の経路で、
@@ -937,6 +950,8 @@ const (
 	reasonThumbnailUploadInvalid        = gen.ErrorReasonThumbnailUploadInvalid
 	reasonUndoConflict                  = gen.ErrorReasonUndoConflict
 	reasonUndoExpired                   = gen.ErrorReasonUndoExpired
+	reasonTagKindNotFound               = gen.ErrorReasonTagKindNotFound
+	reasonTagKindNameTaken              = gen.ErrorReasonTagKindNameTaken
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの

@@ -1809,6 +1809,57 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/tag-kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * タグの種類を一覧する
+         * @description すべての種類を id の順に返す（specs/051-tag-kinds/contracts/screen-api.md）。
+         */
+        get: operations["listTagKinds"];
+        put?: never;
+        /**
+         * タグの種類を1件作る
+         * @description 名前はタグの名前と同じ規則で整え、種類どうしでだけ一意にする（specs/051-tag-kinds/research.md R-6）。
+         *     規則に合わなければ 400 `invalid_request` と `tag_name_*`、別の種類が同じ名前なら
+         *     409 `conflict` / `tag_kind_name_taken` で、何も変えない。
+         */
+        post: operations["createTagKind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tag-kinds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * タグの種類を1件削除する
+         * @description その種類のタグは残り、種類なしになる。無い id は 404 `not_found` / `tag_kind_not_found`。
+         */
+        delete: operations["deleteTagKind"];
+        options?: never;
+        head?: never;
+        /**
+         * タグの種類の名前を書き換える
+         * @description 今と同じ名前なら何も変えずに今の状態を返す。無い id は 404 `not_found` / `tag_kind_not_found`、
+         *     別の種類が同じ名前なら 409 `conflict` / `tag_kind_name_taken`。
+         */
+        patch: operations["renameTagKind"];
+        trace?: never;
+    };
     "/api/people": {
         parameters: {
             query?: never;
@@ -3424,6 +3475,8 @@ export interface components {
             name: string;
             /** @description 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0） */
             tentative: boolean;
+            /** @description タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4） */
+            kind: components["schemas"]["TagKindRef"] | null;
         };
         /**
          * @description 動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
@@ -3445,6 +3498,8 @@ export interface components {
              *     返す。フォルダ名からも付いていれば返さない（docs/design-docs/auto-tagging.md）
              */
             unconfirmed?: boolean;
+            /** @description タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4） */
+            kind: components["schemas"]["TagKindRef"] | null;
         };
         /** @description 管理画面と候補に出す1件（contracts/tags-api.md §1）。 */
         Tag: {
@@ -3462,6 +3517,8 @@ export interface components {
              * @description タグを作った時刻（秒の精度。specs/036-tag-admin-scale/contracts/screen-api.md §0）
              */
             createdAt: string;
+            /** @description タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4） */
+            kind: components["schemas"]["TagKindRef"] | null;
         };
         TagList: {
             items: components["schemas"]["Tag"][];
@@ -3477,6 +3534,32 @@ export interface components {
              *     `items` に入るとは限らない（`items` は部分一致を `sort` の順に並べた 1 ページのため）
              */
             exact?: components["schemas"]["Tag"];
+        };
+        /** @description タグの種類の id と名前（specs/051-tag-kinds/research.md R-4）。 */
+        TagKindRef: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description 種類の一覧の1件（specs/051-tag-kinds/contracts/screen-api.md）。 */
+        TagKind: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description この種類のタグの数。仮のタグも数える */
+            tagCount: number;
+            /**
+             * Format: date-time
+             * @description 種類を作った時刻（秒の精度）
+             */
+            createdAt: string;
+        };
+        TagKindList: {
+            /** @description すべての種類。id の順。画面は名前の自然順に並べ直す */
+            items: components["schemas"]["TagKind"][];
+        };
+        TagKindNameRequest: {
+            name: string;
         };
         /**
          * @description タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
@@ -4878,7 +4961,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -5008,6 +5091,8 @@ export interface components {
         VideoTagId: number;
         /** @description タグの識別子 */
         TagId: number;
+        /** @description タグの種類の識別子 */
+        TagKindId: number;
         /** @description 人物の識別子 */
         PersonId: number;
         /** @description 団体の識別子 */
@@ -7753,6 +7838,107 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listTagKinds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 種類の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagKindList"];
+                };
+            };
+        };
+    };
+    createTagKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagKindNameRequest"];
+            };
+        };
+        responses: {
+            /** @description 作成した種類 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagKind"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteTagKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description タグの種類の識別子 */
+                id: components["parameters"]["TagKindId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 削除した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameTagKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description タグの種類の識別子 */
+                id: components["parameters"]["TagKindId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagKindNameRequest"];
+            };
+        };
+        responses: {
+            /** @description 更新後の種類 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagKind"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listPeople: {

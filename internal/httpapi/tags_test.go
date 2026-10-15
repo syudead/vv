@@ -49,6 +49,9 @@ type fakeTags struct {
 	// lastListQuery は ListTags が受けた条件。listPage があれば ListTags はそれを返す。
 	lastListQuery domain.TagListQuery
 	listPage      *domain.TagPage
+
+	// 051: ListTagKinds が返す種類。
+	kinds []domain.TagKind
 }
 
 func (f *fakeTags) ListTags(_ context.Context, query domain.TagListQuery) (domain.TagPage, error) {
