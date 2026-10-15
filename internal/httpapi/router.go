@@ -596,83 +596,101 @@ func requiresJSONBody(r *http.Request) bool {
 func requiresOtherJSONBody(r *http.Request) bool {
 	switch r.Method {
 	case http.MethodPost:
-		switch r.URL.Path {
-		case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
-			"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
-			"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-			"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists", "/api/groups",
-			"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
-			"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
-			"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
-			"/api/v1/organizations/merge", "/api/v1/organizations/delete":
-			return true
+		return requiresPostJSONBody(r.URL.Path)
+	case http.MethodPut:
+		return requiresPutJSONBody(r.URL.Path)
+	case http.MethodPatch:
+		return requiresPatchJSONBody(r.URL.Path)
+	}
+	return false
+}
+
+// requiresPostJSONBody は POST の経路のうち本文を持つものかを返す。
+func requiresPostJSONBody(path string) bool {
+	switch path {
+	case "/api/media-folders", "/api/scans", "/api/tags", "/api/tags/batch", "/api/tags/impact", "/api/video-tags", "/api/video-tags/summary",
+		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
+		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
+		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists", "/api/groups",
+		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
+		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
+		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
+		"/api/v1/organizations/merge", "/api/v1/organizations/delete":
+		return true
+	}
+	if suffix, ok := strings.CutPrefix(path, "/api/videos/"); ok {
+		id, rest, found := strings.Cut(suffix, "/")
+		return found && id != "" && rest == "thumbnail-edits"
+	}
+	// POST /api/playlists/{id}/items と POST /api/playlists/{id}/items/{itemId}/move
+	// （specs/044-playlists/contracts/screen-api.md）。
+	if suffix, ok := strings.CutPrefix(path, "/api/playlists/"); ok {
+		segments := strings.Split(suffix, "/")
+		switch len(segments) {
+		case 2:
+			return segments[0] != "" && segments[1] == "items"
+		case 4:
+			return segments[0] != "" && segments[1] == "items" && segments[2] != "" && segments[3] == "move"
 		}
-		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/"); ok {
-			id, rest, found := strings.Cut(suffix, "/")
-			return found && id != "" && rest == "thumbnail-edits"
+		return false
+	}
+	// POST /api/groups/{id}/items・…/items/remove・…/items/{itemId}/move
+	// （specs/048-groups/contracts/screen-api.md）。POST /api/groups/{id}/tag は本文を持たない。
+	if suffix, ok := strings.CutPrefix(path, "/api/groups/"); ok {
+		return groupItemsBodyPath(strings.Split(suffix, "/"))
+	}
+	if id, ok := strings.CutPrefix(path, "/api/tags/"); ok {
+		rest, found := strings.CutSuffix(id, "/merge")
+		if found {
+			return rest != "" && !strings.Contains(rest, "/")
 		}
-		// POST /api/playlists/{id}/items と POST /api/playlists/{id}/items/{itemId}/move
-		// （specs/044-playlists/contracts/screen-api.md）。
-		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/playlists/"); ok {
-			segments := strings.Split(suffix, "/")
-			switch len(segments) {
-			case 2:
-				return segments[0] != "" && segments[1] == "items"
-			case 4:
-				return segments[0] != "" && segments[1] == "items" && segments[2] != "" && segments[3] == "move"
-			}
+		rest, found = strings.CutSuffix(id, "/synonyms")
+		return found && rest != "" && !strings.Contains(rest, "/")
+	}
+	return false
+}
+
+// requiresPutJSONBody は PUT の経路のうち本文を持つものかを返す。
+func requiresPutJSONBody(path string) bool {
+	if path == "/api/video-visibility" || path == "/api/favorites" || path == "/api/settings/transcoding" ||
+		path == "/api/settings/network" || path == "/api/settings/auto-import" ||
+		path == "/api/settings/auto-tagging" || path == "/api/settings/ollama" ||
+		path == "/api/settings/comfyui" {
+		return true
+	}
+	if suffix, ok := strings.CutPrefix(path, "/api/folders/"); ok {
+		id, rest, found := strings.Cut(suffix, "/")
+		return found && id != "" && rest == "grouping"
+	}
+	if id, ok := strings.CutPrefix(path, "/api/media-folders/"); ok {
+		return id != "" && !strings.Contains(id, "/")
+	}
+	if suffix, ok := strings.CutPrefix(path, "/api/videos/"); ok {
+		id, rest, found := strings.Cut(suffix, "/")
+		return found && id != "" && isVideoJSONPut(rest)
+	}
+	return false
+}
+
+// requiresPatchJSONBody は PATCH の経路のうち本文を持つものかを返す。
+func requiresPatchJSONBody(path string) bool {
+	// PATCH /api/playlists/{id}（specs/044-playlists/contracts/screen-api.md）。
+	if id, ok := strings.CutPrefix(path, "/api/playlists/"); ok {
+		return id != "" && !strings.Contains(id, "/")
+	}
+	// PATCH /api/groups/{id}（specs/048-groups/contracts/screen-api.md）。
+	if id, ok := strings.CutPrefix(path, "/api/groups/"); ok {
+		return id != "" && !strings.Contains(id, "/")
+	}
+	// /api/tags/rejected-names・/api/tags/batch・/api/tags/impact は {id} の段ではない別の経路で、
+	// PATCH を持たない（specs/031-tentative-tags/contracts/screen-api.md §3、
+	// specs/036-tag-admin-scale/contracts/screen-api.md §1）。
+	if id, ok := strings.CutPrefix(path, "/api/tags/"); ok {
+		switch id {
+		case "", "rejected-names", "batch", "impact":
 			return false
 		}
-		// POST /api/groups/{id}/items・…/items/remove・…/items/{itemId}/move
-		// （specs/048-groups/contracts/screen-api.md）。POST /api/groups/{id}/tag は本文を持たない。
-		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/groups/"); ok {
-			return groupItemsBodyPath(strings.Split(suffix, "/"))
-		}
-		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
-			rest, found := strings.CutSuffix(id, "/merge")
-			if found {
-				return rest != "" && !strings.Contains(rest, "/")
-			}
-			rest, found = strings.CutSuffix(id, "/synonyms")
-			return found && rest != "" && !strings.Contains(rest, "/")
-		}
-	case http.MethodPut:
-		if r.URL.Path == "/api/video-visibility" || r.URL.Path == "/api/favorites" || r.URL.Path == "/api/settings/transcoding" ||
-			r.URL.Path == "/api/settings/network" || r.URL.Path == "/api/settings/auto-import" ||
-			r.URL.Path == "/api/settings/auto-tagging" || r.URL.Path == "/api/settings/ollama" ||
-			r.URL.Path == "/api/settings/comfyui" {
-			return true
-		}
-		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/folders/"); ok {
-			id, rest, found := strings.Cut(suffix, "/")
-			return found && id != "" && rest == "grouping"
-		}
-		if id, ok := strings.CutPrefix(r.URL.Path, "/api/media-folders/"); ok {
-			return id != "" && !strings.Contains(id, "/")
-		}
-		if suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/"); ok {
-			id, rest, found := strings.Cut(suffix, "/")
-			return found && id != "" && isVideoJSONPut(rest)
-		}
-	case http.MethodPatch:
-		// PATCH /api/playlists/{id}（specs/044-playlists/contracts/screen-api.md）。
-		if id, ok := strings.CutPrefix(r.URL.Path, "/api/playlists/"); ok {
-			return id != "" && !strings.Contains(id, "/")
-		}
-		// PATCH /api/groups/{id}（specs/048-groups/contracts/screen-api.md）。
-		if id, ok := strings.CutPrefix(r.URL.Path, "/api/groups/"); ok {
-			return id != "" && !strings.Contains(id, "/")
-		}
-		// /api/tags/rejected-names・/api/tags/batch・/api/tags/impact は {id} の段ではない別の経路で、
-		// PATCH を持たない（specs/031-tentative-tags/contracts/screen-api.md §3、
-		// specs/036-tag-admin-scale/contracts/screen-api.md §1）。
-		if id, ok := strings.CutPrefix(r.URL.Path, "/api/tags/"); ok {
-			switch id {
-			case "", "rejected-names", "batch", "impact":
-				return false
-			}
-			return !strings.Contains(id, "/")
-		}
+		return !strings.Contains(id, "/")
 	}
 	return false
 }

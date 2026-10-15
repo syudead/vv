@@ -1593,6 +1593,23 @@ export const en = {
       refusedSize: "Choose an image up to 64 MB.",
       failed: (reason: string) => `Couldn't upload the image: ${reason}`,
       uploadedThumbnail: "Uploaded thumbnail",
+      preview: {
+        title: "Preview thumbnail",
+        close: "Cancel and close",
+        fit: "How the image fits",
+        contain: "Whole image",
+        cover: "Fill frame",
+        containHint:
+          "The whole image shows. The rest of the frame is filled with a blurred copy.",
+        coverHint:
+          "The image fills the frame. Drag it to choose what shows, and zoom in to show less.",
+        unknownAspect: "The video's size is unknown, so the image keeps its own shape.",
+        zoom: "Zoom",
+        stage: "Thumbnail preview",
+        stageCover: "Thumbnail preview. Drag or use the arrow keys to move the image.",
+        apply: "Use as thumbnail",
+        cancel: "Cancel",
+      },
     },
     versions: {
       count: (count: number) =>

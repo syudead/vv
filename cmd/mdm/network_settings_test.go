@@ -17,14 +17,11 @@ import (
 // openSettingsStore は移行を済ませた DB の設定の保存先を返す。
 func openSettingsStore(t *testing.T) *store.SettingsStore {
 	t.Helper()
-	db, err := store.Open(t.TempDir())
+	db, err := store.OpenMigratedForTest(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if _, err := store.Migrate(context.Background(), db); err != nil {
-		t.Fatal(err)
-	}
 	return db.Settings()
 }
 

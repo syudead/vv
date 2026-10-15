@@ -392,13 +392,16 @@ jobs:
         run: task check-docs
 
   # e2e はコード変更を含む main への push（PR のマージ）でだけ回す。PR では回さない。
+  # ただし Renovate の PR（renovate/ ブランチ）では回す。メジャー更新も含めて
+  # renovate-triage ルーチンがマージするので、マージ前に実ブラウザで確かめる
+  # （docs/how-to/dependency-updates.md）。
   # 1 台で全部を順に流すと 10 分かかるので、ファイルを 4 組に分けて並べて流す。
   # ファイルで絞っても、依存の準備（未設定のサーバーとログイン）は各組で先に走る。
   # e2e のファイルを足したら、どれかの組に入れる。
   e2e:
     name: Browser E2E (${{ matrix.group }})
     needs: changes
-    if: needs.changes.outputs.code == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.code == 'true' && (github.event_name == 'push' || startsWith(github.head_ref, 'renovate/'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -548,11 +551,12 @@ jobs:
           test "$RESULT" = success || test "$RESULT" = skipped
 
   # イメージはコード変更を含む main への push（PR のマージ）でだけ作り、
-  # ghcr.io/syudead/vv へ公開する（docs/how-to/hosting-vv.md）。
+  # ghcr.io/syudead/vv へ公開する（docs/how-to/hosting-vv.md）。Renovate の PR では
+  # 土台イメージや依存の更新でビルドが壊れないかを確かめるため、公開せずに作る。
   docker:
     name: Docker image
     needs: changes
-    if: needs.changes.outputs.code == 'true' && github.event_name == 'push'
+    if: needs.changes.outputs.code == 'true' && (github.event_name == 'push' || startsWith(github.head_ref, 'renovate/'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -597,6 +601,7 @@ jobs:
           skip-extraction: ${{ steps.mount-cache.outputs.cache-hit }}
 
       - uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        if: github.event_name == 'push'
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -626,7 +631,7 @@ jobs:
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: true
+          push: ${{ github.event_name == 'push' }}
           tags: ${{ steps.tags.outputs.tags }}
           labels: |
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}

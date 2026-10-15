@@ -34,14 +34,11 @@ func newFailureCodesDB(t *testing.T) (context.Context, string, *store.DB) {
 	t.Helper()
 	ctx := context.Background()
 	dataDir := t.TempDir()
-	db, err := store.Open(dataDir)
+	db, err := store.OpenMigratedForTest(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if _, err := store.Migrate(ctx, db); err != nil {
-		t.Fatal(err)
-	}
 	return ctx, dataDir, db
 }
 

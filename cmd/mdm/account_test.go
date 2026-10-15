@@ -62,14 +62,11 @@ func runAccountCommand(t *testing.T, dataDir string, args []string, stdin string
 func newMigratedDataDir(t *testing.T) string {
 	t.Helper()
 	dataDir := t.TempDir()
-	db, err := store.Open(dataDir)
+	db, err := store.OpenMigratedForTest(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer func() { _ = db.Close() }()
-	if _, err := store.Migrate(context.Background(), db); err != nil {
-		t.Fatal(err)
-	}
 	return dataDir
 }
 

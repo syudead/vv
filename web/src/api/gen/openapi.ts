@@ -760,7 +760,7 @@ export interface paths {
          *     見出しが 1 億 2000 万画素を越えれば 400 `thumbnail_upload_too_large`（`limit` に越えた上限）、
          *     PNG・JPEG・WebP でない、アニメーションの WebP、最後まで読めない画像は 400
          *     `thumbnail_upload_invalid`、動画が無ければ 404 `video_not_found`、要求を始めたときから動画が消えたか
-         *     別の内容になれば 409 `content_changed`、ffmpeg が合わせられなければ 409 `thumbnail_image_invalid`
+         *     別の内容になるか `contentVersion` が今の内容と違えば 409 `content_changed`、ffmpeg が合わせられなければ 409 `thumbnail_image_invalid`
          *     を返し、どの誤りでも何も書かない。本文が届き終わったあとの確かめと適用は、接続が切れても 5 分を
          *     上限に最後まで行う。確定後に `/api/events` の `video` が流れる
          *     （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-1・R-2）。
@@ -3012,6 +3012,8 @@ export interface components {
              * @description サムネイルにする画像（PNG・JPEG・静止画の WebP、64 MiB・1 億 2000 万画素まで）
              */
             image: string;
+            /** @description プレビューを開いたときに画面が持っていた動画の `contentVersion` */
+            contentVersion: string;
         };
         /**
          * @description 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
@@ -3993,6 +3995,12 @@ export interface components {
              * @description 代表サムネイルにする場面の位置（ミリ秒）。設定されているときだけ、所有者の応答にだけ入る
              */
             thumbnailPositionMs?: number;
+            /**
+             * @description 動画の内容の版（内容鍵の先頭 12 文字で、`thumbnailUrl` の版の先頭と同じ値）。所有者の応答にだけ入る。
+             *     画像のアップロードに添え、プレビューを開いてから内容が替わった動画への適用を断るのに使う
+             *     （docs/design-docs/thumbnail-editing.md「Uploaded images」）
+             */
+            contentVersion?: string;
             /**
              * @description 所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
              *     `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る

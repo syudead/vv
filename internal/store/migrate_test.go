@@ -685,15 +685,12 @@ func downTo(t *testing.T, db *DB, version int64) {
 func migratedDB(t *testing.T) *DB {
 	t.Helper()
 
-	db, err := Open(t.TempDir())
+	db, err := OpenMigratedForTest(t.TempDir())
 	if err != nil {
-		t.Fatalf("データベースを開けない: %v", err)
+		t.Fatalf("マイグレーションを適用したデータベースを開けない: %v", err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
 
-	if _, err := Migrate(context.Background(), db); err != nil {
-		t.Fatalf("マイグレーションに失敗した: %v", err)
-	}
 	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, fixturePath("/media")); err != nil {
 		t.Fatalf("テスト用メディアフォルダを登録できない: %v", err)
 	}

@@ -4,6 +4,9 @@
  */
 export const UPLOAD_MAX_BYTES = 64 * 1024 * 1024;
 
+/** UPLOAD_MAX_PIXELS はアップロードできる画像の画素数の上限で、サーバーの上限と同じである。 */
+export const UPLOAD_MAX_PIXELS = 120_000_000;
+
 /** UPLOAD_TYPES はファイルピッカーに渡す、送れる画像の種類である。 */
 export const UPLOAD_TYPES = "image/png,image/jpeg,image/webp";
 

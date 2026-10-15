@@ -274,14 +274,11 @@ type transcodeProbeEnv struct {
 func newTranscodeProbeEnv(t *testing.T) *transcodeProbeEnv {
 	t.Helper()
 	ctx := context.Background()
-	db, err := store.Open(t.TempDir())
+	db, err := store.OpenMigratedForTest(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if _, err := store.Migrate(ctx, db); err != nil {
-		t.Fatal(err)
-	}
 	mediaDir := t.TempDir()
 	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
 		t.Fatal(err)

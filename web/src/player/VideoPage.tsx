@@ -31,7 +31,7 @@ import { Separator } from "../ui/shadcn/separator";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { useToast } from "../ui/Toast";
 import AutoplayNotice, { type AutoplayPhase } from "./AutoplayNotice";
-import { clearPageHandoff, peekPageHandoff } from "./detailsEditor/handoff";
+import { usePageHandoff } from "./detailsEditor/handoff";
 import EndedOverlay from "./EndedOverlay";
 import GroupLine from "./GroupLine";
 import NeighborArrows from "./NeighborArrows";
@@ -123,14 +123,13 @@ export default function VideoPage() {
   const { videoTo } = groupContext;
 
   // 編集画面から戻ったときの控え（保存の応答と、入口へフォーカスを戻すこと）。
-  const [detailsHandoff] = useState(() => peekPageHandoff(id));
-  useEffect(() => clearPageHandoff(), []);
+  const detailsHandoff = usePageHandoff(id);
   const {
     state: detailState,
     refresh,
     replace,
     setFavorite,
-  } = useVideoDetail(id, groupContext.group, detailsHandoff?.video);
+  } = useVideoDetail(id, groupContext.group, detailsHandoff.video);
   const {
     state: relatedState,
     retry: retryRelated,
@@ -905,7 +904,7 @@ export default function VideoPage() {
               // 「Video page: entry」）。
               details={{
                 linkState: { from: backTo, trail },
-                focusEntry: detailsHandoff !== null && detailsHandoff.id === video.id,
+                focusEntry: detailsHandoff.focusEntry(video.id),
               }}
               // 付け外しの後は動画を取り直し、取り直した `favorite` で塗りを確かめる
               // （specs/035-favorites/ui-design.md「Video page」）。

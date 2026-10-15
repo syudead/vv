@@ -204,6 +204,7 @@ func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	video.DisplayName = nil
 	video.ThumbnailPositionMs = nil
 	video.ThumbnailImage = nil
+	video.ContentVersion = nil
 	video.Favorite = nil
 	video.WorkInfo = nil
 	return video
@@ -546,6 +547,12 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 	if video.ThumbnailPositionMs != nil {
 		position := *video.ThumbnailPositionMs
 		out.ThumbnailPositionMs = &position
+	}
+	// 内容の版はアップロードに添えて送り返す値で、所有者の応答にだけ入る
+	// （docs/design-docs/thumbnail-editing.md「Uploaded images」）。
+	if video.ContentKey != "" {
+		contentVersion := thumbnailVersion(video.ContentKey)
+		out.ContentVersion = &contentVersion
 	}
 	// 適用した画像の出どころも所有者の応答にだけ入る（specs/046-thumbnail-image-upload/contracts/screen-api.md）。
 	if video.ThumbnailImageRevision != 0 && video.ThumbnailImageOrigin != "" {

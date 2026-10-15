@@ -85,6 +85,7 @@ component_management:
         - internal/opener/**
         - internal/password/**
         - internal/ollama/**
+        - internal/comfyui/**
     - component_id: web-api
       name: Web API client
       paths:
@@ -100,6 +101,9 @@ component_management:
       paths:
         - web/src/library/**
         - web/src/folders/**
+        - web/src/groups/**
+        - web/src/playlists/**
+        - web/src/credits/**
         - web/src/settings/**
         - web/src/tags/**
         - web/src/player/**
@@ -132,9 +136,13 @@ fixes:
   - "github.com/syudead/vv/::"
 
 # 生成したコードは測る対象から外す（手で書いたテストで覆うものではない）。
+# 開発時だけ開く部品の見本（web/src/designSystem、本番のビルドには入らない）と、
+# 別パッケージのテストのために本番のパッケージに置くテスト専用の関数も外す。
 ignore:
   - "internal/httpapi/gen/**"
   - "internal/httpapi/extgen/**"
   - "web/src/api/gen/**"
+  - "web/src/designSystem/**"
+  - "internal/store/storetest.go"
   - "scripts/**"
   - "tools/**"

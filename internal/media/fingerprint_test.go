@@ -100,6 +100,8 @@ func requireLibx264(t *testing.T) {
 // 尺だけ同じ別の動画は一致しない（受け入れ条件 3・4 の判定の部分）。黒い帯を足した版も
 // 帯を落として比べる。
 func TestSpriteFingerprintMatchesReencodes(t *testing.T) {
+	t.Parallel()
+
 	requireLibx264(t)
 	large := spriteFingerprintOf(t, encodeScene(t, 0, "60", "scale=640:360", 20, 10), 60_000)
 	small := spriteFingerprintOf(t, encodeScene(t, 0, "60", "scale=320:180,pad=320:240:0:30", 32, 15), 60_000)
@@ -118,6 +120,8 @@ func TestSpriteFingerprintMatchesReencodes(t *testing.T) {
 // 405 秒を超える動画は間隔が ceil(尺 / 81) なので、尺が少し違う再エンコードは間隔が違う。
 // コマを時刻で組にするので、それでも一致する。
 func TestSpriteFingerprintMatchesLongReencodesWithDifferentIntervals(t *testing.T) {
+	t.Parallel()
+
 	requireLibx264(t)
 	a := spriteFingerprintOf(t, encodeScene(t, 0, "410", "scale=640:360", 20, 10), 410_000)
 	b := spriteFingerprintOf(t, encodeScene(t, 0, "410.4", "scale=320:180", 30, 15), 410_400)
@@ -178,6 +182,8 @@ func spriteFingerprintWith(t *testing.T, videoPath string, durationMs int64, lon
 // 作った指紋は、同じ動画なら一致し、尺だけ同じ別の動画とは一致しない。指紋は 32×32 に
 // 面積平均で縮めた輝度の低周波から作るので、コマの大きさと画質の違いはほぼ残らない。
 func TestSpriteFingerprintMatchesAcrossSpriteSizes(t *testing.T) {
+	t.Parallel()
+
 	requireLibx264(t)
 	video := encodeScene(t, 0, "60", "scale=640:360", 20, 10)
 	old := spriteFingerprintWith(t, video, 60_000, "160", "4")

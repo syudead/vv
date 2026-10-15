@@ -23,7 +23,6 @@ import (
 	"github.com/syudead/vv/internal/app"
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
-	"github.com/syudead/vv/internal/password"
 	"github.com/syudead/vv/internal/store"
 )
 
@@ -61,10 +60,18 @@ func (a appAuthenticator) State(ctx context.Context, token string) (AuthState, e
 	return AuthState(state), err
 }
 
+// passwordHasher はハッシュ化の代わりに目印を付けるだけの安い実装である。argon2id は
+// 1 回に数十 ms かかり、認証の環境を作るたびに払うと経路のテストの時間の多くを占める。
+// 本物のハッシュ化と照合は internal/password のテストが確かめ、ここでは認証の境界が
+// 照合の結果どおりに通すか止めるかだけを確かめる。
 type passwordHasher struct{}
 
-func (passwordHasher) Hash(p string) (string, error)          { return password.Hash(p) }
-func (passwordHasher) Verify(p, encoded string) (bool, error) { return password.Verify(p, encoded) }
+const fakePasswordHashPrefix = "test-hash:"
+
+func (passwordHasher) Hash(p string) (string, error) { return fakePasswordHashPrefix + p, nil }
+func (passwordHasher) Verify(p, encoded string) (bool, error) {
+	return encoded == fakePasswordHashPrefix+p, nil
+}
 
 // syncBuffer は並行に書かれる記録を集める。
 type syncBuffer struct {
@@ -127,14 +134,11 @@ func newAuthEnvWrapped(
 	wrap func(Authenticator) Authenticator,
 ) *authEnv {
 	t.Helper()
-	db, err := store.Open(dataDir)
+	db, err := store.OpenMigratedForTest(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if _, err := store.Migrate(context.Background(), db); err != nil {
-		t.Fatal(err)
-	}
 	env := &authEnv{t: t, db: db, logs: &syncBuffer{}, now: time.Now()}
 	opts := build(db)
 	auth := app.NewAuth(app.AuthOptions{Store: db.Auth(), Hasher: passwordHasher{}, Now: env.clock})
@@ -793,7 +797,7 @@ func TestAuthRevocationEndsInFlightResponses(t *testing.T) {
 		}},
 		{"パスワードの再設定", func(t *testing.T, env *authEnv, _ *httptest.Server, _ *http.Cookie) {
 			t.Helper()
-			hash, err := password.Hash("a new password")
+			hash, err := passwordHasher{}.Hash("a new password")
 			if err != nil {
 				t.Fatal(err)
 			}

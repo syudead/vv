@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/test-quality-monitoring.md
-sourceHash: 8ee449062baba08d6a47a30c94adbc5871d5b32cf4a254912b87db6a9723efb0
+sourceHash: a9010b9dde011be294f962f80bbe85dbd73c1686645696259d437df7d42a790f
 ---
 
 # テストと CI の品質監視 {#test-and-ci-quality-monitoring}
@@ -27,7 +27,7 @@ flowchart LR
 | 測定値 | ツール | 測定のタイミング | 保存先 |
 | --- | --- | --- | --- |
 | 行カバレッジ（`go` と `web` のフラグ別、コンポーネント別、ファイル別） | Go の `-coverprofile`、Vitest v8 | `main` へのすべてのプッシュとすべてのプルリクエスト | [Codecov](https://app.codecov.io/gh/syudead/vv) |
-| すべてのテストの所要時間と結果、不安定なテスト | gotestsum、Vitest、Playwright の JUnit | 同上。E2E は `main` へのプッシュのみ | Codecov Test Analytics |
+| すべてのテストの所要時間と結果、不安定なテスト | gotestsum、Vitest、Playwright の JUnit | 同上。E2E は `main` へのプッシュと Renovate の PR | Codecov Test Analytics |
 | すべての Go の関数の循環的複雑度 | gocyclo | `main` へのすべてのプッシュとすべてのプルリクエスト | `complexity-go` アーティファクトの `gocyclo.txt` |
 | すべての Web の関数の循環的複雑度 | 最大値を 0 にした ESLint の `complexity` ルール | 同上 | `complexity-web` アーティファクトの `eslint.json` |
 | 重複コード（場所別） | jscpd | 同上 | `duplication` アーティファクトの `jscpd-report.json` |

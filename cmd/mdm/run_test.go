@@ -27,11 +27,8 @@ func TestRunStopsResumedScanWhenPortIsInUse(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	db, err := store.Open(dataDir)
+	db, err := store.OpenMigratedForTest(dataDir)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Migrate(ctx, db); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
