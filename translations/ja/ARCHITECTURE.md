@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: 1e1753890734258ac29837b0eebad5b0a3fa64defa88ca65077ff6a2b80c93db
+sourceHash: 7e5cc17fa4d4728cf890eb9e2957eee30e943daddbb7c75eb866c7677c666fb2
 ---
 
 # アーキテクチャ {#architecture}
@@ -119,7 +119,7 @@ flowchart LR
 | 隣の字幕ファイル (`internal/httpapi`、`internal/media`) | リクエストごとに隣のファイルを見つけ、WebVTT に変換する | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
 | `internal/app` (`Classifier`、`OllamaConnection`)、`internal/ollama` | AI 層。タスクに依存しない分類器のポートと、その背後にある Ollama のプロバイダおよびその接続設定 | [ai-layer.md](docs/design-docs/ai-layer.md) |
 | `internal/app` (`ComfyUIConnection`)、`internal/comfyui` | 画像編集のプロバイダ。セルフホストの ComfyUI と Comfy Cloud の両方を扱う 1 つのアダプタと、その接続設定およびテスト | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
-| `internal/app` (`WorkInfoPluginRuntime`、`WorkInfoPlugins`)、`internal/store` (`WorkInfoPluginStore`、`OverrideStore.ApplyFetchedWorkInfo`)、`internal/wasmplugin` | 作品情報プラグイン。WebAssembly モジュールを実行せずに検査すること、ファイルも環境もなく固定の制限がある wazero のサンドボックスで実行すること、その HTTP 要求を公開インターネットのアドレスにだけ到達するように実行すること、モジュールのダイジェストに結び付いた承認とプラグインごとの設定値を持つ、所有者のプラグインの行、および検索すること、10 分間保持するメモリ上の結果へ取得すること、選んだタイトルとタグを、プラグインの承認を確認し直す 1 つのトランザクションで適用すること | [work-info-plugins.md](docs/design-docs/work-info-plugins.md) |
+| `internal/app` (`WorkInfoPluginRuntime`、`WorkInfoPlugins`)、`internal/store` (`WorkInfoPluginStore`、`OverrideStore.ApplyFetchedWorkInfo`)、`internal/wasmplugin` | 作品情報プラグイン。WebAssembly モジュールを実行せずに検査すること、ファイルも環境もなく固定の制限がある wazero のサンドボックスで実行すること、その HTTP 要求を公開インターネットのアドレスにだけ到達するように実行すること、モジュールのダイジェストに結び付いた承認とプラグインごとの設定値を持つ、所有者のプラグインの行、および検索すること、10 分間保持するメモリ上の結果へ取得すること、選んだタイトル、タグ、作品の詳細を、プラグインの承認を確認し直し、取得した人物と組織を照合し直し、マージが残すエンティティだけを作成する 1 つのトランザクションで適用すること | [work-info-plugins.md](docs/design-docs/work-info-plugins.md) |
 | `internal/app` (`AutoTagger`) | 動画に合う既存のタグを分類器のポートに問い合わせることと、そのキュー | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/opener` | サーバー PC の既定のアプリで動画を開く。ループバックからのリクエストのみ | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
 | `internal/password` | PHC 文字列での Argon2id ハッシュ化 | [016 data-model](specs/016-single-account-auth/data-model.md) |

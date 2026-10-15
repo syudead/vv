@@ -71,15 +71,15 @@ type fakeFetchApplier struct {
 	calls    []domain.FetchedWorkInfoApply
 }
 
-func (a *fakeFetchApplier) ApplyFetchedWorkInfo(ctx context.Context, apply domain.FetchedWorkInfoApply) (domain.Video, []string, error) {
+func (a *fakeFetchApplier) ApplyFetchedWorkInfo(ctx context.Context, apply domain.FetchedWorkInfoApply) (domain.FetchedWorkInfoApplied, error) {
 	a.calls = append(a.calls, apply)
 	if a.err != nil {
-		return domain.Video{}, nil, a.err
+		return domain.FetchedWorkInfoApplied{}, a.err
 	}
 	plugin, err := a.plugins.WorkInfoPlugin(ctx, apply.PluginID)
 	if err != nil || plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != apply.Digest ||
 		plugin.Generation != apply.Generation {
-		return domain.Video{}, nil, domain.ErrWorkInfoFetchStale
+		return domain.FetchedWorkInfoApplied{}, domain.ErrWorkInfoFetchStale
 	}
 	if apply.Title != nil {
 		a.titles[apply.VideoID] = *apply.Title
@@ -92,7 +92,8 @@ func (a *fakeFetchApplier) ApplyFetchedWorkInfo(ctx context.Context, apply domai
 		}
 		a.tags[apply.VideoID] = append(a.tags[apply.VideoID], name)
 	}
-	return domain.Video{ID: apply.VideoID, DisplayName: a.titles[apply.VideoID]}, rejected, nil
+	video := domain.Video{ID: apply.VideoID, DisplayName: a.titles[apply.VideoID]}
+	return domain.FetchedWorkInfoApplied{Video: video, RejectedTags: rejected}, nil
 }
 
 const (

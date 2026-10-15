@@ -166,3 +166,65 @@ keep reaching the LAN, where those services run.
 | A host-name allowlist per plugin | A public name can resolve to a LAN address |
 | Returning the refusal to the plugin only | The plugin could ignore it, and the owner would not see that it tried |
 | Separate connect, TLS and header timeouts | A slow site could then answer `-3` instead of `-4` before the 10 s request limit |
+
+## The apply merges the selected fields in one transaction
+
+`OverrideStore.ApplyFetchedWorkInfo` in
+[`internal/store/work_info_fetch.go`](../../internal/store/work_info_fetch.go)
+writes the selected title, tags and work details of a fetched result in one
+transaction. The reasons are
+[052 research.md](../../specs/052-plugin-work-info-fields/research.md) R-3 and
+R-4.
+
+The diagram shows the order of the steps inside the transaction.
+
+```mermaid
+flowchart LR
+  recheck[Re-check the plugin row] --> title[Title and tags]
+  title --> match[Match people and organizations again]
+  match --> merge[domain.MergeFetchedWorkInfo]
+  merge --> create[Create the new entities the merge kept]
+  create --> write[Write the work information]
+  write --> commit[Commit, then events]
+```
+
+1. The plugin row is read again, as before: a replaced, revoked or deleted
+   plugin answers `ErrWorkInfoFetchStale` and nothing is written.
+2. The fetched people and organizations are matched again with the same
+   query as at fetch time (`matchCredits` in
+   [`credit_match.go`](../../internal/store/credit_match.go)). An entity
+   created between the fetch and the apply is linked, not created twice.
+3. `domain.MergeFetchedWorkInfo` in
+   [`work_info_merge.go`](../../internal/domain/work_info_merge.go) lays the
+   selected fields over the stored work information. It has no store
+   dependency, so its rules are unit-tested without SQLite.
+4. Only the new entities the merge kept are created, with the fetched name
+   and external IDs, through the same insert as `CreditStore.Create`.
+5. The result is written with 047's replace path, only when it differs from
+   the stored value. The edit time of the user key's members then advances.
+
+After the commit the apply publishes `VideoOverrideChanged` as before and,
+when the work information changed, one `VideoWorkInfoChanged`. A failure at
+any step rolls back the title, the tags, the work information and the new
+entities together.
+
+| Field | Merge rule |
+| --- | --- |
+| `code`, `description`, a date kind | Replaces the stored value |
+| A person or organization role | Appends the entities not linked in that role yet, in fetched order |
+| `urls`, `externalIds` | Appends the values not stored yet, in fetched order |
+
+A value the merge leaves out is returned as skipped with its field, the text
+the comparison showed and a reason. The rest of the row is still applied.
+
+| Reason | When |
+| --- | --- |
+| `invalid` | The value breaks a field rule of `NormalizeWorkInfo`, or a new entity's name or external IDs break `NormalizeCredit` |
+| `too_many` | The entry is over the field's limit, counted after the stored entries, or a new entity would carry more external IDs than its limit |
+| `ambiguous` | The match found several entities, or an external ID of a new entry already belongs to another new entity |
+
+The merge decides the skips before anything is created, so a skipped entry
+leaves no entity linked to no video. New entries in one result that share an
+external ID or a folded name become one entity, linked once per role, and the
+entity carries the external IDs of every entry folded into it, so a later
+fetch that names it only by one of those IDs still finds it.
