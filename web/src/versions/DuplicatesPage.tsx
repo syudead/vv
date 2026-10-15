@@ -56,7 +56,8 @@ function pairIds(pair: Pair): [number, number] {
  * 束ねる）か「違う動画」（二度と出さない）かを決めさせる画面である
  * （specs/030-video-versions/ui-design.md「Duplicates page」）。
  *
- * 開いたときに候補を読み、取り込みが終わったという `scan` の知らせで取り直す。取り直しの間は一覧の見た目を変えず、
+ * 開いたときに候補を読み、取り込みが終わったという `scan` の知らせと、判定の結果や版の取り外しで候補が
+ * 変わったという `candidates` の知らせ（specs/054-auto-dup/research.md R-10）で取り直す。取り直しの間は一覧の見た目を変えず、
  * 届いたら差し替える。取り直しが重なったら、今の取得が終わってからもう 1 度だけ取る。
  * 決めた組はその場で一覧から消し、フォーカスを次の組（無ければ前の組、無ければ見出し）へ移す。
  */
@@ -137,7 +138,10 @@ export default function DuplicatesPage() {
     // または別の取り込みが終わった状態で届いたとき）だけ取り直す。購読して最初の知らせは
     // 開いたときの取得と同じ内容なので取り直さない（issue 674）。
     let lastScan: { id: number; active: boolean } | undefined;
-    // 購読してから最初の取得をすると、取得のあとに起きた変化を取りこぼさない。
+    // 購読してから最初の取得をすると、取得のあとに起きた変化を取りこぼさない。ただし
+    // つながる前に始めた取得は、サーバーが受け口を作る前の一覧を読みうる。その間に決まった
+    // 組の candidates は届かず、つないだ直後の知らせも候補を運ばないので、つながったとき
+    // （初回もつなぎ直しも）に取り直す。すでにつながった接続に加わったときは open が来ない。
     const unsubscribe = subscribeServerEvents({
       scan: (scan) => {
         const active = inProgress(scan);
@@ -146,9 +150,8 @@ export default function DuplicatesPage() {
         if (previous === undefined || active) return;
         if (previous.active || previous.id !== scan.id) load();
       },
-      open: (reconnected) => {
-        if (reconnected) load();
-      },
+      candidates: load,
+      open: load,
     });
     load();
     return () => {
