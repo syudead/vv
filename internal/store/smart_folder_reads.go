@@ -101,12 +101,18 @@ func viewSmartFolder(ctx context.Context, tx *sql.Tx, audience domain.Audience, 
 	if view.missing, err = missingSmartRuleRefs(ctx, tx, rules); err != nil {
 		return smartFolderView{}, err
 	}
+	spec := smartFolderSpec(audience, rules, folder.Sort, now)
+	if request != nil {
+		spec.cursor, spec.limit = request.cursor, request.limit
+	}
 	var contents smartFolderContents
-	if len(view.missing) == 0 {
-		spec := smartFolderSpec(audience, rules, folder.Sort, now)
-		if request != nil {
-			spec.cursor, spec.limit = request.cursor, request.limit
+	if len(view.missing) > 0 && request != nil && spec.cursor != "" {
+		// 中身を求めなくても、読めないカーソルは domain.ErrInvalidCursor にする。
+		if _, _, err := itemOrder(spec.sort).cursorCondition(spec, spec.cursor); err != nil {
+			return smartFolderView{}, err
 		}
+	}
+	if len(view.missing) == 0 {
 		if contents, err = readSmartFolderContents(ctx, tx, spec, request != nil); err != nil {
 			return smartFolderView{}, err
 		}

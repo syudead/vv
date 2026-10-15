@@ -296,6 +296,20 @@ func TestSmartFolderWithAMissingTagListsOnlyItsChildren(t *testing.T) {
 	}
 }
 
+// 参照が欠けて中身を求めないフォルダでも、読めないカーソルは ErrInvalidCursor である。
+func TestSmartFolderWithAMissingTagRejectsAnInvalidCursor(t *testing.T) {
+	db, ids := versionFixture(t)
+	ctx := context.Background()
+	cat := attachNamedTag(t, db, "猫", ids["a"])
+	folder := newSmartFolder(t, db, "猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
+	if err := db.Tags().DeleteTag(ctx, cat); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.SmartFolders().SmartFolderContents(ctx, domain.AudienceOwner, folder, "not-a-cursor", 10); !errors.Is(err, domain.ErrInvalidCursor) {
+		t.Errorf("error = %v, want ErrInvalidCursor", err)
+	}
+}
+
 // 再生順は項目の順で、グループのカードはそのグループの再生順に置き換え、各動画は最初に出たところ
 // だけに置く。カードの値は再生順から求める。
 func TestSmartFolderPlayOrderExpandsGroups(t *testing.T) {

@@ -9,8 +9,9 @@ import (
 )
 
 // BenchmarkSmartFolderReads は 2 万本の動画で、3 段目のフォルダのページと、子フォルダのカードを
-// 持つ根のフォルダのページを読む時間を測る。予算はどちらも 500 ms 未満である
-// （specs/052-smart-folders/research.md R-13）。
+// 持つ根のフォルダのページを読む時間を測る。予算 500 ms 未満（specs/052-smart-folders/research.md
+// R-13）の対象は 3 段目のフォルダのページで、根のフォルダのページは参考値である（R-13 のもう 1 つの
+// 予算、根のフォルダ 50 個を持つライブラリの最初のページはライブラリのカードの単位で測る）。
 func BenchmarkSmartFolderReads(b *testing.B) {
 	db, cat := smartFolderBenchDB(b)
 	ctx := context.Background()
