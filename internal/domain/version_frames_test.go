@@ -66,6 +66,56 @@ func TestJudgeVersionFramesRunOfFour(t *testing.T) {
 	}
 }
 
+// 単色のコマを挟む 2 つの食い違いは連なりではない。比べられる組の 5% 以下なら同じ動画。
+func TestJudgeVersionFramesFlatFrameBreaksRun(t *testing.T) {
+	distances := make([]int, 41)
+	distances[10] = 30
+	distances[12] = 30
+	a, b := frameRuleFingerprints(distances)
+	a.Frames[11].Flat = true
+	rule := JudgeVersionFrames(a, b)
+	if rule.Outcome != VersionFramesSame || rule.Compared != 40 || rule.Differing != 2 {
+		t.Fatalf("rule = %+v", rule)
+	}
+}
+
+// b の側の単色のコマを挟む 2 つの食い違いも連なりではない。
+func TestJudgeVersionFramesFlatFrameOnBBreaksRun(t *testing.T) {
+	distances := make([]int, 41)
+	distances[10] = 30
+	distances[12] = 30
+	a, b := frameRuleFingerprints(distances)
+	b.Frames[11].Flat = true
+	rule := JudgeVersionFrames(a, b)
+	if rule.Outcome != VersionFramesSame || rule.Compared != 40 || rule.Differing != 2 {
+		t.Fatalf("rule = %+v", rule)
+	}
+}
+
+// 間隔の違う 2 本の指紋（5 秒と 2.5 秒）で時刻 50 秒と 55 秒の組だけが食い違うとき、どちらを
+// a にしても連なりとしてモデルに聞く。細かい方を a にすると組の a の番号は 2 ずつ進む。
+func TestJudgeVersionFramesRunAcrossIntervalsIsSymmetric(t *testing.T) {
+	coarse := Fingerprint{Version: FingerprintVersion, IntervalMs: 5000}
+	fine := Fingerprint{Version: FingerprintVersion, IntervalMs: 2500}
+	for i := range 40 {
+		coarse.Frames = append(coarse.Frames, FrameHash{})
+		hash := uint64(0)
+		if i == 10 || i == 11 {
+			hash = 1<<30 - 1
+		}
+		fine.Frames = append(fine.Frames, FrameHash{Hash: hash}, FrameHash{Hash: hash})
+	}
+	for _, c := range []struct {
+		name string
+		a, b Fingerprint
+	}{{"coarse first", coarse, fine}, {"fine first", fine, coarse}} {
+		rule := JudgeVersionFrames(c.a, c.b)
+		if rule.Outcome != VersionFramesDiffer || rule.Compared != 40 || rule.Differing != 2 || len(rule.Shown) != 2 {
+			t.Errorf("%s: rule = %+v", c.name, rule)
+		}
+	}
+}
+
 // 2 つ連続の食い違いは、5% 以下でもモデルに聞く。複数の連なりのうち最も長いものを選ぶ。
 func TestJudgeVersionFramesLongestRun(t *testing.T) {
 	distances := make([]int, 60)

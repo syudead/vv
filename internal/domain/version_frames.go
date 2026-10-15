@@ -59,7 +59,9 @@ type VersionFrameRule struct {
 
 // JudgeVersionFrames は 2 本の指紋をコマごとに比べる（research.md R-1）。コマは
 // ComparableFramePairs で時刻で組にし（単色のコマは飛ばす）、距離が FingerprintMatchMaxDistance を
-// 超える組を食い違いとする。食い違いが 5% 以下で 2 つ続かなければ VersionFramesSame。そうでなければ
+// 超える組を食い違いとする。連なりは時刻で隣り合う組の食い違いで、飛ばしたコマを挟めば切れる
+// （framePairsAdjacent）。
+// 食い違いが 5% 以下で 2 つ続かなければ VersionFramesSame。そうでなければ
 // VersionFramesDiffer で、食い違いの最も長い連なり（同じ長さなら先のもの）からコマを選ぶ。連なりが
 // 無く（どの食い違いも 1 つだけで）5% を超えるときは、食い違ったコマ全体から選ぶ。選ぶコマが
 // VersionJudgeMaxImages より多ければ、その中に等間隔に散らす。
@@ -76,6 +78,10 @@ func JudgeVersionFrames(a, b Fingerprint) VersionFrameRule {
 			continue
 		}
 		differing = append(differing, pair)
+		if len(current) > 0 && !framePairsAdjacent(a, b, current[len(current)-1], pair) {
+			// 間のコマが単色か相手が無くて飛ばされた。時刻で隣り合わない食い違いは連なりではない。
+			current = nil
+		}
 		current = append(current, pair)
 		if len(current) > len(longest) {
 			longest = current
@@ -95,6 +101,15 @@ func JudgeVersionFrames(a, b Fingerprint) VersionFrameRule {
 		rule.Shown = append(rule.Shown, shown[index])
 	}
 	return rule
+}
+
+// framePairsAdjacent は組 p の次の組 q が時刻で隣り合うかを返す。どちらの指紋の側でも、
+// 2 つの組のコマの先頭の隔たりが粗い方の間隔以下なら隣り合う。a と b の両方の側を同じ規則で
+// 見るので、間隔の違う 2 本の指紋でも引数の順で結果が変わらない。間のコマが飛ばされていれば、
+// どちらかの側の隔たりが粗い方の間隔を超える。
+func framePairsAdjacent(a, b Fingerprint, p, q FramePair) bool {
+	step := max(a.IntervalMs, b.IntervalMs)
+	return int64(q.A-p.A)*a.IntervalMs <= step && int64(q.B-p.B)*b.IntervalMs <= step
 }
 
 // VersionVerdictFor はモデルの答えの確率を判定の結果の種類にする（research.md R-3）。
