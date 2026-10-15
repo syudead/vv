@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 81adf437628412c50f8e46565115197396211c4703a4f5907485481ee9ebdec9
+sourceHash: ef46ef1a28a50ac0329ba8712c9bf4320071338de0ea7ee7e654f4484af8b989
 ---
 
 # 設計文書 {#design-documents}
@@ -69,3 +69,4 @@ sourceHash: 81adf437628412c50f8e46565115197396211c4703a4f5907485481ee9ebdec9
 - [任意の動画とグループのグループ (経路を持つグループのページ、New group、Add to group、動画のページのグループの文脈): UI](../../specs/048-groups/ui-design.md)
 - [作品情報プラグイン (設定の節、承認の確認、設定の値、取得の入口と比較を持つダイアログ): UI](../../specs/049-work-info-plugins/ui-design.md)
 - [ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる (ドロップの表示、ドロップのメニュー、新しいグループの名前欄、取り消しのトースト): UI](../../specs/050-drag-organize/ui-design.md)
+- [自動の重複判定 (カードと行のバージョンの印、Settings の Duplicate judging のスイッチ): UI](../../specs/054-auto-dup/ui-design.md)
