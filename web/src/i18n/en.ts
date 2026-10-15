@@ -1060,6 +1060,22 @@ export const en = {
     noUnusedMatches: (query: string) => `No unused tags match "${query}"`,
     noUnusedTentativeMatches: (query: string) =>
       `No unused tentative tags match "${query}"`,
+    // タグの種類の行の名札・絞り込み・チップ（specs/051-tag-kinds/ui-design.md「Words」）。
+    // 種類の名前は利用者のデータなので訳さずに埋め込む。
+    kindFilter: {
+      label: "Kind",
+      any: "Any kind",
+      none: "No kind",
+      chip: (name: string) => `Kind: ${name}`,
+      removeUnnamed: "Remove the kind filter",
+      gone: "Removed a kind that no longer exists from the filter",
+    },
+    kindLabel: {
+      prefix: "Kind:",
+    },
+    noKindTags: (name: string) => `No tags of the kind "${name}"`,
+    noKindlessTags: "No tags without a kind",
+    noFilterMatches: "No tags match the current search and filters",
     sort: {
       heading: "Sort by",
       current: (label: string) => `Sort by: ${label}`,
@@ -1219,6 +1235,18 @@ export const en = {
       stale: "Some of the tags no longer existed, so the list was reloaded",
       merged: (count: number, target: string) =>
         `Merged ${tagCount(count)} into "${target}"`,
+      // 選択バーの「Set kind…」（specs/051-tag-kinds/ui-design.md「Set kind」）。
+      setKind: "Set kind…",
+      noKinds: "No kinds yet. Add them on the Kinds tab.",
+      kindSet: (name: string, applied: number, skipped: number) =>
+        skipped === 0
+          ? `Set the kind "${name}" on ${tagCount(applied)}`
+          : `Set the kind "${name}" on ${tagCount(applied)}. ${formatNumber(skipped)} already had it.`,
+      kindCleared: (applied: number, skipped: number) =>
+        skipped === 0
+          ? `Removed the kind from ${tagCount(applied)}`
+          : `Removed the kind from ${tagCount(applied)}. ${formatNumber(skipped)} had none.`,
+      kindGone: "That kind no longer exists, so the kinds were reloaded",
     },
     bulkDialog: {
       rejectTitle: "Reject selected tags",

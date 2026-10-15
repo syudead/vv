@@ -7,7 +7,42 @@ import { moreIdle, type MoreState } from "./useTagPage";
  * `tags` はタグが 1 つも無い、ほかは今の条件に合う行が無い。
  */
 export type TagListEmpty =
-  "tags" | "noUnused" | "noUnusedMatch" | "noTentative" | "noTentativeMatch" | "noMatch";
+  | "tags"
+  | "noUnused"
+  | "noUnusedMatch"
+  | "noTentative"
+  | "noTentativeMatch"
+  | "noKind"
+  | "noKindMatch"
+  | "noMatch";
+
+/** ViewQuery は空の状態を選ぶのに読む、届いた行の条件である。 */
+type ViewQuery = ListRowsQuery & {
+  tentativeOnly?: boolean;
+  unusedOnly?: boolean;
+  kind?: string | null;
+};
+
+/** filtered は「Filter」の絞り込み（検索は数えない）がどれか効いているかである。 */
+function filtered({ tentativeOnly = false, unusedOnly = false, kind = null }: ViewQuery) {
+  return tentativeOnly || unusedOnly || kind !== null;
+}
+
+/**
+ * filteredEmpty は、タグはあるが今の条件に合う行が無いときの空の状態である。種類の
+ * 絞り込みが効いていれば、種類だけなら `noKind`、検索かほかの絞り込みと重なれば
+ * `noKindMatch`（specs/051-tag-kinds/ui-design.md「Kind filter」）。
+ */
+function filteredEmpty(query: ViewQuery): TagListEmpty {
+  const { tentativeOnly = false, unusedOnly = false, kind = null } = query;
+  const searching = query.query !== "";
+  if (kind !== null) {
+    return searching || tentativeOnly || unusedOnly ? "noKindMatch" : "noKind";
+  }
+  if (unusedOnly) return searching ? "noUnusedMatch" : "noUnused";
+  if (tentativeOnly) return searching ? "noTentativeMatch" : "noTentative";
+  return "noMatch";
+}
 
 /**
  * TagListViewInput は一覧の見え方を決める状態である。人物・団体の画面も、絞り込みの無い
@@ -15,9 +50,7 @@ export type TagListEmpty =
  * `tags`（1 件も無い）か `noMatch` である。
  */
 export interface TagListViewInput {
-  page:
-    | PageRows<ListRow, ListRowsQuery & { tentativeOnly?: boolean; unusedOnly?: boolean }>
-    | undefined;
+  page: PageRows<ListRow, ViewQuery> | undefined;
   loadError: UiText | null;
   more: MoreState;
   /** 並べる行の数（差し込んで残した改名中の行を含む）。 */
@@ -60,19 +93,13 @@ export function tagListView({
   if (page === undefined) {
     return { empty: null, showRows: false, staleList, tail, noTags };
   }
-  const { tentativeOnly = false, unusedOnly = false, query } = page.query;
-  const searching = query !== "";
-  const emptyTags = page.totalAll === 0 && !creating && !tentativeOnly && !unusedOnly;
+  const emptyTags = page.totalAll === 0 && !creating && !filtered(page.query);
   const moreToShow = page.nextCursor !== undefined && page.total > 0;
   const showRows = (visibleCount > 0 || creating || moreToShow) && !emptyTags;
   const nothingShown = visibleCount === 0 && !creating && !emptyTags && !moreToShow;
   let empty: TagListEmpty | null = null;
   if (emptyTags) empty = "tags";
-  else if (nothingShown) {
-    if (unusedOnly) empty = searching ? "noUnusedMatch" : "noUnused";
-    else if (tentativeOnly) empty = searching ? "noTentativeMatch" : "noTentative";
-    else empty = "noMatch";
-  }
+  else if (nothingShown) empty = filteredEmpty(page.query);
   return { empty, showRows, staleList, tail, noTags };
 }
 
@@ -82,8 +109,7 @@ export function tagListView({
  */
 export function tagCountText(page: TagPageRows | undefined): UiText {
   if (page === undefined) return t.tags.loading;
-  const { query, tentativeOnly, unusedOnly } = page.query;
-  return query !== "" || tentativeOnly || unusedOnly
+  return page.query.query !== "" || filtered(page.query)
     ? t.tags.filteredCount(page.total, page.totalAll)
     : t.tags.count(page.totalAll);
 }

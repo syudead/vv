@@ -106,6 +106,23 @@ function afterTagKindRenamedOrDeleted(): void {
 }
 
 /**
+ * tagKindCountsChanged はタグの操作で種類ごとのタグの数（`tagCount`）が変わったときに呼ぶ
+ * （種類の付け外し、タグの削除・却下・統合。specs/051-tag-kinds/ui-design.md「Kind filter」）。
+ * 共有の保持を古いものとし、購読者がいれば取り直す。
+ */
+export function tagKindCountsChanged(): void {
+  afterTagKindsChanged();
+}
+
+/**
+ * tagKindGone は、ほかの経路（`POST /api/tags/batch` の `setKind`）で `tag_kind_not_found` を
+ * 受けたときに呼ぶ。種類の削除の後と同じく、種類の一覧・タグの一覧・動画一覧の控えを新しくする。
+ */
+export function tagKindGone(): void {
+  afterTagKindRenamedOrDeleted();
+}
+
+/**
  * refreshOnStaleTagKindError は `tag_kind_not_found` を受けたときに種類の一覧を取り直す
  * （別のタブで消された種類に、その場で気付けるようにする）。種類が消えていればその種類の
  * タグはもう種類なしなので、削除の後と同じくタグの一覧と動画一覧の控えも新しくする。

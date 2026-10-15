@@ -1,11 +1,13 @@
 import { Ban, Check, Merge, Trash2 } from "lucide-react";
 import { useId, type Ref } from "react";
 
+import type { TagKind } from "../api/tagKinds";
 import { maxTagBatch } from "../api/tags";
 import { t } from "../i18n";
 import { SelectionBar } from "../ui/patterns/selection-bar";
 import { Button } from "../ui/shadcn/button";
 import { Spinner } from "../ui/shadcn/spinner";
+import TagSetKindMenu, { type KindChoice } from "./TagSetKindMenu";
 
 /**
  * TagSelectionBar はタグ管理画面で 1 件以上選んでいる間、見出しの行の代わりに出す
@@ -16,6 +18,9 @@ import { Spinner } from "../ui/shadcn/spinner";
  * （仮のタグが無いときの「Confirm」「Reject…」、確定したタグが無いときの「Delete…」）は
  * 薄くせずに出さない。「Reject…」「Delete…」は確認の窓（`ConfirmDialog`）を開く。操作の
  * 名前はどの幅でも出し、収まらなければ折り返す。
+ *
+ * 「Set kind…」（specs/051-tag-kinds/ui-design.md「Set kind」）はどの選択にも出し、
+ * 「Confirm」と「Merge into one tag…」の間に置く。
  */
 export default function TagSelectionBar({
   count,
@@ -29,6 +34,11 @@ export default function TagSelectionBar({
   onDelete,
   onMerge,
   onClear,
+  kinds,
+  sharedKind,
+  settingKind,
+  onSetKind,
+  setKindRef,
   confirmRef,
   mergeRef,
   rejectRef,
@@ -51,6 +61,14 @@ export default function TagSelectionBar({
   onDelete: () => void;
   onMerge: () => void;
   onClear: () => void;
+  /** 名前の自然順の種類（「Set kind…」のメニュー）。読み込み前は undefined。 */
+  kinds: readonly TagKind[] | undefined;
+  /** 選んだタグがみな持つ種類（id の文字列か `none`）。混ざっていれば undefined。 */
+  sharedKind: string | undefined;
+  /** 種類の付け外しの送信中。「Set kind…」のアイコンを回す。 */
+  settingKind: boolean;
+  onSetKind: (choice: KindChoice) => void;
+  setKindRef?: Ref<HTMLButtonElement>;
   confirmRef?: Ref<HTMLButtonElement>;
   mergeRef?: Ref<HTMLButtonElement>;
   rejectRef?: Ref<HTMLButtonElement>;
@@ -84,6 +102,16 @@ export default function TagSelectionBar({
             <span>{t.tags.selection.confirm}</span>
           </Button>
         )}
+        <TagSetKindMenu
+          kinds={kinds}
+          checked={sharedKind}
+          disabled={disabled}
+          pending={settingKind}
+          title={reason}
+          describedBy={describedBy}
+          onChoose={onSetKind}
+          buttonRef={setKindRef}
+        />
         <Button
           ref={mergeRef}
           variant="ghost"

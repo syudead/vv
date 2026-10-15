@@ -6,7 +6,6 @@ import {
   createTagKind,
   currentTagKinds,
   deleteTagKind,
-  getTagKinds,
   refreshTagKinds,
   renameTagKind,
   subscribeTagKinds,
@@ -57,6 +56,12 @@ function isKindNotFound(error: unknown): boolean {
 export interface TagKindsTab {
   /** 名前の自然順の種類。undefined の間は読み込み中か、読み込みの失敗。 */
   kinds: TagKind[] | undefined;
+  /**
+   * fresh は、画面を開いてから種類の一覧を 1 度でも読めたかである。前の画面の保持だけの
+   * 間は false で、URL の `kind` がもう無いかはこれが true になってから決める
+   * （specs/051-tag-kinds/ui-design.md「Kind filter」）。
+   */
+  fresh: boolean;
   loadError: UiText | null;
   creating: boolean;
   createPending: boolean;
@@ -96,28 +101,26 @@ export interface TagKindsTab {
 /**
  * useTagKindsTab はタグ管理画面の「Kinds」のタブの状態を持つ
  * （specs/051-tag-kinds/ui-design.md「Kinds tab」）。種類の一覧は `api/tagKinds.ts` の
- * 共有の保持を読み、取り直されるたびに追う。画面を開いたときに読み、タブの件数にも使う。
- * 「Kinds」のタブで画面を開いたときは、タブを開いたときと同じく保持があっても取り直す
- * （タグの削除・統合などで `tagCount` が変わっているかもしれない）。
+ * 共有の保持を読み、取り直されるたびに追う。画面を開いたときは保持があっても取り直し
+ * （ほかのタブで種類が変わったかもしれない。タグの削除・統合などで `tagCount` も変わる）、
+ * タブの件数・「Tags」のタブの種類の絞り込みと「Set kind…」のメニューにも使う。
  * 作成・改名・削除の直後は読み込んだ並びをその場で書き換え、共有の保持の取り直しは
  * `api/tagKinds.ts` が始める。
  */
 export function useTagKindsTab({
   toast,
   newKindRef,
-  openAtStart,
 }: {
   toast: ShowToast;
   /** 見出しの行の「New kind」。行へフォーカスを移せないときの行き先。 */
   newKindRef: RefObject<HTMLButtonElement | null>;
-  /** 画面を開いたときに「Kinds」のタブを描くか。画面を開いたときの値だけを読む。 */
-  openAtStart: boolean;
 }): TagKindsTab {
   const [kinds, setKinds] = useState<TagKind[] | undefined>(() => {
     const held = currentTagKinds();
     return held === undefined ? undefined : sortKinds(held);
   });
   const [loadError, setLoadError] = useState<UiText | null>(null);
+  const [fresh, setFresh] = useState(false);
   const [creating, setCreating] = useState(false);
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<TagFieldError | null>(null);
@@ -129,19 +132,16 @@ export function useTagKindsTab({
   const [deleteError, setDeleteError] = useState<UiText | null>(null);
   const changed = useRef(false);
   const rowRefs = useRef(new Map<number, Partial<KindRowRefs>>());
-  const refreshAtStart = useRef(openAtStart);
 
   useEffect(() => {
-    const unsubscribe = subscribeTagKinds((next) => {
-      setKinds(sortKinds(next));
+    const received = (list: TagKind[]) => {
+      setKinds(sortKinds(list));
       setLoadError(null);
-    });
-    (refreshAtStart.current ? refreshTagKinds() : getTagKinds()).then(
-      (list) => {
-        setKinds(sortKinds(list));
-        setLoadError(null);
-      },
-      (failure: unknown) => setLoadError(errorText(failure)),
+      setFresh(true);
+    };
+    const unsubscribe = subscribeTagKinds(received);
+    refreshTagKinds().then(received, (failure: unknown) =>
+      setLoadError(errorText(failure)),
     );
     return unsubscribe;
   }, []);
@@ -318,6 +318,7 @@ export function useTagKindsTab({
 
   return {
     kinds,
+    fresh,
     loadError,
     creating,
     createPending,

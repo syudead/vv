@@ -50,6 +50,7 @@ const initialTagQuery: TagPageQuery = {
   search: "",
   tentativeOnly: false,
   unusedOnly: false,
+  kind: null,
   sort: "name",
 };
 
@@ -64,6 +65,7 @@ function fetchTagPage(
       q: query.query === "" ? undefined : search.trim(),
       tentative: query.tentativeOnly,
       unused: query.unusedOnly,
+      kind: query.kind ?? undefined,
       sort: query.sort,
       cursor,
       limit: tagPageLimit,
