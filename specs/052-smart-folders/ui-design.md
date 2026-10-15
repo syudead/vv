@@ -159,6 +159,7 @@ argument. `videos` is the catalog's "1 video" / "N videos" helper.
 | `smart_folder_not_found` as a parent | That smart folder no longer exists. | `errorCodes.smart_folder_not_found`; the parent field's `FieldError`, and the parent list is read again |
 | `invalid_smart_rule` | A condition is out of range. | `errorCodes.invalid_smart_rule`; the conditions section's `FieldError` |
 | Created; saved | Created "{name}"; Saved "{name}" | `smartFolders.created(name)`, `.saved(name)`; toasts |
+| Created toast action in the filtered library | Open | `smartFolders.open`; opens the new folder's page |
 | Card accessible name | {name}, smart folder of 12 videos; {name}, smart folder of 12 videos, 3 watched | `library.smartFolder.label(name, count, watched)` |
 | Card mark tooltip and `title` | Smart folder | `smartFolders.kind` |
 | Card favorite, add to playlist | Favorite smart folder "{name}"; Add smart folder "{name}" to a playlist | `library.smartFolder.favorite(name)`, `.addToPlaylist(name)` |
@@ -167,7 +168,7 @@ argument. `videos` is the catalog's "1 video" / "N videos" helper.
 | Header count | 12 videos · 1:32:10; 0 videos | `groups.detail.count(count, duration)` |
 | Conditions line label | Conditions: | `smartFolders.detail.conditions` |
 | Inherited conditions line label | From "{parent}": | `smartFolders.detail.fromParent(name)` |
-| Condition chips | Search: kyoto; Unwatched; In progress; Watched; Favorites; Playable; Kind: Genre; Tag: 猫; Person: {name}; Organization: {name}; Added in the last 7 days; 5 to 20 minutes | `smartFolders.condition.*`; the watch and length words are the popover's |
+| Condition chips | Search: kyoto; Unwatched; In progress; Watched; Favorites; Playable; Kind: Genre; Tag: {name}; Person: {name}; Organization: {name}; Added in the last 7 days; 5 to 20 minutes | `smartFolders.condition.*`; the watch and length words are the popover's |
 | Condition chip whose reference is gone | Tag: deleted; Kind: deleted; Person: deleted; Organization: deleted | `smartFolders.condition.deleted(kind)`; `warning` `Badge` with lucide `TriangleAlert` |
 | Empty body, nothing matches | Nothing matches these conditions yet; Videos that match appear here as soon as they are tagged or added. | `smartFolders.detail.empty.title`, `.description`; the owner's action is "Edit conditions…" |
 | Empty body, a reference is gone | A condition no longer works; A tag, kind, person or organization in the conditions was deleted, so nothing matches. | `smartFolders.detail.missing.title`, `.description`; the owner's action is "Edit conditions…" |
@@ -177,7 +178,7 @@ argument. `videos` is the catalog's "1 video" / "N videos" helper.
 | Edit action in the empty states | Edit conditions… | `smartFolders.detail.editConditions` |
 | Delete dialog title | Delete "{name}"? | `smartFolders.deleteDialog.title(name)` |
 | Delete dialog description | The smart folder is deleted. Its videos stay in the library. | `smartFolders.deleteDialog.description` |
-| Delete dialog, folder with children | Its {N} child smart folders are deleted with it. | `smartFolders.deleteDialog.children(count)`; a second sentence |
+| Delete dialog, folder with descendants | The {N} smart folders inside it are deleted with it. | `smartFolders.deleteDialog.descendants(count)`; a second sentence; `N` counts the descendants at every depth |
 | Delete action; while sending | Delete; Deleting… | `smartFolders.deleteDialog.submit`, `.submitting`; `destructive` |
 | Delete failed | Couldn't delete the smart folder: {reason} | `smartFolders.deleteDialog.failed` |
 | Deleted | Deleted "{name}" | `smartFolders.deleted(name)`; a toast |
@@ -237,9 +238,10 @@ kind, a tag, a person, an organization, added or length. It opens the
 [smart folder dialog](#smart-folder-dialog) with the conditions set from
 the URL and the sort set from the current sort, the name empty and the
 parent `None (top level)`. The selection, the scroll position and the list
-are untouched; on `201` the toast `Created "{name}"` shows and the library
-reads its first page again in place, so the new card stands where its sort
-value puts it (R-7). A `random` sort opens the dialog with `Date added,
+are untouched; on `201` the toast `Created "{name}"` shows with the action
+`Open` to the new folder's page. The filtered list stays as it is: a
+filtered library lists no smart folder card (R-7), so the new card stands
+in the unfiltered library, where its sort value puts it. A `random` sort opens the dialog with `Date added,
 newest first` and the hint of [Words](#words) under the sort field (R-6).
 
 ### Smart folder card and row
@@ -295,8 +297,12 @@ flowchart LR
 | Sort | A `Select` of the library's sort kinds and directions as "Date added, newest first", 15 options, without `Random`; the default `Date added, newest first` |
 | Conditions | A `FieldSet` with the legend "Conditions" and the hint, holding the rows of [Conditions](#conditions) in the order of the table, `gap-3` between rows as the popover has |
 
-A condition that is empty is absent from the rule; a rule with no member is
-refused before sending with the section's `FieldError`. The `400`, `404`
+A condition that is empty is absent from the rule. Creating with a rule of
+no member, and an edit that empties a rule that had a member, are refused
+before sending with the section's `FieldError`; editing a folder whose rule
+was already empty (an empty rule is valid,
+[data-model.md](data-model.md#smart_foldersrule)) sends the other fields and
+keeps the empty rule. The `400`, `404`
 and `409` statuses of [contracts/screen-api.md, Statuses](contracts/screen-api.md#statuses)
 land on the field named in [Words](#words); any other failure is the
 `destructive` `Alert` under the fields, the dialog stays open. `Cancel`,
@@ -307,7 +313,7 @@ not a page of work.
 
 | Row | Control | Rule member |
 | --- | --- | --- |
-| Search | An `Input` with the library's search placeholder; trimmed, at most 500 characters | `q` |
+| Search | An `Input` with the library's search placeholder; trimmed and cut to 100 characters as the library's search is (`normalizeQuery`) | `q` |
 | Watch status | The popover's `ToggleGroup` (`All`, `Unwatched`, `In progress`, `Watched`) | `watch`; `All` is absent |
 | Favorites only, Playable only | The popover's two checkboxes | `favorite`, `playable` |
 | Tag kind | The popover's `Select` (`Any kind`, then the kinds); drawn only once #1136 is merged, as the popover's row is | `tagKind` |
@@ -316,7 +322,8 @@ not a page of work.
 | Added | The popover's `Select` | `addedWithin` |
 | Length | The popover's `Select` | `minDuration`, `maxDuration` |
 
-A rule member the screen cannot draw (a `q` over the field's length, a
+A rule member the screen cannot draw (a `q` over the field's length, which
+the contract allows up to 500 characters, a
 length that matches no preset) is drawn as its own option or kept as is, so
 saving the other fields never drops it. A chip whose tag, kind, person or
 organization no longer exists is the `warning` chip of [Words](#words) with
@@ -353,7 +360,7 @@ folder's name as the current crumb; below `md` it collapses to
 | --- | --- |
 | Title | The name, `text-xl font-semibold`, two lines at most, the full name in `title` |
 | Count | "12 videos · 1:32:10" from the card values; "0 videos" for an empty folder |
-| Description | The conditions lines ([Conditions lines](#conditions-lines)) |
+| Description | The conditions lines ([Conditions lines](#conditions-lines)), for the owner |
 | Actions | The `default` `sm` "Play" (lucide `Play`), drawn while the play order is not empty, and the owner's `ghost` `icon-sm` "More" (lucide `Ellipsis`) opening a `DropdownMenu`: "Edit…" (lucide `Pencil`), "New child smart folder…" (lucide `Plus`), a separator, "Delete…" (lucide `Trash2`, `variant="destructive"`) |
 
 "Play" opens `/videos/{openVideoId}?smartFolder={id}` with
@@ -370,15 +377,17 @@ chip text in `text-xs font-normal`:
 | "Conditions:" | Always | The folder's own conditions as chips, in the order of [Conditions](#conditions); a folder with an empty rule shows no chip after the label |
 | "From "{parent}":" | For each ancestor, nearest first | That ancestor's conditions; the label is a `link`-variant link to that ancestor's page |
 
-A chip is read-only: pressing nothing, no `×`. Every viewer sees the lines,
-because they say what the folder is; the owner's `settings` adds the
-`missing` list, which turns the chips it names into the `warning` chip of
+A chip is read-only: pressing nothing, no `×`. The lines are the owner's:
+they are drawn from `settings`, which is owner only
+([contracts/screen-api.md, Schemas added](contracts/screen-api.md#schemas-added)),
+and its `missing` list turns the chips it names into the `warning` chip of
 [Words](#words). The names for tag, kind, person and organization chips
 come from the shared tag list, the kind list and `GET /api/people/{id}` or
 `/organizations/{id}`, with a `Skeleton` `w-12` until they arrive, as the
-`Filtering by` chips do. A guest's chips name tags, people and organizations
-too: the names are what the folder filters by, and the folder is shown to
-the guest only with public videos in it (R-11).
+`Filtering by` chips do. A guest gets no `settings` and sees no conditions
+lines: the rule reads the owner's tags, credits and watch state (R-11),
+which the guest's own filter may not use, and the folder's name and items
+say what it holds.
 
 ### Body
 
@@ -401,7 +410,8 @@ Selection is the library's for the video and group cards (owner), with the
 library's selection bar and its actions; the child folder cards have no
 check. Paging reads `GET /api/smart-folders/{id}/items` from `nextCursor`
 when the sentinel comes within 600px, as the library grid does; a failed
-page shows the `LoadMoreRow` `Alert` with `Retry`.
+page shows the `LoadMoreRow` `Alert` with `Retry`, except a `404`, which is
+the gone state as on any read ([Reading again](#reading-again)).
 
 ### Editing
 
@@ -424,7 +434,9 @@ child's card stands first among the children.
 
 "Delete…" opens a `ConfirmDialog`: the title `Delete "{name}"?`, the
 description of [Words](#words), and for a folder with children the second
-sentence naming their number (from the tree of `GET /api/smart-folders`),
+sentence naming the number of its descendants at every depth, since
+deleting removes them all ([data-model.md, Edits](data-model.md#edits)),
+counted from the tree of `GET /api/smart-folders`,
 then `Cancel` and the `destructive` "Delete". The description names what
 stays, because losing videos is the one fear here (requirement 5), and the
 second sentence is the one place the Edge Case on a deleted parent is
@@ -506,7 +518,7 @@ When drawing as a guest, the following are not shown. They are neither
 | --- | --- | --- |
 | Library | `Save as smart folder`; the folder card's marks and selection | The cards and rows of the folders with public videos; the `Added` and `Length` rows stay in the popover (R-4) |
 | Dialogs | All | None |
-| Smart folder page | "More", the selection, the `missing` warning chips | The band, the title, the count, the conditions lines, "Play" and the items as plain cards or rows; an empty folder is the gone state |
+| Smart folder page | "More", the selection, the conditions lines | The band, the title, the count, "Play" and the items as plain cards or rows; an empty folder is the gone state |
 | Video page | Nothing changes beyond 048's rules | The folder line stays a link |
 
 ## Responsive behaviour
@@ -582,8 +594,8 @@ deleted.
    tagged on part1 only shows part1 as a video card and no group card.
 8. **Save from the library** (acceptance criterion 5): filtering the library
    by `猫` and `Unwatched`, pressing `Save as smart folder`, naming it and
-   pressing Enter closes the dialog, shows the toast, and the new card is in
-   the unfiltered library; opening it shows the same cards the filtered
+   pressing Enter closes the dialog, shows the toast with `Open`, leaves the
+   filtered list as it was, and the new card is in the unfiltered library; opening it shows the same cards the filtered
    library showed, in the same order. With the library sorted by `Random`,
    the dialog's sort reads `Date added, newest first` with the hint under
    it.
@@ -596,8 +608,9 @@ deleted.
    state and have no card in the library.
 10. **Cycle and delete** (Edge Cases): editing `タグ: 猫`, the parent
     `Select` lists no `未視聴`; moving `未視聴` under a third folder redraws
-    the band with the third folder. "Delete…" on `タグ: 猫` reads "Its 1
-    child smart folder is deleted with it.", and after "Delete" the library
+    the band with the third folder. With a grandchild under `未視聴`,
+    "Delete…" on `タグ: 猫` reads "The 2 smart folders inside it are deleted
+    with it.", and after "Delete" the library
     shows neither folder and every video still.
 11. **Video page in a folder**: opening a video from `タグ: 猫` shows the
     line `タグ: 猫 · 2 / 4` with the smart folder icon above the title and
@@ -606,7 +619,7 @@ deleted.
     it. Advancing keeps the line on the next video.
 12. **Guests**: a guest sees the folder with public videos as a card with
     no marks and no check, opens its page with the band, the name, the
-    count, the conditions lines, "Play" and plain cards, and the `Filter`
+    count, "Play" and plain cards and no conditions lines, and the `Filter`
     popover with `Added` and `Length` but no `Save as smart folder`.
 13. **Failing examples** (`UI品質`): a folder card with a badge, a label or
     a different art, box or name size from a group card; the smart folder
