@@ -89,8 +89,12 @@ func titleOf(path string) string {
 	return strings.TrimSuffix(filepath.Base(path), ".mp4")
 }
 
-// itemKey は項目の keyset の id（動画の id の 2 倍か、グループの id の 2 倍に 1 を足した値）である。
+// itemKey は項目の keyset の id（動画の id の 2 倍か、グループの id の 2 倍に 1 を足した値か、
+// スマートフォルダの id を負にした値）である。
 func itemKey(item domain.LibraryItem) int64 {
+	if item.SmartFolder != nil {
+		return -item.SmartFolder.ID
+	}
 	if item.Group != nil {
 		return item.Group.ID*2 + 1
 	}
@@ -132,9 +136,12 @@ func libraryPages(t *testing.T, db *DB, audience domain.Audience, q domain.Video
 func itemNames(items []domain.LibraryItem) []string {
 	out := make([]string, 0, len(items))
 	for _, item := range items {
-		if item.Group != nil {
+		switch {
+		case item.SmartFolder != nil:
+			out = append(out, "folder:"+item.SmartFolder.Name)
+		case item.Group != nil:
 			out = append(out, "group:"+item.Group.Name)
-		} else {
+		default:
 			out = append(out, item.Video.Title)
 		}
 	}

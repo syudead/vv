@@ -6,8 +6,8 @@ import "time"
 // 一覧は、動画とグループを「項目」として混ぜて返す。
 
 // LibraryItem は一覧の項目1件である。Video・Group・SmartFolder のちょうど 1 つを持つ。
-// SmartFolder はスマートフォルダの中身の子フォルダである（specs/052-smart-folders/data-model.md
-// 「Contents」）。
+// SmartFolder はスマートフォルダの中身の子フォルダか、ライブラリの一番上のフォルダである
+// （specs/052-smart-folders/data-model.md「Contents」「Library items」）。
 type LibraryItem struct {
 	Video       *Video
 	Group       *LibraryGroup
@@ -39,6 +39,9 @@ type LibrarySelection struct {
 	VideoIDs []int64
 	// Groups はグループの項目ごとの id と動画。
 	Groups []LibraryGroupSelection
+	// SmartFolderIDs はスマートフォルダの項目の id（specs/052-smart-folders/data-model.md
+	// 「Library items」）。フォルダの動画は AllVideoIDs に入れない。
+	SmartFolderIDs []int64
 }
 
 // LibraryGroupSelection はグループの項目 1 件の id と動画である。

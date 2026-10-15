@@ -61,3 +61,35 @@ func TestShuffleKey(t *testing.T) {
 		t.Errorf("seed=1 と seed=2 で同じ並びになった")
 	}
 }
+
+// スマートフォルダの項目は、検索も、お気に入りのみ以外の絞り込みも無い一覧にだけ出る
+// （specs/052-smart-folders/research.md R-7）。並べ替え・ページ・空白だけの検索は絞り込みではない。
+func TestVideoQueryListsSmartFolders(t *testing.T) {
+	zero := 0
+	for _, q := range []VideoQuery{
+		{},
+		{Watch: WatchAll, Sort: SortTitleAsc, Seed: 3, Cursor: "c", Limit: 10},
+		{Query: "   "},
+		{FavoriteOnly: true},
+	} {
+		if !q.ListsSmartFolders() {
+			t.Errorf("%+v.ListsSmartFolders() = false, want true", q)
+		}
+	}
+	for _, q := range []VideoQuery{
+		{Query: "cat"},
+		{Watch: WatchUnwatched},
+		{PlayableOnly: true},
+		{TagIDs: []int64{1}},
+		{Person: 1},
+		{Organization: 1},
+		{AddedWithinDays: 1},
+		{MinDurationSec: &zero},
+		{MaxDurationSec: &zero},
+		{FavoriteOnly: true, TagIDs: []int64{1}},
+	} {
+		if q.ListsSmartFolders() {
+			t.Errorf("%+v.ListsSmartFolders() = true, want false", q)
+		}
+	}
+}

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -190,6 +191,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		return ` left join playback_progress p on p.content_key = ` + userKeyExpr(videoAlias) + ` and ` +
 			videoAlias + `.content_key <> ''`
 	}
+	folderItems, folderArgs := smartFolderItemsSQL(spec.smartFolders)
 	roots := topGroupsSelect
 	videoFavorite := ""
 	if spec.anyLevel(func(level listSpec) bool { return level.favoriteOnly }) {
@@ -251,8 +253,63 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 				when sum(mv.completed = 1) = count(*) then 'watched'
 				else 'inProgress' end
 		from mv join groups g on g.id = mv.group_id
-		group by g.id)`
-	return cte, args
+		group by g.id` + folderItems + `)`
+	return cte, append(args, folderArgs...)
+}
+
+// smartFolderItemsSQL は、ライブラリの一番上に並べるスマートフォルダのカード cards（spec.smartFolders）
+// を項目にする、items に足す union の句とその引数を返す。カードが無ければどちらも空である。項目の
+// id はフォルダの id を負にした値で、動画とグループの項目の id（正）と重ならない（カーソルは種類を
+// 運ぶ）。並べ替えの値は、グループのカードと同じくカードの値（再生順のメンバーから作った値）で、
+// 読んだカードから渡す（specs/052-smart-folders/data-model.md「Library items」）。メンバーを SQL で
+// もう一度集めると、フォルダの動画の本数だけ所在と再生の記録を結び直す。
+func smartFolderItemsSQL(cards []domain.LibrarySmartFolder) (string, []any) {
+	if len(cards) == 0 {
+		return "", nil
+	}
+	rows := make([][]any, 0, len(cards))
+	for _, card := range cards {
+		rows = append(rows, smartFolderSortValues(card))
+	}
+	encoded, err := json.Marshal(rows)
+	if err != nil {
+		// 数と文字列だけの並びなので起きない。
+		panic(fmt.Sprintf("cannot encode smart folder cards: %v", err))
+	}
+	return `
+		union all
+		select null, -f.id, null, null, json_extract(c.value, '$[1]'), json_extract(c.value, '$[2]'),
+			json_extract(c.value, '$[3]'), f.title_key, json_extract(c.value, '$[4]'), json_extract(c.value, '$[5]'),
+			json_extract(c.value, '$[6]'),
+			(select ff.favorited_at from smart_folder_favorites ff where ff.smart_folder_id = f.id),
+			json_extract(c.value, '$[7]')
+		from json_each(?) c join smart_folders f on f.id = json_extract(c.value, '$[0]')`, []any{string(encoded)}
+}
+
+// smartFolderSortValues はカード card の、項目の列 added_at・mtime・created_at・duration_ms・
+// size_bytes・played_at・watch_state の値を、フォルダの id に続けて返す。時刻は Unix 秒で、
+// グループのカードと同じくメンバーの最大、長さと大きさは合計である。メンバーの無いカードは、
+// 並べ替えが値を必ず持つ追加日時・更新日時・作成日時・大きさを 0 に、長さと再生日時を値無しにする。
+func smartFolderSortValues(card domain.LibrarySmartFolder) []any {
+	var mtime, created int64
+	for _, member := range card.Members {
+		mtime = max(mtime, unixSeconds(member.MTime))
+		created = max(created, unixSeconds(member.FileCreatedAt))
+	}
+	var played any
+	if card.LastPlayedAt != nil {
+		played = card.LastPlayedAt.Unix()
+	}
+	return []any{card.ID, unixSeconds(card.AddedAt), mtime, created, card.DurationMs, card.SizeBytes, played,
+		string(card.WatchState)}
+}
+
+// unixSeconds は時刻を Unix 秒にし、ゼロ値なら 0 にする。
+func unixSeconds(t time.Time) int64 {
+	if t.IsZero() {
+		return 0
+	}
+	return t.Unix()
 }
 
 // itemWatchCondition は項目の視聴状態の絞り込みを items に対する条件句にする。
@@ -320,7 +377,11 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	page, err := listLibraryPageTx(ctx, tx, libraryListSpec(audience, q, tagIDs))
+	spec := libraryListSpec(audience, q, tagIDs)
+	if spec.smartFolders, err = librarySmartFolders(ctx, tx, audience, q, spec.now); err != nil {
+		return domain.LibraryPage{}, err
+	}
+	page, err := listLibraryPageTx(ctx, tx, spec)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
@@ -337,7 +398,8 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 }
 
 // itemRow はページの項目1件の鍵である。id は keyset の鍵（libraryItemsCTE）で、動画の項目の
-// 動画の id は videoID が持つ。
+// 動画の id は videoID が持つ。スマートフォルダの項目は id が負で、フォルダの id はその符号を
+// 変えた値である（smartFolderItemsSQL）。
 type itemRow struct {
 	groupID sql.NullInt64
 	id      int64
@@ -439,7 +501,7 @@ func libraryPageItems(ctx context.Context, tx *sql.Tx, spec listSpec, order list
 			return nil, "", err
 		}
 	}
-	items, err := loadLibraryItems(ctx, tx, spec.scope.audience, keys)
+	items, err := loadLibraryItems(ctx, tx, spec.scope.audience, keys, spec.smartFolders)
 	if err != nil {
 		return nil, "", err
 	}
@@ -448,13 +510,16 @@ func libraryPageItems(ctx context.Context, tx *sql.Tx, spec listSpec, order list
 
 // loadLibraryItems はページの項目の鍵から項目を組み立てる。動画の項目は一覧に出す
 // 所在（chosen）の題名・大きさ・更新時刻で、グループの項目は見せてよい子孫の動画の全部から作る。
-func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow) ([]domain.LibraryItem, error) {
+// スマートフォルダの項目は、一覧が混ぜたカード folders から取る。
+func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []domain.LibrarySmartFolder) ([]domain.LibraryItem, error) {
 	var pairs [][2]any
 	var groupIDs []int64
 	for _, key := range keys {
-		if key.groupID.Valid {
+		switch {
+		case key.id < 0:
+		case key.groupID.Valid:
 			groupIDs = append(groupIDs, key.groupID.Int64)
-		} else {
+		default:
 			pairs = append(pairs, [2]any{key.videoID.Int64, key.path.String})
 		}
 	}
@@ -469,6 +534,14 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 
 	items := make([]domain.LibraryItem, 0, len(keys))
 	for _, key := range keys {
+		if key.id < 0 {
+			index := slices.IndexFunc(folders, func(card domain.LibrarySmartFolder) bool { return card.ID == -key.id })
+			if index < 0 {
+				return nil, fmt.Errorf("cannot read the smart folder (id=%d)", -key.id)
+			}
+			items = append(items, domain.LibraryItem{SmartFolder: &folders[index]})
+			continue
+		}
 		if key.groupID.Valid {
 			group, ok := groups[key.groupID.Int64]
 			if !ok {
@@ -529,12 +602,12 @@ func (s extraScanner) Scan(dest ...any) error {
 }
 
 // LibraryIDs は ListLibrary と同じ条件（並び順・カーソル・件数を除く）に合う項目を、
-// 動画の項目の id と、グループの項目ごとのグループの id と再生順の動画の id に分けて、ページングせずに
-// 返す（GET /api/library/ids、specs/027-partial-group-search/contracts/library-api.md §2、
+// 動画の項目の id と、グループの項目ごとのグループの id と再生順の動画の id と、スマートフォルダの
+// 項目の id に分けて、ページングせずに返す（GET /api/library/ids、specs/027-partial-group-search/contracts/library-api.md §2、
 // specs/035-favorites/data-model.md §5、specs/048-groups/data-model.md「Library items」）。動画の
 // 項目とグループの並びは決めない。「すべて選択」は所有者だけの操作なので、所有者として読む。
 func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) (domain.LibrarySelection, []int64, error) {
-	selection := domain.LibrarySelection{VideoIDs: []int64{}, Groups: []domain.LibraryGroupSelection{}}
+	selection := domain.LibrarySelection{VideoIDs: []int64{}, Groups: []domain.LibraryGroupSelection{}, SmartFolderIDs: []int64{}}
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.LibrarySelection{}, nil, fmt.Errorf("cannot start reading ids: %w", err)
@@ -545,6 +618,13 @@ func (s *LibraryStore) LibraryIDs(ctx context.Context, q domain.VideoQuery) (dom
 	if err != nil {
 		return domain.LibrarySelection{}, nil, err
 	}
+	// スマートフォルダの項目は条件で落ちない（出すのは絞り込みが無いかお気に入りのみのときだけ）ので、
+	// 項目の問い合わせに混ぜず、出すフォルダの id をそのまま返す。所有者には空のフォルダも出す。
+	folderIDs, err := librarySmartFolderIDs(ctx, tx, q)
+	if err != nil {
+		return domain.LibrarySelection{}, nil, err
+	}
+	selection.SmartFolderIDs = append(selection.SmartFolderIDs, folderIDs...)
 	// 並び順・カーソル・件数は使わない（libraryItemsCTE は読まない）。
 	cte, args := libraryItemsCTE(libraryListSpec(domain.AudienceOwner, q, tagIDs))
 	watchClause, watchArgs := itemWatchCondition(q.Watch)

@@ -107,10 +107,13 @@ type listSpec struct {
 	// ownerSearch は、ゲストにも検索式を所有者の意味（タグ名と作品情報にも照合する）で掛ける。
 	// スマートフォルダの条件は所有者の事実で決まる（research.md R-11）。
 	ownerSearch bool
-	sort        domain.VideoSort
-	seed        int64
-	cursor      string
-	limit       int
+	// smartFolders は一覧の一番上にスマートフォルダの項目として混ぜるカードである。ライブラリの
+	// 一覧（ListLibrary）だけが librarySmartFolders で埋める（specs/052-smart-folders/research.md R-7）。
+	smartFolders []domain.LibrarySmartFolder
+	sort         domain.VideoSort
+	seed         int64
+	cursor       string
+	limit        int
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。

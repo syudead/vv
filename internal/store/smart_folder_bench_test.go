@@ -33,6 +33,37 @@ func BenchmarkSmartFolderReads(b *testing.B) {
 	}
 }
 
+// BenchmarkLibraryWithSmartFolders は 2 万本の動画で、親の無いフォルダ 50 個を持つ絞り込みの無い
+// ライブラリの最初のページを読む時間を測る。予算は 500 ms 未満（specs/052-smart-folders/research.md
+// R-13）。フォルダの条件は、タグ・視聴状態・長さ・追加日・検索を混ぜる。
+func BenchmarkLibraryWithSmartFolders(b *testing.B) {
+	db, cat := smartFolderBenchDB(b)
+	ctx := context.Background()
+	read := func(b *testing.B) {
+		b.Helper()
+		for b.Loop() {
+			if _, err := db.Library().ListLibrary(ctx, domain.AudienceOwner, domain.VideoQuery{}); err != nil {
+				b.Fatal(err)
+			}
+		}
+	}
+	// 参考値: フォルダの無いライブラリ。
+	b.Run("no folders", read)
+	for i := range 50 {
+		bound := (i%10 + 1) * 6 * 60
+		days := i + 1
+		rules := []domain.SmartRule{
+			{Tags: []int64{cat}},
+			{Watch: domain.WatchUnwatched},
+			{MaxDuration: &bound},
+			{AddedWithin: &days},
+			{Q: fmt.Sprintf("series-%02d", i%40)},
+		}
+		benchSmartFolder(b, db, fmt.Sprintf("folder-%02d", i), rules[i%len(rules)], 0)
+	}
+	b.Run("50 root folders", read)
+}
+
 // smartFolderBenchDB は 2 万本の動画を 4 千のフォルダに 5 本ずつ置き（どのフォルダも自動グループに
 // なる）、半分にタグ 猫 を付け、3 本に 1 本に再生の記録を置いた索引を作り、猫 の id を返す。
 func smartFolderBenchDB(b *testing.B) (*DB, int64) {
