@@ -138,7 +138,10 @@ export default function DuplicatesPage() {
     // または別の取り込みが終わった状態で届いたとき）だけ取り直す。購読して最初の知らせは
     // 開いたときの取得と同じ内容なので取り直さない（issue 674）。
     let lastScan: { id: number; active: boolean } | undefined;
-    // 購読してから最初の取得をすると、取得のあとに起きた変化を取りこぼさない。
+    // 購読してから最初の取得をすると、取得のあとに起きた変化を取りこぼさない。ただし
+    // つながる前に始めた取得は、サーバーが受け口を作る前の一覧を読みうる。その間に決まった
+    // 組の candidates は届かず、つないだ直後の知らせも候補を運ばないので、つながったとき
+    // （初回もつなぎ直しも）に取り直す。すでにつながった接続に加わったときは open が来ない。
     const unsubscribe = subscribeServerEvents({
       scan: (scan) => {
         const active = inProgress(scan);
@@ -148,9 +151,7 @@ export default function DuplicatesPage() {
         if (previous.active || previous.id !== scan.id) load();
       },
       candidates: load,
-      open: (reconnected) => {
-        if (reconnected) load();
-      },
+      open: load,
     });
     load();
     return () => {
