@@ -219,6 +219,10 @@ func mergeTagsInto(ctx context.Context, tx queryExecer, targetID int64, sourceID
 	); err != nil {
 		return fmt.Errorf("cannot delete the merged tags (target=%d): %w", targetID, err)
 	}
+	// スマートフォルダの条件が名指す統合元を統合先にする（specs/052-smart-folders/research.md R-9）。
+	if err := rewriteSmartRuleRefs(ctx, tx, domain.SmartRefTag, targetID, sourceIDs); err != nil {
+		return err
+	}
 	return confirmTagInTx(ctx, tx, targetID)
 }
 

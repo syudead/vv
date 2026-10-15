@@ -174,6 +174,61 @@ func (s *SmartFolderStore) MissingRefs(ctx context.Context, id int64) ([]domain.
 	return missing, nil
 }
 
+// rewriteSmartRuleRefs は、統合の取引 tx の中で、kind の実体 sourceIDs を名指すすべての条件を統合先
+// targetID へ書き換える（data-model.md「Merges」、research.md R-9）。所有者の編集ではないので
+// owner_kept と updated_at は変えない。統合を巻き戻せば書き換えも残らない。
+func rewriteSmartRuleRefs(ctx context.Context, tx queryExecer, kind domain.SmartRuleRefKind, targetID int64, sourceIDs []int64) error {
+	rules, err := smartFolderRules(ctx, tx)
+	if err != nil {
+		return err
+	}
+	for _, folder := range rules {
+		next, changed := folder.rule.ReplaceRefs(kind, sourceIDs, targetID)
+		if !changed {
+			continue
+		}
+		encoded, err := next.Encode()
+		if err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `update smart_folders set rule = ? where id = ?`, encoded, folder.id); err != nil {
+			return fmt.Errorf("cannot rewrite the smart folder rule %d: %w", folder.id, err)
+		}
+	}
+	return nil
+}
+
+// smartFolderRule はスマートフォルダ 1 つの id と条件である。
+type smartFolderRule struct {
+	id   int64
+	rule domain.SmartRule
+}
+
+// smartFolderRules はすべてのスマートフォルダの条件を id の順に返す。
+func smartFolderRules(ctx context.Context, tx queryExecer) ([]smartFolderRule, error) {
+	rows, err := tx.QueryContext(ctx, `select id, rule from smart_folders order by id`)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the smart folder rules: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var rules []smartFolderRule
+	for rows.Next() {
+		var folder smartFolderRule
+		var raw string
+		if err := rows.Scan(&folder.id, &raw); err != nil {
+			return nil, fmt.Errorf("cannot read the smart folder rules: %w", err)
+		}
+		if folder.rule, err = domain.ParseSmartRule([]byte(raw)); err != nil {
+			return nil, fmt.Errorf("cannot read the smart folder rule %d: %w", folder.id, err)
+		}
+		rules = append(rules, folder)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the smart folder rules: %w", err)
+	}
+	return rules, nil
+}
+
 // smartFolderPathRules はスマートフォルダ id とその祖先の条件を、外側の祖先から順に返す。
 func smartFolderPathRules(ctx context.Context, tx *sql.Tx, id int64) ([]domain.SmartRule, error) {
 	rows, err := tx.QueryContext(ctx, `with recursive up (id, depth) as (

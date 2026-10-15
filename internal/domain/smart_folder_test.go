@@ -165,3 +165,40 @@ func TestValidateSmartFolderParent(t *testing.T) {
 		t.Errorf("loop error = %v", err)
 	}
 }
+
+func TestSmartRuleReplaceRefs(t *testing.T) {
+	rule := SmartRule{Q: "x", Tags: []int64{3, 1, 2}, TagKind: 1, Person: 1, Organization: 2}
+	cases := []struct {
+		name    string
+		kind    SmartRuleRefKind
+		sources []int64
+		target  int64
+		want    SmartRule
+		changed bool
+	}{
+		{"tags keep order and drop duplicates", SmartRefTag, []int64{1, 3}, 2,
+			SmartRule{Q: "x", Tags: []int64{2}, TagKind: 1, Person: 1, Organization: 2}, true},
+		{"a tag source becomes the target in place", SmartRefTag, []int64{1}, 9,
+			SmartRule{Q: "x", Tags: []int64{3, 9, 2}, TagKind: 1, Person: 1, Organization: 2}, true},
+		{"tag kind", SmartRefTagKind, []int64{1}, 5,
+			SmartRule{Q: "x", Tags: []int64{3, 1, 2}, TagKind: 5, Person: 1, Organization: 2}, true},
+		{"person only", SmartRefPerson, []int64{1}, 7,
+			SmartRule{Q: "x", Tags: []int64{3, 1, 2}, TagKind: 1, Person: 7, Organization: 2}, true},
+		{"organization only", SmartRefOrganization, []int64{2}, 8,
+			SmartRule{Q: "x", Tags: []int64{3, 1, 2}, TagKind: 1, Person: 1, Organization: 8}, true},
+		{"no source named", SmartRefPerson, []int64{4}, 7, rule, false},
+	}
+	for _, c := range cases {
+		got, changed := rule.ReplaceRefs(c.kind, c.sources, c.target)
+		if !reflect.DeepEqual(got, c.want) || changed != c.changed {
+			t.Errorf("%s: ReplaceRefs = %+v, %v; want %+v, %v", c.name, got, changed, c.want, c.changed)
+		}
+	}
+	if !reflect.DeepEqual(rule.Tags, []int64{3, 1, 2}) {
+		t.Errorf("ReplaceRefs changed the receiver's tags: %v", rule.Tags)
+	}
+	// 省いた項目（0）は書き換えない。
+	if got, changed := (SmartRule{}).ReplaceRefs(SmartRefPerson, []int64{0}, 7); changed || got.Person != 0 {
+		t.Errorf("empty rule = %+v, %v", got, changed)
+	}
+}
