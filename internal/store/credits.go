@@ -205,7 +205,7 @@ func (s *CreditStore) Update(ctx context.Context, kind domain.CreditKind, id int
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot update the %s: %w", kind, err)
 	}
 	return updated, nil
@@ -344,7 +344,7 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	if err := renumberCreditLinks(ctx, tx, t, affected); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return fmt.Errorf("cannot delete %s %d: %w", kind, id, err)
 	}
 	return nil
@@ -385,7 +385,7 @@ func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetI
 	if err != nil {
 		return domain.CreditMergeOutcome{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.CreditMergeOutcome{}, fmt.Errorf("cannot merge into %s %d: %w", kind, targetID, err)
 	}
 	return domain.CreditMergeOutcome{Credit: credit, NotFoundIDs: notFound}, nil

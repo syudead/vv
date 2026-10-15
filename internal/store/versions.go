@@ -83,10 +83,9 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 	if err != nil {
 		return domain.VideoVersions{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitEvents(ctx, tx, outcome.events()...); err != nil {
 		return domain.VideoVersions{}, fmt.Errorf("cannot bundle the videos: %w", err)
 	}
-	s.db.publishEvents(outcome.events()...)
 	return versions, nil
 }
 
@@ -293,10 +292,10 @@ func (s *VersionStore) MakeRepresentative(ctx context.Context, videoID int64) (d
 	if err != nil {
 		return domain.VideoVersions{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	events := append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}}, groupsChangedEvents(changedGroups)...)
+	if err := s.db.commitEvents(ctx, tx, events...); err != nil {
 		return domain.VideoVersions{}, fmt.Errorf("cannot change the representative: %w", err)
 	}
-	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}}, groupsChangedEvents(changedGroups)...)...)
 	return versions, nil
 }
 
@@ -381,11 +380,11 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 	if err != nil {
 		return domain.Video{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	events := append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}},
+		groupsChangedEvents(normalizeIDs(append(rekeyedGroups, changedGroups...)))...)
+	if err := s.db.commitEvents(ctx, tx, events...); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot unbundle the video: %w", err)
 	}
-	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}},
-		groupsChangedEvents(normalizeIDs(append(rekeyedGroups, changedGroups...)))...)...)
 	return video, nil
 }
 

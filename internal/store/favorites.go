@@ -36,7 +36,7 @@ var favoriteNow = time.Now
 //
 // favorited_at は Unix ミリ秒で、取引の中で max(今の時刻, 3 表の最大値 + 1) を 1 度だけ求め、
 // この取引の対象すべてに使う。動画の更新日時（video_edits）は進めない（research.md R-8）。
-// 全体を 1 つの取引で行い、途中で失敗したら何も残さない。ドメインイベントは発行しない。
+// 全体を 1 つの取引で行い、途中で失敗したら何も残さない。確定後に domain.SmartFoldersChanged だけを発行する。
 func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.FavoriteChange) (domain.FavoriteApplied, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -104,7 +104,7 @@ func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.Favorite
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.FavoriteApplied{}, fmt.Errorf("cannot update favorites: %w", err)
 	}
 	return domain.FavoriteApplied{Videos: videos, Groups: len(groups), SmartFolders: len(folders)}, nil

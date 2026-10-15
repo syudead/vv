@@ -394,3 +394,13 @@ type SmartFolderPage struct {
 	// Roots は登録フォルダの一覧である。中身と同じ読み取りスナップショットから読む。
 	Roots []MediaFolder
 }
+
+// SmartFoldersChanged は、中身かカードが変わったかもしれないスマートフォルダを表す
+// （research.md R-12、data-model.md「Notices」）。フォルダの編集はそのフォルダと子孫と親を、一致が
+// 変わりうる書き込みはすべてのフォルダを名指す。IDs は小さい順に重複なく持ち、空では発行しない。
+// 取引の確定後に発行する。
+type SmartFoldersChanged struct {
+	IDs []int64
+}
+
+func (SmartFoldersChanged) event() {}

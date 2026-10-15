@@ -62,7 +62,7 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 	if err != nil {
 		return domain.VideoTagsOutcome{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.VideoTagsOutcome{}, fmt.Errorf("cannot update the video tags: %w", err)
 	}
 

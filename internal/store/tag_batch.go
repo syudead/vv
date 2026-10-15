@@ -14,7 +14,7 @@ import (
 // （specs/036-tag-admin-scale/data-model.md §2、research.md R-4・R-6）。
 //
 // どちらも ids を json_each に 1 つの引数で渡し、id の数によらず決まった数の文で行う
-// （external_video_tags.go の applyManualTags と同じ）。ドメインイベントは発行しない。
+// （external_video_tags.go の applyManualTags と同じ）。確定後に domain.SmartFoldersChanged だけを発行する。
 
 // BatchTags は ids のタグに action を 1 つの取引で行う。ids の重複は 1 つとして扱い、無い id は
 // NotFoundIDs、domain.TagBatchApplies が偽の id は何も変えずに NotApplicableIDs、処理した id は
@@ -82,7 +82,7 @@ func (s *TagStore) BatchTags(ctx context.Context, action domain.TagBatchAction, 
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.TagBatchOutcome{}, fmt.Errorf("cannot apply the tag batch: %w", err)
 	}
 	return outcome, nil

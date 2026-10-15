@@ -85,10 +85,10 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	if err != nil {
 		return domain.Video{}, nil, err
 	}
-	if err := tx.Commit(); err != nil {
+	// 表示名と仮のタグを書くので、スマートフォルダの一致も変わりうる。
+	if err := s.db.commitMatchChange(ctx, tx, appliedWorkInfoEvents(apply.VideoID, changed)...); err != nil {
 		return domain.Video{}, nil, fmt.Errorf("cannot apply the fetched work information: %w", err)
 	}
-	s.db.publishEvents(appliedWorkInfoEvents(apply.VideoID, changed)...)
 	return video, rejected, nil
 }
 

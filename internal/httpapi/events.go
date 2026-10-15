@@ -45,6 +45,8 @@ type eventSubscriber struct {
 	scan   bool
 	videos map[int64]struct{}
 	groups map[int64]struct{}
+	// smartFolders はまだ送っていないスマートフォルダの知らせの id である。
+	smartFolders map[int64]struct{}
 	// ready は送るものがあることを知らせる。容量1で、重なった知らせはまとまる。
 	ready chan struct{}
 }
@@ -61,19 +63,23 @@ func (s *eventSubscriber) mark(update func(*eventSubscriber)) {
 
 // pendingEvents はまだ送っていない変化である。
 type pendingEvents struct {
-	scan   bool
-	videos []int64
-	groups []int64
+	scan         bool
+	videos       []int64
+	groups       []int64
+	smartFolders []int64
 }
 
 // take はまだ送っていない変化を取り出して空にする。
 func (s *eventSubscriber) take() pendingEvents {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	pending := pendingEvents{scan: s.scan, videos: sortedIDs(s.videos), groups: sortedIDs(s.groups)}
+	pending := pendingEvents{
+		scan: s.scan, videos: sortedIDs(s.videos), groups: sortedIDs(s.groups), smartFolders: sortedIDs(s.smartFolders),
+	}
 	s.scan = false
 	clear(s.videos)
 	clear(s.groups)
+	clear(s.smartFolders)
 	return pending
 }
 
@@ -88,7 +94,10 @@ func sortedIDs(set map[int64]struct{}) []int64 {
 }
 
 func (e *Events) subscribe() (*eventSubscriber, func()) {
-	sub := &eventSubscriber{videos: map[int64]struct{}{}, groups: map[int64]struct{}{}, ready: make(chan struct{}, 1)}
+	sub := &eventSubscriber{
+		videos: map[int64]struct{}{}, groups: map[int64]struct{}{}, smartFolders: map[int64]struct{}{},
+		ready: make(chan struct{}, 1),
+	}
 	// つないだ直後に今の状態を1回送る。切れていた間の変化を取り戻すためである。
 	sub.mark(func(s *eventSubscriber) { s.scan = true })
 	e.mu.Lock()
@@ -150,6 +159,19 @@ func (e *Events) GroupsChanged(ids []int64) {
 	})
 }
 
+// SmartFoldersChanged はスマートフォルダの中身かカードが変わったかもしれないことを知らせる
+// （specs/052-smart-folders/research.md R-12）。ids は名指すフォルダの id である。
+func (e *Events) SmartFoldersChanged(ids []int64) {
+	if len(ids) == 0 {
+		return
+	}
+	e.publish(func(s *eventSubscriber) {
+		for _, id := range ids {
+			s.smartFolders[id] = struct{}{}
+		}
+	})
+}
+
 // Handle は状態の変化を、画面へ送る知らせに置き換える。cmd/mdm が
 // domain.Event の購読として登録する。知らせる対象ではない変化は無視する。
 func (e *Events) Handle(event domain.Event) {
@@ -187,6 +209,10 @@ func (e *Events) Handle(event domain.Event) {
 		// グループの変化は group の知らせにする。グループの画面・カード・動画ページのグループの行が
 		// 読み直す（specs/048-groups/research.md R-13）。
 		e.GroupsChanged(event.GroupIDs)
+	case domain.SmartFoldersChanged:
+		// スマートフォルダの変化は smartFolder の知らせにする。フォルダの画面とライブラリのフォルダの
+		// カードが読み直す（specs/052-smart-folders/research.md R-12）。
+		e.SmartFoldersChanged(event.IDs)
 	}
 }
 
@@ -207,8 +233,8 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	// 動画の変化を取りこぼす。
 	sub, unsubscribe := s.events.subscribe()
 	defer unsubscribe()
-	// ゲストには group だけを送る。scan と video は所有者の取り込みと非公開の動画を運ぶ
-	// （specs/048-groups/contracts/screen-api.md「/api/events」）。
+	// ゲストには group と smartFolder だけを送る。scan と video は所有者の取り込みと非公開の動画を
+	// 運ぶ（specs/048-groups/contracts/screen-api.md「/api/events」）。
 	guest := !audienceFrom(r.Context()).IsOwner()
 
 	controller := http.NewResponseController(w)
@@ -255,7 +281,8 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writePendingEvents はまだ送っていない変化を、今の内容で書き出す。guest なら group だけを書く。
+// writePendingEvents はまだ送っていない変化を、今の内容で書き出す。guest なら group と smartFolder
+// だけを書く。
 func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, sub *eventSubscriber, guest bool) error {
 	pending := sub.take()
 	if guest {
@@ -283,6 +310,12 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 		// 変わったグループは 1 つの知らせにまとめる。名前は載せない（ゲストに見せないグループの
 		// 名前を運ばない）。
 		if err := writeEvent(w, "group", gen.GroupChanged{Ids: pending.groups}); err != nil {
+			return err
+		}
+	}
+	if len(pending.smartFolders) > 0 {
+		// group と同じく 1 つにまとめ、名前は載せない。
+		if err := writeEvent(w, "smartFolder", gen.SmartFolderChanged{Ids: pending.smartFolders}); err != nil {
 			return err
 		}
 	}

@@ -54,7 +54,7 @@ func (s *SmartFolderStore) CreateSmartFolder(ctx context.Context, create domain.
 		if err != nil {
 			return nil, fmt.Errorf("cannot create the smart folder: %w", err)
 		}
-		return nil, nil
+		return smartFolderEditNotice(ctx, tx, []int64{id}, folder.ParentID)
 	})
 	if err != nil {
 		return domain.SmartFolder{}, err
@@ -72,6 +72,7 @@ func (s *SmartFolderStore) ChangeSmartFolder(ctx context.Context, id int64, chan
 		if err != nil {
 			return nil, err
 		}
+		oldParent := folder.ParentID
 		applySmartFolderChange(&folder, change)
 		rule, err := checkSmartFolder(&folder)
 		if err != nil {
@@ -89,7 +90,7 @@ func (s *SmartFolderStore) ChangeSmartFolder(ctx context.Context, id int64, chan
 			smartFolderNow().UnixMilli(), id); err != nil {
 			return nil, fmt.Errorf("cannot change the smart folder: %w", err)
 		}
-		return nil, nil
+		return smartFolderEditNotice(ctx, tx, []int64{id}, oldParent, folder.ParentID)
 	})
 	if err != nil {
 		return domain.SmartFolder{}, err
@@ -111,6 +112,15 @@ func (s *SmartFolderStore) DeleteSmartFolder(ctx context.Context, id int64) erro
 		if err != nil {
 			return nil, fmt.Errorf("cannot read the playlists: %w", err)
 		}
+		folder, err := readSmartFolder(ctx, tx, id)
+		if err != nil {
+			return nil, err
+		}
+		// 子孫は外部キーで消えるので、名指すフォルダは消す前に読む。
+		events, err := smartFolderEditNotice(ctx, tx, []int64{id}, folder.ParentID)
+		if err != nil {
+			return nil, err
+		}
 		result, err := tx.ExecContext(ctx, `delete from smart_folders where id = ?`, id)
 		if err != nil {
 			return nil, fmt.Errorf("cannot delete the smart folder: %w", err)
@@ -130,7 +140,7 @@ func (s *SmartFolderStore) DeleteSmartFolder(ctx context.Context, id int64) erro
 				return nil, err
 			}
 		}
-		return nil, nil
+		return events, nil
 	})
 }
 

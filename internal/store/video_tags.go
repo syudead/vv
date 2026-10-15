@@ -34,7 +34,7 @@ func (s *TagStore) AttachTagByID(ctx context.Context, videoIDs []int64, tagID in
 		return domain.TagRef{}, 0, err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.TagRef{}, 0, fmt.Errorf("cannot add the tag: %w", err)
 	}
 	return ref, applied, nil
@@ -65,7 +65,7 @@ func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name s
 		return domain.TagRef{}, 0, err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.TagRef{}, 0, fmt.Errorf("cannot add the tag: %w", err)
 	}
 	return ref, applied, nil
@@ -90,7 +90,7 @@ func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64)
 		return domain.TagRef{}, 0, err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.TagRef{}, 0, fmt.Errorf("cannot remove the tag: %w", err)
 	}
 	return ref, applied, nil
