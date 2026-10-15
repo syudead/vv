@@ -71,21 +71,13 @@ func (p *PlaybackStore) SaveProgress(
 		}
 	}
 
-	if err := p.commitProgress(ctx, tx, before != domain.ClassifyWatch(&progress)); err != nil {
+	// 視聴状態が変わったときだけ、スマートフォルダの一致も変わりうる。
+	if err := p.db.commitMatchChangeIf(ctx, tx, before != domain.ClassifyWatch(&progress)); err != nil {
 		return domain.Progress{}, fmt.Errorf("cannot save the playback position (%s): %w", contentKey, err)
 	}
 
 	progress.UpdatedAt = updatedAt.Truncate(time.Second)
 	return progress, nil
-}
-
-// commitProgress は再生位置の保存の取引を確定する。watchChanged なら視聴状態が変わったので、
-// スマートフォルダの一致も変わりうる（commitMatchChange）。
-func (p *PlaybackStore) commitProgress(ctx context.Context, tx *sql.Tx, watchChanged bool) error {
-	if watchChanged {
-		return p.db.commitMatchChange(ctx, tx)
-	}
-	return tx.Commit()
 }
 
 // storedWatchState は取引 tx の中で、content_key の今の記録の視聴状態を返す。記録が無ければ未視聴である。

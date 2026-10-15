@@ -82,6 +82,15 @@ func (db *DB) commitMatchChange(ctx context.Context, tx *sql.Tx, events ...domai
 	return nil
 }
 
+// commitMatchChangeIf は、matched なら commitMatchChange、そうでなければ commitEvents で取引 tx を
+// 確定する。書いた値によって一致が変わるかが決まる書き込み（視聴状態・表示名・解析の結果）が使う。
+func (db *DB) commitMatchChangeIf(ctx context.Context, tx *sql.Tx, matched bool, events ...domain.Event) error {
+	if matched {
+		return db.commitMatchChange(ctx, tx, events...)
+	}
+	return db.commitEvents(ctx, tx, events...)
+}
+
 // commitEvents は取引 tx を確定し、確定できたときだけ events を発行する。events に一致を変えうる
 // 知らせがあれば、すべてのフォルダを名指す知らせも発行する（withMatchNotice）。
 func (db *DB) commitEvents(ctx context.Context, tx *sql.Tx, events ...domain.Event) error {

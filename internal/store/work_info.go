@@ -152,7 +152,8 @@ func (s *WorkInfoStore) SetMany(ctx context.Context, changes []domain.WorkInfoCh
 // 表示名は内容の識別子に、作品情報は利用者データの鍵に書き、それぞれ保存済みと違うときだけ書く。更新
 // 日時は 1 回の touchEditedAt で、表示名が変われば動画の内容、作品情報が変われば鍵の全メンバーの内容を
 // 進める。確定後、表示名が変われば domain.VideoOverrideChanged、作品情報が変われば
-// domain.VideoWorkInfoChanged を発行し、どちらも変わらなければ何も発行しない。
+// domain.VideoWorkInfoChanged を発行し、どちらも変わらなければ何も発行しない。どちらかが変われば
+// すべてのスマートフォルダを名指す domain.SmartFoldersChanged も発行する（specs/052-smart-folders/research.md R-12）。
 func (s *WorkInfoStore) SetDetails(ctx context.Context, videoID int64, displayName string, info domain.WorkInfo) (domain.Video, error) {
 	name, _, err := domain.NormalizeDisplayName(displayName)
 	if err != nil {
@@ -212,7 +213,8 @@ func (s *WorkInfoStore) SetDetails(ctx context.Context, videoID int64, displayNa
 	if nameChanged {
 		events = append([]domain.Event{domain.VideoOverrideChanged{VideoID: videoID}}, events...)
 	}
-	if err := s.db.commitEvents(ctx, tx, events...); err != nil {
+	// 表示名は検索の対象なので、変わればスマートフォルダの一致も変わりうる。
+	if err := s.db.commitMatchChangeIf(ctx, tx, nameChanged, events...); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot update the video details: %w", err)
 	}
 	return video, nil

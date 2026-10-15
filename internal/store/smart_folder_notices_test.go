@@ -173,3 +173,65 @@ func TestGroupChangeNamesEverySmartFolder(t *testing.T) {
 		t.Fatalf("notices = %+v, want %+v", got, want)
 	}
 }
+
+// 解析の結果を書くと、後継の引き継ぎが無くても長さと再生可否が変わるので、すべてのフォルダを名指す。
+// 走査を閉じるときの知らせは解析より前に出るので、ここで知らせないと長さで絞るフォルダが古いまま残る。
+func TestProbeResultNamesEverySmartFolder(t *testing.T) {
+	db, videoID := jobsFixture(t)
+	folder := createSmartFolder(t, db, "長い", 0)
+	ctx := context.Background()
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+		t.Fatal(err)
+	}
+	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)
+	if err != nil {
+		t.Fatal(err)
+	}
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+	probe := domain.Probe{DurationMs: 600_000, VideoCodec: "h264"}
+
+	written, err := db.Ingest().ApplyProbeForJob(ctx, job, probe, domain.Playability{Playable: true})
+	if err != nil || !written {
+		t.Fatalf("ApplyProbeForJob = %v, %v, want true, nil", written, err)
+	}
+	if err := db.Ingest().ApplyProbe(ctx, videoID, probe, domain.Playability{Playable: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	once := domain.SmartFoldersChanged{IDs: []int64{folder.ID}}
+	want := []domain.SmartFoldersChanged{once, once}
+	if got := smartFolderNotices(recorder); !reflect.DeepEqual(got, want) {
+		t.Fatalf("notices = %+v, want %+v", got, want)
+	}
+}
+
+// 表示名は検索の対象なので、変えるとすべてのフォルダを名指す。同じ名前の書き直しは何も出さない。
+func TestDisplayNameChangeNamesEverySmartFolder(t *testing.T) {
+	db, _, videoID := tagNoticeFixture(t)
+	folder := createSmartFolder(t, db, "題名", 0)
+	ctx := context.Background()
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+
+	if _, err := db.WorkInfo().SetDetails(ctx, videoID, "新しい題名", domain.WorkInfo{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Overrides().SetDisplayName(ctx, videoID, "別の題名"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Overrides().SetDisplayNames(ctx, []domain.DisplayNameChange{
+		{Video: domain.VideoRef{ID: videoID}, DisplayName: "三つ目の題名"},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Overrides().SetDisplayName(ctx, videoID, "三つ目の題名"); err != nil {
+		t.Fatal(err)
+	}
+
+	once := domain.SmartFoldersChanged{IDs: []int64{folder.ID}}
+	want := []domain.SmartFoldersChanged{once, once, once}
+	if got := smartFolderNotices(recorder); !reflect.DeepEqual(got, want) {
+		t.Fatalf("notices = %+v, want %+v", got, want)
+	}
+}
