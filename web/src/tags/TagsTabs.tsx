@@ -16,7 +16,8 @@ export function tagsPanelId(prefix: string, value: TagListTab): string {
  * TagsTabs は「Tags」「Rejected names」「Kinds」のタブである（ui-design.md「Tabs」、
  * specs/051-tag-kinds/ui-design.md「Kinds tab」）。それぞれに
  * 件数を添え、読み込む前は出さない。`locked` の間（作成・改名の送信中）は、描いて
- * いないタブを押せず、矢印でも移らない。
+ * いないタブを押せず、矢印でも移らない。3 つのタブが幅に収まらないとき（320px で
+ * 4 桁の件数が付くなど）は、画面ではなくタブの並びが横に送れるようにする。
  */
 export default function TagsTabs({
   idPrefix,
@@ -57,7 +58,10 @@ export default function TagsTabs({
         onChange(next as TagListTab);
       }}
     >
-      <TabsList aria-label={t.tags.tabs.label}>
+      <TabsList
+        aria-label={t.tags.tabs.label}
+        className="max-w-full justify-start overflow-x-auto"
+      >
         {trigger("tags", t.tags.tabs.tags, tagsCount)}
         {trigger("rejected", t.tags.rejectedNames.heading, rejectedCount)}
         {trigger("kinds", t.tags.kinds.tab, kindsCount)}

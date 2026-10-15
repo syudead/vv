@@ -933,6 +933,8 @@ test.describe.serial("video tags", () => {
         synonyms: [],
         videoCount: 0,
         tentative: true,
+        // `kind` は必須（null は種類なし）。欠けると種類の名札が描けず画面が落ちる。
+        kind: null,
         createdAt,
       }));
       // ページで読む画面はクエリ（sort・limit・tentative）を付けて送る。
@@ -990,6 +992,18 @@ test.describe.serial("video tags", () => {
         await expect(
           page.getByRole("tabpanel", { name: /^Rejected names/ }).getByRole("table"),
         ).toBeVisible();
+        // 3 つ目の「Kinds」は、収まらなければタブの並びの中で送って押せ、画面は横に送れない。
+        const kinds = page.getByRole("tab", { name: /^Kinds/ });
+        await kinds.click();
+        await expect(page).toHaveURL(/[?&]tab=kinds/);
+        const kindsBox = await kinds.boundingBox();
+        if (kindsBox === null) throw new Error("no layout");
+        expect(kindsBox.x + kindsBox.width).toBeLessThanOrEqual(width);
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+          ),
+        ).toBe(true);
       }
       await page.setViewportSize({ width: 1280, height: 800 });
     });
