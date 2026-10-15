@@ -111,6 +111,12 @@ func (s *LibraryStore) GetVideo(ctx context.Context, audience domain.Audience, i
 	return getVideo(ctx, s.db.sql, audience, id)
 }
 
+// videoQueryer は 1 行と複数行の問い合わせを投げられるもの（*sql.DB と *sql.Tx）である。
+type videoQueryer interface {
+	rowQueryer
+	rowsQueryer
+}
+
 // representativeJoin は、videos の行に代表の所在（見る人に見せてよい所在のうちパスの最小）を
 // rep として結ぶ（videoColumns が読む）。列ごとに代表を選ぶ副問い合わせを書くと、1行に
 // つき同じ選び方を列の数だけ繰り返す（issue 674）。代表が無ければ rep の列は NULL になる。
@@ -119,7 +125,7 @@ func representativeJoin(audience domain.Audience) string {
 		where l.video_id = videos.id and ` + visibleLocationCondition("l", audience) + ` order by l.path limit 1)`
 }
 
-func getVideo(ctx context.Context, q rowQueryer, audience domain.Audience, id int64) (domain.Video, error) {
+func getVideo(ctx context.Context, q videoQueryer, audience domain.Audience, id int64) (domain.Video, error) {
 	row := q.QueryRowContext(ctx, `select `+videoColumns(audience)+` from videos`+representativeJoin(audience)+` where videos.id = ? and `+
 		visibleVideoCondition("videos", audience), id)
 
@@ -130,15 +136,12 @@ func getVideo(ctx context.Context, q rowQueryer, audience domain.Audience, id in
 	if err != nil {
 		return domain.Video{}, fmt.Errorf("cannot read the video (id=%d): %w", id, err)
 	}
-	// 詳細の読み出しだけが集まりの要約を埋める（specs/030-video-versions/data-model.md §8）。
-	// 利用者データの鍵が内容の識別子と違うのは集まりのメンバーだけなので、束ねていない
-	// 動画には問い合わせを足さない。
-	if video.UserKey != video.ContentKey {
-		video.Versions, err = bundleVersionsRef(ctx, q, audience, video.ContentKey)
-		if err != nil {
-			return domain.Video{}, err
-		}
+	// 集まりの要約は一覧と同じ規則で埋める（specs/054-auto-dup/research.md R-9）。
+	videos := []domain.Video{video}
+	if err := attachVersions(ctx, q, audience, videos); err != nil {
+		return domain.Video{}, err
 	}
+	video = videos[0]
 	return video, nil
 }
 
