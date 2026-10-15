@@ -16,13 +16,24 @@ export const PERSON_PARAM = "person";
 /** URL の `organization` パラメータの名前。 */
 export const ORGANIZATION_PARAM = "organization";
 
+/**
+ * URL の `tagKind` パラメータの名前（specs/051-tag-kinds/contracts/screen-api.md
+ * 「List parameter `tagKind`」）。人物・団体と同じくライブラリだけの条件なので、ここで
+ * 一緒に読み書きする。
+ */
+export const TAG_KIND_PARAM = "tagKind";
+
 /** creditKinds は絞り込みのチップを並べる順（人物、団体）である。 */
 export const creditKinds: readonly CreditKind[] = ["person", "organization"];
 
-/** CreditFilter は人物 1 つと団体 1 つまでの絞り込みである。 */
+/**
+ * CreditFilter は人物 1 つと団体 1 つまで、それにタグの種類 1 つまでの絞り込みである。
+ * どれも id 1 つで、一覧の要求・控えの鍵・「Clear filters」を同じ形で通る。
+ */
 export interface CreditFilter {
   person?: number;
   organization?: number;
+  tagKind?: number;
 }
 
 /** creditParam は種類の URL のパラメータの名前を返す。 */
@@ -48,12 +59,17 @@ export function parseCreditFilter(search: URLSearchParams): CreditFilter {
   return {
     person: parseCreditParam(search.getAll(PERSON_PARAM)),
     organization: parseCreditParam(search.getAll(ORGANIZATION_PARAM)),
+    tagKind: parseCreditParam(search.getAll(TAG_KIND_PARAM)),
   };
 }
 
-/** hasCreditFilter は人物か団体で絞り込んでいるかを返す。 */
+/** hasCreditFilter は人物か団体かタグの種類で絞り込んでいるかを返す。 */
 export function hasCreditFilter(filter: CreditFilter): boolean {
-  return filter.person !== undefined || filter.organization !== undefined;
+  return (
+    filter.person !== undefined ||
+    filter.organization !== undefined ||
+    filter.tagKind !== undefined
+  );
 }
 
 /**
@@ -65,15 +81,24 @@ export function useCreditFilter(search: string, owner: boolean): CreditFilter {
   const parsed = parseCreditFilter(new URLSearchParams(search));
   const person = owner ? parsed.person : undefined;
   const organization = owner ? parsed.organization : undefined;
-  return useMemo(() => ({ person, organization }), [person, organization]);
+  const tagKind = owner ? parsed.tagKind : undefined;
+  return useMemo(
+    () => ({ person, organization, tagKind }),
+    [person, organization, tagKind],
+  );
 }
 
 /** creditSignature は絞り込みを値で比べるための文字列にする。 */
 export function creditSignature(filter: CreditFilter): string {
-  return `${String(filter.person ?? "")}\u0000${String(filter.organization ?? "")}`;
+  return [filter.person, filter.organization, filter.tagKind]
+    .map((id) => String(id ?? ""))
+    .join("\u0000");
 }
 
-/** hasFilterChips は、絞り込み中の条件の行に出すチップ（タグ・人物・団体）があるかを返す。 */
+/**
+ * hasFilterChips は、絞り込み中の条件の行に出すチップ（タグ・人物・団体・タグの種類）が
+ * あるかを返す。
+ */
 export function hasFilterChips(tagIds: readonly number[], filter: CreditFilter): boolean {
   return tagIds.length > 0 || hasCreditFilter(filter);
 }
@@ -86,8 +111,19 @@ export function withoutCredit(kind: CreditKind): Record<string, string[]> {
   return { [creditParam(kind)]: [] };
 }
 
-/** clearedCredits は「Clear filters」で両方を外す `apply` の追加の値である。 */
+/** withoutTagKind はタグの種類の絞り込みだけを外す `apply` の追加の値である。 */
+export const withoutTagKind: Readonly<Record<string, string[]>> = {
+  [TAG_KIND_PARAM]: [],
+};
+
+/** withTagKind はタグの種類の絞り込みを `id` に差し替える `apply` の追加の値である。 */
+export function withTagKind(id: number): Record<string, string[]> {
+  return { [TAG_KIND_PARAM]: [String(id)] };
+}
+
+/** clearedCredits は「Clear filters」で人物・団体・タグの種類を外す `apply` の追加の値である。 */
 export const clearedCredits: Readonly<Record<string, string[]>> = {
   [PERSON_PARAM]: [],
   [ORGANIZATION_PARAM]: [],
+  [TAG_KIND_PARAM]: [],
 };
