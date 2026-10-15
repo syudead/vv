@@ -335,9 +335,10 @@ the worker. The work-code and frame rules run either way.
 | Ask the default address `http://127.0.0.1:11434` | Rejected: a request to an address the owner never set, and on a machine without Ollama every such pair fails and retries for good |
 | Ask only after the connection test passes | Rejected: the test is a separate action that is not stored, and a connection that passed once can still be down later, which R-5 handles |
 | Turn the whole feature off without a connection | Rejected: the work-code and frame rules settle most pairs and need no model |
+| Show the number of pairs waiting for a connection in Settings | Rejected: it would push an optional provider at every owner who has none, and those pairs are already on Duplicates |
 
 **Rationale**: `OllamaSettings` falls back to the default address when no row
 exists, so the store reports whether the row exists; that is the owner having
-set up the provider. The Settings section shows how many pairs wait for a
-connection, so the owner sees why they stay
-([contracts/screen-api.md](contracts/screen-api.md#get-apisettingsversion-judging)).
+set up the provider. Nothing on screen points at the missing connection: the
+AI is optional, and a pair that waits looks like any pair the owner decides on
+Duplicates.

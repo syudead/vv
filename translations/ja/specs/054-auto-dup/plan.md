@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/plan.md
-sourceHash: c5028249b39547ba4496a9e17f76b1324daf34ab577befdfacb5aff2292ddabb
+sourceHash: c2d216a536a429facadc3eed0d5af4de5206180e5860489062f55289dabe41ed
 ---
 
 # 実装計画: 重複の候補を自動で判定し、同じものをまとめる {#implementation-plan-judging-possible-duplicates-automatically-and-bundling-the-same-ones}
@@ -76,7 +76,7 @@ sequenceDiagram
 | 同じ (すべてのフレーム、または 0.8 以上) | `VersionStore.Bundle` の手順で A と B をまとめる。代表は、一方がまとまりにあればそのまとまりの代表、なければ所有者のタグなどのデータを持つ方、次にブラウザーで再生できる方、音がある方、画素が多い方、ビットレートが高い方 | バージョンの印付きの 1 枚のカード |
 | 別 (作品コード、または 0.2 以下) | Duplicates のページのボタンと同じように、「別の動画」として退けた組を書く | 組が Duplicates から消える |
 | 0.2 と 0.8 の間 | 候補を `undecided` にする。二度と問わない | 組が Duplicates に残る |
-| Ollama の接続が保存されていない | `no_connection` にする。リクエストは送らない | 組が Duplicates に残る。Settings は接続を待っている組の数を示す |
+| Ollama の接続が保存されていない | `no_connection` にする。リクエストは送らない | 所有者が決めるほかの組と同じように、組が Duplicates に残る |
 | 答えがないか、エラー | `failed` にし、再試行の時刻を決める: 10 分、1 時間、6 時間、その後は毎日 | 再試行で決まるまで、組が Duplicates に残る |
 
 所有者が別だとした 2 つの動画を 1 つのまとまりに入れることになる「同じ」は、代わりに `undecided` として保存する。
@@ -201,4 +201,4 @@ flowchart LR
 
 **依存**: 指紋と分類器で重複の候補を判定する。動画のカードにバージョンの印を示す。
 
-**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ハンドラーのテストが次を示す: `GET` は保存の前には `enabled: false` を応答し、`PUT` は保存した値を `waitingForConnection` とともに応答し、所有者のセッションのないリクエストは `401 unauthenticated` を受け取る。Web のテストがスイッチの保存を示す。[クイックスタート](quickstart.md) のすべての行が既定の `clef-flash` で通り、PR は各組の規則の結果と確率を記録する。Settings のセクションが、`ui-design.md` の幅での見た目のレビューに通る。
+**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ハンドラーのテストが次を示す: `GET` は保存の前には `enabled: false` を応答し、`PUT` は保存した値を応答し、所有者のセッションのないリクエストは `401 unauthenticated` を受け取る。Web のテストがスイッチの保存を示す。[クイックスタート](quickstart.md) のすべての行が既定の `clef-flash` で通り、PR は各組の規則の結果と確率を記録する。Settings のセクションが、`ui-design.md` の幅での見た目のレビューに通る。

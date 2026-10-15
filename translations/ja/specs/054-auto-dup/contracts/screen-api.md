@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/contracts/screen-api.md
-sourceHash: 6fe2119d73a4b3421fec76c845f4d7a050919d4aab85753842b88c57d2a74dee
+sourceHash: 3f2408c9bcd67822bca147127b7845fba725b054d79c9f871dba6aa1d1b093a5
 ---
 
 # 契約: 重複の自動判定の画面の API {#contract-screen-api-for-automatic-duplicate-judging}
@@ -17,7 +17,7 @@ sourceHash: 6fe2119d73a4b3421fec76c845f4d7a050919d4aab85753842b88c57d2a74dee
 
 ## `GET /api/settings/version-judging` {#get-apisettingsversion-judging}
 
-`operationId: getVersionJudgingSettings`。所有者だけ。`VersionJudgingSettings {enabled: boolean, waitingForConnection: integer}` を返す。`enabled` は所有者が保存するまで `false` である。`waitingForConnection` は `no_connection` になっている候補の数であり ([R-13](../research.md#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection))、セクションはそれらが Ollama の接続を待っていると示せる。
+`operationId: getVersionJudgingSettings`。所有者だけ。`VersionJudgingSettings {enabled: boolean}` を返す。`enabled` は所有者が保存するまで `false` である。
 
 ## `PUT /api/settings/version-judging` {#put-apisettingsversion-judging}
 

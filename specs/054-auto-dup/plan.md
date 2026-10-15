@@ -104,7 +104,7 @@ sequenceDiagram
 | Same (all frames, or 0.8 or more) | Bundles A and B with `VersionStore.Bundle`'s steps; the representative is the bundle's if one side is bundled, else the one carrying the owner's tags and other data, then the one that plays in the browser, has sound, more pixels, a higher bitrate | One card with the versions mark |
 | Different (work codes, or 0.2 or less) | Writes a "different videos" dismissal, as the Duplicates page's button does | The pair leaves Duplicates |
 | Between 0.2 and 0.8 | Marks the candidate `undecided`; it is never asked again | The pair stays on Duplicates |
-| No Ollama connection saved | Marks it `no_connection`; no request is sent | The pair stays on Duplicates; Settings shows how many wait for a connection |
+| No Ollama connection saved | Marks it `no_connection`; no request is sent | The pair stays on Duplicates, like any pair the owner decides |
 | No answer or an error | Marks it `failed` and sets a retry time: 10 minutes, 1 hour, 6 hours, then daily | The pair stays on Duplicates until a retry decides it |
 
 A "same" that would put two videos the owner called different into one
@@ -315,7 +315,7 @@ classifier; Show a versions mark on video cards.
 
 **Acceptance**: `task check` passes with no diff from `task generate`; handler
 tests show `GET` answers `enabled: false` before any save and `PUT` answers the
-saved value with `waitingForConnection`, and a request with no owner session gets
+saved value, and a request with no owner session gets
 `401 unauthenticated`; a Web test shows the switch saving; every
 [quickstart](quickstart.md) row passes with the default `clef-flash` and the
 PR records each pair's rule outcome and probability; the Settings section passes a visual review at the widths

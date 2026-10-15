@@ -18,11 +18,8 @@ is unchanged.
 ## `GET /api/settings/version-judging`
 
 `operationId: getVersionJudgingSettings`. Owner only. Returns
-`VersionJudgingSettings {enabled: boolean, waitingForConnection: integer}`.
-`enabled` is `false` until the owner saves. `waitingForConnection` is the
-number of candidates marked `no_connection`
-([R-13](../research.md#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection)),
-so the section can say that they wait for an Ollama connection.
+`VersionJudgingSettings {enabled: boolean}`; `enabled` is `false` until the
+owner saves.
 
 ## `PUT /api/settings/version-judging`
 
