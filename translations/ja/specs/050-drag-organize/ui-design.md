@@ -1,6 +1,6 @@
 ---
 source: specs/050-drag-organize/ui-design.md
-sourceHash: 91800303dc8ab22b20bb2051da82dc32ac2d1193ea4c5ddf0d406ab7b4bb48d5
+sourceHash: 46db33b1e2341312e7646426b09b36f6c87ee7460b490b65185e4ae5dcd6586a
 ---
 
 # UI 設計: ドラッグ&ドロップでの並べ替え、グループ化、統合、まとめ {#ui-design-drag-and-drop-to-reorder-group-merge-and-bundle}
@@ -158,7 +158,7 @@ flowchart LR
 | 上 | ドロップ先のカードの箱(`article`、`rounded-md`)が `ring-2 ring-primary` を示す。サムネイル上には、数の表示と同じ形(`bg-overlay text-foreground text-xs font-medium rounded-md px-2 py-1`、中央寄せ)のラベルが "Put in"、"Group or bundle…"、"Put in or merge…" のいずれかを示す。リングはサムネイルではなく箱に付くので、選択のリングではない。カードの隅の印と進捗バーは残る |
 | 間 | カードの高さの `w-0.5 rounded-full bg-primary` のバーを、ドロップ先のカードの前か後の隙間の中央に置く。1 列のグリッドとリスト表示では、カードか行の幅の `h-0.5` のバーを上端か下端に置く。どのカードにもリングは出さない |
 | クラム | クラムの文字が `bg-primary-soft text-primary rounded-sm px-1` になる。帯の他の部分は変わらない |
-| 拒否 | ドロップ先はリングもバーも示さない。プレビューの数のバッジが、"Can't drop here" という名前の lucide `Ban`(`size-3`)付きの `Badge` `destructive` に替わり、ポインタは `cursor-not-allowed` になる。離しても何も変わらない(要件 15、Edge Cases) |
+| 拒否 | ドロップ先はリングもバーも示さない。プレビューの数のバッジが、"Can't drop here" という名前の lucide `Ban`(`size-3`)付きの `Badge` `destructive` に替わり、ポインタは `cursor-not-allowed` になる。離しても何も変わらない(要件 15、Edge Cases)。お気に入りの絞り込みの子孫が唯一の例外である([ドロップが何をするか](#what-a-drop-does)) |
 | 何もなし | 印はない。離しても何も変わらない |
 
 中央は、グリッドの流れの軸に沿ったカードの内側 50 % だ(2 列以上のグリッドでは幅、1 列のグリッドとリスト表示では高さ)。端は両側の 25 % だ。何も並べ替えないライブラリとフォルダ画面(Issue の `対象外`)では端も中央として扱うので、カード全体が「上」になり、隙間だけが「何もなし」になる。
@@ -177,6 +177,8 @@ flowchart LR
 | 何でも | 持ち上げたカード、開いているグループのクラム、持ち上げたグループかその子孫、折りたたんだ "…" | 拒否 |
 
 ドロップ先のグループにすでにある動画はサーバーが飛ばし、1 回だけ現れる(Edge Case)。画面はサーバーが答える前に結果を示し(R-8)、失敗したときは示していたものを失敗のトーストと共に元に戻す。
+
+拒否の規則の例外を 1 つ受け入れる: あらゆる深さのグループを並べて一覧にするライブラリのお気に入りの絞り込みでは、自分の子孫の上にある持ち上げたグループは、そのカードがほかのどのグループにも示す印(「上」、そして離すとメニュー)を示す。画面はそこで子孫を知らないからである。サーバーは `409 group_cycle` で操作を拒む。画面は持ち上げたカードを戻し、理由を `errorCodes.group_cycle` として失敗のトーストを出し、取り消しのトーストは出さない。何も書き込まれない(要件 15)。
 
 ## ドロップのメニュー {#drop-menus}
 

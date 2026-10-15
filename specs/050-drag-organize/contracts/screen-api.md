@@ -83,12 +83,15 @@ Makes a group of dragged videos and the target video (requirement 5).
 ## `POST /api/organize/merge`
 
 Merges dragged groups into the target and appends dragged videos to it, in one
-transaction (requirement 8).
+transaction (requirement 8). With `from`, the dragged cards also leave the
+open group in that transaction, under the same undo token, as `/move` does
+(requirement 9).
 
 | Field | Type | Required | Meaning |
 | --- | --- | --- | --- |
 | `items` | `OrganizeRefs` | yes | Dragged cards, at least one group |
 | `into` | int64 | yes | The group dropped on |
+| `from` | int64 | no | The open group they leave; the group page sends it, the library does not |
 
 ## `POST /api/organize/bundle`
 

@@ -1,6 +1,6 @@
 ---
 source: specs/050-drag-organize/plan.md
-sourceHash: b6d400689284629b4a2aeb8da7a419251ec9adc298ebf095181d07042f9107b3
+sourceHash: e0c6cdb24c62743a80eb6a09ddbea5fd96480fba82612b4819a4af2c0357e5b4
 ---
 
 # 実装計画: ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる {#implementation-plan-drag-and-drop-to-reorder-group-merge-and-bundle}
@@ -60,6 +60,8 @@ Issue には `ui` ラベルがあるので、画面の単位より前に `design
 - マイグレーションはない ([data-model.md](data-model.md))。新しいストアの役割が 1 つ、`OrganizeStore`、新しいユースケースが 1 つ、`app.Organizer`。
 - 6 つのルートと 2 つのエラーコードを加え、1 つのルートを変える: 048 の `PATCH /api/groups/{id}` は、自身の本文のスキーマ `GroupRename` で省略できる `undoToken` を受け取る ([contracts/screen-api.md](contracts/screen-api.md#patch-apigroupsid-with-an-undo-token))。
 - フォルダの画面には今は選択がないので、1 度に 1 枚のカードをドラッグする。要件 11 は選択がある場所 (ライブラリとグループのページ) に当てはまる。
+- `POST /api/organize/merge` は、開いているグループである省略できる `from` を受け取る。そのため、グループのページからの統合は、移動と同じように、同じトランザクションの中で同じ取り消しトークンのもと、ドラッグした動画とグループをそこから取り出す ([contracts/screen-api.md](contracts/screen-api.md#post-apiorganizemerge)、[data-model.md、Operations](data-model.md#operations))。それを加える単位は [統合の操作で、`from` を使って統合したカードを開いているグループから取り出す](#take-merged-cards-out-of-the-open-group-with-from-in-the-merge-operation) である。
+- 受け入れた制限: あらゆる深さのグループを並べて一覧にするライブラリのお気に入りの絞り込みでは、自分の子孫にドロップしたグループを拒むのはサーバーの `409 group_cycle` だけであり、画面はそれをカードを元に戻した失敗のトーストとして示す (R-8)。画面は前もって拒否を示さない。何も書かれず (要件 15 は守られる)、契約は変わらない。`ui-design.md` はこれを拒否の規則の例外として記す ([What a drop does](ui-design.md#what-a-drop-does))。
 
 ## 憲章の確認 {#constitution-check}
 
@@ -129,6 +131,8 @@ flowchart LR
   bundle --> vv
   into --> gg[グループをグループにドロップする]
   merge --> gg
+  merge --> mf[統合で開いているグループを離れる]
+  gg --> mf
   into --> e2e[ブラウザーテスト]
   vv --> e2e
   gg --> e2e
@@ -205,6 +209,14 @@ flowchart LR
 **依存**: カードをグループの中、経路の上、外のライブラリへドロップする。1 つの操作で、ドラッグしたグループを対象のグループに統合する。
 
 **受け入れ**: この単位は画面を変えるので、`ui-design.md` に照らした見た目と操作のレビューが要る。`task check` が通る。ページテストが次を示す: 「Merge」で Y の上に置いた X は、`into` が Y の `merge` を送り、X のカードは消える (受け入れ条件 4)。「Put in as a child group」では `to` が Y の `move` を送る (受け入れ条件 5)。グループにドロップした動画とグループの選択は、`merge` か `move` の 1 つの要求を、すべてのカードを画面の順に持たせて送る。
+
+### 統合の操作で、`from` を使って統合したカードを開いているグループから取り出す {#take-merged-cards-out-of-the-open-group-with-from-in-the-merge-operation}
+
+**範囲**: `POST /api/organize/merge` の省略できる `from` ([contracts/screen-api.md](contracts/screen-api.md#post-apiorganizemerge)): `api/openapi.yaml` と `task generate`。統合の規則の `from` からの取り除きと `OrganizeStore` でのそのイメージ、取り除きが変える場合の `domain.PlanGroupMerge` の入力、`from` を渡す `app.Organizer` とハンドラー ([data-model.md、Operations](data-model.md#operations)、[Undo image](data-model.md#undo-image))。`from` を受け取る `web/src/api/organize.ts` の `mergeGroups`。「Put in as a child group」と同じように開いているグループを `from` として送る、グループのページの「Merge」。ライブラリは `from` を送らない。`ui-design.md` の [Group page](ui-design.md#group-page) はすでに目標どおりであり (「持ち上げたカードは消える」)、変わらない。
+
+**依存**: 1 つの操作で、ドラッグしたグループを対象のグループに統合する。グループをグループにドロップして、入れ子にするか統合する。
+
+**受け入れ**: この単位は画面を変えるので、`ui-design.md` の [Group page](ui-design.md#group-page) に照らした、グループのページの「Merge」の見た目と操作のレビューが要る。`task check` が通り、`task generate` で差分が出ない。ストアのテストが次を示す: 動画 V、グループ X、グループ Y を持つグループ G で、V と X を `from` G で Y に統合すると、1 つのトランザクションで、G は Y だけを持ち、Y は自分の項目、続いて V、続いて X の項目を順に持つ。`from` にないドラッグした動画は `ErrGroupTargetNotFound` で、何も書かれない。`from` がないと、操作は前と同じように応答する。1 つのトークンの取り消しは、V と X を G の元の位置に戻し、X をその id、項目、お気に入り、プレイリストの項目、親とともに戻し、Y を元のとおりに戻す。ハンドラーのテストが、`from` が Organizer に届き、契約の状態コードがそれとともに成り立つことを示す。ページテストが次を示す: グループのページで、動画とグループの選択を「Merge」で子グループにドロップすると、開いているグループを `from` とし、すべてのカードを画面の順に持つ 1 つの `merge` を送り、持ち上げたカードは消えて件数が減る。Undo はそれらを戻す。ライブラリの「Merge」は `from` を送らない。`task test-e2e -- e2e/drag-organize.e2e.ts` が、この単位がそのファイルに加えるケースとともに通る: グループのページで、選択した動画と選択したグループを「Merge」で兄弟のグループにドロップするとページを離れ、兄弟はその動画とグループのメンバーを持ち、Undo は両方のカードをグループのページの元の位置に戻す。
 
 ### ドラッグでの整理をブラウザーテストで確かめる {#cover-drag-organizing-in-a-browser-test}
 

@@ -1,6 +1,6 @@
 ---
 source: specs/050-drag-organize/data-model.md
-sourceHash: 7e76fb51c98185aacee266054c48aeb0b6fcfe3d4ccf1ccf73f599767f05d6ce
+sourceHash: 34c8c780ea87fabaca7250b568053ac65ce69aa0441e74de4fb0a3b226cbcd47
 ---
 
 # データモデル: ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる {#data-model-drag-and-drop-to-reorder-group-merge-and-bundle}
@@ -16,7 +16,7 @@ sourceHash: 7e76fb51c98185aacee266054c48aeb0b6fcfe3d4ccf1ccf73f599767f05d6ce
 | 並べ替え | グループ G のドラッグした項目が、画面の順で、G の 1 つの項目の後か先頭へまとまって動く。位置は `0 … n-1` のまま |
 | 移動 | ドラッグしたカードを画面の順で `to` に付け加え、すでにあるものは飛ばす。`from` があるときは、それらを `from` から取り除く。`to` がないと、取り除きだけが起きる (ライブラリにドロップした)。フォルダのメンバーを取り除くとその除外を書き、最後の項目を取り除くと、048 の Remove と同じように `from` を解散する |
 | グループ作成 | 対象のタイトルを 100 文字に切ったものを名前とし、対象とその後にドラッグした動画を持つグループを作る ([R-6](research.md#r-6-make-a-group-puts-the-new-group-where-the-target-was))。`from` があると、新しいグループは `from` の中の対象の位置を取り、対象とドラッグした項目は `from` を離れる |
-| 統合 | ドラッグしたカードを画面の順にたどる: グループは [R-5](research.md#r-5-a-merge-hands-the-dropped-groups-favorites-playlist-items-and-parents-to-the-target) のとおりに統合し、動画は移動と同じように対象に付け加える。そのため、混ざった選択は 1 つのトランザクション、1 つのトークンになる |
+| 統合 | ドラッグしたカードを画面の順にたどる: グループは [R-5](research.md#r-5-a-merge-hands-the-dropped-groups-favorites-playlist-items-and-parents-to-the-target) のとおりに統合し、動画は移動と同じように対象に付け加える。そのため、混ざった選択は 1 つのトランザクション、1 つのトークンになる。`from` があるときは、ドラッグしたカードは移動の取り除きと同じように `from` を離れる: ドラッグした動画の `from` の中の項目は取り除かれ、ドラッグしたグループの `from` の中の項目は対象に置き換えられずに取り除かれる (対象が `from` にあるとき、R-5 はすでにそうする)。自動の `from` を離れるフォルダのメンバーはその除外を書く |
 | まとめ | 対象を代表とする `VersionStore.Bundle` の規則 ([030 データモデル](../030-video-versions/data-model.md))。すでにまとまっている動画はそのまとまり全体を連れてくる (エッジケース) |
 | 取り消し | 今の行が変更後イメージと等しいとき、変更前イメージを書き戻し、それから操作と同じようにフォルダの索引を作り直し、触れたプレイリストの番号を振り直す。そうでなければ `ErrUndoConflict` で、何も書かれない |
 
@@ -31,7 +31,7 @@ sourceHash: 7e76fb51c98185aacee266054c48aeb0b6fcfe3d4ccf1ccf73f599767f05d6ce
 | 並べ替え | G の `group_items` |
 | 移動 | `from`、`to`、解散の連鎖が届きうるすべての祖先の `groups`、`group_items` (`group_id` と `child_id` による)、`group_exclusions`、`group_favorites`。それらのどれかを持つすべてのプレイリストの `playlist_items`。それらのフォルダの `folder_group_overrides` |
 | グループ作成 | 新しいグループの `groups`。新しいグループと `from` の `group_items`。`from` の `group_exclusions` (自動の `from` からフォルダのメンバーが離れるときに書かれる) |
-| 統合 | ドラッグしたグループ、その親、対象についての移動の行 |
+| 統合 | ドラッグしたグループ、その親、対象についての移動の行。`from` があるときは `from` についての移動の行も (`from` の `group_items` と `group_exclusions`)。そのため、取り消しはドラッグした動画とグループを `from` の元の位置に戻す |
 | まとめ | 吸収したすべてのまとまりと新しいまとまりの `video_bundles` と `video_bundle_members`。吸収したすべてのキーと新しいキーの `group_items`、`group_exclusions`、`playlist_items` を、グループかプレイリストの全体で。`copyUserData` が新しいキーの下に書くユーザーデータの行。まとめが取り除く `video_version_candidates` |
 
 どのイメージも、取り消しが削除するか作り直すグループを参照する行も含む: `child_id` による `group_items`、`group_id` による `group_favorites` と `playlist_items`。そのため、操作の後に加わった参照 (新しいグループをお気に入りにした、プレイリストに加えた、別のグループに入れた) は変更後イメージと異なり、取り消しはそれを落とす連鎖削除ではなく `ErrUndoConflict` になる。
