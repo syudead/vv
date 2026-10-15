@@ -64,11 +64,16 @@ to take; its tooltip says why. A coloured badge or an icon for either mark
 was rejected: the row would then have three kinds of mark competing with
 the names.
 
-`{n} new` keeps its 049 meaning, the number of entries the apply adds to
-the video, and so counts a `New` person and a matched person alike and
-leaves out a `Not linked` one. A second count for created entities was
-rejected: the chips' `New` marks already show which entries those are, and
-the Issue asks for the count of what is added.
+`{n} new` keeps its 049 meaning, the number of fetched entries the video
+does not have yet, and so counts a `New` person and a matched person alike
+and leaves out a `Not linked` one. Like a single value, an entry is counted
+before any field rule is checked: the comparison does not know the role's
+limit or which URL the apply rejects, and an entry left out of the count
+could never be selected and so never reported as skipped
+([R-4](research.md#r-4-the-apply-merges-the-selected-fields-into-the-stored-work-information-in-one-transaction-and-skips-each-value-that-breaks-a-rule)).
+A second count for created entities was rejected: the chips' `New` marks
+already show which entries those are, and the Issue asks for the count of
+what is added.
 
 ## Words
 
@@ -153,8 +158,8 @@ flowchart LR
 | State | What the row shows |
 | --- | --- |
 | Row absent | The result has no value for the field: no row. `Title` and `Tags` instead show `Not in the result` (049) |
-| Selectable | At least one entry is added on apply (`{n} new` with `n` over zero); the checkbox is enabled and selected when the step opens |
-| Same as now | `Same as now` in the fetched cell, muted; the checkbox is disabled and clear |
+| Selectable | At least one fetched entry is neither on the video nor `Not linked` (`{n} new` with `n` over zero), including an entry that breaks a field rule; the checkbox is enabled and selected when the step opens |
+| Same as now | `Same as now` in place of the chips in the fetched cell, muted, as 049's tag row; the checkbox is disabled and clear |
 | Nothing to add | Every entry is on the video or `Not linked`, and at least one is `Not linked`: the chips stay, with their marks, and `Nothing to add` follows them; the checkbox is disabled and clear (the Issue's edge case: the owner sees which entry is not applied) |
 
 A single-value row (`Code`, `Description`, a date) is selectable whenever
@@ -230,8 +235,9 @@ Judged by looking at the running screen in vv's one dark scheme
    a result whose release date is `2024/03/01` applies the code and shows
    the result step with `Released: 2024/03/01 — not a date in the form
    YYYY-MM-DD, YYYY-MM or YYYY` (acceptance criterion 5); fetching again
-   after that apply shows the performer as `On the video` and the row as
-   `Same as now`.
+   after applying every fetched performer shows the performers row as
+   `Same as now`, and after applying some of them shows the applied ones as
+   muted `On the video` chips beside the rest.
 7. **Phone width**: at 360px every new row stacks as the title row does,
    the chips wrap without a horizontal scroll, and the marks stay readable
    inside their chips.
