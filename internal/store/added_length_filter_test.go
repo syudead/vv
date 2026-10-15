@@ -122,3 +122,44 @@ func TestListFiltersByAddedWithinAndLength(t *testing.T) {
 		})
 	}
 }
+
+// addedWithin の境界は一覧を読み始めた時刻で一度だけ決まる。ちょうどその日数前に追加した動画は
+// 当たり、その1秒前に追加した動画は当たらず、ListVideos の件数とページが同じ基準で数える
+// （SQL の unixepoch() を文ごとに評価すると、件数とページの間に秒が進んで食い違う）。
+func TestAddedWithinCutoffIsFixedPerRead(t *testing.T) {
+	now := fixedTime
+	previous := listNow
+	listNow = func() time.Time { return now }
+	t.Cleanup(func() { listNow = previous })
+
+	db := migratedDB(t)
+	ctx := context.Background()
+	boundary := now.Add(-7 * 24 * time.Hour)
+	for name, addedAt := range map[string]time.Time{
+		"onBoundary": boundary, "beforeBoundary": boundary.Add(-time.Second),
+	} {
+		path := fixturePath("/media/" + name + ".mp4")
+		if _, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
+			Path: path, Title: name, ContentKey: "key" + path, SizeBytes: 100,
+			MTime: fixedTime, AddedAt: addedAt, Container: "mp4",
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.ScanIndex().RebuildFolderIndex(ctx); err != nil {
+		t.Fatal(err)
+	}
+
+	q := domain.VideoQuery{AddedWithinDays: 7}
+	if got := sortedLibraryNames(t, db, q); !slices.Equal(got, []string{"onBoundary"}) {
+		t.Errorf("ListLibrary = %v, want [onBoundary]", got)
+	}
+	q.Limit = 50
+	page, err := db.Library().ListVideos(ctx, domain.AudienceOwner, q)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Items) != 1 || page.Items[0].Title != "onBoundary" || page.Total != 1 {
+		t.Errorf("ListVideos = %d 本（total %d）, want onBoundary だけ", len(page.Items), page.Total)
+	}
+}

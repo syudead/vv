@@ -47,16 +47,17 @@ func matchConditions(spec listSpec) ([]string, []any) {
 const secondsPerDay = 24 * 60 * 60
 
 // addedAndLengthConditions は追加日と長さの絞り込みを、videos に対する条件句の並びと引数にする。
-// 追加日は、いまからその日数前の時刻以後に追加した動画に当たる。長さは画面の表示
-// （web/src/lib/format.ts の formatDuration）と同じく秒未満を切り捨てた秒で比べ、両端を含む。
+// 追加日は、一覧を読み始めた時刻（listSpec.now）からその日数前の時刻以後に追加した動画に当たる。
+// 件数・ページ・空ページの再集計が同じ基準時刻で数えるよう、SQL の unixepoch() は使わない。
+// 長さは画面の表示（web/src/lib/format.ts の formatDuration）と同じく秒未満を切り捨てた秒で比べ、両端を含む。
 // 長さの分からない（duration_ms が NULL の）動画はどちらの端にも当たらない
 // （specs/052-smart-folders/research.md R-4）。
 func addedAndLengthConditions(spec listSpec) ([]string, []any) {
 	var conditions []string
 	var args []any
 	if spec.addedWithinDays > 0 {
-		conditions = append(conditions, `videos.added_at >= unixepoch() - ?`)
-		args = append(args, int64(spec.addedWithinDays)*secondsPerDay)
+		conditions = append(conditions, `videos.added_at >= ?`)
+		args = append(args, spec.now-int64(spec.addedWithinDays)*secondsPerDay)
 	}
 	if spec.minDurationSec != nil {
 		conditions = append(conditions, `videos.duration_ms >= ?`)

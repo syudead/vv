@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"modernc.org/sqlite"
 
@@ -94,10 +95,13 @@ type listSpec struct {
 	addedWithinDays int
 	minDurationSec  *int
 	maxDurationSec  *int
-	sort            domain.VideoSort
-	seed            int64
-	cursor          string
-	limit           int
+	// now は追加日の絞り込みの基準時刻（Unix 秒）である。1回の一覧の読み取りで一度だけ
+	// 決め、件数・ページ・空ページの再集計のどの SQL にも同じ値を渡す。
+	now    int64
+	sort   domain.VideoSort
+	seed   int64
+	cursor string
+	limit  int
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
@@ -134,6 +138,9 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 	return page, nil
 }
 
+// listNow は追加日の絞り込みの基準時刻の元である。試験が時計を止めるために差し替える。
+var listNow = time.Now
+
 // libraryListSpec はライブラリの一覧（GET /api/videos・GET /api/library・GET /api/library/ids）の
 // 問い合わせ q を、存在を確かめたタグの id tagIDs とともに listSpec にする。
 func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int64) listSpec {
@@ -142,6 +149,7 @@ func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, organizationID: q.Organization,
 		addedWithinDays: q.AddedWithinDays, minDurationSec: q.MinDurationSec, maxDurationSec: q.MaxDurationSec,
+		now:  listNow().Unix(),
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 }
