@@ -1,4 +1,4 @@
-# Implementation Plan: Smart folders whose videos follow a saved condition
+# Implementation Plan: Smart folders whose contents follow a saved condition
 
 **Branch**: `feature/052-smart-folders` | **Parent Issue**: #1139
 
@@ -6,51 +6,47 @@
 
 ## Summary
 
-The owner saves a condition over tags, tag kinds, people, organizations and
-video facts as a smart folder: a group whose videos are the ones matching the
-condition, plus the ones the owner adds and minus the ones the owner removes.
-A smart folder is a `groups` row with a stored rule, so favorites, playlists,
-nesting, guests, cards, the group page and `Up next` reach it by its group id
-as they reach a group; its matched videos are computed in the reads that
-already compute a group's descendants, from the same filter SQL the library
-uses.
+The owner saves a library filter as a smart folder: a virtual folder whose
+contents are always what the library shows for that filter, groups as cards
+and videos as videos, and which moves no video. A child folder narrows its
+parent's filter. Smart folders are a new entity beside groups; their contents
+are the existing library item query run with the folder's conditions, and
+root folders are cards in the unfiltered library.
 
 The diagram shows the parts this feature adds or changes and what each one
 reads or writes.
 
 ```mermaid
 flowchart LR
-  edit[Group routes] --> store[GroupStore]
-  store --> groups[(groups.rule, sort, owner_kept)]
-  store --> items[(group_items, group_exclusions)]
-  read[Group reads and library] --> cte[Descendants CTE]
-  cte --> groups
-  cte --> items
-  cte -->|rule as filter| facts[(Tags, credits, progress, favorites, videos)]
-  merge[Tag and credit merges] -->|rewrite ids| groups
+  edit[Smart folder routes] --> store[SmartFolderStore]
+  store --> sf[(smart_folders)]
+  read[Folder page and library] --> items[Library item query]
+  items -->|conditions of each rule on the path| sf
+  items --> facts[(Tags, credits, progress, favorites, groups, videos)]
+  writes[Tag, credit, favorite, progress, ingest writes] -->|after commit| ev[SmartFoldersChanged]
+  merge[Tag and credit merges] -->|rewrite ids| sf
 ```
 
 | Concern | Approach |
 | --- | --- |
-| Storage | A group with `rule` and `sort` ([R-1](research.md#r-1-a-smart-folder-is-a-group-with-a-stored-rule), [data-model.md, Migration](data-model.md#migration)) |
-| Membership | Evaluated on read ([R-2](research.md#r-2-matched-videos-are-computed-when-a-group-is-read-not-stored)) within a budget ([R-12](research.md#r-12-a-read-budget-at-20000-videos-and-50-smart-folders)) |
-| Condition | The library filter's fields, AND, one SQL builder ([R-3](research.md#r-3-the-rule-is-the-library-filter-combined-with-and-built-by-the-same-sql)); the filter gains added within and length ([R-4](research.md#r-4-the-library-filter-gains-added-within-and-length)) |
-| Hand edits | Items and exclusions ([R-5](research.md#r-5-hand-added-videos-are-items-hand-removed-videos-are-exclusions)) |
-| Order | Child groups by position, videos by the folder's sort ([R-6](research.md#r-6-child-groups-keep-their-positions-videos-follow-the-folders-sort)) |
-| Library | Members leave the top level ([R-7](research.md#r-7-matched-videos-leave-the-librarys-top-level-as-group-members-do)); an empty folder stays for the owner ([R-8](research.md#r-8-an-empty-smart-folder-stays-and-is-shown-to-the-owner-only)) |
+| Storage | Own table and item kind ([R-1](research.md#r-1-a-smart-folder-is-its-own-entity-not-a-group), [data-model.md, Migration](data-model.md#migration)) |
+| Contents | The filtered library, evaluated on read ([R-2](research.md#r-2-contents-are-computed-when-read-not-stored), [R-3](research.md#r-3-a-rule-is-the-library-filters-fields-contents-are-the-filtered-library)) within a budget ([R-13](research.md#r-13-a-read-budget-at-20000-videos-and-50-smart-folders)) |
+| Filter fields | The library filter gains added within and length ([R-4](research.md#r-4-the-library-filter-gains-added-within-and-length)) |
+| Nesting | Every rule on the path, ANDed ([R-5](research.md#r-5-a-childs-effective-rule-is-every-rule-on-its-path-anded)) |
+| Order | A stored library sort ([R-6](research.md#r-6-videos-follow-the-folders-sort-random-is-refused)) |
+| Library | Root folders as cards in the unfiltered library ([R-7](research.md#r-7-root-smart-folders-are-cards-in-the-unfiltered-library)); an empty one for the owner only ([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only)) |
 | Merged and deleted references | Rewritten on merge; a missing one matches nothing ([R-9](research.md#r-9-merges-rewrite-rules-a-deleted-reference-makes-the-rule-match-nothing)) |
-| Owner's record | `owner_kept` on every group ([R-10](research.md#r-10-owner_kept-marks-every-group-the-owner-made-or-edited)) |
+| Owner's record | `owner_kept` ([R-10](research.md#r-10-owner_kept-records-the-owners-folders)) |
 | Guests | Owner's facts, viewer's visibility ([R-11](research.md#r-11-the-rule-reads-the-owners-facts-visibility-is-the-viewers)) |
-| Events | `GroupsChanged` for edits, and for every smart folder after a write that can change a match ([R-13](research.md#r-13-writes-that-can-change-a-match-publish-groupschanged-for-every-smart-folder)) |
+| Events | `SmartFoldersChanged` and the `smartFolder` screen event ([R-12](research.md#r-12-writes-that-can-change-a-match-publish-smartfolderschanged)) |
 
 The Issue has the `ui` label, so the `design` stage writes `ui-design.md`
-before the screen units: saving the library filter as a smart folder, the
-condition editor and its parts for added within and length, the smart folder
-mark on cards (shown only when wanted), the folder page with hand-added and
-removed videos and restoring a removed one, the empty folder and the missing
-condition notice, and the refusals of `smart_folder_sorted` and
-`smart_folder_merge` in drag organizing, judged against the parent Issue's
-`UI品質`.
+before the screen units: saving the library filter as a folder, the condition
+editor and the added-within and length parts, the folder card and the mark
+that tells it from a group card when wanted, the folder page with its trail,
+its children and its conditions, moving a folder under another, deleting it,
+the empty and missing-condition states, and the video page's folder line,
+judged against the parent Issue's `UI品質`.
 
 ## Technical Context
 
@@ -59,11 +55,10 @@ condition notice, and the refusals of `smart_folder_sorted` and
 | Topic | Source |
 | --- | --- |
 | Boundaries, dependency direction, user data, the authentication boundary | [ARCHITECTURE.md](../../ARCHITECTURE.md), [.golangci.yml](../../.golangci.yml) (depguard) |
-| Groups, items, exclusions, nesting, play order, visibility, `GroupsChanged` | [048 data-model](../048-groups/data-model.md), [048 research](../048-groups/research.md) |
-| Drag organizing and undo | [050 contracts/screen-api.md](../050-drag-organize/contracts/screen-api.md) |
+| Library items, partly matching groups, group play order and visibility, `?group` | [048 data-model](../048-groups/data-model.md), [048 research](../048-groups/research.md), [027 library-api.md](../027-partial-group-search/contracts/library-api.md) |
 | Library filter and its URL | `domain.VideoQuery` in [internal/domain/library.go](../../internal/domain/library.go), [web/src/videoList/listCriteria.ts](../../web/src/videoList/listCriteria.ts), [web/src/library/tagCriteria.ts](../../web/src/library/tagCriteria.ts), [web/src/library/creditCriteria.ts](../../web/src/library/creditCriteria.ts) |
+| Favorites, playlists | [035 data-model](../035-favorites/data-model.md), [044 data-model](../044-playlists/data-model.md) |
 | Tag kinds and the `tagKind` filter | #1136, `specs/051-tag-kinds/` on `feature/051-tag-kinds` |
-| User key, bundles | [030 data-model, User key](../030-video-versions/data-model.md#user-key) |
 | Screen API and generated code | [api/openapi.yaml](../../api/openapi.yaml), `task generate` |
 | Screens and Web tests | [design-system.md](../../docs/design-docs/design-system.md), [library-ui.md](../../docs/design-docs/library-ui.md), [web-testing.md](../../docs/design-docs/web-testing.md), [i18n.md](../../docs/design-docs/i18n.md) |
 | Checks | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`, `task test-e2e`) |
@@ -72,28 +67,27 @@ condition notice, and the refusals of `smart_folder_sorted` and
 
 - One migration, numbered when it lands
   ([data-model.md, Migration](data-model.md#migration)).
-- Schema changes and one route on the screen API
+- Six routes, several schemas and one screen event kind on the screen API
   ([contracts/screen-api.md](contracts/screen-api.md)); the external API and
   MCP do not change.
-- The `tagKind` rule field needs #1136's library `tagKind` filter on `main`.
-  The units that need it say so; the others do not wait for it.
-- Read budget: 500 ms for the first library page and a folder page with 20,000
-  videos and 50 smart folders
-  ([R-12](research.md#r-12-a-read-budget-at-20000-videos-and-50-smart-folders)).
+- A new SPA route for the folder page, and a `smartFolder` query on the video
+  page.
+- The `tagKind` rule member needs #1136's library `tagKind` filter on `main`;
+  only the units that say so wait for it.
 
 ## Constitution Check
 
 | Rule (source) | Verdict |
 | --- | --- |
-| Adapters import neither each other nor `internal/app` (ARCHITECTURE.md, depguard) | Pass: the routes extend `internal/httpapi`'s `Groups` interface that `GroupStore` satisfies; no new package |
-| The domain decides, the store enforces (ARCHITECTURE.md) | Pass: `domain.SmartRule` parses, validates and turns a rule into a `VideoQuery`; the store builds SQL from it and checks references in its transaction |
-| Store roles (ARCHITECTURE.md) | Pass: smart folder edits are `GroupStore`'s; the rule rewrite in tag and credit merges is a package-private helper called inside `TagStore` and `CreditStore` transactions |
-| Events after commit (ARCHITECTURE.md) | Pass: `GroupsChanged` after commit, as 048, including the notices from tag, credit, favorite, progress and ingest writes ([data-model.md, Notices](data-model.md#notices)) |
-| User data survives a rebuild (ARCHITECTURE.md) | Pass: the new columns are on `groups`, already user data; the rule names tag, kind and credit ids, which a rebuild keeps |
-| Every read knows its viewer (ARCHITECTURE.md) | Pass: the matched videos are cut to the viewer's visibility; `smartFolder`, `manual` and `/excluded` are owner only; the new list parameters reveal nothing hidden |
+| Adapters import neither each other nor `internal/app` (ARCHITECTURE.md, depguard) | Pass: `internal/httpapi` declares a `SmartFolders` interface that the new store role satisfies |
+| The domain decides, the store enforces (ARCHITECTURE.md) | Pass: `domain.SmartRule`, `ValidateSmartSort` and `ValidateSmartFolderParent` decide; foreign keys and checks guard the table |
+| Store roles (ARCHITECTURE.md) | Pass: `SmartFolderStore` is new; the rule rewrite in merges and the notices are package-private helpers inside the `TagStore`, `CreditStore`, `FavoriteStore`, `PlaybackStore` and ingest transactions |
+| Events after commit (ARCHITECTURE.md) | Pass: `SmartFoldersChanged` is published after commit ([data-model.md, Notices](data-model.md#notices)) |
+| User data survives a rebuild (ARCHITECTURE.md) | Pass: `smart_folders` and `smart_folder_favorites` are user data with no foreign key to `videos`; the invariant's list and running-vv.md gain them |
+| Every read knows its viewer (ARCHITECTURE.md) | Pass: contents are cut to the viewer; reads join `accessRoutes` as guest-readable; `settings` is owner only |
 | Only a scan reads the media folders' files (ARCHITECTURE.md) | Pass: rules read SQLite only |
 | Do not hand-edit generated files (AGENTS.md) | Pass: `api/openapi.yaml` changes, then `task generate` |
-| Complexity 25 or less, no copied code (AGENTS.md) | Pass: the rule reuses the library's filter conditions instead of a second translation ([R-3](research.md#r-3-the-rule-is-the-library-filter-combined-with-and-built-by-the-same-sql)) |
+| Complexity 25 or less, no copied code (AGENTS.md) | Pass: contents call the library item query instead of a second translation of the filter ([R-3](research.md#r-3-a-rule-is-the-library-filters-fields-contents-are-the-filtered-library)) |
 | Read design-system.md before a screen; test at the lowest level (AGENTS.md) | Pass: screens follow `ui-design.md`; rules get domain tests, the store its tests and a benchmark, screens page tests, the acceptance criteria one browser test |
 
 No violation, so no complexity tracking.
@@ -112,8 +106,8 @@ specs/052-smart-folders/
 ```
 
 `ui-design.md` is written by the `design` stage. No `quickstart.md`: every
-acceptance criterion and Edge Case is reachable in domain, store and page tests,
-the benchmark or the browser test below.
+acceptance criterion and Edge Case is reachable in domain, store and page
+tests, the benchmark or the browser test below.
 
 ### Source Code
 
@@ -121,18 +115,20 @@ the benchmark or the browser test below.
 
 | Boundary | What it owns in this feature |
 | --- | --- |
-| `internal/domain` | `SmartRule`, `ValidateSmartSort`, the new `VideoQuery` fields, smart folder errors |
-| `internal/store` | The migration, the filter conditions for added within and length, matched videos in `groupDescendantsCTE`, smart folder edits, `owner_kept`, rule rewrites in merges, the benchmark |
-| `internal/httpapi`, `api/openapi.yaml` | The list parameters, the changed schemas, the excluded route, the new error codes |
-| `web/src/api`, `web/src/library`, `web/src/videoList`, `web/src/groups`, `web/src/i18n` | Clients, the filter parts, saving and editing a smart folder, the card mark, the folder page |
+| `internal/domain` | `SmartRule`, the sort and parent rules, the new `VideoQuery` fields, `SmartFoldersChanged`, the errors |
+| `internal/store` | The migration, the filter conditions for added within and length, `SmartFolderStore`, folder contents and cards in the library item query, favorites, playlists and the video context by folder, rule rewrites in merges, the notices, the benchmark |
+| `internal/httpapi`, `api/openapi.yaml`, `cmd/mdm` | The routes, the changed schemas, the `smartFolder` event, the wiring |
+| `web/src/api`, `web/src/library`, `web/src/videoList`, `web/src/smartFolders` (new), `web/src/player`, `web/src/app`, `web/src/i18n` | Clients, the filter parts, saving and editing, the card, the folder page and its route, the video page's folder context |
 | `web/e2e` | The browser test |
 
 **New paths**: `internal/store/migrations/000NN_smart_folders.sql`,
-`internal/domain/smart_rule.go`, `internal/store/smart_folders.go`,
-`web/e2e/smart-folders.e2e.ts`.
+`internal/domain/smart_folder.go`, `internal/store/smart_folders.go`,
+`internal/httpapi/smart_folders.go`, `web/src/api/smartFolders.ts`,
+`web/src/smartFolders/`, `web/e2e/smart-folders.e2e.ts`.
 
-**Structure decision**: Follows the existing layout; smart folder edits sit in
-`GroupStore` beside the group edits they branch from.
+**Structure decision**: Follows the existing layout, with smart folders as a
+store role and a screen folder of their own beside groups
+([R-1](research.md#r-1-a-smart-folder-is-its-own-entity-not-a-group)).
 
 ## Implementation Work
 
@@ -141,29 +137,33 @@ for the `design` stage's `ui-design.md`.
 
 ```mermaid
 flowchart LR
-  facts[Added and length filter] --> read[Store and read smart folders]
-  read --> edit[Edit smart folders]
-  read --> merge[Follow merges]
-  read --> kind[Tag kind rule]
-  read --> notice[Notices]
-  edit --> api[Screen API]
+  facts[Added and length filter] --> store[Store folders]
+  store --> contents[Contents and cards]
+  store --> merge[Follow merges]
+  contents --> lib[Library cards]
+  contents --> keys[Favorites, playlists, Up next]
+  contents --> notice[Notices]
+  contents --> kind[Tag kind rule]
+  lib --> api[Screen API]
   merge --> api
-  api --> save[Save and edit condition]
+  notice --> api
+  api --> save[Save and edit]
   kind --> save
-  api --> page[Cards and folder page]
-  notice --> e2e
+  api --> page[Folder page]
+  keys --> play[Play in folder]
+  page --> play
   save --> e2e[Browser test]
   page --> e2e
+  play --> e2e
 ```
 
 ### Filter library videos by how long ago they were added and by length
 
 **Scope**: `VideoQuery` fields and their filter conditions, the `addedWithin`,
-`minDuration` and `maxDuration` list parameters on `listVideos`,
-`listLibrary` and `listLibraryIds`, guest access to them, and their API client
-parameters; no screen change
+`minDuration` and `maxDuration` list parameters, guest access to them, and
+their API client parameters; no screen change
 ([R-4](research.md#r-4-the-library-filter-gains-added-within-and-length),
-[contracts/screen-api.md, List parameters added](contracts/screen-api.md#list-parameters-added)).
+[contracts/screen-api.md, Schemas and parameters changed](contracts/screen-api.md#schemas-and-parameters-changed)).
 
 **Dependencies**: None.
 
@@ -174,138 +174,161 @@ days ago, `minDuration=60&maxDuration=600` lists 60 s and 600 s videos and not
 tests show `400 invalid_request` for `addedWithin=0` and for `minDuration`
 over `maxDuration`, and a guest is answered `200`.
 
-### Store smart folders and read their matched videos in group and library reads
+### Store smart folders with their rules and parents
 
 **Scope**: The migration, `domain.SmartRule` with `Query()` and `Refs()`,
-`ValidateSmartSort`, matched videos in `groupDescendantsCTE` with exclusions,
-the play order of child groups then sorted videos, the missing-reference rule,
-the owner seeing an empty smart folder, `LibraryGroup.smart`, the invariants,
-and `BenchmarkSmartFolderReads`
-([data-model.md, Members](data-model.md#members),
-[R-6](research.md#r-6-child-groups-keep-their-positions-videos-follow-the-folders-sort),
-[R-7](research.md#r-7-matched-videos-leave-the-librarys-top-level-as-group-members-do),
-[R-8](research.md#r-8-an-empty-smart-folder-stays-and-is-shown-to-the-owner-only),
-[R-11](research.md#r-11-the-rule-reads-the-owners-facts-visibility-is-the-viewers),
-[R-12](research.md#r-12-a-read-budget-at-20000-videos-and-50-smart-folders)).
-Smart folders are written by test fixtures only until the next unit.
+`ValidateSmartSort`, `ValidateSmartFolderParent`, and `SmartFolderStore`
+create, change, move and delete with `owner_kept`, the invariants, and the
+user-data lists in ARCHITECTURE.md and running-vv.md with their
+`translations/ja/` counterparts
+([data-model.md, Edits](data-model.md#edits),
+[R-10](research.md#r-10-owner_kept-records-the-owners-folders)).
 
 **Dependencies**: Filter library videos by how long ago they were added and by
 length.
 
-**Acceptance**: `task check` passes; a migration test shows every existing
-group, automatic ones included, starts with `owner_kept = 1`; domain tests
-reject each out-of-range rule member and `random` as a sort; store tests show: a folder with rule
-`tags:[猫]` holds a video once `猫` is attached and not after it is detached,
-with no other write (acceptance criterion 1); `watch: unwatched` drops a video
-once its progress completes; the matched videos leave the library's top level
-and the folder is one card; a hand-added item that does not match is listed
-and an excluded video that matches is not; child groups come before videos and
-videos follow `sort`; a bundle counts once; a guest sees only public matched
-videos and no folder with none; the owner's library lists a folder with no
-match and a guest's does not; a rule whose tag was deleted matches nothing;
-`?group`, `Up next`, a playlist item and a favorite of the folder follow its
-play order; the folder nested in a group is listed when that group is opened
-(acceptance criterion 4); the benchmark result for 20,000 videos and 50
-folders is under 500 ms and recorded in the PR.
+**Acceptance**: `task check` and `task check-docs` pass; domain tests reject
+each out-of-range rule member and `random` as a sort; store tests show:
+creating with a parent nests the folder; moving A under its own child is
+`ErrSmartFolderCycle` with nothing written; deleting a parent deletes its
+children; a rule naming a deleted tag is stored and reported as missing;
+every write sets `owner_kept` to 1.
 
-### Create and edit smart folders in the store with hand-added and removed videos
+### List a smart folder's contents with its children and card values
 
-**Scope**: Create with `rule` and `sort`, change `rule` and `sort`, add and
-remove videos with items and exclusions, no dissolve on empty, the refusals in
-move and organize, `owner_kept` set by every owner write to any group, and
-`GroupsChanged` for each
-([data-model.md, Edits](data-model.md#edits),
-[R-5](research.md#r-5-hand-added-videos-are-items-hand-removed-videos-are-exclusions),
-[R-10](research.md#r-10-owner_kept-marks-every-group-the-owner-made-or-edited)).
+**Scope**: The effective rule along the path, contents through the library
+item query with each rule's conditions, child folders first, the play order,
+the card values, owner and guest visibility, missing references matching
+nothing, and `BenchmarkSmartFolderReads`
+([data-model.md, Contents](data-model.md#contents),
+[R-3](research.md#r-3-a-rule-is-the-library-filters-fields-contents-are-the-filtered-library),
+[R-5](research.md#r-5-a-childs-effective-rule-is-every-rule-on-its-path-anded),
+[R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only),
+[R-11](research.md#r-11-the-rule-reads-the-owners-facts-visibility-is-the-viewers),
+[R-13](research.md#r-13-a-read-budget-at-20000-videos-and-50-smart-folders)).
 
-**Dependencies**: Store smart folders and read their matched videos in group
-and library reads.
+**Dependencies**: Store smart folders with their rules and parents.
 
-**Acceptance**: `task check` passes; store tests show: removing a matching
-video writes its exclusion and attaching its tag again does not bring it back;
-adding a non-matching video keeps it in after any tag change (acceptance
-criterion 3); adding an excluded matching video deletes the exclusion without
-an item; removing the last video leaves an empty folder; moving a video is
-`ErrSmartFolderSorted`, moving a child group works; organize merge of a smart
-folder is `ErrSmartFolderMerge` with nothing written; every owner write sets
-`owner_kept` on the groups it changes, and the folder sync leaves a new
-automatic group at 0; each edit publishes `GroupsChanged` for the folder and
-its ancestors.
+**Acceptance**: `task check` passes; store tests show: a folder `tags:[猫]`
+holds a video once `猫` is attached and not after, with no other write, and
+the video is still listed by the library (acceptance criterion 1); a group
+whose part1 and part2 both carry `猫` is one card and a group with only part1
+tagged lists part1 alone (acceptance criterion 3); a child `watch: unwatched`
+under `tags:[猫]` holds only unwatched `猫` videos and its parent lists the
+child first (acceptance criterion 4); the contents equal `ListLibrary` for the
+same filter (acceptance criterion 5); a bundle counts once; a guest sees only
+public videos and gets `ErrNotFound` for a folder with none, while the owner
+reads an empty folder; a rule naming a deleted tag lists only child folders,
+and so does its child; the benchmark result for 20,000 videos is under 500 ms
+and recorded in the PR.
+
+### Show root smart folders as cards in the library
+
+**Scope**: The `smartFolder` item kind in the library item query and
+`LibraryIDs`, its sort values and cursor, leaving folders out under a search
+or filter, and favorited folders under favorites only
+([data-model.md, Library items](data-model.md#library-items),
+[R-7](research.md#r-7-root-smart-folders-are-cards-in-the-unfiltered-library)).
+
+**Dependencies**: List a smart folder's contents with its children and card
+values.
+
+**Acceptance**: `task check` passes; store tests show: the unfiltered library
+lists a root folder among groups and videos in its sort position, and lists
+the folder's videos too; a child folder is not listed at the top; a search or
+a tag filter lists no folder; favorites only lists a favorited child folder;
+paging across a folder item returns every item once; a guest's library has no
+empty folder.
 
 ### Follow tag, person and organization merges in smart folder rules
 
-**Scope**: The rule rewrite in `mergeTagsInto` and `CreditStore.Merge`, and
-`GroupsChanged` for the rewritten folders
-([data-model.md, Merges and deletions](data-model.md#merges-and-deletions),
+**Scope**: The rule rewrite in `mergeTagsInto` and `CreditStore.Merge`
+([data-model.md, Merges](data-model.md#merges),
 [R-9](research.md#r-9-merges-rewrite-rules-a-deleted-reference-makes-the-rule-match-nothing)).
 
-**Dependencies**: Store smart folders and read their matched videos in group
-and library reads.
+**Dependencies**: Store smart folders with their rules and parents.
 
 **Acceptance**: `task check` passes; store tests show: merging tag A into B
-turns a rule `tags:[A]` into `tags:[B]` and `tags:[A,B]` into `tags:[B]`, and
-the folder then holds B's videos; merging person or organization X into Y
-rewrites `person` or `organization`; a merge publishes `GroupsChanged` for the
-rewritten folders after commit and none when no rule names a source.
+turns `tags:[A]` into `tags:[B]` and `tags:[A,B]` into `tags:[B]` in the
+merge's transaction; merging person or organization X into Y rewrites
+`person` or `organization`; a merge rolled back rewrites nothing.
 
-### Tell open screens to read smart folders again after writes that can change a match
+### Tell open screens to read smart folders again
 
-**Scope**: `GroupsChanged` naming every smart folder and their ancestors from
-each write in [data-model.md, Notices](data-model.md#notices), the progress
-save publishing only on a watch state change, and nothing when no smart folder
-exists; the tag kind rows join when #1136 is on `main`
-([R-13](research.md#r-13-writes-that-can-change-a-match-publish-groupschanged-for-every-smart-folder)).
+**Scope**: `SmartFoldersChanged`, publishing it from each write in
+[data-model.md, Notices](data-model.md#notices), and its `smartFolder`
+screen event; the tag kind rows join when #1136 is on `main`
+([R-12](research.md#r-12-writes-that-can-change-a-match-publish-smartfolderschanged)).
 
-**Dependencies**: Store smart folders and read their matched videos in group
-and library reads.
+**Dependencies**: List a smart folder's contents with its children and card
+values.
 
-**Acceptance**: `task check` passes; store tests show: with one smart folder
-nested in a group, attaching a tag publishes one `GroupsChanged` naming the
-folder and the group after commit; a progress save that keeps the watch state
-publishes nothing and the one that completes the video publishes; a write with
-no smart folder in the database publishes nothing; a rolled-back write
-publishes nothing; an `/api/events` subscriber gets a `group` event after a
-tag is attached.
+**Acceptance**: `task check` passes; store tests show: with one folder,
+attaching a tag publishes one `SmartFoldersChanged` naming it after commit; a
+progress save that keeps the watch state publishes nothing and the one that
+completes the video publishes; with no folder nothing is published; a
+rolled-back write publishes nothing; an `/api/events` subscriber gets a
+`smartFolder` event after a tag is attached.
+
+### Favorite, add to playlists and play from smart folders in the store
+
+**Scope**: `smart_folder_favorites`, `playlist_items.smart_folder_id`, the
+`smartFolder` context of the video reads (`Up next`, the neighbours, the
+member window, `Video.smartFolder`), and playlist playback in the folder's
+play order
+([contracts/screen-api.md, Schemas and parameters changed](contracts/screen-api.md#schemas-and-parameters-changed)).
+
+**Dependencies**: List a smart folder's contents with its children and card
+values.
+
+**Acceptance**: `task check` passes; store tests show: a favorited folder is
+favorite on its card; a playlist item of a folder plays its play order at play
+time and gains a video tagged later; for a video in a folder, `nextId` follows
+the folder's play order with `smartFolder` and the group's with `group`;
+deleting the folder removes its favorite and playlist item and renumbers the
+playlist.
 
 ### Match smart folders by tag kind
 
 **Scope**: The `tagKind` rule member through #1136's `VideoQuery.TagKindID`,
-its missing-reference check after a kind is deleted, and the `SmartRule`
-schema's `tagKind`; merge `main` into the feature branch first.
+its missing-reference check after a kind is deleted, and the tag kind rows of
+the notices; merge `main` into the feature branch first.
 
-**Dependencies**: Store smart folders and read their matched videos in group
-and library reads; #1136's unit "Filter library videos by tag kind" merged
-into `main`.
+**Dependencies**: List a smart folder's contents with its children and card
+values; #1136's unit "Filter library videos by tag kind" merged into `main`.
 
-**Acceptance**: `task check` passes; store tests show a rule `tagKind: Genre,
-watch: unwatched` holds only unwatched videos with a Genre tag and drops one
-once watched (acceptance criterion 2), and deleting the kind makes the rule
-match nothing and lists it as missing.
+**Acceptance**: `task check` passes; store tests show a folder `tagKind:
+Genre, watch: unwatched` holds only unwatched videos with a Genre tag and
+drops one once watched (acceptance criterion 2), and deleting the kind makes
+it match nothing and reports it missing.
 
 ### Add smart folders to the screen API
 
-**Scope**: The schema changes, `GET /api/groups/{id}/excluded`, the error
-codes and their messages in the catalog, the handlers, and the client
-functions in `web/src/api/groups.ts`; the SPA keeps working with optional
-`GroupItem.id`
+**Scope**: The six routes, the schemas and parameters, the statuses and their
+catalog messages, the handlers, the wiring in `cmd/mdm`, and the client
+functions in `web/src/api/smartFolders.ts` and the changed favorites,
+playlist and video clients; the SPA keeps working with the new `LibraryItem`
+kind by skipping it until the screen units
 ([contracts/screen-api.md](contracts/screen-api.md)).
 
-**Dependencies**: Create and edit smart folders in the store with hand-added
-and removed videos; Follow tag, person and organization merges in smart folder
-rules.
+**Dependencies**: Show root smart folders as cards in the library; Follow tag,
+person and organization merges in smart folder rules; Tell open screens to
+read smart folders again; Favorite, add to playlists and play from smart
+folders in the store.
 
 **Acceptance**: `task check` passes with no diff from `task generate`; handler
-tests show each status of the contract's table, `smartFolder`, `manual` and
-`/excluded` absent or refused for a guest, `missing` naming a deleted tag, and
-`TestAccessClassificationMatchesOpenAPISecurity` passes; existing group page
+tests show each status of the contract's table, a guest gets `401` on every
+write and no `settings`, `missing` names a deleted tag, and
+`TestAccessClassificationMatchesOpenAPISecurity` passes; existing library page
 tests pass.
 
-### Save the library filter as a smart folder and edit its condition
+### Save the library filter as a smart folder and edit its conditions
 
 **Scope**: The added-within and length parts in the library filter and URL,
-saving the current filter as a smart folder with a name, the condition editor
-built from the library filter's parts (tag kind included) and its sort, and
-the catalog text; layout follows `ui-design.md`.
+saving the current filter and sort as a folder with a name and an optional
+parent, the condition editor built from the library filter's parts (tag kind
+included), changing the name, sort and parent, deleting, and the catalog
+text; layout follows `ui-design.md`.
 
 **Dependencies**: Add smart folders to the screen API; Match smart folders by
 tag kind; the `design` stage's `ui-design.md`.
@@ -316,27 +339,46 @@ interaction review against `ui-design.md` and the parent Issue's `UI品質`.
 `minDuration` and `maxDuration` and sends them; saving with tag `猫` and
 `watch=unwatched` sends a `rule` with those fields (acceptance criterion 5);
 the editor opens on a folder's rule, sends the changed one and an invalid one
-cannot be sent; a guest sees no save action.
+cannot be sent; moving a folder under its own child says it cannot; a guest
+sees no save or edit action.
 
-### Show smart folders as cards and on their page with hand-added and removed videos
+### Open a smart folder onto its children and contents
 
-**Scope**: The smart folder mark on cards and rows, the folder page's hand-added
-marks, the removed videos and restoring one, removing videos by `videoIds`,
-the empty and missing-condition states, the `smart_folder_sorted` and
-`smart_folder_merge` refusals in drag organizing, and the catalog text; layout
-follows `ui-design.md`.
+**Scope**: The folder card in the library, the `/smart-folders/{id}` screen
+with its trail, children, contents in order, paging, the conditions it
+filters by, the empty and missing-condition states, play from the folder,
+reading again on a `smartFolder` event, guest access, its route and the
+catalog text; layout follows `ui-design.md`.
 
 **Dependencies**: Add smart folders to the screen API; the `design` stage's
 `ui-design.md`.
 
 **Acceptance**: This unit changes a screen, so it needs a visual and
 interaction review against `ui-design.md` and the parent Issue's `UI品質`.
-`task check` passes; page tests show: a hand-added video carries its mark and
-a matched one none; removing a matched video sends its id in `videoIds` and it
-then appears among the removed, from where restoring sends an add; an empty
-folder says it is empty; a missing tag in the rule is named; dragging a video
-to a new place in a smart folder shows the refusal; a guest sees neither marks
-nor removed videos.
+`task check` passes; page tests show: a folder card opens its page; the page
+lists child folders then items in the response's order; opening a child
+extends the trail and names its parent; an empty folder says it is empty; a
+missing tag is named; a `smartFolder` event for the shown id reads it again;
+a guest sees the page without edit actions; the library shows the card among
+groups and videos.
+
+### Play a video in the smart folder it was opened from
+
+**Scope**: The video page reading `?smartFolder`, passing it to the video
+reads, keeping it on `Up next`, the arrows and the member list, and the
+folder line linking to the folder page; favoriting and adding a folder to a
+playlist from its card menu.
+
+**Dependencies**: Favorite, add to playlists and play from smart folders in
+the store; Open a smart folder onto its children and contents; the `design`
+stage's `ui-design.md`.
+
+**Acceptance**: This unit changes a screen, so it needs a visual and
+interaction review against `ui-design.md`. `task check` passes; page tests
+show: with `?smartFolder=1` the reads carry `smartFolder=1`, the autoplay
+notice names the folder's next video, and advancing keeps the query; the
+folder line links to `/smart-folders/1`; the card menu favorites the folder
+and adds it to a playlist.
 
 ### Cover smart folders in a browser test
 
@@ -344,15 +386,14 @@ nor removed videos.
 ([web-testing.md, Test levels](../../docs/design-docs/web-testing.md#test-levels)).
 
 **Dependencies**: Save the library filter as a smart folder and edit its
-condition; Show smart folders as cards and on their page with hand-added and
-removed videos; Tell open screens to read smart folders again after writes
-that can change a match.
+conditions; Open a smart folder onto its children and contents; Play a video
+in the smart folder it was opened from.
 
 **Acceptance**: `task test-e2e -- e2e/smart-folders.e2e.ts` passes and shows
 the parent Issue's acceptance criteria 1 to 5: tagging a video `猫` puts it in
-the `タグ: 猫` folder shown in another open tab without a reload, and untagging
-takes it out (1); a Genre-and-unwatched
-folder drops a video once it is watched (2); a removed video stays out after
-retagging and an added one stays in (3); a folder put in a group shows when the
-group is opened (4); a folder saved from a filtered library holds the same
-videos (5).
+the `タグ: 猫` folder open in another tab without a reload, untagging takes it
+out, and the video stays in the library throughout (1); a Genre-and-unwatched
+folder drops a video once it is watched (2); a group tagged on both parts is
+one card and on part1 only shows part1 (3); a child `未視聴` under `タグ: 猫`
+holds only unwatched `猫` videos and shows on its parent's page (4); a folder
+saved from a filtered library shows what the library showed (5).

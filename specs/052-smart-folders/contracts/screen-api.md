@@ -1,20 +1,31 @@
 # Contract: Screen API for smart folders
 
 Parent Issue: #1139. Source of truth: [api/openapi.yaml](../../../api/openapi.yaml).
-This file lists only what this feature adds or changes on the group routes of
-[048](../../048-groups/contracts/screen-api.md), the organize routes of
-[050](../../050-drag-organize/contracts/screen-api.md) and the library list
-parameters. `task generate` regenerates `internal/httpapi/gen/` and
-`web/src/api/gen/`. The external API (`api/external-v1.yaml`) and MCP do not
-change; the AI organizing Issue adds smart folders there.
+This file lists only what this feature adds or changes. `task generate`
+regenerates `internal/httpapi/gen/` and `web/src/api/gen/`. The external API
+(`api/external-v1.yaml`) and MCP do not change; the AI organizing Issue adds
+smart folders there.
 
-Access follows 048: reads are for the owner and guests, writes owner only. The
-fields marked owner only are left out for a guest.
+Reads (`GET`) are for the owner and guests (`security` includes `{}`), as
+`GET /api/groups/{id}`, so `accessRoutes` gains them; every write is owner
+only. The `POST` and `PATCH` routes join `requiresJSONBody`. Fields marked
+owner only are left out for a guest.
+
+## Routes added
+
+| Route | Purpose |
+| --- | --- |
+| `GET /api/smart-folders` | Every folder shown to the viewer with its parent id, for the parent picker and the tree |
+| `POST /api/smart-folders` | Create a folder |
+| `GET /api/smart-folders/{id}` | One folder, its trail of ancestors and its first page of items |
+| `GET /api/smart-folders/{id}/items` | A later page of items |
+| `PATCH /api/smart-folders/{id}` | Change the name, rule, sort or parent |
+| `DELETE /api/smart-folders/{id}` | Delete the folder and its descendants |
 
 ## Schemas added
 
 ```yaml
-SmartRule:                         # data-model.md, groups.rule
+SmartRule:                         # data-model.md, smart_folders.rule
   additionalProperties: false
   properties:
     q:            { type: string, maxLength: 500 }
@@ -29,58 +40,83 @@ SmartRule:                         # data-model.md, groups.rule
     minDuration:  { type: integer, minimum: 0, maximum: 360000 }
     maxDuration:  { type: integer, minimum: 0, maximum: 360000 }
 
-SmartRuleRef:                      # a reference the rule names that no longer exists
+SmartRuleRef:                      # a reference that no longer exists
   required: [kind, id]
   properties:
     kind: { type: string, enum: [tag, tagKind, person, organization] }
     id:   { type: integer, format: int64 }
 
-SmartFolder:                       # owner only
+LibrarySmartFolder:                # a folder card; the value fields of LibraryGroup, without folder
+  required: [id, name, videoCount, sizeBytes, previews, videoIds, tags]
+  properties:
+    id:       { type: integer, format: int64 }
+    parentId: { type: integer, format: int64 }
+    name:     { type: string }
+    # videoCount, sizeBytes, addedAt, durationMs, previews, openVideoId, videoIds, tags,
+    # watchedCount, watchState, lastPlayedAt, favorite: as LibraryGroup, over the play order
+    # (openVideoId and addedAt absent for an empty folder)
+
+SmartFolderSettings:               # owner only
   required: [rule, sort, missing]
   properties:
     rule:    { $ref: SmartRule }
-    sort:    { $ref: VideoSort }   # random is refused
-    missing: { type: array, items: { $ref: SmartRuleRef } }
+    sort:    { $ref: VideoSort }
+    missing: { type: array, items: { $ref: SmartRuleRef } }   # on this folder and its ancestors
+
+SmartFolderItem:
+  required: [kind]
+  properties:
+    kind:        { type: string, enum: [video, group, smartFolder] }
+    video:       { $ref: Video }
+    group:       { $ref: LibraryGroup }
+    smartFolder: { $ref: LibrarySmartFolder }
+
+SmartFolderDetail:
+  required: [smartFolder, trail, items]
+  properties:
+    smartFolder: { $ref: LibrarySmartFolder }
+    settings:    { $ref: SmartFolderSettings }   # owner only
+    trail:       { type: array, items: { $ref: GroupRef } }   # ancestors, outermost first
+    items:       { type: array, items: { $ref: SmartFolderItem } }
+    nextCursor:  { type: string }
+
+SmartFolderCreate:
+  required: [name, rule]
+  properties:
+    name:     { type: string }     # 1 to 100 characters after trimming
+    rule:     { $ref: SmartRule }
+    sort:     { $ref: VideoSort }  # default addedDesc
+    parentId: { type: integer, format: int64 }
+
+SmartFolderChange:                 # at least one member
+  properties:
+    name:     { type: string }
+    rule:     { $ref: SmartRule }
+    sort:     { $ref: VideoSort }
+    parentId: { type: [integer, "null"], format: int64 }   # null makes it a root
 ```
 
-## Schemas changed
+## Schemas and parameters changed
 
-| Schema | Change |
+| Schema or route | Change |
 | --- | --- |
-| `LibraryGroup` | Gains `smart: boolean`, true for a smart folder, for guests too |
-| `GroupDetail` | Gains `smartFolder: SmartFolder` (owner only, smart folders only) |
-| `GroupItem` | `id` becomes optional: a matched video with no item row has none. Gains `manual: boolean` (owner only, smart folders only): the video is in by an item and does not match |
-| `GroupCreate` | Gains optional `rule: SmartRule` and `sort: VideoSort`; with `rule` the group is a smart folder |
-| `GroupRename` (`PATCH /api/groups/{id}`) | `name` becomes optional; gains optional `rule` and `sort`; at least one of the three is required |
-| `GroupItemRemove` | `itemIds` becomes optional; gains `videoIds` (0 to 20,000); at least one is non-empty |
-
-## Routes added
-
-| Route | Purpose |
-| --- | --- |
-| `GET /api/groups/{id}/excluded` | Owner only. The videos the owner removed from a smart folder, as a `VideoPage` with `cursor`; empty for a group |
-
-## List parameters added
-
-`listVideos`, `listLibrary` and `listLibraryIds` gain `addedWithin`,
-`minDuration` and `maxDuration` with the ranges of `SmartRule`; guests may
-send them ([research.md R-4](../research.md#r-4-the-library-filter-gains-added-within-and-length)).
-A value out of range, or `minDuration` over `maxDuration`, is
-`400 invalid_request`.
+| `LibraryItem` | `kind` gains `smartFolder` with `smartFolder: LibrarySmartFolder` ([data-model.md, Library items](../data-model.md#library-items)) |
+| `listVideos`, `listLibrary`, `listLibraryIds` | Gain `addedWithin`, `minDuration` and `maxDuration` with the ranges of `SmartRule`; guests may send them. A value out of range, or `minDuration` over `maxDuration`, is `400 invalid_request` |
+| `FavoritesRequest`, `FavoritesResponse` | Gain `smartFolderIds` |
+| `PlaylistItemsAdd`, `PlaylistItem` | Gain `smartFolderIds` and the `smartFolder` kind, played in the folder's play order at play time |
+| `GET /api/videos/{id}`, `/related`, `/group-members` | Gain a `smartFolder` query: the folder's play order is the context for `Up next`, the neighbours and the member window, as `group` is (048 R-9). `group` wins when both are sent; a folder that does not hold the video is ignored |
+| `Video` | Gains `smartFolder: { id, name, position, count }` when the context is a folder |
+| `/api/events` | Gains the kind `smartFolder` with `{ ids }` ([R-12](../research.md#r-12-writes-that-can-change-a-match-publish-smartfolderschanged)) |
 
 ## Statuses
 
 | Route | Status | `code` | When |
 | --- | --- | --- | --- |
-| `POST /api/groups`, `PATCH /api/groups/{id}` | 400 | `invalid_smart_rule` | `rule` fails `domain.SmartRule`, or `sort` is `random` |
-| `PATCH /api/groups/{id}` | 409 | `group_not_smart` | `rule` or `sort` on a group that is not a smart folder |
-| `POST /api/groups/{id}/items/{itemId}/move`, `POST /api/organize/reorder` | 409 | `smart_folder_sorted` | The moved item is a video in a smart folder |
-| `POST /api/organize/group` | 409 | `smart_folder_sorted` | `from` is a smart folder |
-| `POST /api/organize/merge` | 409 | `smart_folder_merge` | A merged item is a smart folder |
-| `POST /api/groups/{id}/items/remove` | 404 | `group_target_not_found` | A `videoIds` entry is not a member of the folder; nothing is written |
-| `POST /api/groups/{id}/items/remove` | 200 | none | Removing the last member of a smart folder answers the empty folder's `LibraryGroup` instead of 048's `204` for a dissolved group ([R-8](../research.md#r-8-an-empty-smart-folder-stays-and-is-shown-to-the-owner-only)) |
-| `POST /api/organize/move` | 200 | none | A smart folder `from` left empty stays |
+| `POST`, `PATCH /api/smart-folders…` | 400 | `invalid_smart_rule` | `rule` fails `domain.SmartRule`, or `sort` is `random` |
+| `POST`, `PATCH /api/smart-folders…` | 400 | `invalid_request` | The name is empty or over 100 characters after trimming, as for a group |
+| `POST`, `PATCH /api/smart-folders…` | 404 | `smart_folder_not_found` | `parentId` names no folder |
+| `PATCH /api/smart-folders/{id}` | 409 | `smart_folder_cycle` | `parentId` is the folder or one of its descendants |
+| Every `/api/smart-folders/{id}` route | 404 | `not_found` | No such folder, or a guest opens a folder with nothing visible |
 
 A `rule` naming an id that does not exist is accepted and reported in
-`missing`, so a folder saved from a filter whose tag was just deleted is not
-refused.
+`missing`, so a filter whose tag was just deleted can still be saved.

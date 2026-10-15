@@ -1,8 +1,8 @@
-# Data model: Smart folders whose videos follow a saved condition
+# Data model: Smart folders whose contents follow a saved condition
 
-Parent Issue: #1139. The rest of the model is unchanged: the group tables are
-in [internal/store/migrations/00043_groups.sql](../../internal/store/migrations/00043_groups.sql)
-and [048 data-model](../048-groups/data-model.md).
+Parent Issue: #1139. The rest of the model is unchanged: existing tables are in
+[internal/store/migrations/](../../internal/store/migrations/), groups in
+[048 data-model](../048-groups/data-model.md).
 
 ## Migration
 
@@ -11,120 +11,123 @@ One migration, `000NN_smart_folders.sql`, takes the next free number on
 `00048`).
 
 ```sql
-alter table groups add column rule text;               -- null for a group; JSON for a smart folder
-alter table groups add column sort text;               -- null for a group; a VideoSort other than random
-alter table groups add column owner_kept integer not null default 0
-    check (owner_kept in (0, 1));
-update groups set owner_kept = 1;                      -- every existing group (research.md R-10)
--- A smart folder is never automatic, and has a sort exactly when it has a rule.
--- SQLite cannot add a table check with alter table; the invariants test enforces both.
+-- User data (research.md R-1). No foreign key to videos.
+create table smart_folders (
+    id         integer primary key autoincrement,
+    parent_id  integer references smart_folders (id) on delete cascade,
+    name       text    not null check (length(name) between 1 and 100),
+    title_key  text    not null,          -- domain.NaturalSortKey(name)
+    rule       text    not null,          -- JSON, domain.SmartRule
+    sort       text    not null,          -- a VideoSort other than random
+    owner_kept integer not null default 1 check (owner_kept in (0, 1)),
+    created_at integer not null,          -- Unix ms
+    updated_at integer not null,          -- Unix ms
+    check (parent_id is null or parent_id <> id)
+);
+create index smart_folders_parent_idx on smart_folders (parent_id);
+
+create table smart_folder_favorites (
+    smart_folder_id integer primary key references smart_folders (id) on delete cascade,
+    favorited_at    integer not null
+);
+
+-- playlist_items is rebuilt with smart_folder_id integer references smart_folders (id)
+-- on delete cascade; exactly one of content_key, group_id and smart_folder_id is set.
 ```
 
-The down migration drops the three columns after deleting every row with a
-non-null `rule`. `groups` stays user data; ARCHITECTURE.md and running-vv.md
-need no change.
+`smart_folders` and `smart_folder_favorites` are user data: ARCHITECTURE.md
+("User data survives a rebuild") and the table in running-vv.md gain them.
+Down drops both and rebuilds `playlist_items` without its smart folder rows.
 
-## `groups.rule`
+## `smart_folders.rule`
 
-A JSON object. Every member is optional; an absent member does not constrain.
-An empty object matches every video. `domain.SmartRule` parses and validates
-it ([R-3](research.md#r-3-the-rule-is-the-library-filter-combined-with-and-built-by-the-same-sql)).
+A JSON object. Every member is optional; an absent member does not constrain,
+and an empty object matches every video. `domain.SmartRule` parses and
+validates it ([R-3](research.md#r-3-a-rule-is-the-library-filters-fields-contents-are-the-filtered-library)).
 
-| Member | Type | Meaning, as the library filter's field of the same meaning |
+| Member | Type | Library filter field it equals |
 | --- | --- | --- |
-| `q` | string | Search text, owner semantics ([R-11](research.md#r-11-the-rule-reads-the-owners-facts-visibility-is-the-viewers)) |
+| `q` | string, at most 500 characters | Search text, owner semantics ([R-11](research.md#r-11-the-rule-reads-the-owners-facts-visibility-is-the-viewers)) |
 | `watch` | `unwatched`, `inProgress`, `watched` | Watch state |
 | `playable` | `true` | Playable only |
 | `favorite` | `true` | Favorites only |
 | `tags` | array of tag ids, 1 to 16 | Every tag attached (manual or from a folder) |
 | `tagKind` | tag kind id | Any tag of that kind (#1136) |
-| `person` | person id | Credited in any role |
-| `organization` | organization id | Credited in any role |
+| `person`, `organization` | id | Credited in any role |
 | `addedWithin` | integer, 1 to 36,500 | Added within that many days ([R-4](research.md#r-4-the-library-filter-gains-added-within-and-length)) |
 | `minDuration`, `maxDuration` | integer seconds, 0 to 360,000 | Length bounds, inclusive; `min` ≤ `max` |
 
-`domain.SmartRule.Query()` returns the `VideoQuery` whose filter fields equal
-the rule's. `domain.SmartRule.Refs()` lists its references as `(kind, id)`
-for the missing-reference check and for merges.
+`SmartRule.Query()` returns the `VideoQuery` whose filter fields equal the
+rule's; `SmartRule.Refs()` lists its references as `(kind, id)` for the
+missing-reference check and for merges.
 
-## Members
+## Contents
 
-A smart folder's members, for a viewer
-([R-5](research.md#r-5-hand-added-videos-are-items-hand-removed-videos-are-exclusions)):
-
-| Source | Rule |
+| Read | Rule |
 | --- | --- |
-| Matched videos | Shown videos (bundle representatives) that pass `rule` with the owner's facts, whose user key has no `group_exclusions` row for the folder; none when `rule` has a missing reference ([R-9](research.md#r-9-merges-rewrite-rules-a-deleted-reference-makes-the-rule-match-nothing)) |
-| Video items | `group_items` with a `content_key`, shown or not by 048's rule |
-| Child groups | `group_items` with a `child_id`, by `position` |
-| Viewer cut | Every video the viewer may not see is left out (048 Visibility) |
+| Effective rule | The folder's rule and each ancestor's; the store applies each one's filter conditions ([R-5](research.md#r-5-a-childs-effective-rule-is-every-rule-on-its-path-anded)) |
+| Items | `ListLibrary` for the effective rule, in the folder's `sort`, for the viewer ([R-3](research.md#r-3-a-rule-is-the-library-filters-fields-contents-are-the-filtered-library)); on the first page, child folders by `title_key` come first |
+| Missing reference | A rule on the path names an id that does not exist: no item but the child folders ([R-9](research.md#r-9-merges-rewrite-rules-a-deleted-reference-makes-the-rule-match-nothing)) |
+| Play order | The items in order, a group card replaced by its play order (048), each video at its first appearance; child folders are not played |
+| Card values | `LibraryGroup`'s values over the play order: count, sums, dates, watch state, previews, open video |
+| Shown | To the owner always; to a guest when the play order is not empty ([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only)) |
 
-`groupDescendantsCTE` gains the matched videos as direct members of their
-folder, so every read built on it (library items, card values, the group page,
-`?group`, playlists, `LibraryIDs`) sees them. Play order
-([R-6](research.md#r-6-child-groups-keep-their-positions-videos-follow-the-folders-sort)):
-the `sort_key` of a child group item is its position as today; every video
-member (matched or item) sorts after all child groups, by the folder's `sort`
-with the video id as tie-breaker. A video that is both matched and an item
-appears once.
+## Library items
 
-The group page marks each video member `manual` when it has an item row and
-the video does not match, so the owner sees what was added by hand; the
-excluded videos are read through their own route
-([contracts/screen-api.md](contracts/screen-api.md)).
+The library item query gains root folders (`parent_id is null`) as items of
+kind `smartFolder` when the query has no search and no filter other than
+favorites only; with favorites only, the favorited folders at any depth
+([R-7](research.md#r-7-root-smart-folders-are-cards-in-the-unfiltered-library)).
+Their sort values come from their card values as a group card's do; the
+cursor carries the kind. No video or group item changes.
 
 ## Edits
 
-| Operation | Rule in a smart folder |
+| Operation | Rule |
 | --- | --- |
-| Create | `name`, `rule`, `sort` (default `addedDesc`); `owner_kept = 1`; items from the request become video items or child groups |
-| Change rule or sort | Validated by `domain.SmartRule`; `updated_at` and `owner_kept = 1` |
-| Add a video | Deletes its exclusion; inserts an item when it does not match |
-| Remove a video | Deletes its item, if any, and writes its exclusion |
-| Remove the last member, or an organize move that empties it | The folder stays ([R-8](research.md#r-8-an-empty-smart-folder-stays-and-is-shown-to-the-owner-only)) |
-| Move or organize reorder of a video | `409 smart_folder_sorted` |
-| Organize group with a smart folder as `from` | `409 smart_folder_sorted`: the new group would need the target video's position |
-| Organize merge of a smart folder into another group | `409 smart_folder_merge`: the rule would be lost; merging a group into a smart folder adds its items by hand |
-| Dissolve, turn into a tag, favorite, playlist, nesting | As in a group (048) |
+| Create | Name (048's name rule), rule, sort (default `addedDesc`), optional parent; `owner_kept = 1` |
+| Change | Any of name, rule, sort, parent; `updated_at` and `owner_kept = 1` |
+| Move | A parent that is the folder or one of its descendants is `ErrSmartFolderCycle` with nothing written; no parent makes it a root |
+| Delete | Deletes the folder and, through the foreign key, its descendants, their favorites and their playlist items |
+| Missing target | A parent id that does not exist is `ErrSmartFolderNotFound` |
 
-Every screen API write above, and every group write of 048 and 050, sets
-`owner_kept = 1` on the groups it changes; `syncFolderGroups` and
-`rekeyGroupItems` do not ([R-10](research.md#r-10-owner_kept-marks-every-group-the-owner-made-or-edited)).
+A rule naming an id that does not exist is accepted and reported as missing.
 
-## Merges and deletions
+## Merges
 
 | Change | Effect on rules |
 | --- | --- |
 | Tag merge (`mergeTagsInto`) | Each rule's source tag ids become the target id, deduplicated, in the merge's transaction |
 | Person or organization merge (`CreditStore.Merge`) | The source id becomes the target id in the same way |
-| Tag, tag kind, person or organization deleted | Rules are not written; the reference is missing and the rule matches nothing until the owner changes it |
-
-A rewrite publishes `GroupsChanged` for the folders it changed and their
-ancestors.
+| Tag, tag kind, person or organization deleted | Rules are not written; the reference is missing |
 
 ## Notices
 
-After commit, each write below publishes one `GroupsChanged` naming every
-smart folder and their ancestors, when at least one smart folder exists
-([R-13](research.md#r-13-writes-that-can-change-a-match-publish-groupschanged-for-every-smart-folder)).
-The store collects the ids in the write's transaction, as it collects
-`groupsChanged` for the folder index rebuild.
+After commit, each write below publishes one `SmartFoldersChanged`
+([R-12](research.md#r-12-writes-that-can-change-a-match-publish-smartfolderschanged)).
 
-| Write | Store path |
+| Write | Folders named |
 | --- | --- |
-| A tag attached to or detached from a video, by hand or in a batch | `AttachTagByID`, `AttachTagByName`, `DetachTag`, `BatchTags`, the auto-tag apply |
-| A tag renamed, deleted or merged, or a synonym changed | `TagStore` |
-| A tag's kind set or cleared, or a kind deleted (#1136) | `TagStore`, the tag kind routes |
-| A person or organization credited, uncredited, renamed, deleted or merged | `CreditStore`, `OverrideStore.ApplyFetchedWorkInfo` |
-| A favorite set or cleared | `SetFavorites` |
-| A progress save whose `domain.WatchState` differs from the stored one | `SaveProgress` |
-| A video becomes listed, leaves the library, or is bundled or unbundled | The ingest result, `RemoveContent`, the bundle and succession paths |
+| A folder created, changed, moved or deleted, its favorite set, or a rule rewritten by a merge | The folder and its descendants (and the old and new parent for a move) |
+| A tag attached to or detached from a video, by hand, in a batch or by auto-tagging | Every folder |
+| A tag renamed, deleted or merged, a synonym changed, or a tag's kind set or cleared (#1136) | Every folder |
+| A person or organization credited, uncredited, renamed, deleted or merged | Every folder |
+| A video favorite set or cleared | Every folder |
+| A progress save whose `domain.WatchState` differs from the stored one | Every folder |
+| A video becomes listed or leaves the library, is bundled or unbundled, or a group changes (`GroupsChanged`) | Every folder |
+
+Nothing is published when no folder exists.
 
 ## Rules
 
 | Rule | Enforced in |
 | --- | --- |
-| `rule` and `sort` are both null or both set | `internal/store/invariants_test.go` |
-| A group with `rule` has a null `origin_folder` | `internal/store/invariants_test.go` |
 | `rule` parses as a valid `domain.SmartRule` | `domain.ParseSmartRule` on every write; `internal/store/invariants_test.go` |
 | `sort` is a valid `VideoSort` other than `random` | `domain.ValidateSmartSort` |
+| No folder is its own ancestor | `domain.ValidateSmartFolderParent` in the write; `internal/store/invariants_test.go` |
+
+## What does not change
+
+`groups`, `group_items` and `group_exclusions`: a smart folder takes no video
+off the library's top level and holds no items
+([R-1](research.md#r-1-a-smart-folder-is-its-own-entity-not-a-group)).
