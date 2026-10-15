@@ -1004,6 +1004,36 @@ test.describe.serial("video tags", () => {
             () => document.documentElement.scrollWidth <= window.innerWidth,
           ),
         ).toBe(true);
+        // キーボードで移ったタブのフォーカスの輪（外へ 4px）は、送る帯に切られない。
+        await kinds.press("ArrowLeft");
+        await expect(tab).toBeFocused();
+        expect(
+          await tab.evaluate((element) => {
+            const strip = element.closest('[role="tablist"]')?.parentElement;
+            if (strip === null || strip === undefined) return false;
+            const outer = strip.getBoundingClientRect();
+            const inner = element.getBoundingClientRect();
+            return outer.top <= inner.top - 4 && outer.bottom >= inner.bottom + 4;
+          }),
+        ).toBe(true);
+        // URL から開いたとき、戻ったときも、選んでいる「Kinds」は帯の見える位置にある。
+        const kindsInView = async () => {
+          await expect(kinds).toHaveAttribute("aria-selected", "true");
+          await expect
+            .poll(async () => {
+              const box = await kinds.boundingBox();
+              return box !== null && box.x >= 0 && box.x + box.width <= width;
+            })
+            .toBe(true);
+        };
+        await page.goto("/tags?tentative=1&tab=kinds");
+        await expect(kinds).toContainText(/\d/);
+        await kindsInView();
+        await page.getByRole("tab", { name: /^Tags/ }).click();
+        await expect(page).not.toHaveURL(/[?&]tab=kinds/);
+        await page.goBack();
+        await expect(page).toHaveURL(/[?&]tab=kinds/);
+        await kindsInView();
       }
       await page.setViewportSize({ width: 1280, height: 800 });
     });
