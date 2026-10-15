@@ -29,7 +29,7 @@ flowchart LR
 | Port | `app.Generator`: facts, images, instructions and a JSON Schema in, JSON out ([R-1](research.md#r-1-a-second-task-agnostic-port-for-generation)) |
 | Provider | Ollama `/api/chat` with `format`, `num_ctx` 16384 and no reasoning ([R-2](research.md#r-2-the-ollama-provider-uses-apichat-with-a-vision-model)) |
 | Model | `ollama.generation_model`, default `gemma4:e4b`; the connection test checks both models ([R-3](research.md#r-3-a-separate-generation-model-default-gemma4e4b)) |
-| Job | Judge, then generate, then one `Finish`; any error fails the job unchanged ([R-4](research.md#r-4-judging-and-creation-are-one-job-with-one-result)) |
+| Job | Judge, then generate, then one `Finish`; any error fails the job and leaves the video's tags unchanged ([R-4](research.md#r-4-judging-and-creation-are-one-job-with-one-result)) |
 | Reuse | Up to 500 tags in the prompt, then exact name and synonym lookup ([R-5](research.md#r-5-reuse-comes-from-the-prompt-and-from-name-lookup)) |
 | Kinds | Kind names with examples and preset hints; the schema restricts the choice ([R-6](research.md#r-6-kinds-are-described-by-name-examples-and-preset-hints)) |
 | Attaching | At most 5 new tentative tags per video; matched confirmed tags as suggested ([R-7](research.md#r-7-how-a-returned-name-is-attached)) |
