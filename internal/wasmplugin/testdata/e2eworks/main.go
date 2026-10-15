@@ -3,7 +3,9 @@
 // e2eworks はブラウザテスト（web/e2e/work-info-plugins.e2e.ts）が使う作品情報プラグインである。
 // ネットワークを使わず、決まったデータで答える。マニフェストは必須の秘密の設定 token を宣言し、
 // fetch は token が e2eSecret のときだけ、それを受け取った印のタグを足す
-// （specs/049-work-info-plugins/research.md R-12）。マニフェストは web/e2e/work-info-plugin.mjs が
+// （specs/049-work-info-plugins/research.md R-12）。fetch は題名とタグに加えて品番・発売日・外部 ID
+// つきの出演者・メーカーを返し、2 つ目の作品（e2e-2）は別の出演者だけを返す
+// （specs/052-plugin-work-info-fields）。マニフェストは web/e2e/work-info-plugin.mjs が
 // ビルドしたモジュールに足す。
 package main
 
@@ -40,7 +42,36 @@ func main() {
 	if req.Settings["token"] == e2eSecret {
 		tags = append(tags, "プラグインe2e鍵タグ")
 	}
-	reply(map[string]any{"workInfo": map[string]any{"title": "プラグインe2e題名", "tags": tags}})
+	reply(map[string]any{"workInfo": workInfo(req.URL, tags)})
+}
+
+// secondWork は別の出演者だけを返す作品の URL である。
+const secondWork = "https://works.example/w/e2e-2"
+
+func workInfo(url string, tags []string) map[string]any {
+	info := map[string]any{
+		"title": "プラグインe2e題名",
+		"tags":  tags,
+		"code":  "PE2E-052",
+		"dates": []map[string]string{{"kind": "release", "date": "2024-03-01"}},
+		"organizations": []map[string]any{
+			{"role": "maker", "name": "プラグインe2eメーカー"},
+		},
+	}
+	performer := credit("プラグインe2e出演者", "performer-1")
+	if url == secondWork {
+		performer = credit("プラグインe2e出演者二", "performer-2")
+	}
+	info["people"] = []map[string]any{performer}
+	return info
+}
+
+func credit(name, id string) map[string]any {
+	return map[string]any{
+		"role":        "performer",
+		"name":        name,
+		"externalIds": []map[string]string{{"source": "e2eworks", "value": id}},
+	}
 }
 
 func reply(v any) {

@@ -26,6 +26,7 @@ type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
 type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 type WorkInfoOperation = components["schemas"]["WorkInfoOperation"];
 type SkippedTagReason = components["schemas"]["SkippedTag"]["reason"];
+type WorkInfoField = components["schemas"]["WorkInfoField"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
@@ -1730,8 +1731,35 @@ export const en = {
       back: "Back to the matches",
       now: "Now",
       fetched: "Fetched",
-      fields: { title: "Title", tags: "Tags" },
+      // 比較の行のラベル（specs/052-plugin-work-info-fields/ui-design.md「Words」）。役割は複数形。
+      fields: {
+        title: "Title",
+        tags: "Tags",
+        code: "Code",
+        description: "Description",
+        "dates.release": "Released",
+        "dates.recorded": "Recorded",
+        "dates.published": "Published",
+        "people.performer": "Performers",
+        "people.director": "Directors",
+        "people.photographer": "Photographers",
+        "people.streamer": "Streamers",
+        "organizations.maker": "Makers",
+        "organizations.label": "Labels",
+        urls: "Links",
+        externalIds: "IDs",
+      } satisfies Record<WorkInfoField, string>,
       notInResult: "Not in the result",
+      nothingToAdd: "Nothing to add",
+      // チップの中の従の印。読み上げは「{name}, New」になる。
+      newMark: "New",
+      newHint: "Created when you apply",
+      notLinked: "Not linked",
+      notLinkedHint: {
+        person: "Matches more than one person, so it isn't linked or created",
+        organization: "Matches more than one organization, so it isn't linked or created",
+      },
+      fetchedAs: (name: string) => `Fetched as "${name}"`,
       sameAsNow: "Same as now",
       onVideo: "On the video",
       tentative: "Tentative",
@@ -1741,12 +1769,34 @@ export const en = {
       apply: "Apply selected",
       applying: "Applying…",
       applied: "Applied to the video.",
-      resultTitle: "Applied, but some tags were left out",
-      // 1 行は「{name} — {理由}」で、名前だけを太くする。
+      resultTitle: "Applied, but some values were left out",
+      // 1 行は「{label}: {value} — {理由}」で、値だけを太くする。
+      skippedLabel: (label: string) => `${label}: `,
       skipped: {
         rejected: "you rejected this tag before",
         invalid: "not a valid tag name",
       } satisfies Record<SkippedTagReason, string>,
+      skippedValue: {
+        invalidDate: "not a date in the form YYYY-MM-DD, YYYY-MM or YYYY",
+        invalidUrl: "not a full URL starting with http:// or https://",
+        invalidOther: "too long or contains characters that can't be used",
+        tooMany: (items: string) => `over the limit for ${items}`,
+        ambiguous: {
+          person: "matches more than one person",
+          organization: "matches more than one organization",
+        },
+      },
+      // 「over the limit for …」に入る、件数に上限のある行の名前。
+      limitItems: {
+        "people.performer": "performers",
+        "people.director": "directors",
+        "people.photographer": "photographers",
+        "people.streamer": "streamers",
+        "organizations.maker": "makers",
+        "organizations.label": "labels",
+        urls: "links",
+        externalIds: "IDs",
+      },
       done: "Done",
       stale: "This result is out of date. Fetch it again to apply it.",
       fetchAgain: "Fetch again",

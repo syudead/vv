@@ -1,21 +1,29 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
+import { screen, waitFor, within } from "@testing-library/react";
 import { useEffect, useState } from "react";
-import { MemoryRouter, Route, Routes } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import { setRenderedAudience as forgetAudience, type Video } from "../api/client";
-import { installFakeEventSource } from "../api/fakeEventSource";
+import type { Video } from "../api/client";
 import type { WorkInfoPlugin } from "../api/workInfoPlugins";
-import { type Audience, AudienceProvider } from "../auth/audience";
-import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/shadcn/tooltip";
+import {
+  appliedResult,
+  entry,
+  failure,
+  fetchFromUrl,
+  fetchResult,
+  heading,
+  json,
+  openDialog,
+  openPage,
+  server,
+  useFetchServer,
+  video,
+  workUrl,
+  works,
+} from "../testing/workInfoFetchPage";
 import type { PlayerControls } from "./playerControls";
-import VideoPage from "./VideoPage";
 
 // 動画ページの作品情報の取得（specs/049-work-info-plugins/ui-design.md「Video page: fetch
-// entry」「Fetch dialog」）。プラグインの実行はサーバーのものなので、ここでは偽のサーバーが
-// 検索・取得・反映に答える。
+// entry」「Fetch dialog」）。作品の詳細の行は VideoPage.workInfoFetchDetails.test.tsx。
 
 vi.mock("./VideoPlayer", () => ({
   default: function VideoPlayerMock(props: {
@@ -37,169 +45,8 @@ vi.mock("./VideoPlayer", () => ({
   },
 }));
 
-const video: Video = {
-  id: 7,
-  title: "テスト動画",
-  public: false,
-  sizeBytes: 1_000,
-  addedAt: "2026-09-01T00:00:00Z",
-  updatedAt: "2026-09-01T00:00:00Z",
-  fileCreatedAt: "2026-09-01T00:00:00Z",
-  playable: true,
-  probeState: "done",
-  thumbnailState: "done",
-  thumbnailUrl: "/api/videos/7/thumbnail",
-  previewState: "done",
-  durationMs: 242_000,
-  width: 1920,
-  height: 1080,
-  container: "mp4",
-  videoCodec: "h264",
-  audioCodec: "aac",
-  location: { path: "/media/テスト動画.mp4", openable: false },
-  tags: [{ id: 1, name: "既存", manual: true, fromFolder: false, tentative: false }],
-};
-
-const works: WorkInfoPlugin = {
-  id: 3,
-  name: "works",
-  fileName: "works.wasm",
-  operations: ["search", "fetch"],
-  digest: "d",
-  state: "approved",
-  settings: [
-    { key: "token", label: "API token", secret: true, required: true, set: true },
-  ],
-  network: true,
-  updatedAt: 0,
-};
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-function failure(status: number, body: Record<string, unknown>): Response {
-  return json({ message: "failed", ...body }, status);
-}
-
-const workUrl = "https://works.example/w/1";
-
-/** server は経路ごとの応答を差し替えられる偽のサーバーである。 */
-const server = {
-  video,
-  plugins: [works] as WorkInfoPlugin[],
-  search: vi.fn<(body: unknown) => Response>(),
-  fetch: vi.fn<(body: unknown) => Response>(),
-  apply: vi.fn<(body: unknown) => Response>(),
-  related: { items: [] } as unknown,
-  requests: [] as string[],
-};
-
-function renderPage(audience: Audience = "owner") {
-  return render(
-    <TooltipProvider>
-      <ToastProvider>
-        <MemoryRouter initialEntries={["/videos/7"]}>
-          <AudienceProvider audience={audience}>
-            <Routes>
-              <Route path="/videos/:id" element={<VideoPage />} />
-            </Routes>
-          </AudienceProvider>
-        </MemoryRouter>
-      </ToastProvider>
-    </TooltipProvider>,
-  );
-}
-
-async function openPage(audience: Audience = "owner") {
-  renderPage(audience);
-  await screen.findByRole("heading", { level: 1, name: "テスト動画" });
-}
-
-function entry() {
-  return screen.findByRole("button", { name: "Fetch work info from a plugin" });
-}
-
-async function openDialog() {
-  await openPage();
-  const user = userEvent.setup();
-  await user.click(await entry());
-  const dialog = await screen.findByRole("dialog", { name: "Fetch work info" });
-  return { user, dialog };
-}
-
-/** fetchFromUrl は URL を打って取得し、比較の段を開く。 */
-async function fetchFromUrl() {
-  const opened = await openDialog();
-  const query = within(opened.dialog).getByRole("textbox", {
-    name: "Search words or the work's page URL",
-  });
-  await opened.user.clear(query);
-  await opened.user.type(query, workUrl);
-  await opened.user.click(within(opened.dialog).getByRole("button", { name: "Fetch" }));
-  await within(opened.dialog).findByRole("checkbox", { name: "Title" });
-  return opened;
-}
-
-function heading() {
-  // ダイアログが開いている間、後ろのページは読み上げから隠れる。
-  return screen.getByRole("heading", { level: 1, hidden: true });
-}
-
 describe("VideoPage work-info fetch", () => {
-  const fetchMock = vi.fn<typeof fetch>();
-
-  beforeEach(() => {
-    server.video = video;
-    server.plugins = [works];
-    server.search.mockReset();
-    server.fetch.mockReset();
-    server.apply.mockReset();
-    server.fetch.mockImplementation(() =>
-      json(
-        { fetchId: "F1", expiresAt: 0, title: "取得した題名", tags: ["既存", "新しい"] },
-        201,
-      ),
-    );
-    server.related = { items: [] };
-    server.requests = [];
-    installFakeEventSource();
-    forgetAudience(null);
-    fetchMock.mockReset();
-    fetchMock.mockImplementation((input, init) => {
-      const url = String(input);
-      const method = init?.method ?? "GET";
-      server.requests.push(`${method} ${url.split("?")[0]!}`);
-      const body: unknown =
-        typeof init?.body === "string" ? JSON.parse(init.body) : undefined;
-      if (url === "/api/auth/session") return Promise.resolve(json({ state: "owner" }));
-      if (url === "/api/work-info-plugins")
-        return Promise.resolve(json({ plugins: server.plugins }));
-      if (url === "/api/work-info-plugins/3/search")
-        return Promise.resolve(server.search(body));
-      if (url === "/api/videos/7/work-info-fetches")
-        return Promise.resolve(server.fetch(body));
-      if (url === "/api/videos/7/work-info-fetches/F1/apply")
-        return Promise.resolve(server.apply(body));
-      if (url === "/api/thumbnail-edits/readiness")
-        return Promise.resolve(json({ connection: true }));
-      if (url === "/api/videos/7") return Promise.resolve(json(server.video));
-      if (url === "/api/videos/7/related") return Promise.resolve(json(server.related));
-      if (url === "/api/videos/7/subtitles")
-        return Promise.resolve(json({ subtitles: [] }));
-      if (url === "/api/tags") return Promise.resolve(json([]));
-      return Promise.resolve(json({}));
-    });
-    vi.stubGlobal("fetch", fetchMock);
-  });
-
-  afterEach(() => {
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-  });
+  useFetchServer();
 
   it("ゲストには取得の入口が無く、プラグインの一覧も読まない", async () => {
     await openPage("guest");
@@ -245,10 +92,7 @@ describe("VideoPage work-info fetch", () => {
       }),
     );
     server.apply.mockImplementation(() =>
-      json({
-        video: { ...video, title: "取得した題名" },
-        skippedTags: [],
-      }),
+      json(appliedResult({ ...video, title: "取得した題名" })),
     );
     const { user, dialog } = await openDialog();
     const query = within(dialog).getByRole("textbox", {
@@ -286,9 +130,7 @@ describe("VideoPage work-info fetch", () => {
   });
 
   it("値の無い項目と今と同じ項目は選べず、その理由を出す", async () => {
-    server.fetch.mockImplementation(() =>
-      json({ fetchId: "F1", expiresAt: 0, tags: ["既存"] }, 201),
-    );
+    server.fetch.mockImplementation(() => json(fetchResult({ tags: ["既存"] }), 201));
     const { dialog } = await fetchFromUrl();
     const title = within(dialog).getByRole("checkbox", { name: "Title" });
     const tags = within(dialog).getByRole("checkbox", { name: "Tags" });
@@ -367,24 +209,28 @@ describe("VideoPage work-info fetch", () => {
 
   it("付けなかったタグがあれば、結果の段で却下したものを先に並べ、Done で閉じる", async () => {
     server.apply.mockImplementation(() =>
-      json({
-        video: { ...video, title: "取得した題名" },
-        skippedTags: [
-          { name: "悪い名前", reason: "invalid" },
-          { name: "却下した", reason: "rejected" },
-        ],
-      }),
+      json(
+        appliedResult(
+          { ...video, title: "取得した題名" },
+          {
+            skippedTags: [
+              { name: "悪い名前", reason: "invalid" },
+              { name: "却下した", reason: "rejected" },
+            ],
+          },
+        ),
+      ),
     );
     const { user, dialog } = await fetchFromUrl();
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
-    await within(dialog).findByText("Applied, but some tags were left out");
+    await within(dialog).findByText("Applied, but some values were left out");
     expect(
       within(dialog)
         .getAllByRole("listitem")
         .map((item) => item.textContent),
     ).toEqual([
-      "却下した — you rejected this tag before",
-      "悪い名前 — not a valid tag name",
+      "Tags: 却下した — you rejected this tag before",
+      "Tags: 悪い名前 — not a valid tag name",
     ]);
     expect(heading().textContent).toBe("取得した題名");
     expect(within(dialog).queryByRole("button", { name: "Cancel" })).toBeNull();
@@ -496,7 +342,7 @@ describe("VideoPage work-info fetch", () => {
       },
     };
     server.apply.mockImplementation(() =>
-      json({ video: { ...server.video, title: "取得した題名" }, skippedTags: [] }),
+      json(appliedResult({ ...server.video, title: "取得した題名" })),
     );
     const { user, dialog } = await fetchFromUrl();
     const aside = document.querySelector("aside");
