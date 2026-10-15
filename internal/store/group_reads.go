@@ -91,6 +91,38 @@ func groupFavoritedAtExpr(alias string) string {
 	return `(select gf.favorited_at from group_favorites gf where gf.group_id = ` + alias + `.id)`
 }
 
+// memberProgressSelect は、videos の行に再生の記録を並べる列 4 つと、その結合を返す。ゲストには
+// 再生の記録を読まない（016 の guest-api §1）ので、列はどれも NULL で結合は空である。列は
+// memberProgress.dest の順に読む。
+func memberProgressSelect(audience domain.Audience) (columns, join string) {
+	if !audience.IsOwner() {
+		return `null, null, null, null`, ""
+	}
+	return `p.position_ms, p.duration_ms, p.completed, p.updated_at`,
+		` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
+}
+
+// memberProgress は memberProgressSelect の列 4 つを受け取る。
+type memberProgress struct {
+	position, duration, updatedAt sql.NullInt64
+	completed                     sql.NullBool
+}
+
+func (m *memberProgress) dest() []any {
+	return []any{&m.position, &m.duration, &m.completed, &m.updatedAt}
+}
+
+// progress は受け取った再生の記録を返す。記録が無ければ nil である。
+func (m *memberProgress) progress() *domain.Progress {
+	if !m.position.Valid {
+		return nil
+	}
+	return &domain.Progress{
+		PositionMs: m.position.Int64, DurationMs: m.duration.Int64,
+		Completed: m.completed.Bool, UpdatedAt: time.Unix(m.updatedAt.Int64, 0),
+	}
+}
+
 // loadGroups はグループの id ごとに、見せてよい子孫の動画を再生順に読み、グループの項目を作る。
 // ゲストには再生の記録を読まない（016 の guest-api §1）。見せてよい動画が無いグループと、無い
 // グループは結果に入らない。
@@ -103,12 +135,7 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	if err != nil {
 		return nil, fmt.Errorf("cannot build group ids: %w", err)
 	}
-	progressColumns := `null, null, null, null`
-	progressJoin := ""
-	if audience.IsOwner() {
-		progressColumns = `p.position_ms, p.duration_ms, p.completed, p.updated_at`
-		progressJoin = ` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
-	}
+	progressColumns, progressJoin := memberProgressSelect(audience)
 	rows, err := q.QueryContext(ctx, `with `+groupDescendantsCTE(`select distinct value as id from json_each(?)`, audience)+`
 		select `+videoColumns(audience)+`, g.id, coalesce(g.origin_folder, ''), g.name, `+
 		groupFavoritedAtExpr("g")+` is not null, `+progressColumns+`
@@ -132,11 +159,9 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 		var groupID int64
 		var path, name string
 		var favorite bool
-		var position, duration, updatedAt sql.NullInt64
-		var completed sql.NullBool
-		video, err := scanVideo(extraScanner{rows: rows, extra: []any{
-			&groupID, &path, &name, &favorite, &position, &duration, &completed, &updatedAt,
-		}})
+		var scanned memberProgress
+		video, err := scanVideo(extraScanner{rows: rows, extra: append([]any{
+			&groupID, &path, &name, &favorite}, scanned.dest()...)})
 		if err != nil {
 			return nil, fmt.Errorf("cannot read the group videos: %w", err)
 		}
@@ -146,15 +171,8 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 			groups[groupID] = group
 			order = append(order, groupID)
 		}
-		var progress *domain.Progress
-		if position.Valid {
-			progress = &domain.Progress{
-				PositionMs: position.Int64, DurationMs: duration.Int64,
-				Completed: completed.Bool, UpdatedAt: time.Unix(updatedAt.Int64, 0),
-			}
-		}
 		group.members = append(group.members, video)
-		group.progress = append(group.progress, progress)
+		group.progress = append(group.progress, scanned.progress())
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot read the group videos: %w", err)

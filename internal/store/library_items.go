@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/syudead/vv/internal/domain"
@@ -35,12 +36,38 @@ func memberConditions(spec listSpec) ([]string, []any) {
 // matchConditions は当たった動画（matched）を決める段の絞り込み、つまりタグの AND、
 // 人物・団体、追加日と長さの絞り込みを、videos に対する条件句の並びと引数にする
 // （specs/047-video-work-info/data-model.md の Lists、specs/052-smart-folders/research.md R-4）。
+// spec.and の各段の絞り込みも同じように足す（specs/052-smart-folders/research.md R-5）。
 func matchConditions(spec listSpec) ([]string, []any) {
-	conditions, args := tagConditions(spec)
-	works, workArgs := workInfoConditions(spec)
-	facts, factArgs := addedAndLengthConditions(spec)
-	conditions = append(append(conditions, works...), facts...)
-	return conditions, append(append(args, workArgs...), factArgs...)
+	var conditions []string
+	var args []any
+	for _, level := range spec.levels() {
+		tags, tagArgs := tagConditions(level)
+		works, workArgs := workInfoConditions(level)
+		facts, factArgs := addedAndLengthConditions(level)
+		conditions = append(append(append(conditions, tags...), works...), facts...)
+		args = append(append(append(args, tagArgs...), workArgs...), factArgs...)
+	}
+	return conditions, args
+}
+
+// levels は spec 自身と、重ねて掛ける絞り込み（spec.and）の各段を返す。
+func (s listSpec) levels() []listSpec {
+	return append([]listSpec{s}, s.and...)
+}
+
+// anyLevel は、どれかの段で test が真かを返す。再生可否とお気に入りのみは、どの段が求めても
+// 掛ける。
+func (s listSpec) anyLevel(test func(listSpec) bool) bool {
+	return slices.ContainsFunc(s.levels(), test)
+}
+
+// searchExprs は各段の検索式を返す。
+func (s listSpec) searchExprs() []domain.SearchExpr {
+	exprs := make([]domain.SearchExpr, 0, 1+len(s.and))
+	for _, level := range s.levels() {
+		exprs = append(exprs, level.expr)
+	}
+	return exprs
 }
 
 // secondsPerDay は追加日の日数を videos.added_at（Unix 秒）の差にする係数である。
@@ -138,7 +165,11 @@ const favoriteGroupsSelect = `select group_id as id from group_favorites`
 // （specs/035-favorites/data-model.md §5、specs/048-groups/data-model.md「Library items」）。
 func libraryItemsCTE(spec listSpec) (string, []any) {
 	audience := spec.scope.audience
-	cte, args := chosenLocationsCTE(spec.scope, spec.expr)
+	searchAudience := audience
+	if spec.ownerSearch {
+		searchAudience = domain.AudienceOwner
+	}
+	cte, args := chosenLocationsCTEFor(spec.scope, searchAudience, spec.searchExprs())
 	conditions, matchArgs := matchConditions(spec)
 	args = append(args, matchArgs...)
 	where := ""
@@ -149,7 +180,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	// その動画、グループの項目は子孫の動画のどれか1本が再生できるかで判定する。
 	videoPlayable := ""
 	groupPlayable := ""
-	if spec.playableOnly {
+	if spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
 		videoPlayable = ` and ` + playableCondition
 		groupPlayable = ` and exists (select 1 from gm pm join videos on videos.id = pm.video_id
 			where pm.group_id = hits.group_id and ` + playableCondition + `)`
@@ -161,13 +192,16 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	}
 	roots := topGroupsSelect
 	videoFavorite := ""
-	if spec.favoriteOnly {
+	if spec.anyLevel(func(level listSpec) bool { return level.favoriteOnly }) {
 		roots = favoriteGroupsSelect
 		videoFavorite = ` and fav.content_key is not null`
 	}
 	// 当たった動画は、どのグループにも無いか、一部だけが当たるグループのどれかにあれば動画の項目に
 	// なる。別のグループが丸ごと当たってそのカードに入っていても、部分一致のグループからは 1 本で
 	// 並ぶ（research.md R-6）。
+	// carded は、グループに入り、そのどれもが丸ごと当たった（カードにだけ出る）動画である。
+	// 動画の項目はこれに入らない当たった動画で、動画ごとに gm を読む相関副問い合わせにすると、
+	// グループに入った動画の本数の 2 乗で時間が増える（specs/052-smart-folders/research.md R-13）。
 	// whole は materialized にする。インライン展開されると、相関副問い合わせ（グループの本数）が
 	// mv と not exists から当たった動画1本ごとに評価され、グループの本数の2乗で時間が増える
 	// （issue 674）。
@@ -184,6 +218,10 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	whole as materialized (
 		select hits.group_id from hits
 		where hits.n = (select count(*) from gm c where c.group_id = hits.group_id)` + groupPlayable + `),
+	carded as materialized (
+		select video_id from gm where group_id in (select group_id from whole)
+		except
+		select video_id from gm where group_id not in (select group_id from whole)),
 	mv as (
 		select gm.group_id, gm.video_id, v.added_at, v.duration_ms,
 			rl.mtime as mtime, ` + fileCreatedAtExpr("rl") + ` as created_at, rl.size_bytes as size_bytes,
@@ -203,9 +241,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		from matched join videos on videos.id = matched.video_id
 		join video_locations loc on loc.path = matched.path` + progressJoin("videos") + `
 		left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''
-		where (not exists (select 1 from gm where gm.video_id = matched.video_id)
-			or exists (select 1 from gm where gm.video_id = matched.video_id
-				and gm.group_id not in (select group_id from whole)))` +
+		where matched.video_id not in (select video_id from carded)` +
 		videoPlayable + videoFavorite + `
 		union all
 		select g.id, g.id * 2 + 1, null, null,
@@ -228,6 +264,22 @@ func itemWatchCondition(filter domain.WatchFilter) (string, []any) {
 	default:
 		return "", nil
 	}
+}
+
+// itemWatchConditions は、spec と重ねて掛ける各段（spec.and）の視聴状態の絞り込みを、items に
+// 対する 1 つの条件句にする（各段の句の AND）。どの段も絞り込まないときは空の句を返す。
+func itemWatchConditions(spec listSpec) (string, []any) {
+	var clauses []string
+	var args []any
+	for _, level := range spec.levels() {
+		clause, clauseArgs := itemWatchCondition(level.watch)
+		if clause == "" {
+			continue
+		}
+		clauses = append(clauses, clause)
+		args = append(args, clauseArgs...)
+	}
+	return strings.Join(clauses, " and "), args
 }
 
 // itemOrderValues は項目の並べ替えの値の式である（data-model.md §5 の 3）。並び順の
@@ -312,7 +364,7 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 	}
 
 	cte, args := libraryItemsCTE(spec)
-	watchClause, watchArgs := itemWatchCondition(spec.watch)
+	watchClause, watchArgs := itemWatchConditions(spec)
 	whereWatch := ""
 	if watchClause != "" {
 		whereWatch = ` where ` + watchClause
@@ -367,19 +419,31 @@ func listLibraryPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.L
 		}
 	}
 
-	page := domain.LibraryPage{Total: total, Limit: limit, Items: []domain.LibraryItem{}}
-	if len(keys) > limit {
-		keys = keys[:limit]
-		page.NextCursor, err = order.encodeCursor(spec, values[limit-1], keys[limit-1].id)
-		if err != nil {
-			return domain.LibraryPage{}, err
-		}
-	}
-	page.Items, err = loadLibraryItems(ctx, tx, spec.scope.audience, keys)
+	page := domain.LibraryPage{Total: total, Limit: limit}
+	page.Items, page.NextCursor, err = libraryPageItems(ctx, tx, spec, order, keys, values, limit)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
 	return page, nil
+}
+
+// libraryPageItems は、カーソルより後ろの項目の鍵 keys（並べ順に limit+1 件まで）と、それぞれの
+// 並べ替えの値 values から、limit 件の項目と次のページのカーソル（無ければ空）を返す。
+func libraryPageItems(ctx context.Context, tx *sql.Tx, spec listSpec, order listOrder, keys []itemRow, values []any, limit int) ([]domain.LibraryItem, string, error) {
+	next := ""
+	if len(keys) > limit {
+		keys = keys[:limit]
+		var err error
+		next, err = order.encodeCursor(spec, values[limit-1], keys[limit-1].id)
+		if err != nil {
+			return nil, "", err
+		}
+	}
+	items, err := loadLibraryItems(ctx, tx, spec.scope.audience, keys)
+	if err != nil {
+		return nil, "", err
+	}
+	return items, next, nil
 }
 
 // loadLibraryItems はページの項目の鍵から項目を組み立てる。動画の項目は一覧に出す
