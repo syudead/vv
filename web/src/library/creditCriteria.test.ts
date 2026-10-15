@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { hasCreditFilter, parseCreditFilter, parseCreditParam } from "./creditCriteria";
+import {
+  creditSignature,
+  hasCreditFilter,
+  parseCreditFilter,
+  parseCreditParam,
+} from "./creditCriteria";
 
 describe("creditCriteria", () => {
   it("正の整数だけを読み、いくつもあれば最初の正しい値を使う", () => {
@@ -15,5 +20,12 @@ describe("creditCriteria", () => {
     expect(filter).toEqual({ person: 3, organization: 4 });
     expect(hasCreditFilter(filter)).toBe(true);
     expect(hasCreditFilter(parseCreditFilter(new URLSearchParams("tag=1")))).toBe(false);
+  });
+
+  it("URL の tagKind を読み、それだけでも絞り込み中とみなす", () => {
+    const filter = parseCreditFilter(new URLSearchParams("tagKind=5"));
+    expect(filter).toEqual({ tagKind: 5 });
+    expect(hasCreditFilter(filter)).toBe(true);
+    expect(creditSignature(filter)).not.toBe(creditSignature({}));
   });
 });

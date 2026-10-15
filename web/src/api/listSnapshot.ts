@@ -54,6 +54,8 @@ export interface ListKey {
    */
   person?: number;
   organization?: number;
+  /** ライブラリのタグの種類の絞り込み（specs/051-tag-kinds/contracts/screen-api.md）。 */
+  tagKind?: number;
 }
 
 /** ListSnapshot は一覧を離れる直前の状態である（data-model.md 2.）。 */
@@ -122,6 +124,7 @@ function normalize(key: ListKey): string {
     tags,
     key.person === undefined ? "" : String(key.person),
     key.organization === undefined ? "" : String(key.organization),
+    key.tagKind === undefined ? "" : String(key.tagKind),
   ].join("\0");
   return key.folder === undefined ? list : `folder\0${key.folder}\0${list}`;
 }

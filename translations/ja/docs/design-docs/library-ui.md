@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 66787ce6888dcae1edea15e0b92697eaee78f0ccafc62b1065230caa87a3bcca
+sourceHash: 4129e0ccf09f6839c4a8288199c5a7b8a1ed7b35afe457f16798db21b46c1bba
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -148,7 +148,7 @@ flowchart LR
 
 並び順は追加日、更新日、作成日、タイトル、長さ、ファイルサイズ、最近再生、お気に入り登録日、ランダムだ。ゲストでは所有者専用の最近再生とお気に入り登録日がなくなる。作成日はほかの日付と並ぶ（[033 UI 設計](../../specs/033-video-dates/ui-design.md)）。お気に入り登録日は最近再生の後に続き、新しい順に並べる（[035 UI 設計、Sort and direction](../../specs/035-favorites/ui-design.md)）。
 
-絞り込みのポップオーバーは、視聴状態、`Favorites only`（URL は `fav=1`）、再生可否をこの順に並べる。`Clear filters` はお気に入りをほかの絞り込みと一緒にだけ解除し、並び順は保つ。`fav=1` や `sort=favorited*` を含むゲストの URL は、リクエストの前に既定値へ戻し、URL を正す。
+絞り込みのポップオーバーは、視聴状態、`Favorites only`（URL は `fav=1`）、再生可否、所有者には `Tag kind` の選択欄（URL は `tagKind=<id>`）をこの順に並べる。選択欄は `Any kind` と、名前の自然順に並べた種類を示し、種類はポップオーバーを最初に開いたときに共有の種類一覧から読む。適用した種類は `Filtering by` の行に `Kind: <name>` のチップとしても表示され、読み込んだ一覧にもう含まれない種類はトーストとともに URL から外れる（[051 UI 設計、Library](../../specs/051-tag-kinds/ui-design.md#library)）。`Clear filters` はお気に入りと種類をほかの絞り込みと一緒にだけ解除し、並び順は保つ。`fav=1`、`tagKind`、`sort=favorited*` のいずれかを含むゲストの URL は、リクエストの前に既定値へ戻し、URL を正す。
 
 ### スキャンの入口と進捗 {#scan-entry-and-progress}
 
@@ -440,6 +440,7 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 | `favorite` | お気に入りの動画とお気に入りのグループ | `400 guest_filter_not_allowed` |
 | `person` | いずれかの役割でその人物に結び付いた動画 | `400 guest_filter_not_allowed` |
 | `organization` | いずれかの役割でその組織に結び付いた動画 | `400 guest_filter_not_allowed` |
+| `tagKind` | 手動かフォルダ由来かを問わず、その種類のタグを少なくとも 1 つ持つ動画 | `400 guest_filter_not_allowed` |
 
 `query`、`tag`、`person`、`organization` はグループの各メンバーに適用されるので、一部だけが一致したグループは、一致したメンバーを動画の項目として一覧に出す。実体のない `person` または `organization` の ID は空の一覧になり、正の整数でない値は `400 invalid_request` になる（[047 screen-api.md](../../specs/047-video-work-info/contracts/screen-api.md#list-parameters-person-and-organization)）。
 
