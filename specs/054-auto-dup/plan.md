@@ -39,6 +39,78 @@ flowchart LR
 | Duplicates page | Refetches on a new `candidates` notification ([R-10](research.md#r-10-the-duplicates-page-refreshes-on-a-candidates-notification)) |
 | Model | `clef-flash` stays the default; Settings names `clef` for bundling ([R-11](research.md#r-11-the-default-model-is-left-as-it-is-and-settings-names-the-one-that-bundles)) |
 
+## How it works
+
+The judging runs after the existing import, beside it, and changes nothing
+about how candidates are found. The sequence shows one candidate from the
+scan to its outcome.
+
+```mermaid
+sequenceDiagram
+  participant Scan as Scan and ingest
+  participant Store as Store
+  participant Judge as VersionJudge worker
+  participant Art as Artifacts
+  participant AI as Classifier (Ollama)
+  Scan->>Store: fingerprint job writes candidate A–B
+  Store-->>Judge: ProcessingChanged (wake)
+  Judge->>Store: claim one waiting candidate
+  Judge->>Art: 4 frames of A and of B, side by side
+  Art-->>Judge: 4 JPEGs
+  Judge->>AI: "same picture left and right?"
+  AI-->>Judge: probability
+  Judge->>Store: apply the result
+  Store-->>Judge: VersionCandidatesChanged (screens refresh)
+```
+
+1. **A candidate appears as today.** The `fingerprint` ingest job compares the
+   new video's fingerprint with the others and writes a row to
+   `video_version_candidates` (030). The row now starts with its judgement
+   null, which means "waiting".
+2. **The worker wakes.** `app.VersionJudge` is one goroutine started in
+   `cmd/mdm`, like `AutoTagger`. It wakes at startup, when a job finishes
+   (`ProcessingChanged`), when candidates change and when the setting is
+   saved. While the setting is off it does nothing.
+3. **It claims one candidate.** The store picks the oldest waiting candidate,
+   or a failed one whose retry time has passed, skips pairs the owner removed
+   from versions, and marks it `running`.
+4. **It builds the images.** `internal/artifacts` cuts 4 frames, at the middle
+   of 4 equal parts, from each video's seek preview, the same sheet the
+   fingerprint was built from, and puts frame `i` of A beside frame `i` of B
+   in one JPEG. No ffmpeg runs and no media file is opened.
+5. **It asks one question.** The 4 images and the question go to
+   `app.Classifier`, the port auto-tagging uses, so the Ollama connection
+   under Settings serves both. The answer is a probability.
+6. **The store applies the result in one transaction.**
+
+| Probability | What the store does | What the owner sees |
+| --- | --- | --- |
+| 0.8 or more | Bundles A and B with `VersionStore.Bundle`'s steps; the representative is the bundle's if one side is bundled, else the larger picture | One card with the versions mark |
+| 0.2 or less | Writes a "different videos" dismissal, as the Duplicates page's button does | The pair leaves Duplicates |
+| Between | Marks the candidate `undecided`; it is never asked again | The pair stays on Duplicates |
+| No answer or an error | Marks it `failed` and sets a retry time: 10 minutes, 1 hour, 6 hours, then daily | The pair stays on Duplicates until a retry decides it |
+
+A "same" that would put two videos the owner called different into one
+bundle is stored as `undecided` instead.
+
+**Removing a version.** "Remove from versions" on the video page records the
+removed video paired with each remaining member in `video_version_unbundles`
+and rebuilds its candidates, so the pair is back on Duplicates and the worker
+skips it from then on.
+
+**The card mark.** List responses fill the `versions` summary the video page
+already gets, for the whole page in one query, and the card shows a small mark
+when it is present.
+
+**The model.** In the trial, `clef` answered 0.97 for the same footage and
+0.02 for a video that only began the same way. `clef-flash`, the default,
+answered 0.29 and 0.09: it removes clearly different pairs but bundles
+nothing, so Settings says that bundling needs `clef`.
+
+The reasons for each choice and the alternatives are in
+[research.md](research.md); the tables and rules are in
+[data-model.md](data-model.md).
+
 ## Technical Context
 
 **Canonical definitions**:
@@ -53,27 +125,21 @@ flowchart LR
 | Screens and Web tests | [design-system.md](../../docs/design-docs/design-system.md), [web-testing.md](../../docs/design-docs/web-testing.md), [i18n.md](../../docs/design-docs/i18n.md) |
 | Checks | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`) |
 
-**Feature-specific context**:
-
-- The thresholds rest on a synthetic trial; the [quickstart](quickstart.md)
-  repeats it on real files before the worker unit merges.
-- With `clef-flash`, the default model, same-video pairs scored 0.29 and stay
-  undecidable, so acceptance criterion 1 holds with `clef` only (R-11).
-- Other feature branches add migrations; this feature's migration takes the
-  next number on `main` when its unit is written.
+**Feature-specific context**: the thresholds rest on a synthetic trial, and
+the [quickstart](quickstart.md) repeats it on real files before the last unit
+merges. The migration takes the next number on `main` when its unit is
+written, since other feature branches add migrations too.
 
 ## Constitution Check
 
-| Rule | Verdict |
+Checked against ARCHITECTURE.md and AGENTS.md; the rules this design leans on:
+
+| Rule | How the design meets it |
 | --- | --- |
-| Dependency direction (ARCHITECTURE.md) | Pass: the worker is in `internal/app` behind interfaces it declares; frame pairs come from `internal/artifacts` through the image-source adapter in `cmd/mdm`; no adapter imports another |
-| The domain decides, the store enforces | Pass: the verdict thresholds, the conflict check, the representative rule and the retry times are `internal/domain`; the store re-reads members, dismissals and unbundled pairs in the bundling transaction |
-| Only a scan reads the media folders' files | Pass: the model sees seek-preview frames under the data directory (R-2) |
-| User data survives a rebuild | Pass: `video_version_unbundles` is keyed by content keys with no foreign key to `videos`, and listed as user data |
-| Events after commit | Pass: bundling publishes `VideoBundleChanged` as today; every judgement result and removal from versions publishes `VersionCandidatesChanged` after commit |
-| Generated files never hand-edited (AGENTS.md) | Pass: `api/openapi.yaml` changes, then `task generate` |
-| Complexity 25 and no copied code (AGENTS.md) | Pass by design: the automatic bundle reuses `VersionStore.Bundle`'s steps and the dismissal reuses `Dismiss`'s, not copies of them |
-| Documentation with the change (core-beliefs.md) | Pass: the worker unit adds a design document and updates ai-layer.md, ARCHITECTURE.md and running-vv.md |
+| The domain decides, the store enforces | Thresholds, the conflict check, the representative and retry times are `internal/domain`; the store re-reads members and dismissals inside the bundling transaction |
+| Only a scan reads the media folders' files | The model sees seek-preview frames from the data directory |
+| User data survives a rebuild | `video_version_unbundles` is keyed by content keys, listed as user data |
+| No copied code | The automatic bundle and dismissal call the steps of `VersionStore.Bundle` and `Dismiss` |
 
 ## Project Structure
 

@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/plan.md
-sourceHash: 7038d2632ab409d2803dd76661524191c4b5bfc95c4e5b0f3259dbc37555d417
+sourceHash: 5295edaf695e6e2b0448395457e9163b24e28e492a23aae19b1e3a09d24c665a
 ---
 
 # 実装計画: 重複の候補を自動で判定し、同じものをまとめる {#implementation-plan-judging-possible-duplicates-automatically-and-bundling-the-same-ones}
@@ -40,6 +40,52 @@ flowchart LR
 | Duplicates のページ | 新しい `candidates` の通知で取得し直す ([R-10](research.md#r-10-the-duplicates-page-refreshes-on-a-candidates-notification)) |
 | モデル | `clef-flash` を既定のままにする。まとめるための `clef` を Settings が示す ([R-11](research.md#r-11-the-default-model-is-left-as-it-is-and-settings-names-the-one-that-bundles)) |
 
+## 仕組み {#how-it-works}
+
+判定は既存の取り込みの後に、それと並んで動き、候補の見つけ方は何も変えない。シーケンス図は、1 つの候補がスキャンから結果に至るまでを示す。
+
+```mermaid
+sequenceDiagram
+  participant Scan as スキャンと取り込み
+  participant Store as Store
+  participant Judge as VersionJudge のワーカー
+  participant Art as Artifacts
+  participant AI as 分類器 (Ollama)
+  Scan->>Store: 指紋のジョブが候補 A–B を書く
+  Store-->>Judge: ProcessingChanged (起こす)
+  Judge->>Store: 待っている候補を 1 つ取得する
+  Judge->>Art: A と B のフレームを 4 枚ずつ、横に並べて
+  Art-->>Judge: 4 枚の JPEG
+  Judge->>AI: 「左右は同じ映像か?」
+  AI-->>Judge: 確率
+  Judge->>Store: 結果を適用する
+  Store-->>Judge: VersionCandidatesChanged (画面が更新する)
+```
+
+1. **候補は今と同じように現れる。** 取り込みの `fingerprint` ジョブが、新しい動画の指紋をほかの動画の指紋と比べ、`video_version_candidates` に行を書く (030)。この行は今後、判定が null の状態で始まり、null は「待っている」を意味する。
+2. **ワーカーが起きる。** `app.VersionJudge` は、`AutoTagger` と同じく `cmd/mdm` で起動する 1 つの goroutine である。起動時、ジョブが終わったとき (`ProcessingChanged`)、候補が変わったとき、設定が保存されたときに起きる。設定がオフの間は何もしない。
+3. **候補を 1 つ取得する。** ストアは、待っている候補のうち最も古いもの、または再試行の時刻を過ぎた失敗した候補を選ぶ。所有者がバージョンから外した組は飛ばし、選んだ候補を `running` にする。
+4. **画像を作る。** `internal/artifacts` が、各動画のシーク用プレビュー (指紋を作ったのと同じシート) から、4 等分した各部分の中央のフレームを 4 枚切り出し、A のフレーム `i` と B のフレーム `i` を横に並べて 1 枚の JPEG にする。ffmpeg は動かず、メディアファイルも開かない。
+5. **質問を 1 つする。** 4 枚の画像と質問は、自動タグ付けが使うポートである `app.Classifier` に送る。そのため、Settings の Ollama の接続が両方に使われる。答えは確率である。
+6. **ストアが結果を 1 つのトランザクションで適用する。**
+
+| 確率 | ストアがすること | 所有者に見えるもの |
+| --- | --- | --- |
+| 0.8 以上 | `VersionStore.Bundle` の手順で A と B をまとめる。代表は、一方がまとまりにあればそのまとまりの代表、なければ大きい方の映像 | バージョンの印付きの 1 枚のカード |
+| 0.2 以下 | Duplicates のページのボタンと同じように、「別の動画」として退けた組を書く | 組が Duplicates から消える |
+| その間 | 候補を `undecided` にする。二度と問わない | 組が Duplicates に残る |
+| 答えがないか、エラー | `failed` にし、再試行の時刻を決める: 10 分、1 時間、6 時間、その後は毎日 | 再試行で決まるまで、組が Duplicates に残る |
+
+所有者が別だとした 2 つの動画を 1 つのまとまりに入れることになる「同じ」は、代わりに `undecided` として保存する。
+
+**バージョンを外す。** 動画ページの "Remove from versions" は、外した動画を残りの各メンバーと組にして `video_version_unbundles` に記録し、その候補を作り直す。そのため組は Duplicates に戻り、ワーカーはそれ以降その組を飛ばす。
+
+**カードの印。** 一覧の応答は、動画ページがすでに受け取る `versions` の要約を、ページ全体の分を 1 つのクエリで入れる。カードは、それがあるときに小さな印を示す。
+
+**モデル。** 試行では、`clef` は同じ映像に 0.97、始まり方だけが同じ動画に 0.02 と答えた。既定の `clef-flash` は 0.29 と 0.09 と答えた: 明らかに別の組は取り除くが、何もまとめない。そのため、まとめるには `clef` が要ることを Settings が示す。
+
+各選択の理由と代わりの案は [research.md](research.md) にあり、テーブルと規則は [data-model.md](data-model.md) にある。
+
 ## 技術的な文脈 {#technical-context}
 
 **正本の定義**:
@@ -54,24 +100,18 @@ flowchart LR
 | 画面と Web のテスト | [design-system.md](../../docs/design-docs/design-system.md)、[web-testing.md](../../docs/design-docs/web-testing.md)、[i18n.md](../../docs/design-docs/i18n.md) |
 | 検査 | [Taskfile.yml](../../Taskfile.yml) (`task check`、`task check-docs`) |
 
-**この機能に固有の文脈**:
-
-- しきい値は合成の試行に基づく。[クイックスタート](quickstart.md) は、ワーカーの単位がマージされる前に、それを実際のファイルで繰り返す。
-- 既定のモデルである `clef-flash` では、同じ動画の組は 0.29 で、判定できないままである。そのため、受け入れ条件 1 は `clef` でだけ成り立つ (R-11)。
-- ほかの feature ブランチはマイグレーションを加える。この機能のマイグレーションは、その単位を書く時点の `main` の次の番号を取る。
+**この機能に固有の文脈**: しきい値は合成の試行に基づき、[クイックスタート](quickstart.md) は最後の単位がマージされる前に、それを実際のファイルで繰り返す。ほかの feature ブランチもマイグレーションを加えるので、マイグレーションは、その単位を書く時点の `main` の次の番号を取る。
 
 ## 憲章の確認 {#constitution-check}
 
-| 規則 | 判定 |
+ARCHITECTURE.md と AGENTS.md に照らして確認した。この設計が拠る規則は次のとおりである:
+
+| 規則 | 設計がそれを満たす方法 |
 | --- | --- |
-| 依存の方向 (ARCHITECTURE.md) | 合格: ワーカーは `internal/app` にあり、自分が宣言するインターフェースの背後にある。フレームの組は `cmd/mdm` の画像の取得元のアダプターを通して `internal/artifacts` から来る。どのアダプターもほかのアダプターを import しない |
-| ドメインが決め、ストアが強制する | 合格: 判定のしきい値、衝突の確認、代表の規則、再試行の時刻は `internal/domain` にある。ストアはまとめるトランザクションの中で、メンバー、退けた組、まとまりから外した組を読み直す |
-| メディアフォルダのファイルを読むのはスキャンだけである | 合格: モデルが見るのは、データディレクトリの下にあるシーク用プレビューのフレームである (R-2) |
-| ユーザーデータは作り直しを越えて残る | 合格: `video_version_unbundles` は `videos` への外部キーを持たずに内容の鍵をキーとし、ユーザーデータとして一覧に載る |
-| イベントはコミットの後 | 合格: まとめると、今と同じく `VideoBundleChanged` を発行する。すべての判定の結果とバージョンからの取り外しは、コミットの後に `VersionCandidatesChanged` を発行する |
-| 生成ファイルを手で編集しない (AGENTS.md) | 合格: `api/openapi.yaml` を変え、続いて `task generate` を実行する |
-| 複雑度は 25 以下、コードを写さない (AGENTS.md) | 設計上は合格: 自動のまとめは `VersionStore.Bundle` の手順を、退ける処理は `Dismiss` の手順を、写しではなく再利用する |
-| 文書は変更とともに (core-beliefs.md) | 合格: ワーカーの単位が設計文書を加え、ai-layer.md、ARCHITECTURE.md、running-vv.md を更新する |
+| ドメインが決め、ストアが強制する | しきい値、衝突の確認、代表、再試行の時刻は `internal/domain` にある。ストアはまとめるトランザクションの中で、メンバーと退けた組を読み直す |
+| メディアフォルダのファイルを読むのはスキャンだけである | モデルが見るのは、データディレクトリにあるシーク用プレビューのフレームである |
+| ユーザーデータは作り直しを越えて残る | `video_version_unbundles` は内容の鍵をキーとし、ユーザーデータとして一覧に載る |
+| コードを写さない | 自動のまとめと退ける処理は、`VersionStore.Bundle` と `Dismiss` の手順を呼ぶ |
 
 ## プロジェクトの構成 {#project-structure}
 
