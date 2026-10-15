@@ -361,6 +361,12 @@ const errorReasons = {
       : `The plugin couldn't reach ${host}.`,
   memory_exceeded: "The plugin used more than 128 MB of memory and was stopped.",
   output_too_large: "The plugin's answer was over 1 MB.",
+  // タグの種類（specs/051-tag-kinds/ui-design.md）。名前の重複は tagName に種類の名前が入る。
+  tag_kind_not_found: "This kind no longer exists.",
+  tag_kind_name_taken: ({ tagName }) =>
+    tagName === undefined
+      ? "A kind with that name already exists."
+      : `A kind named "${tagName}" already exists.`,
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {

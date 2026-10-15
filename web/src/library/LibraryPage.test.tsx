@@ -1049,6 +1049,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       installTagAwareList([tag], () => ({
         items: [video(1, { tags: [tag] })],
@@ -1071,6 +1072,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       installTagAwareList([tag], () => ({
         items: [video(1, { tags: [tag] })],
@@ -1098,6 +1100,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       installTagAwareList([tag], (requested) => ({
         items:
@@ -1133,6 +1136,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       installTagAwareList([tag], () => ({
         items: [video(1, { tags: [tag] })],
@@ -1164,6 +1168,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       installTagAwareList([extra], () => ({
         items: [video(1, { tags: [extra] })],
@@ -1189,6 +1194,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       const tagB = {
         id: 2,
@@ -1196,6 +1202,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       installTagAwareList([tagA, tagB], () => ({
         items: [video(1, { tags: [tagA, tagB] })],
@@ -1221,6 +1228,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       installTagAwareList([tagA], (requested) =>
         requested.includes(1)
@@ -1314,6 +1322,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       installTagAwareList([tag], () => ({
         items: [video(1, { tags: [tag] })],
@@ -1341,6 +1350,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       installTagAwareList([tag], () => ({ items: [], total: 0 }));
       const user = userEvent.setup();
@@ -1454,6 +1464,7 @@ describe("LibraryPage", () => {
                     manual: true,
                     fromFolder: false,
                     tentative: false,
+                    kind: null,
                   })),
                 }),
                 video(2),
@@ -1541,6 +1552,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       installSelectionAwareList({ tags: [], total: 3, idsMissingTagIds: [1] });
       const user = userEvent.setup();
@@ -1571,6 +1583,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       installSelectionAwareList({ tags: [tag] });
       const user = userEvent.setup();
@@ -1718,6 +1731,7 @@ describe("LibraryPage", () => {
         manual: true,
         fromFolder: false,
         tentative: false,
+        kind: null,
       };
       const attached = new Map<number, Set<number>>([[1, new Set([1])]]);
       fetchMock.mockImplementation((input, init) => {
@@ -2332,8 +2346,22 @@ describe("LibraryPage の英語の画面（specs/023-english-i18n）", () => {
   const kyoto = video(1, {
     title: "京都の旅",
     tags: [
-      { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
-      { id: 2, name: "京都", manual: false, fromFolder: true, tentative: false },
+      {
+        id: 1,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+        kind: null,
+      },
+      {
+        id: 2,
+        name: "京都",
+        manual: false,
+        fromFolder: true,
+        tentative: false,
+        kind: null,
+      },
     ],
     progress: { positionMs: 15_000, completed: false, updatedAt: "" },
   });

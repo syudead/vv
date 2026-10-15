@@ -56,7 +56,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 	}
 
 	statement, args := order.pageStatement(listed, listedArgs,
-		`id, name, tentative, created_at, sort_key, video_count`, cursorClause, cursorArgs, limit)
+		`id, name, tentative, created_at, sort_key, video_count, kind_id, kind_name`, cursorClause, cursorArgs, limit)
 
 	items, keys, total, err := readListedTags(ctx, tx, statement, args)
 	if err != nil {
@@ -118,7 +118,7 @@ func exactListedTag(ctx context.Context, tx *sql.Tx, query domain.TagListQuery) 
 }
 
 // listedTagsCTE は条件に合うタグを listed（id・name・tentative・created_at・
-// sort_key・video_count）として返す CTE と、その引数を返す。条件はすべて AND。
+// sort_key・video_count・kind_id・kind_name）として返す CTE と、その引数を返す。条件はすべて AND。
 func listedTagsCTE(query domain.TagListQuery) (string, []any) {
 	var conditions []string
 	var args []any
@@ -142,9 +142,11 @@ func listedTagsCTE(query domain.TagListQuery) (string, []any) {
 			select tag_id, count(*) as video_count from (` + taggedVideosSQL("") + `) group by tag_id
 		), listed as (
 			select t.id as id, tn.name as name, t.tentative as tentative, t.created_at as created_at,
-			       tn.sort_key as sort_key, coalesce(c.video_count, 0) as video_count
+			       tn.sort_key as sort_key, coalesce(c.video_count, 0) as video_count,
+			       tk.id as kind_id, tk.name as kind_name
 			  from tags t
 			  join tag_names tn on tn.tag_id = t.id and tn.canonical = 1
+			  left join tag_kinds tk on tk.id = t.kind_id
 			  left join tag_counts c on c.tag_id = t.id` + where + `
 		)`, args
 }
@@ -165,9 +167,12 @@ func readListedTags(ctx context.Context, tx *sql.Tx, statement string, args []an
 		var tag domain.Tag
 		var createdAt int64
 		var sortKey string
-		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Tentative, &createdAt, &sortKey, &tag.VideoCount, &total); err != nil {
+		var kind scannedTagKind
+		if err := rows.Scan(&tag.ID, &tag.Name, &tag.Tentative, &createdAt, &sortKey, &tag.VideoCount,
+			&kind.id, &kind.name, &total); err != nil {
 			return nil, nil, 0, fmt.Errorf("cannot read tags: %w", err)
 		}
+		tag.Kind = kind.ref()
 		tag.CreatedAt = time.Unix(createdAt, 0)
 		tag.Synonyms = []string{}
 		items = append(items, tag)

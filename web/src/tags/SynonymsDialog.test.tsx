@@ -18,6 +18,7 @@ vi.mock("../api/tags", async (importOriginal) => ({
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
   return {
+    kind: null,
     synonyms: [],
     videoCount: 0,
     tentative: false,

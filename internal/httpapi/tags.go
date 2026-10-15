@@ -443,14 +443,14 @@ func toAPITag(tag domain.Tag) gen.Tag {
 	}
 	return gen.Tag{
 		Id: tag.ID, Name: tag.Name, Synonyms: synonyms, VideoCount: tag.VideoCount, Tentative: tag.Tentative,
-		CreatedAt: tag.CreatedAt,
+		CreatedAt: tag.CreatedAt, Kind: toAPITagKindRef(tag.Kind),
 	}
 }
 
 // toAPITagRef は動画に付いたタグ1件を応答の形にする。仮かどうかも載せる
 // （specs/031-tentative-tags/contracts/screen-api.md §0）。
 func toAPITagRef(ref domain.TagRef) gen.TagRef {
-	return gen.TagRef{Id: ref.ID, Name: ref.Name, Tentative: ref.Tentative}
+	return gen.TagRef{Id: ref.ID, Name: ref.Name, Tentative: ref.Tentative, Kind: toAPITagKindRef(ref.Kind)}
 }
 
 // toAPIVideoTag は動画に付いたタグ1件を出所つきで応答の形にする。フォルダ由来だけで
@@ -458,6 +458,7 @@ func toAPITagRef(ref domain.TagRef) gen.TagRef {
 func toAPIVideoTag(tag domain.VideoTag) gen.VideoTag {
 	out := gen.VideoTag{
 		Id: tag.ID, Name: tag.Name, Manual: tag.Manual, FromFolder: tag.FromFolder, Tentative: tag.Tentative,
+		Kind: toAPITagKindRef(tag.Kind),
 	}
 	if tag.Unconfirmed {
 		unconfirmed := true

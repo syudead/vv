@@ -88,6 +88,8 @@ type TagRef struct {
 	// Tentative は仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）である
 	// こと（specs/031-tentative-tags/data-model.md §4）。
 	Tentative bool
+	// Kind はタグの種類。nil は種類の無いタグ（specs/051-tag-kinds/research.md R-4）。
+	Kind *TagKindRef
 }
 
 // VideoTag は動画に付いたタグ1件と、その出所である（017 の
@@ -116,6 +118,8 @@ type Tag struct {
 	VideoCount int
 	// Tentative は仮のタグであること（specs/031-tentative-tags/data-model.md §4）。
 	Tentative bool
+	// Kind はタグの種類。nil は種類の無いタグ（specs/051-tag-kinds/research.md R-4）。
+	Kind *TagKindRef
 	// CreatedAt は tags.created_at（Unix 秒。specs/036-tag-admin-scale/data-model.md §1）。
 	CreatedAt time.Time
 }

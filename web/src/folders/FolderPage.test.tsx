@@ -271,7 +271,14 @@ describe("FolderPage", () => {
         items: [
           video(1, "x", {
             tags: [
-              { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+              {
+                kind: null,
+                id: 5,
+                name: "旅行",
+                manual: true,
+                fromFolder: false,
+                tentative: false,
+              },
             ],
           }),
         ],

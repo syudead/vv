@@ -27,6 +27,8 @@ type nameLookup struct {
 	isCanonical   bool
 	// tentative はその名前を持つタグが仮のタグであること（specs/031-tentative-tags/data-model.md §5）。
 	tentative bool
+	// kind はその名前を持つタグの種類。種類が無ければ nil（specs/051-tag-kinds/research.md R-4）。
+	kind *domain.TagKindRef
 }
 
 // lookupTagName は名前からタグを引く（data-model.md §3）。元の名前でも
@@ -34,13 +36,14 @@ type nameLookup struct {
 func lookupTagName(ctx context.Context, q tagTx, name string) (nameLookup, bool, error) {
 	var lookup nameLookup
 	var canonicalInt int
+	var kind scannedTagKind
 	err := q.QueryRowContext(ctx, `
-		select tn.tag_id, tn.canonical, canon.name, t.tentative
+		select tn.tag_id, tn.canonical, canon.name, tg.tentative, `+tagKindColumns+`
 		  from tag_names tn
 		  join tag_names canon on canon.tag_id = tn.tag_id and canon.canonical = 1
-		  join tags t on t.id = tn.tag_id
+		  join tags tg on tg.id = tn.tag_id`+tagKindJoin+`
 		 where tn.name = ?`, name,
-	).Scan(&lookup.tagID, &canonicalInt, &lookup.canonicalName, &lookup.tentative)
+	).Scan(append([]any{&lookup.tagID, &canonicalInt, &lookup.canonicalName, &lookup.tentative}, kind.targets()...)...)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nameLookup{}, false, nil
 	}
@@ -48,22 +51,25 @@ func lookupTagName(ctx context.Context, q tagTx, name string) (nameLookup, bool,
 		return nameLookup{}, false, fmt.Errorf("cannot look up the tag by name (%s): %w", name, err)
 	}
 	lookup.isCanonical = canonicalInt != 0
+	lookup.kind = kind.ref()
 	return lookup, true, nil
 }
 
 // ref は引いた名前のタグを TagRef にする（名前は元の名前）。
 func (l nameLookup) ref() domain.TagRef {
-	return domain.TagRef{ID: l.tagID, Name: l.canonicalName, Tentative: l.tentative}
+	return domain.TagRef{ID: l.tagID, Name: l.canonicalName, Tentative: l.tentative, Kind: l.kind}
 }
 
-// tagRefByID はタグ id の元の名前と仮かどうかを返す。無ければ domain.ErrTagNotFound を返す。
+// tagRefByID はタグ id の元の名前と仮かどうかと種類を返す。無ければ domain.ErrTagNotFound を返す。
 func tagRefByID(ctx context.Context, q rowQueryer, id int64) (domain.TagRef, error) {
 	ref := domain.TagRef{ID: id}
+	var kind scannedTagKind
 	err := q.QueryRowContext(ctx, `
-		select tn.name, t.tentative
-		  from tags t
-		  join tag_names tn on tn.tag_id = t.id and tn.canonical = 1
-		 where t.id = ?`, id).Scan(&ref.Name, &ref.Tentative)
+		select tn.name, tg.tentative, `+tagKindColumns+`
+		  from tags tg
+		  join tag_names tn on tn.tag_id = tg.id and tn.canonical = 1`+tagKindJoin+`
+		 where tg.id = ?`, id).Scan(append([]any{&ref.Name, &ref.Tentative}, kind.targets()...)...)
+	ref.Kind = kind.ref()
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.TagRef{}, domain.ErrTagNotFound
 	}
@@ -107,7 +113,7 @@ func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 		return domain.Tag{}, err
 	}
 	return domain.Tag{
-		ID: id, Name: ref.Name, Synonyms: synonyms, VideoCount: count, Tentative: ref.Tentative,
+		ID: id, Name: ref.Name, Synonyms: synonyms, VideoCount: count, Tentative: ref.Tentative, Kind: ref.Kind,
 		CreatedAt: time.Unix(createdAt, 0),
 	}, nil
 }

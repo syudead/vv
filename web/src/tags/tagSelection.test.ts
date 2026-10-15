@@ -11,6 +11,7 @@ import {
 
 function tag(id: number, tentative = false): Tag {
   return {
+    kind: null,
     id,
     name: `Tag ${String(id)}`,
     synonyms: [],

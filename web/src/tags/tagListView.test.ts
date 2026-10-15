@@ -8,6 +8,7 @@ import { moreIdle } from "./useTagPage";
 
 function tag(id: number): Tag {
   return {
+    kind: null,
     id,
     name: `Tag ${String(id)}`,
     synonyms: [],
