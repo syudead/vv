@@ -67,6 +67,11 @@ tasks:
     cmds:
       - go run ./scripts/build
 
+  build-plugins:
+    desc: Build the work-info plugins under plugins/ into bin/plugins/<name>.wasm.
+    cmds:
+      - go run ./scripts/pluginpack plugins/wikipedia
+
   build-windows-app:
     desc: Build the Windows app zip (dist/VVMDM-<version>-windows-amd64.zip) with the bundled FFmpeg.
     # VERSION=v1.2.3 で版を決める。無ければ今の commit の sha-<12 桁>。

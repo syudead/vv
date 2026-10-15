@@ -1,0 +1,10 @@
+{
+  "contract": 1,
+  "name": "wikipedia",
+  "version": "0.1.0",
+  "description": "Searches Wikipedia for works, and reads an article's title and its categories as tags.",
+  "operations": ["search", "fetch"],
+  "settings": [
+    { "key": "lang", "label": "Wikipedia language for search (default ja)" }
+  ]
+}
