@@ -215,6 +215,36 @@ func TestDeleteSmartFolderDeletesItsDescendants(t *testing.T) {
 	}
 }
 
+func TestDeleteSmartFolderRenumbersItsPlaylists(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	a := createSmartFolder(t, db, "A", 0)
+	b := createSmartFolder(t, db, "B", a.ID)
+	execSQL(t, db, `insert into playlists (id, name, created_at, updated_at) values (1, 'P', 1, 1), (2, 'Q', 1, 1)`)
+	execSQL(t, db, `insert into playlist_items (playlist_id, content_key, smart_folder_id, position, added_at) values
+		(1, 'key-a', null, 0, 1), (1, null, ?, 1, 1), (1, 'key-b', null, 2, 1), (1, null, ?, 3, 1),
+		(2, 'key-a', null, 0, 1)`, a.ID, b.ID)
+
+	if err := db.SmartFolders().DeleteSmartFolder(ctx, a.ID); err != nil {
+		t.Fatal(err)
+	}
+	items, err := queryStringsForTest(db, `select playlist_id || ':' || content_key || ':' || position
+		from playlist_items order by playlist_id, position`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"1:key-a:0", "1:key-b:1", "2:key-a:0"}; !reflect.DeepEqual(items, want) {
+		t.Fatalf("playlist_items = %v, want %v", items, want)
+	}
+	updated, err := queryStringsForTest(db, `select id || ':' || (updated_at > 1) from playlists order by id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"1:1", "2:0"}; !reflect.DeepEqual(updated, want) {
+		t.Fatalf("playlists updated = %v, want %v", updated, want)
+	}
+}
+
 func smartFolderRow(folder domain.SmartFolder) string {
 	kept := 0
 	if folder.OwnerKept {

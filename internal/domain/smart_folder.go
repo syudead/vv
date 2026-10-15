@@ -82,14 +82,23 @@ func ParseSmartRule(raw []byte) (SmartRule, error) {
 	if len(trimmed) == 0 || trimmed[0] != '{' {
 		return SmartRule{}, fmt.Errorf("%w: the rule is not an object", ErrInvalidSmartRule)
 	}
+	// json.Unmarshal は入力全体が 1 つの値であることを求めるので、後ろに残る文字（閉じ区切りも）を
+	// 拒む。
+	var members map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &members); err != nil {
+		return SmartRule{}, fmt.Errorf("%w: %w", ErrInvalidSmartRule, err)
+	}
+	// encoding/json は null を省いた項目と同じに読むので、型の違う値として先に拒む。
+	for name, value := range members {
+		if bytes.Equal(bytes.TrimSpace(value), []byte("null")) {
+			return SmartRule{}, fmt.Errorf("%w: %s is null", ErrInvalidSmartRule, name)
+		}
+	}
 	decoder := json.NewDecoder(bytes.NewReader(trimmed))
 	decoder.DisallowUnknownFields()
 	var input smartRuleInput
 	if err := decoder.Decode(&input); err != nil {
 		return SmartRule{}, fmt.Errorf("%w: %w", ErrInvalidSmartRule, err)
-	}
-	if decoder.More() {
-		return SmartRule{}, fmt.Errorf("%w: text follows the rule", ErrInvalidSmartRule)
 	}
 	rule := SmartRule{
 		Q: input.Q, Watch: input.Watch, Playable: input.Playable, Favorite: input.Favorite,

@@ -98,9 +98,19 @@ func (s *SmartFolderStore) ChangeSmartFolder(ctx context.Context, id int64, chan
 }
 
 // DeleteSmartFolder はスマートフォルダ id を消す。子孫とそれらのお気に入り・プレイリストの項目は
-// 外部キーで消える。無ければ domain.ErrNotFound。
+// 外部キーで消え、項目を失ったプレイリストを詰め直して更新日時を進める（グループの解散と同じ）。
+// 無ければ domain.ErrNotFound。
 func (s *SmartFolderStore) DeleteSmartFolder(ctx context.Context, id int64) error {
 	return writeWithEvents(ctx, s.db, "delete the smart folder", func(tx *sql.Tx) ([]domain.Event, error) {
+		playlists, err := queryInt64s(ctx, tx, `with recursive down (id) as (
+				select ?
+				union
+				select f.id from smart_folders f join down on f.parent_id = down.id)
+			select distinct playlist_id from playlist_items
+			where smart_folder_id in (select id from down) order by playlist_id`, id)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read the playlists: %w", err)
+		}
 		result, err := tx.ExecContext(ctx, `delete from smart_folders where id = ?`, id)
 		if err != nil {
 			return nil, fmt.Errorf("cannot delete the smart folder: %w", err)
@@ -111,6 +121,14 @@ func (s *SmartFolderStore) DeleteSmartFolder(ctx context.Context, id int64) erro
 		}
 		if deleted == 0 {
 			return nil, smartFolderMissing()
+		}
+		if err := renumberPlaylists(ctx, tx, playlists); err != nil {
+			return nil, err
+		}
+		for _, playlistID := range playlists {
+			if err := touchPlaylist(ctx, tx, playlistID); err != nil {
+				return nil, err
+			}
 		}
 		return nil, nil
 	})
