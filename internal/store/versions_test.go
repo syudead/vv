@@ -135,8 +135,9 @@ func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 			if item.ID == ids["b"] && item.UserKey != a.UserKey {
 				t.Errorf("一覧の B の UserKey = %q", item.UserKey)
 			}
-			if item.Versions != nil {
-				t.Errorf("一覧の項目に Versions が入っている: %d", item.ID)
+			// 一覧の項目にも集まりの要約が入る（specs/054-auto-dup/research.md R-9）。
+			if item.ID == ids["a"] && (item.Versions == nil || item.Versions.Count != 2) {
+				t.Errorf("一覧の A の Versions = %+v, want count 2", item.Versions)
 			}
 		}
 	}

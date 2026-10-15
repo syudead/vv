@@ -309,6 +309,10 @@ func (p *PlaybackStore) visibleVideosByContentKey(
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot read the watch history videos: %w", err)
 	}
+	_ = rows.Close()
+	if err := attachVersionsIn(ctx, p.sql, audience, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 
