@@ -353,28 +353,36 @@ func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 	}, s.logger)
 }
 
-// tagBatchRequest は本文の action と kindId を検査して domain.TagBatchRequest にする。知らない
-// action、kindId の無い setKind、kindId を付けたほかの action は 400 を書いて false を返す。
-// kindPresent は本文に kindId があったか（値が null でも）で、生成型では null と省略を区別できない
-// ため呼び出し側が本文から渡す。null の kindId もほかの action では 400 にする。
+// tagBatchRequest は本文の action と kindId を tagBatchRequestOf で検査して domain.TagBatchRequest に
+// する。断ったら 400 を書いて false を返す。
 func (s *server) tagBatchRequest(w http.ResponseWriter, body gen.TagBatchRequest, kindPresent bool) (domain.TagBatchRequest, bool) {
-	req := domain.TagBatchRequest{Action: domain.TagBatchAction(body.Action)}
-	if !req.Action.Valid() {
-		s.invalidRequest(w, "action must be one of confirm, reject, delete, setKind or clearKind.")
+	req, problem := tagBatchRequestOf(string(body.Action), body.KindId, kindPresent)
+	if problem != "" {
+		s.invalidRequest(w, problem)
 		return domain.TagBatchRequest{}, false
-	}
-	switch {
-	case req.Action == domain.TagBatchSetKind && (body.KindId == nil || *body.KindId < 1):
-		s.invalidRequest(w, "setKind needs a positive kindId.")
-		return domain.TagBatchRequest{}, false
-	case req.Action != domain.TagBatchSetKind && kindPresent:
-		s.invalidRequest(w, "kindId is allowed only with setKind.")
-		return domain.TagBatchRequest{}, false
-	}
-	if body.KindId != nil {
-		req.KindID = *body.KindId
 	}
 	return req, true
+}
+
+// tagBatchRequestOf は POST /api/tags/batch と POST /api/v1/tags/batch の action と kindId を
+// domain.TagBatchRequest にする（specs/051-tag-kinds/contracts/screen-api.md）。知らない action、
+// 正の kindId の無い setKind、kindId を付けたほかの action は、誤りの文を返す（通れば ""）。
+// kindPresent は本文に kindId があったか（値が null でも）で、生成型では null と省略を区別できない
+// ため呼び出し側が本文から渡す。null の kindId もほかの action では断る。
+func tagBatchRequestOf(action string, kindID *int64, kindPresent bool) (domain.TagBatchRequest, string) {
+	req := domain.TagBatchRequest{Action: domain.TagBatchAction(action)}
+	switch {
+	case !req.Action.Valid():
+		return domain.TagBatchRequest{}, "action must be one of confirm, reject, delete, setKind or clearKind."
+	case req.Action == domain.TagBatchSetKind && (kindID == nil || *kindID < 1):
+		return domain.TagBatchRequest{}, "setKind needs a positive kindId."
+	case req.Action != domain.TagBatchSetKind && kindPresent:
+		return domain.TagBatchRequest{}, "kindId is allowed only with setKind."
+	}
+	if kindID != nil {
+		req.KindID = *kindID
+	}
+	return req, ""
 }
 
 // TagImpact はまとめての却下・削除・統合の確認に出す、働くタグの数と影響を受ける動画の

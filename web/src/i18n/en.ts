@@ -864,6 +864,16 @@ export const en = {
       removeOrganization: "Remove the organization filter",
       personGone: "Removed a person who no longer exists from the filter",
       organizationGone: "Removed an organization that no longer exists from the filter",
+      // タグの種類のチップ（specs/051-tag-kinds/ui-design.md「Words」の Library chip）。
+      kindChip: (name: string) => `Kind: ${name}`,
+      removeKind: "Remove the kind filter",
+      removeKindNamed: (name: string) => `Remove the filter for the kind "${name}"`,
+      kindGone: "Removed a kind that no longer exists from the filter",
+    },
+    // 絞り込みのポップオーバーのタグの種類の行（specs/051-tag-kinds/ui-design.md「Words」）。
+    tagKindFilter: {
+      label: "Tag kind",
+      any: "Any kind",
     },
     tagRow: {
       label: "Tags",

@@ -16,6 +16,7 @@ import { FakeEventSource, installFakeEventSource } from "../api/fakeEventSource"
 import { videoItem } from "../api/libraryItems";
 import { clearListSnapshot } from "../api/listSnapshot";
 import { nextProgressSequence, recordSavedProgress } from "../api/progressEvents";
+import { __resetTagKindsForTest } from "../api/tagKinds";
 import { __resetTagsForTest } from "../api/tags";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
@@ -98,11 +99,16 @@ async function asLibraryResponse(response: Response): Promise<Response> {
   );
 }
 
-/** libraryFetch は fetchMock の GET /api/library の応答を asLibraryResponse で包む。 */
+/**
+ * libraryFetch は fetchMock の GET /api/library の応答を asLibraryResponse で包む。
+ * 絞り込みのポップオーバーを開くと読む種類の一覧（`GET /api/tag-kinds`）は、ここで空を
+ * 返す（種類での絞り込みは LibraryTagKindFilter.test.tsx が確かめる）。
+ */
 function libraryFetch(fetchMock: ReturnType<typeof vi.fn<typeof fetch>>): typeof fetch {
   return (input, init) => {
-    const result = fetchMock(input, init);
     const path = new URL(String(input), "http://localhost").pathname;
+    if (path === "/api/tag-kinds") return Promise.resolve(json({ items: [] }));
+    const result = fetchMock(input, init);
     return path === "/api/library" ? result.then(asLibraryResponse) : result;
   };
 }
@@ -146,6 +152,7 @@ describe("LibraryPage", () => {
 
   beforeEach(() => {
     __resetTagsForTest();
+    __resetTagKindsForTest();
     clearListSnapshot();
     vi.stubGlobal("fetch", libraryFetch(fetchMock));
     vi.stubGlobal(
@@ -2427,6 +2434,7 @@ describe("LibraryPage の英語の画面（specs/023-english-i18n）", () => {
 
   beforeEach(() => {
     __resetTagsForTest();
+    __resetTagKindsForTest();
     clearListSnapshot();
     window.localStorage.clear();
     vi.stubGlobal("fetch", libraryFetch(fetchMock));
@@ -2635,6 +2643,7 @@ describe("LibraryPage の束ねる操作（specs/030-video-versions/ui-design.md
 
   beforeEach(() => {
     __resetTagsForTest();
+    __resetTagKindsForTest();
     clearListSnapshot();
     listed = [1, 2, 3];
     bundleRequests = [];

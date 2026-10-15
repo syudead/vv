@@ -1,5 +1,5 @@
 import { LayoutGrid, List } from "lucide-react";
-import type { RefObject } from "react";
+import type { ReactNode, RefObject } from "react";
 
 import type { VideoSort, WatchFilter } from "../api/client";
 import { t } from "../i18n";
@@ -93,6 +93,12 @@ export interface LibraryToolbarProps {
   onViewChange: (value: ViewMode) => void;
   zoom: Zoom;
   onZoomChange: (value: Zoom) => void;
+  /** 絞り込みのポップオーバーの最後の行（所有者のタグの種類。ゲストには渡さない）。 */
+  extraFilter?: ReactNode;
+  /** `extraFilter` で効いている絞り込みの数。 */
+  extraFilterCount?: number;
+  /** 絞り込みのポップオーバーを開いた。 */
+  onFilterOpen?: () => void;
 }
 
 /**
@@ -121,6 +127,9 @@ export default function LibraryToolbar({
   onViewChange,
   zoom,
   onZoomChange,
+  extraFilter,
+  extraFilterCount,
+  onFilterOpen,
 }: LibraryToolbarProps) {
   const controls: ToolbarViewControl[] = [
     {
@@ -157,7 +166,11 @@ export default function LibraryToolbar({
         onFavoriteChange={onFavoriteChange}
         canClear={canClear}
         onClear={onClear}
-      />
+        extraCount={extraFilterCount}
+        onOpen={onFilterOpen}
+      >
+        {extraFilter}
+      </FilterMenu>
     </Toolbar>
   );
 }
