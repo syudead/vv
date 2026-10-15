@@ -32,9 +32,8 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 	var job domain.VersionJudgeJob
 	err = tx.QueryRowContext(ctx, `update video_version_candidates
 		   set judgement = 'running', retry_at = null, judgement_error = null, probability = null
-		 where (key_a, key_b) = (select c.key_a, c.key_b `+candidatePairsFrom+candidatePairsCondition()+`
+		 where (key_a, key_b) = (select c.key_a, c.key_b `+judgeablePairs+`
 		         and (c.judgement is null or (c.judgement = 'failed' and c.retry_at <= ?))
-		         and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)
 		       order by c.created_at, c.key_a, c.key_b limit 1)
 		returning key_a, key_b, attempts`, time.Now().Unix()).Scan(&job.Keys[0], &job.Keys[1], &job.Attempts)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -58,6 +57,12 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 	}
 	return job, nil
 }
+
+// judgeablePairs は判定できる候補の組 c を選ぶ from と where である。一覧に出る組
+// （candidatePairsCondition）のうち、集まりから外した組（video_version_unbundles）でないもの。取り出しと
+// 次の再試行の時刻が同じ組を見るように共有する。
+var judgeablePairs = candidatePairsFrom + candidatePairsCondition() + `
+	and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)`
 
 // storedContentFingerprint は内容 key の保存した指紋を読む。無ければ found は偽。
 func storedContentFingerprint(ctx context.Context, tx *sql.Tx, key string) (domain.Fingerprint, bool, error) {
@@ -147,12 +152,11 @@ func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, resul
 }
 
 // NextJudgementRetry は failed の組のうち、いちばん早く再び取り出せる時刻を返す（research.md R-5）。
-// 集まりから外した組は数えない。無ければ found は偽。
+// ClaimJudgement が取り出せる組（judgeablePairs）だけを数える。無ければ found は偽。
 func (s *VersionStore) NextJudgementRetry(ctx context.Context) (time.Time, bool, error) {
 	var retryAt sql.NullInt64
-	err := s.db.sql.QueryRowContext(ctx, `select min(c.retry_at) from video_version_candidates c
-		where c.judgement = 'failed' and c.retry_at is not null
-		  and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)`).Scan(&retryAt)
+	err := s.db.sql.QueryRowContext(ctx, `select min(c.retry_at) `+judgeablePairs+`
+		and c.judgement = 'failed' and c.retry_at is not null`).Scan(&retryAt)
 	if err != nil {
 		return time.Time{}, false, fmt.Errorf("cannot read the next version judgement retry: %w", err)
 	}

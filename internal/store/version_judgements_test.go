@@ -376,6 +376,21 @@ func TestNextJudgementRetry(t *testing.T) {
 	}
 }
 
+// 取り出せない failed の組（両側の登録の所在が無くなった組）は次の再試行の時刻に数えない。数えると
+// 取り出せない組の時刻を過ぎたあと、ワーカーが毎秒問い合わせ続ける（R-5）。
+func TestNextJudgementRetryIgnoresUnclaimablePairs(t *testing.T) {
+	db, _ := judgementFixture(t)
+	ctx := context.Background()
+	job := claimJudgement(t, db)
+	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "down"})
+	if _, err := db.sql.Exec(`delete from media_folders`); err != nil {
+		t.Fatal(err)
+	}
+	if next, found, err := db.Versions().NextJudgementRetry(ctx); err != nil || found {
+		t.Errorf("NextJudgementRetry = %v, %v, %v, want 見つからない", next, found, err)
+	}
+}
+
 // Ollama の接続先は、行を保存したときだけ保存済みである。既定の接続先に倒した値は数えない（R-13）。
 func TestOllamaConnectionSaved(t *testing.T) {
 	db := migratedDB(t)

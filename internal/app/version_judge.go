@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -76,6 +77,10 @@ type VersionJudge struct {
 
 	// saveMu は設定の保存を 1 つずつにする。
 	saveMu sync.Mutex
+	// requeuePending は、次の判定の前に待ちへ戻す行（requeue）を見直すことを表す。接続の保存と、
+	// 結果を保存できなかった判定で立てる。判定を 1 組ずつ行う Run の中で戻すので、判定中の組と
+	// 入れ違わない。
+	requeuePending atomic.Bool
 }
 
 // NewVersionJudge は重複の自動判定を組み立てる。判定は Run で始める。
@@ -128,27 +133,44 @@ func (j *VersionJudge) SaveEnabled(ctx context.Context, enabled bool) error {
 }
 
 // ConnectionSaved は Ollama の接続先が保存されたことを受け取る。接続が無くて待っていた組
-// （no_connection）を待ちに戻し、判定の処理を起こす（research.md R-13）。
-func (j *VersionJudge) ConnectionSaved(ctx context.Context) {
-	reset, err := j.store.ResetNoConnectionJudgements(ctx)
-	if err != nil {
-		j.logger.Warn("cannot return the duplicate judgements waiting for a connection", slog.Any("error", err))
-		return
-	}
-	if reset > 0 {
-		j.logger.Info("duplicate judgements resume with the saved connection", slog.Int("count", reset))
-		j.Wake()
-	}
+// （no_connection）を待ちに戻すよう判定の処理に頼んで起こす（research.md R-13）。戻すのは Run の中で
+// 行うので、保存の要求の取り消しに左右されず、判定中の組が後から no_connection を書いても次の判定の
+// 前に戻り、戻せなければ再び試す。
+func (j *VersionJudge) ConnectionSaved(context.Context) {
+	j.requeuePending.Store(true)
+	j.Wake()
 }
 
-// Recover は前回の終了で判定中のまま残った行を待ちに戻す。Run より前に呼ぶ。
+// Recover は前回の終了で判定中のまま残った行と、接続が保存されていれば no_connection の行を待ちに
+// 戻す。Run より前に呼ぶ。戻せなければ Run が最初の判定の前に再び試す。
 func (j *VersionJudge) Recover(ctx context.Context) error {
+	if err := j.requeue(ctx); err != nil {
+		j.requeuePending.Store(true)
+		return err
+	}
+	return nil
+}
+
+// requeue は判定中のまま残った行を待ちに戻し、Ollama の接続先が保存されていれば no_connection の行も
+// 待ちに戻す。判定中の組が無いとき（Run の前か、Run の判定と判定のあいだ）だけ呼ぶ。
+func (j *VersionJudge) requeue(ctx context.Context) error {
 	recovered, err := j.store.RecoverRunningJudgements(ctx)
 	if err != nil {
 		return err
 	}
 	if recovered > 0 {
 		j.logger.Info("requeued interrupted duplicate judgements", slog.Int("count", recovered))
+	}
+	saved, err := j.settings.OllamaConnectionSaved(ctx)
+	if err != nil || !saved {
+		return err
+	}
+	reset, err := j.store.ResetNoConnectionJudgements(ctx)
+	if err != nil {
+		return err
+	}
+	if reset > 0 {
+		j.logger.Info("duplicate judgements resume with the saved connection", slog.Int("count", reset))
 	}
 	return nil
 }
@@ -164,6 +186,13 @@ func (j *VersionJudge) Run(ctx context.Context) {
 
 // step は 1 組を判定し、次の判定までの待ち方を返す。0 は待たない、負は起こされるまで待つ。
 func (j *VersionJudge) step(ctx context.Context) time.Duration {
+	if j.requeuePending.Swap(false) {
+		if err := j.requeue(ctx); err != nil {
+			j.requeuePending.Store(true)
+			j.logError(ctx, "cannot requeue the duplicate judgements", err)
+			return versionJudgeRetryDelay
+		}
+	}
 	on, err := j.Enabled(ctx)
 	if err != nil {
 		j.logError(ctx, "cannot read the duplicate judging setting", err)
@@ -180,7 +209,9 @@ func (j *VersionJudge) step(ctx context.Context) time.Duration {
 		j.logError(ctx, "cannot claim a possible duplicate", err)
 		return versionJudgeRetryDelay
 	}
-	j.process(ctx, job)
+	if !j.process(ctx, job) {
+		return versionJudgeRetryDelay
+	}
 	return 0
 }
 
@@ -223,13 +254,14 @@ func (j *VersionJudge) logError(ctx context.Context, message string, err error) 
 	}
 }
 
-// process は 1 組を判定し、結果を反映する。停止で途切れた判定は反映せず、次の起動で Recover が
-// 待ちに戻す。
-func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) {
+// process は 1 組を判定し、結果を反映して、反映できたかを返す。停止で途切れた判定は反映せず、次の
+// 起動で Recover が待ちに戻す。結果を保存できなければ、組は判定中のまま残るので、次の判定の前に
+// 待ちへ戻す。
+func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) bool {
 	rule := domain.JudgeVersionFrames(job.Fingerprints[0], job.Fingerprints[1])
 	result, probability := j.decide(ctx, job, rule)
 	if ctx.Err() != nil {
-		return
+		return true
 	}
 	attrs := []any{
 		slog.String("key_a", job.Keys[0]), slog.String("key_b", job.Keys[1]),
@@ -245,7 +277,10 @@ func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) 
 	j.logger.Info("judged a possible duplicate", attrs...)
 	if _, err := j.store.ApplyJudgement(ctx, job.Keys, result); err != nil {
 		j.logError(ctx, "cannot record the duplicate judgement", err)
+		j.requeuePending.Store(true)
+		return false
 	}
+	return true
 }
 
 // decide はコマごとの規則の結果から判定の結果を決め、モデルに聞いたときはその確率も返す。コマが

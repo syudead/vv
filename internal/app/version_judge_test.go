@@ -22,6 +22,8 @@ type fakeVersionJudgeStore struct {
 	results []domain.VersionJudgeResult
 	claims  int
 	retryAt time.Time
+	// applyErr は ApplyJudgement が返す誤りである。
+	applyErr error
 }
 
 func newFakeVersionJudgeStore(jobs ...domain.VersionJudgeJob) *fakeVersionJudgeStore {
@@ -44,12 +46,27 @@ func (s *fakeVersionJudgeStore) ClaimJudgement(context.Context) (domain.VersionJ
 func (s *fakeVersionJudgeStore) ApplyJudgement(_ context.Context, keys [2]string, result domain.VersionJudgeResult) (bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.applyErr != nil {
+		return false, s.applyErr
+	}
 	s.states[keys] = result.Verdict
 	s.results = append(s.results, result)
 	return true, nil
 }
 
-func (s *fakeVersionJudgeStore) RecoverRunningJudgements(context.Context) (int, error) { return 0, nil }
+// RecoverRunningJudgements は判定中（0）の組を待ちに戻す。
+func (s *fakeVersionJudgeStore) RecoverRunningJudgements(context.Context) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	recovered := 0
+	for keys, verdict := range s.states {
+		if verdict == 0 {
+			delete(s.states, keys)
+			recovered++
+		}
+	}
+	return recovered, nil
+}
 
 func (s *fakeVersionJudgeStore) NextJudgementRetry(context.Context) (time.Time, bool, error) {
 	return s.retryAt, !s.retryAt.IsZero(), nil
@@ -249,6 +266,72 @@ func TestVersionJudgeWaitsForASavedConnection(t *testing.T) {
 	judge.step(ctx)
 	if got := store.lastResult(t); got.Verdict != domain.VersionSame || len(classifier.requests) != 1 {
 		t.Errorf("接続の保存のあと = %+v（問い合わせ %d）, want same（1）", got, len(classifier.requests))
+	}
+}
+
+// 判定中に接続が保存されて、その組が後から no_connection を書いても、次の判定の前に待ちに戻る。
+// 保存の要求の context が取り消されていても戻る（R-13）。
+func TestVersionJudgeConnectionSavedDuringAJudgement(t *testing.T) {
+	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
+	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.9}}
+	judge, settings, _ := newTestVersionJudge(store, classifier)
+	settings.connected = false
+	ctx := context.Background()
+
+	// 判定が接続の無いことを読んだあと、結果を反映する前に接続が保存された。
+	job, err := store.ClaimJudgement(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	settings.connected = true
+	cancelled, cancel := context.WithCancel(ctx)
+	cancel()
+	judge.ConnectionSaved(cancelled)
+	if _, err := store.ApplyJudgement(ctx, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionNoConnection}); err != nil {
+		t.Fatal(err)
+	}
+
+	judge.step(ctx)
+	if got := store.lastResult(t); got.Verdict != domain.VersionSame || len(classifier.requests) != 1 {
+		t.Errorf("接続の保存のあと = %+v（問い合わせ %d）, want same（1）", got, len(classifier.requests))
+	}
+}
+
+// 起動時に接続が保存されていれば、前回 no_connection のまま残った組を待ちに戻す（R-13）。
+func TestVersionJudgeRecoverResumesPairsWaitingForAConnection(t *testing.T) {
+	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
+	store.states[versionJudgeJob().Keys] = domain.VersionNoConnection
+	classifier := &fakeClassifier{answers: map[string]float64{domain.VersionJudgeQuestionKey: 0.9}}
+	judge, _, _ := newTestVersionJudge(store, classifier)
+	ctx := context.Background()
+
+	if err := judge.Recover(ctx); err != nil {
+		t.Fatal(err)
+	}
+	judge.step(ctx)
+	if got := store.lastResult(t); got.Verdict != domain.VersionSame {
+		t.Errorf("起動のあと = %+v, want same", got)
+	}
+}
+
+// 結果を保存できなければ、組を判定中のまま残さず、次の判定の前に待ちに戻して判定し直す。
+func TestVersionJudgeRequeuesAJudgementItCannotRecord(t *testing.T) {
+	store := newFakeVersionJudgeStore(versionJudgeJob())
+	store.applyErr = errors.New("database is locked")
+	judge, _, _ := newTestVersionJudge(store, &fakeClassifier{})
+	ctx := context.Background()
+
+	if wait := judge.step(ctx); wait != versionJudgeRetryDelay {
+		t.Fatalf("保存できなかったあとの待ち = %v, want %v", wait, versionJudgeRetryDelay)
+	}
+	store.mu.Lock()
+	store.applyErr = nil
+	store.mu.Unlock()
+	if wait := judge.step(ctx); wait != 0 {
+		t.Fatalf("判定し直しの待ち = %v, want 0", wait)
+	}
+	if got := store.lastResult(t); got.Verdict != domain.VersionSame {
+		t.Errorf("判定し直した結果 = %+v, want same", got)
 	}
 }
 
