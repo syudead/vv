@@ -66,12 +66,60 @@ func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.Vi
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusCreated, gen.WorkInfoFetch{
-		FetchId:   fetch.ID,
-		ExpiresAt: fetch.ExpiresAt.Unix(),
-		Title:     optionalString(fetch.Title),
-		Tags:      fetch.Tags,
-	}, s.logger)
+	writeJSON(w, http.StatusCreated, toAPIWorkInfoFetch(fetch), s.logger)
+}
+
+// toAPIWorkInfoFetch は取得の結果を契約の形にする（specs/052-plugin-work-info-fields/contracts/screen-api.md）。
+// 一覧は無くても [] で、品番と説明は無ければ省く。
+func toAPIWorkInfoFetch(fetch domain.WorkInfoFetchResult) gen.WorkInfoFetch {
+	details := fetch.Details
+	dates := make([]gen.WorkInfoFetchedDate, 0, len(details.Dates))
+	for _, d := range details.Dates {
+		dates = append(dates, gen.WorkInfoFetchedDate{Kind: gen.WorkDateKind(d.Kind), Date: d.Date})
+	}
+	people := make([]gen.WorkInfoFetchedPerson, 0, len(details.People))
+	for i, p := range details.People {
+		people = append(people, gen.WorkInfoFetchedPerson{
+			Role: gen.WorkPersonRole(p.Role), Name: p.Name, ExternalIds: toAPIExternalIDs(p.ExternalIDs),
+			Match: toAPIWorkInfoMatch(fetch.PersonMatches, i),
+		})
+	}
+	organizations := make([]gen.WorkInfoFetchedOrganization, 0, len(details.Organizations))
+	for i, o := range details.Organizations {
+		organizations = append(organizations, gen.WorkInfoFetchedOrganization{
+			Role: gen.WorkOrganizationRole(o.Role), Name: o.Name, ExternalIds: toAPIExternalIDs(o.ExternalIDs),
+			Match: toAPIWorkInfoMatch(fetch.OrganizationMatches, i),
+		})
+	}
+	urls := details.URLs
+	if urls == nil {
+		urls = []string{}
+	}
+	return gen.WorkInfoFetch{
+		FetchId:       fetch.ID,
+		ExpiresAt:     fetch.ExpiresAt.Unix(),
+		Title:         optionalString(fetch.Title),
+		Tags:          fetch.Tags,
+		Code:          optionalString(details.Code),
+		Description:   optionalString(details.Description),
+		Dates:         dates,
+		People:        people,
+		Organizations: organizations,
+		Urls:          urls,
+		ExternalIds:   toAPIExternalIDs(details.ExternalIDs),
+	}
+}
+
+// toAPIWorkInfoMatch は i 件目の照合の答えを契約の形にする。答えが無ければ new とする。
+func toAPIWorkInfoMatch(matches []domain.CreditMatch, i int) gen.WorkInfoMatch {
+	if i >= len(matches) {
+		return gen.WorkInfoMatch{State: gen.WorkInfoMatchStateNew}
+	}
+	match := gen.WorkInfoMatch{State: gen.WorkInfoMatchState(matches[i].State)}
+	if credit := matches[i].Credit; match.State == gen.WorkInfoMatchStateExisting && credit != nil {
+		match.Id, match.Name = &credit.ID, &credit.Name
+	}
+	return match
 }
 
 // ApplyWorkInfoFetch は取得の結果のうち選んだ項目を動画に反映する
@@ -84,7 +132,7 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 	fields := make([]domain.WorkInfoField, 0, len(body.Fields))
 	for _, field := range body.Fields {
 		if !field.Valid() {
-			s.invalidRequest(w, "Each field must be title or tags.")
+			s.invalidRequest(w, "Each field must be a field of the fetched result, such as title, tags, code or dates.release.")
 			return
 		}
 		fields = append(fields, domain.WorkInfoField(field))
@@ -119,12 +167,18 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 		s.logger.Warn("cannot load part of the video after applying the fetched work information",
 			slog.Int64("video", id), slog.Any("error", err))
 	}
-	skipped := make([]gen.SkippedTag, 0, len(applied.SkippedTags))
+	skippedTags := make([]gen.SkippedTag, 0, len(applied.SkippedTags))
 	for _, tag := range applied.SkippedTags {
-		skipped = append(skipped, gen.SkippedTag{Name: tag.Name, Reason: gen.SkippedTagReason(tag.Reason)})
+		skippedTags = append(skippedTags, gen.SkippedTag{Name: tag.Name, Reason: gen.SkippedTagReason(tag.Reason)})
+	}
+	skipped := make([]gen.SkippedWorkInfoValue, 0, len(applied.Skipped))
+	for _, value := range applied.Skipped {
+		skipped = append(skipped, gen.SkippedWorkInfoValue{
+			Field: gen.WorkInfoField(value.Field), Value: value.Value, Reason: gen.SkippedWorkInfoReason(value.Reason),
+		})
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.WorkInfoFetchApplied{Video: video, SkippedTags: skipped}, s.logger)
+	writeJSON(w, http.StatusOK, gen.WorkInfoFetchApplied{Video: video, SkippedTags: skippedTags, Skipped: skipped}, s.logger)
 }
 
 // workInfoRunError は検索と取得の誤りを契約の応答にする（contracts/screen-api.md の Run failures）。

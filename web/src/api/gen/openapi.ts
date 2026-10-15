@@ -1558,7 +1558,8 @@ export interface paths {
          * 作品情報プラグインの fetch で動画の作品情報を取る
          * @description 所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を作品の `url`（http か https、2048 文字まで）で
          *     1 回動かし、結果を 10 分の間メモリに持って `201` で返す。動画は変えない。`title` は表示名の規則を
-         *     通ったもので、無いか規則に外れれば省く。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
+         *     通ったもので、無いか規則に外れれば省く。人物・団体は取得の時点の照合の答え `match` を持つ
+         *     （specs/052-plugin-work-info-fields/contracts/screen-api.md）。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
          *     宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
          *     specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである（research.md R-8）。
          */
@@ -1580,7 +1581,9 @@ export interface paths {
         put?: never;
         /**
          * 取得の結果のうち選んだ項目を動画に反映する
-         * @description 所有者だけ。`fields` の項目（`title` は表示名、`tags` は仮のタグ）を 1 つの取引で書く。結果は使い切りで、
+         * @description 所有者だけ。`fields` の項目（`title` は表示名、`tags` は仮のタグ、ほかは作品情報）を 1 つの取引で書く。
+         *     作品情報の項目は保存済みの作品情報に重ね、規則に合わない値・上限を超える件・照合が曖昧な人物と団体は
+         *     飛ばして `skipped` で知らせる（specs/052-plugin-work-info-fields/contracts/screen-api.md）。結果は使い切りで、
          *     成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
          *     `skippedTags` で知らせ、付けない。`fields` が空か結果に値の無い項目を含めば `400` `invalid_request`、
          *     動画が無いか結果が別の動画のものなら `404` `not_found`、結果が期限切れか不明か、取得の後にプラグインが
@@ -3305,12 +3308,62 @@ export interface components {
             title?: string;
             /** @description 取得したタグの名前。空でもよい */
             tags: string[];
+            /** @description 前後の空白を除いた品番。プラグインが返さなければ無い。規則に外れても残し、反映が飛ばす */
+            code?: string;
+            /** @description 前後の空白を除いた説明。プラグインが返さなければ無い */
+            description?: string;
+            /** @description 種類の順（release・recorded・published）。無ければ [] */
+            dates: components["schemas"]["WorkInfoFetchedDate"][];
+            /** @description 役割の順、同じ役割の中は取得した順。無ければ [] */
+            people: components["schemas"]["WorkInfoFetchedPerson"][];
+            /** @description 役割の順、同じ役割の中は取得した順。無ければ [] */
+            organizations: components["schemas"]["WorkInfoFetchedOrganization"][];
+            /** @description 取得した順。無ければ [] */
+            urls: string[];
+            /** @description 動画の外部 ID。取得した順。無ければ [] */
+            externalIds: components["schemas"]["ExternalId"][];
+        };
+        WorkInfoFetchedDate: {
+            kind: components["schemas"]["WorkDateKind"];
+            /** @description プラグインが返した日付。形が規則に外れても残し、反映が飛ばす */
+            date: string;
         };
         /**
-         * @description 動画に反映できる取得の結果の項目
+         * @description 取得した人物・団体の照合の答え。existing は既存の実体 1 つ、new は何にも当たらず反映が作る、
+         *     ambiguous は複数に当たり反映が飛ばす（specs/052-plugin-work-info-fields/research.md R-3）
          * @enum {string}
          */
-        WorkInfoField: "title" | "tags";
+        WorkInfoMatchState: "existing" | "new" | "ambiguous";
+        WorkInfoMatch: {
+            state: components["schemas"]["WorkInfoMatchState"];
+            /**
+             * Format: int64
+             * @description state が existing のときだけ。一致した実体
+             */
+            id?: number;
+            /** @description state が existing のときだけ。一致した実体の今の名前 */
+            name?: string;
+        };
+        WorkInfoFetchedPerson: {
+            role: components["schemas"]["WorkPersonRole"];
+            /** @description プラグインが返した名前 */
+            name: string;
+            externalIds: components["schemas"]["ExternalId"][];
+            match: components["schemas"]["WorkInfoMatch"];
+        };
+        WorkInfoFetchedOrganization: {
+            role: components["schemas"]["WorkOrganizationRole"];
+            /** @description プラグインが返した名前 */
+            name: string;
+            externalIds: components["schemas"]["ExternalId"][];
+            match: components["schemas"]["WorkInfoMatch"];
+        };
+        /**
+         * @description 動画に反映できる取得の結果の項目。比較の行の順
+         *     （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）
+         * @enum {string}
+         */
+        WorkInfoField: "title" | "tags" | "code" | "description" | "dates.release" | "dates.recorded" | "dates.published" | "people.performer" | "people.director" | "people.photographer" | "people.streamer" | "organizations.maker" | "organizations.label" | "urls" | "externalIds";
         ApplyWorkInfoFetchRequest: {
             /** @description 反映する項目。空にできず、どれも結果に値がなければならない */
             fields: components["schemas"]["WorkInfoField"][];
@@ -3324,10 +3377,24 @@ export interface components {
             name: string;
             reason: components["schemas"]["SkippedTagReason"];
         };
+        /**
+         * @description 反映で飛ばした理由。invalid は項目の規則に合わない値、too_many は保存済みの件の後に数えて上限を超える件、
+         *     ambiguous は複数の実体に当たった人物・団体
+         * @enum {string}
+         */
+        SkippedWorkInfoReason: "invalid" | "too_many" | "ambiguous";
+        SkippedWorkInfoValue: {
+            field: components["schemas"]["WorkInfoField"];
+            /** @description 比較が見せた値（日付、URL、名前、`source: value`、説明は先頭 100 文字） */
+            value: string;
+            reason: components["schemas"]["SkippedWorkInfoReason"];
+        };
         WorkInfoFetchApplied: {
             video: components["schemas"]["Video"];
             /** @description 付けなかったタグの名前。取得の結果の順 */
             skippedTags: components["schemas"]["SkippedTag"][];
+            /** @description 題名とタグ以外の選んだ項目のうち反映で飛ばした値。項目の順、項目の中は取得した順 */
+            skipped: components["schemas"]["SkippedWorkInfoValue"][];
         };
         /**
          * @description 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
@@ -7380,7 +7447,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description 反映後の動画と、付けなかったタグの名前 */
+            /** @description 反映後の動画と、付けなかったタグの名前と、飛ばした作品情報の値 */
             200: {
                 headers: {
                     [name: string]: unknown;

@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -138,6 +139,68 @@ type WorkInfoFetchResult struct {
 	ExpiresAt time.Time
 	Title     string
 	Tags      []string
+	// Details は題名とタグ以外の作品の詳細で、OrderFetchedWorkDetails で並べてある。Title と Tags は持たない。
+	Details FetchedWorkInfo
+	// PersonMatches と OrganizationMatches は Details.People と Details.Organizations の各件の、取得の時点の
+	// 照合の答えで、同じ順に並ぶ（specs/052-plugin-work-info-fields/research.md R-3）。
+	PersonMatches       []CreditMatch
+	OrganizationMatches []CreditMatch
+}
+
+// OrderFetchedWorkDetails は取得した作品の詳細を、画面と反映が使う順に並べ直した複製を返す。日付は種類の順、
+// 人物と団体は役割の順で、同じ種類・役割の中は取得した順を保つ
+// （specs/052-plugin-work-info-fields/contracts/screen-api.md）。Title と Tags は持たない。
+func OrderFetchedWorkDetails(fetched FetchedWorkInfo) FetchedWorkInfo {
+	out := fetched
+	out.Title, out.Tags = "", nil
+	out.Dates = stableByOrder(fetched.Dates, DateKinds, func(d WorkDate) DateKind { return d.Kind })
+	out.People = stableByOrder(fetched.People, PersonRoles, func(p FetchedPerson) PersonRole { return p.Role })
+	out.Organizations = stableByOrder(fetched.Organizations, OrganizationRoles,
+		func(o FetchedOrganization) OrganizationRole { return o.Role })
+	return out
+}
+
+// stableByOrder は items の複製を、key が order の何番目かで安定に並べ替えて返す。nil は nil のまま返す。
+func stableByOrder[T any, K comparable](items []T, order []K, key func(T) K) []T {
+	if items == nil {
+		return nil
+	}
+	out := slices.Clone(items)
+	slices.SortStableFunc(out, func(a, b T) int {
+		return slices.Index(order, key(a)) - slices.Index(order, key(b))
+	})
+	return out
+}
+
+// HasDetail は取得した作品の詳細に、題名とタグ以外の項目 field の値があるかを返す。知らない項目と、
+// 題名とタグは偽である。
+func (f FetchedWorkInfo) HasDetail(field WorkInfoField) bool {
+	switch field {
+	case WorkInfoFieldCode:
+		return f.Code != ""
+	case WorkInfoFieldDescription:
+		return f.Description != ""
+	case WorkInfoFieldURLs:
+		return len(f.URLs) > 0
+	case WorkInfoFieldExternalIDs:
+		return len(f.ExternalIDs) > 0
+	}
+	for _, kind := range DateKinds {
+		if field == DateField(kind) {
+			return slices.ContainsFunc(f.Dates, func(d WorkDate) bool { return d.Kind == kind })
+		}
+	}
+	for _, role := range PersonRoles {
+		if field == PersonField(role) {
+			return slices.ContainsFunc(f.People, func(p FetchedPerson) bool { return p.Role == role })
+		}
+	}
+	for _, role := range OrganizationRoles {
+		if field == OrganizationField(role) {
+			return slices.ContainsFunc(f.Organizations, func(o FetchedOrganization) bool { return o.Role == role })
+		}
+	}
+	return false
 }
 
 // SkippedTagReason は反映で付けなかったタグの名前の理由である。
@@ -184,8 +247,9 @@ type FetchedWorkInfoApplied struct {
 	Skipped      []SkippedWorkInfoValue
 }
 
-// WorkInfoApplied は反映の結果である。
+// WorkInfoApplied は反映の結果である。Skipped は題名とタグ以外の選んだ項目のうち飛ばした値である。
 type WorkInfoApplied struct {
 	Video       Video
 	SkippedTags []SkippedTag
+	Skipped     []SkippedWorkInfoValue
 }

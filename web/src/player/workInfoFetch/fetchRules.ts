@@ -99,9 +99,15 @@ export function tagsRow(video: Video, fetched: WorkInfoFetch): RowState {
   return fetched.tags.every((name) => names.has(name)) ? "same" : "differs";
 }
 
+/**
+ * ComparedField は比較の段が今出す行の項目である。API の WorkInfoField は作品の詳細の項目も
+ * 持つ（specs/052-plugin-work-info-fields/contracts/screen-api.md）が、その行はまだ出さない。
+ */
+export type ComparedField = Extract<WorkInfoField, "title" | "tags">;
+
 /** rowState は項目 field の行の状態である。 */
 export function rowState(
-  field: WorkInfoField,
+  field: ComparedField,
   video: Video,
   fetched: WorkInfoFetch,
 ): RowState {
@@ -109,10 +115,10 @@ export function rowState(
 }
 
 /** FIELDS は比較の行の順である。 */
-export const FIELDS: readonly WorkInfoField[] = ["title", "tags"];
+export const FIELDS: readonly ComparedField[] = ["title", "tags"];
 
 /** initialSelection は比較の段を開いたときの選択で、値があって今と違う項目である。 */
-export function initialSelection(video: Video, fetched: WorkInfoFetch): WorkInfoField[] {
+export function initialSelection(video: Video, fetched: WorkInfoFetch): ComparedField[] {
   return FIELDS.filter((field) => rowState(field, video, fetched) === "differs");
 }
 

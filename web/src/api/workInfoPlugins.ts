@@ -3,7 +3,8 @@ import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
 import { afterTagsAppliedByName } from "./tags";
 
-// 作品情報プラグインの画面 API（specs/049-work-info-plugins/contracts/screen-api.md）。型は
+// 作品情報プラグインの画面 API（specs/049-work-info-plugins/contracts/screen-api.md、作品の詳細は
+// specs/052-plugin-work-info-fields/contracts/screen-api.md）。型は
 // api/openapi.yaml からの生成物を使う。どの経路も所有者だけである。プラグインの変化はイベントで
 // 流れないので、画面は操作のあとに listWorkInfoPlugins で読み直す。
 
@@ -17,6 +18,14 @@ export type WorkInfoFetch = components["schemas"]["WorkInfoFetch"];
 export type WorkInfoField = components["schemas"]["WorkInfoField"];
 export type WorkInfoFetchApplied = components["schemas"]["WorkInfoFetchApplied"];
 export type SkippedTag = components["schemas"]["SkippedTag"];
+export type WorkInfoFetchedDate = components["schemas"]["WorkInfoFetchedDate"];
+export type WorkInfoFetchedPerson = components["schemas"]["WorkInfoFetchedPerson"];
+export type WorkInfoFetchedOrganization =
+  components["schemas"]["WorkInfoFetchedOrganization"];
+export type WorkInfoMatch = components["schemas"]["WorkInfoMatch"];
+export type WorkInfoMatchState = components["schemas"]["WorkInfoMatchState"];
+export type SkippedWorkInfoValue = components["schemas"]["SkippedWorkInfoValue"];
+export type SkippedWorkInfoReason = components["schemas"]["SkippedWorkInfoReason"];
 
 const jsonHeaders = { "Content-Type": "application/json" };
 
@@ -128,7 +137,8 @@ export async function searchWorkInfo(
 
 /**
  * fetchWorkInfo は承認済みのプラグイン `pluginId` の fetch で作品の `url` から動画 `videoId` の作品情報を取る
- * （POST /api/videos/{id}/work-info-fetches）。結果はサーバーが 10 分持ち、動画は変わらない。動画が無ければ
+ * （POST /api/videos/{id}/work-info-fetches）。結果は作品の詳細と、人物・団体ごとの照合の答え `match` を
+ * 持つ。結果はサーバーが 10 分持ち、動画は変わらない。動画が無ければ
  * 404 `not_found` で、実行の失敗は searchWorkInfo と同じである。
  */
 export function fetchWorkInfo(
@@ -147,7 +157,8 @@ export function fetchWorkInfo(
 
 /**
  * applyWorkInfoFetch は取得の結果 `fetchId` のうち `fields` の項目を動画に反映する
- * （POST …/work-info-fetches/{fetchId}/apply）。応答は反映後の動画と付けなかったタグの名前である。結果は
+ * （POST …/work-info-fetches/{fetchId}/apply）。応答は反映後の動画（`workInfo` を含む）と、付けなかった
+ * タグの名前 `skippedTags` と、飛ばした作品の詳細の値 `skipped` である。結果は
  * 使い切りで、期限切れか取得の後にプラグインが変わっていれば 409 `work_info_fetch_stale` で失敗する。
  * 成功したら一覧の控えを捨て、タグを付けたなら共有のタグの一覧も取り直す。
  */

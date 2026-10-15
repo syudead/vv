@@ -14,6 +14,7 @@ import { Checkbox } from "../../ui/shadcn/checkbox";
 import { Label } from "../../ui/shadcn/label";
 import { Spinner } from "../../ui/shadcn/spinner";
 import {
+  type ComparedField,
   FIELDS,
   hostOf,
   pluginLabel,
@@ -58,7 +59,7 @@ function TitleValue({ title, tone }: { title: string; tone: "now" | "fetched" })
   );
 }
 
-function NowValue({ field, video }: { field: WorkInfoField; video: Video }) {
+function NowValue({ field, video }: { field: ComparedField; video: Video }) {
   if (field === "title") return <TitleValue title={video.title} tone="now" />;
   return <TagChips items={chipsOfVideo(video.tags)} />;
 }
@@ -70,7 +71,7 @@ function FetchedValue({
   result,
   noteId,
 }: {
-  field: WorkInfoField;
+  field: ComparedField;
   state: RowState;
   video: Video;
   result: WorkInfoFetch;
@@ -107,7 +108,7 @@ function CompareRow({
   locked,
   onToggle,
 }: {
-  field: WorkInfoField;
+  field: ComparedField;
   video: Video;
   result: WorkInfoFetch;
   selected: boolean;

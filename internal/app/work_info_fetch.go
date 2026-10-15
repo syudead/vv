@@ -31,6 +31,13 @@ type FetchedWorkInfoApplier interface {
 	ApplyFetchedWorkInfo(ctx context.Context, apply domain.FetchedWorkInfoApply) (domain.FetchedWorkInfoApplied, error)
 }
 
+// WorkInfoCreditMatcher は取得した人物・団体を既存の実体と照合する読み出しである。internal/store の
+// *CreditStore が満たす（specs/052-plugin-work-info-fields/research.md R-3）。
+type WorkInfoCreditMatcher interface {
+	// Match は種類 kind の entries を照合し、各件の答えを同じ順に返す。
+	Match(ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry) ([]domain.CreditMatch, error)
+}
+
 // SearchWorkInfo は承認済みのプラグイン id の search で語 query を探し、候補を返す。語は前後の空白を除いて
 // 1〜200 文字でなければ domain.ErrWorkInfoRunInvalid を返す。実行の前の誤りと失敗は run と同じである。
 func (p *WorkInfoPlugins) SearchWorkInfo(ctx context.Context, id int64, query string) ([]domain.WorkInfoCandidate, error) {
@@ -50,7 +57,8 @@ func (p *WorkInfoPlugins) SearchWorkInfo(ctx context.Context, id int64, query st
 }
 
 // FetchWorkInfo は承認済みのプラグイン pluginID の fetch で作品の URL rawURL から作品情報を取り、動画
-// videoID に結び付けてメモリに持ち、画面に見せる形を返す。動画は変えない。URL が規則に合わなければ
+// videoID に結び付けてメモリに持ち、画面に見せる形を返す。取得した人物・団体は既存の実体と照合し、その答えも
+// 題名・タグと同じ寿命で持つ（specs/052-plugin-work-info-fields/research.md R-3）。動画は変えない。URL が規則に合わなければ
 // domain.ErrWorkInfoRunInvalid、動画が無ければ domain.ErrNotFound（プラグインより先に確かめる）を返す。
 // 実行の前の誤りと失敗は run と同じである。
 func (p *WorkInfoPlugins) FetchWorkInfo(
@@ -59,7 +67,7 @@ func (p *WorkInfoPlugins) FetchWorkInfo(
 	if err := domain.CheckWorkInfoFetchURL(rawURL); err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
-	if p.videos == nil || p.applier == nil {
+	if p.videos == nil || p.applier == nil || p.matcher == nil {
 		return domain.WorkInfoFetchResult{}, errors.New("work-info fetches are not configured")
 	}
 	if _, err := p.videos.GetVideo(ctx, domain.AudienceOwner, videoID); err != nil {
@@ -78,13 +86,36 @@ func (p *WorkInfoPlugins) FetchWorkInfo(
 	if tags == nil {
 		tags = []string{}
 	}
+	details := domain.OrderFetchedWorkDetails(result.WorkInfo)
+	people, err := p.matchCredits(ctx, domain.CreditPerson, domain.PersonMatchEntries(details.People))
+	if err != nil {
+		return domain.WorkInfoFetchResult{}, err
+	}
+	organizations, err := p.matchCredits(ctx, domain.CreditOrganization,
+		domain.OrganizationMatchEntries(details.Organizations))
+	if err != nil {
+		return domain.WorkInfoFetchResult{}, err
+	}
 	fetch := &workInfoFetch{
 		videoID: videoID, pluginID: plugin.ID, digest: plugin.Digest, generation: plugin.Generation,
-		title: title, tags: tags,
+		title: title, tags: tags, details: details, personMatches: people, organizationMatches: organizations,
 		expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
 	}
 	id := p.fetches.add(fetch, p.now())
-	return domain.WorkInfoFetchResult{ID: id, ExpiresAt: fetch.expiresAt, Title: title, Tags: tags}, nil
+	return domain.WorkInfoFetchResult{
+		ID: id, ExpiresAt: fetch.expiresAt, Title: title, Tags: tags,
+		Details: details, PersonMatches: people, OrganizationMatches: organizations,
+	}, nil
+}
+
+// matchCredits は取得した件 entries を照合する。件が無ければ保存先を読まない。
+func (p *WorkInfoPlugins) matchCredits(
+	ctx context.Context, kind domain.CreditKind, entries []domain.CreditMatchEntry,
+) ([]domain.CreditMatch, error) {
+	if len(entries) == 0 {
+		return nil, nil
+	}
+	return p.matcher.Match(ctx, kind, entries)
 }
 
 // run はプラグイン id を確かめて要求 req で 1 回動かし、プラグインと結果を返す。無ければ domain.ErrNotFound、
@@ -117,7 +148,7 @@ func (p *WorkInfoPlugins) run(
 }
 
 // ApplyWorkInfoFetch は動画 videoID に、取得の結果 fetchID のうち fields の項目を反映し、反映後の動画と
-// 付けなかったタグの名前を返す。結果は使い切りで、成功すると消える。
+// 付けなかったタグの名前と、作品の詳細のうち飛ばした値を返す。結果は使い切りで、成功すると消える。
 //
 // 結果が無いか期限切れなら domain.ErrWorkInfoFetchStale、結果が別の動画のものなら domain.ErrNotFound、
 // fields が空か知らない項目か結果に値の無い項目を含めば domain.ErrWorkInfoApplyInvalid を返す。取得の後に
@@ -158,6 +189,7 @@ func (p *WorkInfoPlugins) applyFetch(
 	}
 	apply := domain.FetchedWorkInfoApply{
 		VideoID: fetch.videoID, PluginID: fetch.pluginID, Digest: fetch.digest, Generation: fetch.generation,
+		Details: fetch.details, DetailFields: detailFields(fields),
 	}
 	if slices.Contains(fields, domain.WorkInfoFieldTitle) {
 		title := fetch.title
@@ -171,9 +203,24 @@ func (p *WorkInfoPlugins) applyFetch(
 	if err != nil {
 		return domain.WorkInfoApplied{}, err
 	}
+	skipped := applied.Skipped
+	if skipped == nil {
+		skipped = []domain.SkippedWorkInfoValue{}
+	}
 	return domain.WorkInfoApplied{
-		Video: applied.Video, SkippedTags: skippedTags(fetch.tags, invalid, applied.RejectedTags),
+		Video: applied.Video, SkippedTags: skippedTags(fetch.tags, invalid, applied.RejectedTags), Skipped: skipped,
 	}, nil
+}
+
+// detailFields は fields のうち題名とタグ以外の項目を、WorkInfoFields の順に重複なく返す。
+func detailFields(fields []domain.WorkInfoField) []domain.WorkInfoField {
+	var out []domain.WorkInfoField
+	for _, field := range domain.WorkInfoFields {
+		if field != domain.WorkInfoFieldTitle && field != domain.WorkInfoFieldTags && slices.Contains(fields, field) {
+			out = append(out, field)
+		}
+	}
+	return out
 }
 
 // splitTagNames は取得したタグの名前を domain.NormalizeTagName で整え、整えた名前（重複なし）と、規則に
@@ -219,15 +266,20 @@ func skippedTags(names []string, invalid map[string]bool, rejected []string) []d
 }
 
 // workInfoFetch はメモリに持つ取得の結果である。title は表示名の規則を通った題名で、空は値が無い。
-// digest と generation は取得した時のプラグインの行の値である（research.md R-8）。
+// digest と generation は取得した時のプラグインの行の値である（research.md R-8）。details は題名とタグ以外の
+// 作品の詳細で、personMatches と organizationMatches はその人物・団体の取得の時点の照合の答えである。反映は
+// 取引の中で照合し直すので、答えは画面に見せるためだけに持つ。
 type workInfoFetch struct {
-	videoID    int64
-	pluginID   int64
-	digest     string
-	generation int64
-	title      string
-	tags       []string
-	expiresAt  time.Time
+	videoID             int64
+	pluginID            int64
+	digest              string
+	generation          int64
+	title               string
+	tags                []string
+	details             domain.FetchedWorkInfo
+	personMatches       []domain.CreditMatch
+	organizationMatches []domain.CreditMatch
+	expiresAt           time.Time
 }
 
 // hasValue は結果に項目 field の値があるかを返す。知らない項目は偽である。
@@ -238,7 +290,7 @@ func (f *workInfoFetch) hasValue(field domain.WorkInfoField) bool {
 	case domain.WorkInfoFieldTags:
 		return len(f.tags) > 0
 	}
-	return false
+	return f.details.HasDetail(field)
 }
 
 // workInfoFetches は取得の結果を識別子で持つ。期限の過ぎた結果は、追加と取り出しのたびに捨てる。
