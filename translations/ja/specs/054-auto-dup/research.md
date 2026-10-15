@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/research.md
-sourceHash: d7f256282d10d30f3d5a6f78640f5153fec784c87775251b5bc5a7d8f9dc9c2b
+sourceHash: 190f3a641b51283a4b5736cf8ddfff5103a81b3845888580e1c75a341e36171f
 ---
 
 # 調査: 重複の候補を自動で判定する {#research-judging-possible-duplicates-automatically}
@@ -41,7 +41,7 @@ sourceHash: d7f256282d10d30f3d5a6f78640f5153fec784c87775251b5bc5a7d8f9dc9c2b
 
 ## R-3: 質問の文言と 2 つの固定のしきい値 {#r-3-the-question-wording-and-two-fixed-thresholds}
 
-**決定**: 質問は "Each image puts two frames side by side, taken at the same moment from two video files. In every image, do the left half and the right half show the same picture (ignoring differences in sharpness, resolution or compression)?" である。0.8 以上の確率は「同じ動画」、0.2 以下は「別の動画」、その間はすべて「判定できない」である。
+**決定**: 質問は "Each image puts two frames side by side, taken at the same moment from two video files. In every image, do the left half and the right half show the same picture (ignoring differences in sharpness, resolution or compression)?" である。0.8 以上の確率は「同じ動画」、0.2 以下は「別の動画」、その間はすべて「判定できない」である。質問への答えのない応答は失敗であり、[R-5](#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends) のとおりに再試行し、決して確率 0 とはしない。
 
 ```mermaid
 flowchart LR

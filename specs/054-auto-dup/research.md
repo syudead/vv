@@ -59,7 +59,10 @@ frames for auto-tagging, so `internal/app` decodes no image.
 at the same moment from two video files. In every image, do the left half and
 the right half show the same picture (ignoring differences in sharpness,
 resolution or compression)?". A probability of 0.8 or more is "same video", 0.2
-or less is "different videos", and anything between is "undecidable".
+or less is "different videos", and anything between is "undecidable". A reply
+without an answer to the question is a failure, retried as in
+[R-5](#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends), never a
+probability of 0.
 
 ```mermaid
 flowchart LR

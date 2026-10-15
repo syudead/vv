@@ -171,7 +171,7 @@ versions.
 
 **Acceptance**: `task check` and `task check-docs` pass; app tests with a fake
 classifier show 0.85 bundles, 0.1 dismisses, 0.5 leaves the candidate, an error
-sets a `failed` row with its retry time, and nothing is claimed while the
+or a reply without the question's key sets a `failed` row with its retry time, and nothing is claimed while the
 setting is off; an artifacts test shows 4 JPEGs each twice the width of one
 frame.
 
@@ -219,7 +219,8 @@ versions mark on video cards.
 
 **Acceptance**: `task check` passes with no diff from `task generate`; handler
 tests show `GET` answers `enabled: false` before any save and `PUT` answers the
-saved value, and a guest gets `403`; a Web test shows the switch saving; every
+saved value, and a request with no owner session gets
+`401 unauthenticated`; a Web test shows the switch saving; every
 [quickstart](quickstart.md) row passes with `clef` and the PR records each
 pair's probability; the Settings section passes a visual review at the widths
 in `ui-design.md`.

@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/plan.md
-sourceHash: 33dc37cf432b57077b93a096a87f1cf58fa38628be9a1a14acc31f6b3ec6f3fe
+sourceHash: 7038d2632ab409d2803dd76661524191c4b5bfc95c4e5b0f3259dbc37555d417
 ---
 
 # 実装計画: 重複の候補を自動で判定し、同じものをまとめる {#implementation-plan-judging-possible-duplicates-automatically-and-bundling-the-same-ones}
@@ -134,7 +134,7 @@ flowchart LR
 
 **依存**: 重複の判定と、バージョンから外した組を保存する。
 
-**受け入れ**: `task check` と `task check-docs` が通る。偽の分類器を使うアプリのテストが次を示す: 0.85 はまとめ、0.1 は退け、0.5 は候補を残し、エラーは再試行の時刻付きの `failed` の行にし、設定がオフの間は何も取得しない。artifacts のテストが、それぞれ 1 フレームの 2 倍の幅を持つ 4 枚の JPEG を示す。
+**受け入れ**: `task check` と `task check-docs` が通る。偽の分類器を使うアプリのテストが次を示す: 0.85 はまとめ、0.1 は退け、0.5 は候補を残し、エラーか質問のキーのない応答は再試行の時刻付きの `failed` の行にし、設定がオフの間は何も取得しない。artifacts のテストが、それぞれ 1 フレームの 2 倍の幅を持つ 4 枚の JPEG を示す。
 
 ### 候補が判定されたら Duplicates のページを更新する {#refresh-the-duplicates-page-when-candidates-are-judged}
 
@@ -158,4 +158,4 @@ flowchart LR
 
 **依存**: 分類器で重複の候補を判定する。動画のカードにバージョンの印を示す。
 
-**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ハンドラーのテストが次を示す: `GET` は保存の前には `enabled: false` を応答し、`PUT` は保存した値を応答し、ゲストは `403` を受け取る。Web のテストがスイッチの保存を示す。[クイックスタート](quickstart.md) のすべての行が `clef` で通り、PR は各組の確率を記録する。Settings のセクションが、`ui-design.md` の幅での見た目のレビューに通る。
+**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ハンドラーのテストが次を示す: `GET` は保存の前には `enabled: false` を応答し、`PUT` は保存した値を応答し、所有者のセッションのないリクエストは `401 unauthenticated` を受け取る。Web のテストがスイッチの保存を示す。[クイックスタート](quickstart.md) のすべての行が `clef` で通り、PR は各組の確率を記録する。Settings のセクションが、`ui-design.md` の幅での見た目のレビューに通る。
