@@ -130,9 +130,6 @@ interface RowHandlers {
 export default function TagsPage() {
   const toast = useToast();
   const rejected = useRejectedNames();
-  /** newKindButtonRef は「Kinds」のタブの見出しの行の「New kind」である。 */
-  const newKindButtonRef = useRef<HTMLButtonElement | null>(null);
-  const kindsTab = useTagKindsTab({ toast, newKindRef: newKindButtonRef });
   const {
     page,
     loadError,
@@ -160,6 +157,13 @@ export default function TagsPage() {
    * 戻る・進むで URL が変わったときにも当てる）。下の `useLayoutEffect` が追わせる。
    */
   const [tab, setTab] = useState<TagListTab>(urlTab);
+  /** newKindButtonRef は「Kinds」のタブの見出しの行の「New kind」である。 */
+  const newKindButtonRef = useRef<HTMLButtonElement | null>(null);
+  const kindsTab = useTagKindsTab({
+    toast,
+    newKindRef: newKindButtonRef,
+    openAtStart: tab === "kinds",
+  });
   const [creating, setCreating] = useState(false);
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<TagFieldError | null>(null);
@@ -368,8 +372,9 @@ export default function TagsPage() {
   });
 
   // 戻る・進むで URL のタブが変わったら、描くタブを追わせる（後始末は `switchedTab`）。
-  // 作成・改名の送信中は今のタブのまま待つ — 閉じると行が消え、失敗したときに下書きと
-  // 誤りを出す先が無い。送信が終わって作成・改名の行が残っている（失敗した）ときは、
+  // 作成・改名・種類の削除の送信中は今のタブのまま待つ — 閉じると行や窓が消え、失敗した
+  // ときに下書きと誤りを出す先が無く、種類の削除の変更印も応答の後にしか立たない。送信が
+  // 終わって作成・改名の行や削除の窓が残っている（失敗した）ときは、
   // 切り替えを断ったことにして URL を描いているタブへ戻す（`changeTab` が送信中に何も
   // しないのと同じ結果）。
   const editPending = createPending || renamePending || kindsTab.pending;
@@ -1206,7 +1211,12 @@ export default function TagsPage() {
           ref={newKindButtonRef}
           size="sm"
           onClick={kindsTab.openCreate}
-          disabled={kindsTab.kinds === undefined || kindsTab.creating || editPending}
+          disabled={
+            kindsTab.kinds === undefined ||
+            kindsTab.loadError !== null ||
+            kindsTab.creating ||
+            editPending
+          }
         >
           <Plus aria-hidden="true" />
           {t.tags.kinds.newKind}

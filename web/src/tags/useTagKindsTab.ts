@@ -67,9 +67,9 @@ export interface TagKindsTab {
   deleting: TagKind | null;
   deletePending: boolean;
   deleteError: UiText | null;
-  /** 作成か改名の送信中。タブを切り替えない。 */
+  /** 作成・改名・削除の送信中。タブを切り替えない。 */
   pending: boolean;
-  /** 作成の行か改名の入力が開いている。 */
+  /** 作成の行・改名の入力・削除の確認の窓のどれかが開いている。 */
   editing: boolean;
   registerRefs: (id: number, refs: Partial<KindRowRefs>) => void;
   reload: () => void;
@@ -84,7 +84,7 @@ export interface TagKindsTab {
   openDelete: (kind: TagKind) => void;
   cancelDelete: () => void;
   performDelete: () => void;
-  /** タブを離れるときに、作成の行と改名の入力を閉じる。 */
+  /** タブを離れるときに、作成の行・改名の入力・削除の確認の窓を閉じる。 */
   closeEdits: () => void;
   /**
    * takeChanged は、前に呼んだときから種類の改名・削除（もう無かったときを含む）が
@@ -97,16 +97,21 @@ export interface TagKindsTab {
  * useTagKindsTab はタグ管理画面の「Kinds」のタブの状態を持つ
  * （specs/051-tag-kinds/ui-design.md「Kinds tab」）。種類の一覧は `api/tagKinds.ts` の
  * 共有の保持を読み、取り直されるたびに追う。画面を開いたときに読み、タブの件数にも使う。
+ * 「Kinds」のタブで画面を開いたときは、タブを開いたときと同じく保持があっても取り直す
+ * （タグの削除・統合などで `tagCount` が変わっているかもしれない）。
  * 作成・改名・削除の直後は読み込んだ並びをその場で書き換え、共有の保持の取り直しは
  * `api/tagKinds.ts` が始める。
  */
 export function useTagKindsTab({
   toast,
   newKindRef,
+  openAtStart,
 }: {
   toast: ShowToast;
   /** 見出しの行の「New kind」。行へフォーカスを移せないときの行き先。 */
   newKindRef: RefObject<HTMLButtonElement | null>;
+  /** 画面を開いたときに「Kinds」のタブを描くか。画面を開いたときの値だけを読む。 */
+  openAtStart: boolean;
 }): TagKindsTab {
   const [kinds, setKinds] = useState<TagKind[] | undefined>(() => {
     const held = currentTagKinds();
@@ -124,13 +129,14 @@ export function useTagKindsTab({
   const [deleteError, setDeleteError] = useState<UiText | null>(null);
   const changed = useRef(false);
   const rowRefs = useRef(new Map<number, Partial<KindRowRefs>>());
+  const refreshAtStart = useRef(openAtStart);
 
   useEffect(() => {
     const unsubscribe = subscribeTagKinds((next) => {
       setKinds(sortKinds(next));
       setLoadError(null);
     });
-    getTagKinds().then(
+    (refreshAtStart.current ? refreshTagKinds() : getTagKinds()).then(
       (list) => {
         setKinds(sortKinds(list));
         setLoadError(null);
@@ -143,7 +149,8 @@ export function useTagKindsTab({
   /**
    * reload は種類の一覧をサーバーから取り直す。「Kinds」のタブを開いたときと Retry で
    * 呼ぶ（タグの削除・統合などで `tagCount` が変わっているかもしれない）。読み込んだ
-   * 並びがあれば、取り直しの間も失敗しても並びを残す。
+   * 並びがあれば取り直しの間は並びを残す。失敗したら `loadError` を立て、パネルは古い
+   * 数の並びではなく失敗と Retry を描く。
    */
   const reload = useCallback(() => {
     setLoadError(null);
@@ -299,6 +306,8 @@ export function useTagKindsTab({
     setCreateError(null);
     setRenamingId(null);
     setRenameError(null);
+    setDeleting(null);
+    setDeleteError(null);
   }
 
   function takeChanged(): boolean {
@@ -319,8 +328,8 @@ export function useTagKindsTab({
     deleting,
     deletePending,
     deleteError,
-    pending: createPending || renamePending,
-    editing: creating || renamingId !== null,
+    pending: createPending || renamePending || deletePending,
+    editing: creating || renamingId !== null || deleting !== null,
     registerRefs,
     reload,
     openCreate,

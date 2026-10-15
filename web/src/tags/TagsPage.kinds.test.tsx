@@ -1,10 +1,14 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 
+import { getTagKinds } from "../api/tagKinds";
 import {
+  historyBack,
+  hold,
   install,
   kind,
+  kindDeleteReleases,
   kindsTab,
   probe,
   renderPage,
@@ -267,5 +271,103 @@ describe("TagsPage「Kinds」のタブ（specs/051-tag-kinds/ui-design.md「Kind
     await waitFor(() =>
       expect(within(kindRow("Genre")).getByText("0 tags")).toBeDefined(),
     );
+  });
+
+  it("「Kinds」のタブで画面を開いたときも、前に読んだ種類があれば取り直す", async () => {
+    install();
+    // 前の画面で読んだ種類の一覧が共有の保持に残っている。
+    await getTagKinds();
+    server.tags = [
+      ...server.tags,
+      tag({ id: 9, name: "Robot", kind: { id: 1, name: "Genre" } }),
+    ];
+    const before = server.tagKindGets;
+    renderPage({ url: "/tags?tab=kinds" });
+    await screen.findByRole("table", { name: "Kinds" });
+    await waitFor(() =>
+      expect(within(kindRow("Genre")).getByText("1 tag")).toBeDefined(),
+    );
+    expect(server.tagKindGets).toBe(before + 1);
+  });
+
+  it("取り直しに失敗したら、前に読んだ並びではなく失敗と Retry を出す", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Anime");
+    await openKinds(user);
+    await user.click(tagsTab());
+    await screen.findByTitle("Anime");
+    server.failTagKindGets = true;
+    await user.click(kindsTab());
+
+    expect(await screen.findByText("Couldn't load the kinds")).toBeDefined();
+    expect(screen.queryByRole("table", { name: "Kinds" })).toBeNull();
+    expect(
+      (screen.getByRole("button", { name: "New kind" }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    server.failTagKindGets = false;
+    await user.click(screen.getByRole("button", { name: "Retry" }));
+    expect(await screen.findByRole("table", { name: "Kinds" })).toBeDefined();
+  });
+
+  it("削除の確認の窓を開いたまま戻るでタブを離れると窓を閉じ、「Kinds」へ戻っても出ない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("Anime");
+    await openKinds(user);
+    await user.click(
+      within(kindRow("Genre")).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+    await screen.findByRole("alertdialog", { name: 'Delete the kind "Genre"?' });
+
+    await historyBack();
+    await waitFor(() => expect(tagsTab().getAttribute("aria-selected")).toBe("true"));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+    await openKinds(user);
+    expect(screen.queryByRole("alertdialog")).toBeNull();
+  });
+
+  it("削除の送信中に戻るを押すと、削除が終わってから「Tags」へ移り、タグの一覧を読み直す", async () => {
+    const user = userEvent.setup();
+    server.tags = [
+      ...server.tags,
+      tag({ id: 9, name: "Robot", kind: { id: 1, name: "Genre" } }),
+    ];
+    install();
+    renderPage();
+    await screen.findByTitle("Robot");
+    await openKinds(user);
+    await user.click(
+      within(kindRow("Genre")).getByRole("button", { name: "More actions" }),
+    );
+    await user.click(await screen.findByRole("menuitem", { name: "Delete…" }));
+    const dialog = await screen.findByRole("alertdialog", {
+      name: 'Delete the kind "Genre"?',
+    });
+    hold.kindDeletes = true;
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(kindDeleteReleases).toHaveLength(1));
+
+    await historyBack();
+    // 送信中は「Kinds」のまま待つ。
+    // 窓が開いている間はほかの要素が読み上げから隠れるので、hidden で探す。
+    expect(
+      screen
+        .getByRole("tab", { name: /^Kinds/, hidden: true })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
+    expect(screen.getByRole("alertdialog")).toBeDefined();
+    const before = server.getCalls;
+    await act(async () => {
+      kindDeleteReleases[0]!();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(tagsTab().getAttribute("aria-selected")).toBe("true"));
+    await waitFor(() => expect(server.getCalls).toBe(before + 1));
+    expect(screen.queryByRole("alertdialog")).toBeNull();
   });
 });

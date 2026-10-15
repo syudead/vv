@@ -312,7 +312,15 @@ export const hold = {
   release: null as (() => void) | null,
   synonymDeletes: false,
   getsFrom: null as number | null,
+  /** true にした間の DELETE /api/tag-kinds/{id} は、kindDeleteReleases を呼ぶまで応答しない。 */
+  kindDeletes: false,
 };
+
+/**
+ * hold.kindDeletes を true にした間の DELETE /api/tag-kinds/{id} の release である。
+ * release を呼んだ時点で種類を消して応答する。
+ */
+export const kindDeleteReleases: (() => void)[] = [];
 
 export function install() {
   const fetchMock = vi.fn<typeof fetch>();
@@ -322,6 +330,11 @@ export function install() {
     const method = init?.method ?? "GET";
 
     if (path.startsWith("/api/tag-kinds")) {
+      if (hold.kindDeletes && method === "DELETE") {
+        return new Promise((resolve) => {
+          kindDeleteReleases.push(() => resolve(tagKindRoute(path, method, init)!));
+        });
+      }
       const response = tagKindRoute(path, method, init);
       if (response !== undefined) return Promise.resolve(response);
     }
@@ -866,6 +879,8 @@ export function setUpTagsPageServer() {
     hold.synonymDeletes = false;
     synonymDeleteReleases.length = 0;
     hold.getsFrom = null;
+    hold.kindDeletes = false;
+    kindDeleteReleases.length = 0;
     heldGetReleases.length = 0;
     server.rejectedNames = [];
     server.failRejectedGets = false;

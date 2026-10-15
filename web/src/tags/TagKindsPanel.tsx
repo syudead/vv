@@ -50,13 +50,16 @@ export default function TagKindsPanel({
   /** 種類の名前を押したとき。履歴の規則に沿って URL を書き換える。 */
   onOpenKind: (kind: TagKind) => void;
 }) {
-  const { kinds, loadError, creating } = state;
+  const { loadError, creating } = state;
+  // 読み込みに失敗したら、前に読んだ並びがあっても描かない。数が古いかもしれず、削除の
+  // 確認の窓の文もその数を読むため（ui-design.md「States」の Load failed）。
+  const kinds = loadError === null ? state.kinds : undefined;
   return (
     <>
-      {kinds === undefined && loadError === null && (
+      {state.kinds === undefined && loadError === null && (
         <LoadingState label={t.tags.kinds.loading} layout="table" count={4} />
       )}
-      {kinds === undefined && loadError !== null && (
+      {loadError !== null && (
         <ErrorState
           title={t.tags.kinds.loadFailed}
           retryLabel={t.common.retry}
