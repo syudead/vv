@@ -66,6 +66,19 @@ func TestJudgeVersionFramesRunOfFour(t *testing.T) {
 	}
 }
 
+// 単色のコマを挟む 2 つの食い違いは連なりではない。比べられる組の 5% 以下なら同じ動画。
+func TestJudgeVersionFramesFlatFrameBreaksRun(t *testing.T) {
+	distances := make([]int, 41)
+	distances[10] = 30
+	distances[12] = 30
+	a, b := frameRuleFingerprints(distances)
+	a.Frames[11].Flat = true
+	rule := JudgeVersionFrames(a, b)
+	if rule.Outcome != VersionFramesSame || rule.Compared != 40 || rule.Differing != 2 {
+		t.Fatalf("rule = %+v", rule)
+	}
+}
+
 // 2 つ連続の食い違いは、5% 以下でもモデルに聞く。複数の連なりのうち最も長いものを選ぶ。
 func TestJudgeVersionFramesLongestRun(t *testing.T) {
 	distances := make([]int, 60)

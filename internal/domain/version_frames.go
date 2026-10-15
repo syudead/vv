@@ -59,7 +59,8 @@ type VersionFrameRule struct {
 
 // JudgeVersionFrames は 2 本の指紋をコマごとに比べる（research.md R-1）。コマは
 // ComparableFramePairs で時刻で組にし（単色のコマは飛ばす）、距離が FingerprintMatchMaxDistance を
-// 超える組を食い違いとする。食い違いが 5% 以下で 2 つ続かなければ VersionFramesSame。そうでなければ
+// 超える組を食い違いとする。連なりは a のコマの番号が続く食い違いで、飛ばしたコマを挟めば切れる。
+// 食い違いが 5% 以下で 2 つ続かなければ VersionFramesSame。そうでなければ
 // VersionFramesDiffer で、食い違いの最も長い連なり（同じ長さなら先のもの）からコマを選ぶ。連なりが
 // 無く（どの食い違いも 1 つだけで）5% を超えるときは、食い違ったコマ全体から選ぶ。選ぶコマが
 // VersionJudgeMaxImages より多ければ、その中に等間隔に散らす。
@@ -76,6 +77,10 @@ func JudgeVersionFrames(a, b Fingerprint) VersionFrameRule {
 			continue
 		}
 		differing = append(differing, pair)
+		if len(current) > 0 && current[len(current)-1].A+1 != pair.A {
+			// 間のコマが単色か相手が無くて飛ばされた。時刻で隣り合わない食い違いは連なりではない。
+			current = nil
+		}
 		current = append(current, pair)
 		if len(current) > len(longest) {
 			longest = current
