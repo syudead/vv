@@ -62,7 +62,31 @@ func (s *server) parseTagListQuery(w http.ResponseWriter, params gen.ListTagsPar
 	if !s.acceptTagListQuery(w, problem) {
 		return domain.TagListQuery{}, false
 	}
+	if params.Kind != nil {
+		kind, ok := parseTagKindFilter(*params.Kind)
+		if !ok {
+			s.invalidRequest(w, "kind must be a positive integer or none.")
+			return domain.TagListQuery{}, false
+		}
+		query.Kind = kind
+	}
 	return query, true
+}
+
+// parseTagKindFilter は GET /api/tags の kind（正の整数か none）を domain.TagKindFilter にする
+// （specs/051-tag-kinds/contracts/screen-api.md）。どちらでもなければ false を返す。
+func parseTagKindFilter(raw string) (domain.TagKindFilter, bool) {
+	if raw == "none" {
+		return domain.TagKindFilter{None: true}, true
+	}
+	if raw == "" || raw[0] < '1' || raw[0] > '9' {
+		return domain.TagKindFilter{}, false
+	}
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return domain.TagKindFilter{}, false
+	}
+	return domain.TagKindFilter{ID: id}, true
 }
 
 // acceptTagListQuery は buildTagListQuery の断った理由を 400 として書き、断っていれば false を返す。
@@ -291,17 +315,17 @@ func (s *server) RejectTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// BatchTags は複数のタグをまとめて確定・却下・削除する（POST /api/tags/batch、
-// specs/036-tag-admin-scale/contracts/screen-api.md §1）。働かない種類・無いタグは何も変えずに
-// 数えて返し、残りを 1 つの取引で処理する。1 件の経路（confirm・reject・DELETE）は変えない。
+// BatchTags は複数のタグをまとめて確定・却下・削除し、種類を付け外しする（POST /api/tags/batch、
+// specs/036-tag-admin-scale/contracts/screen-api.md §1、specs/051-tag-kinds/contracts/screen-api.md）。
+// 働かない種類・無いタグは何も変えずに数えて返し、残りを 1 つの取引で処理する。1 件の経路
+// （confirm・reject・DELETE）は変えない。
 func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 	var body gen.TagBatchRequest
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	action := domain.TagBatchAction(body.Action)
-	if !action.Valid() {
-		s.invalidRequest(w, "action must be one of confirm, reject or delete.")
+	req, ok := s.tagBatchRequest(w, body)
+	if !ok {
 		return
 	}
 	if !s.validTagBatchIDs(w, "ids", body.Ids) {
@@ -311,7 +335,11 @@ func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	outcome, err := s.tags.BatchTags(r.Context(), action, body.Ids)
+	outcome, err := s.tags.BatchTags(r.Context(), req, body.Ids)
+	if errors.Is(err, domain.ErrTagKindNotFound) {
+		s.writeTagKindError(w, err)
+		return
+	}
 	if err != nil {
 		s.internalError(w, "Could not update the tags.", err)
 		return
@@ -322,6 +350,28 @@ func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 		NotFoundIds:      nonNilIDs(outcome.NotFoundIDs),
 		NotApplicableIds: nonNilIDs(outcome.NotApplicableIDs),
 	}, s.logger)
+}
+
+// tagBatchRequest は本文の action と kindId を検査して domain.TagBatchRequest にする。知らない
+// action、kindId の無い setKind、kindId を付けたほかの action は 400 を書いて false を返す。
+func (s *server) tagBatchRequest(w http.ResponseWriter, body gen.TagBatchRequest) (domain.TagBatchRequest, bool) {
+	req := domain.TagBatchRequest{Action: domain.TagBatchAction(body.Action)}
+	if !req.Action.Valid() {
+		s.invalidRequest(w, "action must be one of confirm, reject, delete, setKind or clearKind.")
+		return domain.TagBatchRequest{}, false
+	}
+	switch {
+	case req.Action == domain.TagBatchSetKind && (body.KindId == nil || *body.KindId < 1):
+		s.invalidRequest(w, "setKind needs a positive kindId.")
+		return domain.TagBatchRequest{}, false
+	case req.Action != domain.TagBatchSetKind && body.KindId != nil:
+		s.invalidRequest(w, "kindId is allowed only with setKind.")
+		return domain.TagBatchRequest{}, false
+	}
+	if body.KindId != nil {
+		req.KindID = *body.KindId
+	}
+	return req, true
 }
 
 // TagImpact はまとめての却下・削除・統合の確認に出す、働くタグの数と影響を受ける動画の

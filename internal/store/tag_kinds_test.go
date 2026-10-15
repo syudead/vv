@@ -9,8 +9,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// setTagKindForTest は tags.kind_id を直接書く。種類を付ける操作（バッチ）は後続のユニットなので、
-// このユニットのテストは SQL で直接付ける。kindID が 0 なら種類を外す。
+// setTagKindForTest は tags.kind_id を直接書き、テストの前提をバッチの操作によらずに作る。
+// kindID が 0 なら種類を外す。
 func setTagKindForTest(t *testing.T, db *DB, tagID, kindID int64) {
 	t.Helper()
 	var value any

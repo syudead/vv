@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -20,11 +21,17 @@ import (
 // NotFoundIDs、domain.TagBatchApplies が偽の id は何も変えずに NotApplicableIDs、処理した id は
 // AppliedIDs に、それぞれ ids に現れた順で入れる。確定は仮のタグを確定にし
 // （specs/031-tentative-tags/data-model.md §3）、却下は元の名前を却下した名前に入れてから消し、
-// 削除は消す（tag_names と video_tags は ON DELETE CASCADE で消える）。取引が失敗したら
-// 何も変えない。
-func (s *TagStore) BatchTags(ctx context.Context, action domain.TagBatchAction, ids []int64) (domain.TagBatchOutcome, error) {
+// 削除は消す（tag_names と video_tags は ON DELETE CASCADE で消える）。種類を付ける・外すのは
+// tags.kind_id だけを書き、仮かどうかは変えない（specs/051-tag-kinds/data-model.md「Rules」）。
+// 種類を付けるときは同じ取引で先に種類を読み、無ければ domain.ErrTagKindNotFound で何も
+// 変えない。取引が失敗したら何も変えない。
+func (s *TagStore) BatchTags(ctx context.Context, req domain.TagBatchRequest, ids []int64) (domain.TagBatchOutcome, error) {
+	action := req.Action
 	if !action.Valid() {
 		return domain.TagBatchOutcome{}, fmt.Errorf("unknown tag batch action %q", action)
+	}
+	if (action == domain.TagBatchSetKind) != (req.KindID != 0) {
+		return domain.TagBatchOutcome{}, fmt.Errorf("tag batch action %q with kind id %d", action, req.KindID)
 	}
 	outcome := domain.TagBatchOutcome{AppliedIDs: []int64{}, NotFoundIDs: []int64{}, NotApplicableIDs: []int64{}}
 	unique := uniqueTagIDs(ids)
@@ -38,16 +45,21 @@ func (s *TagStore) BatchTags(ctx context.Context, action domain.TagBatchAction, 
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	tentative, err := tentativeByTagID(ctx, tx, unique)
+	if action == domain.TagBatchSetKind {
+		if err := requireTagKind(ctx, tx, req.KindID); err != nil {
+			return domain.TagBatchOutcome{}, err
+		}
+	}
+	targets, err := tagBatchTargets(ctx, tx, unique)
 	if err != nil {
 		return domain.TagBatchOutcome{}, err
 	}
 	for _, id := range unique {
-		isTentative, found := tentative[id]
+		target, found := targets[id]
 		switch {
 		case !found:
 			outcome.NotFoundIDs = append(outcome.NotFoundIDs, id)
-		case !domain.TagBatchApplies(action, isTentative):
+		case !domain.TagBatchApplies(req, target):
 			outcome.NotApplicableIDs = append(outcome.NotApplicableIDs, id)
 		default:
 			outcome.AppliedIDs = append(outcome.AppliedIDs, id)
@@ -61,31 +73,59 @@ func (s *TagStore) BatchTags(ctx context.Context, action domain.TagBatchAction, 
 	if err != nil {
 		return domain.TagBatchOutcome{}, fmt.Errorf("cannot build tag ids: %w", err)
 	}
-	switch action {
-	case domain.TagBatchConfirm:
-		if _, err := tx.ExecContext(ctx,
-			`update tags set tentative = 0 where id in (select value from json_each(?))`, string(encoded),
-		); err != nil {
-			return domain.TagBatchOutcome{}, fmt.Errorf("cannot confirm the tags: %w", err)
-		}
-	case domain.TagBatchReject:
-		// 名前は消す前に写す。消したあとでは tag_names の行が連鎖して消えている。
-		if err := rememberRejectedNames(ctx, tx, string(encoded)); err != nil {
-			return domain.TagBatchOutcome{}, err
-		}
-		if err := deleteTagsByIDs(ctx, tx, string(encoded)); err != nil {
-			return domain.TagBatchOutcome{}, err
-		}
-	case domain.TagBatchDelete:
-		if err := deleteTagsByIDs(ctx, tx, string(encoded)); err != nil {
-			return domain.TagBatchOutcome{}, err
-		}
+	if err := applyTagBatch(ctx, tx, req, string(encoded)); err != nil {
+		return domain.TagBatchOutcome{}, err
 	}
 
 	if err := tx.Commit(); err != nil {
 		return domain.TagBatchOutcome{}, fmt.Errorf("cannot apply the tag batch: %w", err)
 	}
 	return outcome, nil
+}
+
+// applyTagBatch は JSON の配列 encodedIDs のタグに操作 req を書く。どの id も操作が働くタグである。
+func applyTagBatch(ctx context.Context, tx *sql.Tx, req domain.TagBatchRequest, encodedIDs string) error {
+	switch req.Action {
+	case domain.TagBatchConfirm:
+		if _, err := tx.ExecContext(ctx,
+			`update tags set tentative = 0 where id in (select value from json_each(?))`, encodedIDs,
+		); err != nil {
+			return fmt.Errorf("cannot confirm the tags: %w", err)
+		}
+	case domain.TagBatchReject:
+		// 名前は消す前に写す。消したあとでは tag_names の行が連鎖して消えている。
+		if err := rememberRejectedNames(ctx, tx, encodedIDs); err != nil {
+			return err
+		}
+		return deleteTagsByIDs(ctx, tx, encodedIDs)
+	case domain.TagBatchDelete:
+		return deleteTagsByIDs(ctx, tx, encodedIDs)
+	case domain.TagBatchSetKind, domain.TagBatchClearKind:
+		// clearKind では req.KindID が 0 なので null を書く。
+		var kindID any
+		if req.KindID != 0 {
+			kindID = req.KindID
+		}
+		if _, err := tx.ExecContext(ctx,
+			`update tags set kind_id = ? where id in (select value from json_each(?))`, kindID, encodedIDs,
+		); err != nil {
+			return fmt.Errorf("cannot set the kind of the tags: %w", err)
+		}
+	}
+	return nil
+}
+
+// requireTagKind は id の種類があることを確かめ、無ければ domain.ErrTagKindNotFound を返す。
+func requireTagKind(ctx context.Context, tx *sql.Tx, id int64) error {
+	var found int
+	err := tx.QueryRowContext(ctx, `select 1 from tag_kinds where id = ?`, id).Scan(&found)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ErrTagKindNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("cannot read the tag kind: %w", err)
+	}
+	return nil
 }
 
 // TagImpact は、ids のうち今あり domain.TagImpactApplies が真のタグの数と、そのどれかが付いた
@@ -108,13 +148,13 @@ func (s *TagStore) TagImpact(ctx context.Context, action domain.TagImpactAction,
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	tentative, err := tentativeByTagID(ctx, tx, unique)
+	targets, err := tagBatchTargets(ctx, tx, unique)
 	if err != nil {
 		return domain.TagImpact{}, err
 	}
 	counted := make([]int64, 0, len(unique))
 	for _, id := range unique {
-		if isTentative, found := tentative[id]; found && domain.TagImpactApplies(action, isTentative) {
+		if target, found := targets[id]; found && domain.TagImpactApplies(action, target.Tentative) {
 			counted = append(counted, id)
 		}
 	}
@@ -149,32 +189,33 @@ func uniqueTagIDs(ids []int64) []int64 {
 	return unique
 }
 
-// tentativeByTagID は ids のうち今あるタグの仮かどうかを、id ごとに返す。無い id は入らない。
-func tentativeByTagID(ctx context.Context, q queryExecer, ids []int64) (map[int64]bool, error) {
+// tagBatchTargets は ids のうち今あるタグの仮かどうかと種類を、id ごとに返す。無い id は入らない。
+func tagBatchTargets(ctx context.Context, q queryExecer, ids []int64) (map[int64]domain.TagBatchTarget, error) {
 	encoded, err := json.Marshal(ids)
 	if err != nil {
 		return nil, fmt.Errorf("cannot build tag ids: %w", err)
 	}
 	rows, err := q.QueryContext(ctx,
-		`select id, tentative from tags where id in (select value from json_each(?))`, string(encoded))
+		`select id, tentative, coalesce(kind_id, 0) from tags where id in (select value from json_each(?))`,
+		string(encoded))
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the tags: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
 
-	tentative := make(map[int64]bool, len(ids))
+	targets := make(map[int64]domain.TagBatchTarget, len(ids))
 	for rows.Next() {
 		var id int64
-		var isTentative bool
-		if err := rows.Scan(&id, &isTentative); err != nil {
+		var target domain.TagBatchTarget
+		if err := rows.Scan(&id, &target.Tentative, &target.KindID); err != nil {
 			return nil, fmt.Errorf("cannot read the tags: %w", err)
 		}
-		tentative[id] = isTentative
+		targets[id] = target
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot read the tags: %w", err)
 	}
-	return tentative, nil
+	return targets, nil
 }
 
 // deleteTagsByIDs は JSON の配列 encodedIDs のタグを消す。tag_names と video_tags は外部キーの

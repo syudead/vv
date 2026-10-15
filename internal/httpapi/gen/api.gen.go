@@ -1025,19 +1025,25 @@ func (e SubtitleTrackFormat) Valid() bool {
 
 // Defines values for TagBatchRequestAction.
 const (
-	TagBatchRequestActionConfirm TagBatchRequestAction = "confirm"
-	TagBatchRequestActionDelete  TagBatchRequestAction = "delete"
-	TagBatchRequestActionReject  TagBatchRequestAction = "reject"
+	TagBatchRequestActionClearKind TagBatchRequestAction = "clearKind"
+	TagBatchRequestActionConfirm   TagBatchRequestAction = "confirm"
+	TagBatchRequestActionDelete    TagBatchRequestAction = "delete"
+	TagBatchRequestActionReject    TagBatchRequestAction = "reject"
+	TagBatchRequestActionSetKind   TagBatchRequestAction = "setKind"
 )
 
 // Valid indicates whether the value is a known member of the TagBatchRequestAction enum.
 func (e TagBatchRequestAction) Valid() bool {
 	switch e {
+	case TagBatchRequestActionClearKind:
+		return true
 	case TagBatchRequestActionConfirm:
 		return true
 	case TagBatchRequestActionDelete:
 		return true
 	case TagBatchRequestActionReject:
+		return true
+	case TagBatchRequestActionSetKind:
 		return true
 	default:
 		return false
@@ -3023,6 +3029,9 @@ type Tag struct {
 type TagBatchRequest struct {
 	Action TagBatchRequestAction `json:"action"`
 	Ids    []int64               `json:"ids"`
+
+	// KindId `setKind` で付ける種類。`setKind` だけが持つ
+	KindId *int64 `json:"kindId,omitempty"`
 }
 
 // TagBatchRequestAction defines model for TagBatchRequest.Action.
@@ -4322,11 +4331,16 @@ type ListTagsParams struct {
 	// Unused true なら本数0のタグだけにする
 	Unused *bool `form:"unused,omitempty" json:"unused,omitempty"`
 
+	// Kind 種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
+	// 無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない。正の整数でも
+	// `none` でもなければ 400 `invalid_request`（specs/051-tag-kinds/contracts/screen-api.md）
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
+
 	// Sort 並び順
 	Sort *TagSort `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
-	// `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+	// `unused`・`kind`・`sort` で続けて使う。`limit` を省いたときは無視する
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
 	// Limit 1ページの件数。省くと全件を返し、`nextCursor` は入らない
@@ -4974,7 +4988,7 @@ type ServerInterface interface {
 	// CreateTag タグを1件作る
 	// (POST /api/tags)
 	CreateTag(w http.ResponseWriter, r *http.Request)
-	// BatchTags 複数のタグをまとめて確定・却下・削除する
+	// BatchTags 複数のタグをまとめて確定・却下・削除し、種類を付け外しする
 	// (POST /api/tags/batch)
 	BatchTags(w http.ResponseWriter, r *http.Request)
 	// TagImpact まとめての却下・削除・統合の確認に出す数を返す
@@ -7527,6 +7541,19 @@ func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Reque
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unused"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unused", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
 		}
 		return
 	}

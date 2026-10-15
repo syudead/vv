@@ -143,7 +143,7 @@ func TestTagSortKeysAreWrittenByEveryNameWriter(t *testing.T) {
 	}
 	assertSortKeyWritten(t, db, "rejected_tag_names", "犬 1", "却下後")
 
-	outcome, err := db.Tags().BatchTags(ctx, domain.TagBatchReject,
+	outcome, err := db.Tags().BatchTags(ctx, domain.TagBatchRequest{Action: domain.TagBatchReject},
 		[]int64{tagIDByName(t, db, "猫 12"), tagIDByName(t, db, "鳥 7"), tag.ID})
 	if err != nil {
 		t.Fatal(err)

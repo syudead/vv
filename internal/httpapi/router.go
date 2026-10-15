@@ -116,7 +116,9 @@ type Tags interface {
 	ForgetRejectedTagName(ctx context.Context, name string) (bool, error)
 
 	// タグ管理画面のまとめての操作と、その確認に出す数（specs/036-tag-admin-scale/data-model.md §2）。
-	BatchTags(ctx context.Context, action domain.TagBatchAction, ids []int64) (domain.TagBatchOutcome, error)
+	// 無い種類を付ける BatchTags は domain.ErrTagKindNotFound を返し、何も変えない
+	// （specs/051-tag-kinds/data-model.md「Rules」）。
+	BatchTags(ctx context.Context, req domain.TagBatchRequest, ids []int64) (domain.TagBatchOutcome, error)
 	TagImpact(ctx context.Context, action domain.TagImpactAction, ids []int64) (domain.TagImpact, error)
 
 	// タグの種類（specs/051-tag-kinds/contracts/screen-api.md）。名前の規則違反は
