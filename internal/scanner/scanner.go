@@ -154,6 +154,9 @@ type scanPass struct {
 	// targets は metadata の比較で変更なしを除いた、実際に取り込むファイル。
 	// 全ルートを列挙してから処理し、進捗の分母を先に確定させる。
 	targets []scanTarget
+	// scoped は範囲を絞った走査（監視の走査）であることを表す。取り込みの途中で変わった・
+	// 消えたファイルを失敗にせず、変更の知らせで始まる次の走査に任せる。
+	scoped bool
 }
 
 // Scan は全体の走査を1回行い、集計を返す。
@@ -210,7 +213,7 @@ func (s *Scanner) scanOnce(ctx context.Context, dirs []domain.DirtyDirectory, sc
 		return domain.ScanResult{}, err
 	}
 
-	pass := &scanPass{indexed: indexed, seen: map[string]struct{}{}, targets: []scanTarget{}}
+	pass := &scanPass{indexed: indexed, seen: map[string]struct{}{}, targets: []scanTarget{}, scoped: scoped}
 	// scanned は今回の走査が読むメディアフォルダ。全体の走査は全部、範囲を絞った走査は
 	// 読むディレクトリを持つものだけである（ほかのフォルダが読めなくても止めない）。
 	scanned := folders
@@ -260,89 +263,16 @@ func (s *Scanner) scanOnce(ctx context.Context, dirs []domain.DirtyDirectory, sc
 	}
 	result := pass.result
 	seen := pass.seen
-	targets := pass.targets
-	result.Total += len(targets)
+	result.Total += len(pass.targets)
 	// 対象列挙中は total=0 の不確定表示で、ここから確定した 0 / total を示す。
 	if err := s.report(ctx, result); err != nil {
 		return result, err
 	}
-
-	for _, target := range targets {
-		if err := ctx.Err(); err != nil {
-			return result, err
-		}
-		s.reportFile(target.path, indexed[target.path].ID)
-		if err := s.ingest(ctx, target, &result); err != nil {
-			if ctx.Err() != nil {
-				return result, err
-			}
-			// 1件の失敗で全体を止めない。理由は取り込みの問題として報告し、次のファイルへ進む。
-			s.logger.Warn("could not ingest a file",
-				slog.String("path", target.path), slog.Any("error", err))
-			result.Failed++
-			issue := domain.ScanFileIssue{
-				VideoID: indexed[target.path].ID, Path: target.path, Kind: domain.IssueRegisterFailed,
-			}
-			var failed *fileError
-			if errors.As(err, &failed) {
-				issue.Kind = failed.kind
-				if failed.videoID != 0 {
-					issue.VideoID = failed.videoID
-				}
-			}
-			if err := s.reportIssue(ctx, issue); err != nil {
-				return result, err
-			}
-		} else {
-			result.Processed++
-		}
-
-		// 1ファイルごとに進みを知らせる。画面への送信は接続ごとにまとまるので、
-		// 遅い接続に古い値は積もらない（research.md R-8）。
-		if err := s.report(ctx, result); err != nil {
-			return result, err
-		}
+	if err := s.ingestTargets(ctx, pass, &result); err != nil {
+		return result, err
 	}
-	s.reportFile("", 0)
-
-	checkedDirs := map[string]struct{}{}
-	for _, folder := range scanned {
-		if err := ensureReadableDirectory(folder.Path); err != nil {
-			code := domain.ScanErrorMediaFolderUnreadable
-			if errors.Is(err, errNotDirectory) {
-				code = domain.ScanErrorMediaFolderNotDirectory
-			}
-			return result, domain.NewScanFailure(code, folder.Path,
-				fmt.Errorf("could not check the media folder after the scan (%s): %w", folder.Path, err))
-		}
-		checkedDirs[folder.Path] = struct{}{}
-	}
-
-	// 列挙後に消えた個別ファイルを、発見済みという理由だけで索引へ残さない。
-	// 親ディレクトリごと消えた場合は列挙結果を信頼できないため、削除せず
-	// 走査全体を失敗させる。
-	for path := range seen {
-		info, err := os.Lstat(path)
-		if errors.Is(err, fs.ErrNotExist) {
-			parent := filepath.Dir(path)
-			if _, ok := checkedDirs[parent]; !ok {
-				if parentErr := ensureReadableDirectory(parent); parentErr != nil {
-					return result, domain.NewScanFailure(domain.ScanErrorLocationUnreadable, parent,
-						fmt.Errorf("could not check the parent directory after the scan (%s): %w", parent, parentErr))
-				}
-				checkedDirs[parent] = struct{}{}
-			}
-			delete(seen, path)
-			continue
-		}
-		if err != nil {
-			s.logger.Warn("could not check a file after the scan",
-				slog.String("path", path), slog.Any("error", err))
-			continue
-		}
-		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
-			delete(seen, path)
-		}
+	if err := s.dropVanished(pass, scanned); err != nil {
+		return result, err
 	}
 
 	// 取って代わられた走査は、ここまでに足したものを残し、何も消さない。
@@ -360,6 +290,135 @@ func (s *Scanner) scanOnce(ctx context.Context, dirs []domain.DirtyDirectory, sc
 	result.Removed = removed
 
 	return result, nil
+}
+
+// ingestTargets は pass の取り込み対象を1つずつ索引に反映し、result を進める。
+func (s *Scanner) ingestTargets(ctx context.Context, pass *scanPass, result *domain.ScanResult) error {
+	for _, target := range pass.targets {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		videoID := pass.indexed[target.path].ID
+		s.reportFile(target.path, videoID)
+		if err := s.ingest(ctx, target, result); err != nil {
+			if ctx.Err() != nil {
+				return err
+			}
+			if err := s.recordIngestFailure(ctx, pass, result, target.path, videoID, err); err != nil {
+				return err
+			}
+		} else {
+			result.Processed++
+		}
+
+		// 1ファイルごとに進みを知らせる。画面への送信は接続ごとにまとまるので、
+		// 遅い接続に古い値は積もらない（research.md R-8）。
+		if err := s.report(ctx, *result); err != nil {
+			return err
+		}
+	}
+	s.reportFile("", 0)
+	return nil
+}
+
+// recordIngestFailure は1件の取り込みの失敗を数え、取り込みの問題として報告する。1件の
+// 失敗で全体は止めない。
+//
+// 監視の走査では、途中で変わった・消えたファイルは失敗にせず対象から外す。その変更は
+// 変更の知らせになって、ディレクトリを次の監視の走査へ回すからである
+// （specs/042-folder-watch-import/research.md R-3）。
+func (s *Scanner) recordIngestFailure(
+	ctx context.Context, pass *scanPass, result *domain.ScanResult, path string, videoID int64, err error,
+) error {
+	issue := domain.ScanFileIssue{VideoID: videoID, Path: path, Kind: domain.IssueRegisterFailed}
+	var failed *fileError
+	if errors.As(err, &failed) {
+		issue.Kind = failed.kind
+		if failed.videoID != 0 {
+			issue.VideoID = failed.videoID
+		}
+	}
+	if pass.scoped && issue.Kind == domain.IssueChangedDuringImport {
+		s.logger.Info("a file changed during a watch scan; the next watch scan reads it again",
+			slog.String("path", path), slog.Any("error", err))
+		result.Total--
+		return nil
+	}
+	s.logger.Warn("could not ingest a file", slog.String("path", path), slog.Any("error", err))
+	result.Failed++
+	return s.reportIssue(ctx, issue)
+}
+
+// dropVanished は、列挙のあとに消えたファイルを pass.seen から外す。発見済みという理由
+// だけで索引へ残さないためである。
+//
+// 親ディレクトリごと消えた場合は列挙結果を信頼できないため、全体の走査は失敗にする。
+// 監視の走査では、消えたディレクトリは移動か削除の知らせで次の監視の走査に回るので、
+// その所在を今は残し（消さず）、走査は続ける。移動先の追加を先に行ってから消すためである
+// （research.md R-3）。
+func (s *Scanner) dropVanished(pass *scanPass, scanned []domain.MediaFolder) error {
+	checkedDirs := map[string]struct{}{}
+	for _, folder := range scanned {
+		if err := ensureReadableDirectory(folder.Path); err != nil {
+			code := domain.ScanErrorMediaFolderUnreadable
+			if errors.Is(err, errNotDirectory) {
+				code = domain.ScanErrorMediaFolderNotDirectory
+			}
+			return domain.NewScanFailure(code, folder.Path,
+				fmt.Errorf("could not check the media folder after the scan (%s): %w", folder.Path, err))
+		}
+		checkedDirs[folder.Path] = struct{}{}
+	}
+	keptDirs := map[string]struct{}{}
+	for path := range pass.seen {
+		info, err := os.Lstat(path)
+		if errors.Is(err, fs.ErrNotExist) {
+			keep, err := s.checkVanishedParent(pass.scoped, filepath.Dir(path), checkedDirs, keptDirs)
+			if err != nil {
+				return err
+			}
+			if !keep {
+				delete(pass.seen, path)
+			}
+			continue
+		}
+		if err != nil {
+			s.logger.Warn("could not check a file after the scan",
+				slog.String("path", path), slog.Any("error", err))
+			continue
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			delete(pass.seen, path)
+		}
+	}
+	return nil
+}
+
+// checkVanishedParent は消えたファイルの親 parent を確かめる。親が読めればファイルだけが
+// 消えたので keep は偽である。監視の走査で親ごと消えていれば、所在を残すので keep は真である。
+// 確かめた結果は checkedDirs と keptDirs に覚える。
+func (s *Scanner) checkVanishedParent(
+	scoped bool, parent string, checkedDirs, keptDirs map[string]struct{},
+) (keep bool, err error) {
+	if _, ok := keptDirs[parent]; ok {
+		return true, nil
+	}
+	if _, ok := checkedDirs[parent]; ok {
+		return false, nil
+	}
+	parentErr := ensureReadableDirectory(parent)
+	if parentErr == nil {
+		checkedDirs[parent] = struct{}{}
+		return false, nil
+	}
+	if scoped && (errors.Is(parentErr, fs.ErrNotExist) || errors.Is(parentErr, errNotDirectory)) {
+		s.logger.Info("a directory vanished during a watch scan; the next watch scan reads it again",
+			slog.String("path", parent), slog.Any("error", parentErr))
+		keptDirs[parent] = struct{}{}
+		return true, nil
+	}
+	return false, domain.NewScanFailure(domain.ScanErrorLocationUnreadable, parent,
+		fmt.Errorf("could not check the parent directory after the scan (%s): %w", parent, parentErr))
 }
 
 // checkMediaFolder はメディアフォルダ root が読めるディレクトリかを確かめる。
@@ -455,8 +514,12 @@ func (s *Scanner) visit(
 		return nil
 	}
 
-	pass.seen[path] = struct{}{}
 	info, infoErr := entry.Info()
+	if infoErr != nil && pass.scoped && errors.Is(infoErr, fs.ErrNotExist) {
+		// 列挙のあとに消えた。消えた知らせが次の監視の走査に回す（research.md R-3）。
+		return nil
+	}
+	pass.seen[path] = struct{}{}
 	if infoErr != nil {
 		// media file だと判定できた時点で取り込み候補である。metadata を
 		// 読めない場合も対象件数と失敗件数に含める。
@@ -524,22 +587,16 @@ func (s *Scanner) ingest(
 ) error {
 	info, err := s.stableTargetInfo(target.path)
 	if err != nil {
-		return failFile(domain.IssueUnreadable, 0, err)
+		return failFile(unreadableKind(err), 0, err)
 	}
 
 	key, err := s.contentKey(target.path)
 	if err != nil {
-		return failFile(domain.IssueUnreadable, 0, err)
+		return failFile(unreadableKind(err), 0, err)
 	}
 	after, err := s.stableTargetInfo(target.path)
 	if err != nil {
-		// 消えたか通常のファイルでなくなったときだけ、途中で変わったと言える。
-		// それ以外の読めなさ（I/O の失敗や権限）は、読めなかったとして報告する。
-		kind := domain.IssueUnreadable
-		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errNotRegular) {
-			kind = domain.IssueChangedDuringImport
-		}
-		return failFile(kind, 0, err)
+		return failFile(unreadableKind(err), 0, err)
 	}
 	if !os.SameFile(info, after) || info.Size() != after.Size() || !info.ModTime().Equal(after.ModTime()) {
 		return failFile(domain.IssueChangedDuringImport, 0,
@@ -579,6 +636,16 @@ func (s *Scanner) ingest(
 		return failFile(domain.IssueRegisterFailed, upserted.ID, err)
 	}
 	return nil
+}
+
+// unreadableKind は対象のファイルを読めなかった理由 err を問題の種類にする。列挙のあとで
+// 消えたか通常のファイルでなくなったときだけ、途中で変わったと言える。それ以外の読めなさ
+// （I/O の失敗や権限）は、読めなかったとして報告する。
+func unreadableKind(err error) domain.ScanIssueKind {
+	if errors.Is(err, fs.ErrNotExist) || errors.Is(err, errNotRegular) {
+		return domain.IssueChangedDuringImport
+	}
+	return domain.IssueUnreadable
 }
 
 func (s *Scanner) stableTargetInfo(path string) (fs.FileInfo, error) {
