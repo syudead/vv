@@ -91,12 +91,16 @@ const server = {
   holdGroup: null as Promise<void> | null,
   /** 次の「Make a group」が作るグループの id。 */
   nextGroupId: 90,
+  /** この動画に落とす「Make a group」は 500 で失敗する。 */
+  failGroupOn: null as number | null,
 };
 
 /** organize は「Make a group」と「Bundle as versions」に契約どおり答える。 */
 function organize(path: string, body: unknown): Response | undefined {
   if (path === "/api/organize/group") {
     const { items, target } = body as { items: { id: number }[]; target: number };
+    if (target === server.failGroupOn)
+      return json({ code: "internal", message: "x" }, 500);
     const lifted = new Set(items.map((each) => each.id));
     const targetItem = server.items.find(
       (item) => item.kind === "video" && item.video.id === target,
@@ -237,6 +241,7 @@ beforeEach(() => {
   server.holdBundle = null;
   server.holdGroup = null;
   server.nextGroupId = 90;
+  server.failGroupOn = null;
   vi.stubGlobal("fetch", fetchMock);
   installFakeEventSource();
   vi.stubGlobal(
@@ -316,6 +321,9 @@ describe("LibraryPage drag a video onto a video", () => {
 
     const kept = screen.getByRole("textbox", { name: "Group name" });
     expect((kept as HTMLInputElement).value).toBe("D");
+    // 取り消しの通知は後の操作のもののまま（前の操作の遅れた答えで置き換えない）。
+    expect(screen.getByText('Made the group "D"')).toBeDefined();
+    expect(screen.queryByText('Made the group "B"')).toBeNull();
     await waitFor(() => expect(cardTitles()).toEqual(["B", "D"]));
     await user.clear(kept);
     await user.type(kept, "Trip{Enter}");
@@ -324,6 +332,56 @@ describe("LibraryPage drag a video onto a video", () => {
         method: "PATCH",
         path: "/api/groups/91",
         body: { name: "Trip", undoToken: "token-group-91" },
+      }),
+    );
+  });
+
+  it("前の「Make a group」が答えた後に後の操作が失敗したら、前のグループの名前の欄を開く", async () => {
+    server.items = ["A", "B", "C", "D"].map((title, index): LibraryItem => ({
+      kind: "video",
+      video: video(index + 1, title),
+    }));
+    layoutCards();
+    renderLibrary();
+    await screen.findByRole("link", { name: "D" });
+    let answerFirst = () => undefined as void;
+    server.holdGroup = new Promise<void>((resolve) => {
+      answerFirst = resolve;
+    });
+    const user = userEvent.setup();
+    await user.click(
+      within(await dropAOnB()).getByRole("menuitem", { name: "Make a group" }),
+    );
+    let answerSecond = () => undefined as void;
+    server.holdGroup = new Promise<void>((resolve) => {
+      answerSecond = resolve;
+    });
+    server.failGroupOn = 4;
+    dropOn("C", 1, 2);
+    await user.click(
+      within(await openedMenu()).getByRole("menuitem", { name: "Make a group" }),
+    );
+
+    await act(async () => {
+      answerFirst();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(screen.queryByRole("textbox", { name: "Group name" })).toBeNull();
+
+    await act(async () => {
+      answerSecond();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+    expect(await screen.findByText(/^Couldn't make the group: /)).toBeDefined();
+    const field = await screen.findByRole("textbox", { name: "Group name" });
+    expect((field as HTMLInputElement).value).toBe("B");
+    await user.clear(field);
+    await user.type(field, "Trip{Enter}");
+    await waitFor(() =>
+      expect(server.writes.at(-1)).toEqual({
+        method: "PATCH",
+        path: "/api/groups/90",
+        body: { name: "Trip", undoToken: "token-group-90" },
       }),
     );
   });
