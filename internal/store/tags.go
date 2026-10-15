@@ -164,7 +164,7 @@ func mergeTagsInTx(ctx context.Context, tx tagTx, targetID int64, sourceIDs []in
 		return domain.TagMergeOutcome{}, err
 	}
 	unique := uniqueTagIDs(sourceIDs)
-	existing, err := tentativeByTagID(ctx, tx, unique)
+	existing, err := tagBatchTargets(ctx, tx, unique)
 	if err != nil {
 		return domain.TagMergeOutcome{}, err
 	}

@@ -111,7 +111,7 @@ func exactListedTag(ctx context.Context, tx *sql.Tx, query domain.TagListQuery) 
 	if err != nil {
 		return nil, err
 	}
-	if query.UnusedOnly && tag.VideoCount != 0 {
+	if query.UnusedOnly && tag.VideoCount != 0 || !query.Kind.Matches(tag.Kind) {
 		return nil, nil
 	}
 	return &tag, nil
@@ -133,6 +133,13 @@ func listedTagsCTE(query domain.TagListQuery) (string, []any) {
 	}
 	if query.UnusedOnly {
 		conditions = append(conditions, `coalesce(c.video_count, 0) = 0`)
+	}
+	switch {
+	case query.Kind.None:
+		conditions = append(conditions, `t.kind_id is null`)
+	case query.Kind.ID != 0:
+		conditions = append(conditions, `t.kind_id = ?`)
+		args = append(args, query.Kind.ID)
 	}
 	where := ``
 	if len(conditions) > 0 {
