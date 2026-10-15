@@ -22,6 +22,7 @@ read from the `versions` summary that list items now carry.
 | AI input | Up to 4 images from the run of differing frames, A beside B; no facts ([R-2](research.md#r-2-the-model-sees-the-frames-where-the-two-files-differ), [R-11](research.md#r-11-the-request-carries-no-file-names)) |
 | AI verdict | 0.8 or more same, 0.2 or less different, fixed ([R-3](research.md#r-3-the-question-wording-and-two-fixed-thresholds)) |
 | Queue | Judgement columns on the candidate row; a null judgement waits ([R-4](research.md#r-4-the-judgement-is-columns-on-the-candidate-row)) |
+| No AI connection | The rules still run; pairs that need the model wait, unasked, until the owner saves the Ollama connection ([R-13](research.md#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection)) |
 | Failures | Retry after 10 minutes, 1 hour, 6 hours, then daily ([R-5](research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)) |
 | Conflicts | No bundle across a dismissed or unbundled pair ([R-6](research.md#r-6-a-same-pair-joins-two-sides-unless-a-pair-across-them-is-known-to-differ)) |
 | Representative | The bundle's; else the one with the owner's data, then playable, audio, pixels, bitrate ([R-7](research.md#r-7-the-representative-keeps-the-owners-data-then-plays-best)) |
@@ -88,7 +89,10 @@ sequenceDiagram
 | At most 5% differ, never two in a row | Same video | None |
 | Two or more in a row differ | The longest such run goes to the model | One |
 
-6. **For a differing run, it asks the model.** `internal/artifacts` cuts up
+6. **For a differing run, it asks the model, if one is set up.** When the
+   owner has never saved the Ollama connection under Settings, the worker
+   sends nothing: the pair is marked `no_connection` and waits on Duplicates
+   until the connection is saved, which wakes the worker. Otherwise: `internal/artifacts` cuts up
    to 4 frames of that run from each seek preview and puts frame A beside
    frame B in one JPEG. No ffmpeg runs and no media file is opened. The images
    and the question go to `app.Classifier`, the port auto-tagging uses, and
@@ -100,6 +104,7 @@ sequenceDiagram
 | Same (all frames, or 0.8 or more) | Bundles A and B with `VersionStore.Bundle`'s steps; the representative is the bundle's if one side is bundled, else the one carrying the owner's tags and other data, then the one that plays in the browser, has sound, more pixels, a higher bitrate | One card with the versions mark |
 | Different (work codes, or 0.2 or less) | Writes a "different videos" dismissal, as the Duplicates page's button does | The pair leaves Duplicates |
 | Between 0.2 and 0.8 | Marks the candidate `undecided`; it is never asked again | The pair stays on Duplicates |
+| No Ollama connection saved | Marks it `no_connection`; no request is sent | The pair stays on Duplicates; Settings shows how many wait for a connection |
 | No answer or an error | Marks it `failed` and sets a retry time: 10 minutes, 1 hour, 6 hours, then daily | The pair stays on Duplicates until a retry decides it |
 
 A "same" that would put two videos the owner called different into one
@@ -161,7 +166,7 @@ Checked against ARCHITECTURE.md and AGENTS.md; the rules this design leans on:
 ```text
 specs/054-auto-dup/
 ├── plan.md
-├── research.md            # R-1..R-12
+├── research.md            # R-1..R-13
 ├── data-model.md          # Two tables, the rules, the setting
 ├── quickstart.md          # The real-model check
 └── contracts/
@@ -243,7 +248,8 @@ differing run in `internal/domain`; side-by-side pairs of given frames in `inter
 rule, ask the R-3 question only for a differing run, apply the result, wait
 for the next `retry_at`); a log line with each pair's rule outcome and
 probability; wiring and wake-ups (startup, `ProcessingChanged`,
-`VersionCandidatesChanged`, settings saved);
+`VersionCandidatesChanged`, settings saved, Ollama connection saved); the
+`no_connection` path when no connection row exists;
 `docs/design-docs/duplicate-judging.md` linked from the index; and the
 AI-layer and subsystem-map entries
 ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)
@@ -261,7 +267,9 @@ still "same", and 4 in a row give that run; app tests with a fake classifier
 show a matching pair bundles with no classifier call, a differing pair sends
 the run's frames, 0.85 bundles, 0.1 dismisses, 0.5 leaves the candidate, an
 error or a reply without the question's key sets a `failed` row with its retry
-time, and nothing is claimed while the setting is off; an artifacts test shows
+time, a pair needing the model with no saved connection becomes
+`no_connection` with no classifier call and is judged after the connection is
+saved, and nothing is claimed while the setting is off; an artifacts test shows
 the requested frames come back as JPEGs twice the width of one frame.
 
 ### Refresh the Duplicates page when candidates are judged
@@ -307,7 +315,7 @@ classifier; Show a versions mark on video cards.
 
 **Acceptance**: `task check` passes with no diff from `task generate`; handler
 tests show `GET` answers `enabled: false` before any save and `PUT` answers the
-saved value, and a request with no owner session gets
+saved value with `waitingForConnection`, and a request with no owner session gets
 `401 unauthenticated`; a Web test shows the switch saving; every
 [quickstart](quickstart.md) row passes with the default `clef-flash` and the
 PR records each pair's rule outcome and probability; the Settings section passes a visual review at the widths

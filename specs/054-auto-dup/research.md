@@ -140,6 +140,8 @@ stateDiagram-v2
   waiting --> running: worker claims
   running --> [*]: same or different
   running --> undecided: probability between
+  running --> no_connection: model needed, no connection saved
+  no_connection --> waiting: Ollama connection saved
   running --> failed: classifier error
   failed --> running: retry time passed
   running --> waiting: restart
@@ -153,8 +155,9 @@ stateDiagram-v2
 
 **Rationale**: The Edge Case asks for a retry later with nothing from the
 owner. The candidate stays in the list throughout, so a slow retry costs only
-the time the owner waits, and with Ollama stopped each candidate sends at most
-one request a day.
+the time the owner waits, and with a saved Ollama stopped each candidate sends
+at most one request a day. A pair is never retried against a connection the
+owner has not saved ([R-13](#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection)).
 
 ## R-6: A "same" pair joins two sides unless a pair across them is known to differ
 
@@ -317,3 +320,24 @@ it.
 are two works even when the fingerprints match closely, as two episodes of a
 series with long shared scenes can. The rule only reads values the owner or a
 work-info plugin wrote, so it costs no request.
+
+## R-13: The model is asked only once the owner has saved a connection
+
+**Decision**: The worker sends a request only when the Ollama connection has
+been saved under Settings (an `ollama.endpoint` row exists). Without one, a
+pair that needs the model is marked `no_connection`, stays on Duplicates and
+is not retried; saving the connection returns those pairs to waiting and wakes
+the worker. The work-code and frame rules run either way.
+
+| Option | Verdict |
+| --- | --- |
+| **Ask only after a connection is saved** | Chosen |
+| Ask the default address `http://127.0.0.1:11434` | Rejected: a request to an address the owner never set, and on a machine without Ollama every such pair fails and retries for good |
+| Ask only after the connection test passes | Rejected: the test is a separate action that is not stored, and a connection that passed once can still be down later, which R-5 handles |
+| Turn the whole feature off without a connection | Rejected: the work-code and frame rules settle most pairs and need no model |
+
+**Rationale**: `OllamaSettings` falls back to the default address when no row
+exists, so the store reports whether the row exists; that is the owner having
+set up the provider. The Settings section shows how many pairs wait for a
+connection, so the owner sees why they stay
+([contracts/screen-api.md](contracts/screen-api.md#get-apisettingsversion-judging)).

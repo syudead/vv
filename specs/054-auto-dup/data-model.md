@@ -24,7 +24,7 @@ row is rebuilt with them null or 0.
 
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
-| `judgement` | text | Yes | Null while waiting, else `running`, `undecided` or `failed` |
+| `judgement` | text | Yes | Null while waiting, else `running`, `undecided`, `failed` or `no_connection` (the model is needed and no Ollama connection is saved, [R-13](research.md#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection)) |
 | `attempts` | integer | No, default 0 | Failures so far; kept through a claim and a restart |
 | `retry_at` | integer | Yes | When a `failed` row becomes claimable ([R-5](research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)); null otherwise |
 | `judgement_error` | text | Yes | The provider's message for a `failed` row |
@@ -49,6 +49,7 @@ Pairs removed from a bundle, never judged by the model
 | A candidate is claimable when the feature is on, its pair is not in `video_version_unbundles`, and its `judgement` is null, or `failed` with `retry_at` passed | `domain` (the rule), `store` (the claim query) |
 | The claim returns both keys' fingerprints, which the frame rule reads ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)) | `store` |
 | One judgement is `running` at a time | The single worker; the claim is one statement |
+| A pair the rules cannot settle becomes `no_connection` without a request when no Ollama connection is saved; saving one returns every `no_connection` row to null | `app` (asks the store whether the connection row exists), `store` |
 | A `running` row left at startup returns to null, keeping `attempts` | `store`, at startup as `auto_tag_queue` recovers |
 | "Same video" bundles both sides unless a pair across them is dismissed or unbundled; otherwise the row becomes `undecided` ([R-6](research.md#r-6-a-same-pair-joins-two-sides-unless-a-pair-across-them-is-known-to-differ)) | `domain` (the check over two member sets), `store` (re-reads both inside the bundling transaction) |
 | "Same video" picks the representative by [R-7](research.md#r-7-the-representative-keeps-the-owners-data-then-plays-best), then bundles with `VersionStore.Bundle`'s steps | `domain` (the choice), `store` |

@@ -18,8 +18,11 @@ is unchanged.
 ## `GET /api/settings/version-judging`
 
 `operationId: getVersionJudgingSettings`. Owner only. Returns
-`VersionJudgingSettings {enabled: boolean}`; `enabled` is `false` until the
-owner saves.
+`VersionJudgingSettings {enabled: boolean, waitingForConnection: integer}`.
+`enabled` is `false` until the owner saves. `waitingForConnection` is the
+number of candidates marked `no_connection`
+([R-13](../research.md#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection)),
+so the section can say that they wait for an Ollama connection.
 
 ## `PUT /api/settings/version-judging`
 
@@ -33,8 +36,10 @@ judges every waiting candidate.
 | `400` | `invalid_request` | The body is not `{enabled: boolean}` |
 
 The Ollama connection stays its own resource (`/api/settings/ollama`), so the
-feature can be on while no connection is saved; every judgement then fails and
-retries ([R-5](../research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)).
+feature can be on while no connection is saved; the rules then still bundle
+and dismiss, and pairs that need the model wait. `PUT /api/settings/ollama`
+also wakes the judging worker, which first returns the waiting pairs to the
+queue.
 
 ## Routes that change behaviour only
 

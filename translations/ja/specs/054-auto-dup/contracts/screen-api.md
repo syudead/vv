@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/contracts/screen-api.md
-sourceHash: 1e09d3333ba4451257d98ec63fe50d23cde7b94165ef16435dd795c6f52f782c
+sourceHash: 6fe2119d73a4b3421fec76c845f4d7a050919d4aab85753842b88c57d2a74dee
 ---
 
 # 契約: 重複の自動判定の画面の API {#contract-screen-api-for-automatic-duplicate-judging}
@@ -17,7 +17,7 @@ sourceHash: 1e09d3333ba4451257d98ec63fe50d23cde7b94165ef16435dd795c6f52f782c
 
 ## `GET /api/settings/version-judging` {#get-apisettingsversion-judging}
 
-`operationId: getVersionJudgingSettings`。所有者だけ。`VersionJudgingSettings {enabled: boolean}` を返す。`enabled` は所有者が保存するまで `false` である。
+`operationId: getVersionJudgingSettings`。所有者だけ。`VersionJudgingSettings {enabled: boolean, waitingForConnection: integer}` を返す。`enabled` は所有者が保存するまで `false` である。`waitingForConnection` は `no_connection` になっている候補の数であり ([R-13](../research.md#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection))、セクションはそれらが Ollama の接続を待っていると示せる。
 
 ## `PUT /api/settings/version-judging` {#put-apisettingsversion-judging}
 
@@ -27,7 +27,7 @@ sourceHash: 1e09d3333ba4451257d98ec63fe50d23cde7b94165ef16435dd795c6f52f782c
 | --- | --- | --- |
 | `400` | `invalid_request` | 本文が `{enabled: boolean}` でない |
 
-Ollama の接続は独自のリソース (`/api/settings/ollama`) のままなので、接続が保存されていない間も機能はオンにできる。そのときはどの判定も失敗し、再試行する ([R-5](../research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends))。
+Ollama の接続は独自のリソース (`/api/settings/ollama`) のままなので、接続が保存されていない間も機能はオンにできる。そのときも規則はまとめ、退け、モデルが要る組は待つ。`PUT /api/settings/ollama` も判定のワーカーを起こし、ワーカーはまず待っている組をキューに戻す。
 
 ## 振る舞いだけが変わるルート {#routes-that-change-behaviour-only}
 

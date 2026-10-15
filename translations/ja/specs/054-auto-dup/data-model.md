@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/data-model.md
-sourceHash: b07c42c55fe8043ff7deb87640d981987ee1d90200f886c03a2f750a2b618ea5
+sourceHash: 6abafdaefdef01c3d67914749ce6a5a9efaa150eb578ff6b8a1b7b320cbe5ca7
 ---
 
 # データモデル: 重複の候補を自動で判定する {#data-model-judging-possible-duplicates-automatically}
@@ -22,7 +22,7 @@ sourceHash: b07c42c55fe8043ff7deb87640d981987ee1d90200f886c03a2f750a2b618ea5
 
 | フィールド | 型 | Null | 意味 |
 | --- | --- | --- | --- |
-| `judgement` | text | 可 | 待っている間は null、それ以外は `running`、`undecided`、`failed` のどれか |
+| `judgement` | text | 可 | 待っている間は null、それ以外は `running`、`undecided`、`failed`、`no_connection` (モデルが要るが、Ollama の接続が保存されていない、[R-13](research.md#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection)) のどれか |
 | `attempts` | integer | 不可、既定値 0 | これまでの失敗の回数。取得と再起動を越えて保つ |
 | `retry_at` | integer | 可 | `failed` の行が取得できるようになる時刻 ([R-5](research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends))。それ以外は null |
 | `judgement_error` | text | 可 | `failed` の行についてのプロバイダのメッセージ |
@@ -46,6 +46,7 @@ sourceHash: b07c42c55fe8043ff7deb87640d981987ee1d90200f886c03a2f750a2b618ea5
 | 候補を取得できるのは、機能がオンで、その組が `video_version_unbundles` になく、その `judgement` が null か、`retry_at` を過ぎた `failed` であるときである | `domain` (規則)、`store` (取得のクエリ) |
 | 取得は両方の鍵の指紋を返し、フレームの規則がそれを読む ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)) | `store` |
 | 同時に `running` の判定は 1 つである | 単一のワーカー。取得は 1 つの文である |
+| 規則で決められない組は、Ollama の接続が保存されていなければ、リクエストなしで `no_connection` になる。接続を保存すると、すべての `no_connection` の行が null に戻る | `app` (接続の行があるかをストアに問う)、`store` |
 | 起動時に残っている `running` の行は、`attempts` を保ったまま null に戻る | `store`、起動時に `auto_tag_queue` が回復するのと同じように |
 | 「同じ動画」は、両側をまたぐ組が退けた組かまとまりから外した組でない限り、両側をまとめる。そうであれば行は `undecided` になる ([R-6](research.md#r-6-a-same-pair-joins-two-sides-unless-a-pair-across-them-is-known-to-differ)) | `domain` (2 つのメンバーの集合に対する確認)、`store` (まとめるトランザクションの中で両方を読み直す) |
 | 「同じ動画」は [R-7](research.md#r-7-the-representative-keeps-the-owners-data-then-plays-best) で代表を選び、それから `VersionStore.Bundle` の手順でまとめる | `domain` (選択)、`store` |

@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/plan.md
-sourceHash: 208c102abd4c125ea55fd9f51b8902b8aab5328b25d8e35f89bdc7139ea893ad
+sourceHash: c5028249b39547ba4496a9e17f76b1324daf34ab577befdfacb5aff2292ddabb
 ---
 
 # 実装計画: 重複の候補を自動で判定し、同じものをまとめる {#implementation-plan-judging-possible-duplicates-automatically-and-bundling-the-same-ones}
@@ -20,6 +20,7 @@ sourceHash: 208c102abd4c125ea55fd9f51b8902b8aab5328b25d8e35f89bdc7139ea893ad
 | AI への入力 | 続けて異なるフレームの区間から最大 4 枚の画像、A の横に B。事実はなし ([R-2](research.md#r-2-the-model-sees-the-frames-where-the-two-files-differ)、[R-11](research.md#r-11-the-request-carries-no-file-names)) |
 | AI の判定 | 0.8 以上で同じ、0.2 以下で別、固定 ([R-3](research.md#r-3-the-question-wording-and-two-fixed-thresholds)) |
 | キュー | 候補の行にある判定の列。判定が null の候補が待つ ([R-4](research.md#r-4-the-judgement-is-columns-on-the-candidate-row)) |
+| AI への接続がない | 規則はそのまま動く。モデルが要る組は、所有者が Ollama の接続を保存するまで、問われずに待つ ([R-13](research.md#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection)) |
 | 失敗 | 10 分、1 時間、6 時間の後に再試行し、その後は毎日 ([R-5](research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)) |
 | 衝突 | 退けた組か、まとまりから外した組をまたぐまとめはしない ([R-6](research.md#r-6-a-same-pair-joins-two-sides-unless-a-pair-across-them-is-known-to-differ)) |
 | 代表 | まとまりの代表。なければ所有者のデータを持つ方、次に再生できること、音声、画素、ビットレート ([R-7](research.md#r-7-the-representative-keeps-the-owners-data-then-plays-best)) |
@@ -67,7 +68,7 @@ sequenceDiagram
 | 異なるのが 5% 以下で、2 枚続けて異なることはない | 同じ動画 | なし |
 | 2 枚以上続けて異なる | そうした区間のうち最も長いものをモデルに送る | 1 回 |
 
-6. **異なる区間があれば、モデルに問う。** `internal/artifacts` が、各シーク用プレビューからその区間のフレームを最大 4 枚切り出し、A のフレームと B のフレームを横に並べて 1 枚の JPEG にする。ffmpeg は動かず、メディアファイルも開かない。画像と質問は、自動タグ付けが使うポートである `app.Classifier` に送り、答えは確率である: 0.8 以上は同じ、0.2 以下は別である。
+6. **異なる区間があれば、モデルが設定されている場合にモデルに問う。** 所有者が Settings で Ollama の接続を一度も保存していないとき、ワーカーは何も送らない: 組は `no_connection` になり、接続が保存されるまで Duplicates で待つ。接続の保存はワーカーを起こす。そうでなければ: `internal/artifacts` が、各シーク用プレビューからその区間のフレームを最大 4 枚切り出し、A のフレームと B のフレームを横に並べて 1 枚の JPEG にする。ffmpeg は動かず、メディアファイルも開かない。画像と質問は、自動タグ付けが使うポートである `app.Classifier` に送り、答えは確率である: 0.8 以上は同じ、0.2 以下は別である。
 7. **ストアが結果を 1 つのトランザクションで適用する。**
 
 | 結果 | ストアがすること | 所有者に見えるもの |
@@ -75,6 +76,7 @@ sequenceDiagram
 | 同じ (すべてのフレーム、または 0.8 以上) | `VersionStore.Bundle` の手順で A と B をまとめる。代表は、一方がまとまりにあればそのまとまりの代表、なければ所有者のタグなどのデータを持つ方、次にブラウザーで再生できる方、音がある方、画素が多い方、ビットレートが高い方 | バージョンの印付きの 1 枚のカード |
 | 別 (作品コード、または 0.2 以下) | Duplicates のページのボタンと同じように、「別の動画」として退けた組を書く | 組が Duplicates から消える |
 | 0.2 と 0.8 の間 | 候補を `undecided` にする。二度と問わない | 組が Duplicates に残る |
+| Ollama の接続が保存されていない | `no_connection` にする。リクエストは送らない | 組が Duplicates に残る。Settings は接続を待っている組の数を示す |
 | 答えがないか、エラー | `failed` にし、再試行の時刻を決める: 10 分、1 時間、6 時間、その後は毎日 | 再試行で決まるまで、組が Duplicates に残る |
 
 所有者が別だとした 2 つの動画を 1 つのまとまりに入れることになる「同じ」は、代わりに `undecided` として保存する。
@@ -121,7 +123,7 @@ ARCHITECTURE.md と AGENTS.md に照らして確認した。この設計が拠�
 ```text
 specs/054-auto-dup/
 ├── plan.md
-├── research.md            # R-1..R-12
+├── research.md            # R-1..R-13
 ├── data-model.md          # Two tables, the rules, the setting
 ├── quickstart.md          # The real-model check
 └── contracts/
@@ -171,11 +173,11 @@ flowchart LR
 
 ### 指紋と分類器で重複の候補を判定する {#judge-possible-duplicates-from-their-fingerprints-and-the-classifier}
 
-**範囲**: `internal/domain` の作品コードの規則、フレームごとの規則、最も長い異なる区間。`internal/artifacts` の、指定したフレームを横に並べた組。`app.VersionJudge` (設定がオンの間 1 つずつ取得し、規則を適用し、異なる区間があるときだけ R-3 の質問をし、結果を適用し、次の `retry_at` まで待つ)。各組の規則の結果と確率を記すログの行。配線と起こす処理 (起動時、`ProcessingChanged`、`VersionCandidatesChanged`、設定の保存)。索引からリンクする `docs/design-docs/duplicate-judging.md`。AI 層とサブシステムの地図の項目 ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs) から [R-3](research.md#r-3-the-question-wording-and-two-fixed-thresholds)、[R-5](research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)、[R-11](research.md#r-11-the-request-carries-no-file-names)、[R-12](research.md#r-12-different-work-codes-dismiss-a-pair-without-the-model))。
+**範囲**: `internal/domain` の作品コードの規則、フレームごとの規則、最も長い異なる区間。`internal/artifacts` の、指定したフレームを横に並べた組。`app.VersionJudge` (設定がオンの間 1 つずつ取得し、規則を適用し、異なる区間があるときだけ R-3 の質問をし、結果を適用し、次の `retry_at` まで待つ)。各組の規則の結果と確率を記すログの行。配線と起こす処理 (起動時、`ProcessingChanged`、`VersionCandidatesChanged`、設定の保存、Ollama の接続の保存)。接続の行がないときの `no_connection` の経路。索引からリンクする `docs/design-docs/duplicate-judging.md`。AI 層とサブシステムの地図の項目 ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs) から [R-3](research.md#r-3-the-question-wording-and-two-fixed-thresholds)、[R-5](research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)、[R-11](research.md#r-11-the-request-carries-no-file-names)、[R-12](research.md#r-12-different-work-codes-dismiss-a-pair-without-the-model))。
 
 **依存**: 重複の判定と、バージョンから外した組を保存する。
 
-**受け入れ**: `task check` と `task check-docs` が通る。ドメインのテストが次を示す: 異なる作品コードは「別」で、等しいものは何も決めない。距離がすべて 12 以内なら「同じ」、20 枚のうち離れた 1 枚だけが異なってもまだ「同じ」、4 枚続けて異なればその区間を返す。偽の分類器を使うアプリのテストが次を示す: 一致する組は分類器を呼ばずにまとめ、異なる組は区間のフレームを送り、0.85 はまとめ、0.1 は退け、0.5 は候補を残し、エラーか質問のキーのない応答は再試行の時刻付きの `failed` の行にし、設定がオフの間は何も取得しない。artifacts のテストが、求めたフレームが 1 フレームの 2 倍の幅の JPEG として返ることを示す。
+**受け入れ**: `task check` と `task check-docs` が通る。ドメインのテストが次を示す: 異なる作品コードは「別」で、等しいものは何も決めない。距離がすべて 12 以内なら「同じ」、20 枚のうち離れた 1 枚だけが異なってもまだ「同じ」、4 枚続けて異なればその区間を返す。偽の分類器を使うアプリのテストが次を示す: 一致する組は分類器を呼ばずにまとめ、異なる組は区間のフレームを送り、0.85 はまとめ、0.1 は退け、0.5 は候補を残し、エラーか質問のキーのない応答は再試行の時刻付きの `failed` の行にし、接続が保存されていないときにモデルが要る組は分類器を呼ばずに `no_connection` になって接続の保存の後に判定され、設定がオフの間は何も取得しない。artifacts のテストが、求めたフレームが 1 フレームの 2 倍の幅の JPEG として返ることを示す。
 
 ### 候補が判定されたら Duplicates のページを更新する {#refresh-the-duplicates-page-when-candidates-are-judged}
 
@@ -199,4 +201,4 @@ flowchart LR
 
 **依存**: 指紋と分類器で重複の候補を判定する。動画のカードにバージョンの印を示す。
 
-**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ハンドラーのテストが次を示す: `GET` は保存の前には `enabled: false` を応答し、`PUT` は保存した値を応答し、所有者のセッションのないリクエストは `401 unauthenticated` を受け取る。Web のテストがスイッチの保存を示す。[クイックスタート](quickstart.md) のすべての行が既定の `clef-flash` で通り、PR は各組の規則の結果と確率を記録する。Settings のセクションが、`ui-design.md` の幅での見た目のレビューに通る。
+**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ハンドラーのテストが次を示す: `GET` は保存の前には `enabled: false` を応答し、`PUT` は保存した値を `waitingForConnection` とともに応答し、所有者のセッションのないリクエストは `401 unauthenticated` を受け取る。Web のテストがスイッチの保存を示す。[クイックスタート](quickstart.md) のすべての行が既定の `clef-flash` で通り、PR は各組の規則の結果と確率を記録する。Settings のセクションが、`ui-design.md` の幅での見た目のレビューに通る。
