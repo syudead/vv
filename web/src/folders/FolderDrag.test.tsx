@@ -1,4 +1,4 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -56,6 +56,10 @@ const listing: FolderListing = {
 const server = {
   videos: [] as Video[],
   writes: [] as { path: string; body: unknown }[],
+  /** 次の「Make a group」が作るグループの id。 */
+  nextGroupId: 70,
+  /** 置くと名前を変える要求は、これが解けるまで答えない。 */
+  holdRename: null as Promise<void> | null,
 };
 
 const fetchMock = vi.fn<typeof fetch>((input, init) => {
@@ -66,7 +70,14 @@ const fetchMock = vi.fn<typeof fetch>((input, init) => {
     const body = JSON.parse(String(init?.body)) as unknown;
     server.writes.push({ path, body });
     if (path === "/api/organize/group") {
-      return Promise.resolve(json({ undoToken: "token-group", groupId: 70 }));
+      const groupId = server.nextGroupId;
+      server.nextGroupId += 1;
+      return Promise.resolve(
+        json({ undoToken: `token-group-${String(groupId)}`, groupId }),
+      );
+    }
+    if (path.startsWith("/api/groups/")) {
+      return (server.holdRename ?? Promise.resolve()).then(() => json({}));
     }
     if (path === "/api/organize/bundle") {
       const { videoIds } = body as { videoIds: number[] };
@@ -126,6 +137,8 @@ async function dropXOnY() {
 beforeEach(() => {
   clearListSnapshot();
   server.writes = [];
+  server.nextGroupId = 70;
+  server.holdRename = null;
   vi.stubGlobal("fetch", fetchMock);
   installFakeEventSource();
   vi.stubGlobal("scrollTo", vi.fn());
@@ -164,6 +177,43 @@ describe("FolderPage drag a video onto a video", () => {
     expect((field as HTMLInputElement).value).toBe("y");
     expect(field.closest('[data-slot="popover-content"]')).not.toBeNull();
     expect(cardTitles()).toEqual(["x", "y"]);
+  });
+
+  it("前の名前の変更が答える前に次の「Make a group」の欄が開いたら、前の答えはその欄を閉じない", async () => {
+    await open();
+    let answerRename = () => undefined as void;
+    server.holdRename = new Promise<void>((resolve) => {
+      answerRename = resolve;
+    });
+    const user = userEvent.setup();
+    await user.click(
+      within(await dropXOnY()).getByRole("menuitem", { name: "Make a group" }),
+    );
+    const first = await screen.findByRole("textbox", { name: "Group name" });
+    await user.clear(first);
+    await user.type(first, "Trip{Enter}");
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox", { name: "Group name" })).toBeNull(),
+    );
+
+    await user.click(
+      within(await dropXOnY()).getByRole("menuitem", { name: "Make a group" }),
+    );
+    expect(
+      ((await screen.findByRole("textbox", { name: "Group name" })) as HTMLInputElement)
+        .value,
+    ).toBe("y");
+    await act(async () => {
+      answerRename();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    expect(screen.getByRole("textbox", { name: "Group name" })).toBeDefined();
+    expect(server.writes.map((write) => write.path)).toEqual([
+      "/api/organize/group",
+      "/api/groups/70",
+      "/api/organize/group",
+    ]);
   });
 
   it("「Bundle as versions」は持ち上げたカードを消す", async () => {
