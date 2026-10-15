@@ -207,12 +207,14 @@ func cloneWorkInfo(w WorkInfo) WorkInfo {
 }
 
 // creditLink は重ねる途中の人物か団体の結び付き 1 件である。created は作る実体の NewCredit の位置で、
-// 既存の実体なら -1 である。pending は足すときに新しく作る実体の入力で、それ以外は nil である。
+// 既存の実体なら -1 である。pending は足すときに新しく作る実体の入力で、それ以外は nil である。absorb は
+// もう作ると決めた実体にまとめた件の外部 ID で、その実体の入力に足す。
 type creditLink[R ~string] struct {
 	role    R
 	ref     CreditRef
 	created int
 	pending *CreditInput
+	absorb  []ExternalID
 }
 
 // fetchedCredit は取得した人物か団体 1 件である。
@@ -261,7 +263,7 @@ type creditRoleMerge[R ~string] struct {
 // mergeCreditRoles は選んだ役割ごとに、取得の順に件を足す。既存の実体はその役割にまだ結んでいなければ
 // 足し、曖昧な件は ambiguous、作る件は NormalizeCredit に合わなければ invalid で飛ばす。件数は保存済みの
 // 件の後に数え、上限を超える分は too_many。同じ結果の中で外部 ID か名前の照合形が重なる作る件は 1 つの
-// 実体にまとめる。
+// 実体にまとめ、後の件の外部 ID もその実体に足す（mergeIDs）。
 func mergeCreditRoles[R ~string](selected func(WorkInfoField) bool, in creditRoleInput[R]) creditRoleMerge[R] {
 	out := creditRoleMerge[R]{links: slices.Clone(in.stored)}
 	for _, role := range in.roles {
@@ -287,12 +289,14 @@ func mergeCreditRoles[R ~string](selected func(WorkInfoField) bool, in creditRol
 			switch {
 			case reason != "":
 				out.skipped = append(out.skipped, SkippedWorkInfoValue{Field: field, Value: entry.name, Reason: reason})
-			case !keep:
-			case count >= in.limit:
+			case keep && count >= in.limit:
 				out.skipped = append(out.skipped, SkippedWorkInfoValue{Field: field, Value: entry.name, Reason: SkippedWorkInfoTooMany})
 			default:
-				out.add(link)
-				count++
+				out.mergeIDs(field, link)
+				if keep {
+					out.add(link)
+					count++
+				}
 			}
 		}
 	}
@@ -320,6 +324,7 @@ func (m *creditRoleMerge[R]) resolve(entry fetchedCredit[R], match CreditMatch) 
 		link.created = m.createdIndex(input)
 		if link.created >= 0 {
 			link.ref.Name = m.created[link.created].Input.Name
+			link.absorb = input.ExternalIDs
 		} else {
 			// 作るのは足すときで、飛ばした件は実体を残さない。
 			link.created, link.pending = len(m.created), &input
@@ -340,6 +345,27 @@ func (m *creditRoleMerge[R]) createdIndex(input CreditInput) int {
 	}
 	key := FoldForMatch(input.Name)
 	return slices.IndexFunc(m.created, func(c NewCredit) bool { return FoldForMatch(c.Input.Name) == key })
+}
+
+// mergeIDs は、もう作ると決めた実体にまとめた件 link の外部 ID のうち、その実体にまだ無いものを足す。
+// ほかの作る実体が持つ ID は ambiguous、実体の外部 ID の上限を超える分は too_many で飛ばす。
+func (m *creditRoleMerge[R]) mergeIDs(field WorkInfoField, link creditLink[R]) {
+	if link.pending != nil || link.created < 0 {
+		return
+	}
+	target := &m.created[link.created].Input
+	for _, id := range link.absorb {
+		shown := id.Source + ": " + id.Value
+		switch {
+		case slices.Contains(target.ExternalIDs, id):
+		case slices.ContainsFunc(m.created, func(c NewCredit) bool { return slices.Contains(c.Input.ExternalIDs, id) }):
+			m.skipped = append(m.skipped, SkippedWorkInfoValue{Field: field, Value: shown, Reason: SkippedWorkInfoAmbiguous})
+		case len(target.ExternalIDs) >= ExternalIDsMaxCount:
+			m.skipped = append(m.skipped, SkippedWorkInfoValue{Field: field, Value: shown, Reason: SkippedWorkInfoTooMany})
+		default:
+			target.ExternalIDs = append(target.ExternalIDs, id)
+		}
+	}
 }
 
 // linked は link と同じ役割に同じ実体がもう結ばれているかを返す。

@@ -171,6 +171,48 @@ func TestMergeChecksNewEntitiesBeforeKeepingThem(t *testing.T) {
 	}
 }
 
+func TestMergeKeepsTheExternalIDsOfEveryEntryFoldedIntoANewEntity(t *testing.T) {
+	id := func(v string) ExternalID { return ExternalID{Source: "site", Value: v} }
+	many := make([]ExternalID, ExternalIDsMaxCount)
+	for i := range many {
+		many[i] = id(fmt.Sprintf("m-%d", i))
+	}
+	got := MergeFetchedWorkInfo(WorkInfoMergeInput{
+		Fetched: FetchedWorkInfo{People: []FetchedPerson{
+			{Role: PersonPerformer, Name: "Rin", ExternalIDs: []ExternalID{id("a")}},
+			{Role: PersonPerformer, Name: "Other", ExternalIDs: []ExternalID{id("x")}},
+			{Role: PersonPerformer, Name: "Full", ExternalIDs: many},
+			// 名前でまとめた件の ID も、すでに結んだ役割の件の ID も同じ実体に足す。
+			{Role: PersonDirector, Name: "ＲＩＮ", ExternalIDs: []ExternalID{id("b")}},
+			{Role: PersonPerformer, Name: "rin", ExternalIDs: []ExternalID{id("a"), id("c")}},
+			// ほかの作る実体が持つ ID と、実体の上限を超える ID は飛ばす。
+			{Role: PersonDirector, Name: "Rin", ExternalIDs: []ExternalID{id("a"), id("x")}},
+			{Role: PersonDirector, Name: "Full", ExternalIDs: []ExternalID{id("over")}},
+		}},
+		PersonMatches: []CreditMatch{matchNew, matchNew, matchNew, matchNew, matchNew, matchNew, matchNew},
+		Fields:        []WorkInfoField{PersonField(PersonPerformer), PersonField(PersonDirector)},
+	})
+	if want := []ExternalID{id("a"), id("c"), id("b")}; !reflect.DeepEqual(got.NewPeople[0].Input.ExternalIDs, want) {
+		t.Errorf("Rin's external IDs = %+v, want %+v", got.NewPeople[0].Input.ExternalIDs, want)
+	}
+	if want := []ExternalID{id("x")}; !reflect.DeepEqual(got.NewPeople[1].Input.ExternalIDs, want) {
+		t.Errorf("Other's external IDs = %+v, want %+v", got.NewPeople[1].Input.ExternalIDs, want)
+	}
+	if !reflect.DeepEqual(got.NewPeople[2].Input.ExternalIDs, many) {
+		t.Errorf("Full's external IDs = %+v, want the %d it was fetched with", got.NewPeople[2].Input.ExternalIDs, len(many))
+	}
+	wantSkipped := []SkippedWorkInfoValue{
+		{Field: PersonField(PersonDirector), Value: "site: x", Reason: SkippedWorkInfoAmbiguous},
+		{Field: PersonField(PersonDirector), Value: "site: over", Reason: SkippedWorkInfoTooMany},
+	}
+	if !reflect.DeepEqual(got.Skipped, wantSkipped) {
+		t.Errorf("skipped = %+v, want %+v", got.Skipped, wantSkipped)
+	}
+	if len(got.NewPeople) != 3 || !reflect.DeepEqual(got.NewPeople[0].Links, []int{0, 3}) {
+		t.Errorf("new = %+v, want 3 entities with Rin linked at 0 and 3", got.NewPeople)
+	}
+}
+
 func TestMergeLeavesUnselectedAndMissingFieldsAlone(t *testing.T) {
 	stored := WorkInfo{Code: "KEEP", URLs: []string{"https://example.com/a"}}
 	got := MergeFetchedWorkInfo(WorkInfoMergeInput{

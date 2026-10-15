@@ -220,9 +220,11 @@ the comparison showed and a reason. The rest of the row is still applied.
 | Reason | When |
 | --- | --- |
 | `invalid` | The value breaks a field rule of `NormalizeWorkInfo`, or a new entity's name or external IDs break `NormalizeCredit` |
-| `too_many` | The entry is over the field's limit, counted after the stored entries |
-| `ambiguous` | The match found several entities |
+| `too_many` | The entry is over the field's limit, counted after the stored entries, or a new entity would carry more external IDs than its limit |
+| `ambiguous` | The match found several entities, or an external ID of a new entry already belongs to another new entity |
 
 The merge decides the skips before anything is created, so a skipped entry
 leaves no entity linked to no video. New entries in one result that share an
-external ID or a folded name become one entity, linked once per role.
+external ID or a folded name become one entity, linked once per role, and the
+entity carries the external IDs of every entry folded into it, so a later
+fetch that names it only by one of those IDs still finds it.
