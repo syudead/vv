@@ -40,8 +40,9 @@ const ignore = () => undefined;
  *   送る。両者は `getTagKinds` で 1 回の要求を共有する。
  * - 読めた一覧に `tagKind` の種類が無ければ、`replace` で URL から外してトーストを出す。
  *   ほかの絞り込みは残る。この画面を開く前からあった保持で見つからないときは、別の
- *   タブで作られた種類かもしれないので、一度だけ取り直してから決める。
- * - 読み込みに失敗しても何も外さない（チップは名前の代わりの Skeleton のまま）。
+ *   タブで作られた種類かもしれないので、取り直してから決める。
+ * - 読み込みや取り直しに失敗しても何も外さない（チップは名前の代わりの Skeleton のまま）。
+ *   取り直しに失敗したときは、ポップオーバーを開いたときにもう一度取り直す。
  */
 export function useLibraryTagKinds(
   tagKind: number | undefined,
@@ -54,9 +55,19 @@ export function useLibraryTagKinds(
 
   useEffect(() => subscribeTagKinds(setKinds), []);
 
+  // 開いた時点の保持のままで `tagKind` が見つからない間は、その一覧は古いかもしれない。
+  const unconfirmed =
+    tagKind !== undefined &&
+    kinds !== undefined &&
+    kinds === cachedAtMount &&
+    !kinds.some((kind) => kind.id === tagKind);
+
+  // 古いかもしれない一覧のままなら、`getTagKinds` は同じ保持を返すだけなので取り直す
+  // （先の取り直しが失敗していても、ポップオーバーを開けば再び試す）。
   const load = useCallback(() => {
-    getTagKinds().then(setKinds).catch(ignore);
-  }, []);
+    if (unconfirmed) refreshTagKinds().catch(ignore);
+    else getTagKinds().then(setKinds).catch(ignore);
+  }, [unconfirmed]);
 
   const active = tagKind !== undefined;
   const missingList = kinds === undefined;
@@ -68,14 +79,21 @@ export function useLibraryTagKinds(
     toast(t.library.activeTags.kindGone);
     apply(withoutTagKind, "replace");
   });
-  // 同じ id で 2 度外さない（StrictMode の二度の実行や、外す前の再描画）。
+  // 同じ id で 2 度取り直したり外したりしない（StrictMode の二度の実行や、外す前の再描画）。
+  // `tagKind` が外れたら忘れ、同じ画面で同じ id に戻ったときにもう一度確かめる。
   const handled = useRef<number | undefined>(undefined);
-  const refreshed = useRef(new Set<number>());
+  const refreshed = useRef<number | undefined>(undefined);
   useEffect(() => {
-    if (tagKind === undefined || kinds === undefined) return;
-    if (kinds.some((kind) => kind.id === tagKind)) return;
-    if (kinds === cachedAtMount && !refreshed.current.has(tagKind)) {
-      refreshed.current.add(tagKind);
+    if (tagKind === undefined) {
+      handled.current = undefined;
+      refreshed.current = undefined;
+      return;
+    }
+    if (kinds === undefined || kinds.some((kind) => kind.id === tagKind)) return;
+    // 古いかもしれない一覧では外さない。取り直しに失敗したら、外さずにそのまま待つ。
+    if (kinds === cachedAtMount) {
+      if (refreshed.current === tagKind) return;
+      refreshed.current = tagKind;
       refreshTagKinds().catch(ignore);
       return;
     }

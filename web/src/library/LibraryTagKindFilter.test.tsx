@@ -1,12 +1,12 @@
 import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Video } from "../api/client";
 import { videoItem } from "../api/libraryItems";
 import { clearListSnapshot } from "../api/listSnapshot";
-import { __resetTagKindsForTest } from "../api/tagKinds";
+import { __resetTagKindsForTest, getTagKinds } from "../api/tagKinds";
 import { __resetTagsForTest } from "../api/tags";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { ScanProvider } from "../shell/ScanProvider";
@@ -60,7 +60,17 @@ function LocationProbe() {
   return <span data-testid="location">{useLocation().search}</span>;
 }
 
-function renderAt(initial: string, audience: Audience = "owner") {
+/** NavigateProbe は同じ画面のまま `to` へ移る（リンクや履歴で戻ってくる操作の代わり）。 */
+function NavigateProbe({ to }: { to: string }) {
+  const navigate = useNavigate();
+  return (
+    <button type="button" onClick={() => void navigate(to)}>
+      go
+    </button>
+  );
+}
+
+function renderAt(initial: string, audience: Audience = "owner", goTo?: string) {
   return render(
     <MemoryRouter initialEntries={[initial]}>
       <TooltipProvider>
@@ -74,6 +84,7 @@ function renderAt(initial: string, audience: Audience = "owner") {
                     <>
                       <LibraryPage />
                       <LocationProbe />
+                      {goTo === undefined ? null : <NavigateProbe to={goTo} />}
                     </>
                   }
                 />
@@ -256,6 +267,55 @@ describe("タグの種類での絞り込み", () => {
     expect(screen.getByRole("button", { name: "Remove the kind filter" })).toBeDefined();
     expect(location()).toBe("?tagKind=1");
     expect(requests("/api/library").at(-1)?.searchParams.get("tagKind")).toBe("1");
+  });
+
+  it("同じ画面で消えた種類にもう一度来ても、また URL から外す", async () => {
+    const user = userEvent.setup();
+    renderAt("/?tagKind=9", "owner", "/?tag=2&tagKind=9");
+    await waitFor(() => expect(location()).toBe(""));
+
+    await user.click(screen.getByRole("button", { name: "go" }));
+    await waitFor(() => expect(location()).toBe("?tag=2"));
+    expect(
+      screen.getAllByText("Removed a kind that no longer exists from the filter").length,
+    ).toBeGreaterThan(0);
+  });
+
+  it("古い保持で見つからず取り直しにも失敗したら外さず、ポップオーバーを開くと取り直す", async () => {
+    const user = userEvent.setup();
+    // 画面を開く前の保持には種類 3 が無い。
+    install([kind(1, "Work")]);
+    await getTagKinds();
+    // 取り直しの 1 回目は失敗し、2 回目で種類 3 が届く。
+    let refreshes = 0;
+    const base = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) => {
+      if (new URL(String(input), "http://localhost").pathname === "/api/tag-kinds") {
+        refreshes += 1;
+        return Promise.resolve(
+          refreshes === 1
+            ? json({ code: "internal" }, 500)
+            : json({ items: [kind(1, "Work"), kind(3, "Place")] }),
+        );
+      }
+      return base?.(input, init) ?? Promise.reject(new Error("no mock"));
+    });
+    renderAt("/?tagKind=3");
+
+    await waitFor(() => expect(refreshes).toBe(1));
+    expect(
+      await screen.findByRole("button", { name: "Remove the kind filter" }),
+    ).toBeDefined();
+    expect(location()).toBe("?tagKind=3");
+
+    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
+    expect(
+      await screen.findByRole("button", {
+        name: 'Remove the filter for the kind "Place"',
+      }),
+    ).toBeDefined();
+    expect(refreshes).toBe(2);
+    expect(location()).toBe("?tagKind=3");
   });
 
   it("ゲストには種類の行を出さず、URL の tagKind は要求の前に外す", async () => {
