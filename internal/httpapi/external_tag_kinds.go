@@ -32,9 +32,11 @@ func (e *externalServer) ListTagKinds(w http.ResponseWriter, r *http.Request) {
 }
 
 // CreateTagKind は種類を 1 つ作る（POST /api/v1/tag-kinds）。他の外部連携の書き込みと同じく 200 を返す。
+// name の省略と null は、空の名前（tag_name_empty）に化けないよう形の誤りとして断る。
 func (e *externalServer) CreateTagKind(w http.ResponseWriter, r *http.Request) {
 	var body extgen.TagKindCreateRequest
-	if !e.readJSONBody(w, r, &body) || !e.tagsConfigured(w) {
+	fields, ok := e.readJSONBodyFields(w, r, &body)
+	if !ok || !e.requireProperties(w, fields, "name") || !e.tagsConfigured(w) {
 		return
 	}
 	kind, err := e.s.tags.CreateTagKind(r.Context(), body.Name)
@@ -46,11 +48,12 @@ func (e *externalServer) CreateTagKind(w http.ResponseWriter, r *http.Request) {
 }
 
 // RenameTagKind は id の種類の名前を変える（POST /api/v1/tag-kinds/update）。今と同じ名前なら何も
-// 変えずに今の種類を返す。id の省略と null は、無い種類（404）に化けないよう形の誤りとして断る。
+// 変えずに今の種類を返す。id と name の省略と null は、無い種類（404）や空の名前（tag_name_empty）に
+// 化けないよう形の誤りとして断る。
 func (e *externalServer) RenameTagKind(w http.ResponseWriter, r *http.Request) {
 	var body extgen.TagKindRenameRequest
 	fields, ok := e.readJSONBodyFields(w, r, &body)
-	if !ok || !e.requireProperties(w, fields, "id") || !e.tagsConfigured(w) {
+	if !ok || !e.requireProperties(w, fields, "id", "name") || !e.tagsConfigured(w) {
 		return
 	}
 	kind, err := e.s.tags.RenameTagKind(r.Context(), body.Id, body.Name)

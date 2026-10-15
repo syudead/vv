@@ -154,6 +154,10 @@ func TestExternalTagKindsRejectInvalidRequests(t *testing.T) {
 		{"kindId が null の delete", "/tags/batch", map[string]any{"action": "delete", "kindId": nil, "ids": []int64{tag}}, invalid},
 		{"無い種類の名前の変更", "/tag-kinds/update", map[string]any{"id": 999, "name": "x"}, notFound},
 		{"id の無い名前の変更", "/tag-kinds/update", map[string]any{"name": "x"}, invalid},
+		{"name の無い名前の変更", "/tag-kinds/update", map[string]any{"id": 999}, invalid},
+		{"name が null の名前の変更", "/tag-kinds/update", map[string]any{"id": 999, "name": nil}, invalid},
+		{"name の無い作成", "/tag-kinds", map[string]any{}, invalid},
+		{"name が null の作成", "/tag-kinds", map[string]any{"name": nil}, invalid},
 		{"空の ids の削除", "/tag-kinds/delete", map[string]any{"ids": []int64{}}, invalid},
 		{"20,001 件の削除", "/tag-kinds/delete", map[string]any{"ids": make([]int64, domain.MaxTagBatch+1)}, invalid},
 	}
