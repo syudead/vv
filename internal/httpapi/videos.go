@@ -40,6 +40,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
+		addedWithin: params.AddedWithin, minDuration: params.MinDuration, maxDuration: params.MaxDuration,
 	})
 	if !ok {
 		return
@@ -74,6 +75,11 @@ type videoQueryParams struct {
 	// person と organization は人物・団体の id による絞り込み（specs/047-video-work-info/research.md R-7）。
 	person       *int64
 	organization *int64
+	// addedWithin は追加日の日数、minDuration と maxDuration は長さの範囲（秒）である
+	// （specs/052-smart-folders/research.md R-4）。
+	addedWithin *int
+	minDuration *int
+	maxDuration *int
 }
 
 // parseVideoQuery は一覧のパラメータを検査して問い合わせにする。誤りなら 400 を書いて
@@ -116,6 +122,9 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	if query.Person, query.Organization, ok = s.parseCreditFilters(w, params.person, params.organization); !ok {
 		return domain.VideoQuery{}, false
 	}
+	if !s.parseAddedAndLength(w, params, &query) {
+		return domain.VideoQuery{}, false
+	}
 	if !s.checkAudienceQuery(w, audience, query) {
 		return domain.VideoQuery{}, false
 	}
@@ -141,6 +150,27 @@ func (s *server) parseCreditFilters(w http.ResponseWriter, person, organization 
 		*filter.out = *filter.value
 	}
 	return personID, organizationID, true
+}
+
+// parseAddedAndLength は一覧の addedWithin・minDuration・maxDuration を検査して query に写す。
+// 範囲の外の値と、minDuration が maxDuration を越える組は 400 を書いて false を返す
+// （specs/052-smart-folders/contracts/screen-api.md）。ゲストも使える。
+func (s *server) parseAddedAndLength(w http.ResponseWriter, params videoQueryParams, query *domain.VideoQuery) bool {
+	switch err := domain.CheckAddedAndLength(params.addedWithin, params.minDuration, params.maxDuration); {
+	case errors.Is(err, domain.ErrInvalidAddedWithin):
+		s.invalidRequest(w, fmt.Sprintf("addedWithin must be between 1 and %d.", domain.MaxAddedWithinDays))
+		return false
+	case err != nil:
+		s.invalidRequest(w, fmt.Sprintf(
+			"minDuration and maxDuration must be between 0 and %d, and minDuration must not exceed maxDuration.",
+			domain.MaxDurationBoundSec))
+		return false
+	}
+	if params.addedWithin != nil {
+		query.AddedWithinDays = *params.addedWithin
+	}
+	query.MinDurationSec, query.MaxDurationSec = params.minDuration, params.maxDuration
+	return true
 }
 
 // writeVideoPage は一覧1ページを応答に書く。各項目には再生位置・タグと、一覧に

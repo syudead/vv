@@ -88,10 +88,16 @@ type listSpec struct {
 	// id である。0 は絞り込まない（specs/047-video-work-info/data-model.md の Lists）。
 	personID       int64
 	organizationID int64
-	sort           domain.VideoSort
-	seed           int64
-	cursor         string
-	limit          int
+	// addedWithinDays は追加日の絞り込み（日数、0 は絞り込まない）、minDurationSec と
+	// maxDurationSec は長さの範囲（秒、nil はその側を限らない）である
+	// （specs/052-smart-folders/research.md R-4）。
+	addedWithinDays int
+	minDurationSec  *int
+	maxDurationSec  *int
+	sort            domain.VideoSort
+	seed            int64
+	cursor          string
+	limit           int
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
@@ -135,6 +141,7 @@ func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int
 		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, organizationID: q.Organization,
+		addedWithinDays: q.AddedWithinDays, minDurationSec: q.MinDurationSec, maxDurationSec: q.MaxDurationSec,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 }

@@ -4988,6 +4988,23 @@ export interface components {
          *     （specs/047-video-work-info/contracts/screen-api.md）
          */
         OrganizationFilter: number;
+        /**
+         * @description 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
+         *     組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
+         *     `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+         */
+        AddedWithinFilter: number;
+        /**
+         * @description 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
+         *     0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
+         *     ゲストも使える（specs/052-smart-folders/research.md R-4）
+         */
+        MinDurationFilter: number;
+        /**
+         * @description 長さの上限（秒、含む）。扱いは `minDuration` と同じ
+         *     （specs/052-smart-folders/research.md R-4）
+         */
+        MaxDurationFilter: number;
         /** @description メディアフォルダの識別子 */
         MediaFolderId: number;
         /** @description API トークンの識別子 */
@@ -5248,6 +5265,23 @@ export interface operations {
                  *     （specs/047-video-work-info/contracts/screen-api.md）
                  */
                 organization?: components["parameters"]["OrganizationFilter"];
+                /**
+                 * @description 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
+                 *     組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
+                 *     `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+                 */
+                addedWithin?: components["parameters"]["AddedWithinFilter"];
+                /**
+                 * @description 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
+                 *     0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
+                 *     ゲストも使える（specs/052-smart-folders/research.md R-4）
+                 */
+                minDuration?: components["parameters"]["MinDurationFilter"];
+                /**
+                 * @description 長さの上限（秒、含む）。扱いは `minDuration` と同じ
+                 *     （specs/052-smart-folders/research.md R-4）
+                 */
+                maxDuration?: components["parameters"]["MaxDurationFilter"];
             };
             header?: never;
             path?: never;
@@ -5318,6 +5352,23 @@ export interface operations {
                  *     （specs/047-video-work-info/contracts/screen-api.md）
                  */
                 organization?: components["parameters"]["OrganizationFilter"];
+                /**
+                 * @description 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
+                 *     組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
+                 *     `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+                 */
+                addedWithin?: components["parameters"]["AddedWithinFilter"];
+                /**
+                 * @description 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
+                 *     0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
+                 *     ゲストも使える（specs/052-smart-folders/research.md R-4）
+                 */
+                minDuration?: components["parameters"]["MinDurationFilter"];
+                /**
+                 * @description 長さの上限（秒、含む）。扱いは `minDuration` と同じ
+                 *     （specs/052-smart-folders/research.md R-4）
+                 */
+                maxDuration?: components["parameters"]["MaxDurationFilter"];
             };
             header?: never;
             path?: never;
@@ -5363,6 +5414,23 @@ export interface operations {
                  *     （specs/047-video-work-info/contracts/screen-api.md）
                  */
                 organization?: components["parameters"]["OrganizationFilter"];
+                /**
+                 * @description 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
+                 *     組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
+                 *     `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+                 */
+                addedWithin?: components["parameters"]["AddedWithinFilter"];
+                /**
+                 * @description 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
+                 *     0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
+                 *     ゲストも使える（specs/052-smart-folders/research.md R-4）
+                 */
+                minDuration?: components["parameters"]["MinDurationFilter"];
+                /**
+                 * @description 長さの上限（秒、含む）。扱いは `minDuration` と同じ
+                 *     （specs/052-smart-folders/research.md R-4）
+                 */
+                maxDuration?: components["parameters"]["MaxDurationFilter"];
             };
             header?: never;
             path?: never;

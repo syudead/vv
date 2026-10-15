@@ -3934,6 +3934,9 @@ type WorkPersonRole string
 // APITokenId defines model for APITokenId.
 type APITokenId = int64
 
+// AddedWithinFilter defines model for AddedWithinFilter.
+type AddedWithinFilter = int
+
 // CreditCursor defines model for CreditCursor.
 type CreditCursor = string
 
@@ -3955,8 +3958,14 @@ type GroupId = int64
 // GroupItemId defines model for GroupItemId.
 type GroupItemId = int64
 
+// MaxDurationFilter defines model for MaxDurationFilter.
+type MaxDurationFilter = int
+
 // MediaFolderId defines model for MediaFolderId.
 type MediaFolderId = int64
+
+// MinDurationFilter defines model for MinDurationFilter.
+type MinDurationFilter = int
 
 // OrganizationFilter defines model for OrganizationFilter.
 type OrganizationFilter = int64
@@ -4171,6 +4180,20 @@ type ListLibraryParams struct {
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
 	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
+
+	// AddedWithin 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
+	// 組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
+	// `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+	AddedWithin *AddedWithinFilter `form:"addedWithin,omitempty" json:"addedWithin,omitempty"`
+
+	// MinDuration 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
+	// 0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
+	// ゲストも使える（specs/052-smart-folders/research.md R-4）
+	MinDuration *MinDurationFilter `form:"minDuration,omitempty" json:"minDuration,omitempty"`
+
+	// MaxDuration 長さの上限（秒、含む）。扱いは `minDuration` と同じ
+	// （specs/052-smart-folders/research.md R-4）
+	MaxDuration *MaxDurationFilter `form:"maxDuration,omitempty" json:"maxDuration,omitempty"`
 }
 
 // ListLibraryIdsParams defines parameters for ListLibraryIds.
@@ -4196,6 +4219,20 @@ type ListLibraryIdsParams struct {
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
 	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
+
+	// AddedWithin 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
+	// 組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
+	// `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+	AddedWithin *AddedWithinFilter `form:"addedWithin,omitempty" json:"addedWithin,omitempty"`
+
+	// MinDuration 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
+	// 0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
+	// ゲストも使える（specs/052-smart-folders/research.md R-4）
+	MinDuration *MinDurationFilter `form:"minDuration,omitempty" json:"minDuration,omitempty"`
+
+	// MaxDuration 長さの上限（秒、含む）。扱いは `minDuration` と同じ
+	// （specs/052-smart-folders/research.md R-4）
+	MaxDuration *MaxDurationFilter `form:"maxDuration,omitempty" json:"maxDuration,omitempty"`
 }
 
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
@@ -4356,6 +4393,20 @@ type ListVideosParams struct {
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
 	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
+
+	// AddedWithin 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
+	// 組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
+	// `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+	AddedWithin *AddedWithinFilter `form:"addedWithin,omitempty" json:"addedWithin,omitempty"`
+
+	// MinDuration 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
+	// 0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
+	// ゲストも使える（specs/052-smart-folders/research.md R-4）
+	MinDuration *MinDurationFilter `form:"minDuration,omitempty" json:"minDuration,omitempty"`
+
+	// MaxDuration 長さの上限（秒、含む）。扱いは `minDuration` と同じ
+	// （specs/052-smart-folders/research.md R-4）
+	MaxDuration *MaxDurationFilter `form:"maxDuration,omitempty" json:"maxDuration,omitempty"`
 }
 
 // GetVideoParams defines parameters for GetVideo.
@@ -6098,6 +6149,45 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "addedWithin" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedWithin", r.URL.Query(), &params.AddedWithin, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedWithin"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedWithin", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "minDuration" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDuration", r.URL.Query(), &params.MinDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDuration"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDuration", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxDuration" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDuration", r.URL.Query(), &params.MaxDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDuration"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDuration", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListLibrary(w, r, params)
 	}))
@@ -6205,6 +6295,45 @@ func (siw *ServerInterfaceWrapper) ListLibraryIds(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "addedWithin" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedWithin", r.URL.Query(), &params.AddedWithin, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedWithin"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedWithin", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "minDuration" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDuration", r.URL.Query(), &params.MinDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDuration"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDuration", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxDuration" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDuration", r.URL.Query(), &params.MaxDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDuration"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDuration", Err: err})
 		}
 		return
 	}
@@ -8184,6 +8313,45 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "addedWithin" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "addedWithin", r.URL.Query(), &params.AddedWithin, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "addedWithin"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "addedWithin", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "minDuration" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "minDuration", r.URL.Query(), &params.MinDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "minDuration"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "minDuration", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "maxDuration" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "maxDuration", r.URL.Query(), &params.MaxDuration, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "maxDuration"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "maxDuration", Err: err})
 		}
 		return
 	}

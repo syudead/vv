@@ -360,7 +360,8 @@ export const MAX_TAG_FILTER_COUNT = 16;
  * 無い（フォルダ画面のタグ絞り込みは対象外。
  * specs/014-video-tags/contracts/tags-api.md §5）。
  */
-export interface ListVideosParams extends ListFilterParams, CreditFilterParams {
+export interface ListVideosParams
+  extends ListFilterParams, CreditFilterParams, AddedLengthFilterParams {
   /** 絞り込むタグの id（すべて持つ動画だけにする AND）。最大16個。書く順は問わない。 */
   tag?: number[];
 }
@@ -381,6 +382,33 @@ function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): vo
   if (params.organization !== undefined) {
     query.set("organization", String(params.organization));
   }
+}
+
+/**
+ * AddedLengthFilterParams は追加日と長さでの絞り込みである（listVideos・listLibrary・
+ * listLibraryIds。specs/052-smart-folders/research.md R-4）。範囲の外の値はサーバーが
+ * `400` で断るので、ここでは丸めずにそのまま送る。
+ */
+export interface AddedLengthFilterParams {
+  /** この日数前以後に追加した動画だけにする（1 以上 36500 以下）。 */
+  addedWithin?: number;
+  /** 長さの下限（秒、含む。0 以上 360000 以下）。長さの分からない動画は当たらない。 */
+  minDuration?: number;
+  /** 長さの上限（秒、含む。0 以上 360000 以下）。長さの分からない動画は当たらない。 */
+  maxDuration?: number;
+}
+
+/** setAddedLengthFilter は追加日と長さの絞り込みを問い合わせに載せる。 */
+function setAddedLengthFilter(
+  query: URLSearchParams,
+  params: AddedLengthFilterParams,
+): void {
+  if (params.addedWithin !== undefined)
+    query.set("addedWithin", String(params.addedWithin));
+  if (params.minDuration !== undefined)
+    query.set("minDuration", String(params.minDuration));
+  if (params.maxDuration !== undefined)
+    query.set("maxDuration", String(params.maxDuration));
 }
 
 /** setListFilters は共通の条件を問い合わせに載せる。 */
@@ -414,6 +442,7 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
+  setAddedLengthFilter(query, params);
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
 
@@ -450,6 +479,7 @@ export async function listLibrary(
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
+  setAddedLengthFilter(query, params);
   const page = await request<components["schemas"]["LibraryPage"]>(
     `/api/library?${query.toString()}`,
     { signal: params.signal },
@@ -464,7 +494,8 @@ export async function listLibrary(
 }
 
 /** ListLibraryIdsParams は「すべて選択」用の全件 id の問い合わせ条件である。 */
-export interface ListLibraryIdsParams extends CreditFilterParams {
+export interface ListLibraryIdsParams
+  extends CreditFilterParams, AddedLengthFilterParams {
   query?: string;
   watch?: WatchFilter;
   playable?: boolean;
@@ -492,6 +523,7 @@ export function listLibraryIds(
   if (params.favorite === true) query.set("favorite", "true");
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
+  setAddedLengthFilter(query, params);
   return request<VideoIdsResponse>(`/api/library/ids?${query.toString()}`, {
     signal: params.signal,
   });
