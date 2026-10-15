@@ -259,6 +259,51 @@ func (r SmartRule) Refs() []SmartRuleRef {
 	return refs
 }
 
+// ReplaceRefs は、kind の実体のうち sources が名指すものを target へ書き換えた条件と、書き換えたか
+// どうかを返す（data-model.md「Merges」、research.md R-9）。タグは条件の順を保って重複を除くので、
+// [A, B] の A を B へ統合すると [B] になる。タグの種類・人物・団体は id を差し替える。r は変えない。
+func (r SmartRule) ReplaceRefs(kind SmartRuleRefKind, sources []int64, target int64) (SmartRule, bool) {
+	out := r
+	changed := false
+	switch kind {
+	case SmartRefTag:
+		out.Tags, changed = replaceSmartRuleTags(r.Tags, sources, target)
+	case SmartRefTagKind:
+		out.TagKind, changed = replaceSmartRuleID(r.TagKind, sources, target)
+	case SmartRefPerson:
+		out.Person, changed = replaceSmartRuleID(r.Person, sources, target)
+	case SmartRefOrganization:
+		out.Organization, changed = replaceSmartRuleID(r.Organization, sources, target)
+	}
+	return out, changed
+}
+
+// replaceSmartRuleTags は tags の sources を target にし、最初に現れた位置を残して重複を除く。
+// 書き換えなければ tags をそのまま返す。
+func replaceSmartRuleTags(tags, sources []int64, target int64) ([]int64, bool) {
+	if !slices.ContainsFunc(tags, func(id int64) bool { return slices.Contains(sources, id) }) {
+		return tags, false
+	}
+	out := make([]int64, 0, len(tags))
+	for _, id := range tags {
+		if slices.Contains(sources, id) {
+			id = target
+		}
+		if !slices.Contains(out, id) {
+			out = append(out, id)
+		}
+	}
+	return out, true
+}
+
+// replaceSmartRuleID は id が sources にあれば target を返す。
+func replaceSmartRuleID(id int64, sources []int64, target int64) (int64, bool) {
+	if id != 0 && slices.Contains(sources, id) {
+		return target, true
+	}
+	return id, false
+}
+
 // ValidateSmartSort はスマートフォルダの並べ順を確かめる。既知の VideoSort で SortRandom でない
 // ものだけを受け付け、ほかは ErrInvalidSmartRule を包む誤りである（data-model.md「Rules」）。
 func ValidateSmartSort(sort VideoSort) error {
