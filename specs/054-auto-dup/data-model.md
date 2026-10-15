@@ -47,6 +47,7 @@ Pairs removed from a bundle, never judged by the model
 | Rule | Enforced in |
 | --- | --- |
 | A candidate is claimable when the feature is on, its pair is not in `video_version_unbundles`, and its `judgement` is null, or `failed` with `retry_at` passed | `domain` (the rule), `store` (the claim query) |
+| The claim returns both keys' fingerprints, which the frame rule reads ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)) | `store` |
 | One judgement is `running` at a time | The single worker; the claim is one statement |
 | A `running` row left at startup returns to null, keeping `attempts` | `store`, at startup as `auto_tag_queue` recovers |
 | "Same video" bundles both sides unless a pair across them is dismissed or unbundled; otherwise the row becomes `undecided` ([R-6](research.md#r-6-a-same-pair-joins-two-sides-unless-a-pair-across-them-is-known-to-differ)) | `domain` (the check over two member sets), `store` (re-reads both inside the bundling transaction) |

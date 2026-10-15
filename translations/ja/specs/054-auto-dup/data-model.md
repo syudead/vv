@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/data-model.md
-sourceHash: ce412e90277689b41d1e1516c0c7a60d082cc0950b7e79fb5fb80c166371e67e
+sourceHash: 5bfb60c5f5de563baea911d16e606efe429c6aff0edb7b2e5cded659fb5e66e9
 ---
 
 # データモデル: 重複の候補を自動で判定する {#data-model-judging-possible-duplicates-automatically}
@@ -44,6 +44,7 @@ sourceHash: ce412e90277689b41d1e1516c0c7a60d082cc0950b7e79fb5fb80c166371e67e
 | 規則 | 強制する場所 |
 | --- | --- |
 | 候補を取得できるのは、機能がオンで、その組が `video_version_unbundles` になく、その `judgement` が null か、`retry_at` を過ぎた `failed` であるときである | `domain` (規則)、`store` (取得のクエリ) |
+| 取得は両方の鍵の指紋を返し、フレームの規則がそれを読む ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)) | `store` |
 | 同時に `running` の判定は 1 つである | 単一のワーカー。取得は 1 つの文である |
 | 起動時に残っている `running` の行は、`attempts` を保ったまま null に戻る | `store`、起動時に `auto_tag_queue` が回復するのと同じように |
 | 「同じ動画」は、両側をまたぐ組が退けた組かまとまりから外した組でない限り、両側をまとめる。そうであれば行は `undecided` になる ([R-6](research.md#r-6-a-same-pair-joins-two-sides-unless-a-pair-across-them-is-known-to-differ)) | `domain` (2 つのメンバーの集合に対する確認)、`store` (まとめるトランザクションの中で両方を読み直す) |

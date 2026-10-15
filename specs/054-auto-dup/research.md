@@ -7,51 +7,74 @@ the queue and worker shape follow
 [auto-tagging.md](../../docs/design-docs/auto-tagging.md). This file records only
 the decisions this feature adds.
 
-## R-1: One yes/no question through the existing classifier port
+## R-1: The fingerprints decide first; the model is asked only when a section differs
 
-**Decision**: A candidate is judged by asking `app.Classifier` one question,
-whether the two files show the same picture, and reading the probability with
-two fixed thresholds.
+**Decision**: Each candidate is first judged from the per-frame distances of
+the two fingerprints already stored. When the frames match all through the
+video, the pair is "same video" without the model; when a run of frames
+differs, the model is asked about that run.
 
-| Option | Port change | Provider today | Verdict |
+```mermaid
+flowchart LR
+  pairs[Frame pairs by time] --> all{At most 5% differ, none in a row?}
+  all -->|yes| same[Same video, no model]
+  all -->|no| model[Ask the model about the differing run]
+```
+
+A frame pair "differs" when its Hamming distance is over
+`FingerprintMatchMaxDistance` (12), the cut-off candidates already use; frames
+are paired by time and flat frames are skipped as `CompareFingerprints` does.
+
+Today a candidate needs only the median distance to be 12 or less, so a video
+whose middle was replaced still passes. One frame per second of three 20 s
+synthetic videos against A (640×360):
+
+| Pair | Distance per frame | Median | Rule |
 | --- | --- | --- | --- |
-| **One question to `app.Classifier`** | None | Clef in Ollama | Chosen |
-| A generator port that answers same, different or undecidable | A new port and provider | Exists only on the unmerged `feature/053-ai-tag-generation` | Rejected: ties this feature to another feature's unmerged port |
-| No AI, a stricter fingerprint distance | None | None | Rejected: requirement 1 asks for an AI judgement, and a distance cannot tell a shared opening from the same video |
-
-**Rationale**: Clef scores a question it is given, which is exactly a pair
-question. The provider is reached as auto-tagging reaches it, so the Ollama
-settings, the connection test and a later provider serve both features.
-
-## R-2: The images are four side-by-side frame pairs
-
-**Decision**: The request carries 4 images; image `i` puts frame `i` of video A
-on the left and frame `i` of video B on the right, both taken from the seek
-preview at the middle of 4 equal parts of each video. The request has no facts.
-
-The trial below used three 20 s synthetic videos: A at 640×360, B the same
-footage re-encoded at 320×180 (same), and C sharing only A's first 4 s
-(different), with the question in [R-3](#r-3-the-question-wording-and-two-fixed-thresholds).
-Each cell is P(yes) from Workers AI on 2026-10-15.
-
-| Model | A and B (same) | A and C (opening only) |
-| --- | --- | --- |
-| `clef` | 0.97 | 0.02 |
-| `clef-flash` | 0.29 | 0.09 |
+| B, A re-encoded at 320×180 | 0 to 4 in all 20 | 0 | Same video |
+| D, A with seconds 8 to 11 replaced | 0 × 8, then 32 to 34 × 4, then 0 × 8 | 0 | Ask about seconds 8 to 11 |
+| C, sharing only A's first 4 s | 0 × 4, then 20 to 40 × 16 | 30 | Not a candidate |
 
 | Option | Verdict |
 | --- | --- |
-| **4 side-by-side pairs** | Chosen |
-| 8 separate images, A's then B's | Rejected: Workers AI's Clef takes 4 images, so the development relay tiles them into one image and the model loses which frame is whose |
-| The two library thumbnails | Rejected: one scene each, so a shared opening reads as the same video (acceptance criterion 2) |
-| Frames with ffmpeg from the source files | Rejected: only a scan reads the media folders' files ([ARCHITECTURE.md](../../ARCHITECTURE.md#cross-cutting-invariants)); the seek preview already exists for every candidate, since its fingerprint is built from it |
+| **Fingerprint rule first, the model for a differing run** | Chosen |
+| Ask the model about every candidate | Rejected: the fingerprints already show B is A; asking cost a request per pair, and `clef-flash`, the default model, scored that pair 0.29, below "same" |
+| Decide every candidate from the fingerprints alone | Rejected: a run of differing frames can be a different video or the same one with a changed scene, and only the pictures tell which (requirement 1 asks for an AI judgement) |
+| Use the median as today | Rejected: D's median is 0, the same as B's |
 
-**Rationale**: Candidates have matching durations, so the same relative
-positions are the same moments in both files, and a pair in one image asks the
-model to compare two pictures rather than remember eight. Frames spread across
-the whole video catch a video that only begins the same way.
-`internal/artifacts` cuts and composes the pairs, as it already cuts seek
-frames for auto-tagging, so `internal/app` decodes no image.
+**Rationale**: A re-encode or a different resolution, the cases 030 bundles,
+leaves every frame within the cut-off, so the rule settles them with no
+request and with any model. A single differing frame is allowed because
+frames are paired within half an interval, and a pair across a scene cut can
+show two scenes in two files of the same video. The rule runs only while the
+feature is on, and needs no AI connection.
+
+## R-2: The model sees the frames where the two files differ
+
+**Decision**: The request carries up to 4 images, each the frame of A beside
+the paired frame of B, taken from the longest run of differing frames (spread
+across it when it is longer than 4) out of the two seek previews, and no facts.
+
+The trial asked both Clef models through Workers AI on 2026-10-15, with the
+question in [R-3](#r-3-the-question-wording-and-two-fixed-thresholds):
+
+| Pair and images | `clef` | `clef-flash` |
+| --- | --- | --- |
+| A and D, 4 frames from seconds 8 to 11 | 0.06 | 0.08 |
+| A and B, 4 frames spread across the video | 0.97 | 0.29 |
+| A and C, 4 frames spread across the video | 0.02 | 0.09 |
+
+| Option | Verdict |
+| --- | --- |
+| **Frames from the differing run, A beside B** | Chosen |
+| 4 frames spread across the whole video | Rejected: for D they would mostly show the matching parts, and ask the model what the fingerprints already know |
+| 8 separate images, A's then B's | Rejected: Workers AI's Clef takes 4 images, so the development relay tiles them into one and the model loses which frame is whose |
+| Frames with ffmpeg from the source files | Rejected: only a scan reads the media folders' files ([ARCHITECTURE.md](../../ARCHITECTURE.md#cross-cutting-invariants)); the seek previews are what the fingerprints were built from |
+
+**Rationale**: The differing run is the only part in question, and showing
+it made both models answer clearly. `internal/artifacts` cuts and composes
+the pairs, as it already cuts seek frames for auto-tagging, so `internal/app`
+decodes no image.
 
 ## R-3: The question wording and two fixed thresholds
 
@@ -77,14 +100,12 @@ flowchart LR
 | --- | --- |
 | **0.8 and 0.2, fixed** | Chosen |
 | Owner-set thresholds, as auto-tagging has | Rejected: requirement 7 asks only for on and off, and a wrong "same" hides a video from the library |
-| "Do A and B contain the same footage throughout?" | Rejected: in the same trial it scored 0.93 and 0.09 on `clef`, a narrower gap than the chosen wording |
+| "Do A and B contain the same footage throughout?" | Rejected: on A and B with spread frames it scored 0.93 and 0.09 on `clef`, a narrower gap than the chosen wording |
 
-**Rationale**: `clef-flash` scored the same footage 0.29, so with it a
-same-video pair stays undecidable rather than being bundled wrongly, and only
-clearly different pairs leave the list. The trial is synthetic footage; the
-[quickstart](quickstart.md) repeats it on real files before the thresholds
-are final.
-
+**Rationale**: The model answers only for pairs the fingerprints could not
+settle, and a wrong "same" is the costly error, so the band for "same" is
+narrow. The trial is synthetic footage; the [quickstart](quickstart.md)
+repeats it on real files before the thresholds are final.
 
 ## R-4: The judgement is columns on the candidate row
 
@@ -239,18 +260,16 @@ offering pairs already decided. The worker also wakes on this event, so
 candidates listed again by a removal are judged without waiting for the next
 job.
 
-## R-11: The default model is left as it is, and Settings names the one that bundles
+## R-11: The request carries no file names
 
-**Decision**: The model stays `clef-flash` by default; the Settings section for
-this feature says that bundling needs the `clef` model, and that with a
-smaller one most pairs stay for the owner.
+**Decision**: The request has no facts; file names, folders and durations stay
+out of it.
 
-| Option | Verdict |
-| --- | --- |
-| **Keep the default, say it in Settings** | Chosen |
-| Change the default model to `clef` | Rejected: it is 27B, and auto-tagging, which shares the setting, would become slower on every machine |
-| A separate model setting for judging | Rejected: the provider owns the model ([ai-layer.md](../../docs/design-docs/ai-layer.md#adding-a-provider)), and a per-feature model would be a provider setting inside a feature |
+| Option | `clef` on A and B | `clef-flash` on A and B | `clef` on A and D | Verdict |
+| --- | --- | --- | --- | --- |
+| **No facts** | 0.97 | 0.29 | 0.06 | Chosen |
+| The two file names (`movie.mp4` and `movie_360p.mp4`; `show_ep01.mp4` and `show_ep02.mp4`) | 0.91 | 0.52 | 0.04 | Rejected: moved no pair across a threshold, and names such as `IMG_0001` and `IMG_0002` would point the wrong way |
 
-**Rationale**: With `clef-flash` the feature still removes clearly different
-pairs (0.09 in the trial) and never bundles wrongly; an owner who wants
-bundling learns the remedy where they turn the feature on.
+**Rationale**: Durations already match for every candidate, and the
+fingerprints have used the frames; the pictures are the evidence the model
+adds.
