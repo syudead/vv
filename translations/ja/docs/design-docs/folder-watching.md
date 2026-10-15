@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/folder-watching.md
-sourceHash: e3549e62f09815c737d697f3dc813397b6f843e254b829f18ae48ee9d4167d0b
+sourceHash: ed54897960d0e6f657e7d791e88a7aea1e80d49a0d98c3d18138f2ec904b8d25
 ---
 
 # フォルダの監視: 変更のあったメディアフォルダの取り込み {#folder-watching-importing-changed-media-folders}
@@ -34,6 +34,8 @@ flowchart LR
 ## バッチは静止と安定したファイルを待つ {#a-batch-waits-for-quiet-and-for-settled-files}
 
 `AutoImport` は変更のあったディレクトリを保持し、最後の報告の 2 秒後にバッチを始める。始める前に、最新のファイルの変更が 10 秒より新しいディレクトリは変更ありのまま残り、その時間が過ぎたら再び確認するので、コピー中のファイルは読まれない ([R-3](../../specs/042-folder-watch-import/research.md#r-3-a-batch-waits-for-quiet-imports-settled-files-then-removes))。
+
+確認は更新時刻だけを読むので、それより長く止まるコピーや、元のファイルの時刻を保つコピーは、コピーの途中でスキャナに届くことがある。監視によるスキャンでは、スキャナは読んでいる間に変わるか消えるファイルと、一覧を取った後に消えるディレクトリを、問題を記録せず、バッチを失敗させずに飛ばす。その変更が自身の通知を送り、それがディレクトリを次のバッチのために変更ありにする。手動スキャンは、引き続きそのファイルを `changed_during_import` として報告する。
 
 バッチは起点が `watch` のスキャンだ。スキャナは変更のあったディレクトリだけを読み、すべての追加を削除より先に書き、その中にある場所だけを削除するので、変更のあった 2 つのディレクトリの間で移動したファイルは、動画、タグ、再生位置を保つ ([R-4](../../specs/042-folder-watch-import/research.md#r-4-a-watch-batch-is-a-scan-row-with-origin-watch))。
 

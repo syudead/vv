@@ -142,6 +142,12 @@ export interface RequestFailedDetails {
   tagName?: string;
   /** 理由が指すプロパティの経路（`code`・`dates[0].date`。specs/047-video-work-info/contracts/screen-api.md）。 */
   field?: string;
+  /** 作品情報プラグインが報告した誤りの文の先頭 300 文字（specs/049-work-info-plugins/contracts/screen-api.md）。 */
+  pluginMessage?: string;
+  /** 作品情報プラグインの要求を拒んだか届かなかったホスト。 */
+  host?: string;
+  /** 値の無い必須の設定のキー（`plugin_settings_missing`）。 */
+  settingKeys?: readonly string[];
 }
 
 /**
@@ -157,6 +163,9 @@ export class RequestFailed extends Error {
   readonly limit: number | undefined;
   readonly tagName: string | undefined;
   readonly field: string | undefined;
+  readonly pluginMessage: string | undefined;
+  readonly host: string | undefined;
+  readonly settingKeys: readonly string[] | undefined;
 
   constructor(
     status: number,
@@ -172,6 +181,9 @@ export class RequestFailed extends Error {
     this.limit = details.limit;
     this.tagName = details.tagName;
     this.field = details.field;
+    this.pluginMessage = details.pluginMessage;
+    this.host = details.host;
+    this.settingKeys = details.settingKeys;
   }
 }
 
@@ -279,6 +291,13 @@ export async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 /** toRequestFailed は誤りの応答を、画面が文言を選べる形へ変える。 */
+/** stringArray は文字列の配列ならそのまま、そうでなければ undefined を返す。 */
+function stringArray(value: unknown): readonly string[] | undefined {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? (value as string[])
+    : undefined;
+}
+
 export async function toRequestFailed(response: Response): Promise<RequestFailed> {
   let body: Partial<ApiError> | null = null;
   try {
@@ -298,6 +317,10 @@ export async function toRequestFailed(response: Response): Promise<RequestFailed
       limit: typeof body.limit === "number" ? body.limit : undefined,
       tagName: typeof body.tagName === "string" ? body.tagName : undefined,
       field: typeof body.field === "string" ? body.field : undefined,
+      pluginMessage:
+        typeof body.pluginMessage === "string" ? body.pluginMessage : undefined,
+      host: typeof body.host === "string" ? body.host : undefined,
+      settingKeys: stringArray(body.settingKeys),
     },
   );
 }

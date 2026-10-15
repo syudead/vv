@@ -66,7 +66,10 @@ directories gains its new location before the old one is removed, so the video
 (and its tags, playback position and generated files) is never orphaned. The
 10 s window is long enough for a local or LAN copy that pauses between buffers;
 a copy that stalls longer is caught by the scanner's existing before-and-after
-check and imported once it settles.
+check and imported once it settles. A watch scan skips such a file, and a
+directory that vanishes after it is listed, without an issue: the change that
+interrupted the read sends a notification of its own, so a later batch reads
+the directory again.
 
 ## R-4: A watch batch is a scan row with origin `watch`
 

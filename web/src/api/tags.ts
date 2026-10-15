@@ -273,6 +273,16 @@ function afterTagCreated(): void {
 }
 
 /**
+ * afterTagsAppliedByName は、名前のタグを動画に付ける別の経路（作品情報の取得の反映。
+ * specs/049-work-info-plugins/contracts/screen-api.md）が成功した後に呼ぶ。名前に当たる
+ * タグが無ければサーバーが作るので、`attachVideoTagByName` で作られたときと同じく
+ * 動画一覧の控えを捨て、共有のタグの一覧を取り直す（候補と本数を新しく保つ）。
+ */
+export function afterTagsAppliedByName(): void {
+  afterTagCreated();
+}
+
+/**
  * afterTagChanged は、既存のタグを書き換える操作（改名・削除・統合・シノニム
  * の変更・まとめての操作）が成功した後に呼ぶ。動画一覧の控え（`listSnapshot`）は、
  * 破棄して読み直す（メディアフォルダの変更と同じ扱い。Structural Decisions 7）。

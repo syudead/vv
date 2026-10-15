@@ -67,7 +67,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | Domain | `internal/domain` | Value types and pure rules, including the business rules the store enforces | `net/http`, `database/sql`, `os`, `os/exec`, the SQLite driver, any other `internal/*` package |
 | Application | `internal/app` | The use cases (scans, auto-import, ingest, catalog, media folders, encoder choice, authentication, auto-tagging) | `net/http`, `database/sql`, `os/exec`, the SQLite driver, any adapter |
-| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `ollama`, `comfyui` | Talking to the outside world | Each other and `internal/app` |
+| Adapters | `internal/httpapi`, `store`, `media`, `artifacts`, `mediafs`, `opener`, `scanner`, `watcher`, `jobs`, `password`, `ollama`, `comfyui`, `wasmplugin` | Talking to the outside world | Each other and `internal/app` |
 | Beside the adapters | `internal/eventbus`, `internal/desktop` | In-process event delivery; the desktop app's OS side | Imported by `cmd/mdm` only |
 
 `internal/app` reaches storage, `ffmpeg` and generated files only through
@@ -180,6 +180,7 @@ filesystem.
 | Sidecar subtitles (`internal/httpapi`, `internal/media`) | Finding sidecar files per request and converting them to WebVTT | [sidecar-subtitles.md](docs/design-docs/sidecar-subtitles.md) |
 | `internal/app` (`Classifier`, `OllamaConnection`), `internal/ollama` | The AI layer: a task-agnostic classifier port, and the Ollama provider behind it with its connection settings | [ai-layer.md](docs/design-docs/ai-layer.md) |
 | `internal/app` (`ComfyUIConnection`), `internal/comfyui` | The image-edit provider: one adapter for a self-hosted ComfyUI and Comfy Cloud, with its connection settings and test | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
+| `internal/app` (`WorkInfoPluginRuntime`, `WorkInfoPlugins`), `internal/store` (`WorkInfoPluginStore`, `OverrideStore.ApplyFetchedWorkInfo`), `internal/wasmplugin` | Work-info plugins: inspecting a WebAssembly module without running it, running it in a wazero sandbox with no files or environment and fixed limits, performing its HTTP requests so that only public internet addresses are reached, the owner's plugin rows with an approval bound to the module's digest and per-plugin setting values, and searching, fetching into a 10-minute in-memory result, and applying the selected title and tags in one transaction that re-checks the plugin's approval | [work-info-plugins.md](docs/design-docs/work-info-plugins.md) |
 | `internal/app` (`AutoTagger`) | Asking the classifier port which existing tags fit a video, and its queue | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/opener` | Opening a video in the server PC's default app, loopback requests only | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
 | `internal/password` | Argon2id hashing in PHC strings | [016 data-model](specs/016-single-account-auth/data-model.md) |

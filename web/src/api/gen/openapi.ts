@@ -1419,6 +1419,182 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/work-info-plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 作品情報プラグインを一覧する
+         * @description 所有者だけ。名前、次にファイル名の順で返す（名前を読めなかったプラグインは名前のあるものの後）。
+         *     秘密の設定の値は返さず、`set` だけを返す。プラグインの変化はイベントで流れないので、設定画面と
+         *     動画ページはこれを読み直す（specs/049-work-info-plugins/contracts/screen-api.md、research.md R-11・R-13）。
+         */
+        get: operations["listWorkInfoPlugins"];
+        put?: never;
+        /**
+         * 作品情報プラグインを追加するか、同じ名前のものを差し替える
+         * @description 所有者だけ。`multipart/form-data` の `module`（WebAssembly モジュール、16 MiB まで）を 1 つ受け取り、
+         *     実行せずに検査して保存する。ファイル名は残す。マニフェストの `name` が既存のプラグインと同じなら
+         *     その行を差し替えて `200`、それ以外は新しい行で `201` を返す。差し替えたプラグインは承認前に戻り、
+         *     新しいマニフェストが宣言するキーの設定の値だけが残る。使えないファイルも保存し、`state: invalid` と
+         *     `problem` を付けて返す。`module` が無いか 2 つ以上なら `400` `invalid_request`、16 MiB を超えれば
+         *     `413` `plugin_too_large`（`limit`）を返し、何も書かない
+         *     （specs/049-work-info-plugins/contracts/screen-api.md、data-model.md の Rules）。
+         */
+        post: operations["uploadWorkInfoPlugin"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-info-plugins/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * 作品情報プラグインを消す
+         * @description 所有者だけ。設定の値も一緒に消える。無ければ `404` `not_found`。
+         */
+        delete: operations["deleteWorkInfoPlugin"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-info-plugins/{id}/approval": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 所有者が見たモジュールを承認する
+         * @description 所有者だけ。`digest` は一覧の `digest` である。無ければ `404` `not_found`、保存されたモジュールの
+         *     ダイジェストが違えば `409` `plugin_changed`、プラグインが `invalid` なら `409` `plugin_unusable` を
+         *     返し、何も書かない（specs/049-work-info-plugins/research.md R-7）。
+         */
+        put: operations["approveWorkInfoPlugin"];
+        post?: never;
+        /**
+         * 作品情報プラグインの承認を取り消す
+         * @description 所有者だけ。無ければ `404` `not_found`。承認していなくても `200` を返す。
+         */
+        delete: operations["revokeWorkInfoPluginApproval"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-info-plugins/{id}/settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * 作品情報プラグインの設定の値を書く
+         * @description 所有者だけ。`values` のキーごとに値を書き、`null`（と空の文字列）はその値を消し、省いたキーの値は
+         *     そのまま残す。承認は変わらない。マニフェストが宣言しないキーか 2000 文字を超える値があれば `400`
+         *     `invalid_request`、無ければ `404` `not_found`、プラグインが `invalid` なら `409` `plugin_unusable` を
+         *     返し、何も書かない。応答の秘密の設定は `set` だけを持つ
+         *     （specs/049-work-info-plugins/research.md R-13）。
+         */
+        put: operations["setWorkInfoPluginSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/work-info-plugins/{id}/search": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 作品情報プラグインの search で作品を探す
+         * @description 所有者だけ。承認済みのプラグインの `search` を 1 回動かし、候補（URL・題名・省略できる説明の文字だけ）を
+         *     返す。`query` は前後の空白を除いて 1〜200 文字で、外れれば `400` `invalid_request`。マニフェストが
+         *     `search` を宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
+         *     specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである
+         *     （research.md R-10・R-13）。
+         */
+        post: operations["searchWorkInfo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/work-info-fetches": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 作品情報プラグインの fetch で動画の作品情報を取る
+         * @description 所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を作品の `url`（http か https、2048 文字まで）で
+         *     1 回動かし、結果を 10 分の間メモリに持って `201` で返す。動画は変えない。`title` は表示名の規則を
+         *     通ったもので、無いか規則に外れれば省く。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
+         *     宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
+         *     specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである（research.md R-8）。
+         */
+        post: operations["fetchWorkInfo"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/work-info-fetches/{fetchId}/apply": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 取得の結果のうち選んだ項目を動画に反映する
+         * @description 所有者だけ。`fields` の項目（`title` は表示名、`tags` は仮のタグ）を 1 つの取引で書く。結果は使い切りで、
+         *     成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
+         *     `skippedTags` で知らせ、付けない。`fields` が空か結果に値の無い項目を含めば `400` `invalid_request`、
+         *     動画が無いか結果が別の動画のものなら `404` `not_found`、結果が期限切れか不明か、取得の後にプラグインが
+         *     差し替えられたか承認を取り消されたか消されていれば `409` `work_info_fetch_stale` で、どれも何も
+         *     書かない。確定後に `/api/events` の `video` が流れる
+         *     （specs/049-work-info-plugins/contracts/screen-api.md、research.md R-8・R-9）。
+         */
+        post: operations["applyWorkInfoFetch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/tags": {
         parameters: {
             query?: never;
@@ -3015,6 +3191,144 @@ export interface components {
             /** @description プレビューを開いたときに画面が持っていた動画の `contentVersion` */
             contentVersion: string;
         };
+        UploadWorkInfoPluginRequest: {
+            /**
+             * Format: binary
+             * @description 作品情報プラグインの WebAssembly モジュール（16 MiB まで）。ファイル名は残す
+             */
+            module: string;
+        };
+        /**
+         * @description プラグインの状態（specs/049-work-info-plugins/data-model.md の State transitions）
+         * @enum {string}
+         */
+        WorkInfoPluginState: "approved" | "unapproved" | "invalid";
+        /**
+         * @description プラグインを承認できない理由（specs/049-work-info-plugins/data-model.md の work_info_plugins）
+         * @enum {string}
+         */
+        WorkInfoPluginProblem: "not_wasm" | "manifest_missing" | "manifest_invalid" | "contract_unsupported" | "import_unsupported" | "export_invalid" | "table_too_large";
+        /**
+         * @description プラグインの操作（specs/049-work-info-plugins/contracts/plugin-contract.md）
+         * @enum {string}
+         */
+        WorkInfoOperation: "search" | "fetch";
+        /**
+         * @description マニフェストが宣言する設定の 1 つと、その値の有無。`value` は `secret` が偽で値があるときだけ入る
+         *     （specs/049-work-info-plugins/research.md R-13）
+         */
+        WorkInfoPluginSetting: {
+            key: string;
+            label: string;
+            secret: boolean;
+            required: boolean;
+            /** @description 値が保存されているか */
+            set: boolean;
+            /** @description 保存された値。秘密の設定では入らない */
+            value?: string;
+        };
+        /** @description 作品情報プラグイン 1 つ（specs/049-work-info-plugins/contracts/screen-api.md の WorkInfoPlugin） */
+        WorkInfoPlugin: {
+            /** Format: int64 */
+            id: number;
+            /** @description マニフェストの name。マニフェストを読めなかったときは無い */
+            name?: string;
+            /** @description アップロードしたファイルの名前 */
+            fileName: string;
+            version?: string;
+            description?: string;
+            /** @description マニフェストの operations。invalid のプラグインでは空 */
+            operations: components["schemas"]["WorkInfoOperation"][];
+            /** @description モジュールの SHA-256（小文字の 16 進）。承認のときに送り返す */
+            digest: string;
+            state: components["schemas"]["WorkInfoPluginState"];
+            problem?: components["schemas"]["WorkInfoPluginProblem"];
+            /** @description 宣言の順の設定。invalid のプラグインでは空 */
+            settings: components["schemas"]["WorkInfoPluginSetting"][];
+            /** @description 取り決めの版 1 では常に真。プラグインはインターネットのサイトに届く */
+            network: boolean;
+            /**
+             * Format: int64
+             * @description 最後のアップロードか承認の変更の時刻（Unix 秒）
+             */
+            updatedAt: number;
+        };
+        WorkInfoPluginList: {
+            /** @description 名前、次にファイル名の順 */
+            plugins: components["schemas"]["WorkInfoPlugin"][];
+        };
+        ApproveWorkInfoPluginRequest: {
+            /** @description 一覧で見た digest */
+            digest: string;
+        };
+        SetWorkInfoPluginSettingsRequest: {
+            /** @description キーから新しい値へ。null はその値を消し、省いたキーはそのまま残す */
+            values: {
+                [key: string]: string | null;
+            };
+        };
+        WorkInfoSearchRequest: {
+            /** @description 探す語。前後の空白を除いて 1〜200 文字 */
+            query: string;
+        };
+        /** @description 検索の候補 1 つ。文字だけで、画像は持たない（specs/049-work-info-plugins/research.md R-10） */
+        WorkInfoCandidate: {
+            /** @description 作品の URL（http か https）。取得にそのまま渡す */
+            url: string;
+            title: string;
+            /** @description 候補を見分ける説明の 1 行 */
+            detail?: string;
+        };
+        WorkInfoSearchResult: {
+            /** @description プラグインが返した順の候補（先頭 50 件まで） */
+            candidates: components["schemas"]["WorkInfoCandidate"][];
+        };
+        WorkInfoFetchRequest: {
+            /**
+             * Format: int64
+             * @description 承認済みのプラグイン
+             */
+            pluginId: number;
+            /** @description 作品の URL（http か https、2048 文字まで） */
+            url: string;
+        };
+        /** @description メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8） */
+        WorkInfoFetch: {
+            /** @description 結果の識別子。反映に使う */
+            fetchId: string;
+            /**
+             * Format: int64
+             * @description 結果が消える時刻（Unix 秒）
+             */
+            expiresAt: number;
+            /** @description 表示名の規則を通った題名。プラグインが返さなかったか規則に外れれば無い */
+            title?: string;
+            /** @description 取得したタグの名前。空でもよい */
+            tags: string[];
+        };
+        /**
+         * @description 動画に反映できる取得の結果の項目
+         * @enum {string}
+         */
+        WorkInfoField: "title" | "tags";
+        ApplyWorkInfoFetchRequest: {
+            /** @description 反映する項目。空にできず、どれも結果に値がなければならない */
+            fields: components["schemas"]["WorkInfoField"][];
+        };
+        /**
+         * @description 付けなかった理由。rejected は却下した名前、invalid はタグ名の規則に合わない名前
+         * @enum {string}
+         */
+        SkippedTagReason: "rejected" | "invalid";
+        SkippedTag: {
+            name: string;
+            reason: components["schemas"]["SkippedTagReason"];
+        };
+        WorkInfoFetchApplied: {
+            video: components["schemas"]["Video"];
+            /** @description 付けなかったタグの名前。取得の結果の順 */
+            skippedTags: components["schemas"]["SkippedTag"][];
+        };
         /**
          * @description 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
          * @enum {string}
@@ -4543,7 +4857,7 @@ export interface components {
              * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "operation_unsupported" | "work_info_fetch_stale";
             /** @description 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0） */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -4553,12 +4867,18 @@ export interface components {
             field?: string;
             /** @description 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と tag_merge_required のときだけ入る（specs/023-english-i18n/contracts/error-api.md §1） */
             tagName?: string;
+            /** @description 作品情報プラグインが報告した誤りの文の先頭 300 文字（翻訳しないプラグインの文）。plugin_failed のとき だけ入りうる（specs/049-work-info-plugins/contracts/screen-api.md の Run failures） */
+            pluginMessage?: string;
+            /** @description 作品情報プラグインの要求を拒んだか届かなかったホスト。reason が blocked_address か network_error の ときだけ入る */
+            host?: string;
+            /** @description 値の無い必須の設定のキー（宣言の順）。plugin_settings_missing のときだけ入る */
+            settingKeys?: string[];
         };
         /**
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -4590,6 +4910,42 @@ export interface components {
         };
         /** @description 現在の状態と競合する操作 */
         Conflict: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description 作品情報プラグインのモジュールが上限（limit）を超える */
+        PluginTooLarge: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description 作品情報プラグインの実行が失敗した（reason・pluginMessage・host） */
+        PluginFailed: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description 別の作品情報プラグインの実行が枠を空けなかった */
+        PluginBusy: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description 作品情報プラグインの実行が 30 秒を超えて止めた */
+        PluginTimedOut: {
             headers: {
                 [name: string]: unknown;
             };
@@ -4636,6 +4992,10 @@ export interface components {
         MediaFolderId: number;
         /** @description API トークンの識別子 */
         APITokenId: number;
+        /** @description 作品情報プラグインの識別子 */
+        WorkInfoPluginId: number;
+        /** @description 取得の結果の識別子 */
+        WorkInfoFetchId: string;
         /** @description グループの識別子 */
         GroupId: number;
         /** @description グループの項目の識別子。動画やグループの id ではない */
@@ -6764,6 +7124,275 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listWorkInfoPlugins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 作品情報プラグインの一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPluginList"];
+                };
+            };
+        };
+    };
+    uploadWorkInfoPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": components["schemas"]["UploadWorkInfoPluginRequest"];
+            };
+        };
+        responses: {
+            /** @description 差し替えたプラグイン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            /** @description 追加したプラグイン */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            413: components["responses"]["PluginTooLarge"];
+        };
+    };
+    deleteWorkInfoPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作品情報プラグインの識別子 */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    approveWorkInfoPlugin: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作品情報プラグインの識別子 */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApproveWorkInfoPluginRequest"];
+            };
+        };
+        responses: {
+            /** @description 承認したプラグイン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    revokeWorkInfoPluginApproval: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作品情報プラグインの識別子 */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 承認を取り消したプラグイン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setWorkInfoPluginSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作品情報プラグインの識別子 */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetWorkInfoPluginSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 書いた後のプラグイン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPlugin"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    searchWorkInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作品情報プラグインの識別子 */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkInfoSearchRequest"];
+            };
+        };
+        responses: {
+            /** @description 検索の候補 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoSearchResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            502: components["responses"]["PluginFailed"];
+            503: components["responses"]["PluginBusy"];
+            504: components["responses"]["PluginTimedOut"];
+        };
+    };
+    fetchWorkInfo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkInfoFetchRequest"];
+            };
+        };
+        responses: {
+            /** @description 取得の結果 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoFetch"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            502: components["responses"]["PluginFailed"];
+            503: components["responses"]["PluginBusy"];
+            504: components["responses"]["PluginTimedOut"];
+        };
+    };
+    applyWorkInfoFetch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+                /** @description 取得の結果の識別子 */
+                fetchId: components["parameters"]["WorkInfoFetchId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ApplyWorkInfoFetchRequest"];
+            };
+        };
+        responses: {
+            /** @description 反映後の動画と、付けなかったタグの名前 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoFetchApplied"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listTags: {

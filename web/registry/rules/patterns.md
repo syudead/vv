@@ -168,6 +168,11 @@ has succeeded.
   it the first focusable element is.
 - Opened without a `trigger`, the dialog returns the focus to the element that
   had it before; an Esc that cancels an IME composition does not close it.
+- Pass `size="wide"` for a form that sets values side by side for comparison:
+  the dialog stops at `max-w-2xl` (42rem) instead of `max-w-lg`, and below
+  `sm` it still spans the screen with the 16px margin.
+- Leave out `cancelLabel` for a last step whose only action is closing, such
+  as `Done` after a result; the footer then holds only the submit button.
 
 ## Confirm dialog
 

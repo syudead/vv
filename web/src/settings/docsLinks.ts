@@ -13,3 +13,7 @@ export const EXTERNAL_API_GUIDE_URL =
 /** COMFYUI_GUIDE_URL は docs/how-to/comfyui-thumbnails.md（サムネイルの編集のための ComfyUI の用意）である。 */
 export const COMFYUI_GUIDE_URL =
   "https://syudead.github.io/vv/docs/how-to/comfyui-thumbnails";
+
+/** WORK_INFO_PLUGINS_GUIDE_URL は docs/how-to/work-info-plugins.md（作品情報プラグインの取り決め）である。 */
+export const WORK_INFO_PLUGINS_GUIDE_URL =
+  "https://syudead.github.io/vv/docs/how-to/work-info-plugins";

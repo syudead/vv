@@ -484,6 +484,25 @@ export function generateWorkInfoFixtures(root) {
 }
 
 /**
+ * WORK_INFO_PLUGIN_VIDEO は generateWorkInfoPluginFixtures が作る動画の題名で、作品情報プラグインの
+ * 取得と反映（specs/049-work-info-plugins、子 #1084）を web/e2e/work-info-plugins.e2e.ts で確かめる。
+ */
+export const WORK_INFO_PLUGIN_VIDEO = "プラグイン動画";
+
+export function generateWorkInfoPluginFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=10:duration=2",
+    ...h264,
+    "-an",
+    path.join(root, `${WORK_INFO_PLUGIN_VIDEO}.mp4`),
+  ]);
+}
+
+/**
  * generateTagsFixtures が作る動画の本数（タグ動画A〜D と、タグ埋めの動画）。
  * web/e2e/tags.e2e.ts の videoCount と同じ数にする。
  */

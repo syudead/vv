@@ -22,11 +22,17 @@ type VideoEncoderChoice = components["schemas"]["VideoEncoderChoice"];
 type EncoderUnavailableReason = components["schemas"]["EncoderUnavailableReason"];
 type ComfyUIProvider = components["schemas"]["ComfyUIProvider"];
 type ComfyUIModel = components["schemas"]["ComfyUIModel"];
+type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
+type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
+type WorkInfoOperation = components["schemas"]["WorkInfoOperation"];
+type SkippedTagReason = components["schemas"]["SkippedTag"]["reason"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
   limit?: number;
   tagName?: string;
+  /** 作品情報プラグインの要求を拒んだか届かなかったホスト（specs/049-work-info-plugins/ui-design.md）。 */
+  host?: string;
 }
 
 /** ErrorEntry は既知のエラー 1 つの文である。値を埋め込む文は関数にする。 */
@@ -204,6 +210,16 @@ const errorCodes = {
   login_throttled: "Too many sign-in attempts. Wait a moment and try again.",
   account_already_configured: "The account is already set up.",
   provider_failed: "ComfyUI couldn't start the edit.",
+  plugin_too_large: "The file is over 16 MB.",
+  plugin_changed: "The plugin was replaced. Review it again.",
+  plugin_unusable: "The plugin can't be used.",
+  plugin_not_approved: "The plugin is no longer approved.",
+  plugin_settings_missing: "The plugin needs settings first.",
+  plugin_failed: "The plugin failed.",
+  plugin_timed_out: "The plugin didn't finish in 30 seconds and was stopped.",
+  plugin_busy: "Another plugin is running. Try again in a moment.",
+  operation_unsupported: "The plugin can't do that.",
+  work_info_fetch_stale: "The result is out of date. Fetch it again.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {
@@ -334,6 +350,17 @@ const errorReasons = {
   merge_same_person: "A person can't be merged into themselves.",
   merge_same_organization: "An organization can't be merged into itself.",
   external_id_taken: "Another entry already has this ID.",
+  // 作品情報プラグインの実行の失敗（specs/049-work-info-plugins/ui-design.md の Error text）。
+  blocked_address: ({ host }) =>
+    host === undefined
+      ? "The plugin tried to reach VVMDM itself or a device on your network."
+      : `The plugin tried to reach ${host}, which is VVMDM itself or a device on your network.`,
+  network_error: ({ host }) =>
+    host === undefined
+      ? "The plugin couldn't reach a site."
+      : `The plugin couldn't reach ${host}.`,
+  memory_exceeded: "The plugin used more than 128 MB of memory and was stopped.",
+  output_too_large: "The plugin's answer was over 1 MB.",
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -1675,6 +1702,62 @@ export const en = {
       showLess: "Show less",
       edit: "Edit details",
     },
+    // 作品情報プラグインからの取得（specs/049-work-info-plugins/ui-design.md「Words」の
+    // Video page text）。
+    workInfoFetch: {
+      entry: "Fetch work info from a plugin",
+      title: "Fetch work info",
+      description: "Nothing changes until you apply.",
+      plugin: "Plugin",
+      queryBoth: "Search words or the work's page URL",
+      querySearch: "Search words",
+      queryFetch: "The work's page URL",
+      notUrl: "Paste a page URL starting with http:// or https://.",
+      search: "Search",
+      fetch: "Fetch",
+      searching: "Searching…",
+      fetching: "Fetching…",
+      matches: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} match`,
+          other: `${formatNumber(count)} matches`,
+        }),
+      matchList: "Matches",
+      openPage: "Open page",
+      noMatches: "No matches.",
+      noMatchesFetch: "No matches. Try other words or paste the work's page URL.",
+      source: (plugin: string) => `From ${plugin} · `,
+      back: "Back to the matches",
+      now: "Now",
+      fetched: "Fetched",
+      fields: { title: "Title", tags: "Tags" },
+      notInResult: "Not in the result",
+      sameAsNow: "Same as now",
+      onVideo: "On the video",
+      tentative: "Tentative",
+      newCount: (count: number) => `${formatNumber(count)} new`,
+      more: (count: number) => `+${formatNumber(count)} more`,
+      showFewer: "Show fewer",
+      apply: "Apply selected",
+      applying: "Applying…",
+      applied: "Applied to the video.",
+      resultTitle: "Applied, but some tags were left out",
+      // 1 行は「{name} — {理由}」で、名前だけを太くする。
+      skipped: {
+        rejected: "you rejected this tag before",
+        invalid: "not a valid tag name",
+      } satisfies Record<SkippedTagReason, string>,
+      done: "Done",
+      stale: "This result is out of date. Fetch it again to apply it.",
+      fetchAgain: "Fetch again",
+      settingsMissing: (plugin: string, labels: readonly string[]) =>
+        `${plugin} needs ${formatList(labels)} first.`,
+      openSettings: "Open Settings",
+      searchFailed: (reason: string) => `Couldn't search: ${reason}`,
+      fetchFailed: (reason: string) => `Couldn't fetch: ${reason}`,
+      applyFailed: (reason: string) => `Couldn't apply: ${reason}`,
+      pluginSaid: (message: string) => `The plugin said: "${message}"`,
+    },
     // 全画面の編集画面（specs/047-video-work-info/ui-design.md「Words」の Editor）。
     detailsEditor: {
       title: "Edit details",
@@ -2508,6 +2591,103 @@ export const en = {
       updateForNode: "Update ComfyUI to get this node",
       loading: "Loading the ComfyUI settings",
       loadFailed: (reason: string) => `Couldn't load the ComfyUI settings: ${reason}`,
+    },
+    workInfoPlugins: {
+      heading: "Work-info plugins",
+      description:
+        "Plugins fetch work information from other sites for the video page. Approve a plugin before it can run.",
+      guide: "How plugins work",
+      opensInNewTab: "(opens in a new tab)",
+      list: "Added work-info plugins",
+      loading: "Loading the work-info plugins",
+      loadFailed: (reason: string) => `Couldn't load the work-info plugins: ${reason}`,
+      add: "Add plugin",
+      adding: "Adding…",
+      fileInput: "Plugin file",
+      tooLarge: "Choose a file up to 16 MB.",
+      addFailed: (reason: string) => `Couldn't add the plugin: ${reason}`,
+      added: (name: string) => `Added ${name}. Approve it to use it.`,
+      replaced: (name: string) => `Replaced ${name}. Approve it again to use it.`,
+      addedUnusable: (name: string) => `Added ${name}, but it can't be used.`,
+      empty: "No plugins yet",
+      emptyHint: "Add a .wasm plugin file to fetch titles and tags on the video page.",
+      states: {
+        approved: "Approved",
+        unapproved: "Not approved",
+        invalid: "Can't be used",
+      } satisfies Record<WorkInfoPluginState, string>,
+      version: (version: string) => `v${version}`,
+      operations: {
+        search: "Search",
+        fetch: "Fetch by URL",
+      } satisfies Record<WorkInfoOperation, string>,
+      network: "Reaches internet sites",
+      settingSet: (label: string) => `${label} set`,
+      settingNotSet: (label: string) => `${label} not set`,
+      settingsSummary: (items: readonly string[]) => `Settings: ${items.join(", ")}`,
+      requiredMissing: (labels: readonly string[]) =>
+        `Needs a value: ${labels.join(", ")}`,
+      approve: "Review and approve",
+      settings: "Settings",
+      more: (name: string) => `More actions for ${name}`,
+      revoke: "Revoke approval",
+      delete: "Delete",
+      revoking: "Revoking…",
+      deleting: "Deleting…",
+      rowFailed: (name: string, reason: string) => `Couldn't change ${name}: ${reason}`,
+      problems: {
+        not_wasm: "The file isn't a WebAssembly module.",
+        manifest_missing: "The file has no plugin information for VVMDM.",
+        manifest_invalid: "The plugin information in the file is invalid.",
+        contract_unsupported: "The plugin is made for another version of VVMDM.",
+        import_unsupported: "The plugin asks for functions VVMDM doesn't offer.",
+        export_invalid: "The file isn't a plugin VVMDM can run.",
+        table_too_large: "The plugin asks for more memory tables than VVMDM allows.",
+      } satisfies Record<WorkInfoPluginProblem, string>,
+      approval: {
+        title: (name: string) => `Approve ${name}?`,
+        description:
+          "Approved plugins can run when you fetch work information on a video page.",
+        version: "Version",
+        file: "File",
+        can: "Can",
+        pluginDescription: "Description",
+        digest: "SHA-256",
+        networkTitle: "This plugin can reach any site on the internet",
+        networkBody:
+          "It can send what it fetches and the values of its settings to those sites. VVMDM blocks its requests to VVMDM itself and to devices on your network.",
+        settingsHeading: "Settings it receives",
+        secret: "Secret",
+        required: "Required",
+        noSettings: "It receives no settings.",
+        submit: "Approve",
+        changed:
+          "The plugin was replaced while this was open. Close this and review it again.",
+        failed: (reason: string) => `Couldn't approve the plugin: ${reason}`,
+      },
+      settingsDialog: {
+        title: (name: string) => `Settings for ${name}`,
+        description:
+          "Values are sent only to this plugin when it runs. Changing them keeps the approval.",
+        required: "Required",
+        secretSaved: "Saved. Type a new value to replace it.",
+        secretNotSaved: "Not set.",
+        forget: "Forget",
+        forgotten: "Removed when you save.",
+        undo: "Undo",
+        submit: "Save",
+        saved: (name: string) => `Saved the settings for ${name}.`,
+        saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
+      },
+      deleteDialog: {
+        title: (name: string) => `Delete ${name}?`,
+        description:
+          "The plugin and the values of its settings are removed. Videos keep what was already applied.",
+        submit: "Delete",
+        deleting: "Deleting…",
+        deleted: (name: string) => `Deleted ${name}.`,
+        failed: (reason: string) => `Couldn't delete the plugin: ${reason}`,
+      },
     },
     mediaFolders: {
       heading: "Media folders",
