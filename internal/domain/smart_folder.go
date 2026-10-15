@@ -319,3 +319,33 @@ type SmartFolderChange struct {
 	ParentSet bool
 	ParentID  int64
 }
+
+// LibrarySmartFolder はスマートフォルダのカードである（contracts/screen-api.md の
+// LibrarySmartFolder）。カードの値は LibraryGroup と同じ値を、フォルダの再生順（Members）から
+// 作る（data-model.md「Contents」）。埋め込んだ LibraryGroup の ID と Name はフォルダのもので、
+// Path は空、Favorite はフォルダのお気に入りである。
+type LibrarySmartFolder struct {
+	LibraryGroup
+	// ParentID は親のフォルダの id で、根なら 0 である。
+	ParentID int64
+}
+
+// SmartFolderPage はスマートフォルダ 1 つと、その中身 1 ページである
+// （GET /api/smart-folders/{id} と GET /api/smart-folders/{id}/items）。
+type SmartFolderPage struct {
+	// SmartFolder はフォルダのカードである。
+	SmartFolder LibrarySmartFolder
+	// Folder はフォルダの行（条件と並べ順）である。応答の settings は所有者にだけ返す。
+	Folder SmartFolder
+	// Missing は、フォルダと祖先の条件が名指す実体のうち今無いものである（外側の祖先から順）。
+	// 1 つでもあれば、中身は子フォルダだけである（research.md R-9）。
+	Missing []SmartRuleRef
+	// Trail は祖先のフォルダを外側から順に持つ。
+	Trail []GroupRef
+	// Items は最初のページなら子フォルダ（名前の順）を先に、続けてライブラリの項目を持つ。
+	Items []LibraryItem
+	// NextCursor は次のページの取得に渡す。これ以上無ければ空。
+	NextCursor string
+	// Roots は登録フォルダの一覧である。中身と同じ読み取りスナップショットから読む。
+	Roots []MediaFolder
+}

@@ -152,6 +152,12 @@ func (s *SmartFolderStore) MissingRefs(ctx context.Context, id int64) ([]domain.
 	if err != nil {
 		return nil, err
 	}
+	return missingSmartRuleRefs(ctx, tx, rules)
+}
+
+// missingSmartRuleRefs は条件 rules が名指す実体のうち今無いものを、rules の順に、同じものは
+// 1 度だけ返す。
+func missingSmartRuleRefs(ctx context.Context, tx *sql.Tx, rules []domain.SmartRule) ([]domain.SmartRuleRef, error) {
 	missing := []domain.SmartRuleRef{}
 	seen := map[domain.SmartRuleRef]bool{}
 	for _, rule := range rules {

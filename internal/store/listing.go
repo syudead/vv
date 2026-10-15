@@ -97,11 +97,20 @@ type listSpec struct {
 	maxDurationSec  *int
 	// now は追加日の絞り込みの基準時刻（Unix 秒）である。1回の一覧の読み取りで一度だけ
 	// 決め、件数・ページ・空ページの再集計のどの SQL にも同じ値を渡す。
-	now    int64
-	sort   domain.VideoSort
-	seed   int64
-	cursor string
-	limit  int
+	now int64
+	// and は、この絞り込みに重ねて掛ける絞り込みで、スマートフォルダの祖先の条件を 1 段に 1 つ
+	// 持つ（specs/052-smart-folders/research.md R-5）。ライブラリの項目の問い合わせ
+	// （libraryItemsCTE）だけが読み、各段の絞り込みの項目（検索式・視聴状態・再生可否・お気に入り・
+	// タグ・人物と団体・追加日と長さ）をそれぞれ掛ける。範囲・並べ順・カーソル・件数と、各段の
+	// and は読まない。
+	and []listSpec
+	// ownerSearch は、ゲストにも検索式を所有者の意味（タグ名と作品情報にも照合する）で掛ける。
+	// スマートフォルダの条件は所有者の事実で決まる（research.md R-11）。
+	ownerSearch bool
+	sort        domain.VideoSort
+	seed        int64
+	cursor      string
+	limit       int
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
@@ -184,11 +193,22 @@ func (s *LibraryStore) CountVideos(ctx context.Context, audience domain.Audience
 // パスの最小のまま。所在の範囲が見せてよい所在に限るので、見せる動画の判定は所在ごとに
 // 集まりの規則だけを足せばよく、動画ごとの見せてよいかの判定を重ねない。
 func chosenLocationsCTE(scope locationScope, expr domain.SearchExpr) (string, []any) {
+	return chosenLocationsCTEFor(scope, scope.audience, []domain.SearchExpr{expr})
+}
+
+// chosenLocationsCTEFor は chosenLocationsCTE と同じ chosen を、検索式 exprs のすべてを満たす
+// 所在から作る。検索式は見る人 searchAudience の意味で照合する（スマートフォルダは所有者の意味、
+// specs/052-smart-folders/research.md R-11）。範囲と集まりの代表は scope の見る人で決める。
+func chosenLocationsCTEFor(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	scopeClause, args := scope.condition("l")
 	clauses := []string{scopeClause, `(sbm.bundle_id is null or sv.id = ` +
 		effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
-	if exprClause, exprArgs := searchExprCondition(expr, "l", scope.audience); exprClause != "" {
-		bundleClause, bundleArgs := searchExprCondition(expr, "bl", scope.audience)
+	for _, expr := range exprs {
+		exprClause, exprArgs := searchExprCondition(expr, "l", searchAudience)
+		if exprClause == "" {
+			continue
+		}
+		bundleClause, bundleArgs := searchExprCondition(expr, "bl", searchAudience)
 		clauses = append(clauses, `((sbm.bundle_id is null and `+exprClause+`) or (sbm.bundle_id is not null and exists (
 			select 1 from video_bundle_members bm
 			join videos bv on bv.content_key = bm.content_key and bv.content_key <> ''

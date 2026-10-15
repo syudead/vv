@@ -5,10 +5,13 @@ import "time"
 // ライブラリの項目（specs/017-folder-groups/data-model.md §5・§6）。ライブラリの
 // 一覧は、動画とグループを「項目」として混ぜて返す。
 
-// LibraryItem は一覧の項目1件である。Video と Group のちょうど一方を持つ。
+// LibraryItem は一覧の項目1件である。Video・Group・SmartFolder のちょうど 1 つを持つ。
+// SmartFolder はスマートフォルダの中身の子フォルダである（specs/052-smart-folders/data-model.md
+// 「Contents」）。
 type LibraryItem struct {
-	Video *Video
-	Group *LibraryGroup
+	Video       *Video
+	Group       *LibraryGroup
+	SmartFolder *LibrarySmartFolder
 }
 
 // LibraryPage はライブラリの一覧1ページ分である。
