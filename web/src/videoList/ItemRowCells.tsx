@@ -17,6 +17,7 @@ import {
   VideoThumbnailImage,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
+import { shownVersionsCount, VersionsMark } from "./VersionsMark";
 
 // 順に並ぶ項目（動画かグループ）の行の共通の列である。プレイリストの画面の行
 // （specs/044-playlists/ui-design.md「Rows」）と、それを使うグループのページのリスト表示
@@ -111,6 +112,10 @@ export function ItemThumbnailCell({
   facts: RowFacts;
 }) {
   const duration = formatDuration(orderedItemDurationMs(item));
+  const versions =
+    item.kind === "video" && item.video !== undefined
+      ? shownVersionsCount(item.video)
+      : null;
   return (
     <TableCell className="w-list-thumb-cell">
       <VideoThumbnail className="w-list-thumb rounded-sm">
@@ -120,7 +125,12 @@ export function ItemThumbnailCell({
         {facts.thumbnailUrl !== undefined && (
           <VideoThumbnailImage src={facts.thumbnailUrl} />
         )}
-        {duration !== "" && <VideoThumbnailDuration>{duration}</VideoThumbnailDuration>}
+        {(versions !== null || duration !== "") && (
+          <VideoThumbnailDuration>
+            {versions !== null && <VersionsMark count={versions} />}
+            {duration !== "" && <span>{duration}</span>}
+          </VideoThumbnailDuration>
+        )}
         {facts.ratio !== null && (
           <VideoThumbnailProgress
             value={Math.round(facts.ratio * 100)}

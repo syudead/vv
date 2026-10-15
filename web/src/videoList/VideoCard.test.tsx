@@ -492,6 +492,85 @@ describe("VideoCard の公開の印", () => {
   });
 });
 
+describe("VideoCard のバージョンの印（specs/054-auto-dup/ui-design.md）", () => {
+  afterEach(() => cleanup());
+
+  const bundled = { versions: { count: 3, representativeId: 1 } };
+
+  function renderAs(audience: Audience, item: Video) {
+    return render(
+      <MemoryRouter>
+        <AudienceProvider audience={audience}>
+          <VideoCard video={item} backTo="/" selected={false} selectionMode={false} />
+        </AudienceProvider>
+      </MemoryRouter>,
+    );
+  }
+
+  it("2 本以上なら時間の面の先頭に Layers を置き、リンクの説明を「3 versions」にする", () => {
+    const { container } = renderAs("owner", video({ ...bundled, public: true }));
+    const text = screen.getByText("3 versions");
+    expect(text.className).toContain("sr-only");
+    const face = text.parentElement!;
+    expect(face.firstElementChild?.getAttribute("class")).toContain("lucide-layers");
+    expect(face.textContent).toBe("3 versionsPublic1:00");
+    const link = screen.getByRole("link", { name: "動画 1" });
+    expect(link.getAttribute("aria-describedby")).toBe(text.id);
+    expect(container.querySelectorAll(".lucide-layers")).toHaveLength(1);
+  });
+
+  it("ゲストにも同じ印を出す", () => {
+    renderAs("guest", video(bundled));
+    expect(screen.getByText("3 versions").parentElement!.textContent).toBe(
+      "3 versions1:00",
+    );
+  });
+
+  it("見せるバージョンが 1 本か、集まりでなければ印も説明も無い", () => {
+    for (const item of [
+      video({ versions: { count: 1, representativeId: 1 } }),
+      video(),
+    ]) {
+      const { container, unmount } = renderAs("owner", item);
+      expect(container.querySelector(".lucide-layers")).toBeNull();
+      expect(
+        screen.getByRole("link", { name: "動画 1" }).hasAttribute("aria-describedby"),
+      ).toBe(false);
+      unmount();
+    }
+  });
+
+  it("時間がまだ無くても、印だけの面を出す", () => {
+    renderAs(
+      "owner",
+      video({ ...bundled, durationMs: undefined, width: undefined, height: undefined }),
+    );
+    expect(screen.getByText("3 versions").parentElement!.textContent).toBe("3 versions");
+  });
+
+  it("リスト表示の行では公開の印の前に置く", () => {
+    render(
+      <MemoryRouter>
+        <AudienceProvider audience="owner">
+          <table>
+            <tbody>
+              <VideoRow
+                video={video({ ...bundled, public: true })}
+                backTo="/"
+                selected={false}
+                selectionMode={false}
+              />
+            </tbody>
+          </table>
+        </AudienceProvider>
+      </MemoryRouter>,
+    );
+    const cell = screen.getByText("3 versions").closest("td")!;
+    expect(cell.textContent).toBe("3 versionsPublic1:00");
+    expect(cell.querySelector(".lucide-layers")).not.toBeNull();
+  });
+});
+
 describe("VideoCard の表示（issue 308）", () => {
   afterEach(() => cleanup());
 
