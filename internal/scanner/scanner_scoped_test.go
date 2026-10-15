@@ -3,9 +3,11 @@ package scanner
 import (
 	"context"
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -249,4 +251,167 @@ func TestScanScopedAncestorOfMediaFolderRemovesNothing(t *testing.T) {
 		t.Fatalf("歩いていない所在を消した: %+v, deleted %v", result, index.deleted)
 	}
 	rowFor(t, index, filepath.Join(root, "a", "1.mp4"))
+}
+
+// scopedScanner は root だけを登録した、範囲を絞った走査の組み立てである。
+func scopedScanner(root string, index *fakeIndex) *Scanner {
+	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
+	return New(Options{Index: index, Queue: index, Reporter: index})
+}
+
+// 監視の走査では、取り込みの途中で変わった・消えたファイルを失敗にせず、対象から外す。
+// その変更の知らせが、ディレクトリを次の監視の走査へ回す（research.md R-3）。
+func TestScanScopedSkipsFileThatChangesOrVanishesDuringImport(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		change func(path string) error
+	}{
+		{name: "書き足された", change: func(path string) error {
+			return os.WriteFile(path, []byte("copy still running"), 0o600)
+		}},
+		{name: "消えた", change: os.Remove},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := mediaTree(t, map[string]string{"a/copying.mp4": "part", "a/done.mp4": "done"})
+			copying := filepath.Join(root, "a", "copying.mp4")
+			index := newFakeIndex()
+			scanner := scopedScanner(root, index)
+			scanner.contentKey = func(path string) (string, error) {
+				if path == copying {
+					if err := tc.change(path); err != nil {
+						return "", err
+					}
+				}
+				return ContentKey(path)
+			}
+
+			result, err := scanner.ScanScoped(context.Background(), []domain.DirtyDirectory{dirOf(root, "a", false)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if result.Failed != 0 || len(index.issues) != 0 {
+				t.Fatalf("result = %+v, issues = %+v, want 失敗なし", result, index.issues)
+			}
+			if result.Total != 1 || result.Added != 1 || result.Completed() != 1 {
+				t.Fatalf("result = %+v, want done.mp4 の 1 / 1", result)
+			}
+			if got := index.upsertedPaths(); len(got) != 1 || got[0] != filepath.Join(root, "a", "done.mp4") {
+				t.Fatalf("取り込んだもの = %v", got)
+			}
+		})
+	}
+}
+
+// vanishedEntry は列挙のあとに消えた項目である。
+type vanishedEntry struct {
+	fs.DirEntry
+}
+
+func (e vanishedEntry) Info() (fs.FileInfo, error) {
+	return nil, &fs.PathError{Op: "lstat", Path: e.Name(), Err: fs.ErrNotExist}
+}
+
+// 監視の走査で列挙のあとにファイルの情報を読む前に消えたファイルは、失敗にしない。
+func TestScanScopedSkipsFileThatVanishesBeforeItsInformationIsRead(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a/gone.mp4": "gone"})
+	index := newFakeIndex()
+	scanner := scopedScanner(root, index)
+	gone := filepath.Join(root, "a", "gone.mp4")
+	scanner.walkDir = func(dir string, fn fs.WalkDirFunc) error {
+		return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+			if path == gone {
+				return fn(path, vanishedEntry{DirEntry: entry}, err)
+			}
+			return fn(path, entry, err)
+		})
+	}
+
+	result, err := scanner.ScanScoped(context.Background(), []domain.DirtyDirectory{dirOf(root, "a", false)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Total != 0 || result.Failed != 0 || len(index.issues) != 0 {
+		t.Fatalf("result = %+v, issues = %+v, want 対象なし", result, index.issues)
+	}
+}
+
+// 監視の走査の途中でディレクトリごと移された・消されたときは、走査を失敗にせず、その所在を
+// 残す。移動の知らせで次の監視の走査が、移した先を加えてから消す（research.md R-3）。
+func TestScanScopedKeepsLocationsWhenParentVanishesDuringImport(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a/gone/1.mp4": "1", "a/z.mp4": "z"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+	gone := filepath.Join(root, "a", "gone", "1.mp4")
+	before := rowFor(t, index, gone)
+
+	z := filepath.Join(root, "a", "z.mp4")
+	later := time.Now().Add(time.Hour)
+	if err := os.Chtimes(z, later, later); err != nil {
+		t.Fatal(err)
+	}
+	scanner := scopedScanner(root, index)
+	scanner.contentKey = func(path string) (string, error) {
+		if path == z {
+			if err := os.Rename(filepath.Join(root, "a", "gone"), filepath.Join(root, "moved")); err != nil {
+				return "", err
+			}
+		}
+		return ContentKey(path)
+	}
+
+	result, err := scanner.ScanScoped(context.Background(), []domain.DirtyDirectory{dirOf(root, "a", true)})
+	if err != nil {
+		t.Fatalf("ディレクトリが消えた監視の走査が失敗した: %v", err)
+	}
+	if result.Removed != 0 || len(index.deleted) != 0 {
+		t.Fatalf("result = %+v, deleted %v, want 削除なし", result, index.deleted)
+	}
+	if after := rowFor(t, index, gone); after.ID != before.ID {
+		t.Fatalf("動画の id が変わった: %d -> %d", before.ID, after.ID)
+	}
+}
+
+// 監視の走査の歩みの途中でディレクトリが移されたときは、走査を失敗にせず、その下の所在を
+// 残す。歩いた項目の情報を読む前に消えた場合（vanishedAt が項目）も、ディレクトリの中身を
+// 読む前に消えた場合（vanishedAt がディレクトリ）も同じである。
+func TestScanScopedKeepsLocationsWhenDirectoryVanishesWhileWalking(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		vanishedAt string
+	}{
+		{name: "項目の情報を読む前", vanishedAt: "a/gone/1.mp4"},
+		{name: "ディレクトリの中身を読む前", vanishedAt: "a/gone"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := mediaTree(t, map[string]string{"a/gone/1.mp4": "1", "a/z.mp4": "z"})
+			index := newFakeIndex()
+			runScan(t, root, index)
+			gone := filepath.Join(root, "a", "gone", "1.mp4")
+			before := rowFor(t, index, gone)
+
+			scanner := scopedScanner(root, index)
+			at := filepath.Join(root, filepath.FromSlash(tc.vanishedAt))
+			scanner.walkDir = func(dir string, fn fs.WalkDirFunc) error {
+				return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+					if path == at && err == nil {
+						if err := os.Rename(filepath.Join(root, "a", "gone"), filepath.Join(root, "moved")); err != nil {
+							return err
+						}
+					}
+					return fn(path, entry, err)
+				})
+			}
+
+			result, err := scanner.ScanScoped(context.Background(), []domain.DirtyDirectory{dirOf(root, "a", true)})
+			if err != nil {
+				t.Fatalf("ディレクトリが消えた監視の走査が失敗した: %v", err)
+			}
+			if result.Removed != 0 || result.Failed != 0 || len(index.deleted) != 0 || len(index.issues) != 0 {
+				t.Fatalf("result = %+v, deleted %v, issues %v, want 削除も失敗もなし", result, index.deleted, index.issues)
+			}
+			if after := rowFor(t, index, gone); after.ID != before.ID {
+				t.Fatalf("動画の id が変わった: %d -> %d", before.ID, after.ID)
+			}
+		})
+	}
 }

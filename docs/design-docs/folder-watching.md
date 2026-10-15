@@ -46,6 +46,14 @@ ago stays dirty and is checked again when that time has passed, so a file still
 being copied is not read
 ([R-3](../../specs/042-folder-watch-import/research.md#r-3-a-batch-waits-for-quiet-imports-settled-files-then-removes)).
 
+The check reads modification times only, so a copy that stalls for longer, or
+one that keeps the source file's time, can still reach the scanner part-way.
+In a watch scan the scanner skips a file that changes or vanishes while it is
+read, and a directory that vanishes after it is listed, without recording an
+issue or failing the batch: that change sends its own notification, which marks
+the directory dirty for the next batch. A manual scan still reports the file as
+`changed_during_import`.
+
 The batch is a scan with origin `watch`: the scanner reads exactly the dirty
 directories, writes every addition before any removal, and removes only
 locations inside them, so a file moved between two dirty directories keeps its
