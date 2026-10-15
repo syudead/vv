@@ -370,3 +370,48 @@ func TestScanScopedKeepsLocationsWhenParentVanishesDuringImport(t *testing.T) {
 		t.Fatalf("動画の id が変わった: %d -> %d", before.ID, after.ID)
 	}
 }
+
+// 監視の走査の歩みの途中でディレクトリが移されたときは、走査を失敗にせず、その下の所在を
+// 残す。歩いた項目の情報を読む前に消えた場合（vanishedAt が項目）も、ディレクトリの中身を
+// 読む前に消えた場合（vanishedAt がディレクトリ）も同じである。
+func TestScanScopedKeepsLocationsWhenDirectoryVanishesWhileWalking(t *testing.T) {
+	for _, tc := range []struct {
+		name       string
+		vanishedAt string
+	}{
+		{name: "項目の情報を読む前", vanishedAt: "a/gone/1.mp4"},
+		{name: "ディレクトリの中身を読む前", vanishedAt: "a/gone"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			root := mediaTree(t, map[string]string{"a/gone/1.mp4": "1", "a/z.mp4": "z"})
+			index := newFakeIndex()
+			runScan(t, root, index)
+			gone := filepath.Join(root, "a", "gone", "1.mp4")
+			before := rowFor(t, index, gone)
+
+			scanner := scopedScanner(root, index)
+			at := filepath.Join(root, filepath.FromSlash(tc.vanishedAt))
+			scanner.walkDir = func(dir string, fn fs.WalkDirFunc) error {
+				return filepath.WalkDir(dir, func(path string, entry fs.DirEntry, err error) error {
+					if path == at && err == nil {
+						if err := os.Rename(filepath.Join(root, "a", "gone"), filepath.Join(root, "moved")); err != nil {
+							return err
+						}
+					}
+					return fn(path, entry, err)
+				})
+			}
+
+			result, err := scanner.ScanScoped(context.Background(), []domain.DirtyDirectory{dirOf(root, "a", true)})
+			if err != nil {
+				t.Fatalf("ディレクトリが消えた監視の走査が失敗した: %v", err)
+			}
+			if result.Removed != 0 || result.Failed != 0 || len(index.deleted) != 0 || len(index.issues) != 0 {
+				t.Fatalf("result = %+v, deleted %v, issues %v, want 削除も失敗もなし", result, index.deleted, index.issues)
+			}
+			if after := rowFor(t, index, gone); after.ID != before.ID {
+				t.Fatalf("動画の id が変わった: %d -> %d", before.ID, after.ID)
+			}
+		})
+	}
+}

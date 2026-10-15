@@ -157,6 +157,9 @@ type scanPass struct {
 	// scoped は範囲を絞った走査（監視の走査）であることを表す。取り込みの途中で変わった・
 	// 消えたファイルを失敗にせず、変更の知らせで始まる次の走査に任せる。
 	scoped bool
+	// vanished は監視の走査が歩いている途中で消えたディレクトリである。その下の所在は
+	// 今回は消さず、消えた知らせで始まる次の監視の走査に任せる（research.md R-3）。
+	vanished []domain.DirtyDirectory
 }
 
 // Scan は全体の走査を1回行い、集計を返す。
@@ -281,7 +284,10 @@ func (s *Scanner) scanOnce(ctx context.Context, dirs []domain.DirtyDirectory, sc
 	}
 	inScope := func(string) bool { return true }
 	if scoped {
-		inScope = func(path string) bool { return domain.DirtyDirectoriesContain(collected, path) }
+		inScope = func(path string) bool {
+			return domain.DirtyDirectoriesContain(collected, path) &&
+				!domain.DirtyDirectoriesContain(pass.vanished, path)
+		}
 	}
 	removed, err := s.removeMissing(ctx, folders, seen, inScope)
 	if err != nil {
@@ -487,14 +493,7 @@ func (s *Scanner) visit(
 		return ctxErr
 	}
 	if err != nil {
-		s.logger.Warn("could not read a location during the scan",
-			slog.String("path", path), slog.Any("error", err))
-		// メディアフォルダそのものが読めなければ、途中の場所ではなくフォルダの失敗である。
-		code := domain.ScanErrorLocationUnreadable
-		if path == folderRoot {
-			code = domain.ScanErrorMediaFolderUnreadable
-		}
-		return domain.NewScanFailure(code, path, fmt.Errorf("could not read a location (%s): %w", path, err))
+		return s.visitError(pass, folderRoot, path, err)
 	}
 
 	if entry.IsDir() {
@@ -514,12 +513,13 @@ func (s *Scanner) visit(
 		return nil
 	}
 
+	pass.seen[path] = struct{}{}
 	info, infoErr := entry.Info()
 	if infoErr != nil && pass.scoped && errors.Is(infoErr, fs.ErrNotExist) {
-		// 列挙のあとに消えた。消えた知らせが次の監視の走査に回す（research.md R-3）。
+		// 列挙のあとに消えた。取り込みの対象にはせず、消えた知らせが次の監視の走査に回す。
+		// seen には残すので、親ごと消えたかは dropVanished が確かめる（research.md R-3）。
 		return nil
 	}
-	pass.seen[path] = struct{}{}
 	if infoErr != nil {
 		// media file だと判定できた時点で取り込み候補である。metadata を
 		// 読めない場合も対象件数と失敗件数に含める。
@@ -557,6 +557,25 @@ func (s *Scanner) visit(
 
 	pass.targets = append(pass.targets, scanTarget{path: path})
 	return nil
+}
+
+// visitError は歩いている途中で読めなかった場所 path の失敗を返す。監視の走査で、途中で
+// 消えたディレクトリは失敗にせず pass.vanished に覚え、その下を歩かない。
+func (s *Scanner) visitError(pass *scanPass, folderRoot, path string, err error) error {
+	if pass.scoped && path != folderRoot && errors.Is(err, fs.ErrNotExist) {
+		s.logger.Info("a directory vanished during a watch scan; the next watch scan reads it again",
+			slog.String("path", path), slog.Any("error", err))
+		pass.vanished = append(pass.vanished, domain.DirtyDirectory{Path: path, Recursive: true})
+		return nil
+	}
+	s.logger.Warn("could not read a location during the scan",
+		slog.String("path", path), slog.Any("error", err))
+	// メディアフォルダそのものが読めなければ、途中の場所ではなくフォルダの失敗である。
+	code := domain.ScanErrorLocationUnreadable
+	if path == folderRoot {
+		code = domain.ScanErrorMediaFolderUnreadable
+	}
+	return domain.NewScanFailure(code, path, fmt.Errorf("could not read a location (%s): %w", path, err))
 }
 
 func ensureReadableDirectory(path string) error {
