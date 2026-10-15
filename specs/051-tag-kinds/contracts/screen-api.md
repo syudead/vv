@@ -4,8 +4,10 @@ Source of truth: [`api/openapi.yaml`](../../../api/openapi.yaml). This document
 describes only the routes, parameters, fields and error codes this feature adds
 or changes; the tag routes' other rules stay as in
 [014 tags-api](../../014-video-tags/contracts/tags-api.md) and
-[036 screen-api](../../036-tag-admin-scale/contracts/screen-api.md). Every route
-here is owner only by the `/api/*` default.
+[036 screen-api](../../036-tag-admin-scale/contracts/screen-api.md). The
+`/api/tag-kinds` and `/api/tags` routes are owner only by the `/api/*`
+default; the list routes that gain `tagKind` stay open to guests, who are
+refused only that parameter ([List parameter `tagKind`](#list-parameter-tagkind)).
 
 The diagram shows which store operation each new or changed route reaches.
 

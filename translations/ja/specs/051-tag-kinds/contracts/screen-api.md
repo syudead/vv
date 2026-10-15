@@ -1,11 +1,11 @@
 ---
 source: specs/051-tag-kinds/contracts/screen-api.md
-sourceHash: 0b649aeceba08413dd85c362cf3ac9d20c0bd8c4ea15553a57b6e1933cf28e3a
+sourceHash: 98e1614c58280151a27effdabd3a8e1ceb5f98ef5a7a82a1246c2b38e0303baa
 ---
 
 # 契約: 画面の API のタグの種類 {#contract-tag-kinds-in-the-screen-api}
 
-正本: [`api/openapi.yaml`](../../../api/openapi.yaml)。この文書は、この機能が加える、または変えるルート、パラメータ、フィールド、エラーコードだけを記述する。タグのルートのそれ以外の規則は [014 tags-api](../../014-video-tags/contracts/tags-api.md) と [036 screen-api](../../036-tag-admin-scale/contracts/screen-api.md) のとおりである。ここのどのルートも、`/api/*` の既定により所有者専用である。
+正本: [`api/openapi.yaml`](../../../api/openapi.yaml)。この文書は、この機能が加える、または変えるルート、パラメータ、フィールド、エラーコードだけを記述する。タグのルートのそれ以外の規則は [014 tags-api](../../014-video-tags/contracts/tags-api.md) と [036 screen-api](../../036-tag-admin-scale/contracts/screen-api.md) のとおりである。`/api/tag-kinds` と `/api/tags` のルートは `/api/*` の既定により所有者専用であり、`tagKind` が加わる一覧のルートはゲストにも開いたままで、ゲストが拒否されるのはそのパラメータだけである（[一覧のパラメータ `tagKind`](#list-parameter-tagkind)）。
 
 図は、新しいルートと変わるルートのそれぞれが、どのストアの操作に届くかを示す。
 

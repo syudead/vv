@@ -28,7 +28,7 @@ SQLite accepts `add column ... references` because the column defaults to null.
 | --- | --- | --- | --- |
 | `id` | `integer primary key autoincrement` | No | Never reused, as `tags.id` |
 | `name` | `text`, `unique` | No | The kind's name ([Rules](#rules)) |
-| `created_at` | `text` | No | RFC 3339 UTC, as `tags.created_at` |
+| `created_at` | `integer` | No | Unix seconds, as `tags.created_at` |
 
 The seeded rows are `Genre`, `Work`, `Place` and `Character`, in that id order.
 

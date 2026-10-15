@@ -1,6 +1,6 @@
 ---
 source: specs/051-tag-kinds/data-model.md
-sourceHash: ff843d6d86a724cef0baf85f04dfe984a5bd08a1bf487aedd4231cf3be621317
+sourceHash: c1b51c7d709538bd037ceb36fcff9c05c50f561f6695ff2af75254d0abe97776
 ---
 
 # データモデル: タグの種類 {#data-model-tag-kinds}
@@ -26,7 +26,7 @@ flowchart LR
 | --- | --- | --- | --- |
 | `id` | `integer primary key autoincrement` | いいえ | `tags.id` と同じく、再利用しない |
 | `name` | `text`, `unique` | いいえ | 種類の名前 ([規則](#rules)) |
-| `created_at` | `text` | いいえ | `tags.created_at` と同じく、RFC 3339 の UTC |
+| `created_at` | `integer` | いいえ | `tags.created_at` と同じく、Unix 秒 |
 
 初期投入の行は `Genre`、`Work`、`Place`、`Character` で、id はこの順である。
 
