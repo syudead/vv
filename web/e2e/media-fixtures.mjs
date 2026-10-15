@@ -845,3 +845,53 @@ export function generateGroupsFixtures(root, spare) {
   }
   clip(spare, GROUPS_SPARE);
 }
+
+/**
+ * DRAG_ORGANIZE_VIDEOS は、ドラッグでの整理（specs/050-drag-organize、子 #1109）を確かめる
+ * 動画の題名である（web/e2e/drag-organize.e2e.ts）。どれも登録フォルダの直下に置くので、
+ * 自動グループにはならない。テストの組ごとに題名の頭を変え、ライブラリの検索でその組だけを
+ * 出せるようにする。中身で同じ動画とみなされないよう、ほかの組と違う長さとコマの速さにし、
+ * 色合いを変える。
+ */
+export const DRAG_ORGANIZE_VIDEOS = [
+  "並べ確認の1",
+  "並べ確認の2",
+  "並べ確認の3",
+  "作る確認のA",
+  "作る確認のB",
+  "束ね確認のA",
+  "束ね確認のB",
+  "合流確認のX1",
+  "合流確認のX2",
+  "合流確認のY1",
+  "入れ子確認のP1",
+  "入れ子確認のQ1",
+  "移動確認のA1",
+  "移動確認のA2",
+  "移動確認のB1",
+  "選択確認の1",
+  "選択確認の2",
+  "選択確認の3",
+  "選択確認の先1",
+  "タッチ確認の1",
+  "タッチ確認の先1",
+];
+
+export function generateDragOrganizeFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  for (const [index, name] of DRAG_ORGANIZE_VIDEOS.entries()) {
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=10:duration=2",
+      "-vf",
+      `hue=h=${String(index * 17)}`,
+      ...h264,
+      "-an",
+      "-movflags",
+      "+faststart",
+      path.join(root, `${name}.mp4`),
+    ]);
+  }
+}
