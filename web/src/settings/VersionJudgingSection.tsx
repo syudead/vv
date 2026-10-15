@@ -1,4 +1,3 @@
-import { CircleAlert, LoaderCircle } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -11,9 +10,11 @@ import { errorText, t, type UiText } from "../i18n";
 import { ErrorState } from "../ui/patterns/error-state";
 import { FormRow } from "../ui/patterns/form-row";
 import { PageSection } from "../ui/patterns/page-section";
-import { Alert, AlertTitle } from "../ui/shadcn/alert";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { Switch } from "../ui/shadcn/switch";
+
+import { SaveStatus } from "./SaveStatus";
+import { useSwitchSave } from "./useSwitchSave";
 
 /**
  * VersionJudgingSection は設定の「Duplicate judging」区画である。「同じ動画かもしれない」候補の
@@ -27,8 +28,6 @@ export default function VersionJudgingSection() {
   const text = t.settings.versionJudging;
   const [settings, setSettings] = useState<VersionJudgingSettings | null>(null);
   const [loadError, setLoadError] = useState<UiText | null>(null);
-  const [saving, setSaving] = useState<boolean | null>(null);
-  const [saveError, setSaveError] = useState<UiText | null>(null);
   const controller = useRef<AbortController | null>(null);
 
   const load = useCallback(async () => {
@@ -49,20 +48,14 @@ export default function VersionJudgingSection() {
     return () => controller.current?.abort();
   }, [load]);
 
-  const toggle = async () => {
-    if (settings === null || saving !== null) return;
-    const next = !settings.enabled;
-    setSaveError(null);
-    setSaving(next);
-    try {
-      setSettings(await updateVersionJudgingSettings(next));
-    } catch (failure) {
-      // スイッチは保存した値に戻る（saving を解くと settings.enabled を映す）。
-      setSaveError(text.saveFailed(errorText(failure)));
-    } finally {
-      setSaving(null);
-    }
-  };
+  // 失敗するとスイッチは保存した値に戻る（saving を解くと settings.enabled を映す）。
+  const { saving, saveError, toggle } = useSwitchSave({
+    settings,
+    current: (saved) => saved.enabled,
+    save: updateVersionJudgingSettings,
+    saved: setSettings,
+    saveFailed: text.saveFailed,
+  });
 
   return (
     <PageSection title={text.heading} description={text.description}>
@@ -99,26 +92,7 @@ export default function VersionJudgingSection() {
           )}
         </FormRow>
       )}
-      {saving !== null && (
-        <p
-          role="status"
-          className="flex items-center gap-2 text-xs text-muted-foreground"
-        >
-          <LoaderCircle
-            aria-hidden="true"
-            className="size-4 animate-spin motion-reduce:animate-none"
-          />
-          {text.saving}
-        </p>
-      )}
-      {saveError !== null && (
-        <div>
-          <Alert variant="destructive">
-            <CircleAlert aria-hidden="true" />
-            <AlertTitle>{saveError}</AlertTitle>
-          </Alert>
-        </div>
-      )}
+      <SaveStatus saving={saving !== null} savingText={text.saving} error={saveError} />
     </PageSection>
   );
 }
