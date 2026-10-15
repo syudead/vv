@@ -34,7 +34,7 @@ flowchart LR
 | --- | --- |
 | Storage | `tag_kinds` and a nullable `tags.kind_id`, `on delete set null` ([R-1](research.md#r-1-a-kind-is-a-row-that-tags-point-to)) |
 | Presets | Four seeded rows the owner may rename or delete ([R-2](research.md#r-2-preset-kinds-are-seeded-rows-with-no-special-status)) |
-| Setting a kind | `setKind` and `clearKind` in the tag batch, without confirming ([R-3](research.md#r-3-a-tags-kind-is-set-and-cleared-through-the-tag-batch)) |
+| Setting a kind | `setKind` and `clearKind` in the tag batch, without confirming tentative tags ([R-3](research.md#r-3-a-tags-kind-is-set-and-cleared-through-the-tag-batch)) |
 | Reading a kind | `kind: { id, name } \| null` on every tag shape ([R-4](research.md#r-4-every-tag-shape-carries-the-kinds-id-and-name)) |
 | Library | `tagKind`: videos with any tag of one kind ([R-5](research.md#r-5-the-library-filters-videos-by-one-tag-kind)) |
 | Kind names | Tag name rules, own namespace ([R-6](research.md#r-6-kind-names-follow-the-tag-name-rules-in-their-own-namespace)) |
