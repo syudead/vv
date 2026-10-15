@@ -1,6 +1,6 @@
 ---
 source: specs/052-smart-folders/ui-design.md
-sourceHash: ce80eaa40b28edf885c5d104f3ab29f3b573225de1756ddbf25dd8022c0afd22
+sourceHash: d17f60302d1eb66a46c3aaec8d7a51520c0f243e1dcfcb89e6465a44ed384d05
 ---
 
 # UI 設計: 中身が保存した条件に従うスマートフォルダ {#ui-design-smart-folders-whose-contents-follow-a-saved-condition}
@@ -92,6 +92,7 @@ flowchart LR
 | 親としての `smart_folder_not_found` | That smart folder no longer exists. | `errorCodes.smart_folder_not_found`。親の欄の `FieldError` で、親の一覧を読み直す |
 | `invalid_smart_rule` | A condition is out of range. | `errorCodes.invalid_smart_rule`。条件の節の `FieldError` |
 | 作成した。保存した | Created "{name}"; Saved "{name}" | `smartFolders.created(name)`、`.saved(name)`。トースト |
+| 絞り込んだライブラリでの作成のトーストの操作 | Open | `smartFolders.open`。新しいフォルダのページを開く |
 | カードのアクセシブルな名前 | {name}, smart folder of 12 videos; {name}, smart folder of 12 videos, 3 watched | `library.smartFolder.label(name, count, watched)` |
 | カードの印のツールチップと `title` | Smart folder | `smartFolders.kind` |
 | カードのお気に入り、プレイリストへの追加 | Favorite smart folder "{name}"; Add smart folder "{name}" to a playlist | `library.smartFolder.favorite(name)`、`.addToPlaylist(name)` |
@@ -100,7 +101,7 @@ flowchart LR
 | ヘッダーの数 | 12 videos · 1:32:10; 0 videos | `groups.detail.count(count, duration)` |
 | 条件の行のラベル | Conditions: | `smartFolders.detail.conditions` |
 | 受け継いだ条件の行のラベル | From "{parent}": | `smartFolders.detail.fromParent(name)` |
-| 条件のチップ | Search: kyoto; Unwatched; In progress; Watched; Favorites; Playable; Kind: Genre; Tag: 猫; Person: {name}; Organization: {name}; Added in the last 7 days; 5 to 20 minutes | `smartFolders.condition.*`。視聴と長さの語はポップオーバーのもの |
+| 条件のチップ | Search: kyoto; Unwatched; In progress; Watched; Favorites; Playable; Kind: Genre; Tag: {name}; Person: {name}; Organization: {name}; Added in the last 7 days; 5 to 20 minutes | `smartFolders.condition.*`。視聴と長さの語はポップオーバーのもの |
 | 参照先がなくなった条件のチップ | Tag: deleted; Kind: deleted; Person: deleted; Organization: deleted | `smartFolders.condition.deleted(kind)`。lucide `TriangleAlert` を持つ `warning` の `Badge` |
 | 空の本体、何も合わない | Nothing matches these conditions yet; Videos that match appear here as soon as they are tagged or added. | `smartFolders.detail.empty.title`、`.description`。所有者の操作は「Edit conditions…」 |
 | 空の本体、参照先がなくなった | A condition no longer works; A tag, kind, person or organization in the conditions was deleted, so nothing matches. | `smartFolders.detail.missing.title`、`.description`。所有者の操作は「Edit conditions…」 |
@@ -110,7 +111,7 @@ flowchart LR
 | 空の状態での編集の操作 | Edit conditions… | `smartFolders.detail.editConditions` |
 | 削除のダイアログのタイトル | Delete "{name}"? | `smartFolders.deleteDialog.title(name)` |
 | 削除のダイアログの説明 | The smart folder is deleted. Its videos stay in the library. | `smartFolders.deleteDialog.description` |
-| 削除のダイアログ、子を持つフォルダ | Its {N} child smart folders are deleted with it. | `smartFolders.deleteDialog.children(count)`。2 つ目の文 |
+| 削除のダイアログ、子孫を持つフォルダ | The {N} smart folders inside it are deleted with it. | `smartFolders.deleteDialog.descendants(count)`。2 つ目の文。`N` はすべての深さの子孫を数える |
 | 削除の操作。送信中 | Delete; Deleting… | `smartFolders.deleteDialog.submit`、`.submitting`。`destructive` |
 | 削除の失敗 | Couldn't delete the smart folder: {reason} | `smartFolders.deleteDialog.failed` |
 | 削除した | Deleted "{name}" | `smartFolders.deleted(name)`。トースト |
@@ -145,7 +146,7 @@ flowchart LR
 
 ### スマートフォルダとして保存 {#save-as-smart-folder}
 
-ライブラリの `PageHeader` は、所有者に `outline` `sm` の操作 `Save as smart folder` (lucide `FolderSearch`) を得て、何かの条件が適用されている間に描く: 検索の文字列、視聴状態、お気に入りのみ、再生可能のみ、タグの種類、タグ、人物、組織、追加日、長さ。これは、URL から設定した条件、今の並び順から設定した並び順、空の名前、`None (top level)` の親で [スマートフォルダのダイアログ](#smart-folder-dialog) を開く。選択、スクロールの位置、リストは触らない。`201` でトースト `Created "{name}"` が出て、ライブラリはその場で最初のページを読み直すので、新しいカードはその並び順の値が置く場所に立つ (R-7)。`random` の並び順は、`Date added, newest first` と、並び順の欄の下の [Words](#words) のヒントでダイアログを開く (R-6)。
+ライブラリの `PageHeader` は、所有者に `outline` `sm` の操作 `Save as smart folder` (lucide `FolderSearch`) を得て、何かの条件が適用されている間に描く: 検索の文字列、視聴状態、お気に入りのみ、再生可能のみ、タグの種類、タグ、人物、組織、追加日、長さ。これは、URL から設定した条件、今の並び順から設定した並び順、空の名前、`None (top level)` の親で [スマートフォルダのダイアログ](#smart-folder-dialog) を開く。選択、スクロールの位置、リストは触らない。`201` でトースト `Created "{name}"` が、新しいフォルダのページへの操作 `Open` とともに出る。絞り込んだリストはそのままである: 絞り込んだライブラリはスマートフォルダのカードを一覧に出さない (R-7) ので、新しいカードは絞り込みのないライブラリの、その並び順の値が置く場所に立つ。`random` の並び順は、`Date added, newest first` と、並び順の欄の下の [Words](#words) のヒントでダイアログを開く (R-6)。
 
 ### スマートフォルダのカードと行 {#smart-folder-card-and-row}
 
@@ -187,13 +188,13 @@ flowchart LR
 | 並び順 | ライブラリの並び順の種類と方向を「Date added, newest first」のように並べた 15 個の選択肢の `Select` で、`Random` はない。既定は `Date added, newest first` |
 | 条件 | 凡例「Conditions」とヒントを持つ `FieldSet` で、[Conditions](#conditions) の行を表の順に持ち、行の間はポップオーバーと同じく `gap-3` |
 
-空の条件は規則にない。メンバーのない規則は、送る前に節の `FieldError` で拒む。[contracts/screen-api.md、Statuses](contracts/screen-api.md#statuses) の `400`、`404`、`409` の状態は [Words](#words) で挙げた欄に出る。その他の失敗は欄の下の `destructive` の `Alert` で、ダイアログは開いたままである。`Cancel`、`×`、Esc は尋ねずに下書きを捨てる: ダイアログが持つのはいくつかの値で、1 ページ分の作業ではない。
+空の条件は規則にない。メンバーのない規則での作成と、メンバーを持っていた規則を空にする編集は、送る前に節の `FieldError` で拒む。規則が既に空だったフォルダの編集 (空の規則は有効である。[data-model.md](data-model.md#smart_foldersrule)) は、他の欄を送り、空の規則を保つ。[contracts/screen-api.md、Statuses](contracts/screen-api.md#statuses) の `400`、`404`、`409` の状態は [Words](#words) で挙げた欄に出る。その他の失敗は欄の下の `destructive` の `Alert` で、ダイアログは開いたままである。`Cancel`、`×`、Esc は尋ねずに下書きを捨てる: ダイアログが持つのはいくつかの値で、1 ページ分の作業ではない。
 
 ### 条件 {#conditions}
 
 | 行 | 操作部品 | 規則のメンバー |
 | --- | --- | --- |
-| 検索 | ライブラリの検索のプレースホルダーを持つ `Input`。前後の空白を除き、最大 500 文字 | `q` |
+| 検索 | ライブラリの検索のプレースホルダーを持つ `Input`。前後の空白を除き、ライブラリの検索と同じく 100 文字で切る (`normalizeQuery`) | `q` |
 | 視聴状態 | ポップオーバーの `ToggleGroup` (`All`、`Unwatched`、`In progress`、`Watched`) | `watch`。`All` のときは規則にない |
 | Favorites only、Playable only | ポップオーバーの 2 つのチェックボックス | `favorite`、`playable` |
 | タグの種類 | ポップオーバーの `Select` (`Any kind`、次に種類)。ポップオーバーの行と同じく、#1136 がマージされてから描く | `tagKind` |
@@ -202,7 +203,7 @@ flowchart LR
 | 追加日 | ポップオーバーの `Select` | `addedWithin` |
 | 長さ | ポップオーバーの `Select` | `minDuration`、`maxDuration` |
 
-画面が描けない規則のメンバー (欄の長さを超える `q`、どのプリセットにも合わない長さ) は、それ自身の選択肢として描くか、そのまま保つので、他の欄を保存してもそれを落とすことはない。タグ、種類、人物、組織がもう存在しないチップは、`×` を持つ [Words](#words) の `warning` のチップなので、所有者はそれを取り除くか置き換える。
+画面が描けない規則のメンバー (欄の長さを超える `q` (契約は 500 文字まで許す)、どのプリセットにも合わない長さ) は、それ自身の選択肢として描くか、そのまま保つので、他の欄を保存してもそれを落とすことはない。タグ、種類、人物、組織がもう存在しないチップは、`×` を持つ [Words](#words) の `warning` のチップなので、所有者はそれを取り除くか置き換える。
 
 ### 親 {#parent}
 
@@ -222,7 +223,7 @@ flowchart LR
 | --- | --- |
 | タイトル | 名前。`text-xl font-semibold` で、最大 2 行で、`title` に名前全体 |
 | 数 | カードの値から「12 videos · 1:32:10」。空のフォルダでは「0 videos」 |
-| 説明 | 条件の行 ([Conditions lines](#conditions-lines)) |
+| 説明 | 所有者に向けた条件の行 ([Conditions lines](#conditions-lines)) |
 | 操作 | 再生の順が空でない間に描く `default` `sm` の「Play」(lucide `Play`) と、所有者の `ghost` `icon-sm` の「More」(lucide `Ellipsis`)。「More」は `DropdownMenu` を開く: 「Edit…」(lucide `Pencil`)、「New child smart folder…」(lucide `Plus`)、区切り、「Delete…」(lucide `Trash2`、`variant="destructive"`) |
 
 「Play」は `state: { from: <this page's URL>, autoplay: true }` 付きで `/videos/{openVideoId}?smartFolder={id}` を開く。
@@ -236,7 +237,7 @@ flowchart LR
 | 「Conditions:」 | 常に | フォルダ自身の条件をチップとして、[Conditions](#conditions) の順に。規則が空のフォルダはラベルの後にチップを出さない |
 | 「From "{parent}":」 | 祖先ごとに、近いものから | その祖先の条件。ラベルはその祖先のページへの `link` の変種のリンク |
 
-チップは読むだけである: 押しても何もせず、`×` もない。閲覧者全員が行を見る。フォルダが何であるかを言うからである。所有者の `settings` は `missing` の一覧を加え、それが名指すチップを [Words](#words) の `warning` のチップに変える。タグ、種類、人物、組織のチップの名前は、`Filtering by` のチップと同じく、共有のタグの一覧、種類の一覧、`GET /api/people/{id}` か `/organizations/{id}` から得て、届くまでは `Skeleton` `w-12` を出す。ゲストのチップもタグ、人物、組織を名指す: 名前はフォルダが絞り込みに使うものであり、フォルダは公開の動画を中に持つときにだけゲストに出すからである (R-11)。
+チップは読むだけである: 押しても何もせず、`×` もない。行は所有者のものである: 所有者だけの `settings` ([contracts/screen-api.md、Schemas added](contracts/screen-api.md#schemas-added)) から描き、その `missing` の一覧は、それが名指すチップを [Words](#words) の `warning` のチップに変える。タグ、種類、人物、組織のチップの名前は、`Filtering by` のチップと同じく、共有のタグの一覧、種類の一覧、`GET /api/people/{id}` か `/organizations/{id}` から得て、届くまでは `Skeleton` `w-12` を出す。ゲストは `settings` を得ず、条件の行を見ない: 規則は所有者のタグ、クレジット、視聴状態を読み (R-11)、ゲスト自身の絞り込みはそれらを使えないことがある。フォルダの名前と項目が、それが何を持つかを言う。
 
 ### 本体 {#body}
 
@@ -248,7 +249,7 @@ flowchart LR
 | 動画 | ライブラリの `VideoCard` で、`state.from` をこのページの URL として `/videos/{videoId}?smartFolder={id}` を開くので、`×` と Esc はここに戻り、`Up next` はこのフォルダに従う |
 | グループ | ライブラリの `GroupCard` で、ライブラリと同じく `/groups/{groupId}` を開く。一部だけが合うグループは、代わりに合う動画を動画のカードとして一覧に出す (027、R-3) |
 
-リスト表示は、プレイリストの画面の行ではなく、ライブラリの行を使う: スマートフォルダにはドラッグする順序も `×` もないので、行はライブラリの列を保つ。カードのタグを押すと、グループのページと同じく `/?tag=<id>` を開く。選択は、動画とグループのカードについてはライブラリのもので (所有者)、ライブラリの選択バーとその操作を持つ。子のフォルダのカードにはチェックがない。ページ送りは、ライブラリのグリッドと同じく、番兵が 600px 以内に来たときに `nextCursor` から `GET /api/smart-folders/{id}/items` を読む。失敗したページは `Retry` 付きの `LoadMoreRow` の `Alert` を出す。
+リスト表示は、プレイリストの画面の行ではなく、ライブラリの行を使う: スマートフォルダにはドラッグする順序も `×` もないので、行はライブラリの列を保つ。カードのタグを押すと、グループのページと同じく `/?tag=<id>` を開く。選択は、動画とグループのカードについてはライブラリのもので (所有者)、ライブラリの選択バーとその操作を持つ。子のフォルダのカードにはチェックがない。ページ送りは、ライブラリのグリッドと同じく、番兵が 600px 以内に来たときに `nextCursor` から `GET /api/smart-folders/{id}/items` を読む。失敗したページは `Retry` 付きの `LoadMoreRow` の `Alert` を出す。ただし `404` は、どの読み取りでもそうであるように、消えた状態である ([Reading again](#reading-again))。
 
 ### 編集 {#editing}
 
@@ -260,7 +261,7 @@ flowchart LR
 
 ### 削除 {#deleting}
 
-「Delete…」は `ConfirmDialog` を開く: タイトル `Delete "{name}"?`、[Words](#words) の説明、子を持つフォルダではその数を名指す 2 つ目の文 (`GET /api/smart-folders` の木から)、次に `Cancel` と `destructive` の「Delete」。説明は残るものを名指す。ここでの唯一の恐れは動画を失うことだからである (要件 5)。2 つ目の文は、削除した親についての Edge Case が語られる唯一の場所である。
+「Delete…」は `ConfirmDialog` を開く: タイトル `Delete "{name}"?`、[Words](#words) の説明、子を持つフォルダでは、`GET /api/smart-folders` の木から数えた、すべての深さの子孫の数を名指す 2 つ目の文 (削除はそれらをすべて取り除くからである。[data-model.md、Edits](data-model.md#edits))、次に `Cancel` と `destructive` の「Delete」。説明は残るものを名指す。ここでの唯一の恐れは動画を失うことだからである (要件 5)。2 つ目の文は、削除した親についての Edge Case が語られる唯一の場所である。
 
 | 出来事 | 振る舞い |
 | --- | --- |
@@ -324,7 +325,7 @@ stateDiagram-v2
 | --- | --- | --- |
 | ライブラリ | `Save as smart folder`。フォルダのカードの印と選択 | 公開の動画を持つフォルダのカードと行。`Added` と `Length` の行はポップオーバーに残る (R-4) |
 | ダイアログ | すべて | なし |
-| スマートフォルダのページ | 「More」、選択、`missing` の警告のチップ | 帯、タイトル、数、条件の行、「Play」、ただのカードか行としての項目。空のフォルダは消えた状態である |
+| スマートフォルダのページ | 「More」、選択、条件の行 | 帯、タイトル、数、「Play」、ただのカードか行としての項目。空のフォルダは消えた状態である |
 | 動画のページ | 048 の規則を超えて変わるものはない | フォルダの行はリンクのまま |
 
 ## レスポンシブな振る舞い {#responsive-behaviour}
@@ -348,9 +349,9 @@ stateDiagram-v2
 5. **上への道と絞り込み** (`UI品質`、3 つ目の点。要件 7): 子のページでは、帯は 1280px で `Library › タグ: 猫 › 未視聴`、360px で `… › タグ: 猫 › 未視聴` と読め、カードがスクロールする間もトップバーの下に留まる。数の下に `Conditions: Unwatched`、次に `From "タグ: 猫": Tag: 猫` があり、親の名前は、帯が 1 パンくず短くなった親を開くリンクである。子は未視聴の `猫` の動画だけを一覧に出し、親のページは子のカードを最初に、次に自身のカードを出す (受け入れ条件 4)。
 6. **中身が条件に従う** (受け入れ条件 1): 1 つのタブでフォルダ `タグ: 猫` を開いたまま、別のタブで `犬` の動画に `猫` を付けると、そのカードが再読み込みなしで開いたページに入る。タグを外すとそれが出る。3 つ目のタブのライブラリはその間ずっと動画を出し、フォルダのカードの数は追従する。フォルダのページはこの変化にスケルトンを描かない。
 7. **グループ** (受け入れ条件 3): 両方のパートにタグが付いたグループは、フォルダの中で 1 つのグループのカードで、ライブラリと同じ絵を持つ。part1 だけにタグが付いたグループは、part1 を動画のカードとして出し、グループのカードは出さない。
-8. **ライブラリから保存** (受け入れ条件 5): ライブラリを `猫` と `Unwatched` で絞り込み、`Save as smart folder` を押し、名前を付けて Enter を押すと、ダイアログが閉じ、トーストが出て、新しいカードは絞り込みのないライブラリにある。それを開くと、絞り込んだライブラリが出したのと同じカードを同じ順に出す。ライブラリを `Random` で並べているとき、ダイアログの並び順は `Date added, newest first` と読め、その下にヒントがある。
+8. **ライブラリから保存** (受け入れ条件 5): ライブラリを `猫` と `Unwatched` で絞り込み、`Save as smart folder` を押し、名前を付けて Enter を押すと、ダイアログが閉じ、`Open` を持つトーストが出て、絞り込んだリストは元のままで、新しいカードは絞り込みのないライブラリにある。それを開くと、絞り込んだライブラリが出したのと同じカードを同じ順に出す。ライブラリを `Random` で並べているとき、ダイアログの並び順は `Date added, newest first` と読め、その下にヒントがある。
 9. **空と参照先がない** (Edge Cases): 合うもののないフォルダは「0 videos」、その条件、「Edit conditions…」を持つ `EmptyState` を出す。タグが削除されたフォルダは、警告の色でアイコン付きのチップ `Tag: deleted` と、参照先がない場合の `EmptyState` を出す。そのダイアログを開くと `×` を持つ警告のチップが出て、それを `犬` に置き換えて保存すると本体が埋まる。ゲストとしてサインインすると、両方のフォルダは消えた状態で、ライブラリにカードがない。
-10. **循環と削除** (Edge Cases): `タグ: 猫` を編集すると、親の `Select` は `未視聴` を一覧に出さない。`未視聴` を 3 つ目のフォルダの下に動かすと、3 つ目のフォルダで帯を描き直す。`タグ: 猫` の「Delete…」は「Its 1 child smart folder is deleted with it.」と読め、「Delete」の後、ライブラリはどちらのフォルダも出さず、すべての動画を変わらず出す。
+10. **循環と削除** (Edge Cases): `タグ: 猫` を編集すると、親の `Select` は `未視聴` を一覧に出さない。`未視聴` を 3 つ目のフォルダの下に動かすと、3 つ目のフォルダで帯を描き直す。`未視聴` の下に孫があるとき、`タグ: 猫` の「Delete…」は「The 2 smart folders inside it are deleted with it.」と読め、「Delete」の後、ライブラリはどちらのフォルダも出さず、すべての動画を変わらず出す。
 11. **フォルダの中の動画のページ**: `タグ: 猫` から動画を開くと、タイトルの上にスマートフォルダのアイコンを持つ行 `タグ: 猫 · 2 / 4` が出て、`Up next` はフォルダの順である。行はグループの行と同じくらい小さく薄い色で、フォルダのページを開く。その後に操作のボタンは続かない。進めると、次の動画でも行が保たれる。
-12. **ゲスト**: ゲストには、公開の動画を持つフォルダが印もチェックもないカードとして見え、そのページを帯、名前、数、条件の行、「Play」、ただのカードとともに開ける。`Filter` のポップオーバーは `Added` と `Length` を持つが、`Save as smart folder` はない。
+12. **ゲスト**: ゲストには、公開の動画を持つフォルダが印もチェックもないカードとして見え、そのページを帯、名前、数、「Play」、ただのカードとともに、条件の行なしで開ける。`Filter` のポップオーバーは `Added` と `Length` を持つが、`Save as smart folder` はない。
 13. **失敗する例** (`UI品質`): バッジかラベルを持つか、グループのカードと絵、箱、名前の大きさが違うフォルダのカード。長さの文字より大きく描くか `primary` で描いたスマートフォルダのアイコン。演算子を持つ条件のビルダー、自由記述の規則、ポップオーバーが使わない語で条件を名指すダイアログ。ポップオーバーの中の追加日か長さの数値の欄。`Save as smart folder` を `default` のボタンにすること、条件なしで描くこと、ポップオーバーに隠すこと。祖先の名前なしで 1 つの一覧にまとめた条件の行。2 つ目の見出しとして描いた帯。ダイアログのない「Delete」。動画のページのフォルダの行の後の操作のメニュー。選択のチェックを持つ子のフォルダのカード。トーストの後になって初めて拒む循環。
