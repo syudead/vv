@@ -24,11 +24,11 @@ type WorkInfoVideos interface {
 
 // FetchedWorkInfoApplier は取得の結果を動画に書く保存先である。internal/store の *OverrideStore が満たす。
 type FetchedWorkInfoApplier interface {
-	// ApplyFetchedWorkInfo は選んだ題名を表示名に、選んだタグを仮のタグとして 1 つの取引で書き、反映後の
-	// 動画と、却下した名前なので付けなかったタグの名前を返す。取引の中でプラグインの行がまだあり、承認済みで、
-	// ダイジェストが変わっていないことを読み直し、外れれば domain.ErrWorkInfoFetchStale で何も書かない。
-	// 動画が無ければ domain.ErrNotFound を返す。
-	ApplyFetchedWorkInfo(ctx context.Context, apply domain.FetchedWorkInfoApply) (domain.Video, []string, error)
+	// ApplyFetchedWorkInfo は選んだ題名を表示名に、選んだタグを仮のタグとして、選んだ作品の詳細を作品情報に
+	// 1 つの取引で書き、反映後の動画と、却下した名前なので付けなかったタグの名前と、作品の詳細のうち飛ばした
+	// 値を返す。取引の中でプラグインの行がまだあり、承認済みで、ダイジェストが変わっていないことを読み直し、
+	// 外れれば domain.ErrWorkInfoFetchStale で何も書かない。動画が無ければ domain.ErrNotFound を返す。
+	ApplyFetchedWorkInfo(ctx context.Context, apply domain.FetchedWorkInfoApply) (domain.FetchedWorkInfoApplied, error)
 }
 
 // SearchWorkInfo は承認済みのプラグイン id の search で語 query を探し、候補を返す。語は前後の空白を除いて
@@ -167,11 +167,13 @@ func (p *WorkInfoPlugins) applyFetch(
 	if slices.Contains(fields, domain.WorkInfoFieldTags) {
 		apply.Tags, invalid = splitTagNames(fetch.tags)
 	}
-	video, rejected, err := p.applier.ApplyFetchedWorkInfo(ctx, apply)
+	applied, err := p.applier.ApplyFetchedWorkInfo(ctx, apply)
 	if err != nil {
 		return domain.WorkInfoApplied{}, err
 	}
-	return domain.WorkInfoApplied{Video: video, SkippedTags: skippedTags(fetch.tags, invalid, rejected)}, nil
+	return domain.WorkInfoApplied{
+		Video: applied.Video, SkippedTags: skippedTags(fetch.tags, invalid, applied.RejectedTags),
+	}, nil
 }
 
 // splitTagNames は取得したタグの名前を domain.NormalizeTagName で整え、整えた名前（重複なし）と、規則に

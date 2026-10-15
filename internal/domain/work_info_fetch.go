@@ -94,7 +94,42 @@ const (
 	WorkInfoFieldTitle WorkInfoField = "title"
 	// WorkInfoFieldTags はタグで、仮のタグとして付ける。
 	WorkInfoFieldTags WorkInfoField = "tags"
+	// WorkInfoFieldCode は品番で、保存済みの品番を置き換える。
+	WorkInfoFieldCode WorkInfoField = "code"
+	// WorkInfoFieldDescription は説明で、保存済みの説明を置き換える。
+	WorkInfoFieldDescription WorkInfoField = "description"
+	// WorkInfoFieldURLs はリンクで、まだ無い URL を後ろに足す。
+	WorkInfoFieldURLs WorkInfoField = "urls"
+	// WorkInfoFieldExternalIDs は動画の外部 ID で、まだ無い (source, value) を足す。
+	WorkInfoFieldExternalIDs WorkInfoField = "externalIds"
 )
+
+// DateField は日付の種類 kind の項目（dates.release など）を返す。保存済みのその種類の日付を置き換える。
+func DateField(kind DateKind) WorkInfoField { return WorkInfoField("dates." + string(kind)) }
+
+// PersonField は人物の役割 role の項目（people.performer など）を返す。その役割にまだ結んでいない人物を足す。
+func PersonField(role PersonRole) WorkInfoField { return WorkInfoField("people." + string(role)) }
+
+// OrganizationField は団体の役割 role の項目（organizations.maker など）を返す。
+func OrganizationField(role OrganizationRole) WorkInfoField {
+	return WorkInfoField("organizations." + string(role))
+}
+
+// WorkInfoFields は反映できる項目を比較の行の順に並べたものである
+// （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）。
+var WorkInfoFields = func() []WorkInfoField {
+	fields := []WorkInfoField{WorkInfoFieldTitle, WorkInfoFieldTags, WorkInfoFieldCode, WorkInfoFieldDescription}
+	for _, kind := range DateKinds {
+		fields = append(fields, DateField(kind))
+	}
+	for _, role := range PersonRoles {
+		fields = append(fields, PersonField(role))
+	}
+	for _, role := range OrganizationRoles {
+		fields = append(fields, OrganizationField(role))
+	}
+	return append(fields, WorkInfoFieldURLs, WorkInfoFieldExternalIDs)
+}()
 
 // WorkInfoFetchResult はメモリに持つ取得の結果を画面に見せる形である。Title は表示名の規則を通った
 // 題名で、空は値が無いことを表す。Tags はプラグインが返したタグの名前である。
@@ -135,6 +170,18 @@ type FetchedWorkInfoApply struct {
 	Title *string
 	// Tags は仮のタグとして付ける、タグ名の規則で整えた名前である。空ならタグは変えない。
 	Tags []string
+	// Details は取得した作品の詳細で、DetailFields が選んだ項目だけを作品情報に反映する。
+	Details FetchedWorkInfo
+	// DetailFields は作品情報に反映する項目（題名とタグ以外の WorkInfoField）である。空なら作品情報は変えない。
+	DetailFields []WorkInfoField
+}
+
+// FetchedWorkInfoApplied は保存先の反映の結果である。RejectedTags は却下した名前なので付けなかったタグの
+// 名前（Tags の順、重複なし）、Skipped は作品の詳細のうち反映で飛ばした値である。
+type FetchedWorkInfoApplied struct {
+	Video        Video
+	RejectedTags []string
+	Skipped      []SkippedWorkInfoValue
 }
 
 // WorkInfoApplied は反映の結果である。
