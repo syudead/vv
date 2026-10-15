@@ -129,6 +129,9 @@ func (s *server) parseIDsQuery(w http.ResponseWriter, params videoQueryParams) (
 	if query.Person, query.Organization, ok = s.parseCreditFilters(w, params.person, params.organization); !ok {
 		return domain.VideoQuery{}, false
 	}
+	if !s.parseAddedAndLength(w, params, &query) {
+		return domain.VideoQuery{}, false
+	}
 	return query, true
 }
 

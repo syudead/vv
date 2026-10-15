@@ -32,13 +32,43 @@ func memberConditions(spec listSpec) ([]string, []any) {
 	return append(conditions, matches...), args
 }
 
-// matchConditions は当たった動画（matched）を決める段の絞り込み、つまりタグの AND と
-// 人物・団体の絞り込みを、videos に対する条件句の並びと引数にする
-// （specs/047-video-work-info/data-model.md の Lists）。
+// matchConditions は当たった動画（matched）を決める段の絞り込み、つまりタグの AND、
+// 人物・団体、追加日と長さの絞り込みを、videos に対する条件句の並びと引数にする
+// （specs/047-video-work-info/data-model.md の Lists、specs/052-smart-folders/research.md R-4）。
 func matchConditions(spec listSpec) ([]string, []any) {
 	conditions, args := tagConditions(spec)
 	works, workArgs := workInfoConditions(spec)
-	return append(conditions, works...), append(args, workArgs...)
+	facts, factArgs := addedAndLengthConditions(spec)
+	conditions = append(append(conditions, works...), facts...)
+	return conditions, append(append(args, workArgs...), factArgs...)
+}
+
+// secondsPerDay は追加日の日数を videos.added_at（Unix 秒）の差にする係数である。
+const secondsPerDay = 24 * 60 * 60
+
+// addedAndLengthConditions は追加日と長さの絞り込みを、videos に対する条件句の並びと引数にする。
+// 追加日は、一覧を読み始めた時刻（listSpec.now）からその日数前の時刻以後に追加した動画に当たる。
+// 件数・ページ・空ページの再集計が同じ基準時刻で数えるよう、SQL の unixepoch() は使わない。
+// 長さは画面の表示（web/src/lib/format.ts の formatDuration）と同じく秒未満を切り捨てた秒で比べ、両端を含む。
+// 長さの分からない（duration_ms が NULL の）動画はどちらの端にも当たらない
+// （specs/052-smart-folders/research.md R-4）。
+func addedAndLengthConditions(spec listSpec) ([]string, []any) {
+	var conditions []string
+	var args []any
+	if spec.addedWithinDays > 0 {
+		conditions = append(conditions, `videos.added_at >= ?`)
+		args = append(args, spec.now-int64(spec.addedWithinDays)*secondsPerDay)
+	}
+	if spec.minDurationSec != nil {
+		conditions = append(conditions, `videos.duration_ms >= ?`)
+		args = append(args, int64(*spec.minDurationSec)*1000)
+	}
+	if spec.maxDurationSec != nil {
+		// 切り捨てた秒が上限以下なのは、ミリ秒が「上限の次の秒」未満であることと同じである。
+		conditions = append(conditions, `videos.duration_ms < ?`)
+		args = append(args, int64(*spec.maxDurationSec+1)*1000)
+	}
+	return conditions, args
 }
 
 // workInfoConditions は人物と団体の絞り込みを、videos に対する条件句の並びと引数にする。

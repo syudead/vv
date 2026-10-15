@@ -925,6 +925,37 @@ describe("list API client", () => {
     expect(urls[1]?.searchParams.get("sort")).toBe("favoritedAsc");
   });
 
+  // specs/052-smart-folders/research.md R-4: added within and length go to the three library lists.
+  it("sends addedWithin, minDuration and maxDuration to the library lists only when given", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockImplementation(() =>
+        Promise.resolve(jsonResponse({ items: [], total: 0, ids: [] })),
+      );
+    vi.stubGlobal("fetch", fetch);
+    const filter = { addedWithin: 7, minDuration: 0, maxDuration: 600 };
+
+    await listVideos(filter);
+    await listLibrary(filter);
+    await listLibraryIds(filter);
+    await listVideos({});
+
+    const urls = fetch.mock.calls.map(
+      ([input]) => new URL(String(input), "http://localhost"),
+    );
+    const sent = urls.map((url) => [
+      url.searchParams.get("addedWithin"),
+      url.searchParams.get("minDuration"),
+      url.searchParams.get("maxDuration"),
+    ]);
+    expect(sent).toEqual([
+      ["7", "0", "600"],
+      ["7", "0", "600"],
+      ["7", "0", "600"],
+      [null, null, null],
+    ]);
+  });
+
   it("omits playable when it is false", async () => {
     const fetch = stubFetch();
     await listVideos({ playable: false });

@@ -277,6 +277,9 @@ paths:
               format: int64
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
+        - $ref: "#/components/parameters/AddedWithinFilter"
+        - $ref: "#/components/parameters/MinDurationFilter"
+        - $ref: "#/components/parameters/MaxDurationFilter"
       responses:
         "200":
           description: 一覧
@@ -394,6 +397,9 @@ paths:
               format: int64
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
+        - $ref: "#/components/parameters/AddedWithinFilter"
+        - $ref: "#/components/parameters/MinDurationFilter"
+        - $ref: "#/components/parameters/MaxDurationFilter"
       responses:
         "200":
           description: 項目の一覧
@@ -454,6 +460,9 @@ paths:
               format: int64
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
+        - $ref: "#/components/parameters/AddedWithinFilter"
+        - $ref: "#/components/parameters/MinDurationFilter"
+        - $ref: "#/components/parameters/MaxDurationFilter"
       responses:
         "200":
           description: 条件に合う項目の動画の id
@@ -4517,6 +4526,38 @@ components:
         type: integer
         format: int64
         minimum: 1
+    AddedWithinFilter:
+      name: addedWithin
+      in: query
+      description: |
+        日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
+        組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
+        `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 36500
+    MinDurationFilter:
+      name: minDuration
+      in: query
+      description: |
+        長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
+        0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
+        ゲストも使える（specs/052-smart-folders/research.md R-4）
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 360000
+    MaxDurationFilter:
+      name: maxDuration
+      in: query
+      description: |
+        長さの上限（秒、含む）。扱いは `minDuration` と同じ
+        （specs/052-smart-folders/research.md R-4）
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 360000
     MediaFolderId:
       name: id
       in: path
