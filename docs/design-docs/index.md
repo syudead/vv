@@ -35,6 +35,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Auto-tagging with a decision model](auto-tagging.md)
 - [AI layer: classifier port and providers](ai-layer.md)
 - [Thumbnail editing sessions](thumbnail-editing.md)
+- [Work-info plugins: sandbox, limits and network](work-info-plugins.md)
 - [vv design system](design-system.md)
 - [Library UI: visual rules and list layout](library-ui.md)
 - [Related videos and the previous and next video](related-videos.md)
@@ -68,3 +69,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Setting a local image as the thumbnail and editing the current thumbnail with ComfyUI (upload entry, uploaded item, source menu): UI](../../specs/046-thumbnail-image-upload/ui-design.md)
 - [Work information on videos (work details row, in-place editor, person and organization filter, people and organizations screens): UI](../../specs/047-video-work-info/ui-design.md)
 - [Groups of any videos and groups (group page with a trail, New group, Add to group, the video page's group context): UI](../../specs/048-groups/ui-design.md)
+- [Work-info plugins (settings section, approval prompt, setting values, fetch entry and dialog with the comparison): UI](../../specs/049-work-info-plugins/ui-design.md)

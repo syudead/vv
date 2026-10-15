@@ -309,6 +309,8 @@ type Options struct {
 	ThumbnailEdits ThumbnailEdits
 	// ThumbnailUploads は手元の画像のサムネイルへのアップロード。nil なら該当の経路は 500 を返す。
 	ThumbnailUploads ThumbnailUploads
+	// WorkInfoPlugins は作品情報プラグインの登録。nil なら該当の経路は 500 を返す。
+	WorkInfoPlugins WorkInfoPlugins
 	// TranscodeProbes はライブ変換がその場で解析した結果の保存先。nil なら保存せず、
 	// 解析情報の無い動画は変換のたびに解析する。
 	TranscodeProbes TranscodeProbeWriter
@@ -386,6 +388,7 @@ type server struct {
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
 	thumbnailUploads  ThumbnailUploads
+	workInfoPlugins   WorkInfoPlugins
 	// thumbnailUploadBuffers はアップロードの本文が同時に占めるメモリの枠である（thumbnail_upload.go）。
 	thumbnailUploadBuffers *semaphore.Weighted
 	// transcodeProbes はライブ変換がその場で解析した結果の保存先（nil なら保存しない）。
@@ -423,6 +426,7 @@ type server struct {
 //	/api/auth/*      → JSON（初回設定・ログイン・ログアウト・状態。同上）
 //	/api/settings/*  → JSON（所有者が設定画面で選ぶ値。同上）
 //	/api/api-tokens* → JSON（所有者が設定画面で管理する API トークン。同上）
+//	/api/work-info-plugins* → JSON と multipart（所有者が設定画面で管理する作品情報プラグイン。同上）
 //	/api/v1/*        → JSON（外部連携 API。api/external-v1.yaml から生成した経路で、Bearer だけ）
 //	/mcp             → MCP（Streamable HTTP の stateless。外部連携 API のツール、Bearer だけ）
 //	/api/*（未定義） → 404 + Error（index.html を返してはならない）
@@ -472,6 +476,7 @@ func NewRouter(opts Options) http.Handler {
 		comfyUI:                opts.ComfyUI,
 		thumbnailEdits:         opts.ThumbnailEdits,
 		thumbnailUploads:       opts.ThumbnailUploads,
+		workInfoPlugins:        opts.WorkInfoPlugins,
 		thumbnailUploadBuffers: newThumbnailUploadBuffers(),
 		transcodeStarts:        newTranscodeStarts(),
 		artifacts:              opts.Artifacts,
@@ -585,7 +590,8 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 }
 
 func requiresJSONBody(r *http.Request) bool {
-	return requiresCreditJSONBody(r.Method, r.URL.Path) || requiresOtherJSONBody(r)
+	return requiresCreditJSONBody(r.Method, r.URL.Path) || isWorkInfoPluginJSONBody(r) || isWorkInfoFetchJSONPost(r) ||
+		requiresOtherJSONBody(r)
 }
 
 // requiresOtherJSONBody は人物と団体の経路（requiresCreditJSONBody）を除く、本文を持つ経路を返す。
@@ -686,6 +692,45 @@ func requiresPatchJSONBody(path string) bool {
 			return false
 		}
 		return !strings.Contains(id, "/")
+	}
+	return false
+}
+
+// isWorkInfoPluginJSONBody は r が PUT /api/work-info-plugins/{id}/approval、
+// PUT /api/work-info-plugins/{id}/settings か POST /api/work-info-plugins/{id}/search かを返す
+// （specs/049-work-info-plugins/contracts/screen-api.md）。
+func isWorkInfoPluginJSONBody(r *http.Request) bool {
+	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/work-info-plugins/")
+	if !ok {
+		return false
+	}
+	id, rest, found := strings.Cut(suffix, "/")
+	if !found || id == "" {
+		return false
+	}
+	switch r.Method {
+	case http.MethodPut:
+		return rest == "approval" || rest == "settings"
+	case http.MethodPost:
+		return rest == "search"
+	}
+	return false
+}
+
+// isWorkInfoFetchJSONPost は r が POST /api/videos/{id}/work-info-fetches か
+// POST /api/videos/{id}/work-info-fetches/{fetchId}/apply かを返す
+// （specs/049-work-info-plugins/contracts/screen-api.md）。
+func isWorkInfoFetchJSONPost(r *http.Request) bool {
+	suffix, ok := strings.CutPrefix(r.URL.Path, "/api/videos/")
+	if r.Method != http.MethodPost || !ok {
+		return false
+	}
+	segments := strings.Split(suffix, "/")
+	switch len(segments) {
+	case 2:
+		return segments[0] != "" && segments[1] == "work-info-fetches"
+	case 4:
+		return segments[0] != "" && segments[1] == "work-info-fetches" && segments[2] != "" && segments[3] == "apply"
 	}
 	return false
 }
@@ -815,6 +860,16 @@ const (
 	codeTagMergeRequired            = gen.ErrorCodeTagMergeRequired
 	codeTagNotTentative             = gen.ErrorCodeTagNotTentative
 	codeProviderFailed              = gen.ErrorCodeProviderFailed
+	codePluginTooLarge              = gen.ErrorCodePluginTooLarge
+	codePluginChanged               = gen.ErrorCodePluginChanged
+	codePluginUnusable              = gen.ErrorCodePluginUnusable
+	codePluginNotApproved           = gen.ErrorCodePluginNotApproved
+	codePluginSettingsMissing       = gen.ErrorCodePluginSettingsMissing
+	codePluginFailed                = gen.ErrorCodePluginFailed
+	codePluginTimedOut              = gen.ErrorCodePluginTimedOut
+	codePluginBusy                  = gen.ErrorCodePluginBusy
+	codeOperationUnsupported        = gen.ErrorCodeOperationUnsupported
+	codeWorkInfoFetchStale          = gen.ErrorCodeWorkInfoFetchStale
 )
 
 // エラーの reason の正本も api/openapi.yaml の ErrorReason である。生成された

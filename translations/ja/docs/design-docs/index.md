@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: b92aea1fc64697ec3594b61e3948c8810c31d0f71628b20a284a0f73284865a5
+sourceHash: 486bc5bbd85365e2c9788f5ce087bb89fc6e75eada4092c7d746cef5866b1551
 ---
 
 # 設計文書 {#design-documents}
@@ -33,6 +33,7 @@ sourceHash: b92aea1fc64697ec3594b61e3948c8810c31d0f71628b20a284a0f73284865a5
 - [判定モデルによる自動タグ付け](auto-tagging.md)
 - [AI 層: 分類器のポートとプロバイダ](ai-layer.md)
 - [サムネイル編集のセッション](thumbnail-editing.md)
+- [作品情報プラグイン: サンドボックス、制限、ネットワーク](work-info-plugins.md)
 - [vv デザインシステム](design-system.md)
 - [ライブラリ UI: 視覚ルールと一覧のレイアウト](library-ui.md)
 - [関連動画と前後の動画](related-videos.md)
@@ -66,3 +67,4 @@ sourceHash: b92aea1fc64697ec3594b61e3948c8810c31d0f71628b20a284a0f73284865a5
 - [ローカルの画像をサムネイルにし、今のサムネイルを ComfyUI で編集する (アップロードの入口、アップロードした画像の項目、編集の元のメニュー): UI](../../specs/046-thumbnail-image-upload/ui-design.md)
 - [動画の作品情報 (作品の詳細の行、その場での編集、人物と組織による絞り込み、人物と組織の画面): UI](../../specs/047-video-work-info/ui-design.md)
 - [任意の動画とグループのグループ (経路を持つグループのページ、New group、Add to group、動画のページのグループの文脈): UI](../../specs/048-groups/ui-design.md)
+- [作品情報プラグイン (設定の節、承認の確認、設定の値、取得の入口と比較を持つダイアログ): UI](../../specs/049-work-info-plugins/ui-design.md)

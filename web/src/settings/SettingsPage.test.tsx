@@ -99,6 +99,9 @@ describe("SettingsPage", () => {
       // 「ComfyUI」区画は ComfyUISection.test.tsx が確かめる。ここでは何も保存されていない。
       if (String(input) === "/api/settings/comfyui")
         return Promise.resolve(json({ apiKeySet: false, model: "flux2_klein_4b" }));
+      // 「Work-info plugins」区画は WorkInfoPluginsSection.test.tsx が確かめる。ここでは空の一覧を返す。
+      if (String(input) === "/api/work-info-plugins")
+        return Promise.resolve(json({ plugins: [] }));
       return fetchMock(input, init);
     });
     window.matchMedia = vi.fn().mockReturnValue({

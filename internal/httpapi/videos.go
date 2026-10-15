@@ -345,6 +345,23 @@ func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video 
 // writeVideoDetailIn は writeVideoDetail と同じ応答を、group を文脈のグループ contextID
 // （無ければ 0）で答えて書く。
 func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, video domain.Video, contextID int64) {
+	payload, err := s.videoDetail(r, video, contextID)
+	if err != nil {
+		s.internalError(w, "Could not load the video.", err)
+		return
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, payload, s.logger)
+}
+
+// videoDetail は動画1件の詳細を GET /api/videos/{id} の形にする。要求の見る人に合わせて項目を絞り、
+// group は文脈のグループ contextID（無ければ 0）で答える。作品情報の取得の結果の反映の応答も、
+// これを video に入れる。
+//
+// グループかシーク用プレビューの状態を読めなければ、その項目を除いた詳細と誤りを返す。書き込みが確定した
+// 後の応答は、誤りを記録して除いた詳細を返せる。
+func (s *server) videoDetail(r *http.Request, video domain.Video, contextID int64) (gen.Video, error) {
+	var errs []error
 	progress := s.progressFor(r.Context(), []domain.Video{video})
 	tags := s.tagsFor(r.Context(), []domain.Video{video})
 	payload := withTags(withProgress(s.apiVideo(r.Context(), video), progress, video.UserKey), tags, video.UserKey)
@@ -362,10 +379,9 @@ func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, vide
 		// 位置と本数だけを使うので、メンバーの詳細は読まない。
 		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, contextID, domain.GroupWindow{})
 		if err != nil {
-			s.internalError(w, "Could not load the video.", err)
-			return
+			errs = append(errs, err)
 		}
-		if grouped {
+		if err == nil && grouped {
 			payload.Group = &gen.VideoGroupRef{
 				Id:       group.ID,
 				Folder:   apiGroupFolder(group.Folder),
@@ -381,15 +397,13 @@ func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, vide
 	if video.HasSeekThumbnail() && s.catalog != nil {
 		state, err := s.catalog.SeekThumbnailState(r.Context(), video)
 		if err != nil {
-			s.internalError(w, "Could not load the video.", err)
-			return
+			errs = append(errs, err)
+		} else {
+			apiState := gen.VideoSeekThumbnailState(state)
+			payload.SeekThumbnailState = &apiState
 		}
-		apiState := gen.VideoSeekThumbnailState(state)
-		payload.SeekThumbnailState = &apiState
 	}
-
-	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, forAudience(audienceFrom(r.Context()), payload), s.logger)
+	return forAudience(audienceFrom(r.Context()), payload), errors.Join(errs...)
 }
 
 // detailFolder は動画1件の応答に載せる、代表の所在が置かれたフォルダを作る。

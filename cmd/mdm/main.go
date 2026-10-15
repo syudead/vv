@@ -402,6 +402,9 @@ func run(opts runOptions) error {
 	}
 
 	httpAuthenticator, apiTokens := newHTTPAuth(authStore)
+	// 作品情報プラグインのランタイム。HTTP の待ち受けを止めたあと、データベースより先に閉じる。
+	workInfoPlugins, closeWorkInfoPlugins := newWorkInfoPlugins(context.Background(), db, logger)
+	defer closeWorkInfoPlugins()
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:            build,
 		Pinger:           db,
@@ -438,6 +441,7 @@ func run(opts runOptions) error {
 		ThumbnailEdits:    thumbnailEdits,
 		// 手元の画像のアップロードは、生成した画像と同じ取り込みの適用で代表サムネイルにする。
 		ThumbnailUploads: ingest,
+		WorkInfoPlugins:  workInfoPlugins,
 		// ライブ変換がその場で解析した結果は、取り込みの結果と同じ IngestStore が保存する。
 		TranscodeProbes: ingestStore,
 		Artifacts:       artifactStore,

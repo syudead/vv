@@ -458,15 +458,21 @@ func workInfoChangedEvents(ctx context.Context, tx *sql.Tx, edited []string) ([]
 	if len(edited) == 0 {
 		return nil, nil
 	}
-	contentKeys, err := contentKeysForUserKeys(ctx, tx, edited)
-	if err != nil {
-		return nil, err
-	}
-	ids, err := videoIDsForContentKeys(ctx, tx, contentKeys)
+	ids, err := videoIDsForUserKeys(ctx, tx, edited)
 	if err != nil {
 		return nil, err
 	}
 	return []domain.Event{domain.VideoWorkInfoChanged{VideoIDs: ids}}, nil
+}
+
+// videoIDsForUserKeys は利用者データの鍵 userKeys に属するすべての動画の id を小さい順に返す。集まりの
+// 鍵なら全メンバーの動画になる。鍵に書いた値の変化を、同じ鍵を読む各動画の知らせにするのに使う。
+func videoIDsForUserKeys(ctx context.Context, tx *sql.Tx, userKeys []string) ([]int64, error) {
+	contentKeys, err := contentKeysForUserKeys(ctx, tx, userKeys)
+	if err != nil {
+		return nil, err
+	}
+	return videoIDsForContentKeys(ctx, tx, contentKeys)
 }
 
 // workInfoByUserKeys は鍵 userKeys の作品情報を返す（ByUserKeys の並び）。どの表にも行の無い鍵は含めず、
