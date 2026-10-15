@@ -33,7 +33,7 @@ type CatalogIndexStore interface {
 	// VideoGroup は動画 id の文脈のグループ（contextID は動画を開いたグループ、無ければ 0。
 	// specs/048-groups/research.md R-9）を、見る人に見せてよい動画の再生順で返す。詳細は
 	// window の範囲だけを読む。動画がどのグループにも無ければ false。
-	VideoGroup(ctx context.Context, audience domain.Audience, id, contextID int64, window domain.GroupWindow) (domain.VideoGroup, bool, error)
+	VideoGroup(ctx context.Context, audience domain.Audience, id int64, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error)
 }
 
 // ArtifactFiles は生成物が今あるかを答える。internal/artifacts の *Store が
@@ -137,12 +137,12 @@ func (c *Catalog) SeekThumbnailState(ctx context.Context, video domain.Video) (d
 	return domain.SeekThumbnailPending, nil
 }
 
-// VideoGroup は動画の文脈のグループ（contextID は動画を開いたグループ、無ければ 0。
-// specs/048-groups/research.md R-9）を、見る人に見せてよい動画の再生順で返す
+// VideoGroup は動画の文脈（opened は動画を開いたグループとスマートフォルダ。domain.VideoContext、
+// specs/048-groups/research.md R-9）の、見る人に見せてよい動画の再生順を返す
 // （GET /api/videos/{id} の group と GET /api/videos/{id}/group-members）。詳細は window の
 // 範囲だけを読む。動画がどのグループにも無ければ false。
-func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, contextID int64, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
-	return c.index.VideoGroup(ctx, audience, video.ID, contextID, window)
+func (c *Catalog) VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
+	return c.index.VideoGroup(ctx, audience, video.ID, opened, window)
 }
 
 // RelatedVideos は関連動画の 1 ページを返す（issue 931）。
@@ -163,7 +163,7 @@ func (c *Catalog) RelatedVideos(ctx context.Context, audience domain.Audience, v
 	if first {
 		window = domain.GroupWindow{Limit: domain.GroupMemberWindow, Around: true}
 	}
-	group, grouped, err := c.index.VideoGroup(ctx, audience, video.ID, page.GroupID, window)
+	group, grouped, err := c.index.VideoGroup(ctx, audience, video.ID, page.Context(), window)
 	if err != nil {
 		return domain.RelatedVideos{}, err
 	}

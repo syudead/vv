@@ -372,9 +372,9 @@ func (f *fakeCatalog) RelatedVideos(_ context.Context, audience domain.Audience,
 	return f.related, f.relatedErr
 }
 
-func (f *fakeCatalog) VideoGroup(_ context.Context, _ domain.Audience, _ domain.Video, contextID int64, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
+func (f *fakeCatalog) VideoGroup(_ context.Context, _ domain.Audience, _ domain.Video, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
 	f.groupWindows = append(f.groupWindows, window)
-	f.groupContexts = append(f.groupContexts, contextID)
+	f.groupContexts = append(f.groupContexts, opened.GroupID)
 	return f.group, f.grouped, f.groupErr
 }
 
