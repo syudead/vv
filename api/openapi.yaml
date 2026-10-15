@@ -2046,6 +2046,44 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/settings/version-judging:
+    get:
+      operationId: getVersionJudgingSettings
+      summary: 重複の自動判定の入切を返す
+      description: |
+        所有者だけが読める。保存前は `enabled: false` を返す
+        （specs/054-auto-dup/contracts/screen-api.md）。
+      responses:
+        "200":
+          description: 今の設定
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionJudgingSettings"
+    put:
+      operationId: updateVersionJudgingSettings
+      summary: 重複の自動判定の入切を保存し、判定の処理を起こす
+      description: |
+        保存した値を返す。入れると、待っていた候補を判定し始める。Ollama の接続先は
+        `/api/settings/ollama` が持つ（specs/054-auto-dup/contracts/screen-api.md）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVersionJudgingSettingsRequest"
+      responses:
+        "200":
+          description: 保存後の設定
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionJudgingSettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/auto-tagging/check:
     post:
       operationId: checkAutoTaggingClassifier
@@ -4983,6 +5021,24 @@ components:
           description: 問題が 1 つのディレクトリに関わるときの、その絶対パス（利用者のデータ。翻訳しない）
 
     UpdateAutoImportSettingsRequest:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+
+    VersionJudgingSettings:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      description: 重複の自動判定の入切（specs/054-auto-dup/contracts/screen-api.md）
+      properties:
+        enabled:
+          type: boolean
+          description: 保存した選択。保存値が無ければ false
+
+    UpdateVersionJudgingSettingsRequest:
       type: object
       required: [enabled]
       additionalProperties: false

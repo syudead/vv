@@ -1,4 +1,4 @@
-import { CircleAlert, LoaderCircle, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
@@ -15,6 +15,9 @@ import { PageSection } from "../ui/patterns/page-section";
 import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { Switch } from "../ui/shadcn/switch";
+
+import { SaveStatus } from "./SaveStatus";
+import { useSwitchSave } from "./useSwitchSave";
 
 /** pollMs は監視を張っている最中（starting）に状態を読み直す間隔である。 */
 const pollMs = 2000;
@@ -76,8 +79,6 @@ export default function AutoImportSection({ reloadToken }: { reloadToken: number
   const scan = useScan();
   const [settings, setSettings] = useState<AutoImportSettings | null>(null);
   const [loadError, setLoadError] = useState<UiText | null>(null);
-  const [saving, setSaving] = useState<boolean | null>(null);
-  const [saveError, setSaveError] = useState<UiText | null>(null);
   // 読み込みと保存は重なる。いちばん新しく始めたものの応答だけを使う。
   const revision = useRef(0);
   const controller = useRef<AbortController | null>(null);
@@ -144,24 +145,22 @@ export default function AutoImportSection({ reloadToken }: { reloadToken: number
     seenEnded.current = endedId;
   }, [endedId, load, scan.loaded]);
 
-  const toggle = async () => {
-    if (settings === null || saving !== null) return;
-    const next = !settings.enabled;
-    // 保存より前に始めた読み込みの応答は使わない。
-    controller.current?.abort();
-    revision.current += 1;
-    saveInFlight.current = true;
-    setSaveError(null);
-    setSaving(next);
-    try {
-      setSettings(await updateAutoImportSettings(next));
-    } catch (failure) {
-      setSaveError(text.saveFailed(errorText(failure)));
-    } finally {
+  const { saving, saveError, toggle } = useSwitchSave({
+    settings,
+    current: (saved) => saved.enabled,
+    save: updateAutoImportSettings,
+    saved: setSettings,
+    saveFailed: text.saveFailed,
+    onStart: () => {
+      // 保存より前に始めた読み込みの応答は使わない。
+      controller.current?.abort();
+      revision.current += 1;
+      saveInFlight.current = true;
+    },
+    onSettled: () => {
       saveInFlight.current = false;
-      setSaving(null);
-    }
-  };
+    },
+  });
 
   const checked = saving ?? settings?.enabled ?? false;
 
@@ -199,26 +198,7 @@ export default function AutoImportSection({ reloadToken }: { reloadToken: number
           />
         </FormRow>
       )}
-      {saving !== null && (
-        <p
-          role="status"
-          className="flex items-center gap-2 text-xs text-muted-foreground"
-        >
-          <LoaderCircle
-            aria-hidden="true"
-            className="size-4 animate-spin motion-reduce:animate-none"
-          />
-          {text.saving}
-        </p>
-      )}
-      {saveError !== null && (
-        <div>
-          <Alert variant="destructive">
-            <CircleAlert aria-hidden="true" />
-            <AlertTitle>{saveError}</AlertTitle>
-          </Alert>
-        </div>
-      )}
+      <SaveStatus saving={saving !== null} savingText={text.saving} error={saveError} />
       {settings !== null && <ProblemAlert watch={settings.watch} />}
     </PageSection>
   );

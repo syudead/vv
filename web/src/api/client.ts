@@ -93,6 +93,7 @@ export type LibraryGroup = components["schemas"]["LibraryGroup"];
 export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
 export type NetworkSettings = components["schemas"]["NetworkSettings"];
 export type AutoImportSettings = components["schemas"]["AutoImportSettings"];
+export type VersionJudgingSettings = components["schemas"]["VersionJudgingSettings"];
 export type AutoTaggingSettings = components["schemas"]["AutoTaggingSettings"];
 export type CheckResult = components["schemas"]["CheckResult"];
 export type OllamaSettings = components["schemas"]["OllamaSettings"];
@@ -948,6 +949,29 @@ export function updateAutoImportSettings(
   signal?: AbortSignal,
 ): Promise<AutoImportSettings> {
   return request<AutoImportSettings>("/api/settings/auto-import", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ enabled }),
+    signal,
+  });
+}
+
+/**
+ * getVersionJudgingSettings は重複の自動判定の入切を取得する。保存前は切である
+ * （specs/054-auto-dup/contracts/screen-api.md）。
+ */
+export function getVersionJudgingSettings(
+  signal?: AbortSignal,
+): Promise<VersionJudgingSettings> {
+  return request<VersionJudgingSettings>("/api/settings/version-judging", { signal });
+}
+
+/** updateVersionJudgingSettings は入切を保存し、保存した値を返す。入れると判定の処理が起きる。 */
+export function updateVersionJudgingSettings(
+  enabled: boolean,
+  signal?: AbortSignal,
+): Promise<VersionJudgingSettings> {
+  return request<VersionJudgingSettings>("/api/settings/version-judging", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ enabled }),

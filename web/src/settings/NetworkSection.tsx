@@ -1,4 +1,4 @@
-import { CircleAlert, LoaderCircle, TriangleAlert } from "lucide-react";
+import { TriangleAlert } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import {
@@ -13,6 +13,9 @@ import { FormRow } from "../ui/patterns/form-row";
 import { PageSection } from "../ui/patterns/page-section";
 import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
 import { Switch } from "../ui/shadcn/switch";
+
+import { SaveStatus } from "./SaveStatus";
+import { useSwitchSave } from "./useSwitchSave";
 
 /**
  * NetworkSection は設定画面の「Network」区画である。Windows デスクトップ版で、所有者が
@@ -30,8 +33,6 @@ export default function NetworkSection() {
   const [settings, setSettings] = useState<NetworkSettings | null>(null);
   const [notDesktop, setNotDesktop] = useState(false);
   const [loadError, setLoadError] = useState<UiText | null>(null);
-  const [saving, setSaving] = useState<boolean | null>(null);
-  const [saveError, setSaveError] = useState<UiText | null>(null);
 
   const load = useCallback(async (signal?: AbortSignal) => {
     setLoadError(null);
@@ -53,21 +54,15 @@ export default function NetworkSection() {
     return () => controller.abort();
   }, [load]);
 
-  if (notDesktop || (settings === null && loadError === null)) return null;
+  const { saving, saveError, toggle } = useSwitchSave({
+    settings,
+    current: (saved) => saved.lanAccess,
+    save: updateNetworkSettings,
+    saved: setSettings,
+    saveFailed: text.saveFailed,
+  });
 
-  const toggle = async () => {
-    if (settings === null || saving !== null) return;
-    const next = !settings.lanAccess;
-    setSaveError(null);
-    setSaving(next);
-    try {
-      setSettings(await updateNetworkSettings(next));
-    } catch (failure) {
-      setSaveError(text.saveFailed(errorText(failure)));
-    } finally {
-      setSaving(null);
-    }
-  };
+  if (notDesktop || (settings === null && loadError === null)) return null;
 
   const checked = saving ?? settings?.lanAccess ?? false;
 
@@ -92,26 +87,7 @@ export default function NetworkSection() {
           />
         </FormRow>
       )}
-      {saving !== null && (
-        <p
-          role="status"
-          className="flex items-center gap-2 text-xs text-muted-foreground"
-        >
-          <LoaderCircle
-            aria-hidden="true"
-            className="size-4 animate-spin motion-reduce:animate-none"
-          />
-          {text.saving}
-        </p>
-      )}
-      {saveError !== null && (
-        <div>
-          <Alert variant="destructive">
-            <CircleAlert aria-hidden="true" />
-            <AlertTitle>{saveError}</AlertTitle>
-          </Alert>
-        </div>
-      )}
+      <SaveStatus saving={saving !== null} savingText={text.saving} error={saveError} />
       {settings !== null &&
         (settings.lanAccess ? (
           settings.addresses.length > 0 ? (

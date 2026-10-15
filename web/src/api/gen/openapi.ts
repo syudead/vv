@@ -1327,6 +1327,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/version-judging": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 重複の自動判定の入切を返す
+         * @description 所有者だけが読める。保存前は `enabled: false` を返す
+         *     （specs/054-auto-dup/contracts/screen-api.md）。
+         */
+        get: operations["getVersionJudgingSettings"];
+        /**
+         * 重複の自動判定の入切を保存し、判定の処理を起こす
+         * @description 保存した値を返す。入れると、待っていた候補を判定し始める。Ollama の接続先は
+         *     `/api/settings/ollama` が持つ（specs/054-auto-dup/contracts/screen-api.md）。
+         */
+        put: operations["updateVersionJudgingSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auto-tagging/check": {
         parameters: {
             query?: never;
@@ -3058,6 +3084,14 @@ export interface components {
             path?: string;
         };
         UpdateAutoImportSettingsRequest: {
+            enabled: boolean;
+        };
+        /** @description 重複の自動判定の入切（specs/054-auto-dup/contracts/screen-api.md） */
+        VersionJudgingSettings: {
+            /** @description 保存した選択。保存値が無ければ false */
+            enabled: boolean;
+        };
+        UpdateVersionJudgingSettingsRequest: {
             enabled: boolean;
         };
         /** @description 自動タグ付けの機能の設定と待ち行列の件数（docs/design-docs/auto-tagging.md） */
@@ -7000,6 +7034,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AutoTaggingSettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getVersionJudgingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 今の設定 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionJudgingSettings"];
+                };
+            };
+        };
+    };
+    updateVersionJudgingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVersionJudgingSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存後の設定 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionJudgingSettings"];
                 };
             };
             400: components["responses"]["InvalidRequest"];
