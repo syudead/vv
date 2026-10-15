@@ -36,12 +36,15 @@ favorites and video facts. No membership is written anywhere.
 | Option | Verdict |
 | --- | --- |
 | **Evaluate on read** | Chosen |
-| A membership table refreshed after each change | Rejected: attaching and detaching tags, saving progress, favorites, credits, bundling and imports publish no event today, so each would need a hook in its transaction, and progress is saved every few seconds during playback |
+| A membership table refreshed after each change | Rejected: every write that can change a match (tags, credits, progress, favorites, bundling, imports) would have to update it in its own transaction, and one missed write leaves a wrong member until the next full refresh |
 | A background job that rebuilds memberships | Rejected: the folder lags its condition until the job runs, against acceptance criterion 1 (`操作なしで`) |
 
-**Rationale**: Requirement 3 then holds on the next read with no write path to
-keep in step, and an import never waits on a rule (Edge Case on tens of
-thousands of videos). The cost moves to the reads; the budget for it is in
+**Rationale**: Requirement 3 then holds on every read whatever wrote the
+facts, and an import never waits on a rule (Edge Case on tens of thousands of
+videos). Telling open screens to read again stays a separate, best-effort
+notice ([R-13](#r-13-writes-that-can-change-a-match-publish-groupschanged-for-every-smart-folder)):
+a missed notice delays a screen, never corrupts a member. The cost moves to
+the reads; the budget for it is in
 [R-12](#r-12-a-read-budget-at-20000-videos-and-50-smart-folders).
 
 ## R-3: The rule is the library filter, combined with AND, built by the same SQL
@@ -176,14 +179,15 @@ deletion applies to them.
 **Decision**: `groups` gains `owner_kept`. Every screen API write that
 creates a group or smart folder, renames it, changes its rule or sort, or
 adds, removes or reorders its items sets it to 1 on that group; the folder
-scan sync never does. Existing hand-made groups start at 1 and automatic
-groups at 0.
+scan sync never does. Every group that exists when the migration runs starts
+at 1.
 
 | Option | Verdict |
 | --- | --- |
 | **One flag on every group, set by owner writes** | Chosen |
 | On smart folders only | Rejected: the AI organizing that will read the flag also rearranges hand-made and automatic groups, and edits made before the flag exists could not be recovered later |
 | A `created_by` value (owner, scan, AI) | Rejected: requirement 8 also asks an edited AI folder to count as the owner's, which a creator field does not record |
+| Existing automatic groups at 1 only when an edit is detectable (a hand item, an exclusion, a changed name) | Rejected: a reorder, or a name changed and changed back, leaves no trace, so an edited group would start at 0 and the AI would rearrange it |
 
 **Rationale**: Requirement 8 asks for the record so the AI leaves these
 folders alone. The AI write path is out of scope; it will be the one path that
@@ -220,14 +224,23 @@ listed group.
 budget for the folder index. When the budget is missed, the fallback is a
 per-request cache of matched keys, not stored membership.
 
-## R-13: No new event; smart folder edits publish `GroupsChanged`
+## R-13: Writes that can change a match publish `GroupsChanged` for every smart folder
 
 **Decision**: Rule, sort, item and exclusion changes publish `GroupsChanged`
-for the folder and its ancestors (048 R-13). Tag, progress, favorite and
-import changes publish nothing new; an open folder shows them on its next
-read.
+for the folder and its ancestors (048 R-13). A committed write that can change
+which videos match any rule publishes `GroupsChanged` for every smart folder
+and their ancestors, and nothing when no smart folder exists
+([data-model.md, Notices](data-model.md#notices)). A progress save publishes
+only when it changes the video's watch state.
 
 | Option | Verdict |
 | --- | --- |
-| **Existing events only** | Chosen |
-| `GroupsChanged` for every smart folder on every fact change | Rejected: it needs the hooks [R-2](#r-2-matched-videos-are-computed-when-a-group-is-read-not-stored) rejects, and the library would re-read its loaded pages on every progress save |
+| **One notice naming every smart folder** | Chosen |
+| Only edits of the folder publish | Rejected: the SPA re-reads a group only on a `group` event naming it (`web/src/api/useGroupRefresh.ts`) and the library re-reads its pages only on a `group` event, so a newly tagged video would stay outside an open folder and on the library's top level |
+| Work out which folders the write changed | Rejected: it evaluates every rule before and after each write, the cost [R-2](#r-2-matched-videos-are-computed-when-a-group-is-read-not-stored) keeps off the write path |
+| Every progress save | Rejected: progress is saved every few seconds during playback, and each notice makes the library re-read its loaded pages |
+
+**Rationale**: Acceptance criterion 1 asks the folder to change with no
+operation, and the open screens learn of a change only from an event. The
+existing `group` event and its handlers carry the notice, so the SPA needs no
+change.

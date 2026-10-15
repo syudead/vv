@@ -1,6 +1,6 @@
 ---
 source: specs/052-smart-folders/data-model.md
-sourceHash: 2f38995201aa69b09c3e3f75d6c98be41985637179762e1ed1e67203296201a5
+sourceHash: 58b37d2726f87ac4bee30dc177605bff43fd025271495f982794de9b4eb8910d
 ---
 
 # データモデル: 動画が保存した条件に従うスマートフォルダ {#data-model-smart-folders-whose-videos-follow-a-saved-condition}
@@ -16,7 +16,7 @@ alter table groups add column rule text;               -- null for a group; JSON
 alter table groups add column sort text;               -- null for a group; a VideoSort other than random
 alter table groups add column owner_kept integer not null default 0
     check (owner_kept in (0, 1));
-update groups set owner_kept = 1 where origin_folder is null;
+update groups set owner_kept = 1;                      -- every existing group (research.md R-10)
 -- A smart folder is never automatic, and has a sort exactly when it has a rule.
 -- SQLite cannot add a table check with alter table; the invariants test enforces both.
 ```
@@ -82,6 +82,20 @@ JSON のオブジェクト。どのメンバーも省略できる。ないメン
 | タグ、タグの種類、人物、組織の削除 | 規則は書かない。参照は存在しなくなり、所有者が変えるまで規則は何にも合わない |
 
 書き換えは、変えたフォルダとその祖先に `GroupsChanged` を発行する。
+
+## 通知 {#notices}
+
+スマートフォルダが少なくとも 1 つあるとき、下の各書き込みは、コミットの後に、すべてのスマートフォルダとその祖先を挙げる `GroupsChanged` を 1 つ発行する ([R-13](research.md#r-13-writes-that-can-change-a-match-publish-groupschanged-for-every-smart-folder))。ストアは、フォルダの索引の作り直しのために `groupsChanged` を集めるのと同じように、書き込みのトランザクションの中で id を集める。
+
+| 書き込み | ストアの経路 |
+| --- | --- |
+| 動画へのタグの付け外し (手で、または一括で) | `AttachTagByID`、`AttachTagByName`、`DetachTag`、`BatchTags`、自動タグの適用 |
+| タグの名前の変更、削除、統合、または同義語の変更 | `TagStore` |
+| タグの種類の設定か解除、または種類の削除 (#1136) | `TagStore`、タグの種類のルート |
+| 人物か組織のクレジットの追加、解除、名前の変更、削除、統合 | `CreditStore`、`OverrideStore.ApplyFetchedWorkInfo` |
+| お気に入りの設定か解除 | `SetFavorites` |
+| `domain.WatchState` が保存済みのものと異なる進捗の保存 | `SaveProgress` |
+| 動画が一覧に載る、ライブラリを離れる、またはまとめられるか、まとまりから外される | 取り込みの結果、`RemoveContent`、まとめることと継承の経路 |
 
 ## 規則 {#rules}
 

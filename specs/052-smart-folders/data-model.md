@@ -15,7 +15,7 @@ alter table groups add column rule text;               -- null for a group; JSON
 alter table groups add column sort text;               -- null for a group; a VideoSort other than random
 alter table groups add column owner_kept integer not null default 0
     check (owner_kept in (0, 1));
-update groups set owner_kept = 1 where origin_folder is null;
+update groups set owner_kept = 1;                      -- every existing group (research.md R-10)
 -- A smart folder is never automatic, and has a sort exactly when it has a rule.
 -- SQLite cannot add a table check with alter table; the invariants test enforces both.
 ```
@@ -101,6 +101,24 @@ Every screen API write above, and every group write of 048 and 050, sets
 
 A rewrite publishes `GroupsChanged` for the folders it changed and their
 ancestors.
+
+## Notices
+
+After commit, each write below publishes one `GroupsChanged` naming every
+smart folder and their ancestors, when at least one smart folder exists
+([R-13](research.md#r-13-writes-that-can-change-a-match-publish-groupschanged-for-every-smart-folder)).
+The store collects the ids in the write's transaction, as it collects
+`groupsChanged` for the folder index rebuild.
+
+| Write | Store path |
+| --- | --- |
+| A tag attached to or detached from a video, by hand or in a batch | `AttachTagByID`, `AttachTagByName`, `DetachTag`, `BatchTags`, the auto-tag apply |
+| A tag renamed, deleted or merged, or a synonym changed | `TagStore` |
+| A tag's kind set or cleared, or a kind deleted (#1136) | `TagStore`, the tag kind routes |
+| A person or organization credited, uncredited, renamed, deleted or merged | `CreditStore`, `OverrideStore.ApplyFetchedWorkInfo` |
+| A favorite set or cleared | `SetFavorites` |
+| A progress save whose `domain.WatchState` differs from the stored one | `SaveProgress` |
+| A video becomes listed, leaves the library, or is bundled or unbundled | The ingest result, `RemoveContent`, the bundle and succession paths |
 
 ## Rules
 

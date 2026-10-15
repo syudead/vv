@@ -41,7 +41,7 @@ flowchart LR
 | Merged and deleted references | Rewritten on merge; a missing one matches nothing ([R-9](research.md#r-9-merges-rewrite-rules-a-deleted-reference-makes-the-rule-match-nothing)) |
 | Owner's record | `owner_kept` on every group ([R-10](research.md#r-10-owner_kept-marks-every-group-the-owner-made-or-edited)) |
 | Guests | Owner's facts, viewer's visibility ([R-11](research.md#r-11-the-rule-reads-the-owners-facts-visibility-is-the-viewers)) |
-| Events | `GroupsChanged` for edits only ([R-13](research.md#r-13-no-new-event-smart-folder-edits-publish-groupschanged)) |
+| Events | `GroupsChanged` for edits, and for every smart folder after a write that can change a match ([R-13](research.md#r-13-writes-that-can-change-a-match-publish-groupschanged-for-every-smart-folder)) |
 
 The Issue has the `ui` label, so the `design` stage writes `ui-design.md`
 before the screen units: saving the library filter as a smart folder, the
@@ -88,7 +88,7 @@ condition notice, and the refusals of `smart_folder_sorted` and
 | Adapters import neither each other nor `internal/app` (ARCHITECTURE.md, depguard) | Pass: the routes extend `internal/httpapi`'s `Groups` interface that `GroupStore` satisfies; no new package |
 | The domain decides, the store enforces (ARCHITECTURE.md) | Pass: `domain.SmartRule` parses, validates and turns a rule into a `VideoQuery`; the store builds SQL from it and checks references in its transaction |
 | Store roles (ARCHITECTURE.md) | Pass: smart folder edits are `GroupStore`'s; the rule rewrite in tag and credit merges is a package-private helper called inside `TagStore` and `CreditStore` transactions |
-| Events after commit (ARCHITECTURE.md) | Pass: `GroupsChanged` after commit, as 048 |
+| Events after commit (ARCHITECTURE.md) | Pass: `GroupsChanged` after commit, as 048, including the notices from tag, credit, favorite, progress and ingest writes ([data-model.md, Notices](data-model.md#notices)) |
 | User data survives a rebuild (ARCHITECTURE.md) | Pass: the new columns are on `groups`, already user data; the rule names tag, kind and credit ids, which a rebuild keeps |
 | Every read knows its viewer (ARCHITECTURE.md) | Pass: the matched videos are cut to the viewer's visibility; `smartFolder`, `manual` and `/excluded` are owner only; the new list parameters reveal nothing hidden |
 | Only a scan reads the media folders' files (ARCHITECTURE.md) | Pass: rules read SQLite only |
@@ -145,11 +145,13 @@ flowchart LR
   read --> edit[Edit smart folders]
   read --> merge[Follow merges]
   read --> kind[Tag kind rule]
+  read --> notice[Notices]
   edit --> api[Screen API]
   merge --> api
   api --> save[Save and edit condition]
   kind --> save
   api --> page[Cards and folder page]
+  notice --> e2e
   save --> e2e[Browser test]
   page --> e2e
 ```
@@ -190,8 +192,9 @@ Smart folders are written by test fixtures only until the next unit.
 **Dependencies**: Filter library videos by how long ago they were added and by
 length.
 
-**Acceptance**: `task check` passes; domain tests reject each out-of-range
-rule member and `random` as a sort; store tests show: a folder with rule
+**Acceptance**: `task check` passes; a migration test shows every existing
+group, automatic ones included, starts with `owner_kept = 1`; domain tests
+reject each out-of-range rule member and `random` as a sort; store tests show: a folder with rule
 `tags:[猫]` holds a video once `猫` is attached and not after it is detached,
 with no other write (acceptance criterion 1); `watch: unwatched` drops a video
 once its progress completes; the matched videos leave the library's top level
@@ -244,6 +247,25 @@ turns a rule `tags:[A]` into `tags:[B]` and `tags:[A,B]` into `tags:[B]`, and
 the folder then holds B's videos; merging person or organization X into Y
 rewrites `person` or `organization`; a merge publishes `GroupsChanged` for the
 rewritten folders after commit and none when no rule names a source.
+
+### Tell open screens to read smart folders again after writes that can change a match
+
+**Scope**: `GroupsChanged` naming every smart folder and their ancestors from
+each write in [data-model.md, Notices](data-model.md#notices), the progress
+save publishing only on a watch state change, and nothing when no smart folder
+exists; the tag kind rows join when #1136 is on `main`
+([R-13](research.md#r-13-writes-that-can-change-a-match-publish-groupschanged-for-every-smart-folder)).
+
+**Dependencies**: Store smart folders and read their matched videos in group
+and library reads.
+
+**Acceptance**: `task check` passes; store tests show: with one smart folder
+nested in a group, attaching a tag publishes one `GroupsChanged` naming the
+folder and the group after commit; a progress save that keeps the watch state
+publishes nothing and the one that completes the video publishes; a write with
+no smart folder in the database publishes nothing; a rolled-back write
+publishes nothing; an `/api/events` subscriber gets a `group` event after a
+tag is attached.
 
 ### Match smart folders by tag kind
 
@@ -323,11 +345,13 @@ nor removed videos.
 
 **Dependencies**: Save the library filter as a smart folder and edit its
 condition; Show smart folders as cards and on their page with hand-added and
-removed videos.
+removed videos; Tell open screens to read smart folders again after writes
+that can change a match.
 
 **Acceptance**: `task test-e2e -- e2e/smart-folders.e2e.ts` passes and shows
 the parent Issue's acceptance criteria 1 to 5: tagging a video `猫` puts it in
-the `タグ: 猫` folder and untagging takes it out (1); a Genre-and-unwatched
+the `タグ: 猫` folder shown in another open tab without a reload, and untagging
+takes it out (1); a Genre-and-unwatched
 folder drops a video once it is watched (2); a removed video stays out after
 retagging and an added one stays in (3); a folder put in a group shows when the
 group is opened (4); a folder saved from a filtered library holds the same

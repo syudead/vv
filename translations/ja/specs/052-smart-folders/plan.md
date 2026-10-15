@@ -1,6 +1,6 @@
 ---
 source: specs/052-smart-folders/plan.md
-sourceHash: 289ec51de691f112c726d045259c43bb8dae89edf45b2cf3defde255753109ac
+sourceHash: 043a34ec50a8ac536a4254a49a460593cdc17b413fe57f4a3b0dec5034cafba2
 ---
 
 # 実装計画: 動画が保存した条件に従うスマートフォルダ {#implementation-plan-smart-folders-whose-videos-follow-a-saved-condition}
@@ -38,7 +38,7 @@ flowchart LR
 | 統合と削除された参照 | 統合で書き換える。存在しない参照は何にも合わない ([R-9](research.md#r-9-merges-rewrite-rules-a-deleted-reference-makes-the-rule-match-nothing)) |
 | 所有者の記録 | すべてのグループの `owner_kept` ([R-10](research.md#r-10-owner_kept-marks-every-group-the-owner-made-or-edited)) |
 | ゲスト | 所有者の情報、閲覧者の見え方 ([R-11](research.md#r-11-the-rule-reads-the-owners-facts-visibility-is-the-viewers)) |
-| イベント | 編集にだけ `GroupsChanged` ([R-13](research.md#r-13-no-new-event-smart-folder-edits-publish-groupschanged)) |
+| イベント | 編集と、条件に合うかを変えうる書き込みの後のすべてのスマートフォルダに `GroupsChanged` ([R-13](research.md#r-13-writes-that-can-change-a-match-publish-groupschanged-for-every-smart-folder)) |
 
 Issue には `ui` ラベルがあるので、画面の単位より前に `design` 段階が `ui-design.md` を書く。対象は、ライブラリの絞り込みをスマートフォルダとして保存すること、条件の編集画面と、その追加日の範囲と長さの部品、カードのスマートフォルダの印 (求められるときだけ示す)、手で加えた動画と取り除いた動画、取り除いた動画を戻すことを持つフォルダのページ、空のフォルダと存在しない条件の通知、ドラッグでの整理での `smart_folder_sorted` と `smart_folder_merge` の拒否で、親 Issue の `UI品質` に照らして判断する。
 
@@ -72,7 +72,7 @@ Issue には `ui` ラベルがあるので、画面の単位より前に `design
 | アダプターは互いも `internal/app` も import しない (ARCHITECTURE.md、depguard) | 合格: ルートは、`GroupStore` が満たす `internal/httpapi` の `Groups` インターフェースを拡張する。新しいパッケージはない |
 | ドメインが決め、ストアが強制する (ARCHITECTURE.md) | 合格: `domain.SmartRule` が規則を解析し、検証し、`VideoQuery` に変える。ストアはそこから SQL を組み立て、自分のトランザクションの中で参照を確かめる |
 | ストアの役割 (ARCHITECTURE.md) | 合格: スマートフォルダの編集は `GroupStore` のものである。タグとクレジットの統合での規則の書き換えは、`TagStore` と `CreditStore` のトランザクションの中で呼ぶパッケージ非公開のヘルパーである |
-| イベントはコミットの後 (ARCHITECTURE.md) | 合格: 048 と同じように、コミットの後に `GroupsChanged` |
+| イベントはコミットの後 (ARCHITECTURE.md) | 合格: 048 と同じように、コミットの後に `GroupsChanged`。タグ、クレジット、お気に入り、進捗、取り込みの書き込みからの通知を含む ([data-model.md、Notices](data-model.md#notices)) |
 | ユーザーデータは作り直しを越えて残る (ARCHITECTURE.md) | 合格: 新しい列はすでにユーザーデータである `groups` にある。規則はタグ、種類、クレジットの id を挙げ、それらは作り直しで保たれる |
 | どの読み取りも閲覧者を知っている (ARCHITECTURE.md) | 合格: 条件に合う動画は閲覧者の見え方に切り詰める。`smartFolder`、`manual`、`/excluded` は所有者だけである。新しい一覧のパラメーターは隠したものを何も明かさない |
 | メディアフォルダのファイルを読むのはスキャンだけ (ARCHITECTURE.md) | 合格: 規則は SQLite だけを読む |
@@ -123,11 +123,13 @@ flowchart LR
   read --> edit[スマートフォルダの編集]
   read --> merge[統合に従う]
   read --> kind[タグの種類の規則]
+  read --> notice[通知]
   edit --> api[画面の API]
   merge --> api
   api --> save[条件の保存と編集]
   kind --> save
   api --> page[カードとフォルダのページ]
+  notice --> e2e
   save --> e2e[ブラウザーテスト]
   page --> e2e
 ```
@@ -146,7 +148,7 @@ flowchart LR
 
 **依存**: ライブラリの動画を、追加されてからの期間と長さで絞り込む。
 
-**受け入れ**: `task check` が通る。ドメインのテストが、範囲外の規則の各メンバーと、並び順としての `random` を拒む。ストアのテストが次を示す: 規則 `tags:[猫]` のフォルダは、ほかに何も書かずに、`猫` が付いた動画を持ち、外した後は持たない (受け入れ条件 1)。`watch: unwatched` は、動画の進捗が完了すると、その動画を落とす。条件に合う動画はライブラリの最上位を離れ、フォルダは 1 枚のカードになる。条件に合わない手で加えた項目は挙がり、条件に合う除外した動画は挙がらない。子グループは動画より前に来て、動画は `sort` に従う。まとまりは 1 回だけ数える。ゲストは公開の条件に合う動画だけを見て、それが 1 つもないフォルダを見ない。所有者のライブラリは合う動画がないフォルダを挙げ、ゲストのライブラリは挙げない。タグが削除された規則は何にも合わない。`?group`、`Up next`、プレイリストの項目、フォルダのお気に入りは、その再生の順序に従う。グループの中に入れたフォルダは、そのグループを開くと挙がる (受け入れ条件 4)。20,000 本の動画と 50 個のフォルダでのベンチマークの結果は 500 ms 未満で、PR に記録する。
+**受け入れ**: `task check` が通る。マイグレーションのテストが、自動のものを含む既存のすべてのグループが `owner_kept = 1` で始まることを示す。ドメインのテストが、範囲外の規則の各メンバーと、並び順としての `random` を拒む。ストアのテストが次を示す: 規則 `tags:[猫]` のフォルダは、ほかに何も書かずに、`猫` が付いた動画を持ち、外した後は持たない (受け入れ条件 1)。`watch: unwatched` は、動画の進捗が完了すると、その動画を落とす。条件に合う動画はライブラリの最上位を離れ、フォルダは 1 枚のカードになる。条件に合わない手で加えた項目は挙がり、条件に合う除外した動画は挙がらない。子グループは動画より前に来て、動画は `sort` に従う。まとまりは 1 回だけ数える。ゲストは公開の条件に合う動画だけを見て、それが 1 つもないフォルダを見ない。所有者のライブラリは合う動画がないフォルダを挙げ、ゲストのライブラリは挙げない。タグが削除された規則は何にも合わない。`?group`、`Up next`、プレイリストの項目、フォルダのお気に入りは、その再生の順序に従う。グループの中に入れたフォルダは、そのグループを開くと挙がる (受け入れ条件 4)。20,000 本の動画と 50 個のフォルダでのベンチマークの結果は 500 ms 未満で、PR に記録する。
 
 ### 手で加えた動画と取り除いた動画とともに、ストアでスマートフォルダを作り、編集する {#create-and-edit-smart-folders-in-the-store-with-hand-added-and-removed-videos}
 
@@ -163,6 +165,14 @@ flowchart LR
 **依存**: スマートフォルダを保存し、条件に合う動画をグループとライブラリの読み取りで読む。
 
 **受け入れ**: `task check` が通る。ストアのテストが次を示す: タグ A を B に統合すると、規則 `tags:[A]` は `tags:[B]` に、`tags:[A,B]` は `tags:[B]` になり、その後フォルダは B の動画を持つ。人物か組織 X を Y に統合すると、`person` か `organization` を書き換える。統合は、コミットの後に書き換えたフォルダに `GroupsChanged` を発行し、統合元を挙げる規則がなければ何も発行しない。
+
+### 条件に合うかを変えうる書き込みの後に、開いている画面にスマートフォルダをもう一度読むよう伝える {#tell-open-screens-to-read-smart-folders-again-after-writes-that-can-change-a-match}
+
+**範囲**: [data-model.md、Notices](data-model.md#notices) の各書き込みからの、すべてのスマートフォルダとその祖先を挙げる `GroupsChanged`、視聴状態が変わるときだけ発行する進捗の保存、スマートフォルダがないときは何も発行しないこと。タグの種類の行は #1136 が `main` に入ったときに加わる ([R-13](research.md#r-13-writes-that-can-change-a-match-publish-groupschanged-for-every-smart-folder))。
+
+**依存**: スマートフォルダを保存し、条件に合う動画をグループとライブラリの読み取りで読む。
+
+**受け入れ**: `task check` が通る。ストアのテストが次を示す: 1 つのスマートフォルダをグループの中に入れた状態で、タグを付けると、コミットの後にフォルダとグループを挙げる `GroupsChanged` を 1 つ発行する。視聴状態を保つ進捗の保存は何も発行せず、動画を完了させる保存は発行する。データベースにスマートフォルダがない書き込みは何も発行しない。ロールバックした書き込みは何も発行しない。`/api/events` の購読者は、タグを付けた後に `group` イベントを受け取る。
 
 ### スマートフォルダをタグの種類で照合する {#match-smart-folders-by-tag-kind}
 
@@ -200,6 +210,6 @@ flowchart LR
 
 **範囲**: 本物のサーバーとメディアに対する `web/e2e/smart-folders.e2e.ts` ([web-testing.md、Test levels](../../docs/design-docs/web-testing.md#test-levels))。
 
-**依存**: ライブラリの絞り込みをスマートフォルダとして保存し、その条件を編集する。手で加えた動画と取り除いた動画とともに、スマートフォルダをカードとそのページに示す。
+**依存**: ライブラリの絞り込みをスマートフォルダとして保存し、その条件を編集する。手で加えた動画と取り除いた動画とともに、スマートフォルダをカードとそのページに示す。条件に合うかを変えうる書き込みの後に、開いている画面にスマートフォルダをもう一度読むよう伝える。
 
-**受け入れ**: `task test-e2e -- e2e/smart-folders.e2e.ts` が通り、親 Issue の受け入れ条件 1 から 5 を示す: 動画にタグ `猫` を付けると `タグ: 猫` のフォルダに入り、タグを外すと出る (1)。Genre かつ未視聴のフォルダは、視聴した動画を落とす (2)。取り除いた動画はタグを付け直した後も外にあり、加えた動画は中に残る (3)。グループに入れたフォルダは、そのグループを開くと現れる (4)。絞り込んだライブラリから保存したフォルダは同じ動画を持つ (5)。
+**受け入れ**: `task test-e2e -- e2e/smart-folders.e2e.ts` が通り、親 Issue の受け入れ条件 1 から 5 を示す: 動画にタグ `猫` を付けると、別の開いているタブに示した `タグ: 猫` のフォルダに再読み込みなしで入り、タグを外すと出る (1)。Genre かつ未視聴のフォルダは、視聴した動画を落とす (2)。取り除いた動画はタグを付け直した後も外にあり、加えた動画は中に残る (3)。グループに入れたフォルダは、そのグループを開くと現れる (4)。絞り込んだライブラリから保存したフォルダは同じ動画を持つ (5)。
