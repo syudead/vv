@@ -86,6 +86,8 @@ const (
 	OrganizationNotFound         ErrorReason = "organization_not_found"
 	OrganizationParentCycle      ErrorReason = "organization_parent_cycle"
 	PersonNotFound               ErrorReason = "person_not_found"
+	TagKindNameTaken             ErrorReason = "tag_kind_name_taken"
+	TagKindNotFound              ErrorReason = "tag_kind_not_found"
 	TagMergeRequired             ErrorReason = "tag_merge_required"
 	TagNameControlCharacters     ErrorReason = "tag_name_control_characters"
 	TagNameEmpty                 ErrorReason = "tag_name_empty"
@@ -135,6 +137,10 @@ func (e ErrorReason) Valid() bool {
 	case OrganizationParentCycle:
 		return true
 	case PersonNotFound:
+		return true
+	case TagKindNameTaken:
+		return true
+	case TagKindNotFound:
 		return true
 	case TagMergeRequired:
 		return true
@@ -208,19 +214,25 @@ func (e ExternalScanStatus) Valid() bool {
 
 // Defines values for TagBatchRequestAction.
 const (
-	Confirm TagBatchRequestAction = "confirm"
-	Delete  TagBatchRequestAction = "delete"
-	Reject  TagBatchRequestAction = "reject"
+	ClearKind TagBatchRequestAction = "clearKind"
+	Confirm   TagBatchRequestAction = "confirm"
+	Delete    TagBatchRequestAction = "delete"
+	Reject    TagBatchRequestAction = "reject"
+	SetKind   TagBatchRequestAction = "setKind"
 )
 
 // Valid indicates whether the value is a known member of the TagBatchRequestAction enum.
 func (e TagBatchRequestAction) Valid() bool {
 	switch e {
+	case ClearKind:
+		return true
 	case Confirm:
 		return true
 	case Delete:
 		return true
 	case Reject:
+		return true
+	case SetKind:
 		return true
 	default:
 		return false
@@ -448,7 +460,7 @@ type Error struct {
 	// TagId 名前がぶつかったタグの id。`tag_name_taken`・`tag_merge_required` のときだけ入る （specs/039-external-tag-admin/contracts/external-api.md §0）
 	TagId *int64 `json:"tagId,omitempty"`
 
-	// TagName 名前がぶつかったタグの元の名前（翻訳しない）。`tag_name_taken`・`tag_merge_required` の ときだけ入る
+	// TagName 名前がぶつかったタグの元の名前（翻訳しない）。`tag_name_taken`・`tag_merge_required` の ときだけ入る。`tag_kind_name_taken` では、名前がぶつかった種類の名前が入る
 	TagName *string `json:"tagName,omitempty"`
 }
 
@@ -667,7 +679,10 @@ type Tag struct {
 	// CreatedAt タグを作った時刻。`sort` の `createdDesc`・`createdAsc` はこの値で並べる
 	CreatedAt time.Time `json:"createdAt"`
 	Id        int64     `json:"id"`
-	Name      string    `json:"name"`
+
+	// Kind タグの種類。null は種類の無いタグ（specs/051-tag-kinds/contracts/external-api.md）
+	Kind *TagKindRef `json:"kind"`
+	Name string      `json:"name"`
 
 	// Synonyms 名前の自然順
 	Synonyms []string `json:"synonyms"`
@@ -681,14 +696,17 @@ type Tag struct {
 
 // TagBatchRequest defines model for TagBatchRequest.
 type TagBatchRequest struct {
-	// Action confirm は仮のタグを確定し、reject は仮のタグを却下し（消して元の名前を却下した名前に入れる）、 delete は確定したタグを消す
+	// Action confirm は仮のタグを確定し、reject は仮のタグを却下し（消して元の名前を却下した名前に入れる）、 delete は確定したタグを消す。setKind は各タグに種類 kindId を付け、clearKind は各タグの種類を 外す（どちらも仮のタグを確定しない）
 	Action TagBatchRequestAction `json:"action"`
 
 	// Ids 対象のタグ。送った数で 1〜20,000 件（重複も数に入り、処理は 1 回）。範囲外は `too_many_tags`
 	Ids []int64 `json:"ids"`
+
+	// KindId `setKind` で付ける種類。`setKind` だけが持ち、他の `action` に付けると `invalid_request`
+	KindId *int64 `json:"kindId,omitempty"`
 }
 
-// TagBatchRequestAction confirm は仮のタグを確定し、reject は仮のタグを却下し（消して元の名前を却下した名前に入れる）、 delete は確定したタグを消す
+// TagBatchRequestAction confirm は仮のタグを確定し、reject は仮のタグを却下し（消して元の名前を却下した名前に入れる）、 delete は確定したタグを消す。setKind は各タグに種類 kindId を付け、clearKind は各タグの種類を 外す（どちらも仮のタグを確定しない）
 type TagBatchRequestAction string
 
 // TagBatchResponse 3 つは重ならず、合わせて重複を除いた `ids` に等しい。どれも `ids` に現れた順で、無ければ空
@@ -701,6 +719,58 @@ type TagBatchResponse struct {
 
 	// NotFoundIds 無かったタグ
 	NotFoundIds []int64 `json:"notFoundIds"`
+}
+
+// TagKind 種類の一覧の 1 件（specs/051-tag-kinds/contracts/external-api.md）
+type TagKind struct {
+	// CreatedAt 種類を作った時刻（秒の精度）
+	CreatedAt time.Time `json:"createdAt"`
+	Id        int64     `json:"id"`
+	Name      string    `json:"name"`
+
+	// TagCount この種類のタグの数。仮のタグも数える
+	TagCount int `json:"tagCount"`
+}
+
+// TagKindCreateRequest defines model for TagKindCreateRequest.
+type TagKindCreateRequest struct {
+	// Name 種類の名前。タグ名と同じ規則で整え、種類どうしで重ならない
+	Name string `json:"name"`
+}
+
+// TagKindDeleteRequest defines model for TagKindDeleteRequest.
+type TagKindDeleteRequest struct {
+	// Ids 消す種類の id。1〜20,000 件。範囲外は `invalid_request`
+	Ids []int64 `json:"ids"`
+}
+
+// TagKindDeleteResponse 2 つは重ならず、合わせて重複を除いた `ids` に等しい。どちらも `ids` に現れた順で、無ければ []
+type TagKindDeleteResponse struct {
+	// DeletedIds 消した種類
+	DeletedIds []int64 `json:"deletedIds"`
+
+	// NotFoundIds 無かった種類
+	NotFoundIds []int64 `json:"notFoundIds"`
+}
+
+// TagKindList defines model for TagKindList.
+type TagKindList struct {
+	// Items すべての種類。id の順
+	Items []TagKind `json:"items"`
+}
+
+// TagKindRef タグの種類の id と名前
+type TagKindRef struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
+// TagKindRenameRequest defines model for TagKindRenameRequest.
+type TagKindRenameRequest struct {
+	Id int64 `json:"id"`
+
+	// Name 新しい名前。タグ名と同じ規則で整え、種類どうしで重ならない
+	Name string `json:"name"`
 }
 
 // TagList defines model for TagList.
@@ -1035,6 +1105,12 @@ type CreditNotFound = Error
 // Internal 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
 type Internal = Error
 
+// TagKindNameConflict 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+type TagKindNameConflict = Error
+
+// TagKindNameInvalid 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
+type TagKindNameInvalid = Error
+
 // Unauthenticated 誤りの形は画面の API と同じで、index はこの API だけの項目である （contracts/external-api.md §1）。
 type Unauthenticated = Error
 
@@ -1093,11 +1169,16 @@ type ListTagsParams struct {
 	// Unused true なら本数 0 のタグだけにする
 	Unused *bool `form:"unused,omitempty" json:"unused,omitempty"`
 
+	// Kind 種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
+	// 無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない
+	// （specs/051-tag-kinds/contracts/external-api.md）
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
+
 	// Sort 並び順
 	Sort *TagSort `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
-	// `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+	// `unused`・`kind`・`sort` で続けて使う。`limit` を省いたときは無視する
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
 	// Limit 1 ページの件数。省くと全件を返し、`nextCursor` は入らない
@@ -1161,6 +1242,15 @@ type MergePeopleJSONRequestBody = CreditMergeRequest
 // UpdatePersonJSONRequestBody defines body for UpdatePerson for application/json ContentType.
 type UpdatePersonJSONRequestBody = CreditUpdateRequest
 
+// CreateTagKindJSONRequestBody defines body for CreateTagKind for application/json ContentType.
+type CreateTagKindJSONRequestBody = TagKindCreateRequest
+
+// DeleteTagKindsJSONRequestBody defines body for DeleteTagKinds for application/json ContentType.
+type DeleteTagKindsJSONRequestBody = TagKindDeleteRequest
+
+// RenameTagKindJSONRequestBody defines body for RenameTagKind for application/json ContentType.
+type RenameTagKindJSONRequestBody = TagKindRenameRequest
+
 // BatchTagsJSONRequestBody defines body for BatchTags for application/json ContentType.
 type BatchTagsJSONRequestBody = TagBatchRequest
 
@@ -1223,10 +1313,22 @@ type ServerInterface interface {
 	// GetCurrentScan 直近のスキャンの状態を返す
 	// (GET /scans/current)
 	GetCurrentScan(w http.ResponseWriter, r *http.Request)
+	// ListTagKinds タグの種類をすべて返す
+	// (GET /tag-kinds)
+	ListTagKinds(w http.ResponseWriter, r *http.Request)
+	// CreateTagKind タグの種類を作る
+	// (POST /tag-kinds)
+	CreateTagKind(w http.ResponseWriter, r *http.Request)
+	// DeleteTagKinds タグの種類を消す
+	// (POST /tag-kinds/delete)
+	DeleteTagKinds(w http.ResponseWriter, r *http.Request)
+	// RenameTagKind タグの種類の名前を変える
+	// (POST /tag-kinds/update)
+	RenameTagKind(w http.ResponseWriter, r *http.Request)
 	// ListTags タグの一覧を返す
 	// (GET /tags)
 	ListTags(w http.ResponseWriter, r *http.Request, params ListTagsParams)
-	// BatchTags 複数のタグをまとめて確定・却下・削除する
+	// BatchTags 複数のタグをまとめて確定・却下・削除し、種類を付け外しする
 	// (POST /tags/batch)
 	BatchTags(w http.ResponseWriter, r *http.Request)
 	// MergeTags 複数のタグを 1 つのタグへ統合する
@@ -1609,6 +1711,62 @@ func (siw *ServerInterfaceWrapper) GetCurrentScan(w http.ResponseWriter, r *http
 	handler.ServeHTTP(w, r)
 }
 
+// ListTagKinds operation middleware
+func (siw *ServerInterfaceWrapper) ListTagKinds(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTagKinds(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTagKind operation middleware
+func (siw *ServerInterfaceWrapper) CreateTagKind(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTagKind(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTagKinds operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTagKinds(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTagKinds(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameTagKind operation middleware
+func (siw *ServerInterfaceWrapper) RenameTagKind(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameTagKind(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTags operation middleware
 func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
 
@@ -1653,6 +1811,19 @@ func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Reque
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unused"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unused", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
 		}
 		return
 	}
@@ -2136,6 +2307,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tags/batch", wrapper.BatchTags)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/tags/rejected-names", wrapper.ForgetRejectedTagName)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tags/rejected-names", wrapper.ListRejectedTagNames)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/tag-kinds", wrapper.ListTagKinds)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tag-kinds", wrapper.CreateTagKind)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tag-kinds/update", wrapper.RenameTagKind)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/tag-kinds/delete", wrapper.DeleteTagKinds)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/people", wrapper.ListPeople)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/people", wrapper.CreatePerson)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/people/update", wrapper.UpdatePerson)

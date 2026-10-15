@@ -57,12 +57,21 @@ func (e *externalServer) internalError(w http.ResponseWriter, message string, er
 // ListTags はタグの一覧を返す（GET /api/v1/tags、
 // specs/039-external-tag-admin/contracts/external-api.md §1）。引数は画面の GET /api/tags と
 // 同じ規則（buildTagListQuery）で読み、画面と同じ TagStore.ListTags を呼ぶ。limit を省いた
-// 要求は今までどおり条件に合う全件を返し、nextCursor を付けない。
+// 要求は今までどおり条件に合う全件を返し、nextCursor を付けない。kind は画面と同じ parseTagKindFilter で
+// 読む（specs/051-tag-kinds/contracts/external-api.md）。
 func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request, params extgen.ListTagsParams) {
 	sort := sortParam(params.Sort)
 	query, problem := buildTagListQuery(params.Q, params.Tentative, params.Unused, sort, params.Cursor, params.Limit)
 	if !e.acceptListQuery(w, problem) {
 		return
+	}
+	if params.Kind != nil {
+		kind, ok := parseTagKindFilter(*params.Kind)
+		if !ok {
+			e.invalidRequest(w, nil, "kind must be a positive integer or none.")
+			return
+		}
+		query.Kind = kind
 	}
 	if e.s.tags == nil {
 		e.internalError(w, "Tag storage is not configured.", nil)
@@ -71,7 +80,7 @@ func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request, params
 	page, err := e.s.tags.ListTags(r.Context(), query)
 	if errors.Is(err, domain.ErrInvalidCursor) {
 		reason := extgen.InvalidCursor
-		e.invalidRequest(w, &reason, "Cannot read the cursor. Read the list again from the start with the same q, tentative, unused and sort.")
+		e.invalidRequest(w, &reason, "Cannot read the cursor. Read the list again from the start with the same q, tentative, unused, kind and sort.")
 		return
 	}
 	if err != nil {
@@ -115,7 +124,7 @@ func toExternalTag(tag domain.Tag) extgen.Tag {
 	}
 	return extgen.Tag{
 		Id: tag.ID, Name: tag.Name, Synonyms: synonyms, VideoCount: tag.VideoCount, Tentative: tag.Tentative,
-		CreatedAt: tag.CreatedAt,
+		CreatedAt: tag.CreatedAt, Kind: toExternalTagKindRef(tag.Kind),
 	}
 }
 

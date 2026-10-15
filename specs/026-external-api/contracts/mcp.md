@@ -47,6 +47,10 @@ index?, field?, tagId?, tagName? }` as external API errors.
 | `update_person`, `update_organization` | `POST /api/v1/people/update`, `POST /api/v1/organizations/update` |
 | `merge_people`, `merge_organizations` | `POST /api/v1/people/merge`, `POST /api/v1/organizations/merge` |
 | `delete_people`, `delete_organizations` | `POST /api/v1/people/delete`, `POST /api/v1/organizations/delete` |
+| `list_tag_kinds` | `GET /api/v1/tag-kinds` |
+| `create_tag_kind` | `POST /api/v1/tag-kinds` |
+| `rename_tag_kind` | `POST /api/v1/tag-kinds/update` |
+| `delete_tag_kinds` | `POST /api/v1/tag-kinds/delete` |
 
 `update_video_display_names` and `update_video_thumbnails` were added in 029
 ([specs/029-video-overrides/contracts/external-api.md, MCP tools](../../029-video-overrides/contracts/external-api.md#mcp-tools)).
@@ -57,6 +61,9 @@ tools `merge_tags`, `rename_tag`, `update_tag_synonyms`, `batch_tags`,
 047 added `update_video_work_info` and the five tools each for people and
 organizations, and `workInfo` in the output of `list_videos` and `get_video`
 ([specs/047-video-work-info/contracts/external-api.md, MCP tools](../../047-video-work-info/contracts/external-api.md#mcp-tools)).
+051 added the four tag kind tools, `kind` in the input of `list_tags`, and
+`setKind`, `clearKind` and `kindId` in the input of `batch_tags`
+([specs/051-tag-kinds/contracts/external-api.md, MCP tools](../../051-tag-kinds/contracts/external-api.md#mcp-tools)).
 
 | Tool | Hints | Reason |
 | --- | --- | --- |
@@ -68,6 +75,9 @@ organizations, and `workInfo` in the output of `list_videos` and `get_video`
 | `rename_tag` | `destructiveHint: false`, `idempotentHint: true` | — |
 | `update_tag_synonyms` | `destructiveHint: true`, `idempotentHint: true` | `remove` drops a name; `add` with `mergeTagId` merges a tag. |
 | `batch_tags` | `destructiveHint: true`, `idempotentHint: true` | `reject` and `delete` remove tags. |
+| `create_tag_kind` | `destructiveHint: false`, `idempotentHint: false` | Each call creates one. |
+| `rename_tag_kind` | `destructiveHint: false`, `idempotentHint: true` | — |
+| `delete_tag_kinds` | `destructiveHint: true`, `idempotentHint: true` | Deleted kinds are gone; their tags remain without a kind. |
 | `update_video_work_info` | `destructiveHint: true`, `idempotentHint: true` | A cleared item is lost. |
 | `create_person`, `create_organization` | `destructiveHint: false`, `idempotentHint: false` | Each call creates one. |
 | `update_person`, `update_organization` | `destructiveHint: true`, `idempotentHint: true` | A given list replaces the stored one. |

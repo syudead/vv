@@ -115,7 +115,7 @@ func callTool(t *testing.T, session *mcp.ClientSession, name string, args any, o
 	return result.IsError
 }
 
-// SDK のクライアントから接続すると 25 のツールが契約の注記つきで並び、update_video_tags の
+// SDK のクライアントから接続すると 29 のツールが契約の注記つきで並び、update_video_tags の
 // 結果が REST の lookup に、update_video_display_names の結果が get_video に出る。
 func TestMCPToolsMatchExternalAPI(t *testing.T) {
 	scans := &fakeScans{}
@@ -159,6 +159,11 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 		"merge_organizations":    {destructive: true, idempotent: true},
 		"delete_people":          {destructive: true, idempotent: true},
 		"delete_organizations":   {destructive: true, idempotent: true},
+		// specs/051-tag-kinds/contracts/external-api.md「MCP tools」
+		"list_tag_kinds":   {readOnly: true},
+		"create_tag_kind":  {destructive: false, idempotent: false},
+		"rename_tag_kind":  {destructive: false, idempotent: true},
+		"delete_tag_kinds": {destructive: true, idempotent: true},
 	}
 	var names []string
 	for _, tool := range listed.Tools {
@@ -180,7 +185,7 @@ func TestMCPToolsMatchExternalAPI(t *testing.T) {
 			t.Errorf("tool %q: hints = %+v, want %+v", tool.Name, got, w)
 		}
 	}
-	if len(names) != len(want) || len(names) != 25 {
+	if len(names) != len(want) || len(names) != 29 {
 		t.Errorf("tools = %v", names)
 	}
 
