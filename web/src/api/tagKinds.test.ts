@@ -191,9 +191,10 @@ describe("名前の変更と削除", () => {
     expect(calls).toEqual(["DELETE /api/tag-kinds/2", "GET /api/tags"]);
   });
 
-  it("tag_kind_not_found は投げ直し、保持を捨てる", async () => {
-    routes({
+  it("tag_kind_not_found は投げ直し、保持を捨て、タグの一覧と動画一覧の控えも新しくする", async () => {
+    const calls = routes({
       "GET /api/tag-kinds": () => jsonResponse({ items: presets }),
+      "GET /api/tags": () => jsonResponse({ items: [], total: 0, totalAll: 0 }),
       "DELETE /api/tag-kinds/9": () =>
         jsonResponse(
           {
@@ -205,10 +206,19 @@ describe("名前の変更と削除", () => {
         ),
     });
     await getTagKinds();
+    const key = { query: "", sort: "addedDesc" as const };
+    saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
 
     const error = await deleteTagKind(9).catch((caught: unknown) => caught);
+    await flush();
     expect(error).toBeInstanceOf(RequestFailed);
     expect((error as RequestFailed).reason).toBe("tag_kind_not_found");
     expect(currentTagKinds()).toBeUndefined();
+    expect(calls).toEqual([
+      "GET /api/tag-kinds",
+      "DELETE /api/tag-kinds/9",
+      "GET /api/tags",
+    ]);
+    expect(takeListSnapshot(key)).toBeUndefined();
   });
 });

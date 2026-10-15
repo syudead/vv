@@ -107,11 +107,13 @@ function afterTagKindRenamedOrDeleted(): void {
 
 /**
  * refreshOnStaleTagKindError は `tag_kind_not_found` を受けたときに種類の一覧を取り直す
- * （別のタブで消された種類に、その場で気付けるようにする）。誤りは常にそのまま投げ直す。
+ * （別のタブで消された種類に、その場で気付けるようにする）。種類が消えていればその種類の
+ * タグはもう種類なしなので、削除の後と同じくタグの一覧と動画一覧の控えも新しくする。
+ * 誤りは常にそのまま投げ直す。
  */
 function refreshOnStaleTagKindError(error: unknown): never {
   if (error instanceof RequestFailed && error.reason === "tag_kind_not_found") {
-    afterTagKindsChanged();
+    afterTagKindRenamedOrDeleted();
   }
   throw error;
 }
