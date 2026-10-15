@@ -335,6 +335,56 @@ func TestVersionJudgeRequeuesAJudgementItCannotRecord(t *testing.T) {
 	}
 }
 
+// switchingClassifier は答える前に重複の自動判定を切る。判定のあいだに所有者が切ったことを真似る。
+type switchingClassifier struct {
+	fakeClassifier
+	judge *VersionJudge
+}
+
+func (c *switchingClassifier) Classify(ctx context.Context, req domain.ClassifierRequest) (map[string]float64, error) {
+	if err := c.judge.SaveEnabled(ctx, false); err != nil {
+		return nil, err
+	}
+	return c.fakeClassifier.Classify(ctx, req)
+}
+
+// 判定のあいだに切られたら、答えが「同じ」でも束ねず、組を待ちに戻し、入れ直すと判定し直す（要件 7）。
+func TestVersionJudgeDiscardsAJudgementTurnedOffMidway(t *testing.T) {
+	store := newFakeVersionJudgeStore(versionJudgeJob(8, 9, 10, 11))
+	answers := map[string]float64{domain.VersionJudgeQuestionKey: 0.9}
+	classifier := &switchingClassifier{fakeClassifier: fakeClassifier{answers: answers}}
+	judge, settings, _ := newTestVersionJudge(store, &classifier.fakeClassifier)
+	judge.classifier = classifier
+	classifier.judge = judge
+	ctx := context.Background()
+
+	if wait := judge.step(ctx); wait != 0 {
+		t.Fatalf("判定のあとの待ち = %v, want 0", wait)
+	}
+	store.mu.Lock()
+	results := len(store.results)
+	verdict, claimed := store.states[versionJudgeJob().Keys]
+	store.mu.Unlock()
+	if results != 0 {
+		t.Fatalf("切ったあとに結果を反映した: %+v", store.lastResult(t))
+	}
+	if claimed {
+		t.Fatalf("組が待ちに戻っていない（判定 %v）", verdict)
+	}
+	if wait := judge.step(ctx); wait >= 0 {
+		t.Fatalf("切のあいだに取り出した（待ち %v）", wait)
+	}
+
+	if err := settings.SaveVersionJudgingEnabled(ctx, true); err != nil {
+		t.Fatal(err)
+	}
+	judge.classifier = &classifier.fakeClassifier
+	judge.step(ctx)
+	if got := store.lastResult(t); got.Verdict != domain.VersionSame {
+		t.Errorf("入れ直したあと = %+v, want same", got)
+	}
+}
+
 // 設定が切のあいだは何も取り出さず、入れると起こされて取り出す。
 func TestVersionJudgeIdlesWhileOff(t *testing.T) {
 	store := newFakeVersionJudgeStore(versionJudgeJob())

@@ -75,7 +75,8 @@ type VersionJudge struct {
 	now        func() time.Time
 	wake       chan struct{}
 
-	// saveMu は設定の保存を 1 つずつにする。
+	// saveMu は設定の保存を 1 つずつにし、判定の結果の反映と入れ違わないようにする。切を保存し
+	// 終えたあとに、判定中だった組を確定しない。
 	saveMu sync.Mutex
 	// requeuePending は、次の判定の前に待ちへ戻す行（requeue）を見直すことを表す。接続の保存と、
 	// 結果を保存できなかった判定で立てる。判定を 1 組ずつ行う Run の中で戻すので、判定中の組と
@@ -275,12 +276,35 @@ func (j *VersionJudge) process(ctx context.Context, job domain.VersionJudgeJob) 
 		attrs = append(attrs, slog.String("error", result.Error))
 	}
 	j.logger.Info("judged a possible duplicate", attrs...)
-	if _, err := j.store.ApplyJudgement(ctx, job.Keys, result); err != nil {
+	if err := j.record(ctx, job.Keys, result); err != nil {
 		j.logError(ctx, "cannot record the duplicate judgement", err)
 		j.requeuePending.Store(true)
 		return false
 	}
 	return true
+}
+
+// record は設定が入なら判定の結果を反映し、判定のあいだに切られていれば結果を捨てて組を待ちに戻す。
+// 戻した組は、入れ直したときに判定し直す。設定の保存と同じ saveMu の中で読んで反映するので、
+// SaveEnabled(false) が返ったあとに組を束ねたり却下したりしない（親 Issue の要件 7: 切なら
+// すべての候補が候補一覧に残る）。
+func (j *VersionJudge) record(ctx context.Context, keys [2]string, result domain.VersionJudgeResult) error {
+	j.saveMu.Lock()
+	defer j.saveMu.Unlock()
+	on, err := j.Enabled(ctx)
+	if err != nil {
+		return err
+	}
+	if on {
+		_, err = j.store.ApplyJudgement(ctx, keys, result)
+		return err
+	}
+	if _, err := j.store.RecoverRunningJudgements(ctx); err != nil {
+		return err
+	}
+	j.logger.Info("discarded a duplicate judgement because judging was turned off",
+		slog.String("key_a", keys[0]), slog.String("key_b", keys[1]))
+	return nil
 }
 
 // decide はコマごとの規則の結果から判定の結果を決め、モデルに聞いたときはその確率も返す。コマが
