@@ -1098,6 +1098,47 @@ export const en = {
       removeFailed: (name: string, reason: string) =>
         `Couldn't remove "${name}": ${reason}`,
     },
+    // 「Kinds」のタブ（specs/051-tag-kinds/ui-design.md「Words」「Kinds tab」）。
+    kinds: {
+      tab: "Kinds",
+      table: "Kinds",
+      description:
+        "A tag has one kind or none. Set it from the Tags tab's selection bar. Deleting a kind leaves its tags without one.",
+      newKind: "New kind",
+      loading: "Loading kinds…",
+      columns: {
+        name: "Name",
+        tags: "Tags",
+      },
+      tagCount,
+      open: (name: string) => `Show the tags of the kind "${name}"`,
+      create: {
+        label: "New kind name",
+        placeholder: "Kind name",
+        submit: "Create",
+        submitting: "Creating…",
+      },
+      renameLabel: (name: string) => `New name for "${name}"`,
+      deleteDialog: {
+        title: (name: string) => `Delete the kind "${name}"?`,
+        used: (count: number) =>
+          selectPlural(count, {
+            one: `The ${formatNumber(count)} tag of this kind stays, without a kind. This can't be undone.`,
+            other: `The ${formatNumber(count)} tags of this kind stay, without a kind. This can't be undone.`,
+          }),
+        unused: "No tags have this kind. This can't be undone.",
+        submit: "Delete",
+        submitting: "Deleting…",
+      },
+      deleted: (name: string) => `Deleted the kind "${name}"`,
+      gone: "This kind no longer exists, so the list was reloaded",
+      empty: {
+        title: "No kinds yet",
+        description:
+          "A kind groups tags, such as Genre, Work or Place. Add one to give tags a kind.",
+      },
+      loadFailed: "Couldn't load the kinds",
+    },
     search: {
       label: "Search tags",
       placeholder: "Search tags",
