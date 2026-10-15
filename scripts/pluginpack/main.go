@@ -7,7 +7,6 @@
 package main
 
 import (
-	"encoding/binary"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -15,6 +14,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+
+	"github.com/syudead/vv/internal/wasmplugin/wasmsection"
 )
 
 func main() {
@@ -67,15 +68,5 @@ func pack(dir, outDir string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return output, os.WriteFile(output, append(module, customSection("vv.plugin", manifest)...), 0o644)
-}
-
-// customSection は名前 name、中身 data のカスタムセクション（id 0）を符号化する。
-func customSection(name string, data []byte) []byte {
-	payload := binary.AppendUvarint(nil, uint64(len(name)))
-	payload = append(payload, name...)
-	payload = append(payload, data...)
-	section := []byte{0}
-	section = binary.AppendUvarint(section, uint64(len(payload)))
-	return append(section, payload...)
+	return output, os.WriteFile(output, append(module, wasmsection.Custom("vv.plugin", manifest)...), 0o644)
 }

@@ -5,12 +5,13 @@ package plugintest
 
 import (
 	"bytes"
-	"encoding/binary"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"github.com/syudead/vv/internal/wasmplugin/wasmsection"
 )
 
 var (
@@ -54,10 +55,5 @@ func WithManifest(module []byte, manifest string) []byte {
 
 // CustomSection は名前 name、中身 data のカスタムセクション（id 0）を符号化する。
 func CustomSection(name string, data []byte) []byte {
-	payload := binary.AppendUvarint(nil, uint64(len(name)))
-	payload = append(payload, name...)
-	payload = append(payload, data...)
-	section := []byte{0}
-	section = binary.AppendUvarint(section, uint64(len(payload)))
-	return append(section, payload...)
+	return wasmsection.Custom(name, data)
 }
