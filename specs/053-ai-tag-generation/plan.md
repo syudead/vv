@@ -82,8 +82,7 @@ does not wait for them; they enter the prompt's vocabulary when they exist.
 | Do not hand-edit generated files (AGENTS.md) | Pass: `api/openapi.yaml` changes, then `task generate` |
 | Complexity 25 or less, no copied code (AGENTS.md) | Pass: name resolution reuses `resolveTagNames`; the POST and the Ollama error handling are taken out of `Classifier.post` and shared by both calls in `internal/ollama` |
 
-The verdicts are the same after Phase 1. No violation, so no complexity
-tracking.
+No violation, so no complexity tracking.
 
 ## Project Structure
 

@@ -1,6 +1,6 @@
 ---
 source: specs/053-ai-tag-generation/plan.md
-sourceHash: ea4944fec7bbf068364a3e0d6f567eed6f3ca811b1c6bfe74a6b1c51ec42f554
+sourceHash: e5c33a75fcf598374cf309e93b80a452ea7943e0924f6a71cace4776b2f91a24
 ---
 
 # 実装計画: 自動タグ付けの間に AI がタグを作成する {#implementation-plan-tag-creation-by-the-ai-during-auto-tagging}
@@ -74,7 +74,7 @@ flowchart LR
 | 生成ファイルを手で編集しない (AGENTS.md) | 合格: `api/openapi.yaml` を変え、その後に `task generate` を実行する |
 | 複雑度は 25 以下、コードを写さない (AGENTS.md) | 合格: 名前の解決は `resolveTagNames` を再利用する。POST と Ollama のエラー処理は `Classifier.post` から取り出し、`internal/ollama` の両方の呼び出しで共有する |
 
-判定は Phase 1 の後も同じである。違反はないので、複雑さの記録はない。
+違反はないので、複雑さの記録はない。
 
 ## プロジェクトの構成 {#project-structure}
 

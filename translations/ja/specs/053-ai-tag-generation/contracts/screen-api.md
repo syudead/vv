@@ -1,6 +1,6 @@
 ---
 source: specs/053-ai-tag-generation/contracts/screen-api.md
-sourceHash: 2a18bd9680d63f191e549d4847da3938380619f4572a84ebe499a2718423aecd
+sourceHash: 281b3e24029fbc6b6f90499bfdcea9278b9c988677846657d164cb910cac43fa
 ---
 
 # 契約: 画面の API のタグ作成の設定 {#contract-tag-creation-settings-in-the-screen-api}
@@ -15,9 +15,10 @@ sourceHash: 2a18bd9680d63f191e549d4847da3938380619f4572a84ebe499a2718423aecd
 | `AutoTaggingSettings` | `tagLanguage: string` | はい | "Language for new tags" |
 | `UpdateAutoTaggingSettingsRequest` | `createTags: boolean` | いいえ | ないときは保存した値を保つ |
 | `UpdateAutoTaggingSettingsRequest` | `tagLanguage: string` | いいえ | ないときは保存した値を保つ |
-| `OllamaSettings` | `generationModel: string` | 応答でははい、`PUT` ではいいえ | 生成モデル。`PUT` でないときは保存した値を保つ ([R-3](../research.md#r-3-a-separate-generation-model-default-gemma4e4b)) |
+| `OllamaSettings` | `generationModel: string` | はい | 生成モデル ([R-3](../research.md#r-3-a-separate-generation-model-default-gemma4e4b))。今後は `GET` と `PUT` の応答だけで使う |
+| `UpdateOllamaSettingsRequest` (新規) | `endpoint`、`model` (今と同じく必須) と `generationModel` (省略できる) | — | `OllamaSettings` に代わる `PUT` の要求本文。`generationModel` がないときは保存した値を保つ |
 
-要求の項目は省略できるので、この機能より前に作られた画面もほかの設定を保存できる。
+要求の項目は省略できるので、この機能より前に作られた画面もほかの設定を保存できる。スキーマの `required` は要求と応答の両方に当てはまるので、自動タグ付けの `PUT` がすでに持つのと同じく、Ollama の `PUT` は自分の要求のスキーマを得る。
 
 ## `PUT /api/settings/auto-tagging` {#put-apisettingsauto-tagging}
 

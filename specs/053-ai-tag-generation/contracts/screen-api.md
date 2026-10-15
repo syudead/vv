@@ -14,10 +14,13 @@ MCP do not change: a created tag is a tentative tag they already serve.
 | `AutoTaggingSettings` | `tagLanguage: string` | Yes | "Language for new tags" |
 | `UpdateAutoTaggingSettingsRequest` | `createTags: boolean` | No | Absent keeps the saved value |
 | `UpdateAutoTaggingSettingsRequest` | `tagLanguage: string` | No | Absent keeps the saved value |
-| `OllamaSettings` | `generationModel: string` | Yes in responses, no in `PUT` | The generation model; absent in `PUT` keeps the saved value ([R-3](../research.md#r-3-a-separate-generation-model-default-gemma4e4b)) |
+| `OllamaSettings` | `generationModel: string` | Yes | The generation model ([R-3](../research.md#r-3-a-separate-generation-model-default-gemma4e4b)); now the `GET` and `PUT` response only |
+| `UpdateOllamaSettingsRequest` (new) | `endpoint`, `model` (required, as today) and `generationModel` (optional) | — | The `PUT` request body in place of `OllamaSettings`; an absent `generationModel` keeps the saved value |
 
 The request fields are optional so that a screen built before this feature
-still saves the other settings.
+still saves the other settings. A schema's `required` applies to both
+directions, so the Ollama `PUT` gets its own request schema, as the
+auto-tagging `PUT` already has.
 
 ## `PUT /api/settings/auto-tagging`
 
