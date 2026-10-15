@@ -321,10 +321,11 @@ func (s *server) RejectTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 // （confirm・reject・DELETE）は変えない。
 func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 	var body gen.TagBatchRequest
-	if !s.readJSONBody(w, r, &body) {
+	present, ok := s.readJSONBodyFields(w, r, &body)
+	if !ok {
 		return
 	}
-	req, ok := s.tagBatchRequest(w, body)
+	req, ok := s.tagBatchRequest(w, body, present("kindId"))
 	if !ok {
 		return
 	}
@@ -354,7 +355,9 @@ func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
 
 // tagBatchRequest は本文の action と kindId を検査して domain.TagBatchRequest にする。知らない
 // action、kindId の無い setKind、kindId を付けたほかの action は 400 を書いて false を返す。
-func (s *server) tagBatchRequest(w http.ResponseWriter, body gen.TagBatchRequest) (domain.TagBatchRequest, bool) {
+// kindPresent は本文に kindId があったか（値が null でも）で、生成型では null と省略を区別できない
+// ため呼び出し側が本文から渡す。null の kindId もほかの action では 400 にする。
+func (s *server) tagBatchRequest(w http.ResponseWriter, body gen.TagBatchRequest, kindPresent bool) (domain.TagBatchRequest, bool) {
 	req := domain.TagBatchRequest{Action: domain.TagBatchAction(body.Action)}
 	if !req.Action.Valid() {
 		s.invalidRequest(w, "action must be one of confirm, reject, delete, setKind or clearKind.")
@@ -364,7 +367,7 @@ func (s *server) tagBatchRequest(w http.ResponseWriter, body gen.TagBatchRequest
 	case req.Action == domain.TagBatchSetKind && (body.KindId == nil || *body.KindId < 1):
 		s.invalidRequest(w, "setKind needs a positive kindId.")
 		return domain.TagBatchRequest{}, false
-	case req.Action != domain.TagBatchSetKind && body.KindId != nil:
+	case req.Action != domain.TagBatchSetKind && kindPresent:
 		s.invalidRequest(w, "kindId is allowed only with setKind.")
 		return domain.TagBatchRequest{}, false
 	}

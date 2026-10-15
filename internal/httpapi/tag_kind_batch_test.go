@@ -41,6 +41,8 @@ func TestBatchTagsRejectsKindIDMismatch(t *testing.T) {
 		{"kindId が 0 の setKind", `{"action":"setKind","kindId":0,"ids":[1]}`},
 		{"kindId を付けた clearKind", `{"action":"clearKind","kindId":1,"ids":[1]}`},
 		{"kindId を付けた delete", `{"action":"delete","kindId":1,"ids":[1]}`},
+		{"kindId が null の delete", `{"action":"delete","kindId":null,"ids":[1]}`},
+		{"kindId が null の setKind", `{"action":"setKind","kindId":null,"ids":[1]}`},
 	}
 	for _, tc := range cases {
 		fake := &fakeTags{}

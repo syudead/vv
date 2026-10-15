@@ -3527,14 +3527,14 @@ export interface components {
         };
         TagList: {
             items: components["schemas"]["Tag"][];
-            /** @description 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る */
+            /** @description 条件（`q`・`tentative`・`unused`・`kind`）に合うタグの数。ページングとは独立に返る */
             total: number;
             /** @description 全部のタグの数。ページングとは独立に返る */
             totalAll: number;
             /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
             nextCursor?: string;
             /**
-             * @description 前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused` にも
+             * @description 前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused`・`kind` にも
              *     合うタグ。`limit` を付け `cursor` の無い要求で、`q` が空でなく該当があるときだけ入る。
              *     `items` に入るとは限らない（`items` は部分一致を `sort` の順に並べた 1 ページのため）
              */
