@@ -37,7 +37,7 @@ type Organizer interface {
 	Bundle(ctx context.Context, videoIDs []int64, targetID int64) (domain.OrganizeResult, error)
 	// Merge はドラッグしたカード items を画面の順にたどり、グループはグループ into へマージし、
 	// 動画は into の末尾へ足す。ドラッグしたグループが into か into の祖先なら domain.ErrGroupCycle。
-	Merge(ctx context.Context, items []domain.OrganizeRef, into int64) (domain.OrganizeResult, error)
+	Merge(ctx context.Context, items []domain.OrganizeRef, into, from int64) (domain.OrganizeResult, error)
 	// Undo はトークン token の操作を取り消す。行が変わっていれば domain.ErrUndoConflict、トークンが
 	// 無い・使い済み・古ければ domain.ErrUndoExpired。
 	Undo(ctx context.Context, token string) error
@@ -237,10 +237,15 @@ func (s *server) OrganizeMerge(w http.ResponseWriter, r *http.Request) {
 		s.invalidRequest(w, problem)
 		return
 	}
+	if !namedGroupID(body.From) {
+		// 明示した 0 以下の from を省略と取り違えると、開いているグループから外さずにマージしてしまう。
+		s.writeGroupError(w, domain.ErrGroupTargetNotFound, "Could not merge the groups.")
+		return
+	}
 	if !s.organizerConfigured(w) {
 		return
 	}
-	result, err := s.organizer.Merge(r.Context(), items, body.Into)
+	result, err := s.organizer.Merge(r.Context(), items, body.Into, optionalID(body.From))
 	if err != nil {
 		s.writeGroupError(w, err, "Could not merge the groups.")
 		return

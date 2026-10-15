@@ -113,15 +113,25 @@ func resolveMove(ctx context.Context, tx *sql.Tx, move domain.OrganizeMove) ([]g
 	if err != nil || move.From == 0 {
 		return members, nil, err
 	}
+	itemIDs, err := groupMemberItemIDs(ctx, tx, move.From, members)
+	if err != nil {
+		return nil, nil, err
+	}
+	return members, itemIDs, nil
+}
+
+// groupMemberItemIDs はグループ id の中の members の項目の id を members の順に返す。どれかが
+// 無ければ domain.ErrGroupTargetNotFound。
+func groupMemberItemIDs(ctx context.Context, tx *sql.Tx, id int64, members []groupMember) ([]int64, error) {
 	itemIDs := make([]int64, 0, len(members))
 	for _, member := range members {
-		itemID, err := groupMemberItemID(ctx, tx, move.From, member)
+		itemID, err := groupMemberItemID(ctx, tx, id, member)
 		if err != nil {
-			return nil, nil, err
+			return nil, err
 		}
 		itemIDs = append(itemIDs, itemID)
 	}
-	return members, itemIDs, nil
+	return itemIDs, nil
 }
 
 // groupMemberItemID はグループ id の中の member の項目の id を返す。無ければ

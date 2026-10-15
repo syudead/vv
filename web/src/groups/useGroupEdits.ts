@@ -308,11 +308,13 @@ export function useGroupEdits({
   const merge = useCallback(
     (merged: readonly GroupItem[], into: GroupDestination) => {
       if (id === null || merged.length === 0) return;
-      const gone = new Set(
-        merged.filter((item) => item.kind === "group").map((item) => item.id),
-      );
+      const gone = new Set(merged.map((item) => item.id));
       const keep = (item: GroupItem) => !gone.has(item.id);
-      update((data) => ({ ...data, items: data.items.filter(keep) }));
+      const shown: { group?: LibraryGroup } = {};
+      update((data) => {
+        shown.group = data.group;
+        return withoutMoved(data, merged);
+      });
       const message = t.organize.done.merged(
         merged.length,
         into.name,
@@ -320,13 +322,13 @@ export function useGroupEdits({
       );
       enqueue(
         async (alive) => {
-          const { undoToken } = await mergeGroups(merged.flatMap(refOf), into.id);
+          const { undoToken } = await mergeGroups(merged.flatMap(refOf), into.id, id);
           if (!alive()) return;
           confirmed.current = confirmed.current.filter(keep);
           offer(message, undoToken);
           refresh();
         },
-        restore(t.organize.failed.merge, () => undefined),
+        restore(t.organize.failed.merge, () => shown.group),
       );
     },
     [confirmed, enqueue, id, offer, refresh, restore, update],

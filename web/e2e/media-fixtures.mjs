@@ -875,6 +875,9 @@ export const DRAG_ORGANIZE_VIDEOS = [
   "選択確認の先1",
   "タッチ確認の1",
   "タッチ確認の先1",
+  "取り出し確認のV",
+  "取り出し確認のX1",
+  "取り出し確認のY1",
 ];
 
 export function generateDragOrganizeFixtures(root) {

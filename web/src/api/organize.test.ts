@@ -166,6 +166,7 @@ describe("organize API", () => {
           { kind: "group", id: 8 },
         ],
         9,
+        null,
       ),
     ).resolves.toEqual({ undoToken: "t3" });
     expect(takeListSnapshot({ query: "" })).toBeUndefined();
@@ -180,6 +181,24 @@ describe("organize API", () => {
           ],
           into: 9,
         },
+      },
+    ]);
+  });
+
+  it("mergeGroups は from を渡すと開いているグループとして送る", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ undoToken: "t4" }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(mergeGroups([{ kind: "group", id: 8 }], 9, 1)).resolves.toEqual({
+      undoToken: "t4",
+    });
+    expect(sent(fetchMock)).toEqual([
+      {
+        url: "/api/organize/merge",
+        method: "POST",
+        body: { items: [{ kind: "group", id: 8 }], into: 9, from: 1 },
       },
     ]);
   });

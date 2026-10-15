@@ -615,6 +615,8 @@ describe("LibraryPage drop a group on a group", () => {
         path,
         body: path === "/api/organize/merge" ? { items, into: 8 } : { items, to: 8 },
       });
+      // ライブラリは開いているグループを持たないので from を送らない。
+      expect(server.writes[0]?.body).not.toHaveProperty("from");
       expect(
         await screen.findByText(
           choice === "Merge" ? 'Merged 3 items into "Beach"' : 'Moved 3 items to "Beach"',

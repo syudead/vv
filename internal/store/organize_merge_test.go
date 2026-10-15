@@ -18,7 +18,7 @@ import (
 // merge は items を into へマージし、取り消しの像を返す。
 func merge(t *testing.T, db *DB, into int64, items ...domain.OrganizeRef) []byte {
 	t.Helper()
-	image, err := db.Organize().Merge(context.Background(), items, into)
+	image, err := db.Organize().Merge(context.Background(), items, into, 0)
 	if err != nil {
 		t.Fatalf("Merge(%v, %d) error = %v", items, into, err)
 	}
@@ -248,7 +248,7 @@ func TestOrganizeMergeRefusals(t *testing.T) {
 		"無いグループ": {into: y, items: []domain.OrganizeRef{groupRef(other), groupRef(missing)}, want: domain.ErrGroupTargetNotFound},
 		"無い動画":   {into: y, items: []domain.OrganizeRef{groupRef(other), videoRef(missing)}, want: domain.ErrGroupTargetNotFound},
 	} {
-		if _, err := db.Organize().Merge(ctx, c.items, c.into); !errors.Is(err, c.want) {
+		if _, err := db.Organize().Merge(ctx, c.items, c.into, 0); !errors.Is(err, c.want) {
 			t.Errorf("%s: error = %v, want %v", name, err, c.want)
 		}
 	}

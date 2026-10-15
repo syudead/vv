@@ -2264,6 +2264,10 @@ type OrganizeGroup struct {
 
 // OrganizeMerge defines model for OrganizeMerge.
 type OrganizeMerge struct {
+	// From カードをドラッグして出した開いているグループ。グループのページが送り、ライブラリは送らない。
+	// あればカードはマージと同じ取引でここから外れる
+	From *int64 `json:"from,omitempty"`
+
 	// Into 落とした先のグループ。`items` は少なくとも 1 つのグループを含む
 	Into int64 `json:"into"`
 
