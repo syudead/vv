@@ -53,7 +53,7 @@ async function dropClipsOnExtras() {
 }
 
 describe("GroupPage group on group", () => {
-  it("「Merge」は into の merge を送り、マージしたグループのカードが消える", async () => {
+  it("「Merge」は from と into の merge を送り、マージしたグループのカードが消える", async () => {
     await openSeason();
     const user = userEvent.setup();
     const menu = await dropClipsOnExtras();
@@ -68,7 +68,7 @@ describe("GroupPage group on group", () => {
     expect(cardTitles()).toEqual(["Episode 1", "Extras", "Episode 2"]);
     await waitFor(() =>
       expect(writesTo("/api/organize/merge")).toEqual([
-        { items: [{ kind: "group", id: 6 }], into: 5 },
+        { items: [{ kind: "group", id: 6 }], into: 5, from: 1 },
       ]),
     );
     expect(await screen.findByText('Merged 1 group into "Extras"')).toBeDefined();
@@ -91,7 +91,7 @@ describe("GroupPage group on group", () => {
     expect(await screen.findByText('Moved 1 item to "Extras"')).toBeDefined();
   });
 
-  it("動画とグループの選択は、すべてのカードを画面の順で 1 回の merge に送る", async () => {
+  it("動画とグループの選択は、すべてのカードを画面の順で from 付きの 1 回の merge に送り、持ち上げたカードが消えて件数が減る", async () => {
     await openSeason();
     const user = userEvent.setup();
     await user.click(screen.getByRole("checkbox", { name: 'Select the group "Clips"' }));
@@ -100,6 +100,8 @@ describe("GroupPage group on group", () => {
 
     await user.click(screen.getByRole("menuitem", { name: "Merge" }));
 
+    expect(cardTitles()).toEqual(["Episode 1", "Extras"]);
+    expect(screen.getByText(/^1 video\b/)).toBeDefined();
     await waitFor(() =>
       expect(writesTo("/api/organize/merge")).toEqual([
         {
@@ -108,11 +110,33 @@ describe("GroupPage group on group", () => {
             { kind: "group", id: 6 },
           ],
           into: 5,
+          from: 1,
         },
       ]),
     );
     expect(await screen.findByText('Merged 2 items into "Extras"')).toBeDefined();
     expect(server.writes).toHaveLength(1);
+    expect(server.groups.get(5)?.items.map((item) => item.video?.id)).toEqual([
+      12, 11, 14,
+    ]);
+  });
+
+  it("Undo で動画とグループの選択のカードが元の位置に戻る", async () => {
+    await openSeason();
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("checkbox", { name: 'Select the group "Clips"' }));
+    await user.click(screen.getByRole("checkbox", { name: 'Select "Episode 2"' }));
+    await dropClipsOnExtras();
+    await user.click(screen.getByRole("menuitem", { name: "Merge" }));
+    await screen.findByText('Merged 2 items into "Extras"');
+    expect(cardTitles()).toEqual(["Episode 1", "Extras"]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Undo" }));
+
+    expect(await screen.findByText("Undone")).toBeDefined();
+    await waitFor(() =>
+      expect(cardTitles()).toEqual(["Episode 1", "Extras", "Episode 2", "Clips"]),
+    );
   });
 
   it("Esc でメニューを閉じると何も送らず、カードは元のまま", async () => {

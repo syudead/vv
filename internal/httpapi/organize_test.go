@@ -344,6 +344,62 @@ func TestOrganizeMergeAndUndo(t *testing.T) {
 	f.assertGroupNames(t, "戻ったグループ", dragged.Id, "ep1", "ep2")
 }
 
+// from 付きのマージは 200 で、カードは開いているグループから同じ取引で外れ、取り消しは 204 で
+// カードを開いているグループの元の位置へ戻す（要件 9）。
+func TestOrganizeMergeFromAndUndo(t *testing.T) {
+	f := newLibraryFixture(t)
+	into := f.createGroup(t, "Into", []int64{f.ids["solo"]}, nil)
+	dragged := f.createGroup(t, "Dragged", []int64{f.ids["ep1"]}, nil)
+	open := f.createGroup(t, "Open", []int64{f.ids["p1"]}, []int64{dragged.Id, into.Id})
+
+	rec := f.organize("merge", map[string]any{
+		"items": []any{organizeCard("video", f.ids["p1"]), organizeCard("group", dragged.Id)},
+		"into":  into.Id,
+		"from":  open.Id,
+	}, f.owner)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("マージ: status = %d: %s", rec.Code, rec.Body)
+	}
+	result := decode[gen.OrganizeResult](t, rec)
+	f.assertGroupNames(t, "マージのあと Open", open.Id, "group:Into")
+	f.assertGroupNames(t, "マージのあと Into", into.Id, "solo", "p1", "ep1")
+
+	if rec := f.organize("undo", map[string]any{"token": result.UndoToken}, f.owner); rec.Code != http.StatusNoContent {
+		t.Fatalf("取り消し: status = %d: %s", rec.Code, rec.Body)
+	}
+	f.assertGroupNames(t, "取り消しのあと Open", open.Id, "p1", "group:Dragged", "group:Into")
+	f.assertGroupNames(t, "取り消しのあと Into", into.Id, "solo")
+}
+
+// from 付きでも契約のステータスが成り立つ。0 以下・無い from とそこに無いカードは 404
+// group_target_not_found、グループの無い items は 400、祖先のグループは 409 で、どれも何も変えない。
+func TestOrganizeMergeFromErrors(t *testing.T) {
+	f := newLibraryFixture(t)
+	into := f.createGroup(t, "Into", []int64{f.ids["solo"]}, nil)
+	dragged := f.createGroup(t, "Dragged", []int64{f.ids["ep1"]}, nil)
+	open := f.createGroup(t, "Open", []int64{f.ids["p1"]}, []int64{dragged.Id, into.Id})
+	other := f.createGroup(t, "Other", []int64{f.ids["p2"]}, nil)
+	cycle := wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonGroupCycle}
+	group := organizeCard("group", dragged.Id)
+	for _, tc := range []struct {
+		label string
+		body  map[string]any
+		want  wantError
+	}{
+		{"0 の from", map[string]any{"items": []any{group}, "into": into.Id, "from": 0}, wantGroupTargetNotFound},
+		{"負の from", map[string]any{"items": []any{group}, "into": into.Id, "from": -1}, wantGroupTargetNotFound},
+		{"無い from", map[string]any{"items": []any{group}, "into": into.Id, "from": 999999}, wantGroupTargetNotFound},
+		{"from に無い動画", map[string]any{"items": []any{organizeCard("video", f.ids["ep2"]), group}, "into": into.Id, "from": open.Id}, wantGroupTargetNotFound},
+		{"from に無いグループ", map[string]any{"items": []any{organizeCard("group", other.Id)}, "into": into.Id, "from": open.Id}, wantGroupTargetNotFound},
+		{"動画だけ", map[string]any{"items": []any{organizeCard("video", f.ids["p1"])}, "into": into.Id, "from": open.Id}, wantGroupInvalid},
+		{"祖先", map[string]any{"items": []any{organizeCard("group", open.Id)}, "into": into.Id, "from": open.Id}, cycle},
+	} {
+		assertGroupError(t, tc.label, f.organize("merge", tc.body, f.owner), tc.want)
+	}
+	f.assertGroupNames(t, "拒まれたマージのあと Open", open.Id, "p1", "group:Dragged", "group:Into")
+	f.assertGroupNames(t, "拒まれたマージのあと Into", into.Id, "solo")
+}
+
 // 本文の誤りとグループの無い items は 400 invalid_request、無いマージ先・グループ・動画は 404
 // group_target_not_found、マージ先そのものか祖先のグループは 409 group_cycle で、どれも何も変えない。
 // ゲストは 401。

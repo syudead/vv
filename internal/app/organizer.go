@@ -52,8 +52,10 @@ type OrganizeStore interface {
 	Bundle(ctx context.Context, videoIDs []int64, targetID int64) ([]byte, error)
 	// Merge はドラッグしたカード items を画面の順にたどり、グループはグループ into へマージし、
 	// 動画は into の末尾へ足す（specs/050-drag-organize/research.md R-5）。into・グループ・動画が
-	// 無ければ domain.ErrGroupTargetNotFound、グループが into か into の祖先なら domain.ErrGroupCycle。
-	Merge(ctx context.Context, items []domain.OrganizeRef, into int64) ([]byte, error)
+	// from（0 なら無し）は開いているグループで、カードはマージと同じ取引でそこから外れる。into・from・
+	// グループ・動画が無いかカードが from に無ければ domain.ErrGroupTargetNotFound、グループが into か
+	// into の祖先なら domain.ErrGroupCycle。
+	Merge(ctx context.Context, items []domain.OrganizeRef, into, from int64) ([]byte, error)
 
 	Undo(ctx context.Context, image []byte) error
 }
@@ -125,10 +127,10 @@ func (o *Organizer) Bundle(ctx context.Context, videoIDs []int64, targetID int64
 	return o.run(func() ([]byte, error) { return o.store.Bundle(ctx, videoIDs, targetID) })
 }
 
-// Merge はドラッグしたカードをグループ into へマージし、取り消しのトークンを返す。トークンは
-// Reorder と同じく保存先の操作より先に作る。
-func (o *Organizer) Merge(ctx context.Context, items []domain.OrganizeRef, into int64) (domain.OrganizeResult, error) {
-	return o.run(func() ([]byte, error) { return o.store.Merge(ctx, items, into) })
+// Merge はドラッグしたカードをグループ into へマージし、from（0 なら無し）があればそこから外して、
+// 取り消しのトークンを返す。トークンは Reorder と同じく保存先の操作より先に作る。
+func (o *Organizer) Merge(ctx context.Context, items []domain.OrganizeRef, into, from int64) (domain.OrganizeResult, error) {
+	return o.run(func() ([]byte, error) { return o.store.Merge(ctx, items, into, from) })
 }
 
 // run は保存先の操作 operation を行い、返した像をトークンで持つ。トークンは操作より先に作る

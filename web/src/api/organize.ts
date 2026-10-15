@@ -107,23 +107,19 @@ export async function moveCards(
  * mergeGroups はドラッグしたカード `items`（画面の順。少なくとも 1 つのグループ）をグループ `into` へ
  * マージする（POST /api/organize/merge）。グループはその項目を `into` の末尾へ渡してお気に入り・
  * プレイリストの項目・親を `into` に引き継いで消え、動画は `into` の末尾へ足される。1 つの取引で、
- * トークンも 1 つである。ドラッグしたグループが `into` か `into` の祖先なら 409 `group_cycle`、
- * どれかが無ければ 404 `group_target_not_found` の RequestFailed になり、何も変わらない。成功したら
- * 一覧の控えを捨てる。
+ * トークンも 1 つである。`from` を渡すと、カードは同じ取引で開いているグループ `from` から外れる
+ * （グループのページが渡し、ライブラリは `null`）。ドラッグしたグループが `into` か `into` の祖先なら
+ * 409 `group_cycle`、どれかが無いかカードが `from` に無ければ 404 `group_target_not_found` の
+ * RequestFailed になり、何も変わらない。成功したら一覧の控えを捨てる。
  */
 export async function mergeGroups(
   items: readonly OrganizeRef[],
   into: number,
+  from: number | null,
   signal?: AbortSignal,
 ): Promise<OrganizeResult> {
-  const result = await request<OrganizeResult>("/api/organize/merge", {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify({ items: Array.from(items), into }),
-    signal,
-  });
-  clearListSnapshot();
-  return result;
+  const body = { items: Array.from(items), into, ...(from === null ? {} : { from }) };
+  return postOperation("/api/organize/merge", body, signal);
 }
 
 /**

@@ -275,7 +275,7 @@ export function useLibraryMoves(
   const merge = useCallback(
     (merged: readonly LibraryItem[], into: LibraryGroup) =>
       run(merged, {
-        send: () => mergeGroups(merged.map(refOf), into.id),
+        send: () => mergeGroups(merged.map(refOf), into.id, null),
         done: t.organize.done.merged(
           merged.length,
           into.name,

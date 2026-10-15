@@ -117,10 +117,10 @@ function useFocusAfterEdit() {
  *   読み直し、失敗したら外す前に見せていた項目と本数に戻して知らせる。すべての項目を
  *   移すとサーバーがグループを解散するので、通知とトークンを持ち越して `onDissolved` へ渡す
  *   （specs/050-drag-organize/ui-design.md「Undo toast」の Carried）。
- * - 子グループを含む項目を子グループへマージすると、マージした子グループの項目を画面から外して
- *   から `merge` で 1 回送る（並べ替えと同じ鎖）。動画の項目は `merge` が開いているグループから
- *   外さないので残る。受け入れられたら「Undo」付きの通知を出して読み直し、失敗したら外す前の
- *   項目に戻して知らせる。
+ * - 子グループを含む項目を子グループへマージすると、持ち上げた項目（動画と子グループの両方）を
+ *   画面から外してから、開いているグループを `from` に付けて `merge` で 1 回送る（並べ替えと
+ *   同じ鎖）。サーバーは持ち上げた動画とグループを `from` から外す。受け入れられたら「Undo」
+ *   付きの通知を出して読み直し、失敗したら外す前の項目に戻して知らせる。
  * - 選択バーの「Remove from group」は選んだ項目をまとめて外し、件数を知らせる。
  * - 最後の項目を外すとサーバーがグループを解散する（`204`、data-model.md「Edits」）。外した行は
  *   見せず、`onDissolved` で画面を解散と同じ結末（道筋の親へ移ってトースト）へ渡す。
@@ -308,11 +308,13 @@ export function useGroupEdits({
   const merge = useCallback(
     (merged: readonly GroupItem[], into: GroupDestination) => {
       if (id === null || merged.length === 0) return;
-      const gone = new Set(
-        merged.filter((item) => item.kind === "group").map((item) => item.id),
-      );
+      const gone = new Set(merged.map((item) => item.id));
       const keep = (item: GroupItem) => !gone.has(item.id);
-      update((data) => ({ ...data, items: data.items.filter(keep) }));
+      const shown: { group?: LibraryGroup } = {};
+      update((data) => {
+        shown.group = data.group;
+        return withoutMoved(data, merged);
+      });
       const message = t.organize.done.merged(
         merged.length,
         into.name,
@@ -320,13 +322,13 @@ export function useGroupEdits({
       );
       enqueue(
         async (alive) => {
-          const { undoToken } = await mergeGroups(merged.flatMap(refOf), into.id);
+          const { undoToken } = await mergeGroups(merged.flatMap(refOf), into.id, id);
           if (!alive()) return;
           confirmed.current = confirmed.current.filter(keep);
           offer(message, undoToken);
           refresh();
         },
-        restore(t.organize.failed.merge, () => undefined),
+        restore(t.organize.failed.merge, () => shown.group),
       );
     },
     [confirmed, enqueue, id, offer, refresh, restore, update],

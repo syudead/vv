@@ -238,20 +238,36 @@ function moveRefs({ items, from, to }: MoveBody): Promise<Response> {
   return Promise.resolve(json({ undoToken: token }));
 }
 
+interface MergeBody {
+  items: MoveBody["items"];
+  into: number;
+  from?: number;
+}
+
 /**
- * mergeRefs は POST /api/organize/merge に答える。グループは項目を `into` の末尾へ渡し、親の
- * 項目から消えてなくなる。動画は `into` の末尾へ足す（どちらもすでにある動画は足さない）。
+ * mergeRefs は POST /api/organize/merge に答える。`from` があれば、カードはまずそこから外れる
+ * （どれかが `from` に無ければ 404）。グループは項目を `into` の末尾へ渡し、親の項目から消えて
+ * なくなる。動画は `into` の末尾へ足す（どちらもすでにある動画は足さない）。
  */
-function mergeRefs({ items, into }: { items: MoveBody["items"]; into: number }) {
+function mergeRefs({ items, into, from }: MergeBody) {
   const target = server.groups.get(into);
+  const source = from === undefined ? undefined : server.groups.get(from);
   if (
     target === undefined ||
-    items.some((ref) => ref.kind === "group" && ref.id === into)
+    items.some((ref) => ref.kind === "group" && ref.id === into) ||
+    (from !== undefined &&
+      (source === undefined ||
+        !items.every((ref) => source.items.some((item) => refMatches(item, ref)))))
   ) {
     return targetGone();
   }
   const merged = items.filter((ref) => ref.kind === "group").map((ref) => ref.id);
   const token = keepImage(Array.from(server.groups.keys()));
+  if (source !== undefined) {
+    source.items = source.items.filter(
+      (item) => !items.some((ref) => refMatches(item, ref)),
+    );
+  }
   let nextId = 900 + server.writes.length * 10;
   const append = (item: GroupItem) => {
     if (
@@ -282,7 +298,7 @@ function mergeRefs({ items, into }: { items: MoveBody["items"]; into: number }) 
 function organize(path: string, body: unknown): Promise<Response> | undefined {
   if (path === "/api/organize/move") return moveRefs(body as MoveBody);
   if (path === "/api/organize/merge") {
-    return mergeRefs(body as { items: MoveBody["items"]; into: number });
+    return mergeRefs(body as MergeBody);
   }
   if (path === "/api/organize/reorder") {
     const { groupId, itemIds, after } = body as {
