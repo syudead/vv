@@ -9,6 +9,7 @@ describe("tagListUrl", () => {
         query: "",
         tentativeOnly: false,
         unusedOnly: false,
+        kind: null,
         sort: "countAsc",
         tab: "tags",
       },
@@ -28,6 +29,7 @@ describe("tagListUrl", () => {
         query: "anime",
         tentativeOnly: true,
         unusedOnly: true,
+        kind: null,
         sort: "createdAsc",
         tab: "rejected",
       },
@@ -52,6 +54,7 @@ describe("tagListUrl", () => {
         query: "",
         tentativeOnly: false,
         unusedOnly: false,
+        kind: null,
         sort: "name",
         tab: "tags",
       }).toString(),
@@ -61,9 +64,33 @@ describe("tagListUrl", () => {
         query: "a b",
         tentativeOnly: true,
         unusedOnly: true,
+        kind: null,
         sort: "countDesc",
         tab: "rejected",
       }).toString(),
     ).toBe("q=a+b&tentative=1&unused=1&sort=countDesc&tab=rejected");
+  });
+
+  it("tab=kinds と kind（正の整数か none）を読み書きし、ほかの kind は絞り込まない", () => {
+    const parsed = parseTagListCriteria(new URLSearchParams("kind=12&tab=kinds"), "name");
+    expect(parsed.criteria).toMatchObject({ kind: "12", tab: "kinds" });
+    expect(
+      parseTagListCriteria(new URLSearchParams("kind=none"), "name").criteria.kind,
+    ).toBe("none");
+    for (const raw of ["0", "-1", "abc", "1.5", ""]) {
+      expect(
+        parseTagListCriteria(new URLSearchParams(`kind=${raw}`), "name").criteria.kind,
+      ).toBeNull();
+    }
+    expect(
+      serializeTagListCriteria({
+        query: "",
+        tentativeOnly: true,
+        unusedOnly: false,
+        kind: "none",
+        sort: "name",
+        tab: "kinds",
+      }).toString(),
+    ).toBe("tentative=1&kind=none&sort=name&tab=kinds");
   });
 });
