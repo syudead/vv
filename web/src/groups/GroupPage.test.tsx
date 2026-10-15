@@ -1,390 +1,31 @@
-import { act, cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes, useLocation } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
-import type { LibraryGroup, Video } from "../api/client";
-import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import type { GroupItem } from "../api/groups";
-import { type Audience, AudienceProvider } from "../auth/audience";
+import { emitServerEvent } from "../api/fakeEventSource";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
-import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/shadcn/tooltip";
-import GroupPage from "./GroupPage";
+import {
+  video,
+  group,
+  type StoredGroup,
+  server,
+  json,
+  renderPage,
+  seed,
+  summarize,
+  trailBand,
+  crumbs,
+  layoutRows,
+  listTitles,
+  openList,
+  openMenu,
+  moveFirstDown,
+  reveal,
+  setUpGroupPageServer,
+} from "../testing/groupPage";
 
-function video(id: number, extra: Partial<Video> = {}): Video {
-  return {
-    id,
-    title: `Video ${String(id)}`,
-    public: true,
-    sizeBytes: 1024,
-    addedAt: "2026-09-01T00:00:00Z",
-    updatedAt: "2026-09-01T00:00:00Z",
-    fileCreatedAt: "2026-09-01T00:00:00Z",
-    playable: true,
-    probeState: "done",
-    thumbnailState: "done",
-    previewState: "done",
-    durationMs: 60_000,
-    width: 1920,
-    height: 1080,
-    container: "mp4",
-    videoCodec: "h264",
-    tags: [],
-    ...extra,
-  };
-}
-
-function group(
-  id: number,
-  name: string,
-  extra: Partial<LibraryGroup> = {},
-): LibraryGroup {
-  return {
-    id,
-    name,
-    videoCount: 2,
-    watchedCount: 0,
-    watchState: "unwatched",
-    durationMs: 120_000,
-    sizeBytes: 2048,
-    addedAt: "2026-09-01T00:00:00Z",
-    previews: [],
-    openVideoId: 10,
-    videoIds: [10, 11],
-    tags: [],
-    ...extra,
-  };
-}
-
-interface StoredGroup {
-  group: LibraryGroup;
-  items: GroupItem[];
-  /** 最初のページの続き。置くと GET /api/groups/{id}/items?cursor= がそのページを返す。 */
-  nextCursor?: string;
-}
-
-const server = {
-  groups: new Map<number, StoredGroup>(),
-  /** GET /api/groups/{id} の回数（id ごと）。 */
-  reads: new Map<number, number>(),
-  /** 続きのページ（cursor ごと）。 */
-  pages: new Map<string, { items: GroupItem[]; nextCursor?: string }>(),
-  /** 続きのページの要求の cursor。 */
-  pageRequests: [] as string[],
-  /** true の間、続きのページは 500 で失敗する。 */
-  pagesFail: false,
-  /** 書き込みの要求（メソッド、パス、本文）。 */
-  writes: [] as { method: string; path: string; body?: unknown }[],
-};
-
-function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-function isChild(parent: number, child: number): boolean {
-  return (
-    server.groups
-      .get(parent)
-      ?.items.some((item) => item.kind === "group" && item.group?.id === child) ?? false
-  );
-}
-
-/** trailOf は契約どおり、このグループから外へ向かって親と子の組が続く部分を返す。 */
-function trailOf(id: number, requested: number[]) {
-  const chain = [...requested, id];
-  const kept: number[] = [];
-  for (let index = chain.length - 1; index > 0; index -= 1) {
-    const parent = chain[index - 1] as number;
-    if (!isChild(parent, chain[index] as number)) break;
-    kept.unshift(parent);
-  }
-  return kept.map((each) => ({
-    id: each,
-    name: server.groups.get(each)?.group.name ?? "",
-  }));
-}
-
-/** summarize は項目からグループの動画の id と本数を数え直した値を返す。 */
-function summarize(stored: StoredGroup): LibraryGroup {
-  const videoIds = stored.items.flatMap((item) =>
-    item.kind === "group" ? (item.group?.videoIds ?? []) : [item.video?.id ?? 0],
-  );
-  stored.group = { ...stored.group, videoIds, videoCount: videoIds.length };
-  return stored.group;
-}
-
-// サーバーは code を not_found にし、どの 404 かを reason に入れる（writeGroupError）。
-const targetGone = () =>
-  Promise.resolve(
-    json({ code: "not_found", reason: "group_target_not_found", message: "x" }, 404),
-  );
-const groupNotFound = () =>
-  Promise.resolve(json({ code: "not_found", message: "x" }, 404));
-
-/** write は書き込みの要求に、メモリ上のグループを変えて契約どおりに答える。 */
-function write(url: URL, method: string, body: unknown): Promise<Response> | undefined {
-  const match = /^\/api\/groups\/(\d+)(\/.*)?$/.exec(url.pathname);
-  if (match === null) return undefined;
-  server.writes.push({ method, path: url.pathname, body });
-  const id = Number(match[1]);
-  const rest = match[2] ?? "";
-  const stored = server.groups.get(id);
-  if (stored === undefined) return groupNotFound();
-  if (method === "PATCH" && rest === "") {
-    stored.group = { ...stored.group, name: (body as { name: string }).name };
-    return Promise.resolve(json(stored.group));
-  }
-  if (method === "DELETE" && rest === "") {
-    server.groups.delete(id);
-    return Promise.resolve(new Response(null, { status: 204 }));
-  }
-  if (rest === "/tag") {
-    server.groups.delete(id);
-    return Promise.resolve(
-      json({ tag: { id: 3, name: stored.group.name }, created: true }),
-    );
-  }
-  if (rest === "/items/remove") {
-    const itemIds = (body as { itemIds: number[] }).itemIds;
-    if (!itemIds.every((each) => stored.items.some((item) => item.id === each))) {
-      return targetGone();
-    }
-    stored.items = stored.items.filter((item) => !itemIds.includes(item.id));
-    // 最後の項目を外したグループは解散され、本文の無い 204 で答える（data-model.md「Edits」）。
-    if (stored.items.length === 0) {
-      server.groups.delete(id);
-      return Promise.resolve(new Response(null, { status: 204 }));
-    }
-    return Promise.resolve(json(summarize(stored)));
-  }
-  const move = /^\/items\/(\d+)\/move$/.exec(rest);
-  if (move !== null) {
-    const itemId = Number(move[1]);
-    const after = (body as { after?: number }).after ?? null;
-    const moving = stored.items.find((item) => item.id === itemId);
-    if (moving === undefined) return targetGone();
-    const others = stored.items.filter((item) => item.id !== itemId);
-    const index = after === null ? 0 : others.findIndex((item) => item.id === after) + 1;
-    stored.items = [...others.slice(0, index), moving, ...others.slice(index)];
-    return Promise.resolve(new Response(null, { status: 204 }));
-  }
-  return undefined;
-}
-
-function install() {
-  const fetchMock = vi.fn<typeof fetch>((input, init) => {
-    const url = new URL(String(input), "http://localhost");
-    const method = init?.method ?? "GET";
-    if (method !== "GET") {
-      const body =
-        typeof init?.body === "string" ? (JSON.parse(init.body) as unknown) : undefined;
-      const answer = write(url, method, body);
-      if (answer !== undefined) return answer;
-    }
-    if (url.pathname === "/api/tags") return Promise.resolve(json([]));
-    const detail = /^\/api\/groups\/(\d+)$/.exec(url.pathname);
-    if (detail !== null) {
-      const id = Number(detail[1]);
-      server.reads.set(id, (server.reads.get(id) ?? 0) + 1);
-      const stored = server.groups.get(id);
-      if (stored === undefined) {
-        return Promise.resolve(json({ code: "not_found", message: "x" }, 404));
-      }
-      const requested = (url.searchParams.get("trail") ?? "")
-        .split(",")
-        .filter((each) => each !== "")
-        .map(Number);
-      return Promise.resolve(
-        json({
-          group: stored.group,
-          trail: trailOf(id, requested),
-          items: stored.items,
-          nextCursor: stored.nextCursor,
-        }),
-      );
-    }
-    if (/^\/api\/groups\/\d+\/items$/.test(url.pathname)) {
-      const cursor = url.searchParams.get("cursor") ?? "";
-      server.pageRequests.push(cursor);
-      const page = server.pages.get(cursor);
-      if (server.pagesFail || page === undefined) {
-        return Promise.resolve(json({ code: "internal", message: "x" }, 500));
-      }
-      return Promise.resolve(json(page));
-    }
-    if (url.pathname === "/api/folders/1") {
-      return Promise.resolve(
-        json({
-          folder: { rootId: 1, path: "", name: "Media", videoCount: 0, folderCount: 0 },
-          folders: [],
-        }),
-      );
-    }
-    throw new Error(`unexpected request: ${url.toString()}`);
-  });
-  vi.stubGlobal("fetch", fetchMock);
-}
-
-/** Probe は開いた場所と state を書き出す（再生画面とフォルダ画面の代わり）。 */
-function Probe() {
-  const location = useLocation();
-  return (
-    <p>{`Opened ${location.pathname}${location.search} ${JSON.stringify(location.state)}`}</p>
-  );
-}
-
-function renderPage(initial: string, audience: Audience = "owner") {
-  render(
-    <MemoryRouter initialEntries={[initial]}>
-      <TooltipProvider>
-        <ToastProvider>
-          <AudienceProvider audience={audience}>
-            <Routes>
-              <Route path="/groups/:id" element={<GroupPage />} />
-              <Route path="/videos/:id" element={<Probe />} />
-              <Route path="/folders/*" element={<Probe />} />
-              <Route path="/" element={<p>Library</p>} />
-            </Routes>
-          </AudienceProvider>
-        </ToastProvider>
-      </TooltipProvider>
-    </MemoryRouter>,
-  );
-}
-
-/** seed は「Season」（id 1）の中に子グループ「Extras」（id 5）と動画 2 本を置く。 */
-function seed() {
-  const extras = group(5, "Extras", {
-    videoCount: 1,
-    videoIds: [12],
-    openVideoId: 12,
-    durationMs: 60_000,
-  });
-  server.groups.set(1, {
-    group: group(1, "Season", {
-      videoCount: 3,
-      videoIds: [10, 12, 11],
-      durationMs: 5_530_000,
-    }),
-    items: [
-      { id: 101, kind: "video", video: video(10, { title: "Episode 1" }) },
-      { id: 102, kind: "group", group: extras },
-      { id: 103, kind: "video", video: video(11, { title: "Episode 2" }) },
-    ],
-  });
-  server.groups.set(5, {
-    group: extras,
-    items: [{ id: 201, kind: "video", video: video(12, { title: "Bonus" }) }],
-  });
-}
-
-function trailBand() {
-  return screen.getByRole("navigation", { name: "Group path" });
-}
-
-function crumbs(): string[] {
-  return within(trailBand())
-    .getAllByRole("listitem")
-    .map((item) => item.textContent ?? "")
-    .filter((text) => text !== "");
-}
-
-/** 番兵の見張り。`reveal` で見える範囲に来たことにする。 */
-let reveal: () => void = () => undefined;
-
-class FakeIntersectionObserver {
-  private readonly callback: IntersectionObserverCallback;
-  constructor(callback: IntersectionObserverCallback) {
-    this.callback = callback;
-  }
-  observe() {
-    reveal = () =>
-      this.callback(
-        [{ isIntersecting: true } as IntersectionObserverEntry],
-        this as unknown as IntersectionObserver,
-      );
-  }
-  disconnect() {
-    reveal = () => undefined;
-  }
-}
-
-beforeEach(() => {
-  server.groups = new Map();
-  server.reads = new Map();
-  server.pages = new Map();
-  server.pageRequests = [];
-  server.pagesFail = false;
-  server.writes = [];
-  vi.stubGlobal("IntersectionObserver", FakeIntersectionObserver);
-  install();
-  installFakeEventSource();
-});
-
-afterEach(() => {
-  vi.unstubAllGlobals();
-  vi.restoreAllMocks();
-});
-
-// jsdom は配置を持たないので、行の位置を上から 48px ずつに置く。dnd-kit のキーボードの
-// 移動は行の位置から次の行を探す。
-function layoutRows() {
-  vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(function (
-    this: Element,
-  ) {
-    const row = this.closest("tr[data-item-id]");
-    const index =
-      row === null ? 0 : Array.from(row.parentElement?.children ?? []).indexOf(row);
-    const top = index * 48;
-    return {
-      x: 0,
-      y: top,
-      top,
-      left: 0,
-      right: 800,
-      bottom: top + 48,
-      width: 800,
-      height: 48,
-      toJSON: () => ({}),
-    } as DOMRect;
-  });
-}
-
-/** listTitles はリスト表示の行の題名を上から返す。 */
-function listTitles(): string[] {
-  const table = screen.getByRole("table", { name: "Items" });
-  return within(table)
-    .getAllByRole("link")
-    .map((link) => link.getAttribute("title") ?? "");
-}
-
-type User = ReturnType<typeof userEvent.setup>;
-
-/** openList はページを開いてリスト表示に切り替える。 */
-async function openList(user: User, initial = "/groups/1") {
-  renderPage(initial);
-  await screen.findByRole("heading", { level: 1 });
-  await user.click(await screen.findByRole("radio", { name: "List" }));
-  return screen.getByRole("table", { name: "Items" });
-}
-
-/** openMenu は見出しの「More」から項目を選ぶ。 */
-async function openMenu(user: User, item: string) {
-  await user.click(await screen.findByRole("button", { name: "More" }));
-  await user.click(await screen.findByRole("menuitem", { name: item }));
-}
-
-/** moveFirstDown はキーボードで「Episode 1」を 1 つ下へ動かす。 */
-async function moveFirstDown(user: User) {
-  screen.getByRole("button", { name: 'Reorder "Episode 1"' }).focus();
-  await user.keyboard("[Space]");
-  await user.keyboard("[ArrowDown]");
-  await user.keyboard("[Space]");
-}
+setUpGroupPageServer();
 
 describe("GroupPage", () => {
   it("子グループと動画を応答の順に並べ、見出しに名前と本数と長さを出す", async () => {
@@ -578,7 +219,7 @@ describe("GroupPage", () => {
     expect(document.querySelectorAll("article")).toHaveLength(4);
   });
 
-  it("キーボードで項目を動かすと、上にある項目で move を送り、読み直しても新しい順で出る", async () => {
+  it("キーボードで項目を動かすと、上にある項目で reorder を送り、読み直しても新しい順で出る", async () => {
     seed();
     layoutRows();
     const user = userEvent.setup();
@@ -589,7 +230,11 @@ describe("GroupPage", () => {
 
     await waitFor(() =>
       expect(server.writes).toEqual([
-        { method: "POST", path: "/api/groups/1/items/101/move", body: { after: 102 } },
+        {
+          method: "POST",
+          path: "/api/organize/reorder",
+          body: { groupId: 1, itemIds: [101], after: 102 },
+        },
       ]),
     );
     expect(listTitles()).toEqual(["Extras", "Episode 1", "Episode 2"]);
@@ -616,14 +261,14 @@ describe("GroupPage", () => {
     const fetchMock = vi.mocked(fetch);
     const original = fetchMock.getMockImplementation() as typeof fetch;
     fetchMock.mockImplementation((input, init) =>
-      String(input).endsWith("/move")
+      String(input).endsWith("/organize/reorder")
         ? Promise.resolve(json({ code: "internal", message: "x" }, 500))
         : original(input, init),
     );
 
     await moveFirstDown(user);
 
-    expect(await screen.findByText(/^Couldn't move the item:/)).toBeDefined();
+    expect(await screen.findByText(/^Couldn't reorder:/)).toBeDefined();
     expect(listTitles()).toEqual(["Episode 1", "Extras", "Episode 2"]);
   });
 
@@ -673,7 +318,7 @@ describe("GroupPage", () => {
     const original = fetchMock.getMockImplementation() as typeof fetch;
     let answer: (() => void) | null = null;
     fetchMock.mockImplementation((input, init) =>
-      String(input).endsWith("/move")
+      String(input).endsWith("/organize/reorder")
         ? new Promise<Response>((resolve) => {
             answer = () => resolve(original(input, init));
           })

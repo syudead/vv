@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 486bc5bbd85365e2c9788f5ce087bb89fc6e75eada4092c7d746cef5866b1551
+sourceHash: 81adf437628412c50f8e46565115197396211c4703a4f5907485481ee9ebdec9
 ---
 
 # 設計文書 {#design-documents}
@@ -68,3 +68,4 @@ sourceHash: 486bc5bbd85365e2c9788f5ce087bb89fc6e75eada4092c7d746cef5866b1551
 - [動画の作品情報 (作品の詳細の行、その場での編集、人物と組織による絞り込み、人物と組織の画面): UI](../../specs/047-video-work-info/ui-design.md)
 - [任意の動画とグループのグループ (経路を持つグループのページ、New group、Add to group、動画のページのグループの文脈): UI](../../specs/048-groups/ui-design.md)
 - [作品情報プラグイン (設定の節、承認の確認、設定の値、取得の入口と比較を持つダイアログ): UI](../../specs/049-work-info-plugins/ui-design.md)
+- [ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる (ドロップの表示、ドロップのメニュー、新しいグループの名前欄、取り消しのトースト): UI](../../specs/050-drag-organize/ui-design.md)

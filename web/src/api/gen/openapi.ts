@@ -2552,7 +2552,11 @@ export interface paths {
         /**
          * グループの名前を変える
          * @description 所有者だけ。名前の規則は作成と同じで、応答の `name` は前後の空白を取り除いた名前である。
-         *     グループが無ければ 404 `not_found`。
+         *     グループが無ければ 404 `not_found`。`undoToken` が、このグループを作った
+         *     `POST /api/organize/group` の生きているトークンなら、名前を変えた後の行をそのトークンの
+         *     取り消しの像にするので、取り消しは名前を変えたグループを消す
+         *     （specs/050-drag-organize/contracts/screen-api.md）。それ以外のトークンは何も変えず、応答と
+         *     誤りはトークンが無いときと同じで、トークンが原因で失敗することはない。
          */
         patch: operations["renameGroup"];
         trace?: never;
@@ -2651,6 +2655,159 @@ export interface paths {
          *     `invalid_request` で、何も変えない。グループが無ければ 404 `not_found`。
          */
         post: operations["tagGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organize/reorder": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * グループの項目をまとめて並べ替え、取り消しのトークンを返す
+         * @description 所有者だけ。グループ `groupId` の項目 `itemIds` を画面の順のまままとめて項目 `after` の
+         *     すぐ後ろへ移す。`after` が無ければ先頭へ移す。1 つの取引で行い、応答の `undoToken` で
+         *     取り消せる（specs/050-drag-organize/contracts/screen-api.md）。`itemIds` が空か `after` が
+         *     `itemIds` の中にあれば 400 `invalid_request`。グループ・項目・`after` のどれかが無いか
+         *     そのグループに無ければ 404 `group_target_not_found` で、何も書かない。
+         */
+        post: operations["organizeReorder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organize/group": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ドラッグした動画と落とした先の動画のグループを作り、取り消しのトークンを返す
+         * @description 所有者だけ。落とした先の動画 `target` の題名を先頭 100 文字に切った名前で新しいグループを作り、
+         *     `target`、続いて `items` の動画を画面の順に入れる。`from` があれば、新しいグループが
+         *     `from` の中で `target` の位置を取り、`target` と `items` は `from` から抜ける
+         *     （specs/050-drag-organize/research.md R-6）。1 つの取引で行い、応答の `groupId` が新しい
+         *     グループ、`undoToken` で取り消せる。`items` が空かグループを含めば 400 `invalid_request`。
+         *     動画か `from` が無いか、動画が `from` に無ければ 404 `group_target_not_found` で、何も書かない。
+         */
+        post: operations["organizeGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organize/move": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * カードをグループへ入れるか、グループの間で動かすか、グループから外し、取り消しのトークンを返す
+         * @description 所有者だけ。ドラッグしたカード `items` を画面の順のままグループ `to` の末尾へ足し（既に
+         *     あるものは飛ばす）、`from` があればそこから外す。`to` が無ければ外すだけ（ライブラリに
+         *     落とした）。フォルダ由来のメンバーを外すと除外を書き、最後の項目を外した `from` は解散する。
+         *     1 つの取引で行い、応答の `undoToken` で取り消せる（specs/050-drag-organize/contracts/screen-api.md）。
+         *     `from` と `to` がどちらも無いか同じなら 400 `invalid_request`。`from`・`to`・カードの動画や
+         *     グループが無いか、カードが `from` に無ければ 404 `group_target_not_found`、ドラッグした
+         *     グループが `to` か `to` の祖先なら 409 `group_cycle` で、どれも何も書かない。
+         */
+        post: operations["organizeMove"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organize/merge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ドラッグしたグループをグループへマージし、取り消しのトークンを返す
+         * @description 所有者だけ。`items` を画面の順にたどり、グループはグループ `into` へマージし、動画は `into` の
+         *     末尾へ足す（既にあれば飛ばす）。グループ X のマージは X の項目を順に `into` の末尾へ足し、X が
+         *     お気に入りなら `into` をお気に入りにし、X を持つプレイリストと親グループの項目を X の位置で
+         *     `into` に置き換えて（そこにすでに `into` があるか、`into` が親自身か親の祖先なら X の項目を
+         *     消す）、X を消す（specs/050-drag-organize/research.md R-5）。`from` があれば、カードは同じ
+         *     取引で `from` から外れる（Move の取り外しと同じ。動画の項目は消え、グループの項目は `into` に
+         *     置き換えずに消え、自動グループのフォルダのメンバーには除外を書く）。1 つの取引で行い、応答の
+         *     `undoToken` で取り消せる。`items` にグループが無ければ 400 `invalid_request`。`into`・`from`・
+         *     グループ・動画のどれかが無いか、カードが `from` に無ければ 404 `group_target_not_found`、
+         *     ドラッグしたグループが `into` そのものか `into` の祖先なら 409 `group_cycle` で、どれも何も
+         *     書かない。
+         */
+        post: operations["organizeMerge"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organize/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 動画を落とした先の動画を代表にしてバージョンとしてまとめ、取り消しのトークンを返す
+         * @description 所有者だけ。ドラッグした動画 `videoIds` を落とした先の動画 `target` と 1 つの集まりに束ね、
+         *     `target` を代表にする（代表を選ぶダイアログは無い）。既に集まりに属する動画は、その集まりの
+         *     全メンバーごと移る。規則は `POST /api/video-bundles` と同じで、1 つの取引で行い、応答の
+         *     `undoToken` で取り消せる（specs/050-drag-organize/contracts/screen-api.md）。`target` の
+         *     ほかに動画が無ければ 400 `invalid_request`、集まりを展開して 20 本を超えれば 400
+         *     `too_many_videos`、動画がいまライブラリに無ければ 404 `group_target_not_found` で、どれも
+         *     何も書かない。
+         */
+        post: operations["organizeBundle"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/organize/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ドラッグの操作を取り消す
+         * @description 所有者だけ。`token` の操作の前の状態へ戻す（specs/050-drag-organize/research.md R-1）。操作の
+         *     後で行が変わっていれば 409 `undo_conflict` で、何も書かない。トークンが無い、使い済み、
+         *     または 10 分より古ければ 410 `undo_expired`。トークンは 1 回だけ使える。
+         */
+        post: operations["organizeUndo"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3912,6 +4069,13 @@ export interface components {
             /** @description グループの名前。サーバーが前後の空白を取り除いてから長さを数える */
             name: string;
         };
+        /** @description PATCH /api/groups/{id} の本文（specs/050-drag-organize/contracts/screen-api.md） */
+        GroupRename: {
+            /** @description グループの名前。サーバーが前後の空白を取り除いてから長さを数える */
+            name: string;
+            /** @description このグループを作った POST /api/organize/group の `undoToken`。名前の変更をその取り消しに含める */
+            undoToken?: string;
+        };
         /** @description GET /api/groups の応答 */
         GroupListPage: {
             /** @description 見る人に見せるグループを、どの深さのものも自然な名前の順に */
@@ -3929,6 +4093,94 @@ export interface components {
         GroupItemRemove: {
             /** @description 外す項目の id（動画やグループの id ではない） */
             itemIds: number[];
+        };
+        /** @description ドラッグしたカード 1 枚（specs/050-drag-organize/research.md R-4） */
+        OrganizeRef: {
+            /** @enum {string} */
+            kind: "video" | "group";
+            /**
+             * Format: int64
+             * @description 動画かグループの id
+             */
+            id: number;
+        };
+        /** @description ドラッグしたカード。画面の順 */
+        OrganizeRefs: components["schemas"]["OrganizeRef"][];
+        OrganizeResult: {
+            /** @description この操作を取り消すトークン（POST /api/organize/undo）。10 分有効で、1 回だけ使える */
+            undoToken: string;
+            /**
+             * Format: int64
+             * @description 新しいグループの id。/api/organize/group だけが返す
+             */
+            groupId?: number;
+        };
+        OrganizeReorder: {
+            /**
+             * Format: int64
+             * @description 開いているグループ
+             */
+            groupId: number;
+            /** @description 移す項目の id（動画やグループの id ではない）。画面の順 */
+            itemIds: number[];
+            /**
+             * Format: int64
+             * @description この項目のすぐ後ろへ移す。無ければ先頭へ移す
+             */
+            after?: number;
+        };
+        OrganizeGroup: {
+            items: components["schemas"]["OrganizeRefs"];
+            /**
+             * Format: int64
+             * @description 落とした先の動画
+             */
+            target: number;
+            /**
+             * Format: int64
+             * @description 新しいグループを置く、開いているグループ
+             */
+            from?: number;
+        };
+        OrganizeMove: {
+            items: components["schemas"]["OrganizeRefs"];
+            /**
+             * Format: int64
+             * @description カードをドラッグして出した開いているグループ
+             */
+            from?: number;
+            /**
+             * Format: int64
+             * @description カードを入れるグループ。無ければライブラリ（`from` から外すだけ）
+             */
+            to?: number;
+        };
+        OrganizeMerge: {
+            items: components["schemas"]["OrganizeRefs"];
+            /**
+             * Format: int64
+             * @description 落とした先のグループ。`items` は少なくとも 1 つのグループを含む
+             */
+            into: number;
+            /**
+             * Format: int64
+             * @description カードをドラッグして出した開いているグループ。グループのページが送り、ライブラリは送らない。
+             *     あればカードはマージと同じ取引でここから外れる
+             */
+            from?: number;
+        };
+        OrganizeBundle: {
+            /** @description ドラッグした動画の id */
+            videoIds: number[];
+            /**
+             * Format: int64
+             * @description 落とした先の動画。新しい集まりの代表になる
+             */
+            target: number;
+        };
+        OrganizeUndo: {
+            /** @description 操作の応答の `undoToken` */
+            token: string;
         };
         GroupTagResult: {
             tag: components["schemas"]["TagRef"];
@@ -4626,7 +4878,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -8636,7 +8888,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["GroupName"];
+                "application/json": components["schemas"]["GroupRename"];
             };
         };
         responses: {
@@ -8806,6 +9058,177 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    organizeReorder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeReorder"];
+            };
+        };
+        responses: {
+            /** @description 並べ替えた。取り消しのトークン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    organizeGroup: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeGroup"];
+            };
+        };
+        responses: {
+            /** @description グループを作った。新しいグループの id と取り消しのトークン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    organizeMove: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeMove"];
+            };
+        };
+        responses: {
+            /** @description 動かした。取り消しのトークン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    organizeMerge: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeMerge"];
+            };
+        };
+        responses: {
+            /** @description マージした。取り消しのトークン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    organizeBundle: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeBundle"];
+            };
+        };
+        responses: {
+            /** @description 束ねた。取り消しのトークン */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrganizeResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    organizeUndo: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["OrganizeUndo"];
+            };
+        };
+        responses: {
+            /** @description 取り消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+            /** @description 取り消しのトークンが無い、使い済み、または 10 分より古い */
+            410: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     setFolderGrouping: {

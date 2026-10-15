@@ -1,4 +1,5 @@
 import {
+  type ReactNode,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -10,6 +11,7 @@ import { useLocation } from "react-router";
 
 import {
   type LibraryGroup,
+  type LibraryItem,
   listLibraryIds,
   type TagRef,
   type Video,
@@ -22,7 +24,7 @@ import {
   takeListSnapshot,
 } from "../api/listSnapshot";
 import type { CreditKind } from "../api/credits";
-import { itemKey } from "../api/libraryItems";
+import { itemKey, itemVideo } from "../api/libraryItems";
 import { refreshTags, revalidateTags } from "../api/tags";
 import { useVideos } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
@@ -50,7 +52,10 @@ import {
   type ListCriteria,
   newSeed,
 } from "../videoList/listCriteria";
+import { DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
+import { useUndoToast } from "../videoList/undoToast";
+import { useVideoDrops } from "../videoList/useVideoDrops";
 import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { GuestEmpty, LoadFailed, LoadMoreFailed, NoMatches } from "../videoList/states";
 import { useListCriteria } from "../videoList/useListCriteria";
@@ -70,6 +75,12 @@ import {
 import CardTagRow from "./CardTagRow";
 import EmptyLibrary from "./EmptyLibrary";
 import { GroupCard, GroupRow } from "./GroupCard";
+import {
+  DraggableGroupRow,
+  DraggableVideoRow,
+  LibraryDragLayer,
+  useLibraryMoves,
+} from "./LibraryDrag";
 import LibraryToolbar from "./LibraryToolbar";
 import {
   emptySelection,
@@ -100,6 +111,16 @@ import {
 } from "./tagCriteria";
 
 const skeletonCount = 12;
+
+/** libraryGroupItem は「Make a group」の新しいグループの項目である。 */
+function libraryGroupItem(group: LibraryGroup): LibraryItem {
+  return { kind: "group", group };
+}
+
+/** itemGroup は項目がグループならそのグループである。 */
+function itemGroup(item: LibraryItem): LibraryGroup | undefined {
+  return item.kind === "group" ? item.group : undefined;
+}
 
 /** ライブラリだけが URL に持つ条件（タグ、人物、団体）。 */
 const libraryParams = [TAG_PARAM, PERSON_PARAM, ORGANIZATION_PARAM];
@@ -355,6 +376,24 @@ export default function LibraryPage() {
     setSelectAllSelection(null);
   }, [invalidateSelectAll]);
 
+  // --- ドラッグ（specs/050-drag-organize/ui-design.md「Library」） ---
+  // グループへ落として移すかマージした項目はすぐ隠し、動画を動画に落とした結果はすぐ見せる。
+  // 取り消しの通知は画面を離れると閉じる。
+  const moves = useLibraryMoves(items, refreshInPlace, clearSelection);
+  const undo = useUndoToast(refreshInPlace);
+  const drops = useVideoDrops({
+    items: moves.visible,
+    keyOf: itemKey,
+    videoOf: itemVideo,
+    groupOf: itemGroup,
+    from: null,
+    groupItem: libraryGroupItem,
+    reread: refreshInPlace,
+    onAccepted: clearSelection,
+    undo,
+  });
+  const shown = drops.shown;
+
   // --- 「すべて選択」 ---
   // 読み込んでいないページを含む、今の条件の全件の id を選ぶ。応答の `groups` は
   // 選んだグループにする（035 research.md R-7）。
@@ -509,6 +548,9 @@ export default function LibraryPage() {
   }, [reload, scan.finished]);
 
   const saveSnapshot = useCallback(() => {
+    // 落とした結果をまだ重ねている間（サーバーの答えか読み直しの前）の一覧は控えにしない。
+    // 操作の成功は控えを捨てるので、ここで古い並びを覚え直すと戻ったときにそれが出てしまう。
+    if (shown !== items) return;
     saveListSnapshot(
       { ...criteria, tags: tagIds, ...credits },
       {
@@ -521,7 +563,7 @@ export default function LibraryPage() {
         staleGroups: staleGroups(),
       },
     );
-  }, [credits, criteria, cursor, hasMore, items, staleGroups, tagIds, total]);
+  }, [credits, criteria, cursor, hasMore, items, shown, staleGroups, tagIds, total]);
 
   // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -646,6 +688,7 @@ export default function LibraryPage() {
     onPreviewStart: startPreview,
     onPreviewReset: resetPreview,
     tagsRow: renderGroupTagsRow,
+    nameField: drops.nameFieldFor(group.id),
   });
 
   const rowProps = (video: Video) => ({
@@ -660,6 +703,50 @@ export default function LibraryPage() {
     onPreviewReset: resetPreview,
     tagsRow: renderTagsRow,
   });
+
+  // 所有者のカードと行はドラッグの層に加わる。ゲストは今のまま。
+  const card = (item: LibraryItem) => {
+    const node =
+      item.kind === "video" ? (
+        <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
+      ) : (
+        <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
+      );
+    return owner ? (
+      <DraggableCard key={itemKey(item)} id={itemKey(item)}>
+        {node}
+      </DraggableCard>
+    ) : (
+      node
+    );
+  };
+  const row = (item: LibraryItem) => {
+    if (item.kind === "video") {
+      const Row = owner ? DraggableVideoRow : VideoRow;
+      return <Row key={itemKey(item)} {...rowProps(item.video)} />;
+    }
+    const Row = owner ? DraggableGroupRow : GroupRow;
+    return <Row key={itemKey(item)} {...groupProps(item.group)} />;
+  };
+  const withDrag = (content: ReactNode) =>
+    owner ? (
+      <LibraryDragLayer
+        items={shown}
+        list={view === "list"}
+        selection={selection}
+        onto={drops.onto}
+        onDrop={drops.hold}
+        onMove={moves.move}
+        onMerge={moves.merge}
+        onLift={resetPreview}
+        held={drops.held}
+        attached={drops.attached}
+      >
+        {content}
+      </LibraryDragLayer>
+    ) : (
+      content
+    );
 
   const body = initialLoadFailed ? (
     <LoadFailed reason={error} onRetry={reload} />
@@ -678,34 +765,22 @@ export default function LibraryPage() {
     />
   ) : (
     <div ref={list} onClick={saveSnapshot}>
-      {view === "grid" ? (
-        // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
-        <TagRowMeasureProvider>
-          <Grid zoom={zoom}>
-            {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
+      {withDrag(
+        view === "grid" ? (
+          // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
+          <TagRowMeasureProvider>
+            <Grid zoom={zoom}>
+              {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
                 見出しは設けない（ui-design.md「Screen boundary」、要件 15）。 */}
-            {items.map((item) =>
-              item.kind === "video" ? (
-                <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
-              ) : (
-                <GroupCard key={itemKey(item)} {...groupProps(item.group)} />
-              ),
-            )}
-          </Grid>
-        </TagRowMeasureProvider>
-      ) : (
-        <DataTable label={t.library.title}>
-          <LibraryTableHeader owner={owner} />
-          <TableBody>
-            {items.map((item) =>
-              item.kind === "video" ? (
-                <VideoRow key={itemKey(item)} {...rowProps(item.video)} />
-              ) : (
-                <GroupRow key={itemKey(item)} {...groupProps(item.group)} />
-              ),
-            )}
-          </TableBody>
-        </DataTable>
+              {shown.map(card)}
+            </Grid>
+          </TagRowMeasureProvider>
+        ) : (
+          <DataTable label={t.library.title}>
+            <LibraryTableHeader owner={owner} />
+            <TableBody>{shown.map(row)}</TableBody>
+          </DataTable>
+        ),
       )}
     </div>
   );

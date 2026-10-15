@@ -285,6 +285,8 @@ type Options struct {
 	FolderGroups FolderGroups
 	// Groups はグループの編集の保存先。nilならグループの作成と編集の経路は500を返す。
 	Groups Groups
+	// Organizer はドラッグの操作とその取り消しの先。nilなら /api/organize/* は500を返す。
+	Organizer Organizer
 	// Library はライブラリの項目（動画とグループ）の問い合わせ先。nilなら
 	// /api/library*・グループ1件の経路は500を返す。
 	Library LibraryItems
@@ -377,6 +379,7 @@ type server struct {
 	folders          Folders
 	folderGroups     FolderGroups
 	groups           Groups
+	organizer        Organizer
 	library          LibraryItems
 	transcoder       Transcoder
 	// transcodeSettings はライブ変換の映像エンコード方式の設定（nil なら software）。
@@ -465,6 +468,7 @@ func NewRouter(opts Options) http.Handler {
 		folders:                opts.Folders,
 		folderGroups:           opts.FolderGroups,
 		groups:                 opts.Groups,
+		organizer:              opts.Organizer,
 		library:                opts.Library,
 		transcoder:             opts.Transcoder,
 		transcodeProbes:        opts.TranscodeProbes,
@@ -614,6 +618,7 @@ func requiresPostJSONBody(path string) bool {
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
 		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists", "/api/groups",
+		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
 		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
 		"/api/v1/organizations/merge", "/api/v1/organizations/delete":
@@ -930,6 +935,8 @@ const (
 	reasonContentChanged                = gen.ErrorReasonContentChanged
 	reasonThumbnailUploadTooLarge       = gen.ErrorReasonThumbnailUploadTooLarge
 	reasonThumbnailUploadInvalid        = gen.ErrorReasonThumbnailUploadInvalid
+	reasonUndoConflict                  = gen.ErrorReasonUndoConflict
+	reasonUndoExpired                   = gen.ErrorReasonUndoExpired
 )
 
 // writeError は JSON のエラーを書き出す。message は英語にし、OS や外部プログラムの

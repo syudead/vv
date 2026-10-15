@@ -178,17 +178,19 @@ export function createGroup(
 
 /**
  * renameGroup はグループの名前を変え、前後を削った名前の値を返す（PATCH /api/groups/{id}）。
+ * `undoToken` にこのグループを作った「Make a group」のトークンを渡すと、名前の変更がその取り消しに
+ * 含まれる（specs/050-drag-organize/contracts/screen-api.md）。トークンが使えなくても名前は変わる。
  * 成功したら一覧の控えを捨てる（ライブラリのカードの名前が変わる）。
  */
 export async function renameGroup(
   id: number,
   name: string,
-  signal?: AbortSignal,
+  { undoToken, signal }: { undoToken?: string; signal?: AbortSignal } = {},
 ): Promise<LibraryGroup> {
   const group = await request<LibraryGroup>(groupPath(id), {
     method: "PATCH",
     headers: jsonHeaders,
-    body: JSON.stringify({ name }),
+    body: JSON.stringify(undoToken === undefined ? { name } : { name, undoToken }),
     signal,
   });
   clearListSnapshot();

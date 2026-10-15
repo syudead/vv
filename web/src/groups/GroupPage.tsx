@@ -54,11 +54,21 @@ import { PageHeader } from "../ui/patterns/page-header";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
+import { crumbKey, CrumbDropTarget, DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
+import { type UndoToast, useUndoToast } from "../videoList/undoToast";
+import { useVideoDrops } from "../videoList/useVideoDrops";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard from "../videoList/VideoCard";
 import { GroupChangedContext } from "./groupChanges";
+import {
+  type GroupDestination,
+  GroupDragLayer,
+  type GroupDropOnto,
+  itemKey,
+  type MoveDestination,
+} from "./GroupDrag";
 import { type GroupItemEditing, GroupItemList } from "./GroupItemList";
 import { reconcileGroupSelection, selectAllInGroup, selectedItemIds } from "./groupItems";
 import GroupMenu from "./GroupMenu";
@@ -80,6 +90,24 @@ const skeletonCount = 12;
 /** noTrail は読めていない間の道筋（ライブラリへ移る）。描画ごとに作らない。 */
 const noTrail: readonly GroupRef[] = [];
 
+/** noItems は読めていない間の項目。描画ごとに作らない。 */
+const noItems: readonly GroupItem[] = [];
+
+/** itemVideo は項目が動画ならその動画である（ドラッグの落とし方を決める）。 */
+function itemVideo(item: GroupItem): Video | undefined {
+  return item.kind === "video" ? item.video : undefined;
+}
+
+/** itemGroup は項目が子グループならそのグループである。 */
+function itemGroup(item: GroupItem): LibraryGroup | undefined {
+  return item.kind === "group" ? item.group : undefined;
+}
+
+/** newGroupItem は「Make a group」の新しいグループを、仮の項目 `itemId` として置く。 */
+function newGroupItem(group: LibraryGroup, itemId: number): GroupItem {
+  return { id: itemId, kind: "group", group };
+}
+
 /**
  * GroupPage はグループ 1 つを開いた画面（`/groups/{id}?trail=`）である
  * （specs/048-groups/ui-design.md「Group page」）。上のバーの下に道筋の帯、見出しにグループの
@@ -98,6 +126,52 @@ export default function GroupPage() {
   return (
     <GroupScreen key={`${params.id ?? ""}?${trail.join(",")}`} id={id} trail={trail} />
   );
+}
+
+/**
+ * useGroupPageDrops は動画を動画に落としたときの「Make a group」と「Bundle as versions」である。
+ * 新しいグループは落とした先の項目の位置を取る（specs/050-drag-organize/ui-design.md
+ * 「Group page」、R-6）。`shownData` はサーバーが答える前の結果を重ねた中身である。
+ */
+function useGroupPageDrops({
+  data,
+  id,
+  refresh,
+  clear,
+  undo,
+}: {
+  data: GroupPageData | null;
+  id: number | null;
+  refresh: () => void;
+  clear: () => void;
+  undo: UndoToast;
+}) {
+  const drops = useVideoDrops({
+    items: data?.items ?? noItems,
+    keyOf: itemKey,
+    videoOf: itemVideo,
+    groupOf: itemGroup,
+    from: id,
+    groupItem: newGroupItem,
+    reread: refresh,
+    onAccepted: clear,
+    undo,
+  });
+  const shownItems = drops.shown;
+  const shownData = useMemo(
+    () => (data === null ? null : { ...data, items: shownItems as GroupItem[] }),
+    [data, shownItems],
+  );
+  const dropOnto = useMemo(
+    (): GroupDropOnto => ({
+      onto: drops.onto,
+      onDrop: drops.hold,
+      held: drops.held,
+      attached: drops.attached,
+    }),
+    [drops.attached, drops.held, drops.hold, drops.onto],
+  );
+  return { shownData, dropOnto, nameFieldFor: drops.nameFieldFor };
 }
 
 /** useDocumentTitle は名前が分かっている間だけ、窓の題をその名前にする。 */
@@ -237,6 +311,9 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   const dissolvedByRemoval = useCallback(() => {
     if (name !== undefined) leave(t.groups.dissolved(name));
   }, [leave, name]);
+  // 取り消しの通知は画面を離れると閉じる。取り消したら静かに読み直す
+  // （specs/050-drag-organize/ui-design.md「Undo toast」）。
+  const undo = useUndoToast(refresh);
   const edits = useGroupEdits({
     id,
     update,
@@ -245,6 +322,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     movesSent,
     refresh,
     onDissolved: dissolvedByRemoval,
+    undo,
   });
   const { preferences, save } = useViewPreferences();
   const { view, zoom } = preferences;
@@ -299,6 +377,15 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   );
 
   const { clear } = selection;
+
+  const { shownData, dropOnto, nameFieldFor } = useGroupPageDrops({
+    data,
+    id,
+    refresh,
+    clear,
+    undo,
+  });
+
   const afterBulk = useCallback(() => {
     clear();
     refresh();
@@ -314,7 +401,31 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     if (data !== null) removeSelected(removable, data.group.name, clear);
   }, [clear, data, removable, removeSelected]);
 
-  const { focus } = edits;
+  const { focus, reorder, move, merge } = edits;
+  const reorderItems = useCallback(
+    (itemIds: readonly number[], after: number | null) => {
+      if (data !== null) reorder(itemIds, after, data.group.name);
+    },
+    [data, reorder],
+  );
+  // 子グループ・祖先・ライブラリへ移したかマージした項目は画面から消えるので、選択を解く
+  // （specs/050-drag-organize/ui-design.md「Group page」）。
+  const moveItems = useCallback(
+    (moved: readonly GroupItem[], to: MoveDestination) => {
+      if (data === null) return;
+      move(moved, to, data.group.name);
+      clear();
+    },
+    [clear, data, move],
+  );
+  const mergeItems = useCallback(
+    (merged: readonly GroupItem[], into: GroupDestination) => {
+      merge(merged, into);
+      clear();
+    },
+    [clear, merge],
+  );
+
   const renamed = useCallback(
     (group: LibraryGroup) => {
       update((current) => ({ ...current, group }));
@@ -333,115 +444,140 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     [id, refresh],
   );
 
+  const page = (
+    <ListPage
+      header={
+        <GroupHeader
+          state={state}
+          trail={trail}
+          id={id}
+          owner={owner}
+          listUrl={listUrl}
+          menu={
+            owner &&
+            data !== null && (
+              <GroupMenu
+                group={data.group}
+                moreRef={edits.moreRef}
+                onRenamed={renamed}
+                onLeave={leave}
+                onGone={markGone}
+              />
+            )
+          }
+          titleRef={edits.titleRef}
+        />
+      }
+      toolbar={
+        <TopBarPortal>
+          <Toolbar
+            placement="topBar"
+            view={viewControls(view, changeView, zoom, changeZoom)}
+            viewLabel={t.library.view.label}
+          />
+        </TopBarPortal>
+      }
+      selectionBar={
+        owner &&
+        data !== null && (
+          <SelectionBar
+            count={selection.selection.ids.size}
+            allSelected={selection.allSelected}
+            selectedIds={selectedIds}
+            favoriteVideoIds={favorites.videoIds}
+            favoriteGroupIds={favorites.groupIds}
+            selectingAll={false}
+            onSelectAll={selection.selectAll}
+            onClear={selection.clear}
+            onTagRemoved={refresh}
+            onBundled={afterBulk}
+            removeFromGroup={{
+              count: removable.length,
+              pending: edits.removingSelected,
+              onRemove: removeChosen,
+            }}
+          />
+        )
+      }
+    >
+      {state.kind === "loading" && (
+        <LoadingState
+          label={t.list.loading}
+          layout={view === "grid" ? "grid" : "table"}
+          size={zoom}
+          count={view === "grid" ? skeletonCount : 6}
+        />
+      )}
+      {state.kind === "failed" && (
+        <ErrorState
+          title={t.groups.detail.loadFailed}
+          retryLabel={t.common.retry}
+          onRetry={reload}
+        />
+      )}
+      {state.kind === "gone" && <GoneState />}
+      {shownData !== null && id !== null && shownData.items.length > 0 && (
+        <div ref={listRef}>
+          <GroupItems
+            id={id}
+            data={shownData}
+            view={view}
+            zoom={zoom}
+            listUrl={listUrl}
+            owner={owner}
+            selection={selection}
+            selectionMode={selectionMode}
+            preview={preview.cardProps}
+            onPressTag={pressTag}
+            editing={
+              owner
+                ? {
+                    removing: edits.removing,
+                    onRemove: edits.removeOne,
+                    removeRef: edits.removeRef,
+                  }
+                : undefined
+            }
+            draggable={owner}
+            nameFieldFor={nameFieldFor}
+          />
+        </div>
+      )}
+      {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}
+      {more === "failed" && (
+        <LoadMoreRow
+          status="failed"
+          title={t.player.related.moreFailed}
+          retryLabel={t.common.retry}
+          onRetry={loadMore}
+        />
+      )}
+      <div ref={sentinel} aria-hidden="true" className="h-px" />
+    </ListPage>
+  );
+
+  // 所有者の画面は道筋の帯から本体までをドラッグの層で包む。帯の段も落とす先になる
+  // （specs/050-drag-organize/ui-design.md「Group page」）。
   return (
     <GroupChangedContext value={groupChanged}>
-      <ListPage
-        header={
-          <GroupHeader
-            state={state}
-            trail={trail}
-            id={id}
-            listUrl={listUrl}
-            menu={
-              owner &&
-              data !== null && (
-                <GroupMenu
-                  group={data.group}
-                  moreRef={edits.moreRef}
-                  onRenamed={renamed}
-                  onLeave={leave}
-                  onGone={markGone}
-                />
-              )
-            }
-            titleRef={edits.titleRef}
-          />
-        }
-        toolbar={
-          <TopBarPortal>
-            <Toolbar
-              placement="topBar"
-              view={viewControls(view, changeView, zoom, changeZoom)}
-              viewLabel={t.library.view.label}
-            />
-          </TopBarPortal>
-        }
-        selectionBar={
-          owner &&
-          data !== null && (
-            <SelectionBar
-              count={selection.selection.ids.size}
-              allSelected={selection.allSelected}
-              selectedIds={selectedIds}
-              favoriteVideoIds={favorites.videoIds}
-              favoriteGroupIds={favorites.groupIds}
-              selectingAll={false}
-              onSelectAll={selection.selectAll}
-              onClear={selection.clear}
-              onTagRemoved={refresh}
-              onBundled={afterBulk}
-              removeFromGroup={{
-                count: removable.length,
-                pending: edits.removingSelected,
-                onRemove: removeChosen,
-              }}
-            />
-          )
-        }
-      >
-        {state.kind === "loading" && (
-          <LoadingState
-            label={t.list.loading}
-            layout={view === "grid" ? "grid" : "table"}
-            size={zoom}
-            count={view === "grid" ? skeletonCount : 6}
-          />
-        )}
-        {state.kind === "failed" && (
-          <ErrorState
-            title={t.groups.detail.loadFailed}
-            retryLabel={t.common.retry}
-            onRetry={reload}
-          />
-        )}
-        {state.kind === "gone" && <GoneState />}
-        {data !== null && id !== null && data.items.length > 0 && (
-          <div ref={listRef}>
-            <GroupItems
-              id={id}
-              data={data}
-              view={view}
-              zoom={zoom}
-              listUrl={listUrl}
-              owner={owner}
-              selection={selection}
-              selectionMode={selectionMode}
-              preview={preview.cardProps}
-              onPressTag={pressTag}
-              editing={
-                owner
-                  ? {
-                      removing: edits.removing,
-                      onMove: edits.move,
-                      onRemove: edits.removeOne,
-                      removeRef: edits.removeRef,
-                    }
-                  : undefined
-              }
-            />
-          </div>
-        )}
-        {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}
-        {more === "failed" && (
-          <LoadMoreRow
-            status="failed"
-            title={t.player.related.moreFailed}
-            retryLabel={t.common.retry}
-            onRetry={loadMore}
-          />
-        )}
-        <div ref={sentinel} aria-hidden="true" className="h-px" />
-      </ListPage>
+      {owner ? (
+        <GroupDragLayer
+          items={shownData?.items ?? noItems}
+          list={view === "list"}
+          trail={data?.trail ?? noTrail}
+          name={data?.group.name ?? ""}
+          selectedItems={removable}
+          onReorder={reorderItems}
+          onMove={moveItems}
+          onMerge={mergeItems}
+          onLift={resetPreview}
+          dropOnto={dropOnto}
+        >
+          {page}
+        </GroupDragLayer>
+      ) : (
+        page
+      )}
     </GroupChangedContext>
   );
 }
@@ -470,6 +606,7 @@ function GroupHeader({
   state,
   trail,
   id,
+  owner,
   listUrl,
   menu,
   titleRef,
@@ -477,6 +614,8 @@ function GroupHeader({
   state: ReturnType<typeof useGroupPage>["state"];
   trail: readonly number[];
   id: number | null;
+  /** 所有者なら道筋の段を落とす先にする。 */
+  owner: boolean;
   listUrl: string;
   /** 所有者の「More」。ゲストには無い。 */
   menu: ReactNode;
@@ -485,7 +624,7 @@ function GroupHeader({
   if (state.kind === "loading") {
     return (
       <>
-        <Breadcrumbs label={t.groups.trail} crumbs={loadingCrumbs(trail)} />
+        <Breadcrumbs label={t.groups.trail} crumbs={loadingCrumbs(trail)} keepFirst />
         <PageHeader
           title={
             <>
@@ -501,17 +640,24 @@ function GroupHeader({
     // 読めなかったときと無くなったときは、見せられないものの名前を出さない。
     return (
       <>
-        <Breadcrumbs label={t.groups.trail} crumbs={[{ label: t.library.title }]} />
+        <Breadcrumbs
+          label={t.groups.trail}
+          crumbs={[{ label: t.library.title }]}
+          keepFirst
+        />
         <PageHeader title={t.library.title} />
       </>
     );
   }
   const { group } = state.data;
+  const crumbs = trailCrumbs(state.data.trail, group.name);
   return (
     <>
       <Breadcrumbs
         label={t.groups.trail}
-        crumbs={trailCrumbs(state.data.trail, group.name)}
+        crumbs={crumbs}
+        keepFirst
+        target={owner ? crumbTarget(crumbs.length - 1) : undefined}
       />
       <PageHeader
         titleRef={titleRef}
@@ -544,6 +690,21 @@ function GroupHeader({
         }
       />
     </>
+  );
+}
+
+/**
+ * crumbTarget は所有者の道筋の段を落とす先にする口である（ui-design.md「Indicators」）。
+ * 「Library」と祖先の段は受け、開いているグループの段 `current` と畳んだ「…」は拒否する。
+ */
+function crumbTarget(current: number) {
+  return (index: number | "ellipsis", content: ReactNode) => (
+    <CrumbDropTarget
+      id={crumbKey(index)}
+      refused={index === "ellipsis" || index === current}
+    >
+      {content}
+    </CrumbDropTarget>
   );
 }
 
@@ -586,6 +747,8 @@ function GroupItems({
   preview,
   onPressTag,
   editing,
+  draggable,
+  nameFieldFor,
 }: {
   id: number;
   data: GroupPageData;
@@ -597,12 +760,31 @@ function GroupItems({
   selectionMode: boolean;
   preview: ReturnType<typeof usePreviewCoordination>["cardProps"];
   onPressTag: (tag: TagRef) => void;
-  /** 所有者のリスト表示の並べ替えと `×`。ゲストには無い。 */
+  /** 所有者のリスト表示の `×`。ゲストには無い。 */
   editing?: GroupItemEditing;
+  /** 所有者ならカードを持ち上げられる（GroupDragLayer の中で描く）。ゲストには無い。 */
+  draggable: boolean;
+  /** 作ったばかりのグループの名前の欄（useVideoDrops）。所有者だけが渡す。 */
+  nameFieldFor?: (groupId: number) => ReactNode;
 }) {
   const ids = selection.selection.ids;
   const groupSelected = (group: LibraryGroup) =>
     isGroupSelected(selection.selection, group.id);
+  const itemSelected = useCallback(
+    (item: GroupItem) =>
+      item.group !== undefined
+        ? isGroupSelected(selection.selection, item.group.id)
+        : item.video !== undefined && selection.selection.ids.has(item.video.id),
+    [selection.selection],
+  );
+  const cell = (item: GroupItem, card: ReactNode) =>
+    !draggable ? (
+      card
+    ) : (
+      <DraggableCard key={item.id} id={itemKey(item)}>
+        {card}
+      </DraggableCard>
+    );
   const { toggleVideoSelection, toggleGroupSelection } = selection;
 
   const videoTags = useCallback(
@@ -638,12 +820,10 @@ function GroupItems({
           position: index + 1,
           to: groupItemPath(item, data.trail, id),
           backTo: listUrl,
-          selected:
-            item.group !== undefined
-              ? groupSelected(item.group)
-              : item.video !== undefined && ids.has(item.video.id),
+          selected: itemSelected(item),
           selectionMode,
           onSelect: owner ? selection.changeItem : undefined,
+          nameField: item.group === undefined ? undefined : nameFieldFor?.(item.group.id),
         })}
       />
     );
@@ -653,31 +833,38 @@ function GroupItems({
     <TagRowMeasureProvider>
       <Grid zoom={zoom}>
         {data.items.map((item) =>
-          item.kind === "group" && item.group !== undefined ? (
-            <GroupCard
-              key={item.id}
-              group={item.group}
-              to={groupItemPath(item, data.trail, id)}
-              backTo={listUrl}
-              selected={groupSelected(item.group)}
-              selectionMode={selectionMode}
-              onSelect={owner ? selection.changeGroup : undefined}
-              tagsRow={groupTags}
-              {...preview}
-            />
-          ) : item.video !== undefined ? (
-            <VideoCard
-              key={item.id}
-              video={item.video}
-              to={groupItemPath(item, data.trail, id)}
-              backTo={listUrl}
-              selected={ids.has(item.video.id)}
-              selectionMode={selectionMode}
-              onSelect={owner ? selection.changeVideo : undefined}
-              tagsRow={videoTags}
-              {...preview}
-            />
-          ) : null,
+          item.kind === "group" && item.group !== undefined
+            ? cell(
+                item,
+                <GroupCard
+                  key={item.id}
+                  group={item.group}
+                  to={groupItemPath(item, data.trail, id)}
+                  backTo={listUrl}
+                  selected={groupSelected(item.group)}
+                  selectionMode={selectionMode}
+                  onSelect={owner ? selection.changeGroup : undefined}
+                  tagsRow={groupTags}
+                  nameField={nameFieldFor?.(item.group.id)}
+                  {...preview}
+                />,
+              )
+            : item.video !== undefined
+              ? cell(
+                  item,
+                  <VideoCard
+                    key={item.id}
+                    video={item.video}
+                    to={groupItemPath(item, data.trail, id)}
+                    backTo={listUrl}
+                    selected={ids.has(item.video.id)}
+                    selectionMode={selectionMode}
+                    onSelect={owner ? selection.changeVideo : undefined}
+                    tagsRow={videoTags}
+                    {...preview}
+                  />,
+                )
+              : null,
         )}
       </Grid>
     </TagRowMeasureProvider>

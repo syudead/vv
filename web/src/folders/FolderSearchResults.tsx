@@ -1,16 +1,15 @@
 import type { ReactNode } from "react";
 
 import type { FolderRef, Video } from "../api/client";
-import { itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
 import { t } from "../i18n";
 import type { Zoom } from "../preferences/viewPreferences";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
-import { CardGrid } from "../ui/patterns/card-grid";
 import { resultCountText } from "../videoList/listSummary";
 import type { PreviewCardProps } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
 import { folderLocationLabel } from "./folderPath";
+import FolderVideoGrid from "./FolderVideoGrid";
 import { CardsLoading, LoadFailed, MoreRow, NoMatches, ResultCount } from "./states";
 
 /**
@@ -57,8 +56,11 @@ export default function FolderSearchResults({
             <CardsLoading zoom={zoom} count={12} />
           ) : (
             <TagRowMeasureProvider>
-              <CardGrid size={zoom}>
-                {itemVideos(videos.items).map((video) => (
+              <FolderVideoGrid
+                videos={videos}
+                zoom={zoom}
+                onLift={preview.onPreviewReset}
+                card={(video) => (
                   <VideoCard
                     key={video.id}
                     video={video}
@@ -73,8 +75,8 @@ export default function FolderSearchResults({
                         : folderLocationLabel(folder, video.folder)
                     }
                   />
-                ))}
-              </CardGrid>
+                )}
+              />
             </TagRowMeasureProvider>
           )}
           <MoreRow

@@ -70,3 +70,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Work information on videos (work details row, in-place editor, person and organization filter, people and organizations screens): UI](../../specs/047-video-work-info/ui-design.md)
 - [Groups of any videos and groups (group page with a trail, New group, Add to group, the video page's group context): UI](../../specs/048-groups/ui-design.md)
 - [Work-info plugins (settings section, approval prompt, setting values, fetch entry and dialog with the comparison): UI](../../specs/049-work-info-plugins/ui-design.md)
+- [Drag and drop to reorder, group, merge and bundle (drop indicators, drop menus, the new group's name field, the undo toast): UI](../../specs/050-drag-organize/ui-design.md)

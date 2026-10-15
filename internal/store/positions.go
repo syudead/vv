@@ -85,18 +85,61 @@ func moveItemAfter(ctx context.Context, tx *sql.Tx, t positionTable, parentID, i
 	if err != nil {
 		return false, err
 	}
-	from := slices.Index(order, itemID)
-	if from < 0 || (afterItemID != nil && !slices.Contains(order, *afterItemID)) {
-		return false, errPositionItemNotFound
-	}
 	if afterItemID != nil && *afterItemID == itemID {
+		if !slices.Contains(order, itemID) {
+			return false, errPositionItemNotFound
+		}
 		return false, nil
 	}
-	order = slices.Delete(order, from, from+1)
+	placed, err := placeAfter(order, []int64{itemID}, afterItemID)
+	if err != nil {
+		return false, err
+	}
+	return true, writePositionOrder(ctx, tx, t, placed)
+}
+
+// placeItemsAfter は親 parentID の項目 itemIDs を、その順のまままとめて項目 afterItemID のすぐ
+// 後ろへ移し（nil なら先頭）、親を 0 から詰め直す（specs/050-drag-organize/data-model.md
+// 「Operations」の Reorder）。規則は placeAfter のとおりで、誤りなら何も書かない。
+func placeItemsAfter(ctx context.Context, tx *sql.Tx, t positionTable, parentID int64, itemIDs []int64, afterItemID *int64) error {
+	order, err := positionOrder(ctx, tx, t, parentID)
+	if err != nil {
+		return err
+	}
+	placed, err := placeAfter(order, itemIDs, afterItemID)
+	if err != nil {
+		return err
+	}
+	return writePositionOrder(ctx, tx, t, placed)
+}
+
+// placeAfter は並び order から項目 itemIDs を抜き、その順のまままとめて項目 afterItemID の
+// すぐ後ろ（nil なら先頭）へ入れた並びを返す。itemIDs の重複は最初の 1 つだけを数える。どれかの
+// 項目が order に無いか、afterItemID が order に無いか itemIDs の中にあれば errPositionItemNotFound。
+func placeAfter(order, itemIDs []int64, afterItemID *int64) ([]int64, error) {
+	present := make(map[int64]bool, len(order))
+	for _, id := range order {
+		present[id] = true
+	}
+	movedSet := make(map[int64]bool, len(itemIDs))
+	moved := make([]int64, 0, len(itemIDs))
+	for _, id := range itemIDs {
+		if !present[id] {
+			return nil, errPositionItemNotFound
+		}
+		if !movedSet[id] {
+			movedSet[id] = true
+			moved = append(moved, id)
+		}
+	}
+	rest := slices.DeleteFunc(slices.Clone(order), func(id int64) bool { return movedSet[id] })
 	to := 0
 	if afterItemID != nil {
-		to = slices.Index(order, *afterItemID) + 1
+		at := slices.Index(rest, *afterItemID)
+		if at < 0 {
+			return nil, errPositionItemNotFound
+		}
+		to = at + 1
 	}
-	order = slices.Insert(order, to, itemID)
-	return true, writePositionOrder(ctx, tx, t, order)
+	return slices.Insert(rest, to, moved...), nil
 }
