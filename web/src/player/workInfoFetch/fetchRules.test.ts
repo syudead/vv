@@ -44,6 +44,11 @@ function result(overrides: Partial<WorkInfoFetch> = {}): WorkInfoFetch {
     expiresAt: 0,
     title: "新しい題名",
     tags: ["新規"],
+    dates: [],
+    people: [],
+    organizations: [],
+    urls: [],
+    externalIds: [],
     ...overrides,
   };
 }

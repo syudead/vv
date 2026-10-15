@@ -167,6 +167,24 @@ keep reaching the LAN, where those services run.
 | Returning the refusal to the plugin only | The plugin could ignore it, and the owner would not see that it tried |
 | Separate connect, TLS and header timeouts | A slow site could then answer `-3` instead of `-4` before the 10 s request limit |
 
+## The fetch keeps the work details and their matches
+
+`WorkInfoPlugins.FetchWorkInfo` in
+[`internal/app/work_info_fetch.go`](../../internal/app/work_info_fetch.go)
+orders the fetched dates by kind and the people and organizations by role,
+then matches the people and organizations through `CreditStore.Match`. The
+details and the matches stay in the in-memory result with the title and the
+tags, for the same 10 minutes
+([049 research.md](../../specs/049-work-info-plugins/research.md) R-8). A
+result without people or organizations does not read the store.
+
+The matches are only shown: the screen marks each entry as linked, `New` or
+`Not linked` from them
+([052 screen-api.md](../../specs/052-plugin-work-info-fields/contracts/screen-api.md)).
+The apply matches again inside its transaction, as the next section shows.
+Before it writes anything, the apply refuses a selected field whose row has
+no value in the result with `invalid_request`.
+
 ## The apply merges the selected fields in one transaction
 
 `OverrideStore.ApplyFetchedWorkInfo` in

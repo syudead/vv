@@ -124,10 +124,24 @@ describe("work-info plugins API", () => {
       expiresAt: 1_800_000_600,
       title: "One",
       tags: ["drama"],
+      code: "ABC-123",
+      dates: [{ kind: "release", date: "2024-03-01" }],
+      people: [
+        {
+          role: "performer",
+          name: "Aoi",
+          externalIds: [],
+          match: { state: "existing", id: 3, name: "Aoi Sora" },
+        },
+      ],
+      organizations: [],
+      urls: [],
+      externalIds: [],
     };
     const applied = {
       video: { id: 7 },
       skippedTags: [{ name: "spoiler", reason: "rejected" }],
+      skipped: [{ field: "dates.release", value: "March 2024", reason: "invalid" }],
     };
     const fetchMock = vi
       .fn<typeof fetch>()

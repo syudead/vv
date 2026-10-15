@@ -2352,7 +2352,8 @@ paths:
       description: |
         所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を作品の `url`（http か https、2048 文字まで）で
         1 回動かし、結果を 10 分の間メモリに持って `201` で返す。動画は変えない。`title` は表示名の規則を
-        通ったもので、無いか規則に外れれば省く。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
+        通ったもので、無いか規則に外れれば省く。人物・団体は取得の時点の照合の答え `match` を持つ
+        （specs/052-plugin-work-info-fields/contracts/screen-api.md）。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
         宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
         specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである（research.md R-8）。
       parameters:
@@ -2390,7 +2391,9 @@ paths:
       operationId: applyWorkInfoFetch
       summary: 取得の結果のうち選んだ項目を動画に反映する
       description: |
-        所有者だけ。`fields` の項目（`title` は表示名、`tags` は仮のタグ）を 1 つの取引で書く。結果は使い切りで、
+        所有者だけ。`fields` の項目（`title` は表示名、`tags` は仮のタグ、ほかは作品情報）を 1 つの取引で書く。
+        作品情報の項目は保存済みの作品情報に重ね、規則に合わない値・上限を超える件・照合が曖昧な人物と団体は
+        飛ばして `skipped` で知らせる（specs/052-plugin-work-info-fields/contracts/screen-api.md）。結果は使い切りで、
         成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
         `skippedTags` で知らせ、付けない。`fields` が空か結果に値の無い項目を含めば `400` `invalid_request`、
         動画が無いか結果が別の動画のものなら `404` `not_found`、結果が期限切れか不明か、取得の後にプラグインが
@@ -2408,7 +2411,7 @@ paths:
               $ref: "#/components/schemas/ApplyWorkInfoFetchRequest"
       responses:
         "200":
-          description: 反映後の動画と、付けなかったタグの名前
+          description: 反映後の動画と、付けなかったタグの名前と、飛ばした作品情報の値
           content:
             application/json:
               schema:
@@ -5379,7 +5382,7 @@ components:
 
     WorkInfoFetch:
       type: object
-      required: [fetchId, expiresAt, tags]
+      required: [fetchId, expiresAt, tags, dates, people, organizations, urls, externalIds]
       additionalProperties: false
       description: メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8）
       properties:
@@ -5398,11 +5401,126 @@ components:
           description: 取得したタグの名前。空でもよい
           items:
             type: string
+        code:
+          type: string
+          description: 前後の空白を除いた品番。プラグインが返さなければ無い。規則に外れても残し、反映が飛ばす
+        description:
+          type: string
+          description: 前後の空白を除いた説明。プラグインが返さなければ無い
+        dates:
+          type: array
+          description: 種類の順（release・recorded・published）。無ければ []
+          items:
+            $ref: "#/components/schemas/WorkInfoFetchedDate"
+        people:
+          type: array
+          description: 役割の順、同じ役割の中は取得した順。無ければ []
+          items:
+            $ref: "#/components/schemas/WorkInfoFetchedPerson"
+        organizations:
+          type: array
+          description: 役割の順、同じ役割の中は取得した順。無ければ []
+          items:
+            $ref: "#/components/schemas/WorkInfoFetchedOrganization"
+        urls:
+          type: array
+          description: 取得した順。無ければ []
+          items:
+            type: string
+        externalIds:
+          type: array
+          description: 動画の外部 ID。取得した順。無ければ []
+          items:
+            $ref: "#/components/schemas/ExternalId"
+
+    WorkInfoFetchedDate:
+      type: object
+      required: [kind, date]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/WorkDateKind"
+        date:
+          type: string
+          description: プラグインが返した日付。形が規則に外れても残し、反映が飛ばす
+
+    WorkInfoMatchState:
+      type: string
+      description: |
+        取得した人物・団体の照合の答え。existing は既存の実体 1 つ、new は何にも当たらず反映が作る、
+        ambiguous は複数に当たり反映が飛ばす（specs/052-plugin-work-info-fields/research.md R-3）
+      enum: [existing, new, ambiguous]
+
+    WorkInfoMatch:
+      type: object
+      required: [state]
+      additionalProperties: false
+      properties:
+        state:
+          $ref: "#/components/schemas/WorkInfoMatchState"
+        id:
+          type: integer
+          format: int64
+          description: state が existing のときだけ。一致した実体
+        name:
+          type: string
+          description: state が existing のときだけ。一致した実体の今の名前
+
+    WorkInfoFetchedPerson:
+      type: object
+      required: [role, name, externalIds, match]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkPersonRole"
+        name:
+          type: string
+          description: プラグインが返した名前
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        match:
+          $ref: "#/components/schemas/WorkInfoMatch"
+
+    WorkInfoFetchedOrganization:
+      type: object
+      required: [role, name, externalIds, match]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkOrganizationRole"
+        name:
+          type: string
+          description: プラグインが返した名前
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        match:
+          $ref: "#/components/schemas/WorkInfoMatch"
 
     WorkInfoField:
       type: string
-      description: 動画に反映できる取得の結果の項目
-      enum: [title, tags]
+      description: |
+        動画に反映できる取得の結果の項目。比較の行の順
+        （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）
+      enum:
+        - title
+        - tags
+        - code
+        - description
+        - dates.release
+        - dates.recorded
+        - dates.published
+        - people.performer
+        - people.director
+        - people.photographer
+        - people.streamer
+        - organizations.maker
+        - organizations.label
+        - urls
+        - externalIds
 
     ApplyWorkInfoFetchRequest:
       type: object
@@ -5430,9 +5548,29 @@ components:
         reason:
           $ref: "#/components/schemas/SkippedTagReason"
 
+    SkippedWorkInfoReason:
+      type: string
+      description: |
+        反映で飛ばした理由。invalid は項目の規則に合わない値、too_many は保存済みの件の後に数えて上限を超える件、
+        ambiguous は複数の実体に当たった人物・団体
+      enum: [invalid, too_many, ambiguous]
+
+    SkippedWorkInfoValue:
+      type: object
+      required: [field, value, reason]
+      additionalProperties: false
+      properties:
+        field:
+          $ref: "#/components/schemas/WorkInfoField"
+        value:
+          type: string
+          description: "比較が見せた値（日付、URL、名前、`source: value`、説明は先頭 100 文字）"
+        reason:
+          $ref: "#/components/schemas/SkippedWorkInfoReason"
+
     WorkInfoFetchApplied:
       type: object
-      required: [video, skippedTags]
+      required: [video, skippedTags, skipped]
       additionalProperties: false
       properties:
         video:
@@ -5442,6 +5580,11 @@ components:
           description: 付けなかったタグの名前。取得の結果の順
           items:
             $ref: "#/components/schemas/SkippedTag"
+        skipped:
+          type: array
+          description: 題名とタグ以外の選んだ項目のうち反映で飛ばした値。項目の順、項目の中は取得した順
+          items:
+            $ref: "#/components/schemas/SkippedWorkInfoValue"
 
     ThumbnailEditState:
       type: string
