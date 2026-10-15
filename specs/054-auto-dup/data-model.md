@@ -51,7 +51,7 @@ Pairs removed from a bundle, never judged by the model
 | One judgement is `running` at a time | The single worker; the claim is one statement |
 | A `running` row left at startup returns to null, keeping `attempts` | `store`, at startup as `auto_tag_queue` recovers |
 | "Same video" bundles both sides unless a pair across them is dismissed or unbundled; otherwise the row becomes `undecided` ([R-6](research.md#r-6-a-same-pair-joins-two-sides-unless-a-pair-across-them-is-known-to-differ)) | `domain` (the check over two member sets), `store` (re-reads both inside the bundling transaction) |
-| "Same video" picks the representative by [R-7](research.md#r-7-the-representative-is-the-bundles-else-the-larger-picture), then bundles with `VersionStore.Bundle`'s steps | `domain` (the choice), `store` |
+| "Same video" picks the representative by [R-7](research.md#r-7-the-representative-keeps-the-owners-data-then-plays-best), then bundles with `VersionStore.Bundle`'s steps | `domain` (the choice), `store` |
 | "Different videos" writes `video_version_dismissals` and deletes the candidate, as the owner's "Different videos" does | `store` |
 | A result for a candidate that is gone or no longer `running` is discarded | `store` |
 | `Unbundle` writes the removed key paired with every other member, then rebuilds the removed key's candidates | `store` (`VersionStore.Unbundle`) |

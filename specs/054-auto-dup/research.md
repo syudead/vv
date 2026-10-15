@@ -185,23 +185,33 @@ sets and the recorded pairs; the store re-reads them inside its transaction
 ([ARCHITECTURE.md](../../ARCHITECTURE.md#cross-cutting-invariants)), so a
 dismissal saved by the owner while the model was answering still wins.
 
-## R-7: The representative is the bundle's, else the larger picture
+## R-7: The representative keeps the owner's data, then plays best
 
 **Decision**: When one side is in a bundle, that bundle's effective
-representative stays; when both are, the representative with more pixels
-wins; when neither is, the video with more pixels (width × height) is
-representative, then the larger file, then the smaller video id.
+representative stays (when both are, the two representatives are compared as
+below). Otherwise the first rule that tells the two apart picks it:
+
+| Order | Prefer the video that | Why |
+| --- | --- | --- |
+| 1 | Alone carries the owner's data: tags, playback position, visibility, display name, applied thumbnail image or work information | `VersionStore.Bundle` keeps the representative's values and sets the others aside, so any other choice would hide what the owner set |
+| 2 | Plays in the browser as it is (`playable`) | The other needs live transcoding |
+| 3 | Has an audio stream | A copy without sound is the worse one to play |
+| 4 | Has more pixels (width × height) | The better picture |
+| 5 | Has the higher bitrate (size ÷ duration) | Less compression at the same resolution |
+| 6 | Has the smaller video id | A stable tie-break |
 
 | Option | Verdict |
 | --- | --- |
-| **Keep a bundle's representative, else more pixels** | Chosen |
+| **Owner's data, then playable, audio, pixels, bitrate** | Chosen |
+| More pixels first | Rejected: a new 1080p copy of a tagged 720p video would become the representative and the owner's tags would be set aside |
 | The video added first | Rejected: says nothing about which file is better to play |
-| Always the higher resolution, even over a bundle's representative | Rejected: the owner may have chosen that representative, and a new file would replace it unasked |
+| Always re-pick, even over a bundle's representative | Rejected: the owner may have chosen that representative |
 
 **Rationale**: By hand the owner picks the representative in the bundle
-dialog, which has no default; the rule picks what an owner bundling a
-re-encode would pick, and keeps a choice already made. Tags, position and
-visibility then follow `VersionStore.Bundle` unchanged (requirement 2).
+dialog, which has no default; the order picks what an owner would pick, and
+every input is already in the `videos` row or the user-data tables. Tags,
+position and visibility then follow `VersionStore.Bundle` unchanged
+(requirement 2).
 
 ## R-8: Removing a version records the pairs and rebuilds its candidates
 
@@ -273,3 +283,37 @@ out of it.
 **Rationale**: Durations already match for every candidate, and the
 fingerprints have used the frames; the pictures are the evidence the model
 adds.
+
+## R-12: Different work codes dismiss a pair without the model
+
+**Decision**: When both videos have a work code and the codes differ
+(compared folded, as `code_key` stores them), or they have an external id from the same source with different values, the
+pair is "different videos" before the frames are compared. Matching codes
+decide nothing; the frames still do.
+
+The table lists what is stored for every video and what the judging does with
+it.
+
+| Information | Where it is | Use |
+| --- | --- | --- |
+| Per-frame fingerprint | `video_fingerprints` | The first judge ([R-1](#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)) |
+| Seek-preview frames | Generated files | What the model sees ([R-2](#r-2-the-model-sees-the-frames-where-the-two-files-differ)) |
+| Work code and external ids | `video_work_info`, `video_work_external_ids` | Different values dismiss (this decision) |
+| `playable`, audio codec, width, height, size, duration | `videos` | The representative ([R-7](#r-7-the-representative-keeps-the-owners-data-then-plays-best)) |
+| Tags, position, visibility, display name, thumbnail image | User-data tables | The representative (R-7) |
+| Duration | `videos` | Already equal within `DurationsMatch` for every candidate (030) |
+| File name and folder | `video_locations` | Not used: the trial moved no pair, and numbered names mislead ([R-11](#r-11-the-request-carries-no-file-names)) |
+| Codec, container, aspect ratio | `videos` | Not used: a re-encode changes them by definition, and the fingerprint crops black bars |
+| Dates | `videos`, `video_locations` | Not used: a copy gets a new date |
+| Audio content | Not stored | Not used: the bundled ffmpeg has no Chromaprint (030 R-6), and only a scan may read the files |
+
+| Option | Verdict |
+| --- | --- |
+| **Different codes dismiss, equal codes decide nothing** | Chosen |
+| Equal codes bundle | Rejected: one work can ship as a full and a cut version, which the frames tell apart |
+| Ignore work information | Rejected: the owner or a plugin has already said which work each file is |
+
+**Rationale**: A work code names a product; two files with different codes
+are two works even when the fingerprints match closely, as two episodes of a
+series with long shared scenes can. The rule only reads values the owner or a
+work-info plugin wrote, so it costs no request.

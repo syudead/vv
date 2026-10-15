@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/data-model.md
-sourceHash: 5bfb60c5f5de563baea911d16e606efe429c6aff0edb7b2e5cded659fb5e66e9
+sourceHash: b07c42c55fe8043ff7deb87640d981987ee1d90200f886c03a2f750a2b618ea5
 ---
 
 # データモデル: 重複の候補を自動で判定する {#data-model-judging-possible-duplicates-automatically}
@@ -48,7 +48,7 @@ sourceHash: 5bfb60c5f5de563baea911d16e606efe429c6aff0edb7b2e5cded659fb5e66e9
 | 同時に `running` の判定は 1 つである | 単一のワーカー。取得は 1 つの文である |
 | 起動時に残っている `running` の行は、`attempts` を保ったまま null に戻る | `store`、起動時に `auto_tag_queue` が回復するのと同じように |
 | 「同じ動画」は、両側をまたぐ組が退けた組かまとまりから外した組でない限り、両側をまとめる。そうであれば行は `undecided` になる ([R-6](research.md#r-6-a-same-pair-joins-two-sides-unless-a-pair-across-them-is-known-to-differ)) | `domain` (2 つのメンバーの集合に対する確認)、`store` (まとめるトランザクションの中で両方を読み直す) |
-| 「同じ動画」は [R-7](research.md#r-7-the-representative-is-the-bundles-else-the-larger-picture) で代表を選び、それから `VersionStore.Bundle` の手順でまとめる | `domain` (選択)、`store` |
+| 「同じ動画」は [R-7](research.md#r-7-the-representative-keeps-the-owners-data-then-plays-best) で代表を選び、それから `VersionStore.Bundle` の手順でまとめる | `domain` (選択)、`store` |
 | 「別の動画」は、所有者の "Different videos" と同じように、`video_version_dismissals` を書いて候補を削除する | `store` |
 | なくなったか、もう `running` でない候補についての結果は捨てる | `store` |
 | `Unbundle` は外した鍵をほかのすべてのメンバーと組にして書き、それから外した鍵の候補を作り直す | `store` (`VersionStore.Unbundle`) |

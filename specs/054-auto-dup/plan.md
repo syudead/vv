@@ -6,8 +6,9 @@
 
 ## Summary
 
-Each possible duplicate is judged first from the two fingerprints already
-stored: when every frame matches, the pair is bundled with no AI request; when
+Each possible duplicate is judged first from what is already stored: two
+different work codes mean different videos, and then the two fingerprints
+decide: when every frame matches, the pair is bundled with no AI request; when
 a run of frames differs, the classifier port is shown those frames side by
 side and asked whether they are the same picture. "Same video" bundles the
 pair as the owner's bundling does, "different videos" dismisses it, and
@@ -16,13 +17,14 @@ read from the `versions` summary that list items now carry.
 
 | Concern | Decision |
 | --- | --- |
+| Work codes | Two different work codes or external ids are "different" with no request ([R-12](research.md#r-12-different-work-codes-dismiss-a-pair-without-the-model)) |
 | First judge | Per-frame fingerprint distances; all matching is "same" with no request ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)) |
 | AI input | Up to 4 images from the run of differing frames, A beside B; no facts ([R-2](research.md#r-2-the-model-sees-the-frames-where-the-two-files-differ), [R-11](research.md#r-11-the-request-carries-no-file-names)) |
 | AI verdict | 0.8 or more same, 0.2 or less different, fixed ([R-3](research.md#r-3-the-question-wording-and-two-fixed-thresholds)) |
 | Queue | Judgement columns on the candidate row; a null judgement waits ([R-4](research.md#r-4-the-judgement-is-columns-on-the-candidate-row)) |
 | Failures | Retry after 10 minutes, 1 hour, 6 hours, then daily ([R-5](research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)) |
 | Conflicts | No bundle across a dismissed or unbundled pair ([R-6](research.md#r-6-a-same-pair-joins-two-sides-unless-a-pair-across-them-is-known-to-differ)) |
-| Representative | The bundle's, else more pixels ([R-7](research.md#r-7-the-representative-is-the-bundles-else-the-larger-picture)) |
+| Representative | The bundle's; else the one with the owner's data, then playable, audio, pixels, bitrate ([R-7](research.md#r-7-the-representative-keeps-the-owners-data-then-plays-best)) |
 | Removing a version | Records the pairs, never judged again, candidates rebuilt ([R-8](research.md#r-8-removing-a-version-records-the-pairs-and-rebuilds-its-candidates)) |
 | Card mark | `versions` on every screen-API `Video`, one query per page ([R-9](research.md#r-9-list-items-carry-the-existing-versions-summary-read-per-page)) |
 | Duplicates page | Refetches on a new `candidates` notification ([R-10](research.md#r-10-the-duplicates-page-refreshes-on-a-candidates-notification)) |
@@ -42,9 +44,11 @@ sequenceDiagram
   participant AI as Classifier (Ollama)
   Scan->>Store: fingerprint job writes candidate A–B
   Store-->>Judge: ProcessingChanged (wake)
-  Judge->>Store: claim one candidate, with both fingerprints
-  Judge->>Judge: compare frame by frame
-  alt every frame matches
+  Judge->>Store: claim one candidate, with fingerprints and work codes
+  Judge->>Judge: compare work codes, then frame by frame
+  alt work codes differ
+    Judge->>Store: different videos
+  else every frame matches
     Judge->>Store: same video
   else a run of frames differs
     Judge->>Art: frames of that run, A beside B
@@ -66,8 +70,14 @@ sequenceDiagram
    saved. While the setting is off it does nothing.
 3. **It claims one candidate.** The store picks the oldest waiting candidate,
    or a failed one whose retry time has passed, skips pairs the owner removed
-   from versions, marks it `running`, and returns both fingerprints.
-4. **It compares the fingerprints frame by frame.** A fingerprint holds a
+   from versions, marks it `running`, and returns both fingerprints and both
+   videos' work codes and external ids.
+4. **It checks the work information.** When the owner or a work-info plugin
+   gave both videos a work code and the codes differ, or an external id from
+   the same source differs, the pair is different videos and nothing more is
+   asked. Equal codes decide nothing, since one work can ship as a full and a
+   cut version.
+5. **It compares the fingerprints frame by frame.** A fingerprint holds a
    hash for each of up to 81 frames of the seek preview. Frames are paired by
    time as the candidate check pairs them, and a pair differs when its
    distance is over 12. The median the candidate check uses hides a replaced
@@ -78,17 +88,17 @@ sequenceDiagram
 | At most 5% differ, never two in a row | Same video | None |
 | Two or more in a row differ | The longest such run goes to the model | One |
 
-5. **For a differing run, it asks the model.** `internal/artifacts` cuts up
+6. **For a differing run, it asks the model.** `internal/artifacts` cuts up
    to 4 frames of that run from each seek preview and puts frame A beside
    frame B in one JPEG. No ffmpeg runs and no media file is opened. The images
    and the question go to `app.Classifier`, the port auto-tagging uses, and
    the answer is a probability: 0.8 or more is same, 0.2 or less is different.
-6. **The store applies the result in one transaction.**
+7. **The store applies the result in one transaction.**
 
 | Result | What the store does | What the owner sees |
 | --- | --- | --- |
-| Same (all frames, or 0.8 or more) | Bundles A and B with `VersionStore.Bundle`'s steps; the representative is the bundle's if one side is bundled, else the larger picture | One card with the versions mark |
-| Different (0.2 or less) | Writes a "different videos" dismissal, as the Duplicates page's button does | The pair leaves Duplicates |
+| Same (all frames, or 0.8 or more) | Bundles A and B with `VersionStore.Bundle`'s steps; the representative is the bundle's if one side is bundled, else the one carrying the owner's tags and other data, then the one that plays in the browser, has sound, more pixels, a higher bitrate | One card with the versions mark |
+| Different (work codes, or 0.2 or less) | Writes a "different videos" dismissal, as the Duplicates page's button does | The pair leaves Duplicates |
 | Between 0.2 and 0.8 | Marks the candidate `undecided`; it is never asked again | The pair stays on Duplicates |
 | No answer or an error | Marks it `failed` and sets a retry time: 10 minutes, 1 hour, 6 hours, then daily | The pair stays on Duplicates until a retry decides it |
 
@@ -151,7 +161,7 @@ Checked against ARCHITECTURE.md and AGENTS.md; the rules this design leans on:
 ```text
 specs/054-auto-dup/
 ├── plan.md
-├── research.md            # R-1..R-11
+├── research.md            # R-1..R-12
 ├── data-model.md          # Two tables, the rules, the setting
 ├── quickstart.md          # The real-model check
 └── contracts/
@@ -204,7 +214,7 @@ flowchart LR
 **Scope**: The migration with the candidate columns and
 `video_version_unbundles`; the domain rules (conflict check,
 representative, retry times) and `VersionCandidatesChanged`; the store's claim,
-which returns both fingerprints, recovery and three results with the conflict check; the
+which returns both fingerprints and work codes, recovery and three results with the conflict check; the
 `version_judging.enabled` setting's read and write; `Unbundle` recording pairs
 and rebuilding candidates; successions re-keying `video_version_unbundles`;
 and the user-data list in ARCHITECTURE.md and running-vv.md
@@ -215,7 +225,8 @@ and the user-data list in ARCHITECTURE.md and running-vv.md
 **Dependencies**: None.
 
 **Acceptance**: `task check` and `task check-docs` pass; store tests show: a
-"same" result bundles the pair with the R-7 representative and the candidate
+"same" result bundles the pair with the R-7 representative (a tagged
+720p video stays representative over a new 1080p copy) and the candidate
 is gone; a "same" for a new video and a bundle member adds it to that bundle,
 also after that bundle was split and bundled again by hand; "different" writes
 a dismissal and removes the candidate; a "same" across a dismissed pair leaves
@@ -226,8 +237,8 @@ candidate is listed again; each result publishes `VersionCandidatesChanged`.
 
 ### Judge possible duplicates from their fingerprints and the classifier
 
-**Scope**: The frame-by-frame rule and the longest differing run in
-`internal/domain`; side-by-side pairs of given frames in `internal/artifacts`;
+**Scope**: The work-code rule, the frame-by-frame rule and the longest
+differing run in `internal/domain`; side-by-side pairs of given frames in `internal/artifacts`;
 `app.VersionJudge` (claim one at a time while the setting is on, apply the
 rule, ask the R-3 question only for a differing run, apply the result, wait
 for the next `retry_at`); a log line with each pair's rule outcome and
@@ -238,13 +249,14 @@ AI-layer and subsystem-map entries
 ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)
 to [R-3](research.md#r-3-the-question-wording-and-two-fixed-thresholds),
 [R-5](research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends),
-[R-11](research.md#r-11-the-request-carries-no-file-names)).
+[R-11](research.md#r-11-the-request-carries-no-file-names),
+[R-12](research.md#r-12-different-work-codes-dismiss-a-pair-without-the-model)).
 
 **Dependencies**: Store duplicate judgements and the pairs removed from
 versions.
 
 **Acceptance**: `task check` and `task check-docs` pass; domain tests show
-distances all within 12 are "same", one isolated differing frame in 20 is
+different work codes are "different" and equal ones decide nothing, distances all within 12 are "same", one isolated differing frame in 20 is
 still "same", and 4 in a row give that run; app tests with a fake classifier
 show a matching pair bundles with no classifier call, a differing pair sends
 the run's frames, 0.85 bundles, 0.1 dismisses, 0.5 leaves the candidate, an
