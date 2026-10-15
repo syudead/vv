@@ -54,3 +54,23 @@ func TestOllamaConnectionSaveAndCheck(t *testing.T) {
 		t.Fatalf("Check = %v, checks = %d", err, probe.checks)
 	}
 }
+
+// 保存に成功したときだけ、登録した関数を呼ぶ（重複の判定の再開、specs/054-auto-dup/research.md R-13）。
+func TestOllamaConnectionOnSaved(t *testing.T) {
+	conn := NewOllamaConnection(&fakeOllamaStore{}, &fakeProbe{})
+	calls := 0
+	conn.OnSaved(func(context.Context) { calls++ })
+	ctx := context.Background()
+	if _, err := conn.SaveSettings(ctx, domain.OllamaSettings{Endpoint: "nope", Model: "clef"}); err == nil {
+		t.Fatal("規則に合わない値を保存した")
+	}
+	if calls != 0 {
+		t.Fatalf("保存しないのに呼んだ: %d", calls)
+	}
+	if _, err := conn.SaveSettings(ctx, domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef"}); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Errorf("保存のあとの呼び出し = %d, want 1", calls)
+	}
+}

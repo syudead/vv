@@ -163,11 +163,34 @@ func HashFrame(luma [FingerprintFrameSize][FingerprintFrameSize]uint8) FrameHash
 // （0 秒の場面）と組になるので、先頭の近さで組にする。どちらかが単色のコマの組は
 // 数えない。組の数が偶数のときは、真ん中の 2 つのうち小さい方を中央値とする。
 func CompareFingerprints(a, b Fingerprint) (distance int, ok bool) {
-	if a.Version != b.Version || a.IntervalMs <= 0 || b.IntervalMs <= 0 {
+	pairs, ok := ComparableFramePairs(a, b)
+	if !ok {
 		return 0, false
 	}
+	distances := make([]int, len(pairs))
+	for i, pair := range pairs {
+		distances[i] = pair.Distance
+	}
+	slices.Sort(distances)
+	return distances[(len(distances)-1)/2], true
+}
+
+// FramePair は時刻で組にした 2 本の指紋のコマの組である。A と B はそれぞれの指紋（シーク用
+// スプライト）のコマの番号、Distance はハッシュのハミング距離。
+type FramePair struct {
+	A, B     int
+	Distance int
+}
+
+// ComparableFramePairs は 2 本の指紋のコマを CompareFingerprints と同じ規則で時刻で組にし、
+// どちらも単色でない組を a のコマの順に返す。版が違う、間隔が正でない、または組が
+// FingerprintMinComparableFrames 未満なら ok は偽である。
+func ComparableFramePairs(a, b Fingerprint) (pairs []FramePair, ok bool) {
+	if a.Version != b.Version || a.IntervalMs <= 0 || b.IntervalMs <= 0 {
+		return nil, false
+	}
 	tolerance := min(a.IntervalMs, b.IntervalMs) / 2
-	distances := make([]int, 0, len(a.Frames))
+	pairs = make([]FramePair, 0, len(a.Frames))
 	for i, frame := range a.Frames {
 		start := int64(i) * a.IntervalMs
 		j := (start + b.IntervalMs/2) / b.IntervalMs
@@ -178,13 +201,12 @@ func CompareFingerprints(a, b Fingerprint) (distance int, ok bool) {
 		if frame.Flat || other.Flat {
 			continue
 		}
-		distances = append(distances, bits.OnesCount64(frame.Hash^other.Hash))
+		pairs = append(pairs, FramePair{A: i, B: int(j), Distance: bits.OnesCount64(frame.Hash ^ other.Hash)})
 	}
-	if len(distances) < FingerprintMinComparableFrames {
-		return 0, false
+	if len(pairs) < FingerprintMinComparableFrames {
+		return nil, false
 	}
-	slices.Sort(distances)
-	return distances[(len(distances)-1)/2], true
+	return pairs, true
 }
 
 // FingerprintsMatch は 2 本の指紋が比べられ、距離が FingerprintMatchMaxDistance 以下かを返す。

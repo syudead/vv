@@ -29,6 +29,11 @@ type eventSubscribers struct {
 	// 代表サムネイルはそれより前に終わっているので、自動タグ付けが判定に添える画像が揃っている。
 	// 入なら判定に回す（docs/design-docs/auto-tagging.md）。
 	ImagesFinished func(videoID int64)
+	// VersionJudge は「同じ動画かもしれない」候補を判定するワーカーである。仕事の終わり
+	// （domain.ProcessingChanged。指紋の仕事が候補を書く）と候補の変化
+	// （domain.VersionCandidatesChanged。集まりから外すと候補が作り直される）で起こす
+	// （docs/design-docs/duplicate-judging.md）。
+	VersionJudge waker
 }
 
 // eventSubscriptions は、停止の順番に合わせて購読をやめる関数である。
@@ -100,6 +105,11 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 					finished(event.VideoID)
 				}
 			}))
+	}
+	if judge := s.VersionJudge; judge != nil {
+		stopWorkers = append(stopWorkers,
+			eventbus.On(bus, "duplicate judging after jobs", func(domain.ProcessingChanged) { judge.Wake() }),
+			eventbus.On(bus, "duplicate judging after candidates", func(domain.VersionCandidatesChanged) { judge.Wake() }))
 	}
 	stops.StopWorkers = func() {
 		for _, stop := range stopWorkers {

@@ -104,6 +104,7 @@ func (s *VersionStore) RecoverRunningJudgements(ctx context.Context) (int, error
 //   - VersionDifferent: 「違う動画」を記録して候補を消す。
 //   - VersionUndecided: undecided にして Probability を残す。
 //   - VersionFailed: attempts を 1 増やし、retry_at と Error を残す（R-5）。
+//   - VersionNoConnection: no_connection にする（R-13）。接続の保存で待ちに戻る。
 func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, result domain.VersionJudgeResult) (bool, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -130,6 +131,8 @@ func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, resul
 		err = setJudgement(ctx, tx, keys, domain.VersionJudgementUndecided, result.Probability)
 	case domain.VersionFailed:
 		err = failJudgement(ctx, tx, keys, attempts+1, result.Error)
+	case domain.VersionNoConnection:
+		err = setJudgement(ctx, tx, keys, domain.VersionJudgementNoConnection, nil)
 	default:
 		err = fmt.Errorf("unknown version verdict %d", result.Verdict)
 	}
@@ -141,6 +144,37 @@ func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, resul
 	}
 	s.db.publishEvents(append(events, domain.VersionCandidatesChanged{})...)
 	return true, nil
+}
+
+// NextJudgementRetry は failed の組のうち、いちばん早く再び取り出せる時刻を返す（research.md R-5）。
+// 集まりから外した組は数えない。無ければ found は偽。
+func (s *VersionStore) NextJudgementRetry(ctx context.Context) (time.Time, bool, error) {
+	var retryAt sql.NullInt64
+	err := s.db.sql.QueryRowContext(ctx, `select min(c.retry_at) from video_version_candidates c
+		where c.judgement = 'failed' and c.retry_at is not null
+		  and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)`).Scan(&retryAt)
+	if err != nil {
+		return time.Time{}, false, fmt.Errorf("cannot read the next version judgement retry: %w", err)
+	}
+	if !retryAt.Valid {
+		return time.Time{}, false, nil
+	}
+	return time.Unix(retryAt.Int64, 0), true, nil
+}
+
+// ResetNoConnectionJudgements は接続が無くて待っていた組（no_connection）を待ち（null）に戻し、件数を
+// 返す。Ollama の接続が保存されたときに呼ぶ（research.md R-13、data-model.md「Rules」）。
+func (s *VersionStore) ResetNoConnectionJudgements(ctx context.Context) (int, error) {
+	result, err := s.db.sql.ExecContext(ctx,
+		`update video_version_candidates set judgement = null where judgement = 'no_connection'`)
+	if err != nil {
+		return 0, fmt.Errorf("cannot return the version judgements waiting for a connection: %w", err)
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("cannot return the version judgements waiting for a connection: %w", err)
+	}
+	return int(affected), nil
 }
 
 // setJudgement は組の判定を state にし、probability を残す。retry_at と judgement_error は消す。

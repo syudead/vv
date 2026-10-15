@@ -9,6 +9,7 @@ asks or what the questions mean.
 ```mermaid
 flowchart LR
   feature[Feature: AutoTagger] -->|domain.ClassifierRequest| port[app.Classifier]
+  judge[Feature: VersionJudge] -->|domain.ClassifierRequest| port
   port -.->|implemented by| ollama[internal/ollama.Classifier]
   ollama -->|reads| settings[(ollama.* settings)]
   ollama -->|/v1/systemone| server[Ollama]
@@ -31,8 +32,12 @@ probability per question. It is defined in
 | Result | A probability from 0 to 1 per answered key; unanswered keys are absent |
 
 A request has no limit on the number of questions. The feature builds the
-facts and the question wording, and turns probabilities into decisions; for
-auto-tagging that is [auto-tagging.md](auto-tagging.md).
+facts and the question wording, and turns probabilities into decisions.
+
+| Feature | Request | Document |
+| --- | --- | --- |
+| Auto-tagging | One question per candidate tag; the thumbnail, 8 frames and the facts `title`, `file_name`, `folder` | [auto-tagging.md](auto-tagging.md) |
+| Duplicate judging | One question; up to 4 images of frame A beside frame B and no facts; sent only once the Ollama connection is saved | [duplicate-judging.md](duplicate-judging.md) |
 
 ## Ollama provider
 
