@@ -71,3 +71,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Groups of any videos and groups (group page with a trail, New group, Add to group, the video page's group context): UI](../../specs/048-groups/ui-design.md)
 - [Work-info plugins (settings section, approval prompt, setting values, fetch entry and dialog with the comparison): UI](../../specs/049-work-info-plugins/ui-design.md)
 - [Drag and drop to reorder, group, merge and bundle (drop indicators, drop menus, the new group's name field, the undo toast): UI](../../specs/050-drag-organize/ui-design.md)
+- [Smart folders whose contents follow a saved condition (Save as smart folder, the smart folder dialog, card and page with its conditions lines, the video page's folder line): UI](../../specs/052-smart-folders/ui-design.md)
