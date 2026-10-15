@@ -100,7 +100,7 @@ less (it would mix waiting, failed and undecidable pairs).
 
 | Place | Text | Notes |
 | --- | --- | --- |
-| Card and row mark, screen readers only | 3 versions | `player.versions.count`, the same words as the video page's item; `sr-only` after the icon, as the public mark's "Public" |
+| Card and row mark, screen readers only | 3 versions | `player.versions.count`, the same words as the video page's item; `sr-only` after the icon, as the public mark's "Public", and on the card also the link's description ([Accessibility](#accessibility)) |
 | Settings section heading | Duplicate judging | `h2` of the `PageSection` |
 | Section description | Judges each pair the scan lists as a possible duplicate: the two files are compared frame by frame, and the classifier set under Ollama is asked only about the frames that differ. Same videos are bundled as versions, different videos leave Duplicates, and the rest wait there for you. | One paragraph; the mechanics the owner needs to trust the switch |
 | Switch row label | Judge possible duplicates automatically | `FormRow` label |
@@ -140,6 +140,13 @@ no mark, as the video page then has no item.
 | Group card, playlist card, folder card | No mark: their badge is a total, not a video's |
 | Related-videos column on the video page, history entries | Unchanged: the video page already shows the versions item for the video being watched, and a history entry is a viewing, not a library item |
 
+A video can be bundled before its duration is read (bundling checks the
+content key, not the metadata), so the card and the ordered row draw
+`VideoThumbnailDuration` when it has anything to hold: the mark, the public
+mark or the duration. A bundled video with no duration yet shows a badge with
+the icon alone, the same size as a badge holding only the globe today. The
+list-view row's duration cell is always drawn and holds the mark the same way.
+
 The badge keeps its size and shape: `text-2xs`, `bg-overlay`, `rounded-sm`,
 the same padding; only its width grows by one icon and one gap. The icon is
 the badge's `foreground`, the same colour as the duration, not `primary`
@@ -161,8 +168,9 @@ representative's, with its title, thumbnail and tags, as 030 decided.
 | Bundle member, 2 or more versions visible | The mark, before the public mark and the duration |
 | Bundle member, 1 version visible | No mark; the card looks like an unbundled video's |
 | Not bundled | No mark |
-| Bundled while the list is open (an automatic bundle, or the owner's) | The list refetches on the `video` notification as today; the other member's card leaves the list and the representative's badge gains the mark in place, with no animation |
-| Removed from versions while the list is open | The mark leaves the representative's badge in place when the bundle is down to one video, and the removed video's card appears with the list's next fetch |
+| Bundled while the owner's list is open (an automatic bundle, or the owner's) | The list refetches on the `video` notification as today; the other member's card leaves the list and the representative's badge gains the mark in place, with no animation |
+| Removed from versions while the owner's list is open | The mark leaves the representative's badge in place when the bundle is down to one video, and the removed video's card appears with the list's next fetch |
+| Bundled or removed while a guest's list is open | Nothing changes until the list's next fetch (a reload, or opening the list again): guests receive only `group` notifications ([048 contract, `/api/events`](../048-groups/contracts/screen-api.md#apievents)), so no notification may reveal a private video |
 
 ## Settings: Duplicate judging section
 
@@ -319,8 +327,13 @@ The parent Issue does not ask for screen-reader or contrast design, so only
 names are decided, as 016 and 030 did.
 
 - The mark's icon is `aria-hidden` and the `sr-only` "3 versions" follows
-  it, so a card's name stays the title and the badge reads "3 versions,
-  Public, 12:34" in order.
+  it. In the list-view row and the ordered rows the badge or duration cell is
+  outside the title link, so it reads "3 versions, Public, 12:34" in order.
+- On the card the badge is inside the link, whose `aria-label` (the title, or
+  the title with its location) replaces the text of its descendants. The
+  `sr-only` span therefore carries an id, and the link names it in
+  `aria-describedby`, so the card's name stays the title and its description
+  is "3 versions". A card without the mark has no `aria-describedby`.
 - The switch is labelled by the `FormRow` label through `htmlFor`; the
   saving line is `role="status"`; the failed-save `Alert` is the component's
   own role.
