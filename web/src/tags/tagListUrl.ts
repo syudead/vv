@@ -4,8 +4,26 @@ import { useLocation, useNavigate } from "react-router";
 import { type HistoryMode, normalizeQuery } from "../videoList/listCriteria";
 import { isTagListSort, type TagListSort } from "./tagListOrder";
 
-/** TagListTab はタグ管理画面のタブである（「Tags」と「Rejected names」）。 */
-export type TagListTab = "tags" | "rejected";
+/** TagListTab はタグ管理画面のタブである（「Tags」「Rejected names」「Kinds」）。 */
+export type TagListTab = "tags" | "rejected" | "kinds";
+
+/**
+ * TagKindFilter はタグの一覧の種類の絞り込みの値である。種類の id（正の整数の文字列）か、
+ * 種類の無いタグの `none`。null は絞り込まない（specs/051-tag-kinds/contracts/screen-api.md
+ * 「`GET /api/tags` parameter `kind`」）。
+ */
+export type TagKindFilter = string | null;
+
+/** parseTagListTab は URL の `tab` を読む。知らない値は「Tags」。 */
+function parseTagListTab(value: string | null): TagListTab {
+  return value === "rejected" || value === "kinds" ? value : "tags";
+}
+
+/** parseTagKindFilter は URL の `kind` を読む。正の整数と `none` のほかは絞り込まない。 */
+function parseTagKindFilter(value: string | null): TagKindFilter {
+  if (value === null) return null;
+  return value === "none" || /^[1-9]\d*$/.test(value) ? value : null;
+}
 
 /**
  * TagListCriteria はタグ管理画面の URL に載せる条件である
@@ -17,6 +35,8 @@ export interface TagListCriteria {
   query: string;
   tentativeOnly: boolean;
   unusedOnly: boolean;
+  /** 種類の絞り込み（`kind`）。 */
+  kind: TagKindFilter;
   sort: TagListSort;
   tab: TagListTab;
 }
@@ -37,8 +57,9 @@ export function parseTagListCriteria(
       query: normalizeQuery(params.get("q") ?? ""),
       tentativeOnly: params.get("tentative") === "1",
       unusedOnly: params.get("unused") === "1",
+      kind: parseTagKindFilter(params.get("kind")),
       sort: hasExplicitSort ? rawSort : preferredSort,
-      tab: params.get("tab") === "rejected" ? "rejected" : "tags",
+      tab: parseTagListTab(params.get("tab")),
     },
     hasExplicitSort,
   };
@@ -48,7 +69,7 @@ export function parseTagListCriteria(
  * serializeTagListCriteria は条件を URL のクエリにする。偽の絞り込みと「Tags」の
  * タブは書かない。sort は書く — 省略すると「端末に保存した並び順」の意味になり、
  * 並び順を変えたあとに戻るで前の並びに戻れなくなる（list-url.md §1 と同じ）。
- * 順は q・tentative・unused・sort・tab で固定する。
+ * 順は q・tentative・unused・kind・sort・tab で固定する。
  */
 export function serializeTagListCriteria(criteria: TagListCriteria): URLSearchParams {
   const params = new URLSearchParams();
@@ -56,8 +77,9 @@ export function serializeTagListCriteria(criteria: TagListCriteria): URLSearchPa
   if (query !== "") params.set("q", query);
   if (criteria.tentativeOnly) params.set("tentative", "1");
   if (criteria.unusedOnly) params.set("unused", "1");
+  if (criteria.kind !== null) params.set("kind", criteria.kind);
   params.set("sort", criteria.sort);
-  if (criteria.tab === "rejected") params.set("tab", "rejected");
+  if (criteria.tab !== "tags") params.set("tab", criteria.tab);
   return params;
 }
 

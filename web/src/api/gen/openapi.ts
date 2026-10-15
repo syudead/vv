@@ -1604,7 +1604,7 @@ export interface paths {
         };
         /**
          * タグを一覧する
-         * @description 本数0のタグも含む（contracts/tags-api.md §3）。`q`・`tentative`・`unused` は全部のタグに
+         * @description 本数0のタグも含む（contracts/tags-api.md §3）。`q`・`tentative`・`unused`・`kind` は全部のタグに
          *     AND で掛かり、`sort` の順に並べる。`limit` を付けると1ページずつ返し、続きがあれば
          *     `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
          *     （specs/036-tag-admin-scale/contracts/screen-api.md §5）。
@@ -1772,12 +1772,17 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 複数のタグをまとめて確定・却下・削除する
+         * 複数のタグをまとめて確定・却下・削除し、種類を付け外しする
          * @description `ids` のうち今あり、`action` が働く種類（`confirm`・`reject` は仮のタグ、`delete` は
          *     確定したタグ）のタグだけを 1 つの取引で処理する。働かない種類の id は何も変えずに
          *     `notApplicableIds`、無い id は `notFoundIds` に入れる。`ids` の重複は 1 つとして扱い、
          *     3 つの配列は互いに重ならず、`ids` に現れた順。取引が失敗したら何も変えない
          *     （specs/036-tag-admin-scale/contracts/screen-api.md §1）。
+         *     `setKind` は `kindId` の種類を付け、`clearKind` は種類を外す。どちらも仮のタグを確定しない。
+         *     すでにその種類のタグ（`clearKind` では種類の無いタグ）は `notApplicableIds` に入る。
+         *     `kindId` の無い `setKind` と、`kindId` を付けた他の `action` は 400 `invalid_request`、
+         *     無い種類の `setKind` は何も変えずに 404 `not_found` / `tag_kind_not_found`
+         *     （specs/051-tag-kinds/contracts/screen-api.md）。
          */
         post: operations["batchTags"];
         delete?: never;
@@ -3522,14 +3527,14 @@ export interface components {
         };
         TagList: {
             items: components["schemas"]["Tag"][];
-            /** @description 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る */
+            /** @description 条件（`q`・`tentative`・`unused`・`kind`）に合うタグの数。ページングとは独立に返る */
             total: number;
             /** @description 全部のタグの数。ページングとは独立に返る */
             totalAll: number;
             /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
             nextCursor?: string;
             /**
-             * @description 前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused` にも
+             * @description 前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused`・`kind` にも
              *     合うタグ。`limit` を付け `cursor` の無い要求で、`q` が空でなく該当があるときだけ入る。
              *     `items` に入るとは限らない（`items` は部分一致を `sort` の順に並べた 1 ページのため）
              */
@@ -3594,7 +3599,12 @@ export interface components {
         };
         TagBatchRequest: {
             /** @enum {string} */
-            action: "confirm" | "reject" | "delete";
+            action: "confirm" | "reject" | "delete" | "setKind" | "clearKind";
+            /**
+             * Format: int64
+             * @description `setKind` で付ける種類。`setKind` だけが持つ
+             */
+            kindId?: number;
             ids: number[];
         };
         TagBatchResponse: {
@@ -7525,11 +7535,17 @@ export interface operations {
                 tentative?: boolean;
                 /** @description true なら本数0のタグだけにする */
                 unused?: boolean;
+                /**
+                 * @description 種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
+                 *     無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない。正の整数でも
+                 *     `none` でもなければ 400 `invalid_request`（specs/051-tag-kinds/contracts/screen-api.md）
+                 */
+                kind?: string;
                 /** @description 並び順 */
                 sort?: components["schemas"]["TagSort"];
                 /**
                  * @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
-                 *     `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+                 *     `unused`・`kind`・`sort` で続けて使う。`limit` を省いたときは無視する
                  */
                 cursor?: string;
                 /** @description 1ページの件数。省くと全件を返し、`nextCursor` は入らない */
@@ -7844,6 +7860,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     tagImpact: {

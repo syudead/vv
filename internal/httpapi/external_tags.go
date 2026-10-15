@@ -128,7 +128,7 @@ func (e *externalServer) BatchTags(w http.ResponseWriter, r *http.Request) {
 		e.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	outcome, err := e.s.tags.BatchTags(r.Context(), domain.TagBatchAction(body.Action), body.Ids)
+	outcome, err := e.s.tags.BatchTags(r.Context(), domain.TagBatchRequest{Action: domain.TagBatchAction(body.Action)}, body.Ids)
 	if err != nil {
 		e.internalError(w, "Could not update the tags. Nothing was changed.", err)
 		return

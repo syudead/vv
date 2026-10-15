@@ -13,7 +13,8 @@ export function tagsPanelId(prefix: string, value: TagListTab): string {
 }
 
 /**
- * TagsTabs は「Tags」「Rejected names」のタブである（ui-design.md「Tabs」）。それぞれに
+ * TagsTabs は「Tags」「Rejected names」「Kinds」のタブである（ui-design.md「Tabs」、
+ * specs/051-tag-kinds/ui-design.md「Kinds tab」）。それぞれに
  * 件数を添え、読み込む前は出さない。`locked` の間（作成・改名の送信中）は、描いて
  * いないタブを押せず、矢印でも移らない。
  */
@@ -23,6 +24,7 @@ export default function TagsTabs({
   onChange,
   tagsCount,
   rejectedCount,
+  kindsCount,
   locked,
 }: {
   idPrefix: string;
@@ -30,6 +32,7 @@ export default function TagsTabs({
   onChange: (next: TagListTab) => void;
   tagsCount: number | undefined;
   rejectedCount: number | undefined;
+  kindsCount: number | undefined;
   locked: boolean;
 }) {
   const trigger = (value: TagListTab, label: string, count: number | undefined) => (
@@ -57,6 +60,7 @@ export default function TagsTabs({
       <TabsList aria-label={t.tags.tabs.label}>
         {trigger("tags", t.tags.tabs.tags, tagsCount)}
         {trigger("rejected", t.tags.rejectedNames.heading, rejectedCount)}
+        {trigger("kinds", t.tags.kinds.tab, kindsCount)}
       </TabsList>
     </Tabs>
   );
