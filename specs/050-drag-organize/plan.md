@@ -81,8 +81,9 @@ folder screen's drag, judged against the parent Issue's `UI品質`.
   of every depth side by side, a group dropped onto its own descendant is
   refused only by the server's `409 group_cycle`, which the screen shows as
   the failure toast with the cards restored (R-8); the screen marks no refusal
-  beforehand. Nothing is written (requirement 15 holds), the contract does not
-  change, and `ui-design.md` stays as it is.
+  beforehand. Nothing is written (requirement 15 holds) and the contract does
+  not change; `ui-design.md` records this exception to its Refused rule
+  ([What a drop does](ui-design.md#what-a-drop-does)).
 
 ## Constitution Check
 
@@ -357,7 +358,10 @@ already the target ("the lifted cards leave") and does not change.
 **Dependencies**: Merge dragged groups into a target group in one operation;
 Drop a group on a group to nest or merge it.
 
-**Acceptance**: `task check` passes with no diff from `task generate`; store
+**Acceptance**: This unit changes a screen, so it needs a visual and
+interaction review of the group page's "Merge" against `ui-design.md`'s
+[Group page](ui-design.md#group-page). `task check` passes with no diff from
+`task generate`; store
 tests show: on group G holding video V, group X and group Y, merging V and X
 into Y with `from` G leaves G holding Y only, and Y its items then V then X's
 items in order, in one transaction; a dragged video that is not in `from` is
@@ -369,11 +373,11 @@ statuses hold with it. Page tests show: on the group page a selection of a
 video and a group dropped on a child group with "Merge" sends one `merge`
 with `from` the open group and every card in screen order, the lifted cards
 leave and the count lowers; Undo brings them back; the library's "Merge"
-sends no `from`. Browser coverage: the unit adds this case (a video and a
-group merged into a sibling on the group page leave the page and return on
-Undo) to `web/e2e/drag-organize.e2e.ts` when the browser test is on the
-feature branch by then, and otherwise says so in its PR body; the browser test
-unit does not depend on this one.
+sends no `from`. `task test-e2e -- e2e/drag-organize.e2e.ts` passes with a
+case this unit adds to that file: on the group page, a selected video and a
+selected group dropped on a sibling group with "Merge" leave the page, the
+sibling then holds the video and the group's members, and Undo puts both cards
+back on the group page at their positions.
 
 ### Cover drag organizing in a browser test
 

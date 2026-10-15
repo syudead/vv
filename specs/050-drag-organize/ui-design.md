@@ -231,7 +231,7 @@ flowchart LR
 | Onto | The target card's box (`article`, `rounded-md`) shows `ring-2 ring-primary`; on its thumbnail a label in the count face's form (`bg-overlay text-foreground text-xs font-medium rounded-md px-2 py-1`, centred) reads "Put in", "Group or bundle…" or "Put in or merge…". The ring is on the box, not the thumbnail, so it is not the selection ring. The card's corner marks and progress bar stay |
 | Between | A `w-0.5 rounded-full bg-primary` bar the card's height, centred in the gap before or after the target card; in a one-column grid and in the list view, an `h-0.5` bar the card's or row's width at its top or bottom edge. No ring on any card |
 | Crumb | The crumb's text takes `bg-primary-soft text-primary rounded-sm px-1`; nothing else in the band changes |
-| Refused | The target shows no ring and no bar; the preview's count badge gives way to a `Badge` `destructive` with lucide `Ban` (`size-3`) named "Can't drop here", and the pointer is `cursor-not-allowed`. A release changes nothing (requirement 15, Edge Cases) |
+| Refused | The target shows no ring and no bar; the preview's count badge gives way to a `Badge` `destructive` with lucide `Ban` (`size-3`) named "Can't drop here", and the pointer is `cursor-not-allowed`. A release changes nothing (requirement 15, Edge Cases). The favorites filter's descendant is the one exception ([What a drop does](#what-a-drop-does)) |
 | Nothing | No sign; a release changes nothing |
 
 The middle is the card's inner 50 % along the grid's axis of flow (its width
@@ -257,6 +257,15 @@ nothing.
 A video already in the target group is skipped by the server and appears
 once (Edge Case). The screen shows the result before the server answers
 (R-8), and on a failure restores what it showed with the failure toast.
+
+One exception to the Refused rule is accepted: in the library's favorites
+filter, which lists groups of every depth side by side, a lifted group over
+its own descendant shows the sign that card would show to any other group
+("Onto", and the menu on release), because the screen does not know the
+descendant there. The server refuses the operation with `409 group_cycle`;
+the screen puts the lifted cards back and shows the failure toast with the
+reason `errorCodes.group_cycle`, and no undo toast. Nothing is written
+(requirement 15).
 
 ## Drop menus
 
