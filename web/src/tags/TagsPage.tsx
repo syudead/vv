@@ -1027,6 +1027,9 @@ export default function TagsPage() {
       return replaceTag(next, previous, updated);
     });
     setSynonymsTag((current) => (current?.id === updated.id ? updated : current));
+    // 統合元のタグは消え、その種類を持っていけば種類ごとのタグの数が変わる
+    // （specs/051-tag-kinds/ui-design.md「Kind filter」）。
+    if (removed !== undefined) tagKindCountsChanged();
     // シノニムに足した名前が却下した名前だったなら、一覧から外れる（要件 15）。
     rejected.reload();
   }

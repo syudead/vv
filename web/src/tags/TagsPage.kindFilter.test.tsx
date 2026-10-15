@@ -259,4 +259,26 @@ describe("TagsPage 種類の名札・絞り込み・「Set kind…」（specs/05
     expect(within(rowOf("Tokyo")).queryByTitle(/^Kind:/)).toBeNull();
     expect(within(bar()).getByText("1 tag selected")).toBeDefined();
   });
+
+  it("シノニム登録に伴う統合でタグが消えると、種類の一覧を取り直す（タグの数が変わる）", async () => {
+    const user = userEvent.setup();
+    seedKindTags();
+    install();
+    renderPage();
+    await screen.findByTitle("Robot");
+    await waitFor(() => expect(server.tagKindGets).toBeGreaterThan(0));
+
+    const before = server.tagKindGets;
+    await user.click(within(rowOf("Robot")).getByRole("button", { name: "Synonyms" }));
+    const dialog = await screen.findByRole("dialog", { name: 'Synonyms of "Robot"' });
+    await user.type(
+      within(dialog).getByRole("textbox", { name: "Add synonym" }),
+      "Mecha",
+    );
+    await user.keyboard("{Enter}");
+    await user.click(await within(dialog).findByRole("button", { name: "Merge" }));
+
+    await waitFor(() => expect(server.tags.some((t) => t.name === "Mecha")).toBe(false));
+    await waitFor(() => expect(server.tagKindGets).toBeGreaterThan(before));
+  });
 });
