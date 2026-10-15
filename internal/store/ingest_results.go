@@ -62,10 +62,9 @@ func (s *IngestStore) ApplyProbe(
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitEvents(ctx, tx, successionEvents(succeeded)...); err != nil {
 		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
 	}
-	s.db.publishEvents(successionEvents(succeeded)...)
 	return nil
 }
 
@@ -121,6 +120,9 @@ func (s *IngestStore) ApplyProbeForJob(
 	}
 	var c changes
 	c.jobsQueued(domain.JobPreview)
+	if succeeded.changed() {
+		c.matchesChanged()
+	}
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, err
 	}

@@ -105,7 +105,7 @@ func (s *VisibilityStore) SetVideosPublic(ctx context.Context, videoIDs []int64,
 	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return nil, fmt.Errorf("cannot update the public flag: %w", err)
 	}
 	return keys, nil

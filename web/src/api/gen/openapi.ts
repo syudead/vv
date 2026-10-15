@@ -2900,12 +2900,17 @@ export interface paths {
          *     - `group`: グループの名前か項目が変わった。data は `GroupChanged` で、変わったグループと
          *       その祖先の id を運ぶ（specs/048-groups/research.md R-13）。最新の内容は
          *       `GET /api/groups/{id}` で取る
+         *     - `smartFolder`: スマートフォルダの中身かカードが変わったかもしれない。data は
+         *       `SmartFolderChanged` で、編集したフォルダとその子孫と親、または一致が変わりうる書き込み
+         *       （タグ・人物・団体・お気に入り・視聴状態・ライブラリにある動画・束ね・グループの変化）では
+         *       すべてのフォルダの id を運ぶ（specs/052-smart-folders/research.md R-12）。最新の内容は
+         *       `GET /api/smart-folders/{id}` で取る
          *
          *     接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-         *     変化を取り戻せる。`video` と `group` は切れていた間の分を送り直さない。
+         *     変化を取り戻せる。`video`・`group`・`smartFolder` は切れていた間の分を送り直さない。
          *
-         *     ゲストには `group` だけを送る（specs/048-groups/contracts/screen-api.md）。`scan` と
-         *     `video` は所有者だけに送る。
+         *     ゲストには `group` と `smartFolder` だけを送る（specs/048-groups/contracts/screen-api.md、
+         *     specs/052-smart-folders/contracts/screen-api.md）。`scan` と `video` は所有者だけに送る。
          */
         get: operations["streamEvents"];
         put?: never;
@@ -4224,6 +4229,11 @@ export interface components {
         /** @description /api/events の `group` の data */
         GroupChanged: {
             /** @description 名前か項目が変わったグループと、その祖先のグループの id。小さい順 */
+            ids: number[];
+        };
+        /** @description /api/events の `smartFolder` の data */
+        SmartFolderChanged: {
+            /** @description 中身かカードが変わったかもしれないスマートフォルダの id。小さい順 */
             ids: number[];
         };
         FolderPreview: {

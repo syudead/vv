@@ -26,6 +26,10 @@ import (
 // （specs/043-watch-history/data-model.md）。playback_id が一意なので、同じ視聴の 2 回目以降の
 // 保存は何も足さず、時刻と題名は最初の保存のものに留まる。時刻はサーバーの現在時刻
 // （Unix ミリ秒）で、クライアントの時計は使わない（research.md R-3）。
+//
+// 保存で domain.WatchState が変わるときだけ、確定後に domain.SmartFoldersChanged を発行する
+// （specs/052-smart-folders/research.md R-12）。再生中は数秒ごとに保存されるので、視聴状態の
+// 変わらない保存は知らせない。
 func (p *PlaybackStore) SaveProgress(
 	ctx context.Context, contentKey string, progress domain.Progress, play *domain.Play,
 ) (domain.Progress, error) {
@@ -36,6 +40,11 @@ func (p *PlaybackStore) SaveProgress(
 		return domain.Progress{}, fmt.Errorf("cannot save the playback position (%s): %w", contentKey, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+
+	before, err := storedWatchState(ctx, tx, contentKey)
+	if err != nil {
+		return domain.Progress{}, fmt.Errorf("cannot save the playback position (%s): %w", contentKey, err)
+	}
 
 	_, err = tx.ExecContext(ctx, `
 		insert into playback_progress (content_key, position_ms, duration_ms, completed, updated_at)
@@ -62,12 +71,37 @@ func (p *PlaybackStore) SaveProgress(
 		}
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := p.commitProgress(ctx, tx, before != domain.ClassifyWatch(&progress)); err != nil {
 		return domain.Progress{}, fmt.Errorf("cannot save the playback position (%s): %w", contentKey, err)
 	}
 
 	progress.UpdatedAt = updatedAt.Truncate(time.Second)
 	return progress, nil
+}
+
+// commitProgress は再生位置の保存の取引を確定する。watchChanged なら視聴状態が変わったので、
+// スマートフォルダの一致も変わりうる（commitMatchChange）。
+func (p *PlaybackStore) commitProgress(ctx context.Context, tx *sql.Tx, watchChanged bool) error {
+	if watchChanged {
+		return p.db.commitMatchChange(ctx, tx)
+	}
+	return tx.Commit()
+}
+
+// storedWatchState は取引 tx の中で、content_key の今の記録の視聴状態を返す。記録が無ければ未視聴である。
+func storedWatchState(ctx context.Context, tx *sql.Tx, contentKey string) (domain.WatchState, error) {
+	var stored domain.Progress
+	var completed int
+	err := tx.QueryRowContext(ctx, `select position_ms, completed from playback_progress where content_key = ?`, contentKey).
+		Scan(&stored.PositionMs, &completed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ClassifyWatch(nil), nil
+	}
+	if err != nil {
+		return "", err
+	}
+	stored.Completed = completed != 0
+	return domain.ClassifyWatch(&stored), nil
 }
 
 // Progress は再生位置を1件返す。記録が無ければ ErrNotFound を返す。

@@ -69,10 +69,9 @@ func (s *WorkInfoStore) Set(ctx context.Context, videoID int64, info domain.Work
 	if err != nil {
 		return domain.Video{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitEvents(ctx, tx, events...); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot update the work information: %w", err)
 	}
-	s.db.publishEvents(events...)
 	return video, nil
 }
 
@@ -137,10 +136,9 @@ func (s *WorkInfoStore) SetMany(ctx context.Context, changes []domain.WorkInfoCh
 	if err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitEvents(ctx, tx, events...); err != nil {
 		return nil, fmt.Errorf("cannot update the work information: %w", err)
 	}
-	s.db.publishEvents(events...)
 	return out, nil
 }
 
@@ -211,13 +209,12 @@ func (s *WorkInfoStore) SetDetails(ctx context.Context, videoID int64, displayNa
 	if err != nil {
 		return domain.Video{}, err
 	}
-	if err := tx.Commit(); err != nil {
-		return domain.Video{}, fmt.Errorf("cannot update the video details: %w", err)
-	}
 	if nameChanged {
 		events = append([]domain.Event{domain.VideoOverrideChanged{VideoID: videoID}}, events...)
 	}
-	s.db.publishEvents(events...)
+	if err := s.db.commitEvents(ctx, tx, events...); err != nil {
+		return domain.Video{}, fmt.Errorf("cannot update the video details: %w", err)
+	}
 	return video, nil
 }
 

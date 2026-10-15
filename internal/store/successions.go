@@ -99,6 +99,12 @@ type succession struct {
 	groupIDs []int64
 }
 
+// changed は引き継ぎで変わった動画かグループがあるかを返す。あればスマートフォルダの一致も
+// 変わりうる（specs/052-smart-folders/data-model.md「Notices」）。
+func (s succession) changed() bool {
+	return len(s.videoIDs) > 0 || len(s.groupIDs) > 0
+}
+
 // judgeableSuccession は判定する記録の新しい鍵と、その動画の尺である。
 type judgeableSuccession struct {
 	newKey     string
