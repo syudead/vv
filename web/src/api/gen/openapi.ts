@@ -2900,12 +2900,15 @@ export interface paths {
          *     - `group`: グループの名前か項目が変わった。data は `GroupChanged` で、変わったグループと
          *       その祖先の id を運ぶ（specs/048-groups/research.md R-13）。最新の内容は
          *       `GET /api/groups/{id}` で取る
+         *     - `candidates`: 重複の候補の一覧が変わったかもしれない。判定の結果や版の取り外しの確定後に
+         *       送る。data は空のオブジェクト `{}` で、中身は運ばない。最新の一覧は
+         *       `GET /api/version-candidates` で取る（specs/054-auto-dup/research.md R-10）
          *
          *     接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-         *     変化を取り戻せる。`video` と `group` は切れていた間の分を送り直さない。
+         *     変化を取り戻せる。`video`、`group` と `candidates` は切れていた間の分を送り直さない。
          *
-         *     ゲストには `group` だけを送る（specs/048-groups/contracts/screen-api.md）。`scan` と
-         *     `video` は所有者だけに送る。
+         *     ゲストには `group` だけを送る（specs/048-groups/contracts/screen-api.md）。`scan`、
+         *     `video` と `candidates` は所有者だけに送る。
          */
         get: operations["streamEvents"];
         put?: never;

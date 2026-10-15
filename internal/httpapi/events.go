@@ -41,10 +41,12 @@ func NewEvents() *Events {
 
 // eventSubscriber は1本の接続が、まだ送っていない変化を持つ。
 type eventSubscriber struct {
-	mu     sync.Mutex
-	scan   bool
-	videos map[int64]struct{}
-	groups map[int64]struct{}
+	mu   sync.Mutex
+	scan bool
+	// candidates は重複の候補の一覧が変わったかもしれないことを表す（specs/054-auto-dup/research.md R-10）。
+	candidates bool
+	videos     map[int64]struct{}
+	groups     map[int64]struct{}
 	// ready は送るものがあることを知らせる。容量1で、重なった知らせはまとまる。
 	ready chan struct{}
 }
@@ -61,17 +63,21 @@ func (s *eventSubscriber) mark(update func(*eventSubscriber)) {
 
 // pendingEvents はまだ送っていない変化である。
 type pendingEvents struct {
-	scan   bool
-	videos []int64
-	groups []int64
+	scan       bool
+	candidates bool
+	videos     []int64
+	groups     []int64
 }
 
 // take はまだ送っていない変化を取り出して空にする。
 func (s *eventSubscriber) take() pendingEvents {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	pending := pendingEvents{scan: s.scan, videos: sortedIDs(s.videos), groups: sortedIDs(s.groups)}
+	pending := pendingEvents{
+		scan: s.scan, candidates: s.candidates, videos: sortedIDs(s.videos), groups: sortedIDs(s.groups),
+	}
 	s.scan = false
+	s.candidates = false
 	clear(s.videos)
 	clear(s.groups)
 	return pending
@@ -137,6 +143,12 @@ func (e *Events) VideoChanged(id int64) {
 	e.publish(func(s *eventSubscriber) { s.videos[id] = struct{}{} })
 }
 
+// CandidatesChanged は重複の候補の一覧が変わったかもしれないことを知らせる。中身は運ばず、
+// 重複の候補の画面が取り直す（specs/054-auto-dup/research.md R-10）。
+func (e *Events) CandidatesChanged() {
+	e.publish(func(s *eventSubscriber) { s.candidates = true })
+}
+
 // GroupsChanged はグループの名前か項目が変わったことを知らせる（specs/048-groups/research.md R-13）。
 // ids は変わったグループとその祖先の id である。
 func (e *Events) GroupsChanged(ids []int64) {
@@ -183,6 +195,10 @@ func (e *Events) Handle(event domain.Event) {
 		for _, id := range event.VideoIDs {
 			e.VideoChanged(id)
 		}
+	case domain.VersionCandidatesChanged:
+		// 判定の結果や版の取り外しで候補が変わったら candidates の知らせにする
+		// （specs/054-auto-dup/research.md R-10）。
+		e.CandidatesChanged()
 	case domain.GroupsChanged:
 		// グループの変化は group の知らせにする。グループの画面・カード・動画ページのグループの行が
 		// 読み直す（specs/048-groups/research.md R-13）。
@@ -207,8 +223,9 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	// 動画の変化を取りこぼす。
 	sub, unsubscribe := s.events.subscribe()
 	defer unsubscribe()
-	// ゲストには group だけを送る。scan と video は所有者の取り込みと非公開の動画を運ぶ
-	// （specs/048-groups/contracts/screen-api.md「/api/events」）。
+	// ゲストには group だけを送る。scan と video は所有者の取り込みと非公開の動画を運び、
+	// candidates は所有者だけが開く重複の候補の画面のものである
+	// （specs/048-groups/contracts/screen-api.md「/api/events」、specs/054-auto-dup/research.md R-10）。
 	guest := !audienceFrom(r.Context()).IsOwner()
 
 	controller := http.NewResponseController(w)
@@ -260,6 +277,7 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 	pending := sub.take()
 	if guest {
 		pending.scan = false
+		pending.candidates = false
 		pending.videos = nil
 	}
 	if pending.scan && s.scans != nil {
@@ -272,6 +290,13 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 			if err := writeEvent(w, "scan", toAPIScan(current)); err != nil {
 				return err
 			}
+		}
+	}
+	if pending.candidates {
+		// 中身の無い知らせである。EventSource は data の無いイベントを届けないので、空の
+		// オブジェクトを data にする。
+		if err := writeEvent(w, "candidates", struct{}{}); err != nil {
+			return err
 		}
 	}
 	for _, id := range pending.videos {

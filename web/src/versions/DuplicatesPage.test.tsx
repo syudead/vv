@@ -493,6 +493,18 @@ describe("DuplicatesPage（specs/030-video-versions/ui-design.md「Duplicates pa
     ).toBeNull();
   });
 
+  it("candidates の知らせで取り直し、判定で消えた組を一覧から落とす（specs/054-auto-dup/research.md R-10）", async () => {
+    renderPage();
+    await screen.findByText("2 pairs");
+    server.candidates = [server.candidates[1]!];
+    await emitServerEvent("candidates", {});
+
+    await waitFor(() => expect(screen.queryByText("劇場版 720p")).toBeNull());
+    expect(await screen.findByText("1 pair")).toBeDefined();
+    expect(pairItems()).toHaveLength(1);
+    expect(server.listCalls).toBe(2);
+  });
+
   it("取り直しが重なったら、今の取得が終わってから 1 度だけ取り直す", async () => {
     server.holdingList = true;
     renderPage();
