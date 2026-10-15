@@ -70,6 +70,19 @@ folder screen's drag, judged against the parent Issue's `UI品質`.
   ([contracts/screen-api.md](contracts/screen-api.md#patch-apigroupsid-with-an-undo-token)).
 - The folder screen has no selection today, so it drags one card at a time;
   requirement 11 applies where selection exists (library and group page).
+- `POST /api/organize/merge` takes an optional `from`, the open group, so a
+  merge from the group page takes the dragged videos and groups out of it in
+  the same transaction and under the same undo token, as Move does
+  ([contracts/screen-api.md](contracts/screen-api.md#post-apiorganizemerge),
+  [data-model.md, Operations](data-model.md#operations)); the unit that adds
+  it is [Take merged cards out of the open group with `from` in the merge
+  operation](#take-merged-cards-out-of-the-open-group-with-from-in-the-merge-operation).
+- Accepted limitation: in the library's favorites filter, which lists groups
+  of every depth side by side, a group dropped onto its own descendant is
+  refused only by the server's `409 group_cycle`, which the screen shows as
+  the failure toast with the cards restored (R-8); the screen marks no refusal
+  beforehand. Nothing is written (requirement 15 holds), the contract does not
+  change, and `ui-design.md` stays as it is.
 
 ## Constitution Check
 
@@ -145,6 +158,8 @@ flowchart LR
   bundle --> vv
   into --> gg[Drop a group on a group]
   merge --> gg
+  merge --> mf[Merge leaves the open group]
+  gg --> mf
   into --> e2e[Browser test]
   vv --> e2e
   gg --> e2e
@@ -324,6 +339,41 @@ show: X on Y with "Merge" sends `merge` with `into` Y and X's card leaves
 (acceptance criterion 4); with "Put in as a child group" it sends `move` with
 `to` Y (acceptance criterion 5); a selection of videos and groups dropped on a
 group sends one request, `merge` or `move`, with every card in screen order.
+
+### Take merged cards out of the open group with `from` in the merge operation
+
+**Scope**: The optional `from` of `POST /api/organize/merge`
+([contracts/screen-api.md](contracts/screen-api.md#post-apiorganizemerge)):
+`api/openapi.yaml` and `task generate`; the Merge rule's removal from `from`
+and its image in `OrganizeStore`, `domain.PlanGroupMerge`'s inputs where the
+removal changes them, `app.Organizer` and the handler passing `from`
+([data-model.md, Operations](data-model.md#operations),
+[Undo image](data-model.md#undo-image)); `mergeGroups` in
+`web/src/api/organize.ts` taking `from`; the group page's "Merge" sending
+`from` the open group, as its "Put in as a child group" does. The library
+sends no `from`. `ui-design.md`'s [Group page](ui-design.md#group-page) is
+already the target ("the lifted cards leave") and does not change.
+
+**Dependencies**: Merge dragged groups into a target group in one operation;
+Drop a group on a group to nest or merge it.
+
+**Acceptance**: `task check` passes with no diff from `task generate`; store
+tests show: on group G holding video V, group X and group Y, merging V and X
+into Y with `from` G leaves G holding Y only, and Y its items then V then X's
+items in order, in one transaction; a dragged video that is not in `from` is
+`ErrGroupTargetNotFound` with nothing written; without `from` the operation
+answers as before; undo of the one token restores V and X in G at their
+positions, X with its id, items, favorite, playlist items and parents, and Y
+as it was. Handler tests show `from` reaches the Organizer and the contract's
+statuses hold with it. Page tests show: on the group page a selection of a
+video and a group dropped on a child group with "Merge" sends one `merge`
+with `from` the open group and every card in screen order, the lifted cards
+leave and the count lowers; Undo brings them back; the library's "Merge"
+sends no `from`. Browser coverage: the unit adds this case (a video and a
+group merged into a sibling on the group page leave the page and return on
+Undo) to `web/e2e/drag-organize.e2e.ts` when the browser test is on the
+feature branch by then, and otherwise says so in its PR body; the browser test
+unit does not depend on this one.
 
 ### Cover drag organizing in a browser test
 
