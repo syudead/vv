@@ -12,6 +12,7 @@ import {
   renameTag,
   type Tag,
 } from "../api/tags";
+import type { TagKind } from "../api/tagKinds";
 import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
 import {
@@ -32,6 +33,7 @@ import DeleteTagDialog from "./DeleteTagDialog";
 import MergeTagDialog from "./MergeTagDialog";
 import RejectedNames from "./RejectedNames";
 import RejectTagDialog from "./RejectTagDialog";
+import TagKindsPanel from "./TagKindsPanel";
 import SynonymsDialog from "./SynonymsDialog";
 import type { TagListSort } from "./tagListOrder";
 import {
@@ -43,7 +45,11 @@ import {
   replaceTag,
 } from "./tagPageRows";
 import { tagFieldError, type TagFieldError } from "./tagNameField";
-import { type TagListTab, useTagListCriteria } from "./tagListUrl";
+import {
+  serializeTagListCriteria,
+  type TagListTab,
+  useTagListCriteria,
+} from "./tagListUrl";
 import TagRow from "./TagRow";
 import {
   TagListChanged,
@@ -62,6 +68,7 @@ import {
   withoutIds,
 } from "./tagSelection";
 import { useRejectedNames } from "./useRejectedNames";
+import { useTagKindsTab } from "./useTagKindsTab";
 import TagFilterChips from "./TagFilterChips";
 import TagListEmptyState from "./TagListEmptyState";
 import TagListHead from "./TagListHead";
@@ -112,6 +119,9 @@ interface RowHandlers {
  * 却下した名前の一覧と取り外しも持つ。却下した名前の一覧はこの画面だけが読むので、
  * 共有の保持ではなくここで取る（research.md R-8）。
  *
+ * タグの種類（specs/051-tag-kinds/ui-design.md「Kinds tab」）: 「Kinds」のタブで種類の作成・
+ * 改名・削除を持つ（`useTagKindsTab`、`TagKindsPanel`）。
+ *
  * 見た目の置き場（specs/036-tag-admin-scale/ui-design.md「Top bar」「Band」）: 検索・
  * 絞り込み・並び順はライブラリと同じく共通トップバー（`TagToolbar`）、本文の先頭は
  * 見出しの行（選んでいる間は選択の行）・タブ・絞り込みのチップ・列の見出しの帯。
@@ -147,6 +157,13 @@ export default function TagsPage() {
    * 戻る・進むで URL が変わったときにも当てる）。下の `useLayoutEffect` が追わせる。
    */
   const [tab, setTab] = useState<TagListTab>(urlTab);
+  /** newKindButtonRef は「Kinds」のタブの見出しの行の「New kind」である。 */
+  const newKindButtonRef = useRef<HTMLButtonElement | null>(null);
+  const kindsTab = useTagKindsTab({
+    toast,
+    newKindRef: newKindButtonRef,
+    openAtStart: tab === "kinds",
+  });
   const [creating, setCreating] = useState(false);
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<TagFieldError | null>(null);
@@ -287,12 +304,13 @@ export default function TagsPage() {
   }
 
   /**
-   * changeTab は「Tags」「Rejected names」のタブを切り替える。選択・作成・改名は
-   * 「Tags」のタブの中のものなので、離れるときに閉じる。
+   * changeTab は「Tags」「Rejected names」「Kinds」のタブを切り替える。選択・作成・改名は
+   * 「Tags」のタブの中のものなので、離れるときに閉じる。「Kinds」のタブの作成・改名は
+   * `switchedTab` が閉じる。
    */
   function changeTab(next: TagListTab): boolean {
     if (next === tab) return true;
-    if (createPending || renamePending) return false;
+    if (createPending || renamePending || kindsTab.pending) return false;
     setSelected(new Set());
     setCreating(false);
     setCreateError(null);
@@ -327,12 +345,40 @@ export default function TagsPage() {
     filtersRef.current = { tentativeOnly, unusedOnly };
   }, [tentativeOnly, unusedOnly]);
 
-  // 戻る・進むで URL のタブが変わったら、描くタブを追わせる。「Rejected names」へ
-  // 移るときは、選択と作成・改名を閉じる（`changeTab` と同じ）。作成・改名の送信中は
-  // 「Tags」のまま待つ — 閉じると行が消え、失敗したときに下書きと誤りを出す先が無い。
-  // 送信が終わって作成・改名の行が残っている（失敗した）ときは、切り替えを断ったことに
-  // して URL を描いているタブへ戻す（`changeTab` が送信中に何もしないのと同じ結果）。
-  const editPending = createPending || renamePending;
+  /**
+   * switchedTab は描くタブを `from` から `to` へ移すときの後始末である。「Tags」の
+   * タブを離れるときは選択と作成・改名を閉じる。「Kinds」のタブを離れるときは作成・
+   * 改名を閉じ、種類の改名・削除があったなら「Tags」のタブの先頭のページを読み直す
+   * （タグの行の種類の名前が変わる。共有のタグの一覧は `api/tagKinds.ts` が取り直す）。
+   * 「Kinds」のタブへ入るときは種類の一覧を取り直す（タグの削除・統合などで数が変わる）。
+   */
+  function switchedTab(from: TagListTab, to: TagListTab) {
+    if (to !== "tags") {
+      setSelected((current) => (current.size === 0 ? current : new Set()));
+      setCreating(false);
+      setCreateError(null);
+      setRenaming(null);
+      setRenameError(null);
+    }
+    if (from === "kinds") {
+      kindsTab.closeEdits();
+      if (kindsTab.takeChanged()) void reload();
+    }
+    if (to === "kinds") kindsTab.reload();
+  }
+  const switchedTabRef = useRef(switchedTab);
+  useLayoutEffect(() => {
+    switchedTabRef.current = switchedTab;
+  });
+
+  // 戻る・進むで URL のタブが変わったら、描くタブを追わせる（後始末は `switchedTab`）。
+  // 作成・改名・種類の削除の送信中は今のタブのまま待つ — 閉じると行や窓が消え、失敗した
+  // ときに下書きと誤りを出す先が無く、種類の削除の変更印も応答の後にしか立たない。送信が
+  // 終わって作成・改名の行や削除の窓が残っている（失敗した）ときは、
+  // 切り替えを断ったことにして URL を描いているタブへ戻す（`changeTab` が送信中に何も
+  // しないのと同じ結果）。
+  const editPending = createPending || renamePending || kindsTab.pending;
+  const kindsEditing = kindsTab.editing;
   const heldTabRef = useRef(false);
   useLayoutEffect(() => {
     if (urlTab === tab) {
@@ -343,21 +389,15 @@ export default function TagsPage() {
       heldTabRef.current = true;
       return;
     }
-    if (heldTabRef.current && (creating || renaming !== null)) {
+    if (heldTabRef.current && (creating || renaming !== null || kindsEditing)) {
       heldTabRef.current = false;
       applyCriteria({ tab }, "replace");
       return;
     }
     heldTabRef.current = false;
-    if (urlTab !== "tags") {
-      setSelected((current) => (current.size === 0 ? current : new Set()));
-      setCreating(false);
-      setCreateError(null);
-      setRenaming(null);
-      setRenameError(null);
-    }
+    switchedTabRef.current(tab, urlTab);
     setTab(urlTab);
-  }, [urlTab, tab, editPending, creating, renaming, applyCriteria]);
+  }, [urlTab, tab, editPending, creating, renaming, kindsEditing, applyCriteria]);
 
   /**
    * shown は、その1件が読み込んだ行の条件（検索と「Tentative only」「Unused only」）で
@@ -1144,7 +1184,89 @@ export default function TagsPage() {
 
   const selecting = onTagsTab && selected.size > 0;
   // 作成・改名の送信中はタブを切り替えない（押せなくし、矢印でも移らない）。
-  const tabsLocked = createPending || renamePending;
+  const tabsLocked = editPending;
+
+  /**
+   * kindHref は「Kinds」のタブの種類の名前のリンクの先である。その種類で絞った「Tags」の
+   * タブで、ほかの条件は残す（specs/051-tag-kinds/ui-design.md「Rows」）。
+   */
+  function kindHref(kind: TagKind): string {
+    const next = { ...criteria, tab: "tags" as const, kind: String(kind.id) };
+    return `?${serializeTagListCriteria(next).toString()}`;
+  }
+
+  /** openKind は種類の名前の押下である。履歴に積んで「Tags」のタブへ移る。 */
+  function openKind(kind: TagKind) {
+    applyCriteria({ tab: "tags", kind: String(kind.id) }, "push");
+  }
+
+  /**
+   * headerAction は見出しの行の主操作である。「Tags」のタブは「New tag」、「Kinds」の
+   * タブは同じ位置に「New kind」、「Rejected names」のタブには置かない。
+   */
+  function headerAction() {
+    if (tab === "kinds") {
+      return (
+        <Button
+          ref={newKindButtonRef}
+          size="sm"
+          onClick={kindsTab.openCreate}
+          disabled={
+            kindsTab.kinds === undefined ||
+            kindsTab.loadError !== null ||
+            kindsTab.creating ||
+            editPending
+          }
+        >
+          <Plus aria-hidden="true" />
+          {t.tags.kinds.newKind}
+        </Button>
+      );
+    }
+    if (!onTagsTab) return undefined;
+    return (
+      <Button
+        ref={createButtonRef}
+        size="sm"
+        onClick={openCreate}
+        disabled={page === undefined || creating || createPending || renamePending}
+      >
+        <Plus aria-hidden="true" />
+        {t.tags.newTag}
+      </Button>
+    );
+  }
+
+  /** otherPanel は「Tags」以外のタブのパネルである。 */
+  function otherPanel() {
+    const value = tab === "kinds" ? "kinds" : "rejected";
+    return (
+      <div
+        id={tagsPanelId(tabsId, value)}
+        role="tabpanel"
+        aria-labelledby={tagsTabId(tabsId, value)}
+        className="flex flex-col gap-3"
+      >
+        {value === "kinds" ? (
+          <TagKindsPanel state={kindsTab} hrefFor={kindHref} onOpenKind={openKind} />
+        ) : (
+          <RejectedNames
+            page={rejected.page}
+            error={rejected.error}
+            onRetry={rejected.reload}
+            morePending={rejected.morePending}
+            moreError={rejected.moreError}
+            onLoadMore={rejected.loadMore}
+            resetKey={rejected.epoch}
+            onForget={rejected.forget}
+            onFocusFallback={() =>
+              document.getElementById(tagsTabId(tabsId, "rejected"))?.focus()
+            }
+          />
+        )}
+      </div>
+    );
+  }
 
   const bodyRows = virtualBodyRows({
     items: virtualItems,
@@ -1232,21 +1354,7 @@ export default function TagsPage() {
                 </span>
               ) : undefined
             }
-            actions={
-              onTagsTab ? (
-                <Button
-                  ref={createButtonRef}
-                  size="sm"
-                  onClick={openCreate}
-                  disabled={
-                    page === undefined || creating || createPending || renamePending
-                  }
-                >
-                  <Plus aria-hidden="true" />
-                  {t.tags.newTag}
-                </Button>
-              ) : undefined
-            }
+            actions={headerAction()}
           />
         )
       }
@@ -1258,6 +1366,7 @@ export default function TagsPage() {
             onChange={changeTab}
             tagsCount={page?.totalAll}
             rejectedCount={rejected.page?.total}
+            kindsCount={kindsTab.kinds?.length}
             locked={tabsLocked}
           />
           {onTagsTab && (
@@ -1366,26 +1475,7 @@ export default function TagsPage() {
           )}
         </div>
       ) : (
-        <div
-          id={tagsPanelId(tabsId, "rejected")}
-          role="tabpanel"
-          aria-labelledby={tagsTabId(tabsId, "rejected")}
-          className="flex flex-col gap-3"
-        >
-          <RejectedNames
-            page={rejected.page}
-            error={rejected.error}
-            onRetry={rejected.reload}
-            morePending={rejected.morePending}
-            moreError={rejected.moreError}
-            onLoadMore={rejected.loadMore}
-            resetKey={rejected.epoch}
-            onForget={rejected.forget}
-            onFocusFallback={() =>
-              document.getElementById(tagsTabId(tabsId, "rejected"))?.focus()
-            }
-          />
-        </div>
+        otherPanel()
       )}
 
       {bulkDialog !== null && (
