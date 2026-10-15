@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/plan.md
-sourceHash: c2d216a536a429facadc3eed0d5af4de5206180e5860489062f55289dabe41ed
+sourceHash: 87a973ce79b624f3da2d53f1d74b130904200ac2462ac560075c991d2c4a7574
 ---
 
 # 実装計画: 重複の候補を自動で判定し、同じものをまとめる {#implementation-plan-judging-possible-duplicates-automatically-and-bundling-the-same-ones}
@@ -11,11 +11,10 @@ sourceHash: c2d216a536a429facadc3eed0d5af4de5206180e5860489062f55289dabe41ed
 
 ## 概要 {#summary}
 
-重複の候補はそれぞれ、まず保存済みの情報から判定する。2 つの作品コードが異なれば別の動画であり、次に 2 つの指紋で決める: すべてのフレームが一致すれば、AI へのリクエストなしで組をまとめる。フレームが続けて異なる区間があれば、そのフレームを横に並べて分類器のポートに見せ、同じ映像かを問う。「同じ動画」なら所有者がまとめるのと同じように組をまとめ、「別の動画」なら退け、それ以外は Duplicates のページに残る。動画のカードにはバージョンの印が付き、その印は一覧の項目が新たに持つ `versions` の要約から読む。
+重複の候補はそれぞれ、まず保存済みの 2 つの指紋から判定する。すべてのフレームが一致すれば、AI へのリクエストなしで組をまとめる。フレームが続けて異なる区間があれば、そのフレームを横に並べて分類器のポートに見せ、同じ映像かを問う。「同じ動画」なら所有者がまとめるのと同じように組をまとめ、「別の動画」なら退け、それ以外は Duplicates のページに残る。動画のカードにはバージョンの印が付き、その印は一覧の項目が新たに持つ `versions` の要約から読む。
 
 | 関心事 | 方針 |
 | --- | --- |
-| 作品コード | 2 つの異なる作品コードか外部 ID は、リクエストなしで「別」 ([R-12](research.md#r-12-different-work-codes-dismiss-a-pair-without-the-model)) |
 | 最初の判定 | フレームごとの指紋の距離。すべて一致すれば、リクエストなしで「同じ」 ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)) |
 | AI への入力 | 続けて異なるフレームの区間から最大 4 枚の画像、A の横に B。事実はなし ([R-2](research.md#r-2-the-model-sees-the-frames-where-the-two-files-differ)、[R-11](research.md#r-11-the-request-carries-no-file-names)) |
 | AI の判定 | 0.8 以上で同じ、0.2 以下で別、固定 ([R-3](research.md#r-3-the-question-wording-and-two-fixed-thresholds)) |
@@ -41,11 +40,9 @@ sequenceDiagram
   participant AI as 分類器 (Ollama)
   Scan->>Store: 指紋のジョブが候補 A–B を書く
   Store-->>Judge: ProcessingChanged (起こす)
-  Judge->>Store: 候補を 1 つ、指紋と作品コードとともに取得する
-  Judge->>Judge: 作品コードを比べ、次にフレームごとに比べる
-  alt work codes differ
-    Judge->>Store: 別の動画
-  else every frame matches
+  Judge->>Store: 候補を 1 つ、両方の指紋とともに取得する
+  Judge->>Judge: フレームごとに比べる
+  alt every frame matches
     Judge->>Store: 同じ動画
   else a run of frames differs
     Judge->>Art: その区間のフレーム、A の横に B
@@ -59,22 +56,21 @@ sequenceDiagram
 
 1. **候補は今と同じように現れる。** 取り込みの `fingerprint` ジョブが、新しい動画の指紋をほかの動画の指紋と比べ、フレームの距離の中央値が 12 以下のときに `video_version_candidates` に行を書く (030)。この行は今後、判定が null の状態で始まり、null は「待っている」を意味する。
 2. **ワーカーが起きる。** `app.VersionJudge` は、`AutoTagger` と同じく `cmd/mdm` で起動する 1 つの goroutine である。起動時、ジョブが終わったとき (`ProcessingChanged`)、候補が変わったとき、設定が保存されたときに起きる。設定がオフの間は何もしない。
-3. **候補を 1 つ取得する。** ストアは、待っている候補のうち最も古いもの、または再試行の時刻を過ぎた失敗した候補を選ぶ。所有者がバージョンから外した組は飛ばし、選んだ候補を `running` にして、両方の指紋と、両方の動画の作品コードと外部 ID を返す。
-4. **作品情報を確かめる。** 所有者か作品情報プラグインが両方の動画に作品コードを与えていて、そのコードが異なるとき、または同じ取得元の外部 ID が異なるとき、組は別の動画であり、それ以上は何も問わない。1 つの作品が完全版とカット版で出ることがあるので、コードが等しくても何も決めない。
-5. **指紋をフレームごとに比べる。** 指紋は、シーク用プレビューの最大 81 フレームのそれぞれについてハッシュを持つ。フレームは候補の確認と同じように時刻で組にし、組の距離が 12 を超えるとその組は異なる。候補の確認が使う中央値は差し替えた区間を隠すが、フレームごとの一覧はそれを示す。
+3. **候補を 1 つ取得する。** ストアは、待っている候補のうち最も古いもの、または再試行の時刻を過ぎた失敗した候補を選ぶ。所有者がバージョンから外した組は飛ばし、選んだ候補を `running` にして、両方の指紋を返す。
+4. **指紋をフレームごとに比べる。** 指紋は、シーク用プレビューの最大 81 フレームのそれぞれについてハッシュを持つ。フレームは候補の確認と同じように時刻で組にし、組の距離が 12 を超えるとその組は異なる。候補の確認が使う中央値は差し替えた区間を隠すが、フレームごとの一覧はそれを示す。
 
 | フレーム | 結果 | リクエスト |
 | --- | --- | --- |
 | 異なるのが 5% 以下で、2 枚続けて異なることはない | 同じ動画 | なし |
 | 2 枚以上続けて異なる | そうした区間のうち最も長いものをモデルに送る | 1 回 |
 
-6. **異なる区間があれば、モデルが設定されている場合にモデルに問う。** 所有者が Settings で Ollama の接続を一度も保存していないとき、ワーカーは何も送らない: 組は `no_connection` になり、接続が保存されるまで Duplicates で待つ。接続の保存はワーカーを起こす。そうでなければ: `internal/artifacts` が、各シーク用プレビューからその区間のフレームを最大 4 枚切り出し、A のフレームと B のフレームを横に並べて 1 枚の JPEG にする。ffmpeg は動かず、メディアファイルも開かない。画像と質問は、自動タグ付けが使うポートである `app.Classifier` に送り、答えは確率である: 0.8 以上は同じ、0.2 以下は別である。
-7. **ストアが結果を 1 つのトランザクションで適用する。**
+5. **異なる区間があれば、モデルが設定されている場合にモデルに問う。** 所有者が Settings で Ollama の接続を一度も保存していないとき、ワーカーは何も送らない: 組は `no_connection` になり、接続が保存されるまで Duplicates で待つ。接続の保存はワーカーを起こす。そうでなければ: `internal/artifacts` が、各シーク用プレビューからその区間のフレームを最大 4 枚切り出し、A のフレームと B のフレームを横に並べて 1 枚の JPEG にする。ffmpeg は動かず、メディアファイルも開かない。画像と質問は、自動タグ付けが使うポートである `app.Classifier` に送り、答えは確率である: 0.8 以上は同じ、0.2 以下は別である。
+6. **ストアが結果を 1 つのトランザクションで適用する。**
 
 | 結果 | ストアがすること | 所有者に見えるもの |
 | --- | --- | --- |
 | 同じ (すべてのフレーム、または 0.8 以上) | `VersionStore.Bundle` の手順で A と B をまとめる。代表は、一方がまとまりにあればそのまとまりの代表、なければ所有者のタグなどのデータを持つ方、次にブラウザーで再生できる方、音がある方、画素が多い方、ビットレートが高い方 | バージョンの印付きの 1 枚のカード |
-| 別 (作品コード、または 0.2 以下) | Duplicates のページのボタンと同じように、「別の動画」として退けた組を書く | 組が Duplicates から消える |
+| 別 (0.2 以下) | Duplicates のページのボタンと同じように、「別の動画」として退けた組を書く | 組が Duplicates から消える |
 | 0.2 と 0.8 の間 | 候補を `undecided` にする。二度と問わない | 組が Duplicates に残る |
 | Ollama の接続が保存されていない | `no_connection` にする。リクエストは送らない | 所有者が決めるほかの組と同じように、組が Duplicates に残る |
 | 答えがないか、エラー | `failed` にし、再試行の時刻を決める: 10 分、1 時間、6 時間、その後は毎日 | 再試行で決まるまで、組が Duplicates に残る |
@@ -165,7 +161,7 @@ flowchart LR
 
 ### 重複の判定と、バージョンから外した組を保存する {#store-duplicate-judgements-and-the-pairs-removed-from-versions}
 
-**範囲**: 候補の列と `video_version_unbundles` を持つマイグレーション。ドメインの規則 (衝突の確認、代表、再試行の時刻) と `VersionCandidatesChanged`。両方の指紋と作品コードを返すストアの取得、回復、衝突の確認付きの 3 つの結果。`version_judging.enabled` の設定の読み書き。組を記録して候補を作り直す `Unbundle`。`video_version_unbundles` のキーを付け替える引き継ぎ。ARCHITECTURE.md と running-vv.md のユーザーデータの一覧 ([data-model.md](data-model.md)、[R-4](research.md#r-4-the-judgement-is-columns-on-the-candidate-row) から [R-8](research.md#r-8-removing-a-version-records-the-pairs-and-rebuilds-its-candidates))。
+**範囲**: 候補の列と `video_version_unbundles` を持つマイグレーション。ドメインの規則 (衝突の確認、代表、再試行の時刻) と `VersionCandidatesChanged`。両方の指紋を返すストアの取得、回復、衝突の確認付きの 3 つの結果。`version_judging.enabled` の設定の読み書き。組を記録して候補を作り直す `Unbundle`。`video_version_unbundles` のキーを付け替える引き継ぎ。ARCHITECTURE.md と running-vv.md のユーザーデータの一覧 ([data-model.md](data-model.md)、[R-4](research.md#r-4-the-judgement-is-columns-on-the-candidate-row) から [R-8](research.md#r-8-removing-a-version-records-the-pairs-and-rebuilds-its-candidates))。
 
 **依存**: なし。
 
@@ -173,11 +169,11 @@ flowchart LR
 
 ### 指紋と分類器で重複の候補を判定する {#judge-possible-duplicates-from-their-fingerprints-and-the-classifier}
 
-**範囲**: `internal/domain` の作品コードの規則、フレームごとの規則、最も長い異なる区間。`internal/artifacts` の、指定したフレームを横に並べた組。`app.VersionJudge` (設定がオンの間 1 つずつ取得し、規則を適用し、異なる区間があるときだけ R-3 の質問をし、結果を適用し、次の `retry_at` まで待つ)。各組の規則の結果と確率を記すログの行。配線と起こす処理 (起動時、`ProcessingChanged`、`VersionCandidatesChanged`、設定の保存、Ollama の接続の保存)。接続の行がないときの `no_connection` の経路。索引からリンクする `docs/design-docs/duplicate-judging.md`。AI 層とサブシステムの地図の項目 ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs) から [R-3](research.md#r-3-the-question-wording-and-two-fixed-thresholds)、[R-5](research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)、[R-11](research.md#r-11-the-request-carries-no-file-names)、[R-12](research.md#r-12-different-work-codes-dismiss-a-pair-without-the-model))。
+**範囲**: `internal/domain` のフレームごとの規則と最も長い異なる区間。`internal/artifacts` の、指定したフレームを横に並べた組。`app.VersionJudge` (設定がオンの間 1 つずつ取得し、規則を適用し、異なる区間があるときだけ R-3 の質問をし、結果を適用し、次の `retry_at` まで待つ)。各組の規則の結果と確率を記すログの行。配線と起こす処理 (起動時、`ProcessingChanged`、`VersionCandidatesChanged`、設定の保存、Ollama の接続の保存)。接続の行がないときの `no_connection` の経路。索引からリンクする `docs/design-docs/duplicate-judging.md`。AI 層とサブシステムの地図の項目 ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs) から [R-3](research.md#r-3-the-question-wording-and-two-fixed-thresholds)、[R-5](research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)、[R-11](research.md#r-11-the-request-carries-no-file-names))。
 
 **依存**: 重複の判定と、バージョンから外した組を保存する。
 
-**受け入れ**: `task check` と `task check-docs` が通る。ドメインのテストが次を示す: 異なる作品コードは「別」で、等しいものは何も決めない。距離がすべて 12 以内なら「同じ」、20 枚のうち離れた 1 枚だけが異なってもまだ「同じ」、4 枚続けて異なればその区間を返す。偽の分類器を使うアプリのテストが次を示す: 一致する組は分類器を呼ばずにまとめ、異なる組は区間のフレームを送り、0.85 はまとめ、0.1 は退け、0.5 は候補を残し、エラーか質問のキーのない応答は再試行の時刻付きの `failed` の行にし、接続が保存されていないときにモデルが要る組は分類器を呼ばずに `no_connection` になって接続の保存の後に判定され、設定がオフの間は何も取得しない。artifacts のテストが、求めたフレームが 1 フレームの 2 倍の幅の JPEG として返ることを示す。
+**受け入れ**: `task check` と `task check-docs` が通る。ドメインのテストが次を示す: 距離がすべて 12 以内なら「同じ」、20 枚のうち離れた 1 枚だけが異なってもまだ「同じ」、4 枚続けて異なればその区間を返す。偽の分類器を使うアプリのテストが次を示す: 一致する組は分類器を呼ばずにまとめ、異なる組は区間のフレームを送り、0.85 はまとめ、0.1 は退け、0.5 は候補を残し、エラーか質問のキーのない応答は再試行の時刻付きの `failed` の行にし、接続が保存されていないときにモデルが要る組は分類器を呼ばずに `no_connection` になって接続の保存の後に判定され、設定がオフの間は何も取得しない。artifacts のテストが、求めたフレームが 1 フレームの 2 倍の幅の JPEG として返ることを示す。
 
 ### 候補が判定されたら Duplicates のページを更新する {#refresh-the-duplicates-page-when-candidates-are-judged}
 

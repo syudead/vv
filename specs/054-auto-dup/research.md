@@ -287,39 +287,37 @@ out of it.
 fingerprints have used the frames; the pictures are the evidence the model
 adds.
 
-## R-12: Different work codes dismiss a pair without the model
+## R-12: What stored information each step uses
 
-**Decision**: When both videos have a work code and the codes differ
-(compared folded, as `code_key` stores them), or they have an external id from the same source with different values, the
-pair is "different videos" before the frames are compared. Matching codes
-decide nothing; the frames still do.
+**Decision**: The judging reads the fingerprints and the seek previews to
+decide, and the `videos` row and the user data to pick the representative;
+work information is not used.
 
-The table lists what is stored for every video and what the judging does with
-it.
+Judging runs as soon as the new video's fingerprint is written, which is the
+last ingest stage of its import. The table lists what is stored for a video at
+that moment and what the judging does with it.
 
-| Information | Where it is | Use |
-| --- | --- | --- |
-| Per-frame fingerprint | `video_fingerprints` | The first judge ([R-1](#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)) |
-| Seek-preview frames | Generated files | What the model sees ([R-2](#r-2-the-model-sees-the-frames-where-the-two-files-differ)) |
-| Work code and external ids | `video_work_info`, `video_work_external_ids` | Different values dismiss (this decision) |
-| `playable`, audio codec, width, height, size, duration | `videos` | The representative ([R-7](#r-7-the-representative-keeps-the-owners-data-then-plays-best)) |
-| Tags, position, visibility, display name, thumbnail image | User-data tables | The representative (R-7) |
-| Duration | `videos` | Already equal within `DurationsMatch` for every candidate (030) |
-| File name and folder | `video_locations` | Not used: the trial moved no pair, and numbered names mislead ([R-11](#r-11-the-request-carries-no-file-names)) |
-| Codec, container, aspect ratio | `videos` | Not used: a re-encode changes them by definition, and the fingerprint crops black bars |
-| Dates | `videos`, `video_locations` | Not used: a copy gets a new date |
-| Audio content | Not stored | Not used: the bundled ffmpeg has no Chromaprint (030 R-6), and only a scan may read the files |
+| Information | Where it is | At judging time | Use |
+| --- | --- | --- | --- |
+| Per-frame fingerprint | `video_fingerprints` | Present for both | The first judge ([R-1](#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)) |
+| Seek-preview frames | Generated files | Present for both | What the model sees ([R-2](#r-2-the-model-sees-the-frames-where-the-two-files-differ)) |
+| `playable`, audio codec, width, height, size, duration | `videos` | Present for both | The representative ([R-7](#r-7-the-representative-keeps-the-owners-data-then-plays-best)) |
+| Tags, position, visibility, display name, thumbnail image | User-data tables | Only on the older video | The representative (R-7) |
+| Duration | `videos` | Present for both | Already equal within `DurationsMatch` for every candidate (030) |
+| Work code and external ids | `video_work_info`, `video_work_external_ids` | Never on the new video: only the owner sets them, by hand or by fetching through a plugin | Not used |
+| File name and folder | `video_locations` | Present for both | Not used: the trial moved no pair, and numbered names mislead ([R-11](#r-11-the-request-carries-no-file-names)) |
+| Codec, container, aspect ratio | `videos` | Present for both | Not used: a re-encode changes them by definition, and the fingerprint crops black bars |
+| Dates | `videos`, `video_locations` | Present for both | Not used: a copy gets a new date |
+| Audio content | Not stored | Absent | Not used: the bundled ffmpeg has no Chromaprint (030 R-6), and only a scan may read the files |
 
 | Option | Verdict |
 | --- | --- |
-| **Different codes dismiss, equal codes decide nothing** | Chosen |
-| Equal codes bundle | Rejected: one work can ship as a full and a cut version, which the frames tell apart |
-| Ignore work information | Rejected: the owner or a plugin has already said which work each file is |
+| **Leave work information out** | Chosen |
+| Two different work codes mean different videos | Rejected: the new video of every candidate has no work information yet, so the rule would never apply |
+| Judge again when the owner sets work information | Rejected: by then the pair is bundled or dismissed, and a bundle's members share one work information |
 
-**Rationale**: A work code names a product; two files with different codes
-are two works even when the fingerprints match closely, as two episodes of a
-series with long shared scenes can. The rule only reads values the owner or a
-work-info plugin wrote, so it costs no request.
+**Rationale**: A rule has to hold the inputs it reads at the moment it runs;
+work information arrives later, through the owner, if at all.
 
 ## R-13: The model is asked only once the owner has saved a connection
 
