@@ -189,10 +189,11 @@ func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience,
 	return group, true, nil
 }
 
-// videoContext は動画 id の文脈の再生順を返す（domain.VideoContext）。opened.GroupID のグループの
-// 見る人に見せる再生順が動画を持てばそのグループ、次に opened.SmartFolderID のフォルダの再生順が
-// 動画を持てばそのフォルダ、どちらでもなければ動画を直接の項目に持つグループのうち id のいちばん
-// 小さいもの（firstGroupOf）である。どれも無ければ false である。
+// videoContext は動画 id の文脈の再生順を返す（domain.VideoContext）。opened.GroupID があれば
+// group が勝ち、スマートフォルダは見ない。そのグループの見る人に見せる再生順が動画を持てばその
+// グループである。opened.GroupID が無ければ、opened.SmartFolderID のフォルダの再生順が動画を持てば
+// そのフォルダである。どちらでもなければ動画を直接の項目に持つグループのうち id のいちばん小さいもの
+// （firstGroupOf）である。どれも無ければ false である。
 func videoContext(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64, opened domain.VideoContext) (domain.VideoGroup, bool, error) {
 	if opened.GroupID > 0 {
 		var held bool
@@ -204,8 +205,7 @@ func videoContext(ctx context.Context, tx *sql.Tx, audience domain.Audience, id 
 		if held {
 			return groupPlayOrder(ctx, tx, audience, opened.GroupID)
 		}
-	}
-	if opened.SmartFolderID > 0 {
+	} else if opened.SmartFolderID > 0 {
 		folder, found, err := smartFolderVideoGroup(ctx, tx, audience, opened.SmartFolderID)
 		if err != nil {
 			return domain.VideoGroup{}, false, err

@@ -35,9 +35,10 @@ func (p RelatedPage) Context() VideoContext {
 
 // VideoContext は動画を開いた文脈である（GET /api/videos/{id} などの group と smartFolder）。
 // GroupID はグループの id、SmartFolderID はスマートフォルダの id で、無ければ 0 である。
-// 文脈の再生順は、GroupID のグループがその動画を持てばそのグループ、次に SmartFolderID の
-// フォルダの再生順がその動画を持てばそのフォルダ、どちらでもなければ動画を直接持つグループの
-// うち id のいちばん小さいものである（group を優先し、動画を持たないフォルダは無視する。
+// GroupID があれば group が勝ち、SmartFolderID は見ない。文脈の再生順は、GroupID のグループが
+// その動画を持てばそのグループ、GroupID が無く SmartFolderID のフォルダの再生順がその動画を持てば
+// そのフォルダ、どちらでもなければ動画を直接持つグループのうち id のいちばん小さいものである
+// （両方なら group が勝ち、動画を持たないフォルダは無視する。
 // specs/052-smart-folders/contracts/screen-api.md「Schemas and parameters changed」）。
 type VideoContext struct {
 	GroupID       int64

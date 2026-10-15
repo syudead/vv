@@ -138,8 +138,6 @@ func TestVideoContextFollowsTheSmartFolderOrTheGroup(t *testing.T) {
 		{"動画を持たないフォルダは無視", p1, domain.VideoContext{SmartFolderID: other},
 			want{false, pair, []int64{p1, p2}, 0, p2}},
 		{"無いフォルダは無視", p1, domain.VideoContext{SmartFolderID: 999}, want{false, pair, []int64{p1, p2}, 0, p2}},
-		{"動画を持たないグループならフォルダ", solo, domain.VideoContext{GroupID: pair, SmartFolderID: folder},
-			want{true, folder, []int64{p1, solo}, p1, 0}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			group, found := read(tc.video, tc.opened)
@@ -158,6 +156,10 @@ func TestVideoContextFollowsTheSmartFolderOrTheGroup(t *testing.T) {
 		})
 	}
 
+	// 両方あれば group が勝つので、group が動画を持たなくてもフォルダの文脈にはならない。
+	if group, found := read(solo, domain.VideoContext{GroupID: pair, SmartFolderID: folder}); found && group.SmartFolder {
+		t.Errorf("group と両方のとき solo の文脈がフォルダ = %+v", group)
+	}
 	if _, found := read(x, domain.VideoContext{SmartFolderID: folder}); found {
 		t.Error("フォルダにもグループにも無い x に文脈がある")
 	}
