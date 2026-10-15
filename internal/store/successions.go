@@ -187,8 +187,11 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 	if err != nil {
 		return succession{}, err
 	}
-	if err := moveDismissals(ctx, tx, oldKey, contentKey); err != nil {
-		return succession{}, err
+	// 「違う動画」の組と集まりから外した組は、同じ規則で付け替える（specs/054-auto-dup/data-model.md「Rules」）。
+	for _, table := range []string{"video_version_dismissals", "video_version_unbundles"} {
+		if err := moveKeyPairs(ctx, tx, table, oldKey, contentKey); err != nil {
+			return succession{}, err
+		}
 	}
 	// 付け替えた集まりと却下で、新しい鍵の候補が同じ集まりや却下の組になりうる（data-model.md §1 の
 	// 不変条件）。
@@ -280,57 +283,57 @@ func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, er
 	return rekeyUserItems(ctx, tx, from, to)
 }
 
-// moveDismissals は「違う動画」の組の鍵 from を to に付け替える。組は並べ直し、重複は 1 つにし、
-// to 自身との組は捨てる。
-func moveDismissals(ctx context.Context, tx *sql.Tx, from, to string) error {
-	pairs, err := dismissalsOf(ctx, tx, from)
+// moveKeyPairs は内容の鍵の組の表 table（video_version_dismissals か video_version_unbundles）の鍵 from を
+// to に付け替える。組は並べ直し、重複は 1 つにし、to 自身との組は捨てる。
+func moveKeyPairs(ctx context.Context, tx *sql.Tx, table, from, to string) error {
+	pairs, err := keyPairsOf(ctx, tx, table, from)
 	if err != nil {
 		return err
 	}
-	if _, err := tx.ExecContext(ctx, `delete from video_version_dismissals where key_a = ? or key_b = ?`, from, from); err != nil {
-		return fmt.Errorf("cannot move the dismissals: %w", err)
+	if _, err := tx.ExecContext(ctx, `delete from `+table+` where key_a = ? or key_b = ?`, from, from); err != nil {
+		return fmt.Errorf("cannot move the %s pairs: %w", table, err)
 	}
 	for _, p := range pairs {
 		if p.other == to {
 			continue
 		}
-		if _, err := tx.ExecContext(ctx, `insert or ignore into video_version_dismissals (key_a, key_b, created_at)
+		if _, err := tx.ExecContext(ctx, `insert or ignore into `+table+` (key_a, key_b, created_at)
 			values (min(?, ?), max(?, ?), ?)`, to, p.other, to, p.other, p.createdAt); err != nil {
-			return fmt.Errorf("cannot move the dismissals: %w", err)
+			return fmt.Errorf("cannot move the %s pairs: %w", table, err)
 		}
 	}
 	return nil
 }
 
-// dismissal は鍵の「違う動画」の組の相手と、判断した時刻である。
-type dismissal struct {
+// keyPair は鍵の組の相手と、記録した時刻である。
+type keyPair struct {
 	other     string
 	createdAt int64
 }
 
-// dismissalsOf は鍵 key を含む「違う動画」の組を読み切る。
-func dismissalsOf(ctx context.Context, tx *sql.Tx, key string) ([]dismissal, error) {
-	rows, err := tx.QueryContext(ctx, `select key_a, key_b, created_at from video_version_dismissals
+// keyPairsOf は表 table の、鍵 key を含む組を読み切る。
+func keyPairsOf(ctx context.Context, tx *sql.Tx, table, key string) ([]keyPair, error) {
+	rows, err := tx.QueryContext(ctx, `select key_a, key_b, created_at from `+table+`
 		where key_a = ? or key_b = ?`, key, key)
 	if err != nil {
-		return nil, fmt.Errorf("cannot read the dismissals: %w", err)
+		return nil, fmt.Errorf("cannot read the %s pairs: %w", table, err)
 	}
 	defer func() { _ = rows.Close() }()
-	var out []dismissal
+	var out []keyPair
 	for rows.Next() {
 		var a, b string
-		var d dismissal
-		if err := rows.Scan(&a, &b, &d.createdAt); err != nil {
-			return nil, fmt.Errorf("cannot read the dismissals: %w", err)
+		var p keyPair
+		if err := rows.Scan(&a, &b, &p.createdAt); err != nil {
+			return nil, fmt.Errorf("cannot read the %s pairs: %w", table, err)
 		}
-		d.other = a
+		p.other = a
 		if a == key {
-			d.other = b
+			p.other = b
 		}
-		out = append(out, d)
+		out = append(out, p)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read the dismissals: %w", err)
+		return nil, fmt.Errorf("cannot read the %s pairs: %w", table, err)
 	}
 	return out, nil
 }

@@ -304,8 +304,9 @@ func (s *VersionStore) MakeRepresentative(ctx context.Context, videoID int64) (d
 // content_key の値に戻る。代表を外したときは、残りのうち実効の代表の規則（data-model.md §4、
 // 所有者から見て）で次の代表を選ぶ。残りが 1 本なら集まりを解き、集まりの鍵の値を残った
 // 1 本の content_key へ写す（既存の行は置き換える。Edge Case）。動画がいまライブラリに
-// 無ければ domain.ErrNotFound、集まりに属さなければ domain.ErrNotBundled。確定後に、元の
-// 全メンバーの domain.VideoBundleChanged を 1 回発行する。
+// 無ければ domain.ErrNotFound、集まりに属さなければ domain.ErrNotBundled。外した動画と残る各メンバーの
+// 組を video_version_unbundles に書き、外した動画の候補を作り直す（specs/054-auto-dup/research.md R-8）。
+// 確定後に、元の全メンバーの domain.VideoBundleChanged と domain.VersionCandidatesChanged を発行する。
 func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Video, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -338,6 +339,10 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 		return domain.Video{}, err
 	}
 
+	// 外した動画と残る各メンバーの組は自動では束ねない（specs/054-auto-dup/research.md R-8）。
+	if err := recordUnbundledPairs(ctx, tx, key, members, time.Now().Unix()); err != nil {
+		return domain.Video{}, err
+	}
 	if _, err := tx.ExecContext(ctx, `delete from video_bundle_members where content_key = ?`, key); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot unbundle the video: %w", err)
 	}
@@ -370,6 +375,10 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 		}
 	}
 
+	// 外した動画の候補を作り直し、外した組を一覧に戻す（R-8）。その動画の他の判定も待ちに戻る（R-4）。
+	if err := rebuildCandidatesOf(ctx, tx, key); err != nil {
+		return domain.Video{}, err
+	}
 	changedGroups, err := rebuildFolderIndex(ctx, tx)
 	if err != nil {
 		return domain.Video{}, err
@@ -384,7 +393,7 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 	if err := tx.Commit(); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot unbundle the video: %w", err)
 	}
-	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}},
+	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}, domain.VersionCandidatesChanged{}},
 		groupsChangedEvents(normalizeIDs(append(rekeyedGroups, changedGroups...)))...)...)
 	return video, nil
 }
