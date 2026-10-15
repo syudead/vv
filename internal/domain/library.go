@@ -137,6 +137,10 @@ type VideoQuery struct {
 	Person int64
 	// Organization は Person と同じ形の、団体の id による絞り込みである。
 	Organization int64
+	// TagKindID は、手で付けたかフォルダ名から付いたかを問わず、この種類のタグを 1 つでも
+	// 持つ動画だけにするタグの種類の id である。0 は絞り込まない。実体の無い id は何にも
+	// 当たらない（specs/051-tag-kinds/research.md R-5）。
+	TagKindID int64
 }
 
 // VideoPage は一覧1ページ分である。
