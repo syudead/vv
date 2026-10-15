@@ -453,6 +453,7 @@ func run(opts runOptions) error {
 		NetworkSettings:   networkSettings,
 		AutoImport:        autoImport,
 		AutoTagging:       autoTagger,
+		VersionJudging:    versionJudge,
 		Ollama:            ollamaConnection,
 		ComfyUI:           comfyUIConnection,
 		ThumbnailEdits:    thumbnailEdits,

@@ -3247,6 +3247,11 @@ type UpdateTranscodingSettingsRequest struct {
 	VideoEncoder VideoEncoderChoice `json:"videoEncoder"`
 }
 
+// UpdateVersionJudgingSettingsRequest defines model for UpdateVersionJudgingSettingsRequest.
+type UpdateVersionJudgingSettingsRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
 // UploadThumbnailImageRequest defines model for UploadThumbnailImageRequest.
 type UploadThumbnailImageRequest struct {
 	// ContentVersion プレビューを開いたときに画面が持っていた動画の `contentVersion`
@@ -3284,6 +3289,12 @@ type VersionCandidatePage struct {
 
 	// Total 候補の全件の数
 	Total int `json:"total"`
+}
+
+// VersionJudgingSettings 重複の自動判定の入切（specs/054-auto-dup/contracts/screen-api.md）
+type VersionJudgingSettings struct {
+	// Enabled 保存した選択。保存値が無ければ false
+	Enabled bool `json:"enabled"`
 }
 
 // Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
@@ -4600,6 +4611,9 @@ type UpdateOllamaSettingsJSONRequestBody = OllamaSettings
 // UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
 type UpdateTranscodingSettingsJSONRequestBody = UpdateTranscodingSettingsRequest
 
+// UpdateVersionJudgingSettingsJSONRequestBody defines body for UpdateVersionJudgingSettings for application/json ContentType.
+type UpdateVersionJudgingSettingsJSONRequestBody = UpdateVersionJudgingSettingsRequest
+
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
 
@@ -4908,6 +4922,12 @@ type ServerInterface interface {
 	// UpdateTranscodingSettings ライブ変換の映像エンコード方式を保存する
 	// (PUT /api/settings/transcoding)
 	UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request)
+	// GetVersionJudgingSettings 重複の自動判定の入切を返す
+	// (GET /api/settings/version-judging)
+	GetVersionJudgingSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateVersionJudgingSettings 重複の自動判定の入切を保存し、判定の処理を起こす
+	// (PUT /api/settings/version-judging)
+	UpdateVersionJudgingSettings(w http.ResponseWriter, r *http.Request)
 	// ListTags タグを一覧する
 	// (GET /api/tags)
 	ListTags(w http.ResponseWriter, r *http.Request, params ListTagsParams)
@@ -7334,6 +7354,34 @@ func (siw *ServerInterfaceWrapper) UpdateTranscodingSettings(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateTranscodingSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVersionJudgingSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetVersionJudgingSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVersionJudgingSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateVersionJudgingSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateVersionJudgingSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateVersionJudgingSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -9804,6 +9852,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/thumbnail-edits/{editId}/apply", wrapper.ApplyThumbnailEdit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.GetAutoTaggingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.UpdateAutoTaggingSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/version-judging", wrapper.GetVersionJudgingSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/version-judging", wrapper.UpdateVersionJudgingSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/check", wrapper.CheckAutoTaggingClassifier)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/runs", wrapper.StartAutoTagging)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)
