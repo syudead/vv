@@ -1,6 +1,6 @@
 ---
 source: specs/050-drag-organize/contracts/screen-api.md
-sourceHash: 82f9492b9f814ffe56933ef144df80d7f54be9ff5dcba1d3317f5d2203f6b2bb
+sourceHash: e445c3fb682955f024d99d35fd06672c141912c485c23efa722c4f94f09873fc
 ---
 
 # 契約: ドラッグ操作と取り消しの画面の API {#contract-screen-api-for-drag-operations-and-undo}
@@ -82,12 +82,13 @@ OrganizeResult:
 
 ## `POST /api/organize/merge` {#post-apiorganizemerge}
 
-ドラッグしたグループを対象に統合し、ドラッグした動画を対象に付け加える。これを 1 つのトランザクションで行う (要件 8)。
+ドラッグしたグループを対象に統合し、ドラッグした動画を対象に付け加える。これを 1 つのトランザクションで行う (要件 8)。`from` があると、ドラッグしたカードは `/move` と同じように、そのトランザクションの中で同じ取り消しトークンのもと、開いているグループも離れる (要件 9)。
 
 | フィールド | 型 | 必須 | 意味 |
 | --- | --- | --- | --- |
 | `items` | `OrganizeRefs` | はい | ドラッグしたカード。少なくとも 1 つのグループを含む |
 | `into` | int64 | はい | ドロップ先のグループ |
+| `from` | int64 | いいえ | それらが離れる、開いているグループ。グループのページは送り、ライブラリは送らない |
 
 ## `POST /api/organize/bundle` {#post-apiorganizebundle}
 
