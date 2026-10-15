@@ -13,14 +13,11 @@ import (
 func TestIngestPreviewMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
-	db, err := store.Open(dataDir)
+	db, err := store.OpenMigratedForTest(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if _, err := store.Migrate(ctx, db); err != nil {
-		t.Fatal(err)
-	}
 	mediaDir := t.TempDir()
 	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
 		t.Fatal(err)
@@ -66,14 +63,11 @@ func TestIngestPreviewMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 func TestIngestPreviewUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
 	ctx := context.Background()
 	dataDir := t.TempDir()
-	db, err := store.Open(dataDir)
+	db, err := store.OpenMigratedForTest(dataDir)
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if _, err := store.Migrate(ctx, db); err != nil {
-		t.Fatal(err)
-	}
 	mediaDir := t.TempDir()
 	if _, err := db.Settings().AddMediaFolder(ctx, mediaDir); err != nil {
 		t.Fatal(err)

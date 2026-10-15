@@ -113,6 +113,8 @@ func frameLuma(t *testing.T, sheets []image.Image, layout domain.SeekSpriteLayou
 
 // 先頭・中間・末尾のコマに描かれた時刻は、それぞれが受け持つ区間の中にある。
 func TestGenerateSeekSpriteFramesStayInTheirIntervals(t *testing.T) {
+	t.Parallel()
+
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "clock.mp4")
 	runFFmpeg(t, "-f", "lavfi", "-i", timeGraySource("64x64", "30"), "-c:v", "mpeg4", "-q:v", "2", "-y", videoPath)
@@ -144,6 +146,8 @@ func TestGenerateSeekSpriteFramesStayInTheirIntervals(t *testing.T) {
 
 // 映像が容器の長さより短い入力では、映像の後ろのコマは直前のコマを複製する。
 func TestGenerateSeekSpriteRepeatsLastSceneWhenVideoEndsEarly(t *testing.T) {
+	t.Parallel()
+
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "short-video.mp4")
 	runFFmpeg(t,
@@ -172,6 +176,8 @@ func TestGenerateSeekSpriteRepeatsLastSceneWhenVideoEndsEarly(t *testing.T) {
 // フレームの無い区間は、次の区間のフレームを使わず、直前のコマを複製する。
 // 全編復号へは切り替えない。
 func TestGenerateSeekSpriteRepeatsPreviousFrameForEmptyInterval(t *testing.T) {
+	t.Parallel()
+
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "sparse.mp4")
 	runFFmpeg(t,
@@ -235,6 +241,8 @@ func TestGenerateSeekSpriteWritesSingleFrameForOneSecondInput(t *testing.T) {
 
 // 縦長の入力でも、コマは縦横比を保って1枚のシートになる。
 func TestGenerateSeekSpriteKeepsPortraitAspect(t *testing.T) {
+	t.Parallel()
+
 	requireFFmpeg(t)
 	videoPath := filepath.Join(t.TempDir(), "portrait.mp4")
 	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=gray:s=360x640:r=1:d=510", "-c:v", "mpeg4", "-y", videoPath)

@@ -345,6 +345,8 @@ func assertCopySeek(t *testing.T, input, output string, requestedMs, actualMs in
 // H.264 の MKV を途中から変換すると映像をコピーし、直前のキーフレームから始まる
 // （親 Issue #371 受け入れ条件 1・4 の一部）。
 func TestCopySeekStartsAtPreviousKeyframeWithFFmpeg(t *testing.T) {
+	t.Parallel()
+
 	requireFFmpeg(t)
 	directory := t.TempDir()
 	mov := filepath.Join(directory, "source.mov")
@@ -374,6 +376,8 @@ func TestCopySeekStartsAtPreviousKeyframeWithFFmpeg(t *testing.T) {
 // キーフレームの間隔が差の上限より長い動画は、エンコードし直して指定位置から始める
 // （受け入れ条件 3）。
 func TestCopySeekFallsBackToEncodeForSparseKeyframesWithFFmpeg(t *testing.T) {
+	t.Parallel()
+
 	requireFFmpeg(t)
 	directory := t.TempDir()
 	mov := filepath.Join(directory, "sparse.mov")

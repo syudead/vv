@@ -44,6 +44,11 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./vitest.setup.ts"],
     css: false,
+    // 既定の threads はファイルごとに worker を作り直し、jsdom と node_modules の読み込みを
+    // 毎回やり直す（全体の CPU 時間の 3 割ほど）。vmThreads は worker を使い回し、ファイル
+    // ごとに新しい VM の文脈と jsdom を作るので、モジュールの状態も DOM もファイルの間で
+    // 共有しない（isolate: false とは違う）。
+    pool: "vmThreads",
     // --coverage を付けたときだけ測る（task test-web-report）。生成した API の型と
     // テスト用の部品は、測る対象から外す。
     coverage: {

@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+
 import type { Video } from "../../api/client";
 
 // 動画ページと編集画面（/videos/:id/edit）の間で、手元の `Video` を渡す控え
@@ -48,4 +50,25 @@ export function peekPageHandoff(id: number): PageHandoff | null {
 /** clearPageHandoff は、ページが受け取った控えを消す。 */
 export function clearPageHandoff(): void {
   toPage = null;
+}
+
+/** ReceivedHandoff は、動画ページが開いたときに受け取った控えの使い道である。 */
+export interface ReceivedHandoff {
+  /** 保存の応答。取り消して戻ったとき、編集画面から戻ったのでないときは無い。 */
+  video?: Video;
+  /** focusEntry は、videoId の動画のページが編集画面から戻ったところかを返す。 */
+  focusEntry: (videoId: number) => boolean;
+}
+
+/**
+ * usePageHandoff は、動画ページを開いたときの控えを 1 度だけ読み、効果の中で消す。保存の
+ * 応答は最初の描画に使い、入口へフォーカスを戻すかは今の動画で決める。
+ */
+export function usePageHandoff(id: number): ReceivedHandoff {
+  const [handoff] = useState(() => peekPageHandoff(id));
+  useEffect(() => clearPageHandoff(), []);
+  return {
+    video: handoff?.video,
+    focusEntry: (videoId) => handoff !== null && handoff.id === videoId,
+  };
 }

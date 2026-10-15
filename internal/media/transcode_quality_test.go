@@ -179,6 +179,8 @@ func TestLiveTranscoderQualityEncodesAndKeepsLimitsOnFallback(t *testing.T) {
 // 動きの多い入力を 480p で変換すると、短辺が 480 になり、映像の平均ビットレートは上限の
 // 1.2 倍以下、音声は 96 kbps 付近になる（research.md R-8）。
 func TestTranscodeQualityCapsBitrateWithFFmpeg(t *testing.T) {
+	t.Parallel()
+
 	if _, err := exec.LookPath(transcodeCommand); err != nil {
 		t.Skip("ffmpegがありません")
 	}
@@ -195,6 +197,8 @@ func TestTranscodeQualityCapsBitrateWithFFmpeg(t *testing.T) {
 		{"portrait", "540x960", 480, 854},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			directory := t.TempDir()
 			input := filepath.Join(directory, "input.mp4")
 			// 一面のノイズで一定品質のままでは上限を大きく超える入力にする。コピーできる

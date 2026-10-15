@@ -354,6 +354,8 @@ func TestVideoEncodeArgsForcesKeyframesByTime(t *testing.T) {
 }
 
 func TestTranscodeKeyframeIntervalWithFFmpeg(t *testing.T) {
+	t.Parallel()
+
 	if _, err := exec.LookPath(transcodeCommand); err != nil {
 		t.Skip("ffmpegがありません")
 	}
@@ -495,6 +497,8 @@ func TestVideoEncodePreservesDisplayAspectRatioWithFFmpeg(t *testing.T) {
 }
 
 func TestTranscodeRotated4KStaysWithinEnvelopeWithFFmpeg(t *testing.T) {
+	t.Parallel()
+
 	if _, err := exec.LookPath(transcodeCommand); err != nil {
 		t.Skip("ffmpegがありません")
 	}

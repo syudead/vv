@@ -28,6 +28,13 @@ Each level proves a different kind of behaviour, at a different cost per test.
 
 The costs are the mean worker time per test in a full Vitest run.
 
+Vitest runs in the `vmThreads` pool
+([`web/vite.config.ts`](../../web/vite.config.ts)). A worker serves many test
+files and loads jsdom and `node_modules` once, while each file still gets a new
+VM context and jsdom, so module state and the DOM do not cross files. The
+default `threads` pool loaded both again for every file, about a third of the
+CPU time of a full run.
+
 E2E does not cover the production Vite build or its embedding in the Go binary:
 `task test-web` builds the SPA, and no test serves that build.
 

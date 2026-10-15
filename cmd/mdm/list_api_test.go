@@ -33,14 +33,11 @@ type listAPIFixture struct {
 func newListAPIFixture(t *testing.T) listAPIFixture {
 	t.Helper()
 	ctx := context.Background()
-	db, err := store.Open(t.TempDir())
+	db, err := store.OpenMigratedForTest(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = db.Close() })
-	if _, err := store.Migrate(ctx, db); err != nil {
-		t.Fatal(err)
-	}
 	root, err := db.Settings().AddMediaFolder(ctx, t.TempDir())
 	if err != nil {
 		t.Fatal(err)

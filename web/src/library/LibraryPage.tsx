@@ -664,13 +664,11 @@ export default function LibraryPage() {
   const body = initialLoadFailed ? (
     <LoadFailed reason={error} onRetry={reload} />
   ) : empty ? (
-    conditioned ? (
-      <NoMatches onSearch={() => searchField.current?.focus()} />
-    ) : owner ? (
-      <EmptyLibrary />
-    ) : (
-      <GuestEmpty />
-    )
+    <LibraryEmpty
+      conditioned={conditioned}
+      owner={owner}
+      onSearch={() => searchField.current?.focus()}
+    />
   ) : loading ? (
     <LoadingState
       label={t.list.loading}
@@ -697,29 +695,7 @@ export default function LibraryPage() {
         </TagRowMeasureProvider>
       ) : (
         <DataTable label={t.library.title}>
-          <TableHeader>
-            <TableRow className="hover:bg-transparent">
-              {owner && <TableHead className="w-10" />}
-              <TableHead className="w-list-thumb-cell" />
-              <TableHead className="pr-4">{t.library.columns.title}</TableHead>
-              {owner && <TableHead className="w-8" />}
-              {owner && <TableHead className="hidden w-8 sm:table-cell" />}
-              {owner && <TableHead className="hidden w-8 sm:table-cell" />}
-              <TableHead className="hidden w-16 pr-4 sm:table-cell" />
-              <TableHead className="w-list-number pr-4 text-right">
-                {t.library.columns.duration}
-              </TableHead>
-              <TableHead className="hidden w-list-number pr-4 text-right md:table-cell">
-                {t.library.columns.quality}
-              </TableHead>
-              <TableHead className="hidden w-list-number-wide pr-4 text-right md:table-cell">
-                {t.library.columns.size}
-              </TableHead>
-              <TableHead className="hidden w-list-date pr-3 text-right lg:table-cell">
-                {t.library.columns.added}
-              </TableHead>
-            </TableRow>
-          </TableHeader>
+          <LibraryTableHeader owner={owner} />
           <TableBody>
             {items.map((item) =>
               item.kind === "video" ? (
@@ -819,5 +795,51 @@ export default function LibraryPage() {
         <div ref={sentinel} aria-hidden="true" className="h-px" />
       </ListPage>
     </GroupChangedContext>
+  );
+}
+
+/**
+ * LibraryEmpty は一覧が空のときの本体である。条件で絞って空なら検索へ戻る案内、
+ * 条件が無ければ所有者には最初の手順、ゲストには空であることだけを出す。
+ */
+function LibraryEmpty({
+  conditioned,
+  owner,
+  onSearch,
+}: {
+  conditioned: boolean;
+  owner: boolean;
+  onSearch: () => void;
+}) {
+  if (conditioned) return <NoMatches onSearch={onSearch} />;
+  return owner ? <EmptyLibrary /> : <GuestEmpty />;
+}
+
+/** LibraryTableHeader はリスト表示の見出しの行である。選択とタグなどの列は所有者だけに出す。 */
+function LibraryTableHeader({ owner }: { owner: boolean }) {
+  return (
+    <TableHeader>
+      <TableRow className="hover:bg-transparent">
+        {owner && <TableHead className="w-10" />}
+        <TableHead className="w-list-thumb-cell" />
+        <TableHead className="pr-4">{t.library.columns.title}</TableHead>
+        {owner && <TableHead className="w-8" />}
+        {owner && <TableHead className="hidden w-8 sm:table-cell" />}
+        {owner && <TableHead className="hidden w-8 sm:table-cell" />}
+        <TableHead className="hidden w-16 pr-4 sm:table-cell" />
+        <TableHead className="w-list-number pr-4 text-right">
+          {t.library.columns.duration}
+        </TableHead>
+        <TableHead className="hidden w-list-number pr-4 text-right md:table-cell">
+          {t.library.columns.quality}
+        </TableHead>
+        <TableHead className="hidden w-list-number-wide pr-4 text-right md:table-cell">
+          {t.library.columns.size}
+        </TableHead>
+        <TableHead className="hidden w-list-date pr-3 text-right lg:table-cell">
+          {t.library.columns.added}
+        </TableHead>
+      </TableRow>
+    </TableHeader>
   );
 }

@@ -150,6 +150,8 @@ func TestGenerateSeekSpriteFromIndexRepeatsKeyframeForLongGOP(t *testing.T) {
 // 並ぶので errSeekIndexUnsupported になり、GenerateSeekSprite は区間ごとの抽出で
 // 各区間の先頭の場面を作る。
 func TestGenerateSeekSpriteExtractsPerIntervalForSparseKeyframes(t *testing.T) {
+	t.Parallel()
+
 	requireEncoder(t, "libx264")
 	videoPath := filepath.Join(t.TempDir(), "sparse-keyframes.mp4")
 	runFFmpeg(t, "-f", "lavfi", "-i", timeGraySource("64x64", "30"),
@@ -175,6 +177,8 @@ func TestGenerateSeekSpriteExtractsPerIntervalForSparseKeyframes(t *testing.T) {
 }
 
 func TestGenerateSeekSpriteFromIndexReadsHEVC(t *testing.T) {
+	t.Parallel()
+
 	requireEncoder(t, "libx265")
 	videoPath := filepath.Join(t.TempDir(), "clock.mov")
 	runFFmpeg(t, "-f", "lavfi", "-i", timeGraySource("64x64", "12"),
@@ -198,6 +202,8 @@ func TestGenerateSeekSpriteFromIndexReadsHEVC(t *testing.T) {
 // 索引から取れない入力（MP4 でない容器や、H.264／HEVC でない映像）は
 // errSeekIndexUnsupported になり、GenerateSeekSprite は区間ごとの抽出で作る。
 func TestGenerateSeekSpriteFromIndexRejectsUnsupportedInput(t *testing.T) {
+	t.Parallel()
+
 	requireEncoder(t, "libx264")
 	dir := t.TempDir()
 	mpeg4 := filepath.Join(dir, "mpeg4.mp4")
@@ -288,6 +294,8 @@ func slowGraySource(seconds string) string {
 // （1 本の列で復号する）と、open GOP の CRA や IDR でない I フレームを含む動画
 // （1 枚ずつ別の入力にする）の両方を、POC が巻き戻る間隔（90 秒）で確かめる。
 func TestGenerateSeekSpriteKeepsOrderOfDistantKeyframes(t *testing.T) {
+	t.Parallel()
+
 	for _, tc := range []struct {
 		name    string
 		encoder string
@@ -299,6 +307,8 @@ func TestGenerateSeekSpriteKeepsOrderOfDistantKeyframes(t *testing.T) {
 		{"h264 closed GOP", "libx264", []string{"-c:v", "libx264", "-g", "25"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+
 			requireEncoder(t, tc.encoder)
 			videoPath := filepath.Join(t.TempDir(), "clock.mp4")
 			args := append([]string{"-f", "lavfi", "-i", slowGraySource("400")}, tc.args...)
@@ -498,6 +508,8 @@ func TestSampleTableFindsKeyframesAcrossChunks(t *testing.T) {
 // 表示行列で回転する動画のコマは、ffmpeg が容器から読んで自動回転したのと同じ向きになる。
 // 反転を含む表示行列は索引からは作らず、区間ごとの抽出に任せる。
 func TestGenerateSeekSpriteFromIndexAppliesDisplayRotation(t *testing.T) {
+	t.Parallel()
+
 	requireEncoder(t, "libx264")
 	dir := t.TempDir()
 	base := filepath.Join(dir, "base.mp4")

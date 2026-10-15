@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/web-testing.md
-sourceHash: 6403426c99d1ae51b7cae84235f7b47e3574b7a28cac89ff3a93cc6b853febdb
+sourceHash: 88490c5bf5580565cab6de3c53a20deac94a752791c79e3b906af51a7875a08a
 ---
 
 # Web のテストレベル {#web-test-levels}
@@ -29,6 +29,8 @@ flowchart LR
 | E2E テスト | 実際のサーバー、ブラウザ、メディアだけが示すもの: 再生、セットアップとログイン、スキャン | ビルドした Go サーバーを相手に、Vite の開発サーバーから配信したアプリを Chromium で動かしたもの | 数秒。`main` への push と Renovate の PR で動く |
 
 コストは、Vitest の 1 回の全体実行におけるテスト 1 件あたりの平均ワーカー時間である。
+
+Vitest は `vmThreads` プールで動く ([`web/vite.config.ts`](../../web/vite.config.ts))。1 つのワーカーが多くのテストファイルを受け持ち、jsdom と `node_modules` を 1 回だけ読み込む。一方で各ファイルは新しい VM コンテキストと jsdom を受け取るので、モジュールの状態と DOM はファイルをまたがない。既定の `threads` プールはファイルごとに両方を読み込み直しており、それが全体実行の CPU 時間の約 3 分の 1 を占めていた。
 
 E2E は Vite の本番ビルドも、それを Go のバイナリに埋め込むことも扱わない。`task test-web` は SPA をビルドするが、そのビルドを配信するテストはない。
 

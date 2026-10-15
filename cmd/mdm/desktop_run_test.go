@@ -22,11 +22,8 @@ func TestDesktopRunOptionsApplySavedLANAccess(t *testing.T) {
 	// 確かめるので、ffmpeg の無いホスト（CI の Checks）でも動くよう代わりを置く。
 	stubMediaCommands(t)
 	dataDir := t.TempDir()
-	db, err := store.Open(dataDir)
+	db, err := store.OpenMigratedForTest(dataDir)
 	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := store.Migrate(context.Background(), db); err != nil {
 		t.Fatal(err)
 	}
 	if err := db.Settings().SaveLANAccess(context.Background(), true); err != nil {
