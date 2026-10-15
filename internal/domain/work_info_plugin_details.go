@@ -112,8 +112,8 @@ func parseFetchedDates(raw []fetchedDateJSON) []WorkDate {
 	return out
 }
 
-// parseFetchedCredits は役割ごとに最初の limit 件の人物か団体を残す。同じ役割で名前と外部 ID が同じ件は
-// 同じ人物（団体）として 1 件にする。
+// parseFetchedCredits は役割ごとに最初の limit 件の人物か団体を残す。同じ役割で名前と外部 ID の集合が
+// 同じ件は、外部 ID の並びが違っても同じ人物（団体）として 1 件にする。
 func parseFetchedCredits[R ~string, C any](
 	raw []fetchedCreditJSON, roles []R, limit int, build func(R, string, []ExternalID) C,
 ) []C {
@@ -132,7 +132,10 @@ func parseFetchedCredits[R ~string, C any](
 			continue
 		}
 		ids := parseFetchedExternalIDs(c.ExternalIDs)
-		idsKey, _ := json.Marshal(ids)
+		// 外部 ID の並びは同じ人物かどうかに関わらないので、整列した複製でキーを作り、結果の順序は保つ。
+		sortedIDs := slices.Clone(ids)
+		SortExternalIDs(sortedIDs)
+		idsKey, _ := json.Marshal(sortedIDs)
 		k := key{role, name, string(idsKey)}
 		if seen[k] {
 			continue

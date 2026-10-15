@@ -140,6 +140,22 @@ func TestParseWorkInfoResponseKeepsTheSamePersonInOneRoleOnce(t *testing.T) {
 	}
 }
 
+func TestParseWorkInfoResponseKeepsTheSamePersonOnceWhateverTheExternalIDOrder(t *testing.T) {
+	got := parseFetched(t, `{"people": [
+		{"role": "performer", "name": "A", "externalIds": [{"source": "t", "value": "2"}, {"source": "s", "value": "1"}]},
+		{"role": "performer", "name": "A", "externalIds": [{"source": "s", "value": "1"}, {"source": "t", "value": "2"}]}
+	], "organizations": [
+		{"role": "maker", "name": "M", "externalIds": [{"source": "t", "value": "2"}, {"source": "s", "value": "1"}]},
+		{"role": "maker", "name": "M", "externalIds": [{"source": "s", "value": "1"}, {"source": "t", "value": "2"}]}
+	]}`)
+	if len(got.People) != 1 || got.People[0].ExternalIDs[0] != (ExternalID{"t", "2"}) {
+		t.Fatalf("people = %+v", got.People)
+	}
+	if len(got.Organizations) != 1 || got.Organizations[0].ExternalIDs[0] != (ExternalID{"t", "2"}) {
+		t.Fatalf("organizations = %+v", got.Organizations)
+	}
+}
+
 func TestParseWorkInfoResponseReadsTitleAndTagsAsBefore(t *testing.T) {
 	got := parseFetched(t, `{"title": " T ", "tags": [" a ", "a", ""]}`)
 	want := FetchedWorkInfo{Title: " T ", Tags: []string{" a ", "a", ""}}
