@@ -104,6 +104,12 @@ type VersionStore struct{ db *DB }
 // 作り直す各取引の中で syncFolderGroups が行う（groups.go）。
 type GroupStore struct{ db *DB }
 
+// SmartFolderStore はスマートフォルダの作成・変更（移動を含む）・削除と、その行と欠けた参照の
+// 読み出しを受け持つ（smart_folders.go、specs/052-smart-folders/data-model.md「Edits」）。
+// 確定後の知らせ（domain.SmartFoldersChanged）を後の段で発行するため、発行先を持つ *DB を通して
+// 使う。
+type SmartFolderStore struct{ db *DB }
+
 // OrganizeStore はドラッグの操作（並べ替えなど）と、その取り消しの像と復元を受け持つ（organize.go・
 // organize_image.go、specs/050-drag-organize/data-model.md「Operations」「Undo image」）。操作は
 // グループと集まりの表にまたがるので、GroupStore・VersionStore の公開メソッドを呼ばず、パッケージ
@@ -151,6 +157,7 @@ func (db *DB) AutoTags() *AutoTagStore         { return &AutoTagStore{db: db} }
 func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
 func (db *DB) Groups() *GroupStore             { return &GroupStore{db: db} }
 func (db *DB) Organize() *OrganizeStore        { return &OrganizeStore{db: db} }
+func (db *DB) SmartFolders() *SmartFolderStore { return &SmartFolderStore{db: db} }
 func (db *DB) Credits() *CreditStore           { return &CreditStore{sql: db.sql, read: db.read} }
 func (db *DB) WorkInfo() *WorkInfoStore        { return &WorkInfoStore{db: db} }
 func (db *DB) WorkInfoPlugins() *WorkInfoPluginStore {
