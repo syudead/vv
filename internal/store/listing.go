@@ -88,10 +88,13 @@ type listSpec struct {
 	// id である。0 は絞り込まない（specs/047-video-work-info/data-model.md の Lists）。
 	personID       int64
 	organizationID int64
-	sort           domain.VideoSort
-	seed           int64
-	cursor         string
-	limit          int
+	// tagKindID は、この種類のタグを手で付けたかフォルダ名から 1 つでも持つ動画だけにする
+	// 種類の id である。0 は絞り込まない（specs/051-tag-kinds/research.md R-5）。
+	tagKindID int64
+	sort      domain.VideoSort
+	seed      int64
+	cursor    string
+	limit     int
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
@@ -134,7 +137,7 @@ func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int
 	return listSpec{
 		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
-		personID: q.Person, organizationID: q.Organization,
+		personID: q.Person, organizationID: q.Organization, tagKindID: q.TagKindID,
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 }

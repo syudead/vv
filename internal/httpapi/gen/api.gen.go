@@ -4031,6 +4031,9 @@ type PlaylistItemId = int64
 // TagId defines model for TagId.
 type TagId = int64
 
+// TagKindFilter defines model for TagKindFilter.
+type TagKindFilter = int64
+
 // TagKindId defines model for TagKindId.
 type TagKindId = int64
 
@@ -4226,6 +4229,13 @@ type ListLibraryParams struct {
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
 	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
+
+	// TagKind タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
+	// 持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
+	// 実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
+	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 }
 
 // ListLibraryIdsParams defines parameters for ListLibraryIds.
@@ -4251,6 +4261,13 @@ type ListLibraryIdsParams struct {
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
 	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
+
+	// TagKind タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
+	// 持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
+	// 実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
+	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 }
 
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
@@ -4416,6 +4433,13 @@ type ListVideosParams struct {
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
 	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
+
+	// TagKind タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
+	// 持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
+	// 実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
+	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 }
 
 // GetVideoParams defines parameters for GetVideo.
@@ -6176,6 +6200,19 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "tagKind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKind", r.URL.Query(), &params.TagKind, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListLibrary(w, r, params)
 	}))
@@ -6283,6 +6320,19 @@ func (siw *ServerInterfaceWrapper) ListLibraryIds(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagKind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKind", r.URL.Query(), &params.TagKind, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
 		}
 		return
 	}
@@ -8355,6 +8405,19 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagKind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKind", r.URL.Query(), &params.TagKind, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
 		}
 		return
 	}
