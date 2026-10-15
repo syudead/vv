@@ -3408,9 +3408,11 @@ type Video struct {
 	// 一度も編集していなければ addedAt と同じ（specs/033-video-dates/data-model.md §3）
 	UpdatedAt time.Time `json:"updatedAt"`
 
-	// Versions 動画が属する集まり（同じ動画の別バージョン）の要約。GET /api/videos/{id} の応答にだけ、
-	// 集まりのメンバーのときだけ入る（group と同じ扱いで、一覧の項目には入らない）
-	// （specs/030-video-versions/contracts/screen-api.md §0）
+	// Versions 動画が属する集まり（同じ動画の別バージョン）の要約。集まりのメンバーのときだけ、
+	// 画面 API が Video を返すすべての応答に入る（一覧の項目も含む。一覧はページごとに 1 回の
+	// 問い合わせで読む）。カードの印はこれから出す
+	// （specs/054-auto-dup/contracts/screen-api.md「Video delta」、
+	// specs/030-video-versions/contracts/screen-api.md §0）
 	Versions *VideoVersionsRef `json:"versions,omitempty"`
 
 	// VideoCodec Examples: h264, vp9
@@ -3646,9 +3648,11 @@ type VideoVersions struct {
 	RepresentativeId int64 `json:"representativeId"`
 }
 
-// VideoVersionsRef 動画が属する集まり（同じ動画の別バージョン）の要約。GET /api/videos/{id} の応答にだけ、
-// 集まりのメンバーのときだけ入る（group と同じ扱いで、一覧の項目には入らない）
-// （specs/030-video-versions/contracts/screen-api.md §0）
+// VideoVersionsRef 動画が属する集まり（同じ動画の別バージョン）の要約。集まりのメンバーのときだけ、
+// 画面 API が Video を返すすべての応答に入る（一覧の項目も含む。一覧はページごとに 1 回の
+// 問い合わせで読む）。カードの印はこれから出す
+// （specs/054-auto-dup/contracts/screen-api.md「Video delta」、
+// specs/030-video-versions/contracts/screen-api.md §0）
 type VideoVersionsRef struct {
 	// Count 見る人に見せてよい所在を持つバージョンの本数
 	Count int `json:"count"`

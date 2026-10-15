@@ -159,6 +159,16 @@ func loadGroups(ctx context.Context, q queryExecer, audience domain.Audience, gr
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot read the group videos: %w", err)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("cannot read the group videos: %w", err)
+	}
+	memberLists := make([][]domain.Video, 0, len(order))
+	for _, id := range order {
+		memberLists = append(memberLists, groups[id].members)
+	}
+	if err := attachVersionsEach(ctx, q, audience, memberLists); err != nil {
+		return nil, err
+	}
 	for _, id := range order {
 		group := groups[id]
 		item := domain.NewLibraryGroup(id, group.path, group.name, group.members, group.progress)

@@ -262,11 +262,11 @@ func readJudgedSide(ctx context.Context, tx *sql.Tx, key string) (judgedSide, er
 		if side.members, err = bundleMemberKeys(ctx, tx, bundle.id); err != nil {
 			return judgedSide{}, err
 		}
-		ref, err := bundleVersionsRef(ctx, tx, domain.AudienceOwner, key)
+		refs, err := bundleVersionsRefs(ctx, tx, domain.AudienceOwner, []string{key})
 		if err != nil {
 			return judgedSide{}, err
 		}
-		if ref != nil && ref.RepresentativeID != 0 {
+		if ref, ok := refs[key]; ok && ref.RepresentativeID != 0 {
 			representativeID = ref.RepresentativeID
 		}
 	}
