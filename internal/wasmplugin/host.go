@@ -28,8 +28,12 @@ const (
 	hostTimedOut     int32 = -4
 	hostTooMany      int32 = -5
 	hostBodyTooLarge int32 = -6
-	defaultUserAgent       = "vv-work-info-plugin/1"
 )
+
+// defaultUserAgent はプラグインが User-Agent を付けないときに送る値である。プラグインは
+// 利用者が開いた作品のページを 1 回読むだけでクローラーではないので、bot 向けの応答や拒否を
+// 受けないよう、一般的なデスクトップのブラウザ（Windows の Chrome）と同じ形にする。
+const defaultUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36"
 
 // droppedHeaders はプラグインが付けても送らない要求のヘッダーである。Host と、ホップバイホップの
 // ヘッダー（RFC 9110 の 7.6.1）を落とす。

@@ -150,9 +150,12 @@ because the owner can act on the host and not on the plugin's message alone.
 
 The client ignores `HTTP_PROXY` and the other proxy variables, because a
 proxy would make the dial check see only the proxy's address. It drops `Host`
-and the hop-by-hop headers a plugin sets, and sends a `User-Agent` of its own
-when the plugin sets none. The body reaches the plugin as bytes with the
-response headers, so the plugin decodes the page's character set itself.
+and the hop-by-hop headers a plugin sets. When the plugin sets no
+`User-Agent`, it sends a common desktop browser's one (Chrome on Windows),
+because a plugin reads the page the user opened, not a crawl, and a bot-like
+value can get a different page or a refusal. The body reaches the plugin as
+bytes with the response headers, so the plugin decodes the page's character
+set itself.
 
 The address check lives only in this adapter. The ComfyUI and Ollama clients
 keep reaching the LAN, where those services run.

@@ -161,7 +161,7 @@ func TestHTTPPluginFetchesAPageThroughVV(t *testing.T) {
 	site.mu.Lock()
 	defer site.mu.Unlock()
 	if len(site.hosts) != 1 || site.hosts[0] != "site.test" || site.userAgent[0] != defaultUserAgent {
-		t.Fatalf("site saw hosts %q with User-Agent %q, want site.test with vv's User-Agent", site.hosts, site.userAgent)
+		t.Fatalf("site saw hosts %q with User-Agent %q, want site.test with the default User-Agent", site.hosts, site.userAgent)
 	}
 }
 

@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/work-info-plugins.md
-sourceHash: 093698533dc8412dfb4039a83b28d16e26a58fe3b47504093bbed432615a11e9
+sourceHash: 116835c39bd6d19172c3b07ae68b1c845f4f471d0569c023c11c2a64b8598132
 ---
 
 # 作品情報プラグインを書く {#write-a-work-info-plugin}
@@ -250,7 +250,7 @@ VVMDM は 1 つの JSON オブジェクトを標準入力に書き、それを�
 
 | JSON | 形 |
 | --- | --- |
-| `http_send` の要求 | `{"method": "GET" or "POST", "url": "...", "headers": {"Name": "value"}, "body": "<base64>"}`。`headers` と `body` は省略できる。VVMDM はプラグインが設定しないときに `User-Agent` を設定し、`Host` とホップバイホップのヘッダーを落とす |
+| `http_send` の要求 | `{"method": "GET" or "POST", "url": "...", "headers": {"Name": "value"}, "body": "<base64>"}`。`headers` と `body` は省略できる。VVMDM はプラグインが設定しないときにデスクトップ版 Chrome の `User-Agent` を送り、`Host` とホップバイホップのヘッダーを落とす |
 | `http_meta` の結果 | `{"status": 200, "url": "<final URL after redirects>", "headers": {"Name": ["value"]}}` |
 
 本文はバイト列としてプラグインに届くので、ページの文字コードは `Content-Type` ヘッダーかページから、プラグイン自身がデコードする。

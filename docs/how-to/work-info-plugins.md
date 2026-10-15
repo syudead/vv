@@ -273,7 +273,7 @@ buffer of that size. Handles stay valid until the run ends.
 
 | JSON | Shape |
 | --- | --- |
-| `http_send` request | `{"method": "GET" or "POST", "url": "...", "headers": {"Name": "value"}, "body": "<base64>"}`; `headers` and `body` optional; VVMDM sets `User-Agent` when the plugin does not, and drops `Host` and hop-by-hop headers |
+| `http_send` request | `{"method": "GET" or "POST", "url": "...", "headers": {"Name": "value"}, "body": "<base64>"}`; `headers` and `body` optional; VVMDM sends a desktop Chrome `User-Agent` when the plugin sets none, and drops `Host` and hop-by-hop headers |
 | `http_meta` result | `{"status": 200, "url": "<final URL after redirects>", "headers": {"Name": ["value"]}}` |
 
 The body reaches the plugin as bytes, so the plugin decodes the page's
