@@ -66,7 +66,8 @@ func TestListsCarryTheVersionsSummary(t *testing.T) {
 	}
 }
 
-// 束ねた代表が自動グループの項目なら、グループのページの項目にも要約が入る。
+// 束ねた代表が自動グループの項目なら、グループのページの項目にも、グループのメンバー（再生の
+// 順番やプレイリストの再生の手順が選ぶ動画）にも要約が入る。
 func TestGroupItemsCarryTheVersionsSummary(t *testing.T) {
 	db, ids := folderFixture(t,
 		sampleFile(fixturePath("/media/A/a.mp4"), "a", "key-a", 1, 0),
@@ -93,4 +94,5 @@ func TestGroupItemsCarryTheVersionsSummary(t *testing.T) {
 		}
 	}
 	checkVersionsRefs(t, "Group", videos, a, 2)
+	checkVersionsRefs(t, "Group.Members", page.Group.Members, a, 2)
 }

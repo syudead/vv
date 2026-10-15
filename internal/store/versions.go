@@ -529,6 +529,23 @@ func attachVersions(ctx context.Context, q rowsQueryer, audience domain.Audience
 	return nil
 }
 
+// attachVersionsEach は動画の並びのそれぞれに、まとめて 1 回の attachVersions を当てる。並びは
+// その場で書き換わる。
+func attachVersionsEach(ctx context.Context, q rowsQueryer, audience domain.Audience, lists [][]domain.Video) error {
+	var flat []domain.Video
+	for _, list := range lists {
+		flat = append(flat, list...)
+	}
+	if err := attachVersions(ctx, q, audience, flat); err != nil {
+		return err
+	}
+	offset := 0
+	for _, list := range lists {
+		offset += copy(list, flat[offset:])
+	}
+	return nil
+}
+
 // attachVersionsIn は鍵ごとの動画の表に attachVersions を当てる。
 func attachVersionsIn[K comparable](ctx context.Context, q rowsQueryer, audience domain.Audience, videos map[K]domain.Video) error {
 	keys := make([]K, 0, len(videos))
