@@ -59,6 +59,8 @@ function Chip({ item }: { item: ChipItem }) {
   const text = t.player.workInfoFetch;
   const muted = item.mark === "onVideo" || item.mark === "notLinked";
   const hint = item.hint ?? (item.mark === "onVideo" ? text.onVideo : undefined);
+  // 動画にある件は確定した値として出し、仮の印を付けない（049 の取得した側のチップ）。
+  const tentative = item.tentative === true && item.mark !== "onVideo";
   const badge = (
     <Badge
       variant="secondary"
@@ -72,10 +74,8 @@ function Chip({ item }: { item: ChipItem }) {
         {item.name}
       </span>
       <MarkText mark={item.mark} />
-      {item.tentative === true && <TentativeMark />}
-      {item.tentative === true && (
-        <span className="sr-only">{`, ${text.tentative}`}</span>
-      )}
+      {tentative && <TentativeMark />}
+      {tentative && <span className="sr-only">{`, ${text.tentative}`}</span>}
     </Badge>
   );
   if (hint === undefined) return badge;

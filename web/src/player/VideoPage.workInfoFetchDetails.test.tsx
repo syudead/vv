@@ -7,6 +7,7 @@ import type { WorkInfo } from "../api/workInfo";
 import type { WorkInfoFetchedPerson } from "../api/workInfoPlugins";
 import {
   appliedResult,
+  failure,
   fetchFromUrl,
   fetchResult,
   json,
@@ -78,6 +79,33 @@ describe("VideoPage work-info fetch details", () => {
     expect(checkbox(dialog, "Title")).toHaveProperty("ariaChecked", "true");
     expect(checkbox(dialog, "Tags")).toHaveProperty("ariaChecked", "true");
     expect(within(dialog).queryByText("Code")).toBeNull();
+  });
+
+  it("取得したタグのうち動画にあるものは、仮の印を付けずに動画にある件として出す", async () => {
+    const { dialog } = await fetchFromUrl();
+    expect(chip(dialog, "既存").textContent).toBe("既存, On the video");
+    expect(chip(dialog, "新しい").textContent).toBe("新しい, Tentative");
+  });
+
+  it("説明を開いてから取り直すと、新しい説明は畳んだ状態で出す", async () => {
+    const scrollHeight = vi
+      .spyOn(HTMLElement.prototype, "scrollHeight", "get")
+      .mockReturnValue(200);
+    server.fetch
+      .mockImplementationOnce(() => json(fetchResult({ description: "最初の説明" }), 201))
+      .mockImplementationOnce(() => json(fetchResult({ description: "次の説明" }), 201));
+    server.apply.mockImplementationOnce(() =>
+      failure(409, { code: "work_info_fetch_stale" }),
+    );
+    const { user, dialog } = await fetchFromUrl();
+    await user.click(within(dialog).getByRole("button", { name: "Show more" }));
+    expect(within(dialog).getByRole("button", { name: "Show less" })).toBeDefined();
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    await user.click(await within(dialog).findByRole("button", { name: "Fetch again" }));
+    await within(dialog).findByText("次の説明");
+    expect(within(dialog).queryByRole("button", { name: "Show less" })).toBeNull();
+    expect(within(dialog).getByRole("button", { name: "Show more" })).toBeDefined();
+    scrollHeight.mockRestore();
   });
 
   it("new の人物は New の印で、ambiguous の人物は Not linked の印で出し、新規の数に数えない", async () => {

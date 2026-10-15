@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Video } from "../../api/client";
 import type { WorkInfo } from "../../api/workInfo";
 import type { WorkInfoFetch, WorkInfoMatch } from "../../api/workInfoPlugins";
-import { creditKind, detailRow, type ListRow } from "./detailRows";
+import { chipHint, creditKind, detailRow, type ListRow } from "./detailRows";
 import { comparedFields, initialSelection, skippedLines } from "./fetchRules";
 
 function info(overrides: Partial<WorkInfo> = {}): WorkInfo {
@@ -91,6 +91,51 @@ describe("detailRows", () => {
     ]);
     expect(row.fresh).toBe(2);
     expect(row.state).toBe("differs");
+  });
+
+  it("反映で同じ実体にまとまる件は、新規に 1 つと数える", () => {
+    const withIds = (name: string, value: string) => ({
+      ...performer(name, { state: "new" }),
+      externalIds: [{ source: "works", value }],
+    });
+    const row = list(
+      detailRow(
+        "people.performer",
+        stored,
+        result({
+          people: [
+            performer("別の人", { state: "existing", id: 5, name: "別の人" }),
+            performer("べつめい", { state: "existing", id: 5, name: "別の人" }),
+            performer("あたらしい", { state: "new" }),
+            performer(" アタラシイ ", { state: "new" }),
+            withIds("ID の人", "p1"),
+            withIds("ID の人の別名", "p1"),
+            withIds("違う人", "p2"),
+          ],
+        }),
+      ),
+    );
+    // チップは取得した件ごとに出し、数は実体ごと（別の人・あたらしい・ID の人・違う人）。
+    expect(row.fetched).toHaveLength(7);
+    expect(row.fresh).toBe(4);
+  });
+
+  it("チップのツールチップは、動画にある件でも取得した綴りを出す", () => {
+    expect(chipHint({ key: "0", name: "別の人", fetchedAs: "べつめい" }, "person")).toBe(
+      'Fetched as "べつめい"',
+    );
+    expect(
+      chipHint(
+        { key: "0", name: "別の人", mark: "onVideo", fetchedAs: "べつめい" },
+        "person",
+      ),
+    ).toBe('On the video. Fetched as "べつめい"');
+    expect(chipHint({ key: "0", name: "別の人", mark: "onVideo" }, "person")).toBe(
+      undefined,
+    );
+    expect(chipHint({ key: "0", name: "同名", mark: "notLinked" }, "organization")).toBe(
+      "Matches more than one organization, so it isn't linked or created",
+    );
   });
 
   it("一覧の行は、すべて動画にあれば same、残りが Not linked だけなら nothing、件が無ければ missing", () => {

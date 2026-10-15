@@ -1760,6 +1760,7 @@ export const en = {
         organization: "Matches more than one organization, so it isn't linked or created",
       },
       fetchedAs: (name: string) => `Fetched as "${name}"`,
+      onVideoFetchedAs: (name: string) => `On the video. Fetched as "${name}"`,
       sameAsNow: "Same as now",
       onVideo: "On the video",
       tentative: "Tentative",

@@ -12,6 +12,7 @@ import type {
   WorkInfoMatch,
 } from "../../api/workInfoPlugins";
 import { t } from "../../i18n";
+import { foldForMatch } from "../../lib/foldForMatch";
 import { withoutScheme } from "../WorkInfo";
 import type { RowState } from "./fetchRules";
 
@@ -103,6 +104,21 @@ export function creditKind(field: WorkInfoField): CreditKind | undefined {
   return isOrganizationField(field) ? "organization" : undefined;
 }
 
+/** chipHint は取得した側のチップのツールチップである（ui-design「Words」）。 */
+export function chipHint(
+  chip: DetailChip,
+  kind: CreditKind | undefined,
+): string | undefined {
+  const text = t.player.workInfoFetch;
+  if (chip.mark === "new") return text.newHint;
+  if (chip.mark === "notLinked") return text.notLinkedHint[kind ?? "person"];
+  if (chip.fetchedAs === undefined) return undefined;
+  // 動画にある件も、別名で当たったなら取得した綴りを確かめられるようにする。
+  return chip.mark === "onVideo"
+    ? text.onVideoFetchedAs(chip.fetchedAs)
+    : text.fetchedAs(chip.fetchedAs);
+}
+
 /** isDateRow は日付の行かを返す。 */
 export function isDateRow(field: WorkInfoField): boolean {
   return field !== "title" && field !== "tags" && isDateField(field);
@@ -142,14 +158,12 @@ function listState(fetched: readonly DetailChip[]): RowState {
   return fetched.some((chip) => chip.mark === "notLinked") ? "nothing" : "same";
 }
 
-function listRow(now: DetailChip[], fetched: DetailChip[]): ListRow {
-  return {
-    kind: "list",
-    state: listState(fetched),
-    now,
-    fetched,
-    fresh: fetched.filter(adds).length,
-  };
+function listRow(
+  now: DetailChip[],
+  fetched: DetailChip[],
+  fresh = fetched.filter(adds).length,
+): ListRow {
+  return { kind: "list", state: listState(fetched), now, fetched, fresh };
 }
 
 /**
@@ -174,14 +188,67 @@ function creditChip(
   };
 }
 
+type FetchedCredit = { name: string; externalIds: ExternalId[]; match: WorkInfoMatch };
+
+/** NewCreditGroup は反映で 1 つの実体にまとまる作る件の外部 ID と、最初の件の名前の照合形である。 */
+interface NewCreditGroup {
+  ids: Set<string>;
+  fold: string;
+}
+
+/**
+ * joinNewCredit は作る件 entry を、反映（internal/domain/work_info_merge.go の createdIndex）と
+ * 同じく外部 ID を共有するか、無ければ名前の照合形が等しい作る件にまとめる。新しい実体なら真を返す。
+ */
+function joinNewCredit(groups: NewCreditGroup[], entry: FetchedCredit): boolean {
+  const ids = entry.externalIds.map(idKey);
+  const fold = foldForMatch(entry.name.trim());
+  const group =
+    groups.find((g) => ids.some((id) => g.ids.has(id))) ??
+    groups.find((g) => g.fold === fold);
+  if (group === undefined) {
+    groups.push({ ids: new Set(ids), fold });
+    return true;
+  }
+  for (const id of ids) group.ids.add(id);
+  return false;
+}
+
+/**
+ * freshCredits は動画にまだ無い実体の数である。反映は同じ既存の実体を一度しか結ばず、作る件も
+ * 同じ実体にまとめるので、足せる件を実体ごとに 1 つと数える。
+ */
+function freshCredits(
+  fetched: readonly FetchedCredit[],
+  chips: readonly DetailChip[],
+): number {
+  const existing = new Set<number>();
+  const groups: NewCreditGroup[] = [];
+  let fresh = 0;
+  fetched.forEach((entry, index) => {
+    const chip = chips[index];
+    if (chip === undefined || !adds(chip)) return;
+    const { match } = entry;
+    if (match.state === "new") {
+      if (joinNewCredit(groups, entry)) fresh++;
+    } else if (match.id === undefined || !existing.has(match.id)) {
+      if (match.id !== undefined) existing.add(match.id);
+      fresh++;
+    }
+  });
+  return fresh;
+}
+
 function creditRow(
   stored: readonly { id: number; name: string }[],
-  fetched: readonly { name: string; match: WorkInfoMatch }[],
+  fetched: readonly FetchedCredit[],
 ): ListRow {
   const linked = new Set(stored.map((credit) => credit.id));
+  const chips = fetched.map((entry, index) => creditChip(entry, linked, String(index)));
   return listRow(
     stored.map((credit) => ({ key: String(credit.id), name: credit.name })),
-    fetched.map((entry, index) => creditChip(entry, linked, String(index))),
+    chips,
+    freshCredits(fetched, chips),
   );
 }
 

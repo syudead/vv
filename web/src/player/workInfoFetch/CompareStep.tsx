@@ -16,8 +16,8 @@ import { Spinner } from "../../ui/shadcn/spinner";
 import { cn } from "../../lib/cn";
 import { Description } from "../WorkInfo";
 import {
+  chipHint,
   creditKind,
-  type CreditKind,
   type DetailChip,
   detailRow,
   type ListRow,
@@ -113,7 +113,10 @@ function SingleValue({
 }) {
   if (value === undefined) return null;
   if (field === "description")
-    return <Description text={value} tone={tone === "now" ? "muted" : "default"} />;
+    // 鍵を値にし、「Fetch again」で説明が変われば畳んだ状態から出し直す。
+    return (
+      <Description key={value} text={value} tone={tone === "now" ? "muted" : "default"} />
+    );
   return (
     <span
       className={cn(
@@ -124,16 +127,6 @@ function SingleValue({
       {value}
     </span>
   );
-}
-
-/** chipHint は取得した側のチップのツールチップである（ui-design「Words」）。 */
-function chipHint(chip: DetailChip, kind: CreditKind | undefined): string | undefined {
-  const text = t.player.workInfoFetch;
-  if (chip.mark === "new") return text.newHint;
-  if (chip.mark === "notLinked") return text.notLinkedHint[kind ?? "person"];
-  if (chip.mark === undefined && chip.fetchedAs !== undefined)
-    return text.fetchedAs(chip.fetchedAs);
-  return undefined;
 }
 
 function chipItems(
