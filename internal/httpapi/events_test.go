@@ -170,6 +170,24 @@ func TestStreamEventsSendsGroupChanges(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
+// 候補の変化は所有者の流れに中身の無い candidates として届き、続けての変化は 1 つにまとまる
+// （specs/054-auto-dup/contracts/screen-api.md「GET /api/events: candidates」）。
+func TestStreamEventsSendsCandidatesToOwners(t *testing.T) {
+	events := NewEvents()
+	handler := newTestServer(t, Options{Scans: &lockedScans{current: domain.Scan{ID: 1}}, Events: events})
+	stream, _ := openEvents(t, handler)
+	if first := nextEvent(t, stream); first.name != "scan" {
+		t.Fatalf("最初のイベント = %q, want scan", first.name)
+	}
+
+	events.Handle(domain.VersionCandidatesChanged{})
+	event := nextEvent(t, stream)
+	if event.name != "candidates" || event.data != `{}` {
+		t.Fatalf("イベント = %+v, want candidates {}", event)
+	}
+	expectNoEvent(t, stream)
+}
+
 // guestEventsAuth はアカウントが設定済みで、どの要求もセッションを持たない（ゲストになる）
 // 認証の代わりである。
 type guestEventsAuth struct{ ownerAuth }
@@ -195,6 +213,7 @@ func TestStreamEventsSendsOnlyGroupToGuests(t *testing.T) {
 
 	events.VideoChanged(9)
 	events.ScanChanged()
+	events.CandidatesChanged()
 	expectNoEvent(t, stream)
 
 	events.GroupsChanged([]int64{3})
@@ -281,7 +300,7 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 
 	events.Handle(domain.JobsQueued{Kinds: domain.JobKinds})
 	events.Handle(domain.ContentUnreferenced{ContentKeys: []string{"k"}})
-	if pending := sub.take(); pending.scan || len(pending.videos) != 0 || len(pending.groups) != 0 {
+	if pending := sub.take(); pending.scan || pending.candidates || len(pending.videos) != 0 || len(pending.groups) != 0 {
 		t.Fatalf("知らせない変化で知らせた: %+v", pending)
 	}
 
@@ -309,6 +328,15 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	events.Handle(domain.VideoBundleChanged{VideoIDs: []int64{8, 9}})
 	if videos := sub.take().videos; !slices.Equal(videos, []int64{8, 9}) {
 		t.Fatalf("VideoBundleChanged: videos = %v, want [8 9]", videos)
+	}
+	// 候補の変化は candidates に写し、続けての変化は 1 つにまとまる（specs/054-auto-dup/research.md R-10）。
+	events.Handle(domain.VersionCandidatesChanged{})
+	events.Handle(domain.VersionCandidatesChanged{})
+	if pending := sub.take(); !pending.candidates || pending.scan || len(pending.videos) != 0 {
+		t.Fatalf("VersionCandidatesChanged: %+v, want candidates only", pending)
+	}
+	if sub.take().candidates {
+		t.Fatal("取り出した後も candidates が残る")
 	}
 	// グループの変化は group に写し、続けての変化は 1 つにまとまる（specs/048-groups/research.md R-13）。
 	events.Handle(domain.GroupsChanged{GroupIDs: []int64{3, 1}})
