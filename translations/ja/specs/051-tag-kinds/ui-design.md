@@ -1,6 +1,6 @@
 ---
 source: specs/051-tag-kinds/ui-design.md
-sourceHash: f6575d7ef7aced9c6dcf794fc2b233fa16a2418dc319b0f459e01a7fdf09dadb
+sourceHash: 97ddf23e3435ed2c0030528376b00ccddc93e7c582e2f703d09055162ec22341
 ---
 
 # UI 設計: タグの種類 {#ui-design-tag-kinds}
@@ -79,14 +79,15 @@ flowchart LR
 
 ### 行の種類 {#kind-on-a-row}
 
-[036、行](../036-tag-admin-scale/ui-design.md#rows) の行に 1 つの部品が加わる。名前と仮の目印の後に、種類の名前を持つ `Badge` の `outline`。`text-xs`、`font-normal`、`text-muted-foreground`、`shrink-0` で、`max-w-chip-label` で省略し、全文は `title` に持つ。種類の無いタグはそこに何も出さない。ラベルは押せない。行の名前のリンクと種類の絞り込みがすでに所有者の要る一覧へ導き、名前の横の 2 つ目の押す先はそれと競う。
+[036、行](../036-tag-admin-scale/ui-design.md#rows) の行に 1 つの部品が加わる。名前と仮の目印の後に、種類の名前を持つ `Badge` の `outline`。`text-xs`、`font-normal`、`text-muted-foreground`、`shrink-0` で、`sm` 未満では名前の行の `max-w-1/2`、`sm` からは `sm:max-w-chip-label` で省略し、全文は `title` に持つ。`sm` 未満の上限は、名前の行の半分を名前に残す。360px では名前の列が約 160px で ([036、タッチと狭い幅での操作](../036-tag-admin-scale/ui-design.md#actions-on-touch-and-narrow-widths))、`max-w-chip-label` (12rem) より狭いからである。種類の無いタグはそこに何も出さない。ラベルは押せない。行の名前のリンクと種類の絞り込みがすでに所有者の要る一覧へ導き、名前の横の 2 つ目の押す先はそれと競う。
 
 | 行 | 名前の行 |
 | --- | --- |
 | 確定済み、種類あり | 名前 → 種類のラベル |
 | 仮、種類あり | 名前 → 仮の目印 → 種類のラベル |
 | 改名中 | 改名の入力だけ。種類のラベルは名前とともに隠れ、名前とともに戻る |
-| 長い名前 | 名前が先に省略される。ラベルは `max-w-chip-label` までの幅を保つ |
+| 長い名前 | 名前が先に省略される。ラベルは上限までの幅を保つ |
+| 長い名前と長い種類 | どちらも省略される。ラベルは上限で、名前は行の残りで省略され、行は横にスクロールしない |
 
 ### 種類の絞り込み {#kind-filter}
 
@@ -102,7 +103,7 @@ flowchart LR
   list -->|無い| drop["パラメータを外し、<br/>読み直し、トースト"]
 ```
 
-種類の一覧は画面を開いたときに 1 度読み、`Kinds` タブがそれを変えた後に読み直す。届くまでチップは `Skeleton` (`w-12`) を持つ。タグの一覧が読み込まれる前のライブラリのタグのチップと同じである。一覧に無い種類の `kind=<id>` は `replace` で URL から外れ、一覧はそれ無しで読み直し、[文言](#words) のトーストがそれを伝える。ほかの条件は残る。
+種類の一覧は、画面を開いたとき、`Kinds` タブがそれを変えた後、種類の持つタグの数を変えるタグの操作の後に読む。その操作は、`appliedIds` が 1 つでもある `Set kind` または `No kind` と、単独でも一括でもタグの削除・却下・統合である。外れるタグはその種類も持ち去るからである。それぞれが保持した一覧を古いと印し、`Kinds` タブは開いたときに読み直すので、その件数と削除ダイアログの文は今の `tagCount` を使う。一覧が届くまでチップは `Skeleton` (`w-12`) を持つ。タグの一覧が読み込まれる前のライブラリのタグのチップと同じである。読み込みに成功した一覧に種類の無い `kind=<id>` は `replace` で URL から外れ、一覧はそれ無しで読み直し、[文言](#words) のトーストがそれを伝える。ほかの条件は残る。読み込みに失敗しても何も外さない。絞り込みは効いたままで、チップは `Skeleton` とアクセシブルな名前 `Remove the kind filter` を保ち、次の読み込みで再び試す。
 
 種類の絞り込みの下の空の結果は、[文言](#words) の 2 つの見出しを使う。種類だけなら種類を名指しし、種類に検索やほかの絞り込みが重なるときは、どの組み合わせにも 1 つの見出しを使う。4 つの条件の組み合わせには、さもなければ 16 の見出しが要るからである。どちらも `Show all tags` で終わり、検索とすべての絞り込みを外す。
 
@@ -110,7 +111,7 @@ flowchart LR
 
 `Set kind…` は、[036、選択バー](../036-tag-admin-scale/ui-design.md#selection-bar) の選択バーの、lucide の `Shapes` を持つ `ghost` の `sm` の `Button` で、`Confirm` の後、`Merge into one tag…` の前に置く。どの選択でも出す。どのタグも種類を得るか失えるからである。一括の操作の送信中と選択が上限を超える間は、ほかの操作とともに `disabled` になる。
 
-これは `DropdownMenu` (`align="end"`) を開く。名前の自然順の種類の `DropdownMenuRadioGroup`、`DropdownMenuSeparator`、`No kind` を持つ。チェックされる項目は、選んだすべてのタグが共有する種類 (どれも持たないときは `No kind`) である。種類が混ざっていれば何もチェックされない。種類が無いときは、グループは `No kind` の上に `DropdownMenuLabel` `No kinds yet. Add them on the Kinds tab.` を持つ。この行に振る舞いは無く、その価値は種類がどこから来るかを所有者に伝えることで、薄いラベルの見た目とラジオの印が無いことが、選択肢に見えるのを防ぐ (Q-5)。
+これは `DropdownMenu` (`align="end"`) を開く。1 つの `DropdownMenuRadioGroup` が、名前の自然順の種類ごとの `DropdownMenuRadioItem`、`DropdownMenuSeparator`、グループの最後の `DropdownMenuRadioItem` である `No kind` を持つ。区切り線は見た目の境界にすぎない。すべての項目が 1 つのグループにあるので、1 つのチェックの状態がすべてを覆う。チェックされる項目は、選んだすべてのタグが共有する種類 (どれも持たないときは `No kind`) である。種類が混ざっていれば何もチェックされない。種類が無いときは、`DropdownMenuLabel` `No kinds yet. Add them on the Kinds tab.` がグループの上に置かれ、グループは `No kind` だけを持ち、区切り線は無い。この行に振る舞いは無く、その価値は種類がどこから来るかを所有者に伝えることで、薄いラベルの見た目とラジオの印が無いことが、選択肢に見えるのを防ぐ (Q-5)。
 
 図は 1 つの選択が何をするかを示す。
 
@@ -157,7 +158,7 @@ flowchart LR
 | 操作 | `Rename` (`Pencil`) と `More actions` (`Ellipsis`) → `Delete…` (`destructive`)。タグの行の `RowIconButton` と `RowMoreMenu`。タッチと `sm` 未満では 2 つの項目を持つ 1 つの `Actions` メニュー |
 | 作成 | `New kind` は [036、帯](../036-tag-admin-scale/ui-design.md#band) の作成の行を一覧の先頭に差し込み、その入力にフォーカスする。`Create` は `POST /api/tag-kinds` を送り、`201` で行は名前の位置で一覧に加わり、フォーカスはその名前へ移る |
 | 改名 | 名前の列の中のタグの行の改名の入力。Enter で `PATCH` を送り、Esc で取り消す。`200` で行はその場で書き換わり、名前の位置へ移る |
-| 削除 | `Delete…` は [文言](#words) の題と文、先頭の `Cancel`、`destructive` の `Delete` を持つ `ConfirmDialog` を開く。`204` で行は外れ、トーストが出て、フォーカスは次の行の `Rename`、無ければ前の行の、無ければ `New kind` へ移る |
+| 削除 | `Delete…` は [文言](#words) の題と文、先頭の `Cancel`、`destructive` の `Delete` を持つ `ConfirmDialog` を開く。`204` で行は外れ、トーストが出て、フォーカスは次の行の `Rename`、無ければ前の行の、無ければ `New kind` へ移る。行の操作が折りたたまれている間 (タッチ、`sm` 未満) は、[036、タッチと狭い幅での操作](../036-tag-admin-scale/ui-design.md#actions-on-touch-and-narrow-widths) がタグの行で行うのと同じく、`Rename` の代わりにその行の `Actions` ボタンが行き先である |
 
 図は作成の行と改名の入力の状態を示す。
 
@@ -189,11 +190,11 @@ stateDiagram-v2
 
 ### 種類の絞り込み {#kind-filter-1}
 
-[library-ui.md、シェルとツールバー](../../docs/design-docs/library-ui.md#shell-and-toolbar) の所有者の `Filter` の吹き出しに、`Playable only` の後の最後の行が加わる。ラベル `Tag kind` を持つ `Field` と、値が `Any kind` または名前の自然順の 1 つの種類である `Select`。種類は吹き出しを最初に開いたときに `GET /api/tag-kinds` から読む。種類を選ぶとほかの行と同じくすぐ効く。URL は `tagKind=<id>` を得て、一覧は `total` がそれを数えて先頭から読み直され、吹き出しは開いたままである。ボタンはそれを有効な絞り込み 1 つと数える。`Clear filters` は `tag`、`person`、`organization` とともにそれを外す。ゲストには行が無く、`tagKind` を持つゲストの URL は `fav=1` と同じく要求の前に戻される。
+[library-ui.md、シェルとツールバー](../../docs/design-docs/library-ui.md#shell-and-toolbar) の所有者の `Filter` の吹き出しに、`Playable only` の後の最後の行が加わる。ラベル `Tag kind` を持つ `Field` と、値が `Any kind` または名前の自然順の 1 つの種類である `Select`。種類は保持した 1 つの種類の一覧 ([contracts/screen-api.md、`web/src/api` の関数](contracts/screen-api.md#websrcapi-functions)) から来る。吹き出しを最初に開いたとき、または `tagKind` が効いていて一覧がまだ保持されていないとき (URL を直接開いたときなど) に `GET /api/tag-kinds` から読み、2 つは 1 つの要求を共有する。種類を選ぶとほかの行と同じくすぐ効く。URL は `tagKind=<id>` を得て、一覧は `total` がそれを数えて先頭から読み直され、吹き出しは開いたままである。ボタンはそれを有効な絞り込み 1 つと数える。`Clear filters` は `tag`、`person`、`organization` とともにそれを外す。ゲストには行が無く、`tagKind` を持つゲストの URL は `fav=1` と同じく要求の前に戻される。
 
 ### チップ {#chip}
 
-`tagKind` が効いている間、`Filtering by` の行は人物と団体のチップの後に、同じ `Toggle` の形のチップをもう 1 つ示す。lucide の `Shapes`、`Kind: Genre`、`×`。名前は保持した種類の一覧から来る。届くまでは `Skeleton` (`w-12`) を置く。チップを押すと `tagKind` だけを外し、フォーカスはほかのチップと同じく移る。種類の一覧に id が無い `tagKind` は `replace` で URL から外れ、チップは消え、一覧は読み直され、[文言](#words) のトーストが出る。タグ、人物、団体の絞り込みは、[047、ライブラリ](../047-video-work-info/ui-design.md#library-filter-by-a-person-or-organization) で `404` の人物を扱うのと同じく残る。
+`tagKind` が効いている間、`Filtering by` の行は人物と団体のチップの後に、同じ `Toggle` の形のチップをもう 1 つ示す。lucide の `Shapes`、`Kind: Genre`、`×`。名前は保持した種類の一覧から来る。保持されていなければチップがその読み込みを始める ([種類の絞り込み](#kind-filter-1))。届くまでは `Skeleton` (`w-12`) を置く。チップを押すと `tagKind` だけを外し、フォーカスはほかのチップと同じく移る。読み込みに成功した種類の一覧に id が無い `tagKind` は `replace` で URL から外れ、チップは消え、一覧は読み直され、[文言](#words) のトーストが出る。タグ、人物、団体の絞り込みは、[047、ライブラリ](../047-video-work-info/ui-design.md#library-filter-by-a-person-or-organization) で `404` の人物を扱うのと同じく残る。読み込みに失敗しても何も外さない。絞り込みは効いたままで、チップは `Skeleton` とアクセシブルな名前 `Remove the kind filter` を保ち、吹き出しを開いたときに再び読む。
 
 ### 状態 {#states-2}
 
@@ -203,6 +204,7 @@ stateDiagram-v2
 | 種類が効き、何も一致しない | [014、絞り込み中のタグ](../014-video-tags/ui-design.md#active-tag-filters) の一致なしの状態の上のチップ |
 | 種類が無くなった | チップとパラメータが消え、トーストが出て、一覧が読み直される |
 | 種類が読み込まれていない | 種類が届くまで `Select` は `Any kind` だけを示す。チップは `Skeleton` を持つ |
+| 種類の一覧の読み込みに失敗 | 絞り込みは効いたまま。チップは `Skeleton` を保ち、外せる |
 
 ## レスポンシブな振る舞い {#responsive-behaviour}
 
@@ -212,7 +214,7 @@ stateDiagram-v2
 | --- | --- | --- | --- | --- |
 | 1280px | 名前、目印、種類のラベルが 1 行。ラベルは `max-w-chip-label` までの全幅 | `Select` は吹き出しの幅 (`w-popover`) いっぱい。`Set kind…` はバーの行にほかの操作と並ぶ | タグの行と同じく、名前、件数、2 つの `RowIconButton` | `Select` は吹き出しいっぱい。チップは `Filtering by` の行にほかと並ぶ |
 | 768px | 同上 | 同上。`Filter` ボタンはアイコンと数を示す | 同上 | 同上 |
-| 360px | 名前がラベルより先に省略される。どんな長さの名前の後でもラベルは見える | 選択バーの操作は件数の下に折り返し、`Set kind…` もその中にある。メニューはビューポートの中に開く (`align="end"`) | 名前、件数、1 つの `Actions` メニュー。作成の行と改名の入力は行をまたぐ | チップは名前を `max-w-chip-label` で省略する。行は折り返す |
+| 360px | 名前がラベルより先に省略される。どんな長さの名前の後でもラベルは見え、名前の行の半分を上限とするので、名前は残りの半分を持ち、何も横にスクロールしない | 選択バーの操作は件数の下に折り返し、`Set kind…` もその中にある。メニューはビューポートの中に開く (`align="end"`) | 名前、件数、1 つの `Actions` メニュー。作成の行と改名の入力は行をまたぐ | チップは名前を `max-w-chip-label` で省略する。行は折り返す |
 
 - 種類のラベルはどの幅でも行の高さを増やさない。
 - `Set kind` のメニューは、種類がビューポートの高さを超えるとスクロールする (Radix がメニューをビューポートの中に保つ)。
@@ -222,7 +224,7 @@ stateDiagram-v2
 
 実際の画面で判定する ([library-ui.md、機械ではなく人が確かめるレイアウト](../../docs/design-docs/library-ui.md#layout-verified-by-people-not-machines))。あるだけでは合格しない (Q-4)。まず 1280×800 で、次に 768px と 360px (折りたたんだ行の操作はタッチのエミュレーション) で確かめる。
 
-1. **視覚的な階層、タグの行**: すべての行が種類を持っていても、目はまず名前へ行く。ラベルは名前の後の、薄い色に細い枠線で面を塗らない、より静かな 2 列目の文字として読める。ラベルを手で覆っても、名前の読め方は何も変わらない。仮のタグの目印は名前とラベルの間に留まる。種類のある行は無い行より高くない (`UI品質`: 名前が主、行は混み合わない)。
+1. **視覚的な階層、タグの行**: すべての行が種類を持っていても、目はまず名前へ行く。ラベルは名前の後の、薄い色に細い枠線で面を塗らない、より静かな 2 列目の文字として読める。ラベルを手で覆っても、名前の読め方は何も変わらない。仮のタグの目印は名前とラベルの間に留まる。種類のある行は無い行より高くない (`UI品質`: 名前が主、行は混み合わない)。360px で 100 文字のタグ名に 100 文字の種類を付けると、どちらも省略されて 1 行に収まり、名前は少なくともその半分を取り、表は横にスクロールしない。
 2. **種類とタグ**: タグの行の種類のラベルとライブラリのカードのタグのチップは一目で見分けられる。ラベルは枠線があって面が無く、チップは面があって枠線が無い。有効な絞り込みのチップ `Kind: Genre` は、`Shapes` のアイコン、`soft` の面、`Kind:` の前置きで、どちらからも見分けられる。
 3. **密度と間隔**: ラベルは目印または名前の後に `gap-1` で置かれ、名前と目印の間と同じ間隔である。`Filter` の吹き出しでは、`Kind` の行は上の 2 つのチェックボックスの行の `gap-3` を保ち、`Select` は吹き出しの操作の高さ `h-8` である。`Kinds` タブでは列見出しの `Name` と `Tags` が行の名前と件数のちょうど上にあり、行はタグの行の `py-2` を持つ。
 4. **タイポグラフィ**: ラベルは `text-xs font-normal` で、名前の `text-sm font-medium` より 1 段下。チップ、`Select`、メニューの項目はコンポーネント自身の大きさのまま。Kinds タブの説明は `text-sm text-muted-foreground` で、却下した名前の説明と同じ。

@@ -137,8 +137,12 @@ them; tag and kind names are user data and are embedded untranslated.
 The row of [036, Rows](../036-tag-admin-scale/ui-design.md#rows) gains one
 part: after the name and the tentative mark, a `Badge` `outline` with the
 kind's name, `text-xs`, `font-normal`, `text-muted-foreground`, `shrink-0`,
-truncated at `max-w-chip-label` with the full text in `title`. A tag without
-a kind shows nothing there. The label is not pressable: the row's name link
+truncated at `max-w-1/2` of the name line below `sm` and at
+`sm:max-w-chip-label` from `sm`, with the full text in `title`. The cap below
+`sm` keeps half of the name line for the name: at 360px the name column is
+about 160px ([036, Actions on touch and narrow widths](../036-tag-admin-scale/ui-design.md#actions-on-touch-and-narrow-widths)),
+narrower than `max-w-chip-label` (12rem). A tag without a kind shows nothing
+there. The label is not pressable: the row's name link
 and the kind filter already lead to the lists the owner needs, and a second
 press target beside the name would compete with it.
 
@@ -147,7 +151,8 @@ press target beside the name would compete with it.
 | Confirmed, with a kind | Name → kind label |
 | Tentative, with a kind | Name → tentative mark → kind label |
 | Renaming | The rename input alone; the kind label is hidden with the name and returns with it |
-| Long name | The name truncates first; the label keeps its width up to `max-w-chip-label` |
+| Long name | The name truncates first; the label keeps its width up to its cap |
+| Long name and long kind | Both truncate: the label at its cap, the name in the rest of the line, and the row does not scroll sideways |
 
 ### Kind filter
 
@@ -172,11 +177,19 @@ flowchart LR
   list -->|no| drop["Drop the parameter,<br/>reload, toast"]
 ```
 
-The kind list is read once when the screen opens and after the `Kinds` tab
-changes it. Until it arrives the chip holds a `Skeleton` (`w-12`), as a
-library tag chip before the tag list loads. A `kind=<id>` with no kind in the
-list leaves the URL with a `replace`, the list reloads without it, and the
-toast of [Words](#words) says so; the other conditions stay.
+The kind list is read when the screen opens, after the `Kinds` tab changes
+it, and after a tag action that changes how many tags a kind has. Those
+actions are a `Set kind` or `No kind` with any `appliedIds`, and a delete,
+reject or merge of tags, single or bulk, because the tags that leave take
+their kind with them. Each one marks the cached list stale, and the `Kinds`
+tab reads it again when opened, so its counts and the delete dialog's text
+use the current `tagCount`. Until the list arrives the chip holds a
+`Skeleton` (`w-12`), as a library tag chip before the tag list loads. A
+`kind=<id>` with no kind in a list that was read successfully leaves the URL
+with a `replace`, the list reloads without it, and the toast of
+[Words](#words) says so; the other conditions stay. A failed read removes
+nothing: the filter stays applied, the chip keeps its `Skeleton` and the
+accessible name `Remove the kind filter`, and the next read tries again.
 
 The empty result under a kind filter uses the two headings of
 [Words](#words): the kind alone names the kind, and a kind with a search or
@@ -193,14 +206,17 @@ selection, because every tag can take or lose a kind, and it is `disabled`
 with the other actions while a bulk action sends or the selection is over
 the limit.
 
-It opens a `DropdownMenu` (`align="end"`) with a `DropdownMenuRadioGroup` of
-the kinds in natural name order, a `DropdownMenuSeparator`, and `No kind`.
-The checked item is the kind every selected tag shares (`No kind` when none
-of them has one); with mixed kinds nothing is checked. With no kinds the
-group holds a `DropdownMenuLabel` `No kinds yet. Add them on the Kinds tab.`
-above `No kind`: the line has no behaviour, its value is telling the owner
-where kinds come from, and the muted label style and the lack of a radio
-mark keep it from reading as a choice (Q-5).
+It opens a `DropdownMenu` (`align="end"`) with one `DropdownMenuRadioGroup`
+that holds a `DropdownMenuRadioItem` for each kind in natural name order, a
+`DropdownMenuSeparator`, and `No kind` as the group's last
+`DropdownMenuRadioItem`. The separator is only a visual boundary: every item
+is in the one group, so one checked state covers them all. The checked item
+is the kind every selected tag shares (`No kind` when none of them has one);
+with mixed kinds nothing is checked. With no kinds a `DropdownMenuLabel`
+`No kinds yet. Add them on the Kinds tab.` sits above the group, which then
+holds `No kind` alone and no separator: the line has no behaviour, its value
+is telling the owner where kinds come from, and the muted label style and
+the lack of a radio mark keep it from reading as a choice (Q-5).
 
 The diagram shows what one choice does.
 
@@ -262,7 +278,7 @@ list is at most tens of rows).
 | Actions | `Rename` (`Pencil`) and `More actions` (`Ellipsis`) → `Delete…` (`destructive`), the tag row's `RowIconButton` and `RowMoreMenu`; on touch and below `sm` one `Actions` menu with the two items |
 | Create | `New kind` inserts the create row of [036, Band](../036-tag-admin-scale/ui-design.md#band) at the top of the list and focuses its input; `Create` sends `POST /api/tag-kinds`, and on `201` the row joins the list at its name position and the focus moves to its name |
 | Rename | The tag row's rename input in the name column; Enter sends `PATCH`, Esc cancels; on `200` the row is rewritten in place and moves to its name position |
-| Delete | `Delete…` opens a `ConfirmDialog` with the title and text of [Words](#words), `Cancel` first and a `destructive` `Delete`; on `204` the row leaves, the toast shows, and the focus moves to the next row's `Rename`, else the previous row's, else `New kind` |
+| Delete | `Delete…` opens a `ConfirmDialog` with the title and text of [Words](#words), `Cancel` first and a `destructive` `Delete`; on `204` the row leaves, the toast shows, and the focus moves to the next row's `Rename`, else the previous row's, else `New kind`; while the row actions are collapsed (touch, below `sm`) the target is that row's `Actions` button in the place of `Rename`, as [036, Actions on touch and narrow widths](../036-tag-admin-scale/ui-design.md#actions-on-touch-and-narrow-widths) does for tag rows |
 
 The diagram shows the states of the create row and the rename input.
 
@@ -304,8 +320,12 @@ without a rename or delete, returning shows the same rows as before, as
 The owner's `Filter` popover of
 [library-ui.md, Shell and toolbar](../../docs/design-docs/library-ui.md#shell-and-toolbar)
 gains a last row after `Playable only`: a `Field` with the label `Tag kind`
-and a `Select` whose value is `Any kind` or one kind, in natural name order,
-read from `GET /api/tag-kinds` when the popover first opens. Choosing a kind
+and a `Select` whose value is `Any kind` or one kind, in natural name order.
+The kinds come from the one cached kind list
+([contracts/screen-api.md, `web/src/api` functions](contracts/screen-api.md#websrcapi-functions)),
+read from `GET /api/tag-kinds` when the popover first opens or when a
+`tagKind` applies and the list is not cached yet, as on a URL opened
+directly; the two share one request. Choosing a kind
 applies at once as the other rows do: the URL gains `tagKind=<id>`, the list
 reloads from the top with `total` counting it, and the popover stays open.
 The button counts it as one applied filter. `Clear filters` removes it with
@@ -316,13 +336,17 @@ The button counts it as one applied filter. `Clear filters` removes it with
 
 While `tagKind` applies, the `Filtering by` row shows one more chip after the
 person and organization chips, in the same `Toggle` form: lucide `Shapes`,
-`Kind: Genre`, `×`. The name comes from the cached kind list; until it
-arrives a `Skeleton` (`w-12`) stands in. Pressing the chip removes only
+`Kind: Genre`, `×`. The name comes from the cached kind list, which the chip
+starts reading when it is not cached ([Kind filter](#kind-filter-1)); until
+it arrives a `Skeleton` (`w-12`) stands in. Pressing the chip removes only
 `tagKind`, and the focus moves as for the other chips. A `tagKind` whose id
-is not in the kind list leaves the URL with a `replace`, the chip goes, the
-list reloads and the toast of [Words](#words) shows; the tag, person and
-organization filters stay, as a `404` person is handled in
+is not in a kind list that was read successfully leaves the URL with a
+`replace`, the chip goes, the list reloads and the toast of [Words](#words)
+shows; the tag, person and organization filters stay, as a `404` person is handled in
 [047, Library](../047-video-work-info/ui-design.md#library-filter-by-a-person-or-organization).
+A failed read removes nothing: the filter stays applied, the chip keeps its
+`Skeleton` and the accessible name `Remove the kind filter`, and the read is
+tried again when the popover opens.
 
 ### States
 
@@ -332,6 +356,7 @@ organization filters stay, as a `404` person is handled in
 | Kind applies, nothing matches | The chip above the no-match state of [014, Active tag filters](../014-video-tags/ui-design.md#active-tag-filters) |
 | Kind gone | The chip and the parameter go, the toast shows, the list reloads |
 | Kinds not loaded | The `Select` shows `Any kind` alone until the kinds arrive; the chip holds a `Skeleton` |
+| Kind list failed to load | The filter stays applied; the chip keeps its `Skeleton` and stays removable |
 
 ## Responsive behaviour
 
@@ -343,7 +368,7 @@ The judged widths are 360px, 768px and 1280px.
 | --- | --- | --- | --- | --- |
 | 1280px | Name, mark and kind label on one line; the label at its full width up to `max-w-chip-label` | The `Select` fills the popover's width (`w-popover`); `Set kind…` sits in the bar's row with the other actions | Name, count and two `RowIconButton`s, as the tag rows | The `Select` fills the popover; the chip sits in the `Filtering by` row with the others |
 | 768px | As above | As above; the `Filter` button shows the icon and count | As above | As above |
-| 360px | The name truncates before the label does; the label stays visible after a name of any length | The selection bar's actions wrap under the count, `Set kind…` among them; the menu opens within the viewport (`align="end"`) | Name, count and one `Actions` menu; the create row and rename input span the row | The chip truncates its name at `max-w-chip-label`; the row wraps |
+| 360px | The name truncates before the label does; the label stays visible after a name of any length, capped at half the name line so the name keeps the other half and nothing scrolls sideways | The selection bar's actions wrap under the count, `Set kind…` among them; the menu opens within the viewport (`align="end"`) | Name, count and one `Actions` menu; the create row and rename input span the row | The chip truncates its name at `max-w-chip-label`; the row wraps |
 
 - The kind label adds no height to a row at any width.
 - The `Set kind` menu scrolls when the kinds exceed the viewport's height
@@ -364,7 +389,9 @@ presence alone does not pass (Q-4). Check at 1280×800 first, then 768px and
    fill. Covering the labels with a hand changes nothing about how the names
    read. A tentative tag's mark stays between the name and the label. No row
    with a kind is taller than a row without one (`UI品質`: the name is primary,
-   rows not more crowded).
+   rows not more crowded). At 360px a 100-character tag name with a
+   100-character kind shows both truncated on one line, the name taking at
+   least half of it, and the table does not scroll sideways.
 2. **Kind against tag**: a kind label on a tag row and a tag chip on a library
    card are told apart at a glance: the label has a border and no fill, the
    chip a fill and no border. The active filter chip `Kind: Genre` is told
