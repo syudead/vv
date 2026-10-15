@@ -109,7 +109,7 @@ func (s *server) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	audience := audienceFrom(r.Context())
-	group, grouped, err := s.catalog.VideoGroup(r.Context(), audience, video, groupContext(params.Group), window)
+	group, grouped, err := s.catalog.VideoGroup(r.Context(), audience, video, domain.VideoContext{GroupID: groupContext(params.Group)}, window)
 	if err != nil {
 		s.internalError(w, "Could not load the group members.", err)
 		return

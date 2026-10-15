@@ -136,7 +136,7 @@ func TestVideoGroupLocatesRootFolderGroup(t *testing.T) {
 	if _, err := db.sql.Exec(`update groups set origin_folder = ? where id = ?`, domain.FolderKey("/"), auto); err != nil {
 		t.Fatal(err)
 	}
-	group, found, err := db.Library().VideoGroup(ctx, domain.AudienceOwner, ids["/a.mp4"], 0, domain.GroupWindow{})
+	group, found, err := db.Library().VideoGroup(ctx, domain.AudienceOwner, ids["/a.mp4"], domain.VideoContext{}, domain.GroupWindow{})
 	if err != nil || !found {
 		t.Fatalf("VideoGroup = %v, %v", found, err)
 	}
@@ -148,7 +148,7 @@ func TestVideoGroupLocatesRootFolderGroup(t *testing.T) {
 	if _, err := db.sql.Exec(`update groups set origin_folder = null where id = ?`, auto); err != nil {
 		t.Fatal(err)
 	}
-	group, found, err = db.Library().VideoGroup(ctx, domain.AudienceOwner, ids["/a.mp4"], 0, domain.GroupWindow{})
+	group, found, err = db.Library().VideoGroup(ctx, domain.AudienceOwner, ids["/a.mp4"], domain.VideoContext{}, domain.GroupWindow{})
 	if err != nil || !found || group.Folder != nil {
 		t.Errorf("手で作ったグループ = found %v, folder %+v, err %v; want found, no folder", found, group.Folder, err)
 	}
