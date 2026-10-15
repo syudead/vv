@@ -75,8 +75,8 @@ sequenceDiagram
   A->>O: title, tags, selected details
   O->>O: re-check plugin row
   O->>O: match people and organizations again
-  O->>O: create unmatched entities
   O->>O: merge into stored work information, skip rule breakers
+  O->>O: create the unmatched entities the merge kept
   O->>O: write display name, tags, work information
   O-->>A: video, skipped tags, skipped values
   A-->>S: 200 video, skippedTags, skipped

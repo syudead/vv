@@ -193,9 +193,11 @@ organizations, and the same entry twice answered the same.
 stored `WorkInfo` by
 [R-4](research.md#r-4-the-apply-merges-the-selected-fields-into-the-stored-work-information-in-one-transaction-and-skips-each-value-that-breaks-a-rule)
 (replace, append without repeats, each rule-breaking or over-limit value
-returned as skipped); `OverrideStore.ApplyFetchedWorkInfo` extended to
-match again inside its transaction, create the `new` entities with their
-fetched name and external IDs, merge, write through `replaceWorkInfo`,
+returned as skipped, a `new` entry checked with `NormalizeCredit` and against
+the role's limit and kept without an ID); `OverrideStore.ApplyFetchedWorkInfo`
+extended to match again inside its transaction, merge, create only the `new`
+entities the merge kept with their fetched name and external IDs, fill in
+their IDs, write through `replaceWorkInfo`,
 advance the edit time and publish `VideoWorkInfoChanged` after the commit;
 the apply section of `docs/design-docs/work-info-plugins.md` and the
 `internal/app` row of ARCHITECTURE.md's subsystem map.
@@ -206,14 +208,19 @@ the apply section of `docs/design-docs/work-info-plugins.md` and the
 `code` replaced, a selected date kind replaced while the other kinds stay, a
 performer appended after the stored ones, a stored URL not repeated, a date
 in another form and a URL without a scheme returned as `invalid` while the
-rest of the row is applied, and the 101st performer returned as `too_many`;
+rest of the row is applied, the 101st performer returned as `too_many`, and
+a `new` performer with an empty name or a name over the entity limit
+returned as `invalid`;
 store tests show the Issue's acceptance 2 to 5 and its edge cases: a second
 performer added beside the stored one, an entry with an existing person's
 external ID linked without a new row, a `new` entry creating a person that
 carries the fetched external ID, the same person twice in the result and a
 person already linked in the role linked once, a person created between the
 fetch and the apply linked instead of duplicated, an ambiguous entry neither
-linked nor created and reported, and a missing video leaving no new person
+linked nor created and reported, a `new` performer on a video that already
+links 100 performers reported as `too_many` with no new person row, a `new`
+performer whose name is over the entity limit reported as `invalid` while
+a selected `code` is written, and a missing video leaving no new person
 and no work information row; `VideoWorkInfoChanged` published once after
 the commit when a work detail changed and not when only the title changed.
 

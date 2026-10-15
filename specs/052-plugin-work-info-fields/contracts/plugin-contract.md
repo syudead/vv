@@ -10,9 +10,11 @@ the limits and the addresses stay as published
 ## `fetch` result
 
 `{"workInfo": {...}}` gains these optional properties beside `title` and
-`tags`. VVMDM trims every string, drops an entry that is empty after
-trimming or whose `kind`, `role`, `source` or `value` is missing or unknown,
-and keeps the first entries up to each limit, counted after dropping.
+`tags`. VVMDM trims every string of these properties, drops an entry that is
+empty after trimming or whose `kind`, `role`, `source` or `value` is missing
+or unknown, and keeps the first entries up to each limit, counted after
+dropping. `title` and `tags` are read exactly as before: this trimming does
+not reach them (requirement 8).
 
 | Property | Shape | Kept |
 | --- | --- | --- |

@@ -92,14 +92,19 @@ makes the apply's answer true when the comparison was a minute old.
 **Decision**: The apply reads the stored work information, lays the selected
 fields over it (`code`, `description` and a date kind replace; a role,
 `urls` and `externalIds` append what is not there yet, in the fetched order),
-creates the entities R-3 found none for, and writes the result with the
-existing replace path of 047 in the same transaction as the title and the
-tags. A value that breaks a field rule of
+and writes the result with the existing replace path of 047 in the same
+transaction as the title and the tags. A value that breaks a field rule of
 [047 data-model.md, Fields](../047-video-work-info/data-model.md#fields) is
 left out and reported in `skipped`, with the rest of the row applied: a
 `description` over 10,000 code points, a date in another form, a URL that is
 not absolute, the 101st performer. An ambiguous entry of R-3 is skipped the
-same way.
+same way. An entry R-3 found no entity for is checked before anything is
+created: its name and external IDs against the entity rules of
+`domain.NormalizeCredit` (an empty name or one over its length is
+`invalid`), and its place against the role's limit counted after the stored
+entries (`too_many`). The apply then creates only the entities of the
+entries the merge kept, so a skipped entry leaves no entity behind and a bad
+fetched name never fails the apply.
 
 | Option | A result with a bad date and a good code (acceptance 5) | Verdict |
 | --- | --- | --- |
@@ -120,4 +125,6 @@ does, so the page and the list re-read as they do after the editor saves.
 uniqueness constraints, so the merge only has to produce an object it
 accepts, and the one transaction of 049 R-9 extends to the new rows and the
 created entities, which gives the Issue's "a failed apply leaves nothing"
-edge case for free.
+edge case for free. Deciding the skips before creating is what keeps a
+successful apply from leaving an entity linked to no video in the people
+list.
