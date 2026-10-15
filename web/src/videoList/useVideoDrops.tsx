@@ -24,6 +24,8 @@ import { useVideoDropMenu, type VideoDropChoice } from "./VideoDropMenu";
 
 /** Shown はサーバーが答える前に見せる落とした結果である。 */
 interface Shown {
+  /** 結果を見せている操作（落とすたびに増える）。答えはこれと照合してから結果に触れる。 */
+  op: number;
   target: string;
   lifted: ReadonlySet<string>;
   /** 落とした先に置く新しいグループ。null は持ち上げたカードだけが消える（束ねた）。 */
@@ -104,6 +106,8 @@ function overlayOf<T>(
  * 後は新しいグループの名前の欄を開き（`nameFieldFor` か、フォルダ画面では `attached` の窓）、
  * 欄が閉じたら読み直す。束ねた後はすぐ読み直す。取り消したら見せていた結果と名前の欄を外す。
  * 画面を離れた後に答えた要求は何も見せない（トークンは忘れる。ui-design.md「Undo toast」の Gone）。
+ * 見せる結果と名前の欄は最後に落とした操作のものである。前の操作の答え・失敗・取り消しが後から
+ * 届いても、後の操作の結果と名前の欄には触れない（前の操作のグループは読み直しで並びに出る）。
  */
 export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
   const { items, keyOf, videoOf, groupOf, from, groupItem, reread, onAccepted, undo } =
@@ -112,7 +116,12 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
   const [shownDrop, setShownDrop] = useState<Shown | null>(null);
   const [nameTarget, setNameTarget] = useState<string | null>(null);
   const tempId = useRef(0);
-  const awaitingRead = useRef(false);
+  // 最後に落とした操作。見せる結果と名前の欄はこの操作だけが持つ。前の操作の答えが後から
+  // 届いても、後の操作の結果や名前の欄を書き換えない。
+  const latestOp = useRef(0);
+  // 名前の欄を開いた操作と、読み直しを待って結果を外す操作。
+  const namingOp = useRef<number | null>(null);
+  const awaitingRead = useRef<number | null>(null);
   const alive = useRef(true);
   useEffect(() => {
     alive.current = true;
@@ -121,17 +130,24 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
     };
   }, []);
 
-  // 読み直した一覧が届いたら、見せていた結果を外す（サーバーの値がそれを持つ）。
+  // 読み直した一覧が届いたら、待っていた操作の見せていた結果を外す（サーバーの値がそれを持つ）。
+  // 後の操作の結果を見せていれば、それはまだ答えを待っているので残す。
   useEffect(() => {
-    if (!awaitingRead.current) return;
-    awaitingRead.current = false;
-    setShownDrop(null);
+    const op = awaitingRead.current;
+    if (op === null) return;
+    awaitingRead.current = null;
+    setShownDrop((current) => (current?.op === op ? null : current));
   }, [items]);
 
-  const readAgain = useCallback(() => {
-    awaitingRead.current = true;
-    reread();
-  }, [reread]);
+  // readAgain は一覧を読み直し、`op` が最後の操作なら読み直しで結果を外す。前の操作は後の操作が
+  // 待っている読み直しを横取りしない。
+  const readAgain = useCallback(
+    (op: number | null) => {
+      if (op !== null && op === latestOp.current) awaitingRead.current = op;
+      reread();
+    },
+    [reread],
+  );
 
   const byKey = useMemo(
     () => new Map(items.map((item) => [keyOf(item), item])),
@@ -153,14 +169,16 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
           : current,
       ),
     onClosed: () => {
+      const op = namingOp.current;
+      namingOp.current = null;
       setNameTarget(null);
-      readAgain();
+      readAgain(op);
     },
   });
 
   const failed = useCallback(
-    (error: unknown, message: (reason: string) => UiText) => {
-      setShownDrop(null);
+    (op: number, error: unknown, message: (reason: string) => UiText) => {
+      setShownDrop((current) => (current?.op === op ? null : current));
       toast(message(errorText(error)));
       if (isTargetGone(error)) reread();
     },
@@ -177,44 +195,63 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
   );
 
   const { start, discard } = naming;
-  // 取り消しの要求が答えたら、名前の欄を何も送らずに閉じる。取り消せたら見せていた結果も外す
-  // （読み直しが元の並びを持ってくる）。取り消せなかったら読み直しを待つ。
-  const undone = useCallback(
-    (ok: boolean) => {
-      discard();
-      setNameTarget(null);
-      if (ok) setShownDrop(null);
-      else awaitingRead.current = true;
+  // 操作 `op` の取り消しの要求が答えたら、その操作の名前の欄を何も送らずに閉じる。取り消せたら
+  // その操作の見せていた結果も外す（読み直しが元の並びを持ってくる）。取り消せなかったら読み直しを
+  // 待つ。後の操作の結果と名前の欄には触れない。
+  const undoneFor = useCallback(
+    (op: number) => (ok: boolean) => {
+      if (namingOp.current === op) {
+        namingOp.current = null;
+        discard();
+        setNameTarget(null);
+      }
+      if (ok) setShownDrop((current) => (current?.op === op ? null : current));
+      else if (op === latestOp.current) awaitingRead.current = op;
     },
     [discard],
   );
+  /** nextOp は落とした操作に番号を振り、最後の操作にする。 */
+  const nextOp = useCallback(() => {
+    latestOp.current += 1;
+    return latestOp.current;
+  }, []);
   const { offer } = undo;
   const makeGroup = useCallback(
     ({ lifted, target }: VideoDropChoice) => {
       const targetVideo = videoAt(target);
       if (targetVideo === undefined) return;
       const videos = liftedVideos(lifted);
+      const op = nextOp();
       tempId.current -= 1;
       const made = provisionalGroup(tempId.current, targetVideo, videos);
       if (groupItem !== null) {
-        setShownDrop({ target, lifted: new Set(lifted), group: made, itemId: made.id });
+        setShownDrop({
+          op,
+          target,
+          lifted: new Set(lifted),
+          group: made,
+          itemId: made.id,
+        });
       }
       const ids = videos.map((video) => video.id);
       groupVideos(ids, targetVideo.id, from).then(
         ({ undoToken, groupId }) => {
           if (!alive.current) return;
           onAccepted?.();
-          offer(t.organize.done.grouped(made.name), undoToken, undone);
-          if (groupId === undefined) {
-            readAgain();
+          offer(t.organize.done.grouped(made.name), undoToken, undoneFor(op));
+          // 後に落とした操作が結果を見せていれば、この操作は名前の欄を開かず、読み直しで
+          // サーバーの並びに出る（グループはサーバーが付けた仮の名前のまま）。
+          if (groupId === undefined || op !== latestOp.current) {
+            readAgain(op);
             return;
           }
           setShownDrop((current) =>
-            current === null || current.group === null
+            current?.op !== op || current.group === null
               ? current
               : { ...current, group: { ...current.group, id: groupId } },
           );
           setNameTarget(target);
+          namingOp.current = op;
           start({
             groupId,
             provisional: provisionalGroupName(targetVideo.title),
@@ -222,7 +259,7 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
           });
         },
         (error: unknown) => {
-          if (alive.current) failed(error, t.organize.failed.group);
+          if (alive.current) failed(op, error, t.organize.failed.group);
         },
       );
     },
@@ -231,11 +268,12 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
       from,
       groupItem,
       liftedVideos,
+      nextOp,
       offer,
       onAccepted,
       readAgain,
       start,
-      undone,
+      undoneFor,
       videoAt,
     ],
   );
@@ -245,7 +283,8 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
       const targetVideo = videoAt(target);
       if (targetVideo === undefined) return;
       const ids = liftedVideos(lifted).map((video) => video.id);
-      setShownDrop({ target, lifted: new Set(lifted), group: null, itemId: 0 });
+      const op = nextOp();
+      setShownDrop({ op, target, lifted: new Set(lifted), group: null, itemId: 0 });
       bundleOnto(ids, targetVideo.id).then(
         ({ undoToken }) => {
           if (!alive.current) return;
@@ -253,16 +292,16 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
           offer(
             t.versions.bundle.bundled(ids.length + 1, targetVideo.title),
             undoToken,
-            undone,
+            undoneFor(op),
           );
-          readAgain();
+          readAgain(op);
         },
         (error: unknown) => {
-          if (alive.current) failed(error, t.versions.bundle.failed);
+          if (alive.current) failed(op, error, t.versions.bundle.failed);
         },
       );
     },
-    [failed, liftedVideos, offer, onAccepted, readAgain, undone, videoAt],
+    [failed, liftedVideos, nextOp, offer, onAccepted, readAgain, undoneFor, videoAt],
   );
 
   const isVideo = useCallback((key: string) => videoAt(key) !== undefined, [videoAt]);

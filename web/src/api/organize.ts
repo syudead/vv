@@ -93,14 +93,7 @@ export async function moveCards(
     ...(from === null ? {} : { from }),
     ...(to === null ? {} : { to }),
   };
-  const result = await request<OrganizeResult>("/api/organize/move", {
-    method: "POST",
-    headers: jsonHeaders,
-    body: JSON.stringify(body),
-    signal,
-  });
-  clearListSnapshot();
-  return result;
+  return postOperation("/api/organize/move", body, signal);
 }
 
 /**

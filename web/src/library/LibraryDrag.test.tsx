@@ -87,6 +87,10 @@ const server = {
   before: [] as LibraryItem[],
   /** 置くと次の束ねる要求は、これが解けるまで答えない。 */
   holdBundle: null as Promise<void> | null,
+  /** 置くと次の「Make a group」の要求は、これが解けるまで答えない。 */
+  holdGroup: null as Promise<void> | null,
+  /** 次の「Make a group」が作るグループの id。 */
+  nextGroupId: 90,
 };
 
 /** organize は「Make a group」と「Bundle as versions」に契約どおり答える。 */
@@ -98,14 +102,16 @@ function organize(path: string, body: unknown): Response | undefined {
       (item) => item.kind === "video" && item.video.id === target,
     );
     const name = targetItem?.kind === "video" ? targetItem.video.title : "";
-    const made = group(90, name, [target, ...lifted]);
+    const groupId = server.nextGroupId;
+    server.nextGroupId += 1;
+    const made = group(groupId, name, [target, ...lifted]);
     server.before = server.items;
     server.items = server.items.flatMap((item): LibraryItem[] => {
       if (item.kind !== "video") return [item];
       if (item.video.id === target) return [{ kind: "group", group: made }];
       return lifted.has(item.video.id) ? [] : [item];
     });
-    return json({ undoToken: "token-group", groupId: 90 });
+    return json({ undoToken: `token-group-${String(groupId)}`, groupId });
   }
   if (path === "/api/organize/bundle" && server.tooManyVideos) {
     return json(
@@ -124,16 +130,33 @@ function organize(path: string, body: unknown): Response | undefined {
     server.items = server.before;
     return new Response(null, { status: 204 });
   }
-  if (path === "/api/groups/90") {
+  const renamed = /^\/api\/groups\/(\d+)$/.exec(path);
+  if (renamed !== null) {
+    const id = Number(renamed[1]);
     const { name } = body as { name: string };
     server.items = server.items.map((item) =>
-      item.kind === "group" && item.group.id === 90
+      item.kind === "group" && item.group.id === id
         ? { kind: "group", group: { ...item.group, name } }
         : item,
     );
-    return json(group(90, name, []));
+    return json(group(id, name, []));
   }
   return undefined;
+}
+
+/** heldAnswer は `path` の要求に置いた待ちを返し、外す（次の要求は待たない）。 */
+function heldAnswer(path: string): Promise<void> | null {
+  if (path === "/api/organize/bundle") {
+    const hold = server.holdBundle;
+    server.holdBundle = null;
+    return hold;
+  }
+  if (path === "/api/organize/group") {
+    const hold = server.holdGroup;
+    server.holdGroup = null;
+    return hold;
+  }
+  return null;
 }
 
 const fetchMock = vi.fn<typeof fetch>((input, init) => {
@@ -142,8 +165,7 @@ const fetchMock = vi.fn<typeof fetch>((input, init) => {
   if (method !== "GET") {
     const body = JSON.parse(String(init?.body)) as unknown;
     server.writes.push({ method, path: url.pathname, body });
-    const hold = url.pathname === "/api/organize/bundle" ? server.holdBundle : null;
-    server.holdBundle = null;
+    const hold = heldAnswer(url.pathname);
     const answer = organize(url.pathname, body);
     if (answer !== undefined) return (hold ?? Promise.resolve()).then(() => answer);
   }
@@ -213,6 +235,8 @@ beforeEach(() => {
   server.tooManyVideos = false;
   server.before = [];
   server.holdBundle = null;
+  server.holdGroup = null;
+  server.nextGroupId = 90;
   vi.stubGlobal("fetch", fetchMock);
   installFakeEventSource();
   vi.stubGlobal(
@@ -261,6 +285,49 @@ describe("LibraryPage drag a video onto a video", () => {
     expect(await screen.findByText('Made the group "B"')).toBeDefined();
   });
 
+  it("前の「Make a group」の答えが後から届いても、後に落とした C と D のグループと名前の欄はそのまま", async () => {
+    server.items = ["A", "B", "C", "D"].map((title, index): LibraryItem => ({
+      kind: "video",
+      video: video(index + 1, title),
+    }));
+    layoutCards();
+    renderLibrary();
+    await screen.findByRole("link", { name: "D" });
+    let answerFirst = () => undefined as void;
+    server.holdGroup = new Promise<void>((resolve) => {
+      answerFirst = resolve;
+    });
+    const user = userEvent.setup();
+    await user.click(
+      within(await dropAOnB()).getByRole("menuitem", { name: "Make a group" }),
+    );
+    // A と B の要求が答える前に、C（左から 2 枚目）を D（3 枚目）に落とす。
+    dropOn("C", 1, 2);
+    await user.click(
+      within(await openedMenu()).getByRole("menuitem", { name: "Make a group" }),
+    );
+    const field = await screen.findByRole("textbox", { name: "Group name" });
+    expect((field as HTMLInputElement).value).toBe("D");
+
+    await act(async () => {
+      answerFirst();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    });
+
+    const kept = screen.getByRole("textbox", { name: "Group name" });
+    expect((kept as HTMLInputElement).value).toBe("D");
+    await waitFor(() => expect(cardTitles()).toEqual(["B", "D"]));
+    await user.clear(kept);
+    await user.type(kept, "Trip{Enter}");
+    await waitFor(() =>
+      expect(server.writes.at(-1)).toEqual({
+        method: "PATCH",
+        path: "/api/groups/91",
+        body: { name: "Trip", undoToken: "token-group-91" },
+      }),
+    );
+  });
+
   it("名前の欄で変えた名前の Enter は、「Make a group」のトークン付きで名前を変える", async () => {
     await open();
     const user = userEvent.setup();
@@ -275,7 +342,7 @@ describe("LibraryPage drag a video onto a video", () => {
       expect(server.writes.at(-1)).toEqual({
         method: "PATCH",
         path: "/api/groups/90",
-        body: { name: "Trip", undoToken: "token-group" },
+        body: { name: "Trip", undoToken: "token-group-90" },
       }),
     );
     expect(await screen.findByRole("heading", { name: "Trip" })).toBeDefined();
