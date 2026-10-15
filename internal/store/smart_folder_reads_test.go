@@ -296,6 +296,28 @@ func TestSmartFolderWithAMissingTagListsOnlyItsChildren(t *testing.T) {
 	}
 }
 
+// 祖先と子の検索式は同じ所在 1 行で満たす。束ねた動画で、祖先の語と子の語が別のバージョンに
+// だけ当たるなら、子には出ない（要件 9）。
+func TestSmartFolderSearchesOfEveryLevelMatchOneLocation(t *testing.T) {
+	db := migratedDB(t)
+	paths := upsertAll(t, db,
+		listingFile(fixturePath("/media/1.mp4"), "犬", "key-1", 1),
+		listingFile(fixturePath("/media/2.mp4"), "鳥", "key-2", 2),
+		listingFile(fixturePath("/media/3.mp4"), "犬と鳥", "key-3", 3),
+	)
+	one, two := paths[fixturePath("/media/1.mp4")], paths[fixturePath("/media/2.mp4")]
+	bundle(t, db, one, one, two)
+	parent := newSmartFolder(t, db, "犬", domain.SmartRule{Q: "犬"}, domain.SortTitleAsc, 0)
+	child := newSmartFolder(t, db, "鳥", domain.SmartRule{Q: "鳥"}, domain.SortTitleAsc, parent)
+
+	if got := smartFolderNames(t, db, domain.AudienceOwner, child); !slices.Equal(got, []string{"犬と鳥"}) {
+		t.Errorf("子の中身 = %v, want [犬と鳥]", got)
+	}
+	if got := smartFolderNames(t, db, domain.AudienceOwner, parent); !slices.Equal(got, []string{"folder:鳥", "犬", "犬と鳥"}) {
+		t.Errorf("親の中身 = %v, want [folder:鳥 犬 犬と鳥]", got)
+	}
+}
+
 // 参照が欠けて中身を求めないフォルダでも、読めないカーソルは ErrInvalidCursor である。
 func TestSmartFolderWithAMissingTagRejectsAnInvalidCursor(t *testing.T) {
 	db, ids := versionFixture(t)

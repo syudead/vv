@@ -203,17 +203,24 @@ func chosenLocationsCTEFor(scope locationScope, searchAudience domain.Audience, 
 	scopeClause, args := scope.condition("l")
 	clauses := []string{scopeClause, `(sbm.bundle_id is null or sv.id = ` +
 		effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
+	// どの検索式も同じ所在 1 行で満たす。集まりでは、すべての式を 1 つの exists の同じ bl に掛ける。
+	var exprClauses, bundleClauses []string
+	var exprArgs, bundleArgs []any
 	for _, expr := range exprs {
-		exprClause, exprArgs := searchExprCondition(expr, "l", searchAudience)
+		exprClause, eArgs := searchExprCondition(expr, "l", searchAudience)
 		if exprClause == "" {
 			continue
 		}
-		bundleClause, bundleArgs := searchExprCondition(expr, "bl", searchAudience)
-		clauses = append(clauses, `((sbm.bundle_id is null and `+exprClause+`) or (sbm.bundle_id is not null and exists (
+		bundleClause, bArgs := searchExprCondition(expr, "bl", searchAudience)
+		exprClauses, bundleClauses = append(exprClauses, exprClause), append(bundleClauses, bundleClause)
+		exprArgs, bundleArgs = append(exprArgs, eArgs...), append(bundleArgs, bArgs...)
+	}
+	if len(exprClauses) > 0 {
+		clauses = append(clauses, `((sbm.bundle_id is null and `+strings.Join(exprClauses, " and ")+`) or (sbm.bundle_id is not null and exists (
 			select 1 from video_bundle_members bm
 			join videos bv on bv.content_key = bm.content_key and bv.content_key <> ''
 			join video_locations bl on bl.video_id = bv.id
-			where bm.bundle_id = sbm.bundle_id and `+registeredLocationCondition("bl")+` and `+bundleClause+`)))`)
+			where bm.bundle_id = sbm.bundle_id and `+registeredLocationCondition("bl")+` and `+strings.Join(bundleClauses, " and ")+`)))`)
 		args = append(args, exprArgs...)
 		args = append(args, bundleArgs...)
 	}
