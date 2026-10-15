@@ -64,7 +64,7 @@ func TestBatchTagsConfirmConfirmsOnlyTentativeTags(t *testing.T) {
 	db, ids := batchFixture(t)
 	const missing = 999999
 
-	outcome, err := db.Tags().BatchTags(context.Background(), domain.TagBatchConfirm, batchIDs(ids, missing))
+	outcome, err := db.Tags().BatchTags(context.Background(), domain.TagBatchRequest{Action: domain.TagBatchConfirm}, batchIDs(ids, missing))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,7 +92,7 @@ func TestBatchTagsRejectRemembersNamesAndKeepsConfirmedTags(t *testing.T) {
 	db, ids := batchFixture(t)
 	const missing = 999999
 
-	outcome, err := db.Tags().BatchTags(context.Background(), domain.TagBatchReject, batchIDs(ids, missing))
+	outcome, err := db.Tags().BatchTags(context.Background(), domain.TagBatchRequest{Action: domain.TagBatchReject}, batchIDs(ids, missing))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,7 +127,7 @@ func TestBatchTagsDeleteDeletesOnlyConfirmedTags(t *testing.T) {
 	db, ids := batchFixture(t)
 	const missing = 999999
 
-	outcome, err := db.Tags().BatchTags(context.Background(), domain.TagBatchDelete, batchIDs(ids, missing))
+	outcome, err := db.Tags().BatchTags(context.Background(), domain.TagBatchRequest{Action: domain.TagBatchDelete}, batchIDs(ids, missing))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -162,7 +162,7 @@ func TestBatchTagsDeleteDeletesOnlyConfirmedTags(t *testing.T) {
 func TestBatchTagsWithNothingApplicableReturnsEmptyArrays(t *testing.T) {
 	db, ids := batchFixture(t)
 
-	outcome, err := db.Tags().BatchTags(context.Background(), domain.TagBatchDelete, []int64{ids["t1"]})
+	outcome, err := db.Tags().BatchTags(context.Background(), domain.TagBatchRequest{Action: domain.TagBatchDelete}, []int64{ids["t1"]})
 	if err != nil {
 		t.Fatal(err)
 	}

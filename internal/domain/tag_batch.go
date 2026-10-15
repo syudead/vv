@@ -17,26 +17,52 @@ const (
 	TagBatchReject TagBatchAction = "reject"
 	// TagBatchDelete は確定したタグを消す。
 	TagBatchDelete TagBatchAction = "delete"
+	// TagBatchSetKind はタグに TagBatchRequest.KindID の種類を付ける。仮のタグを確定しない
+	// （specs/051-tag-kinds/research.md R-3）。
+	TagBatchSetKind TagBatchAction = "setKind"
+	// TagBatchClearKind はタグの種類を外す。仮のタグを確定しない。
+	TagBatchClearKind TagBatchAction = "clearKind"
 )
 
 // Valid は a が既知の操作であることを返す。
 func (a TagBatchAction) Valid() bool {
 	switch a {
-	case TagBatchConfirm, TagBatchReject, TagBatchDelete:
+	case TagBatchConfirm, TagBatchReject, TagBatchDelete, TagBatchSetKind, TagBatchClearKind:
 		return true
 	}
 	return false
 }
 
-// TagBatchApplies は操作 action が、仮かどうかが tentative のタグに働くかを返す。確定・却下は
+// TagBatchRequest はまとめての操作の中身である。KindID は TagBatchSetKind で付ける種類の
+// id で、ほかの操作では 0 である。
+type TagBatchRequest struct {
+	Action TagBatchAction
+	KindID int64
+}
+
+// TagBatchTarget はまとめての操作が働くかを決める、タグの今の状態である。
+type TagBatchTarget struct {
+	// Tentative はタグが仮であること。
+	Tentative bool
+	// KindID はタグの種類の id。種類が無ければ 0。
+	KindID int64
+}
+
+// TagBatchApplies は操作 req が、今の状態が target のタグに働くかを返す。確定・却下は
 // 仮のタグ、削除は確定したタグに働く。画面の 1 行ずつの規則（仮の行に確定・却下、確定した行に
-// 削除。specs/031-tentative-tags/ui-design.md「Row」）と同じである。
-func TagBatchApplies(action TagBatchAction, tentative bool) bool {
-	switch action {
+// 削除。specs/031-tentative-tags/ui-design.md「Row」）と同じである。種類を付けるのは種類が
+// req.KindID と違うタグ、外すのは種類のあるタグに働き、仮かどうかによらない
+// （specs/051-tag-kinds/data-model.md「Rules」）。
+func TagBatchApplies(req TagBatchRequest, target TagBatchTarget) bool {
+	switch req.Action {
 	case TagBatchConfirm, TagBatchReject:
-		return tentative
+		return target.Tentative
 	case TagBatchDelete:
-		return !tentative
+		return !target.Tentative
+	case TagBatchSetKind:
+		return target.KindID != req.KindID
+	case TagBatchClearKind:
+		return target.KindID != 0
 	}
 	return false
 }
@@ -79,9 +105,9 @@ func (a TagImpactAction) Valid() bool {
 func TagImpactApplies(action TagImpactAction, tentative bool) bool {
 	switch action {
 	case TagImpactReject:
-		return TagBatchApplies(TagBatchReject, tentative)
+		return TagBatchApplies(TagBatchRequest{Action: TagBatchReject}, TagBatchTarget{Tentative: tentative})
 	case TagImpactDelete:
-		return TagBatchApplies(TagBatchDelete, tentative)
+		return TagBatchApplies(TagBatchRequest{Action: TagBatchDelete}, TagBatchTarget{Tentative: tentative})
 	case TagImpactMerge:
 		return true
 	}

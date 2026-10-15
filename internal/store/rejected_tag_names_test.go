@@ -31,7 +31,7 @@ func TestListRejectedTagNamesPages(t *testing.T) {
 	for _, name := range created {
 		ids = append(ids, tagIDByName(t, db, name))
 	}
-	if _, err := db.Tags().BatchTags(ctx, domain.TagBatchReject, ids); err != nil {
+	if _, err := db.Tags().BatchTags(ctx, domain.TagBatchRequest{Action: domain.TagBatchReject}, ids); err != nil {
 		t.Fatal(err)
 	}
 
