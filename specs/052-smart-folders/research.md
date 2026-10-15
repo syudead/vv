@@ -157,7 +157,7 @@ references.
 
 **Decision**: `smart_folders.owner_kept` is 1 for a folder the owner created,
 and is set to 1 by every owner write to its name, rule, sort or parent. Only
-the AI path of the home Issue will write a folder without setting it.
+the write path the AI organizing Issue adds will create a folder without setting it.
 
 | Option | Verdict |
 | --- | --- |
