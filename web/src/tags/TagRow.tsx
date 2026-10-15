@@ -26,6 +26,7 @@ import { TableCell, TableRow } from "../ui/shadcn/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import TentativeMark from "../ui/TentativeMark";
 import RowNameInput from "./RowNameInput";
+import TagKindLabel from "./TagKindLabel";
 import type { TagFieldError } from "./tagNameField";
 
 export interface TagRowRefs {
@@ -187,6 +188,7 @@ function TagRow({
                   <TooltipContent>{t.tags.tentative}</TooltipContent>
                 </Tooltip>
               )}
+              <TagKindLabel kind={tag.kind} />
             </span>
             {tag.synonyms.length > 0 && (
               <p

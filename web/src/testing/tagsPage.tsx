@@ -69,6 +69,12 @@ export function pageOf(tags: readonly Tag[], params: URLSearchParams) {
   const matched = tags
     .filter((item) => params.get("tentative") !== "true" || item.tentative)
     .filter((item) => params.get("unused") !== "true" || item.videoCount === 0)
+    .filter((item) => {
+      const kind = params.get("kind");
+      if (kind === null) return true;
+      if (kind === "none") return item.kind === null;
+      return item.kind?.id === Number(kind);
+    })
     .filter(
       (item) =>
         q === "" ||
@@ -260,6 +266,39 @@ function tagKindRoute(
 }
 
 /**
+ * kindBatch は `POST /api/tags/batch` の `setKind`・`clearKind` を扱う
+ * （specs/051-tag-kinds/contracts/screen-api.md）。既にその種類の（`clearKind` では種類の
+ * 無い）タグは `notApplicableIds`、無い種類の `setKind` は 404 `tag_kind_not_found` で
+ * 何も変えない。
+ */
+function kindBatch(body: { action: string; ids: number[]; kindId?: number }): Response {
+  const target =
+    body.action === "setKind"
+      ? server.tagKinds.find((item) => item.id === body.kindId)
+      : undefined;
+  if (body.action === "setKind" && target === undefined) {
+    return jsonResponse(
+      { code: "not_found", reason: "tag_kind_not_found", message: "server-side message" },
+      404,
+    );
+  }
+  const ref = target === undefined ? null : { id: target.id, name: target.name };
+  const appliedIds: number[] = [];
+  const notFoundIds: number[] = [];
+  const notApplicableIds: number[] = [];
+  for (const id of body.ids) {
+    const found = server.tags.find((t) => t.id === id);
+    if (found === undefined) notFoundIds.push(id);
+    else if ((found.kind?.id ?? null) === (ref?.id ?? null)) notApplicableIds.push(id);
+    else {
+      found.kind = ref;
+      appliedIds.push(id);
+    }
+  }
+  return jsonResponse({ appliedIds, notFoundIds, notApplicableIds });
+}
+
+/**
  * hold.rejectedGets を true にした間の GET /api/tags/rejected-names は、release を
  * 呼ぶまで応答しない。応答の中身は要求を受けた時点の `server.rejectedNames` を
  * 写し取って持つ（取り外しの前に始まった取り直しの古い応答を再現する）。
@@ -427,13 +466,20 @@ export function install() {
     }
 
     if (path === "/api/tags/batch" && method === "POST") {
-      const body = JSON.parse(String(init?.body)) as { action: string; ids: number[] };
+      const body = JSON.parse(String(init?.body)) as {
+        action: string;
+        ids: number[];
+        kindId?: number;
+      };
       server.batchCalls.push(body);
       if (server.failNextBatch) {
         server.failNextBatch = false;
         return Promise.resolve(
           jsonResponse({ code: "internal", message: "failed" }, 500),
         );
+      }
+      if (body.action === "setKind" || body.action === "clearKind") {
+        return Promise.resolve(kindBatch(body));
       }
       const appliedIds: number[] = [];
       const notFoundIds: number[] = [];

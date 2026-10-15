@@ -65,6 +65,11 @@ export interface TagPageQuery {
   tentative?: boolean;
   /** 本数 0 のタグだけにする。 */
   unused?: boolean;
+  /**
+   * 種類で絞る。種類の id（正の整数の文字列）か、種類の無いタグの `none`
+   * （specs/051-tag-kinds/contracts/screen-api.md「`GET /api/tags` parameter `kind`」）。
+   */
+  kind?: string;
   sort?: TagSort;
   /** 前回の応答の `nextCursor`。同じ条件で続けて使う。 */
   cursor?: string;
@@ -82,6 +87,7 @@ export function listTagPage(query: TagPageQuery, signal?: AbortSignal): Promise<
   if (query.q !== undefined && query.q !== "") params.set("q", query.q);
   if (query.tentative === true) params.set("tentative", "true");
   if (query.unused === true) params.set("unused", "true");
+  if (query.kind !== undefined) params.set("kind", query.kind);
   if (query.sort !== undefined) params.set("sort", query.sort);
   if (query.cursor !== undefined && query.cursor !== "")
     params.set("cursor", query.cursor);

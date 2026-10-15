@@ -6,9 +6,11 @@ import {
   appendUniqueTags,
   compareTagsForSort,
   confirmTags,
+  matchesTagQuery,
   placeTag,
   removeTags,
   replaceTag,
+  setTagsKind,
   type TagPageRows,
   type TagRowsQuery,
 } from "./tagPageRows";
@@ -138,6 +140,31 @@ describe("操作のあとの反映", () => {
     const result = confirmTags(base, new Set([1]));
     expect(names(result)).toEqual(["B"]);
     expect(result.total).toBe(4);
+  });
+
+  it("種類の絞り込みは id の種類のタグか、none なら種類の無いタグに合う", () => {
+    const genre = tag({ id: 1, name: "A", kind: { id: 1, name: "Genre" } });
+    const plain = tag({ id: 2, name: "B" });
+    expect(matchesTagQuery(genre, query({ kind: "1" }))).toBe(true);
+    expect(matchesTagQuery(genre, query({ kind: "2" }))).toBe(false);
+    expect(matchesTagQuery(genre, query({ kind: "none" }))).toBe(false);
+    expect(matchesTagQuery(plain, query({ kind: "none" }))).toBe(true);
+    expect(matchesTagQuery(plain, query({ kind: null }))).toBe(true);
+  });
+
+  it("まとめて種類を付けた行は位置を変えずに書き換え、絞り込みから外れた行は取り除く", () => {
+    const work = { id: 2, name: "Work" };
+    const base = page([tag({ id: 1, name: "A" }), tag({ id: 2, name: "B" })], {
+      total: 5,
+      totalAll: 9,
+      query: query({ kind: "none" }),
+    });
+    const result = setTagsKind(base, new Set([1]), work);
+    expect(names(result)).toEqual(["B"]);
+    expect(result.total).toBe(4);
+    const unfiltered = setTagsKind(page(base.rows), new Set([2]), work);
+    expect(unfiltered.rows.map((item) => item.kind)).toEqual([null, work]);
+    expect(unfiltered.total).toBe(2);
   });
 
   it("削除は読み込んだ行から取り除き、total と totalAll を減らす", () => {

@@ -255,7 +255,7 @@ describe("TagsPage まとめての操作", () => {
       within(bar())
         .getAllByRole("button")
         .map((button) => button.getAttribute("aria-label") ?? button.textContent),
-    ).toEqual(["Clear selection", "Merge into one tag…", "Delete…"]);
+    ).toEqual(["Clear selection", "Set kind…", "Merge into one tag…", "Delete…"]);
 
     // 仮のタグも選ぶと「Confirm」「Reject…」が出る。
     await user.click(within(rowOf("Alpha")).getByRole("checkbox"));
@@ -266,6 +266,7 @@ describe("TagsPage まとめての操作", () => {
     ).toEqual([
       "Clear selection",
       "Confirm",
+      "Set kind…",
       "Merge into one tag…",
       "Reject…",
       "Delete…",
@@ -330,7 +331,7 @@ describe("TagsPage まとめての操作", () => {
     const { container } = renderPage();
     await screen.findByTitle("Alpha");
 
-    // Alpha（仮のタグ）を選ぶ。選択の行のボタンは ×・Confirm・Merge・Reject の順。
+    // Alpha（仮のタグ）を選ぶ。選択の行のボタンは ×・Confirm・Set kind・Merge・Reject の順。
     await user.click(
       container.querySelector<HTMLElement>('[data-tag-id] [role="checkbox"]')!,
     );
@@ -341,7 +342,7 @@ describe("TagsPage まとめての操作", () => {
           .getAllByRole("region")
           // 通知（Sonner）の section も region なので外す。
           .find((region) => region.tagName !== "SECTION")!,
-      ).getAllByRole("button")[3]!,
+      ).getAllByRole("button")[4]!,
     );
     const dialog = await screen.findByRole("alertdialog");
     await waitFor(() => expect(server.impactCalls).toHaveLength(1));

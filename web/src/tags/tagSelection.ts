@@ -51,22 +51,45 @@ export function selectAllCheck(
   return selectedCount >= selectable ? true : "indeterminate";
 }
 
+/** SelectionSummary は選んだ行のまとめである（選択バーが読む）。 */
+export interface SelectionSummary {
+  /** 仮のタグがある。 */
+  tentative: boolean;
+  /** 確定したタグがある。 */
+  confirmed: boolean;
+  /**
+   * 選んだタグがみな持つ種類の id の文字列。みな種類なしなら `none`、混ざっているか
+   * 選んでいなければ undefined（specs/051-tag-kinds/ui-design.md「Set kind」）。
+   */
+  kind: string | undefined;
+}
+
+/** kindValue はタグの種類の値（id の文字列か `none`）である。 */
+function kindValue(tag: Tag): string {
+  return tag.kind === null ? "none" : String(tag.kind.id);
+}
+
 /**
- * selectedKinds は、選んだ行に仮のタグと確定したタグがそれぞれあるかである。選択の
- * 行は、無い種類の操作を押せなくする（ui-design.md「Enabled and disabled」）。
+ * selectedKinds は、選んだ行に仮のタグと確定したタグがそれぞれあるかと、みなが持つ
+ * 種類である。選択の行は、無い種類の操作を押せなくする（ui-design.md「Enabled and
+ * disabled」）。
  */
 export function selectedKinds(
   rows: readonly Tag[],
   selected: ReadonlySet<number>,
-): { tentative: boolean; confirmed: boolean } {
+): SelectionSummary {
   let tentative = false;
   let confirmed = false;
-  if (selected.size === 0) return { tentative, confirmed };
+  let kind: string | undefined;
+  let mixed = false;
+  if (selected.size === 0) return { tentative, confirmed, kind };
   for (const tag of rows) {
     if (!selected.has(tag.id)) continue;
     if (tag.tentative) tentative = true;
     else confirmed = true;
-    if (tentative && confirmed) break;
+    const value = kindValue(tag);
+    if (kind === undefined) kind = value;
+    else if (kind !== value) mixed = true;
   }
-  return { tentative, confirmed };
+  return { tentative, confirmed, kind: mixed ? undefined : kind };
 }
