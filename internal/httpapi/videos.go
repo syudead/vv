@@ -407,7 +407,7 @@ func (s *server) videoDetail(r *http.Request, video domain.Video, contextID int6
 	// 動画だけで数えたものが返る（specs/048-groups/research.md R-9）。
 	if s.catalog != nil {
 		// 位置と本数だけを使うので、メンバーの詳細は読まない。
-		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, contextID, domain.GroupWindow{})
+		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, domain.VideoContext{GroupID: contextID}, domain.GroupWindow{})
 		if err != nil {
 			errs = append(errs, err)
 		}
