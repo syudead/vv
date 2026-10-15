@@ -121,6 +121,41 @@ func TestCreditMatchIsStable(t *testing.T) {
 	}
 }
 
+// 取得の上限まで埋まった結果（役割 4 つ × 100 人）は、件ごとに問い合わせず種類ごとにまとめて
+// 引いても、件ごとの答えを入力の順に返す。同じ外部 ID・同じ名前を持つ件はそれぞれ同じ答えになる。
+func TestCreditMatchBatchKeepsEntryOrder(t *testing.T) {
+	db := migratedDB(t)
+	byID := createCredit(t, db, domain.CreditPerson, domain.CreditInput{
+		Name: "Aoi", ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}},
+	})
+	byName := createPerson(t, db, "Mika", "ミカ")
+	createPerson(t, db, "Rin")
+	createPerson(t, db, "RIN")
+
+	cycle := []struct {
+		entry domain.CreditMatchEntry
+		want  domain.CreditMatch
+	}{
+		{domain.CreditMatchEntry{Name: "Mika", ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "a-1"}}}, existingMatch(byID)},
+		{domain.CreditMatchEntry{Name: "みか"}, existingMatch(byName)},
+		{domain.CreditMatchEntry{Name: "rin"}, domain.CreditMatch{State: domain.CreditMatchAmbiguous}},
+		{domain.CreditMatchEntry{Name: "Nana", ExternalIDs: []domain.ExternalID{{Source: "fanza", Value: "n-1"}}}, domain.CreditMatch{State: domain.CreditMatchNew}},
+		{domain.CreditMatchEntry{Name: ""}, domain.CreditMatch{State: domain.CreditMatchNew}},
+	}
+	var entries []domain.CreditMatchEntry
+	var want []domain.CreditMatch
+	for len(entries) < 400 {
+		for _, c := range cycle {
+			entries = append(entries, c.entry)
+			want = append(want, c.want)
+		}
+	}
+
+	if got := matchFetched(t, db, domain.CreditPerson, entries...); !reflect.DeepEqual(got, want) {
+		t.Errorf("Match of %d entries differs from the per-entry answers", len(entries))
+	}
+}
+
 func TestCreditMatchUnknownKind(t *testing.T) {
 	db := migratedDB(t)
 	if _, err := db.Credits().Match(context.Background(), domain.CreditKind("tag"), nil); err == nil {
