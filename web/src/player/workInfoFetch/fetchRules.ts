@@ -1,11 +1,13 @@
 import type { Video } from "../../api/client";
 import type {
   SkippedTag,
+  SkippedWorkInfoValue,
   WorkInfoFetch,
   WorkInfoField,
   WorkInfoPlugin,
 } from "../../api/workInfoPlugins";
 import { t, type UiText } from "../../i18n";
+import { creditKind, detailRow, isDateRow, videoWorkInfo } from "./detailRows";
 
 // 取得のダイアログの決まり（specs/049-work-info-plugins/ui-design.md「Fetch dialog」）。画面に
 // 依らない判断をここに集め、ダイアログの部品は描くことだけにする。
@@ -76,10 +78,10 @@ export function hostOf(url: string): string {
 }
 
 /**
- * RowState は比較の行の状態である。`differs` は選べ、`missing`（結果に値が無い）と `same`
- * （今と同じ）は選べない。
+ * RowState は比較の行の状態である。`differs` は選べ、`missing`（結果に値が無い）、`same`
+ * （今と同じ）、`nothing`（足せる件が無く、結び付かない件がある一覧の行）は選べない。
  */
-export type RowState = "differs" | "missing" | "same";
+export type RowState = "differs" | "missing" | "same" | "nothing";
 
 /** titleRow は題名の行の状態である。比べるのはページが出している題名である。 */
 export function titleRow(video: Video, fetched: WorkInfoFetch): RowState {
@@ -99,26 +101,54 @@ export function tagsRow(video: Video, fetched: WorkInfoFetch): RowState {
   return fetched.tags.every((name) => names.has(name)) ? "same" : "differs";
 }
 
-/**
- * ComparedField は比較の段が今出す行の項目である。API の WorkInfoField は作品の詳細の項目も
- * 持つ（specs/052-plugin-work-info-fields/contracts/screen-api.md）が、その行はまだ出さない。
- */
-export type ComparedField = Extract<WorkInfoField, "title" | "tags">;
-
 /** rowState は項目 field の行の状態である。 */
 export function rowState(
-  field: ComparedField,
+  field: WorkInfoField,
   video: Video,
   fetched: WorkInfoFetch,
 ): RowState {
-  return field === "title" ? titleRow(video, fetched) : tagsRow(video, fetched);
+  if (field === "title") return titleRow(video, fetched);
+  if (field === "tags") return tagsRow(video, fetched);
+  return detailRow(field, videoWorkInfo(video), fetched).state;
 }
 
-/** FIELDS は比較の行の順である。 */
-export const FIELDS: readonly ComparedField[] = ["title", "tags"];
+/**
+ * FIELDS は比較の行の順で、contracts/screen-api.md の `WorkInfoField` の順である
+ * （specs/052-plugin-work-info-fields/ui-design.md「Compare」）。
+ */
+export const FIELDS: readonly WorkInfoField[] = [
+  "title",
+  "tags",
+  "code",
+  "description",
+  "dates.release",
+  "dates.recorded",
+  "dates.published",
+  "people.performer",
+  "people.director",
+  "people.photographer",
+  "people.streamer",
+  "organizations.maker",
+  "organizations.label",
+  "urls",
+  "externalIds",
+];
+
+/**
+ * comparedFields は比較の段に出す行の項目である。題名とタグはいつも出し（値が無ければ
+ * `Not in the result`）、作品の詳細は結果に値があるときだけ出す。
+ */
+export function comparedFields(video: Video, fetched: WorkInfoFetch): WorkInfoField[] {
+  return FIELDS.filter(
+    (field) =>
+      field === "title" ||
+      field === "tags" ||
+      rowState(field, video, fetched) !== "missing",
+  );
+}
 
 /** initialSelection は比較の段を開いたときの選択で、値があって今と違う項目である。 */
-export function initialSelection(video: Video, fetched: WorkInfoFetch): ComparedField[] {
+export function initialSelection(video: Video, fetched: WorkInfoFetch): WorkInfoField[] {
   return FIELDS.filter((field) => rowState(field, video, fetched) === "differs");
 }
 
@@ -137,6 +167,54 @@ export function orderSkipped(skipped: readonly SkippedTag[]): SkippedTag[] {
   return [
     ...skipped.filter((tag) => tag.reason === "rejected"),
     ...skipped.filter((tag) => tag.reason !== "rejected"),
+  ];
+}
+
+/** SkippedLine は結果の段の 1 行「{label}: {value} — {reason}」である。 */
+export interface SkippedLine {
+  key: string;
+  label: UiText;
+  value: string;
+  reason: UiText;
+}
+
+function limitItems(field: WorkInfoField): string {
+  const items: Partial<Record<WorkInfoField, string>> = t.player.workInfoFetch.limitItems;
+  return items[field] ?? t.player.workInfoFetch.fields[field];
+}
+
+/** skippedReason は飛ばした値の理由の文で、項目の種類で分ける（ui-design「Words」）。 */
+export function skippedReason(value: SkippedWorkInfoValue): UiText {
+  const text = t.player.workInfoFetch.skippedValue;
+  if (value.reason === "too_many") return text.tooMany(limitItems(value.field));
+  if (value.reason === "ambiguous")
+    return text.ambiguous[creditKind(value.field) ?? "person"];
+  if (isDateRow(value.field)) return text.invalidDate;
+  return value.field === "urls" ? text.invalidUrl : text.invalidOther;
+}
+
+/**
+ * skippedLines は結果の段の行で、付けなかったタグ（却下したものが先）、次に飛ばした値を
+ * 応答の順（項目の順、項目の中は取得した順）で並べる（ui-design「Result」）。
+ */
+export function skippedLines(
+  tags: readonly SkippedTag[],
+  values: readonly SkippedWorkInfoValue[],
+): SkippedLine[] {
+  const text = t.player.workInfoFetch;
+  return [
+    ...orderSkipped(tags).map((tag) => ({
+      key: `tags\u0000${tag.name}`,
+      label: text.fields.tags,
+      value: tag.name,
+      reason: text.skipped[tag.reason],
+    })),
+    ...values.map((value, index) => ({
+      key: `${value.field}\u0000${String(index)}`,
+      label: text.fields[value.field],
+      value: value.value,
+      reason: skippedReason(value),
+    })),
   ];
 }
 
