@@ -135,8 +135,9 @@ type JobClaimCondition struct {
 // 指紋はシーク用スプライトのコマから作るので、スプライトが完成するまで取り出さない。
 //
 // 解析し直し（JobMetadata）は、取り出せる解析の仕事が残っていないことを待つ。新しい
-// 取り込みの段階を先に進め、走っている解析と同時にディスクを読まないためである
-// （specs/056-media-info/research.md R-5）。
+// 取り込みの段階を先に進め、待ちか実行中の解析の横で解析し直しを始めないためである
+// （specs/056-media-info/research.md R-5）。シーク用サムネイルと同じく取り出しの時点だけで
+// 判断し、走っている解析し直しは止めない。重なるのは、その1回のヘッダーの読み取りだけである。
 func ClaimConditionFor(kind JobKind) JobClaimCondition {
 	return JobClaimCondition{
 		RegisteredLocation:    true,

@@ -248,8 +248,11 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 	if issuesMoved {
 		c.issuesChanged()
 	}
-	// 動画の行が残っても、消した所在の仕事は着手できなくなりうる。
+	// 動画の行が残っても、消した所在の仕事は着手できなくなりうる。取り出せる解析の仕事が
+	// 減ると待っていた解析し直しが取り出せるようになるが、動画の行が残ると
+	// VideoIngestChanged が出ないので、ここで起こす（domain.ClaimConditionFor）。
 	c.remainingChanged()
+	c.jobsQueued(domain.JobMetadata)
 	return s.db.commit(ctx, tx, &c)
 }
 

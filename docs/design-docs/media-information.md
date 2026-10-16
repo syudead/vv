@@ -92,10 +92,10 @@ job writes the row.
 
 | Rule | Why |
 | --- | --- |
-| Claimed only while no `probe` job is queued or running for a video with a registered location (`JobClaimCondition.NoClaimableProbe`) | A new import's stages go first, and the two workers never read the disk at the same time; the `metadata` worker is woken when a probe job leaves `running` |
+| Claimed only while no `probe` job is queued or running for a video with a registered location (`JobClaimCondition.NoClaimableProbe`) | A new import's stages go first, and no `metadata` run starts beside a queued or running probe; as for `seek_thumbnail`, the condition holds at claim time, so a probe queued during a run overlaps only that one header read. The `metadata` worker is woken when a probe job leaves `running` and when a probe's video loses its registered location |
 | The same identity check as the probe job (job location id, version and path, content key, location generation); a failed check writes nothing and completes the job | A file replaced during the run never gets the old file's row; the scan that finds the new file queues it again |
 | The index columns, playability and the live-transcode probe are not written | A failure or a changed parser cannot hide playback or the seek preview |
-| A failure at the attempt limit keeps the row and records `metadata_failed` only for a video in the latest scan's set | The backfill of an old library is not a scan, so it does not turn the last scan partial; the next scan queues the job again |
+| A failure at the attempt limit keeps the row and records `metadata_failed` only for a video in the latest scan's set | A video in that set is work the latest import counts, so its failure is that import's issue; a video outside it records nothing, so the backfill of videos the latest import never touched does not turn it partial. The next scan queues the job again |
 
 A finished job sends the `video` notification, so an open video page refetches
 and shows the new information.

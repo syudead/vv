@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io/fs"
+	"slices"
 	"testing"
 
 	"github.com/pressly/goose/v3"
@@ -317,5 +318,83 @@ func TestFailedMetadataJobKeepsRowAndRecordsIssue(t *testing.T) {
 		if got := issues(); got != 0 {
 			t.Fatalf("成功のあとも metadata_failed = %d", got)
 		}
+	}
+}
+
+// 解析の仕事を持つ動画の登録済みの所在が無くなる（フォルダの登録を外す、所在を消す）と、動画の
+// 行が残っても待っていた解析し直しの仕事が取り出せるようになる。どちらの経路も解析し直しの
+// ワーカーを起こす知らせを出す。
+func TestLosingProbeLocationWakesMetadata(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		remove func(t *testing.T, db *DB)
+	}{
+		{name: "DeleteMediaFolder", remove: func(t *testing.T, db *DB) {
+			t.Helper()
+			var folderID, version int64
+			if err := db.sql.QueryRow(`select id, version from media_folders where path = ?`,
+				fixturePath("/media")).Scan(&folderID, &version); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Settings().DeleteMediaFolder(context.Background(), folderID, version); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "DeleteVideoLocations", remove: func(t *testing.T, db *DB) {
+			t.Helper()
+			var locationID int64
+			if err := db.sql.QueryRow(`select id from video_locations where path = ?`,
+				fixturePath("/media/a.mp4")).Scan(&locationID); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.ScanIndex().DeleteVideoLocations(context.Background(), []int64{locationID}); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db := migratedDB(t)
+			ctx := context.Background()
+			if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`,
+				fixturePath("/other")); err != nil {
+				t.Fatal(err)
+			}
+			blocking, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/a.mp4"), "a", "key-a", 1024, 0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/legacy/a.mp4"), "a", "key-a", 1024, 0)); err != nil {
+				t.Fatal(err)
+			}
+			waiting, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/other/b.mp4"), "b", "key-b", 2048, 0))
+			if err != nil {
+				t.Fatal(err)
+			}
+			probeDone(t, db, waiting.ID)
+			if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, blocking.ID); err != nil {
+				t.Fatal(err)
+			}
+			if err := db.Ingest().EnqueueJob(ctx, domain.JobMetadata, waiting.ID); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := db.Ingest().ClaimJob(ctx, domain.JobMetadata); !errors.Is(err, domain.ErrNoJob) {
+				t.Fatalf("解析の仕事が残る間の ClaimJob error = %v, want domain.ErrNoJob", err)
+			}
+
+			recorder := &queuedRecorder{}
+			db.PublishTo(recorder)
+			tc.remove(t, db)
+
+			if got := recorder.take(); !slices.Contains(got, domain.JobMetadata) {
+				t.Errorf("積まれた段階の知らせ = %v, want metadata を含む", got)
+			}
+			job, err := db.Ingest().ClaimJob(ctx, domain.JobMetadata)
+			if err != nil {
+				t.Fatalf("登録済みの所在が無くなった後も取り出せない: %v", err)
+			}
+			if job.VideoID != waiting.ID {
+				t.Errorf("VideoID = %d, want %d", job.VideoID, waiting.ID)
+			}
+		})
 	}
 }
