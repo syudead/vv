@@ -49,23 +49,12 @@ var jobStateColumns = map[domain.JobKind]string{
 // いるのは、失敗を行にだけ記録していた旧版の名残である。その行は捨てて積み
 // 直す。残すと、次の手動の取り込みでも直らない。
 //
-// 指紋は videos に状態の列を持たないので、pending の代わりに「シーク用スプライトが
-// 完成しているのに今の版の指紋が無い」を条件にする（fingerprintMissingCondition）。
-// 上限まで失敗した failed の行も、完了した done の行も捨てて積み直す（queued・running の
-// 行があれば積まない）。失敗した指紋は次の走査で作り直され、版を上げたときも前の版の
-// done の行に妨げられずに追いつく（specs/030-video-versions/data-model.md §6）。
+// 指紋と解析し直しは videos に状態の列を持たないので、pending の代わりに「今の版の結果が
+// 無い」を条件にする（ensureJobCondition）。
 func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
-	var pending string
-	discarded := `state = 'failed'`
-	if kind == domain.JobFingerprint {
-		discarded = `state in ('done', 'failed')`
-		pending = `exists (select 1 from videos v where v.id = ? and ` + fingerprintMissingCondition("v") + `)`
-	} else {
-		column, ok := jobStateColumns[kind]
-		if !ok {
-			return fmt.Errorf("unknown job kind: %s", kind)
-		}
-		pending = `exists (select 1 from videos where id = ? and ` + column + ` = 'pending')`
+	pending, discarded, err := ensureJobCondition(kind)
+	if err != nil {
+		return err
 	}
 
 	tx, err := s.db.sql.BeginTx(ctx, nil)
@@ -101,6 +90,31 @@ func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoI
 		return fmt.Errorf("cannot commit restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	return nil
+}
+
+// ensureJobCondition は EnsureJob が仕事を積む動画の条件（videos の id を 1 つ受け取る
+// SQL）と、積み直す前に捨てる行の条件を返す。
+//
+// 指紋は「シーク用スプライトが完成しているのに今の版の指紋が無い」（fingerprintMissingCondition）、
+// 解析し直しは「解析が done なのに今の版の追加の情報が無い」（mediaInfoMissingCondition）を
+// 条件にする。どちらも上限まで失敗した failed の行も、完了した done の行も捨てて積み直す
+// （queued・running の行があれば積まない）。失敗した分は次の走査で作り直され、版を上げたときも
+// 前の版の done の行に妨げられずに追いつく（specs/030-video-versions/data-model.md §6、
+// specs/056-media-info/research.md R-5）。
+func ensureJobCondition(kind domain.JobKind) (pending, discarded string, err error) {
+	switch kind {
+	case domain.JobFingerprint:
+		return `exists (select 1 from videos v where v.id = ? and ` + fingerprintMissingCondition("v") + `)`,
+			`state in ('done', 'failed')`, nil
+	case domain.JobMetadata:
+		return `exists (select 1 from videos v where v.id = ? and ` + mediaInfoMissingCondition("v") + `)`,
+			`state in ('done', 'failed')`, nil
+	}
+	column, ok := jobStateColumns[kind]
+	if !ok {
+		return "", "", fmt.Errorf("unknown job kind: %s", kind)
+	}
+	return `exists (select 1 from videos where id = ? and ` + column + ` = 'pending')`, `state = 'failed'`, nil
 }
 
 // ClaimJob は待ち行列から kind の仕事を1件専有する。
@@ -232,12 +246,21 @@ func claimConditionSQL(c domain.JobClaimCondition, alias string) string {
 	if c.NoClaimableThumbnail {
 		// 取り出せる thumbnail の仕事は残りの仕事（remainingJobCondition）と同じ範囲で、解析待ちで
 		// 今は取り出せないものも含める。
-		cond += ` and not exists (select 1 from jobs t where t.kind = '` + string(domain.JobThumbnail) +
-			`' and t.state in ('queued', 'running') and exists (
-				select 1 from video_locations tl where tl.video_id = t.video_id and ` +
-			registeredLocationCondition("tl") + `))`
+		cond += noClaimableJobSQL(domain.JobThumbnail)
+	}
+	if c.NoClaimableProbe {
+		cond += noClaimableJobSQL(domain.JobProbe)
 	}
 	return cond
+}
+
+// noClaimableJobSQL は、取り出せる kind の仕事（queued か running で、登録済みの所在がある
+// 行）が1件も無い条件を、先頭に " and " を付けて返す。
+func noClaimableJobSQL(kind domain.JobKind) string {
+	return ` and not exists (select 1 from jobs t where t.kind = '` + string(kind) +
+		`' and t.state in ('queued', 'running') and exists (
+			select 1 from video_locations tl where tl.video_id = t.video_id and ` +
+		registeredLocationCondition("tl") + `))`
 }
 
 // CompleteClaimedJob はジョブを完了にする。専有した時点の所在と内容が今も同じなら
@@ -424,13 +447,20 @@ func recordTerminalFailure(ctx context.Context, tx *sql.Tx, job domain.Job, caus
 			return fmt.Errorf("cannot record the final seek thumbnail failure (job=%d): %w", job.ID, err)
 		}
 		updated = res
-	case domain.JobFingerprint:
-		// 指紋は動画に状態の列を持たない。専有した時点の内容と所在が今も同じときだけ、
-		// 問題として記録する。積み直しは次の走査が行う（EnsureJob）。
+	case domain.JobFingerprint, domain.JobMetadata:
+		// 指紋と解析し直しは動画に状態の列を持たない。専有した時点の内容と所在が今も同じ
+		// ときだけ、問題として記録する。積み直しは次の走査が行う（EnsureJob）。解析し直しは
+		// 追加の情報の行をそのまま残し、直近の走査の対象の動画のときだけ記録する
+		// （specs/056-media-info/research.md R-5）。
+		condition := identity
+		if job.Kind == domain.JobMetadata {
+			condition += ` and exists (select 1 from scan_videos sv
+				where sv.video_id = videos.id and sv.scan_id = (select max(id) from scans))`
+		}
 		var current int
-		if err := tx.QueryRowContext(ctx, `select exists (select 1 from videos where `+identity+`)`,
+		if err := tx.QueryRowContext(ctx, `select exists (select 1 from videos where `+condition+`)`,
 			identityArgs...).Scan(&current); err != nil {
-			return fmt.Errorf("cannot check the fingerprint job identity (job=%d): %w", job.ID, err)
+			return fmt.Errorf("cannot check the %s job identity (job=%d): %w", job.Kind, job.ID, err)
 		}
 		if current != 1 {
 			return nil

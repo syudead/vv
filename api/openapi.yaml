@@ -8460,8 +8460,9 @@ components:
       description: >-
         今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を
         読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は
-        同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）
-      enum: [registering, probe, thumbnail, seekThumbnail, preview, fingerprint]
+        同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）、
+        metadata は取り込み済みの動画の情報を読み直している（specs/056-media-info/research.md R-5）
+      enum: [registering, probe, thumbnail, seekThumbnail, preview, fingerprint, metadata]
 
     ScanVideos:
       type: object
@@ -8655,6 +8656,7 @@ components:
         - seek_thumbnail_failed
         - preview_failed
         - fingerprint_failed
+        - metadata_failed
         - thumbnail_first_frame
         - seek_thumbnail_full_decode
 
