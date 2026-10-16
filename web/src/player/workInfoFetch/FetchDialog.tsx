@@ -23,8 +23,10 @@ import {
   initialSelection,
   type RunOperation,
   runFor,
+  selectableTags,
   type SkippedLine,
   skippedLines,
+  withField,
 } from "./fetchRules";
 import FindStep, { type RunFailure, type Running } from "./FindStep";
 
@@ -98,6 +100,8 @@ function useFetchFlow({
   const [step, setStep] = useState<Step>("find");
   const [fetched, setFetched] = useState<Fetched | null>(null);
   const [selection, setSelection] = useState<WorkInfoField[]>([]);
+  // 選んだタグの名前。1 つでも選ばれていれば selection が `tags` を含む（056 R-7）。
+  const [tags, setTags] = useState<string[]>([]);
   const [stale, setStale] = useState(false);
   const [applyFailure, setApplyFailure] = useState<unknown>(null);
   const [applying, setApplying] = useState(false);
@@ -117,6 +121,7 @@ function useFetchFlow({
   const showCompare = (next: Fetched, result: Fetched["result"]) => {
     setFetched({ ...next, result });
     setSelection(initialSelection(latestVideo.current, result));
+    setTags(selectableTags(latestVideo.current, result));
     setStale(false);
     setApplyFailure(null);
     setStep("compare");
@@ -163,6 +168,7 @@ function useFetchFlow({
         video.id,
         fetched.result.fetchId,
         selection,
+        selection.includes("tags") ? tags : undefined,
         signal,
       );
       onApplied(applied.video, mark);
@@ -206,6 +212,7 @@ function useFetchFlow({
     step,
     fetched,
     selection,
+    tags,
     stale,
     applyFailure,
     applying,
@@ -226,10 +233,20 @@ function useFetchFlow({
       if (plugin !== undefined && canFetch(plugin) && running === null)
         void run(plugin, "fetch", url, true);
     },
-    toggle: (field: WorkInfoField, on: boolean) =>
-      setSelection((current) =>
-        on ? [...new Set([...current, field])] : current.filter((item) => item !== field),
-      ),
+    toggle: (field: WorkInfoField, on: boolean) => {
+      // タグの行のチェックボックスは、選べるタグを全部選ぶか全部外す。
+      if (field === "tags" && fetched !== null)
+        setTags(on ? selectableTags(latestVideo.current, fetched.result) : []);
+      setSelection((current) => withField(current, field, on));
+    },
+    toggleTag: (name: string, on: boolean) => {
+      // 1 つも選ばれていなければ、反映の項目からタグを外す。
+      const next = on
+        ? [...new Set([...tags, name])]
+        : tags.filter((item) => item !== name);
+      setTags(next);
+      setSelection((current) => withField(current, "tags", next.length > 0));
+    },
     back: () => setStep("find"),
     fetchAgain: () => {
       // 同じプラグインと URL で取り直す。プラグインが承認を外されていれば、その失敗が
@@ -322,11 +339,13 @@ export default function FetchDialog(props: {
           video={video}
           fetched={flow.fetched}
           selection={flow.selection}
+          tags={flow.tags}
           locked={flow.applying}
           stale={flow.stale}
           refetching={flow.running !== null}
           failure={flow.applyFailure}
           onToggle={flow.toggle}
+          onToggleTag={flow.toggleTag}
           onBack={flow.back}
           onFetchAgain={flow.fetchAgain}
         />

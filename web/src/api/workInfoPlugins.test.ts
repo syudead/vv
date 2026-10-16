@@ -152,7 +152,9 @@ describe("work-info plugins API", () => {
 
     expect(await searchWorkInfo(4, "one")).toEqual(candidates);
     expect(await fetchWorkInfo(7, 4, "https://example.com/1")).toEqual(fetched);
-    expect(await applyWorkInfoFetch(7, "f/1", ["title", "tags"])).toEqual(applied);
+    expect(await applyWorkInfoFetch(7, "f/1", ["title", "tags"], ["drama"])).toEqual(
+      applied,
+    );
 
     const sent = fetchMock.mock.calls.map(([input, init]) => ({
       url: String(input),
@@ -170,7 +172,7 @@ describe("work-info plugins API", () => {
       {
         url: "/api/videos/7/work-info-fetches/f%2F1/apply",
         method: "POST",
-        body: { fields: ["title", "tags"] },
+        body: { fields: ["title", "tags"], tags: ["drama"] },
       },
     ]);
   });

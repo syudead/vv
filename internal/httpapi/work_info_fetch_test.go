@@ -28,6 +28,7 @@ type scriptedPlugins struct {
 	applied    domain.WorkInfoApplied
 	calls      int
 	fields     []domain.WorkInfoField
+	tags       []string
 }
 
 func (p *scriptedPlugins) SearchWorkInfo(context.Context, int64, string) ([]domain.WorkInfoCandidate, error) {
@@ -40,9 +41,9 @@ func (p *scriptedPlugins) FetchWorkInfo(context.Context, int64, int64, string) (
 	return p.fetch, p.err
 }
 
-func (p *scriptedPlugins) ApplyWorkInfoFetch(_ context.Context, _ int64, _ string, fields []domain.WorkInfoField) (domain.WorkInfoApplied, error) {
+func (p *scriptedPlugins) ApplyWorkInfoFetch(_ context.Context, _ int64, _ string, fields []domain.WorkInfoField, tags []string) (domain.WorkInfoApplied, error) {
 	p.calls++
-	p.fields = fields
+	p.fields, p.tags = fields, tags
 	return p.applied, p.err
 }
 
@@ -201,6 +202,34 @@ func TestWorkInfoApplyAnswers(t *testing.T) {
 		status, body := e.post(applyPath, `{"fields":["title"]}`, e.owner)
 		assertErrorBody(t, tc.err.Error(), status, body, tc.want)
 	}
+}
+
+// 反映の tags は選んだタグの名前として登録へ渡り、無ければ nil（全部のタグ）で渡る。空か、fields にタグが
+// 無いのに有るか null なら登録へ届かず 400、結果に無い名前は登録の答えで 400 である（specs/056-plugin-tooling）。
+func TestWorkInfoApplyPassesTheSelectedTags(t *testing.T) {
+	e := newFetchRouteEnv(t)
+	status, body := e.post(applyPath, `{"fields":["tags"],"tags":["drama","comedy"]}`, e.owner)
+	if status != http.StatusOK || !slices.Equal(e.plugins.tags, []string{"drama", "comedy"}) {
+		t.Fatalf("apply = %d %s, tags %v", status, body, e.plugins.tags)
+	}
+	status, body = e.post(applyPath, `{"fields":["title","tags"]}`, e.owner)
+	if status != http.StatusOK || e.plugins.tags != nil {
+		t.Fatalf("apply without tags = %d %s, tags %v; want nil", status, body, e.plugins.tags)
+	}
+
+	calls := e.plugins.calls
+	for _, body := range []string{
+		`{"fields":["tags"],"tags":[]}`, `{"fields":["title"],"tags":["drama"]}`, `{"fields":["tags"],"tags":null}`,
+	} {
+		status, got := e.post(applyPath, body, e.owner)
+		assertErrorBody(t, body, status, got, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
+	}
+	if e.plugins.calls != calls {
+		t.Fatal("an invalid tag selection reached the registry")
+	}
+	e.plugins.err = domain.ErrWorkInfoApplyInvalid
+	status, body = e.post(applyPath, `{"fields":["tags"],"tags":["horror"]}`, e.owner)
+	assertErrorBody(t, "a name the result does not have", status, body, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
 }
 
 // 反映は確定しているので、応答の詳細のうちグループを読めなくても 200 と付けなかったタグを返し、

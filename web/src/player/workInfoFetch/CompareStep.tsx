@@ -29,9 +29,11 @@ import {
   pluginLabel,
   rowState,
   type RowState,
-  videoTagNames,
+  selectableTags,
+  tagsRowChecked,
 } from "./fetchRules";
 import TagChips, { type ChipItem, chipsOfVideo } from "./TagChips";
+import TagPicker, { type TagPick } from "./TagPicker";
 
 /** Fetched は比較の段に出す取得の結果と、それをどこから取ったかである。 */
 export interface Fetched {
@@ -75,30 +77,6 @@ function StateNote({ state, noteId }: { state: RowState; noteId: string }) {
     <span id={noteId} className="text-muted-foreground">
       {state === "missing" ? text.notInResult : text.sameAsNow}
     </span>
-  );
-}
-
-function TagsValue({
-  video,
-  result,
-  tone,
-}: {
-  video: Video;
-  result: WorkInfoFetch;
-  tone: "now" | "fetched";
-}) {
-  if (tone === "now") return <TagChips items={chipsOfVideo(video.tags)} />;
-  const names = videoTagNames(video);
-  const fresh = result.tags.filter((name) => !names.has(name)).length;
-  return (
-    <TagChips
-      items={result.tags.map((name) => ({
-        name,
-        tentative: true,
-        mark: names.has(name) ? "onVideo" : undefined,
-      }))}
-      trailing={t.player.workInfoFetch.newCount(fresh)}
-    />
   );
 }
 
@@ -175,12 +153,14 @@ function Value({
   result,
   tone,
   noteId,
+  tagPick,
 }: {
   field: WorkInfoField;
   video: Video;
   result: WorkInfoFetch;
   tone: "now" | "fetched";
   noteId: string;
+  tagPick: TagPick;
 }) {
   const state = rowState(field, video, result);
   if (tone === "fetched" && (state === "missing" || state === "same"))
@@ -192,7 +172,12 @@ function Value({
         tone={tone}
       />
     );
-  if (field === "tags") return <TagsValue video={video} result={result} tone={tone} />;
+  if (field === "tags")
+    return tone === "now" ? (
+      <TagChips items={chipsOfVideo(video.tags)} />
+    ) : (
+      <TagPicker video={video} result={result} pick={tagPick} />
+    );
   const row = detailRow(field, videoWorkInfo(video), result);
   if (row.kind === "list")
     return <ListValue field={field} row={row} tone={tone} noteId={noteId} />;
@@ -212,6 +197,7 @@ function CompareRow({
   selected,
   locked,
   onToggle,
+  tagPick,
 }: {
   field: WorkInfoField;
   video: Video;
@@ -219,17 +205,23 @@ function CompareRow({
   selected: boolean;
   locked: boolean;
   onToggle: (field: WorkInfoField, on: boolean) => void;
+  tagPick: TagPick;
 }) {
   const text = t.player.workInfoFetch;
   const id = useId();
   const state = rowState(field, video, result);
   const selectable = state === "differs";
+  // タグの行のチェックボックスは選べるタグ全部の選択で、一部なら `indeterminate` である。
+  const checked =
+    field === "tags"
+      ? tagsRowChecked(selectableTags(video, result), tagPick.selected)
+      : selected;
   return (
     <div className="grid gap-x-4 gap-y-1 py-2 sm:grid-cols-5">
       <div className="flex items-center gap-2 self-start">
         <Checkbox
           id={`${id}-check`}
-          checked={selectable && selected}
+          checked={selectable && checked}
           disabled={!selectable || locked}
           aria-describedby={selectable ? undefined : `${id}-note`}
           onCheckedChange={(checked) => onToggle(field, checked === true)}
@@ -245,6 +237,7 @@ function CompareRow({
           result={result}
           tone="now"
           noteId={`${id}-note`}
+          tagPick={tagPick}
         />
       </Cell>
       <Cell heading={text.fetched}>
@@ -254,6 +247,7 @@ function CompareRow({
           result={result}
           tone="fetched"
           noteId={`${id}-note`}
+          tagPick={tagPick}
         />
       </Cell>
     </div>
@@ -271,17 +265,21 @@ export default function CompareStep({
   video,
   fetched,
   selection,
+  tags,
   locked,
   stale,
   refetching,
   failure,
   onToggle,
+  onToggleTag,
   onBack,
   onFetchAgain,
 }: {
   video: Video;
   fetched: Fetched;
   selection: readonly WorkInfoField[];
+  /** 選んだタグの名前（specs/056-plugin-tooling/ui-design.md「Compare: tags row」）。 */
+  tags: readonly string[];
   /** 反映を送っている間。選択を変えられない。 */
   locked: boolean;
   stale: boolean;
@@ -289,10 +287,16 @@ export default function CompareStep({
   refetching: boolean;
   failure: unknown;
   onToggle: (field: WorkInfoField, on: boolean) => void;
+  onToggleTag: (name: string, on: boolean) => void;
   onBack: () => void;
   onFetchAgain: () => void;
 }) {
   const text = t.player.workInfoFetch;
+  const tagPick: TagPick = {
+    selected: tags,
+    locked: locked || stale,
+    onToggle: onToggleTag,
+  };
   return (
     <div className="flex flex-col gap-3">
       <p className="text-sm break-words text-muted-foreground">
@@ -360,6 +364,7 @@ export default function CompareStep({
               selected={selection.includes(field)}
               locked={locked || stale}
               onToggle={onToggle}
+              tagPick={tagPick}
             />
           ))}
         </div>
