@@ -82,7 +82,7 @@ func (s *TagStore) CreateTagKind(ctx context.Context, name string) (domain.TagKi
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	if err := checkTagKindNameFree(ctx, tx, normalized, 0); err != nil {
+	if err := checkTagKindNameFree(ctx, tx, normalized); err != nil {
 		return domain.TagKind{}, err
 	}
 	res, err := tx.ExecContext(ctx, `insert into tag_kinds (name, created_at) values (?, ?)`,
@@ -126,7 +126,7 @@ func (s *TagStore) RenameTagKind(ctx context.Context, id int64, name string) (do
 	if current.Name == normalized {
 		return current, nil
 	}
-	if err := checkTagKindNameFree(ctx, tx, normalized, id); err != nil {
+	if err := checkTagKindNameFree(ctx, tx, normalized); err != nil {
 		return domain.TagKind{}, err
 	}
 	if _, err := tx.ExecContext(ctx, `update tag_kinds set name = ? where id = ?`, normalized, id); err != nil {
@@ -156,9 +156,10 @@ func (s *TagStore) DeleteTagKind(ctx context.Context, id int64) error {
 	return nil
 }
 
-// checkTagKindNameFree は name を持つ種類が self 以外に無いことを確かめる。あれば
-// *domain.TagKindNameConflict を返す。
-func checkTagKindNameFree(ctx context.Context, q rowQueryer, name string, self int64) error {
+// checkTagKindNameFree は name を持つ種類が無いことを確かめる。あれば
+// *domain.TagKindNameConflict を返す。今と同じ名前への変更は RenameTagKind が先に返すので、
+// 見つかった種類が自分自身であることは無い。
+func checkTagKindNameFree(ctx context.Context, q rowQueryer, name string) error {
 	var owner domain.TagKindRef
 	err := q.QueryRowContext(ctx, `select id, name from tag_kinds where name = ?`, name).Scan(&owner.ID, &owner.Name)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -166,9 +167,6 @@ func checkTagKindNameFree(ctx context.Context, q rowQueryer, name string, self i
 	}
 	if err != nil {
 		return fmt.Errorf("cannot look up the tag kind by name (%s): %w", name, err)
-	}
-	if owner.ID == self {
-		return nil
 	}
 	return &domain.TagKindNameConflict{Kind: owner}
 }

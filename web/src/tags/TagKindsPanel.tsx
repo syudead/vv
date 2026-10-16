@@ -270,7 +270,7 @@ function DeleteKindDialog({ state, kind }: { state: TagKindsTab; kind: TagKind }
             : t.tags.kinds.deleteDialog.submit}
         </>
       }
-      onConfirm={state.performDelete}
+      onConfirm={() => state.performDelete(kind)}
       pending={pending}
     >
       {state.deleteError !== null && <DialogError message={state.deleteError} />}

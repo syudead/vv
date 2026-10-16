@@ -59,9 +59,9 @@ export default function TagsTabs({
   const strip = useRef<HTMLDivElement>(null);
   // 描く前に送る（送る前の位置を一瞬見せない）。件数が届いてタブの幅が変わったときや、
   // 帯の幅が変わったときは、描き終えた大きさで送り直す。
+  // 帯とタブの並びはいつも描くので、layout effect の時点で strip と並びはある。
   useLayoutEffect(() => {
-    const root = strip.current;
-    if (root === null) return;
+    const root = strip.current as HTMLDivElement;
     const show = () => {
       const active = root.querySelector<HTMLElement>('[role="tab"][data-state="active"]');
       if (active !== null) scrollIntoStrip(root, active);
@@ -69,7 +69,7 @@ export default function TagsTabs({
     show();
     const observer = new ResizeObserver(show);
     observer.observe(root);
-    if (root.firstElementChild !== null) observer.observe(root.firstElementChild);
+    observer.observe(root.firstElementChild as Element);
     return () => {
       observer.disconnect();
     };

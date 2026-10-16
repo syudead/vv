@@ -5,8 +5,10 @@ import { describe, expect, it } from "vitest";
 import {
   historyBack,
   historyForward,
+  hold,
   install,
   kind,
+  kindDeleteReleases,
   probe,
   renderPage,
   server,
@@ -77,6 +79,26 @@ describe("TagsPage「Kinds」のタブの取り消しと失敗", () => {
       ),
     );
     expect(server.tagKinds).toHaveLength(4);
+  });
+
+  it("削除の送信中は Esc で窓を閉じず、応答が届いてから閉じる", async () => {
+    const user = userEvent.setup();
+    const table = await openKindsPage();
+
+    const dialog = await openDeleteDialog(user, "Place");
+    hold.kindDeletes = true;
+    await user.click(within(dialog).getByRole("button", { name: "Delete" }));
+    await waitFor(() => expect(kindDeleteReleases).toHaveLength(1));
+
+    await user.keyboard("{Escape}");
+    expect(screen.getByRole("alertdialog")).toBe(dialog);
+
+    await act(async () => {
+      kindDeleteReleases[0]!();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.queryByRole("alertdialog")).toBeNull());
+    expect(kindNames(table)).not.toContain("Place");
   });
 
   it("削除が 404 以外で失敗したら窓の中に誤りを出し、窓と行を残す", async () => {
