@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
@@ -92,6 +94,8 @@ func TestCreateSmartFolderStatuses(t *testing.T) {
 		rec := f.groupRequest(http.MethodPost, "/api/smart-folders", groupJSON(tc.body), f.owner)
 		assertErrorBody(t, tc.label, rec.Code, rec.Body.Bytes(), tc.want)
 	}
+	rec := f.groupRequest(http.MethodPost, "/api/smart-folders", `{"name": "a", "rule": {}`, f.owner)
+	assertErrorBody(t, "壊れた JSON", rec.Code, rec.Body.Bytes(), wantGroupInvalid)
 	list := decode[gen.SmartFolderList](t, f.env.get("/api/smart-folders", f.owner))
 	if len(list.SmartFolders) != 2 {
 		t.Errorf("失敗した作成のあとの一覧 = %+v", list.SmartFolders)
@@ -127,6 +131,7 @@ func TestChangeAndDeleteSmartFolderStatuses(t *testing.T) {
 		{"無いフォルダ", 999999, `{"name": "x"}`, wantGroupNotFound},
 		{"null の名前と親の移動", child.Id, `{"name": null, "parentId": null}`, wantGroupInvalid},
 		{"null の並べ順と親の移動", child.Id, `{"sort": null, "parentId": null}`, wantGroupInvalid},
+		{"壊れた JSON", child.Id, `{"name": "x"`, wantGroupInvalid},
 	} {
 		rec := f.groupRequest(http.MethodPatch, smartFolderPath(tc.id, ""), tc.body, f.owner)
 		assertErrorBody(t, tc.label, rec.Code, rec.Body.Bytes(), tc.want)
@@ -252,9 +257,11 @@ func TestSmartFolderItemsPage(t *testing.T) {
 	if !slices.Equal(kinds, []gen.SmartFolderItemKind{gen.SmartFolderItemKindGroup, gen.SmartFolderItemKindGroup, gen.SmartFolderItemKindVideo}) {
 		t.Errorf("項目の種類 = %v", kinds)
 	}
+	wantInvalidCursor := wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidCursor}
 	rec := f.env.get(smartFolderPath(folder.Id, "/items?cursor=x"), f.owner)
-	assertErrorBody(t, "読めないカーソル", rec.Code, rec.Body.Bytes(),
-		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonInvalidCursor})
+	assertErrorBody(t, "読めないカーソル", rec.Code, rec.Body.Bytes(), wantInvalidCursor)
+	rec = f.env.get(smartFolderPath(folder.Id, "/items?cursor="), f.owner)
+	assertErrorBody(t, "空のカーソル", rec.Code, rec.Body.Bytes(), wantInvalidCursor)
 	rec = f.env.get(smartFolderPath(folder.Id, "?limit=201"), f.owner)
 	assertErrorBody(t, "範囲の外の limit", rec.Code, rec.Body.Bytes(), wantGroupInvalid)
 }
@@ -367,5 +374,84 @@ func TestVideoDetailInASmartFolder(t *testing.T) {
 	related := decode[gen.RelatedVideos](t, f.env.get(fmt.Sprintf("/api/videos/%s/related?smartFolder=%d", p1, folder.Id), f.owner))
 	if related.NextId == nil || *related.NextId != f.ids["solo"] {
 		t.Errorf("フォルダの次 = %v, want solo", related.NextId)
+	}
+}
+
+// PATCH の rule は条件を置き換え、ほかの項目（並べ順）は変えない。所有者の詳細の settings と中身は
+// 新しい条件で読む。
+func TestChangeSmartFolderRuleReplacesTheRule(t *testing.T) {
+	f := newLibraryFixture(t)
+	cat := f.smartFolderTag(t, "猫", "solo")
+	folder := f.createSmartFolder(t, map[string]any{"name": "全部", "rule": map[string]any{}, "sort": "titleAsc"})
+
+	rec := f.groupRequest(http.MethodPatch, smartFolderPath(folder.Id, ""), fmt.Sprintf(`{"rule": {"tags": [%d]}}`, cat), f.owner)
+	if got := decode[gen.SmartFolderSummary](t, rec); rec.Code != http.StatusOK || got.Name != "全部" {
+		t.Fatalf("条件の変更 = %d %+v", rec.Code, got)
+	}
+	detail := decode[gen.SmartFolderDetail](t, f.env.get(smartFolderPath(folder.Id, ""), f.owner))
+	settings := detail.Settings
+	if settings == nil || settings.Sort != gen.VideoSortTitleAsc || settings.Rule.Tags == nil ||
+		!slices.Equal(*settings.Rule.Tags, []int64{cat}) || len(settings.Missing) != 0 {
+		t.Fatalf("変えたあとの settings = %+v", settings)
+	}
+	if len(detail.Items) != 1 || detail.Items[0].Kind != gen.SmartFolderItemKindVideo || detail.SmartFolder.VideoCount != 1 {
+		t.Errorf("変えたあとの中身 = %+v, カード = %+v", detail.Items, detail.SmartFolder)
+	}
+}
+
+// failingSmartFolders はどの読み書きも予期しない誤りで失敗する保存先である。
+type failingSmartFolders struct{}
+
+var errSmartFolderStore = errors.New("database unavailable")
+
+func (failingSmartFolders) ListSmartFolders(context.Context, domain.Audience) ([]domain.SmartFolderSummary, error) {
+	return nil, errSmartFolderStore
+}
+
+func (failingSmartFolders) CreateSmartFolder(context.Context, domain.SmartFolderCreate) (domain.SmartFolder, error) {
+	return domain.SmartFolder{}, errSmartFolderStore
+}
+
+func (failingSmartFolders) ChangeSmartFolder(context.Context, int64, domain.SmartFolderChange) (domain.SmartFolder, error) {
+	return domain.SmartFolder{}, errSmartFolderStore
+}
+
+func (failingSmartFolders) DeleteSmartFolder(context.Context, int64) error {
+	return errSmartFolderStore
+}
+
+func (failingSmartFolders) SmartFolderContents(context.Context, domain.Audience, int64, string, int) (domain.SmartFolderPage, error) {
+	return domain.SmartFolderPage{}, errSmartFolderStore
+}
+
+func (failingSmartFolders) SmartFolderCards(context.Context, domain.Audience, []int64) ([]domain.SmartFolderCard, error) {
+	return nil, errSmartFolderStore
+}
+
+// 保存先が無いときと、保存先が予期しない誤りを返したときは、どの経路も 500 internal である。本文の
+// 検査を通る要求で確かめる。
+func TestSmartFolderRoutesAnswerInternalErrors(t *testing.T) {
+	wantInternal := wantError{status: http.StatusInternalServerError, code: gen.ErrorCodeInternal}
+	routes := []struct{ method, target, body string }{
+		{http.MethodGet, "/api/smart-folders", ""},
+		{http.MethodPost, "/api/smart-folders", `{"name": "a", "rule": {}}`},
+		{http.MethodPatch, "/api/smart-folders/3", `{"rule": {"watch": "watched"}}`},
+		{http.MethodDelete, "/api/smart-folders/3", ""},
+		{http.MethodGet, "/api/smart-folders/3", ""},
+		{http.MethodGet, "/api/smart-folders/3/items?cursor=c1", ""},
+		{http.MethodGet, "/api/smart-folders/cards?ids=3", ""},
+	}
+	for _, server := range []struct {
+		label string
+		opts  Options
+	}{
+		{"保存先なし", Options{}},
+		{"保存先の誤り", Options{SmartFolders: failingSmartFolders{}}},
+	} {
+		handler := newTestServer(t, server.opts)
+		for _, route := range routes {
+			rec := jsonRequest(t, handler, route.method, route.target, route.body)
+			assertErrorBody(t, server.label+" "+route.method+" "+route.target, rec.Code, rec.Body.Bytes(), wantInternal)
+		}
 	}
 }

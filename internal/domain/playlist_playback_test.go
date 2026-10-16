@@ -23,6 +23,13 @@ func playbackGroup(id int64, pattern string, memberIDs ...int64) PlaylistItem {
 	return PlaylistItem{ID: id * 10, Group: &group}
 }
 
+// playbackSmartFolder は id のスマートフォルダの項目を、読んだ時点の再生順 memberIDs と再生の記録
+// pattern で作る。
+func playbackSmartFolder(id int64, pattern string, memberIDs ...int64) PlaylistItem {
+	group := playbackGroup(id, pattern, memberIDs...).Group
+	return PlaylistItem{ID: id * 10, SmartFolder: &LibrarySmartFolder{LibraryGroup: *group}}
+}
+
 func hiddenItem(id int64) PlaylistItem { return PlaylistItem{ID: id * 10} }
 
 func stepVideo(step *PlaylistStep) int64 {
@@ -46,6 +53,8 @@ func TestPlaylistPlaybackOf(t *testing.T) {
 	w := playbackGroup(4, "dd", 41, 42)
 	// 動画 V(5) は単体の項目でもあり、グループ H(6) のメンバーでもある。
 	v, h := playbackVideo(5), playbackGroup(6, "nn", 5, 61)
+	// スマートフォルダ F(7: 再生順 71〜73、71 は視聴済み)。
+	f := playbackSmartFolder(7, "dnn", 71, 72, 73)
 
 	tests := []struct {
 		name       string
@@ -85,6 +94,14 @@ func TestPlaylistPlaybackOf(t *testing.T) {
 			item: 60, video: 5, position: 2, count: 3, next: 61, nextItemID: 60, previous: 5, nextItem: 3},
 		{name: "same video played as its own item follows the playlist", items: []PlaylistItem{v, h, b},
 			item: 50, video: 5, position: 1, count: 3, next: 5, nextItemID: 60, previous: 0, nextItem: 5},
+		{name: "video item steps to the smart folder's open member", items: []PlaylistItem{a, f, b},
+			item: 10, video: 1, position: 1, count: 3, next: 72, nextItemID: 70, previous: 0, nextItem: 72},
+		{name: "smart folder member steps to the later member of its play order", items: []PlaylistItem{a, f, b},
+			item: 70, video: 72, position: 2, count: 3, next: 73, nextItemID: 70, previous: 1, nextItem: 3},
+		{name: "last smart folder member steps to the next shown item", items: []PlaylistItem{a, f, b},
+			item: 70, video: 73, position: 2, count: 3, next: 3, nextItemID: 30, previous: 1, nextItem: 3},
+		{name: "item after a smart folder goes back to its open member", items: []PlaylistItem{a, f, b},
+			item: 30, video: 3, position: 3, count: 3, next: 0, previous: 72, nextItem: 0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
