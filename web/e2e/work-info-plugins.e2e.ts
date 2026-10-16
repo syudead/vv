@@ -6,6 +6,8 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 // ネットワークを使わずに決まったデータで答え、必須の秘密の設定 token を宣言する。fetch は
 // token を受け取ったときだけ「プラグインe2e鍵タグ」を返すので、そのタグが付けば秘密の値が
 // プラグインに届いている。動画は generateWorkInfoPluginFixtures が作る 1 本である。
+// 設定画面の直近の実行の出力（親 Issue #1232、子 #1261）では、プラグインが標準エラーに書いた
+// 秘密の値が伏せてあることを見る。
 // プラグイン・作ったタグ・人物・団体・表示名と作品情報はサーバーの中で他の e2e と共有するので、
 // 前後で消す。
 
@@ -311,6 +313,27 @@ test.describe.serial("work-info plugins", () => {
     await expect(detailItem(page, "Performers")).toHaveText(
       `Performers${performer}, ${secondPerformer}`,
     );
+  });
+
+  test("設定画面で直近の実行の出力を開くと、プラグインが書いた秘密の値は伏せてある", async ({
+    page,
+  }) => {
+    // 直前の試験の取得が直近の実行である。プラグインは受け取った設定を標準エラーに書く
+    // （specs/056-plugin-tooling R-6）。
+    await page.goto("/settings#work-info-plugins");
+    await expect(pluginRow(page)).toContainText(/Last run /);
+    await pluginRow(page)
+      .getByRole("button", { name: `More actions for ${pluginName}` })
+      .click();
+    await page.getByRole("menuitem", { name: "Last run output" }).click();
+    const dialog = page.getByRole("dialog", { name: `Last run of ${pluginName}` });
+    await expect(dialog.getByText("Fetch by URL")).toBeVisible();
+    await expect(dialog.getByText("Finished")).toBeVisible();
+    const output = dialog.getByRole("region", { name: "Output" });
+    await expect(output).toHaveText("fetch: token=[secret]");
+    await expect(dialog).not.toContainText(secret);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toBeHidden();
   });
 
   test("反映で作られた出演者は、人物の画面でプラグインの外部 ID を持つ", async ({

@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/work-info-plugins.md
-sourceHash: b71d19f3dfe1c0ac587a6d495dedc6b6c1d42d14d997d351c6d9c7aa5cead30d
+sourceHash: 4006b2e527937e0ea7ead31140558f8aff128644ae3f2e5c6719a7413211a70c
 ---
 
 # 作品情報プラグインを書く {#write-a-work-info-plugin}
@@ -26,7 +26,7 @@ sequenceDiagram
 ## 前提条件 {#prerequisites}
 
 - Go 1.24 以降。`GOOS=wasip1 GOARCH=wasm` で `wasip1` のモジュールをビルドする。[モジュール](#module) を満たすモジュールをビルドするツールチェーンならどれでも使える。手順では Go を使う。
-- VVMDM のサーバーのバイナリ `mdm` (コンテナイメージの `/usr/local/bin/mdm` にあり、`go build ./cmd/mdm` でもビルドできる)。マニフェストをモジュールに書き込み、ローカルで実行するために使う。Windows アプリの `VVMDM.exe` はコマンドを受け付けない。これらのコマンドは設定を読まず、データベースを開かず、`ffmpeg` も要らない。
+- VVMDM のサーバーのバイナリ `mdm` (コンテナイメージの `/usr/local/bin/mdm` にあり、`go build ./cmd/mdm` でもビルドできる)。マニフェストをモジュールに書き込み、ローカルで実行するために使う。Windows アプリの `VVMDM.exe` はコマンドを受け付けない。このコマンドは設定を読まず、データベースを開かず、`ffmpeg` も要らない。
 - プラグインを追加して承認するための、VVMDM の所有者のアカウント。
 
 ## 手順 {#steps}
@@ -150,19 +150,19 @@ sequenceDiagram
 
    成功すると、設定画面が一覧するとおりに、プラグインの名前、バージョン、操作、設定を表示する。問題があると、終了コード 2 で終了して問題を表示し、`plugin.wasm` はそのままにする。マニフェストでは、フィールドとそれが反する規則を表示する。たとえば `manifest_invalid: settings[0].default must be one of options` である。
 
-6. `mdm plugin run` でプラグインを 1 回実行する。操作とその入力を与える:
+6. `mdm plugin run` で、操作とその入力を指定してプラグインを 1 回実行する:
 
    ```bash
    mdm plugin run plugin.wasm fetch https://example.com/works/1
    ```
 
-   操作は、入力が語である `search` か、入力が作品の URL である `fetch` である。入力の規則は動画のページと同じである。[設定](#setting-fields) を持つプラグインには、`--set KEY=VALUE` でキーごとに 1 回ずつ値を与える。たとえば `--set token=abc` である。マニフェストが宣言したキーだけを受け取り、`--set` のない設定は VVMDM と同じく `default` を受け取る。`--proxy URL` は、運用者のプロキシ設定と同じように、プラグインの要求をプロキシ経由で送る。実行には VVMDM と同じ [上限](#limits) と [アドレスの規則](#addresses) が適用される。
+   操作は、入力が検索語の `search` か、入力が作品の URL の `fetch` である。入力の規則は動画のページと同じである。[設定](#setting-fields) のあるプラグインには、`--set KEY=VALUE` でキーごとに 1 回、たとえば `--set token=abc` のように値を与える。マニフェストが宣言したキーだけを受け取り、`--set` のない設定は、VVMDM と同じく `default` を受け取る。`--proxy URL` は、運用者のプロキシ設定と同じように、プラグインの要求をプロキシ経由で送る。実行には VVMDM と同じ [上限](#limits) と [アドレスの規則](#addresses) が適用される。
 
 7. VVMDM で **Settings** を開き、**Work-info plugins** の節で **Add plugin** を選び、`plugin.wasm` を選ぶ。プラグインを確認し、承認する。
 
 ## 結果を確認する {#check-the-result}
 
-`mdm plugin run` は、応答が有効なら終了コード 0 で終了する。VVMDM が応答のうち保つものを、VVMDM の上限と切り詰めを適用したあとで、インデントした JSON として標準出力に表示する。`search` では `{"candidates": […]}`、`fetch` では `{"workInfo": {…}}` である。プラグインの標準エラーは標準エラーに表示する。失敗した実行は終了コード 1 で終了し、標準エラーの最後に `Run failed: blocked_address, host 127.0.0.1` のような 1 行を置く。これは失敗の種類と、`blocked_address` と `network_error` ではホスト、`plugin_failed` ではプラグインのメッセージである。VVMDM が拒否するモジュール、宣言されていない設定や不足している設定、規則に反する入力やプロキシの URL は、終了コード 2 と理由で終了する。`--set` で与えた秘密の値は、プラグインが書いたとおりに表示される。VVMDM が値を隠すのは設定画面だけである。
+`mdm plugin run` は、応答が有効なら終了コード 0 で終了する。VVMDM の上限と切り詰めを適用したあとで VVMDM が応答から保つものを、標準出力にインデントした JSON として表示する。`search` では `{"candidates": […]}`、`fetch` では `{"workInfo": {…}}` である。プラグインの標準エラーは標準エラーに表示する。失敗した実行は終了コード 1 で終了し、標準エラーを `Run failed: blocked_address, host 127.0.0.1` のような 1 行で終える。この行は、失敗の種類、`blocked_address` と `network_error` ではホスト、`plugin_failed` ではプラグインのメッセージを示す。VVMDM が拒否するモジュール、宣言されていない設定や足りない設定、規則に反する入力やプロキシの URL は、終了コード 2 と理由で終了する。`--set` で与えた秘密の値は、プラグインが書いたとおりに表示される。VVMDM が値を隠すのは設定画面だけである。
 
 プラグインの行に、名前とバージョンが **Approved** のバッジとともに表示され、動画のページに **Fetch work info from a plugin** が表示される。名前のない行は、VVMDM がモジュールを拒否した理由を示す。[トラブルシューティング](#troubleshooting) を参照する。
 
@@ -293,7 +293,7 @@ VVMDM は取得した人や組織を、まず外部 ID で、次に名前か別�
 | 線形メモリ | 128 MiB (2048 ページ) | 実行は `memory_exceeded` で失敗する |
 | 実行時間 | 30 秒、コンパイルと HTTP を含む | 実行は `timed_out` で失敗する |
 | 標準出力 | 1 MiB | 実行は `output_too_large` で失敗する |
-| 標準エラー | 64 KiB を保ち、残りは捨てる | そのままサーバーのログに書き、プラグインの最後の実行としても保つ。そのとき、秘密の設定の値はそれぞれ `[secret]` に置き換える。プラグインが先にエンコードしたり分割したりした値は置き換えない |
+| 標準エラー | 64 KiB を保ち、残りは捨てる | そのままサーバーのログに書き、プラグインの最後の実行としても保つ。そのとき、秘密の設定の値はそれぞれ `[secret]` に置き換える。所有者は設定画面でプラグインの行の `Last run output` からそれを開く。プラグインが先にエンコードしたり分割したりした値は置き換えない |
 | 同時に動く実行 | 1。2 つ目の実行は最大 10 秒待つ | 2 つ目の実行は `busy` で失敗する |
 | HTTP 要求 | 実行ごとに 16 個、`GET` と `POST`、`http` と `https` | `http_send` は `-5` を返し、ほかのメソッドかスキームには `-1` を返す |
 | リダイレクト | 要求ごとに 5 回 | 6 回目のリダイレクトの応答は、そのままプラグインに渡す |

@@ -5,7 +5,8 @@
 // fetch は token が e2eSecret のときだけ、それを受け取った印のタグを足す
 // （specs/049-work-info-plugins/research.md R-12）。fetch は題名とタグに加えて品番・発売日・外部 ID
 // つきの出演者・メーカーを返し、2 つ目の作品（e2e-2）は別の出演者だけを返す
-// （specs/052-plugin-work-info-fields）。マニフェストは web/e2e/work-info-plugin.mjs が
+// （specs/052-plugin-work-info-fields）。どの操作も受け取った設定を標準エラーに書く
+// （specs/056-plugin-tooling）。マニフェストは web/e2e/work-info-plugin.mjs が
 // ビルドしたモジュールに足す。
 package main
 
@@ -31,6 +32,9 @@ func main() {
 		fmt.Fprintln(os.Stderr, "decode:", err)
 		os.Exit(1)
 	}
+	// 受け取った設定を標準エラーに書く。設定画面の直近の実行のダイアログは、秘密の値を
+	// [secret] に伏せて見せる（specs/056-plugin-tooling/research.md R-6）。
+	fmt.Fprintf(os.Stderr, "%s: token=%s\n", req.Operation, req.Settings["token"])
 	if req.Operation == "search" {
 		reply(map[string]any{"candidates": []map[string]string{
 			{"url": "https://works.example/w/e2e-1", "title": "プラグインe2e作品", "detail": "2024 · e2e"},
