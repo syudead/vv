@@ -31,10 +31,12 @@ var (
 )
 
 // Run はモジュールを新しいインスタンスで 1 回動かす。要求の JSON を標準入力に書いて閉じ、
-// 標準出力の応答を読む。同時に動く実行は 1 本で、2 本目は枠を最大 domain.WorkInfoPluginBusyWait 待つ
+// 標準出力の応答を読む。プラグインの要求は network のとおりに送る（056 research.md R-4・R-5）。同時に動く実行は 1 本で、2 本目は枠を最大 domain.WorkInfoPluginBusyWait 待つ
 // （research.md R-2・R-4）。時間の上限は枠を取ったときから数え、コンパイルも含む。失敗は *domain.WorkInfoRunError で返し、呼び出し元の ctx が
 // 終わったときはその誤りを返す。
-func (r *Runtime) Run(ctx context.Context, digest string, module []byte, req domain.WorkInfoRunRequest) (domain.WorkInfoRunResult, error) {
+func (r *Runtime) Run(
+	ctx context.Context, digest string, module []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork,
+) (domain.WorkInfoRunResult, error) {
 	input, err := json.Marshal(req)
 	if err != nil {
 		return domain.WorkInfoRunResult{}, fmt.Errorf("encode work-info plugin request: %w", err)
@@ -46,7 +48,8 @@ func (r *Runtime) Run(ctx context.Context, digest string, module []byte, req dom
 	defer release()
 	deadline, cancel := context.WithTimeoutCause(ctx, domain.WorkInfoPluginRunTimeout, errTimedOut)
 	defer cancel()
-	session := &httpSession{net: r.run.net}
+	session := r.run.net.session(network)
+	defer session.close()
 	output, err := r.run.run(ctx, deadline, digest, module, input, session)
 	var result domain.WorkInfoRunResult
 	if err == nil {

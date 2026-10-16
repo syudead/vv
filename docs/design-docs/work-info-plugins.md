@@ -157,15 +157,68 @@ value can get a different page or a refusal. The body reaches the plugin as
 bytes with the response headers, so the plugin decodes the page's character
 set itself.
 
-The address check lives only in this adapter. The ComfyUI and Ollama clients
-keep reaching the LAN, where those services run.
+The address check and the proxy support below live only in this adapter.
+The ComfyUI and Ollama clients keep reaching the LAN, where those services
+run, and never use the plugins' proxy.
 
 | Rejected | Why |
 | --- | --- |
-| Resolving and checking the host name before the request | The connection resolves the name again and may get another answer, and a redirect skips the check |
+| Resolving and checking the host name before a request without a proxy | The connection resolves the name again and may get another answer, and a redirect skips the check |
 | A host-name allowlist per plugin | A public name can resolve to a LAN address |
 | Returning the refusal to the plugin only | The plugin could ignore it, and the owner would not see that it tried |
 | Separate connect, TLS and header timeouts | A slow site could then answer `-3` instead of `-4` before the 10 s request limit |
+
+### A run can go through the operator's proxy
+
+`Runtime.Run` takes `domain.WorkInfoRunNetwork`, whose `Proxy` is the proxy
+the operator chose, or nil for none
+([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option)).
+`domain.ParseWorkInfoPluginProxyURL` holds the URL rule: the `http`, `https`
+or `socks5` scheme, a host, an optional port and optional user information,
+with no path, query or fragment, at most 2048 bytes; `""` means no proxy. A
+run without a proxy uses the client above unchanged.
+
+A run with a proxy gets its own transport, whose connections all go to the
+proxy, so the dial-time check cannot see the destination. Instead, the
+transport's `Proxy` callback, which Go calls for every request and every
+followed redirect, resolves the destination host (or parses a literal
+address) and refuses the request with `-2` and `blocked_address` when any
+resolved address fails the same rule
+([056 R-5](../../specs/056-plugin-tooling/research.md#r-5-through-a-proxy-the-destination-is-checked-by-resolving-its-name-before-each-request-and-redirect)).
+The refused host is the name, and the proxy never sees the request. The
+proxy's own address is not checked: the operator chose it, and it usually
+sits on the LAN.
+
+A proxy that cannot be reached, fails the TLS or SOCKS exchange, refuses the
+`CONNECT` or answers `407` makes the request answer `-3`; when the plugin then
+fails, the run fails with `network_error` and the proxy's host, because the
+owner fixes the proxy setting, not the site. The transport and its
+connections are closed when the run ends, so the next run uses the setting it
+starts with.
+
+The diagram shows one `http_send` with a proxy set.
+
+```mermaid
+flowchart LR
+  send[http_send] --> resolve[Resolve the destination name]
+  resolve --> allowed{Every address allowed?}
+  allowed -->|no| refuse[-2, name recorded]
+  allowed -->|yes| proxy[Operator proxy]
+  proxy -->|unreachable, CONNECT refused, 407| fail[-3, proxy host recorded]
+  proxy -->|redirect, up to 5| resolve
+  proxy --> body[Response to the plugin]
+```
+
+The residual risk is a name whose answer changes between VVMDM's lookup and
+the proxy's: VVMDM checks the address it resolved, and the proxy connects to
+the address it resolves itself. A proxy that refuses private destinations
+closes that gap; VVMDM cannot.
+
+| Rejected | Why |
+| --- | --- |
+| Trusting the proxy to refuse LAN destinations | It holds only when the operator configured the proxy so, and VVMDM must refuse those destinations itself |
+| Keeping the dial-time check through a proxy | It would see only the proxy, whose LAN address would fail every request |
+| Honouring `HTTP_PROXY` | The operator could not set a proxy for plugins alone, and the Windows app has no environment to edit |
 
 ## The fetch keeps the work details and their matches
 

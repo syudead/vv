@@ -140,7 +140,8 @@ func (p *WorkInfoPlugins) run(
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, &domain.WorkInfoSettingsMissingError{Keys: missing}
 	}
 	req.Settings = domain.DeclaredWorkInfoPluginValues(plugin.Manifest.Settings, plugin.Values)
-	result, err := p.runtime.Run(ctx, plugin.Digest, module, req)
+	// プロキシの設定はまだ無いので、プロキシなしで動かす。
+	result, err := p.runtime.Run(ctx, plugin.Digest, module, req, domain.WorkInfoRunNetwork{})
 	if err != nil {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}
