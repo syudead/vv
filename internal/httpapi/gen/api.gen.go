@@ -987,6 +987,27 @@ func (e SkippedTagReason) Valid() bool {
 	}
 }
 
+// Defines values for SkippedWorkInfoReason.
+const (
+	SkippedWorkInfoReasonAmbiguous SkippedWorkInfoReason = "ambiguous"
+	SkippedWorkInfoReasonInvalid   SkippedWorkInfoReason = "invalid"
+	SkippedWorkInfoReasonTooMany   SkippedWorkInfoReason = "too_many"
+)
+
+// Valid indicates whether the value is a known member of the SkippedWorkInfoReason enum.
+func (e SkippedWorkInfoReason) Valid() bool {
+	switch e {
+	case SkippedWorkInfoReasonAmbiguous:
+		return true
+	case SkippedWorkInfoReasonInvalid:
+		return true
+	case SkippedWorkInfoReasonTooMany:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for StartAutoTaggingRequestScope.
 const (
 	StartAutoTaggingRequestScopeAll     StartAutoTaggingRequestScope = "all"
@@ -1514,16 +1535,76 @@ func (e WorkDateKind) Valid() bool {
 
 // Defines values for WorkInfoField.
 const (
-	Tags  WorkInfoField = "tags"
-	Title WorkInfoField = "title"
+	Code               WorkInfoField = "code"
+	DatesPublished     WorkInfoField = "dates.published"
+	DatesRecorded      WorkInfoField = "dates.recorded"
+	DatesRelease       WorkInfoField = "dates.release"
+	Description        WorkInfoField = "description"
+	ExternalIds        WorkInfoField = "externalIds"
+	OrganizationsLabel WorkInfoField = "organizations.label"
+	OrganizationsMaker WorkInfoField = "organizations.maker"
+	PeopleDirector     WorkInfoField = "people.director"
+	PeoplePerformer    WorkInfoField = "people.performer"
+	PeoplePhotographer WorkInfoField = "people.photographer"
+	PeopleStreamer     WorkInfoField = "people.streamer"
+	Tags               WorkInfoField = "tags"
+	Title              WorkInfoField = "title"
+	Urls               WorkInfoField = "urls"
 )
 
 // Valid indicates whether the value is a known member of the WorkInfoField enum.
 func (e WorkInfoField) Valid() bool {
 	switch e {
+	case Code:
+		return true
+	case DatesPublished:
+		return true
+	case DatesRecorded:
+		return true
+	case DatesRelease:
+		return true
+	case Description:
+		return true
+	case ExternalIds:
+		return true
+	case OrganizationsLabel:
+		return true
+	case OrganizationsMaker:
+		return true
+	case PeopleDirector:
+		return true
+	case PeoplePerformer:
+		return true
+	case PeoplePhotographer:
+		return true
+	case PeopleStreamer:
+		return true
 	case Tags:
 		return true
 	case Title:
+		return true
+	case Urls:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for WorkInfoMatchState.
+const (
+	WorkInfoMatchStateAmbiguous WorkInfoMatchState = "ambiguous"
+	WorkInfoMatchStateExisting  WorkInfoMatchState = "existing"
+	WorkInfoMatchStateNew       WorkInfoMatchState = "new"
+)
+
+// Valid indicates whether the value is a known member of the WorkInfoMatchState enum.
+func (e WorkInfoMatchState) Valid() bool {
+	switch e {
+	case WorkInfoMatchStateAmbiguous:
+		return true
+	case WorkInfoMatchStateExisting:
+		return true
+	case WorkInfoMatchStateNew:
 		return true
 	default:
 		return false
@@ -2967,6 +3048,24 @@ type SkippedTag struct {
 // SkippedTagReason 付けなかった理由。rejected は却下した名前、invalid はタグ名の規則に合わない名前
 type SkippedTagReason string
 
+// SkippedWorkInfoReason 反映で飛ばした理由。invalid は項目の規則に合わない値、too_many は保存済みの件の後に数えて上限を超える件、
+// ambiguous は複数の実体に当たった人物・団体
+type SkippedWorkInfoReason string
+
+// SkippedWorkInfoValue defines model for SkippedWorkInfoValue.
+type SkippedWorkInfoValue struct {
+	// Field 動画に反映できる取得の結果の項目。比較の行の順
+	// （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）
+	Field WorkInfoField `json:"field"`
+
+	// Reason 反映で飛ばした理由。invalid は項目の規則に合わない値、too_many は保存済みの件の後に数えて上限を超える件、
+	// ambiguous は複数の実体に当たった人物・団体
+	Reason SkippedWorkInfoReason `json:"reason"`
+
+	// Value 比較が見せた値（日付、URL、名前、`source: value`、説明は先頭 100 文字）
+	Value string `json:"value"`
+}
+
 // StartAutoTaggingRequest defines model for StartAutoTaggingRequest.
 type StartAutoTaggingRequest struct {
 	Scope StartAutoTaggingRequestScope `json:"scope"`
@@ -3815,21 +3914,45 @@ type WorkInfoCandidate struct {
 
 // WorkInfoFetch メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8）
 type WorkInfoFetch struct {
+	// Code 前後の空白を除いた品番。プラグインが返さなければ無い。規則に外れても残し、反映が飛ばす
+	Code *string `json:"code,omitempty"`
+
+	// Dates 種類の順（release・recorded・published）。無ければ []
+	Dates []WorkInfoFetchedDate `json:"dates"`
+
+	// Description 前後の空白を除いた説明。プラグインが返さなければ無い
+	Description *string `json:"description,omitempty"`
+
 	// ExpiresAt 結果が消える時刻（Unix 秒）
 	ExpiresAt int64 `json:"expiresAt"`
 
+	// ExternalIds 動画の外部 ID。取得した順。無ければ []
+	ExternalIds []ExternalId `json:"externalIds"`
+
 	// FetchId 結果の識別子。反映に使う
 	FetchId string `json:"fetchId"`
+
+	// Organizations 役割の順、同じ役割の中は取得した順。無ければ []
+	Organizations []WorkInfoFetchedOrganization `json:"organizations"`
+
+	// People 役割の順、同じ役割の中は取得した順。無ければ []
+	People []WorkInfoFetchedPerson `json:"people"`
 
 	// Tags 取得したタグの名前。空でもよい
 	Tags []string `json:"tags"`
 
 	// Title 表示名の規則を通った題名。プラグインが返さなかったか規則に外れれば無い
 	Title *string `json:"title,omitempty"`
+
+	// Urls 取得した順。無ければ []
+	Urls []string `json:"urls"`
 }
 
 // WorkInfoFetchApplied defines model for WorkInfoFetchApplied.
 type WorkInfoFetchApplied struct {
+	// Skipped 題名とタグ以外の選んだ項目のうち反映で飛ばした値。項目の順、項目の中は取得した順
+	Skipped []SkippedWorkInfoValue `json:"skipped"`
+
 	// SkippedTags 付けなかったタグの名前。取得の結果の順
 	SkippedTags []SkippedTag `json:"skippedTags"`
 
@@ -3849,7 +3972,41 @@ type WorkInfoFetchRequest struct {
 	Url string `json:"url"`
 }
 
-// WorkInfoField 動画に反映できる取得の結果の項目
+// WorkInfoFetchedDate defines model for WorkInfoFetchedDate.
+type WorkInfoFetchedDate struct {
+	// Date プラグインが返した日付。形が規則に外れても残し、反映が飛ばす
+	Date string `json:"date"`
+
+	// Kind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+	Kind WorkDateKind `json:"kind"`
+}
+
+// WorkInfoFetchedOrganization defines model for WorkInfoFetchedOrganization.
+type WorkInfoFetchedOrganization struct {
+	ExternalIds []ExternalId  `json:"externalIds"`
+	Match       WorkInfoMatch `json:"match"`
+
+	// Name プラグインが返した名前
+	Name string `json:"name"`
+
+	// Role 動画での団体の役割
+	Role WorkOrganizationRole `json:"role"`
+}
+
+// WorkInfoFetchedPerson defines model for WorkInfoFetchedPerson.
+type WorkInfoFetchedPerson struct {
+	ExternalIds []ExternalId  `json:"externalIds"`
+	Match       WorkInfoMatch `json:"match"`
+
+	// Name プラグインが返した名前
+	Name string `json:"name"`
+
+	// Role 動画での人物の役割
+	Role WorkPersonRole `json:"role"`
+}
+
+// WorkInfoField 動画に反映できる取得の結果の項目。比較の行の順
+// （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）
 type WorkInfoField string
 
 // WorkInfoInput 作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
@@ -3864,6 +4021,23 @@ type WorkInfoInput struct {
 	People        *[]WorkPersonInput       `json:"people,omitempty"`
 	Urls          *[]string                `json:"urls,omitempty"`
 }
+
+// WorkInfoMatch defines model for WorkInfoMatch.
+type WorkInfoMatch struct {
+	// Id state が existing のときだけ。一致した実体
+	Id *int64 `json:"id,omitempty"`
+
+	// Name state が existing のときだけ。一致した実体の今の名前
+	Name *string `json:"name,omitempty"`
+
+	// State 取得した人物・団体の照合の答え。existing は既存の実体 1 つ、new は何にも当たらず反映が作る、
+	// ambiguous は複数に当たり反映が飛ばす（specs/052-plugin-work-info-fields/research.md R-3）
+	State WorkInfoMatchState `json:"state"`
+}
+
+// WorkInfoMatchState 取得した人物・団体の照合の答え。existing は既存の実体 1 つ、new は何にも当たらず反映が作る、
+// ambiguous は複数に当たり反映が飛ばす（specs/052-plugin-work-info-fields/research.md R-3）
+type WorkInfoMatchState string
 
 // WorkInfoOperation プラグインの操作（specs/049-work-info-plugins/contracts/plugin-contract.md）
 type WorkInfoOperation string

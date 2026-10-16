@@ -112,13 +112,18 @@ func normalizeWorkInfoText(field, input string, maxLength int, allowLineFeed boo
 			return "", invalidWorkInfo(field, WorkInfoControlCharacters, 0)
 		}
 	}
-	trimmed := strings.TrimFunc(input, func(r rune) bool {
-		return unicode.Is(unicode.White_Space, r)
-	})
+	trimmed := trimWorkInfoText(input)
 	if utf8.RuneCountInString(trimmed) > maxLength {
 		return "", invalidWorkInfo(field, WorkInfoTooLong, maxLength)
 	}
 	return trimmed, nil
+}
+
+// trimWorkInfoText は文字列の前後の Unicode White_Space を除く。
+func trimWorkInfoText(input string) string {
+	return strings.TrimFunc(input, func(r rune) bool {
+		return unicode.Is(unicode.White_Space, r)
+	})
 }
 
 // normalizeExternalID は外部 ID 1 件を整える。両方が空になれば keep が偽（その件を落とす）、

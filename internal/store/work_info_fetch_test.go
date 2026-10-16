@@ -58,13 +58,14 @@ func TestApplyFetchedWorkInfoWritesTitleAndTentativeTags(t *testing.T) {
 
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
-	video, rejected, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+	applied, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
 		VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Title: &title,
 		Tags: []string{"drama", "spoiler", "comedy"},
 	})
 	if err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
 	}
+	video, rejected := applied.Video, applied.RejectedTags
 	if video.DisplayName != "Fetched title" || video.Title != "Fetched title" {
 		t.Fatalf("video = %q / %q; want the trimmed fetched title", video.DisplayName, video.Title)
 	}
@@ -102,7 +103,7 @@ func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
 
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
-	if _, _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
 		VideoID: ids["b"], PluginID: plugin.ID, Digest: "d1", Tags: []string{"drama"},
 	}); err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
@@ -114,7 +115,7 @@ func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
 
 	recorder.events = nil
 	title := "Fetched"
-	if _, _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
 		VideoID: ids["b"], PluginID: plugin.ID, Digest: "d1", Title: &title,
 	}); err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
@@ -130,7 +131,7 @@ func TestApplyFetchedWorkInfoTagsOnlyKeepsTheDisplayName(t *testing.T) {
 	db, ids := overrideFixture(t)
 	plugin := approvedPlugin(t, db, "example", "d1")
 	setDisplayName(t, db, ids[fixturePath("/media/alpha.mp4")], "Mine")
-	if _, _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
 		VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Tags: []string{"drama"},
 	}); err != nil {
 		t.Fatal(err)
@@ -194,7 +195,7 @@ func TestApplyFetchedWorkInfoRechecksThePluginInsideTheTransaction(t *testing.T)
 			tc.change(t, db, plugin.ID)
 			tags := allTagCount(t, db)
 			title := "Fetched"
-			_, _, err := db.Overrides().ApplyFetchedWorkInfo(context.Background(), domain.FetchedWorkInfoApply{
+			_, err := db.Overrides().ApplyFetchedWorkInfo(context.Background(), domain.FetchedWorkInfoApply{
 				VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Generation: plugin.Generation,
 				Title: &title, Tags: []string{"drama"},
 			})
@@ -216,13 +217,13 @@ func TestApplyFetchedWorkInfoFailureWritesNeitherField(t *testing.T) {
 	tags := allTagCount(t, db)
 
 	title := "Fetched"
-	if _, _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
 		VideoID: 9999, PluginID: plugin.ID, Digest: "d1", Title: &title, Tags: []string{"drama"},
 	}); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("missing video: err = %v; want ErrNotFound", err)
 	}
 	bad := "bad\ttitle"
-	if _, _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
 		VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Title: &bad, Tags: []string{"drama"},
 	}); !errors.Is(err, domain.ErrInvalidDisplayName) {
 		t.Fatalf("bad title: err = %v; want ErrInvalidDisplayName", err)
@@ -243,7 +244,7 @@ func TestApplyFetchedWorkInfoKeepsASuggestedTagSuggested(t *testing.T) {
 		"key-alpha", tagID); err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
+	if _, err := db.Overrides().ApplyFetchedWorkInfo(ctx, domain.FetchedWorkInfoApply{
 		VideoID: ids[fixturePath("/media/alpha.mp4")], PluginID: plugin.ID, Digest: "d1", Tags: []string{"drama", "comedy"},
 	}); err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
