@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeAll, describe, expect, it } from "vitest";
 
@@ -104,6 +104,35 @@ describe("TagsPage 種類の名札・絞り込み・「Set kind…」（specs/05
     expect(
       await screen.findByRole("button", { name: 'Remove the filter "Kind: Genre"' }),
     ).toBeDefined();
+  });
+
+  it("「Any kind」を選ぶと種類の絞り込みを外す", async () => {
+    const user = userEvent.setup();
+    seedKindTags();
+    install();
+    renderPage({ url: "/tags?kind=1", topBar: true });
+    await waitFor(() => expect(shownNames()).toEqual(["Mecha", "Robot"]));
+    await waitFor(() => expect(server.tagKindGets).toBeGreaterThan(0));
+
+    await chooseKind(user, "Any kind");
+    await waitFor(() => expect(shownNames()).toHaveLength(4));
+    expect(new URLSearchParams(probe.search).has("kind")).toBe(false);
+  });
+
+  it("種類の一覧を読めないうちは「Kind」に「Any kind」と「No kind」だけを並べる", async () => {
+    const user = userEvent.setup();
+    seedKindTags();
+    server.failTagKindGets = true;
+    install();
+    renderPage({ topBar: true });
+    await screen.findByTitle("Robot");
+
+    await user.click(filterButton());
+    const select = await screen.findByRole("combobox", { name: "Kind" });
+    select.focus();
+    await user.keyboard("{Enter}");
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual(["Any kind", "No kind"]);
   });
 
   it("「No kind」は kind=none で種類の無いタグだけにし、チップの × で外れる", async () => {
@@ -258,6 +287,40 @@ describe("TagsPage 種類の名札・絞り込み・「Set kind…」（specs/05
     await waitFor(() => expect(server.tagKindGets).toBeGreaterThan(before));
     expect(within(rowOf("Tokyo")).queryByTitle(/^Kind:/)).toBeNull();
     expect(within(bar()).getByText("1 tag selected")).toBeDefined();
+  });
+
+  it("「Set kind…」が失敗したら誤りをトーストで伝え、名札も選択も変えない", async () => {
+    const user = userEvent.setup();
+    seedKindTags();
+    install();
+    renderPage({ topBar: true });
+    await screen.findByTitle("Robot");
+    await waitFor(() => expect(server.tagKindGets).toBeGreaterThan(0));
+
+    await user.click(within(rowOf("Tokyo")).getByRole("checkbox"));
+    server.failNextBatch = true;
+    await setKind(user, "Genre");
+    expect(await screen.findByText("Something went wrong on the server.")).toBeDefined();
+    expect(within(rowOf("Tokyo")).queryByTitle(/^Kind:/)).toBeNull();
+    expect(within(bar()).getByText("1 tag selected")).toBeDefined();
+  });
+
+  it("選んだタグがどれも既にその種類なら、種類の一覧（タグの数）を取り直さない", async () => {
+    const user = userEvent.setup();
+    seedKindTags();
+    install();
+    renderPage({ topBar: true });
+    await screen.findByTitle("Robot");
+    await waitFor(() => expect(server.tagKindGets).toBeGreaterThan(0));
+
+    const before = server.tagKindGets;
+    await user.click(within(rowOf("Robot")).getByRole("checkbox"));
+    await setKind(user, "Genre");
+    expect(
+      await screen.findByText('Set the kind "Genre" on 0 tags. 1 already had it.'),
+    ).toBeDefined();
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(server.tagKindGets).toBe(before);
   });
 
   it("シノニム登録に伴う統合でタグが消えると、種類の一覧を取り直す（タグの数が変わる）", async () => {

@@ -8,7 +8,9 @@ import {
   currentTagKinds,
   deleteTagKind,
   getTagKinds,
+  refreshTagKinds,
   renameTagKind,
+  sortTagKinds,
   subscribeTagKinds,
 } from "./tagKinds";
 import { __resetTagsForTest } from "./tags";
@@ -63,6 +65,18 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+describe("sortTagKinds", () => {
+  it("名前の自然順に並べ、大文字小文字だけが違う名前は id の順にする", () => {
+    const sorted = sortTagKinds([
+      kind(4, "era"),
+      kind(2, "Item 10"),
+      kind(3, "Era"),
+      kind(1, "Item 9"),
+    ]);
+    expect(sorted.map((k) => k.id)).toEqual([3, 4, 1, 2]);
+  });
 });
 
 describe("共有の種類の一覧の保持", () => {
@@ -148,6 +162,51 @@ describe("共有の種類の一覧の保持", () => {
 
     expect(await stale).toHaveLength(5);
     expect(currentTagKinds()).toHaveLength(5);
+  });
+
+  it("古い取得が失敗しても、あとから始めた取得を共有し続ける", async () => {
+    const pending: ((response: Response) => void)[] = [];
+    const calls: string[] = [];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof globalThis.fetch>((input) => {
+        calls.push(urlOf(input));
+        return new Promise<Response>((resolve) => pending.push(resolve));
+      }),
+    );
+
+    const stale = getTagKinds();
+    const fresh = refreshTagKinds();
+    await flush();
+    pending[0]!(jsonResponse({ code: "internal", message: "x" }, 500));
+    await expect(stale).rejects.toBeInstanceOf(RequestFailed);
+
+    const shared = getTagKinds();
+    await flush();
+    expect(calls).toEqual(["/api/tag-kinds", "/api/tag-kinds"]);
+    pending[1]!(jsonResponse({ items: presets }));
+    expect(await shared).toHaveLength(4);
+    expect(await fresh).toHaveLength(4);
+  });
+
+  it("変更のあとの取り直しが失敗しても、変更そのものは成功として返す", async () => {
+    const calls = routes({
+      "POST /api/tag-kinds": () => jsonResponse(kind(5, "Era"), 201),
+      "PATCH /api/tag-kinds/5": () => jsonResponse(kind(5, "Period")),
+    });
+    const unsubscribe = subscribeTagKinds(() => undefined);
+    // GET /api/tag-kinds と GET /api/tags は経路が無く 500 で失敗する。取り直しは待たない。
+    await expect(createTagKind("Era")).resolves.toMatchObject({ name: "Era" });
+    await expect(renameTagKind(5, "Period")).resolves.toMatchObject({ name: "Period" });
+    await flush();
+    unsubscribe();
+    expect(calls).toEqual([
+      "POST /api/tag-kinds",
+      "GET /api/tag-kinds",
+      "PATCH /api/tag-kinds/5",
+      "GET /api/tag-kinds",
+      "GET /api/tags",
+    ]);
   });
 
   it("購読者がいれば種類を変えたあとに取り直して知らせる", async () => {

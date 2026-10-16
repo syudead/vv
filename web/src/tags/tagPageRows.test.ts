@@ -142,6 +142,19 @@ describe("操作のあとの反映", () => {
     expect(result.total).toBe(4);
   });
 
+  it("まとめての確定に確定済みのタグが混ざっても、その行は同じ行のまま残す", () => {
+    const confirmed = tag({ id: 1, name: "A" });
+    const base = page([confirmed, tag({ id: 2, name: "B", tentative: true })], {
+      total: 2,
+      totalAll: 2,
+      query: query(),
+    });
+    const result = confirmTags(base, new Set([1, 2]));
+    expect(result.rows[0]).toBe(confirmed);
+    expect(result.rows[1]?.tentative).toBe(false);
+    expect(result.total).toBe(2);
+  });
+
   it("種類の絞り込みは id の種類のタグか、none なら種類の無いタグに合う", () => {
     const genre = tag({ id: 1, name: "A", kind: { id: 1, name: "Genre" } });
     const plain = tag({ id: 2, name: "B" });

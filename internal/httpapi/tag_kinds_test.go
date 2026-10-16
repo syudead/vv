@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 	"testing"
@@ -141,6 +142,35 @@ func TestTagKindErrorsFollowTheContract(t *testing.T) {
 	rec = do(t, newTestServer(t, Options{Tags: &fakeTags{err: domain.ErrTagKindNotFound}}),
 		http.MethodDelete, "/api/tag-kinds/999")
 	assertErrorBody(t, "DELETE 無い id", rec.Code, rec.Body.Bytes(), notFound)
+}
+
+// 保存先の想定外の失敗は 4 つの経路のどれも 500 internal で、壊れた本文は保存層に届かず 400 になる。
+func TestTagKindStoreFailuresAndMalformedBodies(t *testing.T) {
+	internal := wantError{status: http.StatusInternalServerError, code: gen.ErrorCodeInternal}
+	broken := errors.New("disk I/O error")
+	for _, route := range []struct{ method, target, body string }{
+		{http.MethodGet, "/api/tag-kinds", ""},
+		{http.MethodPost, "/api/tag-kinds", `{"name":"Era"}`},
+		{http.MethodPatch, "/api/tag-kinds/1", `{"name":"Era"}`},
+		{http.MethodDelete, "/api/tag-kinds/1", ""},
+	} {
+		handler := newTestServer(t, Options{Tags: &fakeTags{err: broken}})
+		rec := jsonRequest(t, handler, route.method, route.target, route.body)
+		assertErrorBody(t, route.method+" 保存先の失敗", rec.Code, rec.Body.Bytes(), internal)
+	}
+
+	invalid := wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}
+	for _, route := range []struct{ method, target string }{
+		{http.MethodPost, "/api/tag-kinds"},
+		{http.MethodPatch, "/api/tag-kinds/1"},
+	} {
+		fake := &fakeTags{}
+		rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), route.method, route.target, `{"name":`)
+		assertErrorBody(t, route.method+" 壊れた本文", rec.Code, rec.Body.Bytes(), invalid)
+		if fake.operation != "" {
+			t.Errorf("%s: 壊れた本文が保存層に届いた (%s)", route.method, fake.operation)
+		}
+	}
 }
 
 // ゲストは 4 つの経路のどれも 401 で、保存層に届かない。
