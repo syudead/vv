@@ -217,6 +217,9 @@ and `DropdownMenuCheckboxItem` for toggles. A destructive item uses
 Do not put inputs in it (use `Popover`) or use it for navigation between
 screens (use `Sidebar` or links).
 
+A toolbar filter whose current value must show without opening anything is a
+`FilterDropdownButton` around the menu (see vv components).
+
 ### Tooltip
 
 Item `tooltip`. Names an icon-only control or adds a short hint, shown on
@@ -350,6 +353,16 @@ link and `isActive` on the current screen; the rail shows the label, so set no
 sidebar never expands and `keyboardShortcut={false}` so Ctrl/⌘+B stays the
 browser's, and show the toggle only below 640px.
 
+An entry that has something waiting for the owner takes a count:
+`SidebarMenuCount` (a vv addition to the upstream file) after the
+`SidebarMenuButton` in the same `SidebarMenuItem`, with the number to show
+(`99+` above 99) and the sentence a screen reader says (`3 need attention`).
+On the rail it is a round `destructive-strong` pill with
+`destructive-foreground` text at the icon's top-right corner; in the
+narrow-width drawer it is `SidebarMenuBadge` at the end of the row in
+`destructive`; at 0 it draws nothing. Upstream's `SidebarMenuBadge` alone is
+hidden on the icon rail, which vv's rail always is.
+
 Do not add a second sidebar or put page controls in it; they belong in the
 toolbar.
 
@@ -437,6 +450,22 @@ keys pressed during IME composition are ignored. `layout` places the list:
 
 In `dropdown` and `inline`, no row is selected until the arrow keys or the
 pointer select one.
+
+### FilterDropdownButton
+
+Item `filter-dropdown-button`. One filter of a toolbar row of filters that
+each show their current value: an `outline` `sm` `Button` holding the
+dimension's `name`, its `value` in `text-muted-foreground` and a chevron,
+which opens a `DropdownMenu` of `DropdownMenuRadioItem`s (one choice) or
+`DropdownMenuCheckboxItem`s (several). Set `active` when the value is not the
+default: the button turns `primary-soft` with `primary` text, value included,
+so a set filter reads without opening it. A count for a choice goes at the
+item's right end in `text-xs` `tabular-nums` (`ml-auto`). Put every filter of
+the row in this form, so they share one height, border and type, and follow
+them with a `ghost` `sm` `Clear filters` while any is set.
+
+Do not use it for one filter among toggles (use `Toggle`), or when the values
+do not need to show on the toolbar (use the library's single filter popover).
 
 ### CreditCommand
 
