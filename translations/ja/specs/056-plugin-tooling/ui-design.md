@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/ui-design.md
-sourceHash: b3e0fe852a8326917459fee8e2e046cef901ecaa3eb54019d207cd9227ea7d9b
+sourceHash: d9811fa29e772da80311928b4fa50e2ecb30ed27425fdc4a6be2b6619a4ca06c
 ---
 
 # UI 設計: 作者・運用者・利用者のための Work-info プラグイン用ツール {#ui-design-work-info-plugin-tooling-for-authors-operators-and-users}
@@ -40,9 +40,11 @@ flowchart LR
 
 ## この形にした理由 {#why-this-shape}
 
-**デフォルトは値が入る場所に muted の色で示し、テキストとしてフィールドに入れない。** 空の `Input` はデフォルトを `placeholder` として持ち、フィールドの下のヒントがそれを名指しする。入力された値は `text-foreground`、デフォルトは `text-muted-foreground` で読ませ、ひと目で区別できるようにする（Issue の `UI品質`）。デフォルトをフィールドに書き込む案は採用しなかった。所有者が自分の入力と区別できず、デフォルトに戻すために消す操作が値の削除に見えるためである。これに合わせて、デフォルトを入力された値として保存することはない。空のフィールドも、`Select` で選んだデフォルトも `null` を保存するので、新しいバージョンのデフォルトがプラグインに届く（[R-3](research.md#r-3-a-setting-declares-default-and-options-the-stored-value-or-the-default-is-what-the-run-receives)）。
+**デフォルトは値が入る場所に muted の色で示し、テキストとしてフィールドに入れない。** 空の `Input` はデフォルトを `placeholder` として持ち、フィールドの下のヒントがそれを名指しする。入力された値は `text-foreground`、デフォルトは `text-muted-foreground` で読ませ、ひと目で区別できるようにする（Issue の `UI品質`）。デフォルトをフィールドに書き込む案は採用しなかった。所有者が自分の入力と区別できず、デフォルトに戻すために消す操作が値の削除に見えるためである。これに合わせて、デフォルトを入力された値として保存することはない。空のフィールドも、`Select` の `Default` の項目も `null` を保存するので、新しいバージョンのデフォルトがプラグインに届く（[R-3](research.md#r-3-a-setting-declares-default-and-options-the-stored-value-or-the-default-is-what-the-run-receives)）。
 
-`options` を持つ設定は、選択肢の数（2 から 50）にかかわらず **`Select`** にする。[components.md, Select and RadioGroup](../../web/registry/rules/components.md#select-and-radiogroup) は、現在の値が重要な設定行に `Select` を当て、そのトリガーは `Input` と同じ高さなので、選択がフィールドの並びに視覚的な切れ目なく収まる（Issue の `UI品質`）。選択肢が少ないときの `RadioGroup` は採用しなかった。2 から 6 個のラジオがテキストフィールドの横に並ぶと、値を比べるためでなく設定するために所有者が開くダイアログで、得るものがないまま 1 つの設定が隣の 3 倍の高さになる。
+`options` を持つ設定は、選択肢の数（2 から 50）にかかわらず **`Select`** にする。[components.md, Select and RadioGroup](../../web/registry/rules/components.md#select-and-radiogroup) は、現在の値が重要な設定行に `Select` を当て、その既定のトリガーは `h-9` で `Input` と同じ高さである（`sm` のトリガーは `h-8` なので使わない）。そのため選択がフィールドの並びに視覚的な切れ目なく収まる（Issue の `UI品質`）。選択肢が少ないときの `RadioGroup` は採用しなかった。2 から 6 個のラジオがテキストフィールドの横に並ぶと、値を比べるためでなく設定するために所有者が開くダイアログで、得るものがないまま 1 つの設定が隣の 3 倍の高さになる。
+
+デフォルトに戻す操作は、デフォルトと等しい選択肢とは別の、リストの先頭にある **`Default ({default})` という専用の項目**にする。デフォルトの選択肢に印を付け、保存された値のない設定でそれを選ばせる案は採用しなかった。保存された値がその選択肢であるか古い値であるとき、所有者がデフォルトに戻すために押す項目がすでに選択されており、`Select` はその項目について変更を報告せず、`Save` は無効のままになるためである。別の項目にすれば `Input` の規則が保たれる。所有者はデフォルトに従うか値を入力するかのどちらかであり、デフォルトと等しい入力値もやはり所有者の入力である。
 
 プロキシは Network セクションの **1 つの `FormRow`** で、`Input` を持ち、値が変わったときに保存する。LAN スイッチが変わったときに保存するのと同じである（Issue の `UI品質`、[patterns.md, Settings page](../../web/registry/rules/patterns.md#settings-page)）。Ollama と ComfyUI のセクションにあるような、行の下の `Save` ボタンは採用しなかった。それらのセクションは複数の値をまとめて保存するが、これは 1 つの値であり、加わるセクションにボタンはない。セクションの説明はスイッチの行に移る。スイッチのないビルドでは、説明がそこにない設定についてのものになるためである（[R-8](research.md#r-8-the-network-section-shows-on-every-build-and-the-lan-switch-stays-desktop-only)）。
 
@@ -59,9 +61,10 @@ flowchart LR
 | 場所 | 文言 | 備考 |
 | --- | --- | --- |
 | Default hint | Default: {default} | `FieldDescription`。空のフィールドは `{default}` を placeholder として示す |
-| Select, no value and no default | Not set | `Select` の placeholder、muted |
-| Select, item for the default | {option} · default | 選択肢、続けて ` · default` を `text-muted-foreground` で示し、項目が選択肢として読める |
-| Select, item to clear | Not set | 最初の項目、muted、デフォルトのない設定だけ |
+| Select, stale value | Default ({default}), or Not set without a default | `Select` の placeholder、muted。選択された項目はない |
+| Select, item to follow the default | Default ({default}) | 最初の項目、muted、デフォルトのある設定だけ。`null` を保存する |
+| Select, item to clear | Not set | 最初の項目、muted、デフォルトのない設定だけ。`null` を保存する |
+| Select, option item | {option} | すべての選択肢をマニフェストの順に並べる。デフォルトの選択肢も含み、印は付けない |
 | Stale value, with a default | "{value}" isn't one of this version's choices. The default is used until you save. | フィールドの下に lucide `CircleAlert` を付けた `text-warning` |
 | Stale value, no default | "{value}" isn't one of this version's choices. No value is sent until you save. | 同じ形 |
 | Save | Save | 変更なし。デフォルトに戻したフィールドは `null` を送る |
@@ -126,7 +129,7 @@ flowchart LR
 | --- | --- |
 | `run-output` | 前回の実行ダイアログの出力ブロックの最大の高さ（`max-h-run-output`）。スキャンの Issue 一覧に対する `issue-list` と同じく、ビューポートの高さに対する割合とし、64 KiB の出力がブロック内でスクロールする間も、ファクトとフッターが 1280×800 でも 360×640 でも見えたままになる |
 
-これ以外は加えない。`Checkbox` にはすでに `indeterminate` 状態があり、`Select` には `sm` のトリガー、`FormDialog` には `wide` サイズと `Cancel` のないフッターがある。色のトークンは加えず、`web/src/theme/tokens.test.ts` の `pairs` にも何も加えない。警告の行、muted の注記、出力ブロックは既存のロール（`text-warning`, `text-muted-foreground`, `bg-muted`）を使う。アイコンは lucide の `CircleAlert`, `CircleCheck`, `Check`, `Ellipsis` で、いずれもすでに使われている。
+これ以外は加えない。`Checkbox` にはすでに `indeterminate` 状態があり、`Select` には既定の `h-9` のトリガーと（`TagKindSelect` と同じ）`max-w-popover` のリスト、`FormDialog` には `wide` サイズと `Cancel` のないフッターがある。色のトークンは加えず、`web/src/theme/tokens.test.ts` の `pairs` にも何も加えない。警告の行、muted の注記、出力ブロックは既存のロール（`text-warning`, `text-muted-foreground`, `bg-muted`）を使う。アイコンは lucide の `CircleAlert`, `CircleCheck`, `Check`, `Ellipsis` で、いずれもすでに使われている。
 
 ## 設定ダイアログ {#settings-dialog}
 
@@ -136,11 +139,20 @@ flowchart LR
 | --- | --- |
 | `default` も `options` もない | 049 のとおり |
 | `default` あり、`options` なし | 保存された値を入れた `Input type="text"`、または空で `{default}` を `placeholder` にしたもの。その下に `Default: {default}`。フィールドを空にするか、空のままにすると `null` を保存する |
-| `options` あり | `Select` `sm`、フィールドの全幅、項目はマニフェストの順。選ばれた項目は、保存された値が選択肢のひとつならその値、そうでなければデフォルトの項目、それもなければ placeholder の `Not set`。デフォルトの項目には ` · default` が付く。デフォルトのない設定は `Not set` が最初の項目になる |
-| `options` あり、保存された値がその中にない（`staleValue`） | 上と同じ `Select` で、デフォルトか `Not set` を示し、その下に `text-warning` の古い値の注記を置く。デフォルトを含め何を保存しても、保存された値を置き換える |
+| `options` あり | 既定のトリガー（`h-9`）の `Select`、フィールドの全幅。最初の項目は `Default ({default})`、デフォルトのない設定では `Not set`。選択肢はマニフェストの順にその後に続く。選ばれた項目は、値が保存されているときはその値の選択肢、そうでなければ最初の項目 |
+| `options` あり、保存された値がその中にない（`staleValue`） | 項目が選択されていない `Select` で、muted の placeholder は `Default ({default})` か `Not set` と読め、その下に `text-warning` の古い値の注記を置く。最初の項目を含むどの項目も変更である。最初の項目を選ぶと `null` を保存し、注記が消える |
 | 秘密 | 049 のとおり。秘密はどちらも宣言しないので、何も変わらない |
 
-`Save` は、キーが 1 つも変わらない間は無効のままである。デフォルトの項目を選ぶこと、またはデフォルトを持つフィールドを空にすることは、値が保存されているときだけ変更に数える。`null` を送り、フィールドは今までどおりデフォルトを示す。古い値は保存されているものに数えるので、デフォルトの項目を選ぶと `null` を送り、注記が消える。
+`Save` は、キーが 1 つも変わらない間は無効のままである。最初の項目を選ぶこと、またはデフォルトを持つフィールドを空にすることは、値が保存されているときだけ変更である。`null` を送り、フィールドは今までどおりデフォルトを示す。値が保存されているとき、最初の項目は選択された項目ではない（選択されているのは保存された選択肢か、古い値なら何もない）ので、それを選ぶことは常に `Select` が報告する変更である。
+
+デフォルトは 2000 文字、選択肢は 200 文字まで許され、その中に空白がなくてもよい（[contracts/plugin-contract.md](contracts/plugin-contract.md#manifest)）。そのため、それらを表示するどの部分も、ダイアログや画面を広げてはならない。
+
+| 部分 | 形 |
+| --- | --- |
+| `Default: {default}` のヒント、古い値の注記、承認プロンプトの `Default:` | `wrap-anywhere`。空白のない値はフィールドの端で折り返す |
+| `Select` のリスト | `TagKindSelect` と同じく `max-w-popover` の `SelectContent`。リストはトリガーより狭くならないので、1280px ではフィールドの全幅に広がり、360px では 16px の余白の内側に収まる。各項目のテキストは `wrap-anywhere` の `span` で、長い選択肢はリスト内で複数行に折り返す |
+| `Select` のトリガー | 1 行。トリガー自身の `line-clamp-1` が長い値を切り、トリガーの `title` に選択されたテキスト全体を入れる |
+| 長い placeholder の `Input` | placeholder はフィールドの端で切れる。その下のヒントがデフォルト全体を示す |
 
 行の設定のまとめは、デフォルトを使っている設定を `{label} default` と呼ぶ。たとえば `Settings: Region default, Token set` は、ダイアログを開かなくても、プラグインが何を受け取るかを所有者に伝える。古い値は、まとめでは `{label} not set` となり、ファクト行の下の `Choose again` の行で、`Needs a value` と同じ形で名指しされる。デフォルトを持つ必須の設定が `Needs a value` に現れることはない（[R-3](research.md#r-3-a-setting-declares-default-and-options-the-stored-value-or-the-default-is-what-the-run-receives)）。
 
@@ -154,13 +166,14 @@ flowchart LR
   stored -->|なし| def[デフォルトを muted で表示]
   stored -->|選択肢の中| val[値を表示]
   stored -->|選択肢の外| stale[デフォルトを表示、警告の注記]
-  val -->|空にする、またはデフォルトを選ぶ、Save| def
-  stale -->|どれかを選ぶ、Save| val
+  val -->|空にする、または Default の項目、Save| def
+  stale -->|選択肢のどれか、Save| val
+  stale -->|Default の項目、Save| def
 ```
 
 | 状態 | フィールドの表示 |
 | --- | --- |
-| デフォルトを使用 | muted の色の placeholder かデフォルトの項目。その下に `Default: {default}` |
+| デフォルトを使用 | muted の色の placeholder か `Default ({default})` の項目。その下に `Default: {default}` |
 | 値を入力済み | `text-foreground` の値。その下に `Default: {default}` は残る |
 | 古い値 | デフォルトか `Not set`。その下に `text-warning` の古い値の注記 |
 | 保存中 | 049 と同じく、すべてのフィールドが無効 |
@@ -172,8 +185,8 @@ flowchart LR
 | 部分 | 形 |
 | --- | --- |
 | プロキシの行 | [文言](#network-section-text) のラベルと説明を持つ `FormRow`。コントロールは `Input type="url"` の `sm:w-sm`、`autocomplete="off"`、保存された URL か placeholder を示す |
-| 保存中 | フィールドがフォーカスを失うか Enter が押され、トリムした値が保存された値と異なるときに値を送る。スイッチと同じく行の下に `Saving…`。フィールドは編集できたままである |
-| 保存済み | 応答の `url` を示す。次の編集まで行の下に `Saved.` |
+| 保存中 | フィールドがフォーカスを失うか Enter が押され、トリムした値が保存された値と異なるときに値を送る。スイッチと同じく行の下に `Saving…`。フィールドは編集できたままである。保存は同時に 1 つだけ実行する。保存の実行中にフォーカスを失うか Enter が押されても、そのときは何も送らず、その保存が応答したとき、直前に保存した URL と異なれば最新の値を送る |
+| 保存済み | 応答の `url` は、フィールドが送った値のままであるときだけフィールドを置き換える。保存中に行った編集はフィールドに残り、失われない。次の編集まで行の下に `Saved.` |
 | 拒否 | URL の規則に反する値は送らない。値が変わるまでフィールドに `aria-invalid` と、その下に `FieldError`。サーバーの `400` も同じエラーを示すので、2 つの経路は同じに読める |
 | 失敗 | `SaveStatus` の `Alert` に `Couldn't save the proxy: {reason}`。入力した値は残る |
 | 空にした | 空にしたフィールドは `""` を保存する。以後の実行はプロキシを使わない。どの値でも同じく `Saved.` を示す |
@@ -271,11 +284,11 @@ vv の唯一のダークスキームで、動いている画面を見て判断�
 1. **Visual hierarchy**: 設定ダイアログでは、入力された値が本文の色、デフォルトが muted の色で読めるので、フィールドを上から見るだけで、所有者がどの設定を行ったかが分かる。古い値の注記は、ダイアログ内で唯一の `warning` の色である。Network セクションでは、プロキシの行がスイッチの行と同じ重みを持つ。ラベルの大きさ、説明の色が同じで、コントロールが同じ右端にある。前回の実行ダイアログでは、ファクトが出力ブロックより先に読まれ、失敗が唯一の `destructive` のテキストである。
 2. **Information density**: `Select` は `Input` と同じ高さなので、3 つのテキスト設定と 2 つの選択を持つダイアログは、同じ高さの 5 つのフィールドの 1 つの一覧として読める。1280×800 の前回の実行ダイアログは、ダイアログの本文をスクロールせずに、ファクト、切り詰めの行、少なくとも 12 行の出力を示す。1280px の比較では、30 個のタグを取得した結果が、取得したセルにチェックボックス付きですべてのタグを示し、`more` ボタンはなく、タイトルの行はその上に見えたままである。
 3. **Spacing rhythm**: デフォルトのヒントと古い値の注記は、秘密のヒントと同じく、フィールドの下の `FieldDescription` の距離に置く。プロキシの行は、スイッチの行とセクションの行のパディングと区切り線を共有する。タグの項目は縦横で同じ間隔を共有し、行のチェックボックスとラベルは、ほかの行のものとそろえて行の先頭に置く。
-4. **Typography**: 出力ブロックは前回の実行ダイアログで唯一の `font-mono` のテキストで、`text-xs` であり、300 文字の行は横スクロールバーなしでブロック内で折り返す。`Select` の項目の ` · default` は muted で、続く選択肢より小さい。ファクト行の `Last run {when}` は、隣と同じ `text-xs` である。
-5. **Action priority**: ダイアログでは、`Save` が塗りつぶしの唯一のボタンで、値が変わるまで無効である。フィールドをデフォルトに戻すのは 1 つの操作（フィールドを空にする、またはデフォルトの項目を選ぶ）である。プロキシはフィールドを離れたときに保存し、フィードバックは `Saving…` に続く `Saved.` だけで、スイッチの行の動作は変わらない。比較では、タグを 1 つ解除するのは 1 回の押下で、すべて解除するのは行のチェックボックスの 1 回の押下である。`Apply selected` は塗りつぶしの唯一のボタンのままである。
-6. **Visible state**: 選んだ選択肢を保存して再読み込みすると、`Select` がそれを示し、まとめは `{label} set` となる。デフォルトに戻して再読み込みすると、`Select` はデフォルトの項目を示し、まとめは `{label} default` となり、実行はデフォルトを受け取る（受け入れ条件 5 と 6）。保存された選択肢のないバージョンに置き換えられたプラグインは、古い値の注記と `Choose again` を示す（Issue のエッジケース）。取得のあと、一覧が読み直されると行に `Last run {when}` が現れ、ダイアログはプラグインが秘密を出力した場所に `[secret]` を入れた出力を示す（受け入れ条件 10 と 11）。2 回目の取得はそれを置き換える。プロキシを保存すると、それを通した取得は成功し、LAN の宛先は引き続きホスト付きで失敗する（受け入れ条件 7 と 8）。タグを 1 つ解除して適用すると、そのタグは動画に付かず、ほかのタグは仮のタグになる（受け入れ条件 9）。
-7. **Phone width**: 360px で、`Select` とその注記はフィールドの全幅に広がり、プロキシの行は入力がはみ出さずに積み重なり、出力ブロックはすべての行を折り返し、タグの項目は横スクロールなしで折り返す。
-8. **Examples that do not meet the requirement**: デフォルトが、所有者が入力したかのようにフィールドに書き込まれている。2 つの選択肢を持つ設定が `RadioGroup` かテキストフィールドである。古い値が選ばれた項目として示されている。プロキシに `Save` ボタンがある、または Work-info プラグインのセクションにある。出力がダイアログやページを広げる。出力のない実行が、言葉のない空のブロックを示す。取得したタグが 10 個で折りたたまれる。動画にあるタグにチェックボックスがある。取得したタグのセルに `+{n} more` が現れる。
+4. **Typography**: 出力ブロックは前回の実行ダイアログで唯一の `font-mono` のテキストで、`text-xs` であり、300 文字の行は横スクロールバーなしでブロック内で折り返す。`Default ({default})` の項目は muted なので、その下の選択肢と区別して読める。ファクト行の `Last run {when}` は、隣と同じ `text-xs` である。
+5. **Action priority**: ダイアログでは、`Save` が塗りつぶしの唯一のボタンで、値が変わるまで無効である。フィールドをデフォルトに戻すのは 1 つの操作（フィールドを空にする、または `Default` の項目を選ぶ）で、保存された値が古いかどうかにかかわらずどの値からでもできる。プロキシはフィールドを離れたときに保存し、フィードバックは `Saving…` に続く `Saved.` だけで、スイッチの行の動作は変わらない。比較では、タグを 1 つ解除するのは 1 回の押下で、すべて解除するのは行のチェックボックスの 1 回の押下である。`Apply selected` は塗りつぶしの唯一のボタンのままである。
+6. **Visible state**: 選んだ選択肢を保存して再読み込みすると、`Select` がそれを示し、まとめは `{label} set` となる。デフォルトに戻して再読み込みすると、`Select` は `Default ({default})` を示し、まとめは `{label} default` となり、実行はデフォルトを受け取る（受け入れ条件 5 と 6）。保存された選択肢のないバージョンに置き換えられたプラグインは、古い値の注記と `Choose again` を示す（Issue のエッジケース）。取得のあと、一覧が読み直されると行に `Last run {when}` が現れ、ダイアログはプラグインが秘密を出力した場所に `[secret]` を入れた出力を示す（受け入れ条件 10 と 11）。2 回目の取得はそれを置き換える。プロキシを保存すると、それを通した取得は成功し、LAN の宛先は引き続きホスト付きで失敗する（受け入れ条件 7 と 8）。タグを 1 つ解除して適用すると、そのタグは動画に付かず、ほかのタグは仮のタグになる（受け入れ条件 9）。
+7. **Phone width**: 360px で、`Select`、そのリスト、その注記はフィールドの全幅に広がり、長いデフォルトや選択肢はそれらの中で折り返し、プロキシの行は入力がはみ出さずに積み重なり、出力ブロックはすべての行を折り返し、タグの項目は横スクロールなしで折り返す。
+8. **Examples that do not meet the requirement**: デフォルトが、所有者が入力したかのようにフィールドに書き込まれている。2 つの選択肢を持つ設定が `RadioGroup` かテキストフィールドである。古い値が選ばれた項目として示されている。プロキシに `Save` ボタンがある、または Work-info プラグインのセクションにある。空白のない 200 文字の選択肢や 2000 文字のデフォルトが、ダイアログ、`Select` のリスト、画面を広げる。保存中にプロキシを編集すると、その編集が失われる。出力がダイアログやページを広げる。出力のない実行が、言葉のない空のブロックを示す。取得したタグが 10 個で折りたたまれる。動画にあるタグにチェックボックスがある。取得したタグのセルに `+{n} more` が現れる。
 
 ## アクセシビリティ {#accessibility}
 

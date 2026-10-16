@@ -57,17 +57,27 @@ apart at a glance (the Issue's `UI品質`). Writing the default into the field
 was rejected: the owner could not tell it from their own entry, and clearing
 it to get the default back would look like deleting a value. Consistently,
 the default is never stored as an entered value: an empty field, or the
-default chosen in a `Select`, saves `null`, so a new version's default reaches
+`Select`'s `Default` item, saves `null`, so a new version's default reaches
 the plugin ([R-3](research.md#r-3-a-setting-declares-default-and-options-the-stored-value-or-the-default-is-what-the-run-receives)).
 
 A setting with `options` is a **`Select`**, whatever the count of options
 (2 to 50): [components.md, Select and RadioGroup](../../web/registry/rules/components.md#select-and-radiogroup)
 gives a `Select` to a settings row where the current value is what matters,
-and its trigger has the height of an `Input`, so a choice sits in the list of
-fields without a visual break (the Issue's `UI品質`). A `RadioGroup` for few
+and its default trigger is `h-9`, the height of an `Input` (the `sm` trigger
+is `h-8`, so it is not used), so a choice sits in the list of fields without a
+visual break (the Issue's `UI品質`). A `RadioGroup` for few
 options was rejected: two to six radios beside text fields make one setting
 three times taller than its neighbours for no gain in a dialog the owner
 opens to set values, not to compare them.
+
+Returning to the default is a **`Default ({default})` item of its own** at
+the top of the list, apart from the option that equals the default. Marking
+the default's option and selecting it for a setting with no stored value was
+rejected: when the stored value is that option or a stale one, the item the
+owner would press to get the default back is already selected, a `Select`
+reports no change for it, and `Save` stays disabled. The separate item keeps
+the `Input`'s rule: the owner either follows the default or enters a value,
+and an entered value equal to the default is still their entry.
 
 The proxy is **one `FormRow` in the Network section** with an `Input`, saved
 when the value changes, as the LAN switch saves when it changes (the Issue's
@@ -112,9 +122,10 @@ embedded untranslated.
 | Place | Text | Notes |
 | --- | --- | --- |
 | Default hint | Default: {default} | `FieldDescription`; the empty field shows `{default}` as its placeholder |
-| Select, no value and no default | Not set | The `Select`'s placeholder, muted |
-| Select, item for the default | {option} · default | The option, then ` · default` in `text-muted-foreground`, so the item reads as the option |
-| Select, item to clear | Not set | The first item, muted, only for a setting without a default |
+| Select, stale value | Default ({default}), or Not set without a default | The `Select`'s placeholder, muted; no item is selected |
+| Select, item to follow the default | Default ({default}) | The first item, muted, only for a setting with a default; saves `null` |
+| Select, item to clear | Not set | The first item, muted, only for a setting without a default; saves `null` |
+| Select, option item | {option} | Every option in the manifest's order, the default's option included and unmarked |
 | Stale value, with a default | "{value}" isn't one of this version's choices. The default is used until you save. | `text-warning` with lucide `CircleAlert` under the field |
 | Stale value, no default | "{value}" isn't one of this version's choices. No value is sent until you save. | The same form |
 | Save | Save | Unchanged; sends `null` for a field returned to its default |
@@ -182,7 +193,8 @@ dialog uses it.
 | `run-output` | The maximum height of the last run dialog's output block (`max-h-run-output`): a share of the viewport's height, as `issue-list` is for the scan issue list, so the facts and the footer stay in view at 1280×800 and at 360×640 while a 64 KiB output scrolls inside the block |
 
 Nothing else is added. `Checkbox` already has the `indeterminate` state,
-`Select` the `sm` trigger, and `FormDialog` the `wide` size and the footer
+`Select` its default `h-9` trigger and `max-w-popover` list (as
+`TagKindSelect`), and `FormDialog` the `wide` size and the footer
 without `Cancel`. No colour token is added and nothing is added to `pairs` in
 `web/src/theme/tokens.test.ts`: the warning lines, the muted notes and the
 output block use existing roles (`text-warning`, `text-muted-foreground`,
@@ -199,15 +211,26 @@ rule. The field of a setting changes by what the manifest declares.
 | --- | --- |
 | No `default`, no `options` | As 049 |
 | `default`, no `options` | `Input type="text"` with the stored value, or empty with `{default}` as `placeholder`; `Default: {default}` under it. Emptying the field, or leaving it empty, saves `null` |
-| `options` | `Select` `sm`, full width of the field, items in the manifest's order. The chosen item is the stored value when it is one of the options, else the default's item, else the placeholder `Not set`. The default's item carries ` · default`; a setting without a default has `Not set` as its first item |
-| `options`, stored value not among them (`staleValue`) | The `Select` as above, showing the default or `Not set`, and the stale note under it in `text-warning`. Saving anything, the default included, replaces the stored value |
+| `options` | `Select` with the default trigger (`h-9`), full width of the field. The first item is `Default ({default})`, or `Not set` for a setting without a default; the options follow in the manifest's order. The selected item is the stored value's option when a value is stored, else the first item |
+| `options`, stored value not among them (`staleValue`) | The `Select` with no item selected, so its muted placeholder reads `Default ({default})` or `Not set`, and the stale note under it in `text-warning`. Every item, the first included, is a change; choosing the first saves `null` and clears the note |
 | Secret | As 049; a secret declares neither, so nothing changes |
 
-`Save` stays disabled while no key has changed. Choosing the default's item
-or emptying a field with a default counts as a change only when a value is
-stored: it sends `null`, and the field then shows the default as before. A
-stale value counts as stored, so choosing the default's item sends `null`
-and clears the note.
+`Save` stays disabled while no key has changed. Choosing the first item or
+emptying a field with a default is a change only when a value is stored: it
+sends `null`, and the field then shows the default as before. When a value is
+stored, the first item is not the selected one (the stored option is, or none
+for a stale value), so choosing it is always a change the `Select` reports.
+
+A default may be 2000 characters and an option 200, with no space in them
+([contracts/plugin-contract.md](contracts/plugin-contract.md#manifest)), so
+nothing that shows them may widen the dialog or the screen:
+
+| Part | Form |
+| --- | --- |
+| `Default: {default}` hint, stale note, approval prompt's `Default:` | `wrap-anywhere`, so a value without spaces breaks at the field's edge |
+| `Select` list | `SelectContent` with `max-w-popover`, as `TagKindSelect`; the list is never narrower than the trigger, so it spans the field at 1280px and stays inside the 16px margin at 360px. Each item's text is a `span` with `wrap-anywhere`, so a long option wraps over several lines in the list |
+| `Select` trigger | One line: the trigger's own `line-clamp-1` cuts a long value, and the trigger's `title` holds the whole selected text |
+| `Input` with a long placeholder | The placeholder is cut at the field's edge; the hint under it shows the whole default |
 
 The row's settings summary names a setting whose default is in use as
 `{label} default`, so `Settings: Region default, Token set` tells the owner
@@ -228,13 +251,14 @@ flowchart LR
   stored -->|none| def[Default shown, muted]
   stored -->|in the options| val[Value shown]
   stored -->|outside the options| stale[Default shown, warning note]
-  val -->|empty or default chosen, Save| def
-  stale -->|any choice, Save| val
+  val -->|emptied or Default item, Save| def
+  stale -->|an option, Save| val
+  stale -->|Default item, Save| def
 ```
 
 | State | What the field shows |
 | --- | --- |
-| Default in use | The placeholder or the default's item in the muted colour, `Default: {default}` under it |
+| Default in use | The placeholder or the `Default ({default})` item in the muted colour, `Default: {default}` under it |
 | Value entered | The value in `text-foreground`; `Default: {default}` stays under it |
 | Stale | The default or `Not set`, the stale note in `text-warning` under it |
 | Saving | Every field disabled, as 049 |
@@ -250,8 +274,8 @@ only) with its addresses or caution block, then the proxy row.
 | Part | Form |
 | --- | --- |
 | Proxy row | `FormRow` with the label and description from [Words](#network-section-text); the control is an `Input type="url"` `sm:w-sm`, `autocomplete="off"`, with the saved URL or the placeholder |
-| Saving | The value is sent when the field loses focus or Enter is pressed and the trimmed value differs from the saved one. `Saving…` under the row as the switch; the field stays editable |
-| Saved | The response's `url` is shown; `Saved.` under the row until the next edit |
+| Saving | The value is sent when the field loses focus or Enter is pressed and the trimmed value differs from the saved one. `Saving…` under the row as the switch; the field stays editable. One save runs at a time: a blur or Enter while a save runs sends nothing then, and the latest value is sent when that save answers, if it differs from the URL just saved |
+| Saved | The response's `url` replaces the field only when the field still holds the value that was sent; an edit made during the save stays in the field and is not lost. `Saved.` under the row until the next edit |
 | Refused | A value that breaks the URL rule is not sent: `aria-invalid` and the `FieldError` under the field until the value changes. A `400` from the server shows the same error, so the two paths read alike |
 | Failed | `Couldn't save the proxy: {reason}` in the `SaveStatus` `Alert`; the typed value stays |
 | Cleared | An emptied field saves `""`; the run then uses no proxy. `Saved.` shows as for any value |
@@ -387,19 +411,20 @@ Judged by looking at the running screen in vv's one dark scheme
    checkbox and label sit at the top of the row, aligned with the other rows'.
 4. **Typography**: the output block is the only `font-mono` text in the last
    run dialog, in `text-xs`, and a 300-character line wraps inside the block
-   without a horizontal scrollbar. ` · default` in a `Select` item is muted
-   and smaller than the option it follows. `Last run {when}` in the facts line
+   without a horizontal scrollbar. The `Default ({default})` item is muted,
+   so it reads apart from the options under it. `Last run {when}` in the facts line
    is `text-xs` like its neighbours.
 5. **Action priority**: in the dialog, `Save` is the one filled button and is
    disabled until a value changes; returning a field to its default is one
-   action (empty the field, or pick the default's item). The proxy saves on
+   action (empty the field, or pick the `Default` item), from any stored
+   value, stale or not. The proxy saves on
    leaving the field, with `Saving…` then `Saved.` as its only feedback, and
    the switch row's behaviour is unchanged. On the comparison, clearing one
    tag is one press and clearing all is one press on the row's checkbox;
    `Apply selected` stays the one filled button.
 6. **Visible state**: after saving a chosen option and reloading, the
    `Select` shows it and the summary says `{label} set`; after returning it
-   to the default and reloading, the `Select` shows the default's item, the
+   to the default and reloading, the `Select` shows `Default ({default})`, the
    summary says `{label} default`, and a run receives the default (acceptance
    criteria 5 and 6). A plugin replaced by a version without the saved option
    shows the stale note and `Choose again` (the Issue's edge case). After a
@@ -410,14 +435,18 @@ Judged by looking at the running screen in vv's one dark scheme
    with its host (acceptance criteria 7 and 8). Applying with one tag cleared
    leaves that tag off the video and the others tentative (acceptance
    criterion 9).
-7. **Phone width**: at 360px the `Select` and its note span the field, the
+7. **Phone width**: at 360px the `Select`, its list and its note span the
+   field, a long default or option wraps inside them, the
    proxy row stacks without the input overflowing, the output block wraps
    every line, and the tag items wrap without sideways scrolling.
 8. **Examples that do not meet the requirement**: the default is written into
    the field as if the owner had typed it; a setting with two options is a
    `RadioGroup` or a text field; the stale value is shown as the chosen item;
    the proxy has a `Save` button or sits in the Work-info plugins section;
-   the output widens the dialog or the page; a run with no output shows an
+   a 200-character option or a 2000-character default without spaces widens
+   the dialog, the `Select` list or the screen; editing the proxy while it
+   saves loses the edit; the output widens the dialog or the page; a run with
+   no output shows an
    empty block with no words; the fetched tags fold at ten; a tag on the
    video has a checkbox; `+{n} more` appears in the fetched tags cell.
 
