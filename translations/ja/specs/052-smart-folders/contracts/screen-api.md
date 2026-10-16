@@ -1,6 +1,6 @@
 ---
 source: specs/052-smart-folders/contracts/screen-api.md
-sourceHash: 3d518d17720e06984feebb1bd99ee994a893ef74d3e2739cbc55e90c8d5a2d46
+sourceHash: 2416752817a2177d0b4a20e3a2b4bb8698dfe4a9dcf100f4526577cc6d79c66d
 ---
 
 # 契約: スマートフォルダの画面の API {#contract-screen-api-for-smart-folders}
@@ -117,6 +117,7 @@ SmartFolderChange:                 # at least one member
 | `listVideos`、`listLibrary`、`listLibraryIds` | `SmartRule` の範囲を持つ `addedWithin`、`minDuration`、`maxDuration` が加わる。ゲストもそれらを送れる。範囲外の値、または `minDuration` が `maxDuration` を超えることは `400 invalid_request` である |
 | `FavoritesRequest`、`FavoritesResponse` | `smartFolderIds` が加わる |
 | `PlaylistItemsAdd`、`PlaylistItem` | `smartFolderIds` と `smartFolder` の種類が加わる。再生のときのフォルダの再生の順序で再生する |
+| `PlaylistStep` | `smartFolderId` (`int64`、省略可) が加わる: 移動先の項目がスマートフォルダの項目のときはその項目のフォルダで、動画やグループの項目では含まれない。`PlaylistPlayback` の `next`、`previousItem`、`nextItem` がそれを持つので、動画のページはプレイリストのパネルの応答なしに、再生の応答だけから `?smartFolder` 付きで移動先を開く ([ui-design.md、Video page in a playlist](../ui-design.md#video-page-in-a-playlist))。設計の 2026-10-16 の改訂で追加した。「動画を、それを開いたスマートフォルダの中で再生する」(#1181) が実装する |
 | `GET /api/videos/{id}`、`/related`、`/group-members` | `smartFolder` のクエリーが加わる: `group` と同じように (048 R-9)、フォルダの再生の順序が `Up next`、前後の動画、メンバーの窓の文脈になる。両方を送ると `group` が優先する。その動画を持たないフォルダは無視する |
 | `Video` | 文脈がフォルダのとき `smartFolder: { id, name, position, count }` が加わる |
 | `/api/events` | `{ ids }` を持つ種類 `smartFolder` が加わる ([R-12](../research.md#r-12-writes-that-can-change-a-match-publish-smartfolderschanged)) |

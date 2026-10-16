@@ -1,6 +1,6 @@
 ---
 source: specs/052-smart-folders/ui-design.md
-sourceHash: 238d560a3f596ec1594f00c9508b4a268fe86b932abd6a21fbc37a4836b7384d
+sourceHash: c91dfc56d8e90cbfb4d4b1db1bde4f61cb882cf71dd18b73c146e8d4f9f957a7
 ---
 
 # UI 設計: 中身が保存した条件に従うスマートフォルダ {#ui-design-smart-folders-whose-contents-follow-a-saved-condition}
@@ -46,7 +46,7 @@ flowchart LR
   playlist -->|行| video
 ```
 
-変わらないもの: 動画のカードとグループのカード。お気に入りのハート。`Add to playlist` と `Add to group`。選択バーとその操作。グループのページ。フォルダの画面。プレイリスト一覧の画面。サイドバー。自動再生の通知。プレイリストの画面とプレイリストのパネルは 1 点だけ変わる: スマートフォルダの項目を、グループの項目の行として描く ([Playlists](#playlists))。下のすべての部分はレジストリのコンポーネントかパターンであり、`web/src/theme/tokens.test.ts` のコントラストの組は何も増えない。トークンは加えない: スマートフォルダのカードはグループのカードを使い回し、ダイアログは `FormDialog` であり、フォルダのページはグループのページの帯、ヘッダー、本体を使い回し、プレイリストの行はグループの項目の行を使い回し、2 つの新しい絞り込みの行は `Filter` のポップオーバーの幅の `Select` である。
+変わらないもの: 動画のカードとグループのカード。お気に入りのハート。`Add to playlist` と `Add to group`。選択バーとその操作。グループのページ。フォルダの画面。プレイリスト一覧の画面 (`/playlists`、すべてのプレイリストのカード)。サイドバー。自動再生の通知。プレイリストの画面 (`/playlists/{id}`、1 つのプレイリストの行) と動画のページのプレイリストのパネルは 1 点だけ変わる: スマートフォルダの項目を、グループの項目の行として描く ([Playlists](#playlists))。下のすべての部分はレジストリのコンポーネントかパターンであり、`web/src/theme/tokens.test.ts` のコントラストの組は何も増えない。トークンは加えない: スマートフォルダのカードはグループのカードを使い回し、ダイアログは `FormDialog` であり、フォルダのページはグループのページの帯、ヘッダー、本体を使い回し、プレイリストの行はグループの項目の行を使い回し、2 つの新しい絞り込みの行は `Filter` のポップオーバーの幅の `Select` である。
 
 ## この形にした理由 {#why-this-shape}
 
@@ -318,7 +318,7 @@ stateDiagram-v2
 
 ## 動画のページ {#video-page}
 
-`?smartFolder=<id>` があると、ページの読み取りは `smartFolder` を運び、フォルダの行、矢印、`Up next` のメンバーの一覧、自動再生の通知はフォルダの再生順に従う。両方あるときは `group` が勝ち、プレイリストの文脈は両方より優先する ([contracts/screen-api.md、Schemas and parameters changed](contracts/screen-api.md#schemas-and-parameters-changed))。もう動画を持たないフォルダはサーバーが無視し、そのときページはクエリーがないときに出すものを出す。
+`?smartFolder=<id>` があると、ページの読み取りは `smartFolder` を運び、フォルダの行、矢印、`Up next` のメンバーの一覧、自動再生の通知はフォルダの再生順に従う。両方あるときは `group` が勝つ ([contracts/screen-api.md、Schemas and parameters changed](contracts/screen-api.md#schemas-and-parameters-changed))。もう動画を持たないフォルダはサーバーが無視し、そのときページはクエリーがないときに出すものを出す。プレイリストの文脈 (`?playlist=&item=`) では、グループのメンバーのときと同じく、プレイリストの再生の応答が矢印、通知、進む先を決め ([044 research、R-7](../044-playlists/research.md#r-7-a-playlist-playback-overrides-the-group-and-folder-neighbours))、`smartFolder` は、パネルの下のフォルダの行とフォルダの `Up next` の一覧のために、ページがいるフォルダの項目を示す ([Video page in a playlist](#video-page-in-a-playlist))。プレイリストのフォルダの項目の中での `next` はフォルダの再生順なので、2 つは競合しない。
 
 | 部分 | 形 |
 | --- | --- |
@@ -354,7 +354,7 @@ stateDiagram-v2
 
 ### プレイリストの中の動画のページ {#video-page-in-a-playlist}
 
-`?playlist=<id>&item=<itemId>` があり、現在の項目がスマートフォルダの項目のとき、ページは項目のフォルダを読み取りに加える: ページが項目の中で開くすべての URL (通知の進行と「Play now」、「Play next」、フォルダの `Up next` の行) と、`itemId` がパネルの応答のスマートフォルダの項目であるすべての移動 (矢印、フォルダの項目に着く通知) は `smartFolder={that folder's id}` を運ぶ。動画やグループの項目への移動は何も運ばない。このとき行は、グループの項目の中でプレイリスト、グループ、タイトルと読むのと同じく、プレイリスト、スマートフォルダ、タイトルの順に読み、横の列はパネル、フォルダの `Up next`、関連する動画である。進む先は再生の応答の `next` で、それは読み取りの時点でのフォルダの再生順に従う ([contracts/screen-api.md](contracts/screen-api.md#schemas-and-parameters-changed))。そのためパネルの行、フォルダの `Up next`、通知は一致する。
+`?playlist=<id>&item=<itemId>` があり、現在の項目がスマートフォルダの項目のとき、ページは項目のフォルダを読み取りに加える: ページが開くすべての URL は、それが開く移動先がフォルダを持つときは `smartFolder={the step's smartFolderId}` を運び、持たないときは何も運ばない。移動先 (`PlaylistStep`) は自身のフォルダを示す: 移動先の項目がスマートフォルダの項目のとき、再生の応答の `next`、`previousItem`、`nextItem` は `smartFolderId` を持つ ([contracts/screen-api.md、Schemas and parameters changed](contracts/screen-api.md#schemas-and-parameters-changed))。そのため矢印、通知の進行と「Play now」、「Play next」は、フォルダをパネルからではなく常に再生の応答から取る。フォルダの `Up next` の行は現在の項目の中にとどまり、ページ自身の `smartFolder` を運ぶ。パネルの読み取りが失敗しているときや、2 つがまだ一致しないときも、矢印と通知は再生の応答だけから描かれるので、そのためにパネルの応答は要らない ([044 UI design、Playlist panel](../044-playlists/ui-design.md#playlist-panel)、[One order](../044-playlists/ui-design.md#one-order))。このとき行は、グループの項目の中でプレイリスト、グループ、タイトルと読むのと同じく、プレイリスト、スマートフォルダ、タイトルの順に読み、横の列はパネル、フォルダの `Up next`、関連する動画である。進む先は再生の応答の `next` で、それは読み取りの時点でのフォルダの再生順に従う。そのためパネルの行、フォルダの `Up next`、通知は一致する。
 
 ### 状態 {#states-1}
 
