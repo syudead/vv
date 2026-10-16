@@ -15,6 +15,7 @@ import {
   generateScanIssueFixtures,
   generateScanProgressFixtures,
   generateSearchFixtures,
+  generateSmartFoldersFixtures,
   generateTagsFixtures,
   generateThumbnailEditFixtures,
   generateThumbnailUploadFixtures,
@@ -41,6 +42,7 @@ const groupsMediaDir = path.join(runRoot, "groups-media");
 const groupsSpareDir = path.join(runRoot, "groups-spare");
 const dragOrganizeMediaDir = path.join(runRoot, "drag-organize-media");
 const historyMediaDir = path.join(runRoot, "history-media");
+const smartFoldersMediaDir = path.join(runRoot, "smart-folders-media");
 const playlistsMediaDir = path.join(runRoot, "playlists-media");
 const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
 const scanIssuesMediaDir = path.join(runRoot, "scan-issues-media");
@@ -77,6 +79,7 @@ function run() {
     generateGroupsFixtures(groupsMediaDir, groupsSpareDir);
     generateDragOrganizeFixtures(dragOrganizeMediaDir);
     generateHistoryFixtures(historyMediaDir);
+    generateSmartFoldersFixtures(smartFoldersMediaDir);
     generatePlaylistsFixtures(playlistsMediaDir);
     generateScanProgressFixtures(scanProgressMediaDir);
     generateScanIssueFixtures(scanIssuesMediaDir);
@@ -138,6 +141,7 @@ function run() {
           MDM_E2E_GROUPS_SPARE_DIR: groupsSpareDir,
           MDM_E2E_DRAG_ORGANIZE_MEDIA_DIR: dragOrganizeMediaDir,
           MDM_E2E_HISTORY_MEDIA_DIR: historyMediaDir,
+          MDM_E2E_SMART_FOLDERS_MEDIA_DIR: smartFoldersMediaDir,
           MDM_E2E_PLAYLISTS_MEDIA_DIR: playlistsMediaDir,
           MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
           MDM_E2E_SCAN_ISSUES_MEDIA_DIR: scanIssuesMediaDir,

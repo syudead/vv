@@ -1,14 +1,13 @@
-import { Folder, FolderX, Play } from "lucide-react";
+import { Folder } from "lucide-react";
 import {
   type ReactNode,
   type Ref,
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
-import { Link, useLocation, useNavigate, useParams } from "react-router";
+import { Link, useLocation, useParams } from "react-router";
 
 import type { LibraryGroup, TagRef, Video, VideoFolder } from "../api/client";
 import type { GroupItem, GroupRef } from "../api/groups";
@@ -18,12 +17,10 @@ import Breadcrumbs from "../folders/Breadcrumbs";
 import { folderUrl } from "../folders/folderPath";
 import { t } from "../i18n";
 import { formatDuration } from "../lib/format";
-import CardTagRow from "../library/CardTagRow";
 import { GroupCard } from "../library/GroupCard";
 import { viewControls } from "../library/LibraryToolbar";
 import {
   emptySelection,
-  favoriteTargets,
   type LibrarySelection,
   sameSelection,
   selectedGroupOf,
@@ -34,18 +31,11 @@ import {
   toggleVideo,
 } from "../library/selection";
 import SelectionBar from "../library/SelectionBar";
-import { TAG_PARAM } from "../library/tagCriteria";
 import { TagRowMeasureProvider } from "../library/TagRowMeasure";
+import { useCardTagRows } from "../library/useCardTagRows";
 import { useEscapeClearsSelection } from "../library/useEscapeClearsSelection";
-import {
-  readViewPreferences,
-  type ViewMode,
-  type ViewPreferences,
-  writeViewPreferences,
-  type Zoom,
-} from "../preferences/viewPreferences";
+import type { ViewMode, Zoom } from "../preferences/viewPreferences";
 import TopBarPortal from "../shell/TopBarPortal";
-import { EmptyState } from "../ui/patterns/empty-state";
 import { ErrorState } from "../ui/patterns/error-state";
 import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
@@ -53,13 +43,24 @@ import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
-import { Skeleton } from "../ui/shadcn/skeleton";
 import { crumbKey, CrumbDropTarget, DraggableCard } from "../videoList/cardDrag";
 import { Grid } from "../videoList/Grid";
+import {
+  useDocumentTitle,
+  useLoadMoreSentinel,
+  usePressTagToLibrary,
+  useSelectionTargets,
+  useViewControls,
+} from "../videoList/pageHooks";
+import {
+  GoneState,
+  LoadingTrailHeader,
+  PlayLink,
+  UnavailableTrailHeader,
+} from "../videoList/trailHeader";
 import { type UndoToast, useUndoToast } from "../videoList/undoToast";
 import { useVideoDrops } from "../videoList/useVideoDrops";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
-import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard from "../videoList/VideoCard";
 import { GroupChangedContext } from "./groupChanges";
 import {
@@ -174,28 +175,6 @@ function useGroupPageDrops({
   return { shownData, dropOnto, nameFieldFor: drops.nameFieldFor };
 }
 
-/** useDocumentTitle は名前が分かっている間だけ、窓の題をその名前にする。 */
-function useDocumentTitle(name: string | undefined) {
-  useEffect(() => {
-    if (name === undefined) return;
-    const previous = document.title;
-    document.title = name;
-    return () => {
-      document.title = previous;
-    };
-  }, [name]);
-}
-
-/** useViewPreferences はライブラリと共有する表示形式と大きさである。 */
-function useViewPreferences() {
-  const [preferences, setPreferences] = useState(readViewPreferences);
-  const save = useCallback((updated: ViewPreferences) => {
-    setPreferences(updated);
-    writeViewPreferences(updated);
-  }, []);
-  return { preferences, save };
-}
-
 /**
  * useGroupSelection はグループのページの選択である。ライブラリと同じく、動画の id の集合と、
  * グループとして選んだ子グループを持つ（ui-design.md「Body」）。
@@ -268,28 +247,9 @@ function useGroupSelection(data: GroupPageData | null) {
   };
 }
 
-/** useSentinel は番兵が見える範囲の 600px 以内に来たら `onNear` を呼ぶ（ライブラリと同じ）。 */
-function useSentinel(enabled: boolean, onNear: () => void) {
-  const sentinel = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    const target = sentinel.current;
-    if (target === null || !enabled) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) onNear();
-      },
-      { rootMargin: "600px" },
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [enabled, onNear]);
-  return sentinel;
-}
-
 /** GroupScreen は経路の id と道筋 1 つのグループのページである。 */
 function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[] }) {
   const location = useLocation();
-  const navigate = useNavigate();
   const owner = useAudience() === "owner";
   const {
     state,
@@ -324,11 +284,9 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     onDissolved: dissolvedByRemoval,
     undo,
   });
-  const { preferences, save } = useViewPreferences();
-  const { view, zoom } = preferences;
   const preview = usePreviewCoordination();
   const { resetPreview } = preview;
-  const { listRef, capture } = useZoomAnchor(zoom);
+  const { view, zoom, changeView, changeZoom, listRef } = useViewControls(resetPreview);
   const selection = useGroupSelection(data);
   const listUrl = `${location.pathname}${location.search}`;
 
@@ -337,44 +295,16 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     resetPreview();
   }, [data, resetPreview, view, zoom]);
 
-  const changeView = useCallback(
-    (next: ViewMode) => {
-      resetPreview();
-      save({ ...preferences, view: next });
-    },
-    [preferences, resetPreview, save],
+  const sentinel = useLoadMoreSentinel(
+    data?.nextCursor !== undefined && more === "idle",
+    loadMore,
+    resetPreview,
   );
-  const changeZoom = useCallback(
-    (next: Zoom) => {
-      capture();
-      resetPreview();
-      save({ ...preferences, zoom: next });
-    },
-    [capture, preferences, resetPreview, save],
-  );
-
-  const near = useCallback(() => {
-    resetPreview();
-    loadMore();
-  }, [loadMore, resetPreview]);
-  const sentinel = useSentinel(data?.nextCursor !== undefined && more === "idle", near);
-
-  // カードのタグを押すと、そのタグで絞ったライブラリを開く。グループのページは自分の並びを
-  // 見せる画面で、絞り込みを持たない（ui-design.md「Body」）。
-  const pressTag = useCallback(
-    (tag: TagRef) => void navigate(`/?${TAG_PARAM}=${String(tag.id)}`),
-    [navigate],
-  );
+  // カードのタグを押すと、そのタグで絞ったライブラリを開く（ui-design.md「Body」）。
+  const pressTag = usePressTagToLibrary();
 
   const selectionMode = selection.selection.ids.size > 0;
-  const favorites = useMemo(
-    () => favoriteTargets(selection.selection),
-    [selection.selection],
-  );
-  const selectedIds = useMemo(
-    () => Array.from(selection.selection.ids),
-    [selection.selection.ids],
-  );
+  const { favorites, selectedIds } = useSelectionTargets(selection.selection);
 
   const { clear } = selection;
 
@@ -515,7 +445,12 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
           onRetry={reload}
         />
       )}
-      {state.kind === "gone" && <GoneState />}
+      {state.kind === "gone" && (
+        <GoneState
+          title={t.groups.detail.gone.title}
+          description={t.groups.detail.gone.description}
+        />
+      )}
       {shownData !== null && id !== null && shownData.items.length > 0 && (
         <div ref={listRef}>
           <GroupItems
@@ -582,22 +517,6 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   );
 }
 
-/** GoneState はグループがもう無いとき（404）の本体である。 */
-function GoneState() {
-  return (
-    <EmptyState
-      icon={<FolderX aria-hidden="true" />}
-      title={t.groups.detail.gone.title}
-      description={t.groups.detail.gone.description}
-      action={
-        <Button size="sm" asChild>
-          <Link to="/">{t.groups.detail.gone.action}</Link>
-        </Button>
-      }
-    />
-  );
-}
-
 /**
  * GroupHeader は道筋の帯と見出しである（ui-design.md「Trail band」「Header」「States」）。帯は
  * フォルダ画面の Breadcrumbs を共有し、上のバーの下に貼り付く。
@@ -622,32 +541,11 @@ function GroupHeader({
   titleRef: Ref<HTMLHeadingElement>;
 }) {
   if (state.kind === "loading") {
-    return (
-      <>
-        <Breadcrumbs label={t.groups.trail} crumbs={loadingCrumbs(trail)} keepFirst />
-        <PageHeader
-          title={
-            <>
-              <span className="sr-only">{t.list.loading}</span>
-              <Skeleton aria-hidden="true" className="h-6 w-1/2" />
-            </>
-          }
-        />
-      </>
-    );
+    return <LoadingTrailHeader label={t.groups.trail} crumbs={loadingCrumbs(trail)} />;
   }
   if (state.kind !== "ready" || id === null) {
     // 読めなかったときと無くなったときは、見せられないものの名前を出さない。
-    return (
-      <>
-        <Breadcrumbs
-          label={t.groups.trail}
-          crumbs={[{ label: t.library.title }]}
-          keepFirst
-        />
-        <PageHeader title={t.library.title} />
-      </>
-    );
+    return <UnavailableTrailHeader label={t.groups.trail} />;
   }
   const { group } = state.data;
   const crumbs = trailCrumbs(state.data.trail, group.name);
@@ -674,16 +572,11 @@ function GroupHeader({
         actions={
           <>
             {state.data.items.length > 0 && (
-              <Button size="sm" asChild>
-                <Link
-                  to={videoInGroupPath(group.openVideoId, id)}
-                  state={{ from: listUrl, autoplay: true }}
-                  aria-label={t.groups.detail.playFor(group.name)}
-                >
-                  <Play aria-hidden="true" />
-                  {t.groups.detail.play}
-                </Link>
-              </Button>
+              <PlayLink
+                to={videoInGroupPath(group.openVideoId, id)}
+                from={listUrl}
+                name={group.name}
+              />
             )}
             {menu}
           </>
@@ -785,30 +678,12 @@ function GroupItems({
         {card}
       </DraggableCard>
     );
-  const { toggleVideoSelection, toggleGroupSelection } = selection;
-
-  const videoTags = useCallback(
-    (video: Video) => (
-      <CardTagRow
-        tags={video.tags}
-        selectionMode={selectionMode}
-        onPress={onPressTag}
-        onToggleSelection={() => toggleVideoSelection(video.id)}
-      />
-    ),
-    [onPressTag, selectionMode, toggleVideoSelection],
-  );
-  const groupTags = useCallback(
-    (group: LibraryGroup) => (
-      <CardTagRow
-        tags={group.tags}
-        selectionMode={selectionMode}
-        onPress={onPressTag}
-        onToggleSelection={() => toggleGroupSelection(group)}
-      />
-    ),
-    [onPressTag, selectionMode, toggleGroupSelection],
-  );
+  const { videoTags, groupTags } = useCardTagRows({
+    selectionMode,
+    onPressTag,
+    toggleVideo: selection.toggleVideoSelection,
+    toggleGroup: selection.toggleGroupSelection,
+  });
 
   if (view === "list") {
     return (

@@ -154,22 +154,25 @@ export async function searchWorkInfo(
   return result.candidates;
 }
 
+/** WorkInfoTarget は取得する作品で、作品の URL か ID（URL に埋め込むのはプラグイン）である。 */
+export type WorkInfoTarget = { url: string } | { id: string };
+
 /**
- * fetchWorkInfo は承認済みのプラグイン `pluginId` の fetch で作品の `url` から動画 `videoId` の作品情報を取る
- * （POST /api/videos/{id}/work-info-fetches）。結果は作品の詳細と、人物・団体ごとの照合の答え `match` を
- * 持つ。結果はサーバーが 10 分持ち、動画は変わらない。動画が無ければ
- * 404 `not_found` で、実行の失敗は searchWorkInfo と同じである。
+ * fetchWorkInfo は承認済みのプラグイン `pluginId` で動画 `videoId` の作品情報を取る
+ * （POST /api/videos/{id}/work-info-fetches）。`target` の `url` か `id` を fetch に渡す。
+ * 結果は作品の詳細と、人物・団体ごとの照合の答え `match` を持つ。結果はサーバーが 10 分持ち、動画は
+ * 変わらない。動画が無ければ 404 `not_found` で、実行の失敗は searchWorkInfo と同じである。
  */
 export function fetchWorkInfo(
   videoId: number,
   pluginId: number,
-  url: string,
+  target: WorkInfoTarget,
   signal?: AbortSignal,
 ): Promise<WorkInfoFetch> {
   return request<WorkInfoFetch>(`/api/videos/${String(videoId)}/work-info-fetches`, {
     method: "POST",
     headers: jsonHeaders,
-    body: JSON.stringify({ pluginId, url }),
+    body: JSON.stringify({ pluginId, ...target }),
     signal,
   });
 }

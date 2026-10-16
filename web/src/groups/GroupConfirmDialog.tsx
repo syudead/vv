@@ -14,6 +14,7 @@ import { Spinner } from "../ui/shadcn/spinner";
  * 開いている間だけ描く。確定で `request` を送り、送っている間は閉じない。成功は `onDone` に
  * 結果を渡し（閉じるのと、トーストと、画面の動きは呼び出し側が持つ）、`404`（グループがもう無い）は
  * `onGone` に任せる。ほかの失敗は `failed` の文で窓の中の `Alert` に出し、窓を開いたままにする。
+ * `actionDisabled` と `notice` で、確定の前に要るもの（影響の数など）が揃うまで確定を止められる。
  */
 export default function GroupConfirmDialog<T>({
   request,
@@ -25,6 +26,8 @@ export default function GroupConfirmDialog<T>({
   submit,
   submitting,
   failed,
+  actionDisabled,
+  notice,
 }: {
   request: () => Promise<T>;
   onDone: (result: T) => void;
@@ -35,6 +38,10 @@ export default function GroupConfirmDialog<T>({
   submit: ReactNode;
   submitting: ReactNode;
   failed: (reason: UiText) => UiText;
+  /** 確定をまだ押せない（影響を数えている間や、数えられなかったとき）。 */
+  actionDisabled?: boolean;
+  /** 説明の下、送った結果の失敗の上に置くもの（数えられなかったときの Alert など）。 */
+  notice?: ReactNode;
 }) {
   const [pending, setPending] = useState(false);
   const [failure, setFailure] = useState<UiText | null>(null);
@@ -76,7 +83,9 @@ export default function GroupConfirmDialog<T>({
       }
       onConfirm={confirm}
       pending={pending}
+      actionDisabled={actionDisabled}
     >
+      {notice}
       {failure !== null && (
         <Alert variant="destructive">
           <CircleAlert aria-hidden="true" />

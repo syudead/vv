@@ -13,6 +13,7 @@ import {
   type LibraryGroup,
   type LibraryItem,
   listLibraryIds,
+  type SmartFolderSummary,
   type TagRef,
   type Video,
   type VideoSort,
@@ -37,6 +38,8 @@ import {
   type Zoom,
 } from "../preferences/viewPreferences";
 import { useScanControls } from "../shell/ScanProvider";
+import { SmartFolderCardsProvider } from "../smartFolders/cardValues";
+import { SmartFolderCard, SmartFolderRow } from "../smartFolders/SmartFolderCard";
 import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import TopBarPortal from "../shell/TopBarPortal";
 import { DataTable } from "../ui/patterns/data-table";
@@ -62,7 +65,18 @@ import { useListCriteria } from "../videoList/useListCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
+import SaveSmartFolderButton from "../smartFolders/SaveSmartFolderButton";
+import type { LibraryFilter } from "../smartFolders/smartRule";
 import ActiveTagFilters from "./ActiveTagFilters";
+import {
+  addedLengthCount,
+  addedLengthParams,
+  addedLengthSignature,
+  clearedAddedLength,
+  hasAddedLength,
+  useAddedLength,
+} from "./addedLengthCriteria";
+import { AddedSelect, LengthSelect } from "./AddedLengthSelects";
 import {
   clearedCredits,
   creditSignature,
@@ -100,7 +114,9 @@ import {
 import SelectionBar from "./SelectionBar";
 import TagKindSelect from "./TagKindSelect";
 import { TagRowMeasureProvider } from "./TagRowMeasure";
+import { useAddedLengthControls } from "./useAddedLengthControls";
 import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
+import { useFolderTagRow } from "./useCardTagRows";
 import { type ApplyTagKind, useLibraryTagKinds } from "./useLibraryTagKinds";
 import {
   addTagId,
@@ -125,8 +141,48 @@ function itemGroup(item: LibraryItem): LibraryGroup | undefined {
   return item.kind === "group" ? item.group : undefined;
 }
 
-/** ライブラリだけが URL に持つ条件（タグ、人物、団体、タグの種類）。 */
-const libraryParams = [TAG_PARAM, PERSON_PARAM, ORGANIZATION_PARAM, TAG_KIND_PARAM];
+/**
+ * withSmartFolderCards は一覧をスマートフォルダのカードの値の持ち主で包む。カードの値は
+ * 画面に入ったカードだけを読む（specs/052-smart-folders/research.md R-14）。
+ */
+function withSmartFolderCards(content: ReactNode) {
+  return <SmartFolderCardsProvider>{content}</SmartFolderCardsProvider>;
+}
+
+/**
+ * libraryConditioned は一覧を条件で絞っているか（共有の条件・タグ・人物と団体・タグの種類と、
+ * 追加日と長さ）を返す。
+ */
+function libraryConditioned(filter: LibraryFilter): boolean {
+  return (
+    hasTagConditions(filter.criteria, filter.tagIds, filter.credits) ||
+    hasAddedLength(filter.addedLength)
+  );
+}
+
+/**
+ * saveSmartFolderAction は見出しの「Save as smart folder」である。所有者が条件で絞っている間だけ
+ * 出す（specs/052-smart-folders/ui-design.md「Save as smart folder」、要件 10）。
+ */
+function saveSmartFolderAction(
+  owner: boolean,
+  conditioned: boolean,
+  filter: LibraryFilter,
+  sort: VideoSort,
+): ReactNode {
+  return owner && conditioned ? (
+    <SaveSmartFolderButton filter={filter} sort={sort} />
+  ) : undefined;
+}
+
+/** ライブラリだけが URL に持つ条件（タグ、人物、団体、タグの種類、追加日と長さ）。 */
+const libraryParams = [
+  TAG_PARAM,
+  PERSON_PARAM,
+  ORGANIZATION_PARAM,
+  TAG_KIND_PARAM,
+  ...addedLengthParams,
+];
 
 export default function LibraryPage() {
   const location = useLocation();
@@ -141,7 +197,12 @@ export default function LibraryPage() {
   // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
   // 人物・団体（`person`・`organization`）も同じ口で運ぶ（specs/047-video-work-info/
   // ui-design.md「Library: filter by a person or organization」）。
-  const { criteria, apply } = useListCriteria(preferences.sort, libraryParams);
+  // 追加日と長さはゲストも使える（specs/052-smart-folders/research.md R-4）。
+  const { criteria, apply } = useListCriteria(
+    preferences.sort,
+    libraryParams,
+    addedLengthParams,
+  );
   const { query, watch, playable, favorite, sort } = criteria;
   // タグの値が変わらない限り同じ配列を使い、タグと無関係な URL の変更でも
   // タグの操作の関数とカードの memo を保つ。ゲストはタグ・人物・団体で絞り込めない
@@ -154,6 +215,13 @@ export default function LibraryPage() {
     [owner, rawTagKey],
   );
   const credits = useCreditFilter(location.search, owner);
+  const parsedAddedLength = useAddedLength(location.search);
+  const addedLength = parsedAddedLength.filter;
+  // 一覧の条件のうちライブラリだけのもの（人物・団体・タグの種類と、追加日と長さ）。
+  const libraryFilter = useMemo(
+    () => ({ ...credits, ...addedLength }),
+    [credits, addedLength],
+  );
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
   const { activePreviewId, previewResetEpoch, startPreview, resetPreview } =
@@ -210,6 +278,7 @@ export default function LibraryPage() {
     apply(cleared.criteria, "push", {
       [TAG_PARAM]: serializeTagIds(cleared.tag),
       ...clearedCredits,
+      ...clearedAddedLength,
     });
   }, [apply, criteria, resetPreview]);
 
@@ -256,6 +325,11 @@ export default function LibraryPage() {
     [apply, resetPreview],
   );
   const tagKinds = useLibraryTagKinds(credits.tagKind, applyTagKind);
+  // --- 追加日と長さ（052 ui-design.md「Added and length」） ---
+  const { changeAdded, changeLength } = useAddedLengthControls(
+    parsedAddedLength,
+    applyTagKind,
+  );
   const changeTagKind = tagKinds.change;
   const removeTagKind = useCallback(() => changeTagKind(undefined), [changeTagKind]);
 
@@ -293,7 +367,7 @@ export default function LibraryPage() {
 
   // --- 一覧の取得（戻ってきたときはスナップショットから復元） ---
   const [restored] = useState(() =>
-    takeListSnapshot({ ...criteria, tags: tagIds, ...credits }),
+    takeListSnapshot({ ...criteria, tags: tagIds, ...libraryFilter }),
   );
   const {
     items,
@@ -309,7 +383,7 @@ export default function LibraryPage() {
     reload,
     refreshInPlace,
     staleGroups,
-  } = useVideos({ ...criteria, tag: tagIds, ...credits }, restored, "library");
+  } = useVideos({ ...criteria, tag: tagIds, ...libraryFilter }, restored, "library");
 
   // 絞り込みはサーバーが一覧の条件として適用する。
   // 再生から戻って視聴状態が変わった項目も、その場では一覧から外さない。
@@ -416,7 +490,7 @@ export default function LibraryPage() {
   const selectAll = useCallback(() => {
     const seq = (selectAllSeq.current += 1);
     setSelectingAll(true);
-    listLibraryIds({ query, watch, playable, favorite, tag: tagIds, ...credits })
+    listLibraryIds({ query, watch, playable, favorite, tag: tagIds, ...libraryFilter })
       .then((response) => {
         // 応答が届くまでの間に、手動の選択操作・別の「すべて選択」・条件の
         // 変化（下の conditionsSignature の効果も selectAllSeq を進める）が
@@ -447,7 +521,7 @@ export default function LibraryPage() {
       .finally(() => {
         if (selectAllSeq.current === seq) setSelectingAll(false);
       });
-  }, [applyTags, credits, favorite, playable, query, tagIds, toast, watch]);
+  }, [applyTags, libraryFilter, favorite, playable, query, tagIds, toast, watch]);
 
   // 選択バーで一括して外したタグが、今の絞り込み（tagIds）に含まれているとき
   // の方針（Devin の指摘4、docs/design-docs/library-ui.md §6）。外した動画は
@@ -487,6 +561,7 @@ export default function LibraryPage() {
     criteriaKey(criteria),
     tagIds.join(","),
     creditSignature(credits),
+    addedLengthSignature(addedLength),
   ].join("\u0000");
   const knownConditionsSignature = useRef(conditionsSignature);
   useEffect(() => {
@@ -568,7 +643,7 @@ export default function LibraryPage() {
     // 操作の成功は控えを捨てるので、ここで古い並びを覚え直すと戻ったときにそれが出てしまう。
     if (shown !== items) return;
     saveListSnapshot(
-      { ...criteria, tags: tagIds, ...credits },
+      { ...criteria, tags: tagIds, ...libraryFilter },
       {
         items,
         total,
@@ -579,7 +654,17 @@ export default function LibraryPage() {
         staleGroups: staleGroups(),
       },
     );
-  }, [credits, criteria, cursor, hasMore, items, shown, staleGroups, tagIds, total]);
+  }, [
+    libraryFilter,
+    criteria,
+    cursor,
+    hasMore,
+    items,
+    shown,
+    staleGroups,
+    tagIds,
+    total,
+  ]);
 
   // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -657,7 +742,8 @@ export default function LibraryPage() {
 
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
-  const conditioned = hasTagConditions(criteria, tagIds, credits);
+  const smartFolderFilter = { criteria, tagIds, credits, addedLength };
+  const conditioned = libraryConditioned(smartFolderFilter);
   const selectionMode = selectedIds.size > 0;
   const resultStatus = loading ? t.list.loading : t.library.resultCount(total);
 
@@ -693,6 +779,10 @@ export default function LibraryPage() {
     [pressTag, selectionMode, toggleGroupSelection, view],
   );
 
+  // スマートフォルダのカードのタグを押すと、グループのカードと同じくそのタグで絞り込む。
+  // カードは選択を持たないので、ほかのカードを選んでいる間も押せる。
+  const renderFolderTagsRow = useFolderTagRow(pressTag);
+
   const groupProps = (group: LibraryGroup) => ({
     group,
     backTo: listUrl,
@@ -720,8 +810,29 @@ export default function LibraryPage() {
     tagsRow: renderTagsRow,
   });
 
-  // 所有者のカードと行はドラッグの層に加わる。ゲストは今のまま。
+  const smartFolderProps = (folder: SmartFolderSummary) => ({
+    folder,
+    backTo: listUrl,
+    activePreviewId,
+    previewResetEpoch,
+    onPreviewStart: startPreview,
+    onPreviewReset: resetPreview,
+    tagsRow: view === "grid" ? renderFolderTagsRow : undefined,
+  });
+
+  // 所有者のカードと行はドラッグの層に加わる。ゲストは今のまま。スマートフォルダのカードは
+  // 持ち上げず、上に落とすと拒否する（specs/052-smart-folders/ui-design.md「Smart folder card
+  // and row」）。
   const card = (item: LibraryItem) => {
+    if (item.kind === "smartFolder") {
+      return (
+        <SmartFolderCard
+          key={itemKey(item)}
+          {...smartFolderProps(item.smartFolder)}
+          refusesDrop={owner}
+        />
+      );
+    }
     const node =
       item.kind === "video" ? (
         <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
@@ -737,6 +848,15 @@ export default function LibraryPage() {
     );
   };
   const row = (item: LibraryItem) => {
+    if (item.kind === "smartFolder") {
+      return (
+        <SmartFolderRow
+          key={itemKey(item)}
+          {...smartFolderProps(item.smartFolder)}
+          owner={owner}
+        />
+      );
+    }
     if (item.kind === "video") {
       const Row = owner ? DraggableVideoRow : VideoRow;
       return <Row key={itemKey(item)} {...rowProps(item.video)} />;
@@ -781,21 +901,23 @@ export default function LibraryPage() {
     />
   ) : (
     <div ref={list} onClick={saveSnapshot}>
-      {withDrag(
-        view === "grid" ? (
-          // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
-          <TagRowMeasureProvider>
-            <Grid zoom={zoom}>
-              {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
+      {withSmartFolderCards(
+        withDrag(
+          view === "grid" ? (
+            // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
+            <TagRowMeasureProvider>
+              <Grid zoom={zoom}>
+                {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
                 見出しは設けない（ui-design.md「Screen boundary」、要件 15）。 */}
-              {shown.map(card)}
-            </Grid>
-          </TagRowMeasureProvider>
-        ) : (
-          <DataTable label={t.library.title}>
-            <LibraryTableHeader owner={owner} />
-            <TableBody>{shown.map(row)}</TableBody>
-          </DataTable>
+                {shown.map(card)}
+              </Grid>
+            </TagRowMeasureProvider>
+          ) : (
+            <DataTable label={t.library.title}>
+              <LibraryTableHeader owner={owner} />
+              <TableBody>{shown.map(row)}</TableBody>
+            </DataTable>
+          ),
         ),
       )}
     </div>
@@ -809,6 +931,7 @@ export default function LibraryPage() {
         header={
           <PageHeader
             title={t.library.title}
+            actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
             count={
               initialLoadFailed ? undefined : (
                 <span
@@ -847,15 +970,24 @@ export default function LibraryPage() {
               zoom={zoom}
               onZoomChange={changeZoom}
               extraFilter={
-                owner && (
-                  <TagKindSelect
-                    value={credits.tagKind}
-                    kinds={tagKinds.kinds}
-                    onValueChange={changeTagKind}
+                <>
+                  {owner && (
+                    <TagKindSelect
+                      value={credits.tagKind}
+                      kinds={tagKinds.kinds}
+                      onValueChange={changeTagKind}
+                    />
+                  )}
+                  <AddedSelect
+                    value={addedLength.addedWithin}
+                    onValueChange={changeAdded}
                   />
-                )
+                  <LengthSelect value={addedLength} onValueChange={changeLength} />
+                </>
               }
-              extraFilterCount={credits.tagKind === undefined ? 0 : 1}
+              extraFilterCount={
+                (credits.tagKind === undefined ? 0 : 1) + addedLengthCount(addedLength)
+              }
               onFilterOpen={owner ? tagKinds.load : undefined}
             />
           </TopBarPortal>
@@ -919,8 +1051,11 @@ function LibraryEmpty({
   return owner ? <EmptyLibrary /> : <GuestEmpty />;
 }
 
-/** LibraryTableHeader はリスト表示の見出しの行である。選択とタグなどの列は所有者だけに出す。 */
-function LibraryTableHeader({ owner }: { owner: boolean }) {
+/**
+ * LibraryTableHeader はリスト表示の見出しの行である。選択とタグなどの列は所有者だけに出す。
+ * スマートフォルダのページも同じ列で並べる。
+ */
+export function LibraryTableHeader({ owner }: { owner: boolean }) {
   return (
     <TableHeader>
       <TableRow className="hover:bg-transparent">

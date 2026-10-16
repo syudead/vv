@@ -327,7 +327,7 @@ test.describe.serial("work-info plugins", () => {
       .click();
     await page.getByRole("menuitem", { name: "Last run output" }).click();
     const dialog = page.getByRole("dialog", { name: `Last run of ${pluginName}` });
-    await expect(dialog.getByText("Fetch by URL")).toBeVisible();
+    await expect(dialog.getByText("Fetch by ID or URL")).toBeVisible();
     await expect(dialog.getByText("Finished")).toBeVisible();
     const output = dialog.getByRole("region", { name: "Output" });
     await expect(output).toHaveText("fetch: token=[secret]");

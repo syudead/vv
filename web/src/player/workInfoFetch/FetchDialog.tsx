@@ -19,6 +19,8 @@ import { useToast } from "../../ui/Toast";
 import CompareStep, { type Fetched } from "./CompareStep";
 import {
   canFetch,
+  fetchTarget,
+  type FindBy,
   initialQuery,
   initialSelection,
   type RunOperation,
@@ -86,8 +88,8 @@ function useFetchFlow({
   const toast = useToast();
   const [pluginId, setPluginId] = useState(plugins[0]?.id);
   const plugin = plugins.find((item) => item.id === pluginId) ?? plugins[0];
-  const [query, setQuery] = useState(() => initialQuery(plugins[0], video.title));
-  const [notUrl, setNotUrl] = useState(false);
+  const [by, setBy] = useState<FindBy>("words");
+  const [query, setQuery] = useState(() => initialQuery(plugins[0], "words", video));
   const [candidates, setCandidates] = useState<WorkInfoCandidate[] | null>(null);
   if (plugin?.id !== pluginId) {
     // 選んでいたプラグインが一覧から消えた（承認を外されたか消された）ので、先頭へ移る。
@@ -136,16 +138,15 @@ function useFetchFlow({
     const signal = begin();
     setRunning({ operation, url: fromSearch ? input : undefined });
     setFailure(null);
-    setNotUrl(false);
     try {
       if (operation === "search") {
         setCandidates(await searchWorkInfo(target.id, input.trim(), signal));
         return;
       }
-      const url = input.trim();
-      const result = await fetchWorkInfo(video.id, target.id, url, signal);
+      const source = fetchTarget(input);
+      const result = await fetchWorkInfo(video.id, target.id, source, signal);
       if (signal.aborted) return;
-      showCompare({ url, plugin: target, fromSearch, result }, result);
+      showCompare({ source, plugin: target, fromSearch, result }, result);
     } catch (error) {
       if (isAborted(error) || signal.aborted) return;
       setFailure({ operation, error, plugin: target });
@@ -197,15 +198,13 @@ function useFetchFlow({
       return;
     }
     if (plugin === undefined || running !== null || query.trim() === "") return;
-    const operation = runFor(plugin, query);
-    if (operation === "notUrl") setNotUrl(true);
-    else void run(plugin, operation, query, false);
+    void run(plugin, runFor(plugin, query, by), query, false);
   };
 
   return {
     plugin,
+    by,
     query,
-    notUrl,
     candidates,
     running,
     failure,
@@ -222,12 +221,16 @@ function useFetchFlow({
       setPluginId(id);
       setCandidates(null);
       setFailure(null);
-      setNotUrl(false);
     },
-    changeQuery: (next: string) => {
-      setQuery(next);
-      setNotUrl(false);
+    chooseBy: (next: FindBy) => {
+      // 入れたままの最初の値は、語と ID で違う（題名と品番）ので入れ替える。打った語は残す。
+      if (plugin !== undefined && query === initialQuery(plugin, by, latestVideo.current))
+        setQuery(initialQuery(plugin, next, latestVideo.current));
+      setBy(next);
+      setCandidates(null);
+      setFailure(null);
     },
+    changeQuery: setQuery,
     choose: (url: string) => {
       // 候補を選ぶことはその URL の取得なので、取得できないプラグインでは走らせない。
       if (plugin !== undefined && canFetch(plugin) && running === null)
@@ -249,10 +252,11 @@ function useFetchFlow({
     },
     back: () => setStep("find"),
     fetchAgain: () => {
-      // 同じプラグインと URL で取り直す。プラグインが承認を外されていれば、その失敗が
+      // 同じプラグインと URL か ID で取り直す。プラグインが承認を外されていれば、その失敗が
       // 見つける段に出る。
-      if (fetched !== null && running === null)
-        void run(fetched.plugin, "fetch", fetched.url, fetched.fromSearch);
+      if (fetched === null || running !== null) return;
+      const input = "id" in fetched.source ? fetched.source.id : fetched.source.url;
+      void run(fetched.plugin, "fetch", input, fetched.fromSearch);
     },
     cancel: () => controller.current?.abort(),
   };
@@ -266,7 +270,7 @@ function submitLabel(flow: Flow): ReactNode {
   if (flow.step === "compare")
     return flow.applying ? busyLabel(text.applying) : text.apply;
   const operation =
-    flow.plugin === undefined ? "search" : runFor(flow.plugin, flow.query);
+    flow.plugin === undefined ? "search" : runFor(flow.plugin, flow.query, flow.by);
   if (flow.running !== null && flow.running.url === undefined)
     return busyLabel(
       flow.running.operation === "search" ? text.searching : text.fetching,
@@ -323,13 +327,14 @@ export default function FetchDialog(props: {
         <FindStep
           plugins={plugins}
           plugin={flow.plugin}
+          by={flow.by}
           query={flow.query}
-          notUrl={flow.notUrl}
           running={flow.running}
           failure={flow.failure}
           candidates={flow.candidates}
           queryRef={queryRef}
           onPlugin={flow.choosePlugin}
+          onBy={flow.chooseBy}
           onQuery={flow.changeQuery}
           onChoose={flow.choose}
         />

@@ -105,14 +105,18 @@ the manifest lacks `search`.
 
 ## `POST /api/videos/{id}/work-info-fetches`
 
-Runs the plugin's `fetch` for this video and keeps the result for 10 minutes
+Runs the plugin's `fetch` with `url` or `id` for this video and keeps the
+result for 10 minutes
 ([R-8](../research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest)).
 The video is not changed.
 
 | Field | In | Type | Required | Meaning |
 | --- | --- | --- | --- | --- |
 | `pluginId` | body | integer | Yes | An approved plugin |
-| `url` | body | string | Yes | http or https, at most 2048 characters |
+| `url` | body | string | One of `url` and `id` | http or https, at most 2048 characters |
+| `id` | body | string | One of `url` and `id` | The work's ID, such as the product code, 1 to 200 characters without surrounding spaces; the plugin builds the page URL from it |
+
+A body with both `url` and `id`, or with neither, is `400` `invalid_request`.
 
 **Response**: `201` with:
 

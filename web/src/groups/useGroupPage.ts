@@ -1,8 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef } from "react";
 
-import { type GroupDetail, isAborted, RequestFailed } from "../api/client";
+import type { GroupDetail } from "../api/client";
 import { type GroupItem, listGroupItems, readGroupPage } from "../api/groups";
+import { readThrough } from "../api/readThrough";
 import { subscribeServerEvents } from "../api/serverEvents";
+import { type PagedDetailState, usePagedDetail } from "../api/usePagedDetail";
 import { appendItems } from "./groupItems";
 
 /** GroupPageData は読めたグループのページの中身である。 */
@@ -14,46 +16,28 @@ export interface GroupPageData {
   nextCursor?: string;
 }
 
-export type GroupPageState =
-  | { kind: "loading" }
-  | { kind: "failed" }
-  | { kind: "gone" }
-  | { kind: "ready"; data: GroupPageData };
-
-/** MorePageState は続きのページの読み込みの状態である。 */
-export type MorePageState = "idle" | "loading" | "failed";
+export type GroupPageState = PagedDetailState<GroupPageData>;
 
 /** videoRefreshDelayMs は、動画の知らせを読み直し 1 回にまとめる待ち時間である。 */
 const videoRefreshDelayMs = 300;
 
-/** maxRefreshPages は読み直しで続きのページを辿る回数の上限である（100 件ずつ）。 */
-const maxRefreshPages = 50;
-
-/** isGone は応答がグループの無いこと（404）を表すかを返す。 */
-function isGone(error: unknown): boolean {
-  return error instanceof RequestFailed && error.status === 404;
-}
-
 /**
- * readThrough はグループを読み、項目が `atLeast` 件そろうか続きが無くなるまで続きのページを
- * 辿る。読み直しで、それまで並んでいた分を減らさずに入れ替えるためである（スクロールの位置を
- * 保つ。specs/048-groups/ui-design.md「Edits that fail」）。
+ * readGroupThrough はグループを読み、項目が `atLeast` 件そろうか続きが無くなるまで続きのページを
+ * 辿る（specs/048-groups/ui-design.md「Edits that fail」）。
  */
-async function readThrough(
+async function readGroupThrough(
   id: number,
   trail: readonly number[],
   atLeast: number,
   signal: AbortSignal,
 ): Promise<GroupPageData> {
   const detail = await readGroupPage(id, trail, signal);
-  let items: readonly GroupItem[] = detail.items;
-  let nextCursor = detail.nextCursor;
-  for (let page = 0; page < maxRefreshPages; page += 1) {
-    if (nextCursor === undefined || items.length >= atLeast) break;
-    const more = await listGroupItems(id, nextCursor, signal);
-    items = appendItems(items, more.items);
-    nextCursor = more.nextCursor;
-  }
+  const { items, nextCursor } = await readThrough(
+    detail,
+    (cursor) => listGroupItems(id, cursor, signal),
+    appendItems,
+    atLeast,
+  );
   return { group: detail.group, trail: detail.trail, items, nextCursor };
 }
 
@@ -73,14 +57,8 @@ async function readThrough(
  * 置いた行を上書きしない）。
  */
 export function useGroupPage(id: number | null, trail: readonly number[]) {
-  const [state, setState] = useState<GroupPageState>(
-    id === null ? { kind: "gone" } : { kind: "loading" },
-  );
-  const [more, setMore] = useState<MorePageState>("idle");
-  const stateRef = useRef(state);
   /** サーバーが最後に認めた並び。並べ替えの失敗でここへ戻す。 */
   const confirmed = useRef<readonly GroupItem[]>([]);
-  const reading = useRef<AbortController | null>(null);
   /** 並べ替えを置いた順に 1 つずつ送る鎖（useGroupEdits が足す）と、送った移動の数。 */
   const moves = useRef<Promise<void>>(Promise.resolve());
   const movesSent = useRef(0);
@@ -90,46 +68,34 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
   const requery = useRef<() => void>(() => undefined);
   const trailKey = trail.join(",");
 
-  const show = useCallback((next: GroupPageState) => {
-    stateRef.current = next;
-    setState(next);
-  }, []);
-
-  /** read は読み込みを始める。quiet なら読み込み中を見せず、失敗しても中身を残す。 */
-  const read = useCallback(
-    (quiet: boolean) => {
-      if (id === null) return;
-      reading.current?.abort();
-      const controller = new AbortController();
-      reading.current = controller;
-      const current = stateRef.current;
-      const atLeast = current.kind === "ready" ? current.data.items.length : 0;
-      if (!quiet) show({ kind: "loading" });
-      setMore("idle");
-      const trailIds = trailKey === "" ? [] : trailKey.split(",").map(Number);
-      const sentBefore = movesSent.current;
-      readThrough(id, trailIds, atLeast, controller.signal).then(
-        (data) => {
-          if (controller.signal.aborted) return;
-          reading.current = null;
+  const { state, stateRef, more, read, loadMore, update, markGone, stop } =
+    usePagedDetail(id, {
+      read: (groupId: number, atLeast: number, signal: AbortSignal) =>
+        readGroupThrough(
+          groupId,
+          trailKey === "" ? [] : trailKey.split(",").map(Number),
+          atLeast,
+          signal,
+        ),
+      more: (groupId: number, cursor: string, signal: AbortSignal) =>
+        listGroupItems(groupId, cursor, signal),
+      append: appendItems,
+      beforeRead: (quiet: boolean) => {
+        const sentBefore = movesSent.current;
+        return (data: GroupPageData) => {
           if (quiet && movesSent.current !== sentBefore) {
             // 読む間に送った移動が、読んだ並びに入っていないかもしれない。
             requery.current();
-            return;
+            return false;
           }
           confirmed.current = data.items;
-          show({ kind: "ready", data });
-        },
-        (error: unknown) => {
-          if (isAborted(error) || controller.signal.aborted) return;
-          reading.current = null;
-          if (isGone(error)) show({ kind: "gone" });
-          else if (!quiet || stateRef.current.kind !== "ready") show({ kind: "failed" });
-        },
-      );
-    },
-    [id, show, trailKey],
-  );
+          return true;
+        };
+      },
+      onMore: (items: readonly GroupItem[]) => {
+        confirmed.current = appendItems(confirmed.current, items);
+      },
+    });
 
   const reload = useCallback(() => read(false), [read]);
   /** refresh は静かに読み直す。送っている移動が答えてから読む。 */
@@ -142,54 +108,6 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
   useEffect(() => {
     requery.current = refresh;
   }, [refresh]);
-
-  const loadMore = useCallback(() => {
-    const current = stateRef.current;
-    if (id === null || current.kind !== "ready" || reading.current !== null) return;
-    const cursor = current.data.nextCursor;
-    if (cursor === undefined) return;
-    const controller = new AbortController();
-    reading.current = controller;
-    setMore("loading");
-    listGroupItems(id, cursor, controller.signal).then(
-      (page) => {
-        if (controller.signal.aborted) return;
-        reading.current = null;
-        const latest = stateRef.current;
-        if (latest.kind !== "ready") return;
-        setMore("idle");
-        confirmed.current = appendItems(confirmed.current, page.items);
-        show({
-          kind: "ready",
-          data: {
-            ...latest.data,
-            items: appendItems(latest.data.items, page.items),
-            nextCursor: page.nextCursor,
-          },
-        });
-      },
-      (error: unknown) => {
-        if (isAborted(error) || controller.signal.aborted) return;
-        reading.current = null;
-        if (isGone(error)) {
-          setMore("idle");
-          show({ kind: "gone" });
-          return;
-        }
-        setMore("failed");
-      },
-    );
-  }, [id, show]);
-
-  /** update は読めた中身を変える（編集の結果を先に見せる）。読めていなければ何もしない。 */
-  const update = useCallback(
-    (change: (data: GroupPageData) => GroupPageData) => {
-      const current = stateRef.current;
-      if (current.kind !== "ready") return;
-      show({ kind: "ready", data: change(current.data) });
-    },
-    [show],
-  );
 
   useEffect(() => {
     let videoTimer: ReturnType<typeof setTimeout> | undefined;
@@ -219,18 +137,9 @@ export function useGroupPage(id: number | null, trail: readonly number[]) {
       epoch.current += 1;
       unsubscribe();
       clearTimeout(videoTimer);
-      reading.current?.abort();
-      reading.current = null;
+      stop();
     };
-  }, [id, refresh, reload]);
-
-  /** markGone はグループが無くなったこと（編集の窓が受けた 404）を見せる。 */
-  const markGone = useCallback(() => {
-    reading.current?.abort();
-    reading.current = null;
-    setMore("idle");
-    show({ kind: "gone" });
-  }, [show]);
+  }, [id, refresh, reload, stateRef, stop]);
 
   return {
     state,

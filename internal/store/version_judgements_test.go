@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"testing"
 	"time"
 
@@ -169,6 +170,39 @@ func TestJudgementDifferentDismisses(t *testing.T) {
 	}
 	if rows := candidateRows(t, db); rows != 0 {
 		t.Errorf("却下したあとの候補の行 = %d, want 0", rows)
+	}
+}
+
+// 束ねる「同じ」は一致を変えうるので、すべてのスマートフォルダを名指す知らせを 1 つ伴う。束ねない
+// 「違う」は伴わない（specs/052-smart-folders/data-model.md「Notices」）。
+func TestJudgementNamesSmartFoldersOnlyWhenItBundles(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		verdict domain.VersionVerdict
+		bundles bool
+	}{
+		{"same", domain.VersionSame, true},
+		{"different", domain.VersionDifferent, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			db, _ := judgementFixture(t)
+			first := createSmartFolder(t, db, "一", 0)
+			second := createSmartFolder(t, db, "二", 0)
+			job := claimJudgement(t, db)
+			recorder := &eventRecorder{}
+			recorder.events = applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: tc.verdict})
+
+			if got := hasEvent[domain.VideoBundleChanged](recorder.events); got != tc.bundles {
+				t.Fatalf("VideoBundleChanged = %v, want %v: %v", got, tc.bundles, recorder.events)
+			}
+			var want []domain.SmartFoldersChanged
+			if tc.bundles {
+				want = []domain.SmartFoldersChanged{{IDs: []int64{first.ID, second.ID}}}
+			}
+			if got := smartFolderNotices(recorder); !reflect.DeepEqual(got, want) {
+				t.Errorf("notices = %+v, want %+v", got, want)
+			}
+		})
 	}
 }
 

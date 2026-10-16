@@ -6,6 +6,7 @@ import {
   favoriteTargets,
   fromSelectAll,
   isGroupSelected,
+  keepMembers,
   reconcileGroups,
   sameSelection,
   setGroup,
@@ -171,5 +172,19 @@ describe("LibrarySelection", () => {
       selection,
     );
     expect(reconcileGroups(selection, [])).toBe(selection);
+  });
+});
+
+describe("keepMembers", () => {
+  it("並ばなくなった動画を外し、その動画をメンバーに持つグループも外す", () => {
+    const selection = fromSelectAll([1, 2, 3], [{ id: 7, videoIds: [2, 3] }]);
+    const kept = keepMembers(selection, new Set([1, 2]));
+    expect([...kept.ids]).toEqual([1, 2]);
+    expect(kept.groups.size).toBe(0);
+  });
+
+  it("どれも並んでいれば同じ選択を返す", () => {
+    const selection = fromSelectAll([1, 2], [{ id: 7, videoIds: [1, 2] }]);
+    expect(keepMembers(selection, new Set([1, 2, 3]))).toBe(selection);
   });
 });

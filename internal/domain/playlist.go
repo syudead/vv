@@ -76,20 +76,24 @@ func DecodePlaylistCursor(cursor string) (PlaylistCursor, error) {
 	return PlaylistCursor{UpdatedAtMs: *fields.UpdatedAtMs, ID: *fields.ID}, nil
 }
 
-// PlaylistItem はプレイリストの項目 1 つである。見せる項目は Video と Group のどちらか一方だけを持ち、
-// どちらも所有者として読んだ値である。見せない項目（PlaylistPlaybackOf の入力にだけ現れる）は
-// どちらも持たない。
+// PlaylistItem はプレイリストの項目 1 つである。見せる項目は Video・Group・SmartFolder のどれか
+// 1 つだけを持ち、どれも所有者として読んだ値である。スマートフォルダの項目のメンバーは読んだ時点の
+// フォルダの再生順である（specs/052-smart-folders/contracts/screen-api.md）。見せない項目
+// （PlaylistPlaybackOf の入力にだけ現れる）はどれも持たない。
 type PlaylistItem struct {
-	ID    int64
-	Video *Video
-	Group *LibraryGroup
+	ID          int64
+	Video       *Video
+	Group       *LibraryGroup
+	SmartFolder *LibrarySmartFolder
 }
 
-// PlaylistAdd はプレイリストへの追加の入力である。VideoIDs の動画と GroupIDs のグループを、
-// この順で末尾に足す（research.md R-5、specs/048-groups/research.md R-10）。
+// PlaylistAdd はプレイリストへの追加の入力である。VideoIDs の動画、GroupIDs のグループ、
+// SmartFolderIDs のスマートフォルダを、この順で末尾に足す（research.md R-5、
+// specs/048-groups/research.md R-10）。
 type PlaylistAdd struct {
-	VideoIDs []int64
-	GroupIDs []int64
+	VideoIDs       []int64
+	GroupIDs       []int64
+	SmartFolderIDs []int64
 }
 
 // PlaylistAdded は追加の結果である。Added は末尾に足した項目の数、Existing は引けたが既に
@@ -154,10 +158,13 @@ func ValidatePlaylistName(input string) (string, error) {
 	return trimmed, nil
 }
 
-// PlaylistStep は連続再生で開く動画 1 本と、それが属する項目である。
+// PlaylistStep は連続再生で開く動画 1 本と、それが属する項目である。SmartFolderID は項目が
+// スマートフォルダの項目のときのフォルダの id で、動画とグループの項目では 0 である
+// （specs/052-smart-folders/contracts/screen-api.md の PlaylistStep）。
 type PlaylistStep struct {
-	ItemID int64
-	Video  Video
+	ItemID        int64
+	Video         Video
+	SmartFolderID int64
 }
 
 // PlaylistPlayback は動画ページがプレイリストから再生しているときの、今の位置と次に開く動画
@@ -182,29 +189,52 @@ type PlaylistCurrent struct {
 }
 
 // Shown は項目を見せるかを返す。プレイリストの順序の入力では、見せない項目（動画やグループが
-// 今ライブラリに引けない項目、research.md R-4）は Video も Group も持たない。
+// 今ライブラリに引けない項目、research.md R-4）は Video も Group も SmartFolder も持たない。
 func (i PlaylistItem) Shown() bool {
-	return i.Video != nil || i.Group != nil
+	return i.Video != nil || i.Group != nil || i.SmartFolder != nil
 }
 
-// start は見せる項目を開いたときの動画である。動画の項目はその動画、グループの項目は
-// GroupOpenIndex が選んだメンバー（LibraryGroup.OpenVideoID）で、見つからなければ最初の
+// playOrder は、グループの項目ならそのグループ、スマートフォルダの項目ならフォルダのカードを返す。
+// どちらも Members が再生順で、OpenVideoID が開くメンバーである。動画の項目と見せない項目では nil。
+func (i PlaylistItem) playOrder() *LibraryGroup {
+	switch {
+	case i.Group != nil:
+		return i.Group
+	case i.SmartFolder != nil:
+		return &i.SmartFolder.LibraryGroup
+	}
+	return nil
+}
+
+// start は見せる項目を開いたときの動画である。動画の項目はその動画、グループとスマートフォルダの
+// 項目は GroupOpenIndex が選んだメンバー（LibraryGroup.OpenVideoID）で、見つからなければ最初の
 // メンバーである。開く動画が無ければ nil である。
 func (i PlaylistItem) start() *PlaylistStep {
 	if i.Video != nil {
-		return &PlaylistStep{ItemID: i.ID, Video: *i.Video}
+		return i.step(*i.Video)
 	}
-	if i.Group == nil || len(i.Group.Members) == 0 {
+	group := i.playOrder()
+	if group == nil || len(group.Members) == 0 {
 		return nil
 	}
-	member := i.Group.Members[0]
-	for _, candidate := range i.Group.Members {
-		if candidate.ID == i.Group.OpenVideoID {
+	member := group.Members[0]
+	for _, candidate := range group.Members {
+		if candidate.ID == group.OpenVideoID {
 			member = candidate
 			break
 		}
 	}
-	return &PlaylistStep{ItemID: i.ID, Video: member}
+	return i.step(member)
+}
+
+// step は項目 i の中の動画 video を開く PlaylistStep である。スマートフォルダの項目ならフォルダの
+// id を持つ。
+func (i PlaylistItem) step(video Video) *PlaylistStep {
+	step := &PlaylistStep{ItemID: i.ID, Video: video}
+	if i.SmartFolder != nil {
+		step.SmartFolderID = i.SmartFolder.ID
+	}
+	return step
 }
 
 // PlaylistPlaybackOf はプレイリストの全項目 items（見せない項目も含めて位置の順）と、今の項目と
@@ -212,7 +242,8 @@ func (i PlaylistItem) start() *PlaylistStep {
 // 「Playback order」、research.md R-6）。順序の規則はすべてここにある。
 //
 //   - グループの項目では、今の動画がそのメンバーなら、グループの再生順（GroupPlayOrder、
-//     LibraryGroup.Members の順）で後ろのメンバーへ進む。
+//     LibraryGroup.Members の順）で後ろのメンバーへ進む。スマートフォルダの項目も同じく、
+//     読んだ時点のフォルダの再生順で進む。
 //     開始より後ろの見終わったメンバーも再生する（要件 7）。後ろのメンバーが無いか、今の動画が
 //     もうメンバーでなければ、次の見せる項目へ進む。
 //   - 次の見せる項目の開始の動画は、動画の項目ならその動画、グループの項目なら GroupOpenIndex の
@@ -256,11 +287,11 @@ func PlaylistPlaybackOf(items []PlaylistItem, current PlaylistCurrent) (Playlist
 	}
 
 	playback.Next = playback.NextItem
-	if group := items[at].Group; group != nil {
+	if group := items[at].playOrder(); group != nil {
 		for j, member := range group.Members {
 			if member.ID == current.VideoID {
 				if j+1 < len(group.Members) {
-					playback.Next = &PlaylistStep{ItemID: current.ItemID, Video: group.Members[j+1]}
+					playback.Next = items[at].step(group.Members[j+1])
 				}
 				break
 			}

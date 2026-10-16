@@ -36,18 +36,26 @@ type SettingsStore struct{ db *DB }
 type FolderGroupStore struct{ db *DB }
 
 // PlaybackStore は利用者の再生位置を保存する（progress.go）。共有する SQLite
-// 接続だけを持ち、ライブラリ索引の型や通知には依存しない。
-type PlaybackStore struct{ sql *sql.DB }
+// 接続を持ち、ライブラリ索引の型には依存しない。視聴状態が変わる保存の確定後に
+// domain.SmartFoldersChanged を発行するため、発行先を持つ *DB も持つ。
+type PlaybackStore struct {
+	sql *sql.DB
+	db  *DB
+}
 
 // TagStore はタグそのもの（作成・改名・削除・統合・シノニムの登録と解除・
 // 本数つきの一覧）、動画への付与・取り外し・選んだ動画のタグの要約
 // （AttachTagByID・AttachTagByName・DetachTag・Summary）、利用者データの鍵の集合から
 // 項目のタグをまとめて引く操作（TagsByContentKeys）、タグ名の照合用の鍵の
 // 作り直しを保存する（tags.go）。PlaybackStore と同じく、共有する SQLite
-// 接続だけを持ち、ライブラリ索引の型や通知には依存しない。ページの読み出しは件数と行を
+// 接続を持ち、ライブラリ索引の型には依存せず、タグの書き込みの確定後に
+// domain.SmartFoldersChanged を発行するため *DB も持つ。ページの読み出しは件数と行を
 // 同じスナップショットから返すため、書き込みの枠を取らない読み取り用の接続 read
 // （deferred）で取引を開く。
-type TagStore struct{ sql, read *sql.DB }
+type TagStore struct {
+	sql, read *sql.DB
+	db        *DB
+}
 
 // AuthStore は唯一のアカウントとログインセッションと API トークンを保存する（auth.go・
 // api_tokens.go）。初回設定、資格情報の書き換え、セッションの追加・有効性の確認・削除・
@@ -59,14 +67,21 @@ type AuthStore struct{ sql *sql.DB }
 // VisibilityStore は動画の公開フラグの切り替えを保存する（visibility.go、
 // specs/016-single-account-auth/data-model.md §5）。公開フラグを読んで見せる動画を
 // 絞るのは LibraryStore の読み出しである。TagStore と同じく、共有する SQLite
-// 接続だけを持ち、ライブラリ索引の型や通知には依存しない。
-type VisibilityStore struct{ sql *sql.DB }
+// 接続を持ち、ライブラリ索引の型には依存せず、確定後に domain.SmartFoldersChanged を
+// 発行するため *DB も持つ。
+type VisibilityStore struct {
+	sql *sql.DB
+	db  *DB
+}
 
 // FavoriteStore は動画とグループのお気に入りの付け外しを保存する（favorites.go、
 // specs/035-favorites/data-model.md §4）。お気に入りを読んで Video.Favorite・LibraryGroup.Favorite
-// に写すのは各役割の読み出しである。VisibilityStore と同じく、共有する SQLite 接続だけを持ち、
-// ライブラリ索引の型や通知には依存せず、ドメインイベントを発行しない。
-type FavoriteStore struct{ sql *sql.DB }
+// に写すのは各役割の読み出しである。VisibilityStore と同じく、共有する SQLite 接続を持ち、
+// ライブラリ索引の型には依存せず、確定後に domain.SmartFoldersChanged だけを発行する。
+type FavoriteStore struct {
+	sql *sql.DB
+	db  *DB
+}
 
 // PlaylistStore はプレイリストとその項目の作成・改名・削除・追加・並べ替え・取り外しと読み出しを
 // 受け持つ（playlists.go、specs/044-playlists/data-model.md「Store operations」）。FavoriteStore と
@@ -104,6 +119,11 @@ type VersionStore struct{ db *DB }
 // 作り直す各取引の中で syncFolderGroups が行う（groups.go）。
 type GroupStore struct{ db *DB }
 
+// SmartFolderStore はスマートフォルダの作成・変更（移動を含む）・削除と、その行と欠けた参照の
+// 読み出しを受け持つ（smart_folders.go、specs/052-smart-folders/data-model.md「Edits」）。
+// 確定後に domain.SmartFoldersChanged を発行するため、発行先を持つ *DB を通して使う。
+type SmartFolderStore struct{ db *DB }
+
 // OrganizeStore はドラッグの操作（並べ替えなど）と、その取り消しの像と復元を受け持つ（organize.go・
 // organize_image.go、specs/050-drag-organize/data-model.md「Operations」「Undo image」）。操作は
 // グループと集まりの表にまたがるので、GroupStore・VersionStore の公開メソッドを呼ばず、パッケージ
@@ -114,9 +134,13 @@ type OrganizeStore struct{ db *DB }
 // CreditStore は人物と団体（名前・別名・外部 ID・団体の親）の一覧・読み出し・作成・更新・統合・削除と、
 // その名前の照合用の鍵の作り直しを受け持つ（credits.go・credit_listing.go、
 // specs/047-video-work-info/data-model.md「Entities」）。2 つの種類を domain.CreditKind で受け、
-// SQL は 1 回だけ書く。TagStore と同じく、共有する SQLite 接続と読み取り用の接続 read だけを持ち、
-// ライブラリ索引の型や通知には依存せず、ドメインイベントを発行しない（R-11）。
-type CreditStore struct{ sql, read *sql.DB }
+// SQL は 1 回だけ書く。TagStore と同じく、共有する SQLite 接続と読み取り用の接続 read を持ち、
+// ライブラリ索引の型には依存しない。発行するのは改名・削除・統合の確定後の
+// domain.SmartFoldersChanged だけである（R-11、specs/052-smart-folders/data-model.md「Notices」）。
+type CreditStore struct {
+	sql, read *sql.DB
+	db        *DB
+}
 
 // WorkInfoStore は動画の作品情報（品番・説明・日付・人物・団体・URL・外部 ID）の書き込みと、利用者データの
 // 鍵の集合からの読み出しを受け持つ（work_info.go、specs/047-video-work-info/data-model.md「Writes
@@ -137,13 +161,13 @@ func (db *DB) Library() *LibraryStore     { return &LibraryStore{db: db} }
 func (db *DB) Scans() *ScanStore          { return &ScanStore{db: db} }
 func (db *DB) ScanIndex() *ScanIndexStore { return &ScanIndexStore{db: db} }
 func (db *DB) Settings() *SettingsStore   { return &SettingsStore{db: db} }
-func (db *DB) Playback() *PlaybackStore   { return &PlaybackStore{sql: db.sql} }
-func (db *DB) Tags() *TagStore            { return &TagStore{sql: db.sql, read: db.read} }
+func (db *DB) Playback() *PlaybackStore   { return &PlaybackStore{sql: db.sql, db: db} }
+func (db *DB) Tags() *TagStore            { return &TagStore{sql: db.sql, read: db.read, db: db} }
 func (db *DB) Auth() *AuthStore           { return &AuthStore{sql: db.sql} }
 func (db *DB) Visibility() *VisibilityStore {
-	return &VisibilityStore{sql: db.sql}
+	return &VisibilityStore{sql: db.sql, db: db}
 }
-func (db *DB) Favorites() *FavoriteStore       { return &FavoriteStore{sql: db.sql} }
+func (db *DB) Favorites() *FavoriteStore       { return &FavoriteStore{sql: db.sql, db: db} }
 func (db *DB) Playlists() *PlaylistStore       { return &PlaylistStore{sql: db.sql, read: db.read} }
 func (db *DB) FolderGroups() *FolderGroupStore { return &FolderGroupStore{db: db} }
 func (db *DB) Overrides() *OverrideStore       { return &OverrideStore{db: db} }
@@ -151,7 +175,8 @@ func (db *DB) AutoTags() *AutoTagStore         { return &AutoTagStore{db: db} }
 func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
 func (db *DB) Groups() *GroupStore             { return &GroupStore{db: db} }
 func (db *DB) Organize() *OrganizeStore        { return &OrganizeStore{db: db} }
-func (db *DB) Credits() *CreditStore           { return &CreditStore{sql: db.sql, read: db.read} }
+func (db *DB) SmartFolders() *SmartFolderStore { return &SmartFolderStore{db: db} }
+func (db *DB) Credits() *CreditStore           { return &CreditStore{sql: db.sql, read: db.read, db: db} }
 func (db *DB) WorkInfo() *WorkInfoStore        { return &WorkInfoStore{db: db} }
 func (db *DB) WorkInfoPlugins() *WorkInfoPluginStore {
 	return &WorkInfoPluginStore{sql: db.sql, read: db.read}

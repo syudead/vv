@@ -103,8 +103,8 @@ func KeptWorkInfoTitle(raw string) string {
 	return title
 }
 
-// NormalizeWorkInfoSearchQuery は検索の語の前後の空白を除き、1〜WorkInfoSearchQueryMaxRunes 文字の
-// 正しい UTF-8 なら返す。外れれば ErrWorkInfoRunInvalid を返す。
+// NormalizeWorkInfoSearchQuery は検索の語か取得の ID の前後の空白を除き、1〜WorkInfoSearchQueryMaxRunes
+// 文字の正しい UTF-8 なら返す。外れれば ErrWorkInfoRunInvalid を返す。
 func NormalizeWorkInfoSearchQuery(query string) (string, error) {
 	trimmed := strings.TrimFunc(query, unicode.IsSpace)
 	if !runeCountBetween(trimmed, 1, WorkInfoSearchQueryMaxRunes) {

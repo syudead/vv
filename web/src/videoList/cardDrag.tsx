@@ -842,6 +842,20 @@ export function DraggableCard({ id, children }: { id: string; children: ReactNod
 }
 
 /**
+ * RefusingDropCard は持ち上げられず、上に落とすと拒否する格子のカード 1 枚を層に加える
+ * （スマートフォルダのカード。specs/052-smart-folders/ui-design.md「Smart folder card and
+ * row」）。拒否するかは層の `onto` が `id` に "refused" を返して決め、写しに拒否の Badge が出る。
+ */
+export function RefusingDropCard({ id, children }: { id: string; children: ReactNode }) {
+  const { setNodeRef } = useDroppable({ id });
+  return (
+    <div ref={setNodeRef} className="relative grid min-w-0 rounded-md">
+      {children}
+    </div>
+  );
+}
+
+/**
  * CardDragFace は写しの中身である。カードのサムネイル（動画は VideoThumbnail、グループは
  * フォルダの絵柄）と、その下の 1 行の題名。
  */

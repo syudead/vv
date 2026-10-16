@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 013905c3b771688777be9e984b08d91c729e64f199b258bb0c83133857be8835
+sourceHash: 7723bb8fc136f9e76153ce6dab30cd2f1d75d14eb74226f9650324667c91e2f9
 ---
 
 # 設計文書 {#design-documents}
@@ -72,5 +72,6 @@ sourceHash: 013905c3b771688777be9e984b08d91c729e64f199b258bb0c83133857be8835
 - [ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる (ドロップの表示、ドロップのメニュー、新しいグループの名前欄、取り消しのトースト): UI](../../specs/050-drag-organize/ui-design.md)
 - [タグの種類 (タグの行の種類のラベル、種類の絞り込み、選択バーの Set kind、Kinds タブ、ライブラリのタグの種類の絞り込み): UI](../../specs/051-tag-kinds/ui-design.md)
 - [作品情報プラグインからの作品の詳細 (比較の作品の詳細の行と `New` と `Not linked` の印、結果のステップの除かれた値): UI](../../specs/052-plugin-work-info-fields/ui-design.md)
+- [保存した条件に内容が従うスマートフォルダ (Save as smart folder、スマートフォルダのダイアログ、条件の行を持つカードとページ、動画のページのフォルダの行): UI](../../specs/052-smart-folders/ui-design.md)
 - [自動の重複判定 (カードと行のバージョンの印、Settings の Duplicate judging のスイッチ): UI](../../specs/054-auto-dup/ui-design.md)
 - [作品情報プラグイン用ツール (設定のデフォルトと選択肢、Network セクションのプラグイン用プロキシ、前回の実行ダイアログ、取得したタグを 1 つずつ選ぶ): UI](../../specs/056-plugin-tooling/ui-design.md)

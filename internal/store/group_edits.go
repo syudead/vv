@@ -217,7 +217,8 @@ func writeGroups(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) ([]i
 }
 
 // writeWithEvents は fn を 1 つの書き込み取引で行い、確定できたときだけ fn が返した知らせを
-// 発行する。fn が誤りを返せば巻き戻し、何も書かない。
+// 発行する。知らせにスマートフォルダの一致を変えうるもの（グループの変化・束ね）があれば、すべての
+// フォルダを名指す知らせも発行する（commitEvents）。fn が誤りを返せば巻き戻し、何も書かない。
 func writeWithEvents(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) ([]domain.Event, error)) error {
 	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -228,10 +229,9 @@ func writeWithEvents(ctx context.Context, db *DB, verb string, fn func(*sql.Tx) 
 	if err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := db.commitEvents(ctx, tx, events...); err != nil {
 		return fmt.Errorf("cannot %s: %w", verb, err)
 	}
-	db.publishEvents(events...)
 	return nil
 }
 

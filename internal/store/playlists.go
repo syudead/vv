@@ -16,8 +16,10 @@ import (
 )
 
 // プレイリスト（specs/044-playlists/data-model.md「Store operations」、research.md R-1〜R-5・R-11）。
-// 項目は動画の利用者データの鍵（userKeyExpr）かグループの id で持つ（specs/048-groups/research.md
-// R-10）。動画への外部キーは持たず、鍵が今ライブラリの動画に引けない項目や、見せる動画を持たない
+// 項目は動画の利用者データの鍵（userKeyExpr）、グループの id（specs/048-groups/research.md R-10）、
+// スマートフォルダの id（specs/052-smart-folders/contracts/screen-api.md）のどれかで持つ。
+// スマートフォルダの項目は中身を持たず、読むたびにフォルダの再生順を求める。フォルダの項目は
+// フォルダの削除で外部キーにより消え、削除が詰め直す（DeleteSmartFolder）。動画への外部キーは持たず、鍵が今ライブラリの動画に引けない項目や、見せる動画を持たない
 // グループの項目は、読み出しから外すだけで消さない（R-4）。グループの項目はグループの解散で外部キーの
 // on delete cascade により消え、解散が詰め直す（dissolveGroup）。位置はプレイリストの中で 0 から詰めた整数で、書き込みのたびに
 // 詰め直す（R-3）。どの操作もドメインイベントを発行しない（R-10）。
@@ -42,10 +44,13 @@ func playlistGroupVideos(alias string) string {
 
 // playlistItemShownCondition は、プレイリストの項目（別名 alias）を見せるかの条件句である。
 // 動画の項目は playlistItemVideoExpr が引けるとき、グループの項目はそのグループが所有者に見せる
-// 子孫の動画を持つとき見せる（R-4、specs/048-groups/data-model.md「Play order」）。
-// shownPlaylistItems も同じ条件で項目を選ぶので、件数と Playlist の項目が食い違わない。
+// 子孫の動画を持つとき見せる（R-4、specs/048-groups/data-model.md「Play order」）。スマートフォルダの
+// 項目は、空のフォルダを所有者に見せるのと同じく（specs/052-smart-folders/research.md R-8）、
+// フォルダがある限り見せる。shownPlaylistItems も同じ条件で項目を選ぶので、件数と Playlist の項目が
+// 食い違わない。
 func playlistItemShownCondition(alias string) string {
-	return `((` + alias + `.group_id is not null and exists (` + playlistGroupVideos(alias) + ` select 1 from gdesc))
+	return `(` + alias + `.smart_folder_id is not null
+		or (` + alias + `.group_id is not null and exists (` + playlistGroupVideos(alias) + ` select 1 from gdesc))
 		or ` + playlistItemVideoExpr(alias) + ` is not null)`
 }
 
@@ -146,7 +151,8 @@ func playlistListVersion(total int, updatedAtSum int64) string {
 // playlistCoverVideoExpr は、プレイリストの項目（別名 alias）の絵柄に差し込む動画の id を返す式である。
 // 動画の項目は playlistItemVideoExpr の動画、グループの項目はそのグループの所有者に見せる子孫の
 // 動画のうち再生順で最初のサムネイル生成済みのもの。グループの項目は playlistItemShownCondition と
-// 同じ子孫（playlistGroupVideos）から引くので、見せない項目は NULL になる。
+// 同じ子孫（playlistGroupVideos）から引くので、見せない項目は NULL になる。スマートフォルダの項目は
+// 再生順を SQL の式では求められないので NULL で、絵柄に差し込まない。
 func playlistCoverVideoExpr(alias string) string {
 	return `(case when ` + alias + `.content_key is not null then ` + playlistItemVideoExpr(alias) + `
 		else (` + playlistGroupVideos(alias) + ` select d.video_id from gdesc d join videos pgv on pgv.id = d.video_id
@@ -335,11 +341,12 @@ func (s *PlaylistStore) PlaylistPlayback(ctx context.Context, id, itemID, videoI
 	return playback, nil
 }
 
-// AddPlaylistItems は add の動画とグループを、プレイリスト id の末尾に要求の順（動画、次に
-// グループ）で足す（R-5）。動画の id は利用者データの鍵へ引き直し（同じ集まりの id は 1 つの
-// 項目になる）、グループは今あるもの（existingGroupIDs）だけを使う（SetFavorites と同じ）。
-// 引けた鍵やグループが既にプレイリストにあれば Existing に数え、何も変えない。プレイリストが
-// 無ければ domain.ErrPlaylistNotFound。足したときだけ更新日時を進める。
+// AddPlaylistItems は add の動画・グループ・スマートフォルダを、プレイリスト id の末尾に要求の順
+// （動画、グループ、スマートフォルダ）で足す（R-5）。動画の id は利用者データの鍵へ引き直し（同じ
+// 集まりの id は 1 つの項目になる）、グループとスマートフォルダは今あるもの（existingIDs）だけを
+// 使う（SetFavorites と同じ）。引けた鍵・グループ・フォルダが既にプレイリストにあれば Existing に
+// 数え、何も変えない。プレイリストが無ければ domain.ErrPlaylistNotFound。足したときだけ更新日時を
+// 進める。
 func (s *PlaylistStore) AddPlaylistItems(ctx context.Context, id int64, add domain.PlaylistAdd) (domain.PlaylistAdded, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -355,6 +362,10 @@ func (s *PlaylistStore) AddPlaylistItems(ctx context.Context, id int64, add doma
 		return domain.PlaylistAdded{}, err
 	}
 	groupIDs, err := existingGroupIDs(ctx, tx, add.GroupIDs)
+	if err != nil {
+		return domain.PlaylistAdded{}, err
+	}
+	folderIDs, err := existingIDs(ctx, tx, "smart_folders", add.SmartFolderIDs)
 	if err != nil {
 		return domain.PlaylistAdded{}, err
 	}
@@ -390,6 +401,11 @@ func (s *PlaylistStore) AddPlaylistItems(ctx context.Context, id int64, add doma
 	}
 	for _, groupID := range groupIDs {
 		if err := insert("group_id", groupID); err != nil {
+			return domain.PlaylistAdded{}, err
+		}
+	}
+	for _, folderID := range folderIDs {
+		if err := insert("smart_folder_id", folderID); err != nil {
 			return domain.PlaylistAdded{}, err
 		}
 	}
@@ -636,44 +652,33 @@ func orderedUserKeys(ctx context.Context, tx *sql.Tx, videoIDs []int64) ([]strin
 	return keys, nil
 }
 
-// shownPlaylistItems はプレイリスト id の見せる項目（playlistItemShownCondition）を位置の順に、
-// 所有者として読んだ動画かグループと合わせて返す。グループの値とメンバーの並びは loadGroups の
-// 再生順である（specs/048-groups/data-model.md「Play order」）。
-func shownPlaylistItems(ctx context.Context, tx *sql.Tx, id int64) ([]domain.PlaylistItem, error) {
-	rows, err := tx.QueryContext(ctx, `select i.id, `+playlistItemVideoExpr("i")+`, i.group_id
-		from playlist_items i where i.playlist_id = ? and `+playlistItemShownCondition("i")+`
-		order by i.position, i.id`, id)
-	if err != nil {
-		return nil, fmt.Errorf("cannot read the playlist items: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	type entry struct {
-		id      int64
-		videoID sql.NullInt64
-		groupID sql.NullInt64
-	}
-	var entries []entry
-	var videoIDs, groupIDs []int64
-	for rows.Next() {
-		var e entry
-		if err := rows.Scan(&e.id, &e.videoID, &e.groupID); err != nil {
-			return nil, fmt.Errorf("cannot read the playlist items: %w", err)
-		}
-		switch {
-		case e.videoID.Valid:
-			videoIDs = append(videoIDs, e.videoID.Int64)
-		case e.groupID.Valid:
-			groupIDs = append(groupIDs, e.groupID.Int64)
-		default:
-			continue
-		}
-		entries = append(entries, e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("cannot read the playlist items: %w", err)
-	}
-	_ = rows.Close()
+// playlistEntry はプレイリストの見せる項目 1 つの、動画・グループ・スマートフォルダの id である。
+// どれか 1 つだけが有効である。
+type playlistEntry struct {
+	id       int64
+	videoID  sql.NullInt64
+	groupID  sql.NullInt64
+	folderID sql.NullInt64
+}
 
+// shownPlaylistItems はプレイリスト id の見せる項目（playlistItemShownCondition）を位置の順に、
+// 所有者として読んだ動画・グループ・スマートフォルダと合わせて返す。グループの値とメンバーの並びは
+// loadGroups の再生順（specs/048-groups/data-model.md「Play order」）、スマートフォルダの値と
+// メンバーの並びは読んだ時点のフォルダの再生順（specs/052-smart-folders/data-model.md「Contents」）
+// である。
+func shownPlaylistItems(ctx context.Context, tx *sql.Tx, id int64) ([]domain.PlaylistItem, error) {
+	entries, err := shownPlaylistEntries(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	var videoIDs, groupIDs []int64
+	for _, e := range entries {
+		if e.videoID.Valid {
+			videoIDs = append(videoIDs, e.videoID.Int64)
+		} else if e.groupID.Valid {
+			groupIDs = append(groupIDs, e.groupID.Int64)
+		}
+	}
 	videos, err := ownerVideosByID(ctx, tx, videoIDs)
 	if err != nil {
 		return nil, err
@@ -682,25 +687,58 @@ func shownPlaylistItems(ctx context.Context, tx *sql.Tx, id int64) ([]domain.Pla
 	if err != nil {
 		return nil, err
 	}
+	now := listNow().Unix()
 	items := make([]domain.PlaylistItem, 0, len(entries))
 	for _, e := range entries {
 		item := domain.PlaylistItem{ID: e.id}
-		if e.videoID.Valid {
+		switch {
+		case e.videoID.Valid:
 			video, ok := videos[e.videoID.Int64]
 			if !ok {
 				continue
 			}
 			item.Video = &video
-		} else {
+		case e.groupID.Valid:
 			group, ok := groups[e.groupID.Int64]
 			if !ok {
 				continue
 			}
 			item.Group = &group
+		default:
+			card, err := ownerSmartFolderCard(ctx, tx, e.folderID.Int64, now)
+			if err != nil {
+				return nil, err
+			}
+			item.SmartFolder = &card
 		}
 		items = append(items, item)
 	}
 	return items, nil
+}
+
+// shownPlaylistEntries はプレイリスト id の見せる項目の id を位置の順に読む。
+func shownPlaylistEntries(ctx context.Context, tx *sql.Tx, id int64) ([]playlistEntry, error) {
+	rows, err := tx.QueryContext(ctx, `select i.id, `+playlistItemVideoExpr("i")+`, i.group_id, i.smart_folder_id
+		from playlist_items i where i.playlist_id = ? and `+playlistItemShownCondition("i")+`
+		order by i.position, i.id`, id)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the playlist items: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var entries []playlistEntry
+	for rows.Next() {
+		var e playlistEntry
+		if err := rows.Scan(&e.id, &e.videoID, &e.groupID, &e.folderID); err != nil {
+			return nil, fmt.Errorf("cannot read the playlist items: %w", err)
+		}
+		if e.videoID.Valid || e.groupID.Valid || e.folderID.Valid {
+			entries = append(entries, e)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the playlist items: %w", err)
+	}
+	return entries, nil
 }
 
 // ownerVideosByID は ids の動画を所有者として読み、id ごとに返す。

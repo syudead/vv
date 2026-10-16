@@ -1,7 +1,7 @@
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 
 import type { Video } from "../api/client";
-import { itemKey, itemVideo, itemVideos } from "../api/libraryItems";
+import { isOrganizable, itemKey, itemVideo, itemVideos } from "../api/libraryItems";
 import type { VideosState } from "../api/useVideos";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
@@ -56,7 +56,9 @@ function OwnerFolderVideoGrid({ videos, zoom, card, onLift }: FolderVideoGridPro
     undo,
   });
   const shown = drops.shown;
-  const { order, nameOf, preview } = useOrderedItemDrag(shown, itemKey, false);
+  // フォルダ画面にスマートフォルダの項目は来ないが、型の上で持ち上げる項目に絞る。
+  const organizable = useMemo(() => shown.filter(isOrganizable), [shown]);
+  const { order, nameOf, preview } = useOrderedItemDrag(organizable, itemKey, false);
   return (
     <CardDragLayer
       order={order}

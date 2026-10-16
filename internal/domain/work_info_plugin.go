@@ -116,7 +116,8 @@ type WorkInfoOperation string
 const (
 	// WorkInfoSearch は語で作品を探し、候補を返す操作である。
 	WorkInfoSearch WorkInfoOperation = "search"
-	// WorkInfoFetch は作品の URL から作品情報を取る操作である。
+	// WorkInfoFetch は作品の URL か ID（品番など）から作品情報を取る操作である。ID を作品の URL に
+	// 埋め込むのはプラグインである。
 	WorkInfoFetch WorkInfoOperation = "fetch"
 )
 
@@ -459,8 +460,10 @@ type WorkInfoRunRequest struct {
 	Operation WorkInfoOperation
 	// Query は search の語である。
 	Query string
-	// URL は fetch の作品の URL である。
+	// URL は fetch の作品の URL である。ID とどちらか一方だけを持つ。
 	URL string
+	// ID は fetch の作品の ID である。URL とどちらか一方だけを持つ。
+	ID string
 	// Settings は所有者が入力した、このプラグインの設定の値である。
 	Settings map[string]string
 }
@@ -476,13 +479,15 @@ func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
 		Operation WorkInfoOperation `json:"operation"`
 		Query     string            `json:"query,omitempty"`
 		URL       string            `json:"url,omitempty"`
+		ID        string            `json:"id,omitempty"`
 		Settings  map[string]string `json:"settings"`
-	}{WorkInfoPluginContract, r.Operation, "", "", settings}
+	}{WorkInfoPluginContract, r.Operation, "", "", "", settings}
 	switch r.Operation {
 	case WorkInfoSearch:
 		body.Query = r.Query
 	case WorkInfoFetch:
 		body.URL = r.URL
+		body.ID = r.ID
 	}
 	return json.Marshal(body)
 }

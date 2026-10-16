@@ -197,7 +197,7 @@ describe("WorkInfoPluginsSection", () => {
     expect(within(row).getByText("Not approved")).toBeDefined();
     expect(within(row).getByText("v1.2.0")).toBeDefined();
     expect(within(row).getByText("Reaches internet sites")).toBeDefined();
-    expect(within(row).getByText(/Search · Fetch by URL/)).toBeDefined();
+    expect(within(row).getByText(/Search · Fetch by ID or URL/)).toBeDefined();
     const approve = within(row).getByRole("button", { name: "Review and approve" });
     await waitFor(() => expect(document.activeElement).toBe(approve));
     const posted = fake.requests.find((request) => request.method === "POST");

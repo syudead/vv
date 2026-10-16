@@ -12,10 +12,11 @@ import (
 
 // タグそのものの保存（specs/014-video-tags/data-model.md §1〜§4・§7）。
 //
-// TagStore は PlaybackStore と同じく、共有する SQLite 接続だけを持ち、
-// ライブラリ索引の役割の型（LibraryStore）にも通知の発行にも依存しない。
-// タグの変更は副作用（生成物の削除・ワーカーの起床・/api/events）を持たない
-// ので、トランザクションのコミットだけで済む。
+// TagStore は PlaybackStore と同じく、共有する SQLite 接続を持ち、ライブラリ索引の
+// 役割の型（LibraryStore）には依存しない。タグの変更はスマートフォルダの一致を変えうるので、
+// 書き込みは db.commitMatchChange で確定し、確定後に domain.SmartFoldersChanged を発行する
+// （specs/052-smart-folders/data-model.md「Notices」）。ほかの副作用（生成物の削除・ワーカーの
+// 起床）は持たない。
 
 // CreateTag は新しいタグを作る。名前が既に別のタグの元の名前かシノニムなら
 // *domain.TagNameConflict（domain.ErrTagNameTaken）を返す。
@@ -51,7 +52,7 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 		return domain.Tag{}, err
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.Tag{}, fmt.Errorf("cannot create the tag: %w", err)
 	}
 	return tag, nil
@@ -105,7 +106,7 @@ func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain
 	if err != nil {
 		return domain.Tag{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.Tag{}, fmt.Errorf("cannot rename the tag: %w", err)
 	}
 	return tag, nil
@@ -128,7 +129,7 @@ func (s *TagStore) DeleteTag(ctx context.Context, id int64) error {
 		return fmt.Errorf("cannot delete the tag (id=%d): %w", id, err)
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return fmt.Errorf("cannot delete the tag: %w", err)
 	}
 	return nil
@@ -151,7 +152,7 @@ func (s *TagStore) MergeTags(ctx context.Context, targetID int64, sourceIDs []in
 	if err != nil {
 		return domain.TagMergeOutcome{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.TagMergeOutcome{}, fmt.Errorf("cannot merge the tags: %w", err)
 	}
 	return outcome, nil
@@ -218,6 +219,10 @@ func mergeTagsInto(ctx context.Context, tx queryExecer, targetID int64, sourceID
 		`delete from tags where id in (select value from json_each(?))`, string(encoded),
 	); err != nil {
 		return fmt.Errorf("cannot delete the merged tags (target=%d): %w", targetID, err)
+	}
+	// スマートフォルダの条件が名指す統合元を統合先にする（specs/052-smart-folders/research.md R-9）。
+	if err := rewriteSmartRuleRefs(ctx, tx, domain.SmartRefTag, targetID, sourceIDs); err != nil {
+		return err
 	}
 	return confirmTagInTx(ctx, tx, targetID)
 }

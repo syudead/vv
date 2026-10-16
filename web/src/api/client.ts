@@ -117,11 +117,20 @@ export type APIToken = components["schemas"]["APIToken"];
 export type CreatedAPIToken = components["schemas"]["CreatedAPIToken"];
 
 /**
+ * SmartFolderSummary はスマートフォルダの項目の中身である（api/openapi.yaml の
+ * SmartFolderSummary）。カードの値は持たず、画面に出たカードが別に読む
+ * （specs/052-smart-folders/research.md R-14）。
+ */
+export type SmartFolderSummary = components["schemas"]["SmartFolderSummary"];
+
+/**
  * LibraryItem は一覧の項目1件である（api/openapi.yaml の LibraryItem）。生成した型は
- * `video` と `group` をどちらも省略可能にしているので、`kind` で読み分けられる形にする。
+ * `video`・`group`・`smartFolder` をどれも省略可能にしているので、`kind` で読み分けられる形にする。
  */
 export type LibraryItem =
-  { kind: "video"; video: Video } | { kind: "group"; group: LibraryGroup };
+  | { kind: "video"; video: Video }
+  | { kind: "group"; group: LibraryGroup }
+  | { kind: "smartFolder"; smartFolder: SmartFolderSummary };
 export type VideoChanged = components["schemas"]["VideoChanged"];
 export type GroupChanged = components["schemas"]["GroupChanged"];
 export type GroupDetail = components["schemas"]["GroupDetail"];
@@ -362,7 +371,8 @@ export const MAX_TAG_FILTER_COUNT = 16;
  * 無い（フォルダ画面のタグ絞り込みは対象外。
  * specs/014-video-tags/contracts/tags-api.md §5）。
  */
-export interface ListVideosParams extends ListFilterParams, CreditFilterParams {
+export interface ListVideosParams
+  extends ListFilterParams, CreditFilterParams, AddedLengthFilterParams {
   /** 絞り込むタグの id（すべて持つ動画だけにする AND）。最大16個。書く順は問わない。 */
   tag?: number[];
 }
@@ -389,6 +399,33 @@ function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): vo
     query.set("organization", String(params.organization));
   }
   if (params.tagKind !== undefined) query.set("tagKind", String(params.tagKind));
+}
+
+/**
+ * AddedLengthFilterParams は追加日と長さでの絞り込みである（listVideos・listLibrary・
+ * listLibraryIds。specs/052-smart-folders/research.md R-4）。範囲の外の値はサーバーが
+ * `400` で断るので、ここでは丸めずにそのまま送る。
+ */
+export interface AddedLengthFilterParams {
+  /** この日数前以後に追加した動画だけにする（1 以上 36500 以下）。 */
+  addedWithin?: number;
+  /** 長さの下限（秒、含む。0 以上 360000 以下）。長さの分からない動画は当たらない。 */
+  minDuration?: number;
+  /** 長さの上限（秒、含む。0 以上 360000 以下）。長さの分からない動画は当たらない。 */
+  maxDuration?: number;
+}
+
+/** setAddedLengthFilter は追加日と長さの絞り込みを問い合わせに載せる。 */
+function setAddedLengthFilter(
+  query: URLSearchParams,
+  params: AddedLengthFilterParams,
+): void {
+  if (params.addedWithin !== undefined)
+    query.set("addedWithin", String(params.addedWithin));
+  if (params.minDuration !== undefined)
+    query.set("minDuration", String(params.minDuration));
+  if (params.maxDuration !== undefined)
+    query.set("maxDuration", String(params.maxDuration));
 }
 
 /** setListFilters は共通の条件を問い合わせに載せる。 */
@@ -422,6 +459,7 @@ export function listVideos(params: ListVideosParams = {}): Promise<VideoPage> {
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
+  setAddedLengthFilter(query, params);
   return request<VideoPage>(`/api/videos?${query.toString()}`, { signal: params.signal });
 }
 
@@ -434,22 +472,41 @@ export type LibraryPageResponse = Omit<components["schemas"]["LibraryPage"], "it
 };
 
 /**
- * toLibraryItem は生成した型の項目を、`kind` で読み分けられる形にする。契約に反して
- * 中身の欠けた項目は捨てる（null）。
+ * toLibraryItem は生成した型の項目（ライブラリとスマートフォルダの中身が同じ形を持つ）を、
+ * `kind` で読み分けられる形にする。契約に反して中身の欠けた項目は捨てる（null）。
  */
-function toLibraryItem(item: components["schemas"]["LibraryItem"]): LibraryItem | null {
+export function toLibraryItem(item: {
+  kind: LibraryItem["kind"];
+  video?: Video;
+  group?: LibraryGroup;
+  smartFolder?: SmartFolderSummary;
+}): LibraryItem | null {
   if (item.kind === "video" && item.video !== undefined) {
     return { kind: "video", video: item.video };
   }
   if (item.kind === "group" && item.group !== undefined) {
     return { kind: "group", group: item.group };
   }
+  if (item.kind === "smartFolder" && item.smartFolder !== undefined) {
+    return { kind: "smartFolder", smartFolder: item.smartFolder };
+  }
   return null;
 }
 
+/** toLibraryItems は生成した型の項目の並びを読み分け、中身の欠けた項目を捨てる。 */
+export function toLibraryItems(
+  items: readonly Parameters<typeof toLibraryItem>[0][],
+): LibraryItem[] {
+  return items.flatMap((item) => {
+    const converted = toLibraryItem(item);
+    return converted === null ? [] : [converted];
+  });
+}
+
 /**
- * listLibrary はライブラリの一覧を1ページ取得する。項目は動画か、フォルダの
- * グループ1件である（specs/017-folder-groups/contracts/library-api.md §1）。
+ * listLibrary はライブラリの一覧を1ページ取得する。項目は動画、グループ、絞り込みの無い
+ * 一覧ではスマートフォルダの要約である（specs/017-folder-groups/contracts/library-api.md §1、
+ * specs/052-smart-folders/data-model.md「Library items」）。
  */
 export async function listLibrary(
   params: ListVideosParams = {},
@@ -458,21 +515,17 @@ export async function listLibrary(
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
+  setAddedLengthFilter(query, params);
   const page = await request<components["schemas"]["LibraryPage"]>(
     `/api/library?${query.toString()}`,
     { signal: params.signal },
   );
-  return {
-    ...page,
-    items: page.items.flatMap((item) => {
-      const converted = toLibraryItem(item);
-      return converted === null ? [] : [converted];
-    }),
-  };
+  return { ...page, items: toLibraryItems(page.items) };
 }
 
 /** ListLibraryIdsParams は「すべて選択」用の全件 id の問い合わせ条件である。 */
-export interface ListLibraryIdsParams extends CreditFilterParams {
+export interface ListLibraryIdsParams
+  extends CreditFilterParams, AddedLengthFilterParams {
   query?: string;
   watch?: WatchFilter;
   playable?: boolean;
@@ -500,6 +553,7 @@ export function listLibraryIds(
   if (params.favorite === true) query.set("favorite", "true");
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
+  setAddedLengthFilter(query, params);
   return request<VideoIdsResponse>(`/api/library/ids?${query.toString()}`, {
     signal: params.signal,
   });
@@ -564,25 +618,35 @@ export function getGroup(id: number, signal?: AbortSignal): Promise<GroupDetail>
 }
 
 /**
- * groupQuery は動画の読み取りに付ける問い合わせである。`group` は動画を開いたグループの id で、
- * 省けば何も付けない（specs/048-groups/research.md R-9）。
+ * groupQuery は動画の読み取りに付ける問い合わせである。`group` は動画を開いたグループの id、
+ * `smartFolder` は動画を開いたスマートフォルダの id で、省いた方は付けない
+ * （specs/048-groups/research.md R-9、specs/052-smart-folders/contracts/screen-api.md）。
  */
-function groupQuery(params: Record<string, string>, group: number | undefined): string {
+function groupQuery(
+  params: Record<string, string>,
+  group: number | undefined,
+  smartFolder: number | undefined,
+): string {
   const query = new URLSearchParams(params);
   if (group !== undefined) query.set("group", String(group));
+  if (smartFolder !== undefined) query.set("smartFolder", String(smartFolder));
   return query.size === 0 ? "" : `?${query.toString()}`;
 }
 
 /**
  * getVideo は動画1件の詳細を取得する。`group` を渡すと、動画の `group` をそのグループの
- * 再生順で答えさせる（research.md R-9）。
+ * 再生順で答えさせる（research.md R-9）。`smartFolder` を渡すと、`group` が無ければ動画の
+ * `smartFolder` をそのフォルダの再生順で答えさせる。
  */
 export function getVideo(
   id: number,
   signal?: AbortSignal,
   group?: number,
+  smartFolder?: number,
 ): Promise<Video> {
-  return request<Video>(`/api/videos/${id}${groupQuery({}, group)}`, { signal });
+  return request<Video>(`/api/videos/${id}${groupQuery({}, group, smartFolder)}`, {
+    signal,
+  });
 }
 
 /**
@@ -690,21 +754,23 @@ export async function uploadThumbnailImage(
  * getRelatedVideos は動画詳細画面の関連動画を近さの順に 1 ページ取得する。`cursor` を省くと
  * 先頭のページで、次の動画の id とグループも載る。続きは応答の `nextCursor` を渡して読む。
  * `group` は動画を開いたグループの id で、グループ・前後をその再生順で答えさせる（R-9）。
+ * `smartFolder` は動画を開いたスマートフォルダの id で、`group` が無ければその再生順で答えさせる。
  */
 export function getRelatedVideos(
   id: number,
   signal?: AbortSignal,
   cursor?: string,
   group?: number,
+  smartFolder?: number,
 ): Promise<RelatedVideos> {
-  const query = groupQuery(cursor === undefined ? {} : { cursor }, group);
+  const query = groupQuery(cursor === undefined ? {} : { cursor }, group, smartFolder);
   return request<RelatedVideos>(`/api/videos/${String(id)}/related${query}`, { signal });
 }
 
 /**
  * listVideoGroupMembers は動画が属するグループのメンバーを、グループの中の並びで
  * offset 本目（0 始まり）から最大 limit 本取得する。関連動画の group の窓の外を読む。
- * `group` は動画を開いたグループの id で、関連動画の読み取りと同じものを渡す（R-9）。
+ * `group` と `smartFolder` は動画を開いた文脈で、関連動画の読み取りと同じものを渡す（R-9）。
  */
 export function listVideoGroupMembers(
   id: number,
@@ -712,8 +778,13 @@ export function listVideoGroupMembers(
   limit: number,
   signal?: AbortSignal,
   group?: number,
+  smartFolder?: number,
 ): Promise<GroupMemberPage> {
-  const query = groupQuery({ offset: String(offset), limit: String(limit) }, group);
+  const query = groupQuery(
+    { offset: String(offset), limit: String(limit) },
+    group,
+    smartFolder,
+  );
   return request<GroupMemberPage>(`/api/videos/${String(id)}/group-members${query}`, {
     signal,
   });
