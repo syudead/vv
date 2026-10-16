@@ -77,7 +77,7 @@ test("scan progress remains one indicator across library, settings, and playback
   await indicator.hover();
   await expect(page.getByRole("dialog")).toContainText(" of 100 videos done");
   await indicator.click();
-  await expect(page).toHaveURL(/\/settings#scan-status$/);
+  await expect(page).toHaveURL(/\/settings\/scan#scan-status$/);
   await expect(page.getByRole("heading", { name: "Scan status" })).toBeFocused();
 
   const settingsIndicator = page.getByRole("button", { name: /Open the scan status/ });
@@ -191,7 +191,7 @@ test("opening failed scan details acknowledges the notice across reloads", async
   await page
     .getByRole("button", { name: /^Scan failed .*Open the scan status$/ })
     .click();
-  await expect(page).toHaveURL(/\/settings#scan-status$/);
+  await expect(page).toHaveURL(/\/settings\/scan#scan-status$/);
   await expect(page.getByRole("button", { name: /Open the scan status/ })).toHaveCount(0);
   await page.reload();
   await expect(page.getByRole("button", { name: /Open the scan status/ })).toHaveCount(0);

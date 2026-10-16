@@ -21,7 +21,14 @@ import { useToast } from "../ui/Toast";
 import { navEntries, type NavEntry } from "./navigation";
 
 function settingsEntry(): NavEntry {
-  return { id: "settings", label: t.shell.nav.settings, icon: Settings, to: "/settings" };
+  // 設定の下のページ（`/settings/library` など）でも選択中にする（specs/058-settings-pages R-1）。
+  return {
+    id: "settings",
+    label: t.shell.nav.settings,
+    icon: Settings,
+    to: "/settings",
+    matchDescendants: true,
+  };
 }
 
 /** useCloseDrawer は狭い幅のドロワーを閉じる関数を返す。ドロワーでなければ何もしない。 */

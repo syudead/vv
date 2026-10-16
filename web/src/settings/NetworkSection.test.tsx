@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -38,14 +38,17 @@ describe("NetworkSection", () => {
   beforeEach(() => vi.stubGlobal("fetch", fetchMock));
   afterEach(() => vi.unstubAllGlobals());
 
-  it("renders nothing outside the desktop app (404)", async () => {
+  it("says the setting is in the desktop app outside it (404), with no switch", async () => {
     fetchMock.mockResolvedValue(json({ code: "not_found", message: "not found" }, 404));
-    const { container } = render(<NetworkSection />);
+    render(<NetworkSection />);
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(URL, expect.anything()));
-    await new Promise((done) => setTimeout(done, 0));
-    expect(container.innerHTML).toBe("");
-    expect(screen.queryByRole("heading", { name: "Network" })).toBeNull();
+    expect(
+      await screen.findByRole("heading", { level: 2, name: "Local network" }),
+    ).toBeDefined();
+    expect(
+      screen.getByText(/This setting is in the Windows desktop app\./),
+    ).toBeDefined();
+    expect(screen.queryByRole("switch")).toBeNull();
   });
 
   it("shows the caution and no addresses while LAN access is off", async () => {
@@ -53,7 +56,7 @@ describe("NetworkSection", () => {
     render(<NetworkSection />);
 
     expect(
-      await screen.findByRole("heading", { level: 2, name: "Network" }),
+      await screen.findByRole("heading", { level: 2, name: "Local network" }),
     ).toBeDefined();
     expect(lanSwitch().getAttribute("aria-checked")).toBe("false");
     expect(screen.getByText("Before you turn this on")).toBeDefined();
@@ -74,7 +77,7 @@ describe("NetworkSection", () => {
     const user = userEvent.setup();
     render(<NetworkSection />);
 
-    await screen.findByRole("heading", { name: "Network" });
+    await screen.findByRole("heading", { name: "Local network" });
     await user.click(lanSwitch());
 
     expect(fetchMock).toHaveBeenCalledWith(
@@ -131,7 +134,7 @@ describe("NetworkSection", () => {
     const user = userEvent.setup();
     render(<NetworkSection />);
 
-    await screen.findByRole("heading", { name: "Network" });
+    await screen.findByRole("heading", { name: "Local network" });
     await user.click(lanSwitch());
 
     const alert = await screen.findByRole("alert");

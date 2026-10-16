@@ -18,11 +18,11 @@ import { SaveStatus } from "./SaveStatus";
 import { useSwitchSave } from "./useSwitchSave";
 
 /**
- * NetworkSection は設定画面の「Network」区画である。Windows デスクトップ版で、所有者が
+ * NetworkSection は「Network」のページの「Local network」節である。Windows デスクトップ版で、所有者が
  * LAN からの接続を許可し、許可中に開くアドレスを見る（specs/037-windows-app/research.md R-15）。
  *
- * `GET /api/settings/network` が `404` のとき（デスクトップ版でない）は何も出さない。読み終える
- * までも出さない（デスクトップ版でない画面に区画が一瞬出ないように）。
+ * `GET /api/settings/network` が `404` のとき（デスクトップ版でない）は、スイッチの代わりに
+ * デスクトップ版で設定する旨の 1 行を出す。読み終えるまでは何も出さない。
  *
  * スイッチを押すと、送信中は押した先の状態を示し、応答で表示を置き換える。失敗
  * （`409` `listen_failed` など）では誤りを出し、スイッチを元の状態に戻す
@@ -62,7 +62,15 @@ export default function NetworkSection() {
     saveFailed: text.saveFailed,
   });
 
-  if (notDesktop || (settings === null && loadError === null)) return null;
+  // デスクトップ版でないときは、LAN からの接続はデスクトップ版で設定する旨の 1 行を出す
+  // （specs/058-settings-pages/ui-design.md「Network page outside the desktop app」）。
+  if (notDesktop)
+    return (
+      <PageSection title={text.heading} description={text.description}>
+        <p className="text-sm text-muted-foreground">{text.notDesktop}</p>
+      </PageSection>
+    );
+  if (settings === null && loadError === null) return null;
 
   const checked = saving ?? settings?.lanAccess ?? false;
 

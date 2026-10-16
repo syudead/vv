@@ -104,7 +104,7 @@ test("a running watch scan shows nothing; one that ends partial is announced and
   ).toHaveText("Auto-import finished with some failures. 2 videos may not be usable.");
 
   await indicator.click();
-  await expect(page).toHaveURL(/\/settings#scan-status$/);
+  await expect(page).toHaveURL(/\/settings\/scan#scan-status$/);
   const status = page.locator("#scan-status");
   await expect(status.getByText("Auto-import: some failed")).toBeVisible();
   await expect(status.getByText("broken-a.mp4")).toBeVisible();
@@ -128,7 +128,8 @@ test("the auto-import switch saves the choice and keeps it after a reload", asyn
   page,
 }) => {
   const name = "Pick up changes as they happen";
-  await page.goto("/settings");
+  // 切り替えは「Library」のページにある（specs/058-settings-pages/ui-design.md「Library page」）。
+  await page.goto("/settings/library");
   await expect(page.getByRole("heading", { name: "Auto-import" })).toBeVisible();
   const toggle = page.getByRole("switch", { name });
   await expect(toggle).toBeVisible();

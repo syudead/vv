@@ -1,21 +1,27 @@
 import { TriangleAlert } from "lucide-react";
+import type { ReactNode } from "react";
 
 import type { AutoImportSettings } from "../api/client";
-import { t, type UiText } from "../i18n";
+import { t } from "../i18n";
+import { cn } from "../lib/cn";
+import { ErrorState } from "../ui/patterns/error-state";
 import { Alert, AlertDescription, AlertTitle } from "../ui/shadcn/alert";
+import { Skeleton } from "../ui/shadcn/skeleton";
 
+import { PageLinkText } from "./PageLink";
 import type { AutoImportSource } from "./useAutoImportSettings";
 
 /**
  * autoImportStateLine は監視の状態の 1 行である（specs/042-folder-watch-import/ui-design.md
- * 「States」）。1 つの設定画面では、切り替えの行の説明に置く。
+ * 「States」、specs/058-settings-pages/ui-design.md「Words」）。切れているときとメディアフォルダが
+ * 無いときは、「Library」のページへのリンクを挟む。
  */
-export function autoImportStateLine(settings: AutoImportSettings): UiText {
+export function autoImportStateLine(settings: AutoImportSettings): ReactNode {
   const text = t.settings.autoImport.state;
-  if (!settings.enabled) return text.off;
+  if (!settings.enabled) return <PageLinkText sentence={text.off} page="library" />;
   switch (settings.watch.state) {
     case "off":
-      return text.noFolder;
+      return <PageLinkText sentence={text.noFolder} page="library" />;
     case "starting":
       return text.starting;
     case "active":
@@ -54,12 +60,38 @@ function ProblemAlert({ watch }: { watch: AutoImportSettings["watch"] }) {
 }
 
 /**
- * AutoImportState は自動の取り込みの監視の状態とその問題である。監視が `limited` のあいだ、
- * 問題を `warning` の Alert で出す。状態の 1 行は autoImportStateLine が作る。
+ * AutoImportState は自動の取り込みの監視の状態の 1 行とその問題である（「Scan」のページ、
+ * specs/058-settings-pages/ui-design.md「Scan page: Auto-import state」）。監視が `limited` の
+ * あいだ、問題を `warning` の Alert で出す。読み込みの最中は 1 行の高さの Skeleton、最初の
+ * 読み込みに失敗すると Retry 付きの ErrorState を出す。
  *
  * `source` には、監視の状態を追う契機（`followWatch`）で読んだものを渡す。
  */
 export default function AutoImportState({ source }: { source: AutoImportSource }) {
-  if (source.settings === null) return null;
-  return <ProblemAlert watch={source.settings.watch} />;
+  const text = t.settings.autoImport;
+  const { settings, loadError } = source;
+  if (settings === null) {
+    if (loadError !== null)
+      return (
+        <div>
+          <ErrorState
+            title={text.loadFailed(loadError)}
+            retryLabel={t.common.retry}
+            onRetry={() => void source.load()}
+          />
+        </div>
+      );
+    return <Skeleton role="status" aria-label={text.loading} className="h-5" />;
+  }
+  return (
+    <>
+      <p
+        data-slot="auto-import-state"
+        className={cn("text-sm", !settings.enabled && "text-muted-foreground")}
+      >
+        {autoImportStateLine(settings)}
+      </p>
+      <ProblemAlert watch={settings.watch} />
+    </>
+  );
 }

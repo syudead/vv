@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OwnerAudience } from "../testing/audience";
@@ -27,10 +28,13 @@ function judgingSwitch(): HTMLElement {
 }
 
 function renderSection() {
+  // 説明の文が「Connections」のページへリンクするので、ルーターの中に描く。
   return render(
-    <OwnerAudience>
-      <VersionJudgingSection />
-    </OwnerAudience>,
+    <MemoryRouter>
+      <OwnerAudience>
+        <VersionJudgingSection />
+      </OwnerAudience>
+    </MemoryRouter>,
   );
 }
 

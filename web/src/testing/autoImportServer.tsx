@@ -4,6 +4,7 @@
  */
 import { render } from "@testing-library/react";
 import type { ReactNode } from "react";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import type { AutoImportSettings } from "../api/client";
@@ -36,12 +37,17 @@ export function deferred<T>() {
   return { promise, resolve };
 }
 
-/** renderWithScan は、所有者として取り込みの状態の文脈の中に描き、描き直しも返す。 */
+/**
+ * renderWithScan は、所有者として取り込みの状態の文脈の中に描き、描き直しも返す。部品の文が
+ * ほかの設定のページへリンクするので、ルーターの中に描く。
+ */
 export function renderWithScan(ui: ReactNode) {
   const wrap = (node: ReactNode) => (
-    <OwnerAudience>
-      <ScanProvider>{node}</ScanProvider>
-    </OwnerAudience>
+    <MemoryRouter>
+      <OwnerAudience>
+        <ScanProvider>{node}</ScanProvider>
+      </OwnerAudience>
+    </MemoryRouter>
   );
   const view = render(wrap(ui));
   return { ...view, rerenderWith: (next: ReactNode) => view.rerender(wrap(next)) };
