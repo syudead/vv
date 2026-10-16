@@ -46,7 +46,8 @@ before the screen units: saving the library filter as a folder, the condition
 editor and the added-within and length parts, the folder card and the mark
 that tells it from a group card when wanted, the folder page with its trail,
 its children and its conditions, moving a folder under another, deleting it,
-the empty and missing-condition states, and the video page's folder line,
+the empty and missing-condition states, the video page's folder line, and
+the folder item's row on the playlist screen and in the playlist panel,
 judged against the parent Issue's `UI品質`.
 
 ## Technical Context
@@ -148,6 +149,22 @@ its children and contents" (#1180). "List a smart folder's contents with its
 children and card values" (#1172) is merged; its benchmark budget is now
 1 second, and the child folder summaries move to #1173. No unit is added,
 removed or renumbered.
+
+Revised again on 2026-10-16 after the review of PR #1216: a playlist can
+hold a smart folder item (requirement 9), and the playlist screen and the
+playlist panel draw it as a row
+([ui-design.md, Playlists](ui-design.md#playlists)), so the screen shows the
+list that plays. The scope of "Play a video in the smart folder it was
+opened from" (#1181) gains the folder item's rows; the child Issue keeps its
+number and its body is read with this section. "Add smart folders to the
+screen API" (#1178) keeps the playlist's folder items in what the SPA reads.
+No unit is added, removed or renumbered. The playlist response's
+`smartFolder` already carries the card values the rows draw; the contract
+changes in one field, `PlaylistStep.smartFolderId`
+([contracts/screen-api.md, Schemas and parameters changed](contracts/screen-api.md#schemas-and-parameters-changed)),
+so the video page opens a step onto a folder item with `?smartFolder` from
+the playback response, which it has whenever the arrows are drawn, instead
+of the panel's response, which can have failed; #1181 implements it.
 
 ```mermaid
 flowchart LR
@@ -339,7 +356,10 @@ parameters (`SmartFolderSummary` in `LibraryItem` and `SmartFolderItem`),
 the statuses and their catalog messages, the handlers, the wiring in
 `cmd/mdm`, and the client functions in `web/src/api/smartFolders.ts` and the
 changed favorites, playlist and video clients; the SPA keeps working with the
-new `LibraryItem` kind by skipping it until the screen units
+new `LibraryItem` kind by skipping it until the screen units, and keeps a
+playlist's `smartFolder` items in the items it reads, in the server's order,
+so the playlist screen, the panel and playback name the same items (the
+rows are drawn by "Play a video in the smart folder it was opened from")
 ([contracts/screen-api.md](contracts/screen-api.md)).
 
 **Dependencies**: Show root smart folders as cards in the library; Follow tag,
@@ -405,7 +425,16 @@ groups and videos.
 **Scope**: The video page reading `?smartFolder`, passing it to the video
 reads, keeping it on `Up next`, the arrows and the member list, and the
 folder line linking to the folder page; favoriting and adding a folder to a
-playlist from its card menu.
+playlist from its card menu; the folder item's row on the playlist screen
+and in the playlist panel, its link with `smartFolder`, its reorder and
+remove, the empty folder item, the video page carrying `smartFolder`
+inside a folder item of a playlist, and `PlaylistStep.smartFolderId` in
+`api/openapi.yaml`, `domain.PlaylistItem.start`, the in-folder `Next` of
+`domain.PlaylistPlaybackOf`, the playback handler's presenter and the
+regenerated code
+([ui-design.md, Playlists](ui-design.md#playlists),
+[contracts/screen-api.md](contracts/screen-api.md#schemas-and-parameters-changed);
+added by the 2026-10-16 revision after the review of PR #1216).
 
 **Dependencies**: Favorite, add to playlists and play from smart folders in
 the store; Open a smart folder onto its children and contents; the `design`
@@ -416,7 +445,17 @@ interaction review against `ui-design.md`. `task check` passes; page tests
 show: with `?smartFolder=1` the reads carry `smartFolder=1`, the autoplay
 notice names the folder's next video, and advancing keeps the query; the
 folder line links to `/smart-folders/1`; the card menu favorites the folder
-and adds it to a playlist.
+and adds it to a playlist; the playlist screen draws a folder item as a row
+with its name, cover and count from the playlist response, in the server's
+position, whose link opens the folder's open video with `playlist`, `item`
+and `smartFolder`, and reorders and removes it as a group item; an empty
+folder item is a row with "0 videos" and no link; the panel draws the folder
+item and marks it current, and a step onto a folder item carries
+`smartFolder` while a step onto a video item does not, also while the
+playlist read has failed and the panel is in its load-failed state; a
+handler test shows `smartFolderId` on a step whose item is a folder item,
+on `next` inside the folder included, and none on a step whose item is a
+video or a group, with no diff from `task generate`.
 
 ### Cover smart folders in a browser test
 
