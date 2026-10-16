@@ -76,7 +76,8 @@ columns already describe.
 | `Embedded.Device` | `com.apple.quicktime.make` and `com.apple.quicktime.model` joined by a space, else `com.android.manufacturer` and `com.android.model`, else `make` and `model` | All empty |
 | `Embedded.Location` (`{Latitude, Longitude, Altitude *float64}`) | `com.apple.quicktime.location.ISO6709`, else `location`, else `location-eng`, parsed as ISO 6709 | None parses |
 | `Embedded.CoverArt` (bool) | A stream with `disposition.attached_pic = 1` | None |
-| `Broadcast.Station`, `Broadcast.Program` | The SI reader's SDT service name and EIT present event name (R-4) | Not a TS file, or not found in the first 32 MiB |
+| `Broadcast.Station` | The SI reader's SDT service name (R-4) | Not a TS file, or not found in the first 32 MiB |
+| `Broadcast.Program` | The name of the EIT present or following event chosen by the [Rules](#rules) (R-4) | Not a TS file, no EIT or no TOT/TDT in the first 32 MiB, or neither event overlaps the recording |
 | `Chapters[]` | `chapters`, after the [Rules](#rules) | No chapter |
 | `Chapters[].StartMs`, `EndMs` (int64) | `start_time`, `end_time` in milliseconds | Never |
 | `Chapters[].Title` | `tags.title` | Empty |
@@ -88,13 +89,14 @@ columns already describe.
 | A row whose `version` differs from `MediaInfoVersion` reads as absent, and the scan queues a `metadata` job for the video (`IndexedVideo.MediaInfoMissing`: `probe_state = done` and no row at the current version) | `store` (the read and the scan's index query), `scanner` (`ensurePendingJobs`) |
 | The probe job writes the row in the `ApplyProbeForJob` transaction, under the same identity check as the `videos` update (job location id, version and path, content key, location generation) | `store` |
 | The `metadata` job writes only the row, under the same identity check; when the check fails nothing is written and the job completes | `store` (`ApplyMediaInfoForJob`), `app` |
-| A `metadata` job is claimable only when no `probe` job is claimable (`JobClaimCondition.NoClaimableProbe`) | `domain` (the condition), `store` (the claim query) |
+| A `metadata` job is claimable only when no `probe` job is queued or running for a video with a registered location (`JobClaimCondition.NoClaimableProbe`, counted as `NoClaimableThumbnail` counts `thumbnail` jobs) | `domain` (the condition), `store` (the claim query) |
 | A `metadata` job that fails at the attempt limit leaves the row as it was; the issue kind is `metadata_failed` | `store` (`FailClaimedJob`) |
 | Every string is trimmed, must be valid UTF-8 with control characters other than newline removed, and is cut at 2,000 characters; an empty result is absent | `domain` |
 | At most 64 audio tracks, 64 subtitle tracks and 1,000 chapters are kept, in stream or time order | `domain` |
 | `RecordedAt` parses RFC 3339 with or without an offset and `YYYY-MM-DD HH:MM:SS`; a value with an offset keeps it, one without is UTC; anything else is absent | `domain` |
 | `Location` parses ISO 6709 `±DD.DDDD±DDD.DDDD[±ALT]/` with 2, 4 or 6 integer digits in the coordinates; latitude outside ±90 or longitude outside ±180 is absent | `domain` |
 | Chapters are sorted by start; a chapter with `StartMs >= DurationMs` is dropped; `EndMs` is cut to `DurationMs` and to at least `StartMs`; a single chapter is kept; overlapping chapters are kept as given | `domain` (`NormalizeChapters`) |
+| The programme of a TS recording is the EIT present or following event whose span overlaps the recording, from the TOT/TDT time `T` to `T` plus the probed duration, the longest; a tie goes to the following event; a present event with an undefined duration ends at the following event's start; with no time, or no overlap, `Program` is absent | `domain` (`SelectBroadcastProgram`) |
 | A missing or unreadable item is omitted and never fails the probe; only a missing duration fails it, as today | `media` (the parser), `domain` |
 
 ## What does not change

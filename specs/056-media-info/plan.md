@@ -23,7 +23,7 @@ background job that yields to new imports.
 | Source | The same `ffprobe` run, with `-show_chapters` and longer analysis limits for TS ([R-2](research.md#r-2-the-same-ffprobe-run-reads-chapters-and-reads-longer-for-mpeg-ts)) |
 | Classification | HDR, projection, 3D and interlacing as pure domain rules ([R-3](research.md#r-3-hdr-projection-3d-and-interlacing-are-decided-by-pure-rules-in-internaldomain)) |
 | TS names | A Go SI reader with an ARIB STD-B24 decoder, first 32 MiB ([R-4](research.md#r-4-station-and-programme-names-of-a-ts-recording-come-from-a-go-si-reader-with-an-arib-std-b24-decoder)) |
-| Re-analysis | A `metadata` job kind, claimable only when no probe is ([R-5](research.md#r-5-imported-videos-are-re-analysed-by-a-metadata-job-that-yields-to-pending-probes)) |
+| Re-analysis | A `metadata` job kind, claimable only when no probe is queued or running ([R-5](research.md#r-5-imported-videos-are-re-analysed-by-a-metadata-job-that-yields-to-pending-probes)) |
 | API | `mediaInfo` on the detail only, guests included ([R-6](research.md#r-6-mediainfo-is-part-of-the-video-detail-only-for-owners-and-guests-alike)) |
 | Chapters | A `chapters` text track, marks in the video.js seek bar, the chapters button ([R-7](research.md#r-7-chapters-are-a-chapters-text-track-with-marks-drawn-in-the-videojs-seek-bar)) |
 | Languages | Names through `Intl.DisplayNames` ([R-8](research.md#r-8-language-codes-are-shown-through-intldisplaynames)) |
@@ -48,7 +48,7 @@ sequenceDiagram
   Probe->>Store: ApplyProbeForJob: videos + transcode + media_info
   Store-->>Page: video notification
   Note over Meta: videos imported before the feature
-  Store->>Meta: claim metadata (no probe claimable)
+  Store->>Meta: claim metadata (no probe queued or running)
   Meta->>Media: Probe(path)
   Media-->>Meta: Probe{…, Media}
   Meta->>Store: ApplyMediaInfoForJob: media_info only
@@ -62,15 +62,19 @@ sequenceDiagram
    omitted; only a missing duration fails the probe, as today
    ([data-model.md, Rules](data-model.md#rules)).
 2. **A TS file gets its names.** For `.ts`, `.m2ts` and `.mts`, `internal/media`
-   reads the first 32 MiB in Go, finds the SDT and the EIT present event of
-   the first programme and decodes both names with the ARIB decoder (R-4).
+   reads the first 32 MiB in Go, finds the SDT, the EIT present and following
+   events of the first programme and the TOT, decodes the names with the ARIB
+   decoder, and keeps the event that overlaps the recording longest, so a
+   recording that starts before its programme is not named after the
+   programme before it (R-4). The scan imports `.m2ts` and `.mts` as well as
+   `.ts`.
 3. **The store writes one row.** `ApplyProbeForJob` writes `video_media_info`
    in the transaction that updates `videos`, under the same identity check, so
    a file replaced during the probe leaves no row of the old file.
 4. **Existing videos catch up.** The migration queues a `metadata` job per
    probed video; the scan queues one for a row that is missing or below the
    current version. The `metadata` worker claims only while no `probe` job is
-   claimable, runs the same `Probe`, and writes only the row. A failure at the
+   queued or running, runs the same `Probe`, and writes only the row. A failure at the
    limit keeps what the page shows today.
 5. **The page shows groups.** `GET /api/videos/{id}` carries `mediaInfo`; the
    page renders Video, Audio, Subtitles, Embedded and Broadcast groups under
@@ -144,10 +148,10 @@ the chapter marks, menu and preview on the player.
 
 | Package | Change |
 | --- | --- |
-| `internal/domain` | `MediaInfo` and `MediaInfoVersion`; HDR, interlacing, bit-depth, string, date, location and chapter rules; `JobMetadata`, `NoClaimableProbe`, `IndexedVideo.MediaInfoMissing`, the activity and issue kinds |
+| `internal/domain` | `MediaInfo` and `MediaInfoVersion`; HDR, interlacing, bit-depth, string, date, location, chapter and broadcast-programme rules; `JobMetadata`, `NoClaimableProbe`, `IndexedVideo.MediaInfoMissing`, the activity and issue kinds |
 | `internal/media` | `-show_chapters`, the TS limits, the parser for the new items; the TS SI reader; `internal/media/arib` (the decoder) |
 | `internal/store` | Two migrations; the row in `ApplyProbeForJob`; `ApplyMediaInfoForJob`; the read on the detail; the claim condition; `EnsureJob` for `metadata`; the scan index query |
-| `internal/scanner` | Queue `metadata` when `MediaInfoMissing` |
+| `internal/scanner` | `.m2ts` and `.mts` in `mediaExtensions`; queue `metadata` when `MediaInfoMissing` |
 | `internal/app` | The `metadata` handler on `Ingest` |
 | `cmd/mdm` | The worker for the new kind (from `domain.JobKinds`) and its wake-up after a probe finishes |
 | `internal/httpapi`, `api/openapi.yaml` | `mediaInfo` on the detail; the two enum values |
@@ -209,10 +213,12 @@ video row is deleted.
 
 ### Read the station and programme names of TS recordings
 
-**Scope**: The SI reader (PAT, SDT, EIT present/following, 32 MiB cap, early
-stop) and `internal/media/arib` (JIS X 0208 and X 0201 sets, the additional
-symbols table, control codes), hooked into `media.Probe` for `.ts`, `.m2ts`
-and `.mts`; `Broadcast` on the stored value
+**Scope**: The SI reader (PAT, SDT, EIT present/following, TOT/TDT, 32 MiB
+cap, early stop, its own 10-second deadline) and `internal/media/arib` (JIS X
+0208 and X 0201 sets, the additional symbols table, control codes), hooked
+into `media.Probe` for `.ts`, `.m2ts` and `.mts`; `domain.SelectBroadcastProgram`;
+`.m2ts` and `.mts` in the scanner's `mediaExtensions`; `Broadcast` on the
+stored value
 ([R-4](research.md#r-4-station-and-programme-names-of-a-ts-recording-come-from-a-go-si-reader-with-an-arib-std-b24-decoder)).
 
 **Dependencies**: Read and store media information at import.
@@ -223,9 +229,13 @@ number and a square-bracketed glyph), a locking and a single shift, and an
 unmapped code decoded to the expected string; reader tests on a TS built in
 the test (PAT, PMT, SDT, EIT sections with ARIB strings, padding packets
 before them) return both names, return nothing for a TS with no SDT and EIT in
-the first 32 MiB, and stop reading after the names are found; the
-[quickstart](quickstart.md) row for `rec.ts` passes with the decoded names
-recorded in the PR.
+the first 32 MiB, and stop reading after the names and the time are found;
+domain tests show a recording starting 5 minutes before its programme gets the
+following event, one starting inside a programme gets the present event, a
+present event with an undefined duration ends at the following event, and no
+time gives no `Program`; a scanner test shows `.m2ts` and `.mts` files are
+imported; the [quickstart](quickstart.md) row for `rec.ts` passes with the
+decoded names and the probe time recorded in the PR.
 
 ### Re-analyse imported videos in the background
 
@@ -244,8 +254,8 @@ failure rule
 **Acceptance**: `task check` passes with no diff from `task generate`; a
 migration test shows a probed video with a registered location gets one
 queued `metadata` job and a pending one gets none; store tests show
-`metadata` is not claimed while a `probe` job is claimable and is claimed once
-it is done, a scan queues `metadata` for a video with no row and for a row at
+`metadata` is not claimed while a `probe` job is queued or running and is
+claimed once it is done, a scan queues `metadata` for a video with no row and for a row at
 an older version and not for a current one, `ApplyMediaInfoForJob` writes
 nothing when the location version changed, and a failure at the limit leaves
 the row and records `metadata_failed`; an app test with a fake generator

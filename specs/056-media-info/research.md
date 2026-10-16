@@ -87,15 +87,39 @@ pure functions, so each case is a unit test with no process.
 ## R-4: Station and programme names of a TS recording come from a Go SI reader with an ARIB STD-B24 decoder
 
 **Decision**: For a TS file the probe job also reads at most the first 32 MiB
-of the file in Go, parses the PAT, the SDT (table 0x42) and the EIT
-present/following (table 0x4E, section 0) of the first programme in the PAT,
-and decodes the service name and the event name with an ARIB STD-B24 8-bit
-character decoder in `internal/media/arib`. Reading stops as soon as both
-names are found.
+of the file in Go, parses the PAT, the SDT (table 0x42), the EIT
+present/following (table 0x4E, sections 0 and 1) of the first programme in the
+PAT and the TOT or TDT (tables 0x73 and 0x70), and decodes the service name
+and the event names with an ARIB STD-B24 8-bit character decoder in
+`internal/media/arib`. Reading stops as soon as the service name, both events
+and a time are found. The programme is the one of the two events that overlaps
+the recording longest, not the present event at the start:
+
+```mermaid
+flowchart LR
+  head[First 32 MiB] --> tot[TOT or TDT: time T at the start]
+  head --> pf[EIT present and following]
+  probe[ffprobe duration D] --> span[Recording T to T + D]
+  tot --> span
+  span --> pick{Longest overlap with the span}
+  pf --> pick
+  pick --> name[Broadcast.Program]
+```
+
+| Recording | Present event | Following event | Programme |
+| --- | --- | --- | --- |
+| 20:55 to 21:56 for a 21:00 to 21:54 drama | 20:00 to 21:00 news (5 minutes inside) | The drama (54 minutes inside) | The drama |
+| 21:10 to 21:54, started late | The drama (44 minutes inside) | 21:54 next programme (none inside) | The drama |
+| No TOT or TDT in the first 32 MiB | Any | Any | Absent: the start time is unknown, so the name is not guessed |
+
+The choice is a pure rule in `internal/domain`
+([data-model.md, Rules](data-model.md#rules)). A present event with an
+undefined duration ends where the following event starts.
 
 | Option | Station name | Programme name | Verdict |
 | --- | --- | --- | --- |
-| **Go SI reader with an ARIB decoder** | SDT, decoded | EIT present event, decoded | Chosen |
+| **Go SI reader with an ARIB decoder** | SDT, decoded | EIT present or following event, decoded and chosen by overlap | Chosen |
+| The EIT present event at the start | Same as the chosen option | The programme before the recorded one, for a recording that starts before its programme | Rejected: recorders start a recording early, so the present event at the start is often the previous programme |
 | `ffprobe -show_programs` | `service_name` as raw bytes: FFmpeg decodes the DVB character tables, not ARIB STD-B24, so a Japanese name is not readable | Not available: FFmpeg does not parse the EIT into metadata | Rejected: it meets neither half of requirement 5 |
 | The EIT sections from `ffprobe -show_packets` of the `epg` data stream | Same as above | The same decoder would be needed on a far larger output | Rejected: the same work on more output |
 | An external TS tool | Depends on the tool | Depends on the tool | Rejected: the container and the Windows app ship `ffmpeg` and `ffprobe` only |
@@ -103,7 +127,14 @@ names are found.
 **Rationale**: The SDT and the EIT present/following are repeated at least
 every 2 seconds in a broadcast, and 2 seconds of a 24 Mbps stream is 6 MiB,
 so 32 MiB finds them with room for a recording that opens with packets of
-other tables. The decoder covers JIS X 0208 kanji and kana through
+other tables; the TOT is sent every few seconds, and the
+[quickstart](quickstart.md) row for `rec.ts` checks that it is inside the cap.
+The present and following events at the start cover the recording's first
+programme and the next one, which is the recorded programme whenever the
+recording starts before it or inside it. The reader runs after `ffprobe`
+under its own 10-second deadline, apart from the 30-second `probeTimeout` of
+`ffprobe`, and a timeout or a read error omits the names and never fails the
+probe. The decoder covers JIS X 0208 kanji and kana through
 `golang.org/x/text/encoding/japanese`, JIS X 0201 katakana, and the ARIB
 additional symbols (rows 85 to 94) from a table; it ignores the size and
 position controls and drops a character it cannot map. A name with no
@@ -114,7 +145,9 @@ are not decoded by this reader; their names are omitted.
 
 **Decision**: A new job kind, `metadata`, runs the same `media.Probe` and
 writes only the `video_media_info` row. It is claimable only while no `probe`
-job is claimable. The migration queues one for every video whose probe is
+job is queued or running for a video with a registered location, as a
+`seek_thumbnail` job waits for `thumbnail` jobs (`NoClaimableThumbnail`), so a
+running probe and a `metadata` run never read the disk at the same time. The migration queues one for every video whose probe is
 done and that has a registered location; the scan queues one for a video whose
 row is missing or below `MediaInfoVersion`, as it re-queues a missing
 fingerprint. A new import never gets one, because its probe job writes the
@@ -124,7 +157,7 @@ row itself.
 flowchart LR
   mig[Migration] -->|queue per probed video| q[(jobs: metadata)]
   scan[Scan] -->|row missing or old| q
-  q --> claim{A probe job claimable?}
+  q --> claim{A probe job queued or running?}
   claim -->|yes| wait[Wait]
   claim -->|no| run[ffprobe once]
   run -->|identity unchanged| row[(video_media_info)]
@@ -133,15 +166,17 @@ flowchart LR
 
 | Option | Verdict |
 | --- | --- |
-| **A `metadata` kind, claimable when no probe is** | Chosen |
+| **A `metadata` kind, claimable when no probe is queued or running** | Chosen |
 | Re-queue the existing `probe` job with a priority column | Rejected: a probe that fails at the limit marks the video `failed`, which hides playback and the seek preview; the Edge Case keeps the existing information |
 | A backfill goroutine started at startup | Rejected: no record of what was tried, a restart starts over, and it would run beside the probe worker on the same disk |
 | A `media_info_version` column on `videos` | Rejected: the JSON row carries its version already; the scan's missing-row condition reads it as `FingerprintMissing` does |
 
 **Rationale**: One worker per kind runs one `ffprobe` at a time, which reads
 headers (and at most 100 MiB of a TS), so playback is not slowed. Yielding to
-claimable probes keeps a new import's own stages first, which is the Edge
-Case's other half. A failure at the limit leaves the row as it was, is
+queued and running probes keeps a new import's own stages first, which is the
+Edge Case's other half; the probe worker wakes the `metadata` worker when a
+probe job leaves `running`, so the backfill resumes without waiting for a
+poll. A failure at the limit leaves the row as it was, is
 recorded as a `metadata_failed` issue when the video is in the latest scan's
 set, and the next scan queues the job again. The `video` notification the job
 sends on finish makes an open video page refetch, so the owner sees the
