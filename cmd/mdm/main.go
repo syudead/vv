@@ -313,7 +313,8 @@ func run(opts runOptions) error {
 		Store: db.Home(), Jobs: ingestStore, AutoTags: db.AutoTags(), Publisher: bus, Logger: logger,
 	})
 	if err := homeOrganizer.Recover(backgroundCtx); err != nil {
-		logger.Warn("could not read the pending home organizer run", slog.Any("error", err))
+		// Run が読み直すので、起動は止めない。
+		logger.Warn("could not read the pending home organizer run; retrying", slog.Any("error", err))
 	}
 	scans.OnFinish(homeOrganizer.ScanFinished)
 	// 重複の自動判定。「同じ動画かもしれない」候補を指紋のコマごとに比べ、食い違う区間だけを判定の口に

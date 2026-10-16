@@ -80,6 +80,9 @@ type HomeOrganizer struct {
 	// 待ち行列が空と分かった最初の時刻で、空でないと分かるたびに零へ戻す。
 	afterScan  bool
 	emptySince time.Time
+	// reload は settings の待ちの実行を読み直す必要があるかである。Recover が読めなかったときと、終わった
+	// 実行を記録できなかったときに立ち、Run が Poll ごとに読み直す。
+	reload bool
 }
 
 // NewHomeOrganizer は整理役を組み立てる。待ちの実行は Recover で読み、Run で走らせる。
@@ -108,17 +111,46 @@ func NewHomeOrganizer(opts HomeOrganizerOptions) *HomeOrganizer {
 }
 
 // Recover は settings に残った待ちの実行を読み、Run がそれを走らせるようにする（R-9）。Run の前に
-// 1 度だけ呼ぶ。
+// 1 度だけ呼ぶ。読めなければ、Run が Poll ごとに読み直す。
 func (o *HomeOrganizer) Recover(ctx context.Context) error {
+	err := o.loadPending(ctx)
+	if err != nil {
+		o.mu.Lock()
+		o.reload = true
+		o.mu.Unlock()
+	}
+	return err
+}
+
+// loadPending は settings の待ちの実行を読み、今の待ちに重ねる。読めたら reload を下ろす。
+func (o *HomeOrganizer) loadPending(ctx context.Context) error {
 	run, found, err := o.store.PendingOrganize(ctx)
-	if err != nil || !found {
+	if err != nil {
 		return err
 	}
 	o.mu.Lock()
-	o.pending = domain.MergeHomeOrganizeRun(o.pending, run)
+	o.reload = false
+	if found {
+		o.pending = domain.MergeHomeOrganizeRun(o.pending, run)
+	}
 	o.mu.Unlock()
-	o.signal()
+	if found {
+		o.signal()
+	}
 	return nil
+}
+
+// reloadPending は reload が立っていれば settings の待ちの実行を読み直す。
+func (o *HomeOrganizer) reloadPending(ctx context.Context) {
+	o.mu.Lock()
+	reload := o.reload
+	o.mu.Unlock()
+	if !reload {
+		return
+	}
+	if err := o.loadPending(ctx); err != nil && ctx.Err() == nil {
+		o.logger.Warn("cannot read the pending home organizer run", slog.Any("error", err))
+	}
 }
 
 // Reorganize は rebuild を待ちに入れ、入れたあとの状態を返す（POST /api/home/organize）。
@@ -164,11 +196,12 @@ func (o *HomeOrganizer) Run(ctx context.Context) {
 			o.execute(ctx, run)
 			continue
 		}
+		awaiting, reload := o.waiting()
+		if awaiting && o.checkQueues(ctx) {
+			continue
+		}
 		var tick <-chan time.Time
-		if o.awaitingQueues() {
-			if o.checkQueues(ctx) {
-				continue
-			}
+		if awaiting || reload {
 			tick = time.After(o.poll)
 		}
 		select {
@@ -176,6 +209,7 @@ func (o *HomeOrganizer) Run(ctx context.Context) {
 			return
 		case <-o.wake:
 		case <-tick:
+			o.reloadPending(ctx)
 		}
 	}
 }
@@ -237,7 +271,13 @@ func (o *HomeOrganizer) execute(ctx context.Context, run domain.HomeOrganizeRun)
 		last.Added, last.Removed = applied.Added, applied.Removed
 	}
 	if err := o.store.SaveLastOrganize(ctx, last); err != nil {
-		o.logger.Error("cannot record the home organizer run", slog.Any("error", err))
+		// 待ちの setting には run が残っているので、消さずに読み直して run を走らせ直す。
+		o.logger.Error("cannot record the home organizer run; it runs again", slog.Any("error", err))
+		o.mu.Lock()
+		o.running, o.reload = "", true
+		o.mu.Unlock()
+		o.changed()
+		return
 	}
 	o.mu.Lock()
 	o.running = ""
@@ -262,74 +302,92 @@ func (o *HomeOrganizer) organize(ctx context.Context, run domain.HomeOrganizeRun
 	return o.store.ApplyProposal(ctx, run, domain.OrganizeByRules(candidates.Candidates))
 }
 
-// awaitingQueues は走査のあとの待ち行列を待っているかを返す。
-func (o *HomeOrganizer) awaitingQueues() bool {
+// waiting は、走査のあとの待ち行列を待っているかと、settings の待ちを読み直す必要があるかを返す。
+func (o *HomeOrganizer) waiting() (awaiting, reload bool) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
-	return o.afterScan
+	return o.afterScan, o.reload
 }
 
 // checkQueues は待ち行列を見て、空のまま Settle だけ続いたら走査のあとの実行を待ちに入れる（R-9）。
-// 待ちに入れたら真を返す。
+// 決めて待ちに入れ終えたら真を返す。読み書きに失敗したら走査のあとの待ちに戻し、次の Poll で
+// やり直す。
 func (o *HomeOrganizer) checkQueues(ctx context.Context) bool {
-	empty, err := o.queuesEmpty(ctx)
-	if err != nil {
+	since, settled := o.queuesSettled(ctx)
+	if !settled {
+		return false
+	}
+	if err := o.queueAfterScan(ctx); err != nil {
 		if ctx.Err() == nil {
-			o.logger.Warn("cannot read the queues for the home organizer", slog.Any("error", err))
+			o.logger.Error("cannot queue the home organizer run after a scan", slog.Any("error", err))
 		}
-		return false
-	}
-	now := o.now()
-	o.mu.Lock()
-	switch {
-	case !o.afterScan:
+		o.mu.Lock()
+		// 待つあいだに次の走査が終わっていれば、その待ちを優先する。
+		if !o.afterScan {
+			o.afterScan, o.emptySince = true, since
+		}
 		o.mu.Unlock()
-		return false
-	case !empty:
-		o.emptySince = time.Time{}
-		o.mu.Unlock()
-		return false
-	case o.emptySince.IsZero():
-		o.emptySince = now
-	}
-	if now.Sub(o.emptySince) < o.settle {
-		o.mu.Unlock()
-		return false
-	}
-	o.afterScan, o.emptySince = false, time.Time{}
-	o.mu.Unlock()
-	run, ok := o.runAfterScan(ctx)
-	if !ok {
-		return false
-	}
-	if err := o.request(ctx, run); err != nil {
-		o.logger.Error("cannot queue the home organizer run", slog.Any("error", err))
 		return false
 	}
 	return true
 }
 
+// queuesSettled は待ち行列を見て、空のまま Settle だけ続いたかを返す。続いたら走査のあとの待ちを
+// 下ろし、空と分かった最初の時刻を返す。読めなかった間は空と数えず、emptySince を零へ戻す。
+func (o *HomeOrganizer) queuesSettled(ctx context.Context) (time.Time, bool) {
+	empty, err := o.queuesEmpty(ctx)
+	if err != nil && ctx.Err() == nil {
+		o.logger.Warn("cannot read the queues for the home organizer", slog.Any("error", err))
+	}
+	now := o.now()
+	o.mu.Lock()
+	defer o.mu.Unlock()
+	if !o.afterScan {
+		return time.Time{}, false
+	}
+	if err != nil || !empty {
+		o.emptySince = time.Time{}
+		return time.Time{}, false
+	}
+	if o.emptySince.IsZero() {
+		o.emptySince = now
+	}
+	if now.Sub(o.emptySince) < o.settle {
+		return time.Time{}, false
+	}
+	since := o.emptySince
+	o.afterScan, o.emptySince = false, time.Time{}
+	return since, true
+}
+
+// queueAfterScan は走査のあとに走らせる実行を決め、あれば待ちに入れる。
+func (o *HomeOrganizer) queueAfterScan(ctx context.Context) error {
+	run, err := o.runAfterScan(ctx)
+	if err != nil || run == "" {
+		return err
+	}
+	return o.request(ctx, run)
+}
+
 // runAfterScan は走査のあとに走らせる実行を決める（R-9、R-10）。1 度も終わっていなければ rebuild、
 // 所有者に見えて棚にない動画が domain.HomeExtendMinUnshelved 本以上なら extend で、どちらでもなければ
-// 走らせない。
-func (o *HomeOrganizer) runAfterScan(ctx context.Context) (domain.HomeOrganizeRun, bool) {
+// 空を返す。
+func (o *HomeOrganizer) runAfterScan(ctx context.Context) (domain.HomeOrganizeRun, error) {
 	_, found, err := o.store.LastOrganize(ctx)
 	if err != nil {
-		o.logger.Warn("cannot read the last home organizer run", slog.Any("error", err))
-		return "", false
+		return "", err
 	}
 	if !found {
-		return domain.HomeRebuild, true
+		return domain.HomeRebuild, nil
 	}
 	unshelved, err := o.store.ShelfCandidates(ctx, true)
 	if err != nil {
-		o.logger.Warn("cannot count the unshelved videos", slog.Any("error", err))
-		return "", false
+		return "", err
 	}
 	if unshelved.Videos < domain.HomeExtendMinUnshelved {
-		return "", false
+		return "", nil
 	}
-	return domain.HomeExtend, true
+	return domain.HomeExtend, nil
 }
 
 // queuesEmpty は job の待ち行列と自動タグ付けの待ち行列がどちらも空かを返す。

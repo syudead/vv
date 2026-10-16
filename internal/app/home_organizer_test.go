@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"slices"
 	"sync"
 	"sync/atomic"
@@ -26,6 +27,20 @@ type fakeHomeStore struct {
 	// started は ApplyProposal が始まるたびに送る。block があれば、ApplyProposal はそれを受けるまで戻らない。
 	started chan domain.HomeOrganizeRun
 	block   chan struct{}
+	// failPendingReads、failLastReads、failSavePending、failSaveLast は、それぞれの呼び出しを
+	// その回数だけ errHomeStore で失敗させる。
+	failPendingReads, failLastReads, failSavePending, failSaveLast atomic.Int32
+}
+
+var errHomeStore = errors.New("the home store is unavailable")
+
+// fail は counter が正なら 1 減らして errHomeStore を返す。
+func fail(counter *atomic.Int32) error {
+	if counter.Add(-1) >= 0 {
+		return errHomeStore
+	}
+	counter.Store(0)
+	return nil
 }
 
 type appliedProposal struct {
@@ -34,12 +49,18 @@ type appliedProposal struct {
 }
 
 func (s *fakeHomeStore) PendingOrganize(context.Context) (domain.HomeOrganizeRun, bool, error) {
+	if err := fail(&s.failPendingReads); err != nil {
+		return "", false, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.pending, s.pending != "", nil
 }
 
 func (s *fakeHomeStore) SavePendingOrganize(_ context.Context, run domain.HomeOrganizeRun) error {
+	if err := fail(&s.failSavePending); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.pending = run
@@ -51,6 +72,9 @@ func (s *fakeHomeStore) ClearPendingOrganize(ctx context.Context) error {
 }
 
 func (s *fakeHomeStore) LastOrganize(context.Context) (domain.HomeOrganizeLast, bool, error) {
+	if err := fail(&s.failLastReads); err != nil {
+		return domain.HomeOrganizeLast{}, false, err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.last == nil {
@@ -60,6 +84,9 @@ func (s *fakeHomeStore) LastOrganize(context.Context) (domain.HomeOrganizeLast, 
 }
 
 func (s *fakeHomeStore) SaveLastOrganize(_ context.Context, last domain.HomeOrganizeLast) error {
+	if err := fail(&s.failSaveLast); err != nil {
+		return err
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.last = &last
@@ -108,10 +135,15 @@ func (s *fakeHomeStore) storedPending() domain.HomeOrganizeRun {
 	return s.pending
 }
 
-// fakeQueues は job の待ち行列の代わりで、busy のあいだは空でない。
-type fakeQueues struct{ busy atomic.Bool }
+// fakeQueues は job の待ち行列の代わりで、busy のあいだは空でなく、broken のあいだは読めない。
+type fakeQueues struct{ busy, broken atomic.Bool }
 
-func (q *fakeQueues) HasUnfinishedJobs(context.Context) (bool, error) { return q.busy.Load(), nil }
+func (q *fakeQueues) HasUnfinishedJobs(context.Context) (bool, error) {
+	if q.broken.Load() {
+		return false, errHomeStore
+	}
+	return q.busy.Load(), nil
+}
 
 // fakeAutoTagBacklog は自動タグ付けの待ち行列の件数だけを返す。
 type fakeAutoTagBacklog struct{ queued atomic.Int32 }
@@ -383,5 +415,96 @@ func TestHomeOrganizerRebuildRequestedDuringRunRunsAfter(t *testing.T) {
 	waitIdle(t, organizer)
 	if got := len(store.appliedRuns()); got != 2 {
 		t.Errorf("applied %d runs, want 2", got)
+	}
+}
+
+// 起動時の Recover が読めなくても、Run が読み直して待ちの実行を走らせる。
+func TestHomeOrganizerRetriesRecoverInRun(t *testing.T) {
+	store := &fakeHomeStore{
+		pending: domain.HomeRebuild,
+		all:     domain.ShelfCandidates{Candidates: []domain.ShelfCandidate{tagCandidate(1, "Cats", 5)}},
+	}
+	store.failPendingReads.Store(2)
+	organizer := NewHomeOrganizer(HomeOrganizerOptions{Store: store, Poll: time.Millisecond})
+	if err := organizer.Recover(context.Background()); !errors.Is(err, errHomeStore) {
+		t.Fatalf("Recover = %v, want the store error", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		organizer.Run(ctx)
+	}()
+	t.Cleanup(func() {
+		cancel()
+		<-done
+	})
+	applied := waitApplied(t, store, 1)
+	if applied[0].run != domain.HomeRebuild {
+		t.Errorf("applied = %+v, want the recovered rebuild", applied[0])
+	}
+	waitIdle(t, organizer)
+}
+
+// 終わった実行を記録できなければ、待ちの setting を残して走らせ直し、記録できてから待ちを消す。
+func TestHomeOrganizerRerunsWhenTheLastRunCannotBeRecorded(t *testing.T) {
+	store := &fakeHomeStore{all: domain.ShelfCandidates{Candidates: []domain.ShelfCandidate{tagCandidate(1, "Cats", 5)}}}
+	store.failSaveLast.Store(1)
+	organizer := startHomeOrganizer(t, store, HomeOrganizerOptions{})
+	if _, err := organizer.Reorganize(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	applied := waitApplied(t, store, 2)
+	if applied[0].run != domain.HomeRebuild || applied[1].run != domain.HomeRebuild {
+		t.Errorf("applied = %+v, want the rebuild run twice", applied)
+	}
+	state := waitIdle(t, organizer)
+	if state.Last.Run != domain.HomeRebuild {
+		t.Errorf("last = %+v, want the rebuild recorded", state.Last)
+	}
+	if got := store.storedPending(); got != "" {
+		t.Errorf("pending setting = %q, want cleared", got)
+	}
+}
+
+// 待ち行列が空になったあとの読み書きが 1 度失敗しても、その走査のあとの実行は次の Poll で待ちに入る。
+func TestHomeOrganizerRetriesTheRunAfterScanOnStoreErrors(t *testing.T) {
+	for name, arm := range map[string]func(*fakeHomeStore){
+		"read the last run":    func(s *fakeHomeStore) { s.failLastReads.Store(1) },
+		"save the pending run": func(s *fakeHomeStore) { s.failSavePending.Store(1) },
+	} {
+		t.Run(name, func(t *testing.T) {
+			store := &fakeHomeStore{all: domain.ShelfCandidates{Candidates: []domain.ShelfCandidate{tagCandidate(1, "Cats", 5)}}}
+			arm(store)
+			organizer := startHomeOrganizer(t, store, HomeOrganizerOptions{})
+			organizer.ScanFinished(domain.ScanOriginManual, domain.ScanDone)
+			applied := waitApplied(t, store, 1)
+			if applied[0].run != domain.HomeRebuild {
+				t.Errorf("applied = %+v, want the first rebuild", applied[0])
+			}
+		})
+	}
+}
+
+// 待ち行列を読めなかった間は空と数えず、読めてから Settle だけ空が続くまで走らない。
+func TestHomeOrganizerDoesNotCountUnreadQueuesAsEmpty(t *testing.T) {
+	store := &fakeHomeStore{all: domain.ShelfCandidates{Candidates: []domain.ShelfCandidate{tagCandidate(1, "Cats", 5)}}}
+	clock := &fakeClock{now: time.Unix(1_700_000_000, 0)}
+	jobs := &fakeQueues{}
+	organizer := startHomeOrganizer(t, store, HomeOrganizerOptions{Jobs: jobs, Settle: time.Minute, Now: clock.Now})
+	organizer.ScanFinished(domain.ScanOriginManual, domain.ScanDone)
+	time.Sleep(20 * time.Millisecond)
+	jobs.broken.Store(true)
+	time.Sleep(20 * time.Millisecond)
+	clock.Advance(2 * time.Minute)
+	time.Sleep(20 * time.Millisecond)
+	jobs.broken.Store(false)
+	time.Sleep(30 * time.Millisecond)
+	if applied := store.appliedRuns(); len(applied) != 0 {
+		t.Fatalf("applied = %+v, counting the unread time as empty", applied)
+	}
+	clock.Advance(time.Minute)
+	if applied := waitApplied(t, store, 1); applied[0].run != domain.HomeRebuild {
+		t.Errorf("applied = %+v, want the first rebuild", applied[0])
 	}
 }

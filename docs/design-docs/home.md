@@ -81,6 +81,12 @@ A finished run writes `home.organize.last` with its outcome (`done`,
 of shelves added and removed. Each change of state publishes `HomeChanged`,
 so open screens read the home again.
 
+A storage error does not drop a run. When the organizer cannot read the
+waiting run at startup, or cannot write `home.organize.last` after a run, it
+reads `home.organize.pending` again at each queue poll (10 seconds) and runs
+what it finds, so a run whose result was not recorded runs again. The setting
+is cleared only after the result is written.
+
 ## Waiting for the queues after a scan
 
 A scan-triggered run waits until the job queue and the auto-tag queue have
@@ -89,6 +95,11 @@ both stayed empty for 2 minutes after a scan ends as `done`
 New videos get their tags from auto-tagging after the scan, so an earlier run
 would count every new video as unshelved before it had a tag. A failed or
 cancelled scan starts nothing.
+
+A check of the queues that fails counts as not empty, so the 2 minutes start
+again after the next successful check. When the decision or the queueing
+after the 2 minutes fails, the organizer keeps waiting for that scan and
+tries again at the next poll.
 
 | Rejected | Why |
 | --- | --- |
