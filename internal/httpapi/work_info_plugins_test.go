@@ -37,7 +37,7 @@ func (manifestRuntime) Inspect(_ context.Context, module []byte) (domain.WorkInf
 	return manifest, problem, nil
 }
 
-func (manifestRuntime) Run(context.Context, string, []byte, domain.WorkInfoRunRequest) (domain.WorkInfoRunResult, error) {
+func (manifestRuntime) Run(context.Context, string, []byte, domain.WorkInfoRunRequest, domain.WorkInfoRunNetwork) (domain.WorkInfoRunResult, error) {
 	return domain.WorkInfoRunResult{}, errors.New("not used")
 }
 

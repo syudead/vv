@@ -51,6 +51,9 @@ func newTestSite(t *testing.T) *testSite {
 	mux.HandleFunc("/to-lan", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "http://192.168.1.20/page", http.StatusFound)
 	})
+	mux.HandleFunc("/to-lan-name", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "http://lan.test/page", http.StatusFound)
+	})
 	mux.HandleFunc("/to-broken", func(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "http://other.test/broken", http.StatusFound)
 	})
@@ -109,15 +112,23 @@ func newNetTestRuntime(t *testing.T, site *testSite) *Runtime {
 	return rt
 }
 
-// runHTTP は probe に request を count 回送らせる。
+// runHTTP は probe に request を count 回、プロキシなしで送らせる。
 func runHTTP(t *testing.T, rt *Runtime, request string, count int, fail bool) (domain.FetchedWorkInfo, error) {
+	t.Helper()
+	return runHTTPVia(t, rt, domain.WorkInfoRunNetwork{}, request, count, fail)
+}
+
+// runHTTPVia は probe に request を count 回、network のとおりに送らせる。
+func runHTTPVia(
+	t *testing.T, rt *Runtime, network domain.WorkInfoRunNetwork, request string, count int, fail bool,
+) (domain.FetchedWorkInfo, error) {
 	t.Helper()
 	req := fetchMode("http")
 	req.Settings = map[string]string{"request": request, "count": strconv.Itoa(count)}
 	if fail {
 		req.Settings["fail"] = "1"
 	}
-	got, err := rt.Run(context.Background(), probeDigest, probeModule(t), req)
+	got, err := rt.Run(context.Background(), probeDigest, probeModule(t), req, network)
 	return got.WorkInfo, err
 }
 

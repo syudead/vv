@@ -46,7 +46,7 @@ type recordingRuntime struct {
 	err      error
 }
 
-func (r *recordingRuntime) Run(_ context.Context, digest string, _ []byte, req domain.WorkInfoRunRequest) (domain.WorkInfoRunResult, error) {
+func (r *recordingRuntime) Run(_ context.Context, digest string, _ []byte, req domain.WorkInfoRunRequest, _ domain.WorkInfoRunNetwork) (domain.WorkInfoRunResult, error) {
 	r.requests = append(r.requests, req)
 	r.digests = append(r.digests, digest)
 	return r.result, r.err

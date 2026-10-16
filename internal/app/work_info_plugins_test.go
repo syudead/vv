@@ -30,7 +30,7 @@ func (r *fakePluginRuntime) Inspect(_ context.Context, module []byte) (domain.Wo
 	}, "", nil
 }
 
-func (r *fakePluginRuntime) Run(context.Context, string, []byte, domain.WorkInfoRunRequest) (domain.WorkInfoRunResult, error) {
+func (r *fakePluginRuntime) Run(context.Context, string, []byte, domain.WorkInfoRunRequest, domain.WorkInfoRunNetwork) (domain.WorkInfoRunResult, error) {
 	return domain.WorkInfoRunResult{}, errors.New("not used")
 }
 
