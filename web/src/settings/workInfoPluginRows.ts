@@ -45,13 +45,17 @@ export function settingsSummary(plugin: Pick<WorkInfoPlugin, "settings">): UiTex
 }
 
 /**
- * missingRequired は値の無い `required` の設定のラベルを宣言の順に返す。既定値のある設定は
- * 実行を止めないので挙げない（specs/056-plugin-tooling/research.md R-3）。
+ * missingRequired は実効値の無い `required` の設定のラベルを宣言の順に返す。選択肢の外の保存値は
+ * 使われないので値の無いものと数え、既定値のある設定は実行を止めないので挙げない
+ * （specs/056-plugin-tooling/research.md R-3）。
  */
 export function missingRequired(plugin: Pick<WorkInfoPlugin, "settings">): string[] {
   return plugin.settings
     .filter(
-      (setting) => setting.required && !setting.set && setting.default === undefined,
+      (setting) =>
+        setting.required &&
+        setting.default === undefined &&
+        (!setting.set || setting.staleValue !== undefined),
     )
     .map((setting) => setting.label);
 }
