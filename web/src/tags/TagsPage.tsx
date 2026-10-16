@@ -387,7 +387,7 @@ export default function TagsPage() {
    */
   function changeTab(next: TagListTab): boolean {
     if (next === tab) return true;
-    if (createPending || renamePending || kindsTab.pending) return false;
+    // 送信中は `tabsLocked` でほかのタブを押せないので、ここへは来ない。
     setSelected(new Set());
     setCreating(false);
     setCreateError(null);
@@ -468,8 +468,8 @@ export default function TagsPage() {
   // 作成・改名・種類の削除の送信中は今のタブのまま待つ — 閉じると行や窓が消え、失敗した
   // ときに下書きと誤りを出す先が無く、種類の削除の変更印も応答の後にしか立たない。送信が
   // 終わって作成・改名の行や削除の窓が残っている（失敗した）ときは、
-  // 切り替えを断ったことにして URL を描いているタブへ戻す（`changeTab` が送信中に何も
-  // しないのと同じ結果）。
+  // 切り替えを断ったことにして URL を描いているタブへ戻す（送信中はタブを押せず
+  // `changeTab` が呼ばれないのと同じ結果）。
   const editPending = createPending || renamePending || kindsTab.pending;
   const kindsEditing = kindsTab.editing;
   const heldTabRef = useRef(false);
