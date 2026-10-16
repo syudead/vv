@@ -1,13 +1,13 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
 
 import { RequestFailed } from "../api/client";
-import { compareNatural } from "../api/tagOrder";
 import {
   createTagKind,
   currentTagKinds,
   deleteTagKind,
   refreshTagKinds,
   renameTagKind,
+  sortTagKinds,
   subscribeTagKinds,
   type TagKind,
 } from "../api/tagKinds";
@@ -25,17 +25,9 @@ export interface KindRowRefs {
   actionsButton: HTMLButtonElement | null;
 }
 
-/**
- * sortKinds は種類を名前の自然順（同じなら id の順）に並べる。サーバーは id の順に返す
- * （specs/051-tag-kinds/contracts/screen-api.md の `TagKindList`）。
- */
-export function sortKinds(kinds: readonly TagKind[]): TagKind[] {
-  return [...kinds].sort((a, b) => compareNatural(a.name, b.name) || a.id - b.id);
-}
-
 /** withKind は 1 件を足すか置き換え、名前の位置へ並べ直す。 */
 export function withKind(kinds: readonly TagKind[], kind: TagKind): TagKind[] {
-  return sortKinds([...kinds.filter((item) => item.id !== kind.id), kind]);
+  return sortTagKinds([...kinds.filter((item) => item.id !== kind.id), kind]);
 }
 
 /** nextAfterRemoval は消えた行の次の行（無ければ前の行）を返す。 */
@@ -117,7 +109,7 @@ export function useTagKindsTab({
 }): TagKindsTab {
   const [kinds, setKinds] = useState<TagKind[] | undefined>(() => {
     const held = currentTagKinds();
-    return held === undefined ? undefined : sortKinds(held);
+    return held === undefined ? undefined : sortTagKinds(held);
   });
   const [loadError, setLoadError] = useState<UiText | null>(null);
   const [fresh, setFresh] = useState(false);
@@ -135,7 +127,7 @@ export function useTagKindsTab({
 
   useEffect(() => {
     const received = (list: TagKind[]) => {
-      setKinds(sortKinds(list));
+      setKinds(sortTagKinds(list));
       setLoadError(null);
       setFresh(true);
     };

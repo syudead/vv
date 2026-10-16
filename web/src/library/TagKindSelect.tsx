@@ -1,7 +1,6 @@
 import { useId, useMemo } from "react";
 
-import type { TagKind } from "../api/tagKinds";
-import { compareNatural } from "../api/tagOrder";
+import { sortTagKinds, type TagKind } from "../api/tagKinds";
 import { t } from "../i18n";
 import { Field, FieldLabel } from "../ui/shadcn/field";
 import {
@@ -34,11 +33,7 @@ export default function TagKindSelect({
   onValueChange,
 }: TagKindSelectProps) {
   const id = useId();
-  const sorted = useMemo(
-    () =>
-      [...(kinds ?? [])].sort((a, b) => compareNatural(a.name, b.name) || a.id - b.id),
-    [kinds],
-  );
+  const sorted = useMemo(() => sortTagKinds(kinds ?? []), [kinds]);
   return (
     <Field>
       <FieldLabel htmlFor={id}>{t.library.tagKindFilter.label}</FieldLabel>

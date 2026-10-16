@@ -1,7 +1,9 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -213,5 +215,85 @@ func TestMCPTagKindTools(t *testing.T) {
 	if callTool(t, session, "delete_tag_kinds", map[string]any{"ids": []int64{kind.Id, 999}}, &deleted) ||
 		!slices.Equal(deleted.DeletedIds, []int64{kind.Id}) || !slices.Equal(deleted.NotFoundIds, []int64{999}) {
 		t.Errorf("delete_tag_kinds = %+v", deleted)
+	}
+}
+
+// failingKindDeletes は failAt の id の削除だけを failure で失敗させ、消した id を deleted に残す。
+type failingKindDeletes struct {
+	*fakeTags
+	failAt  int64
+	failure error
+	deleted []int64
+}
+
+func (f *failingKindDeletes) DeleteTagKind(_ context.Context, id int64) error {
+	if id == f.failAt {
+		return f.failure
+	}
+	f.deleted = append(f.deleted, id)
+	return nil
+}
+
+// newExternalKindsEnv は tags を保存先にした外部連携 API と、その Bearer の値を返す。tags が nil なら
+// 保存先の無い構成になる。
+func newExternalKindsEnv(t *testing.T, tags Tags) (*authEnv, map[string]string) {
+	t.Helper()
+	env := newAuthEnv(t, t.TempDir(), Options{Tags: tags})
+	owner := env.setup()
+	return env, bearer(env.createAPIToken(owner, "agent").Secret)
+}
+
+// 保存先の想定外の失敗は 500 internal で、削除は失敗した id より前の id を消したまま止まる
+// （contracts/external-api.md、deleteCredits と同じ）。
+func TestExternalTagKindsStoreFailures(t *testing.T) {
+	internal := wantExternalError{http.StatusInternalServerError, extgen.ErrorCodeInternal, "", -1, 0}
+	broken := errors.New("disk I/O error")
+	env, auth := newExternalKindsEnv(t, &fakeTags{err: broken})
+	for _, req := range []authRequest{
+		{method: http.MethodGet, target: "/api/v1/tag-kinds"},
+		{method: http.MethodPost, target: "/api/v1/tag-kinds", body: `{"name":"Era"}`},
+		{method: http.MethodPost, target: "/api/v1/tag-kinds/update", body: `{"id":1,"name":"Era"}`},
+	} {
+		req.header = auth
+		assertExternalError(t, req.target, env.serve(req), internal)
+	}
+
+	fake := &failingKindDeletes{fakeTags: &fakeTags{}, failAt: 2, failure: broken}
+	env, auth = newExternalKindsEnv(t, fake)
+	rec := env.serve(authRequest{
+		method: http.MethodPost, target: "/api/v1/tag-kinds/delete", body: `{"ids":[1,2,3]}`, header: auth,
+	})
+	assertExternalError(t, "途中の削除の失敗", rec, internal)
+	if !slices.Equal(fake.deleted, []int64{1}) {
+		t.Errorf("消した id = %v, want [1]（失敗の後の id は消さない）", fake.deleted)
+	}
+}
+
+// 断る要求のうち、本物の保存先では作れないもの: 壊れた本文、*InvalidTagNameError を伴わない
+// ErrInvalidTagName（Tags の約束はこの番兵だけを求める）、保存先の無い構成。
+func TestExternalTagKindsRejectWithoutRealStore(t *testing.T) {
+	invalid := wantExternalError{http.StatusBadRequest, extgen.ErrorCodeInvalidRequest, "", -1, 0}
+	fake := &fakeTags{}
+	env, auth := newExternalKindsEnv(t, fake)
+	rec := env.serve(authRequest{method: http.MethodPost, target: "/api/v1/tag-kinds/delete", body: `{"ids":`, header: auth})
+	assertExternalError(t, "壊れた本文の削除", rec, invalid)
+	if fake.operation != "" {
+		t.Errorf("壊れた本文が保存層に届いた (%s)", fake.operation)
+	}
+
+	env, auth = newExternalKindsEnv(t, &fakeTags{err: domain.ErrInvalidTagName})
+	rec = env.serve(authRequest{
+		method: http.MethodPost, target: "/api/v1/tag-kinds/update", body: `{"id":1,"name":"Era"}`, header: auth,
+	})
+	assertExternalError(t, "番兵だけの名前の誤り", rec, invalid)
+
+	internal := wantExternalError{http.StatusInternalServerError, extgen.ErrorCodeInternal, "", -1, 0}
+	env, auth = newExternalKindsEnv(t, nil)
+	for _, req := range []authRequest{
+		{method: http.MethodGet, target: "/api/v1/tag-kinds"},
+		{method: http.MethodPost, target: "/api/v1/tag-kinds/delete", body: `{"ids":[1]}`},
+	} {
+		req.header = auth
+		assertExternalError(t, "保存先の無い "+req.target, env.serve(req), internal)
 	}
 }

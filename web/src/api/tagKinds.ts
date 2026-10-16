@@ -1,5 +1,6 @@
 import { apiFetch, RequestFailed, request, toRequestFailed } from "./client";
 import { clearListSnapshot } from "./listSnapshot";
+import { compareNatural } from "./tagOrder";
 import { refreshTags } from "./tags";
 import type { components } from "./gen/openapi";
 
@@ -8,6 +9,15 @@ import type { components } from "./gen/openapi";
 export type TagKind = components["schemas"]["TagKind"];
 export type TagKindRef = components["schemas"]["TagKindRef"];
 export type TagKindList = components["schemas"]["TagKindList"];
+
+/**
+ * sortTagKinds は種類を名前の自然順（同じなら id の順）に並べた新しい配列を返す。サーバーは
+ * id の順に返す（specs/051-tag-kinds/contracts/screen-api.md の `TagKindList`）。自然順は
+ * 大文字小文字を区別しないので、`Era` と `era` のように名前が違っても同順位になりうる。
+ */
+export function sortTagKinds(kinds: readonly TagKind[]): TagKind[] {
+  return [...kinds].sort((a, b) => compareNatural(a.name, b.name) || a.id - b.id);
+}
 
 /**
  * 種類の一覧の共有の保持。`api/tags.ts` のタグの一覧と同じく、種類の管理・タグの種類の

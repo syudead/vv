@@ -200,6 +200,17 @@ describe("タグの種類での絞り込み", () => {
     expect(requests("/api/tag-kinds")).toHaveLength(1);
   });
 
+  it("ポップオーバーで「Any kind」を選ぶと tagKind だけが外れる", async () => {
+    const user = userEvent.setup();
+    renderAt("/?tag=2&tagKind=1");
+    await screen.findByRole("button", { name: 'Remove the filter for the kind "Work"' });
+
+    await user.click(screen.getByRole("button", { name: "Filter (1 applied)" }));
+    await user.click(await screen.findByRole("combobox", { name: "Tag kind" }));
+    await user.click(await screen.findByRole("option", { name: "Any kind" }));
+    await waitFor(() => expect(location()).toBe("?tag=2"));
+  });
+
   it("チップを押すと tagKind だけが外れ、ほかの絞り込みは残る", async () => {
     const user = userEvent.setup();
     renderAt("/?tag=2&tagKind=1");

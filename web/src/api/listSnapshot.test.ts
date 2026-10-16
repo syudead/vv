@@ -103,6 +103,16 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     ).toEqual([1]);
   });
 
+  it("tagKind を含む鍵は、tagKind の無い鍵や別の種類の鍵と一致しない（/?tagKind=1 と / の控えを区別する）", () => {
+    saveListSnapshot({ query: "", sort: "addedDesc", tagKind: 1 }, body([1]));
+
+    expect(takeListSnapshot({ query: "", sort: "addedDesc" })).toBeUndefined();
+    expect(
+      takeListSnapshot({ query: "", sort: "addedDesc", tagKind: 2 }),
+    ).toBeUndefined();
+    expect(takeListSnapshot({ query: "", sort: "addedDesc", tagKind: 1 })).toBeDefined();
+  });
+
   it("tags の並びは正規化するので、選んだ順が違っても同じ鍵になる", () => {
     saveListSnapshot({ query: "", sort: "addedDesc", tags: [3, 1] }, body([1]));
 

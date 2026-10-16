@@ -192,6 +192,8 @@ export const server = {
   tagKindGets: 0,
   /** true にすると、以後の GET /api/tag-kinds をすべて 500 で失敗させる。 */
   failTagKindGets: false,
+  /** true にすると、次の DELETE /api/tag-kinds/{id} を 500 で失敗させ、何も消さない。 */
+  failNextKindDelete: false,
 };
 
 /**
@@ -258,6 +260,10 @@ function tagKindRoute(
     return jsonResponse(found);
   }
   if (method === "DELETE") {
+    if (server.failNextKindDelete) {
+      server.failNextKindDelete = false;
+      return jsonResponse({ code: "internal", message: "failed" }, 500);
+    }
     server.tagKinds = server.tagKinds.filter((item) => item.id !== id);
     for (const item of server.tags) if (item.kind?.id === id) item.kind = null;
     return jsonResponse(null, 204);
@@ -806,6 +812,14 @@ export async function historyBack() {
   });
 }
 
+/** historyForward はブラウザの「進む」を押す。 */
+export async function historyForward() {
+  await act(async () => {
+    void historyNavigate!(1);
+    await Promise.resolve();
+  });
+}
+
 /**
  * renderPage はタグ管理画面を描く。`url` で開く URL（検索語・絞り込み・並び順・タブの
  * クエリ）を、`topBar` で共通トップバーの差し込み先（`TopBarPortal`）を置ける。
@@ -901,6 +915,7 @@ export function setUpTagsPageServer() {
     server.tagKinds = presetKinds();
     server.tagKindGets = 0;
     server.failTagKindGets = false;
+    server.failNextKindDelete = false;
     server.tags = [
       tag({ id: 1, name: "旅行" }),
       tag({ id: 2, name: "Anime", synonyms: ["アニメ"], videoCount: 3 }),

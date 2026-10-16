@@ -36,11 +36,6 @@ type TagKind struct {
 	CreatedAt time.Time
 }
 
-// Ref は種類を TagKindRef にする。
-func (k TagKind) Ref() TagKindRef {
-	return TagKindRef{ID: k.ID, Name: k.Name}
-}
-
 // TagKindNameConflict はその名前を既に持つ種類を運ぶ。errors.Is(err,
 // ErrTagKindNameTaken) が真になる。
 type TagKindNameConflict struct {

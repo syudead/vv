@@ -18,7 +18,8 @@ function renderBar(
     sharedKind,
     onSetKind = vi.fn(),
   }: {
-    kinds?: TagKind[] | undefined;
+    /** null は種類をまだ読めていない状態（バーへは undefined で渡す）。 */
+    kinds?: TagKind[] | null;
     sharedKind?: string;
     onSetKind?: (choice: KindChoice) => void;
   } = {},
@@ -37,7 +38,7 @@ function renderBar(
         onDelete={vi.fn()}
         onMerge={vi.fn()}
         onClear={onClear}
-        kinds={kinds}
+        kinds={kinds ?? undefined}
         sharedKind={sharedKind}
         settingKind={false}
         onSetKind={onSetKind}
@@ -112,5 +113,14 @@ describe("TagSelectionBar", () => {
     expect(screen.queryByRole("separator")).toBeNull();
     await user.click(items[0]!);
     expect(onSetKind).toHaveBeenCalledWith("none");
+  });
+
+  it("種類をまだ読めていなければ「種類が無い」とは言わず、No kind だけを並べる", async () => {
+    const user = userEvent.setup();
+    renderBar(false, vi.fn(), { kinds: null });
+    await user.click(screen.getByRole("button", { name: t.tags.selection.setKind }));
+    const items = await screen.findAllByRole("menuitemradio");
+    expect(items.map((item) => item.textContent)).toEqual([t.tags.kindFilter.none]);
+    expect(screen.queryByText(t.tags.selection.noKinds)).toBeNull();
   });
 });
