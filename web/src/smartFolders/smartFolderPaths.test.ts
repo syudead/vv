@@ -27,7 +27,7 @@ describe("smartFolderPaths", () => {
 
   it("帯はライブラリ、祖先（そのページへのリンク）、現在地の順", () => {
     expect(smartFolderCrumbs([{ id: 1, name: "タグ: 猫" }], "未視聴")).toEqual([
-      { label: "Library", to: "/" },
+      { label: "Library", to: "/library" },
       { label: "タグ: 猫", to: "/smart-folders/1" },
       { label: "未視聴" },
     ]);
@@ -42,6 +42,6 @@ describe("smartFolderParentPath", () => {
         { id: 4, name: "未視聴" },
       ]),
     ).toBe("/smart-folders/4");
-    expect(smartFolderParentPath([])).toBe("/");
+    expect(smartFolderParentPath([])).toBe("/library");
   });
 });

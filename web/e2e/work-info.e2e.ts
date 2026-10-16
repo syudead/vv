@@ -197,7 +197,7 @@ async function expectLibrary(page: Page, titles: string[]) {
 }
 
 async function searchLibrary(page: Page, query: string, titles: string[]) {
-  await page.goto(`/?q=${encodeURIComponent(query)}`);
+  await page.goto(`/library?q=${encodeURIComponent(query)}`);
   await expectLibrary(page, titles);
 }
 
@@ -317,7 +317,9 @@ test.describe.serial("work information", () => {
     await workDetails(page)
       .getByRole("link", { name: `Show videos with ${haruka}` })
       .click();
-    await expect(page).toHaveURL(new RegExp(`/\\?person=${String(person(haruka).id)}$`));
+    await expect(page).toHaveURL(
+      new RegExp(`/library\\?person=${String(person(haruka).id)}$`),
+    );
     await expectLibrary(page, [displayName, b.title]);
 
     await page.goBack();
@@ -325,7 +327,9 @@ test.describe.serial("work information", () => {
     await workDetails(page)
       .getByRole("link", { name: `Show videos with ${maker}` })
       .click();
-    await expect(page).toHaveURL(new RegExp(`/\\?organization=${String(makerId)}$`));
+    await expect(page).toHaveURL(
+      new RegExp(`/library\\?organization=${String(makerId)}$`),
+    );
     await expectLibrary(page, [displayName, c.title]);
   });
 

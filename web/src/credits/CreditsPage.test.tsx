@@ -236,7 +236,7 @@ describe("CreditsPage 人物の一覧", () => {
       within(alice)
         .getByRole("link", { name: "Open the library filtered by Alice" })
         .getAttribute("href"),
-    ).toBe("/?person=1");
+    ).toBe("/library?person=1");
     // 別名の無い行は 2 行目を持たない。
     expect(rowOf("Carol").querySelector("p")).toBeNull();
   });
@@ -551,7 +551,7 @@ describe("CreditsPage 団体の一覧", () => {
       within(rowOf("Label"))
         .getByRole("link", { name: "Open the library filtered by Label" })
         .getAttribute("href"),
-    ).toBe("/?organization=11");
+    ).toBe("/library?organization=11");
   });
 
   it("親の輪の誤りを親の欄の下に出し、窓を開いたままにする", async () => {

@@ -78,7 +78,7 @@ function renderAt(initial: string, audience: Audience = "owner") {
             <ScanProvider>
               <Routes>
                 <Route
-                  path="/"
+                  path="/library"
                   element={
                     <>
                       <LibraryPage />
@@ -216,11 +216,11 @@ describe("人物・団体での絞り込み", () => {
     renderAt("/videos/7");
     expect(
       screen.getByRole("link", { name: "Show videos with Studio" }).getAttribute("href"),
-    ).toBe("/?organization=5");
+    ).toBe("/library?organization=5");
   });
 
   it("名前の読みが 404 なら、そのパラメータを外して知らせ、タグともう一方の絞り込みは残す", async () => {
-    renderAt("/?tag=2&person=9&organization=5");
+    renderAt("/library?tag=2&person=9&organization=5");
 
     expect(
       await screen.findByText("Removed a person who no longer exists from the filter"),
@@ -254,7 +254,7 @@ describe("人物・団体での絞り込み", () => {
       }
       return base?.(input, init) ?? Promise.reject(new Error("no mock"));
     });
-    renderAt("/?tag=2&person=9&organization=8");
+    renderAt("/library?tag=2&person=9&organization=8");
 
     await waitFor(() => expect(pending).toHaveLength(2));
     await act(async () => {
@@ -285,7 +285,7 @@ describe("人物・団体での絞り込み", () => {
       }
       return base?.(input, init) ?? Promise.reject(new Error("no mock"));
     });
-    renderAt("/?person=1");
+    renderAt("/library?person=1");
 
     expect(
       await screen.findByRole("button", { name: "Remove the person filter" }),
@@ -303,7 +303,7 @@ describe("人物・団体での絞り込み", () => {
 
   it("チップを押すとそのパラメータだけが外れ、フォーカスは次のチップ、最後なら検索欄へ移る", async () => {
     const user = userEvent.setup();
-    renderAt("/?tag=2&person=1&organization=5");
+    renderAt("/library?tag=2&person=1&organization=5");
 
     await user.click(
       await screen.findByRole("button", { name: "Remove the filter for Alice" }),
@@ -325,7 +325,7 @@ describe("人物・団体での絞り込み", () => {
 
   it("「Clear filters」は person と organization も外し、並べ替えは残す", async () => {
     const user = userEvent.setup();
-    renderAt("/?person=1&organization=5&sort=titleAsc");
+    renderAt("/library?person=1&organization=5&sort=titleAsc");
     await screen.findByRole("button", { name: "Remove the filter for Alice" });
 
     // 絞り込みのボタンの件数には数えない。
@@ -336,7 +336,7 @@ describe("人物・団体での絞り込み", () => {
 
   it("「すべて選択」も人物・団体の条件で全件を取る", async () => {
     const user = userEvent.setup();
-    renderAt("/?person=1");
+    renderAt("/library?person=1");
     await user.click(await screen.findByRole("checkbox", { name: /動画 1/ }));
     await user.click(screen.getByRole("button", { name: "Select all" }));
     await waitFor(() => {
@@ -357,7 +357,7 @@ describe("人物・団体での絞り込み", () => {
         scrollY: 0,
       },
     );
-    renderAt("/?person=1");
+    renderAt("/library?person=1");
 
     expect(await screen.findByRole("link", { name: "動画 1" })).toBeDefined();
     expect(screen.queryByRole("link", { name: "控えの動画" })).toBeNull();
@@ -365,7 +365,7 @@ describe("人物・団体での絞り込み", () => {
   });
 
   it("ゲストの URL の person と organization は要求の前に外し、URL も直す", async () => {
-    renderAt("/?q=ab&person=1&organization=5", "guest");
+    renderAt("/library?q=ab&person=1&organization=5", "guest");
     await screen.findByRole("link", { name: "動画 2" });
     const requests = libraryRequests();
     expect(requests.length).toBeGreaterThan(0);

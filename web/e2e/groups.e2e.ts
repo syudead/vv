@@ -72,7 +72,7 @@ const outer = "外のグループ";
 const renamedAuto = "名前を変えた自動グループ";
 const playlistName = "グループのプレイリスト";
 const groupNames = [spread, second, outer, renamedAuto, autoFolder, dissolvedFolder];
-const librarySearch = `/?q=${encodeURIComponent(query)}`;
+const librarySearch = `/library?q=${encodeURIComponent(query)}`;
 let folder: MediaFolder | undefined;
 
 function mediaRoot(): string {
@@ -559,7 +559,7 @@ test.describe.serial("groups", () => {
     });
     await expect(dialog).toContainText("Its folder is no longer grouped automatically.");
     await dialog.getByRole("button", { name: "Dissolve" }).click();
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL("/library");
     await expect(toast(page, `Dissolved "${dissolvedFolder}"`)).toBeVisible();
 
     // 再スキャンしてもグループは戻らず、2 本は単体のカードで出る（6）。
