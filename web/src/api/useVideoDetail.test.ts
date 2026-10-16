@@ -93,12 +93,12 @@ describe("useVideoDetail", () => {
       { initialProps: { group: 3 } as { group?: number } },
     );
     await flush();
-    expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), 3);
+    expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), 3, undefined);
     rerender({ group: undefined });
     expect(result.current.state).toMatchObject({ kind: "ready" });
     await flush();
     expect(getVideo).toHaveBeenCalledTimes(2);
-    expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), undefined);
+    expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), undefined, undefined);
   });
 
   it("group があるとき replace は応答のグループではなく手元のグループを残す", async () => {
@@ -173,13 +173,96 @@ describe("useVideoDetail", () => {
     expect(result.current.state).toMatchObject({ kind: "ready" });
     await flush();
     expect(getVideo).toHaveBeenCalledTimes(2);
-    expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), 4);
+    expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), 4, undefined);
     expect(result.current.state).toMatchObject({ video: { group: { position: 2 } } });
 
     // 開いたグループ（?group）の知らせでも取り直す。
     await emitServerEvent("group", { ids: [4] });
     await flush();
     expect(getVideo).toHaveBeenCalledTimes(3);
+  });
+
+  describe("開いたスマートフォルダ（052 ui-design.md「Video page」）", () => {
+    const inFolder = { id: 5, name: "タグ: 猫", position: 2, count: 4 };
+
+    it("smartFolder を取得に渡し、同じ動画で smartFolder だけが変わったら取り直す", async () => {
+      getVideo.mockResolvedValue({ ...done, smartFolder: inFolder });
+      const { result, rerender } = renderHook(
+        ({ folder }: { folder?: number }) =>
+          useVideoDetail(7, undefined, undefined, folder),
+        { initialProps: { folder: 5 } as { folder?: number } },
+      );
+      await flush();
+      expect(getVideo).toHaveBeenLastCalledWith(7, expect.anything(), undefined, 5);
+      rerender({ folder: undefined });
+      expect(result.current.state).toMatchObject({ kind: "ready" });
+      await flush();
+      expect(getVideo).toHaveBeenLastCalledWith(
+        7,
+        expect.anything(),
+        undefined,
+        undefined,
+      );
+    });
+
+    it("smartFolder があるとき replace は手元のフォルダの行を残す", async () => {
+      getVideo.mockResolvedValue({ ...done, smartFolder: inFolder });
+      const { result } = renderHook(() => useVideoDetail(7, undefined, undefined, 5));
+      await flush();
+      // 変更の要求は smartFolder を受け取らず、応答にフォルダは無い。
+      act(() =>
+        result.current.replace({ ...done, title: "新しい名前" }, detailMark(), "keep"),
+      );
+      expect(result.current.state).toMatchObject({
+        video: { title: "新しい名前", smartFolder: inFolder },
+      });
+      expect(result.current.state).not.toHaveProperty("video.group");
+    });
+
+    it("最初の取得の前の replace は応答のまま置く", async () => {
+      getVideo.mockReturnValue(new Promise(() => undefined));
+      const { result } = renderHook(() => useVideoDetail(7, undefined, undefined, 5));
+      act(() =>
+        result.current.replace({ ...done, title: "先に保存" }, detailMark(), "keep"),
+      );
+      expect(result.current.state).toMatchObject({ video: { title: "先に保存" } });
+      expect(result.current.state).not.toHaveProperty("video.smartFolder");
+    });
+
+    it("開いたフォルダを名指した smartFolder の知らせとどの group の知らせでも取り直し、ほかのフォルダでは取り直さない", async () => {
+      getVideo.mockResolvedValue({ ...done, smartFolder: inFolder });
+      renderHook(() => useVideoDetail(7, undefined, undefined, 5), {
+        wrapper: OwnerAudience,
+      });
+      await flush();
+      await emitServerEvent("smartFolder", { ids: [6] });
+      await flush();
+      expect(getVideo).toHaveBeenCalledTimes(1);
+      await emitServerEvent("smartFolder", { ids: [6, 5] });
+      await flush();
+      expect(getVideo).toHaveBeenCalledTimes(2);
+      await emitServerEvent("group", { ids: [12] });
+      await flush();
+      expect(getVideo).toHaveBeenCalledTimes(3);
+    });
+
+    it("ゲストも開いたフォルダの知らせで取り直す", async () => {
+      getVideo.mockResolvedValue({ ...done, smartFolder: inFolder });
+      renderHook(() => useVideoDetail(7, undefined, undefined, 5));
+      await flush();
+      await emitServerEvent("smartFolder", { ids: [5] });
+      await flush();
+      expect(getVideo).toHaveBeenCalledTimes(2);
+    });
+
+    it("フォルダの文脈が無ければ smartFolder の知らせでは取り直さない", async () => {
+      getVideo.mockResolvedValue(done);
+      renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
+      await flush();
+      await emitServerEvent("smartFolder", { ids: [5] });
+      await flush();
+      expect(getVideo).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("フォールバックのグループを表示中なら、それより id の小さいグループの知らせでも取り直す（research.md R-9）", async () => {
@@ -753,7 +836,13 @@ describe("useRelatedVideos", () => {
         }),
     );
     await emitServerEvent("group", { ids: [9] });
-    expect(getRelatedVideos).toHaveBeenCalledWith(7, expect.anything(), undefined, 4);
+    expect(getRelatedVideos).toHaveBeenCalledWith(
+      7,
+      expect.anything(),
+      undefined,
+      4,
+      undefined,
+    );
     // 読み直しの間も今の並びを見せる。
     expect(result.current.state).toMatchObject({ kind: "ready", related: { nextId: 8 } });
     await act(async () => {
@@ -765,6 +854,55 @@ describe("useRelatedVideos", () => {
       // 同じグループのまま読み直したので、グループの並びの画面を作り直す印が進む。
       generation: 2,
     });
+  });
+
+  it("smartFolder を渡し、開いたフォルダの知らせとどの group の知らせでも最初のページから読み直し、続きにも渡す", async () => {
+    const video = (id: number): Video => ({ ...done, id, title: `v${String(id)}` });
+    getRelatedVideos.mockResolvedValue({
+      items: [video(1)],
+      group: { id: 5, name: "タグ: 猫", items: [video(7)], offset: 0, total: 1 },
+      nextCursor: "c1",
+    });
+    const { result } = renderHook(() => useRelatedVideos(7, undefined, 5), {
+      wrapper: OwnerAudience,
+    });
+    await act(async () => undefined);
+    expect(getRelatedVideos).toHaveBeenLastCalledWith(
+      7,
+      expect.anything(),
+      undefined,
+      undefined,
+      5,
+    );
+    await emitServerEvent("smartFolder", { ids: [6] });
+    await act(async () => undefined);
+    expect(getRelatedVideos).toHaveBeenCalledTimes(1);
+    await emitServerEvent("smartFolder", { ids: [5] });
+    await act(async () => undefined);
+    expect(getRelatedVideos).toHaveBeenCalledTimes(2);
+    await emitServerEvent("group", { ids: [99] });
+    await act(async () => undefined);
+    expect(getRelatedVideos).toHaveBeenCalledTimes(3);
+
+    getRelatedVideos.mockResolvedValueOnce({ items: [video(2)] });
+    act(() => result.current.loadMore());
+    await act(async () => undefined);
+    expect(getRelatedVideos).toHaveBeenLastCalledWith(
+      7,
+      expect.anything(),
+      "c1",
+      undefined,
+      5,
+    );
+  });
+
+  it("フォルダの文脈が無ければ smartFolder の知らせでは読み直さない", async () => {
+    getRelatedVideos.mockResolvedValue({ items: [] });
+    renderHook(() => useRelatedVideos(7), { wrapper: OwnerAudience });
+    await act(async () => undefined);
+    await emitServerEvent("smartFolder", { ids: [5] });
+    await act(async () => undefined);
+    expect(getRelatedVideos).toHaveBeenCalledTimes(1);
   });
 
   it("続きの取得中に group の知らせで読み直し、それが失敗しても、続きをもう一度読める", async () => {
@@ -809,6 +947,7 @@ describe("useRelatedVideos", () => {
       7,
       expect.anything(),
       "c1",
+      undefined,
       undefined,
     );
     expect(result.current.state).toMatchObject({
@@ -917,6 +1056,7 @@ describe("useRelatedVideos", () => {
       expect.anything(),
       "c1",
       undefined,
+      undefined,
     );
     expect(ids()).toEqual([1, 2, 3]);
 
@@ -927,6 +1067,7 @@ describe("useRelatedVideos", () => {
       7,
       expect.anything(),
       "c2",
+      undefined,
       undefined,
     );
     expect(ids()).toEqual([1, 2, 3, 4]);

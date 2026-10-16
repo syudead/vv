@@ -184,6 +184,9 @@ export function useVideoPages({
           person: current.person,
           organization: current.organization,
           tagKind: current.tagKind,
+          addedWithin: current.addedWithin,
+          minDuration: current.minDuration,
+          maxDuration: current.maxDuration,
         };
         const fetchOne = (cursorFrom: string | undefined) =>
           target !== undefined
@@ -200,6 +203,7 @@ export function useVideoPages({
           ...fetched,
           items: fetched.items.map((item): LibraryItem => {
             if ("kind" in item) {
+              if (item.kind === "smartFolder") return item;
               return item.kind === "video"
                 ? videoItem(
                     withFavoriteSince(

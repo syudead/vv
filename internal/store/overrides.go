@@ -38,7 +38,8 @@ const overrideColumns = `(select ov.display_name from video_overrides ov
 //
 // videoID は content_key へ引き直し（registeredContentKeysForVideoIDs）、登録フォルダの下に
 // 所在を持たない動画と内容の識別子が空の動画は domain.ErrNotFound にする。確定後に
-// domain.VideoOverrideChanged を1回発行する。
+// domain.VideoOverrideChanged を1回発行し、表示名が変わったならすべてのスマートフォルダを名指す
+// domain.SmartFoldersChanged も発行する（specs/052-smart-folders/research.md R-12）。
 func (s *OverrideStore) SetDisplayName(ctx context.Context, videoID int64, name string) (domain.Video, error) {
 	normalized, _, err := domain.NormalizeDisplayName(name)
 	if err != nil {
@@ -78,10 +79,11 @@ func (s *OverrideStore) SetDisplayName(ctx context.Context, videoID int64, name 
 	if err != nil {
 		return domain.Video{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	// 表示名は検索の対象なので、変わればスマートフォルダの一致も変わりうる。
+	if err := s.db.commitMatchChangeIf(ctx, tx, before[keys[0]] != normalized,
+		domain.VideoOverrideChanged{VideoID: videoID}); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot update the display name: %w", err)
 	}
-	s.db.publishEvents(domain.VideoOverrideChanged{VideoID: videoID})
 	return video, nil
 }
 
@@ -92,7 +94,7 @@ func (s *OverrideStore) SetDisplayName(ctx context.Context, videoID int64, name 
 // *domain.DisplayNameAtError、動画を引けなければ（内容を読めていない動画を含む）
 // *domain.VideoRefNotFoundError（domain.ErrNotFound を包む）で、どちらも位置を運ぶ。
 // 件数の上限は呼び出し側が確かめる。確定後に、変えた動画ごとに domain.VideoOverrideChanged を
-// 発行する。
+// 発行し、表示名が変わった内容があれば domain.SmartFoldersChanged も発行する。
 func (s *OverrideStore) SetDisplayNames(ctx context.Context, changes []domain.DisplayNameChange) ([]domain.Video, error) {
 	names := make([]string, 0, len(changes))
 	refs := make([]domain.VideoRef, 0, len(changes))
@@ -155,14 +157,14 @@ func (s *OverrideStore) SetDisplayNames(ctx context.Context, changes []domain.Di
 	if err != nil {
 		return nil, err
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("cannot update the display names: %w", err)
-	}
 	events := make([]domain.Event, 0, len(ids))
 	for _, id := range ids {
 		events = append(events, domain.VideoOverrideChanged{VideoID: id})
 	}
-	s.db.publishEvents(events...)
+	// 表示名は検索の対象なので、変わればスマートフォルダの一致も変わりうる。
+	if err := s.db.commitMatchChangeIf(ctx, tx, len(edited) > 0, events...); err != nil {
+		return nil, fmt.Errorf("cannot update the display names: %w", err)
+	}
 	return out, nil
 }
 

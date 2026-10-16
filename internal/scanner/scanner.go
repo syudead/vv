@@ -520,6 +520,11 @@ func (s *Scanner) visit(
 		// seen には残すので、親ごと消えたかは dropVanished が確かめる（research.md R-3）。
 		return nil
 	}
+	if infoErr == nil && !info.Mode().IsRegular() {
+		// 列挙の時点で通常のファイルでない（名前付きパイプなど）。途中で変わったのではなく、
+		// 動画として読めないファイルである。
+		infoErr = fmt.Errorf("%w (%s)", errNotRegular, path)
+	}
 	if infoErr != nil {
 		// media file だと判定できた時点で取り込み候補である。metadata を
 		// 読めない場合も対象件数と失敗件数に含める。

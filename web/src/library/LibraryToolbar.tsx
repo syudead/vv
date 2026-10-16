@@ -93,7 +93,7 @@ export interface LibraryToolbarProps {
   onViewChange: (value: ViewMode) => void;
   zoom: Zoom;
   onZoomChange: (value: Zoom) => void;
-  /** 絞り込みのポップオーバーの最後の行（所有者のタグの種類。ゲストには渡さない）。 */
+  /** 絞り込みのポップオーバーの最後の行（所有者のタグの種類と、追加日と長さ）。 */
   extraFilter?: ReactNode;
   /** `extraFilter` で効いている絞り込みの数。 */
   extraFilterCount?: number;

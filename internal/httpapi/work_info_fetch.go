@@ -43,24 +43,31 @@ func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.W
 	writeJSON(w, http.StatusOK, gen.WorkInfoSearchResult{Candidates: out}, s.logger)
 }
 
-// FetchWorkInfo はプラグインの fetch で動画の作品情報を取り、結果をメモリに持つ
+// FetchWorkInfo はプラグインの fetch で作品の url か id から動画の作品情報を取り、結果をメモリに持つ
 // （POST /api/videos/{id}/work-info-fetches）。動画は変えない。
 func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	var body struct {
 		PluginID *int64  `json:"pluginId"`
 		URL      *string `json:"url"`
+		ID       *string `json:"id"`
 	}
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if body.PluginID == nil || body.URL == nil {
-		s.invalidRequest(w, "pluginId and url are required.")
+	if body.PluginID == nil || (body.URL == nil) == (body.ID == nil) {
+		s.invalidRequest(w, "pluginId and exactly one of url and id are required.")
 		return
 	}
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	fetch, err := s.workInfoPlugins.FetchWorkInfo(r.Context(), id, *body.PluginID, *body.URL)
+	var fetch domain.WorkInfoFetchResult
+	var err error
+	if body.URL != nil {
+		fetch, err = s.workInfoPlugins.FetchWorkInfo(r.Context(), id, *body.PluginID, *body.URL)
+	} else {
+		fetch, err = s.workInfoPlugins.FetchWorkInfoByID(r.Context(), id, *body.PluginID, *body.ID)
+	}
 	if err != nil {
 		s.workInfoRunError(w, err, "The video or the work-info plugin was not found.")
 		return
@@ -162,7 +169,7 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 	// 反映は確定しているので、詳細の一部を読めなくても成功を返す。結果は使い切りで、500 を返すと画面は
 	// 反映できたかを知れず、再送も work_info_fetch_stale になる。読めなかった項目は、確定後に発行した動画の
 	// 知らせで画面が読み直す。
-	video, err := s.videoDetail(r, applied.Video, 0)
+	video, err := s.videoDetail(r, applied.Video, domain.VideoContext{})
 	if err != nil {
 		s.logger.Warn("cannot load part of the video after applying the fetched work information",
 			slog.Int64("video", id), slog.Any("error", err))

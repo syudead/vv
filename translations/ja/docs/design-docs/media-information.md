@@ -78,7 +78,7 @@ flowchart LR
 
 ## 以前に取り込んだ動画は `metadata` ジョブが読み直す {#videos-imported-earlier-are-read-again-by-a-metadata-job}
 
-`metadata` ジョブは、行ができる前にプローブした動画に同じ `media.Probe` を実行し、`ApplyMediaInfoForJob` で行だけを書く ([`internal/app/ingest.go`](../../internal/app/ingest.go)、`Metadata`)。マイグレーション `00051_metadata_jobs.sql` は、プローブが完了し、登録済みフォルダの下に場所を持つ動画ごとに 1 件を積み、スキャンは行がないか行が `domain.MediaInfoVersion` を下回る動画に 1 件を積む (`IndexedVideo.MediaInfoMissing`)。新しい取り込みには積まない。プローブのジョブが行を書くからだ。
+`metadata` ジョブは、行ができる前にプローブした動画に同じ `media.Probe` を実行し、`ApplyMediaInfoForJob` で行だけを書く ([`internal/app/ingest.go`](../../internal/app/ingest.go)、`Metadata`)。マイグレーション `00052_metadata_jobs.sql` は、プローブが完了し、登録済みフォルダの下に場所を持つ動画ごとに 1 件を積み、スキャンは行がないか行が `domain.MediaInfoVersion` を下回る動画に 1 件を積む (`IndexedVideo.MediaInfoMissing`)。新しい取り込みには積まない。プローブのジョブが行を書くからだ。
 
 | 規則 | 理由 |
 | --- | --- |

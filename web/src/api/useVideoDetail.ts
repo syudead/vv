@@ -54,16 +54,34 @@ export function isProcessing(video: Video): boolean {
 }
 
 /**
- * withGroupOf は、変更の要求の応答 `saved` のグループを手元の 1 件 `current` のものに揃える。
- * 変更の要求は `group` を受け取らないので、応答のグループはいつも id のいちばん小さいもので
- * ある。動画を開いたグループ（`group`）があるときにそれを採ると、グループの行が関連動画の
- * 再生順と食い違う（specs/048-groups/research.md R-9）。`group` が無ければ応答のまま。
+ * VideoReadContext は動画を開いた文脈で、動画の読み取りに渡す。`group` は開いたグループ
+ * （`?group`）、`smartFolder` は開いたスマートフォルダ（`?smartFolder`）の id である
+ * （specs/048-groups/research.md R-9、specs/052-smart-folders/contracts/screen-api.md）。
  */
-function withGroupOf(saved: Video, current: Video | undefined, group?: number): Video {
-  if (group === undefined || current === undefined) return saved;
+export interface VideoReadContext {
+  group?: number;
+  smartFolder?: number;
+}
+
+/**
+ * withGroupOf は、変更の要求の応答 `saved` のグループとスマートフォルダを手元の 1 件 `current` の
+ * ものに揃える。変更の要求は `group` も `smartFolder` も受け取らないので、応答のグループはいつも
+ * id のいちばん小さいもので、スマートフォルダは無い。動画を開いた文脈（`opened`）があるときに
+ * それを採ると、グループかフォルダの行が関連動画の再生順と食い違う（specs/048-groups/research.md
+ * R-9）。文脈が無ければ応答のまま。
+ */
+function withGroupOf(
+  saved: Video,
+  current: Video | undefined,
+  opened: VideoReadContext,
+): Video {
+  if (current === undefined) return saved;
+  if (opened.group === undefined && opened.smartFolder === undefined) return saved;
   const video = { ...saved };
   if (current.group === undefined) delete video.group;
   else video.group = current.group;
+  if (current.smartFolder === undefined) delete video.smartFolder;
+  else video.smartFolder = current.smartFolder;
   return video;
 }
 
@@ -168,12 +186,15 @@ function withMediaInfoOf(saved: Video, current: Video | undefined): Video {
  *
  * `group` は動画を開いたグループの id で、取得のたびに渡す（specs/048-groups/research.md R-9）。
  * 同じ動画のまま `group` だけが変わったら、読み込み中に戻さずに取り直す（グループの操作の後に
- * `group` なしで読み直すとき、再生を止めない）。
+ * `group` なしで読み直すとき、再生を止めない）。`smartFolder` は動画を開いたスマートフォルダの id
+ * で、`group` と同じく取得のたびに渡し、変われば取り直す。そのフォルダを名指した `smartFolder` の
+ * 知らせでも取り直す（specs/052-smart-folders/ui-design.md「Video page」）。
  */
 export function useVideoDetail(
   id: number,
   group?: number,
   initial?: Video,
+  smartFolder?: number,
 ): {
   state: VideoDetailState;
   refresh: () => Promise<void>;
@@ -200,12 +221,16 @@ export function useVideoDetail(
   const owner = useAudience() === "owner";
 
   // 取得に渡すグループ。下の取得の効果より先に置き、動画が変わったときもその取得から新しい値を使う。
-  const contextRef = useRef({ id, group });
+  const contextRef = useRef({ id, group, smartFolder });
   useEffect(() => {
     const previous = contextRef.current;
-    contextRef.current = { id, group };
-    if (previous.id === id && previous.group !== group) void refreshRef.current();
-  }, [id, group]);
+    contextRef.current = { id, group, smartFolder };
+    if (
+      previous.id === id &&
+      (previous.group !== group || previous.smartFolder !== smartFolder)
+    )
+      void refreshRef.current();
+  }, [id, group, smartFolder]);
 
   useEffect(() => {
     // StrictMode が効果を 2 度走らせても同じ動画には使えるよう、別の動画へ移ったときに捨てる。
@@ -256,7 +281,12 @@ export function useVideoDetail(
       try {
         const video = withFavoriteSince(
           withVisibilitySince(
-            await getVideo(id, mine.signal, contextRef.current.group),
+            await getVideo(
+              id,
+              mine.signal,
+              contextRef.current.group,
+              contextRef.current.smartFolder,
+            ),
             mark,
           ),
           favorite,
@@ -300,7 +330,7 @@ export function useVideoDetail(
         settle();
       }
       const grouped = withMediaInfoOf(
-        withGroupOf(saved, current, contextRef.current.group),
+        withGroupOf(saved, current, contextRef.current),
         current,
       );
       const video = withFavoriteSince(
@@ -377,9 +407,21 @@ export function useVideoDetail(
 
     // グループの名前・項目・並び順が変わったら、グループの行（位置・本数・前後）を取り直す
     // （specs/048-groups/research.md R-13）。
+    // スマートフォルダを文脈に開いたときは、どのグループの知らせでも取り直す。文脈がフォルダから
+    // グループへ戻っているかもしれず、関連動画の並びがフォルダかグループかを区別できないからである。
     const onGroup = (ids: readonly number[]) => {
-      if (groupEventConcerns(ids, current?.group?.id, contextRef.current.group))
+      const opened = contextRef.current;
+      if (
+        opened.smartFolder !== undefined ||
+        groupEventConcerns(ids, current?.group?.id, opened.group)
+      )
         void load();
+    };
+    // 開いたスマートフォルダの中身が変わったら、フォルダの行（位置・本数）を取り直す
+    // （specs/052-smart-folders/research.md R-12）。
+    const onSmartFolder = (ids: readonly number[]) => {
+      const opened = contextRef.current.smartFolder;
+      if (opened !== undefined && ids.includes(opened)) void load();
     };
     // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。ゲストには group だけが
     // 届くので、group だけを購読する（specs/048-groups/contracts/screen-api.md「/api/events」）。
@@ -389,6 +431,7 @@ export function useVideoDetail(
             if (changed === id) void load();
           },
           group: onGroup,
+          smartFolder: onSmartFolder,
           // つなぎ直したときは、切れていた間の知らせを受け取っていないので取り直す。
           // 最初の接続では、開いたときの取得と同じ内容を2回続けて取らないよう、まだ準備中
           // （取得とつながるまでの間に準備が済んだかもしれない）のときだけ取り直す（issue 674）。
@@ -399,6 +442,7 @@ export function useVideoDetail(
         })
       : subscribeServerEvents({
           group: onGroup,
+          smartFolder: onSmartFolder,
           open: (reconnected) => {
             if (reconnected) void load();
           },
@@ -461,11 +505,13 @@ export type RelatedState =
  * 並びのサムネイル（URL の版が変わる）を画面のサムネイルとそろえる。
  *
  * `group` は動画を開いたグループの id で、どのページの取得にも渡す（research.md R-9）。
- * 変われば最初のページから読み直す。
+ * 変われば最初のページから読み直す。`smartFolder` は動画を開いたスマートフォルダの id で、
+ * 同じく渡し、そのフォルダを名指した `smartFolder` の知らせでも読み直す。
  */
 export function useRelatedVideos(
   id: number,
   group?: number,
+  smartFolder?: number,
 ): {
   state: RelatedState;
   retry: () => void;
@@ -480,10 +526,10 @@ export function useRelatedVideos(
     stateRef.current = state;
   }, [state]);
   const moreAbort = useRef<AbortController | null>(null);
-  const groupRef = useRef(group);
+  const contextRef = useRef({ group, smartFolder });
   useEffect(() => {
-    groupRef.current = group;
-  }, [group]);
+    contextRef.current = { group, smartFolder };
+  }, [group, smartFolder]);
 
   useEffect(() => {
     setState({ kind: "loading", id });
@@ -504,7 +550,13 @@ export function useRelatedVideos(
     const load = async () => {
       const mine = controller;
       try {
-        const related = await getRelatedVideos(id, mine.signal, undefined, group);
+        const related = await getRelatedVideos(
+          id,
+          mine.signal,
+          undefined,
+          group,
+          smartFolder,
+        );
         if (mine.signal.aborted) return;
         show(related);
       } catch (failure) {
@@ -535,11 +587,16 @@ export function useRelatedVideos(
       void load();
     };
     // ゲストにも group は届く（specs/048-groups/contracts/screen-api.md「/api/events」）。
+    // スマートフォルダを文脈に開いたときは、どのグループの知らせでも、開いたフォルダを名指した
+    // `smartFolder` の知らせでも読み直す（useVideoDetail の onGroup と同じ理由）。
     const unsubscribe = subscribeServerEvents({
       group: (ids) => {
         const current = stateRef.current;
         const shown = current.kind === "ready" ? current.related.group?.id : undefined;
-        if (groupEventConcerns(ids, shown, group)) reload();
+        if (smartFolder !== undefined || groupEventConcerns(ids, shown, group)) reload();
+      },
+      smartFolder: (ids) => {
+        if (smartFolder !== undefined && ids.includes(smartFolder)) reload();
       },
       open: (reconnected) => {
         if (reconnected) reload();
@@ -552,7 +609,7 @@ export function useRelatedVideos(
       moreAbort.current?.abort();
       moreAbort.current = null;
     };
-  }, [attempt, id, group]);
+  }, [attempt, id, group, smartFolder]);
 
   const loadMore = useCallback(() => {
     const current = stateRef.current;
@@ -564,7 +621,14 @@ export function useRelatedVideos(
     const loading = { ...current, more: "loading" as const };
     stateRef.current = loading;
     setState(loading);
-    getRelatedVideos(current.id, controller.signal, cursor, groupRef.current).then(
+    const opened = contextRef.current;
+    getRelatedVideos(
+      current.id,
+      controller.signal,
+      cursor,
+      opened.group,
+      opened.smartFolder,
+    ).then(
       (page) => {
         if (controller.signal.aborted) return;
         setState((previous) => {

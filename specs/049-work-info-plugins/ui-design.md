@@ -133,7 +133,7 @@ name on screen is `VVMDM`.
 | Badge, invalid | Can't be used | `destructive`, lucide `CircleX` |
 | Version | v{version} | After the name |
 | Operations, search | Search | Joined by ` · ` |
-| Operations, fetch | Fetch by URL | |
+| Operations, fetch | Fetch by ID or URL | |
 | Internet notice (row) | Reaches internet sites | lucide `Globe` |
 | Settings summary | Settings: {list} | `{list}` is each label, then `set` or `not set`, joined by `, ` |
 | Required missing | Needs a value: {labels} | `warning` text with lucide `CircleAlert` |
@@ -207,17 +207,16 @@ One line under an `invalid` row, `text-destructive`, from its `problem`
 | Dialog title | Fetch work info | |
 | Dialog description | Nothing changes until you apply. | |
 | Plugin label | Plugin | `Select` with several approved plugins; the name as text with one |
-| Query label, both operations | Search words or the work's page URL | |
-| Query label, search only | Search words | |
-| Query label, fetch only | The work's page URL | |
-| Not a URL | Paste a page URL starting with http:// or https://. | Fetch-only plugin, field error |
-| Search button | Search | When the text is not a URL |
-| Fetch button | Fetch | When the text is a URL |
+| Query label, words | Search words or the work's page URL | `Search words` when the plugin cannot fetch |
+| Query label, ID | The work's ID or page URL | `ID` pressed, or a fetch-only plugin |
+| Find by | Find by · Words · ID | `ToggleGroup` label and items, only for a plugin with `search` and `fetch` |
+| Search button | Search | When the text is searched |
+| Fetch button | Fetch | When the text is a URL or an ID |
 | Running | Searching… · Fetching… | The button's text while the run lasts; a run can take up to 30 seconds |
 | Candidates heading | {n} matches | |
 | Candidate open link | Open page | `ghost` `icon-sm`, lucide `ExternalLink`, new tab |
-| No candidates | No matches. Try other words or paste the work's page URL. | The second sentence only when the plugin can fetch |
-| Source line | From {plugin} · {host} | Muted, above the comparison; `{host}` links to the fetched URL, new tab |
+| No candidates | No matches. Try other words, or choose ID and enter the work's ID. | The second sentence only when the plugin can fetch |
+| Source line | From {plugin} · {host} | Muted, above the comparison; `{host}` links to the fetched URL, new tab. After a fetch by ID, `ID {id}` as text in place of the host |
 | Back | Back to the matches | `ghost` `sm`, lucide `ArrowLeft`; only after a search |
 | Column headings | Now · Fetched | |
 | Field labels | Title · Tags | |
@@ -450,8 +449,9 @@ stateDiagram-v2
 | Part | Form |
 | --- | --- |
 | Plugin | With one approved plugin, `Plugin` and its name as text. With several, a `Select` `sm` of the approved plugins in list order, the first selected. Changing it keeps the typed text and clears the candidates |
-| Query | One `Input` labelled by the plugin's operations ([Words, Video page text](#video-page-text)). For a plugin that can search it starts with the title the page shows, selected, so typing replaces it; for a fetch-only plugin it starts empty |
-| Button | `Search` or `Fetch`, the submit button, named by what the text is: an `http` or `https` URL is fetched when the plugin can fetch, anything else is searched. A search-only plugin searches a URL as words. A fetch-only plugin answers text that is not a URL with the `Not a URL` field error |
+| Find by | For a plugin with both `search` and `fetch`, a `ToggleGroup` `outline` `sm` of `Words` and `ID` above the query, `Words` pressed first. Switching it while the query still holds the starting value replaces that value with the other mode's, and clears the candidates |
+| Query | One `Input` labelled by the plugin's operations and Find by ([Words, Video page text](#video-page-text)). When text is searched it starts with the title the page shows, selected, so typing replaces it; when text is fetched as an ID it starts with the video's code, or empty without one |
+| Button | `Search` or `Fetch`, the submit button, named by what the text is: an `http` or `https` URL is fetched by its URL when the plugin can fetch; other text is fetched as the work's ID when `ID` is pressed or the plugin cannot search, and searched otherwise. A search-only plugin searches a URL as words |
 
 While a run lasts the button spins and reads `Searching…` or `Fetching…`,
 the plugin and query are disabled, and `Cancel` stays usable: closing drops
@@ -512,7 +512,7 @@ sends the selected fields with `pending`
 | --- | --- |
 | `200`, nothing skipped | The dialog closes, the response `Video` replaces the page's video, the toast `Applied to the video.` shows, the focus returns to the entry |
 | `200`, names skipped | The page's video is replaced as above; the dialog moves to the [result](#result) |
-| `work_info_fetch_stale` | The dialog stays on the comparison with the `Stale` `Alert` above it and `Fetch again`, which runs the same plugin and URL and opens a new comparison; `Apply selected` is disabled (the Issue's edge cases) |
+| `work_info_fetch_stale` | The dialog stays on the comparison with the `Stale` `Alert` above it and `Fetch again`, which runs the same plugin and URL or ID and opens a new comparison; `Apply selected` is disabled (the Issue's edge cases) |
 | Another failure | A `destructive` `Alert`, `Couldn't apply: {reason}`, above the comparison; the selection is kept; the video is unchanged |
 
 ### Result

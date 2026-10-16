@@ -16,17 +16,19 @@ import "github.com/syudead/vv/internal/domain"
 // する。
 
 // videoHasTagCondition は、動画（別名 alias の videos）に、あるタグが手で
-// 付いているかフォルダ名から付いているかの条件句を返す。呼び出し側はタグの
-// id を2つ（手で付けた分、フォルダ名の分）引数として渡す。
-func videoHasTagCondition(alias string) string {
-	return videoTagSourcesCondition(alias, func(tagIDColumn string) string { return tagIDColumn + ` = ?` })
+// 付いているかフォルダ名から付いているかの条件句を返す。userKey は動画の利用者データの鍵の式
+// （ふつうは userKeyExpr(alias)）である。呼び出し側はタグの id を2つ（手で付けた分、フォルダ名の分）
+// 引数として渡す。
+func videoHasTagCondition(alias, userKey string) string {
+	return videoTagSourcesCondition(alias, userKey, func(tagIDColumn string) string { return tagIDColumn + ` = ?` })
 }
 
 // videoHasTagOfKindCondition は、動画（別名 alias の videos）に、ある種類のタグが手で
-// 付いているかフォルダ名から付いているかの条件句を返す。呼び出し側は種類の id を2つ
-// （手で付けた分、フォルダ名の分）引数として渡す（specs/051-tag-kinds/data-model.md の Rules）。
-func videoHasTagOfKindCondition(alias string) string {
-	return videoTagSourcesCondition(alias, func(tagIDColumn string) string {
+// 付いているかフォルダ名から付いているかの条件句を返す。userKey は videoHasTagCondition と同じで、
+// 呼び出し側は種類の id を2つ（手で付けた分、フォルダ名の分）引数として渡す
+// （specs/051-tag-kinds/data-model.md の Rules）。
+func videoHasTagOfKindCondition(alias, userKey string) string {
+	return videoTagSourcesCondition(alias, userKey, func(tagIDColumn string) string {
 		return tagIDColumn + ` in (select id from tags where kind_id = ?)`
 	})
 }
@@ -34,11 +36,17 @@ func videoHasTagOfKindCondition(alias string) string {
 // videoTagSourcesCondition は、動画（別名 alias の videos）に、tagMatch が当たるタグが手で
 // 付いているかフォルダ名から付いているかの条件句を返す。tagMatch はタグの id の列を受けて
 // その列に対する条件を返し、2つの出所それぞれに1回ずつ使われる。
-func videoTagSourcesCondition(alias string, tagMatch func(tagIDColumn string) string) string {
-	return `(exists (select 1 from video_tags vt where vt.content_key = ` + userKeyExpr(alias) + ` and ` +
-		alias + `.content_key <> '' and ` + tagMatch("vt.tag_id") + `) ` +
-		`or exists (select 1 from video_folder_names vfn join tag_names tn on tn.name = vfn.name ` +
-		`where vfn.video_id = ` + alias + `.id and ` + alias + `.content_key <> '' and ` + tagMatch("tn.tag_id") + `))`
+//
+// どちらの出所も相関しない副問い合わせ（in）にする。SQLite はタグの付いた鍵と動画の集合を
+// 問い合わせごとに 1 度だけ作り、動画 1 本ごとにはそれを引くだけになる。動画 1 本ごとに exists を
+// 評価すると、スマートフォルダが 1 回の読み出しで 2 万本を何度も絞るときに遅い
+// （specs/052-smart-folders/research.md R-13）。フォルダ名の分はタグの名前から引く（cross join で
+// 結ぶ順を決める）。
+func videoTagSourcesCondition(alias, userKey string, tagMatch func(tagIDColumn string) string) string {
+	return `(` + alias + `.content_key <> '' and (` + userKey +
+		` in (select vt.content_key from video_tags vt where ` + tagMatch("vt.tag_id") + `) ` +
+		`or ` + alias + `.id in (select vfn.video_id from tag_names tn cross join video_folder_names vfn on vfn.name = tn.name ` +
+		`where ` + tagMatch("tn.tag_id") + `)))`
 }
 
 // taggedVideosSQL は、いまライブラリにある見せる動画（所有者から見た shownVideoCondition。

@@ -443,6 +443,7 @@ func run(opts runOptions) error {
 		Folders:         libraryStore,
 		FolderGroups:    db.FolderGroups(),
 		Groups:          db.Groups(),
+		SmartFolders:    db.SmartFolders(),
 		// ドラッグの操作の取り消しの台帳は、プロセスのメモリに 10 分だけ持つ（specs/050-drag-organize R-2）。
 		Organizer: app.NewOrganizer(app.OrganizerOptions{Store: db.Organize()}),
 		Library:   libraryStore,

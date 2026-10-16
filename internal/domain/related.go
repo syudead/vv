@@ -18,12 +18,31 @@ type RelatedVideos struct {
 }
 
 // RelatedPage は関連動画のどのページを読むかである。After が nil なら最初のページ。
-// GroupID は動画を開いたグループの id（無ければ 0）で、最初のページのグループと前後を
-// 文脈のグループで答える（specs/048-groups/research.md R-9）。
+// GroupID は動画を開いたグループの id、SmartFolderID は動画を開いたスマートフォルダの id
+// （どちらも無ければ 0）で、最初のページのグループと前後を文脈（VideoContext）の再生順で答える
+// （specs/048-groups/research.md R-9、specs/052-smart-folders/contracts/screen-api.md）。
 type RelatedPage struct {
-	After   *RelatedCursor
-	Limit   int
-	GroupID int64
+	After         *RelatedCursor
+	Limit         int
+	GroupID       int64
+	SmartFolderID int64
+}
+
+// Context は、このページの文脈である。
+func (p RelatedPage) Context() VideoContext {
+	return VideoContext{GroupID: p.GroupID, SmartFolderID: p.SmartFolderID}
+}
+
+// VideoContext は動画を開いた文脈である（GET /api/videos/{id} などの group と smartFolder）。
+// GroupID はグループの id、SmartFolderID はスマートフォルダの id で、無ければ 0 である。
+// GroupID があれば group が勝ち、SmartFolderID は見ない。文脈の再生順は、GroupID のグループが
+// その動画を持てばそのグループ、GroupID が無く SmartFolderID のフォルダの再生順がその動画を持てば
+// そのフォルダ、どちらでもなければ動画を直接持つグループのうち id のいちばん小さいものである
+// （両方なら group が勝ち、動画を持たないフォルダは無視する。
+// specs/052-smart-folders/contracts/screen-api.md「Schemas and parameters changed」）。
+type VideoContext struct {
+	GroupID       int64
+	SmartFolderID int64
 }
 
 // GroupMemberWindow は、関連動画の応答に載せるグループのメンバーの本数の上限である。
@@ -61,10 +80,14 @@ func (w GroupWindow) Start(total, position int) int {
 
 // VideoGroup は動画1本の文脈のグループ（specs/048-groups/research.md R-9）を、見る人に
 // 見せてよい動画の再生順（GroupPlayOrder）で表したものである。この型の「メンバー」は
-// その再生順の動画を指す。
+// その再生順の動画を指す。文脈がスマートフォルダなら、SmartFolder が真で、ID と Name は
+// フォルダのもの、メンバーはフォルダの再生順である（specs/052-smart-folders/data-model.md
+// 「Contents」の Play order）。
 type VideoGroup struct {
-	// ID はグループの id。
+	// ID はグループ（SmartFolder ならスマートフォルダ）の id。
 	ID int64
+	// SmartFolder は文脈がスマートフォルダであることを表す。
+	SmartFolder bool
 	// Folder は自動グループのフォルダ（LocateFolder）。手で作ったグループと、フォルダが
 	// 登録フォルダの下に無い自動グループでは nil。
 	Folder *VideoFolder

@@ -5,6 +5,7 @@ import type {
   WorkInfoFetch,
   WorkInfoField,
   WorkInfoPlugin,
+  WorkInfoTarget,
 } from "../../api/workInfoPlugins";
 import { t, type UiText } from "../../i18n";
 import { creditKind, detailRow, isDateRow, videoWorkInfo } from "./detailRows";
@@ -14,6 +15,12 @@ import { creditKind, detailRow, isDateRow, videoWorkInfo } from "./detailRows";
 
 /** RunOperation はプラグインに走らせる操作である。 */
 export type RunOperation = "search" | "fetch";
+
+/**
+ * FindBy は URL でない語の扱いで、`words` は検索の語、`id` は取得に渡す作品の ID である。search と fetch の
+ * 両方を宣言するプラグインでだけ選べ、片方だけならその操作に決まる。
+ */
+export type FindBy = "words" | "id";
 
 /** approvedPlugins は一覧のうち承認済みのプラグインを、一覧の順のまま返す（R-11）。 */
 export function approvedPlugins(plugins: readonly WorkInfoPlugin[]): WorkInfoPlugin[] {
@@ -41,29 +48,58 @@ export function isWebUrl(text: string): boolean {
   }
 }
 
+/** canChooseFindBy はプラグインが語を検索の語にも ID にもでき、`Words`・`ID` を選べるかを返す。 */
+export function canChooseFindBy(plugin: WorkInfoPlugin): boolean {
+  return can(plugin, "search") && can(plugin, "fetch");
+}
+
+/**
+ * textOperation は URL でない語を走らせる操作である。検索できないプラグインと `ID` を選んだときは、語を
+ * 作品の ID として取得に渡す。
+ */
+function textOperation(plugin: WorkInfoPlugin, by: FindBy): RunOperation {
+  if (can(plugin, "fetch") && (by === "id" || !can(plugin, "search"))) return "fetch";
+  return "search";
+}
+
 /**
  * runFor は入力 text をプラグインのどの操作で走らせるかを返す。URL は取得できるプラグインなら
- * 取得し、それ以外は検索する。検索できないプラグインに URL でない文を渡せば `notUrl` である。
+ * 取得し、それ以外は語として検索するか、作品の ID として取得する（by で選ぶ）。
  */
-export function runFor(plugin: WorkInfoPlugin, text: string): RunOperation | "notUrl" {
+export function runFor(plugin: WorkInfoPlugin, text: string, by: FindBy): RunOperation {
   if (isWebUrl(text) && can(plugin, "fetch")) return "fetch";
-  if (can(plugin, "search")) return "search";
-  return "notUrl";
+  return textOperation(plugin, by);
 }
 
-/** queryLabel は入力欄の名前で、プラグインの操作で決まる。 */
-export function queryLabel(plugin: WorkInfoPlugin): UiText {
+/** fetchTarget は取得に渡す作品で、URL として読めれば URL、それ以外は作品の ID である。 */
+export function fetchTarget(text: string): WorkInfoTarget {
+  const trimmed = text.trim();
+  return isWebUrl(trimmed) ? { url: trimmed } : { id: trimmed };
+}
+
+/** queryLabel は入力欄の名前で、プラグインの操作と by で決まる。 */
+export function queryLabel(plugin: WorkInfoPlugin, by: FindBy): UiText {
   const text = t.player.workInfoFetch;
-  if (can(plugin, "search") && can(plugin, "fetch")) return text.queryBoth;
-  return can(plugin, "search") ? text.querySearch : text.queryFetch;
+  if (textOperation(plugin, by) === "fetch") return text.queryFetch;
+  return can(plugin, "fetch") ? text.queryBoth : text.querySearch;
 }
 
-/** initialQuery は入力欄の最初の値で、検索できるプラグインならページの題名である。 */
-export function initialQuery(plugin: WorkInfoPlugin | undefined, title: string): string {
-  return plugin !== undefined && can(plugin, "search") ? title : "";
+/**
+ * initialQuery は入力欄の最初の値である。検索するならページの題名、ID で取得するなら動画の品番（無ければ
+ * 空）である。
+ */
+export function initialQuery(
+  plugin: WorkInfoPlugin | undefined,
+  by: FindBy,
+  video: Video,
+): string {
+  if (plugin === undefined) return "";
+  return textOperation(plugin, by) === "search"
+    ? video.title
+    : (videoWorkInfo(video).code ?? "");
 }
 
-/** canFetch はプラグインが URL から取得できるかを返す。 */
+/** canFetch はプラグインが作品の URL か ID から取得できるかを返す。 */
 export function canFetch(plugin: WorkInfoPlugin): boolean {
   return can(plugin, "fetch");
 }

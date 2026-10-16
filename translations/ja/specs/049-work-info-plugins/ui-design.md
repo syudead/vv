@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/ui-design.md
-sourceHash: 69eca6935713b09d200f2252fd0570b36be89d3cbe4fbfef1348225bd52b3a3c
+sourceHash: 014e3d289ad06c257de62f16d4ba1b65f5d91168cc840cfbbcc2804a2e9f94e4
 ---
 
 # UI デザイン: 外部のサービスから作品情報を取得する作品情報プラグイン {#ui-design-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -83,7 +83,7 @@ flowchart LR
 | バッジ、使えない | Can't be used | `destructive`、lucide `CircleX` |
 | バージョン | v{version} | 名前の後 |
 | 操作、検索 | Search | ` · ` でつなぐ |
-| 操作、取得 | Fetch by URL | |
+| 操作、取得 | Fetch by ID or URL | |
 | インターネットについての注意 (行) | Reaches internet sites | lucide `Globe` |
 | 設定の要約 | Settings: {list} | `{list}` は各ラベルの後に `set` か `not set` を続け、`, ` でつないだもの |
 | 必須の値の欠落 | Needs a value: {labels} | lucide `CircleAlert` を伴う `warning` の文字 |
@@ -156,17 +156,16 @@ flowchart LR
 | ダイアログのタイトル | Fetch work info | |
 | ダイアログの説明 | Nothing changes until you apply. | |
 | プラグインのラベル | Plugin | 承認済みのプラグインが複数あるときは `Select`。一つのときは名前を文字で示す |
-| クエリのラベル、両方の操作 | Search words or the work's page URL | |
-| クエリのラベル、検索だけ | Search words | |
-| クエリのラベル、取得だけ | The work's page URL | |
-| URL でない | Paste a page URL starting with http:// or https://. | 取得だけのプラグイン、欄のエラー |
-| 検索のボタン | Search | 文字列が URL でないとき |
-| 取得のボタン | Fetch | 文字列が URL のとき |
+| クエリのラベル、語句 | Search words or the work's page URL | プラグインが取得できないときは `Search words` |
+| クエリのラベル、ID | The work's ID or page URL | `ID` が押されているとき、または取得だけのプラグイン |
+| 探し方 | Find by · Words · ID | `ToggleGroup` のラベルと項目。`search` と `fetch` を持つプラグインだけ |
+| 検索のボタン | Search | 文字列を検索するとき |
+| 取得のボタン | Fetch | 文字列が URL か ID のとき |
 | 実行中 | Searching… · Fetching… | 実行の間のボタンの文言。実行は最大 30 秒かかることがある |
 | 候補の見出し | {n} matches | |
 | 候補を開くリンク | Open page | `ghost` `icon-sm`、lucide `ExternalLink`、新しいタブ |
-| 候補なし | No matches. Try other words or paste the work's page URL. | 二文目はプラグインが取得できるときだけ |
-| 出典の行 | From {plugin} · {host} | 控えめ、比較の上。`{host}` は取得した URL へのリンクで、新しいタブで開く |
+| 候補なし | No matches. Try other words, or choose ID and enter the work's ID. | 二文目はプラグインが取得できるときだけ |
+| 出典の行 | From {plugin} · {host} | 控えめ、比較の上。`{host}` は取得した URL へのリンクで、新しいタブで開く。ID で取得した後は、ホストの代わりに `ID {id}` を文字で示す |
 | 戻る | Back to the matches | `ghost` `sm`、lucide `ArrowLeft`。検索の後だけ |
 | 列の見出し | Now · Fetched | |
 | 項目のラベル | Title · Tags | |
@@ -329,8 +328,9 @@ stateDiagram-v2
 | 部分 | 形 |
 | --- | --- |
 | プラグイン | 承認済みのプラグインが一つのときは、`Plugin` とその名前を文字で示す。複数のときは、承認済みのプラグインを一覧の順に並べた `Select` `sm` で、最初のものを選んだ状態にする。変えると入力した文字列を保ち、候補を消す |
-| クエリ | プラグインの操作によるラベルを持つ一つの `Input` ([文言、動画のページの文言](#video-page-text))。検索できるプラグインでは、ページが表示するタイトルを選択した状態で始まるので、入力するとそれを置き換える。取得だけのプラグインでは空で始まる |
-| ボタン | 送信ボタンの `Search` か `Fetch` で、文字列が何かによって名前が決まる。プラグインが取得できるとき `http` か `https` の URL は取得し、それ以外は検索する。検索だけのプラグインは URL を語句として検索する。取得だけのプラグインは、URL でない文字列に `Not a URL` の欄のエラーで答える |
+| 探し方 | `search` と `fetch` の両方を持つプラグインでは、クエリの上に `Words` と `ID` の `ToggleGroup` `outline` `sm` を置き、最初は `Words` が押されている。クエリがまだ最初の値のままのときに切り替えると、その値をもう一方のモードの値に置き換え、候補を消す |
+| クエリ | プラグインの操作と探し方によるラベルを持つ一つの `Input` ([文言、動画のページの文言](#video-page-text))。文字列を検索するときは、ページが表示するタイトルを選択した状態で始まるので、入力するとそれを置き換える。文字列を ID として取得するときは動画の品番で始まり、品番がなければ空で始まる |
+| ボタン | 送信ボタンの `Search` か `Fetch` で、文字列が何かによって名前が決まる。プラグインが取得できるとき、`http` か `https` の URL はその URL で取得する。それ以外の文字列は、`ID` が押されているかプラグインが検索できないときは作品の ID として取得し、そうでなければ検索する。検索だけのプラグインは URL を語句として検索する |
 
 実行の間、ボタンは回転して `Searching…` か `Fetching…` と表示し、プラグインとクエリは無効になり、`Cancel` は使えるままである。閉じると、届いた答えを捨てる。実行は 30 秒以内に終わるか、`plugin_timed_out` になる。
 
@@ -375,7 +375,7 @@ stateDiagram-v2
 | --- | --- |
 | `200`、何も飛ばさない | ダイアログが閉じ、応答の `Video` がページの動画を置き換え、トースト `Applied to the video.` を表示し、フォーカスは入口に戻る |
 | `200`、名前を飛ばした | 上と同じくページの動画を置き換える。ダイアログは [結果](#result) に移る |
-| `work_info_fetch_stale` | ダイアログは比較に留まり、その上に `Stale` の `Alert` と `Fetch again` を表示する。これは同じプラグインと URL で実行し、新しい比較を開く。`Apply selected` は無効になる (Issue の境界ケース) |
+| `work_info_fetch_stale` | ダイアログは比較に留まり、その上に `Stale` の `Alert` と `Fetch again` を表示する。これは同じプラグインと URL か ID で実行し、新しい比較を開く。`Apply selected` は無効になる (Issue の境界ケース) |
 | その他の失敗 | 比較の上に `destructive` の `Alert` `Couldn't apply: {reason}` を表示する。選択は保たれる。動画は変わらない |
 
 ### 結果 {#result}

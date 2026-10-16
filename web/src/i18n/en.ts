@@ -54,6 +54,31 @@ function items(count: number): string {
   });
 }
 
+/**
+ * minutesText は秒数を、小数 1 桁までの分の数にする（90 秒は「1.5」）。0 秒でない値は
+ * 0 に丸めず、いちばん小さい 0.1 にする。
+ */
+function minutesText(secondsCount: number): string {
+  const minutes = Math.round((secondsCount / 60) * 10) / 10;
+  return formatNumber(secondsCount > 0 ? Math.max(minutes, 0.1) : minutes);
+}
+
+/**
+ * lengthWords は長さの条件の語である（specs/052-smart-folders/ui-design.md「Words」の Length
+ * options）。絞り込みのプリセットはその語、ほかは分の数で言う。上限 `max` は含む秒数。
+ */
+function lengthWords(min: number | undefined, max: number | undefined): string {
+  const upper = max === undefined ? undefined : max + 1;
+  const low = min ?? 0;
+  if (low === 0 && upper === 300) return "Under 5 minutes";
+  if (low === 300 && upper === 1200) return "5 to 20 minutes";
+  if (low === 1200 && upper === 3600) return "20 to 60 minutes";
+  if (low === 3600 && upper === undefined) return "Over an hour";
+  if (upper === undefined) return `Over ${minutesText(low)} minutes`;
+  if (low === 0) return `Under ${minutesText(upper)} minutes`;
+  return `${minutesText(low)} to ${minutesText(upper)} minutes`;
+}
+
 function seconds(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} second`,
@@ -222,6 +247,10 @@ const errorCodes = {
   plugin_busy: "Another plugin is running. Try again in a moment.",
   operation_unsupported: "The plugin can't do that.",
   work_info_fetch_stale: "The result is out of date. Fetch it again.",
+  invalid_smart_rule: "A condition is out of range.",
+  smart_folder_not_found: "That smart folder no longer exists.",
+  smart_folder_cycle:
+    "A smart folder can't be put inside itself or inside one of its children.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {
@@ -779,6 +808,35 @@ export const en = {
       playableOnly: "Playable only",
       favoritesOnly: "Favorites only",
       clear: "Clear filters",
+      // 追加日と長さの行（specs/052-smart-folders/ui-design.md「Words」）。
+      added: "Added",
+      length: "Length",
+      addedOptions: {
+        any: "Any time",
+        // 選択肢の日数（1, 7, 30, 90, 365）の名前。
+        preset: (days: number) => {
+          if (days === 1) return "Last 24 hours";
+          if (days === 365) return "Last year";
+          return `Last ${formatNumber(days)} days`;
+        },
+        // 選択肢に無い日数（URL や条件が持つ値）。
+        days: (days: number) =>
+          selectPlural(days, {
+            one: `Last ${formatNumber(days)} day`,
+            other: `Last ${formatNumber(days)} days`,
+          }),
+      },
+      lengthOptions: {
+        any: "Any length",
+        under5: "Under 5 minutes",
+        from5to20: "5 to 20 minutes",
+        from20to60: "20 to 60 minutes",
+        overHour: "Over an hour",
+        // 選択肢に無い範囲。分は画面が整えた文字列で渡す。
+        between: (min: string, max: string) => `${min} to ${max} minutes`,
+        under: (max: string) => `Under ${max} minutes`,
+        over: (min: string) => `Over ${min} minutes`,
+      },
     },
     sort: {
       heading: "Sort by",
@@ -906,6 +964,16 @@ export const en = {
       watchedRatio: "Share of videos watched",
       progress: (watched: number, total: number) =>
         `${formatNumber(watched)} / ${formatNumber(total)}`,
+    },
+    // スマートフォルダのカードと行（specs/052-smart-folders/ui-design.md「Words」）。
+    smartFolder: {
+      label: (name: string, count: number, watched: number) =>
+        watched >= 1
+          ? `${name}, smart folder of ${videos(count)}, ${formatNumber(watched)} watched`
+          : `${name}, smart folder of ${videos(count)}`,
+      labelLoading: (name: string) => `${name}, smart folder`,
+      favorite: (name: string) => `Favorite smart folder "${name}"`,
+      addToPlaylist: (name: string) => `Add smart folder "${name}" to a playlist`,
     },
     selection: {
       region: "Selection actions",
@@ -1855,8 +1923,12 @@ export const en = {
       plugin: "Plugin",
       queryBoth: "Search words or the work's page URL",
       querySearch: "Search words",
-      queryFetch: "The work's page URL",
-      notUrl: "Paste a page URL starting with http:// or https://.",
+      queryFetch: "The work's ID or page URL",
+      findBy: "Find by",
+      findByOptions: {
+        words: "Words",
+        id: "ID",
+      },
       search: "Search",
       fetch: "Fetch",
       searching: "Searching…",
@@ -1869,8 +1941,10 @@ export const en = {
       matchList: "Matches",
       openPage: "Open page",
       noMatches: "No matches.",
-      noMatchesFetch: "No matches. Try other words or paste the work's page URL.",
+      noMatchesFetch:
+        "No matches. Try other words, or choose ID and enter the work's ID.",
       source: (plugin: string) => `From ${plugin} · `,
+      sourceId: (id: string) => `ID ${id}`,
       back: "Back to the matches",
       now: "Now",
       fetched: "Fetched",
@@ -2033,6 +2107,11 @@ export const en = {
       dissolve: "Dissolve…",
       removed: (name: string) => `Removed from "${name}"`,
       removeFailed: (reason: string) => `Couldn't remove from the group: ${reason}`,
+    },
+    // スマートフォルダの行（specs/052-smart-folders/ui-design.md「Video page」）。
+    smartFolder: {
+      line: (name: string, position: number, count: number) =>
+        `Smart folder "${name}", video ${formatNumber(position)} of ${formatNumber(count)}. Open the smart folder`,
     },
     tags: {
       heading: "Tags",
@@ -2245,6 +2324,118 @@ export const en = {
         `Added ${items(added)} to "${name}"; ${formatNumber(existing)} already there`,
       nothing: "Nothing was added",
       failed: (reason: string) => `Couldn't add to the playlist: ${reason}`,
+    },
+  },
+  // スマートフォルダ（specs/052-smart-folders/ui-design.md「Words」）。画面では条件を
+  // "conditions" と呼び、"rule" とは言わない。保存・編集・削除の語と、カードとページの語。
+  smartFolders: {
+    // カードの印の Tooltip と title。
+    kind: "Smart folder",
+    // 道筋の帯（Breadcrumb）の名前。
+    trail: "Smart folder path",
+    save: "Save as smart folder",
+    created: (name: string) => `Created "${name}"`,
+    saved: (name: string) => `Saved "${name}"`,
+    deleted: (name: string) => `Deleted "${name}"`,
+    // 作ったトーストの、新しいフォルダのページを開く操作。
+    open: "Open",
+    // `GET /api/smart-folders` の失敗（親の一覧、削除の窓の子孫の数）。
+    listFailed: (reason: string) => `Couldn't load the smart folders: ${reason}`,
+    dialog: {
+      newTitle: "New smart folder",
+      newChildTitle: (parent: string) => `New smart folder in "${parent}"`,
+      editTitle: "Edit smart folder",
+      parent: "Parent",
+      noParent: "None (top level)",
+      // 並べ順の選択肢（「Date added, newest first」）。言い換えの無い種類は向きの語を使う。
+      sortOption: (kind: string, direction: string) => `${kind}, ${direction}`,
+      ascending: "ascending",
+      descending: "descending",
+      randomSort: "Random can't be saved; the folder is sorted by date added",
+      conditions: "Conditions",
+      conditionsHint: "Videos that match every condition are in the folder.",
+      noConditions: "Add at least one condition.",
+      person: "Person",
+      organization: "Organization",
+      tagsLimit: (limit: number) => `Up to ${formatNumber(limit)} tags`,
+      removeTag: (name: string) => `Remove the condition ${name}`,
+      removePerson: (name: string) => `Remove the person ${name}`,
+      removeOrganization: (name: string) => `Remove the organization ${name}`,
+      removeDeleted: "Remove the deleted condition",
+      submit: "Create",
+      submitting: "Creating…",
+      saveSubmit: "Save",
+      saving: "Saving…",
+      createFailed: (reason: string) => `Couldn't create the smart folder: ${reason}`,
+      saveFailed: (reason: string) => `Couldn't save the smart folder: ${reason}`,
+    },
+    // 条件の行のチップ。視聴状態の語は絞り込みのポップオーバーのもの（list.filter.watchOptions）。
+    condition: {
+      search: (query: string) => `Search: ${query}`,
+      favorite: "Favorites",
+      playable: "Playable",
+      kind: (name: string) => `Kind: ${name}`,
+      tag: (name: string) => `Tag: ${name}`,
+      person: (name: string) => `Person: ${name}`,
+      organization: (name: string) => `Organization: ${name}`,
+      // もう無いタグ・種類・人物・団体の条件のチップ。
+      deleted: (kind: "tag" | "tagKind" | "person" | "organization") =>
+        ({
+          tag: "Tag: deleted",
+          tagKind: "Kind: deleted",
+          person: "Person: deleted",
+          organization: "Organization: deleted",
+        })[kind],
+      addedWithin: (days: number) =>
+        days === 1
+          ? "Added in the last 24 hours"
+          : days === 365
+            ? "Added in the last year"
+            : `Added in the last ${formatNumber(days)} days`,
+      // 長さの区切りは分で言う。`max` は含む秒数なので、その次の秒を上限として言う
+      // （maxDuration=299 は「Under 5 minutes」）。
+      length: (minSeconds: number | undefined, maxSeconds: number | undefined) =>
+        lengthWords(minSeconds, maxSeconds),
+    },
+    detail: {
+      // 見出しの「More」の項目（ui-design.md「Smart folder page」）。
+      edit: "Edit…",
+      newChild: "New child smart folder…",
+      delete: "Delete…",
+      // 空の状態と欠けた状態の、所有者の操作。直す窓を開く。
+      editConditions: "Edit conditions…",
+      conditions: "Conditions:",
+      fromParent: (name: string) => `From "${name}":`,
+      empty: {
+        title: "Nothing matches these conditions yet",
+        description: "Videos that match appear here as soon as they are tagged or added.",
+      },
+      missing: {
+        title: "A condition no longer works",
+        description:
+          "A tag, kind, person or organization in the conditions was deleted, so nothing matches.",
+        // 欠けた参照が祖先の条件にあるとき、説明に足す 1 文。
+        inParent: (name: string) => `The condition is in "${name}".`,
+      },
+      gone: {
+        title: "This smart folder no longer exists",
+        description: "It was deleted, maybe in another tab.",
+      },
+      loadFailed: "Couldn't load the smart folder",
+      moreFailed: "Couldn't load more of the smart folder",
+    },
+    deleteDialog: {
+      title: (name: string) => `Delete "${name}"?`,
+      description: "The smart folder is deleted. Its videos stay in the library.",
+      // 子孫の数（どの深さも数える）。2 つ目の文として説明に続ける。
+      descendants: (count: number) =>
+        selectPlural(count, {
+          one: "The 1 smart folder inside it is deleted with it.",
+          other: `The ${formatNumber(count)} smart folders inside it are deleted with it.`,
+        }),
+      submit: "Delete",
+      submitting: "Deleting…",
+      failed: (reason: string) => `Couldn't delete the smart folder: ${reason}`,
     },
   },
   // グループのページ（/groups/{id}）と、グループをタグに変える窓（specs/048-groups/ui-design.md
@@ -2830,7 +3021,7 @@ export const en = {
       version: (version: string) => `v${version}`,
       operations: {
         search: "Search",
-        fetch: "Fetch by URL",
+        fetch: "Fetch by ID or URL",
       } satisfies Record<WorkInfoOperation, string>,
       network: "Reaches internet sites",
       settingSet: (label: string) => `${label} set`,

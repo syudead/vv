@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/contracts/screen-api.md
-sourceHash: 1e01f005adc1725e04c96b99609dffb8976b4dab073411a5c9b83563ba32840e
+sourceHash: 2054819703987944ecb8638c8e5a2d83df32a1a8d7541808345b65531b0263de
 ---
 
 # 契約: 作品情報プラグインの画面の API {#contract-work-info-plugin-screen-api}
@@ -98,12 +98,15 @@ sourceHash: 1e01f005adc1725e04c96b99609dffb8976b4dab073411a5c9b83563ba32840e
 
 ## `POST /api/videos/{id}/work-info-fetches` {#post-apivideosidwork-info-fetches}
 
-この動画のためにプラグインの `fetch` を実行し、結果を 10 分間保つ ([R-8](../research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))。動画は変えない。
+この動画のために `url` か `id` でプラグインの `fetch` を実行し、結果を 10 分間保つ ([R-8](../research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))。動画は変えない。
 
 | フィールド | 場所 | 型 | 必須 | 意味 |
 | --- | --- | --- | --- | --- |
 | `pluginId` | 本文 | integer | はい | 承認済みのプラグイン |
-| `url` | 本文 | string | はい | http か https、最大 2048 文字 |
+| `url` | 本文 | string | `url` と `id` のどちらか一方 | http か https、最大 2048 文字 |
+| `id` | 本文 | string | `url` と `id` のどちらか一方 | 品番などの作品の ID で、前後の空白を含まない 1 から 200 文字。プラグインはこれからページの URL を組み立てる |
+
+`url` と `id` の両方を持つ本文、またはどちらも持たない本文は `400` `invalid_request` である。
 
 **応答**: 次を伴う `201`:
 

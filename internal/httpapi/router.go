@@ -211,10 +211,10 @@ type VideoCatalog interface {
 	PresentVideos(ctx context.Context, videos []domain.Video) []domain.VideoView
 	SeekThumbnailState(ctx context.Context, video domain.Video) (domain.SeekThumbnailState, error)
 	RelatedVideos(ctx context.Context, audience domain.Audience, video domain.Video, page domain.RelatedPage) (domain.RelatedVideos, error)
-	// VideoGroup は動画の文脈のグループ（contextID は動画を開いたグループ、無ければ 0）を、
-	// 見る人に見せてよい動画の再生順で返す。詳細は window の範囲だけを読む。動画がどの
+	// VideoGroup は動画の文脈（opened は動画を開いたグループとスマートフォルダ）の、
+	// 見る人に見せてよい動画の再生順を返す。詳細は window の範囲だけを読む。動画がどの
 	// グループにも無ければ false。
-	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, contextID int64, window domain.GroupWindow) (domain.VideoGroup, bool, error)
+	VideoGroup(ctx context.Context, audience domain.Audience, video domain.Video, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error)
 	// RetryProbe は読み取りに失敗した動画を読み取り直す。失敗していなければ
 	// domain.ErrProbeNotFailed を返す。
 	RetryProbe(ctx context.Context, video domain.Video) error
@@ -306,6 +306,8 @@ type Options struct {
 	FolderGroups FolderGroups
 	// Groups はグループの編集の保存先。nilならグループの作成と編集の経路は500を返す。
 	Groups Groups
+	// SmartFolders はスマートフォルダの保存先。nilなら /api/smart-folders* は500を返す。
+	SmartFolders SmartFolders
 	// Organizer はドラッグの操作とその取り消しの先。nilなら /api/organize/* は500を返す。
 	Organizer Organizer
 	// Library はライブラリの項目（動画とグループ）の問い合わせ先。nilなら
@@ -403,6 +405,7 @@ type server struct {
 	folders          Folders
 	folderGroups     FolderGroups
 	groups           Groups
+	smartFolders     SmartFolders
 	organizer        Organizer
 	library          LibraryItems
 	transcoder       Transcoder
@@ -494,6 +497,7 @@ func NewRouter(opts Options) http.Handler {
 		folders:                opts.Folders,
 		folderGroups:           opts.FolderGroups,
 		groups:                 opts.Groups,
+		smartFolders:           opts.SmartFolders,
 		organizer:              opts.Organizer,
 		library:                opts.Library,
 		transcoder:             opts.Transcoder,
@@ -645,7 +649,7 @@ func requiresPostJSONBody(path string) bool {
 		"/api/video-tags", "/api/video-tags/summary",
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists", "/api/groups",
+		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists", "/api/groups", "/api/smart-folders",
 		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
 		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
@@ -726,6 +730,11 @@ func requiresPatchJSONBody(path string) bool {
 	// PATCH /api/groups/{id}（specs/048-groups/contracts/screen-api.md）。
 	if id, ok := strings.CutPrefix(path, "/api/groups/"); ok {
 		return id != "" && !strings.Contains(id, "/")
+	}
+	// PATCH /api/smart-folders/{id}（specs/052-smart-folders/contracts/screen-api.md）。cards は {id} の段
+	// ではない別の経路で、PATCH を持たない。
+	if id, ok := strings.CutPrefix(path, "/api/smart-folders/"); ok {
+		return id != "" && id != "cards" && !strings.Contains(id, "/")
 	}
 	// PATCH /api/tag-kinds/{id}（specs/051-tag-kinds/contracts/screen-api.md）。
 	if id, ok := strings.CutPrefix(path, "/api/tag-kinds/"); ok {
@@ -904,6 +913,9 @@ const (
 	codeOpenUnavailable             = gen.ErrorCodeOpenUnavailable
 	codeFileMissing                 = gen.ErrorCodeFileMissing
 	codeTagNotFound                 = gen.ErrorCodeTagNotFound
+	codeInvalidSmartRule            = gen.ErrorCodeInvalidSmartRule
+	codeSmartFolderNotFound         = gen.ErrorCodeSmartFolderNotFound
+	codeSmartFolderCycle            = gen.ErrorCodeSmartFolderCycle
 	codeTagNameTaken                = gen.ErrorCodeTagNameTaken
 	codeTagMergeRequired            = gen.ErrorCodeTagMergeRequired
 	codeTagNotTentative             = gen.ErrorCodeTagNotTentative

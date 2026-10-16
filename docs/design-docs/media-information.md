@@ -113,7 +113,7 @@ A `metadata` job runs the same `media.Probe` for a video that was probed
 before the row existed, and writes only the row through
 `ApplyMediaInfoForJob`
 ([`internal/app/ingest.go`](../../internal/app/ingest.go), `Metadata`).
-Migration `00051_metadata_jobs.sql` queues one for every video whose probe is
+Migration `00052_metadata_jobs.sql` queues one for every video whose probe is
 done and that has a location under a registered folder, and a scan queues one
 for a video whose row is missing or below `domain.MediaInfoVersion`
 (`IndexedVideo.MediaInfoMissing`). A new import gets none, because its probe

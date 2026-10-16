@@ -56,6 +56,10 @@ export interface ListKey {
   organization?: number;
   /** ライブラリのタグの種類の絞り込み（specs/051-tag-kinds/contracts/screen-api.md）。 */
   tagKind?: number;
+  /** ライブラリの追加日と長さの絞り込み（specs/052-smart-folders/research.md R-4）。 */
+  addedWithin?: number;
+  minDuration?: number;
+  maxDuration?: number;
 }
 
 /** ListSnapshot は一覧を離れる直前の状態である（data-model.md 2.）。 */
@@ -102,7 +106,16 @@ export interface ListSnapshot {
  * JSON を毎回直列化する費用に対し、得られるのは「タブを閉じても戻れる」ことだけで、
  * FR-016 はそれを求めていない。
  */
-let held: ListSnapshot | undefined;
+let held: (ListSnapshot & { expiresAt?: number }) | undefined;
+
+/**
+ * ADDED_WITHIN_SNAPSHOT_TTL_MS は追加日の絞り込み（`addedWithin`）のある控えを使える時間である。
+ * その絞り込みは今から遡る相対の期間なので、時間が経つと当たる動画が変わる
+ * （specs/052-smart-folders/research.md R-4）。控えは鍵の一致だけでは古さが分からないので、
+ * 取ってからこの時間を過ぎたら使わず、1 ページ目から読み直させる。戻る操作（動画を見て
+ * 戻る）でスクロールを保てるだけの長さで、期間の端が動いた影響が無視できる短さにする。
+ */
+export const ADDED_WITHIN_SNAPSHOT_TTL_MS = 5 * 60 * 1000;
 
 /**
  * normalize は鍵を文字列にする。
@@ -125,6 +138,9 @@ function normalize(key: ListKey): string {
     key.person === undefined ? "" : String(key.person),
     key.organization === undefined ? "" : String(key.organization),
     key.tagKind === undefined ? "" : String(key.tagKind),
+    key.addedWithin === undefined ? "" : String(key.addedWithin),
+    key.minDuration === undefined ? "" : String(key.minDuration),
+    key.maxDuration === undefined ? "" : String(key.maxDuration),
   ].join("\0");
   return key.folder === undefined ? list : `folder\0${key.folder}\0${list}`;
 }
@@ -158,7 +174,14 @@ export function holdListSnapshot(): () => void {
  * holdListSnapshot で止めている間は控えを取らない（戻ったときは1ページ目から読む）。
  */
 export function saveListSnapshot(key: ListKey, value: Omit<ListSnapshot, "key">): void {
-  held = holds > 0 ? undefined : { key: normalize(key), ...value };
+  if (holds > 0) {
+    held = undefined;
+    return;
+  }
+  held = { key: normalize(key), ...value };
+  if (key.addedWithin !== undefined) {
+    held.expiresAt = Date.now() + ADDED_WITHIN_SNAPSHOT_TTL_MS;
+  }
 }
 
 /**
@@ -168,9 +191,12 @@ export function saveListSnapshot(key: ListKey, value: Omit<ListSnapshot, "key">)
  * 取り出しても控えは残す。React は開発時に効果を 2 回走らせるし、戻る操作が
  * 連続することもある — 1 回目で消してしまうと、そのどちらでも復元が消える。
  * 要らなくなった控えは次の保存が上書きするか、clearListSnapshot が捨てる。
+ * 追加日の絞り込みのある控えは、取ってから ADDED_WITHIN_SNAPSHOT_TTL_MS を過ぎたら返さない。
  */
 export function takeListSnapshot(key: ListKey): ListSnapshot | undefined {
-  return held !== undefined && held.key === normalize(key) ? held : undefined;
+  if (held === undefined || held.key !== normalize(key)) return undefined;
+  if (held.expiresAt !== undefined && Date.now() >= held.expiresAt) return undefined;
+  return held;
 }
 
 /**

@@ -1071,3 +1071,47 @@ export function generateDragOrganizeFixtures(root) {
     ]);
   }
 }
+
+/**
+ * SMART_FOLDER_SINGLES と SMART_FOLDER_GROUPS は、スマートフォルダ（specs/052-smart-folders、
+ * 子 #1182）を確かめる動画の題名である（web/e2e/smart-folders.e2e.ts）。単体の 3 本は登録
+ * フォルダの直下に置き、二つのフォルダの 2 本ずつは自動グループ（part1・part2）になる。
+ * 20 秒にするのは、位置 0 の保存で未視聴に戻せるようにするためである。3 秒の動画は末尾とみなす
+ * 15 秒（internal/domain/progress.go の CompletionTailMs）より短く、どの保存でも見終わったことに
+ * なり、CI のリトライで未視聴に戻せない。中身で同じ動画とみなされないよう、ほかの組と違う長さと
+ * コマの速さにし、色合いを変える。
+ */
+export const SMART_FOLDER_SINGLES = [
+  "スマート確認の猫A",
+  "スマート確認の猫B",
+  "スマート確認の犬",
+];
+export const SMART_FOLDER_GROUPS = [
+  ["両方に猫のグループ", ["スマート確認の両方1", "スマート確認の両方2"]],
+  ["片方に猫のグループ", ["スマート確認の片方1", "スマート確認の片方2"]],
+];
+
+export function generateSmartFoldersFixtures(root) {
+  let hue = 11;
+  const clip = (dir, name) => {
+    mkdirSync(dir, { recursive: true });
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=320x180:rate=6:duration=20",
+      "-vf",
+      `hue=h=${String(hue)}`,
+      ...h264,
+      "-an",
+      "-movflags",
+      "+faststart",
+      path.join(dir, `${name}.mp4`),
+    ]);
+    hue += 41;
+  };
+  for (const name of SMART_FOLDER_SINGLES) clip(root, name);
+  for (const [folder, members] of SMART_FOLDER_GROUPS) {
+    for (const name of members) clip(path.join(root, folder), name);
+  }
+}
