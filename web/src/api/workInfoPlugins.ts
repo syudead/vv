@@ -14,6 +14,7 @@ export type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
 export type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 export type WorkInfoPluginList = components["schemas"]["WorkInfoPluginList"];
 export type WorkInfoPluginRun = components["schemas"]["WorkInfoPluginRun"];
+export type WorkInfoPluginRunFailure = components["schemas"]["WorkInfoPluginRunFailure"];
 export type WorkInfoCandidate = components["schemas"]["WorkInfoCandidate"];
 export type WorkInfoFetch = components["schemas"]["WorkInfoFetch"];
 export type WorkInfoField = components["schemas"]["WorkInfoField"];

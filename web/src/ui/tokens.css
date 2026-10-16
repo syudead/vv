@@ -187,6 +187,9 @@
   /* 設定の取り込みの問題の一覧の最大の高さと、フォルダ選択の一覧の高さ */
   --spacing-issue-list: 50vh;
   --spacing-folder-list: 18rem;
+  /* 設定の作品情報プラグインの直近の実行のダイアログの出力の最大の高さ（specs/056-plugin-tooling/ui-design.md
+     「Changes to the design system」）。事実と足の行が 1280×800 と 360×640 で見えたまま、長い出力は中で動く */
+  --spacing-run-output: 40vh;
 
   /* --- 角丸: sm（チェック・バッジ）、md（操作・カード・サムネイル）、lg（浮く層）、full --- */
   --radius-sm: 4px;

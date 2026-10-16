@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: 4d2f41a785c7ddc73998e8d980ab1de1ff0c283f11231830d2e2ca93c668b06a
+sourceHash: 34bd96544869cae4f28740df9a4eac9abf541ee597d65438c210d0848e8cbf79
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
@@ -68,7 +68,7 @@ Go の `wasip1` リンカが関数テーブルを書き出すときのように�
 
 ## 最後の実行の標準エラー出力はプラグインごとに保つ {#the-last-runs-standard-error-is-kept-per-plugin}
 
-各プラグインは、最後の実行の標準エラー出力を、秘密の設定値をすべて `[secret]` に置き換えて、1 行の `work_info_plugin_runs` として保つ。所有者は `GET /api/work-info-plugins/{id}/last-run` でそれを読む ([056 R-6](../../specs/056-plugin-tooling/research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked))。サーバーのログには、従来どおり同じテキストがマスクなしで届き続ける。
+各プラグインは、最後の実行の標準エラー出力を、秘密の設定値をすべて `[secret]` に置き換えて、1 行の `work_info_plugin_runs` として保つ。所有者は `GET /api/work-info-plugins/{id}/last-run` でそれを読む ([056 R-6](../../specs/056-plugin-tooling/research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked))。設定画面では、プラグインの行の `Last run output` から開く最後の実行のダイアログに表示する ([056 UI design](../../specs/056-plugin-tooling/ui-design.md#last-run-dialog))。サーバーのログには、従来どおり同じテキストがマスクなしで届き続ける。
 
 ```mermaid
 sequenceDiagram

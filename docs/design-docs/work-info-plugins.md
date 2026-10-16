@@ -102,6 +102,9 @@ Each plugin keeps the standard error of its last run as one
 `[secret]`, for the owner to read through
 `GET /api/work-info-plugins/{id}/last-run`
 ([056 R-6](../../specs/056-plugin-tooling/research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked)).
+The settings screen shows it in the last run dialog, opened from the plugin
+row's `Last run output`
+([056 UI design](../../specs/056-plugin-tooling/ui-design.md#last-run-dialog)).
 The server log keeps receiving the same text unmasked, as before.
 
 ```mermaid

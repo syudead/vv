@@ -33,6 +33,7 @@ import { WORK_INFO_PLUGINS_GUIDE_URL } from "./docsLinks";
 import { useSectionAnchor } from "./useSectionAnchor";
 import WorkInfoPluginApprovalDialog from "./WorkInfoPluginApprovalDialog";
 import WorkInfoPluginRow, { type RowWork } from "./WorkInfoPluginRow";
+import WorkInfoPluginRunDialog from "./WorkInfoPluginRunDialog";
 import { MAX_PLUGIN_BYTES, pluginName } from "./workInfoPluginRows";
 import WorkInfoPluginSettingsDialog from "./WorkInfoPluginSettingsDialog";
 
@@ -213,6 +214,7 @@ function WorkInfoPluginsSectionBody() {
   const [approving, setApproving] = useState<Approving | null>(null);
   const [configuring, setConfiguring] = useState<Editing | null>(null);
   const [deleting, setDeleting] = useState<Editing | null>(null);
+  const [reading, setReading] = useState<WorkInfoPlugin | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
   const focusAfterRender = useRef<FocusTarget | null>(null);
@@ -423,6 +425,7 @@ function WorkInfoPluginsSectionBody() {
         setApproving({ plugin, pending: false, changed: false, error: null })
       }
       onSettings={() => setConfiguring({ plugin, pending: false, error: null })}
+      onLastRun={() => setReading(plugin)}
       onRevoke={() => void revoke(plugin)}
       onDelete={() => setDeleting({ plugin, pending: false, error: null })}
     />
@@ -484,6 +487,9 @@ function WorkInfoPluginsSectionBody() {
           }}
           onSave={(values) => void saveSettings(values)}
         />
+      )}
+      {reading !== null && (
+        <WorkInfoPluginRunDialog plugin={reading} onClose={() => setReading(null)} />
       )}
       {deleting !== null && (
         <ConfirmDialog
