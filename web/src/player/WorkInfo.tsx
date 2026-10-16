@@ -14,7 +14,7 @@ import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { Button } from "../ui/shadcn/button";
 
-/** foldLimit は、長いリストを畳んだときに出しておく項目の数である。 */
+/** foldLimit は、長いリストを畳んだときに出しておく項目の数の既定である。 */
 const foldLimit = 3;
 
 const foldButton = "h-auto px-0 py-0 text-muted-foreground hover:text-primary";
@@ -58,7 +58,8 @@ export function hasWorkInfo(info: WorkInfoValue | undefined): info is WorkInfoVa
   );
 }
 
-function Item({ label, children }: { label: UiText; children: ReactNode }) {
+/** Item はラベル（薄い色）と値の組の項目である。動画の追加の情報のまとまりも使う。 */
+export function Item({ label, children }: { label: UiText; children: ReactNode }) {
   return (
     <li className="flex max-w-full min-w-0 flex-wrap items-baseline gap-x-1.5">
       <span className="text-muted-foreground">{label}</span>
@@ -91,30 +92,81 @@ function CreditLink({
 }
 
 /**
- * ListItem はいくつもの値を `, ` でつないだ項目である。4 つ以上あれば先頭の 3 つと
- * 「+{n} more」を出し、押すとその項目のすべてを出してフォーカスを 4 つ目へ移す
+ * useFold は count 件の並びを先頭の limit 件に畳む状態である。開くと limit + 1 件目
+ * （`nextRef` の要素）へフォーカスを移す。その中に名前のリンクがあればリンクへ移す。
+ * 開いたことは覚えない。
+ */
+export function useFold<T extends HTMLElement>(count: number, limit: number) {
+  const [open, setOpen] = useState(false);
+  const nextRef = useRef<T | null>(null);
+  const focusNext = useRef(false);
+  const foldable = count > limit;
+  const folded = !open && foldable;
+
+  useLayoutEffect(() => {
+    if (!open || !focusNext.current) return;
+    focusNext.current = false;
+    const entry = nextRef.current;
+    (entry?.querySelector<HTMLElement>("a[href]") ?? entry)?.focus();
+  }, [open]);
+
+  return {
+    foldable,
+    folded,
+    nextRef,
+    toggle: () => {
+      focusNext.current = folded;
+      setOpen(folded);
+    },
+  };
+}
+
+/**
+ * FoldButton は畳んだ並びの「+{n} more」と、開いた後の「Show fewer」である。畳んでいる間は
+ * `Show all {count} {label}` の名前を持つ。
+ */
+export function FoldButton({
+  folded,
+  count,
+  limit,
+  label,
+  onToggle,
+}: {
+  folded: boolean;
+  count: number;
+  limit: number;
+  label: UiText;
+  onToggle: () => void;
+}) {
+  return (
+    <Button
+      variant="link"
+      size="sm"
+      className={foldButton}
+      aria-label={folded ? t.player.workInfo.showAll(count, label) : undefined}
+      onClick={onToggle}
+    >
+      {folded ? t.player.workInfo.more(count - limit) : t.player.workInfo.showFewer}
+    </Button>
+  );
+}
+
+/**
+ * ListItem はいくつもの値を `, ` でつないだ項目である。limit（既定 3）より多ければ先頭の
+ * limit 件と「+{n} more」を出し、押すとその項目のすべてを出してフォーカスを次の 1 つへ移す
  * （ui-design.md「Work details row」の Long lists）。開いたことは覚えない。
  */
 function ListItem({
   label,
   entries,
+  limit = foldLimit,
 }: {
   label: UiText;
   entries: readonly { key: string; node: ReactNode }[];
+  limit?: number;
 }) {
-  const [open, setOpen] = useState(false);
-  const fourth = useRef<HTMLSpanElement | null>(null);
-  const focusFourth = useRef(false);
-  const folded = !open && entries.length > foldLimit;
-  const shown = folded ? entries.slice(0, foldLimit) : entries;
-
-  useLayoutEffect(() => {
-    if (!open || !focusFourth.current) return;
-    focusFourth.current = false;
-    // 4 つ目が名前のリンクならそのリンクへ、そうでなければ値そのものへ移す。
-    const entry = fourth.current;
-    (entry?.querySelector<HTMLElement>("a[href]") ?? entry)?.focus();
-  }, [open]);
+  const fold = useFold<HTMLSpanElement>(entries.length, limit);
+  const shown = fold.folded ? entries.slice(0, limit) : entries;
 
   return (
     <Item label={label}>
@@ -123,31 +175,22 @@ function ListItem({
           <Fragment key={entry.key}>
             {index > 0 && ", "}
             <span
-              ref={index === foldLimit ? fourth : undefined}
-              tabIndex={index === foldLimit ? -1 : undefined}
+              ref={index === limit ? fold.nextRef : undefined}
+              tabIndex={index === limit ? -1 : undefined}
             >
               {entry.node}
             </span>
           </Fragment>
         ))}
-        {entries.length > foldLimit && " "}
-        {entries.length > foldLimit && (
-          <Button
-            variant="link"
-            size="sm"
-            className={foldButton}
-            aria-label={
-              folded ? t.player.workInfo.showAll(entries.length, label) : undefined
-            }
-            onClick={() => {
-              focusFourth.current = folded;
-              setOpen(folded);
-            }}
-          >
-            {folded
-              ? t.player.workInfo.more(entries.length - foldLimit)
-              : t.player.workInfo.showFewer}
-          </Button>
+        {fold.foldable && " "}
+        {fold.foldable && (
+          <FoldButton
+            folded={fold.folded}
+            count={entries.length}
+            limit={limit}
+            label={label}
+            onToggle={fold.toggle}
+          />
         )}
       </span>
     </Item>
@@ -158,14 +201,17 @@ function ListItem({
  * Description は作品の説明で、3 行を超えるときは畳んで「Show more」を添える
  * （ui-design.md「Folded description」）。溢れるかは要素で測り、窓の大きさが変わったら
  * 測り直す。開いたことは覚えない（別の動画では呼び手が作り直す）。取得の比較の段も
- * 同じ畳み方で使い、今の側は `muted` で従の色にする。
+ * 同じ畳み方で使い、今の側は `muted` で従の色にする。動画の追加の情報の Comment・Description は
+ * 先頭のラベル（`label`）を付けて `muted` で使う（specs/056-media-info/ui-design.md）。
  */
 export function Description({
   text,
   tone = "default",
+  label,
 }: {
   text: string;
   tone?: "default" | "muted";
+  label?: UiText;
 }) {
   const ref = useRef<HTMLParagraphElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -191,6 +237,7 @@ export function Description({
           !open && "line-clamp-3",
         )}
       >
+        {label !== undefined && <span className="mr-1.5">{label}</span>}
         {text}
       </p>
       {(open || overflows) && (

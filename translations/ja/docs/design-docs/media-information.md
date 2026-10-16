@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/media-information.md
-sourceHash: bfbcb14fbc844c97e87aca6e19d951bc7445ca143733f4111cd3a80d631f8b2a
+sourceHash: 3b6bac3347741d3804da99e021ff55781e681ec1a7b83e1b23c2288e843f87d4
 ---
 
 # 取り込み時のプローブから得るメディア情報 {#media-information-from-the-import-probe}
@@ -17,7 +17,10 @@ flowchart LR
   info --> apply[ApplyProbeForJob]
   apply -->|videos と同じトランザクションと同一性の確認| row[(video_media_info)]
   row --> read[LibraryStore.MediaInfo]
+  read --> detail["GET /api/videos/{id} の mediaInfo"]
 ```
+
+値を運ぶのは動画の詳細だけで、所有者にも公開動画のゲストにも同じく運ぶ。一覧の項目、関連動画、所有者の `PUT` の応答は値を省く ([`internal/httpapi/video_media_info.go`](../../internal/httpapi/video_media_info.go))。動画ページは値を技術情報の行の下にグループとして描く ([`MediaInfoGroups.tsx`](../../web/src/player/MediaInfoGroups.tsx))。
 
 ## 1 回の実行ですべてを読み、TS ファイルは長く読む {#one-run-reads-everything-and-a-ts-file-is-read-longer}
 

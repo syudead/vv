@@ -197,6 +197,9 @@ type Video struct {
 	// WorkInfo は利用者データの鍵の作品情報である（specs/047-video-work-info/data-model.md「Reads」）。
 	// 詳細と外部連携の読み出し、作品情報を書いた操作の戻り値が埋め、一覧の読み出しと行の無い動画では nil。
 	WorkInfo *WorkInfo
+	// MediaInfo は取り込みの解析で読んだ追加の情報である（specs/056-media-info/research.md R-6）。
+	// 動画 1 件の詳細の読み出しだけが埋め、一覧の読み出し・書いた操作の戻り値・今の版の行の無い動画では nil。
+	MediaInfo *MediaInfo
 
 	DurationMs *int64
 	Width      *int

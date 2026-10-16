@@ -309,6 +309,26 @@ describe("useVideoDetail", () => {
     expect(getVideo).toHaveBeenCalledTimes(1);
   });
 
+  it("replace は、応答に無い追加の情報に手元の値を残す", async () => {
+    const mediaInfo: NonNullable<Video["mediaInfo"]> = {
+      audioTracks: [{ index: 1, codec: "aac", language: "jpn" }],
+    };
+    getVideo.mockResolvedValue({ ...done, mediaInfo });
+    const { result } = renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
+    await flush();
+
+    act(() =>
+      result.current.replace({ ...done, title: "新しい名前" }, detailMark(), "keep"),
+    );
+    expect(result.current.state).toMatchObject({
+      video: { title: "新しい名前", mediaInfo },
+    });
+    act(() =>
+      result.current.replace({ ...done, title: "外した" }, detailMark(), "refetch"),
+    );
+    expect(result.current.state).toMatchObject({ video: { title: "外した", mediaInfo } });
+  });
+
   it("replace の refetch は手元の作品情報を残さず、先に終わった取り直しの後でも取り直す", async () => {
     // 束から外す: 束の作品情報（BUNDLE）を出している動画が、外すと固有の作品情報（OWN）に戻る。
     const own: Video = { ...done, workInfo: workInfoCoded("OWN") };

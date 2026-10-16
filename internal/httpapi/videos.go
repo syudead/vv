@@ -332,6 +332,13 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 		s.internalError(w, "Could not load the video.", err)
 		return
 	}
+	// 追加の情報も動画 1 件の応答にだけ載せ、所有者とゲストに同じ値を返す
+	// （specs/056-media-info/research.md R-6）。
+	video, err = s.mediaInfoForDetail(r.Context(), video)
+	if err != nil {
+		s.internalError(w, "Could not load the video.", err)
+		return
+	}
 	s.writeVideoDetailIn(w, r, video, groupContext(params.Group))
 }
 
@@ -381,6 +388,8 @@ func (s *server) videoDetail(r *http.Request, video domain.Video, contextID int6
 	payload.Folder = detailFolder(s.registeredRoots(r.Context()), video.Path)
 	// 作品情報は、読んだ（または書いた）経路が video に埋めたときだけ載せる。
 	payload.WorkInfo = toAPIWorkInfo(video.WorkInfo)
+	// 追加の情報も、GET /api/videos/{id} が video に埋めたときだけ載せる。
+	payload.MediaInfo = toAPIMediaInfo(video.MediaInfo)
 	// グループも動画1件の応答にだけ載せる。文脈のグループの再生順で数え、ゲストには公開の
 	// 動画だけで数えたものが返る（specs/048-groups/research.md R-9）。
 	if s.catalog != nil {
