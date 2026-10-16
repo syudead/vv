@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"testing"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -106,6 +107,25 @@ func TestOwnerTagOperationsWriteOneEntryPerVideo(t *testing.T) {
 		ownerEntry{domain.ActivityTagDetach, "key-b", "", "b", "cat"})
 }
 
+// グループをタグにすると、タグが実際に付いた動画ごとに tag_attach を書き、確定後に ActivityChanged を知らせる。
+func TestTagGroupWritesOneEntryPerTaggedVideo(t *testing.T) {
+	ctx := context.Background()
+	db, ids := versionFixture(t)
+	attachNamedTag(t, db, "cat", ids["a"])
+	group := createGroup(t, db, "cat", domain.GroupAdd{VideoIDs: []int64{ids["a"], ids["b"]}})
+	n := len(ownerEntries(t, db))
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+
+	if _, err := db.Groups().TagGroup(ctx, group); err != nil {
+		t.Fatal(err)
+	}
+	expectOwnerEntries(t, db, n, ownerEntry{domain.ActivityTagAttach, "key-b", "", "b", "cat"})
+	if !slices.Contains(recorder.events, domain.Event(domain.ActivityChanged{})) {
+		t.Errorf("events = %+v, want ActivityChanged を含む", recorder.events)
+	}
+}
+
 // 外部 API /api/v1 のタグの操作も所有者の記録を、動画とタグごとに書く。
 func TestExternalVideoTagsWriteOwnerEntries(t *testing.T) {
 	ctx := context.Background()
@@ -133,6 +153,33 @@ func TestExternalVideoTagsWriteOwnerEntries(t *testing.T) {
 	expectOwnerEntries(t, db, n,
 		ownerEntry{domain.ActivityTagDetach, "key-a", "", "a", "y"},
 		ownerEntry{domain.ActivityTagDetach, "key-b", "", "b", "y"})
+}
+
+// 外部 API の add で提案のまま付いているタグを確定するのは付与なので、tag_attach を書き、更新日時を進める。
+// 確定したタグがもう付いている動画は書かない。
+func TestExternalVideoTagsRecordConfirmedSuggestion(t *testing.T) {
+	ctx := context.Background()
+	db, ids := tentativeFixture(t)
+	if _, err := db.Tags().ApplyVideoTags(ctx, bothVideos, domain.VideoTagsAdd, []string{"x"}, false); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(`update video_tags set tentative = 1 where content_key = 'key-a'`); err != nil {
+		t.Fatal(err)
+	}
+	n := len(ownerEntries(t, db))
+	resetEditedAt(t, db)
+	start := time.Now()
+	if _, err := db.Tags().ApplyVideoTags(ctx, bothVideos, domain.VideoTagsAdd, []string{"x"}, false); err != nil {
+		t.Fatal(err)
+	}
+	expectOwnerEntries(t, db, n, ownerEntry{domain.ActivityTagAttach, "key-a", "", "a", "x"})
+	assertEditedSince(t, db, ids[fixturePath("/media/a.mp4")], start)
+	assertEditedAt(t, db, ids[fixturePath("/media/b.mp4")], staleEditedAt)
+	var tentative int
+	if err := db.sql.QueryRow(`select tentative from video_tags where content_key = 'key-a'`).Scan(&tentative); err != nil ||
+		tentative != 0 {
+		t.Errorf("key-a の x の tentative = %d, %v, want 0（確定した）", tentative, err)
+	}
 }
 
 // 提案のタグを残す・却下するは、その動画とタグの記録を 1 件書く。
@@ -225,19 +272,30 @@ func TestOrganizeBundleUndoAndReordersWriteEntries(t *testing.T) {
 	}
 }
 
-// メディアフォルダの登録を外すと、外れた動画の数を持つ記録を 1 件書く。
+// メディアフォルダの登録を外すと、ライブラリから外れた動画の数を持つ記録を 1 件書く。登録外の所在だけが
+// 残る動画は数え、別の登録フォルダに所在が残る動画は数えない。
 func TestMediaFolderRemovalWritesOneEntry(t *testing.T) {
 	ctx := context.Background()
-	db, _ := versionFixture(t)
+	db, ids := versionFixture(t)
 	folders, err := db.ScanIndex().ListMediaFolders(ctx)
 	if err != nil || len(folders) != 1 {
 		t.Fatalf("folders = %+v, %v", folders, err)
+	}
+	// a は登録外の所在も持つので行は残るが、ライブラリからは外れる。b は別の登録フォルダにも所在があるので残る。
+	if _, err := db.Settings().AddMediaFolder(ctx, fixturePath("/other")); err != nil {
+		t.Fatal(err)
+	}
+	for video, path := range map[string]string{"a": fixturePath("/legacy/a.mp4"), "b": fixturePath("/other/b.mp4")} {
+		if _, err := db.sql.Exec(`insert into video_locations (video_id, path, version, title, size_bytes, mtime, created_at, updated_at)
+			values (?, ?, 1, ?, 1, 1, 1, 1)`, ids[video], path, path); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := db.Settings().DeleteMediaFolder(ctx, folders[0].ID, folders[0].Version); err != nil {
 		t.Fatal(err)
 	}
 	path := fixturePath("/media")
-	expectOwnerEntries(t, db, 0, ownerEntry{domain.ActivityMediaFolderRemove, path, "", path, strconv.Itoa(4)})
+	expectOwnerEntries(t, db, 0, ownerEntry{domain.ActivityMediaFolderRemove, path, "", path, strconv.Itoa(3)})
 	page := listActivity(t, db, domain.ActivityQuery{}, "", 10)
 	if entry := page.Items[0]; entry.Subject.Kind != domain.ActivitySubjectFolder ||
 		entry.Feature != domain.ActivityFeatureMediaFolders {

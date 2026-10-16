@@ -114,11 +114,11 @@ decided by `owner` in the operation's transaction
 | Bundle (video page, Duplicates, drag-organize) | One `bundle` per member of the new bundle |
 | Make representative, remove from versions | One for the video |
 | "Different videos" | One `dismiss` for the pair |
-| Attach or detach a tag (video page, library selection, `/api/v1`) | One per video and tag whose manual tag row changed; `detail` is the tag name |
+| Attach or detach a tag (video page, library selection, turning a group into a tag, `/api/v1`) | One per video and tag whose manual tag row changed; `detail` is the tag name |
 | Keep or reject a suggested tag | One `tag_keep` or `tag_reject`; `detail` is the tag name |
 | Apply fetched work information | One `work_info_apply`; its tags write no tag entries |
 | Fetch work information | One `work_info_fetch` per plugin run, `done`/`failed` with the plugin's message (else the failure code) when the run fails, never retried ([R-11](../../specs/055-activity/research.md#r-11-a-failed-work-information-fetch-is-a-finished-entry-not-a-problem)) |
-| Remove a media folder | One `media_folder_remove` for the folder path; `detail` is the number of videos it removed |
+| Remove a media folder | One `media_folder_remove` for the folder path; `detail` is the number of videos it took out of the library |
 | Drag-organize undo | One `organize_undo` per video whose bundle it restored |
 
 A tag is attached to a user key, so a bundle's entry names its representative.

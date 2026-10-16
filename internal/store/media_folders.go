@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -187,11 +188,20 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	if err := domain.CheckMediaFolderMutation(running); err != nil {
 		return err
 	}
+	// 外れた動画の数（記録の detail）を数えるため、所在がこのフォルダの下にある動画を消す前に読む。
+	_, underFolder, err := locationsUnder(ctx, tx, path)
+	if err != nil {
+		return err
+	}
 	released, err := removeLocationsUnder(ctx, tx, path)
 	if err != nil {
 		return err
 	}
 	if _, err := tx.ExecContext(ctx, `delete from media_folders where id = ?`, id); err != nil {
+		return err
+	}
+	removed, err := countVideosOutOfLibrary(ctx, tx, underFolder)
+	if err != nil {
 		return err
 	}
 	// 登録外になった所在はグループにもフォルダ名にも入らない。
@@ -213,7 +223,7 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	// 止まったままになる。
 	c.jobsQueued(domain.JobSeekThumbnail)
 	// 登録の解除は所有者の操作として、外れた動画の数とともに記録する（specs/055-activity/research.md R-6）。
-	if err := recordMediaFolderRemoval(ctx, tx, &c, path, len(released), time.Now()); err != nil {
+	if err := recordMediaFolderRemoval(ctx, tx, &c, path, removed, time.Now()); err != nil {
 		return err
 	}
 	return s.db.commit(ctx, tx, &c)
@@ -272,6 +282,26 @@ func locationsUnder(ctx context.Context, tx *sql.Tx, root string) (ids []int64, 
 		return nil, nil, err
 	}
 	return ids, videoIDs, nil
+}
+
+// countVideosOutOfLibrary は動画 videoIDs のうち、登録フォルダの下の所在が 1 つも無い（ライブラリから外れた）
+// 動画の数を返す。行を消した動画も、登録外の所在だけが残った動画も数える。
+func countVideosOutOfLibrary(ctx context.Context, tx *sql.Tx, videoIDs map[int64]struct{}) (int, error) {
+	ids := make([]int64, 0, len(videoIDs))
+	for id := range videoIDs {
+		ids = append(ids, id)
+	}
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return 0, fmt.Errorf("cannot build video ids: %w", err)
+	}
+	var count int
+	if err := tx.QueryRowContext(ctx, `select count(*) from json_each(?) v
+		where not exists (select 1 from video_locations l where l.video_id = v.value and `+
+		registeredLocationCondition("l")+`)`, string(encoded)).Scan(&count); err != nil {
+		return 0, fmt.Errorf("cannot count the videos the folder removed: %w", err)
+	}
+	return count, nil
 }
 
 // removeLocationsUnder は root 以下の所在を消し、所在が無くなった動画の行も消す。

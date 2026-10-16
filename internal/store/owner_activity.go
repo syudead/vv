@@ -105,14 +105,15 @@ func insertOwnerVideoEntries(
 // recordManualTagActivity は、鍵の集合 encodedKeys（JSON の配列）とタグの集合 encodedTags への action の書き込みで
 // 手で付けたタグの行が変わる鍵とタグの組ごとに、付くなら tag_attach、外れるなら tag_detach の所有者の記録を
 // 書く。書き込みの前に同じ取引で呼ぶ。組は SQLite の中で求めて 1 文で書くので、上限の一括操作でも Go へ
-// 鍵 × タグの行を返さない（changedManualTagKeys と同じ条件）。add は付いていないタグ、remove は集合のタグで
-// 付いているもの、replace はその add に加えて集合に無いタグで付いているものである。
+// 鍵 × タグの行を返さない（changedManualTagKeys と同じ条件）。add は付いていないタグ（keepSuggested が偽なら
+// 確定する提案のタグも含む、unheldManualTag）、remove は集合のタグで付いているもの、replace はその add に加えて
+// 集合に無いタグで付いているものである。
 func recordManualTagActivity(
 	ctx context.Context, tx *sql.Tx, c *changes, encodedKeys string, action domain.VideoTagsAction, encodedTags string,
-	now time.Time,
+	keepSuggested bool, now time.Time,
 ) error {
-	const missing = `select k.key, k.value, t.value, null, ?3 from json_each(?1) k cross join json_each(?2) t
-		where not exists (select 1 from video_tags vt where vt.content_key = k.value and vt.tag_id = t.value)`
+	missing := `select k.key, k.value, t.value, null, ?3 from json_each(?1) k cross join json_each(?2) t
+		where ` + unheldManualTag(keepSuggested)
 	const present = `select k.key, k.value, vt.tag_id, null, ?4 from json_each(?1) k
 		join video_tags vt on vt.content_key = k.value where vt.tag_id in (select value from json_each(?2))`
 	const extra = `select k.key, k.value, vt.tag_id, null, ?4 from json_each(?1) k

@@ -171,10 +171,12 @@ func (s *GroupStore) DissolveGroup(ctx context.Context, id int64) error {
 // domain.NormalizeTagName に通し、名前かシノニムで引けたタグを使うか新しく作り、子孫の全動画の
 // 項目の鍵に手で付け（video_tags）、グループを解散する。1 つの取引で行う。名前がタグ名の規則に
 // 合わなければ domain.ErrInvalidTagName、無ければ domain.ErrGroupNotFound で、何も書かない。
-// 解散で項目が 1 つも残らなくなった親も解散する（DissolveGroup と同じ）。
+// 解散で項目が 1 つも残らなくなった親も解散する（DissolveGroup と同じ）。動画のタグを変える所有者の操作なので、
+// タグが実際に付いた鍵ごとに tag_attach の記録を書き、確定後に domain.ActivityChanged も知らせる
+// （specs/055-activity/research.md R-6）。
 func (s *GroupStore) TagGroup(ctx context.Context, id int64) (domain.GroupTag, error) {
 	var out domain.GroupTag
-	err := s.write(ctx, "turn the group into a tag", func(tx *sql.Tx) ([]int64, error) {
+	err := writeWithEvents(ctx, s.db, "turn the group into a tag", func(tx *sql.Tx) ([]domain.Event, error) {
 		group, err := groupSummary(ctx, tx, id)
 		if err != nil {
 			return nil, err
@@ -190,10 +192,21 @@ func (s *GroupStore) TagGroup(ctx context.Context, id int64) (domain.GroupTag, e
 		if err != nil {
 			return nil, err
 		}
-		if _, err := attachTagToUserKeys(ctx, tx, keys, out.Tag.ID, groupNow()); err != nil {
+		now := groupNow()
+		attached, err := attachTagToUserKeys(ctx, tx, keys, out.Tag.ID, now)
+		if err != nil {
 			return nil, err
 		}
-		return dissolveGroupAndRebuild(ctx, tx, id)
+		c := &changes{}
+		if err := recordOwnerVideoActivity(ctx, tx, c, domain.ActivityTagAttach, ownerTagChanges(attached, out.Tag.ID),
+			now); err != nil {
+			return nil, err
+		}
+		changed, err := dissolveGroupAndRebuild(ctx, tx, id)
+		if err != nil {
+			return nil, err
+		}
+		return append(groupsChangedEvents(changed), c.events()...), nil
 	})
 	if err != nil {
 		return domain.GroupTag{}, err

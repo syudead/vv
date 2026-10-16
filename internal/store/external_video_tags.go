@@ -257,13 +257,13 @@ func applyManualTags(
 	if err != nil {
 		return nil, fmt.Errorf("cannot build tag ids: %w", err)
 	}
-	changed, err := changedManualTagKeys(ctx, tx, string(encodedKeys), action, string(encodedTags))
+	changed, err := changedManualTagKeys(ctx, tx, string(encodedKeys), action, string(encodedTags), mode.keepSuggested)
 	if err != nil {
 		return nil, err
 	}
 	if mode.activity != nil {
 		if err := recordManualTagActivity(ctx, tx, mode.activity, string(encodedKeys), action, string(encodedTags),
-			now); err != nil {
+			mode.keepSuggested, now); err != nil {
 			return nil, err
 		}
 	}
@@ -307,13 +307,15 @@ func applyManualTags(
 // changedManualTagKeys は、鍵の集合 encodedKeys（JSON の配列）のうち、action の書き込みで
 // 手で付けたタグの行が変わる鍵を、書き込みの前に 1 文で返す（1 鍵につき高々 1 行）。
 // add はタグの集合 encodedTags に付いていないタグがある鍵、remove は集合のタグが付いている鍵、
-// replace はその両方に加えて集合に無いタグが付いている鍵である。
-func changedManualTagKeys(ctx context.Context, tx *sql.Tx, encodedKeys string, action domain.VideoTagsAction, encodedTags string) ([]string, error) {
-	const missing = `exists (select 1 from json_each(:tags) t where not exists
-		(select 1 from video_tags vt where vt.content_key = k.value and vt.tag_id = t.value))`
-	const present = `exists (select 1 from video_tags vt where vt.content_key = k.value
+// replace はその両方に加えて集合に無いタグが付いている鍵である。keepSuggested が偽なら、提案のまま
+// 付いている（tentative = 1 の）タグは確定して行が変わるので、付いていないタグと同じに数える（unheldManualTag）。
+func changedManualTagKeys(
+	ctx context.Context, tx *sql.Tx, encodedKeys string, action domain.VideoTagsAction, encodedTags string, keepSuggested bool,
+) ([]string, error) {
+	missing := `exists (select 1 from json_each(:tags) t where ` + unheldManualTag(keepSuggested) + `)`
+	present := `exists (select 1 from video_tags vt where vt.content_key = k.value
 		and vt.tag_id in (select value from json_each(:tags)))`
-	const extra = `exists (select 1 from video_tags vt where vt.content_key = k.value
+	extra := `exists (select 1 from video_tags vt where vt.content_key = k.value
 		and vt.tag_id not in (select value from json_each(:tags)))`
 	var condition string
 	switch action {
@@ -345,4 +347,14 @@ func changedManualTagKeys(ctx context.Context, tx *sql.Tx, encodedKeys string, a
 		return nil, fmt.Errorf("cannot read the changed video tags: %w", err)
 	}
 	return keys, nil
+}
+
+// unheldManualTag は、鍵 k.value にタグ t.value を付ける書き込み（applyManualTags の add）がその行を
+// 変える条件である。行が無いときに加えて、keepSuggested が偽なら提案のまま付いている行も確定するので変わる。
+func unheldManualTag(keepSuggested bool) string {
+	held := `vt.content_key = k.value and vt.tag_id = t.value`
+	if !keepSuggested {
+		held += ` and vt.tentative = 0`
+	}
+	return `not exists (select 1 from video_tags vt where ` + held + `)`
 }

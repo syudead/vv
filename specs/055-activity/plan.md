@@ -20,7 +20,7 @@ notification, and offers open, retry and undo where they apply.
 | Granularity | One entry per run and subject; an import is one entry for its five stages; a scan only when it fails, closed by the next successful scan ([R-3](research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages)) |
 | Status | `running` / `attention` / `done` with a reason or outcome; a newer run closes an older problem; startup marks claimed entries `interrupted`; a duplicate pair keeps one entry through its retries ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | Decider | `ai` when the probability decided, `rule` for fixed rules and automatic triggers, `owner` for requests ([R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)) |
-| Owner operations | Tag and version-bundle changes and media-folder removal; not groups, playlists, tag definitions or thumbnail edits ([R-6](research.md#r-6-the-owner-operations-recorded)) |
+| Owner operations | Tag and version-bundle changes (turning a group into a tag included) and media-folder removal; not other group edits, playlists, tag definitions or thumbnail edits ([R-6](research.md#r-6-the-owner-operations-recorded)) |
 | Undo | Restores the state when it still holds, always records the exclusion ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | Live update | `activity` notification, refetch ([R-8](research.md#r-8-the-screen-refreshes-on-an-activity-notification)) |
 | Paging | Keyset by id, `status` filter, counts in the page ([R-9](research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status)) |
