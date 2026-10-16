@@ -120,12 +120,12 @@ func (p *WorkInfoPlugins) keepFetched(
 	fetch := &workInfoFetch{
 		videoID: videoID, pluginID: plugin.ID, digest: plugin.Digest, generation: plugin.Generation,
 		title: title, tags: tags, details: details, personMatches: people, organizationMatches: organizations,
-		expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
+		cover: fetchedCover(result.CoverImage), expiresAt: p.now().Add(domain.WorkInfoFetchLifetime),
 	}
 	id := p.fetches.add(fetch, p.now())
 	return domain.WorkInfoFetchResult{
 		ID: id, ExpiresAt: fetch.expiresAt, Title: title, Tags: tags,
-		Details: details, PersonMatches: people, OrganizationMatches: organizations,
+		Details: details, PersonMatches: people, OrganizationMatches: organizations, Cover: fetch.cover,
 	}, nil
 }
 
@@ -224,20 +224,27 @@ func (p *WorkInfoPlugins) applyFetch(
 	if err != nil {
 		return domain.WorkInfoApplied{}, err
 	}
-	skipped := applied.Skipped
+	video := applied.Video
+	var coverSkipped []domain.SkippedWorkInfoValue
+	if slices.Contains(fields, domain.WorkInfoFieldCover) {
+		// 保存先がプラグインの行を確かめ直して作品情報を確定してから、カバー画像を代表サムネイルにする。
+		video, coverSkipped = p.applyCover(ctx, fetch, video)
+	}
+	skipped := append(coverSkipped, applied.Skipped...)
 	if skipped == nil {
 		skipped = []domain.SkippedWorkInfoValue{}
 	}
 	return domain.WorkInfoApplied{
-		Video: applied.Video, SkippedTags: skippedTags(fetch.tags, invalid, applied.RejectedTags), Skipped: skipped,
+		Video: video, SkippedTags: skippedTags(fetch.tags, invalid, applied.RejectedTags), Skipped: skipped,
 	}, nil
 }
 
-// detailFields は fields のうち題名とタグ以外の項目を、WorkInfoFields の順に重複なく返す。
+// detailFields は fields のうち題名・タグ・カバー画像以外の項目を、WorkInfoFields の順に重複なく返す。
 func detailFields(fields []domain.WorkInfoField) []domain.WorkInfoField {
 	var out []domain.WorkInfoField
 	for _, field := range domain.WorkInfoFields {
-		if field != domain.WorkInfoFieldTitle && field != domain.WorkInfoFieldTags && slices.Contains(fields, field) {
+		if field != domain.WorkInfoFieldTitle && field != domain.WorkInfoFieldTags &&
+			field != domain.WorkInfoFieldCover && slices.Contains(fields, field) {
 			out = append(out, field)
 		}
 	}
@@ -300,7 +307,9 @@ type workInfoFetch struct {
 	details             domain.FetchedWorkInfo
 	personMatches       []domain.CreditMatch
 	organizationMatches []domain.CreditMatch
-	expiresAt           time.Time
+	// cover は取ったカバー画像で、無ければ nil である。
+	cover     *domain.WorkInfoCover
+	expiresAt time.Time
 }
 
 // hasValue は結果に項目 field の値があるかを返す。知らない項目は偽である。
@@ -310,6 +319,8 @@ func (f *workInfoFetch) hasValue(field domain.WorkInfoField) bool {
 		return f.title != ""
 	case domain.WorkInfoFieldTags:
 		return len(f.tags) > 0
+	case domain.WorkInfoFieldCover:
+		return f.cover != nil
 	}
 	return f.details.HasDetail(field)
 }
@@ -324,14 +335,49 @@ func newWorkInfoFetches() *workInfoFetches {
 	return &workInfoFetches{entries: map[string]*workInfoFetch{}}
 }
 
-// add は結果 fetch を持ち、その識別子（128 ビットの乱数）を返す。
+// add は結果 fetch を持ち、その識別子（128 ビットの乱数）を返す。持っている結果のカバー画像が合わせて
+// domain.WorkInfoFetchCoverBudget を越えれば、カバー画像を持つ結果を古い（期限の早い）ものから捨てる。
 func (f *workInfoFetches) add(fetch *workInfoFetch, now time.Time) string {
 	id := rand.Text()
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.prune(now)
 	f.entries[id] = fetch
+	f.trimCovers()
 	return id
+}
+
+// trimCovers はカバー画像が予算に収まるまで、カバー画像を持つ結果を期限の早いものから捨てる。呼び出し側が
+// mu を持つ。
+func (f *workInfoFetches) trimCovers() {
+	total := 0
+	for _, entry := range f.entries {
+		if entry.cover != nil {
+			total += len(entry.cover.Data)
+		}
+	}
+	for total > domain.WorkInfoFetchCoverBudget {
+		oldest := ""
+		for id, entry := range f.entries {
+			if entry.cover != nil && (oldest == "" || entry.expiresAt.Before(f.entries[oldest].expiresAt)) {
+				oldest = id
+			}
+		}
+		total -= len(f.entries[oldest].cover.Data)
+		delete(f.entries, oldest)
+	}
+}
+
+// cover は識別子 id の、動画 videoID の結果のカバー画像を返す。無ければ domain.ErrNotFound である。
+func (f *workInfoFetches) cover(id string, videoID int64, now time.Time) (domain.WorkInfoCover, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.prune(now)
+	fetch, ok := f.entries[id]
+	if !ok || fetch.videoID != videoID || fetch.cover == nil {
+		return domain.WorkInfoCover{}, domain.ErrNotFound
+	}
+	return *fetch.cover, nil
 }
 
 // claim は識別子 id の結果を確かめて取り出す。無いか期限切れなら domain.ErrWorkInfoFetchStale、別の動画の

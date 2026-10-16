@@ -36,6 +36,7 @@ type workDetailsJSON struct {
 	Organizations json.RawMessage `json:"organizations"`
 	URLs          json.RawMessage `json:"urls"`
 	ExternalIDs   json.RawMessage `json:"externalIds"`
+	Cover         json.RawMessage `json:"cover"`
 }
 
 type fetchedDateJSON struct {
@@ -70,6 +71,7 @@ func parseWorkDetails(raw workDetailsJSON, out *FetchedWorkInfo) {
 		})
 	out.URLs = parseFetchedURLs(lenientList[string](raw.URLs), limits.URLsMaxCount)
 	out.ExternalIDs = parseFetchedExternalIDs(raw.ExternalIDs)
+	out.CoverURL = workInfoCoverURL(lenientString(raw.Cover))
 }
 
 // lenientString は文字列の JSON の前後の空白を除いて返す。無いか文字列でなければ空の文字列を返す。
