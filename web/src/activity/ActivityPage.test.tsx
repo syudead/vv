@@ -525,6 +525,35 @@ describe("ActivityPage retry and undo", () => {
     await waitFor(() => expect((undo as HTMLButtonElement).disabled).toBe(false));
   });
 
+  it("keeps the card's buttons disabled until the refetched card arrives", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(5));
+    // 取り消しの後のサーバーの記録。読み直しの応答は gate が開くまで届かない。
+    server.entries = server.entries.map((item) =>
+      item.id === 2 ? { ...item, undoable: false, undone: true } : item,
+    );
+    let release = () => {};
+    server.gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const before = filterRequests().length;
+    const undo = within(card("a.mp4")).getByRole("button", { name: "Undo" });
+    await user.click(undo);
+    expect(
+      await screen.findByText("Undone. vv won't decide this again on its own"),
+    ).toBeDefined();
+    await waitFor(() => expect(filterRequests().length).toBeGreaterThan(before));
+    expect((undo as HTMLButtonElement).disabled).toBe(true);
+    await user.click(undo);
+    expect(server.operations).toHaveLength(1);
+    server.gate = null;
+    release();
+    await waitFor(() =>
+      expect(within(card("a.mp4")).queryByRole("button", { name: "Undo" })).toBeNull(),
+    );
+  });
+
   it("undoes one tag of an auto-tagging card from its menu", async () => {
     const user = userEvent.setup();
     renderPage();

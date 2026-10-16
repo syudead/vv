@@ -243,7 +243,8 @@ interface ActionsProps {
 
 /**
  * Actions はカードの端の操作である。やり直しと取り消しは確かめずに送り、待つ間はその
- * ボタンに Spinner を出してカードのボタンをすべて止める（ui-design.md「Cards」）。
+ * ボタンに Spinner を出してカードのボタンをすべて止める（ui-design.md「Cards」）。成功した
+ * 操作は読み直したカードが届くまで待つので、古いカードから同じ操作を二度送れない。
  */
 function Actions({ entry, actions, onRetry, onUndo }: ActionsProps) {
   const [pending, setPending] = useState<Pending>(null);
