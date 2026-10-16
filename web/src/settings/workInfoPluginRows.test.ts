@@ -92,6 +92,16 @@ describe("work-info plugin rows", () => {
     expect(missingRequired({ settings: [apiKey, language, region] })).toEqual(["Region"]);
   });
 
+  it("既定値の無い必須の設定の保存値が選択肢の外なら、値が無いものとして挙げる", () => {
+    const staleRequired: WorkInfoPluginSetting = {
+      ...mode,
+      label: "Quality",
+      required: true,
+    };
+    expect(missingRequired({ settings: [apiKey, staleRequired] })).toEqual(["Quality"]);
+    expect(staleSettings({ settings: [apiKey, staleRequired] })).toEqual(["Quality"]);
+  });
+
   it("秘密の欄は空で始まり、秘密でない欄は保存された値で始まる", () => {
     expect(draftsOf([apiKey, language, region])).toEqual({
       apiKey: { value: "", forgotten: false },
