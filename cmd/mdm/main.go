@@ -307,6 +307,15 @@ func run(opts runOptions) error {
 	if err := autoTagger.Recover(backgroundCtx); err != nil {
 		logger.Warn("could not requeue interrupted auto-tagging jobs", slog.Any("error", err))
 	}
+	// ホームの整理役。走査が done で終わり、取り込みと自動タグ付けの待ち行列が空のまま続いたら棚を足す。
+	// 前回の停止で残った待ちの実行を読んでから動かす（specs/057-home/research.md R-9）。
+	homeOrganizer := app.NewHomeOrganizer(app.HomeOrganizerOptions{
+		Store: db.Home(), Jobs: ingestStore, AutoTags: db.AutoTags(), Publisher: bus, Logger: logger,
+	})
+	if err := homeOrganizer.Recover(backgroundCtx); err != nil {
+		logger.Warn("could not read the pending home organizer run", slog.Any("error", err))
+	}
+	scans.OnFinish(homeOrganizer.ScanFinished)
 	// 重複の自動判定。「同じ動画かもしれない」候補を指紋のコマごとに比べ、食い違う区間だけを判定の口に
 	// 聞く（docs/design-docs/duplicate-judging.md）。Ollama の接続先の保存で、接続を待っていた組を再開する。
 	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
@@ -341,6 +350,7 @@ func run(opts runOptions) error {
 	}
 	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
 	workersDone.Go(func() { versionJudge.Run(backgroundCtx) })
+	workersDone.Go(func() { homeOrganizer.Run(backgroundCtx) })
 	// 読まれないセッションと時間切れの実行を片付け、止めるときは進んでいる実行を中止する。
 	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })
 	// ここから先は、どこで戻っても（待ち受けを開けない・待ち受けを失った・停止の
@@ -457,6 +467,7 @@ func run(opts runOptions) error {
 		AutoTagging:       autoTagger,
 		// 分野を選ぶと、自動タグ付けが入なら全動画を判定に回す（specs/057-home/research.md R-6）。
 		Onboarding:     app.NewOnboarding(db.Home(), autoTagger),
+		HomeOrganizer:  homeOrganizer,
 		VersionJudging: versionJudge,
 		Ollama:         ollamaConnection,
 		ComfyUI:        comfyUIConnection,
