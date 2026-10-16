@@ -83,12 +83,11 @@ stateDiagram-v2
 
 `app.Activity` は、再試行を提供する項目 (再試行できる種類で、理由が `failed` または `interrupted` の `attention`) に対してだけ再試行に応じ、まだ取り消していない自動の決定に対してだけ取り消しに応じ、その後、その種類に登録されたユースケースへ項目を渡す。何も登録されていない種類は `409 activity_not_retryable` または `409 activity_not_undoable` で応答する。
 
-| 種類 | 再試行 |
-| --- | --- |
-| `import` | `IngestStore.RetryImport` は、再プローブと同じように動画の失敗した段階を再び積み、中断の後にまだ待機しているジョブも積む。所有者の新しい項目が古い項目を置き換える。なくなった動画、または積むものがない動画は `409 activity_not_retryable` で応答する |
-| `scan` | `Scans.RetryActivity` はすべてのメディアフォルダの手動スキャンを開始する。スキャンの実行中は `409 scan_in_progress` |
-
-まだどの種類も取り消しを登録していない。
+| 種類 | 再試行 | 取り消し |
+| --- | --- | --- |
+| `import` | `IngestStore.RetryImport` は、再プローブと同じように動画の失敗した段階を再び積み、中断の後にまだ待機しているジョブも積む。所有者の新しい項目が古い項目を置き換える。なくなった動画、または積むものがない動画は `409 activity_not_retryable` で応答する | — |
+| `scan` | `Scans.RetryActivity` はすべてのメディアフォルダの手動スキャンを開始する。スキャンの実行中は `409 scan_in_progress` | — |
+| `auto_tag` | `AutoTagger` が動画を再びキューに入れる。機能がオフの間は `409 auto_tagging_off` | 1 回に 1 つのタグを、1 つの `ActivityStore` トランザクションで取り消す ([auto-tagging.md](auto-tagging.md#activity-entries-and-undo)) |
 
 ## 画面は activity 通知で更新する {#the-screen-refreshes-on-an-activity-notification}
 

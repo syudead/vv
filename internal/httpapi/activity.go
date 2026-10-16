@@ -189,6 +189,8 @@ func (s *server) writeActivityError(w http.ResponseWriter, err error, message st
 		s.writeError(w, http.StatusConflict, codeActivityNotUndoable, "The activity entry cannot be undone.")
 	case errors.Is(err, domain.ErrScanRunning):
 		s.writeError(w, http.StatusConflict, codeScanInProgress, "A scan is in progress.")
+	case errors.Is(err, domain.ErrAutoTaggingOff):
+		s.conflictReason(w, gen.ErrorReasonAutoTaggingOff, "Auto-tagging is turned off.")
 	default:
 		s.internalError(w, message, err)
 	}

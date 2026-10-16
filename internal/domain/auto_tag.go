@@ -236,25 +236,36 @@ func AutoTagQuestionFor(candidate AutoTagCandidate) ClassifierQuestion {
 	return ClassifierQuestion{Key: AutoTagQuestionKey(candidate.ID), Text: b.String()}
 }
 
-// AutoTagSelection は判定の結果、付けるタグの id である。
+// AutoTagSelection は判定の結果、付けるタグの id と、その確率である。
 type AutoTagSelection struct {
 	// Confirmed は確率が Threshold 以上で、確定した付与として付けるタグである。
 	Confirmed []int64
 	// Tentative は確率が TentativeThreshold 以上 Threshold 未満で、仮に付けるタグである。
 	Tentative []int64
+	// Probabilities は Confirmed と Tentative の各タグの、判定モデルの答えである。アクティビティの記録に
+	// 残す（specs/055-activity/research.md R-5）。選ばなかったタグは入らない。
+	Probabilities map[int64]float64
 }
 
 // SelectAutoTags は候補を確率で振り分け、候補の順で返す。答えの無い候補は付けない。
 func SelectAutoTags(candidates []AutoTagCandidate, probabilities map[string]float64, settings AutoTagSettings) AutoTagSelection {
 	var selection AutoTagSelection
+	keep := func(id int64, p float64) {
+		if selection.Probabilities == nil {
+			selection.Probabilities = map[int64]float64{}
+		}
+		selection.Probabilities[id] = p
+	}
 	for _, candidate := range candidates {
 		p, ok := probabilities[AutoTagQuestionKey(candidate.ID)]
 		switch {
 		case !ok || math.IsNaN(p):
 		case p >= settings.Threshold:
 			selection.Confirmed = append(selection.Confirmed, candidate.ID)
+			keep(candidate.ID, p)
 		case p >= settings.TentativeThreshold:
 			selection.Tentative = append(selection.Tentative, candidate.ID)
+			keep(candidate.ID, p)
 		}
 	}
 	return selection

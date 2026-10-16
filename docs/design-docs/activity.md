@@ -128,12 +128,11 @@ undo only for an automatic decision not yet undone, then hands the entry to the
 use case registered for its kind. A kind with nothing registered answers
 `409 activity_not_retryable` or `409 activity_not_undoable`.
 
-| Kind | Retry |
-| --- | --- |
-| `import` | `IngestStore.RetryImport` queues the video's failed stages again, as a re-probe does, and the jobs still waiting after an interruption; the owner's new entry supersedes the old one. A video that is gone, or has nothing to queue, answers `409 activity_not_retryable` |
-| `scan` | `Scans.RetryActivity` starts a manual scan of every media folder; `409 scan_in_progress` while a scan runs |
-
-No kind registers undo yet.
+| Kind | Retry | Undo |
+| --- | --- | --- |
+| `import` | `IngestStore.RetryImport` queues the video's failed stages again, as a re-probe does, and the jobs still waiting after an interruption; the owner's new entry supersedes the old one. A video that is gone, or has nothing to queue, answers `409 activity_not_retryable` | — |
+| `scan` | `Scans.RetryActivity` starts a manual scan of every media folder; `409 scan_in_progress` while a scan runs | — |
+| `auto_tag` | `AutoTagger` queues the video again; `409 auto_tagging_off` while the feature is off | One tag at a time, in one `ActivityStore` transaction ([auto-tagging.md](auto-tagging.md#activity-entries-and-undo)) |
 
 ## The screen refreshes on an activity notification
 

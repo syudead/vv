@@ -195,6 +195,28 @@ func TestRetryAndUndoAnswerConflictForEveryKind(t *testing.T) {
 	assertErrorBody(t, "undo missing", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusNotFound, code: gen.ErrorCodeNotFound})
 }
 
+// 自動タグ付けが切のあいだ、失敗した auto_tag の記録のやり直しは 409 auto_tagging_off を返す。
+func TestRetryAutoTagWhileOffAnswersAutoTaggingOff(t *testing.T) {
+	e := newActivityEnv(t)
+	tagger := app.NewAutoTagger(app.AutoTaggerOptions{Queue: e.db.AutoTags(), Settings: e.db.Settings(), Undo: e.db.Activity()})
+	activity := app.NewActivity(app.ActivityOptions{
+		Store:    e.db.Activity(),
+		Retriers: map[domain.ActivityKind]app.ActivityRetrier{domain.ActivityAutoTag: tagger},
+		Undoers:  map[domain.ActivityKind]app.ActivityUndoer{domain.ActivityAutoTag: tagger},
+	})
+	handler := newTestServer(t, Options{Activity: activity, Events: e.events, Scans: &lockedScans{current: domain.Scan{ID: 1}}})
+	failed := failedImport()
+	failed.Kind, failed.Stage = domain.ActivityAutoTag, ""
+	id := e.record(t, failed)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/activity/"+itoa(id)+"/retry", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+	assertErrorBody(t, "retry while off", rec.Code, rec.Body.Bytes(), wantError{
+		status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: gen.ErrorReasonAutoTaggingOff,
+	})
+}
+
 // 受け入れ: 記録を書いた後に、所有者の stream が activity を受ける。続けての書き込みは 1 つにまとまる。
 func TestStreamEventsSendsActivityToOwners(t *testing.T) {
 	e := newActivityEnv(t)
