@@ -242,6 +242,45 @@ describe("NetworkSection", () => {
     expect(input.value).toBe("http://proxy.example");
   });
 
+  it("drops a failure once the value it was for has been edited", async () => {
+    const first = deferred<Response>();
+    serve(notFound, (init) =>
+      init?.method === "PUT" ? first.promise : json({ url: "" }),
+    );
+    const user = userEvent.setup();
+    render(<NetworkSection />);
+
+    const input = await proxyInput();
+    await user.type(input, "http://one.example");
+    await user.tab();
+    expect(await screen.findByText("Saving…")).toBeDefined();
+
+    // 保存中に打ち直した欄には、前の値の失敗を出さない。
+    await user.type(input, "x");
+    first.resolve(serverError());
+    await waitFor(() => expect(screen.queryByText("Saving…")).toBeNull());
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(input.value).toBe("http://one.examplex");
+  });
+
+  it("clears a shown failure when the value is edited", async () => {
+    serve(notFound, (init) =>
+      init?.method === "PUT" ? serverError() : json({ url: "" }),
+    );
+    const user = userEvent.setup();
+    render(<NetworkSection />);
+
+    const input = await proxyInput();
+    await user.type(input, "http://proxy.example");
+    await user.tab();
+    expect(await screen.findByRole("alert")).toBeDefined();
+
+    // 保存済みの値（""）に戻すと送らないので、編集で失敗を消す。
+    await user.clear(input);
+    await user.tab();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
   it("runs one save at a time and keeps an edit made while saving", async () => {
     const first = deferred<Response>();
     const puts: string[] = [];

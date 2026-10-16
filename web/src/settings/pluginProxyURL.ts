@@ -1,5 +1,8 @@
-/** プロキシの URL の最大の長さ（バイト）。サーバーの domain.WorkInfoPluginProxyURLMaxLen と同じ。 */
-const MAX_BYTES = 2048;
+/**
+ * プロキシの URL の最大の長さ（文字数。サーバーと同じく Unicode のコードポイントで数える）。
+ * サーバーの domain.WorkInfoPluginProxyURLMaxLen と同じ。
+ */
+const MAX_CHARACTERS = 2048;
 
 /** scheme と、パスもクエリもフラグメントも無い残り（ユーザー情報とホストとポート）。 */
 const PROXY_URL = /^(?:https?|socks5):\/\/([^/?#\s]+)$/i;
@@ -15,7 +18,7 @@ const HOST_PORT = /^(?:\[[^\]]+\]|[^:[\]@]+)(?::(\d+))?$/;
  */
 export function isPluginProxyURL(value: string): boolean {
   if (value === "") return true;
-  if (new TextEncoder().encode(value).length > MAX_BYTES) return false;
+  if ([...value].length > MAX_CHARACTERS) return false;
   const authority = PROXY_URL.exec(value)?.[1];
   if (authority === undefined) return false;
   const hostPort = authority.slice(authority.lastIndexOf("@") + 1);

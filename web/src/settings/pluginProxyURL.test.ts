@@ -10,6 +10,8 @@ describe("isPluginProxyURL", () => {
     "socks5://user:pass@proxy.example:1080",
     "http://192.168.1.2:8080",
     "http://[::1]:3128",
+    // 2048 文字ちょうどで、UTF-8 では 2048 バイトを超える。
+    `http://${"ü".repeat(2048 - "http://".length)}`,
   ])("accepts %j", (value) => {
     expect(isPluginProxyURL(value)).toBe(true);
   });
@@ -28,6 +30,7 @@ describe("isPluginProxyURL", () => {
     "http://user@:3128",
     "http://proxy example",
     `http://${"a".repeat(2048)}`,
+    `http://${"ü".repeat(2048 - "http://".length + 1)}`,
   ])("refuses %j", (value) => {
     expect(isPluginProxyURL(value)).toBe(false);
   });

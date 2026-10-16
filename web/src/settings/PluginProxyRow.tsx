@@ -29,7 +29,8 @@ interface PluginProxySave {
  * usePluginProxySave は、プロキシの欄の値を、前に保存した値と違うときに保存する
  * （specs/056-plugin-tooling/ui-design.md の Network section）。保存は 1 度に 1 つで、保存中の
  * commit は何も送らず、保存が答えたあとに、そのとき欄にある値を送り直す。応答の `url` は、欄が送った
- * 値のままのときだけ欄を置き換えるので、保存中の編集は失われない。規則に外れた値は送らない。
+ * 値のままのときだけ欄を置き換えるので、保存中の編集は失われない。誤りも同じく、欄が送った値のままの
+ * ときだけ出し、欄を編集すれば前の誤りは消える。規則に外れた値は送らない。
  */
 function usePluginProxySave(initialURL: string): PluginProxySave {
   const [value, setValue] = useState(initialURL);
@@ -42,6 +43,14 @@ function usePluginProxySave(initialURL: string): PluginProxySave {
   const savedURL = useRef(initialURL);
   const inFlight = useRef(false);
   const pending = useRef(false);
+
+  const showFailure = (failure: unknown) => {
+    if (failure instanceof RequestFailed && failure.status === 400) {
+      setInvalid(true);
+    } else {
+      setSaveError(t.settings.network.proxy.saveFailed(errorText(failure)));
+    }
+  };
 
   const send = async (url: string) => {
     inFlight.current = true;
@@ -58,11 +67,9 @@ function usePluginProxySave(initialURL: string): PluginProxySave {
         setSaved(true);
       }
     } catch (failure) {
-      if (failure instanceof RequestFailed && failure.status === 400) {
-        if (unchanged()) setInvalid(true);
-      } else {
-        setSaveError(t.settings.network.proxy.saveFailed(errorText(failure)));
-      }
+      // 誤りは送った値のものなので、保存中に欄を打ち直していれば出さない（打ち直した値は次の
+      // commit が送る）。
+      if (unchanged()) showFailure(failure);
     } finally {
       inFlight.current = false;
       setSaving(false);
@@ -92,6 +99,7 @@ function usePluginProxySave(initialURL: string): PluginProxySave {
     setValue(next);
     setInvalid(false);
     setSaved(false);
+    setSaveError(null);
   };
 
   return { value, saving, saved, invalid, saveError, edit, commit };
