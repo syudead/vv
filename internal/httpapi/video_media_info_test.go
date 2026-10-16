@@ -38,7 +38,8 @@ func sampleMediaInfo() domain.MediaInfo {
 			Location: &domain.GeoLocation{Latitude: 35.6895, Longitude: 139.6917, Altitude: &altitude},
 			CoverArt: true,
 		},
-		Chapters: []domain.MediaChapter{{StartMs: 0, EndMs: 30_000, Title: "Intro"}, {StartMs: 30_000, EndMs: 60_000}},
+		Chapters:  []domain.MediaChapter{{StartMs: 0, EndMs: 30_000, Title: "Intro"}, {StartMs: 30_000, EndMs: 60_000}},
+		Broadcast: &domain.MediaBroadcast{Station: "テスト放送", Program: "ニュース"},
 	}
 }
 
@@ -68,6 +69,10 @@ func TestGetVideoMediaInfo(t *testing.T) {
 	sample := sampleMediaInfo()
 	if want := toAPIMediaInfo(&sample); !reflect.DeepEqual(got, *want) {
 		t.Errorf("mediaInfo = %s, want %+v", ownerInfo, *want)
+	}
+	if got.Broadcast == nil || got.Broadcast.Station == nil || *got.Broadcast.Station != "テスト放送" ||
+		got.Broadcast.Program == nil || *got.Broadcast.Program != "ニュース" {
+		t.Errorf("broadcast = %+v, want 局名「テスト放送」と番組名「ニュース」: %s", got.Broadcast, ownerInfo)
 	}
 
 	assertStatus(t, "ゲストの非公開動画", f.env.get(f.videoPath("c", "")), http.StatusNotFound)
@@ -114,7 +119,21 @@ func TestToAPIMediaInfo(t *testing.T) {
 	if string(encoded) != `"2026-09-27T15:04:05+09:00"` {
 		t.Errorf("recordedAt = %s", encoded)
 	}
-	if got.AudioTracks != nil || got.SubtitleTracks != nil || got.Chapters != nil || got.Embedded.Location != nil {
+	if got.AudioTracks != nil || got.SubtitleTracks != nil || got.Chapters != nil || got.Embedded.Location != nil || got.Broadcast != nil {
 		t.Errorf("無い項目が入った: %+v", got)
+	}
+}
+
+// 放送の情報だけの MediaInfo も応答に載り、局名と番組名の片方だけでも出す。
+func TestToAPIMediaInfoBroadcast(t *testing.T) {
+	if got := toAPIMediaInfo(&domain.MediaInfo{Broadcast: &domain.MediaBroadcast{}}); got != nil {
+		t.Errorf("空の放送の情報だけの MediaInfo = %+v, want nil", got)
+	}
+	got := toAPIMediaInfo(&domain.MediaInfo{Broadcast: &domain.MediaBroadcast{Station: "テスト放送"}})
+	if got == nil || got.Broadcast == nil || got.Broadcast.Station == nil || *got.Broadcast.Station != "テスト放送" {
+		t.Fatalf("放送の情報だけの MediaInfo = %+v, want 局名", got)
+	}
+	if got.Broadcast.Program != nil {
+		t.Errorf("番組名 = %q, want 省く", *got.Broadcast.Program)
 	}
 }

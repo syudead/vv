@@ -44,6 +44,7 @@ func toAPIMediaInfo(info *domain.MediaInfo) *gen.MediaInfo {
 		SubtitleTracks: toAPISubtitleTracks(info.SubtitleTracks),
 		Embedded:       toAPIMediaEmbedded(info.Embedded),
 		Chapters:       toAPIChapters(info.Chapters),
+		Broadcast:      toAPIMediaBroadcast(info.Broadcast),
 	}
 	if out == (gen.MediaInfo{}) {
 		return nil
@@ -130,6 +131,18 @@ func toAPIMediaEmbedded(embedded *domain.MediaEmbedded) *gen.MediaInfoEmbedded {
 		}
 	}
 	if out == (gen.MediaInfoEmbedded{}) {
+		return nil
+	}
+	return &out
+}
+
+// toAPIMediaBroadcast は TS の録画の局名と番組名を契約の形にする。どちらも無ければ nil（省く）。
+func toAPIMediaBroadcast(broadcast *domain.MediaBroadcast) *gen.MediaInfoBroadcast {
+	if broadcast == nil {
+		return nil
+	}
+	out := gen.MediaInfoBroadcast{Station: optionalString(broadcast.Station), Program: optionalString(broadcast.Program)}
+	if out == (gen.MediaInfoBroadcast{}) {
 		return nil
 	}
 	return &out
