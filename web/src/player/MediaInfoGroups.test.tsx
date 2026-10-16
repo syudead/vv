@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import type { Video } from "../api/client";
 import type { components } from "../api/gen/openapi";
 import { formatDateTime } from "../i18n";
+import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import MediaInfoGroups, {
   audioCodecName,
@@ -162,6 +163,27 @@ describe("MediaInfoGroups", () => {
     render(<MediaInfoGroups info={{ embedded: { comment: "撮影メモ", title: "題" } }} />);
     expect(groupItems("Embedded")).toEqual(["Title題"]);
     expect(screen.getByText("撮影メモ").textContent).toBe("Comment撮影メモ");
+  });
+
+  it("コメントだけの Embedded は空の一覧を描かず、名前と段落を出す", () => {
+    render(<MediaInfoGroups info={{ embedded: { comment: "撮影メモ" } }} />);
+    expect(screen.queryAllByRole("list")).toHaveLength(0);
+    expect(screen.getByText("Embedded")).toBeDefined();
+    expect(screen.getByText("撮影メモ").textContent).toBe("Comment撮影メモ");
+  });
+
+  it("疑似ロケールではカタログの文言と書式の出力だけを描く", () => {
+    enablePseudoLocale();
+    render(
+      <MediaInfoGroups
+        info={{
+          audioTracks: [{ index: 1, codec: "aac", language: "jpn" }],
+          embedded: { comment: "撮影メモ" },
+        }}
+      />,
+    );
+    // コーデックの名前は訳さない表記なので、利用者のデータと同じく除く。
+    expectCatalogTextOnly(document.body, ["AAC", "撮影メモ"]);
   });
 });
 

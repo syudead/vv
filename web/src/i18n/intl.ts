@@ -57,17 +57,19 @@ const languageNames = new Intl.DisplayNames(LOCALE, { type: "language" });
 
 /**
  * formatLanguage はファイルの言語の印（`jpn`・`eng`・`ja-JP`）を言語の名前にする
- * （specs/056-media-info/research.md R-8）。`und` と空は null（言語を出さない）。名前に
- * できない印は、印のまま返す。
+ * （specs/056-media-info/research.md R-8）。`und` と空は null（言語を出さない）。名前は
+ * 書式の出力なので疑似ロケールの印を付ける。名前にできない印は、ファイルの値のまま返す。
  */
-export function formatLanguage(code: string): string | null {
+export function formatLanguage(code: string): UiText | string | null {
   const trimmed = code.trim();
   if (trimmed === "" || trimmed.toLowerCase() === "und") return null;
+  let name: string | undefined;
   try {
-    return languageNames.of(trimmed) ?? trimmed;
+    name = languageNames.of(trimmed);
   } catch {
     return trimmed;
   }
+  return name === undefined || name === trimmed ? trimmed : decorated(name);
 }
 
 /** PluralForms は単数・複数の形である。英語は one と other だけを使う。 */

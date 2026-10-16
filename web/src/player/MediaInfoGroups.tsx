@@ -2,6 +2,7 @@ import { type ReactNode, useId } from "react";
 
 import type { components } from "../api/gen/openapi";
 import { formatDateTime, formatLanguage, t, type UiText } from "../i18n";
+import { cn } from "../lib/cn";
 import { formatCodec } from "./properties";
 import { Description, FoldButton, Item, useFold } from "./WorkInfo";
 
@@ -122,6 +123,9 @@ export function videoItems(video: MediaInfoVideo): string[] {
   ].filter((item): item is UiText => item !== undefined);
 }
 
+/** groupNameClass はまとまりの名前の形（技術情報の行と同じ小さな大文字）である。 */
+const groupNameClass = "text-xs tracking-wider uppercase";
+
 /**
  * Group はまとまり 1 つの行である。ファイルの行と同じ折り返す並びで、先頭に技術情報の行の形の
  * まとまりの名前を置き、その名前で `ul` に名前を付ける。全体を薄い色にする。
@@ -133,12 +137,7 @@ function Group({ name, children }: { name: UiText; children: ReactNode }) {
       aria-labelledby={id}
       className="flex flex-wrap items-baseline gap-x-4 gap-y-2 text-sm text-muted-foreground sm:gap-x-5"
     >
-      <li
-        id={id}
-        lang="en"
-        aria-hidden="true"
-        className="text-xs tracking-wider uppercase"
-      >
+      <li id={id} lang="en" aria-hidden="true" className={groupNameClass}>
         {name}
       </li>
       {children}
@@ -208,32 +207,49 @@ function locationText(location: NonNullable<Embedded["location"]>): string {
     : `${coordinates}${trackSeparator}${m.altitude(location.altitude)}`;
 }
 
+/** embeddedItems は Embedded の行の `label value` の組（値のあるものだけ）である。 */
+function embeddedItems(embedded: Embedded): [UiText, string][] {
+  const m = t.player.mediaInfo;
+  const items: [UiText, string | undefined][] = [
+    [m.title, embedded.title],
+    [m.author, embedded.author],
+    [m.genre, embedded.genre],
+    [m.date, embedded.date],
+    [
+      m.recorded,
+      embedded.recordedAt === undefined ? undefined : formatDateTime(embedded.recordedAt),
+    ],
+    [m.device, embedded.device],
+    [
+      m.location,
+      embedded.location === undefined ? undefined : locationText(embedded.location),
+    ],
+  ];
+  return items.filter((item): item is [UiText, string] => (item[1] ?? "") !== "");
+}
+
+/**
+ * EmbeddedGroup は Embedded のまとまりである。行に項目が無く、コメントか説明だけのときは、
+ * 空の `ul` を描かず、まとまりの名前を段落の上に見出しの形で置く。
+ */
 function EmbeddedGroup({ embedded }: { embedded: Embedded }) {
   const m = t.player.mediaInfo;
+  const items = embeddedItems(embedded);
+  const coverArt = embedded.coverArt === true;
   return (
     <>
-      <Group name={m.embedded}>
-        <LabelledItem label={m.title} value={embedded.title} />
-        <LabelledItem label={m.author} value={embedded.author} />
-        <LabelledItem label={m.genre} value={embedded.genre} />
-        <LabelledItem label={m.date} value={embedded.date} />
-        <LabelledItem
-          label={m.recorded}
-          value={
-            embedded.recordedAt === undefined
-              ? undefined
-              : formatDateTime(embedded.recordedAt)
-          }
-        />
-        <LabelledItem label={m.device} value={embedded.device} />
-        <LabelledItem
-          label={m.location}
-          value={
-            embedded.location === undefined ? undefined : locationText(embedded.location)
-          }
-        />
-        {embedded.coverArt === true && <WordItem>{m.coverArt}</WordItem>}
-      </Group>
+      {items.length > 0 || coverArt ? (
+        <Group name={m.embedded}>
+          {items.map(([label, value]) => (
+            <LabelledItem key={label} label={label} value={value} />
+          ))}
+          {coverArt && <WordItem>{m.coverArt}</WordItem>}
+        </Group>
+      ) : (
+        <p lang="en" className={cn(groupNameClass, "text-muted-foreground")}>
+          {m.embedded}
+        </p>
+      )}
       {embedded.comment !== undefined && (
         <Description text={embedded.comment} tone="muted" label={m.comment} />
       )}
