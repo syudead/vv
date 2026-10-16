@@ -150,15 +150,20 @@ type VideoQuery struct {
 	// 長さの分からない動画は当たらない（R-4）。
 	MinDurationSec *int
 	MaxDurationSec *int
+	// Unshelved は、ホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも一致しない
+	// 動画だけにする。棚との対応は保存せず、読むたびに求める
+	// （specs/057-home/research.md R-11）。ライブラリの項目の一覧（GET /api/library）だけが読む。
+	Unshelved bool
 }
 
 // ListsSmartFolders は、この条件のライブラリの一番上にスマートフォルダの項目を出すかを返す。
-// 検索が無く、お気に入りのみ以外の絞り込みも無いときだけ出す。お気に入りのみはお気に入りにした
-// フォルダだけを出す（specs/052-smart-folders/research.md R-7）。並べ替えは絞り込みではない。
+// 検索が無く、お気に入りのみ以外の絞り込み（棚に無い動画のみを含む）も無いときだけ出す。
+// お気に入りのみはお気に入りにしたフォルダだけを出す（specs/052-smart-folders/research.md R-7）。
+// 並べ替えは絞り込みではない。
 func (q VideoQuery) ListsSmartFolders() bool {
 	return ParseSearchQuery(q.Query).Empty() && (q.Watch == "" || q.Watch == WatchAll) && !q.PlayableOnly &&
 		len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
-		q.AddedWithinDays == 0 && q.MinDurationSec == nil && q.MaxDurationSec == nil
+		q.AddedWithinDays == 0 && q.MinDurationSec == nil && q.MaxDurationSec == nil && !q.Unshelved
 }
 
 // MaxAddedWithinDays は VideoQuery.AddedWithinDays の上限である（R-4）。

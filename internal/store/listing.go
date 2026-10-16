@@ -117,10 +117,16 @@ type listSpec struct {
 	// smartFolders は一覧の一番上にスマートフォルダの項目として混ぜるフォルダである。ライブラリの
 	// 一覧（ListLibrary）だけが librarySmartFolders で埋める（specs/052-smart-folders/research.md R-7）。
 	smartFolders []librarySmartFolder
-	sort         domain.VideoSort
-	seed         int64
-	cursor       string
-	limit        int
+	// unshelved は、ホームのどのフォルダの棚の実効の規則にも一致しない動画だけにする
+	// （specs/057-home/research.md R-11）。shelves はその棚ごとの経路の条件（smartFolderSpec）で、
+	// 名指す実体の無い棚（何にも一致しない）は入れない。ライブラリの項目の問い合わせ
+	// （libraryItemsCTE）だけが読む。
+	unshelved bool
+	shelves   []listSpec
+	sort      domain.VideoSort
+	seed      int64
+	cursor    string
+	limit     int
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
@@ -168,7 +174,7 @@ func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, organizationID: q.Organization, tagKindID: q.TagKindID,
 		addedWithinDays: q.AddedWithinDays, minDurationSec: q.MinDurationSec, maxDurationSec: q.MaxDurationSec,
-		now:  listNow().Unix(),
+		unshelved: q.Unshelved, now: listNow().Unix(),
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 }

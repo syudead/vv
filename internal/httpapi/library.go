@@ -50,6 +50,8 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	if !ok {
 		return
 	}
+	// 棚に無い動画のみはライブラリの項目の一覧だけが受け、ゲストも使える（specs/057-home/research.md R-11）。
+	query.Unshelved = params.Unshelved != nil && *params.Unshelved
 
 	page, err := s.library.ListLibrary(r.Context(), audience, query)
 	switch {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/syudead/vv/internal/domain"
@@ -192,7 +193,13 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		searchAudience = domain.AudienceOwner
 	}
 	cte, args := chosenLocationsCTEFor(spec.scope, searchAudience, spec.searchExprs())
+	shelved, shelvedArgs, unshelved := unshelvedCTE(spec)
+	cte += shelved
+	args = append(args, shelvedArgs...)
 	conditions, matchArgs := matchConditions(spec)
+	if unshelved != "" {
+		conditions = append(conditions, unshelved)
+	}
 	args = append(args, matchArgs...)
 	where := ""
 	if len(conditions) > 0 {
@@ -275,6 +282,61 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	return cte, append(args, folderArgs...)
 }
 
+// unshelvedCTE は、spec.unshelved のときに当たった動画（matched）に掛ける、ホームのどの棚にも
+// 一致しない動画の条件を作る（specs/057-home/research.md R-11）。返すのは with 句に続けて足す項目
+// （先頭の `,` を含む）とその引数、videos に対する条件句で、絞り込まなければどれも空である。
+// 棚ごとの一致はカードの読み出しと同じ smartMatchFor で求め、その和を shelved に 1 度だけ求めて
+// 否定する。ライブラリの chosen は検索式で絞るので、smart_base の所在は別の名前で定める。
+func unshelvedCTE(spec listSpec) (string, []any, string) {
+	if !spec.unshelved || len(spec.shelves) == 0 {
+		return "", nil, ""
+	}
+	cte, args := smartBaseItems(spec.scope.audience, `unshelved_chosen`)
+	cte = `,
+	` + cte
+	matches := make([]string, 0, len(spec.shelves))
+	var matchArgs []any
+	for i, shelf := range spec.shelves {
+		match := smartMatchFor(shelf, `us`+strconv.Itoa(i))
+		if match.search != "" {
+			cte += `,
+	` + match.search
+			args = append(args, match.searchArgs...)
+		}
+		matches = append(matches, `(`+match.condition+`)`)
+		matchArgs = append(matchArgs, match.args...)
+	}
+	cte += `,
+	shelved as materialized (select videos.id as id from smart_base videos where ` + strings.Join(matches, " or ") + `)`
+	return cte, append(args, matchArgs...), `videos.id not in (select id from shelved)`
+}
+
+// homeShelfSpecs は、ホームのフォルダの棚ごとの経路の条件を、見る人 audience の範囲と基準時刻 now の
+// 絞り込み（smartFolderSpec）にして棚の並びの順に返す。名指す実体の無い棚は何にも一致しないので
+// 入れない（specs/052-smart-folders/research.md R-9）。
+func homeShelfSpecs(ctx context.Context, tx *sql.Tx, audience domain.Audience, now int64) ([]listSpec, error) {
+	folders, err := homeShelves(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	specs := make([]listSpec, 0, len(folders))
+	for _, folder := range folders {
+		rules, err := smartFolderPathRules(ctx, tx, folder.ID)
+		if err != nil {
+			return nil, err
+		}
+		missing, err := missingSmartRuleRefs(ctx, tx, rules)
+		if err != nil {
+			return nil, err
+		}
+		if len(missing) > 0 {
+			continue
+		}
+		specs = append(specs, smartFolderSpec(audience, rules, folder.Sort, now))
+	}
+	return specs, nil
+}
+
 // itemWatchCondition は項目の視聴状態の絞り込みを items に対する条件句にする。
 // 絞り込まないときは空の句を返す。値は検査済みの列挙なので、引数で渡す。
 func itemWatchCondition(filter domain.WatchFilter) (string, []any) {
@@ -347,6 +409,11 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	spec := libraryListSpec(audience, q, tagIDs)
 	if spec.smartFolders, err = librarySmartFolders(ctx, tx, audience, q, spec.now); err != nil {
 		return domain.LibraryPage{}, err
+	}
+	if spec.unshelved {
+		if spec.shelves, err = homeShelfSpecs(ctx, tx, audience, spec.now); err != nil {
+			return domain.LibraryPage{}, err
+		}
 	}
 	page, err := listLibraryPageTx(ctx, tx, spec)
 	if err != nil {

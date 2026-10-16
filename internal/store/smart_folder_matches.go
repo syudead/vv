@@ -27,14 +27,22 @@ import (
 // である。所在は一覧と同じく見せてよい所在のパスの最小（chosen）で、別名 videos で読めば
 // matchConditions と playableCondition の句がそのまま掛かる。
 func smartBaseCTE(audience domain.Audience) (string, []any) {
-	cte, args := chosenLocationsCTEFor(libraryScope(audience), audience, nil)
+	items, args := smartBaseItems(audience, `chosen`)
+	return `with ` + items, args
+}
+
+// smartBaseItems は smartBaseCTE の with 句の項目（`with` を除く）とその引数を返す。見せる動画の
+// 所在の項目は名前 chosenName で定める。別の chosen を持つ問い合わせ（ライブラリの項目の
+// unshelved、unshelvedCTE）は別の名前で足す。
+func smartBaseItems(audience domain.Audience, chosenName string) (string, []any) {
+	chosen, args := chosenLocationsSelect(libraryScope(audience), audience, nil)
 	// 利用者データの鍵は動画 1 本に 1 度だけ求め（smart_keys）、再生の記録・お気に入り・条件がそれを使う。
-	return cte + `,
+	return chosenName + ` as (` + chosen + `),
 	smart_keys as materialized (
 		select videos.id as id, videos.content_key as content_key, ` + userKeyExpr("videos") + ` as user_key,
 			videos.added_at as added_at, videos.duration_ms as duration_ms, videos.playable as playable,
-			videos.probe_state as probe_state, videos.thumbnail_state as thumbnail_state, chosen.path as path
-		from chosen join videos on videos.id = chosen.video_id),
+			videos.probe_state as probe_state, videos.thumbnail_state as thumbnail_state, ` + chosenName + `.path as path
+		from ` + chosenName + ` join videos on videos.id = ` + chosenName + `.video_id),
 	smart_base as materialized (
 		select k.id, k.content_key, k.user_key, k.added_at, k.duration_ms, k.playable, k.probe_state, k.thumbnail_state,
 			loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at, loc.title_key as title_key,
