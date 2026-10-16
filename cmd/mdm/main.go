@@ -244,9 +244,6 @@ func run(opts runOptions) error {
 	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
 		return err
 	}
-	// アクティビティの記録のうち、前回の停止で処理中のまま残ったものを中断にする。ワーカーを動かす前に行う。
-	activity := app.NewActivity(app.ActivityOptions{Store: db.Activity()})
-	recoverActivity(backgroundCtx, activity, logger)
 	if opts.OnBusyProbe != nil {
 		opts.OnBusyProbe(scans.Busy)
 	}
@@ -303,6 +300,7 @@ func run(opts runOptions) error {
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
 		Queue:      db.AutoTags(),
 		Settings:   settingsStore,
+		Undo:       db.Activity(),
 		Classifier: classifier,
 		Images:     videoImageSource{artifacts: artifactStore},
 		Logger:     logger,
@@ -310,6 +308,14 @@ func run(opts runOptions) error {
 	if err := autoTagger.Recover(backgroundCtx); err != nil {
 		logger.Warn("could not requeue interrupted auto-tagging jobs", slog.Any("error", err))
 	}
+	// アクティビティの記録のうち、前回の停止で処理中のまま残ったものを中断にする。ワーカーを動かす前に行う。
+	// やり直しと取り消しは種類ごとに、その処理の use case へ振り分ける（specs/055-activity/plan.md）。
+	activity := app.NewActivity(app.ActivityOptions{
+		Store:    db.Activity(),
+		Retriers: map[domain.ActivityKind]app.ActivityRetrier{domain.ActivityAutoTag: autoTagger},
+		Undoers:  map[domain.ActivityKind]app.ActivityUndoer{domain.ActivityAutoTag: autoTagger},
+	})
+	recoverActivity(backgroundCtx, activity, logger)
 	// 重複の自動判定。「同じ動画かもしれない」候補を指紋のコマごとに比べ、食い違う区間だけを判定の口に
 	// 聞く（docs/design-docs/duplicate-judging.md）。Ollama の接続先の保存で、接続を待っていた組を再開する。
 	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{

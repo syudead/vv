@@ -2502,7 +2502,7 @@ export interface paths {
          * @description 所有者だけ。記録の処理を始め直し、202 を返す。新しい実行は新しい記録になり、この記録を閉じる。
          *     `version_judgement` は記録を保ち、`running` に戻る（specs/055-activity/contracts/screen-api.md、
          *     research.md R-4）。無い記録は 404 `not_found`、やり直しを出さない記録か対象がもう無い記録は 409
-         *     `activity_not_retryable`。
+         *     `activity_not_retryable`、自動タグ付けが切のあいだの `auto_tag` の記録は 409 `auto_tagging_off`。
          */
         post: operations["retryActivity"];
         delete?: never;

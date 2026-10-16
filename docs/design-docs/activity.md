@@ -93,8 +93,11 @@ feature of the entry it undid. The contract is
 (`attention` with reason `failed` or `interrupted`, of a retryable kind) and
 undo only for an automatic decision not yet undone, then hands the entry to the
 use case registered for its kind. A kind with nothing registered answers
-`409 activity_not_retryable` or `409 activity_not_undoable`; no kind is
-registered yet.
+`409 activity_not_retryable` or `409 activity_not_undoable`.
+
+| Kind | Retry | Undo |
+| --- | --- | --- |
+| `auto_tag` | `AutoTagger` queues the video again; `409 auto_tagging_off` while the feature is off | One tag at a time, in one `ActivityStore` transaction ([auto-tagging.md](auto-tagging.md#activity-entries-and-undo)) |
 
 ## The screen refreshes on an activity notification
 
