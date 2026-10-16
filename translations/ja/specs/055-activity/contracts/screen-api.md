@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/contracts/screen-api.md
-sourceHash: b1917b7b456e28fc5bb8f0bcbf9a13d4c414a3f714ebfdbcc8d08e0230b8842f
+sourceHash: 6390007f4474750c417155dd73589e59540096f0874e8dce1cb89024c9a95382
 ---
 
 # 契約: アクティビティの画面の API {#contract-screen-api-for-activity}
@@ -9,22 +9,31 @@ sourceHash: b1917b7b456e28fc5bb8f0bcbf9a13d4c414a3f714ebfdbcc8d08e0230b8842f
 
 ## `GET /api/activity` {#get-apiactivity}
 
-`operationId: listActivity`。項目の 1 ページを新しい順に返し、タブが示す件数も返す ([R-9](../research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status))。
+`operationId: listActivity`。項目の 1 ページを新しい順に返し、Status のメニュー、フッター、サイドバーが示す件数も返す ([R-9](../research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status))。
 
 | フィールド | 場所 | 型 | 必須 | 意味 |
 | --- | --- | --- | --- | --- |
 | `status` | query | `running` \| `attention` \| `done` | いいえ | その状態の項目だけ。ないときはすべて |
+| `feature` | query、繰り返し可 | `import` \| `scan` \| `duplicate_check` \| `auto_tagging` \| `work_info` \| `tags` \| `versions` \| `media_folders` \| `organize` | いいえ | それらの機能の項目だけ ([機能](#features))。ないときはすべて |
+| `decider` | query | `rule` \| `ai` \| `owner` | いいえ | その決定者の項目だけ |
+| `since` | query | date-time | いいえ | その時刻以降に作られた項目だけ |
+| `q` | query | string, 1–200 文字 | いいえ | 対象のラベルがそれを含む項目だけ。大文字と小文字を区別しない |
 | `cursor` | query | string | いいえ | 前のページの `nextCursor` |
 | `limit` | query | integer, 1–100 | いいえ | 既定は 50 |
 
-**応答**: `ActivityPage {items: ActivityEntry[], nextCursor?, counts: {running, attention, done}}` とともに `200`。
+**応答**: `ActivityPage {items: ActivityEntry[], nextCursor?, counts: {running, attention, done}, features: {<feature>: number}}` とともに `200`。`counts` は `status` 以外のすべての絞り込みを適用するので、Status のメニューは各選択肢が何件を並べるかを示す。`features` は Feature のメニューのために、`feature` 以外のすべての絞り込みを適用する。フッターとサイドバーは、絞り込みのない要求の `counts` を読む。
 
 | `ActivityEntry` のフィールド | 型 | 意味 |
 | --- | --- | --- |
 | `id` | integer | 項目 |
 | `kind`, `status`, `reason?`, `outcome?`, `decider`, `probability?`, `detail?` | [data-model.md](../data-model.md#activity_entries) のとおり | |
-| `subject` | `{kind, label, videoIds?}` | `videoIds` は、閲覧者が開ける各鍵の今の動画 id を持つ。動画のない鍵は除く ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
+| `subject` | `{kind, items: {label, videoId?}[]}` | 鍵の順に鍵ごとに 1 つの要素 (組なら 2 つ、それ以外は 1 つ)。`label` はその鍵について書いたときのまま (`subject_label`、`subject_label_b`)、`videoId` は閲覧者が開ける今の動画で、鍵に動画がないときはない ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `candidate` | boolean | 組について: その候補がまだ Duplicates にある |
+| `stage?` | `probe` \| `thumbnail` \| `seek_thumbnail` \| `preview` \| `fingerprint` | 失敗した `import` について: 諦めた段階。そのとき `detail` はそのメッセージを持つ |
+| `retryAt?` | date-time | 失敗した `version_judgement` について: そのバックオフが再び試す時刻 |
+| `feature` | string | 項目の機能 ([機能](#features)) |
+| `progress?` | `{stage, done, total}` | `waiting` を過ぎた `running` の `import` について: 今動いている段階と、`total` の 5 段階のうち終わった数 |
+| `undoes?` | `{kind, outcome?, tagName?}` | `undo` の項目について: 取り消された項目の種類と結果、およびタグごとの取り消しならそのタグ |
 | `tags?` | `{id, name, suggested, probability, undone}[]` | `auto_tag` について |
 | `retryRun`, `undoable` | boolean | 行が再試行と取り消しを示すか ([data-model.md、規則](../data-model.md#rules)) |
 | `undone` | boolean | 所有者が取り消した |
@@ -32,7 +41,25 @@ sourceHash: b1917b7b456e28fc5bb8f0bcbf9a13d4c414a3f714ebfdbcc8d08e0230b8842f
 
 | ステータス | `code` | 条件 |
 | --- | --- | --- |
-| `400` | `invalid_request` | 未知の `status`、不正な形のカーソル、範囲外の `limit` |
+| `400` | `invalid_request` | 未知の `status`、`feature`、`decider`、不正な形のカーソルや `since`、範囲外の `q` や `limit` |
+
+### 機能 {#features}
+
+各種類は 1 つの機能に属する。機能は Feature の絞り込みが示す単位である。
+
+| `feature` | 種類 |
+| --- | --- |
+| `import` | `import` |
+| `scan` | `scan` |
+| `duplicate_check` | `version_judgement` |
+| `auto_tagging` | `auto_tag` |
+| `work_info` | `work_info_fetch`, `work_info_apply` |
+| `tags` | `tag_attach`, `tag_detach`, `tag_keep`, `tag_reject` |
+| `versions` | `bundle`, `unbundle`, `make_representative`, `dismiss` |
+| `media_folders` | `media_folder_remove` |
+| `organize` | `organize_undo` |
+
+`undo` の項目は、それが取り消した項目の機能に属する。
 
 ## `POST /api/activity/{id}/retry` {#post-apiactivityidretry}
 

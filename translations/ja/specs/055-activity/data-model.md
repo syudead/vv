@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: a242cb3016ebcd39720e5670ff0e38e931a8a2324e394cdf95094b2c2d1f4841
+sourceHash: 5c2d6d96f920774e6fd8338b93c4958e876891469b48c2ab3126e6916f3513ba
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -22,21 +22,25 @@ sourceHash: a242cb3016ebcd39720e5670ff0e38e931a8a2324e394cdf95094b2c2d1f4841
 | --- | --- | --- | --- |
 | `id` | integer | 不可 | 主キー。ページの順序 ([R-9](research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status)) |
 | `kind` | text | 不可 | 下の種類のどれか |
+| `feature` | text | 不可 | その種類の機能 ([contracts/screen-api.md、機能](contracts/screen-api.md#features))。`undo` は取り消された項目のものを写す |
 | `subject_kind` | text | 不可 | `video`、`pair`、`scan`、`folder` のどれか |
 | `subject_key` | text | 不可 | 内容の鍵、組の小さい方の鍵、スキャンの id、または削除したメディアフォルダのパス ([R-10](research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `subject_key_b` | text | 可 | 組の大きい方の鍵 |
-| `subject_label` | text | 不可 | 表示名 (組では両方)、スキャンの起点、またはフォルダのパス。書いたとおり |
+| `subject_label` | text | 不可 | `subject_key` の表示名 (組では小さい方の鍵の表示名)、スキャンの起点、またはフォルダのパス。書いたとおり |
+| `subject_label_b` | text | 可 | 組で、`subject_key_b` の表示名。書いたとおり |
 | `status` | text | 不可 | `running`、`attention`、`done` のどれか ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | `reason` | text | 可 | `running` と `attention` について: 理由を参照 |
 | `outcome` | text | 可 | `done` について: 結果を参照 |
-| `detail` | text | 可 | 失敗についてのプロバイダか段階のメッセージ、失敗した段階、所有者の操作が変えたタグかまとまり |
+| `detail` | text | 可 | 失敗についてのプロバイダか段階のメッセージ、所有者の操作が変えたタグ、メディアフォルダの削除が取り除いた動画の数 |
+| `stage` | text | 可 | 失敗した `import` について、諦めた取り込みの段階 (`jobs.kind` の値) |
+| `undoes_id` | integer | 可 | `undo` の項目について、それが取り消した項目 |
 | `decider` | text | 不可 | `rule`、`ai`、`owner` のどれか ([R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)) |
 | `probability` | real | 可 | モデルが決めたか未決定のまま残した重複の組についての、モデルの答え |
 | `undo_keys` | text | 可 | まとめた組について、加わった側のメンバーの鍵と、その側の以前の代表の鍵を持つ JSON オブジェクト ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | `undone_by` | integer | 可 | この項目を取り消した所有者の項目 |
 | `created_at`、`updated_at` | integer | 不可 | Unix ミリ秒 |
 
-**関係**: `videos` へはなし。`undone_by` はほかの項目を指す。`(status, id)` と `(kind, subject_key, subject_key_b, id)` にインデックスを置く。
+**関係**: `videos` へはなし。`undone_by` はほかの項目を指す。`(status, id)`、`(feature, id)`、`(kind, subject_key, subject_key_b, id)` にインデックスを置く。`q` の絞り込みは、ほかの絞り込みが残した項目のラベルを走査する。数万行に文字列のインデックスは要らない。
 
 ### 種類 {#kinds}
 
@@ -60,7 +64,7 @@ sourceHash: a242cb3016ebcd39720e5670ff0e38e931a8a2324e394cdf95094b2c2d1f4841
 | --- | --- | --- |
 | `waiting` | running | ワーカーが取得する前の `import`、`auto_tag`、`version_judgement` |
 | `processing` | running | ワーカーが取得した |
-| `failed` | attention | `import` (ある段階が `MaxJobAttempts` の後に諦めた。`detail` がそれを示す)、`scan`、`auto_tag`、`version_judgement` (その再試行の時刻とともに) |
+| `failed` | attention | `import` (ある段階が `MaxJobAttempts` の後に諦めた。`stage` がそれを示し、`detail` がそのメッセージを持つ)、`scan`、`auto_tag`、`version_judgement` (その再試行の時刻とともに) |
 | `interrupted` | attention | 起動時に理由が `processing` の `running` だった項目 |
 | `no_connection` | attention | Ollama の接続が保存されていないのにモデルが要る `version_judgement` |
 | `undecided` | attention | 所有者に委ねた `version_judgement` |

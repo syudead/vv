@@ -27,14 +27,18 @@ case).
 | --- | --- | --- | --- |
 | `id` | integer | No | Primary key; the page order ([R-9](research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status)) |
 | `kind` | text | No | One of the kinds below |
+| `feature` | text | No | The kind's feature ([contracts/screen-api.md, Features](contracts/screen-api.md#features)); an `undo` copies the undone entry's |
 | `subject_kind` | text | No | `video`, `pair`, `scan` or `folder` |
 | `subject_key` | text | No | A content key, the smaller key of a pair, a scan id, or a removed media folder's path ([R-10](research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `subject_key_b` | text | Yes | The larger key of a pair |
-| `subject_label` | text | No | The display name (both, for a pair), the scan's origin, or the folder path, as written |
+| `subject_label` | text | No | The display name of `subject_key` (the smaller key, for a pair), the scan's origin, or the folder path, as written |
+| `subject_label_b` | text | Yes | For a pair, the display name of `subject_key_b`, as written |
 | `status` | text | No | `running`, `attention` or `done` ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | `reason` | text | Yes | For `running` and `attention`: see Reasons |
 | `outcome` | text | Yes | For `done`: see Outcomes |
-| `detail` | text | Yes | The provider's or stage's message for a failure, the failed stage, the tag or bundle the owner operation changed |
+| `detail` | text | Yes | The provider's or stage's message for a failure, the tag the owner operation changed, the number of videos a media-folder removal took out |
+| `stage` | text | Yes | For a failed `import`, the ingest stage that gave up (a `jobs.kind` value) |
+| `undoes_id` | integer | Yes | For an `undo` entry, the entry it undid |
 | `decider` | text | No | `rule`, `ai` or `owner` ([R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)) |
 | `probability` | real | Yes | The model's answer for a duplicate pair it decided or left undecided |
 | `undo_keys` | text | Yes | For a bundled pair, a JSON object with the member keys of the side that joined and that side's former representative key ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
@@ -42,7 +46,7 @@ case).
 | `created_at`, `updated_at` | integer | No | Unix milliseconds |
 
 **Relationships**: none to `videos`; `undone_by` refers to another entry.
-Indexes on `(status, id)` and `(kind, subject_key, subject_key_b, id)`.
+Indexes on `(status, id)`, `(feature, id)` and `(kind, subject_key, subject_key_b, id)`. The `q` filter scans the labels of the entries the other filters leave; tens of thousands of rows need no text index.
 
 ### Kinds
 
@@ -66,7 +70,7 @@ Indexes on `(status, id)` and `(kind, subject_key, subject_key_b, id)`.
 | --- | --- | --- |
 | `waiting` | running | `import`, `auto_tag`, `version_judgement` before a worker claims it |
 | `processing` | running | Claimed by a worker |
-| `failed` | attention | `import` (a stage gave up after `MaxJobAttempts`; `detail` names it), `scan`, `auto_tag`, `version_judgement` (with its retry time) |
+| `failed` | attention | `import` (a stage gave up after `MaxJobAttempts`; `stage` names it, `detail` holds its message), `scan`, `auto_tag`, `version_judgement` (with its retry time) |
 | `interrupted` | attention | An entry `running` with reason `processing` at startup |
 | `no_connection` | attention | `version_judgement` that needs the model with no Ollama connection saved |
 | `undecided` | attention | `version_judgement` left to the owner |
