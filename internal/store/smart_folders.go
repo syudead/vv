@@ -18,10 +18,11 @@ import (
 // smartFolderNow は編集の時刻の元である。
 var smartFolderNow = groupNow
 
-// smartRuleRefTables は欠けた参照を確かめる表である。タグの種類（SmartRefTagKind）は、その表が
-// main に入ってから確かめる（plan.md「Match smart folders by tag kind」）。
+// smartRuleRefTables は欠けた参照を確かめる表である。消したタグの種類も欠けた参照になる
+// （data-model.md「Merges」）。
 var smartRuleRefTables = map[domain.SmartRuleRefKind]string{
 	domain.SmartRefTag:          "tags",
+	domain.SmartRefTagKind:      "tag_kinds",
 	domain.SmartRefPerson:       "people",
 	domain.SmartRefOrganization: "organizations",
 }

@@ -10,9 +10,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// タグの種類の保存（specs/051-tag-kinds/data-model.md）。種類の変更も、タグの変更と同じく
-// 副作用（生成物の削除・ワーカーの起床・/api/events）を持たないので、取引のコミットだけで済む。
-// 種類を消すと、その種類のタグは tags.kind_id の on delete set null で種類なしになる。
+// タグの種類の保存（specs/051-tag-kinds/data-model.md）。種類の作成と名前の変更は、タグの変更と
+// 同じく副作用（生成物の削除・ワーカーの起床）を持たず、どのスマートフォルダの一致も変えないので、
+// 取引のコミットだけで済む。種類を消すと、その種類のタグは tags.kind_id の on delete set null で
+// 種類なしになり、その種類を名指す条件は一致を変えるので、db.commitMatchChange で確定して
+// domain.SmartFoldersChanged を発行する（specs/052-smart-folders/data-model.md「Notices」）。
 
 // tagKindColumns はタグの行（別名 tg）に結んだ種類（別名 tk）の id と名前を読む列である。
 // 問い合わせには tagKindJoin を添え、読んだ値は scannedTagKind で受ける。
@@ -140,9 +142,17 @@ func (s *TagStore) RenameTagKind(ctx context.Context, id int64, name string) (do
 }
 
 // DeleteTagKind は種類を消す。その種類のタグは残り、種類なしになる（on delete set null）。
-// id が無ければ domain.ErrTagKindNotFound を返す。
+// その種類を名指すスマートフォルダの条件は書き換えず、欠けた参照になる
+// （specs/052-smart-folders/data-model.md「Merges」）。id が無ければ domain.ErrTagKindNotFound を
+// 返し、何も書かない。
 func (s *TagStore) DeleteTagKind(ctx context.Context, id int64) error {
-	res, err := s.sql.ExecContext(ctx, `delete from tag_kinds where id = ?`, id)
+	tx, err := s.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	res, err := tx.ExecContext(ctx, `delete from tag_kinds where id = ?`, id)
 	if err != nil {
 		return fmt.Errorf("cannot delete the tag kind (id=%d): %w", id, err)
 	}
@@ -152,6 +162,9 @@ func (s *TagStore) DeleteTagKind(ctx context.Context, id int64) error {
 	}
 	if affected == 0 {
 		return domain.ErrTagKindNotFound
+	}
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+		return fmt.Errorf("cannot delete the tag kind (id=%d): %w", id, err)
 	}
 	return nil
 }

@@ -193,8 +193,7 @@ func (r SmartRule) Encode() (string, error) {
 }
 
 // Query は条件と同じ絞り込みの VideoQuery を返す（research.md R-3）。並べ順・カーソル・件数は
-// 呼び出し側が決める。TagKind は VideoQuery がタグの種類の絞り込みを持つまで写さない
-// （plan.md「Match smart folders by tag kind」）。
+// 呼び出し側が決める。TagKind はタグの種類の絞り込み（VideoQuery.TagKindID、#1136）に写す。
 func (r SmartRule) Query() VideoQuery {
 	return VideoQuery{
 		Query:           r.Q,
@@ -202,6 +201,7 @@ func (r SmartRule) Query() VideoQuery {
 		PlayableOnly:    r.Playable,
 		FavoriteOnly:    r.Favorite,
 		TagIDs:          slices.Clone(r.Tags),
+		TagKindID:       r.TagKind,
 		Person:          r.Person,
 		Organization:    r.Organization,
 		AddedWithinDays: derefInt(r.AddedWithin),
