@@ -1,6 +1,6 @@
 ---
 source: specs/057-home/plan.md
-sourceHash: 1e71e50635788c1154df2d4b0bf7017ceeb6c6f8ce405b0f496ab1f7107126f4
+sourceHash: 3e860e0f3a9b1d48035e2e6bcd31882f61d353d88d1a2d4bc371171a598e5187
 ---
 
 # 実装計画: オンボーディングで始まる棚のホーム {#implementation-plan-a-home-of-shelves-started-by-onboarding}
@@ -150,6 +150,7 @@ flowchart LR
   reads --> page
   page --> manage[棚を管理する]
   rules --> manage
+  ob --> manage
   ob --> obpage[オンボーディングの画面]
   page --> obpage
   fixed --> e2e[ブラウザーのテスト]
@@ -225,7 +226,7 @@ flowchart LR
 
 **範囲**: ホームでの棚の追加、削除、並べ替え。スマートフォルダのページの `Add to home` と `Remove from home`。`Reorganize`、最後の実行、`Start onboarding again` を持つ Settings のセクション。`ui-design.md` に従う ([R-7](research.md#r-7-a-shelf-is-a-smart-folder-with-a-home-position)、[R-9](research.md#r-9-one-run-at-a-time-queued-in-settings-triggered-by-events))。
 
-**依存**: ホームの棚を示し、そこから再生する。規則でホームを整理する。
+**依存**: ホームの棚を示し、そこから再生する。規則でホームを整理する。オンボーディングの段階を保ち、選んだ興味を棚にする (`Start onboarding again` は `PUT /api/onboarding` で段階を書く)。
 
 **受け入れ**: `task check` が通る。ページのテストが次を示す: `Reorganize` は `POST /api/home/organize` を呼び、棚を動かすと新しい順序を送り、`Start onboarding again` は段階を `folders` にする。画面が変わるので、見た目の確認が要る。
 
