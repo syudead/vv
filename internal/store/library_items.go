@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/syudead/vv/internal/domain"
@@ -194,6 +195,10 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	cte, args := chosenLocationsCTEFor(spec.scope, searchAudience, spec.searchExprs())
 	conditions, matchArgs := matchConditions(spec)
 	args = append(args, matchArgs...)
+	if spec.unshelved {
+		conditions = append(conditions, `videos.id not in (select value from json_each(?))`)
+		args = append(args, spec.shelved)
+	}
 	where := ""
 	if len(conditions) > 0 {
 		where = ` where ` + strings.Join(conditions, " and ")
@@ -275,6 +280,79 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	return cte, append(args, folderArgs...)
 }
 
+// shelvedQueryMaxArgs は shelvedVideos の問い合わせ 1 回に並べる棚の条件の引数の数の目安である。
+// 棚ごとの経路の条件は祖先の段ごとに引数を持ち、棚の数と経路の深さが上限なら、すべてを 1 回に並べると
+// SQLite のホスト変数の上限（32766）を超える。1 つの棚はこれを超えても 1 回で読む。
+const shelvedQueryMaxArgs = 8000
+
+// shelvedVideos は、見る人 audience に見せる動画のうち棚の経路の条件 shelves（homeShelfSpecs）の
+// どれかに一致する動画の id を、JSON の配列にして返す（specs/057-home/research.md R-11）。棚ごとの
+// 一致はカードの読み出しと同じ smartMatchFor で求める。棚は引数が shelvedQueryMaxArgs に収まる
+// まとまりごとに 1 回の問い合わせで読み、smart_base はまとまりごとに 1 度求める。
+func shelvedVideos(ctx context.Context, tx *sql.Tx, audience domain.Audience, shelves []listSpec) (string, error) {
+	matches := make([]smartMatch, len(shelves))
+	for i, shelf := range shelves {
+		matches[i] = smartMatchFor(shelf, `us`+strconv.Itoa(i))
+	}
+	shelved := []int64{}
+	for start := 0; start < len(matches); {
+		cte, args := smartBaseCTE(audience)
+		var conditions []string
+		var conditionArgs []any
+		end := start
+		for ; end < len(matches); end++ {
+			match := matches[end]
+			if end > start && len(args)+len(conditionArgs)+len(match.searchArgs)+len(match.args) > shelvedQueryMaxArgs {
+				break
+			}
+			if match.search != "" {
+				cte += `, ` + match.search
+				args = append(args, match.searchArgs...)
+			}
+			conditions = append(conditions, `(`+match.condition+`)`)
+			conditionArgs = append(conditionArgs, match.args...)
+		}
+		ids, err := queryInt64s(ctx, tx, cte+` select id from smart_base videos where `+strings.Join(conditions, " or "),
+			append(args, conditionArgs...)...)
+		if err != nil {
+			return "", fmt.Errorf("cannot read the videos on the home shelves: %w", err)
+		}
+		shelved = append(shelved, ids...)
+		start = end
+	}
+	encoded, err := json.Marshal(shelved)
+	if err != nil {
+		return "", fmt.Errorf("cannot encode the videos on the home shelves: %w", err)
+	}
+	return string(encoded), nil
+}
+
+// homeShelfSpecs は、ホームのフォルダの棚ごとの経路の条件を、見る人 audience の範囲と基準時刻 now の
+// 絞り込み（smartFolderSpec）にして棚の並びの順に返す。名指す実体の無い棚は何にも一致しないので
+// 入れない（specs/052-smart-folders/research.md R-9）。
+func homeShelfSpecs(ctx context.Context, tx *sql.Tx, audience domain.Audience, now int64) ([]listSpec, error) {
+	folders, err := homeShelves(ctx, tx)
+	if err != nil {
+		return nil, err
+	}
+	specs := make([]listSpec, 0, len(folders))
+	for _, folder := range folders {
+		rules, err := smartFolderPathRules(ctx, tx, folder.ID)
+		if err != nil {
+			return nil, err
+		}
+		missing, err := missingSmartRuleRefs(ctx, tx, rules)
+		if err != nil {
+			return nil, err
+		}
+		if len(missing) > 0 {
+			continue
+		}
+		specs = append(specs, smartFolderSpec(audience, rules, folder.Sort, now))
+	}
+	return specs, nil
+}
+
 // itemWatchCondition は項目の視聴状態の絞り込みを items に対する条件句にする。
 // 絞り込まないときは空の句を返す。値は検査済みの列挙なので、引数で渡す。
 func itemWatchCondition(filter domain.WatchFilter) (string, []any) {
@@ -347,6 +425,15 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	spec := libraryListSpec(audience, q, tagIDs)
 	if spec.smartFolders, err = librarySmartFolders(ctx, tx, audience, q, spec.now); err != nil {
 		return domain.LibraryPage{}, err
+	}
+	if spec.unshelved {
+		shelves, err := homeShelfSpecs(ctx, tx, audience, spec.now)
+		if err != nil {
+			return domain.LibraryPage{}, err
+		}
+		if spec.shelved, err = shelvedVideos(ctx, tx, audience, shelves); err != nil {
+			return domain.LibraryPage{}, err
+		}
 	}
 	page, err := listLibraryPageTx(ctx, tx, spec)
 	if err != nil {

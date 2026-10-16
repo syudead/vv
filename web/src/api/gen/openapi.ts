@@ -6229,6 +6229,13 @@ export interface operations {
                  *     （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
                  */
                 tagKind?: components["parameters"]["TagKindFilter"];
+                /**
+                 * @description true ならホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも
+                 *     一致しない動画だけにする。ほかの絞り込みと AND で組み合わさり、スマートフォルダの
+                 *     項目は出さない。動画と棚の対応は保存せず、読むたびに求める。ゲストも使える
+                 *     （specs/057-home/research.md R-11）
+                 */
+                unshelved?: boolean;
             };
             header?: never;
             path?: never;

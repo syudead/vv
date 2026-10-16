@@ -5153,6 +5153,12 @@ type ListLibraryParams struct {
 	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
 	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
+
+	// Unshelved true ならホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも
+	// 一致しない動画だけにする。ほかの絞り込みと AND で組み合わさり、スマートフォルダの
+	// 項目は出さない。動画と棚の対応は保存せず、読むたびに求める。ゲストも使える
+	// （specs/057-home/research.md R-11）
+	Unshelved *bool `form:"unshelved,omitempty" json:"unshelved,omitempty"`
 }
 
 // ListLibraryIdsParams defines parameters for ListLibraryIds.
@@ -7289,6 +7295,19 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "unshelved" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unshelved", r.URL.Query(), &params.Unshelved, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unshelved"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unshelved", Err: err})
 		}
 		return
 	}

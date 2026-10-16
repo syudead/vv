@@ -502,19 +502,29 @@ export function toLibraryItems(
   });
 }
 
+/** ListLibraryParams はライブラリの項目の一覧（GET /api/library）の問い合わせ条件である。 */
+export interface ListLibraryParams extends ListVideosParams {
+  /**
+   * true ならホームのどの棚にも一致しない動画だけにする（specs/057-home/research.md R-11）。
+   * false は既定なので送らない。
+   */
+  unshelved?: boolean;
+}
+
 /**
  * listLibrary はライブラリの一覧を1ページ取得する。項目は動画、グループ、絞り込みの無い
  * 一覧ではスマートフォルダの要約である（specs/017-folder-groups/contracts/library-api.md §1、
  * specs/052-smart-folders/data-model.md「Library items」）。
  */
 export async function listLibrary(
-  params: ListVideosParams = {},
+  params: ListLibraryParams = {},
 ): Promise<LibraryPageResponse> {
   const query = new URLSearchParams();
   setListFilters(query, params);
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
   setAddedLengthFilter(query, params);
+  if (params.unshelved === true) query.set("unshelved", "true");
   const page = await request<components["schemas"]["LibraryPage"]>(
     `/api/library?${query.toString()}`,
     { signal: params.signal },
