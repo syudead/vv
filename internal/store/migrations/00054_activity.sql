@@ -58,6 +58,18 @@ create table activity_entry_tags (
     primary key (entry_id, tag_id)
 ) without rowid;
 
+-- auto_tag の記録が付けたタグの行が今ある利用者データの鍵: 書いた鍵と、束ねる・解くときにその行を写した先の鍵。
+-- 行を写した先が別のメンバーの行で埋まっていたとき（代表の行が勝つ）や、解いて残る 1 本の行を集まりの行で置き換えた
+-- ときは、その鍵は入らない。取り消しはこの鍵の行だけを消し、対象の動画の今の鍵が無ければ already_reverted にする
+-- （R-7）。利用者データ。
+create table activity_entry_tag_keys (
+    entry_id    integer not null,
+    tag_id      integer not null,
+    user_key    text    not null,
+    primary key (entry_id, tag_id, user_key)
+) without rowid;
+create index activity_entry_tag_keys_key_idx on activity_entry_tag_keys (user_key);
+
 -- 所有者のタグの操作が触った内容の鍵。集まりの鍵への操作はその時のメンバー全員の鍵。取り消しは、タグの id と
 -- 内容の鍵で所有者の後の操作を探す（R-7）。利用者データ。
 create table activity_entry_keys (
@@ -87,5 +99,6 @@ alter table auto_tag_queue drop column activity_id;
 alter table jobs drop column activity_id;
 drop table if exists video_version_judging_holds;
 drop table if exists activity_entry_keys;
+drop table if exists activity_entry_tag_keys;
 drop table if exists activity_entry_tags;
 drop table if exists activity_entries;

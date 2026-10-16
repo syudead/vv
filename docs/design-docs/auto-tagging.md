@@ -196,9 +196,13 @@ Undo is one tag at a time, in one `ActivityStore` transaction
    greatest entry id when the run wrote its result. One means the owner
    decided the tag again after the run, and nothing is deleted; a rename of
    the tag or a new representative in between does not hide it.
-2. Otherwise delete the `video_tags` row at the recorded user key or at the
-   video's current user key when bundling moved it, while a suggested tag is
-   still suggested. A bundle's row is shared, so the tag leaves every member.
+2. Otherwise delete the `video_tags` rows that descend from the row the run
+   wrote: the recorded user key and every key bundling or unbundling copied
+   the row to (`activity_entry_tag_keys`), while a suggested tag is still
+   suggested. A bundle's row is shared, so the tag leaves every member. When
+   the video's current key is not among them, another member's row won at
+   bundling (the owner tagged the representative by hand, say); that row
+   stays and the undo is `already_reverted`.
 3. Record the tag for the video in `auto_tag_rejections` in either case, so
    "Tag all videos again" never asks about it or adds it.
 4. Write the owner's `undo` entry, `done`/`completed` when the row was

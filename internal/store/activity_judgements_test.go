@@ -690,3 +690,31 @@ func TestUndoAutomaticBundleAfterTheJoinedKeyWasRekeyedBySuccession(t *testing.T
 		t.Errorf("外した組 = %v, want [key-b|key-e]", pairs)
 	}
 }
+
+// 自動の束ねの後に所有者が別の動画を加えても、代表の集まりにいたメンバーの所属は変わらないので bundle の記録は
+// 加えた動画にだけ書き、古い記録の取り消しは加わった側を外して completed になる（research.md R-6・R-7）。所有者が
+// 加わった側を外して束ね直した場合は TestUndoAfterOwnerRebundledIsAlreadyReverted。
+func TestUndoAutomaticBundleAfterTheOwnerAddedAMember(t *testing.T) {
+	db, ids := judgementFixture(t)
+	a, b, c := ids["a"], ids["b"], ids["c"]
+	entry := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule})
+	joined, err := domain.DecodeVersionBundleUndoKeys(entry.UndoKeys)
+	if err != nil || !slices.Equal(joined.Members, []string{"key-a"}) {
+		t.Fatalf("加わった側 = %+v, %v, want key-a", joined, err)
+	}
+	bundle(t, db, b, b, c)
+	expectOwnerEntries(t, db, 0, ownerEntry{domain.ActivityBundle, "key-c", "", "c", ""})
+
+	undo := undoEntry(t, db, entry.ID)
+	if undo.Outcome != domain.ActivityCompleted {
+		t.Errorf("undo の結果 = %s, want completed", undo.Outcome)
+	}
+	if ownerVideo(t, db, a).Versions != nil {
+		t.Error("加わった側の a がまだ集まりに属する")
+	}
+	for _, id := range []int64{b, c} {
+		if versions := ownerVideo(t, db, id).Versions; versions == nil || versions.Count != 2 {
+			t.Errorf("所有者が加えたまとまり（動画 %d） = %+v, want b と c の 2 本", id, versions)
+		}
+	}
+}

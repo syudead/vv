@@ -129,7 +129,9 @@ decided again after the result, even within the same second; an owner change
 made while the pair waited or was being judged does not count. For `same`, a joined member with
 a later owner `bundle`, `unbundle` or `organize_undo` entry no longer counts
 as part of the automatic bundle and the undo leaves it where the owner put
-it; when no member is left to split, the undo is `already_reverted`. For
+it; when no member is left to split, the undo is `already_reverted`. A
+`bundle` entry is written only for members whose membership changed, so the
+owner adding a video to the automatic bundle does not hold its undo. For
 `different`, the dismissal row does not say who wrote it, so a later owner
 `dismiss` entry on the same pair means the owner decided the pair again, and
 the undo keeps the dismissal.

@@ -147,6 +147,12 @@ bundle.
 | Remove a media folder, which removes its videos from the library | — |
 | Undo of an automatic decision, and the drag-organize undo | — |
 
+A `bundle` entry is written per member whose membership changed: a video that
+was not bundled, or a member of a bundle other than the one the representative
+was in. When the owner adds a video to a bundle, the bundle's own members only
+gain a member and get no entry, so their automatic bundle can still be undone
+([R-7](#r-7-undo-restores-the-state-and-always-records-the-exclusion)).
+
 **Rationale**: These are the changes the automatic processes also make, so a
 row from the owner explains why an automatic decision no longer holds.
 Rejected: every mutating endpoint, because the log would be dominated by
@@ -181,11 +187,15 @@ merged bundle, or with an owner `bundle`, `unbundle` or `organize_undo` entry
 newer than the judgement is skipped: the owner put it where it is.
 
 An automatic tag is written on the bundle's user key; the entry keeps that key
-and the tag. The undo deletes the `video_tags` row at that key, or at the
-subject video's current key after bundling moved it, unless an owner
-`tag_attach`, `tag_detach`, `tag_keep` or `tag_reject` entry for that video and
-tag is newer than the run's result; then the owner's own attachment stays as
-the owner left it. The owner entry names the tag by `tag_id` and the content
+and the tag, and `activity_entry_tag_keys` keeps every key that bundling or
+unbundling copied the row to. The undo deletes the `video_tags` rows at those
+keys and no other, unless an owner `tag_attach`, `tag_detach`, `tag_keep` or
+`tag_reject` entry for that video and tag is newer than the run's result; then
+the owner's own attachment stays as the owner left it. A new bundle takes the
+representative's rows, so when another member's row of the tag (the owner's,
+say) became the bundle's, the subject's current key is not among the run's keys:
+the undo deletes the run's hidden row, leaves the bundle's row, and is
+`already_reverted`. The owner entry names the tag by `tag_id` and the content
 keys the change touched (`activity_entry_keys`; every member when the tag was
 changed on a bundle), so the match survives a rename of the tag and a change
 of the bundle's representative.

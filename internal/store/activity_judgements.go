@@ -337,8 +337,8 @@ func returnPairActivitiesToWaiting(
 // moveActivityKey は、同じパスの中身が from から to に変わって引き継がれたとき、記録が持つ鍵 from を to に
 // 付け替える（data-model.md「Rules」）。開いている記録も終わった記録も付け替えるので、その後の取り消しは利用者
 // データと一緒に動いた行を新しい鍵で見つける（research.md R-7）。組の記録は movePairActivityKey、動画の記録は
-// 対象の鍵、auto_tag の記録が付けたタグは書いた鍵（user_key）、自動の束ねの記録は加わった側の鍵（undo_keys）で
-// ある。付け替えたかを返す。
+// 対象の鍵、auto_tag の記録が付けたタグは書いた鍵（user_key）と行がある鍵（activity_entry_tag_keys）、自動の束ねの
+// 記録は加わった側の鍵（undo_keys）である。付け替えたかを返す。
 func moveActivityKey(ctx context.Context, tx *sql.Tx, from, to string, now time.Time) (bool, error) {
 	moved, err := movePairActivityKey(ctx, tx, from, to, now)
 	if err != nil {
@@ -347,6 +347,7 @@ func moveActivityKey(ctx context.Context, tx *sql.Tx, from, to string, now time.
 	for _, statement := range []string{
 		`update activity_entries set subject_key = ?2, updated_at = ?3 where subject_kind = 'video' and subject_key = ?1`,
 		`update activity_entry_tags set user_key = ?2 where user_key = ?1`,
+		`update or ignore activity_entry_tag_keys set user_key = ?2 where user_key = ?1`,
 		`update or ignore activity_entry_keys set content_key = ?2 where content_key = ?1`,
 	} {
 		result, err := tx.ExecContext(ctx, statement, from, to, now.UnixMilli())

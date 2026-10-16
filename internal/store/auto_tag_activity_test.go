@@ -462,3 +462,103 @@ func TestUndoAutoTagAfterTheSubjectJoinedABundle(t *testing.T) {
 		t.Fatalf("取り消したタグを候補にした: %+v", candidates)
 	}
 }
+
+// ownerTagContest は、判定が p1 に cat を付け、所有者が p2 に cat を手で付けてから、p1 と p2 を representative
+// （"p1" か "p2"）を代表に束ねる。集まりの行は代表の行の写しなので、判定の行と所有者の行のどちらが集まりの行に
+// なるかは代表で決まる（research.md R-7）。判定の記録・cat・p1 と p2 の動画の id・鍵（集まりの鍵は "bundle"）を返す。
+func ownerTagContest(t *testing.T, representative string) (*DB, domain.ActivityEntry, domain.Tag, map[string]int64, map[string]string) {
+	t.Helper()
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	videos := map[string]int64{"p1": ids[fixturePath("/media/pair/p1.mp4")], "p2": ids[fixturePath("/media/pair/p2.mp4")]}
+	keys := map[string]string{"p1": "key" + fixturePath("/media/pair/p1.mp4"), "p2": "key" + fixturePath("/media/pair/p2.mp4")}
+	cat := createTestTag(t, db, "cat")
+	entry := runAutoTag(t, db, videos["p1"], domain.ActivityByRule, domain.AutoTagSelection{
+		Confirmed: []int64{cat.ID}, Probabilities: map[int64]float64{cat.ID: 0.91},
+	})
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{videos["p2"]}, cat.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Versions().Bundle(ctx, []int64{videos["p1"], videos["p2"]}, videos[representative]); err != nil {
+		t.Fatal(err)
+	}
+	keys["bundle"] = ownerVideo(t, db, videos["p1"]).UserKey
+	return db, entry, cat, videos, keys
+}
+
+// 判定が p1 に付けたタグを、所有者が p2 に手で付けてから p2 を代表に束ねると、集まりの行は所有者の p2 の行の写しで、
+// 判定の行は p1 の鍵に隠れて残る。取り消しは判定が書いた行とその写しだけを消す（activity_entry_tag_keys）ので、
+// 集まりの所有者のタグは残し、隠れた判定の行を消して already_reverted になる（research.md R-7）。
+func TestUndoAutoTagKeepsTheOwnersTagThatWonTheBundle(t *testing.T) {
+	db, entry, cat, _, keys := ownerTagContest(t, "p2")
+
+	undo, err := db.Activity().UndoAutoTag(context.Background(), entry.ID, cat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if undo.Outcome != domain.ActivityAlreadyReverted {
+		t.Fatalf("undo の記録 = %+v, want already_reverted", undo)
+	}
+	for _, name := range []string{"bundle", "p2"} {
+		if got := manualTagIDs(t, db, keys[name]); !slices.Equal(got, []int64{cat.ID}) {
+			t.Errorf("取り消しが所有者のタグを消した（%s）: %v", name, got)
+		}
+	}
+	if got := manualTagIDs(t, db, keys["p1"]); len(got) != 0 {
+		t.Errorf("判定が書いた p1 の行が残った: %v", got)
+	}
+	for _, name := range []string{"bundle", "p1"} {
+		if !rejectedFor(t, db, keys[name], cat.ID) {
+			t.Errorf("%s に却下が残っていない", name)
+		}
+	}
+}
+
+// 逆に、判定が付けた p1 を代表に束ねると、集まりの行は判定の行の写しである。取り消しは集まりの行と p1 の行を消して
+// completed になり、所有者が p2 に付けた行は p2 の鍵に隠れたまま残る。
+func TestUndoAutoTagRemovesTheRunsRowThatWonTheBundle(t *testing.T) {
+	db, entry, cat, _, keys := ownerTagContest(t, "p1")
+
+	undo, err := db.Activity().UndoAutoTag(context.Background(), entry.ID, cat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if undo.Outcome != domain.ActivityCompleted {
+		t.Fatalf("undo の記録 = %+v, want completed", undo)
+	}
+	for _, name := range []string{"bundle", "p1"} {
+		if got := manualTagIDs(t, db, keys[name]); len(got) != 0 {
+			t.Errorf("%s に取り消したタグが残った: %v", name, got)
+		}
+	}
+	if got := manualTagIDs(t, db, keys["p2"]); !slices.Equal(got, []int64{cat.ID}) {
+		t.Errorf("p2 の所有者のタグ = %v, want cat のまま", got)
+	}
+}
+
+// 所有者の p2 の行が勝った集まりから代表の p2 を外すと、残る p1 は集まりの行（所有者の行の写し）で自分の行を置き換え、
+// 判定が書いた行は無くなる。取り消しは p1 の今の行を判定の行の写しとは見ず、何も消さずに already_reverted になる。
+func TestUndoAutoTagAfterTheBundleRowReplacedTheSubjects(t *testing.T) {
+	db, entry, cat, videos, keys := ownerTagContest(t, "p2")
+	ctx := context.Background()
+	if _, err := db.Versions().Unbundle(ctx, videos["p2"]); err != nil {
+		t.Fatal(err)
+	}
+	if got := manualTagIDs(t, db, keys["p1"]); !slices.Equal(got, []int64{cat.ID}) {
+		t.Fatalf("解いた後の p1 のタグ = %v, want 集まりの cat", got)
+	}
+
+	undo, err := db.Activity().UndoAutoTag(ctx, entry.ID, cat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if undo.Outcome != domain.ActivityAlreadyReverted {
+		t.Fatalf("undo の記録 = %+v, want already_reverted", undo)
+	}
+	if got := manualTagIDs(t, db, keys["p1"]); !slices.Equal(got, []int64{cat.ID}) {
+		t.Errorf("取り消しが集まりから受け継いだタグを消した: %v", got)
+	}
+	if !rejectedFor(t, db, keys["p1"], cat.ID) {
+		t.Error("却下が残っていない")
+	}
+}

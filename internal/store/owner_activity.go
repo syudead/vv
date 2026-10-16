@@ -166,15 +166,17 @@ func recordManualTagActivity(
 }
 
 // recordOwnerBundle は所有者が members を 1 つの集まりに束ねたことを記録する。その中の組の開いている
-// version_judgement の記録を所有者が決めたとして閉じ、メンバーごとに bundle の記録を書く。
-// VersionStore.Bundle と OrganizeStore.Bundle が共有する。
-func recordOwnerBundle(ctx context.Context, tx *sql.Tx, c *changes, members []string) error {
+// version_judgement の記録を所有者が決めたとして閉じ、所属が変わったメンバー joined（bundlePlan.joined）ごとに
+// bundle の記録を書く。代表が属していた集まりのメンバーには書かない: 所有者はそのメンバーを置き直していないので、
+// 自動の束ねの取り消しはそのメンバーをまだ外せる（research.md R-6・R-7）。VersionStore.Bundle と
+// OrganizeStore.Bundle が共有する。
+func recordOwnerBundle(ctx context.Context, tx *sql.Tx, c *changes, members, joined []string) error {
 	now := time.Now()
 	if err := closePairActivities(ctx, tx, c, members, domain.ActivityDecidedByOwner, domain.ActivityByOwner, 0,
 		now); err != nil {
 		return err
 	}
-	return recordOwnerVideoActivity(ctx, tx, c, domain.ActivityBundle, ownerVideoChanges(members, ""), now)
+	return recordOwnerVideoActivity(ctx, tx, c, domain.ActivityBundle, ownerVideoChanges(joined, ""), now)
 }
 
 // markDecided は、自動の結果を書いた記録 id に、いまの記録の id の最大値を decided_mark として残す。記録は待ち行列に
