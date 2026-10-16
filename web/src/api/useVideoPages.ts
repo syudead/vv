@@ -184,6 +184,9 @@ export function useVideoPages({
           person: current.person,
           organization: current.organization,
           tagKind: current.tagKind,
+          addedWithin: current.addedWithin,
+          minDuration: current.minDuration,
+          maxDuration: current.maxDuration,
         };
         const fetchOne = (cursorFrom: string | undefined) =>
           target !== undefined

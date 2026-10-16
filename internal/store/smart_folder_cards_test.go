@@ -170,3 +170,40 @@ func TestSmartFolderCardsOfAFolderWithAMissingTag(t *testing.T) {
 		t.Errorf("ゲストのカード = %+v, want 空", got)
 	}
 }
+
+// 再生可否とお気に入りのみの条件は、カードの一致する動画にも掛かる。再生できるのは調べ終えて再生
+// できる動画（ep2・p2 は調べていない）で、お気に入りのみは動画のお気に入りである。
+func TestSmartFolderCardsApplyPlayableAndFavoriteRules(t *testing.T) {
+	db, ids := itemsFixture(t)
+	solo, x, ep2, p2 := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")],
+		ids[fixturePath("/media/show/ep2.mp4")], ids[fixturePath("/media/pair/p2.mp4")]
+	cat := attachNamedTag(t, db, "猫", solo, x, ep2, p2)
+	favoriteVideos(t, db, true, x, p2)
+	all := newSmartFolder(t, db, "猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
+	playable := newSmartFolder(t, db, "再生できる猫", domain.SmartRule{Tags: []int64{cat}, Playable: true}, domain.SortTitleAsc, 0)
+	favorite := newSmartFolder(t, db, "お気に入りの猫", domain.SmartRule{Tags: []int64{cat}, Favorite: true}, domain.SortTitleAsc, 0)
+	both := newSmartFolder(t, db, "再生できるお気に入りの猫", domain.SmartRule{Tags: []int64{cat}, Playable: true, Favorite: true},
+		domain.SortTitleAsc, 0)
+
+	cards := smartFolderCards(t, db, domain.AudienceOwner, all, playable, favorite, both)
+	if len(cards) != 4 {
+		t.Fatalf("cards = %+v", cards)
+	}
+	for i, want := range []struct {
+		count int
+		open  int64
+		size  int64
+	}{
+		// 題名の順は ep2・p2・solo・x で、開くのは見終えていない最初の動画（solo は見終えた）。
+		{4, ep2, 1050},
+		{2, x, 700},
+		{2, p2, 150},
+		{1, x, 100},
+	} {
+		card := cards[i]
+		if card.VideoCount != want.count || card.OpenVideoID != want.open || card.SizeBytes != want.size {
+			t.Errorf("%s のカード = 本数 %d・開く %d・大きさ %d, want %d・%d・%d",
+				card.Name, card.VideoCount, card.OpenVideoID, card.SizeBytes, want.count, want.open, want.size)
+		}
+	}
+}

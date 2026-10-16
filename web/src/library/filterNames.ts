@@ -10,8 +10,8 @@ import {
   type Tag,
 } from "../api/tags";
 
-// 条件のチップが名前を引くフック。ライブラリの「Filtering by」の行
-// （ActiveTagFilters）と、スマートフォルダのページの条件の行が共有する。
+// 絞り込みのチップとスマートフォルダの条件の欄が名前を引くための読み込み
+// （ライブラリの「Filtering by」の行と specs/052-smart-folders/ui-design.md「Conditions」）。
 
 /** useTagNames は共有のタグの一覧を読み、絞り込み中のタグの名前を引けるようにする。 */
 export function useTagNames(tagIds: readonly number[]): Map<number, Tag> {
