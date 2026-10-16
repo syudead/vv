@@ -4,6 +4,7 @@ import { Link, Navigate, useLocation } from "react-router";
 
 import { t } from "../i18n";
 import { useDocumentTitle } from "../videoList/pageHooks";
+import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { PageHeader } from "../ui/patterns/page-header";
 import {
   SettingsNav,
@@ -102,10 +103,13 @@ function SettingsPageView({
  *
  * 今のページの節だけを組み込むので、ページを移ると前のページの未保存の入力は失われ、各ページは
  * 自分の読み込みだけをする。ページごとに key を変え、移った先のページを初めから組む。
+ * 一覧の列は貼り付いたまま見えているので、長いページの途中から別のページへ移ったときは、移った先を
+ * 先頭から見せる（題と最初の操作が見えるように）。
  */
 export default function SettingsPage() {
   const location = useLocation();
   const route = settingsRoute(location.pathname, location.hash);
+  useScrollTopOnChange(route.kind === "replace" ? undefined : route.page.slug);
   if (route.kind === "replace") return <Navigate to={route.to} replace />;
   return (
     <SettingsPageView

@@ -1,6 +1,6 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   currentLocation,
@@ -117,6 +117,19 @@ describe("SettingsPage: pages", () => {
       await screen.findByRole("heading", { level: 1, name: "Library" }),
     ).toBeDefined();
     expect(currentLocation()).toBe("/settings/library");
+  });
+
+  it("opens the next page at its top when an entry is pressed", async () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    const user = userEvent.setup();
+    renderSettings("/settings/scan");
+    await screen.findByRole("heading", { level: 1, name: "Scan" });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    await user.click(within(pageList()).getByRole("link", { name: "Plugins" }));
+    await screen.findByRole("heading", { level: 1, name: "Plugins" });
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" });
+    scrollTo.mockRestore();
   });
 
   it.each(["/settings", "/settings/library"])(
