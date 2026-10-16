@@ -119,6 +119,59 @@ func TestParseWorkInfoPluginManifestKeepsDefaultAndOptions(t *testing.T) {
 	}
 }
 
+// 拒んだマニフェストの理由は、反した項目と規則を名指す（specs/056-plugin-tooling/contracts/plugin-cli.md）。
+func TestCheckWorkInfoPluginManifestNamesTheFieldAndTheRule(t *testing.T) {
+	const ok = `"contract":1,"name":"p","version":"1","operations":["fetch"]`
+	cases := []struct {
+		name string
+		data string
+		want WorkInfoPluginManifestError
+	}{
+		{"not an object", `[1]`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "", "must be a JSON object"}},
+		{"no contract", `{"name":"p"}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "contract", "must be an integer"}},
+		{"contract 2", `{"contract":2}`,
+			WorkInfoPluginManifestError{WorkInfoPluginContractUnsupported, "contract", "must be 1"}},
+		{"operations of another type", `{"contract":1,"name":"p","version":"1","operations":{"fetch":true}}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "operations", "must be an array"}},
+		{"name with upper case", `{"contract":1,"name":"P","version":"1","operations":["fetch"]}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "name", "must be 1 to 64 characters of a-z, 0-9, - and ."}},
+		{"repeated operation", `{"contract":1,"name":"p","version":"1","operations":["fetch","fetch"]}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "operations", "must list search, fetch or both, each at most once"}},
+		{"second setting's default outside the options",
+			`{` + ok + `,"settings":[{"key":"a","label":"A"},{"key":"k","label":"L","default":"fr","options":["ja","en"]}]}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[1].default", "must be one of options"}},
+		{"secret with options", `{` + ok + `,"settings":[{"key":"k","label":"L","secret":true,"options":["a","b"]}]}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[0].options", "is not allowed on a secret setting"}},
+		{"repeated key", `{` + ok + `,"settings":[{"key":"k","label":"L"},{"key":"k","label":"M"}]}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[1].key", "must be unique within the manifest"}},
+		{"second setting's label of another type", `{` + ok + `,"settings":[{"key":"a","label":"A"},{"key":"b","label":42}]}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[1].label", "must be a string"}},
+		{"first setting's secret of another type", `{` + ok + `,"settings":[{"key":"a","label":"A","secret":"yes"}]}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[0].secret", "must be a boolean"}},
+		{"setting that is not an object", `{` + ok + `,"settings":[{"key":"a","label":"A"},42]}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[1]", "must be an object"}},
+		{"settings of another type", `{` + ok + `,"settings":{"key":"a"}}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings", "must be an array"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, got := CheckWorkInfoPluginManifest([]byte(tc.data))
+			if got == nil || *got != tc.want {
+				t.Fatalf("rejection = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+	if _, got := CheckWorkInfoPluginManifest([]byte(`{` + ok + `}`)); got != nil {
+		t.Fatalf("valid manifest rejected: %v", got)
+	}
+	err := &WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[0].default", "must be one of options"}
+	if got, want := err.Error(), "manifest_invalid: settings[0].default must be one of options"; got != want {
+		t.Fatalf("Error() = %q, want %q", got, want)
+	}
+}
+
 func TestWorkInfoPluginStateOf(t *testing.T) {
 	if got := WorkInfoPluginStateOf(WorkInfoPluginNotWasm, "d", "d"); got != WorkInfoPluginInvalid {
 		t.Fatalf("state with a problem = %q", got)
