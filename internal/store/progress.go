@@ -29,7 +29,8 @@ import (
 //
 // 保存で domain.WatchState が変わるときだけ、確定後に domain.SmartFoldersChanged を発行する
 // （specs/052-smart-folders/research.md R-12）。再生中は数秒ごとに保存されるので、視聴状態の
-// 変わらない保存は知らせない。
+// 変わらない保存は知らせない。保存のたびに、ホームの続きから見る棚の保持は捨てる
+// （home_shelf_cache.go）。
 func (p *PlaybackStore) SaveProgress(
 	ctx context.Context, contentKey string, progress domain.Progress, play *domain.Play,
 ) (domain.Progress, error) {
@@ -75,6 +76,9 @@ func (p *PlaybackStore) SaveProgress(
 	if err := p.db.commitMatchChangeIf(ctx, tx, before != domain.ClassifyWatch(&progress)); err != nil {
 		return domain.Progress{}, fmt.Errorf("cannot save the playback position (%s): %w", contentKey, err)
 	}
+	// 続きから見る棚は最後に再生した順なので、視聴状態の変わらない保存でも並びが変わる
+	// （specs/057-home/research.md R-13）。
+	p.db.homeShelves.dropKind(domain.HomeShelfContinue)
 
 	progress.UpdatedAt = updatedAt.Truncate(time.Second)
 	return progress, nil
