@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/activity.md
-sourceHash: 032729660260c4bb554178e215583b6ef01e88fbc6179c3e635802cb239578cc
+sourceHash: 2eecb97f2ee959f6eaa8dbd684d38e76c20644c21d693ad11e08a2ffe7775112
 ---
 
 # 活動ログ {#activity-log}
@@ -39,7 +39,29 @@ stateDiagram-v2
   attention --> done: 新しい項目に置き換えられる
 ```
 
-`import` 項目は、そのジョブのいずれかが保留中の間は `running` (いずれかが取得されるまでは `waiting`)、段階が諦めたときは `attention`/`failed`、それ以外は `done`/`completed` だ (`ImportActivityState`)。
+## 取り込みと失敗したスキャン {#imports-and-failed-scans}
+
+動画の取り込みは、その 5 つの取り込み段階に対する 1 つの `import` 項目だ ([R-3](../../specs/055-activity/research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages))。各ジョブの行は、それが属する項目の id を保持する ([`internal/store/activity_import.go`](../../internal/store/activity_import.go))。
+
+| 出来事 | 項目 |
+| --- | --- |
+| 項目が `running` である保留中のジョブを持つ動画にジョブが積まれる | ジョブはその項目に加わる |
+| そのような項目のない動画にジョブが積まれる | 積んだ者の決定者を持つ新しい `running`/`waiting` 項目 |
+| ジョブが取得され、その項目が `running` でない (起動時に中断された、またはこの機能より前に積まれた) | `rule` による新しい項目。動画の保留中のジョブをすべて引き取り、古い項目を置き換える |
+| 項目のジョブが完了または失敗する | 項目を集約し直す |
+
+集約 (`ImportActivityState`) は、項目のジョブのいずれかが保留中の間は `running` (いずれかが取得されるまでは `waiting`)、段階が諦めたときは `attention`/`failed` で、その段階を `stage` に、そのメッセージを `detail` に持ち、それ以外は `done`/`completed` だ。完了した項目は決して `running` に戻らないので、ジョブを再び積む再スキャン、再プローブ、再試行は新しい項目を開く。
+
+決定者は実行を開始した者だ ([R-5](../../specs/055-activity/research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run))。
+
+| 実行 | 決定者 |
+| --- | --- |
+| 手動スキャン、再プローブ、活動ログからの再試行 | `owner` |
+| 監視スキャン、起動時の再開、新しい項目を開く取得 | `rule` |
+
+取り込みキューのポート (`scanner.Queue`) は決定者を受け取り、`app.Scans` はスキャンの開始時の決定者を渡す。
+
+スキャンは、`interrupted` 以外の理由で `failed` として終わったときにだけ `scan` 項目を書く。その対象はスキャンの id で、ラベルはスキャンの起点だ。次に `done` で終わったスキャンが、開いているすべての `scan` 項目を `superseded` として閉じる。起動時に `interrupted` として閉じたスキャンは何も書かない。起動がそれを再開するからだ。
 
 ## 起動は取得済みの項目を中断として記録する {#startup-marks-claimed-entries-interrupted}
 
@@ -59,7 +81,14 @@ stateDiagram-v2
 
 ## 再試行と取り消しは種類ごとに振り分ける {#retry-and-undo-are-dispatched-by-kind}
 
-`app.Activity` は、再試行を提供する項目 (再試行できる種類で、理由が `failed` または `interrupted` の `attention`) に対してだけ再試行に応じ、まだ取り消していない自動の決定に対してだけ取り消しに応じ、その後、その種類に登録されたユースケースへ項目を渡す。何も登録されていない種類は `409 activity_not_retryable` または `409 activity_not_undoable` で応答する。まだどの種類も登録されていない。
+`app.Activity` は、再試行を提供する項目 (再試行できる種類で、理由が `failed` または `interrupted` の `attention`) に対してだけ再試行に応じ、まだ取り消していない自動の決定に対してだけ取り消しに応じ、その後、その種類に登録されたユースケースへ項目を渡す。何も登録されていない種類は `409 activity_not_retryable` または `409 activity_not_undoable` で応答する。
+
+| 種類 | 再試行 |
+| --- | --- |
+| `import` | `IngestStore.RetryImport` は、再プローブと同じように動画の失敗した段階を再び積み、中断の後にまだ待機しているジョブも積む。所有者の新しい項目が古い項目を置き換える。なくなった動画、または積むものがない動画は `409 activity_not_retryable` で応答する |
+| `scan` | `Scans.RetryActivity` はすべてのメディアフォルダの手動スキャンを開始する。スキャンの実行中は `409 scan_in_progress` |
+
+まだどの種類も取り消しを登録していない。
 
 ## 画面は activity 通知で更新する {#the-screen-refreshes-on-an-activity-notification}
 
