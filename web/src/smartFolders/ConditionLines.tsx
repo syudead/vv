@@ -61,7 +61,10 @@ function NamedChip({ text }: { text: string | undefined }) {
   if (text === undefined) {
     return (
       <Badge variant="outline">
-        <Skeleton aria-hidden="true" className="h-3 w-12" />
+        {/* PageHeader の説明（p）の中に置くので、骨組みは span にする。 */}
+        <Skeleton asChild className="h-3 w-12">
+          <span />
+        </Skeleton>
       </Badge>
     );
   }
