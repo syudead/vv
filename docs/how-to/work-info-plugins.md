@@ -335,7 +335,9 @@ character set itself, from the `Content-Type` header or the page.
 
 ## Limits
 
-A run stops at the first limit it reaches.
+A run stops at the first limit it reaches. A site that refuses a request with
+`429` is not a VVMDM limit; [Rate limiting](#rate-limiting) says how a plugin
+handles it within these limits.
 
 | Limit | Value | When it is reached |
 | --- | --- | --- |
@@ -350,6 +352,33 @@ A run stops at the first limit it reaches.
 | Request time | 10 s, from sending to the last byte of the body | `http_send` returns `-4` |
 | Response headers | 1 MiB | `http_send` returns `-3` |
 | Response body | 4 MiB | `http_send` returns `-6` |
+
+## Rate limiting
+
+A site may answer `429 Too Many Requests` when requests come too fast. VVMDM
+does not retry for the plugin: `http_send` returns the `429` response like any
+other, and the plugin decides. Handle it this way:
+
+1. Read the `Retry-After` header from `http_meta`. It is a number of seconds
+   or an HTTP date; when it is missing or cannot be read, take 1 s.
+2. Take the smaller of that delay and 5 s as the wait.
+3. Before waiting, check the budget: when the run's waits, this one included,
+   would total more than 10 s, do not wait and go to step 5.
+4. Wait, then send the request once more. Clocks and `nanosleep` work in the
+   sandbox, so the language's ordinary sleep works.
+5. When the budget is spent, or the retry answers `429` again, return an
+   `error` response whose message names the site and the delay, such as
+   `example.com is busy; try again in 60 s`.
+
+This fits the [Limits](#limits). Every retry is a request and counts toward
+the 16 per run, so a plugin that fetches up to 7 pages still has one retry per
+page. The waits of a run total at most 10 s however many pages are refused,
+so the rest of the 30 s run time stays for compiling the module, the plugin's
+own work and its requests. The waits do not make room for the requests: each
+request may still take up to 10 s, so a plugin that also makes several slow
+requests can reach `timed_out` with or without a `429`. A plugin that waits
+longer than this budget makes that more likely, and the owner then sees no
+message; an `error` response tells the owner to try again later.
 
 ## Addresses
 
