@@ -182,7 +182,7 @@ func TestWorkInfoApplyAnswers(t *testing.T) {
 	}
 
 	calls := e.plugins.calls
-	for _, body := range []string{`{"fields":[]}`, `{}`, `{"fields":["code"]}`} {
+	for _, body := range []string{`{"fields":[]}`, `{}`, `{"fields":["dates"]}`, `{"fields":["people.actor"]}`} {
 		status, got := e.post(applyPath, body, e.owner)
 		assertErrorBody(t, body, status, got, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
 	}

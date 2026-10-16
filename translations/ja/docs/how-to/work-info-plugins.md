@@ -1,11 +1,11 @@
 ---
 source: docs/how-to/work-info-plugins.md
-sourceHash: 116835c39bd6d19172c3b07ae68b1c845f4f471d0569c023c11c2a64b8598132
+sourceHash: 2d606502b9795e4b1920133ee9ba5e0d26213be043bdaf213072c000347dc0d2
 ---
 
 # 作品情報プラグインを書く {#write-a-work-info-plugin}
 
-作品情報プラグインは、外部のサイトで作品を検索し、作品のタイトルとタグを取得するために VVMDM が実行する WebAssembly のモジュールである。終えると、所有者が設定画面で追加して承認できるモジュールができる。この手順書が、プラグインの契約のバージョン 1 である。サンドボックス、制限、ネットワークの規則がこの形である理由は [work-info-plugins.md](../design-docs/work-info-plugins.md) にある。
+作品情報プラグインは、外部のサイトで作品を検索し、作品のタイトル、タグ、詳細を取得するために VVMDM が実行する WebAssembly のモジュールである。終えると、所有者が設定画面で追加して承認できるモジュールができる。この手順書が、プラグインの契約のバージョン 1 である。サンドボックス、制限、ネットワークの規則がこの形である理由は [work-info-plugins.md](../design-docs/work-info-plugins.md) にある。
 
 図のとおり、VVMDM は実行のたびに新しいインスタンスを起動する。
 
@@ -231,10 +231,32 @@ VVMDM は 1 つの JSON オブジェクトを標準入力に書き、それを�
 | 場合 | 本文 |
 | --- | --- |
 | `search` の結果 | `{"candidates": [{"url": "...", "title": "...", "detail": "..."}]}`: `url` (http か https) と `title` は必須、`detail` は省略できる。VVMDM は最初の 50 個を保つ |
-| `fetch` の結果 | `{"workInfo": {"title": "...", "tags": ["..."]}}`: どちらのフィールドも省略できる。VVMDM は最初の 100 個のタグを保ち、重複を落とす |
+| `fetch` の結果 | `{"workInfo": {"title": "...", "tags": ["..."], ...}}`: どのフィールドも省略できる。フィールドは [作品のフィールド](#work-fields) にある |
 | 失敗 | `{"error": {"message": "..."}}`: VVMDM は `message` の最初の 300 文字を所有者に表示する |
 
 0 以外の終了コード、またはこれらのどれでもない出力では、実行は `plugin_failed` で失敗する。
+
+### 作品のフィールド {#work-fields}
+
+`workInfo` は次のフィールドを持つ。`title` と `tags` だけを返すプラグインに、ほかのフィールドは要らない。
+
+| フィールド | 形 | VVMDM が保つもの |
+| --- | --- | --- |
+| `title` | string | 書かれたとおり |
+| `tags` | `["..."]` | 最初の 100 個。重複は除く |
+| `code` | string。品番など | 前後の空白を除いたもの |
+| `description` | string。改行を含められる | 前後の空白を除いたもの |
+| `dates` | `[{"kind": "release", "date": "2024-03-01"}]`。`kind` は `release`、`recorded`、`published` のどれか。`date` は `YYYY`、`YYYY-MM`、`YYYY-MM-DD` のどれか | 種類ごとに最初の日付 |
+| `people` | `[{"role": "performer", "name": "...", "externalIds": [{"source": "...", "value": "..."}]}]`。`role` は `performer`、`director`、`photographer`、`streamer` のどれか。`externalIds` は省略できる | 役割ごとに最初の 100 人と、人ごとに最初の 20 個の異なる外部 ID |
+| `organizations` | `[{"role": "maker", "name": "...", "externalIds": [...]}]`。`role` は `maker` か `label`。`externalIds` は省略できる | 役割ごとに最初の 20 個と、組織ごとに最初の 20 個の異なる外部 ID |
+| `urls` | `["https://..."]` | 最初の 20 個の異なるもの |
+| `externalIds` | `[{"source": "...", "value": "..."}]`。ほかのサイトでの作品の識別子 | 最初の 20 個の異なる `(source, value)` の組 |
+
+`title` と `tags` 以外のすべてのフィールドについて、VVMDM は各文字列の前後の空白を除き、そのうえで空の項目、`kind`、`role`、`source`、`value` がないか表にない項目、ほかの JSON の型のフィールドや項目を落とす。上限は残ったものを数える。1 つの役割に同じ名前と外部 ID で 2 回現れる同じ人や組織は、1 つだけ保つ。
+
+所有者は保たれた値をすべて見て、適用するものを選ぶ。100 文字を超える `code`、ほかの形の `date`、絶対でない URL など、[作品情報を設定する](external-api.md#set-work-information) の規則に反する値は、表示するが適用せず、VVMDM はそれを飛ばしたことを所有者に伝える。
+
+VVMDM は取得した人や組織を、まず外部 ID で、次に名前か別名で既存のものに結び付け、何も一致しないときは新しく作る。各人について、サイト自身の識別子を `"externalIds": [{"source": "<site>", "value": "<id>"}]` として返す。そうすると同じ出演者が、取得をまたいで、表記の違いをまたいで、同じ `source` を使うプラグインをまたいで結び付く。既存の複数の人に一致する名前は結び付けない。
 
 ## ホスト関数 {#host-functions}
 

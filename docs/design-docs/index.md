@@ -71,3 +71,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Groups of any videos and groups (group page with a trail, New group, Add to group, the video page's group context): UI](../../specs/048-groups/ui-design.md)
 - [Work-info plugins (settings section, approval prompt, setting values, fetch entry and dialog with the comparison): UI](../../specs/049-work-info-plugins/ui-design.md)
 - [Drag and drop to reorder, group, merge and bundle (drop indicators, drop menus, the new group's name field, the undo toast): UI](../../specs/050-drag-organize/ui-design.md)
+- [Work details from work-info plugins (the comparison's work detail rows with the `New` and `Not linked` marks, the result step's left-out values): UI](../../specs/052-plugin-work-info-fields/ui-design.md)
