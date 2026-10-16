@@ -26,6 +26,7 @@ type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
 type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 type WorkInfoOperation = components["schemas"]["WorkInfoOperation"];
 type SkippedTagReason = components["schemas"]["SkippedTag"]["reason"];
+type WorkInfoField = components["schemas"]["WorkInfoField"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
@@ -361,6 +362,12 @@ const errorReasons = {
       : `The plugin couldn't reach ${host}.`,
   memory_exceeded: "The plugin used more than 128 MB of memory and was stopped.",
   output_too_large: "The plugin's answer was over 1 MB.",
+  // タグの種類（specs/051-tag-kinds/ui-design.md）。名前の重複は tagName に種類の名前が入る。
+  tag_kind_not_found: "This kind no longer exists.",
+  tag_kind_name_taken: ({ tagName }) =>
+    tagName === undefined
+      ? "A kind with that name already exists."
+      : `A kind named "${tagName}" already exists.`,
 } satisfies Record<ErrorReason, ErrorEntry>;
 
 const probeErrors = {
@@ -858,6 +865,16 @@ export const en = {
       removeOrganization: "Remove the organization filter",
       personGone: "Removed a person who no longer exists from the filter",
       organizationGone: "Removed an organization that no longer exists from the filter",
+      // タグの種類のチップ（specs/051-tag-kinds/ui-design.md「Words」の Library chip）。
+      kindChip: (name: string) => `Kind: ${name}`,
+      removeKind: "Remove the kind filter",
+      removeKindNamed: (name: string) => `Remove the filter for the kind "${name}"`,
+      kindGone: "Removed a kind that no longer exists from the filter",
+    },
+    // 絞り込みのポップオーバーのタグの種類の行（specs/051-tag-kinds/ui-design.md「Words」）。
+    tagKindFilter: {
+      label: "Tag kind",
+      any: "Any kind",
     },
     tagRow: {
       label: "Tags",
@@ -1054,6 +1071,22 @@ export const en = {
     noUnusedMatches: (query: string) => `No unused tags match "${query}"`,
     noUnusedTentativeMatches: (query: string) =>
       `No unused tentative tags match "${query}"`,
+    // タグの種類の行の名札・絞り込み・チップ（specs/051-tag-kinds/ui-design.md「Words」）。
+    // 種類の名前は利用者のデータなので訳さずに埋め込む。
+    kindFilter: {
+      label: "Kind",
+      any: "Any kind",
+      none: "No kind",
+      chip: (name: string) => `Kind: ${name}`,
+      removeUnnamed: "Remove the kind filter",
+      gone: "Removed a kind that no longer exists from the filter",
+    },
+    kindLabel: {
+      prefix: "Kind:",
+    },
+    noKindTags: (name: string) => `No tags of the kind "${name}"`,
+    noKindlessTags: "No tags without a kind",
+    noFilterMatches: "No tags match the current search and filters",
     sort: {
       heading: "Sort by",
       current: (label: string) => `Sort by: ${label}`,
@@ -1091,6 +1124,47 @@ export const en = {
       loadMoreFailed: "Couldn't load more rejected names",
       removeFailed: (name: string, reason: string) =>
         `Couldn't remove "${name}": ${reason}`,
+    },
+    // 「Kinds」のタブ（specs/051-tag-kinds/ui-design.md「Words」「Kinds tab」）。
+    kinds: {
+      tab: "Kinds",
+      table: "Kinds",
+      description:
+        "A tag has one kind or none. Set it from the Tags tab's selection bar. Deleting a kind leaves its tags without one.",
+      newKind: "New kind",
+      loading: "Loading kinds…",
+      columns: {
+        name: "Name",
+        tags: "Tags",
+      },
+      tagCount,
+      open: (name: string) => `Show the tags of the kind "${name}"`,
+      create: {
+        label: "New kind name",
+        placeholder: "Kind name",
+        submit: "Create",
+        submitting: "Creating…",
+      },
+      renameLabel: (name: string) => `New name for "${name}"`,
+      deleteDialog: {
+        title: (name: string) => `Delete the kind "${name}"?`,
+        used: (count: number) =>
+          selectPlural(count, {
+            one: `The ${formatNumber(count)} tag of this kind stays, without a kind. This can't be undone.`,
+            other: `The ${formatNumber(count)} tags of this kind stay, without a kind. This can't be undone.`,
+          }),
+        unused: "No tags have this kind. This can't be undone.",
+        submit: "Delete",
+        submitting: "Deleting…",
+      },
+      deleted: (name: string) => `Deleted the kind "${name}"`,
+      gone: "This kind no longer exists, so the list was reloaded",
+      empty: {
+        title: "No kinds yet",
+        description:
+          "A kind groups tags, such as Genre, Work or Place. Add one to give tags a kind.",
+      },
+      loadFailed: "Couldn't load the kinds",
     },
     search: {
       label: "Search tags",
@@ -1172,6 +1246,18 @@ export const en = {
       stale: "Some of the tags no longer existed, so the list was reloaded",
       merged: (count: number, target: string) =>
         `Merged ${tagCount(count)} into "${target}"`,
+      // 選択バーの「Set kind…」（specs/051-tag-kinds/ui-design.md「Set kind」）。
+      setKind: "Set kind…",
+      noKinds: "No kinds yet. Add them on the Kinds tab.",
+      kindSet: (name: string, applied: number, skipped: number) =>
+        skipped === 0
+          ? `Set the kind "${name}" on ${tagCount(applied)}`
+          : `Set the kind "${name}" on ${tagCount(applied)}. ${formatNumber(skipped)} already had it.`,
+      kindCleared: (applied: number, skipped: number) =>
+        skipped === 0
+          ? `Removed the kind from ${tagCount(applied)}`
+          : `Removed the kind from ${tagCount(applied)}. ${formatNumber(skipped)} had none.`,
+      kindGone: "That kind no longer exists, so the kinds were reloaded",
     },
     bulkDialog: {
       rejectTitle: "Reject selected tags",
@@ -1730,8 +1816,36 @@ export const en = {
       back: "Back to the matches",
       now: "Now",
       fetched: "Fetched",
-      fields: { title: "Title", tags: "Tags" },
+      // 比較の行のラベル（specs/052-plugin-work-info-fields/ui-design.md「Words」）。役割は複数形。
+      fields: {
+        title: "Title",
+        tags: "Tags",
+        code: "Code",
+        description: "Description",
+        "dates.release": "Released",
+        "dates.recorded": "Recorded",
+        "dates.published": "Published",
+        "people.performer": "Performers",
+        "people.director": "Directors",
+        "people.photographer": "Photographers",
+        "people.streamer": "Streamers",
+        "organizations.maker": "Makers",
+        "organizations.label": "Labels",
+        urls: "Links",
+        externalIds: "IDs",
+      } satisfies Record<WorkInfoField, string>,
       notInResult: "Not in the result",
+      nothingToAdd: "Nothing to add",
+      // チップの中の従の印。読み上げは「{name}, New」になる。
+      newMark: "New",
+      newHint: "Created when you apply",
+      notLinked: "Not linked",
+      notLinkedHint: {
+        person: "Matches more than one person, so it isn't linked or created",
+        organization: "Matches more than one organization, so it isn't linked or created",
+      },
+      fetchedAs: (name: string) => `Fetched as "${name}"`,
+      onVideoFetchedAs: (name: string) => `On the video. Fetched as "${name}"`,
       sameAsNow: "Same as now",
       onVideo: "On the video",
       tentative: "Tentative",
@@ -1741,12 +1855,34 @@ export const en = {
       apply: "Apply selected",
       applying: "Applying…",
       applied: "Applied to the video.",
-      resultTitle: "Applied, but some tags were left out",
-      // 1 行は「{name} — {理由}」で、名前だけを太くする。
+      resultTitle: "Applied, but some values were left out",
+      // 1 行は「{label}: {value} — {理由}」で、値だけを太くする。
+      skippedLabel: (label: string) => `${label}: `,
       skipped: {
         rejected: "you rejected this tag before",
         invalid: "not a valid tag name",
       } satisfies Record<SkippedTagReason, string>,
+      skippedValue: {
+        invalidDate: "not a date in the form YYYY-MM-DD, YYYY-MM or YYYY",
+        invalidUrl: "not a full URL starting with http:// or https://",
+        invalidOther: "too long or contains characters that can't be used",
+        tooMany: (items: string) => `over the limit for ${items}`,
+        ambiguous: {
+          person: "matches more than one person",
+          organization: "matches more than one organization",
+        },
+      },
+      // 「over the limit for …」に入る、件数に上限のある行の名前。
+      limitItems: {
+        "people.performer": "performers",
+        "people.director": "directors",
+        "people.photographer": "photographers",
+        "people.streamer": "streamers",
+        "organizations.maker": "makers",
+        "organizations.label": "labels",
+        urls: "links",
+        externalIds: "IDs",
+      },
       done: "Done",
       stale: "This result is out of date. Fetch it again to apply it.",
       fetchAgain: "Fetch again",

@@ -1,19 +1,39 @@
-import { CircleDashed, Plus, SearchX, Tags as TagsIcon, VideoOff } from "lucide-react";
+import {
+  CircleDashed,
+  Plus,
+  SearchX,
+  Shapes,
+  Tags as TagsIcon,
+  VideoOff,
+} from "lucide-react";
 import type { ReactNode } from "react";
 
 import { t, type UiText } from "../i18n";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { Button } from "../ui/shadcn/button";
+import type { TagKindFilter } from "./tagListUrl";
 import type { TagListEmpty } from "./tagListView";
 
 /**
+ * noKindTitle は種類の絞り込みだけで行が無いときの見出しである
+ * （specs/051-tag-kinds/ui-design.md「Words」）。種類の名前をまだ読んでいなければ、
+ * 組み合わせの見出しを使う。
+ */
+function noKindTitle(kind: TagKindFilter, kindName: string | undefined): UiText {
+  if (kind === "none") return t.tags.noKindlessTags;
+  return kindName === undefined ? t.tags.noFilterMatches : t.tags.noKindTags(kindName);
+}
+
+/**
  * TagListEmptyState は一覧の代わりに出す空の状態である（ui-design.md「States」）。
- * 文言は届いた行の条件（`appliedSearch`・`appliedTentative`）で決める。
+ * 文言は届いた行の条件（`appliedSearch`・`appliedTentative`・`appliedKind`）で決める。
  */
 export default function TagListEmptyState({
   empty,
   appliedSearch,
   appliedTentative,
+  appliedKind,
+  kindName,
   onCreate,
   onShowAll,
   onShowAllAndSearch,
@@ -22,6 +42,10 @@ export default function TagListEmptyState({
   empty: TagListEmpty;
   appliedSearch: string;
   appliedTentative: boolean;
+  /** 届いた行の種類の絞り込み。 */
+  appliedKind: TagKindFilter;
+  /** `appliedKind` の種類の名前。読み込み前（と `none`）は undefined。 */
+  kindName: string | undefined;
   /** 「新しいタグ」。 */
   onCreate: () => void;
   /** 絞り込みを外す「Show all tags」。 */
@@ -86,6 +110,22 @@ export default function TagListEmptyState({
         <TagsEmpty
           icon={<SearchX aria-hidden="true" />}
           title={t.tags.noTentativeMatches(appliedSearch)}
+          action={showAll(onShowAllAndSearch)}
+        />
+      );
+    case "noKind":
+      return (
+        <TagsEmpty
+          icon={<Shapes aria-hidden="true" />}
+          title={noKindTitle(appliedKind, kindName)}
+          action={showAll(onShowAll)}
+        />
+      );
+    case "noKindMatch":
+      return (
+        <TagsEmpty
+          icon={<SearchX aria-hidden="true" />}
+          title={t.tags.noFilterMatches}
           action={showAll(onShowAllAndSearch)}
         />
       );

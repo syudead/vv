@@ -2,6 +2,7 @@ package domain
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"time"
 	"unicode"
@@ -94,7 +95,42 @@ const (
 	WorkInfoFieldTitle WorkInfoField = "title"
 	// WorkInfoFieldTags はタグで、仮のタグとして付ける。
 	WorkInfoFieldTags WorkInfoField = "tags"
+	// WorkInfoFieldCode は品番で、保存済みの品番を置き換える。
+	WorkInfoFieldCode WorkInfoField = "code"
+	// WorkInfoFieldDescription は説明で、保存済みの説明を置き換える。
+	WorkInfoFieldDescription WorkInfoField = "description"
+	// WorkInfoFieldURLs はリンクで、まだ無い URL を後ろに足す。
+	WorkInfoFieldURLs WorkInfoField = "urls"
+	// WorkInfoFieldExternalIDs は動画の外部 ID で、まだ無い (source, value) を足す。
+	WorkInfoFieldExternalIDs WorkInfoField = "externalIds"
 )
+
+// DateField は日付の種類 kind の項目（dates.release など）を返す。保存済みのその種類の日付を置き換える。
+func DateField(kind DateKind) WorkInfoField { return WorkInfoField("dates." + string(kind)) }
+
+// PersonField は人物の役割 role の項目（people.performer など）を返す。その役割にまだ結んでいない人物を足す。
+func PersonField(role PersonRole) WorkInfoField { return WorkInfoField("people." + string(role)) }
+
+// OrganizationField は団体の役割 role の項目（organizations.maker など）を返す。
+func OrganizationField(role OrganizationRole) WorkInfoField {
+	return WorkInfoField("organizations." + string(role))
+}
+
+// WorkInfoFields は反映できる項目を比較の行の順に並べたものである
+// （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）。
+var WorkInfoFields = func() []WorkInfoField {
+	fields := []WorkInfoField{WorkInfoFieldTitle, WorkInfoFieldTags, WorkInfoFieldCode, WorkInfoFieldDescription}
+	for _, kind := range DateKinds {
+		fields = append(fields, DateField(kind))
+	}
+	for _, role := range PersonRoles {
+		fields = append(fields, PersonField(role))
+	}
+	for _, role := range OrganizationRoles {
+		fields = append(fields, OrganizationField(role))
+	}
+	return append(fields, WorkInfoFieldURLs, WorkInfoFieldExternalIDs)
+}()
 
 // WorkInfoFetchResult はメモリに持つ取得の結果を画面に見せる形である。Title は表示名の規則を通った
 // 題名で、空は値が無いことを表す。Tags はプラグインが返したタグの名前である。
@@ -103,6 +139,68 @@ type WorkInfoFetchResult struct {
 	ExpiresAt time.Time
 	Title     string
 	Tags      []string
+	// Details は題名とタグ以外の作品の詳細で、OrderFetchedWorkDetails で並べてある。Title と Tags は持たない。
+	Details FetchedWorkInfo
+	// PersonMatches と OrganizationMatches は Details.People と Details.Organizations の各件の、取得の時点の
+	// 照合の答えで、同じ順に並ぶ（specs/052-plugin-work-info-fields/research.md R-3）。
+	PersonMatches       []CreditMatch
+	OrganizationMatches []CreditMatch
+}
+
+// OrderFetchedWorkDetails は取得した作品の詳細を、画面と反映が使う順に並べ直した複製を返す。日付は種類の順、
+// 人物と団体は役割の順で、同じ種類・役割の中は取得した順を保つ
+// （specs/052-plugin-work-info-fields/contracts/screen-api.md）。Title と Tags は持たない。
+func OrderFetchedWorkDetails(fetched FetchedWorkInfo) FetchedWorkInfo {
+	out := fetched
+	out.Title, out.Tags = "", nil
+	out.Dates = stableByOrder(fetched.Dates, DateKinds, func(d WorkDate) DateKind { return d.Kind })
+	out.People = stableByOrder(fetched.People, PersonRoles, func(p FetchedPerson) PersonRole { return p.Role })
+	out.Organizations = stableByOrder(fetched.Organizations, OrganizationRoles,
+		func(o FetchedOrganization) OrganizationRole { return o.Role })
+	return out
+}
+
+// stableByOrder は items の複製を、key が order の何番目かで安定に並べ替えて返す。nil は nil のまま返す。
+func stableByOrder[T any, K comparable](items []T, order []K, key func(T) K) []T {
+	if items == nil {
+		return nil
+	}
+	out := slices.Clone(items)
+	slices.SortStableFunc(out, func(a, b T) int {
+		return slices.Index(order, key(a)) - slices.Index(order, key(b))
+	})
+	return out
+}
+
+// HasDetail は取得した作品の詳細に、題名とタグ以外の項目 field の値があるかを返す。知らない項目と、
+// 題名とタグは偽である。
+func (f FetchedWorkInfo) HasDetail(field WorkInfoField) bool {
+	switch field {
+	case WorkInfoFieldCode:
+		return f.Code != ""
+	case WorkInfoFieldDescription:
+		return f.Description != ""
+	case WorkInfoFieldURLs:
+		return len(f.URLs) > 0
+	case WorkInfoFieldExternalIDs:
+		return len(f.ExternalIDs) > 0
+	}
+	for _, kind := range DateKinds {
+		if field == DateField(kind) {
+			return slices.ContainsFunc(f.Dates, func(d WorkDate) bool { return d.Kind == kind })
+		}
+	}
+	for _, role := range PersonRoles {
+		if field == PersonField(role) {
+			return slices.ContainsFunc(f.People, func(p FetchedPerson) bool { return p.Role == role })
+		}
+	}
+	for _, role := range OrganizationRoles {
+		if field == OrganizationField(role) {
+			return slices.ContainsFunc(f.Organizations, func(o FetchedOrganization) bool { return o.Role == role })
+		}
+	}
+	return false
 }
 
 // SkippedTagReason は反映で付けなかったタグの名前の理由である。
@@ -135,10 +233,23 @@ type FetchedWorkInfoApply struct {
 	Title *string
 	// Tags は仮のタグとして付ける、タグ名の規則で整えた名前である。空ならタグは変えない。
 	Tags []string
+	// Details は取得した作品の詳細で、DetailFields が選んだ項目だけを作品情報に反映する。
+	Details FetchedWorkInfo
+	// DetailFields は作品情報に反映する項目（題名とタグ以外の WorkInfoField）である。空なら作品情報は変えない。
+	DetailFields []WorkInfoField
 }
 
-// WorkInfoApplied は反映の結果である。
+// FetchedWorkInfoApplied は保存先の反映の結果である。RejectedTags は却下した名前なので付けなかったタグの
+// 名前（Tags の順、重複なし）、Skipped は作品の詳細のうち反映で飛ばした値である。
+type FetchedWorkInfoApplied struct {
+	Video        Video
+	RejectedTags []string
+	Skipped      []SkippedWorkInfoValue
+}
+
+// WorkInfoApplied は反映の結果である。Skipped は題名とタグ以外の選んだ項目のうち飛ばした値である。
 type WorkInfoApplied struct {
 	Video       Video
 	SkippedTags []SkippedTag
+	Skipped     []SkippedWorkInfoValue
 }

@@ -1,7 +1,7 @@
 # Write a work-info plugin
 
 A work-info plugin is a WebAssembly module that VVMDM runs to search an
-external site for works and fetch a work's title and tags; when you finish,
+external site for works and fetch a work's title, tags and details; when you finish,
 you have a module the owner can add and approve on the settings screen. This
 guide is the plugin contract, version 1. Why the sandbox, the limits and the
 network rule have this shape is in
@@ -251,11 +251,49 @@ are ignored, so a later contract can add fields without breaking version 1.
 | Case | Body |
 | --- | --- |
 | `search` result | `{"candidates": [{"url": "...", "title": "...", "detail": "..."}]}`: `url` (http or https) and `title` required, `detail` optional; VVMDM keeps the first 50 |
-| `fetch` result | `{"workInfo": {"title": "...", "tags": ["..."]}}`: both fields optional; VVMDM keeps the first 100 tags and drops duplicates |
+| `fetch` result | `{"workInfo": {"title": "...", "tags": ["..."], ...}}`: every field optional; the fields are in [Work fields](#work-fields) |
 | Failure | `{"error": {"message": "..."}}`: VVMDM shows the first 300 characters of `message` to the owner |
 
 A non-zero exit, or output that is none of these, fails the run with
 `plugin_failed`.
+
+### Work fields
+
+`workInfo` carries these fields. A plugin that returns only `title` and
+`tags` needs no other field.
+
+| Field | Shape | VVMDM keeps |
+| --- | --- | --- |
+| `title` | string | As written |
+| `tags` | `["..."]` | The first 100, without duplicates |
+| `code` | string, such as the product code | Trimmed |
+| `description` | string; line feeds allowed | Trimmed |
+| `dates` | `[{"kind": "release", "date": "2024-03-01"}]`; `kind` is `release`, `recorded` or `published`; `date` is `YYYY`, `YYYY-MM` or `YYYY-MM-DD` | The first date of each kind |
+| `people` | `[{"role": "performer", "name": "...", "externalIds": [{"source": "...", "value": "..."}]}]`; `role` is `performer`, `director`, `photographer` or `streamer`; `externalIds` optional | The first 100 of each role, and the first 20 distinct external IDs of each person |
+| `organizations` | `[{"role": "maker", "name": "...", "externalIds": [...]}]`; `role` is `maker` or `label`; `externalIds` optional | The first 20 of each role, and the first 20 distinct external IDs of each organization |
+| `urls` | `["https://..."]` | The first 20 distinct |
+| `externalIds` | `[{"source": "...", "value": "..."}]`, the work's identifiers on other sites | The first 20 distinct `(source, value)` pairs |
+
+For every field except `title` and `tags`, VVMDM trims surrounding
+whitespace from each string, then drops an entry that is empty, an entry
+whose `kind`, `role`, `source` or `value` is missing or not in the table, and
+a field or entry of another JSON type. The limits count what remains. The
+same person or organization twice in one role, with the same name and
+external IDs, is kept once.
+
+The owner sees every kept value and picks which ones to apply. A value that
+breaks a rule of [Set work information](external-api.md#set-work-information),
+such as a `code` over 100 characters, a `date` in another form or a URL that
+is not absolute, is shown but not applied, and VVMDM tells the owner it was
+skipped.
+
+VVMDM links a fetched person or organization to an existing one by external
+ID first and then by name or alias, and creates one when nothing matches.
+Return the site's own identifier for each person, as
+`"externalIds": [{"source": "<site>", "value": "<id>"}]`, so that the same
+performer is linked across fetches, across spellings and across plugins that
+use the same `source`. A name that matches more than one existing person is
+not linked.
 
 ## Host functions
 

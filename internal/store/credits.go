@@ -140,24 +140,8 @@ func (s *CreditStore) Create(ctx context.Context, kind domain.CreditKind, input 
 	if err := checkExternalIDsFree(ctx, tx, t, 0, normalized.ExternalIDs, input.ExternalIDs); err != nil {
 		return domain.Credit{}, err
 	}
-	statement := `insert into {entity} (created_at) values (?)`
-	args := []any{time.Now().Unix()}
-	if t.hasParent {
-		statement = `insert into {entity} (created_at, parent_id) values (?, ?)`
-		args = append(args, parentID)
-	}
-	res, err := tx.ExecContext(ctx, t.q(statement), args...)
+	id, err := insertCredit(ctx, tx, t, normalized, parentID)
 	if err != nil {
-		return domain.Credit{}, fmt.Errorf("cannot create the %s: %w", kind, err)
-	}
-	id, err := res.LastInsertId()
-	if err != nil {
-		return domain.Credit{}, fmt.Errorf("cannot create the %s: %w", kind, err)
-	}
-	if err := writeCreditNames(ctx, tx, t, id, normalized.Name, normalized.Aliases); err != nil {
-		return domain.Credit{}, err
-	}
-	if err := writeCreditExternalIDs(ctx, tx, t, id, normalized.ExternalIDs); err != nil {
 		return domain.Credit{}, err
 	}
 	credit, err := creditByID(ctx, tx, t, id)
@@ -168,6 +152,32 @@ func (s *CreditStore) Create(ctx context.Context, kind domain.CreditKind, input 
 		return domain.Credit{}, fmt.Errorf("cannot create the %s: %w", kind, err)
 	}
 	return credit, nil
+}
+
+// insertCredit は整え済みの input で t の実体を 1 つ作り、その id を返す。parentID は団体の親の id か nil で、
+// 人物では読まない。外部 ID が空いていることと親があることは呼び出し側が確かめる。
+func insertCredit(ctx context.Context, tx *sql.Tx, t creditTables, input domain.CreditInput, parentID any) (int64, error) {
+	statement := `insert into {entity} (created_at) values (?)`
+	args := []any{time.Now().Unix()}
+	if t.hasParent {
+		statement = `insert into {entity} (created_at, parent_id) values (?, ?)`
+		args = append(args, parentID)
+	}
+	res, err := tx.ExecContext(ctx, t.q(statement), args...)
+	if err != nil {
+		return 0, fmt.Errorf("cannot create the %s: %w", t.kind, err)
+	}
+	id, err := res.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("cannot create the %s: %w", t.kind, err)
+	}
+	if err := writeCreditNames(ctx, tx, t, id, input.Name, input.Aliases); err != nil {
+		return 0, err
+	}
+	if err := writeCreditExternalIDs(ctx, tx, t, id, input.ExternalIDs); err != nil {
+		return 0, err
+	}
+	return id, nil
 }
 
 // Update は kind の実体 id のうち patch にあるフィールドを置き換えて返す。一覧は丸ごと置き換える。

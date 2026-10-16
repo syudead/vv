@@ -205,10 +205,11 @@ func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string)
 			  join video_folder_names vfn on vfn.video_id = k.video_id
 			  join tag_names folder_tn on folder_tn.name = vfn.name
 		)
-		select t.content_key, t.tag_id, tn.name, tg.tentative, max(t.manual), max(t.from_folder), min(t.unconfirmed)
+		select t.content_key, t.tag_id, tn.name, tg.tentative, max(t.manual), max(t.from_folder), min(t.unconfirmed),
+		       `+tagKindColumns+`
 		  from tagged t
 		  join tag_names tn on tn.tag_id = t.tag_id and tn.canonical = 1
-		  join tags tg on tg.id = t.tag_id
+		  join tags tg on tg.id = t.tag_id`+tagKindJoin+`
 		 group by t.content_key, t.tag_id`, string(encoded),
 	)
 	if err != nil {
@@ -220,9 +221,12 @@ func tagsByContentKeys(ctx context.Context, q queryExecer, contentKeys []string)
 	for rows.Next() {
 		var key string
 		var tag domain.VideoTag
-		if err := rows.Scan(&key, &tag.ID, &tag.Name, &tag.Tentative, &tag.Manual, &tag.FromFolder, &tag.Unconfirmed); err != nil {
+		var kind scannedTagKind
+		if err := rows.Scan(append([]any{&key, &tag.ID, &tag.Name, &tag.Tentative, &tag.Manual, &tag.FromFolder, &tag.Unconfirmed},
+			kind.targets()...)...); err != nil {
 			return nil, fmt.Errorf("cannot read item tags: %w", err)
 		}
+		tag.Kind = kind.ref()
 		out[key] = append(out[key], tag)
 	}
 	if err := rows.Err(); err != nil {

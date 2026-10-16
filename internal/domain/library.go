@@ -137,6 +137,10 @@ type VideoQuery struct {
 	Person int64
 	// Organization は Person と同じ形の、団体の id による絞り込みである。
 	Organization int64
+	// TagKindID は、手で付けたかフォルダ名から付いたかを問わず、この種類のタグを 1 つでも
+	// 持つ動画だけにするタグの種類の id である。0 は絞り込まない。実体の無い id は何にも
+	// 当たらない（specs/051-tag-kinds/research.md R-5）。
+	TagKindID int64
 	// AddedWithinDays は、いまからこの日数前の時刻以後に追加した動画だけにする
 	// （1 以上 MaxAddedWithinDays 以下）。0 は絞り込まない
 	// （specs/052-smart-folders/research.md R-4）。
@@ -153,7 +157,7 @@ type VideoQuery struct {
 // フォルダだけを出す（specs/052-smart-folders/research.md R-7）。並べ替えは絞り込みではない。
 func (q VideoQuery) ListsSmartFolders() bool {
 	return ParseSearchQuery(q.Query).Empty() && (q.Watch == "" || q.Watch == WatchAll) && !q.PlayableOnly &&
-		len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 &&
+		len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
 		q.AddedWithinDays == 0 && q.MinDurationSec == nil && q.MaxDurationSec == nil
 }
 

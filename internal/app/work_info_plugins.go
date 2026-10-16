@@ -51,6 +51,8 @@ type WorkInfoPluginsOptions struct {
 	Videos WorkInfoVideos
 	// Applier は取得の結果を動画に書く保存先である。
 	Applier FetchedWorkInfoApplier
+	// Matcher は取得した人物・団体を既存の実体と照合する読み出しである。
+	Matcher WorkInfoCreditMatcher
 	// Now は今の時刻を返す。nil なら time.Now。
 	Now func() time.Time
 }
@@ -61,6 +63,7 @@ type WorkInfoPlugins struct {
 	runtime WorkInfoPluginRuntime
 	videos  WorkInfoVideos
 	applier FetchedWorkInfoApplier
+	matcher WorkInfoCreditMatcher
 	now     func() time.Time
 	fetches *workInfoFetches
 }
@@ -72,7 +75,7 @@ func NewWorkInfoPlugins(opts WorkInfoPluginsOptions) *WorkInfoPlugins {
 		now = time.Now
 	}
 	return &WorkInfoPlugins{
-		store: opts.Store, runtime: opts.Runtime, videos: opts.Videos, applier: opts.Applier, now: now,
+		store: opts.Store, runtime: opts.Runtime, videos: opts.Videos, applier: opts.Applier, matcher: opts.Matcher, now: now,
 		fetches: newWorkInfoFetches(),
 	}
 }

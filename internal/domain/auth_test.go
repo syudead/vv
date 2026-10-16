@@ -167,6 +167,7 @@ func TestCheckVideoQuery(t *testing.T) {
 		{Sort: SortFavoritedDesc},
 		{Person: 1},
 		{Organization: 1},
+		{TagKindID: 1},
 	}
 	for _, q := range allowed {
 		if err := AudienceGuest.CheckVideoQuery(q); err != nil {

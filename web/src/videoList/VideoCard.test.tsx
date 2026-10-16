@@ -330,7 +330,14 @@ describe("VideoCard tagsRow（issue 269）", () => {
     renderCard(
       video({
         tags: [
-          { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+          {
+            kind: null,
+            id: 1,
+            name: "旅行",
+            manual: true,
+            fromFolder: false,
+            tentative: false,
+          },
         ],
       }),
       {
@@ -344,7 +351,14 @@ describe("VideoCard tagsRow（issue 269）", () => {
     renderCard(
       video({
         tags: [
-          { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+          {
+            kind: null,
+            id: 1,
+            name: "旅行",
+            manual: true,
+            fromFolder: false,
+            tentative: false,
+          },
         ],
       }),
       {
@@ -368,7 +382,14 @@ describe("VideoCard tagsRow（issue 269）", () => {
     renderCard(
       video({
         tags: [
-          { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+          {
+            kind: null,
+            id: 1,
+            name: "旅行",
+            manual: true,
+            fromFolder: false,
+            tentative: false,
+          },
         ],
       }),
       {
@@ -383,7 +404,16 @@ describe("VideoCard tagsRow（issue 269）", () => {
 
   it("同じ参照の props で親が再描画しても memo で再描画せず、tagsRow を呼び直さない（N4）", () => {
     const item = video({
-      tags: [{ id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false }],
+      tags: [
+        {
+          kind: null,
+          id: 1,
+          name: "旅行",
+          manual: true,
+          fromFolder: false,
+          tentative: false,
+        },
+      ],
     });
     const stableTagsRow = vi.fn(() => <p>タグの行</p>);
     const props = {
