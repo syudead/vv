@@ -272,3 +272,28 @@ func TestSmartFolderOnHome(t *testing.T) {
 		t.Errorf("ゲストの onHome = %v", *guest.OnHome)
 	}
 }
+
+// runningOrganizer は走っている整理役の状態を返す HomeOrganizer である。
+type runningOrganizer struct{}
+
+func (runningOrganizer) Reorganize(context.Context) (domain.HomeOrganizerState, error) {
+	return domain.HomeOrganizerState{Running: true, Pending: domain.HomeRebuild}, nil
+}
+
+func (runningOrganizer) State(context.Context) (domain.HomeOrganizerState, error) {
+	return domain.HomeOrganizerState{Running: true}, nil
+}
+
+// 整理役があれば、所有者の応答の整理役の状態は、走っているかを知る整理役から読む。
+func TestHomeShowsARunningOrganizerToTheOwner(t *testing.T) {
+	f := &homeFixture{libraryFixture: newLibraryFixtureWith(t, func(options Options) Options {
+		options.HomeOrganizer = runningOrganizer{}
+		return options
+	})}
+	if organizer := f.home(t, f.owner).Organizer; organizer == nil || !organizer.Running {
+		t.Fatalf("整理役の状態 = %+v, want running", organizer)
+	}
+	if organizer := f.home(t).Organizer; organizer != nil {
+		t.Errorf("ゲストの整理役の状態 = %+v, want none", organizer)
+	}
+}

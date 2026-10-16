@@ -153,7 +153,7 @@ func homeShelfItemsSpec(ctx context.Context, tx *sql.Tx, audience domain.Audienc
 		q := domain.VideoQuery{Sort: domain.SortAddedDesc, Unshelved: key.Kind == domain.HomeShelfUnshelved}
 		fixed := libraryListSpec(audience, q, nil)
 		fixed.now, fixed.limit = now, domain.HomeShelfItemLimit
-		if err := withShelvedVideos(ctx, tx, &fixed); err != nil {
+		if err := fillShelved(ctx, tx, &fixed); err != nil {
 			return nil, false, err
 		}
 		return &fixed, true, nil

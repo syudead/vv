@@ -1062,6 +1062,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/home/organize": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * ホームの組み直し（rebuild）を待ちに入れる
+         * @description 待ちの実行は設定 `home.organize.pending` に 1 つだけで、rebuild は extend を吸収する。走っている
+         *     実行があれば、その終わったあとに走る。待ちに入れたあとの整理役の状態を返す。所有者だけ
+         *     （specs/057-home/research.md R-9、contracts/screen-api.md）。
+         */
+        post: operations["organizeHome"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/onboarding": {
         parameters: {
             query?: never;
@@ -3877,8 +3899,9 @@ export interface components {
              */
             empty?: "noVideos";
         };
-        /** @description 整理役の状態。所有者の応答にだけ入る（specs/057-home/data-model.md「Organizer state」） */
+        /** @description 整理役の状態（specs/057-home/data-model.md「Organizer state」） */
         HomeOrganizer: {
+            /** @description 実行が今走っている */
             running: boolean;
             /**
              * @description 待っている実行。無ければ省く
@@ -3887,15 +3910,18 @@ export interface components {
             pending?: "rebuild" | "extend";
             last?: components["schemas"]["HomeOrganizeRun"];
         };
-        /** @description 最後に終わった整理役の実行（specs/057-home/data-model.md「Settings」） */
+        /** @description 最後に終わった実行（specs/057-home/data-model.md「Settings」の home.organize.last） */
         HomeOrganizeRun: {
             /** @enum {string} */
             run: "rebuild" | "extend";
-            /** @enum {string} */
+            /**
+             * @description `unchanged` は案が何も変えなかった
+             * @enum {string}
+             */
             outcome: "done" | "failed" | "unchanged";
             /**
              * Format: int64
-             * @description Unix ミリ秒
+             * @description 終わった時刻（Unix ミリ秒）
              */
             finishedAt: number;
             /** @description 足した棚の数 */
@@ -7718,6 +7744,27 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    organizeHome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 待ちに入れたあとの整理役の状態 */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeOrganizer"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
         };
     };
     getOnboarding: {

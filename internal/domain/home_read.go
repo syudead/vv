@@ -110,16 +110,6 @@ func FolderShelf(folder SmartFolder) HomeShelf {
 	return HomeShelf{Key: FolderShelfKey(folder.ID), Name: folder.Name, ByOrganizer: !folder.OwnerKept}
 }
 
-// HomeOrganizerState は整理役の状態である（data-model.md「Organizer state」）。
-type HomeOrganizerState struct {
-	// Running は今実行しているかで、実行を持つ整理役が入れる。保存層は知らないので偽を返す。
-	Running bool
-	// Pending は待っている実行で、無ければ空である。
-	Pending HomeOrganizeRun
-	// Last は最後に終わった実行で、無ければ nil である。
-	Last *HomeOrganizeLast
-}
-
 // Home はホームの要約である（GET /api/home）。
 type Home struct {
 	// Shelves はフォルダの棚を並びの順に、そのあとに決まった棚を並べる。ゲストには見せる動画の無い

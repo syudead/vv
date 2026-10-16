@@ -45,7 +45,13 @@ func (s *server) GetHome(w http.ResponseWriter, r *http.Request) {
 		out.Empty = &empty
 	}
 	if audience.IsOwner() && home.Organizer != nil {
-		out.Organizer = toAPIHomeOrganizer(*home.Organizer)
+		state, err := s.organizerState(r.Context(), *home.Organizer)
+		if err != nil {
+			s.internalError(w, "Could not load the home organizer state.", err)
+			return
+		}
+		organizer := toAPIHomeOrganizer(state)
+		out.Organizer = &organizer
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
@@ -121,6 +127,15 @@ func (s *server) homeConfigured(w http.ResponseWriter) bool {
 	return true
 }
 
+// organizerState は整理役の状態を返す。整理役があれば、走っているかを知るその状態を、無ければ保存層の
+// 読んだ stored（running は偽）を返す。
+func (s *server) organizerState(ctx context.Context, stored domain.HomeOrganizerState) (domain.HomeOrganizerState, error) {
+	if s.homeOrganizer == nil {
+		return stored, nil
+	}
+	return s.homeOrganizer.State(ctx)
+}
+
 // toAPIHomeShelf は棚の要約を応答の形にする。byOrganizer はフォルダの棚の所有者の応答にだけ載せる。
 func toAPIHomeShelf(audience domain.Audience, shelf domain.HomeShelf) gen.HomeShelf {
 	out := gen.HomeShelf{Key: shelf.Key.String(), Kind: gen.HomeShelfKind(shelf.Key.Kind), Name: shelf.Name}
@@ -132,22 +147,6 @@ func toAPIHomeShelf(audience domain.Audience, shelf domain.HomeShelf) gen.HomeSh
 	if audience.IsOwner() {
 		byOrganizer := shelf.ByOrganizer
 		out.ByOrganizer = &byOrganizer
-	}
-	return out
-}
-
-// toAPIHomeOrganizer は整理役の状態を応答の形にする。
-func toAPIHomeOrganizer(state domain.HomeOrganizerState) *gen.HomeOrganizer {
-	out := &gen.HomeOrganizer{Running: state.Running}
-	if state.Pending != "" {
-		pending := gen.HomeOrganizerPending(state.Pending)
-		out.Pending = &pending
-	}
-	if state.Last != nil {
-		out.Last = &gen.HomeOrganizeRun{
-			Run: gen.HomeOrganizeRunRun(state.Last.Run), Outcome: gen.HomeOrganizeRunOutcome(state.Last.Outcome),
-			FinishedAt: state.Last.FinishedAt, Added: state.Last.Added, Removed: state.Last.Removed,
-		}
 	}
 	return out
 }

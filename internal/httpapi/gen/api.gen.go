@@ -2582,7 +2582,7 @@ type Home struct {
 	// Empty 見る人にライブラリの動画が 1 本も見えないときだけ入る
 	Empty *HomeEmpty `json:"empty,omitempty"`
 
-	// Organizer 整理役の状態。所有者の応答にだけ入る（specs/057-home/data-model.md「Organizer state」）
+	// Organizer 整理役の状態（specs/057-home/data-model.md「Organizer state」）
 	Organizer *HomeOrganizer `json:"organizer,omitempty"`
 
 	// Shelves フォルダの棚を並びの順に、続けて決まった棚
@@ -2592,34 +2592,38 @@ type Home struct {
 // HomeEmpty 見る人にライブラリの動画が 1 本も見えないときだけ入る
 type HomeEmpty string
 
-// HomeOrganizeRun 最後に終わった整理役の実行（specs/057-home/data-model.md「Settings」）
+// HomeOrganizeRun 最後に終わった実行（specs/057-home/data-model.md「Settings」の home.organize.last）
 type HomeOrganizeRun struct {
 	// Added 足した棚の数
 	Added int `json:"added"`
 
-	// FinishedAt Unix ミリ秒
-	FinishedAt int64                  `json:"finishedAt"`
-	Outcome    HomeOrganizeRunOutcome `json:"outcome"`
+	// FinishedAt 終わった時刻（Unix ミリ秒）
+	FinishedAt int64 `json:"finishedAt"`
+
+	// Outcome `unchanged` は案が何も変えなかった
+	Outcome HomeOrganizeRunOutcome `json:"outcome"`
 
 	// Removed 消した棚の数
 	Removed int                `json:"removed"`
 	Run     HomeOrganizeRunRun `json:"run"`
 }
 
-// HomeOrganizeRunOutcome defines model for HomeOrganizeRun.Outcome.
+// HomeOrganizeRunOutcome `unchanged` は案が何も変えなかった
 type HomeOrganizeRunOutcome string
 
 // HomeOrganizeRunRun defines model for HomeOrganizeRun.Run.
 type HomeOrganizeRunRun string
 
-// HomeOrganizer 整理役の状態。所有者の応答にだけ入る（specs/057-home/data-model.md「Organizer state」）
+// HomeOrganizer 整理役の状態（specs/057-home/data-model.md「Organizer state」）
 type HomeOrganizer struct {
-	// Last 最後に終わった整理役の実行（specs/057-home/data-model.md「Settings」）
+	// Last 最後に終わった実行（specs/057-home/data-model.md「Settings」の home.organize.last）
 	Last *HomeOrganizeRun `json:"last,omitempty"`
 
 	// Pending 待っている実行。無ければ省く
 	Pending *HomeOrganizerPending `json:"pending,omitempty"`
-	Running bool                  `json:"running"`
+
+	// Running 実行が今走っている
+	Running bool `json:"running"`
 }
 
 // HomeOrganizerPending 待っている実行。無ければ省く
@@ -6007,6 +6011,9 @@ type ServerInterface interface {
 	// GetHome ホームの棚の要約と整理役の状態を返す
 	// (GET /api/home)
 	GetHome(w http.ResponseWriter, r *http.Request)
+	// OrganizeHome ホームの組み直し（rebuild）を待ちに入れる
+	// (POST /api/home/organize)
+	OrganizeHome(w http.ResponseWriter, r *http.Request)
 	// ListHomeShelfItems 画面に入った棚の最初の項目を返す
 	// (GET /api/home/shelves)
 	ListHomeShelfItems(w http.ResponseWriter, r *http.Request, params ListHomeShelfItemsParams)
@@ -7264,6 +7271,20 @@ func (siw *ServerInterfaceWrapper) GetHome(w http.ResponseWriter, r *http.Reques
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHome(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// OrganizeHome operation middleware
+func (siw *ServerInterfaceWrapper) OrganizeHome(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.OrganizeHome(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11789,6 +11810,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/home", wrapper.GetHome)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/home/shelves", wrapper.ListHomeShelfItems)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/home/shelves", wrapper.SetHomeShelves)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/home/organize", wrapper.OrganizeHome)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding", wrapper.GetOnboarding)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/onboarding", wrapper.UpdateOnboarding)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding/interests", wrapper.ListOnboardingInterests)
