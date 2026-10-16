@@ -64,7 +64,40 @@ const server = {
   requests: [] as URLSearchParams[],
   /** 置くと、一覧の要求は応答を作った後でこれを待ってから返す（読んだ後に記録が変わる場合）。 */
   gate: null as Promise<void> | null,
+  /** やり直しと取り消しの要求（パスと本文）。 */
+  operations: [] as { path: string; body: unknown }[],
+  /** 置くと、やり直しと取り消しはこの誤りの code で 409 を返す。 */
+  conflict: null as string | null,
+  /** 取り消しが返す undo の記録の outcome。 */
+  undoOutcome: "completed" as ActivityEntry["outcome"],
+  /** 置くと、やり直しと取り消しの応答はこれを待ってから返す。 */
+  operationGate: null as Promise<void> | null,
 };
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
+/** operate は POST /api/activity/{id}/retry と /undo に契約どおりに答える。 */
+async function operate(path: string, init: RequestInit | undefined): Promise<Response> {
+  const body: unknown = typeof init?.body === "string" ? JSON.parse(init.body) : null;
+  server.operations.push({ path, body });
+  if (server.operationGate !== null) await server.operationGate;
+  if (server.conflict !== null)
+    return json({ code: server.conflict, message: "conflict" }, 409);
+  if (path.endsWith("/retry")) return new Response(null, { status: 202 });
+  return json(
+    entry(100, {
+      kind: "undo",
+      decider: "owner",
+      outcome: server.undoOutcome,
+      undoes: { kind: "version_judgement", outcome: "same" },
+    }),
+  );
+}
 
 function matches(item: ActivityEntry, params: URLSearchParams, skip: string): boolean {
   const status = params.get("status");
@@ -112,8 +145,10 @@ function respond(params: URLSearchParams): Page {
 function install() {
   vi.stubGlobal(
     "fetch",
-    vi.fn<typeof fetch>((input) => {
+    vi.fn<typeof fetch>((input, init) => {
       const url = new URL(String(input), "http://localhost");
+      if (init?.method === "POST" && url.pathname.startsWith("/api/activity/"))
+        return operate(url.pathname, init);
       if (url.pathname === "/api/activity") {
         server.requests.push(url.searchParams);
         const body = JSON.stringify(respond(url.searchParams));
@@ -185,6 +220,10 @@ beforeEach(() => {
   ];
   server.requests = [];
   server.gate = null;
+  server.operations = [];
+  server.conflict = null;
+  server.undoOutcome = "completed";
+  server.operationGate = null;
   search = "";
   // jsdom は scrollTo を持たない。絞り込みを変えると先頭へ戻す。
   vi.spyOn(window, "scrollTo").mockImplementation(() => {});
@@ -381,6 +420,195 @@ describe("ActivityPage", () => {
       "broken",
       "cat",
     ]);
+  });
+});
+
+describe("ActivityPage retry and undo", () => {
+  beforeEach(() => {
+    server.entries = [
+      entry(1, {
+        status: "attention",
+        reason: "failed",
+        stage: "thumbnail",
+        retryRun: true,
+      }),
+      entry(2, {
+        kind: "version_judgement",
+        feature: "duplicate_check",
+        decider: "ai",
+        outcome: "same",
+        probability: 0.9,
+        subject: {
+          kind: "pair",
+          items: [
+            { label: "a.mp4", videoId: 2 },
+            { label: "b.mp4", videoId: 20 },
+          ],
+        },
+        undoable: true,
+      }),
+      entry(3, {
+        kind: "auto_tag",
+        feature: "auto_tagging",
+        decider: "ai",
+        undoable: true,
+        tags: [
+          { id: 7, name: "cat", suggested: false, probability: 0.9, undone: false },
+          { id: 8, name: "dog", suggested: true, probability: 0.6, undone: false },
+          { id: 9, name: "fox", suggested: false, probability: 0.8, undone: true },
+        ],
+      }),
+      entry(4, {
+        kind: "version_judgement",
+        feature: "duplicate_check",
+        decider: "rule",
+        outcome: "same",
+        undone: true,
+      }),
+      entry(5),
+    ];
+  });
+
+  function card(label: string): HTMLElement {
+    return cards().find((item) => within(item).queryByText(label) !== null)!;
+  }
+
+  it("offers retry and undo only on the cards whose entry allows them", async () => {
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(5));
+    const failed = card("file-1.mp4");
+    expect(within(failed).getByRole("button", { name: "Retry" })).toBeDefined();
+    expect(within(failed).queryByRole("button", { name: /^Undo/ })).toBeNull();
+    const bundled = card("a.mp4");
+    expect(within(bundled).getByRole("button", { name: "Undo" })).toBeDefined();
+    expect(within(bundled).queryByRole("button", { name: "Retry" })).toBeNull();
+    const tagged = card("file-3.mp4");
+    expect(within(tagged).getByRole("button", { name: "Undo tags…" })).toBeDefined();
+    expect(within(tagged).queryByRole("button", { name: "Undo" })).toBeNull();
+    for (const label of ["file-4.mp4", "file-5.mp4"]) {
+      expect(
+        within(card(label)).queryByRole("button", { name: /^(Retry|Undo)/ }),
+      ).toBeNull();
+    }
+  });
+
+  it("retries without asking and refetches the cards", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(5));
+    const before = filterRequests().length;
+    await user.click(within(card("file-1.mp4")).getByRole("button", { name: "Retry" }));
+    await waitFor(() =>
+      expect(server.operations).toEqual([{ path: "/api/activity/1/retry", body: null }]),
+    );
+    await waitFor(() => expect(filterRequests().length).toBeGreaterThan(before));
+  });
+
+  it("disables every button of the card while its request is pending", async () => {
+    let release = () => {};
+    server.operationGate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(5));
+    const bundled = card("a.mp4");
+    const undo = within(bundled).getByRole("button", { name: "Undo" });
+    await user.click(undo);
+    await waitFor(() => expect(undo.getAttribute("aria-busy")).toBe("true"));
+    expect((undo as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      within(bundled).getByRole("link", { name: "Open" }).getAttribute("aria-disabled"),
+    ).toBe("true");
+    server.operationGate = null;
+    release();
+    await waitFor(() => expect((undo as HTMLButtonElement).disabled).toBe(false));
+  });
+
+  it("keeps the card's buttons disabled until the refetched card arrives", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(5));
+    // 取り消しの後のサーバーの記録。読み直しの応答は gate が開くまで届かない。
+    server.entries = server.entries.map((item) =>
+      item.id === 2 ? { ...item, undoable: false, undone: true } : item,
+    );
+    let release = () => {};
+    server.gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const before = filterRequests().length;
+    const undo = within(card("a.mp4")).getByRole("button", { name: "Undo" });
+    await user.click(undo);
+    expect(
+      await screen.findByText("Undone. vv won't decide this again on its own"),
+    ).toBeDefined();
+    await waitFor(() => expect(filterRequests().length).toBeGreaterThan(before));
+    expect((undo as HTMLButtonElement).disabled).toBe(true);
+    await user.click(undo);
+    expect(server.operations).toHaveLength(1);
+    server.gate = null;
+    release();
+    await waitFor(() =>
+      expect(within(card("a.mp4")).queryByRole("button", { name: "Undo" })).toBeNull(),
+    );
+  });
+
+  it("undoes one tag of an auto-tagging card from its menu", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(5));
+    await user.click(
+      within(card("file-3.mp4")).getByRole("button", { name: "Undo tags…" }),
+    );
+    const items = await screen.findAllByRole("menuitem");
+    // 取り消し済みの fox は並べない。
+    expect(items.map((item) => item.textContent)).toEqual([
+      "cat90%",
+      "dog(suggested)60%",
+    ]);
+    await user.click(items[1]!);
+    await waitFor(() =>
+      expect(server.operations).toEqual([
+        { path: "/api/activity/3/undo", body: { tagId: 8 } },
+      ]),
+    );
+    expect(
+      await screen.findByText("Undone. vv won't decide this again on its own"),
+    ).toBeDefined();
+  });
+
+  it("says so when the owner had already changed the decision back", async () => {
+    server.undoOutcome = "already_reverted";
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(5));
+    await user.click(within(card("a.mp4")).getByRole("button", { name: "Undo" }));
+    expect(
+      await screen.findByText(
+        "Already changed back. vv won't decide this again on its own",
+      ),
+    ).toBeDefined();
+    expect(server.operations).toEqual([{ path: "/api/activity/2/undo", body: {} }]);
+  });
+
+  it("keeps the card and shows the reason when the request fails", async () => {
+    server.conflict = "activity_not_retryable";
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(5));
+    await user.click(within(card("file-1.mp4")).getByRole("button", { name: "Retry" }));
+    expect(
+      await screen.findByText("Couldn't retry: This can no longer be retried"),
+    ).toBeDefined();
+    expect(
+      within(card("file-1.mp4")).getByRole("button", { name: "Retry" }),
+    ).toBeDefined();
+    server.conflict = "activity_not_undoable";
+    await user.click(within(card("a.mp4")).getByRole("button", { name: "Undo" }));
+    expect(
+      await screen.findByText("Couldn't undo: This can no longer be undone"),
+    ).toBeDefined();
   });
 });
 

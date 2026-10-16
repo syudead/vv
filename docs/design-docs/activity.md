@@ -182,6 +182,10 @@ there includes queued entries. The filters live in the page URL (`status`, `feat
 `period`, `q`); `period` is turned into `since` when the first page or a
 refetch starts, and the next pages keep that `since`
 ([055 UI design, Activity page](../../specs/055-activity/ui-design.md#activity-page)).
+A card's `Retry`, `Undo` and `Undo tags…` send their request without a
+confirmation (`web/src/activity/useActivityOperations.ts`) and, on success,
+start the same refetch without waiting for the notification. A failure leaves
+the card as it was and shows a toast.
 
 | Rejected | Why |
 | --- | --- |

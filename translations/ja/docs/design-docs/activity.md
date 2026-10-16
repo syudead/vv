@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/activity.md
-sourceHash: 26a3ea3829a15c3b57a9dd742adc6413badc9ec9a3f534fd073b9b239365e6ec
+sourceHash: 57c8581fb0109c63ee419c827e85f334aaabf536ba17c87bad207d6e7470b093
 ---
 
 # 活動ログ {#activity-log}
@@ -112,7 +112,7 @@ stateDiagram-v2
 
 `ActivityChanged` は `/api/events` 上のペイロードのない `activity` イベントになり、所有者のストリームにだけ送られ、`candidates` と同じように接続ごとにまとめられる ([R-8](../../specs/055-activity/research.md#r-8-the-screen-refreshes-on-an-activity-notification))。
 
-Web クライアントでは、Activity 画面 (`web/src/activity`) は、そのイベントと再接続のときに、数と読み込んだすべてのページを取得し直し、カードをその場で置き換える。取得し直しは一度に 1 つだけ実行し、その間または最初のページの読み込み中に届いた通知は、もう 1 回の取得し直しを求める。シェルのサイドバーのメニュー項目と画面のフッターは、絞り込みのない要求 (`web/src/api/useActivityTotals.ts`) からログ全体の `counts` を読むので、そこでの `running` はキューに積まれた項目を含む。絞り込みはページの URL (`status`、`feature`、`decider`、`period`、`q`) にある。`period` は最初のページまたは取得し直しの開始時に `since` に変わり、続くページはその `since` を保つ ([055 UI design, Activity page](../../specs/055-activity/ui-design.md#activity-page))。
+Web クライアントでは、Activity 画面 (`web/src/activity`) は、そのイベントと再接続のときに、数と読み込んだすべてのページを取得し直し、カードをその場で置き換える。取得し直しは一度に 1 つだけ実行し、その間または最初のページの読み込み中に届いた通知は、もう 1 回の取得し直しを求める。シェルのサイドバーのメニュー項目と画面のフッターは、絞り込みのない要求 (`web/src/api/useActivityTotals.ts`) からログ全体の `counts` を読むので、そこでの `running` はキューに積まれた項目を含む。絞り込みはページの URL (`status`、`feature`、`decider`、`period`、`q`) にある。`period` は最初のページまたは取得し直しの開始時に `since` に変わり、続くページはその `since` を保つ ([055 UI design, Activity page](../../specs/055-activity/ui-design.md#activity-page))。カードの `Retry`、`Undo`、`Undo tags…` は確認なしで要求を送り (`web/src/activity/useActivityOperations.ts`)、成功すると通知を待たずに同じ取得し直しを始める。失敗するとカードはそのまま残り、トーストを表示する。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |

@@ -42,6 +42,12 @@ export interface ActivityLog {
   loadMore: () => void;
   /** 最初のページから読み直す。読んでいる間は読み込み中の表示にする。 */
   retry: () => void;
+  /**
+   * 件数と読み込んだページを、今の行を残したまま読み直す（`activity` の知らせと同じ）。返す
+   * Promise は、この呼び出しの後に始めた読み直しが終わり、読み直しが止んだときに解決する
+   * （読めなかったときも解決し、拒否しない）。
+   */
+  refresh: () => Promise<void>;
 }
 
 type Ready = Extract<ActivityLogState, { kind: "ready" }>;
@@ -113,7 +119,14 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
   );
 
   // readFirst から refresh を呼ぶための控え（refresh は readFirst の後に作る）。
-  const refreshRef = useRef<() => void>(() => {});
+  const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
+  // refresh の呼び出し手のうち、読み直しが止むのを待っている者。
+  const waiters = useRef<(() => void)[]>([]);
+  const settle = useCallback(() => {
+    const waiting = waiters.current;
+    waiters.current = [];
+    for (const resolve of waiting) resolve();
+  }, []);
 
   const readFirst = useCallback(() => {
     const { gen, signal } = begin();
@@ -128,20 +141,25 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
         if (gen !== generation.current) return;
         pages.current = 1;
         show(readyOf(page, page.items, page.nextCursor));
-        if (again.current) refreshRef.current();
+        if (again.current) void refreshRef.current();
+        else settle();
       },
       (error: unknown) => {
         if (isAborted(error) || gen !== generation.current) return;
         show({ kind: "failed" });
+        settle();
       },
     );
-  }, [begin, readPage, show]);
+  }, [begin, readPage, settle, show]);
 
-  const refresh = useCallback(() => {
-    if (stateRef.current.kind === "failed") return;
+  const refresh = useCallback((): Promise<void> => {
+    if (stateRef.current.kind === "failed") return Promise.resolve();
+    const done = new Promise<void>((resolve) => {
+      waiters.current.push(resolve);
+    });
     if (stateRef.current.kind === "loading" || refreshing.current) {
       again.current = true;
-      return;
+      return done;
     }
     const { gen, signal } = begin();
     refreshing.current = true;
@@ -152,7 +170,8 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
     const where = activityConditions(criteriaRef.current, new Date());
     const finish = () => {
       refreshing.current = false;
-      if (again.current) refresh();
+      if (again.current) void refresh();
+      else settle();
     };
     const read = async () => {
       const first = await readPage(where, undefined, signal);
@@ -179,7 +198,8 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
         finish();
       },
     );
-  }, [begin, readPage, show]);
+    return done;
+  }, [begin, readPage, settle, show]);
 
   useEffect(() => {
     refreshRef.current = refresh;
@@ -228,13 +248,15 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
   }, [key, readFirst]);
 
   useEffect(() => {
-    const unsubscribe = subscribeServerEvents({ activity: refresh, open: refresh });
+    const notified = () => void refresh();
+    const unsubscribe = subscribeServerEvents({ activity: notified, open: notified });
     return () => {
       unsubscribe();
       generation.current += 1;
       controller.current?.abort();
+      settle();
     };
-  }, [refresh]);
+  }, [refresh, settle]);
 
-  return { state, loadMore, retry: readFirst };
+  return { state, loadMore, retry: readFirst, refresh };
 }

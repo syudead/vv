@@ -1,4 +1,4 @@
-import type { ActivityEntry } from "../api/activity";
+import type { ActivityEntry, ActivityTag } from "../api/activity";
 import { formatDateTime, formatMonthDay, formatTime, t, type UiText } from "../i18n";
 import { videoEditPath } from "../lib/videoEditPath";
 
@@ -282,6 +282,30 @@ export function openActions(entry: ActivityEntry): OpenAction[] {
       to: `/videos/${String(videoId)}`,
     });
   return actions;
+}
+
+/** EntryOperations は記録のカードが出すやり直しと取り消しの操作である。 */
+export interface EntryOperations {
+  /** `Retry` を出すか。 */
+  retry: boolean;
+  /** `Undo` を出すか（`auto_tag` 以外）。 */
+  undo: boolean;
+  /** `Undo tags…` のメニューに並べるタグ。空ならボタンを出さない。 */
+  undoTags: ActivityTag[];
+}
+
+/**
+ * entryOperations は記録のカードのやり直しと取り消しの操作を返す（ui-design.md「Cards」の
+ * Action の表）。`auto_tag` はまだ取り消していないタグを 1 つずつ取り消すメニューにする。
+ */
+export function entryOperations(entry: ActivityEntry): EntryOperations {
+  const autoTag = entry.kind === "auto_tag";
+  return {
+    retry: entry.retryRun,
+    undo: entry.undoable && !autoTag,
+    undoTags:
+      autoTag && entry.undoable ? (entry.tags ?? []).filter((tag) => !tag.undone) : [],
+  };
 }
 
 /** EntryTime は記録の時刻の長い形・短い形・ツールチップの日時である。 */
