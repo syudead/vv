@@ -25,7 +25,7 @@ type fetchedRuntime struct {
 	work *domain.FetchedWorkInfo
 }
 
-func (r fetchedRuntime) Run(context.Context, string, []byte, domain.WorkInfoRunRequest) (domain.WorkInfoRunResult, error) {
+func (r fetchedRuntime) Run(context.Context, string, []byte, domain.WorkInfoRunRequest, domain.WorkInfoRunNetwork) (domain.WorkInfoRunResult, error) {
 	return domain.WorkInfoRunResult{WorkInfo: *r.work}, nil
 }
 

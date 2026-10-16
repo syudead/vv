@@ -52,7 +52,7 @@ func wantFailure(t *testing.T, err error, want domain.WorkInfoRunFailure) string
 // wantEchoWorks は次の実行が成功することを確かめる。
 func wantEchoWorks(t *testing.T, rt *Runtime, module []byte) {
 	t.Helper()
-	got, err := rt.Run(context.Background(), probeDigest, module, search("next"))
+	got, err := rt.Run(context.Background(), probeDigest, module, search("next"), domain.WorkInfoRunNetwork{})
 	if err != nil || len(got.Candidates) != 1 || got.Candidates[0].Title != "next" {
 		t.Fatalf("next Run = %+v, %v; want the echoed candidate", got, err)
 	}
@@ -62,7 +62,7 @@ func TestRunReadsBackTheEchoedResponse(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
 
-	got, err := rt.Run(context.Background(), probeDigest, module, search("Example work"))
+	got, err := rt.Run(context.Background(), probeDigest, module, search("Example work"), domain.WorkInfoRunNetwork{})
 	if err != nil {
 		t.Fatalf("Run(search): %v", err)
 	}
@@ -73,7 +73,7 @@ func TestRunReadsBackTheEchoedResponse(t *testing.T) {
 
 	req := fetch()
 	req.Settings = map[string]string{"apiKey": "secret", "lang": "ja"}
-	got, err = rt.Run(context.Background(), probeDigest, module, req)
+	got, err = rt.Run(context.Background(), probeDigest, module, req, domain.WorkInfoRunNetwork{})
 	if err != nil {
 		t.Fatalf("Run(fetch): %v", err)
 	}
@@ -90,7 +90,7 @@ func TestRunStopsAPluginThatNeverEndsAndRefusesASecondRun(t *testing.T) {
 	first := make(chan error, 1)
 	start := time.Now()
 	go func() {
-		_, err := rt.Run(context.Background(), probeDigest, module, search("loop"))
+		_, err := rt.Run(context.Background(), probeDigest, module, search("loop"), domain.WorkInfoRunNetwork{})
 		first <- err
 	}()
 	for len(rt.slot) == 0 {
@@ -98,7 +98,7 @@ func TestRunStopsAPluginThatNeverEndsAndRefusesASecondRun(t *testing.T) {
 	}
 
 	waited := time.Now()
-	_, err := rt.Run(context.Background(), probeDigest, module, search("second"))
+	_, err := rt.Run(context.Background(), probeDigest, module, search("second"), domain.WorkInfoRunNetwork{})
 	wantFailure(t, err, domain.WorkInfoRunBusy)
 	if d := time.Since(waited); d < domain.WorkInfoPluginBusyWait {
 		t.Fatalf("second run refused after %v, want after %v", d, domain.WorkInfoPluginBusyWait)
@@ -116,7 +116,7 @@ func TestRunStopsAPluginThatGrowsItsMemory(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
 
-	_, err := rt.Run(context.Background(), probeDigest, module, search("grow"))
+	_, err := rt.Run(context.Background(), probeDigest, module, search("grow"), domain.WorkInfoRunNetwork{})
 	wantFailure(t, err, domain.WorkInfoRunMemoryExceeded)
 	wantEchoWorks(t, rt, module)
 }
@@ -125,7 +125,7 @@ func TestRunStopsAPluginThatWritesTooMuch(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
 
-	_, err := rt.Run(context.Background(), probeDigest, module, search("flood"))
+	_, err := rt.Run(context.Background(), probeDigest, module, search("flood"), domain.WorkInfoRunNetwork{})
 	wantFailure(t, err, domain.WorkInfoRunOutputTooLarge)
 	wantEchoWorks(t, rt, module)
 }
@@ -135,7 +135,7 @@ func TestRunGivesNoFilesNoEnvironmentAndNoArguments(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
 
-	got, err := rt.Run(context.Background(), probeDigest, module, fetchMode("hostname"))
+	got, err := rt.Run(context.Background(), probeDigest, module, fetchMode("hostname"), domain.WorkInfoRunNetwork{})
 	if err != nil {
 		t.Fatalf("Run(hostname): %v", err)
 	}
@@ -143,7 +143,7 @@ func TestRunGivesNoFilesNoEnvironmentAndNoArguments(t *testing.T) {
 		t.Fatalf("hostname run = %+v, want nothing read and the open refused", got.WorkInfo)
 	}
 
-	got, err = rt.Run(context.Background(), probeDigest, module, fetchMode("env"))
+	got, err = rt.Run(context.Background(), probeDigest, module, fetchMode("env"), domain.WorkInfoRunNetwork{})
 	if err != nil {
 		t.Fatalf("Run(env): %v", err)
 	}
@@ -156,13 +156,13 @@ func TestRunReportsPluginFailures(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
 
-	_, err := rt.Run(context.Background(), probeDigest, module, search("fail"))
+	_, err := rt.Run(context.Background(), probeDigest, module, search("fail"), domain.WorkInfoRunNetwork{})
 	message := wantFailure(t, err, domain.WorkInfoRunFailed)
 	if message != strings.Repeat("m", domain.WorkInfoPluginMessageMaxRunes) {
 		t.Fatalf("message = %q, want its first %d characters", message, domain.WorkInfoPluginMessageMaxRunes)
 	}
 
-	_, err = rt.Run(context.Background(), probeDigest, module, search("exit"))
+	_, err = rt.Run(context.Background(), probeDigest, module, search("exit"), domain.WorkInfoRunNetwork{})
 	wantFailure(t, err, domain.WorkInfoRunFailed)
 }
 
@@ -192,7 +192,7 @@ func TestRunKeepsTheStartOfStderrInTheServerLog(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = rt.Close(context.Background()) })
 
-	got, err := rt.Run(context.Background(), probeDigest, probeModule(t), fetchMode("stderr"))
+	got, err := rt.Run(context.Background(), probeDigest, probeModule(t), fetchMode("stderr"), domain.WorkInfoRunNetwork{})
 	if err != nil || got.WorkInfo.Title != "stderr" {
 		t.Fatalf("Run(stderr) = %+v, %v; want success", got.WorkInfo, err)
 	}
@@ -252,7 +252,7 @@ func TestRunCapsATableWithoutAMaximum(t *testing.T) {
 	if _, problem, err := rt.Inspect(context.Background(), module); err != nil || problem != "" {
 		t.Fatalf("Inspect = problem %q, err %v; want none", problem, err)
 	}
-	got, err := rt.Run(context.Background(), "table-grow", module, fetch())
+	got, err := rt.Run(context.Background(), "table-grow", module, fetch(), domain.WorkInfoRunNetwork{})
 	if err != nil || got.WorkInfo.Title != "capped" {
 		t.Fatalf("Run = %+v, %v; want the second table.grow to return -1", got.WorkInfo, err)
 	}
@@ -283,7 +283,7 @@ func memoryGrowSpec() moduleSpec {
 
 func TestRunFailsAPluginThatSurvivesARefusedMemoryGrow(t *testing.T) {
 	rt := newTestRuntime(t)
-	got, err := rt.Run(context.Background(), "memory-grow", memoryGrowSpec().bytes(), fetch())
+	got, err := rt.Run(context.Background(), "memory-grow", memoryGrowSpec().bytes(), fetch(), domain.WorkInfoRunNetwork{})
 	if err == nil {
 		t.Fatalf("Run = %+v, want memory_exceeded", got.WorkInfo)
 	}
