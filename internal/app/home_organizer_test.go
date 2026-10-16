@@ -46,8 +46,8 @@ func (s *fakeHomeStore) SavePendingOrganize(_ context.Context, run domain.HomeOr
 	return nil
 }
 
-func (s *fakeHomeStore) ClearPendingOrganize(context.Context) error {
-	return s.SavePendingOrganize(context.Background(), "")
+func (s *fakeHomeStore) ClearPendingOrganize(ctx context.Context) error {
+	return s.SavePendingOrganize(ctx, "")
 }
 
 func (s *fakeHomeStore) LastOrganize(context.Context) (domain.HomeOrganizeLast, bool, error) {
