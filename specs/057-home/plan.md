@@ -350,7 +350,8 @@ and `Remove from home` on a smart folder page; the Settings section with
 [R-9](research.md#r-9-one-run-at-a-time-queued-in-settings-triggered-by-events)).
 
 **Dependencies**: Show the home's shelves and play from them; Organize the
-home by rules.
+home by rules; Keep onboarding's step and turn picked interests into shelves
+(`Start onboarding again` writes the step through `PUT /api/onboarding`).
 
 **Acceptance**: `task check` passes; page tests show `Reorganize` calls
 `POST /api/home/organize`, moving a shelf sends the new order, and
