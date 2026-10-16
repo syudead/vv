@@ -39,7 +39,7 @@ const FOCUSABLE =
  * フォーカスの行き先を選ぶときに見る。`checkVisibility` の無い環境（jsdom）は
  * 描かれているものとして扱う。
  */
-function isShown(element: HTMLElement): boolean {
+export function isShown(element: HTMLElement): boolean {
   return "checkVisibility" in element ? element.checkVisibility() : true;
 }
 

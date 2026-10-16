@@ -135,7 +135,7 @@ export interface paths {
          *     ゲストでは公開の動画だけを対象にし、`query` はタグの名前とシノニムに照合しない。
          *     所有者のデータに依る条件（`watch` が `all` 以外、`sort` が `playedAsc`・
          *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、
-         *     `organization`）は
+         *     `organization`、`tagKind`）は
          *     `400` `invalid_request` にする（guest-api.md §3、specs/035-favorites/contracts/screen-api.md §2）。
          */
         get: operations["listVideos"];
@@ -159,7 +159,7 @@ export interface paths {
          * @description `listVideos` と同じ条件で、当たった動画を項目にまとめて返す
          *     （specs/027-partial-group-search/contracts/library-api.md §1。値の作り方は
          *     specs/017-folder-groups/data-model.md §5）。
-         *     `query`・`tag`・`person`・`organization` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
+         *     `query`・`tag`・`person`・`organization`・`tagKind` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
          *     全メンバーが当たればグループの項目1件に、一部だけが当たれば当たったメンバーを
          *     それぞれ動画の項目にする。グループに属さない動画は動画の項目になる。
          *     絞り込みが無ければどのグループも全メンバーが当たる。グループの値は全メンバーから
@@ -177,7 +177,7 @@ export interface paths {
          *
          *     ゲストでは公開のメンバーだけを数え（「全メンバー」も公開のメンバー）、公開の
          *     メンバーが1本のグループは動画の項目にし、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
-         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、`organization` は
+         *     `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、`organization`、`tagKind` は
          *     `400` `invalid_request` にする
          *     （data-model.md §7、specs/035-favorites/contracts/screen-api.md §2）。
          */
@@ -200,7 +200,7 @@ export interface paths {
         /**
          * 絞り込みに合う項目の動画の id を返す
          * @description `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`・`favorite`・`person`・
-         *     `organization`）に合う項目の、
+         *     `organization`・`tagKind`）に合う項目の、
          *     動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
          *     一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
          *     だけが入る。並びは決めない。「すべて選択」用
@@ -1607,7 +1607,7 @@ export interface paths {
         };
         /**
          * タグを一覧する
-         * @description 本数0のタグも含む（contracts/tags-api.md §3）。`q`・`tentative`・`unused` は全部のタグに
+         * @description 本数0のタグも含む（contracts/tags-api.md §3）。`q`・`tentative`・`unused`・`kind` は全部のタグに
          *     AND で掛かり、`sort` の順に並べる。`limit` を付けると1ページずつ返し、続きがあれば
          *     `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
          *     （specs/036-tag-admin-scale/contracts/screen-api.md §5）。
@@ -1775,12 +1775,17 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * 複数のタグをまとめて確定・却下・削除する
+         * 複数のタグをまとめて確定・却下・削除し、種類を付け外しする
          * @description `ids` のうち今あり、`action` が働く種類（`confirm`・`reject` は仮のタグ、`delete` は
          *     確定したタグ）のタグだけを 1 つの取引で処理する。働かない種類の id は何も変えずに
          *     `notApplicableIds`、無い id は `notFoundIds` に入れる。`ids` の重複は 1 つとして扱い、
          *     3 つの配列は互いに重ならず、`ids` に現れた順。取引が失敗したら何も変えない
          *     （specs/036-tag-admin-scale/contracts/screen-api.md §1）。
+         *     `setKind` は `kindId` の種類を付け、`clearKind` は種類を外す。どちらも仮のタグを確定しない。
+         *     すでにその種類のタグ（`clearKind` では種類の無いタグ）は `notApplicableIds` に入る。
+         *     `kindId` の無い `setKind` と、`kindId` を付けた他の `action` は 400 `invalid_request`、
+         *     無い種類の `setKind` は何も変えずに 404 `not_found` / `tag_kind_not_found`
+         *     （specs/051-tag-kinds/contracts/screen-api.md）。
          */
         post: operations["batchTags"];
         delete?: never;
@@ -1810,6 +1815,57 @@ export interface paths {
         options?: never;
         head?: never;
         patch?: never;
+        trace?: never;
+    };
+    "/api/tag-kinds": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * タグの種類を一覧する
+         * @description すべての種類を id の順に返す（specs/051-tag-kinds/contracts/screen-api.md）。
+         */
+        get: operations["listTagKinds"];
+        put?: never;
+        /**
+         * タグの種類を1件作る
+         * @description 名前はタグの名前と同じ規則で整え、種類どうしでだけ一意にする（specs/051-tag-kinds/research.md R-6）。
+         *     規則に合わなければ 400 `invalid_request` と `tag_name_*`、別の種類が同じ名前なら
+         *     409 `conflict` / `tag_kind_name_taken` で、何も変えない。
+         */
+        post: operations["createTagKind"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/tag-kinds/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * タグの種類を1件削除する
+         * @description その種類のタグは残り、種類なしになる。無い id は 404 `not_found` / `tag_kind_not_found`。
+         */
+        delete: operations["deleteTagKind"];
+        options?: never;
+        head?: never;
+        /**
+         * タグの種類の名前を書き換える
+         * @description 今と同じ名前なら何も変えずに今の状態を返す。無い id は 404 `not_found` / `tag_kind_not_found`、
+         *     別の種類が同じ名前なら 409 `conflict` / `tag_kind_name_taken`。
+         */
+        patch: operations["renameTagKind"];
         trace?: never;
     };
     "/api/people": {
@@ -3491,6 +3547,8 @@ export interface components {
             name: string;
             /** @description 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0） */
             tentative: boolean;
+            /** @description タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4） */
+            kind: components["schemas"]["TagKindRef"] | null;
         };
         /**
          * @description 動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
@@ -3512,6 +3570,8 @@ export interface components {
              *     返す。フォルダ名からも付いていれば返さない（docs/design-docs/auto-tagging.md）
              */
             unconfirmed?: boolean;
+            /** @description タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4） */
+            kind: components["schemas"]["TagKindRef"] | null;
         };
         /** @description 管理画面と候補に出す1件（contracts/tags-api.md §1）。 */
         Tag: {
@@ -3529,21 +3589,49 @@ export interface components {
              * @description タグを作った時刻（秒の精度。specs/036-tag-admin-scale/contracts/screen-api.md §0）
              */
             createdAt: string;
+            /** @description タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4） */
+            kind: components["schemas"]["TagKindRef"] | null;
         };
         TagList: {
             items: components["schemas"]["Tag"][];
-            /** @description 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る */
+            /** @description 条件（`q`・`tentative`・`unused`・`kind`）に合うタグの数。ページングとは独立に返る */
             total: number;
             /** @description 全部のタグの数。ページングとは独立に返る */
             totalAll: number;
             /** @description 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る */
             nextCursor?: string;
             /**
-             * @description 前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused` にも
+             * @description 前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused`・`kind` にも
              *     合うタグ。`limit` を付け `cursor` の無い要求で、`q` が空でなく該当があるときだけ入る。
              *     `items` に入るとは限らない（`items` は部分一致を `sort` の順に並べた 1 ページのため）
              */
             exact?: components["schemas"]["Tag"];
+        };
+        /** @description タグの種類の id と名前（specs/051-tag-kinds/research.md R-4）。 */
+        TagKindRef: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+        };
+        /** @description 種類の一覧の1件（specs/051-tag-kinds/contracts/screen-api.md）。 */
+        TagKind: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description この種類のタグの数。仮のタグも数える */
+            tagCount: number;
+            /**
+             * Format: date-time
+             * @description 種類を作った時刻（秒の精度）
+             */
+            createdAt: string;
+        };
+        TagKindList: {
+            /** @description すべての種類。id の順。画面は名前の自然順に並べ直す */
+            items: components["schemas"]["TagKind"][];
+        };
+        TagKindNameRequest: {
+            name: string;
         };
         /**
          * @description タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
@@ -3578,7 +3666,12 @@ export interface components {
         };
         TagBatchRequest: {
             /** @enum {string} */
-            action: "confirm" | "reject" | "delete";
+            action: "confirm" | "reject" | "delete" | "setKind" | "clearKind";
+            /**
+             * Format: int64
+             * @description `setKind` で付ける種類。`setKind` だけが持つ
+             */
+            kindId?: number;
             ids: number[];
         };
         TagBatchResponse: {
@@ -4945,7 +5038,7 @@ export interface components {
          * @description 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
          * @enum {string}
          */
-        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large";
+        ErrorReason: "name_is_tag" | "name_is_synonym" | "username_length" | "password_length" | "tag_name_empty" | "tag_name_control_characters" | "tag_name_too_long" | "merge_same_tag" | "search_too_long" | "too_many_tag_filters" | "too_many_videos" | "too_many_tags" | "guest_filter_not_allowed" | "invalid_cursor" | "invalid_folder_path" | "relative_directory_path" | "video_not_found" | "folder_not_found" | "no_scan" | "directory_not_found" | "file_unavailable" | "media_folders_changed" | "group_target_not_found" | "group_cycle" | "probe_info_missing" | "seek_preview_generating" | "transcode_unavailable" | "cross_origin" | "open_not_local" | "encoder_unavailable" | "api_token_name_empty" | "api_token_name_control_characters" | "api_token_name_too_long" | "subtitle_unavailable" | "display_name_control_characters" | "display_name_too_long" | "duration_unknown" | "thumbnail_position_out_of_range" | "thumbnail_frame_unavailable" | "too_few_videos" | "representative_not_selected" | "not_bundled" | "listen_failed" | "auto_tagging_off" | "comfyui_url_invalid" | "comfyui_api_key_missing" | "thumbnail_edit_not_found" | "thumbnail_edit_not_ready" | "thumbnail_edit_mask_invalid" | "thumbnail_edit_reference_invalid" | "thumbnail_edit_no_result" | "thumbnail_image_invalid" | "thumbnail_upload_too_large" | "thumbnail_upload_invalid" | "content_changed" | "unreachable" | "unauthorized" | "insufficient_credits" | "missing_models" | "workflow_rejected" | "run_failed" | "no_output" | "timed_out" | "work_info_control_characters" | "work_info_too_long" | "work_info_too_many" | "work_info_invalid_date" | "work_info_invalid_url" | "work_info_invalid_language" | "work_info_duplicate" | "work_info_empty" | "undo_conflict" | "undo_expired" | "person_not_found" | "organization_not_found" | "organization_parent_cycle" | "merge_same_person" | "merge_same_organization" | "external_id_taken" | "blocked_address" | "network_error" | "memory_exceeded" | "output_too_large" | "tag_kind_not_found" | "tag_kind_name_taken";
     };
     responses: {
         /** @description 対象が存在しない */
@@ -5055,6 +5148,14 @@ export interface components {
          *     （specs/047-video-work-info/contracts/screen-api.md）
          */
         OrganizationFilter: number;
+        /**
+         * @description タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
+         *     持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
+         *     実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
+         *     `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+         *     （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+         */
+        TagKindFilter: number;
         /** @description メディアフォルダの識別子 */
         MediaFolderId: number;
         /** @description API トークンの識別子 */
@@ -5075,6 +5176,8 @@ export interface components {
         VideoTagId: number;
         /** @description タグの識別子 */
         TagId: number;
+        /** @description タグの種類の識別子 */
+        TagKindId: number;
         /** @description 人物の識別子 */
         PersonId: number;
         /** @description 団体の識別子 */
@@ -5315,6 +5418,14 @@ export interface operations {
                  *     （specs/047-video-work-info/contracts/screen-api.md）
                  */
                 organization?: components["parameters"]["OrganizationFilter"];
+                /**
+                 * @description タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
+                 *     持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
+                 *     実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
+                 *     `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+                 *     （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+                 */
+                tagKind?: components["parameters"]["TagKindFilter"];
             };
             header?: never;
             path?: never;
@@ -5385,6 +5496,14 @@ export interface operations {
                  *     （specs/047-video-work-info/contracts/screen-api.md）
                  */
                 organization?: components["parameters"]["OrganizationFilter"];
+                /**
+                 * @description タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
+                 *     持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
+                 *     実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
+                 *     `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+                 *     （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+                 */
+                tagKind?: components["parameters"]["TagKindFilter"];
             };
             header?: never;
             path?: never;
@@ -5430,6 +5549,14 @@ export interface operations {
                  *     （specs/047-video-work-info/contracts/screen-api.md）
                  */
                 organization?: components["parameters"]["OrganizationFilter"];
+                /**
+                 * @description タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
+                 *     持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
+                 *     実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
+                 *     `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+                 *     （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+                 */
+                tagKind?: components["parameters"]["TagKindFilter"];
             };
             header?: never;
             path?: never;
@@ -7475,11 +7602,17 @@ export interface operations {
                 tentative?: boolean;
                 /** @description true なら本数0のタグだけにする */
                 unused?: boolean;
+                /**
+                 * @description 種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
+                 *     無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない。正の整数でも
+                 *     `none` でもなければ 400 `invalid_request`（specs/051-tag-kinds/contracts/screen-api.md）
+                 */
+                kind?: string;
                 /** @description 並び順 */
                 sort?: components["schemas"]["TagSort"];
                 /**
                  * @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
-                 *     `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+                 *     `unused`・`kind`・`sort` で続けて使う。`limit` を省いたときは無視する
                  */
                 cursor?: string;
                 /** @description 1ページの件数。省くと全件を返し、`nextCursor` は入らない */
@@ -7794,6 +7927,7 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     tagImpact: {
@@ -7820,6 +7954,107 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+        };
+    };
+    listTagKinds: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 種類の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagKindList"];
+                };
+            };
+        };
+    };
+    createTagKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagKindNameRequest"];
+            };
+        };
+        responses: {
+            /** @description 作成した種類 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagKind"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    deleteTagKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description タグの種類の識別子 */
+                id: components["parameters"]["TagKindId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 削除した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    renameTagKind: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description タグの種類の識別子 */
+                id: components["parameters"]["TagKindId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TagKindNameRequest"];
+            };
+        };
+        responses: {
+            /** @description 更新後の種類 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TagKind"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listPeople: {

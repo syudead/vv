@@ -250,10 +250,16 @@ with the other dates ([033 UI design](../../specs/033-video-dates/ui-design.md))
 date favorited follows recently played and sorts newest first
 ([035 UI design, Sort and direction](../../specs/035-favorites/ui-design.md)).
 
-The filter popover lists watch status, `Favorites only` (URL `fav=1`) and
-playability, in that order. `Clear filters` clears favorites only with the
-other filters and keeps the sort. A guest URL with `fav=1` or `sort=favorited*`
-is reset to the defaults before the request and the URL is corrected.
+The filter popover lists watch status, `Favorites only` (URL `fav=1`),
+playability and, for the owner, a `Tag kind` select (URL `tagKind=<id>`), in
+that order. The select offers `Any kind` and the kinds in natural name order,
+read from the shared kind list when the popover first opens; an applied kind
+also shows as a `Kind: <name>` chip in the `Filtering by` row, and a kind that
+the loaded list no longer holds leaves the URL with a toast
+([051 UI design, Library](../../specs/051-tag-kinds/ui-design.md#library)).
+`Clear filters` clears favorites only and the kind with the other filters and
+keeps the sort. A guest URL with `fav=1`, `tagKind` or `sort=favorited*` is
+reset to the defaults before the request and the URL is corrected.
 
 ### Scan entry and progress
 
@@ -742,6 +748,7 @@ column applies to `GET /api/videos` and `GET /api/library`:
 | `favorite` | Favorite videos and favorite groups | `400 guest_filter_not_allowed` |
 | `person` | Videos linked to that person in any role | `400 guest_filter_not_allowed` |
 | `organization` | Videos linked to that organization in any role | `400 guest_filter_not_allowed` |
+| `tagKind` | Videos with at least one tag of that kind, manual or from the folder | `400 guest_filter_not_allowed` |
 
 `query`, `tag`, `person` and `organization` apply to each group member, so a
 group matched only in part lists its matched members as video items. A

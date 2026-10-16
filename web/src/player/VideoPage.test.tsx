@@ -2693,6 +2693,7 @@ describe("VideoPage", () => {
       manual: true,
       fromFolder: false,
       tentative: false,
+      kind: null,
     };
 
     /** current は GET /api/videos/7 が今返す動画である。 */
@@ -2869,8 +2870,22 @@ describe("VideoPage", () => {
   });
 
   describe("バージョン（specs/030-video-versions/ui-design.md「Video page」）", () => {
-    const tagX = { id: 1, name: "X", manual: true, fromFolder: false, tentative: false };
-    const tagY = { id: 2, name: "Y", manual: true, fromFolder: false, tentative: false };
+    const tagX = {
+      id: 1,
+      name: "X",
+      manual: true,
+      fromFolder: false,
+      tentative: false,
+      kind: null,
+    };
+    const tagY = {
+      id: 2,
+      name: "Y",
+      manual: true,
+      fromFolder: false,
+      tentative: false,
+      kind: null,
+    };
     const folder = { rootId: 1, path: "movies", rootName: "Media" };
     const versionA: Video = {
       ...video,
@@ -3316,8 +3331,22 @@ describe("VideoPage", () => {
       server.videos.set(7, [
         guestVideo({
           tags: [
-            { id: 1, name: "高画質", manual: true, fromFolder: false, tentative: true },
-            { id: 2, name: "旅行", manual: true, fromFolder: false, tentative: false },
+            {
+              kind: null,
+              id: 1,
+              name: "高画質",
+              manual: true,
+              fromFolder: false,
+              tentative: true,
+            },
+            {
+              kind: null,
+              id: 2,
+              name: "旅行",
+              manual: true,
+              fromFolder: false,
+              tentative: false,
+            },
           ],
         }),
       ]);
@@ -3464,7 +3493,14 @@ describe("VideoPage", () => {
         {
           ...video,
           tags: [
-            { id: 1, name: "旅行", manual: true, fromFolder: false, tentative: false },
+            {
+              kind: null,
+              id: 1,
+              name: "旅行",
+              manual: true,
+              fromFolder: false,
+              tentative: false,
+            },
           ],
         },
       ]);

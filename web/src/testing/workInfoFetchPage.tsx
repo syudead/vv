@@ -40,7 +40,16 @@ export const video: Video = {
   videoCodec: "h264",
   audioCodec: "aac",
   location: { path: "/media/テスト動画.mp4", openable: false },
-  tags: [{ id: 1, name: "既存", manual: true, fromFolder: false, tentative: false }],
+  tags: [
+    {
+      kind: null,
+      id: 1,
+      name: "既存",
+      manual: true,
+      fromFolder: false,
+      tentative: false,
+    },
+  ],
 };
 
 export const works: WorkInfoPlugin = {

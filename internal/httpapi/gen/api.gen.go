@@ -345,6 +345,8 @@ const (
 	ErrorReasonSearchTooLong                 ErrorReason = "search_too_long"
 	ErrorReasonSeekPreviewGenerating         ErrorReason = "seek_preview_generating"
 	ErrorReasonSubtitleUnavailable           ErrorReason = "subtitle_unavailable"
+	ErrorReasonTagKindNameTaken              ErrorReason = "tag_kind_name_taken"
+	ErrorReasonTagKindNotFound               ErrorReason = "tag_kind_not_found"
 	ErrorReasonTagNameControlCharacters      ErrorReason = "tag_name_control_characters"
 	ErrorReasonTagNameEmpty                  ErrorReason = "tag_name_empty"
 	ErrorReasonTagNameTooLong                ErrorReason = "tag_name_too_long"
@@ -481,6 +483,10 @@ func (e ErrorReason) Valid() bool {
 	case ErrorReasonSeekPreviewGenerating:
 		return true
 	case ErrorReasonSubtitleUnavailable:
+		return true
+	case ErrorReasonTagKindNameTaken:
+		return true
+	case ErrorReasonTagKindNotFound:
 		return true
 	case ErrorReasonTagNameControlCharacters:
 		return true
@@ -1040,19 +1046,25 @@ func (e SubtitleTrackFormat) Valid() bool {
 
 // Defines values for TagBatchRequestAction.
 const (
-	TagBatchRequestActionConfirm TagBatchRequestAction = "confirm"
-	TagBatchRequestActionDelete  TagBatchRequestAction = "delete"
-	TagBatchRequestActionReject  TagBatchRequestAction = "reject"
+	TagBatchRequestActionClearKind TagBatchRequestAction = "clearKind"
+	TagBatchRequestActionConfirm   TagBatchRequestAction = "confirm"
+	TagBatchRequestActionDelete    TagBatchRequestAction = "delete"
+	TagBatchRequestActionReject    TagBatchRequestAction = "reject"
+	TagBatchRequestActionSetKind   TagBatchRequestAction = "setKind"
 )
 
 // Valid indicates whether the value is a known member of the TagBatchRequestAction enum.
 func (e TagBatchRequestAction) Valid() bool {
 	switch e {
+	case TagBatchRequestActionClearKind:
+		return true
 	case TagBatchRequestActionConfirm:
 		return true
 	case TagBatchRequestActionDelete:
 		return true
 	case TagBatchRequestActionReject:
+		return true
+	case TagBatchRequestActionSetKind:
 		return true
 	default:
 		return false
@@ -3097,7 +3109,10 @@ type Tag struct {
 	// CreatedAt タグを作った時刻（秒の精度。specs/036-tag-admin-scale/contracts/screen-api.md §0）
 	CreatedAt time.Time `json:"createdAt"`
 	Id        int64     `json:"id"`
-	Name      string    `json:"name"`
+
+	// Kind タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
+	Kind *TagKindRef `json:"kind"`
+	Name string      `json:"name"`
 
 	// Synonyms 名前の自然順
 	Synonyms []string `json:"synonyms"`
@@ -3113,6 +3128,9 @@ type Tag struct {
 type TagBatchRequest struct {
 	Action TagBatchRequestAction `json:"action"`
 	Ids    []int64               `json:"ids"`
+
+	// KindId `setKind` で付ける種類。`setKind` だけが持つ
+	KindId *int64 `json:"kindId,omitempty"`
 }
 
 // TagBatchRequestAction defines model for TagBatchRequest.Action.
@@ -3156,9 +3174,37 @@ type TagInput struct {
 	Name *string `json:"name,omitempty"`
 }
 
+// TagKind 種類の一覧の1件（specs/051-tag-kinds/contracts/screen-api.md）。
+type TagKind struct {
+	// CreatedAt 種類を作った時刻（秒の精度）
+	CreatedAt time.Time `json:"createdAt"`
+	Id        int64     `json:"id"`
+	Name      string    `json:"name"`
+
+	// TagCount この種類のタグの数。仮のタグも数える
+	TagCount int `json:"tagCount"`
+}
+
+// TagKindList defines model for TagKindList.
+type TagKindList struct {
+	// Items すべての種類。id の順。画面は名前の自然順に並べ直す
+	Items []TagKind `json:"items"`
+}
+
+// TagKindNameRequest defines model for TagKindNameRequest.
+type TagKindNameRequest struct {
+	Name string `json:"name"`
+}
+
+// TagKindRef タグの種類の id と名前（specs/051-tag-kinds/research.md R-4）。
+type TagKindRef struct {
+	Id   int64  `json:"id"`
+	Name string `json:"name"`
+}
+
 // TagList defines model for TagList.
 type TagList struct {
-	// Exact 前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused` にも
+	// Exact 前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused`・`kind` にも
 	// 合うタグ。`limit` を付け `cursor` の無い要求で、`q` が空でなく該当があるときだけ入る。
 	// `items` に入るとは限らない（`items` は部分一致を `sort` の順に並べた 1 ページのため）
 	Exact *Tag  `json:"exact,omitempty"`
@@ -3167,7 +3213,7 @@ type TagList struct {
 	// NextCursor 次のページの取得に渡す。`limit` を付けた要求で続きがあるときだけ入る
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// Total 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る
+	// Total 条件（`q`・`tentative`・`unused`・`kind`）に合うタグの数。ページングとは独立に返る
 	Total int `json:"total"`
 
 	// TotalAll 全部のタグの数。ページングとは独立に返る
@@ -3185,8 +3231,11 @@ type TagMergeResponse struct {
 
 // TagRef 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
 type TagRef struct {
-	Id   int64  `json:"id"`
-	Name string `json:"name"`
+	Id int64 `json:"id"`
+
+	// Kind タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
+	Kind *TagKindRef `json:"kind"`
+	Name string      `json:"name"`
 
 	// Tentative 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0）
 	Tentative bool `json:"tentative"`
@@ -3677,6 +3726,9 @@ type VideoTag struct {
 	FromFolder bool  `json:"fromFolder"`
 	Id         int64 `json:"id"`
 
+	// Kind タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
+	Kind *TagKindRef `json:"kind"`
+
 	// Manual 手で付けた分がある
 	Manual bool   `json:"manual"`
 	Name   string `json:"name"`
@@ -4153,6 +4205,12 @@ type PlaylistItemId = int64
 // TagId defines model for TagId.
 type TagId = int64
 
+// TagKindFilter defines model for TagKindFilter.
+type TagKindFilter = int64
+
+// TagKindId defines model for TagKindId.
+type TagKindId = int64
+
 // ThumbnailEditId defines model for ThumbnailEditId.
 type ThumbnailEditId = string
 
@@ -4345,6 +4403,13 @@ type ListLibraryParams struct {
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
 	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
+
+	// TagKind タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
+	// 持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
+	// 実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
+	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 }
 
 // ListLibraryIdsParams defines parameters for ListLibraryIds.
@@ -4370,6 +4435,13 @@ type ListLibraryIdsParams struct {
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
 	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
+
+	// TagKind タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
+	// 持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
+	// 実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
+	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 }
 
 // DeleteMediaFolderParams defines parameters for DeleteMediaFolder.
@@ -4450,11 +4522,16 @@ type ListTagsParams struct {
 	// Unused true なら本数0のタグだけにする
 	Unused *bool `form:"unused,omitempty" json:"unused,omitempty"`
 
+	// Kind 種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
+	// 無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない。正の整数でも
+	// `none` でもなければ 400 `invalid_request`（specs/051-tag-kinds/contracts/screen-api.md）
+	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
+
 	// Sort 並び順
 	Sort *TagSort `form:"sort,omitempty" json:"sort,omitempty"`
 
 	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
-	// `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+	// `unused`・`kind`・`sort` で続けて使う。`limit` を省いたときは無視する
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
 
 	// Limit 1ページの件数。省くと全件を返し、`nextCursor` は入らない
@@ -4530,6 +4607,13 @@ type ListVideosParams struct {
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
 	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
+
+	// TagKind タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
+	// 持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
+	// 実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
+	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 }
 
 // GetVideoParams defines parameters for GetVideo.
@@ -4769,6 +4853,12 @@ type UpdateOllamaSettingsJSONRequestBody = OllamaSettings
 
 // UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
 type UpdateTranscodingSettingsJSONRequestBody = UpdateTranscodingSettingsRequest
+
+// CreateTagKindJSONRequestBody defines body for CreateTagKind for application/json ContentType.
+type CreateTagKindJSONRequestBody = TagKindNameRequest
+
+// RenameTagKindJSONRequestBody defines body for RenameTagKind for application/json ContentType.
+type RenameTagKindJSONRequestBody = TagKindNameRequest
 
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
@@ -5078,13 +5168,25 @@ type ServerInterface interface {
 	// UpdateTranscodingSettings ライブ変換の映像エンコード方式を保存する
 	// (PUT /api/settings/transcoding)
 	UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request)
+	// ListTagKinds タグの種類を一覧する
+	// (GET /api/tag-kinds)
+	ListTagKinds(w http.ResponseWriter, r *http.Request)
+	// CreateTagKind タグの種類を1件作る
+	// (POST /api/tag-kinds)
+	CreateTagKind(w http.ResponseWriter, r *http.Request)
+	// DeleteTagKind タグの種類を1件削除する
+	// (DELETE /api/tag-kinds/{id})
+	DeleteTagKind(w http.ResponseWriter, r *http.Request, id TagKindId)
+	// RenameTagKind タグの種類の名前を書き換える
+	// (PATCH /api/tag-kinds/{id})
+	RenameTagKind(w http.ResponseWriter, r *http.Request, id TagKindId)
 	// ListTags タグを一覧する
 	// (GET /api/tags)
 	ListTags(w http.ResponseWriter, r *http.Request, params ListTagsParams)
 	// CreateTag タグを1件作る
 	// (POST /api/tags)
 	CreateTag(w http.ResponseWriter, r *http.Request)
-	// BatchTags 複数のタグをまとめて確定・却下・削除する
+	// BatchTags 複数のタグをまとめて確定・却下・削除し、種類を付け外しする
 	// (POST /api/tags/batch)
 	BatchTags(w http.ResponseWriter, r *http.Request)
 	// TagImpact まとめての却下・削除・統合の確認に出す数を返す
@@ -6272,6 +6374,19 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "tagKind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKind", r.URL.Query(), &params.TagKind, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListLibrary(w, r, params)
 	}))
@@ -6379,6 +6494,19 @@ func (siw *ServerInterfaceWrapper) ListLibraryIds(w http.ResponseWriter, r *http
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagKind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKind", r.URL.Query(), &params.TagKind, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
 		}
 		return
 	}
@@ -7513,6 +7641,86 @@ func (siw *ServerInterfaceWrapper) UpdateTranscodingSettings(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// ListTagKinds operation middleware
+func (siw *ServerInterfaceWrapper) ListTagKinds(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTagKinds(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateTagKind operation middleware
+func (siw *ServerInterfaceWrapper) CreateTagKind(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateTagKind(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteTagKind operation middleware
+func (siw *ServerInterfaceWrapper) DeleteTagKind(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagKindId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteTagKind(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RenameTagKind operation middleware
+func (siw *ServerInterfaceWrapper) RenameTagKind(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id TagKindId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenameTagKind(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTags operation middleware
 func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
 
@@ -7557,6 +7765,19 @@ func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Reque
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unused"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unused", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "kind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "kind", r.URL.Query(), &params.Kind, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "kind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "kind", Err: err})
 		}
 		return
 	}
@@ -8358,6 +8579,19 @@ func (siw *ServerInterfaceWrapper) ListVideos(w http.ResponseWriter, r *http.Req
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "organization"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "organization", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "tagKind" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "tagKind", r.URL.Query(), &params.TagKind, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "tagKind"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "tagKind", Err: err})
 		}
 		return
 	}
@@ -10001,6 +10235,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags/rejected-names", wrapper.ListRejectedTagNames)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/batch", wrapper.BatchTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags/impact", wrapper.TagImpact)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tag-kinds", wrapper.ListTagKinds)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tag-kinds", wrapper.CreateTagKind)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tag-kinds/{id}", wrapper.DeleteTagKind)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/tag-kinds/{id}", wrapper.RenameTagKind)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/people", wrapper.ListPeople)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/people", wrapper.CreatePerson)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/people/{id}", wrapper.DeletePerson)

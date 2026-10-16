@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: c5e0a9d256e2df11ce5903c5c5dfb801f4dcd5d0a0de19b6689d0d00d13a74c7
+sourceHash: 15279de2b9e03ddc2b183534a76b4c05a82471b40f52a6268f29b63d6e5c69c4
 ---
 
 # 設計文書 {#design-documents}
@@ -69,4 +69,5 @@ sourceHash: c5e0a9d256e2df11ce5903c5c5dfb801f4dcd5d0a0de19b6689d0d00d13a74c7
 - [任意の動画とグループのグループ (経路を持つグループのページ、New group、Add to group、動画のページのグループの文脈): UI](../../specs/048-groups/ui-design.md)
 - [作品情報プラグイン (設定の節、承認の確認、設定の値、取得の入口と比較を持つダイアログ): UI](../../specs/049-work-info-plugins/ui-design.md)
 - [ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる (ドロップの表示、ドロップのメニュー、新しいグループの名前欄、取り消しのトースト): UI](../../specs/050-drag-organize/ui-design.md)
+- [タグの種類 (タグの行の種類のラベル、種類の絞り込み、選択バーの Set kind、Kinds タブ、ライブラリのタグの種類の絞り込み): UI](../../specs/051-tag-kinds/ui-design.md)
 - [作品情報プラグインからの作品の詳細 (比較の作品の詳細の行と `New` と `Not linked` の印、結果のステップの除かれた値): UI](../../specs/052-plugin-work-info-fields/ui-design.md)

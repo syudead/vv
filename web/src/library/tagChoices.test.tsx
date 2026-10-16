@@ -6,6 +6,7 @@ import { buildAddOptions, buildRemoveOptions, removableSummary } from "./tagChoi
 
 function tag(id: number, name: string, synonyms: string[] = [], videoCount = 1): Tag {
   return {
+    kind: null,
     id,
     name,
     synonyms,
@@ -16,7 +17,7 @@ function tag(id: number, name: string, synonyms: string[] = [], videoCount = 1):
 }
 
 function summaryItem(id: number, name: string, manualCount: number, count = manualCount) {
-  return { tag: { id, name, tentative: false }, count, manualCount };
+  return { tag: { id, name, tentative: false, kind: null }, count, manualCount };
 }
 
 describe("buildAddOptions", () => {

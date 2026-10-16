@@ -11,6 +11,7 @@ import TagRow from "./TagRow";
 
 function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
   return {
+    kind: null,
     synonyms: [],
     videoCount: 0,
     tentative: false,

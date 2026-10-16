@@ -10,6 +10,12 @@ export type VideoTagsResponse = components["schemas"]["VideoTagsResponse"];
 export type VideoTagsSummary = components["schemas"]["VideoTagsSummary"];
 export type RejectedTagNameList = components["schemas"]["RejectedTagNameList"];
 export type TagBatchAction = components["schemas"]["TagBatchRequest"]["action"];
+/**
+ * TagBatchCommand は `batchTags` に渡す操作である。`setKind` だけが付ける種類の `kindId` を持ち、
+ * ほかの操作は `kindId` を送らない（specs/051-tag-kinds/contracts/screen-api.md）。
+ */
+export type TagBatchCommand =
+  Exclude<TagBatchAction, "setKind"> | { action: "setKind"; kindId: number };
 export type TagBatchResponse = components["schemas"]["TagBatchResponse"];
 export type TagImpactAction = components["schemas"]["TagImpactRequest"]["action"];
 export type TagImpactResponse = components["schemas"]["TagImpactResponse"];
@@ -59,6 +65,11 @@ export interface TagPageQuery {
   tentative?: boolean;
   /** 本数 0 のタグだけにする。 */
   unused?: boolean;
+  /**
+   * 種類で絞る。種類の id（正の整数の文字列）か、種類の無いタグの `none`
+   * （specs/051-tag-kinds/contracts/screen-api.md「`GET /api/tags` parameter `kind`」）。
+   */
+  kind?: string;
   sort?: TagSort;
   /** 前回の応答の `nextCursor`。同じ条件で続けて使う。 */
   cursor?: string;
@@ -76,6 +87,7 @@ export function listTagPage(query: TagPageQuery, signal?: AbortSignal): Promise<
   if (query.q !== undefined && query.q !== "") params.set("q", query.q);
   if (query.tentative === true) params.set("tentative", "true");
   if (query.unused === true) params.set("unused", "true");
+  if (query.kind !== undefined) params.set("kind", query.kind);
   if (query.sort !== undefined) params.set("sort", query.sort);
   if (query.cursor !== undefined && query.cursor !== "")
     params.set("cursor", query.cursor);
@@ -457,20 +469,22 @@ export async function rejectTag(id: number, signal?: AbortSignal): Promise<void>
 }
 
 /**
- * batchTags は複数のタグをまとめて確定・却下・削除する（POST /api/tags/batch、
- * specs/036-tag-admin-scale/contracts/screen-api.md §1）。働かない種類・無いタグは
+ * batchTags は複数のタグをまとめて確定・却下・削除し、種類を付け外しする（POST /api/tags/batch、
+ * specs/036-tag-admin-scale/contracts/screen-api.md §1、specs/051-tag-kinds/contracts/screen-api.md）。
+ * `setKind` は `{ action: "setKind", kindId }` で渡す。働かない種類・無いタグは
  * サーバーが飛ばし、`notApplicableIds`・`notFoundIds` で返す。成功したら、1 件の操作と同じく
  * `afterTagChanged` を 1 回呼ぶ。却下のあとの却下した名前の一覧は呼び出し側が取り直す。
  */
 export async function batchTags(
-  action: TagBatchAction,
+  command: TagBatchCommand,
   ids: readonly number[],
   signal?: AbortSignal,
 ): Promise<TagBatchResponse> {
+  const action = typeof command === "string" ? { action: command } : command;
   const result = await request<TagBatchResponse>("/api/tags/batch", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ action, ids: Array.from(ids) }),
+    body: JSON.stringify({ ...action, ids: Array.from(ids) }),
     signal,
   });
   afterTagChanged();
