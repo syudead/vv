@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 72f87a68b2f339e5c0a4b45e05ddb13b727175ab56f8a7ed2c433e442295da7b
+sourceHash: 8152849cd25b9c8ccc945ee5379b97f0d739ded51271b6171829f5a6156972ea
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -235,7 +235,7 @@ flowchart TD
 | その場の状態 | 状態のブロックはデータと同じ本体のスロットに入るので、ヘッダーとツールバーは動かない（[038 UI design, States](../../specs/038-design-system/ui-design.md#states)） |
 | 端がそろう | `CardGrid` は列を本体の幅まで伸ばす（`card-*` の段階に対する `auto-fill`）ので、ツールバー、件数の行、グリッドは両端を共有する |
 
-`CardGrid` は列のテンプレートを `style` で渡す。名前付きの段階から作るテンプレートは、チェックにとって任意値だからだ。段階は引き続き `tokens.css` から来る。`DetailPage` の脇の領域は名前付きの段階 `detail-aside`（`xl` からは `detail-aside-wide`）である。`ListPage` の任意の脇の領域は `lg` からの列 `list-aside` で、名前付きのユーティリティ `grid-cols-list-aside` で配置し、上部バーの下に貼り付いている間は `list-aside-max` を上限とする。動画ページのプレーヤーの枠は、`@theme inline` ブロックで宣言した名前付きの段階（`player-width`、`player-height`、`aspect-player`）から自身の大きさを決める。これらの値は実行時に枠から動画の縦横比を読み、`:root` ではなく要素の上で解決しなければならないからだ。`DataTable` は shadcn/ui の `Table` の上に作り、この層はそれを `table` 項目として加える。
+`CardGrid` は列のテンプレートを `style` で渡す。名前付きの段階から作るテンプレートは、チェックにとって任意値だからだ。段階は引き続き `tokens.css` から来る。`DetailPage` の脇の領域は名前付きの段階 `detail-aside`（`xl` からは `detail-aside-wide`）である。`ListPage` の任意の脇の領域は `lg` からの列 `list-aside` で、名前付きのユーティリティ `grid-cols-list-aside` で配置し、上部バーの下に貼り付いている間は `list-aside-max` を上限とする。`SettingsPage` の任意の `nav` は設定領域のページの一覧である。`sm` からは左側の幅 `settings-nav` の列で、`max-w-4xl` の中で名前付きのユーティリティ `grid-cols-settings-page` で配置する。`sm` 未満では一覧だけ、または戻るリンクの下のページだけで、どちらにするかは `view` によって CSS で選ぶ（[058 UI 設計、ページの一覧と雛形](../../specs/058-settings-pages/ui-design.md#page-list-and-skeleton)）。動画ページのプレーヤーの枠は、`@theme inline` ブロックで宣言した名前付きの段階（`player-width`、`player-height`、`aspect-player`）から自身の大きさを決める。これらの値は実行時に枠から動画の縦横比を読み、`:root` ではなく要素の上で解決しなければならないからだ。`DataTable` は shadcn/ui の `Table` の上に作り、この層はそれを `table` 項目として加える。
 
 `EditorDialog` は、動画のフレームの上に塗り、その結果をフレームと比べるといった 1 枚の画像に対する作業のために、ビューポートを満たす `Dialog` である。ヘッダーの帯、画像のための `stage`、入力のための `aside` から成り、入力の側の `footer` が主な操作を持つ。`lg` 未満では、stage の高さは名前付きの段階 `editor-stage`（ビューポートの高さの約 45%）である。`Dialog` は `max-w-lg` で止まるので、1280 px では 16:9 のフレームの高さが約 290 px になり、塗るにも 2 枚の画像を比べるにも小さすぎる。`FormDialog` はフォームのためのダイアログのままである（[045 UI 設計、Changes to the design system](../../specs/045-comfyui-thumbnails/ui-design.md#changes-to-the-design-system)）。
 
