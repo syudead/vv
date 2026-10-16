@@ -63,7 +63,9 @@ func (c fakeRecommendCatalog) VideosByIDs(_ context.Context, _ domain.Audience, 
 type tableScorer map[[2]int64]domain.RelatedScore
 
 func (s tableScorer) For(self domain.RelatedCandidate) func(domain.RelatedCandidate) domain.RelatedScore {
-	return func(other domain.RelatedCandidate) domain.RelatedScore { return s[[2]int64{self.VideoID, other.VideoID}] }
+	return func(other domain.RelatedCandidate) domain.RelatedScore {
+		return s[[2]int64{self.VideoID, other.VideoID}]
+	}
 }
 
 func recommendedIDsOf(t *testing.T, page domain.HomeShelfPage) []int64 {
