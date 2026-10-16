@@ -77,11 +77,8 @@ func (p *WorkInfoPlugins) FetchWorkInfo(
 	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
-	title, _, err := domain.NormalizeDisplayName(result.WorkInfo.Title)
-	if err != nil {
-		// 表示名の規則に合わない題名は値が無いものとして扱い、選べなくする（contracts/screen-api.md）。
-		title = ""
-	}
+	// 表示名の規則に合わない題名は値が無いものとして扱い、選べなくする（contracts/screen-api.md）。
+	title := domain.KeptWorkInfoTitle(result.WorkInfo.Title)
 	tags := result.WorkInfo.Tags
 	if tags == nil {
 		tags = []string{}
@@ -136,10 +133,10 @@ func (p *WorkInfoPlugins) run(
 	if !plugin.Manifest.Supports(req.Operation) {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, domain.ErrWorkInfoOperationUnsupported
 	}
-	if missing := domain.MissingWorkInfoPluginSettings(plugin.Manifest.Settings, plugin.Values); len(missing) > 0 {
-		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, &domain.WorkInfoSettingsMissingError{Keys: missing}
+	req.Settings, err = domain.WorkInfoRunSettings(plugin.Manifest.Settings, plugin.Values)
+	if err != nil {
+		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}
-	req.Settings = domain.DeclaredWorkInfoPluginValues(plugin.Manifest.Settings, plugin.Values)
 	// プロキシの設定はまだ無いので、プロキシなしで動かす。
 	result, _, err := p.runtime.Run(ctx, plugin.Digest, module, req, domain.WorkInfoRunNetwork{},
 		p.recordRun(ctx, plugin, domain.SecretWorkInfoPluginValues(plugin.Manifest.Settings, req.Settings)))

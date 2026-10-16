@@ -83,6 +83,26 @@ func DeclaredWorkInfoPluginValues(settings []WorkInfoPluginSetting, values map[s
 	return out
 }
 
+// WorkInfoRunSettings は宣言 settings と値 values から、実行の要求の settings（DeclaredWorkInfoPluginValues）を
+// 返す。必須なのに実効値の無いキーがあれば、宣言の順にそれを持つ *WorkInfoSettingsMissingError を返す。
+// サーバーの実行と mdm plugin run が同じ要求を組み立てるために使う（specs/056-plugin-tooling/research.md R-1）。
+func WorkInfoRunSettings(settings []WorkInfoPluginSetting, values map[string]string) (map[string]string, error) {
+	if missing := MissingWorkInfoPluginSettings(settings, values); len(missing) > 0 {
+		return nil, &WorkInfoSettingsMissingError{Keys: missing}
+	}
+	return DeclaredWorkInfoPluginValues(settings, values), nil
+}
+
+// KeptWorkInfoTitle は取得した題名 raw のうち VVMDM が残すものを返す。表示名の規則（NormalizeDisplayName）で
+// 整えた題名で、規則に合わなければ値が無いものとして "" を返す（specs/049-work-info-plugins/contracts/screen-api.md）。
+func KeptWorkInfoTitle(raw string) string {
+	title, _, err := NormalizeDisplayName(raw)
+	if err != nil {
+		return ""
+	}
+	return title
+}
+
 // NormalizeWorkInfoSearchQuery は検索の語の前後の空白を除き、1〜WorkInfoSearchQueryMaxRunes 文字の
 // 正しい UTF-8 なら返す。外れれば ErrWorkInfoRunInvalid を返す。
 func NormalizeWorkInfoSearchQuery(query string) (string, error) {
