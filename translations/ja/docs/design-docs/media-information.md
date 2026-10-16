@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/media-information.md
-sourceHash: a17cf75c46b1fe8a5afafd49ee9e958aeec3426c142f17ce0e12abac7d529599
+sourceHash: bfbcb14fbc844c97e87aca6e19d951bc7445ca143733f4111cd3a80d631f8b2a
 ---
 
 # 取り込み時のプローブから得るメディア情報 {#media-information-from-the-import-probe}
@@ -29,6 +29,19 @@ flowchart LR
 | --- | --- |
 | 項目ごとに 2 回目の `ffprobe` | 動画 10,000 本のライブラリでは、さらに 10,000 個のプロセスを起動する |
 | すべてのコンテナに長い上限 | ヘッダーのあるコンテナでは何も変わらない |
+
+## TS 録画の放送局と番組は SI から得る {#a-ts-recordings-station-and-programme-come-from-its-si}
+
+`ffprobe` の後、`media.Probe` は `.ts`、`.m2ts`、`.mts` のファイルの先頭 32 MiB を Go で独自の 10 秒の期限のもとで読み ([`internal/media/ts_si.go`](../../internal/media/ts_si.go))、SI テーブルから `Broadcast` を埋める。`ffprobe` はこれらの名前を提供できない。復号するのは ARIB STD-B24 ではなく DVB の文字テーブルであり、EIT も解析しない。
+
+| 項目 | 取得元 |
+| --- | --- |
+| パケット | 188 バイトのパケット、4 バイトの前置部を持つ 192 バイトのパケット (`.m2ts`)、204 バイトのパケット。繰り返し現れる同期バイトで見つける |
+| 放送局 | SDT にある、PAT の最初のプログラムのサービス名 |
+| 番組 | TOT または TDT の時刻からその時刻に再生時間を足した時刻までの録画と重なる、EIT の現在または次のイベントのうち最長のもの。同じなら次のイベントを選ぶ ([`domain.SelectBroadcastProgram`](../../internal/domain/media_broadcast.go)) |
+| 文字 | [`internal/media/arib`](../../internal/media/arib/arib.go) の ARIB STD-B24 8 ビット復号器: `golang.org/x/text` による JIS X 0208、かなと JIS X 0201 の文字集合、Unicode 5.2 の符号位置の表による 85 区から 94 区の追加記号。大きさ、色、位置の制御は無視し、対応のない文字は捨てる |
+
+放送局、両方のイベント、時刻が見つかった時点で読み取りを止める。読み取りエラーまたは期限切れのときは名前を省き、プローブを失敗させることはない。名前を復号するのはオリジナルネットワーク ID が日本のネットワークで、イベントに `jpn` のタグがあるときだけなので、DVB の録画や、`ffmpeg` が既定の SDT を付け EIT なしで書いた TS には `Broadcast` がない。
 
 ## パーサーが読み、ドメインが判断する {#the-parser-reads-the-domain-decides}
 
