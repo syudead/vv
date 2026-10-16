@@ -1,6 +1,6 @@
 ---
 source: specs/056-media-info/plan.md
-sourceHash: 7864b41aa2676729ca4d5c519bfbad912363e6a59ebce9ca26ddad9568ba68b8
+sourceHash: aedaf2560cf7bf7620dcd8324ac682b2de2d9f6c8ef686ded189a5308c8fea5e
 ---
 
 # 実装計画: 取り込みのプローブから得るメディア情報を、動画ページとシークバーに示す {#implementation-plan-media-information-from-the-import-probe-on-the-video-page-and-the-seek-bar}
@@ -19,7 +19,7 @@ sourceHash: 7864b41aa2676729ca4d5c519bfbad912363e6a59ebce9ca26ddad9568ba68b8
 | 情報源 | 同じ `ffprobe` の実行。`-show_chapters` を加え、TS では解析の上限を長くする ([R-2](research.md#r-2-the-same-ffprobe-run-reads-chapters-and-reads-longer-for-mpeg-ts)) |
 | 分類 | HDR、投影、3D、インターレースを純粋なドメインの規則として決める ([R-3](research.md#r-3-hdr-projection-3d-and-interlacing-are-decided-by-pure-rules-in-internaldomain)) |
 | TS の名前 | ARIB STD-B24 の復号器を持つ Go の SI リーダー、先頭の 32 MiB ([R-4](research.md#r-4-station-and-programme-names-of-a-ts-recording-come-from-a-go-si-reader-with-an-arib-std-b24-decoder)) |
-| 再解析 | `metadata` のジョブの種類。取得できるプローブがないときだけ取得できる ([R-5](research.md#r-5-imported-videos-are-re-analysed-by-a-metadata-job-that-yields-to-pending-probes)) |
+| 再解析 | `metadata` のジョブの種類。待ち中か実行中のプローブがないときだけ取得できる ([R-5](research.md#r-5-imported-videos-are-re-analysed-by-a-metadata-job-that-yields-to-pending-probes)) |
 | API | `mediaInfo` は詳細だけに入り、ゲストも含む ([R-6](research.md#r-6-mediainfo-is-part-of-the-video-detail-only-for-owners-and-guests-alike)) |
 | チャプター | `chapters` のテキストトラック、video.js のシークバーの印、チャプターのボタン ([R-7](research.md#r-7-chapters-are-a-chapters-text-track-with-marks-drawn-in-the-videojs-seek-bar)) |
 | 言語 | 名前は `Intl.DisplayNames` で示す ([R-8](research.md#r-8-language-codes-are-shown-through-intldisplaynames)) |
@@ -43,7 +43,7 @@ sequenceDiagram
   Probe->>Store: ApplyProbeForJob: videos + transcode + media_info
   Store-->>Page: video の通知
   Note over Meta: この機能より前に取り込んだ動画
-  Store->>Meta: metadata を取得 (取得できる probe がない)
+  Store->>Meta: metadata を取得 (待ち中か実行中の probe がない)
   Meta->>Media: Probe(path)
   Media-->>Meta: Probe{…, Media}
   Meta->>Store: ApplyMediaInfoForJob: media_info だけ
@@ -52,9 +52,9 @@ sequenceDiagram
 ```
 
 1. **プローブはより多く読み、失敗は増えない。** `media.Probe` は `-show_chapters` と、TS のファイルでは長い解析の上限を加え、インデックスの値の隣に `domain.MediaInfo` を埋める。欠けている項目や読めない項目は省く。プローブを失敗させるのは、今と同じく、長さが欠けているときだけである ([data-model.md の規則](data-model.md#rules))。
-2. **TS のファイルは名前を得る。** `.ts`、`.m2ts`、`.mts` では、`internal/media` が先頭の 32 MiB を Go で読み、最初のプログラムの SDT と EIT の現在のイベントを見つけ、両方の名前を ARIB の復号器で復号する (R-4)。
+2. **TS のファイルは名前を得る。** `.ts`、`.m2ts`、`.mts` では、`internal/media` が先頭の 32 MiB を Go で読み、最初のプログラムの SDT、EIT の現在と次のイベント、TOT を見つけ、名前を ARIB の復号器で復号し、録画と最も長く重なるイベントを残す。そのため、番組より前に始まる録画が、その前の番組の名前を付けられることはない (R-4)。スキャンは `.ts` に加えて `.m2ts` と `.mts` も取り込む。
 3. **ストアは 1 つの行を書く。** `ApplyProbeForJob` は、`videos` を更新するトランザクションの中で、同じ同一性の確認のもとで `video_media_info` を書く。そのため、プローブの間に置き換えられたファイルは、古いファイルの行を残さない。
-4. **既存の動画が追いつく。** マイグレーションは、プローブ済みの動画ごとに `metadata` のジョブを入れる。スキャンは、行がないか、行が今のバージョンより古い動画に 1 つ入れる。`metadata` のワーカーは、取得できる `probe` のジョブがない間だけ取得し、同じ `Probe` を実行し、行だけを書く。上限での失敗は、ページが今示すものを保つ。
+4. **既存の動画が追いつく。** マイグレーションは、プローブ済みの動画ごとに `metadata` のジョブを入れる。スキャンは、行がないか、行が今のバージョンより古い動画に 1 つ入れる。`metadata` のワーカーは、待ち中か実行中の `probe` のジョブがない間だけ取得し、同じ `Probe` を実行し、行だけを書く。上限での失敗は、ページが今示すものを保つ。
 5. **ページはグループを示す。** `GET /api/videos/{id}` は `mediaInfo` を運ぶ。ページは技術の行の下に Video、Audio、Subtitles、Embedded、Broadcast のグループを、それぞれ項目があるときだけ、`design` 段階が定める形で描く。タイトルと Created、Added の事実は変えない。
 6. **プレイヤーはチャプターを示す。** ページは `mediaInfo.chapters` から `chapters` のテキストトラックを作る。シークバーのコンポーネントは開始ごとに印を描き、シークプレビューはポインターの下のチャプターの名前を示し、チャプターのボタンは一覧を示してシークする。
 
@@ -113,10 +113,10 @@ specs/056-media-info/
 
 | パッケージ | 変更 |
 | --- | --- |
-| `internal/domain` | `MediaInfo` と `MediaInfoVersion`。HDR、インターレース、ビット深度、文字列、日付、場所、チャプターの規則。`JobMetadata`、`NoClaimableProbe`、`IndexedVideo.MediaInfoMissing`、アクティビティと問題の種類 |
+| `internal/domain` | `MediaInfo` と `MediaInfoVersion`。HDR、インターレース、ビット深度、文字列、日付、場所、チャプター、放送番組の規則。`JobMetadata`、`NoClaimableProbe`、`IndexedVideo.MediaInfoMissing`、アクティビティと問題の種類 |
 | `internal/media` | `-show_chapters`、TS の上限、新しい項目のパーサー。TS の SI リーダー。`internal/media/arib` (復号器) |
 | `internal/store` | 2 つのマイグレーション。`ApplyProbeForJob` での行。`ApplyMediaInfoForJob`。詳細での読み取り。取得の条件。`metadata` のための `EnsureJob`。スキャンのインデックスのクエリ |
-| `internal/scanner` | `MediaInfoMissing` のときに `metadata` を入れる |
+| `internal/scanner` | `mediaExtensions` の `.m2ts` と `.mts`。`MediaInfoMissing` のときに `metadata` を入れる |
 | `internal/app` | `Ingest` の `metadata` のハンドラー |
 | `cmd/mdm` | 新しい種類のワーカー (`domain.JobKinds` から) と、プローブが終わった後にそれを起こす処理 |
 | `internal/httpapi`、`api/openapi.yaml` | 詳細の `mediaInfo`。2 つの列挙の値 |
@@ -148,11 +148,11 @@ flowchart LR
 
 ### TS の録画の放送局名と番組名を読む {#read-the-station-and-programme-names-of-ts-recordings}
 
-**範囲**: SI リーダー (PAT、SDT、EIT の現在/次、32 MiB の上限、早い停止) と `internal/media/arib` (JIS X 0208 と X 0201 の文字集合、追加記号の表、制御符号)。これを `.ts`、`.m2ts`、`.mts` について `media.Probe` につなぐ。保存する値の `Broadcast` ([R-4](research.md#r-4-station-and-programme-names-of-a-ts-recording-come-from-a-go-si-reader-with-an-arib-std-b24-decoder))。
+**範囲**: SI リーダー (PAT、SDT、EIT の現在/次、TOT/TDT、32 MiB の上限、早い停止、リーダー自身の 10 秒の期限) と `internal/media/arib` (JIS X 0208 と X 0201 の文字集合、追加記号の表、制御符号)。これを `.ts`、`.m2ts`、`.mts` について `media.Probe` につなぐ。`domain.SelectBroadcastProgram`。スキャナーの `mediaExtensions` の `.m2ts` と `.mts`。保存する値の `Broadcast` ([R-4](research.md#r-4-station-and-programme-names-of-a-ts-recording-come-from-a-go-si-reader-with-an-arib-std-b24-decoder))。
 
 **依存**: 取り込み時にメディア情報を読んで保存する。
 
-**受け入れ**: `task check` が通る。復号器のテストが、漢字、ひらがな、カタカナ、半角カタカナの並び、追加記号 (丸数字と角括弧の字形)、ロッキングシフトとシングルシフト、対応のない符号が、期待する文字列に復号されることを示す。テストの中で作った TS (PAT、PMT、SDT、ARIB の文字列を持つ EIT のセクション、その前の詰め物のパケット) でのリーダーのテストが、両方の名前を返すこと、先頭の 32 MiB に SDT も EIT もない TS では何も返さないこと、名前が見つかった後は読むのを止めることを示す。[クイックスタート](quickstart.md) の `rec.ts` の行が通り、復号した名前を PR に記録する。
+**受け入れ**: `task check` が通る。復号器のテストが、漢字、ひらがな、カタカナ、半角カタカナの並び、追加記号 (丸数字と角括弧の字形)、ロッキングシフトとシングルシフト、対応のない符号が、期待する文字列に復号されることを示す。テストの中で作った TS (PAT、PMT、SDT、ARIB の文字列を持つ EIT のセクション、その前の詰め物のパケット) でのリーダーのテストが、両方の名前を返すこと、先頭の 32 MiB に SDT も EIT もない TS では何も返さないこと、名前と時刻が見つかった後は読むのを止めることを示す。ドメインのテストが次を示す: 番組の 5 分前に始まる録画は次のイベントを得る。番組の中で始まる録画は現在のイベントを得る。長さが未定義の現在のイベントは次のイベントで終わる。時刻がなければ `Program` はない。スキャナーのテストが、`.m2ts` と `.mts` のファイルが取り込まれることを示す。[クイックスタート](quickstart.md) の `rec.ts` の行が通り、復号した名前とプローブにかかった時間を PR に記録する。
 
 ### 取り込み済みの動画をバックグラウンドで再解析する {#re-analyse-imported-videos-in-the-background}
 
@@ -160,7 +160,7 @@ flowchart LR
 
 **依存**: 取り込み時にメディア情報を読んで保存する。
 
-**受け入れ**: `task check` が通り、`task generate` で差分が出ない。マイグレーションのテストが、登録された場所を持つプローブ済みの動画は `metadata` のジョブを 1 つ入れられ、プローブが待ちの動画は入れられないことを示す。ストアのテストが次を示す: `probe` のジョブが取得できる間は `metadata` は取得されず、それが終わると取得される。スキャンは、行のない動画と古いバージョンの行の動画に `metadata` を入れ、今のバージョンの行には入れない。場所のバージョンが変わったときは `ApplyMediaInfoForJob` は何も書かない。上限での失敗は行を残し、`metadata_failed` を記録する。偽の生成器を使うアプリのテストが、ハンドラーは行を書き、`videos` に触れないことを示す。[クイックスタート](quickstart.md) の古いデータベース、置き換えたファイル、読めないファイルの行が通る。
+**受け入れ**: `task check` が通り、`task generate` で差分が出ない。マイグレーションのテストが、登録された場所を持つプローブ済みの動画は `metadata` のジョブを 1 つ入れられ、プローブが待ちの動画は入れられないことを示す。ストアのテストが次を示す: `probe` のジョブが待ち中か実行中の間は `metadata` は取得されず、それが終わると取得される。スキャンは、行のない動画と古いバージョンの行の動画に `metadata` を入れ、今のバージョンの行には入れない。場所のバージョンが変わったときは `ApplyMediaInfoForJob` は何も書かない。上限での失敗は行を残し、`metadata_failed` を記録する。偽の生成器を使うアプリのテストが、ハンドラーは行を書き、`videos` に触れないことを示す。[クイックスタート](quickstart.md) の古いデータベース、置き換えたファイル、読めないファイルの行が通る。
 
 ### 動画ページにメディア情報を示す {#show-media-information-on-the-video-page}
 

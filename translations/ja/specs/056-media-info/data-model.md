@@ -1,6 +1,6 @@
 ---
 source: specs/056-media-info/data-model.md
-sourceHash: 4183884d3976874de9b624f3965220fe506b585a2ac776dcef140ea0a3354fc9
+sourceHash: a50ad4000a9c20ccf5659192af19bebe59d775e7d5442321da542976b9de4b34
 ---
 
 # データモデル: 取り込みのプローブから得るメディア情報 {#data-model-media-information-from-the-import-probe}
@@ -63,7 +63,8 @@ sourceHash: 4183884d3976874de9b624f3965220fe506b585a2ac776dcef140ea0a3354fc9
 | `Embedded.Device` | 空白でつないだ `com.apple.quicktime.make` と `com.apple.quicktime.model`、なければ `com.android.manufacturer` と `com.android.model`、なければ `make` と `model` | すべて空 |
 | `Embedded.Location` (`{Latitude, Longitude, Altitude *float64}`) | ISO 6709 として解析した `com.apple.quicktime.location.ISO6709`、なければ `location`、なければ `location-eng` | どれも解析できない |
 | `Embedded.CoverArt` (bool) | `disposition.attached_pic = 1` のストリーム | ない |
-| `Broadcast.Station`、`Broadcast.Program` | SI リーダーの SDT のサービス名と EIT の現在のイベント名 (R-4) | TS のファイルでないか、先頭の 32 MiB で見つからない |
+| `Broadcast.Station` | SI リーダーの SDT のサービス名 (R-4) | TS のファイルでないか、先頭の 32 MiB で見つからない |
+| `Broadcast.Program` | [規則](#rules) が選んだ、EIT の現在か次のイベントの名前 (R-4) | TS のファイルでないか、先頭の 32 MiB に EIT か TOT/TDT がないか、どちらのイベントも録画と重ならない |
 | `Chapters[]` | [規則](#rules) を適用した後の `chapters` | チャプターがない |
 | `Chapters[].StartMs`、`EndMs` (int64) | ミリ秒での `start_time`、`end_time` | 決してない |
 | `Chapters[].Title` | `tags.title` | 空 |
@@ -75,13 +76,14 @@ sourceHash: 4183884d3976874de9b624f3965220fe506b585a2ac776dcef140ea0a3354fc9
 | `version` が `MediaInfoVersion` と違う行はないものとして読まれ、スキャンがその動画に `metadata` のジョブを入れる (`IndexedVideo.MediaInfoMissing`: `probe_state = done` で、今のバージョンの行がない) | `store` (読み取りとスキャンのインデックスのクエリ)、`scanner` (`ensurePendingJobs`) |
 | プローブのジョブは、`videos` の更新と同じ同一性の確認 (ジョブの場所の id、バージョン、パス、内容の鍵、場所の世代) のもとで、`ApplyProbeForJob` のトランザクションの中で行を書く | `store` |
 | `metadata` のジョブは、同じ同一性の確認のもとで行だけを書く。確認に失敗したときは何も書かず、ジョブは完了する | `store` (`ApplyMediaInfoForJob`)、`app` |
-| `metadata` のジョブは、取得できる `probe` のジョブがないときだけ取得できる (`JobClaimCondition.NoClaimableProbe`) | `domain` (条件)、`store` (取得のクエリ) |
+| `metadata` のジョブは、登録された場所を持つ動画に待ち中か実行中の `probe` のジョブがないときだけ取得できる (`JobClaimCondition.NoClaimableProbe`。`NoClaimableThumbnail` が `thumbnail` のジョブを数えるように数える) | `domain` (条件)、`store` (取得のクエリ) |
 | 試行回数の上限で失敗した `metadata` のジョブは、行をそのままにする。問題の種類は `metadata_failed` である | `store` (`FailClaimedJob`) |
 | すべての文字列は前後の空白を除き、改行以外の制御文字を取り除いた正しい UTF-8 でなければならず、2,000 文字で切る。空になったものはないものとする | `domain` |
 | 保つのは最大 64 の音声トラック、64 の字幕トラック、1,000 のチャプターで、ストリームか時刻の順である | `domain` |
 | `RecordedAt` は、オフセットの有無にかかわらず RFC 3339 と、`YYYY-MM-DD HH:MM:SS` を解析する。オフセットを持つ値はそれを保ち、持たない値は UTC とする。それ以外はないものとする | `domain` |
 | `Location` は、座標の整数部が 2、4、6 桁の ISO 6709 の `±DD.DDDD±DDD.DDDD[±ALT]/` を解析する。±90 の外の緯度か ±180 の外の経度はないものとする | `domain` |
 | チャプターは開始で並べる。`StartMs >= DurationMs` のチャプターは捨てる。`EndMs` は `DurationMs` までに切り、少なくとも `StartMs` にする。チャプターが 1 つでも保つ。重なるチャプターは与えられたとおりに保つ | `domain` (`NormalizeChapters`) |
+| TS の録画の番組は、EIT の現在か次のイベントのうち、その範囲が録画 (TOT/TDT の時刻 `T` から、`T` にプローブした長さを足したところまで) と重なり、最も長く重なるものである。同じ長さなら次のイベントを選ぶ。長さが未定義の現在のイベントは次のイベントの開始で終わる。時刻がないか、重なりがなければ `Program` はない | `domain` (`SelectBroadcastProgram`) |
 | 欠けている項目や読めない項目は省き、決してプローブを失敗させない。プローブを失敗させるのは、今と同じく、長さが欠けているときだけである | `media` (パーサー)、`domain` |
 
 ## 変わらないもの {#what-does-not-change}
