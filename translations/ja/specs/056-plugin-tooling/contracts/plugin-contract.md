@@ -1,11 +1,11 @@
 ---
 source: specs/056-plugin-tooling/contracts/plugin-contract.md
-sourceHash: fd2935608ba6463b8416101f501280d2316afa01d31efd96dfdbf34e21990979
+sourceHash: c149a821ec18ac76c5406f2b319759fd43bc0b05cecc08a0333e82aa6de2ff1f
 ---
 
 # 契約: プラグインの契約への追加 {#contract-plugin-contract-additions}
 
-正典: 作者向けの手順書 [docs/how-to/work-info-plugins.md](../../../docs/how-to/work-info-plugins.md)。実装がこれを更新する。契約のバージョンは `1` のままである。新しいフィールドのないマニフェストと、新しい指針を無視するプラグインは、従来どおり動く。このファイルは、この機能が加えるものだけを挙げる。
+正典: 作者向けの手順書 [docs/how-to/work-info-plugins.md](../../../docs/how-to/work-info-plugins.md)。実装がこれを更新する。契約のバージョンは `1` のままである。新しいフィールドのないマニフェストは従来どおり動くが、ID による取得は後方互換ではない。これより前に作られたプラグインは `fetch` の要求から `url` を読み、候補に `url` だけを返すので、`id` を読み、各候補に `id` を返すように作り直さなければならない。このファイルは、この機能が変えるものだけを挙げる。
 
 ## Manifest {#manifest}
 
@@ -22,11 +22,11 @@ sourceHash: fd2935608ba6463b8416101f501280d2316afa01d31efd96dfdbf34e21990979
 
 `settings` は、値を持つ宣言済みのすべてのキーの実効値を載せる。所有者の保存された値が設定されていて、`options` のある設定ではそのうちの 1 つであればその値、そうでなければ `default` である。既定値のある `required` のキーが実行を止めることはない。
 
-`fetch` の要求は `id` を持ち、`url` を持たない ([R-10](../research.md#r-10-a-fetch-takes-a-work-id-only-and-vvmdm-never-fetches-a-url-the-owner-typed)): 候補の `id`、または所有者が入力してトリムした文字列で、プラグインがこれをページの URL に対応づける。`url` を読んでいたプラグインは、代わりに `id` を読む。
+`fetch` の要求は `id` を持ち、`url` を持たない ([R-10](../research.md#r-10-a-fetch-takes-a-work-id-only-and-vvmdm-never-fetches-a-url-the-owner-typed)): 候補の `id`、または所有者が入力してトリムした文字列で、プラグインがこれをページの URL に対応づける。`url` を読んでいたプラグインは、`id` を読むように作り直さなければならない。VVMDM は `url` を送らない。
 
 ## Candidates {#candidates}
 
-`search` の候補は `url` の代わりに `id` を持つ。前後に空白のない 1 から 200 文字で、所有者が候補を選ぶと、VVMDM はこれをそのまま取得の `id` として送る。ダイアログはタイトルの下に ID を示し、ページへのリンクを持たない。
+`search` の候補は `url`、`title`、`detail` の隣に `id` を持つ。`id` は必須で、前後に空白のない 1 から 200 文字であり、所有者が候補を選ぶと、VVMDM はこれをそのまま取得の `id` として送る。有効な `id` のない候補があると、検索は `plugin_failed` で失敗するので、この変更より前に作られたプラグインは、これを返すように作り直さなければならない。`url` は引き続き必須で、作品の `http` または `https` のページである。ダイアログはそのホストを示し、`Open page` でリンクする。VVMDM はこれを取得せず、プラグインの `fetch` にも送らない。
 
 ## Standard error {#standard-error}
 

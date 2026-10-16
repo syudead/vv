@@ -44,7 +44,7 @@ func main() {
 			reply(map[string]any{"error": map[string]string{"message": "failed on purpose"}})
 			return
 		}
-		reply(map[string]any{"candidates": []map[string]string{{"id": "site.test/works/1", "title": req.Query}}})
+		reply(map[string]any{"candidates": []map[string]string{{"id": "site.test/works/1", "url": "https://site.test/works/1", "title": req.Query}}})
 		return
 	}
 	url := "http://" + req.ID

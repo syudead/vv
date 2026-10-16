@@ -259,6 +259,7 @@ func writeKeptResult(w io.Writer, op domain.WorkInfoOperation, result domain.Wor
 
 type keptCandidate struct {
 	ID     string `json:"id"`
+	URL    string `json:"url"`
 	Title  string `json:"title"`
 	Detail string `json:"detail,omitempty"`
 }
@@ -294,7 +295,7 @@ type keptWorkInfo struct {
 func keptCandidates(candidates []domain.WorkInfoCandidate) any {
 	out := make([]keptCandidate, 0, len(candidates))
 	for _, c := range candidates {
-		out = append(out, keptCandidate{ID: c.ID, Title: c.Title, Detail: c.Detail})
+		out = append(out, keptCandidate{ID: c.ID, URL: c.URL, Title: c.Title, Detail: c.Detail})
 	}
 	return struct {
 		Candidates []keptCandidate `json:"candidates"`

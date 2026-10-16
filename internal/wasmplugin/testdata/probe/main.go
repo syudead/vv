@@ -93,6 +93,7 @@ func echo(req request) {
 	if req.Operation == "search" {
 		reply(map[string]any{"candidates": []map[string]string{{
 			"id":     "q:" + req.Query,
+			"url":    "https://example.com/?q=" + req.Query,
 			"title":  req.Query,
 			"detail": "contract " + strconv.Itoa(req.Contract),
 		}}})

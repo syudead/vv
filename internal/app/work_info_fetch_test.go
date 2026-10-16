@@ -173,7 +173,7 @@ func (e *fetchEnv) fetch(t *testing.T, title string, tags ...string) domain.Work
 func TestSearchWorkInfoReturnsCandidatesWithOnlyThisPluginsSettings(t *testing.T) {
 	e := newFetchEnv()
 	e.runtime.result = domain.WorkInfoRunResult{Candidates: []domain.WorkInfoCandidate{
-		{ID: "W-1", Title: "Work", Detail: "2024"},
+		{ID: "W-1", URL: "https://e.test/w/1", Title: "Work", Detail: "2024"},
 	}}
 	candidates, err := e.plugins.SearchWorkInfo(context.Background(), 1, "  work  ")
 	if err != nil || len(candidates) != 1 || candidates[0].Title != "Work" {

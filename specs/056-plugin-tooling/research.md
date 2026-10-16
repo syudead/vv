@@ -242,17 +242,21 @@ telling the owner to try again.
 
 **Decision**: Every fetch names the work by an ID: the screen API body is
 `{pluginId, id}`, the plugin request is `{"operation": "fetch", "id"}`, a
-search candidate carries `id`, and `mdm plugin run ... fetch <id>` takes the
-ID. The text the owner types is the ID unchanged, even when it is shaped like
-a URL; mapping an ID to a page URL is the plugin's job. The dialog shows a
-candidate's ID in place of the host and has no page link, since a candidate
-has no URL (requirements 14 to 16).
+search candidate carries the `id` it is fetched by, and
+`mdm plugin run ... fetch <id>` takes the ID. The text the owner types is the
+ID unchanged, even when it is shaped like a URL; mapping an ID to a page URL
+is the plugin's job (requirements 14 to 16). A candidate keeps its page `url`
+beside the `id`: a search result has a page, so the dialog still shows its
+host and an `Open page` link, but VVMDM never fetches that URL or sends it to
+the plugin's `fetch`. Plugins built before this change are rebuilt to read
+`id` and to return `id` on candidates.
 
 | Option | Verdict |
 | --- | --- |
 | **ID only** | Chosen |
 | Keep `url` beside `id` and fetch a pasted URL as is | Rejected by the requester: the owner's input is an identifier, and a URL VVMDM fetches unchecked by the plugin is a design the plugin cannot reason about |
 | Parse an ID out of a pasted URL in VVMDM | Rejected: the URL shape is the site's, which only the plugin knows |
+| Drop `url` from candidates | Rejected by the requester: a search result has a page, and the owner opens it to tell candidates apart |
 
 **Rationale**: The plugin owns the site: it knows which URL a work lives at,
 and it already builds that URL for an ID the owner typed. One input shape

@@ -489,9 +489,11 @@ func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
 }
 
 // WorkInfoCandidate は検索の候補の 1 つである。文字だけで、画像は持たない（research.md R-10）。
-// ID は候補を選んだときに fetch へ渡す作品の ID で、前後の空白を除いたものである。
+// ID は候補を選んだときに fetch へ渡す作品の ID で、前後の空白を除いたものである。URL は候補の作品の
+// ページで、画面がリンクとして出すだけで、vv が取得することも fetch に渡すこともない。
 type WorkInfoCandidate struct {
 	ID     string
+	URL    string
 	Title  string
 	Detail string
 }
@@ -570,6 +572,7 @@ func (e *WorkInfoRunError) Error() string {
 type responseJSON struct {
 	Candidates []struct {
 		ID     string `json:"id"`
+		URL    string `json:"url"`
 		Title  string `json:"title"`
 		Detail string `json:"detail"`
 	} `json:"candidates"`
@@ -614,12 +617,13 @@ func parseCandidates(raw responseJSON) (WorkInfoRunResult, error) {
 	candidates := make([]WorkInfoCandidate, 0, min(len(raw.Candidates), WorkInfoPluginMaxCandidates))
 	// 保持するのは先頭 WorkInfoPluginMaxCandidates 件だけなので、それより後の候補は確かめない。
 	// 候補の ID は取得の入力と同じ規則（前後の空白を除いて 1〜200 文字）で、選べば取得にそのまま渡す。
+	// URL は画面がページへのリンクに出すだけなので、http・https の絶対 URL であることだけを確かめる。
 	for _, c := range raw.Candidates[:min(len(raw.Candidates), WorkInfoPluginMaxCandidates)] {
 		id, err := NormalizeWorkInfoSearchQuery(c.ID)
-		if c.Title == "" || err != nil {
+		if c.Title == "" || err != nil || !isWorkURL(c.URL) {
 			return WorkInfoRunResult{}, &WorkInfoRunError{Failure: WorkInfoRunFailed}
 		}
-		candidates = append(candidates, WorkInfoCandidate{ID: id, Title: c.Title, Detail: c.Detail})
+		candidates = append(candidates, WorkInfoCandidate{ID: id, URL: c.URL, Title: c.Title, Detail: c.Detail})
 	}
 	return WorkInfoRunResult{Candidates: candidates}, nil
 }

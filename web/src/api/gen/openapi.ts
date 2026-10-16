@@ -1610,7 +1610,7 @@ export interface paths {
         put?: never;
         /**
          * 作品情報プラグインの search で作品を探す
-         * @description 所有者だけ。承認済みのプラグインの `search` を 1 回動かし、候補（作品 ID・題名・省略できる説明の文字だけ）を
+         * @description 所有者だけ。承認済みのプラグインの `search` を 1 回動かし、候補（作品 ID・ページの URL・題名・省略できる説明の文字だけ）を
          *     返す。`query` は前後の空白を除いて 1〜200 文字で、外れれば `400` `invalid_request`。マニフェストが
          *     `search` を宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
          *     specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである
@@ -3626,6 +3626,8 @@ export interface components {
         WorkInfoCandidate: {
             /** @description 作品の ID（前後の空白を除いて 1〜200 文字）。候補を選ぶと取得の `id` にそのまま渡す */
             id: string;
+            /** @description 作品のページの URL（http か https）。画面がリンクとして出すだけで、取得には渡さない */
+            url: string;
             title: string;
             /** @description 候補を見分ける説明の 1 行 */
             detail?: string;

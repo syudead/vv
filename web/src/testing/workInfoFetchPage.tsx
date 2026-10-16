@@ -103,6 +103,9 @@ export function appliedResult(
 /** workId は候補と取得に使う作品の ID である。 */
 export const workId = "W-1";
 
+/** workUrl は候補のページの URL である。画面がリンクに出すだけで、取得には送らない。 */
+export const workUrl = "https://works.example/w/1";
+
 /** server は経路ごとの応答を差し替えられる偽のサーバーである。 */
 export const server = {
   video,

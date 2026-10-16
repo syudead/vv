@@ -154,10 +154,11 @@ func TestPluginRunSearchPrintsTheCandidates(t *testing.T) {
 	got := runPluginCommand(t, wasmplugin.Options{}, runModulePath(t, runManifest), "search", "  words  ", "--set", "token=x")
 	wantRun(t, got, exitAccountOK)
 	var kept struct {
-		Candidates []struct{ ID, Title string } `json:"candidates"`
+		Candidates []struct{ ID, URL, Title string } `json:"candidates"`
 	}
 	if err := json.Unmarshal([]byte(got.stdout), &kept); err != nil || len(kept.Candidates) != 1 ||
-		kept.Candidates[0].Title != "words" || kept.Candidates[0].ID != "site.test/works/1" {
+		kept.Candidates[0].Title != "words" || kept.Candidates[0].ID != "site.test/works/1" ||
+		kept.Candidates[0].URL != "https://site.test/works/1" {
 		t.Fatalf("stdout %q, err %v; want one candidate with the trimmed words", got.stdout, err)
 	}
 }

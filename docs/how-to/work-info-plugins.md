@@ -250,8 +250,8 @@ page.
 | Has a search | `search` and `fetch` | Types words and picks one of the candidates, which VVMDM fetches by the candidate's `id`; or chooses **ID** above the field and types the work's ID |
 | Has a page URL built from the work's ID, such as the product code | `fetch` | Types the ID, which starts as the video's code |
 
-A plugin that declares only `search` shows its candidates as text, with
-nothing to fetch.
+A plugin that declares only `search` shows its candidates as text with a link
+to each page, with nothing to fetch.
 
 The fetch input is always an ID: what the owner types reaches the plugin as
 `id` unchanged, even when it looks like a URL, and VVMDM never fetches it as a
@@ -306,7 +306,7 @@ are ignored, so a later contract can add fields without breaking version 1.
 
 | Case | Body |
 | --- | --- |
-| `search` result | `{"candidates": [{"id": "...", "title": "...", "detail": "..."}]}`: `id` (the work's ID, 1 to 200 characters without surrounding spaces, which a later `fetch` request carries unchanged) and `title` required, `detail` optional; VVMDM keeps the first 50 |
+| `search` result | `{"candidates": [{"id": "...", "url": "...", "title": "...", "detail": "..."}]}`: `id` (the work's ID, 1 to 200 characters without surrounding spaces, which a later `fetch` request carries unchanged), `url` (the work's page, http or https, which the owner can open but VVMDM never fetches) and `title` required, `detail` optional; VVMDM keeps the first 50 |
 | `fetch` result | `{"workInfo": {"title": "...", "tags": ["..."], ...}}`: every field optional; the fields are in [Work fields](#work-fields) |
 | Failure | `{"error": {"message": "..."}}`: VVMDM shows the first 300 characters of `message` to the owner |
 

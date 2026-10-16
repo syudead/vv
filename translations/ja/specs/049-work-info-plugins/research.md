@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/research.md
-sourceHash: 09ae4112762ccacb08e482fd8f2832a5f4142d72dd0fbc27dd00d033af0b4734
+sourceHash: 87d584b13a5ae821d311dadcabf9b13d0673338771405c2628b58813563cb9f8
 ---
 
 # 調査: 作品情報プラグイン {#research-work-info-plugins}
@@ -133,7 +133,7 @@ vv は実行ごとに、16 の要求、`GET` と `POST`、`http` と `https`、�
 
 ## R-10: 検索の候補はテキストだけである {#r-10-search-candidates-are-text-only}
 
-**決定**: 候補は作品の ID、タイトル、省略できる詳細の行を持つ。画像は持たない。(親 Issue #1232 がすべての取得を ID だけにしたとき、ID が URL に置き換わった。)
+**決定**: 候補は作品の ID、そのページの URL、タイトル、省略できる詳細の行を持つ。画像は持たない。(親 Issue #1232 がすべての取得を ID だけにしたとき、ID が加わった。候補を選ぶとその ID で取得し、URL は作品のページへのリンクにすぎない。)
 
 | 案 | 判定 |
 | --- | --- |

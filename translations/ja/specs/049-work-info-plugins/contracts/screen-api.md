@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/contracts/screen-api.md
-sourceHash: d3cf9ce6ca8515ea62360871a775dcfbfd6b187cd8cf987eb89f7e91e8f7e5c8
+sourceHash: 37841c284b2ded65c92b47e6dc085d4d7b3fcf32bfa86639329c0fd4bb58745a
 ---
 
 # 契約: 作品情報プラグインの画面の API {#contract-work-info-plugin-screen-api}
@@ -92,7 +92,7 @@ sourceHash: d3cf9ce6ca8515ea62360871a775dcfbfd6b187cd8cf987eb89f7e91e8f7e5c8
 | --- | --- | --- | --- | --- |
 | `query` | 本文 | string | はい | 前後の空白を除いた後で 1 から 200 文字 |
 
-**応答**: `{"candidates": [{"id", "title", "detail"?}]}` を伴う `200` ([R-10](../research.md#r-10-search-candidates-are-text-only))。`id` は、候補の取得がそのまま送る作品の ID である。
+**応答**: `{"candidates": [{"id", "url", "title", "detail"?}]}` を伴う `200` ([R-10](../research.md#r-10-search-candidates-are-text-only))。`id` は、候補の取得がそのまま送る作品の ID であり、`url` は作品の `http` または `https` のページで、ダイアログはリンクするだけで取得には送らない。
 
 エラー: [実行の失敗](#run-failures)、加えて、マニフェストに `search` がないときは `409` `operation_unsupported`。
 

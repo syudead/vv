@@ -241,7 +241,13 @@ test.describe.serial("work-info plugins", () => {
     );
     await dialog.getByRole("button", { name: "Search" }).click();
     await expect(dialog.getByText("2 matches")).toBeVisible();
+    // 候補はページへのリンクを持ち、選ぶと候補の ID（e2e-1）で取得する。
+    await expect(dialog.getByRole("link", { name: "Open page" }).first()).toHaveAttribute(
+      "href",
+      "https://works.example/w/e2e-1",
+    );
     await dialog.getByRole("button", { name: /プラグインe2e作品/ }).click();
+    await expect(dialog.getByText(/· ID e2e-1$/)).toBeVisible();
 
     // 比較の段: 題名・タグと、品番・発売日・出演者・メーカーのすべてが選ばれている。出演者と
     // メーカーはまだ無いので、作られる印が付く。

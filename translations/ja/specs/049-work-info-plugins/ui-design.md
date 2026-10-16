@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/ui-design.md
-sourceHash: a089ea7a93a628d99927abe1852520ef3cc2b2577432486ad6c66107ca304b75
+sourceHash: 7c20b594ae981aceeaffbe5545ef47af471555770bb76085450230d04ed0be1b
 ---
 
 # UI デザイン: 外部のサービスから作品情報を取得する作品情報プラグイン {#ui-design-work-info-plugins-that-fetch-work-information-from-external-services}
@@ -163,7 +163,7 @@ flowchart LR
 | 取得のボタン | Fetch | 文字列を作品の ID として取得するとき |
 | 実行中 | Searching… · Fetching… | 実行の間のボタンの文言。実行は最大 30 秒かかることがある |
 | 候補の見出し | {n} matches | |
-| 候補の ID | ID {id} | `text-xs text-muted-foreground`、タイトルと詳細の下 |
+| 候補のページを開くリンク | Open page | `ghost` `icon-sm`、lucide `ExternalLink`、新しいタブ |
 | 候補なし | No matches. Try other words, or choose ID and enter the work's ID. | 二文目はプラグインが取得できるときだけ |
 | 出典の行 | From {plugin} · ID {id} | 控えめ、比較の上。`{id}` は取得した ID を文字で示したもの |
 | 戻る | Back to the matches | `ghost` `sm`、lucide `ArrowLeft`。検索の後だけ |
@@ -343,10 +343,11 @@ stateDiagram-v2
 | 行 | 左揃えの文字を持つ全幅の `ghost` ボタンで、`border` の線で区切る。押すとその候補の `id` を取得する |
 | タイトル | `text-sm text-foreground`、最大二行 (`line-clamp-2`)、全文は `title` に入れる |
 | 詳細 | `text-xs text-muted-foreground`、一行の `truncate`。プラグインが何も渡さなかったときはない |
-| ID | `text-xs text-muted-foreground`、`ID {id}`。同じ題の作品を見分けられるようにする。候補は URL を持たないので、行にページへのリンクはない |
+| ホスト | `text-xs text-muted-foreground`、候補の `url` のホスト。異なるサイトの同じ題の作品を見分けられるようにする |
+| ページを開く | 候補の `url` への `ghost` `icon-sm` のリンク。新しいタブで開き、行の右端、行のボタンの外に置く。VVMDM は URL を取得せず、行を選ぶと候補の `id` で取得する |
 | 取得中 | 選んだ行は右端に `Spinner` を示す。他の行とクエリは無効になる |
 
-プラグインが取得できない (探すだけの) とき、行はボタンではない。タイトル、詳細、ID を普通の文字で示す。
+プラグインが取得できない (探すだけの) とき、行はボタンではない。タイトル、詳細、ホストを普通の文字で示し、`Open page` が唯一の操作である。
 
 候補がないときは、一覧の代わりに控えめな一行 `No matches…` を表示する。
 
@@ -401,7 +402,7 @@ Tailwind の既定のブレークポイントだけを使い、CSS で切り替�
 | --- | --- | --- | --- |
 | 1280px | 各行の一行目にバッジ、名前、バージョンと右端の操作を置き、その下に説明と事実の行を置く | 操作のグループの一行に一つ加わるアイコン | `max-w-2xl`、中央寄せ。比較の三つの列を横に並べる。候補は一行に一つ |
 | 768px | 1280px と同じ | 1280px と同じ | 1280px と同じ。ダイアログはビューポートの左右の余白の内側に収まる |
-| 360px | 操作はメディアフォルダと同じく行の文字の下に移り、右揃えになる。事実の行は折り返す。名前は `break-words` で折り返す | 他の入口と同じく、操作のグループは一行のままで、事実はその上で折り返す | ダイアログは 16px の余白を残して画面に広がる。比較の各行は縦に積む。チェックボックスとラベル、次に `Now` と `Fetched` をそれぞれ一行に、見出しを前に置いて並べる。見出しの行は隠す。候補の行はタイトル、詳細、ID を左に保つ。横スクロールはない |
+| 360px | 操作はメディアフォルダと同じく行の文字の下に移り、右揃えになる。事実の行は折り返す。名前は `break-words` で折り返す | 他の入口と同じく、操作のグループは一行のままで、事実はその上で折り返す | ダイアログは 16px の余白を残して画面に広がる。比較の各行は縦に積む。チェックボックスとラベル、次に `Now` と `Fetched` をそれぞれ一行に、見出しを前に置いて並べる。見出しの行は隠す。候補はページを開くリンクを右に保つ。横スクロールはない |
 
 ## レビューの基準 {#review-criteria}
 
@@ -421,6 +422,6 @@ vv の一つのダークの配色で、動いている画面を見て判定す�
 
 親 Issue はスクリーンリーダーやコントラストの設計を求めていないので、名前だけを決める。
 
-- 入口は `Fetch work info from a plugin`。各行のメニューは `More actions for {name}`。
+- 入口は `Fetch work info from a plugin`。各行のメニューは `More actions for {name}`、各候補のリンクは `Open page`。
 - 比較の各チェックボックスは、その項目のラベルでラベル付けする。無効なものは、その行の `Not in the result` か `Same as now` で理由を伝える。
 - スピナーは `aria-hidden`、実行中のコントロールは `aria-disabled` で、節とダイアログの失敗は `role="alert"` を使う。

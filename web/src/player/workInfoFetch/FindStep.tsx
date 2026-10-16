@@ -1,4 +1,4 @@
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, ExternalLink } from "lucide-react";
 import { type RefObject, useId, useRef } from "react";
 import { Link } from "react-router";
 
@@ -18,10 +18,12 @@ import {
 } from "../../ui/shadcn/select";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { ToggleGroup, ToggleGroupItem } from "../../ui/shadcn/toggle-group";
+import ActionButton from "../ActionButton";
 import {
   canChooseFindBy,
   canFetch,
   type FindBy,
+  hostOf,
   missingSettingLabels,
   pluginLabel,
   queryLabel,
@@ -172,7 +174,6 @@ function FailureAlert({ failure }: { failure: RunFailure }) {
 }
 
 function CandidateText({ candidate }: { candidate: WorkInfoCandidate }) {
-  const text = t.player.workInfoFetch;
   return (
     <>
       <span title={candidate.title} className="line-clamp-2 text-sm text-foreground">
@@ -184,7 +185,7 @@ function CandidateText({ candidate }: { candidate: WorkInfoCandidate }) {
         </span>
       )}
       <span className="w-full truncate text-xs text-muted-foreground">
-        {text.sourceId(candidate.id)}
+        {hostOf(candidate.url)}
       </span>
     </>
   );
@@ -192,7 +193,8 @@ function CandidateText({ candidate }: { candidate: WorkInfoCandidate }) {
 
 /**
  * CandidateRow は候補の 1 行である。行を押すとその作品 ID で取得するので、取得できない
- * （検索だけの）プラグインでは行を押せる形にせず、文だけを出す。
+ * （検索だけの）プラグインでは行を押せる形にせず、文と `Open page` だけを出す。`Open page` は候補の
+ * ページへのリンクで、VVMDM がその URL を取得することはない。
  */
 function CandidateRow({
   candidate,
@@ -205,6 +207,7 @@ function CandidateRow({
   running: Running | null;
   onChoose: (id: string) => void;
 }) {
+  const text = t.player.workInfoFetch;
   const chosen = running?.id === candidate.id;
   const busy = running !== null;
   const layout =
@@ -228,6 +231,11 @@ function CandidateRow({
         </div>
       )}
       {chosen && <Spinner aria-hidden="true" role={undefined} />}
+      <ActionButton label={text.openPage} asChild>
+        <a href={candidate.url} target="_blank" rel="noopener noreferrer">
+          <ExternalLink aria-hidden="true" />
+        </a>
+      </ActionButton>
     </li>
   );
 }

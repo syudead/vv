@@ -141,7 +141,7 @@ describe("work-info plugins API", () => {
   });
 
   it("検索・取得・反映をそれぞれの経路へ送り、応答を返す", async () => {
-    const candidates = [{ id: "W-1", title: "One" }];
+    const candidates = [{ id: "W-1", url: "https://example.com/1", title: "One" }];
     const fetched = {
       fetchId: "f/1",
       expiresAt: 1_800_000_600,

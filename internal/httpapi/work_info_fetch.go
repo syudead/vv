@@ -38,7 +38,7 @@ func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.W
 	}
 	out := make([]gen.WorkInfoCandidate, 0, len(candidates))
 	for _, c := range candidates {
-		out = append(out, gen.WorkInfoCandidate{Id: c.ID, Title: c.Title, Detail: optionalString(c.Detail)})
+		out = append(out, gen.WorkInfoCandidate{Id: c.ID, Url: c.URL, Title: c.Title, Detail: optionalString(c.Detail)})
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.WorkInfoSearchResult{Candidates: out}, s.logger)

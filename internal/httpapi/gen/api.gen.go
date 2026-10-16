@@ -4378,6 +4378,9 @@ type WorkInfoCandidate struct {
 	// Id 作品の ID（前後の空白を除いて 1〜200 文字）。候補を選ぶと取得の `id` にそのまま渡す
 	Id    string `json:"id"`
 	Title string `json:"title"`
+
+	// Url 作品のページの URL（http か https）。画面がリンクとして出すだけで、取得には渡さない
+	Url string `json:"url"`
 }
 
 // WorkInfoFetch メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8）

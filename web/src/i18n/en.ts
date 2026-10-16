@@ -1880,6 +1880,7 @@ export const en = {
           other: `${formatNumber(count)} matches`,
         }),
       matchList: "Matches",
+      openPage: "Open page",
       noMatches: "No matches.",
       noMatchesFetch:
         "No matches. Try other words, or choose ID and enter the work's ID.",

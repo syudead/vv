@@ -203,11 +203,11 @@ func TestWorkInfoRunRequestJSON(t *testing.T) {
 func TestParseWorkInfoResponseKeepsTheFirstCandidatesAndUniqueTags(t *testing.T) {
 	candidates := make([]string, 60)
 	for i := range candidates {
-		candidates[i] = fmt.Sprintf(`{"id":" w-%d ","title":"t%d"}`, i, i)
+		candidates[i] = fmt.Sprintf(`{"id":" w-%d ","url":"https://e.test/%d","title":"t%d"}`, i, i, i)
 	}
 	got, err := ParseWorkInfoResponse(WorkInfoSearch, []byte(`{"candidates":[`+strings.Join(candidates, ",")+`]}`))
 	if err != nil || len(got.Candidates) != WorkInfoPluginMaxCandidates || got.Candidates[49].Title != "t49" ||
-		got.Candidates[49].ID != "w-49" {
+		got.Candidates[49].ID != "w-49" || got.Candidates[49].URL != "https://e.test/49" {
 		t.Fatalf("search result = %d candidates (%+v), %v", len(got.Candidates), got.Candidates, err)
 	}
 
@@ -239,10 +239,14 @@ func TestParseWorkInfoResponseFailures(t *testing.T) {
 		{"empty", WorkInfoFetch, ``},
 		{"fetch shape for search", WorkInfoSearch, `{"workInfo":{}}`},
 		{"search shape for fetch", WorkInfoFetch, `{"candidates":[]}`},
-		{"candidate without a title", WorkInfoSearch, `{"candidates":[{"id":"w-1"}]}`},
-		{"candidate without an id", WorkInfoSearch, `{"candidates":[{"title":"t"}]}`},
-		{"candidate with a blank id", WorkInfoSearch, `{"candidates":[{"id":"  ","title":"t"}]}`},
-		{"candidate with a 201-character id", WorkInfoSearch, `{"candidates":[{"id":"` + strings.Repeat("i", 201) + `","title":"t"}]}`},
+		{"candidate without a title", WorkInfoSearch, `{"candidates":[{"id":"w-1","url":"https://e.test/"}]}`},
+		{"candidate without an id", WorkInfoSearch, `{"candidates":[{"url":"https://e.test/","title":"t"}]}`},
+		{"candidate with a blank id", WorkInfoSearch, `{"candidates":[{"id":"  ","url":"https://e.test/","title":"t"}]}`},
+		{"candidate with a 201-character id", WorkInfoSearch, `{"candidates":[{"id":"` + strings.Repeat("i", 201) + `","url":"https://e.test/","title":"t"}]}`},
+		{"candidate without a url", WorkInfoSearch, `{"candidates":[{"id":"w-1","title":"t"}]}`},
+		{"candidate with another scheme", WorkInfoSearch, `{"candidates":[{"id":"w-1","url":"ftp://e.test/","title":"t"}]}`},
+		{"candidate without a host", WorkInfoSearch, `{"candidates":[{"id":"w-1","url":"https:///work","title":"t"}]}`},
+		{"candidate with an opaque URL", WorkInfoSearch, `{"candidates":[{"id":"w-1","url":"https:e.test/work","title":"t"}]}`},
 		{"error", WorkInfoFetch, `{"error":{"message":"not found"}}`},
 	}
 	for _, tc := range cases {

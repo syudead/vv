@@ -97,9 +97,11 @@ Runs the plugin's `search` and returns its candidates.
 | --- | --- | --- | --- | --- |
 | `query` | body | string | Yes | 1 to 200 characters after trimming |
 
-**Response**: `200` with `{"candidates": [{"id", "title", "detail"?}]}`
+**Response**: `200` with `{"candidates": [{"id", "url", "title", "detail"?}]}`
 ([R-10](../research.md#r-10-search-candidates-are-text-only)); `id` is the
-work's ID that a fetch of the candidate sends unchanged.
+work's ID that a fetch of the candidate sends unchanged, and `url` is the
+work's `http` or `https` page, which the dialog only links to and never sends
+to the fetch.
 
 Errors: [Run failures](#run-failures), plus `409` `operation_unsupported` when
 the manifest lacks `search`.

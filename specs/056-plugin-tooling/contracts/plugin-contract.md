@@ -2,9 +2,12 @@
 
 Source of truth: the authors' guide
 [docs/how-to/work-info-plugins.md](../../../docs/how-to/work-info-plugins.md),
-which the implementation updates. The contract version stays `1`: a manifest
-without the new fields and a plugin that ignores the new guidance behave as
-before. This file names only what this feature adds.
+which the implementation updates. The contract version stays `1`. A manifest
+without the new fields behaves as before, but the fetch by ID is not
+backward compatible: a plugin built before it reads `url` from the `fetch`
+request and returns `url` alone on its candidates, so it must be rebuilt to
+read `id` and to return `id` on each candidate. This file names only what
+this feature changes.
 
 ## Manifest
 
@@ -29,14 +32,19 @@ stops a run.
 A `fetch` request carries `id` and no `url`
 ([R-10](../research.md#r-10-a-fetch-takes-a-work-id-only-and-vvmdm-never-fetches-a-url-the-owner-typed)):
 the candidate's `id` or the text the owner typed, trimmed, which the plugin
-maps to the page URL. A plugin that read `url` reads `id` instead.
+maps to the page URL. A plugin that read `url` must be rebuilt to read `id`;
+VVMDM sends no `url`.
 
 ## Candidates
 
-A `search` candidate carries `id` in place of `url`, 1 to 200 characters
-without surrounding spaces, and VVMDM sends it unchanged as the `id` of the
-fetch when the owner chooses the candidate. The dialog shows the ID under the
-title and has no page link.
+A `search` candidate carries `id` beside `url`, `title` and `detail`. `id` is
+required, 1 to 200 characters without surrounding spaces, and VVMDM sends it
+unchanged as the `id` of the fetch when the owner chooses the candidate. A
+candidate without a valid `id` fails the search with `plugin_failed`, so a
+plugin built before this change must be rebuilt to return it. `url` stays
+required and is still the `http` or `https` page of the work: the dialog
+shows its host and links to it with `Open page`, and VVMDM never fetches it
+or sends it to the plugin's `fetch`.
 
 ## Standard error
 

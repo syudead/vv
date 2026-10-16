@@ -148,11 +148,14 @@ func TestWorkInfoRunFailuresFollowTheContract(t *testing.T) {
 
 func TestWorkInfoSearchAndFetchAnswer(t *testing.T) {
 	e := newFetchRouteEnv(t)
-	e.plugins.candidates = []domain.WorkInfoCandidate{{ID: "w-1", Title: "One"}, {ID: "w-2", Title: "Two", Detail: "2024"}}
+	e.plugins.candidates = []domain.WorkInfoCandidate{
+		{ID: "w-1", URL: "https://e.test/1", Title: "One"},
+		{ID: "w-2", URL: "https://e.test/2", Title: "Two", Detail: "2024"},
+	}
 	status, body := e.post(searchPath, `{"query":"w"}`, e.owner)
 	var search gen.WorkInfoSearchResult
 	if status != http.StatusOK || json.Unmarshal(body, &search) != nil || len(search.Candidates) != 2 ||
-		search.Candidates[0].Id != "w-1" || search.Candidates[0].Detail != nil || *search.Candidates[1].Detail != "2024" {
+		search.Candidates[0].Id != "w-1" || search.Candidates[0].Url != "https://e.test/1" || search.Candidates[0].Detail != nil || *search.Candidates[1].Detail != "2024" {
 		t.Fatalf("search = %d %s", status, body)
 	}
 

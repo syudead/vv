@@ -76,6 +76,15 @@ export function canFetch(plugin: WorkInfoPlugin): boolean {
   return can(plugin, "fetch");
 }
 
+/** hostOf は URL のホストで、読めなければ URL そのものである。 */
+export function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+}
+
 /**
  * RowState は比較の行の状態である。`differs` は選べ、`missing`（結果に値が無い）、`same`
  * （今と同じ）、`nothing`（足せる件が無く、結び付かない件がある一覧の行）は選べない。

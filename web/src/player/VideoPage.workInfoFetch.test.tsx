@@ -18,6 +18,7 @@ import {
   useFetchServer,
   video,
   workId,
+  workUrl,
   works,
 } from "../testing/workInfoFetchPage";
 import type { PlayerControls } from "./playerControls";
@@ -96,8 +97,8 @@ describe("VideoPage work-info fetch", () => {
     server.search.mockImplementation(() =>
       json({
         candidates: [
-          { id: workId, title: "候補の作品", detail: "2024 · 映画" },
-          { id: "W-2", title: "別の作品" },
+          { id: workId, url: workUrl, title: "候補の作品", detail: "2024 · 映画" },
+          { id: "W-2", url: "https://other.example/w/2", title: "別の作品" },
         ],
       }),
     );
@@ -110,12 +111,16 @@ describe("VideoPage work-info fetch", () => {
     await user.click(within(dialog).getByRole("button", { name: "Search" }));
     expect(server.search).toHaveBeenCalledWith({ query: "テスト動画" });
     await within(dialog).findByText("2 matches");
-    // 候補の行はその作品 ID を出し、ページへのリンクは持たない。
-    expect(within(dialog).getByText(`ID ${workId}`)).toBeDefined();
-    expect(within(dialog).queryByRole("link", { name: "Open page" })).toBeNull();
+    // 候補の行はページのホストとページへのリンクを出す。リンクは開くだけで、取得には使わない。
+    expect(within(dialog).getByText("other.example")).toBeDefined();
+    expect(
+      within(dialog)
+        .getAllByRole("link", { name: "Open page" })
+        .map((link) => link.getAttribute("href")),
+    ).toEqual([workUrl, "https://other.example/w/2"]);
     await user.click(within(dialog).getByRole("button", { name: /候補の作品/ }));
     await within(dialog).findByRole("checkbox", { name: "Title" });
-    // 候補を選ぶとその ID で取得する（親 Issue 1232 の要件 15）。
+    // 候補を選ぶとその ID で取得し、候補の URL は送らない（親 Issue 1232 の要件 15）。
     expect(server.fetch).toHaveBeenCalledWith({ pluginId: 3, id: workId });
     // 取得した値は「既存」が動画に付いているので、選べるのは 1 つだけである。
     expect(within(dialog).getByText("1 of 1 selected")).toBeDefined();
@@ -379,13 +384,16 @@ describe("VideoPage work-info fetch", () => {
   it("検索だけのプラグインの候補は押せる行にせず、取得を送らない", async () => {
     server.plugins = [{ ...works, operations: ["search"] }];
     server.search.mockImplementation(() =>
-      json({ candidates: [{ id: workId, title: "候補の作品" }] }),
+      json({ candidates: [{ id: workId, url: workUrl, title: "候補の作品" }] }),
     );
     const { user, dialog } = await openDialog();
     await user.click(within(dialog).getByRole("button", { name: "Search" }));
     await within(dialog).findByText("1 match");
     expect(within(dialog).getByText("候補の作品")).toBeDefined();
-    expect(within(dialog).getByText(`ID ${workId}`)).toBeDefined();
+    expect(within(dialog).getByText("works.example")).toBeDefined();
+    expect(
+      within(dialog).getByRole("link", { name: "Open page" }).getAttribute("href"),
+    ).toBe(workUrl);
     expect(within(dialog).queryByRole("button", { name: /候補の作品/ })).toBeNull();
     await user.click(within(dialog).getByText("候補の作品"));
     expect(server.fetch).not.toHaveBeenCalled();
@@ -395,7 +403,7 @@ describe("VideoPage work-info fetch", () => {
     const other: WorkInfoPlugin = { ...works, id: 4, name: "other" };
     server.plugins = [works, other];
     server.search.mockImplementation(() =>
-      json({ candidates: [{ id: workId, title: "候補の作品" }] }),
+      json({ candidates: [{ id: workId, url: workUrl, title: "候補の作品" }] }),
     );
     server.fetch.mockImplementation(() => {
       server.plugins = [other];

@@ -214,7 +214,7 @@ One line under an `invalid` row, `text-destructive`, from its `problem`
 | Fetch button | Fetch | When the text is fetched as the work's ID |
 | Running | Searching… · Fetching… | The button's text while the run lasts; a run can take up to 30 seconds |
 | Candidates heading | {n} matches | |
-| Candidate ID | ID {id} | `text-xs text-muted-foreground`, under the title and detail |
+| Candidate open link | Open page | `ghost` `icon-sm`, lucide `ExternalLink`, new tab |
 | No candidates | No matches. Try other words, or choose ID and enter the work's ID. | The second sentence only when the plugin can fetch |
 | Source line | From {plugin} · ID {id} | Muted, above the comparison; `{id}` is the fetched ID as text |
 | Back | Back to the matches | `ghost` `sm`, lucide `ArrowLeft`; only after a search |
@@ -468,11 +468,12 @@ in the plugin's order, up to 50, inside the dialog's scrolling body
 | Row | A full-width `ghost` button with left-aligned text, divided by `border` lines; pressing it fetches that candidate's `id` |
 | Title | `text-sm text-foreground`, two lines at most (`line-clamp-2`), full text in `title` |
 | Detail | `text-xs text-muted-foreground`, one line `truncate`; absent when the plugin gave none |
-| ID | `text-xs text-muted-foreground`, `ID {id}`, so two same-titled works can be told apart; a candidate carries no URL, so the row has no link to the page |
+| Host | `text-xs text-muted-foreground`, the host of the candidate's `url`, so two same-titled works from different sites can be told apart |
+| Open page | A `ghost` `icon-sm` link to the candidate's `url`, new tab, at the row's right end, outside the row's button; VVMDM never fetches the URL, and choosing the row fetches by the candidate's `id` |
 | Fetching | The chosen row shows a `Spinner` at its right end; the other rows and the query are disabled |
 
 When the plugin cannot fetch (search only), a row is not a button: it shows the
-title, detail and ID as plain text.
+title, detail and host as plain text, and `Open page` is its only action.
 
 With no candidates, one muted line, `No matches…`, in place of the list.
 
@@ -546,7 +547,7 @@ judged are 360px, 768px and 1280px.
 | --- | --- | --- | --- |
 | 1280px | Each row's first line holds the badge, name, version and the actions at the right end; the description and the facts line under it | One more icon in the action group, on its one line | `max-w-2xl`, centred; the comparison's three columns side by side; candidates one per row |
 | 768px | As 1280px | As 1280px | As 1280px; the dialog fits inside the viewport's side margins |
-| 360px | The actions move under the row's text, right-aligned, as the media folders; the facts line wraps; the name wraps with `break-words` | The action group stays on one line and the facts wrap above it, as the other entries | The dialog spans the screen with the 16px margin; each comparison row stacks: the checkbox and label, then `Now` and `Fetched` each on its own line with its heading in front; the header row is hidden; candidate rows keep their title, detail and ID on the left; no horizontal scroll |
+| 360px | The actions move under the row's text, right-aligned, as the media folders; the facts line wraps; the name wraps with `break-words` | The action group stays on one line and the facts wrap above it, as the other entries | The dialog spans the screen with the 16px margin; each comparison row stacks: the checkbox and label, then `Now` and `Fetched` each on its own line with its heading in front; the header row is hidden; candidates keep the open-page link at the right; no horizontal scroll |
 
 ## Review criteria
 
@@ -607,7 +608,7 @@ The parent Issue does not ask for screen reader or contrast design, so only
 names are decided.
 
 - The entry is `Fetch work info from a plugin`; each row menu is
-  `More actions for {name}`.
+  `More actions for {name}`; each candidate's link is `Open page`.
 - Each comparison checkbox is labelled by its field label; a disabled one
   says why through its row's `Not in the result` or `Same as now`.
 - Spinners are `aria-hidden`; running controls are `aria-disabled`; the

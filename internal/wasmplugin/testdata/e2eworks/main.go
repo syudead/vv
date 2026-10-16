@@ -37,8 +37,8 @@ func main() {
 	fmt.Fprintf(os.Stderr, "%s: token=%s\n", req.Operation, req.Settings["token"])
 	if req.Operation == "search" {
 		reply(map[string]any{"candidates": []map[string]string{
-			{"id": "e2e-1", "title": "プラグインe2e作品", "detail": "2024 · e2e"},
-			{"id": "e2e-2", "title": "プラグインe2e別作品"},
+			{"id": "e2e-1", "url": "https://works.example/w/e2e-1", "title": "プラグインe2e作品", "detail": "2024 · e2e"},
+			{"id": "e2e-2", "url": "https://works.example/w/e2e-2", "title": "プラグインe2e別作品"},
 		}})
 		return
 	}

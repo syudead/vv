@@ -66,7 +66,7 @@ func TestRunReadsBackTheEchoedResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(search): %v", err)
 	}
-	want := domain.WorkInfoCandidate{ID: "q:Example work", Title: "Example work", Detail: "contract 1"}
+	want := domain.WorkInfoCandidate{ID: "q:Example work", URL: "https://example.com/?q=Example work", Title: "Example work", Detail: "contract 1"}
 	if len(got.Candidates) != 1 || got.Candidates[0] != want {
 		t.Fatalf("candidates = %+v, want [%+v]", got.Candidates, want)
 	}
