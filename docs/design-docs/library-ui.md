@@ -219,7 +219,7 @@ Card width follows the zoom level. Guest rules are in
 
 | Part | Owner | Guest |
 | --- | --- | --- |
-| Sidebar, upper | All entries | `Library` and `Folders` only |
+| Sidebar, upper | All entries | `Home`, `Library` and `Folders` only |
 | Sidebar, lower | `Settings`, `Sign out` | `Sign in` |
 | `Scan library` button and import progress | Shown | Hidden |
 | Sort orders | 9 | 7 |
@@ -334,7 +334,7 @@ Video card behaviour:
 | Case | Behaviour |
 | --- | --- |
 | Tag pressed in the library | Filters by the tag |
-| Tag pressed on a folder page or a group page | Opens `/?tag=<id>` |
+| Tag pressed on a folder page or a group page | Opens `/library?tag=<id>` |
 | Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full ([041 UI design](../../specs/041-tag-overflow-list/ui-design.md#the-list)) |
 | Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag` ([017 UI design](../../specs/017-folder-groups/ui-design.md)) |
 | Hover preview | One at a time on any screen |
@@ -495,7 +495,14 @@ avoid a double outline.
 
 ## Sidebar navigation
 
-Each sidebar item goes to its screen.
+Each sidebar item goes to its screen. `Home` opens `/` and sits above
+`Library`, which opens the library at `/library`
+([057 research, R-15](../../specs/057-home/research.md#r-15-the-library-moves-to-library)).
+The library keeps its query parameters at that address, and every in-app link
+that filters the library (a tag, a person, an organization) opens
+`/library?<parameter>=<id>`. A URL of the form `/?tag=<id>` from before the
+move opens `/library` with the same query. Until the home screen exists, `/`
+without a query also opens `/library`.
 
 ## Video page layout
 
