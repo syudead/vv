@@ -5299,6 +5299,13 @@ export interface components {
             /** Format: int64 */
             itemId: number;
             video: components["schemas"]["Video"];
+            /**
+             * Format: int64
+             * @description 項目がスマートフォルダの項目のときのフォルダの id。動画とグループの項目では無い。
+             *     動画ページはこれで開く URL に smartFolder を付ける
+             *     （specs/052-smart-folders/contracts/screen-api.md）
+             */
+            smartFolderId?: number;
         };
         /**
          * @description プレイリストから再生しているときの位置と次の動画（specs/044-playlists/data-model.md

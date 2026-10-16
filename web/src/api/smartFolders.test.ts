@@ -157,7 +157,7 @@ describe("smart folders API", () => {
     ]);
   });
 
-  it("skips smart folder items of a playlist until a screen draws them", async () => {
+  it("keeps smart folder items of a playlist in the server's order", async () => {
     const video = { id: 1, kind: "video", video: { id: 1, title: "a" } };
     const folder = { id: 2, kind: "smartFolder", smartFolder: card };
     vi.stubGlobal(
@@ -172,7 +172,7 @@ describe("smart folders API", () => {
         }),
       ),
     );
-    expect((await getPlaylist(5)).items).toEqual([video]);
+    expect((await getPlaylist(5)).items).toEqual([video, folder]);
   });
 
   it("passes the smart folder a video was opened from to the video reads", async () => {

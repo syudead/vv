@@ -195,6 +195,10 @@ function renderPage(
               <Route path="/" element={<Screen name="ライブラリ" />} />
               <Route path="/folders/*" element={<Screen name="フォルダ" />} />
               <Route path="/groups/:id" element={<Screen name="グループ" />} />
+              <Route
+                path="/smart-folders/:id"
+                element={<Screen name="スマートフォルダ" />}
+              />
             </Routes>
           </AudienceProvider>
         </MemoryRouter>
@@ -269,8 +273,10 @@ describe("VideoPage", () => {
         return Promise.resolve(server.grouping(method, url, body));
       }
       if (url === "/api/tags") return Promise.resolve(json([]));
-      // 動画を開いたグループ（`?group=`）だけの問い合わせは、無いときと同じ応答にする。
-      const match = /^\/api\/videos\/(\d+)(\/[a-z-]+)?(?:\?group=\d+)?$/.exec(url);
+      // 動画を開いたグループ（`?group=`）かスマートフォルダ（`?smartFolder=`）だけの問い合わせは、
+      // 無いときと同じ応答にする。
+      const match =
+        /^\/api\/videos\/(\d+)(\/[a-z-]+)?(?:\?(?:group|smartFolder)=\d+)?$/.exec(url);
       if (match === null) return Promise.resolve(json({}));
       const id = Number(match[1]);
       const suffix = match[2];
@@ -1514,6 +1520,98 @@ describe("VideoPage", () => {
         expect(
           within(members).getByRole("link", { name: /ep03/ }).getAttribute("href"),
         ).toBe("/videos/13");
+      });
+    });
+
+    describe("開いたスマートフォルダ（?smartFolder。052 ui-design.md「Video page」）", () => {
+      const urls = () => fetchMock.mock.calls.map(([input]) => String(input));
+      const inFolder = (value: Video, position: number): Video => ({
+        ...listed(value),
+        smartFolder: { id: 1, name: "タグ: 猫", position, count: 3 },
+      });
+      const folderOrder = { ...group, name: "タグ: 猫" };
+
+      beforeEach(() => {
+        server.videos.set(12, [inFolder(ep02, 2)]);
+        server.videos.set(13, [inFolder(ep03, 3)]);
+        server.related.set(12, {
+          items: [related(8, "後続の動画")],
+          nextId: 13,
+          prevId: 11,
+          group: folderOrder,
+        });
+        server.related.set(13, {
+          items: [related(8, "後続の動画")],
+          prevId: 12,
+          group: folderOrder,
+        });
+      });
+
+      const folderLine = () =>
+        screen.findByRole("link", {
+          name: 'Smart folder "タグ: 猫", video 2 of 3. Open the smart folder',
+        });
+
+      it("?smartFolder=1 なら読み取りが smartFolder=1 を運び、予告がフォルダの次の動画を名指し、進んでも ?smartFolder=1 が残る", async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        renderPage("12?smartFolder=1", "/smart-folders/1");
+        await ready();
+        await screen.findByRole("heading", { level: 2, name: "Up next" });
+        expect(urls()).toContain("/api/videos/12?smartFolder=1");
+        expect(urls()).toContain("/api/videos/12/related?smartFolder=1");
+        expect(urls()).not.toContain("/api/videos/12");
+        // メンバーの行も ?smartFolder を保つ。
+        const members = document.getElementById("group-heading")!.closest("section")!;
+        expect(
+          within(members).getByRole("link", { name: /ep03/ }).getAttribute("href"),
+        ).toBe("/videos/13?smartFolder=1");
+        await screen.findByTestId("video-player");
+        end();
+        expect(
+          screen
+            .getAllByRole("status")
+            .filter((node) => node.textContent === announcement),
+        ).toHaveLength(1);
+        await advance(5000);
+        await waitFor(() => expect(player().video.id).toBe(13));
+        expect(urls()).toContain("/api/videos/13?smartFolder=1");
+        expect(urls()).toContain("/api/videos/13/related?smartFolder=1");
+      });
+
+      it("題名の上のフォルダの行はフォルダのページへのリンクで、後ろに操作を置かない", async () => {
+        renderPage("12?smartFolder=1", "/smart-folders/1");
+        const link = await folderLine();
+        expect(link.textContent).toBe("タグ: 猫·2 / 3");
+        expect(link.getAttribute("href")).toBe("/smart-folders/1");
+        expect(link.nextElementSibling).toBeNull();
+        expect(screen.queryByRole("button", { name: "Group actions" })).toBeNull();
+        fireEvent.click(link);
+        expect(screen.getByTestId("screen").textContent).toBe(
+          "スマートフォルダ /smart-folders/1",
+        );
+      });
+
+      it("?smartFolder のある矢印は同じ smartFolder を保って開く", async () => {
+        renderPage("12?smartFolder=1", "/smart-folders/1");
+        await ready();
+        await screen.findByRole("heading", { level: 2, name: "Up next" });
+        fireEvent.click(screen.getByRole("button", { name: "Next video: ep03" }));
+        await waitFor(() => expect(player().video.id).toBe(13));
+        expect(urls()).toContain("/api/videos/13?smartFolder=1");
+      });
+
+      it("?group と ?smartFolder の両方があれば group だけを運ぶ", async () => {
+        renderPage("12?group=1&smartFolder=1", "/?q=series");
+        await ready();
+        await screen.findByRole("heading", { level: 2, name: "Up next" });
+        expect(urls()).toContain("/api/videos/12?group=1");
+        expect(urls().some((url) => url.includes("smartFolder="))).toBe(false);
+      });
+
+      it("ゲストにも同じフォルダの行を出す", async () => {
+        server.session = "guest";
+        renderPage("12?smartFolder=1", "/smart-folders/1", "guest");
+        expect((await folderLine()).getAttribute("href")).toBe("/smart-folders/1");
       });
     });
 

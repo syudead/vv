@@ -8963,6 +8963,13 @@ components:
           format: int64
         video:
           $ref: "#/components/schemas/Video"
+        smartFolderId:
+          type: integer
+          format: int64
+          description: |
+            項目がスマートフォルダの項目のときのフォルダの id。動画とグループの項目では無い。
+            動画ページはこれで開く URL に smartFolder を付ける
+            （specs/052-smart-folders/contracts/screen-api.md）
 
     PlaylistPlayback:
       type: object

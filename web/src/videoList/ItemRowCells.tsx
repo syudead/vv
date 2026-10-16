@@ -1,6 +1,7 @@
-import { AlertTriangle, Check, Folder } from "lucide-react";
+import { AlertTriangle, Check, Folder, FolderSearch } from "lucide-react";
 
 import type { LibraryGroup, Video } from "../api/client";
+import type { LibrarySmartFolder } from "../api/smartFolders";
 import { t } from "../i18n";
 import {
   formatDuration,
@@ -18,16 +19,40 @@ import {
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
 
-// 順に並ぶ項目（動画かグループ）の行の共通の列である。プレイリストの画面の行
-// （specs/044-playlists/ui-design.md「Rows」）と、それを使うグループのページのリスト表示
+// 順に並ぶ項目（動画・グループ・スマートフォルダ）の行の共通の列である。プレイリストの画面の行
+// （specs/044-playlists/ui-design.md「Rows」、specs/052-smart-folders/ui-design.md
+// 「Playlist screen row」）と、それを使うグループのページのリスト表示
 // （specs/048-groups/ui-design.md「Body」）が、サムネイル・題名の下の行・視聴済み・長さを
 // ここから描く。
 
-/** OrderedItem は順に並ぶ項目である。プレイリストとグループの項目が同じ形を持つ。 */
+/**
+ * OrderedItem は順に並ぶ項目である。プレイリストとグループの項目が同じ形を持つ。スマートフォルダの
+ * 項目はプレイリストにだけあり、グループの項目の行と同じ値で描く。
+ */
 export interface OrderedItem {
-  kind: "video" | "group";
+  kind: "video" | "group" | "smartFolder";
   video?: Video;
   group?: LibraryGroup;
+  smartFolder?: LibrarySmartFolder;
+}
+
+/** OrderedCollection はグループとスマートフォルダの項目が行に出す、共通の値である。 */
+export type OrderedCollection = Pick<
+  LibraryGroup,
+  "name" | "videoCount" | "watchedCount" | "watchState" | "durationMs" | "previews"
+> & {
+  /** 押したときに開く動画。動画の無いスマートフォルダには無い。 */
+  openVideoId?: number;
+};
+
+/**
+ * orderedItemCollection はグループかスマートフォルダの項目の値である。動画の項目と、中身の無い
+ * 項目（契約上は起きない）では undefined。
+ */
+export function orderedItemCollection(item: OrderedItem): OrderedCollection | undefined {
+  if (item.kind === "group") return item.group;
+  if (item.kind === "smartFolder") return item.smartFolder;
+  return undefined;
 }
 
 interface RowFacts {
@@ -40,6 +65,10 @@ interface RowFacts {
   groupProgress: string | null;
   /** グループの 2 行目（「12 videos」）。 */
   groupCount: string | null;
+  /** 2 行目の印をスマートフォルダの `FolderSearch` にするとき true（グループは `Folder`）。 */
+  smartFolder: boolean;
+  /** 動画の無いスマートフォルダの項目のとき true。名前を従の色にする。 */
+  empty: boolean;
   unplayable: string | null;
 }
 
@@ -50,13 +79,18 @@ const emptyFacts: RowFacts = {
   ratio: null,
   groupProgress: null,
   groupCount: null,
+  smartFolder: false,
+  empty: false,
   unplayable: null,
 };
 
-/** rowFacts は行に出す値を、動画とグループで同じ形にそろえる（library のリスト表示と同じ値）。 */
+/**
+ * rowFacts は行に出す値を、動画とグループで同じ形にそろえる（library のリスト表示と同じ値）。
+ * スマートフォルダの項目はグループの項目と同じ値で、2 行目の印だけが違う。
+ */
 export function rowFacts(item: OrderedItem): RowFacts {
-  const group = item.group;
-  if (item.kind === "group" && group !== undefined) {
+  const group = orderedItemCollection(item);
+  if (group !== undefined) {
     const watched = group.watchedCount ?? 0;
     const state = group.watchState ?? "unwatched";
     return {
@@ -72,6 +106,8 @@ export function rowFacts(item: OrderedItem): RowFacts {
           ? String(t.library.group.progress(watched, group.videoCount))
           : null,
       groupCount: String(t.library.group.count(group.videoCount)),
+      smartFolder: item.kind === "smartFolder",
+      empty: group.videoCount === 0,
     };
   }
   const video = item.video;
@@ -92,14 +128,14 @@ export function rowFacts(item: OrderedItem): RowFacts {
  * （契約上は起きない）は空にする。
  */
 export function orderedItemTitle(item: OrderedItem): string {
-  if (item.kind === "group") return item.group?.name ?? "";
-  return item.video?.title ?? "";
+  if (item.kind === "video") return item.video?.title ?? "";
+  return orderedItemCollection(item)?.name ?? "";
 }
 
-/** orderedItemDurationMs は項目の長さである。動画の長さか、グループの合計。 */
+/** orderedItemDurationMs は項目の長さである。動画の長さか、グループとスマートフォルダの合計。 */
 export function orderedItemDurationMs(item: OrderedItem): number | undefined {
-  if (item.kind === "group") return item.group?.durationMs;
-  return item.video?.durationMs;
+  if (item.kind === "video") return item.video?.durationMs;
+  return orderedItemCollection(item)?.durationMs;
 }
 
 /** ItemThumbnailCell は行のサムネイルの列である。長さと進み具合を重ねる。 */
@@ -125,9 +161,9 @@ export function ItemThumbnailCell({
           <VideoThumbnailProgress
             value={Math.round(facts.ratio * 100)}
             aria-label={
-              item.kind === "group"
-                ? t.library.group.watchedRatio
-                : t.list.card.watchedRatio
+              item.kind === "video"
+                ? t.list.card.watchedRatio
+                : t.library.group.watchedRatio
             }
           />
         )}
@@ -136,13 +172,22 @@ export function ItemThumbnailCell({
   );
 }
 
+/**
+ * CollectionCountIcon はグループとスマートフォルダの本数の行の印である。スマートフォルダは
+ * `FolderSearch`、グループは `Folder`（specs/052-smart-folders/ui-design.md「Playlists」）。
+ */
+export function CollectionCountIcon({ smartFolder }: { smartFolder: boolean }) {
+  const Icon = smartFolder ? FolderSearch : Folder;
+  return <Icon aria-hidden="true" className="size-3 shrink-0" />;
+}
+
 /** ItemTitleExtras は題名の下の行（グループの本数、再生できない理由）である。 */
 export function ItemTitleExtras({ facts }: { facts: RowFacts }) {
   return (
     <>
       {facts.groupCount !== null && (
         <span className="mt-0.5 flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
-          <Folder aria-hidden="true" className="size-3 shrink-0" />
+          <CollectionCountIcon smartFolder={facts.smartFolder} />
           {facts.groupCount}
         </span>
       )}

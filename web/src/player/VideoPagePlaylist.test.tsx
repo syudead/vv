@@ -1,4 +1,12 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { useEffect, useState } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -253,7 +261,7 @@ describe("VideoPage のプレイリストの文脈", () => {
       if (playback !== null)
         return Promise.resolve(server.playback(Number(playback[1]), Number(playback[2])));
       if (url === "/api/playlists/5") return Promise.resolve(server.playlist());
-      const match = /^\/api\/videos\/(\d+)(\/[a-z-]+)?$/.exec(url);
+      const match = /^\/api\/videos\/(\d+)(\/[a-z-]+)?(?:\?smartFolder=\d+)?$/.exec(url);
       if (match === null) return Promise.resolve(json({}));
       const id = Number(match[1]);
       const suffix = match[2];
@@ -799,6 +807,166 @@ describe("VideoPage のプレイリストの文脈", () => {
     await line();
     expect(screen.getByRole("button", { name: "Next item: third" })).toBeDefined();
     expect(location()).toBe("/videos/12?playlist=5&item=22");
+  });
+
+  describe("スマートフォルダの項目（052 ui-design.md「Video page in a playlist」）", () => {
+    const member3 = videoOf(43, "member-three");
+    /** folderItem はフォルダ 7 の項目 22（再生順 second・member-three）である。 */
+    const folderItem = (videoCount = 2) => ({
+      id: 22,
+      kind: "smartFolder" as const,
+      smartFolder: {
+        id: 7,
+        name: "タグ: 猫",
+        videoCount,
+        watchedCount: 0,
+        watchState: "unwatched" as const,
+        sizeBytes: 2_000,
+        previews: [],
+        tags: [],
+        ...(videoCount === 0 ? {} : { openVideoId: 12, durationMs: 120_000 }),
+      },
+    });
+    const folderPlaylist = (videoCount = 2): Playlist => ({
+      ...summary(),
+      items: [
+        { id: 21, kind: "video", video: first },
+        folderItem(videoCount),
+        { id: 23, kind: "video", video: third },
+      ],
+    });
+    const inFolder = (step: PlaylistStep): PlaylistStep => ({
+      ...step,
+      smartFolderId: 7,
+    });
+
+    beforeEach(() => {
+      server.videos.set(12, () =>
+        json({
+          ...second,
+          smartFolder: { id: 7, name: "タグ: 猫", position: 1, count: 2 },
+        }),
+      );
+      server.videos.set(43, () => json(member3));
+      server.playlist.mockImplementation(() => json(folderPlaylist()));
+    });
+
+    it("フォルダの項目へのステップは再生の応答の smartFolderId を運び、パネルの読みが失敗しても同じ", async () => {
+      server.playlist.mockImplementation(() =>
+        json({ code: "internal", message: "x" }, 500),
+      );
+      server.playback.mockImplementation(() =>
+        json({
+          ...playbackFor(21),
+          next: inFolder(step(22, second)),
+          nextItem: inFolder(step(22, second)),
+        }),
+      );
+      renderPage("/videos/11?playlist=5&item=21");
+      await within(await waitForPanel()).findByText("Couldn't load the playlist");
+      fireEvent.click(screen.getByRole("button", { name: "Next item: second" }));
+      expect(location()).toBe("/videos/12?playlist=5&item=22&smartFolder=7");
+    });
+
+    it("フォルダの項目の中では読み取りが smartFolder を運び、フォルダの行・Up next・予告がフォルダに従う", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      server.related.set(12, {
+        items: [videoOf(31, "related-next")],
+        group: { id: 7, name: "タグ: 猫", items: [second, member3], offset: 0, total: 2 },
+      });
+      server.playback.mockImplementation(() =>
+        json({
+          ...playbackFor(22),
+          next: inFolder(step(22, member3)),
+          previousItem: step(21, first),
+        }),
+      );
+      renderPage("/videos/12?playlist=5&item=22&smartFolder=7");
+      await line();
+      expect(calls("/api/videos/12?smartFolder=7")).toBeGreaterThan(0);
+      expect(calls("/api/videos/12/related?smartFolder=7")).toBe(1);
+      // 行はプレイリスト、スマートフォルダ、題名の順。
+      const folderLine = await screen.findByRole("link", {
+        name: 'Smart folder "タグ: 猫", video 1 of 2. Open the smart folder',
+      });
+      expect(folderLine.getAttribute("href")).toBe("/smart-folders/7");
+      // パネルの今の行はフォルダの項目。
+      const rows = panelRows();
+      expect(rows.map((row) => row.getAttribute("aria-current"))).toEqual([
+        null,
+        "true",
+        null,
+      ]);
+      expect(within(rows[1]!).getByText("2 videos")).toBeDefined();
+      // Up next のメンバーの行は今のページの smartFolder を保つ。
+      const memberLink = await screen.findByRole("link", { name: /^member-three/ });
+      expect(memberLink.getAttribute("href")).toBe(
+        "/videos/43?playlist=5&item=22&smartFolder=7",
+      );
+      // 動画の項目への矢印は smartFolder を運ばない。
+      expect(screen.getByRole("button", { name: "Previous item: first" })).toBeDefined();
+      setStatus(true);
+      await screen.findByText(
+        'Playback finished. The next video, "member-three", plays in 5 seconds',
+      );
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5_000);
+      });
+      await waitFor(() =>
+        expect(location()).toBe("/videos/43?playlist=5&item=22&smartFolder=7"),
+      );
+    });
+
+    it("smartFolderId の無いステップは smartFolder を運ばない", async () => {
+      server.playback.mockImplementation((item) =>
+        json(
+          item === 22
+            ? { ...playbackFor(22), previousItem: step(21, first) }
+            : playbackFor(item),
+        ),
+      );
+      renderPage("/videos/12?playlist=5&item=22&smartFolder=7");
+      await line();
+      fireEvent.click(screen.getByRole("button", { name: "Previous item: first" }));
+      expect(location()).toBe("/videos/11?playlist=5&item=21");
+      fireEvent.click(await screen.findByRole("button", { name: "Next item: second" }));
+      expect(location()).toBe("/videos/12?playlist=5&item=22");
+    });
+
+    it("パネルのフォルダの行はその開く動画を smartFolder 付きで開き、動画の無いフォルダはリンクにしない", async () => {
+      renderPage("/videos/11?playlist=5&item=21");
+      await line();
+      const row = within(panelRows()[1]!);
+      const link = row.getByRole("link", { name: "Play from タグ: 猫" });
+      expect(link.getAttribute("href")).toBe(
+        "/videos/12?playlist=5&item=22&smartFolder=7",
+      );
+      expect(row.getByText("2 videos")).toBeDefined();
+
+      cleanupAndRender(() => json(folderPlaylist(0)));
+      await line();
+      const empty = within(panelRows()[1]!);
+      expect(empty.queryByRole("link")).toBeNull();
+      expect(empty.getByText("0 videos")).toBeDefined();
+      expect(empty.getByText("タグ: 猫").className).toContain("text-muted-foreground");
+
+      // URL が空のフォルダの項目を名指すと、その行が今の行になり、進み具合の欄にも「0 videos」。
+      cleanup();
+      server.playback.mockImplementation(() =>
+        json({ ...playbackFor(22), next: step(23, third), nextItem: step(23, third) }),
+      );
+      renderPage("/videos/12?playlist=5&item=22");
+      await line();
+      const current = panelRows()[1]!;
+      expect(current.getAttribute("aria-current")).toBe("true");
+      expect(within(current).getAllByText("0 videos")).toHaveLength(2);
+    });
+
+    function cleanupAndRender(answer: () => Response) {
+      cleanup();
+      server.playlist.mockImplementation(answer);
+      renderPage("/videos/11?playlist=5&item=21");
+    }
   });
 
   async function waitForPanel(): Promise<HTMLElement> {

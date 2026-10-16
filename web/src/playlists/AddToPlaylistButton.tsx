@@ -17,12 +17,15 @@ export default function AddToPlaylistButton({
   label,
   videoIds = noIds,
   groupIds = noIds,
+  smartFolderIds = noIds,
 }: {
   variant: "card" | "row" | "page";
   /** 読み上げ名。`page` ではツールチップの文言でもある。 */
   label: UiText;
   videoIds?: readonly number[];
   groupIds?: readonly number[];
+  /** 足すスマートフォルダの id（specs/052-smart-folders/ui-design.md「Add to playlist」）。 */
+  smartFolderIds?: readonly number[];
 }) {
   return (
     <PickerButton
@@ -35,6 +38,7 @@ export default function AddToPlaylistButton({
           onOpenChange={onOpenChange}
           videoIds={videoIds}
           groupIds={groupIds}
+          smartFolderIds={smartFolderIds}
         />
       )}
     />

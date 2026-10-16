@@ -1,10 +1,12 @@
 import { FolderSearch } from "lucide-react";
-import { memo, type ReactNode } from "react";
+import { memo, type ReactNode, useState } from "react";
 import { Link } from "react-router";
 
 import type { SmartFolderSummary, VideoTag } from "../api/client";
+import { updateFavorites } from "../api/favorites";
 import { smartFolderKey } from "../api/libraryItems";
 import type { LibrarySmartFolder } from "../api/smartFolders";
+import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { cn } from "../lib/cn";
 import {
@@ -13,10 +15,16 @@ import {
   CollectionValueCells,
   useCollectionFacts,
 } from "../library/GroupCard";
+import AddToPlaylistButton from "../playlists/AddToPlaylistButton";
+import FavoriteToggle from "../ui/FavoriteToggle";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { TableCell, TableRow } from "../ui/shadcn/table";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
-import { VideoThumbnail, VideoThumbnailImage } from "../ui/VideoThumbnail";
+import {
+  VideoThumbnail,
+  VideoThumbnailImage,
+  VideoThumbnailMark,
+} from "../ui/VideoThumbnail";
 import { RefusingDropCard } from "../videoList/cardDrag";
 import { useSmartFolderCardValue } from "./cardValues";
 import { smartFolderPagePath } from "./smartFolderPaths";
@@ -79,16 +87,78 @@ function SmartFolderMark() {
 }
 
 /**
+ * SmartFolderFavorite はフォルダのカード・行のお気に入りの付け外しである（所有者だけ。
+ * specs/052-smart-folders/ui-design.md「Smart folder card and row」）。フォルダの id を
+ * `smartFolderIds` で送る。フォルダの付け外しは画面へ知らせない（api/favorites.ts）ので、
+ * 成功したらここで塗りを変える。カードの値か要約の `favorite` が新しく読まれたら、それに従う。
+ */
+function SmartFolderFavorite({
+  folder,
+  known,
+  variant,
+}: {
+  folder: SmartFolderSummary;
+  /** 読んだ値の `favorite`。カードの値が届く前は要約の値。 */
+  known: boolean;
+  variant: "card" | "row";
+}) {
+  const [shown, setShown] = useState({ known, favorite: known });
+  const favorite = shown.known === known ? shown.favorite : known;
+  return (
+    <FavoriteToggle
+      favorite={favorite}
+      label={t.library.smartFolder.favorite(folder.name)}
+      onToggle={async () => {
+        await updateFavorites([], [], !favorite, { smartFolderIds: [folder.id] });
+        setShown({ known, favorite: !favorite });
+      }}
+      variant={variant}
+    />
+  );
+}
+
+/**
+ * SmartFolderAddToPlaylist はフォルダのカード・行の「Add to playlist」である（所有者だけ。
+ * specs/052-smart-folders/ui-design.md「Add to playlist」）。フォルダを 1 つの項目として
+ * `smartFolderIds` で送る。
+ */
+function SmartFolderAddToPlaylist({
+  folder,
+  variant,
+}: {
+  folder: SmartFolderSummary;
+  variant: "card" | "row";
+}) {
+  return (
+    <AddToPlaylistButton
+      variant={variant}
+      label={t.library.smartFolder.addToPlaylist(folder.name)}
+      smartFolderIds={[folder.id]}
+    />
+  );
+}
+
+/** knownFavorite は読んだ値のお気に入りである。カードの値が届く前は要約の値。 */
+function knownFavorite(
+  folder: SmartFolderSummary,
+  values: LibrarySmartFolder | undefined,
+): boolean {
+  return (values?.favorite ?? folder.favorite) === true;
+}
+
+/**
  * SmartFolderCard はスマートフォルダを 1 枚で出すカードである。箱・絵柄・本数の面・視聴の帯・
  * 名前・タグの行はグループのカードと同じで、違いは面の本数の前の印だけ。チェックとドラッグは
- * 持たない（中の動画はそれぞれのカードで選ぶ）。印（お気に入り、プレイリスト）は再生の単位が
- * 足す。値が届く前は本数の代わりに骨組みを出し、答えに入らなかったフォルダは描かない。
+ * 持たない（中の動画はそれぞれのカードで選ぶ）。所有者には角の印にハートと「Add to playlist」を
+ * 置き、「Add to group」は置かない（フォルダはグループに入らない）。値が届く前は本数の代わりに
+ * 骨組みを出し、答えに入らなかったフォルダは描かない。
  */
 export const SmartFolderCard = memo(function SmartFolderCard(
   props: SmartFolderCardProps,
 ) {
   const { folder, backTo, tagsRow, refusesDrop = false } = props;
   const { gone, values, facts, label, ref } = useSmartFolderFacts(folder);
+  const owner = useAudience() === "owner";
   if (gone) return null;
   const empty = values?.videoCount === 0;
   const tags = values?.tags ?? [];
@@ -128,6 +198,17 @@ export const SmartFolderCard = memo(function SmartFolderCard(
         />
         <CollectionName name={folder.name} muted={facts.state === "watched" || empty} />
       </Link>
+      {owner && (
+        // グループのカードと同じく、前に出たサムネイルより上に、リンクの外のタグの行の前に置く。
+        <VideoThumbnailMark className="z-30">
+          <SmartFolderAddToPlaylist folder={folder} variant="card" />
+          <SmartFolderFavorite
+            folder={folder}
+            known={knownFavorite(folder, values)}
+            variant="card"
+          />
+        </VideoThumbnailMark>
+      )}
       {tagsRow !== undefined && tags.length > 0 && (
         <div className="flex min-w-0 flex-col gap-1">{tagsRow(tags)}</div>
       )}
@@ -142,8 +223,8 @@ export const SmartFolderCard = memo(function SmartFolderCard(
 
 /**
  * SmartFolderRow はリスト表示のスマートフォルダの行である。グループの行と同じ列で、本数の行の
- * 印が `FolderSearch` になり、チェック・お気に入り・プレイリスト・グループの列は空にする
- * （`owner` のときだけその列がある）。
+ * 印が `FolderSearch` になる。チェックとグループの列は空にし、お気に入りとプレイリストの列に
+ * それぞれの操作を置く（`owner` のときだけその列がある）。
  */
 export const SmartFolderRow = memo(function SmartFolderRow({
   folder,
@@ -185,8 +266,20 @@ export const SmartFolderRow = memo(function SmartFolderRow({
           )}
         </span>
       </TableCell>
-      {owner && <TableCell className="w-8 px-0" />}
-      {owner && <TableCell className="hidden w-8 px-0 sm:table-cell" />}
+      {owner && (
+        <TableCell className="w-8 px-0">
+          <SmartFolderFavorite
+            folder={folder}
+            known={knownFavorite(folder, values)}
+            variant="row"
+          />
+        </TableCell>
+      )}
+      {owner && (
+        <TableCell className="hidden w-8 px-0 sm:table-cell">
+          <SmartFolderAddToPlaylist folder={folder} variant="row" />
+        </TableCell>
+      )}
       {owner && <TableCell className="hidden w-8 px-0 sm:table-cell" />}
       <CollectionValueCells
         state={facts.state}

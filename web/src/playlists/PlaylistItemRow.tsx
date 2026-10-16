@@ -64,7 +64,13 @@ export default function PlaylistItemRow({
       <ItemThumbnailCell item={item} facts={facts} />
       <TableCell className="w-full max-w-0 pr-2 whitespace-normal sm:pr-4">
         {target === null ? (
-          <span title={title} className="line-clamp-2 text-sm font-medium break-all">
+          <span
+            title={title}
+            className={cn(
+              "line-clamp-2 text-sm font-medium break-all",
+              facts.empty && "text-muted-foreground",
+            )}
+          >
             {title}
           </span>
         ) : (

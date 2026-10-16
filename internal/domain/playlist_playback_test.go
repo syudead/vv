@@ -27,6 +27,7 @@ func playbackGroup(id int64, pattern string, memberIDs ...int64) PlaylistItem {
 // pattern で作る。
 func playbackSmartFolder(id int64, pattern string, memberIDs ...int64) PlaylistItem {
 	group := playbackGroup(id, pattern, memberIDs...).Group
+	group.ID = id
 	return PlaylistItem{ID: id * 10, SmartFolder: &LibrarySmartFolder{LibraryGroup: *group}}
 }
 
@@ -124,6 +125,45 @@ func TestPlaylistPlaybackOf(t *testing.T) {
 			}
 			if stepVideo(got.NextItem) != tc.nextItem {
 				t.Errorf("nextItem = %d, want %d", stepVideo(got.NextItem), tc.nextItem)
+			}
+		})
+	}
+}
+
+// 項目がスマートフォルダの項目の step だけがフォルダの id を持つ（contracts/screen-api.md の
+// PlaylistStep）。フォルダの中の次の動画も持つ。
+func TestPlaylistPlaybackOfSmartFolderSteps(t *testing.T) {
+	a, f, g := playbackVideo(1), playbackSmartFolder(7, "dnn", 71, 72, 73), playbackGroup(2, "nn", 21, 22)
+	folderOf := func(step *PlaylistStep) int64 {
+		if step == nil {
+			return -1
+		}
+		return step.SmartFolderID
+	}
+	tests := []struct {
+		name                         string
+		items                        []PlaylistItem
+		item, video                  int64
+		next, previousItem, nextItem int64 // -1 は step 無し
+	}{
+		{name: "steps onto the folder item carry the folder", items: []PlaylistItem{a, f, g},
+			item: 10, video: 1, next: 7, previousItem: -1, nextItem: 7},
+		{name: "next inside the folder carries the folder", items: []PlaylistItem{a, f, g},
+			item: 70, video: 72, next: 7, previousItem: 0, nextItem: 0},
+		{name: "steps onto video and group items carry none", items: []PlaylistItem{a, f, g},
+			item: 70, video: 73, next: 0, previousItem: 0, nextItem: 0},
+		{name: "previous step onto the folder item carries the folder", items: []PlaylistItem{a, f, g},
+			item: 20, video: 21, next: 0, previousItem: 7, nextItem: -1},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := PlaylistPlaybackOf(tc.items, PlaylistCurrent{ItemID: tc.item, VideoID: tc.video})
+			if err != nil {
+				t.Fatalf("PlaylistPlaybackOf: %v", err)
+			}
+			if folderOf(got.Next) != tc.next || folderOf(got.PreviousItem) != tc.previousItem || folderOf(got.NextItem) != tc.nextItem {
+				t.Errorf("smartFolderId next・previousItem・nextItem = %d・%d・%d, want %d・%d・%d",
+					folderOf(got.Next), folderOf(got.PreviousItem), folderOf(got.NextItem), tc.next, tc.previousItem, tc.nextItem)
 			}
 		})
 	}

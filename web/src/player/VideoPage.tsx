@@ -24,7 +24,11 @@ import type { PlaylistStep } from "../api/playlists";
 import { t } from "../i18n";
 import { itemTitle } from "../playlists/playlistItems";
 import PlaylistPanel from "../playlists/PlaylistPanel";
-import { parsePlaylistQuery, stepPath } from "../playlists/playlistPlayback";
+import {
+  parsePlaylistQuery,
+  playlistStepPath,
+  stepPath,
+} from "../playlists/playlistPlayback";
 import { usePlaylistContext } from "../playlists/usePlaylistContext";
 import { DetailPage } from "../ui/patterns/detail-page";
 import { Separator } from "../ui/shadcn/separator";
@@ -49,6 +53,7 @@ import {
 } from "./pageDecisions";
 import type { PlaybackFailureKind } from "./playbackRecovery";
 import RelatedVideos, { type MemberTarget } from "./RelatedVideos";
+import SmartFolderLine from "./SmartFolderLine";
 import { useVideoGroupContext } from "./useVideoGroupContext";
 import StallWarning from "./StallWarning";
 import {
@@ -116,11 +121,17 @@ export default function VideoPage() {
   const itemId = playlistQuery?.itemId ?? 0;
   // 別の項目へ移ったときも、別の動画へ移ったときと同じに扱う（R-7）。
   const pageKey = `${String(id)}:${String(itemId)}`;
-  // 動画を開いたグループ（`?group`）。読み取りに渡し、グループの行・矢印・メンバーの並び・予告を
-  // その再生順に従わせる。プレイリストの文脈はグループより優先するので、その間は使わない
-  // （specs/048-groups/ui-design.md「Video page」、research.md R-9）。
+  // 動画を開いたグループ（`?group`）かスマートフォルダ（`?smartFolder`）。読み取りに渡し、行・矢印・
+  // メンバーの並び・予告をその再生順に従わせる。プレイリストの文脈はグループより優先するので、
+  // その間は `?group` を使わない。`?smartFolder` はフォルダの項目の中でも読み取りに渡す
+  // （specs/048-groups/ui-design.md「Video page」、research.md R-9、
+  // specs/052-smart-folders/ui-design.md「Video page」「Video page in a playlist」）。
   const groupContext = useVideoGroupContext(playlistQuery !== null);
   const { videoTo } = groupContext;
+  const readContext = useMemo(
+    () => ({ group: groupContext.group, smartFolder: groupContext.smartFolder }),
+    [groupContext.group, groupContext.smartFolder],
+  );
 
   // 編集画面から戻ったときの控え（保存の応答と、入口へフォーカスを戻すこと）。
   const detailsHandoff = usePageHandoff(id);
@@ -129,14 +140,19 @@ export default function VideoPage() {
     refresh,
     replace,
     setFavorite,
-  } = useVideoDetail(id, groupContext.group, detailsHandoff.video);
+  } = useVideoDetail(
+    id,
+    groupContext.group,
+    detailsHandoff.video,
+    groupContext.smartFolder,
+  );
   const {
     state: relatedState,
     retry: retryRelated,
     loadMore: loadMoreRelated,
     rename: renameRelated,
     rethumb: rethumbRelated,
-  } = useRelatedVideos(id, groupContext.group);
+  } = useRelatedVideos(id, groupContext.group, groupContext.smartFolder);
   const detail = detailState.id === id ? detailState : { kind: "loading" as const, id };
   const related =
     relatedState.id === id ? relatedState : { kind: "loading" as const, id };
@@ -410,8 +426,10 @@ export default function VideoPage() {
   // 終わった後の読み直しを待っている間は、予告も終わりの層も出さない。
   const playlistReading =
     inPlaylist && status.ended && playlist.settledKey !== playlistReadKey;
+  // ステップのフォルダは再生の応答の `smartFolderId` から取る（パネルの応答には頼らない。
+  // specs/052-smart-folders/ui-design.md「Video page in a playlist」）。
   const goStep = (step: PlaylistStep, autoplay: boolean) =>
-    void navigate(stepPath(playlistId, step.video.id, step.itemId), {
+    void navigate(playlistStepPath(playlistId, step), {
       state: { ...linkState, autoplay },
     });
   const playlistNext = playback?.next;
@@ -487,7 +505,7 @@ export default function VideoPage() {
       <AutoplayNotice
         key={`${pageKey}:${String(playlistNext.itemId)}:${String(playlist.settledKey)}`}
         next={playlistNext.video}
-        to={stepPath(playlistId, playlistNext.video.id, playlistNext.itemId)}
+        to={playlistStepPath(playlistId, playlistNext)}
         linkState={linkState}
         takeFocus={endedTakesFocus}
         watchEvents={owner}
@@ -502,7 +520,7 @@ export default function VideoPage() {
     layer = (
       <EndedOverlay
         next={playlistNext.video}
-        to={stepPath(playlistId, playlistNext.video.id, playlistNext.itemId)}
+        to={playlistStepPath(playlistId, playlistNext)}
         linkState={linkState}
         takeFocus={endedTakesFocus}
         onReplay={() => controls?.restart()}
@@ -595,16 +613,20 @@ export default function VideoPage() {
     playlist.panel.kind === "ready"
       ? playlist.panel.playlist.items.find((item) => item.id === itemId)
       : undefined;
-  // グループの項目の中では、メンバー一覧の行もプレイリストの文脈を保ち、同じグループの項目の
-  // メンバーを開く（state はパネルの行と同じ）。項目がグループかは、パネルの並びか、次が同じ
-  // 項目の中にあることで分かる。単体の動画の項目では、メンバーは項目の外なので今までどおり。
+  // グループとスマートフォルダの項目の中では、メンバー一覧の行もプレイリストの文脈を保ち、同じ
+  // 項目のメンバーを開く（state はパネルの行と同じ）。項目がそうかは、パネルの並びか、次が同じ
+  // 項目の中にあることか、ページの `smartFolder` で分かる。フォルダの行は今のページの
+  // `smartFolder` を保つ。単体の動画の項目では、メンバーは項目の外なので今までどおり。
   const inGroupItem =
     playback !== undefined &&
-    (currentItem?.kind === "group" || playback.next?.itemId === playback.itemId);
+    (currentItem?.kind === "group" ||
+      currentItem?.kind === "smartFolder" ||
+      groupContext.smartFolder !== undefined ||
+      playback.next?.itemId === playback.itemId);
   const memberTarget: MemberTarget | undefined =
     playlist.status === "ready" && playback !== undefined && inGroupItem
       ? (memberId) => ({
-          to: stepPath(playlistId, memberId, playback.itemId),
+          to: stepPath(playlistId, memberId, playback.itemId, groupContext.smartFolder),
           state: { ...linkState, autoplay: status.playing || status.ended },
         })
       : undefined;
@@ -633,7 +655,7 @@ export default function VideoPage() {
       return;
     }
     toast(t.player.playlist.skipped(skippedTitle));
-    void navigate(stepPath(playlistId, next.video.id, next.itemId), {
+    void navigate(playlistStepPath(playlistId, next), {
       replace: true,
       state: { ...linkState, autoplay: true },
     });
@@ -760,6 +782,7 @@ export default function VideoPage() {
               onRetry={retryRelated}
               onLoadMore={loadMoreRelated}
               memberTarget={memberTarget}
+              groupContext={readContext}
               // プレイリストのパネルは続けて再生・関連動画と同じ入れ物の先頭に置き、一緒に
               // スクロールさせる（広い画面）。
               leading={
@@ -806,7 +829,7 @@ export default function VideoPage() {
               onLoadMore={loadMoreRelated}
               // `?group` で開いた動画のメンバーの行は、そのグループの文脈を保って開く。
               memberTarget={groupContext.memberTarget(linkState)}
-              groupContext={groupContext.group}
+              groupContext={readContext}
             />
           )
         }
@@ -830,6 +853,9 @@ export default function VideoPage() {
                   count={playback.count}
                   backTo={backTo}
                 />
+              )}
+              {video.smartFolder !== undefined && (
+                <SmartFolderLine folder={video.smartFolder} backTo={backTo} />
               )}
               {video.group !== undefined && (
                 <GroupLine

@@ -327,7 +327,7 @@ bottom edge and the title.
 | Video, folder search results | Location row under the title |
 | Folder | Video card's width and border, folder artwork, Folder icon in the title |
 | Group (library only) | Video card's box and size, folder artwork of up to 4 member thumbnails |
-| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; no check, favorite or playlist mark |
+| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; no check or `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`) |
 
 Video card behaviour:
 
@@ -525,7 +525,7 @@ flowchart LR
 | Return target | The list before the page opened, kept through related videos and `Play next` |
 | Tags | Right below the title as one unit ([014 UI design, Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)) |
 | Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows |
-| Right column | Up to three sections, the playlist panel, `Up next` (a group's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
+| Right column | Up to three sections, the playlist panel, `Up next` (a group's or smart folder's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
 | Guests | No tags, visibility toggle, work details, `Edit details`, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
 
 Width variations stay in CSS, as in
@@ -758,6 +758,18 @@ that holds the video directly; a playlist context overrides both
 | Group actions (owner) | `Ellipsis` button after the line: `Remove from this group` (only for a direct item), `Turn the group into a tag…`, `Dissolve…`; Esc closes only the menu |
 | After an action | Video and related videos read again without `group`; the page stays |
 | Previous/next handles | Move within the group |
+
+A video opened from a smart folder (`?smartFolder=<id>`) follows the folder's
+play order in the same parts: the reads carry `smartFolder`, the line above the
+title has the `FolderSearch` icon and links to `/smart-folders/{id}` with no
+actions button after it, and the member rows, handles and notice keep
+`?smartFolder`. `?group` wins when both are present, and the page re-reads on
+a `smartFolder` event naming the folder. A playlist shows a smart folder item
+as one row with the group item's shape and the `FolderSearch` icon, on the
+playlist screen and in the panel; its link and every playlist step onto it
+carry `smartFolder` from the item or from the step's `smartFolderId`, and a
+folder with no video is a row without a link
+([052 UI design, Playlists](../../specs/052-smart-folders/ui-design.md#playlists)).
 
 `matchMedia` reads the `lg` width only to scroll the current member's row into
 view on wide screens; on narrow widths scrolling would move the whole page and

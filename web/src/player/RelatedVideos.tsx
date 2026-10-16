@@ -13,7 +13,7 @@ import {
 import { Link } from "react-router";
 
 import { isAborted, listVideoGroupMembers, type Video } from "../api/client";
-import type { RelatedState } from "../api/useVideoDetail";
+import type { RelatedState, VideoReadContext } from "../api/useVideoDetail";
 import type { VideoLinkState } from "./pageDecisions";
 import { type HoverPreview, useHoverPreview } from "./useHoverPreview";
 import { formatNumber, t, type UiText } from "../i18n";
@@ -230,8 +230,11 @@ export default function RelatedVideos({
   onRetry: () => void;
   onLoadMore: () => void;
   memberTarget?: MemberTarget;
-  /** 動画を開いたグループの id（`?group`）。メンバーの続きの読み取りにも渡す（048 research.md R-9）。 */
-  groupContext?: number;
+  /**
+   * 動画を開いたグループ（`?group`）かスマートフォルダ（`?smartFolder`）。メンバーの続きの読み取りにも
+   * 渡す（048 research.md R-9、052 contracts/screen-api.md）。
+   */
+  groupContext?: VideoReadContext;
   /** 並びの入れ物の先頭に置く区切り（プレイリストのパネルと境目）。同じ入れ物でスクロールする。 */
   leading?: ReactNode;
 }) {
@@ -264,7 +267,7 @@ function RelatedSections({
   onRetry: () => void;
   onLoadMore: () => void;
   memberTarget?: MemberTarget;
-  groupContext?: number;
+  groupContext?: VideoReadContext;
 }) {
   if (state.kind === "ready" && state.related.group !== undefined) {
     const group = state.related.group;
@@ -375,9 +378,11 @@ function GroupedRelated({
   /** 関連動画の並びの続きを読む目印（RelatedTail）。 */
   tail: ReactNode;
   memberTarget: MemberTarget | undefined;
-  groupContext: number | undefined;
+  groupContext: VideoReadContext | undefined;
 }) {
   const wide = useWideScreen();
+  const openedGroup = groupContext?.group;
+  const openedSmartFolder = groupContext?.smartFolder;
   const [before, setBefore] = useState<Video[]>([]);
   const [after, setAfter] = useState<Video[]>([]);
   const [loading, setLoading] = useState<GroupSide | null>(null);
@@ -418,7 +423,8 @@ function GroupedRelated({
         start,
         limit,
         controller.signal,
-        groupContext,
+        openedGroup,
+        openedSmartFolder,
       ).then(
         (page) => {
           if (controller.signal.aborted) return;
@@ -441,7 +447,7 @@ function GroupedRelated({
         },
       );
     },
-    [currentId, end, first, groupContext, total],
+    [currentId, end, first, openedGroup, openedSmartFolder, total],
   );
 
   // 前を読み足したら、増えた高さだけ入れ物を下へずらし、見ていた行を同じ位置に残す。
