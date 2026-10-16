@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/auto-tagging.md
-sourceHash: fb41e484ef4de4eec363eca558daa949437159488ebb758cbe1a3fe57c65455d
+sourceHash: e2d9dd45ac3bfea4b867baf4e38762db1055ce2044e7f38bc22c25fc2b7ba1fd
 ---
 
 # 判定モデルによる自動タグ付け {#auto-tagging-with-a-decision-model}
@@ -135,7 +135,7 @@ Ollama が止まっていると、キューを塞ぐ代わりに、キューに�
 取り消しは 1 回に 1 つのタグで、1 つの `ActivityStore` トランザクションで行う ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion))。
 
 1. ログから、同じ `tag_id` を持ち、触れた内容の鍵にその動画を含み (まとまりでタグを変えたときはすべてのメンバー)、id が `auto_tag` 項目の `decided_mark` (実行が結果を書いたときの最大の項目 id) より大きい、所有者の `tag_attach`、`tag_detach`、`tag_keep`、`tag_reject` 項目を探す。1 つあれば、所有者が実行の後にタグを再び決めたことを意味し、何も削除しない。その間のタグの名前の変更や新しい代表は、それを隠さない。
-2. そうでなければ、`video_tags` の行を、記録した利用者の鍵で、またはまとめたことで行が移った場合は動画の現在の利用者の鍵で削除する。提案されたタグは、まだ提案のままである間に削除する。まとまりの行は共有されているので、タグはすべてのメンバーから外れる。
+2. そうでなければ、実行が書いた行に由来する `video_tags` の行を削除する: 記録した利用者の鍵と、まとめることやバージョンから外すことで行がコピーされたすべての鍵 (`activity_entry_tag_keys`) である。提案されたタグは、まだ提案のままである間に削除する。まとまりの行は共有されているので、タグはすべてのメンバーから外れる。動画の現在の鍵がその中にないときは、まとめたときにほかのメンバーの行が勝っている (たとえば所有者が代表に手でタグを付けた)。その行は残り、取り消しは `already_reverted` になる。
 3. どちらの場合も、そのタグをその動画について `auto_tag_rejections` に記録するので、"Tag all videos again" がそのタグについて質問したり、そのタグを追加したりすることは決してない。
 4. 所有者の `undo` 項目を書く。行を削除したときは `done`/`completed`、所有者がすでにタグを外した、付け直した、または残したときは `done`/`already_reverted` で、その場合タグは所有者が残した状態のままになる。
 

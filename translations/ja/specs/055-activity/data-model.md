@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: 962a2afda338bd6984fa93da539c1932ded38ee42132b0e20ebd42c8c20b1b75
+sourceHash: 658035ac35178cde665288d7c560f2b41c6b8d641aecd483986ad155f8ebe02d
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -9,11 +9,11 @@ sourceHash: 962a2afda338bd6984fa93da539c1932ded38ee42132b0e20ebd42c8c20b1b75
 
 ## マイグレーション {#migration}
 
-1 つのマイグレーションが、null を許す `tag_id` と `decided_mark` の列を持つ `activity_entries`、`activity_entry_tags`、`activity_entry_keys`、`video_version_judging_holds` を作り、`jobs`、`auto_tag_queue`、`video_version_candidates` に null を許す `activity_id` を加える。番号は、それを書く時点の `main` の最後のマイグレーションの次 (今は `00054`) である。Down はそれらを削除する。それより前に起きたことについては項目を書かない (親 Issue の最後のエッジケース)。
+1 つのマイグレーションが、null を許す `tag_id` と `decided_mark` の列を持つ `activity_entries`、`activity_entry_tags`、`activity_entry_tag_keys`、`activity_entry_keys`、`video_version_judging_holds` を作り、`jobs`、`auto_tag_queue`、`video_version_candidates` に null を許す `activity_id` を加える。番号は、それを書く時点の `main` の最後のマイグレーションの次 (今は `00054`) である。Down はそれらを削除する。それより前に起きたことについては項目を書かない (親 Issue の最後のエッジケース)。
 
 | テーブル | 分類 ([Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery)) |
 | --- | --- |
-| `activity_entries`、`activity_entry_tags`、`activity_entry_keys` | ユーザーデータ: 作り直さず、消去しない ([R-1](research.md#r-1-a-persistent-activity-log-named-apart-from-the-scan-activity)) |
+| `activity_entries`、`activity_entry_tags`、`activity_entry_tag_keys`、`activity_entry_keys` | ユーザーデータ: 作り直さず、消去しない ([R-1](research.md#r-1-a-persistent-activity-log-named-apart-from-the-scan-activity)) |
 | `video_version_judging_holds` | ユーザーデータ: 所有者の取り消しであり、`video_version_unbundles` と同じように保つ |
 
 ## `activity_entries` {#activity_entries}
@@ -53,7 +53,7 @@ sourceHash: 962a2afda338bd6984fa93da539c1932ded38ee42132b0e20ebd42c8c20b1b75
 | `auto_tag` | video | 動画を自動タグ付けのキューに入れること |
 | `version_judgement` | pair | 判定がオンの間に判定できる候補が現れること、または判定がオンにされること |
 | `work_info_fetch` | video | プラグインでの取得 ([R-11](research.md#r-11-a-failed-work-information-fetch-is-a-finished-entry-not-a-problem)) |
-| `bundle`、`unbundle`、`make_representative`、`dismiss` | video か pair | 所有者のバージョンの操作 ([R-6](research.md#r-6-the-owner-operations-recorded)) |
+| `bundle`、`unbundle`、`make_representative`、`dismiss` | video か pair | 所有者のバージョンの操作 ([R-6](research.md#r-6-the-owner-operations-recorded))。所属が変わったメンバーごとに 1 つの `bundle` の項目: まとめられていなかった動画、または代表のものとは別のまとまりのメンバー |
 | `tag_attach`、`tag_detach`、`tag_keep`、`tag_reject` | video | 所有者のタグの操作。動画とタグごとに 1 つの項目 |
 | `work_info_apply` | video | 取得した作品情報の適用 |
 | `media_folder_remove` | folder | メディアフォルダの削除。`detail` は、それが取り除いた動画の数を持つ |
@@ -97,6 +97,15 @@ sourceHash: 962a2afda338bd6984fa93da539c1932ded38ee42132b0e20ebd42c8c20b1b75
 | `probability` | real | 不可 | モデルの答え |
 | `undone_by` | integer | 可 | `undo` の項目 |
 
+## `activity_entry_tag_keys` {#activity_entry_tag_keys}
+
+`auto_tag` の項目のタグの行が今あるユーザーキー: それを書いたキーと、まとめることやバージョンから外すことでその行がコピーされたすべてのキー (`copyUserData`) である。タグの行がほかから来たキーは挙げない: 新しいまとまりは代表の行を取るので、代表自身のタグの行が勝ったときは、まとまりのキーは代表の行を書いた項目についてだけ挙げる。まとまりの行で行が置き換えられたキー (`replaceUserData`) は先に除く。取り消しはこれらのキーの行を削除し、ほかの行は削除しない ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion))。
+
+| フィールド | 型 | Null | 意味 |
+| --- | --- | --- | --- |
+| `entry_id`、`tag_id` | integer | 不可 | `activity_entry_tags` の行。`user_key` とともに主キー |
+| `user_key` | text | 不可 | そのタグの行が、実行が書いた行に由来するユーザーキー |
+
 ## `activity_entry_keys` {#activity_entry_keys}
 
 所有者のタグの項目が触れた内容の鍵。鍵そのもの、またはまとまりの鍵でタグを変えたときはそのまとまりのすべてのメンバーである。取り消しは所有者の変更を `tag_id` と内容の鍵で照合するので、その間の名前の変更や代表の変更はそれを隠さない。
@@ -130,8 +139,10 @@ sourceHash: 962a2afda338bd6984fa93da539c1932ded38ee42132b0e20ebd42c8c20b1b75
 | 再試行を示すのは、理由が `failed` か `interrupted` の `attention` で、種類が `import`、`scan`、`auto_tag`、`version_judgement` のどれかのときである | `domain` |
 | 取り消しを示すのは、`rule` か `ai` が決めてまだ取り消していない項目である: 結果が `same` か `different` の `version_judgement`、または `auto_tag` の項目のタグ | `domain` |
 | 取り消しは「所有者がその後に変えた」かを、行の時刻からは決して決めず、ログから決める: 同じ対象に対する所有者の項目 (タグの `tag_id` を持ち、動画の内容の鍵が `activity_entry_keys` にある `tag_attach`、`tag_detach`、`tag_keep`、`tag_reject`。メンバーの `bundle`、`unbundle`、`organize_undo`。組の `dismiss`) で、id が取り消す項目の `decided_mark` より大きいものは、所有者が結果の後に再び決めたことを意味する ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) | `store` (1 つのパッケージ内の照会) |
+| タグの取り消しは、実行が書いた行に由来する行 (`activity_entry_tag_keys`) だけを削除する。動画の今のユーザーキーがその中にないときは、まとめたときにほかのメンバーの行が勝っており、取り消しは `already_reverted` になる ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) | `store` |
+| まとめることは、所属が変わったメンバーについてだけ `bundle` の項目を書く。動画をまとまりに加えても、そのまとまり自身のメンバーには項目がないままなので、その中の自動のまとめはまだ取り消せる ([R-6](research.md#r-6-the-owner-operations-recorded)) | `store` (`planBundle`) |
 | 判定の取得は、`video_version_unbundles` にある組を飛ばすのと同じように、`video_version_judging_holds` にある組を飛ばす | `store` (`judgeablePairs`) |
-| 同じパスでの内容の変更は、`moveKeyPairs` が退けた組のキーを付け替えるのと同じように、`video_version_judging_holds` と、開いているか終わったかを問わず項目が持つすべての鍵 (動画か組の対象、`auto_tag` の項目の `activity_entry_tags.user_key`、所有者のタグの項目の `activity_entry_keys`、自動のまとめの `undo_keys`) を付け替えるので、後の取り消しはユーザーデータとともに移った行を見つける | `store` (引き継ぎ) |
+| 同じパスでの内容の変更は、`moveKeyPairs` が退けた組のキーを付け替えるのと同じように、`video_version_judging_holds` と、開いているか終わったかを問わず項目が持つすべての鍵 (動画か組の対象、`auto_tag` の項目の `activity_entry_tags.user_key` と `activity_entry_tag_keys`、所有者のタグの項目の `activity_entry_keys`、自動のまとめの `undo_keys`) を付け替えるので、後の取り消しはユーザーデータとともに移った行を見つける | `store` (引き継ぎ) |
 
 ## 変わらないもの {#what-does-not-change}
 
