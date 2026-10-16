@@ -251,7 +251,7 @@ func runScan(t *testing.T, root string, index *fakeIndex) domain.ScanResult {
 func TestScanIncludesAllSupportedExtensions(t *testing.T) {
 	files := map[string]string{}
 	for _, ext := range []string{
-		".mp4", ".m4v", ".webm", ".mkv", ".mov", ".avi", ".wmv", ".flv", ".ts", ".mpg", ".mpeg",
+		".mp4", ".m4v", ".webm", ".mkv", ".mov", ".avi", ".wmv", ".flv", ".ts", ".m2ts", ".mts", ".mpg", ".mpeg",
 	} {
 		files["video"+ext] = "content" + ext
 	}

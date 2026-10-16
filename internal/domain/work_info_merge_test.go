@@ -227,7 +227,7 @@ func TestMergeLeavesUnselectedAndMissingFieldsAlone(t *testing.T) {
 
 func TestWorkInfoFieldsFollowTheContractOrder(t *testing.T) {
 	want := []WorkInfoField{
-		"title", "tags", "code", "description", "dates.release", "dates.recorded", "dates.published",
+		"title", "tags", "cover", "code", "description", "dates.release", "dates.recorded", "dates.published",
 		"people.performer", "people.director", "people.photographer", "people.streamer",
 		"organizations.maker", "organizations.label", "urls", "externalIds",
 	}

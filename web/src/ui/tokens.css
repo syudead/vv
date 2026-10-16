@@ -227,6 +227,8 @@
   --spacing-seek-preview-time-x: 6px;
   --text-seek-preview: 11px;
   --duration-seek-preview: 100ms;
+  /* シークバーのチャプターの印の幅（index.css の .vv-chapter-mark。specs/056-media-info）。 */
+  --spacing-chapter-mark: 2px;
 
   @keyframes fade-in {
     from {

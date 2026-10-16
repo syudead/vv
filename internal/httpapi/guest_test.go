@@ -85,8 +85,10 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			// 作品情報と人物・団体の経路（video_work_info_test.go）。
 			WorkInfo: db.WorkInfo(),
 			Credits:  db.Credits(),
-			Versions: db.Versions(),
-			Library:  library,
+			// 動画の追加の情報（video_media_info_test.go）。
+			MediaInfo: library,
+			Versions:  db.Versions(),
+			Library:   library,
 			// 外部連携 API の上書きの一括操作（external_video_overrides_test.go）が引き当てに使う。
 			ExternalVideos: library,
 			// 生成は代わりにし、位置の確かめと記録は本物の保存層で行う。

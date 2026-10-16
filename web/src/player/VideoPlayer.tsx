@@ -1,5 +1,5 @@
 import { Info, RotateCcw, type LucideIcon } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import videojs from "video.js";
 import "video.js/dist/video-js.css";
@@ -13,6 +13,16 @@ import {
 } from "../preferences/playbackQuality";
 import { readPlaybackVolume, writePlaybackVolume } from "../preferences/playbackVolume";
 import { Popover, PopoverContent, PopoverTrigger } from "../ui/shadcn/popover";
+import {
+  attachChapterMarks,
+  attachChaptersTrack,
+  chaptersButtonName,
+  chapterTitleAt,
+  playerChapters,
+  registerChaptersButton,
+  type ChaptersPlayer,
+  type PlayerChapter,
+} from "./chapters";
 import { liveSource } from "./liveOffset";
 import {
   createPlaybackAttempt,
@@ -70,7 +80,9 @@ export const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 2];
  * （specs/027-playback-quality/ui-design.md「Control bar: quality menu」、
  * specs/028-sidecar-subtitles research.md R-10）。字幕ボタンはトラックが無ければ video.js が
  * 隠し、video.js の `SubsCapsButton` に字幕の名前を言語の表に通さない手直しを加えたもの
- * （subtitleMenu.ts）。秒数送りは置かない。前後の動画はプレイヤーの左右の端に置く
+ * （subtitleMenu.ts）。チャプターのボタンは右寄せの空きのすぐ後（「変換して再生中」の前）に
+ * 置き、チャプターが無ければ video.js が隠す（chapters.ts、specs/056-media-info/ui-design.md
+ * 「Chapters button and menu」）。秒数送りは置かない。前後の動画はプレイヤーの左右の端に置く
  * （NeighborArrows）。
  */
 const controlBarChildren = [
@@ -81,6 +93,7 @@ const controlBarChildren = [
   "durationDisplay",
   "progressControl",
   "customControlSpacer",
+  chaptersButtonName,
   "qualityMenuButton",
   subtitlesButtonName,
   "playbackRateMenuButton",
@@ -127,6 +140,8 @@ export function playerDictionary(): Record<string, string> {
     "subtitles off": s.off,
     "captions off": s.off,
     "captions and subtitles off": s.off,
+    // チャプターのボタンとメニューの題。キーは持たない。
+    Chapters: t.player.chapters.button,
   };
 }
 
@@ -263,6 +278,7 @@ export default function VideoPlayer(props: Props) {
     // 言語はプレイヤーを作るときにカタログから作り直す（テストの疑似ロケールも届く）。
     videojs.addLanguage(playerLanguage, playerDictionary());
     registerSubtitlesButton();
+    registerChaptersButton();
     const element = document.createElement("video-js");
     element.classList.add("video-js", "vjs-big-play-centered");
     host.appendChild(element);
@@ -538,7 +554,7 @@ export default function VideoPlayer(props: Props) {
         slot = document.createElement("div");
         slot.className = "vv-transcode-indicator flex flex-none items-center px-2";
         // 字幕ボタンを再生速度の隣に保つため、「変換して再生中」は画質・字幕・再生速度の
-        // うち先頭のものの前に置く。
+        // うち先頭のものの前に置く。チャプターのボタンはその前に残る。
         bar.insertBefore(
           slot,
           bar.querySelector(
@@ -1023,22 +1039,53 @@ export default function VideoPlayer(props: Props) {
   // シーク位置サムネイルは、処理中の取り直しで後から URL が来ることもある。プレイヤーは
   // 作り直さず、再生バーへの取り付けだけをやり直す。URL は同じでも、生成が終わって
   // seekThumbnailState が変わったら取り付け直し、取得に失敗した配置情報を捨てる。
+  // チャプターのある動画は、URL が無くてもタイトルの行と時刻の pill だけのプレビューを付ける
+  // （specs/056-media-info/ui-design.md「Seek preview title」）。
   const seekThumbnailUrl = video.seekThumbnailUrl;
   const seekThumbnailState = video.seekThumbnailState;
   const durationMs = video.durationMs;
+  const chapters = usePlayerChapters(video);
   useEffect(() => {
     const host = hostRef.current;
-    if (!playerReady || host === null || seekThumbnailUrl === undefined) return;
+    if (!playerReady || host === null) return;
+    if (seekThumbnailUrl === undefined && chapters.length === 0) return;
     if (durationMs === undefined || durationMs <= 0) return;
     const progress = host.querySelector<HTMLElement>(".vjs-progress-holder");
     const progressControl = host.querySelector<HTMLElement>(".vjs-progress-control");
     if (progress === null || progressControl === null) return;
     return attachSeekPreview(
       progress,
-      { durationMs, thumbnailUrl: seekThumbnailUrl },
+      {
+        durationMs,
+        thumbnailUrl: seekThumbnailUrl,
+        chapterTitleAt:
+          chapters.length === 0
+            ? undefined
+            : (positionMs) => chapterTitleAt(chapters, positionMs),
+      },
       progressControl,
     );
-  }, [durationMs, playerReady, seekThumbnailUrl, seekThumbnailState]);
+  }, [chapters, durationMs, playerReady, seekThumbnailUrl, seekThumbnailState]);
+
+  // チャプターは解析の job が終わってから届くこともある。プレイヤーは作り直さず、トラックと
+  // シークバーの印だけを付け直す（specs/056-media-info/research.md R-7）。
+  useEffect(() => {
+    const host = hostRef.current;
+    const player = playerRef.current;
+    if (!playerReady || host === null || player === null || chapters.length === 0) return;
+    if (durationMs === undefined || durationMs <= 0) return;
+    const detachTrack = attachChaptersTrack(
+      player as unknown as ChaptersPlayer,
+      chapters,
+    );
+    const progress = host.querySelector<HTMLElement>(".vjs-progress-holder");
+    const detachMarks =
+      progress === null ? undefined : attachChapterMarks(progress, chapters, durationMs);
+    return () => {
+      detachMarks?.();
+      if (!player.isDisposed()) detachTrack();
+    };
+  }, [chapters, durationMs, playerReady]);
 
   // 代表サムネイルが後からできたときは、作り直さずに背景の画像だけを差し替える。
   useEffect(() => {
@@ -1081,6 +1128,21 @@ export default function VideoPlayer(props: Props) {
         )}
     </div>
   );
+}
+
+/**
+ * usePlayerChapters は動画のチャプターをプレーヤーのチャプターにする。詳細の取り直しで
+ * 中身の同じ一覧が届いても、同じ参照を返す（トラックと印を付け直さない）。
+ */
+function usePlayerChapters(video: Video): readonly PlayerChapter[] {
+  const chapters = video.mediaInfo?.chapters;
+  const { durationMs } = video;
+  // 一覧の生成と文字列化は入力の参照が変わったときだけにし、毎回の描画では行わない。
+  const key = useMemo(
+    () => JSON.stringify(playerChapters(chapters, durationMs)),
+    [chapters, durationMs],
+  );
+  return useMemo(() => JSON.parse(key) as PlayerChapter[], [key]);
 }
 
 /** BarButton は操作バーへ差し込むボタンである。video.js のボタンと同じ見た目と大きさにそろえる。 */
@@ -1137,8 +1199,10 @@ function TranscodeIndicator({
           操作バーの見た目（special の例外、web/design-exceptions.js）の一部である。 */}
       <PopoverTrigger className="inline-flex! items-center gap-1 rounded-sm px-1 text-xs! leading-4! whitespace-nowrap text-muted-foreground! transition-colors! hover:text-foreground!">
         <Info className="size-4 shrink-0" aria-hidden="true" />
-        {/* 縦長の動画などで枠が狭いときは、印だけを残して操作バーの幅に収める。 */}
-        <span className="@max-[22.5rem]:sr-only">{label}</span>
+        {/* 縦長の動画や 360px の画面などで枠が狭いときは、印だけを残して操作バーの幅に収める。
+            チャプターと字幕のボタンも並ぶと、文字は 32rem より狭い枠に収まらない
+            （specs/056-media-info/ui-design.md「Responsive behaviour」）。 */}
+        <span className="@max-[32rem]:sr-only">{label}</span>
       </PopoverTrigger>
       <PopoverContent container={container} align="end">
         {detail}
