@@ -8,7 +8,7 @@ import {
   appliedResult,
   entry,
   failure,
-  fetchFromUrl,
+  fetchById,
   fetchResult,
   heading,
   json,
@@ -17,6 +17,7 @@ import {
   server,
   useFetchServer,
   video,
+  workId,
   workUrl,
   works,
 } from "../testing/workInfoFetchPage";
@@ -96,8 +97,8 @@ describe("VideoPage work-info fetch", () => {
     server.search.mockImplementation(() =>
       json({
         candidates: [
-          { url: workUrl, title: "候補の作品", detail: "2024 · 映画" },
-          { url: "https://other.example/w/2", title: "別の作品" },
+          { id: workId, url: workUrl, title: "候補の作品", detail: "2024 · 映画" },
+          { id: "W-2", url: "https://other.example/w/2", title: "別の作品" },
         ],
       }),
     );
@@ -105,17 +106,22 @@ describe("VideoPage work-info fetch", () => {
       json(appliedResult({ ...video, title: "取得した題名" })),
     );
     const { user, dialog } = await openDialog();
-    const query = within(dialog).getByRole("textbox", {
-      name: "Search words or the work's page URL",
-    });
+    const query = within(dialog).getByRole("textbox", { name: "Search words" });
     expect(query).toHaveProperty("value", "テスト動画");
     await user.click(within(dialog).getByRole("button", { name: "Search" }));
     expect(server.search).toHaveBeenCalledWith({ query: "テスト動画" });
     await within(dialog).findByText("2 matches");
-    expect(within(dialog).getByText("works.example")).toBeDefined();
+    // 候補の行はページのホストとページへのリンクを出す。リンクは開くだけで、取得には使わない。
+    expect(within(dialog).getByText("other.example")).toBeDefined();
+    expect(
+      within(dialog)
+        .getAllByRole("link", { name: "Open page" })
+        .map((link) => link.getAttribute("href")),
+    ).toEqual([workUrl, "https://other.example/w/2"]);
     await user.click(within(dialog).getByRole("button", { name: /候補の作品/ }));
     await within(dialog).findByRole("checkbox", { name: "Title" });
-    expect(server.fetch).toHaveBeenCalledWith({ pluginId: 3, url: workUrl });
+    // 候補を選ぶとその ID で取得し、候補の URL は送らない（親 Issue 1232 の要件 15）。
+    expect(server.fetch).toHaveBeenCalledWith({ pluginId: 3, id: workId });
     // 取得した値は「既存」が動画に付いているので、選べるのは 1 つだけである。
     expect(within(dialog).getByText("1 of 1 selected")).toBeDefined();
     expect(within(dialog).getByRole("checkbox", { name: "Title" })).toHaveProperty(
@@ -144,7 +150,7 @@ describe("VideoPage work-info fetch", () => {
 
   it("値の無い項目と今と同じ項目は選べず、その理由を出す", async () => {
     server.fetch.mockImplementation(() => json(fetchResult({ tags: ["既存"] }), 201));
-    const { dialog } = await fetchFromUrl();
+    const { dialog } = await fetchById();
     const title = within(dialog).getByRole("checkbox", { name: "Title" });
     const tags = within(dialog).getByRole("checkbox", { name: "Tags" });
     expect(title).toHaveProperty("disabled", true);
@@ -163,16 +169,15 @@ describe("VideoPage work-info fetch", () => {
       failure(502, { code: "plugin_failed", pluginMessage: "rate limited" }),
     );
     const { user, dialog } = await openDialog();
-    const query = within(dialog).getByRole("textbox", {
-      name: "Search words or the work's page URL",
-    });
+    await user.click(within(dialog).getByRole("radio", { name: "ID" }));
+    const query = within(dialog).getByRole("textbox", { name: "The work's ID" });
     await user.clear(query);
-    await user.type(query, workUrl);
+    await user.type(query, workId);
     await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
     const alert = await within(dialog).findByRole("alert");
     expect(alert.textContent).toContain("Couldn't fetch: The plugin failed.");
     expect(alert.textContent).toContain('The plugin said: "rate limited"');
-    expect(query).toHaveProperty("value", workUrl);
+    expect(query).toHaveProperty("value", workId);
     expect(server.apply).not.toHaveBeenCalled();
     expect(heading().textContent).toBe("テスト動画");
   });
@@ -194,7 +199,7 @@ describe("VideoPage work-info fetch", () => {
     server.apply.mockImplementationOnce(() =>
       failure(409, { code: "work_info_fetch_stale" }),
     );
-    const { user, dialog } = await fetchFromUrl();
+    const { user, dialog } = await fetchById();
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
     await within(dialog).findByText(
       "This result is out of date. Fetch it again to apply it.",
@@ -213,7 +218,7 @@ describe("VideoPage work-info fetch", () => {
         ),
       ).toBeNull(),
     );
-    expect(server.fetch).toHaveBeenLastCalledWith({ pluginId: 3, url: workUrl });
+    expect(server.fetch).toHaveBeenLastCalledWith({ pluginId: 3, id: workId });
     expect(within(dialog).getByRole("button", { name: "Apply selected" })).toHaveProperty(
       "disabled",
       false,
@@ -234,7 +239,7 @@ describe("VideoPage work-info fetch", () => {
         ),
       ),
     );
-    const { user, dialog } = await fetchFromUrl();
+    const { user, dialog } = await fetchById();
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
     await within(dialog).findByText("Applied, but some values were left out");
     expect(
@@ -270,7 +275,7 @@ describe("VideoPage work-info fetch", () => {
         ),
       ),
     );
-    const { user, dialog } = await fetchFromUrl();
+    const { user, dialog } = await fetchById();
     const cover = within(dialog).getByRole("checkbox", { name: "Cover" });
     expect(cover).toHaveProperty("ariaChecked", "true");
     const fetched = within(dialog).getByRole("img", { name: /Fetched cover, 800 × 450/ });
@@ -296,7 +301,7 @@ describe("VideoPage work-info fetch", () => {
         201,
       ),
     );
-    const { dialog } = await fetchFromUrl();
+    const { dialog } = await fetchById();
     expect(within(dialog).getByRole("img", { name: /Fetched cover/ })).toBeDefined();
     expect(within(dialog).queryByRole("img", { name: "Current thumbnail" })).toBeNull();
   });
@@ -331,9 +336,7 @@ describe("VideoPage work-info fetch", () => {
     server.plugins = [{ ...works, operations: ["fetch"] }];
     server.video = { ...video, workInfo: coded };
     const { user, dialog } = await openDialog();
-    const query = within(dialog).getByRole("textbox", {
-      name: "The work's ID or page URL",
-    });
+    const query = within(dialog).getByRole("textbox", { name: "The work's ID" });
     expect(query).toHaveProperty("value", "ABC-123");
     expect(within(dialog).queryByRole("radio", { name: "ID" })).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
@@ -348,12 +351,10 @@ describe("VideoPage work-info fetch", () => {
   it("検索も取得もできるプラグインは Words と ID を選べ、ID に切り替えると語を ID として取得する", async () => {
     server.video = { ...video, workInfo: coded };
     const { user, dialog } = await openDialog();
-    const words = within(dialog).getByRole("textbox", {
-      name: "Search words or the work's page URL",
-    });
+    const words = within(dialog).getByRole("textbox", { name: "Search words" });
     expect(words).toHaveProperty("value", "テスト動画");
     await user.click(within(dialog).getByRole("radio", { name: "ID" }));
-    const id = within(dialog).getByRole("textbox", { name: "The work's ID or page URL" });
+    const id = within(dialog).getByRole("textbox", { name: "The work's ID" });
     expect(id).toHaveProperty("value", "ABC-123");
     await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
     await within(dialog).findByRole("checkbox", { name: "Title" });
@@ -361,19 +362,39 @@ describe("VideoPage work-info fetch", () => {
     expect(server.search).not.toHaveBeenCalled();
   });
 
+  it("URL を貼っても作品の ID としてそのまま送り、Words のままなら語として検索する", async () => {
+    const pasted = "https://works.example/w/1";
+    const { user, dialog } = await openDialog();
+    const words = within(dialog).getByRole("textbox", { name: "Search words" });
+    await user.clear(words);
+    await user.type(words, pasted);
+    // URL の形でも入力欄の名前と押すボタンは変わらない（親 Issue 1232 の要件 14）。
+    expect(within(dialog).queryByRole("button", { name: "Fetch" })).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Search" }));
+    expect(server.search).toHaveBeenCalledWith({ query: pasted });
+    await user.click(within(dialog).getByRole("radio", { name: "ID" }));
+    const id = within(dialog).getByRole("textbox", { name: "The work's ID" });
+    expect(id).toHaveProperty("value", pasted);
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+    await within(dialog).findByRole("checkbox", { name: "Title" });
+    expect(server.fetch).toHaveBeenCalledWith({ pluginId: 3, id: pasted });
+    expect(within(dialog).getByText(/ID https:\/\/works\.example\/w\/1/)).toBeDefined();
+  });
+
   it("検索だけのプラグインの候補は押せる行にせず、取得を送らない", async () => {
     server.plugins = [{ ...works, operations: ["search"] }];
     server.search.mockImplementation(() =>
-      json({ candidates: [{ url: workUrl, title: "候補の作品" }] }),
+      json({ candidates: [{ id: workId, url: workUrl, title: "候補の作品" }] }),
     );
     const { user, dialog } = await openDialog();
     await user.click(within(dialog).getByRole("button", { name: "Search" }));
     await within(dialog).findByText("1 match");
     expect(within(dialog).getByText("候補の作品")).toBeDefined();
-    expect(within(dialog).queryByRole("button", { name: /候補の作品/ })).toBeNull();
+    expect(within(dialog).getByText("works.example")).toBeDefined();
     expect(
       within(dialog).getByRole("link", { name: "Open page" }).getAttribute("href"),
     ).toBe(workUrl);
+    expect(within(dialog).queryByRole("button", { name: /候補の作品/ })).toBeNull();
     await user.click(within(dialog).getByText("候補の作品"));
     expect(server.fetch).not.toHaveBeenCalled();
   });
@@ -382,7 +403,7 @@ describe("VideoPage work-info fetch", () => {
     const other: WorkInfoPlugin = { ...works, id: 4, name: "other" };
     server.plugins = [works, other];
     server.search.mockImplementation(() =>
-      json({ candidates: [{ url: workUrl, title: "候補の作品" }] }),
+      json({ candidates: [{ id: workId, url: workUrl, title: "候補の作品" }] }),
     );
     server.fetch.mockImplementation(() => {
       server.plugins = [other];
@@ -428,7 +449,7 @@ describe("VideoPage work-info fetch", () => {
     server.apply.mockImplementation(() =>
       json(appliedResult({ ...server.video, title: "取得した題名" })),
     );
-    const { user, dialog } = await fetchFromUrl();
+    const { user, dialog } = await fetchById();
     const aside = document.querySelector("aside");
     expect(aside?.textContent).toContain("テスト動画");
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));

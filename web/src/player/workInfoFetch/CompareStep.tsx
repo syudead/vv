@@ -7,7 +7,6 @@ import {
   workInfoFetchCoverUrl,
   type WorkInfoField,
   type WorkInfoPlugin,
-  type WorkInfoTarget,
 } from "../../api/workInfoPlugins";
 import { errorText, t } from "../../i18n";
 import { Alert, AlertAction, AlertTitle } from "../../ui/shadcn/alert";
@@ -28,7 +27,6 @@ import {
 } from "./detailRows";
 import {
   comparedFields,
-  hostOf,
   pluginLabel,
   rowState,
   type RowState,
@@ -41,8 +39,8 @@ import TagPicker, { type TagPick } from "./TagPicker";
 /** Fetched は比較の段に出す取得の結果と、それをどこから取ったかである。 */
 export interface Fetched {
   result: WorkInfoFetch;
-  /** 取った作品の URL か ID。「Fetch again」も同じもので走らせる。 */
-  source: WorkInfoTarget;
+  /** 取った作品の ID。「Fetch again」も同じもので走らせる。 */
+  source: string;
   /** 取得に使ったプラグイン。「Fetch again」も同じプラグインで走らせる。 */
   plugin: WorkInfoPlugin;
   /** 検索の候補から取った。「Back to the matches」を出す。 */
@@ -334,18 +332,7 @@ export default function CompareStep({
     <div className="flex flex-col gap-3">
       <p className="text-sm break-words text-muted-foreground">
         {text.source(pluginLabel(fetched.plugin))}
-        {"id" in fetched.source ? (
-          text.sourceId(fetched.source.id)
-        ) : (
-          <a
-            href={fetched.source.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="underline-offset-4 hover:text-primary hover:underline"
-          >
-            {hostOf(fetched.source.url)}
-          </a>
-        )}
+        {text.sourceId(fetched.source)}
       </p>
       {fetched.fromSearch && (
         <Button

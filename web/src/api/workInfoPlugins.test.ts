@@ -141,7 +141,7 @@ describe("work-info plugins API", () => {
   });
 
   it("検索・取得・反映をそれぞれの経路へ送り、応答を返す", async () => {
-    const candidates = [{ url: "https://example.com/1", title: "One" }];
+    const candidates = [{ id: "W-1", url: "https://example.com/1", title: "One" }];
     const fetched = {
       fetchId: "f/1",
       expiresAt: 1_800_000_600,
@@ -170,13 +170,11 @@ describe("work-info plugins API", () => {
       .fn<typeof fetch>()
       .mockResolvedValueOnce(json({ candidates }))
       .mockResolvedValueOnce(json(fetched, 201))
-      .mockResolvedValueOnce(json(fetched, 201))
       .mockResolvedValueOnce(json(applied));
     vi.stubGlobal("fetch", fetchMock);
 
     expect(await searchWorkInfo(4, "one")).toEqual(candidates);
-    expect(await fetchWorkInfo(7, 4, { url: "https://example.com/1" })).toEqual(fetched);
-    expect(await fetchWorkInfo(7, 4, { id: "ABC-123" })).toEqual(fetched);
+    expect(await fetchWorkInfo(7, 4, "ABC-123")).toEqual(fetched);
     expect(await applyWorkInfoFetch(7, "f/1", ["title", "tags"], ["drama"])).toEqual(
       applied,
     );
@@ -189,11 +187,6 @@ describe("work-info plugins API", () => {
     }));
     expect(sent).toEqual([
       { url: "/api/work-info-plugins/4/search", method: "POST", body: { query: "one" } },
-      {
-        url: "/api/videos/7/work-info-fetches",
-        method: "POST",
-        body: { pluginId: 4, url: "https://example.com/1" },
-      },
       {
         url: "/api/videos/7/work-info-fetches",
         method: "POST",
@@ -244,7 +237,7 @@ describe("work-info plugins API", () => {
       "example.com",
       "timeout",
     ]);
-    const missing = (await fetchWorkInfo(7, 4, { url: "https://example.com/" }).catch(
+    const missing = (await fetchWorkInfo(7, 4, "ABC-123").catch(
       (e: unknown) => e,
     )) as RequestFailed;
     expect(missing.settingKeys).toEqual(["apiKey"]);

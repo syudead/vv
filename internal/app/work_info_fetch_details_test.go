@@ -43,7 +43,7 @@ func (e *fetchEnv) fetchDetails(t *testing.T, info domain.FetchedWorkInfo) domai
 	t.Helper()
 	e.runtime.result = domain.WorkInfoRunResult{WorkInfo: info}
 	e.runtime.err = nil
-	result, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "https://example.com/works/1")
+	result, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "W-1")
 	if err != nil {
 		t.Fatalf("FetchWorkInfo: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestFetchWorkInfoCarriesDetailsWithMatches(t *testing.T) {
 	// 照合に失敗すれば結果を持たない。
 	e.matcher.err = errors.New("database is locked")
 	e.runtime.result = domain.WorkInfoRunResult{WorkInfo: detailedWork()}
-	if _, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "https://example.com/"); err == nil {
+	if _, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "W-1"); err == nil {
 		t.Fatal("a failed match was not reported")
 	}
 }

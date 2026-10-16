@@ -1,8 +1,8 @@
 //go:build wasip1
 
 // runplugin は mdm plugin run のテスト（cmd/mdm/plugin_run_test.go）が使う作品情報プラグインである。
-// fetch は標準エラーに 1 行書いてから作品の URL を http_send で取り、本文を題名、受け取った設定を
-// key=value のタグにして返す。search は語が sleep なら眠り続け、fail なら改行なしで標準エラーに書いてから
+// fetch は標準エラーに 1 行書いてから作品の ID を http:// の後ろに置いた URL を http_send で取り、本文を題名、
+// 受け取った設定を key=value のタグにして返す。search は語が sleep なら眠り続け、fail なら改行なしで標準エラーに書いてから
 // 誤りを返し、そうでなければ語を題名にした候補を返す。
 package main
 
@@ -25,7 +25,7 @@ func httpBody(handle int32, ptr unsafe.Pointer, n uint32) int32
 type request struct {
 	Operation string            `json:"operation"`
 	Query     string            `json:"query"`
-	URL       string            `json:"url"`
+	ID        string            `json:"id"`
 	Settings  map[string]string `json:"settings"`
 }
 
@@ -44,11 +44,12 @@ func main() {
 			reply(map[string]any{"error": map[string]string{"message": "failed on purpose"}})
 			return
 		}
-		reply(map[string]any{"candidates": []map[string]string{{"url": "https://site.test/works/1", "title": req.Query}}})
+		reply(map[string]any{"candidates": []map[string]string{{"id": "site.test/works/1", "url": "https://site.test/works/1", "title": req.Query}}})
 		return
 	}
-	fmt.Fprintln(os.Stderr, "fetching", req.URL)
-	send, _ := json.Marshal(map[string]string{"method": "GET", "url": req.URL})
+	url := "http://" + req.ID
+	fmt.Fprintln(os.Stderr, "fetching", url)
+	send, _ := json.Marshal(map[string]string{"method": "GET", "url": url})
 	h := httpSend(unsafe.Pointer(&send[0]), uint32(len(send)))
 	if h < 0 {
 		reply(map[string]any{"error": map[string]string{"message": "http_send returned " + strconv.Itoa(int(h))}})

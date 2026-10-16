@@ -22,7 +22,7 @@ CI does not run the Windows app. Setup and checks:
 | Step | Expected result | Acceptance |
 | --- | --- | --- |
 | `mdm plugin pack` with a manifest whose default is not among its options | The reason names `default` and `options`; the module's bytes are unchanged | 3, edge cases |
-| `mdm plugin pack` with the corrected manifest, then `mdm plugin run plugin.wasm fetch <public URL>` | The kept `workInfo` is printed; a line the plugin wrote to standard error appears on the command's standard error | 1, 4 |
+| `mdm plugin pack` with the corrected manifest, then `mdm plugin run plugin.wasm fetch <work ID>` | The kept `workInfo` is printed; a line the plugin wrote to standard error appears on the command's standard error | 1, 4 |
 | `mdm plugin run` with the LAN variant | The command exits 1 with `blocked_address` and the router's address | 2 |
 | `mdm plugin run` with `--proxy` pointing at the LAN proxy | The proxy's log shows the request; the result is the same as without the proxy | 7 |
 | Add the packed plugin on the settings screen, open its settings dialog | The default is shown as the default, and the setting with options is a choice among them | 5 |

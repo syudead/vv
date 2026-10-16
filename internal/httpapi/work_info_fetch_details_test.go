@@ -90,7 +90,7 @@ func (e *detailsEnv) videoPath() string {
 func (e *detailsEnv) fetch(work domain.FetchedWorkInfo) []byte {
 	e.t.Helper()
 	*e.work = work
-	body := `{"pluginId":` + strconv.FormatInt(e.pluginID, 10) + `,"url":"https://example.com/works/1"}`
+	body := `{"pluginId":` + strconv.FormatInt(e.pluginID, 10) + `,"id":"W-1"}`
 	rec := e.serve(authRequest{method: http.MethodPost, target: e.videoPath(), body: body, cookies: []*http.Cookie{e.owner}})
 	if rec.Code != http.StatusCreated {
 		e.t.Fatalf("fetch = %d %s", rec.Code, rec.Body)
@@ -237,7 +237,7 @@ func TestWorkInfoApplySkipsAMalformedDate(t *testing.T) {
 func TestWorkInfoDetailRoutesRefuseGuests(t *testing.T) {
 	e := newDetailsEnv(t)
 	fetchID := fetchIDOf(t, e.fetch(domain.FetchedWorkInfo{Code: "ABC-123"}))
-	fetchBody := `{"pluginId":` + strconv.FormatInt(e.pluginID, 10) + `,"url":"https://example.com/works/1"}`
+	fetchBody := `{"pluginId":` + strconv.FormatInt(e.pluginID, 10) + `,"id":"W-1"}`
 	for _, req := range []struct{ path, body string }{
 		{e.videoPath(), fetchBody},
 		{e.videoPath() + "/" + fetchID + "/apply", `{"fields":["code"]}`},

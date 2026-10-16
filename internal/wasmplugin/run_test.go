@@ -30,12 +30,12 @@ func search(query string) domain.WorkInfoRunRequest {
 }
 
 func fetch() domain.WorkInfoRunRequest {
-	return domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, URL: "https://example.com/works/1"}
+	return domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, ID: "W-1"}
 }
 
 // fetchMode は probe に振る舞い mode を選ばせる fetch の要求である。
 func fetchMode(mode string) domain.WorkInfoRunRequest {
-	return domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, URL: "https://probe.test/" + mode}
+	return domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, ID: mode}
 }
 
 // wantFailure は err が失敗 want の *domain.WorkInfoRunError であることを確かめ、
@@ -66,7 +66,7 @@ func TestRunReadsBackTheEchoedResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(search): %v", err)
 	}
-	want := domain.WorkInfoCandidate{URL: "https://example.com/?q=Example work", Title: "Example work", Detail: "contract 1"}
+	want := domain.WorkInfoCandidate{ID: "q:Example work", URL: "https://example.com/?q=Example work", Title: "Example work", Detail: "contract 1"}
 	if len(got.Candidates) != 1 || got.Candidates[0] != want {
 		t.Fatalf("candidates = %+v, want [%+v]", got.Candidates, want)
 	}
@@ -77,8 +77,8 @@ func TestRunReadsBackTheEchoedResponse(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run(fetch): %v", err)
 	}
-	if got.WorkInfo.Title != req.URL || strings.Join(got.WorkInfo.Tags, ",") != "apiKey=secret,lang=ja" {
-		t.Fatalf("work info = %+v, want the URL and the settings echoed", got.WorkInfo)
+	if got.WorkInfo.Title != req.ID || strings.Join(got.WorkInfo.Tags, ",") != "apiKey=secret,lang=ja" {
+		t.Fatalf("work info = %+v, want the ID and the settings echoed", got.WorkInfo)
 	}
 }
 

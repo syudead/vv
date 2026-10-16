@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/contracts/plugin-cli.md
-sourceHash: ce81dfca1b173374d5a4b8d1db00b0a2685eb62417a590905ab594adfbd2102e
+sourceHash: b5db5833423e1bdf4d54a44595b80980e7d42ba0a3d7554859b323ca6bf14597
 ---
 
 # 契約: プラグイン作者のためのホストコマンド {#contract-host-commands-for-plugin-authors}
@@ -41,7 +41,7 @@ flowchart LR
 | 引数 | 意味 |
 | --- | --- |
 | `<operation>` | プラグインの契約の操作: `search` または `fetch`。のちの契約の操作は、マニフェストが宣言していれば受け付ける |
-| `<input>` | 操作の入力: `search` では語、`fetch` では URL。画面 API と同じ規則で確認する |
+| `<input>` | 操作の入力: `search` では語、`fetch` では作品の ID。画面 API と同じ規則で確認する (トリムしたあとで 1 から 200 文字)。URL の形の入力もそのまま ID である |
 | `--set KEY=VALUE` | 設定の値。繰り返せる。`KEY` はマニフェストが宣言したものでなければならず、値も既定値もない `required` のキーがあればコマンドは止まる |
 | `--proxy URL` | 実行のプロキシ。`PUT /api/settings/plugin-proxy` が受け取るもの ([R-4](../research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option))。フラグがなければなし |
 

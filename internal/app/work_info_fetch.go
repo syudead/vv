@@ -56,24 +56,13 @@ func (p *WorkInfoPlugins) SearchWorkInfo(ctx context.Context, id int64, query st
 	return candidates, nil
 }
 
-// FetchWorkInfo は承認済みのプラグイン pluginID の fetch で作品の URL rawURL から作品情報を取り、動画
-// videoID に結び付けてメモリに持ち、画面に見せる形を返す。取得した人物・団体は既存の実体と照合し、その答えも
-// 題名・タグと同じ寿命で持つ（specs/052-plugin-work-info-fields/research.md R-3）。動画は変えない。URL が規則に合わなければ
-// domain.ErrWorkInfoRunInvalid、動画が無ければ domain.ErrNotFound（プラグインより先に確かめる）を返す。
-// 実行の前の誤りと失敗は run と同じである。
+// FetchWorkInfo は承認済みのプラグイン pluginID の fetch で作品の ID id（品番など、検索の候補の ID を含む）から
+// 作品情報を取り、動画 videoID に結び付けてメモリに持ち、画面に見せる形を返す。ID を作品の URL に埋め込むのは
+// プラグインで、URL の形の ID もそのまま渡す（親 Issue #1232 の要件 14）。取得した人物・団体は既存の実体と
+// 照合し、その答えも題名・タグと同じ寿命で持つ（specs/052-plugin-work-info-fields/research.md R-3）。動画は
+// 変えない。ID が前後の空白を除いて 1〜200 文字でなければ domain.ErrWorkInfoRunInvalid、動画が無ければ
+// domain.ErrNotFound（プラグインより先に確かめる）を返す。実行の前の誤りと失敗は run と同じである。
 func (p *WorkInfoPlugins) FetchWorkInfo(
-	ctx context.Context, videoID, pluginID int64, rawURL string,
-) (domain.WorkInfoFetchResult, error) {
-	if err := domain.CheckWorkInfoFetchURL(rawURL); err != nil {
-		return domain.WorkInfoFetchResult{}, err
-	}
-	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, URL: rawURL})
-}
-
-// FetchWorkInfoByID は承認済みのプラグイン pluginID の fetch で作品の ID id（品番など）から作品情報を取る。
-// ID を作品の URL に埋め込むのはプラグインである。ID は前後の空白を除いて 1〜200 文字でなければ
-// domain.ErrWorkInfoRunInvalid を返す。結果の持ち方と誤りは FetchWorkInfo と同じである。
-func (p *WorkInfoPlugins) FetchWorkInfoByID(
 	ctx context.Context, videoID, pluginID int64, id string,
 ) (domain.WorkInfoFetchResult, error) {
 	normalized, err := domain.NormalizeWorkInfoSearchQuery(id)

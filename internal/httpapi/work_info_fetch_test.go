@@ -29,7 +29,7 @@ type scriptedPlugins struct {
 	calls      int
 	fields     []domain.WorkInfoField
 	tags       []string
-	// ids は FetchWorkInfoByID が受けた ID である。
+	// ids は FetchWorkInfo が受けた ID である。
 	ids []string
 	// cover は WorkInfoFetchCover が返すカバー画像で、nil なら domain.ErrNotFound である。
 	cover *domain.WorkInfoCover
@@ -40,12 +40,7 @@ func (p *scriptedPlugins) SearchWorkInfo(context.Context, int64, string) ([]doma
 	return p.candidates, p.err
 }
 
-func (p *scriptedPlugins) FetchWorkInfo(context.Context, int64, int64, string) (domain.WorkInfoFetchResult, error) {
-	p.calls++
-	return p.fetch, p.err
-}
-
-func (p *scriptedPlugins) FetchWorkInfoByID(_ context.Context, _, _ int64, id string) (domain.WorkInfoFetchResult, error) {
+func (p *scriptedPlugins) FetchWorkInfo(_ context.Context, _, _ int64, id string) (domain.WorkInfoFetchResult, error) {
 	p.calls++
 	p.ids = append(p.ids, id)
 	return p.fetch, p.err
@@ -139,7 +134,6 @@ func TestWorkInfoRunFailuresFollowTheContract(t *testing.T) {
 		e.plugins.err = tc.err
 		for _, route := range []struct{ path, body string }{
 			{searchPath, `{"query":"work"}`},
-			{fetchPath, `{"pluginId":1,"url":"https://example.com/w"}`},
 			{fetchPath, `{"pluginId":1,"id":"ABC-123"}`},
 		} {
 			label := tc.name + " " + route.path
@@ -154,34 +148,38 @@ func TestWorkInfoRunFailuresFollowTheContract(t *testing.T) {
 
 func TestWorkInfoSearchAndFetchAnswer(t *testing.T) {
 	e := newFetchRouteEnv(t)
-	e.plugins.candidates = []domain.WorkInfoCandidate{{URL: "https://example.com/1", Title: "One"}, {URL: "https://example.com/2", Title: "Two", Detail: "2024"}}
+	e.plugins.candidates = []domain.WorkInfoCandidate{
+		{ID: "w-1", URL: "https://e.test/1", Title: "One"},
+		{ID: "w-2", URL: "https://e.test/2", Title: "Two", Detail: "2024"},
+	}
 	status, body := e.post(searchPath, `{"query":"w"}`, e.owner)
 	var search gen.WorkInfoSearchResult
 	if status != http.StatusOK || json.Unmarshal(body, &search) != nil || len(search.Candidates) != 2 ||
-		search.Candidates[0].Detail != nil || *search.Candidates[1].Detail != "2024" {
+		search.Candidates[0].Id != "w-1" || search.Candidates[0].Url != "https://e.test/1" || search.Candidates[0].Detail != nil || *search.Candidates[1].Detail != "2024" {
 		t.Fatalf("search = %d %s", status, body)
 	}
 
 	e.plugins.fetch = domain.WorkInfoFetchResult{ID: "abc", ExpiresAt: time.Unix(1_800_000_600, 0), Tags: []string{}}
-	status, body = e.post(fetchPath, `{"pluginId":1,"url":"https://example.com/w"}`, e.owner)
+	status, body = e.post(fetchPath, `{"pluginId":1,"id":"ABC-123"}`, e.owner)
 	var fetch gen.WorkInfoFetch
 	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || fetch.FetchId != "abc" ||
 		fetch.ExpiresAt != 1_800_000_600 || fetch.Title != nil || fetch.Tags == nil {
 		t.Fatalf("fetch = %d %s", status, body)
 	}
 
-	status, body = e.post(fetchPath, `{"pluginId":1,"id":"ABC-123"}`, e.owner)
+	// URL を貼っても id としてそのまま登録へ渡す（親 Issue #1232 の要件 14）。url は受け付けない。
+	status, body = e.post(fetchPath, `{"pluginId":1,"id":"https://example.com/w"}`, e.owner)
 	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || fetch.FetchId != "abc" ||
-		!slices.Equal(e.plugins.ids, []string{"ABC-123"}) {
-		t.Fatalf("fetch by id = %d %s (ids %v)", status, body, e.plugins.ids)
+		!slices.Equal(e.plugins.ids, []string{"ABC-123", "https://example.com/w"}) {
+		t.Fatalf("fetch by a URL-shaped id = %d %s (ids %v)", status, body, e.plugins.ids)
 	}
 
 	calls := e.plugins.calls
 	for _, req := range []struct{ path, body string }{
 		{searchPath, `{}`},
-		{fetchPath, `{"url":"https://example.com/w"}`},
+		{fetchPath, `{"id":"ABC-123"}`},
 		{fetchPath, `{"pluginId":1}`},
-		{fetchPath, `{"pluginId":1,"url":"https://example.com/w","id":"ABC-123"}`},
+		{fetchPath, `{"pluginId":1,"url":"https://example.com/w"}`},
 	} {
 		status, body := e.post(req.path, req.body, e.owner)
 		assertErrorBody(t, req.path+" "+req.body, status, body, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
@@ -286,7 +284,7 @@ func TestWorkInfoFetchRoutesAreOwnerOnly(t *testing.T) {
 	e := newFetchRouteEnv(t)
 	for _, req := range []struct{ path, body string }{
 		{searchPath, `{"query":"work"}`},
-		{fetchPath, `{"pluginId":1,"url":"https://example.com/w"}`},
+		{fetchPath, `{"pluginId":1,"id":"ABC-123"}`},
 		{applyPath, `{"fields":["title"]}`},
 	} {
 		assertUnauthenticated(t, req.path, e.serve(authRequest{method: http.MethodPost, target: req.path, body: req.body}))
@@ -301,7 +299,7 @@ func TestWorkInfoFetchCoverServesTheImageWithItsType(t *testing.T) {
 	e.plugins.fetch = domain.WorkInfoFetchResult{
 		ID: "abc", Tags: []string{}, Cover: &domain.WorkInfoCover{Width: 3, Height: 2},
 	}
-	status, body := e.post(fetchPath, `{"pluginId":1,"url":"https://example.com/w"}`, e.owner)
+	status, body := e.post(fetchPath, `{"pluginId":1,"id":"ABC-123"}`, e.owner)
 	var fetch gen.WorkInfoFetch
 	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || fetch.Cover == nil ||
 		fetch.Cover.Width != 3 || fetch.Cover.Height != 2 {

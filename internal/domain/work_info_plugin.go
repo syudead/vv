@@ -116,7 +116,7 @@ type WorkInfoOperation string
 const (
 	// WorkInfoSearch は語で作品を探し、候補を返す操作である。
 	WorkInfoSearch WorkInfoOperation = "search"
-	// WorkInfoFetch は作品の URL か ID（品番など）から作品情報を取る操作である。ID を作品の URL に
+	// WorkInfoFetch は作品の ID（品番など）から作品情報を取る操作である。ID を作品の URL に
 	// 埋め込むのはプラグインである。
 	WorkInfoFetch WorkInfoOperation = "fetch"
 )
@@ -455,14 +455,12 @@ func validSettingKey(key string) bool {
 }
 
 // WorkInfoRunRequest は 1 回の実行でプラグインの標準入力に書く要求である（plugin-contract.md の Request）。
-// 文字数と URL の確かめは要求を作る側（internal/app）が行う。
+// 文字数の確かめは要求を作る側（internal/app、cmd/mdm）が行う。
 type WorkInfoRunRequest struct {
 	Operation WorkInfoOperation
 	// Query は search の語である。
 	Query string
-	// URL は fetch の作品の URL である。ID とどちらか一方だけを持つ。
-	URL string
-	// ID は fetch の作品の ID である。URL とどちらか一方だけを持つ。
+	// ID は fetch の作品の ID である。作品の URL に埋め込むのはプラグインである。
 	ID string
 	// Settings は所有者が入力した、このプラグインの設定の値である。
 	Settings map[string]string
@@ -478,22 +476,23 @@ func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
 		Contract  int               `json:"contract"`
 		Operation WorkInfoOperation `json:"operation"`
 		Query     string            `json:"query,omitempty"`
-		URL       string            `json:"url,omitempty"`
 		ID        string            `json:"id,omitempty"`
 		Settings  map[string]string `json:"settings"`
-	}{WorkInfoPluginContract, r.Operation, "", "", "", settings}
+	}{WorkInfoPluginContract, r.Operation, "", "", settings}
 	switch r.Operation {
 	case WorkInfoSearch:
 		body.Query = r.Query
 	case WorkInfoFetch:
-		body.URL = r.URL
 		body.ID = r.ID
 	}
 	return json.Marshal(body)
 }
 
 // WorkInfoCandidate は検索の候補の 1 つである。文字だけで、画像は持たない（research.md R-10）。
+// ID は候補を選んだときに fetch へ渡す作品の ID で、前後の空白を除いたものである。URL は候補の作品の
+// ページで、画面がリンクとして出すだけで、vv が取得することも fetch に渡すこともない。
 type WorkInfoCandidate struct {
+	ID     string
 	URL    string
 	Title  string
 	Detail string
@@ -572,6 +571,7 @@ func (e *WorkInfoRunError) Error() string {
 // 知らない項目は無視する。
 type responseJSON struct {
 	Candidates []struct {
+		ID     string `json:"id"`
 		URL    string `json:"url"`
 		Title  string `json:"title"`
 		Detail string `json:"detail"`
@@ -616,11 +616,14 @@ func ParseWorkInfoResponse(op WorkInfoOperation, output []byte) (WorkInfoRunResu
 func parseCandidates(raw responseJSON) (WorkInfoRunResult, error) {
 	candidates := make([]WorkInfoCandidate, 0, min(len(raw.Candidates), WorkInfoPluginMaxCandidates))
 	// 保持するのは先頭 WorkInfoPluginMaxCandidates 件だけなので、それより後の候補は確かめない。
+	// 候補の ID は取得の入力と同じ規則（前後の空白を除いて 1〜200 文字）で、選べば取得にそのまま渡す。
+	// URL は画面がページへのリンクに出すだけなので、http・https の絶対 URL であることだけを確かめる。
 	for _, c := range raw.Candidates[:min(len(raw.Candidates), WorkInfoPluginMaxCandidates)] {
-		if c.Title == "" || !isWorkURL(c.URL) {
+		id, err := NormalizeWorkInfoSearchQuery(c.ID)
+		if c.Title == "" || err != nil || !isWorkURL(c.URL) {
 			return WorkInfoRunResult{}, &WorkInfoRunError{Failure: WorkInfoRunFailed}
 		}
-		candidates = append(candidates, WorkInfoCandidate{URL: c.URL, Title: c.Title, Detail: c.Detail})
+		candidates = append(candidates, WorkInfoCandidate{ID: id, URL: c.URL, Title: c.Title, Detail: c.Detail})
 	}
 	return WorkInfoRunResult{Candidates: candidates}, nil
 }

@@ -178,11 +178,13 @@ func setRunInput(req *domain.WorkInfoRunRequest, input string) *accountFailure {
 		}
 		req.Query = query
 	case domain.WorkInfoFetch:
-		if err := domain.CheckWorkInfoFetchURL(input); err != nil {
-			return usageFailure("The work's URL must be an absolute http or https URL with a host, at most %d characters.",
-				domain.WorkInfoFetchURLMaxRunes)
+		// URL の形の入力も作品 ID としてそのまま渡す（親 Issue #1232 の要件 14・16）。
+		id, err := domain.NormalizeWorkInfoSearchQuery(input)
+		if err != nil {
+			return usageFailure("The work's ID must be 1 to %d characters after trimming spaces.",
+				domain.WorkInfoSearchQueryMaxRunes)
 		}
-		req.URL = input
+		req.ID = id
 	default:
 		return usageFailure("This VVMDM cannot build the input of the operation %q.", req.Operation)
 	}
@@ -256,6 +258,7 @@ func writeKeptResult(w io.Writer, op domain.WorkInfoOperation, result domain.Wor
 // 値は VVMDM が上限と規則で整えたあとのものである。値の無い項目は省く。
 
 type keptCandidate struct {
+	ID     string `json:"id"`
 	URL    string `json:"url"`
 	Title  string `json:"title"`
 	Detail string `json:"detail,omitempty"`
@@ -292,7 +295,7 @@ type keptWorkInfo struct {
 func keptCandidates(candidates []domain.WorkInfoCandidate) any {
 	out := make([]keptCandidate, 0, len(candidates))
 	for _, c := range candidates {
-		out = append(out, keptCandidate{URL: c.URL, Title: c.Title, Detail: c.Detail})
+		out = append(out, keptCandidate{ID: c.ID, URL: c.URL, Title: c.Title, Detail: c.Detail})
 	}
 	return struct {
 		Candidates []keptCandidate `json:"candidates"`

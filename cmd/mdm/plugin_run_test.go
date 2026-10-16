@@ -131,7 +131,7 @@ func TestPluginRunFetchPrintsTheKeptWorkInfoAndThePluginStderr(t *testing.T) {
 	module := runModulePath(t, runManifest)
 	site := newRunSite(t)
 
-	got := runPluginCommand(t, siteOptions(site), module, "fetch", "http://site.test/page", "--set", "token=s3cret")
+	got := runPluginCommand(t, siteOptions(site), module, "fetch", "site.test/page", "--set", "token=s3cret")
 	wantRun(t, got, exitAccountOK, "fetching http://site.test/page\n")
 	if !strings.HasPrefix(got.stdout, "{\n  \"workInfo\": {") {
 		t.Errorf("stdout %q is not indented JSON with workInfo", got.stdout)
@@ -142,7 +142,7 @@ func TestPluginRunFetchPrintsTheKeptWorkInfoAndThePluginStderr(t *testing.T) {
 		t.Fatalf("workInfo = %+v, want the page and the effective settings", kept.WorkInfo)
 	}
 
-	got = runPluginCommand(t, siteOptions(site), "--set=region=us", module, "fetch", "http://site.test/page", "--set", "token=s3cret")
+	got = runPluginCommand(t, siteOptions(site), "--set=region=us", module, "fetch", "site.test/page", "--set", "token=s3cret")
 	wantRun(t, got, exitAccountOK)
 	if kept := decodeFetch(t, got.stdout); !slices.Equal(kept.WorkInfo.Tags, []string{"region=us", "token=s3cret"}) {
 		t.Fatalf("tags = %q, want the given region", kept.WorkInfo.Tags)
@@ -154,10 +154,11 @@ func TestPluginRunSearchPrintsTheCandidates(t *testing.T) {
 	got := runPluginCommand(t, wasmplugin.Options{}, runModulePath(t, runManifest), "search", "  words  ", "--set", "token=x")
 	wantRun(t, got, exitAccountOK)
 	var kept struct {
-		Candidates []struct{ URL, Title string } `json:"candidates"`
+		Candidates []struct{ ID, URL, Title string } `json:"candidates"`
 	}
 	if err := json.Unmarshal([]byte(got.stdout), &kept); err != nil || len(kept.Candidates) != 1 ||
-		kept.Candidates[0].Title != "words" {
+		kept.Candidates[0].Title != "words" || kept.Candidates[0].ID != "site.test/works/1" ||
+		kept.Candidates[0].URL != "https://site.test/works/1" {
 		t.Fatalf("stdout %q, err %v; want one candidate with the trimmed words", got.stdout, err)
 	}
 }
@@ -188,7 +189,7 @@ func TestPluginRunARequestToLoopbackIsBlocked(t *testing.T) {
 	t.Parallel()
 	site := newRunSite(t)
 	got := runPluginCommand(t, wasmplugin.Options{}, runModulePath(t, runManifest),
-		"fetch", site.URL+"/page", "--set", "token=x")
+		"fetch", strings.TrimPrefix(site.URL, "http://")+"/page", "--set", "token=x")
 	wantRun(t, got, exitAccountError, "fetching "+site.URL, "Run failed: blocked_address, host 127.0.0.1")
 }
 
@@ -208,7 +209,7 @@ func TestPluginRunSendsTheRequestsThroughTheProxy(t *testing.T) {
 	opts.Connect = nil
 
 	got := runPluginCommand(t, opts, runModulePath(t, runManifest),
-		"fetch", "http://site.test/page", "--set", "token=x", "--proxy", proxy.URL)
+		"fetch", "site.test/page", "--set", "token=x", "--proxy", proxy.URL)
 	wantRun(t, got, exitAccountOK)
 	if kept := decodeFetch(t, got.stdout); kept.WorkInfo.Title != "proxied" {
 		t.Fatalf("title = %q, want the proxy's answer", kept.WorkInfo.Title)
@@ -228,25 +229,25 @@ func TestPluginRunRefusesWithUsage(t *testing.T) {
 		args []string
 		want []string
 	}{
-		{"no manifest", []string{runModulePath(t, ""), "fetch", "https://site.test/1", "--set", "token=x"},
+		{"no manifest", []string{runModulePath(t, ""), "fetch", "site.test/1", "--set", "token=x"},
 			[]string{"manifest_missing", "mdm plugin pack"}},
-		{"undeclared setting", []string{module, "fetch", "https://site.test/1", "--set", "token=x", "--set", "colour=red"},
+		{"undeclared setting", []string{module, "fetch", "site.test/1", "--set", "token=x", "--set", "colour=red"},
 			[]string{`no setting "colour"`}},
-		{"missing required setting", []string{module, "fetch", "https://site.test/1"},
+		{"missing required setting", []string{module, "fetch", "site.test/1"},
 			[]string{"no value and no default: token"}},
 		{"201-character query", []string{module, "search", strings.Repeat("q", 201), "--set", "token=x"},
 			[]string{"1 to 200 characters"}},
-		{"fetch input not a URL", []string{module, "fetch", "site.test/1", "--set", "token=x"},
-			[]string{"absolute http or https URL"}},
+		{"blank fetch input", []string{module, "fetch", "   ", "--set", "token=x"},
+			[]string{"work's ID must be 1 to 200 characters"}},
 		{"undeclared operation", []string{module, "lookup", "x", "--set", "token=x"},
 			[]string{`does not declare the operation "lookup"`, "search, fetch"}},
-		{"proxy with a path", []string{module, "fetch", "https://site.test/1", "--set", "token=x", "--proxy", "http://p.test/x"},
+		{"proxy with a path", []string{module, "fetch", "site.test/1", "--set", "token=x", "--proxy", "http://p.test/x"},
 			[]string{"--proxy must be"}},
-		{"setting value longer than the screen saves", []string{module, "fetch", "https://site.test/1", "--set", "token=" + strings.Repeat("v", 2001)},
+		{"setting value longer than the screen saves", []string{module, "fetch", "site.test/1", "--set", "token=" + strings.Repeat("v", 2001)},
 			[]string{`value of "token"`, "at most 2000 characters"}},
-		{"set without a value", []string{module, "fetch", "https://site.test/1", "--set"}, []string{"--set needs a value"}},
-		{"set without KEY=", []string{module, "fetch", "https://site.test/1", "--set", "token"}, []string{"KEY=VALUE"}},
-		{"unknown option", []string{module, "fetch", "https://site.test/1", "--verbose"}, []string{"Unknown option: --verbose"}},
+		{"set without a value", []string{module, "fetch", "site.test/1", "--set"}, []string{"--set needs a value"}},
+		{"set without KEY=", []string{module, "fetch", "site.test/1", "--set", "token"}, []string{"KEY=VALUE"}},
+		{"unknown option", []string{module, "fetch", "site.test/1", "--verbose"}, []string{"Unknown option: --verbose"}},
 		{"two arguments", []string{module, "fetch"}, []string{"exactly three arguments"}},
 	}
 	for _, tc := range cases {

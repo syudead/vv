@@ -147,7 +147,7 @@ embedded untranslated.
 | Title | Last run of {name} | |
 | Description | What the plugin wrote to its error output during its last run. Values of secret settings are shown as [secret]. | |
 | Facts | Ran · Did · Result | `FactList` terms |
-| Did | Search · Fetch by URL | From `settings.workInfoPlugins.operations` |
+| Did | Search · Fetch by ID | From `settings.workInfoPlugins.operations` |
 | Result, success | Finished | |
 | Result, failure | Failed: {reason} | `{reason}` from [049 Error reasons](../049-work-info-plugins/ui-design.md#error-reasons) by the run failure code, except the two below, whose `{host}` the run row does not keep |
 | Result, `blocked_address` | Failed: The plugin tried to reach VVMDM itself or a device on your network. | |

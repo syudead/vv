@@ -46,7 +46,7 @@ response.
 | Argument | Meaning |
 | --- | --- |
 | `<operation>` | An operation of the plugin contract: `search` or `fetch`; a later contract's operation is accepted when the manifest declares it |
-| `<input>` | The operation's input: the words for `search`, the URL for `fetch`, checked by the same rules as the screen API |
+| `<input>` | The operation's input: the words for `search`, the work's ID for `fetch`, checked by the same rules as the screen API (1 to 200 characters after trimming); a URL-shaped input is the ID unchanged |
 | `--set KEY=VALUE` | A setting value, repeatable; `KEY` must be declared by the manifest, and a `required` key without a value or a default stops the command |
 | `--proxy URL` | The proxy for the run, as `PUT /api/settings/plugin-proxy` takes it ([R-4](../research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option)); none without the flag |
 

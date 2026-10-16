@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/ui-design.md
-sourceHash: d9811fa29e772da80311928b4fa50e2ecb30ed27425fdc4a6be2b6619a4ca06c
+sourceHash: 9eb55bbc2b35053cdc5ff40044d12857d09a7d57b69cdc042ce6fb080443faa8
 ---
 
 # UI 設計: 作者・運用者・利用者のための Work-info プラグイン用ツール {#ui-design-work-info-plugin-tooling-for-authors-operators-and-users}
@@ -86,7 +86,7 @@ flowchart LR
 | Title | Last run of {name} | |
 | Description | What the plugin wrote to its error output during its last run. Values of secret settings are shown as [secret]. | |
 | Facts | Ran · Did · Result | `FactList` の項目名 |
-| Did | Search · Fetch by URL | `settings.workInfoPlugins.operations` から |
+| Did | Search · Fetch by ID | `settings.workInfoPlugins.operations` から |
 | Result, success | Finished | |
 | Result, failure | Failed: {reason} | `{reason}` は実行の失敗コードに応じた [049 Error reasons](../049-work-info-plugins/ui-design.md#error-reasons) から。ただし下の 2 つは除く。この 2 つの `{host}` を実行の行は保持しない |
 | Result, `blocked_address` | Failed: The plugin tried to reach VVMDM itself or a device on your network. | |
