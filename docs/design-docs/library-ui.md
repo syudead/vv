@@ -502,14 +502,14 @@ aspect ratio from the frame at run time.
 
 ### Information rows
 
-Up to three rows under the title, above which a divider runs, carry no
-frames.
+The rows under the title, above which a divider runs, carry no frames.
 
 | Row | Content |
 | --- | --- |
 | First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated or uploaded image is the thumbnail; actions at the right end |
 | Work details | Only when the video has work information, and only for the owner: the set items as `label value` pairs in the first row's `text-sm` and gaps (code, the three dates as stored, the people and organizations of each role, links, IDs), wrapping item by item, with the description folded to three lines under them |
-| Last | Resolution, container, codec separated by thin rules; smallest and most subdued |
+| Technical | Resolution, container, codec separated by thin rules; smallest and most subdued |
+| Media information | Only for a video with `mediaInfo`, for owners and guests alike: the Video, Audio, Subtitles, Embedded and Broadcast groups, each a wrapping muted row in the first row's `text-sm` and gaps with its name in the technical row's type at the start, and only when it has an item; more than six tracks fold to six and `+{n} more` ([056 UI design, Video page: groups](../../specs/056-media-info/ui-design.md#video-page-groups)) |
 
 The work details row takes words as labels, muted, and the values in the body
 colour. A role, `Links` or `IDs` with more than three entries shows three and

@@ -20,7 +20,14 @@ flowchart LR
   apply -->|same transaction and identity check as videos| row[(video_media_info)]
   again -->|same identity check, videos untouched| row
   row --> read[LibraryStore.MediaInfo]
+  read --> detail["GET /api/videos/{id} mediaInfo"]
 ```
+
+Only the video detail carries the value, for the owner and a guest of a public
+video alike; list items, related videos and the owner's `PUT` responses omit
+it ([`internal/httpapi/video_media_info.go`](../../internal/httpapi/video_media_info.go)).
+The video page draws it as groups under the technical line
+([`MediaInfoGroups.tsx`](../../web/src/player/MediaInfoGroups.tsx)).
 
 ## One run reads everything, and a TS file is read longer
 
@@ -38,6 +45,28 @@ transcoding keeps the default limits so a transcode does not wait for them.
 | --- | --- |
 | A second `ffprobe` per item | A library of 10,000 videos would start 10,000 more processes |
 | The longer limits for every container | They change nothing for a container with a header |
+
+## A TS recording's station and programme come from its SI
+
+After `ffprobe`, `media.Probe` reads the first 32 MiB of a `.ts`, `.m2ts` or
+`.mts` file in Go under its own 10-second deadline
+([`internal/media/ts_si.go`](../../internal/media/ts_si.go)) and fills
+`Broadcast` from the SI tables. `ffprobe` cannot supply these names: it
+decodes the DVB character tables, not ARIB STD-B24, and does not parse the
+EIT.
+
+| Item | Source |
+| --- | --- |
+| Packets | 188-byte packets, 192-byte packets with a 4-byte prefix (`.m2ts`) and 204-byte packets, found by repeated sync bytes |
+| Station | The service name in the SDT for the PAT's first programme |
+| Programme | The EIT present or following event that overlaps the recording, from the TOT or TDT time to that time plus the duration, the longest; a tie goes to the following event ([`domain.SelectBroadcastProgram`](../../internal/domain/media_broadcast.go)) |
+| Characters | The ARIB STD-B24 8-bit decoder in [`internal/media/arib`](../../internal/media/arib/arib.go): JIS X 0208 through `golang.org/x/text`, the kana and JIS X 0201 sets, and the additional symbols of rows 85 to 94 from a table of their Unicode 5.2 code points; size, colour and position controls are ignored and an unmapped character is dropped |
+
+Reading stops once the station, both events and a time are found. A read
+error or the deadline omits the names and never fails the probe. The names
+are decoded only when the original network ID is a Japanese network and the
+events are tagged `jpn`, so a DVB recording, or a TS that `ffmpeg` wrote with
+its default SDT and no EIT, has no `Broadcast`.
 
 ## The parser reads, the domain decides
 

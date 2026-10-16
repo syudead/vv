@@ -7791,6 +7791,13 @@ components:
             作品情報。GET /api/videos/{id} と、作品情報を書く所有者の PUT（work-info・details）の
             応答にだけ入り、行の無い動画とゲストの応答では無い。一覧の項目・関連動画・ライブラリの
             項目には入らない（specs/047-video-work-info/contracts/screen-api.md「Video changes」）
+        mediaInfo:
+          $ref: "#/components/schemas/MediaInfo"
+          description: |
+            取り込みの解析で読んだ動画の追加の情報。GET /api/videos/{id} の応答にだけ入り、今の版の
+            行がある動画にだけ入る。所有者と、公開の動画を読むゲストに同じ値を返す。一覧の項目・関連動画・
+            ライブラリの項目・所有者の PUT の応答には入らない
+            （specs/056-media-info/contracts/screen-api.md、research.md R-6）
         seekThumbnailState:
           type: string
           enum: [pending, done, failed]
@@ -7800,6 +7807,188 @@ components:
             pending = 生成を待っている、または生成中（保存した状態が done なのに置き場が
             無いときは、サーバーが作り直しを積んで pending として返す）、failed = 生成に
             失敗し、再試行の上限に達した
+
+    MediaInfo:
+      type: object
+      description: |
+        動画の追加の情報（specs/056-media-info/contracts/screen-api.md）。どの項目も、ファイルに
+        無ければ省く。項目の無い object は丸ごと省く。
+      additionalProperties: false
+      properties:
+        video:
+          $ref: "#/components/schemas/MediaInfoVideo"
+        audioTracks:
+          type: array
+          description: すべての音声 stream。stream の順
+          items:
+            $ref: "#/components/schemas/MediaInfoAudioTrack"
+        subtitleTracks:
+          type: array
+          description: すべての字幕 stream。stream の順
+          items:
+            $ref: "#/components/schemas/MediaInfoSubtitleTrack"
+        embedded:
+          $ref: "#/components/schemas/MediaInfoEmbedded"
+        broadcast:
+          $ref: "#/components/schemas/MediaInfoBroadcast"
+        chapters:
+          type: array
+          description: チャプター。開始の順で、尺の内側にある
+          items:
+            $ref: "#/components/schemas/MediaInfoChapter"
+
+    MediaInfoVideo:
+      type: object
+      description: 映像 stream の項目。`hdr` は映像があれば必ず入る
+      required: [hdr]
+      additionalProperties: false
+      properties:
+        frameRate:
+          type: number
+          format: double
+          description: 毎秒のコマ数（avg_frame_rate）
+        bitDepth:
+          type: integer
+          description: 1 標本のビット数
+        bitRate:
+          type: integer
+          format: int64
+          description: 映像 stream のビット毎秒
+        interlaced:
+          type: boolean
+          description: ファイルがプログレッシブかインターレースかを示すときだけ入る
+        hdr:
+          type: string
+          enum: [sdr, hdr10, hlg, dolby_vision]
+        projection:
+          type: string
+          description: 360 度動画の投影（`equirectangular`・`cubemap` などの ffprobe の名前）
+        stereo3d:
+          type: string
+          description: 3D の方式（`side by side`・`top and bottom` などの ffprobe の名前）
+        closedCaptions:
+          type: boolean
+          description: 映像 stream がクローズドキャプションを運ぶとき true
+
+    MediaInfoAudioTrack:
+      type: object
+      required: [index]
+      additionalProperties: false
+      properties:
+        index:
+          type: integer
+          description: ファイルの中の stream の番号
+        codec:
+          type: string
+          description: ffprobe の codec_name
+          examples: [aac, ac3]
+        channels:
+          type: integer
+        channelLayout:
+          type: string
+          examples: [stereo, "5.1"]
+        language:
+          type: string
+          description: ファイルの言語の印（`und` は省く。research.md R-8）
+        title:
+          type: string
+        default:
+          type: boolean
+
+    MediaInfoSubtitleTrack:
+      type: object
+      required: [index]
+      additionalProperties: false
+      properties:
+        index:
+          type: integer
+          description: ファイルの中の stream の番号
+        codec:
+          type: string
+          description: ffprobe の codec_name
+          examples: [subrip, arib_caption]
+        language:
+          type: string
+          description: ファイルの言語の印（`und` は省く。research.md R-8）
+        title:
+          type: string
+        default:
+          type: boolean
+        forced:
+          type: boolean
+        hearingImpaired:
+          type: boolean
+
+    MediaInfoEmbedded:
+      type: object
+      description: ファイルに埋め込まれたタグ
+      additionalProperties: false
+      properties:
+        title:
+          type: string
+        author:
+          type: string
+        comment:
+          type: string
+        description:
+          type: string
+        genre:
+          type: string
+        date:
+          type: string
+          description: ファイルの date タグの文字のまま
+        recordedAt:
+          type: string
+          format: date-time
+          description: 撮影の日時。ファイルに時差があればそれを保つ
+        device:
+          type: string
+          description: メーカーと機種
+        location:
+          $ref: "#/components/schemas/MediaInfoLocation"
+        coverArt:
+          type: boolean
+          description: ファイルが添付の画像を持つとき true
+
+    MediaInfoLocation:
+      type: object
+      description: 撮影場所（度、高度はメートル）
+      required: [latitude, longitude]
+      additionalProperties: false
+      properties:
+        latitude:
+          type: number
+          format: double
+        longitude:
+          type: number
+          format: double
+        altitude:
+          type: number
+          format: double
+
+    MediaInfoBroadcast:
+      type: object
+      description: TS の録画の放送局と番組
+      additionalProperties: false
+      properties:
+        station:
+          type: string
+        program:
+          type: string
+
+    MediaInfoChapter:
+      type: object
+      required: [startMs, endMs]
+      additionalProperties: false
+      properties:
+        startMs:
+          type: integer
+          format: int64
+        endMs:
+          type: integer
+          format: int64
+        title:
+          type: string
 
     SeekThumbnailSprite:
       type: object
