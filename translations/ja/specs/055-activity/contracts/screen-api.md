@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/contracts/screen-api.md
-sourceHash: b1917b7b456e28fc5bb8f0bcbf9a13d4c414a3f714ebfdbcc8d08e0230b8842f
+sourceHash: fc90a718b9142abb76d2de0f960dfc1037ba4d4b2305aea44db95f9f781a80ce
 ---
 
 # 契約: アクティビティの画面の API {#contract-screen-api-for-activity}
@@ -23,8 +23,11 @@ sourceHash: b1917b7b456e28fc5bb8f0bcbf9a13d4c414a3f714ebfdbcc8d08e0230b8842f
 | --- | --- | --- |
 | `id` | integer | 項目 |
 | `kind`, `status`, `reason?`, `outcome?`, `decider`, `probability?`, `detail?` | [data-model.md](../data-model.md#activity_entries) のとおり | |
-| `subject` | `{kind, label, videoIds?}` | `videoIds` は、閲覧者が開ける各鍵の今の動画 id を持つ。動画のない鍵は除く ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
+| `subject` | `{kind, items: {label, videoId?}[]}` | 鍵の順に鍵ごとに 1 つの要素 (組なら 2 つ、それ以外は 1 つ)。`label` は書いたときのまま、`videoId` は閲覧者が開ける今の動画で、鍵に動画がないときはない ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `candidate` | boolean | 組について: その候補がまだ Duplicates にある |
+| `stage?` | `probe` \| `thumbnail` \| `seek_thumbnail` \| `preview` \| `fingerprint` | 失敗した `import` について: 諦めた段階。そのとき `detail` はそのメッセージを持つ |
+| `retryAt?` | date-time | 失敗した `version_judgement` について: そのバックオフが再び試す時刻 |
+| `undoes?` | `{kind, outcome?, tagName?}` | `undo` の項目について: 取り消された項目の種類と結果、およびタグごとの取り消しならそのタグ |
 | `tags?` | `{id, name, suggested, probability, undone}[]` | `auto_tag` について |
 | `retryRun`, `undoable` | boolean | 行が再試行と取り消しを示すか ([data-model.md、規則](../data-model.md#rules)) |
 | `undone` | boolean | 所有者が取り消した |

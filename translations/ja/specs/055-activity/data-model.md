@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: a242cb3016ebcd39720e5670ff0e38e931a8a2324e394cdf95094b2c2d1f4841
+sourceHash: 6aaf5c4f6f8394722ae3cec4f164ccdb61d6deec32d3799a71b6d2591acf14a2
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -29,7 +29,9 @@ sourceHash: a242cb3016ebcd39720e5670ff0e38e931a8a2324e394cdf95094b2c2d1f4841
 | `status` | text | 不可 | `running`、`attention`、`done` のどれか ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | `reason` | text | 可 | `running` と `attention` について: 理由を参照 |
 | `outcome` | text | 可 | `done` について: 結果を参照 |
-| `detail` | text | 可 | 失敗についてのプロバイダか段階のメッセージ、失敗した段階、所有者の操作が変えたタグかまとまり |
+| `detail` | text | 可 | 失敗についてのプロバイダか段階のメッセージ、所有者の操作が変えたタグ、メディアフォルダの削除が取り除いた動画の数 |
+| `stage` | text | 可 | 失敗した `import` について、諦めた取り込みの段階 (`jobs.kind` の値) |
+| `undoes_id` | integer | 可 | `undo` の項目について、それが取り消した項目 |
 | `decider` | text | 不可 | `rule`、`ai`、`owner` のどれか ([R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)) |
 | `probability` | real | 可 | モデルが決めたか未決定のまま残した重複の組についての、モデルの答え |
 | `undo_keys` | text | 可 | まとめた組について、加わった側のメンバーの鍵と、その側の以前の代表の鍵を持つ JSON オブジェクト ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
@@ -60,7 +62,7 @@ sourceHash: a242cb3016ebcd39720e5670ff0e38e931a8a2324e394cdf95094b2c2d1f4841
 | --- | --- | --- |
 | `waiting` | running | ワーカーが取得する前の `import`、`auto_tag`、`version_judgement` |
 | `processing` | running | ワーカーが取得した |
-| `failed` | attention | `import` (ある段階が `MaxJobAttempts` の後に諦めた。`detail` がそれを示す)、`scan`、`auto_tag`、`version_judgement` (その再試行の時刻とともに) |
+| `failed` | attention | `import` (ある段階が `MaxJobAttempts` の後に諦めた。`stage` がそれを示し、`detail` がそのメッセージを持つ)、`scan`、`auto_tag`、`version_judgement` (その再試行の時刻とともに) |
 | `interrupted` | attention | 起動時に理由が `processing` の `running` だった項目 |
 | `no_connection` | attention | Ollama の接続が保存されていないのにモデルが要る `version_judgement` |
 | `undecided` | attention | 所有者に委ねた `version_judgement` |
