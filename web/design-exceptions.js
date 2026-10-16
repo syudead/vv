@@ -37,10 +37,18 @@ export default [
   {
     file: "player/seekPreview.ts",
     rules: ["better-tailwindcss/no-unknown-classes"],
-    classes: ["vv-seek-preview(?:-frame|-image|-time)?"],
+    classes: ["vv-seek-preview(?:-frame|-image|-time|-title)?"],
     kind: "special",
     reason:
       "The seek preview over the video.js progress bar (.vv-seek-preview in index.css) is placed from the pointer and the frame size at run time and sized from the seek-preview tokens; it is not a card scrub (ScrubPreview) and has no design-system component.",
+  },
+  {
+    file: "player/chapters.ts",
+    rules: ["better-tailwindcss/no-unknown-classes"],
+    classes: ["vv-chapter-(?:marks|mark|start)"],
+    kind: "special",
+    reason:
+      "The chapter marks inside the video.js progress bar and the start time in its chapters menu items (.vv-chapter-* in index.css) are third-party DOM placed from each chapter's start at run time; they belong to the special player skin and have no design-system component.",
   },
   {
     file: "ui/shadcn/combobox.tsx",

@@ -25,6 +25,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Technology selection: MDM (Media Data Management)](tech-stack-selection.md)
 - [Separate track inputs for MOV live transcoding](mov-live-transcoding.md)
 - [Live transcoding seek and probe reuse](live-transcode-seek.md)
+- [Media information from the import probe](media-information.md)
 - [Hardware encoding for live transcoding](hardware-encoding.md)
 - [Windows desktop app (VVMDM.exe)](windows-app.md)
 - [Process lifecycle: startup and shutdown order](process-lifecycle.md)
@@ -76,3 +77,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Work details from work-info plugins (the comparison's work detail rows with the `New` and `Not linked` marks, the result step's left-out values): UI](../../specs/052-plugin-work-info-fields/ui-design.md)
 - [Smart folders whose contents follow a saved condition (Save as smart folder, the smart folder dialog, card and page with its conditions lines, the video page's folder line): UI](../../specs/052-smart-folders/ui-design.md)
 - [Automatic duplicate judging (the versions mark on cards and rows, the Duplicate judging switch in Settings): UI](../../specs/054-auto-dup/ui-design.md)
+- [Media information on the video page and chapters on the seek bar (the Video, Audio, Subtitles, Embedded and Broadcast groups, chapter marks, the seek preview's chapter title, the chapters menu): UI](../../specs/056-media-info/ui-design.md)

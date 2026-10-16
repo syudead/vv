@@ -693,7 +693,11 @@ test.describe.serial("smart folders", () => {
     const id = folderId(catFolder);
     const order = (await playOrder(request, id)).map(titleOf);
     expect([...order].sort()).toEqual([...catTitles].sort());
-    const [first, second] = firstTwo(order);
+    // 動画のカードから開くので、グループのメンバーではない最初の動画から始める。同じ秒に
+    // 追加された項目は項目の id（動画は id の 2 倍、グループは id の 2 倍に 1 を足した値）で並び、
+    // 共有のデータベースではグループの id がほかの e2e の分だけ大きく、グループが先頭に来うる。
+    const start = order.findIndex((title) => title !== both1 && title !== both2);
+    const [first, second] = firstTwo(order.slice(start));
 
     await openFolder(page, catFolder);
     await videoCard(page, first).getByRole("link").first().click();
@@ -701,16 +705,16 @@ test.describe.serial("smart folders", () => {
       `/videos/${String(video(first).id)}?smartFolder=${String(id)}`,
     );
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(first);
-    await expect(folderLine(page, catFolder, 1, order.length)).toBeVisible();
+    await expect(folderLine(page, catFolder, start + 1, order.length)).toBeVisible();
     await expect.poll(() => upNextTitles(page)).toEqual(order);
 
     await pressArrow(page, /^Next video/);
     await expect(page).toHaveURL(
       `/videos/${String(video(second).id)}?smartFolder=${String(id)}`,
     );
-    await expect(folderLine(page, catFolder, 2, order.length)).toBeVisible();
+    await expect(folderLine(page, catFolder, start + 2, order.length)).toBeVisible();
 
-    await folderLine(page, catFolder, 2, order.length).click();
+    await folderLine(page, catFolder, start + 2, order.length).click();
     await expect(page).toHaveURL(`/smart-folders/${String(id)}`);
   });
 

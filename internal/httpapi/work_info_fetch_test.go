@@ -30,6 +30,8 @@ type scriptedPlugins struct {
 	fields     []domain.WorkInfoField
 	// ids は FetchWorkInfoByID が受けた ID である。
 	ids []string
+	// cover は WorkInfoFetchCover が返すカバー画像で、nil なら domain.ErrNotFound である。
+	cover *domain.WorkInfoCover
 }
 
 func (p *scriptedPlugins) SearchWorkInfo(context.Context, int64, string) ([]domain.WorkInfoCandidate, error) {
@@ -46,6 +48,13 @@ func (p *scriptedPlugins) FetchWorkInfoByID(_ context.Context, _, _ int64, id st
 	p.calls++
 	p.ids = append(p.ids, id)
 	return p.fetch, p.err
+}
+
+func (p *scriptedPlugins) WorkInfoFetchCover(int64, string) (domain.WorkInfoCover, error) {
+	if p.cover == nil {
+		return domain.WorkInfoCover{}, domain.ErrNotFound
+	}
+	return *p.cover, nil
 }
 
 func (p *scriptedPlugins) ApplyWorkInfoFetch(_ context.Context, _ int64, _ string, fields []domain.WorkInfoField) (domain.WorkInfoApplied, error) {
@@ -255,5 +264,34 @@ func TestWorkInfoFetchRoutesAreOwnerOnly(t *testing.T) {
 	}
 	if e.plugins.calls != 0 {
 		t.Fatal("a guest request reached the registry")
+	}
+}
+
+func TestWorkInfoFetchCoverServesTheImageWithItsType(t *testing.T) {
+	e := newFetchRouteEnv(t)
+	e.plugins.fetch = domain.WorkInfoFetchResult{
+		ID: "abc", Tags: []string{}, Cover: &domain.WorkInfoCover{Width: 3, Height: 2},
+	}
+	status, body := e.post(fetchPath, `{"pluginId":1,"url":"https://example.com/w"}`, e.owner)
+	var fetch gen.WorkInfoFetch
+	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || fetch.Cover == nil ||
+		fetch.Cover.Width != 3 || fetch.Cover.Height != 2 {
+		t.Fatalf("fetch = %d %s; want the cover's size", status, body)
+	}
+
+	coverPath := "/api/videos/7/work-info-fetches/abc/cover"
+	rec := e.serve(authRequest{method: http.MethodGet, target: coverPath, cookies: []*http.Cookie{e.owner}})
+	assertErrorBody(t, "no cover", rec.Code, rec.Body.Bytes(), wantError{status: 404, code: gen.ErrorCodeNotFound})
+
+	e.plugins.cover = &domain.WorkInfoCover{Data: []byte("png bytes"), ContentType: "image/png"}
+	rec = e.serve(authRequest{method: http.MethodGet, target: coverPath, cookies: []*http.Cookie{e.owner}})
+	if rec.Code != http.StatusOK || rec.Body.String() != "png bytes" || rec.Header().Get("Content-Type") != "image/png" ||
+		rec.Header().Get("X-Content-Type-Options") != "nosniff" || rec.Header().Get("Cache-Control") != cacheNoStore {
+		t.Fatalf("cover = %d %q %v", rec.Code, rec.Body.String(), rec.Header())
+	}
+	// ゲストには返さない。
+	rec = e.serve(authRequest{method: http.MethodGet, target: coverPath})
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("guest cover = %d, want 401", rec.Code)
 	}
 }

@@ -33,7 +33,7 @@ var errNotRegular = errors.New("not a regular file")
 // なくなる。
 var mediaExtensions = map[string]struct{}{
 	".mp4": {}, ".m4v": {}, ".webm": {}, ".mkv": {}, ".mov": {}, ".avi": {},
-	".wmv": {}, ".flv": {}, ".ts": {}, ".mpg": {}, ".mpeg": {},
+	".wmv": {}, ".flv": {}, ".ts": {}, ".m2ts": {}, ".mts": {}, ".mpg": {}, ".mpeg": {},
 }
 
 // excludedNames は名前が一致したら丸ごと飛ばすものである。NAS が作る管理用の

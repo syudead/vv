@@ -178,3 +178,19 @@ func TestParseWorkInfoResponseIgnoresWorkDetailsOfAnotherShape(t *testing.T) {
 		t.Fatalf("fetched = %+v\nwant      %+v", got, want)
 	}
 }
+
+func TestParseWorkInfoResponseKeepsOnlyAWebCoverURL(t *testing.T) {
+	for raw, want := range map[string]string{
+		`"https://example.com/cover.jpg"`: "https://example.com/cover.jpg",
+		`"  http://example.com/c.png  "`:  "http://example.com/c.png",
+		`"ftp://example.com/cover.jpg"`:   "",
+		`"/cover.jpg"`:                    "",
+		`{"url":"https://example.com/c"}`: "",
+		`"https://example.com/` + strings.Repeat("a", WorkInfoFetchURLMaxRunes) + `"`: "",
+	} {
+		got, err := ParseWorkInfoResponse(WorkInfoFetch, []byte(`{"workInfo":{"title":"T","cover":`+raw+`}}`))
+		if err != nil || got.WorkInfo.CoverURL != want || got.WorkInfo.Title != "T" {
+			t.Fatalf("cover %.40s = %q, %v; want %q", raw, got.WorkInfo.CoverURL, err, want)
+		}
+	}
+}
