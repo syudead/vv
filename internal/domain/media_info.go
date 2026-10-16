@@ -37,6 +37,8 @@ type MediaInfo struct {
 	SubtitleTracks []MediaSubtitleTrack `json:",omitempty"`
 	// Embedded はファイルに埋め込まれた情報。1 つも無ければ nil。
 	Embedded *MediaEmbedded `json:",omitempty"`
+	// Broadcast は TS の録画の放送局名と番組名。TS でないか、どちらも読めなければ nil。
+	Broadcast *MediaBroadcast `json:",omitempty"`
 	// Chapters は NormalizeChapters を通したチャプター。
 	Chapters []MediaChapter `json:",omitempty"`
 }

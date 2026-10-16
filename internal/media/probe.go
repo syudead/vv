@@ -39,8 +39,12 @@ const probeCommand = "ffprobe"
 // 保存したライブ変換用の解析情報が、変換で開いたファイルと同じ内容かを比べる鍵になる
 // （specs/018-live-transcode-seek/data-model.md §4）。ffprobe の後にも取り直し、
 // 途中で差し替わっていたら解析情報を持たせない（stampProbe）。
+//
+// TS の録画（.ts・.m2ts・.mts）は ffprobe の後に SI を読み、放送局名と番組名を
+// MediaInfo.Broadcast に入れる（readBroadcast）。SI の読み取りは probeTimeout と別の
+// 自分の期限で動き、読めなければ名前を省くだけである（specs/056-media-info/research.md R-4）。
 func Probe(ctx context.Context, path string) (domain.Probe, error) {
-	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 
 	info, err := os.Stat(path)
@@ -49,14 +53,14 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 			fmt.Errorf("could not check the file to probe (%s): %w", path, err))
 	}
 
-	output, err := command(ctx, probeCommand, importProbeArgs(path)...).Output()
+	output, err := command(probeCtx, probeCommand, importProbeArgs(path)...).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorProbeFailed, fmt.Errorf(
 				"%s failed (%s): %s", probeCommand, path, firstLine(exitErr.Stderr)))
 		}
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if errors.Is(probeCtx.Err(), context.DeadlineExceeded) {
 			// 1件の上限（probeTimeout）に達した。壊れたファイルとして扱う。
 			return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorProbeFailed,
 				fmt.Errorf("%s timed out (%s): %w", probeCommand, path, err))
@@ -69,6 +73,9 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	if err != nil {
 		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorInvalidMetadata,
 			fmt.Errorf("could not interpret the %s output (%s): %w", probeCommand, path, err))
+	}
+	if probe.Media != nil && isTransportStreamPath(path) {
+		probe.Media.Broadcast = readBroadcast(ctx, path, probe.DurationMs)
 	}
 	after, err := os.Stat(path)
 	if err != nil {
