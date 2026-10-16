@@ -17,7 +17,8 @@ import { DEFAULT_SORT } from "../videoList/listCriteria";
 import DeleteSmartFolderDialog from "./DeleteSmartFolderDialog";
 import SmartFolderDialog from "./SmartFolderDialog";
 
-type Dialog = "edit" | "newChild" | "delete" | null;
+/** SmartFolderMenuDialog は「More」が開いている窓である。 */
+export type SmartFolderMenuDialog = "edit" | "newChild" | "delete" | null;
 
 /** SmartFolderMenuProps はフォルダのページの「More」の props である。 */
 export interface SmartFolderMenuProps {
@@ -33,6 +34,12 @@ export interface SmartFolderMenuProps {
   onDeleted: (announce: boolean) => void;
   /** 直そうとしたらフォルダ自身がもう無かった。 */
   onGone: () => void;
+  /**
+   * 開いている窓を呼び手が持つとき（空の状態の「Edit conditions…」が同じ窓を開く）の値と、
+   * その変更。省くとメニューが自分で持つ。
+   */
+  dialog?: SmartFolderMenuDialog;
+  onDialogChange?: (dialog: SmartFolderMenuDialog) => void;
 }
 
 /**
@@ -49,9 +56,12 @@ export default function SmartFolderMenu({
   onCreatedChild,
   onDeleted,
   onGone,
+  ...control
 }: SmartFolderMenuProps) {
   const toast = useToast();
-  const [dialog, setDialog] = useState<Dialog>(null);
+  const [ownDialog, setOwnDialog] = useState<SmartFolderMenuDialog>(null);
+  const dialog = control.dialog === undefined ? ownDialog : control.dialog;
+  const setDialog = control.onDialogChange ?? setOwnDialog;
   const close = () => setDialog(null);
 
   return (

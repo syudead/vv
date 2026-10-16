@@ -7,12 +7,11 @@ import { useToast } from "../ui/Toast";
 import { parentPagePath } from "./groupPaths";
 
 /**
- * useLeaveGroup はグループが終わった（解散、タグ化、最後の項目を外した）後に画面を離れる
- * 操作を返す（specs/048-groups/ui-design.md「Dissolving」）。`message` があればトーストを出し、
- * 道筋の親のページ、無ければライブラリへ移る。画面を離れた後に答えた要求は、移った先の画面を
- * 動かさない。
+ * useLeavePage は開いているものが終わった後に `path` へ画面を離れる操作を返す。`message` が
+ * あればトーストを出す（移った先の画面で見える）。画面を離れた後に答えた要求は、移った先の
+ * 画面を動かさない。グループのページとスマートフォルダのページ（削除）が共有する。
  */
-export function useLeaveGroup(trail: readonly GroupRef[]) {
+export function useLeavePage(path: string) {
   const navigate = useNavigate();
   const toast = useToast();
   /** 画面が出ている間だけ true。 */
@@ -27,8 +26,17 @@ export function useLeaveGroup(trail: readonly GroupRef[]) {
   return useCallback(
     (message?: UiText) => {
       if (message !== undefined) toast(message);
-      if (shown.current) void navigate(parentPagePath(trail));
+      if (shown.current) void navigate(path);
     },
-    [navigate, toast, trail],
+    [navigate, path, toast],
   );
+}
+
+/**
+ * useLeaveGroup はグループが終わった（解散、タグ化、最後の項目を外した）後に画面を離れる
+ * 操作を返す（specs/048-groups/ui-design.md「Dissolving」）。`message` があればトーストを出し、
+ * 道筋の親のページ、無ければライブラリへ移る（useLeavePage）。
+ */
+export function useLeaveGroup(trail: readonly GroupRef[]) {
+  return useLeavePage(parentPagePath(trail));
 }

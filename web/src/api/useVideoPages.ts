@@ -203,6 +203,7 @@ export function useVideoPages({
           ...fetched,
           items: fetched.items.map((item): LibraryItem => {
             if ("kind" in item) {
+              if (item.kind === "smartFolder") return item;
               return item.kind === "video"
                 ? videoItem(
                     withFavoriteSince(

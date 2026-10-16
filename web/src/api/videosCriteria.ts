@@ -72,3 +72,23 @@ export function criteriaKey(criteria: VideosCriteria): string {
     criteria.maxDuration ?? null,
   ]);
 }
+
+/**
+ * listsSmartFolders はこの条件のライブラリの一番上にスマートフォルダのカードが並ぶかを返す。
+ * 検索もお気に入りのみ以外の絞り込みも無いときだけ並ぶ（specs/052-smart-folders/research.md
+ * R-7、サーバーの `domain.VideoQuery.ListsSmartFolders` と同じ判定）。並べ替えは絞り込みではない。
+ */
+export function listsSmartFolders(criteria: VideosCriteria): boolean {
+  return (
+    (criteria.query ?? "").trim() === "" &&
+    (criteria.watch ?? "all") === "all" &&
+    criteria.playable !== true &&
+    (criteria.tag ?? []).length === 0 &&
+    criteria.person === undefined &&
+    criteria.organization === undefined &&
+    criteria.tagKind === undefined &&
+    criteria.addedWithin === undefined &&
+    criteria.minDuration === undefined &&
+    criteria.maxDuration === undefined
+  );
+}

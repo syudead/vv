@@ -115,11 +115,20 @@ export type APIToken = components["schemas"]["APIToken"];
 export type CreatedAPIToken = components["schemas"]["CreatedAPIToken"];
 
 /**
+ * SmartFolderSummary はスマートフォルダの項目の中身である（api/openapi.yaml の
+ * SmartFolderSummary）。カードの値は持たず、画面に出たカードが別に読む
+ * （specs/052-smart-folders/research.md R-14）。
+ */
+export type SmartFolderSummary = components["schemas"]["SmartFolderSummary"];
+
+/**
  * LibraryItem は一覧の項目1件である（api/openapi.yaml の LibraryItem）。生成した型は
- * `video` と `group` をどちらも省略可能にしているので、`kind` で読み分けられる形にする。
+ * `video`・`group`・`smartFolder` をどれも省略可能にしているので、`kind` で読み分けられる形にする。
  */
 export type LibraryItem =
-  { kind: "video"; video: Video } | { kind: "group"; group: LibraryGroup };
+  | { kind: "video"; video: Video }
+  | { kind: "group"; group: LibraryGroup }
+  | { kind: "smartFolder"; smartFolder: SmartFolderSummary };
 export type VideoChanged = components["schemas"]["VideoChanged"];
 export type GroupChanged = components["schemas"]["GroupChanged"];
 export type GroupDetail = components["schemas"]["GroupDetail"];
@@ -461,26 +470,41 @@ export type LibraryPageResponse = Omit<components["schemas"]["LibraryPage"], "it
 };
 
 /**
- * toLibraryItem は生成した型の項目を、`kind` で読み分けられる形にする。契約に反して
- * 中身の欠けた項目は捨てる（null）。
+ * toLibraryItem は生成した型の項目（ライブラリとスマートフォルダの中身が同じ形を持つ）を、
+ * `kind` で読み分けられる形にする。契約に反して中身の欠けた項目は捨てる（null）。
  */
-function toLibraryItem(item: components["schemas"]["LibraryItem"]): LibraryItem | null {
+export function toLibraryItem(item: {
+  kind: LibraryItem["kind"];
+  video?: Video;
+  group?: LibraryGroup;
+  smartFolder?: SmartFolderSummary;
+}): LibraryItem | null {
   if (item.kind === "video" && item.video !== undefined) {
     return { kind: "video", video: item.video };
   }
   if (item.kind === "group" && item.group !== undefined) {
     return { kind: "group", group: item.group };
   }
+  if (item.kind === "smartFolder" && item.smartFolder !== undefined) {
+    return { kind: "smartFolder", smartFolder: item.smartFolder };
+  }
   return null;
 }
 
+/** toLibraryItems は生成した型の項目の並びを読み分け、中身の欠けた項目を捨てる。 */
+export function toLibraryItems(
+  items: readonly Parameters<typeof toLibraryItem>[0][],
+): LibraryItem[] {
+  return items.flatMap((item) => {
+    const converted = toLibraryItem(item);
+    return converted === null ? [] : [converted];
+  });
+}
+
 /**
- * listLibrary はライブラリの一覧を1ページ取得する。項目は動画か、フォルダの
- * グループ1件である（specs/017-folder-groups/contracts/library-api.md §1）。
- *
- * 画面がまだ描かないスマートフォルダの項目（specs/052-smart-folders/plan.md「Add smart folders to
- * the screen API」）は除き、除いた数だけ `total` を減らす。除いてページが空になり続きがあれば、
- * 項目のあるページか終わりまで続きを読む（空のページを返すと、画面は続きを読まずに止まる）。
+ * listLibrary はライブラリの一覧を1ページ取得する。項目は動画、グループ、絞り込みの無い
+ * 一覧ではスマートフォルダの要約である（specs/017-folder-groups/contracts/library-api.md §1、
+ * specs/052-smart-folders/data-model.md「Library items」）。
  */
 export async function listLibrary(
   params: ListVideosParams = {},
@@ -490,22 +514,11 @@ export async function listLibrary(
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
   setAddedLengthFilter(query, params);
-  let skipped = 0;
-  for (;;) {
-    const page = await request<components["schemas"]["LibraryPage"]>(
-      `/api/library?${query.toString()}`,
-      { signal: params.signal },
-    );
-    skipped += page.items.filter((item) => item.kind === "smartFolder").length;
-    const items = page.items.flatMap((item) => {
-      const converted = toLibraryItem(item);
-      return converted === null ? [] : [converted];
-    });
-    if (items.length > 0 || page.nextCursor === undefined) {
-      return { ...page, items, total: Math.max(0, page.total - skipped) };
-    }
-    query.set("cursor", page.nextCursor);
-  }
+  const page = await request<components["schemas"]["LibraryPage"]>(
+    `/api/library?${query.toString()}`,
+    { signal: params.signal },
+  );
+  return { ...page, items: toLibraryItems(page.items) };
 }
 
 /** ListLibraryIdsParams は「すべて選択」用の全件 id の問い合わせ条件である。 */
