@@ -8,6 +8,7 @@ import { moreIdle } from "./useTagPage";
 
 function tag(id: number): Tag {
   return {
+    kind: null,
     id,
     name: `Tag ${String(id)}`,
     synonyms: [],
@@ -67,6 +68,7 @@ describe("tagListView", () => {
   it("絞り込み中はタグが 0 でも「タグが無い」ではなく、絞り込みの空の状態にする", () => {
     expect(view({ page: page([], { unusedOnly: true }) }).empty).toBe("noUnused");
     expect(view({ page: page([], { tentativeOnly: true }) }).empty).toBe("noTentative");
+    expect(view({ page: page([], { kind: "1" }) }).empty).toBe("noKind");
   });
 
   it.each([
@@ -77,6 +79,10 @@ describe("tagListView", () => {
     [{ tentativeOnly: true }, "noTentative"],
     [{ tentativeOnly: true, query: "x" }, "noTentativeMatch"],
     [{ query: "x" }, "noMatch"],
+    [{ kind: "1" }, "noKind"],
+    [{ kind: "none" }, "noKind"],
+    [{ kind: "1", query: "x" }, "noKindMatch"],
+    [{ kind: "none", unusedOnly: true }, "noKindMatch"],
   ] as const)(
     "合う行が無いときの空の状態は届いた行の条件で選ぶ（%o）",
     (query, empty) => {
@@ -116,5 +122,7 @@ describe("tagCountText", () => {
     expect(tagCountText(filtered)).toBe(t.tags.filteredCount(1, 9));
     const searched = page([tag(1)], { query: "x" }, { totalAll: 9 });
     expect(tagCountText(searched)).toBe(t.tags.filteredCount(1, 9));
+    const byKind = page([tag(1)], { kind: "none" }, { totalAll: 9 });
+    expect(tagCountText(byKind)).toBe(t.tags.filteredCount(1, 9));
   });
 });

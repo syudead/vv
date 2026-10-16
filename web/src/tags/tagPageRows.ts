@@ -1,7 +1,9 @@
+import type { TagKindRef } from "../api/tagKinds";
 import type { Tag } from "../api/tags";
 import { foldForMatch } from "../lib/foldForMatch";
 import { compareNaturalSortKeys, naturalSortKey } from "../lib/naturalSortKey";
 import type { TagListSort } from "./tagListOrder";
+import type { TagKindFilter } from "./tagListUrl";
 
 /**
  * ListRow は、サーバーのページで読んで並べる管理画面の 1 行（タグ、人物、団体）の、並び順と
@@ -34,6 +36,18 @@ export type RowMatcher<R, Q> = (row: R, query: Q) => boolean;
 export interface TagRowsQuery extends ListRowsQuery {
   tentativeOnly: boolean;
   unusedOnly: boolean;
+  /** 種類の絞り込み（specs/051-tag-kinds/research.md R-8）。省くか null なら絞らない。 */
+  kind?: TagKindFilter;
+}
+
+/**
+ * matchesKind は、タグが種類の絞り込みに合うかである。`none` は種類の無いタグ、id はその
+ * 種類のタグに合う。
+ */
+export function matchesKind(tag: Tag, kind: TagKindFilter | undefined): boolean {
+  if (kind === undefined || kind === null) return true;
+  if (kind === "none") return tag.kind === null;
+  return tag.kind !== null && String(tag.kind.id) === kind;
 }
 
 /**
@@ -45,6 +59,7 @@ export interface TagRowsQuery extends ListRowsQuery {
 export function matchesTagQuery(tag: Tag, query: TagRowsQuery): boolean {
   if (query.tentativeOnly && !tag.tentative) return false;
   if (query.unusedOnly && tag.videoCount !== 0) return false;
+  if (!matchesKind(tag, query.kind)) return false;
   if (query.query === "") return true;
   return (
     foldForMatch(tag.name).includes(query.query) ||
@@ -250,16 +265,44 @@ export function removeRows<R extends ListRow, Q extends ListRowsQuery>(
  * 取り除いて `total` を減らす。行の数によらず 1 回の走査で済ませる。
  */
 export function confirmTags(page: TagPageRows, ids: ReadonlySet<number>): TagPageRows {
+  return updateTags(page, ids, (tag) =>
+    tag.tentative ? { ...tag, tentative: false } : tag,
+  );
+}
+
+/**
+ * setTagsKind は、まとめて種類を付けた（`kind` が null なら外した）タグの行の種類を
+ * 書き換える（specs/051-tag-kinds/ui-design.md「Set kind」）。種類は並び順の値を変えないので
+ * 位置はそのままで、種類の絞り込みに合わなくなった行は取り除いて `total` を減らす。
+ */
+export function setTagsKind(
+  page: TagPageRows,
+  ids: ReadonlySet<number>,
+  kind: TagKindRef | null,
+): TagPageRows {
+  return updateTags(page, ids, (tag) => ({ ...tag, kind }));
+}
+
+/**
+ * updateTags は `ids` の行を `update` で書き換える。並び順の値を変えない書き換えに使い、
+ * 行の位置はそのままで、今の条件に合わなくなった行は取り除いて `total` を減らす。
+ * 行の数によらず 1 回の走査で済ませる。`update` が同じ行を返したら何もしない。
+ */
+function updateTags(
+  page: TagPageRows,
+  ids: ReadonlySet<number>,
+  update: (tag: Tag) => Tag,
+): TagPageRows {
   if (ids.size === 0) return page;
   let removed = 0;
   const rows: Tag[] = [];
   for (const tag of page.rows) {
-    if (!ids.has(tag.id) || !tag.tentative) {
+    const next = ids.has(tag.id) ? update(tag) : tag;
+    if (next === tag) {
       rows.push(tag);
       continue;
     }
-    const confirmed = { ...tag, tentative: false };
-    if (matchesTagQuery(confirmed, page.query)) rows.push(confirmed);
+    if (matchesTagQuery(next, page.query)) rows.push(next);
     else removed += 1;
   }
   return { ...page, rows, total: Math.max(0, page.total - removed) };

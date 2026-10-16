@@ -11,6 +11,7 @@ import {
 
 function tag(id: number, tentative = false): Tag {
   return {
+    kind: null,
     id,
     name: `Tag ${String(id)}`,
     synonyms: [],
@@ -51,15 +52,32 @@ describe("selectedKinds", () => {
     expect(selectedKinds(rows, new Set())).toEqual({
       tentative: false,
       confirmed: false,
+      kind: undefined,
     });
     expect(selectedKinds(rows, new Set([1, 3]))).toEqual({
       tentative: true,
       confirmed: false,
+      kind: "none",
     });
     expect(selectedKinds(rows, new Set([1, 2]))).toEqual({
       tentative: true,
       confirmed: true,
+      kind: "none",
     });
+  });
+
+  it("選んだタグがみな同じ種類ならその id、混ざっていれば undefined を返す", () => {
+    const genre = { id: 1, name: "Genre" };
+    const work = { id: 2, name: "Work" };
+    const rows = [
+      { ...tag(1), kind: genre },
+      { ...tag(2), kind: genre },
+      { ...tag(3), kind: work },
+      tag(4),
+    ];
+    expect(selectedKinds(rows, new Set([1, 2])).kind).toBe("1");
+    expect(selectedKinds(rows, new Set([1, 3])).kind).toBeUndefined();
+    expect(selectedKinds(rows, new Set([1, 4])).kind).toBeUndefined();
   });
 });
 

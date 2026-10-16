@@ -44,6 +44,7 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
+		tagKind: params.TagKind,
 	})
 	if !ok {
 		return
@@ -117,6 +118,7 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 	query, ok := s.parseIDsQuery(w, videoQueryParams{
 		query: params.Query, watch: params.Watch, playable: params.Playable, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
+		tagKind: params.TagKind,
 	})
 	if !ok {
 		return

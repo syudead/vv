@@ -40,7 +40,7 @@ function organizationRoleLabel(role: WorkOrganizationRole, count: number): UiTex
 }
 
 /** withoutScheme は URL の先頭の `http://`・`https://` を除いた文字である。 */
-function withoutScheme(url: string): string {
+export function withoutScheme(url: string): string {
   return url.replace(/^https?:\/\//i, "");
 }
 
@@ -157,9 +157,16 @@ function ListItem({
 /**
  * Description は作品の説明で、3 行を超えるときは畳んで「Show more」を添える
  * （ui-design.md「Folded description」）。溢れるかは要素で測り、窓の大きさが変わったら
- * 測り直す。開いたことは覚えない（別の動画では呼び手が作り直す）。
+ * 測り直す。開いたことは覚えない（別の動画では呼び手が作り直す）。取得の比較の段も
+ * 同じ畳み方で使い、今の側は `muted` で従の色にする。
  */
-function Description({ text }: { text: string }) {
+export function Description({
+  text,
+  tone = "default",
+}: {
+  text: string;
+  tone?: "default" | "muted";
+}) {
   const ref = useRef<HTMLParagraphElement | null>(null);
   const [open, setOpen] = useState(false);
   const [overflows, setOverflows] = useState(false);
@@ -179,7 +186,8 @@ function Description({ text }: { text: string }) {
       <p
         ref={ref}
         className={cn(
-          "max-w-prose text-sm wrap-anywhere whitespace-pre-line text-foreground",
+          "max-w-prose text-sm wrap-anywhere whitespace-pre-line",
+          tone === "muted" ? "text-muted-foreground" : "text-foreground",
           !open && "line-clamp-3",
         )}
       >

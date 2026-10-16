@@ -40,6 +40,7 @@ type fakeTags struct {
 
 	// 036: まとめての操作と確認の数の決め打ち。
 	lastBatchAction  domain.TagBatchAction
+	lastBatchKindID  int64
 	lastImpactAction domain.TagImpactAction
 	lastIDs          []int64
 	batchOutcome     domain.TagBatchOutcome
@@ -49,6 +50,9 @@ type fakeTags struct {
 	// lastListQuery は ListTags が受けた条件。listPage があれば ListTags はそれを返す。
 	lastListQuery domain.TagListQuery
 	listPage      *domain.TagPage
+
+	// 051: ListTagKinds が返す種類。
+	kinds []domain.TagKind
 }
 
 func (f *fakeTags) ListTags(_ context.Context, query domain.TagListQuery) (domain.TagPage, error) {
@@ -164,8 +168,8 @@ func (f *fakeTags) ForgetRejectedTagName(_ context.Context, name string) (bool, 
 	return f.err == nil, f.err
 }
 
-func (f *fakeTags) BatchTags(_ context.Context, action domain.TagBatchAction, ids []int64) (domain.TagBatchOutcome, error) {
-	f.operation, f.lastBatchAction, f.lastIDs = "batch", action, ids
+func (f *fakeTags) BatchTags(_ context.Context, req domain.TagBatchRequest, ids []int64) (domain.TagBatchOutcome, error) {
+	f.operation, f.lastBatchAction, f.lastBatchKindID, f.lastIDs = "batch", req.Action, req.KindID, ids
 	return f.batchOutcome, f.err
 }
 

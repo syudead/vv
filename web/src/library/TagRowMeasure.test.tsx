@@ -7,6 +7,7 @@ import { TagRowMeasureProvider } from "./TagRowMeasure";
 
 function tags(...names: string[]): VideoTag[] {
   return names.map((name, index) => ({
+    kind: null,
     id: index + 1,
     name,
     manual: true,

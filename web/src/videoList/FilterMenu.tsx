@@ -35,6 +35,15 @@ export interface FilterMenuProps {
   /** 検索語・視聴状態・再生可否・お気に入りのみを外す。並べ替えは残す。 */
   onClear: () => void;
   disabled?: boolean;
+  /**
+   * 再生可否の後ろに足す画面固有の行（ライブラリのタグの種類。
+   * specs/051-tag-kinds/ui-design.md「Library」）。
+   */
+  children?: ReactNode;
+  /** `children` の行で効いている絞り込みの数（ボタンの数字に足す）。 */
+  extraCount?: number;
+  /** ポップオーバーを開いた（`children` の行が中身を読み始める）。 */
+  onOpen?: () => void;
 }
 
 /**
@@ -57,11 +66,14 @@ export default function FilterMenu({
   canClear,
   onClear,
   disabled,
+  children,
+  extraCount = 0,
+  onOpen,
 }: FilterMenuProps) {
   const owner = useAudience() === "owner";
   const watchCount = owner && watch !== "all" ? 1 : 0;
   const favoriteCount = owner && favorite ? 1 : 0;
-  const filterCount = watchCount + favoriteCount + (playable ? 1 : 0);
+  const filterCount = watchCount + favoriteCount + (playable ? 1 : 0) + extraCount;
 
   return (
     <FilterPopover
@@ -69,6 +81,7 @@ export default function FilterMenu({
       disabled={disabled}
       canClear={canClear}
       onClear={onClear}
+      onOpen={onOpen}
     >
       {owner && (
         <FieldSet>
@@ -108,6 +121,7 @@ export default function FilterMenu({
           label={t.list.filter.playableOnly}
         />
       </div>
+      {children}
     </FilterPopover>
   );
 }
@@ -122,6 +136,8 @@ export interface FilterPopoverProps {
   onClear: () => void;
   /** ボタン（絞り込みを外したあとのフォーカスの行き先に使う）。 */
   triggerRef?: Ref<HTMLButtonElement>;
+  /** 吹き出しを開いた。 */
+  onOpen?: () => void;
   children: ReactNode;
 }
 
@@ -136,13 +152,20 @@ export function FilterPopover({
   canClear,
   onClear,
   triggerRef,
+  onOpen,
   children,
 }: FilterPopoverProps) {
   const [open, setOpen] = useState(false);
   const shown = disabled ? 0 : count;
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        setOpen(next);
+        if (next) onOpen?.();
+      }}
+    >
       <PopoverTrigger asChild>
         <Button
           ref={triggerRef}

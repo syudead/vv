@@ -63,14 +63,19 @@ func workInfoConditions(spec listSpec) ([]string, []any) {
 	return conditions, args
 }
 
-// tagConditions はタグの AND を、videos に対する条件句の並びと引数にする。
-// 手で付けた分とフォルダ名から付いている分のどちらでも当たる（017 の data-model.md §4）。
+// tagConditions はタグの AND とタグの種類の絞り込みを、videos に対する条件句の並びと引数にする。
+// 手で付けた分とフォルダ名から付いている分のどちらでも当たる（017 の data-model.md §4、
+// specs/051-tag-kinds/data-model.md の Rules）。
 func tagConditions(spec listSpec) ([]string, []any) {
 	var conditions []string
 	var args []any
 	for _, tagID := range spec.tagIDs {
 		conditions = append(conditions, videoHasTagCondition("videos"))
 		args = append(args, tagID, tagID)
+	}
+	if spec.tagKindID != 0 {
+		conditions = append(conditions, videoHasTagOfKindCondition("videos"))
+		args = append(args, spec.tagKindID, spec.tagKindID)
 	}
 	return conditions, args
 }

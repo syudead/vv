@@ -19,10 +19,26 @@ import "github.com/syudead/vv/internal/domain"
 // 付いているかフォルダ名から付いているかの条件句を返す。呼び出し側はタグの
 // id を2つ（手で付けた分、フォルダ名の分）引数として渡す。
 func videoHasTagCondition(alias string) string {
+	return videoTagSourcesCondition(alias, func(tagIDColumn string) string { return tagIDColumn + ` = ?` })
+}
+
+// videoHasTagOfKindCondition は、動画（別名 alias の videos）に、ある種類のタグが手で
+// 付いているかフォルダ名から付いているかの条件句を返す。呼び出し側は種類の id を2つ
+// （手で付けた分、フォルダ名の分）引数として渡す（specs/051-tag-kinds/data-model.md の Rules）。
+func videoHasTagOfKindCondition(alias string) string {
+	return videoTagSourcesCondition(alias, func(tagIDColumn string) string {
+		return tagIDColumn + ` in (select id from tags where kind_id = ?)`
+	})
+}
+
+// videoTagSourcesCondition は、動画（別名 alias の videos）に、tagMatch が当たるタグが手で
+// 付いているかフォルダ名から付いているかの条件句を返す。tagMatch はタグの id の列を受けて
+// その列に対する条件を返し、2つの出所それぞれに1回ずつ使われる。
+func videoTagSourcesCondition(alias string, tagMatch func(tagIDColumn string) string) string {
 	return `(exists (select 1 from video_tags vt where vt.content_key = ` + userKeyExpr(alias) + ` and ` +
-		alias + `.content_key <> '' and vt.tag_id = ?) ` +
+		alias + `.content_key <> '' and ` + tagMatch("vt.tag_id") + `) ` +
 		`or exists (select 1 from video_folder_names vfn join tag_names tn on tn.name = vfn.name ` +
-		`where vfn.video_id = ` + alias + `.id and ` + alias + `.content_key <> '' and tn.tag_id = ?))`
+		`where vfn.video_id = ` + alias + `.id and ` + alias + `.content_key <> '' and ` + tagMatch("tn.tag_id") + `))`
 }
 
 // taggedVideosSQL は、いまライブラリにある見せる動画（所有者から見た shownVideoCondition。

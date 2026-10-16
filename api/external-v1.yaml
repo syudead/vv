@@ -338,6 +338,15 @@ paths:
           schema:
             type: boolean
             default: false
+        - name: kind
+          in: query
+          description: |
+            種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
+            無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない
+            （specs/051-tag-kinds/contracts/external-api.md）
+          schema:
+            type: string
+            pattern: "^([1-9][0-9]*|none)$"
         - name: sort
           in: query
           description: 並び順
@@ -347,7 +356,7 @@ paths:
           in: query
           description: |
             前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
-            `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+            `unused`・`kind`・`sort` で続けて使う。`limit` を省いたときは無視する
           schema:
             type: string
         - name: limit
@@ -366,8 +375,9 @@ paths:
                 $ref: "#/components/schemas/TagList"
         "400":
           description: >-
-            `sort` が 5 値の外、`limit` が 1〜200 の外、`q` が 100 文字を超える（`invalid_request`）、
-            カーソルを解釈できないか別の `sort` で作ったもの（`invalid_request` / `invalid_cursor`）
+            `sort` が 5 値の外、`limit` が 1〜200 の外、`q` が 100 文字を超える、`kind` が正の整数でも
+            `none` でもない（`invalid_request`）、カーソルを解釈できないか別の `sort` で作ったもの
+            （`invalid_request` / `invalid_cursor`）
           content:
             application/json:
               schema:
@@ -519,13 +529,16 @@ paths:
   /tags/batch:
     post:
       operationId: batchTags
-      summary: 複数のタグをまとめて確定・却下・削除する
+      summary: 複数のタグをまとめて確定・却下・削除し、種類を付け外しする
       description: |
         1 つのトランザクションで `ids` のタグに `action` を行う。`confirm`・`reject` は仮のタグに、`delete` は
         確定したタグに効き、種類の合わないタグは何も変えずに `notApplicableIds`、無い id は `notFoundIds`
-        に返す。却下したタグの元の名前は却下した名前に入り、削除したタグの名前は覚えない。1 つのタグなら
+        に返す。却下したタグの元の名前は却下した名前に入り、削除したタグの名前は覚えない。`setKind` は
+        各タグに種類 `kindId` を付け、`clearKind` は各タグの種類を外す。どちらも仮のタグを確定せず、既に
+        その種類（`clearKind` では種類なし）のタグは `notApplicableIds` に返す。1 つのタグなら
         `ids: [id]` を送る。画面の `POST /api/tags/batch` と同じ保存先の操作を呼ぶ
-        （specs/039-external-tag-admin/contracts/external-api.md §5）。
+        （specs/039-external-tag-admin/contracts/external-api.md §5、
+        specs/051-tag-kinds/contracts/external-api.md）。
       requestBody:
         required: true
         content:
@@ -541,14 +554,20 @@ paths:
                 $ref: "#/components/schemas/TagBatchResponse"
         "400":
           description: >-
-            本文の形が違う・`action` が 3 値の外（`invalid_request`）、`ids` が空か 20,000 件を超える
-            （`too_many_tags`、`limit`）
+            本文の形が違う・`action` が 5 値の外・`kindId` の無い `setKind`・`kindId` を付けた他の `action`
+            （`invalid_request`）、`ids` が空か 20,000 件を超える（`too_many_tags`、`limit`）
           content:
             application/json:
               schema:
                 $ref: "#/components/schemas/Error"
         "401":
           $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: "`setKind` の `kindId` の種類が無い（`not_found` / `tag_kind_not_found`）。何も変えない"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
         "500":
           $ref: "#/components/responses/Internal"
 
@@ -617,6 +636,118 @@ paths:
                 $ref: "#/components/schemas/RejectedTagNameForgetResult"
         "400":
           description: "`name` が無い（`invalid_request`）"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /tag-kinds:
+    get:
+      operationId: listTagKinds
+      summary: タグの種類をすべて返す
+      description: |
+        すべての種類を id の順に返す。画面の `GET /api/tag-kinds` と同じ保存先の操作を呼ぶ
+        （specs/051-tag-kinds/contracts/external-api.md）。
+      responses:
+        "200":
+          description: すべての種類
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagKindList"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "500":
+          $ref: "#/components/responses/Internal"
+    post:
+      operationId: createTagKind
+      summary: タグの種類を作る
+      description: |
+        種類を 1 つ作る。名前はタグ名と同じ規則で整え、種類どうしで重ならない。画面の
+        `POST /api/tag-kinds` と同じ保存先の操作を呼ぶ。他の外部連携の書き込みと同じく `200` を返す。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagKindCreateRequest"
+      responses:
+        "200":
+          description: 作った種類
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagKind"
+        "400":
+          $ref: "#/components/responses/TagKindNameInvalid"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "409":
+          $ref: "#/components/responses/TagKindNameConflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /tag-kinds/update:
+    post:
+      operationId: renameTagKind
+      summary: タグの種類の名前を変える
+      description: |
+        `id` の種類の名前を変える。今と同じ名前なら何も変えずに今の種類を返す。画面の
+        `PATCH /api/tag-kinds/{id}` と同じ保存先の操作を呼ぶ。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagKindRenameRequest"
+      responses:
+        "200":
+          description: 名前を変えた種類
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagKind"
+        "400":
+          $ref: "#/components/responses/TagKindNameInvalid"
+        "401":
+          $ref: "#/components/responses/Unauthenticated"
+        "404":
+          description: "`id` の種類が無い（`not_found` / `tag_kind_not_found`）"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "409":
+          $ref: "#/components/responses/TagKindNameConflict"
+        "500":
+          $ref: "#/components/responses/Internal"
+
+  /tag-kinds/delete:
+    post:
+      operationId: deleteTagKinds
+      summary: タグの種類を消す
+      description: |
+        `ids` の種類を、画面の `DELETE /api/tag-kinds/{id}` と同じ保存先の操作で 1 つずつ消す。その種類の
+        タグは残り、種類なしになる。無い id は誤りにせず `notFoundIds` に返す。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagKindDeleteRequest"
+      responses:
+        "200":
+          description: 消した種類と無かった種類
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagKindDeleteResponse"
+        "400":
+          description: 本文の形が違う、`ids` が空か 20,000 件を超える（`invalid_request`）。何も変えない
           content:
             application/json:
               schema:
@@ -1097,6 +1228,22 @@ components:
         application/json:
           schema:
             $ref: "#/components/schemas/Error"
+    TagKindNameInvalid:
+      description: >-
+        本文の形が違う（`invalid_request`）、名前の規則違反（`tag_name_empty`・
+        `tag_name_control_characters`・`tag_name_too_long`、`limit`）。何も変えない
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
+    TagKindNameConflict:
+      description: >-
+        別の種類が同じ名前を持つ（`conflict` / `tag_kind_name_taken`、`tagName` はその種類の名前）。
+        何も変えない
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/Error"
 
   schemas:
     Error:
@@ -1148,7 +1295,7 @@ components:
           type: string
           description: >-
             名前がぶつかったタグの元の名前（翻訳しない）。`tag_name_taken`・`tag_merge_required` の
-            ときだけ入る
+            ときだけ入る。`tag_kind_name_taken` では、名前がぶつかった種類の名前が入る
     ErrorReason:
       type: string
       description: 同じ code の中で状況を区別する下位の理由。
@@ -1185,10 +1332,12 @@ components:
         - merge_same_person
         - merge_same_organization
         - external_id_taken
+        - tag_kind_not_found
+        - tag_kind_name_taken
 
     Tag:
       type: object
-      required: [id, name, synonyms, videoCount, tentative, createdAt]
+      required: [id, name, synonyms, videoCount, tentative, createdAt, kind]
       additionalProperties: false
       properties:
         id:
@@ -1211,6 +1360,106 @@ components:
           type: string
           format: date-time
           description: タグを作った時刻。`sort` の `createdDesc`・`createdAsc` はこの値で並べる
+        kind:
+          anyOf:
+            - $ref: "#/components/schemas/TagKindRef"
+            - type: "null"
+          description: タグの種類。null は種類の無いタグ（specs/051-tag-kinds/contracts/external-api.md）
+
+    TagKindRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      description: タグの種類の id と名前
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+
+    TagKind:
+      type: object
+      required: [id, name, tagCount, createdAt]
+      additionalProperties: false
+      description: 種類の一覧の 1 件（specs/051-tag-kinds/contracts/external-api.md）
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        tagCount:
+          type: integer
+          description: この種類のタグの数。仮のタグも数える
+        createdAt:
+          type: string
+          format: date-time
+          description: 種類を作った時刻（秒の精度）
+
+    TagKindList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: すべての種類。id の順
+          items:
+            $ref: "#/components/schemas/TagKind"
+
+    TagKindCreateRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          description: 種類の名前。タグ名と同じ規則で整え、種類どうしで重ならない
+
+    TagKindRenameRequest:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: 新しい名前。タグ名と同じ規則で整え、種類どうしで重ならない
+
+    TagKindDeleteRequest:
+      type: object
+      required: [ids]
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          description: 消す種類の id。1〜20,000 件。範囲外は `invalid_request`
+          items:
+            type: integer
+            format: int64
+
+    TagKindDeleteResponse:
+      type: object
+      required: [deletedIds, notFoundIds]
+      additionalProperties: false
+      description: >-
+        2 つは重ならず、合わせて重複を除いた `ids` に等しい。どちらも `ids` に現れた順で、無ければ []
+      properties:
+        deletedIds:
+          type: array
+          description: 消した種類
+          items:
+            type: integer
+            format: int64
+        notFoundIds:
+          type: array
+          description: 無かった種類
+          items:
+            type: integer
+            format: int64
 
     TagList:
       type: object
@@ -1315,8 +1564,14 @@ components:
           type: string
           description: >-
             confirm は仮のタグを確定し、reject は仮のタグを却下し（消して元の名前を却下した名前に入れる）、
-            delete は確定したタグを消す
-          enum: [confirm, reject, delete]
+            delete は確定したタグを消す。setKind は各タグに種類 kindId を付け、clearKind は各タグの種類を
+            外す（どちらも仮のタグを確定しない）
+          enum: [confirm, reject, delete, setKind, clearKind]
+        kindId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: "`setKind` で付ける種類。`setKind` だけが持ち、他の `action` に付けると `invalid_request`"
         ids:
           type: array
           description: >-

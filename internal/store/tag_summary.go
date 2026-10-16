@@ -54,10 +54,10 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 			  join tag_names folder_tn on folder_tn.name = vfn.name
 		)
 		select t.tag_id, tn.name, tg.tentative, count(distinct t.content_key),
-		       count(distinct case when t.manual = 1 then t.content_key end)
+		       count(distinct case when t.manual = 1 then t.content_key end), `+tagKindColumns+`
 		  from tagged t
 		  join tag_names tn on tn.tag_id = t.tag_id and tn.canonical = 1
-		  join tags tg on tg.id = t.tag_id
+		  join tags tg on tg.id = t.tag_id`+tagKindJoin+`
 		 group by t.tag_id`, string(encodedIDs),
 	)
 	if err != nil {
@@ -67,9 +67,12 @@ func (s *TagStore) Summary(ctx context.Context, videoIDs []int64) (domain.TagSum
 
 	for rows.Next() {
 		var item domain.TagSummaryItem
-		if err := rows.Scan(&item.Tag.ID, &item.Tag.Name, &item.Tag.Tentative, &item.Count, &item.ManualCount); err != nil {
+		var kind scannedTagKind
+		if err := rows.Scan(append([]any{&item.Tag.ID, &item.Tag.Name, &item.Tag.Tentative, &item.Count, &item.ManualCount},
+			kind.targets()...)...); err != nil {
 			return domain.TagSummary{}, fmt.Errorf("cannot read tag summaries: %w", err)
 		}
+		item.Tag.Kind = kind.ref()
 		summary.Items = append(summary.Items, item)
 	}
 	if err := rows.Err(); err != nil {

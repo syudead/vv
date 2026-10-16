@@ -299,11 +299,19 @@ type WorkInfoCandidate struct {
 	Detail string
 }
 
-// FetchedWorkInfo はプラグインが取った作品情報である。空の Title は値が無いことを表す。
-// 動画に保存する作品情報（WorkInfo）とは別の値で、反映できるのは名前とタグだけである。
+// FetchedWorkInfo はプラグインが取った作品情報である。空の文字列と nil の一覧は値が無いことを表す。
+// 動画に保存する作品情報（WorkInfo）とは別の値で、人物と団体は名前と外部 ID で持ち、項目の規則に
+// 合わない値も残す（specs/052-plugin-work-info-fields/contracts/plugin-contract.md）。
 type FetchedWorkInfo struct {
-	Title string
-	Tags  []string
+	Title         string
+	Tags          []string
+	Code          string
+	Description   string
+	Dates         []WorkDate
+	People        []FetchedPerson
+	Organizations []FetchedOrganization
+	URLs          []string
+	ExternalIDs   []ExternalID
 }
 
 // WorkInfoRunResult は成功した実行の結果である。操作が search なら Candidates、
@@ -366,6 +374,7 @@ type responseJSON struct {
 	WorkInfo *struct {
 		Title string   `json:"title"`
 		Tags  []string `json:"tags"`
+		workDetailsJSON
 	} `json:"workInfo"`
 	Error *struct {
 		Message string `json:"message"`
@@ -389,10 +398,12 @@ func ParseWorkInfoResponse(op WorkInfoOperation, output []byte) (WorkInfoRunResu
 	case op == WorkInfoSearch && raw.Candidates != nil:
 		return parseCandidates(raw)
 	case op == WorkInfoFetch && raw.WorkInfo != nil:
-		return WorkInfoRunResult{WorkInfo: FetchedWorkInfo{
+		info := FetchedWorkInfo{
 			Title: raw.WorkInfo.Title,
 			Tags:  firstUniqueTags(raw.WorkInfo.Tags),
-		}}, nil
+		}
+		parseWorkDetails(raw.WorkInfo.workDetailsJSON, &info)
+		return WorkInfoRunResult{WorkInfo: info}, nil
 	}
 	return WorkInfoRunResult{}, &WorkInfoRunError{Failure: WorkInfoRunFailed}
 }

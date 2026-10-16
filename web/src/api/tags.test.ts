@@ -875,6 +875,27 @@ describe("まとめての操作と確認の数（specs/036-tag-admin-scale/contr
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
+  it("batchTagsはsetKindのときだけkindIdを送り、clearKindでは送らない（specs/051-tag-kinds/contracts/screen-api.md）", async () => {
+    const outcome = { appliedIds: [4], notFoundIds: [], notApplicableIds: [] };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(jsonResponse(outcome))
+      .mockResolvedValueOnce(jsonResponse(outcome));
+    vi.stubGlobal("fetch", fetch);
+
+    await batchTags({ action: "setKind", kindId: 7 }, [4]);
+    await batchTags("clearKind", [4]);
+    expect(JSON.parse(String(fetch.mock.calls[0]?.[1]?.body))).toEqual({
+      action: "setKind",
+      kindId: 7,
+      ids: [4],
+    });
+    expect(JSON.parse(String(fetch.mock.calls[1]?.[1]?.body))).toEqual({
+      action: "clearKind",
+      ids: [4],
+    });
+  });
+
   it("batchTagsが失敗したら共有の一覧も一覧の控えも変えずに投げる", async () => {
     saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(
