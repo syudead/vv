@@ -138,4 +138,6 @@ the undo keeps the dismissal.
 | `different` | The dismissal is deleted and both keys' candidates are rebuilt, so the pair is listed on Duplicates again | `video_version_judging_holds` |
 
 The claim skips a held pair as it skips an unbundled one, and a content change
-at the same path re-keys both tables and the open entries' subject keys.
+at the same path re-keys both tables and every key the entries hold, finished
+entries included, so an undo after the change still finds the bundle member
+or the tag under the new key.

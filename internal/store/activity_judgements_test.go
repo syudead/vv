@@ -589,3 +589,76 @@ func TestOrganizeBundleUndoReopensThePairEntry(t *testing.T) {
 		t.Errorf("取り消しの知らせ = %v, want ActivityChanged を含む", recorder.events)
 	}
 }
+
+// succeedA は key-a の動画の同じパスの中身を key-e に替え、尺が合って引き継がれるところまで進め、新しい動画の id を
+// 返す。
+func succeedA(t *testing.T, db *DB) int64 {
+	t.Helper()
+	scan := startTestScan(t, db)
+	next := upsertOne(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-e", 5))
+	finishTestScan(t, db, scan, domain.ScanDone)
+	probeDuration(t, db, next, 100_000)
+	return next
+}
+
+// 同じパスの中身が変わって引き継がれると、終わった記録の対象の鍵も新しい鍵になるので、その後の自動タグの取り消し
+// は新しい鍵の行を見つけて消す（data-model.md「Rules」、research.md R-7）。
+func TestUndoAutoTagAfterTheSubjectWasRekeyedBySuccession(t *testing.T) {
+	db, ids := judgementFixture(t)
+	ctx := context.Background()
+	cat := createTestTag(t, db, "cat")
+	entry := runAutoTag(t, db, ids["a"], domain.ActivityByRule, domain.AutoTagSelection{
+		Confirmed: []int64{cat.ID}, Probabilities: map[int64]float64{cat.ID: 0.91},
+	})
+	next := succeedA(t, db)
+	if got := manualTagIDs(t, db, "key-e"); !slices.Equal(got, []int64{cat.ID}) {
+		t.Fatalf("引き継いだ鍵のタグ = %v, want cat", got)
+	}
+
+	undo, err := db.Activity().UndoAutoTag(ctx, entry.ID, cat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if undo.Outcome != domain.ActivityCompleted || undo.Subject.Key != "key-e" {
+		t.Fatalf("undo の記録 = %s（対象 %s）, want completed（key-e）", undo.Outcome, undo.Subject.Key)
+	}
+	if got := manualTagIDs(t, db, "key-e"); len(got) != 0 {
+		t.Errorf("引き継いだ鍵に取り消したタグが残った: %v", got)
+	}
+	if !rejectedFor(t, db, "key-e", cat.ID) {
+		t.Error("引き継いだ鍵に却下が残っていない")
+	}
+	rekeyed, err := db.Activity().ActivityEntry(ctx, entry.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rekeyed.Subject.Key != "key-e" || len(rekeyed.VideoIDs) == 0 || rekeyed.VideoIDs[0] != next {
+		t.Errorf("付け替えた記録 = 対象 %s, 動画 %v, want key-e の動画 %d", rekeyed.Subject.Key, rekeyed.VideoIDs, next)
+	}
+}
+
+// 自動で束ねた後に加わった側の中身が同じパスで変わって引き継がれると、記録の組と加わった側の鍵も新しい鍵になり、
+// 取り消しは新しい鍵のメンバーを外す。
+func TestUndoAutomaticBundleAfterTheJoinedKeyWasRekeyedBySuccession(t *testing.T) {
+	db, _ := judgementFixture(t)
+	entry := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule})
+	joined, err := domain.DecodeVersionBundleUndoKeys(entry.UndoKeys)
+	if err != nil || !slices.Equal(joined.Members, []string{"key-a"}) {
+		t.Fatalf("加わった側 = %+v, %v, want key-a", joined, err)
+	}
+	next := succeedA(t, db)
+	if ownerVideo(t, db, next).Versions == nil {
+		t.Fatal("引き継いだ動画がまとまりにいない")
+	}
+
+	undo := undoEntry(t, db, entry.ID)
+	if undo.Outcome != domain.ActivityCompleted || undo.Subject.Key != "key-b" || undo.Subject.KeyB != "key-e" {
+		t.Errorf("undo の記録 = %s（%s|%s）, want completed（key-b|key-e）", undo.Outcome, undo.Subject.Key, undo.Subject.KeyB)
+	}
+	if ownerVideo(t, db, next).Versions != nil {
+		t.Error("引き継いだ動画がまだまとまりに属する")
+	}
+	if pairs := unbundledPairs(t, db); !slices.Equal(pairs, []string{"key-b|key-e"}) {
+		t.Errorf("外した組 = %v, want [key-b|key-e]", pairs)
+	}
+}

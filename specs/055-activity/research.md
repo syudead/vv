@@ -187,6 +187,11 @@ subject video's current key after bundling moved it, unless an owner
 tag is newer than the `auto_tag` entry; then the owner's own attachment stays
 as the owner left it.
 
+A content change at the same path that carries the user data over to the new
+key re-keys the entries with it, finished ones included, so the undo of an
+entry decided before the change still finds the row ([data-model.md
+"Rules"](data-model.md#rules)).
+
 "Newer" is read from the log, never from the rows: entry ids are monotonic, so
 an owner entry on the same subject with a greater id than the undone entry
 means the owner decided again, as the owner `dismiss` entry does for an undone

@@ -325,11 +325,85 @@ func returnPairActivitiesToWaiting(
 	return nil
 }
 
-// movePairActivityKey は、同じパスの中身が from から to に変わったとき、開いている version_judgement の記録の
-// 対象の鍵 from を to に付け替える（data-model.md「Rules」、moveKeyPairs と同じ規則）。組は並べ直し、表示名は
-// 鍵と一緒に動かす。to 自身との組になる記録は変えない。付け替えたかを返す。
+// moveActivityKey は、同じパスの中身が from から to に変わって引き継がれたとき、記録が持つ鍵 from を to に
+// 付け替える（data-model.md「Rules」）。開いている記録も終わった記録も付け替えるので、その後の取り消しは利用者
+// データと一緒に動いた行を新しい鍵で見つける（research.md R-7）。組の記録は movePairActivityKey、動画の記録は
+// 対象の鍵、auto_tag の記録が付けたタグは書いた鍵（user_key）、自動の束ねの記録は加わった側の鍵（undo_keys）で
+// ある。付け替えたかを返す。
+func moveActivityKey(ctx context.Context, tx *sql.Tx, from, to string, now time.Time) (bool, error) {
+	moved, err := movePairActivityKey(ctx, tx, from, to, now)
+	if err != nil {
+		return false, err
+	}
+	for _, statement := range []string{
+		`update activity_entries set subject_key = ?2, updated_at = ?3 where subject_kind = 'video' and subject_key = ?1`,
+		`update activity_entry_tags set user_key = ?2 where user_key = ?1`,
+	} {
+		result, err := tx.ExecContext(ctx, statement, from, to, now.UnixMilli())
+		if err != nil {
+			return false, fmt.Errorf("cannot move the activity entries: %w", err)
+		}
+		if affected, err := result.RowsAffected(); err != nil {
+			return false, fmt.Errorf("cannot move the activity entries: %w", err)
+		} else if affected > 0 {
+			moved = true
+		}
+	}
+	movedUndoKeys, err := moveBundleUndoKeys(ctx, tx, from, to)
+	if err != nil {
+		return false, err
+	}
+	return moved || movedUndoKeys, nil
+}
+
+// moveBundleUndoKeys は自動の束ねの記録の undo_keys（加わった側のメンバーと元の代表）の鍵 from を to にする。
+func moveBundleUndoKeys(ctx context.Context, tx *sql.Tx, from, to string) (bool, error) {
+	rows, err := tx.QueryContext(ctx, `select id, undo_keys from activity_entries
+		where undo_keys is not null and instr(undo_keys, json_quote(?)) > 0`, from)
+	if err != nil {
+		return false, fmt.Errorf("cannot read the bundle undo keys: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	updates := map[int64]string{}
+	for rows.Next() {
+		var id int64
+		var encoded string
+		if err := rows.Scan(&id, &encoded); err != nil {
+			return false, fmt.Errorf("cannot read the bundle undo keys: %w", err)
+		}
+		keys, err := domain.DecodeVersionBundleUndoKeys(encoded)
+		if err != nil {
+			return false, err
+		}
+		for i, key := range keys.Members {
+			if key == from {
+				keys.Members[i] = to
+			}
+		}
+		if keys.Representative == from {
+			keys.Representative = to
+		}
+		updates[id] = keys.Encode()
+	}
+	if err := rows.Err(); err != nil {
+		return false, fmt.Errorf("cannot read the bundle undo keys: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return false, fmt.Errorf("cannot read the bundle undo keys: %w", err)
+	}
+	for id, encoded := range updates {
+		if _, err := tx.ExecContext(ctx, `update activity_entries set undo_keys = ? where id = ?`, encoded, id); err != nil {
+			return false, fmt.Errorf("cannot move the bundle undo keys: %w", err)
+		}
+	}
+	return len(updates) > 0, nil
+}
+
+// movePairActivityKey は、同じパスの中身が from から to に変わったとき、組の記録（開いているものも終わったものも）
+// の対象の鍵 from を to に付け替える（moveKeyPairs と同じ規則）。組は並べ直し、表示名は鍵と一緒に動かす。to 自身
+// との組になる記録は変えない。付け替えたかを返す。
 func movePairActivityKey(ctx context.Context, tx *sql.Tx, from, to string, now time.Time) (bool, error) {
-	subjects, err := openPairSubjects(ctx, tx, from)
+	subjects, err := pairSubjects(ctx, tx, from)
 	if err != nil {
 		return false, err
 	}
@@ -349,12 +423,12 @@ func movePairActivityKey(ctx context.Context, tx *sql.Tx, from, to string, now t
 	return moved, nil
 }
 
-// openPairSubjects は鍵 key を含む組の開いている version_judgement の記録の id と対象を読み切る。
-func openPairSubjects(ctx context.Context, tx *sql.Tx, key string) ([]domain.ActivityEntry, error) {
+// pairSubjects は鍵 key を含む組の記録（version_judgement・dismiss とその undo）の id と対象を読み切る。
+func pairSubjects(ctx context.Context, tx *sql.Tx, key string) ([]domain.ActivityEntry, error) {
 	rows, err := tx.QueryContext(ctx, `select id, subject_key, subject_key_b, subject_label,
 		coalesce(subject_label_b, '') from activity_entries
-		where kind = ? and subject_kind = ? and status <> ? and (subject_key = ?4 or subject_key_b = ?4)`,
-		string(domain.ActivityVersionJudgement), string(domain.ActivitySubjectPair), string(domain.ActivityDone), key)
+		where subject_kind = ? and (subject_key = ?2 or subject_key_b = ?2)`,
+		string(domain.ActivitySubjectPair), key)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the pair activity entries: %w", err)
 	}

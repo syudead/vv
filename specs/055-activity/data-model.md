@@ -127,7 +127,7 @@ never claims them.
 | Undo is offered for an entry decided by `rule` or `ai` that is not yet undone: a `version_judgement` with outcome `same` or `different`, or a tag of an `auto_tag` entry | `domain` |
 | Undo decides "the owner changed it since" from the log, never from a row's timestamp: an owner entry on the same subject (the tag's `tag_attach`, `tag_detach`, `tag_keep` or `tag_reject`; a member's `bundle`, `unbundle` or `organize_undo`; the pair's `dismiss`) with an id greater than the undone entry's means the owner decided again ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) | `store` (one package-private lookup) |
 | The judging claim skips pairs in `video_version_judging_holds` as it skips `video_version_unbundles` | `store` (`judgeablePairs`) |
-| A content change at the same path re-keys `video_version_judging_holds` and the subject keys of open entries as `moveKeyPairs` re-keys dismissals | `store` (successions) |
+| A content change at the same path re-keys `video_version_judging_holds` and every key an entry holds, open or finished (a video or pair subject, an `auto_tag` entry's `activity_entry_tags.user_key`, an automatic bundle's `undo_keys`), as `moveKeyPairs` re-keys dismissals, so a later undo finds the rows that moved with the user data | `store` (successions) |
 
 ## What does not change
 

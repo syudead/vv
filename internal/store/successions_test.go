@@ -247,7 +247,9 @@ func TestSuccessionKeepsTheBundlePosition(t *testing.T) {
 			if versions.RepresentativeID != wantRep || len(versions.Items) != 3 {
 				t.Errorf("集まり = 代表 %d, %d 本, want 代表 %d, 3 本", versions.RepresentativeID, len(versions.Items), wantRep)
 			}
-			want := []domain.Event{domain.VideoBundleChanged{VideoIDs: normalizeIDs([]int64{ids["b"], ids["c"], x})}}
+			// 所有者が束ねた記録の対象の鍵も新しい鍵に付け替わるので、記録の知らせも出る。
+			want := []domain.Event{domain.VideoBundleChanged{VideoIDs: normalizeIDs([]int64{ids["b"], ids["c"], x})},
+				domain.ActivityChanged{}}
 			if !slices.EqualFunc(recorder.events, want, eventsEqual) {
 				t.Errorf("events = %v, want %v", recorder.events, want)
 			}
