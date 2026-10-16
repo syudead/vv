@@ -1004,6 +1004,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/plugin-proxy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 作品情報プラグインの要求を送るプロキシの URL を返す
+         * @description 保存した URL を返す。保存が無ければ `""`（プロキシなし）。`/api/settings/network` と違い、
+         *     どのビルドでも答える（specs/056-plugin-tooling/contracts/screen-api.md）。
+         */
+        get: operations["getPluginProxySettings"];
+        /**
+         * 作品情報プラグインの要求を送るプロキシの URL を保存する
+         * @description `url` を規則のとおりに確かめて保存する。`""` はプロキシなし。次の実行が保存した値を使い、
+         *     進行中の実行は始めたときの値で終わる。`url` が無いか規則に外れれば `400` `invalid_request`
+         *     で、何も書かない（specs/056-plugin-tooling/contracts/screen-api.md、research.md R-4）。
+         */
+        put: operations["updatePluginProxySettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/auto-import": {
         parameters: {
             query?: never;
@@ -3146,6 +3173,15 @@ export interface components {
         };
         UpdateNetworkSettingsRequest: {
             lanAccess: boolean;
+        };
+        /** @description 作品情報プラグインの要求を送るプロキシ（specs/056-plugin-tooling/contracts/screen-api.md） */
+        PluginProxySettings: {
+            /** @description 保存した URL。http、https か socks5 の scheme、ホスト、任意のポートと任意のユーザー情報からなり、 パスもクエリも持たない。"" はプロキシなし */
+            url: string;
+        };
+        UpdatePluginProxySettingsRequest: {
+            /** @description 保存する URL。規則は PluginProxySettings.url と同じ。"" はプロキシなし */
+            url: string;
         };
         /** @description 自動の取り込みの選択と監視の状態（specs/042-folder-watch-import/contracts/screen-api.md） */
         AutoImportSettings: {
@@ -6875,6 +6911,52 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getPluginProxySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 保存した URL */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginProxySettings"];
+                };
+            };
+        };
+    };
+    updatePluginProxySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePluginProxySettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存した URL */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginProxySettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
         };
     };
     getAutoImportSettings: {

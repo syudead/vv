@@ -2913,11 +2913,22 @@ export const en = {
     },
     network: {
       heading: "Network",
-      description:
-        "By default only this PC can open VVMDM. Allow connections from your local network to open it from a phone or another computer on the same network.",
+      description: "Connections to VVMDM, and from its plugins to other sites.",
       loading: "Loading the network settings",
       loadFailed: (reason: string) => `Couldn't load the network settings: ${reason}`,
       lanAccess: "Allow connections from the local network",
+      lanAccessDescription:
+        "By default only this PC can open VVMDM. Allow connections from your local network to open it from a phone or another computer on the same network.",
+      proxy: {
+        label: "Proxy for plugin requests",
+        description:
+          "Plugin requests to other sites go through this proxy. Leave it empty to connect directly. Devices on your network are refused either way.",
+        placeholder: "http://proxy.example:3128",
+        invalid:
+          "Enter a URL starting with http://, https:// or socks5://, with a host and no path.",
+        saved: "Saved.",
+        saveFailed: (reason: string) => `Couldn't save the proxy: ${reason}`,
+      },
       saving: "Saving…",
       saveFailed: (reason: string) => `Couldn't change the setting: ${reason}`,
       cautionHeading: "Before you turn this on",
