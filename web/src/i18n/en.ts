@@ -2280,6 +2280,15 @@ export const en = {
       openDuplicates: "Open in Duplicates",
       workInfo: "Work info",
       settings: "Settings",
+      retry: "Retry",
+      undo: "Undo",
+      undoTags: "Undo tags…",
+    },
+    toast: {
+      undone: "Undone. vv won't decide this again on its own",
+      alreadyReverted: "Already changed back. vv won't decide this again on its own",
+      retryFailed: (reason: string) => `Couldn't retry: ${reason}`,
+      undoFailed: (reason: string) => `Couldn't undo: ${reason}`,
     },
     footer: {
       label: "Activity totals",

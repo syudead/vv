@@ -42,6 +42,8 @@ export interface ActivityLog {
   loadMore: () => void;
   /** 最初のページから読み直す。読んでいる間は読み込み中の表示にする。 */
   retry: () => void;
+  /** 件数と読み込んだページを、今の行を残したまま読み直す（`activity` の知らせと同じ）。 */
+  refresh: () => void;
 }
 
 type Ready = Extract<ActivityLogState, { kind: "ready" }>;
@@ -236,5 +238,5 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
     };
   }, [refresh]);
 
-  return { state, loadMore, retry: readFirst };
+  return { state, loadMore, retry: readFirst, refresh };
 }

@@ -28,6 +28,7 @@ import {
 import { openActions } from "./activityEntry";
 import { ActivityToolbar } from "./ActivityToolbar";
 import { useActivityLog } from "./useActivityLog";
+import { useActivityOperations } from "./useActivityOperations";
 
 /** 時刻の表示を進める間隔。一覧は読み直さない。 */
 const clockMs = 30_000;
@@ -104,7 +105,8 @@ export default function ActivityPage() {
   const here = useLocation();
   const from = `${here.pathname}${here.search}`;
   const { criteria, apply } = useActivityCriteria();
-  const { state, loadMore, retry } = useActivityLog(criteria);
+  const { state, loadMore, retry, refresh } = useActivityLog(criteria);
+  const operations = useActivityOperations(refresh);
   const totals = useActivityTotals();
   const now = useNow();
   const end = useRef<HTMLDivElement>(null);
@@ -170,6 +172,8 @@ export default function ActivityPage() {
               now={now}
               from={from}
               actions={openActions(entry)}
+              onRetry={operations.retry}
+              onUndo={operations.undo}
             />
           ))}
         </CardList>
