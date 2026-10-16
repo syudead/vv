@@ -2449,6 +2449,8 @@ paths:
       summary: 取得の結果のうち選んだ項目を動画に反映する
       description: |
         所有者だけ。`fields` の項目（`title` は表示名、`tags` は仮のタグ、ほかは作品情報）を 1 つの取引で書く。
+        `cover` はその前に、手元の画像のアップロードと同じ確かめと適用で動画の代表サムネイルにし、読めないか
+        動画の内容が変わっていれば何も書かずに `skipped` で `invalid` として知らせる。
         作品情報の項目は保存済みの作品情報に重ね、規則に合わない値・上限を超える件・照合が曖昧な人物と団体は
         飛ばして `skipped` で知らせる（specs/052-plugin-work-info-fields/contracts/screen-api.md）。結果は使い切りで、
         成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
@@ -2481,6 +2483,38 @@ paths:
           $ref: "#/components/responses/NotFound"
         "409":
           $ref: "#/components/responses/Conflict"
+
+  /api/videos/{id}/work-info-fetches/{fetchId}/cover:
+    get:
+      operationId: getWorkInfoFetchCover
+      summary: 取得の結果のカバー画像を返す
+      description: |
+        所有者だけ。メモリに持つ取得の結果のカバー画像を、プラグインが返した URL の先から vv が取った本文のまま
+        返す。ブラウザが外部のサイトに画像を取りに行かないよう、比較の段はこれを表示する。結果が無いか期限切れか、
+        別の動画のものか、カバー画像を持たなければ `404` `not_found`。`Cache-Control: no-store` を持つ。
+      parameters:
+        - $ref: "#/components/parameters/VideoId"
+        - $ref: "#/components/parameters/WorkInfoFetchId"
+      responses:
+        "200":
+          description: カバー画像
+          content:
+            image/png:
+              schema:
+                type: string
+                format: binary
+            image/jpeg:
+              schema:
+                type: string
+                format: binary
+            image/webp:
+              schema:
+                type: string
+                format: binary
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/tags:
     get:
@@ -5905,6 +5939,21 @@ components:
           description: 動画の外部 ID。取得した順。無ければ []
           items:
             $ref: "#/components/schemas/ExternalId"
+        cover:
+          $ref: "#/components/schemas/WorkInfoFetchedCover"
+
+    WorkInfoFetchedCover:
+      type: object
+      required: [width, height]
+      additionalProperties: false
+      description: |
+        取ったカバー画像の大きさ。プラグインが返さなかったか、取れないか、PNG・JPEG・静止画の WebP で
+        なければ無い。画像は getWorkInfoFetchCover で読む
+      properties:
+        width:
+          type: integer
+        height:
+          type: integer
 
     WorkInfoFetchedDate:
       type: object
@@ -5981,6 +6030,7 @@ components:
       enum:
         - title
         - tags
+        - cover
         - code
         - description
         - dates.release

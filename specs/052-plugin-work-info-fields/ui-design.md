@@ -97,6 +97,8 @@ untranslated.
 | Skipped, `invalid`, a date | not a date in the form YYYY-MM-DD, YYYY-MM or YYYY | |
 | Skipped, `invalid`, a link | not a full URL starting with http:// or https:// | |
 | Skipped, `invalid`, other | too long or contains characters that can't be used | Code, description, a name, an ID |
+| Skipped, `invalid`, the cover | couldn't be used as the thumbnail | `{value}` is the cover's URL |
+| Cover images | Current thumbnail · Fetched cover, {width} × {height}. Becomes the thumbnail when you apply | `alt` and `title` of the two images |
 | Skipped, `too_many` | over the limit for {label} | `{label}` lowercased: `over the limit for performers` |
 | Skipped, `ambiguous` | matches more than one person · matches more than one organization | By the row's kind |
 
@@ -104,13 +106,14 @@ untranslated.
 
 The comparison keeps its grid, header row, source line and `Back to the
 matches` ([049, Compare](../049-work-info-plugins/ui-design.md#compare)).
-The rows are `Title`, `Tags`, then one row per work detail the result
-carries, in the `WorkInfoField` order, so a code and a release date come
+The rows are `Title`, `Tags`, `Cover` when the result carries a cover image,
+then one row per work detail the result carries, in the `WorkInfoField` order, so a code and a release date come
 before the names, as they do in the work details row.
 
 | Row | Now (`text-muted-foreground`) | Fetched (`text-foreground`) | Same as now when |
 | --- | --- | --- | --- |
 | Title, Tags | As 049 | As 049 | As 049 |
+| Cover | The current thumbnail in a `VideoThumbnail` frame at most `max-w-xs` wide, at 70% opacity | The fetched cover, served by VVMDM, in the same frame; selected first, since it cannot be compared with the thumbnail | Never |
 | Code | The stored code, `tabular-nums` | The fetched code, `tabular-nums`, as returned even when it breaks a rule | The strings are equal |
 | Description | The stored text, `whitespace-pre-line`, folded at three lines with `Show more` | The fetched text, folded the same way | Equal |
 | Released, Recorded, Published | The stored date of that kind, `tabular-nums` | The fetched date as returned, `tabular-nums`; a date in another form is shown, not fixed | Equal |

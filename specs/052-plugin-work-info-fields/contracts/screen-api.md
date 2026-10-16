@@ -15,6 +15,7 @@ The enum grows from `title` and `tags` to one value per selectable row
 | Value | Row | Apply rule ([R-4](../research.md#r-4-the-apply-merges-the-selected-fields-into-the-stored-work-information-in-one-transaction-and-skips-each-value-that-breaks-a-rule)) |
 | --- | --- | --- |
 | `title`, `tags` | As in 049 | Unchanged |
+| `cover` | Cover | Makes the fetched cover image the video's thumbnail, before the other fields, with the checks and fit of an uploaded image; an image that cannot be used, or a video whose content changed, is skipped as `invalid` |
 | `code`, `description` | Code, Description | Replaces the stored value |
 | `dates.release`, `dates.recorded`, `dates.published` | Released, Recorded, Published | Replaces the stored date of that kind |
 | `people.performer`, `people.director`, `people.photographer`, `people.streamer` | Performers, Directors, Photographers, Streamers | Appends the entries not linked in that role yet |
@@ -36,6 +37,7 @@ each list required and `[]` when the plugin returned none, so a plugin of
 | `organizations` | `[{ role, name, externalIds, match }]` | The same |
 | `urls` | string[] | As returned |
 | `externalIds` | `[{ source, value }]` | As returned |
+| `cover` | `{ width, height }`, optional | The fetched cover image's size; absent when the plugin returned none or VVMDM could not fetch or read it. `GET /api/videos/{id}/work-info-fetches/{fetchId}/cover` serves the image from VVMDM, so the browser does not contact the site |
 
 `match` is the entity the entry resolves to at fetch time
 ([R-3](../research.md#r-3-people-and-organizations-are-matched-by-external-id-then-by-folded-name-or-alias-and-an-ambiguous-match-links-nothing)).

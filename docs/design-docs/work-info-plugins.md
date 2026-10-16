@@ -185,6 +185,62 @@ The apply matches again inside its transaction, as the next section shows.
 Before it writes anything, the apply refuses a selected field whose row has
 no value in the result with `invalid_request`.
 
+## VVMDM fetches the cover and applies it as an uploaded image
+
+A plugin returns its cover as a URL in `workInfo.cover`, and VVMDM fetches it
+after the run (`coverImage` in
+[`cover.go`](../../internal/wasmplugin/cover.go)), with the HTTP client of the
+plugin's requests. The address rule of
+[Plugins reach only public internet addresses](#plugins-reach-only-public-internet-addresses)
+therefore holds for the cover, and a refused address fails the run with
+`blocked_address`. Any
+other failure drops the cover and keeps the rest of the result
+([plugin contract](../how-to/work-info-plugins.md#cover-image)).
+
+The diagram shows a cover from the run to the thumbnail.
+
+```mermaid
+flowchart LR
+  run[Run returns workInfo.cover] --> get[One GET through the plugin client]
+  get -->|refused| blocked[Run fails: blocked_address]
+  get -->|other failure| none[No cover]
+  get -->|2xx, 4 MiB or less| check{PNG, JPEG or still WebP, 120 MP or less by its header?}
+  check -->|no| none
+  check -->|yes| keep[Kept with the fetch for 10 minutes]
+  keep --> serve[GET .../cover serves it to the comparison]
+  keep -->|cover selected| apply[UploadThumbnailImage, before the work information]
+```
+
+[`work_info_cover.go`](../../internal/app/work_info_cover.go) checks the
+image's header only. The full decode is the apply's: the cover goes through
+`Ingest.UploadThumbnailImage`, the path of an uploaded image
+([thumbnail-editing.md](thumbnail-editing.md#uploaded-images)), so it takes
+the upload gate, the 120-megapixel cap and the generation lock, and is stored
+with origin `uploaded`.
+
+The browser shows the cover from
+`GET /api/videos/{id}/work-info-fetches/{fetchId}/cover`, so it never contacts
+the plugin's site. VVMDM sets the type from the format it read and sends
+`nosniff` and a sandboxing `Content-Security-Policy`, so the response is only
+ever an image.
+
+Each cover is held in memory with its fetch. Together the held covers stay
+within 32 MiB, eight covers at the 4 MiB limit: a new fetch over that budget
+drops the fetches with covers that expire first, and applying one of them
+answers `work_info_fetch_stale`.
+
+The apply makes the cover the thumbnail before it writes the work
+information. A cover the thumbnail path refuses (unreadable, too large, not
+fittable) or a video whose content changed since the fetch is skipped as
+`invalid` and the other fields are still applied; any other failure writes
+nothing and keeps the fetch for another try.
+
+| Rejected | Why |
+| --- | --- |
+| The plugin downloads the image and returns it in its response | The response is limited to 1 MiB, and base64 grows the image by a third |
+| The browser loads the cover from the site | The site would see the viewer, as [R-10](../../specs/049-work-info-plugins/research.md#r-10-search-candidates-are-text-only) rejects for candidates |
+| Fetching the cover again for each view or at the apply | The site could answer another image than the one the owner compared |
+
 ## The apply merges the selected fields in one transaction
 
 `OverrideStore.ApplyFetchedWorkInfo` in

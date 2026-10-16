@@ -1,6 +1,6 @@
 ---
 source: specs/052-plugin-work-info-fields/contracts/screen-api.md
-sourceHash: d938a58d98307e970d0c2c605dd28b32e7fb6b1db0ddf02ba426f8d9a4503cd9
+sourceHash: 28bf563ceb71f52ab9904d4f57ef42eea5b1532c432d275e316d7282a269fc9e
 ---
 
 # 契約: 取得と適用の画面の API の作品の詳細 {#contract-work-details-in-the-fetch-and-apply-screen-api}
@@ -14,6 +14,7 @@ enum は `title` と `tags` から、選べる行ごとに 1 つの値に増え�
 | 値 | 行 | 適用の規則 ([R-4](../research.md#r-4-the-apply-merges-the-selected-fields-into-the-stored-work-information-in-one-transaction-and-skips-each-value-that-breaks-a-rule)) |
 | --- | --- | --- |
 | `title`、`tags` | 049 のとおり | 変わらない |
+| `cover` | Cover | 取得したカバー画像を、ほかのフィールドより前に、アップロードした画像と同じ確認と収まる大きさへの合わせ方で動画のサムネイルにする。使えない画像や、内容が変わった動画は `invalid` として飛ばす |
 | `code`、`description` | Code、Description | 保存された値を置き換える |
 | `dates.release`、`dates.recorded`、`dates.published` | Released、Recorded、Published | その種類の保存された日付を置き換える |
 | `people.performer`、`people.director`、`people.photographer`、`people.streamer` | Performers、Directors、Photographers、Streamers | その役割にまだ結び付いていない項目を足す |
@@ -33,6 +34,7 @@ enum は `title` と `tags` から、選べる行ごとに 1 つの値に増え�
 | `organizations` | `[{ role, name, externalIds, match }]` | 同じ |
 | `urls` | string[] | 返されたまま |
 | `externalIds` | `[{ source, value }]` | 返されたまま |
+| `cover` | `{ width, height }`、省略可能 | 取得したカバー画像の大きさ。プラグインが返さなかったとき、または VVMDM が取得も読み取りもできなかったときはない。`GET /api/videos/{id}/work-info-fetches/{fetchId}/cover` が VVMDM から画像を返すので、ブラウザはサイトに接続しない |
 
 `match` は、取得のときにその項目が解決する実体である ([R-3](../research.md#r-3-people-and-organizations-are-matched-by-external-id-then-by-folded-name-or-alias-and-an-ambiguous-match-links-nothing))。
 

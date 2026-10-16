@@ -1612,6 +1612,8 @@ export interface paths {
         /**
          * 取得の結果のうち選んだ項目を動画に反映する
          * @description 所有者だけ。`fields` の項目（`title` は表示名、`tags` は仮のタグ、ほかは作品情報）を 1 つの取引で書く。
+         *     `cover` はその前に、手元の画像のアップロードと同じ確かめと適用で動画の代表サムネイルにし、読めないか
+         *     動画の内容が変わっていれば何も書かずに `skipped` で `invalid` として知らせる。
          *     作品情報の項目は保存済みの作品情報に重ね、規則に合わない値・上限を超える件・照合が曖昧な人物と団体は
          *     飛ばして `skipped` で知らせる（specs/052-plugin-work-info-fields/contracts/screen-api.md）。結果は使い切りで、
          *     成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
@@ -1622,6 +1624,28 @@ export interface paths {
          *     （specs/049-work-info-plugins/contracts/screen-api.md、research.md R-8・R-9）。
          */
         post: operations["applyWorkInfoFetch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/videos/{id}/work-info-fetches/{fetchId}/cover": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 取得の結果のカバー画像を返す
+         * @description 所有者だけ。メモリに持つ取得の結果のカバー画像を、プラグインが返した URL の先から vv が取った本文のまま
+         *     返す。ブラウザが外部のサイトに画像を取りに行かないよう、比較の段はこれを表示する。結果が無いか期限切れか、
+         *     別の動画のものか、カバー画像を持たなければ `404` `not_found`。`Cache-Control: no-store` を持つ。
+         */
+        get: operations["getWorkInfoFetchCover"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3547,6 +3571,15 @@ export interface components {
             urls: string[];
             /** @description 動画の外部 ID。取得した順。無ければ [] */
             externalIds: components["schemas"]["ExternalId"][];
+            cover?: components["schemas"]["WorkInfoFetchedCover"];
+        };
+        /**
+         * @description 取ったカバー画像の大きさ。プラグインが返さなかったか、取れないか、PNG・JPEG・静止画の WebP で
+         *     なければ無い。画像は getWorkInfoFetchCover で読む
+         */
+        WorkInfoFetchedCover: {
+            width: number;
+            height: number;
         };
         WorkInfoFetchedDate: {
             kind: components["schemas"]["WorkDateKind"];
@@ -3588,7 +3621,7 @@ export interface components {
          *     （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）
          * @enum {string}
          */
-        WorkInfoField: "title" | "tags" | "code" | "description" | "dates.release" | "dates.recorded" | "dates.published" | "people.performer" | "people.director" | "people.photographer" | "people.streamer" | "organizations.maker" | "organizations.label" | "urls" | "externalIds";
+        WorkInfoField: "title" | "tags" | "cover" | "code" | "description" | "dates.release" | "dates.recorded" | "dates.published" | "people.performer" | "people.director" | "people.photographer" | "people.streamer" | "organizations.maker" | "organizations.label" | "urls" | "externalIds";
         ApplyWorkInfoFetchRequest: {
             /** @description 反映する項目。空にできず、どれも結果に値がなければならない */
             fields: components["schemas"]["WorkInfoField"][];
@@ -8139,6 +8172,35 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getWorkInfoFetchCover: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 動画の識別子 */
+                id: components["parameters"]["VideoId"];
+                /** @description 取得の結果の識別子 */
+                fetchId: components["parameters"]["WorkInfoFetchId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description カバー画像 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": string;
+                    "image/jpeg": string;
+                    "image/webp": string;
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     listTags: {

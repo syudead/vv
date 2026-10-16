@@ -1894,6 +1894,7 @@ export const en = {
       fields: {
         title: "Title",
         tags: "Tags",
+        cover: "Cover",
         code: "Code",
         description: "Description",
         "dates.release": "Released",
@@ -1909,6 +1910,10 @@ export const en = {
         externalIds: "IDs",
       } satisfies Record<WorkInfoField, string>,
       notInResult: "Not in the result",
+      // カバー画像の行の画像の名前。取得した側は、反映すると代表サムネイルになることも言う。
+      nowThumbnail: "Current thumbnail",
+      fetchedCover: (width: number, height: number) =>
+        `Fetched cover, ${formatNumber(width)} × ${formatNumber(height)}. Becomes the thumbnail when you apply`,
       nothingToAdd: "Nothing to add",
       // チップの中の従の印。読み上げは「{name}, New」になる。
       newMark: "New",
@@ -1940,6 +1945,7 @@ export const en = {
         invalidDate: "not a date in the form YYYY-MM-DD, YYYY-MM or YYYY",
         invalidUrl: "not a full URL starting with http:// or https://",
         invalidOther: "too long or contains characters that can't be used",
+        invalidCover: "couldn't be used as the thumbnail",
         tooMany: (items: string) => `over the limit for ${items}`,
         ambiguous: {
           person: "matches more than one person",
