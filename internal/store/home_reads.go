@@ -67,55 +67,80 @@ func (s *HomeStore) Home(ctx context.Context, audience domain.Audience) (domain.
 // ShelfItems は見る人 audience に見せる棚 keys の最初の domain.HomeShelfItemLimit 件の項目と項目の
 // 数を、keys の順に返す。もう棚でないフォルダ、無いフォルダ、ゲストに見せる項目の無いフォルダの棚と、
 // この読み出しが受け持たない棚（続きから見る・おすすめ）の鍵は落とす。経路の条件が無い実体を名指す
-// フォルダの棚は、所有者には項目の無い棚にする（specs/052-smart-folders/research.md R-9）。
+// フォルダの棚は、所有者には項目の無い棚にする（specs/052-smart-folders/research.md R-9）。棚ごとの
+// 結果は保持し（home_shelf_cache.go）、保持の無い棚だけを 1 つの読み取りのスナップショットから読む。
 func (s *HomeStore) ShelfItems(ctx context.Context, audience domain.Audience, keys []domain.HomeShelfKey) (domain.HomeShelfPage, error) {
+	generation := s.db.homeShelves.start()
+	results := make([]homeShelfCacheEntry, len(keys))
+	var missing []int
+	for i, key := range keys {
+		entry, ok := s.db.homeShelves.get(homeShelfCacheKey{shelf: key, audience: audience})
+		if ok {
+			results[i] = entry
+		} else {
+			missing = append(missing, i)
+		}
+	}
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.HomeShelfPage{}, fmt.Errorf("cannot start reading the home shelves: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	now := listNow().Unix()
-	shelves := make([]domain.HomeShelfItems, 0, len(keys))
-	// read は shelves の位置から specs の位置への対応で、項目を読まない棚（経路の条件が無い実体を
-	// 名指すフォルダの棚）は持たない。
-	var specs []listSpec
-	read := map[int]int{}
-	for _, key := range keys {
-		spec, found, err := homeShelfItemsSpec(ctx, tx, audience, key, now)
-		if err != nil {
-			return domain.HomeShelfPage{}, err
-		}
-		if !found {
-			continue
-		}
-		if spec != nil {
-			read[len(shelves)] = len(specs)
-			specs = append(specs, *spec)
-		}
-		shelves = append(shelves, domain.HomeShelfItems{Key: key, Items: []domain.LibraryItem{}})
-	}
-	pages, err := listFirstItemPages(ctx, tx, audience, specs)
-	if err != nil {
+	if err := readHomeShelves(ctx, tx, audience, keys, missing, results); err != nil {
 		return domain.HomeShelfPage{}, err
 	}
-	page := domain.HomeShelfPage{Shelves: make([]domain.HomeShelfItems, 0, len(shelves))}
-	for i, shelf := range shelves {
-		if j, ok := read[i]; ok {
-			shelf.Items, shelf.Total = pages[j].Items, pages[j].Total
-		}
-		if shelf.Total == 0 && shelf.Key.Kind == domain.HomeShelfFolder && !audience.IsOwner() {
-			continue
-		}
-		page.Shelves = append(page.Shelves, shelf)
-	}
+	page := domain.HomeShelfPage{Shelves: make([]domain.HomeShelfItems, 0, len(keys))}
 	if page.Roots, err = listMediaFolders(ctx, tx); err != nil {
 		return domain.HomeShelfPage{}, err
 	}
 	if err := tx.Commit(); err != nil {
 		return domain.HomeShelfPage{}, fmt.Errorf("cannot finish reading the home shelves: %w", err)
 	}
+	for _, i := range missing {
+		s.db.homeShelves.put(generation, homeShelfCacheKey{shelf: keys[i], audience: audience}, results[i].shelf, results[i].shown)
+	}
+	for _, result := range results {
+		if result.shown {
+			page.Shelves = append(page.Shelves, result.shelf)
+		}
+	}
 	return page, nil
+}
+
+// readHomeShelves は棚 keys のうち位置 indexes の棚を読み、同じ位置の results に入れる。棚の項目は
+// 1 つの問い合わせにまとめて読む（listFirstItemPages）。
+func readHomeShelves(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []domain.HomeShelfKey, indexes []int, results []homeShelfCacheEntry) error {
+	now := listNow().Unix()
+	// read は results の位置から specs の位置への対応で、項目を読まない棚（経路の条件が無い実体を
+	// 名指すフォルダの棚）は持たない。
+	var specs []listSpec
+	read := map[int]int{}
+	for _, i := range indexes {
+		spec, found, err := homeShelfItemsSpec(ctx, tx, audience, keys[i], now)
+		if err != nil {
+			return err
+		}
+		results[i] = homeShelfCacheEntry{shelf: domain.HomeShelfItems{Key: keys[i], Items: []domain.LibraryItem{}}, shown: found}
+		if spec != nil {
+			read[i] = len(specs)
+			specs = append(specs, *spec)
+		}
+	}
+	pages, err := listFirstItemPages(ctx, tx, audience, specs)
+	if err != nil {
+		return err
+	}
+	for _, i := range indexes {
+		shelf := &results[i].shelf
+		if j, ok := read[i]; ok {
+			shelf.Items, shelf.Total = pages[j].Items, pages[j].Total
+		}
+		if shelf.Total == 0 && shelf.Key.Kind == domain.HomeShelfFolder && !audience.IsOwner() {
+			results[i].shown = false
+		}
+	}
+	return nil
 }
 
 // homeShelfItemsSpec は棚 key の項目の絞り込みを返す。棚が無ければ found は偽で、フォルダの棚の

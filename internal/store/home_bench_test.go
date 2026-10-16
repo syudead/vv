@@ -10,8 +10,9 @@ import (
 
 // BenchmarkHomeReads は 2 万本の動画と 50 の棚で、ホームの要約（GET /api/home）と、画面に入った
 // 8 つの棚（フォルダの棚 6 つ、recent、unshelved）の最初の項目（GET /api/home/shelves）を読む時間を、
-// 所有者とゲストについて測る。予算はどれも 1 秒未満（specs/057-home/research.md R-12）。棚は条件が
-// タグ・視聴状態・長さ・追加日・検索のものを 10 個ずつ持ち、ゲストには偶数番の動画を見せる。
+// 所有者とゲストについて測る。棚の項目は保持の無いときと保持したときを測る。予算はどれも 1 秒未満
+// （specs/057-home/research.md R-12）。棚は条件がタグ・視聴状態・長さ・追加日・検索のものを 10 個ずつ
+// 持ち、ゲストには偶数番の動画を見せる。
 func BenchmarkHomeReads(b *testing.B) {
 	db, cat := smartFolderBenchDB(b)
 	ctx := context.Background()
@@ -51,15 +52,27 @@ func BenchmarkHomeReads(b *testing.B) {
 				}
 			}
 		})
+		readShelves := func(b *testing.B) {
+			b.Helper()
+			page, err := db.Home().ShelfItems(ctx, audience, keys)
+			if err != nil {
+				b.Fatal(err)
+			}
+			if len(page.Shelves) == 0 {
+				b.Fatal("no shelf")
+			}
+		}
+		// 保持の無い読み出し（知らせのあとの最初の読み出し）と、保持した棚の読み出しを測る。
 		b.Run("8 shelves for "+audience.String(), func(b *testing.B) {
 			for b.Loop() {
-				page, err := db.Home().ShelfItems(ctx, audience, keys)
-				if err != nil {
-					b.Fatal(err)
-				}
-				if len(page.Shelves) == 0 {
-					b.Fatal("no shelf")
-				}
+				db.homeShelves.dropFor([]domain.Event{domain.HomeChanged{}})
+				readShelves(b)
+			}
+		})
+		b.Run("8 held shelves for "+audience.String(), func(b *testing.B) {
+			readShelves(b)
+			for b.Loop() {
+				readShelves(b)
 			}
 		})
 	}
