@@ -455,10 +455,12 @@ func run(opts runOptions) error {
 		NetworkSettings:   networkSettings,
 		AutoImport:        autoImport,
 		AutoTagging:       autoTagger,
-		VersionJudging:    versionJudge,
-		Ollama:            ollamaConnection,
-		ComfyUI:           comfyUIConnection,
-		ThumbnailEdits:    thumbnailEdits,
+		// 分野を選ぶと、自動タグ付けが入なら全動画を判定に回す（specs/057-home/research.md R-6）。
+		Onboarding:     app.NewOnboarding(db.Home(), autoTagger),
+		VersionJudging: versionJudge,
+		Ollama:         ollamaConnection,
+		ComfyUI:        comfyUIConnection,
+		ThumbnailEdits: thumbnailEdits,
 		// 手元の画像のアップロードは、生成した画像と同じ取り込みの適用で代表サムネイルにする。
 		ThumbnailUploads: ingest,
 		WorkInfoPlugins:  workInfoPlugins,

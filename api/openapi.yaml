@@ -1687,6 +1687,90 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/onboarding:
+    get:
+      operationId: getOnboarding
+      summary: オンボードの段階を返す
+      description: |
+        段階は設定 `onboarding.step` に 1 つで持つ。無ければ、メディアフォルダがあれば `done`、
+        無ければ `folders` である（specs/057-home/research.md R-3）。所有者だけ。
+      responses:
+        "200":
+          description: 今の段階
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Onboarding"
+    put:
+      operationId: updateOnboarding
+      summary: オンボードの段階を書く
+      description: |
+        名前の段階をそのまま書くので、2 つの端末からの書き込みは後のものが残る。段階が変わったら
+        画面の知らせ `home` を出す（specs/057-home/research.md R-3、R-16）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/Onboarding"
+      responses:
+        "200":
+          description: 書いた段階
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Onboarding"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/onboarding/interests:
+    get:
+      operationId: listOnboardingInterests
+      summary: 分野の一覧を返す
+      description: |
+        一覧の順に、それぞれの分野のタグの条件の棚がもうホームにあるか（`onHome`）を添える
+        （specs/057-home/research.md R-5）。
+      responses:
+        "200":
+          description: 分野の一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterestList"
+    post:
+      operationId: pickOnboardingInterests
+      summary: 選んだ分野をタグと棚にする
+      description: |
+        1 つの取引で、分野ごとにタグを名前か同義語で探すか同義語付きで作り、種類の無いタグに `Genre` を
+        付け、そのタグの条件の所有者の棚をホームの後ろに作る。棚がもうある分野は棚を足さない。確定後、
+        自動タグ付けが入なら「Tag all videos again」と同じくすべての動画を判定に回し、その件数を
+        `queued` で返す（specs/057-home/research.md R-6）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InterestPick"
+      responses:
+        "200":
+          description: 足した棚と、判定に回した動画の件数
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InterestPickResult"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          description: 棚を足すとホームが 50 を超える（conflict）
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
   /api/settings/auto-import:
     get:
       operationId: getAutoImportSettings
@@ -6210,6 +6294,96 @@ components:
         scope:
           type: string
           enum: [missing, all]
+
+    Onboarding:
+      type: object
+      required: [step]
+      additionalProperties: false
+      properties:
+        step:
+          type: string
+          enum: [folders, scan, interests, done]
+          description: オンボードの段階（specs/057-home/research.md R-3）
+
+    Interest:
+      type: object
+      required: [id, name, synonym, onHome]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          description: 分野の変わらない識別子（specs/057-home/data-model.md「Interest catalog」）
+        name:
+          type: string
+          description: タグの名前（英語）
+        synonym:
+          type: string
+          description: タグの同義語（日本語）
+        onHome:
+          type: boolean
+          description: この分野のタグの条件の棚がもうホームにある
+
+    InterestList:
+      type: object
+      required: [interests]
+      additionalProperties: false
+      properties:
+        interests:
+          type: array
+          items:
+            $ref: "#/components/schemas/Interest"
+
+    InterestPick:
+      type: object
+      required: [ids]
+      additionalProperties: false
+      properties:
+        ids:
+          type: array
+          minItems: 1
+          maxItems: 24
+          items:
+            type: string
+
+    InterestPickResult:
+      type: object
+      required: [shelves, queued]
+      additionalProperties: false
+      properties:
+        shelves:
+          type: array
+          description: 足した棚。棚がもうホームにあった分野の分は含まない
+          items:
+            $ref: "#/components/schemas/HomeShelf"
+        queued:
+          type: integer
+          description: 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
+
+    HomeShelfKey:
+      type: string
+      description: '`folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`'
+
+    HomeShelf:
+      type: object
+      required: [key, kind, name]
+      additionalProperties: false
+      description: ホームの棚 1 つ（specs/057-home/contracts/screen-api.md）
+      properties:
+        key:
+          $ref: "#/components/schemas/HomeShelfKey"
+        kind:
+          type: string
+          enum: [folder, continue, recent, unshelved, recommended]
+        name:
+          type: string
+          description: フォルダの名前。固定の棚では空で、画面が名前を付ける
+        folderId:
+          type: integer
+          format: int64
+          description: フォルダの棚だけ
+        byOrganizer:
+          type: boolean
+          description: 所有者だけ。owner_kept が 0 の間は真
 
     AutoTaggingQueued:
       type: object
