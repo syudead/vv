@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"testing"
@@ -30,7 +31,7 @@ func entryState(entry domain.ActivityEntry) domain.ActivityState {
 	return domain.ActivityState{Status: entry.Status, Reason: entry.Reason, Outcome: entry.Outcome}
 }
 
-// queueNewFile は新しいファイルを登録し、走査と同じく解析・サムネイル・シーク用サムネイルの仕事を積む。
+// queueNewFile は新しいファイルを登録し、走査と同じく解析・サムネイル・シーク用サムネイルの仕事をまとめて積む。
 func queueNewFile(t *testing.T, db *DB, name string, decider domain.ActivityDecider) int64 {
 	t.Helper()
 	ctx := context.Background()
@@ -38,10 +39,9 @@ func queueNewFile(t *testing.T, db *DB, name string, decider domain.ActivityDeci
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail} {
-		if err := db.Ingest().EnqueueJob(ctx, kind, video.ID, decider); err != nil {
-			t.Fatal(err)
-		}
+	if err := db.Ingest().EnqueueJobs(ctx, video.ID, decider,
+		domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail); err != nil {
+		t.Fatal(err)
 	}
 	return video.ID
 }
@@ -240,8 +240,15 @@ func TestRetryImportOpensANewEntryForTheFailedStages(t *testing.T) {
 		t.Fatalf("entries = %+v, want one attention/failed at probe", failed)
 	}
 
-	if err := db.Ingest().RetryImport(ctx, "key-retry"); err != nil {
+	if err := db.Ingest().RetryImport(ctx, failed[0].ID, "key-gone"); !errors.Is(err, domain.ErrActivityNotRetryable) {
+		t.Errorf("retry of a gone video = %v, want ErrActivityNotRetryable", err)
+	}
+	if err := db.Ingest().RetryImport(ctx, failed[0].ID, "key-retry"); err != nil {
 		t.Fatal(err)
+	}
+	// 同時に届いた 2 つ目のやり直しは、1 つ目が閉じた記録を読み直して断る。1 つ目の仕事が待っていても受けない。
+	if err := db.Ingest().RetryImport(ctx, failed[0].ID, "key-retry"); !errors.Is(err, domain.ErrActivityNotRetryable) {
+		t.Errorf("second retry of the same entry = %v, want ErrActivityNotRetryable", err)
 	}
 	entries := importEntries(t, db)
 	if len(entries) != 2 {
@@ -260,11 +267,8 @@ func TestRetryImportOpensANewEntryForTheFailedStages(t *testing.T) {
 		t.Errorf("retried entry = %+v, want done", entries[0])
 	}
 
-	if err := db.Ingest().RetryImport(ctx, "key-retry"); !errors.Is(err, domain.ErrActivityNotRetryable) {
-		t.Errorf("retry with nothing failed = %v, want ErrActivityNotRetryable", err)
-	}
-	if err := db.Ingest().RetryImport(ctx, "key-gone"); !errors.Is(err, domain.ErrActivityNotRetryable) {
-		t.Errorf("retry of a gone video = %v, want ErrActivityNotRetryable", err)
+	if err := db.Ingest().RetryImport(ctx, entries[0].ID, "key-retry"); !errors.Is(err, domain.ErrActivityNotRetryable) {
+		t.Errorf("retry of a done entry = %v, want ErrActivityNotRetryable", err)
 	}
 }
 
@@ -282,7 +286,8 @@ func TestRetryImportOfAnInterruptedEntryAdoptsTheWaitingJobs(t *testing.T) {
 	if _, err := db.Ingest().RequeueRunningJobs(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().RetryImport(ctx, "key-paused"); err != nil {
+	paused := importEntries(t, db)
+	if err := db.Ingest().RetryImport(ctx, paused[0].ID, "key-paused"); err != nil {
 		t.Fatal(err)
 	}
 	entries := importEntries(t, db)
@@ -293,6 +298,99 @@ func TestRetryImportOfAnInterruptedEntryAdoptsTheWaitingJobs(t *testing.T) {
 	runImportStage(t, db, domain.JobProbe)
 	if entries := importEntries(t, db); len(entries) != 2 || entryState(entries[0]) != activityClaimed {
 		t.Errorf("entries = %+v, want the owner entry running/processing", entries)
+	}
+}
+
+// やり直しの記録の進み具合は、前の記録で済んだ段階も数える。やり直しの記録に属するのは積み直した仕事だけである。
+func TestRetriedImportProgressCountsTheStagesAlreadyDone(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	queueNewFile(t, db, "partial", domain.ActivityByRule)
+	runImportStage(t, db, domain.JobProbe)
+	giveUpStage(t, db, domain.JobThumbnail, errors.New("no frame"))
+	for _, kind := range []domain.JobKind{domain.JobSeekThumbnail, domain.JobPreview, domain.JobFingerprint} {
+		runImportStage(t, db, kind)
+	}
+	failed := importEntries(t, db)
+	if len(failed) != 1 || entryState(failed[0]) != activityFailed {
+		t.Fatalf("entries = %+v, want one attention/failed", failed)
+	}
+	if err := db.Ingest().RetryImport(ctx, failed[0].ID, "key-partial"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Ingest().ClaimJob(ctx, domain.JobThumbnail); err != nil {
+		t.Fatal(err)
+	}
+	entries := importEntries(t, db)
+	progress := entries[0].Progress
+	if progress == nil || progress.Stage != domain.JobThumbnail || progress.Done != 4 || progress.Total != 5 {
+		t.Errorf("progress = %+v, want thumbnail with 4 of 5 done", progress)
+	}
+}
+
+// 取り込みの途中で動画が消えると、その import の記録は done/gone で閉じる（data-model.md「Outcomes」）。
+func TestImportActivityOfADeletedVideoIsGone(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	videoID := queueNewFile(t, db, "deleted", domain.ActivityByRule)
+	queueNewFile(t, db, "kept", domain.ActivityByRule)
+	runImportStage(t, db, domain.JobProbe)
+
+	if err := db.ScanIndex().DeleteVideos(ctx, []int64{videoID}); err != nil {
+		t.Fatal(err)
+	}
+	gone := domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivityGone}
+	for _, entry := range importEntries(t, db) {
+		want := activityWaiting
+		if entry.Subject.Key == "key-deleted" {
+			want = gone
+		}
+		if entryState(entry) != want {
+			t.Errorf("entry %s = %+v, want %+v", entry.Subject.Key, entryState(entry), want)
+		}
+	}
+}
+
+// 登録の所在を失った動画の最後の待つ仕事を捨てると、その import の記録は完了ではなく done/gone で閉じる。
+func TestImportActivityOfAnUnplacedVideoIsGone(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	videoID := queueNewFile(t, db, "unplaced", domain.ActivityByRule)
+	var encoded string
+	if err := db.sql.QueryRowContext(ctx, `select json_group_array(id) from (select id from jobs where video_id = ?
+		order by id)`, videoID).Scan(&encoded); err != nil {
+		t.Fatal(err)
+	}
+	var ids []int64
+	if err := json.Unmarshal([]byte(encoded), &ids); err != nil {
+		t.Fatal(err)
+	}
+	for i, id := range ids {
+		dropJob(t, db, id)
+		state := entryState(importEntries(t, db)[0])
+		if last := i == len(ids)-1; last && state != (domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivityGone}) {
+			t.Errorf("after the last drop: entry = %+v, want done/gone", state)
+		} else if !last && state.Status != domain.ActivityRunning {
+			t.Errorf("after drop %d: entry = %+v, want running", i, state)
+		}
+	}
+}
+
+// dropJob は仕事 id を、取り出しと同じく begin immediate の取引で所在の無い仕事として捨てる。
+func dropJob(t *testing.T, db *DB, id int64) {
+	t.Helper()
+	ctx := context.Background()
+	conn, err := db.sql.Conn(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = conn.Close() }()
+	if _, err := conn.ExecContext(ctx, `begin immediate`); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Ingest().dropUnplacedJob(ctx, conn, id); err != nil {
+		_, _ = conn.ExecContext(ctx, `rollback`)
+		t.Fatal(err)
 	}
 }
 

@@ -44,3 +44,19 @@ func TestScanQueuesJobsWithItsDecider(t *testing.T) {
 		})
 	}
 }
+
+// 新しい動画に要る仕事は 1 回の呼び出しでまとめて積む。別々に確定すると、その間に前の段階が終わって記録が
+// 閉じ、残りの段階が 2 件目の import の記録を開く（specs/055-activity/research.md R-3）。
+func TestScanQueuesANewVideosJobsInOneCall(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "a"})
+	index := newFakeIndex()
+	if _, err := scopedScanner(root, index).Scan(context.Background(), domain.ActivityByOwner); err != nil {
+		t.Fatal(err)
+	}
+	if len(index.jobs) < 2 {
+		t.Fatalf("jobs = %v, want the new video's stages", index.jobs)
+	}
+	if index.enqueueCalls != 1 {
+		t.Errorf("EnqueueJobs calls = %d, want 1 for %d jobs", index.enqueueCalls, len(index.jobs))
+	}
+}

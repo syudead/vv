@@ -146,6 +146,24 @@ func supersedeActivity(ctx context.Context, tx activityWriter, entry domain.Acti
 	return nil
 }
 
+// activityRetryOffered は記録 id が取引 tx の中でまだやり直しを出すかを返す（domain.ActivityEntry.RetryOffered）。
+// やり直しを書く取引の中で読み直し、同時に届いた別のやり直しが閉じた記録を二度やり直さない。無い記録は偽である。
+func activityRetryOffered(ctx context.Context, tx activityWriter, id int64) (bool, error) {
+	var entry domain.ActivityEntry
+	var kind, status, reason string
+	err := tx.QueryRowContext(ctx, `select kind, status, coalesce(reason, '') from activity_entries where id = ?`, id).
+		Scan(&kind, &status, &reason)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("cannot read the activity entry to retry (id=%d): %w", id, err)
+	}
+	entry.Kind, entry.Status, entry.Reason = domain.ActivityKind(kind), domain.ActivityStatus(status),
+		domain.ActivityReason(reason)
+	return entry.RetryOffered(), nil
+}
+
 // setActivityState は記録 id の状態と理由か結果を state にする。記録を変えたことを c に残す。
 func setActivityState(ctx context.Context, tx activityWriter, c *changes, id int64, state domain.ActivityState, now time.Time) error {
 	if err := writeActivityState(ctx, tx, id, state, now.UnixMilli()); err != nil {

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -133,6 +134,57 @@ func settleImportActivity(ctx context.Context, q activityWriter, c *changes, id 
 	return nil
 }
 
+// goneImportCondition は running の import の記録（別名 e）のうち、待つか走る仕事がもう無いものの条件である。
+const goneImportCondition = `e.kind = 'import' and e.status = 'running' and not exists (
+	select 1 from jobs j where j.activity_id = e.id and j.state in ('queued', 'running'))`
+
+// closeGoneImportActivity は import の記録 id を、待つか走る仕事がもう無い running なら done/gone で閉じる。
+// 登録の所在を失った動画の最後の仕事を捨てたときに呼ぶ（data-model.md「Outcomes」の gone）。閉じたら
+// true を返す。
+func closeGoneImportActivity(ctx context.Context, q activityWriter, c *changes, id int64, now time.Time) (bool, error) {
+	return closeGoneImports(ctx, q, c, `e.id = ?`, now, id)
+}
+
+// closeDeletedVideoImports は消した動画 deleted の running の import の記録のうち、待つか走る仕事が無くなった
+// ものを done/gone で閉じる。仕事は動画の行と連鎖して消えているので、記録は対象の内容の鍵で引く。動画の行を
+// 消す取引の確定（DB.commit）から呼ぶ。
+func closeDeletedVideoImports(ctx context.Context, q activityWriter, c *changes, deleted []domain.DeletedVideo) error {
+	if len(deleted) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(deleted))
+	for _, video := range deleted {
+		keys = append(keys, video.ContentKey)
+	}
+	encoded, err := json.Marshal(keys)
+	if err != nil {
+		return fmt.Errorf("cannot build the deleted content keys: %w", err)
+	}
+	_, err = closeGoneImports(ctx, q, c, `e.subject_key in (select value from json_each(?))`, time.Now(),
+		string(encoded))
+	return err
+}
+
+// closeGoneImports は条件 where（別名 e）を満たし goneImportCondition に当たる記録を done/gone にする。
+func closeGoneImports(
+	ctx context.Context, q activityWriter, c *changes, where string, now time.Time, args ...any,
+) (bool, error) {
+	res, err := q.ExecContext(ctx, `update activity_entries as e set status = ?, reason = null, outcome = ?,
+		updated_at = ? where `+where+` and `+goneImportCondition,
+		append([]any{string(domain.ActivityDone), string(domain.ActivityGone), now.UnixMilli()}, args...)...)
+	if err != nil {
+		return false, fmt.Errorf("cannot close the gone import activity: %w", err)
+	}
+	closed, err := res.RowsAffected()
+	if err != nil {
+		return false, fmt.Errorf("cannot close the gone import activity: %w", err)
+	}
+	if closed > 0 {
+		c.activityChanged()
+	}
+	return closed > 0, nil
+}
+
 // importFailure は import の記録で諦めた最初の仕事の段階と文である。
 type importFailure struct {
 	kind    domain.JobKind
@@ -166,7 +218,8 @@ func importActivityJobs(ctx context.Context, q queryExecer, id int64) ([]domain.
 	return jobs, failure, nil
 }
 
-// attachImportProgress は waiting を過ぎた running の import の記録に、今の段階と済んだ段階の数を添える。
+// attachImportProgress は waiting を過ぎた running の import の記録に、今の段階と、その動画の済んだ段階の数を
+// 添える。
 func attachImportProgress(ctx context.Context, q rowsQueryer, entries []domain.ActivityEntry) error {
 	index, encoded := activityEntryIDs(entries, func(entry domain.ActivityEntry) bool {
 		return entry.Kind == domain.ActivityImport && entry.Status == domain.ActivityRunning &&
@@ -175,8 +228,11 @@ func attachImportProgress(ctx context.Context, q rowsQueryer, entries []domain.A
 	if len(index) == 0 {
 		return nil
 	}
-	rows, err := q.QueryContext(ctx, `select activity_id, kind, state from jobs
-		where activity_id in (select value from json_each(?)) order by id`, encoded)
+	// 済んだ段階は動画のすべての仕事から数える。やり直しの記録に属するのは積み直した仕事だけで、前に済んだ
+	// 段階の仕事は前の記録を指したまま残る。
+	rows, err := q.QueryContext(ctx, `select a.activity_id, j.kind, j.state from jobs j join (
+			select distinct activity_id, video_id from jobs where activity_id in (select value from json_each(?))
+		) a on a.video_id = j.video_id order by j.id`, encoded)
 	if err != nil {
 		return fmt.Errorf("cannot read the import progress: %w", err)
 	}

@@ -66,10 +66,11 @@ type Index interface {
 }
 
 // Queue は重い処理の積み先である。nil でもよい（積まないだけ）。decider は取り込みを始めたもので、
-// 積んだ仕事の import の記録に残る（specs/055-activity/research.md R-5）。
+// 積んだ仕事の import の記録に残る（specs/055-activity/research.md R-5）。1 本の動画に要る仕事は 1 回の
+// 呼び出しでまとめて積み、1 件の記録にする（R-3）。
 type Queue interface {
-	EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error
-	EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error
+	EnqueueJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
+	EnsureJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
 }
 
 // Reporter は走査の進捗・今のファイル・ファイルごとの失敗の報告先である。nil でも
@@ -737,14 +738,16 @@ func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVid
 		// （specs/030-video-versions/data-model.md §6）。
 		{kind: domain.JobFingerprint, pending: video.FingerprintMissing},
 	}
+	var kinds []domain.JobKind
 	for _, state := range states {
 		if state.pending {
-			if err := s.queue.EnsureJob(ctx, state.kind, video.ID, decider); err != nil {
-				return err
-			}
+			kinds = append(kinds, state.kind)
 		}
 	}
-	return nil
+	if len(kinds) == 0 {
+		return nil
+	}
+	return s.queue.EnsureJobs(ctx, video.ID, decider, kinds...)
 }
 
 // enqueue は解析・サムネイル・シーク用サムネイル・プレビューのうち要るジョブを積む。
@@ -765,12 +768,10 @@ func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult, decid
 	if result.NeedsPreview {
 		kinds = append(kinds, domain.JobPreview)
 	}
-	for _, kind := range kinds {
-		if err := s.queue.EnqueueJob(ctx, kind, result.ID, decider); err != nil {
-			return err
-		}
+	if len(kinds) == 0 {
+		return nil
 	}
-	return nil
+	return s.queue.EnqueueJobs(ctx, result.ID, decider, kinds...)
 }
 
 // removeMissing は走査で見つからなかった行を消す。

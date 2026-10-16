@@ -572,14 +572,20 @@ func resetFailedStages(ctx context.Context, tx *sql.Tx, id, now int64, probeDone
 // RetryImport は内容の鍵 contentKey の動画の失敗した段階を、1 つの取引の中で積み直す（POST
 // /api/activity/{id}/retry の import）。読み取りのやり直し（RetryProbe）と同じく段階の状態を pending に戻し、
 // 解析が済んでいれば失敗した一覧用プレビューを、シーク用サムネイルが済んでいれば上限まで失敗した指紋も積む。
-// 積んだ仕事と、再起動で中断して待っている仕事は、所有者が始めた新しい import の記録になる。その動画が無いか、
-// 積み直す仕事が 1 つも無ければ domain.ErrActivityNotRetryable を返す。
-func (s *IngestStore) RetryImport(ctx context.Context, contentKey string) error {
+// 積んだ仕事と、再起動で中断して待っている仕事は、所有者が始めた新しい import の記録になる。やり直す記録
+// entryID は同じ取引で読み直し、もうやり直しを出さない（同時に届いた別のやり直しが閉じた）か、その動画が
+// 無いか、積み直す仕事が 1 つも無ければ domain.ErrActivityNotRetryable を返す。
+func (s *IngestStore) RetryImport(ctx context.Context, entryID int64, contentKey string) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return fmt.Errorf("cannot start retrying the import (%s): %w", contentKey, err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	if offered, err := activityRetryOffered(ctx, tx, entryID); err != nil {
+		return err
+	} else if !offered {
+		return domain.ErrActivityNotRetryable
+	}
 	var id int64
 	var probeState, seekState string
 	err = tx.QueryRowContext(ctx, `select id, probe_state, seek_thumbnail_state from videos

@@ -72,12 +72,17 @@ Each job row keeps the id of the entry it belongs to
 | A job is queued for a video with no such entry | A new `running`/`waiting` entry, with the decider of whoever queued it |
 | A job is claimed and its entry is not `running` (interrupted at startup, or queued before this feature) | A new entry by `rule`, which takes every pending job of the video and supersedes the old one |
 | A job of the entry finishes or fails | The entry is rolled up again |
+| The video is deleted, or its last pending job is dropped because the video lost its registered location | The entry closes as `done`/`gone` |
 
 The roll-up (`ImportActivityState`) is `running` while any of the entry's jobs
 is pending (`waiting` until one is claimed), `attention`/`failed` when a stage
 gave up, with that stage in `stage` and its message in `detail`, else
 `done`/`completed`. A finished entry never returns to `running`, so a rescan,
-a re-probe or a retry that queues jobs again opens a new entry.
+a re-probe or a retry that queues jobs again opens a new entry. A scan queues
+all the jobs a video needs in one transaction, so a stage that finishes in
+between cannot close the entry before the later stages join it. The progress
+of a `processing` entry counts the stages done across all the video's jobs,
+since a retry's entry holds only the jobs it queued again.
 
 The decider is the one who started the run
 ([R-5](../../specs/055-activity/research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)).
@@ -130,7 +135,7 @@ use case registered for its kind. A kind with nothing registered answers
 
 | Kind | Retry | Undo |
 | --- | --- | --- |
-| `import` | `IngestStore.RetryImport` queues the video's failed stages again, as a re-probe does, and the jobs still waiting after an interruption; the owner's new entry supersedes the old one. A video that is gone, or has nothing to queue, answers `409 activity_not_retryable` | — |
+| `import` | `IngestStore.RetryImport` queues the video's failed stages again, as a re-probe does, and the jobs still waiting after an interruption; the owner's new entry supersedes the old one. It reads the entry again in its transaction, so a second retry of the same entry, a video that is gone, or nothing to queue answers `409 activity_not_retryable` | — |
 | `scan` | `Scans.RetryActivity` starts a manual scan of every media folder; `409 scan_in_progress` while a scan runs | — |
 | `auto_tag` | `AutoTagger` queues the video again; `409 auto_tagging_off` while the feature is off | One tag at a time, in one `ActivityStore` transaction ([auto-tagging.md](auto-tagging.md#activity-entries-and-undo)) |
 

@@ -82,22 +82,26 @@ func TestScansRetryActivityStartsAManualScan(t *testing.T) {
 	}
 }
 
-// fakeImportRetryStore は受け取った内容の鍵を残す。
-type fakeImportRetryStore struct{ keys []string }
+// fakeImportRetryStore は受け取った記録の id と内容の鍵を残す。
+type fakeImportRetryStore struct {
+	ids  []int64
+	keys []string
+}
 
-func (f *fakeImportRetryStore) RetryImport(_ context.Context, contentKey string) error {
+func (f *fakeImportRetryStore) RetryImport(_ context.Context, entryID int64, contentKey string) error {
+	f.ids = append(f.ids, entryID)
 	f.keys = append(f.keys, contentKey)
 	return nil
 }
 
-// import の記録のやり直しは、対象の内容の鍵の動画の失敗した段階を積み直す。
+// import の記録のやり直しは、記録の id を添えて、対象の内容の鍵の動画の失敗した段階を積み直す。
 func TestImportRetrierRetriesTheSubjectVideo(t *testing.T) {
 	store := &fakeImportRetryStore{}
-	entry := domain.ActivityEntry{Kind: domain.ActivityImport, Subject: domain.ActivitySubject{Key: "key-a"}}
+	entry := domain.ActivityEntry{ID: 7, Kind: domain.ActivityImport, Subject: domain.ActivitySubject{Key: "key-a"}}
 	if err := NewImportRetrier(store).RetryActivity(context.Background(), entry); err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(store.keys, []string{"key-a"}) {
-		t.Errorf("retried keys = %v, want [key-a]", store.keys)
+	if !slices.Equal(store.keys, []string{"key-a"}) || !slices.Equal(store.ids, []int64{7}) {
+		t.Errorf("retried ids = %v, keys = %v, want [7] and [key-a]", store.ids, store.keys)
 	}
 }

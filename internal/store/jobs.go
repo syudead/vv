@@ -20,18 +20,32 @@ import (
 // 積んだ仕事は動画の running の import の記録に加わり、無ければ decider が始めた記録を開く
 // （specs/055-activity/research.md R-3・R-5）。
 func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error {
+	return s.EnqueueJobs(ctx, videoID, decider, kind)
+}
+
+// EnqueueJobs は動画 videoID の kinds の仕事を、EnqueueJob と同じく 1 つの取引で積む。確定の前にワーカーが
+// 前の段階を終えて記録を閉じないよう、走査が新しい動画に要る仕事をまとめて 1 件の記録に入れるために使う
+// （research.md R-3）。
+func (s *IngestStore) EnqueueJobs(
+	ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
+) error {
+	if len(kinds) == 0 {
+		return nil
+	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("cannot start queueing the job (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot start queueing the jobs (%v, video=%d): %w", kinds, videoID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
 	var c changes
-	if err := requeueJob(ctx, tx, &c, kind, videoID, time.Now().Unix(), decider); err != nil {
-		return err
+	for _, kind := range kinds {
+		if err := requeueJob(ctx, tx, &c, kind, videoID, time.Now().Unix(), decider); err != nil {
+			return err
+		}
 	}
-	c.jobsQueued(kind)
+	c.jobsQueued(kinds...)
 	if err := s.db.commit(ctx, tx, &c); err != nil {
-		return fmt.Errorf("cannot commit queueing the job (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot commit queueing the jobs (%v, video=%d): %w", kinds, videoID, err)
 	}
 	return nil
 }
@@ -60,6 +74,50 @@ var jobStateColumns = map[domain.JobKind]string{
 //
 // 積んだ仕事の記録は EnqueueJob と同じく決める。
 func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error {
+	return s.EnsureJobs(ctx, videoID, decider, kind)
+}
+
+// EnsureJobs は動画 videoID の kinds の欠けた仕事を、EnsureJob と同じく 1 つの取引で積み直す。走査が動画に
+// 要る仕事をまとめて 1 件の記録に入れるために使う（EnqueueJobs と同じ）。
+func (s *IngestStore) EnsureJobs(
+	ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
+) error {
+	if len(kinds) == 0 {
+		return nil
+	}
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot start restoring missing jobs (%v, video=%d): %w", kinds, videoID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var queued []domain.JobKind
+	for _, kind := range kinds {
+		inserted, err := ensureJob(ctx, tx, kind, videoID)
+		if err != nil {
+			return err
+		}
+		if inserted {
+			queued = append(queued, kind)
+		}
+	}
+	var c changes
+	if len(queued) > 0 {
+		if err := joinImportActivity(ctx, tx, &c, videoID, decider, time.Now()); err != nil {
+			return err
+		}
+		if err := addScanVideos(ctx, tx, videoID); err != nil {
+			return err
+		}
+		c.jobsQueued(queued...)
+	}
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return fmt.Errorf("cannot commit restoring missing jobs (%v, video=%d): %w", kinds, videoID, err)
+	}
+	return nil
+}
+
+// ensureJob は取引 tx で、動画 videoID に欠けた kind の仕事を積み直し、積んだかを返す（EnsureJob）。
+func ensureJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, videoID int64) (bool, error) {
 	var pending string
 	discarded := `state = 'failed'`
 	if kind == domain.JobFingerprint {
@@ -68,19 +126,13 @@ func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoI
 	} else {
 		column, ok := jobStateColumns[kind]
 		if !ok {
-			return fmt.Errorf("unknown job kind: %s", kind)
+			return false, fmt.Errorf("unknown job kind: %s", kind)
 		}
 		pending = `exists (select 1 from videos where id = ? and ` + column + ` = 'pending')`
 	}
-
-	tx, err := s.db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("cannot start restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
-	}
-	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and `+discarded+` and `+pending,
 		string(kind), videoID, videoID); err != nil {
-		return fmt.Errorf("cannot discard finished job rows (%s, video=%d): %w", kind, videoID, err)
+		return false, fmt.Errorf("cannot discard finished job rows (%s, video=%d): %w", kind, videoID, err)
 	}
 	now := time.Now().Unix()
 	res, err := tx.ExecContext(ctx, `
@@ -89,26 +141,13 @@ func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoI
 		where not exists (select 1 from jobs where kind = ? and video_id = ?) and `+pending,
 		string(kind), videoID, now, now, string(kind), videoID, videoID)
 	if err != nil {
-		return fmt.Errorf("cannot restore missing jobs (%s, video=%d): %w", kind, videoID, err)
+		return false, fmt.Errorf("cannot restore missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	inserted, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("cannot count restored jobs (%s, video=%d): %w", kind, videoID, err)
+		return false, fmt.Errorf("cannot count restored jobs (%s, video=%d): %w", kind, videoID, err)
 	}
-	var c changes
-	if inserted > 0 {
-		if err := joinImportActivity(ctx, tx, &c, videoID, decider, time.Now()); err != nil {
-			return err
-		}
-		if err := addScanVideos(ctx, tx, videoID); err != nil {
-			return err
-		}
-		c.jobsQueued(kind)
-	}
-	if err := s.db.commit(ctx, tx, &c); err != nil {
-		return fmt.Errorf("cannot commit restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
-	}
-	return nil
+	return inserted > 0, nil
 }
 
 // ClaimJob は待ち行列から kind の仕事を1件専有する。
@@ -222,7 +261,7 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 }
 
 // dropUnplacedJob は登録の所在が無くなった動画の仕事 id を、begin immediate で始めた conn の取引で捨て、
-// その記録の状態をまとめ直して確定する。
+// その記録を閉じるかまとめ直して確定する。
 func (s *IngestStore) dropUnplacedJob(ctx context.Context, conn *sql.Conn, id int64) error {
 	var activityID sql.NullInt64
 	if err := conn.QueryRowContext(ctx, `select activity_id from jobs where id = ?`, id).Scan(&activityID); err != nil {
@@ -234,10 +273,18 @@ func (s *IngestStore) dropUnplacedJob(ctx context.Context, conn *sql.Conn, id in
 	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
 		return err
 	}
+	// 最後に待っていた仕事を捨てた記録は、動画が登録の所在を失ったので done/gone で閉じる。まだ待つ仕事が
+	// あれば状態をまとめ直す。
 	var c changes
 	if activityID.Valid {
-		if err := settleImportActivity(ctx, conn, &c, activityID.Int64, time.Now()); err != nil {
+		closed, err := closeGoneImportActivity(ctx, conn, &c, activityID.Int64, time.Now())
+		if err != nil {
 			return err
+		}
+		if !closed {
+			if err := settleImportActivity(ctx, conn, &c, activityID.Int64, time.Now()); err != nil {
+				return err
+			}
 		}
 	}
 	if _, err := conn.ExecContext(ctx, `commit`); err != nil {

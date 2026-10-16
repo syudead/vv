@@ -26,8 +26,10 @@ type fakeIndex struct {
 	upserts []domain.VideoFile
 	deleted []int64
 	jobs    []jobCall
-	// deciders は EnqueueJob が受け取った、取り込みを始めたものである（jobs と同じ順）。
+	// deciders は EnqueueJobs が受け取った、取り込みを始めたものである（jobs と同じ順）。
 	deciders []domain.ActivityDecider
+	// enqueueCalls は EnqueueJobs の呼び出しの数である。
+	enqueueCalls int
 	// keyCalls は content_key を計算したパス。変わっていないファイルで
 	// 再計算していないことを確かめるために数える。
 	progress  []domain.ScanResult
@@ -160,22 +162,28 @@ func (f *fakeIndex) DeleteVideoLocations(ctx context.Context, ids []int64) error
 	return f.DeleteVideos(ctx, ids)
 }
 
-func (f *fakeIndex) EnqueueJob(_ context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error {
-	f.jobs = append(f.jobs, jobCall{kind: kind, videoID: videoID})
-	f.deciders = append(f.deciders, decider)
+func (f *fakeIndex) EnqueueJobs(
+	_ context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
+) error {
+	f.enqueueCalls++
+	for _, kind := range kinds {
+		f.jobs = append(f.jobs, jobCall{kind: kind, videoID: videoID})
+		f.deciders = append(f.deciders, decider)
+	}
 	return nil
 }
 
-func (f *fakeIndex) EnsureJob(_ context.Context, kind domain.JobKind, videoID int64, _ domain.ActivityDecider) error {
+func (f *fakeIndex) EnsureJobs(
+	_ context.Context, videoID int64, _ domain.ActivityDecider, kinds ...domain.JobKind,
+) error {
 	if f.ensureErr != nil {
 		return f.ensureErr
 	}
-	for _, job := range f.jobs {
-		if job.kind == kind && job.videoID == videoID {
-			return nil
+	for _, kind := range kinds {
+		if !slices.Contains(f.jobs, jobCall{kind: kind, videoID: videoID}) {
+			f.jobs = append(f.jobs, jobCall{kind: kind, videoID: videoID})
 		}
 	}
-	f.jobs = append(f.jobs, jobCall{kind: kind, videoID: videoID})
 	return nil
 }
 
@@ -444,11 +452,11 @@ func TestScanReportsEnqueueFailureWithRegisteredVideo(t *testing.T) {
 // failingQueue は仕事を積めない待ち行列である。
 type failingQueue struct{}
 
-func (failingQueue) EnqueueJob(context.Context, domain.JobKind, int64, domain.ActivityDecider) error {
+func (failingQueue) EnqueueJobs(context.Context, int64, domain.ActivityDecider, ...domain.JobKind) error {
 	return errors.New("queue unavailable")
 }
 
-func (failingQueue) EnsureJob(context.Context, domain.JobKind, int64, domain.ActivityDecider) error {
+func (failingQueue) EnsureJobs(context.Context, int64, domain.ActivityDecider, ...domain.JobKind) error {
 	return errors.New("queue unavailable")
 }
 

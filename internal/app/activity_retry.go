@@ -12,9 +12,10 @@ import (
 
 // ImportRetryStore は import の記録のやり直し先である。internal/store の *IngestStore が満たす。
 type ImportRetryStore interface {
-	// RetryImport は内容の鍵 contentKey の動画の失敗した段階を積み直す。積んだ仕事は所有者が始めた新しい
-	// import の記録になる。動画が無いか積み直す仕事が無ければ domain.ErrActivityNotRetryable。
-	RetryImport(ctx context.Context, contentKey string) error
+	// RetryImport は記録 entryID の、内容の鍵 contentKey の動画の失敗した段階を積み直す。積んだ仕事は所有者が
+	// 始めた新しい import の記録になる。記録がもうやり直しを出さないか、動画が無いか、積み直す仕事が無ければ
+	// domain.ErrActivityNotRetryable。
+	RetryImport(ctx context.Context, entryID int64, contentKey string) error
 }
 
 // ImportRetrier は import の記録の動画の失敗した段階を、読み取りのやり直し（POST /api/videos/{id}/probe）と
@@ -30,7 +31,7 @@ func NewImportRetrier(store ImportRetryStore) *ImportRetrier {
 
 // RetryActivity は記録 entry の対象の動画の取り込みをやり直す。
 func (r *ImportRetrier) RetryActivity(ctx context.Context, entry domain.ActivityEntry) error {
-	return r.store.RetryImport(ctx, entry.Subject.Key)
+	return r.store.RetryImport(ctx, entry.ID, entry.Subject.Key)
 }
 
 // RetryActivity は失敗した走査の記録 entry をやり直し、POST /api/scans と同じくすべての登録フォルダの手動の
