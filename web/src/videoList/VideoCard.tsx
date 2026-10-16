@@ -41,6 +41,7 @@ import {
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "./cardDrag";
+import { cardLinkState } from "./cardLink";
 import { CardMedia, useCardPreview } from "./cardPreview";
 import { shownVersionsCount, VersionsMark } from "./VersionsMark";
 
@@ -84,6 +85,17 @@ export interface VideoCardProps {
    * 渡す（specs/050-drag-organize/ui-design.md「Library」）。格子のカードは DraggableCard で包む。
    */
   drag?: CardDragBinding;
+  /**
+   * 格子のカードが開く再生画面で再生を始める（`state.autoplay`）。ホームの棚のカードが渡す
+   * （specs/057-home/research.md R-14）。
+   */
+  autoplay?: boolean;
+  /**
+   * 格子のカードの右上に、所有者のお気に入りの付け外しだけを置く（「Add to group」と
+   * 「Add to playlist」を置かない）。ホームの棚の card-0 のカードが渡す
+   * （specs/057-home/ui-design.md「Home」）。
+   */
+  favoriteOnly?: boolean;
 }
 
 function useCardState(video: Video) {
@@ -298,6 +310,8 @@ function VideoCard(props: VideoCardProps) {
     onPreviewReset,
     location,
     tagsRow,
+    autoplay,
+    favoriteOnly = false,
   } = props;
   const { duration, unplayable: rawUnplayable, state, ratio } = useCardState(video);
   // タグが無い動画は行を出さない（ui-design.md「Tag row」）が、題名の下の余白は
@@ -351,7 +365,7 @@ function VideoCard(props: VideoCardProps) {
           カードの下端へそろえつつ、その間の余白も押せる（開く・選択する）範囲に含めるためである。 */}
       <Link
         to={to ?? `/videos/${String(video.id)}`}
-        state={{ from: backTo }}
+        state={cardLinkState(backTo, autoplay)}
         aria-label={
           location === undefined
             ? video.title
@@ -454,8 +468,8 @@ function VideoCard(props: VideoCardProps) {
         // ポインタが入ったらホバープレビューを止め、ここからはプレビューを始めない。
         // 足す操作はハートの左（specs/044-playlists/ui-design.md「Add to playlist」）。
         <VideoThumbnailMark data-preview-checkbox="true" onPointerEnter={release}>
-          <VideoAddToGroup video={video} variant="card" />
-          <VideoAddToPlaylist video={video} variant="card" />
+          {!favoriteOnly && <VideoAddToGroup video={video} variant="card" />}
+          {!favoriteOnly && <VideoAddToPlaylist video={video} variant="card" />}
           <VideoFavorite video={video} variant="card" />
         </VideoThumbnailMark>
       )}

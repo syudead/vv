@@ -1,0 +1,252 @@
+import { Film, FolderSearch } from "lucide-react";
+import { type KeyboardEvent, useRef } from "react";
+import { Link, useLocation, useNavigate } from "react-router";
+
+import type { LibraryItem } from "../api/client";
+import type { HomeShelf } from "../api/home";
+import { useAudience } from "../auth/audience";
+import { t } from "../i18n";
+import { GroupCard } from "../library/GroupCard";
+import { LIBRARY_PATH } from "../library/libraryPath";
+import { isComposingNativeKeyEvent } from "../lib/ime";
+import TopBarPortal from "../shell/TopBarPortal";
+import { ErrorState } from "../ui/patterns/error-state";
+import { ListPage } from "../ui/patterns/list-page";
+import { LoadingState } from "../ui/patterns/loading-state";
+import { PageHeader } from "../ui/patterns/page-header";
+import { ShelfRow, ShelfRows } from "../ui/patterns/shelf-row";
+import { Toolbar } from "../ui/patterns/toolbar";
+import { Button } from "../ui/shadcn/button";
+import { normalizeQuery } from "../videoList/listCriteria";
+import SearchBox from "../videoList/SearchBox";
+import { EmptyState } from "../videoList/states";
+import {
+  usePreviewCoordination,
+  type PreviewCardProps,
+} from "../videoList/usePreviewCoordination";
+import VideoCard from "../videoList/VideoCard";
+import {
+  type DrawnShelf,
+  drawnShelves,
+  seeAllPath,
+  shelfHeadingPath,
+  shelfItemPath,
+  type ShelfStates,
+  shelfTitle,
+} from "./homeShelves";
+import { type HomeList, useHome } from "./useHome";
+import { useInView } from "./useInView";
+
+/** ONBOARDING_PATH はオンボードの画面の場所である（specs/057-home/ui-design.md「Onboarding」）。 */
+const ONBOARDING_PATH = "/welcome";
+
+/**
+ * HomePage は `/` のホームである（specs/057-home/ui-design.md「Home」）。棚を上から 1 行ずつ
+ * 並べ、カードを 1 回押すと再生する。トップバーには検索欄だけを置き、送るとライブラリで
+ * 探す。
+ */
+export default function HomePage() {
+  const home = useHome();
+  return (
+    <ListPage
+      header={<PageHeader title={t.home.title} titleHidden />}
+      toolbar={
+        <TopBarPortal>
+          <Toolbar placement="topBar" search={<HomeSearch />} />
+        </TopBarPortal>
+      }
+    >
+      <HomeBody {...home} />
+    </ListPage>
+  );
+}
+
+/**
+ * HomeSearch はトップバーの検索欄である。入力してもホームは絞らず、Enter で
+ * `/library?q=` を開く（ui-design.md「Why this shape」）。
+ */
+function HomeSearch() {
+  const navigate = useNavigate();
+  const field = useRef<HTMLInputElement | null>(null);
+  const submit = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== "Enter" || isComposingNativeKeyEvent(event.nativeEvent)) return;
+    const query = normalizeQuery(field.current?.value ?? "");
+    if (query === "") return;
+    event.preventDefault();
+    navigate(`${LIBRARY_PATH}?${new URLSearchParams({ q: query }).toString()}`);
+  };
+  return (
+    <div role="search" className="w-full" onKeyDown={submit}>
+      <SearchBox
+        query=""
+        onCommit={ignoreCommit}
+        inputRef={field}
+        label={t.home.search}
+        placeholder={t.home.search}
+      />
+    </div>
+  );
+}
+
+/** ignoreCommit は検索欄の打鍵の確定を捨てる。ホームは Enter で送るまで何もしない。 */
+function ignoreCommit() {}
+
+interface HomeBodyProps {
+  list: HomeList;
+  shelves: ShelfStates;
+  loadMore: () => void;
+  retryList: () => void;
+  retryShelf: (key: string) => void;
+}
+
+/** HomeBody は本体である。一覧の状態ごとに、棚の行か状態のブロックを 1 つ出す。 */
+function HomeBody({ list, shelves, loadMore, retryList, retryShelf }: HomeBodyProps) {
+  const owner = useAudience() === "owner";
+  const preview = usePreviewCoordination();
+  const frontier = useInView(loadMore);
+  if (list.status === "loading") {
+    return <LoadingState label={t.home.loading} layout="shelves" />;
+  }
+  if (list.status === "failed") {
+    return (
+      <ErrorState
+        title={<h2>{t.home.loadFailed(list.reason)}</h2>}
+        retryLabel={t.common.retry}
+        onRetry={retryList}
+      />
+    );
+  }
+  if (list.home.empty === "noVideos") return <EmptyHome owner={owner} />;
+  return (
+    <ShelfRows label={t.home.shelves}>
+      {drawnShelves(list.home.shelves, shelves).map((drawn) => (
+        <HomeShelfRow
+          key={drawn.shelf.key}
+          drawn={drawn}
+          frontierRef={drawn.frontier ? frontier : undefined}
+          preview={preview.cardProps}
+          onRetry={retryShelf}
+        />
+      ))}
+    </ShelfRows>
+  );
+}
+
+/** EmptyHome は見る人に見える動画が 1 本も無いときの本体である。所有者には取り込みへの入口を置く。 */
+function EmptyHome({ owner }: { owner: boolean }) {
+  return (
+    <EmptyState
+      icon={Film}
+      title={t.home.empty.title}
+      description={owner ? t.home.empty.owner : t.home.empty.guest}
+      action={
+        owner && (
+          <Button asChild size="sm">
+            <Link to={ONBOARDING_PATH}>{t.home.empty.setUp}</Link>
+          </Button>
+        )
+      }
+    />
+  );
+}
+
+/** HomeShelfRow は棚 1 つの行である。見出し、「See all」、カードか状態を出す。 */
+function HomeShelfRow({
+  drawn,
+  frontierRef,
+  preview,
+  onRetry,
+}: {
+  drawn: DrawnShelf;
+  frontierRef: ((element: HTMLElement | null) => void) | undefined;
+  preview: PreviewCardProps;
+  onRetry: (key: string) => void;
+}) {
+  const { shelf, state } = drawn;
+  const title = shelfTitle(shelf);
+  const all = seeAllPath(shelf);
+  return (
+    <ShelfRow
+      ref={frontierRef}
+      title={title}
+      leading={shelf.kind === "folder" ? <FolderSearch aria-hidden="true" /> : undefined}
+      href={shelfHeadingPath(shelf)}
+      actions={
+        all !== undefined && (
+          <Button variant="link" size="sm" asChild>
+            <Link to={all} aria-label={t.home.seeAllFor(title)}>
+              {t.home.seeAll}
+            </Link>
+          </Button>
+        )
+      }
+      previousLabel={t.home.previous(title)}
+      nextLabel={t.home.next(title)}
+      loading={state.status === "loading" ? t.home.loadingShelf(title) : undefined}
+      failed={
+        state.status === "failed"
+          ? {
+              message: t.home.shelfFailed(state.reason),
+              retryLabel: t.common.retry,
+              onRetry: () => onRetry(shelf.key),
+            }
+          : undefined
+      }
+    >
+      {state.status === "ready" && (
+        <ShelfCards shelf={shelf} items={state.items} preview={preview} />
+      )}
+    </ShelfRow>
+  );
+}
+
+/**
+ * ShelfCards は棚のカードである。ライブラリの動画とグループのカードを、タグの行・場所・選択の
+ * チェックなしで並べ、押すと再生画面を autoplay で開く（research.md R-14）。
+ */
+function ShelfCards({
+  shelf,
+  items,
+  preview,
+}: {
+  shelf: HomeShelf;
+  items: readonly LibraryItem[];
+  preview: PreviewCardProps;
+}) {
+  const backTo = useBackTo();
+  return (
+    <>
+      {items.map((item) => {
+        if (item.kind === "smartFolder") return null;
+        const common = {
+          backTo,
+          to: shelfItemPath(shelf, item),
+          selected: false,
+          selectionMode: false,
+          autoplay: true,
+          favoriteOnly: true,
+          ...preview,
+        };
+        return item.kind === "video" ? (
+          <VideoCard
+            key={`video:${String(item.video.id)}`}
+            video={item.video}
+            {...common}
+          />
+        ) : (
+          <GroupCard
+            key={`group:${String(item.group.id)}`}
+            group={item.group}
+            {...common}
+          />
+        );
+      })}
+    </>
+  );
+}
+
+/** useBackTo は再生画面の「戻る」が帰る場所（今のホームの URL）である。 */
+function useBackTo(): string {
+  const location = useLocation();
+  return `${location.pathname}${location.search}`;
+}
