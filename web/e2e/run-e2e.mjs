@@ -4,6 +4,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
+  generateActivityFixtures,
   generateDragOrganizeFixtures,
   generateFolderFixtures,
   generateFolderSearchFixtures,
@@ -41,6 +42,7 @@ const groupsMediaDir = path.join(runRoot, "groups-media");
 const groupsSpareDir = path.join(runRoot, "groups-spare");
 const dragOrganizeMediaDir = path.join(runRoot, "drag-organize-media");
 const historyMediaDir = path.join(runRoot, "history-media");
+const activityMediaDir = path.join(runRoot, "activity-media");
 const playlistsMediaDir = path.join(runRoot, "playlists-media");
 const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
 const scanIssuesMediaDir = path.join(runRoot, "scan-issues-media");
@@ -77,6 +79,7 @@ function run() {
     generateGroupsFixtures(groupsMediaDir, groupsSpareDir);
     generateDragOrganizeFixtures(dragOrganizeMediaDir);
     generateHistoryFixtures(historyMediaDir);
+    generateActivityFixtures(activityMediaDir);
     generatePlaylistsFixtures(playlistsMediaDir);
     generateScanProgressFixtures(scanProgressMediaDir);
     generateScanIssueFixtures(scanIssuesMediaDir);
@@ -135,6 +138,7 @@ function run() {
           MDM_E2E_GROUPS_SPARE_DIR: groupsSpareDir,
           MDM_E2E_DRAG_ORGANIZE_MEDIA_DIR: dragOrganizeMediaDir,
           MDM_E2E_HISTORY_MEDIA_DIR: historyMediaDir,
+          MDM_E2E_ACTIVITY_MEDIA_DIR: activityMediaDir,
           MDM_E2E_PLAYLISTS_MEDIA_DIR: playlistsMediaDir,
           MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
           MDM_E2E_SCAN_ISSUES_MEDIA_DIR: scanIssuesMediaDir,

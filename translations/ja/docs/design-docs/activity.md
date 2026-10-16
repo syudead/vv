@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/activity.md
-sourceHash: f635cc05056d9371ce82d40233ff386328894c2ffdcc7c631cefc4bdc500396c
+sourceHash: 0ebf8717046a905285b6977ca0996ebde81ec0b9497f1405d7d136ca56dbae74
 ---
 
 # 活動ログ {#activity-log}
@@ -93,6 +93,8 @@ stateDiagram-v2
 ## 画面は activity 通知で更新する {#the-screen-refreshes-on-an-activity-notification}
 
 `ActivityChanged` は `/api/events` 上のペイロードのない `activity` イベントになり、所有者のストリームにだけ送られ、`candidates` と同じように接続ごとにまとめられる ([R-8](../../specs/055-activity/research.md#r-8-the-screen-refreshes-on-an-activity-notification))。
+
+Web クライアントでは、Activity 画面（`web/src/activity`）はそのイベントと再接続のときに件数と読み込んだすべてのページを取り直し、カードをその場で置き換える。取り直しは一度に 1 つだけ実行し、その間または最初のページの読み込み中に届いた通知はもう 1 回の取り直しを求める。シェルのサイドバーの項目と画面のフッターは、絞り込みのない要求（`web/src/api/useActivityTotals.ts`）からログ全体の `counts` を読むので、そこでの `running` はキューにある項目を含む。絞り込みはページの URL（`status`、`feature`、`decider`、`period`、`q`）にあり、`period` は最初のページまたは取り直しを開始するときに `since` に変換され、次のページはその `since` を保つ（[055 UI 設計、Activity page](../../specs/055-activity/ui-design.md#activity-page)）。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |

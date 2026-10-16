@@ -1,4 +1,5 @@
 import {
+  Activity,
   AlertTriangle,
   CircleAlert,
   Folder,
@@ -53,6 +54,8 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "../ui/shadcn/dropdown-menu";
@@ -64,6 +67,7 @@ import {
   EmptyTitle,
 } from "../ui/shadcn/empty";
 import FavoriteToggle from "../ui/FavoriteToggle";
+import { FilterDropdownButton } from "../ui/FilterDropdownButton";
 import { Kbd, KbdGroup } from "../ui/shadcn/kbd";
 import {
   Popover,
@@ -78,6 +82,7 @@ import { Separator } from "../ui/shadcn/separator";
 import {
   SidebarMenu,
   SidebarMenuButton,
+  SidebarMenuCount,
   SidebarMenuItem,
   SidebarProvider,
 } from "../ui/shadcn/sidebar";
@@ -490,6 +495,17 @@ function Feedback() {
                 </SidebarMenuItem>
                 <SidebarMenuItem>
                   <SidebarMenuButton>
+                    <Activity />
+                    <span>{o.sidebar.activity}</span>
+                  </SidebarMenuButton>
+                  <SidebarMenuCount
+                    count={3}
+                    text={o.sidebar.count}
+                    label={o.sidebar.countLabel}
+                  />
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton>
                     <Settings />
                     <span>{o.sidebar.settings}</span>
                   </SidebarMenuButton>
@@ -508,6 +524,44 @@ function VvComponents() {
   const noop = () => Promise.resolve();
   return (
     <div className="grid gap-4 lg:grid-cols-2">
+      <Item name="FilterDropdownButton" wide>
+        <div className="flex flex-wrap items-center gap-2">
+          <FilterDropdownButton
+            name={o.filter.status}
+            value={o.filter.all}
+            active={false}
+          >
+            <DropdownMenuRadioGroup value="all">
+              <DropdownMenuRadioItem value="all">{o.filter.all}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="running">
+                {o.filter.running}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="attention">
+                {o.filter.attention}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="done">{o.filter.done}</DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </FilterDropdownButton>
+          <FilterDropdownButton name={o.filter.status} value={o.filter.attention} active>
+            <DropdownMenuRadioGroup value="attention">
+              <DropdownMenuRadioItem value="all">{o.filter.all}</DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="attention">
+                {o.filter.attention}
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </FilterDropdownButton>
+          <FilterDropdownButton name={o.filter.period} value={o.filter.today} active>
+            <DropdownMenuRadioGroup value="today">
+              <DropdownMenuRadioItem value="any">
+                {o.filter.anyTime}
+              </DropdownMenuRadioItem>
+              <DropdownMenuRadioItem value="today">
+                {o.filter.today}
+              </DropdownMenuRadioItem>
+            </DropdownMenuRadioGroup>
+          </FilterDropdownButton>
+        </div>
+      </Item>
       <Item name="VideoThumbnail" wide>
         <div className="grid gap-4 sm:grid-cols-3">
           <State label={o.states.normal}>

@@ -152,10 +152,13 @@ export function directionToggleLabel(sort: VideoSort): UiText {
   return current === "asc" ? t.list.sort.toDesc(label) : t.list.sort.toAsc(label);
 }
 
-/** normalizeQuery は検索語を URL と一覧の条件に使う形にする。 */
-export function normalizeQuery(value: string): string {
-  // 100 符号位置で切る（サーバーの []rune と同じ数え方。サロゲートペアを割らない）。
-  return Array.from(value.trim()).slice(0, MAX_QUERY_LENGTH).join("").trim();
+/**
+ * normalizeQuery は検索語を URL と一覧の条件に使う形にする。maxLength は上限の符号位置の数で、
+ * 既定は動画の一覧の `MAX_QUERY_LENGTH`。
+ */
+export function normalizeQuery(value: string, maxLength = MAX_QUERY_LENGTH): string {
+  // 上限の符号位置で切る（サーバーの []rune と同じ数え方。サロゲートペアを割らない）。
+  return Array.from(value.trim()).slice(0, maxLength).join("").trim();
 }
 
 /** parseSeed は seed の値を読む。1 以上 MAX_SEED 以下の整数でなければ undefined。 */

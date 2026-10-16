@@ -1,4 +1,5 @@
 import {
+  Activity,
   Building2,
   Folder,
   History,
@@ -25,6 +26,8 @@ export interface NavEntry {
    * （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
    */
   ownerOnly?: boolean;
+  /** レールの右上に要対応の記録の数を出す（アクティビティの項目）。 */
+  attentionCount?: boolean;
 }
 
 /**
@@ -76,6 +79,14 @@ export function navEntries(): readonly NavEntry[] {
       icon: Layers,
       to: "/duplicates",
       ownerOnly: true,
+    },
+    {
+      id: "activity",
+      label: t.shell.nav.activity,
+      icon: Activity,
+      to: "/activity",
+      ownerOnly: true,
+      attentionCount: true,
     },
   ];
 }

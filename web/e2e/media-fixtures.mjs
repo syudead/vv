@@ -843,6 +843,30 @@ export function generatePlaylistsFixtures(root) {
 }
 
 /**
+ * generateActivityFixtures は、取り込みの記録がアクティビティの画面で読み直しなしに done に
+ * なる流れ（specs/055-activity、子 #1244）を確かめる動画を 1 本作る（web/e2e/activity.e2e.ts）。
+ * ほかの動画と同じ中身とみなされないよう、長さとコマの速さと色合いを変える。
+ */
+export const ACTIVITY_VIDEO = "activity-import-check";
+
+export function generateActivityFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=12:duration=7",
+    "-vf",
+    "hue=h=250",
+    ...h264,
+    "-an",
+    "-movflags",
+    "+faststart",
+    path.join(root, `${ACTIVITY_VIDEO}.mp4`),
+  ]);
+}
+
+/**
  * generateGroupsFixtures は、任意のグループの流れ（specs/048-groups、子 #1059）を確かめる
  * 動画を作る（web/e2e/groups.e2e.ts）。「フォルダ1」〜「フォルダ3」は 1 本ずつなので
  * グループにならず、登録フォルダの直下の 2 本も単体の動画になる。「自動のグループ」と
