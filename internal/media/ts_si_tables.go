@@ -26,20 +26,20 @@ type siCollector struct {
 	serviceID int
 	// networkID は最初に見た SDT か EIT の original_network_id。見るまでは -1。
 	networkID int
-	// japaneseLanguage と foreignLanguage は、日本語の・日本語でない短形式イベント記述子を
-	// 見たかである。
-	japaneseLanguage bool
-	foreignLanguage  bool
-	services         map[int][]byte
-	events           map[int]*siEventPair
-	time             time.Time
+	services  map[int][]byte
+	events    map[int]*siEventPair
+	time      time.Time
 }
 
 // siEventPair は 1 つの service の present（section 0）と following（section 1）である。
-// event の無い section も見たものとして数える。
+// event の無い section も見たものとして数える。japaneseLanguage と foreignLanguage は、
+// この service の event に日本語の・日本語でない短形式イベント記述子を見たかである。EIT は
+// 同じ PID に TS の全 service の event を載せるので、言語は service ごとに持つ。
 type siEventPair struct {
-	seen   [2]bool
-	events [2]*siEvent
+	seen             [2]bool
+	events           [2]*siEvent
+	japaneseLanguage bool
+	foreignLanguage  bool
 }
 
 // siEvent は decode する前の EIT の event である。
@@ -107,11 +107,13 @@ func (c *siCollector) result() transportStreamSI {
 }
 
 // isARIB は録画が日本の放送（ARIB）かを返す。original_network_id が日本の放送網で、
-// 日本語の event を見て、日本語でない event を見ていなければ ARIB とする。DVB の衛星には
-// 日本の衛星と同じ original_network_id を使うものがあり、ffmpeg が作る TS も
-// original_network_id 1 の SDT を持つ（EIT は持たない）ので、event の言語でも確かめる。
+// PAT の最初の番組の service に日本語の event を見て、日本語でない event を見ていなければ
+// ARIB とする。DVB の衛星には日本の衛星と同じ original_network_id を使うものがあり、ffmpeg が
+// 作る TS も original_network_id 1 の SDT を持つ（EIT は持たない）ので、event の言語でも
+// 確かめる。ほかの service の event の言語は見ない。
 func (c *siCollector) isARIB() bool {
-	if c.foreignLanguage || !c.japaneseLanguage {
+	pair := c.events[c.serviceID]
+	if pair == nil || pair.foreignLanguage || !pair.japaneseLanguage {
 		return false
 	}
 	return japaneseSatelliteNetworks[c.networkID] ||
@@ -228,9 +230,9 @@ func (c *siCollector) eit(section []byte) {
 			return
 		}
 		if bytes.EqualFold(descriptor[:3], []byte("jpn")) {
-			c.japaneseLanguage = true
+			pair.japaneseLanguage = true
 		} else {
-			c.foreignLanguage = true
+			pair.foreignLanguage = true
 		}
 		if nameLength := int(descriptor[3]); 4+nameLength <= len(descriptor) {
 			event.name = bytes.Clone(descriptor[4 : 4+nameLength])

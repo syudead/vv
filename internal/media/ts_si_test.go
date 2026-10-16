@@ -90,6 +90,11 @@ func sdtSection(networkID uint16, name []byte) []byte {
 }
 
 func eitSection(networkID uint16, number byte, language string, name []byte, start time.Time, duration time.Duration) []byte {
+	return serviceEITSection(testServiceID, networkID, number, language, name, start, duration)
+}
+
+// serviceEITSection は serviceID の service の EIT present/following の section である。
+func serviceEITSection(serviceID, networkID uint16, number byte, language string, name []byte, start time.Time, duration time.Duration) []byte {
 	descriptor := []byte{descriptorShortEvent, byte(5 + len(name))}
 	descriptor = append(descriptor, language...)
 	descriptor = append(descriptor, byte(len(name)))
@@ -101,7 +106,7 @@ func eitSection(networkID uint16, number byte, language string, name []byte, sta
 	body = append(body, siClock(start)...)
 	body = append(body, bcd(seconds/3600), bcd(seconds/60%60), bcd(seconds%60))
 	body = append(body, 0x80|byte(len(descriptor)>>8), byte(len(descriptor)))
-	return longSection(tableEIT, testServiceID, number, append(body, descriptor...))
+	return longSection(tableEIT, serviceID, number, append(body, descriptor...))
 }
 
 func totSection(at time.Time) []byte {
@@ -295,6 +300,20 @@ func TestReadBroadcastOmitsDVBNames(t *testing.T) {
 
 	if got := readBroadcast(context.Background(), path, (61 * time.Minute).Milliseconds()); got != nil {
 		t.Errorf("DVB の録画の名前を読んだ: %+v", got)
+	}
+}
+
+func TestReadBroadcastIgnoresLanguageOfOtherServices(t *testing.T) {
+	// 同じ TS のほかの service の英語の EIT が、PAT の最初の番組の日本語の名前を消さない。
+	const otherService = testServiceID + 1
+	other := serviceEITSection(otherService, testNetworkID, 0, "eng", []byte("News"), testNewsStart, time.Hour)
+	ts := paddingPackets(1)
+	ts = append(ts, sectionPackets(pidEIT, other)...)
+	path := writeTS(t, "multi.ts", ts, broadcastTS(t, testNetworkID, "jpn"))
+
+	got := readBroadcast(context.Background(), path, (61 * time.Minute).Milliseconds())
+	if got == nil || got.Station != "テスト放送" || got.Program != "ドラマ" {
+		t.Errorf("readBroadcast = %+v", got)
 	}
 }
 
