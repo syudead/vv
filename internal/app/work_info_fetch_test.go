@@ -213,36 +213,35 @@ func TestRunRefusesBeforeTheModuleRuns(t *testing.T) {
 	}
 }
 
-func TestLookupWorkInfoRunsLookupWithTheTrimmedID(t *testing.T) {
+func TestFetchWorkInfoByIDSendsTheTrimmedIDToFetch(t *testing.T) {
 	ctx := context.Background()
 	e := newFetchEnv()
-	e.store.plugins[1].Manifest.Operations = []domain.WorkInfoOperation{domain.WorkInfoLookup}
 	e.runtime.result = domain.WorkInfoRunResult{WorkInfo: domain.FetchedWorkInfo{Title: "Title", Code: "ABC-123"}}
-	result, err := e.plugins.LookupWorkInfo(ctx, fetchVideo, 1, "  ABC-123  ")
+	result, err := e.plugins.FetchWorkInfoByID(ctx, fetchVideo, 1, "  ABC-123  ")
 	if err != nil || result.ID == "" || result.Title != "Title" || result.Details.Code != "ABC-123" {
-		t.Fatalf("LookupWorkInfo = %+v, %v", result, err)
+		t.Fatalf("FetchWorkInfoByID = %+v, %v", result, err)
 	}
 	req := e.runtime.requests[0]
-	if req.Operation != domain.WorkInfoLookup || req.ID != "ABC-123" || req.URL != "" || req.Settings["apiKey"] != "key-one" {
+	if req.Operation != domain.WorkInfoFetch || req.ID != "ABC-123" || req.URL != "" || req.Settings["apiKey"] != "key-one" {
 		t.Fatalf("request = %+v", req)
 	}
 	if len(e.applier.calls) != 0 {
-		t.Fatal("looking up wrote to the video")
+		t.Fatal("fetching by ID wrote to the video")
 	}
 	runs := len(e.runtime.requests)
-	if _, err := e.plugins.LookupWorkInfo(ctx, fetchVideo, 1, "   "); !errors.Is(err, domain.ErrWorkInfoRunInvalid) {
+	if _, err := e.plugins.FetchWorkInfoByID(ctx, fetchVideo, 1, "   "); !errors.Is(err, domain.ErrWorkInfoRunInvalid) {
 		t.Fatalf("blank id: err = %v", err)
 	}
-	if _, err := e.plugins.LookupWorkInfo(ctx, 999, 1, "ABC-123"); !errors.Is(err, domain.ErrNotFound) {
+	if _, err := e.plugins.FetchWorkInfoByID(ctx, 999, 1, "ABC-123"); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("missing video: err = %v", err)
 	}
-	// fetch だけを宣言するプラグインには lookup を送らない。
-	e.store.plugins[1].Manifest.Operations = []domain.WorkInfoOperation{domain.WorkInfoFetch}
-	if _, err := e.plugins.LookupWorkInfo(ctx, fetchVideo, 1, "ABC-123"); !errors.Is(err, domain.ErrWorkInfoOperationUnsupported) {
-		t.Fatalf("no lookup: err = %v", err)
+	// 検索だけを宣言するプラグインには取得を送らない。
+	e.store.plugins[1].Manifest.Operations = []domain.WorkInfoOperation{domain.WorkInfoSearch}
+	if _, err := e.plugins.FetchWorkInfoByID(ctx, fetchVideo, 1, "ABC-123"); !errors.Is(err, domain.ErrWorkInfoOperationUnsupported) {
+		t.Fatalf("no fetch: err = %v", err)
 	}
 	if len(e.runtime.requests) != runs {
-		t.Fatal("the module ran for a refused lookup")
+		t.Fatal("the module ran for a refused fetch")
 	}
 }
 

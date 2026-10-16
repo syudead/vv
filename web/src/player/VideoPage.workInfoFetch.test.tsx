@@ -274,24 +274,13 @@ describe("VideoPage work-info fetch", () => {
     ).toBeNull();
   });
 
-  it("取得しかできないプラグインに URL でない文を渡すと、欄の誤りを出して送らない", async () => {
+  it("取得しかできないプラグインは動画の品番を最初の値にし、ID で取得して比較の段に ID を出す", async () => {
     server.plugins = [{ ...works, operations: ["fetch"] }];
-    const { user, dialog } = await openDialog();
-    const query = within(dialog).getByRole("textbox", { name: "The work's page URL" });
-    expect(query).toHaveProperty("value", "");
-    await user.type(query, "作品の名前");
-    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
-    expect(
-      within(dialog).getByText("Paste a page URL starting with http:// or https://."),
-    ).toBeDefined();
-    expect(server.fetch).not.toHaveBeenCalled();
-  });
-
-  it("ID で引くプラグインは動画の品番を最初の値にし、ID で取得して比較の段に ID を出す", async () => {
-    server.plugins = [{ ...works, operations: ["lookup"] }];
     server.video = { ...video, workInfo: coded };
     const { user, dialog } = await openDialog();
-    const query = within(dialog).getByRole("textbox", { name: "The work's ID" });
+    const query = within(dialog).getByRole("textbox", {
+      name: "The work's ID or page URL",
+    });
     expect(query).toHaveProperty("value", "ABC-123");
     expect(within(dialog).queryByRole("radio", { name: "ID" })).toBeNull();
     await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
@@ -303,14 +292,15 @@ describe("VideoPage work-info fetch", () => {
     ).toBeNull();
   });
 
-  it("検索も ID もできるプラグインは Words と ID を選べ、ID に切り替えると語を ID として取得する", async () => {
-    server.plugins = [{ ...works, operations: ["search", "lookup"] }];
+  it("検索も取得もできるプラグインは Words と ID を選べ、ID に切り替えると語を ID として取得する", async () => {
     server.video = { ...video, workInfo: coded };
     const { user, dialog } = await openDialog();
-    const words = within(dialog).getByRole("textbox", { name: "Search words" });
+    const words = within(dialog).getByRole("textbox", {
+      name: "Search words or the work's page URL",
+    });
     expect(words).toHaveProperty("value", "テスト動画");
     await user.click(within(dialog).getByRole("radio", { name: "ID" }));
-    const id = within(dialog).getByRole("textbox", { name: "The work's ID" });
+    const id = within(dialog).getByRole("textbox", { name: "The work's ID or page URL" });
     expect(id).toHaveProperty("value", "ABC-123");
     await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
     await within(dialog).findByRole("checkbox", { name: "Title" });

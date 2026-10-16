@@ -7,7 +7,7 @@ import type { WorkInfoCandidate, WorkInfoPlugin } from "../../api/workInfoPlugin
 import { errorText, t } from "../../i18n";
 import { Alert, AlertDescription, AlertTitle } from "../../ui/shadcn/alert";
 import { Button } from "../../ui/shadcn/button";
-import { Field, FieldError, FieldLabel } from "../../ui/shadcn/field";
+import { Field, FieldLabel } from "../../ui/shadcn/field";
 import { Input } from "../../ui/shadcn/input";
 import {
   Select,
@@ -22,7 +22,6 @@ import ActionButton from "../ActionButton";
 import {
   canChooseFindBy,
   canFetch,
-  canLookup,
   type FindBy,
   hostOf,
   missingSettingLabels,
@@ -99,8 +98,8 @@ function PluginField({
 const FIND_BY: readonly FindBy[] = ["words", "id"];
 
 /**
- * FindByField は語を検索の語にするか作品の ID にするかの選択で、search と lookup の両方を宣言する
- * プラグインにだけ出す。押している選択肢は外せない。
+ * FindByField は語を検索の語にするか、取得に渡す作品の ID にするかの選択で、search と fetch の両方を
+ * 宣言するプラグインにだけ出す。押している選択肢は外せない。
  */
 function FindByField({
   by,
@@ -133,14 +132,6 @@ function FindByField({
       ))}
     </ToggleGroup>
   );
-}
-
-/** noMatchesText は候補が無いときの文で、ほかに取れる入れ方（URL か ID）を勧める。 */
-function noMatchesText(plugin: WorkInfoPlugin | undefined): string {
-  const text = t.player.workInfoFetch;
-  if (plugin !== undefined && canFetch(plugin)) return text.noMatchesFetch;
-  if (plugin !== undefined && canLookup(plugin)) return text.noMatchesLookup;
-  return text.noMatches;
 }
 
 /** FailureAlert は検索か取得の失敗である（ui-design「Failures」）。 */
@@ -262,7 +253,11 @@ function Candidates({
   const text = t.player.workInfoFetch;
   const headingId = useId();
   if (candidates.length === 0) {
-    return <p className="text-sm text-muted-foreground">{noMatchesText(plugin)}</p>;
+    return (
+      <p className="text-sm text-muted-foreground">
+        {plugin !== undefined && canFetch(plugin) ? text.noMatchesFetch : text.noMatches}
+      </p>
+    );
   }
   const shown = candidates.slice(0, MAX_CANDIDATES);
   const choosable = plugin !== undefined && canFetch(plugin);
@@ -295,7 +290,6 @@ export default function FindStep({
   plugin,
   by,
   query,
-  notUrl,
   running,
   failure,
   candidates,
@@ -309,7 +303,6 @@ export default function FindStep({
   plugin: WorkInfoPlugin | undefined;
   by: FindBy;
   query: string;
-  notUrl: boolean;
   running: Running | null;
   failure: RunFailure | null;
   candidates: readonly WorkInfoCandidate[] | null;
@@ -321,7 +314,6 @@ export default function FindStep({
 }) {
   const text = t.player.workInfoFetch;
   const queryId = useId();
-  const errorId = useId();
   // 開いて最初にフォーカスを受けたときだけ、題名を選んだ状態にして打てば置き換わるようにする。
   const selectedOnce = useRef(false);
   const busy = running !== null;
@@ -336,7 +328,7 @@ export default function FindStep({
       {plugin !== undefined && canChooseFindBy(plugin) && (
         <FindByField by={by} disabled={busy} onBy={onBy} />
       )}
-      <Field data-invalid={notUrl || undefined}>
+      <Field>
         <FieldLabel htmlFor={queryId}>
           {plugin === undefined ? text.queryBoth : queryLabel(plugin, by)}
         </FieldLabel>
@@ -346,8 +338,6 @@ export default function FindStep({
           value={query}
           readOnly={busy}
           aria-disabled={busy || undefined}
-          aria-invalid={notUrl || undefined}
-          aria-describedby={notUrl ? errorId : undefined}
           autoComplete="off"
           onFocus={(event) => {
             if (selectedOnce.current) return;
@@ -356,7 +346,6 @@ export default function FindStep({
           }}
           onChange={(event) => onQuery(event.target.value)}
         />
-        {notUrl && <FieldError id={errorId}>{text.notUrl}</FieldError>}
       </Field>
       {failure !== null && <FailureAlert failure={failure} />}
       {candidates !== null && (

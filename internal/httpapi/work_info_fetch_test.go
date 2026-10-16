@@ -28,8 +28,8 @@ type scriptedPlugins struct {
 	applied    domain.WorkInfoApplied
 	calls      int
 	fields     []domain.WorkInfoField
-	// lookups は LookupWorkInfo が受けた ID である。
-	lookups []string
+	// ids は FetchWorkInfoByID が受けた ID である。
+	ids []string
 }
 
 func (p *scriptedPlugins) SearchWorkInfo(context.Context, int64, string) ([]domain.WorkInfoCandidate, error) {
@@ -42,9 +42,9 @@ func (p *scriptedPlugins) FetchWorkInfo(context.Context, int64, int64, string) (
 	return p.fetch, p.err
 }
 
-func (p *scriptedPlugins) LookupWorkInfo(_ context.Context, _, _ int64, id string) (domain.WorkInfoFetchResult, error) {
+func (p *scriptedPlugins) FetchWorkInfoByID(_ context.Context, _, _ int64, id string) (domain.WorkInfoFetchResult, error) {
 	p.calls++
-	p.lookups = append(p.lookups, id)
+	p.ids = append(p.ids, id)
 	return p.fetch, p.err
 }
 
@@ -162,8 +162,8 @@ func TestWorkInfoSearchAndFetchAnswer(t *testing.T) {
 
 	status, body = e.post(fetchPath, `{"pluginId":1,"id":"ABC-123"}`, e.owner)
 	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || fetch.FetchId != "abc" ||
-		!slices.Equal(e.plugins.lookups, []string{"ABC-123"}) {
-		t.Fatalf("lookup = %d %s (ids %v)", status, body, e.plugins.lookups)
+		!slices.Equal(e.plugins.ids, []string{"ABC-123"}) {
+		t.Fatalf("fetch by id = %d %s (ids %v)", status, body, e.plugins.ids)
 	}
 
 	calls := e.plugins.calls

@@ -68,7 +68,7 @@ func DeclaredWorkInfoPluginValues(settings []WorkInfoPluginSetting, values map[s
 	return out
 }
 
-// NormalizeWorkInfoSearchQuery は検索の語か lookup の ID の前後の空白を除き、1〜WorkInfoSearchQueryMaxRunes
+// NormalizeWorkInfoSearchQuery は検索の語か取得の ID の前後の空白を除き、1〜WorkInfoSearchQueryMaxRunes
 // 文字の正しい UTF-8 なら返す。外れれば ErrWorkInfoRunInvalid を返す。
 func NormalizeWorkInfoSearchQuery(query string) (string, error) {
 	trimmed := strings.TrimFunc(query, unicode.IsSpace)

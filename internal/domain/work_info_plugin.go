@@ -114,11 +114,9 @@ type WorkInfoOperation string
 const (
 	// WorkInfoSearch は語で作品を探し、候補を返す操作である。
 	WorkInfoSearch WorkInfoOperation = "search"
-	// WorkInfoFetch は作品の URL から作品情報を取る操作である。
+	// WorkInfoFetch は作品の URL か ID（品番など）から作品情報を取る操作である。ID を作品の URL に
+	// 埋め込むのはプラグインである。
 	WorkInfoFetch WorkInfoOperation = "fetch"
-	// WorkInfoLookup は作品の ID（品番など）から作品情報を取る操作である。ID を作品の URL に埋め込むのは
-	// プラグインである。
-	WorkInfoLookup WorkInfoOperation = "lookup"
 )
 
 // WorkInfoPluginSetting はマニフェストが宣言する設定の 1 つである。値は所有者が入力する。
@@ -225,7 +223,7 @@ func validOperations(ops []WorkInfoOperation) bool {
 	}
 	seen := map[WorkInfoOperation]bool{}
 	for _, op := range ops {
-		if (op != WorkInfoSearch && op != WorkInfoFetch && op != WorkInfoLookup) || seen[op] {
+		if (op != WorkInfoSearch && op != WorkInfoFetch) || seen[op] {
 			return false
 		}
 		seen[op] = true
@@ -267,9 +265,9 @@ type WorkInfoRunRequest struct {
 	Operation WorkInfoOperation
 	// Query は search の語である。
 	Query string
-	// URL は fetch の作品の URL である。
+	// URL は fetch の作品の URL である。ID とどちらか一方だけを持つ。
 	URL string
-	// ID は lookup の作品の ID である。
+	// ID は fetch の作品の ID である。URL とどちらか一方だけを持つ。
 	ID string
 	// Settings は所有者が入力した、このプラグインの設定の値である。
 	Settings map[string]string
@@ -294,7 +292,6 @@ func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
 		body.Query = r.Query
 	case WorkInfoFetch:
 		body.URL = r.URL
-	case WorkInfoLookup:
 		body.ID = r.ID
 	}
 	return json.Marshal(body)
@@ -323,7 +320,7 @@ type FetchedWorkInfo struct {
 }
 
 // WorkInfoRunResult は成功した実行の結果である。操作が search なら Candidates、
-// fetch か lookup なら WorkInfo を持つ。
+// fetch なら WorkInfo を持つ。
 type WorkInfoRunResult struct {
 	Candidates []WorkInfoCandidate
 	WorkInfo   FetchedWorkInfo
@@ -405,7 +402,7 @@ func ParseWorkInfoResponse(op WorkInfoOperation, output []byte) (WorkInfoRunResu
 	switch {
 	case op == WorkInfoSearch && raw.Candidates != nil:
 		return parseCandidates(raw)
-	case (op == WorkInfoFetch || op == WorkInfoLookup) && raw.WorkInfo != nil:
+	case op == WorkInfoFetch && raw.WorkInfo != nil:
 		info := FetchedWorkInfo{
 			Title: raw.WorkInfo.Title,
 			Tags:  firstUniqueTags(raw.WorkInfo.Tags),

@@ -1,6 +1,6 @@
 ---
 source: specs/049-work-info-plugins/contracts/screen-api.md
-sourceHash: c5cae0922b615504b5ab9aff84dfc21d96cbf263caae513c44431a60c50dfa8b
+sourceHash: 2054819703987944ecb8638c8e5a2d83df32a1a8d7541808345b65531b0263de
 ---
 
 # 契約: 作品情報プラグインの画面の API {#contract-work-info-plugin-screen-api}
@@ -15,7 +15,7 @@ sourceHash: c5cae0922b615504b5ab9aff84dfc21d96cbf263caae513c44431a60c50dfa8b
 | `name` | string、省略可 | マニフェストの名前。マニフェストを読めなかったときはない |
 | `fileName` | string | アップロードしたファイルの名前 |
 | `version`、`description` | string、省略可 | マニフェストから |
-| `operations` | `search` / `fetch` / `lookup` の配列 | マニフェストから。無効なプラグインでは空 |
+| `operations` | `search` / `fetch` の配列 | マニフェストから。無効なプラグインでは空 |
 | `digest` | string | モジュールの SHA-256。承認するときに送り返す ([R-7](../research.md#r-7-approving-names-the-digest-the-owner-saw)) |
 | `state` | `approved` / `unapproved` / `invalid` | [data-model.md、状態の遷移](../data-model.md#state-transitions) |
 | `problem` | string の列挙、省略可 | `invalid` のときにある ([data-model.md](../data-model.md#work_info_plugins)) |
@@ -98,13 +98,13 @@ sourceHash: c5cae0922b615504b5ab9aff84dfc21d96cbf263caae513c44431a60c50dfa8b
 
 ## `POST /api/videos/{id}/work-info-fetches` {#post-apivideosidwork-info-fetches}
 
-この動画のためにプラグインの `fetch` を `url` で、またはその `lookup` を `id` で実行し、結果を 10 分間保つ ([R-8](../research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))。動画は変えない。
+この動画のために `url` か `id` でプラグインの `fetch` を実行し、結果を 10 分間保つ ([R-8](../research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest))。動画は変えない。
 
 | フィールド | 場所 | 型 | 必須 | 意味 |
 | --- | --- | --- | --- | --- |
 | `pluginId` | 本文 | integer | はい | 承認済みのプラグイン |
-| `url` | 本文 | string | `url` と `id` の一方 | http か https、最大 2048 文字。`fetch` を実行する |
-| `id` | 本文 | string | `url` と `id` の一方 | 作品の ID (品番など)。前後に空白のない 1〜200 文字。`lookup` を実行し、プラグインがそこからページの URL を組み立てる |
+| `url` | 本文 | string | `url` と `id` のどちらか一方 | http か https、最大 2048 文字 |
+| `id` | 本文 | string | `url` と `id` のどちらか一方 | 品番などの作品の ID で、前後の空白を含まない 1 から 200 文字。プラグインはこれからページの URL を組み立てる |
 
 `url` と `id` の両方を持つ本文、またはどちらも持たない本文は `400` `invalid_request` である。
 
@@ -119,7 +119,7 @@ sourceHash: c5cae0922b615504b5ab9aff84dfc21d96cbf263caae513c44431a60c50dfa8b
 
 画面はこれらを、すでに持っている動画と比べる。値のないフィールドは選べない。
 
-エラー: [実行の失敗](#run-failures)、動画に対する `404` `not_found`、本文が実行する操作がマニフェストにないときの `409` `operation_unsupported`。
+エラー: [実行の失敗](#run-failures)、動画に対する `404` `not_found`、マニフェストに `fetch` がないときの `409` `operation_unsupported`。
 
 ## `POST /api/videos/{id}/work-info-fetches/{fetchId}/apply` {#post-apivideosidwork-info-fetchesfetchidapply}
 

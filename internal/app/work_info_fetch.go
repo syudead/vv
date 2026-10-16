@@ -70,17 +70,17 @@ func (p *WorkInfoPlugins) FetchWorkInfo(
 	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, URL: rawURL})
 }
 
-// LookupWorkInfo は承認済みのプラグイン pluginID の lookup で作品の ID id から作品情報を取る。ID を作品の
-// URL に埋め込むのはプラグインである。ID は前後の空白を除いて 1〜200 文字でなければ
+// FetchWorkInfoByID は承認済みのプラグイン pluginID の fetch で作品の ID id（品番など）から作品情報を取る。
+// ID を作品の URL に埋め込むのはプラグインである。ID は前後の空白を除いて 1〜200 文字でなければ
 // domain.ErrWorkInfoRunInvalid を返す。結果の持ち方と誤りは FetchWorkInfo と同じである。
-func (p *WorkInfoPlugins) LookupWorkInfo(
+func (p *WorkInfoPlugins) FetchWorkInfoByID(
 	ctx context.Context, videoID, pluginID int64, id string,
 ) (domain.WorkInfoFetchResult, error) {
 	normalized, err := domain.NormalizeWorkInfoSearchQuery(id)
 	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
-	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoLookup, ID: normalized})
+	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, ID: normalized})
 }
 
 // keepFetched は動画 videoID があることを確かめてから要求 req でプラグイン pluginID を動かし、取った作品情報を

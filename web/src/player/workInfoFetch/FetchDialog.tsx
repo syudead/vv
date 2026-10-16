@@ -10,7 +10,6 @@ import {
   type WorkInfoCandidate,
   type WorkInfoField,
   type WorkInfoPlugin,
-  type WorkInfoTarget,
 } from "../../api/workInfoPlugins";
 import { t } from "../../i18n";
 import { FormDialog } from "../../ui/patterns/form-dialog";
@@ -20,6 +19,7 @@ import { useToast } from "../../ui/Toast";
 import CompareStep, { type Fetched } from "./CompareStep";
 import {
   canFetch,
+  fetchTarget,
   type FindBy,
   initialQuery,
   initialSelection,
@@ -88,7 +88,6 @@ function useFetchFlow({
   const plugin = plugins.find((item) => item.id === pluginId) ?? plugins[0];
   const [by, setBy] = useState<FindBy>("words");
   const [query, setQuery] = useState(() => initialQuery(plugins[0], "words", video));
-  const [notUrl, setNotUrl] = useState(false);
   const [candidates, setCandidates] = useState<WorkInfoCandidate[] | null>(null);
   if (plugin?.id !== pluginId) {
     // 選んでいたプラグインが一覧から消えた（承認を外されたか消された）ので、先頭へ移る。
@@ -134,14 +133,12 @@ function useFetchFlow({
     const signal = begin();
     setRunning({ operation, url: fromSearch ? input : undefined });
     setFailure(null);
-    setNotUrl(false);
     try {
       if (operation === "search") {
         setCandidates(await searchWorkInfo(target.id, input.trim(), signal));
         return;
       }
-      const source: WorkInfoTarget =
-        operation === "lookup" ? { id: input.trim() } : { url: input.trim() };
+      const source = fetchTarget(input);
       const result = await fetchWorkInfo(video.id, target.id, source, signal);
       if (signal.aborted) return;
       showCompare({ source, plugin: target, fromSearch, result }, result);
@@ -195,16 +192,13 @@ function useFetchFlow({
       return;
     }
     if (plugin === undefined || running !== null || query.trim() === "") return;
-    const operation = runFor(plugin, query, by);
-    if (operation === "notUrl") setNotUrl(true);
-    else void run(plugin, operation, query, false);
+    void run(plugin, runFor(plugin, query, by), query, false);
   };
 
   return {
     plugin,
     by,
     query,
-    notUrl,
     candidates,
     running,
     failure,
@@ -220,7 +214,6 @@ function useFetchFlow({
       setPluginId(id);
       setCandidates(null);
       setFailure(null);
-      setNotUrl(false);
     },
     chooseBy: (next: FindBy) => {
       // 入れたままの最初の値は、語と ID で違う（題名と品番）ので入れ替える。打った語は残す。
@@ -229,12 +222,8 @@ function useFetchFlow({
       setBy(next);
       setCandidates(null);
       setFailure(null);
-      setNotUrl(false);
     },
-    changeQuery: (next: string) => {
-      setQuery(next);
-      setNotUrl(false);
-    },
+    changeQuery: setQuery,
     choose: (url: string) => {
       // 候補を選ぶことはその URL の取得なので、取得できないプラグインでは走らせない。
       if (plugin !== undefined && canFetch(plugin) && running === null)
@@ -249,9 +238,8 @@ function useFetchFlow({
       // 同じプラグインと URL か ID で取り直す。プラグインが承認を外されていれば、その失敗が
       // 見つける段に出る。
       if (fetched === null || running !== null) return;
-      if ("id" in fetched.source)
-        void run(fetched.plugin, "lookup", fetched.source.id, false);
-      else void run(fetched.plugin, "fetch", fetched.source.url, fetched.fromSearch);
+      const input = "id" in fetched.source ? fetched.source.id : fetched.source.url;
+      void run(fetched.plugin, "fetch", input, fetched.fromSearch);
     },
     cancel: () => controller.current?.abort(),
   };
@@ -324,7 +312,6 @@ export default function FetchDialog(props: {
           plugin={flow.plugin}
           by={flow.by}
           query={flow.query}
-          notUrl={flow.notUrl}
           running={flow.running}
           failure={flow.failure}
           candidates={flow.candidates}

@@ -1614,7 +1614,6 @@ func (e WorkInfoMatchState) Valid() bool {
 // Defines values for WorkInfoOperation.
 const (
 	Fetch  WorkInfoOperation = "fetch"
-	Lookup WorkInfoOperation = "lookup"
 	Search WorkInfoOperation = "search"
 )
 
@@ -1622,8 +1621,6 @@ const (
 func (e WorkInfoOperation) Valid() bool {
 	switch e {
 	case Fetch:
-		return true
-	case Lookup:
 		return true
 	case Search:
 		return true
@@ -3983,13 +3980,13 @@ type WorkInfoFetchApplied struct {
 
 // WorkInfoFetchRequest `url` と `id` のどちらか 1 つを持つ
 type WorkInfoFetchRequest struct {
-	// Id 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。`lookup` で取る
+	// Id 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL に埋め込むのはプラグイン
 	Id *string `json:"id,omitempty"`
 
 	// PluginId 承認済みのプラグイン
 	PluginId int64 `json:"pluginId"`
 
-	// Url 作品の URL（http か https、2048 文字まで）。`fetch` で取る
+	// Url 作品の URL（http か https、2048 文字まで）
 	Url *string `json:"url,omitempty"`
 }
 
@@ -5378,7 +5375,7 @@ type ServerInterface interface {
 	// SetVideoWorkInfo 動画の作品情報をまるごと置き換える
 	// (PUT /api/videos/{id}/work-info)
 	SetVideoWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
-	// FetchWorkInfo 作品情報プラグインの fetch か lookup で動画の作品情報を取る
+	// FetchWorkInfo 作品情報プラグインの fetch で動画の作品情報を取る
 	// (POST /api/videos/{id}/work-info-fetches)
 	FetchWorkInfo(w http.ResponseWriter, r *http.Request, id VideoId)
 	// ApplyWorkInfoFetch 取得の結果のうち選んだ項目を動画に反映する

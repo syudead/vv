@@ -43,7 +43,7 @@ func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.W
 	writeJSON(w, http.StatusOK, gen.WorkInfoSearchResult{Candidates: out}, s.logger)
 }
 
-// FetchWorkInfo はプラグインの fetch（url）か lookup（id）で動画の作品情報を取り、結果をメモリに持つ
+// FetchWorkInfo はプラグインの fetch で作品の url か id から動画の作品情報を取り、結果をメモリに持つ
 // （POST /api/videos/{id}/work-info-fetches）。動画は変えない。
 func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	var body struct {
@@ -66,7 +66,7 @@ func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.Vi
 	if body.URL != nil {
 		fetch, err = s.workInfoPlugins.FetchWorkInfo(r.Context(), id, *body.PluginID, *body.URL)
 	} else {
-		fetch, err = s.workInfoPlugins.LookupWorkInfo(r.Context(), id, *body.PluginID, *body.ID)
+		fetch, err = s.workInfoPlugins.FetchWorkInfoByID(r.Context(), id, *body.PluginID, *body.ID)
 	}
 	if err != nil {
 		s.workInfoRunError(w, err, "The video or the work-info plugin was not found.")
