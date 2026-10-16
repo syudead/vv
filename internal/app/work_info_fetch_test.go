@@ -43,6 +43,7 @@ type recordingRuntime struct {
 	fakePluginRuntime
 	requests  []domain.WorkInfoRunRequest
 	digests   []string
+	networks  []domain.WorkInfoRunNetwork
 	result    domain.WorkInfoRunResult
 	err       error
 	stderr    string
@@ -52,10 +53,11 @@ type recordingRuntime struct {
 }
 
 func (r *recordingRuntime) Run(
-	_ context.Context, digest string, _ []byte, req domain.WorkInfoRunRequest, _ domain.WorkInfoRunNetwork,
+	_ context.Context, digest string, _ []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork,
 	record func(domain.WorkInfoRunLog) error,
 ) (domain.WorkInfoRunResult, domain.WorkInfoRunLog, error) {
 	r.requests = append(r.requests, req)
+	r.networks = append(r.networks, network)
 	r.digests = append(r.digests, digest)
 	log := domain.WorkInfoRunLog{Operation: req.Operation, Stderr: r.stderr, Truncated: r.truncated}
 	var runErr *domain.WorkInfoRunError

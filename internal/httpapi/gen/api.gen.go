@@ -2803,6 +2803,12 @@ type PlaylistSummary struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// PluginProxySettings 作品情報プラグインの要求を送るプロキシ（specs/056-plugin-tooling/contracts/screen-api.md）
+type PluginProxySettings struct {
+	// Url 保存した URL。http、https か socks5 の scheme、ホスト、任意のポートと任意のユーザー情報からなり、 パスもクエリも持たない。"" はプロキシなし
+	Url string `json:"url"`
+}
+
 // ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
 type ProbeErrorCode string
 
@@ -3421,6 +3427,12 @@ type UpdateMediaFolderRequest struct {
 // UpdateNetworkSettingsRequest defines model for UpdateNetworkSettingsRequest.
 type UpdateNetworkSettingsRequest struct {
 	LanAccess bool `json:"lanAccess"`
+}
+
+// UpdatePluginProxySettingsRequest defines model for UpdatePluginProxySettingsRequest.
+type UpdatePluginProxySettingsRequest struct {
+	// Url 保存する URL。規則は PluginProxySettings.url と同じ。"" はプロキシなし
+	Url string `json:"url"`
 }
 
 // UpdateTranscodingSettingsRequest defines model for UpdateTranscodingSettingsRequest.
@@ -4943,6 +4955,9 @@ type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
 // UpdateOllamaSettingsJSONRequestBody defines body for UpdateOllamaSettings for application/json ContentType.
 type UpdateOllamaSettingsJSONRequestBody = OllamaSettings
 
+// UpdatePluginProxySettingsJSONRequestBody defines body for UpdatePluginProxySettings for application/json ContentType.
+type UpdatePluginProxySettingsJSONRequestBody = UpdatePluginProxySettingsRequest
+
 // UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
 type UpdateTranscodingSettingsJSONRequestBody = UpdateTranscodingSettingsRequest
 
@@ -5257,6 +5272,12 @@ type ServerInterface interface {
 	// CheckOllama 保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる
 	// (POST /api/settings/ollama/check)
 	CheckOllama(w http.ResponseWriter, r *http.Request)
+	// GetPluginProxySettings 作品情報プラグインの要求を送るプロキシの URL を返す
+	// (GET /api/settings/plugin-proxy)
+	GetPluginProxySettings(w http.ResponseWriter, r *http.Request)
+	// UpdatePluginProxySettings 作品情報プラグインの要求を送るプロキシの URL を保存する
+	// (PUT /api/settings/plugin-proxy)
+	UpdatePluginProxySettings(w http.ResponseWriter, r *http.Request)
 	// GetTranscodingSettings ライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
 	// (GET /api/settings/transcoding)
 	GetTranscodingSettings(w http.ResponseWriter, r *http.Request)
@@ -7708,6 +7729,34 @@ func (siw *ServerInterfaceWrapper) CheckOllama(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CheckOllama(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPluginProxySettings operation middleware
+func (siw *ServerInterfaceWrapper) GetPluginProxySettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPluginProxySettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdatePluginProxySettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePluginProxySettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePluginProxySettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -10348,6 +10397,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/network", wrapper.GetNetworkSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/network", wrapper.UpdateNetworkSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/plugin-proxy", wrapper.GetPluginProxySettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/plugin-proxy", wrapper.UpdatePluginProxySettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-import", wrapper.GetAutoImportSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-import", wrapper.UpdateAutoImportSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama", wrapper.GetOllamaSettings)

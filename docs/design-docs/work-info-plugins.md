@@ -212,8 +212,16 @@ the operator chose, or nil for none
 ([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option)).
 `domain.ParseWorkInfoPluginProxyURL` holds the URL rule: the `http`, `https`
 or `socks5` scheme, a host, an optional port and optional user information,
-with no path, query or fragment, at most 2048 bytes; `""` means no proxy. A
-run without a proxy uses the client above unchanged.
+with no path, query or fragment, at most 2048 characters; `""` means no proxy.
+A run without a proxy uses the client above unchanged.
+
+The owner sets the proxy in the settings screen's `Network` section on every
+build, through `PUT /api/settings/plugin-proxy`, which `app.WorkInfoPluginProxy`
+checks against that rule and stores as the `settings` row
+`work_info_plugins.proxy_url`. `app.WorkInfoPlugins` reads the row before each
+run, so a saved change applies from the next run and a run in progress keeps
+the value it started with. A stored value that breaks the rule fails the run
+instead of connecting directly.
 
 A run with a proxy gets its own transport, whose connections all go to the
 proxy, so the dial-time check cannot see the destination. Instead, the

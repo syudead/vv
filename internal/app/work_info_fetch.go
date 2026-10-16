@@ -140,13 +140,26 @@ func (p *WorkInfoPlugins) run(
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, &domain.WorkInfoSettingsMissingError{Keys: missing}
 	}
 	req.Settings = domain.DeclaredWorkInfoPluginValues(plugin.Manifest.Settings, plugin.Values)
-	// プロキシの設定はまだ無いので、プロキシなしで動かす。
-	result, _, err := p.runtime.Run(ctx, plugin.Digest, module, req, domain.WorkInfoRunNetwork{},
+	// プロキシは実行ごとに読むので、保存し直した値は次の実行から効き、この実行は読んだ値で終わる
+	// （specs/056-plugin-tooling/research.md R-4）。
+	network, err := p.runNetwork(ctx)
+	if err != nil {
+		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
+	}
+	result, _, err := p.runtime.Run(ctx, plugin.Digest, module, req, network,
 		p.recordRun(ctx, plugin, domain.SecretWorkInfoPluginValues(plugin.Manifest.Settings, req.Settings)))
 	if err != nil {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}
 	return plugin, result, nil
+}
+
+// runNetwork は次の実行のネットワークの選択肢を返す。読み先が無ければプロキシなしである。
+func (p *WorkInfoPlugins) runNetwork(ctx context.Context) (domain.WorkInfoRunNetwork, error) {
+	if p.network == nil {
+		return domain.WorkInfoRunNetwork{}, nil
+	}
+	return p.network.RunNetwork(ctx)
 }
 
 // ApplyWorkInfoFetch は動画 videoID に、取得の結果 fetchID のうち fields の項目を反映し、反映後の動画と

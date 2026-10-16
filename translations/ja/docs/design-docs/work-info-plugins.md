@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: 34bd96544869cae4f28740df9a4eac9abf541ee597d65438c210d0848e8cbf79
+sourceHash: e9671524c3b2aaafcea567b772de803507b056b087d538dc0410375a14a92b5c
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
@@ -127,7 +127,7 @@ flowchart LR
 | 応答のヘッダー | 1 MiB | 要求は `-3` を返す |
 | 応答の本文 | 4 MiB | 要求は `-6` を返す |
 
-プロキシを使うとダイアラの確認がプロキシのアドレスしか見なくなるので、クライアントは `HTTP_PROXY` などのプロキシの変数を無視する。プラグインが設定した `Host` とホップバイホップのヘッダーは捨てる。プラグインが `User-Agent` を設定しないときは、一般的なデスクトップブラウザのもの（Windows 版 Chrome）を送る。プラグインが読むのはユーザーが開いたページであってクロールではなく、ボットのような値では別のページが返ったり拒否されたりすることがあるからだ。本文は応答のヘッダーとともにバイト列としてプラグインに届くので、ページの文字コードはプラグイン自身がデコードする。
+プロキシを使うとダイアラの確認がプロキシのアドレスしか見なくなるので、クライアントは `HTTP_PROXY` などのプロキシの変数を無視する。プラグインが設定した `Host` とホップバイホップのヘッダーは捨てる。プラグインが `User-Agent` を設定しないときは、一般的なデスクトップブラウザのもの (Windows 版 Chrome) を送る。プラグインが読むのはユーザーが開いたページであってクロールではなく、ボットのような値では別のページが返ったり拒否されたりすることがあるからだ。本文は応答のヘッダーとともにバイト列としてプラグインに届くので、ページの文字コードはプラグイン自身がデコードする。
 
 アドレスの確認と、次に示すプロキシのサポートはこのアダプタにだけある。ComfyUI と Ollama のクライアントは、それらのサービスが動く LAN に引き続き到達し、プラグインのプロキシは使わない。
 
@@ -140,7 +140,9 @@ flowchart LR
 
 ### 実行は運用者のプロキシを通せる {#a-run-can-go-through-the-operators-proxy}
 
-`Runtime.Run` は `domain.WorkInfoRunNetwork` を受け取る。その `Proxy` は運用者が選んだプロキシで、なければ nil である ([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option))。`domain.ParseWorkInfoPluginProxyURL` が URL の規則を持つ: スキームは `http`、`https`、`socks5` のいずれか、ホスト、任意のポート、任意のユーザー情報で、パス、クエリ、フラグメントはなく、最大 2048 バイトである。`""` はプロキシなしを意味する。プロキシなしの実行は、上のクライアントをそのまま使う。
+`Runtime.Run` は `domain.WorkInfoRunNetwork` を受け取る。その `Proxy` は運用者が選んだプロキシで、なければ nil である ([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option))。`domain.ParseWorkInfoPluginProxyURL` が URL の規則を持つ: スキームは `http`、`https`、`socks5` のいずれか、ホスト、任意のポート、任意のユーザー情報で、パス、クエリ、フラグメントはなく、最大 2048 文字である。`""` はプロキシなしを意味する。プロキシなしの実行は、上のクライアントをそのまま使う。
+
+所有者は、すべてのビルドで設定画面の `Network` セクションから `PUT /api/settings/plugin-proxy` を通じてプロキシを設定する。`app.WorkInfoPluginProxy` がそれを上の規則に照らして確認し、`settings` の行 `work_info_plugins.proxy_url` として保存する。`app.WorkInfoPlugins` は実行のたびにその行を読むので、保存した変更は次の実行から適用され、実行中のものは開始時の値のままである。規則に反する保存済みの値は、直接接続せずに実行を失敗させる。
 
 プロキシを使う実行は専用のトランスポートを持ち、その接続はすべてプロキシに向かうので、接続時の確認は宛先を見られない。代わりに、Go がすべての要求と追跡するすべてのリダイレクトで呼ぶトランスポートの `Proxy` コールバックが、宛先のホストを名前解決し (リテラルのアドレスならそれを解析し)、解決したアドレスのどれかが同じ規則を満たさないときは、要求を `-2` と `blocked_address` で拒否する ([056 R-5](../../specs/056-plugin-tooling/research.md#r-5-through-a-proxy-the-destination-is-checked-by-resolving-its-name-before-each-request-and-redirect))。拒否したホストは名前であり、プロキシは要求を見ない。プロキシ自身のアドレスは確認しない。運用者が選んだもので、たいてい LAN にあるからである。
 
