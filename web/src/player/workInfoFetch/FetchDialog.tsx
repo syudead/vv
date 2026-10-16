@@ -7,7 +7,6 @@ import {
   applyWorkInfoFetch,
   fetchWorkInfo,
   searchWorkInfo,
-  type SkippedTag,
   type WorkInfoCandidate,
   type WorkInfoField,
   type WorkInfoPlugin,
@@ -22,9 +21,10 @@ import {
   canFetch,
   initialQuery,
   initialSelection,
-  orderSkipped,
   type RunOperation,
   runFor,
+  type SkippedLine,
+  skippedLines,
 } from "./fetchRules";
 import FindStep, { type RunFailure, type Running } from "./FindStep";
 
@@ -33,7 +33,7 @@ const PLUGIN_GONE = new Set(["plugin_not_approved", "not_found"]);
 
 type Step = "find" | "compare" | "result";
 
-function ResultStep({ skipped }: { skipped: readonly SkippedTag[] }) {
+function ResultStep({ lines }: { lines: readonly SkippedLine[] }) {
   const text = t.player.workInfoFetch;
   return (
     <>
@@ -42,10 +42,11 @@ function ResultStep({ skipped }: { skipped: readonly SkippedTag[] }) {
         <AlertTitle>{text.resultTitle}</AlertTitle>
       </Alert>
       <ul className="flex flex-col gap-1 text-sm">
-        {skipped.map((tag) => (
-          <li key={tag.name} className="break-words">
-            <span className="font-medium">{tag.name}</span>
-            {` — ${text.skipped[tag.reason]}`}
+        {lines.map((line) => (
+          <li key={line.key} className="break-words">
+            {text.skippedLabel(line.label)}
+            <span className="font-medium">{line.value}</span>
+            {` — ${line.reason}`}
           </li>
         ))}
       </ul>
@@ -100,7 +101,7 @@ function useFetchFlow({
   const [stale, setStale] = useState(false);
   const [applyFailure, setApplyFailure] = useState<unknown>(null);
   const [applying, setApplying] = useState(false);
-  const [skipped, setSkipped] = useState<SkippedTag[]>([]);
+  const [skipped, setSkipped] = useState<SkippedLine[]>([]);
   const controller = useRef<AbortController | null>(null);
   const latestVideo = useRef(video);
   latestVideo.current = video;
@@ -165,12 +166,13 @@ function useFetchFlow({
         signal,
       );
       onApplied(applied.video, mark);
-      if (applied.skippedTags.length === 0) {
+      const lines = skippedLines(applied.skippedTags, applied.skipped);
+      if (lines.length === 0) {
         toast(t.player.workInfoFetch.applied);
         onClose();
         return;
       }
-      setSkipped(orderSkipped(applied.skippedTags));
+      setSkipped(lines);
       setStep("result");
     } catch (error) {
       if (isAborted(error) || signal.aborted) return;
@@ -264,7 +266,8 @@ function submitDisabled(flow: Flow): boolean {
 
 /**
  * FetchDialog は取得のダイアログである（specs/049-work-info-plugins/ui-design.md「Fetch
- * dialog」）。見つける段（検索の候補を含む）、比較の段、付けなかったタグを知らせる結果の段を
+ * dialog」）。見つける段（検索の候補を含む）、比較の段、付けなかったタグと飛ばした値を知らせる
+ * 結果の段（specs/052-plugin-work-info-fields/ui-design.md「Result」）を
  * 1 つの窓で切り替える。反映が成功するまで動画は変わらない。
  */
 export default function FetchDialog(props: {
@@ -328,7 +331,7 @@ export default function FetchDialog(props: {
           onFetchAgain={flow.fetchAgain}
         />
       )}
-      {flow.step === "result" && <ResultStep skipped={flow.skipped} />}
+      {flow.step === "result" && <ResultStep lines={flow.skipped} />}
     </FormDialog>
   );
 }

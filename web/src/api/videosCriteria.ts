@@ -42,6 +42,8 @@ export interface VideosCriteria {
    */
   person?: number;
   organization?: number;
+  /** 絞り込むタグの種類の id（specs/051-tag-kinds/contracts/screen-api.md）。 */
+  tagKind?: number;
 }
 
 /** criteriaKey は条件を値で比べるための文字列にする。 */
@@ -57,5 +59,6 @@ export function criteriaKey(criteria: VideosCriteria): string {
     criteria.tag ?? [],
     criteria.person ?? null,
     criteria.organization ?? null,
+    criteria.tagKind ?? null,
   ]);
 }

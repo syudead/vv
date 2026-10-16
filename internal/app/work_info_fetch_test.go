@@ -67,19 +67,20 @@ type fakeFetchApplier struct {
 	titles   map[int64]string
 	tags     map[int64][]string
 	rejected []string
+	skipped  []domain.SkippedWorkInfoValue
 	err      error
 	calls    []domain.FetchedWorkInfoApply
 }
 
-func (a *fakeFetchApplier) ApplyFetchedWorkInfo(ctx context.Context, apply domain.FetchedWorkInfoApply) (domain.Video, []string, error) {
+func (a *fakeFetchApplier) ApplyFetchedWorkInfo(ctx context.Context, apply domain.FetchedWorkInfoApply) (domain.FetchedWorkInfoApplied, error) {
 	a.calls = append(a.calls, apply)
 	if a.err != nil {
-		return domain.Video{}, nil, a.err
+		return domain.FetchedWorkInfoApplied{}, a.err
 	}
 	plugin, err := a.plugins.WorkInfoPlugin(ctx, apply.PluginID)
 	if err != nil || plugin.State() != domain.WorkInfoPluginApproved || plugin.Digest != apply.Digest ||
 		plugin.Generation != apply.Generation {
-		return domain.Video{}, nil, domain.ErrWorkInfoFetchStale
+		return domain.FetchedWorkInfoApplied{}, domain.ErrWorkInfoFetchStale
 	}
 	if apply.Title != nil {
 		a.titles[apply.VideoID] = *apply.Title
@@ -92,7 +93,8 @@ func (a *fakeFetchApplier) ApplyFetchedWorkInfo(ctx context.Context, apply domai
 		}
 		a.tags[apply.VideoID] = append(a.tags[apply.VideoID], name)
 	}
-	return domain.Video{ID: apply.VideoID, DisplayName: a.titles[apply.VideoID]}, rejected, nil
+	video := domain.Video{ID: apply.VideoID, DisplayName: a.titles[apply.VideoID]}
+	return domain.FetchedWorkInfoApplied{Video: video, RejectedTags: rejected, Skipped: a.skipped}, nil
 }
 
 const (
@@ -105,6 +107,7 @@ type fetchEnv struct {
 	store   *runPluginStore
 	runtime *recordingRuntime
 	applier *fakeFetchApplier
+	matcher *fakeCreditMatcher
 	now     time.Time
 }
 
@@ -129,9 +132,10 @@ func newFetchEnv() *fetchEnv {
 	}}
 	env := &fetchEnv{store: store, runtime: &recordingRuntime{}, now: time.Unix(1_800_000_000, 0)}
 	env.applier = &fakeFetchApplier{plugins: store, titles: map[int64]string{}, tags: map[int64][]string{}}
+	env.matcher = &fakeCreditMatcher{}
 	env.plugins = NewWorkInfoPlugins(WorkInfoPluginsOptions{
 		Store: store, Runtime: env.runtime, Videos: fakeVideos{fetchVideo: true, otherVideo: true}, Applier: env.applier,
-		Now: func() time.Time { return env.now },
+		Matcher: env.matcher, Now: func() time.Time { return env.now },
 	})
 	return env
 }

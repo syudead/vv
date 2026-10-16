@@ -6,6 +6,7 @@ import CardTagRow from "./CardTagRow";
 
 function tags(...names: string[]): VideoTag[] {
   return names.map((name, index) => ({
+    kind: null,
     id: index + 1,
     name,
     manual: true,
@@ -98,9 +99,30 @@ describe("CardTagRow", () => {
   // 読み上げ名に「フォルダ名から」を添える。手でも付いていれば今の形のまま。
   describe("フォルダ由来のタグ", () => {
     const mixed: VideoTag[] = [
-      { id: 1, name: "京都", manual: false, fromFolder: true, tentative: false },
-      { id: 2, name: "旅行", manual: true, fromFolder: true, tentative: false },
-      { id: 3, name: "夏", manual: true, fromFolder: false, tentative: false },
+      {
+        kind: null,
+        id: 1,
+        name: "京都",
+        manual: false,
+        fromFolder: true,
+        tentative: false,
+      },
+      {
+        kind: null,
+        id: 2,
+        name: "旅行",
+        manual: true,
+        fromFolder: true,
+        tentative: false,
+      },
+      {
+        kind: null,
+        id: 3,
+        name: "夏",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+      },
     ];
 
     it("フォルダ由来だけのタグを破線の形で出し、ほかは面のある形のまま出す", () => {
@@ -163,9 +185,30 @@ describe("CardTagRow", () => {
   // 読み上げ名に「(tentative)」を添える。面・文字の色・高さは確定したタグと同じ。
   describe("仮のタグ", () => {
     const mixed: VideoTag[] = [
-      { id: 1, name: "高画質", manual: true, fromFolder: false, tentative: true },
-      { id: 2, name: "夏", manual: true, fromFolder: false, tentative: false },
-      { id: 3, name: "京都", manual: false, fromFolder: true, tentative: true },
+      {
+        kind: null,
+        id: 1,
+        name: "高画質",
+        manual: true,
+        fromFolder: false,
+        tentative: true,
+      },
+      {
+        kind: null,
+        id: 2,
+        name: "夏",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+      },
+      {
+        kind: null,
+        id: 3,
+        name: "京都",
+        manual: false,
+        fromFolder: true,
+        tentative: true,
+      },
     ];
 
     function mark(el: Element): Element | null {

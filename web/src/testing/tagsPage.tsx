@@ -13,6 +13,7 @@ import {
 } from "react-router";
 import { afterEach, beforeEach, expect, vi } from "vitest";
 
+import { type TagKind, __resetTagKindsForTest } from "../api/tagKinds";
 import { type Tag, type TagSort, __resetTagsForTest } from "../api/tags";
 import { foldForMatch } from "../lib/foldForMatch";
 import { compareTagsForSort } from "../tags/tagPageRows";
@@ -47,6 +48,7 @@ export function takenResponse(submitted: string, ownerName: string): Response {
 
 export function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag {
   return {
+    kind: null,
     synonyms: [],
     videoCount: 0,
     tentative: false,
@@ -67,6 +69,12 @@ export function pageOf(tags: readonly Tag[], params: URLSearchParams) {
   const matched = tags
     .filter((item) => params.get("tentative") !== "true" || item.tentative)
     .filter((item) => params.get("unused") !== "true" || item.videoCount === 0)
+    .filter((item) => {
+      const kind = params.get("kind");
+      if (kind === null) return true;
+      if (kind === "none") return item.kind === null;
+      return item.kind?.id === Number(kind);
+    })
     .filter(
       (item) =>
         q === "" ||
@@ -97,6 +105,23 @@ export function pageOf(tags: readonly Tag[], params: URLSearchParams) {
       ? { nextCursor: btoa(encodeURIComponent(JSON.stringify(last))) }
       : {}),
   };
+}
+
+/** kind は偽のサーバーの種類（`TagKind`）を作る。 */
+export function kind(
+  overrides: Partial<TagKind> & { id: number; name: string },
+): TagKind {
+  return { tagCount: 0, createdAt: "2026-01-01T00:00:00Z", ...overrides };
+}
+
+/** presetKinds は新しいデータベースの 4 つの種類（specs/051-tag-kinds/data-model.md）。 */
+export function presetKinds(): TagKind[] {
+  return [
+    kind({ id: 1, name: "Genre" }),
+    kind({ id: 2, name: "Work" }),
+    kind({ id: 3, name: "Place" }),
+    kind({ id: 4, name: "Character" }),
+  ];
 }
 
 /** server はタグの管理経路（GET・POST・PATCH・DELETE /api/tags*）を扱う偽のサーバーである。 */
@@ -161,7 +186,123 @@ export const server = {
   failImpact: false,
   /** true にすると、次の POST /api/tags/batch を 500 で失敗させる。 */
   failNextBatch: false,
+  /** 種類（GET・POST・PATCH・DELETE /api/tag-kinds）。サーバーと同じく id の順に返す。 */
+  tagKinds: [] as TagKind[],
+  /** GET /api/tag-kinds の回数。 */
+  tagKindGets: 0,
+  /** true にすると、以後の GET /api/tag-kinds をすべて 500 で失敗させる。 */
+  failTagKindGets: false,
+  /** true にすると、次の DELETE /api/tag-kinds/{id} を 500 で失敗させ、何も消さない。 */
+  failNextKindDelete: false,
 };
+
+/**
+ * tagKindRoute は `/api/tag-kinds` の 4 つの経路を扱う。種類を消すと、その種類のタグは
+ * 種類なしで残る。経路でなければ undefined。
+ */
+function tagKindRoute(
+  path: string,
+  method: string,
+  init: RequestInit | undefined,
+): Response | undefined {
+  if (path === "/api/tag-kinds" && method === "GET") {
+    server.tagKindGets += 1;
+    if (server.failTagKindGets) {
+      return jsonResponse({ code: "internal", message: "failed" }, 500);
+    }
+    const items = [...server.tagKinds]
+      .sort((a, b) => a.id - b.id)
+      .map((item) => ({
+        ...item,
+        tagCount: server.tags.filter((t) => t.kind?.id === item.id).length,
+      }));
+    return jsonResponse({ items });
+  }
+  const notFound = () =>
+    jsonResponse(
+      { code: "not_found", reason: "tag_kind_not_found", message: "server-side message" },
+      404,
+    );
+  const taken = (name: string) =>
+    jsonResponse(
+      {
+        code: "conflict",
+        reason: "tag_kind_name_taken",
+        tagName: name,
+        message: "server-side message",
+      },
+      409,
+    );
+  if (path === "/api/tag-kinds" && method === "POST") {
+    const body = JSON.parse(String(init?.body)) as { name: string };
+    const conflict = server.tagKinds.find((item) => item.name === body.name);
+    if (conflict !== undefined) return taken(conflict.name);
+    const created = kind({ id: server.nextId, name: body.name });
+    server.nextId += 1;
+    server.tagKinds.push(created);
+    return jsonResponse(created, 201);
+  }
+  const match = /^\/api\/tag-kinds\/(\d+)$/.exec(path);
+  if (match === null) return undefined;
+  const id = Number(match[1]);
+  const found = server.tagKinds.find((item) => item.id === id);
+  if (found === undefined) return notFound();
+  if (method === "PATCH") {
+    const body = JSON.parse(String(init?.body)) as { name: string };
+    const conflict = server.tagKinds.find(
+      (item) => item.id !== id && item.name === body.name,
+    );
+    if (conflict !== undefined) return taken(conflict.name);
+    found.name = body.name;
+    for (const item of server.tags) {
+      if (item.kind?.id === id) item.kind = { id, name: body.name };
+    }
+    return jsonResponse(found);
+  }
+  if (method === "DELETE") {
+    if (server.failNextKindDelete) {
+      server.failNextKindDelete = false;
+      return jsonResponse({ code: "internal", message: "failed" }, 500);
+    }
+    server.tagKinds = server.tagKinds.filter((item) => item.id !== id);
+    for (const item of server.tags) if (item.kind?.id === id) item.kind = null;
+    return jsonResponse(null, 204);
+  }
+  return undefined;
+}
+
+/**
+ * kindBatch は `POST /api/tags/batch` の `setKind`・`clearKind` を扱う
+ * （specs/051-tag-kinds/contracts/screen-api.md）。既にその種類の（`clearKind` では種類の
+ * 無い）タグは `notApplicableIds`、無い種類の `setKind` は 404 `tag_kind_not_found` で
+ * 何も変えない。
+ */
+function kindBatch(body: { action: string; ids: number[]; kindId?: number }): Response {
+  const target =
+    body.action === "setKind"
+      ? server.tagKinds.find((item) => item.id === body.kindId)
+      : undefined;
+  if (body.action === "setKind" && target === undefined) {
+    return jsonResponse(
+      { code: "not_found", reason: "tag_kind_not_found", message: "server-side message" },
+      404,
+    );
+  }
+  const ref = target === undefined ? null : { id: target.id, name: target.name };
+  const appliedIds: number[] = [];
+  const notFoundIds: number[] = [];
+  const notApplicableIds: number[] = [];
+  for (const id of body.ids) {
+    const found = server.tags.find((t) => t.id === id);
+    if (found === undefined) notFoundIds.push(id);
+    else if ((found.kind?.id ?? null) === (ref?.id ?? null)) notApplicableIds.push(id);
+    else {
+      found.kind = ref;
+      appliedIds.push(id);
+    }
+  }
+  return jsonResponse({ appliedIds, notFoundIds, notApplicableIds });
+}
 
 /**
  * hold.rejectedGets を true にした間の GET /api/tags/rejected-names は、release を
@@ -216,7 +357,15 @@ export const hold = {
   release: null as (() => void) | null,
   synonymDeletes: false,
   getsFrom: null as number | null,
+  /** true にした間の DELETE /api/tag-kinds/{id} は、kindDeleteReleases を呼ぶまで応答しない。 */
+  kindDeletes: false,
 };
+
+/**
+ * hold.kindDeletes を true にした間の DELETE /api/tag-kinds/{id} の release である。
+ * release を呼んだ時点で種類を消して応答する。
+ */
+export const kindDeleteReleases: (() => void)[] = [];
 
 export function install() {
   const fetchMock = vi.fn<typeof fetch>();
@@ -224,6 +373,16 @@ export function install() {
     const url = new URL(String(input), "http://localhost");
     const path = url.pathname;
     const method = init?.method ?? "GET";
+
+    if (path.startsWith("/api/tag-kinds")) {
+      if (hold.kindDeletes && method === "DELETE") {
+        return new Promise((resolve) => {
+          kindDeleteReleases.push(() => resolve(tagKindRoute(path, method, init)!));
+        });
+      }
+      const response = tagKindRoute(path, method, init);
+      if (response !== undefined) return Promise.resolve(response);
+    }
 
     if (path === "/api/tags" && method === "GET" && !url.searchParams.has("limit")) {
       // 共有の保持（候補・絞り込みの確かめ）の全件。タグ管理画面は送らない。
@@ -313,13 +472,20 @@ export function install() {
     }
 
     if (path === "/api/tags/batch" && method === "POST") {
-      const body = JSON.parse(String(init?.body)) as { action: string; ids: number[] };
+      const body = JSON.parse(String(init?.body)) as {
+        action: string;
+        ids: number[];
+        kindId?: number;
+      };
       server.batchCalls.push(body);
       if (server.failNextBatch) {
         server.failNextBatch = false;
         return Promise.resolve(
           jsonResponse({ code: "internal", message: "failed" }, 500),
         );
+      }
+      if (body.action === "setKind" || body.action === "clearKind") {
+        return Promise.resolve(kindBatch(body));
       }
       const appliedIds: number[] = [];
       const notFoundIds: number[] = [];
@@ -646,6 +812,14 @@ export async function historyBack() {
   });
 }
 
+/** historyForward はブラウザの「進む」を押す。 */
+export async function historyForward() {
+  await act(async () => {
+    void historyNavigate!(1);
+    await Promise.resolve();
+  });
+}
+
 /**
  * renderPage はタグ管理画面を描く。`url` で開く URL（検索語・絞り込み・並び順・タブの
  * クエリ）を、`topBar` で共通トップバーの差し込み先（`TopBarPortal`）を置ける。
@@ -713,6 +887,11 @@ export function rejectedTab(): HTMLElement {
   return screen.getByRole("tab", { name: /Rejected names/ });
 }
 
+/** kindsTab は「Kinds」のタブ（件数を添える）である。 */
+export function kindsTab(): HTMLElement {
+  return screen.getByRole("tab", { name: /^Kinds/ });
+}
+
 /** tagsTab は「Tags」のタブである。 */
 export function tagsTab(): HTMLElement {
   return screen.getByRole("tab", { name: /^Tags/ });
@@ -732,6 +911,11 @@ export async function openRejectedTab(user: ReturnType<typeof userEvent.setup>) 
 export function setUpTagsPageServer() {
   beforeEach(() => {
     __resetTagsForTest();
+    __resetTagKindsForTest();
+    server.tagKinds = presetKinds();
+    server.tagKindGets = 0;
+    server.failTagKindGets = false;
+    server.failNextKindDelete = false;
     server.tags = [
       tag({ id: 1, name: "旅行" }),
       tag({ id: 2, name: "Anime", synonyms: ["アニメ"], videoCount: 3 }),
@@ -756,6 +940,8 @@ export function setUpTagsPageServer() {
     hold.synonymDeletes = false;
     synonymDeleteReleases.length = 0;
     hold.getsFrom = null;
+    hold.kindDeletes = false;
+    kindDeleteReleases.length = 0;
     heldGetReleases.length = 0;
     server.rejectedNames = [];
     server.failRejectedGets = false;

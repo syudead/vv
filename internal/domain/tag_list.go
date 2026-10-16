@@ -41,6 +41,8 @@ type TagListQuery struct {
 	TentativeOnly bool
 	// UnusedOnly は本数 0 のタグだけにする。
 	UnusedOnly bool
+	// Kind は種類での絞り込み。ゼロ値なら絞らない。
+	Kind TagKindFilter
 	// Sort は並び順。空なら TagSortName。
 	Sort TagSort
 	// Cursor は前のページの TagPage.NextCursor。解釈できないものや別の並び順の
@@ -48,6 +50,26 @@ type TagListQuery struct {
 	Cursor string
 	// Limit は 1 ページの件数。0 なら全件を返し、Cursor は無視する。
 	Limit int
+}
+
+// TagKindFilter はタグの一覧を 1 つの種類か「種類なし」で絞る条件である
+// （specs/051-tag-kinds/research.md R-8）。ゼロ値は絞らない。
+type TagKindFilter struct {
+	// ID はその種類のタグだけにする種類の id。0 なら種類の id では絞らない。
+	ID int64
+	// None は種類の無いタグだけにする。ID と一緒には立てない。
+	None bool
+}
+
+// Matches は種類 kind（nil は種類なし）のタグが f に合うかを返す。
+func (f TagKindFilter) Matches(kind *TagKindRef) bool {
+	switch {
+	case f.None:
+		return kind == nil
+	case f.ID != 0:
+		return kind != nil && kind.ID == f.ID
+	}
+	return true
 }
 
 // TagPage はタグの一覧の 1 ページである。

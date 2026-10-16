@@ -374,14 +374,20 @@ export interface ListVideosParams
 export interface CreditFilterParams {
   person?: number;
   organization?: number;
+  /**
+   * その種類のタグ（手動かフォルダ名から）を 1 つでも持つ動画だけにする
+   * （specs/051-tag-kinds/contracts/screen-api.md「List parameter `tagKind`」）。
+   */
+  tagKind?: number;
 }
 
-/** setCreditFilter は人物・団体の絞り込みを問い合わせに載せる。 */
+/** setCreditFilter は人物・団体・タグの種類の絞り込みを問い合わせに載せる。 */
 function setCreditFilter(query: URLSearchParams, params: CreditFilterParams): void {
   if (params.person !== undefined) query.set("person", String(params.person));
   if (params.organization !== undefined) {
     query.set("organization", String(params.organization));
   }
+  if (params.tagKind !== undefined) query.set("tagKind", String(params.tagKind));
 }
 
 /**

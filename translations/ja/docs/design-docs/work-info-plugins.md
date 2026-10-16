@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: 95516e3cd831aeb4dfaa6456f39011de7b3694db79a024de2351ff8569decabc
+sourceHash: 911cbab5854ee7000e46df323f1171c422d9ea701383c6c24b4521c01b3f0d7f
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
@@ -109,3 +109,49 @@ flowchart LR
 | プラグインごとのホスト名の許可リスト | 公開の名前が LAN のアドレスに解決されうる |
 | 拒否をプラグインにだけ返す | プラグインがそれを無視でき、所有者は到達しようとしたことを知れない |
 | 接続、TLS、ヘッダーで別々のタイムアウト | 遅いサイトが、要求の 10 秒の制限より前に `-4` ではなく `-3` を返しうる |
+
+## 取得は作品の詳細とその照合結果を保持する {#the-fetch-keeps-the-work-details-and-their-matches}
+
+[`internal/app/work_info_fetch.go`](../../internal/app/work_info_fetch.go) の `WorkInfoPlugins.FetchWorkInfo` は、取得した日付を種類順に、人物と組織を役割順に並べ、その後人物と組織を `CreditStore.Match` で照合する。詳細と照合結果は、タイトルとタグとともに、同じ 10 分間メモリ上の結果に残る ([049 research.md](../../specs/049-work-info-plugins/research.md) R-8)。人物も組織もない結果はストアを読まない。
+
+照合結果は表示されるだけである。画面はそれをもとに各項目を結び付け済み、`New`、`Not linked` のいずれかとして示す ([052 screen-api.md](../../specs/052-plugin-work-info-fields/contracts/screen-api.md))。次の節で示すとおり、適用はトランザクションの中で照合し直す。適用は何かを書く前に、結果の中でその行に値がない選択済みのフィールドを `invalid_request` で拒否する。
+
+## 適用は選んだフィールドを 1 つのトランザクションでマージする {#the-apply-merges-the-selected-fields-in-one-transaction}
+
+[`internal/store/work_info_fetch.go`](../../internal/store/work_info_fetch.go) の `OverrideStore.ApplyFetchedWorkInfo` は、取得した結果のうち選んだタイトル、タグ、作品の詳細を 1 つのトランザクションで書く。理由は [052 research.md](../../specs/052-plugin-work-info-fields/research.md) の R-3 と R-4 である。
+
+図はトランザクションの中の手順の順序を示す。
+
+```mermaid
+flowchart LR
+  recheck[プラグインの行を確認し直す] --> title[タイトルとタグ]
+  title --> match[人物と組織を照合し直す]
+  match --> merge[domain.MergeFetchedWorkInfo]
+  merge --> create[マージが残した新しいエンティティを作成する]
+  create --> write[作品情報を書く]
+  write --> commit[コミットし、その後イベント]
+```
+
+1. 従来どおりプラグインの行を読み直す: 置き換えられた、取り消された、または削除されたプラグインは `ErrWorkInfoFetchStale` を返し、何も書かない。
+2. 取得した人物と組織を、取得時と同じクエリで照合し直す ([`credit_match.go`](../../internal/store/credit_match.go) の `matchCredits`)。取得と適用の間に作成されたエンティティは結び付け、二重に作成しない。
+3. [`work_info_merge.go`](../../internal/domain/work_info_merge.go) の `domain.MergeFetchedWorkInfo` は、選んだフィールドを保存済みの作品情報に重ねる。ストアに依存しないので、その規則は SQLite なしで単体テストする。
+4. マージが残した新しいエンティティだけを、取得した名前と外部 ID で、`CreditStore.Create` と同じ挿入を通して作成する。
+5. 結果は、保存済みの値と異なるときだけ、047 の置き換えの経路で書く。そのときユーザーキーのメンバーの編集時刻が進む。
+
+コミットの後、適用は従来どおり `VideoOverrideChanged` を発行し、作品情報が変わったときは `VideoWorkInfoChanged` を 1 つ発行する。どの手順で失敗しても、タイトル、タグ、作品情報、新しいエンティティをまとめてロールバックする。
+
+| フィールド | マージの規則 |
+| --- | --- |
+| `code`、`description`、日付の種類 | 保存済みの値を置き換える |
+| 人物または組織の役割 | その役割でまだ結び付いていないエンティティを、取得した順に追加する |
+| `urls`、`externalIds` | まだ保存されていない値を、取得した順に追加する |
+
+マージが除いた値は、そのフィールド、比較で示したテキスト、理由とともにスキップとして返す。行の残りはそれでも適用する。
+
+| 理由 | 該当するとき |
+| --- | --- |
+| `invalid` | 値が `NormalizeWorkInfo` のフィールドの規則に反する、または新しいエンティティの名前か外部 ID が `NormalizeCredit` に反する |
+| `too_many` | 保存済みの項目の後に数えて、項目がフィールドの上限を超える、または新しいエンティティがその上限より多くの外部 ID を持つことになる |
+| `ambiguous` | 照合で複数のエンティティが見つかった、または新しい項目の外部 ID がすでに別の新しいエンティティに属している |
+
+マージは何かを作成する前にスキップを決めるので、スキップした項目が、どの動画にも結び付かないエンティティを残すことはない。1 つの結果の中で外部 ID か畳み込んだ名前を共有する新しい項目は 1 つのエンティティになり、役割ごとに 1 回結び付く。そのエンティティはそこにまとめたすべての項目の外部 ID を持つので、後の取得がそれらの ID の 1 つだけで指していても、そのエンティティを見つけられる。

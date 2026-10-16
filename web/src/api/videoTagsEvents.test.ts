@@ -39,13 +39,17 @@ describe("videoTagsEvents", () => {
 
     recordAppliedVideoTags(
       [1, 2],
-      { id: 5, name: "旅行", tentative: false },
+      { kind: null, id: 5, name: "旅行", tentative: false },
       "add",
       nextVideoTagsSequence(),
     );
 
     expect(notified).toEqual([
-      { videoIds: [1, 2], tag: { id: 5, name: "旅行", tentative: false }, action: "add" },
+      {
+        videoIds: [1, 2],
+        tag: { id: 5, name: "旅行", tentative: false, kind: null },
+        action: "add",
+      },
     ]);
     unsubscribe();
   });
@@ -59,15 +63,27 @@ describe("videoTagsEvents", () => {
     );
 
     const first = nextVideoTagsSequence();
-    recordAppliedVideoTags([1], { id: 5, name: "旅行", tentative: false }, "add", first);
+    recordAppliedVideoTags(
+      [1],
+      { kind: null, id: 5, name: "旅行", tentative: false },
+      "add",
+      first,
+    );
     expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[0]?.tags).toEqual([
-      { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      {
+        id: 5,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+        kind: null,
+      },
     ]);
 
     const second = nextVideoTagsSequence();
     recordAppliedVideoTags(
       [1],
-      { id: 5, name: "旅行", tentative: false },
+      { kind: null, id: 5, name: "旅行", tentative: false },
       "remove",
       second,
     );
@@ -86,7 +102,7 @@ describe("videoTagsEvents", () => {
     // 2番目（外す）の応答が先に届く。
     recordAppliedVideoTags(
       [1],
-      { id: 5, name: "旅行", tentative: false },
+      { kind: null, id: 5, name: "旅行", tentative: false },
       "remove",
       second,
     );
@@ -94,7 +110,12 @@ describe("videoTagsEvents", () => {
 
     // 1番目（付ける）の応答が遅れて届いても、2番目の結果（外れた状態）を
     // 上書きしない。
-    recordAppliedVideoTags([1], { id: 5, name: "旅行", tentative: false }, "add", first);
+    recordAppliedVideoTags(
+      [1],
+      { kind: null, id: 5, name: "旅行", tentative: false },
+      "add",
+      first,
+    );
     expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[0]?.tags).toEqual([]);
   });
 
@@ -115,17 +136,36 @@ describe("videoTagsEvents", () => {
     const target = nextVideoTagsSequence();
     recordAppliedVideoTags(
       [2],
-      { id: 9, name: "観光", tentative: false },
+      { kind: null, id: 9, name: "観光", tentative: false },
       "add",
       unrelated,
     );
-    recordAppliedVideoTags([1], { id: 5, name: "旅行", tentative: false }, "add", target);
+    recordAppliedVideoTags(
+      [1],
+      { kind: null, id: 5, name: "旅行", tentative: false },
+      "add",
+      target,
+    );
 
     expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[0]?.tags).toEqual([
-      { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      {
+        id: 5,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+        kind: null,
+      },
     ]);
     expect(itemVideos(takeListSnapshot({ query: "" })?.items ?? [])[1]?.tags).toEqual([
-      { id: 9, name: "観光", manual: true, fromFolder: false, tentative: false },
+      {
+        id: 9,
+        name: "観光",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+        kind: null,
+      },
     ]);
   });
 
@@ -138,13 +178,18 @@ describe("videoTagsEvents", () => {
     const first = nextVideoTagsSequence();
     const second = nextVideoTagsSequence();
     // 動画2は先に新しい操作（second）を受け取り済みとする。
-    recordAppliedVideoTags([2], { id: 5, name: "旅行", tentative: false }, "add", second);
+    recordAppliedVideoTags(
+      [2],
+      { kind: null, id: 5, name: "旅行", tentative: false },
+      "add",
+      second,
+    );
     // 動画1・2をまとめて外す古い操作（first）が後から届く。動画2はfirstより
     // 新しいsecondを既に反映しているので、この操作からは除く。動画1は初めて
     // なので反映する。
     recordAppliedVideoTags(
       [1, 2],
-      { id: 5, name: "旅行", tentative: false },
+      { kind: null, id: 5, name: "旅行", tentative: false },
       "remove",
       first,
     );

@@ -61,6 +61,30 @@ export function tagFieldError(
 }
 
 /**
+ * kindNameReasons は種類の作成・改名で、名前のせいで受け付けられなかった理由である。
+ * 名前の重複（`409 tag_kind_name_taken`）と、タグと同じ名前の規則（`400 tag_name_*`）。
+ */
+const kindNameReasons: ReadonlySet<string> = new Set([
+  "tag_kind_name_taken",
+  "tag_name_empty",
+  "tag_name_control_characters",
+  "tag_name_too_long",
+]);
+
+/**
+ * kindFieldError は種類の名前の入力（作成・改名）の失敗の分類である。名前のせいの失敗は
+ * 入力の下の `FieldError`（`taken`）にし、入力と文字を残す。それ以外は一般の失敗 `other`
+ * （specs/051-tag-kinds/ui-design.md「Kinds tab」）。
+ */
+export function kindFieldError(failure: unknown): TagFieldError {
+  const byName =
+    failure instanceof RequestFailed &&
+    failure.reason !== undefined &&
+    kindNameReasons.has(failure.reason);
+  return { kind: byName ? "taken" : "other", message: errorText(failure) };
+}
+
+/**
  * useTagNameField は、タグの名前を打つ入力の検証と、改行を含む貼り付け・
  * 落とし込みの遮断を持つ（ui-design.md「Combobox」名前の検証・改行の扱い）。
  * 管理画面の作成・改名の入力は `ui/TagCommand` の候補の一覧を持たないが、

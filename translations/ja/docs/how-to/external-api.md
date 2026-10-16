@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/external-api.md
-sourceHash: 9514cf16b62bb155a330668028f07ce87fc53d51b9302d06fe9617ffdda1c02e
+sourceHash: 242c08587699279dcfe29434bc2b1cba71ff233f21c2d91150b2d3151a4cf311
 ---
 
 # 外部 API を使う {#use-the-external-api}
@@ -213,14 +213,15 @@ curl -H "Authorization: Bearer $TOKEN" \
 | `q` | 100 文字まで。全角半角、大文字小文字、かなの違いを無視して、名前または同義語の一部に一致する |
 | `tentative` | `true` で仮のタグだけを一覧する |
 | `unused` | `true` でどの動画にも付いていないタグだけを一覧する。`q` と `tentative` との AND |
+| `kind` | 種類の id でその種類のタグだけを一覧し、`none` で種類のないタグを一覧する（[タグの種類](#tag-kinds)）。ほかの絞り込みとの AND |
 | `sort` | `name`（既定、名前の自然順）、`countDesc`、`countAsc`、`createdDesc` または `createdAsc`。同順位は名前、次に `id` で並べる |
 | `limit` | 1 ページあたり 1 から 200 個のタグ。**省略すると、一致するすべてのタグを** `nextCursor` なしで返す |
-| `cursor` | 前回の `nextCursor`。同じ `q`、`tentative`、`unused`、`sort` とともに送る |
+| `cursor` | 前回の `nextCursor`。同じ `q`、`tentative`、`unused`、`kind`、`sort` とともに送る |
 
 - 応答は `{ items, total, totalAll, nextCursor? }` である。どのページでも、`total` は絞り込みに一致するタグの数、`totalAll` はすべてのタグの数である。
 - `limit` を付けたときは、`nextCursor` がなくなるまでそれを `cursor` として渡し返すと、一致するすべてのタグを 1 回ずつ読める。
-- 各タグは `id`、`name`、`synonyms`、`videoCount`、`tentative`、`createdAt` を持つ。
-- 5 つの値以外の `sort`、1 から 200 の範囲外の `limit`、または 100 文字を超える `q` は `400` `invalid_request` を返す。読めないカーソル、または別の `sort` で作られたカーソルは、`reason: invalid_cursor` 付きの `400` `invalid_request` を返す。そのときは最初のページから読み直す。
+- 各タグは `id`、`name`、`synonyms`、`videoCount`、`tentative`、`createdAt`、`kind` を持つ。種類は `{ id, name }` で、種類のないタグでは `null` である。
+- 5 つの値以外の `sort`、1 から 200 の範囲外の `limit`、100 文字を超える `q`、または正の整数でも `none` でもない `kind` は `400` `invalid_request` を返す。読めないカーソル、または別の `sort` で作られたカーソルは、`reason: invalid_cursor` 付きの `400` `invalid_request` を返す。そのときは最初のページから読み直す。
 
 ### タグを統合する {#merge-tags}
 
@@ -275,9 +276,11 @@ curl -H "Authorization: Bearer $TOKEN" \
 | `confirm` | 仮のタグ | タグは確定タグになる |
 | `reject` | 仮のタグ | タグは削除され、その元の名前は却下済みの名前に入る |
 | `delete` | 確定タグ | タグは削除される。その名前は記憶されない |
+| `setKind` | すべてのタグ | タグは種類 `kindId` を持つ（[タグの種類](#tag-kinds)） |
+| `clearKind` | すべてのタグ | タグは種類を失う |
 
-- 応答は `{ appliedIds, notFoundIds, notApplicableIds }` である。3 つのリストは重ならず、合わせて送った各 id を 1 回ずつ持ち、`ids` の順を保つ。`reject` に送った確定タグのような種類の違うタグは、変更されずに残り、`notApplicableIds` に入る。
-- `ids` は重複も数えて 1 から 20,000 個の id を持ち、そうでなければ `limit` 付きの `400` `too_many_tags` を返す。3 つの値以外の `action` は `400` `invalid_request` を返す。トランザクションが失敗すると `500` `internal` を返し、何も変えない。
+- 応答は `{ appliedIds, notFoundIds, notApplicableIds }` である。3 つのリストは重ならず、合わせて送った各 id を 1 回ずつ持ち、`ids` の順を保つ。`reject` に送った確定タグのような、操作が当てはまらないタグは、変更されずに残り、`notApplicableIds` に入る。
+- `ids` は重複も数えて 1 から 20,000 個の id を持ち、そうでなければ `limit` 付きの `400` `too_many_tags` を返す。5 つの値以外の `action` は `400` `invalid_request` を返す。トランザクションが失敗すると `500` `internal` を返し、何も変えない。
 
 ### 却下済みの名前 {#rejected-names}
 
@@ -285,6 +288,31 @@ curl -H "Authorization: Bearer $TOKEN" \
 
 - `GET /api/v1/tags/rejected-names` は名前の自然順で `{ items, total, nextCursor? }` を返す（[契約、`GET /api/v1/tags/rejected-names`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tagsrejected-names)）。`limit` は 1 から 200 で、既定は 100 である。`nextCursor` がなくなるまでそれを `cursor` として渡し返す。`total` はすべての却下済みの名前の数である。範囲外の `limit` は `400` `invalid_request` を返し、読めないカーソルは `reason: invalid_cursor` を加える。
 - `DELETE /api/v1/tags/rejected-names?name=…` は名前を 1 つ除き、次にその名前を仮のタグとして付けるとタグが再び作成される（[契約、`DELETE /api/v1/tags/rejected-names?name=…`](../../specs/039-external-tag-admin/contracts/external-api.md#delete-apiv1tagsrejected-namesname)）。応答は `{ name, removed }` で、照合した正規化後の名前と、名前がリストになく何も変わらなかったときの `false` である。`name` がないと `400` `invalid_request` を返す。
+
+### タグの種類 {#tag-kinds}
+
+`Genre` や `Work` のような種類はタグをまとめる。タグが持つ種類は最大 1 つである（[契約](../../specs/051-tag-kinds/contracts/external-api.md)）。種類は、人物と同じく本文の `id` で指定する。
+
+| 操作 | リクエスト | 応答 |
+| --- | --- | --- |
+| 一覧 | `GET /api/v1/tag-kinds` | `{ items }`。`id` の順のすべての種類で、それぞれ `{ id, name, tagCount, createdAt }` |
+| 作成 | `{ name }` を付けた `POST /api/v1/tag-kinds` | `200` と種類 |
+| 名前の変更 | `{ id, name }` を付けた `POST /api/v1/tag-kinds/update` | `200` と種類。今と同じ名前は何も変えない |
+| 削除 | `{ ids }` を付けた `POST /api/v1/tag-kinds/delete` | `ids` の順の `{ deletedIds, notFoundIds }`。その種類のタグは種類なしで残る |
+
+- 種類の名前はタグの名前の規則に従う。規則に反する名前は `400` `tag_name_empty`、`tag_name_control_characters` または `tag_name_too_long` を返す。別の種類が持つ名前は `reason: tag_kind_name_taken` 付きの `409` `conflict` を返し、`tagName` はその種類の名前を持つ。何も変わらない。
+- 存在しない種類の名前の変更は `404` `tag_kind_not_found` を返す。空、または 20,000 個を超える `ids` は `400` `invalid_request` を返す。
+- `tagCount` は仮のタグも含めて、その種類のタグを数える。
+
+タグに種類を設定するには `POST /api/v1/tags/batch` を使う。`kindId` は `setKind` にだけ付ける。
+
+```json
+{ "action": "setKind", "kindId": 2, "ids": [12, 31] }
+```
+
+- `setKind` と `clearKind` は仮のタグを確定しない。すでにその種類を持つタグ、または `clearKind` で種類のないタグは `notApplicableIds` に入る。
+- `setKind` に `kindId` がないとき、またはほかの操作に `kindId` を付けたときは `400` `invalid_request` を返す。該当する種類のない `kindId` は `404` `tag_kind_not_found` を返し、何も変えない。
+- 結果は `GET /api/v1/tags?kind=2` で読む。動画のタグ（`ExternalVideoTag`）は種類を持たない。種類は `GET /api/v1/tags` から読む。
 
 ### 例: 表記の揺れを統合する {#example-merge-spelling-variants}
 
@@ -545,6 +573,10 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `update_person`、`update_organization` | `POST /api/v1/people/update`、`POST /api/v1/organizations/update` |
 | `merge_people`、`merge_organizations` | `POST /api/v1/people/merge`、`POST /api/v1/organizations/merge` |
 | `delete_people`、`delete_organizations` | `POST /api/v1/people/delete`、`POST /api/v1/organizations/delete` |
+| `list_tag_kinds` | `GET /api/v1/tag-kinds` |
+| `create_tag_kind` | `POST /api/v1/tag-kinds` |
+| `rename_tag_kind` | `POST /api/v1/tag-kinds/update` |
+| `delete_tag_kinds` | `POST /api/v1/tag-kinds/delete` |
 
 - ツールの引数は操作のクエリと本文の形を持ち、構造化された結果は応答本文の形を持つ。操作のエラーは、`isError: true` と [エラー本文](#call-the-api) を持つツール結果になる。
 - 受け付けるのは `POST /mcp` だけで、応答は `application/json` である。サーバーはセッションを保持しないため、`GET` と `DELETE` は `405` を返す。
