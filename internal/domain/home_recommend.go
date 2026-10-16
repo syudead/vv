@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"runtime"
 	"slices"
+	"sync"
 	"time"
 )
 
@@ -31,7 +33,9 @@ type RecommendInputs struct {
 
 // RankRecommended は候補 candidates のうち種と見終わった動画を除いたものを、どれかの種への近さの
 // 最大の高い順に並べ、先頭の最大 limit 本の id を返す。同点の並びは関連動画（RankRelated）と同じで
-// ある。候補に無い種（もう見せない動画）は使わず、使える種が無ければ空である。
+// ある。候補に無い種（もう見せない動画）は使わず、使える種が無ければ空である。2 万本と 20 の種では
+// 点を付けるのに数秒かかるので、候補を CPU の数に分けて並行に点を付ける。scorer の For が返す関数は
+// 同時に呼ばれる。
 func RankRecommended(scorer RelatedScorer, inputs RecommendInputs, candidates []RelatedCandidate, limit int) []int64 {
 	excluded := make(map[int64]struct{}, len(inputs.Seeds)+len(inputs.Watched))
 	for _, id := range inputs.Watched {
@@ -47,24 +51,38 @@ func RankRecommended(scorer RelatedScorer, inputs RecommendInputs, candidates []
 	if len(scorers) == 0 || limit <= 0 {
 		return []int64{}
 	}
-	ranked := make([]RankedRelated, 0, len(candidates))
+	var others []RelatedCandidate
 	for _, candidate := range candidates {
-		if _, skip := excluded[candidate.VideoID]; skip {
-			continue
+		if _, skip := excluded[candidate.VideoID]; !skip {
+			excluded[candidate.VideoID] = struct{}{}
+			others = append(others, candidate)
 		}
-		excluded[candidate.VideoID] = struct{}{}
-		best := RelatedScore(0)
-		for i, score := range scorers {
-			if value := score(candidate); i == 0 || value > best {
-				best = value
-			}
-		}
-		ranked = append(ranked, RankedRelated{Score: best, AddedAt: candidate.AddedAt.Unix(), VideoID: candidate.VideoID})
 	}
+	ranked := make([]RankedRelated, len(others))
+	chunk := max(1, (len(others)+runtime.GOMAXPROCS(0)-1)/runtime.GOMAXPROCS(0))
+	var wg sync.WaitGroup
+	for start := 0; start < len(others); start += chunk {
+		end := min(start+chunk, len(others))
+		wg.Go(func() {
+			for i := start; i < end; i++ {
+				ranked[i] = RankedRelated{Score: highestScore(scorers, others[i]), AddedAt: others[i].AddedAt.Unix(), VideoID: others[i].VideoID}
+			}
+		})
+	}
+	wg.Wait()
 	slices.SortFunc(ranked, compareRanked)
 	ids := make([]int64, 0, min(limit, len(ranked)))
 	for _, item := range ranked[:min(limit, len(ranked))] {
 		ids = append(ids, item.VideoID)
 	}
 	return ids
+}
+
+// highestScore は候補 candidate のどれかの種への点の最大を返す。scorers は 1 つ以上である。
+func highestScore(scorers []func(RelatedCandidate) RelatedScore, candidate RelatedCandidate) RelatedScore {
+	best := scorers[0](candidate)
+	for _, score := range scorers[1:] {
+		best = max(best, score(candidate))
+	}
+	return best
 }

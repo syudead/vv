@@ -6,6 +6,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/syudead/vv/internal/domain"
 )
 
@@ -76,15 +78,24 @@ func (h *Home) SetShelves(ctx context.Context, ids []int64) error {
 }
 
 // ShelfItems は棚 keys の最初の項目を keys の順に返す。おすすめの棚は所有者にだけ、項目があるときだけ
-// 返し、ほかの棚は保存層が読む。
+// 返し、ほかの棚は保存層が読む。保持の無いおすすめは計算に 1 秒ほどかかるので、ほかの棚の読み出しと
+// 並行に計算する。
 func (h *Home) ShelfItems(ctx context.Context, audience domain.Audience, keys []domain.HomeShelfKey) (domain.HomeShelfPage, error) {
 	recommendedKey := domain.HomeShelfKey{Kind: domain.HomeShelfRecommended}
 	at := slices.Index(keys, recommendedKey)
-	page, err := h.store.ShelfItems(ctx, audience, keys)
-	if err != nil || at < 0 || !audience.IsOwner() {
-		return page, err
+	if at < 0 || !audience.IsOwner() {
+		return h.store.ShelfItems(ctx, audience, keys)
 	}
-	items, err := h.recommendedItems(ctx)
+	var group errgroup.Group
+	var items []domain.LibraryItem
+	group.Go(func() (err error) {
+		items, err = h.recommendedItems(ctx)
+		return err
+	})
+	page, err := h.store.ShelfItems(ctx, audience, keys)
+	if waitErr := group.Wait(); err == nil {
+		err = waitErr
+	}
 	if err != nil || len(items) == 0 {
 		return page, err
 	}
