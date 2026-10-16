@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: d31b59fca368837b9207e475b702656c017ec22d2a69cb0c9c3e988f6ab2f89b
+sourceHash: 5c2d6d96f920774e6fd8338b93c4958e876891469b48c2ab3126e6916f3513ba
 ---
 
 # データモデル: Activity {#data-model-activity}

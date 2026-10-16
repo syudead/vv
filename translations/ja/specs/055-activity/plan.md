@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/plan.md
-sourceHash: 75c8120f172ce33f629f56ece24902db83540de6774e15327af9ace8a88d45ca
+sourceHash: 7f1312b5647fce229a36c5a7ad20bb99e40c0741a446db718448a348ae7de6c7
 ---
 
 # 実装計画: Activity {#implementation-plan-activity}

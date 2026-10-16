@@ -10,7 +10,7 @@ and `internal/httpapi`'s `accessRoutes` lists none of them (acceptance 8).
 ## `GET /api/activity`
 
 `operationId: listActivity`. Returns one page of entries, newest first, and
-the counts the tabs show
+the counts the Status menu, the footer and the sidebar show
 ([R-9](../research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status)).
 
 | Field | In | Type | Required | Meaning |

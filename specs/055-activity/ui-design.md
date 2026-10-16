@@ -25,7 +25,7 @@ looks more important than another and the toolbar stays one row.
 | History's day-grouped text rows with no border | Rows without a border run together; the requester rejected it on sight |
 | Status as underlined tabs beside dropdown filters | Two forms for the same act of narrowing the list; the requester asked for one |
 | A second toolbar row for the other filters | The requester asked for one row |
-| The library's single `FilterMenu` popover | Each dimension's current value has to show on the toolbar without opening anything |
+| The library screen's single `FilterMenu` popover | Each dimension's current value has to show on the toolbar without opening anything |
 | "Pause all" and "Retry failed" in the header, as the reference has | The parent Issue leaves bulk actions out |
 
 ## Words
@@ -183,10 +183,10 @@ owner-only screen does ([016 UI design](../016-single-account-auth/ui-design.md)
 
 | Addition | What it is | Why |
 | --- | --- | --- |
-| Filter dropdown button | An `outline` `sm` `Button` with the dimension's name, its value and a chevron, opening a `DropdownMenu`; `primary-soft` when not at its default. Goes in components.md beside `DropdownMenu`, with a showcase entry | Activity filters on four dimensions that each need their value visible; the library's `FilterMenu` hides them behind one button |
+| Filter dropdown button | An `outline` `sm` `Button` with the dimension's name, its value and a chevron, opening a `DropdownMenu`; `primary-soft` when not at its default. Goes in components.md beside `DropdownMenu`, with a showcase entry | Activity filters on four dimensions that each need their value visible; the library screen's `FilterMenu` hides them behind one button |
 | Card list (`CardList` section) | A stack of one-line bordered cards on `muted`, `gap-2`, with four tones (default, `primary`, `destructive`, `warning`) set by the caller and fixed columns at the end for the time and the actions. Goes in patterns.md with an example block | No section draws bordered rows; `GroupedList` rows have no border and `DataTable` has a header and columns that do not fit one line at 360px |
 | Rail count | A rail entry takes a count, drawn as a round `destructive` pill at the icon's top-right corner, `99+` above 99, nothing at 0; in the narrow-width drawer, `SidebarMenuBadge` at the end of the row. Goes in components.md, Sidebar | `SidebarMenuBadge` is hidden when the sidebar is collapsed to icons, which vv's rail always is |
-| Named sizes `activity-card`, `activity-time`, `activity-bar` | The card's minimum height (52px), the time column (104px) and the progress bar (160px) | The 4px scale stops at 64px and has no 52px step |
+| Named sizes `activity-card`, `activity-time`, `activity-bar` | The card's minimum height (52px), the time column (104px) and the progress bar (160px) | The spacing scale has no step for 52px, 104px or 160px |
 
 ## Responsive behaviour
 

@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/contracts/screen-api.md
-sourceHash: e2afa8af79da21bf361b54691e9ff9dff2b3464a8eb081f9b42a0963dc515324
+sourceHash: 6390007f4474750c417155dd73589e59540096f0874e8dce1cb89024c9a95382
 ---
 
 # 契約: アクティビティの画面の API {#contract-screen-api-for-activity}
@@ -9,7 +9,7 @@ sourceHash: e2afa8af79da21bf361b54691e9ff9dff2b3464a8eb081f9b42a0963dc515324
 
 ## `GET /api/activity` {#get-apiactivity}
 
-`operationId: listActivity`。項目の 1 ページを新しい順に返し、タブが示す件数も返す ([R-9](../research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status))。
+`operationId: listActivity`。項目の 1 ページを新しい順に返し、Status のメニュー、フッター、サイドバーが示す件数も返す ([R-9](../research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status))。
 
 | フィールド | 場所 | 型 | 必須 | 意味 |
 | --- | --- | --- | --- | --- |
@@ -43,7 +43,7 @@ sourceHash: e2afa8af79da21bf361b54691e9ff9dff2b3464a8eb081f9b42a0963dc515324
 | --- | --- | --- |
 | `400` | `invalid_request` | 未知の `status`、`feature`、`decider`、不正な形のカーソルや `since`、範囲外の `q` や `limit` |
 
-### 機能
+### 機能 {#features}
 
 各種類は 1 つの機能に属する。機能は Feature の絞り込みが示す単位である。
 
