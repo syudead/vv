@@ -22,7 +22,7 @@ const probeDigest = "probe"
 
 func probeModule(t *testing.T) []byte {
 	t.Helper()
-	return plugintest.WithManifest(plugintest.Build(t, "testdata/probe"), goodManifest)
+	return mustWithManifest(t, plugintest.Build(t, "testdata/probe"), goodManifest)
 }
 
 func search(query string) domain.WorkInfoRunRequest {

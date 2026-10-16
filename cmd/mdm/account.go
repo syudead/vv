@@ -17,19 +17,22 @@ import (
 )
 
 // account の下位コマンドの終了コード（specs/016-single-account-auth/contracts/account-cli.md §3）。
+// plugin の下位コマンドも同じ値を使う（specs/056-plugin-tooling/contracts/plugin-cli.md）。
 const (
 	exitAccountOK    = 0
 	exitAccountError = 1 // DB を開けない・書けない
 	exitAccountUsage = 2 // 未設定・値の誤り・確認の不一致・未知の下位コマンド
 )
 
-// accountUsage は account の下位コマンドの使い方である。
+// accountUsage は引数つきの mdm（account と plugin の下位コマンド）の使い方である。
 const accountUsage = `Usage:
   mdm                                 start the server
   mdm account set-username <NAME>     change the username
   mdm account set-password            reset the password (read from standard input)
+  mdm plugin pack <module.wasm> <manifest.json>
+                                      check a work-info plugin manifest and write it into the module
 
-Settings are read only from MDM_DATA_DIR. The password is never taken from arguments or environment variables.
+Account settings are read only from MDM_DATA_DIR; plugin commands do not read it. The password is never taken from arguments or environment variables.
 If standard input is a terminal, the password is asked for twice; otherwise the first line is used as the password.`
 
 // accountEnv はホスト側のコマンドが外界から受け取るものである。テストが差し替える。
@@ -67,6 +70,8 @@ func notConfiguredFailure() *accountFailure {
 func runCommand(ctx context.Context, args []string, env accountEnv) int {
 	var failure *accountFailure
 	switch {
+	case len(args) > 0 && args[0] == "plugin":
+		failure = runPlugin(ctx, args[1:], env)
 	case len(args) == 0 || args[0] != "account":
 		failure = usageFailure("Unknown command: %s", strings.Join(args, " "))
 	case len(args) == 1:
