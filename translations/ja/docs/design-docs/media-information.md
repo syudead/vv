@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/media-information.md
-sourceHash: a17cf75c46b1fe8a5afafd49ee9e958aeec3426c142f17ce0e12abac7d529599
+sourceHash: b94e53d49a5fbeed28e8d874afaeecab74e5ff2852854abca7b4060f39a77f2f
 ---
 
 # 取り込み時のプローブから得るメディア情報 {#media-information-from-the-import-probe}
@@ -15,7 +15,9 @@ flowchart LR
   parser -->|生の値| rules[internal/domain の規則]
   rules --> info[domain.Probe の domain.MediaInfo]
   info --> apply[ApplyProbeForJob]
+  info --> again[ApplyMediaInfoForJob]
   apply -->|videos と同じトランザクションと同一性の確認| row[(video_media_info)]
+  again -->|同じ同一性の確認、videos は変更しない| row
   row --> read[LibraryStore.MediaInfo]
 ```
 
@@ -57,3 +59,21 @@ flowchart LR
 | --- | --- |
 | `videos` の列 | すべての一覧クエリが読む、NULL を許す約 30 列 |
 | 項目ごとのテーブル (ストリーム、チャプター、タグ) | それらを結合やフィルタに使うクエリがない |
+
+## 以前に取り込んだ動画は `metadata` ジョブが読み直す {#videos-imported-earlier-are-read-again-by-a-metadata-job}
+
+`metadata` ジョブは、行ができる前にプローブした動画に同じ `media.Probe` を実行し、`ApplyMediaInfoForJob` で行だけを書く ([`internal/app/ingest.go`](../../internal/app/ingest.go)、`Metadata`)。マイグレーション `00051_metadata_jobs.sql` は、プローブが完了し、登録済みフォルダの下に場所を持つ動画ごとに 1 件を積み、スキャンは行がないか行が `domain.MediaInfoVersion` を下回る動画に 1 件を積む (`IndexedVideo.MediaInfoMissing`)。新しい取り込みには積まない。プローブのジョブが行を書くからだ。
+
+| 規則 | 理由 |
+| --- | --- |
+| 登録済みの場所を持つ動画の `probe` ジョブが待機中でも実行中でもない間だけ取得する (`JobClaimCondition.NoClaimableProbe`) | 新しい取り込みの段階が先に進み、2 つのワーカーが同時にディスクを読むことはない。プローブのジョブが `running` を離れると `metadata` のワーカーを起こす |
+| プローブのジョブと同じ同一性の確認 (ジョブの場所 ID、バージョンとパス、内容の鍵、場所の世代)。確認に失敗すると何も書かずにジョブを完了する | 実行中に置き換えられたファイルが古いファイルの行を得ることはない。新しいファイルを見つけたスキャンがもう一度積む |
+| インデックスの列、再生可否、ライブ変換用のプローブは書かない | 失敗や変更されたパーサーが再生やシークのプレビューを隠すことはできない |
+| 試行回数の上限での失敗は行を残し、最新のスキャンの集合に含まれる動画にだけ `metadata_failed` を記録する | 古いライブラリの補完はスキャンではないので、直前のスキャンを部分的な結果にしない。次のスキャンがジョブをもう一度積む |
+
+完了したジョブは `video` 通知を送るので、開いている動画ページは再取得して新しい情報を表示する。
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| `probe` ジョブを積み直す | 上限でのプローブの失敗は動画を `failed` にし、再生を隠す |
+| 起動時の補完 goroutine | 何を試したかの記録が残らず、再起動するとやり直しになる |
