@@ -55,7 +55,8 @@ test("ゲストで設定画面を開くとログイン画面になり、キー�
   await page.keyboard.press("Enter");
 
   await expect(page).toHaveURL("/settings");
-  await expect(page.getByRole("heading", { level: 1, name: "Settings" })).toBeVisible();
+  // `/settings` は sm から「Scan」のページを出す（specs/058-settings-pages R-3）。
+  await expect(page.getByRole("heading", { level: 1, name: "Scan" })).toBeVisible();
 });
 
 test("ログインの送信中は再送信できず、失敗するとパスワードだけが空になる", async ({

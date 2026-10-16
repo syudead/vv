@@ -13,6 +13,7 @@ import { PageSection } from "../ui/patterns/page-section";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { Switch } from "../ui/shadcn/switch";
 
+import { PageLinkText } from "./PageLink";
 import { SaveStatus } from "./SaveStatus";
 import { useSwitchSave } from "./useSwitchSave";
 
@@ -58,7 +59,10 @@ export default function VersionJudgingSection() {
   });
 
   return (
-    <PageSection title={text.heading} description={text.description}>
+    <PageSection
+      title={text.heading}
+      description={<PageLinkText sentence={text.description} page="connections" />}
+    >
       {loadError !== null && settings === null && (
         <div>
           <ErrorState

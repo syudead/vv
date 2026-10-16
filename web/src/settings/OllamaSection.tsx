@@ -148,7 +148,7 @@ export default function OllamaSection() {
         <Input
           id="ollama-endpoint"
           type="url"
-          className="sm:w-sm"
+          className="sm:w-3xs lg:w-sm"
           value={draft.endpoint}
           onChange={(event) => update({ endpoint: event.target.value })}
         />
@@ -156,7 +156,7 @@ export default function OllamaSection() {
       <FormRow label={text.model} description={text.modelHint} htmlFor="ollama-model">
         <Input
           id="ollama-model"
-          className="sm:w-sm"
+          className="sm:w-3xs lg:w-sm"
           value={draft.model}
           onChange={(event) => update({ model: event.target.value })}
         />

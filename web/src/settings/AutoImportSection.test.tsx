@@ -1,107 +1,56 @@
-import { act, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
 import {
   autoImportSettings as settings,
   autoImportURL,
-  deferred,
   installAutoImportServer,
-  json,
   renderWithScan,
 } from "../testing/autoImportServer";
-import AutoImportSection from "./AutoImportSection";
+import { AutoImportStateSection, AutoImportSwitchSection } from "./AutoImportSection";
 
 // 状態の言葉と問題は AutoImportState.test.tsx、保存の振る舞いは AutoImportSwitch.test.tsx が
-// 確かめる。ここでは 2 つを 1 つの区画に並べたときのつながりを確かめる。
+// 確かめる。ここでは「Scan」と「Library」の 2 つのページの節の組み方を確かめる。
 
-function autoImportSwitch(): HTMLElement {
-  return screen.getByRole("switch", { name: "Pick up changes as they happen" });
-}
-
-describe("AutoImportSection", () => {
+describe("AutoImportStateSection", () => {
   const server = installAutoImportServer();
 
-  it("puts the state line under the switch in one section", async () => {
+  it("shows the watch state under the Auto-import heading, with no switch", async () => {
     server.current = settings(false);
-    renderWithScan(<AutoImportSection reloadToken={0} />);
+    renderWithScan(<AutoImportStateSection />);
 
     const heading = await screen.findByRole("heading", { level: 2, name: "Auto-import" });
-    const line = await screen.findByText("Off. Changes are picked up by the next scan.");
-    const row = autoImportSwitch().closest("[data-slot='form-row']");
-    expect(row?.contains(line)).toBe(true);
-    expect(heading.closest("section")?.contains(row ?? null)).toBe(true);
+    const link = await screen.findByRole("link", { name: "Library" });
+    expect(link.getAttribute("href")).toBe("/settings/library");
+    expect(link.closest("p")?.textContent).toBe(
+      "Off. Changes are picked up by the next scan. Turn it on in Library.",
+    );
+    expect(heading.closest("section")?.contains(link)).toBe(true);
+    expect(screen.queryByRole("switch")).toBeNull();
   });
+});
 
-  it("shows the saved Starting state at once and polls until it settles", async () => {
+describe("AutoImportSwitchSection", () => {
+  const server = installAutoImportServer();
+
+  it("describes the switch with a link to the Scan page and saves it", async () => {
     server.current = settings(false);
     const user = userEvent.setup();
-    renderWithScan(<AutoImportSection reloadToken={0} />);
-    await screen.findByText("Off. Changes are picked up by the next scan.");
+    renderWithScan(<AutoImportSwitchSection />);
 
-    const put = deferred<Response>();
-    server.fetchMock.mockImplementation((input, init) =>
-      init?.method === "PUT" && String(input) === autoImportURL
-        ? put.promise
-        : server.route(input, init),
-    );
-    await user.click(autoImportSwitch());
-
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    server.current = settings(true, { state: "starting" });
-    await act(async () => put.resolve(json(server.current)));
-    expect(await screen.findByText("Starting to watch the media folders…")).toBeDefined();
-
-    server.current = settings(true, { state: "active" });
-    const before = server.gets();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(2100);
+    const toggle = await screen.findByRole("switch", {
+      name: "Pick up changes as they happen",
     });
-    expect(server.gets()).toBeGreaterThan(before);
-    expect(await screen.findByText("Watching the media folders.")).toBeDefined();
-  });
+    const link = screen.getByRole("link", { name: "Scan" });
+    expect(link.getAttribute("href")).toBe("/settings/scan");
+    expect(link.closest("[data-slot='form-row']")?.contains(toggle)).toBe(true);
 
-  it("keeps a saved switch when the window regains focus while the save is pending", async () => {
-    server.current = settings(false);
-    const user = userEvent.setup();
-    renderWithScan(<AutoImportSection reloadToken={0} />);
-    await screen.findByText("Off. Changes are picked up by the next scan.");
-
-    const save = deferred<Response>();
-    server.fetchMock.mockImplementation((input, init) =>
-      String(input) === autoImportURL && init?.method === "PUT"
-        ? save.promise
-        : server.route(input, init),
+    await user.click(toggle);
+    expect(server.fetchMock).toHaveBeenCalledWith(
+      autoImportURL,
+      expect.objectContaining({ method: "PUT", body: JSON.stringify({ enabled: true }) }),
     );
-    await user.click(autoImportSwitch());
-    const before = server.gets();
-    await act(async () => {
-      window.dispatchEvent(new Event("focus"));
-    });
-    // 保存の最中は読み直さない。
-    expect(server.gets()).toBe(before);
-
-    await act(async () => save.resolve(json(settings(true, { state: "active" }))));
-    await screen.findByText("Watching the media folders.");
-    expect(autoImportSwitch().getAttribute("aria-checked")).toBe("true");
-  });
-
-  it("puts the failed save's state back in the state line", async () => {
-    server.current = settings(false);
-    const user = userEvent.setup();
-    renderWithScan(<AutoImportSection reloadToken={0} />);
-    await screen.findByText("Off. Changes are picked up by the next scan.");
-    server.fetchMock.mockImplementation((input, init) =>
-      init?.method === "PUT" && String(input) === autoImportURL
-        ? Promise.resolve(json({ code: "internal", message: "boom" }, 500))
-        : server.route(input, init),
-    );
-
-    await user.click(autoImportSwitch());
-
-    await screen.findByText(/Couldn't change the setting:/);
-    expect(
-      screen.getByText("Off. Changes are picked up by the next scan."),
-    ).toBeDefined();
+    expect(screen.getByRole("link", { name: "Scan" })).toBeDefined();
   });
 });

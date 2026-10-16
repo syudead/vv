@@ -250,7 +250,7 @@ function ComfyUISectionBody() {
           <Input
             id="comfyui-url"
             type="url"
-            className="sm:w-sm"
+            className="sm:w-3xs lg:w-sm"
             value={draft.url}
             onChange={(event) => update({ url: event.target.value })}
           />
@@ -265,7 +265,7 @@ function ComfyUISectionBody() {
             id="comfyui-api-key"
             type="password"
             autoComplete="off"
-            className="sm:w-sm"
+            className="sm:w-3xs lg:w-sm"
             value={draft.apiKey}
             onChange={(event) => update({ apiKey: event.target.value })}
           />
@@ -423,7 +423,7 @@ function ChoiceRow<T extends string>({
           value={value}
           onValueChange={(next) => onChange(next as T)}
           aria-labelledby={labelId}
-          className="sm:w-sm"
+          className="sm:w-3xs lg:w-sm"
         >
           {order.map((option) => {
             const itemId = `${name}-${option}`;

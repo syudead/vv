@@ -6,18 +6,13 @@ import {
   installAutoImportServer,
   renderWithScan,
 } from "../testing/autoImportServer";
-import AutoImportState, { autoImportStateLine } from "./AutoImportState";
+import AutoImportState from "./AutoImportState";
 import { useAutoImportSettings } from "./useAutoImportSettings";
 
 /** 監視の状態を追う契機で読み、状態の 1 行と問題を出す。 */
 function StateHarness({ reloadToken = 0 }: { reloadToken?: number }) {
   const source = useAutoImportSettings({ reloadToken, followWatch: true });
-  return (
-    <>
-      {source.settings !== null && <p>{autoImportStateLine(source.settings)}</p>}
-      <AutoImportState source={source} />
-    </>
-  );
+  return <AutoImportState source={source} />;
 }
 
 describe("AutoImportState", () => {
@@ -26,9 +21,12 @@ describe("AutoImportState", () => {
   it("says the words of each state", async () => {
     server.current = settings(false);
     const view = renderWithScan(<StateHarness />);
-    expect(
-      await screen.findByText("Off. Changes are picked up by the next scan."),
-    ).toBeDefined();
+    const off = await screen.findByText(
+      /^Off\. Changes are picked up by the next scan\./,
+    );
+    expect(off.textContent).toBe(
+      "Off. Changes are picked up by the next scan. Turn it on in Library.",
+    );
     view.unmount();
 
     server.current = settings(true);
@@ -40,9 +38,11 @@ describe("AutoImportState", () => {
     server.current = settings(true, { state: "off" });
     renderWithScan(<StateHarness />);
 
-    expect(
-      await screen.findByText("Add a media folder below to watch it."),
-    ).toBeDefined();
+    const link = await screen.findByRole("link", { name: "Library" });
+    expect(link.getAttribute("href")).toBe("/settings/library");
+    expect(link.closest("p")?.textContent).toBe(
+      "Add a media folder in Library to watch it.",
+    );
   });
 
   it("shows the problem with its path for a limited watch, and no button", async () => {

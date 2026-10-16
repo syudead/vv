@@ -1,32 +1,43 @@
 import { t } from "../i18n";
 import { PageSection } from "../ui/patterns/page-section";
 
-import AutoImportState, { autoImportStateLine } from "./AutoImportState";
+import AutoImportState from "./AutoImportState";
 import AutoImportSwitch from "./AutoImportSwitch";
+import { PageLinkText } from "./PageLink";
 import { useAutoImportSettings } from "./useAutoImportSettings";
 
 /**
- * AutoImportSection は 1 つの設定画面の「Auto-import」区画である。切り替え（AutoImportSwitch）と
- * 監視の状態（AutoImportState）を 1 つの区画に並べ、状態の 1 行を切り替えの行の説明に置く
- * （specs/042-folder-watch-import/ui-design.md「Settings: Auto-import section」）。
- *
- * 2 つは 1 つの読み込みを共有するので、切り替えの保存はすぐに状態の 1 行へ映る。読み直しの契機は
- * 両方が要るものを合わせる。開いたとき、メディアフォルダを変えたあと（`reloadToken`）、それに
- * 監視の状態を追う契機（ウィンドウへ戻ったとき、直近の取り込みが終わったとき、`starting` の
- * あいだ 2 秒ごと）である。
+ * AutoImportStateSection は「Scan」のページの「Auto-import」節である。監視の状態とその問題を
+ * 出し、監視の状態を追う契機（開いたとき、ウィンドウへ戻ったとき、直近の取り込みが終わったとき、
+ * `starting` のあいだ 2 秒ごと）で読み直す。メディアフォルダは別のページで変わるので、
+ * このページを開き直すと読み直す（specs/058-settings-pages/ui-design.md「Scan page: Auto-import
+ * state」）。
  */
-export default function AutoImportSection({ reloadToken }: { reloadToken: number }) {
+export function AutoImportStateSection() {
   const text = t.settings.autoImport;
-  const source = useAutoImportSettings({ reloadToken, followWatch: true });
-  const { settings } = source;
+  const source = useAutoImportSettings({ followWatch: true });
+  return (
+    <PageSection title={text.heading} description={text.description}>
+      <AutoImportState source={source} />
+    </PageSection>
+  );
+}
 
+/**
+ * AutoImportSwitchSection は「Library」のページの「Auto-import」節である。切り替えの 1 行で、
+ * 説明は監視の状態のある「Scan」のページへのリンクである（どちらの状態でも同じ文なので、押しても
+ * 行の高さが変わらない）。開いたときに読めば足りる
+ * （specs/058-settings-pages/ui-design.md「Library page」）。
+ */
+export function AutoImportSwitchSection() {
+  const text = t.settings.autoImport;
+  const source = useAutoImportSettings();
   return (
     <PageSection title={text.heading} description={text.description}>
       <AutoImportSwitch
         source={source}
-        description={settings !== null ? autoImportStateLine(settings) : undefined}
+        description={<PageLinkText sentence={text.switchDescription} page="scan" />}
       />
-      <AutoImportState source={source} />
     </PageSection>
   );
 }
