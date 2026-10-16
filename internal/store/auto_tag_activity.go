@@ -303,11 +303,14 @@ func (s *ActivityStore) UndoAutoTag(ctx context.Context, entryID, tagID int64) (
 	if err != nil {
 		return domain.ActivityEntry{}, err
 	}
-	if err := s.db.commit(ctx, tx, c); err != nil {
-		return domain.ActivityEntry{}, fmt.Errorf("cannot undo the auto-tagging tag (tag=%d): %w", tagID, err)
-	}
+	// タグを外した動画はスマートフォルダの一致が変わりうるので、commitWith が確定の前に同じ取引でフォルダの
+	// 知らせも用意する（changesMatches）。
+	var events []domain.Event
 	if len(affected) > 0 {
-		s.db.publishEvents(domain.AutoTagApplied{VideoIDs: affected})
+		events = append(events, domain.AutoTagApplied{VideoIDs: affected})
+	}
+	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
+		return domain.ActivityEntry{}, fmt.Errorf("cannot undo the auto-tagging tag (tag=%d): %w", tagID, err)
 	}
 	return s.ActivityEntry(ctx, undoID)
 }

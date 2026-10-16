@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/duplicate-judging.md
-sourceHash: 43fa53188703406ed4e1dd985b6707c19e0441d8401adbe281f1283eb6721225
+sourceHash: 7fcbdfc8e6cee8220ea5b854f7901aef630455ad1459532bf2f0ab002fddbc04
 ---
 
 # 重複の候補を自動で判定する {#judging-possible-duplicates-automatically}
@@ -82,7 +82,7 @@ decider は、モデルの回答が決めたときは確率を伴う `ai`、そ�
 
 ## 自動の決定の取り消しは保たれる {#undo-of-an-automatic-decision-is-held}
 
-所有者は活動ログから自動の `same` または `different` を、先に状態を読み直す 1 つの `ActivityStore` トランザクションで取り消す ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion))。状態が変わっていれば、ほかには何も変わらず、`undo` 項目は `already_reverted` を示す。`same` では、所有者がその後に外して再びまとめた、加わった側のメンバーは、項目の決定より後の `video_bundle_members.added_at` を持つので、もう自動のまとめの一部とは数えず、取り消しはそれを所有者が置いた場所に残す。
+所有者は活動ログから自動の `same` または `different` を、先に状態を読み直す 1 つの `ActivityStore` トランザクションで取り消す ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion))。状態が変わっていれば、ほかには何も変わらず、`undo` 項目は `already_reverted` を示す。`same` では、所有者がその後に外して再びまとめた、加わった側のメンバーは、項目の決定より後の `video_bundle_members.added_at` を持つので、もう自動のまとめの一部とは数えず、取り消しはそれを所有者が置いた場所に残す。`different` では、退けた行は誰が書いたかを示さないので、決定の後に同じ組に対する所有者の `dismiss` 項目があれば、所有者がその組を再び決めたことを意味し、取り消しは退けた行を残す。
 
 | 取り消すもの | 状態の変化 | ワーカーが再び決めないようにするもの |
 | --- | --- | --- |

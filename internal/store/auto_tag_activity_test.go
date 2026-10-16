@@ -190,6 +190,7 @@ func TestUndoAutoTagRemovesTheTagFromTheBundle(t *testing.T) {
 	entry := runAutoTag(t, db, p2, domain.ActivityByRule, domain.AutoTagSelection{
 		Confirmed: []int64{cat.ID, dog.ID}, Probabilities: map[int64]float64{cat.ID: 0.91, dog.ID: 0.85},
 	})
+	folder := createSmartFolder(t, db, "猫", 0)
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
 
@@ -222,6 +223,10 @@ func TestUndoAutoTagRemovesTheTagFromTheBundle(t *testing.T) {
 	if !slices.ContainsFunc(recorder.events, func(e domain.Event) bool { return reflect.DeepEqual(e, want) }) ||
 		!slices.Contains(recorder.events, domain.Event(domain.ActivityChanged{})) {
 		t.Fatalf("発行した変化 = %#v", recorder.events)
+	}
+	// タグが外れるとスマートフォルダの一致が変わりうるので、すべてのフォルダを 1 度名指す。
+	if got, want := smartFolderNotices(recorder), []domain.SmartFoldersChanged{{IDs: []int64{folder.ID}}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("スマートフォルダの知らせ = %+v, want %+v", got, want)
 	}
 	undone, err := db.Activity().ActivityEntry(ctx, entry.ID)
 	if err != nil {

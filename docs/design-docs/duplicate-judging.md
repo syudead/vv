@@ -124,7 +124,10 @@ When the state has changed, nothing else changes and the `undo` entry says
 `already_reverted`. For `same`, a joined member that the owner removed and
 bundled again since has a later `video_bundle_members.added_at` than the
 entry's decision, so it no longer counts as part of the automatic bundle and
-the undo leaves it where the owner put it.
+the undo leaves it where the owner put it. For `different`, the dismissal row
+does not say who wrote it, so an owner `dismiss` entry on the same pair since
+the decision means the owner decided the pair again, and the undo keeps the
+dismissal.
 
 | Undone | State change | Keeps the worker from deciding it again |
 | --- | --- | --- |

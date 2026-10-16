@@ -573,7 +573,7 @@ func (s *ActivityStore) UndoVersionJudgement(ctx context.Context, id int64) (dom
 	if entry.Outcome == domain.ActivitySame {
 		restored, events, err = undoJudgedBundle(ctx, tx, c, keys, entry.UndoKeys, entry.UpdatedAt)
 	} else {
-		restored, err = undoJudgedDismissal(ctx, tx, c, keys)
+		restored, err = undoJudgedDismissal(ctx, tx, c, keys, entry.UpdatedAt)
 		events = []domain.Event{domain.VersionCandidatesChanged{}}
 	}
 	if err != nil {
@@ -583,10 +583,11 @@ func (s *ActivityStore) UndoVersionJudgement(ctx context.Context, id int64) (dom
 	if err != nil {
 		return domain.ActivityEntry{}, err
 	}
-	if err := s.db.commit(ctx, tx, c); err != nil {
+	// 束ねを外すとスマートフォルダの一致が変わりうるので、commitWith が確定の前に同じ取引でフォルダの知らせも
+	// 用意する（changesMatches）。
+	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
 		return domain.ActivityEntry{}, fmt.Errorf("cannot undo the version judgement: %w", err)
 	}
-	s.db.publishEvents(events...)
 	return s.ActivityEntry(ctx, undoID)
 }
 
@@ -615,9 +616,21 @@ func recordUndo(
 }
 
 // undoJudgedDismissal は自動の「違う」の組 keys の却下がまだあれば消し、両方の鍵の候補を作り直して組を候補の
-// 一覧に戻し、判定の保留（video_version_judging_holds）を書いて、戻したかを返す。却下がもう無ければ何も
-// 変えない。
-func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]string) (bool, error) {
+// 一覧に戻し、判定の保留（video_version_judging_holds）を書いて、戻したかを返す。judgedAt は判定で却下した時刻
+// （記録を done/different にした時刻）である。却下がもう無いか、所有者がその時刻から同じ組を「違う動画」と
+// 決め直した（dismiss の記録がある）なら何も変えない。却下の行は誰が書いたかを持たないので、所有者の判断は
+// 記録で見分ける。
+func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, judgedAt time.Time) (bool, error) {
+	var redecided bool
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from activity_entries
+		where kind = ? and subject_key = ? and subject_key_b = ? and subject_kind = ? and decider = ?
+		and created_at >= ?)`, string(domain.ActivityDismiss), keys[0], keys[1], string(domain.ActivitySubjectPair),
+		string(domain.ActivityByOwner), judgedAt.UnixMilli()).Scan(&redecided); err != nil {
+		return false, fmt.Errorf("cannot read the owner's dismissal: %w", err)
+	}
+	if redecided {
+		return false, nil
+	}
 	result, err := tx.ExecContext(ctx, `delete from video_version_dismissals where key_a = ? and key_b = ?`,
 		keys[0], keys[1])
 	if err != nil {
