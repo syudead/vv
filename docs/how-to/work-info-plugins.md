@@ -30,8 +30,9 @@ sequenceDiagram
   [Module](#module) works; the steps use Go.
 - The VVMDM server binary `mdm` (in the container image at
   `/usr/local/bin/mdm`, or built with `go build ./cmd/mdm`), to write the
-  manifest into the module. `VVMDM.exe` of the Windows app does not take
-  commands. The command reads no settings and needs no `ffmpeg`.
+  manifest into the module and run it locally. `VVMDM.exe` of the Windows app
+  does not take commands. The commands read no settings, open no database and
+  need no `ffmpeg`.
 - A VVMDM owner account, to add and approve the plugin.
 
 ## Steps
@@ -168,11 +169,40 @@ sequenceDiagram
    the field and the rule it breaks, such as
    `manifest_invalid: settings[0].default must be one of options`.
 
-6. In VVMDM, open **Settings**, choose **Add plugin** in the **Work-info
+6. Run the plugin once with `mdm plugin run`, giving the operation and its
+   input:
+
+   ```bash
+   mdm plugin run plugin.wasm fetch https://example.com/works/1
+   ```
+
+   The operation is `search`, whose input is the words, or `fetch`, whose
+   input is the work's URL; the input follows the same rules as on the video
+   page. Give a plugin with [settings](#setting-fields) their values with
+   `--set KEY=VALUE`, once per key, such as `--set token=abc`; only keys the
+   manifest declares are taken, and a setting without `--set` receives its
+   `default`, as in VVMDM.
+   `--proxy URL` sends the plugin's requests through a proxy, as the
+   operator's proxy setting does. The run has the same [limits](#limits) and
+   [address rule](#addresses) as in VVMDM.
+
+7. In VVMDM, open **Settings**, choose **Add plugin** in the **Work-info
    plugins** section, and pick `plugin.wasm`. Review the plugin and approve
    it.
 
 ## Check the result
+
+`mdm plugin run` exits with code 0 when the response is valid. It prints
+what VVMDM keeps of the response as indented JSON on standard output,
+`{"candidates": […]}` for `search` or `{"workInfo": {…}}` for `fetch`, after
+VVMDM's limits and trimming, and the plugin's standard error on standard
+error. A failed run exits with code 1 and ends standard error with one line
+such as `Run failed: blocked_address, host 127.0.0.1`: the failure, the host
+for `blocked_address` and `network_error`, and the plugin's message for
+`plugin_failed`. A module that VVMDM would refuse, an undeclared or missing
+setting, and an input or proxy URL that breaks its rule exit with code 2 and
+the reason. Secret values given with `--set` are printed as the plugin
+wrote them; VVMDM masks them only on the settings screen.
 
 The plugin's row shows its name and version with the **Approved** badge, and
 the video page offers **Fetch work info from a plugin**. A row without a name

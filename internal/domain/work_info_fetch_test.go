@@ -2,7 +2,9 @@ package domain
 
 import (
 	"errors"
+	"maps"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -86,5 +88,31 @@ func TestWorkInfoPluginEntryReportsAStaleValue(t *testing.T) {
 	}
 	if s := settings[1]; !s.Set || s.Value != "ja" || s.StaleValue != "" {
 		t.Fatalf("entry inside the options = %+v", s)
+	}
+}
+
+func TestWorkInfoRunSettingsCarriesEffectiveValuesOrReportsTheMissingKeys(t *testing.T) {
+	settings := []WorkInfoPluginSetting{
+		{Key: "token", Required: true, Secret: true},
+		{Key: "region", Required: true, Default: "jp", Options: []string{"jp", "us"}},
+		{Key: "note"},
+	}
+	got, err := WorkInfoRunSettings(settings, map[string]string{"token": "t", "other": "x"})
+	if err != nil || !maps.Equal(got, map[string]string{"token": "t", "region": "jp"}) {
+		t.Fatalf("WorkInfoRunSettings = %v, %v; want the token and the default region only", got, err)
+	}
+	_, err = WorkInfoRunSettings(settings, map[string]string{"region": "us"})
+	var missing *WorkInfoSettingsMissingError
+	if !errors.As(err, &missing) || !slices.Equal(missing.Keys, []string{"token"}) {
+		t.Fatalf("err = %v, want token missing", err)
+	}
+}
+
+func TestKeptWorkInfoTitleDropsATitleThatBreaksTheDisplayNameRule(t *testing.T) {
+	if got := KeptWorkInfoTitle("  Title  "); got != "Title" {
+		t.Fatalf("KeptWorkInfoTitle = %q, want the trimmed title", got)
+	}
+	if got := KeptWorkInfoTitle("   "); got != "" {
+		t.Fatalf("KeptWorkInfoTitle(blank) = %q, want none", got)
 	}
 }

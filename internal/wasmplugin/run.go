@@ -122,7 +122,7 @@ type runner struct {
 	order  []string
 }
 
-func newRunner(ctx context.Context, logger *slog.Logger) (*runner, error) {
+func newRunner(ctx context.Context, logger *slog.Logger, nc *netClient) (*runner, error) {
 	// ランタイムのページの上限は wazero の既定（4 GiB）のままにする。wazero は上限を超える
 	// memory.grow をメモリの確保に渡さずに断るので、上限を 128 MiB に置くと、超えたことを
 	// cappedMemory が記録できない。実際に使える大きさは cappedMemory が
@@ -137,7 +137,7 @@ func newRunner(ctx context.Context, logger *slog.Logger) (*runner, error) {
 		_ = rt.Close(ctx)
 		return nil, fmt.Errorf("instantiate vv host module: %w", err)
 	}
-	return &runner{logger: logger, rt: rt, net: newNetClient(), cache: map[string]wazero.CompiledModule{}}, nil
+	return &runner{logger: logger, rt: rt, net: nc, cache: map[string]wazero.CompiledModule{}}, nil
 }
 
 func (rn *runner) close(ctx context.Context) error {

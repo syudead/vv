@@ -25,6 +25,10 @@ var inspectionProblemHints = map[domain.WorkInfoPluginProblem]string{
 	domain.WorkInfoPluginImportUnsupported: "the module imports something other than WASI and vv functions, or uses another signature",
 	domain.WorkInfoPluginExportInvalid:     "_start or memory is missing or has another type",
 	domain.WorkInfoPluginTableTooLarge:     fmt.Sprintf("the module's tables exceed %d elements", domain.WorkInfoPluginTableMaxElements),
+	// 次の 3 つは mdm plugin run だけが出す。pack はマニフェストを先に確かめる。
+	domain.WorkInfoPluginManifestMissing:     "the module has no vv.plugin section; write the manifest into it with mdm plugin pack",
+	domain.WorkInfoPluginManifestInvalid:     "the module's vv.plugin section breaks a manifest rule; mdm plugin pack names the field and the rule",
+	domain.WorkInfoPluginContractUnsupported: "the manifest's contract is not 1",
 }
 
 // operationNames は操作を設定画面と同じ言葉で表す。
@@ -41,6 +45,8 @@ func runPlugin(ctx context.Context, args []string, env accountEnv) *accountFailu
 	switch args[0] {
 	case "pack":
 		return runPluginPack(ctx, args[1:], env.Stderr)
+	case "run":
+		return runPluginRun(ctx, args[1:], env)
 	default:
 		return usageFailure("Unknown plugin subcommand: %s", args[0])
 	}
@@ -123,20 +129,39 @@ func readPackInput(path, what, unchanged string) ([]byte, *accountFailure) {
 
 // inspectPacked は詰めたモジュールをサーバーと同じランタイムで検査する。
 func inspectPacked(ctx context.Context, packed []byte, unchanged string) (domain.WorkInfoPluginManifest, *accountFailure) {
-	runtime, err := wasmplugin.New(ctx, wasmplugin.Options{Logger: slog.New(slog.DiscardHandler)})
-	if err != nil {
-		return domain.WorkInfoPluginManifest{}, operationFailure("Cannot start the plugin runtime: %v", err)
+	runtime, failure := newPluginRuntime(ctx, wasmplugin.Options{})
+	if failure != nil {
+		return domain.WorkInfoPluginManifest{}, failure
 	}
 	defer func() { _ = runtime.Close(context.WithoutCancel(ctx)) }()
-	manifest, problem, err := runtime.Inspect(ctx, packed)
+	return inspectModule(ctx, runtime, packed, "packed module", unchanged, refusedFailure)
+}
+
+// newPluginRuntime はサーバーと同じ制限のランタイムを作る。プラグインの標準エラーはサーバーのログに書かず、
+// 呼び出し元が実行のログとして扱う。
+func newPluginRuntime(ctx context.Context, opts wasmplugin.Options) (*wasmplugin.Runtime, *accountFailure) {
+	opts.Logger = slog.New(slog.DiscardHandler)
+	runtime, err := wasmplugin.New(ctx, opts)
+	if err != nil {
+		return nil, operationFailure("Cannot start the plugin runtime: %v", err)
+	}
+	return runtime, nil
+}
+
+// inspectModule はモジュールをアップロードと同じ検査にかける。what はモジュールの呼び名、suffix は
+// 理由の後ろに足す文で、refuse は検査に通らないときの終了コード 2 の失敗を作る。
+func inspectModule(
+	ctx context.Context, runtime *wasmplugin.Runtime, module []byte, what, suffix string,
+	refuse func(string, ...any) *accountFailure,
+) (domain.WorkInfoPluginManifest, *accountFailure) {
+	manifest, problem, err := runtime.Inspect(ctx, module)
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoPluginTooLarge):
-		return manifest, refusedFailure("The packed module is larger than %d MiB.%s",
-			domain.WorkInfoPluginModuleMaxBytes>>20, unchanged)
+		return manifest, refuse("The %s is larger than %d MiB.%s", what, domain.WorkInfoPluginModuleMaxBytes>>20, suffix)
 	case err != nil:
 		return manifest, operationFailure("Cannot inspect the module: %v", err)
 	case problem != "":
-		return manifest, refusedFailure("%s: %s.%s", problem, inspectionProblemHints[problem], unchanged)
+		return manifest, refuse("%s: %s.%s", problem, inspectionProblemHints[problem], suffix)
 	}
 	return manifest, nil
 }

@@ -47,15 +47,28 @@ type netClient struct {
 	dial func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
-func newNetClient() *netClient {
+// newNetClient は opts の Resolve と Connect を使う netClient を作る。どちらも nil ならシステムの
+// resolver と net.Dialer を使う。
+func newNetClient(opts Options) *netClient {
 	c := &netClient{
 		rule: addressRule{local: interfaceAddrs},
 		lookup: func(ctx context.Context, host string) ([]netip.Addr, error) {
 			return net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		},
 	}
+	if opts.Resolve != nil {
+		c.lookup = opts.Resolve
+	}
 	dialer := &net.Dialer{Control: c.control}
 	c.dial = dialer.DialContext
+	if connect := opts.Connect; connect != nil {
+		c.dial = func(ctx context.Context, network, address string) (net.Conn, error) {
+			if err := c.control(network, address, nil); err != nil {
+				return nil, err
+			}
+			return connect(ctx, network, address)
+		}
+	}
 	c.client = newPluginHTTPClient(c.transport(nil, c.dialContext))
 	return c
 }

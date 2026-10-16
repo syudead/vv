@@ -87,7 +87,10 @@ binary lives next to the SPA, and `internal/httpapi` consumes it as an `fs.FS`.
 
 `cmd/mdm` reads the configuration, creates the adapters and the
 application-layer values, wires them together, and starts and stops them; it
-holds no use case of its own. Each consuming package declares the interfaces it
+holds no use case of its own. Its host commands are thin compositions of the
+same packages: `mdm account` over `internal/store`, and `mdm plugin pack` and
+`mdm plugin run` over `internal/wasmplugin` and the `internal/domain` rules,
+which open no database. Each consuming package declares the interfaces it
 needs, and the values crossing them (`domain.VideoFile`, `domain.Job`,
 `domain.VideoQuery`, …) live in `internal/domain`, so neither side imports the
 other. [`cmd/mdm/events.go`](cmd/mdm/events.go) is the only place that

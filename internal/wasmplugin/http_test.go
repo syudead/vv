@@ -277,7 +277,7 @@ func TestHTTPBodyFailureAfterARedirectReportsTheRedirectHost(t *testing.T) {
 
 func TestHTTPDialLeavesTimeForTheNextAddress(t *testing.T) {
 	site := newTestSite(t)
-	nc := newNetClient()
+	nc := newNetClient(Options{})
 	nc.lookup = func(context.Context, string) ([]netip.Addr, error) {
 		return []netip.Addr{netip.MustParseAddr("2606:4700::1"), netip.MustParseAddr("93.184.215.14")}, nil
 	}
