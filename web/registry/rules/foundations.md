@@ -64,7 +64,7 @@ step: `navbar`, `sidebar`, `sidebar-rail`, `rail-item`, `card-0` to `card-3`,
 `selection-bar-clearance`, `popover`, `popover-wide`, `viewport-inset`, `chip-label`,
 `combobox`, `combobox-list`, `combobox-panel`, `combobox-panel-max`, `menu`,
 `detail-aside`, `detail-aside-wide`, `editor-aside`, `editor-aside-wide`, `form-page-aside`, `list-aside`, `list-aside-max`,
-`related-thumb`, `neighbor-arrow`,
+`settings-nav`, `settings-nav-max`, `related-thumb`, `neighbor-arrow`,
 `neighbor-arrow-min`, `neighbor-arrow-min-sm`, `control-bar-clearance`,
 `versions-popover`, `playlist-panel`, `visibility-x`, `technical-x`,
 `issue-list`, `folder-list`. The video page's player frame uses `player-width`,
@@ -73,7 +73,7 @@ video's aspect ratio from the frame's `--vv-video-aspect` at run time. Fractions
 (`w-1/2`), `full`, `auto` and the container widths (`max-w-md`) are allowed.
 A width the scale lacks becomes a named step in `tokens.css`, not an
 arbitrary value. A value no step can name becomes a named utility in
-`tokens.css` (`grid-cols-term`, `grid-cols-list-aside`, `grid-cols-form-page`, `w-folder-preview`,
+`tokens.css` (`grid-cols-term`, `grid-cols-list-aside`, `grid-cols-form-page`, `grid-cols-settings-page`, `w-folder-preview`,
 `top-data-table-head`).
 `style` carries only values known at run time (a position, a ratio, a measured
 height); `task check` fails on a fixed value in it.

@@ -667,14 +667,15 @@
       "name": "settings-page",
       "type": "registry:ui",
       "title": "SettingsPage",
-      "description": "Page skeleton: one column of fixed maximum width with titled sections.",
+      "description": "Page skeleton: one column of fixed maximum width with titled sections, and optionally the list of a settings area's pages beside it.",
       "docs": "Usage rules: web/registry/rules/patterns.md#settings-page (item vv-rules).",
       "files": [
         {
           "path": "src/ui/patterns/settings-page.tsx",
           "type": "registry:ui"
         }
-      ]
+      ],
+      "dependencies": ["radix-ui"]
     },
     {
       "name": "detail-page",
@@ -1000,7 +1001,7 @@
       "name": "settings-page-example",
       "type": "registry:block",
       "title": "Settings page example",
-      "description": "A working settings page: sections of form rows and a fact list.",
+      "description": "A working settings area of three pages: the page list, sections of form rows and a fact list.",
       "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#settings-page (item vv-rules).",
       "files": [
         {
