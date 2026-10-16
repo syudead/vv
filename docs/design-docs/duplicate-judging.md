@@ -103,6 +103,8 @@ The code is
 | Bundled or dismissed by the judgement | `done`/`same` or `done`/`different` |
 | Rebuilt for one of its keys | Attached again to the pair's open entry, found by its two keys |
 | Bundled or dismissed by the owner | `done`/`decided_by_owner` |
+| Restored by undoing the drag-organize bundle that closed it | The same entry reopens with the row's state |
+| Its key's content changed at the same path | Kept open until the succession is decided: re-keyed when it carries over, `done`/`gone` when it does not |
 | A key left the library | `done`/`gone` |
 | Swept into one bundle by another pair's automatic bundle | `done`/`superseded` |
 
@@ -119,7 +121,10 @@ The owner undoes an automatic `same` or `different` from the activity log in
 one `ActivityStore` transaction that re-reads the state first
 ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)).
 When the state has changed, nothing else changes and the `undo` entry says
-`already_reverted`.
+`already_reverted`. For `same`, a joined member that the owner removed and
+bundled again since has a later `video_bundle_members.added_at` than the
+entry's decision, so it no longer counts as part of the automatic bundle and
+the undo leaves it where the owner put it.
 
 | Undone | State change | Keeps the worker from deciding it again |
 | --- | --- | --- |

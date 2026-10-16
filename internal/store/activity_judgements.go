@@ -236,34 +236,30 @@ func closePairActivities(
 		and subject_key_b in (select value from json_each(?1)) and id <> ?2`, outcome, decider, now, encoded, except)
 }
 
-// closeGonePairActivities は、どちらかの鍵が keys にある組の開いている version_judgement の記録を done/gone で
-// 閉じる。鍵の動画がライブラリから外れて候補が消えるとき（releaseContentIndex の後）に呼ぶ。
-func closeGonePairActivities(ctx context.Context, tx *sql.Tx, c *changes, keys []string, now time.Time) error {
-	encoded, err := keysJSON(keys)
-	if err != nil {
-		return err
-	}
-	return closeActivities(ctx, tx, c, `(subject_key in (select value from json_each(?1))
-		or subject_key_b in (select value from json_each(?1)))`, domain.ActivityGone, "", now, encoded)
+// leftLibraryCondition は内容の鍵 %[1]s がライブラリから外れた条件である。その鍵の動画の行が無く、同じパスの
+// 中身の引き継ぎ（video_successions）の前の中身としても待っていない。引き継ぎを待つ鍵は、引き継げば新しい
+// 鍵へ付け替わり（movePairActivityKey）、引き継がないと決まったときに外れる（data-model.md「Rules」）。
+const leftLibraryCondition = `(not exists (select 1 from videos v where v.content_key = %[1]s)
+	and not exists (select 1 from video_successions s where s.old_key = %[1]s))`
+
+// closeGonePairActivities は、どちらかの鍵がライブラリから外れた組（leftLibraryCondition）の開いている
+// version_judgement の記録を done/gone で閉じる。鍵の動画の行を消した取引（closeDeletedPairActivities）と、
+// 引き継ぎを待っていた前の中身を引き継がないと決めた取引（applySuccession）が呼ぶ。
+func closeGonePairActivities(ctx context.Context, tx *sql.Tx, c *changes, now time.Time) error {
+	return closeActivities(ctx, tx, c, `subject_kind = ?1 and (`+fmt.Sprintf(leftLibraryCondition, "subject_key")+`
+		or `+fmt.Sprintf(leftLibraryCondition, "subject_key_b")+`)`, domain.ActivityGone, "", now,
+		string(domain.ActivitySubjectPair))
 }
 
-// closeDeletedPairActivities は、取引 c で消した動画の行（videosDeleted）の内容の鍵を含む組の開いている
-// version_judgement の記録を done/gone で閉じる。動画の行を消すと候補も消える（releaseContentIndex）。
-// 確定の前に commit が呼ぶ。
+// closeDeletedPairActivities は、取引 c が動画の行を消した（videosDeleted）とき、鍵がライブラリから外れた組の
+// 開いている version_judgement の記録を done/gone で閉じる。動画の行を消すと候補も消え（releaseContentIndex）、
+// その動画を後継に待っていた前の中身の引き継ぎも消える。同じパスの中身が変わって消えた前の中身は、引き継ぎを
+// 待つあいだ閉じない。確定の前に commit が呼ぶ。
 func closeDeletedPairActivities(ctx context.Context, tx *sql.Tx, c *changes) error {
 	if c == nil || len(c.deleted) == 0 {
 		return nil
 	}
-	keys := make([]string, 0, len(c.deleted))
-	for _, video := range c.deleted {
-		if video.ContentKey != "" {
-			keys = append(keys, video.ContentKey)
-		}
-	}
-	if len(keys) == 0 {
-		return nil
-	}
-	return closeGonePairActivities(ctx, tx, c, keys, time.Now())
+	return closeGonePairActivities(ctx, tx, c, time.Now())
 }
 
 // closeActivities は condition（引数は ?1 から）を満たす開いている version_judgement の記録を done/outcome で
@@ -399,32 +395,84 @@ func recordJudgementActivity(
 		if err := closePairActivities(ctx, tx, c, applied.members, domain.ActivitySuperseded, "", id, now); err != nil {
 			return err
 		}
+		// 取り消しは、まとまりがこの時刻より後に作られていないことで束ねがまだあると見る（undoJudgedBundle）ので、
+		// 束ねた後の時刻を書く。
 		return updateActivity(ctx, tx, c, id, activityUpdate{
 			state:   domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivitySame},
 			decider: result.ResultDecider(), probability: result.Probability, undoKeys: applied.undoKeys.Encode(),
-		}, now)
+		}, time.Now())
 	case result.Verdict == domain.VersionDifferent:
 		return updateActivity(ctx, tx, c, id, activityUpdate{
 			state:   domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivityDifferent},
 			decider: result.ResultDecider(), probability: result.Probability,
 		}, now)
 	}
-	var judgement sql.NullString
-	err := tx.QueryRowContext(ctx, `select judgement from video_version_candidates where key_a = ? and key_b = ?`,
-		keys[0], keys[1]).Scan(&judgement)
+	var candidate candidateVerdict
+	err := tx.QueryRowContext(ctx, `select judgement, probability, judgement_error from video_version_candidates
+		where key_a = ? and key_b = ?`, keys[0], keys[1]).
+		Scan(&candidate.judgement, &candidate.probability, &candidate.err)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return fmt.Errorf("cannot read the version candidate: %w", err)
 	}
-	update := activityUpdate{state: domain.VersionJudgementActivityState(domain.VersionJudgement(judgement.String))}
+	return updateActivity(ctx, tx, c, id, candidate.activityUpdate(), now)
+}
+
+// candidateVerdict は候補の行の判定の欄である。
+type candidateVerdict struct {
+	judgement   sql.NullString
+	probability sql.NullFloat64
+	err         sql.NullString
+}
+
+// activityUpdate は候補の判定に従う記録の欄を返す。モデルの確率を残した undecided は ai とその確率（規則の衝突で
+// 決まらなかった組は確率を残さないので rule）、failed はその文である（research.md R-5）。
+func (j candidateVerdict) activityUpdate() activityUpdate {
+	update := activityUpdate{state: domain.VersionJudgementActivityState(domain.VersionJudgement(j.judgement.String))}
 	switch update.state.Reason {
 	case domain.ActivityUndecided:
-		if result.Verdict == domain.VersionUndecided {
-			update.decider, update.probability = result.ResultDecider(), result.Probability
+		if j.probability.Valid {
+			probability := j.probability.Float64
+			update.decider, update.probability = domain.ActivityByAI, &probability
 		}
 	case domain.ActivityFailed:
-		update.detail = result.Error
+		update.detail = j.err.String
 	}
-	return updateActivity(ctx, tx, c, id, update, now)
+	return update
+}
+
+// reopenRestoredPairActivities は、ドラッグの束ねの取り消し（OrganizeStore.Undo）が戻した候補の行のうち、
+// 束ねで所有者が決めたとして閉じた（decided_by_owner）記録を指すものの記録を、その候補の判定に従う状態に開き
+// 直す。束ねる前の記録に戻すので、組は 1 つの記録を保つ（data-model.md「Rules」）。
+func reopenRestoredPairActivities(ctx context.Context, tx *sql.Tx, c *changes, now time.Time) error {
+	rows, err := tx.QueryContext(ctx, `select c.activity_id, c.judgement, c.probability, c.judgement_error
+		from video_version_candidates c join activity_entries e on e.id = c.activity_id
+		where e.kind = ? and e.status = ? and e.outcome = ?`, string(domain.ActivityVersionJudgement),
+		string(domain.ActivityDone), string(domain.ActivityDecidedByOwner))
+	if err != nil {
+		return fmt.Errorf("cannot read the restored version candidates: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	updates := map[int64]activityUpdate{}
+	for rows.Next() {
+		var id int64
+		var candidate candidateVerdict
+		if err := rows.Scan(&id, &candidate.judgement, &candidate.probability, &candidate.err); err != nil {
+			return fmt.Errorf("cannot read the restored version candidates: %w", err)
+		}
+		updates[id] = candidate.activityUpdate()
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("cannot read the restored version candidates: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return fmt.Errorf("cannot read the restored version candidates: %w", err)
+	}
+	for id, update := range updates {
+		if err := updateActivity(ctx, tx, c, id, update, now); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 // RetryJudgement は失敗か中断で attention の version_judgement の記録 id の組を、すぐ取り出せるようにし
@@ -510,7 +558,7 @@ func (s *ActivityStore) UndoVersionJudgement(ctx context.Context, id int64) (dom
 	var restored bool
 	var events []domain.Event
 	if entry.Outcome == domain.ActivitySame {
-		restored, events, err = undoJudgedBundle(ctx, tx, c, keys, entry.UndoKeys)
+		restored, events, err = undoJudgedBundle(ctx, tx, c, keys, entry.UndoKeys, entry.UpdatedAt)
 	} else {
 		restored, err = undoJudgedDismissal(ctx, tx, c, keys)
 		events = []domain.Event{domain.VersionCandidatesChanged{}}
@@ -580,10 +628,10 @@ func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]st
 }
 
 // undoJudgedBundle は自動の「同じ」の組 keys の束ねがまだあれば（2 つの鍵が同じまとまりにあれば）、加わった側
-// （undoKeys のメンバーのうち、いまライブラリにあって合わさったまとまりにいるもの）を元の代表のまとまりとして
-// 外し（splitBundle）、外したかと確定後の知らせを返す。束ねがもう無ければ何も変えない。
+// （leavingMembers）を元の代表のまとまりとして外し（splitBundle）、外したかと確定後の知らせを返す。judgedAt は
+// 判定で束ねた時刻（記録を done/same にした時刻）である。束ねがもう無いか、外すメンバーが無ければ何も変えない。
 func undoJudgedBundle(
-	ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, undoKeys string,
+	ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, undoKeys string, judgedAt time.Time,
 ) (bool, []domain.Event, error) {
 	joined, err := domain.DecodeVersionBundleUndoKeys(undoKeys)
 	if err != nil {
@@ -604,7 +652,7 @@ func undoJudgedBundle(
 	if err != nil {
 		return false, nil, err
 	}
-	leaving, err := leavingMembers(ctx, tx, joined.Members, members)
+	leaving, err := leavingMembers(ctx, tx, joined.Members, bundles[0].id, judgedAt)
 	if err != nil {
 		return false, nil, err
 	}
@@ -618,17 +666,23 @@ func undoJudgedBundle(
 	return true, split.events(), nil
 }
 
-// leavingMembers は加わった側の鍵 joined のうち、まとまりのメンバー members にいて、いまライブラリにあるものを
-// 返す。
-func leavingMembers(ctx context.Context, tx *sql.Tx, joined, members []string) ([]string, error) {
-	inBundle := make(map[string]bool, len(members))
-	for _, key := range members {
-		inBundle[key] = true
-	}
+// leavingMembers は加わった側の鍵 joined のうち、判定で束ねた時刻 judgedAt から合わさったまとまり bundleID に
+// いるメンバーで、いまライブラリにあるものを返す。メンバーになった時刻（video_bundle_members.added_at）が
+// judgedAt より後の鍵は、所有者が一度外して束ね直したので、合わさったまとまりにいたとはみなさない。まとまりを
+// 束ねる操作は、すでにメンバーの鍵の時刻を変えない（moveBundleMembers）。
+func leavingMembers(
+	ctx context.Context, tx *sql.Tx, joined []string, bundleID int64, judgedAt time.Time,
+) ([]string, error) {
 	var leaving []string
 	for _, key := range joined {
-		if !inBundle[key] {
+		var addedAt int64
+		err := tx.QueryRowContext(ctx, `select added_at from video_bundle_members where content_key = ? and bundle_id = ?`,
+			key, bundleID).Scan(&addedAt)
+		if errors.Is(err, sql.ErrNoRows) || err == nil && addedAt > judgedAt.Unix() {
 			continue
+		}
+		if err != nil {
+			return nil, fmt.Errorf("cannot read the bundle member: %w", err)
 		}
 		if _, err := videoIDForContent(ctx, tx, key); errors.Is(err, domain.ErrNotFound) {
 			continue

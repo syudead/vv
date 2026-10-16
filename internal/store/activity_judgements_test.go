@@ -432,3 +432,106 @@ func TestUndoAutomaticBundleOfTwoBundlesRestoresBoth(t *testing.T) {
 		}
 	}
 }
+
+// 同じパスの中身が変わっても、前の中身の組の開いている記録は引き継ぎを決めるまで閉じない。尺が合って引き継ぐと
+// 同じ記録が新しい鍵の組になり、引き継がないと決まったときだけ gone で閉じる（data-model.md「Rules」）。
+func TestSuccessionKeepsTheOpenPairEntryUntilDecided(t *testing.T) {
+	for name, c := range map[string]struct {
+		durationMs int64
+		carried    bool
+	}{
+		"尺が同じ":  {100_400, true},
+		"尺が幅の外": {150_000, false},
+	} {
+		t.Run(name, func(t *testing.T) {
+			db, _ := judgementFixture(t)
+			failed := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "timeout"})
+			expectEntryState(t, failed, activityFailed, domain.ActivityByRule)
+
+			scan := startTestScan(t, db)
+			next := upsertOne(t, db, listingFile(fixturePath("/media/b.mp4"), "b", "key-e", 5))
+			if waiting := onlyPairEntry(t, db); waiting.Status != domain.ActivityAttention {
+				t.Errorf("引き継ぎを待つ記録 = %s/%s%s, want attention のまま", waiting.Status, waiting.Reason, waiting.Outcome)
+			}
+			finishTestScan(t, db, scan, domain.ScanDone)
+			probeDuration(t, db, next, c.durationMs)
+
+			entry := onlyPairEntry(t, db)
+			if entry.ID != failed.ID {
+				t.Errorf("記録 = %d, want 同じ記録 %d", entry.ID, failed.ID)
+			}
+			if c.carried {
+				expectEntryState(t, entry, activityFailed, domain.ActivityByRule)
+				if entry.Subject.Key != "key-a" || entry.Subject.KeyB != "key-e" {
+					t.Errorf("引き継いだ記録の組 = %s|%s, want key-a|key-e", entry.Subject.Key, entry.Subject.KeyB)
+				}
+			} else {
+				expectEntryState(t, entry, domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivityGone},
+					domain.ActivityByRule)
+			}
+		})
+	}
+}
+
+// 自動の束ねの後に所有者が加わった動画を外して手で束ね直したら、古い記録の取り消しは already_reverted で、
+// 所有者のまとまりを変えない（research.md R-7）。
+func TestUndoAfterOwnerRebundledIsAlreadyReverted(t *testing.T) {
+	db, ids := judgementFixture(t)
+	a, b := ids["a"], ids["b"]
+	entry := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule})
+	// 束ねは少し前に起きたことにする（メンバーの時刻は秒）。
+	if _, err := db.sql.Exec(`update video_bundle_members set added_at = added_at - 10`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.sql.Exec(`update activity_entries set updated_at = updated_at - 10000 where id = ?`, entry.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Versions().Unbundle(context.Background(), b); err != nil {
+		t.Fatal(err)
+	}
+	bundle(t, db, a, a, b)
+
+	if undo := undoEntry(t, db, entry.ID); undo.Outcome != domain.ActivityAlreadyReverted {
+		t.Errorf("undo の結果 = %s, want already_reverted", undo.Outcome)
+	}
+	if versions := ownerVideo(t, db, b).Versions; versions == nil || versions.Count != 2 {
+		t.Errorf("所有者が束ね直したまとまり = %+v, want a と b の 2 本のまま", versions)
+	}
+}
+
+// ドラッグで束ねて閉じた組の記録は、そのドラッグを取り消すと、戻った候補の判定の状態で同じ記録が開き直す
+// （data-model.md「Rules」）。
+func TestOrganizeBundleUndoReopensThePairEntry(t *testing.T) {
+	db, ids := judgementFixture(t)
+	ctx := context.Background()
+	undecided := judgePair(t, db, domain.VersionJudgeResult{
+		Verdict: domain.VersionUndecided, Probability: probabilityOf(0.5), Decider: domain.ActivityByAI,
+	})
+	image, err := db.Organize().Bundle(ctx, []int64{ids["b"]}, ids["a"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	expectEntryState(t, onlyPairEntry(t, db), domain.ActivityState{
+		Status: domain.ActivityDone, Outcome: domain.ActivityDecidedByOwner,
+	}, domain.ActivityByOwner)
+
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
+	if err := db.Organize().Undo(ctx, image); err != nil {
+		t.Fatal(err)
+	}
+	reopened := onlyPairEntry(t, db)
+	if reopened.ID != undecided.ID {
+		t.Errorf("開き直した記録 = %d, want 同じ記録 %d", reopened.ID, undecided.ID)
+	}
+	expectEntryState(t, reopened, activityUndecided, domain.ActivityByAI)
+	if reopened.Probability == nil || *reopened.Probability != 0.5 {
+		t.Errorf("開き直した記録の確率 = %v, want 0.5", reopened.Probability)
+	}
+	if !slices.ContainsFunc(recorder.events, func(event domain.Event) bool {
+		_, ok := event.(domain.ActivityChanged)
+		return ok
+	}) {
+		t.Errorf("取り消しの知らせ = %v, want ActivityChanged を含む", recorder.events)
+	}
+}

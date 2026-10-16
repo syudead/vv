@@ -82,7 +82,7 @@ Indexes on `(status, id)`, `(feature, id)` and `(kind, subject_key, subject_key_
 | `completed` | The run finished or the operation applied |
 | `same`, `different` | A `version_judgement` bundled or dismissed the pair |
 | `failed` | A `work_info_fetch` that returned an error |
-| `superseded` | A newer entry of the same kind on the same subject started while this one was `attention` |
+| `superseded` | A newer entry of the same kind on the same subject started while this one was `attention`; or an open `version_judgement` whose pair another pair's automatic bundle put in one bundle |
 | `decided_by_owner` | The owner bundled or dismissed the pair of an open `version_judgement` |
 | `gone` | The candidate of an open `version_judgement` disappeared with a video |
 | `already_reverted` | An `undo` whose target state had already been changed by the owner |
