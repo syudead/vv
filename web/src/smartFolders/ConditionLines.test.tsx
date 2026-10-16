@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { __resetTagKindsForTest } from "../api/tagKinds";
 import { __resetTagsForTest } from "../api/tags";
 import { json } from "../testing/groupPage";
+import { PageHeader } from "../ui/patterns/page-header";
 import ConditionLines from "./ConditionLines";
 
 // 条件の行のチップが名前を引く（specs/052-smart-folders/ui-design.md「Conditions lines」）。
@@ -82,5 +83,32 @@ describe("ConditionLines", () => {
       (call) => new URL(String(call[0]), "http://localhost").pathname,
     );
     expect(paths).not.toContain("/api/tag-kinds");
+  });
+
+  it("見出しの説明（p）の中に置いても、骨組みは p の中に置けない要素にならない", async () => {
+    const consoleError = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      render(
+        <MemoryRouter>
+          <PageHeader
+            title="猫"
+            description={
+              <ConditionLines rule={{ tags: [3] }} ancestors={[]} missing={[]} />
+            }
+          />
+        </MemoryRouter>,
+      );
+      const skeletons = document.querySelectorAll('p [data-slot="skeleton"]');
+      expect(skeletons.length).toBeGreaterThan(0);
+      for (const skeleton of skeletons) expect(skeleton.tagName).toBe("SPAN");
+      expect(document.querySelector("p div")).toBeNull();
+      await screen.findByText("Tag: 猫");
+      const nesting = consoleError.mock.calls.filter((call) =>
+        call.map(String).join(" ").includes("cannot be a descendant of"),
+      );
+      expect(nesting).toEqual([]);
+    } finally {
+      consoleError.mockRestore();
+    }
   });
 });
