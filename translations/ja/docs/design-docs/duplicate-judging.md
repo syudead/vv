@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/duplicate-judging.md
-sourceHash: 7fcbdfc8e6cee8220ea5b854f7901aef630455ad1459532bf2f0ab002fddbc04
+sourceHash: 6844ca5482280a6931d8d215f7097d02d45a62949948cab63f4c4687d3d7a60f
 ---
 
 # 重複の候補を自動で判定する {#judging-possible-duplicates-automatically}
@@ -82,11 +82,11 @@ decider は、モデルの回答が決めたときは確率を伴う `ai`、そ�
 
 ## 自動の決定の取り消しは保たれる {#undo-of-an-automatic-decision-is-held}
 
-所有者は活動ログから自動の `same` または `different` を、先に状態を読み直す 1 つの `ActivityStore` トランザクションで取り消す ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion))。状態が変わっていれば、ほかには何も変わらず、`undo` 項目は `already_reverted` を示す。`same` では、所有者がその後に外して再びまとめた、加わった側のメンバーは、項目の決定より後の `video_bundle_members.added_at` を持つので、もう自動のまとめの一部とは数えず、取り消しはそれを所有者が置いた場所に残す。`different` では、退けた行は誰が書いたかを示さないので、決定の後に同じ組に対する所有者の `dismiss` 項目があれば、所有者がその組を再び決めたことを意味し、取り消しは退けた行を残す。
+所有者は活動ログから自動の `same` または `different` を、先に状態を読み直す 1 つの `ActivityStore` トランザクションで取り消す ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion))。状態が変わっていれば、ほかには何も変わらず、`undo` 項目は `already_reverted` を示す。所有者がその後に変えたかどうかは、行の時刻ではなくログから読む。項目の id は単調に増えるので、同じ対象に対する所有者の項目で、id が取り消す項目の `decided_mark` (判定が結果を書いたときの最大の項目 id) より大きいものは、同じ 1 秒の中であっても、所有者が結果の後に再び決めたことを意味する。組が待っている間や判定されている間に所有者が行った変更は数えない。`same` では、後の所有者の `bundle`、`unbundle`、`organize_undo` 項目を持つ、加わった側のメンバーは、もう自動のまとめの一部とは数えず、取り消しはそれを所有者が置いた場所に残す。分けるメンバーが残っていないときは、取り消しは `already_reverted` になる。`bundle` の項目は所属が変わったメンバーについてだけ書くので、所有者が自動のまとまりに動画を加えても、その取り消しは妨げられない。`different` では、退けた行は誰が書いたかを示さないので、同じ組に対する後の所有者の `dismiss` 項目は、所有者がその組を再び決めたことを意味し、取り消しは退けた行を残す。
 
 | 取り消すもの | 状態の変化 | ワーカーが再び決めないようにするもの |
 | --- | --- | --- |
 | `same` | 加わった側は `Unbundle` が 1 つの動画を外すのと同じようにまとまりから出る。2 つ以上の側は、元の代表と、統合したまとまりのユーザーデータの写しを持つ 1 つのまとまりとして出る | `video_version_unbundles`。2 つの側をまたぐ組についてだけ |
 | `different` | 退けた組を削除し、両方の鍵の候補を作り直すので、組は Duplicates に再び一覧される | `video_version_judging_holds` |
 
-取得は、まとまりから外した組を飛ばすのと同じように保留した組を飛ばし、同じパスの内容の変化は両方のテーブルと開いている項目の対象の鍵を付け替える。
+取得は、まとまりから外した組を飛ばすのと同じように保留した組を飛ばし、同じパスの内容の変化は両方のテーブルと、終わった項目も含めて項目が持つすべての鍵を付け替えるので、変化の後の取り消しも新しい鍵でまとまりのメンバーやタグを見つける。

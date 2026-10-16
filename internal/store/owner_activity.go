@@ -64,28 +64,37 @@ func recordOwnerVideoActivity(
 		now, string(kind), string(encoded))
 }
 
+// ownerSubjectKeyExpr は所有者の操作の鍵 keyExpr（内容の鍵か集まりの利用者データの鍵）の、記録の対象の鍵の式で
+// ある。集まりの鍵は代表の内容の鍵を対象にする。
+func ownerSubjectKeyExpr(keyExpr string) string {
+	return `coalesce((select b.representative_key from video_bundles b where b.user_key = ` + keyExpr + `), ` + keyExpr + `)`
+}
+
 // insertOwnerVideoEntries は問い合わせ source（引数は args）の各行を、機能 feature の動画の記録として位置と
 // タグの id の順に 1 文で書く。source の列は順に、並びの位置、内容の鍵か集まりの利用者データの鍵、タグの id（無ければ null）、
-// detail、種類である。集まりの鍵は代表の内容の鍵を対象にし、タグの id があれば detail はそのタグの名前に
-// する。状態は done/completed、判断したものは owner で、表示名は書いた時点のもの（contentLabelExpr）である。
+// detail、種類である。集まりの鍵は代表の内容の鍵を対象にし、タグの id があれば tag_id に持ち、detail はそのタグの
+// 名前にする。状態は done/completed、判断したものは owner で、表示名は書いた時点のもの（contentLabelExpr）である。
+// タグの記録には、操作が触った内容の鍵を activity_entry_keys に残す（insertOwnerEntryKeys）。
 // 書いた行があれば c に残し、確定後に domain.ActivityChanged を発行させる。
 func insertOwnerVideoEntries(
 	ctx context.Context, tx activityWriter, c *changes, feature domain.ActivityFeature, source string, now time.Time,
 	args ...any,
 ) error {
+	var before int64
+	if err := tx.QueryRowContext(ctx, `select coalesce(max(id), 0) from activity_entries`).Scan(&before); err != nil {
+		return fmt.Errorf("cannot record the owner's activity: %w", err)
+	}
 	at := now.UnixMilli()
 	// source は ? か ?NNN で引数を受けるので、この文の値は名前で渡して番号が重ならないようにする。
 	args = append(args, sql.Named("feature", string(feature)), sql.Named("subject_kind", string(domain.ActivitySubjectVideo)),
 		sql.Named("status", string(domain.ActivityDone)), sql.Named("outcome", string(domain.ActivityCompleted)),
-		sql.Named("decider", string(domain.ActivityByOwner)), sql.Named("at", at))
+		sql.Named("decider", string(domain.ActivityByOwner)), sql.Named("at", at), sql.Named("before", before))
 	result, err := tx.ExecContext(ctx, `with o (position, user_key, tag_id, detail, kind) as (`+source+`)
 		insert into activity_entries (kind, feature, subject_kind, subject_key, subject_label, status, outcome, detail,
-			decider, created_at, updated_at)
+			tag_id, decider, created_at, updated_at)
 		select s.kind, :feature, :subject_kind, s.subject_key, `+contentLabelExpr("s.subject_key")+`, :status, :outcome,
-			s.detail, :decider, :at, :at
-		from (select o.position, o.tag_id, o.kind,
-				coalesce((select b.representative_key from video_bundles b where b.user_key = o.user_key), o.user_key)
-					as subject_key,
+			s.detail, s.tag_id, :decider, :at, :at
+		from (select o.position, o.tag_id, o.kind, `+ownerSubjectKeyExpr("o.user_key")+` as subject_key,
 				case when o.tag_id is not null
 					then (select tn.name from tag_names tn where tn.tag_id = o.tag_id and tn.canonical = 1)
 					else o.detail end as detail
@@ -94,10 +103,32 @@ func insertOwnerVideoEntries(
 	if err != nil {
 		return fmt.Errorf("cannot record the owner's activity: %w", err)
 	}
-	if affected, err := result.RowsAffected(); err != nil {
+	affected, err := result.RowsAffected()
+	if err != nil {
 		return fmt.Errorf("cannot record the owner's activity: %w", err)
-	} else if affected > 0 {
-		c.activityChanged()
+	}
+	if affected == 0 {
+		return nil
+	}
+	c.activityChanged()
+	return insertOwnerEntryKeys(ctx, tx, source, args...)
+}
+
+// insertOwnerEntryKeys は insertOwnerVideoEntries が source から書いたタグの記録（:before より大きい id、:at の時刻、
+// 同じ種類・タグ・対象の鍵）のそれぞれに、操作の鍵が触った内容の鍵を activity_entry_keys に書く。集まりの鍵は
+// その時のメンバー全員の鍵、内容の鍵はそれ自身である。
+func insertOwnerEntryKeys(ctx context.Context, tx activityWriter, source string, args ...any) error {
+	if _, err := tx.ExecContext(ctx, `with o (position, user_key, tag_id, detail, kind) as (`+source+`)
+		insert or ignore into activity_entry_keys (entry_id, content_key)
+		select e.id, k.content_key
+		from o join activity_entries e on e.id > :before and e.created_at = :at and e.kind = o.kind
+			and e.tag_id = o.tag_id and e.subject_key = `+ownerSubjectKeyExpr("o.user_key")+`
+		join (select m.content_key, b.user_key from video_bundle_members m join video_bundles b on b.id = m.bundle_id
+			union all select v.content_key, v.content_key from videos v where v.content_key <> ''
+				and not exists (select 1 from video_bundle_members vm where vm.content_key = v.content_key)) k
+			on k.user_key = o.user_key
+		where o.tag_id is not null`, args...); err != nil {
+		return fmt.Errorf("cannot record the keys of the owner's activity: %w", err)
 	}
 	return nil
 }
@@ -135,15 +166,60 @@ func recordManualTagActivity(
 }
 
 // recordOwnerBundle は所有者が members を 1 つの集まりに束ねたことを記録する。その中の組の開いている
-// version_judgement の記録を所有者が決めたとして閉じ、メンバーごとに bundle の記録を書く。
-// VersionStore.Bundle と OrganizeStore.Bundle が共有する。
-func recordOwnerBundle(ctx context.Context, tx *sql.Tx, c *changes, members []string) error {
+// version_judgement の記録を所有者が決めたとして閉じ、所属が変わったメンバー joined（bundlePlan.joined）ごとに
+// bundle の記録を書く。代表が属していた集まりのメンバーには書かない: 所有者はそのメンバーを置き直していないので、
+// 自動の束ねの取り消しはそのメンバーをまだ外せる（research.md R-6・R-7）。VersionStore.Bundle と
+// OrganizeStore.Bundle が共有する。
+func recordOwnerBundle(ctx context.Context, tx *sql.Tx, c *changes, members, joined []string) error {
 	now := time.Now()
 	if err := closePairActivities(ctx, tx, c, members, domain.ActivityDecidedByOwner, domain.ActivityByOwner, 0,
 		now); err != nil {
 		return err
 	}
-	return recordOwnerVideoActivity(ctx, tx, c, domain.ActivityBundle, ownerVideoChanges(members, ""), now)
+	return recordOwnerVideoActivity(ctx, tx, c, domain.ActivityBundle, ownerVideoChanges(joined, ""), now)
+}
+
+// markDecided は、自動の結果を書いた記録 id に、いまの記録の id の最大値を decided_mark として残す。記録は待ち行列に
+// 積んだとき・候補が現れたときに開くので、id の比較では処理を待つ間の所有者の操作が「後」になる。取り消しは、
+// この印より大きい id の所有者の記録だけを結果より後の変更と見る（research.md R-7）。書いた取引の中で呼ぶ。
+func markDecided(ctx context.Context, tx *sql.Tx, id int64) error {
+	if _, err := tx.ExecContext(ctx, `update activity_entries set decided_mark = (select max(id) from activity_entries)
+		where id = ?`, id); err != nil {
+		return fmt.Errorf("cannot mark the decided activity entry (id=%d): %w", id, err)
+	}
+	return nil
+}
+
+// decidedMark は記録 id の decided_mark を返す。無ければ（この印より前に終わった記録）記録の id。
+func decidedMark(ctx context.Context, tx *sql.Tx, id int64) (int64, error) {
+	var mark int64
+	if err := tx.QueryRowContext(ctx, `select coalesce(decided_mark, id) from activity_entries where id = ?`, id).
+		Scan(&mark); err != nil {
+		return 0, fmt.Errorf("cannot read the decision mark of the activity entry (id=%d): %w", id, err)
+	}
+	return mark, nil
+}
+
+// ownerEntryAfter は、印 mark より後に書かれた（id が大きい。id は単調に増える）所有者の動画の記録のうち、種類が
+// kinds のどれかで、条件 condition（activity_entries の別名は e、引数は args）に合うものがあるかを返す。自動の
+// 判断の取り消しが、所有者がその後に同じ対象を変えたかを時刻ではなく記録で見分けるのに使う（research.md R-7）。
+func ownerEntryAfter(
+	ctx context.Context, tx *sql.Tx, mark int64, kinds []domain.ActivityKind, condition string, args ...any,
+) (bool, error) {
+	encodedKinds, err := json.Marshal(kinds)
+	if err != nil {
+		return false, fmt.Errorf("cannot look for the owner's later activity: %w", err)
+	}
+	var found bool
+	err = tx.QueryRowContext(ctx, `select exists (select 1 from activity_entries e
+		where e.id > ? and e.decider = ? and e.subject_kind = ?
+		and e.kind in (select value from json_each(?)) and `+condition+`)`,
+		append([]any{mark, string(domain.ActivityByOwner), string(domain.ActivitySubjectVideo), string(encodedKinds)},
+			args...)...).Scan(&found)
+	if err != nil {
+		return false, fmt.Errorf("cannot look for the owner's later activity: %w", err)
+	}
+	return found, nil
 }
 
 // recordOwnerDismissal は所有者の「違う動画」の組 keys（key_a < key_b）の dismiss の記録を 1 件書く。

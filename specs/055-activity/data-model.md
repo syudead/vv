@@ -10,15 +10,16 @@ tables this feature writes into are
 ## Migration
 
 One migration, numbered after the last one on `main` when it is written
-(`00050` today), creates `activity_entries`, `activity_entry_tags` and
-`video_version_judging_holds`, and adds a nullable `activity_id` to `jobs`,
+(`00054` today), creates `activity_entries` with its nullable `tag_id` and
+`decided_mark` columns, `activity_entry_tags`, `activity_entry_tag_keys`,
+`activity_entry_keys` and `video_version_judging_holds`, and adds a nullable `activity_id` to `jobs`,
 `auto_tag_queue` and `video_version_candidates`. Down drops them. No entry is
 written for anything that happened before it (the parent Issue's last edge
 case).
 
 | Table | Category ([Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery)) |
 | --- | --- |
-| `activity_entries`, `activity_entry_tags` | User data: never rebuilt, never pruned ([R-1](research.md#r-1-a-persistent-activity-log-named-apart-from-the-scan-activity)) |
+| `activity_entries`, `activity_entry_tags`, `activity_entry_tag_keys`, `activity_entry_keys` | User data: never rebuilt, never pruned ([R-1](research.md#r-1-a-persistent-activity-log-named-apart-from-the-scan-activity)) |
 | `video_version_judging_holds` | User data: the owner's undo, kept like `video_version_unbundles` |
 
 ## `activity_entries`
@@ -43,6 +44,8 @@ case).
 | `probability` | real | Yes | The model's answer for a duplicate pair it decided or left undecided |
 | `undo_keys` | text | Yes | For a bundled pair, a JSON object with the member keys of the side that joined and that side's former representative key ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | `undone_by` | integer | Yes | The owner entry that undid this one |
+| `tag_id` | integer | Yes | For an owner `tag_attach`, `tag_detach`, `tag_keep` or `tag_reject`, the tag; survives a rename |
+| `decided_mark` | integer | Yes | For an `auto_tag` that finished or a `version_judgement` that bundled or dismissed, the greatest entry id when the result was written; an owner entry with a greater id came after the result ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | `created_at`, `updated_at` | integer | No | Unix milliseconds |
 
 **Relationships**: none to `videos`; `undone_by` refers to another entry.
@@ -57,7 +60,7 @@ Indexes on `(status, id)`, `(feature, id)` and `(kind, subject_key, subject_key_
 | `auto_tag` | video | Queuing a video for auto-tagging |
 | `version_judgement` | pair | A judgeable candidate appearing while judging is on, or judging being turned on |
 | `work_info_fetch` | video | A plugin fetch ([R-11](research.md#r-11-a-failed-work-information-fetch-is-a-finished-entry-not-a-problem)) |
-| `bundle`, `unbundle`, `make_representative`, `dismiss` | video or pair | The owner's version operations ([R-6](research.md#r-6-the-owner-operations-recorded)) |
+| `bundle`, `unbundle`, `make_representative`, `dismiss` | video or pair | The owner's version operations ([R-6](research.md#r-6-the-owner-operations-recorded)); a `bundle` entry per member whose membership changed: a video that was not bundled, or a member of a bundle other than the representative's |
 | `tag_attach`, `tag_detach`, `tag_keep`, `tag_reject` | video | The owner's tag operations, one entry per video and tag |
 | `work_info_apply` | video | Applying fetched work information |
 | `media_folder_remove` | folder | Removing a media folder; `detail` holds the number of videos it removed |
@@ -98,9 +101,36 @@ The tags an `auto_tag` entry added; undo is per tag.
 | `tag_name` | text | No | The name as written |
 | `suggested` | integer | No | 1 when added as a suggested tag |
 | `user_key` | text | No | The user key the attachment was written at (a content key or a bundle's key) |
-| `attached_at` | integer | No | The `video_tags.created_at` written; undo deletes only a row that still has it |
 | `probability` | real | No | The model's answer |
 | `undone_by` | integer | Yes | The `undo` entry |
+
+## `activity_entry_tag_keys`
+
+The user keys where an `auto_tag` entry's row of a tag now is: the key it was
+written at, and every key that bundling or unbundling copied that row to
+(`copyUserData`). A key whose row of the tag came from elsewhere is not listed:
+a new bundle takes the representative's rows, so when the representative's own
+row of the tag won, the bundle's key is listed only for the entry that wrote the
+representative's row; a key whose rows the bundle's rows replaced
+(`replaceUserData`) is dropped first. Undo deletes the rows at these keys and no
+other ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)).
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `entry_id`, `tag_id` | integer | No | The `activity_entry_tags` row; primary key with `user_key` |
+| `user_key` | text | No | A user key whose row of the tag descends from the row the run wrote |
+
+## `activity_entry_keys`
+
+The content keys an owner tag entry touched: the key itself, or every member
+of the bundle when the tag was changed on a bundle's key. Undo matches an
+owner change by `tag_id` and content key, so a rename or a representative
+change in between does not hide it.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `entry_id` | integer | No | The owner tag entry; primary key with `content_key` |
+| `content_key` | text | No | A content key the change touched |
 
 ## `video_version_judging_holds`
 
@@ -126,8 +156,11 @@ never claims them.
 | Startup, before the workers start, turns every entry `running` with reason `processing` into `attention`/`interrupted`; `waiting` entries stay | `store`, called from `cmd/mdm` beside `Scans.RecoverInterrupted` |
 | Retry is offered for `attention` with reason `failed` or `interrupted`, of kind `import`, `scan`, `auto_tag` or `version_judgement` | `domain` |
 | Undo is offered for an entry decided by `rule` or `ai` that is not yet undone: a `version_judgement` with outcome `same` or `different`, or a tag of an `auto_tag` entry | `domain` |
+| Undo decides "the owner changed it since" from the log, never from a row's timestamp: an owner entry on the same subject (`tag_attach`, `tag_detach`, `tag_keep` or `tag_reject` with the tag's `tag_id` and the video's content key in `activity_entry_keys`; a member's `bundle`, `unbundle` or `organize_undo`; the pair's `dismiss`) with an id greater than the undone entry's `decided_mark` means the owner decided again after the result ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) | `store` (one package-private lookup) |
+| Undo of a tag deletes only rows that descend from the row the run wrote (`activity_entry_tag_keys`); when the video's current user key is not among them, another member's row won at bundling and the undo is `already_reverted` ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) | `store` |
+| Bundling writes a `bundle` entry only for the members whose membership changed; adding a video to a bundle leaves the bundle's own members without one, so an automatic bundle among them can still be undone ([R-6](research.md#r-6-the-owner-operations-recorded)) | `store` (`planBundle`) |
 | The judging claim skips pairs in `video_version_judging_holds` as it skips `video_version_unbundles` | `store` (`judgeablePairs`) |
-| A content change at the same path re-keys `video_version_judging_holds` and the subject keys of open entries as `moveKeyPairs` re-keys dismissals | `store` (successions) |
+| A content change at the same path re-keys `video_version_judging_holds` and every key an entry holds, open or finished (a video or pair subject, an `auto_tag` entry's `activity_entry_tags.user_key` and `activity_entry_tag_keys`, an owner tag entry's `activity_entry_keys`, an automatic bundle's `undo_keys`), as `moveKeyPairs` re-keys dismissals, so a later undo finds the rows that moved with the user data | `store` (successions) |
 
 ## What does not change
 

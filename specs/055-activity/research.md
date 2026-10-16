@@ -147,6 +147,12 @@ bundle.
 | Remove a media folder, which removes its videos from the library | — |
 | Undo of an automatic decision, and the drag-organize undo | — |
 
+A `bundle` entry is written per member whose membership changed: a video that
+was not bundled, or a member of a bundle other than the one the representative
+was in. When the owner adds a video to a bundle, the bundle's own members only
+gain a member and get no entry, so their automatic bundle can still be undone
+([R-7](#r-7-undo-restores-the-state-and-always-records-the-exclusion)).
+
 **Rationale**: These are the changes the automatic processes also make, so a
 row from the owner explains why an automatic decision no longer holds.
 Rejected: every mutating endpoint, because the log would be dominated by
@@ -168,7 +174,7 @@ keeps the automatic process from deciding the same again.
 | --- | --- | --- |
 | Bundled pair | Split the side that joined back out: a single video leaves the bundle; a side that was a bundle leaves as one bundle with its former representative | `video_version_unbundles`, only for pairs across the two sides (054 R-8) |
 | "Different videos" | Delete the dismissal and rebuild both keys' candidates, so the pair returns to Duplicates | New `video_version_judging_holds` pair |
-| Added or suggested tag | Delete the attachment it wrote, only while that attachment is still there | `auto_tag_rejections` ([auto-tagging.md](../../docs/design-docs/auto-tagging.md#tags-it-adds)) |
+| Added or suggested tag | Delete the attachment at its user key, unless the owner changed that tag since | `auto_tag_rejections` ([auto-tagging.md](../../docs/design-docs/auto-tagging.md#tags-it-adds)) |
 
 An automatic bundle joins two sides, and either may already be a bundle; the
 side that joined is the one whose representative did not become the
@@ -176,15 +182,43 @@ bundle's. The entry keeps that side's member keys and its former
 representative, so the undo restores the side as it was instead of breaking a
 bundle the owner made into single videos; the side that leaves as a bundle
 gets a copy of the merged bundle's user data, as `Unbundle` gives the
-remaining member a copy. A member no longer in the library, or no longer in
-the merged bundle, is skipped.
+remaining member a copy. A member no longer in the library, no longer in the
+merged bundle, or with an owner `bundle`, `unbundle` or `organize_undo` entry
+newer than the judgement is skipped: the owner put it where it is.
 
-An automatic tag is written on the bundle's user key with an attachment time.
-The entry keeps both, and the undo deletes the `video_tags` row at that key,
-or at the subject video's current key after a rebuild re-keyed it, only when
-its time still matches and a suggested tag is still suggested. A tag the
-owner removed and attached again, or kept, has a new time or state, so the
-owner's own attachment is never deleted.
+An automatic tag is written on the bundle's user key; the entry keeps that key
+and the tag, and `activity_entry_tag_keys` keeps every key that bundling or
+unbundling copied the row to. The undo deletes the `video_tags` rows at those
+keys and no other, unless an owner `tag_attach`, `tag_detach`, `tag_keep` or
+`tag_reject` entry for that video and tag is newer than the run's result; then
+the owner's own attachment stays as the owner left it. A new bundle takes the
+representative's rows, so when another member's row of the tag (the owner's,
+say) became the bundle's, the subject's current key is not among the run's keys:
+the undo deletes the run's hidden row, leaves the bundle's row, and is
+`already_reverted`. The owner entry names the tag by `tag_id` and the content
+keys the change touched (`activity_entry_keys`; every member when the tag was
+changed on a bundle), so the match survives a rename of the tag and a change
+of the bundle's representative.
+
+A content change at the same path that carries the user data over to the new
+key re-keys the entries with it, finished ones included, so the undo of an
+entry decided before the change still finds the row ([data-model.md
+"Rules"](data-model.md#rules)).
+
+"Newer" is read from the log, never from the rows: entry ids are monotonic,
+and the automatic result is written long after its entry opened (at queue
+time, or when the candidate appeared), so the write stores the greatest entry
+id of that moment as the entry's `decided_mark`. An owner entry on the same
+subject with a greater id than the mark came after the result and means the
+owner decided again, as the owner `dismiss` entry does for an undone
+"different"; an owner change made while the run waited does not count. The
+rows the decisions write (`video_tags`,
+`video_bundle_members`, `video_version_dismissals`) keep their second-precision
+timestamps and gain no column; an owner's change within the same second as the
+automatic run is still told apart. Rejected: match the row by its timestamp,
+because the owner's re-attach in the same second was indistinguishable.
+Rejected: record the entry id on the row, because it ties the user-data tables
+to the log and the log already holds the owner's decision.
 
 The undo is one `ActivityStore` transaction that re-reads
 the target state, reuses the package-private steps of `Unbundle`, `Dismiss`

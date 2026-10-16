@@ -385,7 +385,7 @@ func TestActivityEntryReadsOneEntryWithTags(t *testing.T) {
 	id := writeActivity(t, db,
 		videoActivity(domain.ActivityAutoTag, "key-a", "a.mp4", activityDone, domain.ActivityByAI), clock.next())
 	if _, err := db.sql.Exec(`insert into activity_entry_tags (entry_id, tag_id, tag_name, suggested, user_key,
-		attached_at, probability) values (?, 7, 'outdoor', 0, 'key-a', 1, 0.91), (?, 8, 'beach', 1, 'key-a', 1, 0.6)`, id, id); err != nil {
+		probability) values (?, 7, 'outdoor', 0, 'key-a', 0.91), (?, 8, 'beach', 1, 'key-a', 0.6)`, id, id); err != nil {
 		t.Fatal(err)
 	}
 

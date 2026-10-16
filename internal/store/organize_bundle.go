@@ -66,7 +66,7 @@ func (s *OrganizeStore) Bundle(ctx context.Context, videoIDs []int64, targetID i
 			return nil, err
 		}
 		c := &changes{}
-		if err := recordOwnerBundle(ctx, tx, c, plan.members); err != nil {
+		if err := recordOwnerBundle(ctx, tx, c, plan.members, plan.joined); err != nil {
 			return nil, err
 		}
 		return append(outcome.events(), c.events()...), nil

@@ -534,18 +534,12 @@ func TestSuccessionKeepsTheOpenPairEntryUntilDecided(t *testing.T) {
 }
 
 // 自動の束ねの後に所有者が加わった動画を外して手で束ね直したら、古い記録の取り消しは already_reverted で、
-// 所有者のまとまりを変えない（research.md R-7）。
+// 所有者のまとまりを変えない（research.md R-7）。所有者の操作は判定と同じ秒の中で行い、取り消しが時刻ではなく
+// 所有者の記録の id で見分けることを確かめる。
 func TestUndoAfterOwnerRebundledIsAlreadyReverted(t *testing.T) {
 	db, ids := judgementFixture(t)
 	a, b := ids["a"], ids["b"]
 	entry := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule})
-	// 束ねは少し前に起きたことにする（メンバーの時刻は秒）。
-	if _, err := db.sql.Exec(`update video_bundle_members set added_at = added_at - 10`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.sql.Exec(`update activity_entries set updated_at = updated_at - 10000 where id = ?`, entry.ID); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.Versions().Unbundle(context.Background(), b); err != nil {
 		t.Fatal(err)
 	}
@@ -593,5 +587,134 @@ func TestOrganizeBundleUndoReopensThePairEntry(t *testing.T) {
 		return ok
 	}) {
 		t.Errorf("取り消しの知らせ = %v, want ActivityChanged を含む", recorder.events)
+	}
+}
+
+// 判定中に所有者が加わる側の動画を別のまとまりに束ねて外しても、その記録は判定の結果より前なので、取り消しは判定が
+// 束ねた側を外す。記録は取り出したときに開くので、所有者の記録の id は記録の id より大きいが、結果を書いた印
+// （decided_mark）より小さい（research.md R-7）。
+func TestUndoAutomaticBundleAfterTheOwnerBundledWhileItWaited(t *testing.T) {
+	db, ids := judgementFixture(t)
+	a, b, c := ids["a"], ids["b"], ids["c"]
+	job := claimJudgement(t, db)
+	bundle(t, db, a, a, c)
+	if _, err := db.Versions().Unbundle(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule})
+	entry := onlyPairEntry(t, db)
+	if entry.Outcome != domain.ActivitySame {
+		t.Fatalf("判定の記録 = %+v, want done/same", entry)
+	}
+
+	undo := undoEntry(t, db, entry.ID)
+	if undo.Outcome != domain.ActivityCompleted {
+		t.Errorf("undo の結果 = %s, want completed", undo.Outcome)
+	}
+	for _, id := range []int64{a, b} {
+		if ownerVideo(t, db, id).Versions != nil {
+			t.Errorf("動画 %d がまだ集まりに属する", id)
+		}
+	}
+}
+
+// succeedA は key-a の動画の同じパスの中身を key-e に替え、尺が合って引き継がれるところまで進め、新しい動画の id を
+// 返す。
+func succeedA(t *testing.T, db *DB) int64 {
+	t.Helper()
+	scan := startTestScan(t, db)
+	next := upsertOne(t, db, listingFile(fixturePath("/media/a.mp4"), "a", "key-e", 5))
+	finishTestScan(t, db, scan, domain.ScanDone)
+	probeDuration(t, db, next, 100_000)
+	return next
+}
+
+// 同じパスの中身が変わって引き継がれると、終わった記録の対象の鍵も新しい鍵になるので、その後の自動タグの取り消し
+// は新しい鍵の行を見つけて消す（data-model.md「Rules」、research.md R-7）。
+func TestUndoAutoTagAfterTheSubjectWasRekeyedBySuccession(t *testing.T) {
+	db, ids := judgementFixture(t)
+	ctx := context.Background()
+	cat := createTestTag(t, db, "cat")
+	entry := runAutoTag(t, db, ids["a"], domain.ActivityByRule, domain.AutoTagSelection{
+		Confirmed: []int64{cat.ID}, Probabilities: map[int64]float64{cat.ID: 0.91},
+	})
+	next := succeedA(t, db)
+	if got := manualTagIDs(t, db, "key-e"); !slices.Equal(got, []int64{cat.ID}) {
+		t.Fatalf("引き継いだ鍵のタグ = %v, want cat", got)
+	}
+
+	undo, err := db.Activity().UndoAutoTag(ctx, entry.ID, cat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if undo.Outcome != domain.ActivityCompleted || undo.Subject.Key != "key-e" {
+		t.Fatalf("undo の記録 = %s（対象 %s）, want completed（key-e）", undo.Outcome, undo.Subject.Key)
+	}
+	if got := manualTagIDs(t, db, "key-e"); len(got) != 0 {
+		t.Errorf("引き継いだ鍵に取り消したタグが残った: %v", got)
+	}
+	if !rejectedFor(t, db, "key-e", cat.ID) {
+		t.Error("引き継いだ鍵に却下が残っていない")
+	}
+	rekeyed, err := db.Activity().ActivityEntry(ctx, entry.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rekeyed.Subject.Key != "key-e" || len(rekeyed.VideoIDs) == 0 || rekeyed.VideoIDs[0] != next {
+		t.Errorf("付け替えた記録 = 対象 %s, 動画 %v, want key-e の動画 %d", rekeyed.Subject.Key, rekeyed.VideoIDs, next)
+	}
+}
+
+// 自動で束ねた後に加わった側の中身が同じパスで変わって引き継がれると、記録の組と加わった側の鍵も新しい鍵になり、
+// 取り消しは新しい鍵のメンバーを外す。
+func TestUndoAutomaticBundleAfterTheJoinedKeyWasRekeyedBySuccession(t *testing.T) {
+	db, _ := judgementFixture(t)
+	entry := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule})
+	joined, err := domain.DecodeVersionBundleUndoKeys(entry.UndoKeys)
+	if err != nil || !slices.Equal(joined.Members, []string{"key-a"}) {
+		t.Fatalf("加わった側 = %+v, %v, want key-a", joined, err)
+	}
+	next := succeedA(t, db)
+	if ownerVideo(t, db, next).Versions == nil {
+		t.Fatal("引き継いだ動画がまとまりにいない")
+	}
+
+	undo := undoEntry(t, db, entry.ID)
+	if undo.Outcome != domain.ActivityCompleted || undo.Subject.Key != "key-b" || undo.Subject.KeyB != "key-e" {
+		t.Errorf("undo の記録 = %s（%s|%s）, want completed（key-b|key-e）", undo.Outcome, undo.Subject.Key, undo.Subject.KeyB)
+	}
+	if ownerVideo(t, db, next).Versions != nil {
+		t.Error("引き継いだ動画がまだまとまりに属する")
+	}
+	if pairs := unbundledPairs(t, db); !slices.Equal(pairs, []string{"key-b|key-e"}) {
+		t.Errorf("外した組 = %v, want [key-b|key-e]", pairs)
+	}
+}
+
+// 自動の束ねの後に所有者が別の動画を加えても、代表の集まりにいたメンバーの所属は変わらないので bundle の記録は
+// 加えた動画にだけ書き、古い記録の取り消しは加わった側を外して completed になる（research.md R-6・R-7）。所有者が
+// 加わった側を外して束ね直した場合は TestUndoAfterOwnerRebundledIsAlreadyReverted。
+func TestUndoAutomaticBundleAfterTheOwnerAddedAMember(t *testing.T) {
+	db, ids := judgementFixture(t)
+	a, b, c := ids["a"], ids["b"], ids["c"]
+	entry := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule})
+	joined, err := domain.DecodeVersionBundleUndoKeys(entry.UndoKeys)
+	if err != nil || !slices.Equal(joined.Members, []string{"key-a"}) {
+		t.Fatalf("加わった側 = %+v, %v, want key-a", joined, err)
+	}
+	bundle(t, db, b, b, c)
+	expectOwnerEntries(t, db, 0, ownerEntry{domain.ActivityBundle, "key-c", "", "c", ""})
+
+	undo := undoEntry(t, db, entry.ID)
+	if undo.Outcome != domain.ActivityCompleted {
+		t.Errorf("undo の結果 = %s, want completed", undo.Outcome)
+	}
+	if ownerVideo(t, db, a).Versions != nil {
+		t.Error("加わった側の a がまだ集まりに属する")
+	}
+	for _, id := range []int64{b, c} {
+		if versions := ownerVideo(t, db, id).Versions; versions == nil || versions.Count != 2 {
+			t.Errorf("所有者が加えたまとまり（動画 %d） = %+v, want b と c の 2 本", id, versions)
+		}
 	}
 }

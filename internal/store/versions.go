@@ -80,7 +80,7 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 		return domain.VideoVersions{}, err
 	}
 	c := &changes{}
-	if err := recordOwnerBundle(ctx, tx, c, plan.members); err != nil {
+	if err := recordOwnerBundle(ctx, tx, c, plan.members, plan.joined); err != nil {
 		return domain.VideoVersions{}, err
 	}
 	versions, err := videoVersions(ctx, tx, domain.AudienceOwner, representativeID)
@@ -97,8 +97,12 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 // （重複なし、順に並ぶ）、absorbedKeys は新しい集まりの鍵へ項目を移す利用者データの鍵（メンバーの
 // content_key と吸い込む集まりの鍵）、absorbedBundles は吸い込んで消す集まりの id（初めに現れた順）、
 // representativeKey は代表の content_key、representativeUserKey は新しい集まりへ値を写す鍵である。
+// joined は所属が変わるメンバー（重複なし、順に並ぶ）: 集まりに属していなかった動画と、代表が属していた
+// 集まり以外の集まりのメンバーである。代表の集まりのメンバーは、集まりが大きくなるだけで所属は変わらない
+// （specs/055-activity/research.md R-6）。
 type bundlePlan struct {
 	members               []string
+	joined                []string
 	absorbedKeys          []string
 	absorbedBundles       []int64
 	representativeKey     string
@@ -110,9 +114,10 @@ type bundlePlan struct {
 // 動画があれば domain.ErrNotFound。
 func planBundle(ctx context.Context, tx *sql.Tx, ids []int64, representativeID int64) (bundlePlan, error) {
 	var plan bundlePlan
-	// absorbed は absorbedBundles の集合である。POST /api/video-bundles は 20000 本を受け付けるので、
-	// 並びを走査すると二乗になる。
-	absorbed := map[int64]struct{}{}
+	// absorbed は absorbedBundles の集合で、値はその集まりのメンバーである。POST /api/video-bundles は 20000 本を
+	// 受け付けるので、並びを走査すると二乗になる。representativeBundle は代表が属していた集まりの id（無ければ 0）。
+	absorbed := map[int64][]string{}
+	var representativeBundle int64
 	for _, id := range ids {
 		key, err := bundlableContentKey(ctx, tx, id)
 		if err != nil {
@@ -125,29 +130,37 @@ func planBundle(ctx context.Context, tx *sql.Tx, ids []int64, representativeID i
 		if id == representativeID {
 			plan.representativeKey, plan.representativeUserKey = key, key
 			if bundled {
-				plan.representativeUserKey = bundle.userKey
+				plan.representativeUserKey, representativeBundle = bundle.userKey, bundle.id
 			}
 		}
 		if !bundled {
 			plan.members = append(plan.members, key)
+			plan.joined = append(plan.joined, key)
 			plan.absorbedKeys = append(plan.absorbedKeys, key)
 			continue
 		}
 		if _, seen := absorbed[bundle.id]; seen {
 			continue
 		}
-		absorbed[bundle.id] = struct{}{}
-		plan.absorbedBundles = append(plan.absorbedBundles, bundle.id)
 		keys, err := bundleMemberKeys(ctx, tx, bundle.id)
 		if err != nil {
 			return bundlePlan{}, err
 		}
+		absorbed[bundle.id] = keys
+		plan.absorbedBundles = append(plan.absorbedBundles, bundle.id)
 		plan.members = append(plan.members, keys...)
 		plan.absorbedKeys = append(plan.absorbedKeys, bundle.userKey)
 		plan.absorbedKeys = append(plan.absorbedKeys, keys...)
 	}
+	for _, id := range plan.absorbedBundles {
+		if id != representativeBundle {
+			plan.joined = append(plan.joined, absorbed[id]...)
+		}
+	}
 	slices.Sort(plan.members)
 	plan.members = slices.Compact(plan.members)
+	slices.Sort(plan.joined)
+	plan.joined = slices.Compact(plan.joined)
 	return plan, nil
 }
 
@@ -727,6 +740,7 @@ func videoIDsForContentKeys(ctx context.Context, tx *sql.Tx, keys []string) ([]i
 
 // copyUserData は利用者データの鍵 from の userDataTables の表の行を、鍵 to の行として写す。to に行が
 // あれば残す（新しい集まりの鍵には行が無い）。
+// 判定が付けたタグの行が to にもあることを記録に残す（copyAutoTagKeys、specs/055-activity/research.md R-7）。
 func copyUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	for _, t := range userDataTables {
 		if _, err := tx.ExecContext(ctx,
@@ -735,15 +749,19 @@ func copyUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 			return fmt.Errorf("cannot copy the %s values: %w", t.table, err)
 		}
 	}
-	return nil
+	return copyAutoTagKeys(ctx, tx, from, to)
 }
 
-// replaceUserData は鍵 to の userDataTables の表の行を消し、鍵 from の行で置き換える。
+// replaceUserData は鍵 to の userDataTables の表の行を消し、鍵 from の行で置き換える。消した to のタグの行は判定が
+// 付けたタグの記録からも外す（dropAutoTagKeys）。
 func replaceUserData(ctx context.Context, tx *sql.Tx, from, to string) error {
 	for _, t := range userDataTables {
 		if _, err := tx.ExecContext(ctx, `delete from `+t.table+` where content_key = ?`, to); err != nil {
 			return fmt.Errorf("cannot replace the %s values: %w", t.table, err)
 		}
+	}
+	if err := dropAutoTagKeys(ctx, tx, to); err != nil {
+		return err
 	}
 	return copyUserData(ctx, tx, from, to)
 }

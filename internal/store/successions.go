@@ -198,8 +198,8 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 			return succession{}, err
 		}
 	}
-	// 開いている判定の記録の対象の鍵も同じ規則で付け替える。
-	movedActivity, err := movePairActivityKey(ctx, tx, oldKey, contentKey, time.Now())
+	// 記録が持つ鍵も同じ規則で付け替える（終わった記録も。取り消しが新しい鍵の行を見つけるため）。
+	movedActivity, err := moveActivityKey(ctx, tx, oldKey, contentKey, time.Now())
 	if err != nil {
 		return succession{}, err
 	}
