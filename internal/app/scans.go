@@ -135,8 +135,8 @@ type Scans struct {
 	// runOrigin と runFinished は走っている走査の origin と、その終わりを知らせる channel である。
 	runOrigin   domain.ScanOrigin
 	runFinished chan struct{}
-	// onFinish は走査を閉じたあとに、走査の錠を持って呼ぶ。nil なら呼ばない。
-	onFinish func(origin domain.ScanOrigin, state domain.ScanState)
+	// onFinish は走査を閉じたあとに、走査の錠を持って登録の順に呼ぶ。
+	onFinish []func(origin domain.ScanOrigin, state domain.ScanState)
 	// onStart は走査を始めるたびに、走査の錠を持って呼ぶ。nil なら呼ばない。
 	onStart func(origin domain.ScanOrigin)
 	// stopped は組み立て時の context が取り消されたことを表す。以後に始める
@@ -380,12 +380,13 @@ func (s *Scans) ReportScanProgress(ctx context.Context, result domain.ScanResult
 	return nil
 }
 
-// OnFinish は走査を閉じるたびに呼ぶ関数を登録する。origin は閉じた走査を始めた主体で、
-// 関数は走査の錠を取らずに短く戻る。組み立てのあと、走査を始める前に 1 度だけ呼ぶ。
+// OnFinish は走査を閉じるたびに呼ぶ関数を足す。足した関数は登録の順にどれも呼ぶ（自動の取り込みと
+// ホームの整理役、specs/057-home/research.md R-9）。origin は閉じた走査を始めた主体で、関数は走査の錠を
+// 取らずに短く戻る。組み立てのあと、走査を始める前に呼ぶ。
 func (s *Scans) OnFinish(f func(origin domain.ScanOrigin, state domain.ScanState)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.onFinish = f
+	s.onFinish = append(s.onFinish, f)
 }
 
 // OnStart は走査を新しく始めるたびに呼ぶ関数を登録する。関数は走査の錠を持って呼ばれるので、
@@ -533,8 +534,8 @@ func (s *Scans) run(ctx context.Context, scanID int64, finished chan struct{}, d
 		// 閉じる知らせは走査の錠を持ったまま呼ぶ。錠を放してから呼ぶと、その隙に次の走査が
 		// 始まって開始の知らせが先に届き、閉じる走査が自分の開始時点の状態を取り違える。
 		// 知らせを受ける側は、この錠を取る呼び出しをしてはならない。
-		if s.onFinish != nil {
-			s.onFinish(origin, endState)
+		for _, finish := range s.onFinish {
+			finish(origin, endState)
 		}
 		s.mu.Unlock()
 		close(finished)

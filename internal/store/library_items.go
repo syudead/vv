@@ -327,6 +327,22 @@ func shelvedVideos(ctx context.Context, tx *sql.Tx, audience domain.Audience, sh
 	return string(encoded), nil
 }
 
+// fillShelved は spec が棚にない動画だけ（unshelved）を求めるとき、spec の見る人に見せる動画のうち
+// どれかの棚に一致するものを spec.shelved に入れる（specs/057-home/research.md R-11）。求めないときは
+// 何もしない。
+func fillShelved(ctx context.Context, tx *sql.Tx, spec *listSpec) error {
+	if !spec.unshelved {
+		return nil
+	}
+	audience := spec.scope.audience
+	shelves, err := homeShelfSpecs(ctx, tx, audience, spec.now)
+	if err != nil {
+		return err
+	}
+	spec.shelved, err = shelvedVideos(ctx, tx, audience, shelves)
+	return err
+}
+
 // homeShelfSpecs は、ホームのフォルダの棚ごとの経路の条件を、見る人 audience の範囲と基準時刻 now の
 // 絞り込み（smartFolderSpec）にして棚の並びの順に返す。名指す実体の無い棚は何にも一致しないので
 // 入れない（specs/052-smart-folders/research.md R-9）。
@@ -426,14 +442,8 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 	if spec.smartFolders, err = librarySmartFolders(ctx, tx, audience, q, spec.now); err != nil {
 		return domain.LibraryPage{}, err
 	}
-	if spec.unshelved {
-		shelves, err := homeShelfSpecs(ctx, tx, audience, spec.now)
-		if err != nil {
-			return domain.LibraryPage{}, err
-		}
-		if spec.shelved, err = shelvedVideos(ctx, tx, audience, shelves); err != nil {
-			return domain.LibraryPage{}, err
-		}
+	if err := fillShelved(ctx, tx, &spec); err != nil {
+		return domain.LibraryPage{}, err
 	}
 	page, err := listLibraryPageTx(ctx, tx, spec)
 	if err != nil {
