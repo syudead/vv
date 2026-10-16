@@ -50,7 +50,7 @@ const member2 = "プレイリストのメンバー2";
 const member3 = "プレイリストのメンバー3";
 const tonight = "夜に見る";
 const themed = "テーマ別";
-const librarySearch = `/?q=${encodeURIComponent("プレイリスト")}`;
+const librarySearch = `/library?q=${encodeURIComponent("プレイリスト")}`;
 const videos = new Map<string, Video>();
 const playlists = new Map<string, number>();
 let folder: MediaFolder | undefined;

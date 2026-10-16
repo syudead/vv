@@ -57,7 +57,7 @@ const guestGroup = "公開あり, group of 4 videos";
 // （specs/027-partial-group-search/contracts/library-api.md §1）。
 const ownerSearchItems = ["ゲスト非公開D", "公開あり, group of 5 videos"];
 // 「非公開だけ」のグループを選ぶには、全メンバーが当たるフォルダ名で検索する。
-const hiddenGroupSearch = `/?q=${encodeURIComponent("非公開だけ")}`;
+const hiddenGroupSearch = `/library?q=${encodeURIComponent("非公開だけ")}`;
 const hiddenGroup = "非公開だけ, group of 7 videos";
 const videos = new Map<string, Video>();
 let folder: MediaFolder | undefined;
@@ -249,7 +249,7 @@ test.describe.serial("guest", () => {
 
     // ライブラリ: 「公開あり」は公開の4本で数えた1枚のグループのカードで、件数は
     // カードの枚数（要件 20）。「非公開だけ」は公開のメンバーが無いので出ない。
-    await page.goto("/");
+    await page.goto("/library");
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
     await expect(page.getByText("1 item", { exact: true })).toBeVisible();
     await expect(page.locator("article[data-group-root]")).toContainText("4 videos");
@@ -270,10 +270,10 @@ test.describe.serial("guest", () => {
       .click();
 
     // 検索: 公開の動画だけに当たり、非公開の題名では何も出ない。
-    await page.goto(`/?q=${encodeURIComponent("ゲスト")}`);
+    await page.goto(`/library?q=${encodeURIComponent("ゲスト")}`);
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
     await expect(page.getByText("1 item", { exact: true })).toBeVisible();
-    await page.goto(`/?q=${encodeURIComponent("ゲスト非公開")}`);
+    await page.goto(`/library?q=${encodeURIComponent("ゲスト非公開")}`);
     await expect(page.getByText("No videos match these conditions")).toBeVisible();
 
     // フォルダ: 公開の動画を含む登録フォルダだけが出て、パスを添えない。
@@ -322,7 +322,7 @@ test.describe.serial("guest", () => {
 
     // 受け入れ条件 1: 1本の題名にだけ当たる語では、その動画のカードが1枚で、グループの
     // カードは出ない。押すとその動画の再生画面が開く。
-    await page.goto(`/?q=${encodeURIComponent("ゲスト公開A")}`);
+    await page.goto(`/library?q=${encodeURIComponent("ゲスト公開A")}`);
     await expect.poll(() => libraryItems(page)).toEqual(["ゲスト公開A"]);
     await expect(page.locator("article[data-video-id]")).toHaveCount(1);
     await expect(page.locator("article[data-group-root]")).toHaveCount(0);
@@ -337,7 +337,7 @@ test.describe.serial("guest", () => {
 
     // 受け入れ条件 2: フォルダ名で検索すると全メンバーが当たるので、グループのカードが
     // 1枚で、メンバーは1本ずつ出ない。
-    await page.goto(`/?q=${encodeURIComponent("公開あり")}`);
+    await page.goto(`/library?q=${encodeURIComponent("公開あり")}`);
     await expect.poll(() => libraryItems(page)).toEqual(["公開あり, group of 5 videos"]);
     await expect(page.locator("article[data-group-root]")).toHaveCount(1);
     await expect(page.locator("article[data-video-id]")).toHaveCount(0);
@@ -346,7 +346,7 @@ test.describe.serial("guest", () => {
     // 「すべて選択」してタグを付けると、当たった4本にだけ付き、C には付かない。
     const tagName = "e2e一部一致タグ";
     const matched = publicTitles.map(video);
-    await page.goto(`/?q=${encodeURIComponent("ゲスト公開")}`);
+    await page.goto(`/library?q=${encodeURIComponent("ゲスト公開")}`);
     await expect.poll(() => libraryItems(page)).toEqual(publicTitles);
     await page
       .getByRole("checkbox", { name: 'Select "ゲスト公開A"' })
@@ -393,7 +393,7 @@ test.describe.serial("guest", () => {
     // その1本が動画のカードで出る。
     const guest = await guestContext(browser);
     const guestPage = await guest.newPage();
-    await guestPage.goto(`/?q=${encodeURIComponent("ゲスト公開A")}`);
+    await guestPage.goto(`/library?q=${encodeURIComponent("ゲスト公開A")}`);
     await expect.poll(() => libraryItems(guestPage)).toEqual(["ゲスト公開A"]);
     await expect(
       guestPage.locator(`article[data-video-id="${String(a.id)}"]`),
@@ -428,7 +428,7 @@ test.describe.serial("guest", () => {
     const page = await context.newPage();
     const requests = apiRequests(page);
 
-    await page.goto("/");
+    await page.goto("/library");
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
     expect(await sidebarNames(page)).toEqual(["Library", "Folders", "Sign in"]);
     await expect(page.getByRole("button", { name: /Scan/ })).toHaveCount(0);
@@ -488,7 +488,7 @@ test.describe.serial("guest", () => {
     await startPlayback(page);
     await page.keyboard.press("Space");
     await page.waitForFunction(() => document.querySelector("video")?.paused === true);
-    await page.goto("/");
+    await page.goto("/library");
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
 
     // `/api/events` はゲストにも `group` の知らせを届けるので、所有者だけのものに数えない
@@ -510,7 +510,7 @@ test.describe.serial("guest", () => {
     const context = await ownerContext(browser);
     const first = await context.newPage();
     const second = await context.newPage();
-    const search = `/?q=${encodeURIComponent("ゲスト")}`;
+    const search = `/library?q=${encodeURIComponent("ゲスト")}`;
     await Promise.all([first.goto(search), second.goto(search)]);
     await expect.poll(() => libraryItems(second)).toEqual(ownerSearchItems);
 
@@ -586,7 +586,7 @@ test.describe.serial("guest", () => {
     const guest = await guestContext(browser);
     const guestPage = await guest.newPage();
     const guestSees = async () => {
-      await guestPage.goto("/");
+      await guestPage.goto("/library");
       return libraryItems(guestPage);
     };
     // 「非公開だけ」のフォルダ画面は1本ずつのカードで、公開の印を数えられる（要件 22）。
@@ -681,7 +681,7 @@ test.describe.serial("guest", () => {
       });
       const page = await context.newPage();
 
-      await page.goto("/");
+      await page.goto("/library");
       await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
       await shot(page, "library", width);
 
@@ -735,7 +735,7 @@ test.describe.serial("guest", () => {
       await page.route("**/api/folders", (route) =>
         route.fulfill({ json: { folders: [] } }),
       );
-      await page.goto("/");
+      await page.goto("/library");
       await expect(page.getByText("No videos are public")).toBeVisible();
       await shot(page, "empty", width);
       await page.goto("/folders");
@@ -767,7 +767,7 @@ test.describe.serial("guest", () => {
 
       // 選択バーの「公開」を開いた状態（360 は2段のバー）。ライブラリでグループのカードと
       // 1本ずつ出た D の動画のカードを選ぶ。
-      await page.goto(`/?q=${encodeURIComponent("ゲスト")}`);
+      await page.goto(`/library?q=${encodeURIComponent("ゲスト")}`);
       await expect.poll(() => libraryItems(page)).toEqual(ownerSearchItems);
       for (const name of ['Select the group "公開あり"', 'Select "ゲスト非公開D"']) {
         await page.getByRole("checkbox", { name }).check({ force: true });

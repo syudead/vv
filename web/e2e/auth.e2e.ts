@@ -98,7 +98,7 @@ test("ログインの送信中は再送信できず、失敗するとパスワ�
   await page.unroute("**/api/auth/login");
   await page.getByLabel("Password").fill(ownerAccount.password);
   await page.getByLabel("Password").press("Enter");
-  await expect(page).toHaveURL("/");
+  await expect(page).toHaveURL("/library");
 });
 
 test("ログアウトするとゲストの画面になり、前の Cookie を付け直しても所有者に戻らない", async ({
@@ -109,7 +109,7 @@ test("ログアウトするとゲストの画面になり、前の Cookie を付
   await page.getByLabel("Username").fill(ownerAccount.username);
   await page.getByLabel("Password").fill(ownerAccount.password);
   await page.getByRole("button", { name: "Sign in" }).click();
-  await expect(page).toHaveURL("/");
+  await expect(page).toHaveURL("/library");
   const logout = page.getByRole("button", { name: "Sign out" });
   await expect(logout).toBeVisible();
 

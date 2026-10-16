@@ -197,7 +197,7 @@ async function expectLibrary(page: Page, titles: string[]) {
 }
 
 async function searchLibrary(page: Page, query: string, titles: string[]) {
-  await page.goto(`/?q=${encodeURIComponent(query)}`);
+  await page.goto(`/library?q=${encodeURIComponent(query)}`);
   await expectLibrary(page, titles);
 }
 

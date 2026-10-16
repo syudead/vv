@@ -95,12 +95,12 @@ test("未設定のサーバーはどの URL も初回設定画面にし、設定
 
   await page.keyboard.type(ownerAccount.password);
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL("/");
+  await expect(page).toHaveURL("/library");
   await expect(page.getByRole("heading", { level: 1, name: "Library" })).toBeAttached();
   await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
   expect(requests).toEqual(["POST"]);
 
   // 設定済みのサーバーでは、初回設定画面を二度と出さない。
   await page.goto("/setup");
-  await expect(page).toHaveURL("/");
+  await expect(page).toHaveURL("/library");
 });

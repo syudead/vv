@@ -156,7 +156,7 @@ describe("GroupPage", () => {
     expect(await screen.findByText("This group no longer exists")).toBeDefined();
     expect(
       screen.getByRole("link", { name: "Back to library" }).getAttribute("href"),
-    ).toBe("/");
+    ).toBe("/library");
     expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("Library");
     expect(crumbs()).toEqual(["Library"]);
     expect(screen.queryByRole("link", { name: /^Play/ })).toBeNull();

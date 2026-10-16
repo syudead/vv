@@ -161,7 +161,7 @@ test.describe.serial("folder browser", () => {
   test("サイドバーからフォルダ画面を開き、同名の登録フォルダをパスで見分ける", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/library");
     const sidebar = page.getByRole("complementary", { name: "Main navigation" });
     await sidebar.getByRole("link", { name: "Folders" }).click();
     await expect(page).toHaveURL(/\/folders$/);
@@ -329,7 +329,7 @@ test.describe.serial("folder browser", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/");
+    await page.goto("/library");
     await tabUntil(page, (active) => active.href === "/folders");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/folders$/);

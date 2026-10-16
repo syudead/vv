@@ -282,7 +282,7 @@ test.describe.serial("library hover preview", () => {
     expect(first.previewUrl).toBeDefined();
 
     const requests = watchRequests(page);
-    await page.goto("/");
+    await page.goto("/library");
     await expect(card(page, first)).toBeVisible();
     await expect(card(page, first).locator("video")).toHaveCount(0);
     await page.evaluate(() => {
@@ -374,7 +374,7 @@ test.describe.serial("library hover preview", () => {
 
     const requests = watchRequests(page);
     await page.clock.install();
-    await page.goto("/");
+    await page.goto("/library");
     for (const item of variants) {
       await hoverCard(page, item);
       await elapse(page, 500);
@@ -414,7 +414,7 @@ test.describe.serial("library hover preview", () => {
     const page = await context.newPage();
     const requests = watchRequests(page);
     try {
-      await page.goto("/");
+      await page.goto("/library");
       const target = card(page, item);
       await expect(target).toBeVisible();
       const before = await stablePageAriaSnapshot(page);
@@ -447,7 +447,7 @@ test.describe.serial("library hover preview", () => {
     const requests = watchRequests(page);
 
     await page.clock.install();
-    await page.goto("/");
+    await page.goto("/library");
     const target = card(page, item);
     const link = target.getByRole("link", { name: item.title, exact: true });
     const checkbox = target.getByRole("checkbox", { name: `Select "${item.title}"` });
@@ -480,7 +480,7 @@ test.describe.serial("library hover preview", () => {
   }) => {
     const item = video("direct");
     await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.goto("/");
+    await page.goto("/library");
     const preview = await hoverAndWaitForPlayback(page, item);
     const durations = await card(page, item).evaluate((element) => {
       const media = element.querySelector<HTMLElement>("[data-preview-media]");
@@ -530,7 +530,7 @@ test.describe.serial("library hover preview", () => {
             ),
           });
         });
-        await page.goto("/");
+        await page.goto("/library");
         await expect(card(page, item)).toBeVisible();
         await screenshot(page, width, "before");
 

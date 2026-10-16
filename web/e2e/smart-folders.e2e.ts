@@ -465,7 +465,7 @@ test.describe.serial("smart folders", () => {
   test("5: 猫と未視聴で絞ったライブラリから保存したフォルダは、ライブラリが見せていたものを同じ順に見せる（画面 2・8）", async ({
     page,
   }) => {
-    const filtered = `/?tag=${String(tagId(catTag))}&watch=unwatched`;
+    const filtered = `/library?tag=${String(tagId(catTag))}&watch=unwatched`;
     await page.goto(filtered);
     await expect(videoCard(page, catA)).toBeVisible();
     await expect(groupCard(page, bothGroup)).toBeVisible();
@@ -504,7 +504,7 @@ test.describe.serial("smart folders", () => {
     await expect.poll(() => listedItems(page)).toEqual(shown);
 
     // 新しいカードは絞り込まないライブラリに立つ。
-    await page.goto("/");
+    await page.goto("/library");
     await expect(
       folderCard(page, id).getByRole("link", {
         name: `${savedFolder}, smart folder of 5 videos`,
@@ -515,7 +515,7 @@ test.describe.serial("smart folders", () => {
   test("3: タグ: 猫 のフォルダでは、両方の part に猫のグループは 1 枚のカード、part1 だけのグループは part1 だけ（画面 7）", async ({
     page,
   }) => {
-    await page.goto(`/?tag=${String(tagId(catTag))}`);
+    await page.goto(`/library?tag=${String(tagId(catTag))}`);
     await expect(videoCard(page, catA)).toBeVisible();
     await saveFromLibrary(page, catFolder);
     await openFolder(page, catFolder);
@@ -550,10 +550,10 @@ test.describe.serial("smart folders", () => {
     });
 
     const library = await context.newPage();
-    await library.goto(`/?q=${encodeURIComponent(dog)}`);
+    await library.goto(`/library?q=${encodeURIComponent(dog)}`);
     await expect(videoCard(library, dog)).toBeVisible();
     const cards = await context.newPage();
-    await cards.goto("/");
+    await cards.goto("/library");
     const card = folderCard(cards, id);
     await expect(
       card.getByRole("link", { name: `${catFolder}, smart folder of 5 videos` }),
@@ -719,7 +719,7 @@ test.describe.serial("smart folders", () => {
     request,
   }) => {
     const id = folderId(catFolder);
-    await page.goto("/");
+    await page.goto("/library");
     const card = folderCard(page, id);
     await card.hover();
     await card
@@ -807,7 +807,7 @@ test.describe.serial("smart folders", () => {
     const id = folderId(catFolder);
     const { context, page } = await guestPage(browser);
     try {
-      await page.goto("/");
+      await page.goto("/library");
       const link = folderCard(page, id).getByRole("link", {
         name: `${catFolder}, smart folder of 1 video`,
       });
@@ -826,7 +826,7 @@ test.describe.serial("smart folders", () => {
       );
       await expect(page.getByText("Conditions:", { exact: true })).toHaveCount(0);
 
-      await page.goto(`/?q=${encodeURIComponent(query)}`);
+      await page.goto(`/library?q=${encodeURIComponent(query)}`);
       await expect(videoCard(page, catA)).toBeVisible();
       await expect(
         page.getByRole("button", { name: "Save as smart folder" }),
@@ -857,11 +857,11 @@ test.describe.serial("smart folders", () => {
           fullPage,
         });
       try {
-        await page.goto("/");
+        await page.goto("/library");
         await scrollToCard(page, folderCard(page, folderId(catFolder)));
         await shot("library");
 
-        await page.goto(`/?tag=${String(tagId(catTag))}&watch=unwatched`);
+        await page.goto(`/library?tag=${String(tagId(catTag))}&watch=unwatched`);
         await expect(videoCard(page, catA)).toBeVisible();
         await shot("library-filtered");
         await page.getByRole("button", { name: "Save as smart folder" }).click();
@@ -944,7 +944,7 @@ test.describe.serial("smart folders", () => {
       "The 1 smart folder inside it is deleted with it.",
     );
     await confirm.getByRole("button", { name: "Delete" }).click();
-    await expect(page).toHaveURL("/");
+    await expect(page).toHaveURL("/library");
     await expect(toast(page, `Deleted "${renamedCatFolder}"`)).toBeVisible();
     await expect(folderCard(page, folderId(catFolder))).toHaveCount(0);
     await expect(folderCard(page, folderId(savedFolder))).toBeVisible();
@@ -953,7 +953,7 @@ test.describe.serial("smart folders", () => {
     await expect(
       page.getByText("This smart folder no longer exists", { exact: true }),
     ).toBeVisible();
-    await page.goto(`/?q=${encodeURIComponent(query)}`);
+    await page.goto(`/library?q=${encodeURIComponent(query)}`);
     for (const title of [catA, catB, dog]) {
       await expect(videoCard(page, title)).toBeVisible();
     }

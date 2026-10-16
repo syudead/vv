@@ -195,7 +195,7 @@ describe("VideoTags", () => {
     await waitFor(() => expect(screen.queryByTitle("旅行")).toBeNull());
   });
 
-  it("タグの名前は /?tag=<id> へのリンクで、読み上げ名は「<名>で絞り込む」（issue 269）", async () => {
+  it("タグの名前は /library?tag=<id> へのリンクで、読み上げ名は「<名>で絞り込む」（issue 269）", async () => {
     install();
     renderTags(7, [
       {
@@ -209,7 +209,7 @@ describe("VideoTags", () => {
     ]);
 
     const link = await screen.findByRole("link", { name: "Filter by 旅行" });
-    expect(link.getAttribute("href")).toBe("/?tag=1");
+    expect(link.getAttribute("href")).toBe("/library?tag=1");
   });
 
   // (7): 外せなかったときは、次や前のチップではなく、そのチップ自身の × へ
@@ -359,7 +359,7 @@ describe("VideoTags", () => {
       const link = await screen.findByRole("link", {
         name: "Filter by 高画質 (tentative)",
       });
-      expect(link.getAttribute("href")).toBe("/?tag=1");
+      expect(link.getAttribute("href")).toBe("/library?tag=1");
       const icon = mark(link);
       expect(icon).not.toBeNull();
       expect(icon?.getAttribute("aria-hidden")).toBe("true");
@@ -474,7 +474,7 @@ describe("VideoTags", () => {
       const link = await screen.findByRole("link", {
         name: "Filter by 京都 (from the folder name)",
       });
-      expect(link.getAttribute("href")).toBe("/?tag=4");
+      expect(link.getAttribute("href")).toBe("/library?tag=4");
       expect(link.className).toContain("border-dashed");
       expect(link.className).not.toContain("bg-secondary");
       expect(link.querySelector("svg[aria-hidden='true']")).not.toBeNull();

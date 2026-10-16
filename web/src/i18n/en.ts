@@ -2592,6 +2592,7 @@ export const en = {
     nav: {
       main: "Main navigation",
       account: "Account and settings",
+      home: "Home",
       library: "Library",
       folders: "Folders",
       tags: "Tags",

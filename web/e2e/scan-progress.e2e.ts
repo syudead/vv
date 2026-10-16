@@ -83,7 +83,7 @@ test("scan progress remains one indicator across library, settings, and playback
   const settingsIndicator = page.getByRole("button", { name: /Open the scan status/ });
   await expect(settingsIndicator).toHaveText(/Scanning/);
   await page.getByRole("link", { name: "VVMDM home" }).click();
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/library$/);
   const routePersistentIndicator = page.getByRole("button", {
     name: /Open the scan status/,
   });
@@ -133,7 +133,7 @@ test("an idle page recovers from a transient current-scan failure on the next re
     });
   });
 
-  await page.goto("/");
+  await page.goto("/library");
   await expect(page.getByRole("button", { name: /Open the scan status/ })).toHaveCount(0);
   refreshRequested = true;
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
@@ -182,7 +182,7 @@ test("opening failed scan details acknowledges the notice across reloads", async
     }),
   );
 
-  await page.goto("/");
+  await page.goto("/library");
   await expect(
     page.getByRole("button", { name: /^Scanning 1 of 2 videos done\./ }),
   ).toBeVisible();
@@ -216,7 +216,7 @@ for (const width of [360, 640, 768]) {
 
     await failLogout(page);
 
-    await page.goto("/");
+    await page.goto("/library");
     const indicator = page.getByRole("button", {
       name: /^Scanning 4 of 10 videos done\./,
     });
@@ -288,7 +288,7 @@ for (const { width, height } of [
 
     await failLogout(page);
 
-    await page.goto("/");
+    await page.goto("/library");
     if (width < 640) await page.getByRole("button", { name: "Menu" }).click();
     // ログアウトは失敗するまで押せないので、トーストが出るのを待ってから次を押す。
     const logoutButton = page.getByRole("button", { name: "Sign out" });
@@ -423,7 +423,7 @@ test("ゲストには右下の表示を出さず、取り込みの状態も問�
       body: JSON.stringify(scanBody({ id: 23, videos: { total: 10, settled: 4 } })),
     }),
   );
-  await page.goto("/");
+  await page.goto("/library");
   await expect(page.getByRole("link", { name: "Sign in" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Open the scan status/ })).toHaveCount(0);
   // `/api/events` はゲストにも `group` の知らせを届けるので購読してよい
