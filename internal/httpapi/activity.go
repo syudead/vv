@@ -86,7 +86,7 @@ func (s *server) ListActivity(w http.ResponseWriter, r *http.Request, params gen
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
-// parseActivityQuery は一覧の絞り込みを読む。知らない値と範囲の外の q は 400 invalid_request を書いて偽を返す。
+// parseActivityQuery は一覧の絞り込みを読む。知らない値、多すぎる feature と範囲の外の q は 400 invalid_request を書いて偽を返す。
 func (s *server) parseActivityQuery(w http.ResponseWriter, params gen.ListActivityParams) (domain.ActivityQuery, bool) {
 	var query domain.ActivityQuery
 	var err error
@@ -97,6 +97,11 @@ func (s *server) parseActivityQuery(w http.ResponseWriter, params gen.ListActivi
 		}
 	}
 	if params.Feature != nil {
+		// openapi の maxItems は機能の数（9）で、生成器は数を確かめない。
+		if len(*params.Feature) > len(domain.ActivityFeatures) {
+			s.invalidRequest(w, "feature can be repeated at most 9 times.")
+			return domain.ActivityQuery{}, false
+		}
 		for _, value := range *params.Feature {
 			feature, err := domain.ParseActivityFeature(string(value))
 			if err != nil {

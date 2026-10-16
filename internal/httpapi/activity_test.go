@@ -127,12 +127,12 @@ func TestListActivityReturnsThePage(t *testing.T) {
 	}
 }
 
-// 知らない値、読めない cursor と since、範囲の外の q と limit は 400 invalid_request。
+// 知らない値、読めない cursor と since、範囲の外の q と limit、10 個以上の feature は 400 invalid_request。
 func TestListActivityRejectsInvalidFilters(t *testing.T) {
 	e := newActivityEnv(t)
 	for _, query := range []string{
 		"status=failed", "feature=undo", "decider=model", "since=yesterday", "limit=0", "limit=101", "q=",
-		"q=" + strings.Repeat("a", 201),
+		"q=" + strings.Repeat("a", 201), strings.Repeat("feature=import&", 9) + "feature=scan",
 	} {
 		rec := e.serve(http.MethodGet, "/api/activity?"+query, "")
 		assertErrorBody(t, query, rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})

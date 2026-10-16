@@ -179,15 +179,18 @@ func (s *ActivityStore) RecoverInterruptedActivity(ctx context.Context) (int, er
 }
 
 // activityColumns は一覧と 1 件の読み出しが読む列である。e は記録、c は組の候補、u は取り消した記録。
-const activityColumns = `e.id, e.kind, e.feature, e.subject_kind, e.subject_key, coalesce(e.subject_key_b, ''),
+// 組が候補の画面にまだあるかは、候補の行があるだけでなく、重複の候補の一覧と同じ条件
+// （candidatePairsCondition: 両方に登録の所在があり、却下も同じ集まりでもない）で決める。
+var activityColumns = `e.id, e.kind, e.feature, e.subject_kind, e.subject_key, coalesce(e.subject_key_b, ''),
 	e.subject_label, coalesce(e.subject_label_b, ''), e.status, coalesce(e.reason, ''), coalesce(e.outcome, ''),
 	coalesce(e.detail, ''), coalesce(e.stage, ''), coalesce(e.undoes_id, 0), e.decider, e.probability,
 	coalesce(e.undo_keys, ''), coalesce(e.undone_by, 0), e.created_at, e.updated_at,
-	c.key_a is not null, coalesce(c.judgement, ''), c.retry_at, u.kind, u.outcome,
+	c.key_a is not null and exists (select 1 ` + candidatePairsFrom + `c.key_a = e.subject_key
+		and c.key_b = e.subject_key_b and ` + candidatePairsCondition() + `),
+	coalesce(c.judgement, ''), c.retry_at, u.kind, u.outcome,
 	(select t.tag_name from activity_entry_tags t where t.entry_id = e.undoes_id and t.undone_by = e.id limit 1)`
 
-// activityFrom は一覧と 1 件の読み出しの from 句である。組の候補は判定の再試行の時刻と、候補の画面に
-// まだあるかを運ぶ。
+// activityFrom は一覧と 1 件の読み出しの from 句である。組の候補は判定と再試行の時刻を運ぶ。
 const activityFrom = ` from activity_entries e
 	left join video_version_candidates c on e.subject_kind = 'pair' and c.key_a = e.subject_key
 		and c.key_b = e.subject_key_b

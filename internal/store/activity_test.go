@@ -221,6 +221,44 @@ func TestListActivityResolvesSubjectVideos(t *testing.T) {
 	}
 }
 
+// 組の記録の candidate は、重複の候補の一覧に組があるときだけ真である。候補の行が残っていても、
+// 片方が登録の所在を失った組は一覧に出ないので偽になる（screen-api の candidate）。
+func TestListActivityCandidateFollowsTheDuplicatesList(t *testing.T) {
+	db, ids := judgementFixture(t)
+	entry := domain.ActivityEntry{
+		Kind: domain.ActivityVersionJudgement,
+		Subject: domain.ActivitySubject{
+			Kind: domain.ActivitySubjectPair, Key: "key-a", KeyB: "key-b", Label: "a", LabelB: "b",
+		},
+		Status: activityWaiting.Status, Reason: activityWaiting.Reason, Decider: domain.ActivityByAI,
+	}
+	id := writeActivity(t, db, entry, newActivityClock().next())
+	candidate := func() bool {
+		t.Helper()
+		got, err := db.Activity().ActivityEntry(context.Background(), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return got.Candidate
+	}
+	if !candidate() {
+		t.Fatal("一覧にある組の candidate = false, want true")
+	}
+
+	if _, err := db.sql.Exec(`update video_locations set path = '/elsewhere/b.mp4' where video_id = ?`, ids["b"]); err != nil {
+		t.Fatal(err)
+	}
+	if rows := candidateRows(t, db); rows != 1 {
+		t.Fatalf("候補の行 = %d, want 1（行は残る）", rows)
+	}
+	if pairs, _ := candidatePairs(t, db); len(pairs) != 0 {
+		t.Fatalf("候補の一覧 = %v, want none", pairs)
+	}
+	if candidate() {
+		t.Error("一覧に無い組の candidate = true, want false")
+	}
+}
+
 // 受け入れ: 記録が足されている間も、cursor が重複なしに続きを返す。読めない cursor は ErrInvalidCursor。
 func TestListActivityCursorContinuesWhileEntriesAreAdded(t *testing.T) {
 	db, _ := jobsFixture(t)
