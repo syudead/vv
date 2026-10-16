@@ -82,3 +82,18 @@ describe("subscribeServerEvents の接続が閉じたとき", () => {
     expect(FakeEventSource.instances).toHaveLength(2);
   });
 });
+
+describe("subscribeServerEvents の smartFolder", () => {
+  beforeEach(() => installFakeEventSource());
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("smartFolder の知らせで名指されたフォルダの id を渡す", () => {
+    const smartFolder = vi.fn();
+    const unsubscribe = subscribeServerEvents({ smartFolder });
+
+    currentEventSource().dispatch("smartFolder", { ids: [3, 7] });
+
+    expect(smartFolder).toHaveBeenCalledWith([3, 7]);
+    unsubscribe();
+  });
+});

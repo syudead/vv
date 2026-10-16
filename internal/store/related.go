@@ -159,22 +159,88 @@ func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience
 
 // VideoGroup は動画 id の文脈のグループを、見る人に見せてよい動画の再生順で返す
 // （GET /api/videos/{id} の group、関連動画の group、GET /api/videos/{id}/group-members。
-// specs/048-groups/research.md R-9、data-model.md「Play order」）。文脈のグループは、contextID が
-// 0 でなく、その再生順が動画を持てばそれ、そうでなければ動画を直接持ち見る人に見せるグループの
-// うち id のいちばん小さいものである（groupContext）。再生順の id はすべてを返し、詳細は window
-// の範囲だけを読む。グループが大きくても、読む詳細と応答は再生順の本数に比例しない（issue 674）。
-// どのグループにも無い動画と、この動画自身を見せられないときは false を返す。
-func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience, id, contextID int64, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
+// specs/048-groups/research.md R-9、data-model.md「Play order」）。文脈は videoContext が決める
+// （domain.VideoContext）。文脈がスマートフォルダなら、そのフォルダの再生順を SmartFolder の
+// VideoGroup で返す（specs/052-smart-folders/contracts/screen-api.md）。再生順の id はすべてを返し、
+// 詳細は window の範囲だけを読む。グループが大きくても、読む詳細と応答は再生順の本数に比例しない
+// （issue 674）。どのグループにも無い動画と、この動画自身を見せられないときは false を返す。
+func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience, id int64, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return domain.VideoGroup{}, false, fmt.Errorf("cannot start reading the video's group: %w", err)
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	groupID, found, err := groupContext(ctx, tx, audience, id, contextID)
+	group, found, err := videoContext(ctx, tx, audience, id, opened)
 	if err != nil || !found {
 		return domain.VideoGroup{}, false, err
 	}
+	position := group.Position(id)
+	if position == 0 {
+		return domain.VideoGroup{}, false, nil
+	}
+	if window.Limit > 0 {
+		group.Offset = window.Start(len(group.MemberIDs), position)
+		end := min(group.Offset+window.Limit, len(group.MemberIDs))
+		group.Members, err = groupMembers(ctx, tx, audience, group.MemberIDs[group.Offset:end])
+		if err != nil {
+			return domain.VideoGroup{}, false, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.VideoGroup{}, false, fmt.Errorf("cannot finish reading the video's group: %w", err)
+	}
+	return group, true, nil
+}
+
+// videoContext は動画 id の文脈の再生順を返す（domain.VideoContext）。opened.GroupID があれば
+// group が勝ち、スマートフォルダは見ない。そのグループの見る人に見せる再生順が動画を持てばその
+// グループである。opened.GroupID が無ければ、opened.SmartFolderID のフォルダの再生順が動画を持てば
+// そのフォルダである。どちらでもなければ動画を直接の項目に持つグループのうち id のいちばん小さいもの
+// （firstGroupOf）である。どれも無ければ false である。
+func videoContext(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64, opened domain.VideoContext) (domain.VideoGroup, bool, error) {
+	if opened.GroupID > 0 {
+		var held bool
+		err := tx.QueryRowContext(ctx, `with `+groupDescendantsCTE(`select ?1 as id`, audience)+`
+			select exists (select 1 from gdesc where video_id = ?2)`, opened.GroupID, id).Scan(&held)
+		if err != nil {
+			return domain.VideoGroup{}, false, fmt.Errorf("cannot read the video's group: %w", err)
+		}
+		if held {
+			return groupPlayOrder(ctx, tx, audience, opened.GroupID)
+		}
+	} else if opened.SmartFolderID > 0 {
+		folder, found, err := smartFolderVideoGroup(ctx, tx, audience, opened.SmartFolderID)
+		if err != nil {
+			return domain.VideoGroup{}, false, err
+		}
+		if found && folder.Position(id) > 0 {
+			return folder, true, nil
+		}
+	}
+	groupID, found, err := firstGroupOf(ctx, tx, audience, id)
+	if err != nil || !found {
+		return domain.VideoGroup{}, false, err
+	}
+	return groupPlayOrder(ctx, tx, audience, groupID)
+}
+
+// firstGroupOf は、動画 id を直接の項目に持つグループのうち id のいちばん小さいものを返す
+// （research.md R-9）。直接の項目が引く動画が id そのものであることを確かめるので、そのグループは
+// 見る人に見せる。無ければ false である。
+func firstGroupOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64) (int64, bool, error) {
+	var groupID sql.NullInt64
+	err := tx.QueryRowContext(ctx, `select min(gi.group_id) from group_items gi
+		where gi.content_key = (select `+userKeyExpr("videos")+` from videos where videos.id = ?1 and videos.content_key <> '')
+		and `+shownVideoForKeyExpr("gi.content_key", audience)+` = ?1`, id).Scan(&groupID)
+	if err != nil {
+		return 0, false, fmt.Errorf("cannot read the video's group: %w", err)
+	}
+	return groupID.Int64, groupID.Valid, nil
+}
+
+// groupPlayOrder はグループ groupID の名前、見る人に見せる再生順、自動グループのフォルダを返す。
+func groupPlayOrder(ctx context.Context, tx *sql.Tx, audience domain.Audience, groupID int64) (domain.VideoGroup, bool, error) {
 	// origin_folder は自動グループだけが持つ。登録フォルダ `/` の自動グループの鍵は空文字なので、
 	// NULL（手で作ったグループ）とは空文字かどうかでなく NULL かどうかで分ける。
 	var origin sql.NullString
@@ -188,18 +254,6 @@ func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience,
 		return domain.VideoGroup{}, false, err
 	}
 	group := domain.VideoGroup{ID: groupID, Name: name, MemberIDs: memberIDs}
-	position := group.Position(id)
-	if position == 0 {
-		return domain.VideoGroup{}, false, nil
-	}
-	if window.Limit > 0 {
-		group.Offset = window.Start(len(memberIDs), position)
-		end := min(group.Offset+window.Limit, len(memberIDs))
-		group.Members, err = groupMembers(ctx, tx, audience, memberIDs[group.Offset:end])
-		if err != nil {
-			return domain.VideoGroup{}, false, err
-		}
-	}
 	if origin.Valid {
 		roots, err := listMediaFolders(ctx, tx)
 		if err != nil {
@@ -209,36 +263,7 @@ func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience,
 			group.Folder = &folder
 		}
 	}
-	if err := tx.Commit(); err != nil {
-		return domain.VideoGroup{}, false, fmt.Errorf("cannot finish reading the video's group: %w", err)
-	}
 	return group, true, nil
-}
-
-// groupContext は動画 id の文脈のグループの id を返す（research.md R-9）。contextID が 0 でなく、
-// そのグループの見る人に見せる再生順が動画を持てばそれを返す。そうでなければ、動画を直接の項目に
-// 持つグループのうち id のいちばん小さいものを返す。直接の項目が引く動画が id そのものであることを
-// 確かめるので、そのグループは見る人に見せる。どちらも無ければ false である。
-func groupContext(ctx context.Context, tx *sql.Tx, audience domain.Audience, id, contextID int64) (int64, bool, error) {
-	if contextID > 0 {
-		var held bool
-		err := tx.QueryRowContext(ctx, `with `+groupDescendantsCTE(`select ?1 as id`, audience)+`
-			select exists (select 1 from gdesc where video_id = ?2)`, contextID, id).Scan(&held)
-		if err != nil {
-			return 0, false, fmt.Errorf("cannot read the video's group: %w", err)
-		}
-		if held {
-			return contextID, true, nil
-		}
-	}
-	var groupID sql.NullInt64
-	err := tx.QueryRowContext(ctx, `select min(gi.group_id) from group_items gi
-		where gi.content_key = (select `+userKeyExpr("videos")+` from videos where videos.id = ?1 and videos.content_key <> '')
-		and `+shownVideoForKeyExpr("gi.content_key", audience)+` = ?1`, id).Scan(&groupID)
-	if err != nil {
-		return 0, false, fmt.Errorf("cannot read the video's group: %w", err)
-	}
-	return groupID.Int64, groupID.Valid, nil
 }
 
 // groupPlayOrderIDs はグループ id の見る人に見せる動画の id を再生順で返す（data-model.md

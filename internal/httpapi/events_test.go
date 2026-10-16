@@ -14,6 +14,7 @@ import (
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
+	"github.com/syudead/vv/internal/store"
 )
 
 // sseEvent は受け取ったイベント1件である。
@@ -344,6 +345,74 @@ func TestEventsHandleMapsDomainEvents(t *testing.T) {
 	if pending := sub.take(); !slices.Equal(pending.groups, []int64{1, 2, 3}) || len(pending.videos) != 0 {
 		t.Fatalf("GroupsChanged: %+v, want groups [1 2 3]", pending)
 	}
+	// スマートフォルダの変化は smartFolder に写し、続けての変化は 1 つにまとまる
+	// （specs/052-smart-folders/research.md R-12）。
+	events.Handle(domain.SmartFoldersChanged{IDs: []int64{4, 2}})
+	events.Handle(domain.SmartFoldersChanged{IDs: []int64{2, 5}})
+	if pending := sub.take(); !slices.Equal(pending.smartFolders, []int64{2, 4, 5}) || len(pending.groups) != 0 {
+		t.Fatalf("SmartFoldersChanged: %+v, want smartFolders [2 4 5]", pending)
+	}
+	// 名指すフォルダの無い変化は何も知らせない。先に溜まった ready を空にし、
+	// 新しい ready が鳴らないことを見る。
+	select {
+	case <-sub.ready:
+	default:
+	}
+	events.Handle(domain.SmartFoldersChanged{})
+	select {
+	case <-sub.ready:
+		t.Fatal("空の SmartFoldersChanged で ready が鳴った")
+	default:
+	}
+	if pending := sub.take(); len(pending.smartFolders) != 0 {
+		t.Fatalf("空の SmartFoldersChanged で知らせた: %+v", pending)
+	}
+}
+
+// storePublisher は保存層の発行先を、画面への知らせの受け口へつなぐ。
+type storePublisher struct{ events *Events }
+
+func (p storePublisher) Publish(events ...domain.Event) {
+	for _, event := range events {
+		p.events.Handle(event)
+	}
+}
+
+// /api/events の購読者は、タグを付けたあと smartFolder のイベントを受け取る。ゲストにも送る
+// （specs/052-smart-folders/research.md R-12）。
+func TestStreamEventsSendsSmartFolderAfterATagIsAttached(t *testing.T) {
+	ctx := context.Background()
+	db, err := store.OpenMigratedForTest(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Close() })
+	tag, err := db.Tags().CreateTag(ctx, "旅行")
+	if err != nil {
+		t.Fatal(err)
+	}
+	folder, err := db.SmartFolders().CreateSmartFolder(ctx,
+		domain.SmartFolderCreate{Name: "旅", Rule: domain.SmartRule{Tags: []int64{tag.ID}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	events := NewEvents()
+	db.PublishTo(storePublisher{events: events})
+	stream, _ := openEvents(t, newTestServer(t, Options{Events: events, Auth: guestEventsAuth{}}))
+	expectNoEvent(t, stream)
+
+	if _, _, err := db.Tags().AttachTagByID(ctx, nil, tag.ID); err != nil {
+		t.Fatal(err)
+	}
+	event := nextEvent(t, stream)
+	var changed gen.SmartFolderChanged
+	if err := json.Unmarshal([]byte(event.data), &changed); err != nil {
+		t.Fatal(err)
+	}
+	if event.name != "smartFolder" || !slices.Equal(changed.Ids, []int64{folder.ID}) {
+		t.Fatalf("イベント = %+v, want smartFolder [%d]", event, folder.ID)
+	}
+	expectNoEvent(t, stream)
 }
 
 // lockedScans は、送信の goroutine が読むあいだにテストが今の処理を差し替える。

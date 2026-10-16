@@ -200,10 +200,9 @@ func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, resul
 	if err := recordJudgementActivity(ctx, tx, c, entryID, keys, result, applied, now); err != nil {
 		return false, err
 	}
-	if err := s.db.commit(ctx, tx, c); err != nil {
+	if err := s.db.commitWith(ctx, tx, c, append(applied.events, domain.VersionCandidatesChanged{})...); err != nil {
 		return false, fmt.Errorf("cannot apply the version judgement: %w", err)
 	}
-	s.db.publishEvents(append(applied.events, domain.VersionCandidatesChanged{})...)
 	return true, nil
 }
 

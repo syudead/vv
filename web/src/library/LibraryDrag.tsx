@@ -1,7 +1,14 @@
 import { type ReactNode, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import type { LibraryGroup, LibraryItem } from "../api/client";
-import { groupKey, itemKey, videoKey } from "../api/libraryItems";
+import {
+  groupKey,
+  isOrganizable,
+  isSmartFolderKey,
+  itemKey,
+  type OrganizableItem,
+  videoKey,
+} from "../api/libraryItems";
 import {
   mergeGroups,
   moveCards,
@@ -52,7 +59,7 @@ function libraryGroupOf(item: LibraryItem | undefined): LibraryGroup | null {
 }
 
 /** refOf は項目を移す操作で指す値である。 */
-function refOf(item: LibraryItem): OrganizeRef {
+function refOf(item: OrganizableItem): OrganizeRef {
   return item.kind === "video"
     ? { kind: "video", id: item.video.id }
     : { kind: "group", id: item.group.id };
@@ -86,15 +93,21 @@ export function LibraryDragLayer({
   /** 動画のカードの上に落とした。 */
   onDrop: (drop: CardDrop) => void;
   /** 項目 `moved`（画面の順）をグループ `to` へ移す。 */
-  onMove: (moved: readonly LibraryItem[], to: LibraryGroup) => void;
+  onMove: (moved: readonly OrganizableItem[], to: LibraryGroup) => void;
   /** 項目 `merged`（画面の順、グループを含む）をグループ `into` へマージする。 */
-  onMerge: (merged: readonly LibraryItem[], into: LibraryGroup) => void;
+  onMerge: (merged: readonly OrganizableItem[], into: LibraryGroup) => void;
   onLift: () => void;
   held: HeldDrop | null;
   attached: CardAttachment | null;
   children: ReactNode;
 }) {
-  const { order, byKey, nameOf, preview } = useOrderedItemDrag(items, itemKey, list);
+  // スマートフォルダのカードは持ち上げず、上に落とすと拒否する（RefusingDropCard）。
+  const organizable = useMemo(() => items.filter(isOrganizable), [items]);
+  const { order, byKey, nameOf, preview } = useOrderedItemDrag(
+    organizable,
+    itemKey,
+    list,
+  );
   const selected = useMemo(() => selectedKeys(selection), [selection]);
   const liftedFor = useCallback(
     (key: string) => liftedKeys(order, key, selected),
@@ -110,10 +123,12 @@ export function LibraryDragLayer({
   });
   const { onto: ontoGroup, drop: dropOnGroup } = groups;
   const onto = useCallback(
-    (target: string, lifted: readonly string[]): OntoAnswer<UiText> =>
-      isLibraryGroup(byKey.get(target))
+    (target: string, lifted: readonly string[]): OntoAnswer<UiText> => {
+      if (isSmartFolderKey(target)) return "refused";
+      return isLibraryGroup(byKey.get(target))
         ? ontoGroup(target, lifted)
-        : ontoVideo(target, lifted),
+        : ontoVideo(target, lifted);
+    },
     [byKey, ontoGroup, ontoVideo],
   );
   const drop = useCallback(
@@ -233,7 +248,7 @@ export function useLibraryMoves(
   const { offer } = useUndoToast(afterUndo);
 
   const run = useCallback(
-    (moved: readonly LibraryItem[], operation: LibraryOperation) => {
+    (moved: readonly OrganizableItem[], operation: LibraryOperation) => {
       if (moved.length === 0) return;
       const keys = moved.map(itemKey);
       for (const key of keys) pending.current.add(key);
@@ -264,7 +279,7 @@ export function useLibraryMoves(
   );
 
   const move = useCallback(
-    (moved: readonly LibraryItem[], to: LibraryGroup) =>
+    (moved: readonly OrganizableItem[], to: LibraryGroup) =>
       run(moved, {
         send: () => moveCards(moved.map(refOf), { from: null, to: to.id }),
         done: t.organize.done.moved(moved.length, to.name),
@@ -273,7 +288,7 @@ export function useLibraryMoves(
     [run],
   );
   const merge = useCallback(
-    (merged: readonly LibraryItem[], into: LibraryGroup) =>
+    (merged: readonly OrganizableItem[], into: LibraryGroup) =>
       run(merged, {
         send: () => mergeGroups(merged.map(refOf), into.id, null),
         done: t.organize.done.merged(

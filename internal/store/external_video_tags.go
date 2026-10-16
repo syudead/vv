@@ -65,6 +65,8 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 	if err != nil {
 		return domain.VideoTagsOutcome{}, err
 	}
+	// タグを書くので、スマートフォルダの一致も変わりうる。
+	c.matchesChanged()
 	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.VideoTagsOutcome{}, fmt.Errorf("cannot update the video tags: %w", err)
 	}

@@ -44,6 +44,11 @@ const PlaylistPage = await deferredRoute(
   (pathname) => matchesBelowPath(pathname, "/playlists"),
 );
 const GroupPage = await deferredRoute(() => import("../groups/GroupPage"), "/groups");
+// スマートフォルダのページ（specs/052-smart-folders/ui-design.md「Smart folder page」）。
+const SmartFolderPage = await deferredRoute(
+  () => import("../smartFolders/SmartFolderPage"),
+  "/smart-folders",
+);
 const DuplicatesPage = await deferredRoute(
   () => import("../versions/DuplicatesPage"),
   "/duplicates",
@@ -158,6 +163,14 @@ function AppRoutes() {
           element={
             <AppShell>
               <GroupPage />
+            </AppShell>
+          }
+        />
+        <Route
+          path="/smart-folders/:id"
+          element={
+            <AppShell>
+              <SmartFolderPage />
             </AppShell>
           }
         />

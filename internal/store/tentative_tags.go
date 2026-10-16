@@ -33,7 +33,7 @@ func (s *TagStore) ConfirmTag(ctx context.Context, id int64) (domain.Tag, error)
 	if err != nil {
 		return domain.Tag{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.Tag{}, fmt.Errorf("cannot confirm the tag: %w", err)
 	}
 	return tag, nil
@@ -67,7 +67,7 @@ func (s *TagStore) RejectTag(ctx context.Context, id int64) (string, error) {
 		return "", fmt.Errorf("cannot remember the rejected tag name (%s): %w", ref.Name, err)
 	}
 
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return "", fmt.Errorf("cannot reject the tag: %w", err)
 	}
 	return ref.Name, nil

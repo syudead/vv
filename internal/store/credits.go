@@ -27,17 +27,20 @@ type creditTables struct {
 	cursorKind string
 	// hasParent は実体の表が parent_id を持つ（団体）こと。
 	hasParent bool
+	// smartRef はスマートフォルダの条件でこの実体を名指す種類（specs/052-smart-folders）。
+	smartRef domain.SmartRuleRefKind
 }
 
 var creditTablesByKind = map[domain.CreditKind]creditTables{
 	domain.CreditPerson: {
 		kind: domain.CreditPerson, entity: "people", names: "people_names", externalIDs: "people_external_ids",
-		links: "video_work_people", idColumn: "person_id", cursorKind: "people",
+		links: "video_work_people", idColumn: "person_id", cursorKind: "people", smartRef: domain.SmartRefPerson,
 	},
 	domain.CreditOrganization: {
 		kind: domain.CreditOrganization, entity: "organizations", names: "organization_names",
 		externalIDs: "organization_external_ids", links: "video_work_organizations",
 		idColumn: "organization_id", cursorKind: "organizations", hasParent: true,
+		smartRef: domain.SmartRefOrganization,
 	},
 }
 
@@ -212,7 +215,7 @@ func (s *CreditStore) Update(ctx context.Context, kind domain.CreditKind, id int
 	if err != nil {
 		return domain.Credit{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.Credit{}, fmt.Errorf("cannot update the %s: %w", kind, err)
 	}
 	return updated, nil
@@ -351,7 +354,7 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	if err := renumberCreditLinks(ctx, tx, t, affected); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return fmt.Errorf("cannot delete %s %d: %w", kind, id, err)
 	}
 	return nil
@@ -392,7 +395,7 @@ func (s *CreditStore) Merge(ctx context.Context, kind domain.CreditKind, targetI
 	if err != nil {
 		return domain.CreditMergeOutcome{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.CreditMergeOutcome{}, fmt.Errorf("cannot merge into %s %d: %w", kind, targetID, err)
 	}
 	return domain.CreditMergeOutcome{Credit: credit, NotFoundIDs: notFound}, nil
@@ -471,7 +474,11 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 			return fmt.Errorf("cannot %s to %s %d: %w", s.what, t.kind, targetID, err)
 		}
 	}
-	return renumberCreditLinks(ctx, tx, t, affected)
+	if err := renumberCreditLinks(ctx, tx, t, affected); err != nil {
+		return err
+	}
+	// スマートフォルダの条件が名指す統合元を統合先にする（specs/052-smart-folders/research.md R-9）。
+	return rewriteSmartRuleRefs(ctx, tx, t.smartRef, targetID, sourceIDs)
 }
 
 // checkMergedCreditLimits は統合後の統合先の別名と外部 ID の件数を数え、上限を超えれば

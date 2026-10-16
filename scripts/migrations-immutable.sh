@@ -8,19 +8,16 @@
 #
 # 使い方: scripts/migrations-immutable.sh [比較対象]
 #
-# 比較対象を省いたときは、PR の base branch（GITHUB_BASE_REF）があればそれを、
-# 無ければ origin/main を使う。呼び出し側が渡し分けると、手元と CI で違う
-# 比較になり、同じコマンドを実行しても判定が変わる。
+# 比較対象を省いたときは origin/main を使う。配布物（Docker イメージ、Windows
+# アプリ）は main からだけ作るので、既存のデータベースが適用済みでありうる版は
+# main にある版である。フィーチャーブランチだけにある版はまだ配布されておらず、
+# main を取り込んで番号が重なったときはフィーチャー側を新しい番号へ改める
+# （PR #834 の 00036 → 00038、PR #1215 の 00048 → 00049）。PR の base branch と
+# 比べると、フィーチャーブランチへの PR でこの改名を壊れた変更として報告し、
+# 手元（origin/main と比べる）と CI で判定が変わる。
 set -eu
 
-base="${1:-${MIGRATIONS_BASE:-}}"
-if [ -z "$base" ]; then
-	if [ -n "${GITHUB_BASE_REF:-}" ]; then
-		base="origin/${GITHUB_BASE_REF}"
-	else
-		base="origin/main"
-	fi
-fi
+base="${1:-${MIGRATIONS_BASE:-origin/main}}"
 dir="internal/store/migrations"
 
 if ! git rev-parse --verify --quiet "$base" >/dev/null; then

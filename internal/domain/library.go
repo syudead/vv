@@ -141,6 +141,56 @@ type VideoQuery struct {
 	// 持つ動画だけにするタグの種類の id である。0 は絞り込まない。実体の無い id は何にも
 	// 当たらない（specs/051-tag-kinds/research.md R-5）。
 	TagKindID int64
+	// AddedWithinDays は、いまからこの日数前の時刻以後に追加した動画だけにする
+	// （1 以上 MaxAddedWithinDays 以下）。0 は絞り込まない
+	// （specs/052-smart-folders/research.md R-4）。
+	AddedWithinDays int
+	// MinDurationSec と MaxDurationSec は長さの範囲（秒、両端を含む。0 以上
+	// MaxDurationBoundSec 以下）である。nil はその側を限らない。どちらかがあれば、
+	// 長さの分からない動画は当たらない（R-4）。
+	MinDurationSec *int
+	MaxDurationSec *int
+}
+
+// ListsSmartFolders は、この条件のライブラリの一番上にスマートフォルダの項目を出すかを返す。
+// 検索が無く、お気に入りのみ以外の絞り込みも無いときだけ出す。お気に入りのみはお気に入りにした
+// フォルダだけを出す（specs/052-smart-folders/research.md R-7）。並べ替えは絞り込みではない。
+func (q VideoQuery) ListsSmartFolders() bool {
+	return ParseSearchQuery(q.Query).Empty() && (q.Watch == "" || q.Watch == WatchAll) && !q.PlayableOnly &&
+		len(q.TagIDs) == 0 && q.Person == 0 && q.Organization == 0 && q.TagKindID == 0 &&
+		q.AddedWithinDays == 0 && q.MinDurationSec == nil && q.MaxDurationSec == nil
+}
+
+// MaxAddedWithinDays は VideoQuery.AddedWithinDays の上限である（R-4）。
+const MaxAddedWithinDays = 36500
+
+// MaxDurationBoundSec は VideoQuery の長さの範囲の各端の上限（秒）である。
+const MaxDurationBoundSec = 360000
+
+var (
+	// ErrInvalidAddedWithin は追加日の日数が範囲（1〜MaxAddedWithinDays）の外にあることを表す。
+	ErrInvalidAddedWithin = errors.New("added within is out of range")
+	// ErrInvalidDurationRange は長さの端が範囲（0〜MaxDurationBoundSec）の外にあるか、
+	// 下限が上限を越えることを表す。
+	ErrInvalidDurationRange = errors.New("duration range is invalid")
+)
+
+// CheckAddedAndLength は追加日と長さの絞り込みの値を確かめる。addedWithin・minSec・maxSec は
+// 指定が無ければ nil である。ライブラリの一覧とスマートフォルダの条件が同じ範囲を使う
+// （specs/052-smart-folders/contracts/screen-api.md）。
+func CheckAddedAndLength(addedWithin, minSec, maxSec *int) error {
+	if addedWithin != nil && (*addedWithin < 1 || *addedWithin > MaxAddedWithinDays) {
+		return ErrInvalidAddedWithin
+	}
+	for _, bound := range []*int{minSec, maxSec} {
+		if bound != nil && (*bound < 0 || *bound > MaxDurationBoundSec) {
+			return ErrInvalidDurationRange
+		}
+	}
+	if minSec != nil && maxSec != nil && *minSec > *maxSec {
+		return ErrInvalidDurationRange
+	}
+	return nil
 }
 
 // VideoPage は一覧1ページ分である。

@@ -196,14 +196,18 @@ func (s *server) GetPlaylist(w http.ResponseWriter, r *http.Request, id gen.Play
 				return
 			}
 			out.Items = append(out.Items, gen.PlaylistItem{Id: item.ID, Kind: gen.PlaylistItemKindGroup, Group: &group})
+		case item.SmartFolder != nil:
+			// スマートフォルダの項目は空の再生順でも項目である（フォルダは動画が無くても残る）。
+			folder := lookup.smartFolder(ctx, audience, *item.SmartFolder)
+			out.Items = append(out.Items, gen.PlaylistItem{Id: item.ID, Kind: gen.PlaylistItemKindSmartFolder, SmartFolder: &folder})
 		}
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
 }
 
-// AddPlaylistItems はプレイリストの末尾に動画とグループを足す（POST /api/playlists/{id}/items、
-// research.md R-5）。本文の形と件数の上限は PUT /api/favorites と同じで、合計が 0 なら
+// AddPlaylistItems はプレイリストの末尾に動画・グループ・スマートフォルダを足す
+// （POST /api/playlists/{id}/items、research.md R-5、specs/052-smart-folders/contracts/screen-api.md）。本文の形と件数の上限は PUT /api/favorites と同じで、合計が 0 なら
 // invalid_request、20000 を超えれば too_many_videos にする。
 func (s *server) AddPlaylistItems(w http.ResponseWriter, r *http.Request, id gen.PlaylistId) {
 	if !s.validPlaylistID(w, id) {
@@ -221,21 +225,25 @@ func (s *server) AddPlaylistItems(w http.ResponseWriter, r *http.Request, id gen
 	if body.GroupIds != nil {
 		groupIDs = uniqueInt64s(*body.GroupIds)
 	}
-	total := len(videoIDs) + len(groupIDs)
+	var smartFolderIDs []int64
+	if body.SmartFolderIds != nil {
+		smartFolderIDs = uniqueInt64s(*body.SmartFolderIds)
+	}
+	total := len(videoIDs) + len(groupIDs) + len(smartFolderIDs)
 	if total == 0 {
-		s.invalidRequest(w, "videoIds or groupIds must contain at least one item.")
+		s.invalidRequest(w, "videoIds, groupIds or smartFolderIds must contain at least one item.")
 		return
 	}
 	if total > maxVideoTagsIDs {
 		s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
-			fmt.Sprintf("videoIds and groupIds must contain at most %d items in total.", maxVideoTagsIDs))
+			fmt.Sprintf("videoIds, groupIds and smartFolderIds must contain at most %d items in total.", maxVideoTagsIDs))
 		return
 	}
 	if s.playlists == nil {
 		s.internalError(w, "Playlist storage is not configured.", nil)
 		return
 	}
-	added, err := s.playlists.AddPlaylistItems(r.Context(), id, domain.PlaylistAdd{VideoIDs: videoIDs, GroupIDs: groupIDs})
+	added, err := s.playlists.AddPlaylistItems(r.Context(), id, domain.PlaylistAdd{VideoIDs: videoIDs, GroupIDs: groupIDs, SmartFolderIDs: smartFolderIDs})
 	if err != nil {
 		s.writePlaylistError(w, err, "Could not add to the playlist.")
 		return

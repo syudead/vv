@@ -28,6 +28,8 @@ type scriptedPlugins struct {
 	applied    domain.WorkInfoApplied
 	calls      int
 	fields     []domain.WorkInfoField
+	// ids は FetchWorkInfoByID が受けた ID である。
+	ids []string
 }
 
 func (p *scriptedPlugins) SearchWorkInfo(context.Context, int64, string) ([]domain.WorkInfoCandidate, error) {
@@ -37,6 +39,12 @@ func (p *scriptedPlugins) SearchWorkInfo(context.Context, int64, string) ([]doma
 
 func (p *scriptedPlugins) FetchWorkInfo(context.Context, int64, int64, string) (domain.WorkInfoFetchResult, error) {
 	p.calls++
+	return p.fetch, p.err
+}
+
+func (p *scriptedPlugins) FetchWorkInfoByID(_ context.Context, _, _ int64, id string) (domain.WorkInfoFetchResult, error) {
+	p.calls++
+	p.ids = append(p.ids, id)
 	return p.fetch, p.err
 }
 
@@ -122,6 +130,7 @@ func TestWorkInfoRunFailuresFollowTheContract(t *testing.T) {
 		for _, route := range []struct{ path, body string }{
 			{searchPath, `{"query":"work"}`},
 			{fetchPath, `{"pluginId":1,"url":"https://example.com/w"}`},
+			{fetchPath, `{"pluginId":1,"id":"ABC-123"}`},
 		} {
 			label := tc.name + " " + route.path
 			status, body := e.post(route.path, route.body, e.owner)
@@ -151,11 +160,18 @@ func TestWorkInfoSearchAndFetchAnswer(t *testing.T) {
 		t.Fatalf("fetch = %d %s", status, body)
 	}
 
+	status, body = e.post(fetchPath, `{"pluginId":1,"id":"ABC-123"}`, e.owner)
+	if status != http.StatusCreated || json.Unmarshal(body, &fetch) != nil || fetch.FetchId != "abc" ||
+		!slices.Equal(e.plugins.ids, []string{"ABC-123"}) {
+		t.Fatalf("fetch by id = %d %s (ids %v)", status, body, e.plugins.ids)
+	}
+
 	calls := e.plugins.calls
 	for _, req := range []struct{ path, body string }{
 		{searchPath, `{}`},
 		{fetchPath, `{"url":"https://example.com/w"}`},
 		{fetchPath, `{"pluginId":1}`},
+		{fetchPath, `{"pluginId":1,"url":"https://example.com/w","id":"ABC-123"}`},
 	} {
 		status, body := e.post(req.path, req.body, e.owner)
 		assertErrorBody(t, req.path+" "+req.body, status, body, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})

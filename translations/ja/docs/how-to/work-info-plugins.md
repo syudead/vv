@@ -1,11 +1,11 @@
 ---
 source: docs/how-to/work-info-plugins.md
-sourceHash: 2d606502b9795e4b1920133ee9ba5e0d26213be043bdaf213072c000347dc0d2
+sourceHash: 0b31f628f3915045e9ed78b557fcf61da5277f678c3ee3b7e7deb7a133b6e313
 ---
 
 # 作品情報プラグインを書く {#write-a-work-info-plugin}
 
-作品情報プラグインは、外部のサイトで作品を検索し、作品のタイトル、タグ、詳細を取得するために VVMDM が実行する WebAssembly のモジュールである。終えると、所有者が設定画面で追加して承認できるモジュールができる。この手順書が、プラグインの契約のバージョン 1 である。サンドボックス、制限、ネットワークの規則がこの形である理由は [work-info-plugins.md](../design-docs/work-info-plugins.md) にある。
+作品情報プラグインは、外部のサイトで作品を検索し、作品のタイトル、タグ、詳細をページの URL か ID で取得するために VVMDM が実行する WebAssembly のモジュールである。終えると、所有者が設定画面で追加して承認できるモジュールができる。この手順書が、プラグインの契約のバージョン 1 である。サンドボックス、制限、ネットワークの規則がこの形である理由は [work-info-plugins.md](../design-docs/work-info-plugins.md) にある。
 
 図のとおり、VVMDM は実行のたびに新しいインスタンスを起動する。
 
@@ -208,10 +208,21 @@ sequenceDiagram
 | `name` | string | はい | `a-z`、`0-9`、`-`、`.` からなる 1 から 64 文字。プラグインの識別子なので、同じ名前のモジュールはそれを置き換える |
 | `version` | string | はい | 1 から 32 文字。所有者に表示する |
 | `description` | string | いいえ | 最大 500 文字 |
-| `operations` | string の配列 | はい | `search` と `fetch` の空でない部分集合で、それぞれ最大 1 回 |
+| `operations` | string の配列 | はい | `search` と `fetch` の空でない部分集合で、それぞれ最大 1 回。[操作を選ぶ](#choose-the-operations) を参照 |
 | `settings` | object の配列 | いいえ | 最大 10 個の `{"key", "label", "secret", "required"}` の宣言。`key` は `A-Z`、`a-z`、`0-9`、`_` からなり英字で始まる 1 から 32 文字で、一意である。`label` は所有者に表示する 1 から 60 文字。`secret` と `required` の既定値は `false` |
 
 API キー (`"secret": true`) や言語など、所有者が与えるものには設定を宣言する。所有者は設定画面で値を入力し、VVMDM はそれをこのプラグインの実行にだけ渡す。
+
+### 操作を選ぶ {#choose-the-operations}
+
+操作によって、動画のページの取得ダイアログで所有者が何を入力するかが決まる。
+
+| サイト | 宣言する操作 | 所有者 |
+| --- | --- | --- |
+| 検索がある | `search` と `fetch` | 語句を入力して候補を一つ選び、VVMDM はそれをその URL で取得する。または欄の上で **ID** を選び、作品の ID を入力する |
+| 作品の ID (品番など) から組み立てるページの URL がある | `fetch` | ID を入力する (最初は動画の品番が入っている)。またはページの URL を貼り付ける |
+
+`search` だけを宣言するプラグインは、候補をリンクとして表示し、取得するものはない。
 
 ## 要求 {#request}
 
@@ -220,7 +231,7 @@ VVMDM は 1 つの JSON オブジェクトを標準入力に書き、それを�
 | 操作 | フィールド |
 | --- | --- |
 | `search` | `{"contract": 1, "operation": "search", "query": "<1 to 200 characters>"}` |
-| `fetch` | `{"contract": 1, "operation": "fetch", "url": "<an http or https URL of at most 2048 characters>"}` |
+| `fetch` | `{"contract": 1, "operation": "fetch", "url": "<an http or https URL of at most 2048 characters>"}` は候補か貼り付けたページの URL のとき。`{"contract": 1, "operation": "fetch", "id": "<1 to 200 characters>"}` は所有者が入力した ID のときで、前後の空白を含まない。プラグインは ID からページの URL を組み立てる |
 
 どちらの操作も、所有者が値を設定した宣言済みのキーをすべて、そしてそれだけを含む `"settings": {"<key>": "<value>"}` も持つ。`required` のキーが未設定のあいだ、実行は始まらない。
 

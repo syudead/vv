@@ -113,10 +113,12 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 		ownerVideoChanges(contentKeys[:1], ""), now); err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
-	if err := s.db.commit(ctx, tx, c); err != nil {
+	// 表示名と仮のタグと作品情報を書くので、スマートフォルダの一致も変わりうる。
+	c.matchesChanged()
+	events := append(appliedWorkInfoEvents(apply.VideoID, changed), workInfoEvents...)
+	if err := s.db.commitWith(ctx, tx, c, events...); err != nil {
 		return domain.FetchedWorkInfoApplied{}, fmt.Errorf("cannot apply the fetched work information: %w", err)
 	}
-	s.db.publishEvents(append(appliedWorkInfoEvents(apply.VideoID, changed), workInfoEvents...)...)
 	return out, nil
 }
 

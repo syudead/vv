@@ -25,6 +25,18 @@ func userKeyExpr(alias string) string {
 		`where ukm.content_key = ` + alias + `.content_key), ` + alias + `.content_key)`
 }
 
+// userKeyVideosSQL は、利用者データの鍵（userKeyExpr）が副問い合わせ keys（1 列の select 文）の
+// どれかである動画の id を返す select 文である。集まりに属さない動画は content_key で、集まりの動画は
+// 集まりの user_key で引く。空の content_key の動画は含めない。keys は 2 回現れるので、呼び出し側は
+// その引数を 2 回渡す。鍵の集合から引くので、動画 1 本ごとに鍵を求める（userKeyExpr）より、当たる
+// 鍵が少ないときに速い。
+func userKeyVideosSQL(keys string) string {
+	return `select v.id from videos v where v.content_key <> '' and v.content_key in (` + keys + `) ` +
+		`and not exists (select 1 from video_bundle_members ukm where ukm.content_key = v.content_key) ` +
+		`union all select v.id from video_bundles ukb join video_bundle_members ukm on ukm.bundle_id = ukb.id ` +
+		`join videos v on v.content_key = ukm.content_key and v.content_key <> '' where ukb.user_key in (` + keys + `)`
+}
+
 // bundleUserKey は集まりの id から user_key を作る。
 func bundleUserKey(id int64) string {
 	return fmt.Sprintf("bundle:%d", id)

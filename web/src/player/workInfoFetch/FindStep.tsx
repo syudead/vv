@@ -7,7 +7,7 @@ import type { WorkInfoCandidate, WorkInfoPlugin } from "../../api/workInfoPlugin
 import { errorText, t } from "../../i18n";
 import { Alert, AlertDescription, AlertTitle } from "../../ui/shadcn/alert";
 import { Button } from "../../ui/shadcn/button";
-import { Field, FieldError, FieldLabel } from "../../ui/shadcn/field";
+import { Field, FieldLabel } from "../../ui/shadcn/field";
 import { Input } from "../../ui/shadcn/input";
 import {
   Select,
@@ -17,9 +17,12 @@ import {
   SelectValue,
 } from "../../ui/shadcn/select";
 import { Spinner } from "../../ui/shadcn/spinner";
+import { ToggleGroup, ToggleGroupItem } from "../../ui/shadcn/toggle-group";
 import ActionButton from "../ActionButton";
 import {
+  canChooseFindBy,
   canFetch,
+  type FindBy,
   hostOf,
   missingSettingLabels,
   pluginLabel,
@@ -89,6 +92,45 @@ function PluginField({
         </SelectContent>
       </Select>
     </Field>
+  );
+}
+
+const FIND_BY: readonly FindBy[] = ["words", "id"];
+
+/**
+ * FindByField は語を検索の語にするか、取得に渡す作品の ID にするかの選択で、search と fetch の両方を
+ * 宣言するプラグインにだけ出す。押している選択肢は外せない。
+ */
+function FindByField({
+  by,
+  disabled,
+  onBy,
+}: {
+  by: FindBy;
+  disabled: boolean;
+  onBy: (by: FindBy) => void;
+}) {
+  const text = t.player.workInfoFetch;
+  return (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      aria-label={text.findBy}
+      className="self-start"
+      value={by}
+      disabled={disabled}
+      onValueChange={(value) => {
+        if (value === "" || value === by) return;
+        onBy(value as FindBy);
+      }}
+    >
+      {FIND_BY.map((option) => (
+        <ToggleGroupItem key={option} value={option} className="flex-none px-3">
+          {text.findByOptions[option]}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
   );
 }
 
@@ -240,37 +282,38 @@ function Candidates({
 }
 
 /**
- * FindStep は取得のダイアログの最初の段で、プラグインの選択、語か URL の 1 つの欄、失敗、
- * 候補の一覧を縦に並べる（ui-design「Find」「Candidates」「Failures」）。
+ * FindStep は取得のダイアログの最初の段で、プラグインの選択、語と ID の選択（両方できるプラグインだけ）、
+ * 語か ID か URL の 1 つの欄、失敗、候補の一覧を縦に並べる（ui-design「Find」「Candidates」「Failures」）。
  */
 export default function FindStep({
   plugins,
   plugin,
+  by,
   query,
-  notUrl,
   running,
   failure,
   candidates,
   queryRef,
   onPlugin,
+  onBy,
   onQuery,
   onChoose,
 }: {
   plugins: readonly WorkInfoPlugin[];
   plugin: WorkInfoPlugin | undefined;
+  by: FindBy;
   query: string;
-  notUrl: boolean;
   running: Running | null;
   failure: RunFailure | null;
   candidates: readonly WorkInfoCandidate[] | null;
   queryRef: RefObject<HTMLInputElement | null>;
   onPlugin: (id: number) => void;
+  onBy: (by: FindBy) => void;
   onQuery: (query: string) => void;
   onChoose: (url: string) => void;
 }) {
   const text = t.player.workInfoFetch;
   const queryId = useId();
-  const errorId = useId();
   // 開いて最初にフォーカスを受けたときだけ、題名を選んだ状態にして打てば置き換わるようにする。
   const selectedOnce = useRef(false);
   const busy = running !== null;
@@ -282,9 +325,12 @@ export default function FindStep({
         disabled={busy}
         onPlugin={onPlugin}
       />
-      <Field data-invalid={notUrl || undefined}>
+      {plugin !== undefined && canChooseFindBy(plugin) && (
+        <FindByField by={by} disabled={busy} onBy={onBy} />
+      )}
+      <Field>
         <FieldLabel htmlFor={queryId}>
-          {plugin === undefined ? text.queryBoth : queryLabel(plugin)}
+          {plugin === undefined ? text.queryBoth : queryLabel(plugin, by)}
         </FieldLabel>
         <Input
           ref={queryRef}
@@ -292,8 +338,6 @@ export default function FindStep({
           value={query}
           readOnly={busy}
           aria-disabled={busy || undefined}
-          aria-invalid={notUrl || undefined}
-          aria-describedby={notUrl ? errorId : undefined}
           autoComplete="off"
           onFocus={(event) => {
             if (selectedOnce.current) return;
@@ -302,7 +346,6 @@ export default function FindStep({
           }}
           onChange={(event) => onQuery(event.target.value)}
         />
-        {notUrl && <FieldError id={errorId}>{text.notUrl}</FieldError>}
       </Field>
       {failure !== null && <FailureAlert failure={failure} />}
       {candidates !== null && (

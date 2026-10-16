@@ -279,7 +279,9 @@ one short phrase.
 ### Skeleton
 
 Item `skeleton`. The final layout's shapes while content loads: cards, list
-rows, a line of text. Give it the size of the content it stands for.
+rows, a line of text. Give it the size of the content it stands for. Inside
+phrasing content, such as a `PageHeader` description (a `p`), pass `asChild`
+with a `span`, because a `div` may not sit in a `p`.
 
 Do not cover a whole page with a spinner instead, or use it for content that
 loads faster than the eye notices.

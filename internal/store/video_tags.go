@@ -109,7 +109,8 @@ func (s *TagStore) attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs
 }
 
 // commitTagChanges は鍵 changed のそれぞれにタグ tagID の kind の記録を書き、取引 tx を確定する
-// （specs/055-activity/research.md R-6）。確定後に domain.ActivityChanged を発行する。
+// （specs/055-activity/research.md R-6）。確定後に domain.ActivityChanged と、すべてのスマートフォルダを
+// 名指す domain.SmartFoldersChanged を発行する。
 func (s *TagStore) commitTagChanges(
 	ctx context.Context, tx *sql.Tx, kind domain.ActivityKind, changed []string, tagID int64, now time.Time,
 ) error {
@@ -117,6 +118,8 @@ func (s *TagStore) commitTagChanges(
 	if err := recordOwnerVideoActivity(ctx, tx, c, kind, ownerTagChanges(changed, tagID), now); err != nil {
 		return err
 	}
+	// タグを書くので、スマートフォルダの一致も変わりうる。
+	c.matchesChanged()
 	return s.db.commit(ctx, tx, c)
 }
 

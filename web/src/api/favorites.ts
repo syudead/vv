@@ -176,10 +176,21 @@ export function withGroupFavoriteSince<T extends { id: number; favorite?: boolea
   return { ...group, favorite: change.favorite };
 }
 
+/** UpdateFavoritesOptions は updateFavorites の省ける引数である。 */
+export interface UpdateFavoritesOptions {
+  /**
+   * お気に入りをそろえるスマートフォルダの id（specs/052-smart-folders/contracts/screen-api.md）。
+   * 空なら本文に載せない。フォルダの付け外しは画面へ知らせない（フォルダのカードは
+   * `smartFolder` のイベントか読み直しで値を取る）。
+   */
+  smartFolderIds?: readonly number[];
+  signal?: AbortSignal;
+}
+
 /**
- * updateFavorites は `videoIds` の動画と `groupIds` のグループのお気に入りを `favorite` に
- * そろえる（PUT /api/favorites、specs/035-favorites/contracts/screen-api.md §1、
- * specs/048-groups/research.md R-10）。カード・行の
+ * updateFavorites は `videoIds` の動画と `groupIds` のグループ（と `smartFolderIds` の
+ * スマートフォルダ）のお気に入りを `favorite` にそろえる（PUT /api/favorites、
+ * specs/035-favorites/contracts/screen-api.md §1、specs/048-groups/research.md R-10）。カード・行の
  * 1 件も、選択バーの一括も、これを使う。前の付け外しが決着するまで送るのを待ち、成功したら
  * 結果を画面へ知らせる。
  */
@@ -187,7 +198,7 @@ export function updateFavorites(
   videoIds: readonly number[],
   groupIds: readonly number[],
   favorite: boolean,
-  signal?: AbortSignal,
+  { smartFolderIds = [], signal }: UpdateFavoritesOptions = {},
 ): Promise<FavoritesResponse> {
   sent += 1;
   const sequence = sent;
@@ -205,6 +216,9 @@ export function updateFavorites(
       body: JSON.stringify({
         videoIds: Array.from(videoIds),
         groupIds: Array.from(groupIds),
+        ...(smartFolderIds.length === 0
+          ? {}
+          : { smartFolderIds: Array.from(smartFolderIds) }),
         favorite,
       }),
       signal,

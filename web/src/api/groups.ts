@@ -231,9 +231,10 @@ export function addToGroup(
 /**
  * dropSnapshotAfter は作成と追加の後に一覧の控えを捨てる。足したものはライブラリのいちばん上から
  * 外れるが、控えは書き換えないので、動画ページや別のグループのページから足して戻ると古い一覧が
- * 戻ってしまう。404（途中で対象が無くなった）でも、控えにその項目が残るので捨てる。
+ * 戻ってしまう。404（途中で対象が無くなった）でも、控えにその項目が残るので捨てる。スマートフォルダの
+ * 書き込み（api/smartFolders.ts）も、ライブラリのフォルダのカードが変わるので同じく使う。
  */
-async function dropSnapshotAfter<T>(sent: Promise<T>): Promise<T> {
+export async function dropSnapshotAfter<T>(sent: Promise<T>): Promise<T> {
   try {
     const value = await sent;
     clearListSnapshot();

@@ -3,7 +3,8 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation, useNavigate } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { LibraryGroup, LibraryItem, Video } from "../api/client";
+import type { LibraryGroup, Video } from "../api/client";
+import type { OrganizableItem as LibraryItem } from "../api/libraryItems";
 import { updateFavorites } from "../api/favorites";
 import { updateVideoVisibility } from "../api/visibility";
 import { clearListSnapshot } from "../api/listSnapshot";

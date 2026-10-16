@@ -41,6 +41,7 @@ func checkInvariants(t *testing.T, db *DB) *DB {
 		assertFavoriteInvariant(t, db)
 		assertPlaylistInvariant(t, db)
 		assertGroupInvariant(t, db)
+		assertSmartFolderInvariant(t, db)
 		assertCreditInvariant(t, db)
 		assertWorkInfoInvariant(t, db)
 	})
@@ -587,6 +588,55 @@ func assertGroupAcyclic(t *testing.T, db *DB) {
 	}
 	if err := rows.Err(); err != nil {
 		t.Fatalf("グループの不変条件を検査できない: %v", err)
+	}
+}
+
+// assertSmartFolderInvariant は、スマートフォルダの不変条件（specs/052-smart-folders/data-model.md
+// 「Rules」）を確かめる。どの rule も domain.ParseSmartRule で読め、どの sort も
+// domain.ValidateSmartSort を通り、どのフォルダも自分の祖先にならない。
+func assertSmartFolderInvariant(t *testing.T, db *DB) {
+	t.Helper()
+
+	var present int
+	if err := db.sql.QueryRow(
+		`select count(*) from sqlite_master where type = 'table' and name = 'smart_folders'`,
+	).Scan(&present); err != nil {
+		t.Fatalf("スマートフォルダの不変条件を検査できない（スキーマを確認できない）: %v", err)
+	}
+	if present == 0 {
+		return
+	}
+	rows, err := db.sql.Query(`select id, rule, sort from smart_folders`)
+	if err != nil {
+		t.Fatalf("スマートフォルダの不変条件を検査できない: %v", err)
+	}
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var id int64
+		var rule, sort string
+		if err := rows.Scan(&id, &rule, &sort); err != nil {
+			t.Fatalf("スマートフォルダの不変条件を検査できない: %v", err)
+		}
+		if _, err := domain.ParseSmartRule([]byte(rule)); err != nil {
+			t.Errorf("スマートフォルダ %d の rule %s が読めない: %v", id, rule, err)
+		}
+		if err := domain.ValidateSmartSort(domain.VideoSort(sort)); err != nil {
+			t.Errorf("スマートフォルダ %d の sort %q が規則に合わない: %v", id, sort, err)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("スマートフォルダの不変条件を検査できない: %v", err)
+	}
+	_ = rows.Close()
+	for _, violation := range violations(t, db, `
+		with recursive up (start, id, depth) as (
+			select id, parent_id, 1 from smart_folders where parent_id is not null
+			union all
+			select up.start, f.parent_id, up.depth + 1 from up join smart_folders f on f.id = up.id
+			 where f.parent_id is not null and up.depth <= (select count(*) from smart_folders)
+		)
+		select distinct 'スマートフォルダ ' || start || ' が自分の祖先になっている' from up where id = start`) {
+		t.Error(violation)
 	}
 }
 

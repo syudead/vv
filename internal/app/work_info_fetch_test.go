@@ -225,6 +225,38 @@ func TestRunRefusesBeforeTheModuleRuns(t *testing.T) {
 	}
 }
 
+func TestFetchWorkInfoByIDSendsTheTrimmedIDToFetch(t *testing.T) {
+	ctx := context.Background()
+	e := newFetchEnv()
+	e.runtime.result = domain.WorkInfoRunResult{WorkInfo: domain.FetchedWorkInfo{Title: "Title", Code: "ABC-123"}}
+	result, err := e.plugins.FetchWorkInfoByID(ctx, fetchVideo, 1, "  ABC-123  ")
+	if err != nil || result.ID == "" || result.Title != "Title" || result.Details.Code != "ABC-123" {
+		t.Fatalf("FetchWorkInfoByID = %+v, %v", result, err)
+	}
+	req := e.runtime.requests[0]
+	if req.Operation != domain.WorkInfoFetch || req.ID != "ABC-123" || req.URL != "" || req.Settings["apiKey"] != "key-one" {
+		t.Fatalf("request = %+v", req)
+	}
+	if len(e.applier.calls) != 0 {
+		t.Fatal("fetching by ID wrote to the video")
+	}
+	runs := len(e.runtime.requests)
+	if _, err := e.plugins.FetchWorkInfoByID(ctx, fetchVideo, 1, "   "); !errors.Is(err, domain.ErrWorkInfoRunInvalid) {
+		t.Fatalf("blank id: err = %v", err)
+	}
+	if _, err := e.plugins.FetchWorkInfoByID(ctx, 999, 1, "ABC-123"); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("missing video: err = %v", err)
+	}
+	// 検索だけを宣言するプラグインには取得を送らない。
+	e.store.plugins[1].Manifest.Operations = []domain.WorkInfoOperation{domain.WorkInfoSearch}
+	if _, err := e.plugins.FetchWorkInfoByID(ctx, fetchVideo, 1, "ABC-123"); !errors.Is(err, domain.ErrWorkInfoOperationUnsupported) {
+		t.Fatalf("no fetch: err = %v", err)
+	}
+	if len(e.runtime.requests) != runs {
+		t.Fatal("the module ran for a refused fetch")
+	}
+}
+
 func TestFetchWorkInfoKeepsTheResultAndLeavesTheVideo(t *testing.T) {
 	ctx := context.Background()
 	e := newFetchEnv()

@@ -63,10 +63,11 @@ func (s *IngestStore) ApplyProbe(
 			return err
 		}
 	}
-	if err := tx.Commit(); err != nil {
+	// 長さと再生可否が変わるので、書いたならスマートフォルダの一致も変わりうる
+	// （specs/052-smart-folders/research.md R-12）。
+	if err := s.db.commitMatchChangeIf(ctx, tx, count == 1, successionEvents(succeeded)...); err != nil {
 		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
 	}
-	s.db.publishEvents(successionEvents(succeeded)...)
 	return nil
 }
 
@@ -122,6 +123,10 @@ func (s *IngestStore) ApplyProbeForJob(
 		return false, err
 	}
 	c.jobsQueued(domain.JobPreview)
+	// 長さと再生可否を書いたので、後継の引き継ぎが無くてもスマートフォルダの一致は変わりうる。
+	// 走査を閉じるときの知らせ（FinishScan）は解析より前に出るので、ここでも知らせる
+	// （specs/052-smart-folders/research.md R-12）。
+	c.matchesChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, err
 	}

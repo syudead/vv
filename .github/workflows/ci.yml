@@ -186,13 +186,12 @@ jobs:
           key: golangci-lint-${{ runner.os }}-${{ github.sha }}
           restore-keys: golangci-lint-${{ runner.os }}-
 
-      # migrations-check が base branch と比べるので取り寄せる。比較先の選択は
-      # スクリプトが GITHUB_BASE_REF から行う（引数は渡さない）。
-      - name: base branch を取得する
+      # migrations-check が origin/main と比べるので取り寄せる。PR の base branch
+      # ではなく main と比べる理由は scripts/migrations-immutable.sh にある。push
+      # （main だけ）では checkout が origin/main を作るので取り寄せない。
+      - name: main を取得する
         if: matrix.golangci && github.event_name == 'pull_request'
-        run: git fetch --no-tags --depth=1 origin "$BASE:refs/remotes/origin/$BASE"
-        env:
-          BASE: ${{ github.base_ref }}
+        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
 
       # E2E の組と同じく、ffmpeg の .deb を runner のイメージ版ごとに取っておく。
       - name: runnerのイメージ版を調べる
@@ -413,7 +412,7 @@ jobs:
           - group: playback
             files: e2e/playback.e2e.ts
           - group: tags
-            files: e2e/tags.e2e.ts
+            files: e2e/smart-folders.e2e.ts e2e/tags.e2e.ts
           - group: library
             files: e2e/card-scrub.e2e.ts e2e/folders.e2e.ts e2e/guest.e2e.ts e2e/history.e2e.ts e2e/hover-preview.e2e.ts e2e/playlists.e2e.ts e2e/thumbnail-edit.e2e.ts
           - group: scan and search

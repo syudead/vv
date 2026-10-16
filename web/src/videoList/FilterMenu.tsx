@@ -83,29 +83,7 @@ export default function FilterMenu({
       onClear={onClear}
       onOpen={onOpen}
     >
-      {owner && (
-        <FieldSet>
-          <FieldLegend variant="label">{t.list.filter.watch}</FieldLegend>
-          {/* 選ぶとすぐ効く排他の選択なので ToggleGroup にする（項目は radio として読まれる）。 */}
-          <ToggleGroup
-            type="single"
-            size="sm"
-            value={watch}
-            onValueChange={(value) => {
-              if (value !== "") onWatchChange(value as WatchFilter);
-            }}
-            aria-label={t.list.filter.watch}
-            className="grid w-full grid-cols-2 gap-1"
-          >
-            {watchValues.map((value) => (
-              // 2 列の格子に並べるので、項目はどれも角を丸める。
-              <ToggleGroupItem key={value} value={value} className="rounded-md">
-                {watchLabel(value)}
-              </ToggleGroupItem>
-            ))}
-          </ToggleGroup>
-        </FieldSet>
-      )}
+      {owner && <WatchStatusField value={watch} onValueChange={onWatchChange} />}
 
       <div className="flex flex-col gap-2">
         {owner && (
@@ -123,6 +101,43 @@ export default function FilterMenu({
       </div>
       {children}
     </FilterPopover>
+  );
+}
+
+/**
+ * WatchStatusField は視聴状態の `ToggleGroup`（`All`・`Unwatched`・`In progress`・`Watched`）の
+ * 行である。絞り込みのポップオーバーとスマートフォルダの条件の欄が同じ形で使う
+ * （specs/052-smart-folders/ui-design.md「Conditions」）。
+ */
+export function WatchStatusField({
+  value,
+  onValueChange,
+}: {
+  value: WatchFilter;
+  onValueChange: (value: WatchFilter) => void;
+}) {
+  return (
+    <FieldSet>
+      <FieldLegend variant="label">{t.list.filter.watch}</FieldLegend>
+      {/* 選ぶとすぐ効く排他の選択なので ToggleGroup にする（項目は radio として読まれる）。 */}
+      <ToggleGroup
+        type="single"
+        size="sm"
+        value={value}
+        onValueChange={(next) => {
+          if (next !== "") onValueChange(next as WatchFilter);
+        }}
+        aria-label={t.list.filter.watch}
+        className="grid w-full grid-cols-2 gap-1"
+      >
+        {watchValues.map((option) => (
+          // 2 列の格子に並べるので、項目はどれも角を丸める。
+          <ToggleGroupItem key={option} value={option} className="rounded-md">
+            {watchLabel(option)}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </FieldSet>
   );
 }
 

@@ -449,10 +449,9 @@ func (s *AutoTagStore) Finish(
 	if err != nil {
 		return err
 	}
-	if err := s.db.commit(ctx, tx, c); err != nil {
+	if err := s.db.commitWith(ctx, tx, c, domain.AutoTagApplied{VideoIDs: affected}); err != nil {
 		return fmt.Errorf("cannot finish the auto-tagging job: %w", err)
 	}
-	s.db.publishEvents(domain.AutoTagApplied{VideoIDs: affected})
 	return nil
 }
 
@@ -551,10 +550,9 @@ func (s *AutoTagStore) settleTentative(ctx context.Context, videoID, tagID int64
 	if err != nil {
 		return err
 	}
-	if err := s.db.commit(ctx, tx, c); err != nil {
+	if err := s.db.commitWith(ctx, tx, c, domain.AutoTagApplied{VideoIDs: affected}); err != nil {
 		return fmt.Errorf("cannot settle the tentative tag (tag=%d): %w", tagID, err)
 	}
-	s.db.publishEvents(domain.AutoTagApplied{VideoIDs: affected})
 	return nil
 }
 

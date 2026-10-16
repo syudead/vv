@@ -61,10 +61,9 @@ func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath str
 	if err != nil {
 		return domain.FolderGrouping{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitEvents(ctx, tx, groupsChangedEvents(changedGroups)...); err != nil {
 		return domain.FolderGrouping{}, fmt.Errorf("cannot save the folder grouping: %w", err)
 	}
-	s.db.publishEvents(groupsChangedEvents(changedGroups)...)
 	return groupings[0], nil
 }
 
@@ -212,11 +211,7 @@ func (s *ScanIndexStore) rebuildFolderIndexTx(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
-		return err
-	}
-	s.db.publishEvents(groupsChangedEvents(changedGroups)...)
-	return nil
+	return s.db.commitEvents(ctx, tx, groupsChangedEvents(changedGroups)...)
 }
 
 // markFolderIndexStale は索引が古いことを記録する。行が無ければ版 0 で作るので、

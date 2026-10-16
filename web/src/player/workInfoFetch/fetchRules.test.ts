@@ -4,6 +4,8 @@ import type { Video } from "../../api/client";
 import type { WorkInfoFetch, WorkInfoPlugin } from "../../api/workInfoPlugins";
 import {
   approvedPlugins,
+  canChooseFindBy,
+  fetchTarget,
   initialQuery,
   initialSelection,
   isWebUrl,
@@ -76,24 +78,47 @@ describe("fetchRules", () => {
     expect(isWebUrl(text)).toBe(expected);
   });
 
-  it("URL は取得し、それ以外は検索し、検索できないプラグインの語は URL でないとする", () => {
+  it("URL は取得し、それ以外は検索し、検索できないプラグインの語は作品の ID として取得する", () => {
     const both = plugin();
     const searchOnly = plugin({ operations: ["search"] });
     const fetchOnly = plugin({ operations: ["fetch"] });
-    expect(runFor(both, "https://example.com/w/1")).toBe("fetch");
-    expect(runFor(both, "作品")).toBe("search");
-    expect(runFor(searchOnly, "https://example.com/w/1")).toBe("search");
-    expect(runFor(fetchOnly, "https://example.com/w/1")).toBe("fetch");
-    expect(runFor(fetchOnly, "作品")).toBe("notUrl");
+    expect(runFor(both, "https://example.com/w/1", "words")).toBe("fetch");
+    expect(runFor(both, "作品", "words")).toBe("search");
+    expect(runFor(both, "ABC-123", "id")).toBe("fetch");
+    expect(runFor(both, "https://example.com/w/1", "id")).toBe("fetch");
+    expect(runFor(searchOnly, "https://example.com/w/1", "words")).toBe("search");
+    expect(runFor(searchOnly, "作品", "id")).toBe("search");
+    expect(runFor(fetchOnly, "https://example.com/w/1", "words")).toBe("fetch");
+    expect(runFor(fetchOnly, "ABC-123", "words")).toBe("fetch");
+    expect(canChooseFindBy(both)).toBe(true);
+    expect(canChooseFindBy(searchOnly)).toBe(false);
+    expect(canChooseFindBy(fetchOnly)).toBe(false);
   });
 
-  it("入力欄の名前と最初の値はプラグインの操作で決まる", () => {
-    expect(queryLabel(plugin())).toBe("Search words or the work's page URL");
-    expect(queryLabel(plugin({ operations: ["search"] }))).toBe("Search words");
-    expect(queryLabel(plugin({ operations: ["fetch"] }))).toBe("The work's page URL");
-    expect(initialQuery(plugin(), "題名")).toBe("題名");
-    expect(initialQuery(plugin({ operations: ["fetch"] }), "題名")).toBe("");
-    expect(initialQuery(undefined, "題名")).toBe("");
+  it("取得には URL として読める文を URL、それ以外を作品の ID として渡す", () => {
+    expect(fetchTarget(" https://example.com/w/1 ")).toEqual({
+      url: "https://example.com/w/1",
+    });
+    expect(fetchTarget(" ABC-123 ")).toEqual({ id: "ABC-123" });
+  });
+
+  it("入力欄の名前と最初の値はプラグインの操作と語の扱いで決まる", () => {
+    const coded = {
+      ...video,
+      title: "題名",
+      workInfo: { code: "ABC-123" },
+    } as unknown as Video;
+    const titled = { ...video, title: "題名" } as unknown as Video;
+    const fetchOnly = plugin({ operations: ["fetch"] });
+    expect(queryLabel(plugin(), "words")).toBe("Search words or the work's page URL");
+    expect(queryLabel(plugin(), "id")).toBe("The work's ID or page URL");
+    expect(queryLabel(plugin({ operations: ["search"] }), "words")).toBe("Search words");
+    expect(queryLabel(fetchOnly, "words")).toBe("The work's ID or page URL");
+    expect(initialQuery(plugin(), "words", coded)).toBe("題名");
+    expect(initialQuery(plugin(), "id", coded)).toBe("ABC-123");
+    expect(initialQuery(fetchOnly, "words", coded)).toBe("ABC-123");
+    expect(initialQuery(fetchOnly, "words", titled)).toBe("");
+    expect(initialQuery(undefined, "words", coded)).toBe("");
   });
 
   it("値の無い項目と今と同じ項目は選べず、違う項目だけを最初に選ぶ", () => {

@@ -70,8 +70,11 @@ function withoutMoved(data: GroupPageData, moved: readonly GroupItem[]): GroupPa
   };
 }
 
-/** useFocusAfterEdit は窓やメニューが閉じてフォーカスを戻した後（setTimeout 0）に移す。 */
-function useFocusAfterEdit() {
+/**
+ * useFocusAfterEdit は窓やメニューが閉じてフォーカスを戻した後（setTimeout 0）に移す。グループの
+ * ページとスマートフォルダのページ（直した後の「More」）が共有する。
+ */
+export function useFocusAfterEdit() {
   const [focusTarget, setFocusTarget] = useState<FocusTarget | null>(null);
   const titleRef = useRef<HTMLHeadingElement>(null);
   const moreRef = useRef<HTMLButtonElement>(null);

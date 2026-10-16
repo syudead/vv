@@ -87,8 +87,9 @@ func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain
 	var c changes
 	c.groupsChanged(changedGroups)
 	c.jobsQueued(domain.JobKinds...)
-	// 登録フォルダの中にあるかで、問題の一覧に出る件が変わる。
+	// 登録フォルダの中にあるかで、問題の一覧に出る件とライブラリにある動画が変わる。
 	c.issuesChanged()
+	c.matchesChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -155,8 +156,9 @@ func (s *SettingsStore) ReplaceMediaFolder(ctx context.Context, id, expectedVers
 	c.videosDeleted(released)
 	// 付け替え先に所在を持つ待ちの仕事が取り出せるようになる（AddMediaFolder と同じ）。
 	c.jobsQueued(domain.JobKinds...)
-	// 登録フォルダの中にあるかで、問題の一覧に出る件が変わる。
+	// 登録フォルダの中にあるかで、問題の一覧に出る件とライブラリにある動画が変わる。
 	c.issuesChanged()
+	c.matchesChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -217,6 +219,8 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	c.processingChanged()
 	// 登録外になった所在の問題は、一覧にも本数にも入らなくなる。
 	c.issuesChanged()
+	// 登録外になった所在の動画はライブラリから出る。
+	c.matchesChanged()
 	// 取り出せる代表サムネイルの仕事が減ると、待っていたシーク用サムネイルが
 	// 取り出せるようになる（domain.ClaimConditionFor）。動画の行が残ると
 	// VideoIngestChanged も出ないので、ここで起こさないと次に仕事が積まれるまで

@@ -184,6 +184,9 @@ func (s *ScanStore) FinishScan(
 	}
 	// 走査が閉じると、対象に残りの仕事が無ければ取り込みは済む。
 	c.remainingChanged()
+	// 走査で動画がライブラリに入り、題名とパスが変わる。1 ファイルごとではなく、走査を閉じるときに
+	// 1 回だけスマートフォルダに知らせる（specs/052-smart-folders/data-model.md「Notices」）。
+	c.matchesChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 	}

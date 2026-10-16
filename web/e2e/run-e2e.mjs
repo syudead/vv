@@ -17,6 +17,7 @@ import {
   generateScanIssueFixtures,
   generateScanProgressFixtures,
   generateSearchFixtures,
+  generateSmartFoldersFixtures,
   generateTagsFixtures,
   generateThumbnailEditFixtures,
   generateThumbnailUploadFixtures,
@@ -45,6 +46,7 @@ const dragOrganizeMediaDir = path.join(runRoot, "drag-organize-media");
 const historyMediaDir = path.join(runRoot, "history-media");
 const activityMediaDir = path.join(runRoot, "activity-media");
 const activityVersionsMediaDir = path.join(runRoot, "activity-versions-media");
+const smartFoldersMediaDir = path.join(runRoot, "smart-folders-media");
 const playlistsMediaDir = path.join(runRoot, "playlists-media");
 const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
 const scanIssuesMediaDir = path.join(runRoot, "scan-issues-media");
@@ -83,6 +85,7 @@ function run() {
     generateHistoryFixtures(historyMediaDir);
     generateActivityFixtures(activityMediaDir);
     generateActivityVersionFixtures(activityVersionsMediaDir);
+    generateSmartFoldersFixtures(smartFoldersMediaDir);
     generatePlaylistsFixtures(playlistsMediaDir);
     generateScanProgressFixtures(scanProgressMediaDir);
     generateScanIssueFixtures(scanIssuesMediaDir);
@@ -143,6 +146,7 @@ function run() {
           MDM_E2E_HISTORY_MEDIA_DIR: historyMediaDir,
           MDM_E2E_ACTIVITY_MEDIA_DIR: activityMediaDir,
           MDM_E2E_ACTIVITY_VERSIONS_MEDIA_DIR: activityVersionsMediaDir,
+          MDM_E2E_SMART_FOLDERS_MEDIA_DIR: smartFoldersMediaDir,
           MDM_E2E_PLAYLISTS_MEDIA_DIR: playlistsMediaDir,
           MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,
           MDM_E2E_SCAN_ISSUES_MEDIA_DIR: scanIssuesMediaDir,
