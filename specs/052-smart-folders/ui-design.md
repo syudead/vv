@@ -28,6 +28,7 @@ Sources that already decide things, linked rather than repeated here:
 | The group page: its trail band, header, body, states and the gone state | [048 UI design, Group page](../048-groups/ui-design.md#group-page) |
 | The name dialog and the name rule | [048 UI design, New group](../048-groups/ui-design.md#new-group), [048 research R-14](../048-groups/research.md#r-14-a-group-name-is-1-to-100-characters-after-trimming-names-may-repeat) |
 | The video page's group line, `Up next`, the arrows and the autoplay notice | [library-ui.md, Group members](../../docs/design-docs/library-ui.md#group-members), [048 UI design, Video page](../048-groups/ui-design.md#video-page), [044 UI design, Video page in a playlist](../044-playlists/ui-design.md#video-page-in-a-playlist) |
+| The playlist screen's row (handle, number, `×`), its reordering and removing, the playlist panel's rows, the picker | [044 UI design, Rows](../044-playlists/ui-design.md#rows), [Reordering](../044-playlists/ui-design.md#reordering), [Removing an item](../044-playlists/ui-design.md#removing-an-item), [Playlist panel](../044-playlists/ui-design.md#playlist-panel), [Add to playlist](../044-playlists/ui-design.md#add-to-playlist) |
 | Dragging cards: what is a drop target and what refuses | [050 UI design, Drag layer](../050-drag-organize/ui-design.md#drag-layer) |
 | Guest degradation | [016 UI design, Guest degradation](../016-single-account-auth/ui-design.md#guest-degradation) |
 | Width breakpoints in CSS; layout checked by people | [library-ui.md, Width breakpoints](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception), [Layout verified by people](../../docs/design-docs/library-ui.md#layout-verified-by-people-not-machines) |
@@ -48,16 +49,21 @@ flowchart LR
   page -->|More| manage[Edit, New child, Delete]
   manage -->|Edit, New child| dialog
   video -->|folder line| page
+  card -->|Add to playlist| playlist[Playlist screen and panel: folder row]
+  playlist -->|row| video
 ```
 
 Unchanged: the video card and the group card, the favorite heart,
 `Add to playlist` and `Add to group`, the selection bar and its actions, the
-group page, the folder screen, the playlists screens, the sidebar and the
-autoplay notice. Every part below is a registry component or pattern, and
-the contrast pairs in `web/src/theme/tokens.test.ts` gain nothing. No token
-is added: the smart folder card reuses the group card, the dialog is a
-`FormDialog`, the folder page reuses the group page's band, header and body,
-and the two new filter rows are `Select`s of the `Filter` popover's width.
+group page, the folder screen, the playlists screen, the sidebar and the
+autoplay notice. The playlist screen and the playlist panel change in one
+way: a smart folder item is drawn as a row, the group item's row
+([Playlists](#playlists)). Every part below is a registry component or
+pattern, and the contrast pairs in `web/src/theme/tokens.test.ts` gain
+nothing. No token is added: the smart folder card reuses the group card, the
+dialog is a `FormDialog`, the folder page reuses the group page's band,
+header and body, the playlist rows reuse the group item's row, and the two
+new filter rows are `Select`s of the `Filter` popover's width.
 
 ## Why this shape
 
@@ -123,6 +129,19 @@ ancestor, `From {parent}:` and that parent's conditions, outermost last
 (`UI品質`, the third point; R-5). Merging the path into one list of chips
 was rejected because the owner then cannot tell which folder to edit to
 loosen a condition.
+
+In a playlist a smart folder is one item, as a group is (requirement 9), and
+the playlist screen and the playlist panel draw it as the group item's row
+with the smart folder icon in its count line. The server already plays the
+item as the folder's play order at play time and counts it in `position`
+and `count`, so a screen that left the row out would show a different list
+than the one playing (the review of PR #1216). Expanding the folder into
+one row per video was rejected: the rows would go stale as soon as a tag
+changed, the owner would reorder and remove videos that are not items, and
+the count "12 items" would stop meaning what it means for a group. Reading
+the folder's card values on screen, as the library does, was rejected
+because the playlist response already carries them over the play order,
+and the playlist screen is read once, not scrolled through.
 
 ## Words
 
@@ -190,6 +209,9 @@ argument. `videos` is the catalog's "1 video" / "N videos" helper.
 | Load more failed | Couldn't load more of the smart folder | `smartFolders.detail.moreFailed` |
 | Folder line on the video page, accessible name | Smart folder "{name}", video 3 of 12. Open the smart folder | `player.smartFolder.line(name, position, count)` |
 | Drop refused on a smart folder card | Can't drop here | `organize.drop.refused` |
+| Playlist row and panel row, second line of a folder item | 12 videos; 0 videos | `library.group.count`, with the `FolderSearch` icon, as the folder's library row |
+| Playlist row and panel row, folder item link, handle, `×` | Play from {name}; Reorder "{name}"; Remove "{name}" from the playlist | `playlists.item.playFrom`, `.reorder`, `.removeFor` with the folder's name, as a group item |
+| Added to a playlist from a folder card | Added 1 item to "{name}"; Already in "{name}" | `playlists.add.added`, `.existing`: the folder counts as one item |
 
 "Smart folder" is the product term for the whole feature; "rule" is not
 shown on a screen, where the word is "conditions", and "condition" is one
@@ -515,6 +537,104 @@ page then shows what it shows without the query.
 | `Up next`, arrows, notice | The folder's play order; the rows, the arrows and the notice keep `?smartFolder` on the URLs they open |
 | Action group | Unchanged: the heart, `Add to playlist` and `Add to group` act on the video |
 
+## Playlists
+
+A smart folder in a playlist is one item, played as the folder's play order
+at play time ([contracts/screen-api.md, Schemas and parameters changed](contracts/screen-api.md#schemas-and-parameters-changed)).
+The playlist response's `smartFolder` is a `LibrarySmartFolder` over that
+play order (`PlaylistItem` in `api/openapi.yaml`), so the rows take their
+cover (`previews[0]`), count, length, watch state and `openVideoId` from the
+playlist response and the cards read is not used. The playlist screen and
+the playlist panel draw every shown item of the response in its order,
+folder items included, so the rows, the numbers, "Play", the server's
+`position`, `next` and the arrows name the same items.
+
+### Playlist screen row
+
+The group item's row of [044 UI design, Rows](../044-playlists/ui-design.md#rows),
+with these values:
+
+| Column | Smart folder item |
+| --- | --- |
+| Handle and number | As any row; the handle's name "Reorder "{name}"" |
+| Thumbnail | `previews[0]`, as a group's first member's; `VideoThumbnailDuration` the folder's total; `VideoThumbnailProgress` while `watchState` is `inProgress`, filled `watchedCount / videoCount` |
+| Title | The folder's name; under it the `text-xs text-muted-foreground` line with lucide `FolderSearch` (`size-3`) and "12 videos", the group item's line with the icon of [Smart folder card and row](#smart-folder-card-and-row) |
+| Watched | lucide `Check` for a watched folder, "3 / 12" while in progress, as a group item |
+| Length | The folder's total in `tabular-nums`; empty when no video has a length |
+| Remove | The `×` "Remove from playlist", as any row: the item leaves, the folder and its videos stay |
+
+The row's link opens
+`/videos/{openVideoId}?playlist={id}&item={itemId}&smartFolder={folderId}`
+with `state: { from: "/playlists/{id}", autoplay: true }`, so playback
+starts from the folder's open video and the video page draws the folder
+line and the folder's `Up next` under the panel, as a member of a group item
+draws the group's ([Video page in a playlist](#video-page-in-a-playlist)).
+The header's "Play" does the same for the first row that has a start video.
+The row has one link and it plays, as the group item's row has; the folder's
+page is one press away on the video page's folder line. A second link in
+the row, the name to the folder page and the thumbnail to playback, was
+rejected because every row of the screen opens one place and the row's
+whole surface is its link.
+
+Reordering and removing are the screen's
+([044 UI design, Reordering](../044-playlists/ui-design.md#reordering),
+[Removing an item](../044-playlists/ui-design.md#removing-an-item)): the
+handle lifts the folder's row with the pointer, touch or the keyboard, and
+`×` sends the item's `DELETE` at once with no confirmation, because
+nothing but the item is lost. The header's count "12 items · 1:32:10" counts
+the folder as one item and adds its `durationMs`; as for any item without a
+length, an empty folder leaves the duration part out.
+
+### Playlist panel row
+
+The group item's row of [044 UI design, Playlist panel](../044-playlists/ui-design.md#playlist-panel):
+the number at the thumbnail's top left, the `VideoThumbnail` of `previews[0]`
+with the folder's total and its progress, the folder's name, under it the
+`FolderSearch` line "12 videos", and "3 / 12" in the check's place while in
+progress. The row is a `Link` to
+`/videos/{openVideoId}?playlist={id}&item={itemId}&smartFolder={folderId}`
+with `state.from` carried over and `autoplay` as the arrows, named "Play
+from {name}", and plays no hover preview, as a group item's row. The folder
+item is the current row while the page's `item` names it; its "3 / 12" says
+where in the folder, and the folder's `Up next` list below the panel marks
+the member.
+
+### Video page in a playlist
+
+With `?playlist=<id>&item=<itemId>` and the current item a smart folder item,
+the page adds the item's folder to its reads: every URL the page opens
+inside the item (the notice's advance and "Play now", "Play next", the
+folder's `Up next` rows) and every step whose `itemId` is a smart folder
+item of the panel's response (the arrows, the notice landing on a folder
+item) carries `smartFolder={that folder's id}`; a step onto a video or a
+group item carries none. The lines then read playlist, then smart folder,
+then the title, as they read playlist, group, title inside a group item,
+and the aside is the panel, the folder's `Up next` and the related videos.
+What advances is the playback response's `next`, which follows the folder's
+play order at read time ([contracts/screen-api.md](contracts/screen-api.md#schemas-and-parameters-changed)),
+so the panel's row, the folder's `Up next` and the notice agree.
+
+### States
+
+| State | Screen |
+| --- | --- |
+| Empty folder item (R-8) | The row stays on the screen and in the panel: the thumbnail's empty surface with no duration, the name in `text-muted-foreground`, the line "0 videos", no watched mark, no length; the name is not a link, because there is no video to start, while the handle and the `×` work. "Play", the arrows and the server's `next` pass over it; in the panel it is current only when the URL names it, and then "0 videos" stands where "3 / 12" would |
+| Folder deleted | Its items are deleted with it ([data-model.md, Edits](data-model.md#edits)): the row is gone on the next read, with no toast, as a dissolved group's; a `404` on a move or a remove of the row re-reads the playlist, as 044's rows say. On the video page a `404` from the playback read is 044's dropped state |
+| Folder no longer holds the playing video | The server's `next` goes to the next item; the folder line leaves the page on the next video read (the server ignores a folder that does not hold the video) and the panel's row shows the folder's new count |
+| Guest | Not drawn: the playlist screens and the playlist context are the owner's ([044 UI design, Guest degradation](../044-playlists/ui-design.md#guest-degradation)) |
+
+### Add to playlist
+
+The folder card's and row's corner mark "Add to playlist"
+([Smart folder card and row](#smart-folder-card-and-row)), in the library
+and on a parent folder's page, opens the picker of
+[044 UI design, Add to playlist](../044-playlists/ui-design.md#add-to-playlist)
+and sends `smartFolderIds: [id]`; the toasts count the folder as one item.
+The selection bar does not send folders, because a folder card has no
+check, and the folder page's header offers no add, as the group page's
+offers none: the card's mark is where every kind of item is added from. A
+guest has no mark.
+
 ## Guest degradation
 
 When drawing as a guest, the following are not shown. They are neither
@@ -526,6 +646,7 @@ When drawing as a guest, the following are not shown. They are neither
 | Dialogs | All | None |
 | Smart folder page | "More", the selection, the conditions lines | The band, the title, the count, "Play" and the items as plain cards or rows; an empty folder is the gone state |
 | Video page | Nothing changes beyond 048's rules | The folder line stays a link |
+| Playlists | The folder row, with the screens | Nothing: the playlist screens are the owner's (044) |
 
 ## Responsive behaviour
 
@@ -536,9 +657,9 @@ spans the screen with the 16px margin below it.
 
 | Width | Layout |
 | --- | --- |
-| 360px | Library: the header's title, count and `Save as smart folder` share one row, the action at the row's end with its text whole; the popover's `Added` and `Length` `Select`s fill the popover. Dialog: one column; the name, parent and sort stack; in the conditions the watch toggle is the popover's two-column grid, the tag field and chips wrap, and the dialog scrolls inside itself with the footer in view. Folder page: the band is one line, "… › {parent} › {name}" with two or more ancestors; the conditions lines wrap chip by chip under their label and a long ancestor name truncates; the grid is one column. Video page: the folder line truncates its name before the position |
-| 768px | Dialog: `max-w-2xl` centred, the name and parent on one row, the sort under them, the conditions in one column; the whole dialog fits 768×1024 without scrolling for a rule of four conditions. Folder page: the band shows the whole path; the header's name, count and the two actions fit one row for a name of up to about 40 characters; the conditions lines each fit one line for up to about five chips |
-| 1280px | Library: the header's action sits at the right of the count; the grid is the library's columns. Folder page: the conditions lines sit under the count at the body's left edge, the chips one line each; the grid has both edges on the header's. Video page: two columns, the line above the title |
+| 360px | Library: the header's title, count and `Save as smart folder` share one row, the action at the row's end with its text whole; the popover's `Added` and `Length` `Select`s fill the popover. Dialog: one column; the name, parent and sort stack; in the conditions the watch toggle is the popover's two-column grid, the tag field and chips wrap, and the dialog scrolls inside itself with the footer in view. Folder page: the band is one line, "… › {parent} › {name}" with two or more ancestors; the conditions lines wrap chip by chip under their label and a long ancestor name truncates; the grid is one column. Video page: the folder line truncates its name before the position. Playlist: a folder row is the group row's height, its count line under the name, the length and the `×` inside the row; in the panel the folder row is the width of the related rows |
+| 768px | Dialog: `max-w-2xl` centred, the name and parent on one row, the sort under them, the conditions in one column; the whole dialog fits 768×1024 without scrolling for a rule of four conditions. Folder page: the band shows the whole path; the header's name, count and the two actions fit one row for a name of up to about 40 characters; the conditions lines each fit one line for up to about five chips. Playlist: the watched column joins the folder row as it joins a group's |
+| 1280px | Library: the header's action sits at the right of the count; the grid is the library's columns. Folder page: the conditions lines sit under the count at the body's left edge, the chips one line each; the grid has both edges on the header's. Video page: two columns, the line above the title. Playlist: the full folder row; the aside opens with the panel, the folder's `Up next` under it when a folder item is current |
 
 ## Review criteria
 
@@ -548,7 +669,8 @@ group whose two parts both carry `猫`, one group with `猫` on part1 only,
 one person credited on two videos, one unwatched and one watched `猫` video,
 one video added today and one 90 minutes long; then a folder `タグ: 猫`
 with a child `未視聴` (`watch: unwatched`) and a folder whose tag was
-deleted.
+deleted; and a playlist holding one video, the group, `タグ: 猫` and the
+folder whose tag was deleted, in that order.
 
 1. **Same look as a group** (`UI品質`, the first point; requirement 6): the
    folder card beside a group card has the same box, art, count face, name
@@ -627,7 +749,21 @@ deleted.
     no marks and no check, opens its page with the band, the name, the
     count, "Play" and plain cards and no conditions lines, and the `Filter`
     popover with `Added` and `Length` but no `Save as smart folder`.
-13. **Failing examples** (`UI品質`): a folder card with a badge, a label or
+13. **Folder in a playlist** (requirement 9): on the playlist screen the
+    row of `タグ: 猫` under the group's row has the same thumbnail width,
+    title size, count line, watched and length columns and height, and
+    differs in the `FolderSearch` icon alone; its handle reorders it above
+    the video, and its `×` removes it while the folder and its videos stay
+    in the library. Pressing the row opens the folder's open video with the
+    playlist line, then the folder line, then the title; the panel's current
+    row is the folder's, reading "1 / 4" in the check's place once the
+    first video is watched, and the folder's `Up next` under the panel lists
+    the folder's order; advancing stays in the folder and then goes to the
+    next item. The row of the folder whose tag was deleted reads "0 videos"
+    with a muted name that is not a link, and "Play" and the arrows pass
+    over it. After deleting that folder, its row is gone on the next read
+    and the count reads "3 items" (`情報密度`, `操作の優先度`).
+14. **Failing examples** (`UI品質`): a folder card with a badge, a label or
     a different art, box or name size from a group card; the smart folder
     icon drawn larger than the duration text or in `primary`; a conditions
     builder with operators, a free-text rule, or a dialog that names a
@@ -637,4 +773,8 @@ deleted.
     the conditions lines merged into one list without the ancestor's name;
     the band drawn as a second heading; "Delete" without a dialog; an
     actions menu after the video page's folder line; a child folder's card
-    with a selection check; the cycle refused only after a toast.
+    with a selection check; the cycle refused only after a toast; a folder
+    item left out of the playlist screen or the panel while the server
+    counts and plays it; a folder's videos expanded into playlist rows; a
+    folder row with a check, a heart, a second link or another height than
+    a group's row.
