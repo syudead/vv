@@ -230,9 +230,9 @@ flowchart LR
 | State | What the screen shows |
 | --- | --- |
 | No `mediaInfo` (imported before the feature, row below the current version, or the `metadata` job failed) | Nothing new; the file row, the work details and the technical line as today. No placeholder, no `Reading…` line: the technical line already says when the probe is pending or failed, and the re-analysis has no state the viewer can act on |
-| `mediaInfo` arrives through a `video` notification while the page is open | The groups appear under the technical line in place; the rows above do not move or empty (acceptance criterion 6) |
+| `mediaInfo` arrives through a `video` notification while the page is open (owner) | The groups appear under the technical line in place; the rows above do not move or empty (acceptance criterion 6) |
 | Some groups | Only those with content, in the fixed order |
-| Guest | The same groups as the owner for a public video (R-6, requirement 8) |
+| Guest | The same groups as the owner for a public video (R-6, requirement 8). A guest receives only the `group` notification ([048 contracts, `/api/events`](../048-groups/contracts/screen-api.md)), so a guest's open page does not refetch when the `metadata` job finishes; the groups appear on the next load of the page or after the event stream reconnects. This feature adds no notification for guests |
 
 ## Player: chapters
 
@@ -271,9 +271,10 @@ flowchart LR
 
 | Aspect | Rule |
 | --- | --- |
-| Which chapter | The one whose start is the latest at or before the position and whose end is after it; with none, no title line |
+| Which chapter | The one whose start is the latest at or before the position and whose end is after it; of chapters with the same start, the later in start order; with none, no title line. One shared function applies this rule, so the preview and the menu's selection (below) always name the same chapter |
 | Form | A line inside the time pill above the time: the same `--text-seek-preview` size and `foreground` colour, centred, `white-space: nowrap`, cut with an ellipsis at the pill's width, which stops at the preview frame's width |
-| Unavailable preview (no sprite) | The pill alone, as today, with the title line above the time |
+| Unavailable preview (sprite failed) | The pill alone, as today, with the title line above the time |
+| No sprite URL (`seekThumbnailUrl` absent) | Today the player attaches no seek preview then. A video with chapters attaches it without a sprite, in the unavailable form from the start (the pill with the title line and the time, no frame, no sprite request); a video without chapters and without a sprite URL stays as today. When the URL arrives later, the preview is attached again with the sprite, as today |
 | Touch | As the time: shown while the finger is down on the bar |
 
 ### Chapters button and menu
@@ -283,7 +284,8 @@ flowchart LR
 | Place | After the right-aligned spacer and before the transcode indicator: spacer, **Chapters**, indicator, quality, subtitles, speed, PiP, fullscreen |
 | Button | video.js `ChaptersButton` with its chapters icon, in the `.vjs-control` box the subtitle button has (`4em`, `3em` in the narrow container); hidden by video.js when there is no chapters track. No key, no `aria-keyshortcuts` |
 | Menu | The video.js menu the subtitle and quality buttons use, `20em` wide (the quality menu's `10em` cuts a title short), the title `Chapters` as `vjs-menu-title`, one item per chapter in start order |
-| Item | `{start} {title}`, left-aligned, one line, cut with an ellipsis at the menu's width; the chapter playing now carries `vjs-selected`, moving as playback crosses a boundary |
+| Item | `{start} {title}`, left-aligned, one line, cut with an ellipsis at the menu's width. video.js's `ChaptersTrackMenuItem` labels an item with `cue.text` alone, and the cue text stays the title because the seek preview reads it; so the button is a `ChaptersButton` subclass whose items are a `ChaptersTrackMenuItem` subclass that builds the label from the cue's `startTime` (`formatDuration`) and its text |
+| Selected item | The chapter playing now carries `vjs-selected`, moving as playback crosses a boundary. It is chosen by the seek preview's rule applied to the current time (the latest start, the later of equal starts), not by video.js's `activeCues[0]`, which names the earlier of overlapping chapters (data-model.md keeps overlaps); so the menu and the preview never disagree |
 | Choosing | Seeks to the chapter's start, keeps playing or paused as it was, closes the menu |
 | Many chapters | The list scrolls inside the menu, as a long subtitle list does; 1,000 chapters open without delay |
 | Keys and Esc | As the quality menu: Tab, Enter or Space, arrows, Enter; Esc closes only the menu |
@@ -347,9 +349,9 @@ Judged by looking at the running screen in vv's one dark scheme
    shows `HLG · 10-bit`; a TS recording shows `Interlaced` and its station
    (acceptance criterion 7).
 7. **Appearing by itself**: on a database imported before the feature, a
-   video page opened before its `metadata` job finishes gains the groups
-   under the technical line without a reload and without the rows above
-   moving or emptying (acceptance criterion 6).
+   video page the owner opened before its `metadata` job finishes gains
+   the groups under the technical line without a reload and without the
+   rows above moving or emptying (acceptance criterion 6).
 8. **Action priority (player)**: on `chapters.mkv`, pressing and dragging
    the seek bar, pressing a mark, Space, F and M behave as on a video
    without chapters; the marks are thin breaks that do not draw the eye
@@ -360,10 +362,13 @@ Judged by looking at the running screen in vv's one dark scheme
 9. **Chapter title**: hovering a mark shows the preview with the title of
    the chapter that starts there above the time; moving across a boundary
    changes the title at the mark; a position before the first chapter or
-   after the last shows the time alone (acceptance criterion 5).
+   after the last shows the time alone; a video with chapters and no seek
+   sprite shows the same title above the time in the pill (acceptance
+   criterion 5).
 10. **Chapter menu**: the menu lists every chapter as `{start} {title}` in
-    order, the playing one marked; choosing one plays from its start and
-    keeps the playing or paused state; an untitled chapter reads
+    order, the playing one marked, and inside overlapping chapters the
+    marked item is the chapter the preview names at that time; choosing
+    one plays from its start and keeps the playing or paused state; an untitled chapter reads
     `Chapter 3`; a title wider than the menu ends with an ellipsis and the
     menu's width does not change; a chapter ending past the duration shows
     a mark and an item and its cue ends at the duration (quickstart,

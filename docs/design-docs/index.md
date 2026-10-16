@@ -75,3 +75,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Tag kinds (the kind label on a tag row, the kind filter, Set kind in the selection bar, the Kinds tab, the library's tag kind filter): UI](../../specs/051-tag-kinds/ui-design.md)
 - [Work details from work-info plugins (the comparison's work detail rows with the `New` and `Not linked` marks, the result step's left-out values): UI](../../specs/052-plugin-work-info-fields/ui-design.md)
 - [Automatic duplicate judging (the versions mark on cards and rows, the Duplicate judging switch in Settings): UI](../../specs/054-auto-dup/ui-design.md)
+- [Media information on the video page and chapters on the seek bar (the Video, Audio, Subtitles, Embedded and Broadcast groups, chapter marks, the seek preview's chapter title, the chapters menu): UI](../../specs/056-media-info/ui-design.md)
