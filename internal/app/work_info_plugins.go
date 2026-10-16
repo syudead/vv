@@ -62,6 +62,8 @@ type WorkInfoPluginsOptions struct {
 	// Network は各実行の前に読む、実行のネットワークの選択肢である。nil ならプロキシなしで動かす
 	// （specs/056-plugin-tooling/research.md R-4）。
 	Network WorkInfoRunNetworkSource
+	// Covers はカバー画像を動画の代表サムネイルにする適用である。
+	Covers WorkInfoCoverApplier
 	// Now は今の時刻を返す。nil なら time.Now。
 	Now func() time.Time
 }
@@ -79,6 +81,7 @@ type WorkInfoPlugins struct {
 	applier FetchedWorkInfoApplier
 	matcher WorkInfoCreditMatcher
 	network WorkInfoRunNetworkSource
+	covers  WorkInfoCoverApplier
 	now     func() time.Time
 	fetches *workInfoFetches
 }
@@ -91,7 +94,7 @@ func NewWorkInfoPlugins(opts WorkInfoPluginsOptions) *WorkInfoPlugins {
 	}
 	return &WorkInfoPlugins{
 		store: opts.Store, runtime: opts.Runtime, videos: opts.Videos, applier: opts.Applier, matcher: opts.Matcher,
-		network: opts.Network, now: now,
+		network: opts.Network, covers: opts.Covers, now: now,
 		fetches: newWorkInfoFetches(),
 	}
 }

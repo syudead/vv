@@ -2,11 +2,12 @@ import { ArrowLeft, CircleAlert } from "lucide-react";
 import { type ReactNode, useId } from "react";
 
 import type { Video } from "../../api/client";
-import type {
-  WorkInfoFetch,
-  WorkInfoField,
-  WorkInfoPlugin,
-  WorkInfoTarget,
+import {
+  type WorkInfoFetch,
+  workInfoFetchCoverUrl,
+  type WorkInfoField,
+  type WorkInfoPlugin,
+  type WorkInfoTarget,
 } from "../../api/workInfoPlugins";
 import { errorText, t } from "../../i18n";
 import { Alert, AlertAction, AlertTitle } from "../../ui/shadcn/alert";
@@ -15,6 +16,7 @@ import { Checkbox } from "../../ui/shadcn/checkbox";
 import { Label } from "../../ui/shadcn/label";
 import { Spinner } from "../../ui/shadcn/spinner";
 import { cn } from "../../lib/cn";
+import { VideoThumbnail, VideoThumbnailImage } from "../../ui/VideoThumbnail";
 import { Description } from "../WorkInfo";
 import {
   chipHint,
@@ -148,6 +150,34 @@ function ListValue({
   );
 }
 
+/**
+ * CoverValue はカバー画像の行の画像で、今の側は動画の代表サムネイル、取得した側は vv が取ったカバー画像である。
+ * どちらもサムネイルの枠に収める。今のサムネイルが無ければ何も出さない。
+ */
+function CoverValue({
+  video,
+  result,
+  tone,
+}: {
+  video: Video;
+  result: WorkInfoFetch;
+  tone: "now" | "fetched";
+}) {
+  const text = t.player.workInfoFetch;
+  const src =
+    tone === "now" ? video.thumbnailUrl : workInfoFetchCoverUrl(video.id, result.fetchId);
+  if (src === undefined) return null;
+  const alt =
+    tone === "fetched" && result.cover !== undefined
+      ? text.fetchedCover(result.cover.width, result.cover.height)
+      : text.nowThumbnail;
+  return (
+    <VideoThumbnail className={cn("max-w-xs", tone === "now" && "opacity-70")}>
+      <VideoThumbnailImage src={src} alt={alt} title={alt} />
+    </VideoThumbnail>
+  );
+}
+
 /** Value は行の今か取得した側の値である。取得した側で選べない行は理由を出す。 */
 function Value({
   field,
@@ -180,6 +210,7 @@ function Value({
     ) : (
       <TagPicker video={video} result={result} pick={tagPick} />
     );
+  if (field === "cover") return <CoverValue video={video} result={result} tone={tone} />;
   const row = detailRow(field, videoWorkInfo(video), result);
   if (row.kind === "list")
     return <ListValue field={field} row={row} tone={tone} noteId={noteId} />;

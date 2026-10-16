@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: e9671524c3b2aaafcea567b772de803507b056b087d538dc0410375a14a92b5c
+sourceHash: 68f8a0a7a84b1d0550460c5c3bb42f15e566fa04e16658ee0b1c36628acde1c7
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
@@ -174,6 +174,38 @@ flowchart LR
 [`internal/app/work_info_fetch.go`](../../internal/app/work_info_fetch.go) の `WorkInfoPlugins.FetchWorkInfo` は、取得した日付を種類順に、人物と組織を役割順に並べ、その後人物と組織を `CreditStore.Match` で照合する。詳細と照合結果は、タイトルとタグとともに、同じ 10 分間メモリ上の結果に残る ([049 research.md](../../specs/049-work-info-plugins/research.md) R-8)。人物も組織もない結果はストアを読まない。
 
 照合結果は表示されるだけである。画面はそれをもとに各項目を結び付け済み、`New`、`Not linked` のいずれかとして示す ([052 screen-api.md](../../specs/052-plugin-work-info-fields/contracts/screen-api.md))。次の節で示すとおり、適用はトランザクションの中で照合し直す。適用は何かを書く前に、結果の中でその行に値がない選択済みのフィールドを `invalid_request` で拒否する。
+
+## VVMDM は表紙を取得し、アップロードされた画像として適用する {#vvmdm-fetches-the-cover-and-applies-it-as-an-uploaded-image}
+
+プラグインは表紙を `workInfo.cover` の URL として返し、VVMDM は実行の後に、プラグインの要求と同じ HTTP クライアントでそれを取得する ([`cover.go`](../../internal/wasmplugin/cover.go) の `coverImage`)。したがって [プラグインは公開インターネットのアドレスにだけ到達する](#plugins-reach-only-public-internet-addresses) のアドレスの規則は表紙にも適用され、拒否されたアドレスは実行を `blocked_address` で失敗させる。それ以外の失敗は表紙を捨て、結果の残りを保つ ([プラグインの契約](../how-to/work-info-plugins.md#cover-image))。
+
+図は、実行からサムネイルまでの表紙を示す。
+
+```mermaid
+flowchart LR
+  run[実行が workInfo.cover を返す] --> get[プラグインのクライアントで GET を 1 回]
+  get -->|拒否| blocked[実行の失敗: blocked_address]
+  get -->|その他の失敗| none[表紙なし]
+  get -->|2xx、4 MiB 以下| check{ヘッダーで PNG、JPEG、静止画の WebP、かつ 120 MP 以下か}
+  check -->|いいえ| none
+  check -->|はい| keep[取得とともに 10 分間保つ]
+  keep --> serve[GET .../cover が比較用に返す]
+  keep -->|表紙を選択| apply[作品情報のコミットの後に UploadThumbnailImage]
+```
+
+[`work_info_cover.go`](../../internal/app/work_info_cover.go) は画像のヘッダーだけを確認する。完全なデコードは適用が行う: 表紙は、アップロードされた画像の経路である `Ingest.UploadThumbnailImage` ([thumbnail-editing.md](thumbnail-editing.md#uploaded-images)) を通るので、アップロードのゲート、120 メガピクセルの上限、生成のロックを受け、由来 `uploaded` で保存される。
+
+ブラウザは表紙を `GET /api/videos/{id}/work-info-fetches/{fetchId}/cover` から表示するので、プラグインのサイトには接続しない。VVMDM は読み取った形式から種類を設定し、`nosniff` とサンドボックス化する `Content-Security-Policy` を送るので、応答は常に画像でしかありえない。
+
+各表紙は取得とともにメモリに保持する。保持する表紙は合計で 32 MiB 以内に収め、4 MiB の上限の表紙で 8 枚分である。この予算を超える新しい取得は、先に期限が切れる表紙つきの取得を捨て、そのうちの 1 つを適用すると `work_info_fetch_stale` を返す。
+
+適用は、作品情報のトランザクションがコミットされた後に表紙をサムネイルにするので、取得の後に置き換えられた、または取り消されたプラグインは、そのトランザクションが再確認するため、サムネイルを変えない。コミットの後の表紙の失敗 (サムネイルの経路が拒否する画像、取得の後に内容が変わった動画、書き込みエラー) は、`invalid` としてスキップする: 取得は 1 回限りで、すでに適用されているので、エラーにすると画面は何が書かれたのかを判断できなくなる。
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| プラグインが画像をダウンロードし、応答に入れて返す | 応答は 1 MiB に制限され、base64 は画像を 3 分の 1 大きくする |
+| ブラウザがサイトから表紙を読み込む | [R-10](../../specs/049-work-info-plugins/research.md#r-10-search-candidates-are-text-only) が候補について拒否するとおり、サイトが閲覧者を見ることになる |
+| 表示のたびに、または適用時に表紙を取得し直す | サイトが、所有者が比較したものとは別の画像を返しうる |
 
 ## 適用は選んだフィールドを 1 つのトランザクションでマージする {#the-apply-merges-the-selected-fields-in-one-transaction}
 

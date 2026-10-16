@@ -75,6 +75,8 @@ func main() {
 		}})
 	case "http":
 		fetchPages(req.Settings)
+	case "cover":
+		reply(map[string]any{"workInfo": map[string]any{"title": "cover", "cover": req.Settings["cover"]}})
 	case "fail":
 		fmt.Fprintln(os.Stderr, "reporting an error")
 		reply(map[string]any{"error": map[string]any{"message": strings.Repeat("m", 400)}})

@@ -154,7 +154,9 @@ func OrganizationField(role OrganizationRole) WorkInfoField {
 // WorkInfoFields は反映できる項目を比較の行の順に並べたものである
 // （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）。
 var WorkInfoFields = func() []WorkInfoField {
-	fields := []WorkInfoField{WorkInfoFieldTitle, WorkInfoFieldTags, WorkInfoFieldCode, WorkInfoFieldDescription}
+	fields := []WorkInfoField{
+		WorkInfoFieldTitle, WorkInfoFieldTags, WorkInfoFieldCover, WorkInfoFieldCode, WorkInfoFieldDescription,
+	}
 	for _, kind := range DateKinds {
 		fields = append(fields, DateField(kind))
 	}
@@ -180,6 +182,8 @@ type WorkInfoFetchResult struct {
 	// 照合の答えで、同じ順に並ぶ（specs/052-plugin-work-info-fields/research.md R-3）。
 	PersonMatches       []CreditMatch
 	OrganizationMatches []CreditMatch
+	// Cover は取ったカバー画像で、無ければ nil である。
+	Cover *WorkInfoCover
 }
 
 // OrderFetchedWorkDetails は取得した作品の詳細を、画面と反映が使う順に並べ直した複製を返す。日付は種類の順、

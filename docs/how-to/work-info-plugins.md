@@ -322,6 +322,7 @@ A non-zero exit, or output that is none of these, fails the run with
 | `organizations` | `[{"role": "maker", "name": "...", "externalIds": [...]}]`; `role` is `maker` or `label`; `externalIds` optional | The first 20 of each role, and the first 20 distinct external IDs of each organization |
 | `urls` | `["https://..."]` | The first 20 distinct |
 | `externalIds` | `[{"source": "...", "value": "..."}]`, the work's identifiers on other sites | The first 20 distinct `(source, value)` pairs |
+| `cover` | string, an `http` or `https` URL of the work's cover image, at most 2048 characters | The image, which VVMDM fetches itself after the run; see [Cover image](#cover-image) |
 
 For every field except `title` and `tags`, VVMDM trims surrounding
 whitespace from each string, then drops an entry that is empty, an entry
@@ -343,6 +344,21 @@ Return the site's own identifier for each person, as
 performer is linked across fetches, across spellings and across plugins that
 use the same `source`. A name that matches more than one existing person is
 not linked.
+
+### Cover image
+
+After a `fetch` that returns `cover`, VVMDM sends one `GET` to that URL
+through the same client and address rule as the plugin's requests, within the
+run's 30 seconds. The request does not count toward the plugin's 16. The
+owner sees the image beside the current thumbnail and can apply it as the
+video's thumbnail, which VVMDM checks and fits the way it does an uploaded
+image.
+
+| The image | Result |
+| --- | --- |
+| A PNG, JPEG or still WebP of at most 4 MiB and 120 megapixels | Shown, and selected for the apply |
+| Any other answer: not `2xx`, larger, another format, unreachable | Dropped; the rest of the result is kept |
+| On a refused address | The run fails with `blocked_address`, as for the plugin's own requests |
 
 ## Host functions
 

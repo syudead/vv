@@ -16,7 +16,8 @@ import (
 // 使えないだけで、ほかの機能の起動は止めない。各実行は network が返すプロキシを通す
 // （specs/056-plugin-tooling/research.md R-4）。
 func newWorkInfoPlugins(
-	ctx context.Context, db *store.DB, network app.WorkInfoRunNetworkSource, logger *slog.Logger,
+	ctx context.Context, db *store.DB, network app.WorkInfoRunNetworkSource, covers app.WorkInfoCoverApplier,
+	logger *slog.Logger,
 ) (httpapi.WorkInfoPlugins, func()) {
 	runtime, err := wasmplugin.New(ctx, wasmplugin.Options{Logger: logger})
 	if err != nil {
@@ -25,7 +26,7 @@ func newWorkInfoPlugins(
 	}
 	registry := app.NewWorkInfoPlugins(app.WorkInfoPluginsOptions{
 		Store: db.WorkInfoPlugins(), Runtime: runtime, Videos: db.Library(), Applier: db.Overrides(),
-		Matcher: db.Credits(), Network: network,
+		Matcher: db.Credits(), Network: network, Covers: covers,
 	})
 	return registry, func() { _ = runtime.Close(context.WithoutCancel(ctx)) }
 }

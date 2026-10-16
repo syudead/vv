@@ -512,6 +512,8 @@ type FetchedWorkInfo struct {
 	Organizations []FetchedOrganization
 	URLs          []string
 	ExternalIDs   []ExternalID
+	// CoverURL はプラグインが返したカバー画像の URL で、規則に合わなければ空である。
+	CoverURL string
 }
 
 // WorkInfoRunResult は成功した実行の結果である。操作が search なら Candidates、
@@ -519,6 +521,9 @@ type FetchedWorkInfo struct {
 type WorkInfoRunResult struct {
 	Candidates []WorkInfoCandidate
 	WorkInfo   FetchedWorkInfo
+	// CoverImage は WorkInfo.CoverURL から取った本文で、取れなかったか URL が無ければ nil である。
+	// 形式は確かめていない。
+	CoverImage []byte
 }
 
 // WorkInfoRunFailure は実行の失敗の種類である（contracts/screen-api.md の Run failures）。

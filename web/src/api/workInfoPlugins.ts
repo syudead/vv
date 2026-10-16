@@ -178,6 +178,15 @@ export function fetchWorkInfo(
 }
 
 /**
+ * workInfoFetchCoverUrl は取得の結果 `fetchId` のカバー画像の URL である
+ * （GET /api/videos/{id}/work-info-fetches/{fetchId}/cover）。画像は vv が取ったもので、ブラウザは外部の
+ * サイトに取りに行かない。
+ */
+export function workInfoFetchCoverUrl(videoId: number, fetchId: string): string {
+  return `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}/cover`;
+}
+
+/**
  * applyWorkInfoFetch は取得の結果 `fetchId` のうち `fields` の項目を動画に反映する
  * （POST …/work-info-fetches/{fetchId}/apply）。`tags` を渡せば、`fields` が `tags` を含むとき
  * 取得したタグのうちその名前だけを付ける（specs/056-plugin-tooling/contracts/screen-api.md）。応答は反映後の動画（`workInfo` を含む）と、付けなかった

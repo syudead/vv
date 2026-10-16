@@ -251,6 +251,56 @@ describe("VideoPage work-info fetch", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
+  it("カバー画像は今のサムネイルと並べ、最初から選び、使えなければ結果の段で知らせる", async () => {
+    server.fetch.mockImplementation(() =>
+      json(
+        fetchResult({ title: "取得した題名", cover: { width: 800, height: 450 } }),
+        201,
+      ),
+    );
+    server.apply.mockImplementation(() =>
+      json(
+        appliedResult(
+          { ...video, title: "取得した題名" },
+          {
+            skipped: [
+              { field: "cover", value: "https://works.example/c.jpg", reason: "invalid" },
+            ],
+          },
+        ),
+      ),
+    );
+    const { user, dialog } = await fetchFromUrl();
+    const cover = within(dialog).getByRole("checkbox", { name: "Cover" });
+    expect(cover).toHaveProperty("ariaChecked", "true");
+    const fetched = within(dialog).getByRole("img", { name: /Fetched cover, 800 × 450/ });
+    expect(fetched.getAttribute("src")).toBe("/api/videos/7/work-info-fetches/F1/cover");
+    expect(
+      within(dialog).getByRole("img", { name: "Current thumbnail" }).getAttribute("src"),
+    ).toBe("/api/videos/7/thumbnail");
+    await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
+    expect(server.apply).toHaveBeenCalledWith({ fields: ["title", "cover"] });
+    await within(dialog).findByText("Applied, but some values were left out");
+    expect(
+      within(dialog)
+        .getAllByRole("listitem")
+        .map((item) => item.textContent),
+    ).toEqual(["Cover: https://works.example/c.jpg — couldn't be used as the thumbnail"]);
+  });
+
+  it("サムネイルの無い動画では、カバー画像の行に取得した画像だけを出す", async () => {
+    server.video = { ...video, thumbnailUrl: undefined, thumbnailState: "pending" };
+    server.fetch.mockImplementation(() =>
+      json(
+        fetchResult({ title: "取得した題名", cover: { width: 800, height: 450 } }),
+        201,
+      ),
+    );
+    const { dialog } = await fetchFromUrl();
+    expect(within(dialog).getByRole("img", { name: /Fetched cover/ })).toBeDefined();
+    expect(within(dialog).queryByRole("img", { name: "Current thumbnail" })).toBeNull();
+  });
+
   it("承認を外されたプラグインの失敗では一覧を読み直し、残りが無ければ閉じた後に入口が消える", async () => {
     server.search.mockImplementation(() => {
       server.plugins = [{ ...works, state: "unapproved" }];

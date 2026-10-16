@@ -1638,6 +1638,7 @@ func (e WorkDateKind) Valid() bool {
 // Defines values for WorkInfoField.
 const (
 	Code               WorkInfoField = "code"
+	Cover              WorkInfoField = "cover"
 	DatesPublished     WorkInfoField = "dates.published"
 	DatesRecorded      WorkInfoField = "dates.recorded"
 	DatesRelease       WorkInfoField = "dates.release"
@@ -1658,6 +1659,8 @@ const (
 func (e WorkInfoField) Valid() bool {
 	switch e {
 	case Code:
+		return true
+	case Cover:
 		return true
 	case DatesPublished:
 		return true
@@ -4382,6 +4385,10 @@ type WorkInfoFetch struct {
 	// Code 前後の空白を除いた品番。プラグインが返さなければ無い。規則に外れても残し、反映が飛ばす
 	Code *string `json:"code,omitempty"`
 
+	// Cover 取ったカバー画像の大きさ。プラグインが返さなかったか、取れないか、PNG・JPEG・静止画の WebP で
+	// なければ無い。画像は getWorkInfoFetchCover で読む
+	Cover *WorkInfoFetchedCover `json:"cover,omitempty"`
+
 	// Dates 種類の順（release・recorded・published）。無ければ []
 	Dates []WorkInfoFetchedDate `json:"dates"`
 
@@ -4438,6 +4445,13 @@ type WorkInfoFetchRequest struct {
 
 	// Url 作品の URL（http か https、2048 文字まで）
 	Url *string `json:"url,omitempty"`
+}
+
+// WorkInfoFetchedCover 取ったカバー画像の大きさ。プラグインが返さなかったか、取れないか、PNG・JPEG・静止画の WebP で
+// なければ無い。画像は getWorkInfoFetchCover で読む
+type WorkInfoFetchedCover struct {
+	Height int `json:"height"`
+	Width  int `json:"width"`
 }
 
 // WorkInfoFetchedDate defines model for WorkInfoFetchedDate.
@@ -6006,6 +6020,9 @@ type ServerInterface interface {
 	// ApplyWorkInfoFetch 取得の結果のうち選んだ項目を動画に反映する
 	// (POST /api/videos/{id}/work-info-fetches/{fetchId}/apply)
 	ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId)
+	// GetWorkInfoFetchCover 取得の結果のカバー画像を返す
+	// (GET /api/videos/{id}/work-info-fetches/{fetchId}/cover)
+	GetWorkInfoFetchCover(w http.ResponseWriter, r *http.Request, id VideoId, fetchId WorkInfoFetchId)
 	// ClearWatchHistory 視聴履歴を全件消す
 	// (DELETE /api/watch-history)
 	ClearWatchHistory(w http.ResponseWriter, r *http.Request)
@@ -10747,6 +10764,41 @@ func (siw *ServerInterfaceWrapper) ApplyWorkInfoFetch(w http.ResponseWriter, r *
 	handler.ServeHTTP(w, r)
 }
 
+// GetWorkInfoFetchCover operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkInfoFetchCover(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id VideoId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "fetchId" -------------
+	var fetchId WorkInfoFetchId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "fetchId", r.PathValue("fetchId"), &fetchId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "fetchId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkInfoFetchCover(w, r, id, fetchId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ClearWatchHistory operation middleware
 func (siw *ServerInterfaceWrapper) ClearWatchHistory(w http.ResponseWriter, r *http.Request) {
 
@@ -11330,6 +11382,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/search", wrapper.SearchWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches", wrapper.FetchWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/apply", wrapper.ApplyWorkInfoFetch)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/cover", wrapper.GetWorkInfoFetchCover)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/tags", wrapper.ListTags)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/tags", wrapper.CreateTag)
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/tags/{id}", wrapper.DeleteTag)

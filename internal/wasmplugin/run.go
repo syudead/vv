@@ -62,6 +62,9 @@ func (r *Runtime) Run(
 	if err == nil {
 		result, err = domain.ParseWorkInfoResponse(req.Operation, output)
 	}
+	if err == nil && req.Operation == domain.WorkInfoFetch {
+		result.CoverImage = session.coverImage(deadline, result.WorkInfo.CoverURL)
+	}
 	err = session.outcome(err)
 	log := domain.WorkInfoRunLog{Operation: req.Operation, Stderr: stderr.buf.String(), Truncated: stderr.dropped}
 	var runErr *domain.WorkInfoRunError
