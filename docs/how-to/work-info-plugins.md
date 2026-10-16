@@ -224,11 +224,36 @@ before the other fields.
 | `version` | string | Yes | 1 to 32 characters, shown to the owner |
 | `description` | string | No | At most 500 characters |
 | `operations` | string array | Yes | A non-empty subset of `search` and `fetch`, each at most once |
-| `settings` | object array | No | At most 10 declarations of `{"key", "label", "secret", "required"}`: `key` is 1 to 32 characters of `A-Z`, `a-z`, `0-9`, `_` starting with a letter and unique; `label` is 1 to 60 characters shown to the owner; `secret` and `required` default to `false` |
+| `settings` | object array | No | At most 10 declarations of the [setting fields](#setting-fields) |
 
 Declare a setting for anything the owner supplies, such as an API key
 (`"secret": true`) or a language. The owner enters the values on the settings
 screen, and VVMDM passes them only to this plugin's runs.
+
+### Setting fields
+
+| Field | Type | Required | Rule |
+| --- | --- | --- | --- |
+| `key` | string | Yes | 1 to 32 characters of `A-Z`, `a-z`, `0-9`, `_`, starting with a letter; unique within the manifest |
+| `label` | string | Yes | 1 to 60 characters, shown to the owner |
+| `secret` | boolean | No | Defaults to `false` |
+| `required` | boolean | No | Defaults to `false` |
+| `default` | string | No | 1 to 2000 characters; with `options`, one of them; not allowed with `"secret": true` |
+| `options` | string array | No | 2 to 50 distinct values of 1 to 200 characters, in the order the owner sees them; not allowed with `"secret": true` |
+
+A manifest that breaks a rule is refused with `manifest_invalid`.
+
+A `default` is the value a run receives while the owner has not stored one,
+so declare it for any setting that has a sensible value, such as
+`"default": "ja"` for a language. VVMDM never writes the default into the
+owner's values: a later version's default reaches every owner who has not
+chosen a value.
+
+`options` turns the setting into a choice. A replacement that drops an option
+keeps the owner's stored value, but VVMDM does not pass it to the run: the
+run receives the `default` instead, or nothing when there is none, and the
+settings screen shows the owner that the stored value is no longer one of the
+options.
 
 ## Request
 
@@ -239,9 +264,12 @@ VVMDM writes one JSON object to standard input and closes it.
 | `search` | `{"contract": 1, "operation": "search", "query": "<1 to 200 characters>"}` |
 | `fetch` | `{"contract": 1, "operation": "fetch", "url": "<an http or https URL of at most 2048 characters>"}` |
 
-Both operations also carry `"settings": {"<key>": "<value>"}` with every
-declared key the owner has set, and only those; a run never starts while a
-`required` key is unset.
+Both operations also carry `"settings": {"<key>": "<value>"}` with the
+effective value of every declared key that has one, and only those keys. The
+effective value is the owner's stored value when it is set and, for a setting
+with `options`, one of them; otherwise it is the `default`. A run never starts
+while a `required` key has no effective value, so a `required` key with a
+`default` never stops a run.
 
 ## Response
 

@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/work-info-plugins.md
-sourceHash: 2d606502b9795e4b1920133ee9ba5e0d26213be043bdaf213072c000347dc0d2
+sourceHash: 724add3edf31b909a57666f190f630f162ebd62c49ae24e2d0f797e9908728c5
 ---
 
 # 作品情報プラグインを書く {#write-a-work-info-plugin}
@@ -209,9 +209,26 @@ sequenceDiagram
 | `version` | string | はい | 1 から 32 文字。所有者に表示する |
 | `description` | string | いいえ | 最大 500 文字 |
 | `operations` | string の配列 | はい | `search` と `fetch` の空でない部分集合で、それぞれ最大 1 回 |
-| `settings` | object の配列 | いいえ | 最大 10 個の `{"key", "label", "secret", "required"}` の宣言。`key` は `A-Z`、`a-z`、`0-9`、`_` からなり英字で始まる 1 から 32 文字で、一意である。`label` は所有者に表示する 1 から 60 文字。`secret` と `required` の既定値は `false` |
+| `settings` | object の配列 | いいえ | 最大 10 個の [設定フィールド](#setting-fields) の宣言 |
 
 API キー (`"secret": true`) や言語など、所有者が与えるものには設定を宣言する。所有者は設定画面で値を入力し、VVMDM はそれをこのプラグインの実行にだけ渡す。
+
+### 設定フィールド {#setting-fields}
+
+| フィールド | 型 | 必須 | 規則 |
+| --- | --- | --- | --- |
+| `key` | string | はい | `A-Z`、`a-z`、`0-9`、`_` からなり英字で始まる 1 から 32 文字。マニフェストの中で一意である |
+| `label` | string | はい | 1 から 60 文字。所有者に表示する |
+| `secret` | boolean | いいえ | 既定値は `false` |
+| `required` | boolean | いいえ | 既定値は `false` |
+| `default` | string | いいえ | 1 から 2000 文字。`options` があるときはそのどれか。`"secret": true` とは併用できない |
+| `options` | string の配列 | いいえ | 1 から 200 文字の異なる値を 2 から 50 個。所有者に見える順に並べる。`"secret": true` とは併用できない |
+
+規則に反するマニフェストは `manifest_invalid` で拒否される。
+
+`default` は、所有者が値を保存していないあいだ、実行が受け取る値である。したがって、言語の `"default": "ja"` のように、妥当な値のある設定には宣言する。VVMDM は既定値を所有者の値に書き込まない。後のバージョンの既定値は、値を選んでいないすべての所有者に届く。
+
+`options` は設定を選択式にする。選択肢を落とした置き換えは、所有者が保存した値を保つが、VVMDM はそれを実行に渡さない。実行は代わりに `default` を受け取り、なければ何も受け取らない。設定画面は、保存された値がもう選択肢のどれでもないことを所有者に示す。
 
 ## 要求 {#request}
 
@@ -222,7 +239,7 @@ VVMDM は 1 つの JSON オブジェクトを標準入力に書き、それを�
 | `search` | `{"contract": 1, "operation": "search", "query": "<1 to 200 characters>"}` |
 | `fetch` | `{"contract": 1, "operation": "fetch", "url": "<an http or https URL of at most 2048 characters>"}` |
 
-どちらの操作も、所有者が値を設定した宣言済みのキーをすべて、そしてそれだけを含む `"settings": {"<key>": "<value>"}` も持つ。`required` のキーが未設定のあいだ、実行は始まらない。
+どちらの操作も、有効な値を持つ宣言済みのキーをすべて、そしてそれだけを含む `"settings": {"<key>": "<value>"}` も持つ。有効な値は、所有者が保存した値が設定されていて、`options` のある設定ではそのどれかであるときはその値で、そうでなければ `default` である。`required` のキーに有効な値がないあいだ、実行は始まらない。したがって `default` のある `required` のキーが実行を止めることはない。
 
 ## 応答 {#response}
 
