@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 684244977c73173fbb4734e7c774e48d7a50ab1ea8033daf7ff7f66fdab05f2c
+sourceHash: 34c330c31777daec033adbf66c3364d185f73f797f7c069fbcbc734ac7b0872b
 ---
 
 # 設計文書 {#design-documents}
@@ -33,6 +33,7 @@ sourceHash: 684244977c73173fbb4734e7c774e48d7a50ab1ea8033daf7ff7f66fdab05f2c
 - [判定モデルによる自動タグ付け](auto-tagging.md)
 - [AI 層: 分類器のポートとプロバイダ](ai-layer.md)
 - [重複の候補を自動で判定する](duplicate-judging.md)
+- [活動ログ](activity.md)
 - [サムネイル編集のセッション](thumbnail-editing.md)
 - [作品情報プラグイン: サンドボックス、制限、ネットワーク](work-info-plugins.md)
 - [vv デザインシステム](design-system.md)

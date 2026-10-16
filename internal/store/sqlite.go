@@ -59,7 +59,7 @@ type Publisher interface {
 // （domain.VideoIngestChanged）と、それで内容の識別子の参照が無くなったこと
 // （domain.ContentUnreferenced）、動画の上書きが変わったこと
 // （domain.VideoOverrideChanged）、フォルダの索引の作り直しで自動グループが変わったこと
-// （domain.GroupsChanged）である。どれも取引が確定した後にだけ発行し、
+// （domain.GroupsChanged）、アクティビティの記録を書いたか変えたこと（domain.ActivityChanged）である。どれも取引が確定した後にだけ発行し、
 // ロールバックした取引からは発行しない。
 func (db *DB) PublishTo(publisher Publisher) {
 	db.publisherMu.Lock()
@@ -85,6 +85,14 @@ type changes struct {
 	// groups は、フォルダの索引の作り直しで変わったグループとその祖先の id である
 	// （rebuildFolderIndex）。
 	groups []int64
+	// activity は、アクティビティの記録を書いたか変えたことを表す（activity.go）。確定後に
+	// domain.ActivityChanged で知らせる。
+	activity bool
+}
+
+// activityChanged は、アクティビティの記録を書いたか変えたことを記録する。
+func (c *changes) activityChanged() {
+	c.activity = true
 }
 
 // groupsChanged は、変わったグループの id を記録する。確定後に domain.GroupsChanged で知らせる。
@@ -152,6 +160,9 @@ func (c *changes) events() []domain.Event {
 	}
 	if c.processing {
 		events = append(events, domain.ProcessingChanged{})
+	}
+	if c.activity {
+		events = append(events, domain.ActivityChanged{})
 	}
 	return append(events, groupsChangedEvents(c.groups)...)
 }

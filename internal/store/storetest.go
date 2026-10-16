@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -110,4 +111,24 @@ func openAndMigrate(dataDir string) (*DB, error) {
 		return nil, err
 	}
 	return db, nil
+}
+
+// RecordActivityForTest は記録 entry を、記録する役割と同じ関数（recordActivity）で 1 つの取引に書き、その id を
+// 返す。確定後に domain.ActivityChanged を発行する。まだどの処理も記録を書かない段階で、一覧と知らせを
+// 確かめるのに使う。テスト専用。
+func RecordActivityForTest(ctx context.Context, db *DB, entry domain.ActivityEntry, now time.Time) (int64, error) {
+	tx, err := db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	c := &changes{}
+	id, err := recordActivity(ctx, tx, c, entry, now)
+	if err != nil {
+		return 0, err
+	}
+	if err := db.commit(ctx, tx, c); err != nil {
+		return 0, err
+	}
+	return id, nil
 }

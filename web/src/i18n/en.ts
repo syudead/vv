@@ -221,6 +221,8 @@ const errorCodes = {
   plugin_busy: "Another plugin is running. Try again in a moment.",
   operation_unsupported: "The plugin can't do that.",
   work_info_fetch_stale: "The result is out of date. Fetch it again.",
+  activity_not_retryable: "This can no longer be retried",
+  activity_not_undoable: "This can no longer be undone",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {

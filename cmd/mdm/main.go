@@ -244,6 +244,9 @@ func run(opts runOptions) error {
 	if err := scans.RecoverInterrupted(backgroundCtx); err != nil {
 		return err
 	}
+	// アクティビティの記録のうち、前回の停止で処理中のまま残ったものを中断にする。ワーカーを動かす前に行う。
+	activity := app.NewActivity(app.ActivityOptions{Store: db.Activity()})
+	recoverActivity(backgroundCtx, activity, logger)
 	if opts.OnBusyProbe != nil {
 		opts.OnBusyProbe(scans.Busy)
 	}
@@ -435,8 +438,10 @@ func run(opts runOptions) error {
 		Playlists:        db.Playlists(),
 		PlaylistPlayback: db.Playlists(),
 		WatchHistory:     playbackStore,
-		Overrides:        db.Overrides(),
-		Versions:         db.Versions(),
+		// アクティビティの記録の一覧・やり直し・取り消し（specs/055-activity/contracts/screen-api.md）。
+		Activity:  activity,
+		Overrides: db.Overrides(),
+		Versions:  db.Versions(),
 		// 代表サムネイルの位置は、取り込みの job と同じ生成の錠の中で作り直して記録する。
 		ThumbnailPicker: ingest,
 		Folders:         libraryStore,
@@ -487,6 +492,20 @@ func run(opts runOptions) error {
 	}
 	// 戻ったあと、走査とワーカーは上の defer が止める。
 	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, opts.OnListening, beforeShutdown)
+}
+
+// recoverActivity は、前回の停止で processing の running のまま残ったアクティビティの記録を
+// attention/interrupted にする。waiting の記録はそのまま残す（docs/design-docs/process-lifecycle.md）。
+// できなくても起動は止めない。残った記録は画面に処理中と出るだけで、次の起動でもう一度戻す。
+func recoverActivity(ctx context.Context, activity *app.Activity, logger *slog.Logger) {
+	recovered, err := activity.RecoverInterrupted(ctx)
+	if err != nil {
+		logger.Warn("could not mark the interrupted activity entries", slog.Any("error", err))
+		return
+	}
+	if recovered > 0 {
+		logger.Info("marked the interrupted activity entries", slog.Int("entries", recovered))
+	}
 }
 
 // startupStage は起動のどの段階で失敗したかである。デスクトップ版は、これで
