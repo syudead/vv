@@ -34,6 +34,42 @@ export function formatNumber(value: number): UiText {
   return decorated(numberFormat.format(value));
 }
 
+const decimalFormats = new Map<string, Intl.NumberFormat>();
+
+/**
+ * formatDecimal は小数を、小数点以下を最小 min 桁・最大 max 桁で表す（例: 29.97、12.3）。
+ * 末尾の 0 は min 桁まで落とす。
+ */
+export function formatDecimal(value: number, max: number, min = 0): UiText {
+  const key = `${String(min)}-${String(max)}`;
+  let format = decimalFormats.get(key);
+  if (format === undefined) {
+    format = new Intl.NumberFormat(LOCALE, {
+      minimumFractionDigits: min,
+      maximumFractionDigits: max,
+    });
+    decimalFormats.set(key, format);
+  }
+  return decorated(format.format(value));
+}
+
+const languageNames = new Intl.DisplayNames(LOCALE, { type: "language" });
+
+/**
+ * formatLanguage はファイルの言語の印（`jpn`・`eng`・`ja-JP`）を言語の名前にする
+ * （specs/056-media-info/research.md R-8）。`und` と空は null（言語を出さない）。名前に
+ * できない印は、印のまま返す。
+ */
+export function formatLanguage(code: string): string | null {
+  const trimmed = code.trim();
+  if (trimmed === "" || trimmed.toLowerCase() === "und") return null;
+  try {
+    return languageNames.of(trimmed) ?? trimmed;
+  } catch {
+    return trimmed;
+  }
+}
+
 /** PluralForms は単数・複数の形である。英語は one と other だけを使う。 */
 export interface PluralForms<T> {
   one: T;
