@@ -113,6 +113,28 @@ describe("smart folders API", () => {
     ]);
   });
 
+  it("sends limit only when given and drops the snapshot when the folder to delete is gone", async () => {
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ smartFolder: card, trail: [], items: [] }))
+      .mockResolvedValueOnce(json({ items: [] }))
+      .mockResolvedValueOnce(json({ code: "not_found", message: "x" }, 404));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await readSmartFolderPage(3);
+    await listSmartFolderItems(3, "c1", undefined, 20);
+    holdSnapshot();
+    const failure = await deleteSmartFolder(3).catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(RequestFailed);
+    expect((failure as RequestFailed).code).toBe("not_found");
+    expect(takeListSnapshot({ query: "" })).toBeUndefined();
+    expect(sent(fetchMock).map(({ url }) => url)).toEqual([
+      "/api/smart-folders/3",
+      "/api/smart-folders/3/items?cursor=c1&limit=20",
+      "/api/smart-folders/3",
+    ]);
+  });
+
   it("sends smartFolderIds to favorites and playlists only when there are some", async () => {
     const fetchMock = vi
       .fn<typeof fetch>()

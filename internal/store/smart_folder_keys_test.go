@@ -109,6 +109,11 @@ func TestVideoContextFollowsTheSmartFolderOrTheGroup(t *testing.T) {
 	dog := attachNamedTag(t, db, "犬", x)
 	folder := newSmartFolder(t, db, "猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
 	other := newSmartFolder(t, db, "犬", domain.SmartRule{Tags: []int64{dog}}, domain.SortTitleAsc, 0)
+	gone := attachNamedTag(t, db, "消す", p1)
+	missing := newSmartFolder(t, db, "消す", domain.SmartRule{Tags: []int64{gone}}, domain.SortTitleAsc, 0)
+	if err := db.Tags().DeleteTag(ctx, gone); err != nil {
+		t.Fatal(err)
+	}
 
 	read := func(id int64, opened domain.VideoContext) (domain.VideoGroup, bool) {
 		t.Helper()
@@ -138,6 +143,8 @@ func TestVideoContextFollowsTheSmartFolderOrTheGroup(t *testing.T) {
 		{"動画を持たないフォルダは無視", p1, domain.VideoContext{SmartFolderID: other},
 			want{false, pair, []int64{p1, p2}, 0, p2}},
 		{"無いフォルダは無視", p1, domain.VideoContext{SmartFolderID: 999}, want{false, pair, []int64{p1, p2}, 0, p2}},
+		{"無いタグを名指すフォルダは無視", p1, domain.VideoContext{SmartFolderID: missing},
+			want{false, pair, []int64{p1, p2}, 0, p2}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			group, found := read(tc.video, tc.opened)
