@@ -15,6 +15,7 @@ func TestParseWorkInfoPluginManifest(t *testing.T) {
 		problem WorkInfoPluginProblem
 	}{
 		{"minimal", `{"contract":1,"name":"a.b-1","version":"1","operations":["fetch"]}`, ""},
+		{"lookup", `{"contract":1,"name":"p","version":"1","operations":["lookup","fetch"]}`, ""},
 		{"unknown fields ignored", `{"contract":1,"name":"p","version":"1","operations":["search"],"extra":true}`, ""},
 		{"not an object", `[1]`, WorkInfoPluginManifestInvalid},
 		{"no contract", `{"name":"p","version":"1","operations":["fetch"]}`, WorkInfoPluginManifestInvalid},
@@ -77,6 +78,10 @@ func TestWorkInfoRunRequestJSON(t *testing.T) {
 	if err != nil || string(b) != `{"contract":1,"operation":"fetch","url":"https://e.test/","settings":{"k":"v"}}` {
 		t.Fatalf("fetch request = %s, %v", b, err)
 	}
+	b, err = json.Marshal(WorkInfoRunRequest{Operation: WorkInfoLookup, ID: "ABC-123", URL: "ignored"})
+	if err != nil || string(b) != `{"contract":1,"operation":"lookup","id":"ABC-123","settings":{}}` {
+		t.Fatalf("lookup request = %s, %v", b, err)
+	}
 }
 
 func TestParseWorkInfoResponseKeepsTheFirstCandidatesAndUniqueTags(t *testing.T) {
@@ -105,6 +110,11 @@ func TestParseWorkInfoResponseKeepsTheFirstCandidatesAndUniqueTags(t *testing.T)
 		got.WorkInfo.Tags[0] != "a" || got.WorkInfo.Tags[1] != "t0" {
 		t.Fatalf("fetch result = %+v, %v", got.WorkInfo, err)
 	}
+	// lookup は fetch と同じ形の作品情報を返す。
+	got, err = ParseWorkInfoResponse(WorkInfoLookup, []byte(`{"workInfo":{"title":"T","code":"ABC-123"}}`))
+	if err != nil || got.WorkInfo.Title != "T" || got.WorkInfo.Code != "ABC-123" {
+		t.Fatalf("lookup result = %+v, %v", got.WorkInfo, err)
+	}
 }
 
 func TestParseWorkInfoResponseFailures(t *testing.T) {
@@ -117,6 +127,7 @@ func TestParseWorkInfoResponseFailures(t *testing.T) {
 		{"empty", WorkInfoFetch, ``},
 		{"fetch shape for search", WorkInfoSearch, `{"workInfo":{}}`},
 		{"search shape for fetch", WorkInfoFetch, `{"candidates":[]}`},
+		{"search shape for lookup", WorkInfoLookup, `{"candidates":[]}`},
 		{"candidate without a title", WorkInfoSearch, `{"candidates":[{"url":"https://e.test/"}]}`},
 		{"candidate with another scheme", WorkInfoSearch, `{"candidates":[{"url":"ftp://e.test/","title":"t"}]}`},
 		{"candidate without a host", WorkInfoSearch, `{"candidates":[{"url":"https:///work","title":"t"}]}`},

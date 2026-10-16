@@ -45,6 +45,16 @@ vi.mock("./VideoPlayer", () => ({
   },
 }));
 
+/** coded は品番だけを持つ作品情報である。 */
+const coded: Video["workInfo"] = {
+  code: "ABC-123",
+  dates: [],
+  people: [],
+  organizations: [],
+  urls: [],
+  externalIds: [],
+};
+
 describe("VideoPage work-info fetch", () => {
   useFetchServer();
 
@@ -275,6 +285,37 @@ describe("VideoPage work-info fetch", () => {
       within(dialog).getByText("Paste a page URL starting with http:// or https://."),
     ).toBeDefined();
     expect(server.fetch).not.toHaveBeenCalled();
+  });
+
+  it("ID で引くプラグインは動画の品番を最初の値にし、ID で取得して比較の段に ID を出す", async () => {
+    server.plugins = [{ ...works, operations: ["lookup"] }];
+    server.video = { ...video, workInfo: coded };
+    const { user, dialog } = await openDialog();
+    const query = within(dialog).getByRole("textbox", { name: "The work's ID" });
+    expect(query).toHaveProperty("value", "ABC-123");
+    expect(within(dialog).queryByRole("radio", { name: "ID" })).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+    await within(dialog).findByRole("checkbox", { name: "Title" });
+    expect(server.fetch).toHaveBeenCalledWith({ pluginId: 3, id: "ABC-123" });
+    expect(within(dialog).getByText(/ID ABC-123/)).toBeDefined();
+    expect(
+      within(dialog).queryByRole("button", { name: "Back to the matches" }),
+    ).toBeNull();
+  });
+
+  it("検索も ID もできるプラグインは Words と ID を選べ、ID に切り替えると語を ID として取得する", async () => {
+    server.plugins = [{ ...works, operations: ["search", "lookup"] }];
+    server.video = { ...video, workInfo: coded };
+    const { user, dialog } = await openDialog();
+    const words = within(dialog).getByRole("textbox", { name: "Search words" });
+    expect(words).toHaveProperty("value", "テスト動画");
+    await user.click(within(dialog).getByRole("radio", { name: "ID" }));
+    const id = within(dialog).getByRole("textbox", { name: "The work's ID" });
+    expect(id).toHaveProperty("value", "ABC-123");
+    await user.click(within(dialog).getByRole("button", { name: "Fetch" }));
+    await within(dialog).findByRole("checkbox", { name: "Title" });
+    expect(server.fetch).toHaveBeenCalledWith({ pluginId: 3, id: "ABC-123" });
+    expect(server.search).not.toHaveBeenCalled();
   });
 
   it("検索だけのプラグインの候補は押せる行にせず、取得を送らない", async () => {

@@ -1,7 +1,8 @@
 # Write a work-info plugin
 
 A work-info plugin is a WebAssembly module that VVMDM runs to search an
-external site for works and fetch a work's title, tags and details; when you finish,
+external site for works, or to look a work up by its ID, and fetch the work's
+title, tags and details; when you finish,
 you have a module the owner can add and approve on the settings screen. This
 guide is the plugin contract, version 1. Why the sandbox, the limits and the
 network rule have this shape is in
@@ -223,12 +224,26 @@ before the other fields.
 | `name` | string | Yes | 1 to 64 characters of `a-z`, `0-9`, `-`, `.`; the plugin's identity, so a module with the same name replaces it |
 | `version` | string | Yes | 1 to 32 characters, shown to the owner |
 | `description` | string | No | At most 500 characters |
-| `operations` | string array | Yes | A non-empty subset of `search` and `fetch`, each at most once |
+| `operations` | string array | Yes | A non-empty subset of `search`, `fetch` and `lookup`, each at most once; see [Choose the operations](#choose-the-operations) |
 | `settings` | object array | No | At most 10 declarations of `{"key", "label", "secret", "required"}`: `key` is 1 to 32 characters of `A-Z`, `a-z`, `0-9`, `_` starting with a letter and unique; `label` is 1 to 60 characters shown to the owner; `secret` and `required` default to `false` |
 
 Declare a setting for anything the owner supplies, such as an API key
 (`"secret": true`) or a language. The owner enters the values on the settings
 screen, and VVMDM passes them only to this plugin's runs.
+
+### Choose the operations
+
+The operations decide what the owner types in the fetch dialog on the video
+page.
+
+| The site | Declare | The owner |
+| --- | --- | --- |
+| Has a search | `search` and `fetch` | Types words, picks one of the candidates, and VVMDM fetches the candidate's URL |
+| Has a page URL built from the work's ID, such as the product code | `lookup` | Types the ID, which starts as the video's code, and the plugin builds the URL |
+| Both | `search`, `fetch` and `lookup` | Chooses **Words** or **ID** above the field |
+
+Add `fetch` to any of these to also accept a pasted page URL. A plugin that
+declares only `search` shows its candidates as links, with nothing to fetch.
 
 ## Request
 
@@ -238,8 +253,9 @@ VVMDM writes one JSON object to standard input and closes it.
 | --- | --- |
 | `search` | `{"contract": 1, "operation": "search", "query": "<1 to 200 characters>"}` |
 | `fetch` | `{"contract": 1, "operation": "fetch", "url": "<an http or https URL of at most 2048 characters>"}` |
+| `lookup` | `{"contract": 1, "operation": "lookup", "id": "<1 to 200 characters, as the owner typed it without surrounding spaces>"}` |
 
-Both operations also carry `"settings": {"<key>": "<value>"}` with every
+Every operation also carries `"settings": {"<key>": "<value>"}` with every
 declared key the owner has set, and only those; a run never starts while a
 `required` key is unset.
 
@@ -251,7 +267,7 @@ are ignored, so a later contract can add fields without breaking version 1.
 | Case | Body |
 | --- | --- |
 | `search` result | `{"candidates": [{"url": "...", "title": "...", "detail": "..."}]}`: `url` (http or https) and `title` required, `detail` optional; VVMDM keeps the first 50 |
-| `fetch` result | `{"workInfo": {"title": "...", "tags": ["..."], ...}}`: every field optional; the fields are in [Work fields](#work-fields) |
+| `fetch` or `lookup` result | `{"workInfo": {"title": "...", "tags": ["..."], ...}}`: every field optional; the fields are in [Work fields](#work-fields) |
 | Failure | `{"error": {"message": "..."}}`: VVMDM shows the first 300 characters of `message` to the owner |
 
 A non-zero exit, or output that is none of these, fails the run with

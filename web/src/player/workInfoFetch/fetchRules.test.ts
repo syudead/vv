@@ -4,6 +4,7 @@ import type { Video } from "../../api/client";
 import type { WorkInfoFetch, WorkInfoPlugin } from "../../api/workInfoPlugins";
 import {
   approvedPlugins,
+  canChooseFindBy,
   initialQuery,
   initialSelection,
   isWebUrl,
@@ -80,20 +81,48 @@ describe("fetchRules", () => {
     const both = plugin();
     const searchOnly = plugin({ operations: ["search"] });
     const fetchOnly = plugin({ operations: ["fetch"] });
-    expect(runFor(both, "https://example.com/w/1")).toBe("fetch");
-    expect(runFor(both, "作品")).toBe("search");
-    expect(runFor(searchOnly, "https://example.com/w/1")).toBe("search");
-    expect(runFor(fetchOnly, "https://example.com/w/1")).toBe("fetch");
-    expect(runFor(fetchOnly, "作品")).toBe("notUrl");
+    expect(runFor(both, "https://example.com/w/1", "words")).toBe("fetch");
+    expect(runFor(both, "作品", "words")).toBe("search");
+    expect(runFor(searchOnly, "https://example.com/w/1", "words")).toBe("search");
+    expect(runFor(fetchOnly, "https://example.com/w/1", "words")).toBe("fetch");
+    expect(runFor(fetchOnly, "作品", "words")).toBe("notUrl");
+  });
+
+  it("URL でない語は lookup できるプラグインなら ID として取り、検索もできれば選んだ方で走らせる", () => {
+    const lookupOnly = plugin({ operations: ["lookup"] });
+    const lookupFetch = plugin({ operations: ["lookup", "fetch"] });
+    const all = plugin({ operations: ["search", "fetch", "lookup"] });
+    expect(runFor(lookupOnly, "ABC-123", "words")).toBe("lookup");
+    expect(runFor(lookupFetch, "ABC-123", "words")).toBe("lookup");
+    expect(runFor(lookupFetch, "https://example.com/w/1", "words")).toBe("fetch");
+    expect(runFor(all, "ABC-123", "words")).toBe("search");
+    expect(runFor(all, "ABC-123", "id")).toBe("lookup");
+    expect(runFor(all, "https://example.com/w/1", "id")).toBe("fetch");
+    expect(canChooseFindBy(all)).toBe(true);
+    expect(canChooseFindBy(lookupFetch)).toBe(false);
+    expect(canChooseFindBy(plugin())).toBe(false);
   });
 
   it("入力欄の名前と最初の値はプラグインの操作で決まる", () => {
-    expect(queryLabel(plugin())).toBe("Search words or the work's page URL");
-    expect(queryLabel(plugin({ operations: ["search"] }))).toBe("Search words");
-    expect(queryLabel(plugin({ operations: ["fetch"] }))).toBe("The work's page URL");
-    expect(initialQuery(plugin(), "題名")).toBe("題名");
-    expect(initialQuery(plugin({ operations: ["fetch"] }), "題名")).toBe("");
-    expect(initialQuery(undefined, "題名")).toBe("");
+    const coded = {
+      ...video,
+      title: "題名",
+      workInfo: { code: "ABC-123" },
+    } as unknown as Video;
+    const titled = { ...video, title: "題名" } as unknown as Video;
+    const all = plugin({ operations: ["search", "fetch", "lookup"] });
+    expect(queryLabel(plugin(), "words")).toBe("Search words or the work's page URL");
+    expect(queryLabel(plugin({ operations: ["search"] }), "words")).toBe("Search words");
+    expect(queryLabel(plugin({ operations: ["fetch"] }), "words")).toBe(
+      "The work's page URL",
+    );
+    expect(queryLabel(plugin({ operations: ["lookup"] }), "words")).toBe("The work's ID");
+    expect(queryLabel(all, "id")).toBe("The work's ID or page URL");
+    expect(initialQuery(plugin(), "words", coded)).toBe("題名");
+    expect(initialQuery(plugin({ operations: ["fetch"] }), "words", coded)).toBe("");
+    expect(initialQuery(undefined, "words", coded)).toBe("");
+    expect(initialQuery(all, "id", coded)).toBe("ABC-123");
+    expect(initialQuery(plugin({ operations: ["lookup"] }), "words", titled)).toBe("");
   });
 
   it("値の無い項目と今と同じ項目は選べず、違う項目だけを最初に選ぶ", () => {

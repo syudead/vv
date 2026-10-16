@@ -67,13 +67,34 @@ func (p *WorkInfoPlugins) FetchWorkInfo(
 	if err := domain.CheckWorkInfoFetchURL(rawURL); err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
+	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, URL: rawURL})
+}
+
+// LookupWorkInfo は承認済みのプラグイン pluginID の lookup で作品の ID id から作品情報を取る。ID を作品の
+// URL に埋め込むのはプラグインである。ID は前後の空白を除いて 1〜200 文字でなければ
+// domain.ErrWorkInfoRunInvalid を返す。結果の持ち方と誤りは FetchWorkInfo と同じである。
+func (p *WorkInfoPlugins) LookupWorkInfo(
+	ctx context.Context, videoID, pluginID int64, id string,
+) (domain.WorkInfoFetchResult, error) {
+	normalized, err := domain.NormalizeWorkInfoSearchQuery(id)
+	if err != nil {
+		return domain.WorkInfoFetchResult{}, err
+	}
+	return p.keepFetched(ctx, videoID, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoLookup, ID: normalized})
+}
+
+// keepFetched は動画 videoID があることを確かめてから要求 req でプラグイン pluginID を動かし、取った作品情報を
+// 照合して動画に結び付けてメモリに持つ。
+func (p *WorkInfoPlugins) keepFetched(
+	ctx context.Context, videoID, pluginID int64, req domain.WorkInfoRunRequest,
+) (domain.WorkInfoFetchResult, error) {
 	if p.videos == nil || p.applier == nil || p.matcher == nil {
 		return domain.WorkInfoFetchResult{}, errors.New("work-info fetches are not configured")
 	}
 	if _, err := p.videos.GetVideo(ctx, domain.AudienceOwner, videoID); err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
-	plugin, result, err := p.run(ctx, pluginID, domain.WorkInfoRunRequest{Operation: domain.WorkInfoFetch, URL: rawURL})
+	plugin, result, err := p.run(ctx, pluginID, req)
 	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}

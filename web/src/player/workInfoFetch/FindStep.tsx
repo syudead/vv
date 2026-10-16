@@ -17,9 +17,13 @@ import {
   SelectValue,
 } from "../../ui/shadcn/select";
 import { Spinner } from "../../ui/shadcn/spinner";
+import { ToggleGroup, ToggleGroupItem } from "../../ui/shadcn/toggle-group";
 import ActionButton from "../ActionButton";
 import {
+  canChooseFindBy,
   canFetch,
+  canLookup,
+  type FindBy,
   hostOf,
   missingSettingLabels,
   pluginLabel,
@@ -90,6 +94,53 @@ function PluginField({
       </Select>
     </Field>
   );
+}
+
+const FIND_BY: readonly FindBy[] = ["words", "id"];
+
+/**
+ * FindByField は語を検索の語にするか作品の ID にするかの選択で、search と lookup の両方を宣言する
+ * プラグインにだけ出す。押している選択肢は外せない。
+ */
+function FindByField({
+  by,
+  disabled,
+  onBy,
+}: {
+  by: FindBy;
+  disabled: boolean;
+  onBy: (by: FindBy) => void;
+}) {
+  const text = t.player.workInfoFetch;
+  return (
+    <ToggleGroup
+      type="single"
+      variant="outline"
+      size="sm"
+      aria-label={text.findBy}
+      className="self-start"
+      value={by}
+      disabled={disabled}
+      onValueChange={(value) => {
+        if (value === "" || value === by) return;
+        onBy(value as FindBy);
+      }}
+    >
+      {FIND_BY.map((option) => (
+        <ToggleGroupItem key={option} value={option} className="flex-none px-3">
+          {text.findByOptions[option]}
+        </ToggleGroupItem>
+      ))}
+    </ToggleGroup>
+  );
+}
+
+/** noMatchesText は候補が無いときの文で、ほかに取れる入れ方（URL か ID）を勧める。 */
+function noMatchesText(plugin: WorkInfoPlugin | undefined): string {
+  const text = t.player.workInfoFetch;
+  if (plugin !== undefined && canFetch(plugin)) return text.noMatchesFetch;
+  if (plugin !== undefined && canLookup(plugin)) return text.noMatchesLookup;
+  return text.noMatches;
 }
 
 /** FailureAlert は検索か取得の失敗である（ui-design「Failures」）。 */
@@ -211,11 +262,7 @@ function Candidates({
   const text = t.player.workInfoFetch;
   const headingId = useId();
   if (candidates.length === 0) {
-    return (
-      <p className="text-sm text-muted-foreground">
-        {plugin !== undefined && canFetch(plugin) ? text.noMatchesFetch : text.noMatches}
-      </p>
-    );
+    return <p className="text-sm text-muted-foreground">{noMatchesText(plugin)}</p>;
   }
   const shown = candidates.slice(0, MAX_CANDIDATES);
   const choosable = plugin !== undefined && canFetch(plugin);
@@ -240,12 +287,13 @@ function Candidates({
 }
 
 /**
- * FindStep は取得のダイアログの最初の段で、プラグインの選択、語か URL の 1 つの欄、失敗、
- * 候補の一覧を縦に並べる（ui-design「Find」「Candidates」「Failures」）。
+ * FindStep は取得のダイアログの最初の段で、プラグインの選択、語と ID の選択（両方できるプラグインだけ）、
+ * 語か ID か URL の 1 つの欄、失敗、候補の一覧を縦に並べる（ui-design「Find」「Candidates」「Failures」）。
  */
 export default function FindStep({
   plugins,
   plugin,
+  by,
   query,
   notUrl,
   running,
@@ -253,11 +301,13 @@ export default function FindStep({
   candidates,
   queryRef,
   onPlugin,
+  onBy,
   onQuery,
   onChoose,
 }: {
   plugins: readonly WorkInfoPlugin[];
   plugin: WorkInfoPlugin | undefined;
+  by: FindBy;
   query: string;
   notUrl: boolean;
   running: Running | null;
@@ -265,6 +315,7 @@ export default function FindStep({
   candidates: readonly WorkInfoCandidate[] | null;
   queryRef: RefObject<HTMLInputElement | null>;
   onPlugin: (id: number) => void;
+  onBy: (by: FindBy) => void;
   onQuery: (query: string) => void;
   onChoose: (url: string) => void;
 }) {
@@ -282,9 +333,12 @@ export default function FindStep({
         disabled={busy}
         onPlugin={onPlugin}
       />
+      {plugin !== undefined && canChooseFindBy(plugin) && (
+        <FindByField by={by} disabled={busy} onBy={onBy} />
+      )}
       <Field data-invalid={notUrl || undefined}>
         <FieldLabel htmlFor={queryId}>
-          {plugin === undefined ? text.queryBoth : queryLabel(plugin)}
+          {plugin === undefined ? text.queryBoth : queryLabel(plugin, by)}
         </FieldLabel>
         <Input
           ref={queryRef}

@@ -116,6 +116,9 @@ const (
 	WorkInfoSearch WorkInfoOperation = "search"
 	// WorkInfoFetch は作品の URL から作品情報を取る操作である。
 	WorkInfoFetch WorkInfoOperation = "fetch"
+	// WorkInfoLookup は作品の ID（品番など）から作品情報を取る操作である。ID を作品の URL に埋め込むのは
+	// プラグインである。
+	WorkInfoLookup WorkInfoOperation = "lookup"
 )
 
 // WorkInfoPluginSetting はマニフェストが宣言する設定の 1 つである。値は所有者が入力する。
@@ -222,7 +225,7 @@ func validOperations(ops []WorkInfoOperation) bool {
 	}
 	seen := map[WorkInfoOperation]bool{}
 	for _, op := range ops {
-		if (op != WorkInfoSearch && op != WorkInfoFetch) || seen[op] {
+		if (op != WorkInfoSearch && op != WorkInfoFetch && op != WorkInfoLookup) || seen[op] {
 			return false
 		}
 		seen[op] = true
@@ -266,6 +269,8 @@ type WorkInfoRunRequest struct {
 	Query string
 	// URL は fetch の作品の URL である。
 	URL string
+	// ID は lookup の作品の ID である。
+	ID string
 	// Settings は所有者が入力した、このプラグインの設定の値である。
 	Settings map[string]string
 }
@@ -281,13 +286,16 @@ func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
 		Operation WorkInfoOperation `json:"operation"`
 		Query     string            `json:"query,omitempty"`
 		URL       string            `json:"url,omitempty"`
+		ID        string            `json:"id,omitempty"`
 		Settings  map[string]string `json:"settings"`
-	}{WorkInfoPluginContract, r.Operation, "", "", settings}
+	}{WorkInfoPluginContract, r.Operation, "", "", "", settings}
 	switch r.Operation {
 	case WorkInfoSearch:
 		body.Query = r.Query
 	case WorkInfoFetch:
 		body.URL = r.URL
+	case WorkInfoLookup:
+		body.ID = r.ID
 	}
 	return json.Marshal(body)
 }
@@ -315,7 +323,7 @@ type FetchedWorkInfo struct {
 }
 
 // WorkInfoRunResult は成功した実行の結果である。操作が search なら Candidates、
-// fetch なら WorkInfo を持つ。
+// fetch か lookup なら WorkInfo を持つ。
 type WorkInfoRunResult struct {
 	Candidates []WorkInfoCandidate
 	WorkInfo   FetchedWorkInfo
@@ -397,7 +405,7 @@ func ParseWorkInfoResponse(op WorkInfoOperation, output []byte) (WorkInfoRunResu
 	switch {
 	case op == WorkInfoSearch && raw.Candidates != nil:
 		return parseCandidates(raw)
-	case op == WorkInfoFetch && raw.WorkInfo != nil:
+	case (op == WorkInfoFetch || op == WorkInfoLookup) && raw.WorkInfo != nil:
 		info := FetchedWorkInfo{
 			Title: raw.WorkInfo.Title,
 			Tags:  firstUniqueTags(raw.WorkInfo.Tags),
