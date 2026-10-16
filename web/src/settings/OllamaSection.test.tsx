@@ -26,7 +26,7 @@ describe("OllamaSection", () => {
     const url = String(input);
     if (url === URL && init?.method === "PUT") {
       saved = JSON.parse(String(init.body));
-      current = saved as OllamaSettings;
+      current = { ...(saved as Omit<OllamaSettings, "saved">), saved: true };
       return Promise.resolve(json(current));
     }
     if (url === URL) return Promise.resolve(json(current));
@@ -38,7 +38,7 @@ describe("OllamaSection", () => {
   }
 
   beforeEach(() => {
-    current = { endpoint: "http://127.0.0.1:11434", model: "clef-flash" };
+    current = { endpoint: "http://127.0.0.1:11434", model: "clef-flash", saved: false };
     saved = undefined;
     toast.mockReset();
     fetchMock.mockReset();
@@ -58,7 +58,7 @@ describe("OllamaSection", () => {
     expect(screen.queryByRole("switch")).toBeNull();
   });
 
-  it("saves the edited URL and model", async () => {
+  it("saves a connection read with saved, sending only the URL and model", async () => {
     const user = userEvent.setup();
     render(<OllamaSection />);
     const endpoint = await screen.findByLabelText("Ollama URL");
