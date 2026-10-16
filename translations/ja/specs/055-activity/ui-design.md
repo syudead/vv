@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/ui-design.md
-sourceHash: 5d2fa1846caaf8e73d2ddf53d1714b10ce4d783cd44e9a281f73a610a399cebf
+sourceHash: 9f98e40ad52674b05867214967974cb55d63c18d9bc530e6a22371e33a97f6fc
 ---
 
 # UI 設計: Activity {#ui-design-activity}
@@ -59,7 +59,7 @@ Activity は項目ごとに 1 枚のカードの一覧で、依頼者の参考�
 | ライブラリにない | `Not in the library` | 対象に動画がないとき、結果の末尾を置き換える |
 | 時刻 | `Just now`、`{n} minutes ago`、`{n} hours ago`、`Yesterday {time}`、`{date} {time}` | ツールチップに完全な日付と時刻 |
 | アイコンボタン (ツールチップと読み上げ) | `Retry`、`Undo`、`Undo tags…`、`Open`、`Open in Duplicates`、`Work info`、`Settings` | |
-| フッター | `{n} running`、`{n} waiting`、`{n} need attention`、`{n} done` | running は処理中の項目を数え、waiting はキューにあるものを数える |
+| フッター | `{n} running`、`{n} need attention`、`{n} done` | running は `counts.running` と同じく、処理中の項目とキューにある項目を数える |
 | 取り消しの後のトースト | `Undone. vv won't decide this again on its own` | |
 | すでに戻されていた取り消しの後のトースト | `Already changed back. vv won't decide this again on its own` | |
 | 再試行か取り消しが失敗したときのトースト | `Couldn't retry: {reason}`、`Couldn't undo: {reason}` | `{reason}` はエラーのカタログから |
@@ -129,7 +129,7 @@ Activity は項目ごとに 1 枚のカードの一覧で、依頼者の参考�
 
 ### フッターの帯 {#footer-band}
 
-カードの下の、上に `border` を持ち、高さが `activity-card` の帯である。左から `{n} running`、`{n} waiting`、`{n} need attention` で、各数は `font-semibold` (`primary`、`foreground`、`destructive`)、そして右端に `{n} done`。サイドバーと同じく、絞り込みにかかわらずログ全体を数えるので、所有者はほかの何を見ている間も、進行中の作業と問題を見られる。
+カードの下の、上に `border` を持ち、高さが `activity-card` の帯である。左から `{n} running` と `{n} need attention` で、各数は `font-semibold` (`primary`、`destructive`)、そして右端に `{n} done`。数は絞り込みのない要求の `counts` である ([contracts/screen-api.md](contracts/screen-api.md#get-apiactivity))。そのため `running` はキューにある項目を含む。サイドバーと同じく、絞り込みにかかわらずログ全体を数えるので、所有者はほかの何を見ている間も、進行中の作業と問題を見られる。
 
 ### ライブの更新 {#live-updates}
 
@@ -160,7 +160,7 @@ Activity は項目ごとに 1 枚のカードの一覧で、依頼者の参考�
 
 | 幅 | 配置 |
 | --- | --- |
-| 360px | ツールバーは横にスクロールする 1 行である: 行の上に欄を開く検索のアイコンボタン、次に絞り込みのボタン。各カードは 2 行である: 状態のアイコンと対象で、操作のボタンは右で両方の行にまたがる。対象の下に、チップ、結果 (切られる)、短い時刻 (`15m`)。フッターは `done` を除く 3 つの件数を示す |
+| 360px | ツールバーは横にスクロールする 1 行である: 行の上に欄を開く検索のアイコンボタン、次に絞り込みのボタン。各カードは 2 行である: 状態のアイコンと対象で、操作のボタンは右で両方の行にまたがる。対象の下に、チップ、結果 (切られる)、短い時刻 (`15m`)。フッターは `done` を除く 2 つの件数を示す |
 | 768px | 360px と同じで、アイコンボタンの代わりに検索欄がある。4 つの絞り込みのボタンが収まる |
 | 1280px | 検索欄と 4 つのボタンを持つ 1 行のツールバー。各カードは 1 行である: アイコン、対象、チップ、右に押しやった結果、時刻、操作 |
 
