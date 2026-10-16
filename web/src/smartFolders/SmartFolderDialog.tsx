@@ -177,6 +177,79 @@ function sentRule(rule: SmartRule, original: SmartRule): SmartRule {
   return cleanRule({ ...rule, q });
 }
 
+/** submitWords は送るボタンの、待っていないときと送っている間の言葉である。 */
+function submitWords(target: SmartFolderDialogTarget): { idle: UiText; busy: UiText } {
+  return target.kind === "create"
+    ? { idle: t.smartFolders.dialog.submit, busy: t.smartFolders.dialog.submitting }
+    : { idle: t.smartFolders.dialog.saveSubmit, busy: t.smartFolders.dialog.saving };
+}
+
+/**
+ * ParentField は親を選ぶ欄である（ui-design.md「Smart folder dialog」の Parent）。直す窓では
+ * フォルダ自身とその子孫を選べない（parentChoices）。欄の誤り error が無いときは、親の一覧を
+ * 読めなかったことを出す。
+ */
+function ParentField({
+  target,
+  parent,
+  parents,
+  editing,
+  error,
+  onChange,
+}: {
+  target: SmartFolderDialogTarget;
+  parent: number | undefined;
+  parents: { folders: SmartFolderSummary[] | undefined; failure: UiText | null };
+  /** 直す窓のフォルダの id（作る窓は undefined）。 */
+  editing: number | undefined;
+  error: UiText | null;
+  onChange: (parent: number | undefined) => void;
+}) {
+  const parentId = useId();
+  const choices = parentChoices(parents.folders ?? [], editing);
+  return (
+    <Field data-invalid={error !== null || undefined}>
+      <FieldLabel htmlFor={parentId}>{t.smartFolders.dialog.parent}</FieldLabel>
+      <Select
+        value={parent === undefined ? noParentValue : String(parent)}
+        onValueChange={(next) =>
+          onChange(next === noParentValue ? undefined : Number(next))
+        }
+      >
+        <SelectTrigger id={parentId} size="sm" className="w-full">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={noParentValue}>{t.smartFolders.dialog.noParent}</SelectItem>
+          {/* 一覧が届く前も、今の親を選んだ形で出せるように 1 行置く。 */}
+          {parent !== undefined &&
+            parents.folders === undefined &&
+            target.kind === "create" &&
+            target.parent !== undefined && (
+              <SelectItem value={String(target.parent.id)}>
+                {target.parent.name}
+              </SelectItem>
+            )}
+          {choices.map(({ folder, depth }) => (
+            <SelectItem
+              key={folder.id}
+              value={String(folder.id)}
+              title={folder.name}
+              className={cn("*:[span]:last:min-w-0", indentClass(depth))}
+            >
+              <span className="truncate">{folder.name}</span>
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {error !== null && <FieldError>{error}</FieldError>}
+      {error === null && parents.failure !== null && (
+        <FieldError>{parents.failure}</FieldError>
+      )}
+    </Field>
+  );
+}
+
 /**
  * SmartFolderDialog はスマートフォルダを作るか直す窓である
  * （specs/052-smart-folders/ui-design.md「Smart folder dialog」）。名前・親・並べ順と条件を持つ。
@@ -202,7 +275,6 @@ export default function SmartFolderDialog({
 }) {
   const nameId = useId();
   const nameErrorId = useId();
-  const parentId = useId();
   const sortId = useId();
   const sortHintId = useId();
   const nameInput = useRef<HTMLInputElement>(null);
@@ -215,7 +287,6 @@ export default function SmartFolderDialog({
   const [pending, setPending] = useState(false);
   const parents = useParentFolders();
   const editing = target.kind === "edit" ? target.folder.id : undefined;
-  const choices = parentChoices(parents.folders ?? [], editing);
   const missing = target.kind === "edit" ? target.missing : [];
   const randomHint =
     target.kind === "create" && target.randomReplaced === true && sort === target.sort;
@@ -309,10 +380,7 @@ export default function SmartFolderDialog({
     );
   }
 
-  const submitWords =
-    target.kind === "create"
-      ? { idle: t.smartFolders.dialog.submit, busy: t.smartFolders.dialog.submitting }
-      : { idle: t.smartFolders.dialog.saveSubmit, busy: t.smartFolders.dialog.saving };
+  const words = submitWords(target);
 
   return (
     <FormDialog
@@ -327,7 +395,7 @@ export default function SmartFolderDialog({
       submitLabel={
         <>
           {pending && <Spinner aria-hidden="true" />}
-          {pending ? submitWords.busy : submitWords.idle}
+          {pending ? words.busy : words.idle}
         </>
       }
       pending={pending}
@@ -353,48 +421,17 @@ export default function SmartFolderDialog({
           />
           {errors.name && <FieldError id={nameErrorId}>{t.groups.nameRule}</FieldError>}
         </Field>
-        <Field data-invalid={errors.parent !== null || undefined}>
-          <FieldLabel htmlFor={parentId}>{t.smartFolders.dialog.parent}</FieldLabel>
-          <Select
-            value={parent === undefined ? noParentValue : String(parent)}
-            onValueChange={(next) => {
-              setParent(next === noParentValue ? undefined : Number(next));
-              setErrors((current) => ({ ...current, parent: null }));
-            }}
-          >
-            <SelectTrigger id={parentId} size="sm" className="w-full">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value={noParentValue}>
-                {t.smartFolders.dialog.noParent}
-              </SelectItem>
-              {/* 一覧が届く前も、今の親を選んだ形で出せるように 1 行置く。 */}
-              {parent !== undefined &&
-                parents.folders === undefined &&
-                target.kind === "create" &&
-                target.parent !== undefined && (
-                  <SelectItem value={String(target.parent.id)}>
-                    {target.parent.name}
-                  </SelectItem>
-                )}
-              {choices.map(({ folder, depth }) => (
-                <SelectItem
-                  key={folder.id}
-                  value={String(folder.id)}
-                  title={folder.name}
-                  className={cn("*:[span]:last:min-w-0", indentClass(depth))}
-                >
-                  <span className="truncate">{folder.name}</span>
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {errors.parent !== null && <FieldError>{errors.parent}</FieldError>}
-          {errors.parent === null && parents.failure !== null && (
-            <FieldError>{parents.failure}</FieldError>
-          )}
-        </Field>
+        <ParentField
+          target={target}
+          parent={parent}
+          parents={parents}
+          editing={editing}
+          error={errors.parent}
+          onChange={(next) => {
+            setParent(next);
+            setErrors((current) => ({ ...current, parent: null }));
+          }}
+        />
       </div>
       <Field>
         <FieldLabel htmlFor={sortId}>{t.list.sort.heading}</FieldLabel>
