@@ -128,7 +128,8 @@ func toAPIWorkInfoMatch(matches []domain.CreditMatch, i int) gen.WorkInfoMatch {
 // 付ける（specs/056-plugin-tooling/contracts/screen-api.md）。
 func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id gen.VideoId, fetchID gen.WorkInfoFetchId) {
 	var body gen.ApplyWorkInfoFetchRequest
-	if !s.readJSONBody(w, r, &body) {
+	present, ok := s.readJSONBodyFields(w, r, &body)
+	if !ok {
 		return
 	}
 	fields := make([]domain.WorkInfoField, 0, len(body.Fields))
@@ -143,7 +144,7 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 		s.invalidRequest(w, "fields must name at least one field.")
 		return
 	}
-	tags, ok := applyTagSelection(body.Tags, fields)
+	tags, ok := applyTagSelection(body.Tags, present("tags"), fields)
 	if !ok {
 		s.invalidRequest(w, "tags must name at least one of the fetched tags, and only when fields includes tags.")
 		return
@@ -190,10 +191,11 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 }
 
 // applyTagSelection は反映の本文の tags を、登録へ渡す選んだタグの名前にする。無ければ nil（全部のタグ）で、
-// 空か、fields にタグが無いのに有れば偽を返す。名前が結果に有るかは登録が確かめる。
-func applyTagSelection(tags *[]string, fields []domain.WorkInfoField) ([]string, bool) {
+// 空か、fields にタグが無いのに有れば偽を返す。名前が結果に有るかは登録が確かめる。present は本文に tags が
+// あったか（値が null でも）で、生成型では省略と同じ nil になる null を、全部のタグに化けないよう偽にする。
+func applyTagSelection(tags *[]string, present bool, fields []domain.WorkInfoField) ([]string, bool) {
 	if tags == nil {
-		return nil, true
+		return nil, !present
 	}
 	if len(*tags) == 0 || !slices.Contains(fields, domain.WorkInfoFieldTags) {
 		return nil, false

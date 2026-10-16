@@ -205,7 +205,7 @@ func TestWorkInfoApplyAnswers(t *testing.T) {
 }
 
 // 反映の tags は選んだタグの名前として登録へ渡り、無ければ nil（全部のタグ）で渡る。空か、fields にタグが
-// 無いのに有れば登録へ届かず 400、結果に無い名前は登録の答えで 400 である（specs/056-plugin-tooling）。
+// 無いのに有るか null なら登録へ届かず 400、結果に無い名前は登録の答えで 400 である（specs/056-plugin-tooling）。
 func TestWorkInfoApplyPassesTheSelectedTags(t *testing.T) {
 	e := newFetchRouteEnv(t)
 	status, body := e.post(applyPath, `{"fields":["tags"],"tags":["drama","comedy"]}`, e.owner)
@@ -218,7 +218,9 @@ func TestWorkInfoApplyPassesTheSelectedTags(t *testing.T) {
 	}
 
 	calls := e.plugins.calls
-	for _, body := range []string{`{"fields":["tags"],"tags":[]}`, `{"fields":["title"],"tags":["drama"]}`} {
+	for _, body := range []string{
+		`{"fields":["tags"],"tags":[]}`, `{"fields":["title"],"tags":["drama"]}`, `{"fields":["tags"],"tags":null}`,
+	} {
 		status, got := e.post(applyPath, body, e.owner)
 		assertErrorBody(t, body, status, got, wantError{status: 400, code: gen.ErrorCodeInvalidRequest})
 	}
