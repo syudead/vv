@@ -66,6 +66,11 @@ describe("条件の検査", () => {
     expect(validRule({ tags: Array.from({ length: 17 }, (_, i) => i + 1) })).toBe(false);
     expect(validRule({ minDuration: 601, maxDuration: 600 })).toBe(false);
     expect(validRule({ addedWithin: 0 })).toBe(false);
+    // 種類・人物・団体の id は正の整数だけ。
+    expect(validRule({ tagKind: 0 })).toBe(false);
+    expect(validRule({ person: -1 })).toBe(false);
+    expect(validRule({ organization: 1.5 })).toBe(false);
+    expect(validRule({ tagKind: 1, person: 2, organization: 3 })).toBe(true);
   });
 
   it("鍵は空の条件と鍵の順を無視して比べる", () => {
@@ -108,5 +113,13 @@ describe("親の木", () => {
   it("子孫をどの深さも数える", () => {
     expect([...descendantIds(folders, 1)].sort()).toEqual([2, 3]);
     expect(descendantIds(folders, 4).size).toBe(0);
+  });
+
+  it("壊れた木（親子の輪）でも数え終わる", () => {
+    const loop: SmartFolderSummary[] = [
+      { id: 1, parentId: 2, name: "a" },
+      { id: 2, parentId: 1, name: "b" },
+    ];
+    expect([...descendantIds(loop, 1)].sort()).toEqual([1, 2]);
   });
 });

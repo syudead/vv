@@ -51,6 +51,10 @@ describe("validAddedLength", () => {
     );
     expect(validAddedLength({ addedWithin: 0 })).toBe(false);
     expect(validAddedLength({ minDuration: 10, maxDuration: 9 })).toBe(false);
+    // 長さはどちらの端も 0 以上 360000 秒以下の整数。
+    expect(validAddedLength({ minDuration: -1 })).toBe(false);
+    expect(validAddedLength({ maxDuration: 360001 })).toBe(false);
+    expect(validAddedLength({ maxDuration: 1.5 })).toBe(false);
   });
 });
 
@@ -83,6 +87,9 @@ describe("選択肢", () => {
     expect(
       lengthOptions({ minDuration: 60, maxDuration: 600 }).options.at(-1)?.label,
     ).toBe("1 to 10 minutes");
+    expect(lengthOptions({ maxDuration: 150 }).options.at(-1)?.label).toBe(
+      "Under 2.5 minutes",
+    );
   });
 
   it("ボタンは追加日と長さを 1 つずつ数え、Clear filters は 3 つとも外す", () => {

@@ -132,7 +132,7 @@ function useParentFolders() {
       },
       (error: unknown) => {
         if (controller.signal.aborted) return;
-        setFailure(t.smartFolders.dialog.parentsFailed(errorText(error)));
+        setFailure(t.smartFolders.listFailed(errorText(error)));
       },
     );
     return () => controller.abort();
@@ -153,8 +153,8 @@ function initialParent(target: SmartFolderDialogTarget): number | undefined {
 }
 
 /**
- * editChange は直す窓の、元から変わった欄だけの変更である。検索語は手で変えたときだけ
- * ライブラリと同じく整える（契約が許す 500 文字の値を、触らずに切らない）。
+ * editChange は直す窓の、元から変わった欄だけの変更である。`draft.rule` は送る形に
+ * 整えた条件（sentRule）なので、整えて元と同じになる編集は変更にならない。
  */
 function editChange(
   target: Extract<SmartFolderDialogTarget, { kind: "edit" }>,
@@ -164,11 +164,14 @@ function editChange(
   if (draft.name !== target.folder.name) change.name = draft.name;
   if (draft.parentId !== target.folder.parentId) change.parentId = draft.parentId ?? null;
   if (draft.sort !== target.sort) change.sort = draft.sort;
-  if (ruleKey(draft.rule) !== ruleKey(target.rule)) change.rule = cleanRule(draft.rule);
+  if (ruleKey(draft.rule) !== ruleKey(target.rule)) change.rule = draft.rule;
   return change;
 }
 
-/** sentRule は送る条件である（検索語は手で変えたときだけ整える）。 */
+/**
+ * sentRule は送る条件である。検索語は手で変えたときだけライブラリと同じく整える（契約が
+ * 許す 500 文字の値を、触らずに切らない）。
+ */
 function sentRule(rule: SmartRule, original: SmartRule): SmartRule {
   const q = rule.q === original.q ? rule.q : normalizeQuery(rule.q ?? "");
   return cleanRule({ ...rule, q });
@@ -223,23 +226,25 @@ export default function SmartFolderDialog({
   }, [target.kind]);
 
   const trimmedName = playlistName(name);
-  const draft = { name: trimmedName ?? name, parentId: parent, sort, rule };
+  // 確かめるのも、変わったかを比べるのも、送る形に整えた条件で行う（空白だけの検索語は
+  // 条件にならず、整えて元と同じ検索語は変更にならない）。
+  const cleaned = sentRule(rule, target.rule);
+  const draft = { name: trimmedName ?? name, parentId: parent, sort, rule: cleaned };
   const unchanged =
     target.kind === "edit" && Object.keys(editChange(target, draft)).length === 0;
 
   function check(): FieldErrors {
     const found: FieldErrors = { ...noErrors, name: trimmedName === null };
     const keepsEmpty = target.kind === "edit" && !hasRuleMember(target.rule);
-    if (!hasRuleMember(rule) && !keepsEmpty) {
+    if (!hasRuleMember(cleaned) && !keepsEmpty) {
       found.conditions = t.smartFolders.dialog.noConditions;
-    } else if (!validRule(rule)) {
+    } else if (!validRule(cleaned)) {
       found.conditions = t.errors.code.invalid_smart_rule;
     }
     return found;
   }
 
   function send(): Promise<SmartFolderSummary> {
-    const cleaned = sentRule(rule, target.rule);
     if (target.kind === "create") {
       return createSmartFolder({
         name: trimmedName ?? "",
@@ -250,7 +255,7 @@ export default function SmartFolderDialog({
     }
     return changeSmartFolder(
       target.folder.id,
-      editChange(target, { ...draft, name: trimmedName ?? "", rule: cleaned }),
+      editChange(target, { ...draft, name: trimmedName ?? "" }),
     );
   }
 

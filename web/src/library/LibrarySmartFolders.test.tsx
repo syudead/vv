@@ -67,7 +67,6 @@ function renderAt(initial: string, audience: Audience = "owner") {
                     </>
                   }
                 />
-                <Route path="/smart-folders/:id" element={<p>folder page</p>} />
               </Routes>
             </ScanProvider>
           </AudienceProvider>
@@ -245,7 +244,7 @@ describe("Save as smart folder", () => {
     vi.unstubAllGlobals();
   });
 
-  it("タグ 猫 と watch=unwatched で保存すると、それらを持つ rule を送り、Open で新しいフォルダへ移る（受け入れ条件 5）", async () => {
+  it("タグ 猫 と watch=unwatched で保存すると、それらを持つ rule を送る（受け入れ条件 5）", async () => {
     const user = userEvent.setup();
     renderAt("/?tag=1&watch=unwatched&sort=titleAsc");
     await screen.findByRole("link", { name: "動画 1" });
@@ -277,8 +276,8 @@ describe("Save as smart folder", () => {
     expect(await screen.findByText('Created "タグ: 猫"')).toBeDefined();
     // 絞り込んだ一覧はそのまま。
     expect(location()).toBe("?tag=1&watch=unwatched&sort=titleAsc");
-    await user.click(screen.getByRole("button", { name: "Open" }));
-    expect(await screen.findByText("folder page")).toBeDefined();
+    // フォルダのページの経路はまだ無いので、トーストに「Open」を添えない（子 Issue 1180）。
+    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
   });
 
   it("名前が無ければ送らずに名前の規則を出す", async () => {

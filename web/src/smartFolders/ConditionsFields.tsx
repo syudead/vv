@@ -15,6 +15,7 @@ import type { SmartRule, SmartRuleRef } from "../api/smartFolders";
 import {
   currentTagKinds,
   getTagKinds,
+  refreshTagKinds,
   subscribeTagKinds,
   type TagKind,
 } from "../api/tagKinds";
@@ -192,16 +193,32 @@ function ConditionChip({
   );
 }
 
-/** useTagKindList は共有のタグの種類の一覧を読む（保持があれば要求しない）。 */
-function useTagKindList(): TagKind[] | undefined {
+const ignore = () => undefined;
+
+/**
+ * useTagKindList は共有のタグの種類の一覧を読む（保持があれば要求しない）。`value` の種類が
+ * 開いた時点の保持に無ければ、別のタブで作られた種類かもしれないので取り直す
+ * （useLibraryTagKinds と同じ）。`unconfirmed` はその取り直しの結果がまだ無い間、真である。
+ */
+function useTagKindList(value: number | undefined): {
+  kinds: TagKind[] | undefined;
+  unconfirmed: boolean;
+} {
   const [kinds, setKinds] = useState<TagKind[] | undefined>(currentTagKinds);
+  const [cachedAtMount] = useState<TagKind[] | undefined>(currentTagKinds);
   useEffect(() => {
-    getTagKinds()
-      .then(setKinds)
-      .catch(() => undefined);
+    getTagKinds().then(setKinds).catch(ignore);
     return subscribeTagKinds(setKinds);
   }, []);
-  return kinds;
+  const unconfirmed =
+    value !== undefined &&
+    kinds !== undefined &&
+    kinds === cachedAtMount &&
+    !kinds.some((kind) => kind.id === value);
+  useEffect(() => {
+    if (unconfirmed) refreshTagKinds().catch(ignore);
+  }, [unconfirmed]);
+  return { kinds, unconfirmed };
 }
 
 /**
@@ -217,10 +234,12 @@ function TagKindRow({
   missing: boolean;
   onChange: (id: number | undefined) => void;
 }) {
-  const kinds = useTagKindList();
+  const { kinds, unconfirmed } = useTagKindList(value);
+  // 取り直す前の古いかもしれない一覧では、無い種類と決めない。
   const gone =
     value !== undefined &&
-    (missing || (kinds !== undefined && !kinds.some((kind) => kind.id === value)));
+    (missing ||
+      (kinds !== undefined && !unconfirmed && !kinds.some((kind) => kind.id === value)));
   if (!gone)
     return <TagKindSelect value={value} kinds={kinds} onValueChange={onChange} />;
   return (
@@ -442,7 +461,8 @@ function CreditConditionPicker({
     return () => controller.abort();
   }, [kind, trimmed]);
 
-  const items = trimmed === "" ? [] : found.items;
+  // 今の語への応答が届くまで、前の語の候補を出さない（選べば別の人物を条件にしてしまう）。
+  const items = trimmed === "" || found.q !== trimmed ? [] : found.items;
   const choices: CreditChoice[] = items.map((credit) => ({
     id: String(credit.id),
     label: credit.name,

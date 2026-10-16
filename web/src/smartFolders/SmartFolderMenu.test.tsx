@@ -165,6 +165,19 @@ describe("SmartFolderMenu", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("直す窓でフォルダがもう無ければ（404 not_found）、窓を閉じて onGone を呼ぶ", async () => {
+    patchAnswer = () => json({ code: "not_found", message: "gone" }, 404);
+    renderMenu({ id: 2, name: "未視聴", parentId: 1 }, unwatchedCats);
+    const user = await openItem("Edit…");
+    const dialog = await screen.findByRole("dialog", { name: "Edit smart folder" });
+    await user.click(within(dialog).getByRole("radio", { name: "Watched" }));
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    await waitFor(() => expect(callbacks.onGone).toHaveBeenCalled());
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(callbacks.onSaved).not.toHaveBeenCalled();
+  });
+
   it("条件をすべて外すと送らずに条件の欄の誤りを出す", async () => {
     renderMenu({ id: 2, name: "未視聴", parentId: 1 }, unwatchedCats);
     const user = await openItem("Edit…");

@@ -2232,13 +2232,14 @@ export const en = {
     deleted: (name: string) => `Deleted "${name}"`,
     // 作ったトーストの、新しいフォルダのページを開く操作。
     open: "Open",
+    // `GET /api/smart-folders` の失敗（親の一覧、削除の窓の子孫の数）。
+    listFailed: (reason: string) => `Couldn't load the smart folders: ${reason}`,
     dialog: {
       newTitle: "New smart folder",
       newChildTitle: (parent: string) => `New smart folder in "${parent}"`,
       editTitle: "Edit smart folder",
       parent: "Parent",
       noParent: "None (top level)",
-      parentsFailed: (reason: string) => `Couldn't load the smart folders: ${reason}`,
       // 並べ順の選択肢（「Date added, newest first」）。言い換えの無い種類は向きの語を使う。
       sortOption: (kind: string, direction: string) => `${kind}, ${direction}`,
       ascending: "ascending",
