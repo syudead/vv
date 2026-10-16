@@ -309,17 +309,8 @@ func run(opts runOptions) error {
 		logger.Warn("could not requeue interrupted auto-tagging jobs", slog.Any("error", err))
 	}
 	// アクティビティの記録のうち、前回の停止で処理中のまま残ったものを中断にする。ワーカーを動かす前に行う。
-	// やり直しと取り消しは種類ごとに、その処理の use case へ振り分ける（specs/055-activity/plan.md）。
-	activity := app.NewActivity(app.ActivityOptions{
-		Store: db.Activity(),
-		Retriers: map[domain.ActivityKind]app.ActivityRetrier{
-			domain.ActivityAutoTag: autoTagger,
-			domain.ActivityImport:  app.NewImportRetrier(ingestStore),
-			domain.ActivityScan:    scans,
-		},
-		Undoers: map[domain.ActivityKind]app.ActivityUndoer{domain.ActivityAutoTag: autoTagger},
-	})
-	recoverActivity(backgroundCtx, activity, logger)
+	// 回復は記録の読み書きだけなので、やり直しと取り消しの振り分け先（判定のワーカー）を作る前に行う。
+	recoverActivity(backgroundCtx, app.NewActivity(app.ActivityOptions{Store: db.Activity()}), logger)
 	// 重複の自動判定。「同じ動画かもしれない」候補を指紋のコマごとに比べ、食い違う区間だけを判定の口に
 	// 聞く（docs/design-docs/duplicate-judging.md）。Ollama の接続先の保存で、接続を待っていた組を再開する。
 	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
@@ -333,6 +324,22 @@ func run(opts runOptions) error {
 		logger.Warn("could not requeue interrupted duplicate judgements", slog.Any("error", err))
 	}
 	ollamaConnection.OnSaved(versionJudge.ConnectionSaved)
+	// アクティビティの記録の一覧と、やり直しと取り消しを種類ごとにその処理の use case へ振り分ける
+	// （specs/055-activity/plan.md）。
+	versionJudgementActivity := app.NewVersionJudgementActivity(db.Versions(), db.Activity(), versionJudge)
+	activity := app.NewActivity(app.ActivityOptions{
+		Store: db.Activity(),
+		Retriers: map[domain.ActivityKind]app.ActivityRetrier{
+			domain.ActivityAutoTag:          autoTagger,
+			domain.ActivityImport:           app.NewImportRetrier(ingestStore),
+			domain.ActivityScan:             scans,
+			domain.ActivityVersionJudgement: versionJudgementActivity,
+		},
+		Undoers: map[domain.ActivityKind]app.ActivityUndoer{
+			domain.ActivityAutoTag:          autoTagger,
+			domain.ActivityVersionJudgement: versionJudgementActivity,
+		},
+	})
 	subscriptions := subscribeEvents(bus, eventSubscribers{
 		Screen:           events.Handle,
 		Workers:          wakers,

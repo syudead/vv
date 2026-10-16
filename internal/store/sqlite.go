@@ -176,6 +176,9 @@ func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 	if err := settle(ctx, tx, c); err != nil {
 		return err
 	}
+	if err := closeDeletedPairActivities(ctx, tx, c); err != nil {
+		return err
+	}
 	// 消した動画の取り込みの記録は、仕事が連鎖して消えたので閉じる。
 	if c != nil {
 		if err := closeDeletedVideoImports(ctx, tx, c, c.deleted); err != nil {

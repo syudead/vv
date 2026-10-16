@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -195,7 +196,12 @@ func (s *OrganizeStore) Undo(ctx context.Context, image []byte) error {
 		if err != nil {
 			return nil, err
 		}
-		var events []domain.Event
+		// 束ねの取り消しが戻した候補の判定の記録を開き直す（specs/055-activity/data-model.md「Rules」）。
+		c := &changes{}
+		if err := reopenRestoredPairActivities(ctx, tx, c, time.Now()); err != nil {
+			return nil, err
+		}
+		events := c.events()
 		if len(decoded.Videos) > 0 {
 			events = append(events, domain.VideoBundleChanged{VideoIDs: decoded.Videos})
 		}
