@@ -193,14 +193,12 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		searchAudience = domain.AudienceOwner
 	}
 	cte, args := chosenLocationsCTEFor(spec.scope, searchAudience, spec.searchExprs())
-	shelved, shelvedArgs, unshelved := unshelvedCTE(spec)
-	cte += shelved
-	args = append(args, shelvedArgs...)
 	conditions, matchArgs := matchConditions(spec)
-	if unshelved != "" {
-		conditions = append(conditions, unshelved)
-	}
 	args = append(args, matchArgs...)
+	if spec.unshelved {
+		conditions = append(conditions, `videos.id not in (select value from json_each(?))`)
+		args = append(args, spec.shelved)
+	}
 	where := ""
 	if len(conditions) > 0 {
 		where = ` where ` + strings.Join(conditions, " and ")
@@ -282,33 +280,51 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	return cte, append(args, folderArgs...)
 }
 
-// unshelvedCTE は、spec.unshelved のときに当たった動画（matched）に掛ける、ホームのどの棚にも
-// 一致しない動画の条件を作る（specs/057-home/research.md R-11）。返すのは with 句に続けて足す項目
-// （先頭の `,` を含む）とその引数、videos に対する条件句で、絞り込まなければどれも空である。
-// 棚ごとの一致はカードの読み出しと同じ smartMatchFor で求め、その和を shelved に 1 度だけ求めて
-// 否定する。ライブラリの chosen は検索式で絞るので、smart_base の所在は別の名前で定める。
-func unshelvedCTE(spec listSpec) (string, []any, string) {
-	if !spec.unshelved || len(spec.shelves) == 0 {
-		return "", nil, ""
+// shelvedQueryMaxArgs は shelvedVideos の問い合わせ 1 回に並べる棚の条件の引数の数の目安である。
+// 棚ごとの経路の条件は祖先の段ごとに引数を持ち、棚の数と経路の深さが上限なら、すべてを 1 回に並べると
+// SQLite のホスト変数の上限（32766）を超える。1 つの棚はこれを超えても 1 回で読む。
+const shelvedQueryMaxArgs = 8000
+
+// shelvedVideos は、見る人 audience に見せる動画のうち棚の経路の条件 shelves（homeShelfSpecs）の
+// どれかに一致する動画の id を、JSON の配列にして返す（specs/057-home/research.md R-11）。棚ごとの
+// 一致はカードの読み出しと同じ smartMatchFor で求める。棚は引数が shelvedQueryMaxArgs に収まる
+// まとまりごとに 1 回の問い合わせで読み、smart_base はまとまりごとに 1 度求める。
+func shelvedVideos(ctx context.Context, tx *sql.Tx, audience domain.Audience, shelves []listSpec) (string, error) {
+	matches := make([]smartMatch, len(shelves))
+	for i, shelf := range shelves {
+		matches[i] = smartMatchFor(shelf, `us`+strconv.Itoa(i))
 	}
-	cte, args := smartBaseItems(spec.scope.audience, `unshelved_chosen`)
-	cte = `,
-	` + cte
-	matches := make([]string, 0, len(spec.shelves))
-	var matchArgs []any
-	for i, shelf := range spec.shelves {
-		match := smartMatchFor(shelf, `us`+strconv.Itoa(i))
-		if match.search != "" {
-			cte += `,
-	` + match.search
-			args = append(args, match.searchArgs...)
+	shelved := []int64{}
+	for start := 0; start < len(matches); {
+		cte, args := smartBaseCTE(audience)
+		var conditions []string
+		var conditionArgs []any
+		end := start
+		for ; end < len(matches); end++ {
+			match := matches[end]
+			if end > start && len(args)+len(conditionArgs)+len(match.searchArgs)+len(match.args) > shelvedQueryMaxArgs {
+				break
+			}
+			if match.search != "" {
+				cte += `, ` + match.search
+				args = append(args, match.searchArgs...)
+			}
+			conditions = append(conditions, `(`+match.condition+`)`)
+			conditionArgs = append(conditionArgs, match.args...)
 		}
-		matches = append(matches, `(`+match.condition+`)`)
-		matchArgs = append(matchArgs, match.args...)
+		ids, err := queryInt64s(ctx, tx, cte+` select id from smart_base videos where `+strings.Join(conditions, " or "),
+			append(args, conditionArgs...)...)
+		if err != nil {
+			return "", fmt.Errorf("cannot read the videos on the home shelves: %w", err)
+		}
+		shelved = append(shelved, ids...)
+		start = end
 	}
-	cte += `,
-	shelved as materialized (select videos.id as id from smart_base videos where ` + strings.Join(matches, " or ") + `)`
-	return cte, append(args, matchArgs...), `videos.id not in (select id from shelved)`
+	encoded, err := json.Marshal(shelved)
+	if err != nil {
+		return "", fmt.Errorf("cannot encode the videos on the home shelves: %w", err)
+	}
+	return string(encoded), nil
 }
 
 // homeShelfSpecs は、ホームのフォルダの棚ごとの経路の条件を、見る人 audience の範囲と基準時刻 now の
@@ -411,7 +427,11 @@ func (s *LibraryStore) ListLibrary(ctx context.Context, audience domain.Audience
 		return domain.LibraryPage{}, err
 	}
 	if spec.unshelved {
-		if spec.shelves, err = homeShelfSpecs(ctx, tx, audience, spec.now); err != nil {
+		shelves, err := homeShelfSpecs(ctx, tx, audience, spec.now)
+		if err != nil {
+			return domain.LibraryPage{}, err
+		}
+		if spec.shelved, err = shelvedVideos(ctx, tx, audience, shelves); err != nil {
 			return domain.LibraryPage{}, err
 		}
 	}

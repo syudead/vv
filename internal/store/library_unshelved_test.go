@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"slices"
+	"strconv"
 	"testing"
 
 	"github.com/syudead/vv/internal/domain"
@@ -89,5 +90,27 @@ func TestListLibraryUnshelvedShowsGuestsOnlyPublicVideos(t *testing.T) {
 	}
 	if got, want := unshelvedNames(t, db, domain.AudienceOwner), []string{"group:pair", "group:show", "y"}; !slices.Equal(got, want) {
 		t.Errorf("所有者の棚に無い動画 = %v, want %v", got, want)
+	}
+}
+
+// 棚の数と経路の深さが大きくても、棚に無い動画を読める。50 段の親子のフォルダをすべて棚にし、どの段の
+// 規則も上限の 16 タグを名指すと、棚ごとの経路の条件を 1 つの問い合わせに並べれば SQLite の変数の上限を
+// 超える。
+func TestListLibraryUnshelvedReadsManyDeepShelves(t *testing.T) {
+	db, ids := itemsFixture(t)
+	solo := ids[fixturePath("/media/solo.mp4")]
+	tags := make([]int64, 0, domain.SmartRuleMaxTags)
+	for i := range domain.SmartRuleMaxTags {
+		tags = append(tags, attachNamedTag(t, db, "タグ"+strconv.Itoa(i), solo))
+	}
+	shelves := make([]int64, 0, domain.MaxHomeShelves)
+	parent := int64(0)
+	for i := range domain.MaxHomeShelves {
+		parent = newSmartFolder(t, db, "段"+strconv.Itoa(i), domain.SmartRule{Tags: tags}, domain.SortTitleAsc, parent)
+		shelves = append(shelves, parent)
+	}
+	setHomeShelves(t, db, shelves...)
+	if got, want := unshelvedNames(t, db, domain.AudienceOwner), []string{"group:pair", "group:show", "x", "y"}; !slices.Equal(got, want) {
+		t.Errorf("棚に無い動画 = %v, want %v", got, want)
 	}
 }

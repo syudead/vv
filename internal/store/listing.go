@@ -118,11 +118,10 @@ type listSpec struct {
 	// 一覧（ListLibrary）だけが librarySmartFolders で埋める（specs/052-smart-folders/research.md R-7）。
 	smartFolders []librarySmartFolder
 	// unshelved は、ホームのどのフォルダの棚の実効の規則にも一致しない動画だけにする
-	// （specs/057-home/research.md R-11）。shelves はその棚ごとの経路の条件（smartFolderSpec）で、
-	// 名指す実体の無い棚（何にも一致しない）は入れない。ライブラリの項目の問い合わせ
-	// （libraryItemsCTE）だけが読む。
+	// （specs/057-home/research.md R-11）。shelved はどれかの棚に一致する動画の id の JSON の配列
+	// （shelvedVideos）で、ライブラリの項目の問い合わせ（libraryItemsCTE）だけが読む。
 	unshelved bool
-	shelves   []listSpec
+	shelved   string
 	sort      domain.VideoSort
 	seed      int64
 	cursor    string
