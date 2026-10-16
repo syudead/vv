@@ -140,6 +140,22 @@ CSS decides what shows, not `useIsMobile`.
 
 Without `nav` the skeleton is one column at most `max-w-3xl`, as above.
 
+### Page notice
+
+A condition that applies to the whole page, such as a setting the page
+depends on that is not saved yet, goes in `notice`: one `Alert` between the
+header and the sections, `gap-6` from both. Without `notice` nothing is drawn.
+
+- Use the default `Alert` with an icon and `role="note"` for a condition the
+  viewer resolves elsewhere, with a text link to that page; use
+  `destructive`, with `Retry` in `AlertAction`, when reading the condition
+  failed.
+- When the condition locks the page's controls, keep them in place with their
+  values visible and set `aria-disabled="true"` on each; `Button`, `Switch`
+  and `Input` draw it as disabled. The attribute stops nothing by itself, so
+  each handler returns without changing the value or sending a request.
+- Say the reason once, in the notice, not on each row.
+
 ## Detail page
 
 Item `detail-page`. `DetailPage` fills the window edge to edge: a sticky header

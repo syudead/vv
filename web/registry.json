@@ -667,7 +667,7 @@
       "name": "settings-page",
       "type": "registry:ui",
       "title": "SettingsPage",
-      "description": "Page skeleton: one column of fixed maximum width with titled sections, and optionally the list of a settings area's pages beside it.",
+      "description": "Page skeleton: one column of fixed maximum width with titled sections, optionally the list of a settings area's pages beside it and a notice for the whole page.",
       "docs": "Usage rules: web/registry/rules/patterns.md#settings-page (item vv-rules).",
       "files": [
         {
@@ -1001,7 +1001,7 @@
       "name": "settings-page-example",
       "type": "registry:block",
       "title": "Settings page example",
-      "description": "A working settings area of three pages: the page list, sections of form rows and a fact list.",
+      "description": "A working settings area of three pages: the page list, a page notice, sections of form rows and a fact list.",
       "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#settings-page (item vv-rules).",
       "files": [
         {

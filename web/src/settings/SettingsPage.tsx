@@ -1,5 +1,5 @@
 import { ArrowLeft } from "lucide-react";
-import type { ComponentType } from "react";
+import type { ComponentType, ReactNode } from "react";
 import { Link, Navigate, useLocation } from "react-router";
 
 import { t } from "../i18n";
@@ -18,6 +18,7 @@ import AutoTaggingSection from "./AutoTaggingSection";
 import ComfyUISection from "./ComfyUISection";
 import MediaFoldersSection from "./MediaFoldersSection";
 import NetworkSection from "./NetworkSection";
+import { ollamaLockNotice } from "./OllamaLockNotice";
 import OllamaSection from "./OllamaSection";
 import ScanStatusSection from "./ScanStatusSection";
 import {
@@ -28,6 +29,7 @@ import {
   type SettingsSectionId,
 } from "./settingsPages";
 import TranscodingSection from "./TranscodingSection";
+import { useOllamaConnection } from "./useOllamaConnection";
 import VersionJudgingSection from "./VersionJudgingSection";
 import WorkInfoPluginsSection from "./WorkInfoPluginsSection";
 
@@ -59,13 +61,25 @@ function PageList({ current }: { current: SettingsPageEntry }) {
   );
 }
 
+interface PageViewProps {
+  page: SettingsPageEntry;
+  view: "list" | "page";
+}
+
+/** PageSections は対応表のページの節を上から順に描く。 */
+function PageSections({ page }: { page: SettingsPageEntry }) {
+  return page.sections.map((section) => {
+    const Section = sectionComponents[section];
+    return <Section key={section} />;
+  });
+}
+
 function SettingsPageView({
   page,
   view,
-}: {
-  page: SettingsPageEntry;
-  view: "list" | "page";
-}) {
+  notice,
+  children,
+}: PageViewProps & { notice?: ReactNode; children: ReactNode }) {
   const title = t.settings.pages[page.slug];
   useDocumentTitle(title);
   return (
@@ -85,14 +99,39 @@ function SettingsPageView({
           }
         />
       }
+      notice={notice}
     >
-      {page.sections.map((section) => {
-        const Section = sectionComponents[section];
-        return <Section key={section} />;
-      })}
+      {children}
     </SettingsPageLayout>
   );
 }
+
+function SectionsPageView(props: PageViewProps) {
+  return (
+    <SettingsPageView {...props}>
+      <PageSections page={props.page} />
+    </SettingsPageView>
+  );
+}
+
+/**
+ * AutoTaggingPageView は「Auto-tagging」のページである。開いたときに Ollama の接続先を読み、
+ * 保存されていなければ notice に理由を出して節の操作を押せなくする。読めなければ読めなかった旨と
+ * `Retry` を出し、操作は押せたままにする（specs/058-settings-pages/research.md R-5）。
+ */
+function AutoTaggingPageView(props: PageViewProps) {
+  const { connection, retry } = useOllamaConnection();
+  return (
+    <SettingsPageView {...props} notice={ollamaLockNotice(connection, retry)}>
+      <AutoTaggingSection locked={connection.status === "unsaved"} />
+    </SettingsPageView>
+  );
+}
+
+/** pageViews は対応表の節を並べるだけでないページの描き方である。ほかは SectionsPageView。 */
+const pageViews: Partial<
+  Record<SettingsPageEntry["slug"], ComponentType<PageViewProps>>
+> = { "auto-tagging": AutoTaggingPageView };
 
 /**
  * SettingsPage は設定の 8 つのページと一覧である（specs/058-settings-pages/research.md R-1〜R-3、
@@ -111,8 +150,9 @@ export default function SettingsPage() {
   const route = settingsRoute(location.pathname, location.hash);
   useScrollTopOnChange(route.kind === "replace" ? undefined : route.page.slug);
   if (route.kind === "replace") return <Navigate to={route.to} replace />;
+  const View = pageViews[route.page.slug] ?? SectionsPageView;
   return (
-    <SettingsPageView
+    <View
       key={route.page.slug}
       page={route.page}
       view={route.kind === "list" ? "list" : "page"}

@@ -64,10 +64,12 @@ type CheckState =
 function ProgressSection({
   settings,
   starting,
+  locked,
   onStart,
 }: {
   settings: AutoTaggingSettings;
   starting: AutoTaggingScope | null;
+  locked: boolean;
   onStart: (scope: AutoTaggingScope) => void;
 }) {
   const text = t.settings.autoTagging;
@@ -92,7 +94,7 @@ function ProgressSection({
           size="sm"
           variant="outline"
           onClick={() => onStart("missing")}
-          aria-disabled={starting !== null || undefined}
+          aria-disabled={locked || starting !== null || undefined}
         >
           {text.runMissing}
         </Button>
@@ -100,7 +102,7 @@ function ProgressSection({
           size="sm"
           variant="ghost"
           onClick={() => onStart("all")}
-          aria-disabled={starting !== null || undefined}
+          aria-disabled={locked || starting !== null || undefined}
         >
           {text.runAll}
         </Button>
@@ -127,8 +129,12 @@ function ProgressSection({
  * （docs/design-docs/auto-tagging.md）。Ollama の接続先は OllamaSection が持つ。判定が
  * 待ち行列に残っている間は件数を読み直す。「Test judging」は判定の口に 1 問を判定させ、
  * 機能の入切に関係なく使えるかを確かめる。
+ *
+ * `locked` は Ollama の接続先が保存されていないことである（specs/058-settings-pages/research.md
+ * R-5）。そのあいだ切り替え、入力、ボタンは値を見せたまま `aria-disabled` にし、`aria-disabled` は
+ * それだけでは何も止めないので、各ハンドラは下書きを変えず要求も送らずに返す。
  */
-export default function AutoTaggingSection() {
+export default function AutoTaggingSection({ locked = false }: { locked?: boolean }) {
   const text = t.settings.autoTagging;
   const toast = useToast();
   const [settings, setSettings] = useState<AutoTaggingSettings | null>(null);
@@ -202,7 +208,7 @@ export default function AutoTaggingSection() {
   };
 
   const save = async () => {
-    if (draft === null || !valid || saving) return;
+    if (locked || draft === null || !valid || saving) return;
     setSaving(true);
     try {
       if (await persist()) toast(text.saved);
@@ -212,7 +218,7 @@ export default function AutoTaggingSection() {
   };
 
   const runCheck = async () => {
-    if (check.kind === "checking") return;
+    if (locked || check.kind === "checking") return;
     setCheck({ kind: "checking" });
     try {
       const result = await checkAutoTaggingClassifier();
@@ -227,7 +233,7 @@ export default function AutoTaggingSection() {
   };
 
   const start = async (scope: AutoTaggingScope) => {
-    if (starting !== null) return;
+    if (locked || starting !== null) return;
     setStarting(scope);
     try {
       const queued = await startAutoTagging(scope);
@@ -241,6 +247,7 @@ export default function AutoTaggingSection() {
   };
 
   const update = (change: Partial<Draft>) => {
+    if (locked) return;
     setDraft((current) => (current === null ? current : { ...current, ...change }));
     setSaveError(null);
   };
@@ -280,6 +287,7 @@ export default function AutoTaggingSection() {
       <ProgressSection
         settings={settings}
         starting={starting}
+        locked={locked}
         onStart={(scope) => void start(scope)}
       />
       <PageSection title={text.heading} description={description}>
@@ -291,6 +299,7 @@ export default function AutoTaggingSection() {
           <Switch
             id="auto-tagging-enabled"
             checked={draft.enabled}
+            aria-disabled={locked || undefined}
             onCheckedChange={(checked) => update({ enabled: checked })}
           />
         </FormRow>
@@ -302,6 +311,7 @@ export default function AutoTaggingSection() {
           <Switch
             id="auto-tagging-after-import"
             checked={draft.afterImport}
+            aria-disabled={locked || undefined}
             onCheckedChange={(checked) => update({ afterImport: checked })}
           />
         </FormRow>
@@ -319,6 +329,7 @@ export default function AutoTaggingSection() {
             step={0.05}
             className="sm:w-16"
             aria-invalid={threshold === null || undefined}
+            aria-disabled={locked || undefined}
             value={draft.threshold}
             onChange={(event) => update({ threshold: event.target.value })}
           />
@@ -337,6 +348,7 @@ export default function AutoTaggingSection() {
             step={0.05}
             className="sm:w-16"
             aria-invalid={!tentativeValid || undefined}
+            aria-disabled={locked || undefined}
             value={draft.tentativeThreshold}
             onChange={(event) => update({ tentativeThreshold: event.target.value })}
           />
@@ -346,7 +358,7 @@ export default function AutoTaggingSection() {
             <Button
               size="sm"
               onClick={() => void save()}
-              aria-disabled={saving || !valid || undefined}
+              aria-disabled={locked || saving || !valid || undefined}
             >
               {saving && (
                 <LoaderCircle
@@ -360,7 +372,7 @@ export default function AutoTaggingSection() {
               size="sm"
               variant="outline"
               onClick={() => void runCheck()}
-              aria-disabled={check.kind === "checking" || undefined}
+              aria-disabled={locked || check.kind === "checking" || undefined}
             >
               {text.check}
             </Button>
