@@ -361,20 +361,24 @@ other, and the plugin decides. Handle it this way:
 
 1. Read the `Retry-After` header from `http_meta`. It is a number of seconds
    or an HTTP date; when it is missing or cannot be read, take 1 s.
-2. Wait the smaller of that delay and 5 s. Clocks and `nanosleep` work in the
+2. Take the smaller of that delay and 5 s as the wait.
+3. Before waiting, check the budget: when the run's waits, this one included,
+   would total more than 10 s, do not wait and go to step 5.
+4. Wait, then send the request once more. Clocks and `nanosleep` work in the
    sandbox, so the language's ordinary sleep works.
-3. Send the request once more, but only when the run's waits, this one
-   included, total at most 10 s.
-4. When the wait would take the run's waits over 10 s, or the retry answers
-   `429` again, return an `error` response whose message names the site and
-   the delay, such as `example.com is busy; try again in 60 s`.
+5. When the budget is spent, or the retry answers `429` again, return an
+   `error` response whose message names the site and the delay, such as
+   `example.com is busy; try again in 60 s`.
 
 This fits the [Limits](#limits). Every retry is a request and counts toward
 the 16 per run, so a plugin that fetches up to 7 pages still has one retry per
-page. The waits of a run total at most 10 s, which leaves 20 s of the 30 s run
-time for the requests however many pages are refused. A plugin that waits
-longer risks `timed_out`, and the owner then sees no message; an `error`
-response tells the owner to try again later.
+page. The waits of a run total at most 10 s however many pages are refused,
+so the rest of the 30 s run time stays for compiling the module, the plugin's
+own work and its requests. The waits do not make room for the requests: each
+request may still take up to 10 s, so a plugin that also makes several slow
+requests can reach `timed_out` with or without a `429`. A plugin that waits
+longer than this budget makes that more likely, and the owner then sees no
+message; an `error` response tells the owner to try again later.
 
 ## Addresses
 
