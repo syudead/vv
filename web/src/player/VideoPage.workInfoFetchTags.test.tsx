@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   appliedResult,
-  fetchFromUrl,
+  fetchById,
   fetchResult,
   json,
   server,
@@ -52,7 +52,7 @@ describe("VideoPage work-info fetch tag selection", () => {
     server.fetch.mockImplementation(() =>
       json(fetchResult({ tags: ["既存", "ドラマ", "喜劇"] }), 201),
     );
-    const { dialog } = await fetchFromUrl();
+    const { dialog } = await fetchById();
     expect(tagBox(dialog, "ドラマ")).toHaveProperty("ariaChecked", "true");
     expect(tagBox(dialog, "喜劇")).toHaveProperty("ariaChecked", "true");
     expect(within(dialog).queryByRole("checkbox", { name: /^既存/ })).toBeNull();
@@ -65,7 +65,7 @@ describe("VideoPage work-info fetch tag selection", () => {
       json(fetchResult({ title: "取得した題名", tags: ["ドラマ", "喜劇", "活劇"] }), 201),
     );
     server.apply.mockImplementation(() => json(appliedResult(video)));
-    const { user, dialog } = await fetchFromUrl();
+    const { user, dialog } = await fetchById();
     await user.click(tagBox(dialog, "喜劇"));
     expect(checkbox(dialog, "Tags")).toHaveProperty("ariaChecked", "mixed");
     expect(within(dialog).getByText("2 of 3 selected")).toBeDefined();
@@ -80,7 +80,7 @@ describe("VideoPage work-info fetch tag selection", () => {
 
   it("タグを全部外すと、タグを除いた項目だけを送る", async () => {
     server.apply.mockImplementation(() => json(appliedResult(video)));
-    const { user, dialog } = await fetchFromUrl();
+    const { user, dialog } = await fetchById();
     await user.click(tagBox(dialog, "新しい"));
     expect(checkbox(dialog, "Tags")).toHaveProperty("ariaChecked", "false");
     expect(within(dialog).getByText("0 of 1 selected")).toBeDefined();
@@ -92,7 +92,7 @@ describe("VideoPage work-info fetch tag selection", () => {
 
   it("何も選ばれていなければ Apply selected は押せない", async () => {
     server.fetch.mockImplementation(() => json(fetchResult({ tags: ["新しい"] }), 201));
-    const { user, dialog } = await fetchFromUrl();
+    const { user, dialog } = await fetchById();
     await user.click(tagBox(dialog, "新しい"));
     expect(within(dialog).getByRole("button", { name: "Apply selected" })).toHaveProperty(
       "disabled",
@@ -104,7 +104,7 @@ describe("VideoPage work-info fetch tag selection", () => {
     server.fetch.mockImplementation(() =>
       json(fetchResult({ tags: ["ドラマ", "喜劇", "既存"] }), 201),
     );
-    const { user, dialog } = await fetchFromUrl();
+    const { user, dialog } = await fetchById();
     const row = checkbox(dialog, "Tags");
     await user.click(row);
     expect(tagBox(dialog, "ドラマ")).toHaveProperty("ariaChecked", "false");
@@ -122,7 +122,7 @@ describe("VideoPage work-info fetch tag selection", () => {
   it("30 個のタグは畳まずに全部を出す", async () => {
     const names = Array.from({ length: 30 }, (_, index) => `タグ${String(index + 1)}`);
     server.fetch.mockImplementation(() => json(fetchResult({ tags: names }), 201));
-    const { dialog } = await fetchFromUrl();
+    const { dialog } = await fetchById();
     for (const name of names) expect(tagBox(dialog, name)).toBeDefined();
     expect(within(dialog).queryByRole("button", { name: /more/ })).toBeNull();
     expect(within(dialog).getByText("30 of 30 selected")).toBeDefined();

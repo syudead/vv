@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/quickstart.md
-sourceHash: e1874c98ea788a37a801b4789bf446d68000c054cb2543f9570bfea591d831e2
+sourceHash: 25b431b56b932fd394797471c966250088c517dbcb3e2bcd82c6d59d9c2417fb
 ---
 
 # クイックスタート: 実際のプロキシと実際のサイトを、コマンドラインとサーバーから使う {#quickstart-a-real-proxy-and-a-real-site-from-the-command-line-and-the-server}
@@ -18,7 +18,7 @@ sourceHash: e1874c98ea788a37a801b4789bf446d68000c054cb2543f9570bfea591d831e2
 | 手順 | 期待される結果 | 受け入れ |
 | --- | --- | --- |
 | 既定値が選択肢にないマニフェストで `mdm plugin pack` を実行する | 理由が `default` と `options` を名指しする。モジュールのバイト列は変わらない | 3、エッジケース |
-| 修正したマニフェストで `mdm plugin pack` を実行し、続けて `mdm plugin run plugin.wasm fetch <public URL>` を実行する | 保持した `workInfo` が出力される。プラグインが標準エラーに書いた行がコマンドの標準エラーに現れる | 1、4 |
+| 修正したマニフェストで `mdm plugin pack` を実行し、続けて `mdm plugin run plugin.wasm fetch <work ID>` を実行する | 保持した `workInfo` が出力される。プラグインが標準エラーに書いた行がコマンドの標準エラーに現れる | 1、4 |
 | LAN の変種で `mdm plugin run` を実行する | コマンドは `blocked_address` とルーターのアドレスつきで終了コード 1 になる | 2 |
 | LAN のプロキシを指す `--proxy` で `mdm plugin run` を実行する | プロキシのログに要求が見える。結果はプロキシなしと同じである | 7 |
 | パックしたプラグインを設定画面に追加し、その設定ダイアログを開く | 既定値は既定値として表示され、選択肢のある設定は選択肢からの選択になる | 5 |

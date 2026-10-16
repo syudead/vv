@@ -113,7 +113,7 @@ describe("WorkInfoPluginRunDialog", () => {
     const output = await within(dialog).findByRole("region", { name: "Output" });
     expect(output.textContent).toBe("fetch: token=[secret]\n");
     expect(within(dialog).getByText("Ran")).toBeDefined();
-    expect(within(dialog).getByText("Fetch by ID or URL")).toBeDefined();
+    expect(within(dialog).getByText("Fetch by ID")).toBeDefined();
     expect(within(dialog).getByText("Finished")).toBeDefined();
     expect(within(dialog).queryByText("The output was cut at 64 KB.")).toBeNull();
     expect(fake.reads).toEqual(["/api/work-info-plugins/4/last-run"]);

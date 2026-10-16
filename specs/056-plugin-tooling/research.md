@@ -237,3 +237,25 @@ the plugin (the Issue's `対象外`).
 **Rationale**: A fetch is one owner's single action, not a crawl, so one
 short wait is what a browser user would do; a longer wait is better spent
 telling the owner to try again.
+
+## R-10: A fetch takes a work ID only, and VVMDM never fetches a URL the owner typed
+
+**Decision**: Every fetch names the work by an ID: the screen API body is
+`{pluginId, id}`, the plugin request is `{"operation": "fetch", "id"}`, a
+search candidate carries `id`, and `mdm plugin run ... fetch <id>` takes the
+ID. The text the owner types is the ID unchanged, even when it is shaped like
+a URL; mapping an ID to a page URL is the plugin's job. The dialog shows a
+candidate's ID in place of the host and has no page link, since a candidate
+has no URL (requirements 14 to 16).
+
+| Option | Verdict |
+| --- | --- |
+| **ID only** | Chosen |
+| Keep `url` beside `id` and fetch a pasted URL as is | Rejected by the requester: the owner's input is an identifier, and a URL VVMDM fetches unchecked by the plugin is a design the plugin cannot reason about |
+| Parse an ID out of a pasted URL in VVMDM | Rejected: the URL shape is the site's, which only the plugin knows |
+
+**Rationale**: The plugin owns the site: it knows which URL a work lives at,
+and it already builds that URL for an ID the owner typed. One input shape
+removes the URL branch from the dialog rules, the handler and the CLI, and
+the URL check from the domain. A plugin that wants to accept a pasted page URL
+reads the ID out of it itself.

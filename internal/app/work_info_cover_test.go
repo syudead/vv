@@ -52,7 +52,7 @@ func (e *fetchEnv) fetchCover(t *testing.T, cover []byte) domain.WorkInfoFetchRe
 		WorkInfo:   domain.FetchedWorkInfo{Title: "Title", CoverURL: "https://example.com/cover.png"},
 		CoverImage: cover,
 	}
-	result, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "https://example.com/works/1")
+	result, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "W-1")
 	if err != nil {
 		t.Fatalf("FetchWorkInfo: %v", err)
 	}

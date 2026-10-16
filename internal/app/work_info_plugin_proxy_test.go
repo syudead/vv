@@ -76,7 +76,7 @@ func TestSetWorkInfoPluginProxyURLRefusesBrokenURLs(t *testing.T) {
 func TestWorkInfoRunRefusesABrokenSavedProxy(t *testing.T) {
 	e := newFetchEnv()
 	e.plugins.network = NewWorkInfoPluginProxy(&memoryProxyStore{value: "http://proxy.example/path"})
-	_, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "https://example.com/works/1")
+	_, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "W-1")
 	if !errors.Is(err, domain.ErrWorkInfoPluginProxyURLInvalid) {
 		t.Fatalf("FetchWorkInfo = %v, want ErrWorkInfoPluginProxyURLInvalid", err)
 	}

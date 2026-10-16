@@ -1863,9 +1863,8 @@ export const en = {
       title: "Fetch work info",
       description: "Nothing changes until you apply.",
       plugin: "Plugin",
-      queryBoth: "Search words or the work's page URL",
       querySearch: "Search words",
-      queryFetch: "The work's ID or page URL",
+      queryFetch: "The work's ID",
       findBy: "Find by",
       findByOptions: {
         words: "Words",
@@ -1881,7 +1880,6 @@ export const en = {
           other: `${formatNumber(count)} matches`,
         }),
       matchList: "Matches",
-      openPage: "Open page",
       noMatches: "No matches.",
       noMatchesFetch:
         "No matches. Try other words, or choose ID and enter the work's ID.",
@@ -2967,7 +2965,7 @@ export const en = {
       version: (version: string) => `v${version}`,
       operations: {
         search: "Search",
-        fetch: "Fetch by ID or URL",
+        fetch: "Fetch by ID",
       } satisfies Record<WorkInfoOperation, string>,
       network: "Reaches internet sites",
       settingSet: (label: string) => `${label} set`,

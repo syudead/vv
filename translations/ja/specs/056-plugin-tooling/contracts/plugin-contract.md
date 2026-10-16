@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/contracts/plugin-contract.md
-sourceHash: 468063aee2e10b635c1c21fe49869e122c6e4e2f43296077090b86e2adfcf5c9
+sourceHash: fd2935608ba6463b8416101f501280d2316afa01d31efd96dfdbf34e21990979
 ---
 
 # 契約: プラグインの契約への追加 {#contract-plugin-contract-additions}
@@ -21,6 +21,12 @@ sourceHash: 468063aee2e10b635c1c21fe49869e122c6e4e2f43296077090b86e2adfcf5c9
 ## Request {#request}
 
 `settings` は、値を持つ宣言済みのすべてのキーの実効値を載せる。所有者の保存された値が設定されていて、`options` のある設定ではそのうちの 1 つであればその値、そうでなければ `default` である。既定値のある `required` のキーが実行を止めることはない。
+
+`fetch` の要求は `id` を持ち、`url` を持たない ([R-10](../research.md#r-10-a-fetch-takes-a-work-id-only-and-vvmdm-never-fetches-a-url-the-owner-typed)): 候補の `id`、または所有者が入力してトリムした文字列で、プラグインがこれをページの URL に対応づける。`url` を読んでいたプラグインは、代わりに `id` を読む。
+
+## Candidates {#candidates}
+
+`search` の候補は `url` の代わりに `id` を持つ。前後に空白のない 1 から 200 文字で、所有者が候補を選ぶと、VVMDM はこれをそのまま取得の `id` として送る。ダイアログはタイトルの下に ID を示し、ページへのリンクを持たない。
 
 ## Standard error {#standard-error}
 

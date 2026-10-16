@@ -42,6 +42,14 @@ flowchart LR
 | Tag selection | `tags` beside `fields` in the apply; tags on the video not selectable ([R-7](research.md#r-7-the-apply-takes-the-selected-tag-names-and-a-tag-already-on-the-video-is-not-selectable), [contracts/screen-api.md](contracts/screen-api.md)) |
 | Where the proxy is set | The Network section on every build; the LAN switch stays desktop only ([R-8](research.md#r-8-the-network-section-shows-on-every-build-and-the-lan-switch-stays-desktop-only)) |
 | `429` guidance | One retry after at most 5 s within 10 s of waits per run, then an error response ([R-9](research.md#r-9-on-a-429-a-plugin-waits-for-the-smaller-of-retry-after-and-5-seconds-retries-once-and-otherwise-reports-an-error)) |
+| Fetch by ID only | The fetch request, the screen API, the candidates and `mdm plugin run` carry a work ID and no URL; the owner's text is the ID unchanged ([R-10](research.md#r-10-a-fetch-takes-a-work-id-only-and-vvmdm-never-fetches-a-url-the-owner-typed), [contracts/plugin-contract.md](contracts/plugin-contract.md), [contracts/plugin-cli.md](contracts/plugin-cli.md)) |
+
+Requirements 14 to 16 were added to the parent Issue after the integration PR
+was open. They revise the fetch input of
+[049 screen-api.md](../049-work-info-plugins/contracts/screen-api.md) and
+[049 ui-design.md](../049-work-info-plugins/ui-design.md), which this Plan's
+last unit updates in place, since they are the living references the code
+cites.
 
 The Issue has the `ui` label, so the `design` stage writes `ui-design.md`
 before the four screen units. It covers: in the settings dialog of
@@ -180,6 +188,7 @@ flowchart LR
   stderr --> runui[Last run dialog]
   tags[Tag selection]
   guide[429 guidance]
+  byid[Fetch by ID only]
 ```
 
 ### Declare default values and choices for work-info plugin settings
@@ -415,3 +424,32 @@ and how it fits the run and request limits, linked from the `Limits` section.
 wait bound, the 10 s of waits per run, the single retry and the error
 response, and the `Limits`
 section links to it.
+
+### Fetch work information by a work ID only
+
+**Scope**: Requirements 14 to 16 of the parent Issue
+([R-10](research.md#r-10-a-fetch-takes-a-work-id-only-and-vvmdm-never-fetches-a-url-the-owner-typed)).
+`POST /api/videos/{id}/work-info-fetches` takes `pluginId` and `id` and no
+`url`; the fetch request to the plugin carries `id` only; a search candidate
+carries `id` in place of `url`, checked by the ID rule; `mdm plugin run ...
+fetch <id>` takes the ID. The fetch dialog in `web/src/player/workInfoFetch/`
+sends the typed text as the ID unchanged, shows each candidate's ID in place
+of the host and page link, and names the plugin's operation `Fetch by ID`.
+The guide, [049 screen-api.md](../049-work-info-plugins/contracts/screen-api.md),
+[049 ui-design.md](../049-work-info-plugins/ui-design.md),
+[contracts/plugin-contract.md](contracts/plugin-contract.md),
+[contracts/plugin-cli.md](contracts/plugin-cli.md) and the e2e fixture plugin
+state the ID-only shapes.
+
+**Dependencies**: None; it lands after the other units, before the
+integration PR merges.
+
+**Acceptance**: `task check` passes with no diff from `task generate` and
+CI's `Browser E2E` passes with `web/e2e/work-info-plugins.e2e.ts` choosing a
+candidate by its ID; domain tests show a fetch request with a URL-shaped ID
+serialized as `id` unchanged and a candidate without an ID, with a blank ID
+or with a 201-character ID failing the search; handler tests show a body with
+`url` answered `400` and a URL-shaped `id` passed to the registry; the CLI
+test runs `fetch` with an ID; page tests show a pasted URL searched as words
+or sent as `id`, a candidate fetched by its `id`, and no page link on a
+candidate (acceptance criteria 12 to 14).

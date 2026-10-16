@@ -40,7 +40,7 @@ func TestRunSavesTheLogOfAFailedRun(t *testing.T) {
 	e.runtime.stderr = "panic: key-one"
 	e.runtime.truncated = true
 	e.runtime.err = &domain.WorkInfoRunError{Failure: domain.WorkInfoRunTimedOut}
-	_, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "https://example.com/works/1")
+	_, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "W-1")
 	var runErr *domain.WorkInfoRunError
 	if !errors.As(err, &runErr) {
 		t.Fatalf("FetchWorkInfo err = %v, want the run failure", err)

@@ -8,7 +8,7 @@ import type { WorkInfoFetchedPerson } from "../api/workInfoPlugins";
 import {
   appliedResult,
   failure,
-  fetchFromUrl,
+  fetchById,
   fetchResult,
   json,
   server,
@@ -74,7 +74,7 @@ describe("VideoPage work-info fetch details", () => {
   useFetchServer();
 
   it("題名とタグだけの結果は今までどおり 2 行で比べる", async () => {
-    const { dialog } = await fetchFromUrl();
+    const { dialog } = await fetchById();
     // 2 行の選択と、動画にまだ無いタグ「新しい」の選択である。
     expect(within(dialog).getAllByRole("checkbox")).toHaveLength(3);
     expect(checkbox(dialog, "Title")).toHaveProperty("ariaChecked", "true");
@@ -83,7 +83,7 @@ describe("VideoPage work-info fetch details", () => {
   });
 
   it("取得したタグのうち動画にあるものは、仮の印を付けずに動画にある件として出す", async () => {
-    const { dialog } = await fetchFromUrl();
+    const { dialog } = await fetchById();
     expect(chip(dialog, "既存").textContent).toBe("既存, On the video");
     expect(chip(dialog, "新しい").textContent).toBe("新しい, Tentative");
   });
@@ -98,7 +98,7 @@ describe("VideoPage work-info fetch details", () => {
     server.apply.mockImplementationOnce(() =>
       failure(409, { code: "work_info_fetch_stale" }),
     );
-    const { user, dialog } = await fetchFromUrl();
+    const { user, dialog } = await fetchById();
     await user.click(within(dialog).getByRole("button", { name: "Show more" }));
     expect(within(dialog).getByRole("button", { name: "Show less" })).toBeDefined();
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
@@ -123,7 +123,7 @@ describe("VideoPage work-info fetch details", () => {
         201,
       ),
     );
-    const { dialog } = await fetchFromUrl();
+    const { dialog } = await fetchById();
     const performers = checkbox(dialog, "Performers");
     expect(performers).toHaveProperty("ariaChecked", "true");
     expect(chip(dialog, "新しい人").textContent).toBe("新しい人, New");
@@ -164,7 +164,7 @@ describe("VideoPage work-info fetch details", () => {
         201,
       ),
     );
-    const { dialog } = await fetchFromUrl();
+    const { dialog } = await fetchById();
     const performers = checkbox(dialog, "Performers");
     expect(performers).toHaveProperty("disabled", true);
     expect(performers).toHaveProperty("ariaChecked", "false");
@@ -183,7 +183,7 @@ describe("VideoPage work-info fetch details", () => {
       ),
     );
     server.apply.mockImplementation(() => json(appliedResult(video)));
-    const { user, dialog } = await fetchFromUrl();
+    const { user, dialog } = await fetchById();
     expect(checkbox(dialog, "Title")).toHaveProperty("disabled", true);
     expect(within(dialog).queryByRole("checkbox", { name: "Code" })).toBeNull();
     expect(within(dialog).queryByRole("checkbox", { name: "Recorded" })).toBeNull();
@@ -209,7 +209,7 @@ describe("VideoPage work-info fetch details", () => {
         }),
       ),
     );
-    const { user, dialog } = await fetchFromUrl();
+    const { user, dialog } = await fetchById();
     expect(within(dialog).getByText("2024/03/01")).toBeDefined();
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
     expect(server.apply).toHaveBeenCalledWith({ fields: ["code", "dates.release"] });

@@ -1,11 +1,11 @@
 ---
 source: docs/how-to/work-info-plugins.md
-sourceHash: e9d6d10ca95cfa27a68788ac79630a8015aa755edd4a16b910e12defddc452e1
+sourceHash: d1858610d0173cc80bfa2782eeb55faa057803dbc138fb689f37123e6f4d7c0a
 ---
 
 # 作品情報プラグインを書く {#write-a-work-info-plugin}
 
-作品情報プラグインは、外部のサイトで作品を検索し、作品のページの URL か ID で作品のタイトル、タグ、詳細を取得するために VVMDM が実行する WebAssembly のモジュールである。終えると、所有者が設定画面で追加して承認できるモジュールができる。この手順書が、プラグインの契約のバージョン 1 である。サンドボックス、制限、ネットワークの規則がこの形である理由は [work-info-plugins.md](../design-docs/work-info-plugins.md) にある。
+作品情報プラグインは、外部のサイトで作品を検索し、作品の ID で作品のタイトル、タグ、詳細を取得するために VVMDM が実行する WebAssembly のモジュールである。終えると、所有者が設定画面で追加して承認できるモジュールができる。この手順書が、プラグインの契約のバージョン 1 である。サンドボックス、制限、ネットワークの規則がこの形である理由は [work-info-plugins.md](../design-docs/work-info-plugins.md) にある。
 
 図のとおり、VVMDM は実行のたびに新しいインスタンスを起動する。
 
@@ -37,7 +37,7 @@ sequenceDiagram
    go mod init example.com/title-plugin
    ```
 
-2. プラグインを `main.go` として、Go の `main` パッケージで書く。標準入力から [要求](#request) を読み、HTTP のために [ホスト関数](#host-functions) を呼び、標準出力に [応答](#response) を書く。この例は作品のページを取得し、その `<title>` を返す:
+2. プラグインを `main.go` として、Go の `main` パッケージで書く。標準入力から [要求](#request) を読み、HTTP のために [ホスト関数](#host-functions) を呼び、標準出力に [応答](#response) を書く。この例は ID から作品のページの URL を組み立て、ページを取得して `<title>` を返す:
 
    ```go
    package main
@@ -45,6 +45,7 @@ sequenceDiagram
    import (
        "encoding/json"
        "html"
+       "net/url"
        "os"
        "regexp"
        "unsafe"
@@ -61,7 +62,7 @@ sequenceDiagram
 
    type request struct {
        Operation string            `json:"operation"`
-       URL       string            `json:"url"`
+       ID        string            `json:"id"`
        Settings  map[string]string `json:"settings"`
    }
 
@@ -73,9 +74,10 @@ sequenceDiagram
            fail("unreadable request")
            return
        }
-       page, ok := get(req.URL)
+       pageURL := "https://example.com/works/" + url.PathEscape(req.ID)
+       page, ok := get(pageURL)
        if !ok {
-           fail("could not read " + req.URL)
+           fail("could not read " + pageURL)
            return
        }
        info := map[string]any{}
@@ -153,10 +155,10 @@ sequenceDiagram
 6. `mdm plugin run` で、操作とその入力を指定してプラグインを 1 回実行する:
 
    ```bash
-   mdm plugin run plugin.wasm fetch https://example.com/works/1
+   mdm plugin run plugin.wasm fetch 1
    ```
 
-   操作は、入力が検索語の `search` か、入力が作品の URL の `fetch` である。入力の規則は動画のページと同じである。[設定](#setting-fields) のあるプラグインには、`--set KEY=VALUE` でキーごとに 1 回、たとえば `--set token=abc` のように値を与える。マニフェストが宣言したキーだけを受け取り、`--set` のない設定は、VVMDM と同じく `default` を受け取る。`--proxy URL` は、運用者のプロキシ設定と同じように、プラグインの要求をプロキシ経由で送る。実行には VVMDM と同じ [上限](#limits) と [アドレスの規則](#addresses) が適用される。
+   操作は、入力が検索語の `search` か、入力が作品の ID の `fetch` である。入力の規則は動画のページと同じである。[設定](#setting-fields) のあるプラグインには、`--set KEY=VALUE` でキーごとに 1 回、たとえば `--set token=abc` のように値を与える。マニフェストが宣言したキーだけを受け取り、`--set` のない設定は、VVMDM と同じく `default` を受け取る。`--proxy URL` は、運用者のプロキシ設定と同じように、プラグインの要求をプロキシ経由で送る。実行には VVMDM と同じ [上限](#limits) と [アドレスの規則](#addresses) が適用される。
 
 7. VVMDM で **Settings** を開き、**Work-info plugins** の節で **Add plugin** を選び、`plugin.wasm` を選ぶ。プラグインを確認し、承認する。
 
@@ -197,10 +199,12 @@ API キー (`"secret": true`) や言語など、所有者が与えるものに�
 
 | サイト | 宣言するもの | 所有者 |
 | --- | --- | --- |
-| 検索がある | `search` と `fetch` | 語を入力して候補の 1 つを選ぶ。VVMDM はその URL で取得する。または、欄の上の **ID** を選んで作品の ID を入力する |
-| 品番など、作品の ID から組み立てるページの URL がある | `fetch` | ID を入力する (最初は動画の品番)。またはページの URL を貼り付ける |
+| 検索がある | `search` と `fetch` | 語を入力して候補の 1 つを選ぶ。VVMDM は候補の `id` で取得する。または、欄の上の **ID** を選んで作品の ID を入力する |
+| 品番など、作品の ID から組み立てるページの URL がある | `fetch` | ID を入力する (最初は動画の品番) |
 
-`search` だけを宣言するプラグインは、候補をリンクとして表示し、取得するものはない。
+`search` だけを宣言するプラグインは、候補をテキストとして表示し、取得するものはない。
+
+取得の入力は常に ID である。所有者が入力したものは、URL のように見えても `id` としてそのままプラグインに届き、VVMDM はそれをページとして取得しない。貼り付けたページの URL を受け付けたいプラグインは、その URL から ID を自分で読み取る。
 
 ### 設定フィールド {#setting-fields}
 
@@ -226,7 +230,7 @@ VVMDM は 1 つの JSON オブジェクトを標準入力に書き、それを�
 | 操作 | フィールド |
 | --- | --- |
 | `search` | `{"contract": 1, "operation": "search", "query": "<1 to 200 characters>"}` |
-| `fetch` | `{"contract": 1, "operation": "fetch", "url": "<an http or https URL of at most 2048 characters>"}` (候補または貼り付けたページの URL の場合)、または `{"contract": 1, "operation": "fetch", "id": "<1 to 200 characters>"}` (所有者が前後に空白なしで入力した ID の場合)。プラグインは ID からページの URL を組み立てる |
+| `fetch` | `{"contract": 1, "operation": "fetch", "id": "<1 to 200 characters>"}`: 候補の `id`、または所有者が前後に空白なしで入力した文字列。プラグインは ID からページの URL を組み立てる |
 
 どちらの操作も、有効な値を持つ宣言済みのキーをすべて、そしてそれだけを含む `"settings": {"<key>": "<value>"}` も持つ。有効な値は、所有者が保存した値が設定されていて、`options` のある設定ではそのどれかであるときはその値で、そうでなければ `default` である。`required` のキーに有効な値がないあいだ、実行は始まらない。したがって `default` のある `required` のキーが実行を止めることはない。
 
@@ -236,7 +240,7 @@ VVMDM は 1 つの JSON オブジェクトを標準入力に書き、それを�
 
 | 場合 | 本文 |
 | --- | --- |
-| `search` の結果 | `{"candidates": [{"url": "...", "title": "...", "detail": "..."}]}`: `url` (http か https) と `title` は必須、`detail` は省略できる。VVMDM は最初の 50 個を保つ |
+| `search` の結果 | `{"candidates": [{"id": "...", "title": "...", "detail": "..."}]}`: `id` (作品の ID。前後に空白のない 1 から 200 文字で、あとの `fetch` の要求がそのまま運ぶ) と `title` は必須、`detail` は省略できる。VVMDM は最初の 50 個を保つ |
 | `fetch` の結果 | `{"workInfo": {"title": "...", "tags": ["..."], ...}}`: どのフィールドも省略できる。フィールドは [作品のフィールド](#work-fields) にある |
 | 失敗 | `{"error": {"message": "..."}}`: VVMDM は `message` の最初の 300 文字を所有者に表示する |
 

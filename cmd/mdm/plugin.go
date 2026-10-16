@@ -34,7 +34,7 @@ var inspectionProblemHints = map[domain.WorkInfoPluginProblem]string{
 // operationNames は操作を設定画面と同じ言葉で表す。
 var operationNames = map[domain.WorkInfoOperation]string{
 	domain.WorkInfoSearch: "Search",
-	domain.WorkInfoFetch:  "Fetch by URL",
+	domain.WorkInfoFetch:  "Fetch by ID",
 }
 
 // runPlugin は plugin の下位コマンドを実行する。args は "plugin" の後ろの引数である。

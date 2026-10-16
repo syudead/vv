@@ -97,15 +97,16 @@ Runs the plugin's `search` and returns its candidates.
 | --- | --- | --- | --- | --- |
 | `query` | body | string | Yes | 1 to 200 characters after trimming |
 
-**Response**: `200` with `{"candidates": [{"url", "title", "detail"?}]}`
-([R-10](../research.md#r-10-search-candidates-are-text-only)).
+**Response**: `200` with `{"candidates": [{"id", "title", "detail"?}]}`
+([R-10](../research.md#r-10-search-candidates-are-text-only)); `id` is the
+work's ID that a fetch of the candidate sends unchanged.
 
 Errors: [Run failures](#run-failures), plus `409` `operation_unsupported` when
 the manifest lacks `search`.
 
 ## `POST /api/videos/{id}/work-info-fetches`
 
-Runs the plugin's `fetch` with `url` or `id` for this video and keeps the
+Runs the plugin's `fetch` with `id` for this video and keeps the
 result for 10 minutes
 ([R-8](../research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest)).
 The video is not changed.
@@ -113,10 +114,10 @@ The video is not changed.
 | Field | In | Type | Required | Meaning |
 | --- | --- | --- | --- | --- |
 | `pluginId` | body | integer | Yes | An approved plugin |
-| `url` | body | string | One of `url` and `id` | http or https, at most 2048 characters |
-| `id` | body | string | One of `url` and `id` | The work's ID, such as the product code, 1 to 200 characters without surrounding spaces; the plugin builds the page URL from it |
+| `id` | body | string | Yes | The work's ID, such as the product code or a candidate's `id`, 1 to 200 characters without surrounding spaces; the plugin builds the page URL from it. A string that looks like a URL is still the ID: VVMDM passes it unchanged and never fetches it (parent Issue #1232, requirement 14) |
 
-A body with both `url` and `id`, or with neither, is `400` `invalid_request`.
+A body without `id`, or with an `id` outside the rule, is `400`
+`invalid_request`.
 
 **Response**: `201` with:
 

@@ -31,7 +31,7 @@ This feature adds two things, both for the owner only (acceptance criterion 7):
    state, the approval prompt, the setting values, revoking and deleting
    (requirements 1 to 3 and 11, acceptance criteria 1, 2 and 8).
 2. A **fetch entry** among the video page's information-row actions and the
-   **fetch dialog** it opens: search or a page URL, the candidates, the
+   **fetch dialog** it opens: search or the work's ID, the candidates, the
    comparison, and the apply of the selected fields (requirements 4 to 6 and
    10, acceptance criteria 3 to 6).
 
@@ -45,7 +45,7 @@ flowchart LR
   approved --> entry[Fetch entry]
   entry --> find[Find step]
   find -->|words| list[Candidates]
-  find -->|page URL| compare[Compare step]
+  find -->|ID| compare[Compare step]
   list -->|choose| compare
   compare -->|Apply selected| page[Video page updated]
 ```
@@ -86,11 +86,11 @@ owner should still see the page behind it. Store and media-manager products
 (music taggers, media servers' "fix match") converge on the same form:
 search or paste a link, pick a match, review the fields, apply.
 
-The find step has **one field for words or a page URL**: text that parses as
-an `http` or `https` URL is fetched directly, anything else is searched. A
-separate search/URL switch was rejected because the input already tells
-which one the owner means, and the switch would be a control to read before
-every fetch.
+The find step has **one field for words or the work's ID**, with a `Find by`
+switch only when the plugin can do both. The text is never read as a URL:
+what the owner types reaches the plugin as the search words or the ID
+unchanged (parent Issue #1232, requirement 14), so a plugin that accepts a
+pasted page URL reads the ID out of it itself.
 
 The comparison is **one row per field with a checkbox, the current value and
 the fetched value side by side**, the fetched value in the body colour and the
@@ -133,7 +133,7 @@ name on screen is `VVMDM`.
 | Badge, invalid | Can't be used | `destructive`, lucide `CircleX` |
 | Version | v{version} | After the name |
 | Operations, search | Search | Joined by ` · ` |
-| Operations, fetch | Fetch by ID or URL | |
+| Operations, fetch | Fetch by ID | |
 | Internet notice (row) | Reaches internet sites | lucide `Globe` |
 | Settings summary | Settings: {list} | `{list}` is each label, then `set` or `not set`, joined by `, ` |
 | Required missing | Needs a value: {labels} | `warning` text with lucide `CircleAlert` |
@@ -207,16 +207,16 @@ One line under an `invalid` row, `text-destructive`, from its `problem`
 | Dialog title | Fetch work info | |
 | Dialog description | Nothing changes until you apply. | |
 | Plugin label | Plugin | `Select` with several approved plugins; the name as text with one |
-| Query label, words | Search words or the work's page URL | `Search words` when the plugin cannot fetch |
-| Query label, ID | The work's ID or page URL | `ID` pressed, or a fetch-only plugin |
+| Query label, words | Search words | |
+| Query label, ID | The work's ID | `ID` pressed, or a fetch-only plugin |
 | Find by | Find by · Words · ID | `ToggleGroup` label and items, only for a plugin with `search` and `fetch` |
 | Search button | Search | When the text is searched |
-| Fetch button | Fetch | When the text is a URL or an ID |
+| Fetch button | Fetch | When the text is fetched as the work's ID |
 | Running | Searching… · Fetching… | The button's text while the run lasts; a run can take up to 30 seconds |
 | Candidates heading | {n} matches | |
-| Candidate open link | Open page | `ghost` `icon-sm`, lucide `ExternalLink`, new tab |
+| Candidate ID | ID {id} | `text-xs text-muted-foreground`, under the title and detail |
 | No candidates | No matches. Try other words, or choose ID and enter the work's ID. | The second sentence only when the plugin can fetch |
-| Source line | From {plugin} · {host} | Muted, above the comparison; `{host}` links to the fetched URL, new tab. After a fetch by ID, `ID {id}` as text in place of the host |
+| Source line | From {plugin} · ID {id} | Muted, above the comparison; `{id}` is the fetched ID as text |
 | Back | Back to the matches | `ghost` `sm`, lucide `ArrowLeft`; only after a search |
 | Column headings | Now · Fetched | |
 | Field labels | Title · Tags | |
@@ -451,7 +451,7 @@ stateDiagram-v2
 | Plugin | With one approved plugin, `Plugin` and its name as text. With several, a `Select` `sm` of the approved plugins in list order, the first selected. Changing it keeps the typed text and clears the candidates |
 | Find by | For a plugin with both `search` and `fetch`, a `ToggleGroup` `outline` `sm` of `Words` and `ID` above the query, `Words` pressed first. Switching it while the query still holds the starting value replaces that value with the other mode's, and clears the candidates |
 | Query | One `Input` labelled by the plugin's operations and Find by ([Words, Video page text](#video-page-text)). When text is searched it starts with the title the page shows, selected, so typing replaces it; when text is fetched as an ID it starts with the video's code, or empty without one |
-| Button | `Search` or `Fetch`, the submit button, named by what the text is: an `http` or `https` URL is fetched by its URL when the plugin can fetch; other text is fetched as the work's ID when `ID` is pressed or the plugin cannot search, and searched otherwise. A search-only plugin searches a URL as words |
+| Button | `Search` or `Fetch`, the submit button, named by what the text does: it is fetched as the work's ID when `ID` is pressed or the plugin cannot search, and searched otherwise. The text's shape changes nothing: a pasted URL is searched as words or sent as the ID |
 
 While a run lasts the button spins and reads `Searching…` or `Fetching…`,
 the plugin and query are disabled, and `Cancel` stays usable: closing drops
@@ -465,22 +465,21 @@ in the plugin's order, up to 50, inside the dialog's scrolling body
 
 | Part | Form |
 | --- | --- |
-| Row | A full-width `ghost` button with left-aligned text, divided by `border` lines; pressing it fetches that candidate's URL |
+| Row | A full-width `ghost` button with left-aligned text, divided by `border` lines; pressing it fetches that candidate's `id` |
 | Title | `text-sm text-foreground`, two lines at most (`line-clamp-2`), full text in `title` |
 | Detail | `text-xs text-muted-foreground`, one line `truncate`; absent when the plugin gave none |
-| Host | `text-xs text-muted-foreground`, the URL's host, so two same-titled works from different sites can be told apart |
-| Open page | A `ghost` `icon-sm` link to the URL, new tab, at the row's right end, outside the row's button |
+| ID | `text-xs text-muted-foreground`, `ID {id}`, so two same-titled works can be told apart; a candidate carries no URL, so the row has no link to the page |
 | Fetching | The chosen row shows a `Spinner` at its right end; the other rows and the query are disabled |
 
 When the plugin cannot fetch (search only), a row is not a button: it shows the
-title, detail and host as plain text, and `Open page` is its only action.
+title, detail and ID as plain text.
 
 With no candidates, one muted line, `No matches…`, in place of the list.
 
 ### Compare
 
 The step replaces the find step's body. A muted source line,
-`From {plugin} · {host}` with the host linking to the fetched URL, then
+`From {plugin} · ID {id}` with the fetched ID, then
 `Back to the matches` when the step came from a search, then the comparison:
 a header row (`Now`, `Fetched`) and one row per field, `Title` then `Tags`.
 
@@ -512,7 +511,7 @@ sends the selected fields with `pending`
 | --- | --- |
 | `200`, nothing skipped | The dialog closes, the response `Video` replaces the page's video, the toast `Applied to the video.` shows, the focus returns to the entry |
 | `200`, names skipped | The page's video is replaced as above; the dialog moves to the [result](#result) |
-| `work_info_fetch_stale` | The dialog stays on the comparison with the `Stale` `Alert` above it and `Fetch again`, which runs the same plugin and URL or ID and opens a new comparison; `Apply selected` is disabled (the Issue's edge cases) |
+| `work_info_fetch_stale` | The dialog stays on the comparison with the `Stale` `Alert` above it and `Fetch again`, which runs the same plugin and ID and opens a new comparison; `Apply selected` is disabled (the Issue's edge cases) |
 | Another failure | A `destructive` `Alert`, `Couldn't apply: {reason}`, above the comparison; the selection is kept; the video is unchanged |
 
 ### Result
@@ -547,7 +546,7 @@ judged are 360px, 768px and 1280px.
 | --- | --- | --- | --- |
 | 1280px | Each row's first line holds the badge, name, version and the actions at the right end; the description and the facts line under it | One more icon in the action group, on its one line | `max-w-2xl`, centred; the comparison's three columns side by side; candidates one per row |
 | 768px | As 1280px | As 1280px | As 1280px; the dialog fits inside the viewport's side margins |
-| 360px | The actions move under the row's text, right-aligned, as the media folders; the facts line wraps; the name wraps with `break-words` | The action group stays on one line and the facts wrap above it, as the other entries | The dialog spans the screen with the 16px margin; each comparison row stacks: the checkbox and label, then `Now` and `Fetched` each on its own line with its heading in front; the header row is hidden; candidates keep the open-page link at the right; no horizontal scroll |
+| 360px | The actions move under the row's text, right-aligned, as the media folders; the facts line wraps; the name wraps with `break-words` | The action group stays on one line and the facts wrap above it, as the other entries | The dialog spans the screen with the 16px margin; each comparison row stacks: the checkbox and label, then `Now` and `Fetched` each on its own line with its heading in front; the header row is hidden; candidate rows keep their title, detail and ID on the left; no horizontal scroll |
 
 ## Review criteria
 
@@ -608,7 +607,7 @@ The parent Issue does not ask for screen reader or contrast design, so only
 names are decided.
 
 - The entry is `Fetch work info from a plugin`; each row menu is
-  `More actions for {name}`; each candidate's link is `Open page`.
+  `More actions for {name}`.
 - Each comparison checkbox is labelled by its field label; a disabled one
   says why through its row's `Not in the result` or `Same as now`.
 - Spinners are `aria-hidden`; running controls are `aria-disabled`; the

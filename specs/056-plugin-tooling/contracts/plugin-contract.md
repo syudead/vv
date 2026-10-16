@@ -26,6 +26,18 @@ the owner's stored value when it is set and, for a setting with `options`,
 one of them; otherwise the `default`. A `required` key with a default never
 stops a run.
 
+A `fetch` request carries `id` and no `url`
+([R-10](../research.md#r-10-a-fetch-takes-a-work-id-only-and-vvmdm-never-fetches-a-url-the-owner-typed)):
+the candidate's `id` or the text the owner typed, trimmed, which the plugin
+maps to the page URL. A plugin that read `url` reads `id` instead.
+
+## Candidates
+
+A `search` candidate carries `id` in place of `url`, 1 to 200 characters
+without surrounding spaces, and VVMDM sends it unchanged as the `id` of the
+fetch when the owner chooses the candidate. The dialog shows the ID under the
+title and has no page link.
+
 ## Standard error
 
 What the plugin writes to standard error is shown to the owner on the settings

@@ -19,7 +19,6 @@ import { useToast } from "../../ui/Toast";
 import CompareStep, { type Fetched } from "./CompareStep";
 import {
   canFetch,
-  fetchTarget,
   type FindBy,
   initialQuery,
   initialSelection,
@@ -136,14 +135,15 @@ function useFetchFlow({
     fromSearch: boolean,
   ) => {
     const signal = begin();
-    setRunning({ operation, url: fromSearch ? input : undefined });
+    setRunning({ operation, id: fromSearch ? input : undefined });
     setFailure(null);
     try {
       if (operation === "search") {
         setCandidates(await searchWorkInfo(target.id, input.trim(), signal));
         return;
       }
-      const source = fetchTarget(input);
+      // 入れた文字列は URL の形でも作品の ID としてそのまま送る（親 Issue 1232 の要件 14）。
+      const source = input.trim();
       const result = await fetchWorkInfo(video.id, target.id, source, signal);
       if (signal.aborted) return;
       showCompare({ source, plugin: target, fromSearch, result }, result);
@@ -198,7 +198,7 @@ function useFetchFlow({
       return;
     }
     if (plugin === undefined || running !== null || query.trim() === "") return;
-    void run(plugin, runFor(plugin, query, by), query, false);
+    void run(plugin, runFor(plugin, by), query, false);
   };
 
   return {
@@ -231,10 +231,10 @@ function useFetchFlow({
       setFailure(null);
     },
     changeQuery: setQuery,
-    choose: (url: string) => {
-      // 候補を選ぶことはその URL の取得なので、取得できないプラグインでは走らせない。
+    choose: (id: string) => {
+      // 候補を選ぶことはその作品 ID の取得なので、取得できないプラグインでは走らせない。
       if (plugin !== undefined && canFetch(plugin) && running === null)
-        void run(plugin, "fetch", url, true);
+        void run(plugin, "fetch", id, true);
     },
     toggle: (field: WorkInfoField, on: boolean) => {
       // タグの行のチェックボックスは、選べるタグを全部選ぶか全部外す。
@@ -252,11 +252,10 @@ function useFetchFlow({
     },
     back: () => setStep("find"),
     fetchAgain: () => {
-      // 同じプラグインと URL か ID で取り直す。プラグインが承認を外されていれば、その失敗が
+      // 同じプラグインと作品 ID で取り直す。プラグインが承認を外されていれば、その失敗が
       // 見つける段に出る。
       if (fetched === null || running !== null) return;
-      const input = "id" in fetched.source ? fetched.source.id : fetched.source.url;
-      void run(fetched.plugin, "fetch", input, fetched.fromSearch);
+      void run(fetched.plugin, "fetch", fetched.source, fetched.fromSearch);
     },
     cancel: () => controller.current?.abort(),
   };
@@ -269,9 +268,8 @@ function submitLabel(flow: Flow): ReactNode {
   if (flow.step === "result") return text.done;
   if (flow.step === "compare")
     return flow.applying ? busyLabel(text.applying) : text.apply;
-  const operation =
-    flow.plugin === undefined ? "search" : runFor(flow.plugin, flow.query, flow.by);
-  if (flow.running !== null && flow.running.url === undefined)
+  const operation = flow.plugin === undefined ? "search" : runFor(flow.plugin, flow.by);
+  if (flow.running !== null && flow.running.id === undefined)
     return busyLabel(
       flow.running.operation === "search" ? text.searching : text.fetching,
     );

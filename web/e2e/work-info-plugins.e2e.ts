@@ -236,9 +236,9 @@ test.describe.serial("work-info plugins", () => {
     await openVideo(page, videoTitle);
     await fetchEntry(page).click();
     const dialog = page.getByRole("dialog", { name: "Fetch work info" });
-    await expect(
-      dialog.getByRole("textbox", { name: "Search words or the work's page URL" }),
-    ).toHaveValue(videoTitle);
+    await expect(dialog.getByRole("textbox", { name: "Search words" })).toHaveValue(
+      videoTitle,
+    );
     await dialog.getByRole("button", { name: "Search" }).click();
     await expect(dialog.getByText("2 matches")).toBeVisible();
     await dialog.getByRole("button", { name: /プラグインe2e作品/ }).click();
@@ -295,9 +295,7 @@ test.describe.serial("work-info plugins", () => {
     await openVideo(page, fetchedTitle);
     await fetchEntry(page).click();
     const dialog = page.getByRole("dialog", { name: "Fetch work info" });
-    await dialog
-      .getByRole("textbox", { name: "Search words or the work's page URL" })
-      .fill("e2e");
+    await dialog.getByRole("textbox", { name: "Search words" }).fill("e2e");
     await dialog.getByRole("button", { name: "Search" }).click();
     await dialog.getByRole("button", { name: /プラグインe2e別作品/ }).click();
 
@@ -327,7 +325,7 @@ test.describe.serial("work-info plugins", () => {
       .click();
     await page.getByRole("menuitem", { name: "Last run output" }).click();
     const dialog = page.getByRole("dialog", { name: `Last run of ${pluginName}` });
-    await expect(dialog.getByText("Fetch by ID or URL")).toBeVisible();
+    await expect(dialog.getByText("Fetch by ID")).toBeVisible();
     await expect(dialog.getByText("Finished")).toBeVisible();
     const output = dialog.getByRole("region", { name: "Output" });
     await expect(output).toHaveText("fetch: token=[secret]");

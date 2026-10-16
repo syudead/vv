@@ -13,10 +13,8 @@ import (
 // 実行は internal/app、反映の書き込みは internal/store（OverrideStore）が行う。
 
 const (
-	// WorkInfoSearchQueryMaxRunes は検索の語の、前後の空白を除いたあとの長さの上限（文字数）である。
+	// WorkInfoSearchQueryMaxRunes は検索の語と取得の作品 ID の、前後の空白を除いたあとの長さの上限（文字数）である。
 	WorkInfoSearchQueryMaxRunes = 200
-	// WorkInfoFetchURLMaxRunes は取得する作品の URL の長さの上限（文字数）である（contracts/screen-api.md）。
-	WorkInfoFetchURLMaxRunes = 2048
 	// WorkInfoFetchLifetime は取得の結果をメモリに持つ時間である（research.md R-8）。
 	WorkInfoFetchLifetime = 10 * time.Minute
 )
@@ -26,7 +24,7 @@ var (
 	ErrWorkInfoPluginNotApproved = errors.New("the work-info plugin is not approved")
 	// ErrWorkInfoOperationUnsupported はプラグインのマニフェストがその操作を宣言しないことを表す。
 	ErrWorkInfoOperationUnsupported = errors.New("the work-info plugin does not support the operation")
-	// ErrWorkInfoRunInvalid は検索の語か取得の URL が規則に合わないことを表す。
+	// ErrWorkInfoRunInvalid は検索の語か取得の作品 ID が規則に合わないことを表す。
 	ErrWorkInfoRunInvalid = errors.New("the work-info plugin request is invalid")
 	// ErrWorkInfoFetchStale は取得の結果が期限切れか不明か、取得のあとにプラグインが差し替えられたか、
 	// 承認を取り消されたか、消されたことを表す（research.md R-8）。
@@ -103,23 +101,15 @@ func KeptWorkInfoTitle(raw string) string {
 	return title
 }
 
-// NormalizeWorkInfoSearchQuery は検索の語か取得の ID の前後の空白を除き、1〜WorkInfoSearchQueryMaxRunes
-// 文字の正しい UTF-8 なら返す。外れれば ErrWorkInfoRunInvalid を返す。
+// NormalizeWorkInfoSearchQuery は検索の語か取得の作品 ID の前後の空白を除き、1〜WorkInfoSearchQueryMaxRunes
+// 文字の正しい UTF-8 なら返す。外れれば ErrWorkInfoRunInvalid を返す。所有者が入れた文字列は URL の形でも
+// 作品 ID であり、vv が URL として読むことはない（親 Issue #1232 の要件 14）。
 func NormalizeWorkInfoSearchQuery(query string) (string, error) {
 	trimmed := strings.TrimFunc(query, unicode.IsSpace)
 	if !runeCountBetween(trimmed, 1, WorkInfoSearchQueryMaxRunes) {
 		return "", ErrWorkInfoRunInvalid
 	}
 	return trimmed, nil
-}
-
-// CheckWorkInfoFetchURL は取得の URL が正しい UTF-8 で WorkInfoFetchURLMaxRunes 文字以下の、host を持つ
-// http・https の絶対 URL かを確かめる。上限はバイト数ではなく文字数で数える。外れれば ErrWorkInfoRunInvalid を返す。
-func CheckWorkInfoFetchURL(raw string) error {
-	if !runeCountBetween(raw, 1, WorkInfoFetchURLMaxRunes) || !isWorkURL(raw) {
-		return ErrWorkInfoRunInvalid
-	}
-	return nil
 }
 
 // WorkInfoField は取得の結果のうち、動画に反映できる項目である。

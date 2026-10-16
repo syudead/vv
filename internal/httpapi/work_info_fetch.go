@@ -38,37 +38,30 @@ func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.W
 	}
 	out := make([]gen.WorkInfoCandidate, 0, len(candidates))
 	for _, c := range candidates {
-		out = append(out, gen.WorkInfoCandidate{Url: c.URL, Title: c.Title, Detail: optionalString(c.Detail)})
+		out = append(out, gen.WorkInfoCandidate{Id: c.ID, Title: c.Title, Detail: optionalString(c.Detail)})
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.WorkInfoSearchResult{Candidates: out}, s.logger)
 }
 
-// FetchWorkInfo はプラグインの fetch で作品の url か id から動画の作品情報を取り、結果をメモリに持つ
-// （POST /api/videos/{id}/work-info-fetches）。動画は変えない。
+// FetchWorkInfo はプラグインの fetch で作品の id から動画の作品情報を取り、結果をメモリに持つ
+// （POST /api/videos/{id}/work-info-fetches）。id は URL の形でも作品の ID としてそのまま渡す。動画は変えない。
 func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	var body struct {
 		PluginID *int64  `json:"pluginId"`
-		URL      *string `json:"url"`
 		ID       *string `json:"id"`
 	}
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if body.PluginID == nil || (body.URL == nil) == (body.ID == nil) {
-		s.invalidRequest(w, "pluginId and exactly one of url and id are required.")
+	if body.PluginID == nil || body.ID == nil {
+		s.invalidRequest(w, "pluginId and id are required.")
 		return
 	}
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	var fetch domain.WorkInfoFetchResult
-	var err error
-	if body.URL != nil {
-		fetch, err = s.workInfoPlugins.FetchWorkInfo(r.Context(), id, *body.PluginID, *body.URL)
-	} else {
-		fetch, err = s.workInfoPlugins.FetchWorkInfoByID(r.Context(), id, *body.PluginID, *body.ID)
-	}
+	fetch, err := s.workInfoPlugins.FetchWorkInfo(r.Context(), id, *body.PluginID, *body.ID)
 	if err != nil {
 		s.workInfoRunError(w, err, "The video or the work-info plugin was not found.")
 		return
@@ -243,7 +236,7 @@ func (s *server) workInfoRunError(w http.ResponseWriter, err error, notFound str
 	)
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoRunInvalid):
-		s.invalidRequest(w, "The query must be 1 to 200 characters, and the URL an http or https URL of at most 2048 characters.")
+		s.invalidRequest(w, "The query and the work's id must be 1 to 200 characters after trimming spaces.")
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, notFound)
 	case errors.Is(err, domain.ErrWorkInfoPluginNotApproved):

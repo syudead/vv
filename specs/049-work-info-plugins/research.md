@@ -199,8 +199,9 @@ and reports them as `rejected`.
 
 ## R-10: Search candidates are text only
 
-**Decision**: A candidate carries a URL, a title and an optional detail line;
-no image.
+**Decision**: A candidate carries the work's ID, a title and an optional
+detail line; no image. (The ID replaced a URL when parent Issue #1232 made
+every fetch take an ID only.)
 
 | Option | Verdict |
 | --- | --- |

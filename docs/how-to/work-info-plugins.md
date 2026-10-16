@@ -1,9 +1,9 @@
 # Write a work-info plugin
 
 A work-info plugin is a WebAssembly module that VVMDM runs to search an
-external site for works and fetch a work's title, tags and details by its page
-URL or its ID; when you finish,
-you have a module the owner can add and approve on the settings screen. This
+external site for works and fetch a work's title, tags and details by its
+ID; when you finish, you have a module the owner can add and approve on the
+settings screen. This
 guide is the plugin contract, version 1. Why the sandbox, the limits and the
 network rule have this shape is in
 [work-info-plugins.md](../design-docs/work-info-plugins.md).
@@ -47,8 +47,8 @@ sequenceDiagram
 2. Write the plugin as `main.go`, a Go `main` package. It reads the
    [request](#request) from standard input, calls the
    [host functions](#host-functions) for HTTP, and writes the
-   [response](#response) to standard output. This one fetches the work's page
-   and returns its `<title>`:
+   [response](#response) to standard output. This one builds the work's page
+   URL from the ID, fetches the page and returns its `<title>`:
 
    ```go
    package main
@@ -56,6 +56,7 @@ sequenceDiagram
    import (
        "encoding/json"
        "html"
+       "net/url"
        "os"
        "regexp"
        "unsafe"
@@ -72,7 +73,7 @@ sequenceDiagram
 
    type request struct {
        Operation string            `json:"operation"`
-       URL       string            `json:"url"`
+       ID        string            `json:"id"`
        Settings  map[string]string `json:"settings"`
    }
 
@@ -84,9 +85,10 @@ sequenceDiagram
            fail("unreadable request")
            return
        }
-       page, ok := get(req.URL)
+       pageURL := "https://example.com/works/" + url.PathEscape(req.ID)
+       page, ok := get(pageURL)
        if !ok {
-           fail("could not read " + req.URL)
+           fail("could not read " + pageURL)
            return
        }
        info := map[string]any{}
@@ -174,11 +176,11 @@ sequenceDiagram
    input:
 
    ```bash
-   mdm plugin run plugin.wasm fetch https://example.com/works/1
+   mdm plugin run plugin.wasm fetch 1
    ```
 
    The operation is `search`, whose input is the words, or `fetch`, whose
-   input is the work's URL; the input follows the same rules as on the video
+   input is the work's ID; the input follows the same rules as on the video
    page. Give a plugin with [settings](#setting-fields) their values with
    `--set KEY=VALUE`, once per key, such as `--set token=abc`; only keys the
    manifest declares are taken, and a setting without `--set` receives its
@@ -245,11 +247,16 @@ page.
 
 | The site | Declare | The owner |
 | --- | --- | --- |
-| Has a search | `search` and `fetch` | Types words and picks one of the candidates, which VVMDM fetches by its URL; or chooses **ID** above the field and types the work's ID |
-| Has a page URL built from the work's ID, such as the product code | `fetch` | Types the ID, which starts as the video's code, or pastes the page URL |
+| Has a search | `search` and `fetch` | Types words and picks one of the candidates, which VVMDM fetches by the candidate's `id`; or chooses **ID** above the field and types the work's ID |
+| Has a page URL built from the work's ID, such as the product code | `fetch` | Types the ID, which starts as the video's code |
 
-A plugin that declares only `search` shows its candidates as links, with
+A plugin that declares only `search` shows its candidates as text, with
 nothing to fetch.
+
+The fetch input is always an ID: what the owner types reaches the plugin as
+`id` unchanged, even when it looks like a URL, and VVMDM never fetches it as a
+page. A plugin that wants to accept a pasted page URL reads the ID out of it
+itself.
 
 ### Setting fields
 
@@ -283,7 +290,7 @@ VVMDM writes one JSON object to standard input and closes it.
 | Operation | Fields |
 | --- | --- |
 | `search` | `{"contract": 1, "operation": "search", "query": "<1 to 200 characters>"}` |
-| `fetch` | `{"contract": 1, "operation": "fetch", "url": "<an http or https URL of at most 2048 characters>"}` for a candidate or a pasted page URL, or `{"contract": 1, "operation": "fetch", "id": "<1 to 200 characters>"}` for an ID the owner typed, without surrounding spaces; the plugin builds the page URL from the ID |
+| `fetch` | `{"contract": 1, "operation": "fetch", "id": "<1 to 200 characters>"}`: a candidate's `id` or the text the owner typed, without surrounding spaces; the plugin builds the page URL from the ID |
 
 Both operations also carry `"settings": {"<key>": "<value>"}` with the
 effective value of every declared key that has one, and only those keys. The
@@ -299,7 +306,7 @@ are ignored, so a later contract can add fields without breaking version 1.
 
 | Case | Body |
 | --- | --- |
-| `search` result | `{"candidates": [{"url": "...", "title": "...", "detail": "..."}]}`: `url` (http or https) and `title` required, `detail` optional; VVMDM keeps the first 50 |
+| `search` result | `{"candidates": [{"id": "...", "title": "...", "detail": "..."}]}`: `id` (the work's ID, 1 to 200 characters without surrounding spaces, which a later `fetch` request carries unchanged) and `title` required, `detail` optional; VVMDM keeps the first 50 |
 | `fetch` result | `{"workInfo": {"title": "...", "tags": ["..."], ...}}`: every field optional; the fields are in [Work fields](#work-fields) |
 | Failure | `{"error": {"message": "..."}}`: VVMDM shows the first 300 characters of `message` to the owner |
 

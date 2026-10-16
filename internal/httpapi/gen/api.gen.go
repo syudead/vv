@@ -4374,10 +4374,10 @@ type WorkInfo struct {
 type WorkInfoCandidate struct {
 	// Detail 候補を見分ける説明の 1 行
 	Detail *string `json:"detail,omitempty"`
-	Title  string  `json:"title"`
 
-	// Url 作品の URL（http か https）。取得にそのまま渡す
-	Url string `json:"url"`
+	// Id 作品の ID（前後の空白を除いて 1〜200 文字）。候補を選ぶと取得の `id` にそのまま渡す
+	Id    string `json:"id"`
+	Title string `json:"title"`
 }
 
 // WorkInfoFetch メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8）
@@ -4435,16 +4435,13 @@ type WorkInfoFetchApplied struct {
 	Video Video `json:"video"`
 }
 
-// WorkInfoFetchRequest `url` と `id` のどちらか 1 つを持つ
+// WorkInfoFetchRequest defines model for WorkInfoFetchRequest.
 type WorkInfoFetchRequest struct {
-	// Id 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL に埋め込むのはプラグイン
-	Id *string `json:"id,omitempty"`
+	// Id 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL の形でも ID としてそのまま渡し、URL に埋め込むのはプラグイン
+	Id string `json:"id"`
 
 	// PluginId 承認済みのプラグイン
 	PluginId int64 `json:"pluginId"`
-
-	// Url 作品の URL（http か https、2048 文字まで）
-	Url *string `json:"url,omitempty"`
 }
 
 // WorkInfoFetchedCover 取ったカバー画像の大きさ。プラグインが返さなかったか、取れないか、PNG・JPEG・静止画の WebP で

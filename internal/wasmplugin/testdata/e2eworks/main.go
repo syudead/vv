@@ -22,7 +22,7 @@ const e2eSecret = "e2e-secret-value"
 type request struct {
 	Operation string            `json:"operation"`
 	Query     string            `json:"query"`
-	URL       string            `json:"url"`
+	ID        string            `json:"id"`
 	Settings  map[string]string `json:"settings"`
 }
 
@@ -37,8 +37,8 @@ func main() {
 	fmt.Fprintf(os.Stderr, "%s: token=%s\n", req.Operation, req.Settings["token"])
 	if req.Operation == "search" {
 		reply(map[string]any{"candidates": []map[string]string{
-			{"url": "https://works.example/w/e2e-1", "title": "プラグインe2e作品", "detail": "2024 · e2e"},
-			{"url": "https://works.example/w/e2e-2", "title": "プラグインe2e別作品"},
+			{"id": "e2e-1", "title": "プラグインe2e作品", "detail": "2024 · e2e"},
+			{"id": "e2e-2", "title": "プラグインe2e別作品"},
 		}})
 		return
 	}
@@ -46,13 +46,13 @@ func main() {
 	if req.Settings["token"] == e2eSecret {
 		tags = append(tags, "プラグインe2e鍵タグ")
 	}
-	reply(map[string]any{"workInfo": workInfo(req.URL, tags)})
+	reply(map[string]any{"workInfo": workInfo(req.ID, tags)})
 }
 
-// secondWork は別の出演者だけを返す作品の URL である。
-const secondWork = "https://works.example/w/e2e-2"
+// secondWork は別の出演者だけを返す作品の ID である。
+const secondWork = "e2e-2"
 
-func workInfo(url string, tags []string) map[string]any {
+func workInfo(id string, tags []string) map[string]any {
 	info := map[string]any{
 		"title": "プラグインe2e題名",
 		"tags":  tags,
@@ -63,7 +63,7 @@ func workInfo(url string, tags []string) map[string]any {
 		},
 	}
 	performer := credit("プラグインe2e出演者", "performer-1")
-	if url == secondWork {
+	if id == secondWork {
 		performer = credit("プラグインe2e出演者二", "performer-2")
 	}
 	info["people"] = []map[string]any{performer}

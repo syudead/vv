@@ -96,7 +96,7 @@ func TestPluginPackWritesAModuleThatInspectAndUploadAccept(t *testing.T) {
 		t.Fatalf("exit = %d, stderr %q", run.code, run.stderr)
 	}
 	for _, want := range []string{
-		"example-title 0.1.0", "Does: Search · Fetch by URL",
+		"example-title 0.1.0", "Does: Search · Fetch by ID",
 		"API token (token): Secret; Required", "Region (region): Default: jp; Options: jp, us",
 	} {
 		if !strings.Contains(run.stderr, want) {

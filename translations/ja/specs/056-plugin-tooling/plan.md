@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/plan.md
-sourceHash: fcc82d19309f0bba1bdb0fb6f713d6f83335c10eded5b696303528f9f1cd8b44
+sourceHash: 7f5a43e81db1ca0ae45e72b7faf44924074c4593a2f5cfdb52c22bd4a279b69f
 ---
 
 # 実装計画: 作者、運用者、利用者のための作品情報プラグインの道具 {#implementation-plan-work-info-plugin-tooling-for-authors-operators-and-users}
@@ -37,6 +37,9 @@ flowchart LR
 | タグの選択 | apply で `fields` の隣に `tags` を置く。動画にあるタグは選べない ([R-7](research.md#r-7-the-apply-takes-the-selected-tag-names-and-a-tag-already-on-the-video-is-not-selectable)、[contracts/screen-api.md](contracts/screen-api.md)) |
 | プロキシを設定する場所 | すべてのビルドの Network セクション。LAN スイッチはデスクトップ専用のまま ([R-8](research.md#r-8-the-network-section-shows-on-every-build-and-the-lan-switch-stays-desktop-only)) |
 | `429` の指針 | 実行ごとの待ち 10 秒の範囲で、最大 5 秒後に 1 回再試行し、そのあとはエラー応答にする ([R-9](research.md#r-9-on-a-429-a-plugin-waits-for-the-smaller-of-retry-after-and-5-seconds-retries-once-and-otherwise-reports-an-error)) |
+| ID だけの取得 | 取得の要求、画面 API、候補、`mdm plugin run` は作品の ID を運び、URL を運ばない。所有者の文字列がそのまま ID である ([R-10](research.md#r-10-a-fetch-takes-a-work-id-only-and-vvmdm-never-fetches-a-url-the-owner-typed)、[contracts/plugin-contract.md](contracts/plugin-contract.md)、[contracts/plugin-cli.md](contracts/plugin-cli.md)) |
+
+要件 14 から 16 は、統合 PR が開いたあとで親 Issue に加わった。これらは [049 screen-api.md](../049-work-info-plugins/contracts/screen-api.md) と [049 ui-design.md](../049-work-info-plugins/ui-design.md) の取得の入力を改める。この 2 つはコードが引く生きた参照なので、この Plan の最後の単位がその場で更新する。
 
 この Issue には `ui` ラベルがあるので、`design` ステージが 4 つの画面の単位より前に `ui-design.md` を書く。そこでは次を扱う。[049 ui-design.md の Settings dialog](../049-work-info-plugins/ui-design.md#settings-dialog) の設定ダイアログについては、既定値を入力した値と区別して見せる方法、選択肢のある設定のフィールド、古い値の注記。Network セクションのプロキシの行は、LAN スイッチの行と同じ形にする。プラグインの行とそのダイアログの直近の実行の出力は、空、切り詰め、失敗の状態と、レイアウトを保つ長い出力を含む。[049 ui-design.md の Compare](../049-work-info-plugins/ui-design.md#compare) の比較では、行のチェックボックスを全選択にしてタグを 1 つずつ選ぶこと、初期の選択、動画にあるタグの選択不可の印、25 個以上のタグを全体で見られる一覧を扱う。いずれも Issue の `UI品質` の範囲内である。
 
@@ -138,6 +141,7 @@ flowchart LR
   stderr --> runui[直近の実行のダイアログ]
   tags[タグの選択]
   guide[429 の指針]
+  byid[ID だけの取得]
 ```
 
 ### 作品情報プラグインの設定に既定値と選択肢を宣言する {#declare-default-values-and-choices-for-work-info-plugin-settings}
@@ -219,3 +223,11 @@ flowchart LR
 **依存**: なし。
 
 **受け入れ**: `task check-docs` が通る。手順書の新しい節が、待ちの上限、実行ごとの 10 秒の待ち、1 回の再試行、エラー応答を述べ、`Limits` の節がそれへリンクする。
+
+### 作品の ID だけで作品情報を取得する {#fetch-work-information-by-a-work-id-only}
+
+**範囲**: 親 Issue の要件 14 から 16 ([R-10](research.md#r-10-a-fetch-takes-a-work-id-only-and-vvmdm-never-fetches-a-url-the-owner-typed))。`POST /api/videos/{id}/work-info-fetches` は `pluginId` と `id` を受け取り、`url` は受け取らない。プラグインへの取得の要求は `id` だけを運ぶ。検索の候補は `url` の代わりに `id` を持ち、ID の規則で確認する。`mdm plugin run ... fetch <id>` は ID を受け取る。`web/src/player/workInfoFetch/` の取得ダイアログは、入力した文字列をそのまま ID として送り、各候補にホストとページのリンクの代わりに ID を示し、プラグインの操作を `Fetch by ID` と名付ける。手順書、[049 screen-api.md](../049-work-info-plugins/contracts/screen-api.md)、[049 ui-design.md](../049-work-info-plugins/ui-design.md)、[contracts/plugin-contract.md](contracts/plugin-contract.md)、[contracts/plugin-cli.md](contracts/plugin-cli.md)、e2e のフィクスチャのプラグインが、ID だけの形を述べる。
+
+**依存**: なし。ほかの単位のあと、統合 PR がマージされる前に入る。
+
+**受け入れ**: `task check` が通り、`task generate` との差分がない。CI の `Browser E2E` が通り、`web/e2e/work-info-plugins.e2e.ts` は候補をその ID で選ぶ。ドメインのテストが、URL の形の ID を持つ取得の要求が `id` としてそのまま直列化されること、ID のない候補、空白だけの ID の候補、201 文字の ID の候補が検索を失敗させることを示す。ハンドラーのテストが、`url` を持つ本文には `400` が返り、URL の形の `id` はレジストリに渡されることを示す。CLI のテストが ID で `fetch` を実行する。ページのテストが、貼り付けた URL が語句として検索されるか `id` として送られること、候補がその `id` で取得されること、候補にページのリンクがないことを示す (受け入れ条件 12 から 14)。
