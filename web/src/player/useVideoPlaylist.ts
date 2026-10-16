@@ -34,6 +34,7 @@ export function useVideoPlaylist({
   keepPlaying,
   linkState,
   smartFolder,
+  adoptedSmartFolder,
 }: {
   query: PlaylistQuery | null;
   videoId: number;
@@ -44,6 +45,11 @@ export function useVideoPlaylist({
   linkState: VideoLinkState;
   /** ページの `?smartFolder`。フォルダの項目の中でメンバーの行が保つ。 */
   smartFolder: number | undefined;
+  /**
+   * 動画の応答が採ったフォルダ（`Video.smartFolder` の id）。フォルダが動画を持たなくなると
+   * サーバーは `smartFolder` を無視して答えるので、undefined になる。
+   */
+  adoptedSmartFolder: number | undefined;
 }) {
   const navigate = useNavigate();
   const context = usePlaylistContext({ query, videoId, owner, readKey });
@@ -71,14 +77,16 @@ export function useVideoPlaylist({
       : undefined;
   // グループとスマートフォルダの項目の中では、メンバー一覧の行もプレイリストの文脈を保ち、同じ
   // 項目のメンバーを開く（state はパネルの行と同じ）。項目がそうかは、パネルの並びか、次が同じ
-  // 項目の中にあることか、ページの `smartFolder` で分かる。フォルダの行は今のページの
-  // `smartFolder` を保つ。単体の動画の項目では、メンバーは項目の外なので今までどおり。
+  // 項目の中にあることで分かる。フォルダの項目では、動画の応答がページの `smartFolder` を採った
+  // ときだけで、行は今のページの `smartFolder` を保つ。今の動画がフォルダから外れると、サーバーは
+  // フォルダを無視して動画のグループで答え、その行は項目の外なので今までどおり開く
+  // （specs/052-smart-folders/ui-design.md「Playlists」の States）。単体の動画の項目でも今までどおり。
+  const folderItem = currentItem?.kind === "smartFolder" || smartFolder !== undefined;
   const inGroupItem =
     playback !== undefined &&
-    (currentItem?.kind === "group" ||
-      currentItem?.kind === "smartFolder" ||
-      smartFolder !== undefined ||
-      playback.next?.itemId === playback.itemId);
+    (folderItem
+      ? smartFolder !== undefined && adoptedSmartFolder === smartFolder
+      : currentItem?.kind === "group" || playback.next?.itemId === playback.itemId);
   const memberTarget: MemberTarget | undefined =
     context.status === "ready" && playback !== undefined && inGroupItem
       ? (memberId) => ({

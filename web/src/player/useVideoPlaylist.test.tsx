@@ -63,6 +63,7 @@ function renderPlaylist(playback: PlaylistPlayback | undefined) {
       keepPlaying: false,
       linkState,
       smartFolder: undefined,
+      adoptedSmartFolder: undefined,
     }),
   ).result.current;
 }

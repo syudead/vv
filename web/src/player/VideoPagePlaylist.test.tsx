@@ -917,6 +917,36 @@ describe("VideoPage のプレイリストの文脈", () => {
       );
     });
 
+    it("今の動画がフォルダから外れると、フォルダの行を出さず、動画のグループのメンバーの行は項目の外として開く", async () => {
+      // 条件かタグが変わり、フォルダ 7 はもう second を持たない。サーバーは smartFolder を無視し、
+      // 動画のグループ（series）で答え、再生の応答の next は次の項目へ進む。
+      server.videos.set(12, () => json(second));
+      server.related.set(12, {
+        items: [],
+        group: {
+          id: 1,
+          name: "series",
+          items: [videoOf(41, "member-one"), second],
+          offset: 0,
+          total: 2,
+        },
+      });
+      server.playback.mockImplementation(() =>
+        json({ ...playbackFor(22), next: step(23, third), nextItem: step(23, third) }),
+      );
+      renderPage("/videos/12?playlist=5&item=22&smartFolder=7");
+      await line();
+      const memberLink = await screen.findByRole("link", { name: /^member-one/ });
+      expect(memberLink.getAttribute("href")).toBe("/videos/41");
+      expect(screen.queryByRole("link", { name: /^Smart folder/ })).toBeNull();
+      // パネルの今の行はフォルダの項目のまま。
+      expect(panelRows().map((row) => row.getAttribute("aria-current"))).toEqual([
+        null,
+        "true",
+        null,
+      ]);
+    });
+
     it("smartFolderId の無いステップは smartFolder を運ばない", async () => {
       server.playback.mockImplementation((item) =>
         json(

@@ -347,6 +347,7 @@ export default function VideoPage() {
     keepPlaying,
     linkState,
     smartFolder: groupContext.smartFolder,
+    adoptedSmartFolder: video?.smartFolder?.id,
   });
 
   // 予告を取り消したら今の再生終了の層を出す。フォーカスが予告の中にあったなら、
