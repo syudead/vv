@@ -39,6 +39,11 @@ export interface SearchBoxProps {
    * 打鍵ごとにサーバーへ引き直す（前の要求は打ち切る）ので 0 にする。
    */
   debounceMs?: number;
+  /**
+   * 検索語の上限（符号位置の数）。既定は動画の一覧の `MAX_QUERY_LENGTH`。上限の違う契約を
+   * 持つ一覧（アクティビティの `q` は 200）はその数を渡す。
+   */
+  maxLength?: number;
   disabled?: boolean;
   className?: string;
 }
@@ -48,8 +53,13 @@ export interface SearchBoxProps {
  * 数えるので使わず、URL・サーバーと同じく符号位置で数える（list-url.md §1）。
  * 上限を超える貼り付けも、入る分だけが入る（Issue の Edge Case「語の長さの上限」）。
  */
-export function limitQueryInput(next: string, previous = "", caret?: number): string {
-  return limitCodePoints(next, MAX_QUERY_LENGTH, previous, caret);
+export function limitQueryInput(
+  next: string,
+  previous = "",
+  caret?: number,
+  maxLength = MAX_QUERY_LENGTH,
+): string {
+  return limitCodePoints(next, maxLength, previous, caret);
 }
 
 /**
@@ -64,6 +74,7 @@ export default function SearchBox({
   placeholder = t.list.search.placeholder,
   syntaxHelp = true,
   debounceMs = searchDebounceMs,
+  maxLength = MAX_QUERY_LENGTH,
   disabled = false,
   className,
 }: SearchBoxProps) {
@@ -103,11 +114,11 @@ export default function SearchBox({
     // `input` ではなく控えを読む。URL 側の変更に追従した描画では、上の effect が控えを
     // 新しい語にしたあとも `input` はまだ前の語なので、それで確定し直すと消した検索語が
     // 戻る（`onCommit` が描画ごとに変わると、この effect も同じ描画で走り直す）。
-    const next = normalizeQuery(latest.current);
+    const next = normalizeQuery(latest.current, maxLength);
     if (next === committed.current) return;
     const timer = setTimeout(() => commit(next), debounceMs);
     return () => clearTimeout(timer);
-  }, [commit, input, debounceMs]);
+  }, [commit, input, debounceMs, maxLength]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -145,13 +156,14 @@ export default function SearchBox({
               event.target.value,
               latest.current,
               event.target.selectionEnd ?? undefined,
+              maxLength,
             ),
           )
         }
         onFocus={() => session.current.start()}
         onBlur={() => {
           // 待っている確定があれば、続きを閉じる前に済ませる。
-          commit(normalizeQuery(latest.current));
+          commit(normalizeQuery(latest.current, maxLength));
           session.current.end();
         }}
         onKeyDown={(event) => {

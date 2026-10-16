@@ -69,7 +69,7 @@ noted. `{name}` and the like are the arguments of the catalog function.
 | Not in the library | `Not in the library` | Replaces the result's end when the subject has no video |
 | Time | `Just now`, `{n} minutes ago`, `{n} hours ago`, `Yesterday {time}`, `{date} {time}` | The full date and time in the tooltip |
 | Icon buttons (tooltip and read aloud) | `Retry`, `Undo`, `Undo tags…`, `Open`, `Open in Duplicates`, `Work info`, `Settings` | |
-| Footer | `{n} running`, `{n} waiting`, `{n} need attention`, `{n} done` | Running counts entries being processed; waiting those queued |
+| Footer | `{n} running`, `{n} need attention`, `{n} done` | Running counts entries being processed and those queued, as `counts.running` does |
 | Toast after undo | `Undone. vv won't decide this again on its own` | |
 | Toast after an already reverted undo | `Already changed back. vv won't decide this again on its own` | |
 | Toast on a failed retry or undo | `Couldn't retry: {reason}`, `Couldn't undo: {reason}` | `{reason}` from the error catalog |
@@ -153,11 +153,14 @@ scrolls, with `LoadMoreRow` at the end.
 
 ### Footer band
 
-A band under the cards with a top `border`, `activity-card` high: `{n} running`,
-`{n} waiting`, `{n} need attention` from the left, each number in `font-semibold`
-(`primary`, `foreground`, `destructive`), and `{n} done` at the right end. It
-counts the whole log whatever the filters, as the sidebar does, so the owner
-sees work in progress and problems while looking at anything else.
+A band under the cards with a top `border`, `activity-card` high: `{n} running`
+and `{n} need attention` from the left, each number in `font-semibold`
+(`primary`, `destructive`), and `{n} done` at the right end. The numbers are
+the `counts` of a request with no filter
+([contracts/screen-api.md](contracts/screen-api.md#get-apiactivity)), so
+`running` includes queued entries. It counts the whole log whatever the
+filters, as the sidebar does, so the owner sees work in progress and problems
+while looking at anything else.
 
 ### Live updates
 
@@ -192,7 +195,7 @@ owner-only screen does ([016 UI design](../016-single-account-auth/ui-design.md)
 
 | Width | Layout |
 | --- | --- |
-| 360px | The toolbar is one row that scrolls sideways: a search icon button that opens the field over the row, then the filter buttons. Each card is two lines: the status icon and the subject, with the action buttons at the right spanning both lines; under the subject, the chip, the result (truncated) and the short time (`15m`). The footer shows the three counts, without `done` |
+| 360px | The toolbar is one row that scrolls sideways: a search icon button that opens the field over the row, then the filter buttons. Each card is two lines: the status icon and the subject, with the action buttons at the right spanning both lines; under the subject, the chip, the result (truncated) and the short time (`15m`). The footer shows the two counts, without `done` |
 | 768px | As 360px, with the search field in place of the icon button; the four filter buttons fit |
 | 1280px | One toolbar row with the search field and the four buttons. Each card is one line: icon, subject, chip, the result pushed to the right, time, actions |
 

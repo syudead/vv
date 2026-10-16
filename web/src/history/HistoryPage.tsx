@@ -29,6 +29,7 @@ import {
   type WatchHistoryEntry,
   type WatchHistoryFilter,
 } from "../api/history";
+import { useLoadMoreWhenNear } from "../hooks/useLoadMoreWhenNear";
 import { errorText, t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
 import { formatDuration, unplayableText } from "../lib/format";
@@ -202,18 +203,7 @@ export default function HistoryPage() {
     state.kind === "ready" &&
     state.nextCursor !== undefined &&
     state.more.kind === "idle";
-  useEffect(() => {
-    const target = lastRow.current;
-    if (!canLoadMore || target === null) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries.some((entry) => entry.isIntersecting)) loadMore();
-      },
-      { rootMargin: "0px 0px 100% 0px" },
-    );
-    observer.observe(target);
-    return () => observer.disconnect();
-  }, [canLoadMore, items, loadMore]);
+  useLoadMoreWhenNear(lastRow, canLoadMore, loadMore, items);
 
   function remove(entry: WatchHistoryEntry) {
     const id = entry.id;

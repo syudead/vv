@@ -172,6 +172,17 @@ use case registered for its kind. A kind with nothing registered answers
 `candidates`
 ([R-8](../../specs/055-activity/research.md#r-8-the-screen-refreshes-on-an-activity-notification)).
 
+On the Web client, the Activity screen (`web/src/activity`) refetches the
+counts and every page it has loaded on that event and on a reconnect, and
+replaces the cards in place; one refetch runs at a time, and a notification
+during it or during the first page's load asks for one more. The shell's
+sidebar entry and the screen's footer read the whole log's `counts` from a
+request with no filter (`web/src/api/useActivityTotals.ts`), so `running`
+there includes queued entries. The filters live in the page URL (`status`, `feature`, `decider`,
+`period`, `q`); `period` is turned into `since` when the first page or a
+refetch starts, and the next pages keep that `since`
+([055 UI design, Activity page](../../specs/055-activity/ui-design.md#activity-page)).
+
 | Rejected | Why |
 | --- | --- |
 | Entries in the notification payload | Every other notification is re-read state; a payload would need its own ordering and paging |

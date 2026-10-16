@@ -187,6 +187,11 @@
   /* 設定の取り込みの問題の一覧の最大の高さと、フォルダ選択の一覧の高さ */
   --spacing-issue-list: 50vh;
   --spacing-folder-list: 18rem;
+  /* アクティビティ（web/src/activity）: カードの最小の高さ（52px）、時刻の列の幅（104px）、
+     取り込みの進み具合の棒の幅（160px）。フッターの帯もカードと同じ高さ */
+  --spacing-activity-card: 3.25rem;
+  --spacing-activity-time: 6.5rem;
+  --spacing-activity-bar: 10rem;
 
   /* --- 角丸: sm（チェック・バッジ）、md（操作・カード・サムネイル）、lg（浮く層）、full --- */
   --radius-sm: 4px;
