@@ -1783,6 +1783,10 @@ type Alias struct {
 type ApplyWorkInfoFetchRequest struct {
 	// Fields 反映する項目。空にできず、どれも結果に値がなければならない
 	Fields []WorkInfoField `json:"fields"`
+
+	// Tags fields が tags を含むときに付ける取得済みのタグの名前。結果の tags の空でない部分集合で、結果が返した綴りのまま。
+	// 無ければ取得したタグを全部付ける。空、結果に無い名前、fields に tags が無いのに有る場合は 400
+	Tags *[]string `json:"tags,omitempty"`
 }
 
 // ApproveWorkInfoPluginRequest defines model for ApproveWorkInfoPluginRequest.

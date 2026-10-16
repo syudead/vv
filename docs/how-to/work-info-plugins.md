@@ -371,6 +371,15 @@ A refused address answers `-2`, and the run fails with `blocked_address` and
 the refused host, whatever the plugin writes afterwards. VVMDM ignores
 `HTTP_PROXY` and the other proxy variables for plugin requests.
 
+The operator may send plugin requests through a proxy (`http`, `https` or
+`socks5`). The plugin sees no difference in the host functions. VVMDM then
+resolves each request's host, and each redirect's, before the request leaves,
+and refuses it with `-2` and `blocked_address` when any address falls under
+the rules above, so a public name that resolves to the LAN is refused before
+it reaches the proxy. When the proxy cannot be reached, refuses the
+connection or answers `407`, the request answers `-3`, and if the plugin then
+fails, the run fails with `network_error` and the proxy's host.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |

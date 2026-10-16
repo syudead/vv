@@ -15,6 +15,9 @@ type WorkInfoPluginRuntime interface {
 	// モジュールが domain.WorkInfoPluginModuleMaxBytes を超えるときは domain.ErrWorkInfoPluginTooLarge を返す。
 	Inspect(ctx context.Context, module []byte) (domain.WorkInfoPluginManifest, domain.WorkInfoPluginProblem, error)
 	// Run はダイジェスト digest のモジュールを新しいインスタンスで 1 回動かし、要求への応答を返す。
+	// プラグインの要求は network のとおりに送る（specs/056-plugin-tooling/research.md R-4）。
 	// 実行の失敗は *domain.WorkInfoRunError で返す。
-	Run(ctx context.Context, digest string, module []byte, req domain.WorkInfoRunRequest) (domain.WorkInfoRunResult, error)
+	Run(
+		ctx context.Context, digest string, module []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork,
+	) (domain.WorkInfoRunResult, error)
 }

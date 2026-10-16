@@ -17,6 +17,7 @@ export type WorkInfoCandidate = components["schemas"]["WorkInfoCandidate"];
 export type WorkInfoFetch = components["schemas"]["WorkInfoFetch"];
 export type WorkInfoField = components["schemas"]["WorkInfoField"];
 export type WorkInfoFetchApplied = components["schemas"]["WorkInfoFetchApplied"];
+type ApplyWorkInfoFetchRequest = components["schemas"]["ApplyWorkInfoFetchRequest"];
 export type SkippedTag = components["schemas"]["SkippedTag"];
 export type WorkInfoFetchedDate = components["schemas"]["WorkInfoFetchedDate"];
 export type WorkInfoFetchedPerson = components["schemas"]["WorkInfoFetchedPerson"];
@@ -157,7 +158,8 @@ export function fetchWorkInfo(
 
 /**
  * applyWorkInfoFetch は取得の結果 `fetchId` のうち `fields` の項目を動画に反映する
- * （POST …/work-info-fetches/{fetchId}/apply）。応答は反映後の動画（`workInfo` を含む）と、付けなかった
+ * （POST …/work-info-fetches/{fetchId}/apply）。`tags` を渡せば、`fields` が `tags` を含むとき
+ * 取得したタグのうちその名前だけを付ける（specs/056-plugin-tooling/contracts/screen-api.md）。応答は反映後の動画（`workInfo` を含む）と、付けなかった
  * タグの名前 `skippedTags` と、飛ばした作品の詳細の値 `skipped` である。結果は
  * 使い切りで、期限切れか取得の後にプラグインが変わっていれば 409 `work_info_fetch_stale` で失敗する。
  * 成功したら一覧の控えを捨て、タグを付けたなら共有のタグの一覧も取り直す。
@@ -166,11 +168,14 @@ export async function applyWorkInfoFetch(
   videoId: number,
   fetchId: string,
   fields: readonly WorkInfoField[],
+  tags?: readonly string[],
   signal?: AbortSignal,
 ): Promise<WorkInfoFetchApplied> {
+  const body: ApplyWorkInfoFetchRequest = { fields: [...fields] };
+  if (tags !== undefined) body.tags = [...tags];
   const applied = await request<WorkInfoFetchApplied>(
     `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}/apply`,
-    { method: "POST", headers: jsonHeaders, body: JSON.stringify({ fields }), signal },
+    { method: "POST", headers: jsonHeaders, body: JSON.stringify(body), signal },
   );
   // 控えは離れた一覧の題名とタグを持ち、一覧が外れている間の `video` 通知では直らないので、
   // 捨てて戻ったときに読み直させる（setVideoDetails と同じ）。タグを付けたなら、作られた
