@@ -11,6 +11,9 @@ import (
 type OllamaSettingsStore interface {
 	OllamaSettings(ctx context.Context) (domain.OllamaSettings, error)
 	SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) error
+	// OllamaConnectionSaved は接続先の行があるかを返す。OllamaSettings は行が無ければ既定値を
+	// 返すので、保存したかはこちらで見る（specs/058-settings-pages/research.md R-4）。
+	OllamaConnectionSaved(ctx context.Context) (bool, error)
 }
 
 // OllamaProbe は保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる。
@@ -44,6 +47,12 @@ func (o *OllamaConnection) OnSaved(saved func(context.Context)) {
 // Settings は保存した接続先を返す。
 func (o *OllamaConnection) Settings(ctx context.Context) (domain.OllamaSettings, error) {
 	return o.store.OllamaSettings(ctx)
+}
+
+// Saved は所有者が接続先を保存したかを返す。重複の判定が待つかを決めるのと同じ答え
+// （specs/054-auto-dup/research.md R-13、specs/058-settings-pages/research.md R-4）。
+func (o *OllamaConnection) Saved(ctx context.Context) (bool, error) {
+	return o.store.OllamaConnectionSaved(ctx)
 }
 
 // SaveSettings は接続先を整えて保存し、保存後の値を返す。規則に合わなければ

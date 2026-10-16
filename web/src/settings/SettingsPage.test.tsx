@@ -83,7 +83,7 @@ describe("SettingsPage", () => {
       // 「Ollama」区画は OllamaSection.test.tsx が確かめる。ここでは既定値を返す。
       if (String(input) === "/api/settings/ollama")
         return Promise.resolve(
-          json({ endpoint: "http://127.0.0.1:11434", model: "clef-flash" }),
+          json({ endpoint: "http://127.0.0.1:11434", model: "clef-flash", saved: false }),
         );
       // 「Auto-tagging」区画は AutoTaggingSection.test.tsx が確かめる。ここでは既定値を返す。
       if (String(input) === "/api/settings/auto-tagging")

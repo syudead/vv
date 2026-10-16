@@ -124,13 +124,21 @@ func TestOllamaSettingsDefaultsAndSave(t *testing.T) {
 
 	rec := f.env.get("/api/settings/ollama", f.owner)
 	if got := decode[gen.OllamaSettings](t, rec); rec.Code != http.StatusOK ||
-		got.Endpoint != domain.DefaultOllamaEndpoint || got.Model != domain.DefaultOllamaModel {
+		got.Endpoint != domain.DefaultOllamaEndpoint || got.Model != domain.DefaultOllamaModel || got.Saved {
 		t.Fatalf("defaults = %d %+v", rec.Code, got)
+	}
+	// saved は応答だけの値で、要求に含めると拒む（specs/058-settings-pages/contracts/screen-api.md）。
+	if res := f.send(http.MethodPut, "/api/settings/ollama", `{"endpoint":"http://gpu:11434","model":"clef","saved":true}`); res.StatusCode != http.StatusBadRequest {
+		t.Errorf("body with saved: status = %d", res.StatusCode)
 	}
 	rec = f.env.serve(authRequest{method: http.MethodPut, target: "/api/settings/ollama",
 		body: `{"endpoint":"http://gpu:11434/","model":"clef"}`, cookies: []*http.Cookie{f.owner}})
-	if got := decode[gen.OllamaSettings](t, rec); rec.Code != http.StatusOK || got.Endpoint != "http://gpu:11434" || got.Model != "clef" {
+	if got := decode[gen.OllamaSettings](t, rec); rec.Code != http.StatusOK || got.Endpoint != "http://gpu:11434" || got.Model != "clef" || !got.Saved {
 		t.Fatalf("saved = %d %+v", rec.Code, got)
+	}
+	rec = f.env.get("/api/settings/ollama", f.owner)
+	if got := decode[gen.OllamaSettings](t, rec); rec.Code != http.StatusOK || got.Endpoint != "http://gpu:11434" || !got.Saved {
+		t.Fatalf("after save = %d %+v", rec.Code, got)
 	}
 	if stored, _ := f.env.db.Settings().AutoTagSettings(context.Background()); stored != domain.DefaultAutoTagSettings() {
 		t.Fatalf("接続先の保存が機能の設定を変えた: %+v", stored)
