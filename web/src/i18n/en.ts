@@ -221,6 +221,10 @@ const errorCodes = {
   plugin_busy: "Another plugin is running. Try again in a moment.",
   operation_unsupported: "The plugin can't do that.",
   work_info_fetch_stale: "The result is out of date. Fetch it again.",
+  invalid_smart_rule: "A condition is out of range.",
+  smart_folder_not_found: "That smart folder no longer exists.",
+  smart_folder_cycle:
+    "A smart folder can't be put inside itself or inside one of its children.",
 } satisfies Record<ErrorCode, ErrorEntry>;
 
 const errorReasons = {

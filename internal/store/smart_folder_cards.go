@@ -46,6 +46,35 @@ func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain
 	return cards, nil
 }
 
+// ListSmartFolders は見る人（audience）に見せるスマートフォルダの要約を、どの深さのものも名前の順
+// （title_key、同じなら id）に返す（GET /api/smart-folders、親を選ぶ欄とフォルダの木）。所有者には
+// すべてを、ゲストには再生順が空でないフォルダだけを返す（research.md R-8）。ゲストにはフォルダごとに
+// 再生順の最初の項目があるかを確かめる。
+func (s *SmartFolderStore) ListSmartFolders(ctx context.Context, audience domain.Audience) ([]domain.SmartFolderSummary, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return nil, fmt.Errorf("cannot start reading the smart folders: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	ids, err := queryInt64s(ctx, tx, `select id from smart_folders order by title_key, id`)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the smart folders: %w", err)
+	}
+	targets, err := shownSmartFolderTargets(ctx, tx, audience, ids, listNow().Unix())
+	if err != nil {
+		return nil, err
+	}
+	folders := make([]domain.SmartFolderSummary, 0, len(targets))
+	for _, target := range targets {
+		folders = append(folders, target.summary)
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("cannot finish reading the smart folders: %w", err)
+	}
+	return folders, nil
+}
+
 // smartCardRow はカードの読み出しの問い合わせの 1 行（フォルダ 1 つ）である。
 type smartCardRow struct {
 	index                         int
