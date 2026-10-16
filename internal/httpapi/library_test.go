@@ -62,6 +62,7 @@ func newLibraryFixtureWith(t *testing.T, adjust func(Options) Options) *libraryF
 			Playback: db.Playback(), Tags: db.Tags(), Visibility: db.Visibility(),
 			Favorites: db.Favorites(), Versions: db.Versions(), Playlists: db.Playlists(), Groups: db.Groups(),
 			SmartFolders:     db.SmartFolders(),
+			Home:             db.Home(),
 			PlaylistPlayback: db.Playlists(),
 			Organizer:        app.NewOrganizer(app.OrganizerOptions{Store: db.Organize()}),
 		})
