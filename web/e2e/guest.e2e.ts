@@ -430,7 +430,7 @@ test.describe.serial("guest", () => {
 
     await page.goto("/library");
     await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
-    expect(await sidebarNames(page)).toEqual(["Library", "Folders", "Sign in"]);
+    expect(await sidebarNames(page)).toEqual(["Home", "Library", "Folders", "Sign in"]);
     await expect(page.getByRole("button", { name: /Scan/ })).toHaveCount(0);
     await expect(page.getByRole("checkbox")).toHaveCount(0);
     await page.locator("article[data-group-root]").first().hover();
