@@ -37,7 +37,7 @@ import TagChips, { type ChipItem, chipsOfVideo } from "./TagChips";
 /** Fetched は比較の段に出す取得の結果と、それをどこから取ったかである。 */
 export interface Fetched {
   result: WorkInfoFetch;
-  /** 取った作品の URL（fetch）か ID（lookup）。「Fetch again」も同じもので走らせる。 */
+  /** 取った作品の URL か ID。「Fetch again」も同じもので走らせる。 */
   source: WorkInfoTarget;
   /** 取得に使ったプラグイン。「Fetch again」も同じプラグインで走らせる。 */
   plugin: WorkInfoPlugin;
