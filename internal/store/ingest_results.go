@@ -14,8 +14,9 @@ import (
 )
 
 // ApplyProbe は解析の結果を反映する。再生可否の判定は domain が行い、
-// ここはその結果を書き込むだけである。ライブ変換用の解析情報（probe.Transcode）が
-// あれば、同じ取引で video_transcode_probes へ upsert する。
+// ここはその結果を書き込むだけである。ライブ変換用の解析情報（probe.Transcode）と
+// 追加の情報（probe.Media）があれば、同じ取引で video_transcode_probes と
+// video_media_info へ upsert する。
 //
 // 取得できなかった値は null のままにする。0 で代用すると、一覧で
 // 「尺が 0 の動画」と「尺が分からない動画」を区別できなくなる。
@@ -50,10 +51,8 @@ func (s *IngestStore) ApplyProbe(
 	}
 	var succeeded succession
 	if count == 1 {
-		if probe.Transcode != nil {
-			if err := upsertTranscodeProbe(ctx, tx, id, probe.Source, *probe.Transcode, now); err != nil {
-				return err
-			}
+		if err := upsertProbeRows(ctx, tx, id, probe, now); err != nil {
+			return err
 		}
 		var contentKey string
 		if err := tx.QueryRowContext(ctx, `select content_key from videos where id = ?`, id).Scan(&contentKey); err != nil {
@@ -71,8 +70,25 @@ func (s *IngestStore) ApplyProbe(
 	return nil
 }
 
+// upsertProbeRows は videos の行を書いた取引の中で、解析の結果に付く行（ライブ変換用の
+// 解析情報と追加の情報）を書く。どちらも無ければ何もしない。差し替わったファイルの値が
+// 残らないよう、呼び手は videos の更新が 1 行に当たったときだけ呼ぶ
+// （specs/056-media-info/data-model.md「Rules」）。
+func upsertProbeRows(ctx context.Context, tx *sql.Tx, videoID int64, probe domain.Probe, now time.Time) error {
+	if probe.Transcode != nil {
+		if err := upsertTranscodeProbe(ctx, tx, videoID, probe.Source, *probe.Transcode, now); err != nil {
+			return err
+		}
+	}
+	if probe.Media != nil {
+		return upsertMediaInfo(ctx, tx, videoID, *probe.Media, now)
+	}
+	return nil
+}
+
 // ApplyProbeForJob writes only while the file identity captured at claim time is current.
-// The live-transcode probe is upserted in the same transaction, only when the video row was written.
+// The live-transcode probe and the media information are upserted in the same transaction,
+// only when the video row was written.
 //
 // 結果を書いたら、同じ取引で一覧用プレビューの仕事を積む。解析の仕事はこの時点で
 // まだ running なので、その動画が一瞬だけ「済み」に数えられることが無い
@@ -104,10 +120,8 @@ func (s *IngestStore) ApplyProbeForJob(
 	if err != nil || count != 1 {
 		return false, err
 	}
-	if probe.Transcode != nil {
-		if err := upsertTranscodeProbe(ctx, tx, job.VideoID, probe.Source, *probe.Transcode, now); err != nil {
-			return false, err
-		}
+	if err := upsertProbeRows(ctx, tx, job.VideoID, probe, now); err != nil {
+		return false, err
 	}
 	if err := clearFailedIssue(ctx, tx, domain.JobProbe, job.VideoID); err != nil {
 		return false, err

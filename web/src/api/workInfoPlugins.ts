@@ -159,6 +159,15 @@ export function fetchWorkInfo(
 }
 
 /**
+ * workInfoFetchCoverUrl は取得の結果 `fetchId` のカバー画像の URL である
+ * （GET /api/videos/{id}/work-info-fetches/{fetchId}/cover）。画像は vv が取ったもので、ブラウザは外部の
+ * サイトに取りに行かない。
+ */
+export function workInfoFetchCoverUrl(videoId: number, fetchId: string): string {
+  return `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}/cover`;
+}
+
+/**
  * applyWorkInfoFetch は取得の結果 `fetchId` のうち `fields` の項目を動画に反映する
  * （POST …/work-info-fetches/{fetchId}/apply）。応答は反映後の動画（`workInfo` を含む）と、付けなかった
  * タグの名前 `skippedTags` と、飛ばした作品の詳細の値 `skipped` である。結果は

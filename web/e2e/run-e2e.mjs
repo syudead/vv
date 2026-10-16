@@ -12,7 +12,9 @@ import {
   generateGroupsFixtures,
   generateGuestFixtures,
   generateHistoryFixtures,
+  generateChapterFixtures,
   generateMediaFixtures,
+  generateMediaInfoFixtures,
   generatePlaylistsFixtures,
   generateScanIssueFixtures,
   generateScanProgressFixtures,
@@ -52,6 +54,7 @@ const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
 const scanIssuesMediaDir = path.join(runRoot, "scan-issues-media");
 const thumbnailEditMediaDir = path.join(runRoot, "thumbnail-edit-media");
 const workInfoMediaDir = path.join(runRoot, "work-info-media");
+const mediaInfoMediaDir = path.join(runRoot, "media-info-media");
 const workInfoPluginsMediaDir = path.join(runRoot, "work-info-plugins-media");
 // work-info-plugins.e2e.ts が設定画面から上げる作品情報プラグイン。動画のフォルダの外に置く。
 const workInfoPlugin = path.join(runRoot, "plugins", "e2e-works.wasm");
@@ -92,6 +95,8 @@ function run() {
     generateThumbnailEditFixtures(thumbnailEditMediaDir);
     generateThumbnailUploadFixtures(thumbnailUploadDir);
     generateWorkInfoFixtures(workInfoMediaDir);
+    generateMediaInfoFixtures(mediaInfoMediaDir);
+    generateChapterFixtures(mediaInfoMediaDir);
     generateWorkInfoPluginFixtures(workInfoPluginsMediaDir);
     mkdirSync(path.dirname(workInfoPlugin), { recursive: true });
     buildWorkInfoPlugin(repoRoot, workInfoPlugin, { ...process.env, GOCACHE: goCache });
@@ -153,6 +158,7 @@ function run() {
           MDM_E2E_THUMBNAIL_EDIT_MEDIA_DIR: thumbnailEditMediaDir,
           MDM_E2E_THUMBNAIL_UPLOAD_DIR: thumbnailUploadDir,
           MDM_E2E_WORK_INFO_MEDIA_DIR: workInfoMediaDir,
+          MDM_E2E_MEDIA_INFO_MEDIA_DIR: mediaInfoMediaDir,
           MDM_E2E_WORK_INFO_PLUGINS_MEDIA_DIR: workInfoPluginsMediaDir,
           MDM_E2E_WORK_INFO_PLUGIN: workInfoPlugin,
           MDM_E2E_COMFYUI_URL: `http://127.0.0.1:${String(FAKE_COMFYUI_PORT)}`,

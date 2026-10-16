@@ -137,7 +137,7 @@ export function tagsRow(video: Video, fetched: WorkInfoFetch): RowState {
   return fetched.tags.every((name) => names.has(name)) ? "same" : "differs";
 }
 
-/** rowState は項目 field の行の状態である。 */
+/** rowState は項目 field の行の状態である。カバー画像は今のサムネイルと比べられないので、あれば `differs` である。 */
 export function rowState(
   field: WorkInfoField,
   video: Video,
@@ -145,6 +145,7 @@ export function rowState(
 ): RowState {
   if (field === "title") return titleRow(video, fetched);
   if (field === "tags") return tagsRow(video, fetched);
+  if (field === "cover") return fetched.cover === undefined ? "missing" : "differs";
   return detailRow(field, videoWorkInfo(video), fetched).state;
 }
 
@@ -155,6 +156,7 @@ export function rowState(
 export const FIELDS: readonly WorkInfoField[] = [
   "title",
   "tags",
+  "cover",
   "code",
   "description",
   "dates.release",
@@ -172,7 +174,7 @@ export const FIELDS: readonly WorkInfoField[] = [
 
 /**
  * comparedFields は比較の段に出す行の項目である。題名とタグはいつも出し（値が無ければ
- * `Not in the result`）、作品の詳細は結果に値があるときだけ出す。
+ * `Not in the result`）、カバー画像と作品の詳細は結果に値があるときだけ出す。
  */
 export function comparedFields(video: Video, fetched: WorkInfoFetch): WorkInfoField[] {
   return FIELDS.filter(
@@ -225,6 +227,7 @@ export function skippedReason(value: SkippedWorkInfoValue): UiText {
   if (value.reason === "too_many") return text.tooMany(limitItems(value.field));
   if (value.reason === "ambiguous")
     return text.ambiguous[creditKind(value.field) ?? "person"];
+  if (value.field === "cover") return text.invalidCover;
   if (isDateRow(value.field)) return text.invalidDate;
   return value.field === "urls" ? text.invalidUrl : text.invalidOther;
 }

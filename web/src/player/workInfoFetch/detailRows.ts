@@ -20,7 +20,7 @@ import type { RowState } from "./fetchRules";
 // 「States」）。今の値はページの workInfo から、取得した値は取得の結果と照合の答えから作る。
 
 /** DetailField は題名とタグ以外の、作品の詳細の行の項目である。 */
-export type DetailField = Exclude<WorkInfoField, "title" | "tags">;
+export type DetailField = Exclude<WorkInfoField, "title" | "tags" | "cover">;
 
 /** CreditKind は人物・団体の行の実体の種類である。 */
 export type CreditKind = "person" | "organization";
@@ -97,9 +97,14 @@ function isOrganizationField(field: DetailField): field is OrganizationField {
   return field in ORGANIZATION_FIELDS;
 }
 
+/** isDetailField は作品の詳細の行（題名・タグ・カバー画像以外）かを返す。 */
+export function isDetailField(field: WorkInfoField): field is DetailField {
+  return field !== "title" && field !== "tags" && field !== "cover";
+}
+
 /** creditKind は人物・団体の行の実体の種類で、それ以外の行なら undefined である。 */
 export function creditKind(field: WorkInfoField): CreditKind | undefined {
-  if (field === "title" || field === "tags") return undefined;
+  if (!isDetailField(field)) return undefined;
   if (isPersonField(field)) return "person";
   return isOrganizationField(field) ? "organization" : undefined;
 }
@@ -121,7 +126,7 @@ export function chipHint(
 
 /** isDateRow は日付の行かを返す。 */
 export function isDateRow(field: WorkInfoField): boolean {
-  return field !== "title" && field !== "tags" && isDateField(field);
+  return isDetailField(field) && isDateField(field);
 }
 
 const EMPTY_INFO: WorkInfo = {
