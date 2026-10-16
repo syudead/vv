@@ -269,6 +269,23 @@ describe("TagsPage 種類の名札・絞り込み・「Set kind…」（specs/05
     expect(screen.getByText("2 of 4 tags")).toBeDefined();
   });
 
+  it("「No kind」で種類の無いタグも選んでいたら、トーストにその数を添える", async () => {
+    const user = userEvent.setup();
+    seedKindTags();
+    install();
+    renderPage({ topBar: true });
+    await screen.findByTitle("Robot");
+    await waitFor(() => expect(server.tagKindGets).toBeGreaterThan(0));
+
+    await user.click(within(rowOf("Robot")).getByRole("checkbox"));
+    await user.click(within(rowOf("Tokyo")).getByRole("checkbox"));
+    await setKind(user, "No kind");
+    expect(
+      await screen.findByText("Removed the kind from 1 tag. 1 had none."),
+    ).toBeDefined();
+    expect(within(rowOf("Robot")).queryByTitle(/^Kind:/)).toBeNull();
+  });
+
   it("もう無い種類を選ぶと何も変えずに種類を読み直し、トーストで伝える", async () => {
     const user = userEvent.setup();
     seedKindTags();

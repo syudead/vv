@@ -80,7 +80,7 @@ export interface TagKindsTab {
   clearRenameError: () => void;
   openDelete: (kind: TagKind) => void;
   cancelDelete: () => void;
-  performDelete: () => void;
+  performDelete: (kind: TagKind) => void;
   /** タブを離れるときに、作成の行・改名の入力・削除の確認の窓を閉じる。 */
   closeEdits: () => void;
   /**
@@ -177,8 +177,10 @@ export function useTagKindsTab({
     }, 0);
   }
 
+  // 送信中に作成・改名を始めたり取り消したりしないことは、呼び出す側の部品が守る
+  // （「New kind」と行の操作は送信中 disabled、CreateTagRow・RowNameInput は送信中の
+  // 取り消しを受けない）。
   function openCreate() {
-    if (createPending || renamePending) return;
     setCreating(true);
     setCreateError(null);
     setRenamingId(null);
@@ -186,7 +188,6 @@ export function useTagKindsTab({
   }
 
   function cancelCreate() {
-    if (createPending) return;
     setCreating(false);
     setCreateError(null);
     setTimeout(() => newKindRef.current?.focus(), 0);
@@ -208,7 +209,6 @@ export function useTagKindsTab({
   }
 
   function startRename(kind: TagKind) {
-    if (createPending || renamePending) return;
     setCreating(false);
     setCreateError(null);
     setRenameError(null);
@@ -216,7 +216,6 @@ export function useTagKindsTab({
   }
 
   function cancelRename(kind: TagKind) {
-    if (renamePending) return;
     setRenamingId(null);
     setRenameError(null);
     focusLater(kind.id, "rename");
@@ -260,6 +259,7 @@ export function useTagKindsTab({
   }
 
   function cancelDelete() {
+    // ConfirmDialog は送信中の Esc でも閉じようとするので、ここで受けない。
     if (deletePending || deleting === null) return;
     const target = deleting;
     setDeleting(null);
@@ -268,9 +268,8 @@ export function useTagKindsTab({
     focusLater(target.id, "menu");
   }
 
-  async function performDelete() {
-    if (deleting === null || deletePending) return;
-    const target = deleting;
+  // 削除の確認の窓は送信中に「Delete」を disabled にするので、二重には呼ばれない。
+  async function performDelete(target: TagKind) {
     const order = kinds ?? [];
     setDeleteError(null);
     setDeletePending(true);
@@ -335,7 +334,7 @@ export function useTagKindsTab({
     clearRenameError: () => setRenameError(null),
     openDelete,
     cancelDelete,
-    performDelete: () => void performDelete(),
+    performDelete: (kind) => void performDelete(kind),
     closeEdits,
     takeChanged,
   };

@@ -53,4 +53,24 @@ describe("useLibraryTagKinds", () => {
     });
     expect(apply).toHaveBeenCalledTimes(1);
   });
+
+  it("古い保持で見つからないときの取り直しは、StrictMode の二度の実行でも 1 度だけ", async () => {
+    await refreshTagKinds();
+    fetchMock.mockClear();
+    // 取り直しは失敗させ、一覧を古い保持のままにする（外さずに待つ）。
+    fetchMock.mockImplementation(() => Promise.resolve(json({}, 500)));
+    const apply = vi.fn();
+
+    renderHook(() => useLibraryTagKinds(9, apply), {
+      wrapper,
+      reactStrictMode: true,
+    });
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(apply).not.toHaveBeenCalled();
+  });
 });
