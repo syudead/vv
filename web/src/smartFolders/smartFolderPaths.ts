@@ -27,6 +27,15 @@ export function smartFolderParentPath(trail: readonly GroupRef[]): string {
 const SMART_FOLDER_PARAM = "smartFolder";
 
 /**
+ * smartFolderContextOf は動画ページの URL の問い合わせから、動画を開いたスマートフォルダの id を
+ * 読む。無いか正の整数でなければ undefined（読み取りに `smartFolder` を渡さない）。
+ */
+export function smartFolderContextOf(search: string): number | undefined {
+  const raw = new URLSearchParams(search).get(SMART_FOLDER_PARAM);
+  return parseSmartFolderId(raw ?? undefined) ?? undefined;
+}
+
+/**
  * videoInSmartFolderPath はスマートフォルダ `folderId` のページから開く動画ページの場所である。
  * `?smartFolder` で再生画面の `Up next` がフォルダの再生順に従う（ui-design.md「Body」）。
  */

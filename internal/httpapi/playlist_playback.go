@@ -58,6 +58,9 @@ func (s *server) GetPlaylistPlayback(w http.ResponseWriter, r *http.Request, id 
 			continue
 		}
 		out[i] = &gen.PlaylistStep{ItemId: step.ItemID, Video: presented[next]}
+		if step.SmartFolderID != 0 {
+			out[i].SmartFolderId = &step.SmartFolderID
+		}
 		next++
 	}
 

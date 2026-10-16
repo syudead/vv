@@ -142,3 +142,63 @@ func TestPlaylistPlaybackIsOwnerOnly(t *testing.T) {
 		t.Errorf("ゲスト: status = %d, want 401: %s", rec.Code, rec.Body)
 	}
 }
+
+// 項目がスマートフォルダの項目の step だけが smartFolderId を持ち、フォルダの中の next も持つ。
+// 動画とグループの項目への step は持たない（specs/052-smart-folders/contracts/screen-api.md）。
+func TestPlaylistPlaybackNamesTheSmartFolderOfAStep(t *testing.T) {
+	f := newLibraryFixture(t)
+	ctx := context.Background()
+	tag := f.smartFolderTag(t, "旅", "p1", "p2")
+	folder := f.createSmartFolder(t, map[string]any{"name": "旅", "rule": map[string]any{"tags": []int64{tag}}})
+	playlists := f.env.db.Playlists()
+	playlist, err := playlists.CreatePlaylist(ctx, "フォルダ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, add := range []domain.PlaylistAdd{
+		{VideoIDs: []int64{f.ids["solo"]}},
+		{SmartFolderIDs: []int64{folder.Id}},
+		{GroupIDs: []int64{f.groupID(t, "show")}},
+	} {
+		if _, err := playlists.AddPlaylistItems(ctx, playlist.ID, add); err != nil {
+			t.Fatal(err)
+		}
+	}
+	_, items, _, err := playlists.Playlist(ctx, playlist.ID)
+	if err != nil || len(items) != 3 {
+		t.Fatalf("項目 = %+v, %v", items, err)
+	}
+	playbackAt := func(item, video int64) gen.PlaylistPlayback {
+		t.Helper()
+		rec := f.env.get(fmt.Sprintf("/api/playlists/%d/playback?item=%d&video=%d", playlist.ID, item, video), f.owner)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("status = %d: %s", rec.Code, rec.Body)
+		}
+		return decode[gen.PlaylistPlayback](t, rec)
+	}
+	folderOf := func(step *gen.PlaylistStep) int64 {
+		if step == nil || step.SmartFolderId == nil {
+			return 0
+		}
+		return *step.SmartFolderId
+	}
+
+	fromSolo := playbackAt(items[0].ID, f.ids["solo"])
+	if fromSolo.Next == nil || fromSolo.Next.ItemId != items[1].ID || folderOf(fromSolo.Next) != folder.Id ||
+		folderOf(fromSolo.NextItem) != folder.Id {
+		t.Fatalf("solo から: next = %+v, nextItem = %+v, want フォルダ %d", fromSolo.Next, fromSolo.NextItem, folder.Id)
+	}
+
+	inFolder := playbackAt(items[1].ID, fromSolo.Next.Video.Id)
+	if inFolder.Next == nil || inFolder.Next.ItemId != items[1].ID || folderOf(inFolder.Next) != folder.Id {
+		t.Fatalf("フォルダの中: next = %+v, want フォルダの次の動画", inFolder.Next)
+	}
+	if folderOf(inFolder.PreviousItem) != 0 || folderOf(inFolder.NextItem) != 0 {
+		t.Errorf("動画とグループの項目への step にフォルダ: previousItem = %+v, nextItem = %+v", inFolder.PreviousItem, inFolder.NextItem)
+	}
+
+	last := playbackAt(items[1].ID, inFolder.Next.Video.Id)
+	if last.Next == nil || last.Next.ItemId != items[2].ID || last.Next.SmartFolderId != nil {
+		t.Errorf("フォルダの最後から: next = %+v, want smartFolderId の無いグループの項目", last.Next)
+	}
+}

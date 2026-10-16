@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   parseSmartFolderId,
+  smartFolderContextOf,
   smartFolderCrumbs,
   smartFolderPagePath,
   smartFolderParentPath,
@@ -14,6 +15,14 @@ describe("smartFolderPaths", () => {
     expect(videoInSmartFolderPath(10, 3)).toBe("/videos/10?smartFolder=3");
     expect(parseSmartFolderId("3")).toBe(3);
     expect(parseSmartFolderId("x")).toBe(null);
+  });
+
+  it("動画ページの ?smartFolder を正の整数のときだけ読む", () => {
+    expect(smartFolderContextOf("?smartFolder=3")).toBe(3);
+    expect(smartFolderContextOf("?playlist=5&item=2&smartFolder=7")).toBe(7);
+    expect(smartFolderContextOf("")).toBeUndefined();
+    expect(smartFolderContextOf("?smartFolder=0")).toBeUndefined();
+    expect(smartFolderContextOf("?smartFolder=x")).toBeUndefined();
   });
 
   it("帯はライブラリ、祖先（そのページへのリンク）、現在地の順", () => {

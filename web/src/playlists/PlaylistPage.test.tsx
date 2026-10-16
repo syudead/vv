@@ -52,6 +52,28 @@ function group(name: string, openVideoId: number): LibraryGroup {
   };
 }
 
+/** folderItem はスマートフォルダ 9 の項目である。videoCount が 0 なら開く動画も長さも無い。 */
+function folderItem(id: number, videoCount: number): PlaylistItem {
+  return {
+    id,
+    kind: "smartFolder",
+    smartFolder: {
+      id: 9,
+      name: "タグ: 猫",
+      videoCount,
+      watchedCount: 1,
+      watchState: videoCount === 0 ? "unwatched" : "inProgress",
+      sizeBytes: 2048,
+      previews:
+        videoCount === 0
+          ? []
+          : [{ videoId: 31, thumbnailUrl: "/api/videos/31/thumbnail" }],
+      tags: [],
+      ...(videoCount === 0 ? {} : { openVideoId: 31, durationMs: 120_000 }),
+    },
+  };
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -170,9 +192,9 @@ function NavigateProbe() {
   return null;
 }
 
-function renderPage() {
+function renderPage(path = "/playlists/7") {
   render(
-    <MemoryRouter initialEntries={["/playlists/7"]}>
+    <MemoryRouter initialEntries={[path]}>
       <TooltipProvider>
         <ToastProvider>
           <NavigateProbe />
@@ -585,6 +607,12 @@ describe("PlaylistPage（specs/044-playlists/ui-design.md「Playlist screen」�
     expect(screen.queryByRole("button", { name: "More" })).toBeNull();
   });
 
+  it("読めない id はなくなったプレイリストとして示し、何も読まない", async () => {
+    renderPage("/playlists/x");
+    expect(await screen.findByText("This playlist no longer exists")).toBeDefined();
+    expect(server.getCalls).toBe(0);
+  });
+
   it("外す要求の 404 では、行を残したまま読み直す", async () => {
     server.removeStatus = 404;
     const user = userEvent.setup();
@@ -638,6 +666,79 @@ describe("PlaylistPage（specs/044-playlists/ui-design.md「Playlist screen」�
     server.getStatus = 200;
     await user.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByRole("table", { name: "Items" })).toBeDefined();
+  });
+
+  describe("スマートフォルダの項目（052 ui-design.md「Playlist screen row」）", () => {
+    it("グループの項目の行として名前・表紙・本数をサーバーの位置に出し、行はフォルダの開く動画を smartFolder 付きで開く", async () => {
+      server.items = [server.items[0]!, folderItem(4, 4), server.items[2]!];
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByRole("table", { name: "Items" });
+      expect(rowNames()).toEqual([
+        "Play from Video 11",
+        "Play from タグ: 猫",
+        "Play from Video 13",
+      ]);
+      expect(screen.getByText("3 items · 4:00")).toBeDefined();
+      const rows = within(screen.getByRole("table", { name: "Items" })).getAllByRole(
+        "row",
+      );
+      const folderRow = within(rows[1]!);
+      expect(folderRow.getByText("4 videos")).toBeDefined();
+      expect(folderRow.getByText("1 / 4")).toBeDefined();
+      expect(rows[1]!.querySelector("img")?.getAttribute("src")).toBe(
+        "/api/videos/31/thumbnail",
+      );
+      expect(rows[1]!.querySelector(".lucide-folder-search")).not.toBeNull();
+      await user.click(screen.getByRole("link", { name: "Play from タグ: 猫" }));
+      expect(
+        await screen.findByText(
+          'Video page /videos/31?playlist=7&item=4&smartFolder=9 {"from":"/playlists/7","autoplay":true}',
+        ),
+      ).toBeDefined();
+    });
+
+    it("グループの項目と同じく並べ替えて外せる", async () => {
+      layoutRows();
+      server.items = [server.items[0]!, folderItem(4, 4)];
+      const user = userEvent.setup();
+      renderPage();
+      await screen.findByRole("table", { name: "Items" });
+      const handle = screen.getByRole("button", { name: 'Reorder "タグ: 猫"' });
+      handle.focus();
+      await user.keyboard("[Space]");
+      await user.keyboard("[ArrowUp]");
+      await user.keyboard("[Space]");
+      await waitFor(() =>
+        expect(server.moves).toEqual([{ itemId: 4, afterItemId: null }]),
+      );
+      await user.click(
+        screen.getByRole("button", { name: 'Remove "タグ: 猫" from the playlist' }),
+      );
+      await waitFor(() => expect(rowNames()).toEqual(["Play from Video 11"]));
+      expect(server.removes).toEqual([4]);
+    });
+
+    it("動画の無いフォルダの項目は 0 videos の行でリンクにせず、「Play」は次の項目から始める", async () => {
+      server.items = [folderItem(4, 0), server.items[2]!];
+      renderPage();
+      await screen.findByRole("table", { name: "Items" });
+      expect(rowNames()).toEqual(["Play from Video 13"]);
+      const rows = within(screen.getByRole("table", { name: "Items" })).getAllByRole(
+        "row",
+      );
+      expect(within(rows[0]!).getByText("0 videos")).toBeDefined();
+      expect(within(rows[0]!).getByText("タグ: 猫").className).toContain(
+        "text-muted-foreground",
+      );
+      expect(within(rows[0]!).queryByLabelText("Watched")).toBeNull();
+      expect(
+        screen
+          .getByRole("link", { name: 'Play "Morning" from the top' })
+          .getAttribute("href"),
+      ).toBe("/videos/13?playlist=7&item=3");
+      expect(screen.getByText("2 items")).toBeDefined();
+    });
   });
 
   it("画面の文言はカタログから出す", async () => {

@@ -8,12 +8,11 @@ export type PlaylistSummary = components["schemas"]["PlaylistSummary"];
 type ApiPlaylist = components["schemas"]["Playlist"];
 type ApiPlaylistItem = components["schemas"]["PlaylistItem"];
 /**
- * PlaylistItem は画面が描くプレイリストの項目（動画かグループ）である。スマートフォルダの項目
- * （`kind: "smartFolder"`、specs/052-smart-folders/contracts/screen-api.md）は、それを描く画面の
- * 作業まで getPlaylist が読み飛ばす。
+ * PlaylistItem は画面が描くプレイリストの項目（動画・グループ・スマートフォルダ）である
+ * （specs/052-smart-folders/ui-design.md「Playlists」）。
  */
-export type PlaylistItem = ApiPlaylistItem & { kind: "video" | "group" };
-export type Playlist = Omit<ApiPlaylist, "items"> & { items: PlaylistItem[] };
+export type PlaylistItem = ApiPlaylistItem;
+export type Playlist = ApiPlaylist;
 export type PlaylistItemsAdded = components["schemas"]["PlaylistItemsAdded"];
 export type PlaylistPlayback = components["schemas"]["PlaylistPlayback"];
 export type PlaylistStep = components["schemas"]["PlaylistStep"];
@@ -108,17 +107,12 @@ export function createPlaylist(
   });
 }
 
-function isDrawnItem(item: ApiPlaylistItem): item is PlaylistItem {
-  return item.kind === "video" || item.kind === "group";
-}
-
 /**
  * getPlaylist はプレイリスト 1 つと見せる項目を位置の順に取得する（GET /api/playlists/{id}）。
- * 画面がまだ描かないスマートフォルダの項目は除く（PlaylistItem）。
+ * スマートフォルダの項目も、サーバーの位置のまま含む。
  */
-export async function getPlaylist(id: number, signal?: AbortSignal): Promise<Playlist> {
-  const playlist = await request<ApiPlaylist>(playlistPath(id), { signal });
-  return { ...playlist, items: playlist.items.filter(isDrawnItem) };
+export function getPlaylist(id: number, signal?: AbortSignal): Promise<Playlist> {
+  return request<Playlist>(playlistPath(id), { signal });
 }
 
 /** renamePlaylist はプレイリストの名前を変え、トリムした名前の要約を返す（PATCH /api/playlists/{id}）。 */

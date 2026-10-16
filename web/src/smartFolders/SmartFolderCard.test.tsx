@@ -1,9 +1,10 @@
 import { act, render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { describe, expect, it, vi } from "vitest";
 
 import { emitServerEvent } from "../api/fakeEventSource";
-import { AudienceProvider } from "../auth/audience";
+import { type Audience, AudienceProvider } from "../auth/audience";
 import {
   folderCard,
   revealCards,
@@ -11,6 +12,7 @@ import {
   setUpSmartFolderServer,
 } from "../testing/smartFolderPage";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import { ToastProvider } from "../ui/Toast";
 import { SmartFolderCardsProvider } from "./cardValues";
 import { SmartFolderCard, SmartFolderRow } from "./SmartFolderCard";
 
@@ -226,5 +228,187 @@ describe("スマートフォルダのカード（specs/052-smart-folders/ui-desi
       "/api/videos/10/thumbnail",
     );
     await waitFor(() => expect(screen.queryByRole("link", { name: /^犬/ })).toBeNull());
+  });
+
+  describe("角の印（ui-design.md「Smart folder card and row」「Add to playlist」）", () => {
+    function renderMarked(audience: Audience = "owner", favorite = false) {
+      render(
+        <MemoryRouter>
+          <TooltipProvider>
+            <ToastProvider>
+              <AudienceProvider audience={audience}>
+                <SmartFolderCardsProvider>
+                  <SmartFolderCard folder={{ id: 1, name: "猫", favorite }} backTo="/" />
+                  <table>
+                    <tbody>
+                      <SmartFolderRow
+                        folder={{ id: 2, name: "犬", favorite }}
+                        backTo="/"
+                        owner={audience === "owner"}
+                      />
+                    </tbody>
+                  </table>
+                </SmartFolderCardsProvider>
+              </AudienceProvider>
+            </ToastProvider>
+          </TooltipProvider>
+        </MemoryRouter>,
+      );
+    }
+
+    /** answerMarks はハートと「Add to playlist」の書き込みと、プレイリストの一覧の読みに答えさせる。 */
+    function answerMarks() {
+      server.writeAnswer = (method) =>
+        method === "PUT"
+          ? json({ appliedVideos: 0, appliedGroups: 0, appliedSmartFolders: 1 })
+          : json({ added: 1, existing: 0 });
+      const original = globalThis.fetch;
+      vi.stubGlobal(
+        "fetch",
+        vi.fn<typeof fetch>((input, init) =>
+          String(input).startsWith("/api/playlists?")
+            ? Promise.resolve(
+                json({
+                  items: [
+                    {
+                      id: 5,
+                      name: "Tonight",
+                      itemCount: 0,
+                      updatedAt: "2026-10-01T00:00:00Z",
+                    },
+                  ],
+                  total: 1,
+                  version: "1",
+                }),
+              )
+            : original(input, init),
+        ),
+      );
+    }
+
+    function json(body: unknown): Response {
+      return new Response(JSON.stringify(body), {
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    it("ハートはフォルダの id を smartFolderIds で送り、成功したら塗りを変える", async () => {
+      answerMarks();
+      const user = userEvent.setup();
+      renderMarked();
+      const heart = screen.getByRole("button", { name: 'Favorite smart folder "猫"' });
+      expect(heart.getAttribute("aria-pressed")).toBe("false");
+      await user.click(heart);
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("button", { name: 'Favorite smart folder "猫"' })
+            .getAttribute("aria-pressed"),
+        ).toBe("true"),
+      );
+      expect(server.writes).toEqual([
+        {
+          method: "PUT",
+          path: "/api/favorites",
+          body: { videoIds: [], groupIds: [], smartFolderIds: [1], favorite: true },
+        },
+      ]);
+      // 行のハートも同じく送る。
+      await user.click(
+        screen.getByRole("button", { name: 'Favorite smart folder "犬"' }),
+      );
+      await waitFor(() => expect(server.writes).toHaveLength(2));
+      expect(server.writes[1]?.body).toEqual({
+        videoIds: [],
+        groupIds: [],
+        smartFolderIds: [2],
+        favorite: true,
+      });
+    });
+
+    it("お気に入りのフォルダは塗りで始まり、読んだカードの値に従う", async () => {
+      server.cards.set(1, folderCard(1, "猫", { favorite: false }));
+      renderMarked("owner", true);
+      expect(
+        screen
+          .getByRole("button", { name: 'Favorite smart folder "猫"' })
+          .getAttribute("aria-pressed"),
+      ).toBe("true");
+      await revealCards([1]);
+      await waitFor(() =>
+        expect(
+          screen
+            .getByRole("button", { name: 'Favorite smart folder "猫"' })
+            .getAttribute("aria-pressed"),
+        ).toBe("false"),
+      );
+    });
+
+    it("押した後にカードの値が読み直されたら、押した塗りを捨てて読んだ値に従う", async () => {
+      answerMarks();
+      server.cards.set(1, folderCard(1, "猫", { favorite: false }));
+      const user = userEvent.setup();
+      renderMarked();
+      await revealCards([1]);
+      await screen.findByRole("link", { name: /^猫, smart folder of/ });
+      const pressed = () =>
+        screen
+          .getByRole("button", { name: 'Favorite smart folder "猫"' })
+          .getAttribute("aria-pressed");
+      await user.click(
+        screen.getByRole("button", { name: 'Favorite smart folder "猫"' }),
+      );
+      await waitFor(() => expect(pressed()).toBe("true"));
+
+      // 読み直した値が押した値と同じ。
+      server.cards.set(1, folderCard(1, "猫", { favorite: true }));
+      await emitServerEvent("smartFolder", { ids: [1] });
+      await waitFor(() => expect(server.cardRequests).toHaveLength(2));
+      expect(pressed()).toBe("true");
+
+      // 別のタブが元へ戻した。読んだ値は押す前の値と同じだが、古い塗りは残さない。
+      server.cards.set(1, folderCard(1, "猫", { favorite: false }));
+      await emitServerEvent("smartFolder", { ids: [1] });
+      await waitFor(() => expect(server.cardRequests).toHaveLength(3));
+      await waitFor(() => expect(pressed()).toBe("false"));
+
+      // 次の押下はサーバーの値の逆（true）を送る。
+      await user.click(
+        screen.getByRole("button", { name: 'Favorite smart folder "猫"' }),
+      );
+      await waitFor(() => expect(server.writes).toHaveLength(2));
+      expect(server.writes[1]?.body).toEqual({
+        videoIds: [],
+        groupIds: [],
+        smartFolderIds: [1],
+        favorite: true,
+      });
+    });
+
+    it("「Add to playlist」はフォルダを 1 つの項目として smartFolderIds で送る", async () => {
+      answerMarks();
+      const user = userEvent.setup();
+      renderMarked();
+      await user.click(
+        screen.getByRole("button", { name: 'Add smart folder "猫" to a playlist' }),
+      );
+      await user.click(await screen.findByRole("option", { name: /Tonight/ }));
+      await waitFor(() =>
+        expect(server.writes).toEqual([
+          {
+            method: "POST",
+            path: "/api/playlists/5/items",
+            body: { videoIds: [], groupIds: [], smartFolderIds: [1] },
+          },
+        ]),
+      );
+      expect(await screen.findByText('Added 1 item to "Tonight"')).toBeTruthy();
+    });
+
+    it("ゲストには印を出さない", () => {
+      renderMarked("guest");
+      expect(screen.queryByRole("button", { name: /^Favorite smart folder/ })).toBeNull();
+      expect(screen.queryByRole("button", { name: /^Add smart folder/ })).toBeNull();
+    });
   });
 });

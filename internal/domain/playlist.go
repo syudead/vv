@@ -158,10 +158,13 @@ func ValidatePlaylistName(input string) (string, error) {
 	return trimmed, nil
 }
 
-// PlaylistStep は連続再生で開く動画 1 本と、それが属する項目である。
+// PlaylistStep は連続再生で開く動画 1 本と、それが属する項目である。SmartFolderID は項目が
+// スマートフォルダの項目のときのフォルダの id で、動画とグループの項目では 0 である
+// （specs/052-smart-folders/contracts/screen-api.md の PlaylistStep）。
 type PlaylistStep struct {
-	ItemID int64
-	Video  Video
+	ItemID        int64
+	Video         Video
+	SmartFolderID int64
 }
 
 // PlaylistPlayback は動画ページがプレイリストから再生しているときの、今の位置と次に開く動画
@@ -208,7 +211,7 @@ func (i PlaylistItem) playOrder() *LibraryGroup {
 // メンバーである。開く動画が無ければ nil である。
 func (i PlaylistItem) start() *PlaylistStep {
 	if i.Video != nil {
-		return &PlaylistStep{ItemID: i.ID, Video: *i.Video}
+		return i.step(*i.Video)
 	}
 	group := i.playOrder()
 	if group == nil || len(group.Members) == 0 {
@@ -221,7 +224,17 @@ func (i PlaylistItem) start() *PlaylistStep {
 			break
 		}
 	}
-	return &PlaylistStep{ItemID: i.ID, Video: member}
+	return i.step(member)
+}
+
+// step は項目 i の中の動画 video を開く PlaylistStep である。スマートフォルダの項目ならフォルダの
+// id を持つ。
+func (i PlaylistItem) step(video Video) *PlaylistStep {
+	step := &PlaylistStep{ItemID: i.ID, Video: video}
+	if i.SmartFolder != nil {
+		step.SmartFolderID = i.SmartFolder.ID
+	}
+	return step
 }
 
 // PlaylistPlaybackOf はプレイリストの全項目 items（見せない項目も含めて位置の順）と、今の項目と
@@ -278,7 +291,7 @@ func PlaylistPlaybackOf(items []PlaylistItem, current PlaylistCurrent) (Playlist
 		for j, member := range group.Members {
 			if member.ID == current.VideoID {
 				if j+1 < len(group.Members) {
-					playback.Next = &PlaylistStep{ItemID: current.ItemID, Video: group.Members[j+1]}
+					playback.Next = items[at].step(group.Members[j+1])
 				}
 				break
 			}

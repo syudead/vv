@@ -2912,6 +2912,11 @@ type PlaylistPlayback struct {
 type PlaylistStep struct {
 	ItemId int64 `json:"itemId"`
 
+	// SmartFolderId 項目がスマートフォルダの項目のときのフォルダの id。動画とグループの項目では無い。
+	// 動画ページはこれで開く URL に smartFolder を付ける
+	// （specs/052-smart-folders/contracts/screen-api.md）
+	SmartFolderId *int64 `json:"smartFolderId,omitempty"`
+
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
 	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
 	// （specs/016-single-account-auth/contracts/guest-api.md §1、

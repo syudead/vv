@@ -971,6 +971,8 @@ export const en = {
           ? `${name}, smart folder of ${videos(count)}, ${formatNumber(watched)} watched`
           : `${name}, smart folder of ${videos(count)}`,
       labelLoading: (name: string) => `${name}, smart folder`,
+      favorite: (name: string) => `Favorite smart folder "${name}"`,
+      addToPlaylist: (name: string) => `Add smart folder "${name}" to a playlist`,
     },
     selection: {
       region: "Selection actions",
@@ -2041,6 +2043,11 @@ export const en = {
       dissolve: "Dissolve…",
       removed: (name: string) => `Removed from "${name}"`,
       removeFailed: (reason: string) => `Couldn't remove from the group: ${reason}`,
+    },
+    // スマートフォルダの行（specs/052-smart-folders/ui-design.md「Video page」）。
+    smartFolder: {
+      line: (name: string, position: number, count: number) =>
+        `Smart folder "${name}", video ${formatNumber(position)} of ${formatNumber(count)}. Open the smart folder`,
     },
     tags: {
       heading: "Tags",
