@@ -71,6 +71,9 @@ type WorkInfoPluginSettingEntry struct {
 	Set bool
 	// Value は保存された値である。Secret のときは常に空である。
 	Value string
+	// StaleValue は保存された値が今の選択肢の外にあるときのその値で、それ以外は空である。実行は代わりに
+	// 既定値を受け取る（specs/056-plugin-tooling/contracts/screen-api.md の WorkInfoPluginSetting）。
+	StaleValue string
 }
 
 // WorkInfoPluginEntry は画面に見せるプラグインである。秘密の設定の値は含まない。
@@ -96,6 +99,9 @@ func (p WorkInfoPlugin) Entry() WorkInfoPluginEntry {
 		entry := WorkInfoPluginSettingEntry{WorkInfoPluginSetting: s, Set: set}
 		if !s.Secret {
 			entry.Value = value
+		}
+		if _, stale := EffectiveWorkInfoPluginValue(s, p.Values); stale {
+			entry.StaleValue = value
 		}
 		settings = append(settings, entry)
 	}

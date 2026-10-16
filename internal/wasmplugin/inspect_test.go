@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -152,7 +153,7 @@ func TestInspectGoodModuleReturnsManifest(t *testing.T) {
 		t.Fatalf("manifest = %+v", manifest)
 	}
 	want := domain.WorkInfoPluginSetting{Key: "apiKey", Label: "API key", Secret: true, Required: true}
-	if len(manifest.Settings) != 1 || manifest.Settings[0] != want {
+	if !reflect.DeepEqual(manifest.Settings, []domain.WorkInfoPluginSetting{want}) {
 		t.Fatalf("settings = %+v, want [%+v]", manifest.Settings, want)
 	}
 }

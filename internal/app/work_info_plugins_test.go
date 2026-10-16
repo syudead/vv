@@ -216,6 +216,37 @@ func TestSetWorkInfoPluginSettingsChecksDeclarationsAndHidesSecrets(t *testing.T
 	}
 }
 
+// 差し替えで保存済みの値が選択肢から外れても値は残り、一覧は set・value と同じ staleValue でそれを示す
+// （specs/056-plugin-tooling/contracts/screen-api.md の WorkInfoPluginSetting）。
+func TestReplacedOptionsReportTheStoredValueAsStale(t *testing.T) {
+	ctx := context.Background()
+	runtime := &fakePluginRuntime{settings: []domain.WorkInfoPluginSetting{
+		{Key: "lang", Label: "Language", Default: "ja", Options: []string{"ja", "fr"}},
+	}}
+	store := &fakePluginStore{}
+	plugins := NewWorkInfoPlugins(WorkInfoPluginsOptions{
+		Store: store, Runtime: runtime, Now: func() time.Time { return time.Unix(1_800_000_000, 0) },
+	})
+	listed, _, _ := plugins.UploadWorkInfoPlugin(ctx, "a.wasm", []byte("example"))
+	if _, err := plugins.SetWorkInfoPluginSettings(ctx, listed.ID, map[string]*string{"lang": new("fr")}); err != nil {
+		t.Fatal(err)
+	}
+	runtime.settings = []domain.WorkInfoPluginSetting{
+		{Key: "lang", Label: "Language", Default: "en", Options: []string{"ja", "en"}},
+	}
+	if _, _, err := plugins.UploadWorkInfoPlugin(ctx, "a.wasm", []byte("example")); err != nil {
+		t.Fatal(err)
+	}
+	listedAll, err := plugins.ListWorkInfoPlugins(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lang := listedAll[0].Settings[0]
+	if !lang.Set || lang.Value != "fr" || lang.StaleValue != "fr" || lang.Default != "en" {
+		t.Fatalf("lang = %+v; want set, value fr, staleValue fr, default en", lang)
+	}
+}
+
 func TestRevokeAndDeleteWorkInfoPlugin(t *testing.T) {
 	ctx := context.Background()
 	plugins, _ := newTestWorkInfoPlugins()

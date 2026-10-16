@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -51,8 +52,70 @@ func TestParseWorkInfoPluginManifestDefaultsSettingFlags(t *testing.T) {
 		t.Fatalf("problem = %q", problem)
 	}
 	want := WorkInfoPluginSetting{Key: "lang", Label: "Language"}
-	if len(m.Settings) != 1 || m.Settings[0] != want {
+	if !reflect.DeepEqual(m.Settings, []WorkInfoPluginSetting{want}) {
 		t.Fatalf("settings = %+v, want [%+v]", m.Settings, want)
+	}
+}
+
+// 設定の既定値と選択肢の規則に外れるマニフェストは manifest_invalid である
+// （specs/056-plugin-tooling/contracts/plugin-contract.md の Manifest）。
+func TestParseWorkInfoPluginManifestSettingChoices(t *testing.T) {
+	manifest := func(setting string) string {
+		return `{"contract":1,"name":"p","version":"1","operations":["fetch"],"settings":[` + setting + `]}`
+	}
+	quoted := func(values ...string) string {
+		b, _ := json.Marshal(values)
+		return string(b)
+	}
+	many := func(n int) []string {
+		out := make([]string, n)
+		for i := range out {
+			out[i] = fmt.Sprintf("o%d", i)
+		}
+		return out
+	}
+	cases := []struct {
+		name    string
+		setting string
+		problem WorkInfoPluginProblem
+	}{
+		{"default without options", `{"key":"k","label":"L","default":"ja"}`, ""},
+		{"default among the options", `{"key":"k","label":"L","default":"en","options":["ja","en"]}`, ""},
+		{"options without a default", `{"key":"k","label":"L","required":true,"options":` + quoted(many(50)...) + `}`, ""},
+		{"option of 200 characters", `{"key":"k","label":"L","options":` + quoted("a", strings.Repeat("b", 200)) + `}`, ""},
+		{"default of 2000 characters", `{"key":"k","label":"L","default":"` + strings.Repeat("d", 2000) + `"}`, ""},
+		{"default outside the options", `{"key":"k","label":"L","default":"fr","options":["ja","en"]}`, WorkInfoPluginManifestInvalid},
+		{"one option", `{"key":"k","label":"L","options":["ja"]}`, WorkInfoPluginManifestInvalid},
+		{"no options", `{"key":"k","label":"L","options":[]}`, WorkInfoPluginManifestInvalid},
+		{"51 options", `{"key":"k","label":"L","options":` + quoted(many(51)...) + `}`, WorkInfoPluginManifestInvalid},
+		{"option of 201 characters", `{"key":"k","label":"L","options":` + quoted("a", strings.Repeat("b", 201)) + `}`, WorkInfoPluginManifestInvalid},
+		{"empty option", `{"key":"k","label":"L","options":["a",""]}`, WorkInfoPluginManifestInvalid},
+		{"repeated option", `{"key":"k","label":"L","options":["ja","en","ja"]}`, WorkInfoPluginManifestInvalid},
+		{"empty default", `{"key":"k","label":"L","default":""}`, WorkInfoPluginManifestInvalid},
+		{"default of 2001 characters", `{"key":"k","label":"L","default":"` + strings.Repeat("d", 2001) + `"}`, WorkInfoPluginManifestInvalid},
+		{"secret with a default", `{"key":"k","label":"L","secret":true,"default":"x"}`, WorkInfoPluginManifestInvalid},
+		{"secret with options", `{"key":"k","label":"L","secret":true,"options":["a","b"]}`, WorkInfoPluginManifestInvalid},
+		{"null default", `{"key":"k","label":"L","default":null}`, WorkInfoPluginManifestInvalid},
+		{"null options", `{"key":"k","label":"L","options":null}`, WorkInfoPluginManifestInvalid},
+		{"numeric default", `{"key":"k","label":"L","default":1}`, WorkInfoPluginManifestInvalid},
+		{"null option", `{"key":"k","label":"L","options":["a",null]}`, WorkInfoPluginManifestInvalid},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, problem := ParseWorkInfoPluginManifest([]byte(manifest(tc.setting)))
+			if problem != tc.problem {
+				t.Fatalf("problem = %q, want %q", problem, tc.problem)
+			}
+		})
+	}
+}
+
+func TestParseWorkInfoPluginManifestKeepsDefaultAndOptions(t *testing.T) {
+	m, problem := ParseWorkInfoPluginManifest([]byte(`{"contract":1,"name":"p","version":"1","operations":["fetch"],` +
+		`"settings":[{"key":"lang","label":"Language","default":"en","options":["ja","en"]}]}`))
+	want := []WorkInfoPluginSetting{{Key: "lang", Label: "Language", Default: "en", Options: []string{"ja", "en"}}}
+	if problem != "" || !reflect.DeepEqual(m.Settings, want) {
+		t.Fatalf("settings = %+v, problem %q; want %+v", m.Settings, problem, want)
 	}
 }
 

@@ -270,6 +270,31 @@ func TestWorkInfoPluginSettingsHideSecretValues(t *testing.T) {
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
 }
 
+// 一覧は設定の既定値と選択肢を返し、差し替えで選択肢から外れた保存値を staleValue で示す
+// （specs/056-plugin-tooling/contracts/screen-api.md の WorkInfoPluginSetting）。
+func TestWorkInfoPluginSettingsCarryDefaultOptionsAndStaleValue(t *testing.T) {
+	e := newPluginEnv(t)
+	manifest := func(options string) []byte {
+		return []byte(`{"contract":1,"name":"choices","version":"1","operations":["fetch"],` +
+			`"settings":[{"key":"lang","label":"Language","default":"ja","options":` + options + `}]}`)
+	}
+	added := decodePlugin(t, "追加", e.uploadParts(manifest(`["ja","fr"]`), 1, e.owner), http.StatusCreated)
+	decodePlugin(t, "設定", e.json(http.MethodPut, pluginPath(added.Id, "/settings"), `{"values":{"lang":"fr"}}`, e.owner), http.StatusOK)
+	list := e.get("/api/work-info-plugins", e.owner)
+	if body := list.Body.String(); !strings.Contains(body, `"default":"ja"`) || !strings.Contains(body, `"options":["ja","fr"]`) ||
+		strings.Contains(body, `"staleValue"`) {
+		t.Fatalf("選択肢の内側の値の一覧 = %s", body)
+	}
+
+	decodePlugin(t, "差し替え", e.uploadParts(manifest(`["ja","en"]`), 1, e.owner), http.StatusOK)
+	list = e.get("/api/work-info-plugins", e.owner)
+	for _, want := range []string{`"set":true`, `"value":"fr"`, `"staleValue":"fr"`, `"options":["ja","en"]`} {
+		if !strings.Contains(list.Body.String(), want) {
+			t.Errorf("差し替えのあとの一覧に %s が無い: %s", want, list.Body)
+		}
+	}
+}
+
 // どの経路も所有者だけで、セッションの無い要求（ゲスト）はほかの所有者の経路と同じく 401 で断り、
 // 何も書かない。
 func TestWorkInfoPluginRoutesAreOwnerOnly(t *testing.T) {
