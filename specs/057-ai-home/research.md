@@ -45,7 +45,7 @@ uses tags without a kind the same way.
 **Rationale**: A tag with a kind is a tag the owner or the AI tag creation
 (#1138) has classified, so it is the best content signal without a model.
 The minimum of 5 videos keeps a shelf from being one row of one card. The
-policy is not read by this organizer; Settings says so (R-12).
+policy is not read by this organizer; Settings says so (R-13).
 
 ## R-3: The AI organizer asks the generator port for shelves by name
 
