@@ -40,7 +40,8 @@ The Issue has the `ui` label, so the `design` stage writes `ui-design.md`
 before the screen units: the page list and its current entry, the page
 title and the back link below `sm`, the split Auto-import rows, the locked
 Auto-tagging page with its link, the note under the duplicate judging switch,
-and the words of the eight entries, judged against the parent Issue's
+the Network page's line outside the desktop app, and the words of the eight
+entries, judged against the parent Issue's
 `UI品質`.
 
 No `data-model.md`: the feature adds no entity and changes no table. No
@@ -102,11 +103,12 @@ The `design` stage adds `ui-design.md`.
 
 | Package | Change |
 | --- | --- |
-| `internal/httpapi`, `internal/app` (`OllamaConnection`), `api/openapi.yaml` | `saved` on the Ollama settings responses, read through the store's `OllamaConnectionSaved` |
+| `internal/httpapi`, `internal/app` (`OllamaConnection`), `api/openapi.yaml` | `saved` on the Ollama settings responses, read through the store's `OllamaConnectionSaved`; `UpdateOllamaSettingsRequest` for the `PUT` body |
 | `web/src/app` | `/settings/*` as one deferred route |
 | `web/src/settings` | The page map, the eight pages, the Auto-import split, the connection hook, the gated sections |
 | `web/src/ui/patterns`, `web/registry` | The `settings-page` pattern's `nav` slot and its rule |
-| `web/src/shell`, `web/src/library`, `web/src/folders`, `web/src/player` | The entry links to the pages |
+| `web/src/shell` | The sidebar's `Settings` entry matching the pages below `/settings`; the scan indicator's link |
+| `web/src/library`, `web/src/folders`, `web/src/player` | The entry links to the pages |
 | `web/e2e` | The specs that open settings |
 | `docs/design-docs/library-ui.md` | The scan entry's address |
 
@@ -125,16 +127,20 @@ wait for the `design` stage's `ui-design.md`.
 ```mermaid
 flowchart LR
   saved[Ollama saved flag] --> lock[Lock Auto-tagging]
-  pages[Eight pages and list] --> entries[Entry points]
+  slot[Page list slot] --> pages[Eight pages and list]
+  split[Auto-import split] --> pages
+  pages --> entries[Entry points]
   pages --> lock
   lock --> note[Duplicate judging note]
 ```
 
 ### Report whether the Ollama connection was saved in the settings API
 
-**Scope**: `saved` on `OllamaSettings` in `api/openapi.yaml`, the generated
-code, the `OllamaConnection` port and handler answering it from the store's
-`OllamaConnectionSaved`, and `getOllamaSettings` in the SPA client
+**Scope**: `saved` on `OllamaSettings` in `api/openapi.yaml` and the
+`UpdateOllamaSettingsRequest` schema for the `PUT` body, the generated code,
+the `OllamaConnection` port and handler answering `saved` from the store's
+`OllamaConnectionSaved`, `getOllamaSettings` in the SPA client, and
+`updateOllamaSettings` sending `endpoint` and `model` only
 ([contracts/screen-api.md](contracts/screen-api.md),
 [R-4](research.md#r-4-ollamasettings-reports-whether-the-connection-was-saved)).
 
@@ -142,25 +148,54 @@ code, the `OllamaConnection` port and handler answering it from the store's
 
 **Acceptance**: `task check` passes with no diff from `task generate`; handler
 tests show `GET /api/settings/ollama` answers `saved: false` before any save
-and `saved: true` after a `PUT`, and the `PUT` response carries `saved: true`;
-the Settings screen is unchanged.
+and `saved: true` after a `PUT`, the `PUT` response carries `saved: true`, and
+a `PUT` body with `saved` is answered `400`; a page test shows the Ollama
+section saves a connection it read with `saved` and the request body holds
+`endpoint` and `model` only; the Settings screen is unchanged.
+
+### Give the settings page pattern a slot for a page list
+
+**Scope**: The `nav` slot of the `settings-page` pattern, its registry item,
+example block and [patterns.md](../../web/registry/rules/patterns.md) rule:
+the list beside the body from `sm`, and below `sm` the list alone or the body
+under a back link, from `ui-design.md`
+([R-3](research.md#r-3-the-page-list-is-a-column-beside-the-page-from-sm-and-the-whole-of-settings-below-it)).
+
+**Dependencies**: None.
+
+**Acceptance**: `task check` and `task check-docs` pass; the example block passes a visual review at the widths in
+`ui-design.md`, the list beside the body from `sm` and the list alone and the
+back link below it; the Settings screen, which passes no `nav`, is unchanged.
+
+### Split the Auto-import section into its watch state and its switch
+
+**Scope**: `AutoImportSection` split into two components, the watch state and
+its problem, and the switch, each keeping the reloads it needs; both still
+shown in the one Settings screen
+([R-1](research.md#r-1-each-settings-page-is-a-route-under-settings)).
+
+**Dependencies**: None.
+
+**Acceptance**: `task check` passes; the Auto-import section's page tests,
+moved to the two components, pass; the `auto-import` e2e spec passes
+unchanged.
 
 ### Split Settings into eight pages with their own addresses and a page list
 
 **Scope**: The `/settings/*` route and the page map (slugs, sections, the
-anchors each page carries, the unknown-slug rule); the `nav` slot of the
-`settings-page` pattern, its registry item, example block and
-[patterns.md](../../web/registry/rules/patterns.md) rule; the eight pages
-from `ui-design.md`, each composing the sections R-1's table names; the
-Auto-import section split into its watch state on Scan and its switch on
-Library, keeping the reloads each part needs; `/settings` as the Scan page
-from `sm` and the list below it, the back link, and the forward of
-`/settings#<anchor>`; the media folder count reported to the scan state from
-the Library page; the e2e specs that open `/settings` to add a folder
+anchors each page carries, the unknown-slug rule); the eight pages from
+`ui-design.md`, each composing the sections R-1's table names in the pattern's
+`nav` slot, with the Auto-import watch state on Scan and its switch on
+Library; the Network page's line where the network read answers `404`;
+`/settings` as the Scan page from `sm` and the list below it, and the forward
+of `/settings#<anchor>`; the sidebar's `Settings` entry matching the pages
+below `/settings`; the media folder count reported to the scan state from the
+Library page; the e2e specs that open `/settings` to add a folder
 ([R-1](research.md#r-1-each-settings-page-is-a-route-under-settings) to
 [R-3](research.md#r-3-the-page-list-is-a-column-beside-the-page-from-sm-and-the-whole-of-settings-below-it)).
 
-**Dependencies**: None.
+**Dependencies**: Give the settings page pattern a slot for a page list;
+Split the Auto-import section into its watch state and its switch.
 
 **Acceptance**: `task check` and `task check-docs` pass; logic tests show an
 unknown slug maps to `scan` and `#comfyui` maps to the Connections page; page
@@ -168,7 +203,10 @@ tests show each of the eight addresses renders only its page's sections, the
 list marks the current page, `/settings/nowhere` is replaced by
 `/settings/scan`, `/settings#comfyui` lands on `/settings/connections#comfyui`
 with the ComfyUI heading focused, and moving from the list to another page
-and back restores the previous page; a page test shows adding a media folder
+and back restores the previous page; page tests show the sidebar marks
+`Settings` current on `/settings` and on `/settings/library`, and that with
+the network read answering `404` `/settings/network` shows the desktop-app
+line; a page test shows adding a media folder
 on the Library page and opening the Scan page enables `Scan library`; the
 existing settings e2e spec passes against the Library page; the pages pass a
 visual review at the widths in `ui-design.md`, including the list alone and
@@ -210,7 +248,8 @@ page list.
 **Acceptance**: `task check` passes; page tests show that with `saved: false`
 the switches, inputs, `Save`, `Test judging` and the run buttons are
 `aria-disabled` with the saved values visible and the link leads to
-`/settings/connections`, that after saving the connection there and going
+`/settings/connections`, that pressing each switch and button and typing in
+each input changes no value shown and sends no request, that after saving the connection there and going
 back they are pressable, that with `saved: true` and auto-tagging turned off
 and saved the run buttons are hidden as today, and that a failed read leaves
 the controls pressable and shows the failed-read line; the page passes a

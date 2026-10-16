@@ -45,6 +45,25 @@ Only the current page's sections are mounted. A page change unmounts the
 previous page, so an unsaved draft is lost as the parent Issue's edge case
 states, and a page reads only its own resources.
 
+The parent Issue's table also puts a work-info plugin proxy on the Network
+page. No such setting exists today, and the Issue leaves adding settings out
+of scope, so the Network page carries the Network section alone.
+
+The Network section renders nothing where `GET /api/settings/network`
+answers `404` (vv is not the Windows desktop app). There the Network page
+keeps its entry in the list and shows a line saying LAN access is set in the
+Windows desktop app, in place of the section.
+
+| Option | Verdict |
+| --- | --- |
+| **Keep the entry, show the line on the page** | Chosen |
+| Leave the page empty | Rejected: the owner reaches a page with a title and nothing under it, and cannot tell why |
+| Drop the entry outside the desktop app | Rejected: requirement 2 lists the eight pages on every page, and the list would need the network read before it could render |
+
+The shell sidebar's `Settings` entry marks itself current
+on `/settings` and every page below it (`matchDescendants`), since today it
+matches `/settings` exactly.
+
 ## R-2: The old anchor addresses are forwarded, and the entry points move to the pages
 
 **Decision**: The entry points link to the page that carries their section
@@ -101,7 +120,9 @@ link.
 
 **Decision**: `GET /api/settings/ollama` gains `saved`, true when the owner
 has saved the connection ([contracts/screen-api.md](contracts/screen-api.md));
-the pages that depend on the connection read this resource.
+the pages that depend on the connection read this resource. The `PUT` request
+body gets its own schema with `endpoint` and `model` only, because today it
+refers to the response schema and the handler rejects any other field.
 
 | Option | Requests on the Auto-tagging page | Verdict |
 | --- | --- | --- |
@@ -135,7 +156,10 @@ table says; the values stay visible in every state.
 | Hide the controls while unsaved | Rejected: the parent Issue keeps the current values readable |
 
 **Rationale**: `aria-disabled` keeps the values readable and the focus order,
-as the page's buttons already do while saving. The run buttons keep today's
+as the page's buttons already do while saving. The attribute stops nothing by
+itself (`Button`, `Switch` and `Input` still fire their events), so each
+handler on the page returns without changing the draft or sending a request
+while `saved` is false, as the save handlers already return while saving. The run buttons keep today's
 rule of appearing only while auto-tagging is on, so turning it off keeps
 acceptance criterion 6.
 
