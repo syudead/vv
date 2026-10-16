@@ -14,11 +14,13 @@ Three optional fields join the entry
 | --- | --- | --- |
 | `default` | string, optional | The manifest's default |
 | `options` | string array, optional | The manifest's options, in its order |
-| `staleValue` | string, optional | A stored value that is not one of the current options; present only then, and `set` is then `false` |
+| `staleValue` | string, optional | A stored value that is not one of the current options; present only then. The run receives the default instead |
 
-`set` and `value` keep their meaning: whether a value is stored and, for a
-non-secret setting, that value. A setting whose stored value is stale has
-`set: false` and no `value`.
+`set` and `value` keep their meaning of
+[049](../../049-work-info-plugins/contracts/screen-api.md): whether a value is
+stored and, for a non-secret setting, that value. A stale value is still
+stored, so its setting has `set: true`, the value in `value`, and the same
+text in `staleValue`; a secret setting has no options, so it is never stale.
 
 ## `WorkInfoPlugin`
 

@@ -64,8 +64,8 @@ Issue, and the edge case of a default outside the options).
 The effective value of a setting is the stored value when one is set and
 inside the options, otherwise the default; `required` is satisfied by the
 effective value, and the run request carries the effective values. A stored
-value outside the current options counts as unset and is reported to the
-owner as `staleValue`
+value outside the current options stays stored but is not used, so the run
+receives the default, and it is reported to the owner as `staleValue`
 ([contracts/screen-api.md](contracts/screen-api.md#workinfopluginsetting)).
 
 | Rule | Why |
@@ -74,7 +74,7 @@ owner as `staleValue`
 | `options` holds 2 to 50 distinct values of 1 to 200 characters | One option is not a choice; a select of over 50 is a text field in disguise |
 | With `options`, `default` is one of them | The Issue's edge case refuses a default outside the options |
 | A `secret` setting declares neither | A default would publish the secret in the module; options would enumerate it |
-| A stored value outside the options is kept in `work_info_plugin_settings` and treated as unset | Deleting it in the upload's transaction would hide from the owner that the new version dropped their choice; the next save replaces it |
+| A stored value outside the options is kept in `work_info_plugin_settings` and not used for the run | Deleting it in the upload's transaction would hide from the owner that the new version dropped their choice; the next save replaces it |
 
 | Option | Where the default is applied | Verdict |
 | --- | --- | --- |
@@ -148,13 +148,18 @@ document.
 ## R-6: The runtime returns each run's standard error, and the app keeps the last one per plugin with the secret values masked
 
 **Decision**: `Run` returns the kept standard error (the first 64 KiB, as
-today) and whether it was truncated, on success and on failure.
-`app.WorkInfoPlugins` replaces every occurrence of each secret setting value
-the run received with `[secret]`, then stores it as the plugin's one
-`work_info_plugin_runs` row, written only when the plugin still has the
-digest that ran ([data-model.md](data-model.md)). A replacing upload deletes
-the row in its transaction; deleting the plugin cascades. The server log keeps
-receiving the output as before.
+today) and whether it was truncated, on success and on failure, and hands the
+same run log to a `record` function the caller passes, before it releases the
+run slot. In `record`, `app.WorkInfoPlugins` replaces every occurrence of each
+secret setting value the run received with `[secret]`; when the output was
+truncated, it also replaces a tail of the kept text that is the start of a
+secret value, so a value cut at 64 KiB leaves no part in clear. It then stores
+the text as the plugin's one `work_info_plugin_runs` row, written only when
+the plugin still has the generation that ran ([data-model.md](data-model.md)).
+Because the row is written while the run slot is held, rows are written in
+the order the runs end, and a slow save cannot put an older run's output over
+a newer one. A replacing upload deletes the row in its transaction; deleting
+the plugin cascades. The server log keeps receiving the output as before.
 
 | Option | Survives a restart | Grows with runs | Verdict |
 | --- | --- | --- | --- |
@@ -166,6 +171,12 @@ receiving the output as before.
 | --- | --- | --- |
 | **Mask with the values of that run before storing** | Yes: the stored text never held them | Chosen |
 | Mask when the screen reads the row | No: a changed or forgotten secret stays in clear | Rejected |
+
+| Option | Keeps the newest run when two saves race | Verdict |
+| --- | --- | --- |
+| **Write the row in `record`, while the run slot is held** | Yes: the next run cannot end before the row is written | Chosen |
+| Write after `Run` returns, conditioned on `ran_at` | No: two runs can end in the same second, and the slot is free before the save | Rejected |
+| Condition the write on the digest | No: an upload of the same bytes keeps the digest, so an older run would come back | Rejected; the generation changes on every replacement |
 
 **Rationale**: Masking by value catches the plugin printing a setting as it
 received it, which is the leak the Issue names; a plugin that encodes the
@@ -209,15 +220,17 @@ under the LAN switch on the desktop app and alone in the container.
 ## R-9: On a `429`, a plugin waits for the smaller of `Retry-After` and 5 seconds, retries once, and otherwise reports an error
 
 **Decision**: The guide recommends: when a response is `429`, read
-`Retry-After`; if it is a delay of at most 5 s, sleep that long (clocks and
-`nanosleep` work in the sandbox) and send the request once more; otherwise,
-or when the retry is `429` again, return an `error` response whose message
-names the site and the delay. VVMDM does not retry for the plugin (the
-Issue's `対象外`).
+`Retry-After` (seconds or an HTTP date; a missing or unreadable value counts
+as 1 s), sleep the smaller of that delay and 5 s (clocks and `nanosleep` work
+in the sandbox), and send the request once more, but only while the run's
+waits, this one included, total at most 10 s. When the wait would go over
+that budget, or the retry is `429` again, the plugin returns an `error`
+response whose message names the site and the delay. VVMDM does not retry for
+the plugin (the Issue's `対象外`).
 
 | Option | Fits 30 s and 16 requests | Verdict |
 | --- | --- | --- |
-| **One retry after at most 5 s** | Yes: a plugin that fetches up to 7 pages still has a retry per page within the request limit, and the waits stay under the run limit | Chosen |
+| **One retry after at most 5 s, within 10 s of waits per run** | Yes: a plugin that fetches up to 7 pages still has a retry per page within the request limit, and the waits of a run total at most 10 s, which leaves 20 s of the 30 s limit for the requests however many pages are refused | Chosen |
 | Exponential backoff until the run limit | No: a plugin that waits 25 s times out with no message for the owner | Rejected |
 | No retry | Yes | Rejected: a single `429` on a burst-limited site would fail every fetch |
 

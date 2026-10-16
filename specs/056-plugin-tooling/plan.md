@@ -38,10 +38,10 @@ flowchart LR
 | Local run and pack | Subcommands of `mdm` sharing the runtime and the parser; no database ([R-1](research.md#r-1-mdm-plugin-run-and-mdm-plugin-pack-reuse-the-servers-runtime-and-parser-and-open-no-database), [R-2](research.md#r-2-pack-replaces-the-vvplugin-section-and-writes-the-file-only-after-the-packed-module-passes-inspection), [contracts/plugin-cli.md](contracts/plugin-cli.md)) |
 | Defaults and choices | `default` and `options` in the manifest; the effective value computed in `internal/domain` ([R-3](research.md#r-3-a-setting-declares-default-and-options-the-stored-value-or-the-default-is-what-the-run-receives), [contracts/plugin-contract.md](contracts/plugin-contract.md)) |
 | Proxy | One `settings` row, read per run, passed to the runtime; destination names resolved and checked before each request and redirect ([R-4](research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option), [R-5](research.md#r-5-through-a-proxy-the-destination-is-checked-by-resolving-its-name-before-each-request-and-redirect)) |
-| Last run's output | Returned by the runtime, masked by the app, one row per plugin bound to the digest ([R-6](research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked), [data-model.md](data-model.md)) |
+| Last run's output | Returned by the runtime, masked by the app, one row per plugin bound to the generation and written in the order the runs end ([R-6](research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked), [data-model.md](data-model.md)) |
 | Tag selection | `tags` beside `fields` in the apply; tags on the video not selectable ([R-7](research.md#r-7-the-apply-takes-the-selected-tag-names-and-a-tag-already-on-the-video-is-not-selectable), [contracts/screen-api.md](contracts/screen-api.md)) |
 | Where the proxy is set | The Network section on every build; the LAN switch stays desktop only ([R-8](research.md#r-8-the-network-section-shows-on-every-build-and-the-lan-switch-stays-desktop-only)) |
-| `429` guidance | One retry after at most 5 s, then an error response ([R-9](research.md#r-9-on-a-429-a-plugin-waits-for-the-smaller-of-retry-after-and-5-seconds-retries-once-and-otherwise-reports-an-error)) |
+| `429` guidance | One retry after at most 5 s within 10 s of waits per run, then an error response ([R-9](research.md#r-9-on-a-429-a-plugin-waits-for-the-smaller-of-retry-after-and-5-seconds-retries-once-and-otherwise-reports-an-error)) |
 
 The Issue has the `ui` label, so the `design` stage writes `ui-design.md`
 before the four screen units. It covers: in the settings dialog of
@@ -203,7 +203,7 @@ one with a valid default and options accepted; a run request carrying the
 default for an unset key, the stored value for a set key, and the default for
 a stored value outside the options; a required key with a default not
 reported missing; app tests show the entry of a stored value outside the
-options with `set: false` and `staleValue`; handler tests show `default`,
+options with `set: true`, its `value` and `staleValue`; handler tests show `default`,
 `options` and `staleValue` in the list body.
 
 ### Write and check a plugin manifest with mdm plugin pack
@@ -261,8 +261,8 @@ unchanged in behaviour.
 
 **Scope**: `Run` returning the kept standard error and its truncation flag on
 success and on failure; the migration and `work_info_plugin_runs` on
-`WorkInfoPluginStore`, written only for the digest that ran and deleted by a
-replacing upload ([data-model.md](data-model.md)); masking of the run's
+`WorkInfoPluginStore`, written in the runtime's `record` call only for the
+generation that ran and deleted by a replacing upload ([data-model.md](data-model.md)); masking of the run's
 secret values and the save in `app.WorkInfoPlugins`
 ([R-6](research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked));
 `lastRunAt` on the entry and `GET /api/work-info-plugins/{id}/last-run`
@@ -276,11 +276,14 @@ proxy while refusing non-public destinations.
 **Acceptance**: `task check` and `task check-docs` pass with no diff from
 `task generate`; adapter tests show the standard error returned for a
 successful run, a run that timed out and a run that failed, and a 100 KiB
-output returned as 64 KiB with the flag; domain tests show a secret value
-appearing twice replaced twice, a non-secret value left, and an empty secret
-not matched; store and app tests show the row replaced by a second run, a
-replacing upload leaving no row, a run whose plugin was replaced or deleted
-before the save writing nothing, and `lastRunAt` in the list; handler tests
+output returned as 64 KiB with the flag; an adapter test shows `record`
+called before a second run can start; domain tests show a secret value
+appearing twice replaced twice, a non-secret value left, an empty secret not
+matched, and a truncated output ending in the first bytes of a secret with
+those bytes masked; store and app tests show the row replaced by a second
+run, a replacing upload leaving no row, a run whose plugin was replaced (with
+the same bytes too) or deleted before the save writing nothing, and
+`lastRunAt` in the list; handler tests
 show the route's body for a kept run, `{}` with no run, `404` for an unknown
 plugin and `401` for a guest.
 
@@ -409,5 +412,6 @@ and how it fits the run and request limits, linked from the `Limits` section.
 **Dependencies**: None.
 
 **Acceptance**: `task check-docs` passes; the guide's new section states the
-wait bound, the single retry and the error response, and the `Limits`
+wait bound, the 10 s of waits per run, the single retry and the error
+response, and the `Limits`
 section links to it.

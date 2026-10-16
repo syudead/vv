@@ -20,7 +20,7 @@ The last run's output per plugin
 | Field | Type | Null | Meaning |
 | --- | --- | --- | --- |
 | `plugin_id` | integer | No | Primary key; the plugin |
-| `digest` | text | No | The module digest that ran |
+| `generation` | integer | No | The plugin row's `generation` when the run started; it changes on every replacement, including one with the same bytes |
 | `operation` | text | No | `search` or `fetch` |
 | `failure` | text | Yes | The run failure code; null for a successful run |
 | `ran_at` | integer | No | Unix seconds when the run ended |
@@ -41,7 +41,9 @@ in [Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery).
 
 | Rule | Enforced in |
 | --- | --- |
-| The run row is written only when `work_info_plugins` still has the row with the digest that ran; otherwise nothing is written | `internal/store`, one statement conditioned on `id` and `digest` |
+| The run row is written only when `work_info_plugins` still has the row with the generation that ran; otherwise nothing is written | `internal/store`, one statement conditioned on `id` and `generation` |
+| Run rows are written in the order the runs end: the app writes the row in the runtime's `record` call, before the run slot is released | `internal/app`, `internal/wasmplugin` |
+| A truncated output has a trailing start of a secret value masked as well as every whole value | `internal/domain`, the masking function |
 | A replacing upload deletes the plugin's run row in the upload's transaction | `internal/store` |
 | A setting's `default` and `options` follow [contracts/plugin-contract.md, Manifest](contracts/plugin-contract.md#manifest) | `internal/domain`, at upload and at `mdm plugin pack` |
 | The effective value of a setting is the stored value when set and inside the options, otherwise the default; a stored value outside the options is kept and reported as `staleValue` | `internal/domain` (`Entry`, the request's values, the `required` check) |

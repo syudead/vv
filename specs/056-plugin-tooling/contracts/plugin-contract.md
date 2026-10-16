@@ -38,4 +38,5 @@ A secret the plugin encodes or splits before writing is not replaced.
 
 The guide gains a section on `429` responses with the behaviour of
 [R-9](../research.md#r-9-on-a-429-a-plugin-waits-for-the-smaller-of-retry-after-and-5-seconds-retries-once-and-otherwise-reports-an-error):
-one retry after at most 5 s, then an `error` response.
+one retry after at most 5 s while the run's waits total at most 10 s, then
+an `error` response.
