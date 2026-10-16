@@ -5,20 +5,34 @@ import {
   searchWithoutGroup,
   videoInGroupPath,
 } from "../groups/groupPaths";
+import {
+  smartFolderContextOf,
+  videoInSmartFolderPath,
+} from "../smartFolders/smartFolderPaths";
 import type { MemberTarget } from "./RelatedVideos";
 
 /**
- * VideoGroupContext は、動画ページを開いたグループ（`?group`）に従う場所と操作である
- * （specs/048-groups/ui-design.md「Video page」、research.md R-9）。
+ * VideoGroupContext は、動画ページを開いたグループ（`?group`）かスマートフォルダ（`?smartFolder`）に
+ * 従う場所と操作である（specs/048-groups/ui-design.md「Video page」、research.md R-9、
+ * specs/052-smart-folders/ui-design.md「Video page」）。
  */
 export type VideoGroupContext = {
   /** 読み取りに渡すグループの id。`?group` が無いか、プレイリストの文脈の間は undefined。 */
   group: number | undefined;
-  /** この画面から別の動画を開く場所。`?group` があれば残す。 */
+  /**
+   * 読み取りに渡すスマートフォルダの id。`?smartFolder` が無いか、`?group` があれば undefined
+   * （`group` が勝つ）。プレイリストの文脈の間も読む。フォルダの項目の中で、フォルダの行と
+   * フォルダの `Up next` を出すためである（ui-design.md「Video page in a playlist」）。
+   */
+  smartFolder: number | undefined;
+  /** この画面から別の動画を開く場所。`?group` か `?smartFolder` があれば残す。 */
   videoTo: (videoId: number) => string;
   /** 次の動画を開く場所。次が無ければ undefined。 */
   nextTo: (next: { id: number } | undefined) => string | undefined;
-  /** `?group` で開いた動画のメンバーの行の開き方。`?group` が無ければ undefined（ふつうの行）。 */
+  /**
+   * `?group` か `?smartFolder` で開いた動画のメンバーの行の開き方。どちらも無いか、プレイリストの
+   * 文脈の間は undefined（ふつうの行か、ページが決める行）。
+   */
   memberTarget: (linkState: unknown) => MemberTarget | undefined;
   /**
    * グループの操作（外す・タグ化・解散）の後に、動画と関連動画を `group` なしで読み直す。
@@ -28,24 +42,38 @@ export type VideoGroupContext = {
   readWithoutGroup: (reread: () => void) => void;
 };
 
+/** contextVideoPath は、開いた文脈を保って動画 `videoId` を開く場所である。 */
+function contextVideoPath(
+  videoId: number,
+  group: number | undefined,
+  smartFolder: number | undefined,
+): string {
+  if (group !== undefined) return videoInGroupPath(videoId, group);
+  if (smartFolder !== undefined) return videoInSmartFolderPath(videoId, smartFolder);
+  return `/videos/${String(videoId)}`;
+}
+
 /**
- * useVideoGroupContext は動画ページの `?group` を読む。プレイリストの文脈（`inPlaylist`）は
- * グループより優先するので、その間は `?group` を使わず、運ばない。
+ * useVideoGroupContext は動画ページの `?group` と `?smartFolder` を読む。プレイリストの文脈
+ * （`inPlaylist`）はグループより優先するので、その間は `?group` を使わず、運ばない。
+ * `?smartFolder` はその間も読み取りに渡すが、開く場所はプレイリストのステップが決める。
  */
 export function useVideoGroupContext(inPlaylist: boolean): VideoGroupContext {
   const location = useLocation();
   const navigate = useNavigate();
   const group = inPlaylist ? undefined : groupContextOf(location.search);
+  const smartFolder =
+    group === undefined ? smartFolderContextOf(location.search) : undefined;
   const videoTo = (videoId: number) =>
-    group === undefined ? `/videos/${String(videoId)}` : videoInGroupPath(videoId, group);
+    contextVideoPath(videoId, group, inPlaylist ? undefined : smartFolder);
+  const opened = !inPlaylist && (group !== undefined || smartFolder !== undefined);
   return {
     group,
+    smartFolder,
     videoTo,
     nextTo: (next) => (next === undefined ? undefined : videoTo(next.id)),
     memberTarget: (linkState) =>
-      group === undefined
-        ? undefined
-        : (memberId) => ({ to: videoTo(memberId), state: linkState }),
+      opened ? (memberId) => ({ to: videoTo(memberId), state: linkState }) : undefined,
     readWithoutGroup: (reread) => {
       if (group === undefined) {
         reread();

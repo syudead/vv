@@ -54,7 +54,7 @@ import {
   itemTitle,
   moveItem,
   playlistDuration,
-  playTarget,
+  firstPlayTarget,
 } from "./playlistItems";
 import RenamePlaylistDialog from "./RenamePlaylistDialog";
 
@@ -298,8 +298,9 @@ function PlaylistScreen({ id }: { id: number | null }) {
   }
 
   const ready = page.kind === "ready" ? page : null;
-  const first = ready?.items[0];
-  const firstTarget = id !== null && first !== undefined ? playTarget(id, first) : null;
+  // 「Play」は始める動画のある最初の項目から始める。動画の無いスマートフォルダの項目は飛ばす
+  // （specs/052-smart-folders/ui-design.md「Playlist screen row」）。
+  const firstTarget = id === null ? null : firstPlayTarget(id, ready?.items ?? []);
 
   // dnd-kit の読み上げ。位置は今の並びでの 1 始まり。
   const announcements = reorderAnnouncements(

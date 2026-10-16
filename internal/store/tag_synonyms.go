@@ -64,7 +64,7 @@ func (s *TagStore) AddSynonym(ctx context.Context, tagID int64, name string, mer
 	if err != nil {
 		return domain.Tag{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.Tag{}, fmt.Errorf("cannot add the synonym: %w", err)
 	}
 	return tag, nil
@@ -94,7 +94,7 @@ func (s *TagStore) RemoveSynonym(ctx context.Context, tagID int64, name string) 
 	if err != nil {
 		return domain.Tag{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commitMatchChange(ctx, tx); err != nil {
 		return domain.Tag{}, fmt.Errorf("cannot remove the synonym: %w", err)
 	}
 	return tag, nil

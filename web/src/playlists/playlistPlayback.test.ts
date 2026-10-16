@@ -1,12 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import type { Playlist, PlaylistItem, PlaylistPlayback } from "../api/playlists";
+import type {
+  Playlist,
+  PlaylistItem,
+  PlaylistPlayback,
+  PlaylistStep,
+} from "../api/playlists";
 import {
   choosePair,
+  itemSmartFolderId,
   itemStartVideoId,
+  itemStepPath,
   pairAgrees,
   panelScrollTop,
   parsePlaylistQuery,
+  playlistStepPath,
   stepPath,
 } from "./playlistPlayback";
 
@@ -37,6 +45,43 @@ describe("parsePlaylistQuery", () => {
 describe("stepPath", () => {
   it("playlist を保ち、item をステップの項目にした動画ページの場所を返す", () => {
     expect(stepPath(5, 13, 23)).toBe("/videos/13?playlist=5&item=23");
+  });
+
+  it("スマートフォルダの項目なら smartFolder を付ける（052 ui-design.md「Video page in a playlist」）", () => {
+    expect(stepPath(5, 13, 23, 7)).toBe("/videos/13?playlist=5&item=23&smartFolder=7");
+  });
+
+  it("再生の応答のステップは自身の smartFolderId だけでフォルダを決める", () => {
+    const step = { itemId: 23, video: { id: 13 } } as PlaylistStep;
+    expect(playlistStepPath(5, { ...step, smartFolderId: 7 })).toBe(
+      "/videos/13?playlist=5&item=23&smartFolder=7",
+    );
+    expect(playlistStepPath(5, step)).toBe("/videos/13?playlist=5&item=23");
+  });
+});
+
+describe("スマートフォルダの項目（052 ui-design.md「Playlist screen row」）", () => {
+  const folder = (openVideoId?: number) =>
+    ({
+      id: 4,
+      kind: "smartFolder",
+      smartFolder: { id: 9, name: "タグ: 猫", openVideoId },
+    }) as PlaylistItem;
+
+  it("フォルダの開く動画から smartFolder 付きで始め、動画の無いフォルダは始めない", () => {
+    expect(itemStartVideoId(folder(31))).toBe(31);
+    expect(itemSmartFolderId(folder(31))).toBe(9);
+    expect(itemStepPath(5, folder(31))).toBe(
+      "/videos/31?playlist=5&item=4&smartFolder=9",
+    );
+    expect(itemStartVideoId(folder())).toBeUndefined();
+    expect(itemStepPath(5, folder())).toBeNull();
+  });
+
+  it("動画とグループの項目はフォルダを持たない", () => {
+    const video = { id: 1, kind: "video", video: { id: 7 } } as PlaylistItem;
+    expect(itemSmartFolderId(video)).toBeUndefined();
+    expect(itemStepPath(5, video)).toBe("/videos/7?playlist=5&item=1");
   });
 });
 

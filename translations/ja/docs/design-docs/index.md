@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 684244977c73173fbb4734e7c774e48d7a50ab1ea8033daf7ff7f66fdab05f2c
+sourceHash: eb574da0c9b0d623040b2abca2460af8a38f6435269609c5237755f88bbb611e
 ---
 
 # 設計文書 {#design-documents}
@@ -72,4 +72,5 @@ sourceHash: 684244977c73173fbb4734e7c774e48d7a50ab1ea8033daf7ff7f66fdab05f2c
 - [ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる (ドロップの表示、ドロップのメニュー、新しいグループの名前欄、取り消しのトースト): UI](../../specs/050-drag-organize/ui-design.md)
 - [タグの種類 (タグの行の種類のラベル、種類の絞り込み、選択バーの Set kind、Kinds タブ、ライブラリのタグの種類の絞り込み): UI](../../specs/051-tag-kinds/ui-design.md)
 - [作品情報プラグインからの作品の詳細 (比較の作品の詳細の行と `New` と `Not linked` の印、結果のステップの除かれた値): UI](../../specs/052-plugin-work-info-fields/ui-design.md)
+- [保存した条件に中身が従うスマートフォルダ (Save as smart folder、スマートフォルダのダイアログ、条件の行を持つカードとページ、動画のページのフォルダの行): UI](../../specs/052-smart-folders/ui-design.md)
 - [自動の重複判定 (カードと行のバージョンの印、Settings の Duplicate judging のスイッチ): UI](../../specs/054-auto-dup/ui-design.md)

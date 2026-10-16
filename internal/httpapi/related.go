@@ -16,7 +16,8 @@ import (
 // メンバーなら、最初のページにこの動画を中ほどに置いたグループのメンバーの窓も関連動画と
 // 同じ形で載せる。
 func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetRelatedVideosParams) {
-	page := domain.RelatedPage{Limit: domain.DefaultRelatedPageSize, GroupID: groupContext(params.Group)}
+	opened := videoContext(params.Group, params.SmartFolder)
+	page := domain.RelatedPage{Limit: domain.DefaultRelatedPageSize, GroupID: opened.GroupID, SmartFolderID: opened.SmartFolderID}
 	if params.Limit != nil {
 		if *params.Limit < 1 || *params.Limit > domain.MaxRelatedPageSize {
 			s.invalidRequest(w, "limit must be between 1 and 100.")
@@ -109,7 +110,7 @@ func (s *server) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, i
 		return
 	}
 	audience := audienceFrom(r.Context())
-	group, grouped, err := s.catalog.VideoGroup(r.Context(), audience, video, groupContext(params.Group), window)
+	group, grouped, err := s.catalog.VideoGroup(r.Context(), audience, video, videoContext(params.Group, params.SmartFolder), window)
 	if err != nil {
 		s.internalError(w, "Could not load the group members.", err)
 		return
@@ -140,6 +141,18 @@ func (s *server) presenter(ctx context.Context, audience domain.Audience, shown 
 		}
 		return out
 	}
+}
+
+// videoContextRefs は動画 videoID の文脈 group を、動画の応答の group か smartFolder のどちらか一方に
+// する。文脈がスマートフォルダなら smartFolder、グループなら group である。
+func videoContextRefs(group domain.VideoGroup, videoID int64) (*gen.VideoGroupRef, *gen.VideoSmartFolderRef) {
+	position, count := group.Position(videoID), group.Total()
+	if group.SmartFolder {
+		return nil, &gen.VideoSmartFolderRef{Id: group.ID, Name: group.Name, Position: position, Count: count}
+	}
+	return &gen.VideoGroupRef{
+		Id: group.ID, Folder: apiGroupFolder(group.Folder), Name: group.Name, Position: position, Count: count,
+	}, nil
 }
 
 // apiGroupFolder は文脈のグループのフォルダを応答の形にする。自動グループのフォルダが登録

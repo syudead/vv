@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	"modernc.org/sqlite"
 
@@ -91,10 +92,35 @@ type listSpec struct {
 	// tagKindID は、この種類のタグを手で付けたかフォルダ名から 1 つでも持つ動画だけにする
 	// 種類の id である。0 は絞り込まない（specs/051-tag-kinds/research.md R-5）。
 	tagKindID int64
-	sort      domain.VideoSort
-	seed      int64
-	cursor    string
-	limit     int
+	// addedWithinDays は追加日の絞り込み（日数、0 は絞り込まない）、minDurationSec と
+	// maxDurationSec は長さの範囲（秒、nil はその側を限らない）である
+	// （specs/052-smart-folders/research.md R-4）。
+	addedWithinDays int
+	minDurationSec  *int
+	maxDurationSec  *int
+	// now は追加日の絞り込みの基準時刻（Unix 秒）である。1回の一覧の読み取りで一度だけ
+	// 決め、件数・ページ・空ページの再集計のどの SQL にも同じ値を渡す。
+	now int64
+	// and は、この絞り込みに重ねて掛ける絞り込みで、スマートフォルダの祖先の条件を 1 段に 1 つ
+	// 持つ（specs/052-smart-folders/research.md R-5）。ライブラリの項目の問い合わせ
+	// （libraryItemsCTE）だけが読み、各段の絞り込みの項目（検索式・視聴状態・再生可否・お気に入り・
+	// タグ・人物と団体・追加日と長さ）をそれぞれ掛ける。範囲・並べ順・カーソル・件数と、各段の
+	// and は読まない。
+	and []listSpec
+	// ownerSearch は、ゲストにも検索式を所有者の意味（タグ名と作品情報にも照合する）で掛ける。
+	// スマートフォルダの条件は所有者の事実で決まる（research.md R-11）。
+	ownerSearch bool
+	// userKeyColumn は videos の利用者データの鍵を持つ列（例えば videos.user_key）で、空なら
+	// userKeyExpr で求める。スマートフォルダの一致する動画は、鍵を 1 度だけ求めた smart_base を
+	// videos として読むので、その列を使う（smart_folder_matches.go）。
+	userKeyColumn string
+	// smartFolders は一覧の一番上にスマートフォルダの項目として混ぜるフォルダである。ライブラリの
+	// 一覧（ListLibrary）だけが librarySmartFolders で埋める（specs/052-smart-folders/research.md R-7）。
+	smartFolders []librarySmartFolder
+	sort         domain.VideoSort
+	seed         int64
+	cursor       string
+	limit        int
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
@@ -131,6 +157,9 @@ func (s *LibraryStore) ListVideos(ctx context.Context, audience domain.Audience,
 	return page, nil
 }
 
+// listNow は追加日の絞り込みの基準時刻の元である。試験が時計を止めるために差し替える。
+var listNow = time.Now
+
 // libraryListSpec はライブラリの一覧（GET /api/videos・GET /api/library・GET /api/library/ids）の
 // 問い合わせ q を、存在を確かめたタグの id tagIDs とともに listSpec にする。
 func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int64) listSpec {
@@ -138,6 +167,8 @@ func libraryListSpec(audience domain.Audience, q domain.VideoQuery, tagIDs []int
 		scope: libraryScope(audience), expr: domain.ParseSearchQuery(q.Query),
 		watch: q.Watch, playableOnly: q.PlayableOnly, tagIDs: tagIDs, favoriteOnly: q.FavoriteOnly,
 		personID: q.Person, organizationID: q.Organization, tagKindID: q.TagKindID,
+		addedWithinDays: q.AddedWithinDays, minDurationSec: q.MinDurationSec, maxDurationSec: q.MaxDurationSec,
+		now:  listNow().Unix(),
 		sort: q.Sort, seed: q.Seed, cursor: q.Cursor, limit: q.Limit,
 	}
 }
@@ -172,25 +203,50 @@ func (s *LibraryStore) CountVideos(ctx context.Context, audience domain.Audience
 // パスの最小のまま。所在の範囲が見せてよい所在に限るので、見せる動画の判定は所在ごとに
 // 集まりの規則だけを足せばよく、動画ごとの見せてよいかの判定を重ねない。
 func chosenLocationsCTE(scope locationScope, expr domain.SearchExpr) (string, []any) {
+	return chosenLocationsCTEFor(scope, scope.audience, []domain.SearchExpr{expr})
+}
+
+// chosenLocationsCTEFor は chosenLocationsCTE と同じ chosen を、検索式 exprs のすべてを満たす
+// 所在から作る。検索式は見る人 searchAudience の意味で照合する（スマートフォルダは所有者の意味、
+// specs/052-smart-folders/research.md R-11）。範囲と集まりの代表は scope の見る人で決める。
+func chosenLocationsCTEFor(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
+	selectSQL, args := chosenLocationsSelect(scope, searchAudience, exprs)
+	return `with chosen as (` + selectSQL + `)`, args
+}
+
+// chosenLocationsSelect は chosenLocationsCTEFor の chosen を作る select 文 `(video_id, path)` と
+// その引数を返す。スマートフォルダの一致する動画は、検索式の段をこの文の動画に限る
+// （smartMatchConditions）。
+func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	scopeClause, args := scope.condition("l")
 	clauses := []string{scopeClause, `(sbm.bundle_id is null or sv.id = ` +
 		effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
-	if exprClause, exprArgs := searchExprCondition(expr, "l", scope.audience); exprClause != "" {
-		bundleClause, bundleArgs := searchExprCondition(expr, "bl", scope.audience)
-		clauses = append(clauses, `((sbm.bundle_id is null and `+exprClause+`) or (sbm.bundle_id is not null and exists (
+	// どの検索式も同じ所在 1 行で満たす。集まりでは、すべての式を 1 つの exists の同じ bl に掛ける。
+	var exprClauses, bundleClauses []string
+	var exprArgs, bundleArgs []any
+	for _, expr := range exprs {
+		exprClause, eArgs := searchExprCondition(expr, "l", searchAudience)
+		if exprClause == "" {
+			continue
+		}
+		bundleClause, bArgs := searchExprCondition(expr, "bl", searchAudience)
+		exprClauses, bundleClauses = append(exprClauses, exprClause), append(bundleClauses, bundleClause)
+		exprArgs, bundleArgs = append(exprArgs, eArgs...), append(bundleArgs, bArgs...)
+	}
+	if len(exprClauses) > 0 {
+		clauses = append(clauses, `((sbm.bundle_id is null and `+strings.Join(exprClauses, " and ")+`) or (sbm.bundle_id is not null and exists (
 			select 1 from video_bundle_members bm
 			join videos bv on bv.content_key = bm.content_key and bv.content_key <> ''
 			join video_locations bl on bl.video_id = bv.id
-			where bm.bundle_id = sbm.bundle_id and `+registeredLocationCondition("bl")+` and `+bundleClause+`)))`)
+			where bm.bundle_id = sbm.bundle_id and `+registeredLocationCondition("bl")+` and `+strings.Join(bundleClauses, " and ")+`)))`)
 		args = append(args, exprArgs...)
 		args = append(args, bundleArgs...)
 	}
-	return `with chosen as (
-		select l.video_id, min(l.path) as path from video_locations l
+	return `select l.video_id, min(l.path) as path from video_locations l
 		join videos sv on sv.id = l.video_id
 		left join video_bundle_members sbm on sbm.content_key = sv.content_key and sv.content_key <> ''
 		where ` + strings.Join(clauses, " and ") + `
-		group by l.video_id)`, args
+		group by l.video_id`, args
 }
 
 // watchCondition は視聴状態の絞り込みを、playback_progress（別名 p、left join）

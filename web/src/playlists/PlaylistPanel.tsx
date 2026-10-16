@@ -1,4 +1,4 @@
-import { AlertTriangle, Check, Folder, ListVideo } from "lucide-react";
+import { AlertTriangle, Check, ListVideo } from "lucide-react";
 import { type ReactNode, useLayoutEffect, useRef } from "react";
 import { Link } from "react-router";
 
@@ -24,8 +24,9 @@ import {
   VideoThumbnailImage,
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
+import { CollectionCountIcon, orderedItemCollection } from "../videoList/ItemRowCells";
 import { itemTitle, playlistPath } from "./playlistItems";
-import { itemStartVideoId, panelScrollTop, stepPath } from "./playlistPlayback";
+import { itemStepPath, panelScrollTop } from "./playlistPlayback";
 import type { PlaylistPanelState } from "./usePlaylistContext";
 
 const headingId = "playlist-panel-heading";
@@ -210,7 +211,7 @@ function PanelRows({
             <div className="-m-1.5 flex flex-col gap-2 rounded-lg bg-accent p-1.5 ring-2 ring-primary ring-inset">
               <ItemThumbnail item={item} position={index + 1} />
               <span className="sr-only">{t.player.related.nowPlaying}</span>
-              <ItemText item={item} />
+              <ItemText item={item} current />
             </div>
           </li>
         ) : (
@@ -241,21 +242,20 @@ function PanelRow({
   backTo: string;
   autoplay: boolean;
 }) {
-  const videoId = itemStartVideoId(item);
+  const to = itemStepPath(playlistId, item);
   const content = (
     <>
       <ItemThumbnail item={item} position={position} />
       <ItemText item={item} />
     </>
   );
-  if (videoId === undefined) {
+  if (to === null) {
     return (
       <li>
         <div className="flex flex-col gap-2">{content}</div>
       </li>
     );
   }
-  const to = stepPath(playlistId, videoId, item.id);
   const state = { from: backTo, autoplay };
   const label = t.playlists.item.playFrom(itemTitle(item));
   if (item.kind === "video" && item.video !== undefined) {
@@ -326,8 +326,8 @@ function VideoRow({
 }
 
 /**
- * ItemThumbnail は再生中のカードとグループのカードのサムネイルである（プレビューは流さない）。
- * 何本目かを左上に重ねる。
+ * ItemThumbnail は再生中のカードと、グループとスマートフォルダのカードのサムネイルである
+ * （プレビューは流さない）。何本目かを左上に重ねる。
  */
 function ItemThumbnail({ item, position }: { item: PlaylistItem; position: number }) {
   if (item.kind === "video" && item.video !== undefined) {
@@ -335,7 +335,7 @@ function ItemThumbnail({ item, position }: { item: PlaylistItem; position: numbe
       <RelatedThumbnail video={item.video} marks={<CardNumber position={position} />} />
     );
   }
-  const group = item.group;
+  const group = orderedItemCollection(item);
   const thumbnailUrl = group?.previews[0]?.thumbnailUrl;
   const duration = formatDuration(group?.durationMs);
   const inProgress = group?.watchState === "inProgress" && group.videoCount > 0;
@@ -361,18 +361,25 @@ function ItemThumbnail({ item, position }: { item: PlaylistItem; position: numbe
   );
 }
 
-/** ItemText は題名（グループは名前と本数）、視聴の印と再生できない理由である。 */
-function ItemText({ item }: { item: PlaylistItem }) {
+/**
+ * ItemText は題名（グループとスマートフォルダは名前と本数）、視聴の印と再生できない理由である。
+ * 動画の無いスマートフォルダの項目は名前を従の色にし、今の項目なら進み具合の欄に「0 videos」を
+ * 出す（specs/052-smart-folders/ui-design.md「States」）。
+ */
+function ItemText({ item, current = false }: { item: PlaylistItem; current?: boolean }) {
   const title = itemTitle(item);
-  const group = item.kind === "group" ? item.group : undefined;
+  const group = orderedItemCollection(item);
   const watched =
     group !== undefined
       ? group.watchState === "watched"
       : item.video?.progress?.completed === true;
+  // 今の項目が動画の無いフォルダなら、進み具合の欄に「0 videos」を出す（ui-design.md「States」）。
   const groupProgress =
     group !== undefined && group.watchState === "inProgress"
       ? t.library.group.progress(group.watchedCount ?? 0, group.videoCount)
-      : null;
+      : current && group?.videoCount === 0
+        ? t.library.group.count(0)
+        : null;
   const unplayable = item.video === undefined ? null : unplayableText(item.video);
   return (
     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -380,7 +387,9 @@ function ItemText({ item }: { item: PlaylistItem }) {
         <span
           className={cn(
             "line-clamp-2 min-w-0 text-sm font-medium wrap-anywhere",
-            watched ? "text-muted-foreground" : "text-foreground",
+            watched || group?.videoCount === 0
+              ? "text-muted-foreground"
+              : "text-foreground",
           )}
         >
           {title}
@@ -403,7 +412,7 @@ function ItemText({ item }: { item: PlaylistItem }) {
       </span>
       {group !== undefined && (
         <span className="flex items-center gap-1 text-xs text-muted-foreground tabular-nums">
-          <Folder aria-hidden="true" className="size-3 shrink-0" />
+          <CollectionCountIcon smartFolder={item.kind === "smartFolder"} />
           {t.library.group.count(group.videoCount)}
         </span>
       )}

@@ -129,12 +129,15 @@ func (s *server) parseIDsQuery(w http.ResponseWriter, params videoQueryParams) (
 	if !s.parseIDFilters(w, params, &query) {
 		return domain.VideoQuery{}, false
 	}
+	if !s.parseAddedAndLength(w, params, &query) {
+		return domain.VideoQuery{}, false
+	}
 	return query, true
 }
 
-// writeVideoIDs は「すべて選択」の id を応答に書く。groups はグループの項目で、
-// 無ければ省く（specs/035-favorites/contracts/screen-api.md §3）。
-func (s *server) writeVideoIDs(w http.ResponseWriter, ids, missingTagIDs []int64, groups []gen.LibraryGroupIds) {
+// writeVideoIDs は「すべて選択」の id を応答に書く。groups はグループの項目、smartFolderIDs はスマート
+// フォルダの項目の id で、どちらも無ければ省く（specs/035-favorites/contracts/screen-api.md §3）。
+func (s *server) writeVideoIDs(w http.ResponseWriter, ids, missingTagIDs []int64, groups []gen.LibraryGroupIds, smartFolderIDs []int64) {
 	if ids == nil {
 		ids = []int64{}
 	}
@@ -144,6 +147,9 @@ func (s *server) writeVideoIDs(w http.ResponseWriter, ids, missingTagIDs []int64
 	}
 	if len(groups) > 0 {
 		payload.Groups = &groups
+	}
+	if len(smartFolderIDs) > 0 {
+		payload.SmartFolderIds = &smartFolderIDs
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, payload, s.logger)

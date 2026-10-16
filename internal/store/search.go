@@ -63,10 +63,10 @@ func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.A
 			}
 			condition := `(` + locationCondition + `)`
 			if audience.IsOwner() {
-				condition = `(` + locationCondition + ` or ` + tagNameMatchCondition(alias) +
-					` or ` + workInfoMatchCondition(alias) + `)`
-				// タグ名の手で付けた分とフォルダ名の分、作品情報の品番・人物・団体で、同じ語を1つずつ渡す。
-				args = append(args, text, text, text, text, text)
+				condition = `(` + locationCondition + ` or ` + ownerFactsMatchCondition(alias) + `)`
+				// 鍵の集合（タグ名の手で付けた分、作品情報の品番・人物・団体）を 2 回と、タグのフォルダ名の
+				// 分で、同じ語を 9 つ渡す。
+				args = append(args, text, text, text, text, text, text, text, text, text)
 			}
 			if term.Negated {
 				condition = `not ` + condition
@@ -82,50 +82,35 @@ func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.A
 	return strings.Join(clauses, " and "), args
 }
 
-// tagNameMatchCondition は、所在（別名 alias）の動画に付いたタグの元の名前か
-// シノニムのどれかが語に当たるかの条件句を返す。タグは手で付けた分
-// （video_tags）とフォルダ名から付いている分（video_folder_names、017 の
-// data-model.md §4）のどちらでもよい。video_locations は content_key を持たない
-// ので、videos を経て動画に結ぶ（data-model.md §7）。手で付けた分は利用者データの鍵
-// （userKeyExpr、specs/030-video-versions/data-model.md §3）で結ぶ。呼び出し側が FoldForMatch
-// 済みの語を、2つの出所のために同じものを2つ引数として渡す。内容の識別子が
-// 空の動画は再生位置を持たない（listing.go の playback_progress の join）のと
-// 同じ理由でタグの照合からも除く。空文字列どうしが一致して無関係な行を拾わない
-// ため。フォルダ名の分も同じ扱いにして、Video.tags（content_key で引く）と
-// 食い違わないようにする。
-func tagNameMatchCondition(alias string) string {
-	return `(exists (select 1 from videos v ` +
-		`join video_tags vt on vt.content_key = ` + userKeyExpr("v") + ` ` +
-		`join tag_names tn on tn.tag_id = vt.tag_id ` +
-		`where v.id = ` + alias + `.video_id and v.content_key <> '' and instr(tn.search_key, ?) > 0) ` +
-		`or exists (select 1 from video_folder_names vfn ` +
-		`join tag_names folder_tn on folder_tn.name = vfn.name ` +
-		`join tag_names tn on tn.tag_id = folder_tn.tag_id ` +
+// ownerFactsMatchCondition は、所在（別名 alias）の動画に付いたタグの元の名前かシノニムのどれか、
+// または作品情報の品番・人物・団体のどれかが語に当たるかの条件句を返す。呼び出し側が FoldForMatch
+// 済みの語を 9 つ（タグの手で付けた分と作品情報の品番・人物・団体の鍵の集合を userKeyVideosSQL の
+// 2 か所に 1 回ずつ、タグのフォルダ名の分を 1 つ）引数として渡す。語に当たる鍵の集合を動画の id に
+// 引き直してから所在の動画を照らすので、所在 1 行ごとに鍵を求めない。
+//
+// タグは手で付けた分（video_tags）とフォルダ名から付いている分（video_folder_names、017 の
+// data-model.md §4）のどちらでもよい。手で付けた分と作品情報は利用者データの鍵（userKeyExpr、
+// specs/030-video-versions/data-model.md §3）で結び、作品情報は品番の照合形（code_key）か、結び付いた
+// 人物・団体の名前か別名の照合形（search_key）を照らす（specs/047-video-work-info/data-model.md
+// 「Search」）。名前の照合形は名前の行にあるので、人物の改名や統合では動画側の鍵を書き直さない
+// （R-6）。説明・日付・URL・外部 ID は照合しない。内容の識別子が空の動画は再生位置を持たない
+// （listing.go の playback_progress の join）のと同じ理由で照合から除く。空文字列どうしが一致して
+// 無関係な行を拾わないためで、フォルダ名の分も同じ扱いにして Video.tags（content_key で引く）と
+// 食い違わないようにする。フォルダ名の分は語に当たるタグの名前から引く（cross join で結ぶ順を
+// 決める）。フォルダ名の行を全部読むと、2 万本では検索 1 回に十数 ms かかる。
+func ownerFactsMatchCondition(alias string) string {
+	keys := `select vt.content_key from video_tags vt join tag_names tn on tn.tag_id = vt.tag_id where instr(tn.search_key, ?) > 0 ` +
+		`union select wi.content_key from video_work_info wi where instr(wi.code_key, ?) > 0 ` +
+		`union select vp.content_key from video_work_people vp ` +
+		`join people_names pn on pn.person_id = vp.person_id where instr(pn.search_key, ?) > 0 ` +
+		`union select vo.content_key from video_work_organizations vo ` +
+		`join organization_names onm on onm.organization_id = vo.organization_id where instr(onm.search_key, ?) > 0`
+	return `(` + alias + `.video_id in (` + userKeyVideosSQL(keys) + `) ` +
+		`or ` + alias + `.video_id in (select vfn.video_id from tag_names tn ` +
+		`cross join tag_names folder_tn on folder_tn.tag_id = tn.tag_id ` +
+		`cross join video_folder_names vfn on vfn.name = folder_tn.name ` +
 		`join videos v on v.id = vfn.video_id and v.content_key <> '' ` +
-		`where vfn.video_id = ` + alias + `.video_id and instr(tn.search_key, ?) > 0))`
-}
-
-// workInfoMatchCondition は、所在（別名 alias）の動画の利用者データの鍵（userKeyExpr）に結ぶ
-// 作品情報の品番の照合形（code_key）か、結び付いた人物・団体の名前か別名の照合形（search_key）の
-// どれかが語に当たるかの条件句を返す（specs/047-video-work-info/data-model.md「Search」）。
-// 呼び出し側が FoldForMatch 済みの語を、3つの出所のために同じものを3つ引数として渡す。
-// 名前の照合形は名前の行にあるので、人物の改名や統合では動画側の鍵を書き直さない（R-6）。
-// 内容の識別子が空の動画はタグの照合と同じ理由で除く。説明・日付・URL・外部 ID は照合しない。
-func workInfoMatchCondition(alias string) string {
-	video := `select 1 from videos v `
-	owned := `where v.id = ` + alias + `.video_id and v.content_key <> '' and `
-	userKey := userKeyExpr("v")
-	return `(exists (` + video +
-		`join video_work_info wi on wi.content_key = ` + userKey + ` ` +
-		owned + `instr(wi.code_key, ?) > 0) ` +
-		`or exists (` + video +
-		`join video_work_people vp on vp.content_key = ` + userKey + ` ` +
-		`join people_names pn on pn.person_id = vp.person_id ` +
-		owned + `instr(pn.search_key, ?) > 0) ` +
-		`or exists (` + video +
-		`join video_work_organizations vo on vo.content_key = ` + userKey + ` ` +
-		`join organization_names onm on onm.organization_id = vo.organization_id ` +
-		owned + `instr(onm.search_key, ?) > 0))`
+		`where instr(tn.search_key, ?) > 0))`
 }
 
 // quoteMatchPhrase は語を FTS5 の1つのフレーズとして渡せる形にする。

@@ -277,6 +277,9 @@ paths:
               format: int64
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
+        - $ref: "#/components/parameters/AddedWithinFilter"
+        - $ref: "#/components/parameters/MinDurationFilter"
+        - $ref: "#/components/parameters/MaxDurationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
       responses:
         "200":
@@ -395,6 +398,9 @@ paths:
               format: int64
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
+        - $ref: "#/components/parameters/AddedWithinFilter"
+        - $ref: "#/components/parameters/MinDurationFilter"
+        - $ref: "#/components/parameters/MaxDurationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
       responses:
         "200":
@@ -417,7 +423,9 @@ paths:
         一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
         だけが入る。並びは決めない。「すべて選択」用
         （specs/027-partial-group-search/contracts/library-api.md §2）。
-        グループの項目は `groups` にも、フォルダと全メンバーの id として入る。
+        グループの項目は `groups` にも、フォルダと全メンバーの id として入る。スマートフォルダの
+        項目は `smartFolderIds` に入り、その動画は `ids` に入らない（specs/052-smart-folders/data-model.md
+        「Library items」）。
 
         `favorite` が true なら、項目ごとに自分のお気に入りで判定する（動画の項目は動画、
         グループの項目はグループ）。お気に入りでないグループに属するお気に入りの動画は
@@ -456,6 +464,9 @@ paths:
               format: int64
         - $ref: "#/components/parameters/PersonFilter"
         - $ref: "#/components/parameters/OrganizationFilter"
+        - $ref: "#/components/parameters/AddedWithinFilter"
+        - $ref: "#/components/parameters/MinDurationFilter"
+        - $ref: "#/components/parameters/MaxDurationFilter"
         - $ref: "#/components/parameters/TagKindFilter"
       responses:
         "200":
@@ -481,6 +492,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - $ref: "#/components/parameters/VideoGroupContext"
+        - $ref: "#/components/parameters/VideoSmartFolderContext"
       responses:
         "200":
           description: 詳細
@@ -515,6 +527,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - $ref: "#/components/parameters/VideoGroupContext"
+        - $ref: "#/components/parameters/VideoSmartFolderContext"
         - name: cursor
           in: query
           description: 前の応答の `nextCursor`。省くと先頭から返す
@@ -553,6 +566,7 @@ paths:
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - $ref: "#/components/parameters/VideoGroupContext"
+        - $ref: "#/components/parameters/VideoSmartFolderContext"
         - name: offset
           in: query
           description: 返す最初のメンバーの、グループの中の並びの位置（0 始まり）
@@ -3296,8 +3310,9 @@ paths:
       operationId: updateFavorites
       summary: 動画とグループのお気に入りを付け外しする
       description: |
-        所有者だけ。`videoIds` の動画と `groupIds` のグループのお気に入りを `favorite` にそろえる。
-        `videoIds` と `groupIds` の合計（重複は 1 つに数える）が 1 以上 20000 以下でなければ 400
+        所有者だけ。`videoIds` の動画、`groupIds` のグループと `smartFolderIds` のスマートフォルダの
+        お気に入りを `favorite` にそろえる。無いスマートフォルダの id は数えない。
+        `videoIds`・`groupIds`・`smartFolderIds` の合計（重複は 1 つに数える）が 1 以上 20000 以下でなければ 400
         `too_many_videos`（`POST /api/video-tags` と同じ上限）で、何も変えない。ライブラリに無い
         動画の id と無いグループの id は誤りにせず数えない。既に同じ状態のものは誤りにせず数え、
         付いているものに付けてもお気に入りにした日時は変えない。`groupIds` にグループを入れても
@@ -3451,8 +3466,10 @@ paths:
       operationId: addPlaylistItems
       summary: プレイリストの末尾に動画とグループを足す
       description: |
-        所有者だけ。`videoIds` の動画、次に `groupIds` のグループを要求の順で末尾に足す
-        （specs/044-playlists/research.md R-5、specs/048-groups/research.md R-10）。ライブラリに無い
+        所有者だけ。`videoIds` の動画、次に `groupIds` のグループ、次に `smartFolderIds` のスマート
+        フォルダを要求の順で末尾に足す（specs/044-playlists/research.md R-5、
+        specs/048-groups/research.md R-10、specs/052-smart-folders/contracts/screen-api.md）。無い
+        スマートフォルダの id は数えず、スマートフォルダの項目はフォルダを消すと消える。ライブラリに無い
         動画の id と無いグループの id はどちらの数にも入らず、重複は 1 度だけ数える。既にプレイリストに
         あるものは `existing` に数え、何も変えない。グループの項目はグループの解散で消える。
         両方が空なら 400 `invalid_request`、重複を除いた合計が 20000 を超えれば 400
@@ -4278,6 +4295,215 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/smart-folders:
+    get:
+      operationId: listSmartFolders
+      security:
+        - sessionCookie: []
+        - {}
+      summary: 見る人に見せるスマートフォルダを親の id とともに返す
+      description: |
+        親を選ぶ欄とフォルダの木が読む一覧（specs/052-smart-folders/contracts/screen-api.md）。
+        見る人に見せるフォルダを、どの深さのものも自然な名前の順（同じなら id の順）に、ページに
+        分けずに返す。所有者にはすべてのフォルダを、ゲストには再生順が空でないフォルダだけを返す
+        （specs/052-smart-folders/research.md R-8）。`favorite` は所有者の応答にだけ入る。
+      responses:
+        "200":
+          description: スマートフォルダの一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartFolderList"
+    post:
+      operationId: createSmartFolder
+      summary: スマートフォルダを作る
+      description: |
+        所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）で、グループと同じ規則である。
+        `sort` を省けば `addedDesc`、`parentId` を省けば一番上に作る。`rule` が条件の規則に合わないか
+        `sort` が `random` なら 400 `invalid_smart_rule`、名前が空か長すぎれば 400 `invalid_request`、
+        `parentId` のフォルダが無ければ 404 `smart_folder_not_found` で、どれも何も作らない。`rule` が
+        今無いタグ・タグの種類・人物・団体を名指しても受け付け、`getSmartFolder` の
+        `settings.missing` に返す（specs/052-smart-folders/contracts/screen-api.md「Statuses」）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SmartFolderCreate"
+      responses:
+        "201":
+          description: 作ったスマートフォルダの要約
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartFolderSummary"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/smart-folders/cards:
+    get:
+      operationId: listSmartFolderCards
+      security:
+        - sessionCookie: []
+        - {}
+      summary: 画面に出たスマートフォルダのカードの値を返す
+      description: |
+        `ids` のフォルダのカードの値を、`ids` の順に返す（specs/052-smart-folders/data-model.md
+        「Cards read」）。値はどれも、フォルダの一致する動画（グループにまとめず、動画ごとに経路の
+        どの条件にも当たる見る人に見せる動画）から作る（research.md R-14）。無いフォルダと、ゲストに
+        見せないフォルダ（再生順が空）の id は飛ばし、同じ id は 1 回だけ返す。`ids` が無いか空か
+        整数でないか、61 件以上なら 400 `invalid_request`。ゲストの応答では `watchedCount`・
+        `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空にする。
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: カードの値を読むフォルダの id を `,` で区切って並べたもの（1〜60 件）
+          style: form
+          explode: false
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 60
+            items:
+              type: integer
+              format: int64
+      responses:
+        "200":
+          description: カードの値
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartFolderCards"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+
+  /api/smart-folders/{id}:
+    get:
+      operationId: getSmartFolder
+      security:
+        - sessionCookie: []
+        - {}
+      summary: スマートフォルダ 1 つと、その祖先と中身の最初のページを返す
+      description: |
+        フォルダのカード（`LibrarySmartFolder`、値は再生順から作る）、祖先（外側から順）、中身の
+        最初の 1 ページを返す（specs/052-smart-folders/contracts/screen-api.md）。中身は子フォルダを
+        名前の順に要約で先に置き、続けてフォルダと祖先の条件で絞ったライブラリの項目を最大 `limit`
+        件、フォルダの並べ順で置く（data-model.md「Contents」）。続きは `listSmartFolderItems` で読む。
+        `settings`（条件・並べ順・欠けた参照）は所有者の応答にだけ入る。経路の条件が今無い実体を
+        名指せば、中身は子フォルダだけである（research.md R-9）。無いフォルダと、ゲストに見せる動画の
+        無いフォルダは 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/SmartFolderId"
+        - name: limit
+          in: query
+          description: 子フォルダを除く項目の 1 ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: スマートフォルダ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartFolderDetail"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+    patch:
+      operationId: changeSmartFolder
+      summary: スマートフォルダの名前・条件・並べ順・親を変える
+      description: |
+        所有者だけ。本文に入れた項目だけを変え、少なくとも 1 つを入れる（無ければ 400
+        `invalid_request`）。`parentId` が null なら一番上にする。規則と状態は作成と同じで、加えて
+        `parentId` がこのフォルダかその子孫なら 409 `smart_folder_cycle` で何も変えない。フォルダが
+        無ければ 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/SmartFolderId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SmartFolderChange"
+      responses:
+        "200":
+          description: 変えたあとのスマートフォルダの要約
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartFolderSummary"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteSmartFolder
+      summary: スマートフォルダとその子孫を消す
+      description: |
+        所有者だけ。フォルダと子孫、それらのお気に入りとプレイリストの項目を消す。動画は変えない
+        （specs/052-smart-folders/data-model.md「Edits」）。フォルダが無ければ 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/SmartFolderId"
+      responses:
+        "204":
+          description: 消した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/smart-folders/{id}/items:
+    get:
+      operationId: listSmartFolderItems
+      security:
+        - sessionCookie: []
+        - {}
+      summary: スマートフォルダの中身の続きのページを返す
+      description: |
+        `getSmartFolder` と同じ中身を、前の応答の `nextCursor` の続きから返す。子フォルダは最初の
+        ページにだけ入る。読めないカーソルは 400 `invalid_cursor`。フォルダの扱いは `getSmartFolder`
+        と同じで、無いか見せないときは 404 `not_found`。
+      parameters:
+        - $ref: "#/components/parameters/SmartFolderId"
+        - name: cursor
+          in: query
+          required: true
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 100
+      responses:
+        "200":
+          description: 中身 1 ページ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartFolderItemPage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/organize/reorder:
     post:
       operationId: organizeReorder
@@ -4576,15 +4802,20 @@ paths:
         - `group`: グループの名前か項目が変わった。data は `GroupChanged` で、変わったグループと
           その祖先の id を運ぶ（specs/048-groups/research.md R-13）。最新の内容は
           `GET /api/groups/{id}` で取る
+        - `smartFolder`: スマートフォルダの中身かカードが変わったかもしれない。data は
+          `SmartFolderChanged` で、編集したフォルダとその子孫と親、または一致が変わりうる書き込み
+          （タグ・人物・団体・お気に入り・視聴状態・ライブラリにある動画・束ね・グループの変化）では
+          すべてのフォルダの id を運ぶ（specs/052-smart-folders/research.md R-12）。最新の内容は
+          `GET /api/smart-folders/{id}` で取る
         - `candidates`: 重複の候補の一覧が変わったかもしれない。判定の結果や版の取り外しの確定後に
           送る。data は空のオブジェクト `{}` で、中身は運ばない。最新の一覧は
           `GET /api/version-candidates` で取る（specs/054-auto-dup/research.md R-10）
 
         接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-        変化を取り戻せる。`video`、`group` と `candidates` は切れていた間の分を送り直さない。
+        変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates` は切れていた間の分を送り直さない。
 
-        ゲストには `group` だけを送る（specs/048-groups/contracts/screen-api.md）。`scan`、
-        `video` と `candidates` は所有者だけに送る。
+        ゲストには `group` と `smartFolder` だけを送る（specs/048-groups/contracts/screen-api.md、
+        specs/052-smart-folders/contracts/screen-api.md）。`scan`・`video`・`candidates` は所有者だけに送る。
       responses:
         "200":
           description: イベントの流れ
@@ -4633,6 +4864,18 @@ components:
       schema:
         type: integer
         format: int64
+    VideoSmartFolderContext:
+      name: smartFolder
+      in: query
+      required: false
+      description: |
+        動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
+        持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
+        答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
+        （specs/052-smart-folders/contracts/screen-api.md）
+      schema:
+        type: integer
+        format: int64
     VideoId:
       name: id
       in: path
@@ -4665,6 +4908,38 @@ components:
         type: integer
         format: int64
         minimum: 1
+    AddedWithinFilter:
+      name: addedWithin
+      in: query
+      description: |
+        日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
+        組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
+        `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 36500
+    MinDurationFilter:
+      name: minDuration
+      in: query
+      description: |
+        長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
+        0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
+        ゲストも使える（specs/052-smart-folders/research.md R-4）
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 360000
+    MaxDurationFilter:
+      name: maxDuration
+      in: query
+      description: |
+        長さの上限（秒、含む）。扱いは `minDuration` と同じ
+        （specs/052-smart-folders/research.md R-4）
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 360000
     TagKindFilter:
       name: tagKind
       in: query
@@ -4719,6 +4994,15 @@ components:
       in: path
       required: true
       description: グループの識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    SmartFolderId:
+      name: id
+      in: path
+      required: true
+      description: スマートフォルダの識別子
       schema:
         type: integer
         format: int64
@@ -6722,13 +7006,19 @@ components:
           items:
             type: integer
             format: int64
+        smartFolderIds:
+          type: array
+          description: お気に入りを付け外しするスマートフォルダの id（specs/052-smart-folders/contracts/screen-api.md）
+          items:
+            type: integer
+            format: int64
         favorite:
           type: boolean
           description: true でお気に入りにし、false で外す
 
     FavoritesResponse:
       type: object
-      required: [appliedVideos, appliedGroups]
+      required: [appliedVideos, appliedGroups, appliedSmartFolders]
       additionalProperties: false
       properties:
         appliedVideos:
@@ -6739,6 +7029,9 @@ components:
         appliedGroups:
           type: integer
           description: groupIds のうちいまある異なるグループの数（既に同じ状態だったものを含む）
+        appliedSmartFolders:
+          type: integer
+          description: smartFolderIds のうちいまある異なるスマートフォルダの数（既に同じ状態だったものを含む）
 
     PlaylistSummary:
       type: object
@@ -6821,7 +7114,10 @@ components:
       type: object
       required: [id, kind]
       additionalProperties: false
-      description: プレイリストの項目 1 つ。`kind` に応じて `video` か `group` のちょうど一方が入る
+      description: |
+        プレイリストの項目 1 つ。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
+        `smartFolder` の値は読んだ時点のフォルダの再生順から作り、再生もその時点の再生順に従う
+        （specs/052-smart-folders/contracts/screen-api.md）
       properties:
         id:
           type: integer
@@ -6829,11 +7125,13 @@ components:
           description: 並べ替えと取り外しに使う項目の識別子
         kind:
           type: string
-          enum: [video, group]
+          enum: [video, group, smartFolder]
         video:
           $ref: "#/components/schemas/Video"
         group:
           $ref: "#/components/schemas/LibraryGroup"
+        smartFolder:
+          $ref: "#/components/schemas/LibrarySmartFolder"
 
     PlaylistName:
       type: object
@@ -6860,6 +7158,13 @@ components:
         groupIds:
           type: array
           description: 足すグループの id（`PUT /api/favorites` と同じ形）
+          maxItems: 20000
+          items:
+            type: integer
+            format: int64
+        smartFolderIds:
+          type: array
+          description: 足すスマートフォルダの id（`PUT /api/favorites` と同じ形）
           maxItems: 20000
           items:
             type: integer
@@ -6960,6 +7265,15 @@ components:
             （specs/035-favorites/contracts/screen-api.md §3）
           items:
             $ref: "#/components/schemas/LibraryGroupIds"
+        smartFolderIds:
+          type: array
+          description: |
+            条件に合うスマートフォルダの項目の id。フォルダの動画は ids に入らない。listLibraryIds の
+            応答にだけ入り、1 つも無ければ省略される（specs/052-smart-folders/data-model.md
+            「Library items」）
+          items:
+            type: integer
+            format: int64
 
     LibraryGroupIds:
       type: object
@@ -7099,15 +7413,21 @@ components:
       type: object
       required: [kind]
       additionalProperties: false
-      description: ライブラリの項目1件。`kind` に応じて `video` か `group` のちょうど一方が入る
+      description: |
+        ライブラリの項目1件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
+        `smartFolder` は一番上のスマートフォルダ（お気に入りのみではお気に入りのフォルダ）の要約で、
+        カードの値は `listSmartFolderCards` で読む（specs/052-smart-folders/data-model.md
+        「Library items」）
       properties:
         kind:
           type: string
-          enum: [video, group]
+          enum: [video, group, smartFolder]
         video:
           $ref: "#/components/schemas/Video"
         group:
           $ref: "#/components/schemas/LibraryGroup"
+        smartFolder:
+          $ref: "#/components/schemas/SmartFolderSummary"
 
     LibraryGroup:
       type: object
@@ -7523,6 +7843,328 @@ components:
             type: integer
             format: int64
 
+    SmartFolderChanged:
+      type: object
+      required: [ids]
+      additionalProperties: false
+      description: /api/events の `smartFolder` の data
+      properties:
+        ids:
+          type: array
+          description: 中身かカードが変わったかもしれないスマートフォルダの id。小さい順
+          items:
+            type: integer
+            format: int64
+
+    SmartRule:
+      type: object
+      additionalProperties: false
+      description: |
+        スマートフォルダの条件（specs/052-smart-folders/data-model.md「smart_folders.rule」）。どの
+        項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
+        ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
+      properties:
+        q:
+          type: string
+          maxLength: 500
+          description: 検索欄の入力。所有者の意味で照合する（research.md R-11）
+        watch:
+          type: string
+          enum: [unwatched, inProgress, watched]
+          description: 視聴状態
+        playable:
+          type: boolean
+          description: ブラウザで再生できる動画だけにする
+        favorite:
+          type: boolean
+          description: お気に入りの動画だけにする
+        tags:
+          type: array
+          minItems: 1
+          maxItems: 16
+          description: すべてを持つ動画だけにするタグの id（重複なし）
+          items:
+            type: integer
+            format: int64
+        tagKind:
+          type: integer
+          format: int64
+          description: その種類のタグをどれか持つ動画だけにするタグの種類の id
+        person:
+          type: integer
+          format: int64
+          description: どの役割でも結び付いた人物の id
+        organization:
+          type: integer
+          format: int64
+          description: どの役割でも結び付いた団体の id
+        addedWithin:
+          type: integer
+          minimum: 1
+          maximum: 36500
+          description: 追加からの日数
+        minDuration:
+          type: integer
+          minimum: 0
+          maximum: 360000
+          description: 長さの下限（秒、含む）。`maxDuration` 以下
+        maxDuration:
+          type: integer
+          minimum: 0
+          maximum: 360000
+          description: 長さの上限（秒、含む）
+
+    SmartRuleRef:
+      type: object
+      required: [kind, id]
+      additionalProperties: false
+      description: 条件が名指す実体のうち、今は無いもの
+      properties:
+        kind:
+          type: string
+          enum: [tag, tagKind, person, organization]
+        id:
+          type: integer
+          format: int64
+
+    SmartFolderSummary:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      description: |
+        スマートフォルダの要約。ライブラリの項目と中身のページの子フォルダの項目が持ち、カードの値は
+        持たない。値は画面が `listSmartFolderCards` で読む（specs/052-smart-folders/research.md R-14）
+      properties:
+        id:
+          type: integer
+          format: int64
+        parentId:
+          type: integer
+          format: int64
+          description: 親のフォルダの id。一番上のフォルダでは省く
+        name:
+          type: string
+        favorite:
+          type: boolean
+          description: 所有者がフォルダをお気に入りにしたか。所有者の応答にだけ入る
+
+    SmartFolderList:
+      type: object
+      required: [smartFolders]
+      additionalProperties: false
+      description: GET /api/smart-folders の応答
+      properties:
+        smartFolders:
+          type: array
+          description: 見る人に見せるフォルダ。自然な名前の順（同じなら id の順）
+          items:
+            $ref: "#/components/schemas/SmartFolderSummary"
+
+    LibrarySmartFolder:
+      type: object
+      required: [id, name, videoCount, sizeBytes, previews, tags]
+      additionalProperties: false
+      description: |
+        スマートフォルダのカード。値は `LibraryGroup` の同じ名前の欄と同じ意味で、`getSmartFolder` では
+        フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る
+        （specs/052-smart-folders/data-model.md「Contents」）。ゲストの応答では `watchedCount`・
+        `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする
+      properties:
+        id:
+          type: integer
+          format: int64
+        parentId:
+          type: integer
+          format: int64
+          description: 親のフォルダの id。一番上のフォルダでは省く
+        name:
+          type: string
+        videoCount:
+          type: integer
+        watchedCount:
+          type: integer
+          description: 完了した動画の数。所有者の応答にだけ入る
+        watchState:
+          type: string
+          enum: [unwatched, inProgress, watched]
+          description: '`LibraryGroup.watchState` と同じ決め方。所有者の応答にだけ入る'
+        durationMs:
+          type: integer
+          format: int64
+          description: 長さの分かっている動画の合計。1本も分からなければ省く
+        sizeBytes:
+          type: integer
+          format: int64
+        addedAt:
+          type: string
+          format: date-time
+          description: 追加日時の最大。動画が無ければ省く
+        lastPlayedAt:
+          type: string
+          format: date-time
+          description: 最後に再生した時刻の最大。無ければ省く
+        previews:
+          type: array
+          maxItems: 4
+          description: サムネイル生成済みの動画を並びの順に最大4件
+          items:
+            $ref: "#/components/schemas/FolderPreview"
+        openVideoId:
+          type: integer
+          format: int64
+          description: 押したときに開く動画（`LibraryGroup.openVideoId` と同じ選び方）。動画が無ければ省く
+        tags:
+          type: array
+          description: 動画のタグの和集合
+          items:
+            $ref: "#/components/schemas/VideoTag"
+        favorite:
+          type: boolean
+          description: 所有者がフォルダをお気に入りにしたか。所有者の応答にだけ入る
+
+    SmartFolderCards:
+      type: object
+      required: [cards]
+      additionalProperties: false
+      description: GET /api/smart-folders/cards の応答
+      properties:
+        cards:
+          type: array
+          description: 要求の `ids` の順。無いか見せないフォルダは入らない
+          items:
+            $ref: "#/components/schemas/LibrarySmartFolder"
+
+    SmartFolderSettings:
+      type: object
+      required: [rule, sort, missing]
+      additionalProperties: false
+      description: フォルダの条件と並べ順。所有者の応答にだけ入る
+      properties:
+        rule:
+          $ref: "#/components/schemas/SmartRule"
+        sort:
+          $ref: "#/components/schemas/VideoSort"
+        missing:
+          type: array
+          description: このフォルダと祖先の条件が名指す実体のうち今無いもの（外側の祖先から順）
+          items:
+            $ref: "#/components/schemas/SmartRuleRef"
+
+    SmartFolderItem:
+      type: object
+      required: [kind]
+      additionalProperties: false
+      description: スマートフォルダの中身の項目 1 件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る
+      properties:
+        kind:
+          type: string
+          enum: [video, group, smartFolder]
+        video:
+          $ref: "#/components/schemas/Video"
+        group:
+          $ref: "#/components/schemas/LibraryGroup"
+        smartFolder:
+          $ref: "#/components/schemas/SmartFolderSummary"
+
+    SmartFolderDetail:
+      type: object
+      required: [smartFolder, trail, items]
+      additionalProperties: false
+      description: GET /api/smart-folders/{id} の応答
+      properties:
+        smartFolder:
+          $ref: "#/components/schemas/LibrarySmartFolder"
+        settings:
+          $ref: "#/components/schemas/SmartFolderSettings"
+        trail:
+          type: array
+          description: 祖先のフォルダ。外側から順で、最後はこのフォルダの親
+          items:
+            $ref: "#/components/schemas/GroupRef"
+        items:
+          type: array
+          description: 中身の最初のページ。子フォルダを名前の順に先に、続けてフォルダの並べ順の項目
+          items:
+            $ref: "#/components/schemas/SmartFolderItem"
+        nextCursor:
+          type: string
+          description: 続きがあるときだけ入る。`listSmartFolderItems` に渡す
+
+    SmartFolderItemPage:
+      type: object
+      required: [items]
+      additionalProperties: false
+      description: GET /api/smart-folders/{id}/items の応答
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/SmartFolderItem"
+        nextCursor:
+          type: string
+          description: 続きがあるときだけ入る
+
+    SmartFolderCreate:
+      type: object
+      required: [name, rule]
+      additionalProperties: false
+      description: POST /api/smart-folders の本文
+      properties:
+        name:
+          type: string
+          description: 前後の空白を取り除いて 1〜100 文字
+        rule:
+          $ref: "#/components/schemas/SmartRule"
+        sort:
+          $ref: "#/components/schemas/VideoSort"
+        parentId:
+          type: integer
+          format: int64
+          description: 親のフォルダの id。省けば一番上に作る
+
+    SmartFolderChange:
+      type: object
+      additionalProperties: false
+      description: PATCH /api/smart-folders/{id} の本文。入れた項目だけを変え、少なくとも 1 つを入れる
+      properties:
+        name:
+          type: string
+          description: 前後の空白を取り除いて 1〜100 文字
+        rule:
+          $ref: "#/components/schemas/SmartRule"
+        sort:
+          $ref: "#/components/schemas/VideoSort"
+        parentId:
+          type: [integer, "null"]
+          format: int64
+          description: 親のフォルダの id。null なら一番上にする
+
+    VideoSmartFolderRef:
+      type: object
+      required: [id, name, position, count]
+      additionalProperties: false
+      description: |
+        動画を開いたスマートフォルダ（`smartFolder` の問い合わせ）。GET /api/videos/{id} の応答にだけ、
+        文脈がスマートフォルダで、その再生順が動画を持つときだけ入る。このとき `group` は入らない。
+        位置と本数はフォルダの再生順で数え、ゲストの応答では公開の動画だけで数える
+        （specs/052-smart-folders/contracts/screen-api.md）
+      properties:
+        id:
+          type: integer
+          format: int64
+          description: スマートフォルダの識別子
+        name:
+          type: string
+          description: スマートフォルダの名前
+        position:
+          type: integer
+          minimum: 1
+          description: フォルダの再生順で何本目か（1 始まり）
+        count:
+          type: integer
+          minimum: 1
+          description: フォルダの再生順の動画の本数
+
     FolderPreview:
       type: object
       required: [videoId, thumbnailUrl]
@@ -7770,6 +8412,8 @@ components:
           $ref: "#/components/schemas/VideoFolder"
         group:
           $ref: "#/components/schemas/VideoGroupRef"
+        smartFolder:
+          $ref: "#/components/schemas/VideoSmartFolderRef"
         versions:
           $ref: "#/components/schemas/VideoVersionsRef"
         tags:
@@ -8386,6 +9030,13 @@ components:
           format: int64
         video:
           $ref: "#/components/schemas/Video"
+        smartFolderId:
+          type: integer
+          format: int64
+          description: |
+            項目がスマートフォルダの項目のときのフォルダの id。動画とグループの項目では無い。
+            動画ページはこれで開く URL に smartFolder を付ける
+            （specs/052-smart-folders/contracts/screen-api.md）
 
     PlaylistPlayback:
       type: object
@@ -8556,6 +9207,9 @@ components:
             - plugin_busy
             - operation_unsupported
             - work_info_fetch_stale
+            - invalid_smart_rule
+            - smart_folder_not_found
+            - smart_folder_cycle
         message:
           type: string
           description: >-

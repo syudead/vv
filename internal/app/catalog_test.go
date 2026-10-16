@@ -90,9 +90,9 @@ func (f *fakeCatalogStore) VideosByIDs(_ context.Context, audience domain.Audien
 
 // VideoGroup は保存層と同じく、groups の全メンバー（Members）から id を並べ、window の
 // 範囲の詳細だけを返す。
-func (f *fakeCatalogStore) VideoGroup(_ context.Context, audience domain.Audience, id, contextID int64, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
+func (f *fakeCatalogStore) VideoGroup(_ context.Context, audience domain.Audience, id int64, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
 	f.audiences = append(f.audiences, audience)
-	f.contexts = append(f.contexts, contextID)
+	f.contexts = append(f.contexts, opened.GroupID)
 	f.windows = append(f.windows, window)
 	group, ok := f.groups[id]
 	if !ok {
@@ -465,7 +465,7 @@ func TestVideoGroupPassesAudience(t *testing.T) {
 	store := &fakeCatalogStore{groups: map[int64]domain.VideoGroup{1: group}}
 	catalog := NewCatalog(CatalogOptions{Index: store, Ingest: store, Files: fakeArtifactFiles{}})
 	window := domain.GroupWindow{Offset: 1, Limit: 5}
-	got, ok, err := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(1, "a"), 4, window)
+	got, ok, err := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(1, "a"), domain.VideoContext{GroupID: 4}, window)
 	if err != nil || !ok || got.Name != "g" {
 		t.Fatalf("VideoGroup = %+v・%v・%v", got, ok, err)
 	}
@@ -478,7 +478,7 @@ func TestVideoGroupPassesAudience(t *testing.T) {
 	if !slices.Equal(store.contexts, []int64{4}) {
 		t.Errorf("contexts = %v, want [4]", store.contexts)
 	}
-	if _, ok, _ := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(3, "c"), 0, window); ok {
+	if _, ok, _ := catalog.VideoGroup(context.Background(), domain.AudienceGuest, probedVideo(3, "c"), domain.VideoContext{}, window); ok {
 		t.Error("メンバーでない動画にグループがある")
 	}
 }

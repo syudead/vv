@@ -1807,6 +1807,67 @@ describe("useVideos のグループの項目", () => {
     expect(groups(result.current.items)[0]?.id).toBe(7);
   });
 
+  it.each([
+    ["所有者", OwnerAudience],
+    ["ゲスト", undefined],
+  ])(
+    "絞り込みの無いライブラリは smartFolder イベントで読み込み済みのページを読み直す（%s、specs/052-smart-folders/research.md R-12）",
+    async (_who, wrapper) => {
+      listLibrary.mockImplementation((params: ListVideosParams) => listVideos(params));
+      const { result } = renderHook(
+        () => useVideos({ sort: "addedDesc", favorite: true }, undefined, "library"),
+        { wrapper },
+      );
+      await waitFor(() => expect(calls).toHaveLength(1));
+      await act(async () => {
+        calls[0]?.resolve(page([2]));
+      });
+
+      // 別のタブでいちばん上のスマートフォルダ 9 を作った。
+      await emitServerEvent("smartFolder", { ids: [9] });
+      await waitFor(() => expect(calls).toHaveLength(2));
+      expect(calls[1]?.params).toMatchObject({ sort: "addedDesc", favorite: true });
+      expect(calls[1]?.params.cursor).toBeUndefined();
+
+      await act(async () => {
+        calls[1]?.resolve({
+          items: [
+            { kind: "smartFolder", smartFolder: { id: 9, name: "猫" } },
+            videoItem(item(2)),
+          ],
+          total: 2,
+        } as unknown as VideoPage);
+      });
+      expect(result.current.items.map((entry) => entry.kind)).toEqual([
+        "smartFolder",
+        "video",
+      ]);
+    },
+  );
+
+  it("フォルダのカードが並ばない一覧は smartFolder イベントで読み直さない", async () => {
+    listLibrary.mockImplementation((params: ListVideosParams) => listVideos(params));
+    renderHook(
+      () => useVideos({ sort: "addedDesc", query: "旅" }, undefined, "library"),
+      {
+        wrapper: OwnerAudience,
+      },
+    );
+    await waitFor(() => expect(calls).toHaveLength(1));
+    await act(async () => {
+      calls[0]?.resolve(page([2]));
+    });
+    renderHook(() => useVideos({ sort: "addedDesc" }), { wrapper: OwnerAudience });
+    await waitFor(() => expect(calls).toHaveLength(2));
+    await act(async () => {
+      calls[1]?.resolve(page([3]));
+    });
+
+    await emitServerEvent("smartFolder", { ids: [9] });
+
+    expect(calls).toHaveLength(2);
+  });
+
   it("ゲストにも group イベントで表示中のグループを取り直す（specs/048-groups/contracts/screen-api.md）", async () => {
     const { result } = renderHook(() =>
       useVideos({ sort: "addedDesc" }, restoredWithGroup()),

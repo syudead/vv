@@ -1,7 +1,7 @@
 import type { PlaylistItem } from "../api/playlists";
 import { formatDuration } from "../lib/format";
 import { orderedItemDurationMs, orderedItemTitle } from "../videoList/ItemRowCells";
-import { itemStartVideoId, stepPath } from "./playlistPlayback";
+import { itemStepPath } from "./playlistPlayback";
 
 // プレイリストの画面が項目から決める規則（specs/044-playlists/ui-design.md「Playlist screen」）。
 // 画面の部品から外し、ロジックのテストで確かめる（docs/design-docs/web-testing.md）。
@@ -44,16 +44,28 @@ export interface PlayTarget {
 
 /**
  * playTarget は項目 `item` から再生を始める動画ページの行き先である。動画はその動画、
- * グループは `openVideoId` を開き、`state.from` はプレイリストの画面にする
- * （contracts/screen-api.md「Client use」）。中身の無い項目は null。
+ * グループとスマートフォルダは `openVideoId` を開き（フォルダは `smartFolder` も付ける）、
+ * `state.from` はプレイリストの画面にする（contracts/screen-api.md「Client use」）。始める動画の
+ * 無い項目（動画の無いフォルダ）は null。
  */
 export function playTarget(playlistId: number, item: PlaylistItem): PlayTarget | null {
-  const videoId = itemStartVideoId(item);
-  if (videoId === undefined) return null;
-  return {
-    to: stepPath(playlistId, videoId, item.id),
-    state: { from: playlistPath(playlistId), autoplay: true },
-  };
+  const to = itemStepPath(playlistId, item);
+  if (to === null) return null;
+  return { to, state: { from: playlistPath(playlistId), autoplay: true } };
+}
+
+/**
+ * firstPlayTarget は、始める動画のある最初の項目の行き先である。どの項目にも無ければ null。
+ */
+export function firstPlayTarget(
+  playlistId: number,
+  items: readonly PlaylistItem[],
+): PlayTarget | null {
+  for (const item of items) {
+    const target = playTarget(playlistId, item);
+    if (target !== null) return target;
+  }
+  return null;
 }
 
 /**

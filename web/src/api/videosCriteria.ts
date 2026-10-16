@@ -44,6 +44,13 @@ export interface VideosCriteria {
   organization?: number;
   /** 絞り込むタグの種類の id（specs/051-tag-kinds/contracts/screen-api.md）。 */
   tagKind?: number;
+  /**
+   * 追加日と長さの絞り込み（tag と同じく listFolderVideos には渡さない。
+   * specs/052-smart-folders/research.md R-4）。
+   */
+  addedWithin?: number;
+  minDuration?: number;
+  maxDuration?: number;
 }
 
 /** criteriaKey は条件を値で比べるための文字列にする。 */
@@ -60,5 +67,28 @@ export function criteriaKey(criteria: VideosCriteria): string {
     criteria.person ?? null,
     criteria.organization ?? null,
     criteria.tagKind ?? null,
+    criteria.addedWithin ?? null,
+    criteria.minDuration ?? null,
+    criteria.maxDuration ?? null,
   ]);
+}
+
+/**
+ * listsSmartFolders はこの条件のライブラリの一番上にスマートフォルダのカードが並ぶかを返す。
+ * 検索もお気に入りのみ以外の絞り込みも無いときだけ並ぶ（specs/052-smart-folders/research.md
+ * R-7、サーバーの `domain.VideoQuery.ListsSmartFolders` と同じ判定）。並べ替えは絞り込みではない。
+ */
+export function listsSmartFolders(criteria: VideosCriteria): boolean {
+  return (
+    (criteria.query ?? "").trim() === "" &&
+    (criteria.watch ?? "all") === "all" &&
+    criteria.playable !== true &&
+    (criteria.tag ?? []).length === 0 &&
+    criteria.person === undefined &&
+    criteria.organization === undefined &&
+    criteria.tagKind === undefined &&
+    criteria.addedWithin === undefined &&
+    criteria.minDuration === undefined &&
+    criteria.maxDuration === undefined
+  );
 }

@@ -5,10 +5,14 @@ import "time"
 // ライブラリの項目（specs/017-folder-groups/data-model.md §5・§6）。ライブラリの
 // 一覧は、動画とグループを「項目」として混ぜて返す。
 
-// LibraryItem は一覧の項目1件である。Video と Group のちょうど一方を持つ。
+// LibraryItem は一覧の項目1件である。Video・Group・SmartFolder のちょうど 1 つを持つ。
+// SmartFolder はスマートフォルダの中身の子フォルダか、ライブラリの一番上のフォルダで、カードの値を
+// 持たない要約である（specs/052-smart-folders/data-model.md「Contents」「Library items」、research.md
+// R-14）。
 type LibraryItem struct {
-	Video *Video
-	Group *LibraryGroup
+	Video       *Video
+	Group       *LibraryGroup
+	SmartFolder *SmartFolderSummary
 }
 
 // LibraryPage はライブラリの一覧1ページ分である。
@@ -36,6 +40,9 @@ type LibrarySelection struct {
 	VideoIDs []int64
 	// Groups はグループの項目ごとの id と動画。
 	Groups []LibraryGroupSelection
+	// SmartFolderIDs はスマートフォルダの項目の id（specs/052-smart-folders/data-model.md
+	// 「Library items」）。フォルダの動画は AllVideoIDs に入れない。
+	SmartFolderIDs []int64
 }
 
 // LibraryGroupSelection はグループの項目 1 件の id と動画である。
@@ -139,13 +146,20 @@ func GroupWatch(progress []*Progress) (WatchState, int) {
 			watched++
 		}
 	}
+	return WatchStateOf(len(progress), started, watched), watched
+}
+
+// WatchStateOf は count 本のうち見始めた本数 started と見終えた本数 watched から、GroupWatch と
+// 同じ規則で視聴状態を決める。スマートフォルダのカードは一致する動画の本数から決める
+// （specs/052-smart-folders/data-model.md「Contents」）。
+func WatchStateOf(count, started, watched int) WatchState {
 	switch {
 	case started == 0:
-		return WatchStateUnwatched, watched
-	case watched == len(progress):
-		return WatchStateWatched, watched
+		return WatchStateUnwatched
+	case watched == count:
+		return WatchStateWatched
 	default:
-		return WatchStateInProgress, watched
+		return WatchStateInProgress
 	}
 }
 

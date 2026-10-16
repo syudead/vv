@@ -9,12 +9,13 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画とグループのお気に入りの付け外し（specs/035-favorites/contracts/screen-api.md §1）。
+// 動画・グループ・スマートフォルダのお気に入りの付け外し（specs/035-favorites/contracts/screen-api.md §1、
+// specs/052-smart-folders/contracts/screen-api.md）。
 
 // Favorites はお気に入りの保存先である。internal/store の *FavoriteStore がこれを満たす。
 // 1 つの取引で済むので、internal/app は通さない。
 type Favorites interface {
-	// SetFavorites は change の動画とグループのお気に入りを change.Favorite にそろえ、
+	// SetFavorites は change の動画・グループ・スマートフォルダのお気に入りを change.Favorite にそろえ、
 	// 反映した数を返す（specs/035-favorites/data-model.md §4）。
 	SetFavorites(ctx context.Context, change domain.FavoriteChange) (domain.FavoriteApplied, error)
 }
@@ -23,26 +24,28 @@ type Favorites interface {
 // groupIds の合計の上限 20000 件が収まるよう、外部連携 API の externalBodyLimit と同じ大きさにする。
 const favoritesBodyLimit = externalBodyLimit
 
-// UpdateFavorites は動画とグループのお気に入りを付け外しする（PUT /api/favorites）。
-// videoIds と groupIds の合計（重複は 1 つ）の上限はタグの付け外しと同じにする。
-// 無い動画やグループの id は誤りにせず、保存層が数えない（specs/048-groups/research.md R-10）。
+// UpdateFavorites は動画・グループ・スマートフォルダのお気に入りを付け外しする（PUT /api/favorites）。
+// videoIds・groupIds・smartFolderIds の合計（重複は 1 つ）の上限はタグの付け外しと同じにする。
+// 無い動画・グループ・フォルダの id は誤りにせず、保存層が数えない（specs/048-groups/research.md R-10）。
 // 確定後の /api/events の知らせは出さない（research.md R-6）。
 func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 	// gen.FavoritesRequest の favorite は bool なので、欠けても false に読めてしまう。
 	// 欠けた本文でお気に入りを外さないよう、有無を区別して読む。
 	var body struct {
-		VideoIds []int64 `json:"videoIds"`
-		GroupIds []int64 `json:"groupIds"`
-		Favorite *bool   `json:"favorite"`
+		VideoIds       []int64 `json:"videoIds"`
+		GroupIds       []int64 `json:"groupIds"`
+		SmartFolderIds []int64 `json:"smartFolderIds"`
+		Favorite       *bool   `json:"favorite"`
 	}
 	if !s.readLargeJSONBody(w, r, favoritesBodyLimit, &body) {
 		return
 	}
 	videoIDs := uniqueInt64s(body.VideoIds)
 	groupIDs := uniqueInt64s(body.GroupIds)
-	if total := len(videoIDs) + len(groupIDs); total < 1 || total > maxVideoTagsIDs {
+	smartFolderIDs := uniqueInt64s(body.SmartFolderIds)
+	if total := len(videoIDs) + len(groupIDs) + len(smartFolderIDs); total < 1 || total > maxVideoTagsIDs {
 		s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
-			fmt.Sprintf("videoIds and groupIds must contain between 1 and %d items in total.", maxVideoTagsIDs))
+			fmt.Sprintf("videoIds, groupIds and smartFolderIds must contain between 1 and %d items in total.", maxVideoTagsIDs))
 		return
 	}
 	if body.Favorite == nil {
@@ -55,7 +58,7 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 	}
 
 	applied, err := s.favorites.SetFavorites(r.Context(), domain.FavoriteChange{
-		VideoIDs: videoIDs, GroupIDs: groupIDs, Favorite: *body.Favorite,
+		VideoIDs: videoIDs, GroupIDs: groupIDs, SmartFolderIDs: smartFolderIDs, Favorite: *body.Favorite,
 	})
 	if err != nil {
 		s.internalError(w, "Could not change the favorites.", err)
@@ -63,7 +66,7 @@ func (s *server) UpdateFavorites(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.FavoritesResponse{
-		AppliedVideos: applied.Videos, AppliedGroups: applied.Groups,
+		AppliedVideos: applied.Videos, AppliedGroups: applied.Groups, AppliedSmartFolders: applied.SmartFolders,
 	}, s.logger)
 }
 

@@ -5,7 +5,7 @@ import { cn } from "../lib/cn";
 import { Button } from "../ui/shadcn/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
-interface Neighbor {
+export interface Neighbor {
   /** 移り先の題名。関連動画の並びに無いときは分からない。 */
   title: string | undefined;
   go: () => void;

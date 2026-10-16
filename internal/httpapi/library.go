@@ -44,6 +44,7 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
+		addedWithin: params.AddedWithin, minDuration: params.MinDuration, maxDuration: params.MaxDuration,
 		tagKind: params.TagKind,
 	})
 	if !ok {
@@ -72,7 +73,7 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		if item.Video != nil {
 			shown = append(shown, *item.Video)
 			tagged = append(tagged, *item.Video)
-		} else {
+		} else if item.Group != nil {
 			tagged = append(tagged, item.Group.Members...)
 		}
 	}
@@ -80,6 +81,13 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 
 	payload := gen.LibraryPage{Items: make([]gen.LibraryItem, 0, len(page.Items)), Total: page.Total}
 	for _, item := range page.Items {
+		if item.SmartFolder != nil {
+			// スマートフォルダの項目は要約だけを載せる。カードの値は画面が listSmartFolderCards で読む
+			// （specs/052-smart-folders/research.md R-14）。
+			folder := toAPISmartFolderSummary(audience, *item.SmartFolder)
+			payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindSmartFolder, SmartFolder: &folder})
+			continue
+		}
 		if item.Video != nil {
 			video := lookup.video(r.Context(), audience, roots, *item.Video)
 			payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindVideo, Video: &video})
@@ -109,7 +117,8 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 // ListLibraryIds は絞り込みに合う項目の動画の id を返す（GET /api/library/ids、
 // 「すべて選択」用。specs/017-folder-groups/contracts/library-api.md §2）。グループの
 // 項目は groups にもグループの id と再生順の動画として書く（specs/035-favorites/contracts/screen-api.md §3、
-// specs/048-groups/contracts/screen-api.md）。
+// specs/048-groups/contracts/screen-api.md）。スマートフォルダの項目は smartFolderIds に書く
+// （specs/052-smart-folders/data-model.md「Library items」）。
 func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params gen.ListLibraryIdsParams) {
 	if s.library == nil {
 		s.internalError(w, "Library queries are not configured.", nil)
@@ -118,6 +127,7 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 	query, ok := s.parseIDsQuery(w, videoQueryParams{
 		query: params.Query, watch: params.Watch, playable: params.Playable, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
+		addedWithin: params.AddedWithin, minDuration: params.MinDuration, maxDuration: params.MaxDuration,
 		tagKind: params.TagKind,
 	})
 	if !ok {
@@ -128,7 +138,7 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 		s.internalError(w, "Could not load the ids.", err)
 		return
 	}
-	s.writeVideoIDs(w, selection.AllVideoIDs(), missingTagIDs, libraryGroupIDs(selection.Groups))
+	s.writeVideoIDs(w, selection.AllVideoIDs(), missingTagIDs, libraryGroupIDs(selection.Groups), selection.SmartFolderIDs)
 }
 
 // libraryGroupIDs はグループの項目を応答の LibraryGroupIds にする。

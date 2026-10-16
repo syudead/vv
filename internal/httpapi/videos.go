@@ -40,6 +40,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		query: params.Query, watch: params.Watch, playable: params.Playable, sort: params.Sort,
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
+		addedWithin: params.AddedWithin, minDuration: params.MinDuration, maxDuration: params.MaxDuration,
 		tagKind: params.TagKind,
 	})
 	if !ok {
@@ -75,6 +76,11 @@ type videoQueryParams struct {
 	// person と organization は人物・団体の id による絞り込み（specs/047-video-work-info/research.md R-7）。
 	person       *int64
 	organization *int64
+	// addedWithin は追加日の日数、minDuration と maxDuration は長さの範囲（秒）である
+	// （specs/052-smart-folders/research.md R-4）。
+	addedWithin *int
+	minDuration *int
+	maxDuration *int
 	// tagKind はタグの種類の id による絞り込み（specs/051-tag-kinds/research.md R-5）。
 	tagKind *int64
 }
@@ -119,6 +125,9 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	if !s.parseIDFilters(w, params, &query) {
 		return domain.VideoQuery{}, false
 	}
+	if !s.parseAddedAndLength(w, params, &query) {
+		return domain.VideoQuery{}, false
+	}
 	if !s.checkAudienceQuery(w, audience, query) {
 		return domain.VideoQuery{}, false
 	}
@@ -148,6 +157,27 @@ func (s *server) parseIDFilters(w http.ResponseWriter, params videoQueryParams, 
 		}
 		*filter.out = *filter.value
 	}
+	return true
+}
+
+// parseAddedAndLength は一覧の addedWithin・minDuration・maxDuration を検査して query に写す。
+// 範囲の外の値と、minDuration が maxDuration を越える組は 400 を書いて false を返す
+// （specs/052-smart-folders/contracts/screen-api.md）。ゲストも使える。
+func (s *server) parseAddedAndLength(w http.ResponseWriter, params videoQueryParams, query *domain.VideoQuery) bool {
+	switch err := domain.CheckAddedAndLength(params.addedWithin, params.minDuration, params.maxDuration); {
+	case errors.Is(err, domain.ErrInvalidAddedWithin):
+		s.invalidRequest(w, fmt.Sprintf("addedWithin must be between 1 and %d.", domain.MaxAddedWithinDays))
+		return false
+	case err != nil:
+		s.invalidRequest(w, fmt.Sprintf(
+			"minDuration and maxDuration must be between 0 and %d, and minDuration must not exceed maxDuration.",
+			domain.MaxDurationBoundSec))
+		return false
+	}
+	if params.addedWithin != nil {
+		query.AddedWithinDays = *params.addedWithin
+	}
+	query.MinDurationSec, query.MaxDurationSec = params.minDuration, params.maxDuration
 	return true
 }
 
@@ -318,8 +348,9 @@ func (s *server) parseTagFilter(w http.ResponseWriter, tag *[]int64) ([]int64, b
 	return *tag, true
 }
 
-// GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。group は動画を開いたグループで、
-// 応答の group をそのグループで答える（specs/048-groups/research.md R-9）。
+// GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。group は動画を開いたグループ、smartFolder
+// は動画を開いたスマートフォルダで、応答の group か smartFolder をその文脈で答える
+// （specs/048-groups/research.md R-9、specs/052-smart-folders/contracts/screen-api.md）。
 func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoParams) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
@@ -332,28 +363,32 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 		s.internalError(w, "Could not load the video.", err)
 		return
 	}
-	s.writeVideoDetailIn(w, r, video, groupContext(params.Group))
+	s.writeVideoDetailIn(w, r, video, videoContext(params.Group, params.SmartFolder))
 }
 
-// groupContext は問い合わせの group を文脈のグループの id にする。省かれていれば 0 である。
-func groupContext(group *gen.VideoGroupContext) int64 {
-	if group == nil {
-		return 0
+// videoContext は問い合わせの group と smartFolder を動画を開いた文脈にする。省かれた方は 0 である。
+func videoContext(group *gen.VideoGroupContext, smartFolder *gen.VideoSmartFolderContext) domain.VideoContext {
+	var opened domain.VideoContext
+	if group != nil {
+		opened.GroupID = *group
 	}
-	return *group
+	if smartFolder != nil {
+		opened.SmartFolderID = *smartFolder
+	}
+	return opened
 }
 
 // writeVideoDetail は動画1件の詳細を GET /api/videos/{id} の形で書く。表示名の設定の
 // 応答も同じ形にする（specs/029-video-overrides/contracts/screen-api.md §1）。group は
 // 文脈の無い動画と同じく、id のいちばん小さいグループで答える。
 func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video domain.Video) {
-	s.writeVideoDetailIn(w, r, video, 0)
+	s.writeVideoDetailIn(w, r, video, domain.VideoContext{})
 }
 
-// writeVideoDetailIn は writeVideoDetail と同じ応答を、group を文脈のグループ contextID
-// （無ければ 0）で答えて書く。
-func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, video domain.Video, contextID int64) {
-	payload, err := s.videoDetail(r, video, contextID)
+// writeVideoDetailIn は writeVideoDetail と同じ応答を、group か smartFolder を動画を開いた文脈 opened
+// で答えて書く。
+func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, video domain.Video, opened domain.VideoContext) {
+	payload, err := s.videoDetail(r, video, opened)
 	if err != nil {
 		s.internalError(w, "Could not load the video.", err)
 		return
@@ -363,12 +398,12 @@ func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, vide
 }
 
 // videoDetail は動画1件の詳細を GET /api/videos/{id} の形にする。要求の見る人に合わせて項目を絞り、
-// group は文脈のグループ contextID（無ければ 0）で答える。作品情報の取得の結果の反映の応答も、
+// group か smartFolder は動画を開いた文脈 opened で答える。作品情報の取得の結果の反映の応答も、
 // これを video に入れる。
 //
 // グループかシーク用プレビューの状態を読めなければ、その項目を除いた詳細と誤りを返す。書き込みが確定した
 // 後の応答は、誤りを記録して除いた詳細を返せる。
-func (s *server) videoDetail(r *http.Request, video domain.Video, contextID int64) (gen.Video, error) {
+func (s *server) videoDetail(r *http.Request, video domain.Video, opened domain.VideoContext) (gen.Video, error) {
 	var errs []error
 	progress := s.progressFor(r.Context(), []domain.Video{video})
 	tags := s.tagsFor(r.Context(), []domain.Video{video})
@@ -382,21 +417,16 @@ func (s *server) videoDetail(r *http.Request, video domain.Video, contextID int6
 	// 作品情報は、読んだ（または書いた）経路が video に埋めたときだけ載せる。
 	payload.WorkInfo = toAPIWorkInfo(video.WorkInfo)
 	// グループも動画1件の応答にだけ載せる。文脈のグループの再生順で数え、ゲストには公開の
-	// 動画だけで数えたものが返る（specs/048-groups/research.md R-9）。
+	// 動画だけで数えたものが返る（specs/048-groups/research.md R-9）。文脈がスマートフォルダなら
+	// group の代わりに smartFolder をフォルダの再生順で載せる（specs/052-smart-folders/contracts/screen-api.md）。
 	if s.catalog != nil {
 		// 位置と本数だけを使うので、メンバーの詳細は読まない。
-		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, contextID, domain.GroupWindow{})
+		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, opened, domain.GroupWindow{})
 		if err != nil {
 			errs = append(errs, err)
 		}
 		if err == nil && grouped {
-			payload.Group = &gen.VideoGroupRef{
-				Id:       group.ID,
-				Folder:   apiGroupFolder(group.Folder),
-				Name:     group.Name,
-				Position: group.Position(video.ID),
-				Count:    group.Total(),
-			}
+			payload.Group, payload.SmartFolder = videoContextRefs(group, video.ID)
 		}
 	}
 	if video.HasSeekThumbnail() && s.catalog != nil {

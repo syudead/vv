@@ -257,9 +257,23 @@ read from the shared kind list when the popover first opens; an applied kind
 also shows as a `Kind: <name>` chip in the `Filtering by` row, and a kind that
 the loaded list no longer holds leaves the URL with a toast
 ([051 UI design, Library](../../specs/051-tag-kinds/ui-design.md#library)).
-`Clear filters` clears favorites only and the kind with the other filters and
-keeps the sort. A guest URL with `fav=1`, `tagKind` or `sort=favorited*` is
-reset to the defaults before the request and the URL is corrected.
+After them come `Added` and `Length`, two selects of presets for the owner
+and guests alike (URL `addedWithin=<days>`, `minDuration=<s>` and
+`maxDuration=<s>`); a value outside the presets is drawn as its own option,
+and an out-of-range value or a minimum over the maximum leaves the URL before
+the request
+([052 UI design, Added and length](../../specs/052-smart-folders/ui-design.md#added-and-length)).
+The filter button counts each as one applied filter.
+`Clear filters` clears favorites only, the kind, the added date and the length
+with the other filters and keeps the sort. A guest URL with `fav=1`, `tagKind`
+or `sort=favorited*` is reset to the defaults before the request and the URL
+is corrected.
+
+While any filter applies, the owner's library header carries the `outline`
+action `Save as smart folder`, which opens the smart folder dialog with the
+filter as its conditions and the current sort, `Random` replaced by date added;
+the `Created "{name}"` toast carries `Open` to the new folder's page
+([052 UI design, Save as smart folder](../../specs/052-smart-folders/ui-design.md#save-as-smart-folder)).
 
 ### Scan entry and progress
 
@@ -313,6 +327,7 @@ bottom edge and the title.
 | Video, folder search results | Location row under the title |
 | Folder | Video card's width and border, folder artwork, Folder icon in the title |
 | Group (library only) | Video card's box and size, folder artwork of up to 4 member thumbnails |
+| Smart folder (unfiltered library, smart folder page) | Group card's box, artwork, count panel, name and tag row, with a `FolderSearch` mark before the count; no check or `Add to group`; the owner's heart and `Add to playlist` send the folder as one item (`smartFolderIds`) |
 
 Video card behaviour:
 
@@ -339,6 +354,32 @@ group's child groups and videos in their saved order under a sticky trail band
 On that page a child group opens with `?trail` one group longer, and a video
 opens with `?group`, so the video page follows that group.
 Guests see no watch status, watched count or bar.
+
+Root smart folders stand among the groups and videos of the unfiltered library
+(favorites only keeps the favorited ones) and of a smart folder page's child
+list. The list carries only each folder's name; a card draws a `Skeleton` count
+panel until it scrolls into view, and the cards then on screen are read 60 at a
+time through `GET /api/smart-folders/cards`
+([052 research, R-14](../../specs/052-smart-folders/research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)).
+A `smartFolder` event reads the named cards again, keeping only the newest
+answer per card, and makes the unfiltered library reload its loaded pages, so
+a folder created, moved or renamed in another tab appears. A folder left out of
+the answer loses its card. The card's tags stay pressable while other cards are
+selected, since a folder card has no selection. A smart folder card cannot be
+dragged, and dropping on it shows `Can't drop here`.
+
+Pressing a smart folder card opens `/smart-folders/{id}`
+([052 UI design, Smart folder page](../../specs/052-smart-folders/ui-design.md#smart-folder-page)):
+a trail band of the folder's ancestors, the name, `12 videos · 1:32:10`, and
+for the owner one conditions line per folder on the path, then the child
+folders by name and the matching videos and groups in the folder's sort, in
+the library's grid or list. A video opens with `?smartFolder=<id>`. The owner's
+`More` holds `Edit…`, `New child smart folder…` and `Delete…`; saving reloads
+the page quietly, and deleting leaves for the parent folder or the library
+with a toast. An empty folder shows `EmptyState`, with `Edit conditions…` for
+the owner. The page reloads in place on a `smartFolder` event naming it or on
+a reconnect, and the selection drops videos that no longer match. Guests see
+the page without conditions, `More` or selection.
 
 Ungroup, group a folder's direct videos and turn a group into a tag are not on
 the card. They sit in the owner's menu at the right end of a folder page's
@@ -484,7 +525,7 @@ flowchart LR
 | Return target | The list before the page opened, kept through related videos and `Play next` |
 | Tags | Right below the title as one unit ([014 UI design, Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)) |
 | Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows |
-| Right column | Up to three sections, the playlist panel, `Up next` (a group's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
+| Right column | Up to three sections, the playlist panel, `Up next` (a group's or smart folder's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
 | Guests | No tags, visibility toggle, work details, `Edit details`, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
 
 Width variations stay in CSS, as in
@@ -717,6 +758,18 @@ that holds the video directly; a playlist context overrides both
 | Group actions (owner) | `Ellipsis` button after the line: `Remove from this group` (only for a direct item), `Turn the group into a tag…`, `Dissolve…`; Esc closes only the menu |
 | After an action | Video and related videos read again without `group`; the page stays |
 | Previous/next handles | Move within the group |
+
+A video opened from a smart folder (`?smartFolder=<id>`) follows the folder's
+play order in the same parts: the reads carry `smartFolder`, the line above the
+title has the `FolderSearch` icon and links to `/smart-folders/{id}` with no
+actions button after it, and the member rows, handles and notice keep
+`?smartFolder`. `?group` wins when both are present, and the page re-reads on
+a `smartFolder` event naming the folder. A playlist shows a smart folder item
+as one row with the group item's shape and the `FolderSearch` icon, on the
+playlist screen and in the panel; its link and every playlist step onto it
+carry `smartFolder` from the item or from the step's `smartFolderId`, and a
+folder with no video is a row without a link
+([052 UI design, Playlists](../../specs/052-smart-folders/ui-design.md#playlists)).
 
 `matchMedia` reads the `lg` width only to scroll the current member's row into
 view on wide screens; on narrow widths scrolling would move the whole page and
