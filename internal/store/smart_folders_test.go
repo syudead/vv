@@ -286,7 +286,9 @@ func TestRuleNamingADeletedTagIsStoredAndReportedMissing(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []domain.SmartRuleRef{{Kind: domain.SmartRefPerson, ID: 404}, {Kind: domain.SmartRefTag, ID: cat.ID}}
+	want := []domain.SmartRuleRef{
+		{Kind: domain.SmartRefPerson, ID: 404}, {Kind: domain.SmartRefTag, ID: cat.ID}, {Kind: domain.SmartRefTagKind, ID: 7},
+	}
 	if !reflect.DeepEqual(missing, want) {
 		t.Fatalf("MissingRefs() = %+v, want %+v", missing, want)
 	}
