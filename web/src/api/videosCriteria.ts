@@ -44,6 +44,13 @@ export interface VideosCriteria {
   organization?: number;
   /** 絞り込むタグの種類の id（specs/051-tag-kinds/contracts/screen-api.md）。 */
   tagKind?: number;
+  /**
+   * 追加日と長さの絞り込み（tag と同じく listFolderVideos には渡さない。
+   * specs/052-smart-folders/research.md R-4）。
+   */
+  addedWithin?: number;
+  minDuration?: number;
+  maxDuration?: number;
 }
 
 /** criteriaKey は条件を値で比べるための文字列にする。 */
@@ -60,5 +67,8 @@ export function criteriaKey(criteria: VideosCriteria): string {
     criteria.person ?? null,
     criteria.organization ?? null,
     criteria.tagKind ?? null,
+    criteria.addedWithin ?? null,
+    criteria.minDuration ?? null,
+    criteria.maxDuration ?? null,
   ]);
 }

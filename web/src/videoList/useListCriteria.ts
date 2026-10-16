@@ -49,10 +49,15 @@ const noExtraParams: readonly string[] = [];
  * （preferredSort）が所有者だけの並び順のときも丸めるが、
  * 保存値そのものは書き換えない（specs/016-single-account-auth/ui-design.md
  * 「Guest degradation」、contracts/guest-api.md §3）。
+ *
+ * `guestParams` は `extraParams` のうち、所有者のデータに依らないのでゲストにも残すもの
+ * （ライブラリの追加日と長さ。specs/052-smart-folders/research.md R-4）である。呼び手は
+ * 参照の変わらない配列を渡す。
  */
 export function useListCriteria(
   preferredSort: VideoSort,
   extraParams: readonly string[] = noExtraParams,
+  guestParams: readonly string[] = noExtraParams,
 ): ListCriteriaState {
   const location = useLocation();
   const navigate = useNavigate();
@@ -63,13 +68,20 @@ export function useListCriteria(
     extraParams.map((name) => [name, searchParams.getAll(name)]),
   );
   // ゲストの URL に残った、使えない条件。丸めた条件で URL を書き直す。
+  const ownerOnlyExtra = Object.entries(rawExtra).filter(
+    ([name]) => !guestParams.includes(name),
+  );
   const guestLeftovers =
     guest &&
     (parsed.criteria.watch !== "all" ||
       parsed.criteria.favorite ||
       (parsed.hasExplicitSort && ownerOnlySort(parsed.criteria.sort)) ||
-      Object.values(rawExtra).some((values) => values.length > 0));
-  const extra: ExtraValues = guest ? {} : rawExtra;
+      ownerOnlyExtra.some(([, values]) => values.length > 0));
+  const extra: ExtraValues = guest
+    ? Object.fromEntries(
+        Object.entries(rawExtra).filter(([name]) => guestParams.includes(name)),
+      )
+    : rawExtra;
 
   // sort=random で seed が無いときは、ここで作って URL に書き足す（履歴は増やさない）。
   // 書き足すまでの描画でも同じ値を使うよう、URL ごとに1つだけ作って覚える。

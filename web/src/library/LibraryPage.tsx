@@ -62,7 +62,21 @@ import { useListCriteria } from "../videoList/useListCriteria";
 import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
+import SaveSmartFolderButton from "../smartFolders/SaveSmartFolderButton";
 import ActiveTagFilters from "./ActiveTagFilters";
+import {
+  addedLengthCount,
+  addedLengthParams,
+  addedLengthSignature,
+  addedLengthValues,
+  clearedAddedLength,
+  hasAddedLength,
+  type LengthRange,
+  useAddedLength,
+  withAddedWithin,
+  withLength,
+} from "./addedLengthCriteria";
+import { AddedSelect, LengthSelect } from "./AddedLengthSelects";
 import {
   clearedCredits,
   creditSignature,
@@ -125,8 +139,14 @@ function itemGroup(item: LibraryItem): LibraryGroup | undefined {
   return item.kind === "group" ? item.group : undefined;
 }
 
-/** ライブラリだけが URL に持つ条件（タグ、人物、団体、タグの種類）。 */
-const libraryParams = [TAG_PARAM, PERSON_PARAM, ORGANIZATION_PARAM, TAG_KIND_PARAM];
+/** ライブラリだけが URL に持つ条件（タグ、人物、団体、タグの種類、追加日と長さ）。 */
+const libraryParams = [
+  TAG_PARAM,
+  PERSON_PARAM,
+  ORGANIZATION_PARAM,
+  TAG_KIND_PARAM,
+  ...addedLengthParams,
+];
 
 export default function LibraryPage() {
   const location = useLocation();
@@ -141,7 +161,12 @@ export default function LibraryPage() {
   // パラメータの口へ渡し、URL のすべての書き換え経路でその値を残す。
   // 人物・団体（`person`・`organization`）も同じ口で運ぶ（specs/047-video-work-info/
   // ui-design.md「Library: filter by a person or organization」）。
-  const { criteria, apply } = useListCriteria(preferences.sort, libraryParams);
+  // 追加日と長さはゲストも使える（specs/052-smart-folders/research.md R-4）。
+  const { criteria, apply } = useListCriteria(
+    preferences.sort,
+    libraryParams,
+    addedLengthParams,
+  );
   const { query, watch, playable, favorite, sort } = criteria;
   // タグの値が変わらない限り同じ配列を使い、タグと無関係な URL の変更でも
   // タグの操作の関数とカードの memo を保つ。ゲストはタグ・人物・団体で絞り込めない
@@ -154,6 +179,14 @@ export default function LibraryPage() {
     [owner, rawTagKey],
   );
   const credits = useCreditFilter(location.search, owner);
+  const { filter: addedLength, dropped: addedLengthDropped } = useAddedLength(
+    location.search,
+  );
+  // 一覧の条件のうちライブラリだけのもの（人物・団体・タグの種類と、追加日と長さ）。
+  const libraryFilter = useMemo(
+    () => ({ ...credits, ...addedLength }),
+    [credits, addedLength],
+  );
   const { zoom, view } = preferences;
   const searchField = useRef<HTMLInputElement | null>(null);
   const { activePreviewId, previewResetEpoch, startPreview, resetPreview } =
@@ -210,6 +243,7 @@ export default function LibraryPage() {
     apply(cleared.criteria, "push", {
       [TAG_PARAM]: serializeTagIds(cleared.tag),
       ...clearedCredits,
+      ...clearedAddedLength,
     });
   }, [apply, criteria, resetPreview]);
 
@@ -256,6 +290,20 @@ export default function LibraryPage() {
     [apply, resetPreview],
   );
   const tagKinds = useLibraryTagKinds(credits.tagKind, applyTagKind);
+  // --- 追加日と長さ（052 ui-design.md「Added and length」） ---
+  // 選ぶとその値だけを書き換えて履歴を 1 つ増やす。ほかの条件は残る。
+  const changeAdded = useCallback(
+    (days: number | undefined) => applyTagKind(withAddedWithin(days), "push"),
+    [applyTagKind],
+  );
+  const changeLength = useCallback(
+    (range: LengthRange) => applyTagKind(withLength(range), "push"),
+    [applyTagKind],
+  );
+  // 送れない値（範囲の外、下限が上限を超える）は、要求の前に履歴を増やさずに URL から落とす。
+  useEffect(() => {
+    if (addedLengthDropped) applyTagKind(addedLengthValues(addedLength), "replace");
+  }, [addedLength, addedLengthDropped, applyTagKind]);
   const changeTagKind = tagKinds.change;
   const removeTagKind = useCallback(() => changeTagKind(undefined), [changeTagKind]);
 
@@ -293,7 +341,7 @@ export default function LibraryPage() {
 
   // --- 一覧の取得（戻ってきたときはスナップショットから復元） ---
   const [restored] = useState(() =>
-    takeListSnapshot({ ...criteria, tags: tagIds, ...credits }),
+    takeListSnapshot({ ...criteria, tags: tagIds, ...libraryFilter }),
   );
   const {
     items,
@@ -309,7 +357,7 @@ export default function LibraryPage() {
     reload,
     refreshInPlace,
     staleGroups,
-  } = useVideos({ ...criteria, tag: tagIds, ...credits }, restored, "library");
+  } = useVideos({ ...criteria, tag: tagIds, ...libraryFilter }, restored, "library");
 
   // 絞り込みはサーバーが一覧の条件として適用する。
   // 再生から戻って視聴状態が変わった項目も、その場では一覧から外さない。
@@ -416,7 +464,7 @@ export default function LibraryPage() {
   const selectAll = useCallback(() => {
     const seq = (selectAllSeq.current += 1);
     setSelectingAll(true);
-    listLibraryIds({ query, watch, playable, favorite, tag: tagIds, ...credits })
+    listLibraryIds({ query, watch, playable, favorite, tag: tagIds, ...libraryFilter })
       .then((response) => {
         // 応答が届くまでの間に、手動の選択操作・別の「すべて選択」・条件の
         // 変化（下の conditionsSignature の効果も selectAllSeq を進める）が
@@ -447,7 +495,7 @@ export default function LibraryPage() {
       .finally(() => {
         if (selectAllSeq.current === seq) setSelectingAll(false);
       });
-  }, [applyTags, credits, favorite, playable, query, tagIds, toast, watch]);
+  }, [applyTags, libraryFilter, favorite, playable, query, tagIds, toast, watch]);
 
   // 選択バーで一括して外したタグが、今の絞り込み（tagIds）に含まれているとき
   // の方針（Devin の指摘4、docs/design-docs/library-ui.md §6）。外した動画は
@@ -487,6 +535,7 @@ export default function LibraryPage() {
     criteriaKey(criteria),
     tagIds.join(","),
     creditSignature(credits),
+    addedLengthSignature(addedLength),
   ].join("\u0000");
   const knownConditionsSignature = useRef(conditionsSignature);
   useEffect(() => {
@@ -568,7 +617,7 @@ export default function LibraryPage() {
     // 操作の成功は控えを捨てるので、ここで古い並びを覚え直すと戻ったときにそれが出てしまう。
     if (shown !== items) return;
     saveListSnapshot(
-      { ...criteria, tags: tagIds, ...credits },
+      { ...criteria, tags: tagIds, ...libraryFilter },
       {
         items,
         total,
@@ -579,7 +628,17 @@ export default function LibraryPage() {
         staleGroups: staleGroups(),
       },
     );
-  }, [credits, criteria, cursor, hasMore, items, shown, staleGroups, tagIds, total]);
+  }, [
+    libraryFilter,
+    criteria,
+    cursor,
+    hasMore,
+    items,
+    shown,
+    staleGroups,
+    tagIds,
+    total,
+  ]);
 
   // --- 無限スクロール ---
   const sentinel = useRef<HTMLDivElement | null>(null);
@@ -657,7 +716,8 @@ export default function LibraryPage() {
 
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
-  const conditioned = hasTagConditions(criteria, tagIds, credits);
+  const conditioned =
+    hasTagConditions(criteria, tagIds, credits) || hasAddedLength(addedLength);
   const selectionMode = selectedIds.size > 0;
   const resultStatus = loading ? t.list.loading : t.library.resultCount(total);
 
@@ -809,6 +869,15 @@ export default function LibraryPage() {
         header={
           <PageHeader
             title={t.library.title}
+            actions={
+              owner &&
+              conditioned && (
+                <SaveSmartFolderButton
+                  filter={{ criteria, tagIds, credits, addedLength }}
+                  sort={sort}
+                />
+              )
+            }
             count={
               initialLoadFailed ? undefined : (
                 <span
@@ -847,15 +916,24 @@ export default function LibraryPage() {
               zoom={zoom}
               onZoomChange={changeZoom}
               extraFilter={
-                owner && (
-                  <TagKindSelect
-                    value={credits.tagKind}
-                    kinds={tagKinds.kinds}
-                    onValueChange={changeTagKind}
+                <>
+                  {owner && (
+                    <TagKindSelect
+                      value={credits.tagKind}
+                      kinds={tagKinds.kinds}
+                      onValueChange={changeTagKind}
+                    />
+                  )}
+                  <AddedSelect
+                    value={addedLength.addedWithin}
+                    onValueChange={changeAdded}
                   />
-                )
+                  <LengthSelect value={addedLength} onValueChange={changeLength} />
+                </>
               }
-              extraFilterCount={credits.tagKind === undefined ? 0 : 1}
+              extraFilterCount={
+                (credits.tagKind === undefined ? 0 : 1) + addedLengthCount(addedLength)
+              }
               onFilterOpen={owner ? tagKinds.load : undefined}
             />
           </TopBarPortal>

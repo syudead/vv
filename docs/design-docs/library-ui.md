@@ -257,9 +257,22 @@ read from the shared kind list when the popover first opens; an applied kind
 also shows as a `Kind: <name>` chip in the `Filtering by` row, and a kind that
 the loaded list no longer holds leaves the URL with a toast
 ([051 UI design, Library](../../specs/051-tag-kinds/ui-design.md#library)).
-`Clear filters` clears favorites only and the kind with the other filters and
-keeps the sort. A guest URL with `fav=1`, `tagKind` or `sort=favorited*` is
-reset to the defaults before the request and the URL is corrected.
+After them come `Added` and `Length`, two selects of presets for the owner
+and guests alike (URL `addedWithin=<days>`, `minDuration=<s>` and
+`maxDuration=<s>`); a value outside the presets is drawn as its own option,
+and an out-of-range value or a minimum over the maximum leaves the URL before
+the request
+([052 UI design, Added and length](../../specs/052-smart-folders/ui-design.md#added-and-length)).
+The filter button counts each as one applied filter.
+`Clear filters` clears favorites only, the kind, the added date and the length
+with the other filters and keeps the sort. A guest URL with `fav=1`, `tagKind`
+or `sort=favorited*` is reset to the defaults before the request and the URL
+is corrected.
+
+While any filter applies, the owner's library header carries the `outline`
+action `Save as smart folder`, which opens the smart folder dialog with the
+filter as its conditions and the current sort, `Random` replaced by date added
+([052 UI design, Save as smart folder](../../specs/052-smart-folders/ui-design.md#save-as-smart-folder)).
 
 ### Scan entry and progress
 
