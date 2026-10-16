@@ -245,7 +245,16 @@ test.describe.serial("work-info plugins", () => {
     // メーカーはまだ無いので、作られる印が付く。
     for (const field of ["Title", "Tags", "Code", "Released", "Performers", "Makers"])
       await expect(dialog.getByRole("checkbox", { name: field })).toBeChecked();
-    await expect(dialog.getByText("2 new")).toBeVisible();
+    await expect(dialog.getByText("2 of 2 selected")).toBeVisible();
+    // 取得したタグを 1 つ外す（specs/056-plugin-tooling R-7）。鍵のタグは残し、秘密の値が届いた
+    // ことを後で確かめる。
+    // 名前はチップの「{name}, Tentative」で、鍵のタグの名前は fetchedTag を含まない。
+    await dialog.getByRole("checkbox", { name: fetchedTag }).uncheck();
+    await expect(dialog.getByText("1 of 2 selected")).toBeVisible();
+    await expect(dialog.getByRole("checkbox", { name: "Tags" })).toHaveAttribute(
+      "aria-checked",
+      "mixed",
+    );
     await expect(dialog.getByText(fetchedCode)).toBeVisible();
     await expect(dialog.getByTitle(performer)).toHaveText(`${performer}, New`);
     await expect(dialog.getByTitle(maker)).toHaveText(`${maker}, New`);
@@ -253,12 +262,15 @@ test.describe.serial("work-info plugins", () => {
     await expect(dialog).toBeHidden();
     await expect(page.getByText("Applied to the video.")).toBeVisible();
 
-    // 新しい表示名と、仮のタグとして付いた 2 つのタグ。鍵のタグは秘密の値が届いた印である。
+    // 新しい表示名と、仮のタグとして付いた鍵のタグ。外したタグは付かない。鍵のタグは秘密の値が
+    // 届いた印である。
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(fetchedTitle);
-    for (const name of [fetchedTag, secretTag])
-      await expect(
-        page.getByRole("link", { name: `Filter by ${name} (tentative)` }),
-      ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: `Filter by ${secretTag} (tentative)` }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: new RegExp(`^Filter by ${fetchedTag}`) }),
+    ).toHaveCount(0);
 
     // 作品情報の行に品番・発売日・出演者・メーカーが出る。
     await expect(detailItem(page, "Code")).toHaveText(`Code${fetchedCode}`);

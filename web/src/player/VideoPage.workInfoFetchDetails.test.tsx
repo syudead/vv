@@ -75,7 +75,8 @@ describe("VideoPage work-info fetch details", () => {
 
   it("題名とタグだけの結果は今までどおり 2 行で比べる", async () => {
     const { dialog } = await fetchFromUrl();
-    expect(within(dialog).getAllByRole("checkbox")).toHaveLength(2);
+    // 2 行の選択と、動画にまだ無いタグ「新しい」の選択である。
+    expect(within(dialog).getAllByRole("checkbox")).toHaveLength(3);
     expect(checkbox(dialog, "Title")).toHaveProperty("ariaChecked", "true");
     expect(checkbox(dialog, "Tags")).toHaveProperty("ariaChecked", "true");
     expect(within(dialog).queryByText("Code")).toBeNull();

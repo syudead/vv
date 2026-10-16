@@ -106,8 +106,8 @@ describe("VideoPage work-info fetch", () => {
     await user.click(within(dialog).getByRole("button", { name: /候補の作品/ }));
     await within(dialog).findByRole("checkbox", { name: "Title" });
     expect(server.fetch).toHaveBeenCalledWith({ pluginId: 3, url: workUrl });
-    // 取得した値は「既存」が動画に付いているので 1 つだけ新しい。
-    expect(within(dialog).getByText("1 new")).toBeDefined();
+    // 取得した値は「既存」が動画に付いているので、選べるのは 1 つだけである。
+    expect(within(dialog).getByText("1 of 1 selected")).toBeDefined();
     expect(within(dialog).getByRole("checkbox", { name: "Title" })).toHaveProperty(
       "ariaChecked",
       "true",
@@ -116,7 +116,10 @@ describe("VideoPage work-info fetch", () => {
       within(dialog).getByRole("button", { name: "Back to the matches" }),
     ).toBeDefined();
     await user.click(within(dialog).getByRole("button", { name: "Apply selected" }));
-    expect(server.apply).toHaveBeenCalledWith({ fields: ["title", "tags"] });
+    expect(server.apply).toHaveBeenCalledWith({
+      fields: ["title", "tags"],
+      tags: ["新しい"],
+    });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(heading().textContent).toBe("取得した題名");
     expect(await screen.findByText("Applied to the video.")).toBeDefined();

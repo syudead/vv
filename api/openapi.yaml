@@ -2436,7 +2436,9 @@ paths:
         作品情報の項目は保存済みの作品情報に重ね、規則に合わない値・上限を超える件・照合が曖昧な人物と団体は
         飛ばして `skipped` で知らせる（specs/052-plugin-work-info-fields/contracts/screen-api.md）。結果は使い切りで、
         成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
-        `skippedTags` で知らせ、付けない。`fields` が空か結果に値の無い項目を含めば `400` `invalid_request`、
+        `skippedTags` で知らせ、付けない。`tags` を送れば取得したタグのうちその名前だけを付け、`skippedTags` も
+        その名前だけを知らせる（specs/056-plugin-tooling/contracts/screen-api.md）。`fields` が空か結果に値の無い
+        項目を含むか、`tags` が空か結果に無い名前を含むか `fields` に `tags` が無いのに有れば `400` `invalid_request`、
         動画が無いか結果が別の動画のものなら `404` `not_found`、結果が期限切れか不明か、取得の後にプラグインが
         差し替えられたか承認を取り消されたか消されていれば `409` `work_info_fetch_stale` で、どれも何も
         書かない。確定後に `/api/events` の `video` が流れる
@@ -5715,6 +5717,13 @@ components:
           description: 反映する項目。空にできず、どれも結果に値がなければならない
           items:
             $ref: "#/components/schemas/WorkInfoField"
+        tags:
+          type: array
+          description: |
+            fields が tags を含むときに付ける取得済みのタグの名前。結果の tags の空でない部分集合で、結果が返した綴りのまま。
+            無ければ取得したタグを全部付ける。空、結果に無い名前、fields に tags が無いのに有る場合は 400
+          items:
+            type: string
 
     SkippedTagReason:
       type: string

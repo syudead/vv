@@ -148,25 +148,28 @@ func (p *WorkInfoPlugins) run(
 }
 
 // ApplyWorkInfoFetch は動画 videoID に、取得の結果 fetchID のうち fields の項目を反映し、反映後の動画と
-// 付けなかったタグの名前と、作品の詳細のうち飛ばした値を返す。結果は使い切りで、成功すると消える。
+// 付けなかったタグの名前と、作品の詳細のうち飛ばした値を返す。結果は使い切りで、成功すると消える。tags が
+// nil でなければ、取得したタグのうちその名前（結果の綴りのまま）だけを付け、付けなかった名前もその中から
+// 報告する（specs/056-plugin-tooling/research.md R-7）。nil なら取得したタグを全部付ける。
 //
 // 結果が無いか期限切れなら domain.ErrWorkInfoFetchStale、結果が別の動画のものなら domain.ErrNotFound、
-// fields が空か知らない項目か結果に値の無い項目を含めば domain.ErrWorkInfoApplyInvalid を返す。取得の後に
+// fields が空か知らない項目か結果に値の無い項目を含むか、tags が空か結果に無い名前を含むか fields に
+// タグが無いのに nil でなければ domain.ErrWorkInfoApplyInvalid を返す。取得の後に
 // プラグインが差し替えられたか、承認を取り消されたか、消されていれば domain.ErrWorkInfoFetchStale で、
 // 保存先も取引の中で同じことを確かめ直す（research.md R-8）。タグはタグ名の規則で整え、外れた名前は
 // invalid、保存先が却下した名前として飛ばしたものは rejected として、取得の結果の順に報告する
 // （research.md R-9）。失敗した反映は何も書かない。
 func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
-	ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField,
+	ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField, tags []string,
 ) (domain.WorkInfoApplied, error) {
 	if p.applier == nil {
 		return domain.WorkInfoApplied{}, errors.New("work-info fetches are not configured")
 	}
-	fetch, err := p.fetches.claim(fetchID, videoID, fields, p.now())
+	fetch, err := p.fetches.claim(fetchID, videoID, fields, tags, p.now())
 	if err != nil {
 		return domain.WorkInfoApplied{}, err
 	}
-	applied, err := p.applyFetch(ctx, fetch, fields)
+	applied, err := p.applyFetch(ctx, fetch, fields, tags)
 	if err != nil && !errors.Is(err, domain.ErrWorkInfoFetchStale) && !errors.Is(err, domain.ErrNotFound) {
 		// 書き込みの一時的な失敗では、所有者がもう一度反映できるように結果を戻す。
 		p.fetches.restore(fetchID, fetch)
@@ -175,7 +178,7 @@ func (p *WorkInfoPlugins) ApplyWorkInfoFetch(
 }
 
 func (p *WorkInfoPlugins) applyFetch(
-	ctx context.Context, fetch *workInfoFetch, fields []domain.WorkInfoField,
+	ctx context.Context, fetch *workInfoFetch, fields []domain.WorkInfoField, tags []string,
 ) (domain.WorkInfoApplied, error) {
 	plugin, err := p.store.WorkInfoPlugin(ctx, fetch.pluginID)
 	switch {
@@ -195,9 +198,10 @@ func (p *WorkInfoPlugins) applyFetch(
 		title := fetch.title
 		apply.Title = &title
 	}
+	names := selectedTagNames(fetch.tags, tags)
 	var invalid map[string]bool
 	if slices.Contains(fields, domain.WorkInfoFieldTags) {
-		apply.Tags, invalid = splitTagNames(fetch.tags)
+		apply.Tags, invalid = splitTagNames(names)
 	}
 	applied, err := p.applier.ApplyFetchedWorkInfo(ctx, apply)
 	if err != nil {
@@ -208,7 +212,7 @@ func (p *WorkInfoPlugins) applyFetch(
 		skipped = []domain.SkippedWorkInfoValue{}
 	}
 	return domain.WorkInfoApplied{
-		Video: applied.Video, SkippedTags: skippedTags(fetch.tags, invalid, applied.RejectedTags), Skipped: skipped,
+		Video: applied.Video, SkippedTags: skippedTags(names, invalid, applied.RejectedTags), Skipped: skipped,
 	}, nil
 }
 
@@ -218,6 +222,21 @@ func detailFields(fields []domain.WorkInfoField) []domain.WorkInfoField {
 	for _, field := range domain.WorkInfoFields {
 		if field != domain.WorkInfoFieldTitle && field != domain.WorkInfoFieldTags && slices.Contains(fields, field) {
 			out = append(out, field)
+		}
+	}
+	return out
+}
+
+// selectedTagNames は取得したタグの名前 fetched のうち、選んだ名前 selected にあるものを取得の結果の順に
+// 返す。selected が nil なら fetched を全部返す。
+func selectedTagNames(fetched, selected []string) []string {
+	if selected == nil {
+		return fetched
+	}
+	out := make([]string, 0, len(selected))
+	for _, name := range fetched {
+		if slices.Contains(selected, name) {
+			out = append(out, name)
 		}
 	}
 	return out
@@ -293,6 +312,23 @@ func (f *workInfoFetch) hasValue(field domain.WorkInfoField) bool {
 	return f.details.HasDetail(field)
 }
 
+// validTagSelection は選んだタグの名前 tags が使えるかを返す。nil は選ばなかったことで使える。nil でなければ
+// fields がタグを含み、tags が空でなく、どの名前も結果のタグに綴りのまま有らなければならない（R-7）。
+func (f *workInfoFetch) validTagSelection(fields []domain.WorkInfoField, tags []string) bool {
+	if tags == nil {
+		return true
+	}
+	if len(tags) == 0 || !slices.Contains(fields, domain.WorkInfoFieldTags) {
+		return false
+	}
+	for _, name := range tags {
+		if !slices.Contains(f.tags, name) {
+			return false
+		}
+	}
+	return true
+}
+
 // workInfoFetches は取得の結果を識別子で持つ。期限の過ぎた結果は、追加と取り出しのたびに捨てる。
 type workInfoFetches struct {
 	mu      sync.Mutex
@@ -314,10 +350,11 @@ func (f *workInfoFetches) add(fetch *workInfoFetch, now time.Time) string {
 }
 
 // claim は識別子 id の結果を確かめて取り出す。無いか期限切れなら domain.ErrWorkInfoFetchStale、別の動画の
-// ものなら domain.ErrNotFound、fields が空か値の無い項目を含めば domain.ErrWorkInfoApplyInvalid を返し、
-// どれも結果を残す（期限切れは捨てる）。同じ結果を 2 回反映しないよう、確かめた結果は取り出す。
+// ものなら domain.ErrNotFound、fields が空か値の無い項目を含むか、選んだタグの名前 tags が使えなければ
+// domain.ErrWorkInfoApplyInvalid を返し、どれも結果を残す（期限切れは捨てる）。同じ結果を 2 回反映しないよう、
+// 確かめた結果は取り出す。
 func (f *workInfoFetches) claim(
-	id string, videoID int64, fields []domain.WorkInfoField, now time.Time,
+	id string, videoID int64, fields []domain.WorkInfoField, tags []string, now time.Time,
 ) (*workInfoFetch, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -328,7 +365,7 @@ func (f *workInfoFetches) claim(
 		return nil, domain.ErrWorkInfoFetchStale
 	case fetch.videoID != videoID:
 		return nil, domain.ErrNotFound
-	case len(fields) == 0:
+	case len(fields) == 0, !fetch.validTagSelection(fields, tags):
 		return nil, domain.ErrWorkInfoApplyInvalid
 	}
 	for _, field := range fields {
