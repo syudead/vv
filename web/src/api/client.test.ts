@@ -1046,32 +1046,29 @@ describe("list API client", () => {
     expect(url.searchParams.get("playable")).toBe("true");
     expect(url.searchParams.getAll("tag")).toEqual(["3", "7"]);
   });
-  it("listLibrary skips smart folders, lowers total by them and reads on past a page of only folders", async () => {
+  it("listLibrary keeps smart folder items as summaries", async () => {
     const video = { id: 1 };
-    const folder = { kind: "smartFolder", smartFolder: { id: 9, name: "猫" } };
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockResolvedValueOnce(
-        jsonResponse({ items: [folder, folder], total: 4, nextCursor: "c2" }),
-      )
-      .mockResolvedValueOnce(
-        jsonResponse({
-          items: [folder, { kind: "video", video }],
-          total: 4,
-          nextCursor: "c3",
-        }),
-      );
+    const smartFolder = { id: 9, name: "猫" };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValueOnce(
+      jsonResponse({
+        items: [
+          { kind: "smartFolder", smartFolder },
+          { kind: "smartFolder" },
+          { kind: "video", video },
+        ],
+        total: 2,
+      }),
+    );
     vi.stubGlobal("fetch", fetch);
 
     const page = await listLibrary({ sort: "titleAsc" });
 
-    expect(page.items).toEqual([{ kind: "video", video }]);
-    expect(page.total).toBe(1);
-    expect(page.nextCursor).toBe("c3");
-    expect(fetch).toHaveBeenCalledTimes(2);
-    const second = new URL(String(fetch.mock.calls[1]?.[0]), "http://localhost");
-    expect(second.searchParams.get("cursor")).toBe("c2");
-    expect(second.searchParams.get("sort")).toBe("titleAsc");
+    expect(page.items).toEqual([
+      { kind: "smartFolder", smartFolder },
+      { kind: "video", video },
+    ]);
+    expect(page.total).toBe(2);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
   it("listLibrary sends the list filters and tag, and narrows items by kind", async () => {
     const video = { id: 1 };

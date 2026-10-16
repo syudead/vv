@@ -5,6 +5,9 @@ import {
   type Scan,
   type VideoChanged,
 } from "./client";
+import type { components } from "./gen/openapi";
+
+type SmartFolderChanged = components["schemas"]["SmartFolderChanged"];
 
 /**
  * ServerEventHandlers はサーバーから届く変化の受け取り先である。
@@ -13,6 +16,8 @@ import {
  * - `video`: 動画の状態が変わった（最新の内容は取り直す）
  * - `group`: グループの名前か項目が変わった。変わったグループとその祖先の id を受け取る
  *   （specs/048-groups/research.md R-13。最新の内容は取り直す）
+ * - `smartFolder`: スマートフォルダの中身かカードの値が変わったかもしれない。名指された
+ *   フォルダの id を受け取る（specs/052-smart-folders/research.md R-12。最新の内容は取り直す）
  * - `open`: つながった、またはつなぎ直した。切れていた間の変化を取り直す合図。
  *   `reconnected` は、この購読者がつながった状態を前にも見ていたかを表す。
  *   つなぎ直しでは、切れていた間の `video` を受け取っていない。
@@ -21,6 +26,7 @@ export interface ServerEventHandlers {
   scan?: (scan: Scan) => void;
   video?: (id: number) => void;
   group?: (ids: readonly number[]) => void;
+  smartFolder?: (ids: readonly number[]) => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -79,6 +85,10 @@ function connect(): void {
   current.addEventListener("group", (event) => {
     const changed = parse<GroupChanged>(event);
     if (changed !== undefined) dispatch("group", changed.ids);
+  });
+  current.addEventListener("smartFolder", (event) => {
+    const changed = parse<SmartFolderChanged>(event);
+    if (changed !== undefined) dispatch("smartFolder", changed.ids);
   });
   current.addEventListener("error", () => {
     // 接続中の切断はブラウザが自分でつなぎ直す。CLOSED は諦めた状態

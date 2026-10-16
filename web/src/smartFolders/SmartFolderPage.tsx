@@ -1,0 +1,456 @@
+import { FolderSearch, TriangleAlert } from "lucide-react";
+import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
+import { useLocation, useParams } from "react-router";
+
+import type { LibraryGroup, LibraryItem, TagRef, Video } from "../api/client";
+import { itemKey } from "../api/libraryItems";
+import { useAudience } from "../auth/audience";
+import Breadcrumbs from "../folders/Breadcrumbs";
+import { loadingCrumbs } from "../groups/groupPaths";
+import { t } from "../i18n";
+import { formatDuration } from "../lib/format";
+import { GroupCard, GroupRow } from "../library/GroupCard";
+import { LibraryTableHeader } from "../library/LibraryPage";
+import { viewControls } from "../library/LibraryToolbar";
+import {
+  emptySelection,
+  isGroupSelected,
+  type LibrarySelection,
+  reconcileGroups,
+  sameSelection,
+  selectedGroupOf,
+  setGroup,
+  setVideo,
+  toggleGroup,
+  toggleVideo,
+} from "../library/selection";
+import SelectionBar from "../library/SelectionBar";
+import { TagRowMeasureProvider } from "../library/TagRowMeasure";
+import { useCardTagRows } from "../library/useCardTagRows";
+import { useEscapeClearsSelection } from "../library/useEscapeClearsSelection";
+import type { ViewMode, Zoom } from "../preferences/viewPreferences";
+import TopBarPortal from "../shell/TopBarPortal";
+import { DataTable } from "../ui/patterns/data-table";
+import { EmptyState } from "../ui/patterns/empty-state";
+import { ErrorState } from "../ui/patterns/error-state";
+import { ListPage } from "../ui/patterns/list-page";
+import { LoadMoreRow } from "../ui/patterns/load-more-row";
+import { LoadingState } from "../ui/patterns/loading-state";
+import { PageHeader } from "../ui/patterns/page-header";
+import { Toolbar } from "../ui/patterns/toolbar";
+import { TableBody } from "../ui/shadcn/table";
+import { Grid } from "../videoList/Grid";
+import {
+  useDocumentTitle,
+  useLoadMoreSentinel,
+  usePressTagToLibrary,
+  useSelectionTargets,
+  useViewControls,
+} from "../videoList/pageHooks";
+import {
+  GoneState,
+  LoadingTrailHeader,
+  PlayLink,
+  UnavailableTrailHeader,
+} from "../videoList/trailHeader";
+import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
+import VideoCard, { VideoRow } from "../videoList/VideoCard";
+import { SmartFolderCardsProvider } from "./cardValues";
+import ConditionLines from "./ConditionLines";
+import { type AncestorRule, bodyKind, missingParent, selectAllLoaded } from "./pageRules";
+import { SmartFolderCard, SmartFolderRow } from "./SmartFolderCard";
+import {
+  parseSmartFolderId,
+  smartFolderCrumbs,
+  videoInSmartFolderPath,
+} from "./smartFolderPaths";
+import {
+  type SmartFolderPageData,
+  type SmartFolderPageState,
+  useAncestorRules,
+  useSmartFolderPage,
+} from "./useSmartFolderPage";
+
+const skeletonCount = 12;
+
+/** noMissing は欠けた参照の無い（ゲストの）ページの値である。描画ごとに作らない。 */
+const noMissing: readonly never[] = [];
+
+/**
+ * SmartFolderPage はスマートフォルダ 1 つを開いた画面（`/smart-folders/{id}`）である
+ * （specs/052-smart-folders/ui-design.md「Smart folder page」）。上のバーの下に道筋の帯、見出しに
+ * フォルダの名前と本数と条件の行と「Play」、本体に子フォルダのカード、続けて条件に合う動画と
+ * グループをフォルダの並べ順でライブラリのカードか行で並べる。所有者とゲストの両方が開く。
+ *
+ * React Router は `:id` だけが変わる移動で同じ部品を使い回すので、画面は経路の id ごとに
+ * 作り直す。前のフォルダの名前・項目・選択が、別のフォルダと組み合わさって残らない。
+ */
+export default function SmartFolderPage() {
+  const params = useParams();
+  const id = parseSmartFolderId(params.id);
+  return <SmartFolderScreen key={params.id ?? ""} id={id} />;
+}
+
+/**
+ * useFolderSelection はスマートフォルダのページの選択である。ライブラリと同じく動画の id の
+ * 集合と、グループとして選んだグループを持つ（ui-design.md「Body」）。子フォルダのカードは
+ * 選ばない。読み直した項目に合わせて選んだグループを直し（reconcileGroups）、「Select all」は
+ * ここまでに並んだ動画とグループを選ぶ。
+ */
+function useFolderSelection(items: readonly LibraryItem[]) {
+  const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
+  useEffect(() => {
+    setSelection((current) => reconcileGroups(current, items));
+  }, [items]);
+  const all = useMemo(() => selectAllLoaded(items), [items]);
+  const clear = useCallback(() => setSelection(emptySelection), []);
+  useEscapeClearsSelection(selection.ids.size > 0, clear);
+  return {
+    selection,
+    allSelected: all.ids.size > 0 && sameSelection(all, selection),
+    clear,
+    selectAll: useCallback(() => setSelection(all), [all]),
+    changeVideo: useCallback(
+      (videoId: number, selected: boolean) =>
+        setSelection((current) => setVideo(current, videoId, selected)),
+      [],
+    ),
+    changeGroup: useCallback(
+      (group: LibraryGroup, selected: boolean) =>
+        setSelection((current) => setGroup(current, selectedGroupOf(group), selected)),
+      [],
+    ),
+    toggleVideo: useCallback(
+      (videoId: number) => setSelection((current) => toggleVideo(current, videoId)),
+      [],
+    ),
+    toggleGroup: useCallback(
+      (group: LibraryGroup) =>
+        setSelection((current) => toggleGroup(current, selectedGroupOf(group))),
+      [],
+    ),
+  };
+}
+
+type FolderSelection = ReturnType<typeof useFolderSelection>;
+
+/** noItems は読めていない間の項目。描画ごとに作らない。 */
+const noItems: readonly LibraryItem[] = [];
+
+/** SmartFolderScreen は経路の id 1 つのスマートフォルダのページである。 */
+function SmartFolderScreen({ id }: { id: number | null }) {
+  const location = useLocation();
+  const owner = useAudience() === "owner";
+  const { state, more, reload, loadMore } = useSmartFolderPage(id);
+  const data = state.kind === "ready" ? state.data : null;
+  const ancestors = useAncestorRules(data?.trail ?? noTrail, owner, data);
+  const preview = usePreviewCoordination();
+  const { resetPreview } = preview;
+  const { view, zoom, changeView, changeZoom, listRef } = useViewControls(resetPreview);
+  const selection = useFolderSelection(data?.items ?? noItems);
+  const listUrl = `${location.pathname}${location.search}`;
+
+  useDocumentTitle(data?.folder.name);
+  useEffect(() => {
+    resetPreview();
+  }, [data, resetPreview, view, zoom]);
+
+  const sentinel = useLoadMoreSentinel(
+    data?.nextCursor !== undefined && more === "idle",
+    loadMore,
+    resetPreview,
+  );
+  // カードのタグを押すと、そのタグで絞ったライブラリを開く（グループのページと同じ）。
+  const pressTag = usePressTagToLibrary();
+  const { favorites, selectedIds } = useSelectionTargets(selection.selection);
+  const { clear } = selection;
+  const afterBulk = useCallback(() => {
+    clear();
+    reload();
+  }, [clear, reload]);
+
+  return (
+    <SmartFolderCardsProvider>
+      <ListPage
+        header={
+          <SmartFolderHeader
+            state={state}
+            listUrl={listUrl}
+            owner={owner}
+            ancestors={ancestors}
+          />
+        }
+        toolbar={
+          <TopBarPortal>
+            <Toolbar
+              placement="topBar"
+              view={viewControls(view, changeView, zoom, changeZoom)}
+              viewLabel={t.library.view.label}
+            />
+          </TopBarPortal>
+        }
+        selectionBar={
+          owner &&
+          data !== null && (
+            <SelectionBar
+              count={selection.selection.ids.size}
+              allSelected={selection.allSelected}
+              selectedIds={selectedIds}
+              favoriteVideoIds={favorites.videoIds}
+              favoriteGroupIds={favorites.groupIds}
+              selectingAll={false}
+              onSelectAll={selection.selectAll}
+              onClear={selection.clear}
+              onTagRemoved={reload}
+              onBundled={afterBulk}
+            />
+          )
+        }
+      >
+        {state.kind === "loading" && (
+          <LoadingState
+            label={t.list.loading}
+            layout={view === "grid" ? "grid" : "table"}
+            size={zoom}
+            count={view === "grid" ? skeletonCount : 6}
+          />
+        )}
+        {state.kind === "failed" && (
+          <ErrorState
+            title={t.smartFolders.detail.loadFailed}
+            retryLabel={t.common.retry}
+            onRetry={reload}
+          />
+        )}
+        {state.kind === "gone" && (
+          <GoneState
+            title={t.smartFolders.detail.gone.title}
+            description={t.smartFolders.detail.gone.description}
+          />
+        )}
+        {data !== null && id !== null && (
+          <div ref={listRef} className="flex flex-col gap-6">
+            {data.items.length > 0 && (
+              <FolderItems
+                id={id}
+                items={data.items}
+                view={view}
+                zoom={zoom}
+                listUrl={listUrl}
+                owner={owner}
+                selection={selection}
+                preview={preview.cardProps}
+                onPressTag={pressTag}
+              />
+            )}
+            <EmptyBody data={data} ancestors={ancestors} />
+          </div>
+        )}
+        {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}
+        {more === "failed" && (
+          <LoadMoreRow
+            status="failed"
+            title={t.smartFolders.detail.moreFailed}
+            retryLabel={t.common.retry}
+            onRetry={loadMore}
+          />
+        )}
+        <div ref={sentinel} aria-hidden="true" className="h-px" />
+      </ListPage>
+    </SmartFolderCardsProvider>
+  );
+}
+
+/** noTrail は読めていない間の祖先。描画ごとに作らない。 */
+const noTrail: SmartFolderPageData["trail"] = [];
+
+/**
+ * EmptyBody は動画もグループも無いフォルダの空の印である（ui-design.md「States」の Empty と
+ * Missing）。子フォルダのカードの後に置く。条件の消えた実体が祖先の条件にあれば、説明にその
+ * 祖先の名前を足す。中身があれば何も描かない。
+ */
+function EmptyBody({
+  data,
+  ancestors,
+}: {
+  data: SmartFolderPageData;
+  ancestors: readonly AncestorRule[];
+}) {
+  const missing = data.settings?.missing ?? noMissing;
+  const kind = bodyKind(data.items, data.nextCursor, missing);
+  if (kind === "content") return null;
+  if (kind === "empty") {
+    return (
+      <EmptyState
+        icon={<FolderSearch aria-hidden="true" />}
+        title={t.smartFolders.detail.empty.title}
+        description={t.smartFolders.detail.empty.description}
+      />
+    );
+  }
+  const parent = missingParent(data.settings?.rule, ancestors, missing);
+  return (
+    <EmptyState
+      icon={<TriangleAlert aria-hidden="true" />}
+      title={t.smartFolders.detail.missing.title}
+      description={
+        parent === undefined
+          ? t.smartFolders.detail.missing.description
+          : `${t.smartFolders.detail.missing.description} ${t.smartFolders.detail.missing.inParent(parent.name)}`
+      }
+    />
+  );
+}
+
+/**
+ * SmartFolderHeader は道筋の帯と見出しである（ui-design.md「Trail band」「Header」「States」）。
+ * 帯はフォルダ画面の Breadcrumbs を共有し、上のバーの下に貼り付く。読めなかったときと
+ * 無くなったときは、見せられないものの名前を出さない。
+ */
+function SmartFolderHeader({
+  state,
+  listUrl,
+  owner,
+  ancestors,
+}: {
+  state: SmartFolderPageState;
+  listUrl: string;
+  owner: boolean;
+  ancestors: readonly AncestorRule[];
+}) {
+  if (state.kind === "loading") {
+    return <LoadingTrailHeader label={t.smartFolders.trail} crumbs={loadingCrumbs([])} />;
+  }
+  if (state.kind !== "ready") {
+    return <UnavailableTrailHeader label={t.smartFolders.trail} />;
+  }
+  const { folder, settings, trail } = state.data;
+  return (
+    <>
+      <Breadcrumbs
+        label={t.smartFolders.trail}
+        crumbs={smartFolderCrumbs(trail, folder.name)}
+        keepFirst
+      />
+      <PageHeader
+        // 長い名前は見出しの中で 2 行まで折り返し、全体は title に入れる。
+        title={
+          <span
+            title={folder.name}
+            className="line-clamp-2 whitespace-normal break-words"
+          >
+            {folder.name}
+          </span>
+        }
+        count={t.groups.detail.count(
+          folder.videoCount,
+          formatDuration(folder.durationMs),
+        )}
+        description={
+          owner &&
+          settings !== undefined && (
+            <ConditionLines
+              rule={settings.rule}
+              ancestors={ancestors}
+              missing={settings.missing}
+            />
+          )
+        }
+        // 「Play」は再生順が空でない間だけ出す。編集の「More」は保存と編集の単位が足す。
+        actions={
+          folder.openVideoId !== undefined && (
+            <PlayLink
+              to={videoInSmartFolderPath(folder.openVideoId, folder.id)}
+              from={listUrl}
+              name={folder.name}
+            />
+          )
+        }
+      />
+    </>
+  );
+}
+
+/** ItemsProps は中身の並びの props である。 */
+interface ItemsProps {
+  id: number;
+  items: readonly LibraryItem[];
+  view: ViewMode;
+  zoom: Zoom;
+  listUrl: string;
+  owner: boolean;
+  selection: FolderSelection;
+  preview: ReturnType<typeof usePreviewCoordination>["cardProps"];
+  onPressTag: (tag: TagRef) => void;
+}
+
+/**
+ * FolderItems は中身を応答の順に、格子ならライブラリのカード、リストならライブラリの行で
+ * 並べる（ui-design.md「Body」）。子フォルダはそのページ、動画は `?smartFolder` 付きの再生画面、
+ * グループはそのグループのページを開く。選択は所有者の動画とグループのカードだけ。
+ */
+function FolderItems(props: ItemsProps) {
+  const { id, items, view, zoom, listUrl, owner, selection, preview } = props;
+  const selectionMode = selection.selection.ids.size > 0;
+  const { videoTags, groupTags, folderTags } = useCardTagRows({
+    selectionMode,
+    onPressTag: props.onPressTag,
+    toggleVideo: selection.toggleVideo,
+    toggleGroup: selection.toggleGroup,
+  });
+  const selected = selection.selection;
+  const common = { backTo: listUrl, selectionMode, ...preview };
+  const videoProps = (video: Video) => ({
+    ...common,
+    video,
+    to: videoInSmartFolderPath(video.id, id),
+    selected: selected.ids.has(video.id),
+    onSelect: owner ? selection.changeVideo : undefined,
+    tagsRow: view === "grid" ? videoTags : undefined,
+  });
+  const groupProps = (group: LibraryGroup) => ({
+    ...common,
+    group,
+    selected: isGroupSelected(selected, group.id),
+    onSelect: owner ? selection.changeGroup : undefined,
+    tagsRow: view === "grid" ? groupTags : undefined,
+  });
+  const folderProps = (item: Extract<LibraryItem, { kind: "smartFolder" }>) => ({
+    ...preview,
+    folder: item.smartFolder,
+    backTo: listUrl,
+    tagsRow: view === "grid" ? folderTags : undefined,
+  });
+
+  const cell = (item: LibraryItem): ReactNode => {
+    const key = itemKey(item);
+    if (item.kind === "smartFolder") {
+      return view === "grid" ? (
+        <SmartFolderCard key={key} {...folderProps(item)} />
+      ) : (
+        <SmartFolderRow key={key} {...folderProps(item)} owner={owner} />
+      );
+    }
+    if (item.kind === "video") {
+      const Card = view === "grid" ? VideoCard : VideoRow;
+      return <Card key={key} {...videoProps(item.video)} />;
+    }
+    const Card = view === "grid" ? GroupCard : GroupRow;
+    return <Card key={key} {...groupProps(item.group)} />;
+  };
+
+  if (view === "list") {
+    return (
+      <DataTable label={t.groups.detail.table}>
+        <LibraryTableHeader owner={owner} />
+        <TableBody>{items.map(cell)}</TableBody>
+      </DataTable>
+    );
+  }
+  return (
+    // タグの行の幅の見張りは一覧に1つだけ（ライブラリと同じ）。
+    <TagRowMeasureProvider>
+      <Grid zoom={zoom}>{items.map(cell)}</Grid>
+    </TagRowMeasureProvider>
+  );
+}

@@ -16,11 +16,34 @@ export function folderRefKey(folder: FolderRef): string {
 }
 
 /**
+ * OrganizableItem はドラッグで持ち上げて整理できる項目（動画とグループ）である。スマート
+ * フォルダの項目は持ち上げず、落とす先にもならない（specs/052-smart-folders/ui-design.md
+ * 「Smart folder card and row」）。
+ */
+export type OrganizableItem = Exclude<LibraryItem, { kind: "smartFolder" }>;
+
+/** isOrganizable は項目が動画かグループ（OrganizableItem）かを返す。 */
+export function isOrganizable(item: LibraryItem): item is OrganizableItem {
+  return item.kind !== "smartFolder";
+}
+
+/**
  * itemKey は項目を一覧の中で一意に指す文字列である。動画は動画の id、グループは
- * グループの id で指す。
+ * グループの id、スマートフォルダはフォルダの id で指す。
  */
 export function itemKey(item: LibraryItem): string {
+  if (item.kind === "smartFolder") return smartFolderKey(item.smartFolder.id);
   return item.kind === "video" ? videoKey(item.video.id) : groupKey(item.group.id);
+}
+
+/** smartFolderKey はスマートフォルダ `id` の項目の itemKey である。 */
+export function smartFolderKey(id: number): string {
+  return `smartFolder\0${String(id)}`;
+}
+
+/** isSmartFolderKey は itemKey がスマートフォルダの項目を指すかを返す。 */
+export function isSmartFolderKey(key: string): boolean {
+  return key.startsWith("smartFolder\0");
 }
 
 /** videoKey は動画 `id` の項目の itemKey である。 */
@@ -33,7 +56,7 @@ export function groupKey(id: number): string {
   return `group\0${String(id)}`;
 }
 
-/** itemVideo は項目が動画ならその動画、グループなら undefined である。 */
+/** itemVideo は項目が動画ならその動画、ほかの項目なら undefined である。 */
 export function itemVideo(item: LibraryItem): Video | undefined {
   return item.kind === "video" ? item.video : undefined;
 }

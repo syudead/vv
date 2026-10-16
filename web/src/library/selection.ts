@@ -173,6 +173,7 @@ export function reconcileGroups(
       if (key !== undefined && (groups ?? selection.groups).has(key)) edit().delete(key);
       continue;
     }
+    if (item.kind === "smartFolder") continue;
     const key = item.group.id;
     const current = (groups ?? selection.groups).get(key);
     if (current === undefined) continue;

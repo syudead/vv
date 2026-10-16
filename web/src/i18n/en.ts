@@ -53,6 +53,31 @@ function items(count: number): string {
   });
 }
 
+/**
+ * minutesText は秒数を、小数 1 桁までの分の数にする（90 秒は「1.5」）。0 秒でない値は
+ * 0 に丸めず、いちばん小さい 0.1 にする。
+ */
+function minutesText(secondsCount: number): string {
+  const minutes = Math.round((secondsCount / 60) * 10) / 10;
+  return formatNumber(secondsCount > 0 ? Math.max(minutes, 0.1) : minutes);
+}
+
+/**
+ * lengthWords は長さの条件の語である（specs/052-smart-folders/ui-design.md「Words」の Length
+ * options）。絞り込みのプリセットはその語、ほかは分の数で言う。上限 `max` は含む秒数。
+ */
+function lengthWords(min: number | undefined, max: number | undefined): string {
+  const upper = max === undefined ? undefined : max + 1;
+  const low = min ?? 0;
+  if (low === 0 && upper === 300) return "Under 5 minutes";
+  if (low === 300 && upper === 1200) return "5 to 20 minutes";
+  if (low === 1200 && upper === 3600) return "20 to 60 minutes";
+  if (low === 3600 && upper === undefined) return "Over an hour";
+  if (upper === undefined) return `Over ${minutesText(low)} minutes`;
+  if (low === 0) return `Under ${minutesText(upper)} minutes`;
+  return `${minutesText(low)} to ${minutesText(upper)} minutes`;
+}
+
 function seconds(count: number): string {
   return selectPlural(count, {
     one: `${formatNumber(count)} second`,
@@ -909,6 +934,14 @@ export const en = {
       watchedRatio: "Share of videos watched",
       progress: (watched: number, total: number) =>
         `${formatNumber(watched)} / ${formatNumber(total)}`,
+    },
+    // スマートフォルダのカードと行（specs/052-smart-folders/ui-design.md「Words」）。
+    smartFolder: {
+      label: (name: string, count: number, watched: number) =>
+        watched >= 1
+          ? `${name}, smart folder of ${videos(count)}, ${formatNumber(watched)} watched`
+          : `${name}, smart folder of ${videos(count)}`,
+      labelLoading: (name: string) => `${name}, smart folder`,
     },
     selection: {
       region: "Selection actions",
@@ -2292,6 +2325,57 @@ export const en = {
       created
         ? `Created the tag "${name}" and dissolved the group`
         : `Added the tag "${name}" and dissolved the group`,
+  },
+  // スマートフォルダ（specs/052-smart-folders/ui-design.md「Words」）。画面では条件を
+  // "conditions" と呼び、"rule" とは言わない。
+  smartFolders: {
+    // カードの印の Tooltip と title。
+    kind: "Smart folder",
+    // 道筋の帯（Breadcrumb）の名前。
+    trail: "Smart folder path",
+    detail: {
+      conditions: "Conditions:",
+      fromParent: (name: string) => `From "${name}":`,
+      empty: {
+        title: "Nothing matches these conditions yet",
+        description: "Videos that match appear here as soon as they are tagged or added.",
+      },
+      missing: {
+        title: "A condition no longer works",
+        description:
+          "A tag, kind, person or organization in the conditions was deleted, so nothing matches.",
+        // 欠けた参照が祖先の条件にあるとき、説明に足す 1 文。
+        inParent: (name: string) => `The condition is in "${name}".`,
+      },
+      gone: {
+        title: "This smart folder no longer exists",
+        description: "It was deleted, maybe in another tab.",
+      },
+      loadFailed: "Couldn't load the smart folder",
+      moreFailed: "Couldn't load more of the smart folder",
+    },
+    // 条件の行のチップ。視聴状態の語は絞り込みのポップオーバーのもの（list.filter.watchOptions）。
+    condition: {
+      search: (query: string) => `Search: ${query}`,
+      favorite: "Favorites",
+      playable: "Playable",
+      kind: (name: string) => `Kind: ${name}`,
+      tag: (name: string) => `Tag: ${name}`,
+      person: (name: string) => `Person: ${name}`,
+      organization: (name: string) => `Organization: ${name}`,
+      deleted: (kind: "tag" | "tagKind" | "person" | "organization") =>
+        `${{ tag: "Tag", tagKind: "Kind", person: "Person", organization: "Organization" }[kind]}: deleted`,
+      addedWithin: (days: number) =>
+        days === 1
+          ? "Added in the last 24 hours"
+          : days === 365
+            ? "Added in the last year"
+            : `Added in the last ${formatNumber(days)} days`,
+      // 長さの区切りは分で言う。`max` は含む秒数なので、その次の秒を上限として言う
+      // （maxDuration=299 は「Under 5 minutes」）。
+      length: (minSeconds: number | undefined, maxSeconds: number | undefined) =>
+        lengthWords(minSeconds, maxSeconds),
+    },
   },
   // ドラッグで並べ替え・グループ化・マージ・バージョン化する操作と、その取り消しの通知
   // （specs/050-drag-organize/ui-design.md「Words」）。

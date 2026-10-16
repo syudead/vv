@@ -13,9 +13,11 @@ import {
   type LibraryGroup,
   type LibraryItem,
   listLibraryIds,
+  type SmartFolderSummary,
   type TagRef,
   type Video,
   type VideoSort,
+  type VideoTag,
   type WatchFilter,
 } from "../api/client";
 import {
@@ -37,6 +39,8 @@ import {
   type Zoom,
 } from "../preferences/viewPreferences";
 import { useScanControls } from "../shell/ScanProvider";
+import { SmartFolderCardsProvider } from "../smartFolders/cardValues";
+import { SmartFolderCard, SmartFolderRow } from "../smartFolders/SmartFolderCard";
 import { useWatchScanRefresh } from "../shell/useWatchScanRefresh";
 import TopBarPortal from "../shell/TopBarPortal";
 import { DataTable } from "../ui/patterns/data-table";
@@ -123,6 +127,17 @@ function libraryGroupItem(group: LibraryGroup): LibraryItem {
 /** itemGroup は項目がグループならそのグループである。 */
 function itemGroup(item: LibraryItem): LibraryGroup | undefined {
   return item.kind === "group" ? item.group : undefined;
+}
+
+/** ignoreToggle はスマートフォルダのカードのタグの行の、選択を切り替えない口である。 */
+const ignoreToggle = () => undefined;
+
+/**
+ * withSmartFolderCards は一覧をスマートフォルダのカードの値の持ち主で包む。カードの値は
+ * 画面に入ったカードだけを読む（specs/052-smart-folders/research.md R-14）。
+ */
+function withSmartFolderCards(content: ReactNode) {
+  return <SmartFolderCardsProvider>{content}</SmartFolderCardsProvider>;
 }
 
 /** ライブラリだけが URL に持つ条件（タグ、人物、団体、タグの種類）。 */
@@ -693,6 +708,20 @@ export default function LibraryPage() {
     [pressTag, selectionMode, toggleGroupSelection, view],
   );
 
+  // スマートフォルダのカードのタグを押すと、グループのカードと同じくそのタグで絞り込む。
+  // カードは選択を持たないので、選択中に押しても何も選ばない。
+  const renderFolderTagsRow = useCallback(
+    (tags: readonly VideoTag[]) => (
+      <CardTagRow
+        tags={tags}
+        selectionMode={selectionMode}
+        onPress={pressTag}
+        onToggleSelection={ignoreToggle}
+      />
+    ),
+    [pressTag, selectionMode],
+  );
+
   const groupProps = (group: LibraryGroup) => ({
     group,
     backTo: listUrl,
@@ -720,8 +749,29 @@ export default function LibraryPage() {
     tagsRow: renderTagsRow,
   });
 
-  // 所有者のカードと行はドラッグの層に加わる。ゲストは今のまま。
+  const smartFolderProps = (folder: SmartFolderSummary) => ({
+    folder,
+    backTo: listUrl,
+    activePreviewId,
+    previewResetEpoch,
+    onPreviewStart: startPreview,
+    onPreviewReset: resetPreview,
+    tagsRow: view === "grid" ? renderFolderTagsRow : undefined,
+  });
+
+  // 所有者のカードと行はドラッグの層に加わる。ゲストは今のまま。スマートフォルダのカードは
+  // 持ち上げず、上に落とすと拒否する（specs/052-smart-folders/ui-design.md「Smart folder card
+  // and row」）。
   const card = (item: LibraryItem) => {
+    if (item.kind === "smartFolder") {
+      return (
+        <SmartFolderCard
+          key={itemKey(item)}
+          {...smartFolderProps(item.smartFolder)}
+          refusesDrop={owner}
+        />
+      );
+    }
     const node =
       item.kind === "video" ? (
         <VideoCard key={itemKey(item)} {...rowProps(item.video)} />
@@ -737,6 +787,15 @@ export default function LibraryPage() {
     );
   };
   const row = (item: LibraryItem) => {
+    if (item.kind === "smartFolder") {
+      return (
+        <SmartFolderRow
+          key={itemKey(item)}
+          {...smartFolderProps(item.smartFolder)}
+          owner={owner}
+        />
+      );
+    }
     if (item.kind === "video") {
       const Row = owner ? DraggableVideoRow : VideoRow;
       return <Row key={itemKey(item)} {...rowProps(item.video)} />;
@@ -781,21 +840,23 @@ export default function LibraryPage() {
     />
   ) : (
     <div ref={list} onClick={saveSnapshot}>
-      {withDrag(
-        view === "grid" ? (
-          // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
-          <TagRowMeasureProvider>
-            <Grid zoom={zoom}>
-              {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
+      {withSmartFolderCards(
+        withDrag(
+          view === "grid" ? (
+            // タグの行の幅の見張りは一覧に1つだけ（B2、ui-design.md「Overflow」）。
+            <TagRowMeasureProvider>
+              <Grid zoom={zoom}>
+                {/* グループはふつうの動画と同じ並びに1枚のカードで混ぜる。区画や
                 見出しは設けない（ui-design.md「Screen boundary」、要件 15）。 */}
-              {shown.map(card)}
-            </Grid>
-          </TagRowMeasureProvider>
-        ) : (
-          <DataTable label={t.library.title}>
-            <LibraryTableHeader owner={owner} />
-            <TableBody>{shown.map(row)}</TableBody>
-          </DataTable>
+                {shown.map(card)}
+              </Grid>
+            </TagRowMeasureProvider>
+          ) : (
+            <DataTable label={t.library.title}>
+              <LibraryTableHeader owner={owner} />
+              <TableBody>{shown.map(row)}</TableBody>
+            </DataTable>
+          ),
         ),
       )}
     </div>
@@ -919,8 +980,11 @@ function LibraryEmpty({
   return owner ? <EmptyLibrary /> : <GuestEmpty />;
 }
 
-/** LibraryTableHeader はリスト表示の見出しの行である。選択とタグなどの列は所有者だけに出す。 */
-function LibraryTableHeader({ owner }: { owner: boolean }) {
+/**
+ * LibraryTableHeader はリスト表示の見出しの行である。選択とタグなどの列は所有者だけに出す。
+ * スマートフォルダのページも同じ列で並べる。
+ */
+export function LibraryTableHeader({ owner }: { owner: boolean }) {
   return (
     <TableHeader>
       <TableRow className="hover:bg-transparent">
