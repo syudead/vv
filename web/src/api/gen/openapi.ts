@@ -1582,8 +1582,10 @@ export interface paths {
         put?: never;
         /**
          * 作品情報プラグインの fetch で動画の作品情報を取る
-         * @description 所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を作品の `url`（http か https、2048 文字まで）で
-         *     1 回動かし、結果を 10 分の間メモリに持って `201` で返す。動画は変えない。`title` は表示名の規則を
+         * @description 所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を、作品の `url`（http か https、2048 文字まで）か
+         *     作品の `id`（前後の空白を除いて 1〜200 文字。URL に埋め込むのはプラグイン）で 1 回動かし、結果を
+         *     10 分の間メモリに持って `201` で返す。`url` と `id` はどちらか 1 つで、両方かどちらも無ければ
+         *     `400` `invalid_request`。動画は変えない。`title` は表示名の規則を
          *     通ったもので、無いか規則に外れれば省く。人物・団体は取得の時点の照合の答え `match` を持つ
          *     （specs/052-plugin-work-info-fields/contracts/screen-api.md）。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
          *     宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
@@ -3379,6 +3381,7 @@ export interface components {
             /** @description プラグインが返した順の候補（先頭 50 件まで） */
             candidates: components["schemas"]["WorkInfoCandidate"][];
         };
+        /** @description `url` と `id` のどちらか 1 つを持つ */
         WorkInfoFetchRequest: {
             /**
              * Format: int64
@@ -3386,7 +3389,9 @@ export interface components {
              */
             pluginId: number;
             /** @description 作品の URL（http か https、2048 文字まで） */
-            url: string;
+            url?: string;
+            /** @description 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL に埋め込むのはプラグイン */
+            id?: string;
         };
         /** @description メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8） */
         WorkInfoFetch: {

@@ -3978,13 +3978,16 @@ type WorkInfoFetchApplied struct {
 	Video Video `json:"video"`
 }
 
-// WorkInfoFetchRequest defines model for WorkInfoFetchRequest.
+// WorkInfoFetchRequest `url` と `id` のどちらか 1 つを持つ
 type WorkInfoFetchRequest struct {
+	// Id 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL に埋め込むのはプラグイン
+	Id *string `json:"id,omitempty"`
+
 	// PluginId 承認済みのプラグイン
 	PluginId int64 `json:"pluginId"`
 
 	// Url 作品の URL（http か https、2048 文字まで）
-	Url string `json:"url"`
+	Url *string `json:"url,omitempty"`
 }
 
 // WorkInfoFetchedDate defines model for WorkInfoFetchedDate.

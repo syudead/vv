@@ -43,6 +43,9 @@ type WorkInfoPlugins interface {
 	// FetchWorkInfo は承認済みのプラグイン pluginID の fetch で作品の URL から作品情報を取り、動画 videoID に
 	// 結び付けてメモリに持つ。動画は変えない。
 	FetchWorkInfo(ctx context.Context, videoID, pluginID int64, url string) (domain.WorkInfoFetchResult, error)
+	// FetchWorkInfoByID は承認済みのプラグイン pluginID の fetch で作品の ID から作品情報を取り、FetchWorkInfo と
+	// 同じく動画 videoID に結び付けてメモリに持つ。
+	FetchWorkInfoByID(ctx context.Context, videoID, pluginID int64, id string) (domain.WorkInfoFetchResult, error)
 	// ApplyWorkInfoFetch は取得の結果 fetchID のうち fields の項目を動画 videoID に反映する。
 	// domain.ErrWorkInfoApplyInvalid・domain.ErrNotFound・domain.ErrWorkInfoFetchStale を返しうる。
 	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField) (domain.WorkInfoApplied, error)
