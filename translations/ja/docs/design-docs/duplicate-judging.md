@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/duplicate-judging.md
-sourceHash: d6badb91cd9dc58d9f556b2ddd1f072e49d059c10616bb845460d24f40ddfe28
+sourceHash: 344dd661d9ff14794c3621dc6eaa311c37df4f51a684a9e26b06bb691d2939c1
 ---
 
 # 重複の候補を自動で判定する {#judging-possible-duplicates-automatically}
@@ -56,6 +56,35 @@ flowchart LR
 | `VersionCandidatesChanged` | バージョンを外すと、その組が再び一覧に出る |
 | 設定の保存 | 有効にすると、待っているすべての組を判定する |
 | Ollama の接続の保存 | `no_connection` の組が待ちに戻る |
+| 活動ログからの再試行または取り消し | 再試行した組はすぐに取得できる |
 | 失敗した組の最も早い `retry_at` | 再試行は所有者に何も求めない ([R-5](../../specs/054-auto-dup/research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)) |
 
 ワーカーはリクエストの前に `ollama.endpoint` の行があるかをストアに問い合わせるので、組が、所有者が一度も設定していない既定のアドレスに送られることは決してない ([R-13](../../specs/054-auto-dup/research.md#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection))。各組のフレームのルールの結果、フレームの数、判定、確率は `component=duplicate-judging` でログに出る。
+
+## 組ごとに 1 つの活動項目を持つ {#each-pair-keeps-one-activity-entry}
+
+判定できるすべての候補は、活動ログ ([activity.md](activity.md)) に 1 つの `version_judgement` 項目を持ち、項目は判定が有効な間に候補が現れたとき、または判定を有効にしたときに開く。候補の行の `activity_id` がそれを指し、その状態は行の `judgement` に従うので、同じ項目が `no_connection` や `failed` から結果に変わる ([055 R-4](../../specs/055-activity/research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem))。コードは [`internal/store/activity_judgements.go`](../../internal/store/activity_judgements.go) だ。
+
+| 候補の行 | 項目 |
+| --- | --- |
+| 待ち、または待ちに戻った (接続の保存、判定中に判定を無効にした、再試行) | `running`/`waiting` |
+| 取得済み。再起動で `interrupted` のまま残った項目を含む | `running`/`processing` |
+| `undecided`、`failed` (再試行の時刻を伴う)、`no_connection` | その理由を伴う `attention` |
+| 判定がまとめた、または退けた | `done`/`same` または `done`/`different` |
+| 鍵の 1 つについて作り直した | 組の開いている項目に再び結び付ける。項目は 2 つの鍵で見つける |
+| 所有者がまとめた、または退けた | `done`/`decided_by_owner` |
+| 鍵がライブラリから出た | `done`/`gone` |
+| 別の組の自動のまとめによって 1 つのまとまりに取り込まれた | `done`/`superseded` |
+
+decider は、モデルの回答が決めたときは確率を伴う `ai`、それ以外は `rule` だ ([055 R-5](../../specs/055-activity/research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run))。自動のまとめは、加わった側、つまり代表がまとまりの代表にならなかった側のメンバーの鍵とその元の代表を `undo_keys` に保つ。
+
+## 自動の決定の取り消しは保たれる {#undo-of-an-automatic-decision-is-held}
+
+所有者は活動ログから自動の `same` または `different` を、先に状態を読み直す 1 つの `ActivityStore` トランザクションで取り消す ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion))。状態が変わっていれば、ほかには何も変わらず、`undo` 項目は `already_reverted` を示す。
+
+| 取り消すもの | 状態の変化 | ワーカーが再び決めないようにするもの |
+| --- | --- | --- |
+| `same` | 加わった側は `Unbundle` が 1 つの動画を外すのと同じようにまとまりから出る。2 つ以上の側は、元の代表と、統合したまとまりのユーザーデータの写しを持つ 1 つのまとまりとして出る | `video_version_unbundles`。2 つの側をまたぐ組についてだけ |
+| `different` | 退けた組を削除し、両方の鍵の候補を作り直すので、組は Duplicates に再び一覧される | `video_version_judging_holds` |
+
+取得は、まとまりから外した組を飛ばすのと同じように保留した組を飛ばし、同じパスの内容の変化は両方のテーブルと開いている項目の対象の鍵を付け替える。
