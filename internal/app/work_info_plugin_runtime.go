@@ -16,8 +16,11 @@ type WorkInfoPluginRuntime interface {
 	Inspect(ctx context.Context, module []byte) (domain.WorkInfoPluginManifest, domain.WorkInfoPluginProblem, error)
 	// Run はダイジェスト digest のモジュールを新しいインスタンスで 1 回動かし、要求への応答を返す。
 	// プラグインの要求は network のとおりに送る（specs/056-plugin-tooling/research.md R-4）。
-	// 実行の失敗は *domain.WorkInfoRunError で返す。
+	// 実行の失敗は *domain.WorkInfoRunError で返す。成功でも失敗でも、残した標準エラーを実行のログとして返し、
+	// モジュールが成功か実行の失敗で終わったときは、同じログを次の実行が始まれる前に record に渡す
+	// （specs/056-plugin-tooling/research.md R-6）。record は nil でもよい。
 	Run(
 		ctx context.Context, digest string, module []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork,
-	) (domain.WorkInfoRunResult, error)
+		record func(domain.WorkInfoRunLog) error,
+	) (domain.WorkInfoRunResult, domain.WorkInfoRunLog, error)
 }

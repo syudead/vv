@@ -146,7 +146,8 @@ func (p *WorkInfoPlugins) run(
 	if err != nil {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}
-	result, err := p.runtime.Run(ctx, plugin.Digest, module, req, network)
+	result, _, err := p.runtime.Run(ctx, plugin.Digest, module, req, network,
+		p.recordRun(ctx, plugin, domain.SecretWorkInfoPluginValues(plugin.Manifest.Settings, req.Settings)))
 	if err != nil {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}

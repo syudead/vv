@@ -37,6 +37,9 @@ type WorkInfoPlugins interface {
 	SetWorkInfoPluginSettings(ctx context.Context, id int64, values map[string]*string) (domain.WorkInfoPluginEntry, error)
 	// DeleteWorkInfoPlugin はプラグインとその設定の値を消す。無ければ domain.ErrNotFound を返す。
 	DeleteWorkInfoPlugin(ctx context.Context, id int64) error
+	// WorkInfoPluginLastRun は直近の実行の標準エラー（秘密の値を伏せたもの）と、それが残っているかを返す。
+	// 無ければ domain.ErrNotFound を返す。
+	WorkInfoPluginLastRun(ctx context.Context, id int64) (domain.WorkInfoPluginRun, bool, error)
 	// SearchWorkInfo は承認済みのプラグイン id の search で語 query を探す。誤りは workInfoRunError が
 	// 契約の応答にする。
 	SearchWorkInfo(ctx context.Context, id int64, query string) ([]domain.WorkInfoCandidate, error)
@@ -217,6 +220,32 @@ func (s *server) DeleteWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// GetWorkInfoPluginLastRun は直近の実行の標準エラーを返す（GET /api/work-info-plugins/{id}/last-run、
+// specs/056-plugin-tooling/contracts/screen-api.md）。残っていなければ {} を返す。
+func (s *server) GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request, id gen.WorkInfoPluginId) {
+	if !s.workInfoPluginsConfigured(w) {
+		return
+	}
+	run, ok, err := s.workInfoPlugins.WorkInfoPluginLastRun(r.Context(), id)
+	if err != nil {
+		s.workInfoPluginError(w, err)
+		return
+	}
+	var body gen.WorkInfoPluginLastRun
+	if ok {
+		body.Run = &gen.WorkInfoPluginRun{
+			RanAt: run.RanAt.Unix(), Operation: gen.WorkInfoOperation(run.Operation),
+			Stderr: run.Stderr, Truncated: run.Truncated,
+		}
+		if run.Failure != "" {
+			failure := gen.WorkInfoPluginRunFailure(run.Failure)
+			body.Run.Failure = &failure
+		}
+	}
+	w.Header().Set("Cache-Control", cacheNoStore)
+	writeJSON(w, http.StatusOK, body, s.logger)
+}
+
 func (s *server) writeWorkInfoPlugin(w http.ResponseWriter, status int, entry domain.WorkInfoPluginEntry) {
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, status, toWorkInfoPlugin(entry), s.logger)
@@ -281,6 +310,10 @@ func toWorkInfoPlugin(entry domain.WorkInfoPluginEntry) gen.WorkInfoPlugin {
 	if entry.Problem != "" {
 		problem := gen.WorkInfoPluginProblem(entry.Problem)
 		plugin.Problem = &problem
+	}
+	if !entry.LastRunAt.IsZero() {
+		lastRunAt := entry.LastRunAt.Unix()
+		plugin.LastRunAt = &lastRunAt
 	}
 	return plugin
 }

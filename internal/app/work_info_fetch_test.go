@@ -37,21 +37,37 @@ func (s *runPluginStore) WorkInfoPluginModule(ctx context.Context, id int64) (do
 	return plugin, []byte("module " + plugin.Digest), nil
 }
 
-// recordingRuntime は実行の要求を記録し、決めた結果を返す。
+// recordingRuntime は実行の要求を記録し、決めた結果を返す。本物の実行と同じく、stderr を標準エラーとした
+// 実行のログを record に渡す。
 type recordingRuntime struct {
 	fakePluginRuntime
-	requests []domain.WorkInfoRunRequest
-	digests  []string
-	networks []domain.WorkInfoRunNetwork
-	result   domain.WorkInfoRunResult
-	err      error
+	requests  []domain.WorkInfoRunRequest
+	digests   []string
+	networks  []domain.WorkInfoRunNetwork
+	result    domain.WorkInfoRunResult
+	err       error
+	stderr    string
+	truncated bool
+	// recordErrs は record が返した誤りである。本物の実行はサーバーのログに残すだけで、結果を変えない。
+	recordErrs []error
 }
 
-func (r *recordingRuntime) Run(_ context.Context, digest string, _ []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork) (domain.WorkInfoRunResult, error) {
+func (r *recordingRuntime) Run(
+	_ context.Context, digest string, _ []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork,
+	record func(domain.WorkInfoRunLog) error,
+) (domain.WorkInfoRunResult, domain.WorkInfoRunLog, error) {
 	r.requests = append(r.requests, req)
 	r.networks = append(r.networks, network)
 	r.digests = append(r.digests, digest)
-	return r.result, r.err
+	log := domain.WorkInfoRunLog{Operation: req.Operation, Stderr: r.stderr, Truncated: r.truncated}
+	var runErr *domain.WorkInfoRunError
+	if errors.As(r.err, &runErr) {
+		log.Failure = runErr.Failure
+	}
+	if record != nil {
+		r.recordErrs = append(r.recordErrs, record(log))
+	}
+	return r.result, log, r.err
 }
 
 type fakeVideos map[int64]bool

@@ -8,6 +8,7 @@ import {
   approveWorkInfoPlugin,
   deleteWorkInfoPlugin,
   fetchWorkInfo,
+  getWorkInfoPluginLastRun,
   listWorkInfoPlugins,
   revokeWorkInfoPluginApproval,
   searchWorkInfo,
@@ -79,6 +80,28 @@ describe("work-info plugins API", () => {
         body: { values: { apiKey: "k", lang: null } },
       },
       { url: "/api/work-info-plugins/4", method: "DELETE", body: undefined },
+    ]);
+  });
+
+  it("直近の実行を読み、残っていなければ null を返す", async () => {
+    const run = {
+      ranAt: 1_800_000_000,
+      operation: "fetch",
+      failure: "timed_out",
+      stderr: "key=[secret]\n",
+      truncated: false,
+    } as const;
+    const fetchMock = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(json({ run }))
+      .mockResolvedValueOnce(json({}));
+    vi.stubGlobal("fetch", fetchMock);
+
+    expect(await getWorkInfoPluginLastRun(4)).toEqual(run);
+    expect(await getWorkInfoPluginLastRun(4)).toBeNull();
+    expect(fetchMock.mock.calls.map(([input]) => String(input))).toEqual([
+      "/api/work-info-plugins/4/last-run",
+      "/api/work-info-plugins/4/last-run",
     ]);
   });
 

@@ -1574,6 +1574,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/work-info-plugins/{id}/last-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 作品情報プラグインの直近の実行の標準エラーを読む
+         * @description 所有者だけ。今のモジュールの直近の実行が残した標準エラーの先頭 64 KiB を、その実行が受け取った秘密の
+         *     設定の値を `[secret]` に置き換えて返す。実行が残っていなければ `{}`。差し替えたプラグインは差し替えの
+         *     後の実行だけを返す。無ければ `404` `not_found`
+         *     （specs/056-plugin-tooling/contracts/screen-api.md、research.md R-6）。
+         */
+        get: operations["getWorkInfoPluginLastRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/work-info-plugins/{id}/search": {
         parameters: {
             query?: never;
@@ -3398,6 +3421,35 @@ export interface components {
              * @description 最後のアップロードか承認の変更の時刻（Unix 秒）
              */
             updatedAt: number;
+            /**
+             * Format: int64
+             * @description 出力が残っている直近の実行が終わった時刻（Unix 秒）。残っていなければ無い
+             *     （specs/056-plugin-tooling/research.md R-6）
+             */
+            lastRunAt?: number;
+        };
+        /**
+         * @description 実行の失敗の種類（specs/049-work-info-plugins/contracts/screen-api.md の Run failures の reason）。
+         *     枠を取れなかった実行はモジュールを動かさないので、busy は残らない
+         * @enum {string}
+         */
+        WorkInfoPluginRunFailure: "plugin_failed" | "timed_out" | "memory_exceeded" | "output_too_large" | "blocked_address" | "network_error";
+        /** @description 直近の実行の標準エラー（specs/056-plugin-tooling/contracts/screen-api.md） */
+        WorkInfoPluginRun: {
+            /**
+             * Format: int64
+             * @description 実行が終わった時刻（Unix 秒）
+             */
+            ranAt: number;
+            operation: components["schemas"]["WorkInfoOperation"];
+            failure?: components["schemas"]["WorkInfoPluginRunFailure"];
+            /** @description 標準エラーの先頭 64 KiB。秘密の設定の値は `[secret]` に置き換えてある。何も書かなければ空 */
+            stderr: string;
+            /** @description 64 KiB より後ろを捨てたか */
+            truncated: boolean;
+        };
+        WorkInfoPluginLastRun: {
+            run?: components["schemas"]["WorkInfoPluginRun"];
         };
         WorkInfoPluginList: {
             /** @description 名前、次にファイル名の順 */
@@ -7672,6 +7724,31 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getWorkInfoPluginLastRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作品情報プラグインの識別子 */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 直近の実行。残っていなければ `run` が無い */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPluginLastRun"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
     searchWorkInfo: {

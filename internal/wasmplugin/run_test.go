@@ -52,7 +52,7 @@ func wantFailure(t *testing.T, err error, want domain.WorkInfoRunFailure) string
 // wantEchoWorks は次の実行が成功することを確かめる。
 func wantEchoWorks(t *testing.T, rt *Runtime, module []byte) {
 	t.Helper()
-	got, err := rt.Run(context.Background(), probeDigest, module, search("next"), domain.WorkInfoRunNetwork{})
+	got, _, err := rt.Run(context.Background(), probeDigest, module, search("next"), domain.WorkInfoRunNetwork{}, nil)
 	if err != nil || len(got.Candidates) != 1 || got.Candidates[0].Title != "next" {
 		t.Fatalf("next Run = %+v, %v; want the echoed candidate", got, err)
 	}
@@ -62,7 +62,7 @@ func TestRunReadsBackTheEchoedResponse(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
 
-	got, err := rt.Run(context.Background(), probeDigest, module, search("Example work"), domain.WorkInfoRunNetwork{})
+	got, _, err := rt.Run(context.Background(), probeDigest, module, search("Example work"), domain.WorkInfoRunNetwork{}, nil)
 	if err != nil {
 		t.Fatalf("Run(search): %v", err)
 	}
@@ -73,7 +73,7 @@ func TestRunReadsBackTheEchoedResponse(t *testing.T) {
 
 	req := fetch()
 	req.Settings = map[string]string{"apiKey": "secret", "lang": "ja"}
-	got, err = rt.Run(context.Background(), probeDigest, module, req, domain.WorkInfoRunNetwork{})
+	got, _, err = rt.Run(context.Background(), probeDigest, module, req, domain.WorkInfoRunNetwork{}, nil)
 	if err != nil {
 		t.Fatalf("Run(fetch): %v", err)
 	}
@@ -88,9 +88,11 @@ func TestRunStopsAPluginThatNeverEndsAndRefusesASecondRun(t *testing.T) {
 	module := probeModule(t)
 
 	first := make(chan error, 1)
+	var firstLog domain.WorkInfoRunLog
 	start := time.Now()
 	go func() {
-		_, err := rt.Run(context.Background(), probeDigest, module, search("loop"), domain.WorkInfoRunNetwork{})
+		_, log, err := rt.Run(context.Background(), probeDigest, module, search("loop"), domain.WorkInfoRunNetwork{}, nil)
+		firstLog = log
 		first <- err
 	}()
 	for len(rt.slot) == 0 {
@@ -98,13 +100,16 @@ func TestRunStopsAPluginThatNeverEndsAndRefusesASecondRun(t *testing.T) {
 	}
 
 	waited := time.Now()
-	_, err := rt.Run(context.Background(), probeDigest, module, search("second"), domain.WorkInfoRunNetwork{})
+	_, _, err := rt.Run(context.Background(), probeDigest, module, search("second"), domain.WorkInfoRunNetwork{}, nil)
 	wantFailure(t, err, domain.WorkInfoRunBusy)
 	if d := time.Since(waited); d < domain.WorkInfoPluginBusyWait {
 		t.Fatalf("second run refused after %v, want after %v", d, domain.WorkInfoPluginBusyWait)
 	}
 
 	wantFailure(t, <-first, domain.WorkInfoRunTimedOut)
+	if firstLog.Stderr != "looping\n" || firstLog.Truncated {
+		t.Fatalf("timed-out run log = %+v, want the line it wrote", firstLog)
+	}
 	if d := time.Since(start); d < domain.WorkInfoPluginRunTimeout || d > domain.WorkInfoPluginRunTimeout+5*time.Second {
 		t.Fatalf("looping run stopped after %v, want %v", d, domain.WorkInfoPluginRunTimeout)
 	}
@@ -116,7 +121,7 @@ func TestRunStopsAPluginThatGrowsItsMemory(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
 
-	_, err := rt.Run(context.Background(), probeDigest, module, search("grow"), domain.WorkInfoRunNetwork{})
+	_, _, err := rt.Run(context.Background(), probeDigest, module, search("grow"), domain.WorkInfoRunNetwork{}, nil)
 	wantFailure(t, err, domain.WorkInfoRunMemoryExceeded)
 	wantEchoWorks(t, rt, module)
 }
@@ -125,7 +130,7 @@ func TestRunStopsAPluginThatWritesTooMuch(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
 
-	_, err := rt.Run(context.Background(), probeDigest, module, search("flood"), domain.WorkInfoRunNetwork{})
+	_, _, err := rt.Run(context.Background(), probeDigest, module, search("flood"), domain.WorkInfoRunNetwork{}, nil)
 	wantFailure(t, err, domain.WorkInfoRunOutputTooLarge)
 	wantEchoWorks(t, rt, module)
 }
@@ -135,7 +140,7 @@ func TestRunGivesNoFilesNoEnvironmentAndNoArguments(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
 
-	got, err := rt.Run(context.Background(), probeDigest, module, fetchMode("hostname"), domain.WorkInfoRunNetwork{})
+	got, _, err := rt.Run(context.Background(), probeDigest, module, fetchMode("hostname"), domain.WorkInfoRunNetwork{}, nil)
 	if err != nil {
 		t.Fatalf("Run(hostname): %v", err)
 	}
@@ -143,7 +148,7 @@ func TestRunGivesNoFilesNoEnvironmentAndNoArguments(t *testing.T) {
 		t.Fatalf("hostname run = %+v, want nothing read and the open refused", got.WorkInfo)
 	}
 
-	got, err = rt.Run(context.Background(), probeDigest, module, fetchMode("env"), domain.WorkInfoRunNetwork{})
+	got, _, err = rt.Run(context.Background(), probeDigest, module, fetchMode("env"), domain.WorkInfoRunNetwork{}, nil)
 	if err != nil {
 		t.Fatalf("Run(env): %v", err)
 	}
@@ -156,14 +161,20 @@ func TestRunReportsPluginFailures(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
 
-	_, err := rt.Run(context.Background(), probeDigest, module, search("fail"), domain.WorkInfoRunNetwork{})
+	_, log, err := rt.Run(context.Background(), probeDigest, module, search("fail"), domain.WorkInfoRunNetwork{}, nil)
 	message := wantFailure(t, err, domain.WorkInfoRunFailed)
 	if message != strings.Repeat("m", domain.WorkInfoPluginMessageMaxRunes) {
 		t.Fatalf("message = %q, want its first %d characters", message, domain.WorkInfoPluginMessageMaxRunes)
 	}
+	if log.Stderr != "reporting an error\n" || log.Operation != domain.WorkInfoSearch {
+		t.Fatalf("failed run log = %+v, want the line it wrote", log)
+	}
 
-	_, err = rt.Run(context.Background(), probeDigest, module, search("exit"), domain.WorkInfoRunNetwork{})
+	_, log, err = rt.Run(context.Background(), probeDigest, module, search("exit"), domain.WorkInfoRunNetwork{}, nil)
 	wantFailure(t, err, domain.WorkInfoRunFailed)
+	if log.Stderr != "exiting with 3\n" {
+		t.Fatalf("exited run log = %+v, want the line it wrote", log)
+	}
 }
 
 // syncBuffer は複数の goroutine から書かれるログの受け皿である。
@@ -184,7 +195,7 @@ func (b *syncBuffer) String() string {
 	return b.buf.String()
 }
 
-func TestRunKeepsTheStartOfStderrInTheServerLog(t *testing.T) {
+func TestRunKeepsTheStartOfStderrInTheServerLogAndTheRunLog(t *testing.T) {
 	var log syncBuffer
 	rt, err := New(context.Background(), Options{Logger: slog.New(slog.NewJSONHandler(&log, nil))})
 	if err != nil {
@@ -192,12 +203,25 @@ func TestRunKeepsTheStartOfStderrInTheServerLog(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = rt.Close(context.Background()) })
 
-	got, err := rt.Run(context.Background(), probeDigest, probeModule(t), fetchMode("stderr"), domain.WorkInfoRunNetwork{})
+	var recorded []domain.WorkInfoRunLog
+	record := func(l domain.WorkInfoRunLog) error {
+		recorded = append(recorded, l)
+		return errors.New("the store is down")
+	}
+	got, runLog, err := rt.Run(context.Background(), probeDigest, probeModule(t), fetchMode("stderr"), domain.WorkInfoRunNetwork{}, record)
 	if err != nil || got.WorkInfo.Title != "stderr" {
-		t.Fatalf("Run(stderr) = %+v, %v; want success", got.WorkInfo, err)
+		t.Fatalf("Run(stderr) = %+v, %v; want success although record failed", got.WorkInfo, err)
+	}
+	kept := strings.Repeat("e", domain.WorkInfoPluginStderrKeptBytes)
+	want := domain.WorkInfoRunLog{Operation: domain.WorkInfoFetch, Stderr: kept, Truncated: true}
+	if runLog != want || len(recorded) != 1 || recorded[0] != want {
+		t.Fatalf("returned and recorded logs do not hold the first %d bytes of stderr marked truncated",
+			domain.WorkInfoPluginStderrKeptBytes)
 	}
 	logged := log.String()
-	kept := strings.Repeat("e", domain.WorkInfoPluginStderrKeptBytes)
+	if !strings.Contains(logged, "the store is down") {
+		t.Fatalf("log does not hold the record failure: %s", logged[:min(len(logged), 200)])
+	}
 	if !strings.Contains(logged, `"stderr":"`+kept+`"`) || !strings.Contains(logged, `"truncated":true`) {
 		t.Fatalf("log does not hold the first %d bytes of stderr marked truncated", domain.WorkInfoPluginStderrKeptBytes)
 	}
@@ -252,7 +276,7 @@ func TestRunCapsATableWithoutAMaximum(t *testing.T) {
 	if _, problem, err := rt.Inspect(context.Background(), module); err != nil || problem != "" {
 		t.Fatalf("Inspect = problem %q, err %v; want none", problem, err)
 	}
-	got, err := rt.Run(context.Background(), "table-grow", module, fetch(), domain.WorkInfoRunNetwork{})
+	got, _, err := rt.Run(context.Background(), "table-grow", module, fetch(), domain.WorkInfoRunNetwork{}, nil)
 	if err != nil || got.WorkInfo.Title != "capped" {
 		t.Fatalf("Run = %+v, %v; want the second table.grow to return -1", got.WorkInfo, err)
 	}
@@ -283,7 +307,7 @@ func memoryGrowSpec() moduleSpec {
 
 func TestRunFailsAPluginThatSurvivesARefusedMemoryGrow(t *testing.T) {
 	rt := newTestRuntime(t)
-	got, err := rt.Run(context.Background(), "memory-grow", memoryGrowSpec().bytes(), fetch(), domain.WorkInfoRunNetwork{})
+	got, _, err := rt.Run(context.Background(), "memory-grow", memoryGrowSpec().bytes(), fetch(), domain.WorkInfoRunNetwork{}, nil)
 	if err == nil {
 		t.Fatalf("Run = %+v, want memory_exceeded", got.WorkInfo)
 	}
@@ -300,8 +324,11 @@ func TestRunCountsCompilingTowardTheRunTimeout(t *testing.T) {
 	deadline, cancel := context.WithTimeoutCause(context.Background(), 0, errTimedOut)
 	defer cancel()
 
-	_, err = rt.run.run(context.Background(), deadline, "uncompiled", module, input, &httpSession{})
+	_, _, started, err := rt.run.run(context.Background(), deadline, "uncompiled", module, input, &httpSession{})
 	wantFailure(t, err, domain.WorkInfoRunTimedOut)
+	if started {
+		t.Fatalf("the run reports the module as started although its compile ran out of time")
+	}
 	if _, ok := rt.run.cache["uncompiled"]; ok {
 		t.Fatalf("the module was compiled after the run's time ran out")
 	}
@@ -341,5 +368,48 @@ func TestCapTablesKeepsTablesThatNeedNoCap(t *testing.T) {
 		if got.min != w.min || got.hasMax != w.hasMax || got.max != w.max {
 			t.Fatalf("table %d = min %d, max %d (%v); want min %d, max %d (%v)", i, got.min, got.max, got.hasMax, w.min, w.max, w.hasMax)
 		}
+	}
+}
+
+// record は実行の枠を持ったまま呼ばれるので、record の中から始めた 2 本目の実行は枠を取れない。2 本目は
+// モジュールを動かさないので、record を呼ばない（056 research.md R-6）。
+func TestRunRecordsBeforeASecondRunCanStart(t *testing.T) {
+	rt := newTestRuntime(t)
+	module := probeModule(t)
+
+	var second error
+	secondRecorded := false
+	record := func(domain.WorkInfoRunLog) error {
+		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+		defer cancel()
+		_, _, second = rt.Run(ctx, probeDigest, module, search("second"), domain.WorkInfoRunNetwork{},
+			func(domain.WorkInfoRunLog) error {
+				secondRecorded = true
+				return nil
+			})
+		return nil
+	}
+	if _, _, err := rt.Run(context.Background(), probeDigest, module, search("first"), domain.WorkInfoRunNetwork{}, record); err != nil {
+		t.Fatalf("Run(first): %v", err)
+	}
+	if !errors.Is(second, context.DeadlineExceeded) || secondRecorded {
+		t.Fatalf("second run inside record = %v (recorded %v); want it still waiting for the slot", second, secondRecorded)
+	}
+	wantEchoWorks(t, rt, module)
+}
+
+// コンパイルに失敗した実行はモジュールを起動しないので、record を呼ばず、前の実行のログを残す
+// （056 research.md R-6）。
+func TestRunDoesNotRecordARunWhoseModuleDidNotCompile(t *testing.T) {
+	rt := newTestRuntime(t)
+	recorded := false
+	record := func(domain.WorkInfoRunLog) error {
+		recorded = true
+		return nil
+	}
+	_, _, err := rt.Run(context.Background(), "not-wasm", []byte("not a module"), search("echo"), domain.WorkInfoRunNetwork{}, record)
+	wantFailure(t, err, domain.WorkInfoRunFailed)
+	if recorded {
+		t.Fatalf("record was called for a run whose module did not compile")
 	}
 }

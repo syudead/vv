@@ -1662,6 +1662,36 @@ func (e WorkInfoPluginProblem) Valid() bool {
 	}
 }
 
+// Defines values for WorkInfoPluginRunFailure.
+const (
+	WorkInfoPluginRunFailureBlockedAddress WorkInfoPluginRunFailure = "blocked_address"
+	WorkInfoPluginRunFailureMemoryExceeded WorkInfoPluginRunFailure = "memory_exceeded"
+	WorkInfoPluginRunFailureNetworkError   WorkInfoPluginRunFailure = "network_error"
+	WorkInfoPluginRunFailureOutputTooLarge WorkInfoPluginRunFailure = "output_too_large"
+	WorkInfoPluginRunFailurePluginFailed   WorkInfoPluginRunFailure = "plugin_failed"
+	WorkInfoPluginRunFailureTimedOut       WorkInfoPluginRunFailure = "timed_out"
+)
+
+// Valid indicates whether the value is a known member of the WorkInfoPluginRunFailure enum.
+func (e WorkInfoPluginRunFailure) Valid() bool {
+	switch e {
+	case WorkInfoPluginRunFailureBlockedAddress:
+		return true
+	case WorkInfoPluginRunFailureMemoryExceeded:
+		return true
+	case WorkInfoPluginRunFailureNetworkError:
+		return true
+	case WorkInfoPluginRunFailureOutputTooLarge:
+		return true
+	case WorkInfoPluginRunFailurePluginFailed:
+		return true
+	case WorkInfoPluginRunFailureTimedOut:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkInfoPluginState.
 const (
 	WorkInfoPluginStateApproved   WorkInfoPluginState = "approved"
@@ -4084,6 +4114,10 @@ type WorkInfoPlugin struct {
 	FileName string `json:"fileName"`
 	Id       int64  `json:"id"`
 
+	// LastRunAt 出力が残っている直近の実行が終わった時刻（Unix 秒）。残っていなければ無い
+	// （specs/056-plugin-tooling/research.md R-6）
+	LastRunAt *int64 `json:"lastRunAt,omitempty"`
+
 	// Name マニフェストの name。マニフェストを読めなかったときは無い
 	Name *string `json:"name,omitempty"`
 
@@ -4107,6 +4141,12 @@ type WorkInfoPlugin struct {
 	Version   *string `json:"version,omitempty"`
 }
 
+// WorkInfoPluginLastRun defines model for WorkInfoPluginLastRun.
+type WorkInfoPluginLastRun struct {
+	// Run 直近の実行の標準エラー（specs/056-plugin-tooling/contracts/screen-api.md）
+	Run *WorkInfoPluginRun `json:"run,omitempty"`
+}
+
 // WorkInfoPluginList defines model for WorkInfoPluginList.
 type WorkInfoPluginList struct {
 	// Plugins 名前、次にファイル名の順
@@ -4115,6 +4155,29 @@ type WorkInfoPluginList struct {
 
 // WorkInfoPluginProblem プラグインを承認できない理由（specs/049-work-info-plugins/data-model.md の work_info_plugins）
 type WorkInfoPluginProblem string
+
+// WorkInfoPluginRun 直近の実行の標準エラー（specs/056-plugin-tooling/contracts/screen-api.md）
+type WorkInfoPluginRun struct {
+	// Failure 実行の失敗の種類（specs/049-work-info-plugins/contracts/screen-api.md の Run failures の reason）。
+	// 枠を取れなかった実行はモジュールを動かさないので、busy は残らない
+	Failure *WorkInfoPluginRunFailure `json:"failure,omitempty"`
+
+	// Operation プラグインの操作（specs/049-work-info-plugins/contracts/plugin-contract.md）
+	Operation WorkInfoOperation `json:"operation"`
+
+	// RanAt 実行が終わった時刻（Unix 秒）
+	RanAt int64 `json:"ranAt"`
+
+	// Stderr 標準エラーの先頭 64 KiB。秘密の設定の値は `[secret]` に置き換えてある。何も書かなければ空
+	Stderr string `json:"stderr"`
+
+	// Truncated 64 KiB より後ろを捨てたか
+	Truncated bool `json:"truncated"`
+}
+
+// WorkInfoPluginRunFailure 実行の失敗の種類（specs/049-work-info-plugins/contracts/screen-api.md の Run failures の reason）。
+// 枠を取れなかった実行はモジュールを動かさないので、busy は残らない
+type WorkInfoPluginRunFailure string
 
 // WorkInfoPluginSetting マニフェストが宣言する設定の 1 つと、その値の有無。`value` は `secret` が偽で値があるときだけ入る
 // （specs/049-work-info-plugins/research.md R-13）
@@ -5440,6 +5503,9 @@ type ServerInterface interface {
 	// ApproveWorkInfoPlugin 所有者が見たモジュールを承認する
 	// (PUT /api/work-info-plugins/{id}/approval)
 	ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
+	// GetWorkInfoPluginLastRun 作品情報プラグインの直近の実行の標準エラーを読む
+	// (GET /api/work-info-plugins/{id}/last-run)
+	GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
 	// SearchWorkInfo 作品情報プラグインの search で作品を探す
 	// (POST /api/work-info-plugins/{id}/search)
 	SearchWorkInfo(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
@@ -10088,6 +10154,32 @@ func (siw *ServerInterfaceWrapper) ApproveWorkInfoPlugin(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// GetWorkInfoPluginLastRun operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WorkInfoPluginId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkInfoPluginLastRun(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SearchWorkInfo operation middleware
 func (siw *ServerInterfaceWrapper) SearchWorkInfo(w http.ResponseWriter, r *http.Request) {
 
@@ -10338,6 +10430,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.RevokeWorkInfoPluginApproval)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.ApproveWorkInfoPlugin)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/settings", wrapper.SetWorkInfoPluginSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins/{id}/last-run", wrapper.GetWorkInfoPluginLastRun)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/search", wrapper.SearchWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches", wrapper.FetchWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/apply", wrapper.ApplyWorkInfoFetch)

@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: 8fab783b2b02c7a2861bd06c15b774fcd70a05b3c2ba821b8b6894545fbeb450
+sourceHash: afed3cda754dc7f99d6926642bb1875c262b65bade58174515f558e3554cc130
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
@@ -53,7 +53,7 @@ Go の `wasip1` リンカが関数テーブルを書き出すときのように�
 | 線形メモリ | 128 MiB (2048 ページ) | `memory.grow` が `-1` を返し、モジュールを閉じ、プラグインがその後正常に終了した場合でも、実行は `memory_exceeded` で失敗する |
 | 実行時間 | 実行枠を取ってから 30 秒、コンパイルと HTTP を含む | コンパイルまたはモジュールを止め、実行は `timed_out` で失敗する |
 | 標準出力 | 1 MiB | 実行を `output_too_large` で止める |
-| 標準エラー出力 | 64 KiB を保持し、残りは捨てる | サーバーのログにだけ書く |
+| 標準エラー出力 | 64 KiB を保持し、残りは捨てる | サーバーのログに書き、プラグインの最後の実行として保つ ([最後の実行の標準エラー出力はプラグインごとに保つ](#the-last-runs-standard-error-is-kept-per-plugin)) |
 | 同時に行う実行 | 1。2 つ目の実行は最大 10 秒待つ | 2 つ目の実行は `busy` で失敗する |
 
 メモリの上限は wazero のページ数の上限ではなく vv のメモリアロケータで強制する。wazero は上限を超える `memory.grow` をアロケータが見る前に拒否するので、vv はメモリの失敗を他の 0 以外の終了と区別できなくなるからである。実行が出力とメモリの両方の上限に達したときは、先に達した方が失敗を決める。応答がプラグインのエラーである実行、0 以外で終了した実行、契約から外れた出力をした実行は `plugin_failed` で失敗する。
@@ -65,6 +65,34 @@ Go の `wasip1` リンカが関数テーブルを書き出すときのように�
 | 実行ごとに別のプロセス | コンテナと Windows アプリで別々の OS のサンドボックスが必要になる |
 | アップロード時に `describe` 操作を実行する | 承認のために表示する名前とバージョンが、承認されていないコードから来ることになる |
 | 複数の実行を同時に行う | 各実行は 128 MiB を使いうるので、1 つずつにするとプラグインのメモリが 1 モジュール分に収まる |
+
+## 最後の実行の標準エラー出力はプラグインごとに保つ {#the-last-runs-standard-error-is-kept-per-plugin}
+
+各プラグインは、最後の実行の標準エラー出力を、秘密の設定値をすべて `[secret]` に置き換えて、1 行の `work_info_plugin_runs` として保つ。所有者は `GET /api/work-info-plugins/{id}/last-run` でそれを読む ([056 R-6](../../specs/056-plugin-tooling/research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked))。サーバーのログには、従来どおり同じテキストがマスクなしで届き続ける。
+
+```mermaid
+sequenceDiagram
+  participant App as app.WorkInfoPlugins
+  participant Rt as wasmplugin.Runtime
+  participant St as store
+  App->>Rt: Run(request, record)
+  Rt->>Rt: 実行枠を取り、モジュールを実行する
+  Rt->>App: record(実行ログ)
+  App->>App: 実行の秘密の値をマスクする
+  App->>St: プラグインが実行された世代のままなら行を書く
+  Rt->>Rt: 実行枠を解放する
+  Rt-->>App: 結果、実行ログ、エラー
+```
+
+| 規則 | 場所 | 理由 |
+| --- | --- | --- |
+| `Run` は成功時にも失敗時にも実行ログを返し、モジュールが開始し、成功または実行の失敗で終わったときにだけ `record` を呼ぶ | [`run.go`](../../internal/wasmplugin/run.go) | `busy` の拒否、コンパイルに失敗したモジュールやコンパイル中に時間切れになったモジュール、取り消された要求は、最後の出力を置き換える価値のあるものを何も実行していない |
+| 行は `record` の中で、実行枠を解放する前に書く | `internal/app`、`internal/wasmplugin` | 行は実行が終わった順に書かれるので、古い実行が新しい実行を上書きすることはない |
+| 実行が受け取った秘密の値は、現れる場所をすべて置き換え、重なる一致は 1 つの `[secret]` にする。切り詰めた出力では、末尾にある秘密の値の先頭部分も置き換える | [`work_info_plugin_run_log.go`](../../internal/domain/work_info_plugin_run_log.go) | 64 KiB で切れた値も一部が平文で残らない。プラグインが先にエンコードした値は見つからない |
+| 行は、`work_info_plugins` に実行された世代の行がある間だけ、1 つの文で書く | [`work_info_plugin_runs.go`](../../internal/store/work_info_plugin_runs.go) | 置き換えられた (同じバイト列でも)、取り消された、または削除されたプラグインの実行は何も書かない |
+| 置き換えるアップロードは、そのトランザクションで行を削除する。プラグインを削除すると連鎖して消える | `internal/store` | 画面には現在のモジュールの出力だけを示す |
+
+行の保存に失敗したときはサーバーのログに書き、実行の結果は変えない。
 
 ## プラグインは公開インターネットのアドレスにだけ到達する {#plugins-reach-only-public-internet-addresses}
 
@@ -99,7 +127,7 @@ flowchart LR
 | 応答のヘッダー | 1 MiB | 要求は `-3` を返す |
 | 応答の本文 | 4 MiB | 要求は `-6` を返す |
 
-プロキシを使うとダイアラの確認がプロキシのアドレスしか見なくなるので、クライアントは `HTTP_PROXY` などのプロキシの変数を無視する。プラグインが設定した `Host` とホップバイホップのヘッダーは捨てる。プラグインが `User-Agent` を設定しないときは、一般的なデスクトップブラウザのもの（Windows 版 Chrome）を送る。プラグインが読むのはユーザーが開いたページであってクロールではなく、ボットのような値では別のページが返ったり拒否されたりすることがあるからだ。本文は応答のヘッダーとともにバイト列としてプラグインに届くので、ページの文字コードはプラグイン自身がデコードする。
+プロキシを使うとダイアラの確認がプロキシのアドレスしか見なくなるので、クライアントは `HTTP_PROXY` などのプロキシの変数を無視する。プラグインが設定した `Host` とホップバイホップのヘッダーは捨てる。プラグインが `User-Agent` を設定しないときは、一般的なデスクトップブラウザのもの (Windows 版 Chrome) を送る。プラグインが読むのはユーザーが開いたページであってクロールではなく、ボットのような値では別のページが返ったり拒否されたりすることがあるからだ。本文は応答のヘッダーとともにバイト列としてプラグインに届くので、ページの文字コードはプラグイン自身がデコードする。
 
 アドレスの確認と、次に示すプロキシのサポートはこのアダプタにだけある。ComfyUI と Ollama のクライアントは、それらのサービスが動く LAN に引き続き到達し、プラグインのプロキシは使わない。
 
@@ -114,7 +142,7 @@ flowchart LR
 
 `Runtime.Run` は `domain.WorkInfoRunNetwork` を受け取る。その `Proxy` は運用者が選んだプロキシで、なければ nil である ([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option))。`domain.ParseWorkInfoPluginProxyURL` が URL の規則を持つ: スキームは `http`、`https`、`socks5` のいずれか、ホスト、任意のポート、任意のユーザー情報で、パス、クエリ、フラグメントはなく、最大 2048 文字である。`""` はプロキシなしを意味する。プロキシなしの実行は、上のクライアントをそのまま使う。
 
-所有者は、すべてのビルドで設定画面の `Network` セクションからプロキシを設定する。設定は `PUT /api/settings/plugin-proxy` を通り、`app.WorkInfoPluginProxy` がその規則に照らして確認し、`settings` の行 `work_info_plugins.proxy_url` として保存する。`app.WorkInfoPlugins` は各実行の前にその行を読むので、保存した変更は次の実行から適用され、実行中の実行は開始時の値を保つ。規則に反する保存済みの値は、直接接続せずに実行を失敗させる。
+所有者は、すべてのビルドで設定画面の `Network` セクションから `PUT /api/settings/plugin-proxy` を通じてプロキシを設定する。`app.WorkInfoPluginProxy` がそれを上の規則に照らして確認し、`settings` の行 `work_info_plugins.proxy_url` として保存する。`app.WorkInfoPlugins` は実行のたびにその行を読むので、保存した変更は次の実行から適用され、実行中のものは開始時の値のままである。規則に反する保存済みの値は、直接接続せずに実行を失敗させる。
 
 プロキシを使う実行は専用のトランスポートを持ち、その接続はすべてプロキシに向かうので、接続時の確認は宛先を見られない。代わりに、Go がすべての要求と追跡するすべてのリダイレクトで呼ぶトランスポートの `Proxy` コールバックが、宛先のホストを名前解決し (リテラルのアドレスならそれを解析し)、解決したアドレスのどれかが同じ規則を満たさないときは、要求を `-2` と `blocked_address` で拒否する ([056 R-5](../../specs/056-plugin-tooling/research.md#r-5-through-a-proxy-the-destination-is-checked-by-resolving-its-name-before-each-request-and-redirect))。拒否したホストは名前であり、プロキシは要求を見ない。プロキシ自身のアドレスは確認しない。運用者が選んだもので、たいてい LAN にあるからである。
 
