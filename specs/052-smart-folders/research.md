@@ -136,6 +136,9 @@ the folders' videos already answer.
 
 **Decision**: A folder with no visible content is listed and opened for the
 owner, and is not shown to a guest (`404` when opened), as 048 Visibility.
+Every read decides "shown" by the same test, an empty play order
+([data-model.md, Contents](data-model.md#contents)), so a guest never sees a
+card whose folder answers `404`.
 
 | Option | Verdict |
 | --- | --- |
@@ -202,14 +205,20 @@ development host, each of these reads returns within 1 second: the first
 unfiltered library page with 50 root folders, a folder's page three levels
 deep, and the card values of 24 folders in one
 [cards read](contracts/screen-api.md#routes-added). The benchmark's 50 root
-folders mix tag, watch state, length, added-within and search text rules, as
-`BenchmarkLibraryWithSmartFolders` does.
+folders are 10 each of a tag, a watch state, a length, an added-within and a
+search text rule, as `BenchmarkLibraryWithSmartFolders` in PR #1204 builds
+them, and the search text folders count toward the same second: a search
+text folder's sort value is one FTS match over the 20,000 videos, and the
+budget leaves no folder out and sets no second budget. An implementation
+PR that measures over the budget fixes the read; it does not reopen the
+budget.
 
 | Option | Verdict |
 | --- | --- |
 | **A benchmark with a stated budget** | Chosen |
 | A time limit inside a unit test | Rejected: CI runners vary, and a timing assertion fails without a code change |
 | 500 ms for the library page (the budget before 2026-10-16) | Rejected by the maintainer (2026-10-16): the library page with no folder takes about 0.6 s on the development host, so 500 ms left the folders nothing |
+| A separate budget for search text folders, or none in the benchmark | Rejected by the maintainer (2026-10-16): about 1 s at tens of thousands of videos is fast enough for the whole page, so the 10 search text folders count toward the same second |
 
 **Rationale**: The library page computes one sort value per root folder and
 no other card value

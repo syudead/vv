@@ -258,8 +258,11 @@ lists a root folder among groups and videos in its sort position for each
 sort, carrying only its summary, and lists the folder's videos too; a child
 folder is not listed at the top; a search or a tag filter lists no folder;
 favorites only lists a favorited child folder; paging across a folder item
-returns every item once; a guest's library has no folder without a matching
-video; the cards read returns, in the order asked, the count, sums, dates,
+returns every item once; a folder with no matching video comes after every
+item with a value under each sort but title and favorited, in either
+direction; a guest's library has no folder whose play order is empty, one
+whose only match is a mixed group under a watch state rule included; the
+cards read returns, in the order asked, the count, sums, dates,
 watch state and previews over the matching videos, leaves out an id that
 names no folder or a folder a guest may not see, and counts a mixed group's
 matching videos under a watch state rule; a folder's page lists its children

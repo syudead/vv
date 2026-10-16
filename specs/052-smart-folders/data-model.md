@@ -67,13 +67,13 @@ missing-reference check and for merges.
 | --- | --- |
 | Effective rule | The folder's rule and each ancestor's; the store applies each one's filter conditions ([R-5](research.md#r-5-a-childs-effective-rule-is-every-rule-on-its-path-anded)) |
 | Items | `ListLibrary` for the effective rule, in the folder's `sort`, for the viewer ([R-3](research.md#r-3-a-rule-is-the-library-filters-fields-contents-are-the-filtered-library)); on the first page, child folders by `title_key` come first |
-| Child folders | The folder's children as summaries (`SmartFolderSummary`: id, parent id, name, favorite), by `title_key` then id; a guest gets those with a matching video ([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)) |
+| Child folders | The folder's children as summaries (`SmartFolderSummary`: id, parent id, name, favorite), by `title_key` then id; a guest gets those [shown](#contents) to it ([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)) |
 | Missing reference | A rule on the path names an id that does not exist: no item, no matching video, but the child folders ([R-9](research.md#r-9-merges-rewrite-rules-a-deleted-reference-makes-the-rule-match-nothing)) |
 | Play order | The items in order, a group card replaced by its play order (048), each video at its first appearance; child folders are not played |
 | Matching videos | The viewer's shown video of each content key that matches every rule on the path, each condition tested on the video itself (watch state, playable and favorite included), with no group step. The same videos as the play order, except for a group whose videos are mixed under a watch state, playable only or favorites only rule: the item query takes or leaves it as one item (048 Library items), this set takes its matching videos |
 | Card values (the folder's page) | `LibraryGroup`'s values over the play order: count, sums, dates, watch state, previews, open video |
 | Card values (the cards read) | The same values over the matching videos: `videoCount` their number, `sizeBytes` and `durationMs` sums, `addedAt` and `lastPlayedAt` the latest, `watchedCount` and `watchState` per video, `previews` and `openVideoId` the first in the folder's `sort`, `tags` as `LibraryGroup`; no `videoIds` ([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)) |
-| Shown | To the owner always; to a guest when the read's set (the play order on the folder's page, the matching videos elsewhere) is not empty ([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only)) |
+| Shown | To the owner always; to a guest when the folder's play order is not empty, by the same test on every read (the folder's page, the library, a parent's child folders and the cards read), so a card a guest sees opens ([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only)). The matching videos do not decide it: under a watch state, playable only or favorites only rule a mixed group has matching videos and an empty play order. A guest's library, child folders and cards read test each folder with one existence query for the first item of its play order; the owner's reads skip the test |
 
 ## Library items
 
@@ -84,8 +84,9 @@ favorites only; with favorites only, the favorited folders at any depth
 An item carries the folder's summary (`SmartFolderSummary`) and no card
 value
 ([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing));
-the cursor carries the kind. A guest's library leaves out a folder with no
-matching video ([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only)).
+the cursor carries the kind. A guest's library leaves out a folder that is
+not [shown](#contents) to the guest
+([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only)).
 No video or group item changes.
 
 A folder's sort value is read by one query per folder over its matching
@@ -93,10 +94,16 @@ videos ([Contents](#contents)), with no group step:
 
 | Sort | A folder's sort value |
 | --- | --- |
-| Added, modified, created, last played | The latest among its matching videos, as a group card's is among its members; 0 with none |
-| Length, size | The sums over its matching videos; 0 with none |
+| Added, modified, created, last played | The latest among its matching videos, as a group card's is among its members; none with no matching video |
+| Length, size | The sums over its matching videos; none with no matching video |
 | Title | The folder's `title_key` |
 | Favorited | Its `smart_folder_favorites.favorited_at` |
+
+A folder with no value (the owner's empty folder under any sort but title
+and favorited) is placed after every item with a value in either direction,
+with the folder id as the tie-breaker, as the list places a video without a
+length or a play record (`listOrder.nullable`); the cursor carries the
+absence as it does for those videos.
 
 ## Cards read
 
