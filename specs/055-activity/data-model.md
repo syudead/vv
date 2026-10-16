@@ -30,7 +30,8 @@ case).
 | `subject_kind` | text | No | `video`, `pair`, `scan` or `folder` |
 | `subject_key` | text | No | A content key, the smaller key of a pair, a scan id, or a removed media folder's path ([R-10](research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `subject_key_b` | text | Yes | The larger key of a pair |
-| `subject_label` | text | No | The display name (both, for a pair), the scan's origin, or the folder path, as written |
+| `subject_label` | text | No | The display name of `subject_key` (the smaller key, for a pair), the scan's origin, or the folder path, as written |
+| `subject_label_b` | text | Yes | For a pair, the display name of `subject_key_b`, as written |
 | `status` | text | No | `running`, `attention` or `done` ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | `reason` | text | Yes | For `running` and `attention`: see Reasons |
 | `outcome` | text | Yes | For `done`: see Outcomes |

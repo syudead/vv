@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: 6aaf5c4f6f8394722ae3cec4f164ccdb61d6deec32d3799a71b6d2591acf14a2
+sourceHash: d31b59fca368837b9207e475b702656c017ec22d2a69cb0c9c3e988f6ab2f89b
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -25,7 +25,8 @@ sourceHash: 6aaf5c4f6f8394722ae3cec4f164ccdb61d6deec32d3799a71b6d2591acf14a2
 | `subject_kind` | text | 不可 | `video`、`pair`、`scan`、`folder` のどれか |
 | `subject_key` | text | 不可 | 内容の鍵、組の小さい方の鍵、スキャンの id、または削除したメディアフォルダのパス ([R-10](research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `subject_key_b` | text | 可 | 組の大きい方の鍵 |
-| `subject_label` | text | 不可 | 表示名 (組では両方)、スキャンの起点、またはフォルダのパス。書いたとおり |
+| `subject_label` | text | 不可 | `subject_key` の表示名 (組では小さい方の鍵の表示名)、スキャンの起点、またはフォルダのパス。書いたとおり |
+| `subject_label_b` | text | 可 | 組で、`subject_key_b` の表示名。書いたとおり |
 | `status` | text | 不可 | `running`、`attention`、`done` のどれか ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | `reason` | text | 可 | `running` と `attention` について: 理由を参照 |
 | `outcome` | text | 可 | `done` について: 結果を参照 |

@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/contracts/screen-api.md
-sourceHash: fc90a718b9142abb76d2de0f960dfc1037ba4d4b2305aea44db95f9f781a80ce
+sourceHash: e2afa8af79da21bf361b54691e9ff9dff2b3464a8eb081f9b42a0963dc515324
 ---
 
 # 契約: アクティビティの画面の API {#contract-screen-api-for-activity}
@@ -23,7 +23,7 @@ sourceHash: fc90a718b9142abb76d2de0f960dfc1037ba4d4b2305aea44db95f9f781a80ce
 | --- | --- | --- |
 | `id` | integer | 項目 |
 | `kind`, `status`, `reason?`, `outcome?`, `decider`, `probability?`, `detail?` | [data-model.md](../data-model.md#activity_entries) のとおり | |
-| `subject` | `{kind, items: {label, videoId?}[]}` | 鍵の順に鍵ごとに 1 つの要素 (組なら 2 つ、それ以外は 1 つ)。`label` は書いたときのまま、`videoId` は閲覧者が開ける今の動画で、鍵に動画がないときはない ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
+| `subject` | `{kind, items: {label, videoId?}[]}` | 鍵の順に鍵ごとに 1 つの要素 (組なら 2 つ、それ以外は 1 つ)。`label` はその鍵について書いたときのまま (`subject_label`、`subject_label_b`)、`videoId` は閲覧者が開ける今の動画で、鍵に動画がないときはない ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `candidate` | boolean | 組について: その候補がまだ Duplicates にある |
 | `stage?` | `probe` \| `thumbnail` \| `seek_thumbnail` \| `preview` \| `fingerprint` | 失敗した `import` について: 諦めた段階。そのとき `detail` はそのメッセージを持つ |
 | `retryAt?` | date-time | 失敗した `version_judgement` について: そのバックオフが再び試す時刻 |

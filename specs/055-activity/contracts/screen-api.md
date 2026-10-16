@@ -26,7 +26,7 @@ counts: {running, attention, done}}`.
 | --- | --- | --- |
 | `id` | integer | The entry |
 | `kind`, `status`, `reason?`, `outcome?`, `decider`, `probability?`, `detail?` | as [data-model.md](../data-model.md#activity_entries) | |
-| `subject` | `{kind, items: {label, videoId?}[]}` | One item per key in key order (two for a pair, one otherwise); `label` as written, `videoId` the current video the viewer can open, absent when the key has none ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
+| `subject` | `{kind, items: {label, videoId?}[]}` | One item per key in key order (two for a pair, one otherwise); `label` as written for that key (`subject_label`, `subject_label_b`), `videoId` the current video the viewer can open, absent when the key has none ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `candidate` | boolean | For a pair: its candidate is still on Duplicates |
 | `stage?` | `probe` \| `thumbnail` \| `seek_thumbnail` \| `preview` \| `fingerprint` | For a failed `import`: the stage that gave up; `detail` then holds its message |
 | `retryAt?` | date-time | For a failed `version_judgement`: when its backoff tries again |
