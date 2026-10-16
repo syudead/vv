@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/activity.md
-sourceHash: 2eecb97f2ee959f6eaa8dbd684d38e76c20644c21d693ad11e08a2ffe7775112
+sourceHash: f635cc05056d9371ce82d40233ff386328894c2ffdcc7c631cefc4bdc500396c
 ---
 
 # 活動ログ {#activity-log}
@@ -49,8 +49,9 @@ stateDiagram-v2
 | そのような項目のない動画にジョブが積まれる | 積んだ者の決定者を持つ新しい `running`/`waiting` 項目 |
 | ジョブが取得され、その項目が `running` でない (起動時に中断された、またはこの機能より前に積まれた) | `rule` による新しい項目。動画の保留中のジョブをすべて引き取り、古い項目を置き換える |
 | 項目のジョブが完了または失敗する | 項目を集約し直す |
+| 動画が削除される、または動画が登録済みの場所を失ったために最後の保留中のジョブが取り除かれる | 項目は `done`/`gone` として閉じる |
 
-集約 (`ImportActivityState`) は、項目のジョブのいずれかが保留中の間は `running` (いずれかが取得されるまでは `waiting`)、段階が諦めたときは `attention`/`failed` で、その段階を `stage` に、そのメッセージを `detail` に持ち、それ以外は `done`/`completed` だ。完了した項目は決して `running` に戻らないので、ジョブを再び積む再スキャン、再プローブ、再試行は新しい項目を開く。
+集約 (`ImportActivityState`) は、項目のジョブのいずれかが保留中の間は `running` (いずれかが取得されるまでは `waiting`)、段階が諦めたときは `attention`/`failed` で、その段階を `stage` に、そのメッセージを `detail` に持ち、それ以外は `done`/`completed` だ。完了した項目は決して `running` に戻らないので、ジョブを再び積む再スキャン、再プローブ、再試行は新しい項目を開く。スキャンは動画に必要なすべてのジョブを 1 つのトランザクションで積むので、その間に完了した段階が、後の段階が加わる前に項目を閉じることはない。`processing` 項目の進捗は、動画のすべてのジョブにわたって完了した段階を数える。再試行の項目は、それが再び積んだジョブだけを持つからだ。
 
 決定者は実行を開始した者だ ([R-5](../../specs/055-activity/research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run))。
 
@@ -85,7 +86,7 @@ stateDiagram-v2
 
 | 種類 | 再試行 | 取り消し |
 | --- | --- | --- |
-| `import` | `IngestStore.RetryImport` は、再プローブと同じように動画の失敗した段階を再び積み、中断の後にまだ待機しているジョブも積む。所有者の新しい項目が古い項目を置き換える。なくなった動画、または積むものがない動画は `409 activity_not_retryable` で応答する | — |
+| `import` | `IngestStore.RetryImport` は、再プローブと同じように動画の失敗した段階を再び積み、中断の後にまだ待機しているジョブも積む。所有者の新しい項目が古い項目を置き換える。自身のトランザクションの中で項目を読み直すので、同じ項目の 2 回目の再試行、なくなった動画、または積むものがない場合は `409 activity_not_retryable` で応答する | — |
 | `scan` | `Scans.RetryActivity` はすべてのメディアフォルダの手動スキャンを開始する。スキャンの実行中は `409 scan_in_progress` | — |
 | `auto_tag` | `AutoTagger` が動画を再びキューに入れる。機能がオフの間は `409 auto_tagging_off` | 1 回に 1 つのタグを、1 つの `ActivityStore` トランザクションで取り消す ([auto-tagging.md](auto-tagging.md#activity-entries-and-undo)) |
 
