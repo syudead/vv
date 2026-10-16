@@ -5,6 +5,8 @@ import (
 	"context"
 	"errors"
 	"image"
+	"image/color"
+	"image/gif"
 	"image/png"
 	"testing"
 	"time"
@@ -59,19 +61,24 @@ func (e *fetchEnv) fetchCover(t *testing.T, cover []byte) domain.WorkInfoFetchRe
 
 func TestFetchedCoverKeepsOnlyImagesItCanRead(t *testing.T) {
 	e, _ := newCoverEnv()
-	image := pngOf(t, 3, 2)
-	result := e.fetchCover(t, image)
+	want := pngOf(t, 3, 2)
+	result := e.fetchCover(t, want)
 	if result.Cover == nil || result.Cover.ContentType != "image/png" || result.Cover.Width != 3 || result.Cover.Height != 2 {
 		t.Fatalf("cover = %+v; want a 3x2 PNG", result.Cover)
 	}
 	got, err := e.plugins.WorkInfoFetchCover(fetchVideo, result.ID)
-	if err != nil || !bytes.Equal(got.Data, image) {
+	if err != nil || !bytes.Equal(got.Data, want) {
 		t.Fatalf("WorkInfoFetchCover = %d bytes, %v; want the fetched image", len(got.Data), err)
 	}
 	if _, err := e.plugins.WorkInfoFetchCover(otherVideo, result.ID); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("another video's cover: err = %v", err)
 	}
-	for _, data := range [][]byte{nil, []byte("<svg/>"), make([]byte, domain.WorkInfoCoverMaxBytes+1)} {
+	var animated bytes.Buffer
+	if err := gif.Encode(&animated, image.NewPaletted(image.Rect(0, 0, 2, 2), []color.Color{color.Black}), nil); err != nil {
+		t.Fatal(err)
+	}
+	// GIF は読めても、アップロードと同じく PNG・JPEG・WebP だけを受ける。
+	for _, data := range [][]byte{nil, []byte("<svg/>"), animated.Bytes(), make([]byte, domain.WorkInfoCoverMaxBytes+1)} {
 		if r := e.fetchCover(t, data); r.Cover != nil {
 			t.Fatalf("cover of %d bytes = %+v; want none", len(data), r.Cover)
 		}
@@ -156,5 +163,24 @@ func TestFetchedCoversStayWithinTheBudget(t *testing.T) {
 	}
 	if _, ok := fetches.entries[plain]; !ok {
 		t.Fatal("a result without a cover was dropped")
+	}
+}
+
+// 作品情報が確定したあとで動画を読めないか、適用先が無ければ、カバー画像は飛ばした値として知らせる。
+func TestApplyCoverIsSkippedWhenTheVideoOrTheApplierIsMissing(t *testing.T) {
+	for name, change := range map[string]func(e *fetchEnv){
+		"video gone": func(e *fetchEnv) { delete(e.plugins.videos.(fakeVideos), fetchVideo) },
+		"no applier": func(e *fetchEnv) { e.plugins.covers = nil },
+	} {
+		e, covers := newCoverEnv()
+		e.plugins.videos = fakeVideos{fetchVideo: true}
+		result := e.fetchCover(t, pngOf(t, 2, 2))
+		change(e)
+		applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
+			[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle})
+		if err != nil || len(applied.Skipped) != 1 || applied.Skipped[0].Field != domain.WorkInfoFieldCover ||
+			len(covers.images) != 0 || e.applier.titles[fetchVideo] != "Title" {
+			t.Fatalf("%s: apply = %+v, %v; want the cover skipped and the title written", name, applied, err)
+		}
 	}
 }

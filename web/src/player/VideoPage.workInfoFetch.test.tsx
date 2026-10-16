@@ -285,6 +285,19 @@ describe("VideoPage work-info fetch", () => {
     ).toEqual(["Cover: https://works.example/c.jpg — couldn't be used as the thumbnail"]);
   });
 
+  it("サムネイルの無い動画では、カバー画像の行に取得した画像だけを出す", async () => {
+    server.video = { ...video, thumbnailUrl: undefined, thumbnailState: "pending" };
+    server.fetch.mockImplementation(() =>
+      json(
+        fetchResult({ title: "取得した題名", cover: { width: 800, height: 450 } }),
+        201,
+      ),
+    );
+    const { dialog } = await fetchFromUrl();
+    expect(within(dialog).getByRole("img", { name: /Fetched cover/ })).toBeDefined();
+    expect(within(dialog).queryByRole("img", { name: "Current thumbnail" })).toBeNull();
+  });
+
   it("承認を外されたプラグインの失敗では一覧を読み直し、残りが無ければ閉じた後に入口が消える", async () => {
     server.search.mockImplementation(() => {
       server.plugins = [{ ...works, state: "unapproved" }];
