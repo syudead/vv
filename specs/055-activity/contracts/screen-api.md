@@ -20,13 +20,13 @@ the counts the tabs show
 | `limit` | query | integer, 1–100 | No | Default 50 |
 
 **Response**: `200` with `ActivityPage {items: ActivityEntry[], nextCursor?,
-counts: {running, attention}}`.
+counts: {running, attention, done}}`.
 
 | `ActivityEntry` field | Type | Meaning |
 | --- | --- | --- |
 | `id` | integer | The entry |
 | `kind`, `status`, `reason?`, `outcome?`, `decider`, `probability?`, `detail?` | as [data-model.md](../data-model.md#activity_entries) | |
-| `subject` | `{kind, label, videoIds?, folderPath?}` | `videoIds` holds the current video id of each key the viewer can open; a key with no video is left out ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
+| `subject` | `{kind, label, videoIds?}` | `videoIds` holds the current video id of each key the viewer can open; a key with no video is left out ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `candidate` | boolean | For a pair: its candidate is still on Duplicates |
 | `tags?` | `{id, name, suggested, probability, undone}[]` | For `auto_tag` |
 | `retryRun`, `undoable` | boolean | Whether the row offers retry and undo ([data-model.md, Rules](../data-model.md#rules)) |
@@ -40,14 +40,15 @@ counts: {running, attention}}`.
 ## `POST /api/activity/{id}/retry`
 
 `operationId: retryActivity`. Starts the entry's process again and answers
-`202`; the new run is a new entry, which supersedes this one, except a
-`version_judgement`, whose pair becomes claimable now
+`202`. The new run is a new entry, which supersedes this one; a
+`version_judgement` keeps its entry, which returns to `running`
 ([R-4](../research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)).
+A `scan` entry is closed by the next scan that ends `done`.
 
 | Kind | What starts |
 | --- | --- |
 | `import` | The video's failed stages are queued again, as `POST /api/videos/{id}/probe` does |
-| `scan` | A scan of the same media folder |
+| `scan` | A manual scan of every media folder, as `POST /api/scans` starts |
 | `auto_tag` | The video is queued for auto-tagging |
 | `version_judgement` | The pair's `retry_at` is set to now and the judging worker wakes |
 
@@ -55,6 +56,7 @@ counts: {running, attention}}`.
 | --- | --- | --- |
 | `404` | `not_found` | No such entry |
 | `409` | `activity_not_retryable` | The entry does not offer retry, or its subject is gone |
+| `409` | `scan_in_progress` | A `scan` entry while a scan is running, as `POST /api/scans` answers |
 | `409` | `auto_tagging_off` | An `auto_tag` entry while auto-tagging is off |
 
 ## `POST /api/activity/{id}/undo`

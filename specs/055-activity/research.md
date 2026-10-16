@@ -49,7 +49,8 @@ so no role calls another role's methods.
 **Decision**: A process run on one subject is one entry whose status moves.
 A video's import is one entry covering its five ingest stages (probe,
 thumbnail, seek preview, hover preview, fingerprint); a scan writes an entry
-only when it ends `failed`.
+only when it ends `failed` for a reason other than `interrupted`, and the next
+scan that ends `done` closes it as `superseded`.
 
 | Option | Entries for 1,000 new files | Can open and retry one file | Verdict |
 | --- | --- | --- | --- |
@@ -62,7 +63,10 @@ only when it ends `failed`.
 pending, which the jobs table already knows. Each job carries the id of the
 entry it belongs to, so a job queued again later (a rescan, a re-probe, a
 retry) opens a new entry instead of reviving a finished one (the edge case
-"each run is its own row").
+"each run is its own row"). A scan's subject is the scan itself, because a
+scan covers every media folder (`POST /api/scans` takes no folder); its retry
+starts a manual scan. A scan closed as `interrupted` at startup writes no
+entry, because startup already resumes it.
 
 ## R-4: Three statuses with a reason, and a newer run closes an older problem
 
@@ -87,14 +91,22 @@ stateDiagram-v2
 | --- | --- | --- |
 | **A newer run closes the older problem** | Problems still open | Chosen |
 | Problems stay `attention` until the owner dismisses them | Every problem ever seen | Rejected: bulk dismissal is out of scope, so the count would only grow |
-| A retry revives the failed entry | Problems still open | Rejected: acceptance 4 records the new result as a new row, and the history of the failure is lost |
+| A retry revives the failed entry, for every kind | Problems still open | Rejected: acceptance 4 records the new result as a new row, and the history of the failure is lost |
 
-**Rationale**: Startup marks `running` entries `attention` with reason
-`interrupted` before it requeues jobs (process-lifecycle.md), so the edge case
-holds; the requeued job then opens a new entry, which supersedes the
-interrupted one. A duplicate pair is the one subject whose entry returns to
-`running`: its own backoff (054 R-5) retries it, and acceptance 3 asks for
-the same row to turn into the result.
+**Rationale**: Startup, before the workers start, marks entries `running`
+with reason `processing` as `attention`/`interrupted`
+(process-lifecycle.md); entries still `waiting` were never started and stay
+as they are. The requeued job then opens a new entry, which supersedes the
+interrupted one, so the edge case holds. A scan's open `attention` entry is
+closed by the next scan that ends `done`, since a successful scan writes no
+entry of its own.
+
+**Deviation for a duplicate pair**: its entry is the one that returns to
+`running`, on its own backoff (054 R-5), after an interruption and on a retry
+from the screen. Acceptance 3 asks for the same row to turn into the result,
+and a pair is judged over hours of backoff; a new row per attempt would list
+the same pair many times. Acceptance 4's new row therefore holds for every
+kind except `version_judgement`.
 
 ## R-5: The decider is who made the recorded decision, else who started the run
 
@@ -104,39 +116,47 @@ the same row to turn into the result.
 
 | Entry | Decider |
 | --- | --- |
-| Import from a watch scan, or a job queued again by a scan | `rule` |
+| Import from a watch scan, a failed scan, or a startup resume | `rule` |
 | Import from a manual scan, a re-probe or a retry | `owner` |
-| Auto-tagging run | `ai`; each tag keeps its probability |
-| Duplicate pair bundled because every frame matched | `rule` |
-| Duplicate pair bundled or dismissed by the model's answer | `ai`, with the probability |
-| Any owner operation and any undo | `owner` |
+| Auto-tagging run started by import | `rule` until it finishes, then `ai` |
+| Auto-tagging run started from Settings or the video page | `owner` until it finishes, then `ai` |
+| Duplicate pair waiting, `no_connection` or `failed` | `rule` |
+| Duplicate pair bundled because every frame matched, or undecided by the rule | `rule` |
+| Duplicate pair bundled, dismissed or left undecided by the model's answer | `ai`, with the probability |
+| Work-information fetch, any owner operation and any undo | `owner` |
 
-**Rationale**: Today the probability of an added tag and of a bundled or
-dismissed pair is only logged (054); `domain.AutoTagSelection` and the
-judgement result now carry it to the store so the entry can keep it. Rejected:
-a decider of `rule` for every run that is not a model's, because a manual scan
-is the owner's request and acceptance 2 asks for owner rows.
+**Rationale**: The probability of an added tag is discarded after selection
+today, so `domain.AutoTagSelection` carries it to the store;
+`domain.VersionJudgeResult` already carries the model's probability, and
+`ApplyJudgement` now keeps it for `same` and `different` too. The ingest queue
+port takes the decider, since the scanner queues jobs with no origin today.
+Rejected: a decider of `rule` for every run that is not a model's, because a
+manual scan is the owner's request and the row would say a rule started it.
 
 ## R-6: The owner operations recorded
 
 **Decision**: The owner operations recorded are those that change a video's
-tags or a version bundle; "まとまり" in the parent Issue is read as the version
+tags or a version bundle, and removing a media folder; `まとまり` in the parent Issue is read as the version
 bundle.
 
 | Recorded | Not recorded |
 | --- | --- |
 | Bundle (Duplicates, video page, drag-organize), remove from versions, make representative, "Different videos" | Groups, playlists, favorites, watch history |
 | Attach and detach a tag on videos (video page, drag-organize, external API), keep and reject a suggested tag | Tag definitions: create, rename, merge, delete, synonyms, kinds |
-| Apply work information from a plugin | Display name, thumbnail position and image edits |
+| Apply work information from a plugin | Display name, thumbnail position, uploaded and ComfyUI thumbnail edits |
+| Remove a media folder, which removes its videos from the library | — |
 | Undo of an automatic decision, and the drag-organize undo | — |
 
 **Rationale**: These are the changes the automatic processes also make, so a
 row from the owner explains why an automatic decision no longer holds.
 Rejected: every mutating endpoint, because the log would be dominated by
 reorders and favorites the parent Issue does not ask for. The parent Issue's
-"削除" has no owner operation to record: videos leave the library only by a
-scan. A tag-definition change touches many videos at once and is about the tag,
-not a video.
+`削除` is the media-folder removal: there is no per-video delete, and a scan
+that finds a file gone is not a decision. A tag-definition change touches many
+videos at once and is about the tag, not a video. A thumbnail edit, uploaded
+or made by ComfyUI, is the owner's own edit in its own dialog and decides
+nothing an automatic process also decides; the import's thumbnail stage is in
+the `import` entry.
 
 ## R-7: Undo restores the state and always records the exclusion
 
@@ -146,9 +166,17 @@ keeps the automatic process from deciding the same again.
 
 | Undone decision | State change when it still holds | Exclusion recorded |
 | --- | --- | --- |
-| Bundled pair | Remove the joined video from the bundle with `VersionStore.Unbundle` | `video_version_unbundles` (054 R-8) |
-| "Different videos" | Delete the dismissal; the pair's candidate is rebuilt and returns to Duplicates | New `video_version_judging_holds` pair |
-| Added or suggested tag | Detach it from the bundle's videos | `auto_tag_rejections` (031) |
+| Bundled pair | Remove every member of the side that joined, still in the bundle, with `Unbundle`'s steps | `video_version_unbundles` (054 R-8) |
+| "Different videos" | Delete the dismissal and rebuild both keys' candidates, so the pair returns to Duplicates | New `video_version_judging_holds` pair |
+| Added or suggested tag | Detach it from the bundle's videos | `auto_tag_rejections` ([auto-tagging.md](../../docs/design-docs/auto-tagging.md#tags-it-adds)) |
+
+An automatic bundle joins two sides, and either may already be a bundle; the
+side that joined is the one whose representative did not become the
+bundle's, and its member keys are kept on the entry. A member no longer in the
+library is skipped. The undo is one `ActivityStore` transaction that re-reads
+the target state, reuses the package-private steps of `Unbundle`, `Dismiss`
+and the rejection, and writes the owner's `undo` entry
+([R-2](#r-2-an-entry-is-written-in-the-transaction-of-the-change-it-records)).
 
 When the state no longer matches (the owner already unbundled, already
 removed the tag), nothing else changes and the response says it was already
@@ -171,8 +199,9 @@ event connection.
 ## R-9: Keyset paging by id, newest first, filtered by status
 
 **Decision**: `GET /api/activity` pages by entry id descending with an opaque
-cursor and an optional `status`; the response carries the `running` and
-`attention` counts.
+cursor and an optional `status`; the response carries the `running`,
+`attention` and `done` counts, so every tab of acceptance 6 has a count to
+match.
 
 Rejected: offset paging, because new entries arrive while the owner scrolls
 and would shift every page. The table grows by about one import entry per
@@ -182,7 +211,8 @@ rows, which an index on `(status, id)` serves without a retention rule.
 ## R-10: The subject is a content key with a label kept at write time
 
 **Decision**: An entry names its subject by content key (a pair by two keys,
-a scan by the media folder path) and keeps the subject's label as written;
+a scan by its id, a removed media folder by its path) and keeps the subject's
+label as written;
 the screen resolves the key to a current video when it reads.
 
 Rejected: `videos.id`, because a rescan rebuilds it (ARCHITECTURE.md, "User

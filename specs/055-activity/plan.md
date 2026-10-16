@@ -17,10 +17,10 @@ notification, and offers open, retry and undo where they apply.
 | --- | --- |
 | Storage | One user-data table, `activity_entries`, never pruned; "activity entry" apart from the in-memory scan activity ([R-1](research.md#r-1-a-persistent-activity-log-named-apart-from-the-scan-activity)) |
 | Writing | In the store transaction of the change, through one helper ([R-2](research.md#r-2-an-entry-is-written-in-the-transaction-of-the-change-it-records)) |
-| Granularity | One entry per run and subject; an import is one entry for its five stages; a scan only when it fails ([R-3](research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages)) |
-| Status | `running` / `attention` / `done` with a reason or outcome; a newer run closes an older problem; startup marks running entries `interrupted` ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
+| Granularity | One entry per run and subject; an import is one entry for its five stages; a scan only when it fails, closed by the next successful scan ([R-3](research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages)) |
+| Status | `running` / `attention` / `done` with a reason or outcome; a newer run closes an older problem; startup marks claimed entries `interrupted`; a duplicate pair keeps one entry through its retries ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | Decider | `ai` when the probability decided, `rule` for fixed rules and automatic triggers, `owner` for requests ([R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)) |
-| Owner operations | Tag and version-bundle changes; not groups, playlists or tag definitions ([R-6](research.md#r-6-the-owner-operations-recorded)) |
+| Owner operations | Tag and version-bundle changes and media-folder removal; not groups, playlists, tag definitions or thumbnail edits ([R-6](research.md#r-6-the-owner-operations-recorded)) |
 | Undo | Restores the state when it still holds, always records the exclusion ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | Live update | `activity` notification, refetch ([R-8](research.md#r-8-the-screen-refreshes-on-an-activity-notification)) |
 | Paging | Keyset by id, `status` filter, counts in the page ([R-9](research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status)) |
@@ -55,20 +55,23 @@ flowchart LR
    classifier's decisions, the probability.
 3. **Owner operations write a `done` entry** in the transaction of the
    operation.
-4. **Retry and undo go through `app.Activity`**, which dispatches by kind to
-   the existing use cases (re-probe, scan, auto-tag queue, judging retry,
-   `Unbundle`) and wakes the worker concerned; the store writes the owner's
-   `undo` entry and the exclusion
-   ([data-model.md, Rules](data-model.md#rules)).
+4. **Retry goes through `app.Activity`**, which dispatches by kind to the
+   existing use cases (re-probe, manual scan, auto-tag queue, judging retry)
+   and wakes the worker concerned.
+5. **Undo is one `ActivityStore` transaction** that re-reads the target
+   state, reuses the package-private steps of `Unbundle`, `Dismiss` and the
+   tag rejection, records the exclusion and writes the owner's `undo` entry;
+   `app.Activity` only wakes the workers afterwards
+   ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)).
 
 | Acceptance (parent Issue) | Where it is met |
 | --- | --- |
 | 1. Import, auto-tag, auto-bundle rows with decider and probability | `import`, `auto_tag`, `version_judgement` entries |
 | 2. Owner bundle, unbundle, tag removal rows | Owner operation entries ([R-6](research.md#r-6-the-owner-operations-recorded)) |
 | 3. No connection, then the result in the same row | `version_judgement` keeps one entry per pair |
-| 4. Retry passes through running to a new result | `POST /api/activity/{id}/retry` opens a new entry |
+| 4. Retry passes through running to a new result | `POST /api/activity/{id}/retry` opens a new entry; a duplicate pair's entry returns to `running` instead ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | 5. Undo of a bundle, a tag, a "different" | [R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion) |
-| 6. Tabs match the counts | `status` filter and `counts` from one read |
+| 6. Tabs match the counts | `status` filter and `counts` (`running`, `attention`, `done`) from one read |
 | 7. New rows without reload | `activity` notification |
 | 8. Guests | Owner-only route and operations |
 
@@ -132,9 +135,9 @@ The `design` stage adds `ui-design.md`.
 
 | Package | Change |
 | --- | --- |
-| `internal/domain` | Entry types, kinds, statuses, the import roll-up, supersession, retry and undo eligibility, `ActivityChanged`; probabilities on `AutoTagSelection` and the judgement result |
+| `internal/domain` | Entry types, kinds, statuses, the import roll-up, supersession, retry and undo eligibility, `ActivityChanged`; probabilities on `AutoTagSelection` |
 | `internal/store` | Migration, the entry helper, `ActivityStore` (list, counts, retry, undo), entries at every write site in [data-model.md, Kinds](data-model.md#kinds), startup recovery, holds in `judgeablePairs` and successions |
-| `internal/app` | `Activity` use case (retry and undo dispatch, worker wake-ups); `AutoTagger`, `VersionJudge`, `Scans`, `WorkInfoFetch` pass decider and probability |
+| `internal/app` | `Activity` use case (retry dispatch, worker wake-ups); `AutoTagger`, `Scans` and the work-info fetch pass the decider and probability; the ingest queue port takes the decider |
 | `internal/httpapi`, `api/openapi.yaml` | The three operations and the `activity` notification |
 | `cmd/mdm` | Wiring `Activity` and the notification in `events.go` |
 | `web/src/activity` (new), `web/src/app`, `web/src/shell`, `web/src/auth` | The screen, its route, the shell entry point, `ownerOnlyPath` |
@@ -157,7 +160,7 @@ flowchart LR
   log[Activity log and API] --> imp[Import entries]
   log --> tag[Auto-tag entries]
   log --> dup[Judgement entries]
-  log --> own[Owner entries]
+  dup --> own[Owner entries]
   imp --> screen[Activity screen]
   screen --> actions[Retry and undo on screen]
   tag --> actions
@@ -173,7 +176,8 @@ statuses, supersession and eligibility rules; the entry helper and
 `409` for every kind, and the `activity` notification
 ([contracts/screen-api.md](contracts/screen-api.md)); `app.Activity` with the
 dispatch table; `docs/design-docs/activity.md` linked from the index, the
-subsystem map row and the user-data lists in ARCHITECTURE.md and running-vv.md.
+subsystem map row, the user-data lists in ARCHITECTURE.md and running-vv.md
+(all three new tables), and the recovery step in process-lifecycle.md.
 
 **Dependencies**: None.
 
@@ -190,7 +194,8 @@ without repeats while entries are added, a new entry supersedes an older
 
 **Scope**: The `import` entry opened when a video's ingest jobs are queued
 with none pending, the jobs' `activity_id`, the roll-up on each job finish,
-the decider by scan origin; the `scan` entry for a failed scan; retry for
+the decider by scan origin through the ingest queue port; the `scan` entry
+for a failed scan and its closing by the next successful scan; retry for
 both ([R-3](research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages),
 [R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)).
 
@@ -202,13 +207,14 @@ both ([R-3](research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry
 `detail`, a rescan of the same file opens a second entry, and an entry
 interrupted by a restart is superseded when its requeued job runs; a handler
 test shows retry of a failed import answers `202` and a new `running` entry
-follows; a failed scan's retry starts a scan of that folder.
+follows; a failed scan's retry starts a manual scan, and when it ends `done` the `scan` entry is `superseded`; a scan interrupted by a restart writes no entry.
 
 ### Record auto-tagging runs and undo the tags they added
 
 **Scope**: Probabilities on `AutoTagSelection`; the `auto_tag` entry opened on
 queuing, its tags in `activity_entry_tags`, `attention`/`failed` on failure;
-retry; per-tag undo through `auto_tag_rejections`
+retry; per-tag undo through `auto_tag_rejections`; the entries and the undo
+in auto-tagging.md
 ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)).
 
 **Dependencies**: Store activity entries and list them in the screen API.
@@ -226,9 +232,11 @@ queues the video, and answers `409 auto_tagging_off` while the feature is off.
 **Scope**: The `version_judgement` entry per judgeable candidate (and for
 waiting candidates when judging is turned on), its status following the
 candidate's judgement, the decider and probability of the result, closing as
-`decided_by_owner` or `gone`; `video_version_judging_holds` and its use in
-the claim and successions; retry of a failed pair; undo of `same` and
-`different`
+`decided_by_owner` or `gone`, reattaching on a candidate rebuild; `ApplyJudgement` keeping the
+probability and the joined side's keys; `video_version_judging_holds` and its
+use in the claim and successions; retry of a failed pair; undo of `same` and
+`different`; the holds and the entries in duplicate-judging.md and the claim
+rule in 054 data-model.md
 ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem),
 [R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)).
 
@@ -242,24 +250,30 @@ decider `rule`; undo of an automatic bundle removes the joined video from the
 bundle and the pair is never claimed again; undo of an automatic dismissal
 returns the pair to `GET /api/version-candidates` and the worker never claims
 it; undo after the owner unbundled answers `already_reverted`; bundling an
-`undecided` pair by hand closes its entry as `decided_by_owner`.
+`undecided` pair by hand closes its entry as `decided_by_owner`; rebuilding
+one key's candidates keeps the pair's entry; undo of a bundle of a two-member
+side and a single video removes both members of the joined side.
 
 ### Record the owner's tag and version operations
 
 **Scope**: Owner entries for the operations in
 [R-6](research.md#r-6-the-owner-operations-recorded) at their store write
-sites, including drag-organize, the external API's tag changes and the
-organize undo; the `work_info_fetch` and `work_info_apply` entries
+sites, including drag-organize, the external API's tag changes, the
+organize undo and media-folder removal; the `work_info_fetch` and `work_info_apply` entries
 ([R-11](research.md#r-11-a-failed-work-information-fetch-is-a-finished-entry-not-a-problem)).
 
-**Dependencies**: Store activity entries and list them in the screen API.
+**Dependencies**: Record duplicate judgements and undo automatic bundles and
+dismissals (the owner's version operations share its write sites).
 
 **Acceptance**: `task check` passes; store tests show bundling, removing from
-versions, "Different videos", attaching and detaching a tag, keeping and
+versions, making a representative, attaching and detaching a tag, keeping and
 rejecting a suggested tag, and applying work information each write one
-`done` entry per video with decider `owner`; a tag attached to three videos
-by drag-organize writes three entries; a failed fetch writes `done`/`failed`
-with the plugin's message; reordering a playlist writes none.
+`done` entry per video with decider `owner`, and "Different videos" writes
+one pair entry; a tag attached to three videos by drag-organize writes three
+entries, and its undo writes `organize_undo` entries for them; a tag attached
+through `/api/v1` writes an owner entry; removing a media folder writes one
+`media_folder_remove` entry with the number of videos; a failed fetch writes
+`done`/`failed` with the plugin's message; reordering a playlist writes none.
 
 ### Show the activity log on an owner-only Activity screen
 

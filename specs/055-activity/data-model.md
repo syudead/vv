@@ -27,17 +27,17 @@ case).
 | --- | --- | --- | --- |
 | `id` | integer | No | Primary key; the page order ([R-9](research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status)) |
 | `kind` | text | No | One of the kinds below |
-| `subject_kind` | text | No | `video`, `pair` or `scan` |
-| `subject_key` | text | No | A content key, the smaller key of a pair, or a media folder path ([R-10](research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
+| `subject_kind` | text | No | `video`, `pair`, `scan` or `folder` |
+| `subject_key` | text | No | A content key, the smaller key of a pair, a scan id, or a removed media folder's path ([R-10](research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `subject_key_b` | text | Yes | The larger key of a pair |
-| `subject_label` | text | No | The display name (both, for a pair) or the folder path, as written |
+| `subject_label` | text | No | The display name (both, for a pair), the scan's origin, or the folder path, as written |
 | `status` | text | No | `running`, `attention` or `done` ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | `reason` | text | Yes | For `running` and `attention`: see Reasons |
 | `outcome` | text | Yes | For `done`: see Outcomes |
 | `detail` | text | Yes | The provider's or stage's message for a failure, the failed stage, the tag or bundle the owner operation changed |
 | `decider` | text | No | `rule`, `ai` or `owner` ([R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)) |
 | `probability` | real | Yes | The model's answer for a duplicate pair it decided or left undecided |
-| `undo_key` | text | Yes | For a bundled pair, the content key that joined the bundle |
+| `undo_keys` | text | Yes | For a bundled pair, a JSON array of the member keys of the side that joined ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | `undone_by` | integer | Yes | The owner entry that undid this one |
 | `created_at`, `updated_at` | integer | No | Unix milliseconds |
 
@@ -49,13 +49,14 @@ Indexes on `(status, id)` and `(kind, subject_key, subject_key_b, id)`.
 | `kind` | Subject | Written by |
 | --- | --- | --- |
 | `import` | video | Queuing a video's ingest jobs when it has no pending job ([R-3](research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages)) |
-| `scan` | scan | A scan that ends `failed` |
+| `scan` | scan | A scan that ends `failed` for a reason other than `interrupted` |
 | `auto_tag` | video | Queuing a video for auto-tagging |
 | `version_judgement` | pair | A judgeable candidate appearing while judging is on, or judging being turned on |
 | `work_info_fetch` | video | A plugin fetch ([R-11](research.md#r-11-a-failed-work-information-fetch-is-a-finished-entry-not-a-problem)) |
 | `bundle`, `unbundle`, `make_representative`, `dismiss` | video or pair | The owner's version operations ([R-6](research.md#r-6-the-owner-operations-recorded)) |
 | `tag_attach`, `tag_detach`, `tag_keep`, `tag_reject` | video | The owner's tag operations, one entry per video and tag |
 | `work_info_apply` | video | Applying fetched work information |
+| `media_folder_remove` | folder | Removing a media folder; `detail` holds the number of videos it removed |
 | `organize_undo` | video | The drag-organize undo, one entry per changed video |
 | `undo` | as the undone entry | Undoing an automatic decision ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 
@@ -66,7 +67,7 @@ Indexes on `(status, id)` and `(kind, subject_key, subject_key_b, id)`.
 | `waiting` | running | `import`, `auto_tag`, `version_judgement` before a worker claims it |
 | `processing` | running | Claimed by a worker |
 | `failed` | attention | `import` (a stage gave up after `MaxJobAttempts`; `detail` names it), `scan`, `auto_tag`, `version_judgement` (with its retry time) |
-| `interrupted` | attention | Any entry `running` at startup |
+| `interrupted` | attention | An entry `running` with reason `processing` at startup |
 | `no_connection` | attention | `version_judgement` that needs the model with no Ollama connection saved |
 | `undecided` | attention | `version_judgement` left to the owner |
 
@@ -110,14 +111,17 @@ never claims them.
 | Rule | Enforced in |
 | --- | --- |
 | An entry is written or updated in the transaction of the change it records, and `ActivityChanged` is published after commit ([R-2](research.md#r-2-an-entry-is-written-in-the-transaction-of-the-change-it-records)) | `store` (one package-private helper) |
-| A job, an auto-tag queue row and a candidate point to the entry they belong to; work on a row whose entry is not `running` opens a new entry | `store` |
+| A job and an auto-tag queue row point to the entry they belong to; claiming a row whose entry is not `running` opens a new entry | `store` |
+| A candidate inserted for a pair, including by a rebuild, attaches to that pair's open `version_judgement` entry, found by `(kind, subject_key, subject_key_b)`; an `interrupted` one returns to `running` on its next claim | `store` |
+| An open `version_judgement` closes as `gone` only when one of its keys has left the library | `store` |
+| Turning judging off leaves open `version_judgement` entries `waiting`; they are claimed again when it is turned on | `store` |
 | An `import` entry is `running` while any of its jobs is pending, `attention` when one gave up, else `done` | `domain` (the rule over the stage states), `store` |
-| A new entry of a kind on a subject closes that kind and subject's `attention` entries as `superseded`; a `version_judgement` keeps one entry per pair through its retries | `domain`, `store` |
-| Startup turns every `running` entry `attention` with reason `interrupted` before jobs and queues are requeued | `store`, called from `Scans.Recover` |
+| A new entry of a kind on a subject closes that kind and subject's `attention` entries as `superseded`; a scan that ends `done` closes every open `scan` entry; a `version_judgement` keeps one entry per pair through its retries | `domain`, `store` |
+| Startup, before the workers start, turns every entry `running` with reason `processing` into `attention`/`interrupted`; `waiting` entries stay | `store`, called from `cmd/mdm` beside `Scans.RecoverInterrupted` |
 | Retry is offered for `attention` with reason `failed` or `interrupted`, of kind `import`, `scan`, `auto_tag` or `version_judgement` | `domain` |
 | Undo is offered for an entry decided by `rule` or `ai` that is not yet undone: a `version_judgement` with outcome `same` or `different`, or a tag of an `auto_tag` entry | `domain` |
 | The judging claim skips pairs in `video_version_judging_holds` as it skips `video_version_unbundles` | `store` (`judgeablePairs`) |
-| A content change at the same path re-keys `video_version_judging_holds` and the subject keys of open entries as `moveDismissals` re-keys dismissals | `store` (successions) |
+| A content change at the same path re-keys `video_version_judging_holds` and the subject keys of open entries as `moveKeyPairs` re-keys dismissals | `store` (successions) |
 
 ## What does not change
 
