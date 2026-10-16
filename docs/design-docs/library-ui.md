@@ -501,8 +501,8 @@ Each sidebar item goes to its screen. `Home` opens `/` and sits above
 The library keeps its query parameters at that address, and every in-app link
 that filters the library (a tag, a person, an organization) opens
 `/library?<parameter>=<id>`. A URL of the form `/?tag=<id>` from before the
-move opens `/library` with the same query. Until the home screen exists, `/`
-without a query also opens `/library`.
+move opens `/library` with the same query. `/` without a query is the home
+([057 UI design, Home](../../specs/057-home/ui-design.md#home)).
 
 ## Video page layout
 

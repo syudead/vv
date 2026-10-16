@@ -572,6 +572,7 @@ export const en = {
         editorDialog: "Editor dialog",
         formPage: "Form page",
         groupedList: "Grouped list",
+        shelfRow: "Shelf rows",
         listState: (state: string) => `List page: ${state}`,
       },
       states: {
@@ -724,6 +725,14 @@ export const en = {
       formPageNotesHint: "Shown under the video's details.",
       formPageCode: "Code",
       save: "Save",
+      home: "Home",
+      shelves: "Shelves",
+      recentlyAdded: "Recently added",
+      seeAll: "See all",
+      seeAllFor: (name: string) => `See all: ${name}`,
+      scrollBack: (name: string) => `Scroll ${name} back`,
+      scrollForward: (name: string) => `Scroll ${name} forward`,
+      loadingShelf: (name: string) => `Loading ${name}`,
     },
   },
   app: {
