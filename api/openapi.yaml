@@ -2063,6 +2063,44 @@ paths:
         "403":
           $ref: "#/components/responses/Forbidden"
 
+  /api/settings/version-judging:
+    get:
+      operationId: getVersionJudgingSettings
+      summary: 重複の自動判定の入切を返す
+      description: |
+        所有者だけが読める。保存前は `enabled: false` を返す
+        （specs/054-auto-dup/contracts/screen-api.md）。
+      responses:
+        "200":
+          description: 今の設定
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionJudgingSettings"
+    put:
+      operationId: updateVersionJudgingSettings
+      summary: 重複の自動判定の入切を保存し、判定の処理を起こす
+      description: |
+        保存した値を返す。入れると、待っていた候補を判定し始める。Ollama の接続先は
+        `/api/settings/ollama` が持つ（specs/054-auto-dup/contracts/screen-api.md）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateVersionJudgingSettingsRequest"
+      responses:
+        "200":
+          description: 保存後の設定
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/VersionJudgingSettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/auto-tagging/check:
     post:
       operationId: checkAutoTaggingClassifier
@@ -4767,12 +4805,15 @@ paths:
           （タグ・人物・団体・お気に入り・視聴状態・ライブラリにある動画・束ね・グループの変化）では
           すべてのフォルダの id を運ぶ（specs/052-smart-folders/research.md R-12）。最新の内容は
           `GET /api/smart-folders/{id}` で取る
+        - `candidates`: 重複の候補の一覧が変わったかもしれない。判定の結果や版の取り外しの確定後に
+          送る。data は空のオブジェクト `{}` で、中身は運ばない。最新の一覧は
+          `GET /api/version-candidates` で取る（specs/054-auto-dup/research.md R-10）
 
         接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-        変化を取り戻せる。`video`・`group`・`smartFolder` は切れていた間の分を送り直さない。
+        変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates` は切れていた間の分を送り直さない。
 
         ゲストには `group` と `smartFolder` だけを送る（specs/048-groups/contracts/screen-api.md、
-        specs/052-smart-folders/contracts/screen-api.md）。`scan` と `video` は所有者だけに送る。
+        specs/052-smart-folders/contracts/screen-api.md）。`scan`・`video`・`candidates` は所有者だけに送る。
       responses:
         "200":
           description: イベントの流れ
@@ -5391,6 +5432,24 @@ components:
           description: 問題が 1 つのディレクトリに関わるときの、その絶対パス（利用者のデータ。翻訳しない）
 
     UpdateAutoImportSettingsRequest:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+
+    VersionJudgingSettings:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      description: 重複の自動判定の入切（specs/054-auto-dup/contracts/screen-api.md）
+      properties:
+        enabled:
+          type: boolean
+          description: 保存した選択。保存値が無ければ false
+
+    UpdateVersionJudgingSettingsRequest:
       type: object
       required: [enabled]
       additionalProperties: false
@@ -8505,9 +8564,11 @@ components:
       required: [count, representativeId]
       additionalProperties: false
       description: |
-        動画が属する集まり（同じ動画の別バージョン）の要約。GET /api/videos/{id} の応答にだけ、
-        集まりのメンバーのときだけ入る（group と同じ扱いで、一覧の項目には入らない）
-        （specs/030-video-versions/contracts/screen-api.md §0）
+        動画が属する集まり（同じ動画の別バージョン）の要約。集まりのメンバーのときだけ、
+        画面 API が Video を返すすべての応答に入る（一覧の項目も含む。一覧はページごとに 1 回の
+        問い合わせで読む）。カードの印はこれから出す
+        （specs/054-auto-dup/contracts/screen-api.md「Video delta」、
+        specs/030-video-versions/contracts/screen-api.md §0）
       properties:
         count:
           type: integer

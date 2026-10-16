@@ -17,8 +17,17 @@ const autoTagRetryDelay = 5 * time.Second
 // classifierCheckTimeout は判定の確かめの上限時間である。模型の読み込みを含むので長めにとる。
 const classifierCheckTimeout = 5 * time.Minute
 
-// maxAutoTagErrorLength は残す失敗の理由の長さの上限である。
-const maxAutoTagErrorLength = 500
+// maxClassifierErrorLength は残す失敗の理由の長さの上限である（自動タグ付けと重複の判定）。
+const maxClassifierErrorLength = 500
+
+// failureReason は失敗の理由として残す誤りの文で、maxClassifierErrorLength で切る。
+func failureReason(err error) string {
+	reason := err.Error()
+	if len(reason) > maxClassifierErrorLength {
+		reason = reason[:maxClassifierErrorLength]
+	}
+	return reason
+}
 
 // AutoTagQueue は自動タグ付けの待ち行列である。internal/store の *AutoTagStore が満たす。
 type AutoTagQueue interface {
@@ -313,12 +322,8 @@ func (a *AutoTagger) process(ctx context.Context, job domain.AutoTagJob) {
 		return
 	}
 	if err != nil {
-		reason := err.Error()
-		if len(reason) > maxAutoTagErrorLength {
-			reason = reason[:maxAutoTagErrorLength]
-		}
 		a.logger.Warn("auto-tagging failed", slog.String("content_key", job.ContentKey), slog.Any("error", err))
-		if err := a.queue.Fail(ctx, job.ContentKey, reason); err != nil {
+		if err := a.queue.Fail(ctx, job.ContentKey, failureReason(err)); err != nil {
 			a.logger.Error("cannot record the auto-tagging failure", slog.Any("error", err))
 		}
 		return

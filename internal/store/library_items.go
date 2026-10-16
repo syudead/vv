@@ -494,6 +494,9 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 	if err != nil {
 		return nil, err
 	}
+	if err := attachVersionsIn(ctx, tx, audience, videos); err != nil {
+		return nil, err
+	}
 	groups, err := loadGroups(ctx, tx, audience, groupIDs)
 	if err != nil {
 		return nil, err

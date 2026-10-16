@@ -141,8 +141,10 @@ func SortAutoTagCandidates(candidates []AutoTagCandidate) {
 
 // AutoTagFrameCount は判定に添えるシーク用プレビューのコマの数である。代表サムネイル
 // 1 枚だけでは動画の 1 場面しか見えないので、動画全体から等間隔に選んで添える。コマは
-// 長辺 320px 以下で、1 コマあたりの入力はサムネイルより小さい。
-const AutoTagFrameCount = 8
+// 長辺 320px 以下で、1 コマあたりの入力はサムネイルより小さい。Ollama は 1 回の問い合わせに
+// 画像を 8 枚までしか受け付けない（超えると 400 "too many images"）ので、サムネイルと合わせて
+// 8 枚に収まる 7 コマにする。
+const AutoTagFrameCount = 7
 
 // SpreadFrameIndexes は frameCount 個のコマから、全体に等間隔に n 個を選んだ番号を昇順で
 // 返す。各区間の中央のコマを選ぶ。frameCount が n 以下ならすべてを返す。

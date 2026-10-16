@@ -143,6 +143,10 @@ func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot read related videos: %w", err)
 	}
+	_ = rows.Close()
+	if err := attachVersionsIn(ctx, s.db.sql, audience, byID); err != nil {
+		return nil, err
+	}
 
 	videos := make([]domain.Video, 0, len(ids))
 	for _, id := range ids {
@@ -308,6 +312,10 @@ func groupMembers(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot read group members: %w", err)
+	}
+	_ = rows.Close()
+	if err := attachVersionsIn(ctx, tx, audience, byID); err != nil {
+		return nil, err
 	}
 	members := make([]domain.Video, 0, len(ids))
 	for _, id := range ids {

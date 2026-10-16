@@ -1329,6 +1329,32 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/version-judging": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 重複の自動判定の入切を返す
+         * @description 所有者だけが読める。保存前は `enabled: false` を返す
+         *     （specs/054-auto-dup/contracts/screen-api.md）。
+         */
+        get: operations["getVersionJudgingSettings"];
+        /**
+         * 重複の自動判定の入切を保存し、判定の処理を起こす
+         * @description 保存した値を返す。入れると、待っていた候補を判定し始める。Ollama の接続先は
+         *     `/api/settings/ollama` が持つ（specs/054-auto-dup/contracts/screen-api.md）。
+         */
+        put: operations["updateVersionJudgingSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/auto-tagging/check": {
         parameters: {
             query?: never;
@@ -3086,12 +3112,15 @@ export interface paths {
          *       （タグ・人物・団体・お気に入り・視聴状態・ライブラリにある動画・束ね・グループの変化）では
          *       すべてのフォルダの id を運ぶ（specs/052-smart-folders/research.md R-12）。最新の内容は
          *       `GET /api/smart-folders/{id}` で取る
+         *     - `candidates`: 重複の候補の一覧が変わったかもしれない。判定の結果や版の取り外しの確定後に
+         *       送る。data は空のオブジェクト `{}` で、中身は運ばない。最新の一覧は
+         *       `GET /api/version-candidates` で取る（specs/054-auto-dup/research.md R-10）
          *
          *     接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-         *     変化を取り戻せる。`video`・`group`・`smartFolder` は切れていた間の分を送り直さない。
+         *     変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates` は切れていた間の分を送り直さない。
          *
          *     ゲストには `group` と `smartFolder` だけを送る（specs/048-groups/contracts/screen-api.md、
-         *     specs/052-smart-folders/contracts/screen-api.md）。`scan` と `video` は所有者だけに送る。
+         *     specs/052-smart-folders/contracts/screen-api.md）。`scan`・`video`・`candidates` は所有者だけに送る。
          */
         get: operations["streamEvents"];
         put?: never;
@@ -3241,6 +3270,14 @@ export interface components {
             path?: string;
         };
         UpdateAutoImportSettingsRequest: {
+            enabled: boolean;
+        };
+        /** @description 重複の自動判定の入切（specs/054-auto-dup/contracts/screen-api.md） */
+        VersionJudgingSettings: {
+            /** @description 保存した選択。保存値が無ければ false */
+            enabled: boolean;
+        };
+        UpdateVersionJudgingSettingsRequest: {
             enabled: boolean;
         };
         /** @description 自動タグ付けの機能の設定と待ち行列の件数（docs/design-docs/auto-tagging.md） */
@@ -5034,9 +5071,11 @@ export interface components {
             count: number;
         };
         /**
-         * @description 動画が属する集まり（同じ動画の別バージョン）の要約。GET /api/videos/{id} の応答にだけ、
-         *     集まりのメンバーのときだけ入る（group と同じ扱いで、一覧の項目には入らない）
-         *     （specs/030-video-versions/contracts/screen-api.md §0）
+         * @description 動画が属する集まり（同じ動画の別バージョン）の要約。集まりのメンバーのときだけ、
+         *     画面 API が Video を返すすべての応答に入る（一覧の項目も含む。一覧はページごとに 1 回の
+         *     問い合わせで読む）。カードの印はこれから出す
+         *     （specs/054-auto-dup/contracts/screen-api.md「Video delta」、
+         *     specs/030-video-versions/contracts/screen-api.md §0）
          */
         VideoVersionsRef: {
             /** @description 見る人に見せてよい所在を持つバージョンの本数 */
@@ -7644,6 +7683,52 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AutoTaggingSettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    getVersionJudgingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 今の設定 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionJudgingSettings"];
+                };
+            };
+        };
+    };
+    updateVersionJudgingSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateVersionJudgingSettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存後の設定 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionJudgingSettings"];
                 };
             };
             400: components["responses"]["InvalidRequest"];

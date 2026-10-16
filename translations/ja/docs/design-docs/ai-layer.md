@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/ai-layer.md
-sourceHash: b34d9abee831a9afde7906fb7e739a52b7e95ebf83852ba102689f6f3e335a05
+sourceHash: f795632829396c9856042b460f0ff7413d0e3c44c01128c588d0ff19cf3cb1a3
 ---
 
 # AI 層: 分類器のポートとプロバイダ {#ai-layer-classifier-port-and-providers}
@@ -10,6 +10,7 @@ VVMDM の機能は、タスクに依存しない 1 つのポート `app.Classifi
 ```mermaid
 flowchart LR
   feature[機能: AutoTagger] -->|domain.ClassifierRequest| port[app.Classifier]
+  judge[機能: VersionJudge] -->|domain.ClassifierRequest| port
   port -.->|実装する| ollama[internal/ollama.Classifier]
   ollama -->|読む| settings[(ollama.* の設定)]
   ollama -->|/v1/systemone| server[Ollama]
@@ -28,7 +29,12 @@ flowchart LR
 | `ClassifierQuestion` | リクエスト内で一意なキーと、英語の質問文 |
 | 結果 | 答えたキーごとの 0 から 1 の確率。答えなかったキーは含まない |
 
-リクエストの質問の数に上限はない。事実と質問の文言は機能が組み立て、確率を判断に変えるのも機能だ。自動タグ付けでは [auto-tagging.md](auto-tagging.md) がそれにあたる。
+リクエストの質問の数に上限はない。事実と質問の文言は機能が組み立て、確率を判断に変えるのも機能だ。
+
+| 機能 | リクエスト | 文書 |
+| --- | --- | --- |
+| 自動タグ付け | 候補のタグごとに質問 1 つ。サムネイル、8 フレーム、事実 `title`、`file_name`、`folder` | [auto-tagging.md](auto-tagging.md) |
+| 重複判定 | 質問 1 つ。フレーム A の横にフレーム B を並べた画像を最大 4 枚、事実はなし。Ollama の接続を保存した後にだけ送る | [duplicate-judging.md](duplicate-judging.md) |
 
 ## Ollama のプロバイダ {#ollama-provider}
 
