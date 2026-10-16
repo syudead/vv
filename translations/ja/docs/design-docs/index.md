@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 9344f1ab3d64cc0d6122f2a64735997593593ada51898ca0e351bce60eb0bca3
+sourceHash: 801f9cb558c795cd81bb16dded982f717ce01b58eee322ddb2f5c754f9e88593
 ---
 
 # 設計文書 {#design-documents}
@@ -23,6 +23,7 @@ sourceHash: 9344f1ab3d64cc0d6122f2a64735997593593ada51898ca0e351bce60eb0bca3
 - [技術選定: MDM (Media Data Management)](tech-stack-selection.md)
 - [MOV のライブ変換でのトラック別の入力](mov-live-transcoding.md)
 - [ライブ変換のシークとプローブの再利用](live-transcode-seek.md)
+- [取り込み時のプローブから得るメディア情報](media-information.md)
 - [ライブ変換のハードウェアエンコード](hardware-encoding.md)
 - [Windows デスクトップアプリ (VVMDM.exe)](windows-app.md)
 - [プロセスのライフサイクル: 起動と停止の順序](process-lifecycle.md)

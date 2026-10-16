@@ -25,6 +25,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Technology selection: MDM (Media Data Management)](tech-stack-selection.md)
 - [Separate track inputs for MOV live transcoding](mov-live-transcoding.md)
 - [Live transcoding seek and probe reuse](live-transcode-seek.md)
+- [Media information from the import probe](media-information.md)
 - [Hardware encoding for live transcoding](hardware-encoding.md)
 - [Windows desktop app (VVMDM.exe)](windows-app.md)
 - [Process lifecycle: startup and shutdown order](process-lifecycle.md)
