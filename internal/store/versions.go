@@ -80,7 +80,7 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 		return domain.VideoVersions{}, err
 	}
 	c := &changes{}
-	if err := closeOwnerBundledPairs(ctx, tx, c, plan.members); err != nil {
+	if err := recordOwnerBundle(ctx, tx, c, plan.members); err != nil {
 		return domain.VideoVersions{}, err
 	}
 	versions, err := videoVersions(ctx, tx, domain.AudienceOwner, representativeID)
@@ -216,12 +216,6 @@ func applyBundle(ctx context.Context, tx *sql.Tx, plan bundlePlan) (bundleOutcom
 		changedGroups: normalizeIDs(append(rekeyedGroups, changedGroups...)), changedVideos: changed}, nil
 }
 
-// closeOwnerBundledPairs は所有者が members を 1 つの集まりに束ねたとき、その中の組の開いている
-// version_judgement の記録を、所有者が決めたとして閉じる（specs/055-activity/data-model.md「Outcomes」）。
-func closeOwnerBundledPairs(ctx context.Context, tx *sql.Tx, c *changes, members []string) error {
-	return closePairActivities(ctx, tx, c, members, domain.ActivityDecidedByOwner, domain.ActivityByOwner, 0, time.Now())
-}
-
 // createBundle は代表 representativeKey の新しい集まりの行を作り、その id と利用者データの鍵を返す。
 func createBundle(ctx context.Context, tx *sql.Tx, representativeKey string, now int64) (int64, string, error) {
 	result, err := tx.ExecContext(ctx,
@@ -303,7 +297,12 @@ func (s *VersionStore) MakeRepresentative(ctx context.Context, videoID int64) (d
 	if err != nil {
 		return domain.VideoVersions{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	c := &changes{}
+	if err := recordOwnerVideoActivity(ctx, tx, c, domain.ActivityMakeRepresentative,
+		ownerVideoChanges([]string{key}, ""), time.Now()); err != nil {
+		return domain.VideoVersions{}, err
+	}
+	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.VideoVersions{}, fmt.Errorf("cannot change the representative: %w", err)
 	}
 	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}}, groupsChangedEvents(changedGroups)...)...)
@@ -338,6 +337,10 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 	c := &changes{}
 	split, err := splitBundle(ctx, tx, c, bundle, []string{key}, key)
 	if err != nil {
+		return domain.Video{}, err
+	}
+	if err := recordOwnerVideoActivity(ctx, tx, c, domain.ActivityUnbundle, ownerVideoChanges([]string{key}, ""),
+		time.Now()); err != nil {
 		return domain.Video{}, err
 	}
 	video, err := getVideo(ctx, tx, domain.AudienceOwner, videoID)

@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/plan.md
-sourceHash: 7f1312b5647fce229a36c5a7ad20bb99e40c0741a446db718448a348ae7de6c7
+sourceHash: 8c8dea20343c9addc212a2ee931956620b4744735282f5982956541126f5664d
 ---
 
 # 実装計画: Activity {#implementation-plan-activity}
@@ -20,7 +20,7 @@ vv が動画か組に対して動かすすべての処理 (取り込み、自動
 | 粒度 | 実行と対象ごとに 1 つの項目。取り込みは 5 つの段階で 1 つの項目。スキャンは失敗したときだけで、次の成功したスキャンが閉じる ([R-3](research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages)) |
 | 状態 | `running` / `attention` / `done` と、理由か結果。新しい実行が古い問題を閉じる。起動時に、取得済みの項目を `interrupted` にする。重複の組は再試行を通して 1 つの項目を保つ ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | 決定者 | 確率が決めたときは `ai`、固定の規則と自動のきっかけには `rule`、依頼には `owner` ([R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)) |
-| 所有者の操作 | タグとバージョンのまとまりの変更と、メディアフォルダの削除。グループ、プレイリスト、タグの定義、サムネイルの編集は含まない ([R-6](research.md#r-6-the-owner-operations-recorded)) |
+| 所有者の操作 | タグとバージョンのまとまりの変更 (グループをタグにする操作を含む) と、メディアフォルダの削除。ほかのグループの編集、プレイリスト、タグの定義、サムネイルの編集は含まない ([R-6](research.md#r-6-the-owner-operations-recorded)) |
 | 取り消し | 状態がまだ成り立つときは元に戻し、除外は常に記録する ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | ライブ更新 | `activity` の通知で取得し直す ([R-8](research.md#r-8-the-screen-refreshes-on-an-activity-notification)) |
 | ページング | id によるキーセット、`status` の絞り込み、ページの中の件数 ([R-9](research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status)) |
@@ -182,7 +182,7 @@ flowchart LR
 
 **依存**: 重複の判定を記録し、自動のまとめと自動で退けた組を取り消す (所有者のバージョンの操作は、その書き込み箇所を共有する)。
 
-**受け入れ**: `task check` が通る。ストアのテストが次を示す: まとめる、バージョンから外す、代表にする、タグを付ける、タグを外す、提案したタグを残す、却下する、作品情報を適用する、はそれぞれ動画ごとに決定者 `owner` の `done` の項目を 1 つ書き、"Different videos" は組の項目を 1 つ書く。ドラッグでの整理で 3 本の動画に付けたタグは 3 つの項目を書き、その取り消しはそれらについて `organize_undo` の項目を書く。`/api/v1` を通して付けたタグは所有者の項目を書く。メディアフォルダの削除は、動画の数を持つ `media_folder_remove` の項目を 1 つ書く。失敗した取得は、プラグインのメッセージとともに `done`/`failed` を書く。プレイリストの並べ替えは何も書かない。
+**受け入れ**: `task check` が通る。ストアのテストが次を示す: まとめる、バージョンから外す、代表にする、タグを付ける、タグを外す、提案したタグを残す、却下する、作品情報を適用する、はそれぞれ動画ごとに決定者 `owner` の `done` の項目を 1 つ書き、"Different videos" は組の項目を 1 つ書く。3 本の動画に付けたタグは 3 つの項目を書く。ドラッグでの整理で 3 本の動画をまとめると 3 つの項目を書き、その取り消しはそれらについて `organize_undo` の項目を書く。`/api/v1` を通して付けたタグは所有者の項目を書く。メディアフォルダの削除は、動画の数を持つ `media_folder_remove` の項目を 1 つ書く。失敗した取得は、プラグインのメッセージとともに `done`/`failed` を書く。プレイリストの並べ替えは何も書かない。
 
 ### 所有者だけの Activity 画面にアクティビティのログを示す {#show-the-activity-log-on-an-owner-only-activity-screen}
 

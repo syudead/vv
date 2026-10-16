@@ -315,8 +315,12 @@ func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 	}
 	// 判定の記録が開いている組なら、所有者が決めたとして閉じる（specs/055-activity/data-model.md「Outcomes」）。
 	c := &changes{}
+	now := time.Now()
 	if err := closePairActivities(ctx, tx, c, []string{keyA, keyB}, domain.ActivityDecidedByOwner,
-		domain.ActivityByOwner, 0, time.Now()); err != nil {
+		domain.ActivityByOwner, 0, now); err != nil {
+		return err
+	}
+	if err := recordOwnerDismissal(ctx, tx, c, [2]string{keyA, keyB}, now); err != nil {
 		return err
 	}
 	if err := s.db.commit(ctx, tx, c); err != nil {

@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: f5c6c5f32be8745bc15a7e2172ece8d67c4934c4e9788f91792bc1258458b344
+sourceHash: 8164a3416c5a8af177d4d221fa86a7298fdd6778357988a96f89b7c8ad3de28d
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -55,7 +55,7 @@ sourceHash: f5c6c5f32be8745bc15a7e2172ece8d67c4934c4e9788f91792bc1258458b344
 | `tag_attach`、`tag_detach`、`tag_keep`、`tag_reject` | video | 所有者のタグの操作。動画とタグごとに 1 つの項目 |
 | `work_info_apply` | video | 取得した作品情報の適用 |
 | `media_folder_remove` | folder | メディアフォルダの削除。`detail` は、それが取り除いた動画の数を持つ |
-| `organize_undo` | video | ドラッグでの整理の取り消し。変わった動画ごとに 1 つの項目 |
+| `organize_undo` | video | ドラッグでの整理の取り消し。それがバージョンのまとまりを元に戻した動画ごとに 1 つの項目 |
 | `undo` | 取り消した項目と同じ | 自動の決定の取り消し ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 
 ### 理由 {#reasons}
