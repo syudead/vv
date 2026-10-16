@@ -182,8 +182,10 @@ subsystem map row, the user-data lists in ARCHITECTURE.md and running-vv.md
 **Dependencies**: None.
 
 **Acceptance**: `task check` and `task check-docs` pass with no diff from
-`task generate`; store tests show entries come back newest first, a `status`
-filter returns only that status and its count matches, a cursor continues
+`task generate`; store tests show entries come back newest first, each of
+`status`, `feature`, `decider`, `since` and `q` narrows the list, `counts`
+ignore `status` and `features` ignore `feature` while both follow the other
+filters, an `undo` entry is listed under its undone entry's feature, a cursor continues
 without repeats while entries are added, a new entry supersedes an older
 `attention` entry of the same kind and subject, and a `running` entry becomes
 `attention`/`interrupted` after recovery; handler tests show a guest gets
@@ -281,14 +283,19 @@ through `/api/v1` writes an owner entry; removing a media folder writes one
 
 ### Show the activity log on an owner-only Activity screen
 
-**Scope**: The route, the shell entry point and `ownerOnlyPath`; the list
-with the status tabs and counts from `ui-design.md`; open actions by subject;
-refetch on `activity`; screen text in `en.ts`.
+**Scope**: The design-system additions in
+[ui-design.md, Changes to the design system](ui-design.md#changes-to-the-design-system)
+(filter dropdown button, `CardList`, rail count, named sizes) with their
+showcase entries; the route, the shell entry point with its count and
+`ownerOnlyPath`; the toolbar with search and the four filters in the URL, the
+cards with their open actions and import progress, and the footer band from
+`ui-design.md`; refetch on `activity`; screen text in `en.ts`.
 
 **Dependencies**: Record imports and failed scans, and retry them.
 
-**Acceptance**: `task check` passes; Web tests show switching tabs lists only
-that status and the tab counts match the response, an `activity` notification
+**Acceptance**: `task check` passes; Web tests show each filter narrows the
+cards and is kept in the URL, the Status menu's counts match the response, the
+footer counts ignore the filters, an `activity` notification
 refetches, and an entry whose subject has no video shows no open action; an
 e2e test imports a file and sees its `import` row reach `done` without a
 reload, and a guest has no entry point and is sent to login from `/activity`;
@@ -304,7 +311,8 @@ Record auto-tagging runs and undo the tags they added; Record duplicate
 judgements and undo automatic bundles and dismissals.
 
 **Acceptance**: `task check` passes; Web tests show retry and undo appear only
-on rows whose `retryRun` and `undoable` are true, and that undo of an
+on cards whose `retryRun` and `undoable` are true, an `auto_tag` card undoes
+one tag from its menu, and undo of an
 already-reverted decision shows that message; an e2e test undoes an automatic
-bundle and the video page no longer lists the version; the rows pass a visual
+bundle and the video page no longer lists the version; the cards pass a visual
 review at the widths in `ui-design.md`.

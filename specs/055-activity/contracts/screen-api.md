@@ -16,11 +16,18 @@ the counts the tabs show
 | Field | In | Type | Required | Meaning |
 | --- | --- | --- | --- | --- |
 | `status` | query | `running` \| `attention` \| `done` | No | Only entries in that status; all when absent |
+| `feature` | query, repeatable | `import` \| `scan` \| `duplicate_check` \| `auto_tagging` \| `work_info` \| `tags` \| `versions` \| `media_folders` \| `organize` | No | Only entries of those features ([Features](#features)); all when absent |
+| `decider` | query | `rule` \| `ai` \| `owner` | No | Only entries with that decider |
+| `since` | query | date-time | No | Only entries created at or after it |
+| `q` | query | string, 1–200 characters | No | Only entries whose subject label contains it, ignoring case |
 | `cursor` | query | string | No | The `nextCursor` of the previous page |
 | `limit` | query | integer, 1–100 | No | Default 50 |
 
 **Response**: `200` with `ActivityPage {items: ActivityEntry[], nextCursor?,
-counts: {running, attention, done}}`.
+counts: {running, attention, done}, features: {<feature>: number}}`. `counts`
+apply every filter but `status`, so the Status menu shows how many each choice
+would list; `features` apply every filter but `feature`, for the Feature menu.
+The footer and the sidebar read `counts` from a request with no filter.
 
 | `ActivityEntry` field | Type | Meaning |
 | --- | --- | --- |
@@ -30,6 +37,8 @@ counts: {running, attention, done}}`.
 | `candidate` | boolean | For a pair: its candidate is still on Duplicates |
 | `stage?` | `probe` \| `thumbnail` \| `seek_thumbnail` \| `preview` \| `fingerprint` | For a failed `import`: the stage that gave up; `detail` then holds its message |
 | `retryAt?` | date-time | For a failed `version_judgement`: when its backoff tries again |
+| `feature` | string | The entry's feature ([Features](#features)) |
+| `progress?` | `{stage, done, total}` | For a `running` `import` past `waiting`: the stage running now and how many of the `total` 5 stages are done |
 | `undoes?` | `{kind, outcome?, tagName?}` | For an `undo` entry: the undone entry's kind and outcome, and the tag for a per-tag undo |
 | `tags?` | `{id, name, suggested, probability, undone}[]` | For `auto_tag` |
 | `retryRun`, `undoable` | boolean | Whether the row offers retry and undo ([data-model.md, Rules](../data-model.md#rules)) |
@@ -38,7 +47,25 @@ counts: {running, attention, done}}`.
 
 | Status | `code` | When |
 | --- | --- | --- |
-| `400` | `invalid_request` | Unknown `status`, a malformed cursor, `limit` out of range |
+| `400` | `invalid_request` | An unknown `status`, `feature` or `decider`, a malformed cursor or `since`, `q` or `limit` out of range |
+
+### Features
+
+Each kind belongs to one feature, the unit the Feature filter offers.
+
+| `feature` | Kinds |
+| --- | --- |
+| `import` | `import` |
+| `scan` | `scan` |
+| `duplicate_check` | `version_judgement` |
+| `auto_tagging` | `auto_tag` |
+| `work_info` | `work_info_fetch`, `work_info_apply` |
+| `tags` | `tag_attach`, `tag_detach`, `tag_keep`, `tag_reject` |
+| `versions` | `bundle`, `unbundle`, `make_representative`, `dismiss` |
+| `media_folders` | `media_folder_remove` |
+| `organize` | `organize_undo` |
+
+An `undo` entry belongs to the feature of the entry it undid.
 
 ## `POST /api/activity/{id}/retry`
 

@@ -27,6 +27,7 @@ case).
 | --- | --- | --- | --- |
 | `id` | integer | No | Primary key; the page order ([R-9](research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status)) |
 | `kind` | text | No | One of the kinds below |
+| `feature` | text | No | The kind's feature ([contracts/screen-api.md, Features](contracts/screen-api.md#features)); an `undo` copies the undone entry's |
 | `subject_kind` | text | No | `video`, `pair`, `scan` or `folder` |
 | `subject_key` | text | No | A content key, the smaller key of a pair, a scan id, or a removed media folder's path ([R-10](research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `subject_key_b` | text | Yes | The larger key of a pair |
@@ -45,7 +46,7 @@ case).
 | `created_at`, `updated_at` | integer | No | Unix milliseconds |
 
 **Relationships**: none to `videos`; `undone_by` refers to another entry.
-Indexes on `(status, id)` and `(kind, subject_key, subject_key_b, id)`.
+Indexes on `(status, id)`, `(feature, id)` and `(kind, subject_key, subject_key_b, id)`. The `q` filter scans the labels of the entries the other filters leave; tens of thousands of rows need no text index.
 
 ### Kinds
 
