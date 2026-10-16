@@ -324,6 +324,8 @@ type Options struct {
 	AutoImport AutoImportSettings
 	// AutoTagging は自動タグ付けの設定と判定の始め方。nil なら該当の経路は 500 を返す。
 	AutoTagging AutoTagging
+	// Onboarding はオンボードの段階と分野の選び方。nil なら /api/onboarding* は 500 を返す。
+	Onboarding Onboarding
 	// VersionJudging は重複の自動判定の入切。nil なら /api/settings/version-judging は 500 を返す。
 	VersionJudging VersionJudging
 	// Ollama は判定モデルの提供元 Ollama の接続先と確かめ。nil なら該当の経路は 500 を返す。
@@ -411,6 +413,7 @@ type server struct {
 	networkSettings   NetworkSettings
 	autoImport        AutoImportSettings
 	autoTagging       AutoTagging
+	onboarding        Onboarding
 	versionJudging    VersionJudging
 	ollama            OllamaConnection
 	comfyUI           ComfyUIConnection
@@ -502,6 +505,7 @@ func NewRouter(opts Options) http.Handler {
 		networkSettings:        opts.NetworkSettings,
 		autoImport:             opts.AutoImport,
 		autoTagging:            opts.AutoTagging,
+		onboarding:             opts.Onboarding,
 		versionJudging:         opts.VersionJudging,
 		ollama:                 opts.Ollama,
 		comfyUI:                opts.ComfyUI,
@@ -645,7 +649,7 @@ func requiresPostJSONBody(path string) bool {
 		"/api/video-tags", "/api/video-tags/summary",
 		"/api/video-bundles", "/api/version-candidates/dismiss", "/api/auth/setup", "/api/auth/login", "/api/api-tokens", "/api/v1/video-tags",
 		"/api/v1/video-display-names", "/api/v1/video-thumbnails", "/api/v1/tags/merge", "/api/v1/tags/rename",
-		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/playlists", "/api/groups", "/api/smart-folders",
+		"/api/v1/tags/synonyms", "/api/v1/tags/batch", "/api/auto-tagging/runs", "/api/onboarding/interests", "/api/playlists", "/api/groups", "/api/smart-folders",
 		"/api/organize/reorder", "/api/organize/group", "/api/organize/move", "/api/organize/bundle", "/api/organize/merge", "/api/organize/undo",
 		"/api/v1/video-work-info", "/api/v1/people", "/api/v1/people/update", "/api/v1/people/merge",
 		"/api/v1/people/delete", "/api/v1/organizations", "/api/v1/organizations/update",
@@ -696,6 +700,7 @@ var putJSONBodyPaths = map[string]bool{
 	"/api/settings/ollama":          true,
 	"/api/settings/comfyui":         true,
 	"/api/settings/version-judging": true,
+	"/api/onboarding":               true,
 }
 
 // requiresPutJSONBody は PUT の経路のうち本文を持つものかを返す。

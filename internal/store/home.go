@@ -390,18 +390,24 @@ func (a *homeApply) extend(ctx context.Context, proposal []domain.ProposedShelf)
 
 // insert は案を整理役の根のフォルダとして位置 position（0 なら後で振る）に挿入する。
 func (a *homeApply) insert(ctx context.Context, shelf domain.ProposedShelf, position int) (int64, error) {
+	id, err := insertShelf(ctx, a.tx, shelf, false, position)
+	if err != nil {
+		return 0, err
+	}
+	a.inserted = append(a.inserted, id)
+	return id, nil
+}
+
+// insertShelf は棚の案を根のフォルダとして位置 position（0 なら棚にしない）に挿入し、id を返す。
+// ownerKept は所有者のフォルダか（オンボードの分野の棚は真、整理役の棚は偽）である。
+func insertShelf(ctx context.Context, tx *sql.Tx, shelf domain.ProposedShelf, ownerKept bool, position int) (int64, error) {
 	create := shelf.Folder()
 	folder := domain.SmartFolder{Name: create.Name, Rule: create.Rule, Sort: create.Sort}
 	rule, err := checkSmartFolder(&folder)
 	if err != nil {
 		return 0, err
 	}
-	id, err := insertSmartFolder(ctx, a.tx, folder, rule, false, position)
-	if err != nil {
-		return 0, err
-	}
-	a.inserted = append(a.inserted, id)
-	return id, nil
+	return insertSmartFolder(ctx, tx, folder, rule, ownerKept, position)
 }
 
 // result は適用の結果を返す。
