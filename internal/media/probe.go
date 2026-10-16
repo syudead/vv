@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -48,7 +49,7 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 			fmt.Errorf("could not check the file to probe (%s): %w", path, err))
 	}
 
-	output, err := command(ctx, probeCommand, probeArgs(path)...).Output()
+	output, err := command(ctx, probeCommand, importProbeArgs(path)...).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
@@ -103,18 +104,46 @@ func probeArgs(path string) []string {
 	}
 }
 
+// importProbeArgs は取り込みの解析の引数である。probeArgs にチャプターを足し、MPEG-TS
+// だけ長く読む（specs/056-media-info/research.md R-2）。ライブ変換の要求時の解析は
+// 変換の開始を待たせないよう、probeArgs のままにする。
+func importProbeArgs(path string) []string {
+	args := []string{"-show_chapters"}
+	if isTransportStreamPath(path) {
+		args = append(args, transportStreamProbeArgs...)
+	}
+	return append(args, probeArgs(path)...)
+}
+
+// transportStreamProbeArgs は TS を 30 秒・100 MiB まで読む上限である。既定の 5 秒・5 MB では
+// 録画の後ろから始まる音声や字幕の stream を見落とす。
+var transportStreamProbeArgs = []string{"-analyzeduration", "30M", "-probesize", "100M"}
+
+// isTransportStreamPath は path が MPEG-TS の拡張子（.ts・.m2ts・.mts）かを返す。
+func isTransportStreamPath(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".ts", ".m2ts", ".mts":
+		return true
+	}
+	return false
+}
+
 // probeSideData は stream の side_data_list の 1 件である。
 type probeSideData struct {
-	SideDataType string  `json:"side_data_type"`
-	Rotation     float64 `json:"rotation"`
+	SideDataType string    `json:"side_data_type"`
+	Rotation     float64   `json:"rotation"`
+	Projection   probeText `json:"projection"`
+	Type         probeText `json:"type"`
 }
 
 // probeOutput は ffprobe の JSON のうち、取り出す部分だけを写す。
 type probeOutput struct {
-	Streams []probeStream `json:"streams"`
-	Format  struct {
-		Duration   string `json:"duration"`
-		FormatName string `json:"format_name"`
+	Streams  []probeStream  `json:"streams"`
+	Chapters []probeChapter `json:"chapters"`
+	Format   struct {
+		Duration   string    `json:"duration"`
+		FormatName string    `json:"format_name"`
+		Tags       probeTags `json:"tags"`
 	} `json:"format"`
 }
 
@@ -134,11 +163,19 @@ type probeStream struct {
 	SampleAspectRatio string `json:"sample_aspect_ratio"`
 	SampleRate        string `json:"sample_rate"`
 	Channels          int    `json:"channels"`
-	Tags              struct {
-		Rotate string `json:"rotate"`
-	} `json:"tags"`
+	ChannelLayout     string `json:"channel_layout"`
+	CodecTag          string `json:"codec_tag_string"`
+	ColorTransfer     string `json:"color_transfer"`
+	FieldOrder        string `json:"field_order"`
+	BitRate           string `json:"bit_rate"`
+	ClosedCaptions    int    `json:"closed_captions"`
+	// Tags は stream の tags。鍵は小文字にして持つ（get）。
+	Tags         probeTags       `json:"tags"`
 	SideDataList []probeSideData `json:"side_data_list"`
 	Disposition  struct {
+		Default         int `json:"default"`
+		Forced          int `json:"forced"`
+		HearingImpaired int `json:"hearing_impaired"`
 		AttachedPicture int `json:"attached_pic"`
 	} `json:"disposition"`
 }
@@ -194,7 +231,7 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 				// 90 度回転の印を付けていることが多く、そのままでは横長に見えてしまう。
 				probe.Width, probe.Height = stream.Width, stream.Height
 				rotated := false
-				if rotation := streamRotation(stream.Tags.Rotate, stream.SideDataList); rotation == 90 || rotation == 270 {
+				if rotation := streamRotation(stream.Tags.get("rotate"), stream.SideDataList); rotation == 90 || rotation == 270 {
 					probe.Width, probe.Height = stream.Height, stream.Width
 					rotated = true
 				}
@@ -214,6 +251,7 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 	if videoFound && transcode.Video.Width > 0 && transcode.Video.Height > 0 {
 		probe.Transcode = &transcode
 	}
+	probe.Media = parseMediaInfo(parsed, probe.DurationMs)
 
 	return probe, nil
 }
@@ -232,7 +270,7 @@ func transcodeVideo(stream probeStream) domain.TranscodeVideo {
 		Height:           stream.Height,
 		SampleAspectNum:  sampleAspectNum,
 		SampleAspectDen:  sampleAspectDen,
-		Rotation:         streamRotation(stream.Tags.Rotate, stream.SideDataList),
+		Rotation:         streamRotation(stream.Tags.get("rotate"), stream.SideDataList),
 		FPS:              parseFrameRate(stream.AverageFrameRate),
 		RealFPS:          parseFrameRate(stream.RealFrameRate),
 	}
