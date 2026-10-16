@@ -10,7 +10,8 @@ tables this feature writes into are
 ## Migration
 
 One migration, numbered after the last one on `main` when it is written
-(`00050` today), creates `activity_entries`, `activity_entry_tags` and
+(`00054` today), creates `activity_entries` with its nullable `tag_id` and
+`decided_mark` columns, `activity_entry_tags`, `activity_entry_keys` and
 `video_version_judging_holds`, and adds a nullable `activity_id` to `jobs`,
 `auto_tag_queue` and `video_version_candidates`. Down drops them. No entry is
 written for anything that happened before it (the parent Issue's last edge
@@ -18,7 +19,7 @@ case).
 
 | Table | Category ([Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery)) |
 | --- | --- |
-| `activity_entries`, `activity_entry_tags` | User data: never rebuilt, never pruned ([R-1](research.md#r-1-a-persistent-activity-log-named-apart-from-the-scan-activity)) |
+| `activity_entries`, `activity_entry_tags`, `activity_entry_keys` | User data: never rebuilt, never pruned ([R-1](research.md#r-1-a-persistent-activity-log-named-apart-from-the-scan-activity)) |
 | `video_version_judging_holds` | User data: the owner's undo, kept like `video_version_unbundles` |
 
 ## `activity_entries`
