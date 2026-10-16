@@ -428,6 +428,20 @@ describe("動画とグループの選択", () => {
   });
 });
 
+describe("ゲストの中身", () => {
+  it("動画とグループのカードはチェックを持たない", async () => {
+    withGroup();
+    const stored = server.folders.get(1);
+    if (stored === undefined) throw new Error("no folder");
+    server.folders.set(1, { ...stored, settings: undefined });
+    renderPage("/smart-folders/1", "guest");
+    await screen.findByRole("heading", { level: 1, name: "タグ: 猫" });
+
+    expect(screen.getByRole("link", { name: /Season/ })).toBeTruthy();
+    expect(screen.queryByRole("checkbox")).toBeNull();
+  });
+});
+
 describe("リスト表示", () => {
   it("子フォルダ、動画、グループをライブラリの行で並べる", async () => {
     localStorage.setItem(

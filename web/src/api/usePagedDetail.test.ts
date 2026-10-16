@@ -59,13 +59,15 @@ describe("usePagedDetail", () => {
     const { result } = renderHook(() => usePagedDetail(1, source));
     await settle(() => result.current.read(false));
     await settle(() => result.current.read(true));
+    await settle(() => result.current.read(true));
     expect(reads[0]?.signal.aborted).toBe(true);
+    expect(reads[1]?.signal.aborted).toBe(true);
 
     await settle(() => reads[0]?.resolve({ name: "古い", items: [1] }));
-    await settle(() => reads[0]?.reject(failed));
+    await settle(() => reads[1]?.reject(failed));
     expect(result.current.state).toEqual({ kind: "loading" });
 
-    await settle(() => reads[1]?.resolve({ name: "新しい", items: [1, 2] }));
+    await settle(() => reads[2]?.resolve({ name: "新しい", items: [1, 2] }));
     expect(result.current.state).toMatchObject({
       kind: "ready",
       data: { name: "新しい" },
@@ -142,7 +144,6 @@ describe("usePagedDetail", () => {
     await settle(() => result.current.loadMore());
     await settle(() => result.current.read(true));
     expect(pages[1]?.signal.aborted).toBe(true);
-    await settle(() => pages[1]?.resolve({ items: [9] }));
     await settle(() => pages[1]?.reject(failed));
     expect(result.current.state).toMatchObject({ data: { items: [1] } });
 
@@ -163,6 +164,7 @@ describe("usePagedDetail", () => {
     const pending = pages[0];
     await settle(() => result.current.markGone());
     expect(pending?.signal.aborted).toBe(true);
+    await settle(() => pending?.resolve({ items: [9] }));
     expect(result.current.state).toEqual({ kind: "gone" });
   });
 
