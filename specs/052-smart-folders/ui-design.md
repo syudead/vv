@@ -55,12 +55,13 @@ flowchart LR
 
 Unchanged: the video card and the group card, the favorite heart,
 `Add to playlist` and `Add to group`, the selection bar and its actions, the
-group page, the folder screen, the playlists screen, the sidebar and the
-autoplay notice. The playlist screen and the playlist panel change in one
-way: a smart folder item is drawn as a row, the group item's row
-([Playlists](#playlists)). Every part below is a registry component or
-pattern, and the contrast pairs in `web/src/theme/tokens.test.ts` gain
-nothing. No token is added: the smart folder card reuses the group card, the
+group page, the folder screen, the playlists screen (`/playlists`, the
+cards of every playlist), the sidebar and the autoplay notice. The
+playlist screen (`/playlists/{id}`, one playlist's rows) and the playlist
+panel on the video page change in one way: a smart folder item is drawn as
+a row, the group item's row ([Playlists](#playlists)). Every part below is
+a registry component or pattern, and the contrast pairs in
+`web/src/theme/tokens.test.ts` gain nothing. No token is added: the smart folder card reuses the group card, the
 dialog is a `FormDialog`, the folder page reuses the group page's band,
 header and body, the playlist rows reuse the group item's row, and the two
 new filter rows are `Select`s of the `Filter` popover's width.
@@ -524,11 +525,18 @@ stateDiagram-v2
 
 With `?smartFolder=<id>` the page's reads carry `smartFolder`, and the
 folder line, the arrows, the `Up next` member list and the autoplay notice
-follow the folder's play order; `group` wins when both are present and a
-playlist context overrides both
+follow the folder's play order; `group` wins when both are present
 ([contracts/screen-api.md, Schemas and parameters changed](contracts/screen-api.md#schemas-and-parameters-changed)).
 A folder that no longer holds the video is ignored by the server, and the
-page then shows what it shows without the query.
+page then shows what it shows without the query. In a playlist context
+(`?playlist=&item=`) the playlist's playback response decides the arrows,
+the notice and what advances, as it does for a group member
+([044 research, R-7](../044-playlists/research.md#r-7-a-playlist-playback-overrides-the-group-and-folder-neighbours)),
+and `smartFolder` names the folder item the page is inside, for the folder
+line and the folder's `Up next` list below the panel
+([Video page in a playlist](#video-page-in-a-playlist)); the two do not
+compete, because the playlist's `next` inside a folder item is the folder's
+play order.
 
 | Part | Form |
 | --- | --- |
@@ -603,16 +611,24 @@ the member.
 
 With `?playlist=<id>&item=<itemId>` and the current item a smart folder item,
 the page adds the item's folder to its reads: every URL the page opens
-inside the item (the notice's advance and "Play now", "Play next", the
-folder's `Up next` rows) and every step whose `itemId` is a smart folder
-item of the panel's response (the arrows, the notice landing on a folder
-item) carries `smartFolder={that folder's id}`; a step onto a video or a
-group item carries none. The lines then read playlist, then smart folder,
-then the title, as they read playlist, group, title inside a group item,
-and the aside is the panel, the folder's `Up next` and the related videos.
-What advances is the playback response's `next`, which follows the folder's
-play order at read time ([contracts/screen-api.md](contracts/screen-api.md#schemas-and-parameters-changed)),
-so the panel's row, the folder's `Up next` and the notice agree.
+carries `smartFolder={the step's smartFolderId}` when the step it opens has
+one, and none when it has none. A step (`PlaylistStep`) names its folder
+itself: the playback response's `next`, `previousItem` and `nextItem` carry
+`smartFolderId` when the step's item is a smart folder item
+([contracts/screen-api.md, Schemas and parameters changed](contracts/screen-api.md#schemas-and-parameters-changed)),
+so the arrows, the notice's advance and "Play now" and "Play next" take the
+folder from the playback response, never from the panel; the folder's
+`Up next` rows stay inside the current item and carry the page's own
+`smartFolder`. The panel's response is not needed for it, because the
+arrows and the notice are drawn from the playback response alone while the
+panel's read has failed or the pair does not agree yet
+([044 UI design, Playlist panel](../044-playlists/ui-design.md#playlist-panel),
+[One order](../044-playlists/ui-design.md#one-order)). The lines then read
+playlist, then smart folder, then the title, as they read playlist, group,
+title inside a group item, and the aside is the panel, the folder's
+`Up next` and the related videos. What advances is the playback response's
+`next`, which follows the folder's play order at read time, so the panel's
+row, the folder's `Up next` and the notice agree.
 
 ### States
 
