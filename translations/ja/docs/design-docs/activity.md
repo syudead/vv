@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/activity.md
-sourceHash: f635cc05056d9371ce82d40233ff386328894c2ffdcc7c631cefc4bdc500396c
+sourceHash: 56fee85c0f952376df9b4d00ae7224bb2b567f86a3f4613290b33384026c5b32
 ---
 
 # 活動ログ {#activity-log}
@@ -63,6 +63,24 @@ stateDiagram-v2
 取り込みキューのポート (`scanner.Queue`) は決定者を受け取り、`app.Scans` はスキャンの開始時の決定者を渡す。
 
 スキャンは、`interrupted` 以外の理由で `failed` として終わったときにだけ `scan` 項目を書く。その対象はスキャンの id で、ラベルはスキャンの起点だ。次に `done` で終わったスキャンが、開いているすべての `scan` 項目を `superseded` として閉じる。起動時に `interrupted` として閉じたスキャンは何も書かない。起動がそれを再開するからだ。
+
+## 所有者の操作は動画ごとに done 項目を書く {#owner-operations-write-a-done-entry-per-video}
+
+動画のタグまたはバージョンのまとまりを変える、メディアフォルダを削除する、または作品情報を取得するか適用する所有者の操作は、`owner` が決定した `done` 項目をその操作のトランザクションで書く ([R-6](../../specs/055-activity/research.md#r-6-the-owner-operations-recorded)、[`internal/store/owner_activity.go`](../../internal/store/owner_activity.go))。
+
+| 操作 | 項目 |
+| --- | --- |
+| まとめる (動画ページ、Duplicates、ドラッグでの整理) | 新しいまとまりのメンバーごとに 1 つの `bundle` |
+| 代表にする、バージョンから外す | 動画について 1 つ |
+| "Different videos" | 組について 1 つの `dismiss` |
+| タグを付ける、外す (動画ページ、ライブラリの選択、`/api/v1`) | 手動のタグの行が変わった動画とタグごとに 1 つ。`detail` はタグの名前 |
+| 提案したタグを残す、却下する | 1 つの `tag_keep` または `tag_reject`。`detail` はタグの名前 |
+| 取得した作品情報を適用する | 1 つの `work_info_apply`。そのタグはタグの項目を書かない |
+| 作品情報を取得する | プラグインの実行ごとに 1 つの `work_info_fetch`。実行が失敗したときはプラグインのメッセージ (なければ失敗のコード) を伴う `done`/`failed` で、決して再試行しない ([R-11](../../specs/055-activity/research.md#r-11-a-failed-work-information-fetch-is-a-finished-entry-not-a-problem)) |
+| メディアフォルダを削除する | フォルダのパスについて 1 つの `media_folder_remove`。`detail` は、それが取り除いた動画の数 |
+| ドラッグでの整理の取り消し | それがまとまりを元に戻した動画ごとに 1 つの `organize_undo` |
+
+タグはユーザーキーに付くので、まとまりの項目はその代表を示す。1 つの操作の動画の項目は 1 つの SQL 文で書き、外部 API の動画とタグの組は SQLite の中で求めるので、20000 本の動画の選択でも余分な SQL 文はかからない。所有者の項目は決して `attention` にならないので、何も閉じない。
 
 ## 起動は取得済みの項目を中断として記録する {#startup-marks-claimed-entries-interrupted}
 
