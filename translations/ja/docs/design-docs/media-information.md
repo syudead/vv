@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/media-information.md
-sourceHash: 41c3dc858146314362561980f6332a659631ddf7513615bf08cb2a81ad36687d
+sourceHash: 05c1a8e00900973c8b54efd71b63d2e81d329e0601d867567cb202654908ceeb
 ---
 
 # 取り込み時のプローブから得るメディア情報 {#media-information-from-the-import-probe}

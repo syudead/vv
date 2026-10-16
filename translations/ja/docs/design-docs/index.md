@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: eb574da0c9b0d623040b2abca2460af8a38f6435269609c5237755f88bbb611e
+sourceHash: c358ee567529f5638f280c5808eb83fa71015c398312702e804df45a71caea83
 ---
 
 # 設計文書 {#design-documents}
