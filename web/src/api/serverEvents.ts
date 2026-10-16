@@ -18,6 +18,8 @@ type SmartFolderChanged = components["schemas"]["SmartFolderChanged"];
  *   （specs/048-groups/research.md R-13。最新の内容は取り直す）
  * - `smartFolder`: スマートフォルダの中身かカードの値が変わったかもしれない。名指された
  *   フォルダの id を受け取る（specs/052-smart-folders/research.md R-12。最新の内容は取り直す）
+ * - `candidates`: 重複の候補の一覧が変わったかもしれない。中身は運ばない
+ *   （specs/054-auto-dup/research.md R-10。最新の一覧は取り直す）
  * - `open`: つながった、またはつなぎ直した。切れていた間の変化を取り直す合図。
  *   `reconnected` は、この購読者がつながった状態を前にも見ていたかを表す。
  *   つなぎ直しでは、切れていた間の `video` を受け取っていない。
@@ -27,6 +29,7 @@ export interface ServerEventHandlers {
   video?: (id: number) => void;
   group?: (ids: readonly number[]) => void;
   smartFolder?: (ids: readonly number[]) => void;
+  candidates?: () => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -90,6 +93,7 @@ function connect(): void {
     const changed = parse<SmartFolderChanged>(event);
     if (changed !== undefined) dispatch("smartFolder", changed.ids);
   });
+  current.addEventListener("candidates", () => dispatch("candidates"));
   current.addEventListener("error", () => {
     // 接続中の切断はブラウザが自分でつなぎ直す。CLOSED は諦めた状態
     // （応答が 200 でない等）である。EventSource からは応答の状態を読めないので、

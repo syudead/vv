@@ -369,7 +369,7 @@ Do not use it for forms or details; use `Dialog`.
 Item `video-thumbnail`. The 16:9 thumbnail frame shared by video, group and
 folder cards and list rows. Put the image (or `VideoThumbnailImage`, or a
 hover preview) as children, then the overlays it needs:
-`VideoThumbnailDuration` bottom right (a public mark may come first),
+`VideoThumbnailDuration` bottom right (a versions mark and a public mark may come first),
 `VideoThumbnailProgress` on the bottom edge for the share watched,
 `VideoThumbnailMark` in a top corner for the selection check (`top-start`) and
 `FavoriteToggle` (`top-end`), and `VideoThumbnailNotice` over the whole frame

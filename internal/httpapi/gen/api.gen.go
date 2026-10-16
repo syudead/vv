@@ -3770,6 +3770,11 @@ type UpdateTranscodingSettingsRequest struct {
 	VideoEncoder VideoEncoderChoice `json:"videoEncoder"`
 }
 
+// UpdateVersionJudgingSettingsRequest defines model for UpdateVersionJudgingSettingsRequest.
+type UpdateVersionJudgingSettingsRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
 // UploadThumbnailImageRequest defines model for UploadThumbnailImageRequest.
 type UploadThumbnailImageRequest struct {
 	// ContentVersion プレビューを開いたときに画面が持っていた動画の `contentVersion`
@@ -3807,6 +3812,12 @@ type VersionCandidatePage struct {
 
 	// Total 候補の全件の数
 	Total int `json:"total"`
+}
+
+// VersionJudgingSettings 重複の自動判定の入切（specs/054-auto-dup/contracts/screen-api.md）
+type VersionJudgingSettings struct {
+	// Enabled 保存した選択。保存値が無ければ false
+	Enabled bool `json:"enabled"`
 }
 
 // Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
@@ -3937,9 +3948,11 @@ type Video struct {
 	// 一度も編集していなければ addedAt と同じ（specs/033-video-dates/data-model.md §3）
 	UpdatedAt time.Time `json:"updatedAt"`
 
-	// Versions 動画が属する集まり（同じ動画の別バージョン）の要約。GET /api/videos/{id} の応答にだけ、
-	// 集まりのメンバーのときだけ入る（group と同じ扱いで、一覧の項目には入らない）
-	// （specs/030-video-versions/contracts/screen-api.md §0）
+	// Versions 動画が属する集まり（同じ動画の別バージョン）の要約。集まりのメンバーのときだけ、
+	// 画面 API が Video を返すすべての応答に入る（一覧の項目も含む。一覧はページごとに 1 回の
+	// 問い合わせで読む）。カードの印はこれから出す
+	// （specs/054-auto-dup/contracts/screen-api.md「Video delta」、
+	// specs/030-video-versions/contracts/screen-api.md §0）
 	Versions *VideoVersionsRef `json:"versions,omitempty"`
 
 	// VideoCodec Examples: h264, vp9
@@ -4201,9 +4214,11 @@ type VideoVersions struct {
 	RepresentativeId int64 `json:"representativeId"`
 }
 
-// VideoVersionsRef 動画が属する集まり（同じ動画の別バージョン）の要約。GET /api/videos/{id} の応答にだけ、
-// 集まりのメンバーのときだけ入る（group と同じ扱いで、一覧の項目には入らない）
-// （specs/030-video-versions/contracts/screen-api.md §0）
+// VideoVersionsRef 動画が属する集まり（同じ動画の別バージョン）の要約。集まりのメンバーのときだけ、
+// 画面 API が Video を返すすべての応答に入る（一覧の項目も含む。一覧はページごとに 1 回の
+// 問い合わせで読む）。カードの印はこれから出す
+// （specs/054-auto-dup/contracts/screen-api.md「Video delta」、
+// specs/030-video-versions/contracts/screen-api.md §0）
 type VideoVersionsRef struct {
 	// Count 見る人に見せてよい所在を持つバージョンの本数
 	Count int `json:"count"`
@@ -5354,6 +5369,9 @@ type UpdateOllamaSettingsJSONRequestBody = OllamaSettings
 // UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
 type UpdateTranscodingSettingsJSONRequestBody = UpdateTranscodingSettingsRequest
 
+// UpdateVersionJudgingSettingsJSONRequestBody defines body for UpdateVersionJudgingSettings for application/json ContentType.
+type UpdateVersionJudgingSettingsJSONRequestBody = UpdateVersionJudgingSettingsRequest
+
 // CreateSmartFolderJSONRequestBody defines body for CreateSmartFolder for application/json ContentType.
 type CreateSmartFolderJSONRequestBody = SmartFolderCreate
 
@@ -5674,6 +5692,12 @@ type ServerInterface interface {
 	// UpdateTranscodingSettings ライブ変換の映像エンコード方式を保存する
 	// (PUT /api/settings/transcoding)
 	UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request)
+	// GetVersionJudgingSettings 重複の自動判定の入切を返す
+	// (GET /api/settings/version-judging)
+	GetVersionJudgingSettings(w http.ResponseWriter, r *http.Request)
+	// UpdateVersionJudgingSettings 重複の自動判定の入切を保存し、判定の処理を起こす
+	// (PUT /api/settings/version-judging)
+	UpdateVersionJudgingSettings(w http.ResponseWriter, r *http.Request)
 	// ListSmartFolders 見る人に見せるスマートフォルダを親の id とともに返す
 	// (GET /api/smart-folders)
 	ListSmartFolders(w http.ResponseWriter, r *http.Request)
@@ -8237,6 +8261,34 @@ func (siw *ServerInterfaceWrapper) UpdateTranscodingSettings(w http.ResponseWrit
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateTranscodingSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetVersionJudgingSettings operation middleware
+func (siw *ServerInterfaceWrapper) GetVersionJudgingSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetVersionJudgingSettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateVersionJudgingSettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdateVersionJudgingSettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateVersionJudgingSettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11101,6 +11153,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/thumbnail-edits/{editId}/apply", wrapper.ApplyThumbnailEdit)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.GetAutoTaggingSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-tagging", wrapper.UpdateAutoTaggingSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/version-judging", wrapper.GetVersionJudgingSettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/version-judging", wrapper.UpdateVersionJudgingSettings)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/check", wrapper.CheckAutoTaggingClassifier)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/auto-tagging/runs", wrapper.StartAutoTagging)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/api-tokens", wrapper.ListApiTokens)

@@ -295,6 +295,18 @@ func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 	if keyA == keyB {
 		return domain.ErrTooFewVersions
 	}
+	if err := dismissPair(ctx, tx, keyA, keyB); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("cannot dismiss the version candidate: %w", err)
+	}
+	return nil
+}
+
+// dismissPair は内容の鍵の組 keyA < keyB を「違う動画」と記録し、その組の候補を消す。所有者の
+// 「違う動画」（Dismiss）と自動の判定の「違う」（ApplyJudgement）が共有する。
+func dismissPair(ctx context.Context, tx *sql.Tx, keyA, keyB string) error {
 	if _, err := tx.ExecContext(ctx, `insert or ignore into video_version_dismissals (key_a, key_b, created_at)
 		values (?, ?, ?)`, keyA, keyB, time.Now().Unix()); err != nil {
 		return fmt.Errorf("cannot record the dismissal: %w", err)
@@ -302,9 +314,6 @@ func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 	if _, err := tx.ExecContext(ctx, `delete from video_version_candidates where key_a = ? and key_b = ?`,
 		keyA, keyB); err != nil {
 		return fmt.Errorf("cannot remove the version candidate: %w", err)
-	}
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("cannot dismiss the version candidate: %w", err)
 	}
 	return nil
 }

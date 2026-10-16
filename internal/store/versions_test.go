@@ -135,8 +135,9 @@ func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 			if item.ID == ids["b"] && item.UserKey != a.UserKey {
 				t.Errorf("一覧の B の UserKey = %q", item.UserKey)
 			}
-			if item.Versions != nil {
-				t.Errorf("一覧の項目に Versions が入っている: %d", item.ID)
+			// 一覧の項目にも集まりの要約が入る（specs/054-auto-dup/research.md R-9）。
+			if item.ID == ids["a"] && (item.Versions == nil || item.Versions.Count != 2) {
+				t.Errorf("一覧の A の Versions = %+v, want count 2", item.Versions)
 			}
 		}
 	}
@@ -367,7 +368,7 @@ func TestSetVideosPublicWritesBundleKey(t *testing.T) {
 	}
 }
 
-// 束ねの操作は確定後に VideoBundleChanged を 1 回発行し、誤りでは何も残さず発行しない。
+// 束ねの操作は確定後に VideoBundleChanged を 1 回（解除は VersionCandidatesChanged も）発行し、誤りでは何も残さず発行しない。
 func TestBundlePublishesOnceAndRejectsInvalidInput(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -401,6 +402,8 @@ func TestBundlePublishesOnceAndRejectsInvalidInput(t *testing.T) {
 	if _, err := db.Versions().Unbundle(ctx, ids["a"]); err != nil {
 		t.Fatal(err)
 	}
+	// 解除は外した組の候補を作り直すので、候補の一覧の変化も知らせる（specs/054-auto-dup/research.md R-8）。
+	want = append(want, domain.VersionCandidatesChanged{})
 	if !slices.EqualFunc(recorder.events, want, eventsEqual) {
 		t.Errorf("解除の events = %v, want %v", recorder.events, want)
 	}

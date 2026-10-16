@@ -303,8 +303,9 @@ func (s *VersionStore) MakeRepresentative(ctx context.Context, videoID int64) (d
 // content_key の値に戻る。代表を外したときは、残りのうち実効の代表の規則（data-model.md §4、
 // 所有者から見て）で次の代表を選ぶ。残りが 1 本なら集まりを解き、集まりの鍵の値を残った
 // 1 本の content_key へ写す（既存の行は置き換える。Edge Case）。動画がいまライブラリに
-// 無ければ domain.ErrNotFound、集まりに属さなければ domain.ErrNotBundled。確定後に、元の
-// 全メンバーの domain.VideoBundleChanged を 1 回発行する。
+// 無ければ domain.ErrNotFound、集まりに属さなければ domain.ErrNotBundled。外した動画と残る各メンバーの
+// 組を video_version_unbundles に書き、外した動画の候補を作り直す（specs/054-auto-dup/research.md R-8）。
+// 確定後に、元の全メンバーの domain.VideoBundleChanged と domain.VersionCandidatesChanged を発行する。
 func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Video, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -337,6 +338,10 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 		return domain.Video{}, err
 	}
 
+	// 外した動画と残る各メンバーの組は自動では束ねない（specs/054-auto-dup/research.md R-8）。
+	if err := recordUnbundledPairs(ctx, tx, key, members, time.Now().Unix()); err != nil {
+		return domain.Video{}, err
+	}
 	if _, err := tx.ExecContext(ctx, `delete from video_bundle_members where content_key = ?`, key); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot unbundle the video: %w", err)
 	}
@@ -369,6 +374,10 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 		}
 	}
 
+	// 外した動画の候補を作り直し、外した組を一覧に戻す（R-8）。その動画の他の判定も待ちに戻る（R-4）。
+	if err := rebuildCandidatesOf(ctx, tx, key); err != nil {
+		return domain.Video{}, err
+	}
 	changedGroups, err := rebuildFolderIndex(ctx, tx)
 	if err != nil {
 		return domain.Video{}, err
@@ -380,7 +389,7 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 	if err != nil {
 		return domain.Video{}, err
 	}
-	events := append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}},
+	events := append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}, domain.VersionCandidatesChanged{}},
 		groupsChangedEvents(normalizeIDs(append(rekeyedGroups, changedGroups...)))...)
 	if err := s.db.commitEvents(ctx, tx, events...); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot unbundle the video: %w", err)
@@ -447,29 +456,110 @@ func videoVersions(ctx context.Context, tx *sql.Tx, audience domain.Audience, vi
 	return domain.VideoVersions{RepresentativeID: representativeID, Items: items}, nil
 }
 
-// bundleVersionsRef は content_key の動画が集まりのメンバーなら、見る人（audience）から見た
-// 集まりの要約（見せてよい所在を持つメンバーの本数と実効の代表、data-model.md §4）を返す。
-// メンバーでなければ nil。getVideo（詳細）が Video.Versions を埋めるのに使う。
-func bundleVersionsRef(ctx context.Context, q rowQueryer, audience domain.Audience, contentKey string) (*domain.VideoVersionsRef, error) {
-	var count int
-	var representativeID int64
-	err := q.QueryRowContext(ctx, `
-		with shown(id, is_representative) as (
-			select v.id, v.content_key = b.representative_key
+// rowsQueryer は複数行を返す問い合わせを投げられるもの（*sql.DB と *sql.Tx）である。
+type rowsQueryer interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+}
+
+// bundleVersionsRefs は keys のうち集まりのメンバーである content_key ごとに、見る人（audience）から
+// 見た集まりの要約（見せてよい所在を持つメンバーの本数と実効の代表、data-model.md §4）を返す。
+// メンバーでない鍵と、見せてよいメンバーが 1 本も無い鍵は結果に入らない。鍵の集合は 1 回の
+// 問い合わせで読む（specs/054-auto-dup/research.md R-9）。
+func bundleVersionsRefs(ctx context.Context, q rowsQueryer, audience domain.Audience, keys []string) (map[string]domain.VideoVersionsRef, error) {
+	out := map[string]domain.VideoVersionsRef{}
+	if len(keys) == 0 {
+		return out, nil
+	}
+	encoded, err := json.Marshal(keys)
+	if err != nil {
+		return nil, fmt.Errorf("cannot build content keys: %w", err)
+	}
+	rows, err := q.QueryContext(ctx, `
+		with shown(self_key, id, is_representative) as (
+			select self.content_key, v.id, v.content_key = b.representative_key
 			  from video_bundle_members self
 			  join video_bundle_members m on m.bundle_id = self.bundle_id
 			  join video_bundles b on b.id = m.bundle_id
 			  join videos v on v.content_key = m.content_key and v.content_key <> ''
-			 where self.content_key = ? and `+visibleVideoCondition("v", audience)+`)
-		select count(*), coalesce((select id from shown order by is_representative desc, id limit 1), 0) from shown`,
-		contentKey).Scan(&count, &representativeID)
+			 where self.content_key in (select value from json_each(?)) and `+visibleVideoCondition("v", audience)+`)
+		select self_key, count(*),
+		       (select r.id from shown r where r.self_key = shown.self_key order by r.is_representative desc, r.id limit 1)
+		  from shown group by self_key`, string(encoded))
 	if err != nil {
-		return nil, fmt.Errorf("cannot read the bundle: %w", err)
+		return nil, fmt.Errorf("cannot read the bundles: %w", err)
 	}
-	if count == 0 {
-		return nil, nil
+	defer func() { _ = rows.Close() }()
+	for rows.Next() {
+		var key string
+		var ref domain.VideoVersionsRef
+		if err := rows.Scan(&key, &ref.Count, &ref.RepresentativeID); err != nil {
+			return nil, fmt.Errorf("cannot read the bundles: %w", err)
+		}
+		out[key] = ref
 	}
-	return &domain.VideoVersionsRef{Count: count, RepresentativeID: representativeID}, nil
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the bundles: %w", err)
+	}
+	return out, nil
+}
+
+// attachVersions は videos のうち集まりのメンバーの Video.Versions を、見る人から見た集まりの要約で
+// 埋める（specs/054-auto-dup/contracts/screen-api.md「Video delta」）。利用者データの鍵が内容の
+// 識別子と違うのは集まりのメンバーだけなので、メンバーが無ければ問い合わせを足さない。
+func attachVersions(ctx context.Context, q rowsQueryer, audience domain.Audience, videos []domain.Video) error {
+	var keys []string
+	for _, video := range videos {
+		if video.ContentKey != "" && video.UserKey != video.ContentKey {
+			keys = append(keys, video.ContentKey)
+		}
+	}
+	if len(keys) == 0 {
+		return nil
+	}
+	refs, err := bundleVersionsRefs(ctx, q, audience, keys)
+	if err != nil {
+		return err
+	}
+	for i := range videos {
+		if ref, ok := refs[videos[i].ContentKey]; ok {
+			videos[i].Versions = &ref
+		}
+	}
+	return nil
+}
+
+// attachVersionsEach は動画の並びのそれぞれに、まとめて 1 回の attachVersions を当てる。並びは
+// その場で書き換わる。
+func attachVersionsEach(ctx context.Context, q rowsQueryer, audience domain.Audience, lists [][]domain.Video) error {
+	var flat []domain.Video
+	for _, list := range lists {
+		flat = append(flat, list...)
+	}
+	if err := attachVersions(ctx, q, audience, flat); err != nil {
+		return err
+	}
+	offset := 0
+	for _, list := range lists {
+		offset += copy(list, flat[offset:])
+	}
+	return nil
+}
+
+// attachVersionsIn は鍵ごとの動画の表に attachVersions を当てる。
+func attachVersionsIn[K comparable](ctx context.Context, q rowsQueryer, audience domain.Audience, videos map[K]domain.Video) error {
+	keys := make([]K, 0, len(videos))
+	list := make([]domain.Video, 0, len(videos))
+	for key, video := range videos {
+		keys = append(keys, key)
+		list = append(list, video)
+	}
+	if err := attachVersions(ctx, q, audience, list); err != nil {
+		return err
+	}
+	for i, key := range keys {
+		videos[key] = list[i]
+	}
+	return nil
 }
 
 // bundlableContentKey は id の動画の content_key を返す。いまライブラリ（登録フォルダの下）に

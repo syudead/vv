@@ -772,6 +772,12 @@ func videosByID(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids [
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("cannot read the videos: %w", err)
 	}
+	if err := rows.Close(); err != nil {
+		return nil, fmt.Errorf("cannot read the videos: %w", err)
+	}
+	if err := attachVersionsIn(ctx, tx, audience, out); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
 

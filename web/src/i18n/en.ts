@@ -2802,7 +2802,7 @@ export const en = {
     ollama: {
       heading: "Ollama",
       description:
-        "Where VVMDM reaches Ollama and which model it uses. Auto-tagging uses it; the test works whether auto-tagging is on or off.",
+        "Where VVMDM reaches Ollama and which model it uses. Auto-tagging and duplicate judging use it; the test works whether they are on or off.",
       endpoint: "Ollama URL",
       endpointHint: "Where Ollama listens, for example http://127.0.0.1:11434.",
       model: "Model",
@@ -2857,6 +2857,18 @@ export const en = {
               other: `${formatNumber(count)} videos were queued for auto-tagging`,
             }),
       startFailed: (reason: string) => `Couldn't start auto-tagging: ${reason}`,
+    },
+    versionJudging: {
+      heading: "Duplicate judging",
+      description:
+        "Judges each pair the scan lists as a possible duplicate: the two files are compared frame by frame, and the classifier set under Ollama is asked only about the frames that differ. Same videos are bundled as versions, different videos leave Duplicates, and the rest wait there for you.",
+      label: "Judge possible duplicates automatically",
+      hint: "Off: every possible duplicate waits on Duplicates for you. On: pairs that match throughout are bundled even without Ollama; pairs with a differing part wait until an Ollama connection is saved.",
+      loading: "Loading the duplicate judging settings",
+      saving: "Saving…",
+      saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
+      loadFailed: (reason: string) =>
+        `Couldn't load the duplicate judging settings: ${reason}`,
     },
     comfyui: {
       heading: "ComfyUI",
