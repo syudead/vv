@@ -9,7 +9,7 @@ import {
 import { Fragment, type ReactNode, type Ref } from "react";
 
 import type { WorkInfoPlugin, WorkInfoPluginState } from "../api/workInfoPlugins";
-import { t, type UiText } from "../i18n";
+import { formatDateTime, formatRelative, t, type UiText } from "../i18n";
 import { RowMoreMenu } from "../tags/TagRow";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
@@ -20,6 +20,7 @@ import {
   pluginName,
   settingsSummary,
   staleSettings,
+  unixDate,
 } from "./workInfoPluginRows";
 
 /** RowWork は行で進んでいる取り消しか削除である。 */
@@ -55,6 +56,17 @@ function FactsLine({ plugin }: { plugin: WorkInfoPlugin }) {
     });
   const summary = settingsSummary(plugin);
   if (summary !== null) parts.push({ id: "settings", node: summary });
+  if (plugin.lastRunAt !== undefined) {
+    const ranAt = unixDate(plugin.lastRunAt);
+    parts.push({
+      id: "last-run",
+      node: (
+        <span title={formatDateTime(ranAt)}>
+          {text.lastRun(formatRelative(ranAt.toISOString()))}
+        </span>
+      ),
+    });
+  }
   return (
     <p className="text-xs break-words text-muted-foreground">
       {parts.map((part, index) => (
@@ -133,6 +145,7 @@ export default function WorkInfoPluginRow({
   rowRef,
   onApprove,
   onSettings,
+  onLastRun,
   onRevoke,
   onDelete,
 }: {
@@ -142,6 +155,7 @@ export default function WorkInfoPluginRow({
   rowRef: Ref<HTMLDivElement>;
   onApprove: () => void;
   onSettings: () => void;
+  onLastRun: () => void;
   onRevoke: () => void;
   onDelete: () => void;
 }) {
@@ -174,6 +188,9 @@ export default function WorkInfoPluginRow({
           </Button>
         )}
         <RowMoreMenu buttonRef={null} label={text.more(name)} disabled={busy}>
+          {plugin.state !== "invalid" && (
+            <DropdownMenuItem onSelect={onLastRun}>{text.lastRunOutput}</DropdownMenuItem>
+          )}
           {plugin.state === "approved" && (
             <DropdownMenuItem onSelect={onRevoke}>{text.revoke}</DropdownMenuItem>
           )}

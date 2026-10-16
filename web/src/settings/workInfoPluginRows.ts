@@ -1,4 +1,8 @@
-import type { WorkInfoPlugin, WorkInfoPluginSetting } from "../api/workInfoPlugins";
+import type {
+  WorkInfoPlugin,
+  WorkInfoPluginRunFailure,
+  WorkInfoPluginSetting,
+} from "../api/workInfoPlugins";
 import { t, type UiText } from "../i18n";
 
 // 設定画面の「Work-info plugins」節が行とダイアログに出す値の決まりである
@@ -110,4 +114,32 @@ export function settingChanges(
     if (change !== undefined) changes[setting.key] = change;
   }
   return changes;
+}
+
+/** unixDate は API の Unix 秒を日時にする。 */
+export function unixDate(seconds: number): Date {
+  return new Date(seconds * 1000);
+}
+
+/**
+ * runFailureText は直近の実行の失敗の理由である。実行の失敗のコードごとに 049 の Error reasons の
+ * 文を使う。実行の行は接続先の `{host}` を残さないので、`blocked_address` と `network_error` は
+ * 接続先の無い形にする（specs/056-plugin-tooling/ui-design.md「Last run dialog text」）。
+ */
+export function runFailureText(failure: WorkInfoPluginRunFailure): UiText {
+  const { code, reason } = t.errors;
+  switch (failure) {
+    case "plugin_failed":
+      return code.plugin_failed;
+    case "timed_out":
+      return code.plugin_timed_out;
+    case "memory_exceeded":
+      return reason.memory_exceeded;
+    case "output_too_large":
+      return reason.output_too_large;
+    case "blocked_address":
+      return reason.blocked_address({});
+    case "network_error":
+      return reason.network_error({});
+  }
 }

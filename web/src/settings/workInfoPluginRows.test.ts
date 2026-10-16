@@ -5,6 +5,7 @@ import {
   draftsOf,
   missingRequired,
   pluginName,
+  runFailureText,
   settingChanges,
   settingsSummary,
   staleSettings,
@@ -123,5 +124,20 @@ describe("work-info plugin rows", () => {
     expect(settingChanges([unsaved], { apiKey: { value: "", forgotten: true } })).toEqual(
       {},
     );
+  });
+
+  it("実行の失敗は 049 の理由の文にし、接続先を持たない失敗は接続先の無い形にする", () => {
+    expect(runFailureText("plugin_failed")).toBe("The plugin failed.");
+    expect(runFailureText("timed_out")).toBe(
+      "The plugin didn't finish in 30 seconds and was stopped.",
+    );
+    expect(runFailureText("memory_exceeded")).toBe(
+      "The plugin used more than 128 MB of memory and was stopped.",
+    );
+    expect(runFailureText("output_too_large")).toBe("The plugin's answer was over 1 MB.");
+    expect(runFailureText("blocked_address")).toBe(
+      "The plugin tried to reach VVMDM itself or a device on your network.",
+    );
+    expect(runFailureText("network_error")).toBe("The plugin couldn't reach a site.");
   });
 });
