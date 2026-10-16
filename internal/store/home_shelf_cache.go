@@ -26,11 +26,14 @@ type homeShelfCacheKey struct {
 }
 
 // homeShelfCacheEntry は保持した棚 1 つの読み出しの結果である。shown が偽なら、その鍵は応答から
-// 落とす（もう無い棚・ゲストに見せない棚）。
+// 落とす（もう無い棚・ゲストに見せない棚）。isShelf は鍵が今の棚を名指すかで、偽の結果は保持しない。
+// 棚でない鍵（無いフォルダの id など）は見る人がいくらでも作れ、保持すると保持が増え続けるからである。
+// 棚の鍵は棚の数（domain.MaxHomeShelves）と決まった棚に限られる。
 type homeShelfCacheEntry struct {
-	shelf  domain.HomeShelfItems
-	shown  bool
-	expiry time.Time
+	shelf   domain.HomeShelfItems
+	shown   bool
+	isShelf bool
+	expiry  time.Time
 }
 
 // homeShelfCache は棚の項目の保持である。generation は捨てるたびに進み、捨てる前に読み始めた結果を
@@ -59,17 +62,19 @@ func (c *homeShelfCache) start() uint64 {
 	return c.generation
 }
 
-// put は generation の時点から読んだ結果をしまう。その後に捨てていれば何もしない。
-func (c *homeShelfCache) put(generation uint64, key homeShelfCacheKey, shelf domain.HomeShelfItems, shown bool) {
+// put は generation の時点から読んだ結果 entry をしまう。その後に捨てていたか、entry が棚の結果で
+// なければ何もしない。
+func (c *homeShelfCache) put(generation uint64, key homeShelfCacheKey, entry homeShelfCacheEntry) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if generation != c.generation {
+	if generation != c.generation || !entry.isShelf {
 		return
 	}
 	if c.entries == nil {
 		c.entries = map[homeShelfCacheKey]homeShelfCacheEntry{}
 	}
-	c.entries[key] = homeShelfCacheEntry{shelf: shelf, shown: shown, expiry: homeShelfCacheNow().Add(homeShelfCacheTTL)}
+	entry.expiry = homeShelfCacheNow().Add(homeShelfCacheTTL)
+	c.entries[key] = entry
 }
 
 // dropFor は events のどれかがホームの画面を読み直させる知らせなら、保持したすべてを捨てる。

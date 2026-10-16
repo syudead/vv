@@ -70,12 +70,35 @@ func TestHomeShelfCacheKeepsNoResultReadBeforeADrop(t *testing.T) {
 	key := homeShelfCacheKey{shelf: domain.HomeShelfKey{Kind: domain.HomeShelfRecent}, audience: domain.AudienceOwner}
 	generation := cache.start()
 	cache.dropFor([]domain.Event{domain.HomeChanged{}})
-	cache.put(generation, key, domain.HomeShelfItems{Key: key.shelf, Total: 3}, true)
+	cache.put(generation, key, homeShelfCacheEntry{shelf: domain.HomeShelfItems{Key: key.shelf, Total: 3}, shown: true, isShelf: true})
 	if _, ok := cache.get(key); ok {
 		t.Fatal("捨てる前に読んだ結果をしまった")
 	}
-	cache.put(cache.start(), key, domain.HomeShelfItems{Key: key.shelf, Total: 3}, true)
+	cache.put(cache.start(), key, homeShelfCacheEntry{shelf: domain.HomeShelfItems{Key: key.shelf, Total: 3}, shown: true, isShelf: true})
 	if entry, ok := cache.get(key); !ok || entry.shelf.Total != 3 {
 		t.Fatalf("get = %+v, %v", entry, ok)
+	}
+}
+
+// 棚でない鍵（無いフォルダ・棚でないフォルダの棚の鍵）の結果は保持しない。見る人がいくらでも作れる
+// 鍵で保持が増え続けないためである。
+func TestHomeShelfCacheHoldsNoKeyThatNamesNoShelf(t *testing.T) {
+	db, _ := homeFixture(t, "猫", "犬")
+	ctx := context.Background()
+	for id := int64(1000); id < 1010; id++ {
+		page, err := db.Home().ShelfItems(ctx, domain.AudienceGuest, []domain.HomeShelfKey{{Kind: domain.HomeShelfFolder, FolderID: id}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Shelves) != 0 {
+			t.Fatalf("無いフォルダ %d の棚 = %+v", id, page.Shelves)
+		}
+	}
+	recentTotal(t, db, domain.AudienceGuest)
+	db.homeShelves.mu.Lock()
+	held := len(db.homeShelves.entries)
+	db.homeShelves.mu.Unlock()
+	if held != 1 {
+		t.Errorf("保持した鍵の数 = %d, want 1（最近追加だけ）", held)
 	}
 }

@@ -98,7 +98,7 @@ func (s *HomeStore) ShelfItems(ctx context.Context, audience domain.Audience, ke
 		return domain.HomeShelfPage{}, fmt.Errorf("cannot finish reading the home shelves: %w", err)
 	}
 	for _, i := range missing {
-		s.db.homeShelves.put(generation, homeShelfCacheKey{shelf: keys[i], audience: audience}, results[i].shelf, results[i].shown)
+		s.db.homeShelves.put(generation, homeShelfCacheKey{shelf: keys[i], audience: audience}, results[i])
 	}
 	for _, result := range results {
 		if result.shown {
@@ -121,7 +121,7 @@ func readHomeShelves(ctx context.Context, tx *sql.Tx, audience domain.Audience, 
 		if err != nil {
 			return err
 		}
-		results[i] = homeShelfCacheEntry{shelf: domain.HomeShelfItems{Key: keys[i], Items: []domain.LibraryItem{}}, shown: found}
+		results[i] = homeShelfCacheEntry{shelf: domain.HomeShelfItems{Key: keys[i], Items: []domain.LibraryItem{}}, shown: found, isShelf: found}
 		if spec != nil {
 			read[i] = len(specs)
 			specs = append(specs, *spec)
