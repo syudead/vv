@@ -10,6 +10,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -108,8 +109,9 @@ func (s *HomeStore) Interests(ctx context.Context) ([]domain.InterestStatus, err
 // 付きで作る。種類の無いタグには domain.InterestTagKind を付け（その種類が無ければ作り直し）、今の
 // 種類は変えない。仮のタグは確定する。そのタグの条件の棚がまだホームに無ければ、owner_kept 1 の根の
 // フォルダを今の棚の後ろに作る。棚が domain.MaxHomeShelves を超えるなら domain.ErrHomeShelvesFull で、
-// 何も書かない。確定後、何か変えたときだけ、すべてのフォルダを名指す domain.SmartFoldersChanged と、
-// 棚を足したときは domain.HomeChanged を発行する。
+// 何も書かない。同じ条件の棚が整理役の棚なら、足さずに所有者の棚（owner_kept 1）にする。確定後、
+// 何か変えたときだけ、すべてのフォルダを名指す domain.SmartFoldersChanged と、棚を足すか所有者の棚に
+// したときは domain.HomeChanged を発行する。
 func (s *HomeStore) PickInterests(ctx context.Context, interests []domain.Interest) ([]domain.SmartFolder, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -139,7 +141,7 @@ func (s *HomeStore) PickInterests(ctx context.Context, interests []domain.Intere
 		return added, nil
 	}
 	var events []domain.Event
-	if len(pick.inserted) > 0 {
+	if len(pick.inserted) > 0 || pick.kept {
 		events = append(events, domain.HomeChanged{})
 	}
 	if err := s.db.commitMatchChange(ctx, tx, events...); err != nil {
@@ -156,6 +158,8 @@ type interestPick struct {
 	// inserted は足した棚の id で、changed はタグか棚のどれかを書いたかである。
 	inserted []int64
 	changed  bool
+	// kept は整理役の棚を所有者の棚にしたかである。
+	kept bool
 	// genre は domain.InterestTagKind の種類の id で、まだ引いていなければ 0 である。
 	genre int64
 }
@@ -167,8 +171,10 @@ func (p *interestPick) add(ctx context.Context, interest domain.Interest) error 
 		return err
 	}
 	rule := interestRule(tagID)
-	if sameRuleAs(p.shelves, rule) {
-		return nil
+	if i := slices.IndexFunc(p.shelves, func(shelf domain.SmartFolder) bool {
+		return domain.SameSmartRule(shelf.Rule, rule)
+	}); i >= 0 {
+		return p.keep(ctx, i)
 	}
 	position := 1
 	if len(p.shelves) > 0 {
@@ -181,6 +187,21 @@ func (p *interestPick) add(ctx context.Context, interest domain.Interest) error 
 	p.shelves = append(p.shelves, domain.SmartFolder{ID: id, Rule: rule, HomePosition: position, OwnerKept: true})
 	p.inserted = append(p.inserted, id)
 	p.changed = true
+	return nil
+}
+
+// keep は分野と同じ条件の棚 p.shelves[i] を所有者の棚にする。整理役の棚（owner_kept 0）のままだと、
+// 動画が案の条件に満たなくなった再整理で消える（research.md R-6、R-8）。
+func (p *interestPick) keep(ctx context.Context, i int) error {
+	if p.shelves[i].OwnerKept {
+		return nil
+	}
+	if _, err := p.tx.ExecContext(ctx, `update smart_folders set owner_kept = 1 where id = ?`, p.shelves[i].ID); err != nil {
+		return fmt.Errorf("cannot keep the home shelf: %w", err)
+	}
+	p.shelves[i].OwnerKept = true
+	p.changed = true
+	p.kept = true
 	return nil
 }
 
