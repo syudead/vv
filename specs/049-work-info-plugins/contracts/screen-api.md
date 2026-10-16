@@ -15,7 +15,7 @@ external API and MCP do not change.
 | `name` | string, optional | Manifest name; absent when the manifest could not be read |
 | `fileName` | string | The uploaded file's name |
 | `version`, `description` | string, optional | From the manifest |
-| `operations` | `search` / `fetch` array | From the manifest; empty for an invalid plugin |
+| `operations` | `search` / `fetch` / `lookup` array | From the manifest; empty for an invalid plugin |
 | `digest` | string | SHA-256 of the module, sent back when approving ([R-7](../research.md#r-7-approving-names-the-digest-the-owner-saw)) |
 | `state` | `approved` / `unapproved` / `invalid` | [data-model.md, State transitions](../data-model.md#state-transitions) |
 | `problem` | string enum, optional | Present for `invalid` ([data-model.md](../data-model.md#work_info_plugins)) |
@@ -105,14 +105,18 @@ the manifest lacks `search`.
 
 ## `POST /api/videos/{id}/work-info-fetches`
 
-Runs the plugin's `fetch` for this video and keeps the result for 10 minutes
+Runs the plugin's `fetch` with `url`, or its `lookup` with `id`, for this
+video and keeps the result for 10 minutes
 ([R-8](../research.md#r-8-a-fetched-result-lives-in-memory-for-10-minutes-bound-to-the-video-and-the-plugins-digest)).
 The video is not changed.
 
 | Field | In | Type | Required | Meaning |
 | --- | --- | --- | --- | --- |
 | `pluginId` | body | integer | Yes | An approved plugin |
-| `url` | body | string | Yes | http or https, at most 2048 characters |
+| `url` | body | string | One of `url` and `id` | http or https, at most 2048 characters; runs `fetch` |
+| `id` | body | string | One of `url` and `id` | The work's ID, such as the product code, 1 to 200 characters without surrounding spaces; runs `lookup`, and the plugin builds the page URL from it |
+
+A body with both `url` and `id`, or with neither, is `400` `invalid_request`.
 
 **Response**: `201` with:
 
@@ -127,7 +131,8 @@ The screen compares these with the video it already holds; a field with no
 value cannot be selected.
 
 Errors: [Run failures](#run-failures), `404` `not_found` for the video, and
-`409` `operation_unsupported` when the manifest lacks `fetch`.
+`409` `operation_unsupported` when the manifest lacks the operation the body
+runs.
 
 ## `POST /api/videos/{id}/work-info-fetches/{fetchId}/apply`
 
