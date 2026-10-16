@@ -94,6 +94,41 @@ export function videoTagNames(video: Video): Set<string> {
   return new Set(video.tags.map((tag) => tag.name));
 }
 
+/**
+ * selectableTags は取得したタグのうち動画にまだ無い名前を、結果の順に重複なく返す。比較の段で
+ * 1 つずつ選べるのはこの名前で、動画にある名前は選べない
+ * （specs/056-plugin-tooling/research.md R-7）。
+ */
+export function selectableTags(video: Video, fetched: WorkInfoFetch): string[] {
+  const names = videoTagNames(video);
+  return [...new Set(fetched.tags.filter((name) => !names.has(name)))];
+}
+
+/**
+ * tagsRowChecked はタグの行のチェックボックスの状態で、選べるタグが全部選ばれていれば真、
+ * 一部なら `indeterminate`、1 つも無ければ偽である（specs/056-plugin-tooling/ui-design.md
+ * 「Compare: tags row」）。
+ */
+export function tagsRowChecked(
+  selectable: readonly string[],
+  selected: readonly string[],
+): boolean | "indeterminate" {
+  const count = selectable.filter((name) => selected.includes(name)).length;
+  if (count === 0) return false;
+  return count === selectable.length ? true : "indeterminate";
+}
+
+/** withField は選択 selection に項目 field を、on なら足し、そうでなければ外して返す。 */
+export function withField(
+  selection: readonly WorkInfoField[],
+  field: WorkInfoField,
+  on: boolean,
+): WorkInfoField[] {
+  return on
+    ? [...new Set([...selection, field])]
+    : selection.filter((item) => item !== field);
+}
+
 /** tagsRow はタグの行の状態である。取得したどの名前も動画に付いていれば `same` である。 */
 export function tagsRow(video: Video, fetched: WorkInfoFetch): RowState {
   if (fetched.tags.length === 0) return "missing";

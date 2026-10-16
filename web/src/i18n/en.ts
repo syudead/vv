@@ -1850,6 +1850,9 @@ export const en = {
       onVideo: "On the video",
       tentative: "Tentative",
       newCount: (count: number) => `${formatNumber(count)} new`,
+      // タグの行の数。m は動画にまだ無い、選べるタグの数（specs/056-plugin-tooling/ui-design.md）。
+      tagsSelected: (selected: number, selectable: number) =>
+        `${formatNumber(selected)} of ${formatNumber(selectable)} selected`,
       more: (count: number) => `+${formatNumber(count)} more`,
       showFewer: "Show fewer",
       apply: "Apply selected",

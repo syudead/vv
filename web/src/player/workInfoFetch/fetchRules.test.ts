@@ -12,6 +12,8 @@ import {
   queryLabel,
   rowState,
   runFor,
+  selectableTags,
+  tagsRowChecked,
 } from "./fetchRules";
 
 function plugin(overrides: Partial<WorkInfoPlugin> = {}): WorkInfoPlugin {
@@ -106,6 +108,17 @@ describe("fetchRules", () => {
     expect(initialSelection(video, result())).toEqual(["title", "tags"]);
     expect(initialSelection(video, result({ title: undefined }))).toEqual(["tags"]);
     expect(initialSelection(video, result({ tags: ["既存"] }))).toEqual(["title"]);
+  });
+
+  it("選べるタグは動画に無い取得したタグで、行は全部・一部・無しで状態が変わる", () => {
+    const selectable = selectableTags(
+      video,
+      result({ tags: ["既存", "ドラマ", "喜劇", "ドラマ"] }),
+    );
+    expect(selectable).toEqual(["ドラマ", "喜劇"]);
+    expect(tagsRowChecked(selectable, ["ドラマ", "喜劇"])).toBe(true);
+    expect(tagsRowChecked(selectable, ["喜劇"])).toBe("indeterminate");
+    expect(tagsRowChecked(selectable, [])).toBe(false);
   });
 
   it("足りない設定のキーを宣言のラベルに引き直し、知らないキーはそのまま出す", () => {
