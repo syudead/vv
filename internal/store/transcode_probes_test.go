@@ -104,7 +104,7 @@ func TestApplyProbeWritesTranscodeProbeInSameTransaction(t *testing.T) {
 func TestStaleProbeJobDoesNotWriteTranscodeProbe(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)

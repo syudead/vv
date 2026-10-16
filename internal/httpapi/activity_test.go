@@ -26,11 +26,24 @@ func (p publishToEvents) Publish(events ...domain.Event) {
 	}
 }
 
-// activityEnv は本物の保存層と app.Activity で組んだ経路である。
+// activityEnv は本物の保存層と app.Activity で組んだ経路である。やり直しは cmd/mdm と同じく、import を
+// 保存層へ、scan を app.Scans へ振り分ける。走査は登録フォルダを読まず、すぐに終わる（finishingScanner）。
 type activityEnv struct {
 	db      *store.DB
 	events  *Events
+	scans   *app.Scans
 	handler http.Handler
+}
+
+// finishingScanner は何も読まずに成功で終わる走査である。
+type finishingScanner struct{}
+
+func (finishingScanner) Scan(context.Context, domain.ActivityDecider) (domain.ScanResult, error) {
+	return domain.ScanResult{}, nil
+}
+
+func (finishingScanner) ScanScoped(context.Context, []domain.DirtyDirectory) (domain.ScanResult, error) {
+	return domain.ScanResult{}, nil
 }
 
 func newActivityEnv(t *testing.T) *activityEnv {
@@ -42,9 +55,24 @@ func newActivityEnv(t *testing.T) *activityEnv {
 	t.Cleanup(func() { _ = db.Close() })
 	events := NewEvents()
 	db.PublishTo(publishToEvents{events: events})
-	activity := app.NewActivity(app.ActivityOptions{Store: db.Activity()})
+	ctx, cancel := context.WithCancel(context.Background())
+	scans := app.NewScans(app.ScansOptions{
+		Store: db.Scans(), Jobs: db.Ingest(), Context: ctx,
+		NewScanner: func(app.ScanReporter) app.Scanner { return finishingScanner{} },
+	})
+	t.Cleanup(func() {
+		cancel()
+		scans.Wait()
+	})
+	activity := app.NewActivity(app.ActivityOptions{
+		Store: db.Activity(),
+		Retriers: map[domain.ActivityKind]app.ActivityRetrier{
+			domain.ActivityImport: app.NewImportRetrier(db.Ingest()),
+			domain.ActivityScan:   scans,
+		},
+	})
 	handler := newTestServer(t, Options{Activity: activity, Events: events, Scans: &lockedScans{current: domain.Scan{ID: 1}}})
-	return &activityEnv{db: db, events: events, handler: handler}
+	return &activityEnv{db: db, events: events, scans: scans, handler: handler}
 }
 
 func (e *activityEnv) record(t *testing.T, entry domain.ActivityEntry) int64 {
@@ -143,7 +171,7 @@ func TestListActivityRejectsInvalidFilters(t *testing.T) {
 	})
 }
 
-// この unit ではやり直しと取り消しの振り分け先が無いので、どの種類にも 409 を返す。無い記録は 404。
+// 対象の動画がもう無い import のやり直しと、振り分け先の無い取り消しは 409 を返す。無い記録は 404。
 func TestRetryAndUndoAnswerConflictForEveryKind(t *testing.T) {
 	e := newActivityEnv(t)
 	failed := e.record(t, failedImport())

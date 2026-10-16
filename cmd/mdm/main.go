@@ -245,7 +245,14 @@ func run(opts runOptions) error {
 		return err
 	}
 	// アクティビティの記録のうち、前回の停止で処理中のまま残ったものを中断にする。ワーカーを動かす前に行う。
-	activity := app.NewActivity(app.ActivityOptions{Store: db.Activity()})
+	activity := app.NewActivity(app.ActivityOptions{
+		Store: db.Activity(),
+		// やり直しの振り分け表（specs/055-activity/contracts/screen-api.md「POST /api/activity/{id}/retry」）。
+		Retriers: map[domain.ActivityKind]app.ActivityRetrier{
+			domain.ActivityImport: app.NewImportRetrier(ingestStore),
+			domain.ActivityScan:   scans,
+		},
+	})
 	recoverActivity(backgroundCtx, activity, logger)
 	if opts.OnBusyProbe != nil {
 		opts.OnBusyProbe(scans.Busy)

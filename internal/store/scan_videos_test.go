@@ -55,7 +55,7 @@ func upsertForImport(t *testing.T, db *DB, name string) int64 {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	return video.ID
@@ -87,7 +87,7 @@ func runOneJob(t *testing.T, db *DB, kind domain.JobKind) bool {
 
 func finishScan(t *testing.T, db *DB, id int64) {
 	t.Helper()
-	if err := db.Scans().FinishScan(context.Background(), id, domain.ScanDone, nil); err != nil {
+	if err := db.Scans().FinishScan(context.Background(), id, domain.ScanDone, nil, domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -103,7 +103,7 @@ func TestImportTenNewFilesSettleWithoutGoingBack(t *testing.T) {
 	}
 	for i := range 10 {
 		id := upsertForImport(t, db, fmt.Sprintf("v%02d", i))
-		if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, id); err != nil {
+		if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, id, domain.ActivityByRule); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -206,7 +206,7 @@ func TestImportCountsUnchangedVideoWithRestoredJob(t *testing.T) {
 	if _, progress := currentImport(t, db); progress.Counted {
 		t.Fatalf("列挙中に本数を示した: %+v", progress)
 	}
-	if err := db.Ingest().EnsureJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnsureJob(ctx, domain.JobProbe, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	finishScan(t, db, scan.ID)
@@ -347,7 +347,7 @@ func TestImportSettlesWhenMediaFolderRemovalLeavesNoClaimableJobs(t *testing.T) 
 	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/elsewhere/a.mp4"), "a", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	finishScan(t, db, scan.ID)

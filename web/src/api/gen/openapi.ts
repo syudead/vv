@@ -2501,8 +2501,9 @@ export interface paths {
          * 記録の処理を始め直す
          * @description 所有者だけ。記録の処理を始め直し、202 を返す。新しい実行は新しい記録になり、この記録を閉じる。
          *     `version_judgement` は記録を保ち、`running` に戻る（specs/055-activity/contracts/screen-api.md、
-         *     research.md R-4）。無い記録は 404 `not_found`、やり直しを出さない記録か対象がもう無い記録は 409
-         *     `activity_not_retryable`。
+         *     research.md R-4）。`import` は動画の失敗した段階を積み直し、`scan` はすべてのメディアフォルダの手動の
+         *     スキャンを始める。無い記録は 404 `not_found`、やり直しを出さない記録か対象がもう無い記録は 409
+         *     `activity_not_retryable`、スキャン中の `scan` の記録は 409 `scan_in_progress`。
          */
         post: operations["retryActivity"];
         delete?: never;

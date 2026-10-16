@@ -26,6 +26,8 @@ type fakeIndex struct {
 	upserts []domain.VideoFile
 	deleted []int64
 	jobs    []jobCall
+	// deciders は EnqueueJob が受け取った、取り込みを始めたものである（jobs と同じ順）。
+	deciders []domain.ActivityDecider
 	// keyCalls は content_key を計算したパス。変わっていないファイルで
 	// 再計算していないことを確かめるために数える。
 	progress  []domain.ScanResult
@@ -158,12 +160,13 @@ func (f *fakeIndex) DeleteVideoLocations(ctx context.Context, ids []int64) error
 	return f.DeleteVideos(ctx, ids)
 }
 
-func (f *fakeIndex) EnqueueJob(_ context.Context, kind domain.JobKind, videoID int64) error {
+func (f *fakeIndex) EnqueueJob(_ context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error {
 	f.jobs = append(f.jobs, jobCall{kind: kind, videoID: videoID})
+	f.deciders = append(f.deciders, decider)
 	return nil
 }
 
-func (f *fakeIndex) EnsureJob(_ context.Context, kind domain.JobKind, videoID int64) error {
+func (f *fakeIndex) EnsureJob(_ context.Context, kind domain.JobKind, videoID int64, _ domain.ActivityDecider) error {
 	if f.ensureErr != nil {
 		return f.ensureErr
 	}
@@ -228,7 +231,7 @@ func runScan(t *testing.T, root string, index *fakeIndex) domain.ScanResult {
 
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 	scanner := New(Options{Index: index, Queue: index, Reporter: index})
-	result, err := scanner.Scan(context.Background())
+	result, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err != nil {
 		t.Fatalf("走査に失敗した: %v", err)
 	}
@@ -428,7 +431,7 @@ func TestScanReportsEnqueueFailureWithRegisteredVideo(t *testing.T) {
 	index := newFakeIndex()
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 	scanner := New(Options{Index: index, Queue: failingQueue{}, Reporter: index})
-	if _, err := scanner.Scan(context.Background()); err != nil {
+	if _, err := scanner.Scan(context.Background(), domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 	path := filepath.Join(root, "a.mp4")
@@ -441,11 +444,11 @@ func TestScanReportsEnqueueFailureWithRegisteredVideo(t *testing.T) {
 // failingQueue は仕事を積めない待ち行列である。
 type failingQueue struct{}
 
-func (failingQueue) EnqueueJob(context.Context, domain.JobKind, int64) error {
+func (failingQueue) EnqueueJob(context.Context, domain.JobKind, int64, domain.ActivityDecider) error {
 	return errors.New("queue unavailable")
 }
 
-func (failingQueue) EnsureJob(context.Context, domain.JobKind, int64) error {
+func (failingQueue) EnsureJob(context.Context, domain.JobKind, int64, domain.ActivityDecider) error {
 	return errors.New("queue unavailable")
 }
 
@@ -673,7 +676,7 @@ func TestScanRemovesIndexedFileDeletedAfterDiscovery(t *testing.T) {
 		}
 		return ContentKey(path)
 	}
-	result, err := scanner.Scan(context.Background())
+	result, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -706,7 +709,7 @@ func TestScanPreservesIndexWhenRootDisappearsAfterDiscovery(t *testing.T) {
 		}
 		return "", fs.ErrNotExist
 	}
-	_, err := scanner.Scan(context.Background())
+	_, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err == nil {
 		t.Fatal("root disappearance was reported as a completed scan")
 	}
@@ -742,7 +745,7 @@ func TestScanPreservesIndexWhenParentDisappearsAfterDiscovery(t *testing.T) {
 		}
 		return ContentKey(path)
 	}
-	_, err := scanner.Scan(context.Background())
+	_, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err == nil {
 		t.Fatal("parent disappearance was reported as a completed scan")
 	}
@@ -783,7 +786,7 @@ func TestScanContinuesAfterFileFailure(t *testing.T) {
 		}
 		return ContentKey(path)
 	}
-	result, err := scanner.Scan(context.Background())
+	result, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -811,7 +814,7 @@ func TestScanReportsUnreadableFileAsIssue(t *testing.T) {
 		}
 		return ContentKey(path)
 	}
-	if _, err := scanner.Scan(context.Background()); err != nil {
+	if _, err := scanner.Scan(context.Background(), domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 	want := []domain.ScanFileIssue{{Path: broken, Kind: domain.IssueUnreadable}}
@@ -835,7 +838,7 @@ func TestScanReportsFileWithUnreadableInfoAsIssue(t *testing.T) {
 			return fn(p, entry, err)
 		})
 	}
-	if _, err := scanner.Scan(context.Background()); err != nil {
+	if _, err := scanner.Scan(context.Background(), domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 	want := []domain.ScanFileIssue{{Path: path, Kind: domain.IssueUnreadable}}
@@ -852,7 +855,7 @@ func TestScanStopsWhenIssueCannotBeRecorded(t *testing.T) {
 	index.issueErr = errors.New("store unavailable")
 	scanner := New(Options{Index: index, Queue: index, Reporter: index})
 	scanner.contentKey = func(string) (string, error) { return "", errors.New("unreadable") }
-	if _, err := scanner.Scan(context.Background()); !errors.Is(err, index.issueErr) {
+	if _, err := scanner.Scan(context.Background(), domain.ActivityByOwner); !errors.Is(err, index.issueErr) {
 		t.Fatalf("err = %v, want the recording failure", err)
 	}
 }
@@ -1013,7 +1016,7 @@ func TestScanRejectsFileChangedWhileContentKeyIsCalculated(t *testing.T) {
 		return ContentKey(path)
 	}
 
-	result, err := scanner.Scan(context.Background())
+	result, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -1060,7 +1063,7 @@ func TestScanClassifiesMetadataFailureAfterContentKey(t *testing.T) {
 				return os.Lstat(name)
 			}
 
-			result, err := scanner.Scan(context.Background())
+			result, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -1082,7 +1085,7 @@ func TestScanFailsWhenMediaDirIsUnreadable(t *testing.T) {
 	index.rows[filepath.Join(root, "existing.mp4")] = domain.IndexedVideo{ID: 1, LocationID: 2}
 	scanner := New(Options{Index: index})
 
-	result, err := scanner.Scan(context.Background())
+	result, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err == nil {
 		t.Fatal("root I/O failure was reported as a completed scan")
 	}
@@ -1110,7 +1113,7 @@ func TestScanFailsWhenSubdirectoryCannotBeRead(t *testing.T) {
 		return walk(failedDir, nil, errors.New("permission denied"))
 	}
 
-	result, err := scanner.Scan(context.Background())
+	result, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err == nil {
 		t.Fatal("subdirectory I/O failure was reported as a completed scan")
 	}
@@ -1144,7 +1147,7 @@ func TestScanDiscardsPartialCountsWhenDiscoveryLaterFails(t *testing.T) {
 		return walk(failedDir, nil, errors.New("permission denied"))
 	}
 
-	result, err := scanner.Scan(context.Background())
+	result, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err == nil {
 		t.Fatal("later discovery failure was reported as a completed scan")
 	}
@@ -1167,7 +1170,7 @@ func TestScanStopsOnCancel(t *testing.T) {
 	index := newFakeIndex()
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 	scanner := New(Options{Index: index})
-	if _, err := scanner.Scan(ctx); err == nil {
+	if _, err := scanner.Scan(ctx, domain.ActivityByOwner); err == nil {
 		t.Error("取り消し済みの context で成功した")
 	}
 }
@@ -1180,7 +1183,7 @@ func TestReportingFailurePreventsMissingDeletion(t *testing.T) {
 	index.rows[missing] = domain.IndexedVideo{ID: 9, LocationID: 19, ContentKey: "missing", SizeBytes: 1, MTime: time.Unix(1, 0)}
 	index.reportErr = errors.New("database unavailable")
 
-	_, err := New(Options{Index: index, Reporter: index}).Scan(context.Background())
+	_, err := New(Options{Index: index, Reporter: index}).Scan(context.Background(), domain.ActivityByOwner)
 	if err == nil {
 		t.Fatal("reporting failure was ignored")
 	}
@@ -1196,7 +1199,7 @@ func TestSuccessfulScanPreservesMigratedLocationOutsideRegisteredRoots(t *testin
 	index.rows[filepath.Join(t.TempDir(), "legacy.mp4")] = domain.IndexedVideo{
 		ID: 9, LocationID: 19, ContentKey: "legacy", SizeBytes: 1, MTime: time.Unix(1, 0),
 	}
-	if _, err := New(Options{Index: index}).Scan(context.Background()); err != nil {
+	if _, err := New(Options{Index: index}).Scan(context.Background(), domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 	if len(index.deleted) != 0 {
@@ -1248,7 +1251,7 @@ func TestScanFailureCodeWhenMediaFolderIsNotDirectory(t *testing.T) {
 	index := newFakeIndex()
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 
-	_, err := New(Options{Index: index}).Scan(context.Background())
+	_, err := New(Options{Index: index}).Scan(context.Background(), domain.ActivityByOwner)
 	if err == nil {
 		t.Fatal("a file as the media folder was reported as a completed scan")
 	}
@@ -1266,7 +1269,7 @@ func TestScanFailureCodeWhenMediaFolderCannotBeListed(t *testing.T) {
 		return walk(path, nil, errors.New("permission denied"))
 	}
 
-	_, err := scanner.Scan(context.Background())
+	_, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err == nil {
 		t.Fatal("an unreadable media folder was reported as a completed scan")
 	}
@@ -1277,7 +1280,7 @@ func TestScanFailureCodeWhenMediaFolderCannotBeListed(t *testing.T) {
 func TestScanFailureCodeIsInternalForIndexFailure(t *testing.T) {
 	index := newFakeIndex()
 	index.folders = nil
-	_, err := New(Options{Index: index}).Scan(context.Background())
+	_, err := New(Options{Index: index}).Scan(context.Background(), domain.ActivityByOwner)
 	if !errors.Is(err, ErrNoMediaFolders) {
 		t.Fatalf("err = %v, want ErrNoMediaFolders", err)
 	}

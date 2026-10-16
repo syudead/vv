@@ -59,9 +59,42 @@ stateDiagram-v2
   attention --> done: superseded by a newer entry
 ```
 
-An `import` entry is `running` while any of its jobs is pending (`waiting`
-until one is claimed), `attention`/`failed` when a stage gave up, else
-`done`/`completed` (`ImportActivityState`).
+## Imports and failed scans
+
+A video's import is one `import` entry for its five ingest stages
+([R-3](../../specs/055-activity/research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages)).
+Each job row keeps the id of the entry it belongs to
+([`internal/store/activity_import.go`](../../internal/store/activity_import.go)).
+
+| Event | Entry |
+| --- | --- |
+| A job is queued for a video with a pending job whose entry is `running` | The job joins that entry |
+| A job is queued for a video with no such entry | A new `running`/`waiting` entry, with the decider of whoever queued it |
+| A job is claimed and its entry is not `running` (interrupted at startup, or queued before this feature) | A new entry by `rule`, which takes every pending job of the video and supersedes the old one |
+| A job of the entry finishes or fails | The entry is rolled up again |
+
+The roll-up (`ImportActivityState`) is `running` while any of the entry's jobs
+is pending (`waiting` until one is claimed), `attention`/`failed` when a stage
+gave up, with that stage in `stage` and its message in `detail`, else
+`done`/`completed`. A finished entry never returns to `running`, so a rescan,
+a re-probe or a retry that queues jobs again opens a new entry.
+
+The decider is the one who started the run
+([R-5](../../specs/055-activity/research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)).
+
+| Run | Decider |
+| --- | --- |
+| Manual scan, re-probe, retry from the activity log | `owner` |
+| Watch scan, startup resume, a claim that opens a new entry | `rule` |
+
+The ingest queue port (`scanner.Queue`) takes the decider, and `app.Scans`
+passes it from the scan's start.
+
+A scan writes a `scan` entry only when it ends `failed` for a reason other
+than `interrupted`; its subject is the scan id and its label the scan's
+origin. The next scan that ends `done` closes every open `scan` entry as
+`superseded`. A scan closed as `interrupted` at startup writes nothing, since
+startup resumes it.
 
 ## Startup marks claimed entries interrupted
 
@@ -93,8 +126,14 @@ feature of the entry it undid. The contract is
 (`attention` with reason `failed` or `interrupted`, of a retryable kind) and
 undo only for an automatic decision not yet undone, then hands the entry to the
 use case registered for its kind. A kind with nothing registered answers
-`409 activity_not_retryable` or `409 activity_not_undoable`; no kind is
-registered yet.
+`409 activity_not_retryable` or `409 activity_not_undoable`.
+
+| Kind | Retry |
+| --- | --- |
+| `import` | `IngestStore.RetryImport` queues the video's failed stages again, as a re-probe does, and the jobs still waiting after an interruption; the owner's new entry supersedes the old one. A video that is gone, or has nothing to queue, answers `409 activity_not_retryable` |
+| `scan` | `Scans.RetryActivity` starts a manual scan of every media folder; `409 scan_in_progress` while a scan runs |
+
+No kind registers undo yet.
 
 ## The screen refreshes on an activity notification
 
