@@ -36,6 +36,9 @@ describe("SettingsPage", () => {
     // 一覧の住所: sm 未満は本文を隠し（sm から並べる）、一覧は隠さない。
     expect(slot("settings-page-main").className).toMatch(/(^| )hidden( |$)/);
     expect(slot("settings-page-nav").className).not.toMatch(/(^| )hidden( |$)/);
+    // sm から貼り付けた一覧は窓より高ければ列の中で動かし、末尾の項目にも届く。
+    expect(slot("settings-page-nav").className).toContain("sm:max-h-settings-nav-max");
+    expect(slot("settings-page-nav").className).toContain("sm:overflow-y-auto");
     // sm からは最初のページを今のページとして出す。
     const library = within(nav).getByRole("link", { name: p.settingsPages.library });
     expect(library.getAttribute("aria-current")).toBe("page");

@@ -674,7 +674,8 @@
           "path": "src/ui/patterns/settings-page.tsx",
           "type": "registry:ui"
         }
-      ]
+      ],
+      "dependencies": ["radix-ui"]
     },
     {
       "name": "detail-page",

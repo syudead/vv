@@ -6,7 +6,7 @@ import { cn } from "@/lib/cn";
 
 // 設定ページ（骨格）。最大幅を固定した 1 列に、見出しと節（PageSection）を並べる。
 // 節の間隔は骨格が持つ。nav（ページの一覧、SettingsNav）を渡すと、sm からは settings-nav の
-// 幅の列を本文の左に置き、トップバーの下に貼り付ける。sm 未満は view が "list" なら一覧だけ、
+// 幅の列を本文の左に置き、トップバーの下に貼り付ける（窓より高ければ列の中で動かす）。sm 未満は view が "list" なら一覧だけ、
 // "page" なら本文だけを出す（幅は CSS が決め、useIsMobile は使わない）。本文だけのときの
 // 一覧へ戻るリンクは header の PageHeader の leading に置き、骨格が sm から隠す。
 // 規則は web/registry/rules/patterns.md の Settings page。
@@ -56,7 +56,10 @@ export function SettingsPage({
     >
       <div
         data-slot="settings-page-nav"
-        className={cn("min-w-0 sm:sticky sm:top-navbar", !listView && "hidden sm:block")}
+        className={cn(
+          "min-w-0 sm:sticky sm:top-navbar sm:max-h-settings-nav-max sm:overflow-y-auto",
+          !listView && "hidden sm:block",
+        )}
       >
         {nav}
       </div>

@@ -173,6 +173,8 @@
   /* 設定ページ（web/src/ui/patterns/settings-page.tsx）のページの一覧の列の幅。sm から。
      text-sm の「Video conversion」が行の px-2 と合わせて 1 行に収まる幅 */
   --spacing-settings-nav: 10rem;
+  /* 貼り付けた一覧の高さの上限（それより高ければ一覧の中で動かす）。sm から */
+  --spacing-settings-nav-max: calc(100dvh - 3.25rem - 2rem);
   /* 動画ページ: 行のサムネイルの幅（設計の見本の行）、前後の動画へのつまみの幅と最小の高さ（狭い幅と
      sm 以上）、状態の層の下に操作バーの分だけ空ける余白、バージョンの一覧の幅 */
   --spacing-related-thumb: 10rem;
