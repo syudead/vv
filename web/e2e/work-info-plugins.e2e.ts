@@ -210,7 +210,7 @@ test.describe.serial("work-info plugins", () => {
     if (file === undefined) throw new Error("MDM_E2E_WORK_INFO_PLUGIN is not configured");
 
     // 設定画面でプラグインを追加し、秘密の設定値を入れる。承認はまだしない。
-    await page.goto("/settings#work-info-plugins");
+    await page.goto("/settings/plugins#work-info-plugins");
     await page.getByLabel("Plugin file").setInputFiles(file);
     await expect(pluginRow(page)).toContainText("Not approved");
     await pluginRow(page).getByRole("button", { name: "Settings" }).click();
@@ -223,7 +223,7 @@ test.describe.serial("work-info plugins", () => {
     await openVideo(page, videoTitle);
     await expect(fetchEntry(page)).toHaveCount(0);
 
-    await page.goto("/settings#work-info-plugins");
+    await page.goto("/settings/plugins#work-info-plugins");
     await pluginRow(page).getByRole("button", { name: "Review and approve" }).click();
     const approval = page.getByRole("dialog", { name: `Approve ${pluginName}?` });
     await approval.getByRole("button", { name: "Approve" }).click();

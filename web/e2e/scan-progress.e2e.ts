@@ -397,7 +397,7 @@ test("準備が残るあいだは完了と表示せず、再読み込みのあ�
     await expect(section).not.toContainText("Done");
     await expect(section).not.toContainText("Finished");
   };
-  await page.goto("/settings#scan-status");
+  await page.goto("/settings/scan#scan-status");
   await expectSameState();
   await page.reload();
   await expectSameState();
@@ -503,7 +503,7 @@ test.describe.serial("import progress with the real server", () => {
     expect(created.status()).toBe(201);
     folder = (await created.json()) as MediaFolder;
 
-    await page.goto("/settings#scan-status");
+    await page.goto("/settings/scan#scan-status");
     await expect(page.getByRole("button", { name: "Scan library" })).toBeEnabled();
     // 右下の本体の文言を、変わるたびに時刻とともに記録する（SSE の知らせは速いので、
     // 取りこぼさないようページの中で見る）。

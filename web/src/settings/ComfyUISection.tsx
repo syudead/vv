@@ -63,7 +63,7 @@ function modelsFirst(items: readonly ComfyUIMissingItem[]): ComfyUIMissingItem[]
  * とモデルファイルを確かめる。API キーは書くだけで、画面には戻らない
  * （specs/045-comfyui-thumbnails/ui-design.md、research.md R-9）。
  *
- * 区画は `/settings#comfyui` の行き先で、動画ページの編集の入口の「Open Settings」がここへ
+ * 区画は `/settings/connections#comfyui` の行き先で、動画ページの編集の入口の「Open Settings」がここへ
  * 移る（ui-design.md「Video page: edit entry」）。
  */
 export default function ComfyUISection() {

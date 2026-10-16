@@ -120,7 +120,7 @@ export default function ScanProgressIndicator() {
     close();
     // 結果は設定で見るので、結果の通知はここで終える。
     if (terminalVisible) notice.acknowledgeTerminalScan();
-    navigate("/settings#scan-status");
+    navigate("/settings/scan#scan-status");
   };
   const enterPointerArea = () => {
     clearPointerCloseTimer();
