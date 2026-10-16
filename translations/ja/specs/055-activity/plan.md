@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/plan.md
-sourceHash: 9b405fb1383a3037bc88f44db02f6331604030e815ddc548e32ee2170b918dcc
+sourceHash: 8c8dea20343c9addc212a2ee931956620b4744735282f5982956541126f5664d
 ---
 
 # 実装計画: Activity {#implementation-plan-activity}
@@ -20,7 +20,7 @@ vv が動画か組に対して動かすすべての処理 (取り込み、自動
 | 粒度 | 実行と対象ごとに 1 つの項目。取り込みは 5 つの段階で 1 つの項目。スキャンは失敗したときだけで、次の成功したスキャンが閉じる ([R-3](research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages)) |
 | 状態 | `running` / `attention` / `done` と、理由か結果。新しい実行が古い問題を閉じる。起動時に、取得済みの項目を `interrupted` にする。重複の組は再試行を通して 1 つの項目を保つ ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | 決定者 | 確率が決めたときは `ai`、固定の規則と自動のきっかけには `rule`、依頼には `owner` ([R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)) |
-| 所有者の操作 | タグとバージョンのまとまりの変更と、メディアフォルダの削除。グループ、プレイリスト、タグの定義、サムネイルの編集は含まない ([R-6](research.md#r-6-the-owner-operations-recorded)) |
+| 所有者の操作 | タグとバージョンのまとまりの変更 (グループをタグにする操作を含む) と、メディアフォルダの削除。ほかのグループの編集、プレイリスト、タグの定義、サムネイルの編集は含まない ([R-6](research.md#r-6-the-owner-operations-recorded)) |
 | 取り消し | 状態がまだ成り立つときは元に戻し、除外は常に記録する ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | ライブ更新 | `activity` の通知で取得し直す ([R-8](research.md#r-8-the-screen-refreshes-on-an-activity-notification)) |
 | ページング | id によるキーセット、`status` の絞り込み、ページの中の件数 ([R-9](research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status)) |

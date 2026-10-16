@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/activity.md
-sourceHash: 56fee85c0f952376df9b4d00ae7224bb2b567f86a3f4613290b33384026c5b32
+sourceHash: 26a3ea3829a15c3b57a9dd742adc6413badc9ec9a3f534fd073b9b239365e6ec
 ---
 
 # 活動ログ {#activity-log}
@@ -73,7 +73,7 @@ stateDiagram-v2
 | まとめる (動画ページ、Duplicates、ドラッグでの整理) | 新しいまとまりのメンバーごとに 1 つの `bundle` |
 | 代表にする、バージョンから外す | 動画について 1 つ |
 | "Different videos" | 組について 1 つの `dismiss` |
-| タグを付ける、外す (動画ページ、ライブラリの選択、`/api/v1`) | 手動のタグの行が変わった動画とタグごとに 1 つ。`detail` はタグの名前 |
+| タグを付ける、外す (動画ページ、ライブラリの選択、グループをタグにする操作、`/api/v1`) | 手動のタグの行が変わった動画とタグごとに 1 つ。`detail` はタグの名前 |
 | 提案したタグを残す、却下する | 1 つの `tag_keep` または `tag_reject`。`detail` はタグの名前 |
 | 取得した作品情報を適用する | 1 つの `work_info_apply`。そのタグはタグの項目を書かない |
 | 作品情報を取得する | プラグインの実行ごとに 1 つの `work_info_fetch`。実行が失敗したときはプラグインのメッセージ (なければ失敗のコード) を伴う `done`/`failed` で、決して再試行しない ([R-11](../../specs/055-activity/research.md#r-11-a-failed-work-information-fetch-is-a-finished-entry-not-a-problem)) |
@@ -111,6 +111,8 @@ stateDiagram-v2
 ## 画面は activity 通知で更新する {#the-screen-refreshes-on-an-activity-notification}
 
 `ActivityChanged` は `/api/events` 上のペイロードのない `activity` イベントになり、所有者のストリームにだけ送られ、`candidates` と同じように接続ごとにまとめられる ([R-8](../../specs/055-activity/research.md#r-8-the-screen-refreshes-on-an-activity-notification))。
+
+Web クライアントでは、Activity 画面 (`web/src/activity`) は、そのイベントと再接続のときに、数と読み込んだすべてのページを取得し直し、カードをその場で置き換える。取得し直しは一度に 1 つだけ実行し、その間または最初のページの読み込み中に届いた通知は、もう 1 回の取得し直しを求める。シェルのサイドバーのメニュー項目と画面のフッターは、絞り込みのない要求 (`web/src/api/useActivityTotals.ts`) からログ全体の `counts` を読むので、そこでの `running` はキューに積まれた項目を含む。絞り込みはページの URL (`status`、`feature`、`decider`、`period`、`q`) にある。`period` は最初のページまたは取得し直しの開始時に `since` に変わり、続くページはその `since` を保つ ([055 UI design, Activity page](../../specs/055-activity/ui-design.md#activity-page))。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
