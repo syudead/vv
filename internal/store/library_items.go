@@ -187,14 +187,61 @@ const videoWatchStateExpr = `case when p.completed = 1 then 'watched'
 // 深さでも）にし、動画の項目はお気に入りの動画のうちそれらの whole のグループに入らないものにする
 // （specs/035-favorites/data-model.md §5、specs/048-groups/data-model.md「Library items」）。
 func libraryItemsCTE(spec listSpec) (string, []any) {
-	audience := spec.scope.audience
-	searchAudience := audience
-	if spec.ownerSearch {
-		searchAudience = domain.AudienceOwner
+	cte, args := chosenLocationsCTEFor(spec.scope, spec.searchAudience(), spec.searchExprs())
+	part, partArgs := libraryItemsPart(spec, `chosen`, ``)
+	return cte + `,
+	` + itemGroupsCTE(spec) + `,
+	` + part, append(args, partArgs...)
+}
+
+// searchAudience は検索式を照合する見る人である。ownerSearch なら所有者の意味で照合する。
+func (s listSpec) searchAudience() domain.Audience {
+	if s.ownerSearch {
+		return domain.AudienceOwner
 	}
-	cte, args := chosenLocationsCTEFor(spec.scope, searchAudience, spec.searchExprs())
-	conditions, matchArgs := matchConditions(spec)
-	args = append(args, matchArgs...)
+	return s.scope.audience
+}
+
+// hasSearch は、どれかの段が空でない検索式を持つかを返す。
+func (s listSpec) hasSearch() bool {
+	return slices.ContainsFunc(s.searchExprs(), func(expr domain.SearchExpr) bool { return !expr.Empty() })
+}
+
+// itemGroupsFavorite は、グループの項目になりうるものがお気に入りにしたグループか（どれかの段が
+// お気に入りのみ）を返す。そうでなければいちばん上のグループである。
+func (s listSpec) itemGroupsFavorite() bool {
+	return s.anyLevel(func(level listSpec) bool { return level.favoriteOnly })
+}
+
+// itemGroupsCTE は、spec の項目のグループになりうるグループの見せてよい子孫の動画
+// `gm(group_id, video_id, position)` を定める with 句の部品である。絞り込みによらず、グループの根
+// （itemGroupsFavorite）と見る人だけで決まるので、根と見る人の同じ絞り込みはこれを分け合える。
+func itemGroupsCTE(spec listSpec) string {
+	roots := topGroupsSelect
+	if spec.itemGroupsFavorite() {
+		roots = favoriteGroupsSelect
+	}
+	return groupDescendantsCTE(roots, spec.scope.audience) + `,
+	gm as materialized (select root_id as group_id, video_id, sort_key as position from gdesc)`
+}
+
+// groupWatchStateExpr はグループの視聴状態を、子孫の動画の行ごとの completed と position_ms の式から
+// 集める式である。どれも見ていなければ unwatched、どれも見終えていれば watched、ほかは inProgress。
+func groupWatchStateExpr(completed, position string) string {
+	return `case when sum(` + completed + ` = 1 or ` + position + ` > 0) = 0 then 'unwatched'
+				when sum(` + completed + ` = 1) = count(*) then 'watched'
+				else 'inProgress' end`
+}
+
+// libraryItemsPart は libraryItemsCTE の項目の表を、所在の表 chosen（`(video_id, path)`）と gm
+// から作る with 句の部品とその引数を返す。表の名前は matched・hits・whole・carded・mv・items に
+// suffix を付けたもので、suffix を変えれば 1 つの with 句に別の絞り込みの項目の表を並べられる
+// （itemsBatch）。
+func libraryItemsPart(spec listSpec, chosen, suffix string) (string, []any) {
+	audience := spec.scope.audience
+	matched, hits, whole, carded, mv, items := `matched`+suffix, `hits`+suffix, `whole`+suffix,
+		`carded`+suffix, `mv`+suffix, `items`+suffix
+	conditions, args := matchConditions(spec)
 	if spec.unshelved {
 		conditions = append(conditions, `videos.id not in (select value from json_each(?))`)
 		args = append(args, spec.shelved)
@@ -210,7 +257,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	if spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
 		videoPlayable = ` and ` + playableCondition
 		groupPlayable = ` and exists (select 1 from gm pm join videos on videos.id = pm.video_id
-			where pm.group_id = hits.group_id and ` + playableCondition + `)`
+			where pm.group_id = ` + hits + `.group_id and ` + playableCondition + `)`
 	}
 	// 内容の識別子が空の動画は再生位置を持たない（filteredFrom と同じ扱い）。
 	progressJoin := func(videoAlias string) string {
@@ -218,10 +265,8 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 			videoAlias + `.content_key <> ''`
 	}
 	folderItems, folderArgs := smartFolderItemsSQL(spec.smartFolders)
-	roots := topGroupsSelect
 	videoFavorite := ""
-	if spec.anyLevel(func(level listSpec) bool { return level.favoriteOnly }) {
-		roots = favoriteGroupsSelect
+	if spec.itemGroupsFavorite() {
 		videoFavorite = ` and fav.content_key is not null`
 	}
 	// 当たった動画は、どのグループにも無いか、一部だけが当たるグループのどれかにあれば動画の項目に
@@ -233,51 +278,46 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 	// whole は materialized にする。インライン展開されると、相関副問い合わせ（グループの本数）が
 	// mv と not exists から当たった動画1本ごとに評価され、グループの本数の2乗で時間が増える
 	// （issue 674）。
-	cte += `,
-	matched as (
-		select videos.id as video_id, chosen.path as path
-		from chosen join videos on videos.id = chosen.video_id` + where + `),
-	` + groupDescendantsCTE(roots, audience) + `,
-	gm as materialized (select root_id as group_id, video_id, sort_key as position from gdesc),
-	hits as (
-		select gm.group_id, count(*) as n from matched
-		join gm on gm.video_id = matched.video_id
+	part := matched + ` as (
+		select videos.id as video_id, ` + chosen + `.path as path
+		from ` + chosen + ` join videos on videos.id = ` + chosen + `.video_id` + where + `),
+	` + hits + ` as (
+		select gm.group_id, count(*) as n from ` + matched + `
+		join gm on gm.video_id = ` + matched + `.video_id
 		group by gm.group_id),
-	whole as materialized (
-		select hits.group_id from hits
-		where hits.n = (select count(*) from gm c where c.group_id = hits.group_id)` + groupPlayable + `),
-	carded as materialized (
-		select video_id from gm where group_id in (select group_id from whole)
+	` + whole + ` as materialized (
+		select ` + hits + `.group_id from ` + hits + `
+		where ` + hits + `.n = (select count(*) from gm c where c.group_id = ` + hits + `.group_id)` + groupPlayable + `),
+	` + carded + ` as materialized (
+		select video_id from gm where group_id in (select group_id from ` + whole + `)
 		except
-		select video_id from gm where group_id not in (select group_id from whole)),
-	mv as (
+		select video_id from gm where group_id not in (select group_id from ` + whole + `)),
+	` + mv + ` as (
 		select gm.group_id, gm.video_id, v.added_at, v.duration_ms,
 			rl.mtime as mtime, ` + fileCreatedAtExpr("rl") + ` as created_at, rl.size_bytes as size_bytes,
 			p.updated_at as played_at,
 			coalesce(p.completed, 0) as completed, coalesce(p.position_ms, 0) as position_ms
-		from gm join whole on whole.group_id = gm.group_id
+		from gm join ` + whole + ` on ` + whole + `.group_id = gm.group_id
 		join videos v on v.id = gm.video_id` + representativeLocationJoin("gm", audience) + progressJoin("v") + `),
-	items as (
-		select null as group_id, videos.id * 2 as id, videos.id as video_id, matched.path as path,
+	` + items + ` as (
+		select null as group_id, videos.id * 2 as id, videos.id as video_id, ` + matched + `.path as path,
 			videos.added_at as added_at, loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at,
 			loc.title_key as title_key,
 			videos.duration_ms as duration_ms, loc.size_bytes as size_bytes, p.updated_at as played_at,
 			fav.favorited_at as favorited_at, ` + videoWatchStateExpr + ` as watch_state
-		from matched join videos on videos.id = matched.video_id
-		join video_locations loc on loc.path = matched.path` + progressJoin("videos") + `
+		from ` + matched + ` join videos on videos.id = ` + matched + `.video_id
+		join video_locations loc on loc.path = ` + matched + `.path` + progressJoin("videos") + `
 		left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''
-		where matched.video_id not in (select video_id from carded)` +
+		where ` + matched + `.video_id not in (select video_id from ` + carded + `)` +
 		videoPlayable + videoFavorite + `
 		union all
 		select g.id, g.id * 2 + 1, null, null,
-			max(mv.added_at), max(mv.mtime), max(mv.created_at), g.title_key,
-			sum(mv.duration_ms), sum(mv.size_bytes), max(mv.played_at), ` + groupFavoritedAtExpr("g") + `,
-			case when sum(mv.completed = 1 or mv.position_ms > 0) = 0 then 'unwatched'
-				when sum(mv.completed = 1) = count(*) then 'watched'
-				else 'inProgress' end
-		from mv join groups g on g.id = mv.group_id
+			max(m.added_at), max(m.mtime), max(m.created_at), g.title_key,
+			sum(m.duration_ms), sum(m.size_bytes), max(m.played_at), ` + groupFavoritedAtExpr("g") + `,
+			` + groupWatchStateExpr("m.completed", "m.position_ms") + `
+		from ` + mv + ` m join groups g on g.id = m.group_id
 		group by g.id` + folderItems + `)`
-	return cte, append(args, folderArgs...)
+	return part, append(args, folderArgs...)
 }
 
 // shelvedQueryMaxArgs は shelvedVideos の問い合わせ 1 回に並べる棚の条件の引数の数の目安である。

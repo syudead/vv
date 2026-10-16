@@ -2,7 +2,8 @@ package store
 
 // ホームの読み出し（specs/057-home/contracts/screen-api.md、research.md R-12、R-13）。Home は棚の
 // 要約と整理役の状態を、ShelfItems は画面に入った棚の最初の項目を、どちらも 1 つの読み取りの
-// スナップショットから返す。棚の項目はライブラリの項目の問い合わせ（listLibraryPageTx）で読み、
+// スナップショットから返す。棚の項目はライブラリの項目の問い合わせ（libraryItemsPart）で、どの棚も
+// 1 つの問い合わせにまとめて読み（listFirstItemPages）、
 // フォルダの棚にはフォルダの経路の条件（smartFolderSpec）を掛ける。子フォルダは混ぜない（R-14）。
 
 import (
@@ -49,11 +50,9 @@ func (s *HomeStore) Home(ctx context.Context, audience domain.Audience) (domain.
 	for _, kind := range fixedHomeShelves {
 		home.Shelves = append(home.Shelves, domain.HomeShelf{Key: domain.HomeShelfKey{Kind: kind}})
 	}
-	hasVideos, err := smartFolderHasItems(ctx, tx, libraryListSpec(audience, domain.VideoQuery{}, nil))
-	if err != nil {
+	if home.NoVideos, err = noVisibleVideos(ctx, tx, audience); err != nil {
 		return domain.Home{}, err
 	}
-	home.NoVideos = !hasVideos
 	if audience.IsOwner() {
 		if home.Organizer, err = organizerState(ctx, tx); err != nil {
 			return domain.Home{}, err
@@ -77,7 +76,11 @@ func (s *HomeStore) ShelfItems(ctx context.Context, audience domain.Audience, ke
 	defer func() { _ = tx.Rollback() }()
 
 	now := listNow().Unix()
-	page := domain.HomeShelfPage{Shelves: make([]domain.HomeShelfItems, 0, len(keys))}
+	shelves := make([]domain.HomeShelfItems, 0, len(keys))
+	// read は shelves の位置から specs の位置への対応で、項目を読まない棚（経路の条件が無い実体を
+	// 名指すフォルダの棚）は持たない。
+	var specs []listSpec
+	read := map[int]int{}
 	for _, key := range keys {
 		spec, found, err := homeShelfItemsSpec(ctx, tx, audience, key, now)
 		if err != nil {
@@ -86,15 +89,22 @@ func (s *HomeStore) ShelfItems(ctx context.Context, audience domain.Audience, ke
 		if !found {
 			continue
 		}
-		shelf := domain.HomeShelfItems{Key: key, Items: []domain.LibraryItem{}}
 		if spec != nil {
-			items, err := listLibraryPageTx(ctx, tx, *spec)
-			if err != nil {
-				return domain.HomeShelfPage{}, err
-			}
-			shelf.Items, shelf.Total = items.Items, items.Total
+			read[len(shelves)] = len(specs)
+			specs = append(specs, *spec)
 		}
-		if shelf.Total == 0 && key.Kind == domain.HomeShelfFolder && !audience.IsOwner() {
+		shelves = append(shelves, domain.HomeShelfItems{Key: key, Items: []domain.LibraryItem{}})
+	}
+	pages, err := listFirstItemPages(ctx, tx, audience, specs)
+	if err != nil {
+		return domain.HomeShelfPage{}, err
+	}
+	page := domain.HomeShelfPage{Shelves: make([]domain.HomeShelfItems, 0, len(shelves))}
+	for i, shelf := range shelves {
+		if j, ok := read[i]; ok {
+			shelf.Items, shelf.Total = pages[j].Items, pages[j].Total
+		}
+		if shelf.Total == 0 && shelf.Key.Kind == domain.HomeShelfFolder && !audience.IsOwner() {
 			continue
 		}
 		page.Shelves = append(page.Shelves, shelf)
@@ -153,6 +163,17 @@ func folderShelfSpec(ctx context.Context, tx *sql.Tx, audience domain.Audience, 
 	spec := smartFolderSpec(audience, rules, folder.Sort, now)
 	spec.limit = domain.HomeShelfItemLimit
 	return &spec, true, nil
+}
+
+// noVisibleVideos は、見る人 audience に見せてよい所在を持つ動画が 1 本も無いかを返す。見せてよい
+// 所在を持つ動画はどれも、動画かグループの項目としてライブラリに出る。
+func noVisibleVideos(ctx context.Context, tx *sql.Tx, audience domain.Audience) (bool, error) {
+	var found bool
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from video_locations l where `+
+		visibleLocationCondition("l", audience)+`)`).Scan(&found); err != nil {
+		return false, fmt.Errorf("cannot read whether the library has videos: %w", err)
+	}
+	return !found, nil
 }
 
 // organizerState は整理役の待っている実行と最後の実行を読む。今実行しているかは保存層が知らない
