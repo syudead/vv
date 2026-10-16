@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 02ea51300838c38b0a55217c5fa9bd7457c537359348911e183df5ec1fe0acf7
+sourceHash: b287e60f4f3e8c405a128e7bedc60f2c3ddb59b60fa52d13cfaf8b2ca2b82e50
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -303,13 +303,14 @@ flowchart LR
 
 ### 情報の行 {#information-rows}
 
-タイトルの下の最大 3 行には、上に区切り線が引かれ、枠がない。
+タイトルの下の行には、上に区切り線が引かれ、枠がない。
 
 | 行 | 内容 |
 | --- | --- |
 | 1 行目 | アイコン付きの長さ、サイズ、追加日、編集日、作成日。続いて、グループに表示できるバージョンが 2 つ以上あるときは `3 versions`、所有者にはサムネイルの位置が設定されているか、生成またはアップロードされた画像がサムネイルであるときにサムネイルの項目。右端に操作 |
 | 作品の詳細 | 動画に作品情報があるときだけ、所有者にだけ表示する。設定された項目（コード、保存されたとおりの 3 つの日付、各役割の人物と組織、リンク、ID）を、1 行目の `text-sm` と間隔で `label value` の組として並べ、項目ごとに折り返し、その下に説明を 3 行に折りたたんで置く |
-| 最後の行 | 細い線で区切った解像度、コンテナ、コーデック。最も小さく、最も控えめ |
+| 技術情報 | 細い線で区切った解像度、コンテナ、コーデック。最も小さく、最も控えめ |
+| メディア情報 | `mediaInfo` のある動画にだけ、所有者にもゲストにも同じく表示する。Video、Audio、Subtitles、Embedded、Broadcast の各グループを、それぞれ 1 行目の `text-sm` と間隔で折り返す控えめな行とし、先頭に技術情報の行の書体でグループ名を置き、項目があるときだけ表示する。トラックが 6 つを超えると 6 つに折りたたみ、`+{n} more` を出す（[056 UI 設計、動画ページ: グループ](../../specs/056-media-info/ui-design.md#video-page-groups)） |
 
 作品の詳細の行は、ラベルに控えめな色の語を使い、値を本文の色で示す。項目が 3 つを超える役割、`Links`、`IDs` は 3 つと `+{n} more` を示し、それを押すとその項目がその場で開く。3 行より長い説明は `Show more` を示す。作品情報のない動画は以前と同じ行を示し、この行は入力を促す表示を加えない（[047 UI 設計、Video page: work details row](../../specs/047-video-work-info/ui-design.md#video-page-work-details-row)）。
 
@@ -396,11 +397,11 @@ stateDiagram-v2
 
 ### コントロールバー {#control-bar}
 
-video.js のコンポーネントはコントロールバーの部品だけだ。先頭から再生、画質、字幕、再生速度、現在時刻と長さ、変換の表示がそれに当たる。状態の表示は React だ。video.js のコンポーネントでは画面のほかの部分と状態を共有できなかったからだ。
+video.js のコンポーネントはコントロールバーの部品だけだ。先頭から再生、チャプター、画質、字幕、再生速度、現在時刻と長さ、変換の表示がそれに当たる。状態の表示は React だ。video.js のコンポーネントでは画面のほかの部分と状態を共有できなかったからだ。
 
 | コントロール | ルール |
 | --- | --- |
-| 右側のまとまり | 変換の表示、画質、再生速度、PiP、全画面をこの順に置く |
+| 右側のまとまり | チャプター、変換の表示、画質、字幕、再生速度、PiP、全画面をこの順に置く |
 | 画質 | 枠、余白、開き方、Esc を再生速度に合わせた `MenuButton`（[`qualityMenu.ts`](../../web/src/player/qualityMenu.ts)） |
 | 画質のラベル | 現在の画質。オリジナルでは動画の短辺 |
 | 画質の選択 | プレーヤーを作り直さず、同じ位置でソースを置き換える |
@@ -409,8 +410,13 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 | 字幕メニュー | 字幕名と `Off`。見た目の設定はない |
 | 字幕の選択 | ブラウザごとに記憶する。同じラベルを持つ次の動画はそれで始まる |
 | 字幕の位置 | コントロールバーと進捗バーが出ている間は、その上へ持ち上げる |
+| チャプターボタン | `mediaInfo.chapters` から作る `chapters` テキストトラックを読む video.js の `ChaptersButton`。チャプターのない動画ではない（[`chapters.ts`](../../web/src/player/chapters.ts)） |
+| チャプターメニュー | 幅 `20em`。チャプターごとに `{start} {title}` の項目を 1 つ、開始の順に置き、タイトルがなければ `Chapter {n}` とする。再生中のチャプターに印を付ける。選ぶとその開始へシークし、再生中か一時停止中かを保つ |
+| チャプターの印 | 各チャプターの開始で、進捗バーに `chapter-mark`（2px）の切れ目を入れる。ポインターもラベルもなく、スクリーンリーダーからは隠す |
+| 狭い枠 | プレーヤーが 40rem 未満では、`3em` の枠にし、時刻と表示の余白を詰める。32rem 未満では変換の表示をアイコンだけに畳み、360px ですべてのボタンが収まる |
+| シークのプレビューのタイトル | ポインターの下のチャプターのタイトルを、時刻の上に出す。チャプターがありスプライトのない動画では、時刻のピルの中にそれだけを出す |
 
-画質: [Playback quality、Switching](playback-quality.md#switching) と [027 UI 設計、Control bar: quality menu](../../specs/027-playback-quality/ui-design.md#control-bar-quality-menu)。字幕は video.js の `vjs-text-track-display` を使う（[sidecar-subtitles.md](sidecar-subtitles.md)）。
+画質: [Playback quality、Switching](playback-quality.md#switching) と [027 UI 設計、Control bar: quality menu](../../specs/027-playback-quality/ui-design.md#control-bar-quality-menu)。字幕は video.js の `vjs-text-track-display` を使う（[sidecar-subtitles.md](sidecar-subtitles.md)）。チャプター: シークのプレビューのタイトルとメニューの印は、ある位置のチャプターを決める 1 つのルールを共有する。その位置以前に始まり、終わりがその位置より後のもののうち、開始が最も遅いものだ（[056 UI 設計、Player: chapters](../../specs/056-media-info/ui-design.md#player-chapters)）。
 
 キーボードショートカットは画面全体で効く。video.js のコンポーネントはキーの伝播を止めるので、キーは `window` のキャプチャ段階で捕まえ、フォーカスのあるボタンやスライダーを操作するキーだけを通す。Space、F、M、C（字幕）、0、Esc を扱う。プレイリストの選択器のような、開いているポップオーバーやメニューの中で押したキーはそれに属する。画面に届くのは Esc だけで、Esc は画面ではなくポップオーバーを閉じる。
 

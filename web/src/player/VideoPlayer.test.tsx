@@ -604,6 +604,7 @@ describe("VideoPlayer", () => {
       "subtitles off": "Off",
       "captions off": "Off",
       "captions and subtitles off": "Off",
+      Chapters: "Chapters",
     });
     const element = mock.instances[0]?.element;
     const shortcuts = [
@@ -991,6 +992,43 @@ describe("VideoPlayer", () => {
         element?.querySelector(".vjs-progress-holder .vv-seek-preview"),
       ).not.toBeNull(),
     );
+    expect(mock.instances).toHaveLength(1);
+  });
+
+  it("チャプターのボタンを右寄せの空きのすぐ後に置き、チャプターのある動画はスプライトが無くてもプレビューと印を付ける", async () => {
+    const chapters = [
+      { startMs: 0, endMs: 30_000, title: "Opening" },
+      { startMs: 30_000, endMs: 60_000 },
+      { startMs: 60_000, endMs: 120_000, title: "Ending" },
+    ];
+    const values = props({ seekThumbnailUrl: undefined });
+    const view = render(<VideoPlayer {...values} />);
+    await waitFor(() => expect(mock.instances).toHaveLength(1));
+    const player = mock.instances[0];
+    const children = (player?.options as { controlBar: { children: string[] } })
+      .controlBar.children;
+    expect(children.indexOf("chaptersMenuButton")).toBe(
+      children.indexOf("customControlSpacer") + 1,
+    );
+    const element = player?.element;
+    // チャプターの無い動画は今のまま（プレビューも印も無い）。
+    expect(element?.querySelector(".vv-seek-preview")).toBeNull();
+    expect(element?.querySelector(".vv-chapter-mark")).toBeNull();
+
+    view.rerender(
+      <VideoPlayer
+        {...values}
+        video={{ ...values.video, mediaInfo: { hdr: "sdr", chapters } } as Video}
+      />,
+    );
+    await waitFor(() =>
+      expect(
+        element?.querySelectorAll(".vjs-progress-holder .vv-chapter-mark"),
+      ).toHaveLength(3),
+    );
+    expect(
+      element?.querySelector(".vjs-progress-holder .vv-seek-preview"),
+    ).not.toBeNull();
     expect(mock.instances).toHaveLength(1);
   });
 

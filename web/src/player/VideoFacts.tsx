@@ -45,6 +45,7 @@ import UploadPreview from "./thumbnailUpload/UploadPreview";
 import DetailsEntry, { type DetailsEntryProps } from "./detailsEditor/DetailsEntry";
 import FetchEntry from "./workInfoFetch/FetchEntry";
 import VersionsFact, { type VersionsNavigation } from "./VersionsFact";
+import MediaInfoGroups from "./MediaInfoGroups";
 import WorkInfo from "./WorkInfo";
 
 /**
@@ -529,6 +530,9 @@ export default function VideoFacts({
       {/* 作品情報の行は、ファイルの行（と失敗の行）の後、技術の行の前に置く。 */}
       <WorkInfo info={video.workInfo} />
       <TechnicalLine summary={technical} />
+      {/* 動画の追加の情報のまとまりは、技術の行の後に置く（specs/056-media-info/ui-design.md
+          「Video page: groups」）。 */}
+      <MediaInfoGroups info={video.mediaInfo} />
     </div>
   );
 }

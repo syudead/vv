@@ -102,7 +102,12 @@ func toAPIWorkInfoFetch(fetch domain.WorkInfoFetchResult) gen.WorkInfoFetch {
 	if urls == nil {
 		urls = []string{}
 	}
+	var cover *gen.WorkInfoFetchedCover
+	if fetch.Cover != nil {
+		cover = &gen.WorkInfoFetchedCover{Width: fetch.Cover.Width, Height: fetch.Cover.Height}
+	}
 	return gen.WorkInfoFetch{
+		Cover:         cover,
 		FetchId:       fetch.ID,
 		ExpiresAt:     fetch.ExpiresAt.Unix(),
 		Title:         optionalString(fetch.Title),
@@ -127,6 +132,25 @@ func toAPIWorkInfoMatch(matches []domain.CreditMatch, i int) gen.WorkInfoMatch {
 		match.Id, match.Name = &credit.ID, &credit.Name
 	}
 	return match
+}
+
+// GetWorkInfoFetchCover は取得の結果のカバー画像を返す（GET /api/videos/{id}/work-info-fetches/{fetchId}/cover）。
+// 本文は vv が取って形式を確かめたもので、型は vv が決める。
+func (s *server) GetWorkInfoFetchCover(w http.ResponseWriter, _ *http.Request, id gen.VideoId, fetchID gen.WorkInfoFetchId) {
+	if !s.workInfoPluginsConfigured(w) {
+		return
+	}
+	cover, err := s.workInfoPlugins.WorkInfoFetchCover(id, fetchID)
+	if err != nil {
+		s.notFound(w, "The fetched result has no cover, or it belongs to another video.")
+		return
+	}
+	w.Header().Set("Content-Type", cover.ContentType)
+	w.Header().Set("Cache-Control", cacheNoStore)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
+	w.WriteHeader(http.StatusOK)
+	_, _ = w.Write(cover.Data)
 }
 
 // ApplyWorkInfoFetch は取得の結果のうち選んだ項目を動画に反映する
