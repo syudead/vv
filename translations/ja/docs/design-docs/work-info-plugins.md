@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: 6da8068fe096b81941b372fe79495cc9cad4b6a7f30f52d9d7291fa7088ff0d1
+sourceHash: 4d2f41a785c7ddc73998e8d980ab1de1ff0c283f11231830d2e2ca93c668b06a
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
@@ -86,9 +86,9 @@ sequenceDiagram
 
 | 規則 | 場所 | 理由 |
 | --- | --- | --- |
-| `Run` は成功時にも失敗時にも実行ログを返し、モジュールが成功または実行の失敗で終わったときにだけ `record` を呼ぶ | [`run.go`](../../internal/wasmplugin/run.go) | `busy` の拒否や取り消された要求は、最後の出力を置き換える価値のあるものを何も実行していない |
+| `Run` は成功時にも失敗時にも実行ログを返し、モジュールが開始し、成功または実行の失敗で終わったときにだけ `record` を呼ぶ | [`run.go`](../../internal/wasmplugin/run.go) | `busy` の拒否、コンパイルに失敗したモジュールやコンパイル中に時間切れになったモジュール、取り消された要求は、最後の出力を置き換える価値のあるものを何も実行していない |
 | 行は `record` の中で、実行枠を解放する前に書く | `internal/app`、`internal/wasmplugin` | 行は実行が終わった順に書かれるので、古い実行が新しい実行を上書きすることはない |
-| 実行が受け取った秘密の値は、現れる場所をすべて置き換える。切り詰めた出力では、末尾にある秘密の値の先頭部分も置き換える | [`work_info_plugin_run_log.go`](../../internal/domain/work_info_plugin_run_log.go) | 64 KiB で切れた値も一部が平文で残らない。プラグインが先にエンコードした値は見つからない |
+| 実行が受け取った秘密の値は、現れる場所をすべて置き換え、重なる一致は 1 つの `[secret]` にする。切り詰めた出力では、末尾にある秘密の値の先頭部分も置き換える | [`work_info_plugin_run_log.go`](../../internal/domain/work_info_plugin_run_log.go) | 64 KiB で切れた値も一部が平文で残らない。プラグインが先にエンコードした値は見つからない |
 | 行は、`work_info_plugins` に実行された世代の行がある間だけ、1 つの文で書く | [`work_info_plugin_runs.go`](../../internal/store/work_info_plugin_runs.go) | 置き換えられた (同じバイト列でも)、取り消された、または削除されたプラグインの実行は何も書かない |
 | 置き換えるアップロードは、そのトランザクションで行を削除する。プラグインを削除すると連鎖して消える | `internal/store` | 画面には現在のモジュールの出力だけを示す |
 
