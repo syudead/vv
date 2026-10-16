@@ -181,28 +181,31 @@ the entry in the transaction that changes the row
 
 A run with no candidate tag never asks the classifier and keeps the decider
 that started it. The entry lists each tag the run wrote, with the probability,
-whether it was suggested, the user key it was written at and its
-`video_tags.created_at`, in `activity_entry_tags`; a tag the run left
-unchanged is not listed. Retry from the Activity screen queues the video again as
+whether it was suggested and the user key it was written at, in
+`activity_entry_tags`; a tag the run left unchanged is not listed. Retry from the Activity screen queues the video again as
 the owner's request, and answers `409 auto_tagging_off` while the feature is
 off.
 
 Undo is one tag at a time, in one `ActivityStore` transaction
 ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)):
 
-1. Delete the `video_tags` row the run wrote, at the recorded user key or at
-   the video's current user key when bundling moved it, only while its time
-   still matches and a suggested tag is still suggested. A bundle's row is
-   shared, so the tag leaves every member.
-2. Record the tag for the video in `auto_tag_rejections` in either case, so
+1. Look in the log for an owner `tag_attach`, `tag_detach`, `tag_keep` or
+   `tag_reject` entry for that video and tag with an id greater than the
+   `auto_tag` entry's (the owner's entry names the bundle's representative
+   when the tag was changed on a bundle). One means the owner decided the tag
+   again, and nothing is deleted.
+2. Otherwise delete the `video_tags` row at the recorded user key or at the
+   video's current user key when bundling moved it, while a suggested tag is
+   still suggested. A bundle's row is shared, so the tag leaves every member.
+3. Record the tag for the video in `auto_tag_rejections` in either case, so
    "Tag all videos again" never asks about it or adds it.
-3. Write the owner's `undo` entry, `done`/`completed` when the row was
+4. Write the owner's `undo` entry, `done`/`completed` when the row was
    deleted and `done`/`already_reverted` when the owner had already removed,
    re-attached or kept the tag, which then stays as the owner left it.
 
-`video_tags.created_at` is in seconds, so a tag the owner removes and attaches
-again by hand within the same second as the run cannot be told from the run's
-own row.
+The owner's change is read from entry ids, not from `video_tags.created_at`,
+so a tag the owner removes and attaches again by hand within the same second
+as the run is still the owner's.
 
 ## Settings
 

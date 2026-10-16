@@ -534,18 +534,12 @@ func TestSuccessionKeepsTheOpenPairEntryUntilDecided(t *testing.T) {
 }
 
 // 自動の束ねの後に所有者が加わった動画を外して手で束ね直したら、古い記録の取り消しは already_reverted で、
-// 所有者のまとまりを変えない（research.md R-7）。
+// 所有者のまとまりを変えない（research.md R-7）。所有者の操作は判定と同じ秒の中で行い、取り消しが時刻ではなく
+// 所有者の記録の id で見分けることを確かめる。
 func TestUndoAfterOwnerRebundledIsAlreadyReverted(t *testing.T) {
 	db, ids := judgementFixture(t)
 	a, b := ids["a"], ids["b"]
 	entry := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule})
-	// 束ねは少し前に起きたことにする（メンバーの時刻は秒）。
-	if _, err := db.sql.Exec(`update video_bundle_members set added_at = added_at - 10`); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.sql.Exec(`update activity_entries set updated_at = updated_at - 10000 where id = ?`, entry.ID); err != nil {
-		t.Fatal(err)
-	}
 	if _, err := db.Versions().Unbundle(context.Background(), b); err != nil {
 		t.Fatal(err)
 	}

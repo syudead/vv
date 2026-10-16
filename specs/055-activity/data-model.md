@@ -98,7 +98,6 @@ The tags an `auto_tag` entry added; undo is per tag.
 | `tag_name` | text | No | The name as written |
 | `suggested` | integer | No | 1 when added as a suggested tag |
 | `user_key` | text | No | The user key the attachment was written at (a content key or a bundle's key) |
-| `attached_at` | integer | No | The `video_tags.created_at` written; undo deletes only a row that still has it |
 | `probability` | real | No | The model's answer |
 | `undone_by` | integer | Yes | The `undo` entry |
 
@@ -126,6 +125,7 @@ never claims them.
 | Startup, before the workers start, turns every entry `running` with reason `processing` into `attention`/`interrupted`; `waiting` entries stay | `store`, called from `cmd/mdm` beside `Scans.RecoverInterrupted` |
 | Retry is offered for `attention` with reason `failed` or `interrupted`, of kind `import`, `scan`, `auto_tag` or `version_judgement` | `domain` |
 | Undo is offered for an entry decided by `rule` or `ai` that is not yet undone: a `version_judgement` with outcome `same` or `different`, or a tag of an `auto_tag` entry | `domain` |
+| Undo decides "the owner changed it since" from the log, never from a row's timestamp: an owner entry on the same subject (the tag's `tag_attach`, `tag_detach`, `tag_keep` or `tag_reject`; a member's `bundle`, `unbundle` or `organize_undo`; the pair's `dismiss`) with an id greater than the undone entry's means the owner decided again ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) | `store` (one package-private lookup) |
 | The judging claim skips pairs in `video_version_judging_holds` as it skips `video_version_unbundles` | `store` (`judgeablePairs`) |
 | A content change at the same path re-keys `video_version_judging_holds` and the subject keys of open entries as `moveKeyPairs` re-keys dismissals | `store` (successions) |
 

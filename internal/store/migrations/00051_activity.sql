@@ -39,7 +39,8 @@ create index activity_entries_status_idx on activity_entries (status, id);
 create index activity_entries_feature_idx on activity_entries (feature, id);
 create index activity_entries_subject_idx on activity_entries (kind, subject_key, subject_key_b, id);
 
--- auto_tag の記録が付けたタグ。取り消しはタグごとに行う（R-7）。
+-- auto_tag の記録が付けたタグ。取り消しはタグごとに行い、所有者がその後にそのタグを変えたかは、より大きい id の
+-- 所有者の記録で見分ける（R-7）。
 create table activity_entry_tags (
     entry_id    integer not null,
     tag_id      integer not null,
@@ -47,8 +48,6 @@ create table activity_entry_tags (
     suggested   integer not null default 0,
     -- 付けたときの利用者データの鍵（内容の鍵か集まりの鍵）。
     user_key    text    not null,
-    -- 書いた video_tags.created_at。取り消しはまだこの時刻の行だけを消す。
-    attached_at integer not null,
     probability real    not null,
     undone_by   integer,
     primary key (entry_id, tag_id)

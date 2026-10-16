@@ -50,21 +50,6 @@ func runAutoTag(
 	return latestAutoTagEntry(t, db)
 }
 
-// backdateAutoTags は判定が書いた行と記録の時刻を 10 秒前にする。video_tags の時刻は秒なので、同じ秒の中で
-// 所有者が外して付け直すと判定が書いた行と見分けられない。実行が前に終わったものとして時刻をずらす。
-func backdateAutoTags(t *testing.T, db *DB, entryID int64) {
-	t.Helper()
-	if _, err := db.sql.Exec(`update video_tags set created_at = created_at - 10
-		where exists (select 1 from activity_entry_tags a where a.entry_id = ? and a.tag_id = video_tags.tag_id
-			and a.user_key = video_tags.content_key)`, entryID); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := db.sql.Exec(`update activity_entry_tags set attached_at = attached_at - 10 where entry_id = ?`,
-		entryID); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func rejectedFor(t *testing.T, db *DB, key string, tagID int64) bool {
 	t.Helper()
 	var n int
@@ -274,7 +259,8 @@ func TestUndoAutoTagRemovesTheTagFromTheBundle(t *testing.T) {
 }
 
 // 所有者がもう変えたタグの取り消しは already_reverted で、どのタグも変えずに却下だけを残す。外しただけ、外して
-// 手で付け直した、提案を確定した、のどれでも所有者のタグは残る。
+// 手で付け直した、提案を確定した、のどれでも所有者のタグは残る。所有者の操作は判定と同じ秒の中で行い、取り消しが
+// 時刻ではなく所有者の記録の id で見分けることを確かめる（research.md R-7）。
 func TestUndoAutoTagAfterTheOwnerChangedIt(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -285,8 +271,6 @@ func TestUndoAutoTagAfterTheOwnerChangedIt(t *testing.T) {
 		Confirmed: []int64{removed.ID, reattached.ID}, Tentative: []int64{kept.ID},
 		Probabilities: map[int64]float64{removed.ID: 0.91, reattached.ID: 0.9, kept.ID: 0.6},
 	})
-	backdateAutoTags(t, db, entry.ID)
-
 	if _, _, err := db.Tags().DetachTag(ctx, []int64{solo}, removed.ID); err != nil {
 		t.Fatal(err)
 	}
@@ -316,6 +300,43 @@ func TestUndoAutoTagAfterTheOwnerChangedIt(t *testing.T) {
 	if got := manualTagIDs(t, db, soloKey); !slices.Equal(got, before) || !slices.Contains(got, reattached.ID) ||
 		!slices.Contains(got, kept.ID) {
 		t.Fatalf("取り消しがタグを変えた: %v, want %v", got, before)
+	}
+}
+
+// 集まりのメンバー（代表でない）の判定が集まりの鍵に付けたタグを、所有者が同じ秒の中で外して付け直すと、所有者の
+// 記録の対象は代表の内容の鍵になる。取り消しはそれを所有者の変更と見て already_reverted にし、所有者のタグを残す
+// （research.md R-7）。
+func TestUndoAutoTagKeepsTheOwnersReattachOnTheBundle(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	p1, p2 := ids[fixturePath("/media/pair/p1.mp4")], ids[fixturePath("/media/pair/p2.mp4")]
+	if _, err := db.Versions().Bundle(ctx, []int64{p1, p2}, p1); err != nil {
+		t.Fatal(err)
+	}
+	bundleKey := ownerVideo(t, db, p1).UserKey
+	cat := createTestTag(t, db, "cat")
+	entry := runAutoTag(t, db, p2, domain.ActivityByRule, domain.AutoTagSelection{
+		Confirmed: []int64{cat.ID}, Probabilities: map[int64]float64{cat.ID: 0.91},
+	})
+	if _, _, err := db.Tags().DetachTag(ctx, []int64{p2}, cat.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{p2}, cat.ID); err != nil {
+		t.Fatal(err)
+	}
+
+	undo, err := db.Activity().UndoAutoTag(ctx, entry.ID, cat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if undo.Outcome != domain.ActivityAlreadyReverted {
+		t.Fatalf("undo の記録 = %+v, want already_reverted", undo)
+	}
+	if got := manualTagIDs(t, db, bundleKey); !slices.Equal(got, []int64{cat.ID}) {
+		t.Fatalf("取り消しが所有者のタグを変えた: %v", got)
+	}
+	if !rejectedFor(t, db, bundleKey, cat.ID) {
+		t.Fatal("却下が残っていない")
 	}
 }
 

@@ -97,8 +97,7 @@ type autoTagWrite struct {
 
 // writeAutoTags は selection のタグ（今もあり、却下されていないもの）を利用者データの鍵 userKey に now で
 // 書き、実際に書いた行を返す。Confirmed は確定した付与として書き、仮に付いていれば確定して時刻を now に
-// する。Tentative は仮に書き、既に付いていれば（手で付けた分も）そのままにする。書いた時刻は取り消しが
-// 同じ行かを確かめるのに使う（research.md R-7）。
+// する。Tentative は仮に書き、既に付いていれば（手で付けた分も）そのままにする。
 func writeAutoTags(
 	ctx context.Context, tx *sql.Tx, userKey string, selection domain.AutoTagSelection, now time.Time,
 ) ([]autoTagWrite, error) {
@@ -134,11 +133,11 @@ func writeAutoTags(
 	return written, nil
 }
 
-// recordAutoTagActivityTags は記録 entryID に、判定が書いたタグを名前・書いた鍵と時刻・確率とともに残す
+// recordAutoTagActivityTags は記録 entryID に、判定が書いたタグを名前・書いた鍵・確率とともに残す
 // （data-model.md「activity_entry_tags」）。
 func recordAutoTagActivityTags(
 	ctx context.Context, tx *sql.Tx, entryID int64, userKey string, written []autoTagWrite,
-	probabilities map[int64]float64, now time.Time,
+	probabilities map[int64]float64,
 ) error {
 	for _, write := range written {
 		ref, err := tagRefByID(ctx, tx, write.tagID)
@@ -146,9 +145,8 @@ func recordAutoTagActivityTags(
 			return err
 		}
 		if _, err := tx.ExecContext(ctx, `insert into activity_entry_tags (entry_id, tag_id, tag_name, suggested,
-			user_key, attached_at, probability) values (?, ?, ?, ?, ?, ?, ?)`,
-			entryID, write.tagID, ref.Name, boolToInt(write.suggested), userKey, now.Unix(),
-			probabilities[write.tagID]); err != nil {
+			user_key, probability) values (?, ?, ?, ?, ?, ?)`,
+			entryID, write.tagID, ref.Name, boolToInt(write.suggested), userKey, probabilities[write.tagID]); err != nil {
 			return fmt.Errorf("cannot record the auto-tagging tag (tag=%d): %w", write.tagID, err)
 		}
 	}
@@ -157,10 +155,9 @@ func recordAutoTagActivityTags(
 
 // autoTagUndoTarget は取り消す記録と、そのタグの行である。
 type autoTagUndoTarget struct {
-	entry      domain.ActivityEntry
-	tag        domain.ActivityEntryTag
-	userKey    string
-	attachedAt int64
+	entry   domain.ActivityEntry
+	tag     domain.ActivityEntryTag
+	userKey string
 }
 
 // readAutoTagUndoTarget は記録 entryID とそのタグ tagID を取引の中で読み直す。記録か、記録が付けたタグが
@@ -171,11 +168,11 @@ func readAutoTagUndoTarget(ctx context.Context, tx *sql.Tx, entryID, tagID int64
 		kind, subjectKind, decider string
 	)
 	err := tx.QueryRowContext(ctx, `select e.kind, e.subject_kind, e.subject_key, e.subject_label, e.decider,
-		t.tag_name, t.suggested, t.user_key, t.attached_at, t.probability, coalesce(t.undone_by, 0)
+		t.tag_name, t.suggested, t.user_key, t.probability, coalesce(t.undone_by, 0)
 		from activity_entries e join activity_entry_tags t on t.entry_id = e.id
 		where e.id = ? and t.tag_id = ?`, entryID, tagID).Scan(&kind, &subjectKind, &target.entry.Subject.Key,
 		&target.entry.Subject.Label, &decider, &target.tag.Name, &target.tag.Suggested, &target.userKey,
-		&target.attachedAt, &target.tag.Probability, &target.tag.UndoneBy)
+		&target.tag.Probability, &target.tag.UndoneBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return autoTagUndoTarget{}, fmt.Errorf("tag %d of activity entry %d: %w", tagID, entryID, domain.ErrNotFound)
 	}
@@ -212,15 +209,13 @@ type autoTagRemoval struct {
 	rejectAt []string
 }
 
-// removeAutoTagAttachment は判定が書いた行がまだそのままなら消す。行は対象の動画の今の利用者データの鍵と、
-// 記録した鍵の両方で探す。集まりに入ると代表のタグは時刻を保って集まりの鍵へ写り、記録した鍵にも隠れて残るので、
-// 今の鍵を先に見て、どちらの鍵でも書いた時刻が同じで、提案のタグならまだ提案のままの行だけを消す。所有者が外して
-// 付け直したか確定した行は時刻か状態が違うので残る（research.md R-7）。今の鍵の行を消したときが取り消しの完了で、
-// 除外は今の鍵（無ければ記録した鍵）と、行を消した鍵に書く。
-func removeAutoTagAttachment(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) (autoTagRemoval, error) {
+// autoTagUndoKeys は取り消しが行を探す鍵を返す。primary は対象の動画の今の利用者データの鍵（動画が無ければ記録した
+// 鍵）で、keys は primary と、それと違えば記録した鍵である。集まりに入ると代表のタグは集まりの鍵へ写り、記録した
+// 鍵にも隠れて残るので、両方を見る。
+func autoTagUndoKeys(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) (string, []string, error) {
 	primary, err := currentUserKey(ctx, tx, target.entry.Subject.Key)
 	if err != nil {
-		return autoTagRemoval{}, err
+		return "", nil, err
 	}
 	if primary == "" {
 		primary = target.userKey
@@ -229,10 +224,37 @@ func removeAutoTagAttachment(ctx context.Context, tx *sql.Tx, target autoTagUndo
 	if target.userKey != primary {
 		keys = append(keys, target.userKey)
 	}
+	return primary, keys, nil
+}
+
+// ownerChangedAutoTag は、記録 target.entry より後に（id が大きい）、所有者が対象の動画のそのタグを付けた・外した・
+// 残した・却下した記録があるかを返す（research.md R-7）。所有者の記録の対象は内容の鍵で、集まりの鍵への操作は
+// 代表の内容の鍵を対象にするので、記録の対象の鍵と、対象の動画がいま属する集まりの代表の鍵の両方で探す。タグは
+// detail の名前で、記録した名前か今の正式な名前のどちらかに合えばよい。
+func ownerChangedAutoTag(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) (bool, error) {
+	subjects := []string{target.entry.Subject.Key}
+	if bundle, bundled, err := bundleOf(ctx, tx, target.entry.Subject.Key); err != nil {
+		return false, err
+	} else if bundled && bundle.representativeKey != target.entry.Subject.Key {
+		subjects = append(subjects, bundle.representativeKey)
+	}
+	kinds := []domain.ActivityKind{domain.ActivityTagAttach, domain.ActivityTagDetach, domain.ActivityTagKeep,
+		domain.ActivityTagReject}
+	return ownerEntryAfter(ctx, tx, target.entry.ID, kinds, subjects,
+		`e.detail in (?, (select tn.name from tag_names tn where tn.tag_id = ? and tn.canonical = 1))`,
+		target.tag.Name, target.tag.TagID)
+}
+
+// removeAutoTagAttachment は判定が書いた行を消す。行は primary と、記録した鍵の両方で探し（autoTagUndoKeys）、
+// 提案のタグならまだ提案のままの行だけを消す。今の鍵の行を消したときが取り消しの完了で、除外は今の鍵と、行を
+// 消した鍵に書く。
+func removeAutoTagAttachment(
+	ctx context.Context, tx *sql.Tx, target autoTagUndoTarget, primary string, keys []string,
+) (autoTagRemoval, error) {
 	removal := autoTagRemoval{rejectAt: []string{primary}}
 	for _, key := range keys {
-		result, err := tx.ExecContext(ctx, `delete from video_tags where content_key = ? and tag_id = ? and created_at = ?
-			and (? = 0 or tentative = 1)`, key, target.tag.TagID, target.attachedAt, boolToInt(target.tag.Suggested))
+		result, err := tx.ExecContext(ctx, `delete from video_tags where content_key = ? and tag_id = ?
+			and (? = 0 or tentative = 1)`, key, target.tag.TagID, boolToInt(target.tag.Suggested))
 		if err != nil {
 			return autoTagRemoval{}, fmt.Errorf("cannot remove the auto-tagging tag (tag=%d): %w", target.tag.TagID, err)
 		}
@@ -253,10 +275,28 @@ func removeAutoTagAttachment(ctx context.Context, tx *sql.Tx, target autoTagUndo
 	return removal, nil
 }
 
+// revertAutoTag は、所有者がその後にそのタグを変えていなければ判定が書いた行を消し（removeAutoTagAttachment）、
+// 変えていれば何も消さずに除外を今の鍵に書くだけにする（research.md R-7）。
+func revertAutoTag(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) (autoTagRemoval, error) {
+	primary, keys, err := autoTagUndoKeys(ctx, tx, target)
+	if err != nil {
+		return autoTagRemoval{}, err
+	}
+	changed, err := ownerChangedAutoTag(ctx, tx, target)
+	if err != nil {
+		return autoTagRemoval{}, err
+	}
+	if changed {
+		return autoTagRemoval{rejectAt: []string{primary}}, nil
+	}
+	return removeAutoTagAttachment(ctx, tx, target, primary, keys)
+}
+
 // UndoAutoTag は auto_tag の記録 entryID が付けたタグ tagID を取り消し、所有者の undo の記録を返す
-// （contracts/screen-api.md「POST /api/activity/{id}/undo」）。1 つの取引で、判定が書いた行がまだそのままなら
-// 消し（集まりの鍵ならすべてのメンバーから外れる）、どちらの場合も auto_tag_rejections に除外を書いて、
-// undo の記録を書く。行がもう違えば何も消さず、undo の結果は already_reverted である（research.md R-7）。
+// （contracts/screen-api.md「POST /api/activity/{id}/undo」）。1 つの取引で、所有者がその後にそのタグを変えて
+// いなければ判定が書いた行を消し（集まりの鍵ならすべてのメンバーから外れる）、どちらの場合も auto_tag_rejections
+// に除外を書いて、undo の記録を書く。所有者がもう変えていれば何も消さず、undo の結果は already_reverted である
+// （research.md R-7）。
 // 記録かタグが無ければ domain.ErrNotFound、取り消しを出さないか取り消し済みなら domain.ErrActivityNotUndoable。
 func (s *ActivityStore) UndoAutoTag(ctx context.Context, entryID, tagID int64) (domain.ActivityEntry, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
@@ -271,7 +311,7 @@ func (s *ActivityStore) UndoAutoTag(ctx context.Context, entryID, tagID int64) (
 	if !target.entry.TagUndoOffered(target.tag) {
 		return domain.ActivityEntry{}, domain.ErrActivityNotUndoable
 	}
-	removal, err := removeAutoTagAttachment(ctx, tx, target)
+	removal, err := revertAutoTag(ctx, tx, target)
 	if err != nil {
 		return domain.ActivityEntry{}, err
 	}

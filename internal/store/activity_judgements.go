@@ -408,12 +408,10 @@ func recordJudgementActivity(
 		if err := closePairActivities(ctx, tx, c, applied.members, domain.ActivitySuperseded, "", id, now); err != nil {
 			return err
 		}
-		// 取り消しは、まとまりがこの時刻より後に作られていないことで束ねがまだあると見る（undoJudgedBundle）ので、
-		// 束ねた後の時刻を書く。
 		return updateActivity(ctx, tx, c, id, activityUpdate{
 			state:   domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivitySame},
 			decider: result.ResultDecider(), probability: result.Probability, undoKeys: applied.undoKeys.Encode(),
-		}, time.Now())
+		}, now)
 	case result.Verdict == domain.VersionDifferent:
 		return updateActivity(ctx, tx, c, id, activityUpdate{
 			state:   domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivityDifferent},
@@ -571,9 +569,9 @@ func (s *ActivityStore) UndoVersionJudgement(ctx context.Context, id int64) (dom
 	var restored bool
 	var events []domain.Event
 	if entry.Outcome == domain.ActivitySame {
-		restored, events, err = undoJudgedBundle(ctx, tx, c, keys, entry.UndoKeys, entry.UpdatedAt)
+		restored, events, err = undoJudgedBundle(ctx, tx, c, keys, entry.UndoKeys, entry.ID)
 	} else {
-		restored, err = undoJudgedDismissal(ctx, tx, c, keys, entry.UpdatedAt)
+		restored, err = undoJudgedDismissal(ctx, tx, c, keys, entry.ID)
 		events = []domain.Event{domain.VersionCandidatesChanged{}}
 	}
 	if err != nil {
@@ -616,16 +614,15 @@ func recordUndo(
 }
 
 // undoJudgedDismissal は自動の「違う」の組 keys の却下がまだあれば消し、両方の鍵の候補を作り直して組を候補の
-// 一覧に戻し、判定の保留（video_version_judging_holds）を書いて、戻したかを返す。judgedAt は判定で却下した時刻
-// （記録を done/different にした時刻）である。却下がもう無いか、所有者がその時刻から同じ組を「違う動画」と
-// 決め直した（dismiss の記録がある）なら何も変えない。却下の行は誰が書いたかを持たないので、所有者の判断は
-// 記録で見分ける。
-func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, judgedAt time.Time) (bool, error) {
+// 一覧に戻し、判定の保留（video_version_judging_holds）を書いて、戻したかを返す。entryID は取り消す判定の記録
+// である。却下がもう無いか、所有者がその記録より後に（id が大きい dismiss の記録で）同じ組を「違う動画」と決め
+// 直したなら何も変えない。却下の行は誰が書いたかを持たないので、所有者の判断は記録で見分ける（research.md R-7）。
+func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, entryID int64) (bool, error) {
 	var redecided bool
 	if err := tx.QueryRowContext(ctx, `select exists (select 1 from activity_entries
 		where kind = ? and subject_key = ? and subject_key_b = ? and subject_kind = ? and decider = ?
-		and created_at >= ?)`, string(domain.ActivityDismiss), keys[0], keys[1], string(domain.ActivitySubjectPair),
-		string(domain.ActivityByOwner), judgedAt.UnixMilli()).Scan(&redecided); err != nil {
+		and id > ?)`, string(domain.ActivityDismiss), keys[0], keys[1], string(domain.ActivitySubjectPair),
+		string(domain.ActivityByOwner), entryID).Scan(&redecided); err != nil {
 		return false, fmt.Errorf("cannot read the owner's dismissal: %w", err)
 	}
 	if redecided {
@@ -654,10 +651,10 @@ func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]st
 }
 
 // undoJudgedBundle は自動の「同じ」の組 keys の束ねがまだあれば（2 つの鍵が同じまとまりにあれば）、加わった側
-// （leavingMembers）を元の代表のまとまりとして外し（splitBundle）、外したかと確定後の知らせを返す。judgedAt は
-// 判定で束ねた時刻（記録を done/same にした時刻）である。束ねがもう無いか、外すメンバーが無ければ何も変えない。
+// （leavingMembers）を元の代表のまとまりとして外し（splitBundle）、外したかと確定後の知らせを返す。entryID は
+// 取り消す判定の記録である。束ねがもう無いか、外すメンバーが無ければ何も変えない。
 func undoJudgedBundle(
-	ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, undoKeys string, judgedAt time.Time,
+	ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, undoKeys string, entryID int64,
 ) (bool, []domain.Event, error) {
 	joined, err := domain.DecodeVersionBundleUndoKeys(undoKeys)
 	if err != nil {
@@ -678,7 +675,7 @@ func undoJudgedBundle(
 	if err != nil {
 		return false, nil, err
 	}
-	leaving, err := leavingMembers(ctx, tx, joined.Members, bundles[0].id, judgedAt)
+	leaving, err := leavingMembers(ctx, tx, joined.Members, bundles[0].id, entryID)
 	if err != nil {
 		return false, nil, err
 	}
@@ -692,28 +689,30 @@ func undoJudgedBundle(
 	return true, split.events(), nil
 }
 
-// leavingMembers は加わった側の鍵 joined のうち、判定で束ねた時刻 judgedAt から合わさったまとまり bundleID に
-// いるメンバーで、いまライブラリにあるものを返す。メンバーになった時刻（video_bundle_members.added_at）が
-// judgedAt より後の鍵は、所有者が一度外して束ね直したので、合わさったまとまりにいたとはみなさない。まとまりを
-// 束ねる操作は、すでにメンバーの鍵の時刻を変えない（moveBundleMembers）。
-func leavingMembers(
-	ctx context.Context, tx *sql.Tx, joined []string, bundleID int64, judgedAt time.Time,
-) ([]string, error) {
+// leavingMembers は加わった側の鍵 joined のうち、合わさったまとまり bundleID にいるメンバーで、いまライブラリに
+// あり、判定の記録 entryID より後に所有者が束ねた・外した・ドラッグの束ねを取り消した記録を持たないものを返す。
+// 所有者の記録を持つ鍵は、所有者が置いた所にあるので、合わさったまとまりにいたとはみなさない（research.md R-7）。
+func leavingMembers(ctx context.Context, tx *sql.Tx, joined []string, bundleID int64, entryID int64) ([]string, error) {
+	kinds := []domain.ActivityKind{domain.ActivityBundle, domain.ActivityUnbundle, domain.ActivityOrganizeUndo}
 	var leaving []string
 	for _, key := range joined {
-		var addedAt int64
-		err := tx.QueryRowContext(ctx, `select added_at from video_bundle_members where content_key = ? and bundle_id = ?`,
-			key, bundleID).Scan(&addedAt)
-		if errors.Is(err, sql.ErrNoRows) || err == nil && addedAt > judgedAt.Unix() {
-			continue
-		}
-		if err != nil {
+		var member bool
+		if err := tx.QueryRowContext(ctx, `select exists (select 1 from video_bundle_members where content_key = ? and bundle_id = ?)`,
+			key, bundleID).Scan(&member); err != nil {
 			return nil, fmt.Errorf("cannot read the bundle member: %w", err)
+		}
+		if !member {
+			continue
 		}
 		if _, err := videoIDForContent(ctx, tx, key); errors.Is(err, domain.ErrNotFound) {
 			continue
 		} else if err != nil {
 			return nil, err
+		}
+		if changed, err := ownerEntryAfter(ctx, tx, entryID, kinds, []string{key}, ""); err != nil {
+			return nil, err
+		} else if changed {
+			continue
 		}
 		leaving = append(leaving, key)
 	}

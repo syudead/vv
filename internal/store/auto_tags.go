@@ -439,7 +439,7 @@ func (s *AutoTagStore) Finish(
 		return err
 	}
 	if activityID != 0 {
-		if err := recordAutoTagActivityTags(ctx, tx, activityID, userKey, written, selection.Probabilities, now); err != nil {
+		if err := recordAutoTagActivityTags(ctx, tx, activityID, userKey, written, selection.Probabilities); err != nil {
 			return err
 		}
 	}

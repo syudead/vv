@@ -146,6 +146,37 @@ func recordOwnerBundle(ctx context.Context, tx *sql.Tx, c *changes, members []st
 	return recordOwnerVideoActivity(ctx, tx, c, domain.ActivityBundle, ownerVideoChanges(members, ""), now)
 }
 
+// ownerEntryAfter は、記録 entryID より後に書かれた（id が大きい。id は単調に増える）所有者の記録のうち、種類が
+// kinds のどれかで、対象の鍵が subjectKeys のどれかで、条件 condition（activity_entries の別名は e、引数は args）
+// に合うものがあるかを返す。自動の判断の取り消しが、所有者がその後に同じ対象を変えたかを時刻ではなく記録で
+// 見分けるのに使う（research.md R-7）。condition が空なら種類と鍵だけで見る。
+func ownerEntryAfter(
+	ctx context.Context, tx *sql.Tx, entryID int64, kinds []domain.ActivityKind, subjectKeys []string, condition string,
+	args ...any,
+) (bool, error) {
+	encodedKinds, err := json.Marshal(kinds)
+	if err != nil {
+		return false, fmt.Errorf("cannot look for the owner's later activity: %w", err)
+	}
+	encodedKeys, err := json.Marshal(subjectKeys)
+	if err != nil {
+		return false, fmt.Errorf("cannot look for the owner's later activity: %w", err)
+	}
+	if condition != "" {
+		condition = ` and ` + condition
+	}
+	var found bool
+	err = tx.QueryRowContext(ctx, `select exists (select 1 from activity_entries e
+		where e.id > ? and e.decider = ? and e.subject_kind = ?
+		and e.kind in (select value from json_each(?)) and e.subject_key in (select value from json_each(?))`+condition+`)`,
+		append([]any{entryID, string(domain.ActivityByOwner), string(domain.ActivitySubjectVideo), string(encodedKinds),
+			string(encodedKeys)}, args...)...).Scan(&found)
+	if err != nil {
+		return false, fmt.Errorf("cannot look for the owner's later activity: %w", err)
+	}
+	return found, nil
+}
+
 // recordOwnerDismissal は所有者の「違う動画」の組 keys（key_a < key_b）の dismiss の記録を 1 件書く。
 func recordOwnerDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, now time.Time) error {
 	subject := domain.ActivitySubject{Kind: domain.ActivitySubjectPair, Key: keys[0], KeyB: keys[1]}
