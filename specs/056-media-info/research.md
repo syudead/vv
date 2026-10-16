@@ -148,8 +148,8 @@ changed file; existing videos are not re-analysed (maintainer decision,
 2026-10-16). A video probed before `video_media_info` existed, or whose row is
 below `MediaInfoVersion`, shows no extra groups until its file changes. The
 earlier `metadata` job kind and its backfill are removed; migration `00052`
-keeps its number and only deletes the `metadata` jobs and `metadata_failed`
-issues it may have queued.
+stays unchanged because databases already applied it, and migration `00053`
+deletes the `metadata` jobs and `metadata_failed` issues it queued.
 
 ## R-6: `mediaInfo` is part of the video detail only, for owners and guests alike
 

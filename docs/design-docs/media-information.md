@@ -110,5 +110,6 @@ instead of adding a migration. The table is a rebuildable index
 Only the probe of a new or changed file writes the row; a video probed before
 `video_media_info` existed has none and its page shows no extra groups until
 its file changes (maintainer decision, 2026-10-16). Migration
-`00052_drop_metadata_jobs.sql` only deletes the `metadata` jobs and
-`metadata_failed` issues that an earlier draft of it queued.
+`00052_metadata_jobs.sql` stays unchanged because databases already applied
+it; `00053_drop_metadata_jobs.sql` deletes the `metadata` jobs and
+`metadata_failed` issues that `00052` queued.

@@ -111,7 +111,7 @@ Checked against ARCHITECTURE.md and AGENTS.md; the rules this design leans on:
 | --- | --- |
 | The domain decides, the store enforces | The HDR, interlacing, chapter and string rules are `internal/domain`; the store writes the row under the job's identity check and the claim query carries the yield-to-probe condition |
 | Adapters do not import each other | `internal/media/arib` is a pure package under `internal/media`, imported by `internal/media` only; depguard's rules for `internal/media` cover it |
-| Only a scan reads the media folders' files | The SI reader runs inside the probe job, which already open the file for `ffprobe` |
+| Only a scan reads the media folders' files | The SI reader runs inside the probe job, which already opens the file for `ffprobe` |
 | Every read knows its viewer | `mediaInfo` is read by the detail read that already takes the audience; guests get it for public videos only, as they get the detail |
 | User data survives a rebuild | `video_media_info` is an index; the tables list in running-vv.md gains it |
 | No copied code | `ApplyProbe` and `ApplyProbeForJob` share one store helper for the row |
@@ -142,7 +142,7 @@ the chapter marks, menu and preview on the player.
 | --- | --- |
 | `internal/domain` | `MediaInfo` and `MediaInfoVersion`; HDR, interlacing, bit-depth, string, date, location, chapter and broadcast-programme rules |
 | `internal/media` | `-show_chapters`, the TS limits, the parser for the new items; the TS SI reader; `internal/media/arib` (the decoder) |
-| `internal/store` | The `video_media_info` migration and the `00052` cleanup; the row in `ApplyProbeForJob`; the read on the detail |
+| `internal/store` | The `video_media_info` migration and the `00053` cleanup; the row in `ApplyProbeForJob`; the read on the detail |
 | `internal/scanner` | `.m2ts` and `.mts` in `mediaExtensions` |
 | `internal/httpapi`, `api/openapi.yaml` | `mediaInfo` on the detail |
 | `web/src/player`, `web/src/i18n` | The groups on the video page; language names; the chapters track, the seek-bar marks, the preview title and the chapters button |
@@ -227,9 +227,9 @@ decoded names and the probe time recorded in the PR.
 
 Removed by the maintainer (2026-10-16): existing videos are not re-analysed
 ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)). The unit's `metadata` job kind, its
-backfill and its scan hook were taken out; migration `00052` keeps its number
-and only deletes the `metadata` jobs and `metadata_failed` issues it may have
-queued.
+backfill and its scan hook were taken out; migration `00052` stays unchanged
+because databases already applied it, and migration `00053` deletes the
+`metadata` jobs and `metadata_failed` issues it queued.
 
 ### Show media information on the video page
 

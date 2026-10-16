@@ -14,7 +14,8 @@ written (other feature branches add migrations too).
 | Migration | Unit | What it does |
 | --- | --- | --- |
 | `video_media_info` | Read and store media information at import | Creates [`video_media_info`](#video_media_info) |
-| `00052_drop_metadata_jobs` | (Re-analyse unit, removed by the maintainer) | Deletes `metadata` jobs and `metadata_failed` issues that an earlier draft of this version queued; keeps the version number for databases that applied it ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)) |
+| `00052_metadata_jobs` | (Re-analyse unit, removed by the maintainer) | Adds `metadata` to the `jobs` kind check and queues a `metadata` job for each imported video; kept unchanged because databases already applied it |
+| `00053_drop_metadata_jobs` | (Re-analyse unit, removed by the maintainer) | Deletes the `metadata` jobs and `metadata_failed` issues that `00052` queued, and bumps the latest scan's `issues_revision` when it deletes an issue ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)) |
 
 Both tables are a rebuildable index in
 [Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery): a scan
