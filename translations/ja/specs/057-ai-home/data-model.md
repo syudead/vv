@@ -1,6 +1,6 @@
 ---
 source: specs/057-ai-home/data-model.md
-sourceHash: 1c42ad1959b93573bc461cd9c1c2a37423479e1f1c6c9a3c00e0fbbb066c7893
+sourceHash: 88c2550f0b6af052b0c51acabbe57bc3285b3e8424fb4dc382200b855460e0bd
 ---
 
 # データモデル: AI が整理する棚のホーム {#data-model-a-home-of-shelves-the-ai-organizes}
@@ -66,7 +66,8 @@ stateDiagram-v2
 
 | 規則 | 強制する場所 |
 | --- | --- |
-| 規則が `SmartRule.Validate` に通らない、すでにホームにある規則を繰り返す、または見える動画のどれにも合わない提案する棚は落とす | 適用のトランザクションの中の `domain` (検証、重複)、`store` (一致の数) |
+| 規則が `SmartRule.Validate` に通らない、または見える動画のどれにも合わない提案する棚は落とす | 適用のトランザクションの中の `domain` (検証)、`store` (一致の数) |
+| 作り直しでは、AI のフォルダの規則を繰り返す提案する棚は、そのフォルダを提案の名前の下に残す。所有者が保った棚の規則を繰り返すもの、または追加でどれかの棚の規則を繰り返すものは落とす | `domain` (規則の等しさ)、`store` の適用のトランザクション (R-5) |
 | 作り直しは `owner_kept` 0 のフォルダだけを削除する | `store`、適用のトランザクション (R-5) |
 | 追加は挿入し、削除も名前の変更もしない | `store`、適用のトランザクション (R-5) |
 | 所有者による `home_position` への書き込みは `owner_kept` を 1 にする | `store`、棚の順序の書き込み (R-4) |

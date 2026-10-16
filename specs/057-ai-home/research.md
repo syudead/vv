@@ -90,26 +90,31 @@ other owner write, so the AI does not undo it (requirement 9).
 
 ## R-5: A rebuild replaces the AI's folders in one transaction; an extend only adds
 
-**Decision**: A rebuild deletes every folder with `owner_kept` 0 that the
-proposal does not repeat, keeps one whose name and rule the proposal repeats
-(so its id, favorites and playlist items stay), inserts the rest, and sets
-the positions, all in one transaction; an extend only inserts, after the
-current shelves.
+**Decision**: A rebuild keeps a folder with `owner_kept` 0 whose rule the
+proposal repeats, taking the proposed name (so its id, favorites and playlist
+items stay), drops a proposed shelf whose rule an owner-kept shelf already
+has, inserts the rest, deletes the folders with `owner_kept` 0 the proposal
+did not repeat, and sets the positions, all in one transaction; an extend
+only inserts, after the current shelves, and drops a proposed shelf whose rule
+any shelf already has.
+
+The diagram shows what a rebuild does with each proposed shelf.
 
 ```mermaid
 flowchart LR
-  p[Proposed shelf] --> same{Same name and rule as an AI folder?}
-  same -->|yes| keep[Keep that folder]
-  same -->|no| dup{Same rule as any shelf?}
-  dup -->|yes| drop[Drop it]
-  dup -->|no| add[Insert a folder]
+  p[Proposed shelf] --> ai{Same rule as an AI folder?}
+  ai -->|yes| keep[Keep it, take the name]
+  ai -->|no| own{Same rule as an owner shelf?}
+  own -->|yes| drop[Drop it]
+  own -->|no| add[Insert a folder]
 ```
 
 | Option | Verdict |
 | --- | --- |
-| **One transaction, keep repeated folders** | Chosen |
+| **One transaction, keep folders whose rule repeats** | Chosen |
 | Delete all AI folders, insert all | Rejected: a favorite or playlist item on an AI shelf would vanish on every rebuild, even when the shelf comes back unchanged |
-| Rename and edit AI folders in place | Rejected: matching an old folder to a new proposal by similarity is a guess, and requirement 8 allows a rebuild to delete and rename |
+| Keep only a folder whose name and rule both repeat | Rejected: a renamed proposal with the same rule would be dropped as a duplicate of the old folder, and the old folder then deleted, so the shelf would vanish |
+| Match old and new folders by similar rules | Rejected: similarity is a guess, and requirement 8 allows a rebuild to delete and rename |
 
 **Rationale**: The home reads the old shelves until the transaction commits,
 so a home opened during a rebuild shows the previous shelves (Edge Case).
@@ -207,13 +212,15 @@ content" across the video page and the home.
 
 **Decision**: A video card on a shelf opens the video page with autoplay (and
 `?smartFolder=<id>` on a folder shelf, so the next video follows the shelf),
-and a group card opens the group's open video with autoplay and `?group`.
+and a group card opens the group's open video with autoplay and `?group`; a
+folder shelf's items leave out its child folders, which have no video to play.
 
 | Option | Verdict |
 | --- | --- |
 | **The video page, autoplaying** | Chosen |
 | A player inside the home | Rejected: it duplicates the video page's player, its quality and subtitle controls and its keyboard rules |
 | A group card opens the group page | Rejected: requirement 2 and `UI品質` require one press to play |
+| Child folder cards on a shelf | Rejected: a folder card opens a page, not a video, and the shelf heading already opens the folder with its children |
 
 **Rationale**: The video page already autoplays on `state.autoplay` for "play
 next", so the home only sets it.

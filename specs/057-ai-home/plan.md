@@ -183,10 +183,11 @@ flowchart LR
 **Dependencies**: None.
 
 **Acceptance**: `task check` passes; store tests show: a rebuild deletes an AI
-folder the proposal does not repeat, keeps one it repeats with the same id
-and favorite, and leaves an owner-kept folder as it was; an extend adds
-shelves after the last one and changes no existing name or rule; a proposed
-rule that matches no video or repeats a shelf's rule is dropped; ordering
+folder whose rule the proposal does not repeat, keeps one whose rule it
+repeats with the same id and favorite under the proposed name, drops a
+proposal repeating an owner-kept shelf's rule, and leaves an owner-kept
+folder as it was; an extend adds shelves after the last one and changes no
+existing name or rule; a proposed rule that matches no video is dropped; ordering
 shelves sets `owner_kept` to 1; `HomeChanged` is published after commit and
 not after a rollback.
 
@@ -219,7 +220,8 @@ the `home` screen event, the empty home's reason, and the R-9 benchmark
 
 **Acceptance**: `task check` passes; handler tests show the shelves in their
 order with the fixed shelves after them, a guest gets no organizer state and
-no shelf whose folder has nothing visible, `keys` over 8 is `400
+no shelf whose folder has nothing visible, a folder shelf's items hold no
+child folder, `keys` over 8 is `400
 invalid_request`, and `PUT` with an unknown id is `404`; the benchmark at
 20,000 videos and 50 shelves returns each read within 1 second.
 

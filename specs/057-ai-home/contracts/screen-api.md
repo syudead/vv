@@ -36,7 +36,7 @@ HomeShelf:
     byOrganizer: { type: boolean }    # owner only; true while owner_kept is 0
 
 Home:
-  required: [shelves, organizer]
+  required: [shelves]               # organizer is left out for a guest
   properties:
     shelves:   { type: array, items: { $ref: HomeShelf } }
     organizer: { $ref: HomeOrganizer }   # owner only
@@ -57,8 +57,8 @@ HomeShelfItems:
   required: [key, items, total]
   properties:
     key:   { $ref: HomeShelfKey }
-    items: { type: array, maxItems: 24, items: { $ref: LibraryItem } }
-    total: { type: integer }          # the shelf's item count; 0 drops the shelf from the screen
+    items: { type: array, maxItems: 24, items: { $ref: LibraryItem } }  # videos and groups only; a folder shelf leaves out its child folders (R-11)
+    total: { type: integer }          # the shelf's video and group count; 0 drops the shelf from the screen
 
 HomeShelfOrder:          # PUT /api/home/shelves
   required: [folderIds]

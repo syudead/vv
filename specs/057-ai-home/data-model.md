@@ -68,7 +68,8 @@ Both organizers return a list of proposed shelves; nothing stores it.
 
 | Rule | Enforced in |
 | --- | --- |
-| A proposed shelf whose rule fails `SmartRule.Validate`, repeats a rule already on the home, or matches no shown video is dropped | `domain` (validation, duplicate), `store` (match count) in the apply transaction |
+| A proposed shelf whose rule fails `SmartRule.Validate` or matches no shown video is dropped | `domain` (validation), `store` (match count) in the apply transaction |
+| A proposed shelf repeating an AI folder's rule keeps that folder under the proposed name in a rebuild; one repeating an owner-kept shelf's rule, or any shelf's rule in an extend, is dropped | `domain` (rule equality), `store` apply transaction (R-5) |
 | A rebuild deletes only folders with `owner_kept` 0 | `store`, apply transaction (R-5) |
 | An extend inserts and never deletes or renames | `store`, apply transaction (R-5) |
 | An owner write to `home_position` sets `owner_kept` to 1 | `store`, shelf order write (R-4) |
