@@ -187,6 +187,7 @@ func TestSmartRuleReplaceRefs(t *testing.T) {
 		{"organization only", SmartRefOrganization, []int64{2}, 8,
 			SmartRule{Q: "x", Tags: []int64{3, 1, 2}, TagKind: 1, Person: 1, Organization: 8}, true},
 		{"no source named", SmartRefPerson, []int64{4}, 7, rule, false},
+		{"no tag source named", SmartRefTag, []int64{4, 5}, 1, rule, false},
 	}
 	for _, c := range cases {
 		got, changed := rule.ReplaceRefs(c.kind, c.sources, c.target)

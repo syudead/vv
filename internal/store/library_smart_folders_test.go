@@ -231,3 +231,35 @@ func TestListLibraryHidesEmptySmartFoldersFromGuests(t *testing.T) {
 		t.Errorf("所有者のフォルダ = %v, want %v", got, want)
 	}
 }
+
+// 条件と並べ順が同じ一番上のフォルダは、どれも同じ並べ替えの値で並ぶ（値は 1 度だけ求めて写す）。
+func TestListLibrarySortsTwinSmartFoldersByTheSameValues(t *testing.T) {
+	db, ids := itemsFixture(t)
+	cat := attachNamedTag(t, db, "猫", ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")])
+	newSmartFolder(t, db, "猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
+	newSmartFolder(t, db, "同じ猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
+
+	// 大きさの降順で 700 は y と 2 つのフォルダ（solo 600 と x 100）で、フォルダは y の後ろに並ぶ。
+	got := libraryOrder(t, db, domain.AudienceOwner, domain.SortSizeDesc)
+	if len(got) != 7 || got[0] != "y" || !slices.Equal(slices.Sorted(slices.Values(got[1:3])), []string{"folder:同じ猫", "folder:猫"}) {
+		t.Errorf("大きさの降順 = %v, want y then both folders", got)
+	}
+}
+
+// 条件が無い実体を名指すフォルダしか無くても、所有者のライブラリには値の無い項目として末尾に出る
+// （research.md R-9）。
+func TestListLibraryShowsASmartFolderWithOnlyAMissingTag(t *testing.T) {
+	db, ids := itemsFixture(t)
+	gone := attachNamedTag(t, db, "消す", ids[fixturePath("/media/solo.mp4")])
+	folder := newSmartFolder(t, db, "消す", domain.SmartRule{Tags: []int64{gone}}, domain.SortTitleAsc, 0)
+	if err := db.Tags().DeleteTag(context.Background(), gone); err != nil {
+		t.Fatal(err)
+	}
+	items := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortSizeDesc, Limit: domain.MaxLimit})
+	if got := itemNames(items); len(got) != 6 || got[5] != "folder:消す" {
+		t.Errorf("大きさの降順 = %v, want folder:消す last", got)
+	}
+	if got := libraryFolderIDs(t, db, domain.VideoQuery{}); !slices.Equal(got, []int64{folder}) {
+		t.Errorf("LibraryIDs のフォルダ = %v, want [%d]", got, folder)
+	}
+}
