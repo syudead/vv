@@ -693,6 +693,78 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for HomeEmpty.
+const (
+	NoVideos HomeEmpty = "noVideos"
+)
+
+// Valid indicates whether the value is a known member of the HomeEmpty enum.
+func (e HomeEmpty) Valid() bool {
+	switch e {
+	case NoVideos:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HomeOrganizeRunOutcome.
+const (
+	HomeOrganizeRunOutcomeDone      HomeOrganizeRunOutcome = "done"
+	HomeOrganizeRunOutcomeFailed    HomeOrganizeRunOutcome = "failed"
+	HomeOrganizeRunOutcomeUnchanged HomeOrganizeRunOutcome = "unchanged"
+)
+
+// Valid indicates whether the value is a known member of the HomeOrganizeRunOutcome enum.
+func (e HomeOrganizeRunOutcome) Valid() bool {
+	switch e {
+	case HomeOrganizeRunOutcomeDone:
+		return true
+	case HomeOrganizeRunOutcomeFailed:
+		return true
+	case HomeOrganizeRunOutcomeUnchanged:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HomeOrganizeRunRun.
+const (
+	HomeOrganizeRunRunExtend  HomeOrganizeRunRun = "extend"
+	HomeOrganizeRunRunRebuild HomeOrganizeRunRun = "rebuild"
+)
+
+// Valid indicates whether the value is a known member of the HomeOrganizeRunRun enum.
+func (e HomeOrganizeRunRun) Valid() bool {
+	switch e {
+	case HomeOrganizeRunRunExtend:
+		return true
+	case HomeOrganizeRunRunRebuild:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for HomeOrganizerPending.
+const (
+	HomeOrganizerPendingExtend  HomeOrganizerPending = "extend"
+	HomeOrganizerPendingRebuild HomeOrganizerPending = "rebuild"
+)
+
+// Valid indicates whether the value is a known member of the HomeOrganizerPending enum.
+func (e HomeOrganizerPending) Valid() bool {
+	switch e {
+	case HomeOrganizerPendingExtend:
+		return true
+	case HomeOrganizerPendingRebuild:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for HomeShelfKind.
 const (
 	Continue    HomeShelfKind = "continue"
@@ -2505,6 +2577,54 @@ type Health struct {
 // HealthStatus ok = 保存層まで疎通、degraded = プロセスのみ生存
 type HealthStatus string
 
+// Home GET /api/home の応答
+type Home struct {
+	// Empty 見る人にライブラリの動画が 1 本も見えないときだけ入る
+	Empty *HomeEmpty `json:"empty,omitempty"`
+
+	// Organizer 整理役の状態。所有者の応答にだけ入る（specs/057-home/data-model.md「Organizer state」）
+	Organizer *HomeOrganizer `json:"organizer,omitempty"`
+
+	// Shelves フォルダの棚を並びの順に、続けて決まった棚
+	Shelves []HomeShelf `json:"shelves"`
+}
+
+// HomeEmpty 見る人にライブラリの動画が 1 本も見えないときだけ入る
+type HomeEmpty string
+
+// HomeOrganizeRun 最後に終わった整理役の実行（specs/057-home/data-model.md「Settings」）
+type HomeOrganizeRun struct {
+	// Added 足した棚の数
+	Added int `json:"added"`
+
+	// FinishedAt Unix ミリ秒
+	FinishedAt int64                  `json:"finishedAt"`
+	Outcome    HomeOrganizeRunOutcome `json:"outcome"`
+
+	// Removed 消した棚の数
+	Removed int                `json:"removed"`
+	Run     HomeOrganizeRunRun `json:"run"`
+}
+
+// HomeOrganizeRunOutcome defines model for HomeOrganizeRun.Outcome.
+type HomeOrganizeRunOutcome string
+
+// HomeOrganizeRunRun defines model for HomeOrganizeRun.Run.
+type HomeOrganizeRunRun string
+
+// HomeOrganizer 整理役の状態。所有者の応答にだけ入る（specs/057-home/data-model.md「Organizer state」）
+type HomeOrganizer struct {
+	// Last 最後に終わった整理役の実行（specs/057-home/data-model.md「Settings」）
+	Last *HomeOrganizeRun `json:"last,omitempty"`
+
+	// Pending 待っている実行。無ければ省く
+	Pending *HomeOrganizerPending `json:"pending,omitempty"`
+	Running bool                  `json:"running"`
+}
+
+// HomeOrganizerPending 待っている実行。無ければ省く
+type HomeOrganizerPending string
+
 // HomeShelf ホームの棚 1 つ（specs/057-home/contracts/screen-api.md）
 type HomeShelf struct {
 	// ByOrganizer 所有者だけ。owner_kept が 0 の間は真
@@ -2524,8 +2644,31 @@ type HomeShelf struct {
 // HomeShelfKind defines model for HomeShelf.Kind.
 type HomeShelfKind string
 
+// HomeShelfItems 棚 1 つの最初の項目
+type HomeShelfItems struct {
+	// Items 動画とグループの項目だけ。フォルダの棚の子フォルダは入れない
+	Items []LibraryItem `json:"items"`
+
+	// Key `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
+	Key HomeShelfKey `json:"key"`
+
+	// Total 棚の項目（動画とグループ）の数。0 なら画面は棚を出さない
+	Total int `json:"total"`
+}
+
+// HomeShelfItemsList GET /api/home/shelves の応答
+type HomeShelfItemsList struct {
+	Shelves []HomeShelfItems `json:"shelves"`
+}
+
 // HomeShelfKey `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
 type HomeShelfKey = string
+
+// HomeShelfOrder PUT /api/home/shelves の本文
+type HomeShelfOrder struct {
+	// FolderIds 棚にするフォルダの id を上から順に
+	FolderIds []int64 `json:"folderIds"`
+}
 
 // Interest defines model for Interest.
 type Interest struct {
@@ -3582,6 +3725,9 @@ type SmartFolderDetail struct {
 
 	// NextCursor 続きがあるときだけ入る。`listSmartFolderItems` に渡す
 	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// OnHome 所有者の応答にだけ入る。このフォルダがホームの棚か（specs/057-home/contracts/screen-api.md）
+	OnHome *bool `json:"onHome,omitempty"`
 
 	// Settings フォルダの条件と並べ順。所有者の応答にだけ入る
 	Settings *SmartFolderSettings `json:"settings,omitempty"`
@@ -5084,6 +5230,12 @@ type ListGroupItemsParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListHomeShelfItemsParams defines parameters for ListHomeShelfItems.
+type ListHomeShelfItemsParams struct {
+	// Keys 棚の鍵（`HomeShelfKey`）を `,` で区切って並べたもの（1〜8 件）
+	Keys []HomeShelfKey `form:"keys" json:"keys"`
+}
+
 // ListLibraryParams defines parameters for ListLibrary.
 type ListLibraryParams struct {
 	// Query 検索語。空白で区切った語をすべて含む動画に絞る（AND）。`"…"` で囲んだ部分は
@@ -5595,6 +5747,9 @@ type RemoveGroupItemsJSONRequestBody = GroupItemRemove
 // MoveGroupItemJSONRequestBody defines body for MoveGroupItem for application/json ContentType.
 type MoveGroupItemJSONRequestBody = GroupItemMove
 
+// SetHomeShelvesJSONRequestBody defines body for SetHomeShelves for application/json ContentType.
+type SetHomeShelvesJSONRequestBody = HomeShelfOrder
+
 // CreateMediaFolderJSONRequestBody defines body for CreateMediaFolder for application/json ContentType.
 type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 
@@ -5849,6 +6004,15 @@ type ServerInterface interface {
 	// GetHealth 稼働状態とビルド情報を返す
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// GetHome ホームの棚の要約と整理役の状態を返す
+	// (GET /api/home)
+	GetHome(w http.ResponseWriter, r *http.Request)
+	// ListHomeShelfItems 画面に入った棚の最初の項目を返す
+	// (GET /api/home/shelves)
+	ListHomeShelfItems(w http.ResponseWriter, r *http.Request, params ListHomeShelfItemsParams)
+	// SetHomeShelves どのスマートフォルダを棚にするかとその並びを書く
+	// (PUT /api/home/shelves)
+	SetHomeShelves(w http.ResponseWriter, r *http.Request)
 	// ListLibrary ライブラリの項目（動画とグループ）の一覧を返す
 	// (GET /api/library)
 	ListLibrary(w http.ResponseWriter, r *http.Request, params ListLibraryParams)
@@ -7086,6 +7250,67 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHealth(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetHome operation middleware
+func (siw *ServerInterfaceWrapper) GetHome(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetHome(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListHomeShelfItems operation middleware
+func (siw *ServerInterfaceWrapper) ListHomeShelfItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListHomeShelfItemsParams
+
+	// ------------- Required query parameter "keys" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, true, "keys", r.URL.Query(), &params.Keys, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "keys"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "keys", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListHomeShelfItems(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetHomeShelves operation middleware
+func (siw *ServerInterfaceWrapper) SetHomeShelves(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetHomeShelves(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11561,6 +11786,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/network", wrapper.GetNetworkSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/network", wrapper.UpdateNetworkSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/home", wrapper.GetHome)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/home/shelves", wrapper.ListHomeShelfItems)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/home/shelves", wrapper.SetHomeShelves)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding", wrapper.GetOnboarding)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/onboarding", wrapper.UpdateOnboarding)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding/interests", wrapper.ListOnboardingInterests)
