@@ -176,6 +176,9 @@ func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 	if err := settle(ctx, tx, c); err != nil {
 		return err
 	}
+	if err := closeDeletedPairActivities(ctx, tx, c); err != nil {
+		return err
+	}
 	if c != nil && c.issues {
 		if err := bumpIssuesRevision(ctx, tx); err != nil {
 			return err

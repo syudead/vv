@@ -55,13 +55,14 @@ func (s *IngestStore) ApplyFingerprintForJob(
 	); err != nil {
 		return false, fmt.Errorf("cannot save the fingerprint (id=%d): %w", job.VideoID, err)
 	}
-	if err := rebuildVersionCandidates(ctx, tx, job.ContentKey, fingerprint); err != nil {
+	c := &changes{}
+	if err := rebuildVersionCandidates(ctx, tx, c, job.ContentKey, fingerprint); err != nil {
 		return false, err
 	}
 	if err := clearFailedIssue(ctx, tx, domain.JobFingerprint, job.VideoID); err != nil {
 		return false, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commit(ctx, tx, c); err != nil {
 		return false, fmt.Errorf("cannot commit the fingerprint (id=%d): %w", job.VideoID, err)
 	}
 	return true, nil
@@ -119,8 +120,17 @@ func decodeFingerprintArgs(hashes, interval driver.Value) (domain.Fingerprint, b
 // rebuildVersionCandidates は内容 key の候補をいったん消し、fingerprint と比べて作り直す
 // （data-model.md §7）。相手は同じ版の指紋を持ち、尺が domain.DurationsMatch の幅にある内容で、
 // 却下された組と同じ集まりの組を除き、距離が 0 以上 domain.FingerprintMatchMaxDistance 以下の
-// もの。key の動画の尺が分からなければ候補を作らない。
-func rebuildVersionCandidates(ctx context.Context, tx *sql.Tx, key string, fingerprint domain.Fingerprint) error {
+// もの。key の動画の尺が分からなければ候補を作らない。作った候補は組の開いている記録に付き直し、判定が入なら
+// 判定できる組に記録を開く（syncPairActivities、specs/055-activity/data-model.md「Rules」）。
+func rebuildVersionCandidates(ctx context.Context, tx *sql.Tx, c *changes, key string, fingerprint domain.Fingerprint) error {
+	if err := computeVersionCandidates(ctx, tx, key, fingerprint); err != nil {
+		return err
+	}
+	return syncPairActivities(ctx, tx, c, []string{key}, time.Now())
+}
+
+// computeVersionCandidates は rebuildVersionCandidates の候補の行を作り直す部分である。
+func computeVersionCandidates(ctx context.Context, tx *sql.Tx, key string, fingerprint domain.Fingerprint) error {
 	if _, err := tx.ExecContext(ctx,
 		`delete from video_version_candidates where key_a = ? or key_b = ?`, key, key); err != nil {
 		return fmt.Errorf("cannot clear the version candidates: %w", err)
@@ -298,7 +308,13 @@ func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 	if err := dismissPair(ctx, tx, keyA, keyB); err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	// 判定の記録が開いている組なら、所有者が決めたとして閉じる（specs/055-activity/data-model.md「Outcomes」）。
+	c := &changes{}
+	if err := closePairActivities(ctx, tx, c, []string{keyA, keyB}, domain.ActivityDecidedByOwner,
+		domain.ActivityByOwner, 0, time.Now()); err != nil {
+		return err
+	}
+	if err := s.db.commit(ctx, tx, c); err != nil {
 		return fmt.Errorf("cannot dismiss the version candidate: %w", err)
 	}
 	return nil

@@ -79,11 +79,15 @@ func (s *VersionStore) Bundle(ctx context.Context, videoIDs []int64, representat
 	if err != nil {
 		return domain.VideoVersions{}, err
 	}
+	c := &changes{}
+	if err := closeOwnerBundledPairs(ctx, tx, c, plan.members); err != nil {
+		return domain.VideoVersions{}, err
+	}
 	versions, err := videoVersions(ctx, tx, domain.AudienceOwner, representativeID)
 	if err != nil {
 		return domain.VideoVersions{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.VideoVersions{}, fmt.Errorf("cannot bundle the videos: %w", err)
 	}
 	s.db.publishEvents(outcome.events()...)
@@ -212,6 +216,12 @@ func applyBundle(ctx context.Context, tx *sql.Tx, plan bundlePlan) (bundleOutcom
 		changedGroups: normalizeIDs(append(rekeyedGroups, changedGroups...)), changedVideos: changed}, nil
 }
 
+// closeOwnerBundledPairs は所有者が members を 1 つの集まりに束ねたとき、その中の組の開いている
+// version_judgement の記録を、所有者が決めたとして閉じる（specs/055-activity/data-model.md「Outcomes」）。
+func closeOwnerBundledPairs(ctx context.Context, tx *sql.Tx, c *changes, members []string) error {
+	return closePairActivities(ctx, tx, c, members, domain.ActivityDecidedByOwner, domain.ActivityByOwner, 0, time.Now())
+}
+
 // createBundle は代表 representativeKey の新しい集まりの行を作り、その id と利用者データの鍵を返す。
 func createBundle(ctx context.Context, tx *sql.Tx, representativeKey string, now int64) (int64, string, error) {
 	result, err := tx.ExecContext(ctx,
@@ -325,77 +335,150 @@ func (s *VersionStore) Unbundle(ctx context.Context, videoID int64) (domain.Vide
 	if !bundled {
 		return domain.Video{}, domain.ErrNotBundled
 	}
-	members, err := bundleMemberKeys(ctx, tx, bundle.id)
+	c := &changes{}
+	split, err := splitBundle(ctx, tx, c, bundle, []string{key}, key)
 	if err != nil {
-		return domain.Video{}, err
-	}
-	changed, err := videoIDsForContentKeys(ctx, tx, members)
-	if err != nil {
-		return domain.Video{}, err
-	}
-	// 項目が見せるかが変わったプレイリストは、終わりに更新日時を進める。
-	shapes, err := snapshotPlaylistShapes(ctx, tx, append(slices.Clone(members), bundle.userKey))
-	if err != nil {
-		return domain.Video{}, err
-	}
-
-	// 外した動画と残る各メンバーの組は自動では束ねない（specs/054-auto-dup/research.md R-8）。
-	if err := recordUnbundledPairs(ctx, tx, key, members, time.Now().Unix()); err != nil {
-		return domain.Video{}, err
-	}
-	if _, err := tx.ExecContext(ctx, `delete from video_bundle_members where content_key = ?`, key); err != nil {
-		return domain.Video{}, fmt.Errorf("cannot unbundle the video: %w", err)
-	}
-	remaining := slices.DeleteFunc(slices.Clone(members), func(member string) bool { return member == key })
-	var rekeyedGroups []int64
-	switch {
-	case len(remaining) <= 1:
-		if len(remaining) == 1 {
-			if err := replaceUserData(ctx, tx, bundle.userKey, remaining[0]); err != nil {
-				return domain.Video{}, err
-			}
-			// プレイリストとグループの項目は集まりの鍵から残った 1 本へ移す。他のメンバーが残るときは集まりに
-			// 残し、外したメンバーには項目を持たせない（specs/044-playlists/research.md R-2）。
-			if rekeyedGroups, err = rekeyUserItems(ctx, tx, bundle.userKey, remaining[0]); err != nil {
-				return domain.Video{}, err
-			}
-		}
-		if _, err := tx.ExecContext(ctx, `delete from video_bundles where id = ?`, bundle.id); err != nil {
-			return domain.Video{}, fmt.Errorf("cannot dissolve the bundle: %w", err)
-		}
-	case bundle.representativeKey == key:
-		next, err := nextRepresentativeKey(ctx, tx, bundle.id)
-		if err != nil {
-			return domain.Video{}, err
-		}
-		if _, err := tx.ExecContext(ctx,
-			`update video_bundles set representative_key = ?, updated_at = ? where id = ?`,
-			next, time.Now().Unix(), bundle.id); err != nil {
-			return domain.Video{}, fmt.Errorf("cannot change the representative: %w", err)
-		}
-	}
-
-	// 外した動画の候補を作り直し、外した組を一覧に戻す（R-8）。その動画の他の判定も待ちに戻る（R-4）。
-	if err := rebuildCandidatesOf(ctx, tx, key); err != nil {
-		return domain.Video{}, err
-	}
-	changedGroups, err := rebuildFolderIndex(ctx, tx)
-	if err != nil {
-		return domain.Video{}, err
-	}
-	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
 		return domain.Video{}, err
 	}
 	video, err := getVideo(ctx, tx, domain.AudienceOwner, videoID)
 	if err != nil {
 		return domain.Video{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.Video{}, fmt.Errorf("cannot unbundle the video: %w", err)
 	}
-	s.db.publishEvents(append([]domain.Event{domain.VideoBundleChanged{VideoIDs: changed}, domain.VersionCandidatesChanged{}},
-		groupsChangedEvents(normalizeIDs(append(rekeyedGroups, changedGroups...)))...)...)
+	s.db.publishEvents(split.events()...)
 	return video, nil
+}
+
+// bundleSplit は splitBundle が書いた結果である。changedVideos は元の集まりの全メンバーの動画の id、
+// changedGroups は項目を付け替えたかフォルダの索引で変わったグループとその祖先である。
+type bundleSplit struct {
+	changedVideos []int64
+	changedGroups []int64
+}
+
+// events は確定後に発行する知らせである。
+func (s bundleSplit) events() []domain.Event {
+	return append([]domain.Event{domain.VideoBundleChanged{VideoIDs: s.changedVideos}, domain.VersionCandidatesChanged{}},
+		groupsChangedEvents(s.changedGroups)...)
+}
+
+// splitBundle は集まり bundle からメンバー leaving（1 本以上、全メンバーより少ない）を外す。所有者の
+// Unbundle（1 本）と、自動の束ねの取り消し（加わった側、specs/055-activity/research.md R-7）が共有する。
+//
+// 外した各メンバーと残る各メンバーの組を video_version_unbundles に書く（側の中の組は書かない、
+// specs/054-auto-dup/research.md R-8）。1 本なら自分の content_key の値に戻る。2 本以上なら representative
+// （leaving に無ければ最初の鍵）を代表の 1 つの集まりとして外し、Unbundle が残るメンバーに渡すのと同じく
+// 元の集まりの値の写しを持たせる。残りが 1 本なら集まりを解き、集まりの鍵の値と項目を残った 1 本へ移す。
+// 代表が外れたら、残りから次の代表を選ぶ。外したメンバーの候補を作り直し、フォルダの索引を作り直す。
+// 呼び出し側の取引の中で行う。
+func splitBundle(
+	ctx context.Context, tx *sql.Tx, c *changes, bundle bundleRef, leaving []string, representative string,
+) (bundleSplit, error) {
+	members, err := bundleMemberKeys(ctx, tx, bundle.id)
+	if err != nil {
+		return bundleSplit{}, err
+	}
+	changed, err := videoIDsForContentKeys(ctx, tx, members)
+	if err != nil {
+		return bundleSplit{}, err
+	}
+	// 項目が見せるかが変わったプレイリストは、終わりに更新日時を進める。
+	shapes, err := snapshotPlaylistShapes(ctx, tx, append(slices.Clone(members), bundle.userKey))
+	if err != nil {
+		return bundleSplit{}, err
+	}
+	remaining := slices.DeleteFunc(slices.Clone(members), func(member string) bool { return slices.Contains(leaving, member) })
+	now := time.Now().Unix()
+	if err := detachLeavingMembers(ctx, tx, bundle, leaving, remaining, representative, now); err != nil {
+		return bundleSplit{}, err
+	}
+	rekeyedGroups, err := settleRemainingMembers(ctx, tx, bundle, leaving, remaining, now)
+	if err != nil {
+		return bundleSplit{}, err
+	}
+	// 外した動画の候補を作り直し、外した組を一覧に戻す（R-8）。その動画の他の判定も待ちに戻る（R-4）。
+	for _, key := range leaving {
+		if err := rebuildCandidatesOf(ctx, tx, c, key); err != nil {
+			return bundleSplit{}, err
+		}
+	}
+	changedGroups, err := rebuildFolderIndex(ctx, tx)
+	if err != nil {
+		return bundleSplit{}, err
+	}
+	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
+		return bundleSplit{}, err
+	}
+	return bundleSplit{changedVideos: changed, changedGroups: normalizeIDs(append(rekeyedGroups, changedGroups...))}, nil
+}
+
+// detachLeavingMembers は splitBundle の、leaving を集まり bundle から外す部分である。外した組を記録し、2 本以上
+// なら representative を代表の新しい集まりにして bundle の値を写す。
+func detachLeavingMembers(
+	ctx context.Context, tx *sql.Tx, bundle bundleRef, leaving, remaining []string, representative string, now int64,
+) error {
+	for _, key := range leaving {
+		// 外した動画と残る各メンバーの組は自動では束ねない（specs/054-auto-dup/research.md R-8）。
+		if err := recordUnbundledPairs(ctx, tx, key, remaining, now); err != nil {
+			return err
+		}
+		if _, err := tx.ExecContext(ctx, `delete from video_bundle_members where content_key = ?`, key); err != nil {
+			return fmt.Errorf("cannot unbundle the video: %w", err)
+		}
+	}
+	if len(leaving) < 2 {
+		return nil
+	}
+	if !slices.Contains(leaving, representative) {
+		representative = leaving[0]
+	}
+	bundleID, userKey, err := createBundle(ctx, tx, representative, now)
+	if err != nil {
+		return err
+	}
+	if err := copyUserData(ctx, tx, bundle.userKey, userKey); err != nil {
+		return err
+	}
+	return moveBundleMembers(ctx, tx, bundlePlan{members: leaving}, bundleID, now)
+}
+
+// settleRemainingMembers は splitBundle の、残ったメンバー remaining の集まりを整える部分である。1 本以下なら
+// 集まりを解き（1 本なら集まりの鍵の値と項目をその 1 本へ移す）、代表が leaving にあれば次の代表を選ぶ。
+// 項目を付け替えたグループの id を返す。
+func settleRemainingMembers(
+	ctx context.Context, tx *sql.Tx, bundle bundleRef, leaving, remaining []string, now int64,
+) ([]int64, error) {
+	var rekeyedGroups []int64
+	switch {
+	case len(remaining) <= 1:
+		if len(remaining) == 1 {
+			if err := replaceUserData(ctx, tx, bundle.userKey, remaining[0]); err != nil {
+				return nil, err
+			}
+			// プレイリストとグループの項目は集まりの鍵から残った 1 本へ移す。他のメンバーが残るときは集まりに
+			// 残し、外したメンバーには項目を持たせない（specs/044-playlists/research.md R-2）。
+			var err error
+			if rekeyedGroups, err = rekeyUserItems(ctx, tx, bundle.userKey, remaining[0]); err != nil {
+				return nil, err
+			}
+		}
+		if _, err := tx.ExecContext(ctx, `delete from video_bundles where id = ?`, bundle.id); err != nil {
+			return nil, fmt.Errorf("cannot dissolve the bundle: %w", err)
+		}
+	case slices.Contains(leaving, bundle.representativeKey):
+		next, err := nextRepresentativeKey(ctx, tx, bundle.id)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx,
+			`update video_bundles set representative_key = ?, updated_at = ? where id = ?`,
+			next, now, bundle.id); err != nil {
+			return nil, fmt.Errorf("cannot change the representative: %w", err)
+		}
+	}
+	return rekeyedGroups, nil
 }
 
 // Versions は videoID の動画の集まりの全バージョンのうち、見る人（audience）に見せてよい

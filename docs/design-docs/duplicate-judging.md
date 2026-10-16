@@ -75,6 +75,7 @@ One goroutine, like `AutoTagger`, claims one pair at a time while
 | `VersionCandidatesChanged` | Removing a version lists its pairs again |
 | Saving the setting | Turning it on judges every waiting pair |
 | Saving the Ollama connection | `no_connection` pairs return to waiting |
+| A retry or undo from the activity log | A retried pair is claimable now |
 | The earliest `retry_at` of a failed pair | Retries need nothing from the owner ([R-5](../../specs/054-auto-dup/research.md#r-5-a-failed-judgement-retries-on-a-backoff-that-never-ends)) |
 
 The worker asks the store whether an `ollama.endpoint` row exists before a
@@ -82,3 +83,48 @@ request, so a pair is never sent to the default address the owner never set
 ([R-13](../../specs/054-auto-dup/research.md#r-13-the-model-is-asked-only-once-the-owner-has-saved-a-connection)).
 Each pair's frame-rule outcome, frame counts, verdict and probability go to
 the log under `component=duplicate-judging`.
+
+## Each pair keeps one activity entry
+
+Every judgeable candidate has one `version_judgement` entry in the activity
+log ([activity.md](activity.md)), opened when the candidate appears while
+judging is on, or when judging is turned on. The candidate row's
+`activity_id` points to it, and its status follows the row's `judgement`, so
+the same entry turns from `no_connection` or `failed` into the result
+([055 R-4](../../specs/055-activity/research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)).
+The code is
+[`internal/store/activity_judgements.go`](../../internal/store/activity_judgements.go).
+
+| Candidate row | Entry |
+| --- | --- |
+| Waiting, or returned to waiting (connection saved, judging turned off mid-judgement, retry) | `running`/`waiting` |
+| Claimed, including an entry left `interrupted` by a restart | `running`/`processing` |
+| `undecided`, `failed` (with its retry time), `no_connection` | `attention` with that reason |
+| Bundled or dismissed by the judgement | `done`/`same` or `done`/`different` |
+| Rebuilt for one of its keys | Attached again to the pair's open entry, found by its two keys |
+| Bundled or dismissed by the owner | `done`/`decided_by_owner` |
+| A key left the library | `done`/`gone` |
+| Swept into one bundle by another pair's automatic bundle | `done`/`superseded` |
+
+The decider is `ai` with the probability when the model's answer decided, and
+`rule` otherwise
+([055 R-5](../../specs/055-activity/research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)).
+An automatic bundle keeps the joined side's member keys and its former
+representative in `undo_keys`, the side whose representative did not become
+the bundle's.
+
+## Undo of an automatic decision is held
+
+The owner undoes an automatic `same` or `different` from the activity log in
+one `ActivityStore` transaction that re-reads the state first
+([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)).
+When the state has changed, nothing else changes and the `undo` entry says
+`already_reverted`.
+
+| Undone | State change | Keeps the worker from deciding it again |
+| --- | --- | --- |
+| `same` | The joined side leaves the bundle as `Unbundle` removes one video; a side of two or more leaves as one bundle with its former representative and a copy of the merged bundle's user data | `video_version_unbundles`, only for pairs across the two sides |
+| `different` | The dismissal is deleted and both keys' candidates are rebuilt, so the pair is listed on Duplicates again | `video_version_judging_holds` |
+
+The claim skips a held pair as it skips an unbundled one, and a content change
+at the same path re-keys both tables and the open entries' subject keys.

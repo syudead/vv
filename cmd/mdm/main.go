@@ -245,8 +245,8 @@ func run(opts runOptions) error {
 		return err
 	}
 	// アクティビティの記録のうち、前回の停止で処理中のまま残ったものを中断にする。ワーカーを動かす前に行う。
-	activity := app.NewActivity(app.ActivityOptions{Store: db.Activity()})
-	recoverActivity(backgroundCtx, activity, logger)
+	// 回復は記録の読み書きだけなので、やり直しと取り消しの振り分け先（ワーカー）を作る前に行う。
+	recoverActivity(backgroundCtx, app.NewActivity(app.ActivityOptions{Store: db.Activity()}), logger)
 	if opts.OnBusyProbe != nil {
 		opts.OnBusyProbe(scans.Busy)
 	}
@@ -323,6 +323,17 @@ func run(opts runOptions) error {
 		logger.Warn("could not requeue interrupted duplicate judgements", slog.Any("error", err))
 	}
 	ollamaConnection.OnSaved(versionJudge.ConnectionSaved)
+	// アクティビティの記録の一覧と、やり直しと取り消しの種類ごとの振り分け（specs/055-activity/plan.md）。
+	versionJudgementActivity := app.NewVersionJudgementActivity(db.Versions(), db.Activity(), versionJudge)
+	activity := app.NewActivity(app.ActivityOptions{
+		Store: db.Activity(),
+		Retriers: map[domain.ActivityKind]app.ActivityRetrier{
+			domain.ActivityVersionJudgement: versionJudgementActivity,
+		},
+		Undoers: map[domain.ActivityKind]app.ActivityUndoer{
+			domain.ActivityVersionJudgement: versionJudgementActivity,
+		},
+	})
 	subscriptions := subscribeEvents(bus, eventSubscribers{
 		Screen:           events.Handle,
 		Workers:          wakers,

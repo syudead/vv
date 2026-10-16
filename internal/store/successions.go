@@ -89,14 +89,18 @@ func applyReadySuccessions(ctx context.Context, tx *sql.Tx) (succession, error) 
 		}
 		changed.videoIDs = append(changed.videoIDs, one.videoIDs...)
 		changed.groupIDs = append(changed.groupIDs, one.groupIDs...)
+		changed.activity = changed.activity || one.activity
 	}
-	return succession{videoIDs: normalizeIDs(changed.videoIDs), groupIDs: normalizeIDs(changed.groupIDs)}, nil
+	return succession{
+		videoIDs: normalizeIDs(changed.videoIDs), groupIDs: normalizeIDs(changed.groupIDs), activity: changed.activity,
+	}, nil
 }
 
-// succession は引き継ぎで、確定後に知らせる動画とグループの id である。
+// succession は引き継ぎで、確定後に知らせる動画とグループの id と、アクティビティの記録を付け替えたかである。
 type succession struct {
 	videoIDs []int64
 	groupIDs []int64
+	activity bool
 }
 
 // judgeableSuccession は判定する記録の新しい鍵と、その動画の尺である。
@@ -187,11 +191,17 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 	if err != nil {
 		return succession{}, err
 	}
-	// 「違う動画」の組と集まりから外した組は、同じ規則で付け替える（specs/054-auto-dup/data-model.md「Rules」）。
-	for _, table := range []string{"video_version_dismissals", "video_version_unbundles"} {
+	// 「違う動画」の組・集まりから外した組・判定を保留した組は、同じ規則で付け替える
+	// （specs/054-auto-dup/data-model.md「Rules」、specs/055-activity/data-model.md「Rules」）。
+	for _, table := range []string{"video_version_dismissals", "video_version_unbundles", "video_version_judging_holds"} {
 		if err := moveKeyPairs(ctx, tx, table, oldKey, contentKey); err != nil {
 			return succession{}, err
 		}
+	}
+	// 開いている判定の記録の対象の鍵も同じ規則で付け替える。
+	movedActivity, err := movePairActivityKey(ctx, tx, oldKey, contentKey, time.Now())
+	if err != nil {
+		return succession{}, err
 	}
 	// 付け替えた集まりと却下で、新しい鍵の候補が同じ集まりや却下の組になりうる（data-model.md §1 の
 	// 不変条件）。
@@ -219,7 +229,10 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 	if err := touchReshapedPlaylists(ctx, tx, shapes); err != nil {
 		return succession{}, err
 	}
-	return succession{videoIDs: normalizeIDs(changed), groupIDs: normalizeIDs(append(rekeyedGroups, changedGroups...))}, nil
+	return succession{
+		videoIDs: normalizeIDs(changed), groupIDs: normalizeIDs(append(rekeyedGroups, changedGroups...)),
+		activity: movedActivity,
+	}, nil
 }
 
 // moveBundleMember は集まりのメンバーの鍵 oldKey を newKey に付け替え、代表だったなら代表も
@@ -343,6 +356,9 @@ func successionEvents(changed succession) []domain.Event {
 	var events []domain.Event
 	if len(changed.videoIDs) > 0 {
 		events = append(events, domain.VideoBundleChanged{VideoIDs: changed.videoIDs})
+	}
+	if changed.activity {
+		events = append(events, domain.ActivityChanged{})
 	}
 	return append(events, groupsChangedEvents(changed.groupIDs)...)
 }
