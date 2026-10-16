@@ -162,11 +162,9 @@ func TestSmartFolderChildAndsItsParentsRule(t *testing.T) {
 	if len(first.Items) != 4 || first.NextCursor == "" {
 		t.Errorf("最初のページ = %v（子フォルダ 2 つと項目 2 件）", smartItemNames(first.Items))
 	}
-	if got := memberIDs(first.Items[0].SmartFolder.LibraryGroup); !slices.Equal(got, []int64{solo}) {
-		t.Errorf("Another のカードの再生順 = %v, want [%d]", got, solo)
-	}
-	if first.Items[0].SmartFolder.ParentID != parent {
-		t.Errorf("Another の親 = %d", first.Items[0].SmartFolder.ParentID)
+	// 子フォルダは要約だけを持つ（research.md R-14）。
+	if got, want := *first.Items[0].SmartFolder, (domain.SmartFolderSummary{ID: child, ParentID: parent, Name: "Another"}); got != want {
+		t.Errorf("Another の要約 = %+v, want %+v", got, want)
 	}
 
 	unwatched := first.Items[1].SmartFolder.ID
@@ -283,9 +281,6 @@ func TestSmartFolderWithAMissingTagListsOnlyItsChildren(t *testing.T) {
 	want := []domain.SmartRuleRef{{Kind: domain.SmartRefTag, ID: cat}}
 	if !slices.Equal(first.Missing, want) || len(first.SmartFolder.Members) != 0 {
 		t.Errorf("親 missing = %v, 再生順 = %v", first.Missing, memberIDs(first.SmartFolder.LibraryGroup))
-	}
-	if len(items[0].SmartFolder.Members) != 0 {
-		t.Errorf("子のカードの再生順 = %v", memberIDs(items[0].SmartFolder.LibraryGroup))
 	}
 	page, items := smartFolderPages(t, db, domain.AudienceOwner, child, domain.MaxLimit)
 	if len(items) != 0 || !slices.Equal(page.Missing, want) {

@@ -72,7 +72,7 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 		if item.Video != nil {
 			shown = append(shown, *item.Video)
 			tagged = append(tagged, *item.Video)
-		} else {
+		} else if item.Group != nil {
 			tagged = append(tagged, item.Group.Members...)
 		}
 	}
@@ -80,6 +80,11 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 
 	payload := gen.LibraryPage{Items: make([]gen.LibraryItem, 0, len(page.Items)), Total: page.Total}
 	for _, item := range page.Items {
+		if item.SmartFolder != nil {
+			// スマートフォルダの項目（kind smartFolder）は画面の API の作業が応答に載せる
+			// （specs/052-smart-folders/contracts/screen-api.md）。それまでフォルダは作れない。
+			continue
+		}
 		if item.Video != nil {
 			video := lookup.video(r.Context(), audience, roots, *item.Video)
 			payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindVideo, Video: &video})

@@ -107,10 +107,17 @@ type listSpec struct {
 	// ownerSearch は、ゲストにも検索式を所有者の意味（タグ名と作品情報にも照合する）で掛ける。
 	// スマートフォルダの条件は所有者の事実で決まる（research.md R-11）。
 	ownerSearch bool
-	sort        domain.VideoSort
-	seed        int64
-	cursor      string
-	limit       int
+	// userKeyColumn は videos の利用者データの鍵を持つ列（例えば videos.user_key）で、空なら
+	// userKeyExpr で求める。スマートフォルダの一致する動画は、鍵を 1 度だけ求めた smart_base を
+	// videos として読むので、その列を使う（smart_folder_matches.go）。
+	userKeyColumn string
+	// smartFolders は一覧の一番上にスマートフォルダの項目として混ぜるフォルダである。ライブラリの
+	// 一覧（ListLibrary）だけが librarySmartFolders で埋める（specs/052-smart-folders/research.md R-7）。
+	smartFolders []librarySmartFolder
+	sort         domain.VideoSort
+	seed         int64
+	cursor       string
+	limit        int
 }
 
 // ListVideos は見る人（audience）に見せるライブラリの一覧1ページを返す。
@@ -200,6 +207,14 @@ func chosenLocationsCTE(scope locationScope, expr domain.SearchExpr) (string, []
 // 所在から作る。検索式は見る人 searchAudience の意味で照合する（スマートフォルダは所有者の意味、
 // specs/052-smart-folders/research.md R-11）。範囲と集まりの代表は scope の見る人で決める。
 func chosenLocationsCTEFor(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
+	selectSQL, args := chosenLocationsSelect(scope, searchAudience, exprs)
+	return `with chosen as (` + selectSQL + `)`, args
+}
+
+// chosenLocationsSelect は chosenLocationsCTEFor の chosen を作る select 文 `(video_id, path)` と
+// その引数を返す。スマートフォルダの一致する動画は、検索式の段をこの文の動画に限る
+// （smartMatchConditions）。
+func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	scopeClause, args := scope.condition("l")
 	clauses := []string{scopeClause, `(sbm.bundle_id is null or sv.id = ` +
 		effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
@@ -224,12 +239,11 @@ func chosenLocationsCTEFor(scope locationScope, searchAudience domain.Audience, 
 		args = append(args, exprArgs...)
 		args = append(args, bundleArgs...)
 	}
-	return `with chosen as (
-		select l.video_id, min(l.path) as path from video_locations l
+	return `select l.video_id, min(l.path) as path from video_locations l
 		join videos sv on sv.id = l.video_id
 		left join video_bundle_members sbm on sbm.content_key = sv.content_key and sv.content_key <> ''
 		where ` + strings.Join(clauses, " and ") + `
-		group by l.video_id)`, args
+		group by l.video_id`, args
 }
 
 // watchCondition は視聴状態の絞り込みを、playback_progress（別名 p、left join）

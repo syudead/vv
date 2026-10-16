@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"time"
 	"unicode/utf8"
 )
 
@@ -375,6 +376,49 @@ type LibrarySmartFolder struct {
 	ParentID int64
 }
 
+// SmartFolderSummary はスマートフォルダの要約で、ライブラリと中身のページのフォルダの項目が持つ
+// （contracts/screen-api.md の SmartFolderSummary、research.md R-14）。カードの値は持たず、画面が
+// カードの読み出し（SmartFolderCard）で読む。
+type SmartFolderSummary struct {
+	ID int64
+	// ParentID は親のフォルダの id で、根なら 0 である。
+	ParentID int64
+	Name     string
+	// Favorite は所有者がフォルダをお気に入りにしたかである。
+	Favorite bool
+}
+
+// MaxSmartFolderCards はカードの読み出し 1 回で名指せるフォルダの数の上限である
+// （contracts/screen-api.md「Statuses」）。
+const MaxSmartFolderCards = 60
+
+// SmartFolderCard はカードの読み出しのフォルダ 1 つの値である（GET /api/smart-folders/cards、
+// data-model.md「Cards read」）。値はどれも、フォルダの一致する動画（グループにまとめず動画ごとに
+// 条件を確かめた、見る人に見せる動画）から作る。
+type SmartFolderCard struct {
+	SmartFolderSummary
+	// VideoCount は一致する動画の本数である。
+	VideoCount int
+	// WatchState と WatchedCount は動画ごとの視聴状態から GroupWatch と同じく決める。
+	WatchState   WatchState
+	WatchedCount int
+	// OpenVideoID は押したときに開く動画で、フォルダの並べ順で GroupOpenIndex と同じく選ぶ。一致する
+	// 動画が無ければ 0 である。
+	OpenVideoID int64
+	// DurationMs は長さの分かっている動画の合計で、1 本も分からなければ nil である。
+	DurationMs *int64
+	// SizeBytes は大きさの合計である。
+	SizeBytes int64
+	// AddedAt は追加日時の最大で、一致する動画が無ければゼロ値である。
+	AddedAt time.Time
+	// LastPlayedAt は最後に再生した時刻の最大で、記録が無ければ nil である。
+	LastPlayedAt *time.Time
+	// Previews はサムネイルのある動画をフォルダの並べ順に MaxFolderPreviews 本まで持つ。
+	Previews []Video
+	// Tags は一致する動画のタグの和集合である。ゲストには空である。
+	Tags []VideoTag
+}
+
 // SmartFolderPage はスマートフォルダ 1 つと、その中身 1 ページである
 // （GET /api/smart-folders/{id} と GET /api/smart-folders/{id}/items）。
 type SmartFolderPage struct {
@@ -387,7 +431,7 @@ type SmartFolderPage struct {
 	Missing []SmartRuleRef
 	// Trail は祖先のフォルダを外側から順に持つ。
 	Trail []GroupRef
-	// Items は最初のページなら子フォルダ（名前の順）を先に、続けてライブラリの項目を持つ。
+	// Items は最初のページなら子フォルダ（名前の順、要約）を先に、続けてライブラリの項目を持つ。
 	Items []LibraryItem
 	// NextCursor は次のページの取得に渡す。これ以上無ければ空。
 	NextCursor string

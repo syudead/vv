@@ -180,11 +180,7 @@ func readSmartFolderContents(ctx context.Context, tx *sql.Tx, spec listSpec, wit
 	if contents.order.seeded {
 		args = append(args, spec.seed)
 	}
-	watchClause, watchArgs := itemWatchConditions(spec)
-	where := ""
-	if watchClause != "" {
-		where = ` where ` + watchClause
-	}
+	where, watchArgs := itemsWhere(spec)
 	args = append(args, watchArgs...)
 	after := `1`
 	if withPage && spec.cursor != "" {
@@ -277,9 +273,9 @@ func playOrderMembers(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 	return videos, progress, nil
 }
 
-// smartFolderChildren はフォルダ parent の子フォルダを、名前の順（title_key、同じなら id）に項目に
-// する。子の経路の条件は parentRules に子の条件を足したものである。ゲストには見せる動画の無い子を
-// 出さない。
+// smartFolderChildren はフォルダ parent の子フォルダを、名前の順（title_key、同じなら id）に要約の
+// 項目にする（data-model.md「Contents」の Child folders、research.md R-14）。子の経路の条件は
+// parentRules に子の条件を足したものである。ゲストには再生順の空の子を出さない。
 func smartFolderChildren(ctx context.Context, tx *sql.Tx, audience domain.Audience, parent int64, parentRules []domain.SmartRule, now int64) ([]domain.LibraryItem, error) {
 	ids, err := queryInt64s(ctx, tx, `select id from smart_folders where parent_id = ? order by title_key, id`, parent)
 	if err != nil {
@@ -291,13 +287,12 @@ func smartFolderChildren(ctx context.Context, tx *sql.Tx, audience domain.Audien
 		if err != nil {
 			return nil, err
 		}
-		rules := append(slices.Clone(parentRules), child.Rule)
-		view, err := viewSmartFolder(ctx, tx, audience, child, rules, now, nil)
+		target, shown, err := smartFolderTargetOf(ctx, tx, audience, child, append(slices.Clone(parentRules), child.Rule), now)
 		if err != nil {
 			return nil, err
 		}
-		if view.shown(audience) {
-			items = append(items, domain.LibraryItem{SmartFolder: &view.card})
+		if shown {
+			items = append(items, domain.LibraryItem{SmartFolder: &target.summary})
 		}
 	}
 	return items, nil
