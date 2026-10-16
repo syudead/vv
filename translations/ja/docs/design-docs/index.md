@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 15279de2b9e03ddc2b183534a76b4c05a82471b40f52a6268f29b63d6e5c69c4
+sourceHash: 684244977c73173fbb4734e7c774e48d7a50ab1ea8033daf7ff7f66fdab05f2c
 ---
 
 # 設計文書 {#design-documents}
@@ -32,6 +32,7 @@ sourceHash: 15279de2b9e03ddc2b183534a76b4c05a82471b40f52a6268f29b63d6e5c69c4
 - [隣の字幕ファイル](sidecar-subtitles.md)
 - [判定モデルによる自動タグ付け](auto-tagging.md)
 - [AI 層: 分類器のポートとプロバイダ](ai-layer.md)
+- [重複の候補を自動で判定する](duplicate-judging.md)
 - [サムネイル編集のセッション](thumbnail-editing.md)
 - [作品情報プラグイン: サンドボックス、制限、ネットワーク](work-info-plugins.md)
 - [vv デザインシステム](design-system.md)
@@ -71,3 +72,4 @@ sourceHash: 15279de2b9e03ddc2b183534a76b4c05a82471b40f52a6268f29b63d6e5c69c4
 - [ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる (ドロップの表示、ドロップのメニュー、新しいグループの名前欄、取り消しのトースト): UI](../../specs/050-drag-organize/ui-design.md)
 - [タグの種類 (タグの行の種類のラベル、種類の絞り込み、選択バーの Set kind、Kinds タブ、ライブラリのタグの種類の絞り込み): UI](../../specs/051-tag-kinds/ui-design.md)
 - [作品情報プラグインからの作品の詳細 (比較の作品の詳細の行と `New` と `Not linked` の印、結果のステップの除かれた値): UI](../../specs/052-plugin-work-info-fields/ui-design.md)
+- [自動の重複判定 (カードと行のバージョンの印、Settings の Duplicate judging のスイッチ): UI](../../specs/054-auto-dup/ui-design.md)

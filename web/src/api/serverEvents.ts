@@ -13,6 +13,8 @@ import {
  * - `video`: 動画の状態が変わった（最新の内容は取り直す）
  * - `group`: グループの名前か項目が変わった。変わったグループとその祖先の id を受け取る
  *   （specs/048-groups/research.md R-13。最新の内容は取り直す）
+ * - `candidates`: 重複の候補の一覧が変わったかもしれない。中身は運ばない
+ *   （specs/054-auto-dup/research.md R-10。最新の一覧は取り直す）
  * - `open`: つながった、またはつなぎ直した。切れていた間の変化を取り直す合図。
  *   `reconnected` は、この購読者がつながった状態を前にも見ていたかを表す。
  *   つなぎ直しでは、切れていた間の `video` を受け取っていない。
@@ -21,6 +23,7 @@ export interface ServerEventHandlers {
   scan?: (scan: Scan) => void;
   video?: (id: number) => void;
   group?: (ids: readonly number[]) => void;
+  candidates?: () => void;
   open?: (reconnected: boolean) => void;
 }
 
@@ -80,6 +83,7 @@ function connect(): void {
     const changed = parse<GroupChanged>(event);
     if (changed !== undefined) dispatch("group", changed.ids);
   });
+  current.addEventListener("candidates", () => dispatch("candidates"));
   current.addEventListener("error", () => {
     // 接続中の切断はブラウザが自分でつなぎ直す。CLOSED は諦めた状態
     // （応答が 200 でない等）である。EventSource からは応答の状態を読めないので、

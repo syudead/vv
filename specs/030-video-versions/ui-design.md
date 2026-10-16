@@ -42,8 +42,9 @@ This feature adds three things to the screens, none of which adds a colour, radi
 
 Library cards, list-view rows, folder cards, group cards and related-video rows do not change.
 Non-representative versions appear in no list (requirement 5), and the representative's item looks the same as
-any video's item today (`UI品質` "visual hierarchy" and "changes that do not meet the requirement"). Bundling is
-not marked on cards.
+any video's item today (`UI品質` "visual hierarchy" and "changes that do not meet the requirement"). Feature 054
+superseded the rule that bundling is not marked on cards: a bundled representative's card and list-view row now
+carry a versions mark in the duration badge ([054 UI design, Versions mark](../054-auto-dup/ui-design.md#versions-mark)).
 
 ## Why this shape
 
@@ -318,8 +319,10 @@ A `ModalFrame` dialog "Bundle as versions". Content from top to bottom:
 
 ### Card
 
-Library cards and list-view rows do not change. After bundling, the representative's item looks the same as
-before bundling (`UI品質` "a list item looks the same as a video's item today").
+Library cards and list-view rows do not change, except for the versions mark that feature 054 adds to the
+duration badge ([054 UI design, Versions mark](../054-auto-dup/ui-design.md#versions-mark)). Apart from that mark,
+the representative's item looks the same as before bundling (`UI品質` "a list item looks the same as a video's item
+today").
 
 ## Duplicates page
 
@@ -427,9 +430,9 @@ Judged by looking at the real screen (library-ui.md, [Layout verified by people,
    versions" has the same weight as length, size and date added and is not read before them. Side by side with
    an unbundled video's page, the positions and spacing of the title, tags and the two facts lines are the same;
    the only difference is one more item (`UI品質` "visual hierarchy" and "spacing rhythm").
-2. **Visual hierarchy (library)**: a bundled representative's card and an unbundled video's card cannot be told
-   apart. No marker, number or band is added to cards (acceptance criterion 6; `UI品質` "changes that do not meet
-   the requirement"). The same holds for list-view rows.
+2. **Visual hierarchy (library)**: superseded by feature 054. A bundled representative's card and list-view row
+   differ from an unbundled video's only by the versions mark in the duration badge; the review criteria are
+   [054 UI design, Review criteria](../054-auto-dup/ui-design.md#review-criteria).
 3. **Information density (player screen)**: before the popover opens, the only versions information is the "3
    versions" item; no version's resolution, size or location appears anywhere. When opened, line 2 of each row
    gives the differences between the two (resolution, codec, size, location) as numbers, with no explanatory text
@@ -478,8 +481,8 @@ Judged by looking at the real screen (library-ui.md, [Layout verified by people,
     bar at all.
 15. **Examples that do not meet the requirement** (`UI品質`): non-representative versions appear in a list; the
     versions list appears on the player screen as an always-open panel or tab; "3 versions" is next to the title or
-    inside the player and is seen before the tags; a bundled card has a marker or count and looks different from
-    other cards; on the candidate screen one of the two is emphasised first as "recommended".
+    inside the player and is seen before the tags; a bundled card has a count or a marker other than 054's versions
+    mark; on the candidate screen one of the two is emphasised first as "recommended".
 
 ## Colour
 

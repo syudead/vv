@@ -399,9 +399,6 @@ func (s *server) videoDetail(r *http.Request, video domain.Video, contextID int6
 			}
 		}
 	}
-	// 集まりの要約も動画1件の応答にだけ載せる。ゲストには公開のバージョンだけで数えたものが
-	// 返る（specs/030-video-versions/contracts/screen-api.md §0）。
-	payload.Versions = apiVersionsRef(video.Versions)
 	if video.HasSeekThumbnail() && s.catalog != nil {
 		state, err := s.catalog.SeekThumbnailState(r.Context(), video)
 		if err != nil {
@@ -549,6 +546,9 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		ThumbnailState: gen.VideoThumbnailState(video.ThumbnailState),
 		PreviewState:   gen.VideoPreviewState(video.PreviewState),
 		Public:         video.Public,
+		// 集まりの要約は、集まりのメンバーならどの応答の項目にも載せる。ゲストには公開のバージョン
+		// だけで数えたものが返る（specs/054-auto-dup/contracts/screen-api.md「Video delta」）。
+		Versions: apiVersionsRef(video.Versions),
 	}
 	// お気に入りは所有者の応答にだけ入る。ゲストの応答からは forAudience が外す
 	// （specs/035-favorites/contracts/screen-api.md §0）。

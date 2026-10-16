@@ -1,6 +1,6 @@
 ---
 source: ARCHITECTURE.md
-sourceHash: 7e5cc17fa4d4728cf890eb9e2957eee30e943daddbb7c75eb866c7677c666fb2
+sourceHash: abe52f5078df7a450c91b940f5732b965280082dc0d8f50a210c9da3b8adc7bd
 ---
 
 # アーキテクチャ {#architecture}
@@ -60,7 +60,7 @@ flowchart LR
 | 層 | パッケージ | 担当 | インポートしてはならないもの |
 | --- | --- | --- | --- |
 | ドメイン | `internal/domain` | 値の型と純粋な規則。ストアが強制する業務ルールを含む | `net/http`、`database/sql`、`os`、`os/exec`、SQLite ドライバ、他のすべての `internal/*` パッケージ |
-| アプリケーション | `internal/app` | ユースケース (スキャン、自動取り込み、取り込み、カタログ、メディアフォルダ、エンコーダの選択、認証、自動タグ付け) | `net/http`、`database/sql`、`os/exec`、SQLite ドライバ、すべてのアダプタ |
+| アプリケーション | `internal/app` | ユースケース (スキャン、自動取り込み、取り込み、カタログ、メディアフォルダ、エンコーダの選択、認証、自動タグ付け、重複判定) | `net/http`、`database/sql`、`os/exec`、SQLite ドライバ、すべてのアダプタ |
 | アダプタ | `internal/httpapi`、`store`、`media`、`artifacts`、`mediafs`、`opener`、`scanner`、`watcher`、`jobs`、`password`、`ollama`、`comfyui`、`wasmplugin` | 外部とのやり取り | 互いと `internal/app` |
 | アダプタと並ぶもの | `internal/eventbus`、`internal/desktop` | プロセス内のイベント配信、デスクトップアプリの OS 側 | `cmd/mdm` だけがインポートする |
 
@@ -97,7 +97,7 @@ flowchart LR
 
 **生成ファイルの担当は 1 つ。** サムネイル、シーク用スプライト、ホバーのプレビューを配置し、公開し、開き、削除するのは `internal/artifacts` だけである。ファイルは完成して初めて見えるようになり (`.tmp` の下で生成し、名前を変えて所定の位置に置く)、削除されるのは、その内容を参照する最後の動画がなくなったときだけである。
 
-**ユーザーデータは再構築後も残る。** 再生位置、視聴履歴、タグ、公開フラグ、お気に入り、プレイリストの項目、グループとその項目、所有者の編集、適用したサムネイル画像、作品情報は、再スキャンで再現される値 (内容の鍵、バージョンのまとまりの鍵、フォルダの絶対パス) または自身の id をキーとし、`videos.id` をキーにすることは決してなく、`videos` への外部キーを持たない。人物と組織は独自の id を持つ実体であり、作品情報はそれを参照する。どのテーブルが再構築できるかは [データと復旧](docs/how-to/running-vv.md#data-and-recovery) にある。
+**ユーザーデータは再構築後も残る。** 再生位置、視聴履歴、タグ、公開フラグ、お気に入り、プレイリストの項目、グループとその項目、所有者の編集、適用したサムネイル画像、作品情報、所有者が別物と判定した動画の組やバージョンのまとまりから外した動画の組は、再スキャンで再現される値 (内容の鍵、バージョンのまとまりの鍵、フォルダの絶対パス) または自身の id をキーとし、`videos.id` をキーにすることは決してなく、`videos` への外部キーを持たない。人物と組織は独自の id を持つ実体であり、作品情報はそれを参照する。どのテーブルが再構築できるかは [データと復旧](docs/how-to/running-vv.md#data-and-recovery) にある。
 
 **どの読み取りも閲覧者を知っている。** 動画、所在、フォルダを返すストアの読み取りはそれぞれ `domain.Audience` を受け取り、そのゼロ値はゲストである。HTTP 層はすべてのリクエストを、ルーティングの前に最も外側の層で、パスによって bearer、誰でも、ゲストも可、所有者のみに分類し、`api/openapi.yaml` の各操作の `security` と一致させる (Go のテストがそれを確認する)。非表示の動画は、存在しない動画と同じ `404` を返す ([guest-api.md](specs/016-single-account-auth/contracts/guest-api.md))。
 
@@ -121,6 +121,7 @@ flowchart LR
 | `internal/app` (`ComfyUIConnection`)、`internal/comfyui` | 画像編集のプロバイダ。セルフホストの ComfyUI と Comfy Cloud の両方を扱う 1 つのアダプタと、その接続設定およびテスト | [ai-layer.md](docs/design-docs/ai-layer.md#image-edit-provider) |
 | `internal/app` (`WorkInfoPluginRuntime`、`WorkInfoPlugins`)、`internal/store` (`WorkInfoPluginStore`、`OverrideStore.ApplyFetchedWorkInfo`)、`internal/wasmplugin` | 作品情報プラグイン。WebAssembly モジュールを実行せずに検査すること、ファイルも環境もなく固定の制限がある wazero のサンドボックスで実行すること、その HTTP 要求を公開インターネットのアドレスにだけ到達するように実行すること、モジュールのダイジェストに結び付いた承認とプラグインごとの設定値を持つ、所有者のプラグインの行、および検索すること、10 分間保持するメモリ上の結果へ取得すること、選んだタイトル、タグ、作品の詳細を、プラグインの承認を確認し直し、取得した人物と組織を照合し直し、マージが残すエンティティだけを作成する 1 つのトランザクションで適用すること | [work-info-plugins.md](docs/design-docs/work-info-plugins.md) |
 | `internal/app` (`AutoTagger`) | 動画に合う既存のタグを分類器のポートに問い合わせることと、そのキュー | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
+| `internal/app` (`VersionJudge`)、`internal/store` (`VersionStore.ClaimJudgement`、`ApplyJudgement`) | 重複の候補を、フレームごとの指紋と、異なる連続区間については分類器のポートから判定すること。所有者の操作と同じように組をまとめるか退けること | [duplicate-judging.md](docs/design-docs/duplicate-judging.md) |
 | `internal/opener` | サーバー PC の既定のアプリで動画を開く。ループバックからのリクエストのみ | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
 | `internal/password` | PHC 文字列での Argon2id ハッシュ化 | [016 data-model](specs/016-single-account-auth/data-model.md) |
 | `internal/app` (`Auth`) | 初期設定、ログインの試行制限、セッション、API トークン | [016 data-model](specs/016-single-account-auth/data-model.md)、[026 data-model](specs/026-external-api/data-model.md) |

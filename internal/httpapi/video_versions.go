@@ -150,7 +150,6 @@ func (s *server) versionItems(r *http.Request, videos []domain.Video) []gen.Vide
 		item := withTags(withProgress(toAPIVideo(view), progress, video.UserKey), tags, video.UserKey)
 		item.Location = &gen.VideoLocation{Path: video.Path, Openable: openable}
 		item.Folder = detailFolder(roots, video.Path)
-		item.Versions = apiVersionsRef(video.Versions)
 		items = append(items, forAudience(audience, item))
 	}
 	return items
