@@ -2331,6 +2331,8 @@ export const en = {
       edit: "Edit…",
       newChild: "New child smart folder…",
       delete: "Delete…",
+      // 空の状態と欠けた状態の、所有者の操作。直す窓を開く。
+      editConditions: "Edit conditions…",
       conditions: "Conditions:",
       fromParent: (name: string) => `From "${name}":`,
       empty: {

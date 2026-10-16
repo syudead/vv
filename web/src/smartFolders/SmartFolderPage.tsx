@@ -7,6 +7,8 @@ import { itemKey } from "../api/libraryItems";
 import { useAudience } from "../auth/audience";
 import Breadcrumbs from "../folders/Breadcrumbs";
 import { loadingCrumbs } from "../groups/groupPaths";
+import { useFocusAfterEdit } from "../groups/useGroupEdits";
+import { useLeavePage } from "../groups/useLeaveGroup";
 import { t } from "../i18n";
 import { formatDuration } from "../lib/format";
 import { GroupCard, GroupRow } from "../library/GroupCard";
@@ -15,6 +17,7 @@ import { viewControls } from "../library/LibraryToolbar";
 import {
   emptySelection,
   isGroupSelected,
+  keepMembers,
   type LibrarySelection,
   reconcileGroups,
   sameSelection,
@@ -37,6 +40,7 @@ import { ListPage } from "../ui/patterns/list-page";
 import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { LoadingState } from "../ui/patterns/loading-state";
 import { PageHeader } from "../ui/patterns/page-header";
+import { Button } from "../ui/shadcn/button";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { TableBody } from "../ui/shadcn/table";
 import { Grid } from "../videoList/Grid";
@@ -59,9 +63,11 @@ import { SmartFolderCardsProvider } from "./cardValues";
 import ConditionLines from "./ConditionLines";
 import { type AncestorRule, bodyKind, missingParent, selectAllLoaded } from "./pageRules";
 import { SmartFolderCard, SmartFolderRow } from "./SmartFolderCard";
+import SmartFolderMenu, { type SmartFolderMenuDialog } from "./SmartFolderMenu";
 import {
   parseSmartFolderId,
   smartFolderCrumbs,
+  smartFolderParentPath,
   videoInSmartFolderPath,
 } from "./smartFolderPaths";
 import {
@@ -94,15 +100,16 @@ export default function SmartFolderPage() {
 /**
  * useFolderSelection はスマートフォルダのページの選択である。ライブラリと同じく動画の id の
  * 集合と、グループとして選んだグループを持つ（ui-design.md「Body」）。子フォルダのカードは
- * 選ばない。読み直した項目に合わせて選んだグループを直し（reconcileGroups）、「Select all」は
- * ここまでに並んだ動画とグループを選ぶ。
+ * 選ばない。読み直した項目に合わせて、並ばなくなった動画（タグが変わって条件から外れた）を
+ * 選択から外し（keepMembers、見えない動画に一括の操作が及ばない）、選んだグループを直す
+ * （reconcileGroups）。「Select all」はここまでに並んだ動画とグループを選ぶ。
  */
 function useFolderSelection(items: readonly LibraryItem[]) {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
-  useEffect(() => {
-    setSelection((current) => reconcileGroups(current, items));
-  }, [items]);
   const all = useMemo(() => selectAllLoaded(items), [items]);
+  useEffect(() => {
+    setSelection((current) => reconcileGroups(keepMembers(current, all.ids), items));
+  }, [all, items]);
   const clear = useCallback(() => setSelection(emptySelection), []);
   useEscapeClearsSelection(selection.ids.size > 0, clear);
   return {
@@ -141,9 +148,11 @@ const noItems: readonly LibraryItem[] = [];
 function SmartFolderScreen({ id }: { id: number | null }) {
   const location = useLocation();
   const owner = useAudience() === "owner";
-  const { state, more, reload, loadMore } = useSmartFolderPage(id);
+  const { state, more, reload, refresh, loadMore, markGone } = useSmartFolderPage(id);
   const data = state.kind === "ready" ? state.data : null;
-  const ancestors = useAncestorRules(data?.trail ?? noTrail, owner, data);
+  // 祖先の条件は読んだフォルダが変わったとき（読み直し）だけ読み直し、続きのページでは読まない。
+  const ancestors = useAncestorRules(data?.trail ?? noTrail, owner, data?.folder);
+  const { menu, editConditions } = useFolderMenu(data, owner, refresh, markGone);
   const preview = usePreviewCoordination();
   const { resetPreview } = preview;
   const { view, zoom, changeView, changeZoom, listRef } = useViewControls(resetPreview);
@@ -178,6 +187,7 @@ function SmartFolderScreen({ id }: { id: number | null }) {
             listUrl={listUrl}
             owner={owner}
             ancestors={ancestors}
+            menu={menu}
           />
         }
         toolbar={
@@ -243,7 +253,7 @@ function SmartFolderScreen({ id }: { id: number | null }) {
                 onPressTag={pressTag}
               />
             )}
-            <EmptyBody data={data} ancestors={ancestors} />
+            <EmptyBody data={data} ancestors={ancestors} onEdit={editConditions} />
           </div>
         )}
         {more === "loading" && <LoadMoreRow status="loading" label={t.list.loading} />}
@@ -261,30 +271,86 @@ function SmartFolderScreen({ id }: { id: number | null }) {
   );
 }
 
+/**
+ * useFolderMenu は所有者の見出しの「More」（SmartFolderMenu）と、空の状態の「Edit conditions…」が
+ * 開く窓を持つ（ui-design.md「Header」「Editing」「New child」「Deleting」）。直せたときと子を
+ * 作れたときは静かに読み直し（名前・帯・条件の行・本体）、直せたらフォーカスを「More」へ戻す。
+ * 消えたら親のページか、親が無ければ
+ * ライブラリへ移ってトーストを出す。直す窓が 404 を受けたら無くなった状態にする。ゲストと
+ * 条件の届かない応答には何も出さない。
+ */
+function useFolderMenu(
+  data: SmartFolderPageData | null,
+  owner: boolean,
+  refresh: () => void,
+  markGone: () => void,
+) {
+  const [dialog, setDialog] = useState<SmartFolderMenuDialog>(null);
+  const leave = useLeavePage(smartFolderParentPath(data?.trail ?? noTrail));
+  const name = data?.folder.name ?? "";
+  const deleted = useCallback(
+    (announce: boolean) => leave(announce ? t.smartFolders.deleted(name) : undefined),
+    [leave, name],
+  );
+  const editConditions = useCallback(() => setDialog("edit"), []);
+  const { moreRef, focus } = useFocusAfterEdit();
+  const saved = useCallback(() => {
+    refresh();
+    focus("more");
+  }, [focus, refresh]);
+  if (!owner || data?.settings === undefined) {
+    return { menu: null, editConditions: undefined };
+  }
+  const menu = (
+    <SmartFolderMenu
+      folder={{ id: data.folder.id, name, parentId: data.trail.at(-1)?.id }}
+      settings={data.settings}
+      dialog={dialog}
+      onDialogChange={setDialog}
+      moreRef={moreRef}
+      onSaved={saved}
+      onCreatedChild={refresh}
+      onDeleted={deleted}
+      onGone={markGone}
+    />
+  );
+  return { menu, editConditions };
+}
+
 /** noTrail は読めていない間の祖先。描画ごとに作らない。 */
 const noTrail: SmartFolderPageData["trail"] = [];
 
 /**
  * EmptyBody は動画もグループも無いフォルダの空の印である（ui-design.md「States」の Empty と
  * Missing）。子フォルダのカードの後に置く。条件の消えた実体が祖先の条件にあれば、説明にその
- * 祖先の名前を足す。中身があれば何も描かない。
+ * 祖先の名前を足す。所有者には条件を直す窓を開く「Edit conditions…」を添える。中身があれば
+ * 何も描かない。
  */
 function EmptyBody({
   data,
   ancestors,
+  onEdit,
 }: {
   data: SmartFolderPageData;
   ancestors: readonly AncestorRule[];
+  /** 所有者だけが受け取る。 */
+  onEdit?: () => void;
 }) {
   const missing = data.settings?.missing ?? noMissing;
   const kind = bodyKind(data.items, data.nextCursor, missing);
   if (kind === "content") return null;
+  const action = onEdit !== undefined && (
+    <Button variant="outline" size="sm" onClick={onEdit}>
+      {t.smartFolders.detail.editConditions}
+    </Button>
+  );
   if (kind === "empty") {
     return (
       <EmptyState
         icon={<FolderSearch aria-hidden="true" />}
         title={t.smartFolders.detail.empty.title}
         description={t.smartFolders.detail.empty.description}
+        action={action}
       />
     );
   }
@@ -298,6 +364,7 @@ function EmptyBody({
           ? t.smartFolders.detail.missing.description
           : `${t.smartFolders.detail.missing.description} ${t.smartFolders.detail.missing.inParent(parent.name)}`
       }
+      action={action}
     />
   );
 }
@@ -312,11 +379,14 @@ function SmartFolderHeader({
   listUrl,
   owner,
   ancestors,
+  menu,
 }: {
   state: SmartFolderPageState;
   listUrl: string;
   owner: boolean;
   ancestors: readonly AncestorRule[];
+  /** 所有者の「More」（SmartFolderMenu）。 */
+  menu: ReactNode;
 }) {
   if (state.kind === "loading") {
     return <LoadingTrailHeader label={t.smartFolders.trail} crumbs={loadingCrumbs([])} />;
@@ -356,15 +426,18 @@ function SmartFolderHeader({
             />
           )
         }
-        // 「Play」は再生順が空でない間だけ出す。編集の「More」は保存と編集の単位が足す。
+        // 「Play」は再生順が空でない間だけ出し、所有者の「More」をその後に置く。
         actions={
-          folder.openVideoId !== undefined && (
-            <PlayLink
-              to={videoInSmartFolderPath(folder.openVideoId, folder.id)}
-              from={listUrl}
-              name={folder.name}
-            />
-          )
+          <>
+            {folder.openVideoId !== undefined && (
+              <PlayLink
+                to={videoInSmartFolderPath(folder.openVideoId, folder.id)}
+                from={listUrl}
+                name={folder.name}
+              />
+            )}
+            {menu}
+          </>
         }
       />
     </>

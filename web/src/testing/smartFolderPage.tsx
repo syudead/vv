@@ -7,7 +7,12 @@ import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import { installFakeEventSource } from "../api/fakeEventSource";
-import type { LibrarySmartFolder, SmartFolderDetail } from "../api/smartFolders";
+import type {
+  LibrarySmartFolder,
+  SmartFolderDetail,
+  SmartFolderItemPage,
+  SmartFolderSummary,
+} from "../api/smartFolders";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import SmartFolderPage from "../smartFolders/SmartFolderPage";
 import { ToastProvider } from "../ui/Toast";
@@ -49,12 +54,63 @@ export const server = {
   reads: new Map<number, number>(),
   /** GET /api/tags の項目。 */
   tags: [] as { id: number; name: string }[],
+  /** GET /api/smart-folders/{id}/items の応答（`id:cursor` ごと）。 */
+  pages: new Map<string, SmartFolderItemPage>(),
+  /** 書き込みの要求（メソッド、パス、本文）。 */
+  writes: [] as { method: string; path: string; body: unknown }[],
+  /**
+   * 真の間、GET /api/smart-folders/cards の答えを求めた時点の値で作って `heldCards` にため、
+   * 呼ばれるまで返さない（答えが届く順をテストが決める）。
+   */
+  holdCards: false,
+  heldCards: [] as (() => void)[],
+  /** 真の間、GET /api/smart-folders/cards は 500 で失敗する。 */
+  failCards: false,
+  /** 真の間、GET /api/smart-folders/{id} は 500 で失敗する。 */
+  failDetail: false,
+  /** 真の間、GET /api/smart-folders/{id}/items は 500 で失敗する。 */
+  failPage: false,
+  /** 書き込みの答えを差し替える（省くと保存した中身を書き換えて答える）。 */
+  writeAnswer: undefined as ((method: string, id: number) => Response) | undefined,
 };
+
+/** summaries は保存したフォルダの木（GET /api/smart-folders）である。 */
+function summaries(): SmartFolderSummary[] {
+  return [...server.folders.values()].map((detail) => ({
+    id: detail.smartFolder.id,
+    name: detail.smartFolder.name,
+    parentId: detail.trail.at(-1)?.id,
+  }));
+}
+
+/** writeResponse は PATCH・POST・DELETE を偽のサーバーの中身に当てて答える。 */
+function writeResponse(method: string, url: URL, body: unknown): Response {
+  const match = /^\/api\/smart-folders\/(\d+)$/.exec(url.pathname);
+  const id = match === null ? 0 : Number(match[1]);
+  server.writes.push({ method, path: url.pathname, body });
+  if (server.writeAnswer !== undefined) return server.writeAnswer(method, id);
+  if (method === "POST") {
+    const created = body as { name: string; parentId?: number };
+    return json({ id: 90, name: created.name, parentId: created.parentId }, 201);
+  }
+  const stored = server.folders.get(id);
+  if (stored === undefined) return json({ code: "not_found", message: "x" }, 404);
+  if (method === "DELETE") {
+    server.folders.delete(id);
+    return new Response(null, { status: 204 });
+  }
+  const change = body as { name?: string };
+  if (change.name !== undefined) {
+    stored.smartFolder = { ...stored.smartFolder, name: change.name };
+  }
+  return json({ id, name: stored.smartFolder.name, parentId: stored.trail.at(-1)?.id });
+}
 
 function folderResponse(url: URL): Response | undefined {
   if (url.pathname === "/api/smart-folders/cards") {
     const ids = (url.searchParams.get("ids") ?? "").split(",").map(Number);
     server.cardRequests.push(ids);
+    if (server.failCards) return json({ code: "internal", message: "x" }, 500);
     return json({
       cards: ids.flatMap((id) => {
         const card = server.cards.get(id);
@@ -62,10 +118,22 @@ function folderResponse(url: URL): Response | undefined {
       }),
     });
   }
+  if (url.pathname === "/api/smart-folders") return json({ smartFolders: summaries() });
+  const items = /^\/api\/smart-folders\/(\d+)\/items$/.exec(url.pathname);
+  if (items !== null) {
+    if (server.failPage) return json({ code: "internal", message: "x" }, 500);
+    const page = server.pages.get(
+      `${items[1] ?? ""}:${url.searchParams.get("cursor") ?? ""}`,
+    );
+    return page === undefined
+      ? json({ code: "not_found", message: "x" }, 404)
+      : json(page);
+  }
   const detail = /^\/api\/smart-folders\/(\d+)$/.exec(url.pathname);
   if (detail === null) return undefined;
   const id = Number(detail[1]);
   server.reads.set(id, (server.reads.get(id) ?? 0) + 1);
+  if (server.failDetail) return json({ code: "internal", message: "x" }, 500);
   const stored = server.folders.get(id);
   return stored === undefined
     ? json({ code: "not_found", message: "x" }, 404)
@@ -73,14 +141,27 @@ function folderResponse(url: URL): Response | undefined {
 }
 
 function install() {
-  const fetchMock = vi.fn<typeof fetch>((input) => {
+  const fetchMock = vi.fn<typeof fetch>((input, init) => {
     const url = new URL(String(input), "http://localhost");
+    const method = init?.method ?? "GET";
+    if (method !== "GET") {
+      const body = init?.body === undefined ? undefined : JSON.parse(String(init.body));
+      return Promise.resolve(writeResponse(method, url, body));
+    }
+    if (url.pathname === "/api/tag-kinds") return Promise.resolve(json({ items: [] }));
     if (url.pathname === "/api/tags") {
       return Promise.resolve(
-        json({ items: server.tags.map((tag) => ({ ...tag, videoCount: 1 })) }),
+        json({
+          items: server.tags.map((tag) => ({ ...tag, synonyms: [], videoCount: 1 })),
+        }),
       );
     }
     const answer = folderResponse(url);
+    if (answer !== undefined && server.holdCards && url.pathname.endsWith("/cards")) {
+      return new Promise<Response>((resolve) => {
+        server.heldCards.push(() => resolve(answer));
+      });
+    }
     if (answer !== undefined) return Promise.resolve(answer);
     throw new Error(`unexpected request: ${url.toString()}`);
   });
@@ -128,6 +209,22 @@ export async function revealCards(ids?: readonly number[]) {
   });
 }
 
+/**
+ * revealSentinel はページ送りの番兵（カードでない見張り）が画面に近づいたことにし、続きの
+ * 読み出しが答えるまで待つ。
+ */
+export async function revealSentinel() {
+  await act(async () => {
+    for (const observer of [...FakeObserver.all]) {
+      for (const element of [...observer.elements]) {
+        if (element.hasAttribute("data-smart-folder-id")) continue;
+        observer.fire(element);
+      }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+}
+
 /** setUpSmartFolderServer は各テストの前に偽のサーバーを初期状態へ戻し、後で差し替えを解く。 */
 export function setUpSmartFolderServer() {
   beforeEach(() => {
@@ -136,6 +233,14 @@ export function setUpSmartFolderServer() {
     server.cardRequests = [];
     server.reads = new Map();
     server.tags = [];
+    server.pages = new Map();
+    server.writes = [];
+    server.writeAnswer = undefined;
+    server.failDetail = false;
+    server.failPage = false;
+    server.holdCards = false;
+    server.heldCards = [];
+    server.failCards = false;
     FakeObserver.all = new Set();
     vi.stubGlobal("IntersectionObserver", FakeObserver);
     install();

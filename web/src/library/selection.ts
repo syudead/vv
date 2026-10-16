@@ -44,6 +44,21 @@ function removeIds(
   return { ids, groups };
 }
 
+/**
+ * keepMembers は `members` に無い動画を選択から外し、外した動画をメンバーに含むグループも外す。
+ * 並んだ項目だけを選べる一覧（スマートフォルダのページ）で、読み直して一覧から消えた動画に
+ * 一括の操作が及ばないようにする。
+ */
+export function keepMembers(
+  selection: LibrarySelection,
+  members: ReadonlySet<number>,
+): LibrarySelection {
+  return removeIds(
+    selection,
+    [...selection.ids].filter((id) => !members.has(id)),
+  );
+}
+
 /** setVideo は動画 1 本を選択に入れる・外す。 */
 export function setVideo(
   selection: LibrarySelection,

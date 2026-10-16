@@ -14,6 +14,15 @@ export function smartFolderPagePath(id: number): string {
   return `/smart-folders/${String(id)}`;
 }
 
+/**
+ * smartFolderParentPath はフォルダを消した後に移る場所である。応答の `trail` の最後（親）の
+ * ページ、親が無ければライブラリ（ui-design.md「Deleting」）。
+ */
+export function smartFolderParentPath(trail: readonly GroupRef[]): string {
+  const parent = trail.at(-1);
+  return parent === undefined ? "/" : smartFolderPagePath(parent.id);
+}
+
 /** SMART_FOLDER_PARAM は動画ページを開いたスマートフォルダの id を載せる問い合わせの名前である。 */
 const SMART_FOLDER_PARAM = "smartFolder";
 

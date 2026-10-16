@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter, Route, Routes } from "react-router";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { LibraryItem } from "../api/client";
@@ -45,7 +45,25 @@ function install(items: LibraryItem[]) {
     }
     if (url.pathname === "/api/smart-folders/cards") {
       cardRequests.push(url.searchParams.get("ids") ?? "");
-      return Promise.resolve(json({ cards: [folderCard(9, "猫", { videoCount: 4 })] }));
+      return Promise.resolve(
+        json({
+          cards: [
+            folderCard(9, "猫", {
+              videoCount: 4,
+              tags: [
+                {
+                  id: 3,
+                  name: "旅行",
+                  manual: true,
+                  fromFolder: false,
+                  tentative: false,
+                  kind: null,
+                },
+              ],
+            }),
+          ],
+        }),
+      );
     }
     throw new Error(`unexpected request: ${url.toString()}`);
   });
@@ -74,6 +92,11 @@ class RevealingObserver {
   disconnect() {}
 }
 
+function LocationProbe() {
+  const location = useLocation();
+  return <span data-testid="location">{location.search}</span>;
+}
+
 function renderLibrary() {
   render(
     <MemoryRouter initialEntries={["/"]}>
@@ -82,7 +105,15 @@ function renderLibrary() {
           <AudienceProvider audience="owner">
             <ScanProvider>
               <Routes>
-                <Route path="/" element={<LibraryPage />} />
+                <Route
+                  path="/"
+                  element={
+                    <>
+                      <LibraryPage />
+                      <LocationProbe />
+                    </>
+                  }
+                />
                 <Route path="/smart-folders/:id" element={<p>Smart folder page</p>} />
               </Routes>
             </ScanProvider>
@@ -161,5 +192,23 @@ describe("ライブラリのスマートフォルダのカード", () => {
     const row = link.closest("tr") as HTMLElement;
     await waitFor(() => expect(within(row).getByText("4 videos")).toBeTruthy());
     expect(within(row).queryByRole("checkbox")).toBeNull();
+  });
+
+  it("ほかのカードを選んでいる間も、フォルダのカードのタグを押すとそのタグで絞り込む", async () => {
+    const user = userEvent.setup();
+    install(items);
+    renderLibrary();
+    const folder = await screen.findByRole("link", {
+      name: "猫, smart folder of 4 videos",
+    });
+    const card = folder.closest("article") as HTMLElement;
+
+    await user.click(screen.getByRole("checkbox", { name: 'Select "Episode"' }));
+    // 選択中は動画のカードのタグはボタンでなくなるが、フォルダのカードのタグは押せる。
+    await user.click(within(card).getByRole("button", { name: "Filter by 旅行" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("location").textContent).toContain("tag=3"),
+    );
   });
 });

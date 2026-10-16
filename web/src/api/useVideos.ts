@@ -11,7 +11,12 @@ import { useGroupRefresh } from "./useGroupRefresh";
 import { type UncertainReason, useItemRefresh } from "./useItemRefresh";
 import { useVideoPages } from "./useVideoPages";
 import { subscribeVideoTags } from "./videoTagsEvents";
-import { criteriaKey, type VideosCriteria, type VideosSource } from "./videosCriteria";
+import {
+  criteriaKey,
+  listsSmartFolders,
+  type VideosCriteria,
+  type VideosSource,
+} from "./videosCriteria";
 import {
   shownVideoIds,
   type VideosData,
@@ -269,8 +274,9 @@ export function useVideos(
     [notifyIfIdle, refreshGroups, settleUncertainReason],
   );
 
-  // 変化の知らせ（/api/events）。ゲストには group だけが届くので、group だけを購読する
-  // （specs/048-groups/contracts/screen-api.md「/api/events」）。video と取り込みの知らせは
+  // 変化の知らせ（/api/events）。ゲストには group と smartFolder だけが届くので、その 2 つだけを
+  // 購読する（specs/048-groups/contracts/screen-api.md「/api/events」、
+  // specs/052-smart-folders/contracts/screen-api.md）。video と取り込みの知らせは
   // 所有者のもの（specs/016-single-account-auth/ui-design.md「Top bar」）。
   const owner = useAudience() === "owner";
   // refreshInPlace は下の useVideoPages が返すので、知らせの購読からは参照で呼ぶ。
@@ -295,6 +301,16 @@ export function useVideos(
       }
       refreshGroups(groupsIn(itemsRef.current, ids));
     };
+    // スマートフォルダが作られた・移った・名前が変わった・消えた、または中身が変わったかも
+    // しれない（specs/052-smart-folders/research.md R-12）。知らせは id だけを運び、構成の変化と
+    // 一致の変化を分けられないので、フォルダのカードが並ぶライブラリ（R-7）は読み込み済みの
+    // ページを条件を保ったまま読み直す（グループの知らせと同じ）。カードの値は
+    // SmartFolderCardsProvider が読み直す。
+    const smartFolder = () => {
+      if (libraryRef.current && listsSmartFolders(criteriaRef.current)) {
+        refreshInPlaceRef.current();
+      }
+    };
     // つなぎ直したときは、切れていた間のグループの変化を取り戻す。ライブラリは構成ごと読み直す。
     const regroup = () => {
       if (libraryRef.current) refreshInPlaceRef.current();
@@ -310,6 +326,7 @@ export function useVideos(
             refreshGroupsWith([id]);
           },
           group,
+          smartFolder,
           // つなぎ直したときは、切れていた間の知らせを受け取っていない。準備が
           // 済んだ動画も消えているかもしれないので、表示中の項目をすべて取り直す
           // （消えていれば一覧から外れる）。最初の接続では、準備中の項目だけでよい。
@@ -324,6 +341,7 @@ export function useVideos(
         })
       : subscribeServerEvents({
           group,
+          smartFolder,
           open: (reconnected) => {
             if (reconnected) regroup();
           },

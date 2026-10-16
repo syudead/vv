@@ -11,7 +11,7 @@ import {
 
 import { subscribeServerEvents } from "../api/serverEvents";
 import { readSmartFolderCards } from "../api/smartFolders";
-import { type CardValue, chunks, withAnswer } from "./cardValueRules";
+import { type CardValue, chunks, latestAnswer, withAnswer } from "./cardValueRules";
 
 // スマートフォルダのカードの値（specs/052-smart-folders/ui-design.md「Smart folder card and
 // row」、research.md R-14）。一覧の項目は要約だけを持ち、画面に入ったカードの値を
@@ -31,8 +31,9 @@ const noValues: ReadonlyMap<number, CardValue> = new Map();
  * SmartFolderCardsProvider は一覧 1 つのスマートフォルダのカードの値を持つ。カードが画面に
  * 入るたびに求めた id を同じ描画の間だけためて、60 件ずつ 1 回の読み出しにする。`smartFolder`
  * の知らせが名指したフォルダのうち、すでに求めたものの値を、知らせ 1 つにつき 1 回だけ骨組み
- * なしで読み直す。つなぎ直したら求めたものをすべて読み直す。失敗した読み出しは値を変えない
- * （カードは骨組みのまま、次の知らせで読み直す）。
+ * なしで読み直す。つなぎ直したら求めたものをすべて読み直す。同じ id を重ねて読んだときは、
+ * いちばん後に送った読み出しの答えだけを使う（先に送った読み出しが後から届いても値を戻さない）。
+ * 失敗した読み出しは値を変えない（カードは骨組みのまま、次の知らせで読み直す）。
  */
 export function SmartFolderCardsProvider({ children }: { children: ReactNode }) {
   const [values, setValues] = useState<ReadonlyMap<number, CardValue>>(noValues);
@@ -42,16 +43,27 @@ export function SmartFolderCardsProvider({ children }: { children: ReactNode }) 
   const queued = useRef<number[]>([]);
   const flushTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const controllers = useRef(new Set<AbortController>());
+  /** id ごとの最後の読み出しの番号。遅れて届いた古い答えで新しい値を戻さない。 */
+  const latestRead = useRef(new Map<number, number>());
+  const readCount = useRef(0);
 
   const read = useCallback((ids: readonly number[]) => {
     for (const chunk of chunks(ids)) {
       const controller = new AbortController();
       controllers.current.add(controller);
+      readCount.current += 1;
+      const sent = readCount.current;
+      for (const id of chunk) latestRead.current.set(id, sent);
       readSmartFolderCards(chunk, controller.signal).then(
         (cards) => {
           controllers.current.delete(controller);
           if (controller.signal.aborted) return;
-          setValues((current) => withAnswer(current, chunk, cards));
+          const answered = latestAnswer(
+            chunk,
+            cards,
+            (id) => latestRead.current.get(id) === sent,
+          );
+          setValues((current) => withAnswer(current, answered.asked, answered.cards));
         },
         () => {
           controllers.current.delete(controller);

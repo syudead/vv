@@ -17,7 +17,6 @@ import {
   type TagRef,
   type Video,
   type VideoSort,
-  type VideoTag,
   type WatchFilter,
 } from "../api/client";
 import {
@@ -119,6 +118,7 @@ import SelectionBar from "./SelectionBar";
 import TagKindSelect from "./TagKindSelect";
 import { TagRowMeasureProvider } from "./TagRowMeasure";
 import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
+import { useFolderTagRow } from "./useCardTagRows";
 import { type ApplyTagKind, useLibraryTagKinds } from "./useLibraryTagKinds";
 import {
   addTagId,
@@ -142,9 +142,6 @@ function libraryGroupItem(group: LibraryGroup): LibraryItem {
 function itemGroup(item: LibraryItem): LibraryGroup | undefined {
   return item.kind === "group" ? item.group : undefined;
 }
-
-/** ignoreToggle はスマートフォルダのカードのタグの行の、選択を切り替えない口である。 */
-const ignoreToggle = () => undefined;
 
 /**
  * withSmartFolderCards は一覧をスマートフォルダのカードの値の持ち主で包む。カードの値は
@@ -769,18 +766,8 @@ export default function LibraryPage() {
   );
 
   // スマートフォルダのカードのタグを押すと、グループのカードと同じくそのタグで絞り込む。
-  // カードは選択を持たないので、選択中に押しても何も選ばない。
-  const renderFolderTagsRow = useCallback(
-    (tags: readonly VideoTag[]) => (
-      <CardTagRow
-        tags={tags}
-        selectionMode={selectionMode}
-        onPress={pressTag}
-        onToggleSelection={ignoreToggle}
-      />
-    ),
-    [pressTag, selectionMode],
-  );
+  // カードは選択を持たないので、ほかのカードを選んでいる間も押せる。
+  const renderFolderTagsRow = useFolderTagRow(pressTag);
 
   const groupProps = (group: LibraryGroup) => ({
     group,

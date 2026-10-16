@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { LibrarySmartFolder } from "../api/smartFolders";
-import { chunks, withAnswer } from "./cardValueRules";
+import { chunks, latestAnswer, withAnswer } from "./cardValueRules";
 
 describe("chunks", () => {
   it("60 件ずつに分ける", () => {
@@ -22,5 +22,14 @@ describe("withAnswer", () => {
     expect(next.get(2)).toBe("gone");
     expect(next.get(9)).toBe(card);
     expect(before.has(1)).toBe(false);
+  });
+});
+
+describe("latestAnswer", () => {
+  it("後から読み直している id の分を答えから外す", () => {
+    const card = (id: number) => ({ id, name: String(id) }) as LibrarySmartFolder;
+    const answered = latestAnswer([1, 2, 3], [card(1), card(2)], (id) => id !== 2);
+    expect(answered.asked).toEqual([1, 3]);
+    expect(answered.cards.map((each) => each.id)).toEqual([1]);
   });
 });

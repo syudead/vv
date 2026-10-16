@@ -85,7 +85,7 @@ async function readFolderThrough(
  * 見せる。
  */
 export function useSmartFolderPage(id: number | null) {
-  const { state, stateRef, more, read, loadMore, stop } = usePagedDetail(id, {
+  const { state, stateRef, more, read, loadMore, stop, markGone } = usePagedDetail(id, {
     read: readFolderThrough,
     more: readItems,
     append: appendItems,
@@ -112,13 +112,14 @@ export function useSmartFolderPage(id: number | null) {
     };
   }, [id, refresh, reload, stateRef, stop]);
 
-  return { state, more, reload, loadMore };
+  return { state, more, reload, refresh, loadMore, markGone };
 }
 
 /**
  * useAncestorRules は祖先（近い順に返す）の条件を、それぞれのフォルダを 1 件だけ読んで
- * 引く（`settings` は所有者の応答にだけ入る）。`version` が変わるたび（ページを読み直した
- * とき）に読み直す。読めない祖先の条件は undefined のまま（チップの代わりに骨組み）。
+ * 引く（`settings` は所有者の応答にだけ入る）。`version` が変わるたびに読み直す。呼び手は
+ * ページを読み直したときだけ変わる値（読んだフォルダの値）を渡し、続きのページを足しただけ
+ * では読み直さない。読めない祖先の条件は undefined のまま（チップの代わりに骨組み）。
  */
 export function useAncestorRules(
   trail: readonly GroupRef[],

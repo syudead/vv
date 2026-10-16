@@ -7,9 +7,28 @@ import CardTagRow from "./CardTagRow";
 const ignoreToggle = () => undefined;
 
 /**
+ * useFolderTagRow はスマートフォルダのカードのタグの行を作る関数である（SmartFolderCard の
+ * tagsRow）。フォルダのカードは選択を持たないので、ほかのカードを選んでいる間もチップは押せる
+ * ままで、押すとそのタグで絞り込む。ライブラリとスマートフォルダのページが共有する。
+ */
+export function useFolderTagRow(onPressTag: (tag: TagRef) => void) {
+  return useCallback(
+    (tags: readonly VideoTag[]) => (
+      <CardTagRow
+        tags={tags}
+        selectionMode={false}
+        onPress={onPressTag}
+        onToggleSelection={ignoreToggle}
+      />
+    ),
+    [onPressTag],
+  );
+}
+
+/**
  * useCardTagRows はカードの題名の下のタグの行を作る関数である（VideoCard・GroupCard・
  * SmartFolderCard の tagsRow）。チップを押すと `onPressTag`、選択中に押すと動画とグループの
- * カードの選択を切り替える。スマートフォルダのカードは選択を持たない。グループのページと
+ * カードの選択を切り替える。スマートフォルダのカードは選択を持たない（useFolderTagRow）。グループのページと
  * スマートフォルダのページが共有する。
  */
 export function useCardTagRows({
@@ -45,16 +64,6 @@ export function useCardTagRows({
     ),
     [onPressTag, selectionMode, toggleGroup],
   );
-  const folderTags = useCallback(
-    (tags: readonly VideoTag[]) => (
-      <CardTagRow
-        tags={tags}
-        selectionMode={selectionMode}
-        onPress={onPressTag}
-        onToggleSelection={ignoreToggle}
-      />
-    ),
-    [onPressTag, selectionMode],
-  );
+  const folderTags = useFolderTagRow(onPressTag);
   return { videoTags, groupTags, folderTags };
 }

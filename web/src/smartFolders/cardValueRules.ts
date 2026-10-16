@@ -28,3 +28,19 @@ export function withAnswer(
   for (const card of cards) next.set(card.id, card);
   return next;
 }
+
+/**
+ * latestAnswer は読み出し `asked` の答え `cards` のうち、`isLatest` が真の id（その id を
+ * 最後に読んだのがこの読み出し）の分だけを残す。後から送った読み出しがある id は、その答えを
+ * 待つ。
+ */
+export function latestAnswer(
+  asked: readonly number[],
+  cards: readonly LibrarySmartFolder[],
+  isLatest: (id: number) => boolean,
+): { asked: number[]; cards: LibrarySmartFolder[] } {
+  return {
+    asked: asked.filter(isLatest),
+    cards: cards.filter((card) => isLatest(card.id)),
+  };
+}

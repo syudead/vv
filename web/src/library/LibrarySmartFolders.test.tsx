@@ -67,6 +67,7 @@ function renderAt(initial: string, audience: Audience = "owner") {
                     </>
                   }
                 />
+                <Route path="/smart-folders/9" element={<p>Smart folder page</p>} />
               </Routes>
             </ScanProvider>
           </AudienceProvider>
@@ -276,8 +277,10 @@ describe("Save as smart folder", () => {
     expect(await screen.findByText('Created "タグ: 猫"')).toBeDefined();
     // 絞り込んだ一覧はそのまま。
     expect(location()).toBe("?tag=1&watch=unwatched&sort=titleAsc");
-    // フォルダのページの経路はまだ無いので、トーストに「Open」を添えない（子 Issue 1180）。
-    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
+
+    // トーストの「Open」は新しいフォルダ（id 9）のページを開く。
+    await user.click(screen.getByRole("button", { name: "Open" }));
+    expect(await screen.findByText("Smart folder page")).toBeDefined();
   });
 
   it("名前が無ければ送らずに名前の規則を出す", async () => {

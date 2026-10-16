@@ -4,6 +4,7 @@ import {
   parseSmartFolderId,
   smartFolderCrumbs,
   smartFolderPagePath,
+  smartFolderParentPath,
   videoInSmartFolderPath,
 } from "./smartFolderPaths";
 
@@ -21,5 +22,17 @@ describe("smartFolderPaths", () => {
       { label: "タグ: 猫", to: "/smart-folders/1" },
       { label: "未視聴" },
     ]);
+  });
+});
+
+describe("smartFolderParentPath", () => {
+  it("消した後は親のページへ、親が無ければライブラリへ移る", () => {
+    expect(
+      smartFolderParentPath([
+        { id: 1, name: "猫" },
+        { id: 4, name: "未視聴" },
+      ]),
+    ).toBe("/smart-folders/4");
+    expect(smartFolderParentPath([])).toBe("/");
   });
 });
