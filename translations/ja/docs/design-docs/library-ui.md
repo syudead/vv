@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 47a0c800b27cdc96b5d83e28d03d175a245c1c1d79870a8fdb0aeb18b864bf19
+sourceHash: 5a4a424cc6262e98f66a1002c10daa61da052a2ea0282c20f0a76cbcfe16efdb
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -181,7 +181,7 @@ flowchart LR
 | 動画、フォルダの検索結果 | タイトルの下に所在の行 |
 | フォルダ | 動画カードの幅と枠線、フォルダの絵、タイトルに Folder アイコン |
 | グループ（ライブラリだけ） | 動画カードの枠と大きさ、最大 4 つのメンバーのサムネイルによるフォルダの絵 |
-| スマートフォルダ（絞り込みのないライブラリ、スマートフォルダのページ） | グループカードの枠、絵、件数のパネル、名前とタグの行。件数の前に `FolderSearch` の印。チェック、お気に入り、プレイリストの印はない |
+| スマートフォルダ（絞り込みのないライブラリ、スマートフォルダのページ） | グループカードの枠、絵、件数のパネル、名前とタグの行。件数の前に `FolderSearch` の印。チェックと `Add to group` はない。所有者のハートと `Add to playlist` はフォルダを 1 つの項目（`smartFolderIds`）として送る |
 
 動画カードの振る舞い:
 
@@ -288,7 +288,7 @@ flowchart LR
 | 戻り先 | ページを開く前の一覧。関連動画と `Play next` を経ても保つ |
 | タグ | タイトルのすぐ下に 1 つのまとまりとして置く（[014 UI 設計、Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)） |
 | 公開範囲の切り替え | 錠か地球のアイコン付きの `Private` か `Public`。`role="switch"` を持つ `Button` で、タイトルのまとまりの下、情報の行の上に置く |
-| 右の列 | 最大 3 つのセクション、プレイリストのパネル、`Up next`（グループのメンバー）、関連動画を、すべて幅 224px のライブラリ形式のカードで表示する: サムネイルと、その下に最大 2 行の名前。順番のあるカードはサムネイルの左上に番号を持ち、今のカードはリンクではなく、`bg-accent` の上に `ring-2 ring-primary ring-inset` を表示する。関連動画は近さの順に並べ、一覧のスクロールに合わせて続きを読み込む ([関連動画](related-videos.md)) |
+| 右の列 | 最大 3 つのセクション、プレイリストのパネル、`Up next`（グループかスマートフォルダのメンバー）、関連動画を、すべて幅 224px のライブラリ形式のカードで表示する: サムネイルと、その下に最大 2 行の名前。順番のあるカードはサムネイルの左上に番号を持ち、今のカードはリンクではなく、`bg-accent` の上に `ring-2 ring-primary ring-inset` を表示する。関連動画は近さの順に並べ、一覧のスクロールに合わせて続きを読み込む ([関連動画](related-videos.md)) |
 | ゲスト | タグ、公開範囲の切り替え、作品の詳細、`Edit details`、`Open file`、`Copy path` がない（[016 UI 設計、Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)） |
 
 幅による変化は、[幅のブレークポイントは CSS に置き、サイドバーは例外とする](#width-breakpoints-in-css-and-the-sidebar-exception)と同じく CSS に置く。
@@ -427,6 +427,8 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 | グループの操作（所有者） | 行の後ろの `Ellipsis` ボタン: `Remove from this group`（直接の項目のときだけ）、`Turn the group into a tag…`、`Dissolve…`。Esc はメニューだけを閉じる |
 | 操作の後 | 動画と関連動画を `group` なしで読み直す。ページはそのまま残る |
 | 前後のハンドル | グループ内で移動する |
+
+スマートフォルダから開いた動画（`?smartFolder=<id>`）は、同じ部品でフォルダの再生順に従う。読み込みは `smartFolder` を渡し、タイトルの上の行は `FolderSearch` アイコンを持って `/smart-folders/{id}` へリンクし、その後ろに操作ボタンはない。メンバーの行、ハンドル、通知は `?smartFolder` を引き継ぐ。両方があるときは `?group` が優先し、ページはそのフォルダを指す `smartFolder` イベントで読み直す。プレイリストは、スマートフォルダの項目を、グループの項目と同じ形で `FolderSearch` アイコンを持つ 1 行として、プレイリストの画面とパネルに表示する。そのリンクと、その項目へ移るプレイリストのすべての移動は、項目、または移動の `smartFolderId` から得た `smartFolder` を渡す。動画のないフォルダはリンクのない行になる（[052 UI 設計、Playlists](../../specs/052-smart-folders/ui-design.md#playlists)）。
 
 `matchMedia` が `lg` の幅を読むのは、広い画面で現在のメンバーの行を見える位置へスクロールするためだけだ。狭い幅でスクロールするとページ全体が動き、プレーヤーが隠れる。
 
