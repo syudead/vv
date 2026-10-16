@@ -124,11 +124,18 @@ func TestVideoVersionsBundleChangeRepresentativeAndUnbundle(t *testing.T) {
 	if item, ok := libraryVideo(library, a); !ok || !slices.Contains(tagNames(item.Tags), "X") {
 		t.Errorf("束ねたあとのライブラリの a: found = %v, tags = %v", ok, tagNames(item.Tags))
 	}
-	// 一覧の項目には versions が入らない。
-	for _, item := range rawItems(t, env.get("/api/videos", f.owner).Body.Bytes(), "items") {
-		if _, ok := item["versions"]; ok {
-			t.Errorf("一覧の項目に versions がある: %s", item["id"])
+	// 一覧の項目にも、集まりの代表にだけ versions が入る（specs/054-auto-dup/research.md R-9）。
+	videos := decode[gen.VideoPage](t, env.get("/api/videos", f.owner))
+	for _, item := range videos.Items {
+		switch {
+		case item.Id == a && (item.Versions == nil || item.Versions.Count != 2 || item.Versions.RepresentativeId != a):
+			t.Errorf("一覧の a の versions = %+v, want count 2, representativeId %d", item.Versions, a)
+		case item.Id != a && item.Versions != nil:
+			t.Errorf("一覧の束ねていない %d に versions がある: %+v", item.Id, *item.Versions)
 		}
+	}
+	if item, ok := libraryVideo(library, a); !ok || item.Versions == nil || item.Versions.Count != 2 {
+		t.Errorf("ライブラリの a の versions = %+v, want count 2", item.Versions)
 	}
 
 	// 代表を b に替えると、ライブラリの 1 件が b になり、タグは集まりの値（X）のまま（受け入れ条件 8）。

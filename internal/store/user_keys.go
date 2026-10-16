@@ -131,7 +131,7 @@ func contentKeysForUserKeys(ctx context.Context, q queryExecer, userKeys []strin
 
 // effectiveRepresentativeExpr は、集まり（id が式 bundleID）の見る人から見た実効の代表の
 // videos.id を返す副問い合わせである。見せてよい所在を持つメンバーが無ければ NULL になる。
-// 並べ方は bundleVersionsRef と同じである。
+// 並べ方は bundleVersionsRefs と同じである。
 func effectiveRepresentativeExpr(bundleID string, audience domain.Audience) string {
 	return `(select rv.id from video_bundle_members rm
 		join video_bundles rb on rb.id = rm.bundle_id

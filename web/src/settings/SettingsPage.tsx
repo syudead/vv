@@ -46,6 +46,7 @@ import NetworkSection from "./NetworkSection";
 import APITokensSection from "./APITokensSection";
 import ScanStatusSection from "./ScanStatusSection";
 import TranscodingSection from "./TranscodingSection";
+import VersionJudgingSection from "./VersionJudgingSection";
 import WorkInfoPluginsSection from "./WorkInfoPluginsSection";
 
 type Pending = { id: number | "new"; kind: "add" | "change" | "delete" } | null;
@@ -380,6 +381,7 @@ export default function SettingsPage() {
       </PageSection>
       <OllamaSection />
       <AutoTaggingSection />
+      <VersionJudgingSection />
       <ComfyUISection />
       <WorkInfoPluginsSection />
       <TranscodingSection />

@@ -88,6 +88,19 @@ func (s *SettingsStore) OllamaSettings(ctx context.Context) (domain.OllamaSettin
 	return settings, nil
 }
 
+// OllamaConnectionSaved は所有者が Ollama の接続先を保存したか（接続先の行があるか）を返す。
+// OllamaSettings は行が無ければ既定の接続先に倒すので、こちらで行の有無を見る
+// （specs/054-auto-dup/research.md R-13）。前の版のキーの行も保存とみなす。
+func (s *SettingsStore) OllamaConnectionSaved(ctx context.Context) (bool, error) {
+	for _, key := range []string{ollamaEndpointKey, legacyOllamaEndpointKey} {
+		_, found, err := readSetting(ctx, s.db.sql, key)
+		if err != nil || found {
+			return found, err
+		}
+	}
+	return false, nil
+}
+
 // SaveOllamaSettings は Ollama の接続先を 1 つの取引で保存する。値は呼び出し側が
 // domain.NormalizeOllamaSettings で確かめたものを渡す。
 func (s *SettingsStore) SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) error {

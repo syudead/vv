@@ -170,6 +170,15 @@ type AutoImportSettings interface {
 	SetEnabled(ctx context.Context, enabled bool) (domain.AutoImportStatus, error)
 }
 
+// VersionJudging は重複の自動判定の入切である。internal/app の *VersionJudge がこれを満たす
+// （specs/054-auto-dup/contracts/screen-api.md）。
+type VersionJudging interface {
+	// Enabled は保存した入切を返す。保存前は false である。
+	Enabled(ctx context.Context) (bool, error)
+	// SaveEnabled は入切を保存し、判定の処理を起こす。
+	SaveEnabled(ctx context.Context, enabled bool) error
+}
+
 // TranscodeProbeWriter は、ライブ変換がその場で解析した結果を保存する。
 // internal/store の *IngestStore がこれを満たす（specs/018-live-transcode-seek/
 // data-model.md §4）。
@@ -315,6 +324,8 @@ type Options struct {
 	AutoImport AutoImportSettings
 	// AutoTagging は自動タグ付けの設定と判定の始め方。nil なら該当の経路は 500 を返す。
 	AutoTagging AutoTagging
+	// VersionJudging は重複の自動判定の入切。nil なら /api/settings/version-judging は 500 を返す。
+	VersionJudging VersionJudging
 	// Ollama は判定モデルの提供元 Ollama の接続先と確かめ。nil なら該当の経路は 500 を返す。
 	Ollama OllamaConnection
 	// ComfyUI は画像編集の提供元 ComfyUI の接続先と確かめ。nil なら該当の経路は 500 を返す。
@@ -400,6 +411,7 @@ type server struct {
 	networkSettings   NetworkSettings
 	autoImport        AutoImportSettings
 	autoTagging       AutoTagging
+	versionJudging    VersionJudging
 	ollama            OllamaConnection
 	comfyUI           ComfyUIConnection
 	thumbnailEdits    ThumbnailEdits
@@ -490,6 +502,7 @@ func NewRouter(opts Options) http.Handler {
 		networkSettings:        opts.NetworkSettings,
 		autoImport:             opts.AutoImport,
 		autoTagging:            opts.AutoTagging,
+		versionJudging:         opts.VersionJudging,
 		ollama:                 opts.Ollama,
 		comfyUI:                opts.ComfyUI,
 		thumbnailEdits:         opts.ThumbnailEdits,
@@ -672,12 +685,22 @@ func requiresPostJSONBody(path string) bool {
 	return false
 }
 
+// putJSONBodyPaths は本文を持つ PUT の経路のうち、変わる部分の無いものである。
+var putJSONBodyPaths = map[string]bool{
+	"/api/video-visibility":         true,
+	"/api/favorites":                true,
+	"/api/settings/transcoding":     true,
+	"/api/settings/network":         true,
+	"/api/settings/auto-import":     true,
+	"/api/settings/auto-tagging":    true,
+	"/api/settings/ollama":          true,
+	"/api/settings/comfyui":         true,
+	"/api/settings/version-judging": true,
+}
+
 // requiresPutJSONBody は PUT の経路のうち本文を持つものかを返す。
 func requiresPutJSONBody(path string) bool {
-	if path == "/api/video-visibility" || path == "/api/favorites" || path == "/api/settings/transcoding" ||
-		path == "/api/settings/network" || path == "/api/settings/auto-import" ||
-		path == "/api/settings/auto-tagging" || path == "/api/settings/ollama" ||
-		path == "/api/settings/comfyui" {
+	if putJSONBodyPaths[path] {
 		return true
 	}
 	if suffix, ok := strings.CutPrefix(path, "/api/folders/"); ok {

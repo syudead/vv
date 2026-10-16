@@ -26,11 +26,19 @@ type OllamaConnection struct {
 	store OllamaSettingsStore
 	probe OllamaProbe
 	mu    sync.Mutex
+	// saved は接続先を保存したあとに呼ぶ（重複の判定が接続を待っていた組を再開する、
+	// specs/054-auto-dup/research.md R-13）。nil なら呼ばない。
+	saved func(context.Context)
 }
 
 // NewOllamaConnection は接続先の設定と確かめを組み立てる。
 func NewOllamaConnection(store OllamaSettingsStore, probe OllamaProbe) *OllamaConnection {
 	return &OllamaConnection{store: store, probe: probe}
+}
+
+// OnSaved は接続先を保存したあとに呼ぶ関数を登録する。要求を受け付ける前に 1 度だけ呼ぶ。
+func (o *OllamaConnection) OnSaved(saved func(context.Context)) {
+	o.saved = saved
 }
 
 // Settings は保存した接続先を返す。
@@ -49,6 +57,9 @@ func (o *OllamaConnection) SaveSettings(ctx context.Context, settings domain.Oll
 	defer o.mu.Unlock()
 	if err := o.store.SaveOllamaSettings(ctx, normalized); err != nil {
 		return domain.OllamaSettings{}, err
+	}
+	if o.saved != nil {
+		o.saved(ctx)
 	}
 	return normalized, nil
 }

@@ -96,6 +96,9 @@ describe("SettingsPage", () => {
             queue: { queued: 0, running: 0, done: 0, failed: 0 },
           }),
         );
+      // 「Duplicate judging」区画は VersionJudgingSection.test.tsx が確かめる。ここでは切である。
+      if (String(input) === "/api/settings/version-judging")
+        return Promise.resolve(json({ enabled: false }));
       // 「ComfyUI」区画は ComfyUISection.test.tsx が確かめる。ここでは何も保存されていない。
       if (String(input) === "/api/settings/comfyui")
         return Promise.resolve(json({ apiKeySet: false, model: "flux2_klein_4b" }));

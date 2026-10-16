@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 6d261e65cde38b94072a017ab652e1426c733669e9876b2ae7a0a3f8d47bcbe7
+sourceHash: eb574da0c9b0d623040b2abca2460af8a38f6435269609c5237755f88bbb611e
 ---
 
 # 設計文書 {#design-documents}
@@ -32,6 +32,7 @@ sourceHash: 6d261e65cde38b94072a017ab652e1426c733669e9876b2ae7a0a3f8d47bcbe7
 - [隣の字幕ファイル](sidecar-subtitles.md)
 - [判定モデルによる自動タグ付け](auto-tagging.md)
 - [AI 層: 分類器のポートとプロバイダ](ai-layer.md)
+- [重複の候補を自動で判定する](duplicate-judging.md)
 - [サムネイル編集のセッション](thumbnail-editing.md)
 - [作品情報プラグイン: サンドボックス、制限、ネットワーク](work-info-plugins.md)
 - [vv デザインシステム](design-system.md)
@@ -72,3 +73,4 @@ sourceHash: 6d261e65cde38b94072a017ab652e1426c733669e9876b2ae7a0a3f8d47bcbe7
 - [タグの種類 (タグの行の種類のラベル、種類の絞り込み、選択バーの Set kind、Kinds タブ、ライブラリのタグの種類の絞り込み): UI](../../specs/051-tag-kinds/ui-design.md)
 - [作品情報プラグインからの作品の詳細 (比較の作品の詳細の行と `New` と `Not linked` の印、結果のステップの除かれた値): UI](../../specs/052-plugin-work-info-fields/ui-design.md)
 - [保存した条件に中身が従うスマートフォルダ (Save as smart folder、スマートフォルダのダイアログ、条件の行を持つカードとページ、動画のページのフォルダの行): UI](../../specs/052-smart-folders/ui-design.md)
+- [自動の重複判定 (カードと行のバージョンの印、Settings の Duplicate judging のスイッチ): UI](../../specs/054-auto-dup/ui-design.md)

@@ -6,6 +6,7 @@ import {
   type ReactNode,
   useCallback,
   useEffect,
+  useId,
   useRef,
 } from "react";
 import { Link } from "react-router";
@@ -41,6 +42,7 @@ import {
 } from "../ui/VideoThumbnail";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "./cardDrag";
 import { CardMedia, useCardPreview } from "./cardPreview";
+import { shownVersionsCount, VersionsMark } from "./VersionsMark";
 
 export interface VideoCardProps {
   video: Video;
@@ -302,6 +304,8 @@ function VideoCard(props: VideoCardProps) {
   // 今の pb-3 のまま保つ（タグの有無で高さの余白が変わって見えないように）。
   const tagsRowNode = tagsRow?.(video);
   const publicMark = usePublicMark(video);
+  const versions = shownVersionsCount(video);
+  const versionsId = useId();
   const owner = useAudience() === "owner";
   const showTagsRow = tagsRow !== undefined && video.tags.length > 0;
   const preview = useCardPreview({
@@ -353,6 +357,9 @@ function VideoCard(props: VideoCardProps) {
             ? video.title
             : t.list.card.withLocation(video.title, location.label)
         }
+        // リンクの名前が中の文を置き換えるので、バージョンの印の読み上げは説明として指す
+        // （specs/054-auto-dup/ui-design.md「Accessibility」）。
+        aria-describedby={versions === null ? undefined : versionsId}
         onClick={(event) => {
           onPreviewReset?.();
           if (selectionMode && onSelect !== undefined) {
@@ -365,8 +372,9 @@ function VideoCard(props: VideoCardProps) {
         <VideoThumbnail selected={selected}>
           <CardMedia video={video} preview={preview} scrubFrame={scrub.frame} />
 
-          {(publicMark || duration !== "") && (
+          {(versions !== null || publicMark || duration !== "") && (
             <VideoThumbnailDuration>
+              {versions !== null && <VersionsMark count={versions} id={versionsId} />}
               {publicMark && <PublicMark />}
               {duration !== "" && (
                 <span>
@@ -463,6 +471,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
   const { video, backTo, to, selected, selectionMode, onSelect, drag } = props;
   const { duration, unplayable, state, ratio, quality } = useCardState(video);
   const publicMark = usePublicMark(video);
+  const versions = shownVersionsCount(video);
   const owner = useAudience() === "owner";
 
   return (
@@ -555,8 +564,10 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         )}
       </TableCell>
       <TableCell className="w-list-number pr-4 text-right tabular-nums">
-        {/* 公開の印は時間の直前に置く（ui-design.md「Card」）。 */}
+        {/* 公開の印は時間の直前に、バージョンの印はその前に置く（ui-design.md「Card」、
+            specs/054-auto-dup/ui-design.md「Versions mark」）。 */}
         <span className="inline-flex items-center justify-end gap-1.5">
+          {versions !== null && <VersionsMark count={versions} />}
           {publicMark && <PublicMark />}
           {duration}
         </span>

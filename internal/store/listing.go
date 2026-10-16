@@ -428,6 +428,9 @@ func listVideoPageTx(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.Vid
 			return domain.VideoPage{}, err
 		}
 	}
+	if err := attachVersions(ctx, tx, spec.scope.audience, page.Items); err != nil {
+		return domain.VideoPage{}, err
+	}
 	return page, nil
 }
 
