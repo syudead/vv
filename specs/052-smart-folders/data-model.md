@@ -67,10 +67,13 @@ missing-reference check and for merges.
 | --- | --- |
 | Effective rule | The folder's rule and each ancestor's; the store applies each one's filter conditions ([R-5](research.md#r-5-a-childs-effective-rule-is-every-rule-on-its-path-anded)) |
 | Items | `ListLibrary` for the effective rule, in the folder's `sort`, for the viewer ([R-3](research.md#r-3-a-rule-is-the-library-filters-fields-contents-are-the-filtered-library)); on the first page, child folders by `title_key` come first |
-| Missing reference | A rule on the path names an id that does not exist: no item but the child folders ([R-9](research.md#r-9-merges-rewrite-rules-a-deleted-reference-makes-the-rule-match-nothing)) |
+| Child folders | The folder's children as summaries (`SmartFolderSummary`: id, parent id, name, favorite), by `title_key` then id; a guest gets those with a matching video ([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)) |
+| Missing reference | A rule on the path names an id that does not exist: no item, no matching video, but the child folders ([R-9](research.md#r-9-merges-rewrite-rules-a-deleted-reference-makes-the-rule-match-nothing)) |
 | Play order | The items in order, a group card replaced by its play order (048), each video at its first appearance; child folders are not played |
-| Card values | `LibraryGroup`'s values over the play order: count, sums, dates, watch state, previews, open video |
-| Shown | To the owner always; to a guest when the play order is not empty ([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only)) |
+| Matching videos | The viewer's shown video of each content key that matches every rule on the path, each condition tested on the video itself (watch state, playable and favorite included), with no group step. The same videos as the play order, except for a group whose videos are mixed under a watch state, playable only or favorites only rule: the item query takes or leaves it as one item (048 Library items), this set takes its matching videos |
+| Card values (the folder's page) | `LibraryGroup`'s values over the play order: count, sums, dates, watch state, previews, open video |
+| Card values (the cards read) | The same values over the matching videos: `videoCount` their number, `sizeBytes` and `durationMs` sums, `addedAt` and `lastPlayedAt` the latest, `watchedCount` and `watchState` per video, `previews` and `openVideoId` the first in the folder's `sort`, `tags` as `LibraryGroup`; no `videoIds` ([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)) |
+| Shown | To the owner always; to a guest when the read's set (the play order on the folder's page, the matching videos elsewhere) is not empty ([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only)) |
 
 ## Library items
 
@@ -78,8 +81,31 @@ The library item query gains root folders (`parent_id is null`) as items of
 kind `smartFolder` when the query has no search and no filter other than
 favorites only; with favorites only, the favorited folders at any depth
 ([R-7](research.md#r-7-root-smart-folders-are-cards-in-the-unfiltered-library)).
-Their sort values come from their card values as a group card's do; the
-cursor carries the kind. No video or group item changes.
+An item carries the folder's summary (`SmartFolderSummary`) and no card
+value
+([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing));
+the cursor carries the kind. A guest's library leaves out a folder with no
+matching video ([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only)).
+No video or group item changes.
+
+A folder's sort value is read by one query per folder over its matching
+videos ([Contents](#contents)), with no group step:
+
+| Sort | A folder's sort value |
+| --- | --- |
+| Added, modified, created, last played | The latest among its matching videos, as a group card's is among its members; 0 with none |
+| Length, size | The sums over its matching videos; 0 with none |
+| Title | The folder's `title_key` |
+| Favorited | Its `smart_folder_favorites.favorited_at` |
+
+## Cards read
+
+`GET /api/smart-folders/cards` takes 1 to 60 folder ids and returns the card
+values of the cards read ([Contents](#contents)) for each folder that exists
+and is shown to the viewer, in the order asked; an id that names no folder
+or a folder a guest may not see is left out. Each folder costs one query
+over its matching videos
+([R-13](research.md#r-13-a-read-budget-at-20000-videos-and-50-smart-folders)).
 
 ## Edits
 
@@ -114,6 +140,8 @@ After commit, each write below publishes one `SmartFoldersChanged`
 | A person or organization credited, uncredited, renamed, deleted or merged | Every folder |
 | A video favorite set or cleared | Every folder |
 | A progress save whose `domain.WatchState` differs from the stored one | Every folder |
+| Probe results applied to a video (`ApplyProbe`: length, playable) | Every folder |
+| A video's display name set, cleared or changed with its work info (`SetDisplayName`, `SetDisplayNames`, `SetDetails`), when the name changes | Every folder |
 | A video becomes listed or leaves the library, is bundled or unbundled, or a group changes (`GroupsChanged`) | Every folder |
 
 Nothing is published when no folder exists.

@@ -31,6 +31,7 @@ flowchart LR
 | --- | --- |
 | Storage | Own table and item kind ([R-1](research.md#r-1-a-smart-folder-is-its-own-entity-not-a-group), [data-model.md, Migration](data-model.md#migration)) |
 | Contents | The filtered library, evaluated on read ([R-2](research.md#r-2-contents-are-computed-when-read-not-stored), [R-3](research.md#r-3-a-rule-is-the-library-filters-fields-contents-are-the-filtered-library)) within a budget ([R-13](research.md#r-13-a-read-budget-at-20000-videos-and-50-smart-folders)) |
+| Folder cards | A summary in the list, the card values read for the cards on screen, evaluated per video ([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)) |
 | Filter fields | The library filter gains added within and length ([R-4](research.md#r-4-the-library-filter-gains-added-within-and-length)) |
 | Nesting | Every rule on the path, ANDed ([R-5](research.md#r-5-a-childs-effective-rule-is-every-rule-on-its-path-anded)) |
 | Order | A stored library sort ([R-6](research.md#r-6-videos-follow-the-folders-sort-random-is-refused)) |
@@ -67,7 +68,7 @@ judged against the parent Issue's `UI品質`.
 
 - One migration, numbered when it lands
   ([data-model.md, Migration](data-model.md#migration)).
-- Six routes, several schemas and one screen event kind on the screen API
+- Seven routes, several schemas and one screen event kind on the screen API
   ([contracts/screen-api.md](contracts/screen-api.md)); the external API and
   MCP do not change.
 - A new SPA route for the folder page, and a `smartFolder` query on the video
@@ -134,6 +135,19 @@ store role and a screen folder of their own beside groups
 
 The diagram shows which units have to land first. The screen units also wait
 for the `design` stage's `ui-design.md`.
+
+Revised 2026-10-16 for
+[R-13](research.md#r-13-a-read-budget-at-20000-videos-and-50-smart-folders)
+and
+[R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing),
+after PR #1204 measured the library's first page with 50 root folders at
+about 25 s. The units keep their headings and their child Issues; the scope
+of three changes: "Show root smart folders as cards in the library" (#1173),
+"Add smart folders to the screen API" (#1178) and "Open a smart folder onto
+its children and contents" (#1180). "List a smart folder's contents with its
+children and card values" (#1172) is merged; its benchmark budget is now
+1 second, and the child folder summaries move to #1173. No unit is added,
+removed or renumbered.
 
 ```mermaid
 flowchart LR
@@ -219,26 +233,39 @@ child first (acceptance criterion 4); the contents equal `ListLibrary` for the
 same filter (acceptance criterion 5); a bundle counts once; a guest sees only
 public videos and gets `ErrNotFound` for a folder with none, while the owner
 reads an empty folder; a rule naming a deleted tag lists only child folders,
-and so does its child; the benchmark result for 20,000 videos is under 500 ms
-and recorded in the PR.
+and so does its child; the benchmark result for 20,000 videos is under
+1 second (500 ms before the 2026-10-16 revision) and recorded in the PR.
 
 ### Show root smart folders as cards in the library
 
 **Scope**: The `smartFolder` item kind in the library item query and
-`LibraryIDs`, its sort values and cursor, leaving folders out under a search
-or filter, and favorited folders under favorites only
+`LibraryIDs` as a summary with its sort value over the folder's matching
+videos and its cursor, leaving folders out under a search or filter, and
+favorited folders under favorites only; the store read of card values by
+ids over the matching videos; the child folders of a folder's page as
+summaries; `BenchmarkLibraryWithSmartFolders` with the cards read
 ([data-model.md, Library items](data-model.md#library-items),
-[R-7](research.md#r-7-root-smart-folders-are-cards-in-the-unfiltered-library)).
+[Cards read](data-model.md#cards-read),
+[R-7](research.md#r-7-root-smart-folders-are-cards-in-the-unfiltered-library),
+[R-13](research.md#r-13-a-read-budget-at-20000-videos-and-50-smart-folders),
+[R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)).
 
 **Dependencies**: List a smart folder's contents with its children and card
 values.
 
 **Acceptance**: `task check` passes; store tests show: the unfiltered library
-lists a root folder among groups and videos in its sort position, and lists
-the folder's videos too; a child folder is not listed at the top; a search or
-a tag filter lists no folder; favorites only lists a favorited child folder;
-paging across a folder item returns every item once; a guest's library has no
-empty folder.
+lists a root folder among groups and videos in its sort position for each
+sort, carrying only its summary, and lists the folder's videos too; a child
+folder is not listed at the top; a search or a tag filter lists no folder;
+favorites only lists a favorited child folder; paging across a folder item
+returns every item once; a guest's library has no folder without a matching
+video; the cards read returns, in the order asked, the count, sums, dates,
+watch state and previews over the matching videos, leaves out an id that
+names no folder or a folder a guest may not see, and counts a mixed group's
+matching videos under a watch state rule; a folder's page lists its children
+as summaries; the benchmark results for 20,000 videos are under 1 second for
+the first library page with 50 root folders and for the cards read of 24
+folders, and are recorded in the PR.
 
 ### Follow tag, person and organization merges in smart folder rules
 
@@ -304,11 +331,12 @@ it match nothing and reports it missing.
 
 ### Add smart folders to the screen API
 
-**Scope**: The six routes, the schemas and parameters, the statuses and their
-catalog messages, the handlers, the wiring in `cmd/mdm`, and the client
-functions in `web/src/api/smartFolders.ts` and the changed favorites,
-playlist and video clients; the SPA keeps working with the new `LibraryItem`
-kind by skipping it until the screen units
+**Scope**: The seven routes (the cards read included), the schemas and
+parameters (`SmartFolderSummary` in `LibraryItem` and `SmartFolderItem`),
+the statuses and their catalog messages, the handlers, the wiring in
+`cmd/mdm`, and the client functions in `web/src/api/smartFolders.ts` and the
+changed favorites, playlist and video clients; the SPA keeps working with the
+new `LibraryItem` kind by skipping it until the screen units
 ([contracts/screen-api.md](contracts/screen-api.md)).
 
 **Dependencies**: Show root smart folders as cards in the library; Follow tag,
@@ -318,9 +346,10 @@ folders in the store.
 
 **Acceptance**: `task check` passes with no diff from `task generate`; handler
 tests show each status of the contract's table, a guest gets `401` on every
-write and no `settings`, `missing` names a deleted tag, and
-`TestAccessClassificationMatchesOpenAPISecurity` passes; existing library page
-tests pass.
+write and no `settings`, `missing` names a deleted tag, the cards read
+answers `400 invalid_request` for no ids and for 61 ids and leaves out an id
+a guest may not see, and `TestAccessClassificationMatchesOpenAPISecurity`
+passes; existing library page tests pass.
 
 ### Save the library filter as a smart folder and edit its conditions
 
@@ -344,19 +373,25 @@ sees no save or edit action.
 
 ### Open a smart folder onto its children and contents
 
-**Scope**: The folder card in the library, the `/smart-folders/{id}` screen
-with its trail, children, contents in order, paging, the conditions it
-filters by, the empty and missing-condition states, play from the folder,
+**Scope**: The folder card in the library and on the folder page, drawn
+from its summary with its values read through the cards read when it is on
+screen and read again on a `smartFolder` event, the `/smart-folders/{id}`
+screen with its trail, children, contents in order, paging, the conditions
+it filters by, the empty and missing-condition states, play from the folder,
 reading again on a `smartFolder` event, guest access, its route and the
-catalog text; layout follows `ui-design.md`.
+catalog text; layout follows `ui-design.md`
+([ui-design.md, Smart folder card and row](ui-design.md#smart-folder-card-and-row)).
 
 **Dependencies**: Add smart folders to the screen API; the `design` stage's
 `ui-design.md`.
 
 **Acceptance**: This unit changes a screen, so it needs a visual and
 interaction review against `ui-design.md` and the parent Issue's `UI品質`.
-`task check` passes; page tests show: a folder card opens its page; the page
-lists child folders then items in the response's order; opening a child
+`task check` passes; page tests show: a folder card shows its name and a
+`Skeleton` count face from the summary, then its count and cover once the
+cards read answers, and only cards on screen are asked for; a `smartFolder`
+event reads the shown cards' values again once; a folder card opens its
+page; the page lists child folders then items in the response's order; opening a child
 extends the trail and names its parent; an empty folder says it is empty; a
 missing tag is named; a `smartFolder` event for the shown id reads it again;
 a guest sees the page without edit actions; the library shows the card among
