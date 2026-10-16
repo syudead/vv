@@ -412,7 +412,7 @@ jobs:
           - group: playback
             files: e2e/playback.e2e.ts
           - group: tags
-            files: e2e/tags.e2e.ts
+            files: e2e/smart-folders.e2e.ts e2e/tags.e2e.ts
           - group: library
             files: e2e/card-scrub.e2e.ts e2e/folders.e2e.ts e2e/guest.e2e.ts e2e/history.e2e.ts e2e/hover-preview.e2e.ts e2e/playlists.e2e.ts e2e/thumbnail-edit.e2e.ts
           - group: scan and search
