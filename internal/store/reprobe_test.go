@@ -35,7 +35,7 @@ func jobCounts(t *testing.T, db *DB, videoID int64) map[string]int {
 func claimAtLastAttempt(t *testing.T, db *DB, kind domain.JobKind, videoID int64) domain.Job {
 	t.Helper()
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, kind, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, kind, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.sql.Exec(`update jobs set attempts = ? where kind = ? and video_id = ?`, domain.MaxJobAttempts-1, string(kind), videoID); err != nil {
@@ -201,7 +201,7 @@ func TestFailClaimedProbeRollsBackJobWhenStateUpdateFails(t *testing.T) {
 func TestFailClaimedProbeKeepsPendingWhileRetrying(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)

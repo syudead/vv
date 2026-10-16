@@ -36,7 +36,7 @@ func probeWithDuration(t *testing.T, db *DB, videoID, durationMs int64) {
 func applyFingerprint(t *testing.T, db *DB, videoID int64, fingerprint domain.Fingerprint) {
 	t.Helper()
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobFingerprint, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobFingerprint, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobFingerprint)

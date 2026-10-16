@@ -30,7 +30,7 @@ func startTestScan(t *testing.T, db *DB) int64 {
 
 func finishTestScan(t *testing.T, db *DB, id int64, state domain.ScanState) {
 	t.Helper()
-	if err := db.Scans().FinishScan(context.Background(), id, state, nil); err != nil {
+	if err := db.Scans().FinishScan(context.Background(), id, state, nil, domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 }

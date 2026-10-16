@@ -331,6 +331,8 @@ func run(opts runOptions) error {
 		Store: db.Activity(),
 		Retriers: map[domain.ActivityKind]app.ActivityRetrier{
 			domain.ActivityAutoTag:          autoTagger,
+			domain.ActivityImport:           app.NewImportRetrier(ingestStore),
+			domain.ActivityScan:             scans,
 			domain.ActivityVersionJudgement: versionJudgementActivity,
 		},
 		Undoers: map[domain.ActivityKind]app.ActivityUndoer{

@@ -53,7 +53,7 @@ func importWithStages(t *testing.T, db *DB) int64 {
 	_, ids := startImport(t, db, "a")
 	runOneJob(t, db, domain.JobProbe)
 	for _, kind := range []domain.JobKind{domain.JobThumbnail, domain.JobSeekThumbnail} {
-		if err := db.Ingest().EnqueueJob(ctx, kind, ids[0]); err != nil {
+		if err := db.Ingest().EnqueueJob(ctx, kind, ids[0], domain.ActivityByRule); err != nil {
 			t.Fatal(err)
 		}
 	}
