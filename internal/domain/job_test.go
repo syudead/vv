@@ -71,16 +71,16 @@ func TestJobRetriesUntilLimitAcrossLocations(t *testing.T) {
 func TestClaimConditionWaitsForProbeOnlyForThumbnails(t *testing.T) {
 	for _, kind := range JobKinds {
 		c := ClaimConditionFor(kind)
-		if c.Allows(false, ProbeStateDone, false, SeekThumbnailDone) {
+		if c.Allows(false, ProbeStateDone, false, false, SeekThumbnailDone) {
 			t.Errorf("%s: allowed without a registered location", kind)
 		}
 		for _, probe := range []ProbeState{ProbeStateDone, ProbeStateFailed} {
-			if !c.Allows(true, probe, false, SeekThumbnailDone) {
+			if !c.Allows(true, probe, false, false, SeekThumbnailDone) {
 				t.Errorf("%s: not allowed after probe %s", kind, probe)
 			}
 		}
 		wantPending := kind != JobThumbnail && kind != JobSeekThumbnail
-		if got := c.Allows(true, ProbeStatePending, false, SeekThumbnailDone); got != wantPending {
+		if got := c.Allows(true, ProbeStatePending, false, false, SeekThumbnailDone); got != wantPending {
 			t.Errorf("%s: allowed while probe pending = %v, want %v", kind, got, wantPending)
 		}
 	}
@@ -88,7 +88,7 @@ func TestClaimConditionWaitsForProbeOnlyForThumbnails(t *testing.T) {
 
 func TestClaimConditionSeekThumbnailWaitsForClaimableThumbnails(t *testing.T) {
 	for _, kind := range JobKinds {
-		got := ClaimConditionFor(kind).Allows(true, ProbeStateDone, true, SeekThumbnailDone)
+		got := ClaimConditionFor(kind).Allows(true, ProbeStateDone, true, false, SeekThumbnailDone)
 		want := kind != JobSeekThumbnail
 		if got != want {
 			t.Errorf("%s: allowed while a thumbnail job is claimable = %v, want %v", kind, got, want)
@@ -99,17 +99,32 @@ func TestClaimConditionSeekThumbnailWaitsForClaimableThumbnails(t *testing.T) {
 func TestClaimConditionFingerprintWaitsForSeekThumbnail(t *testing.T) {
 	for _, kind := range JobKinds {
 		for _, seek := range []SeekThumbnailState{SeekThumbnailPending, SeekThumbnailFailed} {
-			got := ClaimConditionFor(kind).Allows(true, ProbeStateDone, false, seek)
+			got := ClaimConditionFor(kind).Allows(true, ProbeStateDone, false, false, seek)
 			want := kind != JobFingerprint
 			if got != want {
 				t.Errorf("%s: allowed while seek thumbnails are %s = %v, want %v", kind, seek, got, want)
 			}
 		}
-		if !ClaimConditionFor(kind).Allows(true, ProbeStateDone, false, SeekThumbnailDone) {
+		if !ClaimConditionFor(kind).Allows(true, ProbeStateDone, false, false, SeekThumbnailDone) {
 			t.Errorf("%s: not allowed after seek thumbnails are done", kind)
 		}
 	}
-	if JobKinds[len(JobKinds)-1] != JobFingerprint {
-		t.Fatalf("JobKinds = %v, want fingerprint last", JobKinds)
+	if JobKinds[len(JobKinds)-2] != JobFingerprint {
+		t.Fatalf("JobKinds = %v, want fingerprint last among the import stages", JobKinds)
+	}
+}
+
+// 解析し直しだけが、取り出せる解析の仕事が残っている間は取り出されない
+// （specs/056-media-info/research.md R-5）。
+func TestClaimConditionMetadataWaitsForClaimableProbes(t *testing.T) {
+	for _, kind := range JobKinds {
+		got := ClaimConditionFor(kind).Allows(true, ProbeStateDone, false, true, SeekThumbnailDone)
+		want := kind != JobMetadata
+		if got != want {
+			t.Errorf("%s: allowed while a probe job is claimable = %v, want %v", kind, got, want)
+		}
+	}
+	if JobKinds[len(JobKinds)-1] != JobMetadata {
+		t.Fatalf("JobKinds = %v, want metadata last", JobKinds)
 	}
 }

@@ -726,3 +726,61 @@ func TestIngestFingerprintSkipsStaleJob(t *testing.T) {
 		t.Fatalf("呼び出し = %v、指紋 = %+v", calls, store.fingerprints)
 	}
 }
+
+// 解析し直しの仕事は同じ解析を走らせ、追加の情報の行だけを書く。索引の列（ApplyProbeForJob）には
+// 触れない（specs/056-media-info/research.md R-5）。
+func TestIngestMetadataWritesOnlyMediaInfo(t *testing.T) {
+	video := probedVideo(1, "a")
+	store := newFakeIngestStore(video)
+	media := &domain.MediaInfo{Video: &domain.MediaVideo{HDR: domain.HDRKindHLG}}
+	generator := &fakeGenerator{probe: domain.Probe{DurationMs: 1, VideoCodec: "hevc", Media: media}}
+	ingest, _ := newTestIngest(store, generator)
+
+	if err := ingest.Handler(domain.JobMetadata)(context.Background(), jobFor(domain.JobMetadata, video)); err != nil {
+		t.Fatal(err)
+	}
+	if len(store.mediaInfos) != 1 || store.mediaInfos[0].Video == nil || store.mediaInfos[0].Video.HDR != domain.HDRKindHLG {
+		t.Fatalf("書いた追加の情報 = %+v", store.mediaInfos)
+	}
+	if len(store.appliedProbes) != 0 {
+		t.Fatalf("索引の列を書いた: %+v", store.appliedProbes)
+	}
+	if calls, _ := generator.snapshot(); !slices.Equal(calls, []string{"check", "probe"}) {
+		t.Fatalf("呼び出し = %v", calls)
+	}
+}
+
+// 解析に失敗したら何も書かずに失敗を返し、途中でファイルが変わって追加の情報が無ければ何も書かずに
+// 終える。専有した時点から内容や所在が変わっていれば、解析もしない。
+func TestIngestMetadataWritesNothingWithoutMediaInfo(t *testing.T) {
+	video := probedVideo(1, "a")
+	for _, tc := range []struct {
+		name      string
+		stale     bool
+		generator *fakeGenerator
+		wantErr   bool
+		wantCalls []string
+	}{
+		{name: "解析の失敗", generator: &fakeGenerator{probeErr: errors.New("moov atom not found")},
+			wantErr: true, wantCalls: []string{"check", "probe"}},
+		{name: "途中で変わったファイル", generator: &fakeGenerator{probe: domain.Probe{DurationMs: 1}},
+			wantCalls: []string{"check", "probe"}},
+		{name: "古い専有", stale: true, generator: &fakeGenerator{}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			store := newFakeIngestStore(video)
+			store.stale = tc.stale
+			ingest, _ := newTestIngest(store, tc.generator)
+			err := ingest.Metadata(context.Background(), jobFor(domain.JobMetadata, video))
+			if (err != nil) != tc.wantErr {
+				t.Fatalf("err = %v, want error %v", err, tc.wantErr)
+			}
+			if len(store.mediaInfos) != 0 || len(store.appliedProbes) != 0 {
+				t.Fatalf("書いた: media=%+v probes=%+v", store.mediaInfos, store.appliedProbes)
+			}
+			if calls, _ := tc.generator.snapshot(); !slices.Equal(calls, tc.wantCalls) {
+				t.Fatalf("呼び出し = %v, want %v", calls, tc.wantCalls)
+			}
+		})
+	}
+}

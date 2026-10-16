@@ -852,6 +852,7 @@ func (e ScanState) Valid() bool {
 // Defines values for ScanActivityKind.
 const (
 	ScanActivityKindFingerprint   ScanActivityKind = "fingerprint"
+	ScanActivityKindMetadata      ScanActivityKind = "metadata"
 	ScanActivityKindPreview       ScanActivityKind = "preview"
 	ScanActivityKindProbe         ScanActivityKind = "probe"
 	ScanActivityKindRegistering   ScanActivityKind = "registering"
@@ -863,6 +864,8 @@ const (
 func (e ScanActivityKind) Valid() bool {
 	switch e {
 	case ScanActivityKindFingerprint:
+		return true
+	case ScanActivityKindMetadata:
 		return true
 	case ScanActivityKindPreview:
 		return true
@@ -928,6 +931,7 @@ func (e ScanIssueSeverity) Valid() bool {
 const (
 	ScanIssueKindChangedDuringImport     ScanIssueKind = "changed_during_import"
 	ScanIssueKindFingerprintFailed       ScanIssueKind = "fingerprint_failed"
+	ScanIssueKindMetadataFailed          ScanIssueKind = "metadata_failed"
 	ScanIssueKindPreviewFailed           ScanIssueKind = "preview_failed"
 	ScanIssueKindProbeFailed             ScanIssueKind = "probe_failed"
 	ScanIssueKindRegisterFailed          ScanIssueKind = "register_failed"
@@ -944,6 +948,8 @@ func (e ScanIssueKind) Valid() bool {
 	case ScanIssueKindChangedDuringImport:
 		return true
 	case ScanIssueKindFingerprintFailed:
+		return true
+	case ScanIssueKindMetadataFailed:
 		return true
 	case ScanIssueKindPreviewFailed:
 		return true
@@ -3075,14 +3081,14 @@ type ScanActivity struct {
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
-	// Kind 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は 同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）
+	// Kind 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は 同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）、 metadata は取り込み済みの動画の情報を読み直している（specs/056-media-info/research.md R-5）
 	Kind ScanActivityKind `json:"kind"`
 
 	// VideoId 登録された動画なら、その id
 	VideoId *int64 `json:"videoId,omitempty"`
 }
 
-// ScanActivityKind 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は 同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）
+// ScanActivityKind 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は 同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）、 metadata は取り込み済みの動画の情報を読み直している（specs/056-media-info/research.md R-5）
 type ScanActivityKind string
 
 // ScanErrorCode スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す （specs/023-english-i18n/data-model.md §2）。ここが正本で、Go の定数は生成物である （task generate）。

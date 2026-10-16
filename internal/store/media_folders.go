@@ -207,11 +207,11 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	c.processingChanged()
 	// 登録外になった所在の問題は、一覧にも本数にも入らなくなる。
 	c.issuesChanged()
-	// 取り出せる代表サムネイルの仕事が減ると、待っていたシーク用サムネイルが
-	// 取り出せるようになる（domain.ClaimConditionFor）。動画の行が残ると
-	// VideoIngestChanged も出ないので、ここで起こさないと次に仕事が積まれるまで
-	// 止まったままになる。
-	c.jobsQueued(domain.JobSeekThumbnail)
+	// 取り出せる代表サムネイルの仕事が減ると、待っていたシーク用サムネイルが、
+	// 取り出せる解析の仕事が減ると、待っていた解析し直しが取り出せるようになる
+	// （domain.ClaimConditionFor）。動画の行が残ると VideoIngestChanged も出ないので、
+	// ここで起こさないと次に仕事が積まれるまで止まったままになる。
+	c.jobsQueued(domain.JobSeekThumbnail, domain.JobMetadata)
 	return s.db.commit(ctx, tx, &c)
 }
 

@@ -35,6 +35,9 @@ type IngestStore interface {
 	// ApplyFingerprintForJob は専有した時点の内容と所在が今も同じときだけ、その内容の
 	// 映像の指紋を置き換え、反映したかを返す。
 	ApplyFingerprintForJob(ctx context.Context, job domain.Job, fingerprint domain.Fingerprint) (bool, error)
+	// ApplyMediaInfoForJob は専有した時点の内容と所在が今も同じときだけ、動画の追加の情報の
+	// 行を置き換え、反映したかを返す。videos の行には触れない。
+	ApplyMediaInfoForJob(ctx context.Context, job domain.Job, info domain.MediaInfo) (bool, error)
 	// SetThumbnailPosition は代表サムネイルの位置を記録し（nil は解除）、同じ取引でその内容の
 	// 動画の thumbnail_state を done にする。画像を公開したあと、生成の錠の中で呼ぶ
 	// （specs/029-video-overrides/data-model.md §3）。
@@ -180,6 +183,8 @@ func (i *Ingest) Handler(kind domain.JobKind) func(context.Context, domain.Job) 
 		return i.Preview
 	case domain.JobFingerprint:
 		return i.Fingerprint
+	case domain.JobMetadata:
+		return i.Metadata
 	}
 	return nil
 }
@@ -707,5 +712,34 @@ func (i *Ingest) Fingerprint(ctx context.Context, job domain.Job) error {
 		return err
 	}
 	_, err = i.store.ApplyFingerprintForJob(ctx, job, fingerprint)
+	return err
+}
+
+// Metadata は取り込み済みの動画を解析し直し、追加の情報の行だけを書く
+// （specs/056-media-info/research.md R-5）。取り込みの解析（Probe）と同じ ffprobe を走らせるが、
+// 索引の列・再生可否・ライブ変換用の解析情報には触れない。
+//
+// 解析の途中でファイルが変わり追加の情報が無い（probe.Media が nil）ときは何も書かずに
+// 終える。行の無い動画は次の走査が積み直す。終わると JobFinished が video の知らせを送る。
+func (i *Ingest) Metadata(ctx context.Context, job domain.Job) error {
+	current, err := i.store.JobIdentityCurrent(ctx, job)
+	if err != nil {
+		return err
+	}
+	if !current {
+		return nil
+	}
+	if err := i.generator.CheckSource(job.LocationPath); err != nil {
+		return err
+	}
+	// 上限まで試して駄目なときは、FailClaimedJob が行をそのままにして問題を記録する。
+	probe, err := i.generator.Probe(ctx, job.LocationPath)
+	if err != nil {
+		return err
+	}
+	if probe.Media == nil {
+		return nil
+	}
+	_, err = i.store.ApplyMediaInfoForJob(ctx, job, *probe.Media)
 	return err
 }
