@@ -185,7 +185,7 @@ type manifestJSON struct {
 	Version     string              `json:"version"`
 	Description string              `json:"description"`
 	Operations  []WorkInfoOperation `json:"operations"`
-	Settings    []settingJSON       `json:"settings"`
+	Settings    []json.RawMessage   `json:"settings"`
 }
 
 // WorkInfoPluginManifestError は拒んだマニフェストの理由である（specs/056-plugin-tooling/contracts/plugin-cli.md）。
@@ -243,7 +243,7 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 	}
 	var raw manifestJSON
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return WorkInfoPluginManifest{}, typeRejection(err)
+		return WorkInfoPluginManifest{}, typeRejection("", err)
 	}
 	settings, rejection := parseSettings(raw.Settings)
 	if rejection != nil {
@@ -263,13 +263,21 @@ func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfo
 	return m, nil
 }
 
-// typeRejection は項目の JSON の型の誤りを理由にする。
-func typeRejection(err error) *WorkInfoPluginManifestError {
+// typeRejection は項目の JSON の型の誤りを理由にする。prefix は読んだ値の道筋で、マニフェスト全体なら空、
+// 配列の要素なら添字つき（"settings[1]"）である。UnmarshalTypeError.Field は配列の添字を含まないので、
+// 配列の要素は 1 つずつ読んでここで添字を足す。
+func typeRejection(prefix string, err error) *WorkInfoPluginManifestError {
 	var typeErr *json.UnmarshalTypeError
 	if !errors.As(err, &typeErr) {
-		return manifestInvalid("", "must be a JSON object")
+		return manifestInvalid(prefix, "must be a JSON object")
 	}
-	return manifestInvalid(typeErr.Field, "must be "+jsonTypeName(typeErr.Type.Kind()))
+	field := typeErr.Field
+	if prefix != "" && field != "" {
+		field = prefix + "." + field
+	} else if prefix != "" {
+		field = prefix
+	}
+	return manifestInvalid(field, "must be "+jsonTypeName(typeErr.Type.Kind()))
 }
 
 func jsonTypeName(kind reflect.Kind) string {
@@ -286,12 +294,17 @@ func jsonTypeName(kind reflect.Kind) string {
 }
 
 // parseSettings は設定の JSON を宣言にし、既定値と選択肢の規則を確かめる。
-func parseSettings(raw []settingJSON) ([]WorkInfoPluginSetting, *WorkInfoPluginManifestError) {
+// 設定は 1 つずつ読み、型の誤りの項目に添字（settings[1].label）を付ける。
+func parseSettings(raw []json.RawMessage) ([]WorkInfoPluginSetting, *WorkInfoPluginManifestError) {
 	if raw == nil {
 		return nil, nil
 	}
 	settings := make([]WorkInfoPluginSetting, 0, len(raw))
-	for i, r := range raw {
+	for i, element := range raw {
+		var r settingJSON
+		if err := json.Unmarshal(element, &r); err != nil {
+			return nil, typeRejection(fmt.Sprintf("settings[%d]", i), err)
+		}
 		s, rejection := parseSetting(i, r)
 		if rejection != nil {
 			return nil, rejection

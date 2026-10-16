@@ -234,3 +234,58 @@ func TestPluginPackUsageAndFileErrors(t *testing.T) {
 		t.Fatalf("unknown subcommand: exit %d, stderr %q", code, stderr.String())
 	}
 }
+
+func TestPluginPackRefusesAnInputOverTheModuleLimit(t *testing.T) {
+	for _, what := range []string{"module", "manifest"} {
+		t.Run(what, func(t *testing.T) {
+			modulePath, manifestPath := writePackFiles(t, testModule(""), packManifest)
+			large := modulePath
+			if what == "manifest" {
+				large = manifestPath
+			}
+			// 疎なファイルなので、上限を大きく超えてもディスクは使わない。コマンドは上限の 1 バイト先までしか読まない。
+			if err := os.Truncate(large, 1<<40); err != nil {
+				t.Skipf("cannot make a sparse file: %v", err)
+			}
+			before := readFileInfo(t, modulePath)
+			run := runPack(t, modulePath, manifestPath)
+			if run.code != exitAccountUsage {
+				t.Fatalf("exit = %d, want %d; stderr %q", run.code, exitAccountUsage, run.stderr)
+			}
+			for _, want := range []string{"The " + what + " is larger than 16 MiB", "was not changed"} {
+				if !strings.Contains(run.stderr, want) {
+					t.Errorf("stderr %q does not contain %q", run.stderr, want)
+				}
+			}
+			if after := readFileInfo(t, modulePath); after.Size() != before.Size() || !after.ModTime().Equal(before.ModTime()) {
+				t.Fatalf("the module changed")
+			}
+		})
+	}
+}
+
+func readFileInfo(t *testing.T, path string) os.FileInfo {
+	t.Helper()
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return info
+}
+
+func TestPluginPackWritesThroughASymbolicLink(t *testing.T) {
+	modulePath, manifestPath := writePackFiles(t, testModule(""), packManifest)
+	link := filepath.Join(t.TempDir(), "plugin.wasm")
+	if err := os.Symlink(modulePath, link); err != nil {
+		t.Skipf("cannot make a symbolic link: %v", err)
+	}
+	if run := runPack(t, link, manifestPath); run.code != exitAccountOK {
+		t.Fatalf("exit = %d, stderr %q", run.code, run.stderr)
+	}
+	if info, err := os.Lstat(link); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the link was replaced: %v, %v", info, err)
+	}
+	if n := bytes.Count(readFile(t, modulePath), []byte("vv.plugin")); n != 1 {
+		t.Fatalf("vv.plugin sections in the link's target = %d, want 1", n)
+	}
+}

@@ -146,6 +146,14 @@ func TestCheckWorkInfoPluginManifestNamesTheFieldAndTheRule(t *testing.T) {
 			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[0].options", "is not allowed on a secret setting"}},
 		{"repeated key", `{` + ok + `,"settings":[{"key":"k","label":"L"},{"key":"k","label":"M"}]}`,
 			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[1].key", "must be unique within the manifest"}},
+		{"second setting's label of another type", `{` + ok + `,"settings":[{"key":"a","label":"A"},{"key":"b","label":42}]}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[1].label", "must be a string"}},
+		{"first setting's secret of another type", `{` + ok + `,"settings":[{"key":"a","label":"A","secret":"yes"}]}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[0].secret", "must be a boolean"}},
+		{"setting that is not an object", `{` + ok + `,"settings":[{"key":"a","label":"A"},42]}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings[1]", "must be an object"}},
+		{"settings of another type", `{` + ok + `,"settings":{"key":"a"}}`,
+			WorkInfoPluginManifestError{WorkInfoPluginManifestInvalid, "settings", "must be an array"}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

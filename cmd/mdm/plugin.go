@@ -55,20 +55,17 @@ func refusedFailure(format string, args ...any) *accountFailure {
 // runPluginPack は mdm plugin pack <module.wasm> <manifest.json> を実行する。マニフェストを確かめ、
 // モジュールの vv.plugin のセクションを置き換え、詰めたモジュールをアップロードと同じ検査にかけてから、
 // 一時ファイルと rename でモジュールに書く（research.md R-2）。どの失敗でもモジュールは元のままである。
+// モジュールがシンボリックリンクなら、リンクの先を読んで同じリンクの先へ書く。
 func runPluginPack(ctx context.Context, args []string, stderr io.Writer) *accountFailure {
 	if len(args) != 2 {
 		return usageFailure("pack takes exactly two arguments: the module and the manifest.")
 	}
-	modulePath, manifestPath := args[0], args[1]
-	module, err := os.ReadFile(modulePath)
-	if err != nil {
-		return operationFailure("Cannot read the module: %v", err)
-	}
-	manifestJSON, err := os.ReadFile(manifestPath)
-	if err != nil {
-		return operationFailure("Cannot read the manifest: %v", err)
-	}
+	modulePath := args[0]
 	unchanged := fmt.Sprintf(" %s was not changed.", modulePath)
+	target, module, manifestJSON, failure := readPackInputs(modulePath, args[1], unchanged)
+	if failure != nil {
+		return failure
+	}
 	if _, rejection := domain.CheckWorkInfoPluginManifest(manifestJSON); rejection != nil {
 		return refusedFailure("%v.%s", rejection, unchanged)
 	}
@@ -81,11 +78,47 @@ func runPluginPack(ctx context.Context, args []string, stderr io.Writer) *accoun
 	if failure != nil {
 		return failure
 	}
-	if err := replaceFile(modulePath, packed); err != nil {
+	if err := replaceFile(target, packed); err != nil {
 		return operationFailure("Cannot write the module: %v", err)
 	}
 	writePackedManifest(stderr, modulePath, manifest)
 	return nil
+}
+
+// readPackInputs はモジュールの実体のパスを解決し、モジュールとマニフェストを読む。どちらも詰めたモジュールの
+// 上限（WorkInfoPluginModuleMaxBytes）を超えれば、全体を読まずに終了コード 2 で拒む。上限を超える入力は
+// どう詰めても検査に通らないからである。
+func readPackInputs(modulePath, manifestPath, unchanged string) (target string, module, manifest []byte, failure *accountFailure) {
+	target, err := filepath.EvalSymlinks(modulePath)
+	if err != nil {
+		return "", nil, nil, operationFailure("Cannot read the module: %v", err)
+	}
+	module, failure = readPackInput(target, "module", unchanged)
+	if failure != nil {
+		return "", nil, nil, failure
+	}
+	manifest, failure = readPackInput(manifestPath, "manifest", unchanged)
+	if failure != nil {
+		return "", nil, nil, failure
+	}
+	return target, module, manifest, nil
+}
+
+// readPackInput は path を上限の 1 バイト先までだけ読む。読んでいる間に大きくなったファイルも上限で止まる。
+func readPackInput(path, what, unchanged string) ([]byte, *accountFailure) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, operationFailure("Cannot read the %s: %v", what, err)
+	}
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(io.LimitReader(f, domain.WorkInfoPluginModuleMaxBytes+1))
+	if err != nil {
+		return nil, operationFailure("Cannot read the %s: %v", what, err)
+	}
+	if len(data) > domain.WorkInfoPluginModuleMaxBytes {
+		return nil, refusedFailure("The %s is larger than %d MiB.%s", what, domain.WorkInfoPluginModuleMaxBytes>>20, unchanged)
+	}
+	return data, nil
 }
 
 // inspectPacked は詰めたモジュールをサーバーと同じランタイムで検査する。
