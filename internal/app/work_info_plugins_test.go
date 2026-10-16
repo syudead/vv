@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -30,15 +31,33 @@ func (r *fakePluginRuntime) Inspect(_ context.Context, module []byte) (domain.Wo
 	}, "", nil
 }
 
-func (r *fakePluginRuntime) Run(context.Context, string, []byte, domain.WorkInfoRunRequest, domain.WorkInfoRunNetwork) (domain.WorkInfoRunResult, error) {
-	return domain.WorkInfoRunResult{}, errors.New("not used")
+func (r *fakePluginRuntime) Run(
+	context.Context, string, []byte, domain.WorkInfoRunRequest, domain.WorkInfoRunNetwork, func(domain.WorkInfoRunLog) error,
+) (domain.WorkInfoRunResult, domain.WorkInfoRunLog, error) {
+	return domain.WorkInfoRunResult{}, domain.WorkInfoRunLog{}, errors.New("not used")
 }
 
-// fakePluginStore は行を 1 つ持つ保存先で、書き込みの呼び出しを数える。
+// fakePluginStore は行を 1 つ持つ保存先で、書き込みの呼び出しを数える。runs は保存された実行で、
+// 世代の確かめはしない（本物の保存先の規則は internal/store のテストが確かめる）。
 type fakePluginStore struct {
 	plugin  *domain.WorkInfoPlugin
 	uploads []domain.WorkInfoPluginUpload
 	writes  int
+	runs    []domain.WorkInfoPluginRun
+}
+
+func (s *fakePluginStore) SaveWorkInfoPluginRun(_ context.Context, run domain.WorkInfoPluginRun) error {
+	s.runs = append(s.runs, run)
+	return nil
+}
+
+func (s *fakePluginStore) WorkInfoPluginRun(_ context.Context, id int64) (domain.WorkInfoPluginRun, bool, error) {
+	for _, run := range slices.Backward(s.runs) {
+		if run.PluginID == id {
+			return run, true, nil
+		}
+	}
+	return domain.WorkInfoPluginRun{}, false, nil
 }
 
 func (s *fakePluginStore) ListWorkInfoPlugins(context.Context) ([]domain.WorkInfoPlugin, error) {

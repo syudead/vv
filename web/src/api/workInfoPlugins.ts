@@ -13,6 +13,7 @@ export type WorkInfoPluginSetting = components["schemas"]["WorkInfoPluginSetting
 export type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
 export type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 export type WorkInfoPluginList = components["schemas"]["WorkInfoPluginList"];
+export type WorkInfoPluginRun = components["schemas"]["WorkInfoPluginRun"];
 export type WorkInfoCandidate = components["schemas"]["WorkInfoCandidate"];
 export type WorkInfoFetch = components["schemas"]["WorkInfoFetch"];
 export type WorkInfoField = components["schemas"]["WorkInfoField"];
@@ -117,6 +118,22 @@ export async function deleteWorkInfoPlugin(
 ): Promise<void> {
   const response = await apiFetch(pluginPath(id), { method: "DELETE", signal });
   if (!response.ok) throw await toRequestFailed(response);
+}
+
+/**
+ * getWorkInfoPluginLastRun はプラグインの直近の実行が残した標準エラーを読む（GET …/{id}/last-run、
+ * specs/056-plugin-tooling/contracts/screen-api.md）。秘密の設定の値は `[secret]` に置き換えてある。
+ * 今のモジュールの実行が残っていなければ `null` を返す。無ければ 404 の RequestFailed。
+ */
+export async function getWorkInfoPluginLastRun(
+  id: number,
+  signal?: AbortSignal,
+): Promise<WorkInfoPluginRun | null> {
+  const body = await request<components["schemas"]["WorkInfoPluginLastRun"]>(
+    `${pluginPath(id)}/last-run`,
+    { signal },
+  );
+  return body.run ?? null;
 }
 
 /**

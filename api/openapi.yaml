@@ -2346,6 +2346,29 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/work-info-plugins/{id}/last-run:
+    get:
+      operationId: getWorkInfoPluginLastRun
+      summary: 作品情報プラグインの直近の実行の標準エラーを読む
+      description: |
+        所有者だけ。今のモジュールの直近の実行が残した標準エラーの先頭 64 KiB を、その実行が受け取った秘密の
+        設定の値を `[secret]` に置き換えて返す。実行が残っていなければ `{}`。差し替えたプラグインは差し替えの
+        後の実行だけを返す。無ければ `404` `not_found`
+        （specs/056-plugin-tooling/contracts/screen-api.md、research.md R-6）。
+      parameters:
+        - $ref: "#/components/parameters/WorkInfoPluginId"
+      responses:
+        "200":
+          description: 直近の実行。残っていなければ `run` が無い
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkInfoPluginLastRun"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/work-info-plugins/{id}/search:
     post:
       operationId: searchWorkInfo
@@ -5500,6 +5523,53 @@ components:
           type: integer
           format: int64
           description: 最後のアップロードか承認の変更の時刻（Unix 秒）
+        lastRunAt:
+          type: integer
+          format: int64
+          description: |
+            出力が残っている直近の実行が終わった時刻（Unix 秒）。残っていなければ無い
+            （specs/056-plugin-tooling/research.md R-6）
+
+    WorkInfoPluginRunFailure:
+      type: string
+      description: |
+        実行の失敗の種類（specs/049-work-info-plugins/contracts/screen-api.md の Run failures の reason）。
+        枠を取れなかった実行はモジュールを動かさないので、busy は残らない
+      enum:
+        - plugin_failed
+        - timed_out
+        - memory_exceeded
+        - output_too_large
+        - blocked_address
+        - network_error
+
+    WorkInfoPluginRun:
+      type: object
+      required: [ranAt, operation, stderr, truncated]
+      additionalProperties: false
+      description: 直近の実行の標準エラー（specs/056-plugin-tooling/contracts/screen-api.md）
+      properties:
+        ranAt:
+          type: integer
+          format: int64
+          description: 実行が終わった時刻（Unix 秒）
+        operation:
+          $ref: "#/components/schemas/WorkInfoOperation"
+        failure:
+          $ref: "#/components/schemas/WorkInfoPluginRunFailure"
+        stderr:
+          type: string
+          description: 標準エラーの先頭 64 KiB。秘密の設定の値は `[secret]` に置き換えてある。何も書かなければ空
+        truncated:
+          type: boolean
+          description: 64 KiB より後ろを捨てたか
+
+    WorkInfoPluginLastRun:
+      type: object
+      additionalProperties: false
+      properties:
+        run:
+          $ref: "#/components/schemas/WorkInfoPluginRun"
 
     WorkInfoPluginList:
       type: object

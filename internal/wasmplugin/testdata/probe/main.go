@@ -49,6 +49,7 @@ func main() {
 	}
 	switch mode {
 	case "loop":
+		fmt.Fprintln(os.Stderr, "looping")
 		for {
 		}
 	case "sleep":
@@ -75,8 +76,10 @@ func main() {
 	case "http":
 		fetchPages(req.Settings)
 	case "fail":
+		fmt.Fprintln(os.Stderr, "reporting an error")
 		reply(map[string]any{"error": map[string]any{"message": strings.Repeat("m", 400)}})
 	case "exit":
+		fmt.Fprintln(os.Stderr, "exiting with 3")
 		os.Exit(3)
 	default:
 		echo(req)

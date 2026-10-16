@@ -366,7 +366,7 @@ A run stops at the first limit it reaches.
 | Linear memory | 128 MiB (2048 pages) | The run fails with `memory_exceeded` |
 | Run time | 30 s, compiling and HTTP included | The run fails with `timed_out` |
 | Standard output | 1 MiB | The run fails with `output_too_large` |
-| Standard error | 64 KiB kept, the rest discarded | Written to the server log only |
+| Standard error | 64 KiB kept, the rest discarded | Written to the server log, and kept as the plugin's last run with each secret setting value replaced by `[secret]`; a value the plugin encodes or splits first is not replaced |
 | Runs at the same time | 1; a second run waits up to 10 s | The second run fails with `busy` |
 | HTTP requests | 16 per run, `GET` and `POST`, `http` and `https` | `http_send` returns `-5`, or `-1` for another method or scheme |
 | Redirects | 5 per request | The sixth redirect response is handed to the plugin as it is |

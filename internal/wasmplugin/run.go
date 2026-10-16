@@ -34,31 +34,48 @@ var (
 // 標準出力の応答を読む。プラグインの要求は network のとおりに送る（056 research.md R-4・R-5）。同時に動く実行は 1 本で、2 本目は枠を最大 domain.WorkInfoPluginBusyWait 待つ
 // （research.md R-2・R-4）。時間の上限は枠を取ったときから数え、コンパイルも含む。失敗は *domain.WorkInfoRunError で返し、呼び出し元の ctx が
 // 終わったときはその誤りを返す。
+//
+// 成功でも失敗でも、残した標準エラーを実行のログとして返す。モジュールが成功か実行の失敗で終わったときは、
+// 同じログを、枠を空ける前に record に渡す（056 research.md R-6）。record が nil なら渡さない。record の
+// 誤りはサーバーのログに残し、実行の結果は変えない。枠を取れなかった実行と、呼び出し元の ctx が終わった
+// 実行は record を呼ばない。
 func (r *Runtime) Run(
 	ctx context.Context, digest string, module []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork,
-) (domain.WorkInfoRunResult, error) {
+	record func(domain.WorkInfoRunLog) error,
+) (domain.WorkInfoRunResult, domain.WorkInfoRunLog, error) {
 	input, err := json.Marshal(req)
 	if err != nil {
-		return domain.WorkInfoRunResult{}, fmt.Errorf("encode work-info plugin request: %w", err)
+		return domain.WorkInfoRunResult{}, domain.WorkInfoRunLog{}, fmt.Errorf("encode work-info plugin request: %w", err)
 	}
 	release, err := r.acquire(ctx)
 	if err != nil {
-		return domain.WorkInfoRunResult{}, err
+		return domain.WorkInfoRunResult{}, domain.WorkInfoRunLog{}, err
 	}
 	defer release()
 	deadline, cancel := context.WithTimeoutCause(ctx, domain.WorkInfoPluginRunTimeout, errTimedOut)
 	defer cancel()
 	session := r.run.net.session(network)
 	defer session.close()
-	output, err := r.run.run(ctx, deadline, digest, module, input, session)
+	output, stderr, err := r.run.run(ctx, deadline, digest, module, input, session)
 	var result domain.WorkInfoRunResult
 	if err == nil {
 		result, err = domain.ParseWorkInfoResponse(req.Operation, output)
 	}
-	if err = session.outcome(err); err != nil {
-		return domain.WorkInfoRunResult{}, err
+	err = session.outcome(err)
+	log := domain.WorkInfoRunLog{Operation: req.Operation, Stderr: stderr.buf.String(), Truncated: stderr.dropped}
+	var runErr *domain.WorkInfoRunError
+	if errors.As(err, &runErr) {
+		log.Failure = runErr.Failure
 	}
-	return result, nil
+	if record != nil && (err == nil || runErr != nil) {
+		if recordErr := record(log); recordErr != nil {
+			r.run.logger.Warn("work-info plugin run log was not saved", "digest", digest, "error", recordErr)
+		}
+	}
+	if err != nil {
+		return domain.WorkInfoRunResult{}, log, err
+	}
+	return result, log, nil
 }
 
 // outcome は実行の誤り err に、実行の HTTP で起きたことを重ねる（contracts/screen-api.md の Run failures）。
@@ -128,21 +145,24 @@ func (rn *runner) close(ctx context.Context) error {
 }
 
 // run はモジュールを 1 回動かす。parent は呼び出し元の ctx、deadline はそれに実行の時間の上限を
-// 付けたもので、コンパイルとインスタンスの両方を止める。vv のホスト関数は session を使う。
-func (rn *runner) run(parent, deadline context.Context, digest string, module, input []byte, session *httpSession) ([]byte, error) {
+// 付けたもので、コンパイルとインスタンスの両方を止める。vv のホスト関数は session を使う。標準エラーの
+// 残した部分は、失敗でも返す（モジュールを動かさなかったときは空である）。
+func (rn *runner) run(
+	parent, deadline context.Context, digest string, module, input []byte, session *httpSession,
+) ([]byte, *keptOutput, error) {
+	stderr := &keptOutput{limit: domain.WorkInfoPluginStderrKeptBytes}
 	compiled, err := rn.compiled(deadline, digest, module)
 	if err != nil {
 		if stop := stopped(parent, deadline); stop != nil {
-			return nil, stop
+			return nil, stderr, stop
 		}
-		return nil, err
+		return nil, stderr, err
 	}
 	runCtx, cancel := context.WithCancelCause(context.WithValue(deadline, sessionKey{}, session))
 	defer cancel(nil)
 
 	memory := &cappedMemory{limit: memoryLimitBytes, exceed: func() { cancel(errMemoryExceeded) }}
 	stdout := &limitedOutput{limit: domain.WorkInfoPluginOutputMaxBytes, exceed: func() { cancel(errOutputTooLarge) }}
-	stderr := &keptOutput{limit: domain.WorkInfoPluginStderrKeptBytes}
 	config := wazero.NewModuleConfig().
 		WithName("").
 		WithStdin(bytes.NewReader(input)).
@@ -161,9 +181,9 @@ func (rn *runner) run(parent, deadline context.Context, digest string, module, i
 		if err != nil {
 			rn.logger.Info("work-info plugin run failed", "digest", digest, "error", err)
 		}
-		return nil, failure
+		return nil, stderr, failure
 	}
-	return stdout.buf.Bytes(), nil
+	return stdout.buf.Bytes(), stderr, nil
 }
 
 // runFailure は実行の終わり方を失敗に対応させる。出力とメモリの上限は、超えたときに runCtx を
