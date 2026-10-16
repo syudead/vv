@@ -118,8 +118,16 @@ describe("WorkInfoPluginRunDialog", () => {
     expect(within(dialog).queryByText("The output was cut at 64 KB.")).toBeNull();
     expect(fake.reads).toEqual(["/api/work-info-plugins/4/last-run"]);
 
+    // 項目はメニューと一緒に消えるので、閉じたらその行の「More actions」へ戻る。
     await user.click(within(dialog).getByRole("button", { name: "Close" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    const more = screen.getByRole("button", { name: "More actions for example.works" });
+    await waitFor(() => expect(document.activeElement).toBe(more));
+
+    await openLastRun(user, "example.works");
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(more));
   });
 
   it("64 KiB の出力は折り返してその区画の中だけで動かし、切り詰めを注記する", async () => {
