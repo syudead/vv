@@ -224,7 +224,9 @@ classifier show a run that adds a tag at 0.91 and suggests one at 0.6 lists
 both with those probabilities and decider `ai`; undo of the added tag removes
 it from every bundle member, records a rejection, writes an owner `undo` entry,
 and a later "Tag all again" does not add it; undo after the owner removed the
-tag answers `already_reverted` and changes no tag; retry of a failed run
+tag answers `already_reverted` and changes no tag, and so does undo after the
+owner removed the tag and attached it again by hand, which keeps the owner's
+attachment; retry of a failed run
 queues the video, and answers `409 auto_tagging_off` while the feature is off.
 
 ### Record duplicate judgements and undo automatic bundles and dismissals
@@ -251,8 +253,10 @@ bundle and the pair is never claimed again; undo of an automatic dismissal
 returns the pair to `GET /api/version-candidates` and the worker never claims
 it; undo after the owner unbundled answers `already_reverted`; bundling an
 `undecided` pair by hand closes its entry as `decided_by_owner`; rebuilding
-one key's candidates keeps the pair's entry; undo of a bundle of a two-member
-side and a single video removes both members of the joined side.
+one key's candidates keeps the pair's entry; undo of an automatic bundle of
+the owner's bundle {B1, B2} (representative B1) with a bundle {A, C} leaves
+{B1, B2} with representative B1 and {A, C} as they were, and records
+`video_version_unbundles` only for pairs across the two sides.
 
 ### Record the owner's tag and version operations
 

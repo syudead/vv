@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: c7b542e20a900b55f230485968191acf5d4515714c5f5916bd86587dcc3fa353
+sourceHash: a242cb3016ebcd39720e5670ff0e38e931a8a2324e394cdf95094b2c2d1f4841
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -32,7 +32,7 @@ sourceHash: c7b542e20a900b55f230485968191acf5d4515714c5f5916bd86587dcc3fa353
 | `detail` | text | 可 | 失敗についてのプロバイダか段階のメッセージ、失敗した段階、所有者の操作が変えたタグかまとまり |
 | `decider` | text | 不可 | `rule`、`ai`、`owner` のどれか ([R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)) |
 | `probability` | real | 可 | モデルが決めたか未決定のまま残した重複の組についての、モデルの答え |
-| `undo_keys` | text | 可 | まとめた組について、加わった側のメンバーの鍵の JSON 配列 ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
+| `undo_keys` | text | 可 | まとめた組について、加わった側のメンバーの鍵と、その側の以前の代表の鍵を持つ JSON オブジェクト ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | `undone_by` | integer | 可 | この項目を取り消した所有者の項目 |
 | `created_at`、`updated_at` | integer | 不可 | Unix ミリ秒 |
 
@@ -87,6 +87,8 @@ sourceHash: c7b542e20a900b55f230485968191acf5d4515714c5f5916bd86587dcc3fa353
 | `tag_id` | integer | 不可 | タグ |
 | `tag_name` | text | 不可 | 書いたとおりの名前 |
 | `suggested` | integer | 不可 | 提案したタグとして加えたときは 1 |
+| `user_key` | text | 不可 | 付与を書いたユーザーキー (内容の鍵かまとまりの鍵) |
+| `attached_at` | integer | 不可 | 書いた `video_tags.created_at`。取り消しは、まだその値を持つ行だけを削除する |
 | `probability` | real | 不可 | モデルの答え |
 | `undone_by` | integer | 可 | `undo` の項目 |
 

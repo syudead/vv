@@ -37,7 +37,7 @@ case).
 | `detail` | text | Yes | The provider's or stage's message for a failure, the failed stage, the tag or bundle the owner operation changed |
 | `decider` | text | No | `rule`, `ai` or `owner` ([R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)) |
 | `probability` | real | Yes | The model's answer for a duplicate pair it decided or left undecided |
-| `undo_keys` | text | Yes | For a bundled pair, a JSON array of the member keys of the side that joined ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
+| `undo_keys` | text | Yes | For a bundled pair, a JSON object with the member keys of the side that joined and that side's former representative key ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | `undone_by` | integer | Yes | The owner entry that undid this one |
 | `created_at`, `updated_at` | integer | No | Unix milliseconds |
 
@@ -93,6 +93,8 @@ The tags an `auto_tag` entry added; undo is per tag.
 | `tag_id` | integer | No | The tag |
 | `tag_name` | text | No | The name as written |
 | `suggested` | integer | No | 1 when added as a suggested tag |
+| `user_key` | text | No | The user key the attachment was written at (a content key or a bundle's key) |
+| `attached_at` | integer | No | The `video_tags.created_at` written; undo deletes only a row that still has it |
 | `probability` | real | No | The model's answer |
 | `undone_by` | integer | Yes | The `undo` entry |
 

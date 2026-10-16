@@ -166,14 +166,27 @@ keeps the automatic process from deciding the same again.
 
 | Undone decision | State change when it still holds | Exclusion recorded |
 | --- | --- | --- |
-| Bundled pair | Remove every member of the side that joined, still in the bundle, with `Unbundle`'s steps | `video_version_unbundles` (054 R-8) |
+| Bundled pair | Split the side that joined back out: a single video leaves the bundle; a side that was a bundle leaves as one bundle with its former representative | `video_version_unbundles`, only for pairs across the two sides (054 R-8) |
 | "Different videos" | Delete the dismissal and rebuild both keys' candidates, so the pair returns to Duplicates | New `video_version_judging_holds` pair |
-| Added or suggested tag | Detach it from the bundle's videos | `auto_tag_rejections` ([auto-tagging.md](../../docs/design-docs/auto-tagging.md#tags-it-adds)) |
+| Added or suggested tag | Delete the attachment it wrote, only while that attachment is still there | `auto_tag_rejections` ([auto-tagging.md](../../docs/design-docs/auto-tagging.md#tags-it-adds)) |
 
 An automatic bundle joins two sides, and either may already be a bundle; the
 side that joined is the one whose representative did not become the
-bundle's, and its member keys are kept on the entry. A member no longer in the
-library is skipped. The undo is one `ActivityStore` transaction that re-reads
+bundle's. The entry keeps that side's member keys and its former
+representative, so the undo restores the side as it was instead of breaking a
+bundle the owner made into single videos; the side that leaves as a bundle
+gets a copy of the merged bundle's user data, as `Unbundle` gives the
+remaining member a copy. A member no longer in the library, or no longer in
+the merged bundle, is skipped.
+
+An automatic tag is written on the bundle's user key with an attachment time.
+The entry keeps both, and the undo deletes the `video_tags` row at that key,
+or at the subject video's current key after a rebuild re-keyed it, only when
+its time still matches and a suggested tag is still suggested. A tag the
+owner removed and attached again, or kept, has a new time or state, so the
+owner's own attachment is never deleted.
+
+The undo is one `ActivityStore` transaction that re-reads
 the target state, reuses the package-private steps of `Unbundle`, `Dismiss`
 and the rejection, and writes the owner's `undo` entry
 ([R-2](#r-2-an-entry-is-written-in-the-transaction-of-the-change-it-records)).
