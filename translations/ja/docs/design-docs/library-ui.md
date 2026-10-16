@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: f9ac804f3876f9a52d4eedafde798858e89c9f915b3a8d62716b6278ec041c8b
+sourceHash: 47a0c800b27cdc96b5d83e28d03d175a245c1c1d79870a8fdb0aeb18b864bf19
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -150,7 +150,7 @@ flowchart LR
 
 絞り込みのポップオーバーは、視聴状態、`Favorites only`（URL は `fav=1`）、再生可否、所有者には `Tag kind` の選択欄（URL は `tagKind=<id>`）をこの順に並べる。選択欄は `Any kind` と、名前の自然順に並べた種類を示し、種類はポップオーバーを最初に開いたときに共有の種類一覧から読む。適用した種類は `Filtering by` の行に `Kind: <name>` のチップとしても表示され、読み込んだ一覧にもう含まれない種類はトーストとともに URL から外れる（[051 UI 設計、Library](../../specs/051-tag-kinds/ui-design.md#library)）。その後に `Added` と `Length` が続く。所有者とゲストに共通の、プリセットの 2 つの選択欄だ（URL は `addedWithin=<days>`、`minDuration=<s>`、`maxDuration=<s>`）。プリセット外の値はそれ自身の選択肢として描き、範囲外の値や最大を上回る最小はリクエストの前に URL から外れる（[052 UI 設計、Added and length](../../specs/052-smart-folders/ui-design.md#added-and-length)）。絞り込みボタンはそれぞれを適用中の絞り込み 1 つとして数える。`Clear filters` はお気に入り、種類、追加日、長さをほかの絞り込みと一緒にだけ解除し、並び順は保つ。`fav=1`、`tagKind`、`sort=favorited*` のいずれかを含むゲストの URL は、リクエストの前に既定値へ戻し、URL を正す。
 
-いずれかの絞り込みが適用されている間、所有者のライブラリのヘッダーには `outline` の操作 `Save as smart folder` があり、絞り込みを条件に、現在の並び順を並び順にして（`Random` は追加日に置き換える）スマートフォルダのダイアログを開く（[052 UI 設計、Save as smart folder](../../specs/052-smart-folders/ui-design.md#save-as-smart-folder)）。
+いずれかの絞り込みが適用されている間、所有者のライブラリのヘッダーには `outline` の操作 `Save as smart folder` があり、絞り込みを条件に、現在の並び順を並び順にして（`Random` は追加日に置き換える）スマートフォルダのダイアログを開き、`Created "{name}"` のトーストには新しいフォルダのページへ進む `Open` がある（[052 UI 設計、Save as smart folder](../../specs/052-smart-folders/ui-design.md#save-as-smart-folder)）。
 
 ### スキャンの入口と進捗 {#scan-entry-and-progress}
 
@@ -181,6 +181,7 @@ flowchart LR
 | 動画、フォルダの検索結果 | タイトルの下に所在の行 |
 | フォルダ | 動画カードの幅と枠線、フォルダの絵、タイトルに Folder アイコン |
 | グループ（ライブラリだけ） | 動画カードの枠と大きさ、最大 4 つのメンバーのサムネイルによるフォルダの絵 |
+| スマートフォルダ（絞り込みのないライブラリ、スマートフォルダのページ） | グループカードの枠、絵、件数のパネル、名前とタグの行。件数の前に `FolderSearch` の印。チェック、お気に入り、プレイリストの印はない |
 
 動画カードの振る舞い:
 
@@ -196,6 +197,10 @@ flowchart LR
 フォルダカードは名前を最大 2 行で表示し、完全な名前は `title` に入れる。所有者にはメディアフォルダのパスも見え、末尾を優先して切り詰め、完全なパスは `title` に入れる。登録した空のルートは、そこにファイルを置いて取り込むよう案内する。
 
 ライブラリは `GET /api/library` を読み、これはフォルダのグループを動画に混ぜて返す。フォルダのページとその検索結果は動画を 1 本ずつ並べる。グループカードは、件数（`12 videos`）と合計の長さを示すパネル、一部のメンバーが視聴途中のときだけ出る視聴済みの割合のバー、グループ名、メンバーのタグを表示する。押すとグループのページ（`/groups/{id}`）を開く。このページは、貼り付く経路の帯の下に、グループの子グループと動画を保存した順に並べる（[048 UI 設計、Group page](../../specs/048-groups/ui-design.md#group-page)）。そのページでは、子グループは 1 グループ長い `?trail` で開き、動画は `?group` で開くので、動画のページはそのグループに従う。ゲストには視聴状態、視聴済み数、バーが見えない。
+
+ルートのスマートフォルダは、絞り込みのないライブラリ（お気に入りだけの絞り込みではお気に入りにしたものだけを残す）と、スマートフォルダのページの子の一覧で、グループや動画の間に並ぶ。一覧が持つのは各フォルダの名前だけで、カードは画面に入るまで `Skeleton` の件数パネルを描き、そのとき画面にあるカードを `GET /api/smart-folders/cards` で 60 件ずつ読む（[052 調査、R-14](../../specs/052-smart-folders/research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)）。`smartFolder` イベントは、名前の挙がったカードを読み直してカードごとに最新の応答だけを残し、絞り込みのないライブラリに読み込み済みのページを読み直させるので、別のタブで作成、移動、名前変更したフォルダが現れる。応答に含まれないフォルダはカードを失う。フォルダカードには選択がないので、他のカードが選択されている間もカードのタグは押せる。スマートフォルダのカードはドラッグできず、その上へのドロップは `Can't drop here` を示す。
+
+スマートフォルダのカードを押すと `/smart-folders/{id}` を開く（[052 UI 設計、Smart folder page](../../specs/052-smart-folders/ui-design.md#smart-folder-page)）。このページは、フォルダの祖先の経路の帯、名前、`12 videos · 1:32:10`、所有者には経路上のフォルダごとに 1 行の条件を示し、その後に子フォルダを名前順に、条件に合う動画とグループをフォルダの並び順に、ライブラリのグリッドかリストで並べる。動画は `?smartFolder=<id>` で開く。所有者の `More` には `Edit…`、`New child smart folder…`、`Delete…` がある。保存するとページを静かに読み直し、削除するとトーストを出して親フォルダかライブラリへ移る。空のフォルダは `EmptyState` を示し、所有者には `Edit conditions…` がある。ページは、そのフォルダを名指す `smartFolder` イベントか再接続でその場で読み直し、選択からはもう条件に合わない動画を外す。ゲストには、条件、`More`、選択のないページが見える。
 
 グループの解除、フォルダ直下の動画のグループ化、グループのタグへの変換はカードにない。これらは、フォルダのページの `Videos N` 見出し行の右端にある所有者のメニュー（[`FolderGroupingMenu.tsx`](../../web/src/folders/FolderGroupingMenu.tsx)）にあり、タグへの変換と解散は動画ページのグループの操作（[グループのメンバー](#group-members)）にもある。フォルダのメニューが "Turn the group into a tag…" を出すのは、登録済みのフォルダ自身のグループを含め、フォルダに自動のグループがあるときだけであり、この項目はすべての入口が共有する確認ダイアログを開く（[`GroupTagDialog.tsx`](../../web/src/groups/GroupTagDialog.tsx)、[048 UI 設計、Turning into a tag](../../specs/048-groups/ui-design.md#turning-into-a-tag)）。操作の後、キャッシュしたライブラリの一覧は破棄され、次に訪れたときに読み直す。
 
