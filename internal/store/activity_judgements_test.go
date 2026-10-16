@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"testing"
 
@@ -170,10 +171,17 @@ func TestUndoAutomaticBundleSplitsTheJoinedVideo(t *testing.T) {
 	db, ids := judgementFixture(t)
 	a, b := ids["a"], ids["b"]
 	entry := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule})
+	folder := createSmartFolder(t, db, "版", 0)
+	recorder := &eventRecorder{}
+	db.PublishTo(recorder)
 
 	undo := undoEntry(t, db, entry.ID)
 	if undo.Outcome != domain.ActivityCompleted || undo.Undoes == nil || undo.Undoes.Outcome != domain.ActivitySame {
 		t.Errorf("undo の記録 = %s, undoes %+v, want completed で same を取り消す", undo.Outcome, undo.Undoes)
+	}
+	// まとまりから外れるとスマートフォルダの一致が変わりうるので、すべてのフォルダを 1 度名指す。
+	if got, want := smartFolderNotices(recorder), []domain.SmartFoldersChanged{{IDs: []int64{folder.ID}}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("スマートフォルダの知らせ = %+v, want %+v", got, want)
 	}
 	for _, id := range []int64{a, b} {
 		if ownerVideo(t, db, id).Versions != nil {
@@ -214,6 +222,33 @@ func TestUndoAutomaticDismissalReturnsThePairToCandidates(t *testing.T) {
 	expectNoClaim(t, db, "判定を保留した組")
 	if entries := pairEntries(t, db); len(entries) != 1 {
 		t.Errorf("候補に戻した組に記録を開いた: %+v", entries)
+	}
+}
+
+// 自動の「違う動画」の後に所有者が同じ組を「違う動画」と決め直していれば、取り消しは already_reverted で、
+// 却下を消さず組を候補に戻さない（所有者の判断を自動の判断の取り消しで失わない）。
+func TestUndoAutomaticDismissalKeepsTheOwnersLaterDismissal(t *testing.T) {
+	db, ids := judgementFixture(t)
+	a, b := ids["a"], ids["b"]
+	entry := judgePair(t, db, domain.VersionJudgeResult{
+		Verdict: domain.VersionDifferent, Probability: probabilityOf(0.05), Decider: domain.ActivityByAI,
+	})
+	if err := db.Versions().Dismiss(context.Background(), [2]int64{a, b}); err != nil {
+		t.Fatal(err)
+	}
+
+	if undo := undoEntry(t, db, entry.ID); undo.Outcome != domain.ActivityAlreadyReverted {
+		t.Errorf("undo の結果 = %s, want already_reverted", undo.Outcome)
+	}
+	if listed, _ := candidatePairs(t, db); len(listed) != 0 {
+		t.Errorf("取り消したあとの候補 = %v, want なし（所有者の「違う動画」が残る）", listed)
+	}
+	var dismissals int
+	if err := db.sql.QueryRow(`select count(*) from video_version_dismissals`).Scan(&dismissals); err != nil {
+		t.Fatal(err)
+	}
+	if dismissals != 1 {
+		t.Errorf("却下 = %d 行, want 1", dismissals)
 	}
 }
 
