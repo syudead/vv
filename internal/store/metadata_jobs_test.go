@@ -14,7 +14,7 @@ import (
 
 // 解析し直しの仕事（specs/056-media-info/research.md R-5、data-model.md「Rules」）。
 
-// 00051 は解析が done で登録フォルダの下に所在がある動画にだけ解析し直しの仕事を積み、
+// 00052 は解析が done で登録フォルダの下に所在がある動画にだけ解析し直しの仕事を積み、
 // 既存の仕事を残す。Down は解析し直しの仕事を消し、ほかの仕事を戻す。
 func TestMetadataJobsMigrationBackfillsAndRollsBack(t *testing.T) {
 	db, err := Open(t.TempDir())
@@ -31,7 +31,7 @@ func TestMetadataJobsMigrationBackfillsAndRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 	ctx := context.Background()
-	if _, err := provider.UpTo(ctx, 50); err != nil {
+	if _, err := provider.UpTo(ctx, 51); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.sql.Exec(`insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`,
@@ -70,7 +70,7 @@ func TestMetadataJobsMigrationBackfillsAndRollsBack(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := provider.UpTo(ctx, 51); err != nil {
+	if _, err := provider.UpTo(ctx, 52); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobCounts(t, db, ids["done"]); !equalCounts(got, map[string]int{"metadata:queued": 1, "thumbnail:failed": 1}) {
@@ -82,7 +82,7 @@ func TestMetadataJobsMigrationBackfillsAndRollsBack(t *testing.T) {
 		}
 	}
 
-	if _, err := provider.DownTo(ctx, 50); err != nil {
+	if _, err := provider.DownTo(ctx, 51); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobCounts(t, db, ids["done"]); !equalCounts(got, map[string]int{"thumbnail:failed": 1}) {
