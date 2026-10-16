@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/plan.md
-sourceHash: 1d5f2285bde3d14af38b973cf6a8db5a86e202621e82daf3768660a4edd35e2d
+sourceHash: fcc82d19309f0bba1bdb0fb6f713d6f83335c10eded5b696303528f9f1cd8b44
 ---
 
 # 実装計画: 作者、運用者、利用者のための作品情報プラグインの道具 {#implementation-plan-work-info-plugin-tooling-for-authors-operators-and-users}
@@ -33,10 +33,10 @@ flowchart LR
 | ローカルでの実行と pack | ランタイムとパーサーを共有する `mdm` のサブコマンド。データベースは使わない ([R-1](research.md#r-1-mdm-plugin-run-and-mdm-plugin-pack-reuse-the-servers-runtime-and-parser-and-open-no-database)、[R-2](research.md#r-2-pack-replaces-the-vvplugin-section-and-writes-the-file-only-after-the-packed-module-passes-inspection)、[contracts/plugin-cli.md](contracts/plugin-cli.md)) |
 | 既定値と選択肢 | マニフェストの `default` と `options`。実効値は `internal/domain` で計算する ([R-3](research.md#r-3-a-setting-declares-default-and-options-the-stored-value-or-the-default-is-what-the-run-receives)、[contracts/plugin-contract.md](contracts/plugin-contract.md)) |
 | プロキシ | 実行ごとに読む `settings` の 1 行をランタイムに渡す。宛先の名前は、各要求とリダイレクトの前に解決して検査する ([R-4](research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option)、[R-5](research.md#r-5-through-a-proxy-the-destination-is-checked-by-resolving-its-name-before-each-request-and-redirect)) |
-| 直近の実行の出力 | ランタイムが返し、アプリが伏せ、ダイジェストに結び付けたプラグインごとの 1 行にする ([R-6](research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked)、[data-model.md](data-model.md)) |
+| 直近の実行の出力 | ランタイムが返し、アプリが伏せ、世代に結び付けたプラグインごとの 1 行にし、実行が終わった順に書く ([R-6](research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked)、[data-model.md](data-model.md)) |
 | タグの選択 | apply で `fields` の隣に `tags` を置く。動画にあるタグは選べない ([R-7](research.md#r-7-the-apply-takes-the-selected-tag-names-and-a-tag-already-on-the-video-is-not-selectable)、[contracts/screen-api.md](contracts/screen-api.md)) |
 | プロキシを設定する場所 | すべてのビルドの Network セクション。LAN スイッチはデスクトップ専用のまま ([R-8](research.md#r-8-the-network-section-shows-on-every-build-and-the-lan-switch-stays-desktop-only)) |
-| `429` の指針 | 最大 5 秒後に 1 回再試行し、そのあとはエラー応答にする ([R-9](research.md#r-9-on-a-429-a-plugin-waits-for-the-smaller-of-retry-after-and-5-seconds-retries-once-and-otherwise-reports-an-error)) |
+| `429` の指針 | 実行ごとの待ち 10 秒の範囲で、最大 5 秒後に 1 回再試行し、そのあとはエラー応答にする ([R-9](research.md#r-9-on-a-429-a-plugin-waits-for-the-smaller-of-retry-after-and-5-seconds-retries-once-and-otherwise-reports-an-error)) |
 
 この Issue には `ui` ラベルがあるので、`design` ステージが 4 つの画面の単位より前に `ui-design.md` を書く。そこでは次を扱う。[049 ui-design.md の Settings dialog](../049-work-info-plugins/ui-design.md#settings-dialog) の設定ダイアログについては、既定値を入力した値と区別して見せる方法、選択肢のある設定のフィールド、古い値の注記。Network セクションのプロキシの行は、LAN スイッチの行と同じ形にする。プラグインの行とそのダイアログの直近の実行の出力は、空、切り詰め、失敗の状態と、レイアウトを保つ長い出力を含む。[049 ui-design.md の Compare](../049-work-info-plugins/ui-design.md#compare) の比較では、行のチェックボックスを全選択にしてタグを 1 つずつ選ぶこと、初期の選択、動画にあるタグの選択不可の印、25 個以上のタグを全体で見られる一覧を扱う。いずれも Issue の `UI品質` の範囲内である。
 
@@ -146,7 +146,7 @@ flowchart LR
 
 **依存**: なし。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task generate` との差分がない。ドメインのテストが次を示す。既定値が選択肢にないマニフェスト、選択肢が 1 つのもの、50 を超える 51 個のもの、201 文字の選択肢、重複する選択肢、既定値のある秘密の設定は、いずれも `manifest_invalid` として拒否される。有効な既定値と選択肢を持つものは受け入れられる。設定されていないキーには既定値、設定されているキーには保存された値、選択肢にない保存された値には既定値を載せた実行要求。既定値のある必須キーは欠落と報告されない。アプリのテストが、選択肢にない保存された値のエントリが `set: false` と `staleValue` を持つことを示す。ハンドラーのテストが、一覧の本文に `default`、`options`、`staleValue` があることを示す。
+**受け入れ**: `task check` と `task check-docs` が通り、`task generate` との差分がない。ドメインのテストが次を示す。既定値が選択肢にないマニフェスト、選択肢が 1 つのもの、50 を超える 51 個のもの、201 文字の選択肢、重複する選択肢、既定値のある秘密の設定は、いずれも `manifest_invalid` として拒否される。有効な既定値と選択肢を持つものは受け入れられる。設定されていないキーには既定値、設定されているキーには保存された値、選択肢にない保存された値には既定値を載せた実行要求。既定値のある必須キーは欠落と報告されない。アプリのテストが、選択肢にない保存された値のエントリが `set: true`、その `value`、`staleValue` を持つことを示す。ハンドラーのテストが、一覧の本文に `default`、`options`、`staleValue` があることを示す。
 
 ### mdm plugin pack でプラグインのマニフェストを書いて確認する {#write-and-check-a-plugin-manifest-with-mdm-plugin-pack}
 
@@ -166,11 +166,11 @@ flowchart LR
 
 ### 作品情報プラグインごとに直近の実行の標準エラーを保持する {#keep-the-last-runs-standard-error-per-work-info-plugin}
 
-**範囲**: 成功時にも失敗時にも、保持した標準エラーとその切り詰めのフラグを返す `Run`。マイグレーションと `WorkInfoPluginStore` の `work_info_plugin_runs`。実行したダイジェストに対してだけ書き、置き換えるアップロードで削除する ([data-model.md](data-model.md))。実行の秘密の値の伏せ字と `app.WorkInfoPlugins` での保存 ([R-6](research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked))。エントリの `lastRunAt` と `GET /api/work-info-plugins/{id}/last-run` ([contracts/screen-api.md](contracts/screen-api.md#get-apiwork-info-pluginsidlast-run))。クライアント関数。設計文書の実行の節。running-vv.md の復旧の表。
+**範囲**: 成功時にも失敗時にも、保持した標準エラーとその切り詰めのフラグを返す `Run`。マイグレーションと `WorkInfoPluginStore` の `work_info_plugin_runs`。ランタイムの `record` 呼び出しの中で、実行した世代に対してだけ書き、置き換えるアップロードで削除する ([data-model.md](data-model.md))。実行の秘密の値の伏せ字と `app.WorkInfoPlugins` での保存 ([R-6](research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked))。エントリの `lastRunAt` と `GET /api/work-info-plugins/{id}/last-run` ([contracts/screen-api.md](contracts/screen-api.md#get-apiwork-info-pluginsidlast-run))。クライアント関数。設計文書の実行の節。running-vv.md の復旧の表。
 
 **依存**: 非公開の宛先を拒否しつつ、運用者が選んだプロキシ経由で作品情報プラグインの要求を送る。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task generate` との差分がない。アダプターのテストが、成功した実行、時間切れになった実行、失敗した実行で標準エラーが返ることと、100 KiB の出力がフラグつきで 64 KiB として返ることを示す。ドメインのテストが、2 回現れる秘密の値が 2 回置き換えられること、秘密でない値が残ること、空の秘密が一致しないことを示す。ストアとアプリのテストが次を示す。2 回目の実行で行が置き換わる。置き換えるアップロードのあとに行が残らない。保存の前にプラグインが置き換えられるか削除された実行は何も書かない。一覧に `lastRunAt` がある。ハンドラーのテストが、保持された実行ではルートの本文、実行がなければ `{}`、未知のプラグインでは `404`、ゲストでは `401` を示す。
+**受け入れ**: `task check` と `task check-docs` が通り、`task generate` との差分がない。アダプターのテストが、成功した実行、時間切れになった実行、失敗した実行で標準エラーが返ることと、100 KiB の出力がフラグつきで 64 KiB として返ることを示す。アダプターのテストが、2 回目の実行が始まれる前に `record` が呼ばれることを示す。ドメインのテストが、2 回現れる秘密の値が 2 回置き換えられること、秘密でない値が残ること、空の秘密が一致しないこと、秘密の先頭のバイト列で終わる切り詰められた出力ではそのバイト列が伏せられることを示す。ストアとアプリのテストが次を示す。2 回目の実行で行が置き換わる。置き換えるアップロードのあとに行が残らない。保存の前にプラグインが置き換えられた (同じバイト列でも) か削除された実行は何も書かない。一覧に `lastRunAt` がある。ハンドラーのテストが、保持された実行ではルートの本文、実行がなければ `{}`、未知のプラグインでは `404`、ゲストでは `401` を示す。
 
 ### mdm plugin run で作品情報プラグインをローカルで実行する {#run-a-work-info-plugin-locally-with-mdm-plugin-run}
 
@@ -218,4 +218,4 @@ flowchart LR
 
 **依存**: なし。
 
-**受け入れ**: `task check-docs` が通る。手順書の新しい節が、待ちの上限、1 回の再試行、エラー応答を述べ、`Limits` の節がそれへリンクする。
+**受け入れ**: `task check-docs` が通る。手順書の新しい節が、待ちの上限、実行ごとの 10 秒の待ち、1 回の再試行、エラー応答を述べ、`Limits` の節がそれへリンクする。

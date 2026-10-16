@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/data-model.md
-sourceHash: ba54b062b3c27bfa86c3b73df9388d75f5ca57ffd09f7b2a5bd96f41892499df
+sourceHash: 73e06c9ba8473ad4cf9a5c37ac0d4accd32563fed13eadd6910c99184489f7c4
 ---
 
 # データモデル: 作品情報プラグインの道具 {#data-model-work-info-plugin-tooling}
@@ -18,7 +18,7 @@ sourceHash: ba54b062b3c27bfa86c3b73df9388d75f5ca57ffd09f7b2a5bd96f41892499df
 | フィールド | 型 | Null | 意味 |
 | --- | --- | --- | --- |
 | `plugin_id` | integer | いいえ | 主キー。プラグイン |
-| `digest` | text | いいえ | 実行したモジュールのダイジェスト |
+| `generation` | integer | いいえ | 実行が始まったときのプラグインの行の `generation`。同じバイト列での置き換えを含め、置き換えのたびに変わる |
 | `operation` | text | いいえ | `search` または `fetch` |
 | `failure` | text | はい | 実行の失敗コード。成功した実行では null |
 | `ran_at` | integer | いいえ | 実行が終わった Unix 秒 |
@@ -37,7 +37,9 @@ sourceHash: ba54b062b3c27bfa86c3b73df9388d75f5ca57ffd09f7b2a5bd96f41892499df
 
 | 規則 | 強制する場所 |
 | --- | --- |
-| 実行の行は、`work_info_plugins` が実行したダイジェストの行をまだ持っているときだけ書く。そうでなければ何も書かない | `internal/store`。`id` と `digest` を条件にした 1 つの文 |
+| 実行の行は、`work_info_plugins` が実行した世代の行をまだ持っているときだけ書く。そうでなければ何も書かない | `internal/store`。`id` と `generation` を条件にした 1 つの文 |
+| 実行の行は、実行が終わった順に書く。アプリは、実行枠を解放する前に、ランタイムの `record` 呼び出しの中で行を書く | `internal/app`、`internal/wasmplugin` |
+| 切り詰められた出力では、値全体のすべてに加えて、末尾にある秘密の値の先頭部分も伏せる | `internal/domain`、伏せ字の関数 |
 | 置き換えるアップロードは、アップロードのトランザクションでプラグインの実行の行を削除する | `internal/store` |
 | 設定の `default` と `options` は [contracts/plugin-contract.md の Manifest](contracts/plugin-contract.md#manifest) に従う | `internal/domain`。アップロード時と `mdm plugin pack` 時 |
 | 設定の実効値は、保存された値が設定されていて選択肢の中にあればそれ、そうでなければ既定値である。選択肢にない保存された値は残し、`staleValue` として報告する | `internal/domain` (`Entry`、要求の値、`required` の確認) |

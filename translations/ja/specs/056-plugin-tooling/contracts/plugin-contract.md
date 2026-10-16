@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/contracts/plugin-contract.md
-sourceHash: aca14510ab13079f6b0b59becbe9beca03fa307488ea6de8b4c725b7eb14c648
+sourceHash: 468063aee2e10b635c1c21fe49869e122c6e4e2f43296077090b86e2adfcf5c9
 ---
 
 # 契約: プラグインの契約への追加 {#contract-plugin-contract-additions}
@@ -28,4 +28,4 @@ sourceHash: aca14510ab13079f6b0b59becbe9beca03fa307488ea6de8b4c725b7eb14c648
 
 ## Rate limiting {#rate-limiting}
 
-手順書に、[R-9](../research.md#r-9-on-a-429-a-plugin-waits-for-the-smaller-of-retry-after-and-5-seconds-retries-once-and-otherwise-reports-an-error) の挙動で `429` 応答の節が加わる。最大 5 秒後に 1 回再試行し、そのあとは `error` 応答にする。
+手順書に、[R-9](../research.md#r-9-on-a-429-a-plugin-waits-for-the-smaller-of-retry-after-and-5-seconds-retries-once-and-otherwise-reports-an-error) の挙動で `429` 応答の節が加わる。実行の待ちの合計が最大 10 秒の範囲で、最大 5 秒後に 1 回再試行し、そのあとは `error` 応答にする。

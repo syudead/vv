@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/contracts/screen-api.md
-sourceHash: 78a604372de07063c5352b5d16112804131ffe9edc348e1437a2da2f19ee57fc
+sourceHash: dd22175953a55788ba2afd8097309cb94e69495ffb49dacf5f582848987ef0dd
 ---
 
 # 契約: 画面 API の変更 {#contract-screen-api-changes}
@@ -15,9 +15,9 @@ sourceHash: 78a604372de07063c5352b5d16112804131ffe9edc348e1437a2da2f19ee57fc
 | --- | --- | --- |
 | `default` | string、省略可能 | マニフェストの既定値 |
 | `options` | string array、省略可能 | マニフェストの選択肢。その順序のまま |
-| `staleValue` | string、省略可能 | 現在の選択肢のどれでもない保存された値。そのときだけ存在し、そのとき `set` は `false` |
+| `staleValue` | string、省略可能 | 現在の選択肢のどれでもない保存された値。そのときだけ存在する。実行は代わりに既定値を受け取る |
 
-`set` と `value` の意味は変わらない。値が保存されているかどうかと、秘密でない設定ではその値である。保存された値が古い設定は `set: false` で、`value` を持たない。
+`set` と `value` は [049](../../049-work-info-plugins/contracts/screen-api.md) の意味のままである。値が保存されているかどうかと、秘密でない設定ではその値である。古い値もまだ保存されているので、その設定は `set: true` で、`value` にその値を、`staleValue` に同じテキストを持つ。秘密の設定は選択肢を持たないので、古くなることはない。
 
 ## `WorkInfoPlugin` {#workinfoplugin}
 
