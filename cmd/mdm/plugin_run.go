@@ -8,6 +8,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
+	"slices"
 	"strings"
 
 	"github.com/syudead/vv/internal/domain"
@@ -57,7 +59,7 @@ func runPluginRun(ctx context.Context, args []string, env accountEnv) *accountFa
 	}
 	digest := sha256.Sum256(module)
 	result, log, err := runtime.Run(ctx, hex.EncodeToString(digest[:]), module, req, network, nil)
-	writeRunLog(env.Stderr, log)
+	writeRunLog(env.Stderr, log, err != nil)
 	var runErr *domain.WorkInfoRunError
 	switch {
 	case errors.As(err, &runErr):
@@ -70,11 +72,15 @@ func runPluginRun(ctx context.Context, args []string, env accountEnv) *accountFa
 
 // parsePluginRunArgs は位置の 3 つの引数と、--set KEY=VALUE（繰り返せる）、--proxy URL を読む。フラグは
 // 位置の引数の前後どこにも置け、--set=KEY=VALUE と --proxy=URL の形も受け付ける。同じキーの --set は
-// 後のものが勝つ。
+// 後のものが勝つ。最初の -- の後はどれも位置の引数で、-- で始まる検索の語もそこに書ける。
 func parsePluginRunArgs(args []string) (pluginRunArgs, *accountFailure) {
 	parsed := pluginRunArgs{values: map[string]string{}}
 	var positional []string
 	for i := 0; i < len(args); i++ {
+		if args[i] == "--" {
+			positional = append(positional, args[i+1:]...)
+			break
+		}
 		name, value, hasValue := strings.Cut(args[i], "=")
 		if name != "--set" && name != "--proxy" {
 			if strings.HasPrefix(args[i], "--") {
@@ -127,7 +133,8 @@ func pluginRunNetwork(raw string) (domain.WorkInfoRunNetwork, *accountFailure) {
 }
 
 // pluginRunRequest はサーバーと同じ規則で実行の要求を組み立てる。操作はマニフェストが宣言したもの、
-// 入力は画面 API と同じ規則、設定は宣言されたキーだけで、実効値（既定値を含む）を入れる。
+// 入力は画面 API と同じ規則、設定は宣言されたキーだけで、値は画面が保存できるもの
+// （domain.CheckWorkInfoPluginValues）に限り、実効値（既定値を含む）を入れる。
 func pluginRunRequest(manifest domain.WorkInfoPluginManifest, args pluginRunArgs) (domain.WorkInfoRunRequest, *accountFailure) {
 	req := domain.WorkInfoRunRequest{Operation: args.operation}
 	if !manifest.Supports(args.operation) {
@@ -137,9 +144,14 @@ func pluginRunRequest(manifest domain.WorkInfoPluginManifest, args pluginRunArgs
 	if failure := setRunInput(&req, args.input); failure != nil {
 		return req, failure
 	}
-	for key := range args.values {
+	for _, key := range slices.Sorted(maps.Keys(args.values)) {
 		if !declaresSetting(manifest.Settings, key) {
 			return req, usageFailure("The manifest declares no setting %q.", key)
+		}
+		value := args.values[key]
+		if domain.CheckWorkInfoPluginValues(manifest.Settings, map[string]*string{key: &value}) != nil {
+			return req, usageFailure("The value of %q must be valid UTF-8 of at most %d characters, as the settings screen saves it.",
+				key, domain.WorkInfoPluginSettingValueMaxRunes)
 		}
 	}
 	settings, err := domain.WorkInfoRunSettings(manifest.Settings, args.values)
@@ -195,15 +207,16 @@ func joinOperations(ops []domain.WorkInfoOperation) string {
 }
 
 // writeRunLog はプラグインの標準エラーを書かれたとおりに出し、切り詰めたならそのことを 1 行で足す。
-func writeRunLog(w io.Writer, log domain.WorkInfoRunLog) {
+// 切り詰めの行や、failed のとき後に続く失敗の行が、改行で終わらない標準エラーにつながらないよう、
+// その前で行を区切る。
+func writeRunLog(w io.Writer, log domain.WorkInfoRunLog, failed bool) {
 	_, _ = io.WriteString(w, log.Stderr)
-	if !log.Truncated {
-		return
-	}
-	if log.Stderr != "" && !strings.HasSuffix(log.Stderr, "\n") {
+	if (log.Truncated || failed) && log.Stderr != "" && !strings.HasSuffix(log.Stderr, "\n") {
 		_, _ = io.WriteString(w, "\n")
 	}
-	_, _ = fmt.Fprintf(w, "truncated after %d KiB\n", domain.WorkInfoPluginStderrKeptBytes>>10)
+	if log.Truncated {
+		_, _ = fmt.Fprintf(w, "truncated after %d KiB\n", domain.WorkInfoPluginStderrKeptBytes>>10)
+	}
 }
 
 // runFailureLine は実行の失敗の 1 行である。失敗の種類、ネットワークの 2 つの失敗ではホスト、プラグインが

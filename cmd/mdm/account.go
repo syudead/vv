@@ -34,7 +34,8 @@ const accountUsage = `Usage:
                                       check a work-info plugin manifest and write it into the module
   mdm plugin run <module.wasm> <operation> <input> [--set KEY=VALUE]... [--proxy URL]
                                       run a work-info plugin once as VVMDM would; <operation> is search
-                                      (input: the words) or fetch (input: the work's URL)
+                                      (input: the words) or fetch (input: the work's URL); after --,
+                                      every argument is positional, so words may start with --
 
 Account settings are read only from MDM_DATA_DIR; plugin commands do not read it. The password is never taken from arguments or environment variables.
 If standard input is a terminal, the password is asked for twice; otherwise the first line is used as the password.`

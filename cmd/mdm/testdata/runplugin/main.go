@@ -2,7 +2,8 @@
 
 // runplugin は mdm plugin run のテスト（cmd/mdm/plugin_run_test.go）が使う作品情報プラグインである。
 // fetch は標準エラーに 1 行書いてから作品の URL を http_send で取り、本文を題名、受け取った設定を
-// key=value のタグにして返す。search は語が sleep なら眠り続け、そうでなければ語を題名にした候補を返す。
+// key=value のタグにして返す。search は語が sleep なら眠り続け、fail なら改行なしで標準エラーに書いてから
+// 誤りを返し、そうでなければ語を題名にした候補を返す。
 package main
 
 import (
@@ -35,8 +36,13 @@ func main() {
 		os.Exit(1)
 	}
 	if req.Operation == "search" {
-		if req.Query == "sleep" {
+		switch req.Query {
+		case "sleep":
 			time.Sleep(time.Hour)
+		case "fail":
+			fmt.Fprint(os.Stderr, "no newline")
+			reply(map[string]any{"error": map[string]string{"message": "failed on purpose"}})
+			return
 		}
 		reply(map[string]any{"candidates": []map[string]string{{"url": "https://site.test/works/1", "title": req.Query}}})
 		return

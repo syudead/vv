@@ -162,6 +162,22 @@ func TestPluginRunSearchPrintsTheCandidates(t *testing.T) {
 	}
 }
 
+func TestPluginRunSearchTakesWordsThatStartWithTwoHyphensAfterTheSeparator(t *testing.T) {
+	t.Parallel()
+	got := runPluginCommand(t, wasmplugin.Options{}, runModulePath(t, runManifest),
+		"--set", "token=x", "--", "search", "--draft")
+	wantRun(t, got, exitAccountOK)
+	if !strings.Contains(got.stdout, `"title": "--draft"`) {
+		t.Fatalf("stdout %q, want a candidate titled --draft", got.stdout)
+	}
+}
+
+func TestPluginRunPutsTheFailureOnItsOwnLine(t *testing.T) {
+	t.Parallel()
+	got := runPluginCommand(t, wasmplugin.Options{}, runModulePath(t, runManifest), "search", "fail", "--set", "token=x")
+	wantRun(t, got, exitAccountError, "no newline\nRun failed: plugin_failed: failed on purpose\n")
+}
+
 func TestPluginRunAPluginThatSleepsPastTheLimitTimesOut(t *testing.T) {
 	t.Parallel()
 	got := runPluginCommand(t, wasmplugin.Options{}, runModulePath(t, runManifest), "search", "sleep", "--set", "token=x")
@@ -226,6 +242,8 @@ func TestPluginRunRefusesWithUsage(t *testing.T) {
 			[]string{`does not declare the operation "lookup"`, "search, fetch"}},
 		{"proxy with a path", []string{module, "fetch", "https://site.test/1", "--set", "token=x", "--proxy", "http://p.test/x"},
 			[]string{"--proxy must be"}},
+		{"setting value longer than the screen saves", []string{module, "fetch", "https://site.test/1", "--set", "token=" + strings.Repeat("v", 2001)},
+			[]string{`value of "token"`, "at most 2000 characters"}},
 		{"set without a value", []string{module, "fetch", "https://site.test/1", "--set"}, []string{"--set needs a value"}},
 		{"set without KEY=", []string{module, "fetch", "https://site.test/1", "--set", "token"}, []string{"KEY=VALUE"}},
 		{"unknown option", []string{module, "fetch", "https://site.test/1", "--verbose"}, []string{"Unknown option: --verbose"}},
