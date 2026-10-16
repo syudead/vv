@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: 9781852eef9ed9bd105cdde1d0e5a9dd18e38e7a4591e1ae490fb4415b917e62
+sourceHash: 8fab783b2b02c7a2861bd06c15b774fcd70a05b3c2ba821b8b6894545fbeb450
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
@@ -112,7 +112,7 @@ flowchart LR
 
 ### 実行は運用者のプロキシを通せる {#a-run-can-go-through-the-operators-proxy}
 
-`Runtime.Run` は `domain.WorkInfoRunNetwork` を受け取る。その `Proxy` は運用者が選んだプロキシで、なければ nil である ([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option))。`domain.ParseWorkInfoPluginProxyURL` が URL の規則を持つ: スキームは `http`、`https`、`socks5` のいずれか、ホスト、任意のポート、任意のユーザー情報で、パス、クエリ、フラグメントはなく、最大 2048 バイトである。`""` はプロキシなしを意味する。プロキシなしの実行は、上のクライアントをそのまま使う。
+`Runtime.Run` は `domain.WorkInfoRunNetwork` を受け取る。その `Proxy` は運用者が選んだプロキシで、なければ nil である ([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option))。`domain.ParseWorkInfoPluginProxyURL` が URL の規則を持つ: スキームは `http`、`https`、`socks5` のいずれか、ホスト、任意のポート、任意のユーザー情報で、パス、クエリ、フラグメントはなく、最大 2048 文字である。`""` はプロキシなしを意味する。プロキシなしの実行は、上のクライアントをそのまま使う。
 
 所有者は、すべてのビルドで設定画面の `Network` セクションからプロキシを設定する。設定は `PUT /api/settings/plugin-proxy` を通り、`app.WorkInfoPluginProxy` がその規則に照らして確認し、`settings` の行 `work_info_plugins.proxy_url` として保存する。`app.WorkInfoPlugins` は各実行の前にその行を読むので、保存した変更は次の実行から適用され、実行中の実行は開始時の値を保つ。規則に反する保存済みの値は、直接接続せずに実行を失敗させる。
 
