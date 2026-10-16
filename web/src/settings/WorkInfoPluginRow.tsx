@@ -19,6 +19,7 @@ import {
   operationTexts,
   pluginName,
   settingsSummary,
+  staleSettings,
 } from "./workInfoPluginRows";
 
 /** RowWork は行で進んでいる取り消しか削除である。 */
@@ -66,9 +67,19 @@ function FactsLine({ plugin }: { plugin: WorkInfoPlugin }) {
   );
 }
 
+function WarningLine({ children }: { children: ReactNode }) {
+  return (
+    <p className="inline-flex items-center gap-1 break-words text-warning">
+      <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
+      {children}
+    </p>
+  );
+}
+
 function RowText({ plugin }: { plugin: WorkInfoPlugin }) {
   const text = t.settings.workInfoPlugins;
   const missing = missingRequired(plugin);
+  const stale = staleSettings(plugin);
   const invalid = plugin.state === "invalid";
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -101,10 +112,10 @@ function RowText({ plugin }: { plugin: WorkInfoPlugin }) {
         <FactsLine plugin={plugin} />
       )}
       {!invalid && missing.length > 0 && (
-        <p className="inline-flex items-center gap-1 text-warning">
-          <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
-          {text.requiredMissing(missing)}
-        </p>
+        <WarningLine>{text.requiredMissing(missing)}</WarningLine>
+      )}
+      {!invalid && stale.length > 0 && (
+        <WarningLine>{text.staleSettings(stale)}</WarningLine>
       )}
     </div>
   );
