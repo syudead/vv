@@ -31,8 +31,7 @@ func newTestBus() *eventbus.Bus {
 
 // 仕事が積まれた段階のワーカーだけを起こし、解析の成否が決まったらサムネイルの
 // ワーカーを起こす。シーク用サムネイルのワーカーは、解析と代表サムネイルの成否と
-// 動画の行の削除で起こす。解析し直しのワーカーは、解析の成否と動画の行の削除で起こす。
-// 購読をやめたら、止めたワーカーを起こさない。
+// 動画の行の削除で起こす。購読をやめたら、止めたワーカーを起こさない。
 func TestSubscribeEventsWakesWorkers(t *testing.T) {
 	bus := newTestBus()
 	wakers := map[domain.JobKind]*countingWaker{}
@@ -57,8 +56,6 @@ func TestSubscribeEventsWakesWorkers(t *testing.T) {
 		domain.JobProbe: 1, domain.JobThumbnail: 1, domain.JobPreview: 1,
 		// 解析・代表サムネイル・動画の行の削除の3回。
 		domain.JobSeekThumbnail: 3,
-		// 解析・動画の行の削除の2回。
-		domain.JobMetadata: 2,
 	}
 	check := func() bool {
 		if judge.woken.Load() != 2 {

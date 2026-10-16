@@ -248,11 +248,8 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 	if issuesMoved {
 		c.issuesChanged()
 	}
-	// 動画の行が残っても、消した所在の仕事は着手できなくなりうる。取り出せる解析の仕事が
-	// 減ると待っていた解析し直しが取り出せるようになるが、動画の行が残ると
-	// VideoIngestChanged が出ないので、ここで起こす（domain.ClaimConditionFor）。
+	// 動画の行が残っても、消した所在の仕事は着手できなくなりうる。
 	c.remainingChanged()
-	c.jobsQueued(domain.JobMetadata)
 	return s.db.commit(ctx, tx, &c)
 }
 
@@ -272,7 +269,7 @@ func (s *ScanIndexStore) UpdateLocationCreatedAt(ctx context.Context, locationID
 // 走査はこれと実際のファイルを突き合わせて差分を出す。
 func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]domain.IndexedVideo, error) {
 	rows, err := s.db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, l.file_created_at, v.probe_state, v.thumbnail_state, v.seek_thumbnail_state, v.preview_state,
-		`+fingerprintMissingCondition("v")+`, `+mediaInfoMissingCondition("v")+`
+		`+fingerprintMissingCondition("v")+`
 		from video_locations l join videos v on v.id = l.video_id`)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the index: %w", err)
@@ -285,7 +282,7 @@ func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]do
 		var video domain.IndexedVideo
 		var mtime int64
 		var fileCreatedAt sql.NullInt64
-		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &fileCreatedAt, &video.ProbeState, &video.ThumbnailState, &video.SeekThumbnailState, &video.PreviewState, &video.FingerprintMissing, &video.MediaInfoMissing); err != nil {
+		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &fileCreatedAt, &video.ProbeState, &video.ThumbnailState, &video.SeekThumbnailState, &video.PreviewState, &video.FingerprintMissing); err != nil {
 			return nil, fmt.Errorf("cannot read the index: %w", err)
 		}
 		video.MTime = time.Unix(mtime, 0)

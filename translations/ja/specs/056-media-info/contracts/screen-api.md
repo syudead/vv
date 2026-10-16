@@ -1,6 +1,6 @@
 ---
 source: specs/056-media-info/contracts/screen-api.md
-sourceHash: da0a3fdc06eafbab472d2a323ad2882aacd5c9b090ebdd3b33dd788725ec5861
+sourceHash: 647097c8897afa259ff358d6d0c12779dad8f0aa8918a25a2e7aa0502205fbc4
 ---
 
 # 契約: メディア情報のための画面の API {#contract-screen-api-for-media-information}
@@ -66,16 +66,13 @@ sourceHash: da0a3fdc06eafbab472d2a323ad2882aacd5c9b090ebdd3b33dd788725ec5861
 
 **応答**: 今と同じく `Video` とともに `200`。今と同じく `404`。
 
-## 値が増える列挙 {#enumerations-that-gain-a-value}
+## 列挙 {#enumerations}
 
-| スキーマ | 加わる値 | いつ |
-| --- | --- | --- |
-| `ScanActivityKind` | `metadata` | `metadata` のジョブが実行中のとき ([R-5](../research.md#r-5-imported-videos-are-re-analysed-by-a-metadata-job-that-yields-to-pending-probes)) |
-| `ScanIssueKind` | `metadata_failed` | 最新のスキャンの集合にある動画で、`metadata` のジョブが試行回数の上限で失敗したとき |
+値が増える列挙はない: `metadata` のジョブの種類と `metadata_failed` は、再解析とともに取り除いた ([R-5](../research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files))。
 
 ## `GET /api/events`: `video` {#get-apievents-video}
 
-新しい種類はない。終わった `metadata` のジョブは、すべての取り込みの段階と同じように、その動画の `video` の通知を送る。そのため、開いている動画ページは詳細を取得し直し、新しい `mediaInfo` を示す。
+新しい種類はない。終わったプローブのジョブは、すべての取り込みの段階と同じように、その動画の `video` の通知を送る。そのため、開いている動画ページは詳細を取得し直し、新しい `mediaInfo` を示す。
 
 ## クライアントでの使い方 {#client-use}
 

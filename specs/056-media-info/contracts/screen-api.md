@@ -73,16 +73,14 @@ has something to show.
 
 **Response**: `200` with `Video` as today; `404` as today.
 
-## Enumerations that gain a value
+## Enumerations
 
-| Schema | Added value | When |
-| --- | --- | --- |
-| `ScanActivityKind` | `metadata` | A `metadata` job is running ([R-5](../research.md#r-5-imported-videos-are-re-analysed-by-a-metadata-job-that-yields-to-pending-probes)) |
-| `ScanIssueKind` | `metadata_failed` | A `metadata` job failed at the attempt limit for a video in the latest scan's set |
+No enumeration gains a value: the `metadata` job kind and `metadata_failed`
+were removed with the re-analysis ([R-5](../research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)).
 
 ## `GET /api/events`: `video`
 
-No new kind. A finished `metadata` job sends the `video` notification for its
+No new kind. A finished probe job sends the `video` notification for its
 video as every ingest stage does, so an open video page refetches the detail
 and shows the new `mediaInfo`.
 

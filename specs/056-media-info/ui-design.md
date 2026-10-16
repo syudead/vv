@@ -229,10 +229,10 @@ flowchart LR
 
 | State | What the screen shows |
 | --- | --- |
-| No `mediaInfo` (imported before the feature, row below the current version, or the `metadata` job failed) | Nothing new; the file row, the work details and the technical line as today. No placeholder, no `Reading…` line: the technical line already says when the probe is pending or failed, and the re-analysis has no state the viewer can act on |
+| No `mediaInfo` (imported before the feature, or row below the current version; existing videos are not re-analysed, [R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)) | Nothing new; the file row, the work details and the technical line as today. No placeholder, no `Reading…` line: the technical line already says when the probe is pending or failed |
 | `mediaInfo` arrives through a `video` notification while the page is open (owner) | The groups appear under the technical line in place; the rows above do not move or empty (acceptance criterion 6) |
 | Some groups | Only those with content, in the fixed order |
-| Guest | The same groups as the owner for a public video (R-6, requirement 8). A guest receives only the `group` notification ([048 contracts, `/api/events`](../048-groups/contracts/screen-api.md)), so a guest's open page does not refetch when the `metadata` job finishes; the groups appear on the next load of the page or after the event stream reconnects. This feature adds no notification for guests |
+| Guest | The same groups as the owner for a public video (R-6, requirement 8). A guest receives only the `group` notification ([048 contracts, `/api/events`](../048-groups/contracts/screen-api.md)), so a guest's open page does not refetch when the probe job finishes; the groups appear on the next load of the page or after the event stream reconnects. This feature adds no notification for guests |
 
 ## Player: chapters
 
@@ -348,10 +348,10 @@ Judged by looking at the running screen in vv's one dark scheme
    the feature (acceptance criterion 4, requirement 10); a 10-bit HLG file
    shows `HLG · 10-bit`; a TS recording shows `Interlaced` and its station
    (acceptance criterion 7).
-7. **Appearing by itself**: on a database imported before the feature, a
-   video page the owner opened before its `metadata` job finishes gains
-   the groups under the technical line without a reload and without the
-   rows above moving or emptying (acceptance criterion 6).
+7. **Appearing by itself**: a video page the owner opened before the
+   probe of a new or changed file finishes gains the groups under the
+   technical line without a reload and without the rows above moving or
+   emptying. Videos imported before the feature are not re-analysed (R-5).
 8. **Action priority (player)**: on `chapters.mkv`, pressing and dragging
    the seek bar, pressing a mark, Space, F and M behave as on a video
    without chapters; the marks are thin breaks that do not draw the eye

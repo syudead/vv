@@ -2,8 +2,8 @@
 
 These steps prove what the fixture-based tests cannot: that real HDR, phone,
 broadcast and chaptered files produce the items the parent Issue's acceptance
-criteria name, and that a library imported before this feature fills in by
-itself.
+criteria name, and that a library imported before this feature is left as
+it was (existing videos are not re-analysed, R-5).
 
 ## Prerequisites
 
@@ -22,7 +22,7 @@ itself.
     ending past the file's duration (`ffmpeg -i in.mp4 -i meta.txt
     -map_metadata 1 -map_chapters 1 -c copy chapters.mkv` with an `END` past
     the duration in `meta.txt`).
-- For the last two rows: a database imported with the release before this
+- For the last row: a database imported with the release before this
   branch, holding the same files.
 
 ## Steps
@@ -34,9 +34,7 @@ itself.
 | Open `phone.mov` | The Embedded group shows the shooting time, the device and the location; the Created and Added facts and the title are the same as before the feature | 4 |
 | Open `rec.ts` | The Broadcast group shows the station name and the recorded programme's name, not the name of the programme before it; the Audio and Subtitles groups list the stream that appears after the start | 5 (requirement), 7 |
 | Play `chapters.mkv` | The seek bar shows one mark per chapter inside the duration; hovering a mark shows its title; choosing a chapter in the chapters menu plays from its start; the last chapter ends at the file's end; `sdr.mp4` shows no mark and no chapters menu | 5 |
-| Start the branch on the old database and open a video page | Within a minute the groups appear without a scan; a video opened before the job finishes updates by itself | 6 |
-| While the re-analysis runs, replace one file with another of the same name, then scan | The replaced file's page shows the new file's information, never the old file's | Edge Case: file replaced during re-analysis |
-| Before the re-analysis reaches it, overwrite the first MiB of one imported file you can discard with zeros (`dd if=/dev/zero of=discard.mp4 bs=1M count=1 conv=notrunc`), which fails `ffprobe` for any user, root in the container included | Its page keeps the duration and resolution and shows no new groups; the server log shows the `metadata` failure | Edge Case: failure during re-analysis |
+| Start the branch on the old database and open a video imported before it | No new groups and no queued `metadata` job; after the file changes and a scan, the groups appear ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)) | 6 (re-analysis removed by the maintainer) |
 
 Record each HDR file's `ffprobe` `color_transfer`, and the TS recording's
 decoded names, its TOT time and the time `Probe` took on it, in the PR of the

@@ -91,19 +91,6 @@ func subscribeEvents(bus *eventbus.Bus, s eventSubscribers) eventSubscriptions {
 				}
 			}))
 	}
-	// 解析し直しは、取り出せる解析の仕事が無いときだけ取り出される（domain.ClaimConditionFor）。
-	// 解析の1件の成否が決まったとき、または動画の行が消えたとき（Stage が空。残りの解析の
-	// 仕事が減る）に、待っていた解析し直しのワーカーを起こす
-	// （specs/056-media-info/research.md R-5）。
-	if metadata, ok := s.Workers[domain.JobMetadata]; ok {
-		stopWorkers = append(stopWorkers, eventbus.On(bus, "metadata after probe",
-			func(event domain.VideoIngestChanged) {
-				switch event.Stage {
-				case domain.JobProbe, "":
-					metadata.Wake()
-				}
-			}))
-	}
 	// 指紋は完成したシーク用スプライトを待つ（domain.ClaimConditionFor）が、その仕事は
 	// シーク用サムネイルの完了を書く取引で積まれる（JobsQueued）ので、ほかの段階の成否で
 	// 起こし直す必要は無い。

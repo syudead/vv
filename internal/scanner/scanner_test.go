@@ -535,31 +535,6 @@ func TestScanRequeuesMissingFingerprint(t *testing.T) {
 	}
 }
 
-// 解析が済んでいるのに今の版の追加の情報が無い既存動画は、解析し直しの仕事だけを積む
-// （specs/056-media-info/research.md R-5）。
-func TestScanRequeuesMissingMediaInfo(t *testing.T) {
-	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
-	index := newFakeIndex()
-	runScan(t, root, index)
-	var id int64
-	for path, row := range index.rows {
-		row.ProbeState = domain.ProbeStateDone
-		row.ThumbnailState = domain.ThumbnailStateDone
-		row.SeekThumbnailState = domain.SeekThumbnailDone
-		row.PreviewState = domain.PreviewStateDone
-		row.MediaInfoMissing = true
-		index.rows[path] = row
-		id = row.ID
-	}
-	index.jobs = nil
-
-	runScan(t, root, index)
-	want := []jobCall{{kind: domain.JobMetadata, videoID: id}}
-	if !slices.Equal(index.jobs, want) {
-		t.Fatalf("requeued jobs = %+v, want %+v", index.jobs, want)
-	}
-}
-
 // シーク用サムネイルだけが終端失敗した既存動画は、走査で積み直さない。
 func TestScanDoesNotRequeueFailedSeekThumbnail(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})

@@ -16,9 +16,7 @@ flowchart LR
   parser -->|raw values| rules[internal/domain rules]
   rules --> info[domain.MediaInfo on domain.Probe]
   info --> apply[ApplyProbeForJob]
-  info --> again[ApplyMediaInfoForJob]
   apply -->|same transaction and identity check as videos| row[(video_media_info)]
-  again -->|same identity check, videos untouched| row
   row --> read[LibraryStore.MediaInfo]
   read --> detail["GET /api/videos/{id} mediaInfo"]
 ```
@@ -107,29 +105,11 @@ instead of adding a migration. The table is a rebuildable index
 | Columns on `videos` | About 30 nullable columns read by every list query |
 | Tables per item (streams, chapters, tags) | No query joins or filters on them |
 
-## Videos imported earlier are read again by a `metadata` job
+## Videos imported earlier are not read again
 
-A `metadata` job runs the same `media.Probe` for a video that was probed
-before the row existed, and writes only the row through
-`ApplyMediaInfoForJob`
-([`internal/app/ingest.go`](../../internal/app/ingest.go), `Metadata`).
-Migration `00052_metadata_jobs.sql` queues one for every video whose probe is
-done and that has a location under a registered folder, and a scan queues one
-for a video whose row is missing or below `domain.MediaInfoVersion`
-(`IndexedVideo.MediaInfoMissing`). A new import gets none, because its probe
-job writes the row.
-
-| Rule | Why |
-| --- | --- |
-| Claimed only while no `probe` job is queued or running for a video with a registered location (`JobClaimCondition.NoClaimableProbe`) | A new import's stages go first, and no `metadata` run starts beside a queued or running probe; as for `seek_thumbnail`, the condition holds at claim time, so a probe queued during a run overlaps only that one header read. The `metadata` worker is woken when a probe job leaves `running` and when a probe's video loses its registered location |
-| The same identity check as the probe job (job location id, version and path, content key, location generation); a failed check writes nothing and completes the job | A file replaced during the run never gets the old file's row; the scan that finds the new file queues it again |
-| The index columns, playability and the live-transcode probe are not written | A failure or a changed parser cannot hide playback or the seek preview |
-| A failure at the attempt limit keeps the row and records `metadata_failed` only for a video in the latest scan's set | A video in that set is work the latest import counts, so its failure is that import's issue; a video outside it records nothing, so the backfill of videos the latest import never touched does not turn it partial. The next scan queues the job again |
-
-A finished job sends the `video` notification, so an open video page refetches
-and shows the new information.
-
-| Rejected | Why |
-| --- | --- |
-| Re-queueing the `probe` job | A probe failure at the limit marks the video `failed`, which hides playback |
-| A backfill goroutine at startup | No record of what was tried, and a restart starts over |
+Only the probe of a new or changed file writes the row; a video probed before
+`video_media_info` existed has none and its page shows no extra groups until
+its file changes (maintainer decision, 2026-10-16). Migration
+`00052_metadata_jobs.sql` stays unchanged because databases already applied
+it; `00053_drop_metadata_jobs.sql` deletes the `metadata` jobs and
+`metadata_failed` issues that `00052` queued.
