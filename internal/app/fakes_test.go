@@ -60,6 +60,8 @@ type fakeIngestStore struct {
 	previewsDone           int
 	// fingerprints は ApplyFingerprintForJob に渡された指紋。
 	fingerprints []domain.Fingerprint
+	// mediaInfos は ApplyMediaInfoForJob に渡された追加の情報。
+	mediaInfos []domain.MediaInfo
 	// positions は SetThumbnailPosition に渡された位置（nil は解除）。
 	positions []*int64
 	// setPositionErr があれば SetThumbnailPosition は記録せずにそれを返す。
@@ -195,6 +197,16 @@ func (f *fakeIngestStore) ApplyFingerprintForJob(
 		return false, nil
 	}
 	f.fingerprints = append(f.fingerprints, fingerprint)
+	return true, nil
+}
+
+func (f *fakeIngestStore) ApplyMediaInfoForJob(_ context.Context, _ domain.Job, info domain.MediaInfo) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.gone {
+		return false, nil
+	}
+	f.mediaInfos = append(f.mediaInfos, info)
 	return true, nil
 }
 

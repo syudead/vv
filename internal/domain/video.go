@@ -300,6 +300,10 @@ type IndexedVideo struct {
 	// 指紋が無いことを表す（specs/030-video-versions/data-model.md §6）。走査はこれで指紋の
 	// 仕事を積み直す。
 	FingerprintMissing bool
+	// MediaInfoMissing は、解析が done なのに今の MediaInfoVersion の追加の情報の行が無い
+	// ことを表す（specs/056-media-info/data-model.md「Rules」）。走査はこれで解析し直しの
+	// 仕事（JobMetadata）を積む。
+	MediaInfoMissing bool
 }
 
 // MediaFolder is one independently managed scan root.
