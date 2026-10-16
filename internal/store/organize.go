@@ -198,7 +198,11 @@ func (s *OrganizeStore) Undo(ctx context.Context, image []byte) error {
 		}
 		// 束ねの取り消しが戻した候補の判定の記録を開き直す（specs/055-activity/data-model.md「Rules」）。
 		c := &changes{}
-		if err := reopenRestoredPairActivities(ctx, tx, c, time.Now()); err != nil {
+		now := time.Now()
+		if err := reopenRestoredPairActivities(ctx, tx, c, now); err != nil {
+			return nil, err
+		}
+		if err := recordOrganizeUndo(ctx, tx, c, decoded.Videos, now); err != nil {
 			return nil, err
 		}
 		events := c.events()
@@ -207,6 +211,19 @@ func (s *OrganizeStore) Undo(ctx context.Context, image []byte) error {
 		}
 		return append(events, groupsChangedEvents(changed)...), nil
 	})
+}
+
+// recordOrganizeUndo は取り消しが版の集まりを戻した動画 videoIDs のそれぞれに organize_undo の所有者の記録を
+// 書く（specs/055-activity/data-model.md「Kinds」）。グループだけを戻した取り消しは動画のタグも集まりも
+// 変えないので、何も書かない（research.md R-6）。
+func recordOrganizeUndo(ctx context.Context, tx *sql.Tx, c *changes, videoIDs []int64, now time.Time) error {
+	keys, err := registeredContentKeysForVideoIDs(ctx, tx, videoIDs)
+	if err != nil {
+		return err
+	}
+	slices.Sort(keys)
+	keys = slices.Compact(keys)
+	return recordOwnerVideoActivity(ctx, tx, c, domain.ActivityOrganizeUndo, ownerVideoChanges(keys, ""), now)
 }
 
 // ensureGroupTarget は要求が名指したグループ id があるかを確かめる。無ければ

@@ -61,7 +61,7 @@ Indexes on `(status, id)`, `(feature, id)` and `(kind, subject_key, subject_key_
 | `tag_attach`, `tag_detach`, `tag_keep`, `tag_reject` | video | The owner's tag operations, one entry per video and tag |
 | `work_info_apply` | video | Applying fetched work information |
 | `media_folder_remove` | folder | Removing a media folder; `detail` holds the number of videos it removed |
-| `organize_undo` | video | The drag-organize undo, one entry per changed video |
+| `organize_undo` | video | The drag-organize undo, one entry per video whose version bundle it restored |
 | `undo` | as the undone entry | Undoing an automatic decision ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 
 ### Reasons

@@ -141,8 +141,8 @@ bundle.
 
 | Recorded | Not recorded |
 | --- | --- |
-| Bundle (Duplicates, video page, drag-organize), remove from versions, make representative, "Different videos" | Groups, playlists, favorites, watch history |
-| Attach and detach a tag on videos (video page, drag-organize, external API), keep and reject a suggested tag | Tag definitions: create, rename, merge, delete, synonyms, kinds |
+| Bundle (Duplicates, video page, drag-organize), remove from versions, make representative, "Different videos" | Group edits other than turning a group into a tag, playlists, favorites, watch history |
+| Attach and detach a tag on videos (video page, library selection, turning a group into a tag, external API), keep and reject a suggested tag | Tag definitions: create, rename, merge, delete, synonyms, kinds |
 | Apply work information from a plugin | Display name, thumbnail position, uploaded and ComfyUI thumbnail edits |
 | Remove a media folder, which removes its videos from the library | — |
 | Undo of an automatic decision, and the drag-organize undo | — |

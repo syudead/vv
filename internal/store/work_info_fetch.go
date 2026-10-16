@@ -107,7 +107,13 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	if err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
-	if err := tx.Commit(); err != nil {
+	// 適用は所有者の操作として、反映先の動画に 1 件記録する（specs/055-activity/research.md R-6）。
+	c := &changes{}
+	if err := recordOwnerVideoActivity(ctx, tx, c, domain.ActivityWorkInfoApply,
+		ownerVideoChanges(contentKeys[:1], ""), now); err != nil {
+		return domain.FetchedWorkInfoApplied{}, err
+	}
+	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.FetchedWorkInfoApplied{}, fmt.Errorf("cannot apply the fetched work information: %w", err)
 	}
 	s.db.publishEvents(append(appliedWorkInfoEvents(apply.VideoID, changed), workInfoEvents...)...)

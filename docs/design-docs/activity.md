@@ -101,6 +101,32 @@ origin. The next scan that ends `done` closes every open `scan` entry as
 `superseded`. A scan closed as `interrupted` at startup writes nothing, since
 startup resumes it.
 
+## Owner operations write a done entry per video
+
+An owner operation that changes a video's tags or version bundle, removes a
+media folder, or fetches or applies work information writes `done` entries
+decided by `owner` in the operation's transaction
+([R-6](../../specs/055-activity/research.md#r-6-the-owner-operations-recorded),
+[`internal/store/owner_activity.go`](../../internal/store/owner_activity.go)).
+
+| Operation | Entries |
+| --- | --- |
+| Bundle (video page, Duplicates, drag-organize) | One `bundle` per member of the new bundle |
+| Make representative, remove from versions | One for the video |
+| "Different videos" | One `dismiss` for the pair |
+| Attach or detach a tag (video page, library selection, turning a group into a tag, `/api/v1`) | One per video and tag whose manual tag row changed; `detail` is the tag name |
+| Keep or reject a suggested tag | One `tag_keep` or `tag_reject`; `detail` is the tag name |
+| Apply fetched work information | One `work_info_apply`; its tags write no tag entries |
+| Fetch work information | One `work_info_fetch` per plugin run, `done`/`failed` with the plugin's message (else the failure code) when the run fails, never retried ([R-11](../../specs/055-activity/research.md#r-11-a-failed-work-information-fetch-is-a-finished-entry-not-a-problem)) |
+| Remove a media folder | One `media_folder_remove` for the folder path; `detail` is the number of videos it took out of the library |
+| Drag-organize undo | One `organize_undo` per video whose bundle it restored |
+
+A tag is attached to a user key, so a bundle's entry names its representative.
+The video entries of one operation are written by one statement, and the
+external API's video and tag pairs are found inside SQLite, so a
+20000-video selection costs no extra statements. Owner entries are never
+`attention`, so they close nothing.
+
 ## Startup marks claimed entries interrupted
 
 Before the workers start, every `running` entry with reason `processing`

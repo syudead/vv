@@ -1056,10 +1056,11 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 	}
 
 	// 動画は消えず（登録外の所在が残る）、仕事も積まない。残りの変化と、待っていた
-	// シーク用サムネイルが取り出せるようになりうることを知らせる。
+	// シーク用サムネイルが取り出せるようになりうることと、登録の解除の記録を知らせる。
 	want := []domain.Event{
 		domain.JobsQueued{Kinds: []domain.JobKind{domain.JobSeekThumbnail}},
 		domain.ProcessingChanged{},
+		domain.ActivityChanged{},
 	}
 	if !reflect.DeepEqual(recorder.events, want) {
 		t.Fatalf("発行 = %v, want %v", recorder.events, want)
