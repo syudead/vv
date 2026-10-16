@@ -538,11 +538,20 @@ func (s *AutoTagStore) settleTentative(ctx context.Context, videoID, tagID int64
 	if err := touchEditedAtForUserKeys(ctx, tx, []string{userKey}, now); err != nil {
 		return err
 	}
+	// 提案のタグを残すか却下するのは所有者の操作である（specs/055-activity/research.md R-6）。
+	kind := domain.ActivityTagKeep
+	if reject {
+		kind = domain.ActivityTagReject
+	}
+	c := &changes{}
+	if err := recordOwnerVideoActivity(ctx, tx, c, kind, ownerTagChanges([]string{userKey}, tagID), now); err != nil {
+		return err
+	}
 	affected, err := videoIDsSharingUserKey(ctx, tx, videoID)
 	if err != nil {
 		return err
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commit(ctx, tx, c); err != nil {
 		return fmt.Errorf("cannot settle the tentative tag (tag=%d): %w", tagID, err)
 	}
 	s.db.publishEvents(domain.AutoTagApplied{VideoIDs: affected})

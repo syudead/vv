@@ -108,7 +108,9 @@ func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
 	}
-	want := []domain.Event{domain.VideoOverrideChanged{VideoID: ids["b"]}, domain.VideoOverrideChanged{VideoID: ids["a"]}}
+	// 適用の記録の知らせ（specs/055-activity/research.md R-6）が確定の直後に先に届く。
+	want := []domain.Event{domain.ActivityChanged{}, domain.VideoOverrideChanged{VideoID: ids["b"]},
+		domain.VideoOverrideChanged{VideoID: ids["a"]}}
 	if !slices.Equal(recorder.events, want) {
 		t.Fatalf("events = %v; want %v", recorder.events, want)
 	}
@@ -120,7 +122,7 @@ func TestApplyFetchedWorkInfoNotifiesEveryBundleMemberOfTags(t *testing.T) {
 	}); err != nil {
 		t.Fatalf("ApplyFetchedWorkInfo: %v", err)
 	}
-	if want := []domain.Event{domain.VideoOverrideChanged{VideoID: ids["b"]}}; !slices.Equal(recorder.events, want) {
+	if want := []domain.Event{domain.ActivityChanged{}, domain.VideoOverrideChanged{VideoID: ids["b"]}}; !slices.Equal(recorder.events, want) {
 		t.Fatalf("title-only events = %v; want %v", recorder.events, want)
 	}
 }

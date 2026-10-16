@@ -190,7 +190,7 @@ func (s *GroupStore) TagGroup(ctx context.Context, id int64) (domain.GroupTag, e
 		if err != nil {
 			return nil, err
 		}
-		if err := attachTagToUserKeys(ctx, tx, keys, out.Tag.ID, groupNow()); err != nil {
+		if _, err := attachTagToUserKeys(ctx, tx, keys, out.Tag.ID, groupNow()); err != nil {
 			return nil, err
 		}
 		return dissolveGroupAndRebuild(ctx, tx, id)

@@ -275,8 +275,9 @@ dismissals (the owner's version operations share its write sites).
 versions, making a representative, attaching and detaching a tag, keeping and
 rejecting a suggested tag, and applying work information each write one
 `done` entry per video with decider `owner`, and "Different videos" writes
-one pair entry; a tag attached to three videos by drag-organize writes three
-entries, and its undo writes `organize_undo` entries for them; a tag attached
+one pair entry; a tag attached to three videos writes three entries; bundling
+three videos by drag-organize writes three entries, and its undo writes
+`organize_undo` entries for them; a tag attached
 through `/api/v1` writes an owner entry; removing a media folder writes one
 `media_folder_remove` entry with the number of videos; a failed fetch writes
 `done`/`failed` with the plugin's message; reordering a playlist writes none.

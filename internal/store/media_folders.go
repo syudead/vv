@@ -212,6 +212,10 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	// VideoIngestChanged も出ないので、ここで起こさないと次に仕事が積まれるまで
 	// 止まったままになる。
 	c.jobsQueued(domain.JobSeekThumbnail)
+	// 登録の解除は所有者の操作として、外れた動画の数とともに記録する（specs/055-activity/research.md R-6）。
+	if err := recordMediaFolderRemoval(ctx, tx, &c, path, len(released), time.Now()); err != nil {
+		return err
+	}
 	return s.db.commit(ctx, tx, &c)
 }
 
