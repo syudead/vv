@@ -141,7 +141,9 @@ func (s *ScanStore) UpdateScanProgress(ctx context.Context, id int64, progress d
 // cause があれば、その文を error に、domain.ScanFailure で包まれた理由のコードと場所を
 // error_code・error_path に書く。包まれていない失敗は internal である
 // （specs/023-english-i18n/data-model.md §2）。
-func (s *ScanStore) FinishScan(ctx context.Context, id int64, state domain.ScanState, cause error) error {
+func (s *ScanStore) FinishScan(
+	ctx context.Context, id int64, state domain.ScanState, cause error, decider domain.ActivityDecider,
+) error {
 	var reason, code, path any
 	if cause != nil {
 		failureCode, failurePath := domain.ScanFailureOf(cause)
@@ -165,20 +167,22 @@ func (s *ScanStore) FinishScan(ctx context.Context, id int64, state domain.ScanS
 	//
 	// 監視の走査は読み直したディレクトリしか見ていないので、done でも判定しない。後継の
 	// 判定は done で閉じた手動の走査だけが行う（specs/042-folder-watch-import/research.md R-9）。
+	var origin string
+	if err := tx.QueryRowContext(ctx, `select origin from scans where id = ?`, id).Scan(&origin); err != nil {
+		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
+	}
 	var succeeded succession
-	if state == domain.ScanDone {
-		var origin string
-		if err := tx.QueryRowContext(ctx, `select origin from scans where id = ?`, id).Scan(&origin); err != nil {
+	if state == domain.ScanDone && domain.ScanOrigin(origin) == domain.ScanOriginManual {
+		if succeeded, err = applyReadySuccessions(ctx, tx); err != nil {
 			return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 		}
-		if domain.ScanOrigin(origin) == domain.ScanOriginManual {
-			if succeeded, err = applyReadySuccessions(ctx, tx); err != nil {
-				return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
-			}
-		}
+	}
+	// 失敗した走査を記録し、done の走査は開いている走査の記録を閉じる（specs/055-activity/research.md R-3）。
+	var c changes
+	if err := recordScanActivity(ctx, tx, &c, id, domain.ScanOrigin(origin), state, cause, decider, time.Now()); err != nil {
+		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 	}
 	// 走査が閉じると、対象に残りの仕事が無ければ取り込みは済む。
-	var c changes
 	c.remainingChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)

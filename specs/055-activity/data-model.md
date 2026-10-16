@@ -84,7 +84,7 @@ Indexes on `(status, id)`, `(feature, id)` and `(kind, subject_key, subject_key_
 | `failed` | A `work_info_fetch` that returned an error |
 | `superseded` | A newer entry of the same kind on the same subject started while this one was `attention` |
 | `decided_by_owner` | The owner bundled or dismissed the pair of an open `version_judgement` |
-| `gone` | The candidate of an open `version_judgement` disappeared with a video |
+| `gone` | The entry's subject left the library before the entry finished |
 | `already_reverted` | An `undo` whose target state had already been changed by the owner |
 
 ## `activity_entry_tags`

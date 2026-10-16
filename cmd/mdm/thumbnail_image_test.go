@@ -127,7 +127,7 @@ func (f *thumbnailImageFixture) scanAndGenerate() int64 {
 	if err := store.DeleteJobsForTest(f.ctx, f.db); err != nil {
 		f.t.Fatal(err)
 	}
-	if err := f.db.Ingest().EnqueueJob(f.ctx, domain.JobThumbnail, video.ID); err != nil {
+	if err := f.db.Ingest().EnqueueJob(f.ctx, domain.JobThumbnail, video.ID, domain.ActivityByRule); err != nil {
 		f.t.Fatal(err)
 	}
 	job, err := f.db.Ingest().ClaimJob(f.ctx, domain.JobThumbnail)

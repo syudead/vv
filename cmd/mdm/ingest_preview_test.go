@@ -34,7 +34,7 @@ func TestIngestPreviewMarksOnlyPreviewFailedAtRetryLimit(t *testing.T) {
 	if err := db.Ingest().ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetJobAttemptsForTest(ctx, db, domain.JobPreview, video.ID, domain.MaxJobAttempts-1); err != nil {
@@ -83,7 +83,7 @@ func TestIngestPreviewUnreadableSourceMarksFailedAtRetryLimit(t *testing.T) {
 	if err := db.Ingest().ApplyProbe(ctx, video.ID, probe, domain.EvaluatePlayability("mp4", probe)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.SetJobAttemptsForTest(ctx, db, domain.JobPreview, video.ID, domain.MaxJobAttempts-1); err != nil {

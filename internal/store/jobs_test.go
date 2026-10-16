@@ -31,7 +31,7 @@ func TestJobLifecycle(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 
@@ -71,7 +71,7 @@ func TestFailJobRetriesThenGivesUp(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 
@@ -111,7 +111,7 @@ func TestFailJobRecordsReason(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)
@@ -139,7 +139,7 @@ func TestEnqueueJobIsIdempotentWhilePending(t *testing.T) {
 	ctx := context.Background()
 
 	for i := 0; i < 5; i++ {
-		if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+		if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 			t.Fatalf("%d 回目の投入で失敗した: %v", i, err)
 		}
 	}
@@ -149,7 +149,7 @@ func TestEnqueueJobIsIdempotentWhilePending(t *testing.T) {
 	}
 
 	// 種類が違えば別のジョブである。
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if got := countJobs(t, db); got != 2 {
@@ -163,7 +163,7 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	for i := 0; i < domain.MaxJobAttempts; i++ {
@@ -176,7 +176,7 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 		}
 	}
 
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Ingest().ClaimJob(ctx, domain.JobProbe); err != nil {
@@ -192,7 +192,7 @@ func TestEnqueueJobRetriesAfterFailure(t *testing.T) {
 func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	for range domain.MaxJobAttempts {
@@ -211,7 +211,7 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 	if probeState != "failed" {
 		t.Fatalf("probe_state = %s, want failed", probeState)
 	}
-	if err := db.Ingest().EnsureJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnsureJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Ingest().ClaimJob(ctx, domain.JobProbe); !errors.Is(err, domain.ErrNoJob) {
@@ -224,7 +224,7 @@ func TestEnsureJobDoesNotReviveTerminalFailure(t *testing.T) {
 func TestEnsureJobRequeuesLegacyFailureOfPendingVideo(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	for range domain.MaxJobAttempts {
@@ -239,7 +239,7 @@ func TestEnsureJobRequeuesLegacyFailureOfPendingVideo(t *testing.T) {
 	}
 	recorder := &queuedRecorder{}
 	db.PublishTo(recorder)
-	if err := db.Ingest().EnsureJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnsureJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); fmt.Sprint(got) != "[probe]" {
@@ -263,7 +263,7 @@ func TestRequeueRunningJobs(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)
@@ -306,7 +306,7 @@ func TestHasUnfinishedJobs(t *testing.T) {
 
 	assertUnfinished(false)
 
-	if err := ingest.EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := ingest.EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	assertUnfinished(true) // queued
@@ -327,7 +327,7 @@ func TestHasUnfinishedJobs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := ingest.EnqueueJob(ctx, domain.JobProbe, other.ID); err != nil {
+	if err := ingest.EnqueueJob(ctx, domain.JobProbe, other.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	var failed domain.Job
@@ -357,7 +357,7 @@ func TestClaimJobTriesEveryLocationBeforeConsumingAnotherAttempt(t *testing.T) {
 		}
 		videoID = result.ID
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	for i := range 4 * domain.MaxJobAttempts {
@@ -401,7 +401,7 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 	}
 	// サムネイルは解析の後に取り出すので、解析は済ませておく。
 	probeDone(t, db, video.ID)
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Ingest().ClaimJob(ctx, domain.JobThumbnail); !errors.Is(err, domain.ErrNoJob) {
@@ -432,7 +432,7 @@ func TestClaimJobWaitsForMigratedLocationToBeRegistered(t *testing.T) {
 func TestClaimedJobBecomesStaleWhenLocationIsAdded(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)
@@ -479,7 +479,7 @@ func TestPreviewStateUsesContentIdentityForSuccessAndClaimIdentityForFailure(t *
 	if err := db.Ingest().ApplyProbe(ctx, videoID, probe, domain.EvaluatePlayability(domain.ContainerFromPath(fixturePath("/media/a.mp4")), probe)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
@@ -516,7 +516,7 @@ func TestPreviewStateUsesContentIdentityForSuccessAndClaimIdentityForFailure(t *
 func TestFailClaimedPreviewAtomicallyMarksTerminalState(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.sql.Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, videoID); err != nil {
@@ -544,7 +544,7 @@ func TestFailClaimedPreviewAtomicallyMarksTerminalState(t *testing.T) {
 func TestFailClaimedPreviewKeepsPendingWhileRetrying(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
@@ -569,7 +569,7 @@ func TestFailClaimedPreviewKeepsPendingWhileRetrying(t *testing.T) {
 func TestFailClaimedPreviewRollsBackJobWhenStateUpdateFails(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.sql.Exec(`update jobs set attempts = ? where kind = 'preview' and video_id = ?`, domain.MaxJobAttempts-1, videoID); err != nil {
@@ -601,7 +601,7 @@ func TestFailClaimedPreviewRollsBackJobWhenStateUpdateFails(t *testing.T) {
 func TestPreviewRunningJobIsRequeuedAfterRestart(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	claimed, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
@@ -626,7 +626,7 @@ func TestPreviewRunningJobIsRequeuedAfterRestart(t *testing.T) {
 func TestPreviewCompletionRejectsChangedContent(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
@@ -662,7 +662,7 @@ func TestPreviewSourceRejectsReassignedClaimedPathWithOriginalContentRemaining(t
 	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/b.mp4"), "b", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
@@ -691,7 +691,7 @@ func TestPreviewSourceRejectsReassignedClaimedPathWithOriginalContentRemaining(t
 func TestPreviewSourceAcceptsLocationOnlyChange(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
@@ -710,7 +710,7 @@ func TestPreviewSourceAcceptsLocationOnlyChange(t *testing.T) {
 func TestCompletePreviewAtomicallyFinishesAssetAndJobAfterCancellation(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobPreview, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobPreview)
@@ -758,7 +758,7 @@ func TestClaimedJobBecomesStaleWhenLowerIDLocationIsReassigned(t *testing.T) {
 	if lower.ID >= target.ID {
 		t.Fatalf("fixture IDs = %d, %d; want lower source ID", lower.ID, target.ID)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, target.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, target.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)
@@ -819,7 +819,7 @@ func TestClaimJobTakesOnlyTheRequestedKind(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	probeDone(t, db, videoID)
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Ingest().ClaimJob(ctx, domain.JobProbe); !errors.Is(err, domain.ErrNoJob) {
@@ -880,21 +880,21 @@ func TestJobsQueuedNotification(t *testing.T) {
 		recorder.Publish(events...)
 	}))
 
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); fmt.Sprint(got) != "[probe]" {
 		t.Errorf("EnqueueJob の知らせ = %v, want [probe]", got)
 	}
 
-	if err := db.Ingest().EnsureJob(ctx, domain.JobThumbnail, videoID); err != nil {
+	if err := db.Ingest().EnsureJob(ctx, domain.JobThumbnail, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); fmt.Sprint(got) != "[thumbnail]" {
 		t.Errorf("EnsureJob の知らせ = %v, want [thumbnail]", got)
 	}
 	// 既にあるので何も積まない。
-	if err := db.Ingest().EnsureJob(ctx, domain.JobThumbnail, videoID); err != nil {
+	if err := db.Ingest().EnsureJob(ctx, domain.JobThumbnail, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if got := recorder.take(); len(got) != 0 {
@@ -966,7 +966,7 @@ func TestRemainingJobsCountQueuedAndRunningPerStage(t *testing.T) {
 		{domain.JobProbe, videoID}, {domain.JobProbe, other.ID}, {domain.JobThumbnail, videoID},
 		{domain.JobPreview, other.ID}, {domain.JobProbe, outside.ID},
 	} {
-		if err := db.Ingest().EnqueueJob(ctx, job.kind, job.id); err != nil {
+		if err := db.Ingest().EnqueueJob(ctx, job.kind, job.id, domain.ActivityByRule); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -996,7 +996,7 @@ func TestRemainingJobsCountQueuedAndRunningPerStage(t *testing.T) {
 func TestClaimThumbnailWaitsForProbe(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Ingest().ClaimJob(ctx, domain.JobThumbnail); !errors.Is(err, domain.ErrNoJob) {
@@ -1038,7 +1038,7 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/legacy/a.mp4"), "a", "key-a", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if got := remainingByKind(t, db); got[domain.JobProbe] != 1 {
@@ -1094,10 +1094,10 @@ func TestDeleteMediaFolderWakesSeekThumbnailWhenThumbnailWorkLeaves(t *testing.T
 	}
 	probeDone(t, db, blocking.ID)
 	probeDone(t, db, waiting.ID)
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, blocking.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, blocking.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobSeekThumbnail, waiting.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobSeekThumbnail, waiting.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := db.Ingest().ClaimJob(ctx, domain.JobSeekThumbnail); !errors.Is(err, domain.ErrNoJob) {

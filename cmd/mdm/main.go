@@ -311,9 +311,13 @@ func run(opts runOptions) error {
 	// アクティビティの記録のうち、前回の停止で処理中のまま残ったものを中断にする。ワーカーを動かす前に行う。
 	// やり直しと取り消しは種類ごとに、その処理の use case へ振り分ける（specs/055-activity/plan.md）。
 	activity := app.NewActivity(app.ActivityOptions{
-		Store:    db.Activity(),
-		Retriers: map[domain.ActivityKind]app.ActivityRetrier{domain.ActivityAutoTag: autoTagger},
-		Undoers:  map[domain.ActivityKind]app.ActivityUndoer{domain.ActivityAutoTag: autoTagger},
+		Store: db.Activity(),
+		Retriers: map[domain.ActivityKind]app.ActivityRetrier{
+			domain.ActivityAutoTag: autoTagger,
+			domain.ActivityImport:  app.NewImportRetrier(ingestStore),
+			domain.ActivityScan:    scans,
+		},
+		Undoers: map[domain.ActivityKind]app.ActivityUndoer{domain.ActivityAutoTag: autoTagger},
 	})
 	recoverActivity(backgroundCtx, activity, logger)
 	// 重複の自動判定。「同じ動画かもしれない」候補を指紋のコマごとに比べ、食い違う区間だけを判定の口に

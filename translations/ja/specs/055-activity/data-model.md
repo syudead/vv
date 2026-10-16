@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: 5c2d6d96f920774e6fd8338b93c4958e876891469b48c2ab3126e6916f3513ba
+sourceHash: 5e893b5bc45636dfe13c40b1d75fcea3c251a874d1636313d6156745d5442fe1
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -78,7 +78,7 @@ sourceHash: 5c2d6d96f920774e6fd8338b93c4958e876891469b48c2ab3126e6916f3513ba
 | `failed` | エラーを返した `work_info_fetch` |
 | `superseded` | この項目が `attention` の間に、同じ対象に対する同じ種類の新しい項目が始まった |
 | `decided_by_owner` | 所有者が、開いている `version_judgement` の組をまとめたか退けた |
-| `gone` | 開いている `version_judgement` の候補が、動画とともになくなった |
+| `gone` | 項目が終わる前に、項目の対象がライブラリから離れた |
 | `already_reverted` | 対象の状態を所有者がすでに変えていた `undo` |
 
 ## `activity_entry_tags` {#activity_entry_tags}

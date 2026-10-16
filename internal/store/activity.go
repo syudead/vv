@@ -44,6 +44,13 @@ func init() {
 	}
 }
 
+// activityWriter は記録を書く取引である。*sql.Tx と、begin immediate で取引を始めた *sql.Conn
+// （仕事の専有）が満たす。
+type activityWriter interface {
+	queryExecer
+	rowQueryer
+}
+
 // nullID は 0 の id を列の null にする。
 func nullID(id int64) any {
 	if id == 0 {
@@ -56,7 +63,7 @@ func nullID(id int64) any {
 // Feature は種類の機能で、undo では取り消した記録（UndoesID）の機能を同じ取引で読んで写す。同じ取引で、同じ
 // 種類と対象の古い attention の記録を done/superseded で閉じる（domain.ActivityEntry.Supersedes）。c に
 // 記録を書いたことを残し、確定後に domain.ActivityChanged を発行させる。
-func recordActivity(ctx context.Context, tx *sql.Tx, c *changes, entry domain.ActivityEntry, now time.Time) (int64, error) {
+func recordActivity(ctx context.Context, tx activityWriter, c *changes, entry domain.ActivityEntry, now time.Time) (int64, error) {
 	feature, err := activityFeatureOf(ctx, tx, entry)
 	if err != nil {
 		return 0, err
@@ -88,7 +95,7 @@ func recordActivity(ctx context.Context, tx *sql.Tx, c *changes, entry domain.Ac
 }
 
 // activityFeatureOf は記録 entry の機能を返す。undo は取り消した記録の機能である。
-func activityFeatureOf(ctx context.Context, tx *sql.Tx, entry domain.ActivityEntry) (domain.ActivityFeature, error) {
+func activityFeatureOf(ctx context.Context, tx activityWriter, entry domain.ActivityEntry) (domain.ActivityFeature, error) {
 	if feature, ok := entry.Kind.Feature(); ok {
 		return feature, nil
 	}
@@ -105,7 +112,7 @@ func activityFeatureOf(ctx context.Context, tx *sql.Tx, entry domain.ActivityEnt
 
 // supersedeActivity は新しい記録 entry が閉じる古い記録を done/superseded にする。閉じるかの判断は
 // domain.ActivityEntry.Supersedes が持ち、ここは候補を種類と対象の索引で引いてそれに渡す。
-func supersedeActivity(ctx context.Context, tx *sql.Tx, entry domain.ActivityEntry, at int64) error {
+func supersedeActivity(ctx context.Context, tx activityWriter, entry domain.ActivityEntry, at int64) error {
 	rows, err := tx.QueryContext(ctx, `select id, status from activity_entries
 		where kind = ? and subject_key = ? and subject_key_b is ? and subject_kind = ? and id < ? and status = ?`,
 		string(entry.Kind), entry.Subject.Key, nullString(entry.Subject.KeyB), string(entry.Subject.Kind), entry.ID,
@@ -139,8 +146,26 @@ func supersedeActivity(ctx context.Context, tx *sql.Tx, entry domain.ActivityEnt
 	return nil
 }
 
+// activityRetryOffered は記録 id が取引 tx の中でまだやり直しを出すかを返す（domain.ActivityEntry.RetryOffered）。
+// やり直しを書く取引の中で読み直し、同時に届いた別のやり直しが閉じた記録を二度やり直さない。無い記録は偽である。
+func activityRetryOffered(ctx context.Context, tx activityWriter, id int64) (bool, error) {
+	var entry domain.ActivityEntry
+	var kind, status, reason string
+	err := tx.QueryRowContext(ctx, `select kind, status, coalesce(reason, '') from activity_entries where id = ?`, id).
+		Scan(&kind, &status, &reason)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("cannot read the activity entry to retry (id=%d): %w", id, err)
+	}
+	entry.Kind, entry.Status, entry.Reason = domain.ActivityKind(kind), domain.ActivityStatus(status),
+		domain.ActivityReason(reason)
+	return entry.RetryOffered(), nil
+}
+
 // setActivityState は記録 id の状態と理由か結果を state にする。記録を変えたことを c に残す。
-func setActivityState(ctx context.Context, tx *sql.Tx, c *changes, id int64, state domain.ActivityState, now time.Time) error {
+func setActivityState(ctx context.Context, tx activityWriter, c *changes, id int64, state domain.ActivityState, now time.Time) error {
 	if err := writeActivityState(ctx, tx, id, state, now.UnixMilli()); err != nil {
 		return err
 	}
@@ -148,7 +173,7 @@ func setActivityState(ctx context.Context, tx *sql.Tx, c *changes, id int64, sta
 	return nil
 }
 
-func writeActivityState(ctx context.Context, tx *sql.Tx, id int64, state domain.ActivityState, at int64) error {
+func writeActivityState(ctx context.Context, tx activityWriter, id int64, state domain.ActivityState, at int64) error {
 	_, err := tx.ExecContext(ctx, `update activity_entries set status = ?, reason = ?, outcome = ?, updated_at = ?
 		where id = ?`, string(state.Status), nullString(string(state.Reason)), nullString(string(state.Outcome)), at, id)
 	if err != nil {
@@ -418,7 +443,8 @@ func groupedCounts(
 	return nil
 }
 
-// attachActivityDetails は記録に、auto_tag の付けたタグと、対象の鍵ごとの audience が開ける今の動画を添える。
+// attachActivityDetails は記録に、auto_tag の付けたタグ、running の import の進み具合と、対象の鍵ごとの
+// audience が開ける今の動画を添える。
 func attachActivityDetails(ctx context.Context, q rowsQueryer, audience domain.Audience, entries []domain.ActivityEntry) error {
 	if len(entries) == 0 {
 		return nil
@@ -426,26 +452,37 @@ func attachActivityDetails(ctx context.Context, q rowsQueryer, audience domain.A
 	if err := attachActivityTags(ctx, q, entries); err != nil {
 		return err
 	}
+	if err := attachImportProgress(ctx, q, entries); err != nil {
+		return err
+	}
 	return attachActivityVideos(ctx, q, audience, entries)
 }
 
-// attachActivityTags は auto_tag の記録に、付けたタグを名前の順で添える。
-func attachActivityTags(ctx context.Context, q rowsQueryer, entries []domain.ActivityEntry) error {
+// activityEntryIDs は keep を満たす記録の id から entries の添字を引く表と、それらの id の JSON の配列を返す。
+func activityEntryIDs(entries []domain.ActivityEntry, keep func(domain.ActivityEntry) bool) (map[int64]int, string) {
 	index := map[int64]int{}
-	var ids []int64
+	ids := []int64{}
 	for i, entry := range entries {
-		if entry.Kind == domain.ActivityAutoTag {
+		if keep(entry) {
 			index[entry.ID] = i
 			ids = append(ids, entry.ID)
 		}
 	}
-	if len(ids) == 0 {
+	encoded, _ := json.Marshal(ids) // 整数の一覧の Marshal は失敗しない。
+	return index, string(encoded)
+}
+
+// attachActivityTags は auto_tag の記録に、付けたタグを名前の順で添える。
+func attachActivityTags(ctx context.Context, q rowsQueryer, entries []domain.ActivityEntry) error {
+	index, encoded := activityEntryIDs(entries, func(entry domain.ActivityEntry) bool {
+		return entry.Kind == domain.ActivityAutoTag
+	})
+	if len(index) == 0 {
 		return nil
 	}
-	encoded, _ := json.Marshal(ids) // 整数の一覧の Marshal は失敗しない。
 	rows, err := q.QueryContext(ctx, `select entry_id, tag_id, tag_name, suggested, probability,
 		coalesce(undone_by, 0) from activity_entry_tags where entry_id in (select value from json_each(?))
-		order by entry_id, tag_name, tag_id`, string(encoded))
+		order by entry_id, tag_name, tag_id`, encoded)
 	if err != nil {
 		return fmt.Errorf("cannot read the activity tags: %w", err)
 	}

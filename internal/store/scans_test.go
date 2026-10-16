@@ -94,7 +94,7 @@ func TestFinishScan(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanDone, nil); err != nil {
+	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanDone, nil, domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 
@@ -130,7 +130,7 @@ func TestFinishScanRecordsError(t *testing.T) {
 	folder := fixturePath("/media/unreadable")
 	cause := domain.NewScanFailure(domain.ScanErrorMediaFolderUnreadable, folder,
 		errors.New("could not read the media folder"))
-	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanFailed, cause); err != nil {
+	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanFailed, cause, domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 
@@ -158,7 +158,7 @@ func TestFinishScanRecordsInternalForUncodedError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanFailed, errors.New("database is locked")); err != nil {
+	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanFailed, errors.New("database is locked"), domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 	got, err := db.Scans().CurrentScan(ctx)
@@ -173,7 +173,7 @@ func TestFinishScanRecordsInternalForUncodedError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Scans().FinishScan(ctx, next.ID, domain.ScanDone, nil); err != nil {
+	if err := db.Scans().FinishScan(ctx, next.ID, domain.ScanDone, nil, domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 	got, err = db.Scans().CurrentScan(ctx)
@@ -194,7 +194,7 @@ func TestCurrentScanPrefersRunning(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Scans().FinishScan(ctx, finished.ID, domain.ScanDone, nil); err != nil {
+	if err := db.Scans().FinishScan(ctx, finished.ID, domain.ScanDone, nil, domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 
