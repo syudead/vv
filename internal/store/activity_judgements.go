@@ -251,6 +251,19 @@ func closeGonePairActivities(ctx context.Context, tx *sql.Tx, c *changes, now ti
 		string(domain.ActivitySubjectPair))
 }
 
+// closeDroppedPairActivities は、鍵 key を含む組のうち、候補の行が無くなったのに両方の鍵の動画がまだライブラリに
+// ある組の開いている version_judgement の記録を done/superseded で閉じる。指紋の作り直し（rebuildVersionCandidates）
+// で組が候補から外れたときで、判断したものは変えない（data-model.md「Outcomes」）。引き継ぎを待つ前の中身や
+// ライブラリから外れた鍵の組は、動画の行が無いのでここでは閉じない（closeGonePairActivities）。
+func closeDroppedPairActivities(ctx context.Context, tx *sql.Tx, c *changes, key string, now time.Time) error {
+	return closeActivities(ctx, tx, c, `subject_kind = ?1 and (subject_key = ?2 or subject_key_b = ?2)
+		and not exists (select 1 from video_version_candidates vc
+		                 where vc.key_a = activity_entries.subject_key and vc.key_b = activity_entries.subject_key_b)
+		and exists (select 1 from videos v where v.content_key = activity_entries.subject_key)
+		and exists (select 1 from videos v where v.content_key = activity_entries.subject_key_b)`,
+		domain.ActivitySuperseded, "", now, string(domain.ActivitySubjectPair), key)
+}
+
 // closeDeletedPairActivities は、取引 c が動画の行を消した（videosDeleted）とき、鍵がライブラリから外れた組の
 // 開いている version_judgement の記録を done/gone で閉じる。動画の行を消すと候補も消え（releaseContentIndex）、
 // その動画を後継に待っていた前の中身の引き継ぎも消える。同じパスの中身が変わって消えた前の中身は、引き継ぎを

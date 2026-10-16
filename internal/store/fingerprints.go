@@ -121,12 +121,17 @@ func decodeFingerprintArgs(hashes, interval driver.Value) (domain.Fingerprint, b
 // （data-model.md §7）。相手は同じ版の指紋を持ち、尺が domain.DurationsMatch の幅にある内容で、
 // 却下された組と同じ集まりの組を除き、距離が 0 以上 domain.FingerprintMatchMaxDistance 以下の
 // もの。key の動画の尺が分からなければ候補を作らない。作った候補は組の開いている記録に付き直し、判定が入なら
-// 判定できる組に記録を開く（syncPairActivities、specs/055-activity/data-model.md「Rules」）。
+// 判定できる組に記録を開く（syncPairActivities、specs/055-activity/data-model.md「Rules」）。作り直しで候補から
+// 外れた組の開いている記録は閉じる（closeDroppedPairActivities）。
 func rebuildVersionCandidates(ctx context.Context, tx *sql.Tx, c *changes, key string, fingerprint domain.Fingerprint) error {
 	if err := computeVersionCandidates(ctx, tx, key, fingerprint); err != nil {
 		return err
 	}
-	return syncPairActivities(ctx, tx, c, []string{key}, time.Now())
+	now := time.Now()
+	if err := syncPairActivities(ctx, tx, c, []string{key}, now); err != nil {
+		return err
+	}
+	return closeDroppedPairActivities(ctx, tx, c, key, now)
 }
 
 // computeVersionCandidates は rebuildVersionCandidates の候補の行を作り直す部分である。

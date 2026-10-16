@@ -106,7 +106,7 @@ The code is
 | Restored by undoing the drag-organize bundle that closed it | The same entry reopens with the row's state |
 | Its key's content changed at the same path | Kept open until the succession is decided: re-keyed when it carries over, `done`/`gone` when it does not |
 | A key left the library | `done`/`gone` |
-| Swept into one bundle by another pair's automatic bundle | `done`/`superseded` |
+| Swept into one bundle by another pair's automatic bundle, or dropped by a rebuild while both keys stay in the library | `done`/`superseded` |
 
 The decider is `ai` with the probability when the model's answer decided, and
 `rule` otherwise

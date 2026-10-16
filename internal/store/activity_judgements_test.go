@@ -287,6 +287,31 @@ func TestRebuildingCandidatesKeepsThePairEntry(t *testing.T) {
 	}
 }
 
+// 指紋の作り直しで組が候補から外れると、両方の鍵がライブラリにあっても組の開いている記録は done/superseded で
+// 閉じ、判断したものは変えない（data-model.md「Outcomes」）。
+func TestRebuildingCandidatesClosesTheDroppedPairEntry(t *testing.T) {
+	db, ids := judgementFixture(t)
+	undecided := judgePair(t, db, domain.VersionJudgeResult{
+		Verdict: domain.VersionUndecided, Decider: domain.ActivityByAI, Probability: probabilityOf(0.5),
+	})
+
+	applyFingerprint(t, db, ids["a"], testFingerprint(3, 0))
+	var candidates int
+	if err := db.sql.QueryRow(`select count(*) from video_version_candidates where key_a = 'key-a' and key_b = 'key-b'`).
+		Scan(&candidates); err != nil {
+		t.Fatal(err)
+	}
+	if candidates != 0 {
+		t.Fatalf("作り直したあとの (key-a, key-b) の候補 = %d 行, want 0", candidates)
+	}
+	closed := onlyPairEntry(t, db)
+	if closed.ID != undecided.ID {
+		t.Errorf("閉じた記録 = %d, want %d", closed.ID, undecided.ID)
+	}
+	expectEntryState(t, closed, domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivitySuperseded},
+		domain.ActivityByAI)
+}
+
 // 判定を入れると待っている判定できる候補に記録を開き、入のあいだに現れた候補にも開く。切っても待ちのまま残り、
 // 鍵の動画がライブラリから外れると gone で閉じる（data-model.md「Kinds」「Rules」）。
 func TestJudgingSettingOpensWaitingEntriesAndGoneClosesThem(t *testing.T) {
