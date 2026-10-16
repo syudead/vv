@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: 8164a3416c5a8af177d4d221fa86a7298fdd6778357988a96f89b7c8ad3de28d
+sourceHash: a87645644b77efda3f16826372007fe7a5c1ff6eff21ca5cb58f69181d0f2354
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -38,6 +38,8 @@ sourceHash: 8164a3416c5a8af177d4d221fa86a7298fdd6778357988a96f89b7c8ad3de28d
 | `probability` | real | 可 | モデルが決めたか未決定のまま残した重複の組についての、モデルの答え |
 | `undo_keys` | text | 可 | まとめた組について、加わった側のメンバーの鍵と、その側の以前の代表の鍵を持つ JSON オブジェクト ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | `undone_by` | integer | 可 | この項目を取り消した所有者の項目 |
+| `tag_id` | integer | 可 | 所有者の `tag_attach`、`tag_detach`、`tag_keep`、`tag_reject` について、そのタグ。名前の変更を越えて残る |
+| `decided_mark` | integer | 可 | 終わった `auto_tag`、またはまとめたか退けた `version_judgement` について、結果を書いたときの最大の項目 id。id がそれより大きい所有者の項目は結果の後に来た ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | `created_at`、`updated_at` | integer | 不可 | Unix ミリ秒 |
 
 **関係**: `videos` へはなし。`undone_by` はほかの項目を指す。`(status, id)`、`(feature, id)`、`(kind, subject_key, subject_key_b, id)` にインデックスを置く。`q` の絞り込みは、ほかの絞り込みが残した項目のラベルを走査する。数万行に文字列のインデックスは要らない。
@@ -92,9 +94,17 @@ sourceHash: 8164a3416c5a8af177d4d221fa86a7298fdd6778357988a96f89b7c8ad3de28d
 | `tag_name` | text | 不可 | 書いたとおりの名前 |
 | `suggested` | integer | 不可 | 提案したタグとして加えたときは 1 |
 | `user_key` | text | 不可 | 付与を書いたユーザーキー (内容の鍵かまとまりの鍵) |
-| `attached_at` | integer | 不可 | 書いた `video_tags.created_at`。取り消しは、まだその値を持つ行だけを削除する |
 | `probability` | real | 不可 | モデルの答え |
 | `undone_by` | integer | 可 | `undo` の項目 |
+
+## `activity_entry_keys` {#activity_entry_keys}
+
+所有者のタグの項目が触れた内容の鍵。鍵そのもの、またはまとまりの鍵でタグを変えたときはそのまとまりのすべてのメンバーである。取り消しは所有者の変更を `tag_id` と内容の鍵で照合するので、その間の名前の変更や代表の変更はそれを隠さない。
+
+| フィールド | 型 | Null | 意味 |
+| --- | --- | --- | --- |
+| `entry_id` | integer | 不可 | 所有者のタグの項目。`content_key` とともに主キー |
+| `content_key` | text | 不可 | 変更が触れた内容の鍵 |
 
 ## `video_version_judging_holds` {#video_version_judging_holds}
 
@@ -119,8 +129,9 @@ sourceHash: 8164a3416c5a8af177d4d221fa86a7298fdd6778357988a96f89b7c8ad3de28d
 | 起動時、ワーカーが始まる前に、理由が `processing` の `running` の項目をすべて `attention`/`interrupted` にする。`waiting` の項目は残る | `store`。`cmd/mdm` から `Scans.RecoverInterrupted` と並べて呼ぶ |
 | 再試行を示すのは、理由が `failed` か `interrupted` の `attention` で、種類が `import`、`scan`、`auto_tag`、`version_judgement` のどれかのときである | `domain` |
 | 取り消しを示すのは、`rule` か `ai` が決めてまだ取り消していない項目である: 結果が `same` か `different` の `version_judgement`、または `auto_tag` の項目のタグ | `domain` |
+| 取り消しは「所有者がその後に変えた」かを、行の時刻からは決して決めず、ログから決める: 同じ対象に対する所有者の項目 (タグの `tag_id` を持ち、動画の内容の鍵が `activity_entry_keys` にある `tag_attach`、`tag_detach`、`tag_keep`、`tag_reject`。メンバーの `bundle`、`unbundle`、`organize_undo`。組の `dismiss`) で、id が取り消す項目の `decided_mark` より大きいものは、所有者が結果の後に再び決めたことを意味する ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) | `store` (1 つのパッケージ内の照会) |
 | 判定の取得は、`video_version_unbundles` にある組を飛ばすのと同じように、`video_version_judging_holds` にある組を飛ばす | `store` (`judgeablePairs`) |
-| 同じパスでの内容の変更は、`moveKeyPairs` が退けた組のキーを付け替えるのと同じように、`video_version_judging_holds` と開いている項目の対象の鍵を付け替える | `store` (引き継ぎ) |
+| 同じパスでの内容の変更は、`moveKeyPairs` が退けた組のキーを付け替えるのと同じように、`video_version_judging_holds` と、開いているか終わったかを問わず項目が持つすべての鍵 (動画か組の対象、`auto_tag` の項目の `activity_entry_tags.user_key`、所有者のタグの項目の `activity_entry_keys`、自動のまとめの `undo_keys`) を付け替えるので、後の取り消しはユーザーデータとともに移った行を見つける | `store` (引き継ぎ) |
 
 ## 変わらないもの {#what-does-not-change}
 
