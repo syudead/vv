@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/home.md
-sourceHash: 8d1ef33d6c744d025ef703292bf67bab4628cf9498ecaf245be758a7ec783b50
+sourceHash: 5bcdc445f3aa01b7c78ed0471d64a90ad778e9ef8c83da5e8f30e8643a77f60e
 ---
 
 # ホームの棚と規則の整理役 {#home-shelves-and-the-rule-organizer}
@@ -75,3 +75,16 @@ stateDiagram-v2
 | `jobs` テーブルの種類 | `jobs` の行は 1 つの動画とその場所に属する |
 | 数時間ごとのタイマー | 要件 8 は棚の追加をスキャンの終わりに結びつける |
 | 追加のしきい値にライブラリの割合を使う | 20,000 本の動画では 2,000 本の棚にない動画を待つ |
+
+## 所有者の固定の棚 {#the-owners-fixed-shelves}
+
+フォルダの棚の後に、所有者のホームは続きを見る動画、最近追加した動画、棚にない動画、おすすめを並べる。ゲストは最近追加した動画と棚にない動画だけを得る。視聴履歴は所有者だけのものだからである ([R-13](../../specs/057-home/research.md#r-13-four-fixed-shelves-two-of-them-the-owners-only))。
+
+- **Continue watching** は、ライブラリの `watch=inProgress` の一覧を最後の再生の順に並べたもので、[`internal/store/home_reads.go`](../../internal/store/home_reads.go) が読む。保持した項目は再生位置を保存するたびに捨てる。動画を視聴中のままにする再生は、何の通知もなく順序を変えるからである。
+- **Recommended** は種があるときだけ並ぶ。種は、直近 90 日に最も多く再生した最大 10 本の動画と、最新のお気に入り最大 10 本である ([`internal/store/home_recommend.go`](../../internal/store/home_recommend.go))。[`internal/app/home.go`](../../internal/app/home.go) は、種でも見終わった動画でもない見える動画を、関連動画の `RelatedScorer` で求めたいずれかの種への最も高い近さで順位付けし、先頭の 24 本を残し、その順序を 10 分間保持する。20,000 本の動画を 20 個の種に対して採点すると 1 コアで数秒かかるので、候補は並列に採点し、棚の読み取りは store が他の棚を読むのと並行して順位を計算する。
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| すべての種への近さの合計 | 種の大きな 1 つの集まりに近い動画が棚全体を埋める |
+| 読み取りのたびに順位付けする | 1 回の処理がすべての動画の手がかりを読み、ホームの 1 秒に収まらない |
+| 次の通知まで保持する Continue watching | 視聴中の動画を再生しても何も発行しないので、棚は 10 分間古い順序を保つ |
