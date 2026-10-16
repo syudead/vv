@@ -44,16 +44,10 @@ func (s *SmartFolderStore) CreateSmartFolder(ctx context.Context, create domain.
 		if err := ensureSmartFolderParent(ctx, tx, 0, folder.ParentID); err != nil {
 			return nil, err
 		}
-		now := smartFolderNow().UnixMilli()
-		result, err := tx.ExecContext(ctx, `insert into smart_folders
-			(parent_id, name, title_key, rule, sort, owner_kept, created_at, updated_at) values (?, ?, ?, ?, ?, 1, ?, ?)`,
-			nullableID(folder.ParentID), folder.Name, domain.NaturalSortKey(folder.Name), rule, string(folder.Sort), now, now)
+		var err error
+		id, err = insertSmartFolder(ctx, tx, folder, rule, true, 0)
 		if err != nil {
-			return nil, fmt.Errorf("cannot create the smart folder: %w", err)
-		}
-		id, err = result.LastInsertId()
-		if err != nil {
-			return nil, fmt.Errorf("cannot create the smart folder: %w", err)
+			return nil, err
 		}
 		return smartFolderEditNotice(ctx, tx, []int64{id}, folder.ParentID)
 	})
@@ -104,45 +98,86 @@ func (s *SmartFolderStore) ChangeSmartFolder(ctx context.Context, id int64, chan
 // 無ければ domain.ErrNotFound。
 func (s *SmartFolderStore) DeleteSmartFolder(ctx context.Context, id int64) error {
 	return writeWithEvents(ctx, s.db, "delete the smart folder", func(tx *sql.Tx) ([]domain.Event, error) {
-		playlists, err := queryInt64s(ctx, tx, `with recursive down (id) as (
-				select ?
-				union
-				select f.id from smart_folders f join down on f.parent_id = down.id)
-			select distinct playlist_id from playlist_items
-			where smart_folder_id in (select id from down) order by playlist_id`, id)
-		if err != nil {
-			return nil, fmt.Errorf("cannot read the playlists: %w", err)
-		}
-		folder, err := readSmartFolder(ctx, tx, id)
-		if err != nil {
-			return nil, err
-		}
-		// 子孫は外部キーで消えるので、名指すフォルダは消す前に読む。
-		events, err := smartFolderEditNotice(ctx, tx, []int64{id}, folder.ParentID)
-		if err != nil {
-			return nil, err
-		}
-		result, err := tx.ExecContext(ctx, `delete from smart_folders where id = ?`, id)
-		if err != nil {
-			return nil, fmt.Errorf("cannot delete the smart folder: %w", err)
-		}
-		deleted, err := result.RowsAffected()
-		if err != nil {
-			return nil, fmt.Errorf("cannot delete the smart folder: %w", err)
-		}
-		if deleted == 0 {
-			return nil, smartFolderMissing()
-		}
-		if err := renumberPlaylists(ctx, tx, playlists); err != nil {
-			return nil, err
-		}
-		for _, playlistID := range playlists {
-			if err := touchPlaylist(ctx, tx, playlistID); err != nil {
-				return nil, err
-			}
-		}
-		return events, nil
+		return deleteSmartFolder(ctx, tx, id)
 	})
+}
+
+// insertSmartFolder は、確かめたフォルダ folder（checkSmartFolder が返した条件の JSON rule）を取引 tx
+// で挿入し、id を返す。ownerKept は所有者のフォルダか、homePosition はホームの位置（0 なら棚に
+// しない）である。スマートフォルダを作る役割（SmartFolderStore・HomeStore）が共有する。
+func insertSmartFolder(ctx context.Context, tx *sql.Tx, folder domain.SmartFolder, rule string, ownerKept bool, homePosition int) (int64, error) {
+	now := smartFolderNow().UnixMilli()
+	var position any
+	if homePosition > 0 {
+		position = homePosition
+	}
+	result, err := tx.ExecContext(ctx, `insert into smart_folders
+		(parent_id, name, title_key, rule, sort, owner_kept, home_position, created_at, updated_at)
+		values (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		nullableID(folder.ParentID), folder.Name, domain.NaturalSortKey(folder.Name), rule, string(folder.Sort),
+		ownerKept, position, now, now)
+	if err != nil {
+		return 0, fmt.Errorf("cannot create the smart folder: %w", err)
+	}
+	id, err := result.LastInsertId()
+	if err != nil {
+		return 0, fmt.Errorf("cannot create the smart folder: %w", err)
+	}
+	return id, nil
+}
+
+// deleteSmartFolder はスマートフォルダ id を取引 tx で消し、確定後に発行する知らせを返す。子孫と
+// それらのお気に入り・プレイリストの項目は外部キーで消え、項目を失ったプレイリストを詰め直して更新日時を
+// 進める（グループの解散と同じ）。消えるフォルダにホームの棚があれば domain.HomeChanged も知らせる
+// （specs/057-home/research.md R-16）。無ければ domain.ErrNotFound。スマートフォルダを消す役割
+// （SmartFolderStore・HomeStore）が共有する。
+func deleteSmartFolder(ctx context.Context, tx *sql.Tx, id int64) ([]domain.Event, error) {
+	const subtree = `with recursive down (id) as (
+			select ?
+			union
+			select f.id from smart_folders f join down on f.parent_id = down.id) `
+	playlists, err := queryInt64s(ctx, tx, subtree+`select distinct playlist_id from playlist_items
+		where smart_folder_id in (select id from down) order by playlist_id`, id)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the playlists: %w", err)
+	}
+	shelves, err := queryInt64s(ctx, tx, subtree+`select f.id from smart_folders f
+		where f.id in (select id from down) and f.home_position is not null`, id)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the home shelves: %w", err)
+	}
+	folder, err := readSmartFolder(ctx, tx, id)
+	if err != nil {
+		return nil, err
+	}
+	// 子孫は外部キーで消えるので、名指すフォルダは消す前に読む。
+	events, err := smartFolderEditNotice(ctx, tx, []int64{id}, folder.ParentID)
+	if err != nil {
+		return nil, err
+	}
+	result, err := tx.ExecContext(ctx, `delete from smart_folders where id = ?`, id)
+	if err != nil {
+		return nil, fmt.Errorf("cannot delete the smart folder: %w", err)
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return nil, fmt.Errorf("cannot delete the smart folder: %w", err)
+	}
+	if deleted == 0 {
+		return nil, smartFolderMissing()
+	}
+	if err := renumberPlaylists(ctx, tx, playlists); err != nil {
+		return nil, err
+	}
+	for _, playlistID := range playlists {
+		if err := touchPlaylist(ctx, tx, playlistID); err != nil {
+			return nil, err
+		}
+	}
+	if len(shelves) > 0 {
+		events = append(events, domain.HomeChanged{})
+	}
+	return events, nil
 }
 
 // SmartFolder はスマートフォルダ id の行を返す。無ければ domain.ErrNotFound。
@@ -349,9 +384,11 @@ func smartFolderParents(ctx context.Context, tx *sql.Tx) (map[int64]int64, error
 func readSmartFolder(ctx context.Context, q queryRower, id int64) (domain.SmartFolder, error) {
 	var folder domain.SmartFolder
 	var rule, sort string
-	err := q.QueryRowContext(ctx, `select id, coalesce(parent_id, 0), name, rule, sort, owner_kept, created_at, updated_at
+	err := q.QueryRowContext(ctx, `select id, coalesce(parent_id, 0), name, rule, sort, owner_kept,
+			coalesce(home_position, 0), created_at, updated_at
 		from smart_folders where id = ?`, id).
-		Scan(&folder.ID, &folder.ParentID, &folder.Name, &rule, &sort, &folder.OwnerKept, &folder.CreatedAt, &folder.UpdatedAt)
+		Scan(&folder.ID, &folder.ParentID, &folder.Name, &rule, &sort, &folder.OwnerKept, &folder.HomePosition,
+			&folder.CreatedAt, &folder.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.SmartFolder{}, smartFolderMissing()
 	}

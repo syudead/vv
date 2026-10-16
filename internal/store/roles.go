@@ -124,6 +124,13 @@ type GroupStore struct{ db *DB }
 // 確定後に domain.SmartFoldersChanged を発行するため、発行先を持つ *DB を通して使う。
 type SmartFolderStore struct{ db *DB }
 
+// HomeStore はホームの棚（位置を持つスマートフォルダ）の一覧、所有者の棚の並びの書き込み、整理役の
+// 案の適用と、整理役の settings のキーを受け持つ（home.go、specs/057-home/data-model.md、
+// research.md R-7、R-8）。フォルダの挿入と削除は SmartFolderStore の公開メソッドを呼ばず、パッケージ内の
+// 関数（insertSmartFolder・deleteSmartFolder）を共有する。確定後に domain.HomeChanged と
+// domain.SmartFoldersChanged を発行するため、発行先を持つ *DB を通して使う。
+type HomeStore struct{ db *DB }
+
 // OrganizeStore はドラッグの操作（並べ替えなど）と、その取り消しの像と復元を受け持つ（organize.go・
 // organize_image.go、specs/050-drag-organize/data-model.md「Operations」「Undo image」）。操作は
 // グループと集まりの表にまたがるので、GroupStore・VersionStore の公開メソッドを呼ばず、パッケージ
@@ -176,6 +183,7 @@ func (db *DB) Versions() *VersionStore         { return &VersionStore{db: db} }
 func (db *DB) Groups() *GroupStore             { return &GroupStore{db: db} }
 func (db *DB) Organize() *OrganizeStore        { return &OrganizeStore{db: db} }
 func (db *DB) SmartFolders() *SmartFolderStore { return &SmartFolderStore{db: db} }
+func (db *DB) Home() *HomeStore                { return &HomeStore{db: db} }
 func (db *DB) Credits() *CreditStore           { return &CreditStore{sql: db.sql, read: db.read, db: db} }
 func (db *DB) WorkInfo() *WorkInfoStore        { return &WorkInfoStore{db: db} }
 func (db *DB) WorkInfoPlugins() *WorkInfoPluginStore {
