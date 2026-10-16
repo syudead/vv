@@ -430,6 +430,7 @@ func run(opts runOptions) error {
 		Tags:             db.Tags(),
 		Credits:          db.Credits(),
 		WorkInfo:         db.WorkInfo(),
+		MediaInfo:        libraryStore,
 		Visibility:       db.Visibility(),
 		Favorites:        db.Favorites(),
 		Playlists:        db.Playlists(),

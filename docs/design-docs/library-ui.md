@@ -543,14 +543,14 @@ aspect ratio from the frame at run time.
 
 ### Information rows
 
-Up to three rows under the title, above which a divider runs, carry no
-frames.
+The rows under the title, above which a divider runs, carry no frames.
 
 | Row | Content |
 | --- | --- |
 | First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated or uploaded image is the thumbnail; actions at the right end |
 | Work details | Only when the video has work information, and only for the owner: the set items as `label value` pairs in the first row's `text-sm` and gaps (code, the three dates as stored, the people and organizations of each role, links, IDs), wrapping item by item, with the description folded to three lines under them |
-| Last | Resolution, container, codec separated by thin rules; smallest and most subdued |
+| Technical | Resolution, container, codec separated by thin rules; smallest and most subdued |
+| Media information | Only for a video with `mediaInfo`, for owners and guests alike: the Video, Audio, Subtitles, Embedded and Broadcast groups, each a wrapping muted row in the first row's `text-sm` and gaps with its name in the technical row's type at the start, and only when it has an item; more than six tracks fold to six and `+{n} more` ([056 UI design, Video page: groups](../../specs/056-media-info/ui-design.md#video-page-groups)) |
 
 The work details row takes words as labels, muted, and the values in the body
 colour. A role, `Links` or `IDs` with more than three entries shows three and
@@ -711,14 +711,14 @@ read (corrupt), or the video cannot be served (moved, gone, format).
 
 ### Control bar
 
-Only control bar parts are video.js components: restart, quality, subtitles,
-playback speed, current time/duration and the transcode indicator. The status
+Only control bar parts are video.js components: restart, chapters, quality,
+subtitles, playback speed, current time/duration and the transcode indicator. The status
 display is React, because a video.js component could not share state with the
 rest of the screen.
 
 | Control | Rule |
 | --- | --- |
-| Right-hand group | Transcode indicator, quality, playback speed, PiP, full screen, in that order |
+| Right-hand group | Chapters, transcode indicator, quality, subtitles, playback speed, PiP, full screen, in that order |
 | Quality | `MenuButton` matching playback speed in box, padding, opening and Esc ([`qualityMenu.ts`](../../web/src/player/qualityMenu.ts)) |
 | Quality label | The current quality; for the original, the video's short side |
 | Choosing a quality | Replaces the source at the same position without recreating the player |
@@ -727,11 +727,19 @@ rest of the screen.
 | Subtitle menu | Subtitle names and `Off`; no appearance settings |
 | Subtitle choice | Remembered per browser; the next video with the same label starts with it |
 | Subtitle position | Raised above the control bar and progress bar while they show |
+| Chapters button | A video.js `ChaptersButton` reading a `chapters` text track built from `mediaInfo.chapters`; absent for videos without chapters ([`chapters.ts`](../../web/src/player/chapters.ts)) |
+| Chapters menu | `20em` wide; one `{start} {title}` item per chapter in start order, `Chapter {n}` when untitled; the playing chapter is marked; choosing one seeks to its start and keeps playing or paused |
+| Chapter marks | A `chapter-mark` (2px) break on the progress bar at each chapter start; no pointer, no label, hidden from screen readers |
+| Narrow frame | Under a 40rem player: `3em` boxes and tighter time and indicator padding; under 32rem the transcode indicator folds to its icon, so every button fits at 360px |
+| Seek preview title | The title of the chapter under the pointer, above the time; a video with chapters and no sprite shows it in the time pill alone |
 
 Quality: [Playback quality, Switching](playback-quality.md#switching) and
 [027 UI design, Control bar: quality menu](../../specs/027-playback-quality/ui-design.md#control-bar-quality-menu).
 Subtitles use video.js's `vjs-text-track-display`
-([sidecar-subtitles.md](sidecar-subtitles.md)).
+([sidecar-subtitles.md](sidecar-subtitles.md)). Chapters: the seek preview
+title and the menu's mark share one rule for the chapter at a position, the
+latest start at or before it whose end is after it
+([056 UI design, Player: chapters](../../specs/056-media-info/ui-design.md#player-chapters)).
 
 Keyboard shortcuts work on the whole screen: video.js components stop key
 propagation, so keys are caught in the capture phase on `window`, passing

@@ -756,6 +756,30 @@ func (e LibrarySmartFolderWatchState) Valid() bool {
 	}
 }
 
+// Defines values for MediaInfoVideoHdr.
+const (
+	DolbyVision MediaInfoVideoHdr = "dolby_vision"
+	Hdr10       MediaInfoVideoHdr = "hdr10"
+	Hlg         MediaInfoVideoHdr = "hlg"
+	Sdr         MediaInfoVideoHdr = "sdr"
+)
+
+// Valid indicates whether the value is a known member of the MediaInfoVideoHdr enum.
+func (e MediaInfoVideoHdr) Valid() bool {
+	switch e {
+	case DolbyVision:
+		return true
+	case Hdr10:
+		return true
+	case Hlg:
+		return true
+	case Sdr:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for OrganizeRefKind.
 const (
 	OrganizeRefKindGroup OrganizeRefKind = "group"
@@ -2598,6 +2622,138 @@ type MediaFolder struct {
 	Version   int64     `json:"version"`
 }
 
+// MediaInfo 動画の追加の情報（specs/056-media-info/contracts/screen-api.md）。どの項目も、ファイルに
+// 無ければ省く。項目の無い object は丸ごと省く。
+type MediaInfo struct {
+	// AudioTracks すべての音声 stream。stream の順
+	AudioTracks *[]MediaInfoAudioTrack `json:"audioTracks,omitempty"`
+
+	// Broadcast TS の録画の放送局と番組
+	Broadcast *MediaInfoBroadcast `json:"broadcast,omitempty"`
+
+	// Chapters チャプター。開始の順で、尺の内側にある
+	Chapters *[]MediaInfoChapter `json:"chapters,omitempty"`
+
+	// Embedded ファイルに埋め込まれたタグ
+	Embedded *MediaInfoEmbedded `json:"embedded,omitempty"`
+
+	// SubtitleTracks すべての字幕 stream。stream の順
+	SubtitleTracks *[]MediaInfoSubtitleTrack `json:"subtitleTracks,omitempty"`
+
+	// Video 映像 stream の項目。`hdr` は映像があれば必ず入る
+	Video *MediaInfoVideo `json:"video,omitempty"`
+}
+
+// MediaInfoAudioTrack defines model for MediaInfoAudioTrack.
+type MediaInfoAudioTrack struct {
+	// ChannelLayout Examples: stereo, 5.1
+	ChannelLayout *string `json:"channelLayout,omitempty"`
+	Channels      *int    `json:"channels,omitempty"`
+
+	// Codec ffprobe の codec_name
+	//
+	// Examples: aac, ac3
+	Codec   *string `json:"codec,omitempty"`
+	Default *bool   `json:"default,omitempty"`
+
+	// Index ファイルの中の stream の番号
+	Index int `json:"index"`
+
+	// Language ファイルの言語の印（`und` は省く。research.md R-8）
+	Language *string `json:"language,omitempty"`
+	Title    *string `json:"title,omitempty"`
+}
+
+// MediaInfoBroadcast TS の録画の放送局と番組
+type MediaInfoBroadcast struct {
+	Program *string `json:"program,omitempty"`
+	Station *string `json:"station,omitempty"`
+}
+
+// MediaInfoChapter defines model for MediaInfoChapter.
+type MediaInfoChapter struct {
+	EndMs   int64   `json:"endMs"`
+	StartMs int64   `json:"startMs"`
+	Title   *string `json:"title,omitempty"`
+}
+
+// MediaInfoEmbedded ファイルに埋め込まれたタグ
+type MediaInfoEmbedded struct {
+	Author  *string `json:"author,omitempty"`
+	Comment *string `json:"comment,omitempty"`
+
+	// CoverArt ファイルが添付の画像を持つとき true
+	CoverArt *bool `json:"coverArt,omitempty"`
+
+	// Date ファイルの date タグの文字のまま
+	Date        *string `json:"date,omitempty"`
+	Description *string `json:"description,omitempty"`
+
+	// Device メーカーと機種
+	Device *string `json:"device,omitempty"`
+	Genre  *string `json:"genre,omitempty"`
+
+	// Location 撮影場所（度、高度はメートル）
+	Location *MediaInfoLocation `json:"location,omitempty"`
+
+	// RecordedAt 撮影の日時。ファイルに時差があればそれを保つ
+	RecordedAt *time.Time `json:"recordedAt,omitempty"`
+	Title      *string    `json:"title,omitempty"`
+}
+
+// MediaInfoLocation 撮影場所（度、高度はメートル）
+type MediaInfoLocation struct {
+	Altitude  *float64 `json:"altitude,omitempty"`
+	Latitude  float64  `json:"latitude"`
+	Longitude float64  `json:"longitude"`
+}
+
+// MediaInfoSubtitleTrack defines model for MediaInfoSubtitleTrack.
+type MediaInfoSubtitleTrack struct {
+	// Codec ffprobe の codec_name
+	//
+	// Examples: subrip, arib_caption
+	Codec           *string `json:"codec,omitempty"`
+	Default         *bool   `json:"default,omitempty"`
+	Forced          *bool   `json:"forced,omitempty"`
+	HearingImpaired *bool   `json:"hearingImpaired,omitempty"`
+
+	// Index ファイルの中の stream の番号
+	Index int `json:"index"`
+
+	// Language ファイルの言語の印（`und` は省く。research.md R-8）
+	Language *string `json:"language,omitempty"`
+	Title    *string `json:"title,omitempty"`
+}
+
+// MediaInfoVideo 映像 stream の項目。`hdr` は映像があれば必ず入る
+type MediaInfoVideo struct {
+	// BitDepth 1 標本のビット数
+	BitDepth *int `json:"bitDepth,omitempty"`
+
+	// BitRate 映像 stream のビット毎秒
+	BitRate *int64 `json:"bitRate,omitempty"`
+
+	// ClosedCaptions 映像 stream がクローズドキャプションを運ぶとき true
+	ClosedCaptions *bool `json:"closedCaptions,omitempty"`
+
+	// FrameRate 毎秒のコマ数（avg_frame_rate）
+	FrameRate *float64          `json:"frameRate,omitempty"`
+	Hdr       MediaInfoVideoHdr `json:"hdr"`
+
+	// Interlaced ファイルがプログレッシブかインターレースかを示すときだけ入る
+	Interlaced *bool `json:"interlaced,omitempty"`
+
+	// Projection 360 度動画の投影（`equirectangular`・`cubemap` などの ffprobe の名前）
+	Projection *string `json:"projection,omitempty"`
+
+	// Stereo3d 3D の方式（`side by side`・`top and bottom` などの ffprobe の名前）
+	Stereo3d *string `json:"stereo3d,omitempty"`
+}
+
+// MediaInfoVideoHdr defines model for MediaInfoVideo.Hdr.
+type MediaInfoVideoHdr string
+
 // MergeTagRequest defines model for MergeTagRequest.
 type MergeTagRequest struct {
 	// SourceIds 統合元の id。1 件の統合も [sourceId] で送る
@@ -3882,6 +4038,12 @@ type Video struct {
 
 	// Location 代表の所在。GET /api/videos/{id} の応答にだけ入る
 	Location *VideoLocation `json:"location,omitempty"`
+
+	// MediaInfo 取り込みの解析で読んだ動画の追加の情報。GET /api/videos/{id} の応答にだけ入り、今の版の
+	// 行がある動画にだけ入る。所有者と、公開の動画を読むゲストに同じ値を返す。一覧の項目・関連動画・
+	// ライブラリの項目・所有者の PUT の応答には入らない
+	// （specs/056-media-info/contracts/screen-api.md、research.md R-6）
+	MediaInfo *MediaInfo `json:"mediaInfo,omitempty"`
 
 	// Playable ブラウザでそのまま再生できると判定されたか
 	Playable     bool              `json:"playable"`
