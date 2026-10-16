@@ -1,6 +1,6 @@
 ---
 source: specs/057-home/plan.md
-sourceHash: 4af306a78e113e8f176c149375d170bf7f45f1a448b5b5ab2c08d6be2507519a
+sourceHash: 3e860e0f3a9b1d48035e2e6bcd31882f61d353d88d1a2d4bc371171a598e5187
 ---
 
 # 実装計画: オンボーディングで始まる棚のホーム {#implementation-plan-a-home-of-shelves-started-by-onboarding}
@@ -150,6 +150,7 @@ flowchart LR
   reads --> page
   page --> manage[棚を管理する]
   rules --> manage
+  ob --> manage
   ob --> obpage[オンボーディングの画面]
   page --> obpage
   fixed --> e2e[ブラウザーのテスト]

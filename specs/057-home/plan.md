@@ -178,6 +178,7 @@ flowchart LR
   reads --> page
   page --> manage[Manage shelves]
   rules --> manage
+  ob --> manage
   ob --> obpage[Onboarding screen]
   page --> obpage
   fixed --> e2e[Browser tests]
