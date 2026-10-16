@@ -257,6 +257,11 @@ func toWorkInfoPlugin(entry domain.WorkInfoPluginEntry) gen.WorkInfoPlugin {
 		if !setting.Secret && setting.Set {
 			item.Value = &setting.Value
 		}
+		item.Default = optionalString(setting.Default)
+		if setting.Options != nil {
+			item.Options = &setting.Options
+		}
+		item.StaleValue = optionalString(setting.StaleValue)
 		settings = append(settings, item)
 	}
 	plugin := gen.WorkInfoPlugin{
