@@ -1486,6 +1486,13 @@ export const en = {
       /** ラベルの無い字幕（`<名前>.srt`）の表示名。 */
       default: "Default",
     },
+    // チャプターのボタンとメニュー（specs/056-media-info/ui-design.md「Words」）。チャプターの
+    // タイトルは利用者のデータで、訳さない。
+    chapters: {
+      button: "Chapters",
+      /** タイトルの無いチャプターの名前。n は開始の順の 1 からの番号。 */
+      untitled: (n: number) => `Chapter ${String(n)}`,
+    },
     neighbors: {
       previous: "Previous video",
       next: "Next video",

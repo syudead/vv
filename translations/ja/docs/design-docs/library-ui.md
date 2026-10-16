@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: da7f0a4d50d73f0ff7eef5609726853132ac9946883fd213d3f41862395b340f
+sourceHash: a89b290d4e0d12db98fee740b4f4878833911ed37c47e7a9cf8c17d475b06abe
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -390,11 +390,11 @@ stateDiagram-v2
 
 ### コントロールバー {#control-bar}
 
-video.js のコンポーネントはコントロールバーの部品だけだ。先頭から再生、画質、字幕、再生速度、現在時刻と長さ、変換の表示がそれに当たる。状態の表示は React だ。video.js のコンポーネントでは画面のほかの部分と状態を共有できなかったからだ。
+video.js のコンポーネントはコントロールバーの部品だけだ。先頭から再生、チャプター、画質、字幕、再生速度、現在時刻と長さ、変換の表示がそれに当たる。状態の表示は React だ。video.js のコンポーネントでは画面のほかの部分と状態を共有できなかったからだ。
 
 | コントロール | ルール |
 | --- | --- |
-| 右側のまとまり | 変換の表示、画質、再生速度、PiP、全画面をこの順に置く |
+| 右側のまとまり | チャプター、変換の表示、画質、字幕、再生速度、PiP、全画面をこの順に置く |
 | 画質 | 枠、余白、開き方、Esc を再生速度に合わせた `MenuButton`（[`qualityMenu.ts`](../../web/src/player/qualityMenu.ts)） |
 | 画質のラベル | 現在の画質。オリジナルでは動画の短辺 |
 | 画質の選択 | プレーヤーを作り直さず、同じ位置でソースを置き換える |
@@ -403,8 +403,13 @@ video.js のコンポーネントはコントロールバーの部品だけだ�
 | 字幕メニュー | 字幕名と `Off`。見た目の設定はない |
 | 字幕の選択 | ブラウザごとに記憶する。同じラベルを持つ次の動画はそれで始まる |
 | 字幕の位置 | コントロールバーと進捗バーが出ている間は、その上へ持ち上げる |
+| チャプターボタン | `mediaInfo.chapters` から作る `chapters` テキストトラックを読む video.js の `ChaptersButton`。チャプターのない動画ではない（[`chapters.ts`](../../web/src/player/chapters.ts)） |
+| チャプターメニュー | 幅 `20em`。チャプターごとに `{start} {title}` の項目を 1 つ、開始の順に置き、タイトルがなければ `Chapter {n}` とする。再生中のチャプターに印を付ける。選ぶとその開始へシークし、再生中か一時停止中かを保つ |
+| チャプターの印 | 各チャプターの開始で、進捗バーに `chapter-mark`（2px）の切れ目を入れる。ポインターもラベルもなく、スクリーンリーダーからは隠す |
+| 狭い枠 | プレーヤーが 40rem 未満では、`3em` の枠にし、時刻と表示の余白を詰める。32rem 未満では変換の表示をアイコンだけに畳み、360px ですべてのボタンが収まる |
+| シークのプレビューのタイトル | ポインターの下のチャプターのタイトルを、時刻の上に出す。チャプターがありスプライトのない動画では、時刻のピルの中にそれだけを出す |
 
-画質: [Playback quality、Switching](playback-quality.md#switching) と [027 UI 設計、Control bar: quality menu](../../specs/027-playback-quality/ui-design.md#control-bar-quality-menu)。字幕は video.js の `vjs-text-track-display` を使う（[sidecar-subtitles.md](sidecar-subtitles.md)）。
+画質: [Playback quality、Switching](playback-quality.md#switching) と [027 UI 設計、Control bar: quality menu](../../specs/027-playback-quality/ui-design.md#control-bar-quality-menu)。字幕は video.js の `vjs-text-track-display` を使う（[sidecar-subtitles.md](sidecar-subtitles.md)）。チャプター: シークのプレビューのタイトルとメニューの印は、ある位置のチャプターを決める 1 つのルールを共有する。その位置以前に始まり、終わりがその位置より後のもののうち、開始が最も遅いものだ（[056 UI 設計、Player: chapters](../../specs/056-media-info/ui-design.md#player-chapters)）。
 
 キーボードショートカットは画面全体で効く。video.js のコンポーネントはキーの伝播を止めるので、キーは `window` のキャプチャ段階で捕まえ、フォーカスのあるボタンやスライダーを操作するキーだけを通す。Space、F、M、C（字幕）、0、Esc を扱う。プレイリストの選択器のような、開いているポップオーバーやメニューの中で押したキーはそれに属する。画面に届くのは Esc だけで、Esc は画面ではなくポップオーバーを閉じる。
 

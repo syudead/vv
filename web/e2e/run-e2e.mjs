@@ -10,6 +10,7 @@ import {
   generateGroupsFixtures,
   generateGuestFixtures,
   generateHistoryFixtures,
+  generateChapterFixtures,
   generateMediaFixtures,
   generateMediaInfoFixtures,
   generatePlaylistsFixtures,
@@ -86,6 +87,7 @@ function run() {
     generateThumbnailUploadFixtures(thumbnailUploadDir);
     generateWorkInfoFixtures(workInfoMediaDir);
     generateMediaInfoFixtures(mediaInfoMediaDir);
+    generateChapterFixtures(mediaInfoMediaDir);
     generateWorkInfoPluginFixtures(workInfoPluginsMediaDir);
     mkdirSync(path.dirname(workInfoPlugin), { recursive: true });
     buildWorkInfoPlugin(repoRoot, workInfoPlugin, { ...process.env, GOCACHE: goCache });
