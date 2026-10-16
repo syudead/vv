@@ -402,9 +402,15 @@
   display: none;
 }
 
+/* 幅は中身（時刻とチャプターのタイトル）に合わせるが、シークバーの幅と上限を超えない。
+   超える長いタイトルは .vv-seek-preview-title が省略記号で切る。 */
 .vv-seek-preview[data-state="unavailable"] {
   bottom: var(--spacing-seek-preview-unavailable-gap);
   width: max-content;
+  max-width: min(
+    calc(100% - var(--spacing-seek-preview-edge) * 2),
+    var(--size-seek-preview-max)
+  );
 }
 
 .vv-seek-preview[data-state="unavailable"] .vv-seek-preview-frame {

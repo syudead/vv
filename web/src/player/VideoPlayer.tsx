@@ -1135,7 +1135,13 @@ export default function VideoPlayer(props: Props) {
  * 中身の同じ一覧が届いても、同じ参照を返す（トラックと印を付け直さない）。
  */
 function usePlayerChapters(video: Video): readonly PlayerChapter[] {
-  const key = JSON.stringify(playerChapters(video.mediaInfo?.chapters, video.durationMs));
+  const chapters = video.mediaInfo?.chapters;
+  const { durationMs } = video;
+  // 一覧の生成と文字列化は入力の参照が変わったときだけにし、毎回の描画では行わない。
+  const key = useMemo(
+    () => JSON.stringify(playerChapters(chapters, durationMs)),
+    [chapters, durationMs],
+  );
   return useMemo(() => JSON.parse(key) as PlayerChapter[], [key]);
 }
 
