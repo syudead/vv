@@ -3322,6 +3322,18 @@ export interface components {
             set: boolean;
             /** @description 保存された値。秘密の設定では入らない */
             value?: string;
+            /**
+             * @description マニフェストの既定値。値が保存されていないとき、または保存された値が選択肢の外にあるときに実行が受け取る
+             *     （specs/056-plugin-tooling/research.md R-3）
+             */
+            default?: string;
+            /** @description マニフェストの選択肢で、マニフェストの順。無ければ値は自由に入力する */
+            options?: string[];
+            /**
+             * @description 保存された値が今の選択肢の外にあるときだけ入る、その値。`set` は真で `value` も同じ値を持つが、
+             *     実行は代わりに既定値を受け取る
+             */
+            staleValue?: string;
         };
         /** @description 作品情報プラグイン 1 つ（specs/049-work-info-plugins/contracts/screen-api.md の WorkInfoPlugin） */
         WorkInfoPlugin: {

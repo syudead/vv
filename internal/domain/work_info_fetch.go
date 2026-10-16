@@ -45,23 +45,38 @@ func (e *WorkInfoSettingsMissingError) Error() string {
 	return "the work-info plugin needs settings: " + strings.Join(e.Keys, ", ")
 }
 
-// MissingWorkInfoPluginSettings は宣言 settings のうち、必須なのに values に値の無いキーを宣言の順に返す。
+// EffectiveWorkInfoPluginValue は設定 s について実行が受け取る値を返す（specs/056-plugin-tooling/research.md R-3）。
+// values に空でない値が保存されていて、s に選択肢が無いか選択肢のどれかならその値、そうでなければ既定値である。
+// stale は保存された値が選択肢の外にあり、使われないことを表す。値が空なら実行はこのキーを受け取らない。
+func EffectiveWorkInfoPluginValue(s WorkInfoPluginSetting, values map[string]string) (value string, stale bool) {
+	stored := values[s.Key]
+	if stored == "" {
+		return s.Default, false
+	}
+	if s.Options != nil && !slices.Contains(s.Options, stored) {
+		return s.Default, true
+	}
+	return stored, false
+}
+
+// MissingWorkInfoPluginSettings は宣言 settings のうち、必須なのに実効値（EffectiveWorkInfoPluginValue）の無い
+// キーを宣言の順に返す。既定値のある必須の設定は不足にならない。
 func MissingWorkInfoPluginSettings(settings []WorkInfoPluginSetting, values map[string]string) []string {
 	var missing []string
 	for _, s := range settings {
-		if s.Required && values[s.Key] == "" {
+		if v, _ := EffectiveWorkInfoPluginValue(s, values); s.Required && v == "" {
 			missing = append(missing, s.Key)
 		}
 	}
 	return missing
 }
 
-// DeclaredWorkInfoPluginValues は values のうち、宣言 settings にあって値のあるものだけを返す。実行の要求には
-// これを入れ、宣言に無いキーと他のプラグインの値は入れない（research.md R-13）。
+// DeclaredWorkInfoPluginValues は宣言 settings のキーごとの実効値（EffectiveWorkInfoPluginValue）のうち、
+// 空でないものを返す。実行の要求にはこれを入れ、宣言に無いキーと他のプラグインの値は入れない（research.md R-13）。
 func DeclaredWorkInfoPluginValues(settings []WorkInfoPluginSetting, values map[string]string) map[string]string {
 	out := make(map[string]string, len(settings))
 	for _, s := range settings {
-		if v := values[s.Key]; v != "" {
+		if v, _ := EffectiveWorkInfoPluginValue(s, values); v != "" {
 			out[s.Key] = v
 		}
 	}

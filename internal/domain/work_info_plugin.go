@@ -124,6 +124,29 @@ type WorkInfoPluginSetting struct {
 	Label    string `json:"label"`
 	Secret   bool   `json:"secret"`
 	Required bool   `json:"required"`
+	// Default は値が保存されていないとき（Options の外の値が保存されているときも）に実行が受け取る値である。
+	// 空なら既定値は無い（specs/056-plugin-tooling/research.md R-3）。
+	Default string `json:"default,omitempty"`
+	// Options は値の選択肢で、マニフェストの順である。nil なら値は自由に入力する。
+	Options []string `json:"options,omitempty"`
+}
+
+// 設定の既定値と選択肢の上限である（specs/056-plugin-tooling/contracts/plugin-contract.md の Manifest）。
+const (
+	workInfoPluginMinOptions     = 2
+	workInfoPluginMaxOptions     = 50
+	workInfoPluginOptionMaxRunes = 200
+)
+
+// settingJSON は vv.plugin セクションの設定 1 つの JSON の形である。default の有無を空文字列と
+// 区別するためにポインタで読む。
+type settingJSON struct {
+	Key      string   `json:"key"`
+	Label    string   `json:"label"`
+	Secret   bool     `json:"secret"`
+	Required bool     `json:"required"`
+	Default  *string  `json:"default"`
+	Options  []string `json:"options"`
 }
 
 // WorkInfoPluginManifest はモジュールの vv.plugin セクションのマニフェストである
@@ -144,11 +167,11 @@ func (m WorkInfoPluginManifest) Supports(op WorkInfoOperation) bool {
 
 // manifestJSON は vv.plugin セクションの JSON の形である。知らない項目は無視する。
 type manifestJSON struct {
-	Name        string                  `json:"name"`
-	Version     string                  `json:"version"`
-	Description string                  `json:"description"`
-	Operations  []WorkInfoOperation     `json:"operations"`
-	Settings    []WorkInfoPluginSetting `json:"settings"`
+	Name        string              `json:"name"`
+	Version     string              `json:"version"`
+	Description string              `json:"description"`
+	Operations  []WorkInfoOperation `json:"operations"`
+	Settings    []settingJSON       `json:"settings"`
 }
 
 // ParseWorkInfoPluginManifest は vv.plugin セクションの中身を読み、規則を確かめる。
@@ -170,18 +193,67 @@ func ParseWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, WorkInfoP
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
 	}
+	settings, ok := parseSettings(raw.Settings)
+	if !ok {
+		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
+	}
 	m := WorkInfoPluginManifest{
 		Contract:    contract,
 		Name:        raw.Name,
 		Version:     raw.Version,
 		Description: raw.Description,
 		Operations:  raw.Operations,
-		Settings:    raw.Settings,
+		Settings:    settings,
 	}
 	if !validManifest(m) {
 		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
 	}
 	return m, ""
+}
+
+// parseSettings は設定の JSON を宣言にし、既定値と選択肢の規則を確かめる。default を書いた設定は
+// 1 文字以上の既定値を持たなければならないので、空の default はここで拒む。
+func parseSettings(raw []settingJSON) ([]WorkInfoPluginSetting, bool) {
+	if raw == nil {
+		return nil, true
+	}
+	settings := make([]WorkInfoPluginSetting, 0, len(raw))
+	for _, r := range raw {
+		s := WorkInfoPluginSetting{Key: r.Key, Label: r.Label, Secret: r.Secret, Required: r.Required, Options: r.Options}
+		if r.Default != nil {
+			if !runeCountBetween(*r.Default, 1, WorkInfoPluginSettingValueMaxRunes) {
+				return nil, false
+			}
+			s.Default = *r.Default
+		}
+		if !validSettingChoices(s, r.Default != nil) {
+			return nil, false
+		}
+		settings = append(settings, s)
+	}
+	return settings, true
+}
+
+// validSettingChoices は設定の既定値と選択肢の規則を返す。秘密の設定はどちらも持てず、選択肢は重複の無い
+// 2〜50 個の 1〜200 文字で、既定値は選択肢のどれかでなければならない。
+func validSettingChoices(s WorkInfoPluginSetting, hasDefault bool) bool {
+	if s.Secret {
+		return !hasDefault && s.Options == nil
+	}
+	if s.Options == nil {
+		return true
+	}
+	if len(s.Options) < workInfoPluginMinOptions || len(s.Options) > workInfoPluginMaxOptions {
+		return false
+	}
+	seen := make(map[string]bool, len(s.Options))
+	for _, option := range s.Options {
+		if !runeCountBetween(option, 1, workInfoPluginOptionMaxRunes) || seen[option] {
+			return false
+		}
+		seen[option] = true
+	}
+	return !hasDefault || seen[s.Default]
 }
 
 func isJSONObject(data []byte) bool {
