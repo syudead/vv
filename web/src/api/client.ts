@@ -471,6 +471,10 @@ function toLibraryItem(item: components["schemas"]["LibraryItem"]): LibraryItem 
 /**
  * listLibrary はライブラリの一覧を1ページ取得する。項目は動画か、フォルダの
  * グループ1件である（specs/017-folder-groups/contracts/library-api.md §1）。
+ *
+ * 画面がまだ描かないスマートフォルダの項目（specs/052-smart-folders/plan.md「Add smart folders to
+ * the screen API」）は除き、除いた数だけ `total` を減らす。除いてページが空になり続きがあれば、
+ * 項目のあるページか終わりまで続きを読む（空のページを返すと、画面は続きを読まずに止まる）。
  */
 export async function listLibrary(
   params: ListVideosParams = {},
@@ -480,17 +484,22 @@ export async function listLibrary(
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
   setAddedLengthFilter(query, params);
-  const page = await request<components["schemas"]["LibraryPage"]>(
-    `/api/library?${query.toString()}`,
-    { signal: params.signal },
-  );
-  return {
-    ...page,
-    items: page.items.flatMap((item) => {
+  let skipped = 0;
+  for (;;) {
+    const page = await request<components["schemas"]["LibraryPage"]>(
+      `/api/library?${query.toString()}`,
+      { signal: params.signal },
+    );
+    skipped += page.items.filter((item) => item.kind === "smartFolder").length;
+    const items = page.items.flatMap((item) => {
       const converted = toLibraryItem(item);
       return converted === null ? [] : [converted];
-    }),
-  };
+    });
+    if (items.length > 0 || page.nextCursor === undefined) {
+      return { ...page, items, total: Math.max(0, page.total - skipped) };
+    }
+    query.set("cursor", page.nextCursor);
+  }
 }
 
 /** ListLibraryIdsParams は「すべて選択」用の全件 id の問い合わせ条件である。 */

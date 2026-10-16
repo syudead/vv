@@ -63,7 +63,8 @@ func (s *server) ListSmartFolders(w http.ResponseWriter, r *http.Request) {
 }
 
 // smartFolderCreateBody は POST /api/smart-folders の本文である。rule は domain.ParseSmartRule が
-// 読むので、生の JSON で受ける（null や知らない項目を invalid_smart_rule にするため）。
+// 読むので、生の JSON で受ける（null や知らない項目を invalid_smart_rule にするため）。sort と parentId
+// の null は省略と見分けて 400 invalid_request にする（契約の型が null を許さないため）。
 type smartFolderCreateBody struct {
 	Name     *string         `json:"name"`
 	Rule     json.RawMessage `json:"rule"`
@@ -74,11 +75,16 @@ type smartFolderCreateBody struct {
 // CreateSmartFolder はフォルダを作る（POST /api/smart-folders）。
 func (s *server) CreateSmartFolder(w http.ResponseWriter, r *http.Request) {
 	var body smartFolderCreateBody
-	if !s.readJSONBody(w, r, &body) {
+	present, ok := s.readJSONBodyFields(w, r, &body)
+	if !ok {
 		return
 	}
 	if body.Name == nil || len(body.Rule) == 0 {
 		s.invalidRequest(w, "name and rule are required.")
+		return
+	}
+	if (present("sort") && body.Sort == nil) || (present("parentId") && body.ParentID == nil) {
+		s.invalidRequest(w, "sort and parentId must not be null.")
 		return
 	}
 	rule, err := domain.ParseSmartRule(body.Rule)
@@ -101,7 +107,8 @@ func (s *server) CreateSmartFolder(w http.ResponseWriter, r *http.Request) {
 }
 
 // smartFolderChangeBody は PATCH /api/smart-folders/{id} の本文である。parentId は省いたことと null
-// （一番上にする）を分けるため、生の JSON で受ける。
+// （一番上にする）を分けるため、生の JSON で受ける。name と sort の null は省略と見分けて 400
+// invalid_request にする（契約の型が null を許さないため）。
 type smartFolderChangeBody struct {
 	Name     *string         `json:"name"`
 	Rule     json.RawMessage `json:"rule"`
@@ -112,7 +119,12 @@ type smartFolderChangeBody struct {
 // ChangeSmartFolder はフォルダの名前・条件・並べ順・親を変える（PATCH /api/smart-folders/{id}）。
 func (s *server) ChangeSmartFolder(w http.ResponseWriter, r *http.Request, id gen.SmartFolderId) {
 	var body smartFolderChangeBody
-	if !s.readJSONBody(w, r, &body) {
+	present, ok := s.readJSONBodyFields(w, r, &body)
+	if !ok {
+		return
+	}
+	if (present("name") && body.Name == nil) || (present("sort") && body.Sort == nil) {
+		s.invalidRequest(w, "name and sort must not be null.")
 		return
 	}
 	change, ok := s.smartFolderChange(w, body)

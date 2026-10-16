@@ -55,7 +55,7 @@ var (
 )
 
 // POST /api/smart-folders: 201 で前後を削った名前の要約。条件か並べ順の違反は 400 invalid_smart_rule、
-// 名前の違反と欠けた本文は 400 invalid_request、無い親は 404 smart_folder_not_found で、どれも何も
+// 名前の違反と欠けた本文と null の sort・parentId は 400 invalid_request、無い親は 404 smart_folder_not_found で、どれも何も
 // 作らない。
 func TestCreateSmartFolderStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
@@ -86,6 +86,8 @@ func TestCreateSmartFolderStatuses(t *testing.T) {
 		{"条件なし", map[string]any{"name": "a"}, wantGroupInvalid},
 		{"名前なし", map[string]any{"rule": map[string]any{}}, wantGroupInvalid},
 		{"無い親", map[string]any{"name": "a", "rule": map[string]any{}, "parentId": 999999}, wantSmartFolderMissing},
+		{"null の並べ順", map[string]any{"name": "a", "rule": map[string]any{}, "sort": nil}, wantGroupInvalid},
+		{"null の親", map[string]any{"name": "a", "rule": map[string]any{}, "parentId": nil}, wantGroupInvalid},
 	} {
 		rec := f.groupRequest(http.MethodPost, "/api/smart-folders", groupJSON(tc.body), f.owner)
 		assertErrorBody(t, tc.label, rec.Code, rec.Body.Bytes(), tc.want)
@@ -97,8 +99,8 @@ func TestCreateSmartFolderStatuses(t *testing.T) {
 }
 
 // PATCH /api/smart-folders/{id} と DELETE: 入れた項目だけを変え、自分の子孫の下へ移すと 409
-// smart_folder_cycle、無い親は 404 smart_folder_not_found、無いフォルダは 404 not_found で、空の本文は
-// 400 invalid_request。parentId の null は一番上へ戻す。消すと子孫も消える。
+// smart_folder_cycle、無い親は 404 smart_folder_not_found、無いフォルダは 404 not_found で、空の本文と
+// null の name・sort は 400 invalid_request（ほかの項目も変えない）。parentId の null は一番上へ戻す。消すと子孫も消える。
 func TestChangeAndDeleteSmartFolderStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	parent := f.createSmartFolder(t, map[string]any{"name": "親", "rule": map[string]any{}})
@@ -123,9 +125,16 @@ func TestChangeAndDeleteSmartFolderStatuses(t *testing.T) {
 		{"random の並べ順", child.Id, `{"sort": "random"}`, wantInvalidSmartRule},
 		{"空の名前", child.Id, `{"name": " "}`, wantGroupInvalid},
 		{"無いフォルダ", 999999, `{"name": "x"}`, wantGroupNotFound},
+		{"null の名前と親の移動", child.Id, `{"name": null, "parentId": null}`, wantGroupInvalid},
+		{"null の並べ順と親の移動", child.Id, `{"sort": null, "parentId": null}`, wantGroupInvalid},
 	} {
 		rec := f.groupRequest(http.MethodPatch, smartFolderPath(tc.id, ""), tc.body, f.owner)
 		assertErrorBody(t, tc.label, rec.Code, rec.Body.Bytes(), tc.want)
+	}
+	for _, folder := range decode[gen.SmartFolderList](t, f.env.get("/api/smart-folders", f.owner)).SmartFolders {
+		if folder.Id == child.Id && (folder.ParentId == nil || *folder.ParentId != parent.Id) {
+			t.Errorf("失敗した変更のあとの子 = %+v", folder)
+		}
 	}
 
 	rec = f.groupRequest(http.MethodPatch, smartFolderPath(child.Id, ""), `{"parentId": null}`, f.owner)
