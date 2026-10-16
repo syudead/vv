@@ -13,9 +13,9 @@ import (
 // internal/app の *OllamaConnection が満たす（docs/design-docs/ai-layer.md）。判定モデルを
 // 使う機能（AutoTagging）とは別の口にする。
 type OllamaConnection interface {
-	Settings(ctx context.Context) (domain.OllamaSettings, error)
-	// Saved は所有者が接続先を保存したかを返す（specs/058-settings-pages/research.md R-4）。
-	Saved(ctx context.Context) (bool, error)
+	// Settings は接続先と、所有者が接続先を保存したかを同じ時点の値として返す
+	// （specs/058-settings-pages/research.md R-4）。
+	Settings(ctx context.Context) (settings domain.OllamaSettings, saved bool, err error)
 	SaveSettings(ctx context.Context, settings domain.OllamaSettings) (domain.OllamaSettings, error)
 	Check(ctx context.Context) error
 }
@@ -26,12 +26,7 @@ func (s *server) GetOllamaSettings(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Ollama settings are not configured.", nil)
 		return
 	}
-	settings, err := s.ollama.Settings(r.Context())
-	if err != nil {
-		s.internalError(w, "Could not read the Ollama settings.", err)
-		return
-	}
-	saved, err := s.ollama.Saved(r.Context())
+	settings, saved, err := s.ollama.Settings(r.Context())
 	if err != nil {
 		s.internalError(w, "Could not read the Ollama settings.", err)
 		return
