@@ -342,6 +342,9 @@ type SmartFolder struct {
 	Sort     VideoSort
 	// OwnerKept は所有者が作ったか、名前・条件・並べ順・親を直したフォルダか（research.md R-10）。
 	OwnerKept bool
+	// HomePosition はホームの棚の位置（小さいほど上）で、棚でなければ 0 である
+	// （specs/057-home/data-model.md「smart_folders.home_position」）。
+	HomePosition int
 	// CreatedAt と UpdatedAt は Unix ミリ秒である。
 	CreatedAt int64
 	UpdatedAt int64
