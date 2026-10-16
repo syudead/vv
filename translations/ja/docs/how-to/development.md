@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/development.md
-sourceHash: 688bfec4cb943d832f79e65591b62de696262d5276919f32ffdabbd226608f9e
+sourceHash: 045a9adcae94c063dd8211b348181172945b7187391a1e36c49302eecfbd5668
 ---
 
 # 開発 {#development}
@@ -59,8 +59,10 @@ flowchart LR
   code -->|はい| groups[並列グループで task check]
   docs --> checks[Checks ジョブ]
   groups --> checks
-  code -->|はい| push{main への push、手動実行、Renovate の PR のいずれか}
+  code -->|はい| push{main への push か Renovate の PR か}
   push -->|はい| more[4 グループで E2E と Docker イメージのビルド]
+  code -->|はい| manual{手動実行か}
+  manual -->|はい| e2e[4 グループで E2E]
 ```
 
 「いいえ」は、Markdown、`docs/`、`specs/` だけが変更されたことを意味する。コードの変更では、CI は `task check` のサブタスクを並列の `Checks (<group>)` ジョブとして実行する。生成ファイル、マイグレーション、Windows のビルドの確認と組み合わせた Go の lint、Go のテスト、SPA のビルドの確認（`task build-check-web`）と組み合わせた Web の lint、3 つのシャードに分けた Vitest スイート（`task test-web-report -- --shard=1/3`）だ。`task test-web` はビルドの確認とスイート全体を実行する。`task check` に追加する確認は、`.github/workflows/ci.yml` のこれらのグループのいずれかにも入れる。Go のビルドキャッシュを復元するのは Go のグループだけで、それぞれが `main` への push で自分のコピーを保存する。Vitest はファイル単位でシャードに分けるため、一つのシャードの大半を占めるまで大きくなったテストファイルは、`web/src/tags/TagsPage*.test.tsx` が共有の `web/src/testing/tagsPage.tsx` を中心に分けられているように、トピックごとに分割する。`main` への push はマージされたプルリクエストなので、ブラウザ E2E と Docker イメージのビルドはプルリクエストでは実行されない。プルリクエストでは `Browser E2E` は実行されずに成功する。Renovate の PR（head ブランチが `renovate/*`）は例外で、イメージを公開せずに両方を実行する。Renovate のルーチンが人を介さずにそれらをマージするためである（[dependency-updates.md](dependency-updates.md)）。

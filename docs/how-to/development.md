@@ -71,8 +71,10 @@ flowchart LR
   code -->|yes| groups[task check in parallel groups]
   docs --> checks[Checks job]
   groups --> checks
-  code -->|yes| push{Push to main, manual run or Renovate PR?}
+  code -->|yes| push{Push to main or Renovate PR?}
   push -->|yes| more[E2E in four groups and Docker image build]
+  code -->|yes| manual{Manual run?}
+  manual -->|yes| e2e[E2E in four groups]
 ```
 
 "No" means only Markdown, `docs/` or `specs/` changed. For a code change, CI

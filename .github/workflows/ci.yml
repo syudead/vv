@@ -542,7 +542,8 @@ jobs:
           retention-days: 7
 
   # ブランチ保護が求める「Browser E2E」は、組に分けた e2e のまとめとしてここで出す。
-  # PR と文書だけの変更で e2e を飛ばしたときも通す。
+  # PR と文書だけの変更で e2e を飛ばしたときも通す。手動実行は e2e を回すための
+  # ものなので、changes の失敗などで e2e が飛んだら落とす。
   e2e-result:
     name: Browser E2E
     needs: [changes, e2e]
@@ -552,9 +553,14 @@ jobs:
       - name: 組ごとの結果を確かめる
         env:
           RESULT: ${{ needs.e2e.result }}
+          EVENT: ${{ github.event_name }}
         run: |
           echo "e2e: $RESULT"
-          test "$RESULT" = success || test "$RESULT" = skipped
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            test "$RESULT" = success
+          else
+            test "$RESULT" = success || test "$RESULT" = skipped
+          fi
 
   # イメージはコード変更を含む main への push（PR のマージ）でだけ作り、
   # ghcr.io/syudead/vv へ公開する（docs/how-to/hosting-vv.md）。Renovate の PR では
