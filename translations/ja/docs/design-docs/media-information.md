@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/media-information.md
-sourceHash: 0f5195160a29b8f3d25f7f37b5fce353198bca85d35067ed3d8a116769e3526e
+sourceHash: 17a46493c8c815e3a92c94a41012ca218cb74bb1cf388a5efccc84cef47935b6
 ---
 
 # 取り込み時のプローブから得るメディア情報 {#media-information-from-the-import-probe}
@@ -76,4 +76,4 @@ flowchart LR
 
 ## 以前に取り込んだ動画は読み直さない {#videos-imported-earlier-are-not-read-again}
 
-行を書くのは新しいファイルか変更されたファイルのプローブだけだ。`video_media_info` ができる前にプローブした動画には行がなく、そのページはファイルが変わるまで追加のグループを表示しない (メンテナーの決定、2026-10-16)。マイグレーション `00052_drop_metadata_jobs.sql` は、このマイグレーションの以前の草稿が積んだ `metadata` ジョブと `metadata_failed` の問題を削除するだけだ。
+行を書くのは新しいファイルか変更されたファイルのプローブだけだ。`video_media_info` ができる前にプローブした動画には行がなく、そのページはファイルが変わるまで追加のグループを表示しない (メンテナーの決定、2026-10-16)。マイグレーション `00052_metadata_jobs.sql` は、データベースがすでに適用しているので変更しない。`00053_drop_metadata_jobs.sql` は、`00052` が積んだ `metadata` ジョブと `metadata_failed` の問題を削除する。

@@ -1,6 +1,6 @@
 ---
 source: specs/056-media-info/plan.md
-sourceHash: b554ebc0323b53b0e1d1f925a8039c8b9f468d3bd14541d4f8cc71a2099d6125
+sourceHash: 4d20361c0567bd37613143df2071f0bcf86f08ee02a70e6db2a0c6f6dfe35ac7
 ---
 
 # 実装計画: 取り込みのプローブから得るメディア情報を、動画ページとシークバーに示す {#implementation-plan-media-information-from-the-import-probe-on-the-video-page-and-the-seek-bar}
@@ -108,7 +108,7 @@ specs/056-media-info/
 | --- | --- |
 | `internal/domain` | `MediaInfo` と `MediaInfoVersion`。HDR、インターレース、ビット深度、文字列、日付、場所、チャプター、放送番組の規則 |
 | `internal/media` | `-show_chapters`、TS の上限、新しい項目のパーサー。TS の SI リーダー。`internal/media/arib` (復号器) |
-| `internal/store` | `video_media_info` のマイグレーションと `00052` の後片付け。`ApplyProbeForJob` での行。詳細での読み取り |
+| `internal/store` | `video_media_info` のマイグレーションと `00053` の後片付け。`ApplyProbeForJob` での行。詳細での読み取り |
 | `internal/scanner` | `mediaExtensions` の `.m2ts` と `.mts` |
 | `internal/httpapi`、`api/openapi.yaml` | 詳細の `mediaInfo` |
 | `web/src/player`、`web/src/i18n` | 動画ページのグループ。言語の名前。チャプターのトラック、シークバーの印、プレビューの名前、チャプターのボタン |
@@ -146,7 +146,7 @@ flowchart LR
 
 ### 取り込み済みの動画をバックグラウンドで再解析する (取り除いた) {#re-analyse-imported-videos-in-the-background-removed}
 
-メンテナーが取り除いた (2026-10-16): 既存の動画は再解析しない ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files))。この単位の `metadata` のジョブの種類、その埋め戻し、スキャンへのフックは取り除いた。マイグレーション `00052` は番号を保ち、それが入れたかもしれない `metadata` のジョブと `metadata_failed` の問題を削除するだけである。
+メンテナーが取り除いた (2026-10-16): 既存の動画は再解析しない ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files))。この単位の `metadata` のジョブの種類、その埋め戻し、スキャンへのフックは取り除いた。マイグレーション `00052` はデータベースがすでに適用しているので変更せず、マイグレーション `00053` が、それが入れた `metadata` のジョブと `metadata_failed` の問題を削除する。
 
 ### 動画ページにメディア情報を示す {#show-media-information-on-the-video-page}
 

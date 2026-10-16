@@ -1,6 +1,6 @@
 ---
 source: specs/056-media-info/data-model.md
-sourceHash: caf45b7293d9697ed1caae9702e015feda25cefbb2b6297a22a82ad236118326
+sourceHash: c4bcbacfda3214488cf025035b8128e02238312c92427dc345243102af52020d
 ---
 
 # データモデル: 取り込みのプローブから得るメディア情報 {#data-model-media-information-from-the-import-probe}
@@ -14,7 +14,8 @@ sourceHash: caf45b7293d9697ed1caae9702e015feda25cefbb2b6297a22a82ad236118326
 | マイグレーション | 単位 | すること |
 | --- | --- | --- |
 | `video_media_info` | 取り込み時にメディア情報を読んで保存する | [`video_media_info`](#video_media_info) を作る |
-| `00052_drop_metadata_jobs` | (再解析の単位。メンテナーが取り除いた) | このバージョンの以前の草稿が入れた `metadata` のジョブと `metadata_failed` の問題を削除する。それを適用したデータベースのためにバージョン番号を保つ ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)) |
+| `00052_metadata_jobs` | (再解析の単位。メンテナーが取り除いた) | `jobs` の種類の検査に `metadata` を加え、取り込んだ動画ごとに `metadata` のジョブを入れる。データベースがすでに適用しているので変更せずに残す |
+| `00053_drop_metadata_jobs` | (再解析の単位。メンテナーが取り除いた) | `00052` が入れた `metadata` のジョブと `metadata_failed` の問題を削除し、問題を削除したときは最新のスキャンの `issues_revision` を上げる ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)) |
 
 どちらのテーブルも [Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery) の作り直せるインデックスである: スキャンとそれが入れるジョブが、もう一度埋める。
 

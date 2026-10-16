@@ -1,6 +1,6 @@
 ---
 source: specs/056-media-info/research.md
-sourceHash: 93961556c539caf3b4d25876a89bfaa51d8d9191e3828ede56f2785de67bb758
+sourceHash: 6ba5c4baf320edab32b0408dddeec3791e3228963f04ec0e983279c14983f225
 ---
 
 # 調査: 取り込みのプローブから得るメディア情報 {#research-media-information-from-the-import-probe}
@@ -98,7 +98,7 @@ flowchart LR
 
 ## R-5: メディア情報を読むのは、新しいファイルか変更されたファイルの取り込みのプローブだけである {#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files}
 
-**決定**: メディア情報を読むのは、新しいファイルか変更されたファイルの取り込みのプローブだけであり、既存の動画は再解析しない (メンテナーの決定、2026-10-16)。`video_media_info` ができる前にプローブした動画や、行が `MediaInfoVersion` より低い動画は、ファイルが変わるまで追加のグループを表示しない。以前の `metadata` のジョブの種類とその埋め戻しは取り除く。マイグレーション `00052` は番号を保ち、それが入れたかもしれない `metadata` のジョブと `metadata_failed` の問題を削除するだけである。
+**決定**: メディア情報を読むのは、新しいファイルか変更されたファイルの取り込みのプローブだけであり、既存の動画は再解析しない (メンテナーの決定、2026-10-16)。`video_media_info` ができる前にプローブした動画や、行が `MediaInfoVersion` より低い動画は、ファイルが変わるまで追加のグループを表示しない。以前の `metadata` のジョブの種類とその埋め戻しは取り除く。マイグレーション `00052` はデータベースがすでに適用しているので変更せず、マイグレーション `00053` が、それが入れた `metadata` のジョブと `metadata_failed` の問題を削除する。
 
 ## R-6: `mediaInfo` は動画の詳細だけに入り、所有者とゲストで同じである {#r-6-mediainfo-is-part-of-the-video-detail-only-for-owners-and-guests-alike}
 
