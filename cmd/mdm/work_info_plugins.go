@@ -15,7 +15,7 @@ import (
 // ランタイムを作れなければ記録に残して nil を返し、プラグインの経路は 500 を返す。プラグインが
 // 使えないだけで、ほかの機能の起動は止めない。
 func newWorkInfoPlugins(
-	ctx context.Context, db *store.DB, logger *slog.Logger,
+	ctx context.Context, db *store.DB, covers app.WorkInfoCoverApplier, logger *slog.Logger,
 ) (httpapi.WorkInfoPlugins, func()) {
 	runtime, err := wasmplugin.New(ctx, wasmplugin.Options{Logger: logger})
 	if err != nil {
@@ -24,7 +24,7 @@ func newWorkInfoPlugins(
 	}
 	registry := app.NewWorkInfoPlugins(app.WorkInfoPluginsOptions{
 		Store: db.WorkInfoPlugins(), Runtime: runtime, Videos: db.Library(), Applier: db.Overrides(),
-		Matcher: db.Credits(),
+		Matcher: db.Credits(), Covers: covers,
 	})
 	return registry, func() { _ = runtime.Close(context.WithoutCancel(ctx)) }
 }
