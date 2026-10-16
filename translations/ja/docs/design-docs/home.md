@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/home.md
-sourceHash: 7dedd6f3d66e58d06dca3e781aa4a8bdacc648a11ad5278cee553ef2f26bb2b2
+sourceHash: 8d1ef33d6c744d025ef703292bf67bab4628cf9498ecaf245be758a7ec783b50
 ---
 
 # ホームの棚と規則の整理役 {#home-shelves-and-the-rule-organizer}
@@ -62,9 +62,13 @@ stateDiagram-v2
 
 終わった実行は、その結果 (`done`、`failed`、または提案が何も変えなかったときの `unchanged`) と、加えた棚と取り除いた棚の数を `home.organize.last` に書く。状態が変わるたびに `HomeChanged` を発行するので、開いている画面はホームを読み直す。
 
+ストレージのエラーが起きても実行は失われない。整理役は、起動時に待っている実行を読めないとき、または実行の後に `home.organize.last` を書けないとき、キューのポーリングのたび (10 秒) に `home.organize.pending` を読み直して見つけたものを実行するので、結果が記録されなかった実行はもう一度実行される。設定は、結果を書いた後にだけ消す。
+
 ## スキャンの後にキューを待つ {#waiting-for-the-queues-after-a-scan}
 
 スキャンが起こす実行は、スキャンが `done` として終わった後、ジョブのキューと自動タグ付けのキューがどちらも 2 分間空のままになるまで待つ ([R-10](../../specs/057-home/research.md#r-10-an-extend-runs-when-20-or-more-shown-videos-are-unshelved))。新しい動画はスキャンの後に自動タグ付けからタグを得るので、それより早い実行は、新しい動画をどれもタグを持つ前に棚にない動画として数えてしまう。失敗したスキャンや取り消したスキャンは何も始めない。
+
+失敗したキューの確認は空でないとみなすので、2 分間は次に成功した確認の後に改めて始まる。2 分間の後の判断または待ちへの追加が失敗したときは、整理役はそのスキャンを待ち続け、次のポーリングでもう一度試す。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
