@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
+  type ActivityConditions,
   type ActivityCounts,
   type ActivityEntry,
   type ActivityFeatureCounts,
@@ -65,8 +66,10 @@ function readyOf(
  * useActivityLog は絞り込みに合う記録を新しい順にページごとに読む。絞り込みが変わると最初の
  * ページから読み直す。`activity` の知らせとつなぎ直しでは、件数と読み込んだのと同じ数の
  * ページを読み直し、届いたら行を差し替える（並びは id の降順なので、読んでいたカードは
- * 動かない）。読み直しが重なったら今の読み直しの後に 1 度だけ読む。読み直しの失敗では今の行を
- * 残す。
+ * 動かない）。読み直しが重なったら今の読み直しの後に 1 度だけ読む。最初のページを読んでいる
+ * 間に届いた知らせも、そのページが届いた後に 1 度だけ読み直す。読み直しの失敗では今の行を
+ * 残す。最初のページが読めなかった画面（`failed`）は知らせでは読み直さず、`Retry` を待つ。
+ * 期間は最初のページと読み直しを始めるときに `since` へ直し、続きのページは同じ条件で読む。
  */
 export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
   const [state, setState] = useState<ActivityLogState>({ kind: "loading" });
@@ -89,6 +92,8 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
   const pages = useRef(0);
   const refreshing = useRef(false);
   const again = useRef(false);
+  // 今の行を読んだ条件。続きのページはこれで読み、期間の境界を動かさない。
+  const conditions = useRef<ActivityConditions>({});
 
   const begin = useCallback(() => {
     generation.current += 1;
@@ -98,26 +103,32 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
   }, []);
 
   const readPage = useCallback(
-    (cursor: string | undefined, signal: AbortSignal) =>
+    (where: ActivityConditions, cursor: string | undefined, signal: AbortSignal) =>
       listActivity({
-        ...activityConditions(criteriaRef.current, new Date()),
+        ...where,
         ...(cursor === undefined ? {} : { cursor }),
         signal,
       }),
     [],
   );
 
+  // readFirst から refresh を呼ぶための控え（refresh は readFirst の後に作る）。
+  const refreshRef = useRef<() => void>(() => {});
+
   const readFirst = useCallback(() => {
     const { gen, signal } = begin();
     refreshing.current = false;
     again.current = false;
     pages.current = 0;
+    const where = activityConditions(criteriaRef.current, new Date());
+    conditions.current = where;
     show({ kind: "loading" });
-    readPage(undefined, signal).then(
+    readPage(where, undefined, signal).then(
       (page) => {
         if (gen !== generation.current) return;
         pages.current = 1;
         show(readyOf(page, page.items, page.nextCursor));
+        if (again.current) refreshRef.current();
       },
       (error: unknown) => {
         if (isAborted(error) || gen !== generation.current) return;
@@ -127,8 +138,8 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
   }, [begin, readPage, show]);
 
   const refresh = useCallback(() => {
-    if (stateRef.current.kind !== "ready") return;
-    if (refreshing.current) {
+    if (stateRef.current.kind === "failed") return;
+    if (stateRef.current.kind === "loading" || refreshing.current) {
       again.current = true;
       return;
     }
@@ -138,17 +149,18 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
     const current = stateRef.current;
     if (current.more.kind === "loading") show({ ...current, more: { kind: "idle" } });
     const wanted = Math.max(1, pages.current);
+    const where = activityConditions(criteriaRef.current, new Date());
     const finish = () => {
       refreshing.current = false;
       if (again.current) refresh();
     };
     const read = async () => {
-      const first = await readPage(undefined, signal);
+      const first = await readPage(where, undefined, signal);
       const items = [...first.items];
       let last = first;
       let count = 1;
       while (count < wanted && last.nextCursor !== undefined) {
-        last = await readPage(last.nextCursor, signal);
+        last = await readPage(where, last.nextCursor, signal);
         items.push(...last.items);
         count += 1;
       }
@@ -158,6 +170,7 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
       ({ first, last, items, count }) => {
         if (gen !== generation.current) return;
         pages.current = count;
+        conditions.current = where;
         show(readyOf(first, items, last.nextCursor));
         finish();
       },
@@ -167,6 +180,10 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
       },
     );
   }, [begin, readPage, show]);
+
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
 
   const loadMore = useCallback(() => {
     const current = stateRef.current;
@@ -180,7 +197,7 @@ export function useActivityLog(criteria: ActivityCriteria): ActivityLog {
     const gen = generation.current;
     const signal = controller.current?.signal ?? new AbortController().signal;
     show({ ...current, more: { kind: "loading" } });
-    readPage(current.nextCursor, signal).then(
+    readPage(conditions.current, current.nextCursor, signal).then(
       (page) => {
         const shown = stateRef.current;
         if (gen !== generation.current || shown.kind !== "ready") return;

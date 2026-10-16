@@ -4,6 +4,7 @@ import type {
   ActivityFeature,
   ActivityStatus,
 } from "../api/activity";
+import { normalizeQuery } from "../videoList/listCriteria";
 
 /**
  * アクティビティの画面の絞り込みと URL の相互変換（specs/055-activity/ui-design.md
@@ -71,7 +72,7 @@ export const activityPeriods: readonly ActivityPeriod[] = [
 ];
 
 /** 検索語の上限（契約の `q` の 1–200 文字）。 */
-const queryLimit = 200;
+export const ACTIVITY_QUERY_LIMIT = 200;
 
 function oneOf<T extends string>(
   values: readonly T[],
@@ -84,7 +85,7 @@ function oneOf<T extends string>(
 
 /** normalizeActivityQuery は検索語の前後の空白を落とし、上限の文字数で切る。 */
 export function normalizeActivityQuery(value: string): string {
-  return Array.from(value.trim()).slice(0, queryLimit).join("").trim();
+  return normalizeQuery(value, ACTIVITY_QUERY_LIMIT);
 }
 
 /** parseActivityCriteria は URL のクエリを絞り込みにする。読めない値は既定にする。 */

@@ -1,4 +1,12 @@
-import { cleanup, render, screen, waitFor, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  renderHook,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -12,7 +20,9 @@ import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource"
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
+import { DEFAULT_ACTIVITY_CRITERIA } from "./activityCriteria";
 import ActivityPage from "./ActivityPage";
+import { useActivityLog } from "./useActivityLog";
 
 // アクティビティの画面（specs/055-activity/ui-design.md「Activity page」）のページテスト。
 // 偽のサーバーは契約どおりに絞り込み、counts は status 以外、features は feature 以外の
@@ -52,6 +62,8 @@ const features: ActivityFeature[] = [
 const server = {
   entries: [] as ActivityEntry[],
   requests: [] as URLSearchParams[],
+  /** 置くと、一覧の要求は応答を作った後でこれを待ってから返す（読んだ後に記録が変わる場合）。 */
+  gate: null as Promise<void> | null,
 };
 
 function matches(item: ActivityEntry, params: URLSearchParams, skip: string): boolean {
@@ -104,12 +116,14 @@ function install() {
       const url = new URL(String(input), "http://localhost");
       if (url.pathname === "/api/activity") {
         server.requests.push(url.searchParams);
-        return Promise.resolve(
-          new Response(JSON.stringify(respond(url.searchParams)), {
+        const body = JSON.stringify(respond(url.searchParams));
+        const held = url.searchParams.get("limit") === "1" ? null : server.gate;
+        const reply = () =>
+          new Response(body, {
             status: 200,
             headers: { "Content-Type": "application/json" },
-          }),
-        );
+          });
+        return held === null ? Promise.resolve(reply()) : held.then(reply);
       }
       throw new Error(`unexpected request: ${url.pathname}`);
     }),
@@ -170,7 +184,10 @@ beforeEach(() => {
     }),
   ];
   server.requests = [];
+  server.gate = null;
   search = "";
+  // jsdom は scrollTo を持たない。絞り込みを変えると先頭へ戻す。
+  vi.spyOn(window, "scrollTo").mockImplementation(() => {});
   installFakeEventSource();
   install();
 });
@@ -179,6 +196,7 @@ afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
+  vi.useRealTimers();
 });
 
 describe("ActivityPage", () => {
@@ -301,6 +319,45 @@ describe("ActivityPage", () => {
     expect(first?.dataset.tone).toBe("default");
   });
 
+  it("refetches after the first page when a notification came while it loaded", async () => {
+    let release = () => {};
+    server.gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    renderPage();
+    await waitFor(() => expect(filterRequests()).toHaveLength(1));
+    // 最初のページを読んだ後、応答が届く前に記録が増える。
+    server.entries.push(entry(5));
+    await emitServerEvent("activity");
+    server.gate = null;
+    release();
+    await waitFor(() => expect(cards()).toHaveLength(5));
+  });
+
+  it("starts the list from the top when the filters change", async () => {
+    const scrollTo = vi.mocked(window.scrollTo);
+    const user = userEvent.setup();
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(4));
+    expect(scrollTo).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: /^Status/ }));
+    await user.click(await screen.findByRole("menuitemradio", { name: /Done/ }));
+    await waitFor(() => expect(search).toBe("?status=done"));
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" });
+  });
+
+  it("takes a search term up to the contract's 200 characters", async () => {
+    const user = userEvent.setup();
+    const long = "a".repeat(150) + "z".repeat(60);
+    renderPage();
+    await waitFor(() => expect(cards()).toHaveLength(4));
+    await user.click(screen.getAllByRole("searchbox", { name: "Search file names" })[0]!);
+    await user.paste(long);
+    await waitFor(() =>
+      expect(new URLSearchParams(search).get("q")).toBe(long.slice(0, 200)),
+    );
+  });
+
   it("offers no open action when the subject has no video", async () => {
     renderPage();
     await waitFor(() => expect(cards()).toHaveLength(4));
@@ -324,5 +381,25 @@ describe("ActivityPage", () => {
       "broken",
       "cat",
     ]);
+  });
+});
+
+describe("useActivityLog", () => {
+  it("reads the next page with the period of the first page", async () => {
+    server.entries = Array.from({ length: 60 }, (_, index) => entry(index + 1));
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 16, 23, 59, 59));
+    const { result } = renderHook(() =>
+      useActivityLog({ ...DEFAULT_ACTIVITY_CRITERIA, period: "today" }),
+    );
+    await waitFor(() => expect(result.current.state.kind).toBe("ready"));
+    // 次のページは日をまたいでから読む。
+    vi.setSystemTime(new Date(2026, 9, 17, 0, 0, 1));
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(filterRequests()).toHaveLength(2));
+    const [first, next] = filterRequests();
+    expect(next?.get("cursor")).toBeTruthy();
+    expect(next?.get("since")).toBe(first?.get("since"));
+    expect(first?.get("since")).toBe(new Date(2026, 9, 16).toISOString());
   });
 });

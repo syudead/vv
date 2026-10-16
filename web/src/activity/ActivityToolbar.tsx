@@ -16,6 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import type { HistoryMode } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
 import {
+  ACTIVITY_QUERY_LIMIT,
   type ActivityCriteria,
   type ActivityPeriod,
   activityDeciders,
@@ -78,6 +79,7 @@ function SearchField({
       label={t.activity.search.label}
       placeholder={t.activity.search.label}
       syntaxHelp={false}
+      maxLength={ACTIVITY_QUERY_LIMIT}
     />
   );
 }

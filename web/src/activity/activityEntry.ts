@@ -294,8 +294,13 @@ export interface EntryTime {
 const minuteMs = 60 * 1000;
 const hourMs = 60 * minuteMs;
 
-function startOfDay(date: Date): number {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate()).getTime();
+function startOfDay(date: Date, daysBack = 0): number {
+  // 日付を引いてから 0 時を作る。夏時間の切り替わる日は 23 時間・25 時間あるので、時間では引かない。
+  return new Date(
+    date.getFullYear(),
+    date.getMonth(),
+    date.getDate() - daysBack,
+  ).getTime();
 }
 
 /**
@@ -327,7 +332,7 @@ export function entryTime(iso: string, now: Date): EntryTime {
     };
   }
   const time = formatTime(at);
-  if (at.getTime() >= today - 24 * hourMs)
+  if (at.getTime() >= startOfDay(now, 1))
     return {
       long: t.activity.time.yesterday(time),
       short: t.activity.time.shortYesterday,

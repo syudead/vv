@@ -15,9 +15,11 @@ import { LoadMoreRow } from "../ui/patterns/load-more-row";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
 import type { HistoryMode } from "../videoList/listCriteria";
+import { useScrollTopOnChange } from "../videoList/useScrollTopOnChange";
 import { ActivityCard } from "./ActivityCard";
 import {
   type ActivityCriteria,
+  activityCriteriaKey,
   DEFAULT_ACTIVITY_CRITERIA,
   hasActivityConditions,
   parseActivityCriteria,
@@ -106,6 +108,8 @@ export default function ActivityPage() {
   const totals = useActivityTotals();
   const now = useNow();
   const end = useRef<HTMLDivElement>(null);
+  // 絞り込みを変えたら先頭へ戻す。最初の表示と再生からの戻りでは位置を保つ。
+  useScrollTopOnChange(activityCriteriaKey(criteria));
 
   useEffect(() => {
     const previous = document.title;
