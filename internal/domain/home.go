@@ -166,7 +166,8 @@ func (l HomeOrganizeLast) Validate() error {
 
 // HomeApplied は案の適用の結果である。
 type HomeApplied struct {
-	// Added は挿入した棚、Removed は消した整理役のフォルダの数である。
+	// Added は挿入した棚、Removed は消したか、所有者の子孫があるので消さずにホームから外した整理役の
+	// フォルダの数である。
 	Added   int
 	Removed int
 	// Changed は棚の集合・並び・名前のどれかが変わったかである。偽なら結果は HomeOrganizeUnchanged である。

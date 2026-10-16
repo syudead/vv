@@ -87,8 +87,9 @@ func (s *HomeStore) SetShelves(ctx context.Context, ids []int64) error {
 // 案は捨て、棚は domain.MaxHomeShelves を超えて足さない。
 //
 // rebuild は、案が条件を繰り返す owner_kept 0 のフォルダを同じ id のまま案の名前で残し、owner_kept 1
-// の棚と同じ条件の案を捨て、残りを挿入し、案が繰り返さなかった owner_kept 0 のフォルダを消し、
-// owner_kept 1 の棚を今の順で上に、整理役の棚を案の順でその後ろに置いて位置を振る。extend は、
+// の棚と同じ条件の案を捨て、残りを挿入し、案が繰り返さなかった owner_kept 0 のフォルダを消し（子孫に
+// owner_kept 1 のフォルダがあれば消さずにホームから外し）、owner_kept 1 の棚を今の順で上に、整理役の
+// 棚を案の順でその後ろに置いて位置を振る。extend は、
 // どれかの棚と同じ条件の案を捨て、今の棚の後ろへ挿入だけをし、名前も条件も変えない。
 func (s *HomeStore) ApplyProposal(ctx context.Context, run domain.HomeOrganizeRun, proposal []domain.ProposedShelf) (domain.HomeApplied, error) {
 	if !run.Valid() {
@@ -252,8 +253,9 @@ type homeApply struct {
 	organizer []domain.SmartFolder
 	// after は適用の後の棚の id を並びの順に持つ。
 	after []int64
-	// inserted・renamed・deleted は挿入・改名・削除したフォルダの id である。
-	inserted, renamed, deleted []int64
+	// inserted・renamed・deleted は挿入・改名・削除したフォルダの id で、unshelved は所有者の子孫を
+	// 持つので消さずにホームから外した整理役のフォルダの id である。
+	inserted, renamed, deleted, unshelved []int64
 	// deleteEvents は削除が返した知らせである。
 	deleteEvents []domain.Event
 }
@@ -300,16 +302,45 @@ func (a *homeApply) rebuild(ctx context.Context, proposal []domain.ProposedShelf
 		if kept[folder.ID] {
 			continue
 		}
+		if err := a.drop(ctx, folder); err != nil {
+			return err
+		}
+	}
+	if !slices.Equal(shelfIDs(a.before), a.after) {
+		return writeShelfPositions(ctx, a.tx, a.after)
+	}
+	return nil
+}
+
+// drop は案が繰り返さなかった整理役のフォルダ folder を消す。子孫に owner_kept 1 のフォルダがあれば、
+// 消すと外部キーで所有者のフォルダまで消えるので（data-model.md「Rules」の「rebuild は owner_kept 0 の
+// フォルダだけを消す」）、folder を消さずにホームから外すだけにする。
+func (a *homeApply) drop(ctx context.Context, folder domain.SmartFolder) error {
+	var owned bool
+	if err := a.tx.QueryRowContext(ctx, `with recursive down (id) as (
+			select id from smart_folders where parent_id = ?
+			union
+			select f.id from smart_folders f join down on f.parent_id = down.id)
+		select exists (select 1 from smart_folders where id in (select id from down) and owner_kept = 1)`,
+		folder.ID).Scan(&owned); err != nil {
+		return fmt.Errorf("cannot read the organizer folder's descendants: %w", err)
+	}
+	if !owned {
 		events, err := deleteSmartFolder(ctx, a.tx, folder.ID)
 		if err != nil {
 			return err
 		}
 		a.deleted = append(a.deleted, folder.ID)
 		a.deleteEvents = append(a.deleteEvents, events...)
+		return nil
 	}
-	if !slices.Equal(shelfIDs(a.before), a.after) {
-		return writeShelfPositions(ctx, a.tx, a.after)
+	if folder.HomePosition == 0 {
+		return nil
 	}
+	if _, err := a.tx.ExecContext(ctx, `update smart_folders set home_position = null where id = ?`, folder.ID); err != nil {
+		return fmt.Errorf("cannot remove the organizer shelf: %w", err)
+	}
+	a.unshelved = append(a.unshelved, folder.ID)
 	return nil
 }
 
@@ -377,7 +408,7 @@ func (a *homeApply) insert(ctx context.Context, shelf domain.ProposedShelf, posi
 func (a *homeApply) result() domain.HomeApplied {
 	return domain.HomeApplied{
 		Added:   len(a.inserted),
-		Removed: len(a.deleted),
+		Removed: len(a.deleted) + len(a.unshelved),
 		Changed: a.changed(),
 	}
 }

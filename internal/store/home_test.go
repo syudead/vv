@@ -122,6 +122,52 @@ func TestRebuildKeepsRepeatedOrganizerFoldersAndDeletesTheRest(t *testing.T) {
 	}
 }
 
+// rebuild は、所有者が子フォルダを作った整理役のフォルダを、案が条件を繰り返さなくても消さずに
+// ホームから外すだけにし、所有者の子フォルダとその棚・プレイリストの項目を残す（data-model.md
+// 「Rules」の「rebuild は owner_kept 0 のフォルダだけを消す」）。
+func TestRebuildKeepsAnOrganizerFolderThatHoldsAnOwnerFolder(t *testing.T) {
+	db, tags := homeFixture(t, "Cats", "Dogs")
+	ctx := context.Background()
+	applyProposal(t, db, domain.HomeRebuild, tagShelf("Cats", tags["Cats"]))
+	cats := shelfByName(t, db, "Cats")
+	child, err := db.SmartFolders().CreateSmartFolder(ctx, domain.SmartFolderCreate{
+		Name: "Favorite cats", Rule: domain.SmartRule{Tags: []int64{tags["Cats"]}}, ParentID: cats.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Home().SetShelves(ctx, []int64{cats.ID, child.ID}); err != nil {
+		t.Fatal(err)
+	}
+	playlist, err := db.Playlists().CreatePlaylist(ctx, "Cats")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Playlists().AddPlaylistItems(ctx, playlist.ID, domain.PlaylistAdd{SmartFolderIDs: []int64{child.ID}}); err != nil {
+		t.Fatal(err)
+	}
+
+	applied := applyProposal(t, db, domain.HomeRebuild, tagShelf("Dogs", tags["Dogs"]))
+	if applied != (domain.HomeApplied{Added: 1, Removed: 1, Changed: true}) {
+		t.Fatalf("rebuild = %+v", applied)
+	}
+	if got, want := homeRows(t, db), []string{"Favorite cats:true", "Dogs:false"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("shelves = %v, want %v", got, want)
+	}
+	parent, err := db.SmartFolders().SmartFolder(ctx, cats.ID)
+	if err != nil {
+		t.Fatalf("organizer folder error = %v, want kept", err)
+	}
+	if parent.HomePosition != 0 || parent.OwnerKept {
+		t.Fatalf("organizer folder = %+v, want off the home with owner_kept 0", parent)
+	}
+	var items int
+	if err := db.sql.QueryRow(`select count(*) from playlist_items where smart_folder_id = ?`, child.ID).
+		Scan(&items); err != nil || items != 1 {
+		t.Fatalf("playlist items = %d, %v; want 1", items, err)
+	}
+}
+
 // rebuild は owner-kept の棚と同じ条件の案を捨て、owner-kept のフォルダをそのまま残す。
 func TestRebuildLeavesOwnerKeptShelvesAlone(t *testing.T) {
 	db, tags := homeFixture(t, "Cats", "Dogs")
