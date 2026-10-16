@@ -216,10 +216,20 @@ func parseChapters(chapters []probeChapter) []domain.MediaChapter {
 	return out
 }
 
+// secondsToMs は秒の文字列をミリ秒にする。int64 に収まらない時刻は端の値にそろえる。
+// 範囲外の float64 を int64 へ変換した値は実装依存で、負の値になると
+// NormalizeChapters が冒頭のチャプターにしてしまうためである。
 func secondsToMs(value string) (int64, bool) {
 	seconds, err := strconv.ParseFloat(strings.TrimSpace(value), 64)
 	if err != nil || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
 		return 0, false
 	}
-	return int64(math.Round(seconds * 1000)), true
+	ms := math.Round(seconds * 1000)
+	switch {
+	case ms >= math.MaxInt64: // float64(math.MaxInt64) は 2^63 に丸まる
+		return math.MaxInt64, true
+	case ms <= math.MinInt64:
+		return math.MinInt64, true
+	}
+	return int64(ms), true
 }

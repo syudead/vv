@@ -83,11 +83,14 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 // 前後で大きさか更新時刻が違えば、ffprobe が読んだ内容は前の印のファイルと同じとは
 // 限らない。その印で保存すると、同じ印を持つ別の所在の変換に別の内容の解析情報が
 // 使われるので、ライブ変換用の解析情報を持たせない（行を書かず、変換の要求時に
-// その場で解析させる）。索引の値はこれまでどおり反映する。
+// その場で解析させる）。メディア情報も同じ理由で持たせない。行が無い動画は
+// 再解析の対象になり、混ざった内容の行が今の版として残り続けることが無い
+// （specs/056-media-info/plan.md「How it works」3・4）。索引の値はこれまでどおり反映する。
 func stampProbe(probe domain.Probe, before, after domain.FileStamp) domain.Probe {
 	probe.Source = before
 	if before != after {
 		probe.Transcode = nil
+		probe.Media = nil
 	}
 	return probe
 }

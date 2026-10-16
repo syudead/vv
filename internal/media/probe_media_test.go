@@ -194,6 +194,26 @@ func TestParseMediaInfoNormalizesChapters(t *testing.T) {
 	}
 }
 
+// int64 に収まらない時刻は端の値にそろえ、尺の後の開始を冒頭のチャプターにしない。
+func TestParseMediaInfoClampsHugeChapterTimes(t *testing.T) {
+	info := parseMediaFixture(t, `{
+	  "streams": [{"index": 0, "codec_type": "video", "codec_name": "h264"}],
+	  "chapters": [
+	    {"id": 0, "start_time": "10.000000", "end_time": "1e300", "tags": {"title": "終わりが巨大"}},
+	    {"id": 1, "start_time": "1e300", "end_time": "2e300", "tags": {"title": "開始が巨大"}},
+	    {"id": 2, "start_time": "-1e300", "end_time": "5.000000", "tags": {"title": "開始が負に巨大"}}
+	  ],
+	  "format": {"duration": "120.0"}
+	}`)
+	want := []domain.MediaChapter{
+		{StartMs: 0, EndMs: 5_000, Title: "開始が負に巨大"},
+		{StartMs: 10_000, EndMs: 120_000, Title: "終わりが巨大"},
+	}
+	if !slices.Equal(info.Chapters, want) {
+		t.Errorf("Chapters = %+v, want %+v", info.Chapters, want)
+	}
+}
+
 // 何も持たないファイルは、映像の HDR = sdr だけの Media になる。
 func TestParseMediaInfoWithNothingGivesSDROnly(t *testing.T) {
 	info := parseMediaFixture(t, `{
