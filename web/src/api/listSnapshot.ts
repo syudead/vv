@@ -56,6 +56,10 @@ export interface ListKey {
   organization?: number;
   /** ライブラリのタグの種類の絞り込み（specs/051-tag-kinds/contracts/screen-api.md）。 */
   tagKind?: number;
+  /** ライブラリの追加日と長さの絞り込み（specs/052-smart-folders/research.md R-4）。 */
+  addedWithin?: number;
+  minDuration?: number;
+  maxDuration?: number;
 }
 
 /** ListSnapshot は一覧を離れる直前の状態である（data-model.md 2.）。 */
@@ -125,6 +129,9 @@ function normalize(key: ListKey): string {
     key.person === undefined ? "" : String(key.person),
     key.organization === undefined ? "" : String(key.organization),
     key.tagKind === undefined ? "" : String(key.tagKind),
+    key.addedWithin === undefined ? "" : String(key.addedWithin),
+    key.minDuration === undefined ? "" : String(key.minDuration),
+    key.maxDuration === undefined ? "" : String(key.maxDuration),
   ].join("\0");
   return key.folder === undefined ? list : `folder\0${key.folder}\0${list}`;
 }

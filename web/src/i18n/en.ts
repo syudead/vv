@@ -782,6 +782,35 @@ export const en = {
       playableOnly: "Playable only",
       favoritesOnly: "Favorites only",
       clear: "Clear filters",
+      // 追加日と長さの行（specs/052-smart-folders/ui-design.md「Words」）。
+      added: "Added",
+      length: "Length",
+      addedOptions: {
+        any: "Any time",
+        // 選択肢の日数（1, 7, 30, 90, 365）の名前。
+        preset: (days: number) => {
+          if (days === 1) return "Last 24 hours";
+          if (days === 365) return "Last year";
+          return `Last ${formatNumber(days)} days`;
+        },
+        // 選択肢に無い日数（URL や条件が持つ値）。
+        days: (days: number) =>
+          selectPlural(days, {
+            one: `Last ${formatNumber(days)} day`,
+            other: `Last ${formatNumber(days)} days`,
+          }),
+      },
+      lengthOptions: {
+        any: "Any length",
+        under5: "Under 5 minutes",
+        from5to20: "5 to 20 minutes",
+        from20to60: "20 to 60 minutes",
+        overHour: "Over an hour",
+        // 選択肢に無い範囲。分は画面が整えた文字列で渡す。
+        between: (min: string, max: string) => `${min} to ${max} minutes`,
+        under: (max: string) => `Under ${max} minutes`,
+        over: (min: string) => `Over ${min} minutes`,
+      },
     },
     sort: {
       heading: "Sort by",
@@ -2195,6 +2224,72 @@ export const en = {
   },
   // グループのページ（/groups/{id}）と、グループをタグに変える窓（specs/048-groups/ui-design.md
   // 「Words」）。名前とパス（利用者のデータ）はそのまま埋め込む。
+  // スマートフォルダの保存・編集・削除（specs/052-smart-folders/ui-design.md「Words」）。
+  smartFolders: {
+    save: "Save as smart folder",
+    created: (name: string) => `Created "${name}"`,
+    saved: (name: string) => `Saved "${name}"`,
+    deleted: (name: string) => `Deleted "${name}"`,
+    // 作ったトーストの、新しいフォルダのページを開く操作。
+    open: "Open",
+    dialog: {
+      newTitle: "New smart folder",
+      newChildTitle: (parent: string) => `New smart folder in "${parent}"`,
+      editTitle: "Edit smart folder",
+      parent: "Parent",
+      noParent: "None (top level)",
+      parentsFailed: (reason: string) => `Couldn't load the smart folders: ${reason}`,
+      // 並べ順の選択肢（「Date added, newest first」）。言い換えの無い種類は向きの語を使う。
+      sortOption: (kind: string, direction: string) => `${kind}, ${direction}`,
+      ascending: "ascending",
+      descending: "descending",
+      randomSort: "Random can't be saved; the folder is sorted by date added",
+      conditions: "Conditions",
+      conditionsHint: "Videos that match every condition are in the folder.",
+      noConditions: "Add at least one condition.",
+      person: "Person",
+      organization: "Organization",
+      tagsLimit: (limit: number) => `Up to ${formatNumber(limit)} tags`,
+      removeTag: (name: string) => `Remove the condition ${name}`,
+      removePerson: (name: string) => `Remove the person ${name}`,
+      removeOrganization: (name: string) => `Remove the organization ${name}`,
+      removeDeleted: "Remove the deleted condition",
+      submit: "Create",
+      submitting: "Creating…",
+      saveSubmit: "Save",
+      saving: "Saving…",
+      createFailed: (reason: string) => `Couldn't create the smart folder: ${reason}`,
+      saveFailed: (reason: string) => `Couldn't save the smart folder: ${reason}`,
+    },
+    condition: {
+      // もう無いタグ・種類・人物・団体の条件のチップ。
+      deleted: (kind: "tag" | "tagKind" | "person" | "organization") =>
+        ({
+          tag: "Tag: deleted",
+          tagKind: "Kind: deleted",
+          person: "Person: deleted",
+          organization: "Organization: deleted",
+        })[kind],
+    },
+    detail: {
+      edit: "Edit…",
+      newChild: "New child smart folder…",
+      delete: "Delete…",
+    },
+    deleteDialog: {
+      title: (name: string) => `Delete "${name}"?`,
+      description: "The smart folder is deleted. Its videos stay in the library.",
+      // 子孫の数（どの深さも数える）。2 つ目の文として説明に続ける。
+      descendants: (count: number) =>
+        selectPlural(count, {
+          one: "The 1 smart folder inside it is deleted with it.",
+          other: `The ${formatNumber(count)} smart folders inside it are deleted with it.`,
+        }),
+      submit: "Delete",
+      submitting: "Deleting…",
+      failed: (reason: string) => `Couldn't delete the smart folder: ${reason}`,
+    },
+  },
   groups: {
     // 道筋の帯（Breadcrumb）の名前。
     trail: "Group path",
