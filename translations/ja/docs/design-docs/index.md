@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: c358ee567529f5638f280c5808eb83fa71015c398312702e804df45a71caea83
+sourceHash: 0892980d18470e3bc1e6563cf2ed47f3ec2db024a3cc54cea292159990cbb31e
 ---
 
 # 設計文書 {#design-documents}
@@ -39,6 +39,7 @@ sourceHash: c358ee567529f5638f280c5808eb83fa71015c398312702e804df45a71caea83
 - [vv デザインシステム](design-system.md)
 - [ライブラリ UI: 視覚ルールと一覧のレイアウト](library-ui.md)
 - [関連動画と前後の動画](related-videos.md)
+- [ホームの棚と規則の整理役](home.md)
 - [画面の文言と書式 (i18n)](i18n.md)
 - [Web のテストレベル](web-testing.md)
 - [テストと CI の品質監視](test-quality-monitoring.md)

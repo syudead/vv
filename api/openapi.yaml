@@ -1687,6 +1687,24 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/home/organize:
+    post:
+      operationId: organizeHome
+      summary: ホームの組み直し（rebuild）を待ちに入れる
+      description: |
+        待ちの実行は設定 `home.organize.pending` に 1 つだけで、rebuild は extend を吸収する。走っている
+        実行があれば、その終わったあとに走る。待ちに入れたあとの整理役の状態を返す。所有者だけ
+        （specs/057-home/research.md R-9、contracts/screen-api.md）。
+      responses:
+        "202":
+          description: 待ちに入れたあとの整理役の状態
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HomeOrganizer"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/onboarding:
     get:
       operationId: getOnboarding
@@ -6384,6 +6402,46 @@ components:
         byOrganizer:
           type: boolean
           description: 所有者だけ。owner_kept が 0 の間は真
+
+    HomeOrganizer:
+      type: object
+      required: [running]
+      additionalProperties: false
+      description: 整理役の状態（specs/057-home/data-model.md「Organizer state」）
+      properties:
+        running:
+          type: boolean
+          description: 実行が今走っている
+        pending:
+          type: string
+          enum: [rebuild, extend]
+          description: 待っている実行。無ければ省く
+        last:
+          $ref: "#/components/schemas/HomeOrganizeRun"
+
+    HomeOrganizeRun:
+      type: object
+      required: [run, outcome, finishedAt, added, removed]
+      additionalProperties: false
+      description: 最後に終わった実行（specs/057-home/data-model.md「Settings」の home.organize.last）
+      properties:
+        run:
+          type: string
+          enum: [rebuild, extend]
+        outcome:
+          type: string
+          enum: [done, failed, unchanged]
+          description: '`unchanged` は案が何も変えなかった'
+        finishedAt:
+          type: integer
+          format: int64
+          description: 終わった時刻（Unix ミリ秒）
+        added:
+          type: integer
+          description: 足した棚の数
+        removed:
+          type: integer
+          description: 消した棚の数
 
     AutoTaggingQueued:
       type: object
