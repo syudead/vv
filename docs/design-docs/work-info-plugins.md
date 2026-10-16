@@ -208,7 +208,7 @@ flowchart LR
   check -->|no| none
   check -->|yes| keep[Kept with the fetch for 10 minutes]
   keep --> serve[GET .../cover serves it to the comparison]
-  keep -->|cover selected| apply[UploadThumbnailImage, before the work information]
+  keep -->|cover selected| apply[UploadThumbnailImage, after the work information commits]
 ```
 
 [`work_info_cover.go`](../../internal/app/work_info_cover.go) checks the
@@ -229,11 +229,13 @@ within 32 MiB, eight covers at the 4 MiB limit: a new fetch over that budget
 drops the fetches with covers that expire first, and applying one of them
 answers `work_info_fetch_stale`.
 
-The apply makes the cover the thumbnail before it writes the work
-information. A cover the thumbnail path refuses (unreadable, too large, not
-fittable) or a video whose content changed since the fetch is skipped as
-`invalid` and the other fields are still applied; any other failure writes
-nothing and keeps the fetch for another try.
+The apply makes the cover the thumbnail after the work-information
+transaction commits, so a plugin replaced or revoked since the fetch, which
+that transaction re-checks, leaves the thumbnail unchanged. Any failure of the
+cover after the commit (an image the thumbnail path refuses, a video whose
+content changed since the fetch, a write error) is skipped as `invalid`: the
+fetch is single-use and already applied, so an error would leave the screen
+unable to tell what was written.
 
 | Rejected | Why |
 | --- | --- |

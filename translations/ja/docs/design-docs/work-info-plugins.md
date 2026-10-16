@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: b4256a46821b053ecffe0604f139189da774c0ad47e08295b65360ddff10c39f
+sourceHash: 143206662317060c9a72f39d2ea9043343cb163ea9b3e6ed5a7d5219b79ba13b
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
@@ -131,7 +131,7 @@ flowchart LR
   check -->|いいえ| none
   check -->|はい| keep[取得とともに 10 分間保つ]
   keep --> serve[GET .../cover が比較にそれを返す]
-  keep -->|カバーを選んだとき| apply[作品情報より前に UploadThumbnailImage]
+  keep -->|カバーを選んだとき| apply[作品情報のコミット後に UploadThumbnailImage]
 ```
 
 [`work_info_cover.go`](../../internal/app/work_info_cover.go) は画像のヘッダーだけを確かめる。完全なデコードは適用が担う。カバーはアップロードした画像の経路である `Ingest.UploadThumbnailImage` を通る ([thumbnail-editing.md](thumbnail-editing.md#uploaded-images)) ので、アップロードのゲート、1 億 2000 万ピクセルの上限、生成のロックを受け、origin `uploaded` で保存される。
@@ -140,7 +140,7 @@ flowchart LR
 
 各カバーは、その取得とともにメモリに保持する。保持するカバーは合わせて 32 MiB、つまり上限の 4 MiB のカバー 8 つ分に収まる。この予算を超える新しい取得は、カバーを持つ取得のうち先に期限が切れるものを捨て、捨てた取得の適用は `work_info_fetch_stale` を返す。
 
-適用は、作品情報を書く前にカバーをサムネイルにする。サムネイルの経路が拒否するカバー (読めない、大きすぎる、収まる大きさに合わせられない) や、取得の後に内容が変わった動画は `invalid` として飛ばし、ほかのフィールドはそのまま適用する。それ以外の失敗では何も書かず、再試行のために取得を残す。
+適用は、作品情報のトランザクションがコミットした後にカバーをサムネイルにするので、取得の後に差し替えられた、または取り消されたプラグインは、そのトランザクションが確かめ直すため、サムネイルを変えない。コミット後のカバーの失敗 (サムネイルの経路が拒否する画像、取得の後に内容が変わった動画、書き込みのエラー) はすべて `invalid` として飛ばす。取得は一度しか使えず、すでに適用済みなので、エラーにすると画面は何が書かれたかを判別できなくなる。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |

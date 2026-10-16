@@ -81,7 +81,7 @@ func TestFetchedCoverKeepsOnlyImagesItCanRead(t *testing.T) {
 	}
 }
 
-func TestApplyCoverMakesItTheThumbnailBeforeTheWorkInfo(t *testing.T) {
+func TestApplyCoverMakesItTheThumbnailAfterTheWorkInfo(t *testing.T) {
 	e, covers := newCoverEnv()
 	image := pngOf(t, 4, 3)
 	result := e.fetchCover(t, image)
@@ -98,8 +98,22 @@ func TestApplyCoverMakesItTheThumbnailBeforeTheWorkInfo(t *testing.T) {
 	}
 }
 
-func TestApplyCoverThatCannotBeUsedIsSkippedAndTheRestApplied(t *testing.T) {
-	for _, failure := range []error{domain.ErrContentChanged, domain.ErrThumbnailUploadInvalid, domain.ErrThumbnailImageInvalid} {
+// 保存先が取引の中でプラグインの行を確かめ直して断れば、カバー画像も適用しない。
+func TestApplyCoverIsNotAppliedWhenTheWorkInfoIsRefused(t *testing.T) {
+	for _, failure := range []error{domain.ErrWorkInfoFetchStale, errors.New("database is locked")} {
+		e, covers := newCoverEnv()
+		result := e.fetchCover(t, pngOf(t, 2, 2))
+		e.applier.err = failure
+		if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
+			[]domain.WorkInfoField{domain.WorkInfoFieldCover}); !errors.Is(err, failure) || len(covers.images) != 0 {
+			t.Fatalf("%v: err = %v, %d covers applied; want the failure and no cover", failure, err, len(covers.images))
+		}
+	}
+}
+
+// 作品情報が確定したあとでカバー画像を適用できなければ、誤りにせず飛ばした値として知らせる。
+func TestApplyCoverThatCannotBeUsedIsSkippedAfterTheRestIsApplied(t *testing.T) {
+	for _, failure := range []error{domain.ErrContentChanged, domain.ErrThumbnailUploadInvalid, errors.New("disk full")} {
 		e, covers := newCoverEnv()
 		covers.err = failure
 		result := e.fetchCover(t, pngOf(t, 2, 2))
@@ -111,17 +125,6 @@ func TestApplyCoverThatCannotBeUsedIsSkippedAndTheRestApplied(t *testing.T) {
 		if err != nil || len(applied.Skipped) != 1 || applied.Skipped[0] != want || e.applier.titles[fetchVideo] != "Title" {
 			t.Fatalf("%v: apply = %+v, %v; want the cover skipped and the title written", failure, applied, err)
 		}
-	}
-	// 一時的な失敗では何も書かず、結果を戻す。
-	e, covers := newCoverEnv()
-	covers.err = errors.New("disk full")
-	result := e.fetchCover(t, pngOf(t, 2, 2))
-	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.WorkInfoFieldCover}); err == nil || len(e.applier.calls) != 0 {
-		t.Fatalf("apply with a failing cover: err = %v, %d writes", err, len(e.applier.calls))
-	}
-	if _, err := e.plugins.WorkInfoFetchCover(fetchVideo, result.ID); err != nil {
-		t.Fatalf("the result was not kept after a transient failure: %v", err)
 	}
 }
 

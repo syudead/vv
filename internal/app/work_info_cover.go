@@ -3,7 +3,6 @@ package app
 import (
 	"bytes"
 	"context"
-	"errors"
 	"image"
 
 	"github.com/syudead/vv/internal/domain"
@@ -46,32 +45,28 @@ func (p *WorkInfoPlugins) WorkInfoFetchCover(videoID int64, fetchID string) (dom
 	return p.fetches.cover(fetchID, videoID, p.now())
 }
 
-// skippableCoverError は、カバー画像を代表サムネイルにできなかった理由のうち、反映のほかの項目を続けて
-// 飛ばした値として知らせるものかを返す。動画の内容が変わったか、画像を読めないか合わせられないときである。
-func skippableCoverError(err error) bool {
-	var tooLarge *domain.ThumbnailUploadTooLargeError
-	return errors.Is(err, domain.ErrContentChanged) || errors.Is(err, domain.ErrThumbnailUploadInvalid) ||
-		errors.Is(err, domain.ErrThumbnailImageInvalid) || errors.As(err, &tooLarge)
-}
-
-// applyCover は取得の結果 fetch のカバー画像を動画の代表サムネイルにする。できなかった理由が
-// skippableCoverError なら、何も書かずに飛ばした値を返す。
-func (p *WorkInfoPlugins) applyCover(ctx context.Context, fetch *workInfoFetch) ([]domain.SkippedWorkInfoValue, error) {
+// applyCover は取得の結果 fetch のカバー画像を動画の代表サムネイルにし、反映後の動画を返す。作品情報の反映が
+// 確定したあとに呼ぶので、できなかったとき（動画の内容が変わった、画像を読めないか合わせられない、書けない）
+// は誤りにせず、反映前の動画 video と飛ばした値を返す。結果は使い切りで、誤りを返すと画面は作品情報を
+// 反映できたかを知れない。
+func (p *WorkInfoPlugins) applyCover(
+	ctx context.Context, fetch *workInfoFetch, video domain.Video,
+) (domain.Video, []domain.SkippedWorkInfoValue) {
+	skipped := []domain.SkippedWorkInfoValue{{
+		Field: domain.WorkInfoFieldCover, Value: fetch.details.CoverURL, Reason: domain.SkippedWorkInfoInvalid,
+	}}
 	if p.covers == nil {
-		return nil, errors.New("work-info covers are not configured")
+		return video, skipped
 	}
-	video, err := p.videos.GetVideo(ctx, domain.AudienceOwner, fetch.videoID)
+	current, err := p.videos.GetVideo(ctx, domain.AudienceOwner, fetch.videoID)
 	if err != nil {
-		return nil, err
+		return video, skipped
 	}
-	_, err = p.covers.UploadThumbnailImage(ctx, fetch.videoID, video.ContentKey, fetch.cover.Data)
-	switch {
-	case err == nil:
-		return nil, nil
-	case skippableCoverError(err):
-		return []domain.SkippedWorkInfoValue{{
-			Field: domain.WorkInfoFieldCover, Value: fetch.details.CoverURL, Reason: domain.SkippedWorkInfoInvalid,
-		}}, nil
+	saved, err := p.covers.UploadThumbnailImage(ctx, fetch.videoID, current.ContentKey, fetch.cover.Data)
+	if err != nil {
+		return video, skipped
 	}
-	return nil, err
+	// サムネイルの適用が返す動画は作品情報を読まないので、確定した作品情報を写す。
+	saved.WorkInfo = video.WorkInfo
+	return saved, nil
 }

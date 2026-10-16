@@ -208,14 +208,6 @@ func (p *WorkInfoPlugins) applyFetch(
 		plugin.Generation != fetch.generation:
 		return domain.WorkInfoApplied{}, domain.ErrWorkInfoFetchStale
 	}
-	// カバー画像は作品情報より先に代表サムネイルにする。できなければ飛ばした値として知らせ、ほかの項目は
-	// 続けて反映する。
-	var coverSkipped []domain.SkippedWorkInfoValue
-	if slices.Contains(fields, domain.WorkInfoFieldCover) {
-		if coverSkipped, err = p.applyCover(ctx, fetch); err != nil {
-			return domain.WorkInfoApplied{}, err
-		}
-	}
 	apply := domain.FetchedWorkInfoApply{
 		VideoID: fetch.videoID, PluginID: fetch.pluginID, Digest: fetch.digest, Generation: fetch.generation,
 		Details: fetch.details, DetailFields: detailFields(fields),
@@ -232,12 +224,18 @@ func (p *WorkInfoPlugins) applyFetch(
 	if err != nil {
 		return domain.WorkInfoApplied{}, err
 	}
+	video := applied.Video
+	var coverSkipped []domain.SkippedWorkInfoValue
+	if slices.Contains(fields, domain.WorkInfoFieldCover) {
+		// 保存先がプラグインの行を確かめ直して作品情報を確定してから、カバー画像を代表サムネイルにする。
+		video, coverSkipped = p.applyCover(ctx, fetch, video)
+	}
 	skipped := append(coverSkipped, applied.Skipped...)
 	if skipped == nil {
 		skipped = []domain.SkippedWorkInfoValue{}
 	}
 	return domain.WorkInfoApplied{
-		Video: applied.Video, SkippedTags: skippedTags(fetch.tags, invalid, applied.RejectedTags), Skipped: skipped,
+		Video: video, SkippedTags: skippedTags(fetch.tags, invalid, applied.RejectedTags), Skipped: skipped,
 	}, nil
 }
 

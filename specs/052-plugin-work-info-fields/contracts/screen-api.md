@@ -15,7 +15,7 @@ The enum grows from `title` and `tags` to one value per selectable row
 | Value | Row | Apply rule ([R-4](../research.md#r-4-the-apply-merges-the-selected-fields-into-the-stored-work-information-in-one-transaction-and-skips-each-value-that-breaks-a-rule)) |
 | --- | --- | --- |
 | `title`, `tags` | As in 049 | Unchanged |
-| `cover` | Cover | Makes the fetched cover image the video's thumbnail, before the other fields, with the checks and fit of an uploaded image; an image that cannot be used, or a video whose content changed, is skipped as `invalid` |
+| `cover` | Cover | Makes the fetched cover image the video's thumbnail after the other fields' transaction commits, with the checks and fit of an uploaded image; when that fails (an image that cannot be used, a video whose content changed, a write error) the thumbnail is unchanged and the cover is skipped as `invalid` |
 | `code`, `description` | Code, Description | Replaces the stored value |
 | `dates.release`, `dates.recorded`, `dates.published` | Released, Recorded, Published | Replaces the stored date of that kind |
 | `people.performer`, `people.director`, `people.photographer`, `people.streamer` | Performers, Directors, Photographers, Streamers | Appends the entries not linked in that role yet |

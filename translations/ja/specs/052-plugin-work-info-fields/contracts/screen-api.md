@@ -1,6 +1,6 @@
 ---
 source: specs/052-plugin-work-info-fields/contracts/screen-api.md
-sourceHash: 28bf563ceb71f52ab9904d4f57ef42eea5b1532c432d275e316d7282a269fc9e
+sourceHash: 25d4a9b0bbffd846c1521da06ab46b32119ab7da20dfeb66f05b05625060381b
 ---
 
 # 契約: 取得と適用の画面の API の作品の詳細 {#contract-work-details-in-the-fetch-and-apply-screen-api}
@@ -14,7 +14,7 @@ enum は `title` と `tags` から、選べる行ごとに 1 つの値に増え�
 | 値 | 行 | 適用の規則 ([R-4](../research.md#r-4-the-apply-merges-the-selected-fields-into-the-stored-work-information-in-one-transaction-and-skips-each-value-that-breaks-a-rule)) |
 | --- | --- | --- |
 | `title`、`tags` | 049 のとおり | 変わらない |
-| `cover` | Cover | 取得したカバー画像を、ほかのフィールドより前に、アップロードした画像と同じ確認と収まる大きさへの合わせ方で動画のサムネイルにする。使えない画像や、内容が変わった動画は `invalid` として飛ばす |
+| `cover` | Cover | ほかのフィールドのトランザクションがコミットした後に、取得したカバー画像を、アップロードした画像と同じ確認と収まる大きさへの合わせ方で動画のサムネイルにする。それが失敗したとき (使えない画像、内容が変わった動画、書き込みのエラー) はサムネイルを変えず、カバーを `invalid` として飛ばす |
 | `code`、`description` | Code、Description | 保存された値を置き換える |
 | `dates.release`、`dates.recorded`、`dates.published` | Released、Recorded、Published | その種類の保存された日付を置き換える |
 | `people.performer`、`people.director`、`people.photographer`、`people.streamer` | Performers、Directors、Photographers、Streamers | その役割にまだ結び付いていない項目を足す |
