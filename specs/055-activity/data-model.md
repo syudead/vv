@@ -34,7 +34,9 @@ case).
 | `status` | text | No | `running`, `attention` or `done` ([R-4](research.md#r-4-three-statuses-with-a-reason-and-a-newer-run-closes-an-older-problem)) |
 | `reason` | text | Yes | For `running` and `attention`: see Reasons |
 | `outcome` | text | Yes | For `done`: see Outcomes |
-| `detail` | text | Yes | The provider's or stage's message for a failure, the failed stage, the tag or bundle the owner operation changed |
+| `detail` | text | Yes | The provider's or stage's message for a failure, the tag the owner operation changed, the number of videos a media-folder removal took out |
+| `stage` | text | Yes | For a failed `import`, the ingest stage that gave up (a `jobs.kind` value) |
+| `undoes_id` | integer | Yes | For an `undo` entry, the entry it undid |
 | `decider` | text | No | `rule`, `ai` or `owner` ([R-5](research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run)) |
 | `probability` | real | Yes | The model's answer for a duplicate pair it decided or left undecided |
 | `undo_keys` | text | Yes | For a bundled pair, a JSON object with the member keys of the side that joined and that side's former representative key ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
@@ -66,7 +68,7 @@ Indexes on `(status, id)` and `(kind, subject_key, subject_key_b, id)`.
 | --- | --- | --- |
 | `waiting` | running | `import`, `auto_tag`, `version_judgement` before a worker claims it |
 | `processing` | running | Claimed by a worker |
-| `failed` | attention | `import` (a stage gave up after `MaxJobAttempts`; `detail` names it), `scan`, `auto_tag`, `version_judgement` (with its retry time) |
+| `failed` | attention | `import` (a stage gave up after `MaxJobAttempts`; `stage` names it, `detail` holds its message), `scan`, `auto_tag`, `version_judgement` (with its retry time) |
 | `interrupted` | attention | An entry `running` with reason `processing` at startup |
 | `no_connection` | attention | `version_judgement` that needs the model with no Ollama connection saved |
 | `undecided` | attention | `version_judgement` left to the owner |

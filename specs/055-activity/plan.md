@@ -204,7 +204,7 @@ both ([R-3](research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry
 **Acceptance**: `task check` passes; store tests show a new file gives one
 `import` entry that is `running` until its fingerprint job finishes and then
 `done`, a stage that gives up makes it `attention`/`failed` with that stage in
-`detail`, a rescan of the same file opens a second entry, and an entry
+`stage` and its message in `detail`, a rescan of the same file opens a second entry, and an entry
 interrupted by a restart is superseded when its requeued job runs; a handler
 test shows retry of a failed import answers `202` and a new `running` entry
 follows; a failed scan's retry starts a manual scan, and when it ends `done` the `scan` entry is `superseded`; a scan interrupted by a restart writes no entry.

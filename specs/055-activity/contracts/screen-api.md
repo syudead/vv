@@ -26,8 +26,11 @@ counts: {running, attention, done}}`.
 | --- | --- | --- |
 | `id` | integer | The entry |
 | `kind`, `status`, `reason?`, `outcome?`, `decider`, `probability?`, `detail?` | as [data-model.md](../data-model.md#activity_entries) | |
-| `subject` | `{kind, label, videoIds?}` | `videoIds` holds the current video id of each key the viewer can open; a key with no video is left out ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
+| `subject` | `{kind, items: {label, videoId?}[]}` | One item per key in key order (two for a pair, one otherwise); `label` as written, `videoId` the current video the viewer can open, absent when the key has none ([R-10](../research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `candidate` | boolean | For a pair: its candidate is still on Duplicates |
+| `stage?` | `probe` \| `thumbnail` \| `seek_thumbnail` \| `preview` \| `fingerprint` | For a failed `import`: the stage that gave up; `detail` then holds its message |
+| `retryAt?` | date-time | For a failed `version_judgement`: when its backoff tries again |
+| `undoes?` | `{kind, outcome?, tagName?}` | For an `undo` entry: the undone entry's kind and outcome, and the tag for a per-tag undo |
 | `tags?` | `{id, name, suggested, probability, undone}[]` | For `auto_tag` |
 | `retryRun`, `undoable` | boolean | Whether the row offers retry and undo ([data-model.md, Rules](../data-model.md#rules)) |
 | `undone` | boolean | Undone by the owner |
