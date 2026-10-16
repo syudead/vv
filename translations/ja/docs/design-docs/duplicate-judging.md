@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/duplicate-judging.md
-sourceHash: 344dd661d9ff14794c3621dc6eaa311c37df4f51a684a9e26b06bb691d2939c1
+sourceHash: 43fa53188703406ed4e1dd985b6707c19e0441d8401adbe281f1283eb6721225
 ---
 
 # 重複の候補を自動で判定する {#judging-possible-duplicates-automatically}
@@ -73,14 +73,16 @@ flowchart LR
 | 判定がまとめた、または退けた | `done`/`same` または `done`/`different` |
 | 鍵の 1 つについて作り直した | 組の開いている項目に再び結び付ける。項目は 2 つの鍵で見つける |
 | 所有者がまとめた、または退けた | `done`/`decided_by_owner` |
+| 項目を閉じたドラッグでの整理のまとめを取り消して戻った | 同じ項目が行の状態で再び開く |
+| 同じパスで鍵の内容が変わった | 引き継ぎが決まるまで開いたままにする。引き継がれるときはキーを付け替え、引き継がれないときは `done`/`gone` |
 | 鍵がライブラリから出た | `done`/`gone` |
-| 別の組の自動のまとめによって 1 つのまとまりに取り込まれた | `done`/`superseded` |
+| 別の組の自動のまとめによって 1 つのまとまりに取り込まれた、または両方の鍵がライブラリに残ったまま作り直しで落ちた | `done`/`superseded` |
 
 decider は、モデルの回答が決めたときは確率を伴う `ai`、それ以外は `rule` だ ([055 R-5](../../specs/055-activity/research.md#r-5-the-decider-is-who-made-the-recorded-decision-else-who-started-the-run))。自動のまとめは、加わった側、つまり代表がまとまりの代表にならなかった側のメンバーの鍵とその元の代表を `undo_keys` に保つ。
 
 ## 自動の決定の取り消しは保たれる {#undo-of-an-automatic-decision-is-held}
 
-所有者は活動ログから自動の `same` または `different` を、先に状態を読み直す 1 つの `ActivityStore` トランザクションで取り消す ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion))。状態が変わっていれば、ほかには何も変わらず、`undo` 項目は `already_reverted` を示す。
+所有者は活動ログから自動の `same` または `different` を、先に状態を読み直す 1 つの `ActivityStore` トランザクションで取り消す ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion))。状態が変わっていれば、ほかには何も変わらず、`undo` 項目は `already_reverted` を示す。`same` では、所有者がその後に外して再びまとめた、加わった側のメンバーは、項目の決定より後の `video_bundle_members.added_at` を持つので、もう自動のまとめの一部とは数えず、取り消しはそれを所有者が置いた場所に残す。
 
 | 取り消すもの | 状態の変化 | ワーカーが再び決めないようにするもの |
 | --- | --- | --- |

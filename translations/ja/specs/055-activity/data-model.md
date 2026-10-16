@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: 5e893b5bc45636dfe13c40b1d75fcea3c251a874d1636313d6156745d5442fe1
+sourceHash: f5c6c5f32be8745bc15a7e2172ece8d67c4934c4e9788f91792bc1258458b344
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -76,7 +76,7 @@ sourceHash: 5e893b5bc45636dfe13c40b1d75fcea3c251a874d1636313d6156745d5442fe1
 | `completed` | 実行が終わったか、操作が適用された |
 | `same`、`different` | `version_judgement` が組をまとめたか退けた |
 | `failed` | エラーを返した `work_info_fetch` |
-| `superseded` | この項目が `attention` の間に、同じ対象に対する同じ種類の新しい項目が始まった |
+| `superseded` | この項目が `attention` の間に、同じ対象に対する同じ種類の新しい項目が始まった。または、両方の鍵がライブラリに残り、誰も決めないまま、組が候補でなくなった開いている `version_judgement` |
 | `decided_by_owner` | 所有者が、開いている `version_judgement` の組をまとめたか退けた |
 | `gone` | 項目が終わる前に、項目の対象がライブラリから離れた |
 | `already_reverted` | 対象の状態を所有者がすでに変えていた `undo` |
