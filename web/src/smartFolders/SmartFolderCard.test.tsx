@@ -344,6 +344,47 @@ describe("スマートフォルダのカード（specs/052-smart-folders/ui-desi
       );
     });
 
+    it("押した後にカードの値が読み直されたら、押した塗りを捨てて読んだ値に従う", async () => {
+      answerMarks();
+      server.cards.set(1, folderCard(1, "猫", { favorite: false }));
+      const user = userEvent.setup();
+      renderMarked();
+      await revealCards([1]);
+      await screen.findByRole("link", { name: /^猫, smart folder of/ });
+      const pressed = () =>
+        screen
+          .getByRole("button", { name: 'Favorite smart folder "猫"' })
+          .getAttribute("aria-pressed");
+      await user.click(
+        screen.getByRole("button", { name: 'Favorite smart folder "猫"' }),
+      );
+      await waitFor(() => expect(pressed()).toBe("true"));
+
+      // 読み直した値が押した値と同じ。
+      server.cards.set(1, folderCard(1, "猫", { favorite: true }));
+      await emitServerEvent("smartFolder", { ids: [1] });
+      await waitFor(() => expect(server.cardRequests).toHaveLength(2));
+      expect(pressed()).toBe("true");
+
+      // 別のタブが元へ戻した。読んだ値は押す前の値と同じだが、古い塗りは残さない。
+      server.cards.set(1, folderCard(1, "猫", { favorite: false }));
+      await emitServerEvent("smartFolder", { ids: [1] });
+      await waitFor(() => expect(server.cardRequests).toHaveLength(3));
+      await waitFor(() => expect(pressed()).toBe("false"));
+
+      // 次の押下はサーバーの値の逆（true）を送る。
+      await user.click(
+        screen.getByRole("button", { name: 'Favorite smart folder "猫"' }),
+      );
+      await waitFor(() => expect(server.writes).toHaveLength(2));
+      expect(server.writes[1]?.body).toEqual({
+        videoIds: [],
+        groupIds: [],
+        smartFolderIds: [1],
+        favorite: true,
+      });
+    });
+
     it("「Add to playlist」はフォルダを 1 つの項目として smartFolderIds で送る", async () => {
       answerMarks();
       const user = userEvent.setup();

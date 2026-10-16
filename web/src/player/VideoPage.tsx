@@ -6,7 +6,6 @@ import {
   useRef,
   useState,
   type CSSProperties,
-  type ReactNode,
 } from "react";
 import { useLocation, useNavigate, useParams } from "react-router";
 
@@ -20,27 +19,11 @@ import {
 } from "../api/client";
 import { useRelatedVideos, useVideoDetail } from "../api/useVideoDetail";
 import { useAudience } from "../auth/audience";
-import type { PlaylistStep } from "../api/playlists";
 import { t } from "../i18n";
-import { itemTitle } from "../playlists/playlistItems";
-import PlaylistPanel from "../playlists/PlaylistPanel";
-import {
-  parsePlaylistQuery,
-  playlistStepPath,
-  stepPath,
-} from "../playlists/playlistPlayback";
-import { usePlaylistContext } from "../playlists/usePlaylistContext";
+import { parsePlaylistQuery } from "../playlists/playlistPlayback";
 import { DetailPage } from "../ui/patterns/detail-page";
-import { Separator } from "../ui/shadcn/separator";
-import { Skeleton } from "../ui/shadcn/skeleton";
-import { useToast } from "../ui/Toast";
-import AutoplayNotice, { type AutoplayPhase } from "./AutoplayNotice";
+import type { AutoplayPhase } from "./AutoplayNotice";
 import { usePageHandoff } from "./detailsEditor/handoff";
-import EndedOverlay from "./EndedOverlay";
-import GroupLine from "./GroupLine";
-import NeighborArrows from "./NeighborArrows";
-import PlaylistEndOverlay from "./PlaylistEndOverlay";
-import PlaylistLine from "./PlaylistLine";
 import { useKeyboardShortcuts } from "./keyboard";
 import type { PlayerControls } from "./playerControls";
 import { playerAspectRatio, playerNativeWidth } from "./aspect";
@@ -52,33 +35,24 @@ import {
   videoTrail,
 } from "./pageDecisions";
 import type { PlaybackFailureKind } from "./playbackRecovery";
-import RelatedVideos, { type MemberTarget } from "./RelatedVideos";
-import SmartFolderLine from "./SmartFolderLine";
-import { useVideoGroupContext } from "./useVideoGroupContext";
-import StallWarning from "./StallWarning";
+import PlayerArrows from "./PlayerArrows";
 import {
-  CreatingLine,
-  LoadFailure,
-  LoadingOverlay,
-  MissingVideo,
-  PlaybackFailure,
-  ProcessingStages,
-  ReadFailure,
-  Unplayable,
-} from "./StatusOverlays";
-import VideoFacts, { type ThumbnailCapture } from "./VideoFacts";
+  isPlayable,
+  isUnplayable,
+  playerLayer,
+  stallWarningShown,
+  statusLayer,
+  thumbnailCapture,
+} from "./playerLayers";
+import { useNeighborNavigation } from "./useNeighborNavigation";
+import { useVideoGroupContext } from "./useVideoGroupContext";
+import { useUnplayableSkip, useVideoPlaylist } from "./useVideoPlaylist";
+import StallWarning from "./StallWarning";
 import VideoHeader from "./VideoHeader";
-import VideoPlayer, {
-  canStartPlayback,
-  initialPlayerStatus,
-  type PlayerStatus,
-} from "./VideoPlayer";
-import AutoTagButton from "./AutoTagButton";
-import VideoTags from "./VideoTags";
-import VideoTitle from "./VideoTitle";
-import { usePreviousVideo } from "./usePreviousVideo";
+import VideoPageAside from "./VideoPageAside";
+import VideoPageDetails from "./VideoPageDetails";
+import VideoPlayer, { initialPlayerStatus, type PlayerStatus } from "./VideoPlayer";
 import { useProgressSaving } from "./useProgressSaving";
-import VisibilitySwitch from "./VisibilitySwitch";
 
 const noSubtitles: readonly SubtitleTrack[] = [];
 
@@ -114,7 +88,6 @@ export default function VideoPage() {
   // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
   const audience = useAudience();
   const owner = audience === "owner";
-  const toast = useToast();
   // プレイリストの文脈（`?playlist=&item=`）。所有者だけが読む
   // （specs/044-playlists/ui-design.md「Video page in a playlist」、research.md R-8）。
   const playlistQuery = parsePlaylistQuery(location.search);
@@ -356,93 +329,25 @@ export default function VideoPage() {
     await refresh();
   }, [id, refresh]);
 
-  // グループのメンバーなら、前後はグループの中の並びで、題名はメンバーの並びから引く
-  // （関連動画の items は同じグループのメンバーを含まない）。グループに属さない動画の次は
-  // 関連動画の並びの先頭で、前は直前に見ていた動画である（issue 931）。
-  const neighbors = related.kind === "ready" ? related.related : undefined;
-  const group = neighbors?.group;
-  const findVideo = (targetId: number) =>
-    (group?.items ?? neighbors?.items)?.find((item) => item.id === targetId);
-  const nextVideo =
-    neighbors?.nextId !== undefined ? findVideo(neighbors.nextId) : undefined;
-  // 直前に見ていた動画は、まだ見られると確かめられたときだけ ‹ にする。
-  const previousVideo = usePreviousVideo(trail.at(-1));
-
-  const playNext = () => {
-    if (nextVideo === undefined) return;
-    void navigate(videoTo(nextVideo.id), {
-      state: { ...linkState, autoplay: true },
-    });
-  };
-
-  // 左右の端の前後の動画。再生中（または見終えた後）に移ったときは、移った先でも再生を続ける。
   const keepPlaying = status.playing || status.ended;
-  const neighbor = (targetId: number | undefined) =>
-    targetId === undefined
-      ? undefined
-      : {
-          title: findVideo(targetId)?.title,
-          go: () =>
-            void navigate(videoTo(targetId), {
-              state: { ...linkState, autoplay: keepPlaying },
-            }),
-        };
-  // ‹ で直前の動画へ戻るときは、道筋からその動画を外す。もう一度 ‹ を押すとさらに前へ戻る。
-  const previousNeighbor =
-    neighbors === undefined
-      ? undefined
-      : group !== undefined
-        ? neighbor(neighbors.prevId)
-        : previousVideo === undefined
-          ? undefined
-          : {
-              title: previousVideo.title,
-              go: () =>
-                void navigate(`/videos/${String(previousVideo.id)}`, {
-                  state: {
-                    from: backTo,
-                    trail: trail.slice(0, -1),
-                    autoplay: keepPlaying,
-                  },
-                }),
-            };
-
-  // --- プレイリストの文脈 ---
-  // 文脈がある間は、矢印・予告・終わりが再生の応答に従い、関連動画の nextId・prevId は
-  // 使わない（R-7）。404 で落としたら、前後は関連動画に戻り、今の動画の後で止まる。
-  const playlist = usePlaylistContext({
+  const neighbors = useNeighborNavigation({
+    related,
+    trail,
+    linkState,
+    backTo,
+    videoTo,
+    keepPlaying,
+  });
+  const playlist = useVideoPlaylist({
     query: playlistQuery,
     videoId: id,
     owner,
     readKey: playlistReadKey,
+    ended: status.ended,
+    keepPlaying,
+    linkState,
+    smartFolder: groupContext.smartFolder,
   });
-  const playlistId = playlistQuery?.playlistId ?? 0;
-  const playback = playlist.playback;
-  const inPlaylist =
-    playlist.status === "reading" ||
-    playlist.status === "ready" ||
-    playlist.status === "failed";
-  const playlistDropped = playlist.status === "dropped";
-  // 終わった後の読み直しを待っている間は、予告も終わりの層も出さない。
-  const playlistReading =
-    inPlaylist && status.ended && playlist.settledKey !== playlistReadKey;
-  // ステップのフォルダは再生の応答の `smartFolderId` から取る（パネルの応答には頼らない。
-  // specs/052-smart-folders/ui-design.md「Video page in a playlist」）。
-  const goStep = (step: PlaylistStep, autoplay: boolean) =>
-    void navigate(playlistStepPath(playlistId, step), {
-      state: { ...linkState, autoplay },
-    });
-  const playlistNext = playback?.next;
-  const playNextStep = () => {
-    if (playlistNext !== undefined) goStep(playlistNext, true);
-  };
-  const stepNeighbor = (step: PlaylistStep | undefined) =>
-    step === undefined
-      ? undefined
-      : {
-          title: step.video.title,
-          go: () => goStep(step, status.playing || status.ended),
-        };
 
   // 予告を取り消したら今の再生終了の層を出す。フォーカスが予告の中にあったなら、
   // 次の層の主な操作（「次を再生」）へ移す。
@@ -455,222 +360,47 @@ export default function VideoPage() {
   const cancelAutoplay = () => leaveNotice("cancelled");
 
   // --- プレイヤーの上に重ねる層（同時に 1 つだけ） ---
-  const playable =
-    video !== undefined && video.probeState === "done" && canStartPlayback(video);
-  let statusLayer: ReactNode = null;
-  if (detail.kind === "missing") statusLayer = <MissingVideo />;
-  else if (detail.kind === "failed")
-    statusLayer = <LoadFailure reason={detail.reason} onRetry={refresh} />;
-  else if (video === undefined) statusLayer = <LoadingOverlay backdrop />;
-  else if (video.probeState === "pending")
-    statusLayer = <ProcessingStages video={video} />;
-  else if (video.probeState === "failed")
-    statusLayer = <ReadFailure video={video} onReprobe={owner ? reprobe : undefined} />;
-  else if (!playable) statusLayer = <Unplayable />;
-  else if (failure !== null)
-    statusLayer = (
-      <PlaybackFailure
-        positionMs={failure.positionMs}
-        kind={failure.kind}
-        onRetry={retryPlayback}
-      />
-    );
-
-  const showPlayer = playable && detail.kind === "ready";
-  const aspect = playerAspectRatio(video, mediaAspect);
-  const nativeWidth = playerNativeWidth(video);
-  const chromeVisible = !status.playing || status.userActive;
-  let layer: ReactNode = statusLayer;
-  // プレイリストの文脈では、次の動画があれば予告を、無ければ終わりの層を出す
-  // （ui-design.md「Video page in a playlist」）。
-  const playlistEnded =
-    layer === null && status.ended && playlist.status === "ready" && !playlistReading;
-  // グループのメンバーで次のメンバーがあるときは、今の再生終了の層の代わりに予告を出す。
-  // グループに属さない動画は今のまま（受け入れ条件 17）。
-  const groupNoticeShown =
-    layer === null &&
-    status.ended &&
-    !inPlaylist &&
-    !playlistDropped &&
-    group !== undefined &&
-    nextVideo !== undefined &&
-    autoplayPhase === "notice";
-  const playlistNoticeShown =
-    playlistEnded && playlistNext !== undefined && autoplayPhase === "notice";
-  const noticeShown = groupNoticeShown || playlistNoticeShown;
-  if (layer === null && playlistReading) {
-    layer = <LoadingOverlay backdrop={false} />;
-  } else if (playlistNoticeShown) {
-    layer = (
-      <AutoplayNotice
-        key={`${pageKey}:${String(playlistNext.itemId)}:${String(playlist.settledKey)}`}
-        next={playlistNext.video}
-        to={playlistStepPath(playlistId, playlistNext)}
-        linkState={linkState}
-        takeFocus={endedTakesFocus}
-        watchEvents={owner}
-        onCancel={cancelAutoplay}
-        onPlayNow={playNextStep}
-        onAdvance={playNextStep}
-        // 次の動画が消えていたら、再生の応答を読み直して予告を移す。
-        onGone={() => setPlaylistReadKey((value) => value + 1)}
-      />
-    );
-  } else if (playlistEnded && playlistNext !== undefined) {
-    layer = (
-      <EndedOverlay
-        next={playlistNext.video}
-        to={playlistStepPath(playlistId, playlistNext)}
-        linkState={linkState}
-        takeFocus={endedTakesFocus}
-        onReplay={() => controls?.restart()}
-        onPlayNext={playNextStep}
-      />
-    );
-  } else if (playlistEnded && playback !== undefined) {
-    layer = (
-      <PlaylistEndOverlay
-        name={playback.playlist.name}
-        takeFocus={endedTakesFocus}
-        onReplay={() => controls?.restart()}
-      />
-    );
-  } else if (groupNoticeShown) {
-    layer = (
-      <AutoplayNotice
-        key={`${String(id)}:${String(nextVideo.id)}`}
-        next={nextVideo}
-        to={videoTo(nextVideo.id)}
-        linkState={linkState}
-        takeFocus={endedTakesFocus}
-        watchEvents={owner}
-        onCancel={cancelAutoplay}
-        onPlayNow={playNext}
-        onAdvance={playNext}
-        onGone={() => leaveNotice("gone")}
-      />
-    );
-  } else if (layer === null && status.ended) {
-    layer = (
-      <EndedOverlay
-        // プレイリストの文脈（落とした後を含む）では、関連動画の次を出さない（R-7）。
-        next={
-          autoplayPhase === "gone" || inPlaylist || playlistDropped
-            ? undefined
-            : nextVideo
-        }
-        to={groupContext.nextTo(nextVideo)}
-        linkState={linkState}
-        takeFocus={endedTakesFocus}
-        onReplay={() => controls?.restart()}
-        onPlayNext={playNext}
-      />
-    );
-  } else if (layer === null && status.reconnecting) {
-    layer = <LoadingOverlay backdrop={false} label={t.player.reconnecting} />;
-  } else if (layer === null && status.loading) {
-    layer = <LoadingOverlay backdrop={false} />;
-  }
-
-  // 途切れの警告は入れ物とは別の層で、失敗・再生終了・次の予告・再接続中・取り込み中の
-  // 層が出ている間は出さない。データ待ちの読み込み中の輪とは並べて出す（R-7）。
-  const stallWarningShown =
-    showPlayer &&
-    status.stalled &&
-    stallDismissedId !== id &&
-    statusLayer === null &&
-    !status.ended &&
-    !status.reconnecting;
-
-  // 今の場面を代表サムネイルにするボタンは、所有者でプレイヤーが出ているときだけ置く。
-  // 押せるのは、最初の読み込みで論理上の位置が確定し、映像を覆う状態の層・再生終了の層
-  // （と次の予告）が無いときである（specs/029-video-overrides/ui-design.md「Capture button」）。
-  const capture: ThumbnailCapture | undefined =
-    owner && showPlayer
-      ? {
-          enabled:
-            controls !== null &&
-            status.positioned &&
-            statusLayer === null &&
-            !status.ended,
-          positionMs: () => controls?.positionMs() ?? null,
-          pause: () => controls?.pause(),
-        }
-      : undefined;
+  const shownStatus = statusLayer({
+    detail,
+    failure,
+    onRetryLoad: refresh,
+    onReprobe: owner ? reprobe : undefined,
+    onRetryPlayback: retryPlayback,
+  });
+  const showPlayer = isPlayable(video) && detail.kind === "ready";
+  const { layer, noticeShown } = playerLayer(shownStatus, {
+    status,
+    pageKey,
+    videoId: id,
+    playlist,
+    group: neighbors.group,
+    nextVideo: neighbors.nextVideo,
+    autoplayPhase,
+    linkState,
+    takeFocus: endedTakesFocus,
+    owner,
+    controls,
+    onCancel: cancelAutoplay,
+    onPlayNext: neighbors.playNext,
+    onGroupGone: () => leaveNotice("gone"),
+    // 次の動画が消えていたら、再生の応答を読み直して予告を移す。
+    onPlaylistGone: () => setPlaylistReadKey((value) => value + 1),
+    videoTo,
+    nextTo: groupContext.nextTo,
+  });
 
   // サムネイルの編集画面が開いている間は、この画面のキーを効かせない。Space は欄に入り、
   // Esc は編集画面のものになる（specs/045-comfyui-thumbnails/ui-design.md「Closing」）。
   const [editingThumbnail, setEditingThumbnail] = useState(false);
 
-  // --- 再生できない項目 ---
-  // 再生のできない状態（読み取りの失敗・再生できない・動画が無い）は終わらないので、
-  // 自動再生で着いたときはページが自分で次の項目へ飛ばす（ui-design.md「Unplayable item」）。
-  const unplayableHere =
-    detail.kind === "missing" ||
-    (video !== undefined &&
-      (video.probeState === "failed" || (video.probeState === "done" && !playable)));
-  const currentItem =
-    playlist.panel.kind === "ready"
-      ? playlist.panel.playlist.items.find((item) => item.id === itemId)
-      : undefined;
-  // グループとスマートフォルダの項目の中では、メンバー一覧の行もプレイリストの文脈を保ち、同じ
-  // 項目のメンバーを開く（state はパネルの行と同じ）。項目がそうかは、パネルの並びか、次が同じ
-  // 項目の中にあることか、ページの `smartFolder` で分かる。フォルダの行は今のページの
-  // `smartFolder` を保つ。単体の動画の項目では、メンバーは項目の外なので今までどおり。
-  const inGroupItem =
-    playback !== undefined &&
-    (currentItem?.kind === "group" ||
-      currentItem?.kind === "smartFolder" ||
-      groupContext.smartFolder !== undefined ||
-      playback.next?.itemId === playback.itemId);
-  const memberTarget: MemberTarget | undefined =
-    playlist.status === "ready" && playback !== undefined && inGroupItem
-      ? (memberId) => ({
-          to: stepPath(playlistId, memberId, playback.itemId, groupContext.smartFolder),
-          state: { ...linkState, autoplay: status.playing || status.ended },
-        })
-      : undefined;
-  // グループの操作（外す・タグ化・解散）の後に、動画と関連動画を `group` なしで読み直す。
-  const readWithoutGroup = () =>
-    groupContext.readWithoutGroup(() => {
-      void refresh();
-      retryRelated();
-    });
-  const skippedTitle =
-    video?.title ?? (currentItem === undefined ? "" : itemTitle(currentItem));
-  // 飛ばしたのは今の訪問の間だけ覚える。別の項目へ移れば忘れ、自動再生で同じ項目に
-  // 戻ったときにもう一度飛ばす（この効果より先に走る）。
-  const skippedFor = useRef<string | null>(null);
-  useEffect(() => {
-    skippedFor.current = null;
-  }, [pageKey]);
-  useEffect(() => {
-    if (playlist.status !== "ready" || playback === undefined) return;
-    if (!attempt.autoplay || !unplayableHere) return;
-    if (skippedFor.current === pageKey) return;
-    skippedFor.current = pageKey;
-    const next = playback.next;
-    if (next === undefined) {
-      toast(t.player.playlist.skippedLast(skippedTitle));
-      return;
-    }
-    toast(t.player.playlist.skipped(skippedTitle));
-    void navigate(playlistStepPath(playlistId, next), {
-      replace: true,
-      state: { ...linkState, autoplay: true },
-    });
-  }, [
-    attempt.autoplay,
-    linkState,
-    navigate,
+  useUnplayableSkip({
+    playlist,
+    autoplay: attempt.autoplay,
+    unplayable: isUnplayable(detail),
+    videoTitle: video?.title,
     pageKey,
-    playback,
-    playlist.status,
-    playlistId,
-    skippedTitle,
-    toast,
-    unplayableHere,
-  ]);
+    linkState,
+  });
 
   // 予告の間の Esc は取り消しにし、画面を閉じない（ui-design.md「Autoplay notice」）。
   useKeyboardShortcuts(
@@ -679,6 +409,7 @@ export default function VideoPage() {
     editingThumbnail,
   );
 
+  const aspect = playerAspectRatio(video, mediaAspect);
   return (
     // 詳細ページの型（DetailPage）で組む。見出しの帯の下に、左の列（プレイヤー・題名・タグ・
     // 公開・情報）と右の列（関連動画）を並べる（web/registry/rules/patterns.md の Detail page）。
@@ -688,14 +419,7 @@ export default function VideoPage() {
         // 広い画面では、プレイヤーが高さか幅の上限で止まって左の列より細いとき、プレイヤーと
         // 題名・情報をプレイヤーの幅にそろえて列の中央に置く。幅は動画の比率と元の表示幅から
         // 決まる（大きな画面で小さな動画を引き延ばしすぎない）ので、両方を渡す。
-        style={
-          {
-            "--vv-video-aspect": String(aspect),
-            ...(nativeWidth === undefined
-              ? {}
-              : { "--vv-video-width": `${String(nativeWidth)}px` }),
-          } as CSSProperties
-        }
+        style={videoSizeStyle(aspect, playerNativeWidth(video))}
         contentClassName="lg:max-w-player-width-lg"
         header={<VideoHeader folder={video?.folder} onClose={close} />}
         media={
@@ -725,7 +449,12 @@ export default function VideoPage() {
             >
               {layer}
             </div>
-            {stallWarningShown && (
+            {stallWarningShown({
+              showPlayer,
+              status,
+              dismissed: stallDismissedId === id,
+              statusShown: shownStatus !== null,
+            }) && (
               <StallWarning
                 onDismiss={() => setStallDismissedId(id)}
                 container={fullscreenFrame}
@@ -748,208 +477,68 @@ export default function VideoPage() {
                 subtitles={subtitles}
               />
             )}
-            {playlist.status === "ready" ? (
-              // プレイリストの矢印は、プレイヤーの無い状態の層の上にも描く。終わらない動画から
-              // 先へ進む道だからである（ui-design.md「Unplayable item」）。
-              <NeighborArrows
-                previous={stepNeighbor(playback?.previousItem)}
-                next={stepNeighbor(playback?.nextItem)}
-                visible={!showPlayer || chromeVisible || status.ended}
-                container={fullscreenFrame}
-                labels={{
-                  previous: t.player.playlist.previous,
-                  next: t.player.playlist.next,
-                }}
-              />
-            ) : (
-              showPlayer &&
-              !inPlaylist && (
-                <NeighborArrows
-                  previous={previousNeighbor}
-                  next={neighbor(neighbors?.nextId)}
-                  visible={chromeVisible || status.ended}
-                  container={fullscreenFrame}
-                />
-              )
-            )}
+            <PlayerArrows
+              playlist={playlist}
+              previous={neighbors.previous}
+              next={neighbors.next}
+              showPlayer={showPlayer}
+              chromeVisible={!status.playing || status.userActive}
+              ended={status.ended}
+              container={fullscreenFrame}
+            />
           </div>
         }
         aside={
-          inPlaylist ? (
-            <RelatedVideos
-              state={related}
-              linkState={linkState}
-              onRetry={retryRelated}
-              onLoadMore={loadMoreRelated}
-              memberTarget={memberTarget}
-              groupContext={readContext}
-              // プレイリストのパネルは続けて再生・関連動画と同じ入れ物の先頭に置き、一緒に
-              // スクロールさせる（広い画面）。
-              leading={
-                <>
-                  <PlaylistPanel
-                    playlistId={playlistId}
-                    panel={playlist.panel}
-                    name={playback?.playlist.name}
-                    position={playback?.position ?? 0}
-                    count={playback?.count ?? 0}
-                    currentItemId={
-                      playback === undefined
-                        ? itemId
-                        : playback.position > 0
-                          ? playback.itemId
-                          : undefined
-                    }
-                    backTo={backTo}
-                    autoplay={status.playing || status.ended}
-                    onRetry={playlist.retry}
-                    // 続けて再生があるときは、そちらが今のメンバーへ動かす。
-                    scrollToCurrent={
-                      !(related.kind === "ready" && related.related.group !== undefined)
-                    }
-                  />
-                  {/* 後に何も続かなければ境目を描かない（ui-design.md「Playlist panel」Divider）。 */}
-                  {!(
-                    related.kind === "ready" &&
-                    related.related.group === undefined &&
-                    related.related.items.length === 0
-                  ) && (
-                    <div className="shrink-0 pt-5 pb-2">
-                      <Separator decorative={false} />
-                    </div>
-                  )}
-                </>
-              }
-            />
-          ) : (
-            <RelatedVideos
-              state={related}
-              linkState={linkState}
-              onRetry={retryRelated}
-              onLoadMore={loadMoreRelated}
-              // `?group` で開いた動画のメンバーの行は、そのグループの文脈を保って開く。
-              memberTarget={groupContext.memberTarget(linkState)}
-              groupContext={readContext}
-            />
-          )
+          <VideoPageAside
+            related={related}
+            linkState={linkState}
+            onRetry={retryRelated}
+            onLoadMore={loadMoreRelated}
+            readContext={readContext}
+            groupMemberTarget={groupContext.memberTarget(linkState)}
+            playlist={playlist}
+            backTo={backTo}
+            autoplay={keepPlaying}
+          />
         }
       >
-        {detail.kind === "loading" && (
-          <div aria-hidden="true" className="flex flex-col gap-3">
-            <Skeleton className="h-8 w-2/3" />
-            <Skeleton className="h-5 w-1/2" />
-          </div>
-        )}
-        {video !== undefined && (
-          <>
-            <CreatingLine video={video} />
-            {/* 題名とタグは1つのまとまり（ui-design.md「Video page tags」Placement）。 */}
-            <div className="flex flex-col gap-2">
-              {playlist.status === "ready" && playback !== undefined && (
-                <PlaylistLine
-                  playlistId={playlistId}
-                  name={playback.playlist.name}
-                  position={playback.position}
-                  count={playback.count}
-                  backTo={backTo}
-                />
-              )}
-              {video.smartFolder !== undefined && (
-                <SmartFolderLine folder={video.smartFolder} backTo={backTo} />
-              )}
-              {video.group !== undefined && (
-                <GroupLine
-                  group={video.group}
-                  videoId={video.id}
-                  owner={owner}
-                  backTo={backTo}
-                  // 行・メンバーの並び・前後が、残ったグループ（id のいちばん小さいもの）に
-                  // 従うか、ふつうの動画の形に戻る。
-                  onChanged={readWithoutGroup}
-                />
-              )}
-              <VideoTitle
-                // 別の動画へ移ったら、編集中の入力と失敗の行を持ち越さない。
-                key={`title:${String(video.id)}`}
-                video={video}
-                owner={owner}
-                onSaved={(saved, mark) => {
-                  replace(saved, mark, "keep");
-                  // グループの並びにあるこの動画の題名も、画面の題名とそろえる。
-                  renameRelated(saved);
-                }}
-                onStale={() => void refresh()}
-              />
-              {owner && (
-                <VideoTags
-                  // VideoPage 自身が動画ごとに作り直されず（同じ /videos/:id
-                  // ルートのまま次の動画へ移ることがある）使い回されるため、
-                  // VideoTags を videoId で作り直し、前の動画の重ねた
-                  // 付け外し（appliedRef）を持ち越さない（Devin の指摘1）。
-                  key={`tags:${String(video.id)}`}
-                  videoId={video.id}
-                  tags={video.tags}
-                  onStaleVideo={() => void refresh()}
-                  // 更新日時が進むので取り直す。取り直しの間と失敗したときは前の値のまま
-                  // （specs/033-video-dates/ui-design.md「Refresh after edits」）。
-                  onChanged={() => void refresh()}
-                />
-              )}
-              {owner && (
-                // タグの並びのすぐ下で、この動画のタグを判定モデルに聞く
-                // （docs/design-docs/auto-tagging.md）。
-                <AutoTagButton key={`auto-tag:${String(video.id)}`} videoId={video.id} />
-              )}
-              {owner && (
-                // 題名 → タグ → 公開の順（ui-design.md「Visibility toggle」）。
-                // 別の動画へ移ったら失敗の行を持ち越さないよう、id で作り直す。
-                <VisibilitySwitch
-                  key={`visibility:${String(video.id)}`}
-                  videoId={video.id}
-                  isPublic={video.public}
-                  onChanged={() => void refresh()}
-                />
-              )}
-            </div>
-            {/* ゲストの応答には location が無いので、開く・コピーの操作は出ない。 */}
-            <VideoFacts
-              // 別の動画へ移ったら、送信中の指定と失敗の行を持ち越さない。
-              key={`facts:${String(video.id)}`}
-              video={video}
-              owner={owner}
-              capture={capture}
-              onChanged={(saved, mark) => {
-                replace(saved, mark, "keep");
-                // グループの並びにあるこの動画のサムネイルと題名も、画面のものとそろえる
-                // （作品情報の取得の反映は題名を変える）。
-                rethumbRelated(saved);
-                renameRelated(saved);
-              }}
-              onStale={() => void refresh()}
-              onEditingChange={setEditingThumbnail}
-              // 作品情報の編集画面の入口。戻り先（from・trail）を載せて開き、編集画面から
-              // 戻ったときはそこへフォーカスを戻す（specs/047-video-work-info/ui-design.md
-              // 「Video page: entry」）。
-              details={{
-                linkState: { from: backTo, trail },
-                focusEntry: detailsHandoff.focusEntry(video.id),
-              }}
-              // 付け外しの後は動画を取り直し、取り直した `favorite` で塗りを確かめる
-              // （specs/035-favorites/ui-design.md「Video page」）。
-              onFavorite={setFavorite}
-              versions={{
-                navigation: {
-                  backTo,
-                  autoplay: status.playing || status.ended,
-                },
-                // 外した動画は固有の作品情報に戻るので、束の作品情報を残さず取り直す。
-                onReplace: (removed, mark) => replace(removed, mark, "refetch"),
-                onRefresh: () => void refresh(),
-              }}
-            />
-          </>
-        )}
+        <VideoPageDetails
+          loading={detail.kind === "loading"}
+          video={video}
+          owner={owner}
+          playlist={playlist}
+          backTo={backTo}
+          trail={trail}
+          autoplay={keepPlaying}
+          capture={thumbnailCapture({
+            shown: owner && showPlayer,
+            controls,
+            status,
+            statusShown: shownStatus !== null,
+          })}
+          detail={{ refresh, replace, setFavorite }}
+          related={{ rename: renameRelated, rethumb: rethumbRelated }}
+          handoff={detailsHandoff}
+          // グループの操作（外す・タグ化・解散）の後に、動画と関連動画を `group` なしで読み直す。
+          onGroupChanged={() =>
+            groupContext.readWithoutGroup(() => {
+              void refresh();
+              retryRelated();
+            })
+          }
+          onEditingThumbnail={setEditingThumbnail}
+        />
       </DetailPage>
     </div>
   );
+}
+
+/**
+ * videoSizeStyle は詳細ページへ渡す動画の比率と元の表示幅の変数である。元の表示幅が
+ * 分からなければ比率だけ渡す。
+ */
+function videoSizeStyle(aspect: number, nativeWidth: number | undefined): CSSProperties {
+  const style: Record<string, string> = { "--vv-video-aspect": String(aspect) };
+  if (nativeWidth !== undefined) style["--vv-video-width"] = `${String(nativeWidth)}px`;
+  return style as CSSProperties;
 }

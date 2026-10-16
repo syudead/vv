@@ -90,27 +90,32 @@ function SmartFolderMark() {
  * SmartFolderFavorite はフォルダのカード・行のお気に入りの付け外しである（所有者だけ。
  * specs/052-smart-folders/ui-design.md「Smart folder card and row」）。フォルダの id を
  * `smartFolderIds` で送る。フォルダの付け外しは画面へ知らせない（api/favorites.ts）ので、
- * 成功したらここで塗りを変える。カードの値か要約の `favorite` が新しく読まれたら、それに従う。
+ * 成功したらここで塗りを変える。この塗りは押したときの `read` にだけ効き、カードの値か要約が
+ * 新しく読まれたら（`read` が別の物になったら）捨てて、読んだ `favorite` に従う。値が同じかは
+ * 比べない（別タブが元へ戻した値を、古い塗りが隠さないため）。
  */
 function SmartFolderFavorite({
   folder,
-  known,
+  read,
   variant,
 }: {
   folder: SmartFolderSummary;
-  /** 読んだ値の `favorite`。カードの値が届く前は要約の値。 */
-  known: boolean;
+  /** いちばん新しく読んだ値。カードの値が届く前は要約。読み直すたびに別の物になる。 */
+  read: { favorite?: boolean };
   variant: "card" | "row";
 }) {
-  const [shown, setShown] = useState({ known, favorite: known });
-  const favorite = shown.known === known ? shown.favorite : known;
+  const [toggled, setToggled] = useState<{ read: object; favorite: boolean }>();
+  const favorite =
+    toggled !== undefined && toggled.read === read
+      ? toggled.favorite
+      : read.favorite === true;
   return (
     <FavoriteToggle
       favorite={favorite}
       label={t.library.smartFolder.favorite(folder.name)}
       onToggle={async () => {
         await updateFavorites([], [], !favorite, { smartFolderIds: [folder.id] });
-        setShown({ known, favorite: !favorite });
+        setToggled({ read, favorite: !favorite });
       }}
       variant={variant}
     />
@@ -136,14 +141,6 @@ function SmartFolderAddToPlaylist({
       smartFolderIds={[folder.id]}
     />
   );
-}
-
-/** knownFavorite は読んだ値のお気に入りである。カードの値が届く前は要約の値。 */
-function knownFavorite(
-  folder: SmartFolderSummary,
-  values: LibrarySmartFolder | undefined,
-): boolean {
-  return (values?.favorite ?? folder.favorite) === true;
 }
 
 /**
@@ -202,11 +199,7 @@ export const SmartFolderCard = memo(function SmartFolderCard(
         // グループのカードと同じく、前に出たサムネイルより上に、リンクの外のタグの行の前に置く。
         <VideoThumbnailMark className="z-30">
           <SmartFolderAddToPlaylist folder={folder} variant="card" />
-          <SmartFolderFavorite
-            folder={folder}
-            known={knownFavorite(folder, values)}
-            variant="card"
-          />
+          <SmartFolderFavorite folder={folder} read={values ?? folder} variant="card" />
         </VideoThumbnailMark>
       )}
       {tagsRow !== undefined && tags.length > 0 && (
@@ -268,11 +261,7 @@ export const SmartFolderRow = memo(function SmartFolderRow({
       </TableCell>
       {owner && (
         <TableCell className="w-8 px-0">
-          <SmartFolderFavorite
-            folder={folder}
-            known={knownFavorite(folder, values)}
-            variant="row"
-          />
+          <SmartFolderFavorite folder={folder} read={values ?? folder} variant="row" />
         </TableCell>
       )}
       {owner && (
