@@ -150,7 +150,7 @@ flowchart LR
 
 **依存**: なし。
 
-**受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。ストアのテストが次を示す: 項目は新しい順に返る。`status` の絞り込みはその状態だけを返し、その件数が一致する。カーソルは、項目が加わる間も重複なく続く。新しい項目は、同じ種類と対象の古い `attention` の項目を置き換える。`running` の項目は回復の後に `attention`/`interrupted` になる。ハンドラーのテストが次を示す: ゲストは 3 つの操作すべてから `401 unauthenticated` を受け取り、項目が書かれた後に所有者の流れが `activity` を受け取る。
+**受け入れ**: `task check` と `task check-docs` が通り、`task generate` で差分が出ない。ストアのテストが次を示す: 項目は新しい順に返る。`status`、`feature`、`decider`、`since`、`q` はそれぞれ一覧を絞り込む。`counts` は `status` を無視し、`features` は `feature` を無視し、どちらもほかの絞り込みに従う。`undo` の項目は、取り消された項目の機能の下に一覧される。カーソルは、項目が加わる間も重複なく続く。新しい項目は、同じ種類と対象の古い `attention` の項目を置き換える。`running` の項目は回復の後に `attention`/`interrupted` になる。ハンドラーのテストが次を示す: ゲストは 3 つの操作すべてから `401 unauthenticated` を受け取り、項目が書かれた後に所有者の流れが `activity` を受け取る。
 
 ### 取り込みと失敗したスキャンを記録し、再試行する {#record-imports-and-failed-scans-and-retry-them}
 
@@ -186,11 +186,11 @@ flowchart LR
 
 ### 所有者だけの Activity 画面にアクティビティのログを示す {#show-the-activity-log-on-an-owner-only-activity-screen}
 
-**範囲**: ルート、シェルの入口、`ownerOnlyPath`。`ui-design.md` に従った、状態のタブと件数を持つ一覧。対象による開く操作。`activity` での取得し直し。`en.ts` の画面の文言。
+**範囲**: [ui-design.md、デザインシステムの変更](ui-design.md#changes-to-the-design-system) にあるデザインシステムへの追加 (絞り込みのドロップダウンボタン、`CardList`、レールの件数、名前付きのサイズ) と、そのショーケースの項目。ルート、件数を持つシェルの入口、`ownerOnlyPath`。`ui-design.md` に従った、検索と URL に保つ 4 つの絞り込みを持つツールバー、開く操作と取り込みの進み具合を持つカード、フッターの帯。`activity` での取得し直し。`en.ts` の画面の文言。
 
 **依存**: 取り込みと失敗したスキャンを記録し、再試行する。
 
-**受け入れ**: `task check` が通る。Web のテストが次を示す: タブを切り替えるとその状態だけが一覧され、タブの件数は応答と一致する。`activity` の通知で取得し直す。対象に動画がない項目は開く操作を示さない。e2e のテストは、ファイルを取り込み、その `import` の行が再読み込みなしで `done` に達するのを見る。ゲストには入口がなく、`/activity` からログインに送られる。画面は、`ui-design.md` の幅での見た目のレビューに通る。
+**受け入れ**: `task check` が通る。Web のテストが次を示す: 各絞り込みはカードを絞り込み、URL に保たれる。Status のメニューの件数は応答と一致する。フッターの件数は絞り込みを無視する。`activity` の通知で取得し直す。対象に動画がない項目は開く操作を示さない。e2e のテストは、ファイルを取り込み、その `import` の行が再読み込みなしで `done` に達するのを見る。ゲストには入口がなく、`/activity` からログインに送られる。画面は、`ui-design.md` の幅での見た目のレビューに通る。
 
 ### Activity 画面から再試行し、取り消す {#retry-and-undo-from-the-activity-screen}
 
@@ -198,4 +198,4 @@ flowchart LR
 
 **依存**: 所有者だけの Activity 画面にアクティビティのログを示す。自動タグ付けの実行を記録し、それが加えたタグを取り消す。重複の判定を記録し、自動のまとめと自動で退けた組を取り消す。
 
-**受け入れ**: `task check` が通る。Web のテストが次を示す: 再試行と取り消しは、`retryRun` と `undoable` が true の行にだけ現れる。すでに戻された決定の取り消しは、そのメッセージを示す。e2e のテストは自動のまとめを取り消し、動画ページはもうそのバージョンを一覧しない。行は、`ui-design.md` の幅での見た目のレビューに通る。
+**受け入れ**: `task check` が通る。Web のテストが次を示す: 再試行と取り消しは、`retryRun` と `undoable` が true のカードにだけ現れる。`auto_tag` のカードはそのメニューから 1 つのタグを取り消す。すでに戻された決定の取り消しは、そのメッセージを示す。e2e のテストは自動のまとめを取り消し、動画ページはもうそのバージョンを一覧しない。カードは、`ui-design.md` の幅での見た目のレビューに通る。

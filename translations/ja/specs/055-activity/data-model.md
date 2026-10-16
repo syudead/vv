@@ -22,6 +22,7 @@ sourceHash: d31b59fca368837b9207e475b702656c017ec22d2a69cb0c9c3e988f6ab2f89b
 | --- | --- | --- | --- |
 | `id` | integer | 不可 | 主キー。ページの順序 ([R-9](research.md#r-9-keyset-paging-by-id-newest-first-filtered-by-status)) |
 | `kind` | text | 不可 | 下の種類のどれか |
+| `feature` | text | 不可 | その種類の機能 ([contracts/screen-api.md、機能](contracts/screen-api.md#features))。`undo` は取り消された項目のものを写す |
 | `subject_kind` | text | 不可 | `video`、`pair`、`scan`、`folder` のどれか |
 | `subject_key` | text | 不可 | 内容の鍵、組の小さい方の鍵、スキャンの id、または削除したメディアフォルダのパス ([R-10](research.md#r-10-the-subject-is-a-content-key-with-a-label-kept-at-write-time)) |
 | `subject_key_b` | text | 可 | 組の大きい方の鍵 |
@@ -39,7 +40,7 @@ sourceHash: d31b59fca368837b9207e475b702656c017ec22d2a69cb0c9c3e988f6ab2f89b
 | `undone_by` | integer | 可 | この項目を取り消した所有者の項目 |
 | `created_at`、`updated_at` | integer | 不可 | Unix ミリ秒 |
 
-**関係**: `videos` へはなし。`undone_by` はほかの項目を指す。`(status, id)` と `(kind, subject_key, subject_key_b, id)` にインデックスを置く。
+**関係**: `videos` へはなし。`undone_by` はほかの項目を指す。`(status, id)`、`(feature, id)`、`(kind, subject_key, subject_key_b, id)` にインデックスを置く。`q` の絞り込みは、ほかの絞り込みが残した項目のラベルを走査する。数万行に文字列のインデックスは要らない。
 
 ### 種類 {#kinds}
 
