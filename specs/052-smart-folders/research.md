@@ -117,7 +117,10 @@ card sorts by its values as in the library.
 **Decision**: The library's top level lists every smart folder with no
 parent as a card among the groups and videos, sorted by its values as a group
 card is; its videos stay listed too. With a search or a filter, smart folder
-cards are left out, except that favorites only lists the favorited ones.
+cards are left out, except that favorites only lists the favorited ones. The
+page computes only the sort value of each folder; the card's other values
+are read when the card is on screen
+([R-14](#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)).
 
 | Option | Verdict |
 | --- | --- |
@@ -133,6 +136,9 @@ the folders' videos already answer.
 
 **Decision**: A folder with no visible content is listed and opened for the
 owner, and is not shown to a guest (`404` when opened), as 048 Visibility.
+Every read decides "shown" by the same test, an empty play order
+([data-model.md, Contents](data-model.md#contents)), so a guest never sees a
+card whose folder answers `404`.
 
 | Option | Verdict |
 | --- | --- |
@@ -194,15 +200,73 @@ progress save publishes only when it changes the video's watch state.
 
 ## R-13: A read budget at 20,000 videos and 50 smart folders
 
-**Decision**: The first unfiltered library page with 50 root folders, and a
-folder's page three levels deep, each return within 500 ms with 20,000
-videos, measured by a store benchmark.
+**Decision**: With 20,000 videos, measured by a store benchmark on the
+development host, each of these reads returns within 1 second: the first
+unfiltered library page with 50 root folders, a folder's page three levels
+deep, and the card values of 24 folders in one
+[cards read](contracts/screen-api.md#routes-added). The benchmark's 50 root
+folders are 10 each of a tag, a watch state, a length, an added-within and a
+search text rule, as `BenchmarkLibraryWithSmartFolders` in PR #1204 builds
+them, and the search text folders count toward the same second: a search
+text folder's sort value is one FTS match over the 20,000 videos, and the
+budget leaves no folder out and sets no second budget. An implementation
+PR that measures over the budget fixes the read; it does not reopen the
+budget.
 
 | Option | Verdict |
 | --- | --- |
 | **A benchmark with a stated budget** | Chosen |
 | A time limit inside a unit test | Rejected: CI runners vary, and a timing assertion fails without a code change |
+| 500 ms for the library page (the budget before 2026-10-16) | Rejected by the maintainer (2026-10-16): the library page with no folder takes about 0.6 s on the development host, so 500 ms left the folders nothing |
+| A separate budget for search text folders, or none in the benchmark | Rejected by the maintainer (2026-10-16): about 1 s at tens of thousands of videos is fast enough for the whole page, so the 10 search text folders count toward the same second |
 
-**Rationale**: The library page computes each root folder's card values, one
-rule evaluation per folder. `BenchmarkRebuildFolderIndex` sets the same kind
-of budget for the folder index.
+**Rationale**: The library page computes one sort value per root folder and
+no other card value
+([R-14](#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)),
+so the folders share the part of the second that the no-folder page leaves.
+A folder's page evaluates its own rule once and lists its children as
+summaries, so the same budget holds three levels deep. The cards read
+evaluates each folder once per video, without the group step that made a
+folder cost about 0.5 s in PR #1204. `BenchmarkRebuildFolderIndex` sets the
+same kind of budget for the folder index.
+
+## R-14: Folder cards carry a summary; their values are read on screen, without group collapsing
+
+**Decision**: A folder item in the library and a child folder item on a
+folder's page carry only the folder's summary: id, parent id, name and
+whether it is favorited. The library's first page places a root folder by
+one sort value over its matching videos
+([data-model.md, Library items](data-model.md#library-items)). The screen
+reads the count, cover, length, size, dates and watch state of the cards it
+shows through `GET /api/smart-folders/cards`
+([contracts/screen-api.md](contracts/screen-api.md#routes-added)), which
+evaluates the folder's rules on each video and collapses no group: the count
+is the number of matching videos, and the cover is the first of them in the
+folder's sort ([data-model.md, Contents](data-model.md#contents)). The
+folder's own page keeps the exact values over the play order.
+
+```mermaid
+sequenceDiagram
+  participant S as Library screen
+  participant A as GET /api/library
+  participant C as GET /api/smart-folders/cards
+  S->>A: first page
+  A-->>S: videos, groups, folder summaries in sort order
+  S->>C: ids of the folder cards on screen
+  C-->>S: count, cover, sums, dates per folder
+```
+
+| Option | Verdict |
+| --- | --- |
+| **Summaries on the page, card values on demand, evaluated per video** | Chosen |
+| Every card's values on the first page | Rejected by the maintainer (2026-10-16): PR #1204 measured about 25 s for 50 root folders over 20,000 videos, about 0.5 s per folder |
+| Card values on demand, exact over the play order | Rejected: the group step is most of the 0.5 s per folder, so a screen of 24 cards would take seconds, and the read repeats on every `smartFolder` event |
+| Stored card values refreshed on write | Rejected: every match-changing write would evaluate every folder, the cost [R-2](#r-2-contents-are-computed-when-read-not-stored) keeps off the write path |
+| Children with full values on the folder page | Rejected: a folder with 50 children would take the 25 s the library did |
+
+**Rationale**: A card needs its sort value to be placed and its other values
+only when it is seen. The per-video values differ from the page's only for a
+rule with a watch state, playable only or favorites only over a group whose
+videos are mixed, which the item query takes or leaves as one item (048
+Library items) while the cards read counts its matching videos; the folder's
+page, where the count is read beside the items, keeps the exact values.

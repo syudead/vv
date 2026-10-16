@@ -1,13 +1,13 @@
 ---
 source: specs/052-smart-folders/contracts/screen-api.md
-sourceHash: a187d6168f9df767765f078c834f0a939055fc54541aa62726718a8277d30d54
+sourceHash: 3d518d17720e06984feebb1bd99ee994a893ef74d3e2739cbc55e90c8d5a2d46
 ---
 
 # 契約: スマートフォルダの画面の API {#contract-screen-api-for-smart-folders}
 
 親 Issue: #1139。正本: [api/openapi.yaml](../../../api/openapi.yaml)。このファイルは、この機能が加えるか変えるものだけを挙げる。`task generate` が `internal/httpapi/gen/` と `web/src/api/gen/` を生成し直す。外部 API (`api/external-v1.yaml`) と MCP は変わらない。そこには AI による整理の Issue がスマートフォルダを加える。
 
-読み取り (`GET`) は、`GET /api/groups/{id}` と同じように所有者とゲストのもの (`security` に `{}` を含む) なので、`accessRoutes` にそれらが加わる。書き込みはすべて所有者だけである。`POST` と `PATCH` のルートは `requiresJSONBody` に加わる。所有者だけと記した項目は、ゲストには含めない。
+読み取り (`GET`) は、`GET /api/groups/{id}` と同じように所有者とゲストのもの (`security` に `{}` を含む) なので、`accessRoutes` にそれらが加わる。書き込みはすべて所有者だけである。`cards` が id として読まれないように、`GET /api/smart-folders/cards` は `GET /api/smart-folders/{id}` より前に宣言する。`POST` と `PATCH` のルートは `requiresJSONBody` に加わる。所有者だけと記した項目は、ゲストには含めない。
 
 ## 加えるルート {#routes-added}
 
@@ -17,6 +17,7 @@ sourceHash: a187d6168f9df767765f078c834f0a939055fc54541aa62726718a8277d30d54
 | `POST /api/smart-folders` | フォルダを作る |
 | `GET /api/smart-folders/{id}` | 1 つのフォルダ、その祖先のパンくず、その項目の最初のページ |
 | `GET /api/smart-folders/{id}/items` | 項目の後のページ |
+| `GET /api/smart-folders/cards` | 画面に出ているカードのため、`ids` が挙げるフォルダ (1 から 60 個、カンマ区切り) のカードの値 ([data-model.md、Cards read](../data-model.md#cards-read)) |
 | `PATCH /api/smart-folders/{id}` | 名前、規則、並び順、親を変える |
 | `DELETE /api/smart-folders/{id}` | フォルダとその子孫を削除する |
 
@@ -44,15 +45,29 @@ SmartRuleRef:                      # a reference that no longer exists
     kind: { type: string, enum: [tag, tagKind, person, organization] }
     id:   { type: integer, format: int64 }
 
-LibrarySmartFolder:                # a folder card; the value fields of LibraryGroup, without folder
-  required: [id, name, videoCount, sizeBytes, previews, videoIds, tags]
+SmartFolderSummary:                # a folder item in the library and on a folder's page (R-14)
+  required: [id, name]
   properties:
     id:       { type: integer, format: int64 }
     parentId: { type: integer, format: int64 }
     name:     { type: string }
-    # videoCount, sizeBytes, addedAt, durationMs, previews, openVideoId, videoIds, tags,
-    # watchedCount, watchState, lastPlayedAt, favorite: as LibraryGroup, over the play order
+    favorite: { type: boolean }    # owner only
+
+LibrarySmartFolder:                # a folder card; the value fields of LibraryGroup, without folder and videoIds
+  required: [id, name, videoCount, sizeBytes, previews, tags]
+  properties:
+    id:       { type: integer, format: int64 }
+    parentId: { type: integer, format: int64 }
+    name:     { type: string }
+    # videoCount, sizeBytes, addedAt, durationMs, previews, openVideoId, tags,
+    # watchedCount, watchState, lastPlayedAt, favorite: as LibraryGroup; over the play order in
+    # SmartFolderDetail, over the matching videos in SmartFolderCards (data-model.md, Contents)
     # (openVideoId and addedAt absent for an empty folder)
+
+SmartFolderCards:
+  required: [cards]
+  properties:
+    cards: { type: array, items: { $ref: LibrarySmartFolder } }   # in the order of ids; absent ids left out
 
 SmartFolderSettings:               # owner only
   required: [rule, sort, missing]
@@ -67,7 +82,7 @@ SmartFolderItem:
     kind:        { type: string, enum: [video, group, smartFolder] }
     video:       { $ref: Video }
     group:       { $ref: LibraryGroup }
-    smartFolder: { $ref: LibrarySmartFolder }
+    smartFolder: { $ref: SmartFolderSummary }
 
 SmartFolderDetail:
   required: [smartFolder, trail, items]
@@ -98,7 +113,7 @@ SmartFolderChange:                 # at least one member
 
 | スキーマかルート | 変更 |
 | --- | --- |
-| `LibraryItem` | `kind` に、`smartFolder: LibrarySmartFolder` を伴う `smartFolder` が加わる ([data-model.md、Library items](../data-model.md#library-items)) |
+| `LibraryItem` | `kind` に、`smartFolder: SmartFolderSummary` を伴う `smartFolder` が加わる ([data-model.md、Library items](../data-model.md#library-items)) |
 | `listVideos`、`listLibrary`、`listLibraryIds` | `SmartRule` の範囲を持つ `addedWithin`、`minDuration`、`maxDuration` が加わる。ゲストもそれらを送れる。範囲外の値、または `minDuration` が `maxDuration` を超えることは `400 invalid_request` である |
 | `FavoritesRequest`、`FavoritesResponse` | `smartFolderIds` が加わる |
 | `PlaylistItemsAdd`、`PlaylistItem` | `smartFolderIds` と `smartFolder` の種類が加わる。再生のときのフォルダの再生の順序で再生する |
@@ -114,6 +129,7 @@ SmartFolderChange:                 # at least one member
 | `POST`、`PATCH /api/smart-folders…` | 400 | `invalid_request` | グループと同じように、前後の空白を除いた名前が空か 100 文字を超える |
 | `POST`、`PATCH /api/smart-folders…` | 404 | `smart_folder_not_found` | `parentId` がどのフォルダも指さない |
 | `PATCH /api/smart-folders/{id}` | 409 | `smart_folder_cycle` | `parentId` がフォルダ自身かその子孫である |
+| `GET /api/smart-folders/cards` | 400 | `invalid_request` | `ids` がないか、空か、整数でないか、60 個を超える id を挙げる |
 | すべての `/api/smart-folders/{id}` のルート | 404 | `not_found` | そのフォルダがないか、ゲストが見えるものが何もないフォルダを開く |
 
 存在しない id を挙げる `rule` は受け付け、`missing` で報告する。そのため、タグが削除された直後の絞り込みも保存できる。

@@ -8,7 +8,8 @@ smart folders there.
 
 Reads (`GET`) are for the owner and guests (`security` includes `{}`), as
 `GET /api/groups/{id}`, so `accessRoutes` gains them; every write is owner
-only. The `POST` and `PATCH` routes join `requiresJSONBody`. Fields marked
+only. `GET /api/smart-folders/cards` is declared before
+`GET /api/smart-folders/{id}` so `cards` is not read as an id. The `POST` and `PATCH` routes join `requiresJSONBody`. Fields marked
 owner only are left out for a guest.
 
 ## Routes added
@@ -19,6 +20,7 @@ owner only are left out for a guest.
 | `POST /api/smart-folders` | Create a folder |
 | `GET /api/smart-folders/{id}` | One folder, its trail of ancestors and its first page of items |
 | `GET /api/smart-folders/{id}/items` | A later page of items |
+| `GET /api/smart-folders/cards` | The card values of the folders `ids` names (1 to 60, comma-separated), for the cards on screen ([data-model.md, Cards read](../data-model.md#cards-read)) |
 | `PATCH /api/smart-folders/{id}` | Change the name, rule, sort or parent |
 | `DELETE /api/smart-folders/{id}` | Delete the folder and its descendants |
 
@@ -46,15 +48,29 @@ SmartRuleRef:                      # a reference that no longer exists
     kind: { type: string, enum: [tag, tagKind, person, organization] }
     id:   { type: integer, format: int64 }
 
-LibrarySmartFolder:                # a folder card; the value fields of LibraryGroup, without folder
-  required: [id, name, videoCount, sizeBytes, previews, videoIds, tags]
+SmartFolderSummary:                # a folder item in the library and on a folder's page (R-14)
+  required: [id, name]
   properties:
     id:       { type: integer, format: int64 }
     parentId: { type: integer, format: int64 }
     name:     { type: string }
-    # videoCount, sizeBytes, addedAt, durationMs, previews, openVideoId, videoIds, tags,
-    # watchedCount, watchState, lastPlayedAt, favorite: as LibraryGroup, over the play order
+    favorite: { type: boolean }    # owner only
+
+LibrarySmartFolder:                # a folder card; the value fields of LibraryGroup, without folder and videoIds
+  required: [id, name, videoCount, sizeBytes, previews, tags]
+  properties:
+    id:       { type: integer, format: int64 }
+    parentId: { type: integer, format: int64 }
+    name:     { type: string }
+    # videoCount, sizeBytes, addedAt, durationMs, previews, openVideoId, tags,
+    # watchedCount, watchState, lastPlayedAt, favorite: as LibraryGroup; over the play order in
+    # SmartFolderDetail, over the matching videos in SmartFolderCards (data-model.md, Contents)
     # (openVideoId and addedAt absent for an empty folder)
+
+SmartFolderCards:
+  required: [cards]
+  properties:
+    cards: { type: array, items: { $ref: LibrarySmartFolder } }   # in the order of ids; absent ids left out
 
 SmartFolderSettings:               # owner only
   required: [rule, sort, missing]
@@ -69,7 +85,7 @@ SmartFolderItem:
     kind:        { type: string, enum: [video, group, smartFolder] }
     video:       { $ref: Video }
     group:       { $ref: LibraryGroup }
-    smartFolder: { $ref: LibrarySmartFolder }
+    smartFolder: { $ref: SmartFolderSummary }
 
 SmartFolderDetail:
   required: [smartFolder, trail, items]
@@ -100,7 +116,7 @@ SmartFolderChange:                 # at least one member
 
 | Schema or route | Change |
 | --- | --- |
-| `LibraryItem` | `kind` gains `smartFolder` with `smartFolder: LibrarySmartFolder` ([data-model.md, Library items](../data-model.md#library-items)) |
+| `LibraryItem` | `kind` gains `smartFolder` with `smartFolder: SmartFolderSummary` ([data-model.md, Library items](../data-model.md#library-items)) |
 | `listVideos`, `listLibrary`, `listLibraryIds` | Gain `addedWithin`, `minDuration` and `maxDuration` with the ranges of `SmartRule`; guests may send them. A value out of range, or `minDuration` over `maxDuration`, is `400 invalid_request` |
 | `FavoritesRequest`, `FavoritesResponse` | Gain `smartFolderIds` |
 | `PlaylistItemsAdd`, `PlaylistItem` | Gain `smartFolderIds` and the `smartFolder` kind, played in the folder's play order at play time |
@@ -116,6 +132,7 @@ SmartFolderChange:                 # at least one member
 | `POST`, `PATCH /api/smart-folders…` | 400 | `invalid_request` | The name is empty or over 100 characters after trimming, as for a group |
 | `POST`, `PATCH /api/smart-folders…` | 404 | `smart_folder_not_found` | `parentId` names no folder |
 | `PATCH /api/smart-folders/{id}` | 409 | `smart_folder_cycle` | `parentId` is the folder or one of its descendants |
+| `GET /api/smart-folders/cards` | 400 | `invalid_request` | `ids` is missing, empty, not integers, or names over 60 ids |
 | Every `/api/smart-folders/{id}` route | 404 | `not_found` | No such folder, or a guest opens a folder with nothing visible |
 
 A `rule` naming an id that does not exist is accepted and reported in
