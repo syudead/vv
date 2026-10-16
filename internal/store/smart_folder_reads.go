@@ -9,6 +9,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"slices"
 
@@ -325,4 +326,52 @@ func smartFolderTrail(ctx context.Context, tx *sql.Tx, id int64) ([]domain.Group
 		return nil, fmt.Errorf("cannot read the smart folder trail: %w", err)
 	}
 	return trail, nil
+}
+
+// ownerSmartFolderCard はスマートフォルダ id のカードを、所有者として今の再生順で読む（プレイリストの
+// スマートフォルダの項目、specs/052-smart-folders/contracts/screen-api.md）。now は追加日の絞り込みの
+// 基準時刻である。
+func ownerSmartFolderCard(ctx context.Context, tx *sql.Tx, id int64, now int64) (domain.LibrarySmartFolder, error) {
+	folder, err := readSmartFolder(ctx, tx, id)
+	if err != nil {
+		return domain.LibrarySmartFolder{}, err
+	}
+	rules, err := smartFolderPathRules(ctx, tx, id)
+	if err != nil {
+		return domain.LibrarySmartFolder{}, err
+	}
+	view, err := viewSmartFolder(ctx, tx, domain.AudienceOwner, folder, rules, now, nil)
+	if err != nil {
+		return domain.LibrarySmartFolder{}, err
+	}
+	return view.card, nil
+}
+
+// smartFolderVideoGroup はスマートフォルダ id を、見る人（audience）に見せる再生順の動画の文脈
+// （domain.VideoGroup の SmartFolder）にする（GET /api/videos/{id} などの smartFolder、
+// contracts/screen-api.md「Schemas and parameters changed」）。フォルダが無ければ false である。
+// 経路の条件が無い実体を名指すフォルダの再生順は空である（research.md R-9）。
+func smartFolderVideoGroup(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64) (domain.VideoGroup, bool, error) {
+	folder, err := readSmartFolder(ctx, tx, id)
+	if errors.Is(err, domain.ErrNotFound) {
+		return domain.VideoGroup{}, false, nil
+	}
+	if err != nil {
+		return domain.VideoGroup{}, false, err
+	}
+	rules, err := smartFolderPathRules(ctx, tx, id)
+	if err != nil {
+		return domain.VideoGroup{}, false, err
+	}
+	group := domain.VideoGroup{ID: id, SmartFolder: true, Name: folder.Name}
+	missing, err := missingSmartRuleRefs(ctx, tx, rules)
+	if err != nil || len(missing) > 0 {
+		return group, err == nil, err
+	}
+	contents, err := readSmartFolderContents(ctx, tx, smartFolderSpec(audience, rules, folder.Sort, listNow().Unix()), false)
+	if err != nil {
+		return domain.VideoGroup{}, false, err
+	}
+	group.MemberIDs = contents.playOrder
+	return group, true, nil
 }

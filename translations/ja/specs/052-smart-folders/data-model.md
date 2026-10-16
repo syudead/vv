@@ -1,6 +1,6 @@
 ---
 source: specs/052-smart-folders/data-model.md
-sourceHash: b19acacfd44b809fe9b187ecf947050c46e7a4b8c48be4322adecf023aafdc18
+sourceHash: a314f00f714b9cadabc705d1d0f7d02faac277b204d953f3ff02bca0de3ef513
 ---
 
 # データモデル: 中身が保存した条件に従うスマートフォルダ {#data-model-smart-folders-whose-contents-follow-a-saved-condition}
@@ -62,14 +62,32 @@ JSON のオブジェクト。どのメンバーも省略できる。ないメン
 | --- | --- |
 | 実効の規則 | フォルダの規則と各祖先の規則。ストアはそれぞれの絞り込みの条件を適用する ([R-5](research.md#r-5-a-childs-effective-rule-is-every-rule-on-its-path-anded)) |
 | 項目 | 実効の規則での `ListLibrary` を、フォルダの `sort` で、閲覧者に対して返したもの ([R-3](research.md#r-3-a-rule-is-the-library-filters-fields-contents-are-the-filtered-library))。最初のページでは、`title_key` 順の子フォルダが先に来る |
-| 存在しない参照 | 経路上の規則が存在しない id を挙げる: 子フォルダのほかに項目はない ([R-9](research.md#r-9-merges-rewrite-rules-a-deleted-reference-makes-the-rule-match-nothing)) |
+| 子フォルダ | フォルダの子を要約 (`SmartFolderSummary`: id、親の id、名前、お気に入り) として、`title_key` 順、次に id 順で返す。ゲストにはゲストに[示す](#contents)ものを返す ([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)) |
+| 存在しない参照 | 経路上の規則が存在しない id を挙げる: 項目も合う動画もなく、子フォルダだけがある ([R-9](research.md#r-9-merges-rewrite-rules-a-deleted-reference-makes-the-rule-match-nothing)) |
 | 再生の順序 | 順序どおりの項目。グループのカードはその再生の順序 (048) に置き換え、各動画は最初に現れた位置に置く。子フォルダは再生しない |
-| カードの値 | 再生の順序に対する `LibraryGroup` の値: 本数、合計、日付、視聴の状態、プレビュー、開く動画 |
-| 示すこと | 所有者には常に示す。ゲストには再生の順序が空でないときに示す ([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only)) |
+| 合う動画 | 経路上のすべての規則に合う、閲覧者に示す各内容の鍵の動画。各条件は動画そのものに対して調べ (視聴の状態、再生できること、お気に入りも含む)、グループの段階はない。再生の順序と同じ動画である。ただし、視聴の状態、再生できるものだけ、お気に入りだけの規則のもとで動画が混ざっているグループは例外である: 項目のクエリーはそれを 1 つの項目として含めるか外す (048 Library items) が、この集合はその合う動画を含める |
+| カードの値 (フォルダのページ) | 再生の順序に対する `LibraryGroup` の値: 本数、合計、日付、視聴の状態、プレビュー、開く動画 |
+| カードの値 (カードの読み取り) | 合う動画に対する同じ値: `videoCount` はその数、`sizeBytes` と `durationMs` は合計、`addedAt` と `lastPlayedAt` は最新、`watchedCount` と `watchState` は動画ごと、`previews` と `openVideoId` はフォルダの `sort` で最初のもの、`tags` は `LibraryGroup` と同じ。`videoIds` はない ([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)) |
+| 示すこと | 所有者には常に示す。ゲストには、フォルダの再生の順序が空でないときに示す。どの読み取り (フォルダのページ、ライブラリ、親の子フォルダ、カードの読み取り) でも同じ判定で決めるので、ゲストに見えるカードは開ける ([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only))。合う動画はこれを決めない: 視聴の状態、再生できるものだけ、お気に入りだけの規則のもとでは、混ざったグループは合う動画を持ちながら再生の順序が空になる。ゲストのライブラリ、子フォルダ、カードの読み取りは、各フォルダをその再生の順序の最初の項目を求める 1 つの存在のクエリーで判定する。所有者の読み取りはこの判定を省く |
 
 ## ライブラリの項目 {#library-items}
 
-ライブラリの項目のクエリーは、クエリーに検索がなく、お気に入りだけ以外の絞り込みもないとき、最上位のフォルダ (`parent_id is null`) を種類 `smartFolder` の項目として持つようになる。お気に入りだけのときは、任意の深さのお気に入りにしたフォルダを持つ ([R-7](research.md#r-7-root-smart-folders-are-cards-in-the-unfiltered-library))。その並びの値は、グループのカードと同じようにカードの値から来る。カーソルは種類を持つ。動画やグループの項目は変わらない。
+ライブラリの項目のクエリーは、クエリーに検索がなく、お気に入りだけ以外の絞り込みもないとき、最上位のフォルダ (`parent_id is null`) を種類 `smartFolder` の項目として持つようになる。お気に入りだけのときは、任意の深さのお気に入りにしたフォルダを持つ ([R-7](research.md#r-7-root-smart-folders-are-cards-in-the-unfiltered-library))。項目はフォルダの要約 (`SmartFolderSummary`) を持ち、カードの値は持たない ([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing))。カーソルは種類を持つ。ゲストのライブラリは、ゲストに[示さない](#contents)フォルダを含めない ([R-8](research.md#r-8-an-empty-folder-stays-and-is-shown-to-the-owner-only))。動画やグループの項目は変わらない。
+
+フォルダの並びの値は、フォルダごとに 1 つのクエリーで、その合う動画 ([中身](#contents)) に対して、グループの段階なしに読む:
+
+| 並び順 | フォルダの並びの値 |
+| --- | --- |
+| 追加日、更新日、作成日、最後の再生 | グループのカードがそのメンバーの中での最新であるのと同じように、合う動画の中での最新。合う動画がなければ値はない |
+| 長さ、サイズ | 合う動画に対する合計。合う動画がなければ値はない |
+| タイトル | フォルダの `title_key` |
+| お気に入りにした日時 | その `smart_folder_favorites.favorited_at` |
+
+値のないフォルダ (タイトルとお気に入りにした日時以外の並び順での、所有者の空のフォルダ) は、どちらの向きでも値のあるすべての項目の後に置き、同順のときはフォルダの id で決める。一覧が長さや再生の記録のない動画を置くのと同じである (`listOrder.nullable`)。カーソルは、それらの動画と同じように値がないことを持つ。
+
+## カードの読み取り {#cards-read}
+
+`GET /api/smart-folders/cards` は 1 から 60 個のフォルダの id を受け取り、存在して閲覧者に示す各フォルダについて、カードの読み取りのカードの値 ([中身](#contents)) を、求められた順で返す。どのフォルダも指さない id、またはゲストが見てはならないフォルダの id は含めない。各フォルダには、その合う動画に対する 1 つのクエリーがかかる ([R-13](research.md#r-13-a-read-budget-at-20000-videos-and-50-smart-folders))。
 
 ## 編集 {#edits}
 
@@ -103,6 +121,8 @@ JSON のオブジェクト。どのメンバーも省略できる。ないメン
 | 人物か組織のクレジットの追加、解除、名前の変更、削除、統合 | すべてのフォルダ |
 | 動画のお気に入りの設定か解除 | すべてのフォルダ |
 | `domain.WatchState` が保存済みのものと異なる進捗の保存 | すべてのフォルダ |
+| 動画に適用したプローブの結果 (`ApplyProbe`: 長さ、再生できること) | すべてのフォルダ |
+| 動画の表示名の設定、解除、または作品の情報とともに変更 (`SetDisplayName`、`SetDisplayNames`、`SetDetails`)。名前が変わるとき | すべてのフォルダ |
 | 動画が一覧に載る、ライブラリを離れる、まとめられるか、まとまりから外される、またはグループが変わる (`GroupsChanged`) | すべてのフォルダ |
 
 フォルダが 1 つもないときは何も発行しない。

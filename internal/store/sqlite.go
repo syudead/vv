@@ -59,7 +59,7 @@ type Publisher interface {
 // （domain.VideoIngestChanged）と、それで内容の識別子の参照が無くなったこと
 // （domain.ContentUnreferenced）、動画の上書きが変わったこと
 // （domain.VideoOverrideChanged）、フォルダの索引の作り直しで自動グループが変わったこと
-// （domain.GroupsChanged）である。どれも取引が確定した後にだけ発行し、
+// （domain.GroupsChanged）、スマートフォルダの一致が変わりうること（domain.SmartFoldersChanged）である。どれも取引が確定した後にだけ発行し、
 // ロールバックした取引からは発行しない。
 func (db *DB) PublishTo(publisher Publisher) {
 	db.publisherMu.Lock()
@@ -85,11 +85,24 @@ type changes struct {
 	// groups は、フォルダの索引の作り直しで変わったグループとその祖先の id である
 	// （rebuildFolderIndex）。
 	groups []int64
+	// matches は、スマートフォルダの一致が変わりうることを表す（動画がライブラリに入る・出る、
+	// グループが変わる）。commit が確定の前にすべてのフォルダの id を smartFolders に読み、確定後に
+	// domain.SmartFoldersChanged で知らせる（specs/052-smart-folders/data-model.md「Notices」）。
+	matches      bool
+	smartFolders []int64
+}
+
+// matchesChanged は、スマートフォルダの一致が変わりうることを記録する。
+func (c *changes) matchesChanged() {
+	c.matches = true
 }
 
 // groupsChanged は、変わったグループの id を記録する。確定後に domain.GroupsChanged で知らせる。
 func (c *changes) groupsChanged(ids []int64) {
 	c.groups = normalizeIDs(append(c.groups, ids...))
+	if len(ids) > 0 {
+		c.matchesChanged()
+	}
 }
 
 // issuesChanged は、問題の一覧に出る件が変わりうることを記録する。commit が直近の
@@ -132,6 +145,7 @@ func (c *changes) videosDeleted(deleted []domain.DeletedVideo) {
 	c.processing = true
 	c.settle = true
 	c.issues = true
+	c.matchesChanged()
 }
 
 // events は集めた変化を発行する形にする。
@@ -153,7 +167,8 @@ func (c *changes) events() []domain.Event {
 	if c.processing {
 		events = append(events, domain.ProcessingChanged{})
 	}
-	return append(events, groupsChangedEvents(c.groups)...)
+	events = append(events, groupsChangedEvents(c.groups)...)
+	return append(events, smartFoldersChangedEvents(c.smartFolders)...)
 }
 
 // commit は取引を確定し、確定できたときだけ集めた変化を発行する。確定前に
@@ -169,6 +184,13 @@ func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 		if err := bumpIssuesRevision(ctx, tx); err != nil {
 			return err
 		}
+	}
+	if c != nil && c.matches {
+		ids, err := allSmartFolderIDs(ctx, tx)
+		if err != nil {
+			return err
+		}
+		c.smartFolders = ids
 	}
 	if err := tx.Commit(); err != nil {
 		return err

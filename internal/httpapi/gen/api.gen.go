@@ -2955,6 +2955,12 @@ type SkippedTag struct {
 // SkippedTagReason 付けなかった理由。rejected は却下した名前、invalid はタグ名の規則に合わない名前
 type SkippedTagReason string
 
+// SmartFolderChanged /api/events の `smartFolder` の data
+type SmartFolderChanged struct {
+	// Ids 中身かカードが変わったかもしれないスマートフォルダの id。小さい順
+	Ids []int64 `json:"ids"`
+}
+
 // StartAutoTaggingRequest defines model for StartAutoTaggingRequest.
 type StartAutoTaggingRequest struct {
 	Scope StartAutoTaggingRequestScope `json:"scope"`

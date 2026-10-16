@@ -161,6 +161,7 @@ argument. `videos` is the catalog's "1 video" / "N videos" helper.
 | Created; saved | Created "{name}"; Saved "{name}" | `smartFolders.created(name)`, `.saved(name)`; toasts |
 | Created toast action in the filtered library | Open | `smartFolders.open`; opens the new folder's page |
 | Card accessible name | {name}, smart folder of 12 videos; {name}, smart folder of 12 videos, 3 watched | `library.smartFolder.label(name, count, watched)` |
+| Card accessible name while its values load | {name}, smart folder | `library.smartFolder.labelLoading(name)` |
 | Card mark tooltip and `title` | Smart folder | `smartFolders.kind` |
 | Card favorite, add to playlist | Favorite smart folder "{name}"; Add smart folder "{name}" to a playlist | `library.smartFolder.favorite(name)`, `.addToPlaylist(name)` |
 | Trail band accessible name | Smart folder path | `smartFolders.trail` |
@@ -259,16 +260,21 @@ marks:
 | Selection check | None; `Select all` skips the card. Its videos are their own cards in the library and are selected there |
 | Drag | Not lifted and not a drop target: a card dragged onto it shows `Can't drop here` ([050 UI design, Indicators](../050-drag-organize/ui-design.md#indicators)) |
 | Empty folder (owner) | The art with no sheet, the face "0 videos", the name in `text-muted-foreground`; a guest never sees one (R-8) |
+| Values loading | The item carries only the summary (R-14): the art with no sheet, a `Skeleton` `w-16` in the count face's place, the name and the heart from the summary; the accessible name "{name}, smart folder" |
 
 In the list view the row is the group row with the `FolderSearch` icon in
 the count line in place of `Folder`, no check column and no `Add to group`
 column.
 
-The card is read again, without a skeleton, on a `smartFolder` event that
-carries its id (R-12), as a group card is on a `group` event; a `404`
-removes it. A filtered library lists no smart folder card, and favorites
-only lists the favorited ones at any depth (R-7), so a child folder's card
-can stand in the library only there.
+The card's values come from `GET /api/smart-folders/cards`, asked for the
+folder cards that are on screen, at most 60 in one read, once a card enters
+the viewport; the count may differ from the folder page's for a mixed group
+(R-14). On a `smartFolder` event that carries its id (R-12) the values of
+the shown cards are read again, without a skeleton, as a group card is on a
+`group` event; a folder left out of the answer is removed. A filtered
+library lists no smart folder card, and favorites only lists the favorited
+ones at any depth (R-7), so a child folder's card can stand in the library
+only there.
 
 ## Smart folder dialog
 
@@ -456,10 +462,10 @@ A `smartFolder` event that carries this folder's id (R-12) reads the folder
 again without a skeleton, keeping the scroll position and the selection; the
 band, the title, the count, the conditions lines and the items follow the
 response, so a video tagged in another tab is in the body without a reload
-(acceptance criterion 1). The library does the same for its folder cards
-and, because every match-changing write names every folder, reads a folder
-card's values again at most once per event. A `404` on any read is the gone
-state.
+(acceptance criterion 1). The library and this page do the same for the
+folder cards on screen through the cards read and, because every
+match-changing write names every folder, read a card's values again at most
+once per event. A `404` on any read is the gone state.
 
 ### States
 
