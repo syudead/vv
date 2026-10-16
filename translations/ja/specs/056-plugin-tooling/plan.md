@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/plan.md
-sourceHash: 5fb47e19f9226b6f86f1decfffd547a44307a0ef6840865e0adc4217f4938773
+sourceHash: 0a00346a222817058747ceab6702452d3d1600c5ceb3f9206d15a48e07b9f1e2
 ---
 
 # 実装計画: 作者、運用者、利用者のための作品情報プラグインの道具 {#implementation-plan-work-info-plugin-tooling-for-authors-operators-and-users}
@@ -64,7 +64,7 @@ flowchart LR
 
 **この機能に固有の背景**:
 
-- 新しい依存はない。マイグレーションは `00051_work_info_plugin_runs.sql` の 1 つである ([data-model.md の Migration](data-model.md#migration))。
+- 新しい依存はない。マイグレーションは `00054_work_info_plugin_runs.sql` の 1 つである ([data-model.md の Migration](data-model.md#migration))。
 - `WorkInfoPluginRuntime.Run` はこの機能で 2 回形を変える。プロキシを `domain.WorkInfoRunNetwork` として受け取り、結果の隣に保持した標準エラーを返す。これを変える 2 つの単位は、シグネチャの変更がそれぞれ 1 回で済むように順序づけてある。
 - プロキシのテストは、テストがループバックで起動するプロキシに対して実行する。アドレス規則の `local` 関数は、既存のネットワークのテストと同じように注入するので、CI にインターネットは要らない。CI が扱えないものは [quickstart.md](quickstart.md) にある。
 - PR #1233 (`main` に対して開いている) は契約に `lookup` 操作を加える。`mdm plugin run` は操作を引数に取ってマニフェストに照らして検証するので、その PR が入っても形を変える必要はない。コマンドの実装は、そのときまでに PR がマージされていれば `lookup` の入力規則を加える。
@@ -121,7 +121,7 @@ specs/056-plugin-tooling/
 | `web/e2e`、`internal/wasmplugin/testdata/e2eworks` | 選択を外したタグ、既定値のある設定、直近の実行の出力を含むブラウザーのテスト。標準エラーに書くフィクスチャ |
 | `docs/`、`ARCHITECTURE.md` | 作者向けの手順書 (pack、run、マニフェストのフィールド、標準エラー、`429`、プロキシ)、設計文書 (ネットワークと実行の節)、running-vv.md の復旧の表、サブシステムの行 |
 
-**新しいパス**: `cmd/mdm/plugin.go`、`internal/store/migrations/00051_work_info_plugin_runs.sql`、`web/src/settings/WorkInfoPluginRunDialog.tsx`。
+**新しいパス**: `cmd/mdm/plugin.go`、`internal/store/migrations/00054_work_info_plugin_runs.sql`、`web/src/settings/WorkInfoPluginRunDialog.tsx`。
 
 **構成の決定**: コマンドは専用のパッケージではなく `cmd/mdm` に置く。`mdm account` がすでにそこにあり、コマンドは既存の 2 つのパッケージの組み合わせだからである ([R-1](research.md#r-1-mdm-plugin-run-and-mdm-plugin-pack-reuse-the-servers-runtime-and-parser-and-open-no-database))。プロキシはランタイムの状態ではなく各実行のパラメーターとする ([R-4](research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option))。これでランタイムが持つ所有者の設定が 1 つ減り、コマンドとサーバーが同じ `Run` を呼ぶ。
 

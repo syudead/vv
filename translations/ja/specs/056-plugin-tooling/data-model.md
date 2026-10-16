@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/data-model.md
-sourceHash: 73e06c9ba8473ad4cf9a5c37ac0d4accd32563fed13eadd6910c99184489f7c4
+sourceHash: a18bbfbd98a9e2a2b13fac5f7ad63f04f9480997cb0a9458b04069fbeba887d7
 ---
 
 # データモデル: 作品情報プラグインの道具 {#data-model-work-info-plugin-tooling}
@@ -9,7 +9,7 @@ sourceHash: 73e06c9ba8473ad4cf9a5c37ac0d4accd32563fed13eadd6910c99184489f7c4
 
 ## Migration {#migration}
 
-`00051_work_info_plugin_runs.sql` が `work_info_plugin_runs` を作る。`00050` はスマートフォルダーの機能ブランチが使っている。別のマイグレーションが先に `main` に入った場合、番号は次の空きに移る。
+`00054_work_info_plugin_runs.sql` が `work_info_plugin_runs` を作る。番号は、先に `main` に入ったマイグレーション (`00050` から `00053`) の次を取る。別のマイグレーションがこれより先に `main` に入った場合、番号は次の空きに移る。
 
 ## `work_info_plugin_runs` {#work_info_plugin_runs}
 

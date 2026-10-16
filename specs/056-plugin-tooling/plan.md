@@ -87,7 +87,7 @@ the last one; distributing or sharing plugins.
 
 **Feature-specific context**:
 
-- No new dependency. One migration, `00051_work_info_plugin_runs.sql`
+- No new dependency. One migration, `00054_work_info_plugin_runs.sql`
   ([data-model.md, Migration](data-model.md#migration)).
 - `WorkInfoPluginRuntime.Run` changes shape twice in this feature: it takes
   the proxy as `domain.WorkInfoRunNetwork` and returns the kept standard
@@ -159,7 +159,7 @@ because CI reaches no real proxy or site and does not run the Windows app.
 | `docs/`, `ARCHITECTURE.md` | The authors' guide (pack, run, manifest fields, standard error, `429`, proxy), the design document (network and run sections), running-vv.md's recovery table, the subsystem row |
 
 **New paths**: `cmd/mdm/plugin.go`,
-`internal/store/migrations/00051_work_info_plugin_runs.sql`,
+`internal/store/migrations/00054_work_info_plugin_runs.sql`,
 `web/src/settings/WorkInfoPluginRunDialog.tsx`.
 
 **Structure decision**: The commands live in `cmd/mdm`, not in a package of

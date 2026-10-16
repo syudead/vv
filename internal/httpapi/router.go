@@ -291,6 +291,8 @@ type Options struct {
 	// WorkInfo は動画の作品情報の保存先。nilなら作品情報の書き込みの経路は500を返し、
 	// 動画1件の応答に workInfo が載らない。
 	WorkInfo WorkInfo
+	// MediaInfo は動画の追加の情報の読み出し先。nilなら動画1件の応答に mediaInfo が載らない。
+	MediaInfo MediaInfoReader
 	// Visibility は動画の公開フラグの保存先。nilなら切り替えの経路は500を返す。
 	Visibility Visibility
 	// Favorites はお気に入りの保存先。nilなら付け外しの経路は500を返す。
@@ -403,6 +405,7 @@ type server struct {
 	tags         Tags
 	credits      Credits
 	workInfo     WorkInfo
+	mediaInfo    MediaInfoReader
 	visibility   Visibility
 	favorites    Favorites
 	playlists    Playlists
@@ -496,6 +499,7 @@ func NewRouter(opts Options) http.Handler {
 		tags:                   opts.Tags,
 		credits:                opts.Credits,
 		workInfo:               opts.WorkInfo,
+		mediaInfo:              opts.MediaInfo,
 		visibility:             opts.Visibility,
 		favorites:              opts.Favorites,
 		playlists:              opts.Playlists,

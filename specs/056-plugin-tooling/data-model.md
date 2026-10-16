@@ -8,9 +8,10 @@ the existing `work_info_plugins.settings` JSON, so neither needs a migration.
 
 ## Migration
 
-`00051_work_info_plugin_runs.sql` creates `work_info_plugin_runs`. `00050`
-is taken by the smart-folders feature branch; if another migration lands on
-`main` first, the number moves to the next free one.
+`00054_work_info_plugin_runs.sql` creates `work_info_plugin_runs`. It
+takes the next number after the migrations that landed on `main` first
+(`00050` to `00053`); if another migration lands on `main` before this one,
+the number moves to the next free one.
 
 ## `work_info_plugin_runs`
 

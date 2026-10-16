@@ -5125,6 +5125,13 @@ export interface components {
              */
             workInfo?: components["schemas"]["WorkInfo"];
             /**
+             * @description 取り込みの解析で読んだ動画の追加の情報。GET /api/videos/{id} の応答にだけ入り、今の版の
+             *     行がある動画にだけ入る。所有者と、公開の動画を読むゲストに同じ値を返す。一覧の項目・関連動画・
+             *     ライブラリの項目・所有者の PUT の応答には入らない
+             *     （specs/056-media-info/contracts/screen-api.md、research.md R-6）
+             */
+            mediaInfo?: components["schemas"]["MediaInfo"];
+            /**
              * @description シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
              *     seekThumbnailUrl と同じ条件のときだけ入る。done = スプライトが完成している、
              *     pending = 生成を待っている、または生成中（保存した状態が done なのに置き場が
@@ -5133,6 +5140,123 @@ export interface components {
              * @enum {string}
              */
             seekThumbnailState?: "pending" | "done" | "failed";
+        };
+        /**
+         * @description 動画の追加の情報（specs/056-media-info/contracts/screen-api.md）。どの項目も、ファイルに
+         *     無ければ省く。項目の無い object は丸ごと省く。
+         */
+        MediaInfo: {
+            video?: components["schemas"]["MediaInfoVideo"];
+            /** @description すべての音声 stream。stream の順 */
+            audioTracks?: components["schemas"]["MediaInfoAudioTrack"][];
+            /** @description すべての字幕 stream。stream の順 */
+            subtitleTracks?: components["schemas"]["MediaInfoSubtitleTrack"][];
+            embedded?: components["schemas"]["MediaInfoEmbedded"];
+            broadcast?: components["schemas"]["MediaInfoBroadcast"];
+            /** @description チャプター。開始の順で、尺の内側にある */
+            chapters?: components["schemas"]["MediaInfoChapter"][];
+        };
+        /** @description 映像 stream の項目。`hdr` は映像があれば必ず入る */
+        MediaInfoVideo: {
+            /**
+             * Format: double
+             * @description 毎秒のコマ数（avg_frame_rate）
+             */
+            frameRate?: number;
+            /** @description 1 標本のビット数 */
+            bitDepth?: number;
+            /**
+             * Format: int64
+             * @description 映像 stream のビット毎秒
+             */
+            bitRate?: number;
+            /** @description ファイルがプログレッシブかインターレースかを示すときだけ入る */
+            interlaced?: boolean;
+            /** @enum {string} */
+            hdr: "sdr" | "hdr10" | "hlg" | "dolby_vision";
+            /** @description 360 度動画の投影（`equirectangular`・`cubemap` などの ffprobe の名前） */
+            projection?: string;
+            /** @description 3D の方式（`side by side`・`top and bottom` などの ffprobe の名前） */
+            stereo3d?: string;
+            /** @description 映像 stream がクローズドキャプションを運ぶとき true */
+            closedCaptions?: boolean;
+        };
+        MediaInfoAudioTrack: {
+            /** @description ファイルの中の stream の番号 */
+            index: number;
+            /**
+             * @description ffprobe の codec_name
+             * @example aac
+             * @example ac3
+             */
+            codec?: string;
+            channels?: number;
+            /**
+             * @example stereo
+             * @example 5.1
+             */
+            channelLayout?: string;
+            /** @description ファイルの言語の印（`und` は省く。research.md R-8） */
+            language?: string;
+            title?: string;
+            default?: boolean;
+        };
+        MediaInfoSubtitleTrack: {
+            /** @description ファイルの中の stream の番号 */
+            index: number;
+            /**
+             * @description ffprobe の codec_name
+             * @example subrip
+             * @example arib_caption
+             */
+            codec?: string;
+            /** @description ファイルの言語の印（`und` は省く。research.md R-8） */
+            language?: string;
+            title?: string;
+            default?: boolean;
+            forced?: boolean;
+            hearingImpaired?: boolean;
+        };
+        /** @description ファイルに埋め込まれたタグ */
+        MediaInfoEmbedded: {
+            title?: string;
+            author?: string;
+            comment?: string;
+            description?: string;
+            genre?: string;
+            /** @description ファイルの date タグの文字のまま */
+            date?: string;
+            /**
+             * Format: date-time
+             * @description 撮影の日時。ファイルに時差があればそれを保つ
+             */
+            recordedAt?: string;
+            /** @description メーカーと機種 */
+            device?: string;
+            location?: components["schemas"]["MediaInfoLocation"];
+            /** @description ファイルが添付の画像を持つとき true */
+            coverArt?: boolean;
+        };
+        /** @description 撮影場所（度、高度はメートル） */
+        MediaInfoLocation: {
+            /** Format: double */
+            latitude: number;
+            /** Format: double */
+            longitude: number;
+            /** Format: double */
+            altitude?: number;
+        };
+        /** @description TS の録画の放送局と番組 */
+        MediaInfoBroadcast: {
+            station?: string;
+            program?: string;
+        };
+        MediaInfoChapter: {
+            /** Format: int64 */
+            startMs: number;
+            /** Format: int64 */
+            endMs: number;
+            title?: string;
         };
         /**
          * @description シーク用サムネイルのスプライトの配置情報

@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 7723bb8fc136f9e76153ce6dab30cd2f1d75d14eb74226f9650324667c91e2f9
+sourceHash: 13d10ce96e58998a17a652a1aa83875b37140e024a40c84662218b003b368372
 ---
 
 # 設計文書 {#design-documents}
@@ -23,6 +23,7 @@ sourceHash: 7723bb8fc136f9e76153ce6dab30cd2f1d75d14eb74226f9650324667c91e2f9
 - [技術選定: MDM (Media Data Management)](tech-stack-selection.md)
 - [MOV のライブ変換でのトラック別の入力](mov-live-transcoding.md)
 - [ライブ変換のシークとプローブの再利用](live-transcode-seek.md)
+- [取り込み時のプローブから得るメディア情報](media-information.md)
 - [ライブ変換のハードウェアエンコード](hardware-encoding.md)
 - [Windows デスクトップアプリ (VVMDM.exe)](windows-app.md)
 - [プロセスのライフサイクル: 起動と停止の順序](process-lifecycle.md)
@@ -74,4 +75,5 @@ sourceHash: 7723bb8fc136f9e76153ce6dab30cd2f1d75d14eb74226f9650324667c91e2f9
 - [作品情報プラグインからの作品の詳細 (比較の作品の詳細の行と `New` と `Not linked` の印、結果のステップの除かれた値): UI](../../specs/052-plugin-work-info-fields/ui-design.md)
 - [保存した条件に内容が従うスマートフォルダ (Save as smart folder、スマートフォルダのダイアログ、条件の行を持つカードとページ、動画のページのフォルダの行): UI](../../specs/052-smart-folders/ui-design.md)
 - [自動の重複判定 (カードと行のバージョンの印、Settings の Duplicate judging のスイッチ): UI](../../specs/054-auto-dup/ui-design.md)
+- [動画ページのメディア情報とシークバーのチャプター (Video、Audio、Subtitles、Embedded、Broadcast のグループ、チャプターの印、シークのプレビューのチャプターのタイトル、チャプターのメニュー): UI](../../specs/056-media-info/ui-design.md)
 - [作品情報プラグイン用ツール (設定のデフォルトと選択肢、Network セクションのプラグイン用プロキシ、前回の実行ダイアログ、取得したタグを 1 つずつ選ぶ): UI](../../specs/056-plugin-tooling/ui-design.md)
