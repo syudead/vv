@@ -1006,6 +1006,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * オンボードの段階を返す
+         * @description 段階は設定 `onboarding.step` に 1 つで持つ。無ければ、メディアフォルダがあれば `done`、
+         *     無ければ `folders` である（specs/057-home/research.md R-3）。所有者だけ。
+         */
+        get: operations["getOnboarding"];
+        /**
+         * オンボードの段階を書く
+         * @description 名前の段階をそのまま書くので、2 つの端末からの書き込みは後のものが残る。段階が変わったら
+         *     画面の知らせ `home` を出す（specs/057-home/research.md R-3、R-16）。
+         */
+        put: operations["updateOnboarding"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/onboarding/interests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 分野の一覧を返す
+         * @description 一覧の順に、それぞれの分野のタグの条件の棚がもうホームにあるか（`onHome`）を添える
+         *     （specs/057-home/research.md R-5）。
+         */
+        get: operations["listOnboardingInterests"];
+        put?: never;
+        /**
+         * 選んだ分野をタグと棚にする
+         * @description 1 つの取引で、分野ごとにタグを名前か同義語で探すか同義語付きで作り、種類の無いタグに `Genre` を
+         *     付け、そのタグの条件の所有者の棚をホームの後ろに作る。棚がもうある分野は棚を足さない。確定後、
+         *     自動タグ付けが入なら「Tag all videos again」と同じくすべての動画を判定に回し、その件数を
+         *     `queued` で返す（specs/057-home/research.md R-6）。
+         */
+        post: operations["pickOnboardingInterests"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/auto-import": {
         parameters: {
             query?: never;
@@ -3707,6 +3761,52 @@ export interface components {
         StartAutoTaggingRequest: {
             /** @enum {string} */
             scope: "missing" | "all";
+        };
+        Onboarding: {
+            /**
+             * @description オンボードの段階（specs/057-home/research.md R-3）
+             * @enum {string}
+             */
+            step: "folders" | "scan" | "interests" | "done";
+        };
+        Interest: {
+            /** @description 分野の変わらない識別子（specs/057-home/data-model.md「Interest catalog」） */
+            id: string;
+            /** @description タグの名前（英語） */
+            name: string;
+            /** @description タグの同義語（日本語） */
+            synonym: string;
+            /** @description この分野のタグの条件の棚がもうホームにある */
+            onHome: boolean;
+        };
+        InterestList: {
+            interests: components["schemas"]["Interest"][];
+        };
+        InterestPick: {
+            ids: string[];
+        };
+        InterestPickResult: {
+            /** @description 足した棚。棚がもうホームにあった分野の分は含まない */
+            shelves: components["schemas"]["HomeShelf"][];
+            /** @description 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0 */
+            queued: number;
+        };
+        /** @description `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended` */
+        HomeShelfKey: string;
+        /** @description ホームの棚 1 つ（specs/057-home/contracts/screen-api.md） */
+        HomeShelf: {
+            key: components["schemas"]["HomeShelfKey"];
+            /** @enum {string} */
+            kind: "folder" | "continue" | "recent" | "unshelved" | "recommended";
+            /** @description フォルダの名前。固定の棚では空で、画面が名前を付ける */
+            name: string;
+            /**
+             * Format: int64
+             * @description フォルダの棚だけ
+             */
+            folderId?: number;
+            /** @description 所有者だけ。owner_kept が 0 の間は真 */
+            byOrganizer?: boolean;
         };
         AutoTaggingQueued: {
             /** @description 積んだ動画の件数 */
@@ -7421,6 +7521,107 @@ export interface operations {
             409: components["responses"]["Conflict"];
             /** @description 開き直したあとの保存に失敗した。待ち受けは元のアドレスへ戻した */
             500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    getOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 今の段階 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Onboarding"];
+                };
+            };
+        };
+    };
+    updateOnboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["Onboarding"];
+            };
+        };
+        responses: {
+            /** @description 書いた段階 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Onboarding"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
+    listOnboardingInterests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 分野の一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterestList"];
+                };
+            };
+        };
+    };
+    pickOnboardingInterests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InterestPick"];
+            };
+        };
+        responses: {
+            /** @description 足した棚と、判定に回した動画の件数 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InterestPickResult"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            /** @description 棚を足すとホームが 50 を超える（conflict） */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
