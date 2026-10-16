@@ -415,7 +415,7 @@ test.describe.serial("video tags", () => {
       await page.goto(`/videos/${String(a.id)}`);
       await page.getByRole("link", { name: "Filter by e2e旅行" }).click();
       await expect(page).toHaveURL(
-        new RegExp(`^http://127\\.0\\.0\\.1:15173/\\?tag=${String(tag.id)}$`),
+        new RegExp(`^http://127\\.0\\.0\\.1:15173/library\\?tag=${String(tag.id)}$`),
       );
       await expect(page.getByRole("article")).toHaveCount(2);
     });
@@ -813,7 +813,7 @@ test.describe.serial("video tags", () => {
       await revealTagRow(page, "e2e管理移動先");
       await tagRowByName(page, "e2e管理移動先").click();
       await expect(page).toHaveURL(
-        new RegExp(`^http://127\\.0\\.0\\.1:15173/\\?tag=${String(created.id)}$`),
+        new RegExp(`^http://127\\.0\\.0\\.1:15173/library\\?tag=${String(created.id)}$`),
       );
 
       // URL だけでなく、実際にそのタグ1つで絞り込んだ一覧になっている
