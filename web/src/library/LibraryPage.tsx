@@ -66,18 +66,15 @@ import { usePreviewCoordination } from "../videoList/usePreviewCoordination";
 import { useZoomAnchor } from "../videoList/useZoomAnchor";
 import VideoCard, { VideoRow } from "../videoList/VideoCard";
 import SaveSmartFolderButton from "../smartFolders/SaveSmartFolderButton";
+import type { LibraryFilter } from "../smartFolders/smartRule";
 import ActiveTagFilters from "./ActiveTagFilters";
 import {
   addedLengthCount,
   addedLengthParams,
   addedLengthSignature,
-  addedLengthValues,
   clearedAddedLength,
   hasAddedLength,
-  type LengthRange,
   useAddedLength,
-  withAddedWithin,
-  withLength,
 } from "./addedLengthCriteria";
 import { AddedSelect, LengthSelect } from "./AddedLengthSelects";
 import {
@@ -117,6 +114,7 @@ import {
 import SelectionBar from "./SelectionBar";
 import TagKindSelect from "./TagKindSelect";
 import { TagRowMeasureProvider } from "./TagRowMeasure";
+import { useAddedLengthControls } from "./useAddedLengthControls";
 import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
 import { useFolderTagRow } from "./useCardTagRows";
 import { type ApplyTagKind, useLibraryTagKinds } from "./useLibraryTagKinds";
@@ -149,6 +147,32 @@ function itemGroup(item: LibraryItem): LibraryGroup | undefined {
  */
 function withSmartFolderCards(content: ReactNode) {
   return <SmartFolderCardsProvider>{content}</SmartFolderCardsProvider>;
+}
+
+/**
+ * libraryConditioned は一覧を条件で絞っているか（共有の条件・タグ・人物と団体・タグの種類と、
+ * 追加日と長さ）を返す。
+ */
+function libraryConditioned(filter: LibraryFilter): boolean {
+  return (
+    hasTagConditions(filter.criteria, filter.tagIds, filter.credits) ||
+    hasAddedLength(filter.addedLength)
+  );
+}
+
+/**
+ * saveSmartFolderAction は見出しの「Save as smart folder」である。所有者が条件で絞っている間だけ
+ * 出す（specs/052-smart-folders/ui-design.md「Save as smart folder」、要件 10）。
+ */
+function saveSmartFolderAction(
+  owner: boolean,
+  conditioned: boolean,
+  filter: LibraryFilter,
+  sort: VideoSort,
+): ReactNode {
+  return owner && conditioned ? (
+    <SaveSmartFolderButton filter={filter} sort={sort} />
+  ) : undefined;
 }
 
 /** ライブラリだけが URL に持つ条件（タグ、人物、団体、タグの種類、追加日と長さ）。 */
@@ -191,9 +215,8 @@ export default function LibraryPage() {
     [owner, rawTagKey],
   );
   const credits = useCreditFilter(location.search, owner);
-  const { filter: addedLength, dropped: addedLengthDropped } = useAddedLength(
-    location.search,
-  );
+  const parsedAddedLength = useAddedLength(location.search);
+  const addedLength = parsedAddedLength.filter;
   // 一覧の条件のうちライブラリだけのもの（人物・団体・タグの種類と、追加日と長さ）。
   const libraryFilter = useMemo(
     () => ({ ...credits, ...addedLength }),
@@ -303,19 +326,10 @@ export default function LibraryPage() {
   );
   const tagKinds = useLibraryTagKinds(credits.tagKind, applyTagKind);
   // --- 追加日と長さ（052 ui-design.md「Added and length」） ---
-  // 選ぶとその値だけを書き換えて履歴を 1 つ増やす。ほかの条件は残る。
-  const changeAdded = useCallback(
-    (days: number | undefined) => applyTagKind(withAddedWithin(days), "push"),
-    [applyTagKind],
+  const { changeAdded, changeLength } = useAddedLengthControls(
+    parsedAddedLength,
+    applyTagKind,
   );
-  const changeLength = useCallback(
-    (range: LengthRange) => applyTagKind(withLength(range), "push"),
-    [applyTagKind],
-  );
-  // 送れない値（範囲の外、下限が上限を超える）は、要求の前に履歴を増やさずに URL から落とす。
-  useEffect(() => {
-    if (addedLengthDropped) applyTagKind(addedLengthValues(addedLength), "replace");
-  }, [addedLength, addedLengthDropped, applyTagKind]);
   const changeTagKind = tagKinds.change;
   const removeTagKind = useCallback(() => changeTagKind(undefined), [changeTagKind]);
 
@@ -728,8 +742,8 @@ export default function LibraryPage() {
 
   const empty = !loading && error === null && items.length === 0;
   const initialLoadFailed = !loading && error !== null && items.length === 0;
-  const conditioned =
-    hasTagConditions(criteria, tagIds, credits) || hasAddedLength(addedLength);
+  const smartFolderFilter = { criteria, tagIds, credits, addedLength };
+  const conditioned = libraryConditioned(smartFolderFilter);
   const selectionMode = selectedIds.size > 0;
   const resultStatus = loading ? t.list.loading : t.library.resultCount(total);
 
@@ -917,15 +931,7 @@ export default function LibraryPage() {
         header={
           <PageHeader
             title={t.library.title}
-            actions={
-              owner &&
-              conditioned && (
-                <SaveSmartFolderButton
-                  filter={{ criteria, tagIds, credits, addedLength }}
-                  sort={sort}
-                />
-              )
-            }
+            actions={saveSmartFolderAction(owner, conditioned, smartFolderFilter, sort)}
             count={
               initialLoadFailed ? undefined : (
                 <span

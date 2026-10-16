@@ -56,6 +56,8 @@ func TestPlaylistPlaybackOf(t *testing.T) {
 	v, h := playbackVideo(5), playbackGroup(6, "nn", 5, 61)
 	// スマートフォルダ F(7: 再生順 71〜73、71 は視聴済み)。
 	f := playbackSmartFolder(7, "dnn", 71, 72, 73)
+	// 再生順の空のスマートフォルダ E(8)。見せる項目として数えるが、開く動画は無い（research.md R-8）。
+	e := playbackSmartFolder(8, "")
 
 	tests := []struct {
 		name       string
@@ -103,6 +105,12 @@ func TestPlaylistPlaybackOf(t *testing.T) {
 			item: 70, video: 73, position: 2, count: 3, next: 3, nextItemID: 30, previous: 1, nextItem: 3},
 		{name: "item after a smart folder goes back to its open member", items: []PlaylistItem{a, f, b},
 			item: 30, video: 3, position: 3, count: 3, next: 0, previous: 72, nextItem: 0},
+		{name: "empty smart folder is counted but stepped over to the next item", items: []PlaylistItem{a, e, b},
+			item: 10, video: 1, position: 1, count: 3, next: 3, nextItemID: 30, previous: 0, nextItem: 3},
+		{name: "empty smart folder is stepped over to the previous item", items: []PlaylistItem{a, e, b},
+			item: 30, video: 3, position: 3, count: 3, next: 0, previous: 1, nextItem: 0},
+		{name: "empty smart folder at the end ends the playlist", items: []PlaylistItem{a, b, e},
+			item: 30, video: 3, position: 2, count: 3, next: 0, previous: 1, nextItem: 0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

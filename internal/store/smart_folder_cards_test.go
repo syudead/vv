@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"reflect"
 	"slices"
 	"testing"
 	"time"
@@ -205,5 +206,29 @@ func TestSmartFolderCardsApplyPlayableAndFavoriteRules(t *testing.T) {
 			t.Errorf("%s のカード = 本数 %d・開く %d・大きさ %d, want %d・%d・%d",
 				card.Name, card.VideoCount, card.OpenVideoID, card.SizeBytes, want.count, want.open, want.size)
 		}
+	}
+}
+
+// 集まりの動画のカードのタグは、ライブラリの項目のタグ（tagsByContentKeys）と同じである。フォルダ名の
+// 表（video_folder_names）は代表だけを持つので（specs/030-video-versions の受け入れ条件 11）、代表で
+// ない B のフォルダ名 Y からはどちらにもタグが付かず、代表 A のフォルダ名 X からはどちらにも付く。
+func TestSmartFolderCardTagsOfABundleMatchTheLibraryItem(t *testing.T) {
+	db, ids := folderFixture(t,
+		sampleFile(fixturePath("/media/X/alpha.mp4"), "alpha", "key-a", 1, 0),
+		sampleFile(fixturePath("/media/Y/bravo.mp4"), "bravo", "key-b", 1, 0),
+	)
+	a, b := ids[fixturePath("/media/X/alpha.mp4")], ids[fixturePath("/media/Y/bravo.mp4")]
+	x := createTagForTest(t, db, "X")
+	createTagForTest(t, db, "Y")
+	versions := bundle(t, db, a, a, b)
+	folder := newSmartFolder(t, db, "alpha", domain.SmartRule{Q: "alpha"}, domain.SortAddedDesc, 0)
+
+	cards := smartFolderCards(t, db, domain.AudienceOwner, folder)
+	library := videoTagsOf(t, db, versions.Items[0].UserKey)
+	if len(cards) != 1 || cards[0].VideoCount != 1 || cards[0].OpenVideoID != a {
+		t.Fatalf("cards = %+v, want 代表 A の 1 本", cards)
+	}
+	if !reflect.DeepEqual(cards[0].Tags, library) || len(library) != 1 || library[0].ID != x || !library[0].FromFolder {
+		t.Errorf("カードのタグ = %+v, ライブラリのタグ = %+v, want どちらも X（フォルダ由来）だけ", cards[0].Tags, library)
 	}
 }
