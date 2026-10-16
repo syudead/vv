@@ -2775,9 +2775,12 @@ export const en = {
       network: "Reaches internet sites",
       settingSet: (label: string) => `${label} set`,
       settingNotSet: (label: string) => `${label} not set`,
+      settingDefault: (label: string) => `${label} default`,
       settingsSummary: (items: readonly string[]) => `Settings: ${items.join(", ")}`,
       requiredMissing: (labels: readonly string[]) =>
         `Needs a value: ${labels.join(", ")}`,
+      staleSettings: (labels: readonly string[]) => `Choose again: ${labels.join(", ")}`,
+      defaultHint: (value: string) => `Default: ${value}`,
       approve: "Review and approve",
       settings: "Settings",
       more: (name: string) => `More actions for ${name}`,
@@ -2826,6 +2829,12 @@ export const en = {
         forget: "Forget",
         forgotten: "Removed when you save.",
         undo: "Undo",
+        defaultItem: (value: string) => `Default (${value})`,
+        notSetItem: "Not set",
+        staleWithDefault: (value: string) =>
+          `"${value}" isn't one of this version's choices. The default is used until you save.`,
+        staleNoDefault: (value: string) =>
+          `"${value}" isn't one of this version's choices. No value is sent until you save.`,
         submit: "Save",
         saved: (name: string) => `Saved the settings for ${name}.`,
         saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
