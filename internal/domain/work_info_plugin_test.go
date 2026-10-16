@@ -95,6 +95,10 @@ func TestParseWorkInfoPluginManifestSettingChoices(t *testing.T) {
 		{"default of 2001 characters", `{"key":"k","label":"L","default":"` + strings.Repeat("d", 2001) + `"}`, WorkInfoPluginManifestInvalid},
 		{"secret with a default", `{"key":"k","label":"L","secret":true,"default":"x"}`, WorkInfoPluginManifestInvalid},
 		{"secret with options", `{"key":"k","label":"L","secret":true,"options":["a","b"]}`, WorkInfoPluginManifestInvalid},
+		{"null default", `{"key":"k","label":"L","default":null}`, WorkInfoPluginManifestInvalid},
+		{"null options", `{"key":"k","label":"L","options":null}`, WorkInfoPluginManifestInvalid},
+		{"numeric default", `{"key":"k","label":"L","default":1}`, WorkInfoPluginManifestInvalid},
+		{"null option", `{"key":"k","label":"L","options":["a",null]}`, WorkInfoPluginManifestInvalid},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
