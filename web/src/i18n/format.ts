@@ -2,7 +2,13 @@ import { decorated, LOCALE } from "./intl";
 import { t } from "./messages";
 import { asUiText, type UiText } from "./uiText";
 
-export { formatNumber, selectPlural, type PluralForms } from "./intl";
+export {
+  formatDecimal,
+  formatLanguage,
+  formatNumber,
+  selectPlural,
+  type PluralForms,
+} from "./intl";
 
 // 日時の書式はカタログと同じロケール（LOCALE）の Intl で作る。`ja-JP` やロケール引数の無い
 // toLocale*String は i18n/ の外に置かない（specs/023-english-i18n/research.md R-2・R-3）。

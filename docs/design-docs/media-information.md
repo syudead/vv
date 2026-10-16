@@ -18,7 +18,14 @@ flowchart LR
   info --> apply[ApplyProbeForJob]
   apply -->|same transaction and identity check as videos| row[(video_media_info)]
   row --> read[LibraryStore.MediaInfo]
+  read --> detail["GET /api/videos/{id} mediaInfo"]
 ```
+
+Only the video detail carries the value, for the owner and a guest of a public
+video alike; list items, related videos and the owner's `PUT` responses omit
+it ([`internal/httpapi/video_media_info.go`](../../internal/httpapi/video_media_info.go)).
+The video page draws it as groups under the technical line
+([`MediaInfoGroups.tsx`](../../web/src/player/MediaInfoGroups.tsx)).
 
 ## One run reads everything, and a TS file is read longer
 

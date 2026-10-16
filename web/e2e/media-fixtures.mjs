@@ -503,6 +503,62 @@ export function generateWorkInfoPluginFixtures(root) {
 }
 
 /**
+ * MEDIA_INFO_VIDEO は generateMediaInfoFixtures が作る動画の題名で、動画ページの追加の情報の
+ * まとまり（specs/056-media-info、子 #1252）を web/e2e/media-info.e2e.ts で確かめる。
+ * 言語の印の違う音声 2 本と、題名・作者・ジャンルの埋め込みのタグを持つ。
+ */
+export const MEDIA_INFO_VIDEO = "追加情報動画";
+
+export function generateMediaInfoFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=10:duration=2",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:sample_rate=48000:duration=2",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=880:sample_rate=48000:duration=2",
+    "-map",
+    "0:v",
+    "-map",
+    "1:a",
+    "-map",
+    "2:a",
+    ...h264,
+    "-c:a",
+    "aac",
+    "-ac",
+    "2",
+    "-b:a",
+    "64k",
+    "-metadata:s:a:0",
+    "language=jpn",
+    "-metadata:s:a:1",
+    "language=eng",
+    "-metadata:s:a:1",
+    "title=Commentary",
+    "-disposition:a:0",
+    "default",
+    "-disposition:a:1",
+    "0",
+    "-metadata",
+    "title=埋め込みの題名",
+    "-metadata",
+    "artist=E2E Author",
+    "-metadata",
+    "genre=Documentary",
+    "-shortest",
+    path.join(root, `${MEDIA_INFO_VIDEO}.mkv`),
+  ]);
+}
+
+/**
  * generateTagsFixtures が作る動画の本数（タグ動画A〜D と、タグ埋めの動画）。
  * web/e2e/tags.e2e.ts の videoCount と同じ数にする。
  */
