@@ -1,6 +1,6 @@
 ---
 source: specs/056-media-info/data-model.md
-sourceHash: a50ad4000a9c20ccf5659192af19bebe59d775e7d5442321da542976b9de4b34
+sourceHash: caf45b7293d9697ed1caae9702e015feda25cefbb2b6297a22a82ad236118326
 ---
 
 # データモデル: 取り込みのプローブから得るメディア情報 {#data-model-media-information-from-the-import-probe}
@@ -14,13 +14,13 @@ sourceHash: a50ad4000a9c20ccf5659192af19bebe59d775e7d5442321da542976b9de4b34
 | マイグレーション | 単位 | すること |
 | --- | --- | --- |
 | `video_media_info` | 取り込み時にメディア情報を読んで保存する | [`video_media_info`](#video_media_info) を作る |
-| `metadata_jobs` | 取り込み済みの動画をバックグラウンドで再解析する | `00025_video_fingerprints.sql` がしたように、`kind` の制約に `metadata` を入れて `jobs` を作り直し、`probe_state = done` で登録されたフォルダの下に場所を持つ動画ごとに `metadata` のジョブを 1 つ入れる。待ち中か実行中のものをすでに持つ動画は飛ばす |
+| `00052_drop_metadata_jobs` | (再解析の単位。メンテナーが取り除いた) | このバージョンの以前の草稿が入れた `metadata` のジョブと `metadata_failed` の問題を削除する。それを適用したデータベースのためにバージョン番号を保つ ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)) |
 
 どちらのテーブルも [Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery) の作り直せるインデックスである: スキャンとそれが入れるジョブが、もう一度埋める。
 
 ## `video_media_info` {#video_media_info}
 
-動画ごとに 1 行で、プローブのジョブと `metadata` のジョブが書く ([R-1](research.md#r-1-media-information-is-one-versioned-json-row-per-video))。
+動画ごとに 1 行で、プローブのジョブだけが書く ([R-1](research.md#r-1-media-information-is-one-versioned-json-row-per-video))。
 
 | フィールド | 型 | Null | 意味 |
 | --- | --- | --- | --- |
@@ -73,11 +73,8 @@ sourceHash: a50ad4000a9c20ccf5659192af19bebe59d775e7d5442321da542976b9de4b34
 
 | 規則 | 強制する場所 |
 | --- | --- |
-| `version` が `MediaInfoVersion` と違う行はないものとして読まれ、スキャンがその動画に `metadata` のジョブを入れる (`IndexedVideo.MediaInfoMissing`: `probe_state = done` で、今のバージョンの行がない) | `store` (読み取りとスキャンのインデックスのクエリ)、`scanner` (`ensurePendingJobs`) |
+| `version` が `MediaInfoVersion` と違う行はないものとして読まれる。ファイルの次のプローブまで、それを読み直すものはない ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)) | `store` (読み取り) |
 | プローブのジョブは、`videos` の更新と同じ同一性の確認 (ジョブの場所の id、バージョン、パス、内容の鍵、場所の世代) のもとで、`ApplyProbeForJob` のトランザクションの中で行を書く | `store` |
-| `metadata` のジョブは、同じ同一性の確認のもとで行だけを書く。確認に失敗したときは何も書かず、ジョブは完了する | `store` (`ApplyMediaInfoForJob`)、`app` |
-| `metadata` のジョブは、登録された場所を持つ動画に待ち中か実行中の `probe` のジョブがないときだけ取得できる (`JobClaimCondition.NoClaimableProbe`。`NoClaimableThumbnail` が `thumbnail` のジョブを数えるように数える) | `domain` (条件)、`store` (取得のクエリ) |
-| 試行回数の上限で失敗した `metadata` のジョブは、行をそのままにする。問題の種類は `metadata_failed` である | `store` (`FailClaimedJob`) |
 | すべての文字列は前後の空白を除き、改行以外の制御文字を取り除いた正しい UTF-8 でなければならず、2,000 文字で切る。空になったものはないものとする | `domain` |
 | 保つのは最大 64 の音声トラック、64 の字幕トラック、1,000 のチャプターで、ストリームか時刻の順である | `domain` |
 | `RecordedAt` は、オフセットの有無にかかわらず RFC 3339 と、`YYYY-MM-DD HH:MM:SS` を解析する。オフセットを持つ値はそれを保ち、持たない値は UTC とする。それ以外はないものとする | `domain` |
@@ -90,7 +87,7 @@ sourceHash: a50ad4000a9c20ccf5659192af19bebe59d775e7d5442321da542976b9de4b34
 
 | 項目 | 理由 |
 | --- | --- |
-| `videos.duration_ms`、`width`、`height`、`video_codec`、`audio_codec`、`playable` | インデックスの列、再生できるかどうか、シークプレビューは入力を保つ。`metadata` のジョブは決してそれらに触れない |
+| `videos.duration_ms`、`width`、`height`、`video_codec`、`audio_codec`、`playable` | インデックスの列、再生できるかどうか、シークプレビューは、これまでどおりプローブが書く |
 | `video_transcode_probes` | ライブ変換は自分の行を読む。`MediaInfo` はどの `ffmpeg` の引数の入力にもならない |
 | `video_locations.file_created_at`、タイトル、表示名 | 要件 10: 埋め込まれたタイトルと `RecordedAt` はそれらの隣に示し、それらに書き込まない |
 | `Video.FileTitle` の並べ替えと検索のキー | メディア情報から検索のキーは作らない (範囲外) |

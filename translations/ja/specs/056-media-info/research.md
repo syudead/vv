@@ -1,6 +1,6 @@
 ---
 source: specs/056-media-info/research.md
-sourceHash: bd0a02c1ff5d7397717fe56caae33a647cbb2a2e29cb39e6cf670a02536bd180
+sourceHash: 93961556c539caf3b4d25876a89bfaa51d8d9191e3828ede56f2785de67bb758
 ---
 
 # 調査: 取り込みのプローブから得るメディア情報 {#research-media-information-from-the-import-probe}
@@ -17,7 +17,7 @@ sourceHash: bd0a02c1ff5d7397717fe56caae33a647cbb2a2e29cb39e6cf670a02536bd180
 | `videos` の列 | すでに読み込まれている | 使える | null を許す約 30 の列で、すべての一覧のクエリが読む | 不採用: 一覧は、どの一覧も示さないデータを運び、新しい項目のたびにマイグレーションになる |
 | 正規化したテーブル (`video_streams`、`video_chapters`、`video_embedded_tags`) | 4 つのクエリ | 使える | 形の変更ごとに 3 つのマイグレーション | 不採用: それらを結合したり絞り込んだりするクエリはないので、正規化で得るものがない |
 
-**根拠**: ページは値全体を一度に読み、ほかに読むものはないので、`video_transcode_probes` の形 (1 つのバージョン付きの JSON の行、プローブが作り直すインデックス) が合う。バージョンの列は、[R-5](#r-5-imported-videos-are-re-analysed-by-a-metadata-job-that-yields-to-pending-probes) のバックグラウンドでの再解析を動かすものでもある: パーサーの変更がそれを上げ、それより低い行はすべてもう一度読まれる。
+**根拠**: ページは値全体を一度に読み、ほかに読むものはないので、`video_transcode_probes` の形 (1 つのバージョン付きの JSON の行、プローブが作り直すインデックス) が合う。パーサーの変更はバージョンを上げ、それより低い行はファイルの次のプローブまで存在しないものとして読まれる ([R-5](#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files))。
 
 ## R-2: 同じ ffprobe の実行がチャプターを読み、MPEG-TS では長く読む {#r-2-the-same-ffprobe-run-reads-chapters-and-reads-longer-for-mpeg-ts}
 
@@ -96,29 +96,9 @@ flowchart LR
 
 **根拠**: 放送では SDT と EIT の現在/次は少なくとも 2 秒ごとに繰り返され、24 Mbps のストリームの 2 秒は 6 MiB なので、32 MiB は、ほかのテーブルのパケットで始まる録画の分の余裕を残してそれらを見つける。TOT は数秒ごとに送られ、[クイックスタート](quickstart.md) の `rec.ts` の行が、それが上限の中にあることを確かめる。開始の時点の現在と次のイベントは、録画の最初の番組とその次の番組を覆う。録画がその前か中で始まる限り、そのどちらかが録画した番組である。リーダーは `ffprobe` の後に、`ffprobe` の 30 秒の `probeTimeout` とは別の、リーダー自身の 10 秒の期限のもとで動く。タイムアウトか読み取りのエラーは名前を省き、プローブを決して失敗させない。復号器は、JIS X 0208 の漢字とかなを `golang.org/x/text/encoding/japanese` で、JIS X 0201 のカタカナを、ARIB の追加記号 (85 区から 94 区) を表から扱う。サイズと位置の制御は無視し、対応できない文字は捨てる。復号した後に印字できる文字のない名前は省く。DVB (日本以外) の録画はこのリーダーでは復号せず、その名前は省く。
 
-## R-5: 取り込み済みの動画は、待っているプローブに譲る `metadata` のジョブが再解析する {#r-5-imported-videos-are-re-analysed-by-a-metadata-job-that-yields-to-pending-probes}
+## R-5: メディア情報を読むのは、新しいファイルか変更されたファイルの取り込みのプローブだけである {#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files}
 
-**決定**: 新しいジョブの種類 `metadata` は、同じ `media.Probe` を実行し、`video_media_info` の行だけを書く。登録された場所を持つ動画に待ち中か実行中の `probe` のジョブがない間だけ取得できる。`seek_thumbnail` のジョブが `thumbnail` のジョブを待つ (`NoClaimableThumbnail`) のと同じである。そのため、実行中のプローブと `metadata` の実行が同時にディスクを読むことはない。マイグレーションは、プローブが終わり、登録された場所を持つすべての動画に 1 つ入れる。スキャンは、欠けた指紋を入れ直すのと同じように、行がないか、行が `MediaInfoVersion` より低い動画に 1 つ入れる。新しい取り込みは決してこれを得ない。そのプローブのジョブが自ら行を書くからである。
-
-```mermaid
-flowchart LR
-  mig[マイグレーション] -->|プローブ済みの動画ごとに入れる| q[(jobs: metadata)]
-  scan[スキャン] -->|行がないか古い| q
-  q --> claim{待ち中か実行中の probe のジョブがある?}
-  claim -->|はい| wait[待つ]
-  claim -->|いいえ| run[ffprobe を 1 回]
-  run -->|同一性が変わらない| row[(video_media_info)]
-  run -->|ファイルが置き換えられた| drop[何も書かない]
-```
-
-| 案 | 判定 |
-| --- | --- |
-| **待ち中か実行中のプローブがないときに取得できる `metadata` の種類** | 採用 |
-| 優先度の列を持たせて既存の `probe` のジョブを入れ直す | 不採用: 上限で失敗したプローブは動画を `failed` にし、再生とシークプレビューを隠す。Edge Case は既存の情報を保つ |
-| 起動時に始める埋め戻しの goroutine | 不採用: 何を試したかの記録がなく、再起動で最初からやり直し、同じディスクでプローブのワーカーと並んで動くことになる |
-| `videos` の `media_info_version` の列 | 不採用: JSON の行がすでにバージョンを持つ。スキャンの行がない条件は、`FingerprintMissing` と同じようにそれを読む |
-
-**根拠**: 種類ごとに 1 つのワーカーが一度に 1 つの `ffprobe` を実行し、それはヘッダー (と TS の最大 100 MiB) を読むので、再生は遅くならない。待ち中と実行中のプローブに譲ることで、新しい取り込み自身の段階が先になる。これが Edge Case のもう半分である。プローブのジョブが `running` を離れるとプローブのワーカーが `metadata` のワーカーを起こすので、埋め戻しはポーリングを待たずに再開する。上限での失敗は行をそのままにし、動画が最新のスキャンの集合にあるときは `metadata_failed` の問題として記録され、次のスキャンがジョブをもう一度入れる。ジョブが終わるときに送る `video` の通知で、開いている動画ページは取得し直すので、所有者は操作なしで情報が現れるのを見る。ゲストは次に開いたときに見る。
+**決定**: メディア情報を読むのは、新しいファイルか変更されたファイルの取り込みのプローブだけであり、既存の動画は再解析しない (メンテナーの決定、2026-10-16)。`video_media_info` ができる前にプローブした動画や、行が `MediaInfoVersion` より低い動画は、ファイルが変わるまで追加のグループを表示しない。以前の `metadata` のジョブの種類とその埋め戻しは取り除く。マイグレーション `00052` は番号を保ち、それが入れたかもしれない `metadata` のジョブと `metadata_failed` の問題を削除するだけである。
 
 ## R-6: `mediaInfo` は動画の詳細だけに入り、所有者とゲストで同じである {#r-6-mediainfo-is-part-of-the-video-detail-only-for-owners-and-guests-alike}
 
@@ -127,7 +107,7 @@ flowchart LR
 | 案 | 判定 |
 | --- | --- |
 | **詳細の応答のフィールド** | 採用 |
-| `GET /api/videos/{id}/media-info` | 不採用: ページを開くたびにリクエストが 1 つ増える。ページはすでに `video` の通知で詳細を取得し直し、再解析の結果はそれで届く |
+| `GET /api/videos/{id}/media-info` | 不採用: ページを開くたびにリクエストが 1 つ増える。ページはすでに `video` の通知で詳細を取得し直し、プローブの結果はそれで届く |
 | 一覧を含むすべての `Video` に入れる | 不採用: カードが何も示さないもののために、カードごとに JSON の行を読む。これらの項目での並べ替えと絞り込みは範囲外である |
 | ゲストへの応答から場所と機器を省く | 不採用: 要件 8 はそれらをほかの項目と同じに扱い、公開の動画は全体として公開である |
 
