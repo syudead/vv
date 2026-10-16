@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: a87645644b77efda3f16826372007fe7a5c1ff6eff21ca5cb58f69181d0f2354
+sourceHash: 962a2afda338bd6984fa93da539c1932ded38ee42132b0e20ebd42c8c20b1b75
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -9,11 +9,11 @@ sourceHash: a87645644b77efda3f16826372007fe7a5c1ff6eff21ca5cb58f69181d0f2354
 
 ## マイグレーション {#migration}
 
-1 つのマイグレーションが、`activity_entries`、`activity_entry_tags`、`video_version_judging_holds` を作り、`jobs`、`auto_tag_queue`、`video_version_candidates` に null を許す `activity_id` を加える。番号は、それを書く時点の `main` の最後のマイグレーションの次 (今は `00050`) である。Down はそれらを削除する。それより前に起きたことについては項目を書かない (親 Issue の最後のエッジケース)。
+1 つのマイグレーションが、null を許す `tag_id` と `decided_mark` の列を持つ `activity_entries`、`activity_entry_tags`、`activity_entry_keys`、`video_version_judging_holds` を作り、`jobs`、`auto_tag_queue`、`video_version_candidates` に null を許す `activity_id` を加える。番号は、それを書く時点の `main` の最後のマイグレーションの次 (今は `00054`) である。Down はそれらを削除する。それより前に起きたことについては項目を書かない (親 Issue の最後のエッジケース)。
 
 | テーブル | 分類 ([Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery)) |
 | --- | --- |
-| `activity_entries`、`activity_entry_tags` | ユーザーデータ: 作り直さず、消去しない ([R-1](research.md#r-1-a-persistent-activity-log-named-apart-from-the-scan-activity)) |
+| `activity_entries`、`activity_entry_tags`、`activity_entry_keys` | ユーザーデータ: 作り直さず、消去しない ([R-1](research.md#r-1-a-persistent-activity-log-named-apart-from-the-scan-activity)) |
 | `video_version_judging_holds` | ユーザーデータ: 所有者の取り消しであり、`video_version_unbundles` と同じように保つ |
 
 ## `activity_entries` {#activity_entries}
