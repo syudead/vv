@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/url"
 	"strconv"
+	"strings"
 )
 
 // WorkInfoPluginProxyURLMaxLen はプラグインの要求を送るプロキシの URL の最大の長さ（バイト）である。
@@ -33,8 +34,13 @@ func ParseWorkInfoPluginProxyURL(raw string) (*url.URL, error) {
 	if len(raw) > WorkInfoPluginProxyURLMaxLen {
 		return nil, ErrWorkInfoPluginProxyURLInvalid
 	}
+	// url.Parse は "#" や ":" だけを書いた空のフラグメントとポートを、書かなかったときと
+	// 区別しないので、生の URL で拒む。
+	if strings.Contains(raw, "#") {
+		return nil, ErrWorkInfoPluginProxyURLInvalid
+	}
 	u, err := url.Parse(raw)
-	if err != nil || !proxySchemes[u.Scheme] || u.Opaque != "" || u.Hostname() == "" ||
+	if err != nil || strings.HasSuffix(u.Host, ":") || !proxySchemes[u.Scheme] || u.Opaque != "" || u.Hostname() == "" ||
 		u.Path != "" || u.RawPath != "" || u.RawQuery != "" || u.ForceQuery || u.Fragment != "" || u.RawFragment != "" ||
 		!validProxyPort(u.Port()) {
 		return nil, ErrWorkInfoPluginProxyURLInvalid

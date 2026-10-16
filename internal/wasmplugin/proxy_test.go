@@ -3,6 +3,7 @@ package wasmplugin
 import (
 	"context"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -179,6 +180,11 @@ func TestProxyThatFailsReportsTheProxyHost(t *testing.T) {
 	closed := newTestProxy(t, site, 0)
 	closedURL := closed.URL
 	closed.Close()
+	// テストの TLS サーバーの証明書は vv が信頼しないので、プロキシとの TLS の検証が失敗する。
+	untrusted := httptest.NewUnstartedServer(http.NotFoundHandler())
+	untrusted.Config.ErrorLog = log.New(io.Discard, "", 0)
+	untrusted.StartTLS()
+	t.Cleanup(untrusted.Close)
 
 	cases := []struct {
 		name, proxy, url string
@@ -186,6 +192,8 @@ func TestProxyThatFailsReportsTheProxyHost(t *testing.T) {
 		{"proxy not listening", closedURL, "http://site.test/page"},
 		{"proxy answering 407", newTestProxy(t, site, http.StatusProxyAuthRequired).URL, "http://site.test/page"},
 		{"proxy answering CONNECT with 407", newTestProxy(t, site, http.StatusProxyAuthRequired).URL, "https://site.test/page"},
+		{"https proxy with an untrusted certificate", untrusted.URL, "https://site.test/page"},
+		{"https proxy with an untrusted certificate, http site", untrusted.URL, "http://site.test/page"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
