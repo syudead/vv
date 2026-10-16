@@ -1,6 +1,8 @@
 package domain
 
 import (
+	_ "embed"
+	"encoding/json"
 	"errors"
 	"fmt"
 )
@@ -54,32 +56,30 @@ type Interest struct {
 // プリセットの種類で、所有者が消していれば作り直す。
 const InterestTagKind = "Genre"
 
+// interestCatalogJSON は分野の一覧の正本である（data-model.md「Interest catalog」）。同義語は日本語で、
+// サーバーの出力の文言ではなく利用者のデータなので、Go の文字列リテラルにせず埋め込みのファイルに置く。
+//
+//go:embed interest_catalog.json
+var interestCatalogJSON []byte
+
 // InterestCatalog は分野の一覧で、画面はこの順に並べる（data-model.md「Interest catalog」）。
-var InterestCatalog = []Interest{
-	{ID: "anime", Name: "Anime", Synonym: "アニメ"},
-	{ID: "movies", Name: "Movies", Synonym: "映画"},
-	{ID: "drama", Name: "Drama", Synonym: "ドラマ"},
-	{ID: "documentary", Name: "Documentary", Synonym: "ドキュメンタリー"},
-	{ID: "comedy", Name: "Comedy", Synonym: "お笑い"},
-	{ID: "music", Name: "Music", Synonym: "音楽"},
-	{ID: "live", Name: "Live performances", Synonym: "ライブ"},
-	{ID: "games", Name: "Games", Synonym: "ゲーム"},
-	{ID: "sports", Name: "Sports", Synonym: "スポーツ"},
-	{ID: "fitness", Name: "Fitness", Synonym: "フィットネス"},
-	{ID: "cooking", Name: "Cooking", Synonym: "料理"},
-	{ID: "travel", Name: "Travel", Synonym: "旅行"},
-	{ID: "animals", Name: "Animals", Synonym: "動物"},
-	{ID: "nature", Name: "Nature", Synonym: "自然"},
-	{ID: "family", Name: "Family", Synonym: "家族"},
-	{ID: "kids", Name: "Kids", Synonym: "子供向け"},
-	{ID: "education", Name: "Education", Synonym: "教育"},
-	{ID: "science", Name: "Science", Synonym: "科学"},
-	{ID: "technology", Name: "Technology", Synonym: "テクノロジー"},
-	{ID: "cars", Name: "Cars", Synonym: "車"},
-	{ID: "crafts", Name: "Crafts", Synonym: "工作"},
-	{ID: "art", Name: "Art", Synonym: "アート"},
-	{ID: "fashion", Name: "Fashion", Synonym: "ファッション"},
-	{ID: "news", Name: "News", Synonym: "ニュース"},
+var InterestCatalog = mustInterestCatalog(interestCatalogJSON)
+
+// mustInterestCatalog は埋め込みの一覧を読む。読めなければプログラムの誤りなので panic する。
+func mustInterestCatalog(data []byte) []Interest {
+	var entries []struct {
+		ID      string `json:"id"`
+		Name    string `json:"name"`
+		Synonym string `json:"synonym"`
+	}
+	if err := json.Unmarshal(data, &entries); err != nil {
+		panic(fmt.Sprintf("the built-in interest catalog is broken: %v", err))
+	}
+	catalog := make([]Interest, len(entries))
+	for i, entry := range entries {
+		catalog[i] = Interest{ID: entry.ID, Name: entry.Name, Synonym: entry.Synonym}
+	}
+	return catalog
 }
 
 // ErrInvalidInterestPick は分野の選び方が規則に合わないこと（id が無い、知らない id、同じ id を
