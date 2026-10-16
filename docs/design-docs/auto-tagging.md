@@ -25,7 +25,7 @@ flowchart LR
 ## Classifier request
 
 Each candidate tag becomes one yes/no question, and a video is sent as its
-library thumbnail, 8 frames spread across the whole video, and the facts
+library thumbnail, 7 frames spread across the whole video, and the facts
 `title`, `file_name` and `folder`. All questions for a video go in one request
 to the port, which splits them as its provider needs.
 
@@ -33,11 +33,13 @@ The thumbnail shows one scene, so a video whose scenes differ would only be
 judged on that one; the frames let the classifier see the rest. They are cut
 from the seek preview sheet the import already made, so no ffmpeg work is
 added, and at 320 px or less each frame costs fewer input tokens than the
-thumbnail.
+thumbnail. Ollama refuses a request with more than 8 images (`400 too many
+images, the maximum is 8`), so the frames are 7 and the request carries 8
+images with the thumbnail.
 
 | Input | Source | When missing |
 | --- | --- | --- |
-| Images | The library thumbnail (640 px), then 8 frames at the middle of 8 equal parts of the seek preview | The images that can be read; text only when none can |
+| Images | The library thumbnail (640 px), then 7 frames at the middle of 7 equal parts of the seek preview | The images that can be read; text only when none can |
 | `title` | The display name, else the file title | Never missing |
 | `file_name` | The representative location's file name | Never missing |
 | `folder` | The representative location's folder relative to its media folder, with `/` separators (`trips/kyoto` for `/mnt/nas/videos/trips/kyoto/bamboo.mp4` in the media folder `/mnt/nas/videos`) | Empty for a video directly in the media folder |
@@ -61,7 +63,8 @@ The question asks whether the tag appears in or applies to any part of the
 video, names its synonyms, and says the images come from across the video.
 
 The wording decides whether frames help. On a 30 s video of a cat, a rocket
-and a cup of coffee, with the thumbnail showing the cat:
+and a cup of coffee, with the thumbnail showing the cat (measured with 8
+frames, before Ollama capped a request at 8 images):
 
 | Images and question | cat | coffee | rocket | Unrelated tags |
 | --- | --- | --- | --- | --- |
@@ -78,7 +81,7 @@ batches and measured times are in [ai-layer.md](ai-layer.md#ollama-provider).
 | Rejected | Why |
 | --- | --- |
 | The thumbnail alone | It shows one scene, so tags for the rest of the video are missed |
-| The whole 9 × 9 seek preview sheet as one image | Up to 2,880 px wide, it costs several times the tokens of 8 frames |
+| The whole 9 × 9 seek preview sheet as one image | Up to 2,880 px wide, it costs several times the tokens of 7 frames |
 | The absolute folder path | The part above the media folder says nothing about the video, differs between machines and operating systems, and would reach a remote Ollama host |
 | Ask about every tag on every video | Tags already on the video or rejected for it cannot change, and each one adds time |
 
