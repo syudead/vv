@@ -44,18 +44,67 @@ func TestTagBatchApplies(t *testing.T) {
 		{"unknown", false, false},
 	}
 	for _, tc := range cases {
-		if got := TagBatchApplies(tc.action, tc.tentative); got != tc.want {
+		if got := TagBatchApplies(TagBatchRequest{Action: tc.action}, TagBatchTarget{Tentative: tc.tentative}); got != tc.want {
 			t.Errorf("TagBatchApplies(%q, %v) = %v, want %v", tc.action, tc.tentative, got, tc.want)
+		}
+	}
+}
+
+// 種類を付けるのは種類の違うタグ、外すのは種類のあるタグに働き、仮かどうかによらない
+// （specs/051-tag-kinds/data-model.md「Rules」）。
+func TestTagBatchAppliesToKinds(t *testing.T) {
+	setGenre := TagBatchRequest{Action: TagBatchSetKind, KindID: 1}
+	clearKind := TagBatchRequest{Action: TagBatchClearKind}
+	cases := []struct {
+		req    TagBatchRequest
+		target TagBatchTarget
+		want   bool
+	}{
+		{setGenre, TagBatchTarget{}, true},
+		{setGenre, TagBatchTarget{Tentative: true}, true},
+		{setGenre, TagBatchTarget{KindID: 2}, true},
+		{setGenre, TagBatchTarget{KindID: 1}, false},
+		{setGenre, TagBatchTarget{KindID: 1, Tentative: true}, false},
+		{clearKind, TagBatchTarget{KindID: 1}, true},
+		{clearKind, TagBatchTarget{KindID: 1, Tentative: true}, true},
+		{clearKind, TagBatchTarget{}, false},
+	}
+	for _, tc := range cases {
+		if got := TagBatchApplies(tc.req, tc.target); got != tc.want {
+			t.Errorf("TagBatchApplies(%+v, %+v) = %v, want %v", tc.req, tc.target, got, tc.want)
+		}
+	}
+}
+
+func TestTagKindFilterMatches(t *testing.T) {
+	genre := &TagKindRef{ID: 1, Name: "Genre"}
+	work := &TagKindRef{ID: 2, Name: "Work"}
+	cases := []struct {
+		filter TagKindFilter
+		kind   *TagKindRef
+		want   bool
+	}{
+		{TagKindFilter{}, nil, true},
+		{TagKindFilter{}, genre, true},
+		{TagKindFilter{ID: 1}, genre, true},
+		{TagKindFilter{ID: 1}, work, false},
+		{TagKindFilter{ID: 1}, nil, false},
+		{TagKindFilter{None: true}, nil, true},
+		{TagKindFilter{None: true}, genre, false},
+	}
+	for _, tc := range cases {
+		if got := tc.filter.Matches(tc.kind); got != tc.want {
+			t.Errorf("%+v.Matches(%+v) = %v, want %v", tc.filter, tc.kind, got, tc.want)
 		}
 	}
 }
 
 func TestTagImpactApplies(t *testing.T) {
 	for _, tentative := range []bool{true, false} {
-		if got, want := TagImpactApplies(TagImpactReject, tentative), TagBatchApplies(TagBatchReject, tentative); got != want {
+		if got, want := TagImpactApplies(TagImpactReject, tentative), TagBatchApplies(TagBatchRequest{Action: TagBatchReject}, TagBatchTarget{Tentative: tentative}); got != want {
 			t.Errorf("reject tentative=%v: %v, want %v", tentative, got, want)
 		}
-		if got, want := TagImpactApplies(TagImpactDelete, tentative), TagBatchApplies(TagBatchDelete, tentative); got != want {
+		if got, want := TagImpactApplies(TagImpactDelete, tentative), TagBatchApplies(TagBatchRequest{Action: TagBatchDelete}, TagBatchTarget{Tentative: tentative}); got != want {
 			t.Errorf("delete tentative=%v: %v, want %v", tentative, got, want)
 		}
 		if !TagImpactApplies(TagImpactMerge, tentative) {

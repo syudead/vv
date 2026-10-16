@@ -933,6 +933,8 @@ test.describe.serial("video tags", () => {
         synonyms: [],
         videoCount: 0,
         tentative: true,
+        // `kind` は必須（null は種類なし）。欠けると種類の名札が描けず画面が落ちる。
+        kind: null,
         createdAt,
       }));
       // ページで読む画面はクエリ（sort・limit・tentative）を付けて送る。
@@ -990,6 +992,48 @@ test.describe.serial("video tags", () => {
         await expect(
           page.getByRole("tabpanel", { name: /^Rejected names/ }).getByRole("table"),
         ).toBeVisible();
+        // 3 つ目の「Kinds」は、収まらなければタブの並びの中で送って押せ、画面は横に送れない。
+        const kinds = page.getByRole("tab", { name: /^Kinds/ });
+        await kinds.click();
+        await expect(page).toHaveURL(/[?&]tab=kinds/);
+        const kindsBox = await kinds.boundingBox();
+        if (kindsBox === null) throw new Error("no layout");
+        expect(kindsBox.x + kindsBox.width).toBeLessThanOrEqual(width);
+        expect(
+          await page.evaluate(
+            () => document.documentElement.scrollWidth <= window.innerWidth,
+          ),
+        ).toBe(true);
+        // キーボードで移ったタブのフォーカスの輪（外へ 4px）は、送る帯に切られない。
+        await kinds.press("ArrowLeft");
+        await expect(tab).toBeFocused();
+        expect(
+          await tab.evaluate((element) => {
+            const strip = element.closest('[role="tablist"]')?.parentElement;
+            if (strip === null || strip === undefined) return false;
+            const outer = strip.getBoundingClientRect();
+            const inner = element.getBoundingClientRect();
+            return outer.top <= inner.top - 4 && outer.bottom >= inner.bottom + 4;
+          }),
+        ).toBe(true);
+        // URL から開いたとき、戻ったときも、選んでいる「Kinds」は帯の見える位置にある。
+        const kindsInView = async () => {
+          await expect(kinds).toHaveAttribute("aria-selected", "true");
+          await expect
+            .poll(async () => {
+              const box = await kinds.boundingBox();
+              return box !== null && box.x >= 0 && box.x + box.width <= width;
+            })
+            .toBe(true);
+        };
+        await page.goto("/tags?tentative=1&tab=kinds");
+        await expect(kinds).toContainText(/\d/);
+        await kindsInView();
+        await page.getByRole("tab", { name: /^Tags/ }).click();
+        await expect(page).not.toHaveURL(/[?&]tab=kinds/);
+        await page.goBack();
+        await expect(page).toHaveURL(/[?&]tab=kinds/);
+        await kindsInView();
       }
       await page.setViewportSize({ width: 1280, height: 800 });
     });

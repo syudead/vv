@@ -1,5 +1,13 @@
 import { Plus } from "lucide-react";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type RefObject,
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import { RequestFailed } from "../api/client";
 import {
@@ -12,6 +20,7 @@ import {
   renameTag,
   type Tag,
 } from "../api/tags";
+import { type TagKind, tagKindCountsChanged, tagKindGone } from "../api/tagKinds";
 import { errorText, t, type UiText } from "../i18n";
 import { foldForMatch } from "../lib/foldForMatch";
 import {
@@ -32,6 +41,7 @@ import DeleteTagDialog from "./DeleteTagDialog";
 import MergeTagDialog from "./MergeTagDialog";
 import RejectedNames from "./RejectedNames";
 import RejectTagDialog from "./RejectTagDialog";
+import TagKindsPanel from "./TagKindsPanel";
 import SynonymsDialog from "./SynonymsDialog";
 import type { TagListSort } from "./tagListOrder";
 import {
@@ -41,9 +51,17 @@ import {
   matchesTagQuery,
   removeTags,
   replaceTag,
+  setTagsKind,
+  type TagPageRows,
 } from "./tagPageRows";
 import { tagFieldError, type TagFieldError } from "./tagNameField";
-import { type TagListTab, useTagListCriteria } from "./tagListUrl";
+import {
+  serializeTagListCriteria,
+  type TagKindFilter,
+  type TagListCriteria,
+  type TagListTab,
+  useTagListCriteria,
+} from "./tagListUrl";
 import TagRow from "./TagRow";
 import {
   TagListChanged,
@@ -62,7 +80,10 @@ import {
   withoutIds,
 } from "./tagSelection";
 import { useRejectedNames } from "./useRejectedNames";
-import TagFilterChips from "./TagFilterChips";
+import { useTagKindsTab } from "./useTagKindsTab";
+import TagFilterChips, { type TagFilter, tagFilterOrder } from "./TagFilterChips";
+import type { KindChoice } from "./TagSetKindMenu";
+import { kindNameOf, useTagKindFilter } from "./useTagKindFilter";
 import TagListEmptyState from "./TagListEmptyState";
 import TagListHead from "./TagListHead";
 import TagsTabs, { tagsPanelId, tagsTabId } from "./TagsTabs";
@@ -79,6 +100,57 @@ function isTagNotFound(error: unknown): boolean {
 
 function isTagNotTentative(error: unknown): boolean {
   return error instanceof RequestFailed && error.code === "tag_not_tentative";
+}
+
+function isTagKindNotFound(error: unknown): boolean {
+  return error instanceof RequestFailed && error.reason === "tag_kind_not_found";
+}
+
+/** noFilters は「Filter」の絞り込みをすべて外した条件である（「Clear filters」など）。 */
+const noFilters = { tentativeOnly: false, unusedOnly: false, kind: null } as const;
+
+/** filterOff はチップ 1 つの絞り込みを外す条件である。 */
+const filterOff: Record<TagFilter, Partial<TagListCriteria>> = {
+  tentative: { tentativeOnly: false },
+  unused: { unusedOnly: false },
+  kind: { kind: null },
+};
+
+/**
+ * filterButtonDisabled は「Filter」を押せないかである。先頭のページの前と、タグが 0 の
+ * ときは押せない。絞り込みが効いている間は、タグが 0 でも押せる（外す唯一の手でもある）。
+ */
+function filterButtonDisabled(
+  page: TagPageRows | undefined,
+  noTags: boolean,
+  criteria: TagListCriteria,
+): boolean {
+  if (page === undefined) return true;
+  const filtering =
+    criteria.tentativeOnly || criteria.unusedOnly || criteria.kind !== null;
+  return noTags && !filtering;
+}
+
+/** appliedKindOf は読み込んだ行の種類の絞り込みである。 */
+function appliedKindOf(page: TagPageRows | undefined): TagKindFilter {
+  return page?.query.kind ?? null;
+}
+
+/**
+ * nextChip は、チップ `removed` を外したあとにフォーカスを移す、残るチップである。
+ * 後ろのチップ、無ければ前のチップ。どれも残らなければ undefined。
+ */
+function nextChip(
+  removed: TagFilter,
+  active: Record<TagFilter, boolean>,
+): TagFilter | undefined {
+  const index = tagFilterOrder.indexOf(removed);
+  const remaining = tagFilterOrder.filter(
+    (filter) => filter !== removed && active[filter],
+  );
+  return (
+    remaining.find((filter) => tagFilterOrder.indexOf(filter) > index) ?? remaining.at(-1)
+  );
 }
 
 /** RowHandlers は行へ渡す操作である。行の再描画を減らすため、同じ関数を渡し続ける。 */
@@ -112,6 +184,9 @@ interface RowHandlers {
  * 却下した名前の一覧と取り外しも持つ。却下した名前の一覧はこの画面だけが読むので、
  * 共有の保持ではなくここで取る（research.md R-8）。
  *
+ * タグの種類（specs/051-tag-kinds/ui-design.md「Kinds tab」）: 「Kinds」のタブで種類の作成・
+ * 改名・削除を持つ（`useTagKindsTab`、`TagKindsPanel`）。
+ *
  * 見た目の置き場（specs/036-tag-admin-scale/ui-design.md「Top bar」「Band」）: 検索・
  * 絞り込み・並び順はライブラリと同じく共通トップバー（`TagToolbar`）、本文の先頭は
  * 見出しの行（選んでいる間は選択の行）・タブ・絞り込みのチップ・列の見出しの帯。
@@ -140,13 +215,16 @@ export default function TagsPage() {
    */
   const [preferredSort] = useState<TagListSort>(() => readTagListPreferences().sort);
   const { criteria, apply: applyCriteria } = useTagListCriteria(preferredSort);
-  const { query: search, tentativeOnly, unusedOnly, sort, tab: urlTab } = criteria;
+  const { query: search, tentativeOnly, unusedOnly, kind, sort, tab: urlTab } = criteria;
   /**
    * tab は描いているタブである。ふだんは URL の `tab` に従うが、作成・改名の送信中は
    * 「Tags」のまま保つ（ui-design.md「Tabs」の「作成・改名の送信中は切り替えない」を、
    * 戻る・進むで URL が変わったときにも当てる）。下の `useLayoutEffect` が追わせる。
    */
   const [tab, setTab] = useState<TagListTab>(urlTab);
+  /** newKindButtonRef は「Kinds」のタブの見出しの行の「New kind」である。 */
+  const newKindButtonRef = useRef<HTMLButtonElement | null>(null);
+  const kindsTab = useTagKindsTab({ toast, newKindRef: newKindButtonRef });
   const [creating, setCreating] = useState(false);
   const [createPending, setCreatePending] = useState(false);
   const [createError, setCreateError] = useState<TagFieldError | null>(null);
@@ -194,8 +272,13 @@ export default function TagsPage() {
    * §4「選択」）。
    */
   const [selected, setSelected] = useState<ReadonlySet<number>>(new Set());
-  /** まとめての操作の送信中。`confirm` はバーの「Confirm」、`dialog` は確認の窓から。 */
-  const [bulkPending, setBulkPending] = useState<"confirm" | "dialog" | null>(null);
+  /**
+   * まとめての操作の送信中。`confirm` はバーの「Confirm」、`kind` はバーの「Set kind…」、
+   * `dialog` は確認の窓から。
+   */
+  const [bulkPending, setBulkPending] = useState<"confirm" | "kind" | "dialog" | null>(
+    null,
+  );
   const [bulkDialog, setBulkDialog] = useState<{
     action: BulkTagAction;
     ids: readonly number[];
@@ -204,6 +287,7 @@ export default function TagsPage() {
   const selectAllRef = useRef<HTMLButtonElement | null>(null);
   const tabsId = useId();
   const barConfirmRef = useRef<HTMLButtonElement | null>(null);
+  const barSetKindRef = useRef<HTMLButtonElement | null>(null);
   const barMergeRef = useRef<HTMLButtonElement | null>(null);
   const barRejectRef = useRef<HTMLButtonElement | null>(null);
   const barDeleteRef = useRef<HTMLButtonElement | null>(null);
@@ -213,8 +297,11 @@ export default function TagsPage() {
   /** filterButtonRef はトップバーの「Filter」のボタンである。 */
   const filterButtonRef = useRef<HTMLButtonElement | null>(null);
   /** chipRefs は見出しの下の絞り込みのチップ（外したあとのフォーカス先）である。 */
-  const tentativeChipRef = useRef<HTMLButtonElement | null>(null);
-  const unusedChipRef = useRef<HTMLButtonElement | null>(null);
+  const chipRefs: Record<TagFilter, RefObject<HTMLButtonElement | null>> = {
+    tentative: useRef<HTMLButtonElement | null>(null),
+    unused: useRef<HTMLButtonElement | null>(null),
+    kind: useRef<HTMLButtonElement | null>(null),
+  };
   /** listBoxRef は帯の下の一覧の箱（作成の行・行・空の状態を入れる）である。 */
   const listBoxRef = useRef<HTMLDivElement | null>(null);
   const {
@@ -228,11 +315,15 @@ export default function TagsPage() {
   } = useAdminTableBand();
 
   /**
-   * filtersRef は今描いている「Tentative only」「Unused only」である。要求の応答を
-   * 待つ間に絞り込みが変わることがあるので、応答のあとのフォーカス先は
+   * filtersRef は今描いている「Tentative only」「Unused only」と種類の絞り込みである。
+   * 要求の応答を待つ間に絞り込みが変わることがあるので、応答のあとのフォーカス先は
    * 閉じ込めた（押した時点の）値ではなくこれで決める。
    */
-  const filtersRef = useRef({ tentativeOnly: false, unusedOnly: false });
+  const filtersRef = useRef<{
+    tentativeOnly: boolean;
+    unusedOnly: boolean;
+    kind: TagKindFilter;
+  }>({ tentativeOnly: false, unusedOnly: false, kind: null });
 
   /**
    * fallbackFocus は、行へ移せないときの最後の行き先である。ふだんは
@@ -242,7 +333,10 @@ export default function TagsPage() {
    * 入れ替わっていて「新しいタグ」が無いときは、列の見出しの先頭のチェックへ。
    */
   function fallbackFocus() {
-    const filtered = filtersRef.current.tentativeOnly || filtersRef.current.unusedOnly;
+    const filtered =
+      filtersRef.current.tentativeOnly ||
+      filtersRef.current.unusedOnly ||
+      filtersRef.current.kind !== null;
     const candidates = filtered
       ? [filterButtonRef.current, createButtonRef.current, selectAllRef.current]
       : [createButtonRef.current, selectAllRef.current, filterButtonRef.current];
@@ -287,12 +381,13 @@ export default function TagsPage() {
   }
 
   /**
-   * changeTab は「Tags」「Rejected names」のタブを切り替える。選択・作成・改名は
-   * 「Tags」のタブの中のものなので、離れるときに閉じる。
+   * changeTab は「Tags」「Rejected names」「Kinds」のタブを切り替える。選択・作成・改名は
+   * 「Tags」のタブの中のものなので、離れるときに閉じる。「Kinds」のタブの作成・改名は
+   * `switchedTab` が閉じる。
    */
   function changeTab(next: TagListTab): boolean {
     if (next === tab) return true;
-    if (createPending || renamePending) return false;
+    // 送信中は `tabsLocked` でほかのタブを押せないので、ここへは来ない。
     setSelected(new Set());
     setCreating(false);
     setCreateError(null);
@@ -319,20 +414,64 @@ export default function TagsPage() {
       search: searchRef.current,
       tentativeOnly,
       unusedOnly,
+      kind,
       sort,
     });
-  }, [normalizedQuery, tentativeOnly, unusedOnly, sort, load]);
+  }, [normalizedQuery, tentativeOnly, unusedOnly, kind, sort, load]);
 
   useLayoutEffect(() => {
-    filtersRef.current = { tentativeOnly, unusedOnly };
-  }, [tentativeOnly, unusedOnly]);
+    filtersRef.current = { tentativeOnly, unusedOnly, kind };
+  }, [tentativeOnly, unusedOnly, kind]);
 
-  // 戻る・進むで URL のタブが変わったら、描くタブを追わせる。「Rejected names」へ
-  // 移るときは、選択と作成・改名を閉じる（`changeTab` と同じ）。作成・改名の送信中は
-  // 「Tags」のまま待つ — 閉じると行が消え、失敗したときに下書きと誤りを出す先が無い。
-  // 送信が終わって作成・改名の行が残っている（失敗した）ときは、切り替えを断ったことに
-  // して URL を描いているタブへ戻す（`changeTab` が送信中に何もしないのと同じ結果）。
-  const editPending = createPending || renamePending;
+  /**
+   * 種類の絞り込み（specs/051-tag-kinds/ui-design.md「Kind filter」）。URL の `kind` の種類が
+   * 読めた種類の一覧に無ければ、`replace` で URL から外してトーストを出す（ほかの条件は
+   * 残り、一覧は条件の変更で読み直される）。
+   */
+  const { kindName } = useTagKindFilter({
+    kind,
+    kinds: kindsTab.kinds,
+    fresh: kindsTab.fresh,
+    onGone: () => {
+      applyCriteria({ kind: null }, "replace");
+      toast(t.tags.kindFilter.gone);
+    },
+  });
+
+  /**
+   * switchedTab は描くタブを `from` から `to` へ移すときの後始末である。「Tags」の
+   * タブを離れるときは選択と作成・改名を閉じる。「Kinds」のタブを離れるときは作成・
+   * 改名を閉じ、種類の改名・削除があったなら「Tags」のタブの先頭のページを読み直す
+   * （タグの行の種類の名前が変わる。共有のタグの一覧は `api/tagKinds.ts` が取り直す）。
+   * 「Kinds」のタブへ入るときは種類の一覧を取り直す（タグの削除・統合などで数が変わる）。
+   */
+  function switchedTab(from: TagListTab, to: TagListTab) {
+    if (to !== "tags") {
+      setSelected((current) => (current.size === 0 ? current : new Set()));
+      setCreating(false);
+      setCreateError(null);
+      setRenaming(null);
+      setRenameError(null);
+    }
+    if (from === "kinds") {
+      kindsTab.closeEdits();
+      if (kindsTab.takeChanged()) void reload();
+    }
+    if (to === "kinds") kindsTab.reload();
+  }
+  const switchedTabRef = useRef(switchedTab);
+  useLayoutEffect(() => {
+    switchedTabRef.current = switchedTab;
+  });
+
+  // 戻る・進むで URL のタブが変わったら、描くタブを追わせる（後始末は `switchedTab`）。
+  // 作成・改名・種類の削除の送信中は今のタブのまま待つ — 閉じると行や窓が消え、失敗した
+  // ときに下書きと誤りを出す先が無く、種類の削除の変更印も応答の後にしか立たない。送信が
+  // 終わって作成・改名の行や削除の窓が残っている（失敗した）ときは、
+  // 切り替えを断ったことにして URL を描いているタブへ戻す（送信中はタブを押せず
+  // `changeTab` が呼ばれないのと同じ結果）。
+  const editPending = createPending || renamePending || kindsTab.pending;
+  const kindsEditing = kindsTab.editing;
   const heldTabRef = useRef(false);
   useLayoutEffect(() => {
     if (urlTab === tab) {
@@ -343,21 +482,15 @@ export default function TagsPage() {
       heldTabRef.current = true;
       return;
     }
-    if (heldTabRef.current && (creating || renaming !== null)) {
+    if (heldTabRef.current && (creating || renaming !== null || kindsEditing)) {
       heldTabRef.current = false;
       applyCriteria({ tab }, "replace");
       return;
     }
     heldTabRef.current = false;
-    if (urlTab !== "tags") {
-      setSelected((current) => (current.size === 0 ? current : new Set()));
-      setCreating(false);
-      setCreateError(null);
-      setRenaming(null);
-      setRenameError(null);
-    }
+    switchedTabRef.current(tab, urlTab);
     setTab(urlTab);
-  }, [urlTab, tab, editPending, creating, renaming, applyCriteria]);
+  }, [urlTab, tab, editPending, creating, renaming, kindsEditing, applyCriteria]);
 
   /**
    * shown は、その1件が読み込んだ行の条件（検索と「Tentative only」「Unused only」）で
@@ -491,19 +624,28 @@ export default function TagsPage() {
   }
 
   /**
-   * removeFilterChip は見出しの下のチップの × である。その絞り込みを外し、残る
-   * チップへ、無ければ「Filter」へフォーカスを移す（タグが 0 なら「新しいタグ」へ。
-   * ui-design.md「Active filters」）。
+   * changeKind は「Filter」の吹き出しの「Kind」の `Select` である。吹き出しは開いたまま
+   * （specs/051-tag-kinds/ui-design.md「Kind filter」）。
    */
-  function removeFilterChip(which: "tentative" | "unused") {
-    const other = which === "tentative" ? unusedOnly : tentativeOnly;
-    applyCriteria(
-      which === "tentative" ? { tentativeOnly: false } : { unusedOnly: false },
-      "push",
-    );
+  function changeKind(next: TagKindFilter) {
+    applyCriteria({ kind: next }, "push");
+  }
+
+  /**
+   * removeFilterChip は見出しの下のチップの × である。その絞り込みを外し、残る
+   * チップ（後ろ、無ければ前）へ、無ければ「Filter」へフォーカスを移す（タグが 0 なら
+   * 「新しいタグ」へ。ui-design.md「Active filters」）。
+   */
+  function removeFilterChip(which: TagFilter) {
+    const next = nextChip(which, {
+      tentative: tentativeOnly,
+      unused: unusedOnly,
+      kind: kind !== null,
+    });
+    applyCriteria(filterOff[which], "push");
     setTimeout(() => {
-      if (other) {
-        (which === "tentative" ? unusedChipRef : tentativeChipRef).current?.focus();
+      if (next !== undefined) {
+        chipRefs[next].current?.focus();
         return;
       }
       if (totalAll === 0) createButtonRef.current?.focus();
@@ -512,11 +654,11 @@ export default function TagsPage() {
   }
 
   /**
-   * clearFilters は「Filter」の吹き出しの「Clear filters」である。両方の絞り込みを
+   * clearFilters は「Filter」の吹き出しの「Clear filters」である。絞り込みをすべて
    * 外す。吹き出しが閉じると、フォーカスは Radix が「Filter」へ戻す。
    */
   function clearFilters() {
-    applyCriteria({ tentativeOnly: false, unusedOnly: false }, "push");
+    applyCriteria(noFilters, "push");
   }
 
   /**
@@ -525,7 +667,7 @@ export default function TagsPage() {
    * 「新しいタグ」へ）移す（ui-design.md「States」）。
    */
   function showAllFromFilter() {
-    applyCriteria({ tentativeOnly: false, unusedOnly: false }, "push");
+    applyCriteria(noFilters, "push");
     setTimeout(
       () => (totalAll === 0 ? createButtonRef.current?.focus() : focusFilterButton()),
       0,
@@ -537,7 +679,7 @@ export default function TagsPage() {
    * 「Show all tags」である。絞り込みと検索を外し、検索の入力へ移す。
    */
   function showAllFromFilterSearch() {
-    applyCriteria({ tentativeOnly: false, unusedOnly: false, query: "" }, "push");
+    applyCriteria({ ...noFilters, query: "" }, "push");
     setTimeout(
       () => (totalAll === 0 ? createButtonRef : searchInputRef).current?.focus(),
       0,
@@ -631,6 +773,7 @@ export default function TagsPage() {
     try {
       await deleteTag(target.id);
       removeRows([target]);
+      tagKindCountsChanged();
       setDeletingTag(null);
       toast(t.tags.deleted(target.name));
       focusAfterRemoval(order, target.id);
@@ -690,6 +833,7 @@ export default function TagsPage() {
     try {
       await rejectTag(target.id);
       removeRows([target]);
+      tagKindCountsChanged();
       setRejectingTag(null);
       toast(t.tags.rejected(target.name));
       rejected.reload();
@@ -774,6 +918,7 @@ export default function TagsPage() {
     // それぞれ今の条件に照らして件数を数え直す（data-model.md §4「操作のあとの反映」）。
     removeRows(sources.filter((item) => removed.has(item.id)));
     replaceRow(merged, target);
+    tagKindCountsChanged();
     if (fromSelection) setSelected(new Set());
     else setSelected((current) => withoutIds(current, removed));
     setMerging(null);
@@ -882,6 +1027,9 @@ export default function TagsPage() {
       return replaceTag(next, previous, updated);
     });
     setSynonymsTag((current) => (current?.id === updated.id ? updated : current));
+    // 統合元のタグは消え、その種類を持っていけば種類ごとのタグの数が変わる
+    // （specs/051-tag-kinds/ui-design.md「Kind filter」）。
+    if (removed !== undefined) tagKindCountsChanged();
     // シノニムに足した名前が却下した名前だったなら、一覧から外れる（要件 15）。
     rejected.reload();
   }
@@ -987,17 +1135,75 @@ export default function TagsPage() {
    * チェックへ（ui-design.md「Bulk confirm」）。押せないボタンへは置かない。
    */
   function focusAfterBulkConfirm() {
-    if (filtersRef.current.tentativeOnly && visibleRowsRef.current.length === 0) {
+    focusAfterBulkAction(filtersRef.current.tentativeOnly, barConfirmRef);
+  }
+
+  /**
+   * focusAfterBulkAction は確認の窓の無いまとめての操作のあとのフォーカス先である。
+   * 操作で外れる絞り込み（`filteredOut`）が効いていて一覧が空になれば「Filter」、
+   * 選択の行が残れば `first`（「Confirm」か「Set kind…」）、押せなければ「Merge into
+   * one tag…」、選択が無くなれば列の見出しの先頭のチェックへ。
+   */
+  function focusAfterBulkAction(
+    filteredOut: boolean,
+    first: RefObject<HTMLButtonElement | null>,
+  ) {
+    if (filteredOut && visibleRowsRef.current.length === 0) {
       focusFilterButton();
       return;
     }
-    for (const candidate of [barConfirmRef.current, barMergeRef.current]) {
+    for (const candidate of [first.current, barMergeRef.current]) {
       if (candidate?.isConnected === true && !candidate.disabled) {
         candidate.focus();
         return;
       }
     }
     focusSelectAllOr(fallbackFocus);
+  }
+
+  /**
+   * submitSetKind はバーの「Set kind…」のメニューで種類か「No kind」を選んだときである
+   * （specs/051-tag-kinds/ui-design.md「Set kind」）。確認なしで選んだ id 全部を 1 回
+   * 送り、種類を付け外しした行をその場で書き換えて選択から外す。既にその状態だった行は
+   * 選んだまま残す。種類がもう無ければ何も変えずに種類の一覧を取り直し、失敗したら
+   * 何も変えない。
+   */
+  async function submitSetKind(choice: KindChoice) {
+    if (bulkPending !== null || selected.size === 0) return;
+    const ids = [...selected];
+    const kindRef = choice === "none" ? null : { id: choice.id, name: choice.name };
+    setBulkPending("kind");
+    try {
+      const result = await batchTags(
+        kindRef === null ? "clearKind" : { action: "setKind", kindId: kindRef.id },
+        ids,
+      );
+      const applied = new Set(result.appliedIds);
+      applyLocal((current) =>
+        current === undefined ? current : setTagsKind(current, applied, kindRef),
+      );
+      setSelected((current) => withoutIds(current, applied));
+      const skipped = result.notApplicableIds.length;
+      toast(
+        kindRef === null
+          ? t.tags.selection.kindCleared(applied.size, skipped)
+          : t.tags.selection.kindSet(kindRef.name, applied.size, skipped),
+      );
+      if (applied.size > 0) tagKindCountsChanged();
+      afterStale(result.notFoundIds);
+      afterCommit(() =>
+        focusAfterBulkAction(filtersRef.current.kind !== null, barSetKindRef),
+      );
+    } catch (failure) {
+      if (isTagKindNotFound(failure)) {
+        tagKindGone();
+        toast(t.tags.selection.kindGone);
+        return;
+      }
+      toast(errorText(failure));
+    } finally {
+      setBulkPending(null);
+    }
   }
 
   function focusSelectAllOr(otherwise: () => void) {
@@ -1027,6 +1233,7 @@ export default function TagsPage() {
       const result = await batchTags(action, ids);
       const applied = new Set(result.appliedIds);
       removeRows(rows.filter((item) => applied.has(item.id)));
+      tagKindCountsChanged();
       setSelected((current) => withoutIds(current, applied));
       setBulkDialog(null);
       const skipped = result.notApplicableIds.length;
@@ -1140,11 +1347,94 @@ export default function TagsPage() {
     creating,
   });
   const appliedTentative = applied?.tentativeOnly ?? false;
+  const appliedKind = appliedKindOf(page);
   const sortDisabled = noTags;
 
   const selecting = onTagsTab && selected.size > 0;
   // 作成・改名の送信中はタブを切り替えない（押せなくし、矢印でも移らない）。
-  const tabsLocked = createPending || renamePending;
+  const tabsLocked = editPending;
+
+  /**
+   * kindHref は「Kinds」のタブの種類の名前のリンクの先である。その種類で絞った「Tags」の
+   * タブで、ほかの条件は残す（specs/051-tag-kinds/ui-design.md「Rows」）。
+   */
+  function kindHref(kind: TagKind): string {
+    const next = { ...criteria, tab: "tags" as const, kind: String(kind.id) };
+    return `?${serializeTagListCriteria(next).toString()}`;
+  }
+
+  /** openKind は種類の名前の押下である。履歴に積んで「Tags」のタブへ移る。 */
+  function openKind(kind: TagKind) {
+    applyCriteria({ tab: "tags", kind: String(kind.id) }, "push");
+  }
+
+  /**
+   * headerAction は見出しの行の主操作である。「Tags」のタブは「New tag」、「Kinds」の
+   * タブは同じ位置に「New kind」、「Rejected names」のタブには置かない。
+   */
+  function headerAction() {
+    if (tab === "kinds") {
+      return (
+        <Button
+          ref={newKindButtonRef}
+          size="sm"
+          onClick={kindsTab.openCreate}
+          disabled={
+            kindsTab.kinds === undefined ||
+            kindsTab.loadError !== null ||
+            kindsTab.creating ||
+            editPending
+          }
+        >
+          <Plus aria-hidden="true" />
+          {t.tags.kinds.newKind}
+        </Button>
+      );
+    }
+    if (!onTagsTab) return undefined;
+    return (
+      <Button
+        ref={createButtonRef}
+        size="sm"
+        onClick={openCreate}
+        disabled={page === undefined || creating || createPending || renamePending}
+      >
+        <Plus aria-hidden="true" />
+        {t.tags.newTag}
+      </Button>
+    );
+  }
+
+  /** otherPanel は「Tags」以外のタブのパネルである。 */
+  function otherPanel() {
+    const value = tab === "kinds" ? "kinds" : "rejected";
+    return (
+      <div
+        id={tagsPanelId(tabsId, value)}
+        role="tabpanel"
+        aria-labelledby={tagsTabId(tabsId, value)}
+        className="flex flex-col gap-3"
+      >
+        {value === "kinds" ? (
+          <TagKindsPanel state={kindsTab} hrefFor={kindHref} onOpenKind={openKind} />
+        ) : (
+          <RejectedNames
+            page={rejected.page}
+            error={rejected.error}
+            onRetry={rejected.reload}
+            morePending={rejected.morePending}
+            moreError={rejected.moreError}
+            onLoadMore={rejected.loadMore}
+            resetKey={rejected.epoch}
+            onForget={rejected.forget}
+            onFocusFallback={() =>
+              document.getElementById(tagsTabId(tabsId, "rejected"))?.focus()
+            }
+          />
+        )}
+      </div>
+    );
+  }
 
   const bodyRows = virtualBodyRows({
     items: virtualItems,
@@ -1187,11 +1477,11 @@ export default function TagsPage() {
               onTentativeOnlyChange={changeTentativeOnly}
               unusedOnly={unusedOnly}
               onUnusedOnlyChange={changeUnusedOnly}
+              kind={kind}
+              kinds={kindsTab.kinds}
+              onKindChange={changeKind}
               onClearFilters={clearFilters}
-              // 効いている間は、タグが 0 になっても押せる（絞り込みを外す唯一の手でもある）。
-              filterDisabled={
-                page === undefined || (noTags && !tentativeOnly && !unusedOnly)
-              }
+              filterDisabled={filterButtonDisabled(page, noTags, criteria)}
               filterRef={filterButtonRef}
               sort={sort}
               onSortChange={changeSort}
@@ -1215,6 +1505,11 @@ export default function TagsPage() {
             onDelete={() => openBulkDialog("delete")}
             onMerge={openMergeSelected}
             onClear={clearSelection}
+            kinds={kindsTab.kinds}
+            sharedKind={selection.kind}
+            settingKind={bulkPending === "kind"}
+            onSetKind={(choice) => void submitSetKind(choice)}
+            setKindRef={barSetKindRef}
             confirmRef={barConfirmRef}
             mergeRef={barMergeRef}
             rejectRef={barRejectRef}
@@ -1232,21 +1527,7 @@ export default function TagsPage() {
                 </span>
               ) : undefined
             }
-            actions={
-              onTagsTab ? (
-                <Button
-                  ref={createButtonRef}
-                  size="sm"
-                  onClick={openCreate}
-                  disabled={
-                    page === undefined || creating || createPending || renamePending
-                  }
-                >
-                  <Plus aria-hidden="true" />
-                  {t.tags.newTag}
-                </Button>
-              ) : undefined
-            }
+            actions={headerAction()}
           />
         )
       }
@@ -1258,15 +1539,17 @@ export default function TagsPage() {
             onChange={changeTab}
             tagsCount={page?.totalAll}
             rejectedCount={rejected.page?.total}
+            kindsCount={kindsTab.kinds?.length}
             locked={tabsLocked}
           />
           {onTagsTab && (
             <TagFilterChips
               tentativeOnly={tentativeOnly}
               unusedOnly={unusedOnly}
+              kind={kind}
+              kindName={kindName}
               onRemove={removeFilterChip}
-              tentativeRef={tentativeChipRef}
-              unusedRef={unusedChipRef}
+              chipRefs={chipRefs}
             />
           )}
         </>
@@ -1301,6 +1584,8 @@ export default function TagsPage() {
               empty={empty}
               appliedSearch={appliedSearch}
               appliedTentative={appliedTentative}
+              appliedKind={appliedKind}
+              kindName={kindNameOf(kindsTab.kinds, appliedKind)}
               onCreate={openCreate}
               onShowAll={showAllFromFilter}
               onShowAllAndSearch={showAllFromFilterSearch}
@@ -1366,26 +1651,7 @@ export default function TagsPage() {
           )}
         </div>
       ) : (
-        <div
-          id={tagsPanelId(tabsId, "rejected")}
-          role="tabpanel"
-          aria-labelledby={tagsTabId(tabsId, "rejected")}
-          className="flex flex-col gap-3"
-        >
-          <RejectedNames
-            page={rejected.page}
-            error={rejected.error}
-            onRetry={rejected.reload}
-            morePending={rejected.morePending}
-            moreError={rejected.moreError}
-            onLoadMore={rejected.loadMore}
-            resetKey={rejected.epoch}
-            onForget={rejected.forget}
-            onFocusFallback={() =>
-              document.getElementById(tagsTabId(tabsId, "rejected"))?.focus()
-            }
-          />
-        </div>
+        otherPanel()
       )}
 
       {bulkDialog !== null && (

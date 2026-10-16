@@ -107,16 +107,19 @@ func (e *externalServer) UpdateTagSynonyms(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, toExternalTag(tag), e.s.logger)
 }
 
-// BatchTags は複数のタグをまとめて確定・却下・削除する（POST /api/v1/tags/batch、
-// contracts/external-api.md §5）。1 つのタグ用の経路は持たない（research.md R-3）。種類の合わない
-// タグと無いタグは何も変えずに返し、残りを 1 つのトランザクションで処理する。
+// BatchTags は複数のタグをまとめて確定・却下・削除し、種類を付け外しする（POST /api/v1/tags/batch、
+// contracts/external-api.md §5、specs/051-tag-kinds/contracts/external-api.md）。1 つのタグ用の経路は
+// 持たない（research.md R-3）。種類の合わないタグと無いタグは何も変えずに返し、残りを 1 つの
+// トランザクションで処理する。action と kindId は画面の経路と同じ tagBatchRequestOf で検査する。
 func (e *externalServer) BatchTags(w http.ResponseWriter, r *http.Request) {
 	var body extgen.TagBatchRequest
-	if !e.readJSONBody(w, r, &body) {
+	fields, ok := e.readJSONBodyFields(w, r, &body)
+	if !ok {
 		return
 	}
-	if !body.Action.Valid() {
-		e.invalidRequest(w, nil, "action must be one of confirm, reject or delete.")
+	req, problem := tagBatchRequestOf(string(body.Action), body.KindId, fields.has("kindId"))
+	if problem != "" {
+		e.invalidRequest(w, nil, problem)
 		return
 	}
 	if len(body.Ids) == 0 || len(body.Ids) > domain.MaxTagBatch {
@@ -128,7 +131,11 @@ func (e *externalServer) BatchTags(w http.ResponseWriter, r *http.Request) {
 		e.internalError(w, "Tag storage is not configured.", nil)
 		return
 	}
-	outcome, err := e.s.tags.BatchTags(r.Context(), domain.TagBatchAction(body.Action), body.Ids)
+	outcome, err := e.s.tags.BatchTags(r.Context(), req, body.Ids)
+	if errors.Is(err, domain.ErrTagKindNotFound) {
+		e.writeTagKindError(w, err)
+		return
+	}
 	if err != nil {
 		e.internalError(w, "Could not update the tags. Nothing was changed.", err)
 		return

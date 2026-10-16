@@ -103,6 +103,16 @@ describe("ListSnapshot（一覧の復元状態）", () => {
     ).toEqual([1]);
   });
 
+  it("tagKind を含む鍵は、tagKind の無い鍵や別の種類の鍵と一致しない（/?tagKind=1 と / の控えを区別する）", () => {
+    saveListSnapshot({ query: "", sort: "addedDesc", tagKind: 1 }, body([1]));
+
+    expect(takeListSnapshot({ query: "", sort: "addedDesc" })).toBeUndefined();
+    expect(
+      takeListSnapshot({ query: "", sort: "addedDesc", tagKind: 2 }),
+    ).toBeUndefined();
+    expect(takeListSnapshot({ query: "", sort: "addedDesc", tagKind: 1 })).toBeDefined();
+  });
+
   it("tags の並びは正規化するので、選んだ順が違っても同じ鍵になる", () => {
     saveListSnapshot({ query: "", sort: "addedDesc", tags: [3, 1] }, body([1]));
 
@@ -195,7 +205,7 @@ describe("付け外しの結果の反映", () => {
 
     recordAppliedVideoTags(
       [2],
-      { id: 5, name: "旅行", tentative: false },
+      { kind: null, id: 5, name: "旅行", tentative: false },
       "add",
       nextVideoTagsSequence(),
     );
@@ -204,7 +214,14 @@ describe("付け外しの結果の反映", () => {
     expect(
       itemVideos(restored?.items ?? []).find((video) => video.id === 2)?.tags,
     ).toEqual([
-      { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      {
+        id: 5,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+        kind: null,
+      },
     ]);
     // 対象でない項目は変わらない。
     expect(
@@ -223,13 +240,27 @@ describe("付け外しの結果の反映", () => {
           videoItem({
             ...item(1),
             tags: [
-              { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+              {
+                kind: null,
+                id: 5,
+                name: "旅行",
+                manual: true,
+                fromFolder: false,
+                tentative: false,
+              },
             ],
           }),
           videoItem({
             ...item(2),
             tags: [
-              { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+              {
+                kind: null,
+                id: 5,
+                name: "旅行",
+                manual: true,
+                fromFolder: false,
+                tentative: false,
+              },
             ],
           }),
         ],
@@ -242,7 +273,7 @@ describe("付け外しの結果の反映", () => {
 
     recordAppliedVideoTags(
       [2],
-      { id: 5, name: "旅行", tentative: false },
+      { kind: null, id: 5, name: "旅行", tentative: false },
       "remove",
       nextVideoTagsSequence(),
     );
@@ -255,7 +286,14 @@ describe("付け外しの結果の反映", () => {
     expect(
       itemVideos(restored?.items ?? []).find((video) => video.id === 1)?.tags,
     ).toEqual([
-      { id: 5, name: "旅行", manual: true, fromFolder: false, tentative: false },
+      {
+        id: 5,
+        name: "旅行",
+        manual: true,
+        fromFolder: false,
+        tentative: false,
+        kind: null,
+      },
     ]);
   });
 });
@@ -309,13 +347,13 @@ describe("控えの中のグループの項目", () => {
     saveWithGroup();
     recordAppliedVideoTags(
       [10, 11],
-      { id: 5, name: "旅行", tentative: false },
+      { kind: null, id: 5, name: "旅行", tentative: false },
       "add",
       nextVideoTagsSequence(),
     );
     recordAppliedVideoTags(
       [11],
-      { id: 6, name: "山", tentative: false },
+      { kind: null, id: 6, name: "山", tentative: false },
       "add",
       nextVideoTagsSequence(),
     );

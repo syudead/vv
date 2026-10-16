@@ -41,6 +41,7 @@ func (s *server) ListVideos(w http.ResponseWriter, r *http.Request, params gen.L
 		seed: params.Seed, cursor: params.Cursor, limit: params.Limit, tag: params.Tag,
 		favorite: params.Favorite, person: params.Person, organization: params.Organization,
 		addedWithin: params.AddedWithin, minDuration: params.MinDuration, maxDuration: params.MaxDuration,
+		tagKind: params.TagKind,
 	})
 	if !ok {
 		return
@@ -80,6 +81,8 @@ type videoQueryParams struct {
 	addedWithin *int
 	minDuration *int
 	maxDuration *int
+	// tagKind はタグの種類の id による絞り込み（specs/051-tag-kinds/research.md R-5）。
+	tagKind *int64
 }
 
 // parseVideoQuery は一覧のパラメータを検査して問い合わせにする。誤りなら 400 を書いて
@@ -119,7 +122,7 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	if query.TagIDs, ok = s.parseTagFilter(w, params.tag); !ok {
 		return domain.VideoQuery{}, false
 	}
-	if query.Person, query.Organization, ok = s.parseCreditFilters(w, params.person, params.organization); !ok {
+	if !s.parseIDFilters(w, params, &query) {
 		return domain.VideoQuery{}, false
 	}
 	if !s.parseAddedAndLength(w, params, &query) {
@@ -131,25 +134,30 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 	return query, true
 }
 
-// parseCreditFilters は一覧の person と organization を検査する。指定が無ければ 0 を返す。
-// 正の整数でない値は 400 を書いて ok = false を返す。実体の有無は確かめない（当たらなければ
-// 空の一覧になる、specs/047-video-work-info/contracts/screen-api.md）。
-func (s *server) parseCreditFilters(w http.ResponseWriter, person, organization *int64) (personID, organizationID int64, ok bool) {
+// parseIDFilters は一覧の person・organization・tagKind を検査して query に書く。指定が無ければ
+// 0 のままにする。正の整数でない値は 400 を書いて false を返す。実体の有無は確かめない（当たらなければ
+// 空の一覧になる、specs/047-video-work-info/contracts/screen-api.md、
+// specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）。
+func (s *server) parseIDFilters(w http.ResponseWriter, params videoQueryParams, query *domain.VideoQuery) bool {
 	for _, filter := range []struct {
 		name  string
 		value *int64
 		out   *int64
-	}{{"person", person, &personID}, {"organization", organization, &organizationID}} {
+	}{
+		{"person", params.person, &query.Person},
+		{"organization", params.organization, &query.Organization},
+		{"tagKind", params.tagKind, &query.TagKindID},
+	} {
 		if filter.value == nil {
 			continue
 		}
 		if *filter.value < 1 {
 			s.invalidRequest(w, filter.name+" must be a positive integer.")
-			return 0, 0, false
+			return false
 		}
 		*filter.out = *filter.value
 	}
-	return personID, organizationID, true
+	return true
 }
 
 // parseAddedAndLength は一覧の addedWithin・minDuration・maxDuration を検査して query に写す。

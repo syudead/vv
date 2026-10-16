@@ -132,10 +132,12 @@ func (t *mcpTools) register(server *mcp.Server) {
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "list_tags",
 		Description: "List tags with their synonyms, video count and creation time, one page at a time " +
-			"(GET /api/v1/tags). q matches a name or synonym ignoring width, case and kana; tentative and unused " +
-			"narrow the list; sort is name, countDesc, countAsc, createdDesc or createdAsc. " +
-			"limit is 1 to 200 and defaults to 100 here. total counts the matching tags and totalAll every tag. " +
-			"Pass nextCursor back as cursor, with the same q, tentative, unused and sort, until it is absent.",
+			"(GET /api/v1/tags). Each tag carries its kind, or null without one. q matches a name or synonym " +
+			"ignoring width, case and kana; tentative and unused narrow the list; kind is a kind id from " +
+			"list_tag_kinds for that kind's tags, or none for tags without a kind; sort is name, countDesc, countAsc, " +
+			"createdDesc or createdAsc. limit is 1 to 200 and defaults to 100 here. total counts the matching tags " +
+			"and totalAll every tag. Pass nextCursor back as cursor, with the same q, tentative, unused, kind and " +
+			"sort, until it is absent.",
 		InputSchema: listTagsInputSchema(),
 		Annotations: readOnly,
 	}, func(ctx context.Context, _ *mcp.CallToolRequest, in mcpListTags) (*mcp.CallToolResult, any, error) {
@@ -148,6 +150,9 @@ func (t *mcpTools) register(server *mcp.Server) {
 		}
 		if in.Unused != nil {
 			query.Set("unused", strconv.FormatBool(*in.Unused))
+		}
+		if in.Kind != nil {
+			query.Set("kind", *in.Kind)
 		}
 		if in.Sort != nil {
 			query.Set("sort", string(*in.Sort))
@@ -204,16 +209,17 @@ func (t *mcpTools) register(server *mcp.Server) {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "batch_tags",
-		Description: "Confirm, reject or delete tags in one transaction (POST /api/v1/tags/batch). " +
-			"confirm and reject apply to tentative tags, delete to confirmed tags. reject deletes the tag and adds its " +
-			"name to the rejected names, so a later tentative attach of that name is skipped; delete does not remember " +
-			"the name. ids holds 1 to 20000 ids; for one tag send ids: [id]. The result splits the deduplicated ids into " +
-			"appliedIds, notFoundIds and notApplicableIds (a tag of the wrong kind, left unchanged).",
+		Description: "Confirm, reject or delete tags, or set or clear their kind, in one transaction " +
+			"(POST /api/v1/tags/batch). confirm and reject apply to tentative tags, delete to confirmed tags. reject " +
+			"deletes the tag and adds its name to the rejected names, so a later tentative attach of that name is " +
+			"skipped; delete does not remember the name. setKind gives each tag the kind kindId (an id from " +
+			"list_tag_kinds; a missing kind is tag_kind_not_found and changes nothing) and clearKind removes each " +
+			"tag's kind; neither confirms a tentative tag, and kindId is sent with setKind only. ids holds 1 to 20000 " +
+			"ids; for one tag send ids: [id]. The result splits the deduplicated ids into appliedIds, notFoundIds and " +
+			"notApplicableIds (a tag the action does not apply to, such as one that already has the kind, left unchanged).",
 		InputSchema: tagBatchInputSchema(),
 		Annotations: &mcp.ToolAnnotations{DestructiveHint: &destructive, IdempotentHint: true},
-	}, func(ctx context.Context, _ *mcp.CallToolRequest, in extgen.TagBatchRequest) (*mcp.CallToolResult, any, error) {
-		return t.call(ctx, http.MethodPost, "/tags/batch", nil, in)
-	})
+	}, t.post("/tags/batch"))
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name: "list_rejected_tag_names",
@@ -297,6 +303,7 @@ func (t *mcpTools) register(server *mcp.Server) {
 	})
 
 	t.registerWorkInfo(server)
+	t.registerTagKinds(server)
 }
 
 // videoTagsInputSchema は update_video_tags の入力の形である。型から導き、action に
@@ -324,11 +331,15 @@ func tagSynonymsInputSchema() *jsonschema.Schema {
 }
 
 // listTagsInputSchema は list_tags の入力の形である。型から導き、sort に契約の値を、
-// limit と q に上限を足す（型からは文字列・整数としか分からない）。
+// limit と q に上限を、kind に値の形を足す（型からは文字列・整数としか分からない）。
 func listTagsInputSchema() *jsonschema.Schema {
-	return withListInputLimits(inputSchemaFor[mcpListTags]("list_tags"), mcpListTagsDefaultLimit,
+	schema := withListInputLimits(inputSchemaFor[mcpListTags]("list_tags"), mcpListTagsDefaultLimit,
 		string(extgen.TagSortName), string(extgen.TagSortCountDesc), string(extgen.TagSortCountAsc),
 		string(extgen.TagSortCreatedDesc), string(extgen.TagSortCreatedAsc))
+	if kind := schema.Properties["kind"]; kind != nil {
+		kind.Pattern = "^([1-9][0-9]*|none)$"
+	}
+	return schema
 }
 
 // withListInputLimits は一覧のツールの入力の形に、sort の値、limit の範囲と既定、q の上限を足して返す。
@@ -350,11 +361,13 @@ func withListInputLimits(schema *jsonschema.Schema, defaultLimit int, sorts ...a
 }
 
 // tagBatchInputSchema は batch_tags の入力の形である。型から導き、action に契約の値を足す
-// （update_video_tags と同じやり方）。
+// （update_video_tags と同じやり方）。入力は REST へそのまま渡す（kindId の null と省略を REST と
+// 同じく見分けるため、mcp_work_info.go の post と同じ）。
 func tagBatchInputSchema() *jsonschema.Schema {
 	schema := inputSchemaFor[extgen.TagBatchRequest]("batch_tags")
 	if action := schema.Properties["action"]; action != nil {
-		action.Enum = []any{string(extgen.Confirm), string(extgen.Reject), string(extgen.Delete)}
+		action.Enum = []any{string(extgen.Confirm), string(extgen.Reject), string(extgen.Delete),
+			string(extgen.SetKind), string(extgen.ClearKind)}
 	}
 	return schema
 }

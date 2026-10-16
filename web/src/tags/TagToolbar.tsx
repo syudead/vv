@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { ReactNode, Ref, RefObject } from "react";
 
+import type { TagKind } from "../api/tagKinds";
 import { t, type UiText } from "../i18n";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { FilterCheckbox, FilterPopover } from "../videoList/FilterMenu";
@@ -28,6 +29,8 @@ import {
   type TagSortDirection,
   type TagSortKind,
 } from "./tagListOrder";
+import TagKindSelect from "./TagKindSelect";
+import type { TagKindFilter } from "./tagListUrl";
 
 /**
  * tagSortIcons は種類ごとのアイコンである（specs/036-tag-admin-scale/ui-design.md
@@ -64,7 +67,12 @@ export interface TagToolbarProps {
   onTentativeOnlyChange: (value: boolean) => void;
   unusedOnly: boolean;
   onUnusedOnlyChange: (value: boolean) => void;
-  /** 「Tentative only」「Unused only」を両方外す（吹き出しの「Clear filters」）。 */
+  /** 種類の絞り込み（specs/051-tag-kinds/ui-design.md「Kind filter」）。 */
+  kind: TagKindFilter;
+  /** 名前の自然順の種類。読み込み前は undefined。 */
+  kinds: readonly TagKind[] | undefined;
+  onKindChange: (kind: TagKindFilter) => void;
+  /** 「Tentative only」「Unused only」と種類を外す（吹き出しの「Clear filters」）。 */
   onClearFilters: () => void;
   filterDisabled: boolean;
   filterRef: Ref<HTMLButtonElement>;
@@ -91,6 +99,9 @@ export default function TagToolbar({
   onTentativeOnlyChange,
   unusedOnly,
   onUnusedOnlyChange,
+  kind,
+  kinds,
+  onKindChange,
   onClearFilters,
   filterDisabled,
   filterRef,
@@ -98,7 +109,8 @@ export default function TagToolbar({
   onSortChange,
   sortDisabled,
 }: TagToolbarProps) {
-  const filterCount = (tentativeOnly ? 1 : 0) + (unusedOnly ? 1 : 0);
+  const filterCount =
+    (tentativeOnly ? 1 : 0) + (unusedOnly ? 1 : 0) + (kind !== null ? 1 : 0);
 
   return (
     <AdminListToolbar
@@ -133,6 +145,7 @@ export default function TagToolbar({
             label={t.tags.unusedOnly}
             hint={t.tags.unusedOnlyHint}
           />
+          <TagKindSelect kind={kind} kinds={kinds} onKindChange={onKindChange} />
         </div>
       </FilterPopover>
     </AdminListToolbar>

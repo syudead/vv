@@ -69,6 +69,7 @@ import {
   hasFilterChips,
   ORGANIZATION_PARAM,
   PERSON_PARAM,
+  TAG_KIND_PARAM,
   useCreditFilter,
   withoutCredit,
 } from "./creditCriteria";
@@ -97,8 +98,10 @@ import {
   toggleVideo,
 } from "./selection";
 import SelectionBar from "./SelectionBar";
+import TagKindSelect from "./TagKindSelect";
 import { TagRowMeasureProvider } from "./TagRowMeasure";
 import { useEscapeClearsSelection } from "./useEscapeClearsSelection";
+import { type ApplyTagKind, useLibraryTagKinds } from "./useLibraryTagKinds";
 import {
   addTagId,
   clearConditions as clearTagConditions,
@@ -122,8 +125,8 @@ function itemGroup(item: LibraryItem): LibraryGroup | undefined {
   return item.kind === "group" ? item.group : undefined;
 }
 
-/** ライブラリだけが URL に持つ条件（タグ、人物、団体）。 */
-const libraryParams = [TAG_PARAM, PERSON_PARAM, ORGANIZATION_PARAM];
+/** ライブラリだけが URL に持つ条件（タグ、人物、団体、タグの種類）。 */
+const libraryParams = [TAG_PARAM, PERSON_PARAM, ORGANIZATION_PARAM, TAG_KIND_PARAM];
 
 export default function LibraryPage() {
   const location = useLocation();
@@ -243,6 +246,19 @@ export default function LibraryPage() {
     },
     [apply, toast],
   );
+  // --- タグの種類の絞り込み（051 ui-design.md「Library」） ---
+  // 選ぶ・チップで外す・もう無い種類を外すのは `tagKind` だけで、ほかの条件は残る。
+  const applyTagKind = useCallback<ApplyTagKind>(
+    (extra, mode) => {
+      resetPreview();
+      apply(latestConditions.current.criteria, mode, extra);
+    },
+    [apply, resetPreview],
+  );
+  const tagKinds = useLibraryTagKinds(credits.tagKind, applyTagKind);
+  const changeTagKind = tagKinds.change;
+  const removeTagKind = useCallback(() => changeTagKind(undefined), [changeTagKind]);
+
   const pressTag = useCallback(
     (tag: TagRef) => {
       const { criteria: current, tagIds: currentTagIds } = latestConditions.current;
@@ -830,6 +846,17 @@ export default function LibraryPage() {
               }}
               zoom={zoom}
               onZoomChange={changeZoom}
+              extraFilter={
+                owner && (
+                  <TagKindSelect
+                    value={credits.tagKind}
+                    kinds={tagKinds.kinds}
+                    onValueChange={changeTagKind}
+                  />
+                )
+              }
+              extraFilterCount={credits.tagKind === undefined ? 0 : 1}
+              onFilterOpen={owner ? tagKinds.load : undefined}
             />
           </TopBarPortal>
         }
@@ -841,6 +868,8 @@ export default function LibraryPage() {
               credits={credits}
               onRemoveCredit={removeCredit}
               onCreditGone={creditGone}
+              tagKindName={tagKinds.name}
+              onRemoveTagKind={removeTagKind}
               searchFieldRef={searchField}
             />
           )

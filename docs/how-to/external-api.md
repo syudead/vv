@@ -254,18 +254,21 @@ curl -H "Authorization: Bearer $TOKEN" \
 | `q` | Up to 100 characters. Matches part of a name or synonym, ignoring width, case and kana |
 | `tentative` | `true` lists tentative tags only |
 | `unused` | `true` lists tags on no video only. ANDed with `q` and `tentative` |
+| `kind` | A kind id lists that kind's tags only, and `none` lists tags without a kind ([Tag kinds](#tag-kinds)). ANDed with the other filters |
 | `sort` | `name` (default, natural name order), `countDesc`, `countAsc`, `createdDesc` or `createdAsc`; ties by name, then `id` |
 | `limit` | 1 to 200 tags per page. **Omitted, every matching tag is returned** without `nextCursor` |
-| `cursor` | The previous `nextCursor`, sent with the same `q`, `tentative`, `unused` and `sort` |
+| `cursor` | The previous `nextCursor`, sent with the same `q`, `tentative`, `unused`, `kind` and `sort` |
 
 - The response is `{ items, total, totalAll, nextCursor? }`. `total` counts the
   tags matching the filters, `totalAll` every tag, on every page.
 - With `limit`, pass `nextCursor` back as `cursor` until it is absent to read
   every matching tag once.
-- Each tag has `id`, `name`, `synonyms`, `videoCount`, `tentative` and
-  `createdAt`.
-- `sort` outside the five values, `limit` outside 1 to 200 or `q` over 100
-  characters returns `400` `invalid_request`. A cursor that cannot be read, or
+- Each tag has `id`, `name`, `synonyms`, `videoCount`, `tentative`,
+  `createdAt` and `kind`, which is `{ id, name }` or `null` for a tag without
+  a kind.
+- `sort` outside the five values, `limit` outside 1 to 200, `q` over 100
+  characters or `kind` that is neither a positive integer nor `none` returns
+  `400` `invalid_request`. A cursor that cannot be read, or
   that was made under another `sort`, returns `400` `invalid_request` with
   `reason: invalid_cursor`; read again from the first page.
 
@@ -344,13 +347,15 @@ There is no single-tag operation; for one tag send `"ids": [id]`.
 | `confirm` | Tentative tags | The tag becomes confirmed |
 | `reject` | Tentative tags | The tag is deleted and its original name enters the rejected names |
 | `delete` | Confirmed tags | The tag is deleted; its name is not remembered |
+| `setKind` | Every tag | The tag gets the kind `kindId` ([Tag kinds](#tag-kinds)) |
+| `clearKind` | Every tag | The tag loses its kind |
 
 - The response is `{ appliedIds, notFoundIds, notApplicableIds }`. The three
   lists do not overlap, together hold each sent id once, and keep the order of
-  `ids`. A tag of the wrong kind, such as a confirmed tag sent to `reject`, is
-  left unchanged and listed in `notApplicableIds`.
+  `ids`. A tag the action does not apply to, such as a confirmed tag sent to
+  `reject`, is left unchanged and listed in `notApplicableIds`.
 - `ids` holds 1 to 20,000 ids, duplicates counted, else `400` `too_many_tags`
-  with `limit`. `action` outside the three values returns `400`
+  with `limit`. `action` outside the five values returns `400`
   `invalid_request`. A failed transaction returns `500` `internal` and changes
   nothing.
 
@@ -372,6 +377,43 @@ A tentative attach skips a rejected name
   The response is `{ name, removed }`: the normalized name that was matched,
   and `false` when the name was not in the list and nothing changed. A missing
   `name` returns `400` `invalid_request`.
+
+### Tag kinds
+
+A kind, such as `Genre` or `Work`, groups tags; a tag has at most one kind
+([contract](../../specs/051-tag-kinds/contracts/external-api.md)). Kinds are
+named by the `id` in the body, as people are.
+
+| Operation | Request | Response |
+| --- | --- | --- |
+| List | `GET /api/v1/tag-kinds` | `{ items }`: every kind in `id` order, each `{ id, name, tagCount, createdAt }` |
+| Create | `POST /api/v1/tag-kinds` with `{ name }` | `200` and the kind |
+| Rename | `POST /api/v1/tag-kinds/update` with `{ id, name }` | `200` and the kind; the same name as now changes nothing |
+| Delete | `POST /api/v1/tag-kinds/delete` with `{ ids }` | `{ deletedIds, notFoundIds }` in `ids` order; the kinds' tags remain without a kind |
+
+- A kind name follows the tag name rules: a name that breaks them returns
+  `400` `tag_name_empty`, `tag_name_control_characters` or
+  `tag_name_too_long`. A name another kind has returns `409` `conflict` with
+  `reason: tag_kind_name_taken`, and `tagName` holds that kind's name. Nothing
+  changes.
+- A rename of a missing kind returns `404` `tag_kind_not_found`. `ids` empty or
+  over 20,000 entries returns `400` `invalid_request`.
+- `tagCount` counts the kind's tags, tentative ones included.
+
+Set a kind on tags with `POST /api/v1/tags/batch`; `kindId` goes with
+`setKind` only.
+
+```json
+{ "action": "setKind", "kindId": 2, "ids": [12, 31] }
+```
+
+- `setKind` and `clearKind` do not confirm a tentative tag. A tag that already
+  has the kind, or no kind for `clearKind`, is listed in `notApplicableIds`.
+- `setKind` without `kindId`, or `kindId` with another action, returns `400`
+  `invalid_request`. A `kindId` with no kind returns `404`
+  `tag_kind_not_found` and changes nothing.
+- Read the result with `GET /api/v1/tags?kind=2`. The tags on a video
+  (`ExternalVideoTag`) do not carry a kind; read it from `GET /api/v1/tags`.
 
 ### Example: merge spelling variants
 
@@ -697,6 +739,10 @@ claude mcp add --transport http vv https://vv.example/mcp --header "Authorizatio
 | `update_person`, `update_organization` | `POST /api/v1/people/update`, `POST /api/v1/organizations/update` |
 | `merge_people`, `merge_organizations` | `POST /api/v1/people/merge`, `POST /api/v1/organizations/merge` |
 | `delete_people`, `delete_organizations` | `POST /api/v1/people/delete`, `POST /api/v1/organizations/delete` |
+| `list_tag_kinds` | `GET /api/v1/tag-kinds` |
+| `create_tag_kind` | `POST /api/v1/tag-kinds` |
+| `rename_tag_kind` | `POST /api/v1/tag-kinds/update` |
+| `delete_tag_kinds` | `POST /api/v1/tag-kinds/delete` |
 
 - Tool arguments have the shape of the operation's query and body, and the
   structured result the shape of its response body. An operation error is a

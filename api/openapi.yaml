@@ -200,7 +200,7 @@ paths:
         ゲストでは公開の動画だけを対象にし、`query` はタグの名前とシノニムに照合しない。
         所有者のデータに依る条件（`watch` が `all` 以外、`sort` が `playedAsc`・
         `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、
-        `organization`）は
+        `organization`、`tagKind`）は
         `400` `invalid_request` にする（guest-api.md §3、specs/035-favorites/contracts/screen-api.md §2）。
       parameters:
         - name: query
@@ -280,6 +280,7 @@ paths:
         - $ref: "#/components/parameters/AddedWithinFilter"
         - $ref: "#/components/parameters/MinDurationFilter"
         - $ref: "#/components/parameters/MaxDurationFilter"
+        - $ref: "#/components/parameters/TagKindFilter"
       responses:
         "200":
           description: 一覧
@@ -301,7 +302,7 @@ paths:
         `listVideos` と同じ条件で、当たった動画を項目にまとめて返す
         （specs/027-partial-group-search/contracts/library-api.md §1。値の作り方は
         specs/017-folder-groups/data-model.md §5）。
-        `query`・`tag`・`person`・`organization` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
+        `query`・`tag`・`person`・`organization`・`tagKind` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
         全メンバーが当たればグループの項目1件に、一部だけが当たれば当たったメンバーを
         それぞれ動画の項目にする。グループに属さない動画は動画の項目になる。
         絞り込みが無ければどのグループも全メンバーが当たる。グループの値は全メンバーから
@@ -319,7 +320,7 @@ paths:
 
         ゲストでは公開のメンバーだけを数え（「全メンバー」も公開のメンバー）、公開の
         メンバーが1本のグループは動画の項目にし、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
-        `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、`organization` は
+        `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、`organization`、`tagKind` は
         `400` `invalid_request` にする
         （data-model.md §7、specs/035-favorites/contracts/screen-api.md §2）。
       parameters:
@@ -400,6 +401,7 @@ paths:
         - $ref: "#/components/parameters/AddedWithinFilter"
         - $ref: "#/components/parameters/MinDurationFilter"
         - $ref: "#/components/parameters/MaxDurationFilter"
+        - $ref: "#/components/parameters/TagKindFilter"
       responses:
         "200":
           description: 項目の一覧
@@ -416,7 +418,7 @@ paths:
       summary: 絞り込みに合う項目の動画の id を返す
       description: |
         `listLibrary` と同じ条件（`query`・`watch`・`playable`・`tag`・`favorite`・`person`・
-        `organization`）に合う項目の、
+        `organization`・`tagKind`）に合う項目の、
         動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
         一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
         だけが入る。並びは決めない。「すべて選択」用
@@ -463,6 +465,7 @@ paths:
         - $ref: "#/components/parameters/AddedWithinFilter"
         - $ref: "#/components/parameters/MinDurationFilter"
         - $ref: "#/components/parameters/MaxDurationFilter"
+        - $ref: "#/components/parameters/TagKindFilter"
       responses:
         "200":
           description: 条件に合う項目の動画の id
@@ -2361,7 +2364,8 @@ paths:
       description: |
         所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を作品の `url`（http か https、2048 文字まで）で
         1 回動かし、結果を 10 分の間メモリに持って `201` で返す。動画は変えない。`title` は表示名の規則を
-        通ったもので、無いか規則に外れれば省く。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
+        通ったもので、無いか規則に外れれば省く。人物・団体は取得の時点の照合の答え `match` を持つ
+        （specs/052-plugin-work-info-fields/contracts/screen-api.md）。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
         宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
         specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである（research.md R-8）。
       parameters:
@@ -2399,7 +2403,9 @@ paths:
       operationId: applyWorkInfoFetch
       summary: 取得の結果のうち選んだ項目を動画に反映する
       description: |
-        所有者だけ。`fields` の項目（`title` は表示名、`tags` は仮のタグ）を 1 つの取引で書く。結果は使い切りで、
+        所有者だけ。`fields` の項目（`title` は表示名、`tags` は仮のタグ、ほかは作品情報）を 1 つの取引で書く。
+        作品情報の項目は保存済みの作品情報に重ね、規則に合わない値・上限を超える件・照合が曖昧な人物と団体は
+        飛ばして `skipped` で知らせる（specs/052-plugin-work-info-fields/contracts/screen-api.md）。結果は使い切りで、
         成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
         `skippedTags` で知らせ、付けない。`fields` が空か結果に値の無い項目を含めば `400` `invalid_request`、
         動画が無いか結果が別の動画のものなら `404` `not_found`、結果が期限切れか不明か、取得の後にプラグインが
@@ -2417,7 +2423,7 @@ paths:
               $ref: "#/components/schemas/ApplyWorkInfoFetchRequest"
       responses:
         "200":
-          description: 反映後の動画と、付けなかったタグの名前
+          description: 反映後の動画と、付けなかったタグの名前と、飛ばした作品情報の値
           content:
             application/json:
               schema:
@@ -2436,7 +2442,7 @@ paths:
       operationId: listTags
       summary: タグを一覧する
       description: |
-        本数0のタグも含む（contracts/tags-api.md §3）。`q`・`tentative`・`unused` は全部のタグに
+        本数0のタグも含む（contracts/tags-api.md §3）。`q`・`tentative`・`unused`・`kind` は全部のタグに
         AND で掛かり、`sort` の順に並べる。`limit` を付けると1ページずつ返し、続きがあれば
         `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
         （specs/036-tag-admin-scale/contracts/screen-api.md §5）。
@@ -2462,6 +2468,15 @@ paths:
           schema:
             type: boolean
             default: false
+        - name: kind
+          in: query
+          description: |
+            種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
+            無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない。正の整数でも
+            `none` でもなければ 400 `invalid_request`（specs/051-tag-kinds/contracts/screen-api.md）
+          schema:
+            type: string
+            pattern: "^([1-9][0-9]*|none)$"
         - name: sort
           in: query
           description: 並び順
@@ -2471,7 +2486,7 @@ paths:
           in: query
           description: |
             前回の応答が返した `nextCursor`。中身は不透明で、解釈しない。同じ `q`・`tentative`・
-            `unused`・`sort` で続けて使う。`limit` を省いたときは無視する
+            `unused`・`kind`・`sort` で続けて使う。`limit` を省いたときは無視する
           schema:
             type: string
         - name: limit
@@ -2737,13 +2752,18 @@ paths:
   /api/tags/batch:
     post:
       operationId: batchTags
-      summary: 複数のタグをまとめて確定・却下・削除する
+      summary: 複数のタグをまとめて確定・却下・削除し、種類を付け外しする
       description: |
         `ids` のうち今あり、`action` が働く種類（`confirm`・`reject` は仮のタグ、`delete` は
         確定したタグ）のタグだけを 1 つの取引で処理する。働かない種類の id は何も変えずに
         `notApplicableIds`、無い id は `notFoundIds` に入れる。`ids` の重複は 1 つとして扱い、
         3 つの配列は互いに重ならず、`ids` に現れた順。取引が失敗したら何も変えない
         （specs/036-tag-admin-scale/contracts/screen-api.md §1）。
+        `setKind` は `kindId` の種類を付け、`clearKind` は種類を外す。どちらも仮のタグを確定しない。
+        すでにその種類のタグ（`clearKind` では種類の無いタグ）は `notApplicableIds` に入る。
+        `kindId` の無い `setKind` と、`kindId` を付けた他の `action` は 400 `invalid_request`、
+        無い種類の `setKind` は何も変えずに 404 `not_found` / `tag_kind_not_found`
+        （specs/051-tag-kinds/contracts/screen-api.md）。
       requestBody:
         required: true
         content:
@@ -2761,6 +2781,8 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/tags/impact:
     post:
@@ -2788,6 +2810,89 @@ paths:
           $ref: "#/components/responses/InvalidRequest"
         "403":
           $ref: "#/components/responses/Forbidden"
+
+  /api/tag-kinds:
+    get:
+      operationId: listTagKinds
+      summary: タグの種類を一覧する
+      description: すべての種類を id の順に返す（specs/051-tag-kinds/contracts/screen-api.md）。
+      responses:
+        "200":
+          description: 種類の一覧
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagKindList"
+    post:
+      operationId: createTagKind
+      summary: タグの種類を1件作る
+      description: |
+        名前はタグの名前と同じ規則で整え、種類どうしでだけ一意にする（specs/051-tag-kinds/research.md R-6）。
+        規則に合わなければ 400 `invalid_request` と `tag_name_*`、別の種類が同じ名前なら
+        409 `conflict` / `tag_kind_name_taken` で、何も変えない。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagKindNameRequest"
+      responses:
+        "201":
+          description: 作成した種類
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagKind"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/tag-kinds/{id}:
+    patch:
+      operationId: renameTagKind
+      summary: タグの種類の名前を書き換える
+      description: |
+        今と同じ名前なら何も変えずに今の状態を返す。無い id は 404 `not_found` / `tag_kind_not_found`、
+        別の種類が同じ名前なら 409 `conflict` / `tag_kind_name_taken`。
+      parameters:
+        - $ref: "#/components/parameters/TagKindId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagKindNameRequest"
+      responses:
+        "200":
+          description: 更新後の種類
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TagKind"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+    delete:
+      operationId: deleteTagKind
+      summary: タグの種類を1件削除する
+      description: その種類のタグは残り、種類なしになる。無い id は 404 `not_found` / `tag_kind_not_found`。
+      parameters:
+        - $ref: "#/components/parameters/TagKindId"
+      responses:
+        "204":
+          description: 削除した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
 
   /api/people:
     get:
@@ -4563,6 +4668,19 @@ components:
         type: integer
         minimum: 0
         maximum: 360000
+    TagKindFilter:
+      name: tagKind
+      in: query
+      description: |
+        タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
+        持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
+        実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
+        `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
+        （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
     MediaFolderId:
       name: id
       in: path
@@ -4649,6 +4767,15 @@ components:
       in: path
       required: true
       description: タグの識別子
+      schema:
+        type: integer
+        format: int64
+        minimum: 1
+    TagKindId:
+      name: id
+      in: path
+      required: true
+      description: タグの種類の識別子
       schema:
         type: integer
         format: int64
@@ -5425,7 +5552,7 @@ components:
 
     WorkInfoFetch:
       type: object
-      required: [fetchId, expiresAt, tags]
+      required: [fetchId, expiresAt, tags, dates, people, organizations, urls, externalIds]
       additionalProperties: false
       description: メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8）
       properties:
@@ -5444,11 +5571,126 @@ components:
           description: 取得したタグの名前。空でもよい
           items:
             type: string
+        code:
+          type: string
+          description: 前後の空白を除いた品番。プラグインが返さなければ無い。規則に外れても残し、反映が飛ばす
+        description:
+          type: string
+          description: 前後の空白を除いた説明。プラグインが返さなければ無い
+        dates:
+          type: array
+          description: 種類の順（release・recorded・published）。無ければ []
+          items:
+            $ref: "#/components/schemas/WorkInfoFetchedDate"
+        people:
+          type: array
+          description: 役割の順、同じ役割の中は取得した順。無ければ []
+          items:
+            $ref: "#/components/schemas/WorkInfoFetchedPerson"
+        organizations:
+          type: array
+          description: 役割の順、同じ役割の中は取得した順。無ければ []
+          items:
+            $ref: "#/components/schemas/WorkInfoFetchedOrganization"
+        urls:
+          type: array
+          description: 取得した順。無ければ []
+          items:
+            type: string
+        externalIds:
+          type: array
+          description: 動画の外部 ID。取得した順。無ければ []
+          items:
+            $ref: "#/components/schemas/ExternalId"
+
+    WorkInfoFetchedDate:
+      type: object
+      required: [kind, date]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/WorkDateKind"
+        date:
+          type: string
+          description: プラグインが返した日付。形が規則に外れても残し、反映が飛ばす
+
+    WorkInfoMatchState:
+      type: string
+      description: |
+        取得した人物・団体の照合の答え。existing は既存の実体 1 つ、new は何にも当たらず反映が作る、
+        ambiguous は複数に当たり反映が飛ばす（specs/052-plugin-work-info-fields/research.md R-3）
+      enum: [existing, new, ambiguous]
+
+    WorkInfoMatch:
+      type: object
+      required: [state]
+      additionalProperties: false
+      properties:
+        state:
+          $ref: "#/components/schemas/WorkInfoMatchState"
+        id:
+          type: integer
+          format: int64
+          description: state が existing のときだけ。一致した実体
+        name:
+          type: string
+          description: state が existing のときだけ。一致した実体の今の名前
+
+    WorkInfoFetchedPerson:
+      type: object
+      required: [role, name, externalIds, match]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkPersonRole"
+        name:
+          type: string
+          description: プラグインが返した名前
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        match:
+          $ref: "#/components/schemas/WorkInfoMatch"
+
+    WorkInfoFetchedOrganization:
+      type: object
+      required: [role, name, externalIds, match]
+      additionalProperties: false
+      properties:
+        role:
+          $ref: "#/components/schemas/WorkOrganizationRole"
+        name:
+          type: string
+          description: プラグインが返した名前
+        externalIds:
+          type: array
+          items:
+            $ref: "#/components/schemas/ExternalId"
+        match:
+          $ref: "#/components/schemas/WorkInfoMatch"
 
     WorkInfoField:
       type: string
-      description: 動画に反映できる取得の結果の項目
-      enum: [title, tags]
+      description: |
+        動画に反映できる取得の結果の項目。比較の行の順
+        （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）
+      enum:
+        - title
+        - tags
+        - code
+        - description
+        - dates.release
+        - dates.recorded
+        - dates.published
+        - people.performer
+        - people.director
+        - people.photographer
+        - people.streamer
+        - organizations.maker
+        - organizations.label
+        - urls
+        - externalIds
 
     ApplyWorkInfoFetchRequest:
       type: object
@@ -5476,9 +5718,29 @@ components:
         reason:
           $ref: "#/components/schemas/SkippedTagReason"
 
+    SkippedWorkInfoReason:
+      type: string
+      description: |
+        反映で飛ばした理由。invalid は項目の規則に合わない値、too_many は保存済みの件の後に数えて上限を超える件、
+        ambiguous は複数の実体に当たった人物・団体
+      enum: [invalid, too_many, ambiguous]
+
+    SkippedWorkInfoValue:
+      type: object
+      required: [field, value, reason]
+      additionalProperties: false
+      properties:
+        field:
+          $ref: "#/components/schemas/WorkInfoField"
+        value:
+          type: string
+          description: "比較が見せた値（日付、URL、名前、`source: value`、説明は先頭 100 文字）"
+        reason:
+          $ref: "#/components/schemas/SkippedWorkInfoReason"
+
     WorkInfoFetchApplied:
       type: object
-      required: [video, skippedTags]
+      required: [video, skippedTags, skipped]
       additionalProperties: false
       properties:
         video:
@@ -5488,6 +5750,11 @@ components:
           description: 付けなかったタグの名前。取得の結果の順
           items:
             $ref: "#/components/schemas/SkippedTag"
+        skipped:
+          type: array
+          description: 題名とタグ以外の選んだ項目のうち反映で飛ばした値。項目の順、項目の中は取得した順
+          items:
+            $ref: "#/components/schemas/SkippedWorkInfoValue"
 
     ThumbnailEditState:
       type: string
@@ -5651,7 +5918,7 @@ components:
 
     TagRef:
       type: object
-      required: [id, name, tentative]
+      required: [id, name, tentative, kind]
       additionalProperties: false
       description: 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
       properties:
@@ -5663,10 +5930,15 @@ components:
         tentative:
           type: boolean
           description: 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0）
+        kind:
+          anyOf:
+            - $ref: "#/components/schemas/TagKindRef"
+            - type: "null"
+          description: タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
 
     VideoTag:
       type: object
-      required: [id, name, manual, fromFolder, tentative]
+      required: [id, name, manual, fromFolder, tentative, kind]
       additionalProperties: false
       description: |
         動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
@@ -5692,10 +5964,15 @@ components:
           description: |
             自動タグ付けが確率の中間の帯で仮に付け、所有者がまだ確定していない付与である。真のときだけ
             返す。フォルダ名からも付いていれば返さない（docs/design-docs/auto-tagging.md）
+        kind:
+          anyOf:
+            - $ref: "#/components/schemas/TagKindRef"
+            - type: "null"
+          description: タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
 
     Tag:
       type: object
-      required: [id, name, synonyms, videoCount, tentative, createdAt]
+      required: [id, name, synonyms, videoCount, tentative, createdAt, kind]
       additionalProperties: false
       description: 管理画面と候補に出す1件（contracts/tags-api.md §1）。
       properties:
@@ -5719,6 +5996,11 @@ components:
           type: string
           format: date-time
           description: タグを作った時刻（秒の精度。specs/036-tag-admin-scale/contracts/screen-api.md §0）
+        kind:
+          anyOf:
+            - $ref: "#/components/schemas/TagKindRef"
+            - type: "null"
+          description: タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
 
     TagList:
       type: object
@@ -5731,7 +6013,7 @@ components:
             $ref: "#/components/schemas/Tag"
         total:
           type: integer
-          description: 条件（`q`・`tentative`・`unused`）に合うタグの数。ページングとは独立に返る
+          description: 条件（`q`・`tentative`・`unused`・`kind`）に合うタグの数。ページングとは独立に返る
         totalAll:
           type: integer
           description: 全部のタグの数。ページングとは独立に返る
@@ -5741,9 +6023,60 @@ components:
         exact:
           $ref: "#/components/schemas/Tag"
           description: |
-            前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused` にも
+            前後の空白を落とした `q` と、元の名前かシノニムの綴りが完全に一致し、`tentative`・`unused`・`kind` にも
             合うタグ。`limit` を付け `cursor` の無い要求で、`q` が空でなく該当があるときだけ入る。
             `items` に入るとは限らない（`items` は部分一致を `sort` の順に並べた 1 ページのため）
+
+    TagKindRef:
+      type: object
+      required: [id, name]
+      additionalProperties: false
+      description: タグの種類の id と名前（specs/051-tag-kinds/research.md R-4）。
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+
+    TagKind:
+      type: object
+      required: [id, name, tagCount, createdAt]
+      additionalProperties: false
+      description: 種類の一覧の1件（specs/051-tag-kinds/contracts/screen-api.md）。
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        tagCount:
+          type: integer
+          description: この種類のタグの数。仮のタグも数える
+        createdAt:
+          type: string
+          format: date-time
+          description: 種類を作った時刻（秒の精度）
+
+    TagKindList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          description: すべての種類。id の順。画面は名前の自然順に並べ直す
+          items:
+            $ref: "#/components/schemas/TagKind"
+
+    TagKindNameRequest:
+      type: object
+      required: [name]
+      additionalProperties: false
+      properties:
+        name:
+          type: string
+          minLength: 1
 
     TagSort:
       type: string
@@ -5824,7 +6157,12 @@ components:
       properties:
         action:
           type: string
-          enum: [confirm, reject, delete]
+          enum: [confirm, reject, delete, setKind, clearKind]
+        kindId:
+          type: integer
+          format: int64
+          minimum: 1
+          description: "`setKind` で付ける種類。`setKind` だけが持つ"
         ids:
           type: array
           minItems: 1
@@ -8340,3 +8678,5 @@ components:
         - network_error
         - memory_exceeded
         - output_too_large
+        - tag_kind_not_found
+        - tag_kind_name_taken

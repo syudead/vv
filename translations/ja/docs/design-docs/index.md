@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: ad1b7bf24ec6f31f10c958330264a1fc5b98f0b04a2c121cadb7961abf1d290d
+sourceHash: 6d261e65cde38b94072a017ab652e1426c733669e9876b2ae7a0a3f8d47bcbe7
 ---
 
 # 設計文書 {#design-documents}
@@ -69,4 +69,6 @@ sourceHash: ad1b7bf24ec6f31f10c958330264a1fc5b98f0b04a2c121cadb7961abf1d290d
 - [任意の動画とグループのグループ (経路を持つグループのページ、New group、Add to group、動画のページのグループの文脈): UI](../../specs/048-groups/ui-design.md)
 - [作品情報プラグイン (設定の節、承認の確認、設定の値、取得の入口と比較を持つダイアログ): UI](../../specs/049-work-info-plugins/ui-design.md)
 - [ドラッグ&ドロップで並べ替え、グループにし、統合し、まとめる (ドロップの表示、ドロップのメニュー、新しいグループの名前欄、取り消しのトースト): UI](../../specs/050-drag-organize/ui-design.md)
+- [タグの種類 (タグの行の種類のラベル、種類の絞り込み、選択バーの Set kind、Kinds タブ、ライブラリのタグの種類の絞り込み): UI](../../specs/051-tag-kinds/ui-design.md)
+- [作品情報プラグインからの作品の詳細 (比較の作品の詳細の行と `New` と `Not linked` の印、結果のステップの除かれた値): UI](../../specs/052-plugin-work-info-fields/ui-design.md)
 - [保存した条件に中身が従うスマートフォルダ (Save as smart folder、スマートフォルダのダイアログ、条件の行を持つカードとページ、動画のページのフォルダの行): UI](../../specs/052-smart-folders/ui-design.md)
