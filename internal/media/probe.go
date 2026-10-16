@@ -8,6 +8,7 @@ import (
 	"math"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -38,8 +39,12 @@ const probeCommand = "ffprobe"
 // 保存したライブ変換用の解析情報が、変換で開いたファイルと同じ内容かを比べる鍵になる
 // （specs/018-live-transcode-seek/data-model.md §4）。ffprobe の後にも取り直し、
 // 途中で差し替わっていたら解析情報を持たせない（stampProbe）。
+//
+// TS の録画（.ts・.m2ts・.mts）は ffprobe の後に SI を読み、放送局名と番組名を
+// MediaInfo.Broadcast に入れる（readBroadcast）。SI の読み取りは probeTimeout と別の
+// 自分の期限で動き、読めなければ名前を省くだけである（specs/056-media-info/research.md R-4）。
 func Probe(ctx context.Context, path string) (domain.Probe, error) {
-	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
 
 	info, err := os.Stat(path)
@@ -48,14 +53,14 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 			fmt.Errorf("could not check the file to probe (%s): %w", path, err))
 	}
 
-	output, err := command(ctx, probeCommand, probeArgs(path)...).Output()
+	output, err := command(probeCtx, probeCommand, importProbeArgs(path)...).Output()
 	if err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorProbeFailed, fmt.Errorf(
 				"%s failed (%s): %s", probeCommand, path, firstLine(exitErr.Stderr)))
 		}
-		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if errors.Is(probeCtx.Err(), context.DeadlineExceeded) {
 			// 1件の上限（probeTimeout）に達した。壊れたファイルとして扱う。
 			return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorProbeFailed,
 				fmt.Errorf("%s timed out (%s): %w", probeCommand, path, err))
@@ -68,6 +73,9 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	if err != nil {
 		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorInvalidMetadata,
 			fmt.Errorf("could not interpret the %s output (%s): %w", probeCommand, path, err))
+	}
+	if probe.Media != nil && isTransportStreamPath(path) {
+		probe.Media.Broadcast = readBroadcast(ctx, path, probe.DurationMs)
 	}
 	after, err := os.Stat(path)
 	if err != nil {
@@ -82,11 +90,14 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 // 前後で大きさか更新時刻が違えば、ffprobe が読んだ内容は前の印のファイルと同じとは
 // 限らない。その印で保存すると、同じ印を持つ別の所在の変換に別の内容の解析情報が
 // 使われるので、ライブ変換用の解析情報を持たせない（行を書かず、変換の要求時に
-// その場で解析させる）。索引の値はこれまでどおり反映する。
+// その場で解析させる）。メディア情報も同じ理由で持たせない。行が無い動画は
+// 再解析の対象になり、混ざった内容の行が今の版として残り続けることが無い
+// （specs/056-media-info/plan.md「How it works」3・4）。索引の値はこれまでどおり反映する。
 func stampProbe(probe domain.Probe, before, after domain.FileStamp) domain.Probe {
 	probe.Source = before
 	if before != after {
 		probe.Transcode = nil
+		probe.Media = nil
 	}
 	return probe
 }
@@ -103,18 +114,46 @@ func probeArgs(path string) []string {
 	}
 }
 
+// importProbeArgs は取り込みの解析の引数である。probeArgs にチャプターを足し、MPEG-TS
+// だけ長く読む（specs/056-media-info/research.md R-2）。ライブ変換の要求時の解析は
+// 変換の開始を待たせないよう、probeArgs のままにする。
+func importProbeArgs(path string) []string {
+	args := []string{"-show_chapters"}
+	if isTransportStreamPath(path) {
+		args = append(args, transportStreamProbeArgs...)
+	}
+	return append(args, probeArgs(path)...)
+}
+
+// transportStreamProbeArgs は TS を 30 秒・100 MiB まで読む上限である。既定の 5 秒・5 MB では
+// 録画の後ろから始まる音声や字幕の stream を見落とす。
+var transportStreamProbeArgs = []string{"-analyzeduration", "30M", "-probesize", "100M"}
+
+// isTransportStreamPath は path が MPEG-TS の拡張子（.ts・.m2ts・.mts）かを返す。
+func isTransportStreamPath(path string) bool {
+	switch strings.ToLower(filepath.Ext(path)) {
+	case ".ts", ".m2ts", ".mts":
+		return true
+	}
+	return false
+}
+
 // probeSideData は stream の side_data_list の 1 件である。
 type probeSideData struct {
-	SideDataType string  `json:"side_data_type"`
-	Rotation     float64 `json:"rotation"`
+	SideDataType string    `json:"side_data_type"`
+	Rotation     float64   `json:"rotation"`
+	Projection   probeText `json:"projection"`
+	Type         probeText `json:"type"`
 }
 
 // probeOutput は ffprobe の JSON のうち、取り出す部分だけを写す。
 type probeOutput struct {
-	Streams []probeStream `json:"streams"`
-	Format  struct {
-		Duration   string `json:"duration"`
-		FormatName string `json:"format_name"`
+	Streams  []probeStream  `json:"streams"`
+	Chapters []probeChapter `json:"chapters"`
+	Format   struct {
+		Duration   string    `json:"duration"`
+		FormatName string    `json:"format_name"`
+		Tags       probeTags `json:"tags"`
 	} `json:"format"`
 }
 
@@ -134,11 +173,19 @@ type probeStream struct {
 	SampleAspectRatio string `json:"sample_aspect_ratio"`
 	SampleRate        string `json:"sample_rate"`
 	Channels          int    `json:"channels"`
-	Tags              struct {
-		Rotate string `json:"rotate"`
-	} `json:"tags"`
+	ChannelLayout     string `json:"channel_layout"`
+	CodecTag          string `json:"codec_tag_string"`
+	ColorTransfer     string `json:"color_transfer"`
+	FieldOrder        string `json:"field_order"`
+	BitRate           string `json:"bit_rate"`
+	ClosedCaptions    int    `json:"closed_captions"`
+	// Tags は stream の tags。鍵は小文字にして持つ（get）。
+	Tags         probeTags       `json:"tags"`
 	SideDataList []probeSideData `json:"side_data_list"`
 	Disposition  struct {
+		Default         int `json:"default"`
+		Forced          int `json:"forced"`
+		HearingImpaired int `json:"hearing_impaired"`
 		AttachedPicture int `json:"attached_pic"`
 	} `json:"disposition"`
 }
@@ -194,7 +241,7 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 				// 90 度回転の印を付けていることが多く、そのままでは横長に見えてしまう。
 				probe.Width, probe.Height = stream.Width, stream.Height
 				rotated := false
-				if rotation := streamRotation(stream.Tags.Rotate, stream.SideDataList); rotation == 90 || rotation == 270 {
+				if rotation := streamRotation(stream.Tags.get("rotate"), stream.SideDataList); rotation == 90 || rotation == 270 {
 					probe.Width, probe.Height = stream.Height, stream.Width
 					rotated = true
 				}
@@ -214,6 +261,7 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 	if videoFound && transcode.Video.Width > 0 && transcode.Video.Height > 0 {
 		probe.Transcode = &transcode
 	}
+	probe.Media = parseMediaInfo(parsed, probe.DurationMs)
 
 	return probe, nil
 }
@@ -232,7 +280,7 @@ func transcodeVideo(stream probeStream) domain.TranscodeVideo {
 		Height:           stream.Height,
 		SampleAspectNum:  sampleAspectNum,
 		SampleAspectDen:  sampleAspectDen,
-		Rotation:         streamRotation(stream.Tags.Rotate, stream.SideDataList),
+		Rotation:         streamRotation(stream.Tags.get("rotate"), stream.SideDataList),
 		FPS:              parseFrameRate(stream.AverageFrameRate),
 		RealFPS:          parseFrameRate(stream.RealFrameRate),
 	}

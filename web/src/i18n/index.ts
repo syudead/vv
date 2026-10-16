@@ -3,6 +3,8 @@ export { errorText, probeErrorText, scanErrorText } from "./errors";
 export {
   formatDate,
   formatDateTime,
+  formatDecimal,
+  formatLanguage,
   formatMonth,
   formatMonthDay,
   formatNumber,

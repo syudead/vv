@@ -18,8 +18,14 @@ const unavailableRetryMs = 5000;
 
 interface PreviewOptions {
   durationMs: number;
-  /** Video.seekThumbnailUrl。スプライトの配置情報を返す。 */
-  thumbnailUrl: string;
+  /**
+   * Video.seekThumbnailUrl。スプライトの配置情報を返す。無ければ枠もスプライトの取得も無い、
+   * 取得できなかったときの形（時刻の pill だけ）で出す（チャプターのある動画、
+   * specs/056-media-info/ui-design.md「Seek preview title」）。
+   */
+  thumbnailUrl: string | undefined;
+  /** 位置のチャプターのタイトル。時刻の上の行に出す。チャプターの外は undefined。 */
+  chapterTitleAt?: (positionMs: number) => string | undefined;
   fetchSprite?: (url: string, signal: AbortSignal) => Promise<SeekThumbnailSprite>;
   fetchSheet?: (url: string, signal: AbortSignal) => Promise<Blob>;
 }
@@ -67,9 +73,14 @@ export function attachSeekPreview(
   frame.className = "vv-seek-preview-frame";
   const image = document.createElement("div");
   image.className = "vv-seek-preview-image";
+  // 時刻の pill。チャプターのタイトルの行（無ければ空）を時刻の上に置く。
+  const pill = document.createElement("span");
+  pill.className = "vv-seek-preview-time";
+  const title = document.createElement("span");
+  title.className = "vv-seek-preview-title";
   const time = document.createElement("span");
-  time.className = "vv-seek-preview-time";
-  frame.append(image, time);
+  pill.append(title, time);
+  frame.append(image, pill);
   preview.append(frame);
   progress.append(preview);
 
@@ -100,6 +111,11 @@ export function attachSeekPreview(
   // その完了を待つ。
   const render = () => {
     if (!visible) return;
+    const spriteUrl = options.thumbnailUrl;
+    if (spriteUrl === undefined) {
+      setState("unavailable");
+      return;
+    }
     if (sprite === null) {
       activeSheet = null;
       clearImage();
@@ -109,7 +125,7 @@ export function attachSeekPreview(
         setState("unavailable");
       } else {
         setState("loading");
-        loadSprite();
+        loadSprite(spriteUrl);
       }
       return;
     }
@@ -144,10 +160,10 @@ export function attachSeekPreview(
     setState("ready");
   };
 
-  const loadSprite = () => {
+  const loadSprite = (spriteUrl: string) => {
     const controller = new AbortController();
     spriteRequest = controller;
-    fetchSprite(options.thumbnailUrl, controller.signal)
+    fetchSprite(spriteUrl, controller.signal)
       .then((loaded) => {
         if (controller.signal.aborted || detached) return;
         spriteRequest = null;
@@ -209,6 +225,7 @@ export function attachSeekPreview(
     );
     preview.style.left = `${String(target.leftPx)}px`;
     time.textContent = formatDuration(target.positionMs);
+    title.textContent = options.chapterTitleAt?.(target.positionMs) ?? "";
     positionMs = target.positionMs;
     render();
   };

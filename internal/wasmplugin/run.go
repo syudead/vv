@@ -52,6 +52,9 @@ func (r *Runtime) Run(ctx context.Context, digest string, module []byte, req dom
 	if err == nil {
 		result, err = domain.ParseWorkInfoResponse(req.Operation, output)
 	}
+	if err == nil && req.Operation == domain.WorkInfoFetch {
+		result.CoverImage = session.coverImage(deadline, result.WorkInfo.CoverURL)
+	}
 	if err = session.outcome(err); err != nil {
 		return domain.WorkInfoRunResult{}, err
 	}

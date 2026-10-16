@@ -49,6 +49,8 @@ type WorkInfoPlugins interface {
 	// ApplyWorkInfoFetch は取得の結果 fetchID のうち fields の項目を動画 videoID に反映する。
 	// domain.ErrWorkInfoApplyInvalid・domain.ErrNotFound・domain.ErrWorkInfoFetchStale を返しうる。
 	ApplyWorkInfoFetch(ctx context.Context, videoID int64, fetchID string, fields []domain.WorkInfoField) (domain.WorkInfoApplied, error)
+	// WorkInfoFetchCover は動画 videoID の取得の結果 fetchID のカバー画像を返す。無ければ domain.ErrNotFound。
+	WorkInfoFetchCover(videoID int64, fetchID string) (domain.WorkInfoCover, error)
 }
 
 // workInfoPluginsConfigured は登録がつながっているかを確かめ、無ければ 500 を書いて偽を返す。

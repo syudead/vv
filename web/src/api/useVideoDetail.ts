@@ -142,6 +142,16 @@ function withWorkInfoOf(saved: Video, current: Video | undefined): Video {
 }
 
 /**
+ * withMediaInfoOf は、`mediaInfo` を載せない変更の応答 saved に、手元の動画 current の追加の
+ * 情報を戻す。追加の情報は `GET /api/videos/{id}` にだけ載り（specs/056-media-info/research.md
+ * R-6）、表示名やサムネイルの変更では変わらない。応答が持つとき、手元に無いときは saved のまま。
+ */
+function withMediaInfoOf(saved: Video, current: Video | undefined): Video {
+  if (saved.mediaInfo !== undefined || current?.mediaInfo === undefined) return saved;
+  return { ...saved, mediaInfo: current.mediaInfo };
+}
+
+/**
  * useVideoDetail は動画 1 件を取得し、その動画が変わったという知らせを受けたら
  * 取り直す。一定間隔では問い合わせない。
  *
@@ -164,6 +174,7 @@ function withWorkInfoOf(saved: Video, current: Video | undefined): Video {
  *   `keep` なら、応答に無い作品情報は手元の値を残す（そのまま置くと情報欄から作品情報が消える）。
  *   `refetch` なら手元の値を残さず、差し替えた後に取り直す。束から外した動画は束の作品情報から
  *   固有の作品情報に戻るので、手元の値を残すと別の作品情報を出し、詳細の保存で上書きしかねない。
+ * - 応答は `mediaInfo` も載せないので、手元の追加の情報をいつも残す（withMediaInfoOf）。
  * - 別の動画の応答は捨てる。
  * - 動画を開いたグループ（`group`）があるときは、応答のグループではなく手元のグループを残す
  *   （withGroupOf）。
@@ -318,11 +329,13 @@ export function useVideoDetail(
         controller = null;
         settle();
       }
+      const grouped = withMediaInfoOf(
+        withGroupOf(saved, current, contextRef.current),
+        current,
+      );
       const video = withFavoriteSince(
         withVisibilitySince(
-          workInfo === "keep"
-            ? withWorkInfoOf(withGroupOf(saved, current, contextRef.current), current)
-            : withGroupOf(saved, current, contextRef.current),
+          workInfo === "keep" ? withWorkInfoOf(grouped, current) : grouped,
           mark.visibility,
         ),
         mark.favorite,
