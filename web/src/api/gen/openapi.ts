@@ -205,7 +205,9 @@ export interface paths {
          *     一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
          *     だけが入る。並びは決めない。「すべて選択」用
          *     （specs/027-partial-group-search/contracts/library-api.md §2）。
-         *     グループの項目は `groups` にも、フォルダと全メンバーの id として入る。
+         *     グループの項目は `groups` にも、フォルダと全メンバーの id として入る。スマートフォルダの
+         *     項目は `smartFolderIds` に入り、その動画は `ids` に入らない（specs/052-smart-folders/data-model.md
+         *     「Library items」）。
          *
          *     `favorite` が true なら、項目ごとに自分のお気に入りで判定する（動画の項目は動画、
          *     グループの項目はグループ）。お気に入りでないグループに属するお気に入りの動画は
@@ -2110,8 +2112,9 @@ export interface paths {
         get?: never;
         /**
          * 動画とグループのお気に入りを付け外しする
-         * @description 所有者だけ。`videoIds` の動画と `groupIds` のグループのお気に入りを `favorite` にそろえる。
-         *     `videoIds` と `groupIds` の合計（重複は 1 つに数える）が 1 以上 20000 以下でなければ 400
+         * @description 所有者だけ。`videoIds` の動画、`groupIds` のグループと `smartFolderIds` のスマートフォルダの
+         *     お気に入りを `favorite` にそろえる。無いスマートフォルダの id は数えない。
+         *     `videoIds`・`groupIds`・`smartFolderIds` の合計（重複は 1 つに数える）が 1 以上 20000 以下でなければ 400
          *     `too_many_videos`（`POST /api/video-tags` と同じ上限）で、何も変えない。ライブラリに無い
          *     動画の id と無いグループの id は誤りにせず数えない。既に同じ状態のものは誤りにせず数え、
          *     付いているものに付けてもお気に入りにした日時は変えない。`groupIds` にグループを入れても
@@ -2202,8 +2205,10 @@ export interface paths {
         put?: never;
         /**
          * プレイリストの末尾に動画とグループを足す
-         * @description 所有者だけ。`videoIds` の動画、次に `groupIds` のグループを要求の順で末尾に足す
-         *     （specs/044-playlists/research.md R-5、specs/048-groups/research.md R-10）。ライブラリに無い
+         * @description 所有者だけ。`videoIds` の動画、次に `groupIds` のグループ、次に `smartFolderIds` のスマート
+         *     フォルダを要求の順で末尾に足す（specs/044-playlists/research.md R-5、
+         *     specs/048-groups/research.md R-10、specs/052-smart-folders/contracts/screen-api.md）。無い
+         *     スマートフォルダの id は数えず、スマートフォルダの項目はフォルダを消すと消える。ライブラリに無い
          *     動画の id と無いグループの id はどちらの数にも入らず、重複は 1 度だけ数える。既にプレイリストに
          *     あるものは `existing` に数え、何も変えない。グループの項目はグループの解散で消える。
          *     両方が空なら 400 `invalid_request`、重複を除いた合計が 20000 を超えれば 400
@@ -2714,6 +2719,123 @@ export interface paths {
          *     `invalid_request` で、何も変えない。グループが無ければ 404 `not_found`。
          */
         post: operations["tagGroup"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/smart-folders": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 見る人に見せるスマートフォルダを親の id とともに返す
+         * @description 親を選ぶ欄とフォルダの木が読む一覧（specs/052-smart-folders/contracts/screen-api.md）。
+         *     見る人に見せるフォルダを、どの深さのものも自然な名前の順（同じなら id の順）に、ページに
+         *     分けずに返す。所有者にはすべてのフォルダを、ゲストには再生順が空でないフォルダだけを返す
+         *     （specs/052-smart-folders/research.md R-8）。`favorite` は所有者の応答にだけ入る。
+         */
+        get: operations["listSmartFolders"];
+        put?: never;
+        /**
+         * スマートフォルダを作る
+         * @description 所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）で、グループと同じ規則である。
+         *     `sort` を省けば `addedDesc`、`parentId` を省けば一番上に作る。`rule` が条件の規則に合わないか
+         *     `sort` が `random` なら 400 `invalid_smart_rule`、名前が空か長すぎれば 400 `invalid_request`、
+         *     `parentId` のフォルダが無ければ 404 `smart_folder_not_found` で、どれも何も作らない。`rule` が
+         *     今無いタグ・タグの種類・人物・団体を名指しても受け付け、`getSmartFolder` の
+         *     `settings.missing` に返す（specs/052-smart-folders/contracts/screen-api.md「Statuses」）。
+         */
+        post: operations["createSmartFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/smart-folders/cards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 画面に出たスマートフォルダのカードの値を返す
+         * @description `ids` のフォルダのカードの値を、`ids` の順に返す（specs/052-smart-folders/data-model.md
+         *     「Cards read」）。値はどれも、フォルダの一致する動画（グループにまとめず、動画ごとに経路の
+         *     どの条件にも当たる見る人に見せる動画）から作る（research.md R-14）。無いフォルダと、ゲストに
+         *     見せないフォルダ（再生順が空）の id は飛ばし、同じ id は 1 回だけ返す。`ids` が無いか空か
+         *     整数でないか、61 件以上なら 400 `invalid_request`。ゲストの応答では `watchedCount`・
+         *     `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空にする。
+         */
+        get: operations["listSmartFolderCards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/smart-folders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * スマートフォルダ 1 つと、その祖先と中身の最初のページを返す
+         * @description フォルダのカード（`LibrarySmartFolder`、値は再生順から作る）、祖先（外側から順）、中身の
+         *     最初の 1 ページを返す（specs/052-smart-folders/contracts/screen-api.md）。中身は子フォルダを
+         *     名前の順に要約で先に置き、続けてフォルダと祖先の条件で絞ったライブラリの項目を最大 `limit`
+         *     件、フォルダの並べ順で置く（data-model.md「Contents」）。続きは `listSmartFolderItems` で読む。
+         *     `settings`（条件・並べ順・欠けた参照）は所有者の応答にだけ入る。経路の条件が今無い実体を
+         *     名指せば、中身は子フォルダだけである（research.md R-9）。無いフォルダと、ゲストに見せる動画の
+         *     無いフォルダは 404 `not_found`。
+         */
+        get: operations["getSmartFolder"];
+        put?: never;
+        post?: never;
+        /**
+         * スマートフォルダとその子孫を消す
+         * @description 所有者だけ。フォルダと子孫、それらのお気に入りとプレイリストの項目を消す。動画は変えない
+         *     （specs/052-smart-folders/data-model.md「Edits」）。フォルダが無ければ 404 `not_found`。
+         */
+        delete: operations["deleteSmartFolder"];
+        options?: never;
+        head?: never;
+        /**
+         * スマートフォルダの名前・条件・並べ順・親を変える
+         * @description 所有者だけ。本文に入れた項目だけを変え、少なくとも 1 つを入れる（無ければ 400
+         *     `invalid_request`）。`parentId` が null なら一番上にする。規則と状態は作成と同じで、加えて
+         *     `parentId` がこのフォルダかその子孫なら 409 `smart_folder_cycle` で何も変えない。フォルダが
+         *     無ければ 404 `not_found`。
+         */
+        patch: operations["changeSmartFolder"];
+        trace?: never;
+    };
+    "/api/smart-folders/{id}/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * スマートフォルダの中身の続きのページを返す
+         * @description `getSmartFolder` と同じ中身を、前の応答の `nextCursor` の続きから返す。子フォルダは最初の
+         *     ページにだけ入る。読めないカーソルは 400 `invalid_cursor`。フォルダの扱いは `getSmartFolder`
+         *     と同じで、無いか見せないときは 404 `not_found`。
+         */
+        get: operations["listSmartFolderItems"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -3941,6 +4063,8 @@ export interface components {
             videoIds?: number[];
             /** @description お気に入りを付け外しするグループの id（specs/048-groups/research.md R-10） */
             groupIds?: number[];
+            /** @description お気に入りを付け外しするスマートフォルダの id（specs/052-smart-folders/contracts/screen-api.md） */
+            smartFolderIds?: number[];
             /** @description true でお気に入りにし、false で外す */
             favorite: boolean;
         };
@@ -3952,6 +4076,8 @@ export interface components {
             appliedVideos: number;
             /** @description groupIds のうちいまある異なるグループの数（既に同じ状態だったものを含む） */
             appliedGroups: number;
+            /** @description smartFolderIds のうちいまある異なるスマートフォルダの数（既に同じ状態だったものを含む） */
+            appliedSmartFolders: number;
         };
         /** @description プレイリスト 1 つの要約（specs/044-playlists/contracts/screen-api.md） */
         PlaylistSummary: {
@@ -4003,7 +4129,11 @@ export interface components {
             /** @description 見せる項目を位置の順に並べたもの */
             items: components["schemas"]["PlaylistItem"][];
         };
-        /** @description プレイリストの項目 1 つ。`kind` に応じて `video` か `group` のちょうど一方が入る */
+        /**
+         * @description プレイリストの項目 1 つ。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
+         *     `smartFolder` の値は読んだ時点のフォルダの再生順から作り、再生もその時点の再生順に従う
+         *     （specs/052-smart-folders/contracts/screen-api.md）
+         */
         PlaylistItem: {
             /**
              * Format: int64
@@ -4011,9 +4141,10 @@ export interface components {
              */
             id: number;
             /** @enum {string} */
-            kind: "video" | "group";
+            kind: "video" | "group" | "smartFolder";
             video?: components["schemas"]["Video"];
             group?: components["schemas"]["LibraryGroup"];
+            smartFolder?: components["schemas"]["LibrarySmartFolder"];
         };
         PlaylistName: {
             /** @description プレイリストの名前。サーバーが前後の空白を取り除いてから長さを数える */
@@ -4024,6 +4155,8 @@ export interface components {
             videoIds?: number[];
             /** @description 足すグループの id（`PUT /api/favorites` と同じ形） */
             groupIds?: number[];
+            /** @description 足すスマートフォルダの id（`PUT /api/favorites` と同じ形） */
+            smartFolderIds?: number[];
         };
         PlaylistItemsAdded: {
             /** @description 末尾に足した項目の数 */
@@ -4067,6 +4200,12 @@ export interface components {
              *     （specs/035-favorites/contracts/screen-api.md §3）
              */
             groups?: components["schemas"]["LibraryGroupIds"][];
+            /**
+             * @description 条件に合うスマートフォルダの項目の id。フォルダの動画は ids に入らない。listLibraryIds の
+             *     応答にだけ入り、1 つも無ければ省略される（specs/052-smart-folders/data-model.md
+             *     「Library items」）
+             */
+            smartFolderIds?: number[];
         };
         /** @description GET /api/library/ids のグループの項目 1 件 */
         LibraryGroupIds: {
@@ -4137,12 +4276,18 @@ export interface components {
             /** @description tag のうち存在しなかった id。1つも無ければ省略される */
             missingTagIds?: number[];
         };
-        /** @description ライブラリの項目1件。`kind` に応じて `video` か `group` のちょうど一方が入る */
+        /**
+         * @description ライブラリの項目1件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
+         *     `smartFolder` は一番上のスマートフォルダ（お気に入りのみではお気に入りのフォルダ）の要約で、
+         *     カードの値は `listSmartFolderCards` で読む（specs/052-smart-folders/data-model.md
+         *     「Library items」）
+         */
         LibraryItem: {
             /** @enum {string} */
-            kind: "video" | "group";
+            kind: "video" | "group" | "smartFolder";
             video?: components["schemas"]["Video"];
             group?: components["schemas"]["LibraryGroup"];
+            smartFolder?: components["schemas"]["SmartFolderSummary"];
         };
         /**
          * @description グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
@@ -4396,6 +4541,207 @@ export interface components {
             /** @description 中身かカードが変わったかもしれないスマートフォルダの id。小さい順 */
             ids: number[];
         };
+        /**
+         * @description スマートフォルダの条件（specs/052-smart-folders/data-model.md「smart_folders.rule」）。どの
+         *     項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
+         *     ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
+         */
+        SmartRule: {
+            /** @description 検索欄の入力。所有者の意味で照合する（research.md R-11） */
+            q?: string;
+            /**
+             * @description 視聴状態
+             * @enum {string}
+             */
+            watch?: "unwatched" | "inProgress" | "watched";
+            /** @description ブラウザで再生できる動画だけにする */
+            playable?: boolean;
+            /** @description お気に入りの動画だけにする */
+            favorite?: boolean;
+            /** @description すべてを持つ動画だけにするタグの id（重複なし） */
+            tags?: number[];
+            /**
+             * Format: int64
+             * @description その種類のタグをどれか持つ動画だけにするタグの種類の id
+             */
+            tagKind?: number;
+            /**
+             * Format: int64
+             * @description どの役割でも結び付いた人物の id
+             */
+            person?: number;
+            /**
+             * Format: int64
+             * @description どの役割でも結び付いた団体の id
+             */
+            organization?: number;
+            /** @description 追加からの日数 */
+            addedWithin?: number;
+            /** @description 長さの下限（秒、含む）。`maxDuration` 以下 */
+            minDuration?: number;
+            /** @description 長さの上限（秒、含む） */
+            maxDuration?: number;
+        };
+        /** @description 条件が名指す実体のうち、今は無いもの */
+        SmartRuleRef: {
+            /** @enum {string} */
+            kind: "tag" | "tagKind" | "person" | "organization";
+            /** Format: int64 */
+            id: number;
+        };
+        /**
+         * @description スマートフォルダの要約。ライブラリの項目と中身のページの子フォルダの項目が持ち、カードの値は
+         *     持たない。値は画面が `listSmartFolderCards` で読む（specs/052-smart-folders/research.md R-14）
+         */
+        SmartFolderSummary: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description 親のフォルダの id。一番上のフォルダでは省く
+             */
+            parentId?: number;
+            name: string;
+            /** @description 所有者がフォルダをお気に入りにしたか。所有者の応答にだけ入る */
+            favorite?: boolean;
+        };
+        /** @description GET /api/smart-folders の応答 */
+        SmartFolderList: {
+            /** @description 見る人に見せるフォルダ。自然な名前の順（同じなら id の順） */
+            smartFolders: components["schemas"]["SmartFolderSummary"][];
+        };
+        /**
+         * @description スマートフォルダのカード。値は `LibraryGroup` の同じ名前の欄と同じ意味で、`getSmartFolder` では
+         *     フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る
+         *     （specs/052-smart-folders/data-model.md「Contents」）。ゲストの応答では `watchedCount`・
+         *     `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする
+         */
+        LibrarySmartFolder: {
+            /** Format: int64 */
+            id: number;
+            /**
+             * Format: int64
+             * @description 親のフォルダの id。一番上のフォルダでは省く
+             */
+            parentId?: number;
+            name: string;
+            videoCount: number;
+            /** @description 完了した動画の数。所有者の応答にだけ入る */
+            watchedCount?: number;
+            /**
+             * @description `LibraryGroup.watchState` と同じ決め方。所有者の応答にだけ入る
+             * @enum {string}
+             */
+            watchState?: "unwatched" | "inProgress" | "watched";
+            /**
+             * Format: int64
+             * @description 長さの分かっている動画の合計。1本も分からなければ省く
+             */
+            durationMs?: number;
+            /** Format: int64 */
+            sizeBytes: number;
+            /**
+             * Format: date-time
+             * @description 追加日時の最大。動画が無ければ省く
+             */
+            addedAt?: string;
+            /**
+             * Format: date-time
+             * @description 最後に再生した時刻の最大。無ければ省く
+             */
+            lastPlayedAt?: string;
+            /** @description サムネイル生成済みの動画を並びの順に最大4件 */
+            previews: components["schemas"]["FolderPreview"][];
+            /**
+             * Format: int64
+             * @description 押したときに開く動画（`LibraryGroup.openVideoId` と同じ選び方）。動画が無ければ省く
+             */
+            openVideoId?: number;
+            /** @description 動画のタグの和集合 */
+            tags: components["schemas"]["VideoTag"][];
+            /** @description 所有者がフォルダをお気に入りにしたか。所有者の応答にだけ入る */
+            favorite?: boolean;
+        };
+        /** @description GET /api/smart-folders/cards の応答 */
+        SmartFolderCards: {
+            /** @description 要求の `ids` の順。無いか見せないフォルダは入らない */
+            cards: components["schemas"]["LibrarySmartFolder"][];
+        };
+        /** @description フォルダの条件と並べ順。所有者の応答にだけ入る */
+        SmartFolderSettings: {
+            rule: components["schemas"]["SmartRule"];
+            sort: components["schemas"]["VideoSort"];
+            /** @description このフォルダと祖先の条件が名指す実体のうち今無いもの（外側の祖先から順） */
+            missing: components["schemas"]["SmartRuleRef"][];
+        };
+        /** @description スマートフォルダの中身の項目 1 件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る */
+        SmartFolderItem: {
+            /** @enum {string} */
+            kind: "video" | "group" | "smartFolder";
+            video?: components["schemas"]["Video"];
+            group?: components["schemas"]["LibraryGroup"];
+            smartFolder?: components["schemas"]["SmartFolderSummary"];
+        };
+        /** @description GET /api/smart-folders/{id} の応答 */
+        SmartFolderDetail: {
+            smartFolder: components["schemas"]["LibrarySmartFolder"];
+            settings?: components["schemas"]["SmartFolderSettings"];
+            /** @description 祖先のフォルダ。外側から順で、最後はこのフォルダの親 */
+            trail: components["schemas"]["GroupRef"][];
+            /** @description 中身の最初のページ。子フォルダを名前の順に先に、続けてフォルダの並べ順の項目 */
+            items: components["schemas"]["SmartFolderItem"][];
+            /** @description 続きがあるときだけ入る。`listSmartFolderItems` に渡す */
+            nextCursor?: string;
+        };
+        /** @description GET /api/smart-folders/{id}/items の応答 */
+        SmartFolderItemPage: {
+            items: components["schemas"]["SmartFolderItem"][];
+            /** @description 続きがあるときだけ入る */
+            nextCursor?: string;
+        };
+        /** @description POST /api/smart-folders の本文 */
+        SmartFolderCreate: {
+            /** @description 前後の空白を取り除いて 1〜100 文字 */
+            name: string;
+            rule: components["schemas"]["SmartRule"];
+            sort?: components["schemas"]["VideoSort"];
+            /**
+             * Format: int64
+             * @description 親のフォルダの id。省けば一番上に作る
+             */
+            parentId?: number;
+        };
+        /** @description PATCH /api/smart-folders/{id} の本文。入れた項目だけを変え、少なくとも 1 つを入れる */
+        SmartFolderChange: {
+            /** @description 前後の空白を取り除いて 1〜100 文字 */
+            name?: string;
+            rule?: components["schemas"]["SmartRule"];
+            sort?: components["schemas"]["VideoSort"];
+            /**
+             * Format: int64
+             * @description 親のフォルダの id。null なら一番上にする
+             */
+            parentId?: number | null;
+        };
+        /**
+         * @description 動画を開いたスマートフォルダ（`smartFolder` の問い合わせ）。GET /api/videos/{id} の応答にだけ、
+         *     文脈がスマートフォルダで、その再生順が動画を持つときだけ入る。このとき `group` は入らない。
+         *     位置と本数はフォルダの再生順で数え、ゲストの応答では公開の動画だけで数える
+         *     （specs/052-smart-folders/contracts/screen-api.md）
+         */
+        VideoSmartFolderRef: {
+            /**
+             * Format: int64
+             * @description スマートフォルダの識別子
+             */
+            id: number;
+            /** @description スマートフォルダの名前 */
+            name: string;
+            /** @description フォルダの再生順で何本目か（1 始まり） */
+            position: number;
+            /** @description フォルダの再生順の動画の本数 */
+            count: number;
+        };
         FolderPreview: {
             /** Format: int64 */
             videoId: number;
@@ -4572,6 +4918,7 @@ export interface components {
             location?: components["schemas"]["VideoLocation"];
             folder?: components["schemas"]["VideoFolder"];
             group?: components["schemas"]["VideoGroupRef"];
+            smartFolder?: components["schemas"]["VideoSmartFolderRef"];
             versions?: components["schemas"]["VideoVersionsRef"];
             /**
              * @description 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
@@ -5027,7 +5374,7 @@ export interface components {
              * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "operation_unsupported" | "work_info_fetch_stale";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "operation_unsupported" | "work_info_fetch_stale" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle";
             /** @description 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0） */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -5143,6 +5490,13 @@ export interface components {
          *     答える（specs/048-groups/research.md R-9）
          */
         VideoGroupContext: number;
+        /**
+         * @description 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
+         *     持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
+         *     答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
+         *     （specs/052-smart-folders/contracts/screen-api.md）
+         */
+        VideoSmartFolderContext: number;
         /** @description 動画の識別子 */
         VideoId: number;
         /**
@@ -5193,6 +5547,8 @@ export interface components {
         WorkInfoFetchId: string;
         /** @description グループの識別子 */
         GroupId: number;
+        /** @description スマートフォルダの識別子 */
+        SmartFolderId: number;
         /** @description グループの項目の識別子。動画やグループの id ではない */
         GroupItemId: number;
         /** @description プレイリストの識別子 */
@@ -5664,6 +6020,13 @@ export interface operations {
                  *     答える（specs/048-groups/research.md R-9）
                  */
                 group?: components["parameters"]["VideoGroupContext"];
+                /**
+                 * @description 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
+                 *     持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
+                 *     答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
+                 *     （specs/052-smart-folders/contracts/screen-api.md）
+                 */
+                smartFolder?: components["parameters"]["VideoSmartFolderContext"];
             };
             header?: never;
             path: {
@@ -5696,6 +6059,13 @@ export interface operations {
                  *     答える（specs/048-groups/research.md R-9）
                  */
                 group?: components["parameters"]["VideoGroupContext"];
+                /**
+                 * @description 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
+                 *     持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
+                 *     答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
+                 *     （specs/052-smart-folders/contracts/screen-api.md）
+                 */
+                smartFolder?: components["parameters"]["VideoSmartFolderContext"];
                 /** @description 前の応答の `nextCursor`。省くと先頭から返す */
                 cursor?: string;
                 /** @description 返す件数の上限 */
@@ -5732,6 +6102,13 @@ export interface operations {
                  *     答える（specs/048-groups/research.md R-9）
                  */
                 group?: components["parameters"]["VideoGroupContext"];
+                /**
+                 * @description 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
+                 *     持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
+                 *     答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
+                 *     （specs/052-smart-folders/contracts/screen-api.md）
+                 */
+                smartFolder?: components["parameters"]["VideoSmartFolderContext"];
                 /** @description 返す最初のメンバーの、グループの中の並びの位置（0 始まり） */
                 offset?: number;
                 /** @description 返す本数の上限 */
@@ -9437,6 +9814,189 @@ export interface operations {
             };
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSmartFolders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description スマートフォルダの一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartFolderList"];
+                };
+            };
+        };
+    };
+    createSmartFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmartFolderCreate"];
+            };
+        };
+        responses: {
+            /** @description 作ったスマートフォルダの要約 */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartFolderSummary"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listSmartFolderCards: {
+        parameters: {
+            query: {
+                /** @description カードの値を読むフォルダの id を `,` で区切って並べたもの（1〜60 件） */
+                ids: number[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description カードの値 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartFolderCards"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    getSmartFolder: {
+        parameters: {
+            query?: {
+                /** @description 子フォルダを除く項目の 1 ページの件数 */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description スマートフォルダの識別子 */
+                id: components["parameters"]["SmartFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description スマートフォルダ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartFolderDetail"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteSmartFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description スマートフォルダの識別子 */
+                id: components["parameters"]["SmartFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 消した */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    changeSmartFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description スマートフォルダの識別子 */
+                id: components["parameters"]["SmartFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SmartFolderChange"];
+            };
+        };
+        responses: {
+            /** @description 変えたあとのスマートフォルダの要約 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartFolderSummary"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    listSmartFolderItems: {
+        parameters: {
+            query: {
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                /** @description スマートフォルダの識別子 */
+                id: components["parameters"]["SmartFolderId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 中身 1 ページ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SmartFolderItemPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
             404: components["responses"]["NotFound"];
         };
     };

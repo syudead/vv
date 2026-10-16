@@ -477,6 +477,10 @@ function toLibraryItem(item: components["schemas"]["LibraryItem"]): LibraryItem 
 /**
  * listLibrary はライブラリの一覧を1ページ取得する。項目は動画か、フォルダの
  * グループ1件である（specs/017-folder-groups/contracts/library-api.md §1）。
+ *
+ * 画面がまだ描かないスマートフォルダの項目（specs/052-smart-folders/plan.md「Add smart folders to
+ * the screen API」）は除き、除いた数だけ `total` を減らす。除いてページが空になり続きがあれば、
+ * 項目のあるページか終わりまで続きを読む（空のページを返すと、画面は続きを読まずに止まる）。
  */
 export async function listLibrary(
   params: ListVideosParams = {},
@@ -486,17 +490,22 @@ export async function listLibrary(
   setTagFilter(query, params.tag);
   setCreditFilter(query, params);
   setAddedLengthFilter(query, params);
-  const page = await request<components["schemas"]["LibraryPage"]>(
-    `/api/library?${query.toString()}`,
-    { signal: params.signal },
-  );
-  return {
-    ...page,
-    items: page.items.flatMap((item) => {
+  let skipped = 0;
+  for (;;) {
+    const page = await request<components["schemas"]["LibraryPage"]>(
+      `/api/library?${query.toString()}`,
+      { signal: params.signal },
+    );
+    skipped += page.items.filter((item) => item.kind === "smartFolder").length;
+    const items = page.items.flatMap((item) => {
       const converted = toLibraryItem(item);
       return converted === null ? [] : [converted];
-    }),
-  };
+    });
+    if (items.length > 0 || page.nextCursor === undefined) {
+      return { ...page, items, total: Math.max(0, page.total - skipped) };
+    }
+    query.set("cursor", page.nextCursor);
+  }
 }
 
 /** ListLibraryIdsParams は「すべて選択」用の全件 id の問い合わせ条件である。 */
@@ -594,25 +603,35 @@ export function getGroup(id: number, signal?: AbortSignal): Promise<GroupDetail>
 }
 
 /**
- * groupQuery は動画の読み取りに付ける問い合わせである。`group` は動画を開いたグループの id で、
- * 省けば何も付けない（specs/048-groups/research.md R-9）。
+ * groupQuery は動画の読み取りに付ける問い合わせである。`group` は動画を開いたグループの id、
+ * `smartFolder` は動画を開いたスマートフォルダの id で、省いた方は付けない
+ * （specs/048-groups/research.md R-9、specs/052-smart-folders/contracts/screen-api.md）。
  */
-function groupQuery(params: Record<string, string>, group: number | undefined): string {
+function groupQuery(
+  params: Record<string, string>,
+  group: number | undefined,
+  smartFolder: number | undefined,
+): string {
   const query = new URLSearchParams(params);
   if (group !== undefined) query.set("group", String(group));
+  if (smartFolder !== undefined) query.set("smartFolder", String(smartFolder));
   return query.size === 0 ? "" : `?${query.toString()}`;
 }
 
 /**
  * getVideo は動画1件の詳細を取得する。`group` を渡すと、動画の `group` をそのグループの
- * 再生順で答えさせる（research.md R-9）。
+ * 再生順で答えさせる（research.md R-9）。`smartFolder` を渡すと、`group` が無ければ動画の
+ * `smartFolder` をそのフォルダの再生順で答えさせる。
  */
 export function getVideo(
   id: number,
   signal?: AbortSignal,
   group?: number,
+  smartFolder?: number,
 ): Promise<Video> {
-  return request<Video>(`/api/videos/${id}${groupQuery({}, group)}`, { signal });
+  return request<Video>(`/api/videos/${id}${groupQuery({}, group, smartFolder)}`, {
+    signal,
+  });
 }
 
 /**
@@ -720,21 +739,23 @@ export async function uploadThumbnailImage(
  * getRelatedVideos は動画詳細画面の関連動画を近さの順に 1 ページ取得する。`cursor` を省くと
  * 先頭のページで、次の動画の id とグループも載る。続きは応答の `nextCursor` を渡して読む。
  * `group` は動画を開いたグループの id で、グループ・前後をその再生順で答えさせる（R-9）。
+ * `smartFolder` は動画を開いたスマートフォルダの id で、`group` が無ければその再生順で答えさせる。
  */
 export function getRelatedVideos(
   id: number,
   signal?: AbortSignal,
   cursor?: string,
   group?: number,
+  smartFolder?: number,
 ): Promise<RelatedVideos> {
-  const query = groupQuery(cursor === undefined ? {} : { cursor }, group);
+  const query = groupQuery(cursor === undefined ? {} : { cursor }, group, smartFolder);
   return request<RelatedVideos>(`/api/videos/${String(id)}/related${query}`, { signal });
 }
 
 /**
  * listVideoGroupMembers は動画が属するグループのメンバーを、グループの中の並びで
  * offset 本目（0 始まり）から最大 limit 本取得する。関連動画の group の窓の外を読む。
- * `group` は動画を開いたグループの id で、関連動画の読み取りと同じものを渡す（R-9）。
+ * `group` と `smartFolder` は動画を開いた文脈で、関連動画の読み取りと同じものを渡す（R-9）。
  */
 export function listVideoGroupMembers(
   id: number,
@@ -742,8 +763,13 @@ export function listVideoGroupMembers(
   limit: number,
   signal?: AbortSignal,
   group?: number,
+  smartFolder?: number,
 ): Promise<GroupMemberPage> {
-  const query = groupQuery({ offset: String(offset), limit: String(limit) }, group);
+  const query = groupQuery(
+    { offset: String(offset), limit: String(limit) },
+    group,
+    smartFolder,
+  );
   return request<GroupMemberPage>(`/api/videos/${String(id)}/group-members${query}`, {
     signal,
   });

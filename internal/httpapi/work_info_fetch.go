@@ -162,7 +162,7 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 	// 反映は確定しているので、詳細の一部を読めなくても成功を返す。結果は使い切りで、500 を返すと画面は
 	// 反映できたかを知れず、再送も work_info_fetch_stale になる。読めなかった項目は、確定後に発行した動画の
 	// 知らせで画面が読み直す。
-	video, err := s.videoDetail(r, applied.Video, 0)
+	video, err := s.videoDetail(r, applied.Video, domain.VideoContext{})
 	if err != nil {
 		s.logger.Warn("cannot load part of the video after applying the fetched work information",
 			slog.Int64("video", id), slog.Any("error", err))

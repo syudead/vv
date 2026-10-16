@@ -82,8 +82,10 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	payload := gen.LibraryPage{Items: make([]gen.LibraryItem, 0, len(page.Items)), Total: page.Total}
 	for _, item := range page.Items {
 		if item.SmartFolder != nil {
-			// スマートフォルダの項目（kind smartFolder）は画面の API の作業が応答に載せる
-			// （specs/052-smart-folders/contracts/screen-api.md）。それまでフォルダは作れない。
+			// スマートフォルダの項目は要約だけを載せる。カードの値は画面が listSmartFolderCards で読む
+			// （specs/052-smart-folders/research.md R-14）。
+			folder := toAPISmartFolderSummary(audience, *item.SmartFolder)
+			payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindSmartFolder, SmartFolder: &folder})
 			continue
 		}
 		if item.Video != nil {
@@ -115,7 +117,8 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 // ListLibraryIds は絞り込みに合う項目の動画の id を返す（GET /api/library/ids、
 // 「すべて選択」用。specs/017-folder-groups/contracts/library-api.md §2）。グループの
 // 項目は groups にもグループの id と再生順の動画として書く（specs/035-favorites/contracts/screen-api.md §3、
-// specs/048-groups/contracts/screen-api.md）。
+// specs/048-groups/contracts/screen-api.md）。スマートフォルダの項目は smartFolderIds に書く
+// （specs/052-smart-folders/data-model.md「Library items」）。
 func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params gen.ListLibraryIdsParams) {
 	if s.library == nil {
 		s.internalError(w, "Library queries are not configured.", nil)
@@ -135,7 +138,7 @@ func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params g
 		s.internalError(w, "Could not load the ids.", err)
 		return
 	}
-	s.writeVideoIDs(w, selection.AllVideoIDs(), missingTagIDs, libraryGroupIDs(selection.Groups))
+	s.writeVideoIDs(w, selection.AllVideoIDs(), missingTagIDs, libraryGroupIDs(selection.Groups), selection.SmartFolderIDs)
 }
 
 // libraryGroupIDs はグループの項目を応答の LibraryGroupIds にする。
