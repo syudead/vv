@@ -3,6 +3,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 // 動画ページの追加の情報のまとまり（親 Issue #1227 の受け入れ条件 2 と 4、子 #1252）を、本物の
 // ffprobe の取り込みから実ブラウザまで通す。動画は run-e2e.mjs が generateMediaInfoFixtures で作る
 // 「追加情報動画」の 1 本で、言語の印の違う音声 2 本と、題名・作者・ジャンルの埋め込みのタグを持つ。
+// プレーヤーのチャプター（受け入れ条件 5、子 #1253）は同じフォルダーの「チャプター動画」で確かめる。
 
 interface MediaFolder {
   id: number;
@@ -12,15 +13,17 @@ interface MediaFolder {
 interface Video {
   id: number;
   title: string;
-  mediaInfo?: { audioTracks?: unknown[] };
+  mediaInfo?: { audioTracks?: unknown[]; chapters?: unknown[] };
 }
 
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 const videoTitle = "追加情報動画";
+const chaptersTitle = "チャプター動画";
 
 let folder: MediaFolder | undefined;
 let video: Video | undefined;
+let chaptersVideo: Video | undefined;
 
 async function runScan(request: APIRequestContext) {
   const scan = await request.post("/api/scans", { headers: mutationHeaders, data: {} });
@@ -61,7 +64,9 @@ test.describe.serial("media information", () => {
     const list = await request.get("/api/videos?limit=200");
     const { items } = (await list.json()) as { items: Video[] };
     video = items.find((item) => item.title === videoTitle);
-    if (video === undefined) throw new Error("video not indexed");
+    chaptersVideo = items.find((item) => item.title === chaptersTitle);
+    if (video === undefined || chaptersVideo === undefined)
+      throw new Error("video not indexed");
     // 解析の job が終わり、詳細に mediaInfo が載るまで待つ。一覧の項目には載らない。
     expect(video.mediaInfo).toBeUndefined();
     const id = video.id;
@@ -74,6 +79,16 @@ test.describe.serial("media information", () => {
         { timeout: 60_000 },
       )
       .toBe(2);
+    const chaptersId = chaptersVideo.id;
+    await expect
+      .poll(
+        async () => {
+          const detail = await request.get(`/api/videos/${String(chaptersId)}`);
+          return ((await detail.json()) as Video).mediaInfo?.chapters?.length ?? 0;
+        },
+        { timeout: 60_000 },
+      )
+      .toBe(3);
   });
 
   test.afterAll(async ({ request }) => {
@@ -114,5 +129,72 @@ test.describe.serial("media information", () => {
     expect(technicalBox).not.toBeNull();
     expect(audioBox).not.toBeNull();
     expect(audioBox!.y).toBeGreaterThan(technicalBox!.y);
+  });
+
+  test("チャプターの印にポインターを重ねるとタイトルが出て、メニューで選んだチャプターの先頭から再生する", async ({
+    page,
+  }) => {
+    if (chaptersVideo === undefined) throw new Error("video not indexed");
+    await page.setViewportSize({ width: 1280, height: 820 });
+    await page.goto(`/videos/${String(chaptersVideo.id)}`);
+    // 操作バーは再生を始めてから出る。始めたら止め、止めたままの選択を確かめる。
+    await page.locator(".vjs-big-play-button").click();
+    await expect(page.locator(".video-js")).toHaveClass(/vjs-playing/);
+    await page.locator(".video-js").focus();
+    await page.keyboard.press("Space");
+    await expect(page.locator(".video-js")).toHaveClass(/vjs-paused/);
+
+    // 6 秒の動画で、チャプターは 0・2・4 秒に始まる。3 つ目の終わりは長さで切られる。
+    const marks = page.locator(".vjs-progress-holder .vv-chapter-mark");
+    await expect(marks).toHaveCount(3);
+    await page.locator(".video-js").hover();
+    const holder = await page.locator(".vjs-progress-holder").boundingBox();
+    if (holder === null) throw new Error("seek bar is not visible");
+    const title = page.locator(".vv-seek-preview-title");
+    for (const [index, expected] of [
+      [1, "Chapter 2"],
+      [2, "Ending"],
+    ] as const) {
+      const mark = await marks.nth(index).boundingBox();
+      if (mark === null) throw new Error("chapter mark is not visible");
+      await page.mouse.move(mark.x + mark.width + 2, holder.y + holder.height / 2, {
+        steps: 5,
+      });
+      await expect(title).toHaveText(expected);
+    }
+
+    const button = page.locator(".vjs-control-bar > .vjs-chapters-button");
+    await button.hover();
+    await button.getByRole("button", { name: "Chapters" }).click();
+    await expect(button.getByRole("menuitemradio")).toHaveText([
+      /^0:00 Opening/,
+      /^0:02 Chapter 2/,
+      /^0:04 Ending/,
+    ]);
+    await button.getByRole("menuitemradio", { name: /^0:04 Ending/ }).click();
+    await expect(page.locator(".vjs-current-time-display")).toHaveText("0:04");
+    await expect(page.locator(".video-js")).toHaveClass(/vjs-paused/);
+
+    await page.locator(".video-js").focus();
+    await page.keyboard.press("Space");
+    await expect(page.locator(".video-js")).toHaveClass(/vjs-playing/);
+    await expect(page.locator(".vjs-current-time-display")).toHaveText(/^0:0[4-6]$/);
+
+    // 360px では、チャプター・変換の表示・字幕がそろっても操作バーのボタンが枠の中に収まる
+    // （ui-design.md「Responsive behaviour」）。隣に字幕があり、mkv は変換して再生する。
+    await page.setViewportSize({ width: 360, height: 800 });
+    await page.locator(".video-js").hover();
+    await expect(page.locator(".vjs-control-bar > .vjs-subs-caps-button")).toBeVisible();
+    const overflow = await page.evaluate(() => {
+      const bar = document.querySelector(".vjs-control-bar");
+      if (bar === null) return null;
+      const frame = bar.getBoundingClientRect();
+      return Array.from(bar.querySelectorAll(":scope > .vjs-control, :scope > div"))
+        .filter((child) => (child as HTMLElement).offsetWidth > 0)
+        .filter((child) => !child.classList.contains("vjs-progress-control"))
+        .filter((child) => child.getBoundingClientRect().right > frame.right + 0.5)
+        .map((child) => child.className);
+    });
+    expect(overflow).toEqual([]);
   });
 });
