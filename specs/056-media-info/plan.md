@@ -14,8 +14,9 @@ recording, a small Go reader decodes the station and programme names that
 `ffprobe` cannot. Everything is stored as one versioned JSON row per video,
 shown on the video page in groups that appear only when the file has the
 items, and the chapters reach the player as marks on the seek bar with a
-chapters menu. Videos imported before the feature are read again by a
-background job that yields to new imports.
+chapters menu. Only the import probe of a new or changed file reads the
+information; videos imported before the feature are not re-analysed
+(maintainer decision, 2026-10-16).
 
 | Concern | Decision |
 | --- | --- |
@@ -23,21 +24,20 @@ background job that yields to new imports.
 | Source | The same `ffprobe` run, with `-show_chapters` and longer analysis limits for TS ([R-2](research.md#r-2-the-same-ffprobe-run-reads-chapters-and-reads-longer-for-mpeg-ts)) |
 | Classification | HDR, projection, 3D and interlacing as pure domain rules ([R-3](research.md#r-3-hdr-projection-3d-and-interlacing-are-decided-by-pure-rules-in-internaldomain)) |
 | TS names | A Go SI reader with an ARIB STD-B24 decoder, first 32 MiB ([R-4](research.md#r-4-station-and-programme-names-of-a-ts-recording-come-from-a-go-si-reader-with-an-arib-std-b24-decoder)) |
-| Re-analysis | A `metadata` job kind, claimable only when no probe is queued or running ([R-5](research.md#r-5-imported-videos-are-re-analysed-by-a-metadata-job-that-yields-to-pending-probes)) |
+| Re-analysis | None; only the probe of a new or changed file reads the information ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)) |
 | API | `mediaInfo` on the detail only, guests included ([R-6](research.md#r-6-mediainfo-is-part-of-the-video-detail-only-for-owners-and-guests-alike)) |
 | Chapters | A `chapters` text track, marks in the video.js seek bar, the chapters button ([R-7](research.md#r-7-chapters-are-a-chapters-text-track-with-marks-drawn-in-the-videojs-seek-bar)) |
 | Languages | Names through `Intl.DisplayNames` ([R-8](research.md#r-8-language-codes-are-shown-through-intldisplaynames)) |
 
 ## How it works
 
-The sequence shows a new import and the background re-analysis of an
-existing video; both end in the same row and the same page.
+The sequence shows a new or changed file's import, which writes the row the
+page reads.
 
 ```mermaid
 sequenceDiagram
   participant Scan as Scan
   participant Probe as probe worker
-  participant Meta as metadata worker
   participant Media as internal/media
   participant Store as Store
   participant Page as Video page
@@ -46,12 +46,6 @@ sequenceDiagram
   Media->>Media: ffprobe once (+ SI reader for TS)
   Media-->>Probe: Probe{index values, Transcode, Media}
   Probe->>Store: ApplyProbeForJob: videos + transcode + media_info
-  Store-->>Page: video notification
-  Note over Meta: videos imported before the feature
-  Store->>Meta: claim metadata (no probe queued or running)
-  Meta->>Media: Probe(path)
-  Media-->>Meta: Probe{…, Media}
-  Meta->>Store: ApplyMediaInfoForJob: media_info only
   Store-->>Page: video notification
   Page->>Store: GET /api/videos/{id} with mediaInfo
 ```
@@ -71,11 +65,9 @@ sequenceDiagram
 3. **The store writes one row.** `ApplyProbeForJob` writes `video_media_info`
    in the transaction that updates `videos`, under the same identity check, so
    a file replaced during the probe leaves no row of the old file.
-4. **Existing videos catch up.** The migration queues a `metadata` job per
-   probed video; the scan queues one for a row that is missing or below the
-   current version. The `metadata` worker claims only while no `probe` job is
-   queued or running, runs the same `Probe`, and writes only the row. A failure at the
-   limit keeps what the page shows today.
+4. **Existing videos are not re-analysed.** A video probed before the
+   feature, or whose row is below the current version, has no row until its
+   file changes and the scan probes it again (R-5).
 5. **The page shows groups.** `GET /api/videos/{id}` carries `mediaInfo`; the
    page renders Video, Audio, Subtitles, Embedded and Broadcast groups under
    the technical line, each only when it has an item, in the form the
@@ -119,10 +111,10 @@ Checked against ARCHITECTURE.md and AGENTS.md; the rules this design leans on:
 | --- | --- |
 | The domain decides, the store enforces | The HDR, interlacing, chapter and string rules are `internal/domain`; the store writes the row under the job's identity check and the claim query carries the yield-to-probe condition |
 | Adapters do not import each other | `internal/media/arib` is a pure package under `internal/media`, imported by `internal/media` only; depguard's rules for `internal/media` cover it |
-| Only a scan reads the media folders' files | The SI reader runs inside the probe and `metadata` jobs, which already open the file for `ffprobe` |
+| Only a scan reads the media folders' files | The SI reader runs inside the probe job, which already open the file for `ffprobe` |
 | Every read knows its viewer | `mediaInfo` is read by the detail read that already takes the audience; guests get it for public videos only, as they get the detail |
 | User data survives a rebuild | `video_media_info` is an index; the tables list in running-vv.md gains it |
-| No copied code | The probe job and the `metadata` job share `media.Probe` and one store helper for the row |
+| No copied code | `ApplyProbe` and `ApplyProbeForJob` share one store helper for the row |
 | Complexity 25 per function | The parser is split per group (video, tracks, embedded, chapters); the ARIB decoder's tables are data, not branches |
 
 ## Project Structure
@@ -148,13 +140,11 @@ the chapter marks, menu and preview on the player.
 
 | Package | Change |
 | --- | --- |
-| `internal/domain` | `MediaInfo` and `MediaInfoVersion`; HDR, interlacing, bit-depth, string, date, location, chapter and broadcast-programme rules; `JobMetadata`, `NoClaimableProbe`, `IndexedVideo.MediaInfoMissing`, the activity and issue kinds |
+| `internal/domain` | `MediaInfo` and `MediaInfoVersion`; HDR, interlacing, bit-depth, string, date, location, chapter and broadcast-programme rules |
 | `internal/media` | `-show_chapters`, the TS limits, the parser for the new items; the TS SI reader; `internal/media/arib` (the decoder) |
-| `internal/store` | Two migrations; the row in `ApplyProbeForJob`; `ApplyMediaInfoForJob`; the read on the detail; the claim condition; `EnsureJob` for `metadata`; the scan index query |
-| `internal/scanner` | `.m2ts` and `.mts` in `mediaExtensions`; queue `metadata` when `MediaInfoMissing` |
-| `internal/app` | The `metadata` handler on `Ingest` |
-| `cmd/mdm` | The worker for the new kind (from `domain.JobKinds`) and its wake-up after a probe finishes |
-| `internal/httpapi`, `api/openapi.yaml` | `mediaInfo` on the detail; the two enum values |
+| `internal/store` | The `video_media_info` migration and the `00052` cleanup; the row in `ApplyProbeForJob`; the read on the detail |
+| `internal/scanner` | `.m2ts` and `.mts` in `mediaExtensions` |
+| `internal/httpapi`, `api/openapi.yaml` | `mediaInfo` on the detail |
 | `web/src/player`, `web/src/i18n` | The groups on the video page; language names; the chapters track, the seek-bar marks, the preview title and the chapters button |
 
 **New paths**: `internal/media/ts_si.go`, `internal/media/arib/`,
@@ -165,9 +155,6 @@ the chapter marks, menu and preview on the player.
 **Structure decision**: The ARIB decoder is its own pure package so its
 tables and tests stay apart from process handling, and the SI reader stays in
 `internal/media` because it reads a media file, which no other adapter does.
-The `metadata` stage is a job kind and not a worker of its own (unlike
-`VersionJudge`), because it is per video and needs the queue's identity
-check, attempt limit and issue record.
 
 ## Implementation Work
 
@@ -177,7 +164,6 @@ wait for the `design` stage's `ui-design.md`.
 ```mermaid
 flowchart LR
   read[Read and store at import] --> ts[TS station and programme]
-  read --> backfill[Re-analyse in the background]
   read --> page[Video page groups]
   page --> chapters[Chapters on the seek bar]
 ```
@@ -237,31 +223,13 @@ time gives no `Program`; a scanner test shows `.m2ts` and `.mts` files are
 imported; the [quickstart](quickstart.md) row for `rec.ts` passes with the
 decoded names and the probe time recorded in the PR.
 
-### Re-analyse imported videos in the background
+### Re-analyse imported videos in the background (removed)
 
-**Scope**: `JobMetadata` in `domain.JobKinds` with `NoClaimableProbe` in its
-claim condition; the migration rebuilding `jobs` and queueing the backfill;
-`IndexedVideo.MediaInfoMissing` and the scan's `EnsureJob` for it;
-`ApplyMediaInfoForJob` and the `metadata` handler on `Ingest`; the worker's
-wake-up after a probe finishes; `metadata` in `ScanActivityKind` and
-`metadata_failed` in `ScanIssueKind` with the SPA's words for them; the
-failure rule
-([R-5](research.md#r-5-imported-videos-are-re-analysed-by-a-metadata-job-that-yields-to-pending-probes),
-[contracts/screen-api.md, Enumerations that gain a value](contracts/screen-api.md#enumerations-that-gain-a-value)).
-
-**Dependencies**: Read and store media information at import.
-
-**Acceptance**: `task check` passes with no diff from `task generate`; a
-migration test shows a probed video with a registered location gets one
-queued `metadata` job and a pending one gets none; store tests show
-`metadata` is not claimed while a `probe` job is queued or running and is
-claimed once it is done, a scan queues `metadata` for a video with no row and for a row at
-an older version and not for a current one, `ApplyMediaInfoForJob` writes
-nothing when the location version changed, and a failure at the limit leaves
-the row and records `metadata_failed`; an app test with a fake generator
-shows the handler writes the row and leaves `videos` untouched; the
-[quickstart](quickstart.md) rows for the old database, the replaced file and
-the unreadable file pass.
+Removed by the maintainer (2026-10-16): existing videos are not re-analysed
+([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)). The unit's `metadata` job kind, its
+backfill and its scan hook were taken out; migration `00052` keeps its number
+and only deletes the `metadata` jobs and `metadata_failed` issues it may have
+queued.
 
 ### Show media information on the video page
 

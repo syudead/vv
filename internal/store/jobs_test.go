@@ -1056,9 +1056,9 @@ func TestDeleteMediaFolderNotifiesJobsChangedWithoutDeletingVideos(t *testing.T)
 	}
 
 	// 動画は消えず（登録外の所在が残る）、仕事も積まない。残りの変化と、待っていた
-	// シーク用サムネイルと解析し直しが取り出せるようになりうることを知らせる。
+	// シーク用サムネイルが取り出せるようになりうることを知らせる。
 	want := []domain.Event{
-		domain.JobsQueued{Kinds: []domain.JobKind{domain.JobSeekThumbnail, domain.JobMetadata}},
+		domain.JobsQueued{Kinds: []domain.JobKind{domain.JobSeekThumbnail}},
 		domain.ProcessingChanged{},
 	}
 	if !reflect.DeepEqual(recorder.events, want) {

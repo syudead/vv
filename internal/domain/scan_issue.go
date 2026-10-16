@@ -32,8 +32,6 @@ const (
 	IssuePreviewFailed ScanIssueKind = "preview_failed"
 	// IssueFingerprintFailed は映像の指紋の仕事が上限まで失敗した。
 	IssueFingerprintFailed ScanIssueKind = "fingerprint_failed"
-	// IssueMetadataFailed は取り込み済みの動画の解析し直しが上限まで失敗した。
-	IssueMetadataFailed ScanIssueKind = "metadata_failed"
 	// IssueThumbnailFirstFrame は代表サムネイルを先頭のコマで作った（代用）。
 	IssueThumbnailFirstFrame ScanIssueKind = "thumbnail_first_frame"
 	// IssueSeekThumbnailFullDecode はシーク用サムネイルを全編から作り直した（代用）。
@@ -44,7 +42,7 @@ const (
 var scanIssueKinds = []ScanIssueKind{
 	IssueUnreadable, IssueChangedDuringImport, IssueRegisterFailed,
 	IssueProbeFailed, IssueThumbnailFailed, IssueSeekThumbnailFailed, IssuePreviewFailed,
-	IssueFingerprintFailed, IssueMetadataFailed, IssueThumbnailFirstFrame, IssueSeekThumbnailFullDecode,
+	IssueFingerprintFailed, IssueThumbnailFirstFrame, IssueSeekThumbnailFullDecode,
 }
 
 // ScanIssueKinds は既知の種類を重い順に返す。
@@ -87,8 +85,6 @@ func FailedIssueKind(kind JobKind) (ScanIssueKind, bool) {
 		return IssuePreviewFailed, true
 	case JobFingerprint:
 		return IssueFingerprintFailed, true
-	case JobMetadata:
-		return IssueMetadataFailed, true
 	}
 	return "", false
 }

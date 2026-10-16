@@ -727,9 +727,6 @@ func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVid
 		// 指紋は状態の列を持たないので、上限まで失敗した分もここで積み直す
 		// （specs/030-video-versions/data-model.md §6）。
 		{kind: domain.JobFingerprint, pending: video.FingerprintMissing},
-		// 追加の情報が無いか古い版の動画は解析し直す。状態の列を持たないのは指紋と同じである
-		// （specs/056-media-info/research.md R-5）。
-		{kind: domain.JobMetadata, pending: video.MediaInfoMissing},
 	}
 	for _, state := range states {
 		if state.pending {

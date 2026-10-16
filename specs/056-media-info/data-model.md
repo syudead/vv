@@ -14,7 +14,7 @@ written (other feature branches add migrations too).
 | Migration | Unit | What it does |
 | --- | --- | --- |
 | `video_media_info` | Read and store media information at import | Creates [`video_media_info`](#video_media_info) |
-| `metadata_jobs` | Re-analyse imported videos in the background | Rebuilds `jobs` with `metadata` in the `kind` check, as `00025_video_fingerprints.sql` did, and queues one `metadata` job per video with `probe_state = done` and a location under a registered folder, skipping a video that already has a queued or running one |
+| `00052_drop_metadata_jobs` | (Re-analyse unit, removed by the maintainer) | Deletes `metadata` jobs and `metadata_failed` issues that an earlier draft of this version queued; keeps the version number for databases that applied it ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)) |
 
 Both tables are a rebuildable index in
 [Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery): a scan
@@ -22,7 +22,7 @@ and the jobs it queues fill them again.
 
 ## `video_media_info`
 
-One row per video, written by the probe job and the `metadata` job
+One row per video, written only by the probe job
 ([R-1](research.md#r-1-media-information-is-one-versioned-json-row-per-video)).
 
 | Field | Type | Null | Meaning |
@@ -86,11 +86,8 @@ columns already describe.
 
 | Rule | Enforced in |
 | --- | --- |
-| A row whose `version` differs from `MediaInfoVersion` reads as absent, and the scan queues a `metadata` job for the video (`IndexedVideo.MediaInfoMissing`: `probe_state = done` and no row at the current version) | `store` (the read and the scan's index query), `scanner` (`ensurePendingJobs`) |
+| A row whose `version` differs from `MediaInfoVersion` reads as absent; nothing re-reads it until the file's next probe ([R-5](research.md#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)) | `store` (the read) |
 | The probe job writes the row in the `ApplyProbeForJob` transaction, under the same identity check as the `videos` update (job location id, version and path, content key, location generation) | `store` |
-| The `metadata` job writes only the row, under the same identity check; when the check fails nothing is written and the job completes | `store` (`ApplyMediaInfoForJob`), `app` |
-| A `metadata` job is claimable only when no `probe` job is queued or running for a video with a registered location (`JobClaimCondition.NoClaimableProbe`, counted as `NoClaimableThumbnail` counts `thumbnail` jobs) | `domain` (the condition), `store` (the claim query) |
-| A `metadata` job that fails at the attempt limit leaves the row as it was; the issue kind is `metadata_failed` | `store` (`FailClaimedJob`) |
 | Every string is trimmed, must be valid UTF-8 with control characters other than newline removed, and is cut at 2,000 characters; an empty result is absent | `domain` |
 | At most 64 audio tracks, 64 subtitle tracks and 1,000 chapters are kept, in stream or time order | `domain` |
 | `RecordedAt` parses RFC 3339 with or without an offset and `YYYY-MM-DD HH:MM:SS`; a value with an offset keeps it, one without is UTC; anything else is absent | `domain` |
@@ -103,7 +100,7 @@ columns already describe.
 
 | Item | Why |
 | --- | --- |
-| `videos.duration_ms`, `width`, `height`, `video_codec`, `audio_codec`, `playable` | The index columns, playability and the seek preview keep their inputs; the `metadata` job never touches them |
+| `videos.duration_ms`, `width`, `height`, `video_codec`, `audio_codec`, `playable` | The index columns, playability and the seek preview are written by the probe as before |
 | `video_transcode_probes` | The live transcode reads its own row; `MediaInfo` is not an input to any `ffmpeg` argument |
 | `video_locations.file_created_at`, the title and the display name | Requirement 10: the embedded title and `RecordedAt` are shown beside them, not written into them |
 | `Video.FileTitle` sorting and search keys | No search key is built from media information (out of scope) |

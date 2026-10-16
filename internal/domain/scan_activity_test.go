@@ -7,7 +7,7 @@ func TestActivityKindOf(t *testing.T) {
 	want := map[JobKind]ScanActivityKind{
 		JobProbe: ActivityProbe, JobThumbnail: ActivityThumbnail,
 		JobSeekThumbnail: ActivitySeekThumbnail, JobPreview: ActivityPreview,
-		JobFingerprint: ActivityFingerprint, JobMetadata: ActivityMetadata,
+		JobFingerprint: ActivityFingerprint,
 	}
 	for _, kind := range JobKinds {
 		got, ok := ActivityKindOf(kind)

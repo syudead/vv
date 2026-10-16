@@ -24,9 +24,9 @@ video in a new index table, `video_media_info`, with a version column
 
 **Rationale**: The page reads the whole value at once and nothing else reads
 it, so the shape of `video_transcode_probes` (one versioned JSON row, an index
-that a probe rebuilds) fits. The version column is also what drives the
-background re-analysis of [R-5](#r-5-imported-videos-are-re-analysed-by-a-metadata-job-that-yields-to-pending-probes):
-a parser change bumps it, and every row below it is read again.
+that a probe rebuilds) fits. A parser change bumps the version, and a row
+below it reads as absent until the file's next probe
+([R-5](#r-5-media-information-is-read-only-by-the-import-probe-of-new-or-changed-files)).
 
 ## R-2: The same ffprobe run reads chapters, and reads longer for MPEG-TS
 
@@ -141,46 +141,15 @@ position controls and drops a character it cannot map. A name with no
 printable character after decoding is omitted. DVB (non-Japanese) recordings
 are not decoded by this reader; their names are omitted.
 
-## R-5: Imported videos are re-analysed by a `metadata` job that yields to pending probes
+## R-5: Media information is read only by the import probe of new or changed files
 
-**Decision**: A new job kind, `metadata`, runs the same `media.Probe` and
-writes only the `video_media_info` row. It is claimable only while no `probe`
-job is queued or running for a video with a registered location, as a
-`seek_thumbnail` job waits for `thumbnail` jobs (`NoClaimableThumbnail`), so a
-running probe and a `metadata` run never read the disk at the same time. The migration queues one for every video whose probe is
-done and that has a registered location; the scan queues one for a video whose
-row is missing or below `MediaInfoVersion`, as it re-queues a missing
-fingerprint. A new import never gets one, because its probe job writes the
-row itself.
-
-```mermaid
-flowchart LR
-  mig[Migration] -->|queue per probed video| q[(jobs: metadata)]
-  scan[Scan] -->|row missing or old| q
-  q --> claim{A probe job queued or running?}
-  claim -->|yes| wait[Wait]
-  claim -->|no| run[ffprobe once]
-  run -->|identity unchanged| row[(video_media_info)]
-  run -->|file replaced| drop[Write nothing]
-```
-
-| Option | Verdict |
-| --- | --- |
-| **A `metadata` kind, claimable when no probe is queued or running** | Chosen |
-| Re-queue the existing `probe` job with a priority column | Rejected: a probe that fails at the limit marks the video `failed`, which hides playback and the seek preview; the Edge Case keeps the existing information |
-| A backfill goroutine started at startup | Rejected: no record of what was tried, a restart starts over, and it would run beside the probe worker on the same disk |
-| A `media_info_version` column on `videos` | Rejected: the JSON row carries its version already; the scan's missing-row condition reads it as `FingerprintMissing` does |
-
-**Rationale**: One worker per kind runs one `ffprobe` at a time, which reads
-headers (and at most 100 MiB of a TS), so playback is not slowed. Yielding to
-queued and running probes keeps a new import's own stages first, which is the
-Edge Case's other half; the probe worker wakes the `metadata` worker when a
-probe job leaves `running`, so the backfill resumes without waiting for a
-poll. A failure at the limit leaves the row as it was, is
-recorded as a `metadata_failed` issue when the video is in the latest scan's
-set, and the next scan queues the job again. The `video` notification the job
-sends on finish makes an open video page refetch, so the owner sees the
-information appear without an action; a guest sees it on the next open.
+**Decision**: Media information is read only by the import probe of a new or
+changed file; existing videos are not re-analysed (maintainer decision,
+2026-10-16). A video probed before `video_media_info` existed, or whose row is
+below `MediaInfoVersion`, shows no extra groups until its file changes. The
+earlier `metadata` job kind and its backfill are removed; migration `00052`
+keeps its number and only deletes the `metadata` jobs and `metadata_failed`
+issues it may have queued.
 
 ## R-6: `mediaInfo` is part of the video detail only, for owners and guests alike
 
@@ -191,7 +160,7 @@ it, and a guest reading a public video gets the same value as the owner.
 | Option | Verdict |
 | --- | --- |
 | **A field of the detail response** | Chosen |
-| `GET /api/videos/{id}/media-info` | Rejected: one more request per page open, and the page already refetches the detail on the `video` notification, which is how the re-analysis result arrives |
+| `GET /api/videos/{id}/media-info` | Rejected: one more request per page open, and the page already refetches the detail on the `video` notification, which is how the probe result arrives |
 | On every `Video`, lists included | Rejected: a JSON row per card for nothing a card shows; sorting and filtering by these items are out of scope |
 | Omit the location and the device from guest responses | Rejected: requirement 8 treats them like the other items, and a public video is public as a whole |
 

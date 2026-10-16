@@ -20,8 +20,6 @@ const (
 	ActivityPreview ScanActivityKind = "preview"
 	// ActivityFingerprint は別バージョンを探すための映像の指紋を作っている。
 	ActivityFingerprint ScanActivityKind = "fingerprint"
-	// ActivityMetadata は取り込み済みの動画の情報を読み直している。
-	ActivityMetadata ScanActivityKind = "metadata"
 )
 
 // ActivityKindOf は仕事の種類を今の処理の種類にする。知らない種類なら false を返す。
@@ -37,8 +35,6 @@ func ActivityKindOf(kind JobKind) (ScanActivityKind, bool) {
 		return ActivityPreview, true
 	case JobFingerprint:
 		return ActivityFingerprint, true
-	case JobMetadata:
-		return ActivityMetadata, true
 	}
 	return "", false
 }
