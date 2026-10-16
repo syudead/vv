@@ -42,12 +42,14 @@ type recordingRuntime struct {
 	fakePluginRuntime
 	requests []domain.WorkInfoRunRequest
 	digests  []string
+	networks []domain.WorkInfoRunNetwork
 	result   domain.WorkInfoRunResult
 	err      error
 }
 
-func (r *recordingRuntime) Run(_ context.Context, digest string, _ []byte, req domain.WorkInfoRunRequest, _ domain.WorkInfoRunNetwork) (domain.WorkInfoRunResult, error) {
+func (r *recordingRuntime) Run(_ context.Context, digest string, _ []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork) (domain.WorkInfoRunResult, error) {
 	r.requests = append(r.requests, req)
+	r.networks = append(r.networks, network)
 	r.digests = append(r.digests, digest)
 	return r.result, r.err
 }

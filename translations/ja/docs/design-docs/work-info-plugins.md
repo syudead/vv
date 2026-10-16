@@ -114,6 +114,8 @@ flowchart LR
 
 `Runtime.Run` は `domain.WorkInfoRunNetwork` を受け取る。その `Proxy` は運用者が選んだプロキシで、なければ nil である ([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option))。`domain.ParseWorkInfoPluginProxyURL` が URL の規則を持つ: スキームは `http`、`https`、`socks5` のいずれか、ホスト、任意のポート、任意のユーザー情報で、パス、クエリ、フラグメントはなく、最大 2048 バイトである。`""` はプロキシなしを意味する。プロキシなしの実行は、上のクライアントをそのまま使う。
 
+所有者は、すべてのビルドで設定画面の `Network` セクションからプロキシを設定する。設定は `PUT /api/settings/plugin-proxy` を通り、`app.WorkInfoPluginProxy` がその規則に照らして確認し、`settings` の行 `work_info_plugins.proxy_url` として保存する。`app.WorkInfoPlugins` は各実行の前にその行を読むので、保存した変更は次の実行から適用され、実行中の実行は開始時の値を保つ。規則に反する保存済みの値は、直接接続せずに実行を失敗させる。
+
 プロキシを使う実行は専用のトランスポートを持ち、その接続はすべてプロキシに向かうので、接続時の確認は宛先を見られない。代わりに、Go がすべての要求と追跡するすべてのリダイレクトで呼ぶトランスポートの `Proxy` コールバックが、宛先のホストを名前解決し (リテラルのアドレスならそれを解析し)、解決したアドレスのどれかが同じ規則を満たさないときは、要求を `-2` と `blocked_address` で拒否する ([056 R-5](../../specs/056-plugin-tooling/research.md#r-5-through-a-proxy-the-destination-is-checked-by-resolving-its-name-before-each-request-and-redirect))。拒否したホストは名前であり、プロキシは要求を見ない。プロキシ自身のアドレスは確認しない。運用者が選んだもので、たいてい LAN にあるからである。
 
 プロキシに到達できない、TLS や SOCKS のやり取りに失敗する、`CONNECT` を拒否する、または `407` を返すと、要求は `-3` を返す。その後プラグインが失敗したときは、実行は `network_error` とプロキシのホストで失敗する。所有者が直すのはサイトではなくプロキシの設定だからである。トランスポートとその接続は実行の終了時に閉じるので、次の実行は開始時の設定を使う。

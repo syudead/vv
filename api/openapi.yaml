@@ -1663,6 +1663,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/settings/plugin-proxy:
+    get:
+      operationId: getPluginProxySettings
+      summary: 作品情報プラグインの要求を送るプロキシの URL を返す
+      description: |
+        保存した URL を返す。保存が無ければ `""`（プロキシなし）。`/api/settings/network` と違い、
+        どのビルドでも答える（specs/056-plugin-tooling/contracts/screen-api.md）。
+      responses:
+        "200":
+          description: 保存した URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PluginProxySettings"
+    put:
+      operationId: updatePluginProxySettings
+      summary: 作品情報プラグインの要求を送るプロキシの URL を保存する
+      description: |
+        `url` を規則のとおりに確かめて保存する。`""` はプロキシなし。次の実行が保存した値を使い、
+        進行中の実行は始めたときの値で終わる。`url` が無いか規則に外れれば `400` `invalid_request`
+        で、何も書かない（specs/056-plugin-tooling/contracts/screen-api.md、research.md R-4）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePluginProxySettingsRequest"
+      responses:
+        "200":
+          description: 保存した URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PluginProxySettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/settings/auto-import:
     get:
       operationId: getAutoImportSettings
@@ -5117,6 +5156,29 @@ components:
       properties:
         lanAccess:
           type: boolean
+
+    PluginProxySettings:
+      type: object
+      required: [url]
+      additionalProperties: false
+      description: >-
+        作品情報プラグインの要求を送るプロキシ（specs/056-plugin-tooling/contracts/screen-api.md）
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+          description: >-
+            保存した URL。http、https か socks5 の scheme、ホスト、任意のポートと任意のユーザー情報からなり、
+            パスもクエリも持たない。"" はプロキシなし
+
+    UpdatePluginProxySettingsRequest:
+      type: object
+      required: [url]
+      additionalProperties: false
+      properties:
+        url:
+          type: string
+          description: 保存する URL。規則は PluginProxySettings.url と同じ。"" はプロキシなし
 
     AutoImportSettings:
       type: object

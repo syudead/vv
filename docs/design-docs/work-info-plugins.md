@@ -178,6 +178,14 @@ or `socks5` scheme, a host, an optional port and optional user information,
 with no path, query or fragment, at most 2048 bytes; `""` means no proxy. A
 run without a proxy uses the client above unchanged.
 
+The owner sets the proxy in the settings screen's `Network` section on every
+build, through `PUT /api/settings/plugin-proxy`, which `app.WorkInfoPluginProxy`
+checks against that rule and stores as the `settings` row
+`work_info_plugins.proxy_url`. `app.WorkInfoPlugins` reads the row before each
+run, so a saved change applies from the next run and a run in progress keeps
+the value it started with. A stored value that breaks the rule fails the run
+instead of connecting directly.
+
 A run with a proxy gets its own transport, whose connections all go to the
 proxy, so the dial-time check cannot see the destination. Instead, the
 transport's `Proxy` callback, which Go calls for every request and every
