@@ -28,6 +28,10 @@ sequenceDiagram
 - Go 1.24 or later, which builds `wasip1` modules with
   `GOOS=wasip1 GOARCH=wasm`. Any toolchain that builds a module meeting
   [Module](#module) works; the steps use Go.
+- The VVMDM server binary `mdm` (in the container image at
+  `/usr/local/bin/mdm`, or built with `go build ./cmd/mdm`), to write the
+  manifest into the module. `VVMDM.exe` of the Windows app does not take
+  commands. The command reads no settings and needs no `ffmpeg`.
 - A VVMDM owner account, to add and approve the plugin.
 
 ## Steps
@@ -148,50 +152,23 @@ sequenceDiagram
    }
    ```
 
-5. Save this program as `addsection/main.go`. It appends the manifest to the
-   module as a custom section named `vv.plugin`:
-
-   ```go
-   // Command addsection appends a vv.plugin custom section holding a manifest file
-   // to a WebAssembly module. Usage: go run ./addsection plugin.wasm manifest.json
-   package main
-
-   import (
-       "encoding/binary"
-       "log"
-       "os"
-   )
-
-   func main() {
-       module, err := os.ReadFile(os.Args[1])
-       if err != nil {
-           log.Fatal(err)
-       }
-       manifest, err := os.ReadFile(os.Args[2])
-       if err != nil {
-           log.Fatal(err)
-       }
-       const name = "vv.plugin"
-       payload := binary.AppendUvarint(nil, uint64(len(name)))
-       payload = append(payload, name...)
-       payload = append(payload, manifest...)
-       module = append(module, 0) // custom section id
-       module = binary.AppendUvarint(module, uint64(len(payload)))
-       module = append(module, payload...)
-       if err := os.WriteFile(os.Args[1], module, 0o644); err != nil {
-           log.Fatal(err)
-       }
-   }
-   ```
-
-6. Add the section to the freshly built module. Run it once per build, since
-   each run appends another section:
+5. Write the manifest into the module with `mdm plugin pack`, the VVMDM
+   server binary's plugin command. It checks the manifest and the packed
+   module as an upload would, and only then replaces the module's
+   `vv.plugin` section, so you can run it after every build or manifest
+   change:
 
    ```bash
-   go run ./addsection plugin.wasm manifest.json
+   mdm plugin pack plugin.wasm manifest.json
    ```
 
-7. In VVMDM, open **Settings**, choose **Add plugin** in the **Work-info
+   On success it prints the plugin's name, version, operations and settings
+   as the settings screen lists them. On a problem it exits with code 2,
+   prints the problem, and leaves `plugin.wasm` as it was: for a manifest,
+   the field and the rule it breaks, such as
+   `manifest_invalid: settings[0].default must be one of options`.
+
+6. In VVMDM, open **Settings**, choose **Add plugin** in the **Work-info
    plugins** section, and pick `plugin.wasm`. Review the plugin and approve
    it.
 
@@ -398,8 +375,8 @@ the refused host, whatever the plugin writes afterwards. VVMDM ignores
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `manifest_missing` | The module has no `vv.plugin` section | Run step 6 on the built module |
-| `manifest_invalid` | The section is not a JSON object, or a field breaks a [Manifest](#manifest) rule | Fix `manifest.json`, rebuild, and add the section again |
+| `manifest_missing` | The module has no `vv.plugin` section, as a fresh build has none | Run `mdm plugin pack` on the built module (step 5) |
+| `manifest_invalid` | The section is not a JSON object, or a field breaks a [Manifest](#manifest) rule | Fix the field `mdm plugin pack` names in `manifest.json` and run it again |
 | `contract_unsupported` | `contract` is not `1` | Set `"contract": 1` |
 | `import_unsupported` | The module imports something other than WASI and `vv` functions, or uses another signature | Build for `wasip1` and declare the host functions as in step 2 |
 | `export_invalid` | `_start` or `memory` is missing or has another type | Build a command (`package main`) rather than a library |

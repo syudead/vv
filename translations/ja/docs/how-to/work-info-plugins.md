@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/work-info-plugins.md
-sourceHash: 724add3edf31b909a57666f190f630f162ebd62c49ae24e2d0f797e9908728c5
+sourceHash: d3a86523aee2809beb2f742e8d5c5ffb1cc5906f270893e1587f003d8370fc33
 ---
 
 # 作品情報プラグインを書く {#write-a-work-info-plugin}
@@ -26,6 +26,7 @@ sequenceDiagram
 ## 前提条件 {#prerequisites}
 
 - Go 1.24 以降。`GOOS=wasip1 GOARCH=wasm` で `wasip1` のモジュールをビルドする。[モジュール](#module) を満たすモジュールをビルドするツールチェーンならどれでも使える。手順では Go を使う。
+- VVMDM のサーバーのバイナリ `mdm` (コンテナイメージの `/usr/local/bin/mdm` にあり、`go build ./cmd/mdm` でもビルドできる)。マニフェストをモジュールに書き込むために使う。Windows アプリの `VVMDM.exe` はコマンドを受け付けない。このコマンドは設定を読まず、`ffmpeg` も要らない。
 - プラグインを追加して承認するための、VVMDM の所有者のアカウント。
 
 ## 手順 {#steps}
@@ -141,48 +142,15 @@ sequenceDiagram
    }
    ```
 
-5. 次のプログラムを `addsection/main.go` として保存する。マニフェストを `vv.plugin` という名前のカスタムセクションとしてモジュールに追加する:
-
-   ```go
-   // Command addsection appends a vv.plugin custom section holding a manifest file
-   // to a WebAssembly module. Usage: go run ./addsection plugin.wasm manifest.json
-   package main
-
-   import (
-       "encoding/binary"
-       "log"
-       "os"
-   )
-
-   func main() {
-       module, err := os.ReadFile(os.Args[1])
-       if err != nil {
-           log.Fatal(err)
-       }
-       manifest, err := os.ReadFile(os.Args[2])
-       if err != nil {
-           log.Fatal(err)
-       }
-       const name = "vv.plugin"
-       payload := binary.AppendUvarint(nil, uint64(len(name)))
-       payload = append(payload, name...)
-       payload = append(payload, manifest...)
-       module = append(module, 0) // custom section id
-       module = binary.AppendUvarint(module, uint64(len(payload)))
-       module = append(module, payload...)
-       if err := os.WriteFile(os.Args[1], module, 0o644); err != nil {
-           log.Fatal(err)
-       }
-   }
-   ```
-
-6. ビルドしたばかりのモジュールにセクションを追加する。実行するたびに別のセクションが追加されるので、ビルドごとに 1 回だけ実行する:
+5. VVMDM のサーバーのバイナリが持つプラグイン用のコマンド `mdm plugin pack` で、マニフェストをモジュールに書き込む。マニフェストと、パックしたモジュールを、アップロードのときと同じように確かめ、そのあとでだけモジュールの `vv.plugin` セクションを置き換えるので、ビルドやマニフェストの変更のたびに実行できる:
 
    ```bash
-   go run ./addsection plugin.wasm manifest.json
+   mdm plugin pack plugin.wasm manifest.json
    ```
 
-7. VVMDM で **Settings** を開き、**Work-info plugins** の節で **Add plugin** を選び、`plugin.wasm` を選ぶ。プラグインを確認し、承認する。
+   成功すると、設定画面が一覧するとおりに、プラグインの名前、バージョン、操作、設定を表示する。問題があると、終了コード 2 で終了して問題を表示し、`plugin.wasm` はそのままにする。マニフェストでは、フィールドとそれが反する規則を表示する。たとえば `manifest_invalid: settings[0].default must be one of options` である。
+
+6. VVMDM で **Settings** を開き、**Work-info plugins** の節で **Add plugin** を選び、`plugin.wasm` を選ぶ。プラグインを確認し、承認する。
 
 ## 結果を確認する {#check-the-result}
 
@@ -338,8 +306,8 @@ VVMDM は取得した人や組織を、まず外部 ID で、次に名前か別�
 
 | 症状 | 原因 | 対処 |
 | --- | --- | --- |
-| `manifest_missing` | モジュールに `vv.plugin` セクションがない | ビルドしたモジュールに手順 6 を実行する |
-| `manifest_invalid` | セクションが JSON オブジェクトでないか、フィールドが [マニフェスト](#manifest) の規則に反する | `manifest.json` を直し、ビルドし直し、セクションをもう一度追加する |
+| `manifest_missing` | モジュールに `vv.plugin` セクションがない。ビルドしたばかりのモジュールにはない | ビルドしたモジュールに `mdm plugin pack` を実行する (手順 5) |
+| `manifest_invalid` | セクションが JSON オブジェクトでないか、フィールドが [マニフェスト](#manifest) の規則に反する | `mdm plugin pack` が示すフィールドを `manifest.json` で直し、もう一度実行する |
 | `contract_unsupported` | `contract` が `1` でない | `"contract": 1` を設定する |
 | `import_unsupported` | モジュールが WASI と `vv` の関数以外のものを import するか、別のシグネチャを使う | `wasip1` 向けにビルドし、手順 2 のようにホスト関数を宣言する |
 | `export_invalid` | `_start` か `memory` がないか、別の型である | ライブラリではなくコマンド (`package main`) をビルドする |

@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"reflect"
 	"slices"
 	"time"
 	"unicode/utf8"
@@ -186,28 +188,66 @@ type manifestJSON struct {
 	Settings    []settingJSON       `json:"settings"`
 }
 
+// WorkInfoPluginManifestError は拒んだマニフェストの理由である（specs/056-plugin-tooling/contracts/plugin-cli.md）。
+// Field は規則に反した項目の道筋（"settings[0].default"）で、マニフェスト全体の誤りなら空である。
+// Rule は Field に続けて読める、反した規則の文である。
+type WorkInfoPluginManifestError struct {
+	Problem WorkInfoPluginProblem
+	Field   string
+	Rule    string
+}
+
+func (e *WorkInfoPluginManifestError) Error() string {
+	field := e.Field
+	if field == "" {
+		field = "the manifest"
+	}
+	return fmt.Sprintf("%s: %s %s", e.Problem, field, e.Rule)
+}
+
+func manifestInvalid(field, rule string) *WorkInfoPluginManifestError {
+	return &WorkInfoPluginManifestError{Problem: WorkInfoPluginManifestInvalid, Field: field, Rule: rule}
+}
+
+func settingInvalid(i int, field, rule string) *WorkInfoPluginManifestError {
+	return manifestInvalid(fmt.Sprintf("settings[%d].%s", i, field), rule)
+}
+
 // ParseWorkInfoPluginManifest は vv.plugin セクションの中身を読み、規則を確かめる。
 // 読めなければ manifest_invalid、contract が 1 でなければ contract_unsupported を返す。
-// contract は他の項目より先に確かめる。後の版は他の項目の形を変えうるからである。
+// 反した項目と規則が要るときは CheckWorkInfoPluginManifest を使う。
 func ParseWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, WorkInfoPluginProblem) {
+	m, rejection := CheckWorkInfoPluginManifest(data)
+	if rejection != nil {
+		return WorkInfoPluginManifest{}, rejection.Problem
+	}
+	return m, ""
+}
+
+// CheckWorkInfoPluginManifest は ParseWorkInfoPluginManifest と同じ規則でマニフェストを読み、拒むときは
+// 問題に、反した項目と規則を添えて返す。contract は他の項目より先に確かめる。後の版は他の項目の形を
+// 変えうるからである。
+func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfoPluginManifestError) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(data, &top); err != nil || top == nil {
-		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
+		return WorkInfoPluginManifest{}, manifestInvalid("", "must be a JSON object")
 	}
 	var contract int
 	if raw, ok := top["contract"]; !ok || json.Unmarshal(raw, &contract) != nil {
-		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
+		return WorkInfoPluginManifest{}, manifestInvalid("contract", "must be an integer")
 	}
 	if contract != WorkInfoPluginContract {
-		return WorkInfoPluginManifest{}, WorkInfoPluginContractUnsupported
+		return WorkInfoPluginManifest{}, &WorkInfoPluginManifestError{
+			Problem: WorkInfoPluginContractUnsupported, Field: "contract", Rule: fmt.Sprintf("must be %d", WorkInfoPluginContract),
+		}
 	}
 	var raw manifestJSON
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
+		return WorkInfoPluginManifest{}, typeRejection(err)
 	}
-	settings, ok := parseSettings(raw.Settings)
-	if !ok {
-		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
+	settings, rejection := parseSettings(raw.Settings)
+	if rejection != nil {
+		return WorkInfoPluginManifest{}, rejection
 	}
 	m := WorkInfoPluginManifest{
 		Contract:    contract,
@@ -217,62 +257,100 @@ func ParseWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, WorkInfoP
 		Operations:  raw.Operations,
 		Settings:    settings,
 	}
-	if !validManifest(m) {
-		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
+	if rejection := checkManifest(m); rejection != nil {
+		return WorkInfoPluginManifest{}, rejection
 	}
-	return m, ""
+	return m, nil
+}
+
+// typeRejection は項目の JSON の型の誤りを理由にする。
+func typeRejection(err error) *WorkInfoPluginManifestError {
+	var typeErr *json.UnmarshalTypeError
+	if !errors.As(err, &typeErr) {
+		return manifestInvalid("", "must be a JSON object")
+	}
+	return manifestInvalid(typeErr.Field, "must be "+jsonTypeName(typeErr.Type.Kind()))
+}
+
+func jsonTypeName(kind reflect.Kind) string {
+	switch kind {
+	case reflect.String:
+		return "a string"
+	case reflect.Bool:
+		return "a boolean"
+	case reflect.Slice:
+		return "an array"
+	default:
+		return "an object"
+	}
 }
 
 // parseSettings は設定の JSON を宣言にし、既定値と選択肢の規則を確かめる。
-func parseSettings(raw []settingJSON) ([]WorkInfoPluginSetting, bool) {
+func parseSettings(raw []settingJSON) ([]WorkInfoPluginSetting, *WorkInfoPluginManifestError) {
 	if raw == nil {
-		return nil, true
+		return nil, nil
 	}
 	settings := make([]WorkInfoPluginSetting, 0, len(raw))
-	for _, r := range raw {
-		s, ok := parseSetting(r)
-		if !ok {
-			return nil, false
+	for i, r := range raw {
+		s, rejection := parseSetting(i, r)
+		if rejection != nil {
+			return nil, rejection
 		}
 		settings = append(settings, s)
 	}
-	return settings, true
+	return settings, nil
 }
 
-// parseSetting は設定 1 つを読む。default を書いた設定は 1 文字以上の既定値を持たなければならないので、
+// parseSetting は i 番目の設定を読む。default を書いた設定は 1 文字以上の既定値を持たなければならないので、
 // 空の default はここで拒む。null の default や options も拒む。
-func parseSetting(r settingJSON) (WorkInfoPluginSetting, bool) {
+func parseSetting(i int, r settingJSON) (WorkInfoPluginSetting, *WorkInfoPluginManifestError) {
 	s := WorkInfoPluginSetting{Key: r.Key, Label: r.Label, Secret: r.Secret, Required: r.Required}
 	hasDefault, ok := optionalJSON(r.Default, &s.Default)
-	if !ok || (hasDefault && !runeCountBetween(s.Default, 1, WorkInfoPluginSettingValueMaxRunes)) {
-		return WorkInfoPluginSetting{}, false
+	if !ok {
+		return WorkInfoPluginSetting{}, settingInvalid(i, "default", "must be a string")
+	}
+	if hasDefault && !runeCountBetween(s.Default, 1, WorkInfoPluginSettingValueMaxRunes) {
+		return WorkInfoPluginSetting{}, settingInvalid(i, "default",
+			fmt.Sprintf("must be 1 to %d characters", WorkInfoPluginSettingValueMaxRunes))
 	}
 	if _, ok := optionalJSON(r.Options, &s.Options); !ok {
-		return WorkInfoPluginSetting{}, false
+		return WorkInfoPluginSetting{}, settingInvalid(i, "options", "must be an array of strings")
 	}
-	return s, validSettingChoices(s, hasDefault)
+	if rejection := checkSettingChoices(i, s, hasDefault); rejection != nil {
+		return WorkInfoPluginSetting{}, rejection
+	}
+	return s, nil
 }
 
-// validSettingChoices は設定の既定値と選択肢の規則を返す。秘密の設定はどちらも持てず、選択肢は重複の無い
+// checkSettingChoices は設定の既定値と選択肢の規則を確かめる。秘密の設定はどちらも持てず、選択肢は重複の無い
 // 2〜50 個の 1〜200 文字で、既定値は選択肢のどれかでなければならない。
-func validSettingChoices(s WorkInfoPluginSetting, hasDefault bool) bool {
-	if s.Secret {
-		return !hasDefault && s.Options == nil
-	}
-	if s.Options == nil {
-		return true
-	}
-	if len(s.Options) < workInfoPluginMinOptions || len(s.Options) > workInfoPluginMaxOptions {
-		return false
+func checkSettingChoices(i int, s WorkInfoPluginSetting, hasDefault bool) *WorkInfoPluginManifestError {
+	switch {
+	case s.Secret && hasDefault:
+		return settingInvalid(i, "default", "is not allowed on a secret setting")
+	case s.Secret && s.Options != nil:
+		return settingInvalid(i, "options", "is not allowed on a secret setting")
+	case s.Options == nil:
+		return nil
+	case len(s.Options) < workInfoPluginMinOptions || len(s.Options) > workInfoPluginMaxOptions:
+		return settingInvalid(i, "options",
+			fmt.Sprintf("must hold %d to %d values", workInfoPluginMinOptions, workInfoPluginMaxOptions))
 	}
 	seen := make(map[string]bool, len(s.Options))
 	for _, option := range s.Options {
-		if !runeCountBetween(option, 1, workInfoPluginOptionMaxRunes) || seen[option] {
-			return false
+		if !runeCountBetween(option, 1, workInfoPluginOptionMaxRunes) {
+			return settingInvalid(i, "options",
+				fmt.Sprintf("must hold values of 1 to %d characters", workInfoPluginOptionMaxRunes))
+		}
+		if seen[option] {
+			return settingInvalid(i, "options", "must hold distinct values")
 		}
 		seen[option] = true
 	}
-	return !hasDefault || seen[s.Default]
+	if hasDefault && !seen[s.Default] {
+		return settingInvalid(i, "default", "must be one of options")
+	}
+	return nil
 }
 
 func isJSONObject(data []byte) bool {
@@ -280,12 +358,19 @@ func isJSONObject(data []byte) bool {
 	return len(trimmed) > 0 && trimmed[0] == '{'
 }
 
-func validManifest(m WorkInfoPluginManifest) bool {
-	return ValidWorkInfoPluginName(m.Name) &&
-		runeCountBetween(m.Version, 1, 32) &&
-		utf8.RuneCountInString(m.Description) <= 500 && utf8.ValidString(m.Description) &&
-		validOperations(m.Operations) &&
-		validSettings(m.Settings)
+// checkManifest は読めたマニフェストの項目の規則を確かめる。
+func checkManifest(m WorkInfoPluginManifest) *WorkInfoPluginManifestError {
+	switch {
+	case !ValidWorkInfoPluginName(m.Name):
+		return manifestInvalid("name", "must be 1 to 64 characters of a-z, 0-9, - and .")
+	case !runeCountBetween(m.Version, 1, 32):
+		return manifestInvalid("version", "must be 1 to 32 characters")
+	case utf8.RuneCountInString(m.Description) > 500 || !utf8.ValidString(m.Description):
+		return manifestInvalid("description", "must be at most 500 characters")
+	case !validOperations(m.Operations):
+		return manifestInvalid("operations", "must list search, fetch or both, each at most once")
+	}
+	return checkSettings(m.Settings)
 }
 
 // ValidWorkInfoPluginName はプラグインの名前が a-z・0-9・-・. の 1〜64 文字かを返す。
@@ -321,18 +406,24 @@ func validOperations(ops []WorkInfoOperation) bool {
 	return true
 }
 
-func validSettings(settings []WorkInfoPluginSetting) bool {
+// checkSettings は設定の数と、各設定の key と label の規則を確かめる。
+func checkSettings(settings []WorkInfoPluginSetting) *WorkInfoPluginManifestError {
 	if len(settings) > WorkInfoPluginMaxSettings {
-		return false
+		return manifestInvalid("settings", fmt.Sprintf("must declare at most %d settings", WorkInfoPluginMaxSettings))
 	}
 	seen := map[string]bool{}
-	for _, s := range settings {
-		if !validSettingKey(s.Key) || seen[s.Key] || !runeCountBetween(s.Label, 1, 60) {
-			return false
+	for i, s := range settings {
+		switch {
+		case !validSettingKey(s.Key):
+			return settingInvalid(i, "key", "must be 1 to 32 characters of A-Z, a-z, 0-9 and _, starting with a letter")
+		case seen[s.Key]:
+			return settingInvalid(i, "key", "must be unique within the manifest")
+		case !runeCountBetween(s.Label, 1, 60):
+			return settingInvalid(i, "label", "must be 1 to 60 characters")
 		}
 		seen[s.Key] = true
 	}
-	return true
+	return nil
 }
 
 // validSettingKey は設定の key が英字で始まる A-Z・a-z・0-9・_ の 1〜32 文字かを返す。
