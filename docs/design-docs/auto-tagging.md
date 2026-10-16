@@ -143,10 +143,17 @@ stateDiagram-v2
 | Settings, "Tag videos not yet tagged" | Videos with no row or a `failed` row |
 | Settings, "Tag all videos again" | Every video not `running` |
 | Video page, "Suggest tags" | That video, unless `running` |
+| Onboarding, picking interests | Every video not `running`, as "Tag all videos again" does |
 
 Every trigger requires "Use auto-tagging" to be on; while it is off the
 Settings run buttons and the video page button are hidden, and the API refuses
-to queue with `409 auto_tagging_off`.
+to queue with `409 auto_tagging_off`. Picking interests is the exception: it
+still makes the interests' tags and shelves, queues nothing and answers
+`queued: 0`.
+
+Picking interests queues every video, not only those without a row, because a
+video judged before an interest's tag existed was never asked about that tag
+([057 research, R-6](../../specs/057-home/research.md#r-6-a-picked-interest-becomes-an-owner-shelf-and-auto-tagging-is-asked-again)).
 
 Keeping `done` rows means a tag the owner removed is not added back by the
 next import of the same content. One worker judges one video at a time, so a

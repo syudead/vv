@@ -693,6 +693,33 @@ func (e HealthStatus) Valid() bool {
 	}
 }
 
+// Defines values for HomeShelfKind.
+const (
+	Continue    HomeShelfKind = "continue"
+	Folder      HomeShelfKind = "folder"
+	Recent      HomeShelfKind = "recent"
+	Recommended HomeShelfKind = "recommended"
+	Unshelved   HomeShelfKind = "unshelved"
+)
+
+// Valid indicates whether the value is a known member of the HomeShelfKind enum.
+func (e HomeShelfKind) Valid() bool {
+	switch e {
+	case Continue:
+		return true
+	case Folder:
+		return true
+	case Recent:
+		return true
+	case Recommended:
+		return true
+	case Unshelved:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LibraryGroupWatchState.
 const (
 	LibraryGroupWatchStateInProgress LibraryGroupWatchState = "inProgress"
@@ -774,6 +801,30 @@ func (e MediaInfoVideoHdr) Valid() bool {
 	case Hlg:
 		return true
 	case Sdr:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for OnboardingStep.
+const (
+	OnboardingStepDone      OnboardingStep = "done"
+	OnboardingStepFolders   OnboardingStep = "folders"
+	OnboardingStepInterests OnboardingStep = "interests"
+	OnboardingStepScan      OnboardingStep = "scan"
+)
+
+// Valid indicates whether the value is a known member of the OnboardingStep enum.
+func (e OnboardingStep) Valid() bool {
+	switch e {
+	case OnboardingStepDone:
+		return true
+	case OnboardingStepFolders:
+		return true
+	case OnboardingStepInterests:
+		return true
+	case OnboardingStepScan:
 		return true
 	default:
 		return false
@@ -2454,6 +2505,62 @@ type Health struct {
 // HealthStatus ok = 保存層まで疎通、degraded = プロセスのみ生存
 type HealthStatus string
 
+// HomeShelf ホームの棚 1 つ（specs/057-home/contracts/screen-api.md）
+type HomeShelf struct {
+	// ByOrganizer 所有者だけ。owner_kept が 0 の間は真
+	ByOrganizer *bool `json:"byOrganizer,omitempty"`
+
+	// FolderId フォルダの棚だけ
+	FolderId *int64 `json:"folderId,omitempty"`
+
+	// Key `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
+	Key  HomeShelfKey  `json:"key"`
+	Kind HomeShelfKind `json:"kind"`
+
+	// Name フォルダの名前。固定の棚では空で、画面が名前を付ける
+	Name string `json:"name"`
+}
+
+// HomeShelfKind defines model for HomeShelf.Kind.
+type HomeShelfKind string
+
+// HomeShelfKey `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
+type HomeShelfKey = string
+
+// Interest defines model for Interest.
+type Interest struct {
+	// Id 分野の変わらない識別子（specs/057-home/data-model.md「Interest catalog」）
+	Id string `json:"id"`
+
+	// Name タグの名前（英語）
+	Name string `json:"name"`
+
+	// OnHome この分野のタグの条件の棚がもうホームにある
+	OnHome bool `json:"onHome"`
+
+	// Synonym タグの同義語（日本語）
+	Synonym string `json:"synonym"`
+}
+
+// InterestList defines model for InterestList.
+type InterestList struct {
+	Interests []Interest `json:"interests"`
+}
+
+// InterestPick defines model for InterestPick.
+type InterestPick struct {
+	Ids []string `json:"ids"`
+}
+
+// InterestPickResult defines model for InterestPickResult.
+type InterestPickResult struct {
+	// Queued 自動タグ付けに回した動画の件数。自動タグ付けが切なら 0
+	Queued int `json:"queued"`
+
+	// Shelves 足した棚。棚がもうホームにあった分野の分は含まない
+	Shelves []HomeShelf `json:"shelves"`
+}
+
 // LibraryGroup グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
 // 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
 // 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
@@ -2780,6 +2887,15 @@ type OllamaSettings struct {
 	// Model Ollama の模型名。保存値が無ければ clef-flash
 	Model string `json:"model"`
 }
+
+// Onboarding defines model for Onboarding.
+type Onboarding struct {
+	// Step オンボードの段階（specs/057-home/research.md R-3）
+	Step OnboardingStep `json:"step"`
+}
+
+// OnboardingStep オンボードの段階（specs/057-home/research.md R-3）
+type OnboardingStep string
 
 // Organization 団体 1 件。Person と同じ項目に親の団体が加わる
 type Organization struct {
@@ -5037,6 +5153,12 @@ type ListLibraryParams struct {
 	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
 	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
+
+	// Unshelved true ならホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも
+	// 一致しない動画だけにする。ほかの絞り込みと AND で組み合わさり、スマートフォルダの
+	// 項目は出さない。動画と棚の対応は保存せず、読むたびに求める。ゲストも使える
+	// （specs/057-home/research.md R-11）
+	Unshelved *bool `form:"unshelved,omitempty" json:"unshelved,omitempty"`
 }
 
 // ListLibraryIdsParams defines parameters for ListLibraryIds.
@@ -5479,6 +5601,12 @@ type CreateMediaFolderJSONRequestBody = CreateMediaFolderRequest
 // UpdateMediaFolderJSONRequestBody defines body for UpdateMediaFolder for application/json ContentType.
 type UpdateMediaFolderJSONRequestBody = UpdateMediaFolderRequest
 
+// UpdateOnboardingJSONRequestBody defines body for UpdateOnboarding for application/json ContentType.
+type UpdateOnboardingJSONRequestBody = Onboarding
+
+// PickOnboardingInterestsJSONRequestBody defines body for PickOnboardingInterests for application/json ContentType.
+type PickOnboardingInterestsJSONRequestBody = InterestPick
+
 // CreateOrganizationJSONRequestBody defines body for CreateOrganization for application/json ContentType.
 type CreateOrganizationJSONRequestBody = CreditInput
 
@@ -5739,6 +5867,18 @@ type ServerInterface interface {
 	// UpdateMediaFolder メディアフォルダ1件のpathを変更する
 	// (PUT /api/media-folders/{id})
 	UpdateMediaFolder(w http.ResponseWriter, r *http.Request, id MediaFolderId)
+	// GetOnboarding オンボードの段階を返す
+	// (GET /api/onboarding)
+	GetOnboarding(w http.ResponseWriter, r *http.Request)
+	// UpdateOnboarding オンボードの段階を書く
+	// (PUT /api/onboarding)
+	UpdateOnboarding(w http.ResponseWriter, r *http.Request)
+	// ListOnboardingInterests 分野の一覧を返す
+	// (GET /api/onboarding/interests)
+	ListOnboardingInterests(w http.ResponseWriter, r *http.Request)
+	// PickOnboardingInterests 選んだ分野をタグと棚にする
+	// (POST /api/onboarding/interests)
+	PickOnboardingInterests(w http.ResponseWriter, r *http.Request)
 	// ListOrganizations 団体を一覧する
 	// (GET /api/organizations)
 	ListOrganizations(w http.ResponseWriter, r *http.Request, params ListOrganizationsParams)
@@ -7159,6 +7299,19 @@ func (siw *ServerInterfaceWrapper) ListLibrary(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	// ------------- Optional query parameter "unshelved" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "unshelved", r.URL.Query(), &params.Unshelved, runtime.BindQueryParameterOptions{Type: "boolean", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "unshelved"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "unshelved", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ListLibrary(w, r, params)
 	}))
@@ -7420,6 +7573,62 @@ func (siw *ServerInterfaceWrapper) UpdateMediaFolder(w http.ResponseWriter, r *h
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateMediaFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetOnboarding operation middleware
+func (siw *ServerInterfaceWrapper) GetOnboarding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetOnboarding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateOnboarding operation middleware
+func (siw *ServerInterfaceWrapper) UpdateOnboarding(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateOnboarding(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListOnboardingInterests operation middleware
+func (siw *ServerInterfaceWrapper) ListOnboardingInterests(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListOnboardingInterests(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// PickOnboardingInterests operation middleware
+func (siw *ServerInterfaceWrapper) PickOnboardingInterests(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PickOnboardingInterests(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11352,6 +11561,10 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/network", wrapper.GetNetworkSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/network", wrapper.UpdateNetworkSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding", wrapper.GetOnboarding)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/onboarding", wrapper.UpdateOnboarding)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding/interests", wrapper.ListOnboardingInterests)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/onboarding/interests", wrapper.PickOnboardingInterests)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-import", wrapper.GetAutoImportSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-import", wrapper.UpdateAutoImportSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama", wrapper.GetOllamaSettings)
