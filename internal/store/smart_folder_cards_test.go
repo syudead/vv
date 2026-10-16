@@ -117,6 +117,42 @@ func TestSmartFolderCardsLeaveOutFoldersHiddenFromGuests(t *testing.T) {
 	}
 }
 
+// フォルダの一覧はどの深さのものも名前の順に親の id とともに返り、ゲストには再生順の空のフォルダが
+// 入らない（GET /api/smart-folders、research.md R-8）。
+func TestListSmartFoldersByNameWithParents(t *testing.T) {
+	db, ids := itemsFixture(t)
+	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
+	if _, err := db.Visibility().SetVideosPublic(context.Background(), []int64{solo}, true); err != nil {
+		t.Fatal(err)
+	}
+	cat := attachNamedTag(t, db, "猫", solo, x)
+	private := attachNamedTag(t, db, "非公開", x)
+	parent := newSmartFolder(t, db, "b 猫", domain.SmartRule{Tags: []int64{cat}}, domain.SortTitleAsc, 0)
+	child := newSmartFolder(t, db, "a 子", domain.SmartRule{}, domain.SortTitleAsc, parent)
+	hidden := newSmartFolder(t, db, "c 非公開", domain.SmartRule{Tags: []int64{private}}, domain.SortTitleAsc, 0)
+	favoriteSmartFolder(t, db, hidden, 5)
+
+	owner, err := db.SmartFolders().ListSmartFolders(context.Background(), domain.AudienceOwner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := []domain.SmartFolderSummary{
+		{ID: child, ParentID: parent, Name: "a 子"},
+		{ID: parent, Name: "b 猫"},
+		{ID: hidden, Name: "c 非公開", Favorite: true},
+	}
+	if !slices.Equal(owner, want) {
+		t.Errorf("所有者の一覧 = %+v, want %+v", owner, want)
+	}
+	guest, err := db.SmartFolders().ListSmartFolders(context.Background(), domain.AudienceGuest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(guest, want[:2]) {
+		t.Errorf("ゲストの一覧 = %+v, want %+v", guest, want[:2])
+	}
+}
+
 // 経路の条件が無い実体を名指すフォルダは、所有者には値の無いカードで返る（research.md R-9）。
 func TestSmartFolderCardsOfAFolderWithAMissingTag(t *testing.T) {
 	db, ids := itemsFixture(t)

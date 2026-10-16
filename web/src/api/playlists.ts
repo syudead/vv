@@ -5,8 +5,15 @@ import type { components } from "./gen/openapi";
 // 型は api/openapi.yaml からの生成物を使う。どの経路も所有者だけである。
 
 export type PlaylistSummary = components["schemas"]["PlaylistSummary"];
-export type Playlist = components["schemas"]["Playlist"];
-export type PlaylistItem = components["schemas"]["PlaylistItem"];
+type ApiPlaylist = components["schemas"]["Playlist"];
+type ApiPlaylistItem = components["schemas"]["PlaylistItem"];
+/**
+ * PlaylistItem は画面が描くプレイリストの項目（動画かグループ）である。スマートフォルダの項目
+ * （`kind: "smartFolder"`、specs/052-smart-folders/contracts/screen-api.md）は、それを描く画面の
+ * 作業まで getPlaylist が読み飛ばす。
+ */
+export type PlaylistItem = ApiPlaylistItem & { kind: "video" | "group" };
+export type Playlist = Omit<ApiPlaylist, "items"> & { items: PlaylistItem[] };
 export type PlaylistItemsAdded = components["schemas"]["PlaylistItemsAdded"];
 export type PlaylistPlayback = components["schemas"]["PlaylistPlayback"];
 export type PlaylistStep = components["schemas"]["PlaylistStep"];
@@ -101,9 +108,17 @@ export function createPlaylist(
   });
 }
 
-/** getPlaylist はプレイリスト 1 つと見せる項目を位置の順に取得する（GET /api/playlists/{id}）。 */
-export function getPlaylist(id: number, signal?: AbortSignal): Promise<Playlist> {
-  return request<Playlist>(playlistPath(id), { signal });
+function isDrawnItem(item: ApiPlaylistItem): item is PlaylistItem {
+  return item.kind === "video" || item.kind === "group";
+}
+
+/**
+ * getPlaylist はプレイリスト 1 つと見せる項目を位置の順に取得する（GET /api/playlists/{id}）。
+ * 画面がまだ描かないスマートフォルダの項目は除く（PlaylistItem）。
+ */
+export async function getPlaylist(id: number, signal?: AbortSignal): Promise<Playlist> {
+  const playlist = await request<ApiPlaylist>(playlistPath(id), { signal });
+  return { ...playlist, items: playlist.items.filter(isDrawnItem) };
 }
 
 /** renamePlaylist はプレイリストの名前を変え、トリムした名前の要約を返す（PATCH /api/playlists/{id}）。 */
@@ -127,15 +142,17 @@ export async function deletePlaylist(id: number, signal?: AbortSignal): Promise<
 }
 
 /**
- * addToPlaylist は `videoIds` の動画と `groupIds` のグループを、この順でプレイリストの末尾に足す
- * （POST /api/playlists/{id}/items、specs/048-groups/research.md R-10）。既にあるものは
- * `existing` に数えられ、何も変わらない。
+ * addToPlaylist は `videoIds` の動画、`groupIds` のグループ、`smartFolderIds` のスマートフォルダを、
+ * この順でプレイリストの末尾に足す（POST /api/playlists/{id}/items、specs/048-groups/research.md
+ * R-10、specs/052-smart-folders/contracts/screen-api.md）。既にあるものは `existing` に数えられ、
+ * 何も変わらない。`smartFolderIds` が空なら本文に載せない。
  */
 export function addToPlaylist(
   id: number,
   videoIds: readonly number[],
   groupIds: readonly number[],
   signal?: AbortSignal,
+  smartFolderIds: readonly number[] = [],
 ): Promise<PlaylistItemsAdded> {
   return request<PlaylistItemsAdded>(`${playlistPath(id)}/items`, {
     method: "POST",
@@ -143,6 +160,9 @@ export function addToPlaylist(
     body: JSON.stringify({
       videoIds: Array.from(videoIds),
       groupIds: Array.from(groupIds),
+      ...(smartFolderIds.length === 0
+        ? {}
+        : { smartFolderIds: Array.from(smartFolderIds) }),
     }),
     signal,
   });

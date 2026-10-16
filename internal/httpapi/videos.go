@@ -340,8 +340,9 @@ func (s *server) parseTagFilter(w http.ResponseWriter, tag *[]int64) ([]int64, b
 	return *tag, true
 }
 
-// GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。group は動画を開いたグループで、
-// 応答の group をそのグループで答える（specs/048-groups/research.md R-9）。
+// GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。group は動画を開いたグループ、smartFolder
+// は動画を開いたスマートフォルダで、応答の group か smartFolder をその文脈で答える
+// （specs/048-groups/research.md R-9、specs/052-smart-folders/contracts/screen-api.md）。
 func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoParams) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
@@ -354,28 +355,32 @@ func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId
 		s.internalError(w, "Could not load the video.", err)
 		return
 	}
-	s.writeVideoDetailIn(w, r, video, groupContext(params.Group))
+	s.writeVideoDetailIn(w, r, video, videoContext(params.Group, params.SmartFolder))
 }
 
-// groupContext は問い合わせの group を文脈のグループの id にする。省かれていれば 0 である。
-func groupContext(group *gen.VideoGroupContext) int64 {
-	if group == nil {
-		return 0
+// videoContext は問い合わせの group と smartFolder を動画を開いた文脈にする。省かれた方は 0 である。
+func videoContext(group *gen.VideoGroupContext, smartFolder *gen.VideoSmartFolderContext) domain.VideoContext {
+	var opened domain.VideoContext
+	if group != nil {
+		opened.GroupID = *group
 	}
-	return *group
+	if smartFolder != nil {
+		opened.SmartFolderID = *smartFolder
+	}
+	return opened
 }
 
 // writeVideoDetail は動画1件の詳細を GET /api/videos/{id} の形で書く。表示名の設定の
 // 応答も同じ形にする（specs/029-video-overrides/contracts/screen-api.md §1）。group は
 // 文脈の無い動画と同じく、id のいちばん小さいグループで答える。
 func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video domain.Video) {
-	s.writeVideoDetailIn(w, r, video, 0)
+	s.writeVideoDetailIn(w, r, video, domain.VideoContext{})
 }
 
-// writeVideoDetailIn は writeVideoDetail と同じ応答を、group を文脈のグループ contextID
-// （無ければ 0）で答えて書く。
-func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, video domain.Video, contextID int64) {
-	payload, err := s.videoDetail(r, video, contextID)
+// writeVideoDetailIn は writeVideoDetail と同じ応答を、group か smartFolder を動画を開いた文脈 opened
+// で答えて書く。
+func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, video domain.Video, opened domain.VideoContext) {
+	payload, err := s.videoDetail(r, video, opened)
 	if err != nil {
 		s.internalError(w, "Could not load the video.", err)
 		return
@@ -385,12 +390,12 @@ func (s *server) writeVideoDetailIn(w http.ResponseWriter, r *http.Request, vide
 }
 
 // videoDetail は動画1件の詳細を GET /api/videos/{id} の形にする。要求の見る人に合わせて項目を絞り、
-// group は文脈のグループ contextID（無ければ 0）で答える。作品情報の取得の結果の反映の応答も、
+// group か smartFolder は動画を開いた文脈 opened で答える。作品情報の取得の結果の反映の応答も、
 // これを video に入れる。
 //
 // グループかシーク用プレビューの状態を読めなければ、その項目を除いた詳細と誤りを返す。書き込みが確定した
 // 後の応答は、誤りを記録して除いた詳細を返せる。
-func (s *server) videoDetail(r *http.Request, video domain.Video, contextID int64) (gen.Video, error) {
+func (s *server) videoDetail(r *http.Request, video domain.Video, opened domain.VideoContext) (gen.Video, error) {
 	var errs []error
 	progress := s.progressFor(r.Context(), []domain.Video{video})
 	tags := s.tagsFor(r.Context(), []domain.Video{video})
@@ -404,21 +409,16 @@ func (s *server) videoDetail(r *http.Request, video domain.Video, contextID int6
 	// 作品情報は、読んだ（または書いた）経路が video に埋めたときだけ載せる。
 	payload.WorkInfo = toAPIWorkInfo(video.WorkInfo)
 	// グループも動画1件の応答にだけ載せる。文脈のグループの再生順で数え、ゲストには公開の
-	// 動画だけで数えたものが返る（specs/048-groups/research.md R-9）。
+	// 動画だけで数えたものが返る（specs/048-groups/research.md R-9）。文脈がスマートフォルダなら
+	// group の代わりに smartFolder をフォルダの再生順で載せる（specs/052-smart-folders/contracts/screen-api.md）。
 	if s.catalog != nil {
 		// 位置と本数だけを使うので、メンバーの詳細は読まない。
-		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, domain.VideoContext{GroupID: contextID}, domain.GroupWindow{})
+		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, opened, domain.GroupWindow{})
 		if err != nil {
 			errs = append(errs, err)
 		}
 		if err == nil && grouped {
-			payload.Group = &gen.VideoGroupRef{
-				Id:       group.ID,
-				Folder:   apiGroupFolder(group.Folder),
-				Name:     group.Name,
-				Position: group.Position(video.ID),
-				Count:    group.Total(),
-			}
+			payload.Group, payload.SmartFolder = videoContextRefs(group, video.ID)
 		}
 	}
 	// 集まりの要約も動画1件の応答にだけ載せる。ゲストには公開のバージョンだけで数えたものが

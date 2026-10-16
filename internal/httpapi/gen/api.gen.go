@@ -191,6 +191,7 @@ const (
 	ErrorCodeInvalidCredentials          ErrorCode = "invalid_credentials"
 	ErrorCodeInvalidMediaDirectory       ErrorCode = "invalid_media_directory"
 	ErrorCodeInvalidRequest              ErrorCode = "invalid_request"
+	ErrorCodeInvalidSmartRule            ErrorCode = "invalid_smart_rule"
 	ErrorCodeLoginThrottled              ErrorCode = "login_throttled"
 	ErrorCodeMediaFolderNotFound         ErrorCode = "media_folder_not_found"
 	ErrorCodeMediaFoldersNotConfigured   ErrorCode = "media_folders_not_configured"
@@ -209,6 +210,8 @@ const (
 	ErrorCodeProbeNotFailed              ErrorCode = "probe_not_failed"
 	ErrorCodeProviderFailed              ErrorCode = "provider_failed"
 	ErrorCodeScanInProgress              ErrorCode = "scan_in_progress"
+	ErrorCodeSmartFolderCycle            ErrorCode = "smart_folder_cycle"
+	ErrorCodeSmartFolderNotFound         ErrorCode = "smart_folder_not_found"
 	ErrorCodeTagMergeRequired            ErrorCode = "tag_merge_required"
 	ErrorCodeTagNameTaken                ErrorCode = "tag_name_taken"
 	ErrorCodeTagNotFound                 ErrorCode = "tag_not_found"
@@ -238,6 +241,8 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeInvalidMediaDirectory:
 		return true
 	case ErrorCodeInvalidRequest:
+		return true
+	case ErrorCodeInvalidSmartRule:
 		return true
 	case ErrorCodeLoginThrottled:
 		return true
@@ -274,6 +279,10 @@ func (e ErrorCode) Valid() bool {
 	case ErrorCodeProviderFailed:
 		return true
 	case ErrorCodeScanInProgress:
+		return true
+	case ErrorCodeSmartFolderCycle:
+		return true
+	case ErrorCodeSmartFolderNotFound:
 		return true
 	case ErrorCodeTagMergeRequired:
 		return true
@@ -701,8 +710,9 @@ func (e LibraryGroupWatchState) Valid() bool {
 
 // Defines values for LibraryItemKind.
 const (
-	LibraryItemKindGroup LibraryItemKind = "group"
-	LibraryItemKindVideo LibraryItemKind = "video"
+	LibraryItemKindGroup       LibraryItemKind = "group"
+	LibraryItemKindSmartFolder LibraryItemKind = "smartFolder"
+	LibraryItemKindVideo       LibraryItemKind = "video"
 )
 
 // Valid indicates whether the value is a known member of the LibraryItemKind enum.
@@ -710,7 +720,30 @@ func (e LibraryItemKind) Valid() bool {
 	switch e {
 	case LibraryItemKindGroup:
 		return true
+	case LibraryItemKindSmartFolder:
+		return true
 	case LibraryItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LibrarySmartFolderWatchState.
+const (
+	LibrarySmartFolderWatchStateInProgress LibrarySmartFolderWatchState = "inProgress"
+	LibrarySmartFolderWatchStateUnwatched  LibrarySmartFolderWatchState = "unwatched"
+	LibrarySmartFolderWatchStateWatched    LibrarySmartFolderWatchState = "watched"
+)
+
+// Valid indicates whether the value is a known member of the LibrarySmartFolderWatchState enum.
+func (e LibrarySmartFolderWatchState) Valid() bool {
+	switch e {
+	case LibrarySmartFolderWatchStateInProgress:
+		return true
+	case LibrarySmartFolderWatchStateUnwatched:
+		return true
+	case LibrarySmartFolderWatchStateWatched:
 		return true
 	default:
 		return false
@@ -737,14 +770,17 @@ func (e OrganizeRefKind) Valid() bool {
 
 // Defines values for PlaylistItemKind.
 const (
-	PlaylistItemKindGroup PlaylistItemKind = "group"
-	PlaylistItemKindVideo PlaylistItemKind = "video"
+	PlaylistItemKindGroup       PlaylistItemKind = "group"
+	PlaylistItemKindSmartFolder PlaylistItemKind = "smartFolder"
+	PlaylistItemKindVideo       PlaylistItemKind = "video"
 )
 
 // Valid indicates whether the value is a known member of the PlaylistItemKind enum.
 func (e PlaylistItemKind) Valid() bool {
 	switch e {
 	case PlaylistItemKindGroup:
+		return true
+	case PlaylistItemKindSmartFolder:
 		return true
 	case PlaylistItemKindVideo:
 		return true
@@ -975,6 +1011,72 @@ func (e SkippedTagReason) Valid() bool {
 	case SkippedTagReasonInvalid:
 		return true
 	case SkippedTagReasonRejected:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SmartFolderItemKind.
+const (
+	SmartFolderItemKindGroup       SmartFolderItemKind = "group"
+	SmartFolderItemKindSmartFolder SmartFolderItemKind = "smartFolder"
+	SmartFolderItemKindVideo       SmartFolderItemKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the SmartFolderItemKind enum.
+func (e SmartFolderItemKind) Valid() bool {
+	switch e {
+	case SmartFolderItemKindGroup:
+		return true
+	case SmartFolderItemKindSmartFolder:
+		return true
+	case SmartFolderItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SmartRuleWatch.
+const (
+	SmartRuleWatchInProgress SmartRuleWatch = "inProgress"
+	SmartRuleWatchUnwatched  SmartRuleWatch = "unwatched"
+	SmartRuleWatchWatched    SmartRuleWatch = "watched"
+)
+
+// Valid indicates whether the value is a known member of the SmartRuleWatch enum.
+func (e SmartRuleWatch) Valid() bool {
+	switch e {
+	case SmartRuleWatchInProgress:
+		return true
+	case SmartRuleWatchUnwatched:
+		return true
+	case SmartRuleWatchWatched:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for SmartRuleRefKind.
+const (
+	SmartRuleRefKindOrganization SmartRuleRefKind = "organization"
+	SmartRuleRefKindPerson       SmartRuleRefKind = "person"
+	SmartRuleRefKindTag          SmartRuleRefKind = "tag"
+	SmartRuleRefKindTagKind      SmartRuleRefKind = "tagKind"
+)
+
+// Valid indicates whether the value is a known member of the SmartRuleRefKind enum.
+func (e SmartRuleRefKind) Valid() bool {
+	switch e {
+	case SmartRuleRefKindOrganization:
+		return true
+	case SmartRuleRefKindPerson:
+		return true
+	case SmartRuleRefKindTag:
+		return true
+	case SmartRuleRefKindTagKind:
 		return true
 	default:
 		return false
@@ -1964,6 +2066,9 @@ type FavoritesRequest struct {
 	// GroupIds お気に入りを付け外しするグループの id（specs/048-groups/research.md R-10）
 	GroupIds *[]int64 `json:"groupIds,omitempty"`
 
+	// SmartFolderIds お気に入りを付け外しするスマートフォルダの id（specs/052-smart-folders/contracts/screen-api.md）
+	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
+
 	// VideoIds お気に入りを付け外しする動画の id
 	VideoIds *[]int64 `json:"videoIds,omitempty"`
 }
@@ -1972,6 +2077,9 @@ type FavoritesRequest struct {
 type FavoritesResponse struct {
 	// AppliedGroups groupIds のうちいまある異なるグループの数（既に同じ状態だったものを含む）
 	AppliedGroups int `json:"appliedGroups"`
+
+	// AppliedSmartFolders smartFolderIds のうちいまある異なるスマートフォルダの数（既に同じ状態だったものを含む）
+	AppliedSmartFolders int `json:"appliedSmartFolders"`
 
 	// AppliedVideos videoIds のうちいまライブラリにある異なる動画の id の数（同じ集まりの id も 1 本ずつ数え、
 	// 既に同じ状態だったものを含む）
@@ -2294,7 +2402,10 @@ type LibraryGroupIds struct {
 	VideoIds []int64 `json:"videoIds"`
 }
 
-// LibraryItem ライブラリの項目1件。`kind` に応じて `video` か `group` のちょうど一方が入る
+// LibraryItem ライブラリの項目1件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
+// `smartFolder` は一番上のスマートフォルダ（お気に入りのみではお気に入りのフォルダ）の要約で、
+// カードの値は `listSmartFolderCards` で読む（specs/052-smart-folders/data-model.md
+// 「Library items」）
 type LibraryItem struct {
 	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
 	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
@@ -2302,6 +2413,10 @@ type LibraryItem struct {
 	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup   `json:"group,omitempty"`
 	Kind  LibraryItemKind `json:"kind"`
+
+	// SmartFolder スマートフォルダの要約。ライブラリの項目と中身のページの子フォルダの項目が持ち、カードの値は
+	// 持たない。値は画面が `listSmartFolderCards` で読む（specs/052-smart-folders/research.md R-14）
+	SmartFolder *SmartFolderSummary `json:"smartFolder,omitempty"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
 	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
@@ -2326,6 +2441,49 @@ type LibraryPage struct {
 	// Total 絞り込み後の項目（カード）の数。ページングとは独立に返る
 	Total int `json:"total"`
 }
+
+// LibrarySmartFolder スマートフォルダのカード。値は `LibraryGroup` の同じ名前の欄と同じ意味で、`getSmartFolder` では
+// フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る
+// （specs/052-smart-folders/data-model.md「Contents」）。ゲストの応答では `watchedCount`・
+// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする
+type LibrarySmartFolder struct {
+	// AddedAt 追加日時の最大。動画が無ければ省く
+	AddedAt *time.Time `json:"addedAt,omitempty"`
+
+	// DurationMs 長さの分かっている動画の合計。1本も分からなければ省く
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
+	// Favorite 所有者がフォルダをお気に入りにしたか。所有者の応答にだけ入る
+	Favorite *bool `json:"favorite,omitempty"`
+	Id       int64 `json:"id"`
+
+	// LastPlayedAt 最後に再生した時刻の最大。無ければ省く
+	LastPlayedAt *time.Time `json:"lastPlayedAt,omitempty"`
+	Name         string     `json:"name"`
+
+	// OpenVideoId 押したときに開く動画（`LibraryGroup.openVideoId` と同じ選び方）。動画が無ければ省く
+	OpenVideoId *int64 `json:"openVideoId,omitempty"`
+
+	// ParentId 親のフォルダの id。一番上のフォルダでは省く
+	ParentId *int64 `json:"parentId,omitempty"`
+
+	// Previews サムネイル生成済みの動画を並びの順に最大4件
+	Previews  []FolderPreview `json:"previews"`
+	SizeBytes int64           `json:"sizeBytes"`
+
+	// Tags 動画のタグの和集合
+	Tags       []VideoTag `json:"tags"`
+	VideoCount int        `json:"videoCount"`
+
+	// WatchState `LibraryGroup.watchState` と同じ決め方。所有者の応答にだけ入る
+	WatchState *LibrarySmartFolderWatchState `json:"watchState,omitempty"`
+
+	// WatchedCount 完了した動画の数。所有者の応答にだけ入る
+	WatchedCount *int `json:"watchedCount,omitempty"`
+}
+
+// LibrarySmartFolderWatchState `LibraryGroup.watchState` と同じ決め方。所有者の応答にだけ入る
+type LibrarySmartFolderWatchState string
 
 // LoginRequest defines model for LoginRequest.
 type LoginRequest struct {
@@ -2553,7 +2711,9 @@ type Playlist struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// PlaylistItem プレイリストの項目 1 つ。`kind` に応じて `video` か `group` のちょうど一方が入る
+// PlaylistItem プレイリストの項目 1 つ。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
+// `smartFolder` の値は読んだ時点のフォルダの再生順から作り、再生もその時点の再生順に従う
+// （specs/052-smart-folders/contracts/screen-api.md）
 type PlaylistItem struct {
 	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
 	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
@@ -2564,6 +2724,12 @@ type PlaylistItem struct {
 	// Id 並べ替えと取り外しに使う項目の識別子
 	Id   int64            `json:"id"`
 	Kind PlaylistItemKind `json:"kind"`
+
+	// SmartFolder スマートフォルダのカード。値は `LibraryGroup` の同じ名前の欄と同じ意味で、`getSmartFolder` では
+	// フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る
+	// （specs/052-smart-folders/data-model.md「Contents」）。ゲストの応答では `watchedCount`・
+	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする
+	SmartFolder *LibrarySmartFolder `json:"smartFolder,omitempty"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
 	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
@@ -2585,6 +2751,9 @@ type PlaylistItemMove struct {
 type PlaylistItemsAdd struct {
 	// GroupIds 足すグループの id（`PUT /api/favorites` と同じ形）
 	GroupIds *[]int64 `json:"groupIds,omitempty"`
+
+	// SmartFolderIds 足すスマートフォルダの id（`PUT /api/favorites` と同じ形）
+	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
 
 	// VideoIds 足す動画の id
 	VideoIds *[]int64 `json:"videoIds,omitempty"`
@@ -2955,11 +3124,206 @@ type SkippedTag struct {
 // SkippedTagReason 付けなかった理由。rejected は却下した名前、invalid はタグ名の規則に合わない名前
 type SkippedTagReason string
 
+// SmartFolderCards GET /api/smart-folders/cards の応答
+type SmartFolderCards struct {
+	// Cards 要求の `ids` の順。無いか見せないフォルダは入らない
+	Cards []LibrarySmartFolder `json:"cards"`
+}
+
+// SmartFolderChange PATCH /api/smart-folders/{id} の本文。入れた項目だけを変え、少なくとも 1 つを入れる
+type SmartFolderChange struct {
+	// Name 前後の空白を取り除いて 1〜100 文字
+	Name *string `json:"name,omitempty"`
+
+	// ParentId 親のフォルダの id。null なら一番上にする
+	ParentId *int64 `json:"parentId,omitempty"`
+
+	// Rule スマートフォルダの条件（specs/052-smart-folders/data-model.md「smart_folders.rule」）。どの
+	// 項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
+	// ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
+	Rule *SmartRule `json:"rule,omitempty"`
+
+	// Sort 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
+	// 所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
+	// specs/033-video-dates/research.md R-4）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+	// 動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
+	// 最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、favorited = お気に入りに
+	// した日時（お気に入りでない項目は向きに関係なく末尾。グループの項目はグループを
+	// お気に入りにした日時）、random = `seed` と
+	// 動画の識別子から作る順。値が同じなら識別子で決着させる
+	Sort *VideoSort `json:"sort,omitempty"`
+}
+
 // SmartFolderChanged /api/events の `smartFolder` の data
 type SmartFolderChanged struct {
 	// Ids 中身かカードが変わったかもしれないスマートフォルダの id。小さい順
 	Ids []int64 `json:"ids"`
 }
+
+// SmartFolderCreate POST /api/smart-folders の本文
+type SmartFolderCreate struct {
+	// Name 前後の空白を取り除いて 1〜100 文字
+	Name string `json:"name"`
+
+	// ParentId 親のフォルダの id。省けば一番上に作る
+	ParentId *int64 `json:"parentId,omitempty"`
+
+	// Rule スマートフォルダの条件（specs/052-smart-folders/data-model.md「smart_folders.rule」）。どの
+	// 項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
+	// ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
+	Rule SmartRule `json:"rule"`
+
+	// Sort 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
+	// 所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
+	// specs/033-video-dates/research.md R-4）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+	// 動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
+	// 最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、favorited = お気に入りに
+	// した日時（お気に入りでない項目は向きに関係なく末尾。グループの項目はグループを
+	// お気に入りにした日時）、random = `seed` と
+	// 動画の識別子から作る順。値が同じなら識別子で決着させる
+	Sort *VideoSort `json:"sort,omitempty"`
+}
+
+// SmartFolderDetail GET /api/smart-folders/{id} の応答
+type SmartFolderDetail struct {
+	// Items 中身の最初のページ。子フォルダを名前の順に先に、続けてフォルダの並べ順の項目
+	Items []SmartFolderItem `json:"items"`
+
+	// NextCursor 続きがあるときだけ入る。`listSmartFolderItems` に渡す
+	NextCursor *string `json:"nextCursor,omitempty"`
+
+	// Settings フォルダの条件と並べ順。所有者の応答にだけ入る
+	Settings *SmartFolderSettings `json:"settings,omitempty"`
+
+	// SmartFolder スマートフォルダのカード。値は `LibraryGroup` の同じ名前の欄と同じ意味で、`getSmartFolder` では
+	// フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る
+	// （specs/052-smart-folders/data-model.md「Contents」）。ゲストの応答では `watchedCount`・
+	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする
+	SmartFolder LibrarySmartFolder `json:"smartFolder"`
+
+	// Trail 祖先のフォルダ。外側から順で、最後はこのフォルダの親
+	Trail []GroupRef `json:"trail"`
+}
+
+// SmartFolderItem スマートフォルダの中身の項目 1 件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る
+type SmartFolderItem struct {
+	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+	Group *LibraryGroup       `json:"group,omitempty"`
+	Kind  SmartFolderItemKind `json:"kind"`
+
+	// SmartFolder スマートフォルダの要約。ライブラリの項目と中身のページの子フォルダの項目が持ち、カードの値は
+	// 持たない。値は画面が `listSmartFolderCards` で読む（specs/052-smart-folders/research.md R-14）
+	SmartFolder *SmartFolderSummary `json:"smartFolder,omitempty"`
+
+	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
+	// （specs/016-single-account-auth/contracts/guest-api.md §1、
+	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	Video *Video `json:"video,omitempty"`
+}
+
+// SmartFolderItemKind defines model for SmartFolderItem.Kind.
+type SmartFolderItemKind string
+
+// SmartFolderItemPage GET /api/smart-folders/{id}/items の応答
+type SmartFolderItemPage struct {
+	Items []SmartFolderItem `json:"items"`
+
+	// NextCursor 続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// SmartFolderList GET /api/smart-folders の応答
+type SmartFolderList struct {
+	// SmartFolders 見る人に見せるフォルダ。自然な名前の順（同じなら id の順）
+	SmartFolders []SmartFolderSummary `json:"smartFolders"`
+}
+
+// SmartFolderSettings フォルダの条件と並べ順。所有者の応答にだけ入る
+type SmartFolderSettings struct {
+	// Missing このフォルダと祖先の条件が名指す実体のうち今無いもの（外側の祖先から順）
+	Missing []SmartRuleRef `json:"missing"`
+
+	// Rule スマートフォルダの条件（specs/052-smart-folders/data-model.md「smart_folders.rule」）。どの
+	// 項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
+	// ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
+	Rule SmartRule `json:"rule"`
+
+	// Sort 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
+	// 所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
+	// specs/033-video-dates/research.md R-4）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+	// 動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
+	// 最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、favorited = お気に入りに
+	// した日時（お気に入りでない項目は向きに関係なく末尾。グループの項目はグループを
+	// お気に入りにした日時）、random = `seed` と
+	// 動画の識別子から作る順。値が同じなら識別子で決着させる
+	Sort VideoSort `json:"sort"`
+}
+
+// SmartFolderSummary スマートフォルダの要約。ライブラリの項目と中身のページの子フォルダの項目が持ち、カードの値は
+// 持たない。値は画面が `listSmartFolderCards` で読む（specs/052-smart-folders/research.md R-14）
+type SmartFolderSummary struct {
+	// Favorite 所有者がフォルダをお気に入りにしたか。所有者の応答にだけ入る
+	Favorite *bool  `json:"favorite,omitempty"`
+	Id       int64  `json:"id"`
+	Name     string `json:"name"`
+
+	// ParentId 親のフォルダの id。一番上のフォルダでは省く
+	ParentId *int64 `json:"parentId,omitempty"`
+}
+
+// SmartRule スマートフォルダの条件（specs/052-smart-folders/data-model.md「smart_folders.rule」）。どの
+// 項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
+// ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
+type SmartRule struct {
+	// AddedWithin 追加からの日数
+	AddedWithin *int `json:"addedWithin,omitempty"`
+
+	// Favorite お気に入りの動画だけにする
+	Favorite *bool `json:"favorite,omitempty"`
+
+	// MaxDuration 長さの上限（秒、含む）
+	MaxDuration *int `json:"maxDuration,omitempty"`
+
+	// MinDuration 長さの下限（秒、含む）。`maxDuration` 以下
+	MinDuration *int `json:"minDuration,omitempty"`
+
+	// Organization どの役割でも結び付いた団体の id
+	Organization *int64 `json:"organization,omitempty"`
+
+	// Person どの役割でも結び付いた人物の id
+	Person *int64 `json:"person,omitempty"`
+
+	// Playable ブラウザで再生できる動画だけにする
+	Playable *bool `json:"playable,omitempty"`
+
+	// Q 検索欄の入力。所有者の意味で照合する（research.md R-11）
+	Q *string `json:"q,omitempty"`
+
+	// TagKind その種類のタグをどれか持つ動画だけにするタグの種類の id
+	TagKind *int64 `json:"tagKind,omitempty"`
+
+	// Tags すべてを持つ動画だけにするタグの id（重複なし）
+	Tags *[]int64 `json:"tags,omitempty"`
+
+	// Watch 視聴状態
+	Watch *SmartRuleWatch `json:"watch,omitempty"`
+}
+
+// SmartRuleWatch 視聴状態
+type SmartRuleWatch string
+
+// SmartRuleRef 条件が名指す実体のうち、今は無いもの
+type SmartRuleRef struct {
+	Id   int64            `json:"id"`
+	Kind SmartRuleRefKind `json:"kind"`
+}
+
+// SmartRuleRefKind defines model for SmartRuleRef.Kind.
+type SmartRuleRefKind string
 
 // StartAutoTaggingRequest defines model for StartAutoTaggingRequest.
 type StartAutoTaggingRequest struct {
@@ -3384,6 +3748,12 @@ type Video struct {
 	SeekThumbnailUrl *string `json:"seekThumbnailUrl,omitempty"`
 	SizeBytes        int64   `json:"sizeBytes"`
 
+	// SmartFolder 動画を開いたスマートフォルダ（`smartFolder` の問い合わせ）。GET /api/videos/{id} の応答にだけ、
+	// 文脈がスマートフォルダで、その再生順が動画を持つときだけ入る。このとき `group` は入らない。
+	// 位置と本数はフォルダの再生順で数え、ゲストの応答では公開の動画だけで数える
+	// （specs/052-smart-folders/contracts/screen-api.md）
+	SmartFolder *VideoSmartFolderRef `json:"smartFolder,omitempty"`
+
 	// Tags 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
 	// 無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列。
 	// フォルダ名から付いている分も含む
@@ -3538,6 +3908,11 @@ type VideoIdsResponse struct {
 
 	// MissingTagIds tag のうち存在しなかった id。1つも無ければ省略される
 	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
+
+	// SmartFolderIds 条件に合うスマートフォルダの項目の id。フォルダの動画は ids に入らない。listLibraryIds の
+	// 応答にだけ入り、1 つも無ければ省略される（specs/052-smart-folders/data-model.md
+	// 「Library items」）
+	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
 }
 
 // VideoLocation 代表の所在。GET /api/videos/{id} の応答にだけ入る
@@ -3564,6 +3939,24 @@ type VideoPage struct {
 	// Total 検索語・watch・playable・範囲（listFolderVideos の scope）をすべて適用した
 	// 全件の数。ページングとは独立に返る
 	Total int `json:"total"`
+}
+
+// VideoSmartFolderRef 動画を開いたスマートフォルダ（`smartFolder` の問い合わせ）。GET /api/videos/{id} の応答にだけ、
+// 文脈がスマートフォルダで、その再生順が動画を持つときだけ入る。このとき `group` は入らない。
+// 位置と本数はフォルダの再生順で数え、ゲストの応答では公開の動画だけで数える
+// （specs/052-smart-folders/contracts/screen-api.md）
+type VideoSmartFolderRef struct {
+	// Count フォルダの再生順の動画の本数
+	Count int `json:"count"`
+
+	// Id スマートフォルダの識別子
+	Id int64 `json:"id"`
+
+	// Name スマートフォルダの名前
+	Name string `json:"name"`
+
+	// Position フォルダの再生順で何本目か（1 始まり）
+	Position int `json:"position"`
 }
 
 // VideoSort 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
@@ -3991,6 +4384,9 @@ type PlaylistId = int64
 // PlaylistItemId defines model for PlaylistItemId.
 type PlaylistItemId = int64
 
+// SmartFolderId defines model for SmartFolderId.
+type SmartFolderId = int64
+
 // TagId defines model for TagId.
 type TagId = int64
 
@@ -4002,6 +4398,9 @@ type VideoGroupContext = int64
 
 // VideoId defines model for VideoId.
 type VideoId = int64
+
+// VideoSmartFolderContext defines model for VideoSmartFolderContext.
+type VideoSmartFolderContext = int64
 
 // VideoTagId defines model for VideoTagId.
 type VideoTagId = int64
@@ -4306,6 +4705,27 @@ type ListCurrentScanIssuesParams struct {
 	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListSmartFolderCardsParams defines parameters for ListSmartFolderCards.
+type ListSmartFolderCardsParams struct {
+	// Ids カードの値を読むフォルダの id を `,` で区切って並べたもの（1〜60 件）
+	Ids []int64 `form:"ids" json:"ids"`
+}
+
+// GetSmartFolderParams defines parameters for GetSmartFolder.
+type GetSmartFolderParams struct {
+	// Limit 子フォルダを除く項目の 1 ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListSmartFolderItemsParams defines parameters for ListSmartFolderItems.
+type ListSmartFolderItemsParams struct {
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor string `form:"cursor" json:"cursor"`
+
+	// Limit 1ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListTagsParams defines parameters for ListTags.
 type ListTagsParams struct {
 	// Q 検索語。全角・半角、大文字・小文字、ひらがな・カタカナなどの表記の揺れを吸収した形
@@ -4422,6 +4842,12 @@ type GetVideoParams struct {
 	// 持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
 	// 答える（specs/048-groups/research.md R-9）
 	Group *VideoGroupContext `form:"group,omitempty" json:"group,omitempty"`
+
+	// SmartFolder 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
+	// 持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
+	// 答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
+	// （specs/052-smart-folders/contracts/screen-api.md）
+	SmartFolder *VideoSmartFolderContext `form:"smartFolder,omitempty" json:"smartFolder,omitempty"`
 }
 
 // ListVideoGroupMembersParams defines parameters for ListVideoGroupMembers.
@@ -4431,6 +4857,12 @@ type ListVideoGroupMembersParams struct {
 	// 持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
 	// 答える（specs/048-groups/research.md R-9）
 	Group *VideoGroupContext `form:"group,omitempty" json:"group,omitempty"`
+
+	// SmartFolder 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
+	// 持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
+	// 答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
+	// （specs/052-smart-folders/contracts/screen-api.md）
+	SmartFolder *VideoSmartFolderContext `form:"smartFolder,omitempty" json:"smartFolder,omitempty"`
 
 	// Offset 返す最初のメンバーの、グループの中の並びの位置（0 始まり）
 	Offset *int `form:"offset,omitempty" json:"offset,omitempty"`
@@ -4452,6 +4884,12 @@ type GetRelatedVideosParams struct {
 	// 持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
 	// 答える（specs/048-groups/research.md R-9）
 	Group *VideoGroupContext `form:"group,omitempty" json:"group,omitempty"`
+
+	// SmartFolder 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
+	// 持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
+	// 答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
+	// （specs/052-smart-folders/contracts/screen-api.md）
+	SmartFolder *VideoSmartFolderContext `form:"smartFolder,omitempty" json:"smartFolder,omitempty"`
 
 	// Cursor 前の応答の `nextCursor`。省くと先頭から返す
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
@@ -4652,6 +5090,12 @@ type UpdateOllamaSettingsJSONRequestBody = OllamaSettings
 
 // UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
 type UpdateTranscodingSettingsJSONRequestBody = UpdateTranscodingSettingsRequest
+
+// CreateSmartFolderJSONRequestBody defines body for CreateSmartFolder for application/json ContentType.
+type CreateSmartFolderJSONRequestBody = SmartFolderCreate
+
+// ChangeSmartFolderJSONRequestBody defines body for ChangeSmartFolder for application/json ContentType.
+type ChangeSmartFolderJSONRequestBody = SmartFolderChange
 
 // CreateTagJSONRequestBody defines body for CreateTag for application/json ContentType.
 type CreateTagJSONRequestBody = CreateTagRequest
@@ -4961,6 +5405,27 @@ type ServerInterface interface {
 	// UpdateTranscodingSettings ライブ変換の映像エンコード方式を保存する
 	// (PUT /api/settings/transcoding)
 	UpdateTranscodingSettings(w http.ResponseWriter, r *http.Request)
+	// ListSmartFolders 見る人に見せるスマートフォルダを親の id とともに返す
+	// (GET /api/smart-folders)
+	ListSmartFolders(w http.ResponseWriter, r *http.Request)
+	// CreateSmartFolder スマートフォルダを作る
+	// (POST /api/smart-folders)
+	CreateSmartFolder(w http.ResponseWriter, r *http.Request)
+	// ListSmartFolderCards 画面に出たスマートフォルダのカードの値を返す
+	// (GET /api/smart-folders/cards)
+	ListSmartFolderCards(w http.ResponseWriter, r *http.Request, params ListSmartFolderCardsParams)
+	// DeleteSmartFolder スマートフォルダとその子孫を消す
+	// (DELETE /api/smart-folders/{id})
+	DeleteSmartFolder(w http.ResponseWriter, r *http.Request, id SmartFolderId)
+	// GetSmartFolder スマートフォルダ 1 つと、その祖先と中身の最初のページを返す
+	// (GET /api/smart-folders/{id})
+	GetSmartFolder(w http.ResponseWriter, r *http.Request, id SmartFolderId, params GetSmartFolderParams)
+	// ChangeSmartFolder スマートフォルダの名前・条件・並べ順・親を変える
+	// (PATCH /api/smart-folders/{id})
+	ChangeSmartFolder(w http.ResponseWriter, r *http.Request, id SmartFolderId)
+	// ListSmartFolderItems スマートフォルダの中身の続きのページを返す
+	// (GET /api/smart-folders/{id}/items)
+	ListSmartFolderItems(w http.ResponseWriter, r *http.Request, id SmartFolderId, params ListSmartFolderItemsParams)
 	// ListTags タグを一覧する
 	// (GET /api/tags)
 	ListTags(w http.ResponseWriter, r *http.Request, params ListTagsParams)
@@ -7474,6 +7939,216 @@ func (siw *ServerInterfaceWrapper) UpdateTranscodingSettings(w http.ResponseWrit
 	handler.ServeHTTP(w, r)
 }
 
+// ListSmartFolders operation middleware
+func (siw *ServerInterfaceWrapper) ListSmartFolders(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSmartFolders(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateSmartFolder operation middleware
+func (siw *ServerInterfaceWrapper) CreateSmartFolder(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateSmartFolder(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSmartFolderCards operation middleware
+func (siw *ServerInterfaceWrapper) ListSmartFolderCards(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSmartFolderCardsParams
+
+	// ------------- Required query parameter "ids" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", false, true, "ids", r.URL.Query(), &params.Ids, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "ids"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "ids", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSmartFolderCards(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteSmartFolder operation middleware
+func (siw *ServerInterfaceWrapper) DeleteSmartFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id SmartFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteSmartFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetSmartFolder operation middleware
+func (siw *ServerInterfaceWrapper) GetSmartFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id SmartFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetSmartFolderParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetSmartFolder(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ChangeSmartFolder operation middleware
+func (siw *ServerInterfaceWrapper) ChangeSmartFolder(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id SmartFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ChangeSmartFolder(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListSmartFolderItems operation middleware
+func (siw *ServerInterfaceWrapper) ListSmartFolderItems(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id SmartFolderId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListSmartFolderItemsParams
+
+	// ------------- Required query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListSmartFolderItems(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // ListTags operation middleware
 func (siw *ServerInterfaceWrapper) ListTags(w http.ResponseWriter, r *http.Request) {
 
@@ -8404,6 +9079,19 @@ func (siw *ServerInterfaceWrapper) GetVideo(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	// ------------- Optional query parameter "smartFolder" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "smartFolder", r.URL.Query(), &params.SmartFolder, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "smartFolder"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "smartFolder", Err: err})
+		}
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetVideo(w, r, id, params)
 	}))
@@ -8520,6 +9208,19 @@ func (siw *ServerInterfaceWrapper) ListVideoGroupMembers(w http.ResponseWriter, 
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "group"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "smartFolder" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "smartFolder", r.URL.Query(), &params.SmartFolder, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "smartFolder"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "smartFolder", Err: err})
 		}
 		return
 	}
@@ -8734,6 +9435,19 @@ func (siw *ServerInterfaceWrapper) GetRelatedVideos(w http.ResponseWriter, r *ht
 			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "group"})
 		} else {
 			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "group", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "smartFolder" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "smartFolder", r.URL.Query(), &params.SmartFolder, runtime.BindQueryParameterOptions{Type: "integer", Format: "int64"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "smartFolder"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "smartFolder", Err: err})
 		}
 		return
 	}
@@ -10047,6 +10761,13 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/items/remove", wrapper.RemoveGroupItems)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/items/{itemId}/move", wrapper.MoveGroupItem)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/groups/{id}/tag", wrapper.TagGroup)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/smart-folders", wrapper.ListSmartFolders)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/smart-folders", wrapper.CreateSmartFolder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/smart-folders/cards", wrapper.ListSmartFolderCards)
+	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/smart-folders/{id}", wrapper.DeleteSmartFolder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/smart-folders/{id}", wrapper.GetSmartFolder)
+	m.HandleFunc(http.MethodPatch+" "+options.BaseURL+"/api/smart-folders/{id}", wrapper.ChangeSmartFolder)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/smart-folders/{id}/items", wrapper.ListSmartFolderItems)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/reorder", wrapper.OrganizeReorder)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/group", wrapper.OrganizeGroup)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/organize/move", wrapper.OrganizeMove)
