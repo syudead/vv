@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -203,35 +204,53 @@ func currentUserKey(ctx context.Context, tx *sql.Tx, contentKey string) (string,
 	return key, nil
 }
 
-// removeAutoTagAttachment は判定が書いた行がまだそのままなら消し、消した鍵を返す。行は記録した鍵か、集まりに
-// 入るなどで鍵が変わった後は対象の動画の今の鍵にあり、書いた時刻が同じで、提案のタグならまだ提案のままの
-// ものだけを消す。所有者が外して付け直したか確定した行は時刻か状態が違うので残る（research.md R-7）。
-// 消さなければ空と、除外を書く鍵（今の鍵、無ければ記録した鍵）を返す。
-func removeAutoTagAttachment(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) (removed, rejectAt string, err error) {
-	current, err := currentUserKey(ctx, tx, target.entry.Subject.Key)
+// autoTagRemoval は取り消しが video_tags に対して行ったことである。removed は行を消した鍵、reverted は
+// 今の鍵（無ければ記録した鍵）の行を消したか、rejectAt は除外を書く鍵である。
+type autoTagRemoval struct {
+	removed  []string
+	reverted bool
+	rejectAt []string
+}
+
+// removeAutoTagAttachment は判定が書いた行がまだそのままなら消す。行は対象の動画の今の利用者データの鍵と、
+// 記録した鍵の両方で探す。集まりに入ると代表のタグは時刻を保って集まりの鍵へ写り、記録した鍵にも隠れて残るので、
+// 今の鍵を先に見て、どちらの鍵でも書いた時刻が同じで、提案のタグならまだ提案のままの行だけを消す。所有者が外して
+// 付け直したか確定した行は時刻か状態が違うので残る（research.md R-7）。今の鍵の行を消したときが取り消しの完了で、
+// 除外は今の鍵（無ければ記録した鍵）と、行を消した鍵に書く。
+func removeAutoTagAttachment(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) (autoTagRemoval, error) {
+	primary, err := currentUserKey(ctx, tx, target.entry.Subject.Key)
 	if err != nil {
-		return "", "", err
+		return autoTagRemoval{}, err
 	}
-	keys := []string{target.userKey}
-	if current != "" && current != target.userKey {
-		keys = append(keys, current)
+	if primary == "" {
+		primary = target.userKey
 	}
+	keys := []string{primary}
+	if target.userKey != primary {
+		keys = append(keys, target.userKey)
+	}
+	removal := autoTagRemoval{rejectAt: []string{primary}}
 	for _, key := range keys {
 		result, err := tx.ExecContext(ctx, `delete from video_tags where content_key = ? and tag_id = ? and created_at = ?
 			and (? = 0 or tentative = 1)`, key, target.tag.TagID, target.attachedAt, boolToInt(target.tag.Suggested))
 		if err != nil {
-			return "", "", fmt.Errorf("cannot remove the auto-tagging tag (tag=%d): %w", target.tag.TagID, err)
+			return autoTagRemoval{}, fmt.Errorf("cannot remove the auto-tagging tag (tag=%d): %w", target.tag.TagID, err)
 		}
-		if affected, err := result.RowsAffected(); err != nil {
-			return "", "", fmt.Errorf("cannot remove the auto-tagging tag (tag=%d): %w", target.tag.TagID, err)
-		} else if affected > 0 {
-			return key, key, nil
+		affected, err := result.RowsAffected()
+		if err != nil {
+			return autoTagRemoval{}, fmt.Errorf("cannot remove the auto-tagging tag (tag=%d): %w", target.tag.TagID, err)
+		}
+		if affected == 0 {
+			continue
+		}
+		removal.removed = append(removal.removed, key)
+		if key == primary {
+			removal.reverted = true
+		} else {
+			removal.rejectAt = append(removal.rejectAt, key)
 		}
 	}
-	if current != "" {
-		return "", current, nil
-	}
-	return "", target.userKey, nil
+	return removal, nil
 }
 
 // UndoAutoTag は auto_tag の記録 entryID が付けたタグ tagID を取り消し、所有者の undo の記録を返す
@@ -252,18 +271,20 @@ func (s *ActivityStore) UndoAutoTag(ctx context.Context, entryID, tagID int64) (
 	if !target.entry.TagUndoOffered(target.tag) {
 		return domain.ActivityEntry{}, domain.ErrActivityNotUndoable
 	}
-	removed, rejectAt, err := removeAutoTagAttachment(ctx, tx, target)
+	removal, err := removeAutoTagAttachment(ctx, tx, target)
 	if err != nil {
 		return domain.ActivityEntry{}, err
 	}
 	now := time.Now()
-	if _, err := tx.ExecContext(ctx, `insert into auto_tag_rejections (content_key, tag_id, rejected_at)
-		values (?, ?, ?) on conflict (content_key, tag_id) do update set rejected_at = excluded.rejected_at`,
-		rejectAt, tagID, now.Unix()); err != nil {
-		return domain.ActivityEntry{}, fmt.Errorf("cannot remember the rejected tag (tag=%d): %w", tagID, err)
+	for _, key := range removal.rejectAt {
+		if _, err := tx.ExecContext(ctx, `insert into auto_tag_rejections (content_key, tag_id, rejected_at)
+			values (?, ?, ?) on conflict (content_key, tag_id) do update set rejected_at = excluded.rejected_at`,
+			key, tagID, now.Unix()); err != nil {
+			return domain.ActivityEntry{}, fmt.Errorf("cannot remember the rejected tag (tag=%d): %w", tagID, err)
+		}
 	}
 	outcome := domain.ActivityAlreadyReverted
-	if removed != "" {
+	if removal.reverted {
 		outcome = domain.ActivityCompleted
 	}
 	c := &changes{}
@@ -278,14 +299,9 @@ func (s *ActivityStore) UndoAutoTag(ctx context.Context, entryID, tagID int64) (
 		undoID, entryID, tagID); err != nil {
 		return domain.ActivityEntry{}, fmt.Errorf("cannot mark the auto-tagging tag undone (tag=%d): %w", tagID, err)
 	}
-	var affected []int64
-	if removed != "" {
-		if err := touchEditedAtForUserKeys(ctx, tx, []string{removed}, now); err != nil {
-			return domain.ActivityEntry{}, err
-		}
-		if affected, err = videoIDsForUserKey(ctx, tx, removed); err != nil {
-			return domain.ActivityEntry{}, err
-		}
+	affected, err := touchAutoTagUndoneKeys(ctx, tx, removal.removed, now)
+	if err != nil {
+		return domain.ActivityEntry{}, err
 	}
 	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.ActivityEntry{}, fmt.Errorf("cannot undo the auto-tagging tag (tag=%d): %w", tagID, err)
@@ -294,4 +310,24 @@ func (s *ActivityStore) UndoAutoTag(ctx context.Context, entryID, tagID int64) (
 		s.db.publishEvents(domain.AutoTagApplied{VideoIDs: affected})
 	}
 	return s.ActivityEntry(ctx, undoID)
+}
+
+// touchAutoTagUndoneKeys は取り消しで行を消した鍵 keys の編集日時を now に進め、その鍵の今の動画の id を返す。
+func touchAutoTagUndoneKeys(ctx context.Context, tx *sql.Tx, keys []string, now time.Time) ([]int64, error) {
+	if len(keys) == 0 {
+		return nil, nil
+	}
+	if err := touchEditedAtForUserKeys(ctx, tx, keys, now); err != nil {
+		return nil, err
+	}
+	var affected []int64
+	for _, key := range keys {
+		ids, err := videoIDsForUserKey(ctx, tx, key)
+		if err != nil {
+			return nil, err
+		}
+		affected = append(affected, ids...)
+	}
+	slices.Sort(affected)
+	return slices.Compact(affected), nil
 }

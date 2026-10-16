@@ -313,3 +313,46 @@ func TestUndoAutoTagAfterTheOwnerChangedIt(t *testing.T) {
 		t.Fatalf("取り消しがタグを変えた: %v, want %v", got, before)
 	}
 }
+
+// 判定の後に対象を代表として束ねると、タグは集まりの鍵へ写り、記録した鍵にも隠れて残る。取り消しは今の集まりの
+// 鍵の行を消してすべてのメンバーから外し、除外を集まりの鍵に書くので、判定は取り消したタグを聞かない。
+func TestUndoAutoTagAfterTheSubjectJoinedABundle(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	p1, p2 := ids[fixturePath("/media/pair/p1.mp4")], ids[fixturePath("/media/pair/p2.mp4")]
+	p1Key := "key" + fixturePath("/media/pair/p1.mp4")
+	cat := createTestTag(t, db, "cat")
+	entry := runAutoTag(t, db, p1, domain.ActivityByRule, domain.AutoTagSelection{
+		Confirmed: []int64{cat.ID}, Probabilities: map[int64]float64{cat.ID: 0.91},
+	})
+	if _, err := db.Versions().Bundle(ctx, []int64{p1, p2}, p1); err != nil {
+		t.Fatal(err)
+	}
+	bundleKey := ownerVideo(t, db, p1).UserKey
+	if got := manualTagIDs(t, db, bundleKey); !slices.Equal(got, []int64{cat.ID}) {
+		t.Fatalf("束ねた後の集まりのタグ = %v", got)
+	}
+
+	undo, err := db.Activity().UndoAutoTag(ctx, entry.ID, cat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if undo.Outcome != domain.ActivityCompleted {
+		t.Fatalf("undo の記録 = %+v", undo)
+	}
+	for _, key := range []string{bundleKey, p1Key} {
+		if got := manualTagIDs(t, db, key); len(got) != 0 {
+			t.Fatalf("%s に取り消したタグが残った: %v", key, got)
+		}
+		if !rejectedFor(t, db, key, cat.ID) {
+			t.Fatalf("%s に却下が残っていない", key)
+		}
+	}
+	candidates, err := db.AutoTags().Candidates(ctx, p1Key)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.ContainsFunc(candidates, func(c domain.AutoTagCandidate) bool { return c.ID == cat.ID }) {
+		t.Fatalf("取り消したタグを候補にした: %+v", candidates)
+	}
+}
