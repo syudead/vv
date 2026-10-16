@@ -37,8 +37,10 @@ func (manifestRuntime) Inspect(_ context.Context, module []byte) (domain.WorkInf
 	return manifest, problem, nil
 }
 
-func (manifestRuntime) Run(context.Context, string, []byte, domain.WorkInfoRunRequest, domain.WorkInfoRunNetwork) (domain.WorkInfoRunResult, error) {
-	return domain.WorkInfoRunResult{}, errors.New("not used")
+func (manifestRuntime) Run(
+	context.Context, string, []byte, domain.WorkInfoRunRequest, domain.WorkInfoRunNetwork, func(domain.WorkInfoRunLog) error,
+) (domain.WorkInfoRunResult, domain.WorkInfoRunLog, error) {
+	return domain.WorkInfoRunResult{}, domain.WorkInfoRunLog{}, errors.New("not used")
 }
 
 const pluginSecret = "s3cret-value-never-returned"

@@ -128,7 +128,7 @@ func runHTTPVia(
 	if fail {
 		req.Settings["fail"] = "1"
 	}
-	got, err := rt.Run(context.Background(), probeDigest, probeModule(t), req, network)
+	got, _, err := rt.Run(context.Background(), probeDigest, probeModule(t), req, network, nil)
 	return got.WorkInfo, err
 }
 

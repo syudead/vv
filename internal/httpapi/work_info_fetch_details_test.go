@@ -25,8 +25,10 @@ type fetchedRuntime struct {
 	work *domain.FetchedWorkInfo
 }
 
-func (r fetchedRuntime) Run(context.Context, string, []byte, domain.WorkInfoRunRequest, domain.WorkInfoRunNetwork) (domain.WorkInfoRunResult, error) {
-	return domain.WorkInfoRunResult{WorkInfo: *r.work}, nil
+func (r fetchedRuntime) Run(
+	context.Context, string, []byte, domain.WorkInfoRunRequest, domain.WorkInfoRunNetwork, func(domain.WorkInfoRunLog) error,
+) (domain.WorkInfoRunResult, domain.WorkInfoRunLog, error) {
+	return domain.WorkInfoRunResult{WorkInfo: *r.work}, domain.WorkInfoRunLog{}, nil
 }
 
 type detailsEnv struct {

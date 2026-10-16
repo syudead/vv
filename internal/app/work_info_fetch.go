@@ -141,7 +141,8 @@ func (p *WorkInfoPlugins) run(
 	}
 	req.Settings = domain.DeclaredWorkInfoPluginValues(plugin.Manifest.Settings, plugin.Values)
 	// プロキシの設定はまだ無いので、プロキシなしで動かす。
-	result, err := p.runtime.Run(ctx, plugin.Digest, module, req, domain.WorkInfoRunNetwork{})
+	result, _, err := p.runtime.Run(ctx, plugin.Digest, module, req, domain.WorkInfoRunNetwork{},
+		p.recordRun(ctx, plugin, domain.SecretWorkInfoPluginValues(plugin.Manifest.Settings, req.Settings)))
 	if err != nil {
 		return domain.WorkInfoPlugin{}, domain.WorkInfoRunResult{}, err
 	}
