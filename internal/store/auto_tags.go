@@ -66,39 +66,63 @@ func (s *SettingsStore) SaveAutoTagSettings(ctx context.Context, settings domain
 // OllamaSettings は保存した Ollama の接続先を返す。行が無ければ既定値
 // （domain.DefaultOllamaSettings）になる。
 func (s *SettingsStore) OllamaSettings(ctx context.Context) (domain.OllamaSettings, error) {
-	settings := domain.DefaultOllamaSettings()
-	for _, item := range []struct {
-		keys   []string
-		target *string
-	}{
-		{[]string{ollamaEndpointKey, legacyOllamaEndpointKey}, &settings.Endpoint},
-		{[]string{ollamaModelKey, legacyOllamaModelKey}, &settings.Model},
-	} {
-		for _, key := range item.keys {
-			value, found, err := readSetting(ctx, s.db.sql, key)
-			if err != nil {
-				return domain.OllamaSettings{}, err
-			}
-			if found {
-				*item.target = value
-				break
-			}
-		}
-	}
-	return settings, nil
+	settings, _, err := ollamaConnection(ctx, s.db.sql)
+	return settings, err
 }
 
 // OllamaConnectionSaved は所有者が Ollama の接続先を保存したか（接続先の行があるか）を返す。
 // OllamaSettings は行が無ければ既定の接続先に倒すので、こちらで行の有無を見る
 // （specs/054-auto-dup/research.md R-13）。前の版のキーの行も保存とみなす。
 func (s *SettingsStore) OllamaConnectionSaved(ctx context.Context) (bool, error) {
-	for _, key := range []string{ollamaEndpointKey, legacyOllamaEndpointKey} {
-		_, found, err := readSetting(ctx, s.db.sql, key)
-		if err != nil || found {
-			return found, err
+	_, saved, err := ollamaConnection(ctx, s.db.sql)
+	return saved, err
+}
+
+// SavedOllamaSettings は接続先と、それを保存したか（OllamaConnectionSaved と同じ答え）を
+// 1 つの読み取りの取引で返す。同時の保存があっても、両者は同じ時点の値になる
+// （specs/058-settings-pages/research.md R-4）。
+func (s *SettingsStore) SavedOllamaSettings(ctx context.Context) (domain.OllamaSettings, bool, error) {
+	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		return domain.OllamaSettings{}, false, fmt.Errorf("cannot start reading the Ollama settings: %w", err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	settings, saved, err := ollamaConnection(ctx, tx)
+	if err != nil {
+		return domain.OllamaSettings{}, false, err
+	}
+	if err := tx.Commit(); err != nil {
+		return domain.OllamaSettings{}, false, fmt.Errorf("cannot finish reading the Ollama settings: %w", err)
+	}
+	return settings, saved, nil
+}
+
+// ollamaConnection は接続先と、接続先の行（前の版のキーを含む）があるかを読む。行が無い値は
+// 既定値（domain.DefaultOllamaSettings）になる。
+func ollamaConnection(ctx context.Context, q rowQueryer) (domain.OllamaSettings, bool, error) {
+	settings := domain.DefaultOllamaSettings()
+	saved := false
+	for _, item := range []struct {
+		keys   []string
+		target *string
+		marks  bool
+	}{
+		{[]string{ollamaEndpointKey, legacyOllamaEndpointKey}, &settings.Endpoint, true},
+		{[]string{ollamaModelKey, legacyOllamaModelKey}, &settings.Model, false},
+	} {
+		for _, key := range item.keys {
+			value, found, err := readSetting(ctx, q, key)
+			if err != nil {
+				return domain.OllamaSettings{}, false, err
+			}
+			if found {
+				*item.target = value
+				saved = saved || item.marks
+				break
+			}
 		}
 	}
-	return false, nil
+	return settings, saved, nil
 }
 
 // SaveOllamaSettings は Ollama の接続先を 1 つの取引で保存する。値は呼び出し側が
