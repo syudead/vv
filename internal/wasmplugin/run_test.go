@@ -324,8 +324,11 @@ func TestRunCountsCompilingTowardTheRunTimeout(t *testing.T) {
 	deadline, cancel := context.WithTimeoutCause(context.Background(), 0, errTimedOut)
 	defer cancel()
 
-	_, _, err = rt.run.run(context.Background(), deadline, "uncompiled", module, input, &httpSession{})
+	_, _, started, err := rt.run.run(context.Background(), deadline, "uncompiled", module, input, &httpSession{})
 	wantFailure(t, err, domain.WorkInfoRunTimedOut)
+	if started {
+		t.Fatalf("the run reports the module as started although its compile ran out of time")
+	}
 	if _, ok := rt.run.cache["uncompiled"]; ok {
 		t.Fatalf("the module was compiled after the run's time ran out")
 	}
@@ -393,4 +396,20 @@ func TestRunRecordsBeforeASecondRunCanStart(t *testing.T) {
 		t.Fatalf("second run inside record = %v (recorded %v); want it still waiting for the slot", second, secondRecorded)
 	}
 	wantEchoWorks(t, rt, module)
+}
+
+// コンパイルに失敗した実行はモジュールを起動しないので、record を呼ばず、前の実行のログを残す
+// （056 research.md R-6）。
+func TestRunDoesNotRecordARunWhoseModuleDidNotCompile(t *testing.T) {
+	rt := newTestRuntime(t)
+	recorded := false
+	record := func(domain.WorkInfoRunLog) error {
+		recorded = true
+		return nil
+	}
+	_, _, err := rt.Run(context.Background(), "not-wasm", []byte("not a module"), search("echo"), domain.WorkInfoRunNetwork{}, record)
+	wantFailure(t, err, domain.WorkInfoRunFailed)
+	if recorded {
+		t.Fatalf("record was called for a run whose module did not compile")
+	}
 }

@@ -48,28 +48,67 @@ func SecretWorkInfoPluginValues(settings []WorkInfoPluginSetting, values map[str
 }
 
 // MaskWorkInfoRunLog は log の標準エラーのうち、秘密の値 secrets のどれかに一致する部分をすべて
-// WorkInfoSecretMask に置き換える。空の値はどこにも一致しない。log が切り詰められていれば、末尾に残った
-// 秘密の値の先頭にあたる部分も伏せ、64 KiB で切れた値を一部も残さない。プラグインが符号化してから
-// 書いた値は見つけられない（contracts/plugin-contract.md の Standard error）。
+// WorkInfoSecretMask に置き換える。一致はもとの標準エラーの上ですべて探し、重なる一致（2 つの値の重なりや、
+// 同じ値の自己重複）はまとめて 1 つの WorkInfoSecretMask にするので、どの一致も一部も残らない。空の値は
+// どこにも一致しない。log が切り詰められていれば、末尾に残った秘密の値の先頭にあたる部分も伏せ、64 KiB で
+// 切れた値を一部も残さない。プラグインが符号化してから書いた値は見つけられない
+// （contracts/plugin-contract.md の Standard error）。
 func MaskWorkInfoRunLog(log WorkInfoRunLog, secrets []string) WorkInfoRunLog {
 	secrets = slices.DeleteFunc(slices.Clone(secrets), func(s string) bool { return s == "" })
 	if len(secrets) == 0 {
 		return log
 	}
-	// 長い値を先に比べ、ほかの値を含む値を丸ごと伏せる。
-	slices.SortFunc(secrets, func(a, b string) int { return cmp.Compare(len(b), len(a)) })
-	text, tail := log.Stderr, ""
+	text := log.Stderr
+	spans := secretSpans(text, secrets)
 	if log.Truncated {
 		if n := secretPrefixSuffix(text, secrets); n > 0 {
-			text, tail = text[:len(text)-n], WorkInfoSecretMask
+			spans = append(spans, span{len(text) - n, len(text)})
 		}
 	}
-	pairs := make([]string, 0, 2*len(secrets))
-	for _, s := range secrets {
-		pairs = append(pairs, s, WorkInfoSecretMask)
+	var b strings.Builder
+	at := 0
+	for _, s := range mergeSpans(spans) {
+		b.WriteString(text[at:s.start])
+		b.WriteString(WorkInfoSecretMask)
+		at = s.end
 	}
-	log.Stderr = strings.NewReplacer(pairs...).Replace(text) + tail
+	b.WriteString(text[at:])
+	log.Stderr = b.String()
 	return log
+}
+
+// span は文字列の [start, end) のバイトの範囲である。
+type span struct{ start, end int }
+
+// secretSpans は text の中の、秘密の値 secrets の一致をすべて返す。重なる一致も返す。
+func secretSpans(text string, secrets []string) []span {
+	var spans []span
+	for _, s := range secrets {
+		for from := 0; ; {
+			i := strings.Index(text[from:], s)
+			if i < 0 {
+				break
+			}
+			spans = append(spans, span{from + i, from + i + len(s)})
+			from += i + 1
+		}
+	}
+	return spans
+}
+
+// mergeSpans は spans を始まりの順に並べ、重なる範囲をまとめる。接するだけの範囲はまとめないので、
+// 続けて書かれた 2 つの値は 2 つの WorkInfoSecretMask になる。
+func mergeSpans(spans []span) []span {
+	slices.SortFunc(spans, func(a, b span) int { return cmp.Compare(a.start, b.start) })
+	var merged []span
+	for _, s := range spans {
+		if last := len(merged) - 1; last >= 0 && s.start < merged[last].end {
+			merged[last].end = max(merged[last].end, s.end)
+			continue
+		}
+		merged = append(merged, s)
+	}
+	return merged
 }
 
 // secretPrefixSuffix は text の末尾のうち、秘密の値のどれかの（値そのものより短い）先頭と等しい最も長い

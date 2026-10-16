@@ -23,6 +23,9 @@ func TestMaskWorkInfoRunLog(t *testing.T) {
 		{"切り詰めていなければ末尾は伏せない", "error: key=tok", false, []string{"tok123"}, "error: key=tok"},
 		{"切り詰めた出力でも、末尾が秘密の先頭でなければそのまま", "error: done", true, []string{"tok123"}, "error: done"},
 		{"末尾の丸ごとの値と、その後ろの先頭を両方伏せる", "tok123tok", true, []string{"tok123"}, "[secret][secret]"},
+		{"重なる 2 つの値はまとめて伏せる", "x abcde y", false, []string{"abc", "cde"}, "x [secret] y"},
+		{"自己重複する値の一致をまとめて伏せる", "k=aaa", false, []string{"aa"}, "k=[secret]"},
+		{"末尾の先頭が丸ごとの値と重なってもまとめて伏せる", "k=aba", true, []string{"aba"}, "k=[secret]"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

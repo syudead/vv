@@ -120,9 +120,9 @@ sequenceDiagram
 
 | Rule | Where | Why |
 | --- | --- | --- |
-| `Run` returns the run log on success and on failure, and calls `record` only when the module ended in success or a run failure | [`run.go`](../../internal/wasmplugin/run.go) | A `busy` refusal or a cancelled request ran nothing worth replacing the last output with |
+| `Run` returns the run log on success and on failure, and calls `record` only when the module started and ended in success or a run failure | [`run.go`](../../internal/wasmplugin/run.go) | A `busy` refusal, a module that failed to compile or ran out of time while compiling, and a cancelled request ran nothing worth replacing the last output with |
 | The row is written inside `record`, before the run slot is released | `internal/app`, `internal/wasmplugin` | Rows are written in the order the runs end, so an older run never overwrites a newer one |
-| Each secret value the run received is replaced wherever it occurs; in a truncated output, a tail that is the start of a secret value is replaced too | [`work_info_plugin_run_log.go`](../../internal/domain/work_info_plugin_run_log.go) | A value cut at 64 KiB leaves no part in clear; a value the plugin encodes first is not found |
+| Each secret value the run received is replaced wherever it occurs, and overlapping matches become one `[secret]`; in a truncated output, a tail that is the start of a secret value is replaced too | [`work_info_plugin_run_log.go`](../../internal/domain/work_info_plugin_run_log.go) | A value cut at 64 KiB leaves no part in clear; a value the plugin encodes first is not found |
 | The row is written only while `work_info_plugins` has the row with the generation that ran, in one statement | [`work_info_plugin_runs.go`](../../internal/store/work_info_plugin_runs.go) | A run of a replaced (even with the same bytes), revoked or deleted plugin writes nothing |
 | A replacing upload deletes the row in its transaction; deleting the plugin cascades | `internal/store` | The screen shows only output of the current module |
 

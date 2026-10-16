@@ -35,10 +35,11 @@ var (
 // （research.md R-2・R-4）。時間の上限は枠を取ったときから数え、コンパイルも含む。失敗は *domain.WorkInfoRunError で返し、呼び出し元の ctx が
 // 終わったときはその誤りを返す。
 //
-// 成功でも失敗でも、残した標準エラーを実行のログとして返す。モジュールが成功か実行の失敗で終わったときは、
-// 同じログを、枠を空ける前に record に渡す（056 research.md R-6）。record が nil なら渡さない。record の
-// 誤りはサーバーのログに残し、実行の結果は変えない。枠を取れなかった実行と、呼び出し元の ctx が終わった
-// 実行は record を呼ばない。
+// 成功でも失敗でも、残した標準エラーを実行のログとして返す。モジュールを起動し、それが成功か実行の失敗で
+// 終わったときは、同じログを、枠を空ける前に record に渡す（056 research.md R-6）。record が nil なら
+// 渡さない。record の誤りはサーバーのログに残し、実行の結果は変えない。枠を取れなかった実行、コンパイルの
+// 失敗か時間切れでモジュールを起動しなかった実行、呼び出し元の ctx が終わった実行は record を呼ばず、
+// 前の実行のログを残す。
 func (r *Runtime) Run(
 	ctx context.Context, digest string, module []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork,
 	record func(domain.WorkInfoRunLog) error,
@@ -56,7 +57,7 @@ func (r *Runtime) Run(
 	defer cancel()
 	session := r.run.net.session(network)
 	defer session.close()
-	output, stderr, err := r.run.run(ctx, deadline, digest, module, input, session)
+	output, stderr, started, err := r.run.run(ctx, deadline, digest, module, input, session)
 	var result domain.WorkInfoRunResult
 	if err == nil {
 		result, err = domain.ParseWorkInfoResponse(req.Operation, output)
@@ -67,7 +68,7 @@ func (r *Runtime) Run(
 	if errors.As(err, &runErr) {
 		log.Failure = runErr.Failure
 	}
-	if record != nil && (err == nil || runErr != nil) {
+	if record != nil && started && (err == nil || runErr != nil) {
 		if recordErr := record(log); recordErr != nil {
 			r.run.logger.Warn("work-info plugin run log was not saved", "digest", digest, "error", recordErr)
 		}
@@ -146,17 +147,18 @@ func (rn *runner) close(ctx context.Context) error {
 
 // run はモジュールを 1 回動かす。parent は呼び出し元の ctx、deadline はそれに実行の時間の上限を
 // 付けたもので、コンパイルとインスタンスの両方を止める。vv のホスト関数は session を使う。標準エラーの
-// 残した部分は、失敗でも返す（モジュールを動かさなかったときは空である）。
+// 残した部分は、失敗でも返す。started はモジュールを起動したかで、コンパイルの失敗か時間切れでは false
+// である（そのとき標準エラーは空である）。
 func (rn *runner) run(
 	parent, deadline context.Context, digest string, module, input []byte, session *httpSession,
-) ([]byte, *keptOutput, error) {
-	stderr := &keptOutput{limit: domain.WorkInfoPluginStderrKeptBytes}
+) (output []byte, stderr *keptOutput, started bool, err error) {
+	stderr = &keptOutput{limit: domain.WorkInfoPluginStderrKeptBytes}
 	compiled, err := rn.compiled(deadline, digest, module)
 	if err != nil {
 		if stop := stopped(parent, deadline); stop != nil {
-			return nil, stderr, stop
+			return nil, stderr, false, stop
 		}
-		return nil, stderr, err
+		return nil, stderr, false, err
 	}
 	runCtx, cancel := context.WithCancelCause(context.WithValue(deadline, sessionKey{}, session))
 	defer cancel(nil)
@@ -181,9 +183,9 @@ func (rn *runner) run(
 		if err != nil {
 			rn.logger.Info("work-info plugin run failed", "digest", digest, "error", err)
 		}
-		return nil, stderr, failure
+		return nil, stderr, true, failure
 	}
-	return stdout.buf.Bytes(), stderr, nil
+	return stdout.buf.Bytes(), stderr, true, nil
 }
 
 // runFailure は実行の終わり方を失敗に対応させる。出力とメモリの上限は、超えたときに runCtx を
