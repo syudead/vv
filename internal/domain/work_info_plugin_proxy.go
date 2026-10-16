@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// WorkInfoPluginProxyURLMaxLen はプラグインの要求を送るプロキシの URL の最大の長さ（バイト）である。
+// WorkInfoPluginProxyURLMaxLen はプラグインの要求を送るプロキシの URL の最大の長さ（文字数）である（contracts/screen-api.md）。
 const WorkInfoPluginProxyURLMaxLen = 2048
 
 // ErrWorkInfoPluginProxyURLInvalid はプロキシの URL が規則に外れることを表す。
@@ -31,7 +31,7 @@ func ParseWorkInfoPluginProxyURL(raw string) (*url.URL, error) {
 	if raw == "" {
 		return nil, nil
 	}
-	if len(raw) > WorkInfoPluginProxyURLMaxLen {
+	if !runeCountBetween(raw, 1, WorkInfoPluginProxyURLMaxLen) {
 		return nil, ErrWorkInfoPluginProxyURLInvalid
 	}
 	// url.Parse は "#" や ":" だけを書いた空のフラグメントとポートを、書かなかったときと

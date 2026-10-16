@@ -29,6 +29,17 @@ func TestParseWorkInfoPluginProxyURLEmptyMeansNoProxy(t *testing.T) {
 	}
 }
 
+func TestParseWorkInfoPluginProxyURLCountsCharacters(t *testing.T) {
+	// 2048 文字ちょうどで、UTF-8 では 2048 バイトを超える。
+	host := strings.Repeat("ü", WorkInfoPluginProxyURLMaxLen-len("http://.example")) + ".example"
+	if u, err := ParseWorkInfoPluginProxyURL("http://" + host); err != nil || u == nil {
+		t.Fatalf("ParseWorkInfoPluginProxyURL(2048 characters) = %v, %v, want a proxy", u, err)
+	}
+	if _, err := ParseWorkInfoPluginProxyURL("http://ü" + host); !errors.Is(err, ErrWorkInfoPluginProxyURLInvalid) {
+		t.Fatalf("ParseWorkInfoPluginProxyURL(2049 characters) = %v, want ErrWorkInfoPluginProxyURLInvalid", err)
+	}
+}
+
 func TestParseWorkInfoPluginProxyURLRefusesOtherURLs(t *testing.T) {
 	long := "http://" + strings.Repeat("a", WorkInfoPluginProxyURLMaxLen) + ".example"
 	for _, raw := range []string{

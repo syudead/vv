@@ -83,3 +83,19 @@ func (s *SettingsStore) AutoImport(ctx context.Context) (bool, error) {
 func (s *SettingsStore) SaveAutoImport(ctx context.Context, enabled bool) error {
 	return writeSetting(ctx, s.db.sql, libraryAutoImportKey, strconv.FormatBool(enabled))
 }
+
+// workInfoPluginProxyURLKey は作品情報プラグインの要求を送るプロキシの URL のキーである。行が無いか
+// "" ならプロキシを使わない（specs/056-plugin-tooling/data-model.md）。
+const workInfoPluginProxyURLKey = "work_info_plugins.proxy_url"
+
+// WorkInfoPluginProxyURL は保存したプロキシの URL を、解釈せずに返す。行が無ければ "" である。
+// 規則は domain.ParseWorkInfoPluginProxyURL が確かめる。
+func (s *SettingsStore) WorkInfoPluginProxyURL(ctx context.Context) (string, error) {
+	value, _, err := readSetting(ctx, s.db.sql, workInfoPluginProxyURLKey)
+	return value, err
+}
+
+// SaveWorkInfoPluginProxyURL はプロキシの URL を保存する。"" はプロキシなしである。
+func (s *SettingsStore) SaveWorkInfoPluginProxyURL(ctx context.Context, value string) error {
+	return writeSetting(ctx, s.db.sql, workInfoPluginProxyURLKey, value)
+}
