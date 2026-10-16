@@ -213,7 +213,8 @@ describe("Sidebar", () => {
     const names = within(main)
       .getAllByRole("link")
       .map((link) => link.textContent);
-    expect(names.slice(0, 8)).toEqual([
+    expect(names.slice(0, 9)).toEqual([
+      "Home",
       "Library",
       "Folders",
       "History",
@@ -223,6 +224,13 @@ describe("Sidebar", () => {
       "Organizations",
       "Duplicates",
     ]);
+    // ホームはトップ、ライブラリは `/library`（specs/057-home/ui-design.md「Sidebar and library」）。
+    expect(within(main).getByRole("link", { name: "Home" }).getAttribute("href")).toBe(
+      "/",
+    );
+    expect(within(main).getByRole("link", { name: "Library" }).getAttribute("href")).toBe(
+      "/library",
+    );
     expect(within(main).getByRole("link", { name: "People" }).getAttribute("href")).toBe(
       "/people",
     );
@@ -246,8 +254,8 @@ describe("Sidebar", () => {
       within(guestMain)
         .getAllByRole("link")
         .map((link) => link.textContent)
-        .slice(0, 2),
-    ).toEqual(["Library", "Folders"]);
+        .slice(0, 3),
+    ).toEqual(["Home", "Library", "Folders"]);
     expect(screen.queryByRole("link", { name: "History" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Playlists" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Duplicates" })).toBeNull();

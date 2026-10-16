@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import Breadcrumbs from "../folders/Breadcrumbs";
 import type { Crumb } from "../folders/folderPath";
 import { t, type UiText } from "../i18n";
+import { LIBRARY_PATH } from "../library/libraryPath";
 import { EmptyState } from "../ui/patterns/empty-state";
 import { PageHeader } from "../ui/patterns/page-header";
 import { Button } from "../ui/shadcn/button";
@@ -88,7 +89,7 @@ export function GoneState({
       description={description}
       action={
         <Button size="sm" asChild>
-          <Link to="/">{t.groups.detail.gone.action}</Link>
+          <Link to={LIBRARY_PATH}>{t.groups.detail.gone.action}</Link>
         </Button>
       }
     />

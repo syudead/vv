@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import type { TagRef } from "../api/client";
+import { libraryFilterPath } from "../library/libraryPath";
 import { favoriteTargets, type LibrarySelection } from "../library/selection";
 import { TAG_PARAM } from "../library/tagCriteria";
 
@@ -110,7 +111,7 @@ export function useLoadMoreSentinel(
 export function usePressTagToLibrary() {
   const navigate = useNavigate();
   return useCallback(
-    (tag: TagRef) => void navigate(`/?${TAG_PARAM}=${String(tag.id)}`),
+    (tag: TagRef) => void navigate(libraryFilterPath(TAG_PARAM, tag.id)),
     [navigate],
   );
 }

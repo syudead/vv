@@ -234,7 +234,7 @@ async function expectLibraryImage<T>(
 ) {
   await expect(async () => {
     const { thumbnailUrl } = await readVideo(request);
-    await page.goto(`/?q=${encodeURIComponent(title)}`);
+    await page.goto(`/library?q=${encodeURIComponent(title)}`);
     const image = libraryCardImage(page, thumbnailUrl);
     await image.scrollIntoViewIfNeeded();
     await expect.poll(() => read(image), { timeout: 5_000 }).toBe(expected);

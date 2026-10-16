@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 2310c1c207bc74e387fcedd352344928266853a74cafe367203f9ec3dfa877b2
+sourceHash: b287e60f4f3e8c405a128e7bedc60f2c3ddb59b60fa52d13cfaf8b2ca2b82e50
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -127,7 +127,7 @@ flowchart LR
 
 | 部品 | 所有者 | ゲスト |
 | --- | --- | --- |
-| サイドバー上部 | すべての項目 | `Library` と `Folders` だけ |
+| サイドバー上部 | すべての項目 | `Home`、`Library`、`Folders` だけ |
 | サイドバー下部 | `Settings`、`Sign out` | `Sign in` |
 | `Scan library` ボタンと取り込みの進捗 | 表示 | 非表示 |
 | 並び順 | 9 | 7 |
@@ -188,7 +188,7 @@ flowchart LR
 | 場合 | 振る舞い |
 | --- | --- |
 | ライブラリでタグを押す | そのタグで絞り込む |
-| フォルダのページかグループのページでタグを押す | `/?tag=<id>` を開く |
+| フォルダのページかグループのページでタグを押す | `/library?tag=<id>` を開く |
 | 行に収まらないタグ | `+N` にまとめる。その上でマウスを止めるか押すと、隠れたタグを折り返すチップとしてビューポートの中に開き、収まらないときはスクロールし、どの名前も省略せずに示す（[041 UI 設計](../../specs/041-tag-overflow-list/ui-design.md#the-list)） |
 | フォルダ名だけから来たタグ | 同じ大きさ、塗りなし、破線の枠線、Folder の印。動画ページでは × がなく、`Remove tag` の候補にならない（[017 UI 設計](../../specs/017-folder-groups/ui-design.md)） |
 | ホバーのプレビュー | どの画面でも一度に 1 つ |
@@ -265,7 +265,7 @@ flowchart LR
 
 ## サイドバーのナビゲーション {#sidebar-navigation}
 
-サイドバーの各項目は、それぞれの画面へ移る。
+サイドバーの各項目は、それぞれの画面へ移る。`Home` は `/` を開き、`Library` の上にある。この項目は `/library` でライブラリを開く（[057 調査、R-15](../../specs/057-home/research.md#r-15-the-library-moves-to-library)）。ライブラリはそのアドレスでもクエリパラメータを保ち、ライブラリを絞り込むアプリ内のリンク（タグ、人物、組織）はすべて `/library?<parameter>=<id>` を開く。移動の前からある `/?tag=<id>` の形の URL は、同じクエリで `/library` を開く。ホーム画面ができるまでは、クエリのない `/` も `/library` を開く。
 
 ## 動画ページのレイアウト {#video-page-layout}
 

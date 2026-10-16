@@ -12,6 +12,7 @@ import {
 } from "../api/workInfo";
 import { t, type UiText } from "../i18n";
 import { cn } from "../lib/cn";
+import { libraryFilterPath } from "../library/libraryPath";
 import { Button } from "../ui/shadcn/button";
 
 /** foldLimit は、長いリストを畳んだときに出しておく項目の数の既定である。 */
@@ -69,8 +70,8 @@ export function Item({ label, children }: { label: UiText; children: ReactNode }
 }
 
 /**
- * CreditLink は人物・団体の名前で、押すとそれで絞ったライブラリ（`/?person=<id>`・
- * `/?organization=<id>`）を開く（ui-design.md「Video page: work details row」、
+ * CreditLink は人物・団体の名前で、押すとそれで絞ったライブラリ（`/library?person=<id>`・
+ * `/library?organization=<id>`）を開く（ui-design.md「Video page: work details row」、
  * 「Library: filter by a person or organization」）。本文の色で、上に乗ると `primary`。
  */
 function CreditLink({
@@ -82,7 +83,7 @@ function CreditLink({
 }) {
   return (
     <Link
-      to={`/?${kind}=${String(credit.id)}`}
+      to={libraryFilterPath(kind, credit.id)}
       aria-label={t.player.workInfo.showVideosWith(credit.name)}
       className="text-foreground hover:text-primary"
     >

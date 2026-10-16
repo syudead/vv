@@ -236,7 +236,7 @@ async function watchVideo(page: Page, item: Video, seconds: number) {
  * 値を並びのまま返す。履歴を消してもこれが変わらないことを確かめる（受け入れ条件 6）。
  */
 async function libraryCards(page: Page) {
-  await page.goto(`/?q=${encodeURIComponent("履歴の確認")}&sort=playedDesc`);
+  await page.goto(`/library?q=${encodeURIComponent("履歴の確認")}&sort=playedDesc`);
   const cards = page.locator("article[data-video-id]");
   await expect(cards).toHaveCount(2);
   return cards.evaluateAll((elements) =>
@@ -255,7 +255,7 @@ async function libraryCards(page: Page) {
  */
 async function watchedCards(page: Page, expected: number) {
   await page.goto(
-    `/?q=${encodeURIComponent("履歴の確認")}&sort=playedDesc&watch=watched`,
+    `/library?q=${encodeURIComponent("履歴の確認")}&sort=playedDesc&watch=watched`,
   );
   const cards = page.locator("article[data-video-id]");
   await expect(cards).toHaveCount(expected);
@@ -543,7 +543,7 @@ test.describe.serial("watch history", () => {
     // 再開を確かめられない。
     expect(saved).toBeGreaterThanOrEqual(5000);
 
-    await page.goto("/");
+    await page.goto("/library");
     await openHistory(page);
     await entryLinks(page, titleA).first().click();
     await expect(page).toHaveURL(`/videos/${String(item.id)}`);
@@ -599,7 +599,7 @@ test.describe.serial("watch history", () => {
     page,
     request,
   }) => {
-    await page.goto("/");
+    await page.goto("/library");
     await openHistory(page);
     // lg から全件の削除は横の欄の最後にある（lg 未満の More の奥はページテストで確かめる）。
     const openClear = async () => {
@@ -721,7 +721,7 @@ test.describe.serial("watch history", () => {
   test("「In progress」とタイトルの検索を合わせると、両方を満たす件だけが残る（受け入れ条件 12）", async ({
     page,
   }) => {
-    await page.goto("/");
+    await page.goto("/library");
     await openHistory(page);
     await watchFilter(page, "In progress").click();
     await expect(entryLinks(page, titleA)).toHaveCount(0);
@@ -762,7 +762,7 @@ test.describe.serial("watch history", () => {
     backdateEntry(oldest.id, Date.parse(oldest.playedAt) - 3 * 24 * 60 * 60 * 1000);
     const moved = await historyEntries(request);
 
-    await page.goto("/");
+    await page.goto("/library");
     await openHistory(page);
     const days = await localDays(
       page,
@@ -797,7 +797,7 @@ test.describe.serial("watch history", () => {
     request,
   }) => {
     test.setTimeout(60_000);
-    await page.goto("/");
+    await page.goto("/library");
     await openHistory(page);
     const item = video(titleB);
     const rows = entryRows(page, titleB);
@@ -835,7 +835,7 @@ test.describe.serial("watch history", () => {
     const saved = (await savedProgress(request, item))?.positionMs ?? 0;
     expect(saved).toBeGreaterThanOrEqual(5000);
 
-    await page.goto("/");
+    await page.goto("/library");
     await openHistory(page);
     const row = entryRows(page, titleB).first();
     const shown = seconds((await positionText(row).textContent()) ?? "");
@@ -856,7 +856,7 @@ test.describe.serial("watch history", () => {
     page,
   }) => {
     const item = video(titleA);
-    await page.goto("/");
+    await page.goto("/library");
     await openHistory(page);
     const row = entryRows(page, titleA);
     await expect(row).toHaveCount(1);
@@ -880,7 +880,7 @@ test.describe.serial("watch history", () => {
     browser,
   }) => {
     const { context, page } = await guestPage(browser);
-    await page.goto("/");
+    await page.goto("/library");
     const sidebar = page.getByRole("complementary", { name: "Main navigation" });
     await expect(sidebar.getByRole("link", { name: "Sign in" })).toBeVisible();
     await expect(sidebar.getByRole("link", { name: "History" })).toHaveCount(0);

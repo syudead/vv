@@ -181,7 +181,7 @@ test.describe.serial("library search", () => {
     expect(unwatched.total).toBeGreaterThan(60);
 
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/");
+    await page.goto("/library");
     await expect(summary(page)).toHaveText(resultCount(expectedVideos));
 
     await page
@@ -228,7 +228,7 @@ test.describe.serial("library search", () => {
     context,
     request,
   }) => {
-    const url = `/?q=${encodeURIComponent("旅行 OR 奈良")}&watch=watched&playable=1&sort=durationDesc`;
+    const url = `/library?q=${encodeURIComponent("旅行 OR 奈良")}&watch=watched&playable=1&sort=durationDesc`;
     const expected = await listAll(
       request,
       `&query=${encodeURIComponent("旅行 OR 奈良")}&watch=watched&playable=true&sort=durationDesc`,
@@ -272,7 +272,7 @@ test.describe.serial("library search", () => {
     await expect(page).toHaveURL(/sort=durationAsc$/);
 
     // 検索語の入力は一続きで 1 つだけ増える。
-    await page.goto("/?sort=titleAsc");
+    await page.goto("/library?sort=titleAsc");
     const box = page.getByRole("searchbox", { name: "Search videos" });
     await box.click();
     await box.pressSequentially("話", { delay: 50 });
@@ -282,7 +282,7 @@ test.describe.serial("library search", () => {
     await expect.poll(() => cardTitles(page)).toEqual(["2話"]);
     await page.keyboard.press("Tab");
     await page.goBack();
-    await expect(page).toHaveURL(/\/\?sort=titleAsc$/);
+    await expect(page).toHaveURL(/\/library\?sort=titleAsc$/);
     await expect(box).toHaveValue("");
   });
 
@@ -291,7 +291,7 @@ test.describe.serial("library search", () => {
   }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`/?q=${encodeURIComponent("旅行 OR 奈良")}&sort=addedDesc`);
+    await page.goto(`/library?q=${encodeURIComponent("旅行 OR 奈良")}&sort=addedDesc`);
     await expect(summary(page)).toHaveText("3 items");
 
     const kinds: [string, string, string][] = [
@@ -329,7 +329,7 @@ test.describe.serial("library search", () => {
     await expect(page).toHaveURL(/sort=random&seed=\d+$/);
     await expect(page.getByRole("button", { name: "Shuffle" })).toBeVisible();
 
-    await page.goto(`/?q=${encodeURIComponent("話")}&sort=titleAsc`);
+    await page.goto(`/library?q=${encodeURIComponent("話")}&sort=titleAsc`);
     await expect.poll(() => cardTitles(page)).toEqual(["2話", "10話"]);
   });
 
@@ -338,21 +338,21 @@ test.describe.serial("library search", () => {
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     const durationQuery = encodeURIComponent("長さ不明 OR 旅行");
-    await page.goto(`/?q=${durationQuery}&sort=durationDesc`);
+    await page.goto(`/library?q=${durationQuery}&sort=durationDesc`);
     await expect
       .poll(() => cardTitles(page))
       .toEqual(["京都旅行 2023", "京都旅行 2024", "長さ不明"]);
-    await page.goto(`/?q=${durationQuery}&sort=durationAsc`);
+    await page.goto(`/library?q=${durationQuery}&sort=durationAsc`);
     await expect
       .poll(() => cardTitles(page))
       .toEqual(["京都旅行 2024", "京都旅行 2023", "長さ不明"]);
 
     const playedQuery = encodeURIComponent('旅行 OR "clip 01"');
-    await page.goto(`/?q=${playedQuery}&sort=playedDesc`);
+    await page.goto(`/library?q=${playedQuery}&sort=playedDesc`);
     await expect
       .poll(() => cardTitles(page))
       .toEqual(["京都旅行 2024", "京都旅行 2023", "clip 01"]);
-    await page.goto(`/?q=${playedQuery}&sort=playedAsc`);
+    await page.goto(`/library?q=${playedQuery}&sort=playedAsc`);
     await expect
       .poll(() => cardTitles(page))
       .toEqual(["京都旅行 2023", "京都旅行 2024", "clip 01"]);
@@ -363,7 +363,7 @@ test.describe.serial("library search", () => {
   }) => {
     test.setTimeout(90_000);
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/?sort=random");
+    await page.goto("/library?sort=random");
     await expect(page).toHaveURL(/\?sort=random&seed=\d+$/);
     const url = page.url();
 
@@ -403,7 +403,9 @@ test.describe.serial("library search", () => {
 
   test("22: 一致なしでは条件や解除操作を重ねない", async ({ page }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/?q=zzz-no-such-video&watch=unwatched&playable=1&sort=titleDesc");
+    await page.goto(
+      "/library?q=zzz-no-such-video&watch=unwatched&playable=1&sort=titleDesc",
+    );
     await expect(
       page.getByRole("heading", { name: "No videos match these conditions" }),
     ).toBeVisible();
@@ -421,7 +423,7 @@ test.describe.serial("library search", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`/?q=${encodeURIComponent("京都")}&sort=addedDesc`);
+    await page.goto(`/library?q=${encodeURIComponent("京都")}&sort=addedDesc`);
     const box = page.getByRole("searchbox", { name: "Search videos" });
     await expect(box).toHaveValue("京都");
     const url = page.url();
@@ -461,7 +463,7 @@ test.describe.serial("library search", () => {
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/?sort=titleAsc");
+    await page.goto("/library?sort=titleAsc");
     await expect(page.locator("[data-video-id]").first()).toBeVisible();
 
     const focused = () => page.locator(":focus");
@@ -515,7 +517,7 @@ test.describe.serial("library search", () => {
   }) => {
     test.setTimeout(60_000);
     await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/?watch=unwatched&sort=titleDesc");
+    await page.goto("/library?watch=unwatched&sort=titleDesc");
     await expect(page.locator("[data-video-id]")).toHaveCount(60);
     const before = await cardTitles(page);
     const status = (await summary(page).textContent()) ?? "";
@@ -572,28 +574,28 @@ test.describe.serial("library search", () => {
     for (const width of [360, 768, 1280]) {
       await page.setViewportSize({ width, height: 800 });
       await page.goto(
-        `/?q=${encodeURIComponent("京都")}&watch=unwatched&sort=durationDesc`,
+        `/library?q=${encodeURIComponent("京都")}&watch=unwatched&sort=durationDesc`,
       );
       await shoot(`filtered-${String(width)}`);
-      await page.goto("/?sort=random&seed=12345");
+      await page.goto("/library?sort=random&seed=12345");
       await shoot(`random-${String(width)}`);
       await page.goto(
-        `/?q=${encodeURIComponent("存在しない題名")}&watch=watched&playable=1&sort=titleAsc`,
+        `/library?q=${encodeURIComponent("存在しない題名")}&watch=watched&playable=1&sort=titleAsc`,
       );
       await shoot(`no-match-${String(width)}`);
-      await page.goto(`/?q=${encodeURIComponent("京都")}&sort=addedDesc`);
+      await page.goto(`/library?q=${encodeURIComponent("京都")}&sort=addedDesc`);
       await page.getByRole("button", { name: "How to search" }).click();
       await expect(page.getByRole("dialog")).toBeVisible();
       await shoot(`help-${String(width)}`);
     }
     await page.setViewportSize({ width: 360, height: 800 });
     await page.goto(
-      `/?q=${encodeURIComponent("京都")}&watch=unwatched&sort=durationDesc`,
+      `/library?q=${encodeURIComponent("京都")}&watch=unwatched&sort=durationDesc`,
     );
     await page.getByRole("button", { name: "View and sort" }).click();
     await shoot("compact-360");
     await page.keyboard.press("Escape");
-    await page.goto("/?sort=random&seed=12345");
+    await page.goto("/library?sort=random&seed=12345");
     await page.getByRole("button", { name: "View and sort" }).click();
     await shoot("compact-random-360");
   });
