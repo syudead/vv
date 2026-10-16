@@ -418,7 +418,7 @@ func run(opts runOptions) error {
 
 	httpAuthenticator, apiTokens := newHTTPAuth(authStore)
 	// 作品情報プラグインのランタイム。HTTP の待ち受けを止めたあと、データベースより先に閉じる。
-	workInfoPlugins, closeWorkInfoPlugins := newWorkInfoPlugins(context.Background(), db, logger)
+	workInfoPlugins, closeWorkInfoPlugins := newWorkInfoPlugins(context.Background(), db, ingest, logger)
 	defer closeWorkInfoPlugins()
 	handler := httpapi.NewRouter(httpapi.Options{
 		Build:            build,
