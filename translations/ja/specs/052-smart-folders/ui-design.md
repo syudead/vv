@@ -1,6 +1,6 @@
 ---
 source: specs/052-smart-folders/ui-design.md
-sourceHash: d17f60302d1eb66a46c3aaec8d7a51520c0f243e1dcfcb89e6465a44ed384d05
+sourceHash: 82ac522909899ddee425a1120c548446c0afac2148095fc74edac2f5f15d0a9b
 ---
 
 # UI 設計: 中身が保存した条件に従うスマートフォルダ {#ui-design-smart-folders-whose-contents-follow-a-saved-condition}
@@ -94,6 +94,7 @@ flowchart LR
 | 作成した。保存した | Created "{name}"; Saved "{name}" | `smartFolders.created(name)`、`.saved(name)`。トースト |
 | 絞り込んだライブラリでの作成のトーストの操作 | Open | `smartFolders.open`。新しいフォルダのページを開く |
 | カードのアクセシブルな名前 | {name}, smart folder of 12 videos; {name}, smart folder of 12 videos, 3 watched | `library.smartFolder.label(name, count, watched)` |
+| 値を読み込んでいる間のカードのアクセシブルな名前 | {name}, smart folder | `library.smartFolder.labelLoading(name)` |
 | カードの印のツールチップと `title` | Smart folder | `smartFolders.kind` |
 | カードのお気に入り、プレイリストへの追加 | Favorite smart folder "{name}"; Add smart folder "{name}" to a playlist | `library.smartFolder.favorite(name)`、`.addToPlaylist(name)` |
 | 経路の帯のアクセシブルな名前 | Smart folder path | `smartFolders.trail` |
@@ -160,10 +161,11 @@ flowchart LR
 | 選択のチェック | なし。`Select all` はこのカードを飛ばす。その動画はライブラリでそれ自身のカードであり、そこで選ばれる |
 | ドラッグ | 持ち上げず、ドロップ先でもない: その上にドラッグしたカードは `Can't drop here` を出す ([050 の UI 設計、Indicators](../050-drag-organize/ui-design.md#indicators)) |
 | 空のフォルダ (所有者) | シートのない絵、面は「0 videos」、名前は `text-muted-foreground`。ゲストには決して見えない (R-8) |
+| 値の読み込み中 | 項目は要約だけを持つ (R-14): シートのない絵、数の面の場所に `Skeleton` `w-16`、要約からの名前とハート。アクセシブルな名前は「{name}, smart folder」 |
 
 リスト表示では、行はグループの行で、数の行で `Folder` の代わりに `FolderSearch` のアイコンを持ち、チェックの列も `Add to group` の列もない。
 
-カードは、グループのカードが `group` イベントで読み直されるのと同じく、その id を運ぶ `smartFolder` イベント (R-12) でスケルトンなしで読み直される。`404` はそれを取り除く。絞り込んだライブラリはスマートフォルダのカードを一覧に出さず、お気に入りのみはお気に入りにしたものをどの深さでも一覧に出す (R-7) ので、子のフォルダのカードがライブラリに立てるのはそこだけである。
+カードの値は `GET /api/smart-folders/cards` から来る。それは画面に出ているフォルダのカードについて、1 回の読み取りで最大 60 個まで、カードがビューポートに入ったときに求める。混ざったグループでは、数がフォルダのページのものと異なることがある (R-14)。その id を運ぶ `smartFolder` イベント (R-12) では、グループのカードが `group` イベントで読み直されるのと同じく、示しているカードの値をスケルトンなしで読み直す。応答に含まれないフォルダは取り除く。絞り込んだライブラリはスマートフォルダのカードを一覧に出さず、お気に入りのみはお気に入りにしたものをどの深さでも一覧に出す (R-7) ので、子のフォルダのカードがライブラリに立てるのはそこだけである。
 
 ## スマートフォルダのダイアログ {#smart-folder-dialog}
 
@@ -273,7 +275,7 @@ flowchart LR
 
 ### 読み直し {#reading-again}
 
-このフォルダの id を運ぶ `smartFolder` イベント (R-12) は、スクロールの位置と選択を保って、スケルトンなしでフォルダを読み直す。帯、タイトル、数、条件の行、項目は応答に従うので、別のタブでタグを付けた動画は再読み込みなしで本体に出る (受け入れ条件 1)。ライブラリはそのフォルダのカードについて同じことをし、条件に合うかを変えるすべての書き込みがすべてのフォルダを名指すので、フォルダのカードの値の読み直しは 1 つのイベントにつき最大 1 回である。どの読み取りでの `404` も消えた状態である。
+このフォルダの id を運ぶ `smartFolder` イベント (R-12) は、スクロールの位置と選択を保って、スケルトンなしでフォルダを読み直す。帯、タイトル、数、条件の行、項目は応答に従うので、別のタブでタグを付けた動画は再読み込みなしで本体に出る (受け入れ条件 1)。ライブラリとこのページは、画面に出ているフォルダのカードについてカードの読み取りで同じことをし、条件に合うかを変えるすべての書き込みがすべてのフォルダを名指すので、カードの値の読み直しは 1 つのイベントにつき最大 1 回である。どの読み取りでの `404` も消えた状態である。
 
 ### 状態 {#states}
 

@@ -1,6 +1,6 @@
 ---
 source: specs/052-smart-folders/plan.md
-sourceHash: 7bc723761ca3b44ea518c5fd380b2070c5e288d2ed040b5f79787bd206b31c41
+sourceHash: 11813c6806ee4c937a65419afbbbe699cd83fe548de27d9be8edce4ed996a6d8
 ---
 
 # 実装計画: 中身が保存した条件に従うスマートフォルダ {#implementation-plan-smart-folders-whose-contents-follow-a-saved-condition}
@@ -30,6 +30,7 @@ flowchart LR
 | --- | --- |
 | 保存 | 独自のテーブルと項目の種類 ([R-1](research.md#r-1-a-smart-folder-is-its-own-entity-not-a-group)、[data-model.md、Migration](data-model.md#migration)) |
 | 中身 | 絞り込んだライブラリ。読み取りのときに評価し ([R-2](research.md#r-2-contents-are-computed-when-read-not-stored)、[R-3](research.md#r-3-a-rule-is-the-library-filters-fields-contents-are-the-filtered-library))、予算の範囲内に収める ([R-13](research.md#r-13-a-read-budget-at-20000-videos-and-50-smart-folders)) |
+| フォルダのカード | 一覧には要約、画面に出ているカードのために読むカードの値、動画ごとに評価 ([R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)) |
 | 絞り込みの項目 | ライブラリの絞り込みに追加日の範囲と長さが加わる ([R-4](research.md#r-4-the-library-filter-gains-added-within-and-length)) |
 | 入れ子 | 経路上のすべての規則の AND ([R-5](research.md#r-5-a-childs-effective-rule-is-every-rule-on-its-path-anded)) |
 | 順序 | 保存したライブラリの並び順 ([R-6](research.md#r-6-videos-follow-the-folders-sort-random-is-refused)) |
@@ -59,7 +60,7 @@ Issue には `ui` ラベルがあるので、画面の単位より前に `design
 **この機能に固有の文脈**:
 
 - マイグレーションは 1 つで、入るときに番号を付ける ([data-model.md、Migration](data-model.md#migration))。
-- 画面の API に 6 つのルート、いくつかのスキーマ、1 つの画面のイベントの種類が加わる ([contracts/screen-api.md](contracts/screen-api.md))。外部 API と MCP は変わらない。
+- 画面の API に 7 つのルート、いくつかのスキーマ、1 つの画面のイベントの種類が加わる ([contracts/screen-api.md](contracts/screen-api.md))。外部 API と MCP は変わらない。
 - フォルダのページのための新しい SPA のルートと、動画のページの `smartFolder` のクエリー。
 - 規則の `tagKind` のメンバーには、`main` にある #1136 のライブラリの `tagKind` の絞り込みが要る。それを待つのは、そう述べる単位だけである。
 
@@ -115,6 +116,8 @@ specs/052-smart-folders/
 
 図は、どの単位が先に入る必要があるかを示す。画面の単位は `design` 段階の `ui-design.md` も待つ。
 
+PR #1204 が 50 個の最上位のフォルダがあるライブラリの最初のページを約 25 秒と測った後、[R-13](research.md#r-13-a-read-budget-at-20000-videos-and-50-smart-folders) と [R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing) のために 2026-10-16 に改訂した。単位はその見出しと子 Issue を保つ。3 つの単位の範囲が変わる: 「最上位のスマートフォルダをライブラリのカードとして示す」(#1173)、「スマートフォルダを画面の API に加える」(#1178)、「スマートフォルダを開き、その子と中身を示す」(#1180)。「スマートフォルダの中身を、その子とカードの値とともに一覧にする」(#1172) はマージ済みである。そのベンチマークの予算は今は 1 秒で、子フォルダの要約は #1173 に移る。単位の追加、削除、番号の振り直しはない。
+
 ```mermaid
 flowchart LR
   facts[追加日と長さの絞り込み] --> store[フォルダの保存]
@@ -159,15 +162,15 @@ flowchart LR
 
 **依存**: スマートフォルダを規則と親とともに保存する。
 
-**受け入れ**: `task check` が通る。ストアのテストが次を示す: フォルダ `tags:[猫]` は、ほかに何も書かずに、`猫` が付いた動画を持ち、外した後は持たず、その動画は引き続きライブラリに挙がる (受け入れ条件 1)。part1 と part2 の両方に `猫` が付いたグループは 1 枚のカードで、part1 だけにタグが付いたグループは part1 だけを挙げる (受け入れ条件 3)。`tags:[猫]` の下の子 `watch: unwatched` は未視聴の `猫` の動画だけを持ち、その親は子を最初に挙げる (受け入れ条件 4)。中身は同じ絞り込みでの `ListLibrary` と等しい (受け入れ条件 5)。まとまりは 1 回だけ数える。ゲストは公開の動画だけを見て、それが 1 つもないフォルダでは `ErrNotFound` を受け取り、所有者は空のフォルダを読む。削除されたタグを挙げる規則は子フォルダだけを挙げ、その子も同じである。20,000 本の動画でのベンチマークの結果は 500 ms 未満で、PR に記録する。
+**受け入れ**: `task check` が通る。ストアのテストが次を示す: フォルダ `tags:[猫]` は、ほかに何も書かずに、`猫` が付いた動画を持ち、外した後は持たず、その動画は引き続きライブラリに挙がる (受け入れ条件 1)。part1 と part2 の両方に `猫` が付いたグループは 1 枚のカードで、part1 だけにタグが付いたグループは part1 だけを挙げる (受け入れ条件 3)。`tags:[猫]` の下の子 `watch: unwatched` は未視聴の `猫` の動画だけを持ち、その親は子を最初に挙げる (受け入れ条件 4)。中身は同じ絞り込みでの `ListLibrary` と等しい (受け入れ条件 5)。まとまりは 1 回だけ数える。ゲストは公開の動画だけを見て、それが 1 つもないフォルダでは `ErrNotFound` を受け取り、所有者は空のフォルダを読む。削除されたタグを挙げる規則は子フォルダだけを挙げ、その子も同じである。20,000 本の動画でのベンチマークの結果は 1 秒 (2026-10-16 の改訂より前は 500 ms) 未満で、PR に記録する。
 
 ### 最上位のスマートフォルダをライブラリのカードとして示す {#show-root-smart-folders-as-cards-in-the-library}
 
-**範囲**: ライブラリの項目のクエリーと `LibraryIDs` の `smartFolder` の項目の種類、その並びの値とカーソル、検索か絞り込みのときにフォルダを除くこと、お気に入りだけのときのお気に入りにしたフォルダ ([data-model.md、Library items](data-model.md#library-items)、[R-7](research.md#r-7-root-smart-folders-are-cards-in-the-unfiltered-library))。
+**範囲**: ライブラリの項目のクエリーと `LibraryIDs` の、要約としての `smartFolder` の項目の種類と、フォルダの合う動画に対するその並びの値とそのカーソル、検索か絞り込みのときにフォルダを除くこと、お気に入りだけのときのお気に入りにしたフォルダ。合う動画に対する、id によるカードの値のストアの読み取り。フォルダのページの子フォルダの要約。カードの読み取りを含む `BenchmarkLibraryWithSmartFolders` ([data-model.md、Library items](data-model.md#library-items)、[Cards read](data-model.md#cards-read)、[R-7](research.md#r-7-root-smart-folders-are-cards-in-the-unfiltered-library)、[R-13](research.md#r-13-a-read-budget-at-20000-videos-and-50-smart-folders)、[R-14](research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing))。
 
 **依存**: スマートフォルダの中身を、その子とカードの値とともに一覧にする。
 
-**受け入れ**: `task check` が通る。ストアのテストが次を示す: 絞り込みのないライブラリは、最上位のフォルダをグループと動画の中にその並びの位置で挙げ、フォルダの動画も挙げる。子フォルダは最上位に挙がらない。検索かタグの絞り込みはフォルダを挙げない。お気に入りだけは、お気に入りにした子フォルダを挙げる。フォルダの項目をまたいでページを送ると、すべての項目を 1 回ずつ返す。ゲストのライブラリには空のフォルダがない。
+**受け入れ**: `task check` が通る。ストアのテストが次を示す: 絞り込みのないライブラリは、最上位のフォルダを、要約だけを持たせて、各並び順でのその位置にグループと動画の中で挙げ、フォルダの動画も挙げる。子フォルダは最上位に挙がらない。検索かタグの絞り込みはフォルダを挙げない。お気に入りだけは、お気に入りにした子フォルダを挙げる。フォルダの項目をまたいでページを送ると、すべての項目を 1 回ずつ返す。ゲストのライブラリには合う動画のないフォルダがない。カードの読み取りは、合う動画に対する本数、合計、日付、視聴の状態、プレビューを求められた順で返し、どのフォルダも指さない id とゲストが見てはならないフォルダの id を含めず、視聴の状態の規則のもとで、混ざったグループの合う動画を数える。フォルダのページはその子を要約として挙げる。20,000 本の動画でのベンチマークの結果は、50 個の最上位のフォルダがあるライブラリの最初のページと、24 個のフォルダのカードの読み取りのどちらも 1 秒未満で、PR に記録する。
 
 ### タグ、人物、組織の統合にスマートフォルダの規則を従わせる {#follow-tag-person-and-organization-merges-in-smart-folder-rules}
 
@@ -203,11 +206,11 @@ flowchart LR
 
 ### スマートフォルダを画面の API に加える {#add-smart-folders-to-the-screen-api}
 
-**範囲**: 6 つのルート、スキーマとパラメーター、ステータスとカタログのそのメッセージ、ハンドラー、`cmd/mdm` での配線、`web/src/api/smartFolders.ts` のクライアントの関数と、変えたお気に入り、プレイリスト、動画のクライアント。SPA は、画面の単位までは新しい `LibraryItem` の種類を飛ばすことで動き続ける ([contracts/screen-api.md](contracts/screen-api.md))。
+**範囲**: 7 つのルート (カードの読み取りを含む)、スキーマとパラメーター (`LibraryItem` と `SmartFolderItem` の `SmartFolderSummary`)、ステータスとカタログのそのメッセージ、ハンドラー、`cmd/mdm` での配線、`web/src/api/smartFolders.ts` のクライアントの関数と、変えたお気に入り、プレイリスト、動画のクライアント。SPA は、画面の単位までは新しい `LibraryItem` の種類を飛ばすことで動き続ける ([contracts/screen-api.md](contracts/screen-api.md))。
 
 **依存**: 最上位のスマートフォルダをライブラリのカードとして示す。タグ、人物、組織の統合にスマートフォルダの規則を従わせる。開いている画面にスマートフォルダをもう一度読むよう伝える。ストアで、スマートフォルダをお気に入りにし、プレイリストに加え、そこから再生する。
 
-**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ハンドラーのテストが、契約の表の各ステータス、ゲストはすべての書き込みで `401` を受け取り `settings` を受け取らないこと、`missing` が削除されたタグを挙げることを示し、`TestAccessClassificationMatchesOpenAPISecurity` が通る。既存のライブラリのページのテストが通る。
+**受け入れ**: `task check` が通り、`task generate` で差分が出ない。ハンドラーのテストが、契約の表の各ステータス、ゲストはすべての書き込みで `401` を受け取り `settings` を受け取らないこと、`missing` が削除されたタグを挙げること、カードの読み取りが id のないときと 61 個の id のときに `400 invalid_request` で応答し、ゲストが見てはならない id を含めないことを示し、`TestAccessClassificationMatchesOpenAPISecurity` が通る。既存のライブラリのページのテストが通る。
 
 ### ライブラリの絞り込みをスマートフォルダとして保存し、その条件を編集する {#save-the-library-filter-as-a-smart-folder-and-edit-its-conditions}
 
@@ -219,11 +222,11 @@ flowchart LR
 
 ### スマートフォルダを開き、その子と中身を示す {#open-a-smart-folder-onto-its-children-and-contents}
 
-**範囲**: ライブラリのフォルダのカード、パンくず、子、順序どおりの中身、ページ送り、絞り込みに使う条件、空の状態と存在しない条件の状態、フォルダからの再生、`smartFolder` イベントでもう一度読むこと、ゲストのアクセス、そのルート、カタログの文言を持つ `/smart-folders/{id}` の画面。配置は `ui-design.md` に従う。
+**範囲**: ライブラリとフォルダのページのフォルダのカード (その要約から描き、画面に出ているときにその値をカードの読み取りで読み、`smartFolder` イベントでもう一度読む)、パンくず、子、順序どおりの中身、ページ送り、絞り込みに使う条件、空の状態と存在しない条件の状態、フォルダからの再生、`smartFolder` イベントでもう一度読むこと、ゲストのアクセス、そのルート、カタログの文言を持つ `/smart-folders/{id}` の画面。配置は `ui-design.md` に従う ([ui-design.md、Smart folder card and row](ui-design.md#smart-folder-card-and-row))。
 
 **依存**: スマートフォルダを画面の API に加える。`design` 段階の `ui-design.md`。
 
-**受け入れ**: この単位は画面を変えるので、`ui-design.md` と親 Issue の `UI品質` に照らした見た目と操作のレビューが要る。`task check` が通る。ページテストが次を示す: フォルダのカードはそのページを開く。ページは子フォルダを、続いて項目を応答の順序で挙げる。子を開くとパンくずが伸び、その親を示す。空のフォルダは空であると伝える。存在しないタグを名前で示す。表示中の id への `smartFolder` イベントでもう一度読む。ゲストは編集の操作のないページを見る。ライブラリはカードをグループと動画の中に示す。
+**受け入れ**: この単位は画面を変えるので、`ui-design.md` と親 Issue の `UI品質` に照らした見た目と操作のレビューが要る。`task check` が通る。ページテストが次を示す: フォルダのカードは、要約からその名前と `Skeleton` の本数の面を示し、カードの読み取りが応答するとその本数とカバーを示し、画面に出ているカードだけを求める。`smartFolder` イベントは、示しているカードの値を 1 回もう一度読む。フォルダのカードはそのページを開く。ページは子フォルダを、続いて項目を応答の順序で挙げる。子を開くとパンくずが伸び、その親を示す。空のフォルダは空であると伝える。存在しないタグを名前で示す。表示中の id への `smartFolder` イベントでもう一度読む。ゲストは編集の操作のないページを見る。ライブラリはカードをグループと動画の中に示す。
 
 ### 動画を、それを開いたスマートフォルダの中で再生する {#play-a-video-in-the-smart-folder-it-was-opened-from}
 
