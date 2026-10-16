@@ -69,8 +69,8 @@ func claimAutoTagActivity(ctx context.Context, tx *sql.Tx, c *changes, key strin
 	return nil
 }
 
-// closeAutoTagActivity は記録 id を state にし、decider と detail が空でなければそれも書く。id が 0（この機能より
-// 前に積んだ行）なら何もしない。
+// closeAutoTagActivity は記録 id を state にし、decider と detail が空でなければそれも書く。done にしたときは結果を
+// 書いた印（decided_mark）も残す。id が 0（この機能より前に積んだ行）なら何もしない。
 func closeAutoTagActivity(
 	ctx context.Context, tx *sql.Tx, c *changes, id int64, state domain.ActivityState, decider domain.ActivityDecider,
 	detail string, now time.Time,
@@ -84,6 +84,11 @@ func closeAutoTagActivity(
 		string(decider), detail, now.UnixMilli(), id)
 	if err != nil {
 		return fmt.Errorf("cannot update the auto-tagging activity (id=%d): %w", id, err)
+	}
+	if state.Status == domain.ActivityDone {
+		if err := markDecided(ctx, tx, id); err != nil {
+			return err
+		}
 	}
 	c.activityChanged()
 	return nil
@@ -158,6 +163,8 @@ type autoTagUndoTarget struct {
 	entry   domain.ActivityEntry
 	tag     domain.ActivityEntryTag
 	userKey string
+	// mark は結果を書いた時点の記録の id の最大値（decided_mark）である。
+	mark int64
 }
 
 // readAutoTagUndoTarget は記録 entryID とそのタグ tagID を取引の中で読み直す。記録か、記録が付けたタグが
@@ -168,10 +175,10 @@ func readAutoTagUndoTarget(ctx context.Context, tx *sql.Tx, entryID, tagID int64
 		kind, subjectKind, decider string
 	)
 	err := tx.QueryRowContext(ctx, `select e.kind, e.subject_kind, e.subject_key, e.subject_label, e.decider,
-		t.tag_name, t.suggested, t.user_key, t.probability, coalesce(t.undone_by, 0)
+		coalesce(e.decided_mark, e.id), t.tag_name, t.suggested, t.user_key, t.probability, coalesce(t.undone_by, 0)
 		from activity_entries e join activity_entry_tags t on t.entry_id = e.id
 		where e.id = ? and t.tag_id = ?`, entryID, tagID).Scan(&kind, &subjectKind, &target.entry.Subject.Key,
-		&target.entry.Subject.Label, &decider, &target.tag.Name, &target.tag.Suggested, &target.userKey,
+		&target.entry.Subject.Label, &decider, &target.mark, &target.tag.Name, &target.tag.Suggested, &target.userKey,
 		&target.tag.Probability, &target.tag.UndoneBy)
 	if errors.Is(err, sql.ErrNoRows) {
 		return autoTagUndoTarget{}, fmt.Errorf("tag %d of activity entry %d: %w", tagID, entryID, domain.ErrNotFound)
@@ -227,22 +234,16 @@ func autoTagUndoKeys(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) 
 	return primary, keys, nil
 }
 
-// ownerChangedAutoTag は、記録 target.entry より後に（id が大きい）、所有者が対象の動画のそのタグを付けた・外した・
-// 残した・却下した記録があるかを返す（research.md R-7）。所有者の記録の対象は内容の鍵で、集まりの鍵への操作は
-// 代表の内容の鍵を対象にするので、記録の対象の鍵と、対象の動画がいま属する集まりの代表の鍵の両方で探す。タグは
-// detail の名前で、記録した名前か今の正式な名前のどちらかに合えばよい。
+// ownerChangedAutoTag は、判定が結果を書いた後に（decided_mark より大きい id で）、所有者が対象の動画のそのタグを
+// 付けた・外した・残した・却下した記録があるかを返す（research.md R-7）。所有者の記録はタグの id と、操作が触った
+// 内容の鍵（activity_entry_keys。集まりの鍵への操作はその時のメンバー全員）を持つので、改名や代表の変更に
+// 左右されずにタグの id と対象の動画の内容の鍵で探す。
 func ownerChangedAutoTag(ctx context.Context, tx *sql.Tx, target autoTagUndoTarget) (bool, error) {
-	subjects := []string{target.entry.Subject.Key}
-	if bundle, bundled, err := bundleOf(ctx, tx, target.entry.Subject.Key); err != nil {
-		return false, err
-	} else if bundled && bundle.representativeKey != target.entry.Subject.Key {
-		subjects = append(subjects, bundle.representativeKey)
-	}
 	kinds := []domain.ActivityKind{domain.ActivityTagAttach, domain.ActivityTagDetach, domain.ActivityTagKeep,
 		domain.ActivityTagReject}
-	return ownerEntryAfter(ctx, tx, target.entry.ID, kinds, subjects,
-		`e.detail in (?, (select tn.name from tag_names tn where tn.tag_id = ? and tn.canonical = 1))`,
-		target.tag.Name, target.tag.TagID)
+	return ownerEntryAfter(ctx, tx, target.mark, kinds,
+		`e.tag_id = ? and exists (select 1 from activity_entry_keys k where k.entry_id = e.id and k.content_key = ?)`,
+		target.tag.TagID, target.entry.Subject.Key)
 }
 
 // removeAutoTagAttachment は判定が書いた行を消す。行は primary と、記録した鍵の両方で探し（autoTagUndoKeys）、

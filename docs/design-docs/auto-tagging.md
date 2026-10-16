@@ -190,10 +190,12 @@ Undo is one tag at a time, in one `ActivityStore` transaction
 ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)):
 
 1. Look in the log for an owner `tag_attach`, `tag_detach`, `tag_keep` or
-   `tag_reject` entry for that video and tag with an id greater than the
-   `auto_tag` entry's (the owner's entry names the bundle's representative
-   when the tag was changed on a bundle). One means the owner decided the tag
-   again, and nothing is deleted.
+   `tag_reject` entry with the same `tag_id` whose touched content keys
+   include the video (every member, when the tag was changed on a bundle) and
+   whose id is greater than the `auto_tag` entry's `decided_mark`, the
+   greatest entry id when the run wrote its result. One means the owner
+   decided the tag again after the run, and nothing is deleted; a rename of
+   the tag or a new representative in between does not hide it.
 2. Otherwise delete the `video_tags` row at the recorded user key or at the
    video's current user key when bundling moved it, while a suggested tag is
    still suggested. A bundle's row is shared, so the tag leaves every member.

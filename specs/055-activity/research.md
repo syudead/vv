@@ -184,18 +184,25 @@ An automatic tag is written on the bundle's user key; the entry keeps that key
 and the tag. The undo deletes the `video_tags` row at that key, or at the
 subject video's current key after bundling moved it, unless an owner
 `tag_attach`, `tag_detach`, `tag_keep` or `tag_reject` entry for that video and
-tag is newer than the `auto_tag` entry; then the owner's own attachment stays
-as the owner left it.
+tag is newer than the run's result; then the owner's own attachment stays as
+the owner left it. The owner entry names the tag by `tag_id` and the content
+keys the change touched (`activity_entry_keys`; every member when the tag was
+changed on a bundle), so the match survives a rename of the tag and a change
+of the bundle's representative.
 
 A content change at the same path that carries the user data over to the new
 key re-keys the entries with it, finished ones included, so the undo of an
 entry decided before the change still finds the row ([data-model.md
 "Rules"](data-model.md#rules)).
 
-"Newer" is read from the log, never from the rows: entry ids are monotonic, so
-an owner entry on the same subject with a greater id than the undone entry
-means the owner decided again, as the owner `dismiss` entry does for an undone
-"different". The rows the decisions write (`video_tags`,
+"Newer" is read from the log, never from the rows: entry ids are monotonic,
+and the automatic result is written long after its entry opened (at queue
+time, or when the candidate appeared), so the write stores the greatest entry
+id of that moment as the entry's `decided_mark`. An owner entry on the same
+subject with a greater id than the mark came after the result and means the
+owner decided again, as the owner `dismiss` entry does for an undone
+"different"; an owner change made while the run waited does not count. The
+rows the decisions write (`video_tags`,
 `video_bundle_members`, `video_version_dismissals`) keep their second-precision
 timestamps and gain no column; an owner's change within the same second as the
 automatic run is still told apart. Rejected: match the row by its timestamp,

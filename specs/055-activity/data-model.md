@@ -43,6 +43,8 @@ case).
 | `probability` | real | Yes | The model's answer for a duplicate pair it decided or left undecided |
 | `undo_keys` | text | Yes | For a bundled pair, a JSON object with the member keys of the side that joined and that side's former representative key ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | `undone_by` | integer | Yes | The owner entry that undid this one |
+| `tag_id` | integer | Yes | For an owner `tag_attach`, `tag_detach`, `tag_keep` or `tag_reject`, the tag; survives a rename |
+| `decided_mark` | integer | Yes | For an `auto_tag` that finished or a `version_judgement` that bundled or dismissed, the greatest entry id when the result was written; an owner entry with a greater id came after the result ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) |
 | `created_at`, `updated_at` | integer | No | Unix milliseconds |
 
 **Relationships**: none to `videos`; `undone_by` refers to another entry.
@@ -101,6 +103,18 @@ The tags an `auto_tag` entry added; undo is per tag.
 | `probability` | real | No | The model's answer |
 | `undone_by` | integer | Yes | The `undo` entry |
 
+## `activity_entry_keys`
+
+The content keys an owner tag entry touched: the key itself, or every member
+of the bundle when the tag was changed on a bundle's key. Undo matches an
+owner change by `tag_id` and content key, so a rename or a representative
+change in between does not hide it.
+
+| Field | Type | Null | Meaning |
+| --- | --- | --- | --- |
+| `entry_id` | integer | No | The owner tag entry; primary key with `content_key` |
+| `content_key` | text | No | A content key the change touched |
+
 ## `video_version_judging_holds`
 
 Pairs whose automatic "Different videos" the owner undid; the judging worker
@@ -125,9 +139,9 @@ never claims them.
 | Startup, before the workers start, turns every entry `running` with reason `processing` into `attention`/`interrupted`; `waiting` entries stay | `store`, called from `cmd/mdm` beside `Scans.RecoverInterrupted` |
 | Retry is offered for `attention` with reason `failed` or `interrupted`, of kind `import`, `scan`, `auto_tag` or `version_judgement` | `domain` |
 | Undo is offered for an entry decided by `rule` or `ai` that is not yet undone: a `version_judgement` with outcome `same` or `different`, or a tag of an `auto_tag` entry | `domain` |
-| Undo decides "the owner changed it since" from the log, never from a row's timestamp: an owner entry on the same subject (the tag's `tag_attach`, `tag_detach`, `tag_keep` or `tag_reject`; a member's `bundle`, `unbundle` or `organize_undo`; the pair's `dismiss`) with an id greater than the undone entry's means the owner decided again ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) | `store` (one package-private lookup) |
+| Undo decides "the owner changed it since" from the log, never from a row's timestamp: an owner entry on the same subject (`tag_attach`, `tag_detach`, `tag_keep` or `tag_reject` with the tag's `tag_id` and the video's content key in `activity_entry_keys`; a member's `bundle`, `unbundle` or `organize_undo`; the pair's `dismiss`) with an id greater than the undone entry's `decided_mark` means the owner decided again after the result ([R-7](research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)) | `store` (one package-private lookup) |
 | The judging claim skips pairs in `video_version_judging_holds` as it skips `video_version_unbundles` | `store` (`judgeablePairs`) |
-| A content change at the same path re-keys `video_version_judging_holds` and every key an entry holds, open or finished (a video or pair subject, an `auto_tag` entry's `activity_entry_tags.user_key`, an automatic bundle's `undo_keys`), as `moveKeyPairs` re-keys dismissals, so a later undo finds the rows that moved with the user data | `store` (successions) |
+| A content change at the same path re-keys `video_version_judging_holds` and every key an entry holds, open or finished (a video or pair subject, an `auto_tag` entry's `activity_entry_tags.user_key`, an owner tag entry's `activity_entry_keys`, an automatic bundle's `undo_keys`), as `moveKeyPairs` re-keys dismissals, so a later undo finds the rows that moved with the user data | `store` (successions) |
 
 ## What does not change
 

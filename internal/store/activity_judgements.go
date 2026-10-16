@@ -43,6 +43,15 @@ func updateActivity(ctx context.Context, tx *sql.Tx, c *changes, id int64, updat
 	return nil
 }
 
+// decideActivity は自動の結果 update（done/same か done/different）を記録 id に書き、結果を書いた印（decided_mark）
+// も残す（markDecided）。
+func decideActivity(ctx context.Context, tx *sql.Tx, c *changes, id int64, update activityUpdate, now time.Time) error {
+	if err := updateActivity(ctx, tx, c, id, update, now); err != nil {
+		return err
+	}
+	return markDecided(ctx, tx, id)
+}
+
 // waitingUpdate は待ちに戻した記録の欄である。
 var waitingUpdate = activityUpdate{state: domain.VersionJudgementActivityState("")}
 
@@ -338,6 +347,7 @@ func moveActivityKey(ctx context.Context, tx *sql.Tx, from, to string, now time.
 	for _, statement := range []string{
 		`update activity_entries set subject_key = ?2, updated_at = ?3 where subject_kind = 'video' and subject_key = ?1`,
 		`update activity_entry_tags set user_key = ?2 where user_key = ?1`,
+		`update or ignore activity_entry_keys set content_key = ?2 where content_key = ?1`,
 	} {
 		result, err := tx.ExecContext(ctx, statement, from, to, now.UnixMilli())
 		if err != nil {
@@ -482,12 +492,12 @@ func recordJudgementActivity(
 		if err := closePairActivities(ctx, tx, c, applied.members, domain.ActivitySuperseded, "", id, now); err != nil {
 			return err
 		}
-		return updateActivity(ctx, tx, c, id, activityUpdate{
+		return decideActivity(ctx, tx, c, id, activityUpdate{
 			state:   domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivitySame},
 			decider: result.ResultDecider(), probability: result.Probability, undoKeys: applied.undoKeys.Encode(),
 		}, now)
 	case result.Verdict == domain.VersionDifferent:
-		return updateActivity(ctx, tx, c, id, activityUpdate{
+		return decideActivity(ctx, tx, c, id, activityUpdate{
 			state:   domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivityDifferent},
 			decider: result.ResultDecider(), probability: result.Probability,
 		}, now)
@@ -638,14 +648,18 @@ func (s *ActivityStore) UndoVersionJudgement(ctx context.Context, id int64) (dom
 	if entry.Kind != domain.ActivityVersionJudgement || !entry.UndoOffered() {
 		return domain.ActivityEntry{}, domain.ErrActivityNotUndoable
 	}
+	mark, err := decidedMark(ctx, tx, id)
+	if err != nil {
+		return domain.ActivityEntry{}, err
+	}
 	c := &changes{}
 	keys := [2]string{entry.Subject.Key, entry.Subject.KeyB}
 	var restored bool
 	var events []domain.Event
 	if entry.Outcome == domain.ActivitySame {
-		restored, events, err = undoJudgedBundle(ctx, tx, c, keys, entry.UndoKeys, entry.ID)
+		restored, events, err = undoJudgedBundle(ctx, tx, c, keys, entry.UndoKeys, mark)
 	} else {
-		restored, err = undoJudgedDismissal(ctx, tx, c, keys, entry.ID)
+		restored, err = undoJudgedDismissal(ctx, tx, c, keys, mark)
 		events = []domain.Event{domain.VersionCandidatesChanged{}}
 	}
 	if err != nil {
@@ -688,15 +702,16 @@ func recordUndo(
 }
 
 // undoJudgedDismissal は自動の「違う」の組 keys の却下がまだあれば消し、両方の鍵の候補を作り直して組を候補の
-// 一覧に戻し、判定の保留（video_version_judging_holds）を書いて、戻したかを返す。entryID は取り消す判定の記録
-// である。却下がもう無いか、所有者がその記録より後に（id が大きい dismiss の記録で）同じ組を「違う動画」と決め
-// 直したなら何も変えない。却下の行は誰が書いたかを持たないので、所有者の判断は記録で見分ける（research.md R-7）。
-func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, entryID int64) (bool, error) {
+// 一覧に戻し、判定の保留（video_version_judging_holds）を書いて、戻したかを返す。mark は取り消す判定が結果を
+// 書いた印（decided_mark）である。却下がもう無いか、所有者がその後に（印より id が大きい dismiss の記録で）同じ組
+// を「違う動画」と決め直したなら何も変えない。却下の行は誰が書いたかを持たないので、所有者の判断は記録で見分ける
+// （research.md R-7）。
+func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, mark int64) (bool, error) {
 	var redecided bool
 	if err := tx.QueryRowContext(ctx, `select exists (select 1 from activity_entries
 		where kind = ? and subject_key = ? and subject_key_b = ? and subject_kind = ? and decider = ?
 		and id > ?)`, string(domain.ActivityDismiss), keys[0], keys[1], string(domain.ActivitySubjectPair),
-		string(domain.ActivityByOwner), entryID).Scan(&redecided); err != nil {
+		string(domain.ActivityByOwner), mark).Scan(&redecided); err != nil {
 		return false, fmt.Errorf("cannot read the owner's dismissal: %w", err)
 	}
 	if redecided {
@@ -725,10 +740,10 @@ func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]st
 }
 
 // undoJudgedBundle は自動の「同じ」の組 keys の束ねがまだあれば（2 つの鍵が同じまとまりにあれば）、加わった側
-// （leavingMembers）を元の代表のまとまりとして外し（splitBundle）、外したかと確定後の知らせを返す。entryID は
-// 取り消す判定の記録である。束ねがもう無いか、外すメンバーが無ければ何も変えない。
+// （leavingMembers）を元の代表のまとまりとして外し（splitBundle）、外したかと確定後の知らせを返す。mark は
+// 取り消す判定が結果を書いた印（decided_mark）である。束ねがもう無いか、外すメンバーが無ければ何も変えない。
 func undoJudgedBundle(
-	ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, undoKeys string, entryID int64,
+	ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, undoKeys string, mark int64,
 ) (bool, []domain.Event, error) {
 	joined, err := domain.DecodeVersionBundleUndoKeys(undoKeys)
 	if err != nil {
@@ -749,7 +764,7 @@ func undoJudgedBundle(
 	if err != nil {
 		return false, nil, err
 	}
-	leaving, err := leavingMembers(ctx, tx, joined.Members, bundles[0].id, entryID)
+	leaving, err := leavingMembers(ctx, tx, joined.Members, bundles[0].id, mark)
 	if err != nil {
 		return false, nil, err
 	}
@@ -764,9 +779,10 @@ func undoJudgedBundle(
 }
 
 // leavingMembers は加わった側の鍵 joined のうち、合わさったまとまり bundleID にいるメンバーで、いまライブラリに
-// あり、判定の記録 entryID より後に所有者が束ねた・外した・ドラッグの束ねを取り消した記録を持たないものを返す。
-// 所有者の記録を持つ鍵は、所有者が置いた所にあるので、合わさったまとまりにいたとはみなさない（research.md R-7）。
-func leavingMembers(ctx context.Context, tx *sql.Tx, joined []string, bundleID int64, entryID int64) ([]string, error) {
+// あり、判定が束ねた後に（印 mark より大きい id で）所有者が束ねた・外した・ドラッグの束ねを取り消した記録を持た
+// ないものを返す。所有者の記録を持つ鍵は、所有者が置いた所にあるので、合わさったまとまりにいたとはみなさない
+// （research.md R-7）。
+func leavingMembers(ctx context.Context, tx *sql.Tx, joined []string, bundleID int64, mark int64) ([]string, error) {
 	kinds := []domain.ActivityKind{domain.ActivityBundle, domain.ActivityUnbundle, domain.ActivityOrganizeUndo}
 	var leaving []string
 	for _, key := range joined {
@@ -783,7 +799,7 @@ func leavingMembers(ctx context.Context, tx *sql.Tx, joined []string, bundleID i
 		} else if err != nil {
 			return nil, err
 		}
-		if changed, err := ownerEntryAfter(ctx, tx, entryID, kinds, []string{key}, ""); err != nil {
+		if changed, err := ownerEntryAfter(ctx, tx, mark, kinds, `e.subject_key = ?`, key); err != nil {
 			return nil, err
 		} else if changed {
 			continue

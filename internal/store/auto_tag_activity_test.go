@@ -304,13 +304,14 @@ func TestUndoAutoTagAfterTheOwnerChangedIt(t *testing.T) {
 }
 
 // 集まりのメンバー（代表でない）の判定が集まりの鍵に付けたタグを、所有者が同じ秒の中で外して付け直すと、所有者の
-// 記録の対象は代表の内容の鍵になる。取り消しはそれを所有者の変更と見て already_reverted にし、所有者のタグを残す
+// 記録の対象は代表の内容の鍵になり、触った鍵としてメンバー全員の内容の鍵を持つ。その後に代表が別のメンバーに
+// 変わっても、取り消しは対象の動画の内容の鍵で所有者の変更を見つけて already_reverted にし、所有者のタグを残す
 // （research.md R-7）。
 func TestUndoAutoTagKeepsTheOwnersReattachOnTheBundle(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
-	p1, p2 := ids[fixturePath("/media/pair/p1.mp4")], ids[fixturePath("/media/pair/p2.mp4")]
-	if _, err := db.Versions().Bundle(ctx, []int64{p1, p2}, p1); err != nil {
+	p1, p2, solo := ids[fixturePath("/media/pair/p1.mp4")], ids[fixturePath("/media/pair/p2.mp4")], ids[fixturePath("/media/solo.mp4")]
+	if _, err := db.Versions().Bundle(ctx, []int64{p1, p2, solo}, p1); err != nil {
 		t.Fatal(err)
 	}
 	bundleKey := ownerVideo(t, db, p1).UserKey
@@ -322,6 +323,10 @@ func TestUndoAutoTagKeepsTheOwnersReattachOnTheBundle(t *testing.T) {
 		t.Fatal(err)
 	}
 	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{p2}, cat.ID); err != nil {
+		t.Fatal(err)
+	}
+	// 所有者の記録の対象は p1 だった。代表が solo になっても、p2 の鍵で見つかる。
+	if _, err := db.Versions().MakeRepresentative(ctx, solo); err != nil {
 		t.Fatal(err)
 	}
 
@@ -337,6 +342,81 @@ func TestUndoAutoTagKeepsTheOwnersReattachOnTheBundle(t *testing.T) {
 	}
 	if !rejectedFor(t, db, bundleKey, cat.ID) {
 		t.Fatal("却下が残っていない")
+	}
+}
+
+// 判定を待つ間・判定中に所有者が同じタグを付けて外しても、その記録は判定の結果より前なので、取り消しは判定が付けた
+// タグを消す。記録は積んだときに開くので、所有者の記録の id は記録の id より大きいが、結果を書いた印
+// （decided_mark）より小さい（research.md R-7）。
+func TestUndoAutoTagRemovesTheTagTheOwnerChangedWhileItWaited(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	solo := ids[fixturePath("/media/solo.mp4")]
+	soloKey := "key" + fixturePath("/media/solo.mp4")
+	cat := createTestTag(t, db, "cat")
+	store := db.AutoTags()
+	if n, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueAgain, domain.ActivityByRule); err != nil || n != 1 {
+		t.Fatalf("積めない: %d, %v", n, err)
+	}
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{solo}, cat.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.Tags().DetachTag(ctx, []int64{solo}, cat.ID); err != nil {
+		t.Fatal(err)
+	}
+	job := claimAutoTag(t, store)
+	if err := store.Finish(ctx, job.ContentKey, domain.AutoTagSelection{
+		Confirmed: []int64{cat.ID}, Probabilities: map[int64]float64{cat.ID: 0.91},
+	}, domain.ActivityByAI); err != nil {
+		t.Fatal(err)
+	}
+	entry := latestAutoTagEntry(t, db)
+
+	undo, err := db.Activity().UndoAutoTag(ctx, entry.ID, cat.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if undo.Outcome != domain.ActivityCompleted {
+		t.Fatalf("undo の記録 = %+v, want completed", undo)
+	}
+	if got := manualTagIDs(t, db, soloKey); len(got) != 0 {
+		t.Fatalf("判定が付けたタグが残った: %v", got)
+	}
+}
+
+// 所有者の記録はタグを id で持つので、判定の後にタグが改名され、所有者が外して付け直し、さらに改名されても、取り消し
+// は所有者の変更を見つけて already_reverted にし、所有者のタグを残す（research.md R-7）。
+func TestUndoAutoTagKeepsTheOwnersReattachAcrossRenames(t *testing.T) {
+	db, ids := itemsFixture(t)
+	ctx := context.Background()
+	solo := ids[fixturePath("/media/solo.mp4")]
+	soloKey := "key" + fixturePath("/media/solo.mp4")
+	tag := createTestTag(t, db, "A")
+	entry := runAutoTag(t, db, solo, domain.ActivityByRule, domain.AutoTagSelection{
+		Confirmed: []int64{tag.ID}, Probabilities: map[int64]float64{tag.ID: 0.91},
+	})
+	if _, err := db.Tags().RenameTag(ctx, tag.ID, "B"); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.Tags().DetachTag(ctx, []int64{solo}, tag.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := db.Tags().AttachTagByID(ctx, []int64{solo}, tag.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Tags().RenameTag(ctx, tag.ID, "C"); err != nil {
+		t.Fatal(err)
+	}
+
+	undo, err := db.Activity().UndoAutoTag(ctx, entry.ID, tag.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if undo.Outcome != domain.ActivityAlreadyReverted {
+		t.Fatalf("undo の記録 = %+v, want already_reverted", undo)
+	}
+	if got := manualTagIDs(t, db, soloKey); !slices.Equal(got, []int64{tag.ID}) {
+		t.Fatalf("取り消しが所有者のタグを変えた: %v", got)
 	}
 }
 

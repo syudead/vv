@@ -590,6 +590,34 @@ func TestOrganizeBundleUndoReopensThePairEntry(t *testing.T) {
 	}
 }
 
+// 判定中に所有者が加わる側の動画を別のまとまりに束ねて外しても、その記録は判定の結果より前なので、取り消しは判定が
+// 束ねた側を外す。記録は取り出したときに開くので、所有者の記録の id は記録の id より大きいが、結果を書いた印
+// （decided_mark）より小さい（research.md R-7）。
+func TestUndoAutomaticBundleAfterTheOwnerBundledWhileItWaited(t *testing.T) {
+	db, ids := judgementFixture(t)
+	a, b, c := ids["a"], ids["b"], ids["c"]
+	job := claimJudgement(t, db)
+	bundle(t, db, a, a, c)
+	if _, err := db.Versions().Unbundle(context.Background(), c); err != nil {
+		t.Fatal(err)
+	}
+	applyJudgement(t, db, job.Keys, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule})
+	entry := onlyPairEntry(t, db)
+	if entry.Outcome != domain.ActivitySame {
+		t.Fatalf("判定の記録 = %+v, want done/same", entry)
+	}
+
+	undo := undoEntry(t, db, entry.ID)
+	if undo.Outcome != domain.ActivityCompleted {
+		t.Errorf("undo の結果 = %s, want completed", undo.Outcome)
+	}
+	for _, id := range []int64{a, b} {
+		if ownerVideo(t, db, id).Versions != nil {
+			t.Errorf("動画 %d がまだ集まりに属する", id)
+		}
+	}
+}
+
 // succeedA は key-a の動画の同じパスの中身を key-e に替え、尺が合って引き継がれるところまで進め、新しい動画の id を
 // 返す。
 func succeedA(t *testing.T, db *DB) int64 {

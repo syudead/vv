@@ -123,8 +123,10 @@ one `ActivityStore` transaction that re-reads the state first
 When the state has changed, nothing else changes and the `undo` entry says
 `already_reverted`. Whether the owner changed it since is read from the log,
 not from the rows' timestamps: entry ids are monotonic, so an owner entry on
-the same subject with an id greater than the undone entry's means the owner
-decided again, even within the same second. For `same`, a joined member with
+the same subject with an id greater than the undone entry's `decided_mark`
+(the greatest entry id when the judgement wrote its result) means the owner
+decided again after the result, even within the same second; an owner change
+made while the pair waited or was being judged does not count. For `same`, a joined member with
 a later owner `bundle`, `unbundle` or `organize_undo` entry no longer counts
 as part of the automatic bundle and the undo leaves it where the owner put
 it; when no member is left to split, the undo is `already_reverted`. For
