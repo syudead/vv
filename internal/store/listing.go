@@ -223,6 +223,14 @@ func chosenLocationsCTEFor(scope locationScope, searchAudience domain.Audience, 
 // その引数を返す。スマートフォルダの一致する動画は、検索式の段をこの文の動画に限る
 // （smartMatchConditions）。
 func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
+	from, args := chosenLocationsFrom(scope, searchAudience, exprs)
+	return `select l.video_id, min(l.path) as path ` + from + `
+		group by l.video_id`, args
+}
+
+// chosenLocationsFrom は chosenLocationsSelect の所在の候補（別名 l、動画は sv）を選ぶ from 句と
+// where 句とその引数を返す。呼び出し側は ` and ` に続けて条件を足せる。
+func chosenLocationsFrom(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	scopeClause, args := scope.condition("l")
 	clauses := []string{scopeClause, `(sbm.bundle_id is null or sv.id = ` +
 		effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + `)`}
@@ -247,11 +255,10 @@ func chosenLocationsSelect(scope locationScope, searchAudience domain.Audience, 
 		args = append(args, exprArgs...)
 		args = append(args, bundleArgs...)
 	}
-	return `select l.video_id, min(l.path) as path from video_locations l
+	return `from video_locations l
 		join videos sv on sv.id = l.video_id
 		left join video_bundle_members sbm on sbm.content_key = sv.content_key and sv.content_key <> ''
-		where ` + strings.Join(clauses, " and ") + `
-		group by l.video_id`, args
+		where ` + strings.Join(clauses, " and "), args
 }
 
 // watchCondition は視聴状態の絞り込みを、playback_progress（別名 p、left join）

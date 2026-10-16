@@ -1006,6 +1006,62 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/home": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * ホームの棚の要約と整理役の状態を返す
+         * @description ホームの位置を持つスマートフォルダの棚を並びの順に、続けて決まった棚（`recent`、`unshelved`）を
+         *     並べる（specs/057-home/research.md R-7、R-12、R-13）。棚の項目は `listHomeShelfItems` で読む。
+         *     ゲストには見せる動画の無いフォルダの棚を入れない。`organizer` と `byOrganizer` は所有者の
+         *     応答にだけ入る。見る人にライブラリの動画が 1 本も見えなければ `empty` が `noVideos` である。
+         */
+        get: operations["getHome"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/home/shelves": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 画面に入った棚の最初の項目を返す
+         * @description `keys` の棚それぞれの最初の 24 件の項目と項目の数を、`keys` の順に返す
+         *     （specs/057-home/research.md R-12）。読むのはフォルダの棚（`folder:<id>`、フォルダと祖先の条件で
+         *     フォルダの並べ順）、`unshelved` と `recent`（どちらも新しい順）で、項目はライブラリの項目
+         *     （動画とグループ）である。フォルダの棚の子フォルダは入れない（R-14）。もう棚でないフォルダ、
+         *     無いフォルダ、ゲストに見せる項目の無いフォルダの棚と、ほかの棚の鍵は落とし、同じ鍵は 1 回だけ
+         *     返す。`keys` が無いか、9 件以上か、形の誤った鍵があれば 400 `invalid_request`。
+         */
+        get: operations["listHomeShelfItems"];
+        /**
+         * どのスマートフォルダを棚にするかとその並びを書く
+         * @description 所有者だけ。`folderIds` のフォルダを上から順にホームの棚にし、位置を 1, 2, 3… と振り直す。
+         *     外したフォルダと、足したか動かしたフォルダは所有者のもの（owner_kept 1）にする
+         *     （specs/057-home/research.md R-7）。並びが変われば画面の知らせ `home` を出す。51 件以上か同じ id が
+         *     2 度あれば 400 `invalid_request`、どのフォルダでもない id があれば 404 `not_found` で、どれも何も
+         *     書かない。
+         */
+        put: operations["setHomeShelves"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/home/organize": {
         parameters: {
             query?: never;
@@ -3217,12 +3273,14 @@ export interface paths {
          *     - `candidates`: 重複の候補の一覧が変わったかもしれない。判定の結果や版の取り外しの確定後に
          *       送る。data は空のオブジェクト `{}` で、中身は運ばない。最新の一覧は
          *       `GET /api/version-candidates` で取る（specs/054-auto-dup/research.md R-10）
+         *     - `home`: ホームの棚の集合か並び、整理役やオンボードの状態が変わった。data は空のオブジェクト
+         *       `{}` で、中身は運ばない。最新の内容は `GET /api/home` で取る（specs/057-home/research.md R-16）
          *
          *     接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-         *     変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates` は切れていた間の分を送り直さない。
+         *     変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates`・`home` は切れていた間の分を送り直さない。
          *
-         *     ゲストには `group` と `smartFolder` だけを送る（specs/048-groups/contracts/screen-api.md、
-         *     specs/052-smart-folders/contracts/screen-api.md）。`scan`・`video`・`candidates` は所有者だけに送る。
+         *     ゲストには `group`・`smartFolder`・`home` だけを送る（specs/048-groups/contracts/screen-api.md、
+         *     specs/052-smart-folders/contracts/screen-api.md、specs/057-home/research.md R-16）。`scan`・`video`・`candidates` は所有者だけに送る。
          */
         get: operations["streamEvents"];
         put?: never;
@@ -3830,6 +3888,17 @@ export interface components {
             /** @description 所有者だけ。owner_kept が 0 の間は真 */
             byOrganizer?: boolean;
         };
+        /** @description GET /api/home の応答 */
+        Home: {
+            /** @description フォルダの棚を並びの順に、続けて決まった棚 */
+            shelves: components["schemas"]["HomeShelf"][];
+            organizer?: components["schemas"]["HomeOrganizer"];
+            /**
+             * @description 見る人にライブラリの動画が 1 本も見えないときだけ入る
+             * @enum {string}
+             */
+            empty?: "noVideos";
+        };
         /** @description 整理役の状態（specs/057-home/data-model.md「Organizer state」） */
         HomeOrganizer: {
             /** @description 実行が今走っている */
@@ -3859,6 +3928,23 @@ export interface components {
             added: number;
             /** @description 消した棚の数 */
             removed: number;
+        };
+        /** @description 棚 1 つの最初の項目 */
+        HomeShelfItems: {
+            key: components["schemas"]["HomeShelfKey"];
+            /** @description 動画とグループの項目だけ。フォルダの棚の子フォルダは入れない */
+            items: components["schemas"]["LibraryItem"][];
+            /** @description 棚の項目（動画とグループ）の数。0 なら画面は棚を出さない */
+            total: number;
+        };
+        /** @description GET /api/home/shelves の応答 */
+        HomeShelfItemsList: {
+            shelves: components["schemas"]["HomeShelfItems"][];
+        };
+        /** @description PUT /api/home/shelves の本文 */
+        HomeShelfOrder: {
+            /** @description 棚にするフォルダの id を上から順に */
+            folderIds: number[];
         };
         AutoTaggingQueued: {
             /** @description 積んだ動画の件数 */
@@ -4919,6 +5005,8 @@ export interface components {
             items: components["schemas"]["SmartFolderItem"][];
             /** @description 続きがあるときだけ入る。`listSmartFolderItems` に渡す */
             nextCursor?: string;
+            /** @description 所有者の応答にだけ入る。このフォルダがホームの棚か（specs/057-home/contracts/screen-api.md） */
+            onHome?: boolean;
         };
         /** @description GET /api/smart-folders/{id}/items の応答 */
         SmartFolderItemPage: {
@@ -7587,6 +7675,75 @@ export interface operations {
                     "application/json": components["schemas"]["Error"];
                 };
             };
+        };
+    };
+    getHome: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description ホームの要約 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Home"];
+                };
+            };
+        };
+    };
+    listHomeShelfItems: {
+        parameters: {
+            query: {
+                /** @description 棚の鍵（`HomeShelfKey`）を `,` で区切って並べたもの（1〜8 件） */
+                keys: components["schemas"]["HomeShelfKey"][];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 棚の項目 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HomeShelfItemsList"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    setHomeShelves: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HomeShelfOrder"];
+            };
+        };
+        responses: {
+            /** @description 書いた */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
     organizeHome: {

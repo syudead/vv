@@ -13,7 +13,6 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	"slices"
 	"strconv"
 	"strings"
 
@@ -51,8 +50,10 @@ type smartMatch struct {
 	// その引数で、検索式が無ければ空である。
 	search     string
 	searchArgs []any
-	// condition は smart_base（別名 videos）に対する条件句で、args はその引数である。
+	// condition は smart_base（別名 videos）に対する条件句で、args はその引数である。filter は
+	// condition から検索式の段の条件を除いた句で、引数は同じ args である。
 	condition string
+	filter    string
 	args      []any
 }
 
@@ -63,20 +64,35 @@ type smartMatch struct {
 // 満たす動画に限る（chosenLocationsSelect、research.md R-11）。検索式は別の with 句に 1 度だけ
 // 求める（条件句の副問い合わせにすると、フォルダが増えるほど遅くなる）。
 func smartMatchFor(spec listSpec, name string) smartMatch {
+	return smartMatchOf(spec, name, true)
+}
+
+// smartRuleMatch は smartMatchFor から、再生可否・お気に入りのみ・視聴状態の絞り込みを除いた条件、
+// つまりライブラリの項目の問い合わせの当たった動画（libraryItemsCTE の matched）の条件を作る。
+func smartRuleMatch(spec listSpec, name string) smartMatch {
+	return smartMatchOf(spec, name, false)
+}
+
+// smartMatchOf は smartMatchFor と smartRuleMatch の本体で、perVideo なら再生可否・お気に入りのみ・
+// 視聴状態の絞り込みも動画に掛ける。
+func smartMatchOf(spec listSpec, name string, perVideo bool) smartMatch {
 	spec.userKeyColumn = `videos.user_key`
 	conditions, args := matchConditions(spec)
-	if spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
+	if perVideo && spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
 		conditions = append(conditions, playableCondition)
 	}
-	if spec.anyLevel(func(level listSpec) bool { return level.favoriteOnly }) {
+	if perVideo && spec.itemGroupsFavorite() {
 		conditions = append(conditions, `videos.favorited_at is not null`)
 	}
-	if watch, watchArgs := itemWatchConditions(spec); watch != "" {
+	if watch, watchArgs := itemWatchConditions(spec); perVideo && watch != "" {
 		conditions = append(conditions, watch)
 		args = append(args, watchArgs...)
 	}
-	var match smartMatch
-	if slices.ContainsFunc(spec.searchExprs(), func(expr domain.SearchExpr) bool { return !expr.Empty() }) {
+	match := smartMatch{filter: `1`}
+	if len(conditions) > 0 {
+		match.filter = strings.Join(conditions, " and ")
+	}
+	if spec.hasSearch() {
 		search, searchArgs := chosenLocationsSelect(spec.scope, domain.AudienceOwner, spec.searchExprs())
 		match.search, match.searchArgs = name+` as materialized (`+search+`)`, searchArgs
 		conditions = append(conditions, `videos.id in (select video_id from `+name+`)`)
@@ -104,22 +120,9 @@ type smartFolderTarget struct {
 // ないときだけ見せる。ゲストには再生順の最初の項目があるかを 1 回の問い合わせで確かめる
 // （data-model.md「Contents」の Shown、research.md R-8）。
 func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, now int64) (smartFolderTarget, bool, error) {
-	target := smartFolderTarget{
-		summary: domain.SmartFolderSummary{ID: folder.ID, ParentID: folder.ParentID, Name: folder.Name},
-		sort:    folder.Sort,
-		spec:    smartFolderSpec(audience, rules, folder.Sort, now),
-	}
-	missing, err := missingSmartRuleRefs(ctx, tx, rules)
-	if err != nil {
-		return smartFolderTarget{}, false, err
-	}
-	target.missing = len(missing) > 0
-	if err := tx.QueryRowContext(ctx, `select exists (select 1 from smart_folder_favorites where smart_folder_id = ?)`,
-		folder.ID).Scan(&target.summary.Favorite); err != nil {
-		return smartFolderTarget{}, false, fmt.Errorf("cannot read the smart folder favorite: %w", err)
-	}
-	if audience.IsOwner() {
-		return target, true, nil
+	target, err := readSmartFolderTarget(ctx, tx, audience, folder, rules, now)
+	if err != nil || audience.IsOwner() {
+		return target, err == nil, err
 	}
 	if target.missing {
 		return target, false, nil
@@ -128,25 +131,28 @@ func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audien
 	return target, shown, err
 }
 
-// smartFolderTargetByID はフォルダ id を、その経路の条件で smartFolderTargetOf と同じく読む。
-// フォルダが無ければ見せないものとして false を返す。
-func smartFolderTargetByID(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64, now int64) (smartFolderTarget, bool, error) {
-	folder, err := readSmartFolder(ctx, tx, id)
-	if errors.Is(err, domain.ErrNotFound) {
-		return smartFolderTarget{}, false, nil
+// readSmartFolderTarget はフォルダ folder を経路の条件 rules で読む準備をする。見せるかは確かめない。
+func readSmartFolderTarget(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, now int64) (smartFolderTarget, error) {
+	target := smartFolderTarget{
+		summary: domain.SmartFolderSummary{ID: folder.ID, ParentID: folder.ParentID, Name: folder.Name},
+		sort:    folder.Sort,
+		spec:    smartFolderSpec(audience, rules, folder.Sort, now),
 	}
+	missing, err := missingSmartRuleRefs(ctx, tx, rules)
 	if err != nil {
-		return smartFolderTarget{}, false, err
+		return smartFolderTarget{}, err
 	}
-	rules, err := smartFolderPathRules(ctx, tx, id)
-	if err != nil {
-		return smartFolderTarget{}, false, err
+	target.missing = len(missing) > 0
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from smart_folder_favorites where smart_folder_id = ?)`,
+		folder.ID).Scan(&target.summary.Favorite); err != nil {
+		return smartFolderTarget{}, fmt.Errorf("cannot read the smart folder favorite: %w", err)
 	}
-	return smartFolderTargetOf(ctx, tx, audience, folder, rules, now)
+	return target, nil
 }
 
 // shownSmartFolderTargets はフォルダ ids のうち、あって見る人に見せるものを ids の順に読む。
-// 同じ id は最初の 1 回だけ読む。
+// 同じ id は最初の 1 回だけ読む。ゲストに見せるか（再生順が空でないか）は、どのフォルダも
+// まとめて 1 つの問い合わせで確かめる（smartFoldersHaveItems、specs/057-home/research.md R-12）。
 func shownSmartFolderTargets(ctx context.Context, tx *sql.Tx, audience domain.Audience, ids []int64, now int64) ([]smartFolderTarget, error) {
 	targets := make([]smartFolderTarget, 0, len(ids))
 	seen := make(map[int64]bool, len(ids))
@@ -155,15 +161,39 @@ func shownSmartFolderTargets(ctx context.Context, tx *sql.Tx, audience domain.Au
 			continue
 		}
 		seen[id] = true
-		target, shown, err := smartFolderTargetByID(ctx, tx, audience, id, now)
+		folder, err := readSmartFolder(ctx, tx, id)
+		if errors.Is(err, domain.ErrNotFound) {
+			continue
+		}
 		if err != nil {
 			return nil, err
 		}
-		if shown {
+		rules, err := smartFolderPathRules(ctx, tx, id)
+		if err != nil {
+			return nil, err
+		}
+		target, err := readSmartFolderTarget(ctx, tx, audience, folder, rules, now)
+		if err != nil {
+			return nil, err
+		}
+		if audience.IsOwner() || !target.missing {
 			targets = append(targets, target)
 		}
 	}
-	return targets, nil
+	if audience.IsOwner() || len(targets) == 0 {
+		return targets, nil
+	}
+	found, err := smartFoldersHaveItems(ctx, tx, audience, targets)
+	if err != nil {
+		return nil, err
+	}
+	shown := targets[:0]
+	for i, target := range targets {
+		if found[i] {
+			shown = append(shown, target)
+		}
+	}
+	return shown, nil
 }
 
 // smartFolderHasItems は、経路の条件 spec の中身（ライブラリの項目の問い合わせ）に項目が 1 つでも

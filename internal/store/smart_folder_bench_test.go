@@ -78,7 +78,7 @@ func BenchmarkLibraryWithSmartFolders(b *testing.B) {
 }
 
 // smartFolderBenchDB は 2 万本の動画を 4 千のフォルダに 5 本ずつ置き（どのフォルダも自動グループに
-// なる）、半分にタグ 猫 を付け、3 本に 1 本に再生の記録を置いた索引を作り、猫 の id を返す。
+// なる、所在は検索の鍵を持つ）、半分にタグ 猫 を付け、3 本に 1 本に再生の記録を置いた索引を作り、猫 の id を返す。
 func smartFolderBenchDB(b *testing.B) (*DB, int64) {
 	b.Helper()
 	db, err := Open(b.TempDir())
@@ -101,6 +101,8 @@ func smartFolderBenchDB(b *testing.B) (*DB, int64) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	// 所在は取り込みと同じ search_key を持ち、検索式の条件のフォルダはパスの series-NN に当たる。
+	roots := []string{fixturePath("/media")}
 	const videos = 20000
 	for i := range videos {
 		path := fmt.Sprintf(fixturePath("/media/series-%02d/season-%03d/episode-%d.mp4"), i%40, (i/40)%10, i)
@@ -114,8 +116,8 @@ func smartFolderBenchDB(b *testing.B) (*DB, int64) {
 		if err != nil {
 			b.Fatal(err)
 		}
-		if _, err := tx.Exec(`insert into video_locations (video_id, path, version, title, size_bytes, mtime, created_at, updated_at)
-			values (?, ?, 1, ?, 1, 1, 1, 1)`, id, path, path); err != nil {
+		if _, err := tx.Exec(`insert into video_locations (video_id, path, version, title, search_key, size_bytes, mtime, created_at, updated_at)
+			values (?, ?, 1, ?, ?, 1, 1, 1, 1)`, id, path, path, locationSearchKey(roots, path, path, "")); err != nil {
 			b.Fatal(err)
 		}
 		if i%2 == 0 {

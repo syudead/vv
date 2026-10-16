@@ -44,6 +44,9 @@ type DB struct {
 	// publisher は取引が確定した後に、その取引で起きた変化を受け取る。
 	publisherMu sync.RWMutex
 	publisher   Publisher
+
+	// homeShelves はホームの棚の項目の保持で、発行する変化で捨てる（home_shelf_cache.go）。
+	homeShelves homeShelfCache
 }
 
 // Publisher は確定した変化の発行先である。保存層は誰がそれを受け取るかを
@@ -211,6 +214,7 @@ func (db *DB) publishEvents(events ...domain.Event) {
 	if len(events) == 0 {
 		return
 	}
+	db.homeShelves.dropFor(events)
 	db.publisherMu.RLock()
 	publisher := db.publisher
 	db.publisherMu.RUnlock()

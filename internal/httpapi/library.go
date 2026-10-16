@@ -66,44 +66,12 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	// 登録フォルダは項目と同じスナップショットから読んだものを使う。別に読むと、
 	// 読み取りの失敗や間に確定した登録フォルダの解除で、total とカーソルに数えた
 	// グループを応答から落としてしまう。
-	roots := page.Roots
-	// 再生位置は動画の項目にだけ載せる。グループの視聴の値は保存層が決めているので、
-	// メンバーの再生位置は引かない（ページのメンバーが多いと引数の上限に掛かる）。
-	// タグは全メンバーの和集合を載せるので、全メンバーを引く。
-	var shown, tagged []domain.Video
-	for _, item := range page.Items {
-		if item.Video != nil {
-			shown = append(shown, *item.Video)
-			tagged = append(tagged, *item.Video)
-		} else if item.Group != nil {
-			tagged = append(tagged, item.Group.Members...)
-		}
+	items, err := s.presentLibraryItems(r.Context(), audience, page.Roots, page.Items)
+	if err != nil {
+		s.internalError(w, "Could not load the list.", err)
+		return
 	}
-	lookup := s.itemLookups(r.Context(), shown, tagged)
-
-	payload := gen.LibraryPage{Items: make([]gen.LibraryItem, 0, len(page.Items)), Total: page.Total}
-	for _, item := range page.Items {
-		if item.SmartFolder != nil {
-			// スマートフォルダの項目は要約だけを載せる。カードの値は画面が listSmartFolderCards で読む
-			// （specs/052-smart-folders/research.md R-14）。
-			folder := toAPISmartFolderSummary(audience, *item.SmartFolder)
-			payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindSmartFolder, SmartFolder: &folder})
-			continue
-		}
-		if item.Video != nil {
-			video := lookup.video(r.Context(), audience, roots, *item.Video)
-			payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindVideo, Video: &video})
-			continue
-		}
-		group, ok := lookup.group(r.Context(), audience, roots, *item.Group)
-		if !ok {
-			// 見せる動画の無いグループは項目にならない。黙って落とすと items が total・カーソルと
-			// 食い違うので、要求を失敗させる。
-			s.internalError(w, "Could not load the list.", fmt.Errorf("group %d has no video", item.Group.ID))
-			return
-		}
-		payload.Items = append(payload.Items, gen.LibraryItem{Kind: gen.LibraryItemKindGroup, Group: &group})
-	}
+	payload := gen.LibraryPage{Items: items, Total: page.Total}
 	if page.NextCursor != "" {
 		next := page.NextCursor
 		payload.NextCursor = &next
@@ -157,6 +125,46 @@ func libraryGroupIDs(groups []domain.LibraryGroupSelection) []gen.LibraryGroupId
 		out = append(out, gen.LibraryGroupIds{Id: group.ID, VideoIds: ids})
 	}
 	return out
+}
+
+// presentLibraryItems はライブラリの項目を応答の形にする。roots は項目と同じスナップショットから
+// 読んだ登録フォルダである。見せる動画の無いグループの項目は、黙って落とすと items が total・カーソルと
+// 食い違うので誤りにする。
+func (s *server) presentLibraryItems(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, items []domain.LibraryItem) ([]gen.LibraryItem, error) {
+	// 再生位置は動画の項目にだけ載せる。グループの視聴の値は保存層が決めているので、
+	// メンバーの再生位置は引かない（ページのメンバーが多いと引数の上限に掛かる）。
+	// タグは全メンバーの和集合を載せるので、全メンバーを引く。
+	var shown, tagged []domain.Video
+	for _, item := range items {
+		if item.Video != nil {
+			shown = append(shown, *item.Video)
+			tagged = append(tagged, *item.Video)
+		} else if item.Group != nil {
+			tagged = append(tagged, item.Group.Members...)
+		}
+	}
+	lookup := s.itemLookups(ctx, shown, tagged)
+	out := make([]gen.LibraryItem, 0, len(items))
+	for _, item := range items {
+		if item.SmartFolder != nil {
+			// スマートフォルダの項目は要約だけを載せる。カードの値は画面が listSmartFolderCards で読む
+			// （specs/052-smart-folders/research.md R-14）。
+			folder := toAPISmartFolderSummary(audience, *item.SmartFolder)
+			out = append(out, gen.LibraryItem{Kind: gen.LibraryItemKindSmartFolder, SmartFolder: &folder})
+			continue
+		}
+		if item.Video != nil {
+			video := lookup.video(ctx, audience, roots, *item.Video)
+			out = append(out, gen.LibraryItem{Kind: gen.LibraryItemKindVideo, Video: &video})
+			continue
+		}
+		group, ok := lookup.group(ctx, audience, roots, *item.Group)
+		if !ok {
+			return nil, fmt.Errorf("group %d has no video", item.Group.ID)
+		}
+		out = append(out, gen.LibraryItem{Kind: gen.LibraryItemKindGroup, Group: &group})
+	}
+	return out, nil
 }
 
 // itemLookup は項目に載せる再生位置とタグをまとめて引いたものである。

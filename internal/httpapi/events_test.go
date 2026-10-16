@@ -225,6 +225,23 @@ func TestStreamEventsSendsOnlyGroupToGuests(t *testing.T) {
 	expectNoEvent(t, stream)
 }
 
+// ホームの変化はゲストにも中身の無い home として届く（specs/057-home/research.md R-16）。
+func TestStreamEventsSendsHomeToGuests(t *testing.T) {
+	events := NewEvents()
+	handler := newTestServer(t, Options{
+		Scans: &lockedScans{current: domain.Scan{ID: 1}}, Events: events, Auth: guestEventsAuth{},
+	})
+	stream, _ := openEvents(t, handler)
+	expectNoEvent(t, stream)
+
+	events.Handle(domain.HomeChanged{})
+	event := nextEvent(t, stream)
+	if event.name != "home" || event.data != `{}` {
+		t.Fatalf("ゲストへのイベント = %+v, want home {}", event)
+	}
+	expectNoEvent(t, stream)
+}
+
 // 送る前に重なった知らせは1回にまとめる。遅い接続のために知らせを溜め込まない。
 func TestStreamEventsCoalescesPendingChanges(t *testing.T) {
 	events := NewEvents()

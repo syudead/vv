@@ -49,6 +49,8 @@ type eventSubscriber struct {
 	groups     map[int64]struct{}
 	// smartFolders はまだ送っていないスマートフォルダの知らせの id である。
 	smartFolders map[int64]struct{}
+	// home はホームが変わったことを表す（specs/057-home/research.md R-16）。
+	home bool
 	// ready は送るものがあることを知らせる。容量1で、重なった知らせはまとまる。
 	ready chan struct{}
 }
@@ -70,6 +72,7 @@ type pendingEvents struct {
 	videos       []int64
 	groups       []int64
 	smartFolders []int64
+	home         bool
 }
 
 // take はまだ送っていない変化を取り出して空にする。
@@ -78,10 +81,11 @@ func (s *eventSubscriber) take() pendingEvents {
 	defer s.mu.Unlock()
 	pending := pendingEvents{
 		scan: s.scan, candidates: s.candidates, videos: sortedIDs(s.videos), groups: sortedIDs(s.groups),
-		smartFolders: sortedIDs(s.smartFolders),
+		smartFolders: sortedIDs(s.smartFolders), home: s.home,
 	}
 	s.scan = false
 	s.candidates = false
+	s.home = false
 	clear(s.videos)
 	clear(s.groups)
 	clear(s.smartFolders)
@@ -183,6 +187,12 @@ func (e *Events) SmartFoldersChanged(ids []int64) {
 	})
 }
 
+// HomeChanged はホームの棚の集合か並び、整理役やオンボードの状態が変わったことを知らせる
+// （specs/057-home/research.md R-16）。中身は運ばず、ホームが GET /api/home で読み直す。
+func (e *Events) HomeChanged() {
+	e.publish(func(s *eventSubscriber) { s.home = true })
+}
+
 // Handle は状態の変化を、画面へ送る知らせに置き換える。cmd/mdm が
 // domain.Event の購読として登録する。知らせる対象ではない変化は無視する。
 func (e *Events) Handle(event domain.Event) {
@@ -228,6 +238,9 @@ func (e *Events) Handle(event domain.Event) {
 		// スマートフォルダの変化は smartFolder の知らせにする。フォルダの画面とライブラリのフォルダの
 		// カードが読み直す（specs/052-smart-folders/research.md R-12）。
 		e.SmartFoldersChanged(event.IDs)
+	case domain.HomeChanged:
+		// ホームの変化は home の知らせにする。所有者にもゲストにも送る（specs/057-home/research.md R-16）。
+		e.HomeChanged()
 	}
 }
 
@@ -248,8 +261,8 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	// 動画の変化を取りこぼす。
 	sub, unsubscribe := s.events.subscribe()
 	defer unsubscribe()
-	// ゲストには group と smartFolder だけを送る。scan と video は所有者の取り込みと非公開の動画を
-	// 運び、candidates は所有者だけが開く重複の候補の画面のものである
+	// ゲストには group と smartFolder と home だけを送る。scan と video は所有者の取り込みと非公開の
+	// 動画を運び、candidates は所有者だけが開く重複の候補の画面のものである
 	// （specs/048-groups/contracts/screen-api.md「/api/events」、specs/054-auto-dup/research.md R-10）。
 	guest := !audienceFrom(r.Context()).IsOwner()
 
@@ -297,8 +310,8 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// writePendingEvents はまだ送っていない変化を、今の内容で書き出す。guest なら group と smartFolder
-// だけを書く。
+// writePendingEvents はまだ送っていない変化を、今の内容で書き出す。guest なら group と smartFolder と
+// home だけを書く。
 func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, sub *eventSubscriber, guest bool) error {
 	pending := sub.take()
 	if guest {
@@ -340,6 +353,12 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 	if len(pending.smartFolders) > 0 {
 		// group と同じく 1 つにまとめ、名前は載せない。
 		if err := writeEvent(w, "smartFolder", gen.SmartFolderChanged{Ids: pending.smartFolders}); err != nil {
+			return err
+		}
+	}
+	if pending.home {
+		// candidates と同じく中身の無い知らせで、data は空のオブジェクトにする。
+		if err := writeEvent(w, "home", struct{}{}); err != nil {
 			return err
 		}
 	}

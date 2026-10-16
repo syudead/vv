@@ -125,7 +125,12 @@ func (s *HomeStore) ApplyProposal(ctx context.Context, run domain.HomeOrganizeRu
 // PendingOrganize は待っている整理役の実行を返す。無ければ found は偽である。知らない値は無いものと
 // して扱う。
 func (s *HomeStore) PendingOrganize(ctx context.Context) (run domain.HomeOrganizeRun, found bool, err error) {
-	value, found, err := readSetting(ctx, s.db.sql, homeOrganizePendingKey)
+	return pendingOrganize(ctx, s.db.sql)
+}
+
+// pendingOrganize は q で待っている整理役の実行を読む（PendingOrganize）。
+func pendingOrganize(ctx context.Context, q queryRower) (run domain.HomeOrganizeRun, found bool, err error) {
+	value, found, err := readSetting(ctx, q, homeOrganizePendingKey)
 	if err != nil || !found {
 		return "", false, err
 	}
@@ -154,7 +159,12 @@ func (s *HomeStore) ClearPendingOrganize(ctx context.Context) error {
 
 // LastOrganize は最後に終わった実行を返す。無いか読めない値なら found は偽である。
 func (s *HomeStore) LastOrganize(ctx context.Context) (last domain.HomeOrganizeLast, found bool, err error) {
-	value, found, err := readSetting(ctx, s.db.sql, homeOrganizeLastKey)
+	return lastOrganize(ctx, s.db.sql)
+}
+
+// lastOrganize は q で最後に終わった整理役の実行を読む（LastOrganize）。
+func lastOrganize(ctx context.Context, q queryRower) (last domain.HomeOrganizeLast, found bool, err error) {
+	value, found, err := readSetting(ctx, q, homeOrganizeLastKey)
 	if err != nil || !found {
 		return domain.HomeOrganizeLast{}, false, err
 	}
