@@ -30,6 +30,24 @@ Ollama connection is saved, with the way to the Connections page
 same link (requirement 8). Every section keeps its rows, controls, states and
 words except where the [Words](#words) table says otherwise (requirement 9).
 
+The diagram shows the parts this document covers and where each one leads.
+
+```mermaid
+flowchart LR
+  side[Sidebar Settings] --> list[Page list]
+  entry[Entry points] --> pages[Eight pages]
+  list --> pages
+  pages --> scan[Scan: Auto-import state]
+  pages --> lib[Library: Auto-import switch]
+  pages --> tag[Auto-tagging: lock notice]
+  lib --> note[Duplicate judging note]
+  tag --> conn[Connections page]
+  note --> conn
+```
+
+Each page is one `SettingsPage` with the list in its `nav` slot; the lock
+notice and the note are the only parts that link to Connections.
+
 ## Why this shape
 
 The page list is a quiet column at the left of the page, not a row of tabs
@@ -93,13 +111,14 @@ missing also says where to go.
 | Section heading, Network page | Local network | Replaces `Network` (`settings.network.heading`) |
 | Section heading, Video conversion page | Encoder | Replaces `Video conversion` (`settings.transcoding.heading`) |
 | Auto-tagging page, first section heading | Progress | New section, see [Auto-tagging page](#auto-tagging-page) |
-| Auto-tagging page, second section heading | Classifier | Replaces `Auto-tagging` as the section's heading; the description is unchanged |
+| Auto-tagging page, second section heading | Classifier | Replaces `Auto-tagging` as the section's heading |
+| `Classifier` description | Asks the classifier set in Connections which existing tags fit each video, … | Replaces "under Ollama" in `settings.autoTagging.description`; `Connections` is a text link to `/settings/connections` |
+| Duplicate judging description | … the classifier set in Connections is asked only about the frames that differ. … | Replaces "under Ollama" in `settings.versionJudging.description`; `Connections` is a text link |
 | `Progress` description while auto-tagging is on | Waiting 3 · Tagging 1 · Done 340 · Failed 2 | The existing queue line (`settings.autoTagging.queue`), moved from the body to the heading |
 | `Progress` description while auto-tagging is off | Auto-tagging is off. | One sentence |
 | `Progress` body while auto-tagging is off | Turn on "Use auto-tagging" under Classifier to tag videos. | One `<p>` row |
 | Lock notice title | Ollama connection needed | `AlertTitle` of a default `Alert` |
-| Lock notice body | Save the Ollama URL and model in Connections to use auto-tagging. | `AlertDescription` |
-| Lock notice action | Open Connections | `AlertAction`, an `outline` `sm` `Button` as a link to `/settings/connections` |
+| Lock notice body | Save the Ollama URL and model in Connections to use auto-tagging. | `AlertDescription`; `Connections` is a text link to `/settings/connections`, so the notice has no `AlertAction` |
 | Connection read failed | Couldn't read the Ollama connection: {reason} | `destructive` `Alert` with `Retry` (`common.retry`) in `AlertAction` |
 | Duplicate judging note | No Ollama connection is saved. Pairs with a differing part wait until you save one in Connections. | `Connections` is a text link to `/settings/connections` |
 | Scan status, `Scan library` blocked | Add a media folder in Library to scan. | Replaces "Add a media folder below to scan."; `Library` is a text link to `/settings/library` |
@@ -119,14 +138,19 @@ goes, and only the address changes
 
 The `settings-page` pattern gains two slots, in its registry item, its
 example block, [patterns.md, Settings page](../../web/registry/rules/patterns.md#settings-page)
-and [design-system.md](../../docs/design-docs/design-system.md#page-patterns),
-by the "Give the settings page pattern a slot for a page list" unit, before
-the pages use them.
+and [design-system.md](../../docs/design-docs/design-system.md#page-patterns).
+Each change is made by the plan unit that first uses it, before its page
+does: the "Give the settings page pattern a slot for a page list" unit makes
+the `nav` slot, `settings-nav`, `grid-cols-settings-page` and the
+`max-w-4xl` width; the "Lock the Auto-tagging page until the Ollama
+connection is saved" unit makes the `notice` slot, the `Alert` rule below
+and the `aria-disabled` look.
 
 | Change | What it is |
 | --- | --- |
 | `nav` slot | The page list: a `nav` of links with a heading. From `sm` a column `settings-nav` wide at the left of the body, stuck under the top bar; below `sm` the list alone, or the body alone, as [Page list and skeleton](#page-list-and-skeleton) says. Without it the skeleton is unchanged |
 | `notice` slot | One line between the header and the sections, for a condition that applies to the whole page: an `Alert`. Without it nothing is drawn |
+| `Alert` rule | [components.md, Alert](../../web/registry/rules/components.md#alert) allows an `Alert` in a page pattern's `notice` slot as well as inside a section, for a condition of the whole page |
 | `settings-nav` | A named layout step in `tokens.css`: the width of the list column, wide enough for `Video conversion` on one line at `text-sm` with the row's `px-2` |
 | `grid-cols-settings-page` | A named utility, as `grid-cols-list-aside`: the list column `settings-nav` wide, then the body |
 | `max-w-4xl` with `nav` | The skeleton's width becomes `max-w-4xl` when `nav` is passed, so the body keeps about the width it has today beside the column |
@@ -275,8 +299,8 @@ the page reads the Ollama connection, and while `saved` is `false` every
 control of both sections is `aria-disabled` and drawn at `opacity-50` with
 its value visible: the switches keep their position, the inputs their
 numbers, and the run row stays drawn when auto-tagging is on. The `notice`
-slot holds the lock notice, a default `Alert` with `Unplug`, the title, the
-body and `Open Connections` in `AlertAction`. The sections' own loading
+slot holds the lock notice, a default `Alert` with `Unplug`, the title and
+the body with its `Connections` link. The sections' own loading
 skeletons and `ErrorState`s are unchanged.
 
 ### States
@@ -331,7 +355,7 @@ Breakpoints are Tailwind's defaults only, applied in CSS
 | --- | --- |
 | 1280px | The rail, then the page at `max-w-4xl` centred: the column `settings-nav` wide at the left, the body beside it; every `FormRow` is label left, control right |
 | 768px | The same two columns with the body narrower; the `FormRow`s of every page still sit label left, control right; the run row and the `Save` row keep their buttons on one line |
-| 360px | The drawer's ☰ in the top bar; `/settings` is the list alone, `/settings/<page>` the page under the back link; `FormRow`s stack; the run row wraps to two lines; the lock notice's action sits under its text |
+| 360px | The drawer's ☰ in the top bar; `/settings` is the list alone, `/settings/<page>` the page under the back link; `FormRow`s stack; the run row wraps to two lines; the lock notice's body wraps under its title |
 
 ## Review criteria
 
@@ -377,7 +401,7 @@ outside the desktop app. "It exists" alone does not satisfy a criterion
    shows one notice under its title and every control at half opacity with
    its value still readable; pressing a switch, typing in a threshold or
    pressing `Save`, `Test judging` or a run button changes nothing on the
-   screen; `Open Connections` lands on `Ollama`; after saving a connection
+   screen; the notice's `Connections` link lands on `Ollama`; after saving a connection
    there and pressing back, the notice is gone and the controls are at full
    opacity (acceptance criterion 7, `UI品質`, the last point).
 8. **Failed connection read**: the page shows the failed-read `Alert` with
