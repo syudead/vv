@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
@@ -41,14 +40,24 @@ func memberConditions(spec listSpec) ([]string, []any) {
 func matchConditions(spec listSpec) ([]string, []any) {
 	var conditions []string
 	var args []any
+	userKey := spec.videoUserKey()
 	for _, level := range spec.levels() {
-		tags, tagArgs := tagConditions(level)
-		works, workArgs := workInfoConditions(level)
+		tags, tagArgs := tagConditions(level, userKey)
+		works, workArgs := workInfoConditions(level, userKey)
 		facts, factArgs := addedAndLengthConditions(level)
 		conditions = append(append(append(conditions, tags...), works...), facts...)
 		args = append(append(append(args, tagArgs...), workArgs...), factArgs...)
 	}
 	return conditions, args
+}
+
+// videoUserKey は videos の利用者データの鍵の式を返す。spec.userKeyColumn があればその列で、無ければ
+// userKeyExpr である。
+func (s listSpec) videoUserKey() string {
+	if s.userKeyColumn != "" {
+		return s.userKeyColumn
+	}
+	return userKeyExpr("videos")
 }
 
 // levels は spec 自身と、重ねて掛ける絞り込み（spec.and）の各段を返す。
@@ -100,15 +109,15 @@ func addedAndLengthConditions(spec listSpec) ([]string, []any) {
 }
 
 // workInfoConditions は人物と団体の絞り込みを、videos に対する条件句の並びと引数にする。
-// 役割は問わず、利用者データの鍵（userKeyExpr）に結び付いた行があれば当たる。実体の無い
-// id は何にも当たらない（specs/047-video-work-info/data-model.md の Lists）。
-func workInfoConditions(spec listSpec) ([]string, []any) {
+// 役割は問わず、利用者データの鍵（userKey、listSpec.videoUserKey）に結び付いた行があれば当たる。
+// 実体の無い id は何にも当たらない（specs/047-video-work-info/data-model.md の Lists）。
+func workInfoConditions(spec listSpec, userKey string) ([]string, []any) {
 	var conditions []string
 	var args []any
 	// 内容の識別子が空の動画は利用者データを持たない（videoHasTagCondition と同じ扱い）。
 	link := func(table, alias, column string) string {
 		return `(videos.content_key <> '' and exists (select 1 from ` + table + ` ` + alias + ` where ` + alias +
-			`.content_key = ` + userKeyExpr("videos") + ` and ` + alias + `.` + column + ` = ?))`
+			`.content_key = ` + userKey + ` and ` + alias + `.` + column + ` = ?))`
 	}
 	if spec.personID != 0 {
 		conditions = append(conditions, link("video_work_people", "vp", "person_id"))
@@ -122,12 +131,13 @@ func workInfoConditions(spec listSpec) ([]string, []any) {
 }
 
 // tagConditions はタグの AND を、videos に対する条件句の並びと引数にする。
-// 手で付けた分とフォルダ名から付いている分のどちらでも当たる（017 の data-model.md §4）。
-func tagConditions(spec listSpec) ([]string, []any) {
+// 手で付けた分とフォルダ名から付いている分のどちらでも当たる（017 の data-model.md §4）。userKey は
+// videos の利用者データの鍵の式（listSpec.videoUserKey）である。
+func tagConditions(spec listSpec, userKey string) ([]string, []any) {
 	var conditions []string
 	var args []any
 	for _, tagID := range spec.tagIDs {
-		conditions = append(conditions, videoHasTagCondition("videos"))
+		conditions = append(conditions, videoHasTagCondition("videos", userKey))
 		args = append(args, tagID, tagID)
 	}
 	return conditions, args
@@ -148,6 +158,12 @@ const topGroupsSelect = `select g.id from groups g where not exists (select 1 fr
 // favoriteGroupsSelect は、お気に入りにしたグループ（どの深さでも）の id を 1 列 id で返す
 // select 文である。
 const favoriteGroupsSelect = `select group_id as id from group_favorites`
+
+// videoWatchStateExpr は動画 1 本の視聴状態（domain.ClassifyWatch と同じ定義）を、再生の記録
+// （別名 p、left join）から 'unwatched'・'inProgress'・'watched' にする式である。
+const videoWatchStateExpr = `case when p.completed = 1 then 'watched'
+				when p.content_key is null or p.position_ms = 0 then 'unwatched'
+				else 'inProgress' end`
 
 // libraryItemsCTE は項目の表 `items(group_id, id, video_id, path, added_at, mtime, created_at,
 // title_key, duration_ms, size_bytes, played_at, favorited_at, watch_state)` と、グループの項目に
@@ -236,10 +252,7 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 			videos.added_at as added_at, loc.mtime as mtime, ` + fileCreatedAtExpr("loc") + ` as created_at,
 			loc.title_key as title_key,
 			videos.duration_ms as duration_ms, loc.size_bytes as size_bytes, p.updated_at as played_at,
-			fav.favorited_at as favorited_at,
-			case when p.completed = 1 then 'watched'
-				when p.content_key is null or p.position_ms = 0 then 'unwatched'
-				else 'inProgress' end as watch_state
+			fav.favorited_at as favorited_at, ` + videoWatchStateExpr + ` as watch_state
 		from matched join videos on videos.id = matched.video_id
 		join video_locations loc on loc.path = matched.path` + progressJoin("videos") + `
 		left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''
@@ -255,61 +268,6 @@ func libraryItemsCTE(spec listSpec) (string, []any) {
 		from mv join groups g on g.id = mv.group_id
 		group by g.id` + folderItems + `)`
 	return cte, append(args, folderArgs...)
-}
-
-// smartFolderItemsSQL は、ライブラリの一番上に並べるスマートフォルダのカード cards（spec.smartFolders）
-// を項目にする、items に足す union の句とその引数を返す。カードが無ければどちらも空である。項目の
-// id はフォルダの id を負にした値で、動画とグループの項目の id（正）と重ならない（カーソルは種類を
-// 運ぶ）。並べ替えの値は、グループのカードと同じくカードの値（再生順のメンバーから作った値）で、
-// 読んだカードから渡す（specs/052-smart-folders/data-model.md「Library items」）。メンバーを SQL で
-// もう一度集めると、フォルダの動画の本数だけ所在と再生の記録を結び直す。
-func smartFolderItemsSQL(cards []domain.LibrarySmartFolder) (string, []any) {
-	if len(cards) == 0 {
-		return "", nil
-	}
-	rows := make([][]any, 0, len(cards))
-	for _, card := range cards {
-		rows = append(rows, smartFolderSortValues(card))
-	}
-	encoded, err := json.Marshal(rows)
-	if err != nil {
-		// 数と文字列だけの並びなので起きない。
-		panic(fmt.Sprintf("cannot encode smart folder cards: %v", err))
-	}
-	return `
-		union all
-		select null, -f.id, null, null, json_extract(c.value, '$[1]'), json_extract(c.value, '$[2]'),
-			json_extract(c.value, '$[3]'), f.title_key, json_extract(c.value, '$[4]'), json_extract(c.value, '$[5]'),
-			json_extract(c.value, '$[6]'),
-			(select ff.favorited_at from smart_folder_favorites ff where ff.smart_folder_id = f.id),
-			json_extract(c.value, '$[7]')
-		from json_each(?) c join smart_folders f on f.id = json_extract(c.value, '$[0]')`, []any{string(encoded)}
-}
-
-// smartFolderSortValues はカード card の、項目の列 added_at・mtime・created_at・duration_ms・
-// size_bytes・played_at・watch_state の値を、フォルダの id に続けて返す。時刻は Unix 秒で、
-// グループのカードと同じくメンバーの最大、長さと大きさは合計である。メンバーの無いカードは、
-// 並べ替えが値を必ず持つ追加日時・更新日時・作成日時・大きさを 0 に、長さと再生日時を値無しにする。
-func smartFolderSortValues(card domain.LibrarySmartFolder) []any {
-	var mtime, created int64
-	for _, member := range card.Members {
-		mtime = max(mtime, unixSeconds(member.MTime))
-		created = max(created, unixSeconds(member.FileCreatedAt))
-	}
-	var played any
-	if card.LastPlayedAt != nil {
-		played = card.LastPlayedAt.Unix()
-	}
-	return []any{card.ID, unixSeconds(card.AddedAt), mtime, created, card.DurationMs, card.SizeBytes, played,
-		string(card.WatchState)}
-}
-
-// unixSeconds は時刻を Unix 秒にし、ゼロ値なら 0 にする。
-func unixSeconds(t time.Time) int64 {
-	if t.IsZero() {
-		return 0
-	}
-	return t.Unix()
 }
 
 // itemWatchCondition は項目の視聴状態の絞り込みを items に対する条件句にする。
@@ -353,10 +311,14 @@ var itemOrderValues = map[domain.VideoSort]string{
 	domain.SortRandom: shuffleFunction + `(?, id)`,
 }
 
-// itemOrder は並び順 sort の項目の並べ替えを返す。
+// itemOrder は並び順 sort の項目の並べ替えを返す。どの並び順でも値の無い項目を向きに関係なく末尾に
+// 置く（nullable）。動画の項目で値の無いものは listOrders と同じく長さ・再生日時・お気に入りにした
+// 日時だけで、ほかには一致する動画の無いスマートフォルダの項目がある（specs/052-smart-folders/
+// data-model.md「Library items」）。
 func itemOrder(sort domain.VideoSort) listOrder {
 	order := listOrders[sort]
 	order.value = itemOrderValues[sort]
+	order.nullable = true
 	return order
 }
 
@@ -510,8 +472,8 @@ func libraryPageItems(ctx context.Context, tx *sql.Tx, spec listSpec, order list
 
 // loadLibraryItems はページの項目の鍵から項目を組み立てる。動画の項目は一覧に出す
 // 所在（chosen）の題名・大きさ・更新時刻で、グループの項目は見せてよい子孫の動画の全部から作る。
-// スマートフォルダの項目は、一覧が混ぜたカード folders から取る。
-func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []domain.LibrarySmartFolder) ([]domain.LibraryItem, error) {
+// スマートフォルダの項目は、一覧が混ぜたフォルダ folders の要約から取る。
+func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []librarySmartFolder) ([]domain.LibraryItem, error) {
 	var pairs [][2]any
 	var groupIDs []int64
 	for _, key := range keys {
@@ -535,11 +497,11 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 	items := make([]domain.LibraryItem, 0, len(keys))
 	for _, key := range keys {
 		if key.id < 0 {
-			index := slices.IndexFunc(folders, func(card domain.LibrarySmartFolder) bool { return card.ID == -key.id })
-			if index < 0 {
+			summary, ok := librarySmartFolderSummary(folders, -key.id)
+			if !ok {
 				return nil, fmt.Errorf("cannot read the smart folder (id=%d)", -key.id)
 			}
-			items = append(items, domain.LibraryItem{SmartFolder: &folders[index]})
+			items = append(items, domain.LibraryItem{SmartFolder: summary})
 			continue
 		}
 		if key.groupID.Valid {

@@ -9,7 +9,7 @@ import (
 )
 
 // ライブラリの一番上のスマートフォルダ（specs/052-smart-folders/data-model.md「Library items」、
-// research.md R-7）。
+// research.md R-7・R-14）。
 
 // favoriteSmartFolder はフォルダ id をお気に入りにする。お気に入りの書き込みは別の作業が足すので、
 // 表に直に書く。
@@ -30,8 +30,14 @@ func libraryFolderIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 	return selection.SmartFolderIDs
 }
 
-// 絞り込みの無いライブラリは、親の無いフォルダをグループや動画の間の並べ替えの位置に出し、そのフォルダの
-// 動画も出す。子フォルダは一番上に出ない。
+// libraryOrder は並び順 sort の絞り込みの無いライブラリの項目の名前を返す。
+func libraryOrder(t *testing.T, db *DB, audience domain.Audience, sort domain.VideoSort) []string {
+	t.Helper()
+	return itemNames(libraryPages(t, db, audience, domain.VideoQuery{Sort: sort, Limit: domain.MaxLimit}))
+}
+
+// 絞り込みの無いライブラリは、親の無いフォルダを要約だけで、グループや動画の間の並べ替えの位置に出し、
+// そのフォルダの動画も出す。子フォルダは一番上に出ない。並べ替えの値は一致する動画から求める。
 func TestListLibraryShowsRootSmartFoldersAmongItems(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x, ep1 := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")], ids[fixturePath("/media/show/ep1.mp4")]
@@ -43,25 +49,76 @@ func TestListLibraryShowsRootSmartFoldersAmongItems(t *testing.T) {
 	if got, want := itemNames(items), []string{"group:pair", "folder:q猫", "group:show", "solo", "x", "y"}; !slices.Equal(got, want) {
 		t.Fatalf("題名の順 = %v, want %v", got, want)
 	}
-	card := items[1].SmartFolder
-	if got := memberIDs(card.LibraryGroup); !slices.Equal(got, []int64{solo, x}) {
-		t.Errorf("q猫 のカードの再生順 = %v, want [%d %d]", got, solo, x)
-	}
-	if card.ID != root || card.ParentID != 0 || card.SizeBytes != 700 {
-		t.Errorf("q猫 のカード = %+v", card)
+	if got, want := *items[1].SmartFolder, (domain.SmartFolderSummary{ID: root, Name: "q猫"}); got != want {
+		t.Errorf("q猫 の要約 = %+v, want %+v", got, want)
 	}
 
-	// 並べ替えの値はカードの値である。ep1（200）だけのフォルダは、大きさの昇順で 100 の 2 件の後ろ、
-	// 600 の前に並ぶ。q猫（700）は同じ値の y より id（負）で前に並ぶ。
+	// q猫（solo と x）の値は、追加 9 分・長さ 6000・大きさ 700・再生 300 である。
+	for _, check := range []struct {
+		sort  domain.VideoSort
+		index int
+	}{
+		// 長さの昇順は y(100)、3000 の 3 件、q猫、値の無い pair。
+		{domain.SortDurationAsc, 4},
+		{domain.SortDurationDesc, 0},
+		// 再生日時の降順で 300 は show・solo・q猫 で、同じ値は id の降順（フォルダの id は負）。
+		{domain.SortPlayedDesc, 2},
+		// 大きさの降順で 700 は y と q猫 で、q猫 が後ろ。
+		{domain.SortSizeDesc, 1},
+	} {
+		if got := libraryOrder(t, db, domain.AudienceOwner, check.sort); got[check.index] != "folder:q猫" {
+			t.Errorf("%s = %v, want folder:q猫 at %d", check.sort, got, check.index)
+		}
+	}
+
+	// ep1（200）だけのフォルダは、大きさの昇順で 100 の 2 件の後ろ、600 の前に並ぶ。q猫（700）は
+	// 同じ値の y より id（負）で前に並ぶ。
 	small := attachNamedTag(t, db, "犬", ep1)
 	newSmartFolder(t, db, "犬", domain.SmartRule{Tags: []int64{small}}, domain.SortTitleAsc, 0)
-	items = libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: domain.SortSizeAsc, Limit: domain.MaxLimit})
-	if got := itemNames(items); len(got) != 7 || got[2] != "folder:犬" || got[5] != "folder:q猫" || got[6] != "y" {
+	if got := libraryOrder(t, db, domain.AudienceOwner, domain.SortSizeAsc); len(got) != 7 || got[2] != "folder:犬" || got[5] != "folder:q猫" || got[6] != "y" {
 		t.Errorf("大きさの昇順 = %v, want folder:犬 at 2 and folder:q猫 before y", got)
 	}
 
 	if got := libraryFolderIDs(t, db, domain.VideoQuery{}); len(got) != 2 || got[0] != root {
 		t.Errorf("LibraryIDs のフォルダ = %v, want [%d 犬]", got, root)
+	}
+}
+
+// 並べ替えの値はグループにまとめず、動画ごとに条件を確かめた一致する動画から求める。show は ep2 だけが
+// 未視聴で、グループとしては見ている途中なので中身（再生順）は空だが、一致する動画は ep2（追加 3 分）で、
+// フォルダは追加日時の昇順で先頭に並ぶ。
+func TestListLibrarySortsSmartFoldersByTheirMatchingVideos(t *testing.T) {
+	db, _ := itemsFixture(t)
+	newSmartFolder(t, db, "未視聴のep", domain.SmartRule{Q: "ep", Watch: domain.WatchUnwatched}, domain.SortTitleAsc, 0)
+	got := libraryOrder(t, db, domain.AudienceOwner, domain.SortAddedAsc)
+	if len(got) != 6 || got[0] != "folder:未視聴のep" || got[1] != "x" {
+		t.Errorf("追加日時の昇順 = %v, want folder:未視聴のep then x", got)
+	}
+}
+
+// 一致する動画の無いフォルダは、題名とお気に入りにした日時以外のどの並び順でも、向きによらず値を持つ
+// どの項目よりも後ろに並ぶ。後ろに来てよいのは同じく値の無い項目（長さの無い pair、再生の記録の無い
+// pair と x）だけである。
+func TestListLibraryPlacesEmptySmartFoldersLast(t *testing.T) {
+	db, _ := itemsFixture(t)
+	newSmartFolder(t, db, "空", domain.SmartRule{Q: "どれにも当たらない"}, domain.SortTitleAsc, 0)
+	valueless := map[domain.VideoSort][]string{
+		domain.SortDurationAsc: {"group:pair"}, domain.SortDurationDesc: {"group:pair"},
+		domain.SortPlayedAsc: {"group:pair", "x"}, domain.SortPlayedDesc: {"group:pair", "x"},
+	}
+	for _, sort := range allSorts {
+		switch sort {
+		case domain.SortTitleAsc, domain.SortTitleDesc, domain.SortFavoritedAsc, domain.SortFavoritedDesc, domain.SortRandom:
+			continue
+		}
+		got := libraryOrder(t, db, domain.AudienceOwner, sort)
+		index := slices.Index(got, "folder:空")
+		for _, after := range got[index+1:] {
+			if !slices.Contains(valueless[sort], after) {
+				t.Errorf("%s = %v, want folder:空 after every item with a value", sort, got)
+				break
+			}
+		}
 	}
 }
 
@@ -104,8 +161,8 @@ func TestListLibraryShowsSmartFoldersOnlyWithoutFilters(t *testing.T) {
 	if got, want := itemNames(items), []string{"folder:見た", "solo"}; !slices.Equal(got, want) {
 		t.Fatalf("お気に入りのみ = %v, want %v", got, want)
 	}
-	if card := items[0].SmartFolder; card.ParentID != root || !card.Favorite || !slices.Equal(memberIDs(card.LibraryGroup), []int64{solo}) {
-		t.Errorf("見た のカード = %+v", card)
+	if got, want := *items[0].SmartFolder, (domain.SmartFolderSummary{ID: child, ParentID: root, Name: "見た", Favorite: true}); got != want {
+		t.Errorf("見た の要約 = %+v, want %+v", got, want)
 	}
 	if got := libraryFolderIDs(t, db, favorites); !slices.Equal(got, []int64{child}) {
 		t.Errorf("お気に入りのみの LibraryIDs のフォルダ = %v, want [%d]", got, child)
@@ -115,8 +172,8 @@ func TestListLibraryShowsSmartFoldersOnlyWithoutFilters(t *testing.T) {
 	}
 }
 
-// フォルダの項目をまたぐページ送りで、どの並び順でもどの項目も 1 回だけ返る。中身の無いフォルダ
-// （値の無いカード）も含める。
+// フォルダの項目をまたぐページ送りで、どの並び順でもどの項目も 1 回だけ返る。一致する動画の無い
+// フォルダ（値の無い項目）も含める。
 func TestListLibraryPagesAcrossSmartFolders(t *testing.T) {
 	db, ids := itemsFixture(t)
 	cat := attachNamedTag(t, db, "猫", ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/pair/p2.mp4")])
@@ -140,18 +197,22 @@ func TestListLibraryPagesAcrossSmartFolders(t *testing.T) {
 	}
 }
 
-// ゲストのライブラリに、見せる動画の無いフォルダは出ない。所有者には出る（research.md R-8）。
+// ゲストのライブラリに、再生順の空のフォルダは出ない。一致する動画があっても、それが視聴状態の条件で
+// 項目にならない混ざったグループにだけあるフォルダも出ない。所有者には出る（research.md R-8）。
 func TestListLibraryHidesEmptySmartFoldersFromGuests(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
-	if _, err := db.Visibility().SetVideosPublic(context.Background(), []int64{solo}, true); err != nil {
+	public := []int64{solo, ids[fixturePath("/media/show/ep10.mp4")], ids[fixturePath("/media/show/ep1.mp4")], ids[fixturePath("/media/show/ep2.mp4")]}
+	if _, err := db.Visibility().SetVideosPublic(context.Background(), public, true); err != nil {
 		t.Fatal(err)
 	}
-	public := attachNamedTag(t, db, "公開", solo)
-	private := attachNamedTag(t, db, "非公開", x)
-	newSmartFolder(t, db, "公開", domain.SmartRule{Tags: []int64{public}}, domain.SortTitleAsc, 0)
-	newSmartFolder(t, db, "非公開", domain.SmartRule{Tags: []int64{private}}, domain.SortTitleAsc, 0)
+	publicTag := attachNamedTag(t, db, "公開", solo)
+	privateTag := attachNamedTag(t, db, "非公開", x)
+	newSmartFolder(t, db, "公開", domain.SmartRule{Tags: []int64{publicTag}}, domain.SortTitleAsc, 0)
+	newSmartFolder(t, db, "非公開", domain.SmartRule{Tags: []int64{privateTag}}, domain.SortTitleAsc, 0)
 	newSmartFolder(t, db, "空", domain.SmartRule{Q: "どれにも当たらない"}, domain.SortTitleAsc, 0)
+	// show は ep2 だけが未視聴で、グループとしては見ている途中なので、未視聴の項目にならない。
+	newSmartFolder(t, db, "混ざる", domain.SmartRule{Q: "ep", Watch: domain.WatchUnwatched}, domain.SortTitleAsc, 0)
 
 	folders := func(audience domain.Audience) []string {
 		var names []string
@@ -166,7 +227,7 @@ func TestListLibraryHidesEmptySmartFoldersFromGuests(t *testing.T) {
 	if got, want := folders(domain.AudienceGuest), []string{"公開"}; !slices.Equal(got, want) {
 		t.Errorf("ゲストのフォルダ = %v, want %v", got, want)
 	}
-	if got, want := folders(domain.AudienceOwner), []string{"公開", "空", "非公開"}; !slices.Equal(got, want) {
+	if got, want := folders(domain.AudienceOwner), []string{"公開", "混ざる", "空", "非公開"}; !slices.Equal(got, want) {
 		t.Errorf("所有者のフォルダ = %v, want %v", got, want)
 	}
 }

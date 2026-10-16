@@ -8,10 +8,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// BenchmarkSmartFolderReads は 2 万本の動画で、3 段目のフォルダのページと、子フォルダのカードを
-// 持つ根のフォルダのページを読む時間を測る。予算 500 ms 未満（specs/052-smart-folders/research.md
-// R-13）の対象は 3 段目のフォルダのページで、根のフォルダのページは参考値である（R-13 のもう 1 つの
-// 予算、根のフォルダ 50 個を持つライブラリの最初のページはライブラリのカードの単位で測る）。
+// BenchmarkSmartFolderReads は 2 万本の動画で、3 段目のフォルダのページと、子フォルダを持つ根の
+// フォルダのページを読む時間を測る。予算 1 秒未満（specs/052-smart-folders/research.md R-13）の対象は
+// 3 段目のフォルダのページで、根のフォルダのページは参考値である（R-13 のほかの予算は
+// BenchmarkLibraryWithSmartFolders で測る）。
 func BenchmarkSmartFolderReads(b *testing.B) {
 	db, cat := smartFolderBenchDB(b)
 	ctx := context.Background()
@@ -34,8 +34,9 @@ func BenchmarkSmartFolderReads(b *testing.B) {
 }
 
 // BenchmarkLibraryWithSmartFolders は 2 万本の動画で、親の無いフォルダ 50 個を持つ絞り込みの無い
-// ライブラリの最初のページを読む時間を測る。予算は 500 ms 未満（specs/052-smart-folders/research.md
-// R-13）。フォルダの条件は、タグ・視聴状態・長さ・追加日・検索を混ぜる。
+// ライブラリの最初のページと、そのうち 24 個のカードの読み出しの時間を測る。予算はどちらも 1 秒未満
+// （specs/052-smart-folders/research.md R-13）。フォルダは条件がタグ・視聴状態・長さ・追加日・検索の
+// ものを 10 個ずつ持つ。
 func BenchmarkLibraryWithSmartFolders(b *testing.B) {
 	db, cat := smartFolderBenchDB(b)
 	ctx := context.Background()
@@ -49,6 +50,7 @@ func BenchmarkLibraryWithSmartFolders(b *testing.B) {
 	}
 	// 参考値: フォルダの無いライブラリ。
 	b.Run("no folders", read)
+	ids := make([]int64, 0, 50)
 	for i := range 50 {
 		bound := (i%10 + 1) * 6 * 60
 		days := i + 1
@@ -59,9 +61,20 @@ func BenchmarkLibraryWithSmartFolders(b *testing.B) {
 			{AddedWithin: &days},
 			{Q: fmt.Sprintf("series-%02d", i%40)},
 		}
-		benchSmartFolder(b, db, fmt.Sprintf("folder-%02d", i), rules[i%len(rules)], 0)
+		ids = append(ids, benchSmartFolder(b, db, fmt.Sprintf("folder-%02d", i), rules[i%len(rules)], 0))
 	}
 	b.Run("50 root folders", read)
+	b.Run("cards of 24 folders", func(b *testing.B) {
+		for b.Loop() {
+			cards, err := db.SmartFolders().SmartFolderCards(ctx, domain.AudienceOwner, ids[:24])
+			if err != nil {
+				b.Fatal(err)
+			}
+			if len(cards) != 24 {
+				b.Fatalf("cards = %d, want 24", len(cards))
+			}
+		}
+	})
 }
 
 // smartFolderBenchDB は 2 万本の動画を 4 千のフォルダに 5 本ずつ置き（どのフォルダも自動グループに
