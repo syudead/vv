@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: 658035ac35178cde665288d7c560f2b41c6b8d641aecd483986ad155f8ebe02d
+sourceHash: 318d6f3be13849515d14aefad27f839602b2832162eff7019ba224e3abdcdfff
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -9,7 +9,7 @@ sourceHash: 658035ac35178cde665288d7c560f2b41c6b8d641aecd483986ad155f8ebe02d
 
 ## マイグレーション {#migration}
 
-1 つのマイグレーションが、null を許す `tag_id` と `decided_mark` の列を持つ `activity_entries`、`activity_entry_tags`、`activity_entry_tag_keys`、`activity_entry_keys`、`video_version_judging_holds` を作り、`jobs`、`auto_tag_queue`、`video_version_candidates` に null を許す `activity_id` を加える。番号は、それを書く時点の `main` の最後のマイグレーションの次 (今は `00054`) である。Down はそれらを削除する。それより前に起きたことについては項目を書かない (親 Issue の最後のエッジケース)。
+1 つのマイグレーションが、null を許す `tag_id` と `decided_mark` の列を持つ `activity_entries`、`activity_entry_tags`、`activity_entry_tag_keys`、`activity_entry_keys`、`video_version_judging_holds` を作り、`jobs`、`auto_tag_queue`、`video_version_candidates` に null を許す `activity_id` を加える。番号は、それを書く時点の `main` の最後のマイグレーションの次 (今は `00055`) である。Down はそれらを削除する。それより前に起きたことについては項目を書かない (親 Issue の最後のエッジケース)。
 
 | テーブル | 分類 ([Data and recovery](../../docs/how-to/running-vv.md#data-and-recovery)) |
 | --- | --- |
