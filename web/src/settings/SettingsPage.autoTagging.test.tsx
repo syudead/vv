@@ -98,6 +98,33 @@ describe("SettingsPage: Auto-tagging page and the Ollama connection", () => {
     ).toBeTruthy();
   });
 
+  it("draws no control until the connection read answers", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    server.routes[ollamaURL] = () =>
+      new Promise<Response>((resolve) => {
+        answer = resolve;
+      });
+    renderSettings("/settings/auto-tagging");
+
+    await waitFor(() => expect(server.requested).toContain(autoTaggingURL));
+    await waitFor(() => expect(server.requested).toContain(ollamaURL));
+    // 設定は読めても、接続先が保存されたか分かるまでは読み込み中の形のままにする。
+    await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
+    expect(
+      screen.getByRole("status", { name: "Loading the auto-tagging settings" }),
+    ).toBeDefined();
+    expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.queryByRole("spinbutton")).toBeNull();
+    for (const name of buttonNames)
+      expect(screen.queryByRole("button", { name })).toBeNull();
+    expect(notice()).toBeNull();
+
+    act(() => answer(json(ollama(false))));
+    await waitFor(() => expect(notice()).not.toBeNull());
+    for (const control of controls())
+      expect(control.getAttribute("aria-disabled")).toBe("true");
+  });
+
   it("changes no value and sends no request on a press or a keystroke while unsaved", async () => {
     server.routes[ollamaURL] = () => json(ollama(false));
     const user = userEvent.setup();

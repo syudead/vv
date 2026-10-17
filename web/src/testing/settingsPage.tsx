@@ -76,12 +76,13 @@ function sectionResponses(): Record<string, () => Response> {
 
 /**
  * installSettingsServer は、各テストの前に偽のサーバーを fetch に差し込む。`requested` は
- * 既定の応答を返した要求の URL の記録で、ページが自分の読み込みだけをするかを確かめる。
+ * 既定の応答を返した要求の URL の記録で、ページが自分の読み込みだけをするかを確かめる。`routes` の
+ * 応答は Promise でもよく、読み込みの途中を見るテストはそれを解かずにおく。
  */
 export function installSettingsServer() {
   const server = {
     fetchMock: vi.fn<typeof fetch>(),
-    routes: {} as Record<string, () => Response>,
+    routes: {} as Record<string, () => Response | Promise<Response>>,
     requested: [] as string[],
   };
 

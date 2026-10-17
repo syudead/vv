@@ -132,9 +132,17 @@ function ProgressSection({
  *
  * `locked` は Ollama の接続先が保存されていないことである（specs/058-settings-pages/research.md
  * R-5）。そのあいだ切り替え、入力、ボタンは値を見せたまま `aria-disabled` にし、`aria-disabled` は
- * それだけでは何も止めないので、各ハンドラは下書きを変えず要求も送らずに返す。
+ * それだけでは何も止めないので、各ハンドラは下書きを変えず要求も送らずに返す。`pending` は
+ * 接続先をまだ読んでいることで、保存したかが分かるまでは操作を描かず読み込み中の形を出す（R-5 の
+ * Loading）。
  */
-export default function AutoTaggingSection({ locked = false }: { locked?: boolean }) {
+export default function AutoTaggingSection({
+  locked = false,
+  pending = false,
+}: {
+  locked?: boolean;
+  pending?: boolean;
+}) {
   const text = t.settings.autoTagging;
   const toast = useToast();
   const [settings, setSettings] = useState<AutoTaggingSettings | null>(null);
@@ -254,7 +262,7 @@ export default function AutoTaggingSection({ locked = false }: { locked?: boolea
 
   const description = <PageLinkText sentence={text.description} page="connections" />;
 
-  if (draft === null || settings === null) {
+  if (pending || draft === null || settings === null) {
     return (
       <>
         {loadError === null && (

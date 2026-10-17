@@ -116,14 +116,17 @@ function SectionsPageView(props: PageViewProps) {
 
 /**
  * AutoTaggingPageView は「Auto-tagging」のページである。開いたときに Ollama の接続先を読み、
- * 保存されていなければ notice に理由を出して節の操作を押せなくする。読めなければ読めなかった旨と
- * `Retry` を出し、操作は押せたままにする（specs/058-settings-pages/research.md R-5）。
+ * 読み終えるまでは節の読み込み中の形を出し、保存されていなければ notice に理由を出して節の操作を
+ * 押せなくする。読めなければ読めなかった旨と `Retry` を出し、操作は押せたままにする（specs/058-settings-pages/research.md R-5）。
  */
 function AutoTaggingPageView(props: PageViewProps) {
   const { connection, retry } = useOllamaConnection();
   return (
     <SettingsPageView {...props} notice={ollamaLockNotice(connection, retry)}>
-      <AutoTaggingSection locked={connection.status === "unsaved"} />
+      <AutoTaggingSection
+        locked={connection.status === "unsaved"}
+        pending={connection.status === "loading"}
+      />
     </SettingsPageView>
   );
 }
