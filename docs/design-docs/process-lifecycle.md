@@ -43,7 +43,8 @@ flowchart LR
   keys --> idx[Refresh folder index]
   idx --> auth[Delete expired sessions]
   auth --> rec[Close scans, requeue jobs]
-  rec --> tmp[Remove unfinished artifacts]
+  rec --> act[Mark activity interrupted]
+  act --> tmp[Remove unfinished artifacts]
   tmp --> work[Subscribe and start workers]
   work --> resume[Resume interrupted scan]
   resume --> auto[Start auto-import]
@@ -56,6 +57,7 @@ flowchart LR
 | Settings, `ffmpeg`/`ffprobe` on `PATH`, SQLite, migrations | Startup stops |
 | Search keys of locations and tag names | Startup stops, so search never runs on keys built by an older rule ([013 data-model, When keys are built, and `search_version`](../../specs/013-library-search/data-model.md#when-keys-are-built-and-search_version)) |
 | Folder index | Logged; the previous index stays until the next rebuild ([017 data-model, When the index is rebuilt](../../specs/017-folder-groups/data-model.md#when-the-index-is-rebuilt)) |
+| Marking activity entries interrupted | Logged; the entries stay `running` until the next startup ([activity.md](activity.md)) |
 | Unfinished artifacts under `.tmp` | Logged |
 | Resuming the interrupted scan | Logged; the user can start a scan |
 | Starting auto-import | Logged; the watches are added in the background and never delay the listener, and no scan starts ([folder-watching.md](folder-watching.md)) |
@@ -69,8 +71,10 @@ so nothing still being generated is deleted.
 
 A run that stopped mid-work leaves running rows behind, and startup returns
 them to a state the next run continues from: interrupted scans are closed as
-`failed` with the reason `interrupted`, running jobs go back to `queued`, and
-once the workers run one new manual scan starts. An interrupted watch scan is
+`failed` with the reason `interrupted`, running jobs go back to `queued`,
+activity entries a worker had claimed (`running` with reason `processing`)
+become `attention`/`interrupted` while `waiting` ones stay, and once the
+workers run one new manual scan starts. An interrupted watch scan is
 closed and not resumed, so startup reads no directory for it
 ([folder-watching.md](folder-watching.md);
 [037 research R-9](../../specs/037-windows-app/research.md#r-9-an-interrupted-last-scan-restarts-automatically-at-startup-for-every-way-of-starting)).

@@ -29,6 +29,9 @@ type FetchedWorkInfoApplier interface {
 	// 値を返す。取引の中でプラグインの行がまだあり、承認済みで、ダイジェストが変わっていないことを読み直し、
 	// 外れれば domain.ErrWorkInfoFetchStale で何も書かない。動画が無ければ domain.ErrNotFound を返す。
 	ApplyFetchedWorkInfo(ctx context.Context, apply domain.FetchedWorkInfoApply) (domain.FetchedWorkInfoApplied, error)
+	// RecordWorkInfoFetch は動画 videoID の取得 1 回を記録する。failure が空なら済み、そうでなければ失敗で、
+	// failure をプラグインの文として残す（specs/055-activity/research.md R-11）。
+	RecordWorkInfoFetch(ctx context.Context, videoID int64, failure string) error
 }
 
 // WorkInfoCreditMatcher は取得した人物・団体を既存の実体と照合する読み出しである。internal/store の
@@ -84,6 +87,9 @@ func (p *WorkInfoPlugins) keepFetched(
 		return domain.WorkInfoFetchResult{}, err
 	}
 	plugin, result, err := p.run(ctx, pluginID, req)
+	if err := p.recordFetch(ctx, videoID, err); err != nil {
+		return domain.WorkInfoFetchResult{}, err
+	}
 	if err != nil {
 		return domain.WorkInfoFetchResult{}, err
 	}
@@ -113,6 +119,24 @@ func (p *WorkInfoPlugins) keepFetched(
 		ID: id, ExpiresAt: fetch.expiresAt, Title: title, Tags: tags,
 		Details: details, PersonMatches: people, OrganizationMatches: organizations, Cover: fetch.cover,
 	}, nil
+}
+
+// recordFetch はプラグインを動かした取得をアクティビティに記録する（specs/055-activity/research.md R-11）。
+// runErr が nil なら済み、*domain.WorkInfoRunError ならその文（無ければ失敗の種類）を持つ失敗として残す。
+// 動かす前に断った取得（プラグインが無い・承認されていないなど）は記録しない。
+func (p *WorkInfoPlugins) recordFetch(ctx context.Context, videoID int64, runErr error) error {
+	failure := ""
+	if runErr != nil {
+		var failed *domain.WorkInfoRunError
+		if !errors.As(runErr, &failed) {
+			return nil
+		}
+		failure = failed.PluginMessage
+		if failure == "" {
+			failure = string(failed.Failure)
+		}
+	}
+	return p.applier.RecordWorkInfoFetch(ctx, videoID, failure)
 }
 
 // matchCredits は取得した件 entries を照合する。件が無ければ保存先を読まない。

@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 import { t } from "../i18n";
 import { AdminTablePageExample } from "./blocks/admin-table-page-example";
+import { CardListExample } from "./blocks/card-list-example";
 import { CenteredFormExample } from "./blocks/centered-form-example";
 import { ConfirmDialogExample } from "./blocks/confirm-dialog-example";
 import { DetailPageExample } from "./blocks/detail-page-example";
@@ -107,6 +108,13 @@ export default function Patterns() {
         items={["list-page", "grouped-list", "grouped-list-example"]}
       >
         <GroupedListExample />
+      </Pattern>
+      <Pattern
+        id="card-list"
+        name={p.names.cardList}
+        items={["list-page", "card-list", "card-list-example"]}
+      >
+        <CardListExample />
       </Pattern>
       <Pattern
         id="admin-table-page"

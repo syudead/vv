@@ -19,6 +19,8 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `breadcrumb`               | Component     | The path to the current folder                                               |
 | `button`                   | Component     | Actions; one `default` per area (rules: components.md)                       |
 | `card-grid`                | Section       | Cards whose edges line up with the toolbar                                   |
+| `card-list`                | Section       | One-line bordered cards in tones, with time and action columns               |
+| `card-list-example`        | Block         | Copy to start a list of one-line cards, such as activity                     |
 | `centered-form`            | Page skeleton | A screen that is only one form: sign-in, setup                               |
 | `centered-form-example`    | Block         | Copy to start a centered form                                                |
 | `checkbox`                 | Component     | On or off inside a form, a filter or a selection                             |
@@ -41,6 +43,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `fact-list`                | Section       | Term and value pairs                                                         |
 | `favorite-toggle`          | vv component  | The favorite heart: mark and toggle                                          |
 | `field`                    | Component     | Label, control, description and error of one form field                      |
+| `filter-dropdown-button`   | vv component  | A toolbar filter that shows its value and opens a dropdown-menu              |
 | `form-dialog`              | Page skeleton | A few values asked without leaving the screen                                |
 | `form-dialog-example`      | Block         | Copy to start a form dialog                                                  |
 | `form-page`                | Page skeleton | Many values saved together, on a screen of its own                           |

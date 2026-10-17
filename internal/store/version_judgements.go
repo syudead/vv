@@ -20,8 +20,10 @@ import (
 
 // ClaimJudgement は取り出せる候補のうち最も古い 1 組を判定中にし、両方の指紋と共に返す
 // （data-model.md「Rules」）。取り出せるのは、両方の鍵に登録の所在を持つ動画があって一覧に出る組の
-// うち、集まりから外した組（video_version_unbundles）でなく、判定が null か、failed で retry_at を
-// 過ぎたもの。判定中にするのは 1 文で行う。無ければ domain.ErrNoJob。設定の入と切は呼び出し側が見る。
+// うち、集まりから外した組（video_version_unbundles）と判定を保留した組（video_version_judging_holds）で
+// なく、判定が null か、failed で retry_at を過ぎたもの。判定中にするのは 1 文で行い、同じ取引で組の
+// version_judgement の記録を running/processing にする（無ければ開く）。無ければ domain.ErrNoJob。設定の入と
+// 切は呼び出し側が見る。
 func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJob, error) {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -30,17 +32,30 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 	defer func() { _ = tx.Rollback() }()
 
 	var job domain.VersionJudgeJob
+	var activityID sql.NullInt64
 	err = tx.QueryRowContext(ctx, `update video_version_candidates
 		   set judgement = 'running', retry_at = null, judgement_error = null, probability = null
 		 where (key_a, key_b) = (select c.key_a, c.key_b `+judgeablePairs+`
 		         and (c.judgement is null or (c.judgement = 'failed' and c.retry_at <= ?))
 		       order by c.created_at, c.key_a, c.key_b limit 1)
-		returning key_a, key_b, attempts`, time.Now().Unix()).Scan(&job.Keys[0], &job.Keys[1], &job.Attempts)
+		returning key_a, key_b, attempts, activity_id`, time.Now().Unix()).
+		Scan(&job.Keys[0], &job.Keys[1], &job.Attempts, &activityID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.VersionJudgeJob{}, domain.ErrNoJob
 	}
 	if err != nil {
 		return domain.VersionJudgeJob{}, fmt.Errorf("cannot claim a version candidate: %w", err)
+	}
+	// 組の記録を判定中にする。中断や失敗で attention の記録も、同じ記録が running に戻る（research.md R-4）。
+	c := &changes{}
+	now := time.Now()
+	processing := domain.VersionJudgementActivityState(domain.VersionJudgementRunning)
+	id, err := pairActivityFor(ctx, tx, c, job.Keys, activityID.Int64, processing, now)
+	if err != nil {
+		return domain.VersionJudgeJob{}, err
+	}
+	if err := updateActivity(ctx, tx, c, id, activityUpdate{state: processing}, now); err != nil {
+		return domain.VersionJudgeJob{}, err
 	}
 	for i, key := range job.Keys {
 		fingerprint, found, err := storedContentFingerprint(ctx, tx, key)
@@ -52,17 +67,19 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 		}
 		job.Fingerprints[i] = fingerprint
 	}
-	if err := tx.Commit(); err != nil {
+	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.VersionJudgeJob{}, fmt.Errorf("cannot claim a version candidate: %w", err)
 	}
 	return job, nil
 }
 
 // judgeablePairs は判定できる候補の組 c を選ぶ from と where である。一覧に出る組
-// （candidatePairsCondition）のうち、集まりから外した組（video_version_unbundles）でないもの。取り出しと
-// 次の再試行の時刻が同じ組を見るように共有する。
+// （candidatePairsCondition）のうち、集まりから外した組（video_version_unbundles）と、所有者が自動の「違う」を
+// 取り消して判定を保留した組（video_version_judging_holds、specs/055-activity/research.md R-7）でないもの。
+// 取り出しと次の再試行の時刻と、記録を開く組が同じ組を見るように共有する。
 var judgeablePairs = candidatePairsFrom + candidatePairsCondition() + `
-	and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)`
+	and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)
+	and not exists (select 1 from video_version_judging_holds h where h.key_a = c.key_a and h.key_b = c.key_b)`
 
 // storedContentFingerprint は内容 key の保存した指紋を読む。無ければ found は偽。
 func storedContentFingerprint(ctx context.Context, tx *sql.Tx, key string) (domain.Fingerprint, bool, error) {
@@ -84,19 +101,60 @@ func storedContentFingerprint(ctx context.Context, tx *sql.Tx, key string) (doma
 	return fingerprint, true, nil
 }
 
-// RecoverRunningJudgements は判定中のまま残った行（前回の終了で途切れたもの）を待ちに戻し、件数を
-// 返す。attempts は保つ。起動時に、判定を始める前に呼ぶ（auto_tag_queue と同じ）。
+// RecoverRunningJudgements は判定中のまま残った行（前回の終了で途切れたもの、判定のあいだに切られたもの）を
+// 待ちに戻し、件数を返す。attempts は保つ。起動時に、判定を始める前に呼ぶ（auto_tag_queue と同じ）。
+// running/processing の記録は待ちに戻す。起動時の回復で attention/interrupted にした記録はそのまま残り、次の
+// 取り出しで running に戻る（specs/055-activity/data-model.md「Rules」）。
 func (s *VersionStore) RecoverRunningJudgements(ctx context.Context) (int, error) {
-	result, err := s.db.sql.ExecContext(ctx,
-		`update video_version_candidates set judgement = null where judgement = 'running'`)
+	return s.requeueJudgements(ctx, domain.VersionJudgementRunning, "cannot recover interrupted version judgements")
+}
+
+// requeueJudgements は判定が from の行を待ち（null）に戻し、その行の記録のうち状態が from に当たるものを待ちに
+// 戻して、行の数を返す。
+func (s *VersionStore) requeueJudgements(ctx context.Context, from domain.VersionJudgement, failure string) (int, error) {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return 0, fmt.Errorf("cannot recover interrupted version judgements: %w", err)
+		return 0, fmt.Errorf("%s: %w", failure, err)
 	}
-	affected, err := result.RowsAffected()
+	defer func() { _ = tx.Rollback() }()
+	rows, err := tx.QueryContext(ctx, `update video_version_candidates set judgement = null where judgement = ?
+		returning coalesce(activity_id, 0)`, string(from))
 	if err != nil {
-		return 0, fmt.Errorf("cannot recover interrupted version judgements: %w", err)
+		return 0, fmt.Errorf("%s: %w", failure, err)
 	}
-	return int(affected), nil
+	ids, count, err := scanRequeuedActivityIDs(rows)
+	if err != nil {
+		return 0, fmt.Errorf("%s: %w", failure, err)
+	}
+	c := &changes{}
+	if err := returnPairActivitiesToWaiting(ctx, tx, c, ids, domain.VersionJudgementActivityState(from), time.Now()); err != nil {
+		return 0, err
+	}
+	if err := s.db.commit(ctx, tx, c); err != nil {
+		return 0, fmt.Errorf("%s: %w", failure, err)
+	}
+	return count, nil
+}
+
+// scanRequeuedActivityIDs は待ちに戻した行の activity_id（無ければ 0）を読み切り、0 でない id と行の数を返す。
+func scanRequeuedActivityIDs(rows *sql.Rows) ([]int64, int, error) {
+	defer func() { _ = rows.Close() }()
+	var ids []int64
+	count := 0
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, 0, err
+		}
+		count++
+		if id != 0 {
+			ids = append(ids, id)
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return nil, 0, err
+	}
+	return ids, count, rows.Close()
 }
 
 // ApplyJudgement は判定中の組 keys（key_a < key_b）に結果を反映し、反映したかを返す。組が消えたか
@@ -118,36 +176,63 @@ func (s *VersionStore) ApplyJudgement(ctx context.Context, keys [2]string, resul
 	defer func() { _ = tx.Rollback() }()
 
 	var attempts int
-	err = tx.QueryRowContext(ctx, `select attempts from video_version_candidates
-		where key_a = ? and key_b = ? and judgement = 'running'`, keys[0], keys[1]).Scan(&attempts)
+	var activityID sql.NullInt64
+	err = tx.QueryRowContext(ctx, `select attempts, activity_id from video_version_candidates
+		where key_a = ? and key_b = ? and judgement = 'running'`, keys[0], keys[1]).Scan(&attempts, &activityID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return false, nil
 	}
 	if err != nil {
 		return false, fmt.Errorf("cannot read the version candidate: %w", err)
 	}
-	var events []domain.Event
-	switch result.Verdict {
-	case domain.VersionSame:
-		events, err = bundleSamePair(ctx, tx, keys)
-	case domain.VersionDifferent:
-		err = dismissPair(ctx, tx, keys[0], keys[1])
-	case domain.VersionUndecided:
-		err = setJudgement(ctx, tx, keys, domain.VersionJudgementUndecided, result.Probability)
-	case domain.VersionFailed:
-		err = failJudgement(ctx, tx, keys, attempts+1, result.Error)
-	case domain.VersionNoConnection:
-		err = setJudgement(ctx, tx, keys, domain.VersionJudgementNoConnection, nil)
-	default:
-		err = fmt.Errorf("unknown version verdict %d", result.Verdict)
-	}
+	c := &changes{}
+	now := time.Now()
+	// 束ねると候補の行が消えるので、反映する前に組の記録を引く。
+	entryID, err := pairActivityFor(ctx, tx, c, keys, activityID.Int64,
+		domain.VersionJudgementActivityState(domain.VersionJudgementRunning), now)
 	if err != nil {
 		return false, err
 	}
-	if err := s.db.commitEvents(ctx, tx, append(events, domain.VersionCandidatesChanged{})...); err != nil {
+	applied, err := applyVerdict(ctx, tx, keys, attempts, result)
+	if err != nil {
+		return false, err
+	}
+	if err := recordJudgementActivity(ctx, tx, c, entryID, keys, result, applied, now); err != nil {
+		return false, err
+	}
+	if err := s.db.commitWith(ctx, tx, c, append(applied.events, domain.VersionCandidatesChanged{})...); err != nil {
 		return false, fmt.Errorf("cannot apply the version judgement: %w", err)
 	}
 	return true, nil
+}
+
+// appliedVerdict は applyVerdict が書いた結果である。bundled は「同じ」で束ねたことで、members は合わさった
+// まとまりの全メンバーの鍵、undoKeys は加わった側の鍵と元の代表、events は確定後に発行する束ねる操作の知らせ。
+type appliedVerdict struct {
+	events   []domain.Event
+	bundled  bool
+	members  []string
+	undoKeys domain.VersionBundleUndoKeys
+}
+
+// applyVerdict は判定中の組 keys に result を反映する（ApplyJudgement の各場合）。attempts はこれまでの失敗の数。
+func applyVerdict(
+	ctx context.Context, tx *sql.Tx, keys [2]string, attempts int, result domain.VersionJudgeResult,
+) (appliedVerdict, error) {
+	switch result.Verdict {
+	case domain.VersionSame:
+		return bundleSamePair(ctx, tx, keys)
+	case domain.VersionDifferent:
+		return appliedVerdict{}, dismissPair(ctx, tx, keys[0], keys[1])
+	case domain.VersionUndecided:
+		return appliedVerdict{}, setJudgement(ctx, tx, keys, domain.VersionJudgementUndecided, result.Probability)
+	case domain.VersionFailed:
+		return appliedVerdict{}, failJudgement(ctx, tx, keys, attempts+1, result.Error)
+	case domain.VersionNoConnection:
+		return appliedVerdict{}, setJudgement(ctx, tx, keys, domain.VersionJudgementNoConnection, nil)
+	default:
+		return appliedVerdict{}, fmt.Errorf("unknown version verdict %d", result.Verdict)
+	}
 }
 
 // NextJudgementRetry は failed の組のうち、いちばん早く再び取り出せる時刻を返す（research.md R-5）。
@@ -166,18 +251,11 @@ func (s *VersionStore) NextJudgementRetry(ctx context.Context) (time.Time, bool,
 }
 
 // ResetNoConnectionJudgements は接続が無くて待っていた組（no_connection）を待ち（null）に戻し、件数を
-// 返す。Ollama の接続が保存されたときに呼ぶ（research.md R-13、data-model.md「Rules」）。
+// 返す。Ollama の接続が保存されたときに呼ぶ（research.md R-13、data-model.md「Rules」）。その組の
+// attention/no_connection の記録も待ちに戻り、判定が終わると同じ記録が結果になる（specs/055-activity）。
 func (s *VersionStore) ResetNoConnectionJudgements(ctx context.Context) (int, error) {
-	result, err := s.db.sql.ExecContext(ctx,
-		`update video_version_candidates set judgement = null where judgement = 'no_connection'`)
-	if err != nil {
-		return 0, fmt.Errorf("cannot return the version judgements waiting for a connection: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("cannot return the version judgements waiting for a connection: %w", err)
-	}
-	return int(affected), nil
+	return s.requeueJudgements(ctx, domain.VersionJudgementNoConnection,
+		"cannot return the version judgements waiting for a connection")
 }
 
 // setJudgement は組の判定を state にし、probability を残す。retry_at と judgement_error は消す。
@@ -207,44 +285,52 @@ func failJudgement(ctx context.Context, tx *sql.Tx, keys [2]string, attempts int
 }
 
 // judgedSide は「同じ」の組の片側である。videoID はその鍵の動画、members はその側の全メンバーの鍵
-// （集まりに属さなければ鍵だけ）、side は代表を選ぶのに使う値。
+// （集まりに属さなければ鍵だけ）、representativeKey はその側の代表の鍵（集まりの代表、属さなければ鍵）、
+// side は代表を選ぶのに使う値。
 type judgedSide struct {
-	videoID int64
-	members []string
-	side    domain.VersionSide
+	videoID           int64
+	members           []string
+	representativeKey string
+	side              domain.VersionSide
 }
 
 // bundleSamePair は「同じ」の組の両側を読み直し、衝突しなければ R-7 の代表で束ねて、束ねる操作の
-// 知らせを返す。衝突すれば undecided にし、どちらかの鍵の動画がライブラリに無ければ待ちに戻す。
-func bundleSamePair(ctx context.Context, tx *sql.Tx, keys [2]string) ([]domain.Event, error) {
+// 知らせと、取り消しのための加わった側（代表にならなかった側）の鍵と元の代表を返す。衝突すれば undecided に
+// し、どちらかの鍵の動画がライブラリに無ければ待ちに戻す。
+func bundleSamePair(ctx context.Context, tx *sql.Tx, keys [2]string) (appliedVerdict, error) {
 	var sides [2]judgedSide
 	for i, key := range keys {
 		side, err := readJudgedSide(ctx, tx, key)
 		if errors.Is(err, domain.ErrNotFound) {
-			return nil, setJudgement(ctx, tx, keys, "", nil)
+			return appliedVerdict{}, setJudgement(ctx, tx, keys, "", nil)
 		}
 		if err != nil {
-			return nil, err
+			return appliedVerdict{}, err
 		}
 		sides[i] = side
 	}
 	differing, err := differingPairs(ctx, tx, append(append([]string{}, sides[0].members...), sides[1].members...))
 	if err != nil {
-		return nil, err
+		return appliedVerdict{}, err
 	}
 	if domain.VersionSidesConflict(sides[0].members, sides[1].members, differing) {
-		return nil, setJudgement(ctx, tx, keys, domain.VersionJudgementUndecided, nil)
+		return appliedVerdict{}, setJudgement(ctx, tx, keys, domain.VersionJudgementUndecided, nil)
 	}
-	representativeID := sides[domain.ChooseVersionRepresentative([2]domain.VersionSide{sides[0].side, sides[1].side})].side.Video.ID
+	chosen := domain.ChooseVersionRepresentative([2]domain.VersionSide{sides[0].side, sides[1].side})
+	representativeID := sides[chosen].side.Video.ID
 	plan, err := planBundle(ctx, tx, uniqueIDs([]int64{sides[0].videoID, sides[1].videoID, representativeID}), representativeID)
 	if err != nil {
-		return nil, err
+		return appliedVerdict{}, err
 	}
 	outcome, err := applyBundle(ctx, tx, plan)
 	if err != nil {
-		return nil, err
+		return appliedVerdict{}, err
 	}
-	return outcome.events(), nil
+	joined := sides[1-chosen]
+	return appliedVerdict{
+		events: outcome.events(), bundled: true, members: plan.members,
+		undoKeys: domain.VersionBundleUndoKeys{Members: joined.members, Representative: joined.representativeKey},
+	}, nil
 }
 
 // readJudgedSide は鍵 key の側を読む。集まりに属せば、その全メンバーと、所有者から見た実効の代表を
@@ -254,14 +340,14 @@ func readJudgedSide(ctx context.Context, tx *sql.Tx, key string) (judgedSide, er
 	if err != nil {
 		return judgedSide{}, err
 	}
-	side := judgedSide{videoID: videoID, members: []string{key}}
+	side := judgedSide{videoID: videoID, members: []string{key}, representativeKey: key}
 	representativeID, userKey := videoID, key
 	bundle, bundled, err := bundleOf(ctx, tx, key)
 	if err != nil {
 		return judgedSide{}, err
 	}
 	if bundled {
-		side.side.Bundled, userKey = true, bundle.userKey
+		side.side.Bundled, userKey, side.representativeKey = true, bundle.userKey, bundle.representativeKey
 		if side.members, err = bundleMemberKeys(ctx, tx, bundle.id); err != nil {
 			return judgedSide{}, err
 		}
@@ -366,13 +452,13 @@ func recordUnbundledPairs(ctx context.Context, tx *sql.Tx, key string, members [
 }
 
 // rebuildCandidatesOf は内容 key の保存した指紋で、その候補を作り直す（research.md R-8）。指紋が無ければ
-// 何もしない。
-func rebuildCandidatesOf(ctx context.Context, tx *sql.Tx, key string) error {
+// 何もしない。作り直した候補は組の記録に付き直す（rebuildVersionCandidates）。
+func rebuildCandidatesOf(ctx context.Context, tx *sql.Tx, c *changes, key string) error {
 	fingerprint, found, err := storedContentFingerprint(ctx, tx, key)
 	if err != nil || !found {
 		return err
 	}
-	return rebuildVersionCandidates(ctx, tx, key, fingerprint)
+	return rebuildVersionCandidates(ctx, tx, c, key, fingerprint)
 }
 
 // versionJudgingEnabledKey は重複の自動判定の入と切のキーである。値は "true" か "false" で、行が
@@ -381,14 +467,38 @@ const versionJudgingEnabledKey = "version_judging.enabled"
 
 // VersionJudgingEnabled は重複の自動判定が入かを返す。行が無いか "true" でなければ切である。
 func (s *SettingsStore) VersionJudgingEnabled(ctx context.Context) (bool, error) {
-	value, found, err := readSetting(ctx, s.db.sql, versionJudgingEnabledKey)
+	return versionJudgingEnabled(ctx, s.db.sql)
+}
+
+// versionJudgingEnabled は q（接続か取引）から重複の自動判定が入かを読む。
+func versionJudgingEnabled(ctx context.Context, q rowQueryer) (bool, error) {
+	value, found, err := readSetting(ctx, q, versionJudgingEnabledKey)
 	if err != nil {
 		return false, err
 	}
 	return found && value == strconv.FormatBool(true), nil
 }
 
-// SaveVersionJudgingEnabled は重複の自動判定の入と切を保存する。
+// SaveVersionJudgingEnabled は重複の自動判定の入と切を保存する。入れたときは、同じ取引で待っている判定できる
+// 候補に組ごとの version_judgement の記録を開く（specs/055-activity/data-model.md「Kinds」）。切っても開いて
+// いる記録は待ちのまま残り、入れ直すと再び取り出される。
 func (s *SettingsStore) SaveVersionJudgingEnabled(ctx context.Context, enabled bool) error {
-	return writeSetting(ctx, s.db.sql, versionJudgingEnabledKey, strconv.FormatBool(enabled))
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot save setting %s: %w", versionJudgingEnabledKey, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if err := writeSetting(ctx, tx, versionJudgingEnabledKey, strconv.FormatBool(enabled)); err != nil {
+		return err
+	}
+	c := &changes{}
+	if enabled {
+		if err := syncPairActivities(ctx, tx, c, nil, time.Now()); err != nil {
+			return err
+		}
+	}
+	if err := s.db.commit(ctx, tx, c); err != nil {
+		return fmt.Errorf("cannot save setting %s: %w", versionJudgingEnabledKey, err)
+	}
+	return nil
 }

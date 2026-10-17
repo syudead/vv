@@ -531,6 +531,19 @@
       ]
     },
     {
+      "name": "filter-dropdown-button",
+      "type": "registry:ui",
+      "title": "FilterDropdownButton",
+      "description": "vv component: an outline sm toolbar button with a filter's name, its current value and a chevron, opening a dropdown-menu; primary-soft when not at its default.",
+      "docs": "Usage rules: web/registry/rules/components.md#filterdropdownbutton (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/FilterDropdownButton.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "textarea",
       "type": "registry:ui",
       "title": "Textarea",
@@ -847,6 +860,19 @@
       ]
     },
     {
+      "name": "card-list",
+      "type": "registry:ui",
+      "title": "CardList",
+      "description": "Section: a stack of one-line bordered cards on muted, gap-2 apart, in four tones, with fixed columns at the end for the time and the actions; two lines below lg.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/card-list.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "jump-list",
       "type": "registry:ui",
       "title": "JumpList",
@@ -976,6 +1002,23 @@
       "files": [
         {
           "path": "src/designSystem/blocks/grouped-list-example.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/designSystem/blocks/list-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "card-list-example",
+      "type": "registry:block",
+      "title": "Card list example",
+      "description": "A list page body of one-line cards in each tone: a running import with its bar, a failed import, a pair waiting for the AI connection, a queued run and a finished import.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/card-list-example.tsx",
           "type": "registry:component"
         },
         {

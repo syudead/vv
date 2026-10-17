@@ -65,12 +65,15 @@ func (v VersionVerdict) String() string {
 	}
 }
 
-// VersionJudgeResult は取り出した組の判定の結果である。Probability は VersionUndecided のときの
-// モデルの答え（無ければ nil）、Error は VersionFailed のときの提供元のメッセージ。
+// VersionJudgeResult は取り出した組の判定の結果である。Probability はモデルが答えたときのその答え（無ければ
+// nil）、Error は VersionFailed のときの提供元のメッセージ。Decider は結果を決めたもので、モデルの答えで
+// 決めたなら ActivityByAI、コマの規則・接続なし・失敗なら ActivityByRule（空も rule とみなす）。
+// アクティビティの記録に残す（specs/055-activity/research.md R-5）。
 type VersionJudgeResult struct {
 	Verdict     VersionVerdict
 	Probability *float64
 	Error       string
+	Decider     ActivityDecider
 }
 
 // VersionCandidatesChanged は候補の一覧が変わったかもしれないことを表す（research.md R-10）。

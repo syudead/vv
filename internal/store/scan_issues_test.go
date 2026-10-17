@@ -221,7 +221,7 @@ func TestResumeScanCarriesJobIssuesOfInterruptedImport(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := db.Scans().FinishScan(ctx, interrupted.ID, domain.ScanFailed,
-		domain.NewScanFailure(domain.ScanErrorInterrupted, "", errors.New("stopped"))); err != nil {
+		domain.NewScanFailure(domain.ScanErrorInterrupted, "", errors.New("stopped")), domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 
@@ -254,7 +254,7 @@ func TestIssuesOfOneVideoAreGroupedAndRevisionAdvances(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 	_, ids := startImport(t, db, "a")
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, ids[0]); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, ids[0], domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	failJobToLimit(t, db, domain.JobProbe)

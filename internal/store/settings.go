@@ -37,7 +37,7 @@ func readSetting(ctx context.Context, q rowQueryer, key string) (string, bool, e
 	return value, true, nil
 }
 
-func writeSetting(ctx context.Context, q *sql.DB, key, value string) error {
+func writeSetting(ctx context.Context, q queryExecer, key, value string) error {
 	_, err := q.ExecContext(ctx, `
 		insert into settings (key, value, updated_at) values (?, ?, ?)
 		on conflict (key) do update set value = excluded.value, updated_at = excluded.updated_at`,

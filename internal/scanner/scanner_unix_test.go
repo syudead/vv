@@ -23,7 +23,7 @@ func TestScanReportsNonRegularFileAsUnreadable(t *testing.T) {
 	index := newFakeIndex()
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 	scanner := New(Options{Index: index, Queue: index, Reporter: index})
-	result, err := scanner.Scan(context.Background())
+	result, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err != nil {
 		t.Fatal(err)
 	}

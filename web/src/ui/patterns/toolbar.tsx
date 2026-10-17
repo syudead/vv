@@ -58,6 +58,12 @@ export interface ToolbarProps {
    * いつも描く。
    */
   searchHiddenBelowLg?: boolean;
+  /**
+   * page: true なら折り返さず、入りきらない行は横に動かす。検索欄は md から描き、md 未満では
+   * 画面が children の頭に置く検索のボタン（md:hidden）で開く。行は relative なので、開いた欄を
+   * 行の上に重ねられる。
+   */
+  nowrap?: boolean;
 }
 
 export function Toolbar(props: ToolbarProps) {
@@ -76,6 +82,7 @@ function PageToolbar({
   actions,
   searchPlacement = "start",
   searchHiddenBelowLg = false,
+  nowrap = false,
 }: ToolbarProps) {
   const hasView = view !== undefined && view.length > 0;
   const atEnd = searchPlacement === "end";
@@ -83,8 +90,10 @@ function PageToolbar({
     <div
       data-slot="toolbar-search"
       className={cn(
-        "w-full sm:w-auto sm:min-w-search-min-sm sm:flex-1",
-        atEnd ? "sm:ml-auto sm:max-w-sm" : "sm:max-w-md",
+        nowrap
+          ? "hidden md:block md:min-w-search-min md:flex-1 md:max-w-md lg:min-w-search-min-sm"
+          : "w-full sm:w-auto sm:min-w-search-min-sm sm:flex-1",
+        !nowrap && (atEnd ? "sm:ml-auto sm:max-w-sm" : "sm:max-w-md"),
         searchHiddenBelowLg && "hidden lg:block",
       )}
     >
@@ -92,7 +101,13 @@ function PageToolbar({
     </div>
   );
   return (
-    <div data-slot="toolbar" className="flex flex-wrap items-center gap-2">
+    <div
+      data-slot="toolbar"
+      className={cn(
+        "flex items-center gap-2",
+        nowrap ? "relative flex-nowrap overflow-x-auto" : "flex-wrap",
+      )}
+    >
       {!atEnd && searchSlot}
       {children}
       {atEnd && searchSlot}

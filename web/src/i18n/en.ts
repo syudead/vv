@@ -27,6 +27,10 @@ type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 type WorkInfoOperation = components["schemas"]["WorkInfoOperation"];
 type SkippedTagReason = components["schemas"]["SkippedTag"]["reason"];
 type WorkInfoField = components["schemas"]["WorkInfoField"];
+type ActivityKind = components["schemas"]["ActivityKind"];
+type ActivityFeature = components["schemas"]["ActivityFeature"];
+type ActivityDecider = components["schemas"]["ActivityDecider"];
+type ActivityStage = components["schemas"]["ActivityStage"];
 type MediaInfoHdr = components["schemas"]["MediaInfoVideo"]["hdr"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
@@ -247,6 +251,8 @@ const errorCodes = {
   plugin_busy: "Another plugin is running. Try again in a moment.",
   operation_unsupported: "The plugin can't do that.",
   work_info_fetch_stale: "The result is out of date. Fetch it again.",
+  activity_not_retryable: "This can no longer be retried",
+  activity_not_undoable: "This can no longer be undone",
   invalid_smart_rule: "A condition is out of range.",
   smart_folder_not_found: "That smart folder no longer exists.",
   smart_folder_cycle:
@@ -550,6 +556,20 @@ export const en = {
         folders: "Folders",
         tags: "Tags",
         settings: "Settings",
+        activity: "Activity",
+        count: "3",
+        countLabel: "3 need attention",
+      },
+      // 絞り込みのドロップダウンのボタン（FilterDropdownButton）の見本。
+      filter: {
+        status: "Status",
+        period: "Period",
+        all: "All",
+        attention: "Needs attention",
+        running: "Running",
+        done: "Done",
+        anyTime: "Any time",
+        today: "Today",
       },
       thumbnail: { duration: "49:10", watched: "Share of the video watched" },
       favoriteOff: "Add to favorites",
@@ -572,6 +592,7 @@ export const en = {
         editorDialog: "Editor dialog",
         formPage: "Form page",
         groupedList: "Grouped list",
+        cardList: "Card list",
         listState: (state: string) => `List page: ${state}`,
       },
       states: {
@@ -2252,6 +2273,191 @@ export const en = {
       title: "No history matches these conditions",
     },
   },
+  // アクティビティ（specs/055-activity/ui-design.md「Words」）。
+  activity: {
+    title: "Activity",
+    documentTitle: "Activity",
+    list: "Activity log",
+    loading: "Loading activity",
+    loadingMore: "Loading more activity",
+    loadMoreFailed: "Couldn't load more activity",
+    loadFailed: "Couldn't load the activity",
+    search: {
+      label: "Search file names",
+    },
+    filter: {
+      status: "Status",
+      feature: "Feature",
+      decider: "Decided by",
+      period: "Period",
+      all: "All",
+      clear: "Clear filters",
+      // 機能を 2 つ以上選んだときのボタンの値（「Import +2」）。
+      several: (first: string, rest: number) => `${first} +${formatNumber(rest)}`,
+      count: (count: number) => formatNumber(count),
+    },
+    statusValue: {
+      running: "Running",
+      attention: "Needs attention",
+      done: "Done",
+    },
+    featureValue: {
+      import: "Import",
+      scan: "Scan",
+      duplicate_check: "Duplicate check",
+      auto_tagging: "Auto-tagging",
+      work_info: "Work info",
+      tags: "Tags",
+      versions: "Versions",
+      media_folders: "Media folders",
+      organize: "Drag and drop",
+    } satisfies Record<ActivityFeature, string>,
+    deciderValue: {
+      ai: "AI",
+      rule: "Rule",
+      owner: "You",
+    } satisfies Record<ActivityDecider, string>,
+    periodValue: {
+      any: "Any time",
+      today: "Today",
+      week: "Last 7 days",
+      month: "Last 30 days",
+    },
+    statusIcon: {
+      running: "Running",
+      waiting: "Waiting",
+      attention: "Needs attention",
+      done: "Done",
+      doneByYou: "Done by you",
+    },
+    kind: {
+      import: "Import",
+      scan: "Scan",
+      version_judgement: "Duplicate check",
+      auto_tag: "Auto-tagging",
+      work_info_fetch: "Work info fetch",
+      bundle: "Bundled",
+      unbundle: "Removed from versions",
+      make_representative: "Made representative",
+      dismiss: "Marked different",
+      tag_attach: "Tag added",
+      tag_detach: "Tag removed",
+      tag_keep: "Tag kept",
+      tag_reject: "Tag rejected",
+      work_info_apply: "Work info applied",
+      media_folder_remove: "Media folder removed",
+      organize_undo: "Drag and drop undone",
+      undo: "Undo",
+    } satisfies Record<ActivityKind, string>,
+    subject: {
+      pair: (first: string, second: string) => `${first} ↔ ${second}`,
+      manualScan: "Manual scan",
+      watchScan: "Watch scan",
+    },
+    stage: {
+      probe: "Analyzing",
+      thumbnail: "Thumbnail",
+      seek_thumbnail: "Seek thumbnails",
+      preview: "Preview",
+      fingerprint: "Duplicate fingerprint",
+    } satisfies Record<ActivityStage, string>,
+    result: {
+      waiting: "Waiting",
+      running: "Running",
+      done: "Done",
+      progress: (done: number, total: number) =>
+        `${formatNumber(done)}/${formatNumber(total)}`,
+      importFailed: (stage: string, detail: string) =>
+        detail === ""
+          ? `Failed at ${stage.toLowerCase()}`
+          : `Failed at ${stage.toLowerCase()}: ${detail}`,
+      failed: (detail: string) => (detail === "" ? "Failed" : `Failed: ${detail}`),
+      retryAt: (time: string) => `Failed · tries again at ${time}`,
+      interrupted: "Stopped when vv shut down",
+      noConnection: "Needs the AI connection to decide",
+      undecided: "Couldn't tell whether these are the same video",
+      undecidedAi: "AI",
+      sameByAi: "Same video · bundled by AI",
+      sameByRule: "Same video · bundled by rule",
+      differentByAi: "Different videos by AI",
+      differentByRule: "Different videos by rule",
+      tagAdded: (name: string) => `+ ${name}`,
+      tagRemoved: (name: string) => `− ${name}`,
+      suggested: "(suggested)",
+      noTags: "No tags added",
+      byYou: "by you",
+      byYouAlone: "By you",
+      folderRemoved: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} video left the library · by you`,
+          other: `${formatNumber(count)} videos left the library · by you`,
+        }),
+      superseded: "Replaced by a newer run",
+      decidedByOwner: "You decided on Duplicates",
+      gone: "A video left the library",
+      undid: (chip: string) => `Undid ${chip}`,
+      undidTag: (name: string) => `Undid tag ${name}`,
+      undoneSame: "Same video",
+      undoneDifferent: "Different videos",
+      alreadyReverted: "Already changed back by you",
+      undone: "Undone by you",
+      notInLibrary: "Not in the library",
+    },
+    percent: (value: number) => `${formatNumber(Math.round(value * 100))}%`,
+    // 結果の文の区切り（「Same video · bundled by rule」の「·」と同じ）。
+    separator: "·",
+    time: {
+      justNow: "Just now",
+      minutes: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} minute ago`,
+          other: `${formatNumber(count)} minutes ago`,
+        }),
+      hours: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} hour ago`,
+          other: `${formatNumber(count)} hours ago`,
+        }),
+      yesterday: (time: string) => `Yesterday ${time}`,
+      at: (date: string, time: string) => `${date} ${time}`,
+      shortNow: "now",
+      shortMinutes: (count: number) => `${formatNumber(count)}m`,
+      shortHours: (count: number) => `${formatNumber(count)}h`,
+      shortYesterday: "Yesterday",
+      // 失敗した重複の判定が次に試す時刻。今日なら時刻だけ、ほかの日は日と時刻。
+      retryAtDay: (date: string, time: string) => `${date}, ${time}`,
+    },
+    action: {
+      open: "Open",
+      openDuplicates: "Open in Duplicates",
+      workInfo: "Work info",
+      settings: "Settings",
+      retry: "Retry",
+      undo: "Undo",
+      undoTags: "Undo tags…",
+    },
+    toast: {
+      undone: "Undone. vv won't decide this again on its own",
+      alreadyReverted: "Already changed back. vv won't decide this again on its own",
+      retryFailed: (reason: string) => `Couldn't retry: ${reason}`,
+      undoFailed: (reason: string) => `Couldn't undo: ${reason}`,
+    },
+    footer: {
+      label: "Activity totals",
+      running: (count: number) => `${formatNumber(count)} running`,
+      attention: (count: number) => `${formatNumber(count)} need attention`,
+      done: (count: number) => `${formatNumber(count)} done`,
+    },
+    empty: {
+      title: "No activity yet",
+      description:
+        "Imports, auto-tagging, duplicate checks and your changes to tags and versions show up here.",
+    },
+    noMatch: {
+      title: "Nothing matches these filters",
+      description: "No entries match these filters.",
+    },
+  },
   // プレイリスト（specs/044-playlists/ui-design.md「Words」）。
   playlists: {
     title: "Playlists",
@@ -2673,6 +2879,14 @@ export const en = {
       history: "History",
       playlists: "Playlists",
       duplicates: "Duplicates",
+      activity: "Activity",
+      // 要対応の記録の数の読み上げ（見える文字は数だけ）。
+      activityCount: (count: number) =>
+        selectPlural(count, {
+          one: `${formatNumber(count)} needs attention`,
+          other: `${formatNumber(count)} need attention`,
+        }),
+      railCount: (count: number) => (count > 99 ? "99+" : formatNumber(count)),
       settings: "Settings",
       login: "Sign in",
       logout: "Sign out",

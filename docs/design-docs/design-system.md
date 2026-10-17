@@ -230,7 +230,11 @@ because the attribute selector upstream uses is an arbitrary value,
 the shared focus ring shows in full inside the `Command`, and `CommandInput`
 takes a class for the frame around the input and an element after the input,
 so the vv `TagCommand` can draw its compact field with a busy spinner inside
-it. `Button`
+it. `sidebar.tsx` also exports one component upstream lacks,
+`SidebarMenuCount`: an entry's count, drawn at the icon's top-right corner on
+the icon rail, where upstream's `SidebarMenuBadge` is hidden, and as that
+badge in the narrow-width drawer
+([055 UI design, Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)). `Button`
 also has one variant upstream lacks, `ghost-destructive`: `ghost`'s shape
 with `destructive` text and a `destructive-soft` hover, the button form of the
 menu's destructive item, for one destructive action that stands outside a
@@ -287,6 +291,7 @@ maintainer approves this tier on the showcase and each screen migrates.
 | `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows, the former `videoList/FavoriteToggle` | vv components                                                                                                                                                                       |
 | `TagCommand`                                                                                              | `ui/Combobox`, the selection bar's former `library/TagCommand`            | vv component; a `Command` with the tag-name rules                                                                                                                                   |
 | `CreditCommand`                                                                                           | —                                                                         | vv component; `TagCommand`'s sibling with the rules for the names of people and organizations, on the same base (`NameCommand`), offering its create row even beside an exact match |
+| `FilterDropdownButton`                                                                                    | —                                                                         | vv component; one toolbar filter that shows its value and opens a `DropdownMenu`, `primary-soft` when not at its default ([055 UI design, Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)) |
 
 The shadcn components live in `web/src/ui/shadcn` under upstream's
 kebab-case names (`dropdown-menu.tsx`), beside the action and input
@@ -321,7 +326,7 @@ to pick, what goes in each slot and what must not is in
 | Layer          | What it is                                                                                                                                                                                                                                   | Registry                     |
 | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
 | Page skeletons | `ListPage`, `AdminTablePage`, `SettingsPage`, `DetailPage`, `CenteredForm`, `FormDialog`, `ConfirmDialog`, `EditorDialog`, `FormPage`: the regions of a page, their order, its outer padding, its maximum width and the gaps between regions | `registry:ui`, one item each |
-| Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                                       | `registry:ui`, one item each |
+| Sections       | `PageHeader`, `Toolbar`, `PageSection`, `FormRow`, `FactList`, `CardGrid`, `CardList`, `DataTable`, `GroupedList`, `JumpList`, `SelectionBar`: the parts that fill a region, with their row padding and inner gaps                           | `registry:ui`, one item each |
 | States         | `LoadingState`, `EmptyState`, `ErrorState`, `LoadMoreRow`: what the body shows instead of, or after, its data                                                                                                                                | `registry:ui`, one item each |
 
 Each skeleton also has an example block (`list-page-example` and so on, plus
@@ -394,6 +399,15 @@ Below `lg` the parts stack and the page scrolls as one.
 `FormDialog` holds a few fields and `SettingsPage` saves each row by itself,
 so neither fits a form of a dozen fields saved with one button
 ([047 UI design, Changes to the design system](../../specs/047-video-work-info/ui-design.md#changes-to-the-design-system)).
+
+`CardList` stacks one-line cards with a border on `muted`, in four tones the
+caller sets, with fixed columns at the end for the time and the actions, so
+those line up down the list; below `lg` each card is two lines. No section
+drew bordered rows: `GroupedList` rows have no border and `DataTable`'s header
+and columns do not fit one line at 360px. `Toolbar` takes `nowrap` for a row
+of filters that must stay one line and scrolls sideways instead of wrapping,
+and `LoadingState` takes `layout="cards"` for a `CardList`
+([055 UI design, Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)).
 
 `FormDialog` takes `size="wide"` for a form that sets values side by side for
 comparison, such as the current and the fetched details of a video: it stops

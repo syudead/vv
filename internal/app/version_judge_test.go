@@ -171,8 +171,10 @@ func TestVersionJudgeMatchingPairBundlesWithoutClassifier(t *testing.T) {
 	if wait := judge.step(context.Background()); wait != 0 {
 		t.Fatalf("判定のあとの待ち = %v, want 0", wait)
 	}
-	if got := store.lastResult(t); got.Verdict != domain.VersionSame {
-		t.Errorf("結果 = %+v, want same", got)
+	// コマの規則で決めた結果は rule で、確率を持たない（specs/055-activity R-5）。
+	if got := store.lastResult(t); got.Verdict != domain.VersionSame || got.Decider != domain.ActivityByRule ||
+		got.Probability != nil {
+		t.Errorf("結果 = %+v, want rule の same", got)
 	}
 	if len(classifier.requests) != 0 {
 		t.Errorf("分類器を呼んだ: %d 回", len(classifier.requests))
@@ -199,6 +201,10 @@ func TestVersionJudgeDifferingPairAsksAboutTheRun(t *testing.T) {
 			got := store.lastResult(t)
 			if got.Verdict != c.want || got.Probability == nil || *got.Probability != c.probability {
 				t.Fatalf("結果 = %+v, want %v（確率 %v）", got, c.want, c.probability)
+			}
+			// モデルの答えで決めた結果は ai で、アクティビティの記録に確率と共に残る（specs/055-activity R-5）。
+			if got.Decider != domain.ActivityByAI {
+				t.Errorf("判断したもの = %q, want ai", got.Decider)
 			}
 			wantPairs := []domain.FramePair{{A: 8, B: 8, Distance: 33}, {A: 9, B: 9, Distance: 33},
 				{A: 10, B: 10, Distance: 33}, {A: 11, B: 11, Distance: 33}}
