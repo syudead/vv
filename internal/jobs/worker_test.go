@@ -3,115 +3,76 @@ package jobs
 import (
 	"context"
 	"errors"
+	"reflect"
 	"slices"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fakeQueue は待ち行列の代わりに、状態遷移だけを再現する。
-// ワーカーの振る舞い（直列・再試行・停止・通知での起床）を SQLite 抜きで検証する。
-type fakeQueue struct {
-	mu sync.Mutex
-
-	all     []*fakeJob
-	queued  []*fakeJob
-	running int
-	done    []int64
-	failed  []int64
-	claims  int
+type claimResult struct {
+	job domain.Job
+	err error
 }
 
-type fakeJob struct {
-	id       int64
-	kind     domain.JobKind
-	attempts int
+type jobFailure struct {
+	job   domain.Job
+	cause error
+}
+
+// The queue supplies scripted results, without reproducing the store's retry
+// policy. Concurrent tests access its records only after synctest.Wait.
+type fakeQueue struct {
+	claimsMu  sync.Mutex
+	next      []claimResult
+	claims    []domain.JobKind
+	completed []domain.Job
+	failures  []jobFailure
+	observe   func(string)
 }
 
 func (q *fakeQueue) ClaimJob(_ context.Context, kind domain.JobKind) (domain.Job, error) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	q.claims++
-	for i, job := range q.queued {
-		if job.kind != kind {
-			continue
-		}
-		q.queued = append(q.queued[:i:i], q.queued[i+1:]...)
-		job.attempts++
-		q.running++
-		return domain.Job{ID: job.id, Kind: job.kind, VideoID: job.id, Attempts: job.attempts}, nil
+	q.claimsMu.Lock()
+	q.claims = append(q.claims, kind)
+	q.claimsMu.Unlock()
+	if len(q.next) == 0 {
+		return domain.Job{}, domain.ErrNoJob
 	}
-	return domain.Job{}, domain.ErrNoJob
+	result := q.next[0]
+	q.next = q.next[1:]
+	return result.job, result.err
+}
+
+// Timers can resume claims after a virtual-time assertion, so synchronize
+// reads made before advancing time as well as waiting for earlier writes.
+func (q *fakeQueue) claimCount() int {
+	q.claimsMu.Lock()
+	defer q.claimsMu.Unlock()
+	return len(q.claims)
 }
 
 func (q *fakeQueue) CompleteClaimedJob(_ context.Context, job domain.Job) error {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	q.running--
-	q.done = append(q.done, job.ID)
+	q.completed = append(q.completed, job)
+	if q.observe != nil {
+		q.observe("complete")
+	}
 	return nil
 }
 
-func (q *fakeQueue) FailClaimedJob(_ context.Context, failed domain.Job, _ error) error {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-
-	q.running--
-	// 上限に達していなければ待ち行列へ戻す（store と同じ規則）。
-	for _, job := range q.all {
-		if job.id == failed.ID && job.attempts < domain.MaxJobAttempts {
-			q.queued = append(q.queued, job)
-			return nil
-		}
+func (q *fakeQueue) FailClaimedJob(_ context.Context, job domain.Job, cause error) error {
+	q.failures = append(q.failures, jobFailure{job, cause})
+	if q.observe != nil {
+		q.observe("fail")
 	}
-	q.failed = append(q.failed, failed.ID)
 	return nil
 }
 
-// add はジョブを投入する。
-func (q *fakeQueue) add(job *fakeJob) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	q.all = append(q.all, job)
-	q.queued = append(q.queued, job)
-}
-
-// counts は結果を読み出す。
-func (q *fakeQueue) counts() (done, failed int) {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return len(q.done), len(q.failed)
-}
-
-func (q *fakeQueue) claimCount() int {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return q.claims
-}
-
-// idle は kind の仕事が待ち行列にも処理中にも無いかを返す。
-func (q *fakeQueue) idle(kind domain.JobKind) bool {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	if q.running > 0 {
-		return false
-	}
-	for _, job := range q.queued {
-		if job.kind == kind {
-			return false
-		}
-	}
-	return true
-}
-
-// startWorker はワーカーを起動し、止める関数を返す。
-func startWorker(t *testing.T, opts Options) (*Worker, func()) {
-	t.Helper()
-
+// Call only inside a synctest bubble. A worker that cannot stop makes the
+// bubble fail instead of consuming a wall-clock timeout.
+func startWorker(opts Options) (*Worker, func()) {
 	ctx, cancel := context.WithCancel(context.Background())
 	worker := New(opts)
 	finished := make(chan struct{})
@@ -119,324 +80,240 @@ func startWorker(t *testing.T, opts Options) (*Worker, func()) {
 		worker.Run(ctx)
 		close(finished)
 	}()
-	return worker, func() {
-		cancel()
-		select {
-		case <-finished:
-		case <-time.After(2 * time.Second):
-			t.Fatal("context の取り消しでワーカーが止まらない")
-		}
-	}
+	return worker, func() { cancel(); <-finished }
 }
 
-// waitUntil は条件が成り立つまで待つ。
-func waitUntil(t *testing.T, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for !cond() {
-		if time.Now().After(deadline) {
-			t.Fatal("条件が成り立たないまま時間切れになった")
-		}
-		time.Sleep(time.Millisecond)
-	}
-}
-
-// runUntilIdle はワーカーを起動し、その段階の仕事が無くなるまで待ってから止める。
-func runUntilIdle(t *testing.T, queue *fakeQueue, kind domain.JobKind, handler Handler) {
-	t.Helper()
-	_, stop := startWorker(t, Options{Kind: kind, Queue: queue, Handler: handler})
-	waitUntil(t, func() bool { return queue.idle(kind) })
-	stop()
-}
-
-// ワーカーは直列（並列度1）で処理する。初回スキャンで HDD の I/O を飽和
-// させないための決定である。
 func TestWorkerProcessesJobsSerially(t *testing.T) {
-	queue := &fakeQueue{}
-	for i := int64(1); i <= 10; i++ {
-		queue.add(&fakeJob{id: i, kind: domain.JobProbe})
-	}
-
-	var (
-		mu       sync.Mutex
-		inFlight int
-		maxSeen  int
-	)
-	handler := func(context.Context, domain.Job) error {
-		mu.Lock()
-		inFlight++
-		if inFlight > maxSeen {
-			maxSeen = inFlight
+	synctest.Test(t, func(t *testing.T) {
+		jobs := []domain.Job{
+			{ID: 1, Kind: domain.JobThumbnail, VideoID: 7, Attempts: 1},
+			{ID: 2, Kind: domain.JobThumbnail, VideoID: 8, Attempts: 2},
 		}
-		mu.Unlock()
-
-		time.Sleep(time.Millisecond)
-
-		mu.Lock()
-		inFlight--
-		mu.Unlock()
-		return nil
-	}
-
-	runUntilIdle(t, queue, domain.JobProbe, handler)
-
-	if maxSeen != 1 {
-		t.Errorf("同時に処理していた数 = %d, want 1（並列度1）", maxSeen)
-	}
-	if done, _ := queue.counts(); done != 10 {
-		t.Errorf("完了 = %d 件, want 10", done)
-	}
-}
-
-// ワーカーは自分の段階の仕事だけを取り出す。別の段階の仕事は、その段階の
-// ワーカーが受け持つ。
-func TestWorkerClaimsOnlyItsOwnKind(t *testing.T) {
-	queue := &fakeQueue{}
-	queue.add(&fakeJob{id: 1, kind: domain.JobThumbnail})
-	queue.add(&fakeJob{id: 2, kind: domain.JobProbe})
-
-	var handled []int64
-	runUntilIdle(t, queue, domain.JobProbe, func(_ context.Context, job domain.Job) error {
-		if job.Kind != domain.JobProbe {
-			t.Errorf("別の段階の仕事を受け取った: %s", job.Kind)
+		queue := &fakeQueue{next: []claimResult{{job: jobs[0]}, {job: jobs[1]}}}
+		started := make(chan domain.Job, 2)
+		release := make(chan struct{})
+		_, stop := startWorker(Options{
+			Kind: domain.JobThumbnail, Queue: queue,
+			Handler: func(ctx context.Context, job domain.Job) error {
+				started <- job
+				select {
+				case <-release:
+				case <-ctx.Done():
+				}
+				return nil
+			},
+		})
+		defer stop()
+		for i, want := range jobs {
+			if got := <-started; !reflect.DeepEqual(got, want) {
+				t.Fatalf("handled job = %+v, want %+v", got, want)
+			}
+			synctest.Wait()
+			if len(queue.claims) != i+1 || len(queue.completed) != i {
+				t.Fatalf("while job %d is blocked: claims=%v completed=%v", want.ID, queue.claims, queue.completed)
+			}
+			release <- struct{}{}
 		}
-		handled = append(handled, job.ID)
-		return nil
+		synctest.Wait()
+		if !reflect.DeepEqual(queue.completed, jobs) {
+			t.Fatalf("completed = %v, want %v", queue.completed, jobs)
+		}
+		if want := []domain.JobKind{domain.JobThumbnail, domain.JobThumbnail, domain.JobThumbnail}; !slices.Equal(queue.claims, want) {
+			t.Fatalf("claim kinds = %v, want %v", queue.claims, want)
+		}
 	})
-
-	if len(handled) != 1 || handled[0] != 2 {
-		t.Errorf("処理した仕事 = %v, want [2]", handled)
-	}
-	if queue.idle(domain.JobThumbnail) {
-		t.Error("サムネイルの仕事が取り出された")
-	}
 }
 
-// 待ち行列が空になったら、知らせが来るまで待ち行列を問い合わせない。
-// 知らせを受けたら、積まれた仕事を処理する。
 func TestWorkerSleepsUntilWoken(t *testing.T) {
-	queue := &fakeQueue{}
-	processed := make(chan int64, 1)
-	worker, stop := startWorker(t, Options{
-		Kind:  domain.JobProbe,
-		Queue: queue,
-		Handler: func(_ context.Context, job domain.Job) error {
-			processed <- job.ID
-			return nil
-		},
-	})
-	defer stop()
-
-	// 起動直後の1回だけ見に行き、空なので眠る。
-	waitUntil(t, func() bool { return queue.claimCount() == 1 })
-	time.Sleep(50 * time.Millisecond)
-	if claims := queue.claimCount(); claims != 1 {
-		t.Fatalf("眠っている間に待ち行列を %d 回問い合わせた, want 1", claims)
-	}
-
-	queue.add(&fakeJob{id: 7, kind: domain.JobProbe})
-	select {
-	case id := <-processed:
-		t.Fatalf("知らせる前に仕事 %d を処理した", id)
-	case <-time.After(50 * time.Millisecond):
-	}
-
-	worker.Wake()
-	select {
-	case id := <-processed:
-		if id != 7 {
-			t.Errorf("処理した仕事 = %d, want 7", id)
+	synctest.Test(t, func(t *testing.T) {
+		queue := &fakeQueue{}
+		worker, stop := startWorker(Options{Kind: domain.JobProbe, Queue: queue, Handler: func(context.Context, domain.Job) error { return nil }})
+		defer stop()
+		synctest.Wait()
+		job := domain.Job{ID: 7, Kind: domain.JobProbe}
+		queue.next = []claimResult{{job: job}}
+		// Even the retry interval must not poll an empty queue. Time is virtual.
+		time.Sleep(defaultRetryDelay)
+		synctest.Wait()
+		if len(queue.claims) != 1 || len(queue.completed) != 0 {
+			t.Fatalf("before Wake: claims=%v completed=%v", queue.claims, queue.completed)
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("知らせても仕事を処理しない")
-	}
+		worker.Wake()
+		synctest.Wait()
+		if !reflect.DeepEqual(queue.completed, []domain.Job{job}) || len(queue.claims) != 3 {
+			t.Fatalf("after Wake: claims=%v completed=%v", queue.claims, queue.completed)
+		}
+	})
 }
 
-// 処理中に届いた知らせは失われない。処理を終えたあと、もう一度待ち行列を見る。
 func TestWorkerKeepsWakeReceivedWhileBusy(t *testing.T) {
-	queue := &fakeQueue{}
-	queue.add(&fakeJob{id: 1, kind: domain.JobProbe})
-	release := make(chan struct{})
-	started := make(chan struct{}, 2)
-	worker, stop := startWorker(t, Options{
-		Kind:  domain.JobProbe,
-		Queue: queue,
-		Handler: func(_ context.Context, job domain.Job) error {
-			started <- struct{}{}
-			if job.ID == 1 {
-				<-release
-			}
-			return nil
-		},
-	})
-	defer stop()
-
-	<-started
-	queue.add(&fakeJob{id: 2, kind: domain.JobProbe})
-	worker.Wake()
-	close(release)
-
-	waitUntil(t, func() bool {
-		done, _ := queue.counts()
-		return done == 2
-	})
-}
-
-// 失敗したジョブは再試行し、3 回で止める。壊れたファイル1つがワーカーを
-// 永久に占有してはならない。
-func TestWorkerRetriesThenGivesUp(t *testing.T) {
-	queue := &fakeQueue{}
-	queue.add(&fakeJob{id: 1, kind: domain.JobProbe})
-
-	attempts := 0
-	runUntilIdle(t, queue, domain.JobProbe, func(context.Context, domain.Job) error {
-		attempts++
-		return errors.New("いつも失敗する")
-	})
-
-	if attempts != domain.MaxJobAttempts {
-		t.Errorf("試行回数 = %d, want %d", attempts, domain.MaxJobAttempts)
-	}
-	if _, failed := queue.counts(); failed != 1 {
-		t.Errorf("諦めた数 = %d, want 1", failed)
-	}
-}
-
-// 一度失敗しても、次の試行で成功すれば完了になる。
-func TestWorkerRecoversAfterTransientFailure(t *testing.T) {
-	queue := &fakeQueue{}
-	queue.add(&fakeJob{id: 1, kind: domain.JobProbe})
-
-	attempts := 0
-	runUntilIdle(t, queue, domain.JobProbe, func(context.Context, domain.Job) error {
-		attempts++
-		if attempts == 1 {
-			return errors.New("一時的な失敗")
+	synctest.Test(t, func(t *testing.T) {
+		first := domain.Job{ID: 1, Kind: domain.JobProbe}
+		second := domain.Job{ID: 2, Kind: domain.JobProbe}
+		// The empty claim makes progress depend on the retained notification.
+		queue := &fakeQueue{next: []claimResult{{job: first}, {err: domain.ErrNoJob}, {job: second}}}
+		release := make(chan struct{})
+		worker, stop := startWorker(Options{
+			Kind: domain.JobProbe, Queue: queue,
+			Handler: func(ctx context.Context, job domain.Job) error {
+				if job.ID == first.ID {
+					select {
+					case <-release:
+					case <-ctx.Done():
+					}
+				}
+				return nil
+			},
+		})
+		defer stop()
+		synctest.Wait()
+		if len(queue.claims) != 1 {
+			t.Fatalf("claims before Wake = %v", queue.claims)
 		}
-		return nil
+		worker.Wake()
+		worker.Wake() // Multiple notifications coalesce without blocking the caller.
+		close(release)
+		synctest.Wait()
+		if !reflect.DeepEqual(queue.completed, []domain.Job{first, second}) || len(queue.claims) != 4 {
+			t.Fatalf("claims=%v completed=%v", queue.claims, queue.completed)
+		}
 	})
-
-	done, failed := queue.counts()
-	if done != 1 || failed != 0 {
-		t.Errorf("完了 = %d, 諦め = %d, want 1 と 0", done, failed)
-	}
 }
 
-// 成否を記録するたびに Finished が呼ばれる。画面へ動画の変化を知らせるのに使う。
-func TestWorkerReportsFinishedJobs(t *testing.T) {
-	queue := &fakeQueue{}
-	queue.add(&fakeJob{id: 1, kind: domain.JobProbe})
-	queue.add(&fakeJob{id: 2, kind: domain.JobProbe})
+func TestWorkerRetriesClaimFailure(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		job := domain.Job{ID: 7, Kind: domain.JobProbe}
+		queue := &fakeQueue{next: []claimResult{{err: errors.New("queue unavailable")}, {job: job}}}
+		_, stop := startWorker(Options{Kind: domain.JobProbe, Queue: queue, Handler: func(context.Context, domain.Job) error { return nil }})
+		defer stop()
+		synctest.Wait()
+		time.Sleep(defaultRetryDelay - time.Nanosecond)
+		synctest.Wait()
+		if claims := queue.claimCount(); claims != 1 {
+			t.Fatalf("claims before retry = %d", claims)
+		}
+		time.Sleep(time.Nanosecond)
+		synctest.Wait()
+		if !reflect.DeepEqual(queue.completed, []domain.Job{job}) || len(queue.claims) != 3 {
+			t.Fatalf("after retry: claims=%v completed=%v", queue.claims, queue.completed)
+		}
+	})
+}
 
-	var mu sync.Mutex
-	var finished []int64
-	_, stop := startWorker(t, Options{
-		Kind:  domain.JobProbe,
-		Queue: queue,
-		Handler: func(_ context.Context, job domain.Job) error {
-			if job.ID == 2 {
-				return errors.New("失敗")
+func TestWorkerContinuesAfterHandlerFailure(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		first := domain.Job{ID: 1, Kind: domain.JobProbe}
+		second := domain.Job{ID: 2, Kind: domain.JobProbe}
+		cause := errors.New("handler failed")
+		queue := &fakeQueue{next: []claimResult{{job: first}, {job: second}}}
+		_, stop := startWorker(Options{Kind: domain.JobProbe, Queue: queue, Handler: func(_ context.Context, job domain.Job) error {
+			if job.ID == first.ID {
+				return cause
 			}
 			return nil
-		},
-		Finished: func(job domain.Job) {
-			mu.Lock()
-			defer mu.Unlock()
-			finished = append(finished, job.ID)
-		},
+		}})
+		defer stop()
+		synctest.Wait()
+		if len(queue.failures) != 1 || !reflect.DeepEqual(queue.failures[0].job, first) || !errors.Is(queue.failures[0].cause, cause) {
+			t.Fatalf("failures = %+v", queue.failures)
+		}
+		if !reflect.DeepEqual(queue.completed, []domain.Job{second}) {
+			t.Fatalf("completed = %+v", queue.completed)
+		}
 	})
-	waitUntil(t, func() bool { return queue.idle(domain.JobProbe) })
-	stop()
-
-	mu.Lock()
-	defer mu.Unlock()
-	// 2 は上限まで失敗するので、試行のたびに知らせる。
-	if len(finished) != 1+domain.MaxJobAttempts {
-		t.Errorf("知らせた回数 = %d (%v), want %d", len(finished), finished, 1+domain.MaxJobAttempts)
-	}
 }
 
-// 処理を始める直前に Started が、成否を記録したあとに Finished が呼ばれる。
-// 取り込み中の今の処理を知らせるのに使う。
-func TestWorkerReportsStartedBeforeHandler(t *testing.T) {
-	queue := &fakeQueue{}
-	queue.add(&fakeJob{id: 1, kind: domain.JobProbe})
-
-	var mu sync.Mutex
-	var calls []string
-	record := func(call string) {
-		mu.Lock()
-		defer mu.Unlock()
-		calls = append(calls, call)
-	}
-	_, stop := startWorker(t, Options{
-		Kind:  domain.JobProbe,
-		Queue: queue,
-		Handler: func(context.Context, domain.Job) error {
-			record("handle")
-			return nil
-		},
-		Started:  func(domain.Job) { record("started") },
-		Finished: func(domain.Job) { record("finished") },
-	})
-	waitUntil(t, func() bool { return queue.idle(domain.JobProbe) })
-	stop()
-
-	mu.Lock()
-	defer mu.Unlock()
-	if want := []string{"started", "handle", "finished"}; !slices.Equal(calls, want) {
-		t.Errorf("呼ばれた順 = %v, want %v", calls, want)
-	}
-}
-
-// context の取り消しで、眠っている間でも安全に止まる。
 func TestWorkerStopsOnCancel(t *testing.T) {
-	queue := &fakeQueue{}
-	_, stop := startWorker(t, Options{Kind: domain.JobProbe, Queue: queue})
-	waitUntil(t, func() bool { return queue.claimCount() == 1 })
-	stop()
-}
-
-// 停止指示で打ち切った仕事は、完了も失敗も記録しない。running のまま残り、
-// 次の起動で queued へ戻る。
-func TestWorkerDoesNotCompleteJobAfterHandlerCancels(t *testing.T) {
-	queue := &fakeQueue{}
-	queue.add(&fakeJob{id: 1, kind: domain.JobProbe})
-	ctx, cancel := context.WithCancel(context.Background())
-	job, err := queue.ClaimJob(ctx, domain.JobProbe)
-	if err != nil {
-		t.Fatal(err)
-	}
-	worker := New(Options{
-		Kind:  domain.JobProbe,
-		Queue: queue,
-		Handler: func(context.Context, domain.Job) error {
-			cancel()
-			return nil
-		},
-	})
-	worker.process(ctx, job)
-	done, failed := queue.counts()
-	if done != 0 || failed != 0 {
-		t.Fatalf("cancelled result was recorded: done=%d failed=%d", done, failed)
-	}
-	queue.mu.Lock()
-	running := queue.running
-	queue.mu.Unlock()
-	if running != 1 {
-		t.Fatalf("running jobs = %d, want 1 for startup recovery", running)
+	for _, tc := range []struct {
+		name string
+		err  error
+	}{
+		{"idle", domain.ErrNoJob}, {"retry", errors.New("queue unavailable")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				queue := &fakeQueue{next: []claimResult{{err: tc.err}}}
+				_, stop := startWorker(Options{Kind: domain.JobProbe, Queue: queue})
+				defer stop()
+				synctest.Wait()
+				if len(queue.claims) != 1 {
+					t.Fatalf("claims = %v", queue.claims)
+				}
+				before := time.Now()
+				stop()
+				if !time.Now().Equal(before) {
+					t.Fatal("cancellation waited for the retry timer")
+				}
+			})
+		})
 	}
 }
 
-// ハンドラの無い段階の仕事は、再試行せず諦める。再試行しても結果は変わらない
-// ので、待ち行列を塞ぐだけになる。
-func TestWorkerGivesUpWithoutHandler(t *testing.T) {
-	queue := &fakeQueue{}
-	queue.add(&fakeJob{id: 1, kind: domain.JobProbe})
-
-	runUntilIdle(t, queue, domain.JobProbe, nil)
-
-	if _, failed := queue.counts(); failed != 1 {
-		t.Errorf("諦めた数 = %d, want 1", failed)
+func TestWorkerProcessResult(t *testing.T) {
+	cause := errors.New("handler failed")
+	for _, tc := range []struct {
+		name       string
+		handlerErr error
+		cancel     bool
+		noHandler  bool
+		calls      []string
+	}{
+		{name: "success", calls: []string{"started", "handle", "complete", "finished"}},
+		{name: "failure", handlerErr: cause, calls: []string{"started", "handle", "fail", "finished"}},
+		{name: "missing handler", noHandler: true, calls: []string{"started", "fail", "finished"}},
+		{name: "cancel success", cancel: true, calls: []string{"started", "handle"}},
+		{name: "cancel failure", cancel: true, handlerErr: cause, calls: []string{"started", "handle"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			job := domain.Job{ID: 7, Kind: domain.JobProbe, VideoID: 17, Attempts: 2}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var calls []string
+			record := func(call string) { calls = append(calls, call) }
+			recordJob := func(call string, got domain.Job) {
+				if !reflect.DeepEqual(got, job) {
+					t.Fatalf("%s job = %+v, want %+v", call, got, job)
+				}
+				record(call)
+			}
+			queue := &fakeQueue{observe: record}
+			opts := Options{Kind: job.Kind, Queue: queue,
+				Started:  func(got domain.Job) { recordJob("started", got) },
+				Finished: func(got domain.Job) { recordJob("finished", got) },
+			}
+			if !tc.noHandler {
+				opts.Handler = func(gotCtx context.Context, got domain.Job) error {
+					if gotCtx != ctx {
+						t.Fatal("handler context was replaced")
+					}
+					recordJob("handle", got)
+					if tc.cancel {
+						cancel()
+					}
+					return tc.handlerErr
+				}
+			}
+			New(opts).process(ctx, job)
+			if !slices.Equal(calls, tc.calls) {
+				t.Fatalf("calls = %v, want %v", calls, tc.calls)
+			}
+			for _, got := range queue.completed {
+				if !reflect.DeepEqual(got, job) {
+					t.Fatalf("completed = %+v", got)
+				}
+			}
+			for _, got := range queue.failures {
+				if !reflect.DeepEqual(got.job, job) {
+					t.Fatalf("failed = %+v", got.job)
+				}
+				if tc.noHandler {
+					if got.cause.Error() != "unknown job kind: probe" {
+						t.Fatalf("failure = %v", got.cause)
+					}
+				} else if !errors.Is(got.cause, cause) {
+					t.Fatalf("failure = %v, want %v", got.cause, cause)
+				}
+			}
+		})
 	}
 }
