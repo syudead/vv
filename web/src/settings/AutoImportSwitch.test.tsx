@@ -1,6 +1,6 @@
 import { act, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   autoImportSettings as settings,
@@ -113,14 +113,34 @@ describe("AutoImportSwitch", () => {
     expect(autoImportSwitch().getAttribute("aria-checked")).toBe("true");
   });
 
-  it("does not follow the watch: a regained focus reads nothing", async () => {
+  it("reads again when the window regains focus, so a change from another tab shows", async () => {
+    server.current = settings(true);
     renderWithScan(<SwitchHarness />);
     await screen.findByRole("switch");
-    const initial = server.gets();
+    expect(autoImportSwitch().getAttribute("aria-checked")).toBe("true");
 
+    server.current = settings(false);
     await act(async () => {
       window.dispatchEvent(new Event("focus"));
     });
-    expect(server.gets()).toBe(initial);
+    await waitFor(() =>
+      expect(autoImportSwitch().getAttribute("aria-checked")).toBe("false"),
+    );
+  });
+
+  it("does not follow the watch: no 2 s poll while starting", async () => {
+    server.current = settings(true, { state: "starting" });
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      renderWithScan(<SwitchHarness />);
+      await screen.findByRole("switch");
+      const initial = server.gets();
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(5000);
+      });
+      expect(server.gets()).toBe(initial);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
