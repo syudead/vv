@@ -14,8 +14,8 @@ file into a handbook.
    `docs/design-docs/`, the code, API schemas and tests. Never cite a feature's
    SDD artifacts from permanent documentation or code. Before integration,
    retain lasting decisions in design docs and remove the feature's artifacts
-   and their translations after validation. Git history keeps the working
-   records. Progress lives in GitHub, not in a permanent plan archive.
+   after validation. Git history keeps the working records. Progress lives in
+   GitHub, not in a permanent plan archive.
 
 ## Working agreements
 
@@ -24,6 +24,7 @@ file into a handbook.
   English. Internal reasoning may stay in English. Code, code comments,
   identifiers and quoted output stay as they are.
 - Keep documentation close to the code and update it with behavior changes.
+- Maintain repository documents only in English. Do not create translated mirrors.
 - Write documents in technical English to
   [docs/design-docs/writing-quality.md](docs/design-docs/writing-quality.md),
   starting from the type for the document's kind. Issue and PR bodies stay
@@ -32,12 +33,6 @@ file into a handbook.
   after, a diagram when a flow changes) so a reviewer can follow the change
   without opening the code; `plan` and `design` PRs use
   [stage-pr-body.md](.agents/skills/issue-handoff/references/stage-pr-body.md).
-- After the English of a change is final, hand every changed, renamed or
-  deleted document under `docs/`, `specs/` and `ARCHITECTURE.md` to the
-  `doc-translator` subagent and commit its `translations/ja/` output in the
-  same pull request
-  ([japanese-translation.md](docs/design-docs/japanese-translation.md)). Do
-  not write or edit a translation yourself.
 - A feature's specification is its parent GitHub Issue. Write and revise it with
   `.agents/skills/issue-spec`, following
   [docs/product-specs/spec-quality.md](docs/product-specs/spec-quality.md).

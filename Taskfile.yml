@@ -83,17 +83,6 @@ tasks:
     cmds:
       - npm --prefix docs-site run build
 
-  docs-test:
-    desc: Test the translation tools in docs-site/translate and check translations/ja, as CI does.
-    cmds:
-      - npm --prefix docs-site test
-      - node docs-site/translate/ja.mjs check
-
-  docs-ja-status:
-    desc: List published documents whose Japanese translation is stale or missing.
-    cmds:
-      - node docs-site/translate/ja.mjs status
-
   generate:
     desc: Generate Go and TypeScript types from OpenAPI.
     cmds:
@@ -247,7 +236,7 @@ tasks:
       - >-
         node tools/node_modules/jscpd/bin/jscpd .
         --format go,typescript,tsx,javascript
-        --ignore "**/node_modules/**,**/dist/**,**/gen/**,**/extgen/**,translations/**,docs-site/**,worktrees/**,.claude/**,web/registry/**,media/**,**/testdata/**,**/*.d.ts,reports/**,tools/**"
+        --ignore "**/node_modules/**,**/dist/**,**/gen/**,**/extgen/**,docs-site/**,worktrees/**,.claude/**,web/registry/**,media/**,**/testdata/**,**/*.d.ts,reports/**,tools/**"
         --gitignore --reporters json --output reports/quality/duplication --silent
 
   # 変異テスト（mutation testing）。テストが壊れたコードを見つけられるかを測る。
