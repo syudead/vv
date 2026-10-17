@@ -18,6 +18,12 @@ import { ownerAccount } from "./owner-account";
 // 同じフォルダの C と「非公開だけ」の D は非公開のままにする。「非公開だけ」には
 // 画面写真の本数を満たすための非公開の6本（確認用G〜L）も置く。
 //
+// ここでは本物のサーバーが非公開の動画を隠すこと、本物のセッションの終わり、実際の幅での
+// 配置と画面写真だけを確かめる（docs/design-docs/web-testing.md）。ゲストの画面に所有者だけの
+// 操作が出ないことは Vitest（src/app/App、src/library/LibraryPage、src/player/VideoPage）が、
+// 一部のメンバーだけが当たったグループの項目と「すべて選択」の id は Go のストアのテスト
+// （internal/store/library_items_test.go）が確かめる。
+//
 // ほかの e2e が登録したフォルダの動画はどれも非公開なので、ゲストに見えるのは
 // ここで公開にした4本だけである。
 //
@@ -106,17 +112,6 @@ async function ownerContext(
   return context;
 }
 
-/** apiRequests は、そのページが送った /api/* の要求（メソッドとパス）を集める。 */
-function apiRequests(page: Page): string[] {
-  const seen: string[] = [];
-  page.on("request", (request) => {
-    const url = new URL(request.url());
-    if (url.pathname.startsWith("/api/"))
-      seen.push(`${request.method()} ${url.pathname}`);
-  });
-  return seen;
-}
-
 /** cardTitles は一覧のカードの題名を、並びに依らず比べられるよう並べ替えて返す。 */
 async function cardTitles(page: Page): Promise<string[]> {
   const titles = await page.locator("article[data-video-id] h3").allTextContents();
@@ -149,12 +144,6 @@ async function openGuestFolder(page: Page, name: string) {
     .getByRole("link")
     .click();
   await expect(page.getByRole("heading", { level: 2, name: /^Videos/ })).toBeVisible();
-}
-
-async function sidebarNames(page: Page): Promise<string[]> {
-  const sidebar = page.getByRole("complementary", { name: "Main navigation" });
-  const names = await sidebar.locator("a, button").allTextContents();
-  return names.map((name) => name.trim());
 }
 
 async function startPlayback(page: Page) {
@@ -307,102 +296,6 @@ test.describe.serial("guest", () => {
     await context.close();
   });
 
-  // 一部のメンバーだけが検索に当たったグループ（specs/027-partial-group-search、親 #523
-  // 受け入れ条件 1・2・7・8、contracts/library-api.md §1〜§2）。「公開あり」は所有者には
-  // 5本、ゲストには公開の4本のグループである。題名の一部の語で検索すると、当たった
-  // メンバーだけが動画のカードで出て、フォルダ名で検索すると全メンバーが当たるので
-  // グループのカードになる。
-  test("一部のメンバーだけが当たったグループは当たった動画のカードで出て、すべて選択もその動画だけに効く", async ({
-    browser,
-    request,
-  }) => {
-    const owner = await ownerContext(browser);
-    const page = await owner.newPage();
-    const a = video("ゲスト公開A");
-
-    // 受け入れ条件 1: 1本の題名にだけ当たる語では、その動画のカードが1枚で、グループの
-    // カードは出ない。押すとその動画の再生画面が開く。
-    await page.goto(`/?q=${encodeURIComponent("ゲスト公開A")}`);
-    await expect.poll(() => libraryItems(page)).toEqual(["ゲスト公開A"]);
-    await expect(page.locator("article[data-video-id]")).toHaveCount(1);
-    await expect(page.locator("article[data-group-root]")).toHaveCount(0);
-    await expect(page.getByText("1 item", { exact: true })).toBeVisible();
-    await page
-      .locator(`article[data-video-id="${String(a.id)}"]`)
-      .getByRole("link", { name: "ゲスト公開A" })
-      .first()
-      .click();
-    await expect(page).toHaveURL(`/videos/${String(a.id)}`);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト公開A");
-
-    // 受け入れ条件 2: フォルダ名で検索すると全メンバーが当たるので、グループのカードが
-    // 1枚で、メンバーは1本ずつ出ない。
-    await page.goto(`/?q=${encodeURIComponent("公開あり")}`);
-    await expect.poll(() => libraryItems(page)).toEqual(["公開あり, group of 5 videos"]);
-    await expect(page.locator("article[data-group-root]")).toHaveCount(1);
-    await expect(page.locator("article[data-video-id]")).toHaveCount(0);
-
-    // 受け入れ条件 7: 「ゲスト公開」は A・B・E・F に当たり、同じグループの C には当たらない。
-    // 「すべて選択」してタグを付けると、当たった4本にだけ付き、C には付かない。
-    const tagName = "e2e一部一致タグ";
-    const matched = publicTitles.map(video);
-    await page.goto(`/?q=${encodeURIComponent("ゲスト公開")}`);
-    await expect.poll(() => libraryItems(page)).toEqual(publicTitles);
-    await page
-      .getByRole("checkbox", { name: 'Select "ゲスト公開A"' })
-      .check({ force: true });
-    await expect(page.getByText("1 video selected")).toBeVisible();
-    await page.getByRole("button", { name: "Select all" }).click();
-    await expect(page.getByText("4 videos selected")).toBeVisible();
-    await page.getByRole("button", { name: "Add tag" }).click();
-    await page.getByRole("combobox", { name: "Add tag" }).fill(tagName);
-    await page.getByRole("option", { name: /^Create/ }).click();
-    await expect(page.getByText(`Added "${tagName}" to 4 videos`)).toBeVisible();
-
-    const tagNames = async (id: number) => {
-      const response = await request.get(`/api/videos/${String(id)}`);
-      expect(response.status()).toBe(200);
-      const detail = (await response.json()) as { tags: { id: number; name: string }[] };
-      return detail.tags;
-    };
-    let tagId: number | undefined;
-    for (const v of matched) {
-      const tags = await tagNames(v.id);
-      const found = tags.find((tag) => tag.name === tagName);
-      expect(found, v.title).toBeDefined();
-      tagId = found?.id;
-    }
-    for (const title of privateTitles) {
-      const tags = await tagNames(video(title).id);
-      expect(
-        tags.map((tag) => tag.name),
-        title,
-      ).not.toContain(tagName);
-    }
-
-    // 後の場面とほかの e2e に残さないよう、作ったタグを消す。
-    if (tagId !== undefined) {
-      const removed = await request.delete(`/api/tags/${String(tagId)}`, {
-        headers: mutationHeaders,
-      });
-      expect(removed.status()).toBe(204);
-    }
-    await owner.close();
-
-    // 受け入れ条件 8: ゲストには公開の4本だけで数える。公開のメンバー1本にだけ当たる語では、
-    // その1本が動画のカードで出る。
-    const guest = await guestContext(browser);
-    const guestPage = await guest.newPage();
-    await guestPage.goto(`/?q=${encodeURIComponent("ゲスト公開A")}`);
-    await expect.poll(() => libraryItems(guestPage)).toEqual(["ゲスト公開A"]);
-    await expect(
-      guestPage.locator(`article[data-video-id="${String(a.id)}"]`),
-    ).toHaveCount(1);
-    await expect(guestPage.locator("article[data-group-root]")).toHaveCount(0);
-    await expect(guestPage.getByText("1 item", { exact: true })).toBeVisible();
-    await guest.close();
-  });
-
   test("ゲストで公開の動画を再生でき、非公開の動画の再生 URL は「開けません」になる", async ({
     browser,
   }) => {
@@ -418,89 +311,6 @@ test.describe.serial("guest", () => {
       await expect(page.getByText("This video can't be opened")).toBeVisible();
       await expect(page.getByRole("heading", { level: 1 })).toHaveCount(0);
     }
-    await context.close();
-  });
-
-  test("ゲストの画面に設定・スキャン・タグ・選択・公開の切り替え・お気に入り・再生位置が出ない", async ({
-    browser,
-  }) => {
-    const context = await guestContext(browser);
-    const page = await context.newPage();
-    const requests = apiRequests(page);
-
-    await page.goto("/");
-    await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
-    expect(await sidebarNames(page)).toEqual(["Library", "Folders", "Sign in"]);
-    await expect(page.getByRole("button", { name: /Scan/ })).toHaveCount(0);
-    await expect(page.getByRole("checkbox")).toHaveCount(0);
-    await page.locator("article[data-group-root]").first().hover();
-    await expect(page.getByRole("checkbox")).toHaveCount(0);
-    // お気に入りの印と付け外しも出さない（specs/035-favorites/ui-design.md「Guest degradation」）。
-    await expect(page.getByRole("button", { name: /^Favorite/ })).toHaveCount(0);
-
-    await page.getByRole("button", { name: "Filter", exact: true }).click();
-    const filter = page.getByRole("dialog");
-    await expect(filter.getByText("Playable only")).toBeVisible();
-    await expect(filter.getByText("Watch status")).toHaveCount(0);
-    await page.keyboard.press("Escape");
-
-    await page.getByRole("button", { name: /^Sort by:/ }).click();
-    const menu = page.getByRole("menu");
-    // ゲストの並べ替えは 7 種（specs/035-favorites/ui-design.md）。
-    await expect(menu.getByRole("menuitemradio")).toHaveCount(7);
-    await expect(menu.getByText("Recently played")).toHaveCount(0);
-    await expect(menu.getByText("Date favorited")).toHaveCount(0);
-    await page.keyboard.press("Escape");
-
-    // 支援技術のツリーに、所有者だけの操作の名前が無い。
-    const tree = await page.locator("body").ariaSnapshot();
-    for (const name of [
-      "Watch status",
-      "Recently played",
-      "Select",
-      "Add tag",
-      "Scan library",
-      "Favorite",
-    ]) {
-      expect(tree).not.toContain(name);
-    }
-    expect(tree).not.toMatch(/link "Settings"|link "Tags"/);
-
-    // 設定は所有者だけのもので、自動の取り込みのスイッチはゲストに出ない（specs/042-folder-watch-import）。
-    await page.goto("/settings");
-    await expect(
-      page.getByRole("switch", { name: "Pick up changes as they happen" }),
-    ).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Auto-import" })).toHaveCount(0);
-
-    await page.goto("/folders");
-    await expect(page.locator("[data-folder-path]")).toHaveCount(1);
-
-    // 再生画面: タグ・ファイルの操作・公開の切り替えを出さず、
-    // 再生しても止めても再生位置を送らない。
-    await page.goto(`/videos/${String(video("ゲスト公開B").id)}`);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("ゲスト公開B");
-    await expect(page.getByRole("list", { name: "File details" })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Copy path" })).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: "Tags" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: /Open file/ })).toHaveCount(0);
-    await expect(page.getByRole("switch")).toHaveCount(0);
-    await startPlayback(page);
-    await page.keyboard.press("Space");
-    await page.waitForFunction(() => document.querySelector("video")?.paused === true);
-    await page.goto("/");
-    await expect.poll(() => libraryItems(page)).toEqual([guestGroup]);
-
-    // `/api/events` はゲストにも `group` の知らせを届けるので、所有者だけのものに数えない
-    // （specs/048-groups/contracts/screen-api.md「/api/events」）。
-    const ownerOnly = requests.filter((request) =>
-      /\/api\/(scans|processing|media-folders|tags|video-tags|video-visibility|favorites)|\/progress$/.test(
-        request,
-      ),
-    );
-    expect(ownerOnly).toEqual([]);
-    // ゲストの一覧は再生位置を持たないので、進捗の帯も視聴済みの印も出ない。
-    await expect(page.getByRole("progressbar")).toHaveCount(0);
     await context.close();
   });
 
