@@ -20,8 +20,8 @@ import (
 )
 
 // mdm plugin run のテスト（specs/056-plugin-tooling/contracts/plugin-cli.md）。プラグインは
-// testdata/runplugin をビルドしたもので、CI はインターネットに出ないので、site.test を公開のアドレスに
-// 解決し、その接続を loopback に立てたサイトへつなぐ。
+// 実行には testdata/runplugin、引数検証には testdata/minimal.wasm を使う。CI はインターネットに
+// 出ないので、site.test を公開のアドレスに解決し、その接続を loopback に立てたサイトへつなぐ。
 
 const runManifest = `{"contract":1,"name":"run-test","version":"0.1.0","operations":["search","fetch"],` +
 	`"settings":[{"key":"token","label":"API token","secret":true,"required":true},` +
@@ -31,7 +31,11 @@ const runManifest = `{"contract":1,"name":"run-test","version":"0.1.0","operatio
 // manifest が空ならマニフェストを足さない。
 func runModulePath(t *testing.T, manifest string) string {
 	t.Helper()
-	module := plugintest.Build(t, "testdata/runplugin")
+	return writeRunModulePath(t, plugintest.Build(t, "testdata/runplugin"), manifest)
+}
+
+func writeRunModulePath(t *testing.T, module []byte, manifest string) string {
+	t.Helper()
 	if manifest != "" {
 		var err error
 		if module, err = wasmplugin.WithManifest(module, []byte(manifest)); err != nil {
@@ -223,13 +227,14 @@ func TestPluginRunSendsTheRequestsThroughTheProxy(t *testing.T) {
 
 func TestPluginRunRefusesWithUsage(t *testing.T) {
 	t.Parallel()
-	module := runModulePath(t, runManifest)
+	const fixture = "testdata/minimal.wasm"
+	module := writeRunModulePath(t, readFile(t, fixture), runManifest)
 	cases := []struct {
 		name string
 		args []string
 		want []string
 	}{
-		{"no manifest", []string{runModulePath(t, ""), "fetch", "site.test/1", "--set", "token=x"},
+		{"no manifest", []string{fixture, "fetch", "site.test/1", "--set", "token=x"},
 			[]string{"manifest_missing", "mdm plugin pack"}},
 		{"undeclared setting", []string{module, "fetch", "site.test/1", "--set", "token=x", "--set", "colour=red"},
 			[]string{`no setting "colour"`}},
