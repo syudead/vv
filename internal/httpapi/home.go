@@ -76,7 +76,7 @@ func (s *server) ListHomeShelfItems(w http.ResponseWriter, r *http.Request, para
 	}
 	out := gen.HomeShelfItemsList{Shelves: make([]gen.HomeShelfItems, 0, len(page.Shelves))}
 	for _, shelf := range page.Shelves {
-		items, err := s.presentLibraryItems(r.Context(), audience, page.Roots, shelf.Items)
+		items, err := s.presentHomeShelfItems(r.Context(), audience, page.Roots, shelf.Items)
 		if err != nil {
 			s.internalError(w, "Could not load the home shelves.", err)
 			return
@@ -85,6 +85,35 @@ func (s *server) ListHomeShelfItems(w http.ResponseWriter, r *http.Request, para
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
+}
+
+// presentHomeShelfItems は棚の項目を応答の形にする。グループはカードの値だけ（LibraryGroupCard）を載せ、
+// メンバーの id とタグは載せないので、メンバーのタグは引かない（specs/057-home/research.md R-12）。
+func (s *server) presentHomeShelfItems(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, items []domain.LibraryItem) ([]gen.HomeShelfItem, error) {
+	var shown []domain.Video
+	for _, item := range items {
+		if item.Video != nil {
+			shown = append(shown, *item.Video)
+		}
+	}
+	lookup := s.itemLookups(ctx, shown, shown)
+	out := make([]gen.HomeShelfItem, 0, len(items))
+	for _, item := range items {
+		if item.Video != nil {
+			video := lookup.video(ctx, audience, roots, *item.Video)
+			out = append(out, gen.HomeShelfItem{Kind: gen.HomeShelfItemKindVideo, Video: &video})
+			continue
+		}
+		if item.Group == nil {
+			return nil, errors.New("a home shelf item is neither a video nor a group")
+		}
+		card, ok := lookup.card(ctx, audience, roots, *item.Group)
+		if !ok {
+			return nil, fmt.Errorf("group %d has no video", item.Group.ID)
+		}
+		out = append(out, gen.HomeShelfItem{Kind: gen.HomeShelfItemKindGroup, Group: &card})
+	}
+	return out, nil
 }
 
 // SetHomeShelves はどのフォルダを棚にするかとその並びを書く（PUT /api/home/shelves）。

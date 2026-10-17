@@ -78,8 +78,10 @@ func sameSortValue(a, b any) bool {
 
 // homeShelfWalk は 1 つの表を並び順になぞる状態である。
 type homeShelfWalk struct {
-	// from は from 句、value は並べ替えの値の式、order は order by の列（値、動画の鍵）である。
+	// from は from 句（引数は fromArgs）、value は並べ替えの値の式、order は order by の列（値、動画の鍵）
+	// である。
 	from, value string
+	fromArgs    []any
 	order       [2]string
 	// where は常に掛ける条件（見せる動画など）である。
 	where string
@@ -100,10 +102,18 @@ func (r *homeShelfReader) walks(rule homeShelfRule, sort homeShelfTopSort) []*ho
 	}
 	videoKey := func(row homeShelfRow) any { return row.videoID }
 	// 検索式の棚は当たりの集合（全文索引から読んだ id）から動画を引き、並べる。集合は小さいので索引を
-	// なぞるより速い。最後の再生日の表は集合と結ばず、下の表のまま読む。
-	if set, ok := r.searchDriven(rule.spec); ok && sort.source != `progress` {
+	// なぞるより速い。視聴状態だけの棚は、視聴状態の合う根の並べ替えの値を持つメンバーと、グループに入らない
+	// 視聴状態の合う動画の集合から引く（視聴状態の表は索引で引ける）。最後の再生日の表は集合と結ばず、
+	// 下の表のまま読む。
+	hits, hitArgs, ok := r.searchDriven(rule.spec)
+	if !ok {
+		if driven, err := r.watchDriven(rule); err == nil && driven {
+			hits, ok = r.watchHits(rule.watches[0], sort.column), true
+		}
+	}
+	if ok && sort.source != `progress` {
 		value, order := `videos.added_at`, [2]string{`videos.added_at`, `videos.id`}
-		from := `(select value as id from json_each('` + set + `')) hits join videos on videos.id = hits.id` + r.chosenLocationJoin()
+		from := `(` + hits + `) hits join videos on videos.id = hits.id` + r.chosenLocationJoin()
 		if sort.source == `locations` {
 			value = `loc.mtime`
 			if sort.column == `created_at` {
@@ -111,7 +121,7 @@ func (r *homeShelfReader) walks(rule homeShelfRule, sort homeShelfTopSort) []*ho
 			}
 			order = [2]string{value, `videos.id`}
 		}
-		return []*homeShelfWalk{{from: from, value: value, order: order, where: shown, keyOf: videoKey}}
+		return []*homeShelfWalk{{from: from, fromArgs: hitArgs, value: value, order: order, where: shown, keyOf: videoKey}}
 	}
 	switch sort.source {
 	case `locations`:
@@ -136,6 +146,20 @@ func (r *homeShelfReader) walks(rule homeShelfRule, sort homeShelfTopSort) []*ho
 	}
 	return []*homeShelfWalk{{from: `videos` + r.chosenLocationJoin(), value: `videos.added_at`,
 		order: [2]string{`videos.added_at`, `videos.id`}, where: shown, keyOf: videoKey}}
+}
+
+// watchHits は視聴状態 watch の項目になりうる動画の id を選ぶ select 文である: 視聴状態の合ういちばん上の根の、
+// 並べ替えの列 column の値を持つメンバー（group_root_values）と、グループに入らない視聴状態の合う動画
+// （video_watch_states）。視聴状態は検査済みの列挙なので文に埋め込む。
+func (r *homeShelfReader) watchHits(watch domain.WatchFilter, column string) string {
+	state := `'` + string(watch) + `'`
+	member := `v.` + strings.TrimSuffix(column, `_at`) + `_member`
+	return `select ` + member + ` as id from group_root_values v
+			where v.audience = ` + strconv.Itoa(audienceColumn(r.audience)) + ` and v.watch_state = ` + state + `
+			and ` + member + ` is not null and not exists (select 1 from group_items pg where pg.child_id = v.root_id)
+		union
+		select videos.id from video_watch_states w join videos on videos.id = ` + shownVideoForKeyExpr("w.content_key", r.audience) + `
+			where w.state = ` + state + ` and not exists (select 1 from group_closure c where c.content_key = w.content_key)`
 }
 
 // keyset は walk の最後の行より後ろの行の条件句と引数を返す。
@@ -187,7 +211,7 @@ func (r *homeShelfReader) skipCarded(rule homeShelfRule, known map[int64]homeShe
 func (r *homeShelfReader) next(rule homeShelfRule, sort homeShelfTopSort, w *homeShelfWalk, known map[int64]homeShelfRoot, limit int) ([]homeShelfRow, bool, error) {
 	for {
 		query := `select ` + r.rowColumns(rule, false) + `, ` + w.value + ` from ` + w.from + ` where ` + w.where
-		args := append([]any{}, rule.args...)
+		args := append(append([]any{}, w.fromArgs...), rule.args...)
 		if w.started {
 			clause, keyArgs := w.keyset(sort)
 			query += ` and ` + clause
@@ -243,7 +267,7 @@ func (r *homeShelfReader) topPage(rule homeShelfRule, limit int) (firstPageRows,
 			slices.SortFunc(items, sort.compare)
 			// limit + 1 件そろい、limit 件目と同じ値の行を読み切れば止める（同じ値の項目はその値の行から出る）。
 			if len(items) > limit && (done || !sameSortValue(walk.lastValue, items[limit-1].value)) {
-				return pageOf(items, limit), nil
+				return pageOf(items, limit, known), nil
 			}
 			if done {
 				break
@@ -251,5 +275,5 @@ func (r *homeShelfReader) topPage(rule homeShelfRule, limit int) (firstPageRows,
 			batch = min(batch*homeShelfTopGrowth, homeShelfTopMaxBatch)
 		}
 	}
-	return pageOf(items, limit), nil
+	return pageOf(items, limit, known), nil
 }

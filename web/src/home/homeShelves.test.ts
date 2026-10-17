@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 
-import type { LibraryGroup, LibraryItem, Video } from "../api/client";
+import type { LibraryGroupCard, Video } from "../api/client";
 import { favoriteMark, noteFavoriteOf } from "../api/favorites";
-import type { HomeShelf } from "../api/home";
+import type { HomeShelf, HomeShelfItem } from "../api/home";
 import {
   drawnShelves,
   loadedShelfKeys,
@@ -30,21 +30,21 @@ const unshelved: HomeShelf = { key: "unshelved", kind: "unshelved", name: "" };
 const continueShelf: HomeShelf = { key: "continue", kind: "continue", name: "" };
 const recommended: HomeShelf = { key: "recommended", kind: "recommended", name: "" };
 
-function videoItem(id: number): Extract<LibraryItem, { kind: "video" }> {
+function videoItem(id: number): Extract<HomeShelfItem, { kind: "video" }> {
   return { kind: "video", video: { id, title: `Video ${String(id)}` } as Video };
 }
 
 function groupItem(
   id: number,
   openVideoId: number,
-): Extract<LibraryItem, { kind: "group" }> {
+): Extract<HomeShelfItem, { kind: "group" }> {
   return {
     kind: "group",
-    group: { id, name: `Group ${String(id)}`, openVideoId } as LibraryGroup,
+    group: { id, name: `Group ${String(id)}`, openVideoId } as LibraryGroupCard,
   };
 }
 
-function ready(items: LibraryItem[]): ShelfState {
+function ready(items: HomeShelfItem[]): ShelfState {
   return { status: "ready", items, total: items.length };
 }
 

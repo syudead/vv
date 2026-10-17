@@ -2,8 +2,7 @@ import { Film, FolderSearch } from "lucide-react";
 import { type KeyboardEvent, useRef } from "react";
 import { Link, useLocation, useNavigate } from "react-router";
 
-import type { LibraryItem } from "../api/client";
-import type { HomeShelf } from "../api/home";
+import type { HomeShelf, HomeShelfItem } from "../api/home";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { GroupCard } from "../library/GroupCard";
@@ -298,14 +297,13 @@ function ShelfCards({
   preview,
 }: {
   shelf: HomeShelf;
-  items: readonly LibraryItem[];
+  items: readonly HomeShelfItem[];
   preview: PreviewCardProps;
 }) {
   const backTo = useBackTo();
   return (
     <>
       {items.map((item) => {
-        if (item.kind === "smartFolder") return null;
         const common = {
           backTo,
           to: shelfItemPath(shelf, item),

@@ -97,6 +97,10 @@ func homeShelfReadShelves(t *testing.T, db *DB, tags map[string]int64) []int64 {
 	create("today", domain.SmartRule{AddedWithin: &day}, domain.SortModifiedDesc, 0)
 	dog := create("dog", domain.SmartRule{Tags: []int64{tags["dog"]}}, domain.SortAddedAsc, 0)
 	create("dog watched", domain.SmartRule{Watch: domain.WatchWatched}, domain.SortCreatedDesc, dog)
+	// 視聴状態だけの棚は視聴状態の表から引く（watchDriven）。
+	create("unwatched", domain.SmartRule{Watch: domain.WatchUnwatched}, domain.SortAddedDesc, 0)
+	create("watched", domain.SmartRule{Watch: domain.WatchWatched}, domain.SortModifiedDesc, 0)
+	create("unwatched created", domain.SmartRule{Watch: domain.WatchUnwatched}, domain.SortCreatedAsc, 0)
 	if err := db.Home().SetShelves(ctx, ids); err != nil {
 		t.Fatal(err)
 	}
@@ -108,6 +112,33 @@ func itemIDs(items []domain.LibraryItem) []int64 {
 	out := make([]int64, 0, len(items))
 	for _, item := range items {
 		out = append(out, itemKey(item))
+	}
+	return out
+}
+
+// itemCards は項目ごとのカードの値（グループは名前・フォルダ・本数・視聴・開くメンバー・合計・日時・
+// お気に入り・絵柄のサムネイル、動画は id）を比べられる文字列にする。
+func itemCards(items []domain.LibraryItem) []string {
+	out := make([]string, 0, len(items))
+	for _, item := range items {
+		if item.Group == nil {
+			out = append(out, fmt.Sprintf("video %d", item.Video.ID))
+			continue
+		}
+		g := item.Group
+		duration, played := int64(-1), int64(-1)
+		if g.DurationMs != nil {
+			duration = *g.DurationMs
+		}
+		if g.LastPlayedAt != nil {
+			played = g.LastPlayedAt.Unix()
+		}
+		previews := make([]int64, 0, len(g.Previews))
+		for _, preview := range g.Previews {
+			previews = append(previews, preview.VideoID)
+		}
+		out = append(out, fmt.Sprintf("group %d %q %q count=%d watch=%s/%d open=%d duration=%d size=%d added=%d played=%d fav=%v previews=%v",
+			g.ID, g.Name, g.Path, g.VideoCount, g.WatchState, g.WatchedCount, g.OpenVideoID, duration, g.SizeBytes, g.AddedAt.Unix(), played, g.Favorite, previews))
 	}
 	return out
 }
@@ -170,6 +201,10 @@ func TestHomeShelfReadMatchesTheLibraryItemsRead(t *testing.T) {
 			if shelf.Total != min(want.Total, domain.HomeShelfItemLimit+1) || !slices.Equal(itemIDs(shelf.Items), itemIDs(want.Items)) {
 				t.Errorf("%s %v (%s): items = %v total = %d, want %v total = %d", audience, key, spec.sort,
 					itemIDs(shelf.Items), shelf.Total, itemIDs(want.Items), want.Total)
+			}
+			// グループの項目はカードの値だけで作る（loadGroupCards）が、値はメンバーから作るライブラリの項目と同じ。
+			if got, wantCards := itemCards(shelf.Items), itemCards(want.Items); !slices.Equal(got, wantCards) {
+				t.Errorf("%s %v (%s): cards = %v, want %v", audience, key, spec.sort, got, wantCards)
 			}
 			if want.Total > 0 {
 				checked++
@@ -416,7 +451,19 @@ func TestGroupRootValuesFollowVideoWrites(t *testing.T) {
 				}
 			}
 		}
-		// 棚への一致: 表の鍵と、規則を全動画に掛け直した鍵が等しい。
+		// 棚への一致と視聴状態: 表と、規則（視聴状態）を全動画に掛け直したものが等しい。
+		userKey := userKeyExpr("videos")
+		fresh, err := queryStrings(ctx, tx, `select distinct `+userKey+` || ' ' || `+videoWatchStateSQL(userKey)+` from videos where videos.content_key <> '' order by 1`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		states, err := queryStrings(ctx, tx, `select content_key || ' ' || state from video_watch_states order by 1`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !slices.Equal(states, fresh) {
+			t.Errorf("%s: 視聴状態 = %v, want %v", step, states, fresh)
+		}
 		if _, err := tx.ExecContext(ctx, `update home_shelved_state set all_dirty = 1`); err != nil {
 			t.Fatal(err)
 		}
@@ -433,6 +480,33 @@ func TestGroupRootValuesFollowVideoWrites(t *testing.T) {
 		}
 		if !slices.Equal(before, after) {
 			t.Errorf("%s: 棚への一致 = %v, want %v", step, before, after)
+		}
+		// 検索の当たり: 表と、全文索引から読み直したものが等しい。
+		shelves, err := homeShelfSpecs(ctx, tx, domain.AudienceOwner, listNow().Unix())
+		if err != nil {
+			t.Fatal(err)
+		}
+		searched := 0
+		for _, shelf := range shelves {
+			if !shelf.hasSearch() {
+				continue
+			}
+			searched++
+			query, args := searchVideosSelect(shelf.scope, shelf.searchExprs())
+			want, err := queryInt64s(ctx, tx, `select video_id from (`+query+`) order by 1`, args...)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got, err := queryInt64s(ctx, tx, `select video_id from home_search_hits where search = ? order by 1`, searchIdentity(shelf))
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !slices.Equal(got, want) {
+				t.Errorf("%s: 検索の当たり %v = %v, want %v", step, shelf.searchExprs(), got, want)
+			}
+		}
+		if searched == 0 {
+			t.Errorf("%s: 検索式の棚が無い", step)
 		}
 	}
 	check("最初の読み出し")
@@ -467,4 +541,50 @@ func TestGroupRootValuesFollowVideoWrites(t *testing.T) {
 		t.Fatal(err)
 	}
 	check("取り込み")
+}
+
+// 追加日からの日数の棚（今日）への一致は時刻で変わるので表に入れず、読み出しが行ごとに掛ける: 棚にない
+// 動画の棚は、書き込みが無くても日数が過ぎた動画を出す（R-11）。
+func TestHomeShelfReadUnshelvedFollowsTheClock(t *testing.T) {
+	db, _, _ := homeShelfReadFixture(t)
+	ctx := context.Background()
+	// 取り込みの動画はどれも基準の時刻の直後に追加したものである。
+	listNow = func() time.Time { return fixedTime.Add(time.Hour) }
+	t.Cleanup(func() { listNow = time.Now })
+	day := 1
+	today, err := db.SmartFolders().CreateSmartFolder(ctx, domain.SmartFolderCreate{Name: "today", Rule: domain.SmartRule{AddedWithin: &day}, Sort: domain.SortAddedDesc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Home().SetShelves(ctx, []int64{today.ID}); err != nil {
+		t.Fatal(err)
+	}
+	keys := []domain.HomeShelfKey{{Kind: domain.HomeShelfUnshelved}, domain.FolderShelfKey(today.ID)}
+	read := func() (unshelved, shelf []int64) {
+		t.Helper()
+		db.homeShelves.dropFor([]domain.Event{domain.HomeChanged{}})
+		page, err := db.Home().ShelfItems(ctx, domain.AudienceOwner, keys)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(page.Shelves) != 2 {
+			t.Fatalf("shelves = %+v", page.Shelves)
+		}
+		return itemIDs(page.Shelves[0].Items), itemIDs(page.Shelves[1].Items)
+	}
+	pending, err := shelvedMarksPending(ctx, db.sql)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pending {
+		t.Fatal("棚への一致の印が残っている")
+	}
+	unshelved, today0 := read()
+	if len(unshelved) != 0 || len(today0) == 0 {
+		t.Errorf("今日: unshelved = %v, today = %v", unshelved, today0)
+	}
+	listNow = func() time.Time { return fixedTime.Add(3 * 24 * time.Hour) }
+	if unshelved, shelf := read(); !slices.Equal(unshelved, today0) || len(shelf) != 0 {
+		t.Errorf("3 日後: unshelved = %v, today = %v, want unshelved = %v", unshelved, shelf, today0)
+	}
 }

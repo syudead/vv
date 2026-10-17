@@ -614,6 +614,15 @@ func libraryPageItems(ctx context.Context, tx *sql.Tx, spec listSpec, order list
 // 所在（chosen）の題名・大きさ・更新時刻で、グループの項目は見せてよい子孫の動画の全部から作る。
 // スマートフォルダの項目は、一覧が混ぜたフォルダ folders の要約から取る。
 func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []librarySmartFolder) ([]domain.LibraryItem, error) {
+	return assembleLibraryItems(ctx, tx, audience, keys, folders, func(ids []int64) (map[int64]domain.LibraryGroup, error) {
+		return loadGroups(ctx, tx, audience, ids)
+	})
+}
+
+// assembleLibraryItems は loadLibraryItems の本体で、グループの項目を groups で読む。ホームの棚はカードの値
+// だけを読む loadGroupCards を渡す（home_group_cards.go）。
+func assembleLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []librarySmartFolder,
+	groups func([]int64) (map[int64]domain.LibraryGroup, error)) ([]domain.LibraryItem, error) {
 	var pairs [][2]any
 	var groupIDs []int64
 	for _, key := range keys {
@@ -632,7 +641,7 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 	if err := attachVersionsIn(ctx, tx, audience, videos); err != nil {
 		return nil, err
 	}
-	groups, err := loadGroups(ctx, tx, audience, groupIDs)
+	loaded, err := groups(groupIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -648,7 +657,7 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 			continue
 		}
 		if key.groupID.Valid {
-			group, ok := groups[key.groupID.Int64]
+			group, ok := loaded[key.groupID.Int64]
 			if !ok {
 				return nil, fmt.Errorf("cannot read the group (id=%d)", key.groupID.Int64)
 			}

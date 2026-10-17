@@ -1,6 +1,7 @@
 import {
   apiFetch,
-  type LibraryItem,
+  type LibraryGroupCard,
+  type LibraryItemOf,
   request,
   toLibraryItems,
   toRequestFailed,
@@ -14,9 +15,17 @@ import type { components } from "./gen/openapi";
 export type Home = components["schemas"]["Home"];
 export type HomeShelf = components["schemas"]["HomeShelf"];
 export type HomeShelfKey = components["schemas"]["HomeShelfKey"];
+/**
+ * HomeShelfItem は棚の項目 1 件（動画か、カードの値だけのグループ。api/openapi.yaml の HomeShelfItem）
+ * である。ライブラリの項目と違いスマートフォルダは無く、グループに `videoIds`・`tags` は無い（R-12）。
+ */
+export type HomeShelfItem = Exclude<
+  LibraryItemOf<LibraryGroupCard>,
+  { kind: "smartFolder" }
+>;
 /** HomeShelfItems は棚 1 つの最初の項目である。項目は `kind` で読み分けられる形にする。 */
 export type HomeShelfItems = Omit<components["schemas"]["HomeShelfItems"], "items"> & {
-  items: LibraryItem[];
+  items: HomeShelfItem[];
 };
 
 /** MAX_HOME_SHELF_KEYS は readHomeShelves 1 回で名指せる棚の数の上限である。 */
@@ -40,7 +49,12 @@ export async function readHomeShelves(
     `/api/home/shelves?keys=${query}`,
     { signal },
   );
-  return list.shelves.map((shelf) => ({ ...shelf, items: toLibraryItems(shelf.items) }));
+  return list.shelves.map((shelf) => ({
+    ...shelf,
+    items: toLibraryItems<LibraryGroupCard>(shelf.items).filter(
+      (item): item is HomeShelfItem => item.kind !== "smartFolder",
+    ),
+  }));
 }
 
 export type HomeOrganizer = components["schemas"]["HomeOrganizer"];

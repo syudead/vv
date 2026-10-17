@@ -16,6 +16,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"strings"
@@ -63,8 +64,14 @@ func rootValuesSelect(audience domain.Audience, roots, condition string, args []
 	member := func(column string) string {
 		return `cast(substr(max(printf('%020d%020d', coalesce(` + column + `, 0), videos.id)), 21) as integer)`
 	}
+	// 開くメンバーは GroupOpenIndex と同じく、見ている途中（0）、未完了（1）、完了（2）の順、次に再生順の
+	// 最初のメンバーである。ゲストには再生の記録を渡さないので、再生順の最初のメンバーである。
+	phase := `0`
+	if audience.IsOwner() {
+		phase = `case when p.completed = 1 then 2 when coalesce(p.position_ms, 0) > 0 then 0 else 1 end`
+	}
 	return `with r(root_id) as (` + roots + `),
-		m as (select c.root_id, c.content_key, ` + shownVideoForKeyExpr("c.content_key", audience) + ` as video_id
+		m as (select c.root_id, c.content_key, c.sort_key, ` + shownVideoForKeyExpr("c.content_key", audience) + ` as video_id
 			from group_closure c join r on r.root_id = c.root_id)
 		select m.root_id, count(videos.id), ` + matched + `, max(videos.added_at), max(loc.mtime),
 			max(` + fileCreatedAtExpr("loc") + `), max(p.updated_at), sum(videos.duration_ms), sum(loc.size_bytes),
@@ -72,7 +79,9 @@ func rootValuesSelect(audience domain.Audience, roots, condition string, args []
 			coalesce(max(` + playableCondition + `), 0),
 			` + member(`videos.added_at`) + `, ` + member(`loc.mtime`) + `, ` + member(fileCreatedAtExpr("loc")) + `,
 			` + member(`p.updated_at`) + `, (select g.title_key from groups g where g.id = m.root_id),
-			(select gf.favorited_at from group_favorites gf where gf.group_id = m.root_id)
+			(select gf.favorited_at from group_favorites gf where gf.group_id = m.root_id),
+			cast(substr(min(printf('%d', ` + phase + `) || m.sort_key || printf('%020d', videos.id)), -20) as integer),
+			json_group_array(videos.id order by m.sort_key) filter (where videos.thumbnail_state = '` + string(domain.ThumbnailStateDone) + `')
 		from m join videos on videos.id = m.video_id
 		left join video_locations loc on loc.path = (select min(l.path) from video_locations l where l.video_id = videos.id
 			and ` + visibleLocationCondition("l", audience) + `)
@@ -104,11 +113,16 @@ func refillGroupRootValues(ctx context.Context, tx *sql.Tx, audience domain.Audi
 	}
 	for _, root := range missing {
 		row := values[root]
+		previews, err := json.Marshal(row.previews)
+		if err != nil {
+			return fmt.Errorf("cannot encode the group previews: %w", err)
+		}
 		if _, err := tx.ExecContext(ctx, `insert or replace into group_root_values (root_id, audience, members, added_at, mtime, created_at, played_at,
-			duration_ms, size_bytes, watched, started, playable, added_member, mtime_member, created_member, played_member)
-			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, root, audienceColumn(audience), row.members, row.addedAt, row.mtime, row.createdAt, row.playedAt,
+			duration_ms, size_bytes, watched, started, playable, added_member, mtime_member, created_member, played_member, open_member, previews)
+			values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, root, audienceColumn(audience), row.members, row.addedAt, row.mtime, row.createdAt, row.playedAt,
 			row.durationMs, row.sizeBytes, row.watched, row.started, row.playable, nullableID(row.member[`added_at`]),
-			nullableID(row.member[`mtime`]), nullableID(row.member[`created_at`]), nullableID(row.member[`played_at`])); err != nil {
+			nullableID(row.member[`mtime`]), nullableID(row.member[`created_at`]), nullableID(row.member[`played_at`]),
+			row.openMember, string(previews)); err != nil {
 			return fmt.Errorf("cannot refill the group values: %w", err)
 		}
 	}
@@ -153,6 +167,10 @@ type rootValuesRow struct {
 	// titleKey と favoritedAt はグループ自身の題名の鍵とお気に入りにした日時である（集めた行だけが持つ）。
 	titleKey    string
 	favoritedAt sql.NullInt64
+	// openMember はカードが開くメンバー（GroupOpenIndex）、previews はカードのフォルダの絵柄に差し込む
+	// サムネイル生成済みのメンバーの id（再生順の先頭 MaxFolderPreviews 件）である。
+	openMember sql.NullInt64
+	previews   []int64
 }
 
 // scanRootValues は rootValuesSelect の行を読む。
@@ -160,13 +178,18 @@ func scanRootValues(rows *sql.Rows) (rootValuesRow, error) {
 	var row rootValuesRow
 	var added, mtime, created, played sql.NullInt64
 	var title sql.NullString
+	var previews string
 	if err := rows.Scan(&row.rootID, &row.members, &row.matched, &row.addedAt, &row.mtime, &row.createdAt, &row.playedAt,
 		&row.durationMs, &row.sizeBytes, &row.watched, &row.started, &row.playable, &added, &mtime, &created, &played,
-		&title, &row.favoritedAt); err != nil {
+		&title, &row.favoritedAt, &row.openMember, &previews); err != nil {
 		return rootValuesRow{}, fmt.Errorf("cannot read the group values: %w", err)
 	}
 	row.member = map[string]int64{`added_at`: added.Int64, `mtime`: mtime.Int64, `created_at`: created.Int64, `played_at`: played.Int64}
 	row.titleKey = title.String
+	if err := json.Unmarshal([]byte(previews), &row.previews); err != nil {
+		return rootValuesRow{}, fmt.Errorf("cannot read the group previews: %w", err)
+	}
+	row.previews = row.previews[:min(len(row.previews), domain.MaxFolderPreviews)]
 	return row, nil
 }
 
@@ -211,7 +234,7 @@ func readStoredRootValues(ctx context.Context, tx *sql.Tx, audience domain.Audie
 		ids[i] = strconv.FormatInt(root, 10)
 	}
 	rows, err := tx.QueryContext(ctx, `select root_id, members, 0, added_at, mtime, created_at, played_at, duration_ms, size_bytes,
-		watched, started, playable, added_member, mtime_member, created_member, played_member, null, null
+		watched, started, playable, added_member, mtime_member, created_member, played_member, null, null, open_member, previews
 		from group_root_values where audience = ? and root_id in (select value from json_each(?))`, audienceColumn(audience), `[`+strings.Join(ids, ",")+`]`)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the group values: %w", err)

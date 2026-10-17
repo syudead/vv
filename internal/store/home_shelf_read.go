@@ -47,12 +47,45 @@ type homeShelfReader struct {
 	now      int64
 	// shelves はフォルダの棚ごとの経路の条件（棚にない動画の条件が読む）。nil なら未読。
 	shelves []listSpec
-	// searches は検索式の段の識別子ごとの、当たる動画の id の JSON の配列である。検索式の段は全文索引
-	// から 1 度だけ読み、条件には配列を渡す（まとまりごとに読み直さない）。
+	// searches は検索式の段の識別子ごとの、当たる動画の id の JSON の配列である。検索の当たりの表が求め直し
+	// 済みでないときだけ使い、検索式の段は全文索引から 1 度だけ読む（まとまりごとに読み直さない）。
 	searches map[string]string
+	// searchMaintained は検索の当たりの表（home_search_hits）が求め直し済みかで、nil なら未読。
+	searchMaintained *bool
 	// bundles は集まり（動画のバージョン）があるかである。無ければ利用者データの鍵は内容の鍵そのもので、
 	// 集まりの代表の判定も要らないので、なぞる行ごとの副問い合わせを省く。
 	bundles bool
+	// maintained は、棚への一致と視聴状態の表（home_shelved_videos、video_watch_states）が求め直し済みかで、
+	// nil なら未読。済んでいれば表を索引で引き、済んでいなければ規則を行ごとに掛ける。
+	maintained *bool
+}
+
+// marksMaintained は棚への一致と視聴状態の表が求め直し済みかを返す（1 度だけ読む）。
+func (r *homeShelfReader) marksMaintained() (bool, error) {
+	if r.maintained == nil {
+		pending, err := shelvedMarksPending(r.ctx, r.tx)
+		if err != nil {
+			return false, err
+		}
+		maintained := !pending
+		r.maintained = &maintained
+	}
+	return *r.maintained, nil
+}
+
+// shelfSpecs はフォルダの棚ごとの経路の条件を返す（1 度だけ読む）。
+func (r *homeShelfReader) shelfSpecs() ([]listSpec, error) {
+	if r.shelves == nil {
+		shelves, err := homeShelfSpecs(r.ctx, r.tx, r.audience, r.now)
+		if err != nil {
+			return nil, err
+		}
+		if shelves == nil {
+			shelves = []listSpec{}
+		}
+		r.shelves = shelves
+	}
+	return r.shelves, nil
 }
 
 // newHomeShelfReader は読み出しを始める。
@@ -100,27 +133,45 @@ func searchVideosSelect(scope locationScope, exprs []domain.SearchExpr) (string,
 		visibleVideoCondition("sv", scope.audience) + ` and ` + search.bundleExists(), args
 }
 
-// searchSet は spec の検索式の段に当たる動画の id の JSON の配列を返す。同じ検索式は 1 度だけ読む。
-func (r *homeShelfReader) searchSet(spec listSpec) (string, error) {
+// searchIdentity は spec の検索式の段の識別子（条件句と引数。home_search_hits の search）である。
+func searchIdentity(spec listSpec) string {
 	search := searchClausesFor(domain.AudienceOwner, spec.searchExprs())
-	identity := fmt.Sprintf("%v\x00%s\x00%v", r.audience, search.location, search.locationArgs)
-	if set, ok := r.searches[identity]; ok {
-		return set, nil
+	return fmt.Sprintf("%s\x00%v", search.location, search.locationArgs)
+}
+
+// searchHits は spec の検索式の段に当たる動画の id を選ぶ select 文（列は id）と引数を返す。検索の当たりの表が
+// 求め直し済みならそれを引き、そうでなければ全文索引から 1 度だけ読んで JSON の配列を渡す。
+func (r *homeShelfReader) searchHits(spec listSpec) (string, []any, error) {
+	if r.searchMaintained == nil {
+		pending, err := searchHitsPending(r.ctx, r.tx)
+		if err != nil {
+			return "", nil, err
+		}
+		maintained := !pending
+		r.searchMaintained = &maintained
 	}
-	query, args := searchVideosSelect(spec.scope, spec.searchExprs())
-	ids, err := queryInt64s(r.ctx, r.tx, query, args...)
-	if err != nil {
-		return "", fmt.Errorf("cannot read the search shelf videos: %w", err)
+	identity := searchIdentity(spec)
+	if *r.searchMaintained {
+		return `select video_id as id from home_search_hits where search = ?`, []any{identity}, nil
 	}
-	encoded, err := json.Marshal(ids)
-	if err != nil {
-		return "", fmt.Errorf("cannot encode the search shelf videos: %w", err)
+	set, ok := r.searches[identity]
+	if !ok {
+		query, args := searchVideosSelect(spec.scope, spec.searchExprs())
+		ids, err := queryInt64s(r.ctx, r.tx, query, args...)
+		if err != nil {
+			return "", nil, fmt.Errorf("cannot read the search shelf videos: %w", err)
+		}
+		encoded, err := json.Marshal(ids)
+		if err != nil {
+			return "", nil, fmt.Errorf("cannot encode the search shelf videos: %w", err)
+		}
+		if r.searches == nil {
+			r.searches = map[string]string{}
+		}
+		set = string(encoded)
+		r.searches[identity] = set
 	}
-	if r.searches == nil {
-		r.searches = map[string]string{}
-	}
-	r.searches[identity] = string(encoded)
-	return string(encoded), nil
+	return `select value as id from json_each(?)`, []any{set}, nil
 }
 
 // matchedCondition は、spec の経路のどの段の条件にも当たる動画（ライブラリの matched）の条件句と引数を
@@ -128,27 +179,27 @@ func (r *homeShelfReader) searchSet(spec listSpec) (string, error) {
 func (r *homeShelfReader) matchedCondition(spec listSpec) (string, []any, error) {
 	conditions, args := matchConditions(spec)
 	if spec.hasSearch() {
-		set, err := r.searchSet(spec)
+		hits, hitArgs, err := r.searchHits(spec)
 		if err != nil {
 			return "", nil, err
 		}
-		conditions = append(conditions, `videos.id in (select value from json_each(?))`)
-		args = append(args, set)
+		conditions = append(conditions, `videos.id in (`+hits+`)`)
+		args = append(args, hitArgs...)
 	}
 	return strings.Join(conditions, " and "), args, nil
 }
 
 // searchDriven は棚 spec が検索式の段を持ち、その当たりの集合から動画を引けるかを返す。そのとき索引を
 // 最後までなぞらず、集合の動画だけを並べる（walks）。
-func (r *homeShelfReader) searchDriven(spec listSpec) (string, bool) {
+func (r *homeShelfReader) searchDriven(spec listSpec) (string, []any, bool) {
 	if !spec.hasSearch() {
-		return "", false
+		return "", nil, false
 	}
-	set, err := r.searchSet(spec)
+	hits, args, err := r.searchHits(spec)
 	if err != nil {
-		return "", false
+		return "", nil, false
 	}
-	return set, true
+	return hits, args, true
 }
 
 // perVideoCondition は spec の実効の規則に動画として一致する条件（smartMatchFor と同じ。再生可否・お気に
@@ -182,8 +233,9 @@ func (r *homeShelfReader) perVideoCondition(spec listSpec) (string, []any, error
 }
 
 // ruleOf は棚 spec の条件を句にする。棚にない動画の棚は、どのフォルダの棚の実効の規則にも動画として一致
-// しない条件（R-11）を足す。維持済みなら home_shelved_videos を引き、求め直していない動画があるときだけ
-// 規則を行ごとに掛ける（条件が NULL の棚も一致しないと見る）。
+// しない条件（R-11）を足す。維持済みなら home_shelved_videos を引き、時刻で一致が変わる棚（追加日からの
+// 日数）だけ規則を行ごとに掛ける。求め直していない動画があるときは全棚の規則を行ごとに掛ける（条件が NULL
+// の棚も一致しないと見る）。
 func (r *homeShelfReader) ruleOf(spec listSpec) (homeShelfRule, error) {
 	rule := homeShelfRule{spec: spec, favorite: spec.itemGroupsFavorite(), favoriteOnly: spec.itemGroupsFavorite(),
 		playable: spec.anyLevel(func(level listSpec) bool { return level.playableOnly })}
@@ -197,34 +249,26 @@ func (r *homeShelfReader) ruleOf(spec listSpec) (homeShelfRule, error) {
 		}
 	}
 	if spec.unshelved {
-		pending, err := shelvedMarksPending(r.ctx, r.tx)
+		maintained, err := r.marksMaintained()
 		if err != nil {
 			return homeShelfRule{}, err
 		}
-		if !pending {
-			// 棚への一致は維持済みなので、表を引くだけでよい（home_index_maintenance.go）。
-			conditions := []string{`not exists (select 1 from home_shelved_videos sv where sv.content_key = ` + r.userKey() + `)`}
-			if rule.condition != "" {
-				conditions = append([]string{rule.condition}, conditions...)
-			}
-			rule.condition = strings.Join(conditions, " and ")
-			return rule, nil
-		}
-		if r.shelves == nil {
-			shelves, err := homeShelfSpecs(r.ctx, r.tx, r.audience, r.now)
-			if err != nil {
-				return homeShelfRule{}, err
-			}
-			if shelves == nil {
-				shelves = []listSpec{}
-			}
-			r.shelves = shelves
+		shelves, err := r.shelfSpecs()
+		if err != nil {
+			return homeShelfRule{}, err
 		}
 		conditions := []string{}
 		if rule.condition != "" {
 			conditions = append(conditions, rule.condition)
 		}
-		for _, shelf := range r.shelves {
+		if maintained {
+			// 棚への一致は維持済みなので、表を引く（home_index_maintenance.go）。
+			conditions = append(conditions, `not exists (select 1 from home_shelved_videos sv where sv.content_key = `+r.userKey()+`)`)
+		}
+		for _, shelf := range shelves {
+			if maintained && !timeRelative(shelf) {
+				continue
+			}
 			condition, args, err := r.perVideoCondition(shelf)
 			if err != nil {
 				return homeShelfRule{}, err
@@ -235,6 +279,16 @@ func (r *homeShelfReader) ruleOf(spec listSpec) (homeShelfRule, error) {
 		rule.condition = strings.Join(conditions, " and ")
 	}
 	return rule, nil
+}
+
+// watchDriven は、棚 rule の項目を視聴状態の表（group_root_values の watch_state、video_watch_states）から
+// 引けるかを返す。規則の条件が無く（根は見せる子孫があれば whole）、お気に入りの根でなく、表が維持済みの
+// ときで、項目は視聴状態が合う根と、グループに入らない視聴状態が合う動画である。
+func (r *homeShelfReader) watchDriven(rule homeShelfRule) (bool, error) {
+	if len(rule.watches) == 0 || rule.condition != "" || rule.favorite {
+		return false, nil
+	}
+	return r.marksMaintained()
 }
 
 // watchShown は視聴状態 state が各段の絞り込みのすべてに等しいかを返す（itemWatchConditions と同じ）。
@@ -452,7 +506,7 @@ func (r *homeShelfReader) homeShelfFirstPage(spec listSpec) (domain.LibraryPage,
 	if !spec.sort.Valid() {
 		spec.sort = domain.SortAddedDesc
 	}
-	order, limit := itemOrder(spec.sort), normalizeLimit(spec.limit)
+	limit := normalizeLimit(spec.limit)
 	rule, err := r.ruleOf(spec)
 	if err != nil {
 		return domain.LibraryPage{}, err
@@ -466,26 +520,29 @@ func (r *homeShelfReader) homeShelfFirstPage(spec listSpec) (domain.LibraryPage,
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	items, _, err := libraryPageItems(r.ctx, r.tx, spec, order, page.keys, page.values, limit)
+	// グループの項目はカードの値だけで作る（home_group_cards.go）。
+	items, err := assembleLibraryItems(r.ctx, r.tx, r.audience, page.keys, nil, func(ids []int64) (map[int64]domain.LibraryGroup, error) {
+		return r.loadGroupCards(ids, page.roots)
+	})
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
 	return domain.LibraryPage{Items: items, Total: page.total, Limit: limit}, nil
 }
 
-// firstPageRows は最初のページの項目の鍵と並べ替えの値と、limit + 1 を上限にした棚の項目の数である。
+// firstPageRows は最初のページの項目の鍵と、limit + 1 を上限にした棚の項目の数と、判定した根（カードの値の
+// 元）である。
 type firstPageRows struct {
-	keys   []itemRow
-	values []any
-	total  int
+	keys  []itemRow
+	total int
+	roots map[int64]homeShelfRoot
 }
 
 // pageOf は並べた項目 items から最初の limit 件と、limit + 1 を上限にした数を返す。
-func pageOf(items []homeShelfItem, limit int) firstPageRows {
-	page := firstPageRows{total: min(len(items), limit+1)}
+func pageOf(items []homeShelfItem, limit int, known map[int64]homeShelfRoot) firstPageRows {
+	page := firstPageRows{total: min(len(items), limit+1), roots: known}
 	for _, item := range items[:min(len(items), limit)] {
 		page.keys = append(page.keys, item.key)
-		page.values = append(page.values, item.value)
 	}
 	return page
 }
@@ -534,7 +591,7 @@ func (r *homeShelfReader) assemblePage(rule homeShelfRule, limit int) (firstPage
 	}
 	desc := strings.HasSuffix(string(sort), "Desc")
 	slices.SortFunc(items, func(a, b homeShelfItem) int { return compareItems(a, b, desc) })
-	return pageOf(items, limit), nil
+	return pageOf(items, limit, known), nil
 }
 
 // queryRows は rowColumns と並べ替えの値の列を返す問い合わせを読む。
