@@ -117,12 +117,12 @@ func itemIDs(items []domain.LibraryItem) []int64 {
 }
 
 // itemCards は項目ごとのカードの値（グループは名前・フォルダ・本数・視聴・開くメンバー・合計・日時・
-// お気に入り・絵柄のサムネイル、動画は id）を比べられる文字列にする。
+// お気に入り・絵柄のサムネイル、動画は id と見せる所在のパスと題名）を比べられる文字列にする。
 func itemCards(items []domain.LibraryItem) []string {
 	out := make([]string, 0, len(items))
 	for _, item := range items {
 		if item.Group == nil {
-			out = append(out, fmt.Sprintf("video %d", item.Video.ID))
+			out = append(out, fmt.Sprintf("video %d %q %q", item.Video.ID, item.Video.Path, item.Video.Title))
 			continue
 		}
 		g := item.Group
@@ -153,68 +153,109 @@ func TestHomeShelfReadMatchesTheLibraryItemsRead(t *testing.T) {
 	listNow = func() time.Time { return fixedTime.Add(time.Hour) }
 	t.Cleanup(func() { listNow = time.Now })
 	ids := homeShelfReadShelves(t, db, tags)
-	ctx := context.Background()
 	keys := []domain.HomeShelfKey{{Kind: domain.HomeShelfRecent}, {Kind: domain.HomeShelfUnshelved}, {Kind: domain.HomeShelfContinue}}
 	for _, id := range ids {
 		keys = append(keys, domain.FolderShelfKey(id))
 	}
 	for _, audience := range []domain.Audience{domain.AudienceOwner, domain.AudienceGuest} {
-		page, err := db.Home().ShelfItems(ctx, audience, keys)
-		if err != nil {
-			t.Fatal(err)
-		}
-		got := map[domain.HomeShelfKey]domain.HomeShelfItems{}
-		for _, shelf := range page.Shelves {
-			got[shelf.Key] = shelf
-		}
-		tx, err := db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
-		if err != nil {
-			t.Fatal(err)
-		}
-		now := listNow().Unix()
-		checked := 0
-		for _, key := range keys {
-			spec, found, err := homeShelfItemsSpec(ctx, tx, audience, key, now)
-			if err != nil {
-				t.Fatal(err)
-			}
-			if !found || spec == nil {
-				if _, ok := got[key]; ok && !found {
-					t.Errorf("%s %v: 棚でない鍵が返った", audience, key)
-				}
-				continue
-			}
-			if err := fillShelved(ctx, tx, spec); err != nil {
-				t.Fatal(err)
-			}
-			want, err := listLibraryPageTx(ctx, tx, *spec)
-			if err != nil {
-				t.Fatal(err)
-			}
-			shelf, ok := got[key]
-			if !ok {
-				if want.Total != 0 || audience.IsOwner() {
-					t.Errorf("%s %v: 棚が無い（ライブラリの項目は %d 件）", audience, key, want.Total)
-				}
-				continue
-			}
-			if shelf.Total != min(want.Total, domain.HomeShelfItemLimit+1) || !slices.Equal(itemIDs(shelf.Items), itemIDs(want.Items)) {
-				t.Errorf("%s %v (%s): items = %v total = %d, want %v total = %d", audience, key, spec.sort,
-					itemIDs(shelf.Items), shelf.Total, itemIDs(want.Items), want.Total)
-			}
-			// グループの項目はカードの値だけで作る（loadGroupCards）が、値はメンバーから作るライブラリの項目と同じ。
-			if got, wantCards := itemCards(shelf.Items), itemCards(want.Items); !slices.Equal(got, wantCards) {
-				t.Errorf("%s %v (%s): cards = %v, want %v", audience, key, spec.sort, got, wantCards)
-			}
-			if want.Total > 0 {
-				checked++
-			}
-		}
-		_ = tx.Rollback()
-		if checked < 20 {
+		if checked := requireShelvesMatchLibrary(t, db, audience, keys); checked < 20 {
 			t.Errorf("%s: 項目のある棚が %d しか無い", audience, checked)
 		}
 	}
+}
+
+// 検索式の棚の動画の項目は、ライブラリと同じく検索式に当たる所在（そのパスの最小）を見せる。動画の先頭の
+// 所在が当たらず 2 つめの所在だけが当たるときも、先頭の所在を見せない（PR #1348 のレビュー）。
+func TestHomeShelfReadShowsTheLocationTheSearchMatches(t *testing.T) {
+	db, _, _ := homeShelfReadFixture(t)
+	listNow = func() time.Time { return fixedTime.Add(time.Hour) }
+	t.Cleanup(func() { listNow = time.Now })
+	ctx := context.Background()
+	if _, err := db.ScanIndex().UpsertVideo(ctx, domain.VideoFile{
+		Path: fixturePath("/media/zz-unique.mp4"), Title: "zz-unique", ContentKey: "key" + fixturePath("/media/solo.mp4"),
+		SizeBytes: 7, MTime: fixedTime.Add(-time.Hour), AddedAt: fixedTime, Container: "mp4",
+	}); err != nil {
+		t.Fatal(err)
+	}
+	var keys []domain.HomeShelfKey
+	var shelves []int64
+	for _, sort := range []domain.VideoSort{domain.SortTitleAsc, domain.SortModifiedDesc, domain.SortAddedDesc, domain.SortPlayedDesc} {
+		folder, err := db.SmartFolders().CreateSmartFolder(ctx, domain.SmartFolderCreate{Name: "unique " + string(sort),
+			Rule: domain.SmartRule{Q: "unique"}, Sort: sort})
+		if err != nil {
+			t.Fatal(err)
+		}
+		shelves = append(shelves, folder.ID)
+		keys = append(keys, domain.FolderShelfKey(folder.ID))
+	}
+	if err := db.Home().SetShelves(ctx, shelves); err != nil {
+		t.Fatal(err)
+	}
+	for _, audience := range []domain.Audience{domain.AudienceOwner, domain.AudienceGuest} {
+		if checked := requireShelvesMatchLibrary(t, db, audience, keys); checked != len(keys) {
+			t.Errorf("%s: 項目のある棚が %d、want %d", audience, checked, len(keys))
+		}
+	}
+}
+
+// requireShelvesMatchLibrary は、見る人 audience の棚 keys の読み出しが、どれもライブラリの項目の問い合わせの
+// 最初のページと同じ項目・並び・数・カードの値を返すことを確かめ、項目のある棚の数を返す。
+func requireShelvesMatchLibrary(t *testing.T, db *DB, audience domain.Audience, keys []domain.HomeShelfKey) int {
+	t.Helper()
+	ctx := context.Background()
+	page, err := db.Home().ShelfItems(ctx, audience, keys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[domain.HomeShelfKey]domain.HomeShelfItems{}
+	for _, shelf := range page.Shelves {
+		got[shelf.Key] = shelf
+	}
+	tx, err := db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	now := listNow().Unix()
+	checked := 0
+	for _, key := range keys {
+		spec, found, err := homeShelfItemsSpec(ctx, tx, audience, key, now)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !found || spec == nil {
+			if _, ok := got[key]; ok && !found {
+				t.Errorf("%s %v: 棚でない鍵が返った", audience, key)
+			}
+			continue
+		}
+		if err := fillShelved(ctx, tx, spec); err != nil {
+			t.Fatal(err)
+		}
+		want, err := listLibraryPageTx(ctx, tx, *spec)
+		if err != nil {
+			t.Fatal(err)
+		}
+		shelf, ok := got[key]
+		if !ok {
+			if want.Total != 0 || audience.IsOwner() {
+				t.Errorf("%s %v: 棚が無い（ライブラリの項目は %d 件）", audience, key, want.Total)
+			}
+			continue
+		}
+		if shelf.Total != min(want.Total, domain.HomeShelfItemLimit+1) || !slices.Equal(itemIDs(shelf.Items), itemIDs(want.Items)) {
+			t.Errorf("%s %v (%s): items = %v total = %d, want %v total = %d", audience, key, spec.sort,
+				itemIDs(shelf.Items), shelf.Total, itemIDs(want.Items), want.Total)
+		}
+		// グループの項目はカードの値だけで作る（loadGroupCards）が、値はメンバーから作るライブラリの項目と同じ。
+		if got, wantCards := itemCards(shelf.Items), itemCards(want.Items); !slices.Equal(got, wantCards) {
+			t.Errorf("%s %v (%s): cards = %v, want %v", audience, key, spec.sort, got, wantCards)
+		}
+		if want.Total > 0 {
+			checked++
+		}
+	}
+	return checked
 }
 
 // 無いフォルダの鍵だけを読むときは空の応答を返す。

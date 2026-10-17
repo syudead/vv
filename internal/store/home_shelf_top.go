@@ -101,6 +101,7 @@ func (r *homeShelfReader) walks(rule homeShelfRule, sort homeShelfTopSort) []*ho
 		shown += ` and ` + rule.condition
 	}
 	videoKey := func(row homeShelfRow) any { return row.videoID }
+	join, joinArgs := r.chosenLocationJoin(rule.spec)
 	// 検索式の棚は当たりの集合（全文索引から読んだ id）から動画を引き、並べる。集合は小さいので索引を
 	// なぞるより速い。視聴状態だけの棚は、視聴状態の合う根の並べ替えの値を持つメンバーと、グループに入らない
 	// 視聴状態の合う動画の集合から引く（視聴状態の表は索引で引ける）。最後の再生日の表は集合と結ばず、
@@ -113,7 +114,7 @@ func (r *homeShelfReader) walks(rule homeShelfRule, sort homeShelfTopSort) []*ho
 	}
 	if ok && sort.source != `progress` {
 		value, order := `videos.added_at`, [2]string{`videos.added_at`, `videos.id`}
-		from := `(` + hits + `) hits join videos on videos.id = hits.id` + r.chosenLocationJoin()
+		from := `(` + hits + `) hits join videos on videos.id = hits.id` + join
 		if sort.source == `locations` {
 			value = `loc.mtime`
 			if sort.column == `created_at` {
@@ -121,7 +122,8 @@ func (r *homeShelfReader) walks(rule homeShelfRule, sort homeShelfTopSort) []*ho
 			}
 			order = [2]string{value, `videos.id`}
 		}
-		return []*homeShelfWalk{{from: from, fromArgs: hitArgs, value: value, order: order, where: shown, keyOf: videoKey}}
+		return []*homeShelfWalk{{from: from, fromArgs: append(append([]any{}, hitArgs...), joinArgs...), value: value, order: order,
+			where: shown, keyOf: videoKey}}
 	}
 	switch sort.source {
 	case `locations`:
@@ -129,22 +131,23 @@ func (r *homeShelfReader) walks(rule homeShelfRule, sort homeShelfTopSort) []*ho
 		if sort.column == `created_at` {
 			value = fileCreatedAtExpr("loc")
 		}
+		path, pathArgs := r.chosenPath(rule.spec)
 		return []*homeShelfWalk{{
 			from: `video_locations loc join videos on videos.id = loc.video_id`, value: value, order: [2]string{value, `loc.video_id`},
-			where: visibleLocationCondition("loc", r.audience) + ` and loc.path = (select min(l.path) from video_locations l
-				where l.video_id = videos.id and ` + visibleLocationCondition("l", r.audience) + `) and ` + shown, keyOf: videoKey}}
+			fromArgs: pathArgs, where: visibleLocationCondition("loc", r.audience) + ` and loc.path = ` + path + ` and ` + shown,
+			keyOf: videoKey}}
 	case `progress`:
 		userKey := userKeyExpr("videos")
 		return []*homeShelfWalk{
-			{from: `playback_progress p join videos on videos.id = ` + shownVideoForKeyExpr("p.content_key", r.audience) + r.chosenLocationJoin(),
-				value: `p.updated_at`, order: [2]string{`p.updated_at`, `p.content_key`}, where: shown,
+			{from: `playback_progress p join videos on videos.id = ` + shownVideoForKeyExpr("p.content_key", r.audience) + join,
+				fromArgs: joinArgs, value: `p.updated_at`, order: [2]string{`p.updated_at`, `p.content_key`}, where: shown,
 				keyOf: func(row homeShelfRow) any { return row.userKey }},
-			{from: `videos` + r.chosenLocationJoin(), value: `null`, order: [2]string{`videos.id`, `videos.id`},
+			{from: `videos` + join, fromArgs: joinArgs, value: `null`, order: [2]string{`videos.id`, `videos.id`},
 				where: shown + ` and not exists (select 1 from playback_progress p where p.content_key = ` + userKey + ` and videos.content_key <> '')`,
 				keyOf: videoKey},
 		}
 	}
-	return []*homeShelfWalk{{from: `videos` + r.chosenLocationJoin(), value: `videos.added_at`,
+	return []*homeShelfWalk{{from: `videos` + join, fromArgs: joinArgs, value: `videos.added_at`,
 		order: [2]string{`videos.added_at`, `videos.id`}, where: shown, keyOf: videoKey}}
 }
 

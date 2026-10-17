@@ -348,11 +348,26 @@ func (r *homeShelfReader) rowColumns(rule homeShelfRule, assemble bool) string {
 	return `videos.id, loc.path, ` + userKey + `, ` + watch + `, ` + favorite + `, ` + playableCondition + `, ` + roots + `, ` + values
 }
 
-// chosenLocationJoin は、見る人に見せる動画（別名 videos）に一覧と同じ所在（見せてよい所在のパスの最小）を
-// loc として結ぶ join 句である。
-func (r *homeShelfReader) chosenLocationJoin() string {
-	return ` join video_locations loc on loc.path = (select min(l.path) from video_locations l where l.video_id = videos.id
-		and ` + visibleLocationCondition("l", r.audience) + `)`
+// chosenLocationJoin は、見る人に見せる動画（別名 videos）に一覧と同じ所在を loc として結ぶ join 句と
+// その引数である（所在は chosenPath）。
+func (r *homeShelfReader) chosenLocationJoin(spec listSpec) (string, []any) {
+	path, args := r.chosenPath(spec)
+	return ` join video_locations loc on loc.path = ` + path, args
+}
+
+// chosenPath は、動画（別名 videos）についてライブラリの一覧が選ぶ所在（chosenLocationsSelect）のパスを
+// 返す副問い合わせとその引数である: 見せてよい所在のうち、棚 spec の検索式があればそのすべてに当たる
+// 所在のパスの最小。集まりの動画は集まりのどれかの所在が当たれば足りるので、見せてよい所在の最小になる
+// （searchLocationCondition）。
+func (r *homeShelfReader) chosenPath(spec listSpec) (string, []any) {
+	from := `video_locations l`
+	where := `l.video_id = videos.id and ` + visibleLocationCondition("l", r.audience)
+	search, args := searchLocationCondition(spec.searchAudience(), spec.searchExprs())
+	if search != "" {
+		from += ` left join video_bundle_members sbm on sbm.content_key = videos.content_key and videos.content_key <> ''`
+		where += ` and ` + search
+	}
+	return `(select min(l.path) from ` + from + ` where ` + where + `)`, args
 }
 
 // shownCondition は動画（別名 videos）を見る人に見せる条件である。集まりが無ければ代表の判定は要らない。
@@ -554,7 +569,9 @@ func (r *homeShelfReader) assemblePage(rule homeShelfRule, limit int) (firstPage
 	if rule.condition != "" {
 		where += ` and ` + rule.condition
 	}
-	rows, err := r.queryRows(`select `+r.rowColumns(rule, true)+`, null from videos`+r.chosenLocationJoin()+` where `+where, rule.args)
+	join, joinArgs := r.chosenLocationJoin(rule.spec)
+	rows, err := r.queryRows(`select `+r.rowColumns(rule, true)+`, null from videos`+join+` where `+where,
+		append(joinArgs, rule.args...))
 	if err != nil {
 		return firstPageRows{}, err
 	}
