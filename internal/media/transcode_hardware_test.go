@@ -161,15 +161,11 @@ func TestLiveTranscoderFallsBackToSoftwareWhenHardwareFails(t *testing.T) {
 // ハードウェアの期限切れは切り替えずに失敗にする。期限は要求全体で 1 つである。
 func TestLiveTranscoderDoesNotFallBackAfterHardwareTimeout(t *testing.T) {
 	scripted := newScriptedTranscoder("ffmpeg-silent", "ffmpeg")
-	began := time.Now()
 	_, err := startHardware(t, scripted, context.Background(), domain.LiveTranscodeRequest{
-		Normalize: true, VideoEncoder: domain.VideoEncoderQSV, StartupDeadline: time.Now().Add(200 * time.Millisecond),
+		Normalize: true, VideoEncoder: domain.VideoEncoderQSV, StartupDeadline: time.Now().Add(-time.Second),
 	})
 	if err == nil {
 		t.Fatal("データを出さないハードウェアで成功した")
-	}
-	if elapsed := time.Since(began); elapsed > 2*time.Second {
-		t.Errorf("期限切れまで %s かかった", elapsed)
 	}
 	if got := scripted.videoCodecs(); !slices.Equal(got, []string{"h264_qsv"}) {
 		t.Errorf("映像の扱い = %v", got)

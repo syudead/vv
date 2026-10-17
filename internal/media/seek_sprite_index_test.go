@@ -15,6 +15,7 @@ import (
 	"runtime"
 	"slices"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -587,21 +588,23 @@ func (r stalledReader) ReadAt([]byte, int64) (int, error) {
 
 // 読み取りが止まっても、期限が来れば索引の読み取りを待たずに戻る。
 func TestReadMovieBoxReturnsWhenContextEnds(t *testing.T) {
-	reader := stalledReader{release: make(chan struct{})}
-	defer close(reader.release)
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
-	defer cancel()
-	done := make(chan error, 1)
-	go func() {
-		_, err := readMovieBox(ctx, reader, 1<<20)
-		done <- err
-	}()
-	select {
-	case err := <-done:
-		if !errors.Is(err, context.DeadlineExceeded) {
-			t.Fatalf("readMovieBox = %v（期限切れのはず）", err)
+	synctest.Test(t, func(t *testing.T) {
+		reader := stalledReader{release: make(chan struct{})}
+		defer close(reader.release)
+		ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+		defer cancel()
+		done := make(chan error, 1)
+		go func() {
+			_, err := readMovieBox(ctx, reader, 1<<20)
+			done <- err
+		}()
+		select {
+		case err := <-done:
+			if !errors.Is(err, context.DeadlineExceeded) {
+				t.Fatalf("readMovieBox = %v（期限切れのはず）", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("期限が来ても readMovieBox が戻らなかった")
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("期限が来ても readMovieBox が戻らなかった")
-	}
+	})
 }

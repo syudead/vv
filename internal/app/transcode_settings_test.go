@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
@@ -197,37 +198,39 @@ func TestTranscodeSettingsLogsCheckFailureDetail(t *testing.T) {
 }
 
 func TestTranscodeSettingsTimesOutOneCheck(t *testing.T) {
-	store := &fakeTranscodeSettingsStore{found: false}
-	checker := &fakeEncoderChecker{
-		results: map[domain.VideoEncoder]domain.EncoderAvailability{
-			domain.VideoEncoderNVENC: available(domain.VideoEncoderNVENC),
-			domain.VideoEncoderVAAPI: available(domain.VideoEncoderVAAPI),
-		},
-		hang: map[domain.VideoEncoder]bool{domain.VideoEncoderQSV: true},
-	}
-	s, err := NewTranscodeSettings(context.Background(), TranscodeSettingsOptions{
-		Store: store, Checker: checker, GOOS: "linux", Logger: discardLogger(), CheckTimeout: 50 * time.Millisecond,
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.StartChecks(context.Background())
-	waitChecks(t, s)
+	synctest.Test(t, func(t *testing.T) {
+		store := &fakeTranscodeSettingsStore{found: false}
+		checker := &fakeEncoderChecker{
+			results: map[domain.VideoEncoder]domain.EncoderAvailability{
+				domain.VideoEncoderNVENC: available(domain.VideoEncoderNVENC),
+				domain.VideoEncoderVAAPI: available(domain.VideoEncoderVAAPI),
+			},
+			hang: map[domain.VideoEncoder]bool{domain.VideoEncoderQSV: true},
+		}
+		s, err := NewTranscodeSettings(context.Background(), TranscodeSettingsOptions{
+			Store: store, Checker: checker, GOOS: "linux", Logger: discardLogger(),
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.StartChecks(context.Background())
+		<-s.Done()
 
-	got := s.Current()
-	if got.Checking || got.Choice != domain.EncoderChoiceSoftware || got.Effective != domain.VideoEncoderSoftware {
-		t.Fatalf("after checks = %+v", got)
-	}
-	states := map[domain.VideoEncoder]domain.EncoderAvailability{}
-	for _, a := range got.Encoders {
-		states[a.Encoder] = a
-	}
-	if states[domain.VideoEncoderNVENC].State != domain.EncoderAvailable || states[domain.VideoEncoderVAAPI].State != domain.EncoderAvailable {
-		t.Fatalf("other checks did not report: %+v", got.Encoders)
-	}
-	if q := states[domain.VideoEncoderQSV]; q.State != domain.EncoderUnavailable || q.Reason != domain.EncoderReasonTimedOut {
-		t.Fatalf("qsv = %+v, want unavailable/timed_out", q)
-	}
+		got := s.Current()
+		if got.Checking || got.Choice != domain.EncoderChoiceSoftware || got.Effective != domain.VideoEncoderSoftware {
+			t.Fatalf("after checks = %+v", got)
+		}
+		states := map[domain.VideoEncoder]domain.EncoderAvailability{}
+		for _, a := range got.Encoders {
+			states[a.Encoder] = a
+		}
+		if states[domain.VideoEncoderNVENC].State != domain.EncoderAvailable || states[domain.VideoEncoderVAAPI].State != domain.EncoderAvailable {
+			t.Fatalf("other checks did not report: %+v", got.Encoders)
+		}
+		if q := states[domain.VideoEncoderQSV]; q.State != domain.EncoderUnavailable || q.Reason != domain.EncoderReasonTimedOut {
+			t.Fatalf("qsv = %+v, want unavailable/timed_out", q)
+		}
+	})
 }
 
 func TestTranscodeSettingsSelect(t *testing.T) {

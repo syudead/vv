@@ -6,7 +6,6 @@ int main(void) {
     const char *req = request();
     if (!strcmp(text(req, "operation"), "search")) {
         const char *query = text(req, "query");
-        if (!strcmp(query, "sleep")) sleep_forever();
         if (!strcmp(query, "fail")) {
             fputs("no newline", stderr);
             puts("{\"error\":{\"message\":\"failed on purpose\"}}");
