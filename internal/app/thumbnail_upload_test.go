@@ -288,15 +288,43 @@ func TestUploadAfterPositionChangeWins(t *testing.T) {
 	}
 }
 
-// 期限切れのアップロードは、自分の動画の錠が空くのを待たずに期限の誤りを返し、
+// uploadLockWaitContext observes cancellation checks after image validation.
+// The upload gate checks Done before validation; the generation lock checks it
+// afterwards. Only the latter signals that the request reached the lock wait.
+type uploadLockWaitContext struct {
+	context.Context
+	validated <-chan struct{}
+	waiting   chan struct{}
+	once      sync.Once
+}
+
+func (c *uploadLockWaitContext) Done() <-chan struct{} {
+	select {
+	case <-c.validated:
+		c.once.Do(func() { close(c.waiting) })
+	default:
+	}
+	return c.Context.Done()
+}
+
+// 錠を待っているアップロードを取り消すと、錠が空くのを待たずに取り消しの誤りを返し、
 // 何も書かない。待つのをやめたあとも錠は空き、後の位置の指定とアップロードは進む。
-func TestUploadRefusesExpiredRequestWhileLockIsHeld(t *testing.T) {
+func TestUploadCancelsWhileWaitingOnLock(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
 	hold := newHoldGeneration("thumbnail-at")
 	generator := &fakeGenerator{gate: hold.gate, thumbnailDir: t.TempDir()}
 	ingest, _ := newTestIngest(store, generator)
-	ingest.checkUpload = newUploadChecks().check
+	validated := make(chan struct{})
+	markValidated := sync.OnceFunc(func() { close(validated) })
+	checks := newUploadChecks()
+	ingest.checkUpload = func(image []byte) error {
+		err := checks.check(image)
+		markValidated()
+		return err
+	}
+	releasePosition := sync.OnceFunc(func() { close(hold.release["thumbnail-at"]) })
+	defer releasePosition()
 
 	position := make(chan error, 1)
 	go func() {
@@ -305,21 +333,30 @@ func TestUploadRefusesExpiredRequestWhileLockIsHeld(t *testing.T) {
 	}()
 	<-hold.started["thumbnail-at"]
 
-	ctx, cancel := context.WithTimeout(context.Background(), 0)
+	parent, cancel := context.WithCancel(context.Background())
 	defer cancel()
+	ctx := &uploadLockWaitContext{Context: parent, validated: validated, waiting: make(chan struct{})}
 	done := make(chan error, 1)
 	go func() {
 		_, err := ingest.UploadThumbnailImage(ctx, video.ID, "a", []byte("photo"))
 		done <- err
 	}()
-	if err := waitJob(t, done); !errors.Is(err, context.DeadlineExceeded) {
+	select {
+	case <-ctx.waiting:
+	case err := <-done:
+		t.Fatalf("upload returned before waiting on the lock: %v", err)
+	case <-time.After(2 * time.Second):
+		t.Fatal("upload did not reach the lock's cancellation check")
+	}
+	cancel()
+	if err := waitJob(t, done); !errors.Is(err, context.Canceled) {
 		t.Fatalf("err = %v", err)
 	}
 	if fitted(generator, "photo") || store.rows["a"].Image != nil {
-		t.Fatalf("期限を越えたアップロードが書いた: %+v", store.rows["a"])
+		t.Fatalf("取り消したアップロードが書いた: %+v", store.rows["a"])
 	}
 
-	close(hold.release["thumbnail-at"])
+	releasePosition()
 	if err := waitJob(t, position); err != nil {
 		t.Fatal(err)
 	}
