@@ -438,6 +438,37 @@ describe("ScanProvider", () => {
     expect(screen.getByText("状態: 5")).toBeDefined();
   });
 
+  it("状態取得の一時失敗のあと、次にウィンドウへ戻ったときに取り直して回復する", async () => {
+    let currentCalls = 0;
+    fetchMock.mockImplementation((input) => {
+      if (String(input) === "/api/media-folders") return Promise.resolve(json([]));
+      currentCalls += 1;
+      if (currentCalls === 1) return Promise.resolve(json({}, 404));
+      if (currentCalls === 2) return Promise.resolve(json({}, 500));
+      return Promise.resolve(json(scan(18, "running", { status: "finding" })));
+    });
+    render(
+      <OwnerAudience>
+        <ScanProvider>
+          <Harness />
+        </ScanProvider>
+      </OwnerAudience>,
+    );
+    await waitFor(() => expect(currentCalls).toBe(1));
+    expect(await screen.findByText("状態: なし")).toBeDefined();
+
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    await waitFor(() => expect(screen.queryByText("エラーなし")).toBeNull());
+    expect(screen.getByText("状態: なし")).toBeDefined();
+
+    // 一定間隔では取り直さない。次にウィンドウへ戻ったときに取り直す。
+    await act(async () => window.dispatchEvent(new Event("focus")));
+    expect(await screen.findByText("状態: 18")).toBeDefined();
+    expect(screen.getByText("実行中: はい")).toBeDefined();
+    expect(screen.getByText("エラーなし")).toBeDefined();
+    expect(currentCalls).toBe(3);
+  });
+
   it("再確認で別タブが完了した取り込みを通知する", async () => {
     let currentId = 1;
     fetchMock.mockImplementation((input) =>

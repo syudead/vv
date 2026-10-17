@@ -1,11 +1,13 @@
 import { expect, type Page, test } from "@playwright/test";
 
 /**
- * 自動の取り込み（specs/042-folder-watch-import）の画面を確かめる。
+ * 自動の取り込み（specs/042-folder-watch-import）の設定の保存を、実際のサーバーに通す。
  *
- * 自動の取り込みの `Scan` は、実際のサーバーの監視では作れない（監視は実ファイルの変化で動く）
- * ので、取り込みの状態・問題の一覧・ライブラリの一覧は route で決める。設定の保存だけは
- * 実際のサーバーに通す。
+ * 自動の取り込みの `Scan` は実際のサーバーの監視では作れない（監視は実ファイルの変化で動く）
+ * ので、取り込みの状態と問題の一覧は Vitest が確かめる
+ * （ScanProgressIndicator.test.tsx・ScanStatusSection.test.tsx・LibraryPage.watchScan.test.tsx）。
+ * 取り込みが終わったあとも開いている一覧のスクロール位置が残ることは、配置を持つ実ブラウザで
+ * しか確かめられないので、状態の応答だけを差し替えてここで見る。
  */
 
 interface StubScan {
@@ -78,52 +80,6 @@ async function stubScan(page: Page, initial: StubScan, issues: string[] = []) {
   };
 }
 
-test("a running watch scan shows nothing; one that ends partial is announced and its issues are listed", async ({
-  page,
-}) => {
-  const stub = await stubScan(page, { id: 1, origin: "manual", status: "done" }, [
-    "broken-a.mp4",
-    "broken-b.mp4",
-  ]);
-  await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-
-  const indicator = page.getByRole("button", { name: /Open the scan status/ });
-
-  await stub.set({ id: 2, origin: "watch", status: "running" });
-  // 走っているあいだは右下に何も出さない（進み具合の表示にも、状態の言葉にも）。
-  await page.waitForTimeout(500);
-  await expect(indicator).toHaveCount(0);
-  await expect(page.getByRole("progressbar")).toHaveCount(0);
-
-  await stub.set({ id: 2, origin: "watch", status: "partial", failed: 2 });
-  await expect(indicator).toBeVisible();
-  await expect(indicator).toContainText("Auto-import: some failed");
-  await expect(
-    page.getByRole("status").filter({ hasText: "Auto-import finished" }),
-  ).toHaveText("Auto-import finished with some failures. 2 videos may not be usable.");
-
-  await indicator.click();
-  await expect(page).toHaveURL(/\/settings\/scan#scan-status$/);
-  const status = page.locator("#scan-status");
-  await expect(status.getByText("Auto-import: some failed")).toBeVisible();
-  await expect(status.getByText("broken-a.mp4")).toBeVisible();
-  await expect(status.getByText("broken-b.mp4")).toBeVisible();
-  // 自動の取り込みは Scan library を止めず、メディアフォルダも固めない。
-  await expect(status.getByRole("button", { name: "Scan library" })).toBeEnabled();
-});
-
-test("a watch scan that ends done announces nothing", async ({ page }) => {
-  const stub = await stubScan(page, { id: 1, origin: "manual", status: "done" });
-  await page.goto("/");
-  await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
-
-  await stub.set({ id: 2, origin: "watch", status: "running" });
-  await stub.set({ id: 2, origin: "watch", status: "done" });
-  await page.waitForTimeout(800);
-  await expect(page.getByRole("button", { name: /Open the scan status/ })).toHaveCount(0);
-});
-
 test("the auto-import switch saves the choice and keeps it after a reload", async ({
   page,
 }) => {
@@ -170,7 +126,6 @@ test("the auto-import switch saves the choice and keeps it after a reload", asyn
   }
 });
 
-/** libraryVideo はライブラリの一覧の動画の項目である。 */
 function libraryVideo(id: number) {
   return {
     kind: "video",

@@ -881,20 +881,7 @@ export const THUMBNAIL_UPLOADS = {
 };
 
 /**
- * THUMBNAIL_UPLOAD_SPLIT は、上半分と下半分で色の違う縦長の PNG である。枠いっぱいに広げて
- * 動かした範囲だけがサムネイルになることを、どちらの色が出るかで確かめる
- * （docs/design-docs/thumbnail-editing.md「Uploaded images」）。
- */
-export const THUMBNAIL_UPLOAD_SPLIT = {
-  file: "thumbnail-upload-split.png",
-  top: [220, 30, 30],
-  bottom: [255, 255, 255],
-  width: 300,
-  height: 400,
-};
-
-/**
- * generateThumbnailUploadFixtures は THUMBNAIL_UPLOADS と THUMBNAIL_UPLOAD_SPLIT の画像を root に置く。PNG と JPEG は
+ * generateThumbnailUploadFixtures は THUMBNAIL_UPLOADS の画像を root に置く。PNG と JPEG は
  * ffmpeg で作り、WebP はチェックイン済みの e2e/fixtures/thumbnail-upload.webp を写す。
  * ffmpeg のビルドに libwebp が無いことがあるためである（specs/046-thumbnail-image-upload/plan.md）。
  */
@@ -922,23 +909,6 @@ export function generateThumbnailUploadFixtures(root) {
     ),
     path.join(root, THUMBNAIL_UPLOADS.webp.file),
   );
-  const split = THUMBNAIL_UPLOAD_SPLIT;
-  const half = { width: split.width, height: split.height / 2 };
-  ffmpeg([
-    "-f",
-    "lavfi",
-    "-i",
-    solid({ ...half, color: split.top }),
-    "-f",
-    "lavfi",
-    "-i",
-    solid({ ...half, color: split.bottom }),
-    "-filter_complex",
-    "vstack",
-    "-frames:v",
-    "1",
-    path.join(root, split.file),
-  ]);
 }
 
 /**

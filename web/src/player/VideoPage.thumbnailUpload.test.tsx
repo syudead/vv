@@ -112,6 +112,8 @@ const server = {
   video,
   upload: vi.fn<(form: FormData) => Response | Promise<Response>>(),
   revert: vi.fn<() => Response>(),
+  /** PUT /api/videos/7/thumbnail-position の答え。 */
+  position: vi.fn<(body: unknown) => Response>(),
   requests: [] as string[],
 };
 
@@ -188,6 +190,7 @@ describe("VideoPage thumbnail upload", () => {
     server.video = video;
     server.upload.mockReset();
     server.revert.mockReset();
+    server.position.mockReset();
     server.requests = [];
     bitmap.close.mockReset();
     compose.loadUploadImage.mockReset();
@@ -212,6 +215,8 @@ describe("VideoPage thumbnail upload", () => {
         return Promise.resolve(server.upload(init?.body as FormData));
       if (url === "/api/videos/7/thumbnail-image" && method === "DELETE")
         return Promise.resolve(server.revert());
+      if (url === "/api/videos/7/thumbnail-position" && method === "PUT")
+        return Promise.resolve(server.position(JSON.parse(String(init?.body))));
       if (url === "/api/videos/7") return Promise.resolve(json(server.video));
       if (url === "/api/videos/7/related") return Promise.resolve(json({ items: [] }));
       if (url === "/api/videos/7/subtitles")
@@ -418,5 +423,32 @@ describe("VideoPage thumbnail upload", () => {
       ).toBeNull(),
     );
     expect(server.revert).toHaveBeenCalledTimes(1);
+  });
+
+  it("アップロードした画像の間に今の場面をサムネイルにすると、項目がその場面のコマに戻る", async () => {
+    server.video = uploaded;
+    server.position.mockReturnValueOnce(
+      json({
+        ...video,
+        thumbnailPositionMs: 12_000,
+        thumbnailUrl: "/api/videos/7/thumbnail?v=r1-p12",
+      }),
+    );
+    await openPage();
+    expect(
+      within(facts()).getByRole("img", { name: "Uploaded thumbnail" }),
+    ).toBeDefined();
+
+    const capture = screen.getByRole("button", {
+      name: "Use current frame as thumbnail",
+    });
+    await waitFor(() => expect(capture.getAttribute("aria-disabled")).toBeNull());
+    fireEvent.click(capture);
+
+    const item = await within(facts()).findByRole("img", { name: "Thumbnail at 0:12" });
+    expect(item.getAttribute("src")).toBe("/api/videos/7/thumbnail?v=r1-p12");
+    expect(within(facts()).queryByRole("img", { name: "Uploaded thumbnail" })).toBeNull();
+    expect(server.position).toHaveBeenCalledWith({ positionMs: 12_000 });
+    expect(server.revert).not.toHaveBeenCalled();
   });
 });

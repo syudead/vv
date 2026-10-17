@@ -614,6 +614,60 @@ describe("VideoPage thumbnail edit", () => {
     expect(await within(dialog).findByRole("img", { name: "Generated" })).toBeDefined();
   });
 
+  it("実行を中止して閉じても、結果を破棄しても、適用せずにセッションを捨て、サムネイルを変えない", async () => {
+    const deletes = () =>
+      server.requests.filter((r) => r === "DELETE /api/thumbnail-edits/e1").length;
+    // 前の検査の編集画面がページを離れたときに捨てる要求を、先に済ませておく。
+    await tick(10);
+    server.requests = [];
+    // 中止: 実行中のうちに中止する。
+    let dialog = await openEditor();
+    server.run.mockReturnValueOnce(
+      json({ ...session, state: "queued", elapsedMs: 0 }, 202),
+    );
+    server.reads = [{ ...session, state: "running", elapsedMs: 1_000 }];
+    fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+    await tick();
+    await waitFor(() => expect(runArea(dialog).textContent).toContain("Generating"));
+    server.cancel.mockReturnValueOnce(
+      json({ ...session, state: "cancelled", elapsedMs: 2_000 }),
+    );
+    server.reads = [{ ...session, state: "cancelled", elapsedMs: 2_000 }];
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    expect(
+      await within(dialog).findByText("Cancelled. The thumbnail is unchanged."),
+    ).toBeDefined();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(deletes()).toBe(1));
+
+    // 破棄: 結果が出てから捨てる。
+    server.reads = [session];
+    const menu = await openMenu();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: /^Frame at / }));
+    dialog = await screen.findByRole("dialog", { name: "Edit thumbnail" });
+    server.run.mockReturnValueOnce(
+      json({ ...session, state: "queued", elapsedMs: 0 }, 202),
+    );
+    server.reads = [
+      {
+        ...session,
+        state: "succeeded",
+        elapsedMs: 1_000,
+        resultUrl: "/api/thumbnail-edits/e1/result",
+      },
+    ];
+    fireEvent.click(within(dialog).getByRole("button", { name: "Generate" }));
+    await tick();
+    await within(dialog).findByRole("img", { name: "Generated" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Discard" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await waitFor(() => expect(deletes()).toBe(2));
+
+    expect(server.apply).not.toHaveBeenCalled();
+    expect(screen.queryByRole("img", { name: "Generated thumbnail" })).toBeNull();
+  });
+
   it("ページを離れるとセッションを捨てる", async () => {
     const view = renderPage();
     await screen.findByTestId("video-player");

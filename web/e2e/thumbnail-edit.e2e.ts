@@ -2,7 +2,6 @@ import path from "node:path";
 
 import {
   type APIRequestContext,
-  type Browser,
   expect,
   type Locator,
   type Page,
@@ -12,16 +11,21 @@ import {
 // ComfyUI で動画の1コマを編集してサムネイルにする流れ（specs/045-comfyui-thumbnails、
 // 親 #942、子 #960）を、本物のサーバーとアダプタに偽の ComfyUI（fake-comfyui.mjs）を
 // つないで実ブラウザに通す。個々の規則はアダプタ・app・画面のテストが持つので、ここでは
-// 設定から適用・取り消しまでの流れだけを確かめる（docs/design-docs/web-testing.md）。
+// 設定から適用し、読み直しとスキャンの後も残るまでの流れと、実ブラウザで塗ったマスクが
+// サーバーを通って偽物に届き、塗った範囲だけが変わることを確かめる
+// （docs/design-docs/web-testing.md）。中止・破棄・取り消し・収め方・ゲストは
+// Vitest と Go のテストが持つ。
 //
 // 動画は run-e2e.mjs が generateThumbnailEditFixtures で作る1本で、色の混ざった
 // testsrc2 である。偽物は一色（OUTPUT_COLOR）の画像を返すので、サムネイルがその一色か
 // どうかで、生成した画像とコマから作った画像を見分ける。
 //
-// 手元の画像をサムネイルにし、今のサムネイルから編集する流れ（specs/046-thumbnail-image-upload、
+// 手元の画像をサムネイルにする流れ（specs/046-thumbnail-image-upload、
 // 親 #980、子 #988）も同じ動画で確かめる。上げる画像は run-e2e.mjs が
 // generateThumbnailUploadFixtures で置く一色の PNG・JPEG・WebP で、その色でサムネイルが
-// 上げた画像かどうかを見分ける。関連動画は同じフォルダの2本目の動画のページで見る。
+// 上げた画像かどうかを見分ける。3 形式を実ブラウザで読んで送れることを確かめ、縦長の PNG で
+// 収め方と、関連動画・読み直し・スキャンの後も残ることを見る。関連動画は同じフォルダの2本目の
+// 動画のページで見る。
 //
 // 接続先の設定を消すルートは無いので、ここで保存した偽物の接続先は後の e2e に残る。
 // 残っても変わるのは動画ページの編集の入口が押せることだけである。
@@ -59,12 +63,6 @@ const uploads = {
   png: { file: "thumbnail-upload.png", color: [0, 200, 0] as RGB },
   jpeg: { file: "thumbnail-upload.jpg", color: [0, 90, 255] as RGB },
   webp: { file: "thumbnail-upload.webp", color: [255, 200, 0] as RGB },
-};
-// media-fixtures.mjs の THUMBNAIL_UPLOAD_SPLIT と同じファイルと色。縦長で、上下で色が違う。
-const split = {
-  file: "thumbnail-upload-split.png",
-  top: [220, 30, 30] as RGB,
-  bottom: [255, 255, 255] as RGB,
 };
 type Upload = { file: string };
 // 動画（testsrc2 の 320×180）の縦横比。
@@ -325,24 +323,6 @@ async function uploadFromPage(page: Page, upload: Upload, adjust?: Adjust) {
   await expect(preview).toBeHidden();
 }
 
-/**
- * containedIn は img の画像が、真ん中は color で左右の端は color でない（全体を収めた縦長の
- * 画像の余白）なら true を返す。まだ読み込んでいなければ null を返す。
- */
-async function containedIn(image: Locator, color: RGB): Promise<boolean | null> {
-  const pixels = await pixelsAt(image, [
-    [0.5, 0.2],
-    [0.5, 0.5],
-    [0.5, 0.8],
-    [0.05, 0.5],
-    [0.95, 0.5],
-  ]);
-  if (pixels === null) return null;
-  const inside = pixels.slice(0, 3).every((pixel) => near(pixel, color));
-  const margins = pixels.slice(3).every((pixel) => !near(pixel, color));
-  return inside && margins;
-}
-
 /** expectUploadedItem は動画ページの情報の行が、一色 color の上げた画像の項目を出すまで待つ。 */
 async function expectUploadedItem(page: Page, color: RGB) {
   const item = page.getByRole("img", { name: "Uploaded thumbnail" });
@@ -382,29 +362,6 @@ async function generate(editor: Locator) {
   await expect(editor.getByRole("img", { name: "Generated" })).toBeVisible({
     timeout: 15_000,
   });
-}
-
-/**
- * expectGuestSeesNoThumbnailControls は、ゲストの動画ページにサムネイルの編集の入口・
- * 元の選択・アップロードの入口・上げた画像の項目のどれも無いことを確かめる。
- */
-async function expectGuestSeesNoThumbnailControls(browser: Browser) {
-  const context = await browser.newContext({
-    storageState: { cookies: [], origins: [] },
-  });
-  const page = await context.newPage();
-  await page.goto(`/videos/${String(target().id)}`);
-  await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
-  await expect(page.locator("video")).toHaveCount(1);
-  await expect(
-    page.getByRole("button", { name: "Edit thumbnail with ComfyUI" }),
-  ).toHaveCount(0);
-  await expect(
-    page.getByRole("button", { name: "Upload an image as thumbnail" }),
-  ).toHaveCount(0);
-  await expect(page.getByRole("menuitem")).toHaveCount(0);
-  await expect(page.getByRole("img", { name: "Uploaded thumbnail" })).toHaveCount(0);
-  await context.close();
 }
 
 /** setComposite は偽物がマスクを通して合成するかを変える。 */
@@ -488,13 +445,6 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
         { timeout: 120_000 },
       )
       .toBe(true);
-
-    // ゲストの確かめのために公開にする。
-    const published = await request.put("/api/video-visibility", {
-      headers: mutationHeaders,
-      data: { videoIds: [target().id], public: true },
-    });
-    expect(published.status()).toBe(200);
   });
 
   test.afterAll(async ({ request }) => {
@@ -576,70 +526,15 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
       .toBe("generated");
   });
 
-  // 受け入れ条件 8: 「Use the frame instead」でコマから作るサムネイルに戻る。
-  test("Use the frame instead でコマから作るサムネイルに戻る", async ({
-    page,
-    request,
-  }) => {
-    await page.goto(`/videos/${String(target().id)}`);
-    await expect(page.getByRole("img", { name: "Generated thumbnail" })).toBeVisible();
-    await page.getByRole("button", { name: "Use the frame instead" }).click();
-    await expect(page.getByRole("img", { name: "Generated thumbnail" })).toHaveCount(0);
-    expect((await readVideo(request)).thumbnailImage).toBeUndefined();
-    await expectLibraryThumbnail(page, request, "frame");
-  });
-
-  // 受け入れ条件 7: 中止と破棄ではサムネイルが変わらない。
-  test("実行の中止と結果の破棄ではサムネイルが変わらない", async ({ page, request }) => {
-    test.setTimeout(90_000);
-    const before = await readVideo(request);
-    expect(before.thumbnailImage).toBeUndefined();
-
-    // 中止: 実行中のうちに中止する。
-    await setTiming(request, { queuedMs: 500, runningMs: 60_000 });
-    const entry = await openVideo(page);
-    let editor = await startEdit(entry);
-    await editor.getByRole("button", { name: "Generate", exact: true }).click();
-    await expect(editor.getByRole("status")).toContainText("Generating", {
-      timeout: 10_000,
-    });
-    await editor.getByRole("button", { name: "Cancel" }).click();
-    await expect(
-      editor.getByText("Cancelled. The thumbnail is unchanged."),
-    ).toBeVisible();
-    await editor.getByRole("button", { name: "Close" }).click();
-    await expect(editor).toBeHidden();
-    let after = await readVideo(request);
-    expect(after.thumbnailImage).toBeUndefined();
-    expect(after.thumbnailUrl).toBe(before.thumbnailUrl);
-
-    // 破棄: 結果が出てから捨てる。
-    await setTiming(request, { queuedMs: 300, runningMs: 800 });
-    editor = await startEdit(entry);
-    await editor.getByRole("button", { name: "Generate", exact: true }).click();
-    await expect(editor.getByRole("img", { name: "Generated" })).toBeVisible({
-      timeout: 15_000,
-    });
-    await editor.getByRole("button", { name: "Discard" }).click();
-    await expect(editor).toBeHidden();
-    after = await readVideo(request);
-    expect(after.thumbnailImage).toBeUndefined();
-    expect(after.thumbnailUrl).toBe(before.thumbnailUrl);
-    await expect(page.getByRole("img", { name: "Generated thumbnail" })).toHaveCount(0);
-    await expectLibraryThumbnail(page, request, "frame");
-  });
-
-  // 046 受け入れ条件 1・3: ページから PNG・JPEG・WebP をそれぞれ上げると、ライブラリの
-  // カード・動画ページ・別の動画の関連動画のサムネイルになり、読み直しとフルスキャンの後も
-  // 残る。動画と同じ比率の JPEG・WebP は既定の「Whole image」のまま余白なく枠を埋め、縦長の
-  // PNG は「Fill frame」で動画の形に切り抜かれ、帯の無いままカードを埋める。
+  // 046 受け入れ条件 1・3: ページから PNG・JPEG・WebP をそれぞれ上げると、実ブラウザで読んで
+  // 描いた画像が動画ページとライブラリのカードのサムネイルになり、読み直しの後も残る。縦長の
+  // PNG は「Fill frame」で動画の形に切り抜かれて帯の無いままカードを埋め、別の動画の関連動画にも
+  // 出て、フルスキャンの後も残る。動画と同じ比率の JPEG・WebP は既定の「Whole image」のまま送る。
   test("3 形式の画像をページから上げるとサムネイルになり、読み直しとスキャンの後も残る", async ({
     page,
     request,
   }) => {
-    test.setTimeout(240_000);
-    expect((await readVideo(request)).thumbnailImage).toBeUndefined();
-
+    test.setTimeout(180_000);
     for (const upload of [uploads.png, uploads.jpeg, uploads.webp]) {
       const before = await readVideo(request);
       await page.goto(`/videos/${String(target().id)}`);
@@ -658,17 +553,17 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
         (image) => solidIn(image, upload.color),
         true,
       );
-      if (upload === uploads.png) {
-        await expectLibraryImage(
-          page,
-          request,
-          async (image) => {
-            const aspect = await naturalAspect(image);
-            return aspect === null ? null : Math.abs(aspect - videoAspect) < 0.02;
-          },
-          true,
-        );
-      }
+      if (upload !== uploads.png) continue;
+
+      await expectLibraryImage(
+        page,
+        request,
+        async (image) => {
+          const aspect = await naturalAspect(image);
+          return aspect === null ? null : Math.abs(aspect - videoAspect) < 0.02;
+        },
+        true,
+      );
       await expectRelatedColor(page, request, upload.color);
 
       await rescan(request);
@@ -682,105 +577,6 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
       await page.goto(`/videos/${String(target().id)}`);
       await expectUploadedItem(page, upload.color);
     }
-  });
-
-  // 手元の画像の収め方（docs/design-docs/thumbnail-editing.md「Uploaded images」）: 縦長の画像を
-  // そのまま適用すると、カードには動画の形の枠に画像全体が余白付きで出る。「Fill frame」で
-  // 画像を下へ引いて上端を見せると、サムネイルには上半分の色だけが出る。やめると何も送らない。
-  test("全体を収めて適用でき、枠いっぱいに広げて動かした範囲だけがサムネイルになる", async ({
-    page,
-    request,
-  }) => {
-    test.setTimeout(120_000);
-    await page.goto(`/videos/${String(target().id)}`);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
-    await uploadFromPage(page, uploads.png);
-    await expectLibraryImage(
-      page,
-      request,
-      (image) => containedIn(image, uploads.png.color),
-      true,
-    );
-    await expectLibraryImage(
-      page,
-      request,
-      async (image) => {
-        const aspect = await naturalAspect(image);
-        return aspect === null ? null : Math.abs(aspect - videoAspect) < 0.02;
-      },
-      true,
-    );
-
-    // やめると何も送らず、サムネイルは変わらない。
-    const before = await readVideo(request);
-    await page.goto(`/videos/${String(target().id)}`);
-    const root = process.env.MDM_E2E_THUMBNAIL_UPLOAD_DIR ?? "";
-    const chooser = page.waitForEvent("filechooser");
-    await page.getByRole("button", { name: "Upload an image as thumbnail" }).click();
-    await (await chooser).setFiles(path.join(root, split.file));
-    const preview = page.getByRole("dialog", { name: "Preview thumbnail" });
-    await preview.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(preview).toBeHidden();
-    expect((await readVideo(request)).thumbnailUrl).toBe(before.thumbnailUrl);
-
-    await uploadFromPage(page, split, async (dialog, current) => {
-      await fillFrame(dialog, current);
-      const stage = dialog.getByRole("img", { name: /Drag or use the arrow keys/ });
-      const box = await stage.boundingBox();
-      if (box === null) throw new Error("the preview has no box");
-      const x = box.x + box.width / 2;
-      const y = box.y + box.height / 2;
-      await current.mouse.move(x, y);
-      await current.mouse.down();
-      await current.mouse.move(x, y + box.height, { steps: 8 });
-      await current.mouse.up();
-    });
-    await expectLibraryImage(page, request, (image) => solidIn(image, split.top), true);
-  });
-
-  // 046 受け入れ条件 4・7: 「Use the frame instead」と新しいキャプチャで、上げた画像から
-  // コマのサムネイルに戻る。上げた画像がサムネイルの間も、ゲストには入口も項目も出ない。
-  test("Use the frame instead と新しいキャプチャで上げた画像からコマに戻る", async ({
-    page,
-    browser,
-    request,
-  }) => {
-    test.setTimeout(120_000);
-    expect((await readVideo(request)).thumbnailImage).toBe("uploaded");
-    await page.goto(`/videos/${String(target().id)}`);
-    await expect(page.getByRole("img", { name: "Uploaded thumbnail" })).toBeVisible();
-    await page.getByRole("button", { name: "Use the frame instead" }).click();
-    await expect(page.getByRole("img", { name: "Uploaded thumbnail" })).toHaveCount(0);
-    expect((await readVideo(request)).thumbnailImage).toBeUndefined();
-    await expectLibraryThumbnail(page, request, "frame");
-    await expectLibraryImage(
-      page,
-      request,
-      (image) => solidIn(image, uploads.webp.color),
-      false,
-    );
-
-    await page.goto(`/videos/${String(target().id)}`);
-    await uploadFromPage(page, uploads.png, fillFrame);
-    await expectUploadedItem(page, uploads.png.color);
-    await expectGuestSeesNoThumbnailControls(browser);
-
-    const capture = page.getByRole("button", { name: "Use current frame as thumbnail" });
-    await expect(capture).not.toHaveAttribute("aria-disabled", "true", {
-      timeout: 30_000,
-    });
-    await capture.click();
-    await expect(page.getByRole("img", { name: "Uploaded thumbnail" })).toHaveCount(0);
-    await expect
-      .poll(async () => (await readVideo(request)).thumbnailImage)
-      .toBeUndefined();
-    await expectLibraryThumbnail(page, request, "frame");
-    await expectLibraryImage(
-      page,
-      request,
-      (image) => solidIn(image, uploads.png.color),
-      false,
-    );
   });
 
   // 046 受け入れ条件 5・6: 上げた画像から始めた編集はそれを元として出し、マスク付きの実行の
@@ -820,37 +616,5 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
     await expect(editor).toBeHidden();
     await expect(page.getByRole("img", { name: "Generated thumbnail" })).toBeVisible();
     expect((await readVideo(request)).thumbnailImage).toBe("generated");
-  });
-
-  // 046 受け入れ条件 5: 生成した画像のサムネイルから始めた編集は、その画像を新しい結果の
-  // 隣に出す。
-  test("生成した画像のサムネイルから始めた編集は、その画像を結果の隣に出す", async ({
-    page,
-    request,
-  }) => {
-    test.setTimeout(90_000);
-    expect((await readVideo(request)).thumbnailImage).toBe("generated");
-    const entry = await openVideo(page);
-    const editor = await startThumbnailEdit(entry);
-    await expect(editor).toContainText("Current thumbnail, saved image");
-    await generate(editor);
-
-    // 元は前の編集の結果（塗った線だけが偽物の色）で、塗らずに実行した結果は一色である。
-    const source = editor.getByRole("img", { name: "Thumbnail" });
-    await expect.poll(() => strokeOver(source, uploads.jpeg.color)).toBe(true);
-    await expect
-      .poll(() => solidIn(editor.getByRole("img", { name: "Generated" }), outputColor))
-      .toBe(true);
-
-    await editor.getByRole("button", { name: "Discard" }).click();
-    await expect(editor).toBeHidden();
-    expect((await readVideo(request)).thumbnailImage).toBe("generated");
-    await setComposite(request, false);
-  });
-
-  // 受け入れ条件 9（046 受け入れ条件 7）: ゲストには編集の入口も元の選択もアップロードの
-  // 入口も出ない。
-  test("ゲストには編集とアップロードの入口が出ない", async ({ browser }) => {
-    await expectGuestSeesNoThumbnailControls(browser);
   });
 });

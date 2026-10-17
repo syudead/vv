@@ -415,6 +415,40 @@ describe("ScanStatusSection", () => {
       expect(screen.queryByText(/of 3 videos done/)).toBeNull();
     });
 
+    it("lists the files of a watch scan that ended with failures, and keeps Scan library enabled", async () => {
+      const current = scan({
+        origin: "watch",
+        status: "partial",
+        videos: { total: 2, settled: 2 },
+        issues: { failed: 2, substituted: 0, revision: 2 },
+      });
+      fetchMock.mockImplementation((input) =>
+        Promise.resolve(
+          String(input) === "/api/media-folders"
+            ? json([{}])
+            : String(input).startsWith("/api/scans/current/issues")
+              ? json({
+                  scanId: current.id,
+                  items: ["broken-a.mp4", "broken-b.mp4"].map((fileName) => ({
+                    severity: "failed",
+                    kinds: ["probe_failed"],
+                    fileName,
+                    folder: { rootId: 1, path: "", rootName: "media" },
+                  })),
+                })
+              : json(current),
+        ),
+      );
+      renderSection();
+
+      const list = await screen.findByRole("region", { name: "Videos with problems" });
+      expect(await within(list).findByText("broken-a.mp4")).toBeDefined();
+      expect(within(list).getByText("broken-b.mp4")).toBeDefined();
+      expect(screen.getByText("Auto-import: some failed")).toBeDefined();
+      const button = screen.getByRole("button", { name: "Scan library" });
+      expect(button.hasAttribute("disabled")).toBe(false);
+    });
+
     it.each([
       ["done", "Auto-imported"],
       ["failed", "Auto-import failed"],

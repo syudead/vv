@@ -101,6 +101,8 @@ describe("AuthGate", () => {
     ["/history?watch=watched", "/login?next=%2Fhistory%3Fwatch%3Dwatched"],
     ["/playlists", "/login?next=%2Fplaylists"],
     ["/playlists/7", "/login?next=%2Fplaylists%2F7"],
+    // アクティビティ（specs/055-activity/ui-design.md「Activity page」）。
+    ["/activity", "/login?next=%2Factivity"],
     // 動画の作品情報の編集画面（specs/047-video-work-info/ui-design.md「Editor」の Guest）。
     ["/videos/7/edit", "/login?next=%2Fvideos%2F7%2Fedit"],
     ["/settings?tab=a", "/login?next=%2Fsettings%3Ftab%3Da"],
