@@ -33,6 +33,8 @@ function cloneTree(source: Node): Node {
 
 function assignTree(target: Node, source: Node): void {
   for (const [key, value] of Object.entries(source)) {
+    if (key === "__proto__" || key === "constructor" || key === "prototype") continue;
+    if (!Object.hasOwn(target, key)) continue;
     const current = target[key];
     if (isNode(value) && isNode(current)) assignTree(current, value);
     else target[key] = value;

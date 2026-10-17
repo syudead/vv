@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   brushDiameter,
   elapsedNow,
+  encodeReferenceURL,
   fitBox,
   isRunning,
   referenceAccepted,
@@ -13,6 +14,13 @@ import {
 } from "./editRules";
 
 describe("editRules", () => {
+  it("preserves IPv6 origins and existing escapes in reference blob URLs", () => {
+    const url = "blob:http://[::1]:8080/a%20b";
+    expect(encodeReferenceURL(url)).toBe(url);
+    expect(encodeReferenceURL(`blob:https://example.test/<"'>`)).toBe(
+      "blob:https://example.test/%3C%22%27%3E",
+    );
+  });
   it("待ち行列・準備中・生成中だけを実行中とし、状態の文言を返す", () => {
     expect(["queued", "preparing", "running"].every((s) => isRunning(s as never))).toBe(
       true,

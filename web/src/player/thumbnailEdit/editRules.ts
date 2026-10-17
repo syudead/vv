@@ -96,6 +96,15 @@ export function referenceAccepted(file: Pick<File, "type" | "size">): boolean {
   return referenceTypes.has(file.type) && file.size <= REFERENCE_MAX_BYTES;
 }
 
+/** Encode markup characters while preserving the browser-generated blob URL. */
+export function encodeReferenceURL(url: string): string {
+  return url
+    .replace(/</g, "%3C")
+    .replace(/>/g, "%3E")
+    .replace(/"/g, "%22")
+    .replace(/'/g, "%27");
+}
+
 /**
  * shapeDiffers は生成した画像の形が動画（コマ）の形と違うかを返す。違えば、比べる箱は
  * サムネイルと同じく切り抜いて出し、その旨を書き添える。1% までの差は丸めの差として扱う。

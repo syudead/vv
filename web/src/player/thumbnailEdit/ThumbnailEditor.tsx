@@ -47,6 +47,7 @@ import {
   BRUSH_STEPS,
   brushDiameter,
   elapsedNow,
+  encodeReferenceURL,
   isRunning,
   referenceAccepted,
   runStateText,
@@ -477,7 +478,7 @@ export default function ThumbnailEditor({
         ) : (
           <div className="flex min-w-0 items-center gap-2">
             <img
-              src={reference.url}
+              src={encodeReferenceURL(reference.url)}
               alt=""
               className="h-16 w-auto shrink-0 rounded-sm object-contain"
             />
