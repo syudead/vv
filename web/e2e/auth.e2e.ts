@@ -8,8 +8,8 @@ import { ownerAccount } from "./owner-account";
 //
 // どのテストも Cookie の無いブラウザで始め、自分でログインする。既存の e2e が使う
 // 所有者のセッション（auth.setup.ts）をログアウトで終わらせないためである。
-// ログインの失敗は同じ送信元で 5 分に 5 回までなので、ここでの失敗は 1 回に収める
-// （owner-account.ts）。
+// 送信中と失敗の画面の振る舞いは LoginPage.test.tsx、失敗の扱いと試行の制限は Go の
+// テストが確かめる。
 test.use({ storageState: { cookies: [], origins: [] } });
 
 async function expectCredentialFields(page: Page) {
@@ -57,49 +57,6 @@ test("ゲストで設定画面を開くとログイン画面になり、キー�
   await expect(page).toHaveURL("/settings");
   // `/settings` は sm から「Scan」のページを出す（specs/058-settings-pages R-3）。
   await expect(page.getByRole("heading", { level: 1, name: "Scan" })).toBeVisible();
-});
-
-test("ログインの送信中は再送信できず、失敗するとパスワードだけが空になる", async ({
-  page,
-}) => {
-  await page.goto("/login");
-  await page.getByLabel("Username").fill(ownerAccount.username);
-  await page.getByLabel("Password").fill("wrong-password");
-
-  // 応答を止めて、送信中の状態を確かめる。
-  let release: () => void = () => undefined;
-  const held = new Promise<void>((resolve) => (release = resolve));
-  let attempts = 0;
-  await page.route("**/api/auth/login", async (route) => {
-    attempts += 1;
-    await held;
-    await route.continue();
-  });
-
-  await page.getByLabel("Password").press("Enter");
-  // 送信中はボタンの名前が「Signing in…」に変わるので、どちらの名前でも同じボタンを指す。
-  const submit = page.getByRole("button", { name: /^Sign(ing)? in/ });
-  await expect(submit).toBeDisabled();
-  await expect(submit).toHaveText("Signing in…");
-  await expect(submit).toHaveAttribute("aria-busy", "true");
-  await page.getByLabel("Password").press("Enter");
-  await submit.click({ force: true });
-  expect(attempts).toBe(1);
-
-  release();
-  await expect(page.getByRole("alert")).toHaveText(
-    "The username or password is incorrect.",
-  );
-  await expect(page.getByLabel("Username")).toHaveValue(ownerAccount.username);
-  await expect(page.getByLabel("Password")).toHaveValue("");
-  await expect(page.getByLabel("Password")).toBeFocused();
-  expect(attempts).toBe(1);
-
-  // 正しいパスワードで入れる。成功で、この送信元の失敗の記録は消える。
-  await page.unroute("**/api/auth/login");
-  await page.getByLabel("Password").fill(ownerAccount.password);
-  await page.getByLabel("Password").press("Enter");
-  await expect(page).toHaveURL("/");
 });
 
 test("ログアウトするとゲストの画面になり、前の Cookie を付け直しても所有者に戻らない", async ({
