@@ -8,12 +8,16 @@ Read [README.md](README.md) first. Input is one native child Issue.
    Otherwise, an existing PR for the child does not block a separate PR.
 3. Create an arbitrary-name sub-branch from the current feature branch.
 4. Implement only the work named by the child Issue and its necessary tests.
+   Apply [write-tests](../../write-tests/SKILL.md) before test edits, using the
+   child's acceptance evidence to select or reuse cases.
    When the selected host provides the project-scoped `subissue-implementer`
    worker, delegate this step to it. Give it the child Issue body, the relevant
-   approved artifact paths, the acceptance evidence, and an explicit write
+   approved artifact paths, the acceptance evidence and test selection, the
+   `write-tests` skill path, and an explicit write
    scope. The worker owns only the implementation, focused tests, and focused
    checks: it does not create branches, change approved artifacts, push, or
    open a PR. Wait for it to finish, inspect its changes,
+   review its tests with [write-tests review](../../write-tests/SKILL.md#review-and-report),
    and keep ownership of every later step in this workflow. If that worker is
    unavailable, use an equivalent bounded worker when the host supports one, or
    perform this step locally.

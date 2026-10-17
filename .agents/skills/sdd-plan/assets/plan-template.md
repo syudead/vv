@@ -172,6 +172,10 @@ layout" with a link]
   - Between them the units must cover the whole feature, and must not overlap.
   - For a unit that changes a screen, say so in its acceptance: the
     implementation owes a visual review.
+  - Use .agents/skills/write-tests/SKILL.md to select acceptance evidence:
+    name reused coverage or the gap, its lowest test level, and any real
+    dependency or boundary the case requires. Keep fixture details local to
+    implementation unless they affect an approved decision.
 
   Do not add persistent task IDs and do not create a separate tasks.md.
 -->

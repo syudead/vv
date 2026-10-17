@@ -119,6 +119,8 @@ Handle this one round:
 - every unresolved review thread: verify the finding against the code and the
   sources of truth; fix it when it is a real defect, otherwise reply why not
 - a conflict with <base>: merge origin/<base> into the head branch
+For tests added or changed by a fix, apply .agents/skills/write-tests/SKILL.md
+before editing and report its evidence in the PR validation section.
 Check out the PR's head branch, run the checks the change needs,
 including the pre-push check from AGENTS.md, commit in
 the repository's commit-message style, push to the same branch, then reply

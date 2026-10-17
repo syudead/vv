@@ -189,6 +189,11 @@ integration PR.
 
 ## Checks before a push
 
+Every stage that selects, writes or revises tests applies
+[write-tests](../../write-tests/SKILL.md), including review fixes and the
+integration sweep. Test selection stays with acceptance evidence and the PR's
+validation results; it adds no stage or approval gate.
+
 A check named in a child Issue's acceptance or a Plan's verification is
 satisfied by the PR's CI when CI runs it. A PR's CI does not run browser e2e:
 its required `Browser E2E` job passes without running, except on Renovate PRs.
