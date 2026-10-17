@@ -514,13 +514,14 @@ jobs:
         run: npx playwright install chromium
 
       # テストの動画（web/e2e/media-fixtures.mjs が ffmpeg で作る約 200 本、1 回 20 秒ほど）を
-      # 持ち越す。run-e2e.mjs は作り方と ffmpeg の版から決めた名前の下に作り、同じ名前が
+      # 持ち越す。run-e2e.mjs は作り方（media-fixtures.mjs と run-e2e.mjs 自身と写す画像）と
+      # ffmpeg の版から決めた名前の下に作り、同じ名前が
       # あれば作らずに写す。ffmpeg の版は runner のイメージ版で決まる。
       - name: テストの動画を復元する
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .local/e2e-fixtures
-          key: e2e-fixtures-${{ steps.image.outputs.version }}-${{ hashFiles('web/e2e/media-fixtures.mjs', 'web/e2e/fixtures/**') }}
+          key: e2e-fixtures-${{ steps.image.outputs.version }}-${{ hashFiles('web/e2e/media-fixtures.mjs', 'web/e2e/run-e2e.mjs', 'web/e2e/fixtures/**') }}
 
       - name: 実ブラウザE2E
         env:

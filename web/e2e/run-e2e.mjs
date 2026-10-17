@@ -99,8 +99,9 @@ function generateFixtures(dirs) {
   generateWorkInfoPluginFixtures(dirs.workInfoPluginsMediaDir);
 }
 
-// テストの動画は ffmpeg で作ると 1 回 20 秒ほどかかるので、作り方（media-fixtures.mjs と
-// 写す画像）と ffmpeg の版が同じあいだは、一度作ったものを写して使う。CI はこの置き場を
+// テストの動画は ffmpeg で作ると 1 回 20 秒ほどかかるので、作り方（media-fixtures.mjs、
+// 生成先の並びを決めるこのファイル、写す画像）と ffmpeg の版が同じあいだは、一度作った
+// ものを写して使う。CI はこの置き場を
 // actions/cache で持ち越す（.github/workflows/ci.yml）。
 const fixtureCacheRoot =
   process.env.MDM_E2E_FIXTURE_CACHE ?? path.join(repoRoot, ".local", "e2e-fixtures");
@@ -108,6 +109,7 @@ const fixtureCacheRoot =
 function fixtureKey() {
   const hash = createHash("sha256");
   hash.update(readFileSync(path.join(webRoot, "e2e", "media-fixtures.mjs")));
+  hash.update(readFileSync(fileURLToPath(import.meta.url)));
   hash.update(
     readFileSync(path.join(webRoot, "e2e", "fixtures", "thumbnail-upload.webp")),
   );
