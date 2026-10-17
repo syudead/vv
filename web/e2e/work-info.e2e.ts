@@ -1,7 +1,8 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 // 動画の作品情報（親 Issue #967 の受け入れ条件 1・7 と Edge Cases の「長い説明で崩れない」、
-// 子 #1030）を実ブラウザに通す。検索・絞り込み・統合・外部 API・項目の出し方・値の消し方は
+// 子 #1030）と、外部 API で書いた値が開いているページに通知で出ること（受け入れ条件 8）を
+// 実ブラウザに通す。検索・絞り込み・統合・外部 API の各操作・項目の出し方・値の消し方は
 // Go のストアとハンドラー、Vitest のページとコンポーネントのテストが持つので、ここでは重ねない
 // （docs/design-docs/web-testing.md の Test levels）。動画は run-e2e.mjs が
 // generateWorkInfoFixtures で作る作品動画A〜D の 4 本。テストは順に状態を積む: A に編集画面で
@@ -22,6 +23,14 @@ interface Video {
   title: string;
 }
 
+interface ExternalVideo {
+  workInfo: {
+    code: string | null;
+    dates: { kind: string; date: string }[];
+    people: { role: string; person: { id: number; name: string } }[];
+  };
+}
+
 interface Credit {
   id: number;
   name: string;
@@ -37,6 +46,7 @@ const run = Date.now().toString(36);
 const displayName = "作品e2e表示名";
 const code = "WIE-047";
 const released = "2024-06-01";
+const externalCode = "EXT-047";
 const haruka = `作品e2e春香${run}`;
 const natsumi = `作品e2e夏美${run}`;
 const maker = `作品e2eメーカー${run}`;
@@ -116,6 +126,15 @@ function workDetails(page: Page) {
 /** infoArea は動画ページの情報欄（ファイルの行・作品情報・技術の行を縦に並べる枠）である。 */
 function infoArea(page: Page) {
   return page.getByRole("list", { name: "File details" }).locator("xpath=../..");
+}
+
+async function issueToken(request: APIRequestContext): Promise<string> {
+  const issued = await request.post("/api/api-tokens", {
+    headers: mutationHeaders,
+    data: { name: "e2e作品情報" },
+  });
+  expect(issued.status()).toBe(201);
+  return ((await issued.json()) as { secret: string }).secret;
 }
 
 async function openVideo(page: Page, id: number, title: string) {
@@ -230,6 +249,57 @@ test.describe.serial("work information", () => {
     await runScan(request);
     await openVideo(page, video("作品動画A").id, displayName);
     await expectFilledA(page);
+  });
+
+  // 外部 API の保存 → 通知（/api/events）→ 開いているページの読み直しは、本物のサーバーと
+  // ブラウザが揃って初めて通る。
+  test("8: 外部 API で書いた値が開いているページに出て、ページで入れた値を外部 API で読める", async ({
+    page,
+    request,
+  }) => {
+    const a = video("作品動画A");
+    const c = video("作品動画C");
+    const secret = await issueToken(request);
+    const authorization = { Authorization: `Bearer ${secret}` };
+
+    await openVideo(page, c.id, c.title);
+    await expect(
+      workDetails(page).getByRole("listitem").filter({ hasText: "Code" }),
+    ).toHaveCount(0);
+    const written = await request.post("/api/v1/video-work-info", {
+      headers: { ...authorization, "Content-Type": "application/json" },
+      data: {
+        items: [
+          {
+            video: { id: c.id },
+            workInfo: {
+              code: externalCode,
+              dates: [{ kind: "published", date: "2025" }],
+              people: [{ role: "performer", person: { id: person(haruka).id } }],
+            },
+          },
+        ],
+      },
+    });
+    expect(written.status()).toBe(200);
+    // 再読み込みはしない。video の通知でページが読み直す。
+    await expect(workDetails(page).getByRole("listitem")).toHaveText([
+      item("Code", externalCode),
+      item("Published", "2025"),
+      item("Performer", haruka),
+    ]);
+
+    const lookup = await request.get(`/api/v1/videos/lookup?id=${String(a.id)}`, {
+      headers: authorization,
+    });
+    expect(lookup.status()).toBe(200);
+    const { workInfo } = (await lookup.json()) as ExternalVideo;
+    expect(workInfo.code).toBe(code);
+    expect(workInfo.dates).toEqual([{ kind: "release", date: released }]);
+    expect(workInfo.people.map((entry) => [entry.role, entry.person.name])).toEqual([
+      ["performer", haruka],
+      ["performer", natsumi],
+    ]);
   });
 
   test("Edge Case: 長い説明は折りたたまれたままで、360px でページに横スクロールが出ない", async ({

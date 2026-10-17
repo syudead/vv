@@ -184,8 +184,11 @@ test.describe.serial("media information", () => {
     // （ui-design.md「Responsive behaviour」）。隣に字幕があり、mkv は変換して再生する。
     // 6 秒の動画は数秒で終わり、終わると操作バーの中身が変わる。止めてから測り、幅を
     // 変えたあとの並べ直しが落ち着くまで測り直す（1 回だけ測ると、main で 2 回落ちた）。
-    await page.keyboard.press("Space");
-    await expect(page.locator(".video-js")).toHaveClass(/vjs-paused/);
+    // Space は切り替えなので、もう終わっていると頭から再生してしまう。要素を直に止める。
+    await page.locator(".video-js video").evaluate((video: HTMLVideoElement) => {
+      video.pause();
+    });
+    await expect(page.locator(".video-js")).toHaveClass(/vjs-paused|vjs-ended/);
     await page.setViewportSize({ width: 360, height: 800 });
     await page.locator(".video-js").hover();
     await expect(page.locator(".vjs-control-bar > .vjs-subs-caps-button")).toBeVisible();
