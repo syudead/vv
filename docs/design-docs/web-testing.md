@@ -24,7 +24,7 @@ Each level proves a different kind of behaviour, at a different cost per test.
 | Logic test | A rule (ordering, filtering, validation, formatting), a hook, or an API module | Nothing, or a hook through `renderHook`; `fetch` stubbed where the module calls it | 0.01 s |
 | Component test | What one component shows and emits for given props | That component inside its providers | 0.10 s |
 | Page test | A flow across components, request ordering, focus moving between parts, URL state | A `*Page` component with `fetch` replaced by a fake server | 0.35 s |
-| E2E test | What only the real server, browser and media show: playback, setup and login, scanning | The app from the Vite development server in Chromium, against the built Go server | Seconds; runs on a push to `main` and on Renovate PRs |
+| E2E test | What only the real server, browser and media show: playback and seeking, the login cookie, and layout, scroll and focus that jsdom cannot compute | The app from the Vite development server in Chromium, against the built Go server | Seconds; runs on a push to `main` and on Renovate PRs |
 
 The costs are the mean worker time per test in a full Vitest run.
 
@@ -79,6 +79,21 @@ into files by topic.
 Vitest runs the files of one CI shard in parallel and runs the tests of one file
 in order, so one long file sets the shard's duration
 ([development.md](../how-to/development.md#validate-changes)).
+
+## E2E tests
+
+An E2E test stays only while all of these hold:
+
+- It checks what only the real server, Chromium or media can break: playback
+  and seeking, the login cookie, or layout, scroll and focus that jsdom cannot
+  compute.
+- No Vitest or Go test already proves the same behaviour.
+- Its result does not depend on background work finishing in time, such as
+  thumbnail, preview or sprite preparation, or on a fixed sleep.
+
+A test that only takes screenshots is not a test. A behaviour that fails these
+rules is tested at a lower level, or not at all when every part of it already
+is.
 
 ## Rules out of pages
 

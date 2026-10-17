@@ -69,7 +69,7 @@ bulk.
 | Folded matching form | [013 data-model.md](../013-library-search/data-model.md), `domain.FoldForMatch` |
 | Screen API, errors, generated code | [api/openapi.yaml](../../api/openapi.yaml), [023 error-api](../023-english-i18n/contracts/error-api.md), `task generate` |
 | Fetch dialog, work details row, screen rules, Web tests | [web/src/player/workInfoFetch/](../../web/src/player/workInfoFetch/), [web/src/player/WorkInfo.tsx](../../web/src/player/WorkInfo.tsx), [design-system.md](../../docs/design-docs/design-system.md), [web-testing.md](../../docs/design-docs/web-testing.md) |
-| Browser test and its fixture plugin | [web/e2e/work-info-plugins.e2e.ts](../../web/e2e/work-info-plugins.e2e.ts), [internal/wasmplugin/testdata/e2eworks/](../../internal/wasmplugin/testdata/e2eworks/) |
+| Browser test and its fixture plugin | `web/e2e/work-info-plugins.e2e.ts` (since removed), `internal/wasmplugin/testdata/e2eworks/` (since removed) |
 | Checks | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`) |
 
 **Feature-specific context**: No new dependency, no migration and no new

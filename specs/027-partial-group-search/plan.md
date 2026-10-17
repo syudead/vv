@@ -33,7 +33,7 @@ screen chooses how to render by item kind alone (`web/src/api/libraryItems.ts`,
 | Implementation | [internal/store/library_items.go](../../internal/store/library_items.go) (`libraryItemsCTE`, `ListLibrary`, `LibraryIDs`), [internal/store/listing.go](../../internal/store/listing.go) (`chosenLocationsCTE`, `listSpec`), [internal/httpapi/library.go](../../internal/httpapi/library.go) |
 | API source of truth and generated code | [api/openapi.yaml](../../api/openapi.yaml) (`listLibrary`, `listLibraryIds`), `task generate` ([Taskfile.yml](../../Taskfile.yml)) |
 | How the screen holds the list and renders items | [web/src/api/libraryItems.ts](../../web/src/api/libraryItems.ts), [web/src/api/useVideos.ts](../../web/src/api/useVideos.ts), [web/src/library/LibraryPage.tsx](../../web/src/library/LibraryPage.tsx) |
-| Browser tests | [web/e2e/guest.e2e.ts](../../web/e2e/guest.e2e.ts) (`task test-e2e`; CI runs it only on pushes to `main`) |
+| Browser tests | `web/e2e/guest.e2e.ts` (since removed) (`task test-e2e`; CI runs it only on pushes to `main`) |
 
 **Feature-specific context**:
 

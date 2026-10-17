@@ -5,9 +5,8 @@ import { expect, test as setup } from "@playwright/test";
 
 import { ownerAccount, ownerStorageState } from "./owner-account";
 
-// 所有者のアカウントを作ってログインし、その Cookie を既存の e2e すべてに渡す。
-// ふだんは unconfigured.setup.ts が画面の初回設定でアカウントを作っているので、
-// 409 を受けてログインに切り替える。
+// 所有者のアカウントを作ってログインし、その Cookie を e2e すべてに渡す。CI の再試行で
+// アカウントがもうあるときは 409 を受けてログインに切り替える。
 setup("所有者のアカウントを作ってログインする", async ({ request }) => {
   const created = await request.post("/api/auth/setup", { data: ownerAccount });
   if (created.status() === 409) {

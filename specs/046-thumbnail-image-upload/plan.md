@@ -67,7 +67,7 @@ previews.
 | The workflows' inputs (`vv:frame` takes any PNG) | [045 contracts/workflow.md](../045-comfyui-thumbnails/contracts/workflow.md#workflows) |
 | Screen API, errors, generated code | [api/openapi.yaml](../../api/openapi.yaml), [023 error-api](../023-english-i18n/contracts/error-api.md), `task generate` |
 | The video page, the editor, screen rules and Web tests | [045 ui-design](../045-comfyui-thumbnails/ui-design.md), [web/src/player/VideoFacts.tsx](../../web/src/player/VideoFacts.tsx), [web/src/player/thumbnailEdit/](../../web/src/player/thumbnailEdit/), [design-system.md](../../docs/design-docs/design-system.md), [web-testing.md](../../docs/design-docs/web-testing.md) |
-| The browser test and the fake ComfyUI | [web/e2e/thumbnail-edit.e2e.ts](../../web/e2e/thumbnail-edit.e2e.ts), [web/e2e/fake-comfyui.mjs](../../web/e2e/fake-comfyui.mjs) |
+| The browser test and the fake ComfyUI | `web/e2e/thumbnail-edit.e2e.ts` (since removed), `web/e2e/fake-comfyui.mjs` (since removed) |
 | Checks | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`, `task test-e2e`) |
 
 **Feature-specific context**:

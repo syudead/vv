@@ -62,7 +62,7 @@ to the scrub position. The server and API do not change.
 - Check entry points: [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`, `task test-e2e`). The
   e2e fixtures with a real sprite and the hover preview:
   [web/e2e/playback.e2e.ts](../../web/e2e/playback.e2e.ts) (`waitForSeekThumbnails`),
-  [web/e2e/hover-preview.e2e.ts](../../web/e2e/hover-preview.e2e.ts)
+  `web/e2e/hover-preview.e2e.ts` (since removed)
 
 **Feature-specific context**:
 

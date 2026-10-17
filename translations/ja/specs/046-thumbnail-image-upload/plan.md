@@ -1,6 +1,6 @@
 ---
 source: specs/046-thumbnail-image-upload/plan.md
-sourceHash: defe55fc058282c769b8fab3a9f0ae5b13bd84ff77d25861c8eaef2485cf606a
+sourceHash: 9d910268d415b864be6290a147a58c7dbb913e9431326049df63cda5138da2e2
 ---
 
 # 実装計画: ローカルの画像をサムネイルにし、今のサムネイルを ComfyUI で編集する {#implementation-plan-set-a-local-image-as-the-thumbnail-and-edit-the-current-thumbnail-with-comfyui}
@@ -54,7 +54,7 @@ Issue には `ui` ラベルがあるので、2 つの画面の単位より前に
 | ワークフローの入力 (`vv:frame` は任意の PNG を受け取る) | [045 contracts/workflow.md](../045-comfyui-thumbnails/contracts/workflow.md#workflows) |
 | 画面の API、エラー、生成コード | [api/openapi.yaml](../../api/openapi.yaml)、[023 error-api](../023-english-i18n/contracts/error-api.md)、`task generate` |
 | 動画のページ、エディター、画面の規則と Web のテスト | [045 ui-design](../045-comfyui-thumbnails/ui-design.md)、[web/src/player/VideoFacts.tsx](../../web/src/player/VideoFacts.tsx)、[web/src/player/thumbnailEdit/](../../web/src/player/thumbnailEdit/)、[design-system.md](../../docs/design-docs/design-system.md)、[web-testing.md](../../docs/design-docs/web-testing.md) |
-| ブラウザーテストと偽の ComfyUI | [web/e2e/thumbnail-edit.e2e.ts](../../web/e2e/thumbnail-edit.e2e.ts)、[web/e2e/fake-comfyui.mjs](../../web/e2e/fake-comfyui.mjs) |
+| ブラウザーテストと偽の ComfyUI | `web/e2e/thumbnail-edit.e2e.ts` (削除済み)、`web/e2e/fake-comfyui.mjs` (削除済み) |
 | 検査 | [Taskfile.yml](../../Taskfile.yml) (`task check`、`task check-docs`、`task test-e2e`) |
 
 **この機能に固有の文脈**:

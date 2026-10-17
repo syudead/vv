@@ -1,6 +1,6 @@
 ---
 source: specs/056-plugin-tooling/plan.md
-sourceHash: 0a00346a222817058747ceab6702452d3d1600c5ceb3f9206d15a48e07b9f1e2
+sourceHash: 867a2ce9cc4b82bc3a2931615d9190c62b55afa8e8e6477f67346087d8a6b37c
 ---
 
 # 実装計画: 作者、運用者、利用者のための作品情報プラグインの道具 {#implementation-plan-work-info-plugin-tooling-for-authors-operators-and-users}
@@ -59,7 +59,7 @@ flowchart LR
 | プラグインの行、設定の値、フィクスチャのビルド補助 | [049 data-model.md](../049-work-info-plugins/data-model.md)、[internal/store/work_info_plugins.go](../../internal/store/work_info_plugins.go)、[internal/wasmplugin/plugintest](../../internal/wasmplugin/plugintest) |
 | 画面 API、エラー、生成されたコード | [api/openapi.yaml](../../api/openapi.yaml)、[023 error-api](../023-english-i18n/contracts/error-api.md)、`task generate` |
 | 設定ダイアログ、取得ダイアログ、画面の規則、Web のテスト | [web/src/settings/WorkInfoPluginSettingsDialog.tsx](../../web/src/settings/WorkInfoPluginSettingsDialog.tsx)、[web/src/player/workInfoFetch/](../../web/src/player/workInfoFetch/)、[design-system.md](../../docs/design-docs/design-system.md)、[web-testing.md](../../docs/design-docs/web-testing.md) |
-| ブラウザーのテストとそのフィクスチャのプラグイン | [web/e2e/work-info-plugins.e2e.ts](../../web/e2e/work-info-plugins.e2e.ts)、[internal/wasmplugin/testdata/e2eworks/](../../internal/wasmplugin/testdata/e2eworks/) |
+| ブラウザーのテストとそのフィクスチャのプラグイン | `web/e2e/work-info-plugins.e2e.ts` (削除済み)、`internal/wasmplugin/testdata/e2eworks/` (削除済み) |
 | チェック | [Taskfile.yml](../../Taskfile.yml) (`task check`、`task check-docs`) |
 
 **この機能に固有の背景**:
