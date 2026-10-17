@@ -54,8 +54,6 @@ type guestFixture struct {
 	thumbnails *fakeThumbnailPicker
 	// edits はサムネイルの編集のセッションで、提供元・コマ・適用だけが偽である（thumbnail_edits_test.go）。
 	edits *editFakes
-	// uploads は手元の画像のアップロードで、合わせと公開だけが偽である（thumbnail_upload_test.go）。
-	uploads *uploadFakes
 }
 
 const guestSecretTag = "秘密の名前"
@@ -71,7 +69,6 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 		library := db.Library()
 		f.thumbnails = &fakeThumbnailPicker{db: db}
 		f.edits = newEditFakes(db)
-		f.uploads = newUploadFakes(t, db)
 		return Options{
 			Videos:     library,
 			Folders:    library,
@@ -92,13 +89,12 @@ func newGuestFixture(t *testing.T, configure bool) *guestFixture {
 			// 外部連携 API の上書きの一括操作（external_video_overrides_test.go）が引き当てに使う。
 			ExternalVideos: library,
 			// 生成は代わりにし、位置の確かめと記録は本物の保存層で行う。
-			ThumbnailPicker:  f.thumbnails,
-			ThumbnailEdits:   f.edits.edits,
-			ThumbnailUploads: f.uploads,
-			Catalog:          app.NewCatalog(app.CatalogOptions{Index: library, Ingest: db.Ingest(), Files: guestArtifactFiles{}}),
-			Artifacts:        artifacts,
-			Transcoder:       f.transcode,
-			Subtitles:        media.NewSubtitleConverter(),
+			ThumbnailPicker: f.thumbnails,
+			ThumbnailEdits:  f.edits.edits,
+			Catalog:         app.NewCatalog(app.CatalogOptions{Index: library, Ingest: db.Ingest(), Files: guestArtifactFiles{}}),
+			Artifacts:       artifacts,
+			Transcoder:      f.transcode,
+			Subtitles:       media.NewSubtitleConverter(),
 		}
 	})
 	db := f.env.db

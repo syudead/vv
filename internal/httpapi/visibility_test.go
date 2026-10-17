@@ -97,34 +97,39 @@ func TestVideoVisibilityPublishesToGuests(t *testing.T) {
 	}
 }
 
-// 切り替えは所有者だけで、本文の誤りは 400 になる。
+type visibilityFunc func(context.Context, []int64, bool) ([]string, error)
+
+func (f visibilityFunc) SetVideosPublic(ctx context.Context, ids []int64, public bool) ([]string, error) {
+	return f(ctx, ids, public)
+}
+
+// Invalid requests stop at the HTTP boundary without touching the store.
 func TestVideoVisibilityRejectsGuestsAndInvalidBodies(t *testing.T) {
-	f := newGuestFixture(t, true)
-	env := f.env
-
-	guest := env.serve(authRequest{method: http.MethodPut, target: "/api/video-visibility", body: visibilityBody(true, f.ids["b"])})
-	assertUnauthenticated(t, "Cookie なしの切り替え", guest)
-	assertStatus(t, "切り替えられていない", env.get(f.videoPath("b", "")), http.StatusNotFound)
-
-	tooMany := make([]int64, maxVideoTagsIDs+1)
-	for index := range tooMany {
-		tooMany[index] = int64(index + 1)
-	}
+	calls := 0
+	visibility := visibilityFunc(func(context.Context, []int64, bool) ([]string, error) {
+		calls++
+		return nil, nil
+	})
+	guest := newTestServer(t, Options{Auth: guestEventsAuth{}, Visibility: visibility})
+	assertUnauthenticated(t, "guest visibility", jsonRequest(t, guest, http.MethodPut, "/api/video-visibility", visibilityBody(true, 1)))
+	handler := newTestServer(t, Options{Visibility: visibility})
 	for label, body := range map[string]string{
-		"空の videoIds":   visibilityBody(true),
-		"多すぎる videoIds": visibilityBody(true, tooMany...),
+		"empty IDs":    `{"videoIds":[],"public":true}`,
+		"too many IDs": `{"videoIds":` + idsJSON(maxVideoTagsIDs+1) + `,"public":true}`,
 	} {
-		rec := env.serve(authRequest{method: http.MethodPut, target: "/api/video-visibility", body: body, cookies: []*http.Cookie{f.owner}})
+		rec := jsonRequest(t, handler, http.MethodPut, "/api/video-visibility", body)
 		assertErrorBody(t, label, rec.Code, rec.Body.Bytes(), wantError{
 			status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest, reason: reasonTooManyVideos, limit: maxVideoTagsIDs,
 		})
 	}
 	for label, body := range map[string]string{
-		"public が無い": `{"videoIds":[1]}`,
-		"知らない欄":      `{"videoIds":[1],"public":true,"extra":1}`,
+		"missing public": `{"videoIds":[1]}`,
+		"unknown field":  `{"videoIds":[1],"public":true,"extra":1}`,
 	} {
-		rec := env.serve(authRequest{method: http.MethodPut, target: "/api/video-visibility", body: body, cookies: []*http.Cookie{f.owner}})
-		assertStatus(t, label, rec, http.StatusBadRequest)
+		assertStatus(t, label, jsonRequest(t, handler, http.MethodPut, "/api/video-visibility", body), http.StatusBadRequest)
+	}
+	if calls != 0 {
+		t.Errorf("rejected requests reached store %d times", calls)
 	}
 }
 

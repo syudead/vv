@@ -140,7 +140,7 @@ func (s *server) readThumbnailUpload(w http.ResponseWriter, r *http.Request) ([]
 
 // readUploadImagePart は image 部分を読む。読めなければ応答を書いて false を返す。
 func (s *server) readUploadImagePart(w http.ResponseWriter, part io.Reader) ([]byte, bool) {
-	data, err := readUploadPart(part)
+	data, err := readUploadPart(part, domain.ThumbnailUploadMaxBytes)
 	switch {
 	case errors.Is(err, domain.ErrThumbnailUploadTooLarge):
 		s.thumbnailUploadError(w, err)
@@ -154,16 +154,16 @@ func (s *server) readUploadImagePart(w http.ResponseWriter, part io.Reader) ([]b
 
 // readUploadPart は image 部分を上限まで読む。部分が上限を越えるか、本文全体が上限を越えれば
 // *domain.ThumbnailUploadTooLargeError を返す。空の部分も nil でない空の値として返す。
-func readUploadPart(part io.Reader) ([]byte, error) {
-	tooLarge := &domain.ThumbnailUploadTooLargeError{Limit: domain.ThumbnailUploadMaxBytes}
-	data, err := io.ReadAll(io.LimitReader(part, domain.ThumbnailUploadMaxBytes+1))
+func readUploadPart(part io.Reader, limit int64) ([]byte, error) {
+	tooLarge := &domain.ThumbnailUploadTooLargeError{Limit: int(limit)}
+	data, err := io.ReadAll(io.LimitReader(part, limit+1))
 	var bodyTooLarge *http.MaxBytesError
 	switch {
 	case errors.As(err, &bodyTooLarge):
 		return nil, tooLarge
 	case err != nil:
 		return nil, err
-	case len(data) > domain.ThumbnailUploadMaxBytes:
+	case int64(len(data)) > limit:
 		return nil, tooLarge
 	case data == nil:
 		return []byte{}, nil

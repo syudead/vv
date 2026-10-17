@@ -62,8 +62,6 @@ func TestCheckThumbnailUpload(t *testing.T) {
 		{name: "アニメーションの WebP", image: animatedWebPImage(), want: domain.ErrThumbnailUploadInvalid},
 		{name: "12000×11000", image: pngHeaderSized(t, 12000, 11000),
 			want: domain.ErrThumbnailUploadTooLarge, wantLimit: domain.ThumbnailUploadMaxPixels},
-		{name: "64 MiB を越える", image: make([]byte, domain.ThumbnailUploadMaxBytes+1),
-			want: domain.ErrThumbnailUploadTooLarge, wantLimit: domain.ThumbnailUploadMaxBytes},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			err := checkThumbnailUpload(tc.image)
@@ -81,6 +79,19 @@ func TestCheckThumbnailUpload(t *testing.T) {
 				t.Fatalf("err = %v, want limit %d", err, tc.wantLimit)
 			}
 		})
+	}
+}
+
+func TestCheckThumbnailUploadSize(t *testing.T) {
+	for _, size := range []int{0, domain.ThumbnailUploadMaxBytes - 1, domain.ThumbnailUploadMaxBytes} {
+		if err := checkThumbnailUploadSize(size); err != nil {
+			t.Errorf("size %d: %v", size, err)
+		}
+	}
+	err := checkThumbnailUploadSize(domain.ThumbnailUploadMaxBytes + 1)
+	var tooLarge *domain.ThumbnailUploadTooLargeError
+	if !errors.As(err, &tooLarge) || tooLarge.Limit != domain.ThumbnailUploadMaxBytes {
+		t.Fatalf("over limit: %v", err)
 	}
 }
 
