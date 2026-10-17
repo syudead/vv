@@ -48,22 +48,13 @@ func hasJapanese(s string) bool {
 	return false
 }
 
-// translationRoot holds the Japanese translations of the published documents.
-// They are checked by docs-site/translate/ja.mjs, not by these guards: their
-// prose is Japanese, and their links mirror their English sources.
-const translationRoot = "translations/"
-
-func isTranslation(rel string) bool {
-	return strings.HasPrefix(rel, translationRoot)
-}
-
 // TestDocumentsAreWrittenInEnglish fails on Japanese prose in a repository
 // document. Issue and PR bodies stay Japanese; documents do not
 // (docs/design-docs/writing-quality.md).
 func TestDocumentsAreWrittenInEnglish(t *testing.T) {
 	for _, path := range guardedMarkdown(t) {
 		rel := relativeTo(t, path)
-		if japaneseExempt[rel] || isTranslation(rel) {
+		if japaneseExempt[rel] {
 			continue
 		}
 		body, err := os.ReadFile(path)

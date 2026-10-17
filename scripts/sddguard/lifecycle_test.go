@@ -20,7 +20,7 @@ func TestPermanentSourcesDoNotCiteFeatureArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, rel := range strings.Split(string(out), "\x00") {
-		if rel == "" || strings.HasPrefix(rel, "specs/") || strings.HasPrefix(rel, "translations/") || strings.HasPrefix(rel, "scripts/sddguard/") {
+		if rel == "" || strings.HasPrefix(rel, "specs/") || strings.HasPrefix(rel, "scripts/sddguard/") {
 			continue
 		}
 		info, err := os.Lstat(filepath.Join(root, rel))

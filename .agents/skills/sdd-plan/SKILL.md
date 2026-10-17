@@ -31,9 +31,7 @@ Before writing any artifact, read
 and [docs/design-docs/writing-quality.md](../../../docs/design-docs/writing-quality.md).
 Each artifact starts from its type in [`assets/`](assets/): `plan-template.md`,
 `research-template.md`, `data-model-template.md`, `contract-template.md` and
-`quickstart-template.md`. Write in English (W-1). Once the artifacts are
-final, hand them to the `doc-translator` subagent and commit its
-`translations/ja/` output in the same pull request.
+`quickstart-template.md`. Write in English (W-1).
 It defines P-1..P-7, the rules every artifact this command produces must
 satisfy. The three that decide whether the output is usable:
 

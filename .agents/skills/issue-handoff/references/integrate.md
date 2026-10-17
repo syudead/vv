@@ -119,8 +119,7 @@ single round.
 4. **Finish the feature in one PR.** After the checks and acceptance walk,
    create a sub-branch from `origin/<feature>`. Extract any lasting decisions
    still missing from `docs/design-docs/`, update permanent references, and
-   delete this feature's directory under `specs/` and its translations. Use
-   `doc-translator` for changed or deleted published documents. Do not copy
+   delete this feature's directory under `specs/`. Do not copy
    the artifact set into an archive or into design docs. The feature's Git
    history keeps the validation inputs; later integration refreshes use the
    permanent documents and the acceptance evidence recorded in the PR.
