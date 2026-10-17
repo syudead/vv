@@ -278,12 +278,13 @@ longer carries the budget.
 
 **Rationale**: It is the pattern of 052 R-14 for folder cards, so a home with
 many shelves opens without waiting (Edge Case). On the host of the 2026-10-17
-change, `BenchmarkHomeReads` went from 2.25 s to 0.89 to 0.93 s for the
-owner's 8 shelves, from 2.7 s to 0.52 s for a guest's, and from 0.60 s to
-0.34 s for the continue watching shelf alone; the development host measured
+change, `BenchmarkHomeReads` went from 2.25 to 2.5 s to 0.9 to 1.0 s for the
+owner's 8 shelves, from 2.7 s to 0.5 to 0.6 s for a guest's, and from 0.60 s
+to 0.35 s for the continue watching shelf alone; the development host measured
 the old read at 2.7 to 3.0 s. The read now spends about 0.3 s on the tables
-(shown videos, group structure) and 0.05 to 0.1 s on a shelf with many whole
-groups, half of it loading the 24 group cards' members.
+(shown videos, group structure), about 0.1 s on the search phrases and the
+videos on any shelf, and the rest on the shelves, half of it loading the 24
+group cards' members.
 
 ## R-13: Four fixed shelves, two of them the owner's only
 
