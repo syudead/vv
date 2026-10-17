@@ -7,6 +7,7 @@ import {
   drawnShelves,
   loadedShelfKeys,
   nextShelfBatch,
+  organizingLineIndex,
   seeAllPath,
   shelfBatchSize,
   shelfHeadingPath,
@@ -174,6 +175,27 @@ describe("描く棚（ui-design.md「Home」）", () => {
     expect(
       drawnShelves([folders(1)[0] as HomeShelf, recent], states).map((d) => d.shelf.key),
     ).toEqual(["recent"]);
+  });
+});
+
+describe("整理役の行の位置（ui-design.md「Home」）", () => {
+  const ready: ShelfState = { status: "ready", items: [videoItem(1)], total: 1 };
+  const second: HomeShelf = { ...folder, key: "folder:4", name: "Food", folderId: 4 };
+
+  it("最後のフォルダの棚の直後に置く", () => {
+    const drawn = [folder, second, recent].map((shelf) => ({
+      shelf,
+      state: ready,
+      frontier: false,
+    }));
+    expect(organizingLineIndex(drawn)).toBe(2);
+  });
+
+  it("フォルダの棚を描いていなければ先頭に置く", () => {
+    expect(organizingLineIndex([{ shelf: recent, state: ready, frontier: false }])).toBe(
+      0,
+    );
+    expect(organizingLineIndex([])).toBe(0);
   });
 });
 

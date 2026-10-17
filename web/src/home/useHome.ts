@@ -122,27 +122,31 @@ export function useHome() {
   }, [loadShelves]);
 
   // refresh は一覧と、もう読んだ棚を今の行を出したまま読み直す。読み直しの間に届いた
-  // 知らせは、終わった後に 1 回だけ読み直す。
-  const refreshing = useRef(false);
+  // 知らせは、終わった後に 1 回だけ読み直す。返す約束は、その読み直しまで終わると解ける
+  // （読み直しの最中に呼んでも、後の読み直しを待つ）。
+  const refreshing = useRef<Promise<void> | undefined>(undefined);
   const refreshAgain = useRef(false);
-  const refresh = useCallback(async () => {
-    if (refreshing.current) {
+  const refresh = useCallback((): Promise<void> => {
+    if (refreshing.current !== undefined) {
       refreshAgain.current = true;
-      return;
+      return refreshing.current;
     }
-    refreshing.current = true;
-    try {
-      do {
-        refreshAgain.current = false;
-        await loadList(listRef.current.status === "ready");
-        const current = listRef.current;
-        if (current.status !== "ready") continue;
-        const batches = loadedShelfKeys(current.home.shelves, shelvesRef.current);
-        await Promise.all(batches.map((keys) => loadShelves(keys, "quiet")));
-      } while (refreshAgain.current && !controller.current.signal.aborted);
-    } finally {
-      refreshing.current = false;
-    }
+    const run = async () => {
+      try {
+        do {
+          refreshAgain.current = false;
+          await loadList(listRef.current.status === "ready");
+          const current = listRef.current;
+          if (current.status !== "ready") continue;
+          const batches = loadedShelfKeys(current.home.shelves, shelvesRef.current);
+          await Promise.all(batches.map((keys) => loadShelves(keys, "quiet")));
+        } while (refreshAgain.current && !controller.current.signal.aborted);
+      } finally {
+        refreshing.current = undefined;
+      }
+    };
+    refreshing.current = run();
+    return refreshing.current;
   }, [loadList, loadShelves]);
 
   useEffect(() => {
@@ -175,5 +179,9 @@ export function useHome() {
     [loadShelves],
   );
 
-  return { list, shelves, loadMore, retryList, retryShelf };
+  // reload は所有者が棚を書いた後の読み直しである。今の行を出したまま一覧と読んだ棚を読み直し、
+  // 読み直しが終わると解ける。棚の操作はそれまで次の書き込みを受け付けない（useShelfWrites）。
+  const reload = refresh;
+
+  return { list, shelves, loadMore, retryList, retryShelf, reload };
 }

@@ -105,6 +105,9 @@ describe("SettingsPage", () => {
       // 「Work-info plugins」区画は WorkInfoPluginsSection.test.tsx が確かめる。ここでは空の一覧を返す。
       if (String(input) === "/api/work-info-plugins")
         return Promise.resolve(json({ plugins: [] }));
+      // 「Home」区画は HomeSection.test.tsx が確かめる。ここでは整理役が走っていない。
+      if (String(input) === "/api/home")
+        return Promise.resolve(json({ shelves: [], organizer: { running: false } }));
       return fetchMock(input, init);
     });
     window.matchMedia = vi.fn().mockReturnValue({
