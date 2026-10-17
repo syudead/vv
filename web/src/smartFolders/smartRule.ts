@@ -7,8 +7,7 @@ import { DEFAULT_SORT, type ListCriteria } from "../videoList/listCriteria";
 
 /**
  * smartRule はスマートフォルダの条件（SmartRule）と、ライブラリの絞り込み・親の木との間の
- * 純粋な変換である（specs/052-smart-folders/ui-design.md「Smart folder dialog」、
- * contracts/screen-api.md の SmartRule、domain.SmartRule）。
+ * 純粋な変換である。
  */
 
 /** SMART_RULE_MAX_QUERY は条件の検索語の長さの上限（符号位置）である。 */
@@ -26,7 +25,7 @@ export interface LibraryFilter {
 
 /**
  * cleanRule は空の条件を落とした条件を返す（検索語の空、`watch` の `all`、偽の
- * チェック、空のタグ、無い id）。空の条件は送らない（ui-design.md「Smart folder dialog」）。
+ * チェック、空のタグ、無い id）。空の条件は送らない。
  */
 export function cleanRule(rule: SmartRule): SmartRule {
   const clean: SmartRule = {};
@@ -55,8 +54,7 @@ export function withWatch(rule: SmartRule, watch: WatchFilter): SmartRule {
 }
 
 /**
- * ruleFromLibrary はライブラリの今の絞り込みを条件にする（ui-design.md「Save as smart
- * folder」）。並べ順は含めない（folderSort が別に決める）。
+ * ruleFromLibrary はライブラリの今の絞り込みを条件にする。並べ順は含めない（folderSort が別に決める）。
  */
 export function ruleFromLibrary(filter: LibraryFilter): SmartRule {
   const { criteria, tagIds, credits, addedLength } = filter;
@@ -114,7 +112,7 @@ export function ruleKey(rule: SmartRule): string {
 
 /**
  * folderSort はフォルダに保存する並べ順を返す。ランダムは保存できないので追加日の新しい
- * 順にし、`randomReplaced` で知らせる（research.md R-6）。
+ * 順にし、`randomReplaced` で知らせる。
  */
 export function folderSort(sort: VideoSort): {
   sort: VideoSort;
@@ -174,7 +172,7 @@ export function descendantIds(
 /**
  * parentChoices は親の `Select` に並べるフォルダを、木の順（親の直後にその子を自然な名前の
  * 順）と深さで返す。`editing` を渡すと、そのフォルダと子孫を除く — 選べば自分の中へ入る
- * ことになるから（ui-design.md「Parent」）。
+ * ことになるから。
  */
 export function parentChoices(
   folders: readonly SmartFolderSummary[],

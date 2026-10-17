@@ -15,7 +15,7 @@ import (
 )
 
 // 外部連携 API と MCP のまとめての確定・却下・削除と却下した名前
-// （specs/039-external-tag-admin/contracts/external-api.md §5〜§8）を、本物の保存先と Bearer の
+// を、本物の保存先と Bearer の
 // 境界で確かめる。
 
 // attachTentative は update_video_tags で name を仮のタグとして動画 A に付け、その結果を返す。

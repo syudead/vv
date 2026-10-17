@@ -9,7 +9,7 @@ import (
 	"time"
 )
 
-// 視聴履歴（specs/043-watch-history/data-model.md）。再生 1 回につき 1 件で、鍵は再生した
+// 視聴履歴。再生 1 回につき 1 件で、鍵は再生した
 // バージョンの content_key である。
 
 // ErrInvalidPlaybackID は視聴の識別子が RFC 4122 の文字列の形でないことを表す。
@@ -105,7 +105,7 @@ var ErrInvalidWatchHistoryFilter = errors.New("invalid watch history filter")
 // ErrInvalidWatchHistoryPeriod は日付への移動が YYYY-MM-DD でも YYYY-MM でもないことを表す。
 var ErrInvalidWatchHistoryPeriod = errors.New("invalid watch history period")
 
-// WatchHistoryFilter は視聴履歴を動画のいまの視聴状態で絞る条件である（research.md R-9）。値は
+// WatchHistoryFilter は視聴履歴を動画のいまの視聴状態で絞る条件である。値は
 // api/openapi.yaml の WatchHistoryFilter に対応する。視聴の 1 回に「未視聴」は無いので、一覧の
 // WatchFilter と違って unwatched を持たない。
 type WatchHistoryFilter string
@@ -142,8 +142,7 @@ func (f WatchHistoryFilter) WatchFilter() WatchFilter {
 	}
 }
 
-// WatchHistoryQuery は視聴履歴の一覧と日付の一覧の条件である（specs/043-watch-history/data-model.md
-// 「domain values added」）。Filter が空なら WatchHistoryAll と同じ。Search が空なら検索で絞らない。
+// WatchHistoryQuery は視聴履歴の一覧と日付の一覧の条件である。Filter が空なら WatchHistoryAll と同じ。Search が空なら検索で絞らない。
 // Before がゼロでなければ played_at がそれより前の件だけにする（日付の一覧は Before を見ない）。
 type WatchHistoryQuery struct {
 	Filter WatchHistoryFilter
@@ -180,8 +179,7 @@ func ParseWatchHistoryPeriod(value string) (WatchHistoryPeriod, error) {
 	}
 }
 
-// End は loc で見たその日か月が終わった直後の時刻（次の日か次の月の最初の時刻）を返す
-// （research.md R-11）。夏時間の切り替えの日も loc の暦で数える。
+// End は loc で見たその日か月が終わった直後の時刻（次の日か次の月の最初の時刻）を返す。夏時間の切り替えの日も loc の暦で数える。
 //
 // 0 時に時計が進む地域（America/Santiago など）では次の日の 0 時が無く、time.Date は切り替え前の
 // 時差でそれを解いて前の日の 23 時を返す。そのときは切り替えの時刻、つまり次の日の最初の実在する

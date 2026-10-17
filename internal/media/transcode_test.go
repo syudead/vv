@@ -110,7 +110,7 @@ func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 }
 
 // 映像がコピーできる動画は途中からでもコピーし、実際の開始位置を moov に書かせる引数に
-// する（research.md R-1）。
+// する。
 func TestTranscodeArgsCopiesSeek(t *testing.T) {
 	args := strings.Join(transcodeArgs("movie.mkv", 25000, compatibleMetadata(), false), " ")
 	for _, want := range []string{
@@ -978,7 +978,7 @@ func TestLiveTranscoderDoesNotReturnProbeOfChangedFile(t *testing.T) {
 }
 
 // 保存値で始めた変換がコピーでもエンコードでもデータを出さずに終わったら、その場で
-// 解析してコピーから 1 回だけやり直す（Structural Decision 3、research.md R-3）。
+// 解析してコピーから 1 回だけやり直す（Structural Decision 3）。
 func TestLiveTranscoderRetriesWithFreshProbeWhenStoredProbeFails(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()

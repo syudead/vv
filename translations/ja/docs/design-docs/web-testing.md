@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/web-testing.md
-sourceHash: 3f57643a68072cdc31b2d5d69fe1ba055ecff9188f06bd1138bc06dc20db7047
+sourceHash: 93b77575606a001ff48fcf67d9290d46d450fe19cca98438b38d04add296f747
 ---
 
 # Web のテストレベル {#web-test-levels}
@@ -34,7 +34,7 @@ Vitest は `vmThreads` プールで動く ([`web/vite.config.ts`](../../web/vite
 
 E2E は Vite の本番ビルドも、それを Go のバイナリに埋め込むことも扱わない。`task test-web` は SPA をビルドするが、そのビルドを配信するテストはない。
 
-時計に依存する Vitest のテストは、`vi.useFakeTimers` と `vi.advanceTimersByTimeAsync` を使って[時間と同期](testing.md#time-and-synchronization)を適用し、後片付けで `vi.useRealTimers` により実際のタイマーに戻す。
+時計に依存する Vitest のテストは、`vi.useFakeTimers` と `vi.advanceTimersByTimeAsync` を使って[時間と同期](testing-time.md#clocks-and-state)を適用し、後片付けで `vi.useRealTimers` により実際のタイマーに戻す。
 
 ## レベルの選び方 {#choosing-the-level}
 

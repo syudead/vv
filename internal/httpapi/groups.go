@@ -10,12 +10,12 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// グループの一覧と編集（specs/048-groups/contracts/screen-api.md「Statuses」）。一覧
+// グループの一覧と編集。一覧
 // （GET /api/groups）は所有者とゲストが読め（accessRoutes）、書き込みは /api/* の既定どおり所有者
 // だけである。
 
 // Groups はグループの編集の保存先である。internal/store の *GroupStore がこれを満たす。どの操作も
-// 1 つの取引で済むので、internal/app は通さない（plan.md の Constitution Check）。グループが無ければ
+// 1 つの取引で済むので、internal/app は通さない。グループが無ければ
 // domain.ErrGroupNotFound、要求が名指した動画・グループ・項目が無ければ
 // domain.ErrGroupTargetNotFound で、どちらも何も書かない。
 type Groups interface {
@@ -110,8 +110,7 @@ func (s *server) CreateGroup(w http.ResponseWriter, r *http.Request) {
 }
 
 // RenameGroup はグループの名前を変える（PATCH /api/groups/{id}）。undoToken があり、ドラッグの操作の
-// 先があれば、名前の変更をそのトークンの取り消しに含めるため internal/app の Organizer を通す
-// （specs/050-drag-organize/contracts/screen-api.md）。応答と誤りはどちらでも同じである。
+// 先があれば、名前の変更をそのトークンの取り消しに含めるため internal/app の Organizer を通す。応答と誤りはどちらでも同じである。
 func (s *server) RenameGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
 	var body gen.GroupRename
 	if !s.readJSONBody(w, r, &body) || !s.groupsConfigured(w) {
@@ -127,7 +126,7 @@ func (s *server) RenameGroup(w http.ResponseWriter, r *http.Request, id gen.Grou
 	s.writeGroup(w, r, http.StatusOK, group, err, "Could not rename the group.")
 }
 
-// DissolveGroup はグループを解散する（DELETE /api/groups/{id}、research.md R-4）。
+// DissolveGroup はグループを解散する（DELETE /api/groups/{id}）。
 func (s *server) DissolveGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
 	if !s.groupsConfigured(w) {
 		return
@@ -155,7 +154,7 @@ func (s *server) AddGroupItems(w http.ResponseWriter, r *http.Request, id gen.Gr
 }
 
 // RemoveGroupItems はグループから項目を外す（POST /api/groups/{id}/items/remove）。最後の項目を外して
-// 空になったグループは解散されるので、本文の無い 204 を返す（specs/048-groups/data-model.md「Edits」）。
+// 空になったグループは解散されるので、本文の無い 204 を返す。
 func (s *server) RemoveGroupItems(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
 	var body gen.GroupItemRemove
 	if !s.readLargeJSONBody(w, r, groupsBodyLimit, &body) {
@@ -185,7 +184,7 @@ func (s *server) RemoveGroupItems(w http.ResponseWriter, r *http.Request, id gen
 }
 
 // MoveGroupItem はグループの項目 1 つを after の項目のすぐ後ろへ移す。after が無ければ先頭へ移す
-// （POST /api/groups/{id}/items/{itemId}/move、research.md R-12）。
+// （POST /api/groups/{id}/items/{itemId}/move）。
 func (s *server) MoveGroupItem(w http.ResponseWriter, r *http.Request, id gen.GroupId, itemID gen.GroupItemId) {
 	var body gen.GroupItemMove
 	if !s.readJSONBody(w, r, &body) {
@@ -206,7 +205,7 @@ func (s *server) MoveGroupItem(w http.ResponseWriter, r *http.Request, id gen.Gr
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// TagGroup はグループをタグに変える（POST /api/groups/{id}/tag、research.md R-11）。
+// TagGroup はグループをタグに変える（POST /api/groups/{id}/tag）。
 func (s *server) TagGroup(w http.ResponseWriter, r *http.Request, id gen.GroupId) {
 	if !s.groupsConfigured(w) {
 		return
@@ -318,7 +317,7 @@ func (s *server) emptyGroup(ctx context.Context, audience domain.Audience, group
 	return out, nil
 }
 
-// writeGroupError は保存層の誤りを応答にする（contracts/screen-api.md「Statuses」）。要求が名指した
+// writeGroupError は保存層の誤りを応答にする。要求が名指した
 // 対象が無ければ 404 group_target_not_found、グループが無ければ 404 not_found、入れ子の循環は
 // 409 group_cycle、名前の規則違反は 400 invalid_request、それ以外は message の 500 である。
 func (s *server) writeGroupError(w http.ResponseWriter, err error, message string) {

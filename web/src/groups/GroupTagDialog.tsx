@@ -3,8 +3,7 @@ import { t } from "../i18n";
 import GroupConfirmDialog from "./GroupConfirmDialog";
 
 /**
- * GroupTagDialog はグループをタグに変える確認の窓である（specs/048-groups/ui-design.md
- * 「Turning into a tag」、research.md R-11）。グループページの「More」、動画ページのグループ操作、
+ * GroupTagDialog はグループをタグに変える確認の窓である。グループページの「More」、動画ページのグループ操作、
  * フォルダのまとめ方のメニューの 3 つの入り口が、同じ文のこの窓を開く。
  *
  * 開いている間だけ描く。確定で `POST /api/groups/{id}/tag` を送り、送っている間は閉じない。

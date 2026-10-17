@@ -59,7 +59,7 @@ type CheckState =
 /**
  * ProgressSection は「Auto-tagging」のページの「Progress」節である。見出しの説明は待ち行列の
  * 件数で、中身は判定に回すボタンと直近の失敗である。保存した設定で機能が切なら、切である旨と
- * 入れる場所を出し、ボタンは出さない（specs/058-settings-pages/ui-design.md「Auto-tagging page」）。
+ * 入れる場所を出し、ボタンは出さない。
  */
 function ProgressSection({
   settings,
@@ -219,8 +219,7 @@ function ClassifierFeedback({
  * 待ち行列に残っている間は件数を読み直す。「Test judging」は判定の口に 1 問を判定させ、
  * 機能の入切に関係なく使えるかを確かめる。
  *
- * `locked` は Ollama の接続先が保存されていないことである（specs/058-settings-pages/research.md
- * R-5）。そのあいだ切り替え、入力、ボタンは値を見せたまま `aria-disabled` にし、`aria-disabled` は
+ * `locked` は Ollama の接続先が保存されていないことである。そのあいだ切り替え、入力、ボタンは値を見せたまま `aria-disabled` にし、`aria-disabled` は
  * それだけでは何も止めないので、各ハンドラは下書きを変えず要求も送らずに返す。`pending` は
  * 接続先をまだ読んでいることで、保存したかが分かるまでは操作を描かず読み込み中の形を出す（R-5 の
  * Loading）。

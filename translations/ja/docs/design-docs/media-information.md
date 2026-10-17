@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/media-information.md
-sourceHash: 17a46493c8c815e3a92c94a41012ca218cb74bb1cf388a5efccc84cef47935b6
+sourceHash: 3c14be2e99a686295198835d175044a3f1a976e14a6036b513e76216b2303004
 ---
 
 # 取り込み時のプローブから得るメディア情報 {#media-information-from-the-import-probe}
 
-取り込み時の 1 回の `ffprobe` 実行は、映像ストリームの詳細、すべての音声トラックと字幕トラック、埋め込みタグ、チャプターも読み、動画ごとにバージョン付きの JSON 1 行として `video_media_info` に保存する ([`internal/media/probe_media.go`](../../internal/media/probe_media.go)、[`internal/domain/media_info.go`](../../internal/domain/media_info.go)、[`internal/store/media_info.go`](../../internal/store/media_info.go))。背景: [research.md](../../specs/056-media-info/research.md)。
+取り込み時の 1 回の `ffprobe` 実行は、映像ストリームの詳細、すべての音声トラックと字幕トラック、埋め込みタグ、チャプターも読み、動画ごとにバージョン付きの JSON 1 行として `video_media_info` に保存する ([`internal/media/probe_media.go`](../../internal/media/probe_media.go)、[`internal/domain/media_info.go`](../../internal/domain/media_info.go)、[`internal/store/media_info.go`](../../internal/store/media_info.go))。
 
 図は、値の各部分をどこで読み、どこで判断し、どこに保存するかを示す。
 

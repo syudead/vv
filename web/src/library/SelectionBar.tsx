@@ -71,18 +71,18 @@ export interface SelectionBarProps {
   count: number;
   /**
    * 選択が直前の「すべて選択」の応答と同じ集合のとき true。その間だけ「すべて選択」を
-   * 押せなくする（specs/017-folder-groups/ui-design.md「Pressing and selection」）。
+   * 押せなくする。
    * 選んだ本数と項目の数（total）は数えるものが違うので比べない。
    */
   allSelected: boolean;
   selectedIds: readonly number[];
   /**
    * 一括のお気に入りで送る動画（選んだ id のうち選んだグループのメンバーでないもの）と
-   * グループ（specs/035-favorites/research.md R-7）。上限はこの 2 つの合計で判定する。
+   * グループ。上限はこの 2 つの合計で判定する。
    */
   favoriteVideoIds: readonly number[];
   favoriteGroupIds: readonly number[];
-  /** 「すべて選択」の要求の間 true（ui-design.md「Selection bar」の「Layout」）。 */
+  /** 「すべて選択」の要求の間 true。 */
   selectingAll: boolean;
   onSelectAll: () => void;
   onClear: () => void;
@@ -94,14 +94,13 @@ export interface SelectionBarProps {
   onTagRemoved: (tagId: number) => void;
   /**
    * 「Bundle as versions」の窓で束ね終えたときに呼ぶ。呼び出し元（LibraryPage）は選択を
-   * 解除して一覧を取り直す（specs/030-video-versions/ui-design.md「Bundle dialog」）。
+   * 解除して一覧を取り直す。
    */
   onBundled: (versions: VideoVersions) => void;
   /**
-   * グループのページだけが渡す「Remove from group」（specs/048-groups/ui-design.md
-   * 「Selection bar」）。`count` は外す項目の数で、0 の間と送っている間（`pending`）は押せない。
-   * `itemIds` の上限（20000、contracts/screen-api.md）を超える間は、「Favorite」と同じ理由を
-   * 添えて押せない（分けて送らない。docs/design-docs/library-ui.md §6）。
+   * グループのページだけが渡す「Remove from group」。`count` は外す項目の数で、0 の間と送っている間（`pending`）は押せない。
+   * `itemIds` の上限（20000）を超える間は、「Favorite」と同じ理由を
+   * 添えて押せない（分けて送らない。docs/design-docs/library-ui.md）。
    */
   removeFromGroup?: {
     count: number;
@@ -137,20 +136,20 @@ export default function SelectionBar({
   const addTriggerRef = useRef<HTMLButtonElement | null>(null);
 
   // `POST /api/video-tags` は videoIds 1件以上 maxVideoTagsSelection 件以下を
-  // 全部か無しかで受け付ける（contracts/tags-api.md §4）。それを超える選択は
+  // 全部か無しかで受け付ける。それを超える選択は
   // 静かに分割して送らず、一括操作そのものを disabled にして理由を添える
-  // （Devin の指摘2、docs/design-docs/library-ui.md §6）。
+  // （Devin の指摘2、docs/design-docs/library-ui.md）。
   const overLimitId = useId();
   const overLimit = count > maxVideoTagsSelection;
   // お気に入りの上限は送る数（videoIds と groupIds の合計）で判定する。メンバーが上限を超える
   // グループ 1 つは、タグ・公開では押せないままで、お気に入りは groupIds 1 つとして押せる
-  // （specs/035-favorites/ui-design.md「Selection bar」）。
+  //
   const favoriteOverLimitId = useId();
   const favoriteOverLimit =
     favoriteVideoIds.length + favoriteGroupIds.length > maxVideoTagsSelection;
 
   // 束ねる操作は 2 本以上で現れ、画面の側だけの上限 maxBundleSelection を超えると
-  // disabled にして理由を添える（specs/030-video-versions/ui-design.md「Bundle action」）。
+  // disabled にして理由を添える。
   // 窓を開いている間の背景は inert なので、開いたあとに選択が増えることはない。
   const [bundleOpen, setBundleOpen] = useState(false);
   const bundleOverLimitId = useId();
@@ -186,7 +185,7 @@ export default function SelectionBar({
   }, [favoriteOverLimit]);
 
   // 「New group」はグループ 1 つだけの選択では押せない。グループ 1 つのグループは段を足すだけで
-  // ある（specs/048-groups/ui-design.md「Selection bar」）。
+  // ある。
   const newGroupNeedsMoreId = useId();
   const newGroupNeedsMore =
     favoriteGroupIds.length === 1 && favoriteVideoIds.length === 0;
@@ -282,7 +281,7 @@ export default function SelectionBar({
         )}
 
         {/* 「Favorite」の直後、「Visibility」の前。送るものは「Favorite」と同じで、結果の後も
-            選択は残す（specs/044-playlists/ui-design.md「Add to playlist」）。 */}
+            選択は残す。 */}
         <PickerAction
           icon={<ListPlus aria-hidden="true" />}
           label={t.library.selection.addToPlaylist}
@@ -302,8 +301,7 @@ export default function SelectionBar({
         </PickerAction>
 
         {/* 「Add to playlist」の後、「Visibility」の前。送るものは「Favorite」と同じ。「New group」の
-            後は選択を外し、「Add to group」の後は残す（specs/048-groups/ui-design.md
-            「Selection bar」）。 */}
+            後は選択を外し、「Add to group」の後は残す。 */}
         <WithTooltip label={newGroupReason ?? t.library.selection.newGroup}>
           <SelectionAction
             icon={<Group aria-hidden="true" />}
@@ -415,8 +413,7 @@ export default function SelectionBar({
 }
 
 /**
- * RemoveFromGroupAction は選択バーの「Remove from group」である（specs/048-groups/ui-design.md
- * 「Selection bar」）。外す項目が無い間と送っている間は押せない。`itemIds` の上限を超える間は、
+ * RemoveFromGroupAction は選択バーの「Remove from group」である。外す項目が無い間と送っている間は押せない。`itemIds` の上限を超える間は、
  * 「Favorite」と同じ理由を添えて押せない。
  */
 function RemoveFromGroupAction({

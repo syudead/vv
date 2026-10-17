@@ -202,7 +202,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」）", () => {
+describe("PlaylistsPage", () => {
   it("プレイリストを API の順（最後に変えた順）にカードで並べ、項目数とともに出す", async () => {
     renderPage();
     expect(screen.getByRole("heading", { level: 1, name: "Playlists" })).toBeDefined();
@@ -297,7 +297,7 @@ describe("PlaylistsPage（specs/044-playlists/ui-design.md「Playlists screen」
         screen.getByRole("link", { name: "Evening, 0 items" }),
       ),
     );
-    // 作った後に一覧を読み直す（ui-design.md「States」）。
+    // 作った後に一覧を読み直す。
     await waitFor(() => expect(server.listCalls).toBe(2));
     expect(cardNames()).toHaveLength(4);
   });

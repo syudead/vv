@@ -127,9 +127,7 @@ flowchart LR
 The 30-minute processing limit covers extraction, tiling and fallback together.
 
 A full decode is a substitution: it is logged and recorded as a recent import
-problem `seek_thumbnail_full_decode`
-([specs/024-import-progress/research.md](../../specs/024-import-progress/research.md)
-R-7). Per-interval extraction is the normal path for its inputs and is not a
+problem `seek_thumbnail_full_decode`. Per-interval extraction is the normal path for its inputs and is not a
 substitution.
 
 | Case | Recorded problem |

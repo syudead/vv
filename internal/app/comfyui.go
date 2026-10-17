@@ -21,7 +21,7 @@ type ComfyUIProbe interface {
 
 // ComfyUIConnection は画像編集の提供元 ComfyUI への接続先の設定と確かめである。サムネイルの
 // 編集の機能とは別に持つ（docs/design-docs/ai-layer.md、
-// specs/045-comfyui-thumbnails/research.md R-1）。
+// docs/design-docs/thumbnail-editing.md）。
 type ComfyUIConnection struct {
 	store ComfyUISettingsStore
 	probe ComfyUIProbe

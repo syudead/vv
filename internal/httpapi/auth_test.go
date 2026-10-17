@@ -27,7 +27,7 @@ import (
 )
 
 // 認証の境界は、本物の Auth（internal/app）・保存先（internal/store）・Argon2id
-// （internal/password）で確かめる（specs/016-single-account-auth の #299）。
+// （internal/password）で確かめる。
 
 const (
 	testUsername = "owner-name"
@@ -244,7 +244,7 @@ func responseCookie(t *testing.T, rec *httptest.ResponseRecorder, name string) *
 	return nil
 }
 
-// assertUnauthenticated は未認証の応答（contracts/auth-api.md §5）であることを確かめる。
+// assertUnauthenticated は未認証の応答であることを確かめる。
 func assertUnauthenticated(t *testing.T, label string, rec *httptest.ResponseRecorder) {
 	t.Helper()
 	if rec.Code != http.StatusUnauthorized {

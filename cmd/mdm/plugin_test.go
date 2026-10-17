@@ -14,7 +14,7 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin"
 )
 
-// mdm plugin pack のテスト（specs/056-plugin-tooling/contracts/plugin-cli.md）。モジュールは手で組んだ
+// mdm plugin pack のテスト。モジュールは手で組んだ
 // 小さなもので、実行はしない。
 
 const packManifest = `{"contract":1,"name":"example-title","version":"0.1.0","description":"Reads titles.",` +

@@ -12,8 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの検索・取得・反映の判断（specs/049-work-info-plugins/contracts/screen-api.md、
-// research.md R-8・R-9・R-13）。保存先の取引の中の読み直しと書き込みは internal/store のテストが本物の
+// 作品情報プラグインの検索・取得・反映の判断。保存先の取引の中の読み直しと書き込みは internal/store のテストが本物の
 // SQLite で確かめる。
 
 // runPluginStore はプラグインを id で持つ保存先である。登録の書き込みは使わない。
@@ -325,8 +324,7 @@ func TestFetchWorkInfoKeepsTheResultAndLeavesTheVideo(t *testing.T) {
 	}
 }
 
-// プラグインを動かした取得だけを記録し、失敗はプラグインの文（無ければ失敗の種類）を持つ（specs/055-activity
-// research.md R-11）。動かす前に断った取得は記録しない。
+// プラグインを動かした取得だけを記録し、失敗はプラグインの文（無ければ失敗の種類）を持つ。動かす前に断った取得は記録しない。
 func TestFetchWorkInfoRecordsEveryRun(t *testing.T) {
 	ctx := context.Background()
 	e := newFetchEnv()

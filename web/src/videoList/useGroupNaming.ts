@@ -14,8 +14,7 @@ export interface GroupNaming {
 }
 
 /**
- * useGroupNaming は「Make a group」の後の名前の欄である（specs/050-drag-organize/ui-design.md
- * 「The new group's name」）。変えた名前は `onShowName` ですぐ見せてから、作ったときのトークン付きの
+ * useGroupNaming は「Make a group」の後の名前の欄である。変えた名前は `onShowName` ですぐ見せてから、作ったときのトークン付きの
  * PATCH /api/groups/{id} で送る。失敗したら「Couldn't rename the group: {reason}」を出し、仮の名前を
  * 見せ直す。欄が閉じたら、送っている名前が答えてから閉じた欄を渡して `onClosed` を呼ぶ（画面は
  * そこで読み直す）。答えを待つ間に次の欄が開いていても、渡すのは閉じた欄である。

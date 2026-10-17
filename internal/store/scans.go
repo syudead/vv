@@ -19,14 +19,13 @@ import (
 //
 // 新しい走査の行を入れる取引で、前の走査の対象の動画の集合を入れ替える。残りの
 // 仕事がある動画は新しい走査の対象へ持ち越す
-// （specs/024-import-progress/research.md R-3）。
 func (s *ScanStore) StartScan(ctx context.Context) (scan domain.Scan, started bool, err error) {
 	return s.startScan(ctx, 0, domain.ScanOriginManual, nil)
 }
 
 // StartWatchScan はフォルダの監視の走査を始める。StartScan と同じだが、origin は watch で、
 // 前の走査の問題のうち dirs の読む範囲の外のものは、消さずに新しい走査へ付け替える
-// （範囲の中は走査が読み直して見つけ直す。specs/042-folder-watch-import/data-model.md の Rules）。
+// （範囲の中は走査が読み直して見つけ直す。docs/design-docs/folder-watching.md の Rules）。
 // 手動の走査は今までどおり、問題をすべて消す。
 func (s *ScanStore) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory) (scan domain.Scan, started bool, err error) {
 	return s.startScan(ctx, 0, domain.ScanOriginWatch, dirs)
@@ -37,7 +36,7 @@ func (s *ScanStore) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirec
 // 走査へ持ち越す。持ち越さないと、上限まで失敗した仕事は変わらないファイルでは
 // 積み直されない（scanner の ensurePendingJobs）ので、その失敗が一覧から消え、
 // 取り込みが partial でなく done になる。始め直しを「続きから」と同じ結果にする
-// ための持ち越しである（specs/037-windows-app/research.md R-9）。走査が自分で
+// ための持ち越しである。走査が自分で
 // 見つける種類（domain.ScanIssueKind.FromScan）は、新しい走査が見つけ直すので
 // 持ち越さない。
 func (s *ScanStore) ResumeScan(ctx context.Context, from int64) (scan domain.Scan, started bool, err error) {
@@ -92,7 +91,7 @@ func (s *ScanStore) startScan(
 	if _, err := tx.ExecContext(ctx, `delete from scan_videos where scan_id <> ?`, id); err != nil {
 		return domain.Scan{}, false, fmt.Errorf("cannot clear the previous import's videos: %w", err)
 	}
-	// 手動の走査は、前の走査の問題を新しい取り込みに持ち越さない（research.md R-3）。
+	// 手動の走査は、前の走査の問題を新しい取り込みに持ち越さない。
 	// 監視の走査は、自分が読み直さない範囲の問題を持ち越す。
 	if origin == domain.ScanOriginWatch {
 		if err := carryWatchIssues(ctx, tx, id, dirs); err != nil {
@@ -140,7 +139,6 @@ func (s *ScanStore) UpdateScanProgress(ctx context.Context, id int64, progress d
 //
 // cause があれば、その文を error に、domain.ScanFailure で包まれた理由のコードと場所を
 // error_code・error_path に書く。包まれていない失敗は internal である
-// （specs/023-english-i18n/data-model.md §2）。
 func (s *ScanStore) FinishScan(
 	ctx context.Context, id int64, state domain.ScanState, cause error, decider domain.ActivityDecider,
 ) error {
@@ -161,12 +159,11 @@ func (s *ScanStore) FinishScan(
 		string(state), time.Now().Unix(), reason, code, path, id); err != nil {
 		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 	}
-	// 全パスを見終えた走査だけが、同じパスの中身の後継の記録を判定してよい状態にする
-	// （specs/030-video-versions/data-model.md §5）。failed で閉じた走査は見ていないパスに
+	// 全パスを見終えた走査だけが、同じパスの中身の後継の記録を判定してよい状態にする。failed で閉じた走査は見ていないパスに
 	// 前の中身が残りうるので触らず、次に done で閉じる走査に任せる。
 	//
 	// 監視の走査は読み直したディレクトリしか見ていないので、done でも判定しない。後継の
-	// 判定は done で閉じた手動の走査だけが行う（specs/042-folder-watch-import/research.md R-9）。
+	// 判定は done で閉じた手動の走査だけが行う。
 	var origin string
 	if err := tx.QueryRowContext(ctx, `select origin from scans where id = ?`, id).Scan(&origin); err != nil {
 		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
@@ -177,7 +174,7 @@ func (s *ScanStore) FinishScan(
 			return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
 		}
 	}
-	// 失敗した走査を記録し、done の走査は開いている走査の記録を閉じる（specs/055-activity/research.md R-3）。
+	// 失敗した走査を記録し、done の走査は開いている走査の記録を閉じる。
 	var c changes
 	if err := recordScanActivity(ctx, tx, &c, id, domain.ScanOrigin(origin), state, cause, decider, time.Now()); err != nil {
 		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
@@ -185,7 +182,7 @@ func (s *ScanStore) FinishScan(
 	// 走査が閉じると、対象に残りの仕事が無ければ取り込みは済む。
 	c.remainingChanged()
 	// 走査で動画がライブラリに入り、題名とパスが変わる。1 ファイルごとではなく、走査を閉じるときに
-	// 1 回だけスマートフォルダに知らせる（specs/052-smart-folders/data-model.md「Notices」）。
+	// 1 回だけスマートフォルダに知らせる。
 	c.matchesChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot record the end of the scan (id=%d): %w", id, err)
@@ -239,7 +236,7 @@ func (s *ScanStore) FailInterruptedScans(ctx context.Context) (int64, error) {
 
 // scanColumns は Scan を組み立てるのに要る列である。並びは scanBy の Scan と対応させる。
 // 対象の動画の本数と、そのうち残りの仕事が無い本数は、読み出しのたびに仕事の状態から
-// 数える（specs/024-import-progress/research.md R-1）。
+// 数える。
 var scanColumns = `id, state, origin, started_at, finished_at, total, completed, failed, error, error_code, error_path, settled_at, issues_revision,
 	(select count(*) from scan_videos sv where sv.scan_id = scans.id),
 	(select count(*) from scan_videos sv where sv.scan_id = scans.id and not exists (

@@ -20,16 +20,14 @@ import { useSwitchSave } from "./useSwitchSave";
 
 /**
  * VersionJudgingSection は設定の「Duplicate judging」区画である。「同じ動画かもしれない」候補の
- * 自動の判定を、所有者が 1 つのスイッチで入れたり切ったりする
- * （specs/054-auto-dup/ui-design.md「Settings: Duplicate judging section」）。
+ * 自動の判定を、所有者が 1 つのスイッチで入れたり切ったりする。
  *
  * スイッチを押すとすぐに保存し、保存ボタンも成功の通知も無い。判定の進み具合は出さない
  * （それは Duplicates の画面が見せる）。
  *
  * Ollama の接続先を読み、保存されていないと答えたあいだだけ、違いのある組の判定には接続が要る旨と
  * 「Connections」へのリンクをスイッチの下に添える。スイッチはどの状態でも押せ、読み込み中と
- * 読めなかったときは何も足さない（specs/058-settings-pages/research.md R-5、
- * ui-design.md「Library page」）。
+ * 読めなかったときは何も足さない。
  */
 export default function VersionJudgingSection() {
   const text = t.settings.versionJudging;

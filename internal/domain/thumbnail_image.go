@@ -2,8 +2,7 @@ package domain
 
 import "errors"
 
-// 所有者が適用したサムネイルの画像（specs/045-comfyui-thumbnails/data-model.md、research.md
-// R-6・R-7・R-10）。画像は内容の識別子に結ぶ thumbnail_images の1行で持ち、代表サムネイルの
+// 所有者が適用したサムネイルの画像。画像は内容の識別子に結ぶ thumbnail_images の1行で持ち、代表サムネイルの
 // ファイルはその行から作り直す。
 
 // ErrContentChanged は、適用しようとした画像の動画が消えたか、別の内容を持つようになった
@@ -27,8 +26,7 @@ func ThumbnailImageAspect(video Video) float64 {
 	return 0
 }
 
-// ThumbnailImageOrigin は適用した画像の出どころである（specs/046-thumbnail-image-upload/data-model.md、
-// research.md R-5）。thumbnail_images.origin に書き、所有者の応答の thumbnailImage になる。
+// ThumbnailImageOrigin は適用した画像の出どころである。thumbnail_images.origin に書き、所有者の応答の thumbnailImage になる。
 type ThumbnailImageOrigin string
 
 const (
@@ -44,7 +42,6 @@ func (o ThumbnailImageOrigin) Valid() bool {
 }
 
 // AppliedThumbnailImage は適用する画像の行（thumbnail_images）に書く内容である
-// （specs/046-thumbnail-image-upload/data-model.md、research.md R-3）。
 type AppliedThumbnailImage struct {
 	// Image は動画の縦横比に合わせた長辺 640 px の JPEG で、公開する代表サムネイルと同じバイト列。
 	Image []byte
@@ -56,7 +53,7 @@ type AppliedThumbnailImage struct {
 }
 
 // CurrentThumbnailSelection は内容の今の代表サムネイルの選び方である。今のサムネイルからの編集が
-// 始める画像を決める（specs/046-thumbnail-image-upload/research.md R-4）。適用した画像と指定した
+// 始める画像を決める。適用した画像と指定した
 // 位置は同じ時点のもので、並行するアップロード・位置の変更・元に戻す操作の途中の組み合わせには
 // ならない。
 type CurrentThumbnailSelection struct {

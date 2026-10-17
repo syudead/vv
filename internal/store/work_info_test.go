@@ -12,8 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画の作品情報の保存（specs/047-video-work-info/data-model.md「Writes (WorkInfoStore)」「Bundles and
-// succession」、research.md R-13・R-14、#1021）。
+// 動画の作品情報の保存。
 
 func setWorkInfo(t *testing.T, db *DB, id int64, info domain.WorkInfo) domain.Video {
 	t.Helper()

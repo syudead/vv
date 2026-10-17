@@ -9,8 +9,7 @@ import { __resetTagsForTest } from "../api/tags";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import ConditionsFields from "./ConditionsFields";
 
-// スマートフォルダの窓の「Conditions」の欄（specs/052-smart-folders/ui-design.md
-// 「Conditions」）。各行が条件をどう変えて返すか。
+// スマートフォルダの窓の「Conditions」の欄。各行が条件をどう変えて返すか。
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

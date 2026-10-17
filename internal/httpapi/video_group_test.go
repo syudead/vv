@@ -18,7 +18,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 動画と関連動画の応答のグループ（specs/017-folder-groups/contracts/folder-groups-api.md §3）を、
+// 動画と関連動画の応答のグループを、
 // 本物の認証・保存層・関連動画の組み立て（app.Catalog）をつないで確かめる。中身は
 // newLibraryFixture と同じで、show は ep1・ep2（公開）と ep10（非公開）、pair は p1（公開）と
 // p2（非公開）のグループである。
@@ -166,7 +166,7 @@ func TestVideoGroupAbsentForNonMember(t *testing.T) {
 }
 
 // ゲスト: group と前後は公開のメンバーだけで作る。公開の動画が1本のグループ（pair）も、
-// 再生順が空でないので見せる（specs/048-groups/data-model.md「Visibility」）。
+// 再生順が空でないので見せる。
 func TestVideoGroupForGuest(t *testing.T) {
 	f := newVideoGroupFixture(t)
 	public := []int64{f.ids["ep1"], f.ids["ep2"]}

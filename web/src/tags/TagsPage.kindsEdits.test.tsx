@@ -18,8 +18,7 @@ import {
 
 setUpTagsPageServer();
 
-// 「Kinds」のタブの取り消し・失敗・フォーカスの行き先と、狭い幅の「Actions」
-// （specs/051-tag-kinds/ui-design.md「Kinds tab」）。作成・改名・削除の通る道は
+// 「Kinds」のタブの取り消し・失敗・フォーカスの行き先と、狭い幅の「Actions」。作成・改名・削除の通る道は
 // TagsPage.kinds.test.tsx にある。
 
 type User = ReturnType<typeof userEvent.setup>;

@@ -1761,7 +1761,7 @@ describe("useVideos のグループの項目", () => {
     expect(getVideo).not.toHaveBeenCalled();
   });
 
-  it("group イベントは、表示中のグループの id だけを取り直す（specs/048-groups/research.md R-13）", async () => {
+  it("group イベントは、表示中のグループの id だけを取り直す", async () => {
     const { result } = renderHook(
       () => useVideos({ sort: "addedDesc" }, restoredWithGroup()),
       { wrapper: OwnerAudience },
@@ -1811,7 +1811,7 @@ describe("useVideos のグループの項目", () => {
     ["所有者", OwnerAudience],
     ["ゲスト", undefined],
   ])(
-    "絞り込みの無いライブラリは smartFolder イベントで読み込み済みのページを読み直す（%s、specs/052-smart-folders/research.md R-12）",
+    "絞り込みの無いライブラリは smartFolder イベントで読み込み済みのページを読み直す（%s、docs/design-docs/catalog-organization.md）",
     async (_who, wrapper) => {
       listLibrary.mockImplementation((params: ListVideosParams) => listVideos(params));
       const { result } = renderHook(
@@ -1868,7 +1868,7 @@ describe("useVideos のグループの項目", () => {
     expect(calls).toHaveLength(2);
   });
 
-  it("ゲストにも group イベントで表示中のグループを取り直す（specs/048-groups/contracts/screen-api.md）", async () => {
+  it("ゲストにも group イベントで表示中のグループを取り直す", async () => {
     const { result } = renderHook(() =>
       useVideos({ sort: "addedDesc" }, restoredWithGroup()),
     );

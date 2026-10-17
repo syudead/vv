@@ -1,6 +1,5 @@
 /**
- * stallMonitor は、回線の遅さで再生が途切れているかを判断する純粋な状態機械である
- * （specs/027-playback-quality/research.md R-6、親 Issue 要件 9・Edge Case 8）。
+ * stallMonitor は、回線の遅さで再生が途切れているかを判断する純粋な状態機械である。
  *
  * データ待ちは、再生中に届いた `waiting` から次の `playing` までとする。60 秒の窓の中に
  * 始まったデータ待ちが 3 回以上になったか、1 回のデータ待ちが 10 秒を超えたら判断する。

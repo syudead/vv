@@ -2,7 +2,7 @@ import { setDecoration } from "./intl";
 import { englishMessages, mapMessages, replaceMessages } from "./messages";
 
 // 疑似ロケールと、描画した画面の文言がすべてカタログ由来か利用者のデータであることを
-// 確かめる helper である。テストでだけ使う（specs/023-english-i18n/research.md R-3）。
+// 確かめる helper である。テストでだけ使う。
 //
 // 疑似ロケールはカタログのすべての文と書式関数の出力を ⟦ ⟧ で囲む。`string` の変数を
 // 経由してカタログを通らずに描かれた英語は、画面で印を持たないので見つかる。

@@ -74,7 +74,7 @@ tasks:
       - go run ./scripts/build -windows-app
 
   docs:
-    desc: Serve the documentation site (docs/ and specs/) locally with live reload.
+    desc: Serve the documentation site (docs/ and ARCHITECTURE.md) locally with live reload.
     cmds:
       - npm --prefix docs-site run dev
 
@@ -167,7 +167,7 @@ tasks:
   lint-go-windows-desktop:
     desc: Run golangci-lint on the Windows desktop build (VVMDM.exe).
     # Windows 専用と desktop タグのファイルは、Linux のタグなしの lint では読まれない
-    # （specs/037-windows-app/plan.md の Constitution Check）。
+    #
     cmds:
       - task: golangci
         vars:

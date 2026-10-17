@@ -3,11 +3,10 @@ package domain
 import "errors"
 
 // ErrEncoderUnavailable は、使えない（確認中を含む）ハードウェアの方式を選ぼうとしたことを表す。
-// 保存値は変えない（specs/025-hardware-encoding/contracts/transcoding-settings-api.md §3）。
+// 保存値は変えない。
 var ErrEncoderUnavailable = errors.New("video encoder is not available")
 
 // VideoEncoder はライブ変換が実際に使う映像エンコード方式である
-// （specs/025-hardware-encoding/data-model.md §3）。
 type VideoEncoder string
 
 const (
@@ -27,7 +26,6 @@ var HardwareVideoEncoders = []VideoEncoder{
 }
 
 // EncoderChoice は所有者が選ぶ値で、VideoEncoder に auto を足したものである
-// （data-model.md §2）。
 type EncoderChoice string
 
 const (
@@ -108,7 +106,7 @@ type EncoderAvailability struct {
 	Detail string
 }
 
-// TranscodeEncoding は今のライブ変換の方式の状態である（data-model.md §3）。保存しない。
+// TranscodeEncoding は今のライブ変換の方式の状態である。保存しない。
 type TranscodeEncoding struct {
 	// Choice は保存値の解釈である。
 	Choice EncoderChoice
@@ -141,7 +139,7 @@ func NewTranscodeEncoding(choice EncoderChoice, availability []EncoderAvailabili
 }
 
 // ResolveVideoEncoder は選択と確認結果から実際に使う方式を決める
-// （specs/025-hardware-encoding/research.md R-3）。
+//
 //   - software は software。
 //   - auto は使えるものを HardwareVideoEncoders の順で最初の 1 つ。無ければ software で、
 //     fallback ではないので理由は付けない（要件 7）。
@@ -183,7 +181,7 @@ func stateOf(encoder VideoEncoder, availability []EncoderAvailability) EncoderSt
 }
 
 // HardwareEncoderCandidates は OS（runtime.GOOS の値）ごとの確認対象を
-// HardwareVideoEncoders の順で返す（research.md R-2）。
+// HardwareVideoEncoders の順で返す。
 func HardwareEncoderCandidates(goos string) []VideoEncoder {
 	switch goos {
 	case "linux":

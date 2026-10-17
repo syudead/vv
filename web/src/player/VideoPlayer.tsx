@@ -76,12 +76,10 @@ export const playbackRates = [0.5, 0.75, 1, 1.25, 1.5, 2];
 /**
  * 操作バーの並び（要件 6）。残り時間は出さず、現在時刻/長さを出す。再生バーは
  * index.css で操作バーの上へ出す。「最初に戻る」は再生の前へ、「変換して再生中」は画質・
- * 字幕・再生速度の前へ差し込む。画質は字幕の前、字幕ボタンは再生速度の前に置く
- * （specs/027-playback-quality/ui-design.md「Control bar: quality menu」、
- * specs/028-sidecar-subtitles research.md R-10）。字幕ボタンはトラックが無ければ video.js が
+ * 字幕・再生速度の前へ差し込む。画質は字幕の前、字幕ボタンは再生速度の前に置く。字幕ボタンはトラックが無ければ video.js が
  * 隠し、video.js の `SubsCapsButton` に字幕の名前を言語の表に通さない手直しを加えたもの
  * （subtitleMenu.ts）。チャプターのボタンは右寄せの空きのすぐ後（「変換して再生中」の前）に
- * 置き、チャプターが無ければ video.js が隠す（chapters.ts、specs/056-media-info/ui-design.md
+ * 置き、チャプターが無ければ video.js が隠す（chapters.ts、docs/design-docs/media-information.md
  * 「Chapters button and menu」）。秒数送りは置かない。前後の動画はプレイヤーの左右の端に置く
  * （NeighborArrows）。
  */
@@ -104,7 +102,7 @@ const controlBarChildren = [
 /**
  * 操作バーの読み上げ名とポイントしたときの説明。video.js の文言をカタログの英語で置き換える
  * 独自言語で、キーボード操作を持つボタンにはキーを添える（ui-design「Control bar」、
- * specs/023-english-i18n/research.md R-9）。video.js は同じ文字を title にも使う。
+ * docs/design-docs/i18n.md R-9）。video.js は同じ文字を title にも使う。
  *
  * 名前は英語の私用の副タグにする。video.js はこれをプレイヤーの `lang` 属性にも使い、
  * ここに無い文言は主の言語（`en`）の既定に戻る。
@@ -172,7 +170,7 @@ export interface PlayerStatus {
    * この再生の最初のメタデータを受け、続きからの位置を当て終えた（直接再生はそのシークの
    * seeked まで、変換は実際の開始位置の報告まで待つ）。論理上の再生位置が
    * 見ている場面の位置として確定した合図で、今の場面を代表サムネイルにする操作はこれを
-   * 待つ（specs/029-video-overrides/ui-design.md「Capture button」）。一度立てたら下ろさない。
+   * 待つ。一度立てたら下ろさない。
    */
   positioned: boolean;
 }
@@ -196,8 +194,7 @@ interface Props {
   onPosition: (positionMs: number) => void;
   onProgress: (positionMs: number, immediate: boolean) => void;
   /**
-   * 再生が始まった（video.js の play）。視聴履歴の視聴の始まりに使う
-   * （specs/043-watch-history/research.md R-2）。回復のための読み込み直しでは呼ばない。
+   * 再生が始まった（video.js の play）。視聴履歴の視聴の始まりに使う。回復のための読み込み直しでは呼ばない。
    */
   onPlay?: () => void;
   /**
@@ -215,7 +212,7 @@ interface Props {
    */
   fullscreenTarget?: () => HTMLElement | null;
   /**
-   * 動画の隣に置いた字幕の一覧（specs/028-sidecar-subtitles contracts §3）。無い・まだ
+   * 動画の隣に置いた字幕の一覧。無い・まだ
    * 取れていないときは空。一覧が変わったら、プレイヤーを作り直さずにトラックだけ付け直す。
    */
   subtitles?: readonly SubtitleTrack[];
@@ -266,7 +263,7 @@ export default function VideoPlayer(props: Props) {
     const current = latest.current;
     const initialPositionMs = current.initialPositionMs;
     // 覚えている画質は作るときに 1 回だけ読み、この動画に使えなければ元の画質で再生する
-    // （覚えている値は書き換えない。specs/027-playback-quality/research.md R-3・R-5）。
+    // （覚えている値は書き換えない。docs/design-docs/playback-quality.md）。
     const initialAttempt = createPlaybackAttempt(
       current.video,
       initialPositionMs,
@@ -348,7 +345,7 @@ export default function VideoPlayer(props: Props) {
     let playedSinceRecoveryMs: number | null = null;
     let lastTickMs: number | null = null;
     let recoveryGeneration = 0;
-    // 画質の切り替え（research.md R-5）。pendingSwitch は差し替えた source のメタデータを
+    // 画質の切り替え。pendingSwitch は差し替えた source のメタデータを
     // 待っている切り替えで、切り替えるたびに置き換える（古い source のメタデータは、新しい
     // source を位置へシークせず、速度と再生の意図も戻さない）。src は切り替えた source の
     // URL で、届いたメタデータがその source のものかを確かめる。loaded はその source が
@@ -361,7 +358,7 @@ export default function VideoPlayer(props: Props) {
     let slot: HTMLElement | null = null;
     let restart: HTMLElement | null = null;
     let status: PlayerStatus = { ...initialPlayerStatus };
-    // 途切れの判断（stallMonitor.ts、research.md R-6）。stallTimer は数えているデータ待ちが
+    // 途切れの判断（stallMonitor.ts）。stallTimer は数えているデータ待ちが
     // 10 秒続いたかを確かめるタイマーである。
     let stall: StallState = initialStallState;
     let stallTimer: number | undefined;
@@ -582,8 +579,7 @@ export default function VideoPlayer(props: Props) {
     // 通信の失敗からの読み込み直し（reload）はどれもここを通り、未 buffer のシークは
     // liveOffset.ts の reloadAt が source の画質を引き継ぐ（要件 7）。
     // 字幕は再生の時間軸（変換の出力）で cue を選ぶので、変換の offset が決まるたびに
-    // その offset でトラックを付け直し、報告を待つ間は外す（specs/028-sidecar-subtitles
-    // research.md R-6）。直接再生の offset は 0 のまま。
+    // その offset でトラックを付け直し、報告を待つ間は外す。直接再生の offset は 0 のまま。
     const liveSourceAt = (positionMs: number) =>
       liveSource(
         source.id,
@@ -644,7 +640,7 @@ export default function VideoPlayer(props: Props) {
           latest.current.onPosition(initialPositionMs);
         } else {
           // ライブ変換はコピーで始めると直前のキーフレームから映る。仲立ちが実際の開始位置に
-          // 合わせた論理時刻を伝える（contracts/transcode-start-api.md §3）。
+          // 合わせた論理時刻を伝える。
           reportPosition();
         }
       }
@@ -857,7 +853,7 @@ export default function VideoPlayer(props: Props) {
     };
 
     // changeQuality は、プレイヤーを作り直さずに今の論理上の位置から選んだ画質の source へ
-    // 差し替える（要件 4・5・6、research.md R-5）。直接再生からの fallback と同じ作りで、
+    // 差し替える（要件 4・5・6）。直接再生からの fallback と同じ作りで、
     // 再生中なら続け、止めていたら止めたままにする。回復を待つ間でも、選んだ画質で
     // 読み込み直す。
     const changeQuality = (quality: PlaybackQuality) => {
@@ -1040,7 +1036,7 @@ export default function VideoPlayer(props: Props) {
   // 作り直さず、再生バーへの取り付けだけをやり直す。URL は同じでも、生成が終わって
   // seekThumbnailState が変わったら取り付け直し、取得に失敗した配置情報を捨てる。
   // チャプターのある動画は、URL が無くてもタイトルの行と時刻の pill だけのプレビューを付ける
-  // （specs/056-media-info/ui-design.md「Seek preview title」）。
+  //
   const seekThumbnailUrl = video.seekThumbnailUrl;
   const seekThumbnailState = video.seekThumbnailState;
   const durationMs = video.durationMs;
@@ -1068,7 +1064,7 @@ export default function VideoPlayer(props: Props) {
   }, [chapters, durationMs, playerReady, seekThumbnailUrl, seekThumbnailState]);
 
   // チャプターは解析の job が終わってから届くこともある。プレイヤーは作り直さず、トラックと
-  // シークバーの印だけを付け直す（specs/056-media-info/research.md R-7）。
+  // シークバーの印だけを付け直す。
   useEffect(() => {
     const host = hostRef.current;
     const player = playerRef.current;
@@ -1174,8 +1170,7 @@ function BarButton({
 
 /**
  * TranscodeIndicator は操作バーの中の「変換して再生中」である（要件 10）。元の画質以外では
- * 選んだ画質で変換していることと戻し方を伝える（specs/027-playback-quality 要件 6、
- * ui-design.md「Control bar: transcode indicator」）。
+ * 選んだ画質で変換していることと戻し方を伝える。
  *
  * ポイントしたときだけ開くツールチップにはしない。タッチやキーボードの人が理由に
  * 届かなくなるので、押して開く吹き出しにする。
@@ -1201,7 +1196,7 @@ function TranscodeIndicator({
         <Info className="size-4 shrink-0" aria-hidden="true" />
         {/* 縦長の動画や 360px の画面などで枠が狭いときは、印だけを残して操作バーの幅に収める。
             チャプターと字幕のボタンも並ぶと、文字は 32rem より狭い枠に収まらない
-            （specs/056-media-info/ui-design.md「Responsive behaviour」）。 */}
+            。 */}
         <span className="@max-[32rem]:sr-only">{label}</span>
       </PopoverTrigger>
       <PopoverContent container={container} align="end">

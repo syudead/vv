@@ -8,7 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 重複の候補の判定の記録のやり直しと取り消し（specs/055-activity/contracts/screen-api.md）。
+// 重複の候補の判定の記録のやり直しと取り消し。
 
 // fakeJudgementActivityStore はやり直しと取り消しを頼まれた記録を覚える。err は両方が返す誤りである。
 type fakeJudgementActivityStore struct {

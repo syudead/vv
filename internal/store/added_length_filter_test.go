@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 追加日と長さによる一覧の絞り込み（specs/052-smart-folders/research.md R-4、#1170）。
+// 追加日と長さによる一覧の絞り込み。
 
 // addedLengthFile は追加日と長さの絞り込みの検証用の動画1本である。duration が nil なら長さが分からない。
 type addedLengthFile struct {

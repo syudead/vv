@@ -1,6 +1,6 @@
 -- +goose Up
 -- 索引。内容の参照が無くなるときに消し、走査と取り込みで作り直せる。
--- 映像の指紋（specs/030-video-versions/research.md R-6、data-model.md §1・§6）。hashes はコマごとの
+-- 映像の指紋。hashes はコマごとの
 -- 9 バイト（印 1 バイト + ハッシュ 8 バイト big endian）。
 create table video_fingerprints (
     content_key text    primary key,

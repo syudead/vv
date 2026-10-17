@@ -25,10 +25,10 @@ import { useToast } from "../ui/Toast";
 import BundleDialog from "./BundleDialog";
 import { VersionDetailsLine, versionDetails, versionDetailsText } from "./VersionDetails";
 
-/** 候補の画面から開いた再生画面の戻り先（ui-design.md「Pair」）。 */
+/** 候補の画面から開いた再生画面の戻り先。 */
 const backTo = "/duplicates";
 
-/** Pair は候補の 1 組である。`videos` は id の昇順（contracts/screen-api.md §5）。 */
+/** Pair は候補の 1 組である。`videos` は id の昇順。 */
 interface Pair {
   key: string;
   videos: readonly [Video, Video];
@@ -53,11 +53,10 @@ function pairIds(pair: Pair): [number, number] {
 
 /**
  * DuplicatesPage は「同じ動画かもしれない」候補の組を並べ、所有者に「同じ動画」（代表を選んで
- * 束ねる）か「違う動画」（二度と出さない）かを決めさせる画面である
- * （specs/030-video-versions/ui-design.md「Duplicates page」）。
+ * 束ねる）か「違う動画」（二度と出さない）かを決めさせる画面である。
  *
  * 開いたときに候補を読み、取り込みが終わったという `scan` の知らせと、判定の結果や版の取り外しで候補が
- * 変わったという `candidates` の知らせ（specs/054-auto-dup/research.md R-10）で取り直す。取り直しの間は一覧の見た目を変えず、
+ * 変わったという `candidates` の知らせで取り直す。取り直しの間は一覧の見た目を変えず、
  * 届いたら差し替える。取り直しが重なったら、今の取得が終わってからもう 1 度だけ取る。
  * 決めた組はその場で一覧から消し、フォーカスを次の組（無ければ前の組、無ければ見出し）へ移す。
  */
@@ -362,7 +361,7 @@ function PairRow({
 
 /**
  * CandidateVideo は組の 1 本である。サムネイルと、題名・違い・置き場所の 3 行を並べ、全体を
- * 再生画面へのリンクにする。2 本のどちらも強調しない（ui-design.md「Pair」）。
+ * 再生画面へのリンクにする。2 本のどちらも強調しない。
  */
 function CandidateVideo({ video }: { video: Video }) {
   const details = versionDetails(video);

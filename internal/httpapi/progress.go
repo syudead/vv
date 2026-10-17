@@ -48,8 +48,7 @@ func (s *server) PutVideoProgress(w http.ResponseWriter, r *http.Request, id gen
 	}
 
 	// 記録の鍵は利用者データの鍵（videos.id ではない）。ファイルを移動・改名・
-	// 置き直しても再生位置が引き継がれ、束ねた動画では集まりの再生位置になる
-	// （specs/030-video-versions/data-model.md §3）。尺は再生したバージョンのもの。
+	// 置き直しても再生位置が引き継がれ、束ねた動画では集まりの再生位置になる。尺は再生したバージョンのもの。
 	saved, err := s.playback.SaveProgress(
 		r.Context(), video.UserKey, domain.EvaluateProgress(update.positionMs, durationMs), playOf(video, update))
 	if err != nil {
@@ -135,7 +134,7 @@ func (s *server) readProgressUpdate(w http.ResponseWriter, r *http.Request) (pro
 }
 
 // playOf は保存が視聴履歴に書く値を返す。識別子が無いか、動画の content_key が空なら nil で、
-// 履歴を書かない（specs/043-watch-history/contracts/screen-api.md）。鍵は再生したバージョンの
+// 履歴を書かない。鍵は再生したバージョンの
 // content_key で、集まりの鍵（UserKey）ではない。題名はいま動画のページが見せている有効な題名である。
 func playOf(video domain.Video, update progressUpdate) *domain.Play {
 	if update.playbackID == "" || video.ContentKey == "" {

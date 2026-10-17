@@ -10,7 +10,7 @@ import {
   withLength,
 } from "./addedLengthCriteria";
 
-// ライブラリの追加日と長さの絞り込み（specs/052-smart-folders/ui-design.md「Added and length」）。
+// ライブラリの追加日と長さの絞り込み。
 
 function parse(search: string) {
   return parseAddedLength(new URLSearchParams(search));

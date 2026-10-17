@@ -2,8 +2,7 @@ import type { ThumbnailEdit, ThumbnailEditFailure } from "../../api/client";
 import { t, type UiText } from "../../i18n";
 import { isRunning } from "./editRules";
 
-// 編集画面の見え方の移り変わり（specs/045-comfyui-thumbnails/ui-design.md「Thumbnail editor」の
-// 状態図）。サーバーのセッションを読むたび、操作の応答を受けるたびに、どの見え方
+// 編集画面の見え方の移り変わり。サーバーのセッションを読むたび、操作の応答を受けるたびに、どの見え方
 // （Compose・Running・Compare）にするかをここで決める。
 
 export type EditorView = "compose" | "running" | "compare";

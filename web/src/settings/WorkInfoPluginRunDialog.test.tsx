@@ -9,8 +9,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import WorkInfoPluginsSection from "./WorkInfoPluginsSection";
 
-// 設定の「Work-info plugins」節で、行のメニューから直近の実行の出力を開く流れのページのテストである
-// （specs/056-plugin-tooling/ui-design.md「Last run dialog」）。失敗の理由の文は
+// 設定の「Work-info plugins」節で、行のメニューから直近の実行の出力を開く流れのページのテストである。失敗の理由の文は
 // workInfoPluginRows.test.ts が確かめる。
 
 function json(body: unknown, status = 200): Response {

@@ -1,6 +1,6 @@
 /*
  * デザインシステムの基礎 — 見た目の値の唯一の置き場
- * （specs/038-design-system/research.md R-5、ui-design.md「Foundations」）。
+ * 。
  *
  * 色は shadcn の意味名と vv 固有の役割で、6 桁の hex（overlay だけ半透明）。暗い配色の
  * 1 組だけを持つ。画面はここから生成される実用クラス（bg-card、text-muted-foreground、
@@ -9,7 +9,7 @@
  */
 @theme {
   /*
-   * --- 段階を持つ名前空間を Tailwind の既定から空にする（research.md R-8）。ここで定めた
+   * --- 段階を持つ名前空間を Tailwind の既定から空にする。ここで定めた
    * 段だけが実用クラスになり、段階の外（p-7、text-2xl、rounded-xl、font-bold、bg-red-500
    * など）は生成されず、web/eslint.config.js の no-unknown-classes で落ちる。
    * tw-animate-css の animate-in などもここで消えるので、動きは下の段だけを使う。 ---
@@ -65,7 +65,7 @@
   --color-success-foreground: #111111;
   --color-success-soft: #204334;
 
-  /* --- お気に入りの印だけの色（specs/035-favorites/ui-design.md「Mark」） --- */
+  /* --- お気に入りの印だけの色 --- */
   --color-favorite: #ff6f9c;
 
   /* --- ダイアログの後ろとサムネイルの上（ただ一つの半透明） --- */
@@ -192,8 +192,7 @@
   /* 設定の取り込みの問題の一覧の最大の高さと、フォルダ選択の一覧の高さ */
   --spacing-issue-list: 50vh;
   --spacing-folder-list: 18rem;
-  /* 設定の作品情報プラグインの直近の実行のダイアログの出力の最大の高さ（specs/056-plugin-tooling/ui-design.md
-     「Changes to the design system」）。事実と足の行が 1280×800 と 360×640 で見えたまま、長い出力は中で動く */
+  /* 設定の作品情報プラグインの直近の実行のダイアログの出力の最大の高さ。事実と足の行が 1280×800 と 360×640 で見えたまま、長い出力は中で動く */
   --spacing-run-output: 40vh;
   /* アクティビティ（web/src/activity）: カードの最小の高さ（52px）、時刻の列の幅（104px）、
      取り込みの進み具合の棒の幅（160px）。フッターの帯もカードと同じ高さ */
@@ -235,7 +234,7 @@
   --spacing-seek-preview-time-x: 6px;
   --text-seek-preview: 11px;
   --duration-seek-preview: 100ms;
-  /* シークバーのチャプターの印の幅（index.css の .vv-chapter-mark。specs/056-media-info）。 */
+  /* シークバーのチャプターの印の幅（index.css の .vv-chapter-mark。docs/design-docs/media-information.md）。 */
   --spacing-chapter-mark: 2px;
 
   @keyframes fade-in {

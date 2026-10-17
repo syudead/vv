@@ -30,8 +30,7 @@ import { useSmartFolderCardValue } from "./cardValues";
 import { smartFolderPagePath } from "./smartFolderPaths";
 
 /**
- * SmartFolderCardProps はスマートフォルダのカードと行の props である
- * （specs/052-smart-folders/ui-design.md「Smart folder card and row」）。項目は要約だけを持ち、
+ * SmartFolderCardProps はスマートフォルダのカードと行の props である。項目は要約だけを持ち、
  * 値はカードが画面に入ってから SmartFolderCardsProvider が読む。
  */
 export interface SmartFolderCardProps {
@@ -88,7 +87,7 @@ function SmartFolderMark() {
 
 /**
  * SmartFolderFavorite はフォルダのカード・行のお気に入りの付け外しである（所有者だけ。
- * specs/052-smart-folders/ui-design.md「Smart folder card and row」）。フォルダの id を
+ * docs/design-docs/catalog-organization.md「Smart folder card and row」）。フォルダの id を
  * `smartFolderIds` で送る。フォルダの付け外しは画面へ知らせない（api/favorites.ts）ので、
  * 成功したらここで塗りを変える。この塗りは押したときの `read` にだけ効き、カードの値か要約が
  * 新しく読まれたら（`read` が別の物になったら）捨てて、読んだ `favorite` に従う。値が同じかは
@@ -124,7 +123,7 @@ function SmartFolderFavorite({
 
 /**
  * SmartFolderAddToPlaylist はフォルダのカード・行の「Add to playlist」である（所有者だけ。
- * specs/052-smart-folders/ui-design.md「Add to playlist」）。フォルダを 1 つの項目として
+ * docs/design-docs/catalog-organization.md「Add to playlist」）。フォルダを 1 つの項目として
  * `smartFolderIds` で送る。
  */
 function SmartFolderAddToPlaylist({

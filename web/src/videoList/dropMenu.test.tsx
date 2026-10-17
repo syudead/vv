@@ -6,7 +6,7 @@ import { asUiText } from "../i18n/uiText";
 import type { CardDrop } from "./cardDrag";
 import { useDropMenu } from "./dropMenu";
 
-// 落とした先のメニューを保つ印（specs/050-drag-organize/ui-design.md「Drop menus」）。
+// 落とした先のメニューを保つ印。
 
 const drop: CardDrop = {
   lifted: ["a"],

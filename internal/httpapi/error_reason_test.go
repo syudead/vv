@@ -8,7 +8,7 @@ import (
 )
 
 // wantError は、エラーの応答に期待する HTTP 状態・code・reason・limit・tagName
-// である（specs/023-english-i18n/contracts/error-api.md §1）。reason・tagName が
+// である。reason・tagName が
 // 空、limit が 0 のときは、その項目が応答に無いことを期待する。
 type wantError struct {
 	status  int

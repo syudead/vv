@@ -1,7 +1,7 @@
 # vv design system
 
 - Status: adopted in part; each tier's section is written by the change that
-  builds it ([038 plan](../../specs/038-design-system/plan.md#documentation-ownership))
+  builds it
 - Scope: the tokens, components, rules and page patterns every screen in
   `web/src` is built from, and how agents and checks reach them
 
@@ -39,9 +39,8 @@ item is the list of every item, its tier and when to use it. Start from it.
 | Plain read | `web/registry/r/<item>.json`                                                                            |
 
 The CLI prints each file's content and the item's `docs` line, which names the
-section of the usage rules that applies. The item list, the file layout and
-the checks are fixed in
-[038 contracts/registry.md](../../specs/038-design-system/contracts/registry.md).
+section of the usage rules that applies. [web/registry.json](../../web/registry.json)
+defines the items and their files.
 
 Agents are routed here from `AGENTS.md`. The official shadcn skill is vendored
 in `.agents/skills/shadcn/` and runs the CLI pinned in `web/package.json`
@@ -54,9 +53,6 @@ adds a missing one to the design system first.
 | -------------------------------------- | ----------------------------------------------------------------------------------------------------- |
 | A `@vv` registry on a localhost URL    | Every agent session would have to start a server first                                                |
 | A GitHub address (`syudead/vv/<item>`) | Sees only pushed commits, so a component added on a working branch is invisible to the agent using it |
-
-The decisions behind the setup are R-3, R-4 and R-7 of
-[038 research](../../specs/038-design-system/research.md).
 
 ## Checks and exceptions
 
@@ -100,8 +96,7 @@ rules only.
 
 The list started with every file that broke the checks when they landed, as
 `migration` entries. A new file that breaks a check fails from then on, and
-each migration PR deletes its files' entries
-([research.md R-9](../../specs/038-design-system/research.md#r-9-screens-migrate-one-area-per-pr-behind-a-shrinking-exception-list)).
+each migration PR deletes its files' entries.
 Once every screen had migrated, the last unit removed the remaining
 `migration` entries, so the list holds only `special` entries.
 `web/src/theme/designExceptions.test.ts` (`task test-web`) fails when an entry
@@ -112,9 +107,6 @@ another unknown `kind`, repeats a file, or is `special` without a `reason`.
 | ------------------------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | `eslint-disable` comments at each offender | `noInlineConfig` forbids them, and scattered comments cannot be counted or removed by area                                                |
 | Checking tests as well                     | Tests render bare `<button>` harnesses that are not screens; listing them would keep `migration` entries that no screen migration removes |
-
-The decisions behind the checks are R-8 and R-9 of
-[038 research](../../specs/038-design-system/research.md).
 
 ## Foundations
 
@@ -168,8 +160,7 @@ step outside them (`p-7`, `gap-2.5`, `text-2xl`, `rounded-xl`, `font-bold`,
 reset namespace and stay available. The reset also drops `tw-animate-css`'s
 enter and exit animations, so floating layers open with `animate-pop-in`.
 
-During the migration the previous token names (`surface`, `fg-muted`, `link`,
-...) were `var()` aliases of the new ones and a `no-restricted-classes`
+During the migration the previous token names (`surface`, `fg-muted`, `link`,...) were `var()` aliases of the new ones and a `no-restricted-classes`
 pattern failed off-scale steps; both went with the reset. The cyan `accent` was
 renamed to `primary` everywhere at once, because shadcn uses `accent` for the
 hover fill.
@@ -179,10 +170,6 @@ hover fill.
 | Keeping vv's names (`surface`, `fg-muted`)  | Every shadcn/ui component added later would be translated by hand |
 | oklch values, as shadcn's defaults          | The contrast test parses hex only                                 |
 | A white primary button, as shadcn's default | Cyan is the brand's action colour                                 |
-
-The decisions behind the foundations are R-5 and R-8 of
-[038 research](../../specs/038-design-system/research.md) and
-[038 UI design, Foundations](../../specs/038-design-system/ui-design.md#foundations).
 
 ## Components
 
@@ -233,8 +220,7 @@ so the vv `TagCommand` can draw its compact field with a busy spinner inside
 it. `sidebar.tsx` also exports one component upstream lacks,
 `SidebarMenuCount`: an entry's count, drawn at the icon's top-right corner on
 the icon rail, where upstream's `SidebarMenuBadge` is hidden, and as that
-badge in the narrow-width drawer
-([055 UI design, Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)). `Button`
+badge in the narrow-width drawer. `Button`
 also has one variant upstream lacks, `ghost-destructive`: `ghost`'s shape
 with `destructive` text and a `destructive-soft` hover, the button form of the
 menu's destructive item, for one destructive action that stands outside a
@@ -291,7 +277,7 @@ maintainer approves this tier on the showcase and each screen migrates.
 | `VideoThumbnail`, `FavoriteToggle`, `TentativeMark`, `ScrubPreview`, `ThumbnailBackdrop`, `BrandHomeLink` | Thumbnail markup in cards and rows, the former `videoList/FavoriteToggle` | vv components                                                                                                                                                                       |
 | `TagCommand`                                                                                              | `ui/Combobox`, the selection bar's former `library/TagCommand`            | vv component; a `Command` with the tag-name rules                                                                                                                                   |
 | `CreditCommand`                                                                                           | —                                                                         | vv component; `TagCommand`'s sibling with the rules for the names of people and organizations, on the same base (`NameCommand`), offering its create row even beside an exact match |
-| `FilterDropdownButton`                                                                                    | —                                                                         | vv component; one toolbar filter that shows its value and opens a `DropdownMenu`, `primary-soft` when not at its default ([055 UI design, Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)) |
+| `FilterDropdownButton`                                                                                    | —                                                                         | vv component; one toolbar filter that shows its value and opens a `DropdownMenu`, `primary-soft` when not at its default  |
 
 The shadcn components live in `web/src/ui/shadcn` under upstream's
 kebab-case names (`dropdown-menu.tsx`), beside the action and input
@@ -311,9 +297,6 @@ height, and the `Alert` icon column. They are `special` entries in
 | Restyling the components to look like the ones they replace          | The components are for building new screens, not for repeating the old look   |
 | Moving the old components aside so the new ones take their names now | Every screen's imports would change before the tier is approved               |
 | Separate `sidebar-*` colour tokens, as upstream                      | The sidebar uses `navbar`, `accent` and `secondary`, the roles it already had |
-
-The decisions behind the components are in
-[038 UI design, Components](../../specs/038-design-system/ui-design.md#components).
 
 ## Page patterns
 
@@ -354,7 +337,7 @@ Skeletons and sections share four behaviours:
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Spacing         | Fixed in the pattern; patterns take no `className`, so a screen cannot override it                                                                                      |
 | Density         | `DetailPage` provides viewing density, under which `PageSection` and `FactList` switch to `p-4` rows and `text-base`; every other skeleton is library density           |
-| States in place | A state block goes in the same body slot as the data, so the header and toolbar never move ([038 UI design, States](../../specs/038-design-system/ui-design.md#states)) |
+| States in place | A state block goes in the same body slot as the data, so the header and toolbar never move  |
 | Edges line up   | `CardGrid` stretches its columns to the body width (`auto-fill` over the `card-*` steps), so the toolbar, the count row and the grid share both edges                   |
 
 `CardGrid` passes its column template through `style`, because a template made
@@ -366,12 +349,10 @@ and capped at `list-aside-max` while it sticks under the top bar.
 `SettingsPage`'s optional `nav` is the list of a settings area's pages: from
 `sm` a column `settings-nav` wide at the left, laid out by the named utility
 `grid-cols-settings-page` within `max-w-4xl`; below `sm` the list alone or the
-page alone under a back link, chosen in CSS by its `view`
-([058 UI design, Page list and skeleton](../../specs/058-settings-pages/ui-design.md#page-list-and-skeleton)).
+page alone under a back link, chosen in CSS by its `view`.
 Its optional `notice` holds one `Alert` between the header and the sections
 for a condition of the whole page, such as the Auto-tagging page locked until
-an Ollama connection is saved
-([058 UI design, Changes to the design system](../../specs/058-settings-pages/ui-design.md#changes-to-the-design-system)).
+an Ollama connection is saved.
 The video page's player frame sizes itself
 from named steps declared in an `@theme inline` block (`player-width`,
 `player-height`, `aspect-player`), because their values read the video's
@@ -386,8 +367,7 @@ band, a `stage` for the image and an `aside` for the inputs, whose `footer`
 holds the main actions. Below `lg` the stage is the named step `editor-stage`
 high (about 45% of the viewport's height). `Dialog` stops at `max-w-lg`, which
 leaves a 16:9 frame about 290 px tall at 1280 px, too small to paint on or to
-compare two images; `FormDialog` stays the dialog for a form
-([045 UI design, Changes to the design system](../../specs/045-comfyui-thumbnails/ui-design.md#changes-to-the-design-system)).
+compare two images; `FormDialog` stays the dialog for a form.
 
 `FormPage` is a page, not a dialog, for many values saved together on a screen
 of its own, such as the details of a video. A sticky header band holds the
@@ -397,8 +377,7 @@ Below them, from `lg`, the named utility `grid-cols-form-page` lays out an
 the page keeps the viewport's height and each panel scrolls inside itself.
 Below `lg` the parts stack and the page scrolls as one.
 `FormDialog` holds a few fields and `SettingsPage` saves each row by itself,
-so neither fits a form of a dozen fields saved with one button
-([047 UI design, Changes to the design system](../../specs/047-video-work-info/ui-design.md#changes-to-the-design-system)).
+so neither fits a form of a dozen fields saved with one button.
 
 `CardList` stacks one-line cards with a border on `muted`, in four tones the
 caller sets, with fixed columns at the end for the time and the actions, so
@@ -406,15 +385,13 @@ those line up down the list; below `lg` each card is two lines. No section
 drew bordered rows: `GroupedList` rows have no border and `DataTable`'s header
 and columns do not fit one line at 360px. `Toolbar` takes `nowrap` for a row
 of filters that must stay one line and scrolls sideways instead of wrapping,
-and `LoadingState` takes `layout="cards"` for a `CardList`
-([055 UI design, Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)).
+and `LoadingState` takes `layout="cards"` for a `CardList`.
 
 `FormDialog` takes `size="wide"` for a form that sets values side by side for
 comparison, such as the current and the fetched details of a video: it stops
 at `max-w-2xl` instead of `max-w-lg`, and below `sm` it spans the screen with
 the 16px margin as the default size does. Without `cancelLabel` its footer
-holds only the submit button, for a last step whose only action is closing
-([049 UI design, Changes to the design system](../../specs/049-work-info-plugins/ui-design.md#changes-to-the-design-system)).
+holds only the submit button, for a last step whose only action is closing.
 
 The showcase (`/design-system`) renders every example block, the list page in
 each of its states, and the dialogs behind their buttons, so the maintainer

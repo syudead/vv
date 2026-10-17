@@ -41,7 +41,7 @@ import {
   subjectParts,
 } from "./activityEntry";
 
-// アクティビティの記録 1 件のカード（specs/055-activity/ui-design.md「Cards」）。
+// アクティビティの記録 1 件のカード。
 
 const markIcon: Record<StatusMark, { icon: LucideIcon; className: string }> = {
   running: { icon: LoaderCircle, className: "animate-spin text-primary" },
@@ -243,7 +243,7 @@ interface ActionsProps {
 
 /**
  * Actions はカードの端の操作である。やり直しと取り消しは確かめずに送り、待つ間はその
- * ボタンに Spinner を出してカードのボタンをすべて止める（ui-design.md「Cards」）。成功した
+ * ボタンに Spinner を出してカードのボタンをすべて止める。成功した
  * 操作は読み直したカードが届くまで待つので、古いカードから同じ操作を二度送れない。
  */
 function Actions({ entry, actions, onRetry, onUndo }: ActionsProps) {

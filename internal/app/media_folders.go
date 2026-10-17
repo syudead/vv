@@ -85,7 +85,7 @@ func (m *MediaFolders) DeleteMediaFolder(ctx context.Context, id, expectedVersio
 }
 
 // around は変更の前に走っている監視の走査を止め、返した関数で変更のあとに監視を張り直す。
-// 保存側は走査中の変更を断るので、止めるのは保存の前である（specs/042-folder-watch-import/research.md R-5）。
+// 保存側は走査中の変更を断るので、止めるのは保存の前である。
 func (m *MediaFolders) around(ctx context.Context) func() {
 	if m.changes == nil {
 		return func() {}

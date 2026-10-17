@@ -1,12 +1,11 @@
 package store
 
-// スマートフォルダの一致する動画（specs/052-smart-folders/data-model.md「Contents」の Matching
-// videos、research.md R-14）。見る人に見せる動画（内容の鍵ごとに 1 本）のうち、経路のどの段の条件にも
+// スマートフォルダの一致する動画。見る人に見せる動画（内容の鍵ごとに 1 本）のうち、経路のどの段の条件にも
 // 一致する動画で、条件は動画そのものに確かめ、グループにまとめる段を持たない。ライブラリの一番上の
 // フォルダの並べ替えの値と、カードの読み出しの値をこの動画から作る。
 //
 // フォルダによらない部分（見せる動画とその所在・再生の記録・お気に入り）は、1 回の読み出しで
-// smart_base に 1 度だけ求め、どのフォルダもそれを絞って読む（research.md R-13）。
+// smart_base に 1 度だけ求め、どのフォルダもそれを絞って読む。
 
 import (
 	"context"
@@ -60,7 +59,7 @@ type smartMatch struct {
 // with 句の名前である。どの段の絞り込みも動画 1 本に掛ける。タグ・人物と団体・追加日と長さは
 // matchConditions、再生可否とお気に入りのみはどれかの段が求めれば掛け、視聴状態は段ごとの
 // itemWatchConditions を動画の視聴状態に掛ける。検索式は所有者の意味で、どの段の式も同じ所在 1 行で
-// 満たす動画に限る（chosenLocationsSelect、research.md R-11）。検索式は別の with 句に 1 度だけ
+// 満たす動画に限る（chosenLocationsSelect）。検索式は別の with 句に 1 度だけ
 // 求める（条件句の副問い合わせにすると、フォルダが増えるほど遅くなる）。
 func smartMatchFor(spec listSpec, name string) smartMatch {
 	spec.userKeyColumn = `videos.user_key`
@@ -95,14 +94,13 @@ type smartFolderTarget struct {
 	// spec は経路の条件の絞り込み（smartFolderSpec）である。
 	spec listSpec
 	// missing は経路の条件が無い実体を名指すことで、そのときフォルダは何にも一致しない
-	// （research.md R-9）。
+	//
 	missing bool
 }
 
 // smartFolderTargetOf はフォルダ folder を経路の条件 rules（外側の祖先から順、最後が folder の条件）
 // で読む準備をし、見る人 audience に見せるかとともに返す。所有者には常に、ゲストには再生順が空で
 // ないときだけ見せる。ゲストには再生順の最初の項目があるかを 1 回の問い合わせで確かめる
-// （data-model.md「Contents」の Shown、research.md R-8）。
 func smartFolderTargetOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, now int64) (smartFolderTarget, bool, error) {
 	target := smartFolderTarget{
 		summary: domain.SmartFolderSummary{ID: folder.ID, ParentID: folder.ParentID, Name: folder.Name},

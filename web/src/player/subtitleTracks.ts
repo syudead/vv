@@ -6,8 +6,7 @@ import {
 } from "../preferences/subtitlePreference";
 
 /**
- * 動画の隣に置いた字幕を video.js のトラックとして付け、選択を覚える
- * （specs/028-sidecar-subtitles research.md R-9〜R-11）。
+ * 動画の隣に置いた字幕を video.js のトラックとして付け、選択を覚える。
  *
  * - トラックは `kind: "subtitles"` の remote text track として付ける。字幕ボタンとメニューは
  *   video.js の `SubsCapsButton` が出し、トラックが無ければボタンは自分を隠す。

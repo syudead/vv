@@ -100,8 +100,7 @@ import {
   VideoThumbnailProgress,
 } from "../ui/VideoThumbnail";
 
-// 見本の「Overlays and feedback」と「vv components」の節（specs/038-design-system/ui-design.md
-// 「Components」「Review criteria」4）。部品ごとに、通常・hover・キーボードのフォーカス・押下・
+// 見本の「Overlays and feedback」と「vv components」の節。部品ごとに、通常・hover・キーボードのフォーカス・押下・
 // 選択・無効のうち持つ状態を並べる。hover・フォーカス・押下は index.css の data-demo-state で、
 // 触らずに見せる（Demo で包む）。
 

@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: 68f8a0a7a84b1d0550460c5c3bb42f15e566fa04e16658ee0b1c36628acde1c7
+sourceHash: 98a905eecc2932a1c520c5634121cfcd8e33e2db173ba42b06d6c837439ab3ae
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
 
-VVMDM は、外部のサイトから作品情報を読み取る WebAssembly のモジュールである作品情報プラグインを、自分のプロセスの中で wazero により実行する。アダプタは [`internal/wasmplugin`](../../internal/wasmplugin) で、[`internal/app/work_info_plugin_runtime.go`](../../internal/app/work_info_plugin_runtime.go) の `WorkInfoPluginRuntime` ポートの背後にある。プラグインの契約は [作品情報プラグインを書く](../how-to/work-info-plugins.md) で、各選択の理由はこの機能の [research.md](../../specs/049-work-info-plugins/research.md) (R-1 から R-5) にある。
+VVMDM は、外部のサイトから作品情報を読み取る WebAssembly のモジュールである作品情報プラグインを、自分のプロセスの中で wazero により実行する。アダプタは [`internal/wasmplugin`](../../internal/wasmplugin) で、[`internal/app/work_info_plugin_runtime.go`](../../internal/app/work_info_plugin_runtime.go) の `WorkInfoPluginRuntime` ポートの背後にある。プラグインの契約は [作品情報プラグインを書く](../how-to/work-info-plugins.md) にある。
 
 図は、モジュールがアップロードから実行の結果までにたどる過程を示す。
 
@@ -23,7 +23,7 @@ flowchart LR
 
 ## 検査はモジュールを決して実行しない {#inspection-never-runs-the-module}
 
-`Inspect` はモジュールをコンパイルし、その `vv.plugin` マニフェスト、インポート、エクスポート、テーブルを読み、最初に見つけた [data-model.md](../../specs/049-work-info-plugins/data-model.md#work_info_plugins) の `problem` を返す ([`runtime.go`](../../internal/wasmplugin/runtime.go))。
+`Inspect` はモジュールをコンパイルし、その `vv.plugin` マニフェスト、インポート、エクスポート、テーブルを読み、最初に見つけた検証の `problem` を返す ([`runtime.go`](../../internal/wasmplugin/runtime.go))。
 
 所有者はプラグインをその名前、バージョン、設定から承認するので、これらは所有者がまだ承認していないコードからではなく、カスタムセクションから得る。wazero のコンパイル済みモジュールはテーブルも関数以外のインポートも見せないので、[`binary.go`](../../internal/wasmplugin/binary.go) がインポートとテーブルのセクションをバイト列から読む。
 
@@ -68,7 +68,7 @@ Go の `wasip1` リンカが関数テーブルを書き出すときのように�
 
 ## 最後の実行の標準エラー出力はプラグインごとに保つ {#the-last-runs-standard-error-is-kept-per-plugin}
 
-各プラグインは、最後の実行の標準エラー出力を、秘密の設定値をすべて `[secret]` に置き換えて、1 行の `work_info_plugin_runs` として保つ。所有者は `GET /api/work-info-plugins/{id}/last-run` でそれを読む ([056 R-6](../../specs/056-plugin-tooling/research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked))。設定画面では、プラグインの行の `Last run output` から開く最後の実行のダイアログに表示する ([056 UI design](../../specs/056-plugin-tooling/ui-design.md#last-run-dialog))。サーバーのログには、従来どおり同じテキストがマスクなしで届き続ける。
+各プラグインは、最後の実行の標準エラー出力を、秘密の設定値をすべて `[secret]` に置き換えて、1 行の `work_info_plugin_runs` として保つ。所有者は `GET /api/work-info-plugins/{id}/last-run` でそれを読む。設定画面では、プラグインの行の `Last run output` から開く最後の実行のダイアログに表示する。サーバーのログには、従来どおり同じテキストがマスクなしで届き続ける。
 
 ```mermaid
 sequenceDiagram
@@ -140,11 +140,11 @@ flowchart LR
 
 ### 実行は運用者のプロキシを通せる {#a-run-can-go-through-the-operators-proxy}
 
-`Runtime.Run` は `domain.WorkInfoRunNetwork` を受け取る。その `Proxy` は運用者が選んだプロキシで、なければ nil である ([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option))。`domain.ParseWorkInfoPluginProxyURL` が URL の規則を持つ: スキームは `http`、`https`、`socks5` のいずれか、ホスト、任意のポート、任意のユーザー情報で、パス、クエリ、フラグメントはなく、最大 2048 文字である。`""` はプロキシなしを意味する。プロキシなしの実行は、上のクライアントをそのまま使う。
+`Runtime.Run` は `domain.WorkInfoRunNetwork` を受け取る。その `Proxy` は運用者が選んだプロキシで、なければ nil である。`domain.ParseWorkInfoPluginProxyURL` が URL の規則を持つ: スキームは `http`、`https`、`socks5` のいずれか、ホスト、任意のポート、任意のユーザー情報で、パス、クエリ、フラグメントはなく、最大 2048 文字である。`""` はプロキシなしを意味する。プロキシなしの実行は、上のクライアントをそのまま使う。
 
 所有者は、すべてのビルドで設定画面の `Network` セクションから `PUT /api/settings/plugin-proxy` を通じてプロキシを設定する。`app.WorkInfoPluginProxy` がそれを上の規則に照らして確認し、`settings` の行 `work_info_plugins.proxy_url` として保存する。`app.WorkInfoPlugins` は実行のたびにその行を読むので、保存した変更は次の実行から適用され、実行中のものは開始時の値のままである。規則に反する保存済みの値は、直接接続せずに実行を失敗させる。
 
-プロキシを使う実行は専用のトランスポートを持ち、その接続はすべてプロキシに向かうので、接続時の確認は宛先を見られない。代わりに、Go がすべての要求と追跡するすべてのリダイレクトで呼ぶトランスポートの `Proxy` コールバックが、宛先のホストを名前解決し (リテラルのアドレスならそれを解析し)、解決したアドレスのどれかが同じ規則を満たさないときは、要求を `-2` と `blocked_address` で拒否する ([056 R-5](../../specs/056-plugin-tooling/research.md#r-5-through-a-proxy-the-destination-is-checked-by-resolving-its-name-before-each-request-and-redirect))。拒否したホストは名前であり、プロキシは要求を見ない。プロキシ自身のアドレスは確認しない。運用者が選んだもので、たいてい LAN にあるからである。
+プロキシを使う実行は専用のトランスポートを持ち、その接続はすべてプロキシに向かうので、接続時の確認は宛先を見られない。代わりに、Go がすべての要求と追跡するすべてのリダイレクトで呼ぶトランスポートの `Proxy` コールバックが、宛先のホストを名前解決し (リテラルのアドレスならそれを解析し)、解決したアドレスのどれかが同じ規則を満たさないときは、要求を `-2` と `blocked_address` で拒否する。拒否したホストは名前であり、プロキシは要求を見ない。プロキシ自身のアドレスは確認しない。運用者が選んだもので、たいてい LAN にあるからである。
 
 プロキシに到達できない、TLS や SOCKS のやり取りに失敗する、`CONNECT` を拒否する、または `407` を返すと、要求は `-3` を返す。その後プラグインが失敗したときは、実行は `network_error` とプロキシのホストで失敗する。所有者が直すのはサイトではなくプロキシの設定だからである。トランスポートとその接続は実行の終了時に閉じるので、次の実行は開始時の設定を使う。
 
@@ -171,9 +171,9 @@ flowchart LR
 
 ## 取得は作品の詳細とその照合結果を保持する {#the-fetch-keeps-the-work-details-and-their-matches}
 
-[`internal/app/work_info_fetch.go`](../../internal/app/work_info_fetch.go) の `WorkInfoPlugins.FetchWorkInfo` は、取得した日付を種類順に、人物と組織を役割順に並べ、その後人物と組織を `CreditStore.Match` で照合する。詳細と照合結果は、タイトルとタグとともに、同じ 10 分間メモリ上の結果に残る ([049 research.md](../../specs/049-work-info-plugins/research.md) R-8)。人物も組織もない結果はストアを読まない。
+[`internal/app/work_info_fetch.go`](../../internal/app/work_info_fetch.go) の `WorkInfoPlugins.FetchWorkInfo` は、取得した日付を種類順に、人物と組織を役割順に並べ、その後人物と組織を `CreditStore.Match` で照合する。詳細と照合結果は、タイトルとタグとともに、同じ 10 分間メモリ上の結果に残る。人物も組織もない結果はストアを読まない。
 
-照合結果は表示されるだけである。画面はそれをもとに各項目を結び付け済み、`New`、`Not linked` のいずれかとして示す ([052 screen-api.md](../../specs/052-plugin-work-info-fields/contracts/screen-api.md))。次の節で示すとおり、適用はトランザクションの中で照合し直す。適用は何かを書く前に、結果の中でその行に値がない選択済みのフィールドを `invalid_request` で拒否する。
+照合結果は表示されるだけである。画面はそれをもとに各項目を結び付け済み、`New`、`Not linked` のいずれかとして示す。次の節で示すとおり、適用はトランザクションの中で照合し直す。適用は何かを書く前に、結果の中でその行に値がない選択済みのフィールドを `invalid_request` で拒否する。
 
 ## VVMDM は表紙を取得し、アップロードされた画像として適用する {#vvmdm-fetches-the-cover-and-applies-it-as-an-uploaded-image}
 
@@ -204,12 +204,12 @@ flowchart LR
 | 採用しなかった案 | 理由 |
 | --- | --- |
 | プラグインが画像をダウンロードし、応答に入れて返す | 応答は 1 MiB に制限され、base64 は画像を 3 分の 1 大きくする |
-| ブラウザがサイトから表紙を読み込む | [R-10](../../specs/049-work-info-plugins/research.md#r-10-search-candidates-are-text-only) が候補について拒否するとおり、サイトが閲覧者を見ることになる |
+| ブラウザがサイトから表紙を読み込む | サイトに閲覧者のアドレスが見える |
 | 表示のたびに、または適用時に表紙を取得し直す | サイトが、所有者が比較したものとは別の画像を返しうる |
 
 ## 適用は選んだフィールドを 1 つのトランザクションでマージする {#the-apply-merges-the-selected-fields-in-one-transaction}
 
-[`internal/store/work_info_fetch.go`](../../internal/store/work_info_fetch.go) の `OverrideStore.ApplyFetchedWorkInfo` は、取得した結果のうち選んだタイトル、タグ、作品の詳細を 1 つのトランザクションで書く。理由は [052 research.md](../../specs/052-plugin-work-info-fields/research.md) の R-3 と R-4 である。
+[`internal/store/work_info_fetch.go`](../../internal/store/work_info_fetch.go) の `OverrideStore.ApplyFetchedWorkInfo` は、取得した結果のうち選んだタイトル、タグ、作品の詳細を 1 つのトランザクションで書く。
 
 図はトランザクションの中の手順の順序を示す。
 

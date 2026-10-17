@@ -29,7 +29,7 @@ async function failLogout(page: Page) {
 
 const logoutFailed = "Couldn't sign out";
 
-/** scanBody は `GET /api/scans/current` の応答（contracts/scan-api.md §2）を作る。 */
+/** scanBody は `GET /api/scans/current` の応答を作る。 */
 function scanBody(values: Record<string, unknown>) {
   return {
     origin: "manual",

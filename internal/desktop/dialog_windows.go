@@ -8,7 +8,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// 閉じる前の確認のダイアログ（research.md R-7、contracts/windows-app.md §4）。
+// 閉じる前の確認のダイアログ。
 // Windows 標準の TaskDialog で「閉じる」「続ける」に当たる 2 つのボタンを出す。
 // TaskDialog は Common Controls v6 にしか無く、v6 は exe の manifest で選ぶ。
 // manifest の無いビルドでは、はい・いいえの MessageBox で同じことを問う。

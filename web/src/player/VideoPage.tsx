@@ -85,11 +85,11 @@ export default function VideoPage() {
   const linkState = useMemo(() => linkStateFrom(backTo, trail, id), [backTo, trail, id]);
   // ゲストには所有者のデータ（タグ・ファイルの場所・再生位置）と所有者だけの操作
   // （読み取りのやり直し・既定アプリで開く）を出さない
-  // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+  //
   const audience = useAudience();
   const owner = audience === "owner";
   // プレイリストの文脈（`?playlist=&item=`）。所有者だけが読む
-  // （specs/044-playlists/ui-design.md「Video page in a playlist」、research.md R-8）。
+  //
   const playlistQuery = parsePlaylistQuery(location.search);
   const itemId = playlistQuery?.itemId ?? 0;
   // 別の項目へ移ったときも、別の動画へ移ったときと同じに扱う（R-7）。
@@ -97,8 +97,7 @@ export default function VideoPage() {
   // 動画を開いたグループ（`?group`）かスマートフォルダ（`?smartFolder`）。読み取りに渡し、行・矢印・
   // メンバーの並び・予告をその再生順に従わせる。プレイリストの文脈はグループより優先するので、
   // その間は `?group` を使わない。`?smartFolder` はフォルダの項目の中でも読み取りに渡す
-  // （specs/048-groups/ui-design.md「Video page」、research.md R-9、
-  // specs/052-smart-folders/ui-design.md「Video page」「Video page in a playlist」）。
+  //
   const groupContext = useVideoGroupContext(playlistQuery !== null);
   const { videoTo } = groupContext;
   const readContext = useMemo(
@@ -155,7 +154,7 @@ export default function VideoPage() {
   const [endedTakesFocus, setEndedTakesFocus] = useState(false);
   const [autoplayPhase, setAutoplayPhase] = useState<AutoplayPhase>("notice");
   // 途切れの警告を閉じた動画の id。同じ動画の再生の間（失敗からの再試行を含む）は出し直さず、
-  // 別の動画へ移れば忘れる（specs/027-playback-quality/research.md R-7、要件 10）。
+  // 別の動画へ移れば忘れる。
   const [stallDismissedId, setStallDismissedId] = useState<number | null>(null);
   // 再生を始めて分かった映像の比率。解析の値より確かなので、分かればこちらを使う。
   const [mediaAspect, setMediaAspect] = useState<number | null>(null);
@@ -218,7 +217,7 @@ export default function VideoPage() {
   }, [title]);
 
   // --- 字幕 ---
-  // 動画を開くたびに隣の字幕の一覧を取り直す（specs/028-sidecar-subtitles contracts §3）。
+  // 動画を開くたびに隣の字幕の一覧を取り直す。
   // 取れなければ字幕無しとして扱い、再生は止めない。前の動画の一覧は次の動画に渡さない。
   const [subtitleState, setSubtitleState] = useState<{
     id: number;
@@ -270,8 +269,7 @@ export default function VideoPage() {
 
   // 再生の失敗は、見る人が変わった（セッションが失効した）せいかもしれない。`video`
   // 要素の読み込みの失敗には 401 も X-VV-Audience も付かないので、状態を確かめ、
-  // 変わっていれば失敗の層を出さずにページを1度だけ読み直す（ui-design.md
-  // 「Guest degradation」）。変わっていなければ、今の再生失敗の層を出す。
+  // 変わっていれば失敗の層を出さずにページを1度だけ読み直す。変わっていなければ、今の再生失敗の層を出す。
   // 同じ route で別の動画へ移るとこの部品は使い回されるので、確かめは動画が変わったときにも
   // 止め、返ってきたときに始めた動画のままのときだけ結果を使う。前の動画の失敗を次の動画に
   // 出さないためである。
@@ -391,7 +389,7 @@ export default function VideoPage() {
   });
 
   // サムネイルの編集画面が開いている間は、この画面のキーを効かせない。Space は欄に入り、
-  // Esc は編集画面のものになる（specs/045-comfyui-thumbnails/ui-design.md「Closing」）。
+  // Esc は編集画面のものになる。
   const [editingThumbnail, setEditingThumbnail] = useState(false);
 
   useUnplayableSkip({
@@ -403,7 +401,7 @@ export default function VideoPage() {
     linkState,
   });
 
-  // 予告の間の Esc は取り消しにし、画面を閉じない（ui-design.md「Autoplay notice」）。
+  // 予告の間の Esc は取り消しにし、画面を閉じない。
   useKeyboardShortcuts(
     showPlayer ? controls : null,
     noticeShown ? cancelAutoplay : close,

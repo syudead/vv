@@ -1,5 +1,5 @@
 -- +goose Up
--- 名前の自然順の鍵（specs/036-tag-admin-scale/research.md R-10、data-model.md §0）。
+-- 名前の自然順の鍵。
 -- タグ管理画面の一覧をサーバーのページで読むため、名前の順を SQL の order by と keyset の
 -- カーソルで引けるようにする。sort_key は domain.NaturalSortKey(name) を Go が書く
 -- （video_locations.title_key と同じ鍵）。作り直せる派生の値で、表の意味は変えない。

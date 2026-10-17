@@ -9,7 +9,7 @@ import (
 )
 
 // fileCreatedAt はファイルの作成日時を返す。darwin・freebsd・netbsd は走査が既に読んだ
-// fs.FileInfo の Birthtimespec に持つ（specs/033-video-dates/research.md R-5）。
+// fs.FileInfo の Birthtimespec に持つ。
 // ファイル名を _darwin にしないのは、GOOS の暗黙の制約で freebsd・netbsd が外れるためである。
 func fileCreatedAt(_ string, info fs.FileInfo) (time.Time, bool) {
 	if info == nil {

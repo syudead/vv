@@ -5,7 +5,7 @@ import { t } from "../i18n";
 import { formatDuration } from "../lib/format";
 
 /**
- * プレーヤーのチャプター（specs/056-media-info/research.md R-7、ui-design.md「Player: chapters」）。
+ * プレーヤーのチャプター。
  *
  * 詳細の `mediaInfo.chapters` から `chapters` の text track を作り、チャプターごとに cue を 1 つ
  * 足す。シークバーの印（attachChapterMarks）、シークプレビューのタイトル（chapterTitleAt）、
@@ -48,8 +48,7 @@ export function playerChapters(
 /**
  * chapterIndexAt は位置 positionMs のチャプターの番号を返す。位置を含む（開始 ≦ 位置 < 終わり）
  * チャプターのうち開始がいちばん遅いもの、同じ開始なら開始の順で後のもので、無ければ -1。
- * シークプレビューのタイトルとメニューの選択の印はこの規則を共有する（ui-design.md
- * 「Seek preview title」「Selected item」）。
+ * シークプレビューのタイトルとメニューの選択の印はこの規則を共有する。
  */
 export function chapterIndexAt(
   chapters: readonly Pick<PlayerChapter, "startMs" | "endMs">[],
@@ -72,7 +71,7 @@ export function chapterTitleAt(
 
 /**
  * chapterMarkPercents は印を描く位置（バーの幅に対する %）を返す。同じ開始のチャプターは
- * 印 1 つにまとめる（ui-design.md「Marks」の Overlap）。
+ * 印 1 つにまとめる。
  */
 export function chapterMarkPercents(
   chapters: readonly PlayerChapter[],

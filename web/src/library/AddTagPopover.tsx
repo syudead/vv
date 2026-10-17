@@ -19,8 +19,7 @@ import { buildAddOptions } from "./tagChoices";
 import TagCommand from "../ui/TagCommand";
 
 /**
- * AddTagPopover は選択バーの「タグを付ける」の中身である
- * （ui-design.md「Selection bar」の「Add」）。
+ * AddTagPopover は選択バーの「タグを付ける」の中身である。
  */
 export default function AddTagPopover({
   open,
@@ -71,8 +70,7 @@ export default function AddTagPopover({
   function submit(tag: { id: number; name: string } | { name: string }) {
     setErrorMessage(null);
     // 送る直前に selectedIds の最新の件数を確かめる。ポップオーバーを開いた
-    // ままの間に選択が増えて上限を超えていれば、静かに送らず理由を示す
-    // （contracts/tags-api.md §4: 全部か無しかで、超えると400になる）。
+    // ままの間に選択が増えて上限を超えていれば、静かに送らず理由を示す。
     if (selectedIds.length > maxVideoTagsSelection) {
       setErrorMessage(overLimitMessage());
       return;

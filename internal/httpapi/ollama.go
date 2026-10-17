@@ -14,7 +14,7 @@ import (
 // 使う機能（AutoTagging）とは別の口にする。
 type OllamaConnection interface {
 	// Settings は接続先と、所有者が接続先を保存したかを同じ時点の値として返す
-	// （specs/058-settings-pages/research.md R-4）。
+	//
 	Settings(ctx context.Context) (settings domain.OllamaSettings, saved bool, err error)
 	SaveSettings(ctx context.Context, settings domain.OllamaSettings) (domain.OllamaSettings, error)
 	Check(ctx context.Context) error

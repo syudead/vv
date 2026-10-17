@@ -11,10 +11,9 @@ import { DialogError } from "./DialogError";
 export type BulkTagAction = "reject" | "delete";
 
 /**
- * BulkTagDialog は選択バーの「Reject…」「Delete…」が開く確認の窓である
- * （specs/036-tag-admin-scale/ui-design.md「Bulk reject and delete」）。開くと同時に
+ * BulkTagDialog は選択バーの「Reject…」「Delete…」が開く確認の窓である。開くと同時に
  * `POST /api/tags/impact` で働くタグの数と影響を受ける動画の本数を数え、届くまで
- * danger のボタンを押せなくする（数の無い確認で実行させない。contracts/screen-api.md §3）。
+ * danger のボタンを押せなくする（数の無い確認で実行させない）。
  */
 export default function BulkTagDialog({
   action,

@@ -5,8 +5,7 @@ import { t } from "../i18n";
 import type { PlaybackQuality } from "../preferences/playbackQuality";
 
 /**
- * 操作バーの画質メニューである（specs/027-playback-quality/research.md R-4、ui-design.md
- * 「Control bar: quality menu」）。
+ * 操作バーの画質メニューである。
  *
  * 再生速度と同じ video.js の `MenuButton` の部品にして、箱・余白・開き方・キーボード・
  * Esc の扱いを再生速度とそろえる。部品は選ばれた画質を知らせるだけで、source の差し替えは
@@ -87,7 +86,7 @@ function stateOf(component: object): QualityMenuState {
   return states.get(component) ?? emptyState;
 }
 
-/** buttonLabel はボタンに出す今の画質の短い文字である（ui-design.md「Button label」）。 */
+/** buttonLabel はボタンに出す今の画質の短い文字である。 */
 export function buttonLabel(state: QualityMenuState): string {
   const c = t.player.controls;
   if (state.current !== "original") return c.qualityName(state.current);

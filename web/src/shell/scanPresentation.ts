@@ -4,7 +4,7 @@ import type { ScanContextValue } from "./ScanProvider";
 
 /**
  * ScanPresentationState は画面の状態である。取り込みの状態（`Scan.status`）に、
- * 未実行・開始中・取得の一時失敗を足したもの（specs/024-import-progress/ui-design.md「States」）。
+ * 未実行・開始中・取得の一時失敗を足したもの。
  */
 export type ScanPresentationState =
   | "not-run"
@@ -45,8 +45,7 @@ export interface ScanPresentation {
   refreshing: boolean;
   /**
    * フォルダの監視が始めた取り込み（`origin` が `watch`）である。走っているあいだは画面のどこにも
-   * 出さず（状態の言葉も進み具合も無い）、終わったあとだけ自動の取り込みの言葉で示す
-   * （specs/042-folder-watch-import/ui-design.md「Words」）。開始の途中は手動の取り込みなので false。
+   * 出さず（状態の言葉も進み具合も無い）、終わったあとだけ自動の取り込みの言葉で示す。開始の途中は手動の取り込みなので false。
    */
   watch: boolean;
 }

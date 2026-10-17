@@ -15,7 +15,7 @@ import (
 // A directory that does not exist, or one with no file, gives the zero time.
 //
 // internal/app uses it to tell whether a copy into a directory has settled
-// (specs/042-folder-watch-import/research.md R-3).
+// (docs/design-docs/folder-watching.md).
 func NewestFileChange(dir string, recursive bool) (time.Time, error) {
 	return newestFileChange(os.ReadDir, filepath.Clean(dir), recursive)
 }

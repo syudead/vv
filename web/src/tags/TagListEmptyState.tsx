@@ -15,8 +15,7 @@ import type { TagKindFilter } from "./tagListUrl";
 import type { TagListEmpty } from "./tagListView";
 
 /**
- * noKindTitle は種類の絞り込みだけで行が無いときの見出しである
- * （specs/051-tag-kinds/ui-design.md「Words」）。種類の名前をまだ読んでいなければ、
+ * noKindTitle は種類の絞り込みだけで行が無いときの見出しである。種類の名前をまだ読んでいなければ、
  * 組み合わせの見出しを使う。
  */
 function noKindTitle(kind: TagKindFilter, kindName: string | undefined): UiText {
@@ -25,7 +24,7 @@ function noKindTitle(kind: TagKindFilter, kindName: string | undefined): UiText 
 }
 
 /**
- * TagListEmptyState は一覧の代わりに出す空の状態である（ui-design.md「States」）。
+ * TagListEmptyState は一覧の代わりに出す空の状態である。
  * 文言は届いた行の条件（`appliedSearch`・`appliedTentative`・`appliedKind`）で決める。
  */
 export default function TagListEmptyState({

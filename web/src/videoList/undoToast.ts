@@ -5,8 +5,7 @@ import { undoOrganize } from "../api/organize";
 import { errorText, t, type UiText } from "../i18n";
 import { useToast } from "../ui/Toast";
 
-// ドラッグの操作の取り消しの通知である（specs/050-drag-organize/ui-design.md「Undo toast」、
-// research.md R-9）。受け入れられた操作ごとに「Undo」付きの通知を 8 秒出し、次の操作の通知が
+// ドラッグの操作の取り消しの通知である。受け入れられた操作ごとに「Undo」付きの通知を 8 秒出し、次の操作の通知が
 // 前のものを置き換える（ToastProvider がアクション付きの通知を 1 件に保つ）。
 
 /** undoFailedText は取り消しの失敗の文言である。 */
@@ -28,7 +27,7 @@ export interface UndoToast {
   offer: (message: UiText, token: string, onSettled?: (undone: boolean) => void) => void;
   /**
    * carry は今の通知とトークンを、この画面を離れても残す。操作の結果として画面が移るとき
-   * （開いているグループが解散した）に、移る前に呼ぶ（ui-design.md「Undo toast」の Carried）。
+   * （開いているグループが解散した）に、移る前に呼ぶ。
    */
   carry: () => void;
 }

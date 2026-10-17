@@ -4,7 +4,6 @@ import "path/filepath"
 
 // ScanActivityKind は取り込み中の今の処理が何をしているかである。値は
 // api/openapi.yaml の ScanActivityKind に対応する
-// （specs/024-import-progress/contracts/scan-api.md §2）。
 type ScanActivityKind string
 
 const (
@@ -39,8 +38,7 @@ func ActivityKindOf(kind JobKind) (ScanActivityKind, bool) {
 	return "", false
 }
 
-// ScanActivity は取り込み中の今の処理である。保存せず、internal/app がメモリに持つ
-// （specs/024-import-progress/research.md R-8）。Kind が空なら、何も動いていない。
+// ScanActivity は取り込み中の今の処理である。保存せず、internal/app がメモリに持つ。Kind が空なら、何も動いていない。
 type ScanActivity struct {
 	Kind ScanActivityKind
 	// VideoID は登録された動画の id。未登録のファイルは 0 である。

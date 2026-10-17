@@ -2,8 +2,7 @@
 
 VVMDM shows SRT and WebVTT files placed next to a video as subtitles, converted
 to WebVTT on each request ([`internal/httpapi/subtitles.go`](../../internal/httpapi/subtitles.go)).
-Background: [research.md](../../specs/028-sidecar-subtitles/research.md);
-API: [contracts/subtitles-api.md](../../specs/028-sidecar-subtitles/contracts/subtitles-api.md).
+The request and response shapes are in [api/openapi.yaml](../../api/openapi.yaml).
 
 The player makes two requests: one lists the subtitles, the other fetches one
 of them. Both read the video's folder; nothing is stored.
@@ -119,8 +118,7 @@ player reattaches the track whenever the start position is settled
 
 The player selects cues by the transcoded stream's time, which starts at 0
 from the seek position. The offset the player adds to its clock does not reach
-subtitles, so the server has to shift them
-([research.md R-6](../../specs/028-sidecar-subtitles/research.md)).
+subtitles, so the server has to shift them.
 
 The track follows the start position through these states:
 

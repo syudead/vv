@@ -1,5 +1,5 @@
 -- +goose Up
--- フォルダの索引のグループの表を落とす（specs/048-groups/research.md R-1、data-model.md「Migration」）。
+-- フォルダの索引のグループの表を落とす。
 -- グループは groups と group_items が持ち、この 2 表はもう誰も読まない。
 
 drop table folder_group_members;

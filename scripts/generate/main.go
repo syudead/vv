@@ -29,8 +29,7 @@ var generated = []string{
 	registryOut,
 }
 
-// registryOut は shadcn build が書く vv registry の項目である
-// （specs/038-design-system/research.md R-3）。ディレクトリなので中のファイルごと要約する。
+// registryOut は shadcn build が書く vv registry の項目である。ディレクトリなので中のファイルごと要約する。
 const registryOut = "web/registry/r"
 
 // snapshot は生成物の内容を要約する。存在しないファイルは空の要約にして、
@@ -107,7 +106,7 @@ func generate(root, oapiCodegen, openapiTypescript, shadcn string, run runner) e
 		"-config", "api/oapi-codegen.yaml", "api/openapi.yaml"); err != nil {
 		return err
 	}
-	// 外部連携 API は Go だけを生成する（specs/026-external-api/research.md R-5）。
+	// 外部連携 API は Go だけを生成する。
 	if err := run(root, oapiCodegen,
 		"-config", "api/oapi-codegen-external.yaml", "api/external-v1.yaml"); err != nil {
 		return err

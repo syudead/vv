@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// /api/settings/plugin-proxy（specs/056-plugin-tooling/contracts/screen-api.md）。本物の設定の保存先と
+// /api/settings/plugin-proxy。本物の設定の保存先と
 // app.WorkInfoPluginProxy で組み、デスクトップ版の設定（NetworkSettings）は渡さない。
 
 const pluginProxyPath = "/api/settings/plugin-proxy"

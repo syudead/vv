@@ -5,8 +5,7 @@ import { Spinner } from "../ui/shadcn/spinner";
 import { DialogError } from "./DialogError";
 
 /**
- * DeleteTagDialog はタグ削除の確認の窓である（ui-design.md「Merge and
- * delete」、受け入れ条件 11）。本数は `GET /api/tags` の `videoCount`。
+ * DeleteTagDialog はタグ削除の確認の窓である。本数は `GET /api/tags` の `videoCount`。
  * デザインシステムの `ConfirmDialog`（`AlertDialog`）に載せ、送っている間は閉じない。
  */
 export default function DeleteTagDialog({

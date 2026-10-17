@@ -93,7 +93,7 @@ describe("AuthGate", () => {
   it.each([
     ["/settings", "/login?next=%2Fsettings"],
     ["/tags", "/login?next=%2Ftags"],
-    // 人物と団体の管理画面（specs/047-video-work-info/ui-design.md「Sidebar」）。
+    // 人物と団体の管理画面。
     ["/people", "/login?next=%2Fpeople"],
     ["/organizations?q=a", "/login?next=%2Forganizations%3Fq%3Da"],
     ["/duplicates", "/login?next=%2Fduplicates"],
@@ -101,7 +101,7 @@ describe("AuthGate", () => {
     ["/history?watch=watched", "/login?next=%2Fhistory%3Fwatch%3Dwatched"],
     ["/playlists", "/login?next=%2Fplaylists"],
     ["/playlists/7", "/login?next=%2Fplaylists%2F7"],
-    // 動画の作品情報の編集画面（specs/047-video-work-info/ui-design.md「Editor」の Guest）。
+    // 動画の作品情報の編集画面。
     ["/videos/7/edit", "/login?next=%2Fvideos%2F7%2Fedit"],
     ["/settings?tab=a", "/login?next=%2Fsettings%3Ftab%3Da"],
     ["/setup", "/"],

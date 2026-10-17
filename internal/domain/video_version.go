@@ -6,7 +6,7 @@ import (
 	"slices"
 )
 
-// 同じ動画の別バージョンの集まり（specs/030-video-versions/data-model.md §2、research.md R-1・R-2）。
+// 同じ動画の別バージョンの集まり。
 // 集まりは利用者データで、集まりのタグ・再生位置・公開の設定は集まり自身の鍵（user_key）に
 // 置く。保存層が動画ごとの利用者データの鍵を Video.UserKey に埋める。
 
@@ -23,7 +23,7 @@ var ErrTooFewVersions = errors.New("at least two videos are needed to bundle")
 type VideoVersionsRef struct {
 	// Count は見る人に見せてよい所在を持つメンバーの本数である。
 	Count int
-	// RepresentativeID は実効の代表（data-model.md §4）の動画の id である。
+	// RepresentativeID は実効の代表の動画の id である。
 	RepresentativeID int64
 }
 
@@ -53,8 +53,7 @@ func SortVideoVersions(items []Video, representativeID int64) {
 	})
 }
 
-// VideoBundleChanged は動画の束ね（集まりのメンバー・代表）が変わったことを表す
-// （research.md R-9）。VideoIDs は影響した動画の id である。
+// VideoBundleChanged は動画の束ね（集まりのメンバー・代表）が変わったことを表す。VideoIDs は影響した動画の id である。
 type VideoBundleChanged struct {
 	VideoIDs []int64
 }
@@ -65,7 +64,7 @@ func (VideoBundleChanged) event() {}
 const successionToleranceMinMs = 1000
 
 // DurationsMatch は 2 つの尺（ミリ秒）がほぼ同じかを返す。差が 1 秒と長い方の 0.5% の大きい方
-// 以下なら一致する。0 以下の尺（分からない尺）は一致しない（data-model.md §2、research.md R-5）。
+// 以下なら一致する。0 以下の尺（分からない尺）は一致しない。
 // 同じパスの中身の引き継ぎと、指紋の候補の尺の条件がこの規則を使う。
 func DurationsMatch(a, b int64) bool {
 	if a <= 0 || b <= 0 {
@@ -78,10 +77,10 @@ func DurationsMatch(a, b int64) bool {
 	return diff <= max(successionToleranceMinMs, max(a, b)*5/1000)
 }
 
-// MaxVersionCandidates は候補の一覧が一度に返す組の上限である（data-model.md §7）。
+// MaxVersionCandidates は候補の一覧が一度に返す組の上限である。
 const MaxVersionCandidates = 200
 
-// VersionCandidate は「同じ動画かもしれない」候補の 1 組である（research.md R-7）。Videos は
+// VersionCandidate は「同じ動画かもしれない」候補の 1 組である。Videos は
 // id の小さい順で、Distance は 2 本の指紋のハミング距離の中央値（CompareFingerprints）。
 type VersionCandidate struct {
 	Videos   [2]Video

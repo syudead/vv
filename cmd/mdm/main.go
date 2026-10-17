@@ -16,7 +16,7 @@ import (
 	"sync"
 	"syscall"
 	"time"
-	// 視聴履歴の日付は画面が送る IANA の地域名で数える（specs/043-watch-history/research.md R-11）。
+	// 視聴履歴の日付は画面が送る IANA の地域名で数える。
 	// 地域の情報を持たないホスト（Windows や最小のコンテナ）でも time.LoadLocation が読めるよう埋め込む。
 	_ "time/tzdata"
 
@@ -63,7 +63,7 @@ const readHeaderTimeout = 10 * time.Second
 
 // runOptions は起動・停止の手順に外から渡すものである。タグなしの main は環境変数の
 // 設定・標準出力・MDM_ADDR・SIGINT/SIGTERM を渡す。デスクトップ版は設定を自分で
-// 組み立て、同じ手順を同じプロセスで呼ぶ（specs/037-windows-app/research.md R-1）。
+// 組み立て、同じ手順を同じプロセスで呼ぶ。
 type runOptions struct {
 	Config Config
 	// LogOutput は JSON の記録の書き先である。
@@ -77,11 +77,10 @@ type runOptions struct {
 	// Desktop はデスクトップ版の起動である。真なら待ち受けのホストを LAN からの接続の
 	// 許可の保存値で決め（Config.Addr のポートを使う）、/api/settings/network で切り替え
 	// られるようにする。偽なら Config.Addr のまま待ち受け、その経路は 404 を返す
-	// （specs/037-windows-app/research.md R-14）。
+	//
 	Desktop bool
 	// OnBusyProbe は走査を用意したあと、待ち受けを開く前に、取り込みの途中かを問う
-	// 関数（app.Scans.Busy）を渡す。デスクトップ版の閉じる前の確認が使う
-	// （specs/037-windows-app/research.md R-7）。nil なら呼ばない。
+	// 関数（app.Scans.Busy）を渡す。デスクトップ版の閉じる前の確認が使う。nil なら呼ばない。
 	OnBusyProbe func(busy func(context.Context) (bool, error))
 }
 
@@ -149,7 +148,7 @@ func run(opts runOptions) error {
 	logger.Info("rebuilt the search keys", slog.Int("locations", refreshed))
 
 	// タグ名の照合用の鍵も同じ時点で作り直す。メディアフォルダに依らないので
-	// folderMu は取らない（specs/014-video-tags/data-model.md §7）。数はタグの名前と
+	// folderMu は取らない。数はタグの名前と
 	// 却下した名前の行の合計なので、属性は names と呼ぶ。
 	tagsRefreshed, err := db.Tags().RefreshSearchKeys(context.Background())
 	if err != nil {
@@ -157,8 +156,7 @@ func run(opts runOptions) error {
 	}
 	logger.Info("rebuilt the tag search keys", slog.Int("names", tagsRefreshed))
 
-	// 人物・団体の名前と作品情報の品番の照合用の鍵も、タグ名の後で作り直す
-	// （specs/047-video-work-info/data-model.md「Entities」）。数は名前の行と作品情報の行の合計。
+	// 人物・団体の名前と作品情報の品番の照合用の鍵も、タグ名の後で作り直す。数は名前の行と作品情報の行の合計。
 	creditsRefreshed, err := db.Credits().RefreshSearchKeys(context.Background())
 	if err != nil {
 		return fmt.Errorf("cannot rebuild the credit search keys: %w", err)
@@ -167,7 +165,7 @@ func run(opts runOptions) error {
 
 	// 移行の前に書かれた視聴履歴の行に、題名の照合形（title_key）を埋める。動画の無い件の検索が
 	// 読むので、受け付けより前に行い、失敗したら起動を止める
-	// （specs/043-watch-history/data-model.md「Migration」）。
+	//
 	titleKeysFilled, err := db.Playback().RefreshWatchHistoryTitleKeys(context.Background())
 	if err != nil {
 		return fmt.Errorf("cannot fill the watch history title keys: %w", err)
@@ -178,7 +176,7 @@ func run(opts runOptions) error {
 	// 失敗していたときだけ作り直す。title_key は照合用の鍵の規則で作るので、その
 	// 作り直しの後に行う。失敗しても前の索引のまま起動し、次のスキャン・例外の
 	// 変更・メディアフォルダの変更か次の起動で作り直す
-	// （specs/017-folder-groups/data-model.md §3）。
+	//
 	if rebuilt, err := db.ScanIndex().RefreshFolderIndex(context.Background()); err != nil {
 		logger.Warn("could not rebuild the folder index", slog.Any("error", err))
 	} else if rebuilt {
@@ -269,7 +267,7 @@ func run(opts runOptions) error {
 			Queue:   ingestStore,
 			Handler: ingest.Handler(kind),
 			// 仕事の開始と終了を、取り込み中の今の処理として知らせる
-			// （specs/024-import-progress/research.md R-8）。
+			//
 			Started: scans.JobStarted,
 			Finished: func(job domain.Job) {
 				scans.JobFinished(job)
@@ -325,7 +323,7 @@ func run(opts runOptions) error {
 	}
 	ollamaConnection.OnSaved(versionJudge.ConnectionSaved)
 	// アクティビティの記録の一覧と、やり直しと取り消しを種類ごとにその処理の use case へ振り分ける
-	// （specs/055-activity/plan.md）。
+	//
 	versionJudgementActivity := app.NewVersionJudgementActivity(db.Versions(), db.Activity(), versionJudge)
 	activity := app.NewActivity(app.ActivityOptions{
 		Store: db.Activity(),
@@ -396,14 +394,12 @@ func run(opts runOptions) error {
 		ingest.Wait()
 		logger.Info("stopped ingest and jobs")
 	}()
-	// 前回の停止で中断した走査を、ワーカーを動かしてから始め直す
-	// （specs/037-windows-app/research.md R-9）。始め直せなくても起動は止めず、
+	// 前回の停止で中断した走査を、ワーカーを動かしてから始め直す。始め直せなくても起動は止めず、
 	// 利用者が取り込みを始められる。
 	if _, err := scans.ResumeInterrupted(backgroundCtx); err != nil {
 		logger.Warn("could not resume the interrupted scan", slog.Any("error", err))
 	}
-	// 自動の取り込みを始める。監視は背後で張り、走査は始めない
-	// （specs/042-folder-watch-import/research.md R-7）。始められなくても起動は止めない。
+	// 自動の取り込みを始める。監視は背後で張り、走査は始めない。始められなくても起動は止めない。
 	if err := autoImport.Start(backgroundCtx); err != nil {
 		logger.Warn("could not start the auto-import", slog.Any("error", err))
 	}
@@ -459,7 +455,7 @@ func run(opts runOptions) error {
 		Playlists:        db.Playlists(),
 		PlaylistPlayback: db.Playlists(),
 		WatchHistory:     playbackStore,
-		// アクティビティの記録の一覧・やり直し・取り消し（specs/055-activity/contracts/screen-api.md）。
+		// アクティビティの記録の一覧・やり直し・取り消し。
 		Activity:  activity,
 		Overrides: db.Overrides(),
 		Versions:  db.Versions(),
@@ -469,7 +465,7 @@ func run(opts runOptions) error {
 		FolderGroups:    db.FolderGroups(),
 		Groups:          db.Groups(),
 		SmartFolders:    db.SmartFolders(),
-		// ドラッグの操作の取り消しの台帳は、プロセスのメモリに 10 分だけ持つ（specs/050-drag-organize R-2）。
+		// ドラッグの操作の取り消しの台帳は、プロセスのメモリに 10 分だけ持つ。
 		Organizer: app.NewOrganizer(app.OrganizerOptions{Store: db.Organize()}),
 		Library:   libraryStore,
 		// 外部連携 API の動画の一覧と引き当ても、画面の一覧と同じ LibraryStore が読む。
@@ -532,7 +528,7 @@ func recoverActivity(ctx context.Context, activity *app.Activity, logger *slog.L
 }
 
 // startupStage は起動のどの段階で失敗したかである。デスクトップ版は、これで
-// 示すダイアログを選ぶ（specs/037-windows-app/research.md R-10）。
+// 示すダイアログを選ぶ。
 type startupStage int
 
 const (

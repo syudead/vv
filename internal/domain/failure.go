@@ -4,7 +4,7 @@ import "errors"
 
 // ProbeErrorCode は解析の失敗理由のコードである。videos.probe_error_code に保存し、
 // API の Video.probeErrorCode に出る。値の綴りは api/openapi.yaml の ProbeErrorCode と
-// 同じにする（specs/023-english-i18n/data-model.md §1）。
+// 同じにする。
 type ProbeErrorCode string
 
 const (
@@ -51,7 +51,7 @@ func ProbeErrorCodeOf(err error) ProbeErrorCode {
 
 // ScanErrorCode は取り込み（走査）の失敗理由のコードである。scans.error_code に
 // 保存し、API の Scan.errorCode に出る。値の綴りは api/openapi.yaml の ScanErrorCode と
-// 同じにする（specs/023-english-i18n/data-model.md §2）。
+// 同じにする。
 type ScanErrorCode string
 
 const (

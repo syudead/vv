@@ -114,9 +114,9 @@ func allowedImports(ctx context.Context, rt wazero.Runtime) (map[importKey]signa
 
 // Inspect はモジュールを実行せずに検査する。最大値を宣言しないテーブルに最大値を書き足してから
 // コンパイルし、順に、コンパイル、vv.plugin のマニフェスト、import、export、テーブルを確かめ、
-// 最初に当たった問題を返す（data-model.md の work_info_plugins、research.md R-4）。マニフェストを読めた
+// 最初に当たった問題を返す。マニフェストを読めた
 // あとの検査で問題が見つかったときも、読めたマニフェストを問題と一緒に返す。名前が分かれば、保存層が
-// 同じ名前の行を問題のある差し替えとして扱える（data-model.md の Rules）。
+// 同じ名前の行を問題のある差し替えとして扱える。
 func (r *Runtime) Inspect(ctx context.Context, module []byte) (domain.WorkInfoPluginManifest, domain.WorkInfoPluginProblem, error) {
 	if len(module) > domain.WorkInfoPluginModuleMaxBytes {
 		return domain.WorkInfoPluginManifest{}, "", domain.ErrWorkInfoPluginTooLarge

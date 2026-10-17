@@ -8,7 +8,7 @@ const noIds: readonly number[] = [];
 
 /**
  * AddToGroupButton はカード・リスト表示の行・動画ページの「Add to group」の引き金とピッカーで
- * ある（specs/048-groups/ui-design.md「Group card and row」「Add to group」）。形は PickerButton
+ * ある。形は PickerButton
  * が持つ。`card` は「Add to playlist」の左、`row` は「Add to playlist」の列の直後の列、`page` は
  * 動画ページの「Add to playlist」の直後に置き、ツールチップは「Add to group」。
  */

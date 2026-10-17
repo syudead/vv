@@ -1,5 +1,4 @@
-// カードのドラッグ層（cardDrag.tsx）が、ポインタの場所から落とした先を決める規則である
-// （specs/050-drag-organize/ui-design.md「Indicators」「What a drop does」）。カードは画面の順に
+// カードのドラッグ層（cardDrag.tsx）が、ポインタの場所から落とした先を決める規則である。カードは画面の順に
 // 並んだ文字列の鍵で呼ぶ。
 
 /** Side は「間」がカードの前か後ろかである。 */
@@ -77,7 +76,7 @@ export function signFor<L>({
 
 /**
  * normalizeBetween は「X の後ろ」を「次のカードの前」に言い換える。行の終わりの後ろは次の行の
- * 始まりの前なので、印が行の端の外に立たない（ui-design.md「Responsive behaviour」）。最後の
+ * 始まりの前なので、印が行の端の外に立たない。最後の
  * カードの後ろはそのまま。
  */
 export function normalizeBetween(
@@ -145,7 +144,7 @@ export function moveAfter<T, K>(
 /**
  * liftedKeys は押したカード `pressed` から持ち上げるカードを返す。押したカードが選択した
  * カード `selected`（「Favorite」と同じ分け方で、選んだグループのメンバーの動画は入らない）に
- * あれば選択したすべてを画面の順で、無ければそれだけ（ui-design.md「Lifting」）。
+ * あれば選択したすべてを画面の順で、無ければそれだけ。
  */
 export function liftedKeys(
   order: readonly string[],

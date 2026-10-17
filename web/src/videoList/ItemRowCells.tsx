@@ -21,9 +21,8 @@ import {
 import { shownVersionsCount, VersionsMark } from "./VersionsMark";
 
 // 順に並ぶ項目（動画・グループ・スマートフォルダ）の行の共通の列である。プレイリストの画面の行
-// （specs/044-playlists/ui-design.md「Rows」、specs/052-smart-folders/ui-design.md
-// 「Playlist screen row」）と、それを使うグループのページのリスト表示
-// （specs/048-groups/ui-design.md「Body」）が、サムネイル・題名の下の行・視聴済み・長さを
+// と、それを使うグループのページのリスト表示
+// が、サムネイル・題名の下の行・視聴済み・長さを
 // ここから描く。
 
 /**
@@ -184,7 +183,7 @@ export function ItemThumbnailCell({
 
 /**
  * CollectionCountIcon はグループとスマートフォルダの本数の行の印である。スマートフォルダは
- * `FolderSearch`、グループは `Folder`（specs/052-smart-folders/ui-design.md「Playlists」）。
+ * `FolderSearch`、グループは `Folder`。
  */
 export function CollectionCountIcon({ smartFolder }: { smartFolder: boolean }) {
   const Icon = smartFolder ? FolderSearch : Folder;

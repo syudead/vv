@@ -195,7 +195,7 @@ describe("VideoFacts", () => {
     expect(screen.queryByRole("alert")).toBeNull();
   });
 
-  describe("日付の項目（specs/033-video-dates/ui-design.md「Video facts」）", () => {
+  describe("日付の項目", () => {
     // 日時はブラウザのタイムゾーンで表すので、その日の正午を渡して日付が変わらないようにする。
     const added = new Date(2026, 8, 20, 12, 0).toISOString();
     const edited = new Date(2026, 8, 27, 15, 4).toISOString();

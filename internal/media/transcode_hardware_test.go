@@ -30,7 +30,7 @@ func TestVideoEncodeArgsSoftwareUnchanged(t *testing.T) {
 }
 
 // ハードウェアの方式は符号化器の指定だけを差し替え、High・Level 5.1・8bit 4:2:0 への変換・
-// 時刻基準のキーフレーム・MOV の二入力は software と同じに保つ（research.md R-7）。
+// 時刻基準のキーフレーム・MOV の二入力は software と同じに保つ。
 func TestTranscodeArgsForHardwareEncoders(t *testing.T) {
 	metadata := compatibleMetadata()
 	metadata.FormatName = "mov,mp4,m4a,3gp,3g2,mj2"

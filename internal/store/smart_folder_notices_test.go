@@ -33,7 +33,6 @@ func tagNoticeFixture(t *testing.T) (*DB, domain.Tag, int64) {
 }
 
 // フォルダが 1 つあるとき、タグを付けると確定後にそのフォルダを名指す知らせが 1 つ出る
-// （specs/052-smart-folders/research.md R-12）。
 func TestAttachingATagNamesEverySmartFolderOnce(t *testing.T) {
 	db, tag, videoID := tagNoticeFixture(t)
 	folder := createSmartFolder(t, db, "旅", 0)

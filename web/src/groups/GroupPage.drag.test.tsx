@@ -14,8 +14,7 @@ import {
 
 setUpGroupPageServer();
 
-// ドラッグでの並べ替えと取り消しの通知（specs/050-drag-organize/ui-design.md「Group page」
-// 「Undo toast」）。jsdom は配置を持たないので、格子のカードを横一列に 200px ずつ置き、
+// ドラッグでの並べ替えと取り消しの通知。jsdom は配置を持たないので、格子のカードを横一列に 200px ずつ置き、
 // ポインタの出来事で持ち上げて落とす。
 
 const cardWidth = 190;

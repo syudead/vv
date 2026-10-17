@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/windows-app.md
-sourceHash: f51bb2291136b586e1146ddcf6098d37b97ead55ad62e75f90b0709ef1e31970
+sourceHash: d699a332b259986a233657359be4c6dc50d09e9c0a9eb0aaf2a4dcaf606fea4f
 ---
 
 # Windows デスクトップアプリ (VVMDM.exe) {#windows-desktop-app-vvmdmexe}
 
-Windows では、VVMDM はサーバーと UI を 1 つの GUI プロセス `VVMDM.exe` で動かす。このプロセスは `cmd/mdm` から `desktop` ビルドタグ付きでビルドし、Windows 固有の部分は [`internal/desktop`](../../internal/desktop) にある。背景: [specs/037-windows-app/](../../specs/037-windows-app/plan.md) (親 Issue #653)。zip の中身、起動引数、ダイアログの文言、データの場所: [contracts/windows-app.md](../../specs/037-windows-app/contracts/windows-app.md)。Docker で動かす形と直接実行する形は [running-vv.md](../how-to/running-vv.md) にある。
+Windows では、VVMDM はサーバーと UI を 1 つの GUI プロセス `VVMDM.exe` で動かす。このプロセスは `cmd/mdm` から `desktop` ビルドタグ付きでビルドし、Windows 固有の部分は [`internal/desktop`](../../internal/desktop) にある。Docker で動かす形と直接実行する形は [running-vv.md](../how-to/running-vv.md) にある。
 
 exe は直接実行と同じ HTTP サーバーを載せる。WebView2 のウィンドウは、そのクライアントの 1 つにすぎない。
 
@@ -67,9 +67,9 @@ stateDiagram-v2
 
 | 採らなかった案 | 理由 |
 | --- | --- |
-| 合成を `internal/server` に置いた新しい `cmd/vvmdm` | 合成ルートが 2 つになるか、3,500 行の合成コードを移すことになる ([research.md](../../specs/037-windows-app/research.md) R-1) |
-| `mdm.exe` を子プロセスとして起動するランチャー exe | GUI の親はコンソールの子に正常な停止を送れない (R-1) |
-| `jchv/go-webview2` の高水準 API、Wails、Edge の `--app=`、Electron、Tauri | いずれも、閉じる操作を受け取れないか、アセットのオリジンが変わるか、ランタイムが増える (R-2) |
+| 合成を `internal/server` に置いた新しい `cmd/vvmdm` | 合成ルートが 2 つになるか、3,500 行の合成コードを移すことになる |
+| `mdm.exe` を子プロセスとして起動するランチャー exe | GUI の親はコンソールの子に正常な停止を送れない |
+| `jchv/go-webview2` の高水準 API、Wails、Edge の `--app=`、Electron、Tauri | いずれも、閉じる操作を受け取れないか、アセットのオリジンが変わるか、ランタイムが増える |
 
 ## データと ffmpeg {#data-and-ffmpeg}
 
@@ -88,8 +88,8 @@ stateDiagram-v2
 
 | 採らなかった案 | 理由 |
 | --- | --- |
-| データを exe の隣、または `%APPDATA%` (Roaming) に置く | zip を置き換えると失われるか、生成された大きなファイルがサインインのたびに同期される (R-5) |
-| `internal/media` の設定としての `ffmpeg`/`ffprobe` のパス | 呼び出し元はデスクトップアプリだけで、変更が広がる (R-11) |
+| データを exe の隣、または `%APPDATA%` (Roaming) に置く | zip を置き換えると失われるか、生成された大きなファイルがサインインのたびに同期される |
+| `internal/media` の設定としての `ffmpeg`/`ffprobe` のパス | 呼び出し元はデスクトップアプリだけで、変更が広がる |
 
 ## 起動時の失敗 {#startup-failures}
 
@@ -117,7 +117,7 @@ DB とポートを確認する `run` は、エラーの文言を変えずに、�
 
 | 採らなかった案 | 理由 |
 | --- | --- |
-| WebView2 内の失敗ページ | WebView2 Runtime がないか初期化に失敗すると表示できない (R-10) |
+| WebView2 内の失敗ページ | WebView2 Runtime がないか初期化に失敗すると表示できない |
 
 ## 終了、2 回目の起動、サインアウト {#closing-second-launch-and-sign-out}
 
@@ -172,9 +172,9 @@ sequenceDiagram
 
 | 採らなかった案 | 理由 |
 | --- | --- |
-| `beforeunload` または SPA 内での確認 | 閉じる操作が WebView2 に届かないか、SPA の読み込み前やレンダラーの障害後にウィンドウを閉じられない (R-7) |
-| `Local\` ミューテックスだけ、ロックファイル、またはポートの競合 | セッションをまたいで同じ DB を許すか、強制終了で残るか、他のプログラムのポートと区別できない (R-6) |
-| `WM_QUERYENDSESSION` で拒否して確認する | Windows は待たずに先へ進む (R-8) |
+| `beforeunload` または SPA 内での確認 | 閉じる操作が WebView2 に届かないか、SPA の読み込み前やレンダラーの障害後にウィンドウを閉じられない |
+| `Local\` ミューテックスだけ、ロックファイル、またはポートの競合 | セッションをまたいで同じ DB を許すか、強制終了で残るか、他のプログラムのポートと区別できない |
+| `WM_QUERYENDSESSION` で拒否して確認する | Windows は待たずに先へ進む |
 
 ## LAN からの接続 {#connections-from-the-lan}
 
@@ -182,7 +182,7 @@ LAN アクセスは既定でオフで、リスナーを `0.0.0.0` か `127.0.0.1
 
 設定は既存の `settings` テーブルのキー `desktop.lan_access` だ。`true` 以外の値、または行がなければオフを意味し、マイグレーションは追加しない。`run` は DB のマイグレーション後、ジョブとリスナーの開始前にこれを読む。読み取りの失敗は DB 段階の [起動時の失敗](#startup-failures) になる。
 
-所有者は `GET`/`PUT /api/settings/network` (`lanAccess`、`port`、`addresses`) で切り替える。認証と同一オリジンの境界は `/api/settings/transcoding` と同じだ ([contracts/network-settings-api.md](../../specs/037-windows-app/contracts/network-settings-api.md))。デスクトップアプリ以外では、このルートは `404` `not_found` を返し、SPA は Network セクションを隠す。
+所有者は `GET`/`PUT /api/settings/network` (`lanAccess`、`port`、`addresses`) で切り替える。認証と同一オリジンの境界は `/api/settings/transcoding` と同じだ。デスクトップアプリ以外では、このルートは `404` `not_found` を返し、SPA は Network セクションを隠す。
 
 切り替えはロックで直列化し、リスナーを開き直してから初めて保存する ([`NetworkSettings.SetLANAccess`](../../internal/app))。
 
@@ -207,9 +207,9 @@ flowchart LR
 
 | 採らなかった案 | 理由 |
 | --- | --- |
-| 常に `0.0.0.0` で待ち受け、オフの間は LAN からの接続を切る | 初回起動でファイアウォールのダイアログが出る (R-14) |
-| `127.0.0.1` と並べて `0.0.0.0` のリスナーを追加する | 1 つのポートでのワイルドカードと特定アドレスの共存は、Windows のソケットオプションに依存する (R-14) |
-| データの場所に置く設定ファイル | 保存の仕組みが 2 つになる (R-14) |
+| 常に `0.0.0.0` で待ち受け、オフの間は LAN からの接続を切る | 初回起動でファイアウォールのダイアログが出る |
+| `127.0.0.1` と並べて `0.0.0.0` のリスナーを追加する | 1 つのポートでのワイルドカードと特定アドレスの共存は、Windows のソケットオプションに依存する |
+| データの場所に置く設定ファイル | 保存の仕組みが 2 つになる |
 
 ## 配布 {#distribution}
 
@@ -239,7 +239,7 @@ flowchart LR
 | FFmpeg のキャッシュ | `dist/cache/`。使うたびにハッシュを計算し直し、一致しなければ削除して、期待値と実際のハッシュを示して失敗する。ワークフローでは Actions のキャッシュに保持し、ダウンロード元が原因で `main` が赤にならないようにする |
 | `main` での実行 | push のたびに zip をビルドして確認し、`nightly` タグをそのコミットに移して、`nightly` プレリリースの zip を置き換える。新しい push は実行中のものを取り消し、タグでの実行は決して取り消さない |
 | ハードウェアエンコーダー | [hardware-encoding.md](hardware-encoding.md) と同じく NVENC と QSV。AMF はない |
-| Windows での確認 | 構成と、`ffmpeg -hide_banner -encoders` が `h264_nvenc` と `h264_qsv` を挙げること。GPU での変換は実機で確認する ([quickstart.md](../../specs/037-windows-app/quickstart.md)) |
+| Windows での確認 | 構成と、`ffmpeg -hide_banner -encoders` が `h264_nvenc` と `h264_qsv` を挙げること。GPU での変換は実機で確認する  |
 | Release | ないときは作り、あるときは zip を置き換える。`nightly` はプレリリースで、latest には決してせず、短い固定のノートを付ける。古い zip を削除する前に新しい zip をアップロードする |
 | SmartScreen | 手順は `README.txt` と [running-vv.md](../how-to/running-vv.md#windows-app) にある |
 
@@ -249,6 +249,6 @@ flowchart LR
 | --- | --- |
 | `main` への push ごとに `main-<12 characters>` のタグを付けた新しい Release を作る | マージのたびに Releases のページが増え、生成されたノートが履歴全体を挙げる |
 | GitHub Packages | 汎用のファイルのパッケージがなく、コンテナと NuGet のダウンロードにはブラウザではなく CLI かトークンが要る |
-| `windows/arm64` も対象にする | 固定できる arm64 の `ffmpeg` がなく、x64 の exe はエミュレーションで動く (R-13) |
-| BtbN/FFmpeg-Builds の `ffmpeg` | バージョンごとの固定された Release がないので、固定したものを後で取得できない (R-12) |
+| `windows/arm64` も対象にする | 固定できる arm64 の `ffmpeg` がなく、x64 の exe はエミュレーションで動く |
+| BtbN/FFmpeg-Builds の `ffmpeg` | バージョンごとの固定された Release がないので、固定したものを後で取得できない |
 | `.syso` をコミットする | タグなしの `mdm.exe` にもアイコンとマニフェストが入り、バージョン情報が古くなる |

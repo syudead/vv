@@ -71,7 +71,7 @@ function groupDestination(item: GroupItem | undefined): GroupDestination | null 
 
 /**
  * GroupDragLayer はグループのページの所有者の画面（道筋の帯、格子、リスト）を包むドラッグの
- * 層である（specs/050-drag-organize/ui-design.md「Group page」）。
+ * 層である。
  *
  * - カードか行の間に落とすと、持ち上げた項目を画面の順のまま、その間の前の項目（先頭なら
  *   無し）の後ろへ並べ替える。

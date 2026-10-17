@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ドロップで「バージョンとしてまとめる」（specs/050-drag-organize/data-model.md「Operations」の Bundle）。
+// ドロップで「バージョンとしてまとめる」。
 
 // bundleSnapshot は organizeSnapshot に、集まり・メンバー・タグ・お気に入り・候補の行を足す。
 func bundleSnapshot(t *testing.T, db *DB) []string {
@@ -202,7 +202,6 @@ func TestOrganizeBundleRefusals(t *testing.T) {
 }
 
 // 束ねたあとで新しい鍵を別のグループやプレイリストに足すと、取り消しは ErrUndoConflict で何も書かない
-// （data-model.md「Undo image」: 後から足された参照は後の像と違う）。
 func TestOrganizeBundleUndoConflictsAfterLaterReference(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()

@@ -13,13 +13,12 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 「同じ動画かもしれない」候補の自動の判定（specs/054-auto-dup/data-model.md、research.md R-4〜R-8）。
+// 「同じ動画かもしれない」候補の自動の判定。
 // 判定は video_version_candidates の列に置く。結果は所有者の操作と同じ行を書く: 「同じ」は
 // VersionStore.Bundle と同じ planBundle・applyBundle で束ね、「違う」は VersionStore.Dismiss と同じ
 // dismissPair で記録する。結果を反映した取引の確定後に domain.VersionCandidatesChanged を発行する。
 
-// ClaimJudgement は取り出せる候補のうち最も古い 1 組を判定中にし、両方の指紋と共に返す
-// （data-model.md「Rules」）。取り出せるのは、両方の鍵に登録の所在を持つ動画があって一覧に出る組の
+// ClaimJudgement は取り出せる候補のうち最も古い 1 組を判定中にし、両方の指紋と共に返す。取り出せるのは、両方の鍵に登録の所在を持つ動画があって一覧に出る組の
 // うち、集まりから外した組（video_version_unbundles）と判定を保留した組（video_version_judging_holds）で
 // なく、判定が null か、failed で retry_at を過ぎたもの。判定中にするのは 1 文で行い、同じ取引で組の
 // version_judgement の記録を running/processing にする（無ければ開く）。無ければ domain.ErrNoJob。設定の入と
@@ -46,7 +45,7 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 	if err != nil {
 		return domain.VersionJudgeJob{}, fmt.Errorf("cannot claim a version candidate: %w", err)
 	}
-	// 組の記録を判定中にする。中断や失敗で attention の記録も、同じ記録が running に戻る（research.md R-4）。
+	// 組の記録を判定中にする。中断や失敗で attention の記録も、同じ記録が running に戻る。
 	c := &changes{}
 	now := time.Now()
 	processing := domain.VersionJudgementActivityState(domain.VersionJudgementRunning)
@@ -75,7 +74,7 @@ func (s *VersionStore) ClaimJudgement(ctx context.Context) (domain.VersionJudgeJ
 
 // judgeablePairs は判定できる候補の組 c を選ぶ from と where である。一覧に出る組
 // （candidatePairsCondition）のうち、集まりから外した組（video_version_unbundles）と、所有者が自動の「違う」を
-// 取り消して判定を保留した組（video_version_judging_holds、specs/055-activity/research.md R-7）でないもの。
+// 取り消して判定を保留した組（video_version_judging_holds、docs/design-docs/activity.md）でないもの。
 // 取り出しと次の再試行の時刻と、記録を開く組が同じ組を見るように共有する。
 var judgeablePairs = candidatePairsFrom + candidatePairsCondition() + `
 	and not exists (select 1 from video_version_unbundles u where u.key_a = c.key_a and u.key_b = c.key_b)
@@ -104,7 +103,7 @@ func storedContentFingerprint(ctx context.Context, tx *sql.Tx, key string) (doma
 // RecoverRunningJudgements は判定中のまま残った行（前回の終了で途切れたもの、判定のあいだに切られたもの）を
 // 待ちに戻し、件数を返す。attempts は保つ。起動時に、判定を始める前に呼ぶ（auto_tag_queue と同じ）。
 // running/processing の記録は待ちに戻す。起動時の回復で attention/interrupted にした記録はそのまま残り、次の
-// 取り出しで running に戻る（specs/055-activity/data-model.md「Rules」）。
+// 取り出しで running に戻る。
 func (s *VersionStore) RecoverRunningJudgements(ctx context.Context) (int, error) {
 	return s.requeueJudgements(ctx, domain.VersionJudgementRunning, "cannot recover interrupted version judgements")
 }
@@ -235,7 +234,7 @@ func applyVerdict(
 	}
 }
 
-// NextJudgementRetry は failed の組のうち、いちばん早く再び取り出せる時刻を返す（research.md R-5）。
+// NextJudgementRetry は failed の組のうち、いちばん早く再び取り出せる時刻を返す。
 // ClaimJudgement が取り出せる組（judgeablePairs）だけを数える。無ければ found は偽。
 func (s *VersionStore) NextJudgementRetry(ctx context.Context) (time.Time, bool, error) {
 	var retryAt sql.NullInt64
@@ -251,8 +250,8 @@ func (s *VersionStore) NextJudgementRetry(ctx context.Context) (time.Time, bool,
 }
 
 // ResetNoConnectionJudgements は接続が無くて待っていた組（no_connection）を待ち（null）に戻し、件数を
-// 返す。Ollama の接続が保存されたときに呼ぶ（research.md R-13、data-model.md「Rules」）。その組の
-// attention/no_connection の記録も待ちに戻り、判定が終わると同じ記録が結果になる（specs/055-activity）。
+// 返す。Ollama の接続が保存されたときに呼ぶ。その組の
+// attention/no_connection の記録も待ちに戻り、判定が終わると同じ記録が結果になる。
 func (s *VersionStore) ResetNoConnectionJudgements(ctx context.Context) (int, error) {
 	return s.requeueJudgements(ctx, domain.VersionJudgementNoConnection,
 		"cannot return the version judgements waiting for a connection")
@@ -370,7 +369,7 @@ func readJudgedSide(ctx context.Context, tx *sql.Tx, key string) (judgedSide, er
 
 // ownerDataCondition は、利用者データの鍵 ?1 と内容の鍵 ?2 に所有者が設定した値（確定したタグ・
 // 再生位置・公開の設定・作品情報は利用者データの鍵、表示名・適用したサムネイル画像は内容の鍵）が
-// あるかの式である（research.md R-7 の 1 番目の規則）。
+// あるかの式である。
 var ownerDataCondition = buildOwnerDataCondition()
 
 // buildOwnerDataCondition は ownerDataCondition を作る。作品情報の表は userDataTables から取る。
@@ -436,8 +435,7 @@ func appendKeyPairs(rows *sql.Rows, pairs [][2]string) ([][2]string, error) {
 	return pairs, rows.Close()
 }
 
-// recordUnbundledPairs は集まりから外す鍵 key と、残る各メンバーの組を video_version_unbundles に書く
-// （research.md R-8）。既にある組はそのまま。
+// recordUnbundledPairs は集まりから外す鍵 key と、残る各メンバーの組を video_version_unbundles に書く。既にある組はそのまま。
 func recordUnbundledPairs(ctx context.Context, tx *sql.Tx, key string, members []string, now int64) error {
 	for _, other := range members {
 		if other == key {
@@ -451,7 +449,7 @@ func recordUnbundledPairs(ctx context.Context, tx *sql.Tx, key string, members [
 	return nil
 }
 
-// rebuildCandidatesOf は内容 key の保存した指紋で、その候補を作り直す（research.md R-8）。指紋が無ければ
+// rebuildCandidatesOf は内容 key の保存した指紋で、その候補を作り直す。指紋が無ければ
 // 何もしない。作り直した候補は組の記録に付き直す（rebuildVersionCandidates）。
 func rebuildCandidatesOf(ctx context.Context, tx *sql.Tx, c *changes, key string) error {
 	fingerprint, found, err := storedContentFingerprint(ctx, tx, key)
@@ -462,7 +460,7 @@ func rebuildCandidatesOf(ctx context.Context, tx *sql.Tx, c *changes, key string
 }
 
 // versionJudgingEnabledKey は重複の自動判定の入と切のキーである。値は "true" か "false" で、行が
-// 無ければ切（specs/054-auto-dup/data-model.md「Settings」）。
+// 無ければ切。
 const versionJudgingEnabledKey = "version_judging.enabled"
 
 // VersionJudgingEnabled は重複の自動判定が入かを返す。行が無いか "true" でなければ切である。
@@ -480,7 +478,7 @@ func versionJudgingEnabled(ctx context.Context, q rowQueryer) (bool, error) {
 }
 
 // SaveVersionJudgingEnabled は重複の自動判定の入と切を保存する。入れたときは、同じ取引で待っている判定できる
-// 候補に組ごとの version_judgement の記録を開く（specs/055-activity/data-model.md「Kinds」）。切っても開いて
+// 候補に組ごとの version_judgement の記録を開く。切っても開いて
 // いる記録は待ちのまま残り、入れ直すと再び取り出される。
 func (s *SettingsStore) SaveVersionJudgingEnabled(ctx context.Context, enabled bool) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)

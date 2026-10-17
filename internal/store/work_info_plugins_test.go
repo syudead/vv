@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの行と設定の値の規則（specs/049-work-info-plugins/data-model.md の Rules）。
+// 作品情報プラグインの行と設定の値の規則。
 
 var pluginNow = time.Unix(1_800_000_000, 0)
 

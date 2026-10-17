@@ -10,20 +10,18 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 所有者が代表サムネイルとして適用した画像（specs/045-comfyui-thumbnails/data-model.md、
-// research.md R-6・R-10）。画像は content_key に結ぶ thumbnail_images の1行で持ち、
+// 所有者が代表サムネイルとして適用した画像。画像は content_key に結ぶ thumbnail_images の1行で持ち、
 // 再スキャン・取り込み直しを越えて残る。代表サムネイルのファイルは internal/app の Ingest が
 // この行から公開し直す。
 
 // ApplyThumbnailImage は、内容 contentKey の動画 videoID の代表サムネイルとして画像 image を
 // 記録し、反映後の動画を返す。image.Image は動画の縦横比に合わせた JPEG、image.Source は同じ
 // 切り抜きの長辺最大 2048 px の JPEG、image.Origin はその出どころである
-// （specs/046-thumbnail-image-upload/data-model.md、research.md R-3・R-5）。
 //
 // 呼ぶのは internal/app の Ingest だけで、同じ画像を公開したあと、生成の錠の中で呼ぶ。1 つの
 // 取引で、行（画像・元の画像・出どころ。改版番号は video_overrides.thumbnail_revision と同じ規則）
 // を書き、その内容の動画の thumbnail_state を done にして代表サムネイルの代用と失敗の問題を消し、
-// 更新日時を進める。video_overrides の位置は残す（specs/045-comfyui-thumbnails/research.md R-10）。
+// 更新日時を進める。video_overrides の位置は残す。
 //
 // 画像か元の画像が空か、出どころが既知の値でなければ誤りで、何も書かない。videoID の動画が
 // 無いか、登録フォルダの下に所在が無いか、内容が contentKey でなければ domain.ErrContentChanged
@@ -78,7 +76,7 @@ func (s *OverrideStore) ApplyThumbnailImage(
 // 呼ぶのは internal/app の Ingest だけで、位置（無ければ自動の位置）のコマを公開したあと、
 // 生成の錠の中で呼ぶ。1 つの取引で、行を消し、その内容の動画の thumbnail_state を done にして
 // 代表サムネイルの代用と失敗の問題を消し、更新日時を進める。画像を適用していなくても成功し、
-// コマを作り直したので更新日時を進める（specs/045-comfyui-thumbnails/data-model.md の Rules）。
+// コマを作り直したので更新日時を進める。
 //
 // videoID は content_key へ引き直し、引けなければ domain.ErrNotFound にする。確定後に
 // domain.VideoOverrideChanged を発行し、問題を消したときは domain.ScanChanged も発行する。
@@ -145,8 +143,8 @@ func (s *OverrideStore) ThumbnailImage(ctx context.Context, contentKey string) (
 }
 
 // ThumbnailImageSource は内容 contentKey に適用した画像の元の画像（長辺最大 2048 px の JPEG。
-// specs/046-thumbnail-image-upload/research.md R-3）を返す。適用していないか、元の画像を持たない
-// 行（specs/046-thumbnail-image-upload の移行より前に書いた行）なら nil を返す。
+// docs/design-docs/thumbnail-editing.md）を返す。適用していないか、元の画像を持たない
+// 行なら nil を返す。
 func (s *OverrideStore) ThumbnailImageSource(ctx context.Context, contentKey string) ([]byte, error) {
 	var source []byte
 	err := s.db.sql.QueryRowContext(ctx,
@@ -162,8 +160,7 @@ func (s *OverrideStore) ThumbnailImageSource(ctx context.Context, contentKey str
 }
 
 // CurrentThumbnailSelection は内容 contentKey の今の代表サムネイルの選び方（適用した画像の元の
-// 画像、元の画像を持たない行では代表サムネイル、と指定した位置）を返す
-// （specs/046-thumbnail-image-upload/research.md R-4）。1 つの文で読むので、画像と位置は同じ
+// 画像、元の画像を持たない行では代表サムネイル、と指定した位置）を返す。1 つの文で読むので、画像と位置は同じ
 // 時点のもので、行が置き換わる途中の組み合わせにはならない。
 func (s *OverrideStore) CurrentThumbnailSelection(
 	ctx context.Context, contentKey string,

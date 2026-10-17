@@ -34,8 +34,7 @@ import type { TagKindsTab } from "./useTagKindsTab";
 const kindColumnCount = 3;
 
 /**
- * TagKindsPanel はタグ管理画面の「Kinds」のタブの中身である
- * （specs/051-tag-kinds/ui-design.md「Kinds tab」）。種類を名前の自然順にすべて並べ、
+ * TagKindsPanel はタグ管理画面の「Kinds」のタブの中身である。種類を名前の自然順にすべて並べ、
  * 作成の行・その場の改名・削除の確認の窓を持つ。状態は `useTagKindsTab` が持つ。
  * チェックと選択バーは無い（種類にまとめての操作は無い）。
  */
@@ -52,7 +51,7 @@ export default function TagKindsPanel({
 }) {
   const { loadError, creating } = state;
   // 読み込みに失敗したら、前に読んだ並びがあっても描かない。数が古いかもしれず、削除の
-  // 確認の窓の文もその数を読むため（ui-design.md「States」の Load failed）。
+  // 確認の窓の文もその数を読むため。
   const kinds = loadError === null ? state.kinds : undefined;
   return (
     <>
@@ -245,7 +244,7 @@ function DeleteItem({ disabled, onSelect }: { disabled: boolean; onSelect: () =>
 
 /**
  * DeleteKindDialog は種類の削除の確認の窓である。その種類のタグは種類なしで残るので、
- * 文言は `tagCount` が 0 かどうかで変える（ui-design.md「Words」）。
+ * 文言は `tagCount` が 0 かどうかで変える。
  */
 function DeleteKindDialog({ state, kind }: { state: TagKindsTab; kind: TagKind }) {
   const pending = state.deletePending;

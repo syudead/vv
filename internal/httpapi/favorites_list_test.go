@@ -12,7 +12,7 @@ import (
 )
 
 // 一覧の favorite・favorited* の並び順・GET /api/library/ids の groups
-// （specs/035-favorites/contracts/screen-api.md §2・§3）を、本物の認証・保存層・経路をつないで
+// を、本物の認証・保存層・経路をつないで
 // 確かめる。中身は library_test.go の libraryFixture と同じ。
 
 // newFavoriteListFixture は show のグループ、p1、solo の順にお気に入りにした
@@ -128,7 +128,7 @@ func TestListLibraryFavoriteOnly(t *testing.T) {
 }
 
 // GET /api/library/ids?favorite=true の ids と groups は同じ項目から作り、グループの folder は
-// GET /api/library の group.folder と一致する（contracts/screen-api.md §3）。
+// GET /api/library の group.folder と一致する。
 func TestListLibraryIdsGroups(t *testing.T) {
 	f := newFavoriteListFixture(t)
 

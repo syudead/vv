@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 同じ動画の別バージョンの集まり（specs/030-video-versions/contracts/screen-api.md §0〜§4、
-// research.md R-8）。候補の一覧と却下は version_candidates.go。集まりは動画の id で指し、集まりの id は応答に出さない。どの操作も
+// 同じ動画の別バージョンの集まり。候補の一覧と却下は version_candidates.go。集まりは動画の id で指し、集まりの id は応答に出さない。どの操作も
 // 1 つの取引で済むので internal/app は通さず、internal/store の *VersionStore を直接呼ぶ。
 // 確定後の /api/events の video は、保存層が発行する domain.VideoBundleChanged から流れる
 // （events.go）。
@@ -40,7 +39,7 @@ type VersionStore interface {
 }
 
 // maxBundleVideoIDs は束ねる経路が受け付ける videoIds の最大件数である。
-// POST /api/video-tags と同じ上限（contracts/screen-api.md §2）。
+// POST /api/video-tags と同じ上限。
 const maxBundleVideoIDs = maxVideoTagsIDs
 
 // ListVideoVersions は動画の集まりの全バージョンを返す（GET /api/videos/{id}/versions）。
@@ -106,7 +105,7 @@ func (s *server) UnbundleVideo(w http.ResponseWriter, r *http.Request, id gen.Vi
 	s.writeVideoDetail(w, r, video)
 }
 
-// checkVersionsError は集まりの保存層の誤りを契約の応答へ写す（contracts/screen-api.md §1〜§4）。
+// checkVersionsError は集まりの保存層の誤りを契約の応答へ写す。
 // 誤りが無ければ true を返し、あれば応答を書いて false を返す。
 func (s *server) checkVersionsError(w http.ResponseWriter, err error, message string) bool {
 	switch {

@@ -8,7 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// タグの作った日（specs/036-tag-admin-scale/data-model.md §1・§2、research.md R-8）。
+// タグの作った日。
 
 // TestCreateTagReturnsCreatedAtMatchingListTags は、CreateTag の戻り値に作った時刻（秒）が
 // 載り、続く ListTags の同じタグと等しいことを確かめる。

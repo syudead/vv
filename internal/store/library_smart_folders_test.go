@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ライブラリの一番上のスマートフォルダ（specs/052-smart-folders/data-model.md「Library items」、
-// research.md R-7・R-14）。
+// ライブラリの一番上のスマートフォルダ。
 
 // favoriteSmartFolder はフォルダ id をお気に入りにする。お気に入りの書き込みは別の作業が足すので、
 // 表に直に書く。
@@ -198,7 +197,7 @@ func TestListLibraryPagesAcrossSmartFolders(t *testing.T) {
 }
 
 // ゲストのライブラリに、再生順の空のフォルダは出ない。一致する動画があっても、それが視聴状態の条件で
-// 項目にならない混ざったグループにだけあるフォルダも出ない。所有者には出る（research.md R-8）。
+// 項目にならない混ざったグループにだけあるフォルダも出ない。所有者には出る。
 func TestListLibraryHidesEmptySmartFoldersFromGuests(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
@@ -247,7 +246,6 @@ func TestListLibrarySortsTwinSmartFoldersByTheSameValues(t *testing.T) {
 }
 
 // 条件が無い実体を名指すフォルダしか無くても、所有者のライブラリには値の無い項目として末尾に出る
-// （research.md R-9）。
 func TestListLibraryShowsASmartFolderWithOnlyAMissingTag(t *testing.T) {
 	db, ids := itemsFixture(t)
 	gone := attachNamedTag(t, db, "消す", ids[fixturePath("/media/solo.mp4")])

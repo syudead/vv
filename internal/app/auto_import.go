@@ -16,7 +16,7 @@ const (
 	// ツリーをたどる張り込みが、プロセスの停止を止めないようにする。
 	autoImportStopWait = 5 * time.Second
 	// autoImportQuiet は最後の変更から取り込みを始めるまでの静止の長さである
-	// （specs/042-folder-watch-import/research.md R-3）。
+	//
 	autoImportQuiet = 2 * time.Second
 	// autoImportSettle はファイルの更新が止まってから取り込むまでの長さである。
 	autoImportSettle = 10 * time.Second
@@ -87,7 +87,7 @@ type AutoImportOptions struct {
 }
 
 // AutoImport はメディアフォルダの変更の報告を変わったディレクトリの集合にまとめ、静止した
-// あとで 1 つの監視の走査として取り込む（specs/042-folder-watch-import/research.md R-2・R-3・R-5）。
+// あとで 1 つの監視の走査として取り込む。
 // 起動のときも、入にしたときも、走査は始めない。
 type AutoImport struct {
 	store   AutoImportStore
@@ -352,7 +352,7 @@ func (a *AutoImport) SetEnabled(ctx context.Context, enabled bool) (domain.AutoI
 }
 
 // FoldersChanging はメディアフォルダを変える前に呼ぶ。走っている監視の走査を止め、その
-// ディレクトリを変わったものとして戻す（research.md R-5）。保存側は走査中のフォルダの変更を
+// ディレクトリを変わったものとして戻す。保存側は走査中のフォルダの変更を
 // 断るので、変更の前に止める。
 //
 // 変更が終わる（FoldersChanged）まで、新しい監視の走査は始めない。
@@ -499,7 +499,7 @@ func (a *AutoImport) disarmIfOff() {
 
 // ScanFinished は走査が閉じたことを受ける。監視の走査なら、読んでいたディレクトリを手放す。
 // 取り込めずに残ったディレクトリがあれば、静止の予約を入れ直す。手動の走査が done で閉じたなら、
-// 全体を読み直したので、通知を取りこぼした問題は解ける（contracts/screen-api.md）。ただし、
+// 全体を読み直したので、通知を取りこぼした問題は解ける。ただし、
 // その走査が始まったあとに報告された取りこぼしは、読み終えたディレクトリのものかもしれないので
 // 解かず、次の手動の走査まで見せる。
 func (a *AutoImport) ScanFinished(origin domain.ScanOrigin, state domain.ScanState) {
@@ -551,7 +551,7 @@ func (a *AutoImport) scheduleLocked(d time.Duration) {
 }
 
 // fire は静止のあとの判断である。更新が止まっていないファイルのあるディレクトリは変わったまま
-// 残し、止まったディレクトリだけを 1 つの監視の走査として始める（research.md R-3）。
+// 残し、止まったディレクトリだけを 1 つの監視の走査として始める。
 func (a *AutoImport) fire(seq int) {
 	a.mu.Lock()
 	if seq != a.timerSeq || a.stopped || !a.enabled || a.ctx == nil {

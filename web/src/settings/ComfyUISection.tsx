@@ -49,7 +49,7 @@ type CheckState =
   | { kind: "failed"; message: UiText }
   | { kind: "missing"; items: ComfyUIMissingItem[] };
 
-/** modelsFirst は足りないものをモデルファイル、ノードの順に並べる（ui-design.md Missing files）。 */
+/** modelsFirst は足りないものをモデルファイル、ノードの順に並べる。 */
 function modelsFirst(items: readonly ComfyUIMissingItem[]): ComfyUIMissingItem[] {
   return [
     ...items.filter((item) => item.kind === "model"),
@@ -60,11 +60,10 @@ function modelsFirst(items: readonly ComfyUIMissingItem[]): ComfyUIMissingItem[]
 /**
  * ComfyUISection は設定の「ComfyUI」区画である。動画の1コマをサムネイルへ編集する ComfyUI
  * の接続先（自前か Comfy Cloud か）を保存し、つながるかと、vv のワークフローに足りないノード
- * とモデルファイルを確かめる。API キーは書くだけで、画面には戻らない
- * （specs/045-comfyui-thumbnails/ui-design.md、research.md R-9）。
+ * とモデルファイルを確かめる。API キーは書くだけで、画面には戻らない。
  *
  * 区画は `/settings/connections#comfyui` の行き先で、動画ページの編集の入口の「Open Settings」がここへ
- * 移る（ui-design.md「Video page: edit entry」）。
+ * 移る。
  */
 export default function ComfyUISection() {
   const anchor = useSectionAnchor("comfyui");
@@ -184,7 +183,7 @@ function ComfyUISectionBody() {
     }
   };
 
-  // 値を変えたら前のテスト結果は今の値に当たらないので消す（ui-design.md States）。
+  // 値を変えたら前のテスト結果は今の値に当たらないので消す。
   // 確かめている途中なら、その結果も捨てて次のテストを受け付ける。
   const update = (change: Partial<Draft>) => {
     edits.current += 1;

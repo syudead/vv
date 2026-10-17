@@ -925,7 +925,7 @@ describe("list API client", () => {
     expect(urls[1]?.searchParams.get("sort")).toBe("favoritedAsc");
   });
 
-  // specs/052-smart-folders/research.md R-4: added within and length go to the three library lists.
+  // docs/design-docs/catalog-organization.md: added within and length go to the three library lists.
   it("sends addedWithin, minDuration and maxDuration to the library lists only when given", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -1002,7 +1002,7 @@ describe("list API client", () => {
   });
 
   // issue 267: tag は listVideos に載るが listFolderVideos には載らない
-  // （フォルダ画面のタグ絞り込みは対象外。contracts/tags-api.md §5）。
+  // （フォルダ画面のタグ絞り込みは対象外）。
   it("sends tag ids to the library list, one per id, capped at 16", async () => {
     const fetch = stubFetch();
     await listVideos({ tag: Array.from({ length: 20 }, (_, i) => i + 1) });
@@ -1016,7 +1016,7 @@ describe("list API client", () => {
     const fetch = stubFetch();
     // ListFolderVideosParams has no `tag` field, so a type-safe caller can't
     // pass one. Bypass the type system to prove listFolderVideos itself never
-    // reads or forwards it (contracts/tags-api.md §5: フォルダ画面のタグ絞り込みは対象外).
+    // reads or forwards it; tag filtering is not supported on folder pages.
     const params = {
       folder: { rootId: 3, path: "" },
       tag: [1, 2],

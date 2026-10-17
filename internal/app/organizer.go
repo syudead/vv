@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ドラッグの操作と取り消しの台帳（specs/050-drag-organize/research.md R-1・R-2）。操作は保存先が
+// ドラッグの操作と取り消しの台帳。操作は保存先が
 // 1 つの取引で行い、変えた行の前後の像をバイト列で返す。Organizer はその像を乱数のトークンで
 // メモリに持ち、取り消しで保存先へ返す。像の中身は読まない。
 
@@ -51,7 +51,7 @@ type OrganizeStore interface {
 	// domain.ErrGroupTargetNotFound、集まりを展開して多すぎれば domain.ErrTooManyVersions。
 	Bundle(ctx context.Context, videoIDs []int64, targetID int64) ([]byte, error)
 	// Merge はドラッグしたカード items を画面の順にたどり、グループはグループ into へマージし、
-	// 動画は into の末尾へ足す（specs/050-drag-organize/research.md R-5）。into・グループ・動画が
+	// 動画は into の末尾へ足す。into・グループ・動画が
 	// from（0 なら無し）は開いているグループで、カードはマージと同じ取引でそこから外れる。into・from・
 	// グループ・動画が無いかカードが from に無ければ domain.ErrGroupTargetNotFound、グループが into か
 	// into の祖先なら domain.ErrGroupCycle。
@@ -149,7 +149,7 @@ func (o *Organizer) run(operation func() ([]byte, error)) (domain.OrganizeResult
 }
 
 // Group は動画 targetID に videoIDs を落としてグループを作り、取り消しのトークンと新しいグループの
-// id を返す（data-model.md「Operations」の Group）。トークンは Reorder と同じく保存先の操作より
+// id を返す。トークンは Reorder と同じく保存先の操作より
 // 先に作る。
 func (o *Organizer) Group(ctx context.Context, videoIDs []int64, targetID int64, fromID *int64) (domain.OrganizeResult, error) {
 	token, err := o.newToken()
@@ -164,7 +164,7 @@ func (o *Organizer) Group(ctx context.Context, videoIDs []int64, targetID int64,
 	return domain.OrganizeResult{UndoToken: token, GroupID: groupID}, nil
 }
 
-// RenameGroup はグループ id の名前を name にする（data-model.md「Rename under an undo token」）。
+// RenameGroup はグループ id の名前を name にする。
 // token が、グループ id を作った「グループにする」の生きているトークンなら、名前を変える間その
 // 項目を持ち（同じトークンの取り消しと名前変更は待つ）、保存先が返した像をトークンの像にする。トークンと
 // 10 分はそのままで、像が返らなければ古い像のままである。トークンが無い・使い済み・切れている・

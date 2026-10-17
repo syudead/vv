@@ -6,7 +6,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 重複の候補の判定の記録（version_judgement）のやり直しと取り消し（specs/055-activity/contracts/screen-api.md）。
+// 重複の候補の判定の記録（version_judgement）のやり直しと取り消し。
 // Activity の振り分け表に入り、保存層の 1 つの取引の後で判定のワーカーを起こす。
 
 // VersionJudgementRetryStore は失敗か中断した組の判定をすぐ取り出せるようにする。internal/store の
@@ -45,7 +45,7 @@ func NewVersionJudgementActivity(
 }
 
 // RetryActivity は記録 entry の組をすぐ判定し直せるようにし、判定のワーカーを起こす。記録は running に戻り、
-// 同じ記録が新しい結果になる（research.md R-4 の Deviation）。
+// 同じ記録が新しい結果になる。
 func (a *VersionJudgementActivity) RetryActivity(ctx context.Context, entry domain.ActivityEntry) error {
 	if err := a.retry.RetryJudgement(ctx, entry.ID); err != nil {
 		return err

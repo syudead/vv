@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取り込みと失敗した走査の記録（specs/055-activity/data-model.md「Rules」、research.md R-3・R-4・R-5）。
+// 取り込みと失敗した走査の記録。
 
 // importEntries は import の記録を新しい順に返す。
 func importEntries(t *testing.T, db *DB) []domain.ActivityEntry {
@@ -330,7 +330,7 @@ func TestRetriedImportProgressCountsTheStagesAlreadyDone(t *testing.T) {
 	}
 }
 
-// 取り込みの途中で動画が消えると、その import の記録は done/gone で閉じる（data-model.md「Outcomes」）。
+// 取り込みの途中で動画が消えると、その import の記録は done/gone で閉じる。
 func TestImportActivityOfADeletedVideoIsGone(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

@@ -12,7 +12,7 @@ import {
 } from "../testing/settingsPage";
 
 // 「Auto-tagging」のページは Ollama の接続先が保存されるまで押せない
-// （specs/058-settings-pages/research.md R-5、ui-design.md「Auto-tagging page」）。
+//
 
 const ollamaURL = "/api/settings/ollama";
 const autoTaggingURL = "/api/settings/auto-tagging";

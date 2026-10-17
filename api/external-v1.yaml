@@ -2,7 +2,7 @@
 # Go（oapi-codegen、api/oapi-codegen-external.yaml）だけをここから生成する。
 # 生成物（internal/httpapi/extgen/）は手編集しない。型を変えるときはこのファイルを直し、
 # task generate を実行すること。画面の API（api/openapi.yaml）とは別の約束である
-# （specs/026-external-api/research.md R-5）。
+#
 #
 # 互換の方針: v1 の中では項目と操作の追加だけを行う。既存の項目の意味・型・必須を変えるときは
 # v2 を足す（docs/how-to/external-api.md）。
@@ -18,7 +18,7 @@ info:
     `401` `unauthenticated` と `WWW-Authenticate: Bearer` を返す。Cookie は読まない。
 
     見る人は常に所有者で、非公開の動画も返す。同一オリジンの検査はかけない。本文を取る操作は
-    `Content-Type: application/json` を要する（specs/026-external-api/contracts/external-api.md §1）。
+    `Content-Type: application/json` を要する。
 
 servers:
   - url: /api/v1
@@ -36,7 +36,7 @@ paths:
         登録フォルダの下に所在を 1 つ以上持つ動画を `(addedAt, id)` の昇順で返す。`nextCursor` が
         空文字列になるまで、前回の `nextCursor` を `cursor` に渡してたどると全件を読める。
         変更の追跡はしない。新しい動画を知るには一覧を読み直し、持っている動画が消えたことは
-        `lookup` の `404` で知る（contracts/external-api.md §2）。
+        `lookup` の `404` で知る。
       parameters:
         - name: cursor
           in: query
@@ -78,7 +78,7 @@ paths:
       description: |
         `id`・`contentKey`・`path` のちょうど 1 つを取る。0 個・2 個以上は `400` `invalid_request`。
         `path` は正規化せず、今の所在の `path` とバイト列で完全一致させる。一覧が返した `path` を
-        そのまま渡せば引ける（contracts/external-api.md §2）。
+        そのまま渡せば引ける。
       parameters:
         - name: id
           in: query
@@ -126,9 +126,9 @@ paths:
         1 つのトランザクションで行う。付け外しの対象は手で付けたタグだけで、祖先のフォルダ名から
         付くタグは残る（`replace` の後も）。名前はシノニムを含めて引き、`add`・`replace` では無い名前の
         タグを作る。`remove` ではどのタグにも当たらない名前は何もしない。同じタグに当たる名前は 1 つに
-        まとめる。引けない動画が 1 つでもあれば `404` で何も反映しない（contracts/external-api.md §4）。
+        まとめる。引けない動画が 1 つでもあれば `404` で何も反映しない。
         `tentative` が真の `add`・`replace` では、新しく作るタグを仮のタグにし、却下した名前を飛ばして
-        `skippedTags` に返す（specs/031-tentative-tags/contracts/external-api.md §1）。
+        `skippedTags` に返す。
       requestBody:
         required: true
         content:
@@ -171,8 +171,7 @@ paths:
       description: |
         1 つのトランザクションで行う。`displayName` が `null`、または前後の空白を除いて空なら解除し、
         ファイル名由来の題名に戻す。表示名は内容（`contentKey`）に結び、同じ内容の全所在に効く。
-        引けない動画や規則に合わない名前が 1 つでもあれば何も反映しない
-        （specs/029-video-overrides/contracts/external-api.md §1）。
+        引けない動画や規則に合わない名前が 1 つでもあれば何も反映しない。
       requestBody:
         required: true
         content:
@@ -217,7 +216,7 @@ paths:
         1 件ずつ、その位置の場面で代表サムネイルを作り直して位置を記録する。`positionMs` が `null` なら
         解除し、自動の位置で作り直す。途中の 1 件で画像を作れなければ `409`
         `thumbnail_frame_unavailable` と `index` で止まり、それより前の項目は反映済み、その項目と後は
-        未反映である（specs/029-video-overrides/contracts/external-api.md §2）。
+        未反映である。
       requestBody:
         required: true
         content:
@@ -270,8 +269,7 @@ paths:
         各項目の `workInfo` は保存済みの作品情報をまるごと置き換える。省いた・`null`・前後の空白を除いて
         空のプロパティは解除で、`{}` はすべてを解除する。人物と団体は id で指す（id は `/people`・
         `/organizations` の外部 ID での検索か作成で得る）。1 つのトランザクションで行い、誤りが 1 つでも
-        あれば何も反映しない。同じ動画を 2 度指せば後の項目が勝つ。同じ要求を繰り返しても状態は変わらない
-        （specs/047-video-work-info/contracts/external-api.md「POST /api/v1/video-work-info」）。
+        あれば何も反映しない。同じ動画を 2 度指せば後の項目が勝つ。同じ要求を繰り返しても状態は変わらない。
       requestBody:
         required: true
         content:
@@ -314,8 +312,7 @@ paths:
       description: |
         画面のタグ管理の `GET /api/tags` と同じ検索・絞り込み・並び順・ページで返す。`q`・`tentative`・
         `unused` は全部のタグに AND で掛かり、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
-        続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返し、`nextCursor` は入らない
-        （specs/039-external-tag-admin/contracts/external-api.md §1）。
+        続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返し、`nextCursor` は入らない。
       parameters:
         - name: q
           in: query
@@ -343,7 +340,7 @@ paths:
           description: |
             種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
             無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない
-            （specs/051-tag-kinds/contracts/external-api.md）
+
           schema:
             type: string
             pattern: "^([1-9][0-9]*|none)$"
@@ -395,7 +392,7 @@ paths:
         1 つのトランザクションで、統合元それぞれの元の名前とシノニムを統合先のシノニムにし、付与を
         統合先へ移して統合元を消す。統合先は確定したタグになる。無い統合元は飛ばして `notFoundIds` に
         返し、統合元がすべて無ければ `tag` は変わらない統合先である。画面の `POST /api/tags/{id}/merge`
-        と同じ保存先の操作を呼ぶ（specs/039-external-tag-admin/contracts/external-api.md §2）。
+        と同じ保存先の操作を呼ぶ。
       requestBody:
         required: true
         content:
@@ -434,7 +431,7 @@ paths:
       summary: タグの元の名前を変える
       description: |
         名前が変われば仮のタグは確定する。今と同じ名前なら何も変えない。画面の `PATCH /api/tags/{id}` と
-        同じ保存先の操作を呼ぶ（specs/039-external-tag-admin/contracts/external-api.md §3）。
+        同じ保存先の操作を呼ぶ。
       requestBody:
         required: true
         content:
@@ -484,7 +481,7 @@ paths:
         変えない。名前が別のタグ S の元の名前なら、`mergeTagId` が S のときだけ S を `id` へ統合し、
         そうでなければ `409 tag_merge_required`（`tagId` は S）で何も変えない。`remove` はシノニムで
         ない名前なら何も変えずにタグを返す。画面の `POST`・`DELETE /api/tags/{id}/synonyms` と同じ
-        保存先の操作を呼ぶ（specs/039-external-tag-admin/contracts/external-api.md §4）。
+        保存先の操作を呼ぶ。
       requestBody:
         required: true
         content:
@@ -536,9 +533,7 @@ paths:
         に返す。却下したタグの元の名前は却下した名前に入り、削除したタグの名前は覚えない。`setKind` は
         各タグに種類 `kindId` を付け、`clearKind` は各タグの種類を外す。どちらも仮のタグを確定せず、既に
         その種類（`clearKind` では種類なし）のタグは `notApplicableIds` に返す。1 つのタグなら
-        `ids: [id]` を送る。画面の `POST /api/tags/batch` と同じ保存先の操作を呼ぶ
-        （specs/039-external-tag-admin/contracts/external-api.md §5、
-        specs/051-tag-kinds/contracts/external-api.md）。
+        `ids: [id]` を送る。画面の `POST /api/tags/batch` と同じ保存先の操作を呼ぶ。
       requestBody:
         required: true
         content:
@@ -577,8 +572,7 @@ paths:
       summary: 却下した名前を一覧する
       description: |
         却下した名前を名前の自然順でページに分けて返す。`total` は却下した名前の全部の数で、続きが
-        あれば `nextCursor` を入れる。画面の `GET /api/tags/rejected-names` と同じ保存先の操作を呼ぶ
-        （specs/039-external-tag-admin/contracts/external-api.md §6）。
+        あれば `nextCursor` を入れる。画面の `GET /api/tags/rejected-names` と同じ保存先の操作を呼ぶ。
       parameters:
         - name: cursor
           in: query
@@ -618,8 +612,7 @@ paths:
       description: |
         名前を却下した名前から外し、次に同じ名前を仮のタグとして付けるとタグがまた作られるようにする。
         名前はタグ名と同じ規則で整えてから照合する。一覧に無い名前や整えられない名前は何も変えずに
-        `removed: false` を返す。画面の `DELETE /api/tags/rejected-names` と同じ保存先の操作を呼ぶ
-        （specs/039-external-tag-admin/contracts/external-api.md §7）。
+        `removed: false` を返す。画面の `DELETE /api/tags/rejected-names` と同じ保存先の操作を呼ぶ。
       parameters:
         - name: name
           in: query
@@ -650,8 +643,7 @@ paths:
       operationId: listTagKinds
       summary: タグの種類をすべて返す
       description: |
-        すべての種類を id の順に返す。画面の `GET /api/tag-kinds` と同じ保存先の操作を呼ぶ
-        （specs/051-tag-kinds/contracts/external-api.md）。
+        すべての種類を id の順に返す。画面の `GET /api/tag-kinds` と同じ保存先の操作を呼ぶ。
       responses:
         "200":
           description: すべての種類
@@ -764,8 +756,7 @@ paths:
       description: |
         画面の `GET /api/people` と同じ検索・並び順・ページで返す。`limit` を省くと条件に合う全件を返す。
         `source` と `externalId` を組で渡すと、その外部 ID を持つ人物（高々 1 件）だけを `items` に返し、
-        無ければ空の `items` を返す。このとき `q`・`sort`・`cursor`・`limit` は読まない
-        （specs/047-video-work-info/contracts/external-api.md「People and organizations」）。
+        無ければ空の `items` を返す。このとき `q`・`sort`・`cursor`・`limit` は読まない。
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
@@ -910,8 +901,7 @@ paths:
       description: |
         画面の `GET /api/organizations` と同じ検索・並び順・ページで返す。`limit` を省くと条件に合う全件を
         返す。`source` と `externalId` を組で渡すと、その外部 ID を持つ団体（高々 1 件）だけを `items` に
-        返し、無ければ空の `items` を返す。このとき `q`・`sort`・`cursor`・`limit` は読まない
-        （specs/047-video-work-info/contracts/external-api.md「People and organizations」）。
+        返し、無ければ空の `items` を返す。このとき `q`・`sort`・`cursor`・`limit` は読まない。
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
@@ -1055,8 +1045,7 @@ paths:
       operationId: startScan
       summary: スキャンを始める
       description: |
-        新しく始めたら `201`、実行中のものがあれば新しく始めずにそれを `200` で返す
-        （contracts/external-api.md §5）。本文は取らない。
+        新しく始めたら `201`、実行中のものがあれば新しく始めずにそれを `200` で返す。本文は取らない。
       responses:
         "201":
           description: 新しく始めたスキャン
@@ -1251,8 +1240,7 @@ components:
       required: [code, message]
       additionalProperties: false
       description: >-
-        誤りの形は画面の API と同じで、index はこの API だけの項目である
-        （contracts/external-api.md §1）。
+        誤りの形は画面の API と同じで、index はこの API だけの項目である。
       properties:
         code:
           type: string
@@ -1276,21 +1264,20 @@ components:
           type: integer
           description: >-
             原因になった要素の位置（0 から）。タグ名の誤りでは tags の、表示名・サムネイル・作品情報の
-            操作では items の、それ以外では videos の位置を指す（contracts/external-api.md §4）
+            操作では items の、それ以外では videos の位置を指す
         field:
           type: string
           description: >-
             reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く
             （people[0].person.id・aliases[2].language・externalIds[1]・parentId）。作品情報の一括操作では
             その項目の workInfo の中の経路である。work_info_*・person_not_found・organization_not_found・
-            external_id_taken のときだけ入る（specs/047-video-work-info/contracts/screen-api.md
-            「Added reason values and field」）
+            external_id_taken のときだけ入る
         tagId:
           type: integer
           format: int64
           description: >-
             名前がぶつかったタグの id。`tag_name_taken`・`tag_merge_required` のときだけ入る
-            （specs/039-external-tag-admin/contracts/external-api.md §0）
+
         tagName:
           type: string
           description: >-
@@ -1364,7 +1351,7 @@ components:
           anyOf:
             - $ref: "#/components/schemas/TagKindRef"
             - type: "null"
-          description: タグの種類。null は種類の無いタグ（specs/051-tag-kinds/contracts/external-api.md）
+          description: タグの種類。null は種類の無いタグ
 
     TagKindRef:
       type: object
@@ -1382,7 +1369,7 @@ components:
       type: object
       required: [id, name, tagCount, createdAt]
       additionalProperties: false
-      description: 種類の一覧の 1 件（specs/051-tag-kinds/contracts/external-api.md）
+      description: 種類の一覧の 1 件
       properties:
         id:
           type: integer
@@ -1487,7 +1474,7 @@ components:
       description: |
         タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
         createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
-        （specs/036-tag-admin-scale/data-model.md §0・§2）
+
 
     TagMergeRequest:
       type: object
@@ -2029,7 +2016,7 @@ components:
       type: object
       required: [name]
       additionalProperties: false
-      description: 人物か団体の別名 1 件（specs/047-video-work-info/data-model.md「Fields」）
+      description: 人物か団体の別名 1 件
       properties:
         name:
           type: string
@@ -2051,7 +2038,7 @@ components:
     WorkDateKind:
       type: string
       enum: [release, recorded, published]
-      description: 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+      description: 日付の種類
 
     WorkPersonRole:
       type: string
@@ -2100,7 +2087,7 @@ components:
       required: [code, description, dates, people, organizations, urls, externalIds]
       additionalProperties: false
       description: |
-        動画の作品情報（specs/047-video-work-info/contracts/external-api.md「ExternalVideo changes」）。
+        動画の作品情報。
         画面の API と同じ 7 つのプロパティで、この API では未設定の code・description は null、空の一覧は []
       properties:
         code:
@@ -2159,8 +2146,7 @@ components:
       type: object
       additionalProperties: false
       description: |
-        作品情報の書き込み 1 件。画面の API の WorkInfoInput と同じ形で、項目の規則も同じ
-        （specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」、data-model.md「Fields」）。
+        作品情報の書き込み 1 件。画面の API の WorkInfoInput と同じ形で、項目の規則も同じ。
         どのプロパティも省いてよく null も受け付ける。省いたものと null は解除で、全体を置き換える
       properties:
         code:
@@ -2192,7 +2178,7 @@ components:
       type: object
       required: [id, name, aliases, externalIds, videoCount, createdAt]
       additionalProperties: false
-      description: 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
+      description: 人物 1 件
       properties:
         id:
           type: integer

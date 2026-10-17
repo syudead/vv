@@ -14,11 +14,10 @@ import (
 )
 
 // UpdateVideoTags は複数の動画に名前で指定したタグを付ける・外す・置き換える
-// （POST /api/v1/video-tags、specs/026-external-api/contracts/external-api.md §4）。
+// （POST /api/v1/video-tags、docs/how-to/external-api.md）。
 // 本文の形と件数の上限をここで確かめ、名前の規則と動画の引き当ては 1 つのトランザクションで
-// 行う保存先（TagStore.ApplyVideoTags、research.md R-7）に任せる。internal/app は通さない。
+// 行う保存先（TagStore.ApplyVideoTags）に任せる。internal/app は通さない。
 // tentative が真の add・replace で却下した名前に当たって飛ばした名前は skippedTags に返す
-// （specs/031-tentative-tags/contracts/external-api.md §1）。
 func (e *externalServer) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 	var request videoTagsRequestBody
 	if !e.readJSONBody(w, r, &request) {
@@ -103,8 +102,7 @@ type videoTagsRequestBody struct {
 	Tentative json.RawMessage `json:"tentative"`
 }
 
-// tentative は本文の tentative を返す。省略は偽（specs/031-tentative-tags/contracts/external-api.md
-// §1）。null を含め真偽値でない値は ok = false にし、呼び出し側が 400 invalid_request を返す。
+// tentative は本文の tentative を返す。省略は偽。null を含め真偽値でない値は ok = false にし、呼び出し側が 400 invalid_request を返す。
 func (b videoTagsRequestBody) tentative() (value, ok bool) {
 	if b.Tentative == nil {
 		return false, true

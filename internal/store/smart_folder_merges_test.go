@@ -9,8 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 統合がスマートフォルダの条件を統合先へ書き換える（specs/052-smart-folders/data-model.md「Merges」、
-// research.md R-9）。
+// 統合がスマートフォルダの条件を統合先へ書き換える。
 
 func createRuleFolder(t *testing.T, db *DB, name string, rule domain.SmartRule) domain.SmartFolder {
 	t.Helper()

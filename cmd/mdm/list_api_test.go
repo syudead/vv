@@ -19,8 +19,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 一覧 API の検索・絞り込み・並べ替えを、本物の保存層と経路をつないで確かめる
-// （specs/013-library-search/contracts/list-api.md）。httpapi の単体テストは
+// 一覧 API の検索・絞り込み・並べ替えを、本物の保存層と経路をつないで確かめる。httpapi の単体テストは
 // 保存層を差し替えるので、条件どおりの項目が返ることはここで見る。
 
 type listAPIFixture struct {
@@ -135,7 +134,6 @@ func tagNames(refs []gen.VideoTag) []string {
 
 // タグでの絞り込み（AND）・名前の自然順・missingTagIds・GET /api/library/ids・
 // タグ名での検索を、本物の保存層と経路をつないで確かめる
-// （specs/014-video-tags/contracts/tags-api.md §4・§5）。
 func TestListVideosFiltersByTagWithStore(t *testing.T) {
 	f := newListAPIFixture(t)
 	tenID, _ := f.add(t, "10話.mp4", "10話", 1_000)
@@ -184,7 +182,6 @@ func TestListVideosFiltersByTagWithStore(t *testing.T) {
 }
 
 // フォルダの配下検索でも、題名に語を含まずタグに語を持つ動画が当たる
-// （specs/014-video-tags/data-model.md §7）。
 func TestListFolderVideosSearchesByTagNameWithStore(t *testing.T) {
 	f := newListAPIFixture(t)
 	videoID, _ := f.add(t, "A/x.mp4", "x", 1_000)

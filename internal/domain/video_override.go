@@ -8,8 +8,7 @@ import (
 	"unicode/utf8"
 )
 
-// 動画の表示名と代表サムネイルの位置の上書き（specs/029-video-overrides/data-model.md §2、
-// research.md R-1・R-2・R-10）。上書きは content_key に結ぶ利用者データで、保存層が
+// 動画の表示名と代表サムネイルの位置の上書き。上書きは content_key に結ぶ利用者データで、保存層が
 // 読み出しのたびに Video.Title・FileTitle・DisplayName・ThumbnailPositionMs へ写す。
 
 // DisplayNameMaxLength は表示名の上限（符号位置数）である。置き換える対象のファイル名
@@ -108,7 +107,7 @@ func (VideoOverrideChanged) event() {}
 
 // ErrDurationUnknown は、解析が終わっていないか尺が分からず、代表サムネイルの位置を
 // 確かめられないことを表す。入力ではなく動画の今の状態の問題で、API では conflict（409）
-// になる（specs/029-video-overrides/research.md R-11）。
+// になる。
 var ErrDurationUnknown = errors.New("the video duration is not known yet")
 
 // ErrThumbnailPositionOutOfRange は代表サムネイルの位置が 0 未満か尺以上であることを表す。

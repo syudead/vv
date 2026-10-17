@@ -13,7 +13,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import FolderPage from "./FolderPage";
 
-// フォルダ画面で動画を動画に落とす（specs/050-drag-organize/ui-design.md「Folder screen」）。
+// フォルダ画面で動画を動画に落とす。
 // 選択が無いので 1 枚ずつ持ち上がり、「Make a group」は 2 枚を残して名前の欄を窓で出す。
 
 function video(id: number, title: string): Video {

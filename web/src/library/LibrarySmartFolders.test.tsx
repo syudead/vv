@@ -14,8 +14,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-// ライブラリの追加日と長さの絞り込みと「Save as smart folder」（specs/052-smart-folders/
-// ui-design.md「Added and length」「Save as smart folder」、子 Issue #1179）。
+// ライブラリの追加日と長さの絞り込みと「Save as smart folder」。
 
 function video(id: number): Video {
   return {

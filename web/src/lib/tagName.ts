@@ -16,9 +16,9 @@ function codePointLength(value: string): number {
 
 /**
  * nameReason は、入力のたびに確かめる名前の検証理由を返す。空や空白だけは
- * 打っている間は理由を出さない（ui-design.md「Combobox」名前の検証）。タグの
+ * 打っている間は理由を出さない。タグの
  * 名前を打つすべての入力（ui/TagCommand、管理画面の作成・改名・シノニムの
- * 追加、選択バーのタグの検索）が同じ規則を使うので外へ公開する（ui-design.md「Combobox」末尾）。
+ * 追加、選択バーのタグの検索）が同じ規則を使うので外へ公開する。
  */
 export function nameReason(raw: string): UiText | null {
   if (controlCharPattern.test(raw)) return t.tagName.controlCharacters;

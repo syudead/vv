@@ -11,17 +11,16 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 視聴履歴の一覧と削除（specs/043-watch-history/data-model.md「Store operations」）。書き込みは
+// 視聴履歴の一覧と削除。書き込みは
 // 再生位置と同じ取引で行うので SaveProgress（progress.go）にあり、ここは読みと削除だけを持つ。
-// どの操作もドメインイベントを出さない（research.md R-6）。
+// どの操作もドメインイベントを出さない。
 
 // ListWatchHistory は query を満たす視聴履歴を (played_at desc, id desc) の順に、cursor の次から
 // limit 件返す。cursor が空なら先頭から。読めない cursor は domain.ErrInvalidCursor。条件は
-// ページを切る前に同じ SQL の文で掛けるので、カーソルは絞った並びの中を指す（research.md R-8）。
+// ページを切る前に同じ SQL の文で掛けるので、カーソルは絞った並びの中を指す。
 //
 // 各件の Video は、同じ content_key の動画に audience が開ける所在があるときだけ入る
-// （visibleVideoCondition。集まりの代表の規則ではなく動画ごとの条件なので、代表でないメンバーも
-// その動画を持つ。research.md R-5）。audience は境界が分類した見る人で、ハンドラが渡す。
+// （visibleVideoCondition。集まりの代表の規則ではなく動画ごとの条件なので、代表でないメンバーも その動画を持つ）。audience は境界が分類した見る人で、ハンドラが渡す。
 func (p *PlaybackStore) ListWatchHistory(
 	ctx context.Context, audience domain.Audience, query domain.WatchHistoryQuery, cursor string, limit int,
 ) (domain.WatchHistoryPage, error) {
@@ -95,7 +94,7 @@ func (p *PlaybackStore) ListWatchHistory(
 }
 
 // ListWatchHistoryDays は query の絞り込みと検索を満たす件のある日を、loc の暦の YYYY-MM-DD で
-// 新しい順に返す（research.md R-11）。query.Before は見ない。SQLite は地域を知らないので、合う件の
+// 新しい順に返す。query.Before は見ない。SQLite は地域を知らないので、合う件の
 // played_at だけを読んで Go で日に分ける。日は時刻の順に並ぶので、隣と同じ日を捨てれば重複は残らない。
 func (p *PlaybackStore) ListWatchHistoryDays(
 	ctx context.Context, audience domain.Audience, query domain.WatchHistoryQuery, loc *time.Location,
@@ -129,7 +128,7 @@ func (p *PlaybackStore) ListWatchHistoryDays(
 //
 // 動画（別名 hv）は同じ content_key の、audience が開ける所在を持つ動画で、一覧の各件の Video と
 // 同じ条件である。再生位置（別名 p）は一覧と同じく利用者データの鍵（userKeyExpr）で結ぶので、
-// 集まりのメンバーの件は集まりの共有の位置で分類される（research.md R-9）。
+// 集まりのメンバーの件は集まりの共有の位置で分類される。
 func watchHistoryFilter(audience domain.Audience, query domain.WatchHistoryQuery) (string, []string, []any) {
 	from := ` from watch_history h`
 	watch := watchCondition(query.Filter.WatchFilter())
@@ -194,7 +193,7 @@ func searchKeyTitleLine(alias string) string {
 }
 
 // searchKeyDisplayNameLine は所在（別名 alias）の search_key の 3 行目（表示名の照合形）を返す式
-// である。表示名の無い所在では空文字になる。相対パスの行は含めない（research.md R-10）。
+// である。表示名の無い所在では空文字になる。相対パスの行は含めない。
 func searchKeyDisplayNameLine(alias string) string {
 	rest := `substr(` + alias + `.search_key, instr(` + alias + `.search_key, char(10)) + 1)`
 	return `(case when instr(` + alias + `.search_key, char(10)) > 0 and instr(` + rest + `, char(10)) > 0 ` +
@@ -210,7 +209,7 @@ func whereClause(conditions []string) string {
 }
 
 // RefreshWatchHistoryTitleKeys は title_key が null の行（移行の前に書かれた行）に題名の照合形を
-// 書き、書いた行数を返す（data-model.md「Migration」）。起動時に、移行の後で受け付けより前に
+// 書き、書いた行数を返す。起動時に、移行の後で受け付けより前に
 // 呼ぶ。null でない行は変えない。searchKeyBatchSize 行ずつのトランザクションで書くので、途中で
 // 止まっても次の起動で続きから埋まる。
 func (p *PlaybackStore) RefreshWatchHistoryTitleKeys(ctx context.Context) (int, error) {

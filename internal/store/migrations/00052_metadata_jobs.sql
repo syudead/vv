@@ -1,6 +1,6 @@
 -- +goose Up
 -- 取り込み済みの動画を解析し直し、追加の情報（video_media_info）を埋める仕事
--- （specs/056-media-info/research.md R-5、data-model.md「Migration」）。
+--
 --
 -- 00025 と同じ手順で jobs を作り直し、kind の検査に 'metadata' を足す。SQLite は CHECK を
 -- その場で変えられない。行と試行の履歴はそのまま写す。

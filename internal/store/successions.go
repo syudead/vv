@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 同じパスの中身の引き継ぎ（specs/030-video-versions/data-model.md §5、research.md R-5）。
+// 同じパスの中身の引き継ぎ。
 //
 // UpsertVideo は、同じパスの中身が変わって新しい動画の行を作り、前の動画の行が所在を失って
 // 消えるとき、前の尺が分かっていれば video_successions に後継の候補を記録する。新しい中身の
@@ -45,7 +45,7 @@ func cancelSuccessionsFrom(ctx context.Context, tx *sql.Tx, key string) error {
 }
 
 // releaseContentIndex は、動画の行を消して内容の参照が無くなった鍵の索引の行を、同じ取引で
-// 消す（data-model.md §1）。
+// 消す。
 func releaseContentIndex(ctx context.Context, tx *sql.Tx, released []domain.DeletedVideo) error {
 	if len(released) == 0 {
 		return nil
@@ -133,8 +133,7 @@ func judgeableSuccessions(ctx context.Context, tx *sql.Tx) ([]judgeableSuccessio
 }
 
 // applySuccession は contentKey の判定してよい（ready = 1）記録を読んで消し、尺が合い、前の
-// 中身を参照する動画が無ければ、前の中身の利用者データと集まりの位置を新しい中身へ付け替える
-// （data-model.md §5）。引き継いだとき、確定後に domain.VideoBundleChanged で知らせる動画の
+// 中身を参照する動画が無ければ、前の中身の利用者データと集まりの位置を新しい中身へ付け替える。引き継いだとき、確定後に domain.VideoBundleChanged で知らせる動画の
 // id と、フォルダの索引の作り直しで変わったグループの id を返す（引き継がなければ空）。
 func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, durationMs int64) (succession, error) {
 	if contentKey == "" {
@@ -192,7 +191,7 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 		return succession{}, err
 	}
 	// 「違う動画」の組・集まりから外した組・判定を保留した組は、同じ規則で付け替える
-	// （specs/054-auto-dup/data-model.md「Rules」、specs/055-activity/data-model.md「Rules」）。
+	//
 	for _, table := range []string{"video_version_dismissals", "video_version_unbundles", "video_version_judging_holds"} {
 		if err := moveKeyPairs(ctx, tx, table, oldKey, contentKey); err != nil {
 			return succession{}, err
@@ -203,8 +202,7 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 	if err != nil {
 		return succession{}, err
 	}
-	// 付け替えた集まりと却下で、新しい鍵の候補が同じ集まりや却下の組になりうる（data-model.md §1 の
-	// 不変条件）。
+	// 付け替えた集まりと却下で、新しい鍵の候補が同じ集まりや却下の組になりうる。
 	if err := pruneVersionCandidates(ctx, tx); err != nil {
 		return succession{}, err
 	}
@@ -221,7 +219,7 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 			return succession{}, err
 		}
 		changed = append(changed, ids...)
-		// 見せる動画（data-model.md §4）が変わりうるので、束ねる操作と同じく作り直す。
+		// 見せる動画が変わりうるので、束ねる操作と同じく作り直す。
 		if changedGroups, err = rebuildFolderIndex(ctx, tx); err != nil {
 			return succession{}, err
 		}
@@ -236,7 +234,7 @@ func applySuccession(ctx context.Context, tx *sql.Tx, contentKey string, duratio
 }
 
 // abandonSuccession は引き継がないと決めた記録を消したあと、前の中身がライブラリから外れたなら、その鍵の組の
-// 開いている判定の記録を done/gone で閉じる（specs/055-activity/data-model.md「Rules」）。閉じた記録があれば
+// 開いている判定の記録を done/gone で閉じる。閉じた記録があれば
 // succession の activity が真になる。
 func abandonSuccession(ctx context.Context, tx *sql.Tx) (succession, error) {
 	c := &changes{}
@@ -298,12 +296,12 @@ func moveUserData(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, er
 	if _, err := tx.ExecContext(ctx, `delete from auto_tag_rejections where content_key = ?`, from); err != nil {
 		return nil, fmt.Errorf("cannot move the auto_tag_rejections values: %w", err)
 	}
-	// 視聴履歴は 1 行が視聴 1 回なので、to に既にある行も残す（specs/043-watch-history/data-model.md）。
+	// 視聴履歴は 1 行が視聴 1 回なので、to に既にある行も残す。
 	if _, err := tx.ExecContext(ctx, `update watch_history set content_key = ? where content_key = ?`, to, from); err != nil {
 		return nil, fmt.Errorf("cannot move the watch_history values: %w", err)
 	}
 	// プレイリストとグループの項目は移し、同じプレイリストやグループで重なれば前の位置を残す
-	// （specs/044-playlists/research.md R-2、specs/048-groups/data-model.md「Succession and bundling」）。
+	//
 	return rekeyUserItems(ctx, tx, from, to)
 }
 

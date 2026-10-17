@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 外部連携 API の仮の付与（specs/031-tentative-tags/contracts/external-api.md §1）を、本物の
+// 外部連携 API の仮の付与を、本物の
 // 保存先と Bearer の境界で確かめる。
 
 func tentativeTagsBody(videos []map[string]any, action string, tags []string, tentative any) string {

@@ -1,6 +1,5 @@
 /**
- * computeVisibleTagCount は、カードのタグの行に収まる先頭からのタグの個数を決める
- * （specs/014-video-tags/ui-design.md「Overflow」）。純粋な計算だけをここに置き、
+ * computeVisibleTagCount は、カードのタグの行に収まる先頭からのタグの個数を決める。純粋な計算だけをここに置き、
  * 実際の幅を測る DOM の扱い（ResizeObserver・layout effect）は CardTagRow が持つ。
  *
  * すべてのタグが収まればその個数を返す（「+N」は要らない）。収まらないときは、

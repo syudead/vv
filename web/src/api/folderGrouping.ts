@@ -3,7 +3,7 @@ import { type FolderRef, RequestFailed, request } from "./client";
 import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
 
-// フォルダのまとめ方の例外（specs/017-folder-groups/contracts/folder-groups-api.md §1）。
+// フォルダのまとめ方の例外。
 // フォルダの自動グループをタグに変えるのは groups.ts の tagGroup（POST /api/groups/{id}/tag）である。
 
 export type FolderGrouping = components["schemas"]["FolderGrouping"];
@@ -57,8 +57,7 @@ export async function setFolderGrouping(
 /**
  * groupingFailure は、まとめ方の操作の失敗を利用者に伝える文言と、画面が取り直すべきかを返す。
  * 409 はほかのタブで先に変わったことを表すので、画面の状態を取り直す。
- * `notFoundMessage` は 404 のときの文言である（ui-design.md「Folder grouping menu」は
- * 「このフォルダは見つかりません」）。
+ * `notFoundMessage` は 404 のときの文言である。
  */
 export function groupingFailure(
   failure: unknown,

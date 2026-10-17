@@ -20,8 +20,7 @@ export interface RenameDialogTexts {
 }
 
 /**
- * RenameDialog はプレイリストやグループの名前を変える窓である
- * （specs/044-playlists/ui-design.md「Renaming」、specs/048-groups/ui-design.md「Renaming」）。
+ * RenameDialog はプレイリストやグループの名前を変える窓である。
  * 今の名前を入れて選んだ状態で開く。`normalize` は送る名前（前後を削ったもの）を返し、規則に
  * 合わなければ null を返す。削った名前が今の名前と同じ間は「Save」を押せない。
  *

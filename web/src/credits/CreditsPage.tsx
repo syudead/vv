@@ -62,9 +62,8 @@ import MergeCreditDialog from "./MergeCreditDialog";
 const columnCount = 3;
 
 /**
- * CreditsPage は人物か団体の管理画面である（specs/047-video-work-info/ui-design.md
- * 「People and organizations screens」）。1 つの部品が種類（`kind`）を受けて `/people` と
- * `/organizations` の両方を描く（plan.md の Structure decision）。
+ * CreditsPage は人物か団体の管理画面である。1 つの部品が種類（`kind`）を受けて `/people` と
+ * `/organizations` の両方を描く。
  *
  * タグの管理画面（036）と同じ作法で、一覧はサーバーから 100 件ずつ読み、見えている行だけを
  * 描き、操作の結果は取り直さずに読み込んだ行へ反映する。読み方・行の置き直し・帯の測り方・

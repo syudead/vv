@@ -74,7 +74,6 @@ func TestSeekFramesSpreadAcrossSheets(t *testing.T) {
 }
 
 // 指定した組のコマを、a のコマを左、b のコマを右に並べた 1 コマの 2 倍の幅の JPEG で返す
-// （specs/054-auto-dup/research.md R-2）。
 func TestSeekFramePairsSideBySide(t *testing.T) {
 	const other = "ef56ab78:1234"
 	store := New(t.TempDir())

@@ -7,7 +7,6 @@ import (
 )
 
 // GetVersionJudgingSettings は重複の自動判定の入切を返す。保存前は切である
-// （specs/054-auto-dup/contracts/screen-api.md）。
 func (s *server) GetVersionJudgingSettings(w http.ResponseWriter, r *http.Request) {
 	if s.versionJudging == nil {
 		s.internalError(w, "Duplicate judging settings are not configured.", nil)

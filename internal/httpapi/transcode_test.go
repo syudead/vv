@@ -638,7 +638,7 @@ func videoCodecArg(args string) string {
 }
 
 // 方式の変更は次に始まる要求から効き、配信中の変換は始めた方式のまま続く
-// （親 Issue #370 要件 4、contracts/transcoding-settings-api.md §4）。
+// （親 Issue #370 要件 4）。
 func TestTranscodeUsesEncoderSelectedBeforeRequestStarts(t *testing.T) {
 	env := newLiveEncoderEnv(t)
 
@@ -735,7 +735,7 @@ func argsContain(args string, want ...string) bool {
 }
 
 // 画質付きの要求は映像をエンコードし、短辺を縮めてビットレートに上限を付ける。画質の無い要求は
-// 今までどおりコピーで始まる（specs/027-playback-quality/contracts/transcode-quality-api.md §1）。
+// 今までどおりコピーで始まる。
 func TestTranscodeQualityScalesAndCapsWhileOriginalCopies(t *testing.T) {
 	env := newLiveEncoderEnv(t)
 	env.touch(t, "release")

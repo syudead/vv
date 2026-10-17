@@ -38,7 +38,7 @@ CPU time of a full run.
 E2E does not cover the production Vite build or its embedding in the Go binary:
 `task test-web` builds the SPA, and no test serves that build.
 
-Timer-dependent Vitest tests apply [Time and synchronization](testing.md#time-and-synchronization)
+Timer-dependent Vitest tests apply [Time and synchronization](testing-time.md#clocks-and-state)
 with `vi.useFakeTimers` and `vi.advanceTimersByTimeAsync`, restoring real timers
 in cleanup with `vi.useRealTimers`.
 

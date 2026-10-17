@@ -1,4 +1,4 @@
-// 動画の作品情報の編集画面の経路（specs/047-video-work-info/ui-design.md「Editor」）。
+// 動画の作品情報の編集画面の経路。
 // 画面の読み込み（app/App.tsx）と所有者だけの画面の判定（auth/AuthGate.tsx）が共有する。
 
 /** videoEditPath は動画の編集画面の経路である。 */

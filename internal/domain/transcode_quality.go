@@ -2,7 +2,6 @@ package domain
 
 // TranscodeQuality はライブ変換で縮める画質である。空は「元の画質」で、今までどおり
 // 縮めず、ビットレートの上限も付けない
-// （specs/027-playback-quality/contracts/transcode-quality-api.md）。
 type TranscodeQuality string
 
 const (
@@ -57,7 +56,6 @@ func (q TranscodeQuality) Limits() (TranscodeQualityLimits, bool) {
 
 // Available は、表示の寸法（回転を反映済み）が width×height の動画にこの画質が使えるかを
 // 返す。画質の短辺が動画の短辺より小さいときだけ使え、寸法が無ければ使えない
-// （specs/027-playback-quality/research.md R-3）。
 func (q TranscodeQuality) Available(width, height int) bool {
 	limits, ok := q.Limits()
 	if !ok || width <= 0 || height <= 0 {

@@ -17,8 +17,7 @@ export interface DetailsLinkState {
 }
 
 /**
- * DetailsEntry は情報の行の操作群に置く、作品情報と表示名の編集画面への入口である
- * （specs/047-video-work-info/ui-design.md「Video page: entry」）。router の Link で
+ * DetailsEntry は情報の行の操作群に置く、作品情報と表示名の編集画面への入口である。router の Link で
  * `/videos/:id/edit` を開き、ページの戻り先（`from`・`trail`）を載せる。ページの `Video` は
  * 控えで渡し、編集画面はそれから始める。編集画面から戻ったときはここへフォーカスを置く。
  */

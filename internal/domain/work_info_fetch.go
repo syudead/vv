@@ -9,13 +9,13 @@ import (
 )
 
 // 作品情報プラグインの検索・取得と、取得の結果の反映の値と規則である
-// （specs/049-work-info-plugins/contracts/screen-api.md、data-model.md の Rules、research.md R-8〜R-10・R-13）。
+//
 // 実行は internal/app、反映の書き込みは internal/store（OverrideStore）が行う。
 
 const (
 	// WorkInfoSearchQueryMaxRunes は検索の語と取得の作品 ID の、前後の空白を除いたあとの長さの上限（文字数）である。
 	WorkInfoSearchQueryMaxRunes = 200
-	// WorkInfoFetchLifetime は取得の結果をメモリに持つ時間である（research.md R-8）。
+	// WorkInfoFetchLifetime は取得の結果をメモリに持つ時間である。
 	WorkInfoFetchLifetime = 10 * time.Minute
 )
 
@@ -27,7 +27,7 @@ var (
 	// ErrWorkInfoRunInvalid は検索の語か取得の作品 ID が規則に合わないことを表す。
 	ErrWorkInfoRunInvalid = errors.New("the work-info plugin request is invalid")
 	// ErrWorkInfoFetchStale は取得の結果が期限切れか不明か、取得のあとにプラグインが差し替えられたか、
-	// 承認を取り消されたか、消されたことを表す（research.md R-8）。
+	// 承認を取り消されたか、消されたことを表す。
 	ErrWorkInfoFetchStale = errors.New("the fetched work information is out of date")
 	// ErrWorkInfoApplyInvalid は反映する項目が空か、結果に値の無い項目を選んだことを表す。
 	ErrWorkInfoApplyInvalid = errors.New("the selected fields cannot be applied")
@@ -43,7 +43,7 @@ func (e *WorkInfoSettingsMissingError) Error() string {
 	return "the work-info plugin needs settings: " + strings.Join(e.Keys, ", ")
 }
 
-// EffectiveWorkInfoPluginValue は設定 s について実行が受け取る値を返す（specs/056-plugin-tooling/research.md R-3）。
+// EffectiveWorkInfoPluginValue は設定 s について実行が受け取る値を返す。
 // values に空でない値が保存されていて、s に選択肢が無いか選択肢のどれかならその値、そうでなければ既定値である。
 // stale は保存された値が選択肢の外にあり、使われないことを表す。値が空なら実行はこのキーを受け取らない。
 func EffectiveWorkInfoPluginValue(s WorkInfoPluginSetting, values map[string]string) (value string, stale bool) {
@@ -70,7 +70,7 @@ func MissingWorkInfoPluginSettings(settings []WorkInfoPluginSetting, values map[
 }
 
 // DeclaredWorkInfoPluginValues は宣言 settings のキーごとの実効値（EffectiveWorkInfoPluginValue）のうち、
-// 空でないものを返す。実行の要求にはこれを入れ、宣言に無いキーと他のプラグインの値は入れない（research.md R-13）。
+// 空でないものを返す。実行の要求にはこれを入れ、宣言に無いキーと他のプラグインの値は入れない。
 func DeclaredWorkInfoPluginValues(settings []WorkInfoPluginSetting, values map[string]string) map[string]string {
 	out := make(map[string]string, len(settings))
 	for _, s := range settings {
@@ -83,7 +83,7 @@ func DeclaredWorkInfoPluginValues(settings []WorkInfoPluginSetting, values map[s
 
 // WorkInfoRunSettings は宣言 settings と値 values から、実行の要求の settings（DeclaredWorkInfoPluginValues）を
 // 返す。必須なのに実効値の無いキーがあれば、宣言の順にそれを持つ *WorkInfoSettingsMissingError を返す。
-// サーバーの実行と mdm plugin run が同じ要求を組み立てるために使う（specs/056-plugin-tooling/research.md R-1）。
+// サーバーの実行と mdm plugin run が同じ要求を組み立てるために使う。
 func WorkInfoRunSettings(settings []WorkInfoPluginSetting, values map[string]string) (map[string]string, error) {
 	if missing := MissingWorkInfoPluginSettings(settings, values); len(missing) > 0 {
 		return nil, &WorkInfoSettingsMissingError{Keys: missing}
@@ -92,7 +92,7 @@ func WorkInfoRunSettings(settings []WorkInfoPluginSetting, values map[string]str
 }
 
 // KeptWorkInfoTitle は取得した題名 raw のうち VVMDM が残すものを返す。表示名の規則（NormalizeDisplayName）で
-// 整えた題名で、規則に合わなければ値が無いものとして "" を返す（specs/049-work-info-plugins/contracts/screen-api.md）。
+// 整えた題名で、規則に合わなければ値が無いものとして "" を返す。
 func KeptWorkInfoTitle(raw string) string {
 	title, _, err := NormalizeDisplayName(raw)
 	if err != nil {
@@ -142,7 +142,6 @@ func OrganizationField(role OrganizationRole) WorkInfoField {
 }
 
 // WorkInfoFields は反映できる項目を比較の行の順に並べたものである
-// （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）。
 var WorkInfoFields = func() []WorkInfoField {
 	fields := []WorkInfoField{
 		WorkInfoFieldTitle, WorkInfoFieldTags, WorkInfoFieldCover, WorkInfoFieldCode, WorkInfoFieldDescription,
@@ -169,7 +168,7 @@ type WorkInfoFetchResult struct {
 	// Details は題名とタグ以外の作品の詳細で、OrderFetchedWorkDetails で並べてある。Title と Tags は持たない。
 	Details FetchedWorkInfo
 	// PersonMatches と OrganizationMatches は Details.People と Details.Organizations の各件の、取得の時点の
-	// 照合の答えで、同じ順に並ぶ（specs/052-plugin-work-info-fields/research.md R-3）。
+	// 照合の答えで、同じ順に並ぶ。
 	PersonMatches       []CreditMatch
 	OrganizationMatches []CreditMatch
 	// Cover は取ったカバー画像で、無ければ nil である。
@@ -177,8 +176,7 @@ type WorkInfoFetchResult struct {
 }
 
 // OrderFetchedWorkDetails は取得した作品の詳細を、画面と反映が使う順に並べ直した複製を返す。日付は種類の順、
-// 人物と団体は役割の順で、同じ種類・役割の中は取得した順を保つ
-// （specs/052-plugin-work-info-fields/contracts/screen-api.md）。Title と Tags は持たない。
+// 人物と団体は役割の順で、同じ種類・役割の中は取得した順を保つ。Title と Tags は持たない。
 func OrderFetchedWorkDetails(fetched FetchedWorkInfo) FetchedWorkInfo {
 	out := fetched
 	out.Title, out.Tags = "", nil
@@ -250,7 +248,7 @@ type SkippedTag struct {
 
 // FetchedWorkInfoApply は取得の結果のうち選んだ項目を動画に書く要求である。保存先は 1 つの取引の中で、
 // プラグイン PluginID の行がまだあり、承認済みで、ダイジェストが Digest、世代が Generation のままであることを
-// 読み直してから書く（data-model.md の Rules、research.md R-8）。
+// 読み直してから書く。
 type FetchedWorkInfoApply struct {
 	VideoID  int64
 	PluginID int64

@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// お気に入りとプレイリストの項目をグループの id で名指す（specs/048-groups/research.md R-10、
-// data-model.md「Migration」「Play order」）。
+// お気に入りとプレイリストの項目をグループの id で名指す。
 
 // 受け入れ条件 8: 手で作ったグループをお気に入りにでき、お気に入りの絞り込みに並び、プレイリストの
 // 項目として並び、その再生順（深さ優先）で再生される。解散するとお気に入りとプレイリストの項目が

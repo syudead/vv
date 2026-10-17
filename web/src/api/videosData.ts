@@ -32,7 +32,7 @@ export interface VideosSeed {
 }
 
 /**
- * appendUnique は続きのページから、既に出ている項目を捨てて足す（list-api.md §5）。
+ * appendUnique は続きのページから、既に出ている項目を捨てて足す。
  * 動画の項目は動画の id、グループの項目はグループの id で比べる（itemKey）。
  */
 function appendUnique(current: LibraryItem[], next: LibraryItem[]): LibraryItem[] {
@@ -75,8 +75,7 @@ export interface VideosData {
   /** inconsistent は異なる時点のページを安全に結合できなかったことを表す。 */
   inconsistent: boolean;
   /**
-   * missingTagIds は、直近の要求で `tag` に指定したがもう無かった id である
-   * （specs/014-video-tags/contracts/tags-api.md §5）。folder を渡す（`tag` を
+   * missingTagIds は、直近の要求で `tag` に指定したがもう無かった id である。folder を渡す（`tag` を
    * 送らない）ときは常に空。
    */
   missingTagIds: number[];
@@ -156,8 +155,7 @@ export function videosDataReducer(
       );
       return items === state.items ? state : { ...state, items };
     }
-    // お気に入りは動画そのものの印で、メンバーの付け外しはグループの値を変えない
-    // （specs/035-favorites 要件 4）。グループの項目の付け外しは useVideos が取り直す。
+    // お気に入りは動画そのものの印で、メンバーの付け外しはグループの値を変えない。グループの項目の付け外しは useVideos が取り直す。
     case "favorite": {
       const targets = new Set(action.videoIds);
       const items = mapVideos(
@@ -200,7 +198,7 @@ export function videosDataReducer(
       const isTarget = (item: LibraryItem) =>
         item.kind === "group" && item.group.id === action.groupId;
       if (!state.items.some(isTarget)) return state;
-      // total は次に一覧を読むまでそのままにする（ui-design.md「Refresh and removal」）。
+      // total は次に一覧を読むまでそのままにする。
       return { ...state, items: state.items.filter((item) => !isTarget(item)) };
     }
     case "page": {
@@ -251,13 +249,11 @@ export interface VideosState {
   error: UiText | null;
   /**
    * notFound は folder を渡したときに、そのフォルダの動画の要求が 404 で
-   * 返ったことを表す（検索中にフォルダが無くなった場合、
-   * list-api.md §5「listFolderVideos でフォルダが無いとき」）。
+   * 返ったことを表す（検索中にフォルダが無くなった場合）。
    */
   notFound: boolean;
   /**
-   * missingTagIds は、直近の要求の `tag` のうちもう無かった id である
-   * （specs/014-video-tags/contracts/tags-api.md §5）。画面はこれを受けて、
+   * missingTagIds は、直近の要求の `tag` のうちもう無かった id である。画面はこれを受けて、
    * もう無いことを伝え、タグの一覧を取り直し、URL から取り除く。
    */
   missingTagIds: number[];

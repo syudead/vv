@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/thumbnail-editing.md
-sourceHash: 5dbef2c63673a0f69f52847ba89d94a3dba9a8dba1704e020c56112c4fe81aef
+sourceHash: 29268add9a6e1dff94f59bb7c17cfc4a94e78e7639bd255c7bb40e806f9df20c
 ---
 
 # サムネイル編集のセッション {#thumbnail-editing-sessions}
 
-ComfyUI による動画フレームまたは現在のサムネイルの編集は、[`app.ThumbnailEdits`](../../internal/app/thumbnail_edits.go) にある動画ごとのメモリ上のセッションで、`/api/thumbnail-edits` のルートが動画ページに提供する ([契約](../../specs/045-comfyui-thumbnails/contracts/screen-api.md))。
+ComfyUI による動画フレームまたは現在のサムネイルの編集は、[`app.ThumbnailEdits`](../../internal/app/thumbnail_edits.go) にある動画ごとのメモリ上のセッションで、`/api/thumbnail-edits` のルートが動画ページに提供する。
 
 図は、セッションがやり取りする相手を示す。
 
@@ -22,7 +22,7 @@ flowchart LR
 
 ## セッションはメモリ上にあり、ポーリングで読まれる {#a-session-lives-in-memory-and-is-read-by-polling}
 
-セッションはフレーム、現在の実行、結果の画像をメモリに保持し、実行の進行中はページがそれを毎秒読み、読むたびにプロバイダに実行の状態を問い合わせる ([R-4](../../specs/045-comfyui-thumbnails/research.md#r-4-an-edit-is-an-in-memory-session-per-video-read-by-polling))。実行は開いている 1 つのページに属し、再起動の後に適用されてはならないので、キューのジョブでもドメインイベントでもなく、再起動ですべてのセッションが破棄される。各読み取りはページのハートビートだ。5 分間読まれなかったセッションは、プロバイダでの実行を取り消して終了する。
+セッションはフレーム、現在の実行、結果の画像をメモリに保持し、実行の進行中はページがそれを毎秒読み、読むたびにプロバイダに実行の状態を問い合わせる。実行は開いている 1 つのページに属し、再起動の後に適用されてはならないので、キューのジョブでもドメインイベントでもなく、再起動ですべてのセッションが破棄される。各読み取りはページのハートビートだ。5 分間読まれなかったセッションは、プロバイダでの実行を取り消して終了する。
 
 図は、セッションの状態を示す。
 
@@ -46,7 +46,7 @@ stateDiagram-v2
   succeeded --> [*]: 適用
 ```
 
-破棄、5 分間読まれないこと、同じ動画の新しい編集、再起動は、どの状態のセッションも終了させ、進行中の実行はその前にプロバイダで取り消される。送信から 10 分後に終了状態にない実行は、取り消されて `timed_out` として失敗する ([R-11](../../specs/045-comfyui-thumbnails/research.md#r-11-a-new-session-replaces-the-previous-one-a-run-is-limited-to-10-minutes))。30 秒ごとのバックグラウンドの掃除が、誰も読まないセッションに両方の制限を適用し、各リクエストは自身のセッションにそれらを適用する。新しい編集は、新しいセッションが見えるようになる前に、前のセッションをそのセッションのロックの中で終了させるので、前のセッションで進行中の適用または実行が先に終わり、セッションを取り除くのはセッションの終了だけなので、取り除かれたセッションは `404` を返す。
+破棄、5 分間読まれないこと、同じ動画の新しい編集、再起動は、どの状態のセッションも終了させ、進行中の実行はその前にプロバイダで取り消される。送信から 10 分後に終了状態にない実行は、取り消されて `timed_out` として失敗する。30 秒ごとのバックグラウンドの掃除が、誰も読まないセッションに両方の制限を適用し、各リクエストは自身のセッションにそれらを適用する。新しい編集は、新しいセッションが見えるようになる前に、前のセッションをそのセッションのロックの中で終了させるので、前のセッションで進行中の適用または実行が先に終わり、セッションを取り除くのはセッションの終了だけなので、取り除かれたセッションは `404` を返す。
 
 プロバイダが確認しない取り消しでも実行は `cancelled` と示すが、vv はプロバイダのジョブを保持し、セッションが終了した後も、最長 1 時間、掃除のたびに取り消しを再試行する。その取り消しが確認されるまで、同じ動画の新しい実行は送信されず `unreachable` (`502 provider_failed`) として失敗するので、確認されていないジョブが vv にもう取り消せないジョブに置き換えられることはない。1 つのジョブの再試行は一度に 1 つだけ進行し、新しい実行は、その動画のジョブの再試行があればそれが終わるのを待ってから送信される。遅れて届いた Comfy Cloud の中断は、アカウントの実行中のジョブをすべて止めるからだ。異なるジョブの再試行は並行して進むので、確認されていないジョブが多い掃除でも、かかる時間はプロバイダのタイムアウト 1 回分ほどだ。
 
@@ -59,7 +59,7 @@ stateDiagram-v2
 
 ## 編集の元 {#edit-source}
 
-編集の開始時には `source` を指定する。`frame` はプレーヤーの `positionMs` にあるフレーム、`thumbnail` は現在のサムネイルだ ([R-4](../../specs/046-thumbnail-image-upload/research.md#r-4-an-edit-from-the-current-thumbnail-starts-from-the-stored-source-or-from-the-thumbnails-frame))。`positionMs` のない `frame` は、長さの外の位置と同じく `400 thumbnail_position_out_of_range` を返す。`thumbnail` では、セッションの画像は次のうち最初に存在するものだ。
+編集の開始時には `source` を指定する。`frame` はプレーヤーの `positionMs` にあるフレーム、`thumbnail` は現在のサムネイルだ。`positionMs` のない `frame` は、長さの外の位置と同じく `400 thumbnail_position_out_of_range` を返す。`thumbnail` では、セッションの画像は次のうち最初に存在するものだ。
 
 | 場合 | 画像 | `positionMs` |
 | --- | --- | --- |
@@ -75,29 +75,29 @@ stateDiagram-v2
 
 ## 入力はアップロードの前に検査する {#inputs-are-checked-before-anything-is-uploaded}
 
-マスクはフレームのピクセルサイズの PNG、参照画像は 20 MiB 以下の PNG、JPEG、WebP でなければならず、どちらかを満たさないときはアップロードせずに `400` を返す。どちらも最後までデコードするので、途中で切れたファイルや壊れたファイルはここで失敗し、偽造したヘッダーでデコードに際限なく割り当てをさせられないよう、8192 × 8192 ピクセルを超える画像は読めないものとして扱う。WebP は `golang.org/x/image/webp` でデコードし、これは静止画しか読まないので、アニメーション WebP は拒否される。プロバイダの出力も実行が成功する前に同じ検査を通り、WebP の出力を適用するときは ffmpeg のために PNG に変換する。フレームはサーバーが動画のサイズで切り出し、長辺を 2048 px までに抑える ([R-8](../../specs/045-comfyui-thumbnails/research.md#r-8-the-frame-is-extracted-by-the-server-at-up-to-2048-px)) ので、ページはプロバイダが受け取るのと同じピクセルに描く。プロバイダが拒否したアップロードまたは送信は、失敗の理由を付けて `502 provider_failed` を返し、セッションは同じ理由を `failed` として示す。
+マスクはフレームのピクセルサイズの PNG、参照画像は 20 MiB 以下の PNG、JPEG、WebP でなければならず、どちらかを満たさないときはアップロードせずに `400` を返す。どちらも最後までデコードするので、途中で切れたファイルや壊れたファイルはここで失敗し、偽造したヘッダーでデコードに際限なく割り当てをさせられないよう、8192 × 8192 ピクセルを超える画像は読めないものとして扱う。WebP は `golang.org/x/image/webp` でデコードし、これは静止画しか読まないので、アニメーション WebP は拒否される。プロバイダの出力も実行が成功する前に同じ検査を通り、WebP の出力を適用するときは ffmpeg のために PNG に変換する。フレームはサーバーが動画のサイズで切り出し、長辺を 2048 px までに抑える  ので、ページはプロバイダが受け取るのと同じピクセルに描く。プロバイダが拒否したアップロードまたは送信は、失敗の理由を付けて `502 provider_failed` を返し、セッションは同じ理由を `failed` として示す。
 
 ## 適用は生成のロックを通る {#applying-goes-through-the-generation-lock}
 
-適用は結果を `Ingest.ApplyThumbnailImage` に渡し、これが内容のサムネイル生成のロックの中で結果を収まる大きさに合わせて公開するので、適用、元に戻す操作、位置の上書きのうち最後に確定したものが勝つ ([R-10](../../specs/045-comfyui-thumbnails/research.md#r-10-apply-revert-and-the-position-override-are-ordered-by-the-generation-lock))。セッションは、適用が成功した後と、動画がなくなったか別の内容を持つときの `content_changed` の後に終了し、デコードできない結果ではセッションが残るので、所有者は再実行できる。
+適用は結果を `Ingest.ApplyThumbnailImage` に渡し、これが内容のサムネイル生成のロックの中で結果を収まる大きさに合わせて公開するので、適用、元に戻す操作、位置の上書きのうち最後に確定したものが勝つ。セッションは、適用が成功した後と、動画がなくなったか別の内容を持つときの `content_changed` の後に終了し、デコードできない結果ではセッションが残るので、所有者は再実行できる。
 
-適用は、`thumbnail_state` を `done` にするトランザクションの中で `thumbnail_images` の行を 1 つ書く ([データモデル](../../specs/046-thumbnail-image-upload/data-model.md))。
+適用は、`thumbnail_state` を `done` にするトランザクションの中で `thumbnail_images` の行を 1 つ書く。
 
 | 列 | 内容 |
 | --- | --- |
 | `image` | 動画の縦横比に合わせた 640 px の JPEG。サムネイルのファイルはここから公開する |
-| `source` | 同じ切り抜きを長辺 2048 px 以下にした JPEG で、現在のサムネイルから始める編集に使う ([R-3](../../specs/046-thumbnail-image-upload/research.md#r-3-the-row-keeps-the-applied-images-source-at-up-to-2048-px-and-its-origin))。マイグレーション `00041` より前に書かれた行では null |
-| `origin` | 編集の結果なら `generated`、アップロードした画像なら `uploaded`。所有者の `Video` はこれを `thumbnailImage` として返す ([R-5](../../specs/046-thumbnail-image-upload/research.md#r-5-thumbnailimage-names-the-applied-images-origin-in-place-of-thumbnailgenerated)) |
+| `source` | 同じ切り抜きを長辺 2048 px 以下にした JPEG で、現在のサムネイルから始める編集に使う。マイグレーション `00041` より前に書かれた行では null |
+| `origin` | 編集の結果なら `generated`、アップロードした画像なら `uploaded`。所有者の `Video` はこれを `thumbnailImage` として返す  |
 
 位置の変更と元に戻す操作は行全体を削除する。サムネイルのジョブは `image` を公開し直し、`source` は決して読まない。
 
 ## アップロードした画像 {#uploaded-images}
 
-`POST /api/videos/{id}/thumbnail-image` は、所有者の端末にある画像を、同じ `Ingest.ApplyThumbnailImage` を通して origin `uploaded` でサムネイルにする ([R-1](../../specs/046-thumbnail-image-upload/research.md#r-1-an-uploaded-image-is-applied-within-its-request-through-the-same-apply-as-a-generated-image)、[契約](../../specs/046-thumbnail-image-upload/contracts/screen-api.md#post-apivideosidthumbnail-image))。ComfyUI 接続を必要とせず、セッションも持たない。ルートは本文より前に動画の内容の鍵を読み、本文の `contentVersion`（プレビューが開いたときにページが持っていた、所有者だけが見る `Video` のフィールド）がその内容のものでないときは、適用せずに `409 content_changed` を返す。ルートは `image` パートをメモリに保持し、収まる大きさに合わせた画像を公開するまでディスクに何も書かないので、本文が届く前に切れたリクエストは何も残さない。本文が届いた後は、検査と適用をクライアントから切り離した 5 分を上限とするコンテキストの下で実行するので、ページが離れても、送信し終えたアップロードは中断されない。この 5 分は生成のロックを待つ時間の上限でもある。待っている間にコンテキストが終わった適用は自分の順番を手放して何も書かず、ロックは他のものに対する順序を保つ。
+`POST /api/videos/{id}/thumbnail-image` は、所有者の端末にある画像を、同じ `Ingest.ApplyThumbnailImage` を通して origin `uploaded` でサムネイルにする。ComfyUI 接続を必要とせず、セッションも持たない。ルートは本文より前に動画の内容の鍵を読み、本文の `contentVersion`（プレビューが開いたときにページが持っていた、所有者だけが見る `Video` のフィールド）がその内容のものでないときは、適用せずに `409 content_changed` を返す。ルートは `image` パートをメモリに保持し、収まる大きさに合わせた画像を公開するまでディスクに何も書かないので、本文が届く前に切れたリクエストは何も残さない。本文が届いた後は、検査と適用をクライアントから切り離した 5 分を上限とするコンテキストの下で実行するので、ページが離れても、送信し終えたアップロードは中断されない。この 5 分は生成のロックを待つ時間の上限でもある。待っている間にコンテキストが終わった適用は自分の順番を手放して何も書かず、ロックは他のものに対する順序を保つ。
 
 下のゲートが制限するのはデコードで、メモリに保持する本文ではない。本文を読む前に、ルートは上限 65 MiB の本文 4 つ分にあたるプロセス全体の予算から本文のサイズを取り、応答するまでそれを保持する。サイズは、`Content-Length` が上限以内ならその値、そうでなければ上限だ。予算を使い切っていたリクエストは、本文を読む前に、クライアントのコンテキストの下でそこで待つ。
 
-検査は、編集の画像の検査をピクセルの上限を大きくして使うものだ ([R-2](../../specs/046-thumbnail-image-upload/research.md#r-2-an-upload-is-a-png-jpeg-or-still-webp-of-at-most-64-mib-and-120-megapixels-decoded-one-at-a-time))。
+検査は、編集の画像の検査をピクセルの上限を大きくして使うものだ。
 
 | 上限 | アップロード | 編集の参照画像 |
 | --- | --- | --- |
@@ -140,7 +140,7 @@ sequenceDiagram
 | 採用しなかった案 | 理由 |
 | --- | --- |
 | 元の画像を切り抜きの矩形とともに送り、ffmpeg に合成させる | プレビューと結果が 2 つの別の描画から生じる。また Go と ffmpeg は、ブラウザーが適用する JPEG の EXIF の向きを無視する |
-| 画像を自身のアスペクト比で保存し、各枠にレターボックス表示させる | カードはスクラブのフレームと幅の狭い動画の背景を動画のアスペクト比に配置する ([045 R-7](../../specs/045-comfyui-thumbnails/research.md#r-7-the-generated-image-is-fitted-to-the-videos-frame-before-it-is-stored)) |
+| 画像を自身のアスペクト比で保存し、各枠にレターボックス表示させる | カードはスクラブのフレームと幅の狭い動画の背景を動画のアスペクト比に配置する  |
 | テーマの色の余白 | JPEG には透明度がなく、同じファイルが両方のテーマに使われる |
 | キャンバス上で元の画像の解像度を使う | 一部のブラウザーはキャンバスを 1 億 2000 万ピクセルよりはるかに小さく制限し、保存される source はどのみち最大 2048 px しか保たない |
 

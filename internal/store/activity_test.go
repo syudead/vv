@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// アクティビティの記録の書き込み・一覧・回復（specs/055-activity/data-model.md、research.md R-2・R-4・R-9）。
+// アクティビティの記録の書き込み・一覧・回復。
 
 // activityClock は記録の作成時刻を 1 分ずつ進める。
 type activityClock struct{ now time.Time }

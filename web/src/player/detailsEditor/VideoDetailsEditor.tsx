@@ -35,7 +35,7 @@ function parseId(raw: string | undefined): number {
 
 /**
  * useVideoLoad は編集画面の動画である。入口から開いたときはページの `Video` から始め、
- * URL で開いたときは `GET /api/videos/{id}` を読む（ui-design.md「Editor」の States）。
+ * URL で開いたときは `GET /api/videos/{id}` を読む。
  */
 function useVideoLoad(id: number): {
   load: Load;
@@ -76,7 +76,7 @@ function useVideoLoad(id: number): {
 }
 
 /**
- * useLeaving は編集画面からの離れ方である（ui-design.md「Leaving」）。
+ * useLeaving は編集画面からの離れ方である。
  *
  * - 開いたら同じ URL の履歴の項目を 1 つ足し、ブラウザの Back をそこで受け止める。Back で
  *   下の項目へ戻ったら、下書きが変わっていなければそのまま離れ、変わっていれば確かめる
@@ -193,7 +193,7 @@ function useLeaving(id: number, changed: boolean, saving: boolean) {
   };
 }
 
-/** LoadingPanels は読み込みの間の、欄の名前と入力の形である（ui-design.md「States」）。 */
+/** LoadingPanels は読み込みの間の、欄の名前と入力の形である。 */
 function loadingPanels() {
   const e = t.player.detailsEditor;
   const field = (label: UiText) => (
@@ -227,7 +227,7 @@ function loadingPanels() {
 
 /**
  * VideoDetailsEditor は全画面の編集画面（`/videos/:id/edit`）で、表示名と作品情報のすべてを
- * 1 回の `Save` で直す（specs/047-video-work-info/ui-design.md「Editor」）。AppShell と
+ * 1 回の `Save` で直す。AppShell と
  * プレイヤーの外に置き、所有者だけが開ける（AuthGate の ownerOnlyPath）。
  *
  * 経路の id が変わっても React Router は同じ要素を使い続けるので、id ごとに作り直す。

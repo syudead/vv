@@ -79,7 +79,7 @@ func TestAssembledAuthSetupAndHostPasswordReset(t *testing.T) {
 	if rec := serve(http.MethodGet, "/api/videos", "", cookie); rec.Code != http.StatusOK {
 		t.Fatalf("初回設定の Cookie で一覧: status = %d: %s", rec.Code, rec.Body)
 	}
-	// 初回設定の Cookie で API トークンを発行する（specs/026-external-api/contracts/token-api.md）。
+	// 初回設定の Cookie で API トークンを発行する。
 	created := serve(http.MethodPost, "/api/api-tokens", `{"name":"Claude Code"}`, cookie)
 	if created.Code != http.StatusCreated || !strings.Contains(created.Body.String(), `"secret":"vvt_`) {
 		t.Fatalf("API トークンの発行: status = %d: %s", created.Code, created.Body)

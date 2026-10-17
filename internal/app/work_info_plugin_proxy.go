@@ -16,8 +16,7 @@ type WorkInfoPluginProxyStore interface {
 	SaveWorkInfoPluginProxyURL(ctx context.Context, value string) error
 }
 
-// WorkInfoPluginProxy は所有者が設定画面で選ぶ、プラグインの要求を送るプロキシである
-// （specs/056-plugin-tooling/research.md R-4）。値はサーバーに持たず、読むたびに保存先から読むので、
+// WorkInfoPluginProxy は所有者が設定画面で選ぶ、プラグインの要求を送るプロキシである。値はサーバーに持たず、読むたびに保存先から読むので、
 // 次の実行は保存した値を使い、進行中の実行は始めたときの値で終わる。
 type WorkInfoPluginProxy struct {
 	store WorkInfoPluginProxyStore

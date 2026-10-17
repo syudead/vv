@@ -10,8 +10,7 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { WORK_INFO_PLUGINS_GUIDE_URL } from "./docsLinks";
 import WorkInfoPluginsSection from "./WorkInfoPluginsSection";
 
-// 設定の「Work-info plugins」節のページのテストである（specs/049-work-info-plugins/ui-design.md
-// 「Settings: Work-info plugins section」）。値の決まりは workInfoPluginRows.test.ts が確かめる。
+// 設定の「Work-info plugins」節のページのテストである。値の決まりは workInfoPluginRows.test.ts が確かめる。
 
 function json(body: unknown, status = 200): Response {
   return new Response(status === 204 ? null : JSON.stringify(body), {

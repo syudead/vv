@@ -2,8 +2,7 @@ import type { WatchHistoryFilter } from "../api/history";
 import { normalizeQuery } from "../videoList/listCriteria";
 
 /**
- * 視聴履歴の画面の条件と URL の相互変換（specs/043-watch-history/contracts/screen-api.md
- * 「Client use」、research.md R-12）。ライブラリの listCriteria.ts と同じく、既定値は書かず、
+ * 視聴履歴の画面の条件と URL の相互変換。ライブラリの listCriteria.ts と同じく、既定値は書かず、
  * 読めない値は既定値として扱う。React に依存しない純粋な関数だけを置く。
  */
 

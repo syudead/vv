@@ -9,7 +9,7 @@ import (
 
 // RefreshSearchKeys は search_version が現在の版より小さいタグ名の行の search_key と
 // sort_key、却下した名前の行の sort_key を作り直し、作り直した行の数（両方の表の合計）を
-// 返す（specs/014-video-tags/data-model.md §7、specs/036-tag-admin-scale/data-model.md §0・§2）。
+// 返す。
 // 起動時、LibraryStore.RefreshSearchKeys の隣で呼ぶ。所在の鍵と違ってメディア
 // フォルダに依らないので、folderMu は取らない。
 func (s *TagStore) RefreshSearchKeys(ctx context.Context) (int, error) {

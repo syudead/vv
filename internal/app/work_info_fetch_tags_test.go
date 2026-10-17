@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 反映で選んだタグの名前（specs/056-plugin-tooling/research.md R-7）。
+// 反映で選んだタグの名前。
 
 var titleAndTags = []domain.WorkInfoField{domain.WorkInfoFieldTitle, domain.WorkInfoFieldTags}
 

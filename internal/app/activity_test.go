@@ -54,7 +54,7 @@ func activityChanges(publisher *fakePublisher) int {
 }
 
 // 2つの仕事が重なったら、後に始まった方を示す。それが終わると、動いている残りの
-// 方に戻る。すべて終わると今の処理は無くなる（specs/024-import-progress/research.md R-8）。
+// 方に戻る。すべて終わると今の処理は無くなる。
 func TestScanActivityShowsLatestAndFallsBack(t *testing.T) {
 	root := t.TempDir()
 	scans, publisher := newActivityScans(t, root)

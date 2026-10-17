@@ -26,8 +26,7 @@ interface Playback {
  * `savePlayerProgress` は覚えたうえで保存を送る。画面を離れる・隠れるときは、覚えた
  * 最新の位置を beacon で送る。
  *
- * 視聴履歴のために、今の動画の視聴の識別子（playback id）も持つ
- * （specs/043-watch-history/research.md R-2、R-3）。`markPlayed` が最初の play で作り、
+ * 視聴履歴のために、今の動画の視聴の識別子（playback id）も持つ。`markPlayed` が最初の play で作り、
  * プレイヤーが positioned になったら（すでにそうならすぐ）その識別子を付けた保存を 1 回
  * すぐ送る。以後の保存と beacon は同じ識別子を付ける。最後まで再生したら（ended）、その
  * 保存に識別子を付けたあとで捨て、次の play で新しく作る。動画が変わったときも捨てる。

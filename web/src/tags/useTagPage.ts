@@ -11,9 +11,8 @@ import {
 } from "./tagPageRows";
 
 /**
- * MoreState は一覧の末尾の続きの状態である（specs/036-tag-admin-scale/ui-design.md
- * 「Loading more」）。同時に 1 つだけで、`inconsistent` は続きの応答の `totalAll` が
- * 画面の値と違ったとき（research.md R-11）。
+ * MoreState は一覧の末尾の続きの状態である。同時に 1 つだけで、`inconsistent` は続きの応答の `totalAll` が
+ * 画面の値と違ったとき。
  */
 export type MoreState =
   | { kind: "idle" }
@@ -75,8 +74,7 @@ function fetchTagPage(
 }
 
 /**
- * useTagPage はタグ管理画面の一覧を、条件ごとに `GET /api/tags` から 100 件ずつ読む
- * （specs/036-tag-admin-scale/data-model.md §4、research.md R-1・R-11）。操作の結果は
+ * useTagPage はタグ管理画面の一覧を、条件ごとに `GET /api/tags` から 100 件ずつ読む。操作の結果は
  * 一覧を取り直さずに `applyLocal` で読み込んだ行へ反映する（R-12、`tagPageRows.ts`）。
  * `onFirstPage` は先頭のページを受けて差し替えたあとに呼ぶ。
  */
@@ -99,7 +97,7 @@ export function usePagedRows<R extends ListRow, Q extends ListRowsQuery>(
   const [page, setPage] = useState<PageRows<R, Q> | undefined>(undefined);
   /**
    * loadError は先頭のページの失敗である。一覧を持っていなければ失敗の表示、
-   * 持っていれば帯の中の「Stale list」の箱になる（ui-design.md「Stale list」）。
+   * 持っていれば帯の中の「Stale list」の箱になる。
    */
   const [loadError, setLoadError] = useState<UiText | null>(null);
   /** firstPending は先頭のページを待っているかである。 */
@@ -131,7 +129,7 @@ export function usePagedRows<R extends ListRow, Q extends ListRowsQuery>(
 
   /**
    * generationRef は先頭のページの要求の通し番号である。条件を変えるたびに進め、
-   * 古い条件の応答（先頭のページも続きも）を捨てる（research.md R-11）。
+   * 古い条件の応答（先頭のページも続きも）を捨てる。
    */
   const generationRef = useRef(0);
   /**
@@ -151,7 +149,7 @@ export function usePagedRows<R extends ListRow, Q extends ListRowsQuery>(
    * （先頭のページと続き）を打ち切り、世代を進めて古い応答を捨てる。届くまで前の
    * 行と件数を残し（`Skeleton` に戻さない）、届いたら差し替えて `onFirstPage` を呼ぶ。
    * 失敗したら、一覧を持っていなければ失敗の表示、持っていれば「Stale list」の箱に
-   * する（data-model.md §4「条件」「読み込み失敗」）。
+   * する。
    */
   const reload = useCallback((): Promise<void> => {
     const run = (): Promise<void> => {
@@ -210,7 +208,7 @@ export function usePagedRows<R extends ListRow, Q extends ListRowsQuery>(
    * 続きを読んでいる間・失敗や食い違いを出している間・先頭のページを待つ間・
    * 「Stale list」の間は読まない（同時に 1 つだけ。持っているカーソルが前の条件の
    * ものかもしれない）。応答の `totalAll` が画面の値と違えば、行は残して続きを止め、
-   * 「一覧が変わった」を出す（research.md R-11）。
+   * 「一覧が変わった」を出す。
    */
   const loadMore = useCallback(() => {
     const run = () => {

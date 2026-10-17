@@ -18,7 +18,7 @@ function issueLocation(issue: ScanIssue): string {
   return t.shell.scan.location(parts);
 }
 
-/** issueWords は行の影響と理由、ほかの種類の影響である（ui-design.md「Words」）。 */
+/** issueWords は行の影響と理由、ほかの種類の影響である。 */
 export function issueWords(issue: ScanIssue): {
   impact: UiText;
   impactAndReason: UiText;
@@ -95,8 +95,7 @@ function IssueRow({ issue }: { issue: ScanIssue }) {
 }
 
 /**
- * ScanIssueList は設定の「Scan status」の問題の一覧である（specs/024-import-progress/ui-design.md
- * 「Issue List」）。高さに上限のある縦スクロールの領域に置き、何件あっても下の section を
+ * ScanIssueList は設定の「Scan status」の問題の一覧である。高さに上限のある縦スクロールの領域に置き、何件あっても下の section を
  * 押し流さない。
  */
 export default function ScanIssueList({
@@ -128,7 +127,7 @@ export default function ScanIssueList({
           className="text-xs text-muted-foreground"
         />
       </div>
-      {/* 読み上げる節目は完了・一部失敗・失敗の3つだけにする（ui-design.md「Accessibility」）。 */}
+      {/* 読み上げる節目は完了・一部失敗・失敗の3つだけにする。 */}
       {list.error !== null && (
         <p className="text-warning">{text.loadFailed(list.error)}</p>
       )}

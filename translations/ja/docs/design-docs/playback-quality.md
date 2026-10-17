@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/playback-quality.md
-sourceHash: 9b36920a7b94185a69f29cc965e60a0dd90d140f21485e1c69af862c87ce346e
+sourceHash: 45922811ab1601e3b615af09192834df52ce2884f6752f1bb3978a105853fcb0
 ---
 
 # 再生画質 {#playback-quality}
 
-遅い回線の視聴者は小さい画質を選び、ライブ変換 (`GET /api/videos/{id}/transcode.mp4`) は動画を縮小してビットレートに上限を設ける。プレーヤーはその場で画質を切り替え、再生が止まると警告する ([`internal/domain/transcode_quality.go`](../../internal/domain/transcode_quality.go))。背景: [specs/027-playback-quality/](../../specs/027-playback-quality/plan.md) (親 Issue #521)。ライブ変換の開始は [live-transcode-seek.md](live-transcode-seek.md) に、エンコーダーの選択は [hardware-encoding.md](hardware-encoding.md) にある。
+遅い回線の視聴者は小さい画質を選び、ライブ変換 (`GET /api/videos/{id}/transcode.mp4`) は動画を縮小してビットレートに上限を設ける。プレーヤーはその場で画質を切り替え、再生が止まると警告する ([`internal/domain/transcode_quality.go`](../../internal/domain/transcode_quality.go))。ライブ変換の開始は [live-transcode-seek.md](live-transcode-seek.md) に、エンコーダーの選択は [hardware-encoding.md](hardware-encoding.md) にある。
 
 ブラウザーが画質を記憶し、プレーヤーがそれを各変換 URL に入れ、サーバーはその画質の上限に合わせてエンコードする。
 
@@ -48,7 +48,7 @@ flowchart LR
 
 短辺で決めるので、縦長の 1080×1920 は `480p` で 480×854 になり、横長と同じ重さになる。長辺が枠を超える動画だけが小さくなる。1200×12000 は `1080p`、`720p`、`480p` で 384×3840 に、`360p` で 360×3600 になる。
 
-Go のテストは画面全体のノイズを `480p` で変換し、短辺が 480 で、平均映像ビットレートが 1.2 × 1200 kbps 以下であることを求める。CI はハードウェアエンコーダーを確認できない。ハードウェアエンコーダーは [quickstart.md](../../specs/027-playback-quality/quickstart.md) に沿って実機で確認する。
+Go のテストは画面全体のノイズを `480p` で変換し、短辺が 480 で、平均映像ビットレートが 1.2 × 1200 kbps 以下であることを求める。CI はハードウェアエンコーダーを確認できない。選んだエンコーダーを使える機械で各画質の動画を再生し、バッファーの外へシークして、プレーヤーを作り直さずに選んだ画質で映像が再開することを確認する。
 
 | 採らなかった案 | 理由 |
 | --- | --- |
@@ -59,7 +59,7 @@ Go のテストは画面全体のノイズを `480p` で変換し、短辺が 48
 
 ## API {#api}
 
-変換ルートは省略可能な `quality` (`1080p`、`720p`、`480p`、`360p`) を受け取り、サーバーは各リクエストだけから画質を決める ([契約、`GET /api/videos/{id}/transcode.mp4` の `quality`](../../specs/027-playback-quality/contracts/transcode-quality-api.md#quality-on-get-apivideosidtranscodemp4))。
+変換ルートは省略可能な `quality` (`1080p`、`720p`、`480p`、`360p`) を受け取り、サーバーは各リクエストだけから画質を決める。
 
 視聴者は再生中に画質を切り替える。サーバー側の記憶や画質ごとのルートでは、シークや再開のリクエストごとにどの画質が対応するかを追跡しなければならない。
 
@@ -106,7 +106,7 @@ flowchart LR
 | 選べない記憶した画質 | 元の画質で再生する。記憶した値は次のより大きい動画のために残す |
 | 元の画質以外 | 直接再生できる動画でも、再開位置から変換する |
 | バッファー外へのシーク、ネットワークの再読み込み | 同じ画質で組み立て直し、画質なしにはしない |
-| 変換の表示 | `Converting to 480p` と戻し方を示す ([ui-design.md](../../specs/027-playback-quality/ui-design.md#control-bar-transcode-indicator))。画質名は翻訳しない |
+| 変換の表示 | `Converting to 480p` と戻し方を示す。画質名は翻訳しない |
 
 | 採らなかった案 | 理由 |
 | --- | --- |
@@ -145,7 +145,7 @@ flowchart LR
 | 採らなかった案 | 理由 |
 | --- | --- |
 | プレーヤーを作り直す | ポスターに戻り、コントロールバーを隠し、全画面の状態を組み立て直す |
-| React のポップオーバーメニュー | 速度メニューの見た目、開き方、キーボード操作を作り直して同期させ続ける必要がある (research.md R-4) |
+| React のポップオーバーメニュー | 速度メニューの見た目、開き方、キーボード操作を作り直して同期させ続ける必要がある |
 
 ## 停滞の警告 {#stall-warning}
 

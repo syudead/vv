@@ -3,8 +3,8 @@
 With an API token, an external tool such as a scraper reads the video list,
 starts scans, and sets tags, display names, cover thumbnails and work
 information through
-`/api/v1` or the MCP server at `/mcp`. Reasons behind the decisions are in
-[specs/026-external-api/research.md](../../specs/026-external-api/research.md).
+`/api/v1` or the MCP server at `/mcp`. Authentication and visibility follow
+[the authentication design](../design-docs/authentication.md).
 
 External tools use only `/api/v1` and `/mcp`; the screens' `/api/*` changes
 without notice.
@@ -241,8 +241,7 @@ flowchart LR
 ### List tags
 
 `GET /api/v1/tags` lists tags with the search, filters, sort and pages of the
-tag admin screen
-([specs/039-external-tag-admin/contracts/external-api.md, `GET /api/v1/tags`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tags)).
+tag admin screen.
 
 ```sh
 curl -H "Authorization: Bearer $TOKEN" \
@@ -275,8 +274,7 @@ curl -H "Authorization: Bearer $TOKEN" \
 ### Merge tags
 
 `POST /api/v1/tags/merge` merges source tags into a target tag in one
-transaction
-([contract, `POST /api/v1/tags/merge`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsmerge)).
+transaction.
 
 ```json
 { "targetId": 12, "sourceIds": [31, 45] }
@@ -295,8 +293,7 @@ transaction
 ### Rename a tag
 
 `POST /api/v1/tags/rename` with `{ "id": 12, "name": "自撮り" }` changes the
-tag's original name and returns the tag
-([contract, `POST /api/v1/tags/rename`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsrename)).
+tag's original name and returns the tag.
 
 - A tentative tag becomes confirmed when its name changes. The same name as now
   changes nothing.
@@ -310,8 +307,7 @@ tag's original name and returns the tag
 ### Edit synonyms
 
 `POST /api/v1/tags/synonyms` adds a name to a tag's synonyms or removes one,
-and returns the tag after the change
-([contract, `POST /api/v1/tags/synonyms`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagssynonyms)).
+and returns the tag after the change.
 
 ```json
 { "id": 12, "action": "add", "name": "自己撮影" }
@@ -334,8 +330,7 @@ and returns the tag after the change
 
 ### Confirm, reject and delete tags
 
-`POST /api/v1/tags/batch` confirms, rejects or deletes tags in one transaction
-([contract, `POST /api/v1/tags/batch`](../../specs/039-external-tag-admin/contracts/external-api.md#post-apiv1tagsbatch)).
+`POST /api/v1/tags/batch` confirms, rejects or deletes tags in one transaction.
 There is no single-tag operation; for one tag send `"ids": [id]`.
 
 ```json
@@ -365,23 +360,20 @@ A tentative attach skips a rejected name
 ([Add tags as tentative tags](#add-tags-as-tentative-tags)).
 
 - `GET /api/v1/tags/rejected-names` returns `{ items, total, nextCursor? }` in
-  natural name order
-  ([contract, `GET /api/v1/tags/rejected-names`](../../specs/039-external-tag-admin/contracts/external-api.md#get-apiv1tagsrejected-names)).
+  natural name order.
   `limit` is 1 to 200 and defaults to 100; pass `nextCursor` back as `cursor`
   until it is absent. `total` counts every rejected name. `limit` out of range
   returns `400` `invalid_request`, and an unreadable cursor adds
   `reason: invalid_cursor`.
 - `DELETE /api/v1/tags/rejected-names?name=…` removes one name, so the next
-  tentative attach of that name creates a tag again
-  ([contract, `DELETE /api/v1/tags/rejected-names?name=…`](../../specs/039-external-tag-admin/contracts/external-api.md#delete-apiv1tagsrejected-namesname)).
+  tentative attach of that name creates a tag again.
   The response is `{ name, removed }`: the normalized name that was matched,
   and `false` when the name was not in the list and nothing changed. A missing
   `name` returns `400` `invalid_request`.
 
 ### Tag kinds
 
-A kind, such as `Genre` or `Work`, groups tags; a tag has at most one kind
-([contract](../../specs/051-tag-kinds/contracts/external-api.md)). Kinds are
+A kind, such as `Genre` or `Work`, groups tags; a tag has at most one kind. Kinds are
 named by the `id` in the body, as people are.
 
 | Operation | Request | Response |
@@ -537,7 +529,7 @@ item only regenerates it at the same position.
 A video's work information is its code, description, dates, people,
 organizations, URLs and external IDs. People and organizations are entities of
 their own, which the video references by id. The source of truth is
-[specs/047-video-work-info/contracts/external-api.md](../../specs/047-video-work-info/contracts/external-api.md).
+[api/external-v1.yaml](../../api/external-v1.yaml).
 
 ### Write videos
 
@@ -569,7 +561,7 @@ videos.
   empty list is `[]`.
 
 The fields follow these rules; the full list is in
-[data-model.md, Fields](../../specs/047-video-work-info/data-model.md#fields).
+[api/external-v1.yaml](../../api/external-v1.yaml).
 
 | Field | Rule |
 | --- | --- |

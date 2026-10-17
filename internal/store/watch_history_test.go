@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 視聴履歴の記録（specs/043-watch-history/data-model.md）。
+// 視聴履歴の記録。
 
 const (
 	testPlaybackA = "0f8fad5b-d9cb-469f-a165-70867728950e"

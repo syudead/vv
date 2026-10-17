@@ -7,8 +7,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 一覧の項目にも集まりの要約（Video.Versions）を載せる（specs/054-auto-dup/research.md R-9、
-// contracts/screen-api.md「Video delta」）。
+// 一覧の項目にも集まりの要約（Video.Versions）を載せる。
 
 // checkVersionsRefs は videos のうち representative に本数 count・代表 representative の要約があり、
 // ほかの動画には要約が無いことを確かめる。

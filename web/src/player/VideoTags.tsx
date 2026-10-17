@@ -35,8 +35,7 @@ import TentativeMark from "../ui/TentativeMark";
 import { useToast } from "../ui/Toast";
 
 /**
- * VideoTags は再生画面の題名の下のタグの並びである（要件 1・2、
- * ui-design.md「Video page tags」）。付け外しはサーバーの応答を受けてから
+ * VideoTags は再生画面の題名の下のタグの並びである（要件 1・2）。付け外しはサーバーの応答を受けてから
  * 反映するので、共有のタグの付け外しの通知（videoTagsEvents）を購読して
  * 一覧を直す。
  */
@@ -51,8 +50,7 @@ export default function VideoTags({
   /** タグがもう無い（tag_not_found）ときに、この動画を取り直すために呼ぶ。 */
   onStaleVideo: () => void;
   /**
-   * 付け外しが成功したときに呼ぶ。更新日時が進むので、呼び出し側が動画を取り直す
-   * （specs/033-video-dates/ui-design.md「Refresh after edits」）。
+   * 付け外しが成功したときに呼ぶ。更新日時が進むので、呼び出し側が動画を取り直す。
    */
   onChanged?: () => void;
 }) {
@@ -175,7 +173,7 @@ export default function VideoTags({
     const pending = pendingFocusRef.current;
     if (pending === null) return;
     // 外すのは手で付けた分だけで、フォルダ名からも付いているチップは残る
-    // （017 の contracts/folder-groups-api.md §4）。待つのは手で付けた分が
+    // 。待つのは手で付けた分が
     // 外れるまでで、チップが消えるまでではない。
     if (
       pending.removedId !== undefined &&
@@ -196,8 +194,7 @@ export default function VideoTags({
   }, [tags, removingIds]);
 
   // 候補から除くのは手で付けたタグだけ。フォルダ名からだけ付いているタグは
-  // 候補に出し、確定すると手でも付いて面のある形に変わる（017 の ui-design.md
-  // 「Folder-derived tag chip」）。
+  // 候補に出し、確定すると手でも付いて面のある形に変わる（「Folder-derived tag chip」）。
   const attachedIds = new Set(tags.filter((tag) => tag.manual).map((tag) => tag.id));
   const { options, exactOption } = buildOptions(allTags ?? [], attachedIds, inputValue);
 
@@ -267,8 +264,7 @@ export default function VideoTags({
 
   function removeTag(tag: TagRef, index: number) {
     // 移す先は × を持つ（手で付けた）チップだけ。フォルダ名からだけ付いている
-    // 破線のチップは × を持たないので飛ばす（017 の ui-design.md
-    // 「Folder-derived tag chip」、014 と同じ次 → 前 → 入力の規則）。
+    // 破線のチップは × を持たないので飛ばす（「Folder-derived tag chip」、014 と同じ次 → 前 → 入力の規則）。
     const next =
       tags.slice(index + 1).find((candidate) => candidate.manual) ??
       tags
@@ -320,8 +316,7 @@ export default function VideoTags({
             {isFolderOnly(tag) ? (
               // フォルダ名からだけ付いているタグは動画ごとには外せないので、×
               // を出さず、破線の枠の Badge（outline）と Folder の目印で出す。大きさと
-              // 文字の色は面のあるチップと同じ（017 の ui-design.md
-              // 「Folder-derived tag chip」「Interaction states」）。
+              // 文字の色は面のあるチップと同じ（「Folder-derived tag chip」「Interaction states」）。
               <Badge
                 asChild
                 variant="outline"
@@ -350,8 +345,7 @@ export default function VideoTags({
                 className="max-w-full justify-start gap-0 pr-0 font-normal"
               >
                 {/* 仮のタグは名前の後ろに目印を置く。名前が省略されても目印は
-                    残るよう、名前だけを truncate にする（031 の ui-design.md
-                    「Tentative mark」「Video page」）。 */}
+                    残るよう、名前だけを truncate にする（「Video page」）。 */}
                 <Link
                   to={`/?tag=${String(tag.id)}`}
                   aria-label={
@@ -447,7 +441,7 @@ export default function VideoTags({
             busy={submitting}
             inputRef={inputRef}
             // 一覧が閉じているときの Esc は、入力を空にする
-            // （ui-design.md「Add input」）。
+            //
             onEscape={() => setInputValue("")}
           />
         </li>

@@ -1264,7 +1264,7 @@ describe("VideoPage", () => {
       ).toBe(false);
     });
 
-    describe("グループ操作（ui-design.md「Video page」）", () => {
+    describe("グループ操作", () => {
       const single = (value: Video): Video => ({ ...value, group: undefined });
       const menuTexts = async () =>
         within(await screen.findByRole("menu"))
@@ -1487,7 +1487,7 @@ describe("VideoPage", () => {
       });
     });
 
-    describe("開いたグループ（?group。research.md R-9）", () => {
+    describe("開いたグループ（?group）", () => {
       const urls = () => fetchMock.mock.calls.map(([input]) => String(input));
 
       it("?group=1 なら読み取りが group=1 を運び、予告がそのグループの次の動画を名指し、進んでも ?group=1 が残る", async () => {
@@ -1539,7 +1539,7 @@ describe("VideoPage", () => {
       });
     });
 
-    describe("開いたスマートフォルダ（?smartFolder。052 ui-design.md「Video page」）", () => {
+    describe("開いたスマートフォルダ（?smartFolder）", () => {
       const urls = () => fetchMock.mock.calls.map(([input]) => String(input));
       const inFolder = (value: Video, position: number): Video => ({
         ...listed(value),
@@ -2085,7 +2085,7 @@ describe("VideoPage", () => {
       expect(screen.queryByText("Couldn't play this video")).toBeNull();
     });
   });
-  // 公開の切り替え（specs/016-single-account-auth/ui-design.md「Visibility toggle」、issue 305）。
+  // 公開の切り替え。
   describe("公開の切り替え", () => {
     /** visibility は PUT /api/video-visibility の応答を1つずつ返す。 */
     function holdVisibility() {
@@ -2205,7 +2205,7 @@ describe("VideoPage", () => {
     });
   });
 
-  describe("お気に入り（specs/035-favorites/ui-design.md「Video page」）", () => {
+  describe("お気に入り", () => {
     const owned: Video = { ...video, favorite: false };
 
     /** holdFavorites は PUT /api/favorites の応答を 1 つずつ返す。 */
@@ -2508,7 +2508,7 @@ describe("VideoPage", () => {
     });
   });
 
-  describe("プレイリストに足す（specs/044-playlists/ui-design.md「Add to playlist」）", () => {
+  describe("プレイリストに足す", () => {
     const owned: Video = { ...video, favorite: false };
 
     it("お気に入りの直後、撮るボタンの前に置き、選ぶとこの動画の id を送る", async () => {
@@ -2558,10 +2558,10 @@ describe("VideoPage", () => {
       const add = buttons[0]!;
       const favorite = screen.getByRole("button", { name: "Favorite" });
       expect(favorite.nextElementSibling).toBe(add);
-      // 「Add to group」が直後に入る（specs/048-groups/ui-design.md「Video page」）。
+      // 「Add to group」が直後に入る。
       const addToGroup = screen.getByRole("button", { name: /to a group$/ });
       expect(add.nextElementSibling).toBe(addToGroup);
-      // その後に作品情報の編集の入口（specs/047-video-work-info/ui-design.md「Video page: entry」）。
+      // その後に作品情報の編集の入口。
       const details = screen.getByRole("link", { name: "Edit details" });
       expect(addToGroup.nextElementSibling).toBe(details);
       expect(details.nextElementSibling).toBe(
@@ -2587,7 +2587,7 @@ describe("VideoPage", () => {
     });
   });
 
-  describe("表示名（specs/029-video-overrides/ui-design.md「Title editing」）", () => {
+  describe("表示名", () => {
     const fileTitle = "テスト動画";
     const named: Video = {
       ...video,
@@ -2664,7 +2664,7 @@ describe("VideoPage", () => {
     });
   });
 
-  describe("代表サムネイル（specs/029-video-overrides/ui-design.md「Thumbnail fact」）", () => {
+  describe("代表サムネイル", () => {
     const captureName = "Use current frame as thumbnail";
     const clearName = "Use automatic thumbnail";
 
@@ -2797,7 +2797,7 @@ describe("VideoPage", () => {
     });
   });
 
-  describe("更新日時（specs/033-video-dates/ui-design.md「Refresh after edits」）", () => {
+  describe("更新日時", () => {
     // 日時はブラウザのタイムゾーンで表すので、その日の正午を渡して日付が変わらないようにする。
     const before = new Date(2026, 8, 1, 12, 0).toISOString();
     const after = new Date(2026, 8, 28, 12, 0).toISOString();
@@ -2983,7 +2983,7 @@ describe("VideoPage", () => {
     });
   });
 
-  describe("バージョン（specs/030-video-versions/ui-design.md「Video page」）", () => {
+  describe("バージョン", () => {
     const tagX = {
       id: 1,
       name: "X",
@@ -3231,7 +3231,7 @@ describe("VideoPage", () => {
 
     it("今の動画を外すと閉じ、応答の動画で差し替えて自分のタグと作品情報に戻す（受け入れ条件 9）", async () => {
       // 束の作品情報（BUNDLE）は、外すと B 固有の作品情報（OWN）に戻る。外した応答は
-      // workInfo を載せないので、取り直した動画で OWN を出す（specs/047-video-work-info）。
+      // workInfo を載せないので、取り直した動画で OWN を出す。
       const coded = (code: string) => ({
         code,
         dates: [],

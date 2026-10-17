@@ -10,11 +10,10 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// お気に入り（specs/035-favorites/data-model.md §1〜§4、research.md R-1）。動画のお気に入りは
+// お気に入り。動画のお気に入りは
 // 利用者データの鍵（userKeyExpr）に結ぶ video_favorites の行、グループのお気に入りはグループの
-// id に結ぶ group_favorites の行（specs/048-groups/research.md R-10）、スマートフォルダのお気に入りは
-// フォルダの id に結ぶ smart_folder_favorites の行（specs/052-smart-folders/data-model.md
-// 「Migration」）の有無で表す。どれも作り直せない利用者データで、生成物の片付け・フォルダの索引の
+// id に結ぶ group_favorites の行、スマートフォルダのお気に入りは
+// フォルダの id に結ぶ smart_folder_favorites の行の有無で表す。どれも作り直せない利用者データで、生成物の片付け・フォルダの索引の
 // 作り直し・メディアフォルダの削除は触れない。group_favorites の行はグループの解散で、
 // smart_folder_favorites の行はフォルダの削除で、外部キーの on delete cascade により消える。
 
@@ -27,7 +26,7 @@ var favoriteColumn = `exists (select 1 from video_favorites fav where fav.conten
 var favoriteNow = time.Now
 
 // SetFavorites は change の動画・グループ・スマートフォルダのお気に入りを change.Favorite に
-// そろえ、反映した数を返す（data-model.md §4）。
+// そろえ、反映した数を返す。
 //
 // 動画の id は利用者データの鍵へ引き直し（userKeysForVideoIDs）、その鍵に書く。Videos は鍵の数で
 // なく、鍵を引けた異なる id の数である。グループとスマートフォルダは今あるもの（existingIDs）だけを
@@ -35,7 +34,7 @@ var favoriteNow = time.Now
 // ものは数え、日時は変えない。
 //
 // favorited_at は Unix ミリ秒で、取引の中で max(今の時刻, 3 表の最大値 + 1) を 1 度だけ求め、
-// この取引の対象すべてに使う。動画の更新日時（video_edits）は進めない（research.md R-8）。
+// この取引の対象すべてに使う。動画の更新日時（video_edits）は進めない。
 // 全体を 1 つの取引で行い、途中で失敗したら何も残さない。確定後に domain.SmartFoldersChanged だけを発行する。
 func (s *FavoriteStore) SetFavorites(ctx context.Context, change domain.FavoriteChange) (domain.FavoriteApplied, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)

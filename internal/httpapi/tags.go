@@ -11,13 +11,13 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// タグの管理API（specs/014-video-tags/contracts/tags-api.md §1〜§3）。
+// タグの管理API。
 //
 // internal/app は通さない。どの操作も
 // internal/store.TagStore の1つのトランザクションで済み、httpapi は要求の
 // 解釈と契約の形への変換だけを持つ。
 
-// ListTags はタグの一覧を返す（GET /api/tags、specs/036-tag-admin-scale/contracts/screen-api.md §5）。
+// ListTags はタグの一覧を返す（GET /api/tags、docs/design-docs/catalog-organization.md）。
 // limit を省けば条件に合う全件を返し、nextCursor は入らない（候補・絞り込みの確かめの経路）。
 func (s *server) ListTags(w http.ResponseWriter, r *http.Request, params gen.ListTagsParams) {
 	query, ok := s.parseTagListQuery(w, params)
@@ -73,8 +73,7 @@ func (s *server) parseTagListQuery(w http.ResponseWriter, params gen.ListTagsPar
 	return query, true
 }
 
-// parseTagKindFilter は GET /api/tags の kind（正の整数か none）を domain.TagKindFilter にする
-// （specs/051-tag-kinds/contracts/screen-api.md）。どちらでもなければ false を返す。
+// parseTagKindFilter は GET /api/tags の kind（正の整数か none）を domain.TagKindFilter にする。どちらでもなければ false を返す。
 func parseTagKindFilter(raw string) (domain.TagKindFilter, bool) {
 	if raw == "none" {
 		return domain.TagKindFilter{None: true}, true
@@ -128,7 +127,7 @@ const (
 
 // buildTagListQuery はタグの一覧のパラメータを domain.TagListQuery にする。画面の
 // GET /api/tags と外部連携 API の GET /api/v1/tags が同じ規則で使い、誤りの書き方だけを
-// それぞれが持つ（specs/039-external-tag-admin/contracts/external-api.md §1）。sort の省略は
+// それぞれが持つ。sort の省略は
 // 名前の順、limit の省略は全件で、そのときカーソルは無視する。
 func buildTagListQuery(q *string, tentative, unused *bool, sort, cursor *string, limit *int) (domain.TagListQuery, tagListProblem) {
 	query := domain.TagListQuery{
@@ -219,7 +218,7 @@ func (s *server) MergeTag(w http.ResponseWriter, r *http.Request, id gen.TagId) 
 	}
 	// store.MergeTags は統合元に混じった統合先を黙って飛ばす。API はそれより先に
 	// 400 invalid_request にする — 統合は違うタグを 1 つにする操作であり、統合先を
-	// 統合元に送るのは要求の誤りだからである（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
+	// 統合元に送るのは要求の誤りだからである。
 	if slices.Contains(body.SourceIds, id) {
 		s.invalidRequestReason(w, reasonMergeSameTag, "The source and target of a merge must be different tags.")
 		return
@@ -282,7 +281,7 @@ func (s *server) RemoveTagSynonym(w http.ResponseWriter, r *http.Request, id gen
 }
 
 // ConfirmTag は仮のタグを確定する（POST /api/tags/{id}/confirm、
-// specs/031-tentative-tags/contracts/screen-api.md §2）。既に確定したタグでも
+// docs/design-docs/catalog-organization.md）。既に確定したタグでも
 // 何も変えずに今の状態を返す。
 func (s *server) ConfirmTag(w http.ResponseWriter, r *http.Request, id gen.TagId) {
 	if s.tags == nil {
@@ -299,7 +298,7 @@ func (s *server) ConfirmTag(w http.ResponseWriter, r *http.Request, id gen.TagId
 }
 
 // RejectTag は仮のタグを却下する（POST /api/tags/{id}/reject、
-// specs/031-tentative-tags/contracts/screen-api.md §2）。確定したタグは
+// docs/design-docs/catalog-organization.md）。確定したタグは
 // 409 tag_not_tentative で何も変えない。却下した名前は応答に載せず、画面は
 // 却下した名前の一覧を取り直す。
 func (s *server) RejectTag(w http.ResponseWriter, r *http.Request, id gen.TagId) {
@@ -316,7 +315,7 @@ func (s *server) RejectTag(w http.ResponseWriter, r *http.Request, id gen.TagId)
 }
 
 // BatchTags は複数のタグをまとめて確定・却下・削除し、種類を付け外しする（POST /api/tags/batch、
-// specs/036-tag-admin-scale/contracts/screen-api.md §1、specs/051-tag-kinds/contracts/screen-api.md）。
+// docs/design-docs/catalog-organization.md、docs/design-docs/catalog-organization.md）。
 // 働かない種類・無いタグは何も変えずに数えて返し、残りを 1 つの取引で処理する。1 件の経路
 // （confirm・reject・DELETE）は変えない。
 func (s *server) BatchTags(w http.ResponseWriter, r *http.Request) {
@@ -365,7 +364,7 @@ func (s *server) tagBatchRequest(w http.ResponseWriter, body gen.TagBatchRequest
 }
 
 // tagBatchRequestOf は POST /api/tags/batch と POST /api/v1/tags/batch の action と kindId を
-// domain.TagBatchRequest にする（specs/051-tag-kinds/contracts/screen-api.md）。知らない action、
+// domain.TagBatchRequest にする。知らない action、
 // 正の kindId の無い setKind、kindId を付けたほかの action は、誤りの文を返す（通れば ""）。
 // kindPresent は本文に kindId があったか（値が null でも）で、生成型では null と省略を区別できない
 // ため呼び出し側が本文から渡す。null の kindId もほかの action では断る。
@@ -386,7 +385,7 @@ func tagBatchRequestOf(action string, kindID *int64, kindPresent bool) (domain.T
 }
 
 // TagImpact はまとめての却下・削除・統合の確認に出す、働くタグの数と影響を受ける動画の
-// 本数を返す（POST /api/tags/impact、specs/036-tag-admin-scale/contracts/screen-api.md §3）。
+// 本数を返す（POST /api/tags/impact、docs/design-docs/catalog-organization.md）。
 // 何も変えない。
 func (s *server) TagImpact(w http.ResponseWriter, r *http.Request) {
 	var body gen.TagImpactRequest
@@ -435,11 +434,10 @@ func nonNilIDs(ids []int64) []int64 {
 }
 
 // rejectedTagNamePageDefaultLimit は limit を省いた GET /api/tags/rejected-names の 1 ページの件数
-// （specs/036-tag-admin-scale/contracts/screen-api.md §6）。
 const rejectedTagNamePageDefaultLimit = 100
 
 // ListRejectedTagNames は却下した名前を名前の自然順でページに分けて返す
-// （GET /api/tags/rejected-names、specs/036-tag-admin-scale/contracts/screen-api.md §6）。
+// （GET /api/tags/rejected-names、docs/design-docs/catalog-organization.md）。
 // limit が 1〜domain.MaxTagPageLimit の外、cursor が解釈できないときは 400 invalid_request。
 func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request, params gen.ListRejectedTagNamesParams) {
 	if s.tags == nil {
@@ -481,7 +479,7 @@ func (s *server) ListRejectedTagNames(w http.ResponseWriter, r *http.Request, pa
 }
 
 // ForgetRejectedTagName は名前を却下した名前の一覧から外す
-// （DELETE /api/tags/rejected-names?name=…、specs/031-tentative-tags/contracts/screen-api.md §3）。
+// （DELETE /api/tags/rejected-names?name=…、docs/design-docs/catalog-organization.md）。
 // 一覧に無い名前や整えられない入力でも、何も変えずに 204 を返す。整え方は
 // store.ForgetRejectedTagName が登録時と同じ domain.NormalizeTagName で行う。
 func (s *server) ForgetRejectedTagName(w http.ResponseWriter, r *http.Request, params gen.ForgetRejectedTagNameParams) {
@@ -509,13 +507,12 @@ func toAPITag(tag domain.Tag) gen.Tag {
 }
 
 // toAPITagRef は動画に付いたタグ1件を応答の形にする。仮かどうかも載せる
-// （specs/031-tentative-tags/contracts/screen-api.md §0）。
 func toAPITagRef(ref domain.TagRef) gen.TagRef {
 	return gen.TagRef{Id: ref.ID, Name: ref.Name, Tentative: ref.Tentative, Kind: toAPITagKindRef(ref.Kind)}
 }
 
 // toAPIVideoTag は動画に付いたタグ1件を出所つきで応答の形にする。フォルダ由来だけで
-// 付いているタグも、そのタグの仮かどうかを出す（contracts/screen-api.md §0）。
+// 付いているタグも、そのタグの仮かどうかを出す。
 func toAPIVideoTag(tag domain.VideoTag) gen.VideoTag {
 	out := gen.VideoTag{
 		Id: tag.ID, Name: tag.Name, Manual: tag.Manual, FromFolder: tag.FromFolder, Tentative: tag.Tentative,
@@ -568,12 +565,10 @@ func (s *server) writeTagError(w http.ResponseWriter, err error, submittedName s
 
 // writeTagNameTaken は tag_name_taken を返す。owner はその名前を既に持つタグ
 // （元の名前としてでもシノニムとしてでも。domain.TagNameConflict.Tag）で、Name は
-// 常にそのタグの元の名前である（contracts/tags-api.md §2、親 Issue の Edge Case
-// 「シノニム名の衝突」）。submittedName が owner.Name と一致すれば、それはその
+// 常にそのタグの元の名前である。submittedName が owner.Name と一致すれば、それはその
 // タグ自身の元の名前（自分のシノニムとして自分の元の名前を送った場合を含む）で
 // reason は name_is_tag、一致しなければ owner の既存のシノニムで name_is_synonym
 // になる。tagName はどちらも owner の元の名前を翻訳せずに返す
-// （specs/023-english-i18n/contracts/error-api.md §1）。
 func (s *server) writeTagNameTaken(w http.ResponseWriter, submittedName string, owner domain.TagRef) {
 	tagName := owner.Name
 	body := gen.Error{Code: codeTagNameTaken, TagName: &tagName}
@@ -590,7 +585,7 @@ func (s *server) writeTagNameTaken(w http.ResponseWriter, submittedName string, 
 }
 
 // invalidTagName は domain.NormalizeTagName の失敗を、その理由に応じた reason の
-// invalid_request へ写す（specs/023-english-i18n/contracts/error-api.md §1）。
+// invalid_request へ写す。
 // prefix は message の前に置く英語の説明で、要らなければ空にする。
 func (s *server) invalidTagName(w http.ResponseWriter, err error, prefix string) {
 	var invalid *domain.InvalidTagNameError

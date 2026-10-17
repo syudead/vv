@@ -31,12 +31,11 @@ var (
 )
 
 // Run はモジュールを新しいインスタンスで 1 回動かす。要求の JSON を標準入力に書いて閉じ、
-// 標準出力の応答を読む。プラグインの要求は network のとおりに送る（056 research.md R-4・R-5）。同時に動く実行は 1 本で、2 本目は枠を最大 domain.WorkInfoPluginBusyWait 待つ
-// （research.md R-2・R-4）。時間の上限は枠を取ったときから数え、コンパイルも含む。失敗は *domain.WorkInfoRunError で返し、呼び出し元の ctx が
+// 標準出力の応答を読む。プラグインの要求は network のとおりに送る。同時に動く実行は 1 本で、2 本目は枠を最大 domain.WorkInfoPluginBusyWait 待つ。時間の上限は枠を取ったときから数え、コンパイルも含む。失敗は *domain.WorkInfoRunError で返し、呼び出し元の ctx が
 // 終わったときはその誤りを返す。
 //
 // 成功でも失敗でも、残した標準エラーを実行のログとして返す。モジュールを起動し、それが成功か実行の失敗で
-// 終わったときは、同じログを、枠を空ける前に record に渡す（056 research.md R-6）。record が nil なら
+// 終わったときは、同じログを、枠を空ける前に record に渡す。record が nil なら
 // 渡さない。record の誤りはサーバーのログに残し、実行の結果は変えない。枠を取れなかった実行、コンパイルの
 // 失敗か時間切れでモジュールを起動しなかった実行、呼び出し元の ctx が終わった実行は record を呼ばず、
 // 前の実行のログを残す。
@@ -82,7 +81,7 @@ func (r *Runtime) Run(
 	return result, log, nil
 }
 
-// outcome は実行の誤り err に、実行の HTTP で起きたことを重ねる（contracts/screen-api.md の Run failures）。
+// outcome は実行の誤り err に、実行の HTTP で起きたことを重ねる。
 // 呼び出し元の ctx の誤りはそのまま返す。要求を拒んでいれば、プラグインが何を返しても
 // blocked_address にする。届かなかった要求があってプラグインが失敗したなら network_error にする。
 func (s *httpSession) outcome(err error) error {

@@ -18,7 +18,7 @@ import (
 
 // テストの中で TS（PAT、PMT、ARIB の文字列を持つ SDT と EIT、TOT、その前の padding packet）を
 // 組み立て、SI の reader が放送局名と番組名を読むことを確かめる
-// （specs/056-media-info/research.md R-4）。
+//
 
 const (
 	testServiceID = 0x0400

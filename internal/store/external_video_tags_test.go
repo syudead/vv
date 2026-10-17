@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 外部連携 API の名前でのタグの一括操作（specs/026-external-api/research.md R-7）。
+// 外部連携 API の名前でのタグの一括操作。
 
 // tagNames は動画のタグを「名前:出所」の並びにする。出所は m（手）と f（フォルダ）。
 func tagNames(tags []domain.VideoTag) []string {

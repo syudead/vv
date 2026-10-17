@@ -16,9 +16,9 @@ import (
 )
 
 // mdm plugin run は作品情報プラグインを VVMDM と同じランタイム、同じ制限、同じアドレスの規則で 1 回動かし、
-// VVMDM が残す結果を出す（specs/056-plugin-tooling/contracts/plugin-cli.md、research.md R-1）。要求は
+// VVMDM が残す結果を出す。要求は
 // サーバーと同じ domain の規則（入力の確かめ、実効の設定値）で組み立てる。--set の秘密の値は伏せない。
-// 伏せるのは所有者の画面のためで、値は作者が打ったものだからである（research.md R-6）。
+// 伏せるのは所有者の画面のためで、値は作者が打ったものだからである。
 
 // pluginRunArgs は mdm plugin run の引数を読んだものである。
 type pluginRunArgs struct {

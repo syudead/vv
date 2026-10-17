@@ -9,11 +9,13 @@ file into a handbook.
 1. Read `ARCHITECTURE.md` for system boundaries and dependency direction.
 2. Read `docs/design-docs/index.md` and `docs/product-specs/index.md` for the
    relevant design and product context.
-3. For substantial feature work, the Plan (`specs/<feature>/plan.md`) carries
-   the goal, the scope, the validation strategy and the notable decisions.
-   Progress is read from the feature branch's artifacts, the integration PR
-   and the native child Issues; it is not recorded in a file or in the parent
-   Issue body.
+3. `specs/` contains temporary SDD artifacts, used only for the active feature
+   on its feature branch. For ordinary implementation and investigation, use
+   `docs/design-docs/`, the code, API schemas and tests. Never cite a feature's
+   SDD artifacts from permanent documentation or code. Before integration,
+   retain lasting decisions in design docs and remove the feature's artifacts
+   and their translations after validation. Git history keeps the working
+   records. Progress lives in GitHub, not in a permanent plan archive.
 
 ## Working agreements
 

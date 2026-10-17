@@ -2,7 +2,7 @@ import type { SeekThumbnailSprite } from "../api/client";
 
 // シーク用スプライトのコマ選びと切り出しである。プレイヤーのシークバーの吹き出し
 // （player/seekPreview.ts）と一覧のカードの帯（ui/ScrubPreview.tsx）が同じ規則で
-// コマを選ぶように、ここを共有する（specs/032-card-scrub-preview/research.md R-1）。
+// コマを選ぶように、ここを共有する。
 
 /** SpriteCell は位置を受け持つコマと、それが載るシートの中の升目である。 */
 export interface SpriteCell {
@@ -41,7 +41,7 @@ export function seekPosition(
 
 /**
  * seekSpriteCell は元動画の論理時刻 positionMs（ミリ秒）のコマを、配置情報の間隔で
- * 決める（specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。間隔を
+ * 決める。間隔を
  * 固定値としては持たない。
  */
 export function seekSpriteCell(

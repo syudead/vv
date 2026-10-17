@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 同じ動画の別バージョンの集まりと利用者データの鍵（specs/030-video-versions/data-model.md §1・§3・§8）。
+// 同じ動画の別バージョンの集まりと利用者データの鍵。
 
 // versionFixture は題名 a〜d の 4 本を /media の下に取り込み、題名から id を引ける形で返す。
 func versionFixture(t *testing.T) (*DB, map[string]int64) {
@@ -97,7 +97,7 @@ func listedIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 
 // タグ X の A とタグ Y の B を A を代表に束ねると、どちらの UserKey も同じ集まりの鍵になり、
 // その鍵のタグは X だけで、B の content_key の行にはタグ Y が残る（受け入れ条件 6 の保存の部分）。
-// タグの絞り込みも集まりの鍵で判定し、一覧には代表の A だけが出る（data-model.md §4）。
+// タグの絞り込みも集まりの鍵で判定し、一覧には代表の A だけが出る。
 func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 	db, ids := versionFixture(t)
 	x := attachNamedTag(t, db, "X", ids["a"])
@@ -135,7 +135,7 @@ func TestBundleKeysUserDataByTheBundle(t *testing.T) {
 			if item.ID == ids["b"] && item.UserKey != a.UserKey {
 				t.Errorf("一覧の B の UserKey = %q", item.UserKey)
 			}
-			// 一覧の項目にも集まりの要約が入る（specs/054-auto-dup/research.md R-9）。
+			// 一覧の項目にも集まりの要約が入る。
 			if item.ID == ids["a"] && (item.Versions == nil || item.Versions.Count != 2) {
 				t.Errorf("一覧の A の Versions = %+v, want count 2", item.Versions)
 			}
@@ -393,7 +393,7 @@ func TestBundlePublishesOnceAndRejectsInvalidInput(t *testing.T) {
 	}
 
 	bundle(t, db, ids["b"], ids["b"], ids["a"])
-	// 所有者の操作の記録の知らせ（specs/055-activity/research.md R-6）は確定の直後に先に届く。
+	// 所有者の操作の記録の知らせは確定の直後に先に届く。
 	bundled := domain.VideoBundleChanged{VideoIDs: []int64{ids["a"], ids["b"]}}
 	want := []domain.Event{domain.ActivityChanged{}, bundled}
 	if !slices.EqualFunc(recorder.events, want, eventsEqual) {
@@ -404,7 +404,7 @@ func TestBundlePublishesOnceAndRejectsInvalidInput(t *testing.T) {
 	if _, err := db.Versions().Unbundle(ctx, ids["a"]); err != nil {
 		t.Fatal(err)
 	}
-	// 解除は外した組の候補を作り直すので、候補の一覧の変化も知らせる（specs/054-auto-dup/research.md R-8）。
+	// 解除は外した組の候補を作り直すので、候補の一覧の変化も知らせる。
 	want = []domain.Event{domain.ActivityChanged{}, bundled, domain.VersionCandidatesChanged{}}
 	if !slices.EqualFunc(recorder.events, want, eventsEqual) {
 		t.Errorf("解除の events = %v, want %v", recorder.events, want)
@@ -420,7 +420,7 @@ func eventsEqual(a, b domain.Event) bool {
 	return !okA && !okB && a == b
 }
 
-// 外部連携 API のタグの一括操作と一覧も利用者データの鍵で読み書きする（research.md R-10）。
+// 外部連携 API のタグの一括操作と一覧も利用者データの鍵で読み書きする。
 func TestExternalVideoTagsUseBundleKey(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()

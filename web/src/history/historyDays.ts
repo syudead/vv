@@ -1,7 +1,7 @@
 import type { WatchHistoryEntry } from "../api/history";
 import { formatMonthDay, formatWeekday, t, type UiText } from "../i18n";
 
-// 視聴履歴の日ごとのまとまり（specs/043-watch-history/ui-design.md「Day groups」）。
+// 視聴履歴の日ごとのまとまり。
 // 日の境目は見る人のブラウザの時間帯の 0 時。
 
 /** HistoryDay は 1 日分のまとまりである。`entries` は API の順（新しい順）のまま。 */
@@ -50,7 +50,7 @@ export interface DayLabel {
   date: UiText;
 }
 
-/** dayLabel はまとまりの見出しである（ui-design.md「Day groups」）。 */
+/** dayLabel はまとまりの見出しである。 */
 export function dayLabel(day: Date, now: Date): DayLabel {
   const today = startOfDay(now);
   const yesterday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - 1);

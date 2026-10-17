@@ -11,16 +11,14 @@ info:
   description: |
     取り込み（スキャン）・一覧・再生・題名検索までを公開する。
 
-    すべての要求は「誰でも」「ゲストも」「所有者だけ」のどれかに入る
-    （specs/016-single-account-auth/contracts/auth-api.md §1）。各操作の `security` がその
+    すべての要求は「誰でも」「ゲストも」「所有者だけ」のどれかに入る。各操作の `security` がその
     分類で、`[]` は誰でも、`[{sessionCookie: []}, {}]` はゲストも、既定（全体の
     `security`）は所有者だけである。所有者だけの要求に有効なセッションが無いとき、
     アカウントが未設定のときの誰でも以外の要求には、`401` `unauthenticated` を返す。
     `/api/*` のすべての応答は、その要求を所有者とゲストのどちらとして処理したかを
     `X-VV-Audience: owner` か `guest` で示す。
 
-    「ゲストも」の要求は、有効なセッションが無ければゲストとして処理する
-    （specs/016-single-account-auth/contracts/guest-api.md）。ゲストの応答には公開の動画だけが
+    「ゲストも」の要求は、有効なセッションが無ければゲストとして処理する。ゲストの応答には公開の動画だけが
     現れ、`Video.location`・`Video.progress`・`Video.probeError`・`FolderSummary.rootPath` を
     省き、`Video.tags` を空の配列にする。公開でない動画・公開の動画を含まないフォルダは、
     存在しないものと同じ `404` にする。
@@ -62,7 +60,7 @@ paths:
       operationId: setupAccount
       summary: 未設定のサーバーで最初のアカウントを作り、そのままログインする
       description: |
-        本文は 8 KiB まで。成立したら `Set-Cookie` でセッションを渡す（contracts/auth-api.md §2・§7）。
+        本文は 8 KiB まで。成立したら `Set-Cookie` でセッションを渡す。
         同時の初回設定は1つだけが成立し、他は 409 になる。
       security: []
       requestBody:
@@ -98,7 +96,7 @@ paths:
       summary: ユーザー名とパスワードでログインする
       description: |
         本文は 8 KiB まで。ユーザー名かパスワードの誤り、空欄、上限超え、アカウントの
-        未設定は、どれも同じ 401 `invalid_credentials` になる（contracts/auth-api.md §3）。
+        未設定は、どれも同じ 401 `invalid_credentials` になる。
         `next` は戻り先の候補で、安全でなければ `/` にして `redirectTo` に返す。
       security: []
       requestBody:
@@ -146,8 +144,7 @@ paths:
       summary: 見る人の状態を返す
       description: |
         未設定なら Cookie によらず `setupRequired` を返す。ユーザー名は返さない。
-        `next` を付けると、`owner` のときだけ確かめた戻り先を `redirectTo` に返す
-        （contracts/auth-api.md §4）。
+        `next` を付けると、`owner` のときだけ確かめた戻り先を `redirectTo` に返す。
       security: []
       parameters:
         - name: next
@@ -169,8 +166,7 @@ paths:
       summary: ログアウトする
       description: |
         要求に付いていたセッションの Cookie（`__Host-vv_session` と `vv_session` の両方）を
-        見て、有効なセッションを消し、両方の Cookie を `Max-Age=0` で消す。本文は無い
-        （contracts/auth-api.md §4）。
+        見て、有効なセッションを消し、両方の Cookie を `Max-Age=0` で消す。本文は無い。
       security: []
       responses:
         "204":
@@ -193,15 +189,14 @@ paths:
         同じ動画の別バージョンの集まりは、実効の代表（代表に見せてよい所在が無ければ、
         見せてよい所在を持つバージョンのうち id の最小のもの）の1件だけを返し、代表以外の
         バージョンは返さない。`query` は集まりのどれかのバージョンの所在に当たれば代表の
-        1件を返し、タグ・視聴状態・並び順は集まりの値で判定する
-        （specs/030-video-versions/data-model.md §4）。代表以外のバージョンも
+        1件を返し、タグ・視聴状態・並び順は集まりの値で判定する。代表以外のバージョンも
         `GET /api/videos/{id}` では引ける。
 
         ゲストでは公開の動画だけを対象にし、`query` はタグの名前とシノニムに照合しない。
         所有者のデータに依る条件（`watch` が `all` 以外、`sort` が `playedAsc`・
         `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、
         `organization`、`tagKind`）は
-        `400` `invalid_request` にする（guest-api.md §3、specs/035-favorites/contracts/screen-api.md §2）。
+        `400` `invalid_request` にする（docs/design-docs/catalog-organization.md）。
       parameters:
         - name: query
           in: query
@@ -230,7 +225,7 @@ paths:
           in: query
           description: |
             true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-            ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+            ほかの絞り込みと AND で組み合わさる
           schema:
             type: boolean
             default: false
@@ -268,7 +263,7 @@ paths:
           description: |
             タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
             最大16個、17個以上は400。存在しない id は条件から落とし、応答の
-            missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
+            missingTagIds に返す
           schema:
             type: array
             maxItems: 16
@@ -299,9 +294,7 @@ paths:
         - {}
       summary: ライブラリの項目（動画とグループ）の一覧を返す
       description: |
-        `listVideos` と同じ条件で、当たった動画を項目にまとめて返す
-        （specs/027-partial-group-search/contracts/library-api.md §1。値の作り方は
-        specs/017-folder-groups/data-model.md §5）。
+        `listVideos` と同じ条件で、当たった動画を項目にまとめて返す。
         `query`・`tag`・`person`・`organization`・`tagKind` はメンバー単位で掛け（1本の動画が全条件を満たす）、グループの
         全メンバーが当たればグループの項目1件に、一部だけが当たれば当たったメンバーを
         それぞれ動画の項目にする。グループに属さない動画は動画の項目になる。
@@ -312,17 +305,16 @@ paths:
 
         `favorite` が true なら、項目ごとに自分のお気に入りで判定する（動画の項目は動画、
         グループの項目はグループ）。お気に入りでないグループに属するお気に入りの動画は
-        動画の項目になる（specs/035-favorites/contracts/screen-api.md §2）。
+        動画の項目になる。
 
         同じ動画の別バージョンの集まりは `listVideos` と同じく実効の代表の1件だけを
         項目にし、代表以外のバージョンは出ない。代表以外のバージョンはフォルダの
-        グループのメンバーにもならない（specs/030-video-versions/data-model.md §4）。
+        グループのメンバーにもならない。
 
         ゲストでは公開のメンバーだけを数え（「全メンバー」も公開のメンバー）、公開の
         メンバーが1本のグループは動画の項目にし、0本のグループは出さない。`watch` が `all` 以外、`sort` が `playedAsc`・
         `playedDesc`・`favoritedAsc`・`favoritedDesc`、`tag`、`favorite` が true、`person`、`organization`、`tagKind` は
-        `400` `invalid_request` にする
-        （data-model.md §7、specs/035-favorites/contracts/screen-api.md §2）。
+        `400` `invalid_request` にする。
       parameters:
         - name: query
           in: query
@@ -351,7 +343,7 @@ paths:
           in: query
           description: |
             true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-            ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+            ほかの絞り込みと AND で組み合わさる
           schema:
             type: boolean
             default: false
@@ -389,7 +381,7 @@ paths:
           description: |
             タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
             最大16個、17個以上は400。存在しない id は条件から落とし、応答の
-            missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
+            missingTagIds に返す
           schema:
             type: array
             maxItems: 16
@@ -421,15 +413,13 @@ paths:
         `organization`・`tagKind`）に合う項目の、
         動画の項目の id と、グループの項目の全メンバーの id を、ページングせずに返す。
         一部のメンバーだけが当たったグループは動画の項目なので、当たったメンバーの id
-        だけが入る。並びは決めない。「すべて選択」用
-        （specs/027-partial-group-search/contracts/library-api.md §2）。
+        だけが入る。並びは決めない。「すべて選択」用。
         グループの項目は `groups` にも、フォルダと全メンバーの id として入る。スマートフォルダの
-        項目は `smartFolderIds` に入り、その動画は `ids` に入らない（specs/052-smart-folders/data-model.md
-        「Library items」）。
+        項目は `smartFolderIds` に入り、その動画は `ids` に入らない。
 
         `favorite` が true なら、項目ごとに自分のお気に入りで判定する（動画の項目は動画、
         グループの項目はグループ）。お気に入りでないグループに属するお気に入りの動画は
-        動画の項目になる（specs/035-favorites/contracts/screen-api.md §2・§3）。
+        動画の項目になる。
       parameters:
         - name: query
           in: query
@@ -449,7 +439,7 @@ paths:
           in: query
           description: |
             true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-            ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+            ほかの絞り込みと AND で組み合わさる
           schema:
             type: boolean
             default: false
@@ -486,8 +476,7 @@ paths:
         - {}
       summary: 動画1件の詳細を返す
       description: |
-        ゲストでは公開の動画だけを返し、公開でない動画は存在しない動画と同じ 404 にする
-        （guest-api.md §2）。この扱いは関連動画・配信・プレビュー・ライブ変換・
+        ゲストでは公開の動画だけを返し、公開でない動画は存在しない動画と同じ 404 にする。この扱いは関連動画・配信・プレビュー・ライブ変換・
         サムネイル・シークプレビューでも同じである。
       parameters:
         - $ref: "#/components/parameters/VideoId"
@@ -520,7 +509,7 @@ paths:
         渡して続きを読む。続きは返した位置より後の動画だけなので、読む間に動画が足されたり
         消えたりしても、同じ動画が二重に出ない。
         `cursor` を付けない最初の要求だけが `nextId`・`prevId`・`group` を持つ。この動画が
-        グループにあれば、文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）
+        グループにあれば、文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）
         の再生順で、group にこの動画を中ほどに置いた最大 100 本のメンバーの窓を載せ、
         nextId・prevId をその再生順の前後にする。窓の外のメンバーは `listVideoGroupMembers` で
         読む。
@@ -559,7 +548,7 @@ paths:
         - {}
       summary: 動画が属するグループのメンバーを、並びの範囲で返す
       description: |
-        文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）の見せてよい
+        文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）の見せてよい
         動画を、その再生順で `offset` 本目（0 始まり）から最大 `limit` 本返す。メンバーの選び方と
         形は関連動画の group と同じで、ゲストには公開の動画だけで数える。動画がどのグループにも
         無ければ `404`。`offset` が本数以上なら items は空。
@@ -777,7 +766,7 @@ paths:
       description: |
         保存済みの preview MP4 だけを Range 対応で配信する。元動画の stream や
         live transcode へ fallback しない。成功の応答は `Cache-Control: private, no-cache`
-        と `ETag` を持ち、`If-None-Match` が一致すれば `304` を返す（guest-api.md §5）。
+        と `ETag` を持ち、`If-None-Match` が一致すれば `304` を返す。
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - name: v
@@ -854,8 +843,7 @@ paths:
             縮める画質。無ければ元の画質（今までどおり、映像をコピーできればコピーする）。
             あれば映像を必ずエンコードし、表示の短辺をこの値に縮め、ビットレートに上限を付ける。
             動画の表示の短辺（`Video.width`・`height` の小さい方）より小さい画質だけを受け付け、
-            それ以外と寸法の無い動画は 400
-            （specs/027-playback-quality/contracts/transcode-quality-api.md）。
+            それ以外と寸法の無い動画は 400。
           schema:
             type: string
             enum: [1080p, 720p, 480p, 360p]
@@ -891,7 +879,7 @@ paths:
         同じ `attempt` を付けた `transcodeVideo` の出力の時間軸の 0 が、元動画のどの時刻かを
         ミリ秒で返す。`attempt` がまだ無いか開始位置が未決なら、決まるまで最大 6 秒待つ。
         それまでに決まらないか、変換が最初のデータを出せずに失敗したら 404。応答は
-        `Cache-Control: no-store`（specs/018-live-transcode-seek/contracts/transcode-start-api.md）。
+        `Cache-Control: no-store`。
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - name: attempt
@@ -925,8 +913,7 @@ paths:
         `<名前>.srt`・`<名前>.vtt`・`<名前>.<ラベル>.srt`・`<名前>.<ラベル>.vtt` を返す。
         ラベルの無いものが先頭で、続いてラベルの自然順。同じラベルの `.srt` と `.vtt` は `.vtt`
         だけ、4 MiB を超えるファイルは載せない。中身は読まない。無ければ空の配列で、フォルダを
-        読めないときも空の配列を返す。応答は `Cache-Control: no-store`
-        （specs/028-sidecar-subtitles/contracts/subtitles-api.md §1）。
+        読めないときも空の配列を返す。応答は `Cache-Control: no-store`。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       responses:
@@ -951,7 +938,7 @@ paths:
         判定して UTF-8 の WebVTT にし、すべての cue の時刻から `offsetMs` を引いて返す。
         一覧に無い、開けない、上限を超える、読めない字幕は `404`（reason `subtitle_unavailable`）。
         成功の応答は `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が
-        一致すれば `304` を返す（specs/028-sidecar-subtitles/contracts/subtitles-api.md §2）。
+        一致すれば `304` を返す。
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - name: file
@@ -993,7 +980,7 @@ paths:
         `v` は内容由来の識別子で、画像が変われば URL も変わる。未生成の場合は 404。
         成功の応答は `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が
         一致すれば `304` を返す。見るたびにサーバーへ確かめさせ、ログアウト後や非公開に
-        した後にキャッシュから出続けないようにする（guest-api.md §5）。
+        した後にキャッシュから出続けないようにする。
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - name: v
@@ -1024,10 +1011,9 @@ paths:
       description: |
         完成したスプライトの配置情報を返す。位置 p ms のコマは
         `min(floor(p / intervalMs), frameCount - 1)` で、コマ k はシート
-        `floor(k / (columns * rows))` の左上から行優先で `k mod (columns * rows)` 番目に載る
-        （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。
+        `floor(k / (columns * rows))` の左上から行優先で `k mod (columns * rows)` 番目に載る。
         `v` は内容由来の識別子である。成功の応答は `Cache-Control: private, no-cache` と
-        `ETag` を持ち、`If-None-Match` が一致すれば `304` を返す（guest-api.md §5）。
+        `ETag` を持ち、`If-None-Match` が一致すれば `304` を返す。
         解析が終わっていない・尺が無い、またはスプライトが完成していない（生成待ち・生成中・
         失敗）ときは `409`。
       parameters:
@@ -1070,7 +1056,7 @@ paths:
         配置情報の `sheets[sheet]` が指す JPEG を返す。幅は `columns × frameWidth`、高さは
         `rows × frameHeight`。`sheet` が枚数以上なら `404`。成功の応答は
         `Cache-Control: private, no-cache` と `ETag` を持ち、`If-None-Match` が一致すれば
-        `304` を返す（guest-api.md §5）。
+        `304` を返す。
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - name: sheet
@@ -1146,7 +1132,7 @@ paths:
         制御文字を含む名前と 200 符号位置を超える名前は受け付けない。他の動画と同じ表示名も
         受け付け、同時の変更は後勝ちである。応答は `GET /api/videos/{id}` と同じ形の `Video` で、
         `title`・`fileTitle`・`displayName` が反映済みである。確定後に `/api/events` の `video` が
-        流れる（specs/029-video-overrides/contracts/screen-api.md §1）。
+        流れる。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -1178,8 +1164,7 @@ paths:
         項目は解除し、`{}` はすべてを解除する。人物と団体は id で指す。規則に合わない最初の項目を
         `field` 付きの誤りで返し、何も書かない。応答は `GET /api/videos/{id}` と同じ形の `Video` で、
         `workInfo` が反映済み（すべて解除したときは無い）。変わったときは確定後に同じ利用者データの鍵の
-        各動画の `video` が `/api/events` に流れる
-        （specs/047-video-work-info/contracts/screen-api.md「PUT /api/videos/{id}/work-info」）。
+        各動画の `video` が `/api/events` に流れる。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -1211,8 +1196,7 @@ paths:
         作品情報（`PUT /api/videos/{id}/work-info` の規則）を 1 つの取引で書き、どちらかが規則に
         合わなければどちらも書かない。表示名を先に、次に作品情報を `WorkInfo` の項目の順に確かめ、
         最初の誤りだけを返す。表示名の誤りの `field` は `displayName`、作品情報の誤りの `field` は
-        `workInfo` の中の位置である。応答は `GET /api/videos/{id}` と同じ形の `Video`
-        （specs/047-video-work-info/contracts/screen-api.md「PUT /api/videos/{id}/details」）。
+        `workInfo` の中の位置である。応答は `GET /api/videos/{id}` と同じ形の `Video`。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -1247,9 +1231,7 @@ paths:
         409 `duration_unknown`、0 未満か尺以上なら 400 `thumbnail_position_out_of_range`（`limit` に
         尺のミリ秒）、画像を作れなければ 409 `thumbnail_frame_unavailable`（前の画像と位置はそのまま）、
         どの所在も開けなければ 404 `file_unavailable` を返す。同じ動画への同時の指定は直列になり、
-        最後に記録した位置の画像が残る。適用した画像があれば同じ取引で外す
-        （specs/045-comfyui-thumbnails/contracts/screen-api.md）。確定後に `/api/events` の `video` が流れる
-        （specs/029-video-overrides/contracts/screen-api.md §2）。
+        最後に記録した位置の画像が残る。適用した画像があれば同じ取引で外す。確定後に `/api/events` の `video` が流れる。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -1289,8 +1271,7 @@ paths:
         `thumbnail_upload_invalid`、動画が無ければ 404 `video_not_found`、要求を始めたときから動画が消えたか
         別の内容になるか `contentVersion` が今の内容と違えば 409 `content_changed`、ffmpeg が合わせられなければ 409 `thumbnail_image_invalid`
         を返し、どの誤りでも何も書かない。本文が届き終わったあとの確かめと適用は、接続が切れても 5 分を
-        上限に最後まで行う。確定後に `/api/events` の `video` が流れる
-        （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-1・R-2）。
+        上限に最後まで行う。確定後に `/api/events` の `video` が流れる。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -1324,8 +1305,7 @@ paths:
         `Video` である（`thumbnailImage` は無く、新しい版の `thumbnailUrl`）。誤りは
         `PUT /api/videos/{id}/thumbnail-position` と同じで、画像を作れなければ 409
         `thumbnail_frame_unavailable`（適用した画像と前のファイルはそのまま）、どの所在も開けなければ
-        404 `file_unavailable` を返す。確定後に `/api/events` の `video` が流れる
-        （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+        404 `file_unavailable` を返す。確定後に `/api/events` の `video` が流れる。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       responses:
@@ -1356,9 +1336,7 @@ paths:
         `thumbnail_position_out_of_range`、ほかの位置の誤りと所在の誤りは
         `PUT /api/videos/{id}/thumbnail-position` と同じで、ComfyUI の接続先が保存されていなければ 409
         `thumbnail_edit_not_ready`、コマを取り出せないか保存した画像を読めなければ 409
-        `thumbnail_frame_unavailable` を返す。セッションはメモリにだけあり、イベントは流れない
-        （specs/045-comfyui-thumbnails/contracts/screen-api.md、research.md R-4・R-8・R-11、
-        specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-4）。
+        `thumbnail_frame_unavailable` を返す。セッションはメモリにだけあり、イベントは流れない。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -1395,8 +1373,7 @@ paths:
         バージョンを、実効の代表を先頭に、続きを題名の自然順（同じなら id）で返す。集まりに
         属さなければ `items` はこの動画 1 本である。各項目は `GET /api/videos/{id}` と同じ形
         （所有者には `location`、どちらにも `folder`）で、解像度・コーデック・`sizeBytes`・
-        `container` を持つ。ゲストでは公開の動画だけを数え、見せられない動画は 404 `video_not_found`
-        （specs/030-video-versions/contracts/screen-api.md §1）。
+        `container` を持つ。ゲストでは公開の動画だけを数え、見せられない動画は 404 `video_not_found`。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       responses:
@@ -1417,8 +1394,7 @@ paths:
         所有者だけ。要求の本文は無い。この動画を集まりの代表（一覧に出す 1 件）にし、集まりの
         全バージョンを返す（既に代表でも同じ）。集まりのタグ・再生位置・公開の設定は変わらない。
         集まりに属さなければ 400 `not_bundled`、無いか登録フォルダの下に所在が無ければ 404
-        `video_not_found`。確定後に `/api/events` の `video` が全メンバーで流れる
-        （specs/030-video-versions/contracts/screen-api.md §3）。
+        `video_not_found`。確定後に `/api/events` の `video` が全メンバーで流れる。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       responses:
@@ -1444,7 +1420,7 @@ paths:
         `tags`・`progress`・`public` は束ねる前のこの動画の値で、`versions` は無い。残りが 1 本
         なら集まりは解け、その 1 本が集まりの値を持つ。集まりに属さなければ 400 `not_bundled`、
         無いか登録フォルダの下に所在が無ければ 404 `video_not_found`。確定後に `/api/events` の
-        `video` が元の全メンバーで流れる（specs/030-video-versions/contracts/screen-api.md §4）。
+        `video` が元の全メンバーで流れる。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       responses:
@@ -1585,8 +1561,7 @@ paths:
       summary: ライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
       description: |
         保存した選択、今のライブ変換の要求が使う方式、選んだ方式を使えないときの理由、起動時の
-        確認が終わっていないか、ハードウェアの方式ごとの確認結果を返す
-        （specs/025-hardware-encoding/contracts/transcoding-settings-api.md §2）。
+        確認が終わっていないか、ハードウェアの方式ごとの確認結果を返す。
       responses:
         "200":
           description: 今の設定と確認結果
@@ -1600,8 +1575,7 @@ paths:
       description: |
         保存は次に始まるライブ変換の要求から効き、配信中の変換は始めた方式のまま続く。
         `software` と `auto` は常に受け付ける。使える（`state` が `available`）ハードウェアの
-        方式でないときは `409` `conflict`・reason `encoder_unavailable` を返し、保存値は変えない
-        （specs/025-hardware-encoding/contracts/transcoding-settings-api.md §3）。
+        方式でないときは `409` `conflict`・reason `encoder_unavailable` を返し、保存値は変えない。
       requestBody:
         required: true
         content:
@@ -1628,8 +1602,7 @@ paths:
       summary: LAN からの接続の許可と、許可中に開けるアドレスを返す
       description: |
         Windows デスクトップ版だけの設定。保存した選択、今の待ち受けのポート、許可中なら上がっている
-        非ループバックの IPv4 アドレスごとの URL を返す。デスクトップ版でなければ `404` `not_found`
-        （specs/037-windows-app/contracts/network-settings-api.md §2）。
+        非ループバックの IPv4 アドレスごとの URL を返す。デスクトップ版でなければ `404` `not_found`。
       responses:
         "200":
           description: 今の設定
@@ -1647,8 +1620,7 @@ paths:
         開き直せたら保存する。確立済みの接続は切らない。今と同じ値なら何もしない。新しいアドレスで
         開き直せなければ元のアドレスで待ち受けを戻し、保存値を変えずに `409` `conflict`・reason
         `listen_failed` を返す。開き直せたが保存に失敗したら、待ち受けを元のアドレスへ戻して `500`
-        を返す。デスクトップ版でなければ `404` `not_found`
-        （specs/037-windows-app/contracts/network-settings-api.md §3）。
+        を返す。デスクトップ版でなければ `404` `not_found`。
       requestBody:
         required: true
         content:
@@ -1683,7 +1655,7 @@ paths:
       summary: 作品情報プラグインの要求を送るプロキシの URL を返す
       description: |
         保存した URL を返す。保存が無ければ `""`（プロキシなし）。`/api/settings/network` と違い、
-        どのビルドでも答える（specs/056-plugin-tooling/contracts/screen-api.md）。
+        どのビルドでも答える。
       responses:
         "200":
           description: 保存した URL
@@ -1697,7 +1669,7 @@ paths:
       description: |
         `url` を規則のとおりに確かめて保存する。`""` はプロキシなし。次の実行が保存した値を使い、
         進行中の実行は始めたときの値で終わる。`url` が無いか規則に外れれば `400` `invalid_request`
-        で、何も書かない（specs/056-plugin-tooling/contracts/screen-api.md、research.md R-4）。
+        で、何も書かない。
       requestBody:
         required: true
         content:
@@ -1722,8 +1694,7 @@ paths:
       summary: 自動の取り込みの選択と、フォルダの監視の今の状態を返す
       description: |
         保存した選択（`enabled`）と、監視が今していること（`watch.state`）を返す。問題があれば
-        `watch.problem` と、あればその場所 `watch.path` を返す
-        （specs/042-folder-watch-import/contracts/screen-api.md）。
+        `watch.problem` と、あればその場所 `watch.path` を返す。
       responses:
         "200":
           description: 今の設定と監視の状態
@@ -1735,8 +1706,7 @@ paths:
       operationId: updateAutoImportSettings
       summary: 自動の取り込みを入れる／切るを保存し、監視を張る／外す
       description: |
-        選択を保存し、監視を張る／外すだけで、スキャンは始めない。今と同じ値なら何も変えない
-        （specs/042-folder-watch-import/contracts/screen-api.md）。
+        選択を保存し、監視を張る／外すだけで、スキャンは始めない。今と同じ値なら何も変えない。
       requestBody:
         required: true
         content:
@@ -1817,8 +1787,7 @@ paths:
         サムネイルの編集に使う ComfyUI の接続先（自前の ComfyUI か Comfy Cloud）。サムネイルの編集の
         機能とは別に持つ（docs/design-docs/ai-layer.md）。API キーは返さず、保存されているかを
         `apiKeySet` で返す。何も保存されていなければ `provider` を省いた `200` を返す。
-        `Cache-Control: no-store` を付ける
-        （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+        `Cache-Control: no-store` を付ける。
       responses:
         "200":
           description: 今の接続先
@@ -1833,8 +1802,7 @@ paths:
         `apiKey` が無ければ保存済みのキーを残し、`""` なら消す。`self_hosted` で正しい http か
         https の URL が無ければ `400` `invalid_request`・reason `comfyui_url_invalid`、`cloud` で
         キーが保存も送信もされていなければ reason `comfyui_api_key_missing` を返し、保存しない。
-        `cloud` では `url` を使わず、保存済みの URL を残す
-        （specs/045-comfyui-thumbnails/research.md R-9）。
+        `cloud` では `url` を使わず、保存済みの URL を残す。
       requestBody:
         required: true
         content:
@@ -1863,8 +1831,7 @@ paths:
         ノードの型とローダーが名指すモデルファイルがあるかを確かめ、足りなければ `available: false`
         と `missing` を返す（R-13）。使えないときの `message` は、届かない、ComfyUI でない、キーが
         拒まれた、何も保存されていない、ファイルが足りないを区別する。接続先は要求の本文から取らない
-        （任意の URL へサーバーから要求を送らせないため）。要求の本文は無い
-        （specs/045-comfyui-thumbnails/research.md R-5）。
+        （任意の URL へサーバーから要求を送らせないため）。要求の本文は無い。
       responses:
         "200":
           description: 確かめた結果
@@ -1881,8 +1848,7 @@ paths:
       summary: サムネイルの編集を始められるかを返す
       description: |
         動画のページが編集の入口を有効にするために読む。`connection` は ComfyUI の接続先が保存されて
-        いることで、接続テストに通ったことではない
-        （specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+        いることで、接続テストに通ったことではない。
       responses:
         "200":
           description: 編集の準備の状態
@@ -1901,8 +1867,7 @@ paths:
         実行が進んでいれば ComfyUI の状態を読み、成功していれば出力を取ってから返す。読み取りはページの
         生存の知らせを兼ね、5 分読まれないセッションは実行を中止して終わる。送ってから 10 分終わらない
         実行は中止して `failed`（`timed_out`）にする。終わったセッションは 404
-        `thumbnail_edit_not_found`。`Cache-Control: no-store` を付ける
-        （specs/045-comfyui-thumbnails/contracts/screen-api.md、research.md R-4・R-11）。
+        `thumbnail_edit_not_found`。`Cache-Control: no-store` を付ける。
       parameters:
         - $ref: "#/components/parameters/ThumbnailEditId"
       responses:
@@ -1989,8 +1954,7 @@ paths:
         返す。マスクがコマの大きさの PNG でなければ 400 `thumbnail_edit_mask_invalid`、参考画像を読めなければ
         400 `thumbnail_edit_reference_invalid` を、何も上げる前に返す。接続先が消されていれば 409
         `thumbnail_edit_not_ready`。上げるか送るのに失敗すれば 502 `provider_failed` と失敗の理由
-        （`unreachable` など）を返し、セッションは同じ理由の `failed` になる
-        （specs/045-comfyui-thumbnails/contracts/screen-api.md、contracts/workflow.md）。
+        （`unreachable` など）を返し、セッションは同じ理由の `failed` になる。
       parameters:
         - $ref: "#/components/parameters/ThumbnailEditId"
       requestBody:
@@ -2047,7 +2011,7 @@ paths:
         `GET /api/videos/{id}` と同じ形の `Video` を返す。`succeeded` でなければ 409
         `thumbnail_edit_no_result`、動画が消えたか別の内容を持てば 409 `content_changed`（セッションは
         終わる）、画像を読めなければ 409 `thumbnail_image_invalid` を返す。確定後に `/api/events` の
-        `video` が流れる（specs/045-comfyui-thumbnails/contracts/screen-api.md、research.md R-10）。
+        `video` が流れる。
       parameters:
         - $ref: "#/components/parameters/ThumbnailEditId"
       responses:
@@ -2107,8 +2071,7 @@ paths:
       operationId: getVersionJudgingSettings
       summary: 重複の自動判定の入切を返す
       description: |
-        所有者だけが読める。保存前は `enabled: false` を返す
-        （specs/054-auto-dup/contracts/screen-api.md）。
+        所有者だけが読める。保存前は `enabled: false` を返す。
       responses:
         "200":
           description: 今の設定
@@ -2121,7 +2084,7 @@ paths:
       summary: 重複の自動判定の入切を保存し、判定の処理を起こす
       description: |
         保存した値を返す。入れると、待っていた候補を判定し始める。Ollama の接続先は
-        `/api/settings/ollama` が持つ（specs/054-auto-dup/contracts/screen-api.md）。
+        `/api/settings/ollama` が持つ。
       requestBody:
         required: true
         content:
@@ -2194,8 +2157,7 @@ paths:
       operationId: listApiTokens
       summary: 発行した API トークンを返す
       description: |
-        作成日時の降順で返す。平文とハッシュは返さない
-        （specs/026-external-api/contracts/token-api.md）。所有者のセッションだけで使え、
+        作成日時の降順で返す。平文とハッシュは返さない。所有者のセッションだけで使え、
         Bearer は読まない。
       responses:
         "200":
@@ -2210,8 +2172,7 @@ paths:
       description: |
         `secret` は平文で、この応答にだけ現れる。名前の規則を外れれば `400` `invalid_request` に
         reason `api_token_name_empty`・`api_token_name_control_characters`・
-        `api_token_name_too_long`（`limit` 付き）を付ける
-        （specs/026-external-api/contracts/token-api.md）。
+        `api_token_name_too_long`（`limit` 付き）を付ける。
       requestBody:
         required: true
         content:
@@ -2252,7 +2213,7 @@ paths:
       description: |
         所有者だけ。名前、次にファイル名の順で返す（名前を読めなかったプラグインは名前のあるものの後）。
         秘密の設定の値は返さず、`set` だけを返す。プラグインの変化はイベントで流れないので、設定画面と
-        動画ページはこれを読み直す（specs/049-work-info-plugins/contracts/screen-api.md、research.md R-11・R-13）。
+        動画ページはこれを読み直す。
       responses:
         "200":
           description: 作品情報プラグインの一覧
@@ -2269,8 +2230,7 @@ paths:
         その行を差し替えて `200`、それ以外は新しい行で `201` を返す。差し替えたプラグインは承認前に戻り、
         新しいマニフェストが宣言するキーの設定の値だけが残る。使えないファイルも保存し、`state: invalid` と
         `problem` を付けて返す。`module` が無いか 2 つ以上なら `400` `invalid_request`、16 MiB を超えれば
-        `413` `plugin_too_large`（`limit`）を返し、何も書かない
-        （specs/049-work-info-plugins/contracts/screen-api.md、data-model.md の Rules）。
+        `413` `plugin_too_large`（`limit`）を返し、何も書かない。
       requestBody:
         required: true
         content:
@@ -2321,7 +2281,7 @@ paths:
       description: |
         所有者だけ。`digest` は一覧の `digest` である。無ければ `404` `not_found`、保存されたモジュールの
         ダイジェストが違えば `409` `plugin_changed`、プラグインが `invalid` なら `409` `plugin_unusable` を
-        返し、何も書かない（specs/049-work-info-plugins/research.md R-7）。
+        返し、何も書かない。
       parameters:
         - $ref: "#/components/parameters/WorkInfoPluginId"
       requestBody:
@@ -2373,8 +2333,7 @@ paths:
         所有者だけ。`values` のキーごとに値を書き、`null`（と空の文字列）はその値を消し、省いたキーの値は
         そのまま残す。承認は変わらない。マニフェストが宣言しないキーか 2000 文字を超える値があれば `400`
         `invalid_request`、無ければ `404` `not_found`、プラグインが `invalid` なら `409` `plugin_unusable` を
-        返し、何も書かない。応答の秘密の設定は `set` だけを持つ
-        （specs/049-work-info-plugins/research.md R-13）。
+        返し、何も書かない。応答の秘密の設定は `set` だけを持つ。
       parameters:
         - $ref: "#/components/parameters/WorkInfoPluginId"
       requestBody:
@@ -2406,8 +2365,7 @@ paths:
       description: |
         所有者だけ。今のモジュールの直近の実行が残した標準エラーの先頭 64 KiB を、その実行が受け取った秘密の
         設定の値を `[secret]` に置き換えて返す。実行が残っていなければ `{}`。差し替えたプラグインは差し替えの
-        後の実行だけを返す。無ければ `404` `not_found`
-        （specs/056-plugin-tooling/contracts/screen-api.md、research.md R-6）。
+        後の実行だけを返す。無ければ `404` `not_found`。
       parameters:
         - $ref: "#/components/parameters/WorkInfoPluginId"
       responses:
@@ -2430,8 +2388,7 @@ paths:
         所有者だけ。承認済みのプラグインの `search` を 1 回動かし、候補（作品 ID・ページの URL・題名・省略できる説明の文字だけ）を
         返す。`query` は前後の空白を除いて 1〜200 文字で、外れれば `400` `invalid_request`。マニフェストが
         `search` を宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
-        specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである
-        （research.md R-10・R-13）。
+        docs/design-docs/work-info-plugins.md の Run failures のとおりである。
       parameters:
         - $ref: "#/components/parameters/WorkInfoPluginId"
       requestBody:
@@ -2471,10 +2428,9 @@ paths:
         検索の候補の `id` か所有者が入れた文字列で、URL の形でもそのまま ID として渡し、vv が URL として取得する
         ことはない。URL に埋め込むのはプラグイン）で 1 回動かし、結果を 10 分の間メモリに持って `201` で返す。
         `id` が無いか規則に外れれば `400` `invalid_request`。動画は変えない。`title` は表示名の規則を
-        通ったもので、無いか規則に外れれば省く。人物・団体は取得の時点の照合の答え `match` を持つ
-        （specs/052-plugin-work-info-fields/contracts/screen-api.md）。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
+        通ったもので、無いか規則に外れれば省く。人物・団体は取得の時点の照合の答え `match` を持つ。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
         宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
-        specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである（research.md R-8）。
+        docs/design-docs/work-info-plugins.md の Run failures のとおりである。
       parameters:
         - $ref: "#/components/parameters/VideoId"
       requestBody:
@@ -2514,15 +2470,14 @@ paths:
         `cover` はその取引が確定したあとに、手元の画像のアップロードと同じ確かめと適用で動画の代表サムネイルに
         し、できなければサムネイルは変えずに `skipped` で `invalid` として知らせる。
         作品情報の項目は保存済みの作品情報に重ね、規則に合わない値・上限を超える件・照合が曖昧な人物と団体は
-        飛ばして `skipped` で知らせる（specs/052-plugin-work-info-fields/contracts/screen-api.md）。結果は使い切りで、
+        飛ばして `skipped` で知らせる。結果は使い切りで、
         成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
         `skippedTags` で知らせ、付けない。`tags` を送れば取得したタグのうちその名前だけを付け、`skippedTags` も
-        その名前だけを知らせる（specs/056-plugin-tooling/contracts/screen-api.md）。`fields` が空か結果に値の無い
+        その名前だけを知らせる。`fields` が空か結果に値の無い
         項目を含むか、`tags` が空か結果に無い名前を含むか `fields` に `tags` が無いのに有れば `400` `invalid_request`、
         動画が無いか結果が別の動画のものなら `404` `not_found`、結果が期限切れか不明か、取得の後にプラグインが
         差し替えられたか承認を取り消されたか消されていれば `409` `work_info_fetch_stale` で、どれも何も
-        書かない。確定後に `/api/events` の `video` が流れる
-        （specs/049-work-info-plugins/contracts/screen-api.md、research.md R-8・R-9）。
+        書かない。確定後に `/api/events` の `video` が流れる。
       parameters:
         - $ref: "#/components/parameters/VideoId"
         - $ref: "#/components/parameters/WorkInfoFetchId"
@@ -2585,10 +2540,9 @@ paths:
       operationId: listTags
       summary: タグを一覧する
       description: |
-        本数0のタグも含む（contracts/tags-api.md §3）。`q`・`tentative`・`unused`・`kind` は全部のタグに
+        本数0のタグも含む。`q`・`tentative`・`unused`・`kind` は全部のタグに
         AND で掛かり、`sort` の順に並べる。`limit` を付けると1ページずつ返し、続きがあれば
-        `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
-        （specs/036-tag-admin-scale/contracts/screen-api.md §5）。
+        `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す。
       parameters:
         - name: q
           in: query
@@ -2616,7 +2570,7 @@ paths:
           description: |
             種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
             無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない。正の整数でも
-            `none` でもなければ 400 `invalid_request`（specs/051-tag-kinds/contracts/screen-api.md）
+            `none` でもなければ 400 `invalid_request`
           schema:
             type: string
             pattern: "^([1-9][0-9]*|none)$"
@@ -2675,7 +2629,7 @@ paths:
     patch:
       operationId: renameTag
       summary: タグの元の名前を書き換える
-      description: 今と同じ名前を送ったときは何も変えずに今の状態を返す（contracts/tags-api.md §3）。
+      description: 今と同じ名前を送ったときは何も変えずに今の状態を返す。
       parameters:
         - $ref: "#/components/parameters/TagId"
       requestBody:
@@ -2721,8 +2675,7 @@ paths:
         統合先（id）へ1つの取引で移り、統合元は一覧から消え、統合先は確定したタグになる。
         無い統合元は飛ばしてnotFoundIdsに載せる。統合元がすべて無かったときも200で、
         tagは変わらない統合先。sourceIdsが空か多すぎる（too_many_tags）・idを含む
-        （merge_same_tag）ときは400、統合先が無いときは404を返す
-        （specs/036-tag-admin-scale/contracts/screen-api.md §2）。
+        （merge_same_tag）ときは400、統合先が無いときは404を返す。
       parameters:
         - $ref: "#/components/parameters/TagId"
       requestBody:
@@ -2753,7 +2706,7 @@ paths:
         既にidのシノニムなら何も変えずに200を返す。idの元の名前なら409
         tag_name_takenを返す。別のタグSの元の名前で、mergeTagIdがSのidと
         一致するときはSをidへ統合し、一致しない（無い場合を含む）ときは409
-        tag_merge_requiredを返す（contracts/tags-api.md §3）。
+        tag_merge_requiredを返す。
       parameters:
         - $ref: "#/components/parameters/TagId"
       requestBody:
@@ -2780,7 +2733,7 @@ paths:
     delete:
       operationId: removeTagSynonym
       summary: nameをidのタグのシノニムから外す
-      description: nameがidのシノニムでなければ何も変えずに204を返す（contracts/tags-api.md §3）。
+      description: nameがidのシノニムでなければ何も変えずに204を返す。
       parameters:
         - $ref: "#/components/parameters/TagId"
         - name: name
@@ -2803,7 +2756,7 @@ paths:
       summary: 仮のタグを確定する
       description: |
         仮のタグを確定したタグにする。付いている動画・名前・シノニムは変えない。既に確定した
-        タグなら何も変えずに今の状態を返す（specs/031-tentative-tags/contracts/screen-api.md §2）。
+        タグなら何も変えずに今の状態を返す。
       parameters:
         - $ref: "#/components/parameters/TagId"
       responses:
@@ -2824,8 +2777,7 @@ paths:
       summary: 仮のタグを却下する
       description: |
         仮のタグを消し、付いていた動画から外し、元の名前を却下した名前の一覧に入れる。
-        確定したタグには 409 tag_not_tentative を返し、何も変えない
-        （specs/031-tentative-tags/contracts/screen-api.md §2）。
+        確定したタグには 409 tag_not_tentative を返し、何も変えない。
       parameters:
         - $ref: "#/components/parameters/TagId"
       responses:
@@ -2843,8 +2795,7 @@ paths:
       operationId: listRejectedTagNames
       summary: 却下した名前を一覧する
       description: |
-        名前の自然順（sort_key、同じなら name のバイト順）でページに分けて返す
-        （specs/036-tag-admin-scale/contracts/screen-api.md §6）。`limit` が範囲外、`cursor` が
+        名前の自然順（sort_key、同じなら name のバイト順）でページに分けて返す。`limit` が範囲外、`cursor` が
         解釈できないときは 400 `invalid_request`。
       parameters:
         - name: cursor
@@ -2876,7 +2827,7 @@ paths:
       summary: 却下した名前を一覧から外す
       description: |
         name を登録時と同じく整えてから照合する。一覧に無い名前・整えられない入力でも、
-        何も変えずに 204 を返す（specs/031-tentative-tags/contracts/screen-api.md §3）。
+        何も変えずに 204 を返す。
       parameters:
         - name: name
           in: query
@@ -2900,13 +2851,11 @@ paths:
         `ids` のうち今あり、`action` が働く種類（`confirm`・`reject` は仮のタグ、`delete` は
         確定したタグ）のタグだけを 1 つの取引で処理する。働かない種類の id は何も変えずに
         `notApplicableIds`、無い id は `notFoundIds` に入れる。`ids` の重複は 1 つとして扱い、
-        3 つの配列は互いに重ならず、`ids` に現れた順。取引が失敗したら何も変えない
-        （specs/036-tag-admin-scale/contracts/screen-api.md §1）。
+        3 つの配列は互いに重ならず、`ids` に現れた順。取引が失敗したら何も変えない。
         `setKind` は `kindId` の種類を付け、`clearKind` は種類を外す。どちらも仮のタグを確定しない。
         すでにその種類のタグ（`clearKind` では種類の無いタグ）は `notApplicableIds` に入る。
         `kindId` の無い `setKind` と、`kindId` を付けた他の `action` は 400 `invalid_request`、
-        無い種類の `setKind` は何も変えずに 404 `not_found` / `tag_kind_not_found`
-        （specs/051-tag-kinds/contracts/screen-api.md）。
+        無い種類の `setKind` は何も変えずに 404 `not_found` / `tag_kind_not_found`。
       requestBody:
         required: true
         content:
@@ -2935,7 +2884,7 @@ paths:
         `ids` のうち今あり、`action` が働くタグ（`reject` は仮のタグ、`delete` は確定したタグ、
         `merge` はどちらも）の数と、そのどれかが付いた、いまライブラリにある動画の本数
         （手で付けた分とフォルダ名から付いている分のどちらでも 1 本、重複なし）を返す。
-        何も変えない（specs/036-tag-admin-scale/contracts/screen-api.md §3）。
+        何も変えない。
       requestBody:
         required: true
         content:
@@ -2958,7 +2907,7 @@ paths:
     get:
       operationId: listTagKinds
       summary: タグの種類を一覧する
-      description: すべての種類を id の順に返す（specs/051-tag-kinds/contracts/screen-api.md）。
+      description: すべての種類を id の順に返す。
       responses:
         "200":
           description: 種類の一覧
@@ -2970,7 +2919,7 @@ paths:
       operationId: createTagKind
       summary: タグの種類を1件作る
       description: |
-        名前はタグの名前と同じ規則で整え、種類どうしでだけ一意にする（specs/051-tag-kinds/research.md R-6）。
+        名前はタグの名前と同じ規則で整え、種類どうしでだけ一意にする。
         規則に合わなければ 400 `invalid_request` と `tag_name_*`、別の種類が同じ名前なら
         409 `conflict` / `tag_kind_name_taken` で、何も変えない。
       requestBody:
@@ -3043,8 +2992,7 @@ paths:
       summary: 人物を一覧する
       description: |
         所有者だけ。`q` は名前と別名に部分一致し、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
-        続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
-        （specs/047-video-work-info/contracts/screen-api.md「People and organizations」）。
+        続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す。
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
@@ -3184,8 +3132,7 @@ paths:
       summary: 団体を一覧する
       description: |
         所有者だけ。`q` は名前と別名に部分一致し、`sort` の順に並べる。`limit` を付けると 1 ページずつ返し、
-        続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す
-        （specs/047-video-work-info/contracts/screen-api.md「People and organizations」）。
+        続きがあれば `nextCursor` を入れる。`limit` を省くと条件に合う全件を返す。
       parameters:
         - $ref: "#/components/parameters/CreditQuery"
         - $ref: "#/components/parameters/CreditSort"
@@ -3329,7 +3276,7 @@ paths:
         受け付け、`name` を送ると400になる。`tag: { name }` の付与は、名前を
         シノニムを含めて引き、無ければ作る。`videoIds` は1件以上20000件以下で、
         重複は1つとして数える。処理は1つのトランザクションで、全部に反映するか
-        1つも反映しない（specs/014-video-tags/contracts/tags-api.md §4）。
+        1つも反映しない。
       requestBody:
         required: true
         content:
@@ -3359,8 +3306,7 @@ paths:
       description: |
         `total` は `videoIds` のうちいまライブラリにある動画の数、`count` はそのうち
         そのタグが付いている数。`count < total` のタグが一部にだけ付いている。
-        `items` は1本以上に付いているタグだけで、名前の自然順
-        （specs/014-video-tags/contracts/tags-api.md §4）。
+        `items` は1本以上に付いているタグだけで、名前の自然順。
       requestBody:
         required: true
         content:
@@ -3386,7 +3332,7 @@ paths:
         同じこの経路を使う。`videoIds` は1件以上20000件以下で、重複は1つとして数える。
         既に同じ状態の動画も誤りにせず `applied` に数える。処理は1つのトランザクションで、
         全部に反映するか1つも反映しない。非公開にした動画をゲストとして配信中の応答は
-        打ち切る（specs/016-single-account-auth/contracts/guest-api.md §4・§6）。
+        打ち切る。
       requestBody:
         required: true
         content:
@@ -3414,9 +3360,8 @@ paths:
         `too_many_videos`（`POST /api/video-tags` と同じ上限）で、何も変えない。ライブラリに無い
         動画の id と無いグループの id は誤りにせず数えない。既に同じ状態のものは誤りにせず数え、
         付いているものに付けてもお気に入りにした日時は変えない。`groupIds` にグループを入れても
-        その動画には付かない。グループのお気に入りはグループの解散で消える
-        （specs/048-groups/research.md R-10）。処理は 1 つのトランザクションで、全部に反映するか 1 つも反映しない。確定後の
-        `/api/events` の知らせは無い（specs/035-favorites/contracts/screen-api.md §1）。
+        その動画には付かない。グループのお気に入りはグループの解散で消える。処理は 1 つのトランザクションで、全部に反映するか 1 つも反映しない。確定後の
+        `/api/events` の知らせは無い。
       requestBody:
         required: true
         content:
@@ -3445,7 +3390,7 @@ paths:
         返らないので、クライアントは `version` が最初のページと違えば最初のページから読み直す。
         `covers` は返したページの分だけ作る。`cursor` が読めなければ 400
         `invalid_cursor`、`limit` が範囲の外なら 400 `invalid_request`。`itemCount` は今見せる
-        項目の数である（specs/044-playlists/contracts/screen-api.md）。
+        項目の数である。
       parameters:
         - name: cursor
           in: query
@@ -3474,7 +3419,7 @@ paths:
       summary: 空のプレイリストを作る
       description: |
         所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）でなければ 400
-        `invalid_request`。同じ名前のプレイリストがあってもよい（specs/044-playlists/research.md R-11）。
+        `invalid_request`。同じ名前のプレイリストがあってもよい。
       requestBody:
         required: true
         content:
@@ -3498,8 +3443,7 @@ paths:
       operationId: getPlaylist
       summary: プレイリスト 1 つと見せる項目を返す
       description: |
-        所有者だけ。項目は位置の順で、今ライブラリの動画かグループに引ける項目だけを返す
-        （specs/044-playlists/research.md R-4）。`video` と `group` はライブラリの項目と同じく所有者の値
+        所有者だけ。項目は位置の順で、今ライブラリの動画かグループに引ける項目だけを返す。`video` と `group` はライブラリの項目と同じく所有者の値
         （`progress`・`watchState`・`watchedCount`・`favorite`）を持つ。無ければ 404 `not_found`。
       parameters:
         - $ref: "#/components/parameters/PlaylistId"
@@ -3565,8 +3509,7 @@ paths:
       summary: プレイリストの末尾に動画とグループを足す
       description: |
         所有者だけ。`videoIds` の動画、次に `groupIds` のグループ、次に `smartFolderIds` のスマート
-        フォルダを要求の順で末尾に足す（specs/044-playlists/research.md R-5、
-        specs/048-groups/research.md R-10、specs/052-smart-folders/contracts/screen-api.md）。無い
+        フォルダを要求の順で末尾に足す。無い
         スマートフォルダの id は数えず、スマートフォルダの項目はフォルダを消すと消える。ライブラリに無い
         動画の id と無いグループの id はどちらの数にも入らず、重複は 1 度だけ数える。既にプレイリストに
         あるものは `existing` に数え、何も変えない。グループの項目はグループの解散で消える。
@@ -3619,8 +3562,7 @@ paths:
       operationId: movePlaylistItem
       summary: プレイリストの項目 1 つを並べ替える
       description: |
-        所有者だけ。項目を `afterItemId` の項目のすぐ後ろへ移す。`null` なら先頭へ移す
-        （specs/044-playlists/research.md R-3）。プレイリスト・項目・`afterItemId` の項目がそのプレイリストに
+        所有者だけ。項目を `afterItemId` の項目のすぐ後ろへ移す。`null` なら先頭へ移す。プレイリスト・項目・`afterItemId` の項目がそのプレイリストに
         無ければ 404 `not_found`、`afterItemId` が `itemId` と同じなら 400 `invalid_request`。
       parameters:
         - $ref: "#/components/parameters/PlaylistId"
@@ -3646,8 +3588,7 @@ paths:
       operationId: listWatchHistory
       summary: 視聴履歴を新しい順に返す
       description: |
-        所有者だけ。視聴履歴を視聴を始めた時刻の新しい順（同じ時刻は id の大きい順）に返す
-        （specs/043-watch-history/contracts/screen-api.md）。各件の `video` は、その内容の動画が
+        所有者だけ。視聴履歴を視聴を始めた時刻の新しい順（同じ時刻は id の大きい順）に返す。各件の `video` は、その内容の動画が
         いまライブラリにあって開ける所在を持つときだけ入る（集まりの代表でないバージョンも含む）。
         `watch`・`query`・`date` はページを切る前に掛け、`and` で結ぶ。`cursor` が読めなければ 400
         `invalid_cursor`。`limit` が範囲の外、`watch` が 3 つの値のどれでもない、`query` が 100 文字を
@@ -3707,7 +3648,7 @@ paths:
       summary: 視聴履歴を全件消す
       description: |
         所有者だけ。視聴履歴をすべて消す。空でも 204。再生位置・視聴済み・最後に再生した日時は
-        変えず、`/api/events` の知らせも無い（specs/043-watch-history/contracts/screen-api.md）。
+        変えず、`/api/events` の知らせも無い。
       responses:
         "204":
           description: 消した
@@ -3719,8 +3660,7 @@ paths:
       operationId: listWatchHistoryDates
       summary: 視聴履歴のある日を新しい順に返す
       description: |
-        所有者だけ。`watch` と `query` を満たす件のある日を、`tz` の暦の `YYYY-MM-DD` で新しい順に返す
-        （specs/043-watch-history/contracts/screen-api.md）。どの日もその月も一覧の `date` に渡せる。
+        所有者だけ。`watch` と `query` を満たす件のある日を、`tz` の暦の `YYYY-MM-DD` で新しい順に返す。どの日もその月も一覧の `date` に渡せる。
         `tz` が無いかサーバーが知らない、`watch` が 3 つの値のどれでもない、`query` が 100 文字を
         超えるときは 400 `invalid_request`。
       parameters:
@@ -3757,8 +3697,7 @@ paths:
       summary: 視聴履歴を 1 件消す
       description: |
         所有者だけ。その件が無ければ 404 `not_found`（別のタブで消えた件）。再生位置・視聴済み・
-        最後に再生した日時は変えず、`/api/events` の知らせも無い
-        （specs/043-watch-history/contracts/screen-api.md）。
+        最後に再生した日時は変えず、`/api/events` の知らせも無い。
       parameters:
         - $ref: "#/components/parameters/WatchHistoryEntryId"
       responses:
@@ -3783,8 +3722,7 @@ paths:
         進む。項目の開始の動画は、動画の項目ならその動画、グループの項目ならグループを開くときの
         メンバー（`openVideoId`）である。今の項目が見せない項目なら `position` は 0 で、その位置の前後の
         見せる項目から決める。プレイリストの終わりなら `next` は無い。`item` か `video` が無いか
-        整数でなければ 400 `invalid_request`、プレイリストか項目が無ければ 404 `not_found`
-        （specs/044-playlists/contracts/screen-api.md、data-model.md「Playback order」）。
+        整数でなければ 400 `invalid_request`、プレイリストか項目が無ければ 404 `not_found`。
       parameters:
         - $ref: "#/components/parameters/PlaylistId"
         - name: item
@@ -3824,8 +3762,7 @@ paths:
         数え、2 本未満なら 400 `too_few_videos`、20000 本を超えれば 400 `too_many_videos`
         （`POST /api/video-tags` と同じ上限）、`representativeId` が `videoIds` に無ければ 400
         `representative_not_selected`、どれかが無いか登録フォルダの下に所在が無ければ 404
-        `video_not_found` で、何も変えない。確定後に `/api/events` の `video` が全メンバーで流れる
-        （specs/030-video-versions/contracts/screen-api.md §2）。
+        `video_not_found` で、何も変えない。確定後に `/api/events` の `video` が全メンバーで流れる。
       requestBody:
         required: true
         content:
@@ -3854,7 +3791,7 @@ paths:
         所有者だけ。映像の指紋が一致し尺がほぼ同じ 2 本の組のうち、どちらも登録フォルダの下に
         所在を持つものを新しい順に最大 200 組返す。`total` は全件の数。「違う動画」と記録した組と
         同じ集まりの 2 本は出ない。候補は `fingerprint` の取り込みの段階で増減し、`/api/events` の
-        `scan` で取り直す（specs/030-video-versions/contracts/screen-api.md §5・§6）。
+        `scan` で取り直す。
       responses:
         "200":
           description: 候補の一覧
@@ -3872,8 +3809,7 @@ paths:
       description: |
         所有者だけ。2 本の組を「違う動画」と記録し、その組の候補を消す。候補に無い組でも記録し、
         記録した組は以後候補に出ない。`videoIds` が 2 つでないか同じなら 400 `invalid_request`、
-        どちらかが無いか登録フォルダの下に所在が無ければ 404 `video_not_found` で、何も変えない
-        （specs/030-video-versions/contracts/screen-api.md §5）。「同じ動画」は
+        どちらかが無いか登録フォルダの下に所在が無ければ 404 `video_not_found` で、何も変えない。「同じ動画」は
         `POST /api/video-bundles` に 2 本と代表を渡す。
       requestBody:
         required: true
@@ -3897,8 +3833,7 @@ paths:
       summary: アクティビティの記録を新しい順に返す
       description: |
         所有者だけ。取り込み・自動タグ付け・重複の判定・作品情報の取得・失敗した走査と、所有者のタグと
-        集まりの操作の記録を id の大きい順に返す（specs/055-activity/contracts/screen-api.md、
-        research.md R-9）。絞り込みはページを切る前に掛け、`and` で結ぶ。`counts` は `status` 以外の、
+        集まりの操作の記録を id の大きい順に返す。絞り込みはページを切る前に掛け、`and` で結ぶ。`counts` は `status` 以外の、
         `features` は `feature` 以外の絞り込みに従う。`status`・`feature`・`decider` が知らない値、
         `cursor` か `since` が読めない、`q` か `limit` が範囲の外のときは 400 `invalid_request`
         （読めない `cursor` は reason `invalid_cursor`）。
@@ -3965,8 +3900,7 @@ paths:
       summary: 記録の処理を始め直す
       description: |
         所有者だけ。記録の処理を始め直し、202 を返す。新しい実行は新しい記録になり、この記録を閉じる。
-        `version_judgement` は記録を保ち、`running` に戻る（specs/055-activity/contracts/screen-api.md、
-        research.md R-4）。`import` は動画の失敗した段階を積み直し、`scan` はすべてのメディアフォルダの手動の
+        `version_judgement` は記録を保ち、`running` に戻る。`import` は動画の失敗した段階を積み直し、`scan` はすべてのメディアフォルダの手動の
         スキャンを始める。無い記録は 404 `not_found`、やり直しを出さない記録か対象がもう無い記録は 409
         `activity_not_retryable`、スキャン中の `scan` の記録は 409 `scan_in_progress`、自動タグ付けが切の
         あいだの `auto_tag` の記録は 409 `auto_tagging_off`。
@@ -3988,8 +3922,7 @@ paths:
       summary: 自動の判断を取り消す
       description: |
         所有者だけ。自動の判断を取り消し、所有者の `undo` の記録を返す。所有者がすでに状態を変えていれば、
-        その `outcome` は `already_reverted` になる（specs/055-activity/contracts/screen-api.md、
-        research.md R-7）。無い記録と、`auto_tag` の記録が付けていないタグは 404 `not_found`、取り消しを
+        その `outcome` は `already_reverted` になる。無い記録と、`auto_tag` の記録が付けていないタグは 404 `not_found`、取り消しを
         出さない記録かタグと、取り消し済みのものは 409 `activity_not_undoable`。
       parameters:
         - $ref: "#/components/parameters/ActivityId"
@@ -4048,11 +3981,10 @@ paths:
         フォルダは保存せず、取り込み済みの所在のパスから導く。登録済みの
         メディアフォルダは、動画が無くても含む。並びは名前の自然順。
         同じ動画の別バージョンの集まりは実効の代表の所在だけを数え、代表以外の
-        バージョンだけがあるフォルダは動画の無いフォルダとして扱う
-        （specs/030-video-versions/data-model.md §4）。
+        バージョンだけがあるフォルダは動画の無いフォルダとして扱う。
 
         ゲストでは公開の動画だけを数え、公開の動画の所在を1つも含まない登録フォルダは
-        省く（guest-api.md §2）。
+        省く。
       responses:
         "200":
           description: 登録済みメディアフォルダの集計
@@ -4074,7 +4006,7 @@ paths:
         同じく、同じ動画の別バージョンの集まりを実効の代表の所在だけで数える。
 
         ゲストでは公開の動画だけを数え、公開の動画の所在を1つも含まないフォルダは、
-        登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする（guest-api.md §2）。
+        登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする。
       parameters:
         - $ref: "#/components/parameters/FolderRootId"
         - $ref: "#/components/parameters/FolderPath"
@@ -4110,14 +4042,12 @@ paths:
         1件として出て、代表以外のバージョンはそのファイルのあるフォルダにも出ない。
         代表以外のバージョンだけがあるフォルダは動画の無いフォルダである。集まりの
         `query` は集まりのどれかのバージョンの所在に当たればよく、`title` と `sizeBytes`
-        は範囲にある代表の所在のうちパスの昇順で最初のもの
-        （specs/030-video-versions/data-model.md §4）。
+        は範囲にある代表の所在のうちパスの昇順で最初のもの。
 
         ゲストでは公開の動画だけを対象にし、公開の動画の所在を1つも含まないフォルダは
         登録フォルダそのもの（`path` を省いた要求）を含めて 404 にする。`watch` が `all`
         以外、`sort` が `playedAsc`・`playedDesc`・`favoritedAsc`・`favoritedDesc`、`favorite` が true は
-        `400` `invalid_request` にする
-        （guest-api.md §2・§3）。
+        `400` `invalid_request` にする。
       parameters:
         - $ref: "#/components/parameters/FolderRootId"
         - $ref: "#/components/parameters/FolderPath"
@@ -4153,7 +4083,7 @@ paths:
           in: query
           description: |
             true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-            ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+            ほかの絞り込みと AND で組み合わさる
           schema:
             type: boolean
             default: false
@@ -4206,7 +4136,7 @@ paths:
         - {}
       summary: 見る人に見せるグループを名前の順に返す
       description: |
-        「Add to group」のピッカーの一覧（specs/048-groups/contracts/screen-api.md）。見る人に見せる
+        「Add to group」のピッカーの一覧。見る人に見せる
         グループを、どの深さのものも自然な名前の順（同じなら id の順）に、`cursor` の次から最大
         `limit` 件返す。`q` は前後の空白を取り除き、名前が大文字小文字を区別せずにそれを含むものだけに
         絞る（空なら全部）。グループの値は `getGroup` と同じで、ゲストでは公開の動画だけから作り、
@@ -4245,7 +4175,7 @@ paths:
       summary: 動画とグループからグループを作る
       description: |
         所有者だけ。名前は前後の空白を取り除いて 1〜100 文字（符号位置）で、同じ名前のグループが
-        あってもよい（specs/048-groups/research.md R-14）。`videoIds` の動画、次に `groupIds` の
+        あってもよい。`videoIds` の動画、次に `groupIds` の
         グループを要求の順に項目にする。名前が空か長すぎるか、メンバーが無ければ 400
         `invalid_request`。本文の動画かグループのどれかが無ければ 404 `group_target_not_found` で、
         何も作らない（R-12）。
@@ -4278,20 +4208,18 @@ paths:
       summary: グループ 1 つと、その道筋と項目の最初のページを返す
       description: |
         グループの値（`LibraryGroup`）、`trail` のうち今も親と子の組が続く部分、項目（子グループと
-        動画）の最初の 1 ページ（100 件）を位置の順に返す（specs/048-groups/contracts/screen-api.md）。
+        動画）の最初の 1 ページ（100 件）を位置の順に返す。
         項目は見る人に見せるものだけで、見る人に引けない動画と、見る人に見せる動画の無い子グループは
         入らない。続きは `listGroupItems` で読む。
 
-        グループの値は子孫の動画を再生順（子グループは深さ優先、同じ動画は最初の 1 回）で数える
-        （specs/048-groups/research.md R-7）。ゲストでは公開の動画だけから作る。無いグループと、
+        グループの値は子孫の動画を再生順（子グループは深さ優先、同じ動画は最初の 1 回）で数える。ゲストでは公開の動画だけから作る。無いグループと、
         見る人に見せる動画の無いグループは 404 `not_found`。
       parameters:
         - $ref: "#/components/parameters/GroupId"
         - name: trail
           in: query
           description: |
-            画面が通ってきたグループの id を外側から順に `,` で区切って並べたもの
-            （specs/048-groups/research.md R-8）。応答の `trail` は、このグループから外へ向かって
+            画面が通ってきたグループの id を外側から順に `,` で区切って並べたもの。応答の `trail` は、このグループから外へ向かって
             親と子の組が続く部分で、組が崩れた所より外側を捨てる
           style: form
           explode: false
@@ -4319,8 +4247,7 @@ paths:
         所有者だけ。名前の規則は作成と同じで、応答の `name` は前後の空白を取り除いた名前である。
         グループが無ければ 404 `not_found`。`undoToken` が、このグループを作った
         `POST /api/organize/group` の生きているトークンなら、名前を変えた後の行をそのトークンの
-        取り消しの像にするので、取り消しは名前を変えたグループを消す
-        （specs/050-drag-organize/contracts/screen-api.md）。それ以外のトークンは何も変えず、応答と
+        取り消しの像にするので、取り消しは名前を変えたグループを消す。それ以外のトークンは何も変えず、応答と
         誤りはトークンが無いときと同じで、トークンが原因で失敗することはない。
       parameters:
         - $ref: "#/components/parameters/GroupId"
@@ -4348,7 +4275,7 @@ paths:
       summary: グループを解散する
       description: |
         所有者だけ。グループとその項目を消す。子グループと動画は残り、親からこのグループの項目が
-        消える。自動グループならそのフォルダに `ungroup` を書く（specs/048-groups/research.md R-4）。
+        消える。自動グループならそのフォルダに `ungroup` を書く。
         グループが無ければ 404 `not_found`。
       parameters:
         - $ref: "#/components/parameters/GroupId"
@@ -4402,7 +4329,7 @@ paths:
       summary: グループの末尾に動画とグループを足す
       description: |
         所有者だけ。`videoIds` の動画、次に `groupIds` のグループを要求の順で末尾に足す。既に項目に
-        あるものは飛ばす（specs/048-groups/research.md R-12）。両方が空なら 400 `invalid_request`。
+        あるものは飛ばす。両方が空なら 400 `invalid_request`。
         本文の動画かグループのどれかが無ければ 404 `group_target_not_found`、本文のグループがこの
         グループかその祖先なら 409 `group_cycle` で、どちらも何も足さない。グループが無ければ 404
         `not_found`。
@@ -4469,8 +4396,7 @@ paths:
       operationId: moveGroupItem
       summary: グループの項目 1 つを並べ替える
       description: |
-        所有者だけ。項目を `after` の項目のすぐ後ろへ移す。`after` が無ければ先頭へ移す
-        （specs/048-groups/research.md R-12）。`after` が項目自身なら 400 `invalid_request`、項目か
+        所有者だけ。項目を `after` の項目のすぐ後ろへ移す。`after` が無ければ先頭へ移す。`after` が項目自身なら 400 `invalid_request`、項目か
         `after` がこのグループに無ければ 404 `group_target_not_found`。グループが無ければ 404
         `not_found`。
       parameters:
@@ -4498,8 +4424,7 @@ paths:
       summary: グループをタグに変える
       description: |
         所有者だけ。1 つの取引で、グループの名前を `NormalizeTagName` に通し、名前かシノニムで
-        引けたタグを使うか新しく作り、子孫の全動画に手で付け、グループを解散する
-        （specs/048-groups/research.md R-11）。本文は無い。名前がタグ名の規則に合わなければ 400
+        引けたタグを使うか新しく作り、子孫の全動画に手で付け、グループを解散する。本文は無い。名前がタグ名の規則に合わなければ 400
         `invalid_request` で、何も変えない。グループが無ければ 404 `not_found`。
       parameters:
         - $ref: "#/components/parameters/GroupId"
@@ -4525,10 +4450,9 @@ paths:
         - {}
       summary: 見る人に見せるスマートフォルダを親の id とともに返す
       description: |
-        親を選ぶ欄とフォルダの木が読む一覧（specs/052-smart-folders/contracts/screen-api.md）。
+        親を選ぶ欄とフォルダの木が読む一覧。
         見る人に見せるフォルダを、どの深さのものも自然な名前の順（同じなら id の順）に、ページに
-        分けずに返す。所有者にはすべてのフォルダを、ゲストには再生順が空でないフォルダだけを返す
-        （specs/052-smart-folders/research.md R-8）。`favorite` は所有者の応答にだけ入る。
+        分けずに返す。所有者にはすべてのフォルダを、ゲストには再生順が空でないフォルダだけを返す。`favorite` は所有者の応答にだけ入る。
       responses:
         "200":
           description: スマートフォルダの一覧
@@ -4545,7 +4469,7 @@ paths:
         `sort` が `random` なら 400 `invalid_smart_rule`、名前が空か長すぎれば 400 `invalid_request`、
         `parentId` のフォルダが無ければ 404 `smart_folder_not_found` で、どれも何も作らない。`rule` が
         今無いタグ・タグの種類・人物・団体を名指しても受け付け、`getSmartFolder` の
-        `settings.missing` に返す（specs/052-smart-folders/contracts/screen-api.md「Statuses」）。
+        `settings.missing` に返す。
       requestBody:
         required: true
         content:
@@ -4574,9 +4498,8 @@ paths:
         - {}
       summary: 画面に出たスマートフォルダのカードの値を返す
       description: |
-        `ids` のフォルダのカードの値を、`ids` の順に返す（specs/052-smart-folders/data-model.md
-        「Cards read」）。値はどれも、フォルダの一致する動画（グループにまとめず、動画ごとに経路の
-        どの条件にも当たる見る人に見せる動画）から作る（research.md R-14）。無いフォルダと、ゲストに
+        `ids` のフォルダのカードの値を、`ids` の順に返す。値はどれも、フォルダの一致する動画（グループにまとめず、動画ごとに経路の
+        どの条件にも当たる見る人に見せる動画）から作る。無いフォルダと、ゲストに
         見せないフォルダ（再生順が空）の id は飛ばし、同じ id は 1 回だけ返す。`ids` が無いか空か
         整数でないか、61 件以上なら 400 `invalid_request`。ゲストの応答では `watchedCount`・
         `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空にする。
@@ -4613,11 +4536,11 @@ paths:
       summary: スマートフォルダ 1 つと、その祖先と中身の最初のページを返す
       description: |
         フォルダのカード（`LibrarySmartFolder`、値は再生順から作る）、祖先（外側から順）、中身の
-        最初の 1 ページを返す（specs/052-smart-folders/contracts/screen-api.md）。中身は子フォルダを
+        最初の 1 ページを返す。中身は子フォルダを
         名前の順に要約で先に置き、続けてフォルダと祖先の条件で絞ったライブラリの項目を最大 `limit`
-        件、フォルダの並べ順で置く（data-model.md「Contents」）。続きは `listSmartFolderItems` で読む。
+        件、フォルダの並べ順で置く。続きは `listSmartFolderItems` で読む。
         `settings`（条件・並べ順・欠けた参照）は所有者の応答にだけ入る。経路の条件が今無い実体を
-        名指せば、中身は子フォルダだけである（research.md R-9）。無いフォルダと、ゲストに見せる動画の
+        名指せば、中身は子フォルダだけである。無いフォルダと、ゲストに見せる動画の
         無いフォルダは 404 `not_found`。
       parameters:
         - $ref: "#/components/parameters/SmartFolderId"
@@ -4675,8 +4598,7 @@ paths:
       operationId: deleteSmartFolder
       summary: スマートフォルダとその子孫を消す
       description: |
-        所有者だけ。フォルダと子孫、それらのお気に入りとプレイリストの項目を消す。動画は変えない
-        （specs/052-smart-folders/data-model.md「Edits」）。フォルダが無ければ 404 `not_found`。
+        所有者だけ。フォルダと子孫、それらのお気に入りとプレイリストの項目を消す。動画は変えない。フォルダが無ければ 404 `not_found`。
       parameters:
         - $ref: "#/components/parameters/SmartFolderId"
       responses:
@@ -4733,7 +4655,7 @@ paths:
       description: |
         所有者だけ。グループ `groupId` の項目 `itemIds` を画面の順のまままとめて項目 `after` の
         すぐ後ろへ移す。`after` が無ければ先頭へ移す。1 つの取引で行い、応答の `undoToken` で
-        取り消せる（specs/050-drag-organize/contracts/screen-api.md）。`itemIds` が空か `after` が
+        取り消せる。`itemIds` が空か `after` が
         `itemIds` の中にあれば 400 `invalid_request`。グループ・項目・`after` のどれかが無いか
         そのグループに無ければ 404 `group_target_not_found` で、何も書かない。
       requestBody:
@@ -4763,8 +4685,7 @@ paths:
       description: |
         所有者だけ。落とした先の動画 `target` の題名を先頭 100 文字に切った名前で新しいグループを作り、
         `target`、続いて `items` の動画を画面の順に入れる。`from` があれば、新しいグループが
-        `from` の中で `target` の位置を取り、`target` と `items` は `from` から抜ける
-        （specs/050-drag-organize/research.md R-6）。1 つの取引で行い、応答の `groupId` が新しい
+        `from` の中で `target` の位置を取り、`target` と `items` は `from` から抜ける。1 つの取引で行い、応答の `groupId` が新しい
         グループ、`undoToken` で取り消せる。`items` が空かグループを含めば 400 `invalid_request`。
         動画か `from` が無いか、動画が `from` に無ければ 404 `group_target_not_found` で、何も書かない。
       requestBody:
@@ -4795,7 +4716,7 @@ paths:
         所有者だけ。ドラッグしたカード `items` を画面の順のままグループ `to` の末尾へ足し（既に
         あるものは飛ばす）、`from` があればそこから外す。`to` が無ければ外すだけ（ライブラリに
         落とした）。フォルダ由来のメンバーを外すと除外を書き、最後の項目を外した `from` は解散する。
-        1 つの取引で行い、応答の `undoToken` で取り消せる（specs/050-drag-organize/contracts/screen-api.md）。
+        1 つの取引で行い、応答の `undoToken` で取り消せる。
         `from` と `to` がどちらも無いか同じなら 400 `invalid_request`。`from`・`to`・カードの動画や
         グループが無いか、カードが `from` に無ければ 404 `group_target_not_found`、ドラッグした
         グループが `to` か `to` の祖先なら 409 `group_cycle` で、どれも何も書かない。
@@ -4830,7 +4751,7 @@ paths:
         末尾へ足す（既にあれば飛ばす）。グループ X のマージは X の項目を順に `into` の末尾へ足し、X が
         お気に入りなら `into` をお気に入りにし、X を持つプレイリストと親グループの項目を X の位置で
         `into` に置き換えて（そこにすでに `into` があるか、`into` が親自身か親の祖先なら X の項目を
-        消す）、X を消す（specs/050-drag-organize/research.md R-5）。`from` があれば、カードは同じ
+        消す）、X を消す。`from` があれば、カードは同じ
         取引で `from` から外れる（Move の取り外しと同じ。動画の項目は消え、グループの項目は `into` に
         置き換えずに消え、自動グループのフォルダのメンバーには除外を書く）。1 つの取引で行い、応答の
         `undoToken` で取り消せる。`items` にグループが無ければ 400 `invalid_request`。`into`・`from`・
@@ -4867,7 +4788,7 @@ paths:
         所有者だけ。ドラッグした動画 `videoIds` を落とした先の動画 `target` と 1 つの集まりに束ね、
         `target` を代表にする（代表を選ぶダイアログは無い）。既に集まりに属する動画は、その集まりの
         全メンバーごと移る。規則は `POST /api/video-bundles` と同じで、1 つの取引で行い、応答の
-        `undoToken` で取り消せる（specs/050-drag-organize/contracts/screen-api.md）。`target` の
+        `undoToken` で取り消せる。`target` の
         ほかに動画が無ければ 400 `invalid_request`、集まりを展開して 20 本を超えれば 400
         `too_many_videos`、動画がいまライブラリに無ければ 404 `group_target_not_found` で、どれも
         何も書かない。
@@ -4896,7 +4817,7 @@ paths:
       operationId: organizeUndo
       summary: ドラッグの操作を取り消す
       description: |
-        所有者だけ。`token` の操作の前の状態へ戻す（specs/050-drag-organize/research.md R-1）。操作の
+        所有者だけ。`token` の操作の前の状態へ戻す。操作の
         後で行が変わっていれば 409 `undo_conflict` で、何も書かない。トークンが無い、使い済み、
         または 10 分より古ければ 410 `undo_expired`。トークンは 1 回だけ使える。
       requestBody:
@@ -4926,8 +4847,7 @@ paths:
       operationId: setFolderGrouping
       summary: フォルダのまとめ方の例外を付ける・外す
       description: |
-        `auto` は例外を外し、`ungroup` は「まとめを解除」、`groupDirect` は「直下をまとめる」を付ける
-        （specs/017-folder-groups/contracts/folder-groups-api.md §1）。同じ値の再設定も 200。
+        `auto` は例外を外し、`ungroup` は「まとめを解除」、`groupDirect` は「直下をまとめる」を付ける。同じ値の再設定も 200。
         例外の保存と索引の作り直しは1つの取引で、後の要求が勝つ。フォルダの有無は
         `getFolder` と同じ判定で、無ければ 404。
       parameters:
@@ -4971,8 +4891,7 @@ paths:
       operationId: listCurrentScanIssues
       summary: 直近の取り込みの問題の一覧を返す
       description: |
-        直近の取り込みの問題を、動画（未登録ならファイル）ごとに1件で返す
-        （specs/024-import-progress/contracts/scan-api.md §3）。失敗を先に、同じ重さの中は
+        直近の取り込みの問題を、動画（未登録ならファイル）ごとに1件で返す。失敗を先に、同じ重さの中は
         ファイル名、次にフォルダの順に並ぶ。所在がどの登録フォルダにも含まれない件は返さず、
         Scan.issues の本数にも数えない。一覧は SSE では送らない。画面は Scan.id か
         Scan.issues.revision が変わったら読み直す。
@@ -5022,25 +4941,24 @@ paths:
         - `video`: 動画の状態が変わった。data は `VideoChanged`。最新の内容は
           `GET /api/videos/{id}` で取る
         - `group`: グループの名前か項目が変わった。data は `GroupChanged` で、変わったグループと
-          その祖先の id を運ぶ（specs/048-groups/research.md R-13）。最新の内容は
+          その祖先の id を運ぶ。最新の内容は
           `GET /api/groups/{id}` で取る
         - `smartFolder`: スマートフォルダの中身かカードが変わったかもしれない。data は
           `SmartFolderChanged` で、編集したフォルダとその子孫と親、または一致が変わりうる書き込み
           （タグ・人物・団体・お気に入り・視聴状態・ライブラリにある動画・束ね・グループの変化）では
-          すべてのフォルダの id を運ぶ（specs/052-smart-folders/research.md R-12）。最新の内容は
+          すべてのフォルダの id を運ぶ。最新の内容は
           `GET /api/smart-folders/{id}` で取る
         - `candidates`: 重複の候補の一覧が変わったかもしれない。判定の結果や版の取り外しの確定後に
           送る。data は空のオブジェクト `{}` で、中身は運ばない。最新の一覧は
-          `GET /api/version-candidates` で取る（specs/054-auto-dup/research.md R-10）
+          `GET /api/version-candidates` で取る
         - `activity`: アクティビティの記録が書かれたか変わった。記録を書いた取引の確定後に送る。data は
           空のオブジェクト `{}` で、中身は運ばない。最新の記録と件数は `GET /api/activity` で取る
-          （specs/055-activity/research.md R-8）
+
 
         接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
         変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates`・`activity` は切れていた間の分を送り直さない。
 
-        ゲストには `group` と `smartFolder` だけを送る（specs/048-groups/contracts/screen-api.md、
-        specs/052-smart-folders/contracts/screen-api.md）。`scan`・`video`・`candidates`・`activity` は所有者だけに送る。
+        ゲストには `group` と `smartFolder` だけを送る。`scan`・`video`・`candidates`・`activity` は所有者だけに送る。
       responses:
         "200":
           description: イベントの流れ
@@ -5057,7 +4975,7 @@ components:
       name: vv_session
       description: |
         ログインで発行するセッション ID。HTTPS では `__Host-vv_session`、HTTP では
-        `vv_session` の名前で送る（contracts/auth-api.md §7）。OpenAPI の apiKey は名前を
+        `vv_session` の名前で送る。OpenAPI の apiKey は名前を
         1つしか書けないので、ここには HTTP の名前を書く。
 
   headers:
@@ -5093,7 +5011,7 @@ components:
         動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
         このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
         持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
-        答える（specs/048-groups/research.md R-9）
+        答える
       schema:
         type: integer
         format: int64
@@ -5105,7 +5023,7 @@ components:
         動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
         持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
         答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
-        （specs/052-smart-folders/contracts/screen-api.md）
+
       schema:
         type: integer
         format: int64
@@ -5126,7 +5044,7 @@ components:
         組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
         `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
         ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-        （specs/047-video-work-info/contracts/screen-api.md）
+
       schema:
         type: integer
         format: int64
@@ -5136,7 +5054,7 @@ components:
       in: query
       description: |
         団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
-        （specs/047-video-work-info/contracts/screen-api.md）
+
       schema:
         type: integer
         format: int64
@@ -5147,7 +5065,7 @@ components:
       description: |
         日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
         組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
-        `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+        `invalid_request`。ゲストも使える
       schema:
         type: integer
         minimum: 1
@@ -5158,7 +5076,7 @@ components:
       description: |
         長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
         0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
-        ゲストも使える（specs/052-smart-folders/research.md R-4）
+        ゲストも使える
       schema:
         type: integer
         minimum: 0
@@ -5168,7 +5086,7 @@ components:
       in: query
       description: |
         長さの上限（秒、含む）。扱いは `minDuration` と同じ
-        （specs/052-smart-folders/research.md R-4）
+
       schema:
         type: integer
         minimum: 0
@@ -5181,7 +5099,7 @@ components:
         持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
         実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
         `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-        （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
+
       schema:
         type: integer
         format: int64
@@ -5611,7 +5529,7 @@ components:
       additionalProperties: false
       description: >-
         Windows デスクトップ版の LAN からの接続の設定
-        （specs/037-windows-app/contracts/network-settings-api.md §1）
+
       properties:
         lanAccess:
           type: boolean
@@ -5640,7 +5558,7 @@ components:
       required: [url]
       additionalProperties: false
       description: >-
-        作品情報プラグインの要求を送るプロキシ（specs/056-plugin-tooling/contracts/screen-api.md）
+        作品情報プラグインの要求を送るプロキシ
       properties:
         url:
           type: string
@@ -5662,7 +5580,7 @@ components:
       type: object
       required: [enabled, watch]
       additionalProperties: false
-      description: 自動の取り込みの選択と監視の状態（specs/042-folder-watch-import/contracts/screen-api.md）
+      description: 自動の取り込みの選択と監視の状態
       properties:
         enabled:
           type: boolean
@@ -5701,7 +5619,7 @@ components:
       type: object
       required: [enabled]
       additionalProperties: false
-      description: 重複の自動判定の入切（specs/054-auto-dup/contracts/screen-api.md）
+      description: 重複の自動判定の入切
       properties:
         enabled:
           type: boolean
@@ -5754,7 +5672,7 @@ components:
           type: boolean
           description: >-
             所有者が接続先を保存したか（接続先の行があるか）。false のあいだ endpoint と model は
-            サーバーが返す既定値である（specs/058-settings-pages/research.md R-4）。保存の応答は常に true
+            サーバーが返す既定値である。保存の応答は常に true
 
     UpdateOllamaSettingsRequest:
       type: object
@@ -5871,7 +5789,7 @@ components:
       type: object
       required: [kind, name]
       additionalProperties: false
-      description: ComfyUI に足りないノードの型かモデルファイル（specs/045-comfyui-thumbnails/research.md R-13）
+      description: ComfyUI に足りないノードの型かモデルファイル
       properties:
         kind:
           type: string
@@ -5912,7 +5830,7 @@ components:
       enum: [frame, thumbnail]
       description: |
         編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
-        （specs/046-thumbnail-image-upload/research.md R-4）
+
 
     RunThumbnailEditRequest:
       type: object
@@ -5957,12 +5875,12 @@ components:
 
     WorkInfoPluginState:
       type: string
-      description: プラグインの状態（specs/049-work-info-plugins/data-model.md の State transitions）
+      description: プラグインの状態
       enum: [approved, unapproved, invalid]
 
     WorkInfoPluginProblem:
       type: string
-      description: プラグインを承認できない理由（specs/049-work-info-plugins/data-model.md の work_info_plugins）
+      description: プラグインを承認できない理由
       enum:
         - not_wasm
         - manifest_missing
@@ -5974,7 +5892,7 @@ components:
 
     WorkInfoOperation:
       type: string
-      description: プラグインの操作（specs/049-work-info-plugins/contracts/plugin-contract.md）
+      description: プラグインの操作
       enum: [search, fetch]
 
     WorkInfoPluginSetting:
@@ -5983,7 +5901,7 @@ components:
       additionalProperties: false
       description: |
         マニフェストが宣言する設定の 1 つと、その値の有無。`value` は `secret` が偽で値があるときだけ入る
-        （specs/049-work-info-plugins/research.md R-13）
+
       properties:
         key:
           type: string
@@ -6003,7 +5921,7 @@ components:
           type: string
           description: |
             マニフェストの既定値。値が保存されていないとき、または保存された値が選択肢の外にあるときに実行が受け取る
-            （specs/056-plugin-tooling/research.md R-3）
+
         options:
           type: array
           items:
@@ -6019,7 +5937,7 @@ components:
       type: object
       required: [id, fileName, operations, digest, state, settings, network, updatedAt]
       additionalProperties: false
-      description: 作品情報プラグイン 1 つ（specs/049-work-info-plugins/contracts/screen-api.md の WorkInfoPlugin）
+      description: 作品情報プラグイン 1 つ
       properties:
         id:
           type: integer
@@ -6063,12 +5981,12 @@ components:
           format: int64
           description: |
             出力が残っている直近の実行が終わった時刻（Unix 秒）。残っていなければ無い
-            （specs/056-plugin-tooling/research.md R-6）
+
 
     WorkInfoPluginRunFailure:
       type: string
       description: |
-        実行の失敗の種類（specs/049-work-info-plugins/contracts/screen-api.md の Run failures の reason）。
+        実行の失敗の種類。
         枠を取れなかった実行はモジュールを動かさないので、busy は残らない
       enum:
         - plugin_failed
@@ -6082,7 +6000,7 @@ components:
       type: object
       required: [ranAt, operation, stderr, truncated]
       additionalProperties: false
-      description: 直近の実行の標準エラー（specs/056-plugin-tooling/contracts/screen-api.md）
+      description: 直近の実行の標準エラー
       properties:
         ranAt:
           type: integer
@@ -6150,7 +6068,7 @@ components:
       type: object
       required: [id, url, title]
       additionalProperties: false
-      description: 検索の候補 1 つ。文字だけで、画像は持たない（specs/049-work-info-plugins/research.md R-10）
+      description: 検索の候補 1 つ。文字だけで、画像は持たない
       properties:
         id:
           type: string
@@ -6192,7 +6110,7 @@ components:
       type: object
       required: [fetchId, expiresAt, tags, dates, people, organizations, urls, externalIds]
       additionalProperties: false
-      description: メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8）
+      description: メモリに持つ取得の結果
       properties:
         fetchId:
           type: string
@@ -6271,7 +6189,7 @@ components:
       type: string
       description: |
         取得した人物・団体の照合の答え。existing は既存の実体 1 つ、new は何にも当たらず反映が作る、
-        ambiguous は複数に当たり反映が飛ばす（specs/052-plugin-work-info-fields/research.md R-3）
+        ambiguous は複数に当たり反映が飛ばす
       enum: [existing, new, ambiguous]
 
     WorkInfoMatch:
@@ -6327,7 +6245,7 @@ components:
       type: string
       description: |
         動画に反映できる取得の結果の項目。比較の行の順
-        （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）
+
       enum:
         - title
         - tags
@@ -6419,12 +6337,12 @@ components:
 
     ThumbnailEditState:
       type: string
-      description: 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
+      description: 編集のセッションの状態
       enum: [ready, queued, preparing, running, succeeded, failed, cancelled]
 
     ThumbnailEditFailure:
       type: string
-      description: 実行が失敗した理由（specs/045-comfyui-thumbnails/contracts/workflow.md の Failure reasons）
+      description: 実行が失敗した理由
       enum:
         - unreachable
         - unauthorized
@@ -6531,7 +6449,7 @@ components:
       type: object
       required: [id, name, createdAt, lastUsedAt]
       additionalProperties: false
-      description: 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。
+      description: 発行した API トークン 1 件。平文とハッシュは持たない。
       properties:
         id:
           type: integer
@@ -6581,7 +6499,7 @@ components:
       type: object
       required: [id, name, tentative, kind]
       additionalProperties: false
-      description: 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
+      description: 動画に付いたタグ1件。nameは常に元の名前。
       properties:
         id:
           type: integer
@@ -6590,12 +6508,12 @@ components:
           type: string
         tentative:
           type: boolean
-          description: 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0）
+          description: 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である
         kind:
           anyOf:
             - $ref: "#/components/schemas/TagKindRef"
             - type: "null"
-          description: タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
+          description: タグの種類。null は種類の無いタグ
 
     VideoTag:
       type: object
@@ -6603,8 +6521,7 @@ components:
       additionalProperties: false
       description: |
         動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
-        フォルダ名からも付いていれば1件にまとめて両方を真にする
-        （specs/017-folder-groups/contracts/folder-groups-api.md §4）。
+        フォルダ名からも付いていれば1件にまとめて両方を真にする。
       properties:
         id:
           type: integer
@@ -6629,13 +6546,13 @@ components:
           anyOf:
             - $ref: "#/components/schemas/TagKindRef"
             - type: "null"
-          description: タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
+          description: タグの種類。null は種類の無いタグ
 
     Tag:
       type: object
       required: [id, name, synonyms, videoCount, tentative, createdAt, kind]
       additionalProperties: false
-      description: 管理画面と候補に出す1件（contracts/tags-api.md §1）。
+      description: 管理画面と候補に出す1件。
       properties:
         id:
           type: integer
@@ -6652,16 +6569,16 @@ components:
           description: いまライブラリにある動画の本数
         tentative:
           type: boolean
-          description: 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0）
+          description: 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である
         createdAt:
           type: string
           format: date-time
-          description: タグを作った時刻（秒の精度。specs/036-tag-admin-scale/contracts/screen-api.md §0）
+          description: タグを作った時刻（秒の精度。docs/design-docs/catalog-organization.md）
         kind:
           anyOf:
             - $ref: "#/components/schemas/TagKindRef"
             - type: "null"
-          description: タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
+          description: タグの種類。null は種類の無いタグ
 
     TagList:
       type: object
@@ -6692,7 +6609,7 @@ components:
       type: object
       required: [id, name]
       additionalProperties: false
-      description: タグの種類の id と名前（specs/051-tag-kinds/research.md R-4）。
+      description: タグの種類の id と名前。
       properties:
         id:
           type: integer
@@ -6704,7 +6621,7 @@ components:
       type: object
       required: [id, name, tagCount, createdAt]
       additionalProperties: false
-      description: 種類の一覧の1件（specs/051-tag-kinds/contracts/screen-api.md）。
+      description: 種類の一覧の1件。
       properties:
         id:
           type: integer
@@ -6746,7 +6663,7 @@ components:
       description: |
         タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
         createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
-        （specs/036-tag-admin-scale/data-model.md §0・§2）
+
 
     RejectedTagNameList:
       type: object
@@ -6896,14 +6813,14 @@ components:
         mergeTagId:
           type: integer
           format: int64
-          description: 統合を承諾したタグのid（contracts/tags-api.md §3）
+          description: 統合を承諾したタグのid
 
     TagInput:
       type: object
       additionalProperties: false
       description: |
         付与で使うタグの指定。id と name のちょうど一方を持つ。両方あるか、どちらも
-        無いときは invalid_request（400）にする（contracts/tags-api.md §1）。
+        無いときは invalid_request（400）にする。
       properties:
         id:
           type: integer
@@ -6927,7 +6844,7 @@ components:
       type: object
       required: [name]
       additionalProperties: false
-      description: 人物か団体の別名 1 件（specs/047-video-work-info/data-model.md「Fields」）
+      description: 人物か団体の別名 1 件
       properties:
         name:
           type: string
@@ -6949,7 +6866,7 @@ components:
     WorkDateKind:
       type: string
       enum: [release, recorded, published]
-      description: 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+      description: 日付の種類
 
     WorkPersonRole:
       type: string
@@ -6998,7 +6915,7 @@ components:
       required: [dates, people, organizations, urls, externalIds]
       additionalProperties: false
       description: |
-        動画の作品情報（specs/047-video-work-info/contracts/screen-api.md「WorkInfo schema」）。
+        動画の作品情報。
         一覧は必ずあり、空なら []。単一の値は未設定なら無い
       properties:
         code:
@@ -7067,7 +6984,7 @@ components:
       type: object
       additionalProperties: false
       description: |
-        作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
+        作品情報の書き込みの本文。
         WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
         解除で、全体を置き換える
       properties:
@@ -7101,8 +7018,7 @@ components:
       required: [displayName, workInfo]
       additionalProperties: false
       description: |
-        全画面の編集画面の保存の本文（specs/047-video-work-info/contracts/screen-api.md
-        「PUT /api/videos/{id}/details」）。両方とも必須
+        全画面の編集画面の保存の本文。両方とも必須
       properties:
         displayName:
           type: string
@@ -7114,7 +7030,7 @@ components:
       type: object
       required: [id, name, aliases, externalIds, videoCount, createdAt]
       additionalProperties: false
-      description: 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
+      description: 人物 1 件
       properties:
         id:
           type: integer
@@ -7360,13 +7276,13 @@ components:
             format: int64
         groupIds:
           type: array
-          description: お気に入りを付け外しするグループの id（specs/048-groups/research.md R-10）
+          description: お気に入りを付け外しするグループの id
           items:
             type: integer
             format: int64
         smartFolderIds:
           type: array
-          description: お気に入りを付け外しするスマートフォルダの id（specs/052-smart-folders/contracts/screen-api.md）
+          description: お気に入りを付け外しするスマートフォルダの id
           items:
             type: integer
             format: int64
@@ -7395,7 +7311,7 @@ components:
       type: object
       required: [id, name, itemCount, updatedAt]
       additionalProperties: false
-      description: プレイリスト 1 つの要約（specs/044-playlists/contracts/screen-api.md）
+      description: プレイリスト 1 つの要約
       properties:
         id:
           type: integer
@@ -7405,7 +7321,7 @@ components:
           description: 前後の空白を取り除いた 1〜100 文字の名前。ほかのプレイリストと同じでもよい
         itemCount:
           type: integer
-          description: 今見せる項目の数（specs/044-playlists/research.md R-4）
+          description: 今見せる項目の数
         updatedAt:
           type: string
           format: date-time
@@ -7475,7 +7391,7 @@ components:
       description: |
         プレイリストの項目 1 つ。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
         `smartFolder` の値は読んだ時点のフォルダの再生順から作り、再生もその時点の再生順に従う
-        （specs/052-smart-folders/contracts/screen-api.md）
+
       properties:
         id:
           type: integer
@@ -7620,15 +7536,14 @@ components:
           description: |
             条件に合うグループの項目。各要素のグループの id と、その再生順の動画の id（ids にも含まれる）。
             listLibraryIds の応答にだけ入り、1 つも無ければ省略される
-            （specs/035-favorites/contracts/screen-api.md §3）
+
           items:
             $ref: "#/components/schemas/LibraryGroupIds"
         smartFolderIds:
           type: array
           description: |
             条件に合うスマートフォルダの項目の id。フォルダの動画は ids に入らない。listLibraryIds の
-            応答にだけ入り、1 つも無ければ省略される（specs/052-smart-folders/data-model.md
-            「Library items」）
+            応答にだけ入り、1 つも無ければ省略される
           items:
             type: integer
             format: int64
@@ -7698,7 +7613,7 @@ components:
       description: |
         並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
         所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
-        specs/033-video-dates/research.md R-4）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+        docs/design-docs/catalog-organization.md）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
         動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
         最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、favorited = お気に入りに
         した日時（お気に入りでない項目は向きに関係なく末尾。グループの項目はグループを
@@ -7740,7 +7655,7 @@ components:
           type: array
           description: |
             tag のうち存在しなかった id。1つも無ければ省略される
-            （specs/014-video-tags/contracts/tags-api.md §5）
+
           items:
             type: integer
             format: int64
@@ -7774,8 +7689,7 @@ components:
       description: |
         ライブラリの項目1件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
         `smartFolder` は一番上のスマートフォルダ（お気に入りのみではお気に入りのフォルダ）の要約で、
-        カードの値は `listSmartFolderCards` で読む（specs/052-smart-folders/data-model.md
-        「Library items」）
+        カードの値は `listSmartFolderCards` で読む
       properties:
         kind:
           type: string
@@ -7793,8 +7707,7 @@ components:
       additionalProperties: false
       description: |
         グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-        同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-        「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+        同じ動画は最初の 1 回）に並べたものから作る。グループは `id` で指す。ゲストの応答では `watchedCount`・
         `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
       properties:
         id:
@@ -7866,7 +7779,7 @@ components:
           type: boolean
           description: |
             所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
-            所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
+            所有者の応答にだけ入る
 
     GroupMembers:
       type: object
@@ -7929,7 +7842,7 @@ components:
       type: object
       required: [name]
       additionalProperties: false
-      description: PATCH /api/groups/{id} の本文（specs/050-drag-organize/contracts/screen-api.md）
+      description: PATCH /api/groups/{id} の本文
       properties:
         name:
           type: string
@@ -7982,7 +7895,7 @@ components:
       type: object
       required: [kind, id]
       additionalProperties: false
-      description: ドラッグしたカード 1 枚（specs/050-drag-organize/research.md R-4）
+      description: ドラッグしたカード 1 枚
       properties:
         kind:
           type: string
@@ -8218,14 +8131,14 @@ components:
       type: object
       additionalProperties: false
       description: |
-        スマートフォルダの条件（specs/052-smart-folders/data-model.md「smart_folders.rule」）。どの
+        スマートフォルダの条件。どの
         項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
         ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
       properties:
         q:
           type: string
           maxLength: 500
-          description: 検索欄の入力。所有者の意味で照合する（research.md R-11）
+          description: 検索欄の入力。所有者の意味で照合する
         watch:
           type: string
           enum: [unwatched, inProgress, watched]
@@ -8291,7 +8204,7 @@ components:
       additionalProperties: false
       description: |
         スマートフォルダの要約。ライブラリの項目と中身のページの子フォルダの項目が持ち、カードの値は
-        持たない。値は画面が `listSmartFolderCards` で読む（specs/052-smart-folders/research.md R-14）
+        持たない。値は画面が `listSmartFolderCards` で読む
       properties:
         id:
           type: integer
@@ -8324,8 +8237,7 @@ components:
       additionalProperties: false
       description: |
         スマートフォルダのカード。値は `LibraryGroup` の同じ名前の欄と同じ意味で、`getSmartFolder` では
-        フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る
-        （specs/052-smart-folders/data-model.md「Contents」）。ゲストの応答では `watchedCount`・
+        フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る。ゲストの応答では `watchedCount`・
         `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする
       properties:
         id:
@@ -8505,7 +8417,7 @@ components:
         動画を開いたスマートフォルダ（`smartFolder` の問い合わせ）。GET /api/videos/{id} の応答にだけ、
         文脈がスマートフォルダで、その再生順が動画を持つときだけ入る。このとき `group` は入らない。
         位置と本数はフォルダの再生順で数え、ゲストの応答では公開の動画だけで数える
-        （specs/052-smart-folders/contracts/screen-api.md）
+
       properties:
         id:
           type: integer
@@ -8555,7 +8467,7 @@ components:
         rootPath:
           type: string
           description: |
-            登録フォルダの絶対パス。ゲストの応答では省く（guest-api.md §1）。画面は
+            登録フォルダの絶対パス。ゲストの応答では省く。画面は
             登録フォルダの表示名を、これが無ければ `name` から作る
         videoCount:
           type: integer
@@ -8577,7 +8489,7 @@ components:
       enum: [auto, ungroup, groupDirect]
       description: |
         フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
-        `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+        `groupDirect` は「直下をまとめる」
 
     FolderGrouping:
       type: object
@@ -8585,8 +8497,7 @@ components:
       additionalProperties: false
       description: |
         フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
-        ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1、
-        specs/048-groups/contracts/screen-api.md「Routes and schemas changed」）
+        ゲストでは省く
       properties:
         mode:
           $ref: "#/components/schemas/FolderGroupingMode"
@@ -8633,9 +8544,7 @@ components:
       type: object
       description: |
         ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-        `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
-        （specs/016-single-account-auth/contracts/guest-api.md §1、
-        specs/029-video-overrides/contracts/screen-api.md §0）。
+        `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする。
       required:
         [
           id,
@@ -8660,7 +8569,7 @@ components:
           type: string
           description: |
             有効な題名。表示名があればそれ、無ければ拡張子を除いたファイル名
-            （specs/029-video-overrides/contracts/screen-api.md §0）
+
         fileTitle:
           type: string
           description: 拡張子を除いたファイル名。所有者の応答にだけ入る
@@ -8683,7 +8592,7 @@ components:
           description: |
             所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
             `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る
-            （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-5）
+
         sizeBytes:
           type: integer
           format: int64
@@ -8695,13 +8604,13 @@ components:
           format: date-time
           description: |
             vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル）を最後に編集した日時。
-            一度も編集していなければ addedAt と同じ（specs/033-video-dates/data-model.md §3）
+            一度も編集していなければ addedAt と同じ
         fileCreatedAt:
           type: string
           format: date-time
           description: |
             一覧に出す所在のファイルの作成日時。ファイルシステムから取れないときはそのファイルの
-            更新日時（mtime）（specs/033-video-dates/research.md R-4）
+            更新日時（mtime）
         durationMs:
           type: integer
           format: int64
@@ -8761,7 +8670,7 @@ components:
           description: |
             probeState = done かつ正のdurationMsを持つときだけ入る、シーク用サムネイルの
             スプライトの配置情報（SeekThumbnailSprite）を返す経路の版付き URL
-            （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §1）
+
         progress:
           $ref: "#/components/schemas/Progress"
         location:
@@ -8778,34 +8687,34 @@ components:
           type: array
           description: |
             付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-            無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列。
+            無ければ空配列。ゲストの応答では常に空配列。
             フォルダ名から付いている分も含む
-            （specs/017-folder-groups/contracts/folder-groups-api.md §4）
+
           items:
             $ref: "#/components/schemas/VideoTag"
         public:
           type: boolean
           description: |
             公開の動画か。公開の動画はログインしていない人にも見える
-            （specs/016-single-account-auth/contracts/guest-api.md §4）
+
         favorite:
           type: boolean
           description: |
             所有者がお気に入りにした動画か。所有者の応答にだけ入る
-            （specs/035-favorites/data-model.md §3）
+
         workInfo:
           $ref: "#/components/schemas/WorkInfo"
           description: |
             作品情報。GET /api/videos/{id} と、作品情報を書く所有者の PUT（work-info・details）の
             応答にだけ入り、行の無い動画とゲストの応答では無い。一覧の項目・関連動画・ライブラリの
-            項目には入らない（specs/047-video-work-info/contracts/screen-api.md「Video changes」）
+            項目には入らない
         mediaInfo:
           $ref: "#/components/schemas/MediaInfo"
           description: |
             取り込みの解析で読んだ動画の追加の情報。GET /api/videos/{id} の応答にだけ入り、今の版の
             行がある動画にだけ入る。所有者と、公開の動画を読むゲストに同じ値を返す。一覧の項目・関連動画・
             ライブラリの項目・所有者の PUT の応答には入らない
-            （specs/056-media-info/contracts/screen-api.md、research.md R-6）
+
         seekThumbnailState:
           type: string
           enum: [pending, done, failed]
@@ -8819,7 +8728,7 @@ components:
     MediaInfo:
       type: object
       description: |
-        動画の追加の情報（specs/056-media-info/contracts/screen-api.md）。どの項目も、ファイルに
+        動画の追加の情報。どの項目も、ファイルに
         無ければ省く。項目の無い object は丸ごと省く。
       additionalProperties: false
       properties:
@@ -8897,7 +8806,7 @@ components:
           examples: [stereo, "5.1"]
         language:
           type: string
-          description: ファイルの言語の印（`und` は省く。research.md R-8）
+          description: ファイルの言語の印（`und` は省く）
         title:
           type: string
         default:
@@ -8917,7 +8826,7 @@ components:
           examples: [subrip, arib_caption]
         language:
           type: string
-          description: ファイルの言語の印（`und` は省く。research.md R-8）
+          description: ファイルの言語の印（`und` は省く）
         title:
           type: string
         default:
@@ -9001,8 +8910,7 @@ components:
     SeekThumbnailSprite:
       type: object
       description: |
-        シーク用サムネイルのスプライトの配置情報
-        （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。最後のシートの
+        シーク用サムネイルのスプライトの配置情報。最後のシートの
         frameCount を超える部分は黒く、クライアントはそこを指さない。
       required: [intervalMs, frameCount, columns, rows, frameWidth, frameHeight, sheets]
       additionalProperties: false
@@ -9086,7 +8994,7 @@ components:
       required: [id, name, position, count]
       additionalProperties: false
       description: |
-        動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+        動画の文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）。
         GET /api/videos/{id} の応答にだけ、動画がグループにあるときだけ入る（location と同じ扱いで、
         一覧の項目には入らない）。位置と本数はそのグループの再生順（子グループは深さ優先、同じ動画は
         最初の 1 回）で数え、ゲストの応答では公開の動画だけで数える
@@ -9120,8 +9028,7 @@ components:
         動画が属する集まり（同じ動画の別バージョン）の要約。集まりのメンバーのときだけ、
         画面 API が Video を返すすべての応答に入る（一覧の項目も含む。一覧はページごとに 1 回の
         問い合わせで読む）。カードの印はこれから出す
-        （specs/054-auto-dup/contracts/screen-api.md「Video delta」、
-        specs/030-video-versions/contracts/screen-api.md §0）
+
       properties:
         count:
           type: integer
@@ -9137,7 +9044,7 @@ components:
       required: [representativeId, items]
       additionalProperties: false
       description: |
-        集まりの全バージョン（specs/030-video-versions/contracts/screen-api.md §1）
+        集まりの全バージョン
       properties:
         representativeId:
           type: integer
@@ -9173,7 +9080,7 @@ components:
       required: [videos, distance]
       additionalProperties: false
       description: |
-        「同じ動画かもしれない」2 本の組（specs/030-video-versions/contracts/screen-api.md §5）
+        「同じ動画かもしれない」2 本の組
       properties:
         videos:
           type: array
@@ -9222,7 +9129,7 @@ components:
       required: [id, name, items, offset, total]
       additionalProperties: false
       description: |
-        基準の動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+        基準の動画の文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）。
         メンバーはそのグループの再生順の動画で、ゲストの応答では公開の動画だけで作る
       properties:
         id:
@@ -9392,7 +9299,7 @@ components:
     Scan:
       type: object
       description: >-
-        直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。右下の表示と設定画面は、
+        直近の取り込みの状態。右下の表示と設定画面は、
         どちらもこの1つを読む
       required: [id, status, issues, state, origin]
       additionalProperties: false
@@ -9404,7 +9311,7 @@ components:
           type: string
           description: >-
             取り込みを始めた主体。watch はフォルダの監視が始めた、変わったフォルダだけの取り込み
-            （specs/042-folder-watch-import/contracts/screen-api.md）
+
           enum: [manual, watch]
         status:
           $ref: "#/components/schemas/ScanStatus"
@@ -9426,7 +9333,7 @@ components:
           type: string
           description: >-
             スキャン自体が失敗した理由の自由文。画面は表示せず、errorCode と errorPath から説明を作る
-            （specs/023-english-i18n/contracts/error-api.md §3）
+
         errorCode:
           $ref: "#/components/schemas/ScanErrorCode"
         errorPath:
@@ -9440,13 +9347,13 @@ components:
       description: >-
         利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、
         finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、
-        partial は失敗の問題がある、done はそれ以外（specs/024-import-progress/contracts/scan-api.md §2）
+        partial は失敗の問題がある、done はそれ以外
       enum: [finding, running, done, partial, failed]
 
     ScanActivity:
       type: object
       description: >-
-        取り込み中の今の処理（specs/024-import-progress/contracts/scan-api.md §2）。複数が同時に動くときは
+        取り込み中の今の処理。複数が同時に動くときは
         最後に始まったもの。何も動いていなければ Scan から省く。利用者の言葉は SPA が kind から組み立てる
       required: [kind, fileName]
       additionalProperties: false
@@ -9468,7 +9375,7 @@ components:
       description: >-
         今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を
         読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は
-        同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）
+        同じ動画の別バージョンを探すための映像の指紋を作っている
       enum: [registering, probe, thumbnail, seekThumbnail, preview, fingerprint]
 
     ScanVideos:
@@ -9490,7 +9397,7 @@ components:
       type: object
       description: >-
         直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える
-        （specs/024-import-progress/contracts/scan-api.md §2）
+
       required: [failed, substituted, revision]
       additionalProperties: false
       properties:
@@ -9583,13 +9490,12 @@ components:
           description: |
             項目がスマートフォルダの項目のときのフォルダの id。動画とグループの項目では無い。
             動画ページはこれで開く URL に smartFolder を付ける
-            （specs/052-smart-folders/contracts/screen-api.md）
+
 
     PlaylistPlayback:
       type: object
       description: |
-        プレイリストから再生しているときの位置と次の動画（specs/044-playlists/data-model.md
-        「Playback order」）
+        プレイリストから再生しているときの位置と次の動画
       required: [playlist, itemId, position, count]
       additionalProperties: false
       properties:
@@ -9658,7 +9564,7 @@ components:
     ScanIssueKind:
       type: string
       description: >-
-        取り込みの問題の種類（specs/024-import-progress/data-model.md §3）。unreadable・
+        取り込みの問題の種類。unreadable・
         changed_during_import・register_failed は走査で、*_failed は準備の仕事がやり直しの上限まで
         失敗したもの（以上は失敗）。thumbnail_first_frame・seek_thumbnail_full_decode は代用
       enum:
@@ -9677,7 +9583,7 @@ components:
       type: string
       description: >-
         解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、
-        ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は
+        ゲストの応答では省く。ここが正本で、Go の定数は
         生成物である（task generate）。
       enum:
         - file_unavailable
@@ -9689,8 +9595,7 @@ components:
     ScanErrorCode:
       type: string
       description: >-
-        スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す
-        （specs/023-english-i18n/data-model.md §2）。ここが正本で、Go の定数は生成物である
+        スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す。ここが正本で、Go の定数は生成物である
         （task generate）。
       enum:
         - media_folder_unreadable
@@ -9701,7 +9606,7 @@ components:
 
     ActivityKind:
       type: string
-      description: アクティビティの記録の種類（specs/055-activity/data-model.md「Kinds」）
+      description: アクティビティの記録の種類
       enum:
         - import
         - scan
@@ -9724,7 +9629,7 @@ components:
     ActivityFeature:
       type: string
       description: |
-        種類のまとまりで、機能の絞り込みの単位（specs/055-activity/contracts/screen-api.md「Features」）。
+        種類のまとまりで、機能の絞り込みの単位。
         `undo` は取り消した記録の機能に入る
       enum:
         - import
@@ -9751,7 +9656,7 @@ components:
 
     ActivityStatus:
       type: string
-      description: 記録の状態（specs/055-activity/research.md R-4）
+      description: 記録の状態
       enum:
         - running
         - attention
@@ -9759,7 +9664,7 @@ components:
 
     ActivityReason:
       type: string
-      description: running と attention の記録の理由（specs/055-activity/data-model.md「Reasons」）
+      description: running と attention の記録の理由
       enum:
         - waiting
         - processing
@@ -9770,7 +9675,7 @@ components:
 
     ActivityOutcome:
       type: string
-      description: done の記録の結果（specs/055-activity/data-model.md「Outcomes」）
+      description: done の記録の結果
       enum:
         - completed
         - same
@@ -9783,7 +9688,7 @@ components:
 
     ActivityDecider:
       type: string
-      description: 記録した判断をしたもの、無ければ処理を始めたもの（specs/055-activity/research.md R-5）
+      description: 記録した判断をしたもの、無ければ処理を始めたもの
       enum:
         - rule
         - ai
@@ -9860,7 +9765,7 @@ components:
 
     ActivityEntry:
       type: object
-      description: アクティビティの記録の 1 件（specs/055-activity/contracts/screen-api.md）
+      description: アクティビティの記録の 1 件
       required: [id, kind, feature, status, decider, subject, candidate, retryRun, undoable, undone, createdAt, updatedAt]
       additionalProperties: false
       properties:
@@ -9927,7 +9832,7 @@ components:
     ActivitySubject:
       type: object
       description: |
-        記録の対象。鍵ごとに 1 項目で、組は 2 項目、それ以外は 1 項目（specs/055-activity/research.md R-10）
+        記録の対象。鍵ごとに 1 項目で、組は 2 項目、それ以外は 1 項目
       required: [kind, items]
       additionalProperties: false
       properties:
@@ -10072,31 +9977,31 @@ components:
           type: string
           description: >-
             英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに
-            対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0）
+            対するフォールバックである
         reason:
           $ref: "#/components/schemas/ErrorReason"
         limit:
           type: integer
           description: >-
             reason の上限値。契約の表で limit を返す reason のときだけ入る
-            （specs/023-english-i18n/contracts/error-api.md §1）
+
         field:
           type: string
           description: >-
             reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く
             （aliases[0].language・externalIds[1]・parentId）。work_info_*・person_not_found・
             organization_not_found・external_id_taken のときだけ入る
-            （specs/047-video-work-info/contracts/screen-api.md「Added reason values and field」）
+
         tagName:
           type: string
           description: >-
             競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と
-            tag_merge_required のときだけ入る（specs/023-english-i18n/contracts/error-api.md §1）
+            tag_merge_required のときだけ入る
         pluginMessage:
           type: string
           description: >-
             作品情報プラグインが報告した誤りの文の先頭 300 文字（翻訳しないプラグインの文）。plugin_failed のとき
-            だけ入りうる（specs/049-work-info-plugins/contracts/screen-api.md の Run failures）
+            だけ入りうる
         host:
           type: string
           description: >-
@@ -10112,7 +10017,7 @@ components:
       type: string
       description: >-
         同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には
-        入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は
+        入らない。ここが正本で、Go の定数は
         生成物である（task generate）。
       enum:
         - name_is_tag

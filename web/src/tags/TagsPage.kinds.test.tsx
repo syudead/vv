@@ -39,7 +39,7 @@ function kindNames(table: HTMLElement): string[] {
     .map((link) => link.textContent ?? "");
 }
 
-describe("TagsPage「Kinds」のタブ（specs/051-tag-kinds/ui-design.md「Kinds tab」）", () => {
+describe("TagsPage「Kinds」のタブ", () => {
   it("タブは「Kinds 4」で、開くと種類を名前の自然順に並べ、URL は tab=kinds、見出しの行は「New kind」", async () => {
     const user = userEvent.setup();
     install();

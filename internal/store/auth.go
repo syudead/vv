@@ -93,9 +93,9 @@ func (s *AuthStore) ChangePassword(ctx context.Context, passwordHash string, now
 // changeCredentials は資格情報の列 column を value に書き換える。column は
 // ChangeUsername と ChangePassword が渡す固定の列名だけである。
 //
-// 既存のセッションを無効にするのは版の一致（data-model.md §4）で、sessions の
+// 既存のセッションを無効にするのは版の一致で、sessions の
 // 全件削除は後片付けである。API トークンも同じ取引で全件消し、設定ページの一覧から
-// 使えないトークンを消す（specs/026-external-api/research.md R-2）。
+// 使えないトークンを消す。
 func (s *AuthStore) changeCredentials(ctx context.Context, column, value string, now time.Time) error {
 	tx, err := s.sql.BeginTx(ctx, nil)
 	if err != nil {
@@ -179,7 +179,7 @@ func insertSession(ctx context.Context, tx *sql.Tx, sessionToken string, account
 // Session は sessionToken のセッションが有効かを確かめ、有効なら期限を返す。
 //
 // 有効なのは、ハッシュが sessions にあり、account の行があり、発行時の版が
-// account.version と一致し、期限が now より後のときだけである（data-model.md §4）。
+// account.version と一致し、期限が now より後のときだけである。
 // これを1回の問い合わせで確かめ、判定は読むだけで決める。期限切れの行に当たったら
 // その行の削除を試みるが、削除の失敗は判定を変えない。
 //

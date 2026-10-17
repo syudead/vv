@@ -8,8 +8,7 @@ import type { TagKindFilter } from "./tagListUrl";
 /**
  * ListRow は、サーバーのページで読んで並べる管理画面の 1 行（タグ、人物、団体）の、並び順と
  * 位置の計算が読む部分である。タグの画面と人物・団体の画面（`web/src/credits/`）が、行の
- * 置き直しと件数の数え直しをこのモジュールで共有する（specs/047-video-work-info/plan.md の
- * Structure decision）。
+ * 置き直しと件数の数え直しをこのモジュールで共有する。
  */
 export interface ListRow {
   id: number;
@@ -29,14 +28,13 @@ export interface ListRowsQuery {
 export type RowMatcher<R, Q> = (row: R, query: Q) => boolean;
 
 /**
- * TagRowsQuery は、読み込んだ行（`rows`）をサーバーから受けたときの条件である
- * （specs/036-tag-admin-scale/data-model.md §4「条件」）。`query` は検索語に
+ * TagRowsQuery は、読み込んだ行（`rows`）をサーバーから受けたときの条件である。`query` は検索語に
  * `foldForMatch` を掛けて前後の空白を落とした照合形で、空なら絞らない。
  */
 export interface TagRowsQuery extends ListRowsQuery {
   tentativeOnly: boolean;
   unusedOnly: boolean;
-  /** 種類の絞り込み（specs/051-tag-kinds/research.md R-8）。省くか null なら絞らない。 */
+  /** 種類の絞り込み。省くか null なら絞らない。 */
   kind?: TagKindFilter;
 }
 
@@ -54,7 +52,7 @@ export function matchesKind(tag: Tag, kind: TagKindFilter | undefined): boolean 
  * matchesTagQuery は、タグが条件の検索・絞り込みに合うかである。サーバーの
  * `GET /api/tags` と同じ規則（検索語の照合形が元の名前かシノニムの照合形に部分一致、
  * 「Tentative only」は仮のタグ、「Unused only」は本数 0）で、操作のあとの 1 行を
- * 往復せずに判定するのに使う（research.md R-3・R-12）。
+ * 往復せずに判定するのに使う。
  */
 export function matchesTagQuery(tag: Tag, query: TagRowsQuery): boolean {
   if (query.tentativeOnly && !tag.tentative) return false;
@@ -69,7 +67,7 @@ export function matchesTagQuery(tag: Tag, query: TagRowsQuery): boolean {
 
 /**
  * createdSeconds は作った日時の Unix 秒である。サーバーは `tags.created_at`（秒）で
- * 並べるので、同じ秒のタグは名前の順になる（research.md R-8）。読めなければ 0。
+ * 並べるので、同じ秒のタグは名前の順になる。読めなければ 0。
  */
 function createdSeconds(tag: ListRow): number {
   const time = Date.parse(tag.createdAt);
@@ -77,7 +75,7 @@ function createdSeconds(tag: ListRow): number {
 }
 
 /**
- * compareTagsForSort はサーバーの並び（data-model.md §2 の `order by`）と同じ前後を
+ * compareTagsForSort はサーバーの並びと同じ前後を
  * 返す。本数・作った日の並びでは先にその値で比べ、同じなら名前の自然順の鍵
  * （`naturalSortKey`）、それも同じなら `id` で比べる。`keys` は鍵の控えで、同じ
  * タグの鍵を何度も作らない。
@@ -139,8 +137,7 @@ export function insertionIndex<R extends ListRow>(
  * ページの最後の行の、受けたときの状態）で、続きが無ければ undefined。`tag` が
  * それより後ろに並ぶなら読み込んだ範囲の外で、置かない。その行は続きのページが
  * 返すので、置くと続きと二重になる。範囲の中なら置く。続きは境より後ろだけを返す
- * ので、範囲の中へ動いた行は画面が置かなければ抜ける（data-model.md §4「操作の
- * あとの反映」、research.md R-12）。
+ * ので、範囲の中へ動いた行は画面が置かなければ抜ける。
  */
 export function placeTag<R extends ListRow>(
   rows: readonly R[],
@@ -156,7 +153,7 @@ export function placeTag<R extends ListRow>(
 
 /**
  * appendUniqueTags は続きのページから、既に読み込んだ行と同じ id の行を捨てて末尾に
- * 足す（`web/src/api/videosData.ts` の `appendUnique` と同じ。research.md R-11）。
+ * 足す（`web/src/api/videosData.ts` の `appendUnique` と同じ）。
  * 足すものが無ければ受け取った配列をそのまま返す。
  */
 export function appendUniqueTags<R extends ListRow>(
@@ -174,7 +171,7 @@ export function appendUniqueTags<R extends ListRow>(
 }
 
 /**
- * PageRows は読み込んだ行と件数である（data-model.md §4「ページ」）。`total` は
+ * PageRows は読み込んだ行と件数である。`total` は
  * 条件に合う行の数、`totalAll` は全部の数で、どちらも読み込んでいない行を含む。
  * `nextCursor` は続きがあるときだけ入る。
  */
@@ -199,7 +196,7 @@ export type TagPageRows = PageRows<Tag, TagRowsQuery>;
  * replaceTag は、タグ 1 件が書き換わった（確定・改名・統合先）ことを読み込んだ行へ
  * 反映する。`before` は書き換わる前の状態（行か統合の窓の候補。分からなければ
  * undefined）で、前後それぞれを今の条件に照らして `total` を増減し、合えば並び順の
- * 位置へ置き直し、合わなければ取り除く（data-model.md §4「操作のあとの反映」）。
+ * 位置へ置き直し、合わなければ取り除く。
  */
 export function replaceTag(
   page: TagPageRows,
@@ -272,7 +269,7 @@ export function confirmTags(page: TagPageRows, ids: ReadonlySet<number>): TagPag
 
 /**
  * setTagsKind は、まとめて種類を付けた（`kind` が null なら外した）タグの行の種類を
- * 書き換える（specs/051-tag-kinds/ui-design.md「Set kind」）。種類は並び順の値を変えないので
+ * 書き換える。種類は並び順の値を変えないので
  * 位置はそのままで、種類の絞り込みに合わなくなった行は取り除いて `total` を減らす。
  */
 export function setTagsKind(

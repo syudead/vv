@@ -10,7 +10,6 @@ import (
 
 // GetPluginProxySettings は作品情報プラグインの要求を送るプロキシの URL を返す。保存が無ければ ""
 // である。/api/settings/network と違い、どのビルドでも答える
-// （specs/056-plugin-tooling/contracts/screen-api.md）。
 func (s *server) GetPluginProxySettings(w http.ResponseWriter, r *http.Request) {
 	if s.pluginProxy == nil {
 		s.internalError(w, "Plugin proxy settings are not configured.", nil)
@@ -26,7 +25,7 @@ func (s *server) GetPluginProxySettings(w http.ResponseWriter, r *http.Request) 
 }
 
 // UpdatePluginProxySettings は URL を確かめて保存し、保存した値を返す。url が無いか規則に外れれば
-// 400 invalid_request で、何も書かない（契約、research.md R-4）。
+// 400 invalid_request で、何も書かない（契約）。
 func (s *server) UpdatePluginProxySettings(w http.ResponseWriter, r *http.Request) {
 	if s.pluginProxy == nil {
 		s.internalError(w, "Plugin proxy settings are not configured.", nil)

@@ -110,8 +110,7 @@ function newGroupItem(group: LibraryGroup, itemId: number): GroupItem {
 }
 
 /**
- * GroupPage はグループ 1 つを開いた画面（`/groups/{id}?trail=`）である
- * （specs/048-groups/ui-design.md「Group page」）。上のバーの下に道筋の帯、見出しにグループの
+ * GroupPage はグループ 1 つを開いた画面（`/groups/{id}?trail=`）である。上のバーの下に道筋の帯、見出しにグループの
  * 名前と本数と「Play」、本体にその中の子グループと動画を並び順どおりにライブラリのカードか
  * 行で並べる。所有者とゲストの両方が開く。
  *
@@ -131,8 +130,7 @@ export default function GroupPage() {
 
 /**
  * useGroupPageDrops は動画を動画に落としたときの「Make a group」と「Bundle as versions」である。
- * 新しいグループは落とした先の項目の位置を取る（specs/050-drag-organize/ui-design.md
- * 「Group page」、R-6）。`shownData` はサーバーが答える前の結果を重ねた中身である。
+ * 新しいグループは落とした先の項目の位置を取る。`shownData` はサーバーが答える前の結果を重ねた中身である。
  */
 function useGroupPageDrops({
   data,
@@ -177,13 +175,13 @@ function useGroupPageDrops({
 
 /**
  * useGroupSelection はグループのページの選択である。ライブラリと同じく、動画の id の集合と、
- * グループとして選んだ子グループを持つ（ui-design.md「Body」）。
+ * グループとして選んだ子グループを持つ。
  */
 function useGroupSelection(data: GroupPageData | null) {
   const [selection, setSelection] = useState<LibrarySelection>(emptySelection);
 
   // 読み直したグループにもう無い動画と子グループを選択から外し、選んだ子グループを今の
-  // メンバーで覚え直す（ui-design.md「Edits that fail」）。読んでいないページの選んだ動画は残す。
+  // メンバーで覚え直す。読んでいないページの選んだ動画は残す。
   useEffect(() => {
     if (data === null) return;
     setSelection((current) =>
@@ -265,14 +263,14 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   } = useGroupPage(id, trail);
   const data = state.kind === "ready" ? state.data : null;
   // 解散、タグ化、最後の項目を外したときは、道筋の親かライブラリへ移ってトーストを出す
-  // （ui-design.md「Dissolving」「Removing one item」）。
+  //
   const leave = useLeaveGroup(data?.trail ?? noTrail);
   const name = data?.group.name;
   const dissolvedByRemoval = useCallback(() => {
     if (name !== undefined) leave(t.groups.dissolved(name));
   }, [leave, name]);
   // 取り消しの通知は画面を離れると閉じる。取り消したら静かに読み直す
-  // （specs/050-drag-organize/ui-design.md「Undo toast」）。
+  //
   const undo = useUndoToast(refresh);
   const edits = useGroupEdits({
     id,
@@ -300,7 +298,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     loadMore,
     resetPreview,
   );
-  // カードのタグを押すと、そのタグで絞ったライブラリを開く（ui-design.md「Body」）。
+  // カードのタグを押すと、そのタグで絞ったライブラリを開く。
   const pressTag = usePressTagToLibrary();
 
   const selectionMode = selection.selection.ids.size > 0;
@@ -321,7 +319,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     refresh();
   }, [clear, refresh]);
 
-  // 「Remove from group」で外す項目（ui-design.md「Body」）。
+  // 「Remove from group」で外す項目。
   const removable = useMemo(
     () => (data === null ? [] : selectedItemIds(selection.selection, data.items)),
     [data, selection.selection],
@@ -339,7 +337,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
     [data, reorder],
   );
   // 子グループ・祖先・ライブラリへ移したかマージした項目は画面から消えるので、選択を解く
-  // （specs/050-drag-organize/ui-design.md「Group page」）。
+  //
   const moveItems = useCallback(
     (moved: readonly GroupItem[], to: MoveDestination) => {
       if (data === null) return;
@@ -365,8 +363,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   );
 
   // 足した先がこのグループのときだけ、項目が末尾に増えるので読み直す。新しく作ったグループは
-  // いちばん上のグループで、このグループの項目は変わらない（ui-design.md「Add to group」の
-  // Result、「New group」）。
+  // いちばん上のグループで、このグループの項目は変わらない。
   const groupChanged = useCallback(
     (targetId: number | null) => {
       if (targetId !== null && targetId === id) refresh();
@@ -492,7 +489,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
   );
 
   // 所有者の画面は道筋の帯から本体までをドラッグの層で包む。帯の段も落とす先になる
-  // （specs/050-drag-organize/ui-design.md「Group page」）。
+  //
   return (
     <GroupChangedContext value={groupChanged}>
       {owner ? (
@@ -518,7 +515,7 @@ function GroupScreen({ id, trail }: { id: number | null; trail: readonly number[
 }
 
 /**
- * GroupHeader は道筋の帯と見出しである（ui-design.md「Trail band」「Header」「States」）。帯は
+ * GroupHeader は道筋の帯と見出しである。帯は
  * フォルダ画面の Breadcrumbs を共有し、上のバーの下に貼り付く。
  */
 function GroupHeader({
@@ -587,7 +584,7 @@ function GroupHeader({
 }
 
 /**
- * crumbTarget は所有者の道筋の段を落とす先にする口である（ui-design.md「Indicators」）。
+ * crumbTarget は所有者の道筋の段を落とす先にする口である。
  * 「Library」と祖先の段は受け、開いているグループの段 `current` と畳んだ「…」は拒否する。
  */
 function crumbTarget(current: number) {
@@ -603,7 +600,7 @@ function crumbTarget(current: number) {
 
 /**
  * FolderLine は自動グループの見出しの下の 1 行「From the folder {path}」である。パスはその
- * フォルダのページへのリンクで、手で作ったグループには出さない（ui-design.md「Header」）。
+ * フォルダのページへのリンクで、手で作ったグループには出さない。
  */
 function FolderLine({ folder }: { folder: VideoFolder }) {
   const root = useRootFolderName(folder.rootId, true);
@@ -625,7 +622,7 @@ type Selection = ReturnType<typeof useGroupSelection>;
 
 /**
  * GroupItems はグループの項目を並び順どおりに、格子ならライブラリのカード、リストなら
- * プレイリストの画面の行で並べる（ui-design.md「Body」）。動画は `?group` 付きで、子グループは
+ * プレイリストの画面の行で並べる。動画は `?group` 付きで、子グループは
  * 道筋を 1 段伸ばして開く。
  */
 function GroupItems({

@@ -18,7 +18,7 @@ export interface HoverPreview {
   onError: () => void;
   /**
    * suspendPreview はスクラブの帯に入ったときに、400ms の待ちを止め、再生中・読み込み中の
-   * 動画を src と要素を保ったまま止める（specs/032-card-scrub-preview/research.md R-2）。
+   * 動画を src と要素を保ったまま止める。
    */
   suspendPreview: () => void;
   /**

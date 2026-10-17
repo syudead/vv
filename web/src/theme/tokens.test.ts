@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * 見た目の値は src/ui/tokens.css の @theme にだけ置く（specs/038-design-system/research.md R-5）。
+ * 見た目の値は src/ui/tokens.css の @theme にだけ置く。
  * 画面側に生の色が散ると、配色を変えるときに取りこぼす。shadcn が上流のテーマの CSS 変数を
  * index.css に書き足したときも、ここで落ちる。
  */
@@ -73,7 +73,7 @@ describe("contrast", () => {
       ["foreground", surface, 4.5],
       ["muted-foreground", surface, 4.5],
       // 失敗・注意・完了の行と、お気に入りのオンのハートの塗り
-      // （specs/035-favorites/ui-design.md「Colour」）。
+      //
       ["destructive", surface, 4.5],
       ["warning", surface, 4.5],
       ["success", surface, 4.5],
@@ -95,7 +95,7 @@ describe("contrast", () => {
     ["primary-foreground", "primary-hover", 4.5],
     ["primary-foreground", "primary-active", 4.5],
     // 選んだ行・効いている絞り込みのチップの面の上の文字と印
-    // （specs/036-tag-admin-scale/ui-design.md「Colour」）。
+    //
     ["foreground", "primary-soft", 4.5],
     ["muted-foreground", "primary-soft", 4.5],
     ["primary", "primary-soft", 4.5],

@@ -68,7 +68,7 @@ async function setKind(user: User, name: string) {
   await user.click(await screen.findByRole("menuitemradio", { name }));
 }
 
-describe("TagsPage 種類の名札・絞り込み・「Set kind…」（specs/051-tag-kinds/ui-design.md）", () => {
+describe("TagsPage 種類の名札・絞り込み・「Set kind…」", () => {
   it("行は名前の後ろに種類の名前を出し、種類の無いタグには何も出さない", async () => {
     seedKindTags();
     install();

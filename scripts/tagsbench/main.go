@@ -4,7 +4,6 @@
 // 流れは、規模のデータの作成（初回だけ）→ 単一バイナリのビルド → そのデータの写しで
 // vv を起動 → web/bench/tags-admin.bench.ts（Playwright）で測る、である。測る対象は
 // 本番のビルドそのもので、計測の仕掛けは製品に入れない
-// （specs/036-tag-admin-scale/research.md R-9）。
 //
 // 行は internal/store の役割の型（SettingsStore.AddMediaFolder・ScanIndexStore.UpsertVideo・
 // TagStore.ApplyVideoTags）だけで書き、SQL を internal/store の外に出さない。動画のファイルは
@@ -39,7 +38,7 @@ import (
 // videosPerTag は -videos を省いたときの、規模（タグの数）に対する動画の数の倍率である
 // （親 Issue #651 の「タグ 1,000 個・動画 10,000 本」「タグ 3,000 個・動画 30,000 本」）。
 // タグ 30,000 個の規模は -videos 30000 で動画を 3,000 個の規模と同じにし、違いをタグの
-// 数だけにする（research.md R-9）。
+// 数だけにする。
 const videosPerTag = 10
 
 // unusedEvery は本数 0 のタグの間隔である。11 個に 1 個（約 9%）で、親 Issue の

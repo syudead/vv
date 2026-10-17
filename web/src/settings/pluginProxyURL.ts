@@ -11,9 +11,7 @@ const PROXY_URL = /^(?:https?|socks5):\/\/([^/?#\s]+)$/i;
 const HOST_PORT = /^(?:\[[^\]]+\]|[^:[\]@]+)(?::(\d+))?$/;
 
 /**
- * isPluginProxyURL は、値がサーバーの受け付けるプロキシの URL かを返す
- * （specs/056-plugin-tooling/contracts/screen-api.md、サーバーの規則は
- * domain.ParseWorkInfoPluginProxyURL）。`""` はプロキシなしで受け付ける。画面はこれに外れた値を
+ * isPluginProxyURL は、値がサーバーの受け付けるプロキシの URL かを返す。`""` はプロキシなしで受け付ける。画面はこれに外れた値を
  * 送らず、サーバーの `400` と同じ誤りを出す。細部で食い違えばサーバーの `400` が同じ誤りを出す。
  */
 export function isPluginProxyURL(value: string): boolean {

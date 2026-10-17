@@ -4,8 +4,7 @@ import type { SmartRule, SmartRuleRef } from "../api/smartFolders";
 import { fromSelectAll, type LibrarySelection } from "../library/selection";
 import { conditionChips, hasMissing } from "./conditions";
 
-// スマートフォルダのページが中身と条件から決める規則（specs/052-smart-folders/ui-design.md
-// 「Body」「States」）。画面の部品から外し、ロジックのテストで確かめる。
+// スマートフォルダのページが中身と条件から決める規則。画面の部品から外し、ロジックのテストで確かめる。
 
 /**
  * BodyKind は読めたページの本体の形である。`content` は中身を並べる。`empty` と `missing` は

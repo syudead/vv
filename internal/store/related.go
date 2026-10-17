@@ -158,10 +158,9 @@ func (s *LibraryStore) VideosByIDs(ctx context.Context, audience domain.Audience
 }
 
 // VideoGroup は動画 id の文脈のグループを、見る人に見せてよい動画の再生順で返す
-// （GET /api/videos/{id} の group、関連動画の group、GET /api/videos/{id}/group-members。
-// specs/048-groups/research.md R-9、data-model.md「Play order」）。文脈は videoContext が決める
+// （GET /api/videos/{id} の group、関連動画の group、GET /api/videos/{id}/group-members。 docs/design-docs/catalog-organization.md）。文脈は videoContext が決める
 // （domain.VideoContext）。文脈がスマートフォルダなら、そのフォルダの再生順を SmartFolder の
-// VideoGroup で返す（specs/052-smart-folders/contracts/screen-api.md）。再生順の id はすべてを返し、
+// VideoGroup で返す。再生順の id はすべてを返し、
 // 詳細は window の範囲だけを読む。グループが大きくても、読む詳細と応答は再生順の本数に比例しない
 // （issue 674）。どのグループにも無い動画と、この動画自身を見せられないときは false を返す。
 func (s *LibraryStore) VideoGroup(ctx context.Context, audience domain.Audience, id int64, opened domain.VideoContext, window domain.GroupWindow) (domain.VideoGroup, bool, error) {
@@ -225,8 +224,7 @@ func videoContext(ctx context.Context, tx *sql.Tx, audience domain.Audience, id 
 	return groupPlayOrder(ctx, tx, audience, groupID)
 }
 
-// firstGroupOf は、動画 id を直接の項目に持つグループのうち id のいちばん小さいものを返す
-// （research.md R-9）。直接の項目が引く動画が id そのものであることを確かめるので、そのグループは
+// firstGroupOf は、動画 id を直接の項目に持つグループのうち id のいちばん小さいものを返す。直接の項目が引く動画が id そのものであることを確かめるので、そのグループは
 // 見る人に見せる。無ければ false である。
 func firstGroupOf(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64) (int64, bool, error) {
 	var groupID sql.NullInt64
@@ -266,8 +264,7 @@ func groupPlayOrder(ctx context.Context, tx *sql.Tx, audience domain.Audience, g
 	return group, true, nil
 }
 
-// groupPlayOrderIDs はグループ id の見る人に見せる動画の id を再生順で返す（data-model.md
-// 「Play order」。loadGroups と同じ with 句から読む）。
+// groupPlayOrderIDs はグループ id の見る人に見せる動画の id を再生順で返す。
 func groupPlayOrderIDs(ctx context.Context, tx *sql.Tx, audience domain.Audience, groupID int64) ([]int64, error) {
 	rows, err := tx.QueryContext(ctx, `with `+groupDescendantsCTE(`select ? as id`, audience)+`
 		select video_id from gdesc order by sort_key`, groupID)

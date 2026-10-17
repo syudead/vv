@@ -1,6 +1,6 @@
 package store
 
-// 任意のグループ（specs/048-groups/data-model.md）。この段では、フォルダの索引を作り直すたびに
+// 任意のグループ。この段では、フォルダの索引を作り直すたびに
 // 自動グループをフォルダとそろえる同期（syncFolderGroups）と、同じパスの引き継ぎと束ねで項目と
 // 除外を付け替える rekeyGroupItems を持つ。どちらも呼び出し側の書き込み取引の中で行う。
 
@@ -41,8 +41,7 @@ func init() {
 }
 
 // syncFolderGroups は、作り直したフォルダの索引 index と例外 overrides から
-// domain.PlanFolderGroupSync で変更を決め、自動グループに書く（data-model.md「Automatic group
-// sync」）。変わったグループとその祖先の id を小さい順に返す。呼び出し側は確定の後に
+// domain.PlanFolderGroupSync で変更を決め、自動グループに書く。変わったグループとその祖先の id を小さい順に返す。呼び出し側は確定の後に
 // domain.GroupsChanged で知らせる（groupsChangedEvents）。
 func syncFolderGroups(ctx context.Context, tx *sql.Tx, index domain.FolderIndex, overrides map[string]domain.FolderGroupMode) ([]int64, error) {
 	folders, err := folderSyncFolders(ctx, tx, index)
@@ -303,8 +302,7 @@ func groupsChangedEvents(ids []int64) []domain.Event {
 	return []domain.Event{domain.GroupsChanged{GroupIDs: ids}}
 }
 
-// rekeyGroupItems は利用者データの鍵 from の動画の項目と除外を鍵 to へ付け替える
-// （data-model.md「Succession and bundling」、R-2）。行は写さずに移す。1 つのグループに鍵 to の
+// rekeyGroupItems は利用者データの鍵 from の動画の項目と除外を鍵 to へ付け替える。行は写さずに移す。1 つのグループに鍵 to の
 // 項目が 2 つになるときは位置の大きい方を消してそのグループを詰め直し、どちらかが手で足した
 // 項目（from_folder = 0）なら残す項目も 0 にする。付け替えの後で鍵 to の項目を持つグループの
 // 鍵 to の除外は、項目が見えているので消す。変えたグループとその祖先の id を返し、呼び出し側が

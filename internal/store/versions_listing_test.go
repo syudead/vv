@@ -9,7 +9,7 @@ import (
 )
 
 // 一覧・検索・フォルダ・グループで集まりを実効の代表の 1 件に畳む
-// （specs/030-video-versions/data-model.md §4、research.md R-3・R-4）。
+//
 
 // libraryItemIDs は ListLibrary の全ページの項目を、動画は id、グループはメンバーの id で返す。
 func libraryItemIDs(t *testing.T, db *DB, audience domain.Audience, q domain.VideoQuery) []int64 {

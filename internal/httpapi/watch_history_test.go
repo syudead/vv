@@ -15,7 +15,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 視聴履歴の一覧と削除（specs/043-watch-history/contracts/screen-api.md）を、本物の認証と保存層で
+// 視聴履歴の一覧と削除を、本物の認証と保存層で
 // 確かめる。
 
 const (

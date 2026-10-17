@@ -1,8 +1,7 @@
 import type { TagRef, VideoTag } from "./client";
 
 /**
- * タグの名前の自然順（specs/014-video-tags/contracts/tags-api.md §1、
- * ui-design.md「付け足したタグは名前順に挿す」）。
+ * タグの名前の自然順。
  *
  * `internal/domain.CompareNatural` を写す: 数字の連続は数値として比べ
  * （`2` < `10`）、それ以外は大文字小文字を区別せずに比べる。サロゲート
@@ -70,7 +69,7 @@ export function compareTagRefs(a: TagRef, b: TagRef): number {
  * applyTagToTags は付け外しの結果を1件の `tags` 配列へ反映する。
  * listSnapshot.ts と useVideos.ts の両方がこれを使う（唯一の実装場所）。
  * 付け外しは手で付けた分（`manual`）だけを変え、フォルダ名から付いている分
- * （`fromFolder`）はそのまま残す（specs/017-folder-groups/contracts/folder-groups-api.md §4）。
+ * （`fromFolder`）はそのまま残す。
  *
  * - `add`: 手で付けた分を立てる。既に付いていた（同じ id の）行は、サーバーが
  *   返した最新の name で差し替える（改名やシノニムからの付与直後に古い表示名が
@@ -136,8 +135,7 @@ export function tagsReflectChange(
 
 /**
  * isFolderOnly は、フォルダ名からだけ付いている（手では付けていない）タグかを
- * 返す。この形だけを破線のチップにし、再生画面では × を出さない
- * （specs/017-folder-groups/ui-design.md「Folder-derived tag chip」）。
+ * 返す。この形だけを破線のチップにし、再生画面では × を出さない。
  */
 /**
  * showsTentative は目印（TentativeMark）を出すかである。仮のタグ（`tentative`）と、自動タグ付けが

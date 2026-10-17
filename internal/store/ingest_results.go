@@ -63,7 +63,7 @@ func (s *IngestStore) ApplyProbe(
 		}
 	}
 	// 長さと再生可否が変わるので、書いたならスマートフォルダの一致も変わりうる
-	// （specs/052-smart-folders/research.md R-12）。
+	//
 	if err := s.db.commitMatchChangeIf(ctx, tx, count == 1, successionEvents(succeeded)...); err != nil {
 		return fmt.Errorf("cannot apply the probe result (id=%d): %w", id, err)
 	}
@@ -73,7 +73,6 @@ func (s *IngestStore) ApplyProbe(
 // upsertProbeRows は videos の行を書いた取引の中で、解析の結果に付く行（ライブ変換用の
 // 解析情報と追加の情報）を書く。どちらも無ければ何もしない。差し替わったファイルの値が
 // 残らないよう、呼び手は videos の更新が 1 行に当たったときだけ呼ぶ
-// （specs/056-media-info/data-model.md「Rules」）。
 func upsertProbeRows(ctx context.Context, tx *sql.Tx, videoID int64, probe domain.Probe, now time.Time) error {
 	if probe.Transcode != nil {
 		if err := upsertTranscodeProbe(ctx, tx, videoID, probe.Source, *probe.Transcode, now); err != nil {
@@ -97,7 +96,6 @@ func upsertProbeRows(ctx context.Context, tx *sql.Tx, videoID int64, probe domai
 //
 // 結果を書いたら、同じ取引で一覧用プレビューの仕事を積む。解析の仕事はこの時点で
 // まだ running なので、その動画が一瞬だけ「済み」に数えられることが無い
-// （specs/024-import-progress/research.md R-2）。
 func (s *IngestStore) ApplyProbeForJob(
 	ctx context.Context, job domain.Job, probe domain.Probe, play domain.Playability,
 ) (bool, error) {
@@ -136,7 +134,7 @@ func (s *IngestStore) ApplyProbeForJob(
 		return false, err
 	}
 	// 走査が閉じたあとに解析が終わったなら、同じパスの前の中身を引き継ぐかをここで決める
-	// （specs/030-video-versions/data-model.md §5）。
+	//
 	succeeded, err := applySuccession(ctx, tx, job.ContentKey, probe.DurationMs)
 	if err != nil {
 		return false, err
@@ -144,7 +142,7 @@ func (s *IngestStore) ApplyProbeForJob(
 	c.jobsQueued(domain.JobPreview)
 	// 長さと再生可否を書いたので、後継の引き継ぎが無くてもスマートフォルダの一致は変わりうる。
 	// 走査を閉じるときの知らせ（FinishScan）は解析より前に出るので、ここでも知らせる
-	// （specs/052-smart-folders/research.md R-12）。
+	//
 	c.matchesChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, err
@@ -155,7 +153,7 @@ func (s *IngestStore) ApplyProbeForJob(
 
 // SaveTranscodeProbe は、ライブ変換の要求時にその場で解析した結果を保存する。
 // source は変換で開いたファイルの大きさと更新時刻である。upsert 1 文なので、取り込みと
-// 変換が同時に書いても後に書いた行が残る（specs/018-live-transcode-seek/data-model.md §4）。
+// 変換が同時に書いても後に書いた行が残る。
 func (s *IngestStore) SaveTranscodeProbe(
 	ctx context.Context, videoID int64, source domain.FileStamp, probe domain.TranscodeProbe,
 ) error {
@@ -225,7 +223,7 @@ func (s *IngestStore) SetThumbnailStateForJob(
 // setStageStateForJob は段階 kind の状態列 column に state を書く。専有したときの
 // 内容鍵・所在・所在の世代が今も同じときだけ反映し、反映したかを返す。succeeded なら、
 // 同じ取引でその段階の *_failed を直近の取り込みの問題から消し、substitution に従って
-// 代用の行を入れる・消す（specs/024-import-progress/data-model.md §3）。succeeded なら、
+// 代用の行を入れる・消す。succeeded なら、
 // 続く段階 next の仕事も同じ取引で積む。
 func (s *IngestStore) setStageStateForJob(
 	ctx context.Context, job domain.Job, kind domain.JobKind, column, state string, succeeded bool,
@@ -278,7 +276,6 @@ func (s *IngestStore) setStageStateForJob(
 //
 // done を書いたら、同じ取引で指紋の仕事を積む。指紋は完成したスプライトから作るので、
 // 作り直し（RequeueMissingSeekThumbnails）のあとの完了でも積み直す
-// （specs/030-video-versions/data-model.md §6）。
 func (s *IngestStore) SetSeekThumbnailStateForJob(
 	ctx context.Context, job domain.Job, state domain.SeekThumbnailState, substitution domain.Substitution,
 ) (bool, error) {
@@ -374,8 +371,7 @@ func (s *IngestStore) PreviewSourceCurrent(ctx context.Context, job domain.Job) 
 
 // ThumbnailSourceCurrent は、動画 videoID の内容が key のままで、所在 locationPath が今も
 // 内容 key の動画の所在かを返す。代表サムネイルの位置の指定で、要求が所在を決めてから
-// 生成するまでの間に、走査がその所在を別の内容へ付け替えていないかを確かめる
-// （specs/029-video-overrides/research.md R-4）。所在が消えていても偽を返す。
+// 生成するまでの間に、走査がその所在を別の内容へ付け替えていないかを確かめる。所在が消えていても偽を返す。
 func (s *IngestStore) ThumbnailSourceCurrent(
 	ctx context.Context, videoID int64, key, locationPath string,
 ) (bool, error) {

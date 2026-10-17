@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 人物と団体の保存（specs/047-video-work-info/data-model.md「Entities」、research.md R-3・R-8）。
+// 人物と団体の保存。
 // 2 つの種類は表の名前だけが違うので、SQL は 1 回だけ書き、creditTables で名前を埋める。
 
 // creditTables は種類ごとの表と列の名前である。
@@ -27,7 +27,7 @@ type creditTables struct {
 	cursorKind string
 	// hasParent は実体の表が parent_id を持つ（団体）こと。
 	hasParent bool
-	// smartRef はスマートフォルダの条件でこの実体を名指す種類（specs/052-smart-folders）。
+	// smartRef はスマートフォルダの条件でこの実体を名指す種類。
 	smartRef domain.SmartRuleRefKind
 }
 
@@ -360,7 +360,7 @@ func (s *CreditStore) Delete(ctx context.Context, kind domain.CreditKind, id int
 	return nil
 }
 
-// Merge は sourceIDs の実体を同じ種類の targetID へ 1 つの取引で統合する（data-model.md「Entities」）。
+// Merge は sourceIDs の実体を同じ種類の targetID へ 1 つの取引で統合する。
 // 統合元の結び付きは統合先がその場所を引き継ぎ（統合先が既に同じ動画の同じ役割にあれば統合元の行を
 // 捨てて詰め直す）、名前と別名は統合先の別名になり（統合先が既に持つ綴りは捨てる）、外部 ID は統合先へ
 // 移り、統合元の団体の子は統合先の下へ付け替わり、統合元は消える。
@@ -477,7 +477,7 @@ func mergeCreditsInto(ctx context.Context, tx *sql.Tx, t creditTables, targetID 
 	if err := renumberCreditLinks(ctx, tx, t, affected); err != nil {
 		return err
 	}
-	// スマートフォルダの条件が名指す統合元を統合先にする（specs/052-smart-folders/research.md R-9）。
+	// スマートフォルダの条件が名指す統合元を統合先にする。
 	return rewriteSmartRuleRefs(ctx, tx, t.smartRef, targetID, sourceIDs)
 }
 
@@ -708,7 +708,7 @@ func creditLinkPositions(ctx context.Context, tx *sql.Tx, t creditTables, list c
 }
 
 // RefreshSearchKeys は search_version が現在の版より小さい人物・団体の名前の行の search_key と
-// sort_key、作品情報の行の code_key を作り直し、作り直した行の数を返す（data-model.md「Entities」）。
+// sort_key、作品情報の行の code_key を作り直し、作り直した行の数を返す。
 // 起動時、TagStore.RefreshSearchKeys の後で呼ぶ。
 func (s *CreditStore) RefreshSearchKeys(ctx context.Context) (int, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)

@@ -9,8 +9,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 
 /**
  * PickerButton はカード・リスト表示の行・動画ページの「Add to playlist」「Add to group」の
- * 引き金である（specs/044-playlists/ui-design.md「Add to playlist」、specs/048-groups/ui-design.md
- * 「Add to group」の置き場所の表）。所有者の画面で、お気に入りのハートが描かれるところにだけ
+ * 引き金である。所有者の画面で、お気に入りのハートが描かれるところにだけ
  * 置く（呼び出し側が決める）。中身のピッカーは `picker` が開閉の状態から描く。
  *
  * - `card` はサムネイルの右上の印の置き場の形。面も枠も無い `size-8` の押せる範囲に `size-5`

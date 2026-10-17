@@ -11,11 +11,10 @@ import (
 // FolderIndexVersion はフォルダの索引（グループの割り当てと動画ごとの祖先
 // フォルダ名）を作る規則の版である。BuildFolderIndex か FolderKey の規則を
 // 変えたら上げる。起動時に保存した版と違えば索引を作り直す
-// （specs/017-folder-groups/data-model.md §3）。
 //
-// 2: 束ねた動画（specs/030-video-versions）の代表以外のバージョンの所在を索引に入れない
-// 規則に合わせて作り直す（specs/030-video-versions/research.md R-4）。
-// 3: 自動グループ（specs/048-groups/data-model.md「Automatic group sync」）を最初の起動で
+// 2: 束ねた動画の代表以外のバージョンの所在を索引に入れない
+// 規則に合わせて作り直す。
+// 3: 自動グループを最初の起動で
 // フォルダとそろえる。
 const FolderIndexVersion = 3
 
@@ -37,12 +36,11 @@ func (m FolderGroupMode) Valid() bool {
 }
 
 // FolderGrouping はフォルダ1つのまとめ方の今の状態である
-// （specs/017-folder-groups/contracts/folder-groups-api.md §1）。
 type FolderGrouping struct {
 	// Mode はそのフォルダに付いた例外。例外が無ければ空（自動）である。
 	Mode FolderGroupMode
 	// GroupID はそのフォルダの自動グループ（groups.origin_folder がそのフォルダ）の id である。
-	// 無ければ 0（specs/048-groups/contracts/screen-api.md「Routes and schemas changed」）。
+	// 無ければ 0。
 	GroupID int64
 }
 
@@ -90,7 +88,7 @@ type FolderVideos struct {
 	Grouped bool
 	// VideoIDs は直下の動画の id をファイル名の自然順に持つ。代表の所在に限らず、
 	// 所在のどれかが直下にある動画をすべて、1度ずつ持つ
-	// （specs/048-groups/data-model.md「Automatic group sync」）。
+	//
 	VideoIDs []int64
 }
 
@@ -111,7 +109,6 @@ func folderKeyFor(path string, windows bool, separator rune) string {
 
 // BuildFolderIndex は、登録フォルダ・その下の所在・例外（FolderKey → mode）から、
 // グループの割り当てと動画ごとの祖先フォルダ名を作る
-// （specs/017-folder-groups/data-model.md §2・§4）。
 //
 // locations のうちどの登録フォルダの下にも無いものは使わない。順番は問わない。
 func BuildFolderIndex(roots []MediaFolder, locations []FolderIndexLocation, overrides map[string]FolderGroupMode) FolderIndex {
@@ -236,7 +233,6 @@ func buildFolderIndexFor(roots []MediaFolder, locations []FolderIndexLocation, o
 }
 
 // groupsFolder はフォルダがグループになるかを決める
-// （specs/017-folder-groups/data-model.md §2）。
 func groupsFolder(key string, state *folderState, overrides map[string]FolderGroupMode, rootKeys map[string]struct{}) bool {
 	if len(state.direct) < 2 {
 		return false

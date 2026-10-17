@@ -1,5 +1,5 @@
 -- +goose Up
--- 直近の取り込みで起きた、利用者に知らせる出来事（specs/024-import-progress/data-model.md §3）。
+-- 直近の取り込みで起きた、利用者に知らせる出来事。
 -- 走査と準備をやり直せば作り直せる索引の側に入る。
 --
 -- 1出来事1行で保存し、読み出しで動画（未登録ならファイルのパス）ごとに1件へまとめる。
@@ -18,8 +18,7 @@ create unique index scan_issues_path_kind_idx on scan_issues (scan_id, path, kin
     where video_id is null;
 create index scan_issues_video_idx on scan_issues (video_id);
 
--- data-model.md §1 の手順 2: 今 failed の準備がある動画を、直近の走査の問題として入れる
--- （research.md R-11）。走査中のファイルの失敗は移行前の行に残っていないので復元しない。
+-- 今 failed の準備がある動画を、直近の走査の問題として入れる。走査中のファイルの失敗は移行前の行に残っていないので復元しない。
 -- path は所在のうちパスの最小のもの（動画の代表の選び方と同じ順）である。
 insert or ignore into scan_issues (scan_id, video_id, path, kind, created_at)
 select (select max(id) from scans), v.id,

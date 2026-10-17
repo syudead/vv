@@ -4,8 +4,7 @@ import { formatBytes, formatResolution } from "../lib/format";
 import { formatCodec } from "../player/properties";
 
 /**
- * 同じ動画の別バージョンの行の 2 行目の値（specs/030-video-versions/ui-design.md
- * 「Versions list」）。再生画面のバージョンの一覧と、束ねる窓の代表の行が同じ書式で使う。
+ * 同じ動画の別バージョンの行の 2 行目の値。再生画面のバージョンの一覧と、束ねる窓の代表の行が同じ書式で使う。
  */
 export interface VersionDetailValues {
   /** 解像度・コンテナ・映像コーデック・サイズ。分からない値は省く。 */

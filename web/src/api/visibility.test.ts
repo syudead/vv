@@ -12,8 +12,7 @@ import {
 } from "./visibility";
 
 /**
- * 公開・非公開の切り替え（specs/016-single-account-auth/contracts/guest-api.md §4、
- * issue 305）。要求は1回だけ送り、受け付けた結果だけを画面と控えへ知らせる。
+ * 公開・非公開の切り替え。要求は1回だけ送り、受け付けた結果だけを画面と控えへ知らせる。
  */
 
 function item(id: number, isPublic = false): Video {
@@ -156,7 +155,7 @@ describe("updateVideoVisibility", () => {
 
 describe("一部にしか反映されなかった切り替え", () => {
   it("applied が異なる id の数より少なければ切り替え済みにせず、控えを捨て、取り直しを求める", async () => {
-    // 空の content_key の動画やライブラリから消えた id は数えない（guest-api.md §4）。
+    // 空の content_key の動画やライブラリから消えた id は数えない。
     fetchMock.mockResolvedValue(json({ applied: 1 }));
     saveListSnapshot(
       { query: "" },

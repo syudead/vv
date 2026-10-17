@@ -1,6 +1,6 @@
 package domain
 
-// タグ管理画面の一覧のページ読み（specs/036-tag-admin-scale/data-model.md §1、research.md R-1）。
+// タグ管理画面の一覧のページ読み。
 
 // TagSort はタグの一覧の並び順である。API の TagSort と同じ文字列を持つ。値が同じ
 // タグは名前の自然順（tag_names.sort_key）、それも同じなら id で並べる。
@@ -52,8 +52,7 @@ type TagListQuery struct {
 	Limit int
 }
 
-// TagKindFilter はタグの一覧を 1 つの種類か「種類なし」で絞る条件である
-// （specs/051-tag-kinds/research.md R-8）。ゼロ値は絞らない。
+// TagKindFilter はタグの一覧を 1 つの種類か「種類なし」で絞る条件である。ゼロ値は絞らない。
 type TagKindFilter struct {
 	// ID はその種類のタグだけにする種類の id。0 なら種類の id では絞らない。
 	ID int64
