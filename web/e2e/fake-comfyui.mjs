@@ -19,8 +19,8 @@
 // テストが読み書きする /__fake/* は ComfyUI のルートではない。
 // - GET /__fake/prompts: 送られたプロンプトと、そのときまでに上げた画像の名前。
 // - PUT /__fake/timing: 待ち行列と実行中の長さ（ミリ秒）を変える。
-// - PUT /__fake/composite: マスクを通した合成の有無（{ enabled }）を変える。既定は無効で、
-//   出力は塗った範囲によらず一色の画像である（specs/045 の流れのテストはそれを前提にする）。
+// 出力は塗った範囲によらず一色の画像である。塗った範囲だけが変わることは、マスクの作り方を
+// Vitest（src/player/thumbnailEdit/mask.test.ts）が確かめる。
 //
 // 標準入力が閉じたら（起動した run-e2e.mjs が終わったら）終わる。
 
@@ -29,7 +29,7 @@ import { readFileSync } from "node:fs";
 import { createServer } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { deflateSync, inflateSync } from "node:zlib";
+import { deflateSync } from "node:zlib";
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const workflowDir = path.join(repoRoot, "internal", "comfyui", "workflows");
@@ -117,107 +117,11 @@ function solidPNG(width, height, color) {
   return encodePNG(width, height, pixels);
 }
 
-// PNG の色の型ごとの、1 画素の標本の数。
-const pngChannels = { 0: 1, 2: 3, 3: 1, 4: 2, 6: 4 };
-
-/** paeth は PNG のフィルタ 4 の予測である。 */
-function paeth(a, b, c) {
-  const p = a + b - c;
-  const pa = Math.abs(p - a);
-  const pb = Math.abs(p - b);
-  const pc = Math.abs(p - c);
-  if (pa <= pb && pa <= pc) return a;
-  return pb <= pc ? b : c;
-}
-
-/** unfilter は PNG の行ごとのフィルタを外し、行を連ねたバイト列を返す。 */
-function unfilter(data, height, stride, bpp) {
-  const out = Buffer.alloc(height * stride);
-  for (let y = 0; y < height; y += 1) {
-    const filter = data[y * (stride + 1)];
-    const row = y * (stride + 1) + 1;
-    for (let x = 0; x < stride; x += 1) {
-      const a = x >= bpp ? out[y * stride + x - bpp] : 0;
-      const b = y > 0 ? out[(y - 1) * stride + x] : 0;
-      const c = x >= bpp && y > 0 ? out[(y - 1) * stride + x - bpp] : 0;
-      const predict = [0, a, b, (a + b) >> 1, paeth(a, b, c)][filter];
-      if (predict === undefined) throw new Error(`unknown PNG filter ${String(filter)}`);
-      out[y * stride + x] = (data[row + x] + predict) & 0xff;
-    }
-  }
-  return out;
-}
-
-/**
- * decodePNG は vv が上げるコマとマスク（8 か 16 ビット、インターレース無し）を読み、
- * 幅・高さと RGB の画素（1 画素 3 バイト）を返す。
- */
-function decodePNG(buffer) {
-  let offset = 8;
-  let header;
-  let palette = Buffer.alloc(0);
-  const data = [];
-  while (offset < buffer.length) {
-    const length = buffer.readUInt32BE(offset);
-    const type = buffer.toString("ascii", offset + 4, offset + 8);
-    const body = buffer.subarray(offset + 8, offset + 8 + length);
-    if (type === "IHDR") header = body;
-    if (type === "PLTE") palette = body;
-    if (type === "IDAT") data.push(body);
-    offset += 12 + length;
-  }
-  if (header === undefined) throw new Error("PNG without IHDR");
-  const width = header.readUInt32BE(0);
-  const height = header.readUInt32BE(4);
-  const depth = header[8];
-  const colorType = header[9];
-  const channels = pngChannels[colorType];
-  if (channels === undefined || (depth !== 8 && depth !== 16) || header[12] !== 0) {
-    throw new Error(`unsupported PNG: depth ${String(depth)}, type ${String(colorType)}`);
-  }
-  const sample = depth / 8;
-  const bpp = channels * sample;
-  const raw = unfilter(inflateSync(Buffer.concat(data)), height, width * bpp, bpp);
-  const pixels = Buffer.alloc(width * height * 3);
-  for (let i = 0; i < width * height; i += 1) {
-    const at = (channel) => raw[i * bpp + channel * sample];
-    let rgb;
-    if (colorType === 3) rgb = [...palette.subarray(at(0) * 3, at(0) * 3 + 3)];
-    else if (channels <= 2) rgb = [at(0), at(0), at(0)];
-    else rgb = [at(0), at(1), at(2)];
-    pixels.set(rgb, i * 3);
-  }
-  return { width, height, pixels };
-}
-
-/**
- * compositePNG はコマ frame の大きさで、マスク mask の赤が半分より明るい所を OUTPUT_COLOR に、
- * ほかをコマのままにした PNG を返す。マスクの大きさが違えば、近い画素を読む。
- */
-function compositePNG(frame, mask) {
-  const source = decodePNG(frame);
-  const painted = decodePNG(mask);
-  const pixels = Buffer.from(source.pixels);
-  for (let y = 0; y < source.height; y += 1) {
-    const my = Math.floor((y * painted.height) / source.height);
-    for (let x = 0; x < source.width; x += 1) {
-      const mx = Math.floor((x * painted.width) / source.width);
-      if (painted.pixels[(my * painted.width + mx) * 3] > 127) {
-        pixels.set(OUTPUT_COLOR, (y * source.width + x) * 3);
-      }
-    }
-  }
-  return encodePNG(source.width, source.height, pixels);
-}
-
 const solidOutput = solidPNG(OUTPUT_WIDTH, OUTPUT_HEIGHT, OUTPUT_COLOR);
 
 const timing = { queuedMs: 600, runningMs: 2500 };
-let composite = false;
 /** uploads は上げた画像の名前で、上げた順に並ぶ。 */
 const uploads = [];
-/** uploadedImages は上げた画像の名前ごとの中身である。 */
-const uploadedImages = new Map();
 /** outputs は出力の画像の名前ごとの中身である。 */
 const outputs = new Map();
 /** prompts は送られたプロンプトで、送られた順に並ぶ。 */
@@ -306,24 +210,6 @@ function imagePart(contentType, body) {
   return null;
 }
 
-/** inputImage はプロンプトの、_meta.title が title のノードが読む、上げた画像を返す。 */
-function inputImage(prompt, title) {
-  const node = Object.values(prompt ?? {}).find(
-    (candidate) => candidate?._meta?.title === title,
-  );
-  const name = node?.inputs?.image;
-  return typeof name === "string" ? uploadedImages.get(name) : undefined;
-}
-
-/** runOutput はプロンプトの実行が出す画像を返す。合成が無効なら一色の画像である。 */
-function runOutput(prompt) {
-  if (!composite) return solidOutput;
-  const frame = inputImage(prompt, "vv:frame");
-  const mask = inputImage(prompt, "vv:mask");
-  if (frame === undefined || mask === undefined) return solidOutput;
-  return compositePNG(frame, mask);
-}
-
 /** stop は実行 id を止める。待ち行列にあるか実行中のときだけ効く。 */
 function stop(id) {
   const run = runs.get(id);
@@ -354,7 +240,6 @@ async function handle(request, response) {
       return;
     }
     uploads.push(image.name);
-    uploadedImages.set(image.name, image.content);
     send(response, 200, { name: image.name, subfolder: "", type: "input" });
     return;
   }
@@ -373,7 +258,7 @@ async function handle(request, response) {
     const id = randomUUID();
     number += 1;
     const outputName = `vv-fake-output-${String(number)}.png`;
-    outputs.set(outputName, runOutput(prompt));
+    outputs.set(outputName, solidOutput);
     runs.set(id, {
       id,
       number,
@@ -443,12 +328,6 @@ async function handle(request, response) {
     if (Number.isFinite(body.queuedMs)) timing.queuedMs = body.queuedMs;
     if (Number.isFinite(body.runningMs)) timing.runningMs = body.runningMs;
     send(response, 200, timing);
-    return;
-  }
-  if (route === "PUT /__fake/composite") {
-    const body = await readJSON(request);
-    composite = body.enabled === true;
-    send(response, 200, { enabled: composite });
     return;
   }
   send(response, 404, "not found", "text/plain");
