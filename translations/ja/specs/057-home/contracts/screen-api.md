@@ -1,6 +1,6 @@
 ---
 source: specs/057-home/contracts/screen-api.md
-sourceHash: 4c68c653e6e9a79dc0fb5fb1fed0787e4a716b16eb6121ff3352c5689750b270
+sourceHash: e14936b57ff5998a0bd577b9b1ed2d6a3a0b0639e9fb71213778bc8ae075f833
 ---
 
 # 契約: ホームとオンボーディングの画面の API {#contract-screen-api-for-the-home-and-onboarding}
@@ -66,7 +66,7 @@ HomeShelfItem:           # a LibraryItem without smart folders, whose group is t
   properties:
     kind:  { type: string, enum: [video, group] }
     video: { $ref: Video }
-    group: { $ref: LibraryGroupCard }  # LibraryGroup without videoIds and tags; LibraryGroup is LibraryGroupCard plus those two
+    group: { $ref: LibraryGroupCard }  # LibraryGroup without videoIds and tags; both close the shared, open LibraryGroupCardValues with unevaluatedProperties, and LibraryGroup adds those two
 
 HomeShelfOrder:          # PUT /api/home/shelves
   required: [folderIds]

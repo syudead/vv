@@ -1,6 +1,6 @@
 ---
 source: specs/057-home/data-model.md
-sourceHash: 1c5ea5d795855fbcf4c2e33294f842cfbd856a2c7b61dea6d666b69e654c793d
+sourceHash: ea5273b3fdd109edea0226c594dbd836fc213bbfbf46ee19343d0f33bcb327da
 ---
 
 # データモデル: オンボーディングで始まる棚のホーム {#data-model-a-home-of-shelves-started-by-onboarding}
@@ -62,7 +62,7 @@ sourceHash: 1c5ea5d795855fbcf4c2e33294f842cfbd856a2c7b61dea6d666b69e654c793d
 | 規則 | 強制する場所 |
 | --- | --- |
 | グループの構造を変えるすべての書き込みは、同じトランザクションの中で `group_closure` を作り直す | `store`: `writeGroups` (グループと整理の書き込み)、`rebuildFolderIndex` (フォルダのグループ、メディアフォルダ、まとまり、引き継ぎ、取り消し)、`rekeyGroupItems` |
-| `groups` か `group_items` への書き込みは dirty フラグを立てる。次にコミットした書き込みの後の保守が作り直す | SQL のトリガー。`store` の `maintainHomeIndexes` |
+| `groups` か `group_items` への書き込みは dirty フラグを立てる。次にコミットした書き込みの後の保守が閉包を作り直し、フラグを下ろす。棚の読み取りはフラグを読まず、閉包をそのまま読む | SQL のトリガー。`store` の `maintainHomeIndexes` |
 | `videos`、`video_locations`、`playback_progress` への書き込みは、その動画を持つグループの値を両方の閲覧者について削除する。`public_videos` への書き込みはゲストの値を削除する。`media_folders`、`video_bundles`、`video_bundle_members` への書き込みはすべてを削除する | SQL のトリガー |
 | `videos`、`video_locations`、`video_tags`、`playback_progress`、`video_favorites`、作品の情報のリンクへの書き込みは、動画のキーに印を付ける。`smart_folders`、`tags`、`tag_names`、`video_folder_names`、`media_folders`、`video_bundle_members` への書き込みは、すべてのキーにフラグを立てる | SQL のトリガー |
 | 検索の結果を変えうる書き込み (`video_locations`、`video_tags`、`tag_names`、`video_work_info`、`people_names`、`video_work_people`、`organization_names`、`video_work_organizations`、`video_folder_names`、まとまりのテーブル、`media_folders`、`smart_folders`) は `search_dirty` を立てる。進み具合やプローブの書き込みは立てない | SQL のトリガー |
@@ -159,4 +159,4 @@ stateDiagram-v2
 
 ## 変わらないもの {#what-does-not-change}
 
-`smart_folders.owner_kept` は 052 R-10 の意味を保つ。整理役は、R-10 がこの機能に残した書き込みの経路である。スマートフォルダの中身、カード、お気に入り、プレイリストの項目は変わらない。棚はそれ自身であるフォルダとして読む。どの動画がどの棚にあるかを記録するテーブルはない (R-11)。グループの閉包が記録するのはグループの構造であり、棚への所属ではない。メディアフォルダ、スキャン、タグ、自動タグ付けは自身のテーブルを保ち、オンボーディングはそれらを通して書く。
+`smart_folders.owner_kept` は 052 R-10 の意味を保つ。整理役は、R-10 がこの機能に残した書き込みの経路である。スマートフォルダの中身、カード、お気に入り、プレイリストの項目は変わらない。棚はそれ自身であるフォルダとして読む。どの動画がどの棚にあるかを記録するテーブルはない (R-11)。`home_shelved_videos` は動画がどれかのフォルダの棚にあることだけを記録し、`home_search_hits` は棚ではなく検索式に一致する動画を記録する。それ以外の規則の棚は、保存したメンバーを持たない。グループの閉包が記録するのはグループの構造であり、棚への所属ではない。メディアフォルダ、スキャン、タグ、自動タグ付けは自身のテーブルを保ち、オンボーディングはそれらを通して書く。

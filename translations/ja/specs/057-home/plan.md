@@ -1,6 +1,6 @@
 ---
 source: specs/057-home/plan.md
-sourceHash: b63590ee4b77020dbb1d94d1254e6c0a8ccd7a13dbafb5c20f241abe98b2f22e
+sourceHash: 2e9f2a6b1a7a30de356a100e1b7e37197603472bb8a112b4802058338d7b8f1f
 ---
 
 # 実装計画: オンボーディングで始まる棚のホーム {#implementation-plan-a-home-of-shelves-started-by-onboarding}
@@ -45,7 +45,7 @@ flowchart LR
 | 棚 | `home_position` を持つスマートフォルダ ([R-7](research.md#r-7-a-shelf-is-a-smart-folder-with-a-home-position)、[data-model.md](data-model.md#smart_foldershome_position)) |
 | 作り直しと追加 | 1 つのトランザクション。所有者が保ったフォルダには触れない ([R-8](research.md#r-8-a-rebuild-replaces-the-organizers-folders-in-one-transaction-an-extend-only-adds)) |
 | 動く時 | 設定にある保留中の実行。イベントが起こす ([R-9](research.md#r-9-one-run-at-a-time-queued-in-settings-triggered-by-events)、[R-10](research.md#r-10-an-extend-runs-when-20-or-more-shown-videos-are-unshelved)) |
-| 棚にない動画 | 読み取りのときに評価するライブラリの絞り込み ([R-11](research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read)) |
+| 棚にない動画 | 読み取りのときに評価するライブラリの絞り込み。棚にない動画の棚は、書き込みが保守する `home_shelved_videos` を読む ([R-11](research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read)、[R-12](research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen)) |
 | 読み取り | 要約、次に、保存したグループの構造を索引でたどって読む画面上の棚の項目。予算は 1 秒 ([R-12](research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen)、[data-model.md](data-model.md#group-closure)) |
 | 固定の棚 | 続きを見る棚とおすすめの棚は所有者に、最近追加した動画の棚と棚にない動画の棚は全員に ([R-13](research.md#r-13-four-fixed-shelves-two-of-them-the-owners-only)) |
 | 再生 | 自動再生する動画のページ ([R-14](research.md#r-14-pressing-a-shelf-card-plays)) |
