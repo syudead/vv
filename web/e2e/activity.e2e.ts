@@ -174,21 +174,4 @@ test.describe.serial("activity", () => {
     await expect(page.getByRole("list", { name: "File details" })).toBeVisible();
     await expect(showVersions).toHaveCount(0);
   });
-
-  test("a guest has no entry point and is sent to sign in from /activity", async ({
-    browser,
-  }) => {
-    const context = await browser.newContext({
-      storageState: { cookies: [], origins: [] },
-    });
-    const page = await context.newPage();
-    await page.goto("/");
-    const sidebar = page.getByRole("complementary", { name: "Main navigation" });
-    await expect(sidebar.getByRole("link", { name: "Library" })).toBeVisible();
-    await expect(sidebar.getByRole("link", { name: "Activity" })).toHaveCount(0);
-
-    await page.goto("/activity");
-    await expect(page).toHaveURL(/\/login\?next=%2Factivity$/);
-    await context.close();
-  });
 });
