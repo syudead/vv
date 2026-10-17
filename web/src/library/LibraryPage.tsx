@@ -96,6 +96,7 @@ import {
   LibraryDragLayer,
   useLibraryMoves,
 } from "./LibraryDrag";
+import { readUnshelved, UNSHELVED_PARAM } from "./libraryPath";
 import LibraryToolbar from "./LibraryToolbar";
 import {
   emptySelection,
@@ -181,8 +182,12 @@ const libraryParams = [
   PERSON_PARAM,
   ORGANIZATION_PARAM,
   TAG_KIND_PARAM,
+  UNSHELVED_PARAM,
   ...addedLengthParams,
 ];
+
+/** ゲストも使える、ライブラリだけの条件（追加日と長さ、棚に無い動画のみ）。 */
+const libraryGuestParams = [UNSHELVED_PARAM, ...addedLengthParams];
 
 export default function LibraryPage() {
   const location = useLocation();
@@ -201,7 +206,7 @@ export default function LibraryPage() {
   const { criteria, apply } = useListCriteria(
     preferences.sort,
     libraryParams,
-    addedLengthParams,
+    libraryGuestParams,
   );
   const { query, watch, playable, favorite, sort } = criteria;
   // タグの値が変わらない限り同じ配列を使い、タグと無関係な URL の変更でも
@@ -217,6 +222,10 @@ export default function LibraryPage() {
   const credits = useCreditFilter(location.search, owner);
   const parsedAddedLength = useAddedLength(location.search);
   const addedLength = parsedAddedLength.filter;
+  // ホームの「Not on any shelf」から開いたときの、棚に無い動画のみ（specs/057-home/research.md
+  // R-11）。一覧と控えの条件にだけ入れる。スマートフォルダの条件と「すべて選択」の
+  // `GET /api/library/ids` は受けない（contracts/screen-api.md）。
+  const unshelved = readUnshelved(location.search);
   // 一覧の条件のうちライブラリだけのもの（人物・団体・タグの種類と、追加日と長さ）。
   const libraryFilter = useMemo(
     () => ({ ...credits, ...addedLength }),
@@ -367,7 +376,7 @@ export default function LibraryPage() {
 
   // --- 一覧の取得（戻ってきたときはスナップショットから復元） ---
   const [restored] = useState(() =>
-    takeListSnapshot({ ...criteria, tags: tagIds, ...libraryFilter }),
+    takeListSnapshot({ ...criteria, tags: tagIds, ...libraryFilter, unshelved }),
   );
   const {
     items,
@@ -383,7 +392,11 @@ export default function LibraryPage() {
     reload,
     refreshInPlace,
     staleGroups,
-  } = useVideos({ ...criteria, tag: tagIds, ...libraryFilter }, restored, "library");
+  } = useVideos(
+    { ...criteria, tag: tagIds, ...libraryFilter, unshelved },
+    restored,
+    "library",
+  );
 
   // 絞り込みはサーバーが一覧の条件として適用する。
   // 再生から戻って視聴状態が変わった項目も、その場では一覧から外さない。
@@ -562,6 +575,7 @@ export default function LibraryPage() {
     tagIds.join(","),
     creditSignature(credits),
     addedLengthSignature(addedLength),
+    unshelved ? "unshelved" : "",
   ].join("\u0000");
   const knownConditionsSignature = useRef(conditionsSignature);
   useEffect(() => {
@@ -643,7 +657,7 @@ export default function LibraryPage() {
     // 操作の成功は控えを捨てるので、ここで古い並びを覚え直すと戻ったときにそれが出てしまう。
     if (shown !== items) return;
     saveListSnapshot(
-      { ...criteria, tags: tagIds, ...libraryFilter },
+      { ...criteria, tags: tagIds, ...libraryFilter, unshelved },
       {
         items,
         total,
@@ -664,6 +678,7 @@ export default function LibraryPage() {
     staleGroups,
     tagIds,
     total,
+    unshelved,
   ]);
 
   // --- 無限スクロール ---

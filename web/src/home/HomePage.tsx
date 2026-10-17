@@ -69,6 +69,9 @@ function HomeSearch() {
   const navigate = useNavigate();
   const field = useRef<HTMLInputElement | null>(null);
   const submit = (event: KeyboardEvent<HTMLDivElement>) => {
+    // 送るのは入力欄での Enter だけである。クリアのボタンや検索の書き方の案内で押した Enter は
+    // そのボタンの操作に任せる。
+    if (event.target !== field.current) return;
     if (event.key !== "Enter" || isComposingNativeKeyEvent(event.nativeEvent)) return;
     const query = normalizeQuery(field.current?.value ?? "");
     if (query === "") return;

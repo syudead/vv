@@ -1,5 +1,5 @@
 import type { LibraryItem } from "../api/client";
-import type { FavoritesChange } from "../api/favorites";
+import { type FavoritesChange, withItemFavoriteSince } from "../api/favorites";
 import {
   type HomeShelf,
   type HomeShelfItems,
@@ -8,7 +8,7 @@ import {
 } from "../api/home";
 import { videoInGroupPath } from "../groups/groupPaths";
 import { t, type UiText } from "../i18n";
-import { LIBRARY_PATH } from "../library/libraryPath";
+import { LIBRARY_PATH, UNSHELVED_PATH } from "../library/libraryPath";
 import {
   smartFolderPagePath,
   videoInSmartFolderPath,
@@ -17,9 +17,13 @@ import {
 // ホームの棚の規則（specs/057-home/ui-design.md「Home」、research.md R-12・R-14）。画面の部品から
 // 外し、ロジックのテストで確かめる（docs/design-docs/web-testing.md）。
 
-/** ShelfState は棚 1 つの項目の読み込みの状態である。無い棚はまだ読みに行っていない。 */
+/**
+ * ShelfState は棚 1 つの項目の読み込みの状態である。無い棚はまだ読みに行っていない。
+ * `retry` の読み込みは失敗した棚の読み直しで、その棚の行は描いたまま、下の棚も描き続ける
+ * （ui-design.md「Home」の「other shelves unaffected」）。
+ */
 export type ShelfState =
-  | { status: "loading" }
+  | { status: "loading"; retry?: boolean }
   | { status: "failed"; reason: UiText }
   | { status: "ready"; items: LibraryItem[]; total: number };
 
@@ -51,7 +55,7 @@ export function seeAllPath(shelf: HomeShelf): string | undefined {
     case "recent":
       return LIBRARY_PATH;
     case "unshelved":
-      return `${LIBRARY_PATH}?unshelved=1`;
+      return UNSHELVED_PATH;
     case "recommended":
       return undefined;
   }
@@ -86,17 +90,19 @@ export function shelfBatchSize(viewportHeight: number): number {
   return Math.min(MAX_HOME_SHELF_KEYS, fit + 2);
 }
 
-/** settled は棚の状態が決まっている（項目が届いたか、失敗した）かである。 */
+/**
+ * settled は棚の状態が決まっている（項目が届いたか、失敗した）かである。失敗した棚の
+ * 読み直し（`retry`）も、行の場所はもう決まっているので決まったものとして扱う。
+ */
 function settled(state: ShelfState | undefined): boolean {
-  return state !== undefined && state.status !== "loading";
+  return state !== undefined && (state.status !== "loading" || state.retry === true);
 }
 
-/** shown は棚を描くかである。項目の無い棚は描かない。 */
+/** shown は棚を描くかである。項目の無い棚は描かない。読み直し中の失敗した棚は描く。 */
 function shown(state: ShelfState | undefined): boolean {
-  return (
-    state !== undefined &&
-    (state.status === "failed" || (state.status === "ready" && state.items.length > 0))
-  );
+  if (state === undefined) return false;
+  if (state.status === "loading") return state.retry === true;
+  return state.status === "failed" || state.items.length > 0;
 }
 
 /**
@@ -182,8 +188,9 @@ export function withShelfStatus(
 }
 
 /**
- * loadedShelfKeys は読み直す棚の鍵である。今の棚の一覧にあって、もう状態の決まった棚を、
- * 1 回に読める数ずつに分ける。
+ * loadedShelfKeys は読み直す棚の鍵である。今の棚の一覧にあって、もう読みに行った棚を、
+ * 1 回に読める数ずつに分ける。読み込み中の棚も含める。知らせの前に頼んだ応答は変わる前の
+ * 項目かもしれないので、読み直しの応答で置き換える（useHome の loadShelves）。
  */
 export function loadedShelfKeys(
   shelves: readonly HomeShelf[],
@@ -191,12 +198,27 @@ export function loadedShelfKeys(
 ): HomeShelfKey[][] {
   const keys = shelves
     .map((shelf) => shelf.key)
-    .filter((key) => settled(states.get(key)));
+    .filter((key) => states.get(key) !== undefined);
   const batches: HomeShelfKey[][] = [];
   for (let start = 0; start < keys.length; start += MAX_HOME_SHELF_KEYS) {
     batches.push(keys.slice(start, start + MAX_HOME_SHELF_KEYS));
   }
   return batches;
+}
+
+/**
+ * withFavoritesSince は棚の項目の応答を、読みに行った（`mark`）後に反映したお気に入りの
+ * 付け外しで補正する。読みに行く前の値で、届くまでに付け外したハートを戻さない
+ * （api/favorites.ts の favoriteMark）。
+ */
+export function withFavoritesSince(
+  shelves: readonly HomeShelfItems[],
+  mark: number,
+): HomeShelfItems[] {
+  return shelves.map((shelf) => ({
+    ...shelf,
+    items: shelf.items.map((item) => withItemFavoriteSince(item, mark)),
+  }));
 }
 
 /**

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { LibraryGroup, LibraryItem, Video } from "../api/client";
+import { favoriteMark, noteFavoriteOf } from "../api/favorites";
 import type { HomeShelf } from "../api/home";
 import {
   drawnShelves,
@@ -13,6 +14,7 @@ import {
   type ShelfState,
   shelfTitle,
   withFavorites,
+  withFavoritesSince,
   withShelfItems,
 } from "./homeShelves";
 
@@ -114,13 +116,13 @@ describe("読む棚（research.md R-12）", () => {
     expect(nextShelfBatch(folders(4), states, 3)).toEqual([]);
   });
 
-  it("読み直す棚は状態の決まった棚を 8 つずつに分ける", () => {
-    const shelves = folders(10);
+  it("読み直す棚は読みに行った棚（読み込み中を含む）を 8 つずつに分ける", () => {
+    const shelves = folders(11);
     const states = new Map<string, ShelfState>(
-      shelves.map((shelf) => [shelf.key, ready([videoItem(1)])]),
+      shelves.slice(0, 10).map((shelf) => [shelf.key, ready([videoItem(1)])]),
     );
     states.set("folder:10", { status: "loading" });
-    expect(loadedShelfKeys(shelves, states).map((keys) => keys.length)).toEqual([8, 1]);
+    expect(loadedShelfKeys(shelves, states).map((keys) => keys.length)).toEqual([8, 2]);
   });
 });
 
@@ -140,6 +142,27 @@ describe("描く棚（ui-design.md「Home」）", () => {
       ["folder:3", "failed", false],
       ["folder:4", "loading", true],
     ]);
+  });
+
+  it("失敗した棚を読み直す間も、その棚と下の棚を描き続ける", () => {
+    const shelves = folders(3);
+    const states = new Map<string, ShelfState>([
+      ["folder:1", { status: "loading", retry: true }],
+      ["folder:2", ready([videoItem(2)])],
+      ["folder:3", { status: "failed", reason: "offline" } as ShelfState],
+    ]);
+    expect(
+      drawnShelves(shelves, states).map((shelf) => [
+        shelf.shelf.key,
+        shelf.state.status,
+        shelf.frontier,
+      ]),
+    ).toEqual([
+      ["folder:1", "loading", false],
+      ["folder:2", "ready", false],
+      ["folder:3", "failed", false],
+    ]);
+    expect(nextShelfBatch(folders(4), states, 3)).toEqual(["folder:4"]);
   });
 
   it("応答に無い鍵の棚は項目 0 件として描かない", () => {
@@ -170,5 +193,19 @@ describe("お気に入りの付け外し", () => {
             : undefined,
       ),
     ).toEqual([undefined, true, true]);
+  });
+});
+
+describe("読んでいる間のお気に入りの付け外し", () => {
+  it("読みに行った後に反映した付け外しで、届いた項目の印を直す", () => {
+    const mark = favoriteMark();
+    noteFavoriteOf([4101], true, Number.MAX_SAFE_INTEGER);
+    const [shelf] = withFavoritesSince(
+      [{ key: "recent", items: [videoItem(4101), videoItem(4102)], total: 2 }],
+      mark,
+    );
+    expect(
+      shelf?.items.map((item) => (item.kind === "video" ? item.video.favorite : null)),
+    ).toEqual([true, undefined]);
   });
 });

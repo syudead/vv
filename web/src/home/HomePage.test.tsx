@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter, Route, Routes } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -28,6 +28,9 @@ const server = {
   items: new Map<string, { items: unknown[]; total: number }>(),
   shelfRequests: [] as string[][],
   failShelves: false,
+  /** true の間、棚の項目の応答は頼んだ時点の中身で作り、held から返すまで待たせる。 */
+  holdShelves: false,
+  held: [] as (() => void)[],
 };
 
 beforeEach(() => {
@@ -45,6 +48,8 @@ beforeEach(() => {
   ]);
   server.shelfRequests = [];
   server.failShelves = false;
+  server.holdShelves = false;
+  server.held = [];
   installFakeEventSource();
   vi.stubGlobal(
     "fetch",
@@ -57,14 +62,16 @@ beforeEach(() => {
         if (server.failShelves) {
           return Promise.resolve(json({ code: "internal", message: "x" }, 500));
         }
-        return Promise.resolve(
-          json({
-            shelves: keys.flatMap((key) => {
-              const found = server.items.get(key);
-              return found === undefined ? [] : [{ key, ...found }];
-            }),
+        const response = json({
+          shelves: keys.flatMap((key) => {
+            const found = server.items.get(key);
+            return found === undefined ? [] : [{ key, ...found }];
           }),
-        );
+        });
+        if (!server.holdShelves) return Promise.resolve(response);
+        return new Promise<Response>((resolve) => {
+          server.held.push(() => resolve(response));
+        });
       }
       throw new Error(`unexpected request: ${url.toString()}`);
     }),
@@ -146,6 +153,39 @@ describe("ホーム（specs/057-home/ui-design.md「Home」）", () => {
     expect(await screen.findByText("Opened /library?q=harbour null")).toBeTruthy();
   });
 
+  it("検索欄のクリアのボタンで Enter を押しても、ライブラリへは移らずに欄を空にする", async () => {
+    const user = userEvent.setup();
+    renderHome();
+    await screen.findByRole("heading", { level: 2, name: "Travel" });
+    const field = screen.getByRole("searchbox", { name: "Search the library" });
+
+    await user.type(field, "harbour");
+    screen.getByRole("button", { name: "Clear search" }).focus();
+    await user.keyboard("{Enter}");
+
+    expect(screen.queryByText(/^Opened \/library/)).toBeNull();
+    expect((field as HTMLInputElement).value).toBe("");
+  });
+
+  it("失敗した棚を読み直す間も、ほかの棚を描き続ける", async () => {
+    const user = userEvent.setup();
+    server.failShelves = true;
+    renderHome();
+    const retries = await screen.findAllByRole("button", { name: "Retry" });
+    server.failShelves = false;
+    server.holdShelves = true;
+
+    await user.click(retries[0] as HTMLElement);
+
+    expect(screen.getByRole("heading", { level: 2, name: "Travel" })).toBeTruthy();
+    expect(
+      screen.getByRole("heading", { level: 2, name: "Recently added" }),
+    ).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Retry" })).toHaveLength(2);
+    server.held.splice(0).forEach((release) => release());
+    expect(await screen.findByRole("link", { name: "Harbour" })).toBeTruthy();
+  });
+
   it("棚の項目が読めなければ見出しと Retry を出し、Retry でその棚を読み直す", async () => {
     const user = userEvent.setup();
     server.failShelves = true;
@@ -169,6 +209,43 @@ describe("ホーム（specs/057-home/ui-design.md「Home」）", () => {
 
     expect(await screen.findByRole("heading", { level: 2, name: "Trips" })).toBeTruthy();
     expect(server.shelfRequests.at(-1)).toEqual(["folder:3", "recent", "unshelved"]);
+  });
+
+  it.each(["video", "group"] as const)(
+    "%s の知らせでも読んだ棚を読み直す",
+    async (kind) => {
+      renderHome();
+      await screen.findByRole("link", { name: "Harbour" });
+
+      server.items.set(recent.key, {
+        items: [{ kind: "video", video: video(8, { title: "Dunes" }) }],
+        total: 1,
+      });
+      await emitServerEvent(kind, kind === "video" ? { id: 8 } : { ids: [1] });
+
+      expect(await screen.findByRole("link", { name: "Dunes" })).toBeTruthy();
+    },
+  );
+
+  it("後から頼んだ読み直しの応答を、先に頼んだ古い応答で戻さない", async () => {
+    server.holdShelves = true;
+    renderHome();
+    await waitFor(() => expect(server.held).toHaveLength(1));
+
+    server.items.set(travel.key, {
+      items: [{ kind: "video", video: video(9, { title: "Lagoon" }) }],
+      total: 1,
+    });
+    await emitServerEvent("home");
+    await waitFor(() => expect(server.held).toHaveLength(2));
+    const [first, second] = server.held.splice(0);
+    second?.();
+    expect(await screen.findByRole("link", { name: "Lagoon" })).toBeTruthy();
+    first?.();
+
+    await waitFor(() => expect(server.held).toHaveLength(0));
+    expect(screen.queryByRole("link", { name: "Harbour" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Lagoon" })).toBeTruthy();
   });
 
   it("動画が無ければ、所有者には Set up library でオンボードへの入口を出す", async () => {

@@ -14,3 +14,17 @@ export const LIBRARY_PATH = "/library";
 export function libraryFilterPath(param: string, id: number): string {
   return `${LIBRARY_PATH}?${param}=${String(id)}`;
 }
+
+/**
+ * UNSHELVED_PARAM はホームのどの棚にも一致しない動画だけに絞る問い合わせである
+ * （`/library?unshelved=1`。specs/057-home/research.md R-11、ui-design.md「Home」）。
+ */
+export const UNSHELVED_PARAM = "unshelved";
+
+/** UNSHELVED_PATH はホームの「Not on any shelf」の「See all」が開くライブラリの場所である。 */
+export const UNSHELVED_PATH = `${LIBRARY_PATH}?${UNSHELVED_PARAM}=1`;
+
+/** readUnshelved は問い合わせ部分が「棚に無い動画のみ」を名指すか（`unshelved=1`）を返す。 */
+export function readUnshelved(search: string): boolean {
+  return new URLSearchParams(search).get(UNSHELVED_PARAM) === "1";
+}
