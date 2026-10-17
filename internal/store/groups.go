@@ -309,7 +309,7 @@ func groupsChangedEvents(ids []int64) []domain.Event {
 // 項目（from_folder = 0）なら残す項目も 0 にする。付け替えの後で鍵 to の項目を持つグループの
 // 鍵 to の除外は、項目が見えているので消す。変えたグループとその祖先の id を返し、呼び出し側が
 // 確定後に GroupsChanged で知らせる（R-13）。
-func rekeyGroupItems(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, error) {
+func rekeyGroupItemsOnly(ctx context.Context, tx *sql.Tx, from, to string) ([]int64, error) {
 	if from == "" || to == "" || from == to {
 		return nil, nil
 	}

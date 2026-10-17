@@ -1,391 +1,587 @@
 package store
 
 // ホームの棚の項目の読み出し（specs/057-home/research.md R-12）。棚の項目はライブラリの項目
-// （libraryItemsCTE）と同じ項目・同じ並びだが、ライブラリの問い合わせは棚ごとに見せる動画の表と
-// グループの子孫の表を組み立て直し、索引の無い with 句どうしを結ぶたびに自動の索引を作るので、
-// 2 万本では画面に入った 8 つの棚で 2 秒を超えた。ここでは 1 回の読み出しの取引の中に、棚によらない
-// 表を索引付きの一時表として 1 度だけ作り、棚ごとには並び順の索引で先頭から当たった動画をなぞって
-// 最初のページの項目だけを読む（home_shelf_top.go。メンバー 1 本から値の決まらない並び順だけ、項目を
-// 組み立てて並べる）。項目の数は limit + 1 を上限に数える。
+// （libraryItemsCTE）と同じ項目・同じ並びだが、ライブラリの問い合わせのように全動画に規則を掛けて項目を
+// 組み立ててから並べるのではなく、基底の表の索引を並び順になぞり（home_shelf_top.go）、なぞった動画
+// 1 本ごとに見せてよいか・規則に当たるか・どの根（いちばん上のグループ）に入るかを索引で引く。根の判定
+// （子孫がすべて当たるか）と根のグループの項目の値は、なぞって現れた根についてだけ、永続のグループの
+// 構造の表（group_closure、group_root_values。group_closure.go）から求める。読み出しのたびに全動画や
+// 全グループに触れる段は無い。
 //
-//   - hs_base: 見る人に見せる動画 1 本 1 行と、ライブラリの項目の値の列。id が主キーで、利用者データ
-//     の鍵（user_key）に索引を持つ。動画が入っているいちばん上のグループ（1 つだけなら group_id、
-//     その数が group_count）も持つので、棚ごとにグループの表を引かずに済む
-//   - hs_gm・hs_groups: いちばん上のグループごとの見せる子孫の動画（再生順の鍵つき）と、グループの
-//     項目の値（本数、最大の日時、合計の長さと大きさ、視聴状態、再生できる子孫の有無）。お気に入りの
-//     みの棚があれば、お気に入りにしたグループを根にした _fav の表と列も作る
-//   - hs_search: 検索式の条件を持つ棚があるとき、検索式ごとに当たる動画の id。検索式ごとに全文索引
-//     から読む
-//   - hs_shelved: 棚にない動画の棚を読むとき、どれかのフォルダの棚の実効の規則に動画として一致する
-//     動画の id（R-11）
-//
-// 一時表は取引とともに消える。読み出しの取引は commit せず rollback で終える。
+// 並べ替えの値がグループの子孫 1 本から決まらない並び順（合計の長さと大きさ、グループ自身の題名と
+// お気に入りにした日時、シャッフル）だけは、当たった動画を全部読んで項目を組み立てて並べる
+// （assemblePage）。
 
 import (
+	"cmp"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
+	"strings"
 
 	"github.com/syudead/vv/internal/domain"
 )
 
-// homeShelfTables は 1 回の棚の読み出しが作った一時表である。
-type homeShelfTables struct {
-	// searches は hs_search の検索式の番号ごとの識別子（条件句と引数）である。同じ検索式の段を持つ
-	// 棚は 1 つの番号を分け合う。
-	searches []string
-	// favorite は _fav の表と列を作ったかである。
-	favorite bool
-}
-
-// homeShelfTableSQL は一時表を作る文 1 つである。
-type homeShelfTableSQL struct {
-	sql  string
-	args []any
-}
-
-// newHomeShelfTables は取引 tx に、見る人 audience の棚 specs を読むための一時表を作る。shelves は
-// hs_shelved を作るときのフォルダの棚ごとの経路の条件（homeShelfSpecs）で、nil なら作らない。
-func newHomeShelfTables(ctx context.Context, tx *sql.Tx, audience domain.Audience, specs, shelves []listSpec) (*homeShelfTables, error) {
-	tables := &homeShelfTables{}
-	for _, spec := range specs {
-		tables.favorite = tables.favorite || spec.itemGroupsFavorite()
-	}
-	stmts := homeBaseTableSQL(audience, tables.favorite)
-	stmts = append(stmts, homeShelfSortIndexSQL(specs)...)
-	stmts = append(stmts, homeGroupTableSQL(topGroupsSelect, ``)...)
-	if tables.favorite {
-		stmts = append(stmts, homeGroupTableSQL(favoriteGroupsSelect, `_fav`)...)
-	}
-	stmts = append(stmts, tables.searchTableSQL(append(append([]listSpec{}, specs...), shelves...))...)
-	if shelves != nil {
-		stmts = append(stmts, tables.shelvedTableSQL(shelves)...)
-	}
-	for _, stmt := range stmts {
-		if _, err := tx.ExecContext(ctx, stmt.sql, stmt.args...); err != nil {
-			return nil, fmt.Errorf("cannot prepare the home shelves read: %w", err)
-		}
-	}
-	return tables, nil
-}
-
-// homeBaseTableSQL は hs_base を作る文である。所在は一覧と同じ見せてよい所在のパスの最小（chosen）で、
-// 列はライブラリの項目の値（libraryItemsPart の items）と条件が読む videos の列である。グループの列は
-// homeGroupTableSQL が埋める。
-func homeBaseTableSQL(audience domain.Audience, favorite bool) []homeShelfTableSQL {
-	cte, args := chosenLocationsCTEFor(libraryScope(audience), audience, nil)
-	groupColumns := `group_id integer, group_count integer not null default 0`
-	if favorite {
-		groupColumns += `, group_id_fav integer, group_count_fav integer not null default 0`
-	}
-	return []homeShelfTableSQL{
-		{sql: `create temp table hs_base (id integer primary key, content_key text not null, user_key text not null,
-			added_at integer, duration_ms integer, playable integer, probe_state text, path text not null,
-			mtime integer, created_at integer, title_key text, size_bytes integer, played_at integer,
-			favorited_at integer, completed integer not null, position_ms integer not null, watch_state text not null,
-			` + groupColumns + `)`},
-		{sql: `insert into hs_base (id, content_key, user_key, added_at, duration_ms, playable, probe_state, path, mtime,
-			created_at, title_key, size_bytes, played_at, favorited_at, completed, position_ms, watch_state) ` + cte + `,
-		keys as (
-			select videos.id as id, videos.content_key as content_key, ` + userKeyExpr("videos") + ` as user_key,
-				videos.added_at as added_at, videos.duration_ms as duration_ms, videos.playable as playable,
-				videos.probe_state as probe_state, chosen.path as path
-			from chosen join videos on videos.id = chosen.video_id)
-		select k.id, k.content_key, k.user_key, k.added_at, k.duration_ms, k.playable, k.probe_state, k.path,
-			loc.mtime, ` + fileCreatedAtExpr("loc") + `, loc.title_key, loc.size_bytes, p.updated_at, fav.favorited_at,
-			coalesce(p.completed, 0), coalesce(p.position_ms, 0), ` + videoWatchStateExpr + `
-		from keys k join video_locations loc on loc.path = k.path
-		left join playback_progress p on p.content_key = k.user_key and k.content_key <> ''
-		left join video_favorites fav on fav.content_key = k.user_key and k.content_key <> ''`, args: args},
-		{sql: `create index hs_base_user_key on hs_base (user_key)`},
-	}
-}
-
-// homeGroupTableSQL は、roots（1 列 id の select 文）のグループごとの見せる子孫の動画 hs_gm<suffix> と、
-// グループの項目の値 hs_groups<suffix> を作り、hs_base の group_id<suffix>（動画が入っている根が 1 つの
-// ときその id）と group_count<suffix>（入っている根の数）を埋める文である。子孫の動画は内容の鍵を
-// hs_base の利用者データの鍵に結んで求める（groupDescendantsCTE の shownVideoForKeyExpr と同じ動画に
-// なる）。
-func homeGroupTableSQL(roots, suffix string) []homeShelfTableSQL {
-	gm, groups := `hs_gm`+suffix, `hs_groups`+suffix
-	return []homeShelfTableSQL{
-		{sql: `create temp table ` + gm + ` (group_id integer not null, video_id integer not null, position text not null)`},
-		{sql: `insert into ` + gm + ` with ` + groupDescendantsCTEFrom(roots, `b.id`, ` join hs_base b on b.user_key = gi.content_key`) + `
-		select root_id, video_id, sort_key from gdesc`},
-		{sql: `create index ` + gm + `_video on ` + gm + ` (video_id, group_id)`},
-		{sql: `create index ` + gm + `_group on ` + gm + ` (group_id, video_id)`},
-		{sql: `create temp table ` + groups + ` as
-		select gm.group_id as group_id, count(*) as n, g.title_key as title_key,
-			max(videos.added_at) as added_at, max(videos.mtime) as mtime, max(videos.created_at) as created_at,
-			sum(videos.duration_ms) as duration_ms, sum(videos.size_bytes) as size_bytes, max(videos.played_at) as played_at,
-			` + groupFavoritedAtExpr("g") + ` as favorited_at,
-			` + groupWatchStateExpr("videos.completed", "videos.position_ms") + ` as watch_state,
-			max(` + playableCondition + `) as playable
-		from ` + gm + ` gm join hs_base videos on videos.id = gm.video_id join groups g on g.id = gm.group_id
-		group by gm.group_id`},
-		{sql: `update hs_base set group_id` + suffix + ` = vg.group_id, group_count` + suffix + ` = vg.n
-		from (select video_id, min(group_id) as group_id, count(*) as n from ` + gm + ` group by video_id) as vg
-		where vg.video_id = hs_base.id`},
-	}
-}
-
-// searchTableSQL は specs のうち検索式の段を持つ棚の検索式を tables.searches に集め、hs_search を作る文を
-// 返す。検索式ごとに、見せる動画のうちその式のすべてに当たる動画の id を、集まりに属さない動画は登録の
-// 所在から、集まりの動画は同じ集まりのどれかの動画の登録の所在から読む（chosenLocationsFrom と同じ
-// 決め方）。ゲストに見せる動画は公開なので、見せてよい所在の条件のうち公開の分は hs_base に入って
-// いることで満たされている。検索式の棚が無ければ文は無い。
-func (t *homeShelfTables) searchTableSQL(specs []listSpec) []homeShelfTableSQL {
-	var stmts []homeShelfTableSQL
-	for _, spec := range specs {
-		if !spec.hasSearch() {
-			continue
-		}
-		search, identity := homeShelfSearchOf(spec)
-		if t.searchIndex(identity) >= 0 {
-			continue
-		}
-		number := strconv.Itoa(len(t.searches))
-		t.searches = append(t.searches, identity)
-		stmts = append(stmts,
-			homeShelfTableSQL{sql: `insert or ignore into hs_search
-			select l.video_id, ` + number + ` from video_locations l join hs_base b on b.id = l.video_id
-			left join video_bundle_members sbm on sbm.content_key = b.content_key and b.content_key <> ''
-			where sbm.bundle_id is null and ` + registeredLocationCondition("l") + ` and ` + search.location, args: search.locationArgs},
-			homeShelfTableSQL{sql: `insert or ignore into hs_search
-			select b.id, ` + number + ` from hs_base b join video_bundle_members sbm on sbm.content_key = b.content_key
-			where b.content_key <> '' and ` + search.bundleExists(), args: search.bundleArgs})
-	}
-	if len(stmts) == 0 {
-		return nil
-	}
-	create := homeShelfTableSQL{sql: `create temp table hs_search (video_id integer not null, search integer not null,
-		primary key (video_id, search)) without rowid`}
-	return append([]homeShelfTableSQL{create}, stmts...)
-}
-
-// homeShelfSearchOf は棚 spec の検索式の段の条件句と、その識別子を返す。検索式は所有者の意味で照合する
-// （specs/052-smart-folders/research.md R-11）。
-func homeShelfSearchOf(spec listSpec) (searchClauses, string) {
-	search := searchClausesFor(domain.AudienceOwner, spec.searchExprs())
-	return search, fmt.Sprintf("%s\x00%v", search.location, search.locationArgs)
-}
-
-// searchIndex は識別子 identity の検索式の番号を返す。無ければ -1 である。
-func (t *homeShelfTables) searchIndex(identity string) int {
-	for i, known := range t.searches {
-		if known == identity {
-			return i
-		}
-	}
-	return -1
-}
-
-// videoCondition は、hs_base の行（別名 videos）が棚 spec の条件 match（smartMatchOf）に当たる条件句と
-// その引数を返す。検索式の段は hs_search で確かめる。
-func (t *homeShelfTables) videoCondition(spec listSpec, match smartMatch) (string, []any) {
-	if !spec.hasSearch() {
-		return match.filter, match.args
-	}
-	_, identity := homeShelfSearchOf(spec)
-	number := t.searchIndex(identity)
-	if number < 0 {
-		panic("home shelf search is not in hs_search: " + identity)
-	}
-	return match.filter + ` and videos.id in (select video_id from hs_search where search = ` + strconv.Itoa(number) + `)`, match.args
-}
-
-// shelvedTableSQL は hs_shelved を作る文である。棚ごとに、見せる動画のうちその棚の実効の規則に動画として
-// 一致する動画（smartMatchFor。shelvedVideos と同じ）を足し、同じ条件の棚は 1 度だけ足す。
-func (t *homeShelfTables) shelvedTableSQL(shelves []listSpec) []homeShelfTableSQL {
-	stmts := []homeShelfTableSQL{{sql: `create temp table hs_shelved (id integer primary key)`}}
-	seen := map[string]bool{}
-	for _, shelf := range shelves {
-		condition, args := t.videoCondition(shelf, smartMatchFor(shelf, `s`))
-		identity := fmt.Sprintf("%s\x00%v", condition, args)
-		if seen[identity] {
-			continue
-		}
-		seen[identity] = true
-		stmts = append(stmts, homeShelfTableSQL{
-			sql:  `insert or ignore into hs_shelved select videos.id from hs_base videos where ` + condition,
-			args: args,
-		})
-	}
-	return stmts
-}
-
-// homeShelfGroupNames は棚 1 つが読むグループの表と列の名前である。
-type homeShelfGroupNames struct {
-	gm, groups, groupID, groupCount string
-}
-
-// groupNames は棚 spec のグループの表と列の名前（いちばん上のグループか、お気に入りの根のもの）を返す。
-func (t *homeShelfTables) groupNames(spec listSpec) homeShelfGroupNames {
-	suffix := ``
-	if spec.itemGroupsFavorite() {
-		suffix = `_fav`
-	}
-	return homeShelfGroupNames{gm: `hs_gm` + suffix, groups: `hs_groups` + suffix,
-		groupID: `group_id` + suffix, groupCount: `group_count` + suffix}
-}
-
-// homeShelfRule は棚 1 つの条件を SQL の句にしたものである。
+// homeShelfRule は棚 1 つの条件を SQL の句にしたものである。句はどれも videos の行（別名 videos）に掛ける。
 type homeShelfRule struct {
-	names homeShelfGroupNames
-	// condition は hs_base の行（別名 videos）が当たる条件句で、args はその引数である。
+	spec listSpec
+	// condition は当たった動画の条件句（ライブラリの matched と同じ。無ければ空）で、args はその引数。
 	condition string
 	args      []any
-	// videoFilter は動画の項目に、groupFilter はグループが whole になるために掛ける再生可否の句である
-	// （どちらも ` and ` で始まる）。
-	videoFilter, groupFilter string
-	// watch と watchArgs は項目の視聴状態の絞り込み（itemsWhere）である。
-	watch     string
-	watchArgs []any
+	// favorite は根をお気に入りにしたグループにする（itemGroupsFavorite）。
+	favorite bool
+	// playable・favoriteOnly・watches は項目に掛ける絞り込みである。
+	playable     bool
+	favoriteOnly bool
+	watches      []domain.WatchFilter
 }
 
-// ruleOf は棚 spec の条件を句にする。条件はライブラリの項目の当たった動画（smartRuleMatch）と同じで、
-// 棚にない動画の棚は hs_shelved で絞る。
-func (t *homeShelfTables) ruleOf(spec listSpec) homeShelfRule {
-	rule := homeShelfRule{names: t.groupNames(spec)}
-	rule.condition, rule.args = t.videoCondition(spec, smartRuleMatch(spec, `s`))
-	if spec.unshelved {
-		rule.condition += ` and videos.id not in (select id from hs_shelved)`
+// homeShelfReader は 1 回の棚の読み出しである。
+type homeShelfReader struct {
+	ctx      context.Context
+	tx       *sql.Tx
+	audience domain.Audience
+	now      int64
+	// shelves はフォルダの棚ごとの経路の条件（棚にない動画の条件が読む）。nil なら未読。
+	shelves []listSpec
+	// searches は検索式の段の識別子ごとの、当たる動画の id の JSON の配列である。検索式の段は全文索引
+	// から 1 度だけ読み、条件には配列を渡す（まとまりごとに読み直さない）。
+	searches map[string]string
+}
+
+// videoWatchStateSQL は動画（別名 videos）の視聴状態の式で、videoWatchStateExpr と同じ決め方である。
+func videoWatchStateSQL(userKey string) string {
+	return `coalesce((select case when p.completed = 1 then 'watched' when p.position_ms = 0 then 'unwatched' else 'inProgress' end
+		from playback_progress p where p.content_key = ` + userKey + ` and videos.content_key <> ''), 'unwatched')`
+}
+
+// videoFavoriteSQL は動画（別名 videos）がお気に入りかの式である。
+func videoFavoriteSQL(userKey string) string {
+	return `exists (select 1 from video_favorites fav where fav.content_key = ` + userKey + ` and videos.content_key <> '')`
+}
+
+// searchVideosSelect は、見る人 scope の見せる動画のうち検索式 exprs のすべてに当たるものの id を返す
+// select 文とその引数を返す（chosenLocationsFrom と同じ決め方）。集まりに属さない動画は所在の表の索引
+// （全文索引と事実の名前）から、集まりの動画は同じ集まりのどれかの動画の登録の所在から読む。
+func searchVideosSelect(scope locationScope, exprs []domain.SearchExpr) (string, []any) {
+	search := searchClausesFor(domain.AudienceOwner, exprs)
+	scopeClause, scopeArgs := scope.condition("l")
+	args := append(append([]any{}, scopeArgs...), search.locationArgs...)
+	args = append(args, search.bundleArgs...)
+	return `select l.video_id from video_locations l join videos sv on sv.id = l.video_id
+			left join video_bundle_members sbm on sbm.content_key = sv.content_key and sv.content_key <> ''
+			where sbm.bundle_id is null and ` + scopeClause + ` and ` + search.location + `
+		union
+		select sv.id from videos sv join video_bundle_members sbm on sbm.content_key = sv.content_key and sv.content_key <> ''
+			where sv.id = ` + effectiveRepresentativeExpr("sbm.bundle_id", scope.audience) + ` and ` +
+		visibleVideoCondition("sv", scope.audience) + ` and ` + search.bundleExists(), args
+}
+
+// searchSet は spec の検索式の段に当たる動画の id の JSON の配列を返す。同じ検索式は 1 度だけ読む。
+func (r *homeShelfReader) searchSet(spec listSpec) (string, error) {
+	search := searchClausesFor(domain.AudienceOwner, spec.searchExprs())
+	identity := fmt.Sprintf("%v\x00%s\x00%v", r.audience, search.location, search.locationArgs)
+	if set, ok := r.searches[identity]; ok {
+		return set, nil
 	}
+	query, args := searchVideosSelect(spec.scope, spec.searchExprs())
+	ids, err := queryInt64s(r.ctx, r.tx, query, args...)
+	if err != nil {
+		return "", fmt.Errorf("cannot read the search shelf videos: %w", err)
+	}
+	encoded, err := json.Marshal(ids)
+	if err != nil {
+		return "", fmt.Errorf("cannot encode the search shelf videos: %w", err)
+	}
+	if r.searches == nil {
+		r.searches = map[string]string{}
+	}
+	r.searches[identity] = string(encoded)
+	return string(encoded), nil
+}
+
+// matchedCondition は、spec の経路のどの段の条件にも当たる動画（ライブラリの matched）の条件句と引数を
+// 返す。条件が無ければ空である。
+func (r *homeShelfReader) matchedCondition(spec listSpec) (string, []any, error) {
+	conditions, args := matchConditions(spec)
+	if spec.hasSearch() {
+		set, err := r.searchSet(spec)
+		if err != nil {
+			return "", nil, err
+		}
+		conditions = append(conditions, `videos.id in (select value from json_each(?))`)
+		args = append(args, set)
+	}
+	return strings.Join(conditions, " and "), args, nil
+}
+
+// perVideoCondition は spec の実効の規則に動画として一致する条件（smartMatchFor と同じ。再生可否・お気に
+// 入りのみ・視聴状態も動画に掛ける）の句と引数を返す。
+func (r *homeShelfReader) perVideoCondition(spec listSpec) (string, []any, error) {
+	condition, args, err := r.matchedCondition(spec)
+	if err != nil {
+		return "", nil, err
+	}
+	conditions := []string{}
+	if condition != "" {
+		conditions = append(conditions, condition)
+	}
+	userKey := userKeyExpr("videos")
 	if spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
-		rule.videoFilter += ` and ` + playableCondition
-		rule.groupFilter += ` and g.playable`
+		conditions = append(conditions, playableCondition)
 	}
 	if spec.itemGroupsFavorite() {
-		rule.videoFilter += ` and videos.favorited_at is not null`
+		conditions = append(conditions, videoFavoriteSQL(userKey))
 	}
-	rule.watch, rule.watchArgs = itemsWhere(spec)
-	return rule
-}
-
-// homeShelfItemsCTE は棚 rule の項目の表 items を定める with 句とその引数を返す。項目の決め方は
-// ライブラリの項目（libraryItemsPart）と同じである。当たった動画（matched）を、入っている根が 1 つなら
-// その id とともに求め、根ごとの当たった本数（hits）が子孫の本数と等しい根を全部が当たったグループ
-// （whole）にする。動画の項目は、どの根にも入らないか、全部が当たっていない根のどれかに入る当たった
-// 動画で、グループの項目は whole の根の値（hs_groups）である。入っている根が 2 つ以上の動画だけ、根の表
-// （hs_gm）を引く。
-func homeShelfItemsCTE(rule homeShelfRule) (string, []any) {
-	whole, videos := homeShelfSetsSQL(rule.names, rule.condition, rule.groupFilter)
-	return `with ` + whole + `,
-	items as (
-		select null as group_id, videos.id * 2 as id, videos.id as video_id, videos.path as path, videos.added_at as added_at,
-			videos.mtime as mtime, videos.created_at as created_at, videos.title_key as title_key, videos.duration_ms as duration_ms,
-			videos.size_bytes as size_bytes, videos.played_at as played_at, videos.favorited_at as favorited_at,
-			videos.watch_state as watch_state
-		from ` + videos + rule.videoFilter + `
-		union all
-		select g.group_id, g.group_id * 2 + 1, null, null, g.added_at, g.mtime, g.created_at, g.title_key, g.duration_ms,
-			g.size_bytes, g.played_at, g.favorited_at, g.watch_state
-		from whole w join ` + rule.names.groups + ` g on g.group_id = w.group_id)`, rule.args
-}
-
-// homeShelfItemsSQL は棚 rule の最初の limit + 1 件を、項目をすべて組み立てて並べて読む文とその引数を
-// 返す。並び順の値が項目のメンバー 1 本から決まらない並び順（合計、題名、お気に入り、シャッフル）が使う。
-// ほかの並び順は索引で先頭から読む（home_shelf_top.go）。
-func homeShelfItemsSQL(spec listSpec, rule homeShelfRule, order listOrder, limit int) (string, []any) {
-	cte, args := homeShelfItemsCTE(rule)
-	if order.seeded {
-		args = append(args, spec.seed)
+	for _, level := range spec.levels() {
+		if level.watch != "" {
+			conditions = append(conditions, videoWatchStateSQL(userKey)+` = ?`)
+			args = append(args, string(level.watch))
+		}
 	}
-	args = append(append(args, rule.watchArgs...), limit+1)
-	return cte + `
-	select group_id, id, video_id, path, ` + order.value + ` as sort_value from items` + rule.watch + `
-	order by ` + order.orderBy() + ` limit ?`, args
-}
-
-// homeShelfSetsSQL は、条件 condition（hs_base の行 videos に掛ける）の棚の、全部が当たったグループ
-// whole を定める with 句の部品と、動画の項目になる動画（別名 videos）の from 句を返す。当たった動画
-// （matched）は id と根の列だけで 1 度求め、根ごとの当たった本数（hits）は根が 1 つの動画はその列で、
-// 根が 2 つ以上の動画だけ hs_gm を引いて数える。動画の項目は、どの根にも入らないか、全部は当たっていない
-// 根のどれかに入る当たった動画である。条件が無い棚（最近追加した棚）では見せる動画がすべて当たるので、
-// 再生可否の絞り込みが無ければどのグループも whole で、動画の項目はどの根にも入らない動画である。
-func homeShelfSetsSQL(names homeShelfGroupNames, condition, groupFilter string) (whole, videos string) {
-	if condition == `1` && groupFilter == "" {
-		return `whole as (select group_id from ` + names.groups + `)`,
-			`hs_base videos where videos.` + names.groupCount + ` = 0`
+	if len(conditions) == 0 {
+		return `1`, nil, nil
 	}
-	return `matched as materialized (
-		select videos.id as id, videos.` + names.groupID + ` as group_id, videos.` + names.groupCount + ` as group_count
-		from hs_base videos where ` + condition + `),
-	hits as (
-		select group_id, count(*) as n from (
-			select group_id from matched where group_count = 1
-			union all
-			select gm.group_id from matched join ` + names.gm + ` gm on gm.video_id = matched.id where matched.group_count > 1)
-		group by group_id),
-	whole as materialized (
-		select g.group_id from hits join ` + names.groups + ` g on g.group_id = hits.group_id where hits.n = g.n` + groupFilter + `)`,
-		`matched join hs_base videos on videos.id = matched.id
-		where (matched.group_count = 0
-			or (matched.group_count = 1 and matched.group_id not in (select group_id from whole))
-			or (matched.group_count > 1 and exists (select 1 from ` + names.gm + ` gm where gm.video_id = matched.id
-				and gm.group_id not in (select group_id from whole))))`
+	return strings.Join(conditions, " and "), args, nil
 }
 
-// homeShelfFirstPage は一時表 tables から棚 spec の最初のページ（listLibraryPageTx の最初のページと同じ
-// 項目と並び。次のページのカーソルは持たない）と、limit + 1 を上限にした項目の数を読む。並び順の値が
-// 項目のメンバー 1 本から決まる並び順は索引で先頭から読み（homeShelfTopPage）、ほかは項目をすべて
-// 組み立てて並べる。
-func (t *homeShelfTables) homeShelfFirstPage(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.LibraryPage, error) {
+// ruleOf は棚 spec の条件を句にする。棚にない動画の棚は、どのフォルダの棚の実効の規則にも動画として一致
+// しない条件（R-11。条件が NULL の棚も一致しないと見る）を足す。
+func (r *homeShelfReader) ruleOf(spec listSpec) (homeShelfRule, error) {
+	rule := homeShelfRule{spec: spec, favorite: spec.itemGroupsFavorite(), favoriteOnly: spec.itemGroupsFavorite(),
+		playable: spec.anyLevel(func(level listSpec) bool { return level.playableOnly })}
+	var err error
+	if rule.condition, rule.args, err = r.matchedCondition(spec); err != nil {
+		return homeShelfRule{}, err
+	}
+	for _, level := range spec.levels() {
+		if level.watch != "" {
+			rule.watches = append(rule.watches, level.watch)
+		}
+	}
+	if spec.unshelved {
+		if r.shelves == nil {
+			shelves, err := homeShelfSpecs(r.ctx, r.tx, r.audience, r.now)
+			if err != nil {
+				return homeShelfRule{}, err
+			}
+			if shelves == nil {
+				shelves = []listSpec{}
+			}
+			r.shelves = shelves
+		}
+		conditions := []string{}
+		if rule.condition != "" {
+			conditions = append(conditions, rule.condition)
+		}
+		for _, shelf := range r.shelves {
+			condition, args, err := r.perVideoCondition(shelf)
+			if err != nil {
+				return homeShelfRule{}, err
+			}
+			conditions = append(conditions, `(`+condition+`) is not true`)
+			rule.args = append(rule.args, args...)
+		}
+		rule.condition = strings.Join(conditions, " and ")
+	}
+	return rule, nil
+}
+
+// watchShown は視聴状態 state が各段の絞り込みのすべてに等しいかを返す（itemWatchConditions と同じ）。
+func (rule homeShelfRule) watchShown(state string) bool {
+	for _, watch := range rule.watches {
+		if string(watch) != state {
+			return false
+		}
+	}
+	return true
+}
+
+// homeShelfRow はなぞった動画 1 本である。
+type homeShelfRow struct {
+	videoID    int64
+	path       string
+	userKey    string
+	value      any
+	watch      string
+	favorited  bool
+	playable   bool
+	roots      []int64
+	addedAt    int64
+	mtime      int64
+	createdAt  int64
+	durationMs sql.NullInt64
+	sizeBytes  sql.NullInt64
+	titleKey   string
+	favoriteAt sql.NullInt64
+	playedAt   sql.NullInt64
+}
+
+// rowColumns は、なぞる問い合わせが動画 1 本について返す列である（value は呼び出し側が足す）。要らない列
+// （絞り込みの無い視聴状態やお気に入り、組み立ての経路だけが使う値）は定数にして、行ごとの副問い合わせを
+// 減らす。
+func (r *homeShelfReader) rowColumns(rule homeShelfRule, assemble bool) string {
+	userKey := userKeyExpr("videos")
+	roots := `(select group_concat(c.root_id) from group_closure c where c.content_key = ` + userKey + `
+		and not exists (select 1 from group_items pg where pg.child_id = c.root_id))`
+	if rule.favorite {
+		roots = `(select group_concat(c.root_id) from group_closure c join group_favorites gf on gf.group_id = c.root_id
+			where c.content_key = ` + userKey + `)`
+	}
+	watch, favorite := `''`, `0`
+	if len(rule.watches) > 0 {
+		watch = videoWatchStateSQL(userKey)
+	}
+	if rule.favoriteOnly {
+		favorite = videoFavoriteSQL(userKey)
+	}
+	values := `null, null, null, null, null, null, null, null`
+	if assemble {
+		values = `videos.added_at, loc.mtime, ` + fileCreatedAtExpr("loc") + `, videos.duration_ms, loc.size_bytes, loc.title_key,
+		(select fav.favorited_at from video_favorites fav where fav.content_key = ` + userKey + `),
+		(select p.updated_at from playback_progress p where p.content_key = ` + userKey + ` and videos.content_key <> '')`
+	}
+	return `videos.id, loc.path, ` + userKey + `, ` + watch + `, ` + favorite + `, ` + playableCondition + `, ` + roots + `, ` + values
+}
+
+// chosenLocationJoin は、見る人に見せる動画（別名 videos）に一覧と同じ所在（見せてよい所在のパスの最小）を
+// loc として結ぶ join 句である。
+func (r *homeShelfReader) chosenLocationJoin() string {
+	return ` join video_locations loc on loc.path = (select min(l.path) from video_locations l where l.video_id = videos.id
+		and ` + visibleLocationCondition("l", r.audience) + `)`
+}
+
+// shownCondition は動画（別名 videos）を見る人に見せる条件である。
+func (r *homeShelfReader) shownCondition() string {
+	return visibleVideoCondition("videos", r.audience) + ` and ` + shownVideoCondition("videos", r.audience)
+}
+
+// scanRow は rowColumns と value の列を読む。
+func scanRow(rows *sql.Rows) (homeShelfRow, error) {
+	var row homeShelfRow
+	var roots sql.NullString
+	var addedAt, mtime, createdAt sql.NullInt64
+	var titleKey sql.NullString
+	if err := rows.Scan(&row.videoID, &row.path, &row.userKey, &row.watch, &row.favorited, &row.playable, &roots, &addedAt,
+		&mtime, &createdAt, &row.durationMs, &row.sizeBytes, &titleKey, &row.favoriteAt, &row.playedAt, &row.value); err != nil {
+		return homeShelfRow{}, fmt.Errorf("cannot read the home shelf: %w", err)
+	}
+	row.addedAt, row.mtime, row.createdAt, row.titleKey = addedAt.Int64, mtime.Int64, createdAt.Int64, titleKey.String
+	if roots.Valid && roots.String != "" {
+		for _, text := range strings.Split(roots.String, ",") {
+			id, err := strconv.ParseInt(text, 10, 64)
+			if err != nil {
+				return homeShelfRow{}, fmt.Errorf("cannot read the home shelf roots: %w", err)
+			}
+			row.roots = append(row.roots, id)
+		}
+	}
+	return row, nil
+}
+
+// videoShown は動画の項目に再生可否・お気に入り・視聴状態の絞り込みを掛ける。
+func (rule homeShelfRule) videoShown(row homeShelfRow) bool {
+	if rule.playable && !row.playable || rule.favoriteOnly && !row.favorited {
+		return false
+	}
+	return rule.watchShown(row.watch)
+}
+
+// homeShelfRoot は根 1 つの判定と値である。
+type homeShelfRoot struct {
+	whole  bool
+	values rootValuesRow
+}
+
+// decideRoots は根 roots（未判定のもの）を判定する。条件の無い棚では見せる子孫があれば whole で、所有者の
+// 値は stored なら group_root_values から読む（無ければ集める）。条件のある棚と、ゲストと、グループ自身の
+// 値（題名、お気に入りにした日時）が要る組み立ての経路は、子孫から集める。
+func (r *homeShelfReader) decideRoots(rule homeShelfRule, roots []int64, known map[int64]homeShelfRoot, stored bool) error {
+	var fresh []int64
+	for _, root := range roots {
+		if _, ok := known[root]; !ok && !slices.Contains(fresh, root) {
+			fresh = append(fresh, root)
+		}
+	}
+	if len(fresh) == 0 {
+		return nil
+	}
+	values := map[int64]rootValuesRow{}
+	var err error
+	if stored && r.audience.IsOwner() {
+		if values, err = readStoredRootValues(r.ctx, r.tx, fresh); err != nil {
+			return err
+		}
+		var missing, found []int64
+		for _, root := range fresh {
+			if _, ok := values[root]; ok {
+				found = append(found, root)
+			} else {
+				missing = append(missing, root)
+			}
+		}
+		if rule.condition != "" && len(found) > 0 {
+			// 値は保存したものを使い、子孫のすべてが条件に当たるかだけを確かめる。
+			whole, err := readWholeRoots(r.ctx, r.tx, r.audience, found, rule.condition, rule.args)
+			if err != nil {
+				return err
+			}
+			for _, root := range found {
+				row := values[root]
+				row.matched = -1
+				if whole[root] {
+					row.matched = row.members
+				}
+				values[root] = row
+			}
+		}
+		fresh = missing
+	}
+	if len(fresh) > 0 {
+		computed, err := readRootValues(r.ctx, r.tx, r.audience, fresh, rule.condition, rule.args)
+		if err != nil {
+			return err
+		}
+		for root, row := range computed {
+			values[root] = row
+		}
+	}
+	for _, root := range roots {
+		if _, ok := known[root]; ok {
+			continue
+		}
+		row := values[root]
+		matched := row.matched
+		if rule.condition == "" {
+			matched = row.members
+		}
+		whole := row.members > 0 && matched == row.members && (!rule.playable || row.playable)
+		known[root] = homeShelfRoot{whole: whole, values: row}
+	}
+	return nil
+}
+
+// homeShelfItem は読んだ項目 1 つである。
+type homeShelfItem struct {
+	key   itemRow
+	value any
+	text  string
+}
+
+// classify は判定の済んだ動画 rows を項目にする。動画は、どの根にも入らないか、全部は当たっていない根の
+// どれかに入れば動画の項目になり、全部が当たった根は、並び順の値が最大の子孫（sortColumn の *_member）の行
+// でグループの項目になる。
+func (r *homeShelfReader) classify(rule homeShelfRule, rows []homeShelfRow, known map[int64]homeShelfRoot, sortColumn string) []homeShelfItem {
+	var items []homeShelfItem
+	for _, row := range rows {
+		videoItem := len(row.roots) == 0
+		for _, root := range row.roots {
+			decided := known[root]
+			if !decided.whole {
+				videoItem = true
+				continue
+			}
+			if decided.values.member[sortColumn] == row.videoID && rule.watchShown(decided.values.watchState()) {
+				items = append(items, homeShelfItem{key: itemRow{groupID: sql.NullInt64{Int64: root, Valid: true}, id: root*2 + 1}, value: row.value})
+			}
+		}
+		if videoItem && rule.videoShown(row) {
+			items = append(items, homeShelfItem{key: itemRow{id: row.videoID * 2, videoID: sql.NullInt64{Int64: row.videoID, Valid: true},
+				path: sql.NullString{String: row.path, Valid: true}}, value: row.value})
+		}
+	}
+	return items
+}
+
+// homeShelfFirstPage は棚 spec の最初のページ（listLibraryPageTx の最初のページと同じ項目と並び）と、
+// limit + 1 を上限にした項目の数を読む。
+func (r *homeShelfReader) homeShelfFirstPage(spec listSpec) (domain.LibraryPage, error) {
 	if !spec.sort.Valid() {
 		spec.sort = domain.SortAddedDesc
 	}
 	order, limit := itemOrder(spec.sort), normalizeLimit(spec.limit)
-	rule := t.ruleOf(spec)
+	rule, err := r.ruleOf(spec)
+	if err != nil {
+		return domain.LibraryPage{}, err
+	}
 	var page firstPageRows
-	var err error
 	if _, ok := homeShelfTopSorts[spec.sort]; ok {
-		page, err = homeShelfTopPage(ctx, tx, spec, rule, limit)
+		page, err = r.topPage(rule, limit)
 	} else {
-		query, args := homeShelfItemsSQL(spec, rule, order, limit)
-		if page, err = readFirstPageRows(ctx, tx, query, args); err == nil {
-			page.total = len(page.keys)
-		}
+		page, err = r.assemblePage(rule, limit)
 	}
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	items, _, err := libraryPageItems(ctx, tx, spec, order, page.keys, page.values, limit)
+	items, _, err := libraryPageItems(r.ctx, r.tx, spec, order, page.keys, page.values, limit)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
 	return domain.LibraryPage{Items: items, Total: page.total, Limit: limit}, nil
 }
 
-// firstPageRows は最初のページの項目の鍵と並べ替えの値と、棚の項目の数である。
+// firstPageRows は最初のページの項目の鍵と並べ替えの値と、limit + 1 を上限にした棚の項目の数である。
 type firstPageRows struct {
 	keys   []itemRow
 	values []any
 	total  int
 }
 
-// readFirstPageRows は列 group_id, id, video_id, path, sort_value を返す問い合わせ query を読む。
-func readFirstPageRows(ctx context.Context, tx *sql.Tx, query string, args []any) (firstPageRows, error) {
-	rows, err := tx.QueryContext(ctx, query, args...)
+// pageOf は並べた項目 items から最初の limit 件と、limit + 1 を上限にした数を返す。
+func pageOf(items []homeShelfItem, limit int) firstPageRows {
+	page := firstPageRows{total: min(len(items), limit+1)}
+	for _, item := range items[:min(len(items), limit)] {
+		page.keys = append(page.keys, item.key)
+		page.values = append(page.values, item.value)
+	}
+	return page
+}
+
+// assemblePage は、並べ替えの値が子孫 1 本から決まらない並び順の棚を、当たった動画をすべて読んで項目に
+// してから並べて読む。
+func (r *homeShelfReader) assemblePage(rule homeShelfRule, limit int) (firstPageRows, error) {
+	where := r.shownCondition()
+	if rule.condition != "" {
+		where += ` and ` + rule.condition
+	}
+	rows, err := r.queryRows(`select `+r.rowColumns(rule, true)+`, null from videos`+r.chosenLocationJoin()+` where `+where, rule.args)
 	if err != nil {
-		return firstPageRows{}, fmt.Errorf("cannot read the home shelf: %w", err)
+		return firstPageRows{}, err
+	}
+	known := map[int64]homeShelfRoot{}
+	var roots []int64
+	for _, row := range rows {
+		roots = append(roots, row.roots...)
+	}
+	if err := r.decideRoots(rule, roots, known, false); err != nil {
+		return firstPageRows{}, err
+	}
+	sort := rule.spec.sort
+	var items []homeShelfItem
+	for _, row := range rows {
+		videoItem := len(row.roots) == 0
+		for _, root := range row.roots {
+			decided := known[root]
+			if !decided.whole {
+				videoItem = true
+				continue
+			}
+			if row.videoID == decided.values.member[`added_at`] && rule.watchShown(decided.values.watchState()) {
+				item := homeShelfItem{key: itemRow{groupID: sql.NullInt64{Int64: root, Valid: true}, id: root*2 + 1}}
+				item.value, item.text = cardSortValue(sort, rule.spec.seed, decided.values, item.key.id)
+				items = append(items, item)
+			}
+		}
+		if videoItem && rule.videoShown(row) {
+			item := homeShelfItem{key: itemRow{id: row.videoID * 2, videoID: sql.NullInt64{Int64: row.videoID, Valid: true},
+				path: sql.NullString{String: row.path, Valid: true}}}
+			item.value, item.text = videoSortValue(sort, rule.spec.seed, row, item.key.id)
+			items = append(items, item)
+		}
+	}
+	desc := strings.HasSuffix(string(sort), "Desc")
+	slices.SortFunc(items, func(a, b homeShelfItem) int { return compareItems(a, b, desc) })
+	return pageOf(items, limit), nil
+}
+
+// queryRows は rowColumns と並べ替えの値の列を返す問い合わせを読む。
+func (r *homeShelfReader) queryRows(query string, args []any) ([]homeShelfRow, error) {
+	rows, err := r.tx.QueryContext(r.ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the home shelf: %w", err)
 	}
 	defer func() { _ = rows.Close() }()
-	var page firstPageRows
+	var out []homeShelfRow
 	for rows.Next() {
-		var key itemRow
-		var value any
-		if err := rows.Scan(&key.groupID, &key.id, &key.videoID, &key.path, &value); err != nil {
-			return firstPageRows{}, fmt.Errorf("cannot read the home shelf: %w", err)
+		row, err := scanRow(rows)
+		if err != nil {
+			return nil, err
 		}
-		page.keys = append(page.keys, key)
-		page.values = append(page.values, value)
+		out = append(out, row)
 	}
-	if err := rows.Err(); err != nil {
-		return firstPageRows{}, fmt.Errorf("cannot read the home shelf: %w", err)
+	return out, rows.Err()
+}
+
+// videoSortValue は動画の項目の並べ替えの値（数か文字列。無ければ nil と空）である。
+func videoSortValue(sort domain.VideoSort, seed int64, row homeShelfRow, itemID int64) (any, string) {
+	switch sort {
+	case domain.SortDurationAsc, domain.SortDurationDesc:
+		return nullable(row.durationMs), ""
+	case domain.SortSizeAsc, domain.SortSizeDesc:
+		return nullable(row.sizeBytes), ""
+	case domain.SortTitleAsc, domain.SortTitleDesc:
+		return nil, row.titleKey
+	case domain.SortFavoritedAsc, domain.SortFavoritedDesc:
+		return nullable(row.favoriteAt), ""
+	case domain.SortPlayedAsc, domain.SortPlayedDesc:
+		return nullable(row.playedAt), ""
+	case domain.SortAddedAsc, domain.SortAddedDesc:
+		return row.addedAt, ""
+	case domain.SortModifiedAsc, domain.SortModifiedDesc:
+		return row.mtime, ""
+	case domain.SortCreatedAsc, domain.SortCreatedDesc:
+		return row.createdAt, ""
+	case domain.SortRandom:
+		return domain.ShuffleKey(seed, itemID), ""
 	}
-	if err := rows.Close(); err != nil {
-		return firstPageRows{}, fmt.Errorf("cannot close the home shelf: %w", err)
+	return nil, ""
+}
+
+// cardSortValue はグループの項目の並べ替えの値である。
+func cardSortValue(sort domain.VideoSort, seed int64, values rootValuesRow, itemID int64) (any, string) {
+	switch sort {
+	case domain.SortDurationAsc, domain.SortDurationDesc:
+		return nullable(values.durationMs), ""
+	case domain.SortSizeAsc, domain.SortSizeDesc:
+		return nullable(values.sizeBytes), ""
+	case domain.SortTitleAsc, domain.SortTitleDesc:
+		return nil, values.titleKey
+	case domain.SortFavoritedAsc, domain.SortFavoritedDesc:
+		return nullable(values.favoritedAt), ""
+	case domain.SortPlayedAsc, domain.SortPlayedDesc:
+		return nullable(values.playedAt), ""
+	case domain.SortAddedAsc, domain.SortAddedDesc:
+		return nullable(values.addedAt), ""
+	case domain.SortModifiedAsc, domain.SortModifiedDesc:
+		return nullable(values.mtime), ""
+	case domain.SortCreatedAsc, domain.SortCreatedDesc:
+		return nullable(values.createdAt), ""
+	case domain.SortRandom:
+		return domain.ShuffleKey(seed, itemID), ""
 	}
-	return page, nil
+	return nil, ""
+}
+
+// nullable は NULL を nil にする。
+func nullable(value sql.NullInt64) any {
+	if !value.Valid {
+		return nil
+	}
+	return value.Int64
+}
+
+// compareItems は項目をライブラリの並び（値の無い項目は末尾、値、項目の id）で比べる。題名は文字列で、
+// ほかは数で比べる。
+func compareItems(a, b homeShelfItem, desc bool) int {
+	aNull, bNull := a.value == nil && a.text == "", b.value == nil && b.text == ""
+	if aNull != bNull {
+		if aNull {
+			return 1
+		}
+		return -1
+	}
+	c := 0
+	if a.value != nil {
+		c = cmp.Compare(a.value.(int64), b.value.(int64))
+	} else {
+		c = cmp.Compare(a.text, b.text)
+	}
+	c = cmp.Or(c, cmp.Compare(a.key.id, b.key.id))
+	if desc {
+		return -c
+	}
+	return c
 }
