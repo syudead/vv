@@ -153,7 +153,11 @@ async function organizerSettled(
   return last;
 }
 
-async function setProgress(request: APIRequestContext, title: string, positionMs: number) {
+async function setProgress(
+  request: APIRequestContext,
+  title: string,
+  positionMs: number,
+) {
   const response = await request.put(`/api/videos/${String(video(title).id)}/progress`, {
     headers: mutationHeaders,
     data: { positionMs },
@@ -306,7 +310,9 @@ test.describe.serial("home", () => {
     await field.press("Enter");
 
     await expect(page).toHaveURL(`/library?q=${encodeURIComponent(query)}`);
-    await expect(page.getByRole("searchbox", { name: "Search videos" })).toHaveValue(query);
+    await expect(page.getByRole("searchbox", { name: "Search videos" })).toHaveValue(
+      query,
+    );
     await expect.poll(() => cardTitles(page)).toEqual([...allTitles].sort());
   });
 
@@ -315,11 +321,13 @@ test.describe.serial("home", () => {
     await page.goto("/");
     await showAllShelves(page);
     const shelf = shelfRow(page, "Continue watching");
-    await expect(shelf.getByRole("link", { name: inProgress, exact: true })).toBeVisible();
+    await expect(
+      shelf.getByRole("link", { name: inProgress, exact: true }),
+    ).toBeVisible();
     // 見ていない動画は出ない。
-    await expect(shelf.getByRole("link", { name: fillers[20], exact: true })).toHaveCount(
-      0,
-    );
+    await expect(
+      shelf.getByRole("link", { name: fillers.at(-1)!, exact: true }),
+    ).toHaveCount(0);
   });
 
   test("8: 閲覧者のホームには、非公開の動画がどの棚にも出ない", async ({
@@ -353,7 +361,9 @@ test.describe.serial("home", () => {
     // 一度も終わっていなければ走査の終わりは組み直しになるので、先に組み直しを終えておく
     // （research.md R-9）。
     const before = (await readHome(request)).organizer?.last?.finishedAt;
-    const organize = await request.post("/api/home/organize", { headers: mutationHeaders });
+    const organize = await request.post("/api/home/organize", {
+      headers: mutationHeaders,
+    });
     expect(organize.status()).toBe(202);
     await expect
       .poll(async () => (await organizerSettled(request, before))?.run, {
@@ -431,7 +441,9 @@ test.describe.serial("home", () => {
       data: { rule },
     });
     expect(changed.ok()).toBe(true);
-    const edited = (await readHome(request)).shelves.find((shelf) => shelf.folderId === id);
+    const edited = (await readHome(request)).shelves.find(
+      (shelf) => shelf.folderId === id,
+    );
     expect(edited?.byOrganizer).toBe(false);
 
     const before = (await readHome(request)).organizer?.last?.finishedAt;

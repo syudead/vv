@@ -40,13 +40,18 @@ interface Video {
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
 // media-fixtures.mjs の ONBOARDING_VIDEOS と同じ題名。
-const videoTitles = ["オンボード確認A", "オンボード確認B"];
-// 選ぶ2つの分野（internal/domain/interest_catalog.json）。
-const interests = ["Cooking", "Travel"];
+const taggedTitle = "オンボード確認A";
+const untaggedTitle = "オンボード確認B";
+const videoTitles = [taggedTitle, untaggedTitle];
+// 選ぶ2つの分野（internal/domain/interest_catalog.json）。Cooking の動画にだけタグを付ける。
+const cooking = "Cooking";
+const travel = "Travel";
+const interests = [cooking, travel];
 
 function mediaRoot(): string {
   const root = process.env.MDM_E2E_ONBOARDING_MEDIA_DIR;
-  if (root === undefined) throw new Error("MDM_E2E_ONBOARDING_MEDIA_DIR is not configured");
+  if (root === undefined)
+    throw new Error("MDM_E2E_ONBOARDING_MEDIA_DIR is not configured");
   return root;
 }
 
@@ -252,7 +257,9 @@ test.describe.serial("onboarding", () => {
         await expect(
           page.getByRole("heading", { level: 1, name: "What do you watch?" }),
         ).toBeVisible();
-        await expect(page.getByText(/^(Scanning: \d+ of \d+|Scan finished)$/)).toBeVisible();
+        await expect(
+          page.getByText(/^(Scanning: \d+ of \d+|Scan finished)$/),
+        ).toBeVisible();
         const chips = page.getByRole("toolbar", { name: "Interests" });
         for (const name of interests) {
           const chip = chips.getByRole("button", { name, exact: true });
@@ -284,33 +291,33 @@ test.describe.serial("onboarding", () => {
         await page.goto("/");
         await expect(page.getByRole("region", { name: "Shelves" })).toBeVisible();
         await expect(shelfRow(page, "Recently added")).toBeVisible();
-        await expect(shelfRow(page, interests[0])).toHaveCount(0);
+        await expect(shelfRow(page, cooking)).toHaveCount(0);
 
-        const [cooking] = await tagsNamed(request, interests[0]);
-        expect(cooking).toBeDefined();
+        const [cookingTag] = await tagsNamed(request, cooking);
+        expect(cookingTag).toBeDefined();
         const tagged = await request.post("/api/video-tags", {
           headers: mutationHeaders,
           data: {
-            videoIds: [videos.get(videoTitles[0])!.id],
+            videoIds: [videos.get(taggedTitle)!.id],
             action: "add",
-            tag: { name: interests[0] },
+            tag: { name: cooking },
           },
         });
         expect(tagged.ok()).toBe(true);
         // 今あるタグに付き、同じ名前の2つ目のタグはできない。
-        expect((await tagsNamed(request, interests[0])).map(({ id }) => id)).toEqual([
-          cooking!.id,
+        expect((await tagsNamed(request, cooking)).map(({ id }) => id)).toEqual([
+          cookingTag!.id,
         ]);
 
         await page.reload();
-        const shelf = shelfRow(page, interests[0]);
+        const shelf = shelfRow(page, cooking);
         await expect(
-          shelf.getByRole("link", { name: videoTitles[0], exact: true }),
+          shelf.getByRole("link", { name: taggedTitle, exact: true }),
         ).toBeVisible();
         await expect(
-          shelf.getByRole("link", { name: videoTitles[1], exact: true }),
+          shelf.getByRole("link", { name: untaggedTitle, exact: true }),
         ).toHaveCount(0);
-        await expect(shelfRow(page, interests[1])).toHaveCount(0);
+        await expect(shelfRow(page, travel)).toHaveCount(0);
       });
     } finally {
       await second.close();
