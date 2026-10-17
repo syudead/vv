@@ -7,12 +7,7 @@ import (
 	"slices"
 )
 
-// ホームの棚（docs/design-docs/home.md、research.md R-7、R-8）。棚はホームの位置
-// （smart_folders.home_position）を持つスマートフォルダで、整理役（organizer）が返す棚の案
-// （ProposedShelf）は保存せず、適用の取引（store の HomeStore）がフォルダにする。
-
-// MaxHomeShelves はホームに並べるフォルダの棚の数の上限である（data-model.md「Rules」）。整理役も
-// オンボードもこれを超えて棚を足さない。
+// MaxHomeShelves limits the smart-folder shelves on Home.
 const MaxHomeShelves = 50
 
 // ErrInvalidHomeShelves は棚の並びの書き込みが規則に合わないこと（MaxHomeShelves を超える、同じ
@@ -38,59 +33,6 @@ func ValidateHomeShelfOrder(ids []int64) error {
 	return nil
 }
 
-// ProposedShelf は整理役が返す棚の案 1 つである（data-model.md「Proposed shelf」）。
-type ProposedShelf struct {
-	// Name は 052 のフォルダ名の規則（ValidateGroupName）に従う。
-	Name string
-	// Rule は Tags（1 件）・Person・Organization のちょうど 1 つを持つ条件である（research.md R-2）。
-	Rule SmartRule
-}
-
-// Validate は案を確かめ、名前を整えた案を返す。名前が規則に合わなければ *InvalidGroupNameError、
-// 条件が SmartRule.Validate に通らないか、Tags 1 件・Person・Organization のちょうど 1 つでなければ
-// ErrInvalidSmartRule を包む誤りである。
-func (p ProposedShelf) Validate() (ProposedShelf, error) {
-	name, err := ValidateGroupName(p.Name)
-	if err != nil {
-		return ProposedShelf{}, err
-	}
-	if err := p.Rule.Validate(); err != nil {
-		return ProposedShelf{}, err
-	}
-	if !isShelfRule(p.Rule) {
-		return ProposedShelf{}, fmt.Errorf("%w: a proposed shelf names exactly one tag, person or organization", ErrInvalidSmartRule)
-	}
-	p.Name = name
-	return p, nil
-}
-
-// isShelfRule は条件が Tags 1 件・Person・Organization のちょうど 1 つだけを持つかを返す。
-func isShelfRule(rule SmartRule) bool {
-	only := SmartRule{Tags: rule.Tags, Person: rule.Person, Organization: rule.Organization}
-	if !SameSmartRule(rule, only) {
-		return false
-	}
-	set := 0
-	if len(rule.Tags) == 1 {
-		set++
-	} else if len(rule.Tags) > 1 {
-		return false
-	}
-	if rule.Person != 0 {
-		set++
-	}
-	if rule.Organization != 0 {
-		set++
-	}
-	return set == 1
-}
-
-// Folder は案を整理役のフォルダの作成の入力にする（data-model.md「Rules」）。整理役のフォルダは
-// フォルダの並び SortAddedDesc の根のフォルダである。
-func (p ProposedShelf) Folder() SmartFolderCreate {
-	return SmartFolderCreate{Name: p.Name, Rule: p.Rule, Sort: SortAddedDesc}
-}
-
 // SameSmartRule は 2 つの条件が同じ絞り込みかを返す（research.md R-8 の「同じ規則」）。タグは
 // 順によらず同じ集合なら同じである。
 func SameSmartRule(a, b SmartRule) bool {
@@ -108,70 +50,6 @@ func sortedTags(tags []int64) []int64 {
 	out := slices.Clone(tags)
 	slices.Sort(out)
 	return out
-}
-
-// HomeOrganizeRun は整理役の実行の種類である（data-model.md「Settings」）。
-type HomeOrganizeRun string
-
-const (
-	// HomeRebuild は整理役のフォルダを組み直す（research.md R-8）。
-	HomeRebuild HomeOrganizeRun = "rebuild"
-	// HomeExtend は今の棚のあとに棚を足すだけをする。
-	HomeExtend HomeOrganizeRun = "extend"
-)
-
-// Valid は既知の実行の種類かを返す。
-func (r HomeOrganizeRun) Valid() bool {
-	return r == HomeRebuild || r == HomeExtend
-}
-
-// HomeOrganizeOutcome は終わった実行の結果である。
-type HomeOrganizeOutcome string
-
-const (
-	HomeOrganizeDone   HomeOrganizeOutcome = "done"
-	HomeOrganizeFailed HomeOrganizeOutcome = "failed"
-	// HomeOrganizeUnchanged は案が何も変えなかったことを表す。
-	HomeOrganizeUnchanged HomeOrganizeOutcome = "unchanged"
-)
-
-// Valid は既知の結果かを返す。
-func (o HomeOrganizeOutcome) Valid() bool {
-	switch o {
-	case HomeOrganizeDone, HomeOrganizeFailed, HomeOrganizeUnchanged:
-		return true
-	}
-	return false
-}
-
-// HomeOrganizeLast は最後に終わった実行で、settings の home.organize.last に JSON で置く
-// （data-model.md「Settings」）。
-type HomeOrganizeLast struct {
-	Run     HomeOrganizeRun     `json:"run"`
-	Outcome HomeOrganizeOutcome `json:"outcome"`
-	// FinishedAt は Unix ミリ秒である。
-	FinishedAt int64 `json:"finishedAt"`
-	// Added と Removed は足した棚と消した棚の数である。
-	Added   int `json:"added"`
-	Removed int `json:"removed"`
-}
-
-// Validate は種類と結果が既知の値かを確かめる。
-func (l HomeOrganizeLast) Validate() error {
-	if !l.Run.Valid() || !l.Outcome.Valid() || l.Added < 0 || l.Removed < 0 {
-		return fmt.Errorf("invalid home organize run %+v", l)
-	}
-	return nil
-}
-
-// HomeApplied は案の適用の結果である。
-type HomeApplied struct {
-	// Added は挿入した棚、Removed は消したか、所有者の子孫があるので消さずにホームから外した整理役の
-	// フォルダの数である。
-	Added   int
-	Removed int
-	// Changed は棚の集合・並び・名前のどれかが変わったかである。偽なら結果は HomeOrganizeUnchanged である。
-	Changed bool
 }
 
 // HomeChanged はホームの棚の集合か並び（名前を含む）が変わったことを表す（research.md R-16）。

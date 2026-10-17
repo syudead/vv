@@ -2333,7 +2333,6 @@ export const en = {
     removed: (name: string) => `Removed "${name}" from your home.`,
     undo: "Undo",
     writeFailed: (reason: string) => `Couldn't change your home: ${reason}`,
-    organizing: "Organizing your shelves…",
   },
   // アクティビティ（docs/design-docs/activity.md「Words」）。
   activity: {
@@ -3516,22 +3515,9 @@ export const en = {
     // 設定の「Home」の節（docs/design-docs/home.md「Words」の Settings の行）。
     home: {
       heading: "Home",
-      shelves: "Shelves",
-      shelvesDescription:
-        "Rebuild the shelves VVMDM made from your tags, people and organizations. Shelves you made, changed or picked as interests stay.",
-      reorganize: "Reorganize",
-      lastRun: {
-        changed: (when: string, added: number, removed: number) =>
-          `Last organized ${when}: ${formatNumber(added)} added, ${formatNumber(removed)} removed.`,
-        unchanged: (when: string) => `Last organized ${when}: nothing changed.`,
-        failed: (when: string) => `Last organizing failed ${when}.`,
-        never: "Not organized yet.",
-      },
       setup: "Setup",
       setupDescription: "Add media folders, scan and pick interests again.",
       startSetup: "Start setup",
-      loadFailed: (reason: string) => `Couldn't load the home settings: ${reason}`,
-      reorganizeFailed: (reason: string) => `Couldn't start reorganizing: ${reason}`,
       setupFailed: (reason: string) => `Couldn't start setup: ${reason}`,
     },
     mediaFolders: {

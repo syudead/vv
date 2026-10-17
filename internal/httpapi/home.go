@@ -12,11 +12,10 @@ import (
 
 // ホームの経路（docs/design-docs/home.md）。GET /api/home と GET /api/home/shelves は
 // 所有者とゲストが読め（accessRoutes）、PUT /api/home/shelves は /api/* の既定どおり所有者だけである。
-// 所有者だけの欄（organizer と byOrganizer）はゲストの応答から外す。
 
 // Home はホームの棚の読み出しと並びの書き込みである。internal/store の *HomeStore が満たす。
 type Home interface {
-	// Home は見る人のホームの要約を返す。organizer は所有者にだけ入る。
+	// Home は見る人のホームの要約を返す。
 	Home(ctx context.Context, audience domain.Audience) (domain.Home, error)
 	// ShelfItems は棚 keys の最初の項目を keys の順に返す。もう無い棚の鍵は落とす。
 	ShelfItems(ctx context.Context, audience domain.Audience, keys []domain.HomeShelfKey) (domain.HomeShelfPage, error)
@@ -25,7 +24,7 @@ type Home interface {
 	SetShelves(ctx context.Context, ids []int64) error
 }
 
-// GetHome はホームの棚の要約と整理役の状態を返す（GET /api/home）。
+// GetHome はホームの棚の要約を返す（GET /api/home）。
 func (s *server) GetHome(w http.ResponseWriter, r *http.Request) {
 	if !s.homeConfigured(w) {
 		return
@@ -38,20 +37,11 @@ func (s *server) GetHome(w http.ResponseWriter, r *http.Request) {
 	}
 	out := gen.Home{Shelves: make([]gen.HomeShelf, 0, len(home.Shelves))}
 	for _, shelf := range home.Shelves {
-		out.Shelves = append(out.Shelves, toAPIHomeShelf(audience, shelf))
+		out.Shelves = append(out.Shelves, toAPIHomeShelf(shelf))
 	}
 	if home.NoVideos {
 		empty := gen.NoVideos
 		out.Empty = &empty
-	}
-	if audience.IsOwner() && home.Organizer != nil {
-		state, err := s.organizerState(r.Context(), *home.Organizer)
-		if err != nil {
-			s.internalError(w, "Could not load the home organizer state.", err)
-			return
-		}
-		organizer := toAPIHomeOrganizer(state)
-		out.Organizer = &organizer
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, out, s.logger)
@@ -156,26 +146,13 @@ func (s *server) homeConfigured(w http.ResponseWriter) bool {
 	return true
 }
 
-// organizerState は整理役の状態を返す。整理役があれば、走っているかを知るその状態を、無ければ保存層の
-// 読んだ stored（running は偽）を返す。
-func (s *server) organizerState(ctx context.Context, stored domain.HomeOrganizerState) (domain.HomeOrganizerState, error) {
-	if s.homeOrganizer == nil {
-		return stored, nil
-	}
-	return s.homeOrganizer.State(ctx)
-}
-
-// toAPIHomeShelf は棚の要約を応答の形にする。byOrganizer はフォルダの棚の所有者の応答にだけ載せる。
-func toAPIHomeShelf(audience domain.Audience, shelf domain.HomeShelf) gen.HomeShelf {
+// toAPIHomeShelf は棚の要約を応答の形にする。
+func toAPIHomeShelf(shelf domain.HomeShelf) gen.HomeShelf {
 	out := gen.HomeShelf{Key: shelf.Key.String(), Kind: gen.HomeShelfKind(shelf.Key.Kind), Name: shelf.Name}
 	if shelf.Key.Kind != domain.HomeShelfFolder {
 		return out
 	}
 	id := shelf.Key.FolderID
 	out.FolderId = &id
-	if audience.IsOwner() {
-		byOrganizer := shelf.ByOrganizer
-		out.ByOrganizer = &byOrganizer
-	}
 	return out
 }

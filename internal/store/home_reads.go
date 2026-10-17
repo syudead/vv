@@ -1,7 +1,7 @@
 package store
 
 // ホームの読み出し（docs/design-docs/home.md、research.md R-12、R-13）。Home は棚の
-// 要約と整理役の状態を、ShelfItems は画面に入った棚の最初の項目を、どちらも 1 つの読み取りの
+// 要約を、ShelfItems は画面に入った棚の最初の項目を、どちらも 1 つの読み取りの
 // スナップショットから返す。棚の項目はライブラリの項目と同じ項目・同じ並びで、基底の表の索引を並び順に
 // なぞって最初のページだけを読む（home_shelf_read.go）。フォルダの棚にはフォルダの経路の条件
 // （smartFolderSpec）を掛ける。子フォルダは混ぜない（R-14）。
@@ -30,7 +30,7 @@ func fixedHomeShelves(audience domain.Audience, seeded bool) []domain.HomeShelfK
 
 // Home は見る人 audience のホームの要約を返す（GET /api/home）。フォルダの棚を並びの順に、続けて
 // 決まった棚を並べる。ゲストには見せる動画の無いフォルダの棚を入れず（research.md R-8 と同じ）、
-// 所有者には整理役の待っている実行と最後の実行を添え、続きから見る棚と、おすすめの種があれば
+// 所有者には続きから見る棚と、おすすめの種があれば
 // おすすめの棚を並べる。見る人に動画が 1 本も見えなければ
 // NoVideos を真にする。
 func (s *HomeStore) Home(ctx context.Context, audience domain.Audience) (domain.Home, error) {
@@ -70,11 +70,6 @@ func (s *HomeStore) Home(ctx context.Context, audience domain.Audience) (domain.
 	}
 	if home.NoVideos, err = noVisibleVideos(ctx, tx, audience); err != nil {
 		return domain.Home{}, err
-	}
-	if audience.IsOwner() {
-		if home.Organizer, err = organizerState(ctx, tx); err != nil {
-			return domain.Home{}, err
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return domain.Home{}, fmt.Errorf("cannot finish reading the home: %w", err)
@@ -224,25 +219,4 @@ func noVisibleVideos(ctx context.Context, tx *sql.Tx, audience domain.Audience) 
 		return false, fmt.Errorf("cannot read whether the library has videos: %w", err)
 	}
 	return !found, nil
-}
-
-// organizerState は整理役の待っている実行と最後の実行を読む。今実行しているかは保存層が知らない
-// ので偽にする。
-func organizerState(ctx context.Context, q queryRower) (*domain.HomeOrganizerState, error) {
-	state := &domain.HomeOrganizerState{}
-	run, found, err := pendingOrganize(ctx, q)
-	if err != nil {
-		return nil, err
-	}
-	if found {
-		state.Pending = run
-	}
-	last, found, err := lastOrganize(ctx, q)
-	if err != nil {
-		return nil, err
-	}
-	if found {
-		state.Last = &last
-	}
-	return state, nil
 }

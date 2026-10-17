@@ -17,7 +17,6 @@ import { PageHeader } from "../ui/patterns/page-header";
 import { ShelfRow, ShelfRows } from "../ui/patterns/shelf-row";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
-import { Spinner } from "../ui/shadcn/spinner";
 import { normalizeQuery } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
 import { EmptyState } from "../videoList/states";
@@ -30,7 +29,6 @@ import AddShelfButton from "./AddShelfButton";
 import {
   type DrawnShelf,
   drawnShelves,
-  organizingLineIndex,
   seeAllPath,
   shelfHeadingPath,
   shelfItemPath,
@@ -170,20 +168,7 @@ function HomeBody({
       editing={editing}
     />
   ));
-  if (editing !== undefined && list.home.organizer?.running === true) {
-    rows.splice(organizingLineIndex(drawn), 0, <OrganizingLine key="organizing" />);
-  }
   return <ShelfRows label={t.home.shelves}>{rows}</ShelfRows>;
-}
-
-/** OrganizingLine は整理役が走っている間、所有者に最後のフォルダの棚の下で見せる行である。 */
-function OrganizingLine() {
-  return (
-    <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
-      <Spinner aria-hidden="true" role="presentation" className="size-3" />
-      {t.home.organizing}
-    </p>
-  );
 }
 
 /** FolderShelfMenu はフォルダの棚の所有者の「More」である。並びは見えている並びから作る。 */

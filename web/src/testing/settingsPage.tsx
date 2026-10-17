@@ -73,8 +73,6 @@ function sectionResponses(): Record<string, () => Response> {
     "/api/settings/version-judging": () => json({ enabled: false }),
     "/api/settings/comfyui": () => json({ apiKeySet: false, model: "flux2_klein_4b" }),
     "/api/work-info-plugins": () => json({ plugins: [] }),
-    // 「Home」の節は HomeSection.test.tsx が確かめる。ここでは整理役が走っていない。
-    "/api/home": () => json({ shelves: [], organizer: { running: false } }),
   };
 }
 

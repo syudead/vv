@@ -79,8 +79,7 @@ func homeShelfKeys(home gen.Home) []string {
 	return keys
 }
 
-// 棚は並べた順に出て、決まった棚（所有者には continue、recent、unshelved）がそのあとに来る。所有者には
-// 整理役の状態と byOrganizer が入る。再生もお気に入りも無いので recommended は出ない。
+// 棚は並べた順に出て、決まった棚（所有者には continue、recent、unshelved）がそのあとに来る。再生もお気に入りも無いので recommended は出ない。
 func TestHomeListsShelvesInTheirOrderThenTheFixedShelves(t *testing.T) {
 	f := newHomeFixture(t)
 	f.setShelves(t, f.hidden, f.all, f.manual)
@@ -90,43 +89,18 @@ func TestHomeListsShelvesInTheirOrderThenTheFixedShelves(t *testing.T) {
 		t.Fatalf("棚 = %v, want %v", got, want)
 	}
 	first := home.Shelves[0]
-	if first.Kind != gen.HomeShelfKindFolder || first.Name != "隠れ" || first.FolderId == nil || *first.FolderId != f.hidden ||
-		first.ByOrganizer == nil || *first.ByOrganizer {
+	if first.Kind != gen.HomeShelfKindFolder || first.Name != "隠れ" || first.FolderId == nil || *first.FolderId != f.hidden {
 		t.Errorf("フォルダの棚 = %+v", first)
 	}
-	if fixed := home.Shelves[4]; fixed.Kind != gen.HomeShelfKindRecent || fixed.Name != "" || fixed.FolderId != nil || fixed.ByOrganizer != nil {
+	if fixed := home.Shelves[4]; fixed.Kind != gen.HomeShelfKindRecent || fixed.Name != "" || fixed.FolderId != nil {
 		t.Errorf("決まった棚 = %+v", fixed)
-	}
-	if home.Organizer == nil || home.Organizer.Running || home.Organizer.Pending != nil || home.Organizer.Last != nil {
-		t.Errorf("整理役の状態 = %+v", home.Organizer)
 	}
 	if home.Empty != nil {
 		t.Errorf("empty = %v, want none", *home.Empty)
 	}
 }
 
-// 所有者の応答の整理役の状態は、待っている実行と最後の実行を settings から読む。
-func TestHomeShowsTheOrganizerStateToTheOwner(t *testing.T) {
-	f := newHomeFixture(t)
-	ctx := context.Background()
-	if err := f.env.db.Home().SavePendingOrganize(ctx, domain.HomeExtend); err != nil {
-		t.Fatal(err)
-	}
-	last := domain.HomeOrganizeLast{Run: domain.HomeRebuild, Outcome: domain.HomeOrganizeDone, FinishedAt: 1700, Added: 3, Removed: 1}
-	if err := f.env.db.Home().SaveLastOrganize(ctx, last); err != nil {
-		t.Fatal(err)
-	}
-	organizer := f.home(t, f.owner).Organizer
-	if organizer == nil || organizer.Pending == nil || *organizer.Pending != gen.HomeOrganizerPendingExtend {
-		t.Fatalf("整理役の状態 = %+v, want pending extend", organizer)
-	}
-	if got := organizer.Last; got == nil || got.Run != gen.HomeOrganizeRunRunRebuild || got.Outcome != gen.HomeOrganizeRunOutcomeDone ||
-		got.FinishedAt != 1700 || got.Added != 3 || got.Removed != 1 {
-		t.Errorf("最後の実行 = %+v", got)
-	}
-}
-
-// 受け入れ条件 8: ゲストには整理役の状態と byOrganizer が出ず、見せる動画の無いフォルダの棚も出ない。
+// 受け入れ条件 8: ゲストには見せる動画の無いフォルダの棚は出ない。
 // その棚の項目も読めない。
 func TestHomeHidesOwnerStateAndEmptyShelvesFromGuests(t *testing.T) {
 	f := newHomeFixture(t)
@@ -134,14 +108,6 @@ func TestHomeHidesOwnerStateAndEmptyShelvesFromGuests(t *testing.T) {
 	want := []string{folderKey(f.all), folderKey(f.manual), "recent", "unshelved"}
 	if got := homeShelfKeys(home); !slices.Equal(got, want) {
 		t.Fatalf("ゲストの棚 = %v, want %v", got, want)
-	}
-	if home.Organizer != nil {
-		t.Errorf("ゲストに整理役の状態 = %+v", home.Organizer)
-	}
-	for _, shelf := range home.Shelves {
-		if shelf.ByOrganizer != nil {
-			t.Errorf("ゲストの棚 %s に byOrganizer がある", shelf.Key)
-		}
 	}
 	keys := folderKey(f.hidden) + "," + folderKey(f.manual)
 	shelves := f.shelfItems(t, keys)
@@ -270,31 +236,6 @@ func TestSmartFolderOnHome(t *testing.T) {
 	}
 	if guest := decode[gen.SmartFolderDetail](t, f.env.get(smartFolderPath(f.manual, ""))); guest.OnHome != nil {
 		t.Errorf("ゲストの onHome = %v", *guest.OnHome)
-	}
-}
-
-// runningOrganizer は走っている整理役の状態を返す HomeOrganizer である。
-type runningOrganizer struct{}
-
-func (runningOrganizer) Reorganize(context.Context) (domain.HomeOrganizerState, error) {
-	return domain.HomeOrganizerState{Running: true, Pending: domain.HomeRebuild}, nil
-}
-
-func (runningOrganizer) State(context.Context) (domain.HomeOrganizerState, error) {
-	return domain.HomeOrganizerState{Running: true}, nil
-}
-
-// 整理役があれば、所有者の応答の整理役の状態は、走っているかを知る整理役から読む。
-func TestHomeShowsARunningOrganizerToTheOwner(t *testing.T) {
-	f := &homeFixture{libraryFixture: newLibraryFixtureWith(t, func(options Options) Options {
-		options.HomeOrganizer = runningOrganizer{}
-		return options
-	})}
-	if organizer := f.home(t, f.owner).Organizer; organizer == nil || !organizer.Running {
-		t.Fatalf("整理役の状態 = %+v, want running", organizer)
-	}
-	if organizer := f.home(t).Organizer; organizer != nil {
-		t.Errorf("ゲストの整理役の状態 = %+v, want none", organizer)
 	}
 }
 

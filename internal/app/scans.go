@@ -381,9 +381,9 @@ func (s *Scans) ReportScanProgress(ctx context.Context, result domain.ScanResult
 	return nil
 }
 
-// OnFinish は走査を閉じるたびに呼ぶ関数を足す。足した関数は登録の順にどれも呼ぶ（自動の取り込みと
-// ホームの整理役、docs/design-docs/home.md）。origin は閉じた走査を始めた主体で、関数は走査の錠を
-// 取らずに短く戻る。組み立てのあと、走査を始める前に呼ぶ。
+// OnFinish registers a callback invoked when a scan closes, in registration order.
+// origin identifies what started the scan. Callbacks must return promptly without
+// acquiring the scan lock. Register them before starting scans.
 func (s *Scans) OnFinish(f func(origin domain.ScanOrigin, state domain.ScanState)) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

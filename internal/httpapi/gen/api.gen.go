@@ -975,63 +975,6 @@ func (e HomeEmpty) Valid() bool {
 	}
 }
 
-// Defines values for HomeOrganizeRunOutcome.
-const (
-	HomeOrganizeRunOutcomeDone      HomeOrganizeRunOutcome = "done"
-	HomeOrganizeRunOutcomeFailed    HomeOrganizeRunOutcome = "failed"
-	HomeOrganizeRunOutcomeUnchanged HomeOrganizeRunOutcome = "unchanged"
-)
-
-// Valid indicates whether the value is a known member of the HomeOrganizeRunOutcome enum.
-func (e HomeOrganizeRunOutcome) Valid() bool {
-	switch e {
-	case HomeOrganizeRunOutcomeDone:
-		return true
-	case HomeOrganizeRunOutcomeFailed:
-		return true
-	case HomeOrganizeRunOutcomeUnchanged:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for HomeOrganizeRunRun.
-const (
-	HomeOrganizeRunRunExtend  HomeOrganizeRunRun = "extend"
-	HomeOrganizeRunRunRebuild HomeOrganizeRunRun = "rebuild"
-)
-
-// Valid indicates whether the value is a known member of the HomeOrganizeRunRun enum.
-func (e HomeOrganizeRunRun) Valid() bool {
-	switch e {
-	case HomeOrganizeRunRunExtend:
-		return true
-	case HomeOrganizeRunRunRebuild:
-		return true
-	default:
-		return false
-	}
-}
-
-// Defines values for HomeOrganizerPending.
-const (
-	HomeOrganizerPendingExtend  HomeOrganizerPending = "extend"
-	HomeOrganizerPendingRebuild HomeOrganizerPending = "rebuild"
-)
-
-// Valid indicates whether the value is a known member of the HomeOrganizerPending enum.
-func (e HomeOrganizerPending) Valid() bool {
-	switch e {
-	case HomeOrganizerPendingExtend:
-		return true
-	case HomeOrganizerPendingRebuild:
-		return true
-	default:
-		return false
-	}
-}
-
 // Defines values for HomeShelfKind.
 const (
 	HomeShelfKindContinue    HomeShelfKind = "continue"
@@ -3085,9 +3028,6 @@ type Home struct {
 	// Empty 見る人にライブラリの動画が 1 本も見えないときだけ入る
 	Empty *HomeEmpty `json:"empty,omitempty"`
 
-	// Organizer 整理役の状態（docs/design-docs/home.md「Organizer state」）
-	Organizer *HomeOrganizer `json:"organizer,omitempty"`
-
 	// Shelves フォルダの棚を並びの順に、続けて決まった棚
 	Shelves []HomeShelf `json:"shelves"`
 }
@@ -3095,48 +3035,8 @@ type Home struct {
 // HomeEmpty 見る人にライブラリの動画が 1 本も見えないときだけ入る
 type HomeEmpty string
 
-// HomeOrganizeRun 最後に終わった実行（docs/design-docs/home.md「Settings」の home.organize.last）
-type HomeOrganizeRun struct {
-	// Added 足した棚の数
-	Added int `json:"added"`
-
-	// FinishedAt 終わった時刻（Unix ミリ秒）
-	FinishedAt int64 `json:"finishedAt"`
-
-	// Outcome `unchanged` は案が何も変えなかった
-	Outcome HomeOrganizeRunOutcome `json:"outcome"`
-
-	// Removed 消した棚の数
-	Removed int                `json:"removed"`
-	Run     HomeOrganizeRunRun `json:"run"`
-}
-
-// HomeOrganizeRunOutcome `unchanged` は案が何も変えなかった
-type HomeOrganizeRunOutcome string
-
-// HomeOrganizeRunRun defines model for HomeOrganizeRun.Run.
-type HomeOrganizeRunRun string
-
-// HomeOrganizer 整理役の状態（docs/design-docs/home.md「Organizer state」）
-type HomeOrganizer struct {
-	// Last 最後に終わった実行（docs/design-docs/home.md「Settings」の home.organize.last）
-	Last *HomeOrganizeRun `json:"last,omitempty"`
-
-	// Pending 待っている実行。無ければ省く
-	Pending *HomeOrganizerPending `json:"pending,omitempty"`
-
-	// Running 実行が今走っている
-	Running bool `json:"running"`
-}
-
-// HomeOrganizerPending 待っている実行。無ければ省く
-type HomeOrganizerPending string
-
 // HomeShelf ホームの棚 1 つ（docs/design-docs/home.md）
 type HomeShelf struct {
-	// ByOrganizer 所有者だけ。owner_kept が 0 の間は真
-	ByOrganizer *bool `json:"byOrganizer,omitempty"`
-
 	// FolderId フォルダの棚だけ
 	FolderId *int64 `json:"folderId,omitempty"`
 
@@ -6612,12 +6512,9 @@ type ServerInterface interface {
 	// GetHealth 稼働状態とビルド情報を返す
 	// (GET /api/health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
-	// GetHome ホームの棚の要約と整理役の状態を返す
+	// GetHome ホームの棚の要約を返す
 	// (GET /api/home)
 	GetHome(w http.ResponseWriter, r *http.Request)
-	// OrganizeHome ホームの組み直し（rebuild）を待ちに入れる
-	// (POST /api/home/organize)
-	OrganizeHome(w http.ResponseWriter, r *http.Request)
 	// ListHomeShelfItems 画面に入った棚の最初の項目を返す
 	// (GET /api/home/shelves)
 	ListHomeShelfItems(w http.ResponseWriter, r *http.Request, params ListHomeShelfItemsParams)
@@ -8047,20 +7944,6 @@ func (siw *ServerInterfaceWrapper) GetHome(w http.ResponseWriter, r *http.Reques
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.GetHome(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// OrganizeHome operation middleware
-func (siw *ServerInterfaceWrapper) OrganizeHome(w http.ResponseWriter, r *http.Request) {
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.OrganizeHome(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -12640,7 +12523,6 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/home", wrapper.GetHome)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/home/shelves", wrapper.ListHomeShelfItems)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/home/shelves", wrapper.SetHomeShelves)
-	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/home/organize", wrapper.OrganizeHome)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding", wrapper.GetOnboarding)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/onboarding", wrapper.UpdateOnboarding)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/onboarding/interests", wrapper.ListOnboardingInterests)

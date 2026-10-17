@@ -306,16 +306,6 @@ func run(opts runOptions) error {
 	if err := autoTagger.Recover(backgroundCtx); err != nil {
 		logger.Warn("could not requeue interrupted auto-tagging jobs", slog.Any("error", err))
 	}
-	// ホームの整理役。走査が done で終わり、取り込みと自動タグ付けの待ち行列が空のまま続いたら棚を足す。
-	// 前回の停止で残った待ちの実行を読んでから動かす（docs/design-docs/home.md）。
-	homeOrganizer := app.NewHomeOrganizer(app.HomeOrganizerOptions{
-		Store: db.Home(), Jobs: ingestStore, AutoTags: db.AutoTags(), Publisher: bus, Logger: logger,
-	})
-	if err := homeOrganizer.Recover(backgroundCtx); err != nil {
-		// Run が読み直すので、起動は止めない。
-		logger.Warn("could not read the pending home organizer run; retrying", slog.Any("error", err))
-	}
-	scans.OnFinish(homeOrganizer.ScanFinished)
 	// アクティビティの記録のうち、前回の停止で処理中のまま残ったものを中断にする。ワーカーを動かす前に行う。
 	// 回復は記録の読み書きだけなので、やり直しと取り消しの振り分け先（判定のワーカー）を作る前に行う。
 	recoverActivity(backgroundCtx, app.NewActivity(app.ActivityOptions{Store: db.Activity()}), logger)
@@ -370,7 +360,6 @@ func run(opts runOptions) error {
 	workersDone.Go(func() { app.BackfillKeyframes(backgroundCtx, ingestStore, media.ProbeKeyframes, logger) })
 	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
 	workersDone.Go(func() { versionJudge.Run(backgroundCtx) })
-	workersDone.Go(func() { homeOrganizer.Run(backgroundCtx) })
 	// 読まれないセッションと時間切れの実行を片付け、止めるときは進んでいる実行を中止する。
 	workersDone.Go(func() { thumbnailEdits.Run(backgroundCtx) })
 	// ここから先は、どこで戻っても（待ち受けを開けない・待ち受けを失った・停止の
@@ -489,8 +478,7 @@ func run(opts runOptions) error {
 		AutoImport:        autoImport,
 		AutoTagging:       autoTagger,
 		// 分野を選ぶと、自動タグ付けが入なら全動画を判定に回す（docs/design-docs/home.md）。
-		Onboarding:    app.NewOnboarding(db.Home(), autoTagger),
-		HomeOrganizer: homeOrganizer,
+		Onboarding: app.NewOnboarding(db.Home(), autoTagger),
 		// ホームの棚は保存層が読み、所有者のおすすめの棚は関連動画と同じ近さで並べて 10 分保持する
 		// （docs/design-docs/home.md）。
 		Home:           app.NewHome(app.HomeOptions{Store: db.Home(), Catalog: libraryStore}),

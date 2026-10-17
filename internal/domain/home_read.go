@@ -101,13 +101,11 @@ type HomeShelf struct {
 	Key HomeShelfKey
 	// Name はフォルダの名前で、決まった棚では空である（画面が名前を付ける）。
 	Name string
-	// ByOrganizer は整理役のフォルダの棚（owner_kept が 0）かで、所有者の応答にだけ載せる。
-	ByOrganizer bool
 }
 
 // FolderShelf はフォルダ folder の棚の要約を返す。
 func FolderShelf(folder SmartFolder) HomeShelf {
-	return HomeShelf{Key: FolderShelfKey(folder.ID), Name: folder.Name, ByOrganizer: !folder.OwnerKept}
+	return HomeShelf{Key: FolderShelfKey(folder.ID), Name: folder.Name}
 }
 
 // Home はホームの要約である（GET /api/home）。
@@ -115,8 +113,6 @@ type Home struct {
 	// Shelves はフォルダの棚を並びの順に、そのあとに決まった棚を並べる。ゲストには見せる動画の無い
 	// フォルダの棚を入れない。
 	Shelves []HomeShelf
-	// Organizer は整理役の状態で、所有者にだけ入る（ゲストには nil）。
-	Organizer *HomeOrganizerState
 	// NoVideos は見る人にライブラリの動画が 1 本も見えないことを表す。
 	NoVideos bool
 }

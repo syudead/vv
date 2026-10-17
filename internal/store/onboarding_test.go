@@ -49,7 +49,7 @@ func shelfTag(t *testing.T, shelf domain.SmartFolder) int64 {
 // 分野を 2 つ選ぶと、種類 Genre のタグが 2 つと、今の棚の後ろに所有者の棚が 2 つできる（受け入れ条件 3）。
 func TestPickInterestsMakesGenreTagsAndOwnerShelves(t *testing.T) {
 	db, tags := homeFixture(t, "Cats")
-	applyProposal(t, db, domain.HomeRebuild, tagShelf("Cats", tags["Cats"]))
+	seedLegacyShelves(t, db, tagShelf("Cats", tags["Cats"]))
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
 
@@ -177,10 +177,9 @@ func TestPickingAnInterestTwiceKeepsOneShelf(t *testing.T) {
 }
 
 // 分野と同じ条件の棚が整理役の棚なら、棚は足さずにその棚を所有者の棚にし、HomeChanged を出す。
-// その後の再整理の案がその条件を繰り返さなくても、棚は消えない（research.md R-6、R-8）。
-func TestPickingAnInterestKeepsTheOrganizerShelfOfTheSameRule(t *testing.T) {
+func TestPickingAnInterestKeepsTheLegacyShelfOfTheSameRule(t *testing.T) {
 	db, tags := homeFixture(t, "Anime", "Cats")
-	applyProposal(t, db, domain.HomeRebuild, tagShelf("Anime", tags["Anime"]))
+	seedLegacyShelves(t, db, tagShelf("Anime", tags["Anime"]))
 	organizer := shelfByName(t, db, "Anime")
 	recorder := &eventRecorder{}
 	db.PublishTo(recorder)
@@ -197,10 +196,7 @@ func TestPickingAnInterestKeepsTheOrganizerShelfOfTheSameRule(t *testing.T) {
 	if got := homeChanges(recorder); got != 1 {
 		t.Fatalf("HomeChanged published %d times, want 1", got)
 	}
-	applyProposal(t, db, domain.HomeRebuild, tagShelf("Cats", tags["Cats"]))
-	if got, want := homeRows(t, db), []string{"Anime:true", "Cats:false"}; !reflect.DeepEqual(got, want) {
-		t.Fatalf("home after rebuild = %v, want %v", got, want)
-	}
+
 }
 
 // 棚が 50 を超えるなら ErrHomeShelvesFull で、タグも棚も書かない。

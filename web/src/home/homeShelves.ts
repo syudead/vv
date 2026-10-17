@@ -152,19 +152,6 @@ export function drawnShelves(
 }
 
 /**
- * organizingLineIndex は所有者の「Organizing your shelves…」の行を置く位置である。描く棚の
- * うち最後のフォルダの棚の直後で、フォルダの棚を 1 つも描いていなければ先頭（0）
- * （ui-design.md「Home」）。
- */
-export function organizingLineIndex(drawn: readonly DrawnShelf[]): number {
-  let last = -1;
-  drawn.forEach((entry, index) => {
-    if (entry.shelf.kind === "folder") last = index;
-  });
-  return last + 1;
-}
-
-/**
  * withShelfItems は棚の項目の応答を状態に重ねる。名指した鍵が応答に無ければ、その棚は
  * もう無いので項目 0 件として描かない。
  */

@@ -339,8 +339,6 @@ type Options struct {
 	Onboarding Onboarding
 	// Home はホームの棚の読み出しと並びの書き込み。nil なら /api/home* は 500 を返す。
 	Home Home
-	// HomeOrganizer はホームの整理役。nil なら POST /api/home/organize は 500 を返す。
-	HomeOrganizer HomeOrganizer
 	// VersionJudging は重複の自動判定の入切。nil なら /api/settings/version-judging は 500 を返す。
 	VersionJudging VersionJudging
 	// Ollama は判定モデルの提供元 Ollama の接続先と確かめ。nil なら該当の経路は 500 を返す。
@@ -433,7 +431,6 @@ type server struct {
 	autoTagging       AutoTagging
 	onboarding        Onboarding
 	home              Home
-	homeOrganizer     HomeOrganizer
 	versionJudging    VersionJudging
 	ollama            OllamaConnection
 	comfyUI           ComfyUIConnection
@@ -530,7 +527,6 @@ func NewRouter(opts Options) http.Handler {
 		autoTagging:            opts.AutoTagging,
 		onboarding:             opts.Onboarding,
 		home:                   opts.Home,
-		homeOrganizer:          opts.HomeOrganizer,
 		versionJudging:         opts.VersionJudging,
 		ollama:                 opts.Ollama,
 		comfyUI:                opts.ComfyUI,

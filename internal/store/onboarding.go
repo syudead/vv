@@ -180,7 +180,12 @@ func (p *interestPick) add(ctx context.Context, interest domain.Interest) error 
 	if len(p.shelves) > 0 {
 		position = p.shelves[len(p.shelves)-1].HomePosition + 1
 	}
-	id, err := insertShelf(ctx, p.tx, domain.ProposedShelf{Name: interest.Name, Rule: rule}, true, position)
+	folder := domain.SmartFolder{Name: interest.Name, Rule: rule, Sort: domain.SortAddedDesc}
+	encoded, err := checkSmartFolder(&folder)
+	if err != nil {
+		return err
+	}
+	id, err := insertSmartFolder(ctx, p.tx, folder, encoded, true, position)
 	if err != nil {
 		return err
 	}
@@ -190,8 +195,7 @@ func (p *interestPick) add(ctx context.Context, interest domain.Interest) error 
 	return nil
 }
 
-// keep は分野と同じ条件の棚 p.shelves[i] を所有者の棚にする。整理役の棚（owner_kept 0）のままだと、
-// 動画が案の条件に満たなくなった再整理で消える（research.md R-6、R-8）。
+// keep marks a legacy shelf with the same rule as owner-kept.
 func (p *interestPick) keep(ctx context.Context, i int) error {
 	if p.shelves[i].OwnerKept {
 		return nil

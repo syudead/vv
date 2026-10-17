@@ -596,17 +596,16 @@ export function generateOnboardingFixtures(root) {
   }
 }
 
-/** HOME_FILLERS は、ホームの棚にない動画を R-10 の 20 本より多くするための動画の数である。 */
-export const HOME_FILLERS = 21;
+/** HOME_FILLERS is the number of public, unwatched videos in the Home fixture. */
+export const HOME_FILLERS = 2;
 /** HOME_IN_PROGRESS は、途中まで見て「Continue watching」に出す動画である。 */
 export const HOME_IN_PROGRESS = "ホーム確認の途中";
 
 /**
- * generateHomeFixtures は、ホーム（specs/057-home、子 #1323）を確かめる動画を作る
+ * generateHomeFixtures は、ホーム（docs/design-docs/home.md）を確かめる動画を作る
  * （web/e2e/home.e2e.ts）。どれもフォルダの直下に置き、グループにしない。
  *
- * - 「ホーム確認 NN」は 4 秒の同じ映像に中身の違う free ボックスを足した 21 本で、走査の終わりに
- *   棚を足す条件（research.md R-10 の、棚にない動画が 20 本以上）を、この組だけで満たす
+ * - 「ホーム確認 NN」は公開・未視聴の確認用の 2 本。4 秒の同じ映像に中身の違う free ボックスを足す
  * - 「ホーム確認の途中」は途中まで見たことにする 40 秒の 1 本。末尾とみなす 15 秒
  *   （internal/domain/progress.go の CompletionTailMs）より十分長い
  */

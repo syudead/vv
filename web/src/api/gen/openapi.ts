@@ -989,11 +989,11 @@ export interface paths {
             cookie?: never;
         };
         /**
-         * ホームの棚の要約と整理役の状態を返す
+         * ホームの棚の要約を返す
          * @description ホームの位置を持つスマートフォルダの棚を並びの順に、続けて決まった棚（`recent`、`unshelved`）を
          *     並べる（docs/design-docs/home.md）。棚の項目は `listHomeShelfItems` で読む。
-         *     ゲストには見せる動画の無いフォルダの棚を入れない。`organizer` と `byOrganizer` は所有者の
-         *     応答にだけ入る。見る人にライブラリの動画が 1 本も見えなければ `empty` が `noVideos` である。
+         *     ゲストには見せる動画の無いフォルダの棚を入れない。見る人にライブラリの動画が 1 本も見えなければ
+         *     `empty` が `noVideos` である。
          */
         get: operations["getHome"];
         put?: never;
@@ -1031,28 +1031,6 @@ export interface paths {
          */
         put: operations["setHomeShelves"];
         post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/home/organize": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * ホームの組み直し（rebuild）を待ちに入れる
-         * @description 待ちの実行は設定 `home.organize.pending` に 1 つだけで、rebuild は extend を吸収する。走っている
-         *     実行があれば、その終わったあとに走る。待ちに入れたあとの整理役の状態を返す。所有者だけ
-         *     （docs/design-docs/home.md、contracts/screen-api.md）。
-         */
-        post: operations["organizeHome"];
         delete?: never;
         options?: never;
         head?: never;
@@ -3990,49 +3968,16 @@ export interface components {
              * @description フォルダの棚だけ
              */
             folderId?: number;
-            /** @description 所有者だけ。owner_kept が 0 の間は真 */
-            byOrganizer?: boolean;
         };
         /** @description GET /api/home の応答 */
         Home: {
             /** @description フォルダの棚を並びの順に、続けて決まった棚 */
             shelves: components["schemas"]["HomeShelf"][];
-            organizer?: components["schemas"]["HomeOrganizer"];
             /**
              * @description 見る人にライブラリの動画が 1 本も見えないときだけ入る
              * @enum {string}
              */
             empty?: "noVideos";
-        };
-        /** @description 整理役の状態（docs/design-docs/home.md「Organizer state」） */
-        HomeOrganizer: {
-            /** @description 実行が今走っている */
-            running: boolean;
-            /**
-             * @description 待っている実行。無ければ省く
-             * @enum {string}
-             */
-            pending?: "rebuild" | "extend";
-            last?: components["schemas"]["HomeOrganizeRun"];
-        };
-        /** @description 最後に終わった実行（docs/design-docs/home.md「Settings」の home.organize.last） */
-        HomeOrganizeRun: {
-            /** @enum {string} */
-            run: "rebuild" | "extend";
-            /**
-             * @description `unchanged` は案が何も変えなかった
-             * @enum {string}
-             */
-            outcome: "done" | "failed" | "unchanged";
-            /**
-             * Format: int64
-             * @description 終わった時刻（Unix ミリ秒）
-             */
-            finishedAt: number;
-            /** @description 足した棚の数 */
-            added: number;
-            /** @description 消した棚の数 */
-            removed: number;
         };
         /** @description 棚 1 つの最初の項目 */
         HomeShelfItems: {
@@ -7945,27 +7890,6 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
-        };
-    };
-    organizeHome: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 待ちに入れたあとの整理役の状態 */
-            202: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HomeOrganizer"];
-                };
-            };
-            403: components["responses"]["Forbidden"];
         };
     };
     getOnboarding: {

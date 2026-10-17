@@ -45,7 +45,7 @@ function applyOrder(ids: readonly number[]) {
 }
 
 beforeEach(() => {
-  server.home = { shelves: [travel, food, recent], organizer: { running: false } };
+  server.home = { shelves: [travel, food, recent] };
   server.puts = [];
   server.holdHome = undefined;
   server.folders = [
@@ -218,24 +218,6 @@ describe("ホームの棚の操作（docs/design-docs/home.md「Home」）", () 
 
     expect(
       await screen.findByText("Every smart folder is already on your home."),
-    ).toBeTruthy();
-  });
-
-  it("整理役が走っている間、最後のフォルダの棚の下に行を出す", async () => {
-    server.home = { ...server.home, organizer: { running: true } };
-    renderHome();
-
-    const food = await screen.findByRole("heading", { level: 2, name: "Food" });
-    const line = screen.getByText("Organizing your shelves…");
-    const recentHeading = screen.getByRole("heading", {
-      level: 2,
-      name: "Recently added",
-    });
-    expect(
-      food.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(
-      line.compareDocumentPosition(recentHeading) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
   });
 

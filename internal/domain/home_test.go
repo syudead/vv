@@ -3,47 +3,8 @@ package domain
 import (
 	"errors"
 	"reflect"
-	"strings"
 	"testing"
 )
-
-func TestProposedShelfValidate(t *testing.T) {
-	valid := []SmartRule{{Tags: []int64{1}}, {Person: 2}, {Organization: 3}}
-	for _, rule := range valid {
-		shelf, err := ProposedShelf{Name: "  Cats  ", Rule: rule}.Validate()
-		if err != nil || shelf.Name != "Cats" {
-			t.Errorf("Validate(%+v) = %+v, %v", rule, shelf, err)
-		}
-	}
-	invalid := []SmartRule{
-		{},
-		{Tags: []int64{1, 2}},
-		{Tags: []int64{1}, Person: 2},
-		{Person: 2, Watch: WatchUnwatched},
-		{Q: "cats"},
-		{TagKind: 1},
-		{Tags: []int64{-1}},
-	}
-	for _, rule := range invalid {
-		if _, err := (ProposedShelf{Name: "Cats", Rule: rule}).Validate(); !errors.Is(err, ErrInvalidSmartRule) {
-			t.Errorf("Validate(%+v) error = %v, want ErrInvalidSmartRule", rule, err)
-		}
-	}
-	var nameErr *InvalidGroupNameError
-	for _, name := range []string{" ", strings.Repeat("a", GroupNameMaxLength+1)} {
-		if _, err := (ProposedShelf{Name: name, Rule: SmartRule{Person: 1}}).Validate(); !errors.As(err, &nameErr) {
-			t.Errorf("Validate(name %d runes) error = %v", len(name), err)
-		}
-	}
-}
-
-func TestProposedShelfFolderIsARootAddedDescFolder(t *testing.T) {
-	got := ProposedShelf{Name: "Cats", Rule: SmartRule{Tags: []int64{4}}}.Folder()
-	want := SmartFolderCreate{Name: "Cats", Rule: SmartRule{Tags: []int64{4}}, Sort: SortAddedDesc}
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("Folder() = %+v, want %+v", got, want)
-	}
-}
 
 func TestSameSmartRule(t *testing.T) {
 	if !SameSmartRule(SmartRule{Tags: []int64{1, 2}}, SmartRule{Tags: []int64{2, 1}}) {
@@ -85,17 +46,6 @@ func TestMovedShelves(t *testing.T) {
 	for _, c := range cases {
 		if got := MovedShelves(c.before, c.after); !reflect.DeepEqual(got, c.want) {
 			t.Errorf("MovedShelves(%v, %v) = %v, want %v", c.before, c.after, got, c.want)
-		}
-	}
-}
-
-func TestHomeOrganizeLastValidate(t *testing.T) {
-	if err := (HomeOrganizeLast{Run: HomeExtend, Outcome: HomeOrganizeUnchanged}).Validate(); err != nil {
-		t.Fatal(err)
-	}
-	for _, last := range []HomeOrganizeLast{{Run: "later", Outcome: HomeOrganizeDone}, {Run: HomeRebuild, Outcome: "ok"}, {Run: HomeRebuild, Outcome: HomeOrganizeDone, Added: -1}} {
-		if err := last.Validate(); err == nil {
-			t.Errorf("Validate(%+v) = nil", last)
 		}
 	}
 }

@@ -120,5 +120,5 @@ func (s *server) PickOnboardingInterests(w http.ResponseWriter, r *http.Request)
 
 // toAPIFolderShelf はフォルダの棚を所有者への応答の形にする。
 func toAPIFolderShelf(folder domain.SmartFolder) gen.HomeShelf {
-	return toAPIHomeShelf(domain.AudienceOwner, domain.FolderShelf(folder))
+	return toAPIHomeShelf(domain.FolderShelf(folder))
 }
