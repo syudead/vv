@@ -1,9 +1,19 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AutoTaggingSettings } from "../api/client";
 import AutoTaggingSection, { parseThreshold } from "./AutoTaggingSection";
+
+/** 説明の文が「Connections」のページへリンクするので、ルーターの中に描く。 */
+function renderSection() {
+  return render(
+    <MemoryRouter>
+      <AutoTaggingSection />
+    </MemoryRouter>,
+  );
+}
 
 const toast = vi.fn();
 vi.mock("../ui/Toast", () => ({ useToast: () => toast }));
@@ -83,7 +93,7 @@ describe("AutoTaggingSection", () => {
   });
 
   it("shows the stored settings, the queue counts and the last failure", async () => {
-    render(<AutoTaggingSection />);
+    renderSection();
     const enabled = await screen.findByRole("switch", { name: "Use auto-tagging" });
     expect(enabled.getAttribute("aria-checked")).toBe("true");
     expect(
@@ -98,18 +108,38 @@ describe("AutoTaggingSection", () => {
 
   it("hides the queue and the run buttons while auto-tagging is off", async () => {
     current = settings({ enabled: false });
-    render(<AutoTaggingSection />);
+    renderSection();
     await screen.findByRole("switch", { name: "Use auto-tagging" });
     expect(
       screen.queryByRole("button", { name: "Tag videos not yet tagged" }),
     ).toBeNull();
     expect(screen.queryByText(/^Waiting/)).toBeNull();
+    // 「Progress」の節は残り、切である旨と入れる場所を出す。
+    expect(screen.getByRole("heading", { level: 2, name: "Progress" })).toBeDefined();
+    expect(screen.getByText("Auto-tagging is off.")).toBeDefined();
+    expect(
+      screen.getByText("Turn on “Use auto-tagging” under Classifier to tag videos."),
+    ).toBeDefined();
+  });
+
+  it("puts Progress with the run buttons above Classifier", async () => {
+    renderSection();
+    const run = await screen.findByRole("button", { name: "Tag videos not yet tagged" });
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    expect(headings.map((heading) => heading.textContent)).toEqual([
+      "Progress",
+      "Classifier",
+    ]);
+    expect(headings[0]?.closest("section")?.contains(run)).toBe(true);
+    const link = screen.getByRole("link", { name: "Connections" });
+    expect(link.getAttribute("href")).toBe("/settings/connections");
+    expect(headings[1]?.closest("section")?.contains(link)).toBe(true);
   });
 
   it("saves the edited values", async () => {
     const user = userEvent.setup();
     current = settings({ enabled: false });
-    render(<AutoTaggingSection />);
+    renderSection();
     await user.click(await screen.findByRole("switch", { name: "Use auto-tagging" }));
     await user.click(
       screen.getByRole("switch", { name: "Tag new videos automatically" }),
@@ -135,7 +165,7 @@ describe("AutoTaggingSection", () => {
 
   it("does not save an out-of-range threshold", async () => {
     const user = userEvent.setup();
-    render(<AutoTaggingSection />);
+    renderSection();
     const threshold = await screen.findByLabelText("Probability to add");
     await user.clear(threshold);
     await user.type(threshold, "2");
@@ -146,7 +176,7 @@ describe("AutoTaggingSection", () => {
 
   it("does not save a suggestion probability above the add probability", async () => {
     const user = userEvent.setup();
-    render(<AutoTaggingSection />);
+    renderSection();
     const tentative = await screen.findByLabelText("Probability to suggest");
     await user.clear(tentative);
     await user.type(tentative, "0.9");
@@ -157,7 +187,7 @@ describe("AutoTaggingSection", () => {
 
   it("queues the videos not yet tagged", async () => {
     const user = userEvent.setup();
-    render(<AutoTaggingSection />);
+    renderSection();
     await user.click(
       await screen.findByRole("button", { name: "Tag videos not yet tagged" }),
     );
@@ -173,7 +203,7 @@ describe("AutoTaggingSection", () => {
   it("tests judging even while auto-tagging is off, and shows why it failed", async () => {
     const user = userEvent.setup();
     current = settings({ enabled: false });
-    render(<AutoTaggingSection />);
+    renderSection();
     await user.click(await screen.findByRole("button", { name: "Test judging" }));
     expect(
       await screen.findByText("The classifier didn't answer: model 'clef' not found"),

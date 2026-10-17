@@ -24,7 +24,7 @@ test("filesystem rootをメディアフォルダとして登録できる", async
     });
   });
 
-  await page.goto("/settings");
+  await page.goto("/settings/library");
   await page.getByRole("button", { name: "Add folder" }).click();
   const picker = page.getByRole("dialog", { name: "Add media folder" });
   await picker.getByRole("button", { name: filesystemRoot, exact: true }).click();
@@ -73,8 +73,8 @@ test("設定画面からVite proxy越しにメディアフォルダを追加で�
       });
     });
 
-    await page.goto("/settings");
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await page.goto("/settings/library");
+    await expect(page.getByRole("heading", { level: 1, name: "Library" })).toBeVisible();
     await expect(page.getByText("No media folders yet")).toBeVisible();
 
     await page.getByRole("button", { name: "Add folder" }).click();

@@ -63,7 +63,7 @@ function modelsFirst(items: readonly ComfyUIMissingItem[]): ComfyUIMissingItem[]
  * とモデルファイルを確かめる。API キーは書くだけで、画面には戻らない
  * （specs/045-comfyui-thumbnails/ui-design.md、research.md R-9）。
  *
- * 区画は `/settings#comfyui` の行き先で、動画ページの編集の入口の「Open Settings」がここへ
+ * 区画は `/settings/connections#comfyui` の行き先で、動画ページの編集の入口の「Open Settings」がここへ
  * 移る（ui-design.md「Video page: edit entry」）。
  */
 export default function ComfyUISection() {
@@ -250,7 +250,7 @@ function ComfyUISectionBody() {
           <Input
             id="comfyui-url"
             type="url"
-            className="sm:w-sm"
+            className="sm:w-3xs lg:w-sm"
             value={draft.url}
             onChange={(event) => update({ url: event.target.value })}
           />
@@ -265,7 +265,7 @@ function ComfyUISectionBody() {
             id="comfyui-api-key"
             type="password"
             autoComplete="off"
-            className="sm:w-sm"
+            className="sm:w-3xs lg:w-sm"
             value={draft.apiKey}
             onChange={(event) => update({ apiKey: event.target.value })}
           />
@@ -423,7 +423,7 @@ function ChoiceRow<T extends string>({
           value={value}
           onValueChange={(next) => onChange(next as T)}
           aria-labelledby={labelId}
-          className="sm:w-sm"
+          className="sm:w-3xs lg:w-sm"
         >
           {order.map((option) => {
             const itemId = `${name}-${option}`;

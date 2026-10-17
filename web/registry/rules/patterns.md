@@ -115,6 +115,47 @@ Do not put a save button at the end of the page: each row takes effect when it
 changes. A group of values saved together belongs in a `FormDialog`, or in a
 `FormPage` when it is more than a few.
 
+### Page list
+
+A settings area of several pages passes the list of its pages in `nav`: a
+`SettingsNav` named with the area's title, holding one `SettingsNavItem` per
+page, each wrapping one router link, with `current` on the open page. The
+skeleton then becomes `max-w-4xl` wide, and one markup serves every width;
+CSS decides what shows, not `useIsMobile`.
+
+| Width      | `view="list"` (the area's own address)                                                                                                                                                                              | `view="page"` (a page's address)                       |
+| ---------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
+| From `sm`  | `grid-cols-settings-page`: the list a column `settings-nav` wide at the left, sticky under the top bar (`top-navbar`) and scrolling inside itself past `settings-nav-max`, `gap-6` from the header and the sections | The same                                               |
+| Below `sm` | The list alone; its heading is the page's title (`text-xl`)                                                                                                                                                         | The header and the sections alone, under the back link |
+
+- The list's rows are `h-8`, `px-2`, `text-sm`, `text-muted-foreground`, with
+  the hover fill `bg-accent`; the current row carries `aria-current="page"`
+  and, from `sm` only, the sidebar's current mark (`bg-secondary`,
+  `text-foreground`, `font-medium`). The rows carry no icons.
+- The back link to the list is a `ghost` `sm` `Button` around a router link,
+  with `ArrowLeft` and the list's title, in the `PageHeader`'s `leading`.
+  With `nav`, `leading` holds only that link: the skeleton hides it from
+  `sm`, where the list is in view.
+- The page title is the list entry's word, with no description under it.
+
+Without `nav` the skeleton is one column at most `max-w-3xl`, as above.
+
+### Page notice
+
+A condition that applies to the whole page, such as a setting the page
+depends on that is not saved yet, goes in `notice`: one `Alert` between the
+header and the sections, `gap-6` from both. Without `notice` nothing is drawn.
+
+- Use the default `Alert` with an icon and `role="note"` for a condition the
+  viewer resolves elsewhere, with a text link to that page; use
+  `destructive`, with `Retry` in `AlertAction`, when reading the condition
+  failed.
+- When the condition locks the page's controls, keep them in place with their
+  values visible and set `aria-disabled="true"` on each; `Button`, `Switch`
+  and `Input` draw it as disabled. The attribute stops nothing by itself, so
+  each handler returns without changing the value or sending a request.
+- Say the reason once, in the notice, not on each row.
+
 ## Detail page
 
 Item `detail-page`. `DetailPage` fills the window edge to edge: a sticky header

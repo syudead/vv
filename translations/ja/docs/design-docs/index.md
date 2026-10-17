@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: af4a6e379f89adb180287b4065635abaab5fcf6d00688ede0221484570b5b93d
+sourceHash: 638807c5e03018c84265fbb16ce0fb13a7ba44376988d2c8cec7bb9e7bf7dfb6
 ---
 
 # 設計文書 {#design-documents}
@@ -34,7 +34,7 @@ sourceHash: af4a6e379f89adb180287b4065635abaab5fcf6d00688ede0221484570b5b93d
 - [判定モデルによる自動タグ付け](auto-tagging.md)
 - [AI 層: 分類器のポートとプロバイダ](ai-layer.md)
 - [重複の候補を自動で判定する](duplicate-judging.md)
-- [活動ログ](activity.md)
+- [アクティビティログ](activity.md)
 - [サムネイル編集のセッション](thumbnail-editing.md)
 - [作品情報プラグイン: サンドボックス、制限、ネットワーク](work-info-plugins.md)
 - [vv デザインシステム](design-system.md)
@@ -78,3 +78,4 @@ sourceHash: af4a6e379f89adb180287b4065635abaab5fcf6d00688ede0221484570b5b93d
 - [自動の重複判定 (カードと行のバージョンの印、Settings の Duplicate judging のスイッチ): UI](../../specs/054-auto-dup/ui-design.md)
 - [動画ページのメディア情報とシークバーのチャプター (Video、Audio、Subtitles、Embedded、Broadcast のグループ、チャプターの印、シークのプレビューのチャプターのタイトル、チャプターのメニュー): UI](../../specs/056-media-info/ui-design.md)
 - [作品情報プラグイン用ツール (設定のデフォルトと選択肢、Network セクションのプラグイン用プロキシ、前回の実行ダイアログ、取得したタグを 1 つずつ選ぶ): UI](../../specs/056-plugin-tooling/ui-design.md)
+- [8 ページに分けた Settings (ページの一覧、狭い画面の一覧と戻るリンク、2 つのページにある Auto-import の状態とスイッチ、Connections へ誘導する Auto-tagging のロックと Duplicate judging の注記): UI](../../specs/058-settings-pages/ui-design.md)

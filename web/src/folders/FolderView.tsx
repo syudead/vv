@@ -313,7 +313,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
           // 押すと開始の場所である設定の「Scan status」へ移る（issue 830）。
           owner ? (
             <Button asChild size="sm">
-              <Link to="/settings#scan-status">{t.list.scan}</Link>
+              <Link to="/settings/scan#scan-status">{t.list.scan}</Link>
             </Button>
           ) : undefined
         }

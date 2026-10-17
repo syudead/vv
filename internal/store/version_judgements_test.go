@@ -439,3 +439,34 @@ func TestOllamaConnectionSaved(t *testing.T) {
 		t.Errorf("保存のあと = %v, %v, want 保存済み", saved, err)
 	}
 }
+
+// SavedOllamaSettings は接続先と保存したかを 1 度に返し、保存したかは OllamaConnectionSaved と
+// 同じ答えになる（前の版のキー、模型だけの行を含む。specs/058-settings-pages/research.md R-4）。
+func TestSavedOllamaSettings(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	check := func(step string, want domain.OllamaSettings, wantSaved bool) {
+		t.Helper()
+		got, saved, err := db.Settings().SavedOllamaSettings(ctx)
+		if err != nil || got != want || saved != wantSaved {
+			t.Fatalf("%s = %+v, %v, %v, want %+v, %v", step, got, saved, err, want, wantSaved)
+		}
+		if alone, err := db.Settings().OllamaConnectionSaved(ctx); err != nil || alone != saved {
+			t.Fatalf("%s: OllamaConnectionSaved = %v, %v, want %v", step, alone, err, saved)
+		}
+	}
+	check("保存の前", domain.DefaultOllamaSettings(), false)
+	if err := writeSetting(ctx, db.sql, legacyOllamaModelKey, "old-model"); err != nil {
+		t.Fatal(err)
+	}
+	check("模型の行だけ", domain.OllamaSettings{Endpoint: domain.DefaultOllamaEndpoint, Model: "old-model"}, false)
+	if err := writeSetting(ctx, db.sql, legacyOllamaEndpointKey, "http://old:1"); err != nil {
+		t.Fatal(err)
+	}
+	check("前の版のキー", domain.OllamaSettings{Endpoint: "http://old:1", Model: "old-model"}, true)
+	want := domain.OllamaSettings{Endpoint: "http://gpu:11434", Model: "clef"}
+	if err := db.Settings().SaveOllamaSettings(ctx, want); err != nil {
+		t.Fatal(err)
+	}
+	check("保存のあと", want, true)
+}

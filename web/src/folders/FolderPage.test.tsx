@@ -394,7 +394,23 @@ describe("FolderPage", () => {
       screen.getByText("No videos or subfolders were found. Put files there, then scan."),
     ).toBeDefined();
     expect(screen.getByRole("link", { name: "Scan" }).getAttribute("href")).toBe(
-      "/settings#scan-status",
+      "/settings/scan#scan-status",
+    );
+  });
+
+  it("登録フォルダが無ければ、設定の Library のページへの入口を出す", async () => {
+    const original = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) =>
+      String(input) === "/api/folders"
+        ? Promise.resolve(json({ folders: [] }))
+        : original!(input, init),
+    );
+    renderFolders("/folders");
+    expect(
+      await screen.findByRole("heading", { name: "No media folders yet" }),
+    ).toBeDefined();
+    expect(screen.getByRole("link", { name: "Open Settings" }).getAttribute("href")).toBe(
+      "/settings/library",
     );
   });
 

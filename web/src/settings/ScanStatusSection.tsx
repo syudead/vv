@@ -10,6 +10,7 @@ import { PageSection } from "../ui/patterns/page-section";
 import { Alert, AlertTitle } from "../ui/shadcn/alert";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
+import { PageLinkText } from "./PageLink";
 import ScanIssueList from "./ScanIssueList";
 import { useScanIssues } from "./useScanIssues";
 import { useSectionAnchor } from "./useSectionAnchor";
@@ -47,11 +48,11 @@ export default function ScanStatusSection() {
   const issueCount = presentation.issues.failed + presentation.issues.substituted;
   // 所有者はいつでもここから取り込みを始める。取り込み中とメディアフォルダが無いときは
   // 押せず、理由を出す（issue 830）。
-  const startBlockedReason = scan.running
-    ? text.runningReason
-    : scan.noMediaFolders
-      ? text.needsMediaFolder
-      : null;
+  const startBlockedReason = scan.running ? (
+    text.runningReason
+  ) : scan.noMediaFolders ? (
+    <PageLinkText sentence={text.needsMediaFolder} page="library" />
+  ) : null;
 
   return (
     <div ref={anchor} id="scan-status">

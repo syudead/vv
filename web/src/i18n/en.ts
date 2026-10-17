@@ -677,17 +677,24 @@ export const en = {
         coast: "Coast",
       },
       settings: "Settings",
-      settingsDescription: "Settings apply to this server and every viewer.",
-      librarySection: "Library",
-      librarySectionDescription: "How the library lists and plays videos.",
+      settingsPages: {
+        library: "Library",
+        playback: "Playback",
+        server: "Server",
+      },
+      videosSection: "Videos",
+      videosSectionDescription: "How the library lists videos and finds new ones.",
+      playerSection: "Player",
+      playerSectionDescription: "What the player does when a video ends.",
       showHidden: "Show hidden videos",
       showHiddenDescription: "List videos hidden from guests as well.",
       defaultSort: "Default sort",
       defaultSortDescription: "The order a new viewer sees first.",
       autoplay: "Play the next video",
       autoplayDescription: "Start the next video in the list when one ends.",
-      serverSection: "Server",
-      serverSectionDescription: "Read only; set when the server starts.",
+      detailsSection: "Details",
+      detailsSectionDescription: "Read only; set when the server starts.",
+      serverNotice: "Restart the server to change these values.",
       version: "Version",
       dataFolder: "Data folder",
       port: "Port",
@@ -2964,6 +2971,18 @@ export const en = {
   },
   settings: {
     title: "Settings",
+    // 設定のページ（specs/058-settings-pages/ui-design.md「Words」）。一覧の項目、ページの h1、
+    // ブラウザの題に同じ 1 語を使う。キーは settingsPages.ts のスラッグである。
+    pages: {
+      scan: "Scan",
+      library: "Library",
+      "auto-tagging": "Auto-tagging",
+      connections: "Connections",
+      plugins: "Plugins",
+      conversion: "Video conversion",
+      network: "Network",
+      api: "API",
+    },
     scanStatus: {
       heading: "Scan status",
       // 状態の言葉は shell.scan.status と同じものを使う。ここにはこの画面だけの状態を置く。
@@ -2976,7 +2995,8 @@ export const en = {
       start: "Scan library",
       starting: "Scanning…",
       runningReason: "A scan is running. You can start another when it finishes.",
-      needsMediaFolder: "Add a media folder below to scan.",
+      // 「Library」はページへのリンクになる。
+      needsMediaFolder: { before: "Add a media folder in ", after: " to scan." },
       // 問題の一覧（specs/024-import-progress/ui-design.md「Issue List」）。
       issues: {
         heading: "Videos with problems",
@@ -3039,11 +3059,17 @@ export const en = {
     autoImport: {
       heading: "Auto-import",
       description:
-        "Files added, removed, moved or renamed in a media folder are picked up as they happen, without a scan. Changes made while it's off or while VVMDM isn't running are picked up by “Scan library” under Scan status.",
+        "Files added, removed, moved or renamed in a media folder are picked up as they happen, without a scan. Changes made while it's off or while VVMDM isn't running are picked up by “Scan library” on the Scan page.",
       label: "Pick up changes as they happen",
+      // 切り替えの行の説明。「Scan」はページへのリンクになる。
+      switchDescription: { before: "The watch state is on the ", after: " page." },
+      // 監視の状態の 1 行。before と after のあるものは、その間のページの名前がリンクになる。
       state: {
-        off: "Off. Changes are picked up by the next scan.",
-        noFolder: "Add a media folder below to watch it.",
+        off: {
+          before: "Off. Changes are picked up by the next scan. Turn it on in ",
+          after: ".",
+        },
+        noFolder: { before: "Add a media folder in ", after: " to watch it." },
         starting: "Starting to watch the media folders…",
         active: "Watching the media folders.",
         limited: "Watching, but some changes may be missed.",
@@ -3105,9 +3131,17 @@ export const en = {
       loadFailed: (reason: string) => `Couldn't load the Ollama settings: ${reason}`,
     },
     autoTagging: {
-      heading: "Auto-tagging",
-      description:
-        "Asks the classifier set under Ollama which existing tags fit each video, from its thumbnail, frames from across the video, title, file name and folder. No new tags are created.",
+      // 「Auto-tagging」のページは「Progress」と「Classifier」の 2 つの節に分かれる。
+      progressHeading: "Progress",
+      off: "Auto-tagging is off.",
+      offHint: "Turn on “Use auto-tagging” under Classifier to tag videos.",
+      heading: "Classifier",
+      // 「Connections」はページへのリンクになる。
+      description: {
+        before: "Asks the classifier set in ",
+        after:
+          " which existing tags fit each video, from its thumbnail, frames from across the video, title, file name and folder. No new tags are created.",
+      },
       enabled: "Use auto-tagging",
       enabledHint:
         "Off: no video is sent to the classifier and the video page has no Suggest tags button. Suggested tags already added can still be kept or rejected.",
@@ -3143,11 +3177,25 @@ export const en = {
               other: `${formatNumber(count)} videos were queued for auto-tagging`,
             }),
       startFailed: (reason: string) => `Couldn't start auto-tagging: ${reason}`,
+      // Ollama の接続先が保存されていないあいだ、ページの見出しの下に出す。「Connections」は
+      // ページへのリンクになる。
+      lockTitle: "Ollama connection needed",
+      lockBody: {
+        before: "Save the Ollama URL and model in ",
+        after: " to use auto-tagging.",
+      },
+      connectionReadFailed: (reason: string) =>
+        `Couldn't read the Ollama connection: ${reason}`,
     },
     versionJudging: {
       heading: "Duplicate judging",
-      description:
-        "Judges each pair the scan lists as a possible duplicate: the two files are compared frame by frame, and the classifier set under Ollama is asked only about the frames that differ. Same videos are bundled as versions, different videos leave Duplicates, and the rest wait there for you.",
+      // 「Connections」はページへのリンクになる。
+      description: {
+        before:
+          "Judges each pair the scan lists as a possible duplicate: the two files are compared frame by frame, and the classifier set in ",
+        after:
+          " is asked only about the frames that differ. Same videos are bundled as versions, different videos leave Duplicates, and the rest wait there for you.",
+      },
       label: "Judge possible duplicates automatically",
       hint: "Off: every possible duplicate waits on Duplicates for you. On: pairs that match throughout are bundled even without Ollama; pairs with a differing part wait until an Ollama connection is saved.",
       loading: "Loading the duplicate judging settings",
@@ -3155,6 +3203,13 @@ export const en = {
       saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
       loadFailed: (reason: string) =>
         `Couldn't load the duplicate judging settings: ${reason}`,
+      // Ollama の接続先が保存されていないあいだ、スイッチの下に出す。「Connections」は
+      // ページへのリンクになる。
+      connectionNote: {
+        before:
+          "No Ollama connection is saved. Pairs with a differing part wait until you save one in ",
+        after: ".",
+      },
     },
     comfyui: {
       heading: "ComfyUI",
@@ -3339,7 +3394,7 @@ export const en = {
     mediaFolders: {
       heading: "Media folders",
       description:
-        "Folders on the server where VVMDM looks for videos. After adding or changing a folder, start a scan with “Scan library” under Scan status. Auto-import doesn't start one.",
+        "Folders on the server where VVMDM looks for videos. After adding or changing a folder, start a scan with “Scan library” on the Scan page. Auto-import doesn't start one.",
       lockedWhileScanning: "You can't change media folders while a scan is running",
       list: "Added media folders",
       loading: "Loading the media folders",
@@ -3362,7 +3417,7 @@ export const en = {
       removed: "Removed. A scan doesn't start automatically.",
     },
     transcoding: {
-      heading: "Video conversion",
+      heading: "Encoder",
       description:
         "How VVMDM encodes video when a browser can't play the original file. A hardware encoder needs the server's GPU and VVMDM running directly on the server; the Docker image uses software only.",
       guide: "How to set up hardware encoding",
@@ -3399,7 +3454,9 @@ export const en = {
       } satisfies Record<EncoderUnavailableReason, string>,
     },
     network: {
-      heading: "Network",
+      heading: "Local network",
+      notDesktop:
+        "LAN access is set in the Windows desktop app. This VVMDM isn't running as the desktop app, so there's no switch here.",
       description: "Connections to VVMDM, and from its plugins to other sites.",
       loading: "Loading the network settings",
       loadFailed: (reason: string) => `Couldn't load the network settings: ${reason}`,

@@ -517,7 +517,7 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
     test.setTimeout(120_000);
     await setTiming(request, { queuedMs: 1500, runningMs: 2500 });
 
-    await page.goto("/settings#comfyui");
+    await page.goto("/settings/connections#comfyui");
     const section = page.locator("#comfyui");
     await expect(section.getByRole("heading", { name: "ComfyUI" })).toBeVisible();
     await section.getByRole("radio", { name: "My own ComfyUI" }).check();

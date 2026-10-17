@@ -1,5 +1,6 @@
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { OwnerAudience } from "../testing/audience";
@@ -27,10 +28,13 @@ function judgingSwitch(): HTMLElement {
 }
 
 function renderSection() {
+  // 説明の文が「Connections」のページへリンクするので、ルーターの中に描く。
   return render(
-    <OwnerAudience>
-      <VersionJudgingSection />
-    </OwnerAudience>,
+    <MemoryRouter>
+      <OwnerAudience>
+        <VersionJudgingSection />
+      </OwnerAudience>
+    </MemoryRouter>,
   );
 }
 
@@ -56,7 +60,19 @@ describe("VersionJudgingSection", () => {
     stored = false;
     fetchMock.mockReset();
     fetchMock.mockImplementation(route);
-    vi.stubGlobal("fetch", fetchMock);
+    // 接続先の読み込みは fetchMock を通さず保存済みと答える。注記は「Library」のページのテスト
+    // （SettingsPage.versionJudging.test.tsx）が確かめる。
+    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) =>
+      String(input) === "/api/settings/ollama"
+        ? Promise.resolve(
+            json({
+              endpoint: "http://127.0.0.1:11434",
+              model: "clef-flash",
+              saved: true,
+            }),
+          )
+        : fetchMock(input, init),
+    );
   });
   afterEach(() => {
     vi.unstubAllGlobals();

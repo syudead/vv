@@ -148,7 +148,9 @@ export default function RootView() {
               description={t.folders.noMediaFolders.description}
               action={
                 <Button asChild size="sm">
-                  <Link to="/settings">{t.folders.noMediaFolders.openSettings}</Link>
+                  <Link to="/settings/library">
+                    {t.folders.noMediaFolders.openSettings}
+                  </Link>
                 </Button>
               }
             />

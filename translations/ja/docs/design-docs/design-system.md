@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 75068ac040d83f789194dd5f01c3398a3121724e96c17f7f8aae91bf8150f007
+sourceHash: 8fd9f36e8a9d1eb6dcee6ac743cd5b69c243cf88dd0181a050fa41aa4bdb404b
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -158,7 +158,7 @@ flowchart LR
 | 選択中と押下中 | `primary-soft` の塗りに `primary` の文字（`Toggle`、`ToggleGroup`）、または `primary` の塗り（`Checkbox`、`Switch`、`RadioGroup`） |
 | 密度 | ライブラリの密度の画面は `sm` と `icon-sm`（`h-8`）を使い、動画ページは `default` と `lg` を使う |
 
-上流に対する 5 つの変更が、チェックとカタログの規則を保つ。`Checkbox` は `indeterminate` の状態を描き、`Slider` は `aria-label` をフォーカスを受けるつまみに渡し、`CommandGroup` は見出しを包むことでスタイルを付け（上流が使う属性セレクターは任意値だからだ）、`CommandInput` は上流の `outline-hidden` を外して行より低くし、共通のフォーカスリングが `Command` の中で欠けずに見えるようにする。さらに `CommandInput` は入力欄を囲む枠のクラスと入力欄の後に置く要素を受け取り、vv の `TagCommand` が処理中のスピナーを内側に持つ小さな入力欄を描けるようにする。`sidebar.tsx` は上流にないコンポーネント `SidebarMenuCount` も 1 つ公開する。項目の件数で、上流の `SidebarMenuBadge` が隠れるアイコンのレールではアイコンの右上の角に描き、幅の狭いドロワーではそのバッジとして描く（[055 UI 設計、Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)）。`Button` には上流にない変種 `ghost-destructive` も 1 つある。`ghost` の形に `destructive` の文字色と `destructive-soft` のホバーを合わせたもので、メニューの破壊的な項目のボタン版であり、メニューの外に置かれて `ConfirmDialog` を開く 1 つの破壊的な操作に使う。`Select` と `Combobox` は Radix の位置の変数（`--radix-select-*`、`--radix-popover-*`）を読む。それらのクラスは `web/design-exceptions.js` の `special` の項目である。
+上流に対する 5 つの変更が、チェックとカタログの規則を保つ。`Checkbox` は `indeterminate` の状態を描き、`Slider` は `aria-label` をフォーカスを受けるつまみに渡し、`CommandGroup` は見出しを包むことでスタイルを付け（上流が使う属性セレクターは任意値だからだ）、`CommandInput` は上流の `outline-hidden` を外して行より低くし、共通のフォーカスリングが `Command` の中で欠けずに見えるようにする。さらに `CommandInput` は入力欄を囲む枠のクラスと入力欄の後に置く要素を受け取り、vv の `TagCommand` が処理中のスピナーを内側に持つ小さな入力欄を描けるようにする。`sidebar.tsx` も、上流にないコンポーネントを 1 つ export する。`SidebarMenuCount` で、項目の件数を、アイコンのレールではアイコンの右上の角に描き（上流の `SidebarMenuBadge` はそこでは隠れる）、狭い幅のドロワーではそのバッジとして描く（[055 UI 設計、Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)）。`Button` には上流にない変種 `ghost-destructive` も 1 つある。`ghost` の形に `destructive` の文字色と `destructive-soft` のホバーを合わせたもので、メニューの破壊的な項目のボタン版であり、メニューの外に置かれて `ConfirmDialog` を開く 1 つの破壊的な操作に使う。`Select` と `Combobox` は Radix の位置の変数（`--radix-select-*`、`--radix-popover-*`）を読む。それらのクラスは `web/design-exceptions.js` の `special` の項目である。
 
 この層は既存の画面を変えなかった。古いコンポーネントは、画面の移行が最後の使用箇所を置き換えるまで `web/src/ui` の元のパスに残り、最後の単位がどこからも import されていないものを削除した。動画ページのタグ名の入力欄とタグ管理画面の統合先の一覧は、古い `ui/Combobox` から vv のコンポーネント `TagCommand`（タグ名の規則を持つ `Command` で、選択バーのタグのポップオーバーも使う）に移り、`ui/Combobox` は削除された。新しいコンポーネントは専用のフォルダに置くので、ファイル名が古いものと大文字小文字だけで異なることはない。古いコンポーネントはレジストリの項目ではなく、新しいコードは `web/src/ui/shadcn` から import する。
 
@@ -188,7 +188,7 @@ flowchart LR
 | `VideoThumbnail`、`FavoriteToggle`、`TentativeMark`、`ScrubPreview`、`ThumbnailBackdrop`、`BrandHomeLink` | カードと行のサムネイルのマークアップ、以前の `videoList/FavoriteToggle` | vv のコンポーネント |
 | `TagCommand` | `ui/Combobox`、選択バーの以前の `library/TagCommand` | vv のコンポーネント。タグ名の規則を持つ `Command` |
 | `CreditCommand` | — | vv のコンポーネント。人物と組織の名前の規則を持つ `TagCommand` の兄弟で、同じ土台（`NameCommand`）の上にあり、完全に一致する項目があっても作成の行を出す |
-| `FilterDropdownButton` | — | vv のコンポーネント。値を示して `DropdownMenu` を開くツールバーの 1 つの絞り込みで、既定の値でないときは `primary-soft` になる（[055 UI 設計、Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)） |
+| `FilterDropdownButton` | — | vv のコンポーネント。値を示して `DropdownMenu` を開くツールバーの 1 つのフィルターで、既定値でないときは `primary-soft` になる（[055 UI 設計、Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)） |
 
 shadcn のコンポーネントは、上流のケバブケースの名前（`dropdown-menu.tsx`）で `web/src/ui/shadcn` に、操作と入力のコンポーネントと並べて置く。上流と同じく、`Dialog` と `Sheet` は `ghost`、`icon-sm` の `Button` で閉じ、`AlertDialogAction` と `AlertDialogCancel` は `Button`（既定は `sm`）であり、`SidebarTrigger` は `Button`、`SidebarInput` は `Input` である。vv のコンポーネントは PascalCase の名前のまま `web/src/ui` に置く。`FavoriteToggle` の `page` 形式は `Tooltip` 付きの `Toggle` である。
 
@@ -236,13 +236,13 @@ flowchart TD
 | その場の状態 | 状態のブロックはデータと同じ本体のスロットに入るので、ヘッダーとツールバーは動かない（[038 UI design, States](../../specs/038-design-system/ui-design.md#states)） |
 | 端がそろう | `CardGrid` は列を本体の幅まで伸ばす（`card-*` の段階に対する `auto-fill`）ので、ツールバー、件数の行、グリッドは両端を共有する |
 
-`CardGrid` は列のテンプレートを `style` で渡す。名前付きの段階から作るテンプレートは、チェックにとって任意値だからだ。段階は引き続き `tokens.css` から来る。`DetailPage` の脇の領域は名前付きの段階 `detail-aside`（`xl` からは `detail-aside-wide`）である。`ListPage` の任意の脇の領域は `lg` からの列 `list-aside` で、名前付きのユーティリティ `grid-cols-list-aside` で配置し、上部バーの下に貼り付いている間は `list-aside-max` を上限とする。動画ページのプレーヤーの枠は、`@theme inline` ブロックで宣言した名前付きの段階（`player-width`、`player-height`、`aspect-player`）から自身の大きさを決める。これらの値は実行時に枠から動画の縦横比を読み、`:root` ではなく要素の上で解決しなければならないからだ。`DataTable` は shadcn/ui の `Table` の上に作り、この層はそれを `table` 項目として加える。
+`CardGrid` は列のテンプレートを `style` で渡す。名前付きの段階から作るテンプレートは、チェックにとって任意値だからだ。段階は引き続き `tokens.css` から来る。`DetailPage` の脇の領域は名前付きの段階 `detail-aside`（`xl` からは `detail-aside-wide`）である。`ListPage` の任意の脇の領域は `lg` からの列 `list-aside` で、名前付きのユーティリティ `grid-cols-list-aside` で配置し、上部バーの下に貼り付いている間は `list-aside-max` を上限とする。`SettingsPage` の任意の `nav` は設定領域のページの一覧である。`sm` からは左側の幅 `settings-nav` の列で、`max-w-4xl` の中で名前付きのユーティリティ `grid-cols-settings-page` で配置する。`sm` 未満では一覧だけ、または戻るリンクの下のページだけで、どちらにするかは `view` によって CSS で選ぶ（[058 UI 設計、ページの一覧と雛形](../../specs/058-settings-pages/ui-design.md#page-list-and-skeleton)）。任意の `notice` は、ヘッダーとセクションの間に `Alert` を 1 つ置き、自動タグ付けのページが Ollama の接続を保存するまでロックされる場合のような、ページ全体にかかる条件を示す（[058 UI 設計、Changes to the design system](../../specs/058-settings-pages/ui-design.md#changes-to-the-design-system)）。動画ページのプレーヤーの枠は、`@theme inline` ブロックで宣言した名前付きの段階（`player-width`、`player-height`、`aspect-player`）から自身の大きさを決める。これらの値は実行時に枠から動画の縦横比を読み、`:root` ではなく要素の上で解決しなければならないからだ。`DataTable` は shadcn/ui の `Table` の上に作り、この層はそれを `table` 項目として加える。
 
 `EditorDialog` は、動画のフレームの上に塗り、その結果をフレームと比べるといった 1 枚の画像に対する作業のために、ビューポートを満たす `Dialog` である。ヘッダーの帯、画像のための `stage`、入力のための `aside` から成り、入力の側の `footer` が主な操作を持つ。`lg` 未満では、stage の高さは名前付きの段階 `editor-stage`（ビューポートの高さの約 45%）である。`Dialog` は `max-w-lg` で止まるので、1280 px では 16:9 のフレームの高さが約 290 px になり、塗るにも 2 枚の画像を比べるにも小さすぎる。`FormDialog` はフォームのためのダイアログのままである（[045 UI 設計、Changes to the design system](../../specs/045-comfyui-thumbnails/ui-design.md#changes-to-the-design-system)）。
 
 `FormPage` は、動画の詳細のように、専用の画面でまとめて保存する多くの値のためのページであり、ダイアログではない。上部に貼り付くヘッダーの帯がタイトル、控えめな補足、操作を持ち、その下に `notice` の行がある。その下では、`lg` から名前付きのユーティリティ `grid-cols-form-page` が、名前付きの段階 `form-page-aside` の幅の `aside` と、比が 5:6 の 2 つのパネルを並べ、ページはビューポートの高さを保ち、各パネルは内側でスクロールする。`lg` 未満では各部分が縦に積まれ、ページ全体が 1 つとしてスクロールする。`FormDialog` は少数の入力欄を持ち、`SettingsPage` は各行を個別に保存するので、どちらも 1 つのボタンで保存する十数個の入力欄のフォームには合わない（[047 UI 設計、Changes to the design system](../../specs/047-video-work-info/ui-design.md#changes-to-the-design-system)）。
 
-`CardList` は `muted` の上に枠線付きの 1 行のカードを積み重ね、呼び出し側が設定する 4 つの色調を持ち、時刻と操作のための末尾の固定の列によってそれらが一覧の下までそろう。`lg` 未満では各カードは 2 行になる。枠線付きの行を描くセクションはなかった。`GroupedList` の行には枠線がなく、`DataTable` のヘッダーと列は 360px で 1 行に収まらない。`Toolbar` は 1 行のままでなければならない絞り込みの行のために `nowrap` を受け取り、折り返す代わりに横にスクロールする。`LoadingState` は `CardList` のために `layout="cards"` を受け取る（[055 UI 設計、Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)）。
+`CardList` は、`muted` の上に枠線を付けた 1 行のカードを積み重ねる。色合いは呼び出し側が設定する 4 種類で、末尾には時刻と操作のための固定幅の列があり、それらは一覧の下まで縦にそろう。`lg` 未満では各カードが 2 行になる。枠線付きの行を描くセクションはなかった。`GroupedList` の行には枠線がなく、`DataTable` のヘッダーと列は 360px では 1 行に収まらない。`Toolbar` は、折り返さずに横へスクロールして 1 行のままにしなければならないフィルターの行のために `nowrap` を受け取り、`LoadingState` は `CardList` のために `layout="cards"` を受け取る（[055 UI 設計、Changes to the design system](../../specs/055-activity/ui-design.md#changes-to-the-design-system)）。
 
 `FormDialog` は、動画の現在の詳細と取得した詳細のように、値を並べて比べながら設定するフォームのために `size="wide"` を受け取る。このサイズは `max-w-lg` ではなく `max-w-2xl` で止まり、`sm` 未満では既定のサイズと同じく 16px の余白を残して画面に広がる。閉じることだけが操作である最後の段階のために、`cancelLabel` がなければフッターは送信ボタンだけを持つ（[049 UI 設計、Changes to the design system](../../specs/049-work-info-plugins/ui-design.md#changes-to-the-design-system)）。
 

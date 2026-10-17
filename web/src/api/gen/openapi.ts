@@ -3467,6 +3467,15 @@ export interface components {
             endpoint: string;
             /** @description Ollama の模型名。保存値が無ければ clef-flash */
             model: string;
+            /** @description 所有者が接続先を保存したか（接続先の行があるか）。false のあいだ endpoint と model は サーバーが返す既定値である（specs/058-settings-pages/research.md R-4）。保存の応答は常に true */
+            saved: boolean;
+        };
+        /** @description Ollama の接続先を保存する要求。saved は要求に含めない */
+        UpdateOllamaSettingsRequest: {
+            /** @description Ollama の基底 URL（http か https） */
+            endpoint: string;
+            /** @description Ollama の模型名 */
+            model: string;
         };
         /**
          * @description ComfyUI の提供元。`self_hosted` は所有者が動かす ComfyUI、`cloud` は Comfy Cloud
@@ -7886,7 +7895,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["OllamaSettings"];
+                "application/json": components["schemas"]["UpdateOllamaSettingsRequest"];
             };
         };
         responses: {
