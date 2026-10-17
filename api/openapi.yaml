@@ -1677,6 +1677,45 @@ paths:
               schema:
                 $ref: "#/components/schemas/Error"
 
+  /api/settings/plugin-proxy:
+    get:
+      operationId: getPluginProxySettings
+      summary: 作品情報プラグインの要求を送るプロキシの URL を返す
+      description: |
+        保存した URL を返す。保存が無ければ `""`（プロキシなし）。`/api/settings/network` と違い、
+        どのビルドでも答える（specs/056-plugin-tooling/contracts/screen-api.md）。
+      responses:
+        "200":
+          description: 保存した URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PluginProxySettings"
+    put:
+      operationId: updatePluginProxySettings
+      summary: 作品情報プラグインの要求を送るプロキシの URL を保存する
+      description: |
+        `url` を規則のとおりに確かめて保存する。`""` はプロキシなし。次の実行が保存した値を使い、
+        進行中の実行は始めたときの値で終わる。`url` が無いか規則に外れれば `400` `invalid_request`
+        で、何も書かない（specs/056-plugin-tooling/contracts/screen-api.md、research.md R-4）。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdatePluginProxySettingsRequest"
+      responses:
+        "200":
+          description: 保存した URL
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PluginProxySettings"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
   /api/settings/auto-import:
     get:
       operationId: getAutoImportSettings
@@ -2360,12 +2399,35 @@ paths:
         "409":
           $ref: "#/components/responses/Conflict"
 
+  /api/work-info-plugins/{id}/last-run:
+    get:
+      operationId: getWorkInfoPluginLastRun
+      summary: 作品情報プラグインの直近の実行の標準エラーを読む
+      description: |
+        所有者だけ。今のモジュールの直近の実行が残した標準エラーの先頭 64 KiB を、その実行が受け取った秘密の
+        設定の値を `[secret]` に置き換えて返す。実行が残っていなければ `{}`。差し替えたプラグインは差し替えの
+        後の実行だけを返す。無ければ `404` `not_found`
+        （specs/056-plugin-tooling/contracts/screen-api.md、research.md R-6）。
+      parameters:
+        - $ref: "#/components/parameters/WorkInfoPluginId"
+      responses:
+        "200":
+          description: 直近の実行。残っていなければ `run` が無い
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkInfoPluginLastRun"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
   /api/work-info-plugins/{id}/search:
     post:
       operationId: searchWorkInfo
       summary: 作品情報プラグインの search で作品を探す
       description: |
-        所有者だけ。承認済みのプラグインの `search` を 1 回動かし、候補（URL・題名・省略できる説明の文字だけ）を
+        所有者だけ。承認済みのプラグインの `search` を 1 回動かし、候補（作品 ID・ページの URL・題名・省略できる説明の文字だけ）を
         返す。`query` は前後の空白を除いて 1〜200 文字で、外れれば `400` `invalid_request`。マニフェストが
         `search` を宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
         specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである
@@ -2405,10 +2467,10 @@ paths:
       operationId: fetchWorkInfo
       summary: 作品情報プラグインの fetch で動画の作品情報を取る
       description: |
-        所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を、作品の `url`（http か https、2048 文字まで）か
-        作品の `id`（前後の空白を除いて 1〜200 文字。URL に埋め込むのはプラグイン）で 1 回動かし、結果を
-        10 分の間メモリに持って `201` で返す。`url` と `id` はどちらか 1 つで、両方かどちらも無ければ
-        `400` `invalid_request`。動画は変えない。`title` は表示名の規則を
+        所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を、作品の `id`（前後の空白を除いて 1〜200 文字。
+        検索の候補の `id` か所有者が入れた文字列で、URL の形でもそのまま ID として渡し、vv が URL として取得する
+        ことはない。URL に埋め込むのはプラグイン）で 1 回動かし、結果を 10 分の間メモリに持って `201` で返す。
+        `id` が無いか規則に外れれば `400` `invalid_request`。動画は変えない。`title` は表示名の規則を
         通ったもので、無いか規則に外れれば省く。人物・団体は取得の時点の照合の答え `match` を持つ
         （specs/052-plugin-work-info-fields/contracts/screen-api.md）。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
         宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
@@ -2454,7 +2516,9 @@ paths:
         作品情報の項目は保存済みの作品情報に重ね、規則に合わない値・上限を超える件・照合が曖昧な人物と団体は
         飛ばして `skipped` で知らせる（specs/052-plugin-work-info-fields/contracts/screen-api.md）。結果は使い切りで、
         成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
-        `skippedTags` で知らせ、付けない。`fields` が空か結果に値の無い項目を含めば `400` `invalid_request`、
+        `skippedTags` で知らせ、付けない。`tags` を送れば取得したタグのうちその名前だけを付け、`skippedTags` も
+        その名前だけを知らせる（specs/056-plugin-tooling/contracts/screen-api.md）。`fields` が空か結果に値の無い
+        項目を含むか、`tags` が空か結果に無い名前を含むか `fields` に `tags` が無いのに有れば `400` `invalid_request`、
         動画が無いか結果が別の動画のものなら `404` `not_found`、結果が期限切れか不明か、取得の後にプラグインが
         差し替えられたか承認を取り消されたか消されていれば `409` `work_info_fetch_stale` で、どれも何も
         書かない。確定後に `/api/events` の `video` が流れる
@@ -5436,6 +5500,29 @@ components:
         lanAccess:
           type: boolean
 
+    PluginProxySettings:
+      type: object
+      required: [url]
+      additionalProperties: false
+      description: >-
+        作品情報プラグインの要求を送るプロキシ（specs/056-plugin-tooling/contracts/screen-api.md）
+      properties:
+        url:
+          type: string
+          maxLength: 2048
+          description: >-
+            保存した URL。http、https か socks5 の scheme、ホスト、任意のポートと任意のユーザー情報からなり、
+            パスもクエリも持たない。"" はプロキシなし
+
+    UpdatePluginProxySettingsRequest:
+      type: object
+      required: [url]
+      additionalProperties: false
+      properties:
+        url:
+          type: string
+          description: 保存する URL。規則は PluginProxySettings.url と同じ。"" はプロキシなし
+
     AutoImportSettings:
       type: object
       required: [enabled, watch]
@@ -5777,6 +5864,21 @@ components:
         value:
           type: string
           description: 保存された値。秘密の設定では入らない
+        default:
+          type: string
+          description: |
+            マニフェストの既定値。値が保存されていないとき、または保存された値が選択肢の外にあるときに実行が受け取る
+            （specs/056-plugin-tooling/research.md R-3）
+        options:
+          type: array
+          items:
+            type: string
+          description: マニフェストの選択肢で、マニフェストの順。無ければ値は自由に入力する
+        staleValue:
+          type: string
+          description: |
+            保存された値が今の選択肢の外にあるときだけ入る、その値。`set` は真で `value` も同じ値を持つが、
+            実行は代わりに既定値を受け取る
 
     WorkInfoPlugin:
       type: object
@@ -5821,6 +5923,53 @@ components:
           type: integer
           format: int64
           description: 最後のアップロードか承認の変更の時刻（Unix 秒）
+        lastRunAt:
+          type: integer
+          format: int64
+          description: |
+            出力が残っている直近の実行が終わった時刻（Unix 秒）。残っていなければ無い
+            （specs/056-plugin-tooling/research.md R-6）
+
+    WorkInfoPluginRunFailure:
+      type: string
+      description: |
+        実行の失敗の種類（specs/049-work-info-plugins/contracts/screen-api.md の Run failures の reason）。
+        枠を取れなかった実行はモジュールを動かさないので、busy は残らない
+      enum:
+        - plugin_failed
+        - timed_out
+        - memory_exceeded
+        - output_too_large
+        - blocked_address
+        - network_error
+
+    WorkInfoPluginRun:
+      type: object
+      required: [ranAt, operation, stderr, truncated]
+      additionalProperties: false
+      description: 直近の実行の標準エラー（specs/056-plugin-tooling/contracts/screen-api.md）
+      properties:
+        ranAt:
+          type: integer
+          format: int64
+          description: 実行が終わった時刻（Unix 秒）
+        operation:
+          $ref: "#/components/schemas/WorkInfoOperation"
+        failure:
+          $ref: "#/components/schemas/WorkInfoPluginRunFailure"
+        stderr:
+          type: string
+          description: 標準エラーの先頭 64 KiB。秘密の設定の値は `[secret]` に置き換えてある。何も書かなければ空
+        truncated:
+          type: boolean
+          description: 64 KiB より後ろを捨てたか
+
+    WorkInfoPluginLastRun:
+      type: object
+      additionalProperties: false
+      properties:
+        run:
+          $ref: "#/components/schemas/WorkInfoPluginRun"
 
     WorkInfoPluginList:
       type: object
@@ -5864,13 +6013,16 @@ components:
 
     WorkInfoCandidate:
       type: object
-      required: [url, title]
+      required: [id, url, title]
       additionalProperties: false
       description: 検索の候補 1 つ。文字だけで、画像は持たない（specs/049-work-info-plugins/research.md R-10）
       properties:
+        id:
+          type: string
+          description: 作品の ID（前後の空白を除いて 1〜200 文字）。候補を選ぶと取得の `id` にそのまま渡す
         url:
           type: string
-          description: 作品の URL（http か https）。取得にそのまま渡す
+          description: 作品のページの URL（http か https）。画面がリンクとして出すだけで、取得には渡さない
         title:
           type: string
         detail:
@@ -5890,20 +6042,16 @@ components:
 
     WorkInfoFetchRequest:
       type: object
-      required: [pluginId]
+      required: [pluginId, id]
       additionalProperties: false
-      description: "`url` と `id` のどちらか 1 つを持つ"
       properties:
         pluginId:
           type: integer
           format: int64
           description: 承認済みのプラグイン
-        url:
-          type: string
-          description: 作品の URL（http か https、2048 文字まで）
         id:
           type: string
-          description: 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL に埋め込むのはプラグイン
+          description: 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL の形でも ID としてそのまま渡し、URL に埋め込むのはプラグイン
 
     WorkInfoFetch:
       type: object
@@ -6073,6 +6221,13 @@ components:
           description: 反映する項目。空にできず、どれも結果に値がなければならない
           items:
             $ref: "#/components/schemas/WorkInfoField"
+        tags:
+          type: array
+          description: |
+            fields が tags を含むときに付ける取得済みのタグの名前。結果の tags の空でない部分集合で、結果が返した綴りのまま。
+            無ければ取得したタグを全部付ける。空、結果に無い名前、fields に tags が無いのに有る場合は 400
+          items:
+            type: string
 
     SkippedTagReason:
       type: string

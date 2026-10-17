@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -111,7 +112,7 @@ func (s moduleSpec) bytes() []byte {
 		out = append(out, section(11, vec(append(segment, s.data...)))...)
 	}
 	if s.manifest != nil {
-		out = append(out, plugintest.CustomSection("vv.plugin", []byte(*s.manifest))...)
+		out = appendCustomSection(out, manifestSection, []byte(*s.manifest))
 	}
 	return out
 }
@@ -152,14 +153,14 @@ func TestInspectGoodModuleReturnsManifest(t *testing.T) {
 		t.Fatalf("manifest = %+v", manifest)
 	}
 	want := domain.WorkInfoPluginSetting{Key: "apiKey", Label: "API key", Secret: true, Required: true}
-	if len(manifest.Settings) != 1 || manifest.Settings[0] != want {
+	if !reflect.DeepEqual(manifest.Settings, []domain.WorkInfoPluginSetting{want}) {
 		t.Fatalf("settings = %+v, want [%+v]", manifest.Settings, want)
 	}
 }
 
 func TestInspectBuiltPluginReturnsManifest(t *testing.T) {
 	rt := newTestRuntime(t)
-	module := plugintest.WithManifest(plugintest.Build(t, "testdata/probe"), goodManifest)
+	module := mustWithManifest(t, plugintest.Build(t, "testdata/probe"), goodManifest)
 	if _, problem, err := rt.Inspect(context.Background(), module); err != nil || problem != "" {
 		t.Fatalf("Inspect(built probe) = problem %q, err %v; want a manifest", problem, err)
 	}
@@ -327,7 +328,7 @@ func maxTable(n uint64) []byte {
 
 func TestInspectRefusesModuleOver16MiB(t *testing.T) {
 	rt := newTestRuntime(t)
-	module := plugintest.WithManifest(goodSpec().bytes(), strings.Repeat(" ", domain.WorkInfoPluginModuleMaxBytes))
+	module := mustWithManifest(t, goodSpec().bytes(), strings.Repeat(" ", domain.WorkInfoPluginModuleMaxBytes))
 	if _, _, err := rt.Inspect(context.Background(), module); !errors.Is(err, domain.ErrWorkInfoPluginTooLarge) {
 		t.Fatalf("Inspect err = %v, want ErrWorkInfoPluginTooLarge", err)
 	}

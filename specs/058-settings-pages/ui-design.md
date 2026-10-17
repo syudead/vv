@@ -127,7 +127,7 @@ missing also says where to go.
 | Auto-import switch description | The watch state is on the Scan page. | Replaces the state line as the `FormRow` description; `Scan` is a text link to `/settings/scan` |
 | Auto-import section description | … picked up by "Scan library" on the Scan page. | Replaces "under Scan status" in `settings.autoImport.description`; both pages' Auto-import sections share it |
 | Media folders description | … start a scan with "Scan library" on the Scan page. … | Replaces "under Scan status" in `settings.mediaFolders.description` |
-| Network page outside the desktop app | This setting is in the Windows desktop app. This VVMDM isn't running as the desktop app, so there's nothing to set here. | One `<p>` row under the `Local network` heading |
+| Network page outside the desktop app | LAN access is set in the Windows desktop app. This VVMDM isn't running as the desktop app, so there's no switch here. | One `<p>` row under the `Local network` heading, in the LAN switch's place above the plugin proxy row |
 
 The entry points keep their words: `Open Settings` in the empty root folder,
 the thumbnail edit entry and the fetch dialog still says where the link
@@ -223,7 +223,7 @@ heading of its `PageSection` as today unless [Words](#words) renames it.
 | Connections | `Ollama`; `ComfyUI` | `#comfyui` |
 | Plugins | `Work-info plugins` | `#work-info-plugins` |
 | Video conversion | `Encoder` | — |
-| Network | `Local network` ([Network page](#network-page-outside-the-desktop-app)) | — |
+| Network | `Local network`: the LAN switch, then the plugin proxy row of 056 ([Network page](#network-page-outside-the-desktop-app)) | — |
 | API | `API tokens` | — |
 
 Sections keep `gap-8` between them and the rows, padding and states of
@@ -328,11 +328,14 @@ stateDiagram-v2
 
 ## Network page outside the desktop app
 
-Where the network read answers `404`, the page shows a `PageSection` headed
-`Local network` with the section description as today and one `<p>` row,
-the line of [Words](#words), `text-sm text-muted-foreground`. No switch, no
-`Alert`, no state block: nothing failed and nothing is empty. In the desktop
-app the section is today's, under the new heading.
+The section is 056's Network section under the new heading: the LAN switch
+row (desktop only), then the plugin proxy row
+([056 ui-design.md, Network section](../056-plugin-tooling/ui-design.md#network-section)).
+Where the network read answers `404`, the LAN switch row gives way to one
+`<p>` row, the line of [Words](#words), `text-sm text-muted-foreground`,
+and the proxy row follows it. No `Alert`, no state block: nothing failed
+and nothing is empty. In the desktop app the section is today's, under the
+new heading.
 
 ## Entry points
 

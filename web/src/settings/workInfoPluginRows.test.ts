@@ -5,8 +5,10 @@ import {
   draftsOf,
   missingRequired,
   pluginName,
+  runFailureText,
   settingChanges,
   settingsSummary,
+  staleSettings,
 } from "./workInfoPluginRows";
 
 const apiKey: WorkInfoPluginSetting = {
@@ -31,6 +33,25 @@ const region: WorkInfoPluginSetting = {
   required: true,
   set: false,
 };
+const sort: WorkInfoPluginSetting = {
+  key: "sort",
+  label: "Sort",
+  secret: false,
+  required: true,
+  set: false,
+  default: "new",
+  options: ["new", "popular"],
+};
+const mode: WorkInfoPluginSetting = {
+  key: "mode",
+  label: "Mode",
+  secret: false,
+  required: false,
+  set: true,
+  value: "old",
+  staleValue: "old",
+  options: ["fast", "slow"],
+};
 
 describe("work-info plugin rows", () => {
   it("名前の無いプラグインはファイル名で呼ぶ", () => {
@@ -45,8 +66,40 @@ describe("work-info plugin rows", () => {
     expect(settingsSummary({ settings: [] })).toBeNull();
   });
 
+  it("既定値で動く設定は default、選択肢の外の保存値は not set と要約する", () => {
+    expect(settingsSummary({ settings: [sort, mode, language] })).toBe(
+      "Settings: Sort default, Mode not set, Language set",
+    );
+  });
+
+  it("既定値のある必須の設定は値が無くても挙げず、選択肢の外の保存値は選び直しに挙げる", () => {
+    expect(missingRequired({ settings: [sort, mode, region] })).toEqual(["Region"]);
+    expect(staleSettings({ settings: [sort, mode, region] })).toEqual(["Mode"]);
+  });
+
+  it("選択肢の外の保存値はそのままでは送らず、先頭の項目を選ぶと null を送る", () => {
+    const settings = [mode, sort];
+    expect(settingChanges(settings, draftsOf(settings))).toEqual({});
+    expect(
+      settingChanges(settings, {
+        mode: { value: "", forgotten: false },
+        sort: { value: "popular", forgotten: false },
+      }),
+    ).toEqual({ mode: null, sort: "popular" });
+  });
+
   it("値の無い必須の設定だけを挙げる", () => {
     expect(missingRequired({ settings: [apiKey, language, region] })).toEqual(["Region"]);
+  });
+
+  it("既定値の無い必須の設定の保存値が選択肢の外なら、値が無いものとして挙げる", () => {
+    const staleRequired: WorkInfoPluginSetting = {
+      ...mode,
+      label: "Quality",
+      required: true,
+    };
+    expect(missingRequired({ settings: [apiKey, staleRequired] })).toEqual(["Quality"]);
+    expect(staleSettings({ settings: [apiKey, staleRequired] })).toEqual(["Quality"]);
   });
 
   it("秘密の欄は空で始まり、秘密でない欄は保存された値で始まる", () => {
@@ -81,5 +134,20 @@ describe("work-info plugin rows", () => {
     expect(settingChanges([unsaved], { apiKey: { value: "", forgotten: true } })).toEqual(
       {},
     );
+  });
+
+  it("実行の失敗は 049 の理由の文にし、接続先を持たない失敗は接続先の無い形にする", () => {
+    expect(runFailureText("plugin_failed")).toBe("The plugin failed.");
+    expect(runFailureText("timed_out")).toBe(
+      "The plugin didn't finish in 30 seconds and was stopped.",
+    );
+    expect(runFailureText("memory_exceeded")).toBe(
+      "The plugin used more than 128 MB of memory and was stopped.",
+    );
+    expect(runFailureText("output_too_large")).toBe("The plugin's answer was over 1 MB.");
+    expect(runFailureText("blocked_address")).toBe(
+      "The plugin tried to reach VVMDM itself or a device on your network.",
+    );
+    expect(runFailureText("network_error")).toBe("The plugin couldn't reach a site.");
   });
 });

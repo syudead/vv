@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"reflect"
 	"slices"
 	"time"
 	"unicode/utf8"
@@ -114,7 +116,7 @@ type WorkInfoOperation string
 const (
 	// WorkInfoSearch は語で作品を探し、候補を返す操作である。
 	WorkInfoSearch WorkInfoOperation = "search"
-	// WorkInfoFetch は作品の URL か ID（品番など）から作品情報を取る操作である。ID を作品の URL に
+	// WorkInfoFetch は作品の ID（品番など）から作品情報を取る操作である。ID を作品の URL に
 	// 埋め込むのはプラグインである。
 	WorkInfoFetch WorkInfoOperation = "fetch"
 )
@@ -125,6 +127,41 @@ type WorkInfoPluginSetting struct {
 	Label    string `json:"label"`
 	Secret   bool   `json:"secret"`
 	Required bool   `json:"required"`
+	// Default は値が保存されていないとき（Options の外の値が保存されているときも）に実行が受け取る値である。
+	// 空なら既定値は無い（specs/056-plugin-tooling/research.md R-3）。
+	Default string `json:"default,omitempty"`
+	// Options は値の選択肢で、マニフェストの順である。nil なら値は自由に入力する。
+	Options []string `json:"options,omitempty"`
+}
+
+// 設定の既定値と選択肢の上限である（specs/056-plugin-tooling/contracts/plugin-contract.md の Manifest）。
+const (
+	workInfoPluginMinOptions     = 2
+	workInfoPluginMaxOptions     = 50
+	workInfoPluginOptionMaxRunes = 200
+)
+
+// settingJSON は vv.plugin セクションの設定 1 つの JSON の形である。default と options は
+// 項目の有無と明示された null を区別するために生の JSON のまま読む（optionalJSON）。
+type settingJSON struct {
+	Key      string          `json:"key"`
+	Label    string          `json:"label"`
+	Secret   bool            `json:"secret"`
+	Required bool            `json:"required"`
+	Default  json.RawMessage `json:"default"`
+	Options  json.RawMessage `json:"options"`
+}
+
+// optionalJSON は任意の項目 raw を dst に読み、項目があったかを返す。項目が無ければ (false, true)。
+// 明示された null や型の違う値は契約の型（文字列・文字列の配列）でないので ok を false にする。
+func optionalJSON(raw json.RawMessage, dst any) (present, ok bool) {
+	if raw == nil {
+		return false, true
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return true, false
+	}
+	return true, json.Unmarshal(raw, dst) == nil
 }
 
 // WorkInfoPluginManifest はモジュールの vv.plugin セクションのマニフェストである
@@ -145,31 +182,73 @@ func (m WorkInfoPluginManifest) Supports(op WorkInfoOperation) bool {
 
 // manifestJSON は vv.plugin セクションの JSON の形である。知らない項目は無視する。
 type manifestJSON struct {
-	Name        string                  `json:"name"`
-	Version     string                  `json:"version"`
-	Description string                  `json:"description"`
-	Operations  []WorkInfoOperation     `json:"operations"`
-	Settings    []WorkInfoPluginSetting `json:"settings"`
+	Name        string              `json:"name"`
+	Version     string              `json:"version"`
+	Description string              `json:"description"`
+	Operations  []WorkInfoOperation `json:"operations"`
+	Settings    []json.RawMessage   `json:"settings"`
+}
+
+// WorkInfoPluginManifestError は拒んだマニフェストの理由である（specs/056-plugin-tooling/contracts/plugin-cli.md）。
+// Field は規則に反した項目の道筋（"settings[0].default"）で、マニフェスト全体の誤りなら空である。
+// Rule は Field に続けて読める、反した規則の文である。
+type WorkInfoPluginManifestError struct {
+	Problem WorkInfoPluginProblem
+	Field   string
+	Rule    string
+}
+
+func (e *WorkInfoPluginManifestError) Error() string {
+	field := e.Field
+	if field == "" {
+		field = "the manifest"
+	}
+	return fmt.Sprintf("%s: %s %s", e.Problem, field, e.Rule)
+}
+
+func manifestInvalid(field, rule string) *WorkInfoPluginManifestError {
+	return &WorkInfoPluginManifestError{Problem: WorkInfoPluginManifestInvalid, Field: field, Rule: rule}
+}
+
+func settingInvalid(i int, field, rule string) *WorkInfoPluginManifestError {
+	return manifestInvalid(fmt.Sprintf("settings[%d].%s", i, field), rule)
 }
 
 // ParseWorkInfoPluginManifest は vv.plugin セクションの中身を読み、規則を確かめる。
 // 読めなければ manifest_invalid、contract が 1 でなければ contract_unsupported を返す。
-// contract は他の項目より先に確かめる。後の版は他の項目の形を変えうるからである。
+// 反した項目と規則が要るときは CheckWorkInfoPluginManifest を使う。
 func ParseWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, WorkInfoPluginProblem) {
+	m, rejection := CheckWorkInfoPluginManifest(data)
+	if rejection != nil {
+		return WorkInfoPluginManifest{}, rejection.Problem
+	}
+	return m, ""
+}
+
+// CheckWorkInfoPluginManifest は ParseWorkInfoPluginManifest と同じ規則でマニフェストを読み、拒むときは
+// 問題に、反した項目と規則を添えて返す。contract は他の項目より先に確かめる。後の版は他の項目の形を
+// 変えうるからである。
+func CheckWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, *WorkInfoPluginManifestError) {
 	var top map[string]json.RawMessage
 	if err := json.Unmarshal(data, &top); err != nil || top == nil {
-		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
+		return WorkInfoPluginManifest{}, manifestInvalid("", "must be a JSON object")
 	}
 	var contract int
 	if raw, ok := top["contract"]; !ok || json.Unmarshal(raw, &contract) != nil {
-		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
+		return WorkInfoPluginManifest{}, manifestInvalid("contract", "must be an integer")
 	}
 	if contract != WorkInfoPluginContract {
-		return WorkInfoPluginManifest{}, WorkInfoPluginContractUnsupported
+		return WorkInfoPluginManifest{}, &WorkInfoPluginManifestError{
+			Problem: WorkInfoPluginContractUnsupported, Field: "contract", Rule: fmt.Sprintf("must be %d", WorkInfoPluginContract),
+		}
 	}
 	var raw manifestJSON
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
+		return WorkInfoPluginManifest{}, typeRejection("", err)
+	}
+	settings, rejection := parseSettings(raw.Settings)
+	if rejection != nil {
+		return WorkInfoPluginManifest{}, rejection
 	}
 	m := WorkInfoPluginManifest{
 		Contract:    contract,
@@ -177,12 +256,115 @@ func ParseWorkInfoPluginManifest(data []byte) (WorkInfoPluginManifest, WorkInfoP
 		Version:     raw.Version,
 		Description: raw.Description,
 		Operations:  raw.Operations,
-		Settings:    raw.Settings,
+		Settings:    settings,
 	}
-	if !validManifest(m) {
-		return WorkInfoPluginManifest{}, WorkInfoPluginManifestInvalid
+	if rejection := checkManifest(m); rejection != nil {
+		return WorkInfoPluginManifest{}, rejection
 	}
-	return m, ""
+	return m, nil
+}
+
+// typeRejection は項目の JSON の型の誤りを理由にする。prefix は読んだ値の道筋で、マニフェスト全体なら空、
+// 配列の要素なら添字つき（"settings[1]"）である。UnmarshalTypeError.Field は配列の添字を含まないので、
+// 配列の要素は 1 つずつ読んでここで添字を足す。
+func typeRejection(prefix string, err error) *WorkInfoPluginManifestError {
+	var typeErr *json.UnmarshalTypeError
+	if !errors.As(err, &typeErr) {
+		return manifestInvalid(prefix, "must be a JSON object")
+	}
+	field := typeErr.Field
+	if prefix != "" && field != "" {
+		field = prefix + "." + field
+	} else if prefix != "" {
+		field = prefix
+	}
+	return manifestInvalid(field, "must be "+jsonTypeName(typeErr.Type.Kind()))
+}
+
+func jsonTypeName(kind reflect.Kind) string {
+	switch kind {
+	case reflect.String:
+		return "a string"
+	case reflect.Bool:
+		return "a boolean"
+	case reflect.Slice:
+		return "an array"
+	default:
+		return "an object"
+	}
+}
+
+// parseSettings は設定の JSON を宣言にし、既定値と選択肢の規則を確かめる。
+// 設定は 1 つずつ読み、型の誤りの項目に添字（settings[1].label）を付ける。
+func parseSettings(raw []json.RawMessage) ([]WorkInfoPluginSetting, *WorkInfoPluginManifestError) {
+	if raw == nil {
+		return nil, nil
+	}
+	settings := make([]WorkInfoPluginSetting, 0, len(raw))
+	for i, element := range raw {
+		var r settingJSON
+		if err := json.Unmarshal(element, &r); err != nil {
+			return nil, typeRejection(fmt.Sprintf("settings[%d]", i), err)
+		}
+		s, rejection := parseSetting(i, r)
+		if rejection != nil {
+			return nil, rejection
+		}
+		settings = append(settings, s)
+	}
+	return settings, nil
+}
+
+// parseSetting は i 番目の設定を読む。default を書いた設定は 1 文字以上の既定値を持たなければならないので、
+// 空の default はここで拒む。null の default や options も拒む。
+func parseSetting(i int, r settingJSON) (WorkInfoPluginSetting, *WorkInfoPluginManifestError) {
+	s := WorkInfoPluginSetting{Key: r.Key, Label: r.Label, Secret: r.Secret, Required: r.Required}
+	hasDefault, ok := optionalJSON(r.Default, &s.Default)
+	if !ok {
+		return WorkInfoPluginSetting{}, settingInvalid(i, "default", "must be a string")
+	}
+	if hasDefault && !runeCountBetween(s.Default, 1, WorkInfoPluginSettingValueMaxRunes) {
+		return WorkInfoPluginSetting{}, settingInvalid(i, "default",
+			fmt.Sprintf("must be 1 to %d characters", WorkInfoPluginSettingValueMaxRunes))
+	}
+	if _, ok := optionalJSON(r.Options, &s.Options); !ok {
+		return WorkInfoPluginSetting{}, settingInvalid(i, "options", "must be an array of strings")
+	}
+	if rejection := checkSettingChoices(i, s, hasDefault); rejection != nil {
+		return WorkInfoPluginSetting{}, rejection
+	}
+	return s, nil
+}
+
+// checkSettingChoices は設定の既定値と選択肢の規則を確かめる。秘密の設定はどちらも持てず、選択肢は重複の無い
+// 2〜50 個の 1〜200 文字で、既定値は選択肢のどれかでなければならない。
+func checkSettingChoices(i int, s WorkInfoPluginSetting, hasDefault bool) *WorkInfoPluginManifestError {
+	switch {
+	case s.Secret && hasDefault:
+		return settingInvalid(i, "default", "is not allowed on a secret setting")
+	case s.Secret && s.Options != nil:
+		return settingInvalid(i, "options", "is not allowed on a secret setting")
+	case s.Options == nil:
+		return nil
+	case len(s.Options) < workInfoPluginMinOptions || len(s.Options) > workInfoPluginMaxOptions:
+		return settingInvalid(i, "options",
+			fmt.Sprintf("must hold %d to %d values", workInfoPluginMinOptions, workInfoPluginMaxOptions))
+	}
+	seen := make(map[string]bool, len(s.Options))
+	for _, option := range s.Options {
+		if !runeCountBetween(option, 1, workInfoPluginOptionMaxRunes) {
+			return settingInvalid(i, "options",
+				fmt.Sprintf("must hold values of 1 to %d characters", workInfoPluginOptionMaxRunes))
+		}
+		if seen[option] {
+			return settingInvalid(i, "options", "must hold distinct values")
+		}
+		seen[option] = true
+	}
+	if hasDefault && !seen[s.Default] {
+		return settingInvalid(i, "default", "must be one of options")
+	}
+	return nil
 }
 
 func isJSONObject(data []byte) bool {
@@ -190,12 +372,19 @@ func isJSONObject(data []byte) bool {
 	return len(trimmed) > 0 && trimmed[0] == '{'
 }
 
-func validManifest(m WorkInfoPluginManifest) bool {
-	return ValidWorkInfoPluginName(m.Name) &&
-		runeCountBetween(m.Version, 1, 32) &&
-		utf8.RuneCountInString(m.Description) <= 500 && utf8.ValidString(m.Description) &&
-		validOperations(m.Operations) &&
-		validSettings(m.Settings)
+// checkManifest は読めたマニフェストの項目の規則を確かめる。
+func checkManifest(m WorkInfoPluginManifest) *WorkInfoPluginManifestError {
+	switch {
+	case !ValidWorkInfoPluginName(m.Name):
+		return manifestInvalid("name", "must be 1 to 64 characters of a-z, 0-9, - and .")
+	case !runeCountBetween(m.Version, 1, 32):
+		return manifestInvalid("version", "must be 1 to 32 characters")
+	case utf8.RuneCountInString(m.Description) > 500 || !utf8.ValidString(m.Description):
+		return manifestInvalid("description", "must be at most 500 characters")
+	case !validOperations(m.Operations):
+		return manifestInvalid("operations", "must list search, fetch or both, each at most once")
+	}
+	return checkSettings(m.Settings)
 }
 
 // ValidWorkInfoPluginName はプラグインの名前が a-z・0-9・-・. の 1〜64 文字かを返す。
@@ -231,18 +420,24 @@ func validOperations(ops []WorkInfoOperation) bool {
 	return true
 }
 
-func validSettings(settings []WorkInfoPluginSetting) bool {
+// checkSettings は設定の数と、各設定の key と label の規則を確かめる。
+func checkSettings(settings []WorkInfoPluginSetting) *WorkInfoPluginManifestError {
 	if len(settings) > WorkInfoPluginMaxSettings {
-		return false
+		return manifestInvalid("settings", fmt.Sprintf("must declare at most %d settings", WorkInfoPluginMaxSettings))
 	}
 	seen := map[string]bool{}
-	for _, s := range settings {
-		if !validSettingKey(s.Key) || seen[s.Key] || !runeCountBetween(s.Label, 1, 60) {
-			return false
+	for i, s := range settings {
+		switch {
+		case !validSettingKey(s.Key):
+			return settingInvalid(i, "key", "must be 1 to 32 characters of A-Z, a-z, 0-9 and _, starting with a letter")
+		case seen[s.Key]:
+			return settingInvalid(i, "key", "must be unique within the manifest")
+		case !runeCountBetween(s.Label, 1, 60):
+			return settingInvalid(i, "label", "must be 1 to 60 characters")
 		}
 		seen[s.Key] = true
 	}
-	return true
+	return nil
 }
 
 // validSettingKey は設定の key が英字で始まる A-Z・a-z・0-9・_ の 1〜32 文字かを返す。
@@ -260,14 +455,12 @@ func validSettingKey(key string) bool {
 }
 
 // WorkInfoRunRequest は 1 回の実行でプラグインの標準入力に書く要求である（plugin-contract.md の Request）。
-// 文字数と URL の確かめは要求を作る側（internal/app）が行う。
+// 文字数の確かめは要求を作る側（internal/app、cmd/mdm）が行う。
 type WorkInfoRunRequest struct {
 	Operation WorkInfoOperation
 	// Query は search の語である。
 	Query string
-	// URL は fetch の作品の URL である。ID とどちらか一方だけを持つ。
-	URL string
-	// ID は fetch の作品の ID である。URL とどちらか一方だけを持つ。
+	// ID は fetch の作品の ID である。作品の URL に埋め込むのはプラグインである。
 	ID string
 	// Settings は所有者が入力した、このプラグインの設定の値である。
 	Settings map[string]string
@@ -283,22 +476,23 @@ func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
 		Contract  int               `json:"contract"`
 		Operation WorkInfoOperation `json:"operation"`
 		Query     string            `json:"query,omitempty"`
-		URL       string            `json:"url,omitempty"`
 		ID        string            `json:"id,omitempty"`
 		Settings  map[string]string `json:"settings"`
-	}{WorkInfoPluginContract, r.Operation, "", "", "", settings}
+	}{WorkInfoPluginContract, r.Operation, "", "", settings}
 	switch r.Operation {
 	case WorkInfoSearch:
 		body.Query = r.Query
 	case WorkInfoFetch:
-		body.URL = r.URL
 		body.ID = r.ID
 	}
 	return json.Marshal(body)
 }
 
 // WorkInfoCandidate は検索の候補の 1 つである。文字だけで、画像は持たない（research.md R-10）。
+// ID は候補を選んだときに fetch へ渡す作品の ID で、前後の空白を除いたものである。URL は候補の作品の
+// ページで、画面がリンクとして出すだけで、vv が取得することも fetch に渡すこともない。
 type WorkInfoCandidate struct {
+	ID     string
 	URL    string
 	Title  string
 	Detail string
@@ -377,6 +571,7 @@ func (e *WorkInfoRunError) Error() string {
 // 知らない項目は無視する。
 type responseJSON struct {
 	Candidates []struct {
+		ID     string `json:"id"`
 		URL    string `json:"url"`
 		Title  string `json:"title"`
 		Detail string `json:"detail"`
@@ -421,11 +616,14 @@ func ParseWorkInfoResponse(op WorkInfoOperation, output []byte) (WorkInfoRunResu
 func parseCandidates(raw responseJSON) (WorkInfoRunResult, error) {
 	candidates := make([]WorkInfoCandidate, 0, min(len(raw.Candidates), WorkInfoPluginMaxCandidates))
 	// 保持するのは先頭 WorkInfoPluginMaxCandidates 件だけなので、それより後の候補は確かめない。
+	// 候補の ID は取得の入力と同じ規則（前後の空白を除いて 1〜200 文字）で、選べば取得にそのまま渡す。
+	// URL は画面がページへのリンクに出すだけなので、http・https の絶対 URL であることだけを確かめる。
 	for _, c := range raw.Candidates[:min(len(raw.Candidates), WorkInfoPluginMaxCandidates)] {
-		if c.Title == "" || !isWorkURL(c.URL) {
+		id, err := NormalizeWorkInfoSearchQuery(c.ID)
+		if c.Title == "" || err != nil || !isWorkURL(c.URL) {
 			return WorkInfoRunResult{}, &WorkInfoRunError{Failure: WorkInfoRunFailed}
 		}
-		candidates = append(candidates, WorkInfoCandidate{URL: c.URL, Title: c.Title, Detail: c.Detail})
+		candidates = append(candidates, WorkInfoCandidate{ID: id, URL: c.URL, Title: c.Title, Detail: c.Detail})
 	}
 	return WorkInfoRunResult{Candidates: candidates}, nil
 }

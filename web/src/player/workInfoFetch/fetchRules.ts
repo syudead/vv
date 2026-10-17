@@ -5,7 +5,6 @@ import type {
   WorkInfoFetch,
   WorkInfoField,
   WorkInfoPlugin,
-  WorkInfoTarget,
 } from "../../api/workInfoPlugins";
 import { t, type UiText } from "../../i18n";
 import { creditKind, detailRow, isDateRow, videoWorkInfo } from "./detailRows";
@@ -17,8 +16,9 @@ import { creditKind, detailRow, isDateRow, videoWorkInfo } from "./detailRows";
 export type RunOperation = "search" | "fetch";
 
 /**
- * FindBy は URL でない語の扱いで、`words` は検索の語、`id` は取得に渡す作品の ID である。search と fetch の
- * 両方を宣言するプラグインでだけ選べ、片方だけならその操作に決まる。
+ * FindBy は入力欄の語の扱いで、`words` は検索の語、`id` は取得に渡す作品の ID である。search と fetch の
+ * 両方を宣言するプラグインでだけ選べ、片方だけならその操作に決まる。語は URL の形でもそのまま語か ID で、
+ * 画面が URL として扱うことはない（親 Issue 1232 の要件 14）。
  */
 export type FindBy = "words" | "id";
 
@@ -36,52 +36,24 @@ export function pluginLabel(plugin: WorkInfoPlugin): string {
   return plugin.name ?? plugin.fileName;
 }
 
-/** isWebUrl は text（前後の空白を除く）が http か https の URL として読めるかを返す。 */
-export function isWebUrl(text: string): boolean {
-  const trimmed = text.trim();
-  if (!/^https?:\/\//i.test(trimmed)) return false;
-  try {
-    const url = new URL(trimmed);
-    return url.protocol === "http:" || url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
 /** canChooseFindBy はプラグインが語を検索の語にも ID にもでき、`Words`・`ID` を選べるかを返す。 */
 export function canChooseFindBy(plugin: WorkInfoPlugin): boolean {
   return can(plugin, "search") && can(plugin, "fetch");
 }
 
 /**
- * textOperation は URL でない語を走らせる操作である。検索できないプラグインと `ID` を選んだときは、語を
- * 作品の ID として取得に渡す。
+ * runFor は入力欄の語をプラグインのどの操作で走らせるかを返す。検索できないプラグインと `ID` を選んだ
+ * ときは、語を作品の ID として取得に渡し、それ以外は語として検索する。
  */
-function textOperation(plugin: WorkInfoPlugin, by: FindBy): RunOperation {
+export function runFor(plugin: WorkInfoPlugin, by: FindBy): RunOperation {
   if (can(plugin, "fetch") && (by === "id" || !can(plugin, "search"))) return "fetch";
   return "search";
-}
-
-/**
- * runFor は入力 text をプラグインのどの操作で走らせるかを返す。URL は取得できるプラグインなら
- * 取得し、それ以外は語として検索するか、作品の ID として取得する（by で選ぶ）。
- */
-export function runFor(plugin: WorkInfoPlugin, text: string, by: FindBy): RunOperation {
-  if (isWebUrl(text) && can(plugin, "fetch")) return "fetch";
-  return textOperation(plugin, by);
-}
-
-/** fetchTarget は取得に渡す作品で、URL として読めれば URL、それ以外は作品の ID である。 */
-export function fetchTarget(text: string): WorkInfoTarget {
-  const trimmed = text.trim();
-  return isWebUrl(trimmed) ? { url: trimmed } : { id: trimmed };
 }
 
 /** queryLabel は入力欄の名前で、プラグインの操作と by で決まる。 */
 export function queryLabel(plugin: WorkInfoPlugin, by: FindBy): UiText {
   const text = t.player.workInfoFetch;
-  if (textOperation(plugin, by) === "fetch") return text.queryFetch;
-  return can(plugin, "fetch") ? text.queryBoth : text.querySearch;
+  return runFor(plugin, by) === "fetch" ? text.queryFetch : text.querySearch;
 }
 
 /**
@@ -94,12 +66,12 @@ export function initialQuery(
   video: Video,
 ): string {
   if (plugin === undefined) return "";
-  return textOperation(plugin, by) === "search"
+  return runFor(plugin, by) === "search"
     ? video.title
     : (videoWorkInfo(video).code ?? "");
 }
 
-/** canFetch はプラグインが作品の URL か ID から取得できるかを返す。 */
+/** canFetch はプラグインが作品の ID から取得できるかを返す。 */
 export function canFetch(plugin: WorkInfoPlugin): boolean {
   return can(plugin, "fetch");
 }
@@ -128,6 +100,41 @@ export function titleRow(video: Video, fetched: WorkInfoFetch): RowState {
 /** videoTagNames は動画に付いているタグの名前の集まりである。 */
 export function videoTagNames(video: Video): Set<string> {
   return new Set(video.tags.map((tag) => tag.name));
+}
+
+/**
+ * selectableTags は取得したタグのうち動画にまだ無い名前を、結果の順に重複なく返す。比較の段で
+ * 1 つずつ選べるのはこの名前で、動画にある名前は選べない
+ * （specs/056-plugin-tooling/research.md R-7）。
+ */
+export function selectableTags(video: Video, fetched: WorkInfoFetch): string[] {
+  const names = videoTagNames(video);
+  return [...new Set(fetched.tags.filter((name) => !names.has(name)))];
+}
+
+/**
+ * tagsRowChecked はタグの行のチェックボックスの状態で、選べるタグが全部選ばれていれば真、
+ * 一部なら `indeterminate`、1 つも無ければ偽である（specs/056-plugin-tooling/ui-design.md
+ * 「Compare: tags row」）。
+ */
+export function tagsRowChecked(
+  selectable: readonly string[],
+  selected: readonly string[],
+): boolean | "indeterminate" {
+  const count = selectable.filter((name) => selected.includes(name)).length;
+  if (count === 0) return false;
+  return count === selectable.length ? true : "indeterminate";
+}
+
+/** withField は選択 selection に項目 field を、on なら足し、そうでなければ外して返す。 */
+export function withField(
+  selection: readonly WorkInfoField[],
+  field: WorkInfoField,
+  on: boolean,
+): WorkInfoField[] {
+  return on
+    ? [...new Set([...selection, field])]
+    : selection.filter((item) => item !== field);
 }
 
 /** tagsRow はタグの行の状態である。取得したどの名前も動画に付いていれば `same` である。 */

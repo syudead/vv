@@ -50,13 +50,15 @@ const transcodingSettings: TranscodingSettings = {
 
 /**
  * sectionResponses は各節の読み込みの既定の応答である。節の振る舞いはそれぞれの節のテストが
- * 確かめるので、ここでは節が描けるだけの値を返す。Network はデスクトップ版でない（404）。
+ * 確かめるので、ここでは節が描けるだけの値を返す。Network はデスクトップ版でない（404）で、
+ * プラグインのプロキシは何も保存されていない。
  */
 function sectionResponses(): Record<string, () => Response> {
   return {
     "/api/settings/transcoding": () => json(transcodingSettings),
     "/api/api-tokens": () => json({ items: [] }),
     "/api/settings/network": () => json({ code: "not_found", message: "not found" }, 404),
+    "/api/settings/plugin-proxy": () => json({ url: "" }),
     "/api/settings/auto-import": () => json({ enabled: false, watch: { state: "off" } }),
     "/api/settings/ollama": () =>
       json({ endpoint: "http://127.0.0.1:11434", model: "clef-flash", saved: false }),

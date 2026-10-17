@@ -46,13 +46,15 @@ previous page, so an unsaved draft is lost as the parent Issue's edge case
 states, and a page reads only its own resources.
 
 The parent Issue's table also puts a work-info plugin proxy on the Network
-page. No such setting exists today, and the Issue leaves adding settings out
-of scope, so the Network page carries the Network section alone.
+page. The Issue leaves adding settings out of scope; 056 added that proxy
+row to the Network section on `main` while this feature was in progress,
+so the Network page carries the Network section alone, with the proxy row
+the section has.
 
-The Network section renders nothing where `GET /api/settings/network`
-answers `404` (vv is not the Windows desktop app). There the Network page
+The LAN switch of the Network section is desktop-only: `GET /api/settings/network`
+answers `404` where vv is not the Windows desktop app. There the Network page
 keeps its entry in the list and shows a line saying LAN access is set in the
-Windows desktop app, in place of the section.
+Windows desktop app, in the switch's place above the proxy row.
 
 | Option | Verdict |
 | --- | --- |

@@ -33,6 +33,7 @@ import { WORK_INFO_PLUGINS_GUIDE_URL } from "./docsLinks";
 import { useSectionAnchor } from "./useSectionAnchor";
 import WorkInfoPluginApprovalDialog from "./WorkInfoPluginApprovalDialog";
 import WorkInfoPluginRow, { type RowWork } from "./WorkInfoPluginRow";
+import WorkInfoPluginRunDialog from "./WorkInfoPluginRunDialog";
 import { MAX_PLUGIN_BYTES, pluginName } from "./workInfoPluginRows";
 import WorkInfoPluginSettingsDialog from "./WorkInfoPluginSettingsDialog";
 
@@ -53,8 +54,11 @@ interface Editing {
   error: UiText | null;
 }
 
-/** FocusTarget は描いたあとにフォーカスを移す先である。行の id か「Add plugin」。 */
-type FocusTarget = number | "add";
+/**
+ * FocusTarget は描いたあとにフォーカスを移す先である。行の id（その行の最初のボタン）、
+ * `{ menu: id }`（その行の「More actions」）か「Add plugin」。
+ */
+type FocusTarget = number | { menu: number } | "add";
 
 /** addedToast は追加の応答の状態と状態コードから、結果のトーストの文言を選ぶ。 */
 function addedToast(plugin: WorkInfoPlugin, replaced: boolean): UiText {
@@ -213,6 +217,7 @@ function WorkInfoPluginsSectionBody() {
   const [approving, setApproving] = useState<Approving | null>(null);
   const [configuring, setConfiguring] = useState<Editing | null>(null);
   const [deleting, setDeleting] = useState<Editing | null>(null);
+  const [reading, setReading] = useState<WorkInfoPlugin | null>(null);
   const addButton = useRef<HTMLButtonElement>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
   const focusAfterRender = useRef<FocusTarget | null>(null);
@@ -265,8 +270,13 @@ function WorkInfoPluginsSectionBody() {
     focusAfterRender.current = null;
     const timer = window.setTimeout(() => {
       if (target === "add") addButton.current?.focus();
-      else
+      else if (typeof target === "number")
         rowRefs.current.get(target)?.querySelector<HTMLButtonElement>("button")?.focus();
+      else
+        rowRefs.current
+          .get(target.menu)
+          ?.querySelector<HTMLButtonElement>('button[aria-haspopup="menu"]')
+          ?.focus();
     }, 0);
     return () => window.clearTimeout(timer);
   });
@@ -423,6 +433,7 @@ function WorkInfoPluginsSectionBody() {
         setApproving({ plugin, pending: false, changed: false, error: null })
       }
       onSettings={() => setConfiguring({ plugin, pending: false, error: null })}
+      onLastRun={() => setReading(plugin)}
       onRevoke={() => void revoke(plugin)}
       onDelete={() => setDeleting({ plugin, pending: false, error: null })}
     />
@@ -483,6 +494,17 @@ function WorkInfoPluginsSectionBody() {
             if (!configuring.pending) setConfiguring(null);
           }}
           onSave={(values) => void saveSettings(values)}
+        />
+      )}
+      {reading !== null && (
+        <WorkInfoPluginRunDialog
+          plugin={reading}
+          onClose={() => {
+            // 開いた項目はメニューと一緒に消えたので、FormDialog の「前のフォーカスへ戻す」には
+            // 頼らず、その行の「More actions」へ戻す（web/registry/rules/patterns.md）。
+            focusAfterRender.current = { menu: reading.id };
+            setReading(null);
+          }}
         />
       )}
       {deleting !== null && (

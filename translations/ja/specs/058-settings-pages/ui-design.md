@@ -1,6 +1,6 @@
 ---
 source: specs/058-settings-pages/ui-design.md
-sourceHash: 599b81c56504bf7af4e68fb30516f5cb0f9b15a5ae19f4746e033964495e6e20
+sourceHash: b8b7e4f7cb4f3dba2cc248ff65c985078845b9daf009f9b7aef06b324a1fb653
 ---
 
 # UI 設計: 設定を 8 つのページに分ける {#ui-design-settings-split-into-eight-pages}
@@ -80,7 +80,7 @@ Auto-tagging のページは 1 つの節を `Progress` と `Classifier` にこ�
 | Auto-import のスイッチの説明 | The watch state is on the Scan page. | `FormRow` の説明として状態の行を置き換える。`Scan` は `/settings/scan` へのテキストリンク |
 | Auto-import の節の説明 | … picked up by "Scan library" on the Scan page. | `settings.autoImport.description` の "under Scan status" を置き換える。両方のページの Auto-import の節が共有する |
 | Media folders の説明 | … start a scan with "Scan library" on the Scan page. … | `settings.mediaFolders.description` の "under Scan status" を置き換える |
-| デスクトップアプリの外での Network のページ | This setting is in the Windows desktop app. This VVMDM isn't running as the desktop app, so there's nothing to set here. | `Local network` の見出しの下の 1 つの `<p>` の行 |
+| デスクトップアプリの外での Network のページ | LAN access is set in the Windows desktop app. This VVMDM isn't running as the desktop app, so there's no switch here. | `Local network` の見出しの下の 1 つの `<p>` の行。プラグインのプロキシの行の上、LAN スイッチの場所に置く |
 
 入口は言葉を保つ。空のルートフォルダ、サムネイルの編集の入口、取得ダイアログの `Open Settings` は引き続きリンクの行き先を言い、アドレスだけが変わる ([R-2](research.md#r-2-the-old-anchor-addresses-are-forwarded-and-the-entry-points-move-to-the-pages))。
 
@@ -150,7 +150,7 @@ flowchart LR
 | Connections | `Ollama`。`ComfyUI` | `#comfyui` |
 | Plugins | `Work-info plugins` | `#work-info-plugins` |
 | Video conversion | `Encoder` | — |
-| Network | `Local network` ([Network のページ](#network-page-outside-the-desktop-app)) | — |
+| Network | `Local network`: LAN スイッチ、続けて 056 のプラグインのプロキシの行 ([Network のページ](#network-page-outside-the-desktop-app)) | — |
 | API | `API tokens` | — |
 
 節は互いの間に `gap-8` を保ち、それぞれの設計の行、余白、状態を保つ。メディアフォルダのダイアログ (ピッカー、削除の確認) は、今とまったく同じように Library のページから開く。
@@ -224,7 +224,7 @@ stateDiagram-v2
 
 ## デスクトップアプリの外での Network のページ {#network-page-outside-the-desktop-app}
 
-ネットワークの読み取りが `404` を答えるところでは、ページは `Local network` という見出しの `PageSection` を、今と同じ節の説明と 1 つの `<p>` の行 ([文言](#words) の行、`text-sm text-muted-foreground`) とともに見せる。スイッチも、`Alert` も、状態のブロックもない。何も失敗しておらず、何も空ではない。デスクトップアプリでは、節は新しい見出しの下の今の節である。
+節は、新しい見出しの下にある 056 の Network の節である。LAN スイッチの行 (デスクトップアプリのみ)、続けてプラグインのプロキシの行が並ぶ ([056 ui-design.md、Network の節](../056-plugin-tooling/ui-design.md#network-section))。ネットワークの読み取りが `404` を答えるところでは、LAN スイッチの行の代わりに 1 つの `<p>` の行が置かれる。これは [文言](#words) の行で、`text-sm text-muted-foreground` であり、プロキシの行がその後に続く。`Alert` も、状態のブロックもない。何も失敗しておらず、何も空ではない。デスクトップアプリでは、節は新しい見出しの下の今の節である。
 
 ## 入口 {#entry-points}
 

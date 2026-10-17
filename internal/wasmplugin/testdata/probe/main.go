@@ -1,7 +1,7 @@
 //go:build wasip1
 
 // probe は internal/wasmplugin のテストが使う作品情報プラグインである。search では query、
-// fetch では url の最後の要素で振る舞いを選び、どれにも当たらない要求には要求をそのまま映した
+// fetch では id で振る舞いを選び、どれにも当たらない要求には要求をそのまま映した
 // 応答を返す（echo）。作品情報を返す振る舞いは fetch で選ぶ。
 package main
 
@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"path"
 	"sort"
 	"strconv"
 	"strings"
@@ -30,7 +29,7 @@ type request struct {
 	Contract  int               `json:"contract"`
 	Operation string            `json:"operation"`
 	Query     string            `json:"query"`
-	URL       string            `json:"url"`
+	ID        string            `json:"id"`
 	Settings  map[string]string `json:"settings"`
 }
 
@@ -45,10 +44,11 @@ func main() {
 	}
 	mode := req.Query
 	if req.Operation == "fetch" {
-		mode = path.Base(req.URL)
+		mode = req.ID
 	}
 	switch mode {
 	case "loop":
+		fmt.Fprintln(os.Stderr, "looping")
 		for {
 		}
 	case "sleep":
@@ -77,19 +77,22 @@ func main() {
 	case "cover":
 		reply(map[string]any{"workInfo": map[string]any{"title": "cover", "cover": req.Settings["cover"]}})
 	case "fail":
+		fmt.Fprintln(os.Stderr, "reporting an error")
 		reply(map[string]any{"error": map[string]any{"message": strings.Repeat("m", 400)}})
 	case "exit":
+		fmt.Fprintln(os.Stderr, "exiting with 3")
 		os.Exit(3)
 	default:
 		echo(req)
 	}
 }
 
-// echo は search に query を映した候補を、fetch に url を題名とし設定を key=value のタグとした
+// echo は search に query を映した候補を、fetch に id を題名とし設定を key=value のタグとした
 // 作品情報を返す。
 func echo(req request) {
 	if req.Operation == "search" {
 		reply(map[string]any{"candidates": []map[string]string{{
+			"id":     "q:" + req.Query,
 			"url":    "https://example.com/?q=" + req.Query,
 			"title":  req.Query,
 			"detail": "contract " + strconv.Itoa(req.Contract),
@@ -101,7 +104,7 @@ func echo(req request) {
 		tags = append(tags, k+"="+v)
 	}
 	sort.Strings(tags)
-	reply(map[string]any{"workInfo": map[string]any{"title": req.URL, "tags": tags}})
+	reply(map[string]any{"workInfo": map[string]any{"title": req.ID, "tags": tags}})
 }
 
 // fetchPages は設定 request の http_send の要求を count 回（既定 1 回）送り、どの誤りも無視する。

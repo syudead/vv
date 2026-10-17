@@ -153,15 +153,16 @@ describe("SettingsPage: pages", () => {
     },
   );
 
-  it("says the Network setting is in the desktop app when the read answers 404", async () => {
+  it("says LAN access is in the desktop app when the read answers 404, with the proxy row", async () => {
     renderSettings("/settings/network");
 
     expect(
       await screen.findByText(
-        "This setting is in the Windows desktop app. This VVMDM isn't running as the desktop app, so there's nothing to set here.",
+        "LAN access is set in the Windows desktop app. This VVMDM isn't running as the desktop app, so there's no switch here.",
       ),
     ).toBeDefined();
     expect(screen.queryByRole("switch")).toBeNull();
+    expect(screen.getByLabelText("Proxy for plugin requests")).toBeDefined();
   });
 
   it("enables Scan library on the Scan page after a folder is added on Library", async () => {

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"slices"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/httpapi/gen"
@@ -37,37 +38,30 @@ func (s *server) SearchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.W
 	}
 	out := make([]gen.WorkInfoCandidate, 0, len(candidates))
 	for _, c := range candidates {
-		out = append(out, gen.WorkInfoCandidate{Url: c.URL, Title: c.Title, Detail: optionalString(c.Detail)})
+		out = append(out, gen.WorkInfoCandidate{Id: c.ID, Url: c.URL, Title: c.Title, Detail: optionalString(c.Detail)})
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
 	writeJSON(w, http.StatusOK, gen.WorkInfoSearchResult{Candidates: out}, s.logger)
 }
 
-// FetchWorkInfo はプラグインの fetch で作品の url か id から動画の作品情報を取り、結果をメモリに持つ
-// （POST /api/videos/{id}/work-info-fetches）。動画は変えない。
+// FetchWorkInfo はプラグインの fetch で作品の id から動画の作品情報を取り、結果をメモリに持つ
+// （POST /api/videos/{id}/work-info-fetches）。id は URL の形でも作品の ID としてそのまま渡す。動画は変えない。
 func (s *server) FetchWorkInfo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	var body struct {
 		PluginID *int64  `json:"pluginId"`
-		URL      *string `json:"url"`
 		ID       *string `json:"id"`
 	}
 	if !s.readJSONBody(w, r, &body) {
 		return
 	}
-	if body.PluginID == nil || (body.URL == nil) == (body.ID == nil) {
-		s.invalidRequest(w, "pluginId and exactly one of url and id are required.")
+	if body.PluginID == nil || body.ID == nil {
+		s.invalidRequest(w, "pluginId and id are required.")
 		return
 	}
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	var fetch domain.WorkInfoFetchResult
-	var err error
-	if body.URL != nil {
-		fetch, err = s.workInfoPlugins.FetchWorkInfo(r.Context(), id, *body.PluginID, *body.URL)
-	} else {
-		fetch, err = s.workInfoPlugins.FetchWorkInfoByID(r.Context(), id, *body.PluginID, *body.ID)
-	}
+	fetch, err := s.workInfoPlugins.FetchWorkInfo(r.Context(), id, *body.PluginID, *body.ID)
 	if err != nil {
 		s.workInfoRunError(w, err, "The video or the work-info plugin was not found.")
 		return
@@ -154,10 +148,12 @@ func (s *server) GetWorkInfoFetchCover(w http.ResponseWriter, _ *http.Request, i
 }
 
 // ApplyWorkInfoFetch は取得の結果のうち選んだ項目を動画に反映する
-// （POST /api/videos/{id}/work-info-fetches/{fetchId}/apply）。
+// （POST /api/videos/{id}/work-info-fetches/{fetchId}/apply）。tags があれば、取得したタグのうちその名前だけを
+// 付ける（specs/056-plugin-tooling/contracts/screen-api.md）。
 func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id gen.VideoId, fetchID gen.WorkInfoFetchId) {
 	var body gen.ApplyWorkInfoFetchRequest
-	if !s.readJSONBody(w, r, &body) {
+	present, ok := s.readJSONBodyFields(w, r, &body)
+	if !ok {
 		return
 	}
 	fields := make([]domain.WorkInfoField, 0, len(body.Fields))
@@ -172,13 +168,19 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 		s.invalidRequest(w, "fields must name at least one field.")
 		return
 	}
+	tags, ok := applyTagSelection(body.Tags, present("tags"), fields)
+	if !ok {
+		s.invalidRequest(w, "tags must name at least one of the fetched tags, and only when fields includes tags.")
+		return
+	}
 	if !s.workInfoPluginsConfigured(w) {
 		return
 	}
-	applied, err := s.workInfoPlugins.ApplyWorkInfoFetch(r.Context(), id, fetchID, fields)
+	applied, err := s.workInfoPlugins.ApplyWorkInfoFetch(r.Context(), id, fetchID, fields, tags)
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoApplyInvalid):
-		s.invalidRequest(w, "fields must name at least one field, and each must have a value in the result.")
+		s.invalidRequest(w, "fields must name at least one field, and each must have a value in the result. "+
+			"tags must name at least one of the fetched tags, and only when fields includes tags.")
 		return
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, "The video was not found, or the result belongs to another video.")
@@ -212,6 +214,19 @@ func (s *server) ApplyWorkInfoFetch(w http.ResponseWriter, r *http.Request, id g
 	writeJSON(w, http.StatusOK, gen.WorkInfoFetchApplied{Video: video, SkippedTags: skippedTags, Skipped: skipped}, s.logger)
 }
 
+// applyTagSelection は反映の本文の tags を、登録へ渡す選んだタグの名前にする。無ければ nil（全部のタグ）で、
+// 空か、fields にタグが無いのに有れば偽を返す。名前が結果に有るかは登録が確かめる。present は本文に tags が
+// あったか（値が null でも）で、生成型では省略と同じ nil になる null を、全部のタグに化けないよう偽にする。
+func applyTagSelection(tags *[]string, present bool, fields []domain.WorkInfoField) ([]string, bool) {
+	if tags == nil {
+		return nil, !present
+	}
+	if len(*tags) == 0 || !slices.Contains(fields, domain.WorkInfoFieldTags) {
+		return nil, false
+	}
+	return *tags, true
+}
+
 // workInfoRunError は検索と取得の誤りを契約の応答にする（contracts/screen-api.md の Run failures）。
 // notFound は domain.ErrNotFound のときの文である。
 func (s *server) workInfoRunError(w http.ResponseWriter, err error, notFound string) {
@@ -221,7 +236,7 @@ func (s *server) workInfoRunError(w http.ResponseWriter, err error, notFound str
 	)
 	switch {
 	case errors.Is(err, domain.ErrWorkInfoRunInvalid):
-		s.invalidRequest(w, "The query must be 1 to 200 characters, and the URL an http or https URL of at most 2048 characters.")
+		s.invalidRequest(w, "The query and the work's id must be 1 to 200 characters after trimming spaces.")
 	case errors.Is(err, domain.ErrNotFound):
 		s.notFound(w, notFound)
 	case errors.Is(err, domain.ErrWorkInfoPluginNotApproved):
