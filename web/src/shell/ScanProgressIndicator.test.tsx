@@ -127,7 +127,9 @@ describe("ScanProgressIndicator", () => {
     await user.unhover(trigger);
     await user.click(trigger);
     await waitFor(() =>
-      expect(screen.getByTestId("location").textContent).toBe("/settings#scan-status"),
+      expect(screen.getByTestId("location").textContent).toBe(
+        "/settings/scan#scan-status",
+      ),
     );
   });
 
@@ -142,7 +144,7 @@ describe("ScanProgressIndicator", () => {
 
     fireEvent.click(trigger);
 
-    expect(screen.getByTestId("location").textContent).toBe("/settings#scan-status");
+    expect(screen.getByTestId("location").textContent).toBe("/settings/scan#scan-status");
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
@@ -251,7 +253,7 @@ describe("ScanProgressIndicator", () => {
     await user.hover(trigger);
     expect(await screen.findByRole("dialog")).toBeDefined();
     await user.click(trigger);
-    expect(screen.getByTestId("location").textContent).toBe("/settings#scan-status");
+    expect(screen.getByTestId("location").textContent).toBe("/settings/scan#scan-status");
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(document.activeElement).toBe(trigger);
     await new Promise((resolve) => window.setTimeout(resolve, 150));
@@ -539,7 +541,7 @@ describe("ScanProgressIndicator", () => {
 
     fireEvent.click(trigger);
 
-    expect(screen.getByTestId("location").textContent).toBe("/settings#scan-status");
+    expect(screen.getByTestId("location").textContent).toBe("/settings/scan#scan-status");
     expect(screen.queryByRole("button", { name: /Open the scan status/ })).toBeNull();
     expect(window.sessionStorage.getItem("vv.scan-notice")).toContain(
       '"acknowledgedTerminalScanId":1',
@@ -831,7 +833,7 @@ describe("ScanProgressIndicator", () => {
       fireEvent.focus(trigger);
       await screen.findByRole("dialog");
       expectCatalogTextOnly(document.body, [
-        "/settings#scan-status",
+        "/settings/scan#scan-status",
         "/",
         "夏の旅行.mp4",
         "start for test",

@@ -184,7 +184,7 @@ describe("VideoPage work-info fetch", () => {
     expect(alert.textContent).toContain("works needs API token first.");
     expect(
       within(alert).getByRole("link", { name: "Open Settings" }).getAttribute("href"),
-    ).toBe("/settings#work-info-plugins");
+    ).toBe("/settings/plugins#work-info-plugins");
   });
 
   it("期限切れの結果は知らせと Fetch again を出し、動画を変えず、取り直すと新しい比較になる", async () => {

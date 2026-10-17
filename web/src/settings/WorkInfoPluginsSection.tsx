@@ -189,7 +189,7 @@ function PluginList({
  * （specs/049-work-info-plugins/ui-design.md「Settings: Work-info plugins section」）。
  * 設定画面は所有者だけが開けるので、この節も所有者にだけ出る（受け入れ条件 7）。
  *
- * 節は `/settings#work-info-plugins` の行き先で、動画ページの取得ダイアログの「Open Settings」が
+ * 節は `/settings/plugins#work-info-plugins` の行き先で、動画ページの取得ダイアログの「Open Settings」が
  * ここへ移る。
  */
 export default function WorkInfoPluginsSection() {

@@ -35,8 +35,8 @@ import ActionButton from "../ActionButton";
 import type { ThumbnailCapture } from "../VideoFacts";
 import ThumbnailEditor from "./ThumbnailEditor";
 
-/** COMFYUI_SETTINGS は Settings の ComfyUI の節である。 */
-export const COMFYUI_SETTINGS = "/settings#comfyui";
+/** COMFYUI_SETTINGS は Settings の Connections のページの ComfyUI の節である。 */
+export const COMFYUI_SETTINGS = "/settings/connections#comfyui";
 
 /**
  * useReadiness は編集の入口を有効にできるか（ComfyUI の接続先が保存されているか）を読む。

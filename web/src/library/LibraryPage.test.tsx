@@ -240,7 +240,7 @@ describe("LibraryPage", () => {
     expect(await screen.findByText("No videos yet")).toBeDefined();
     // 押しても取り込みを始めず、開始の場所である設定の「Scan status」へ移る。
     expect(screen.getByRole("link", { name: "Scan" }).getAttribute("href")).toBe(
-      "/settings#scan-status",
+      "/settings/scan#scan-status",
     );
   });
 
