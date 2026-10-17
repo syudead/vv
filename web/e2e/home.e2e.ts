@@ -42,6 +42,18 @@ interface HomeShelf {
   byOrganizer?: boolean;
 }
 
+interface ShelfItem {
+  kind: string;
+  video?: { id: number; title: string };
+  group?: { videoIds: number[] };
+}
+
+interface HomeShelfItems {
+  key: string;
+  items: ShelfItem[];
+  total: number;
+}
+
 interface HomeOrganizeRun {
   run: string;
   outcome: string;
@@ -124,6 +136,30 @@ async function readHome(request: APIRequestContext): Promise<Home> {
   const response = await request.get("/api/home");
   expect(response.status()).toBe(200);
   return (await response.json()) as Home;
+}
+
+/**
+ * readAllShelfItems は見る人のホームのどの棚も、listHomeShelfItems の上限の 8 件ずつ鍵を
+ * 送って項目を読む。画面がまだ描いていない棚も、読み損ねた棚も含む。
+ */
+async function readAllShelfItems(request: APIRequestContext): Promise<HomeShelfItems[]> {
+  const keys = (await readHome(request)).shelves.map((shelf) => shelf.key);
+  const all: HomeShelfItems[] = [];
+  for (let start = 0; start < keys.length; start += 8) {
+    const batch = keys.slice(start, start + 8).join(",");
+    const response = await request.get(`/api/home/shelves?keys=${batch}`);
+    expect(response.status()).toBe(200);
+    all.push(...((await response.json()) as { shelves: HomeShelfItems[] }).shelves);
+  }
+  return all;
+}
+
+/** shelfVideoIds は棚の項目の動画と、グループの子孫の動画の id である。 */
+function shelfVideoIds(shelf: HomeShelfItems): number[] {
+  return shelf.items.flatMap((item) => [
+    ...(item.video === undefined ? [] : [item.video.id]),
+    ...(item.group?.videoIds ?? []),
+  ]);
 }
 
 async function readFolder(request: APIRequestContext, id: number): Promise<SmartFolder> {
@@ -339,9 +375,21 @@ test.describe.serial("home", () => {
     const context = await guestContext(browser);
     try {
       const page = await context.newPage();
+      // 閲覧者に見せる棚のすべてを API から読み、画面がまだ描いていない棚も確かめる。
+      const shelves = await readAllShelfItems(context.request);
+      const served = new Set(shelves.flatMap(shelfVideoIds));
+      for (const title of publicTitles) expect(served).toContain(video(title).id);
+      for (const title of privateTitles) expect(served).not.toContain(video(title).id);
+
       await page.goto("/");
       await showAllShelves(page);
       await expect(shelfRow(page, "Recently added")).toBeVisible();
+      // 画面は読み損ねた棚を残さず、描いた棚にも非公開の動画を出さない。
+      await expect(
+        page
+          .getByRole("region", { name: "Shelves" })
+          .getByRole("button", { name: "Retry", exact: true }),
+      ).toHaveCount(0);
       const shown = await cardTitles(page);
       for (const title of publicTitles) expect(shown).toContain(title);
       for (const title of privateTitles) expect(shown).not.toContain(title);
