@@ -33,6 +33,9 @@ restart and the Vite development server.
 
 ## Validate changes
 
+Read the [testing policy](../design-docs/testing.md) when writing or changing
+Go or Web tests; it defines their scope, synchronization and fixture choices.
+
 ```bash
 mise exec --command "task check"
 ```
