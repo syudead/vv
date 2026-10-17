@@ -1,5 +1,5 @@
 import { CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import {
   type AutoTaggingScope,
@@ -69,7 +69,7 @@ function ProgressSection({
 }: {
   settings: AutoTaggingSettings;
   starting: AutoTaggingScope | null;
-  locked: boolean;
+  locked?: boolean;
   onStart: (scope: AutoTaggingScope) => void;
 }) {
   const text = t.settings.autoTagging;
@@ -123,6 +123,95 @@ function ProgressSection({
 }
 
 /**
+ * SectionsLoading は 2 つの節を読んでいる間の形である。読めなければ「Classifier」の節に
+ * 読めなかった旨と `Retry` を出す。
+ */
+function SectionsLoading({
+  description,
+  loadError,
+  onRetry,
+}: {
+  description: ReactNode;
+  loadError: UiText | null;
+  onRetry: () => void;
+}) {
+  const text = t.settings.autoTagging;
+  return (
+    <>
+      {loadError === null && (
+        <PageSection title={text.progressHeading}>
+          <Skeleton className="h-8" />
+        </PageSection>
+      )}
+      <PageSection title={text.heading} description={description}>
+        {loadError !== null ? (
+          <div>
+            <ErrorState
+              title={text.loadFailed(loadError)}
+              retryLabel={t.common.retry}
+              onRetry={onRetry}
+            />
+          </div>
+        ) : (
+          <div role="status" aria-label={text.loading} className="flex flex-col gap-3">
+            <Skeleton className="h-9" />
+            <Skeleton className="h-9" />
+          </div>
+        )}
+      </PageSection>
+    </>
+  );
+}
+
+/** ClassifierFeedback は「Test judging」の結果と保存の失敗の行である。 */
+function ClassifierFeedback({
+  check,
+  saveError,
+}: {
+  check: CheckState;
+  saveError: UiText | null;
+}) {
+  const text = t.settings.autoTagging;
+  return (
+    <>
+      {check.kind === "checking" && (
+        <p
+          role="status"
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+        >
+          <LoaderCircle
+            aria-hidden="true"
+            className="size-4 animate-spin motion-reduce:animate-none"
+          />
+          {text.checking}
+        </p>
+      )}
+      {check.kind === "ok" && (
+        <p
+          role="status"
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+        >
+          <CircleCheck aria-hidden="true" className="size-4" />
+          {text.checkOk}
+        </p>
+      )}
+      {check.kind === "failed" && (
+        <Alert variant="destructive">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>{check.message}</AlertTitle>
+        </Alert>
+      )}
+      {saveError !== null && (
+        <Alert variant="destructive">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>{saveError}</AlertTitle>
+        </Alert>
+      )}
+    </>
+  );
+}
+
+/**
  * AutoTaggingSection は「Auto-tagging」のページの「Progress」と「Classifier」の 2 つの節である。
  * 「Classifier」で機能の入切、取り込みのあとの自動の判定と 2 つの確率を設定し、機能が入なら
  * 「Progress」でライブラリの動画を判定に回す
@@ -137,8 +226,8 @@ function ProgressSection({
  * Loading）。
  */
 export default function AutoTaggingSection({
-  locked = false,
-  pending = false,
+  locked,
+  pending,
 }: {
   locked?: boolean;
   pending?: boolean;
@@ -262,33 +351,14 @@ export default function AutoTaggingSection({
 
   const description = <PageLinkText sentence={text.description} page="connections" />;
 
-  if (pending || draft === null || settings === null) {
+  if (pending || draft === null || settings === null)
     return (
-      <>
-        {loadError === null && (
-          <PageSection title={text.progressHeading}>
-            <Skeleton className="h-8" />
-          </PageSection>
-        )}
-        <PageSection title={text.heading} description={description}>
-          {loadError !== null ? (
-            <div>
-              <ErrorState
-                title={text.loadFailed(loadError)}
-                retryLabel={t.common.retry}
-                onRetry={() => void load()}
-              />
-            </div>
-          ) : (
-            <div role="status" aria-label={text.loading} className="flex flex-col gap-3">
-              <Skeleton className="h-9" />
-              <Skeleton className="h-9" />
-            </div>
-          )}
-        </PageSection>
-      </>
+      <SectionsLoading
+        description={description}
+        loadError={loadError}
+        onRetry={() => void load()}
+      />
     );
-  }
 
   return (
     <>
@@ -385,39 +455,7 @@ export default function AutoTaggingSection({
               {text.check}
             </Button>
           </div>
-          {check.kind === "checking" && (
-            <p
-              role="status"
-              className="flex items-center gap-2 text-xs text-muted-foreground"
-            >
-              <LoaderCircle
-                aria-hidden="true"
-                className="size-4 animate-spin motion-reduce:animate-none"
-              />
-              {text.checking}
-            </p>
-          )}
-          {check.kind === "ok" && (
-            <p
-              role="status"
-              className="flex items-center gap-2 text-xs text-muted-foreground"
-            >
-              <CircleCheck aria-hidden="true" className="size-4" />
-              {text.checkOk}
-            </p>
-          )}
-          {check.kind === "failed" && (
-            <Alert variant="destructive">
-              <CircleAlert aria-hidden="true" />
-              <AlertTitle>{check.message}</AlertTitle>
-            </Alert>
-          )}
-          {saveError !== null && (
-            <Alert variant="destructive">
-              <CircleAlert aria-hidden="true" />
-              <AlertTitle>{saveError}</AlertTitle>
-            </Alert>
-          )}
+          <ClassifierFeedback check={check} saveError={saveError} />
         </div>
       </PageSection>
     </>
