@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: 2310c1c207bc74e387fcedd352344928266853a74cafe367203f9ec3dfa877b2
+sourceHash: 9513ffb61dcda9e0e6f4c93a868c53c85635532cbaf479de431bc02cdbec396a
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -148,7 +148,7 @@ flowchart LR
 
 並び順は追加日、更新日、作成日、タイトル、長さ、ファイルサイズ、最近再生、お気に入り登録日、ランダムだ。ゲストでは所有者専用の最近再生とお気に入り登録日がなくなる。作成日はほかの日付と並ぶ（[033 UI 設計](../../specs/033-video-dates/ui-design.md)）。お気に入り登録日は最近再生の後に続き、新しい順に並べる（[035 UI 設計、Sort and direction](../../specs/035-favorites/ui-design.md)）。
 
-絞り込みのポップオーバーは、視聴状態、`Favorites only`（URL は `fav=1`）、再生可否、所有者には `Tag kind` の選択欄（URL は `tagKind=<id>`）をこの順に並べる。選択欄は `Any kind` と、名前の自然順に並べた種類を示し、種類はポップオーバーを最初に開いたときに共有の種類一覧から読む。適用した種類は `Filtering by` の行に `Kind: <name>` のチップとしても表示され、読み込んだ一覧にもう含まれない種類はトーストとともに URL から外れる（[051 UI 設計、Library](../../specs/051-tag-kinds/ui-design.md#library)）。その後に `Added` と `Length` が続く。所有者とゲストに共通の、プリセットの 2 つの選択欄だ（URL は `addedWithin=<days>`、`minDuration=<s>`、`maxDuration=<s>`）。プリセット外の値はそれ自身の選択肢として描き、範囲外の値や最大を上回る最小はリクエストの前に URL から外れる（[052 UI 設計、Added and length](../../specs/052-smart-folders/ui-design.md#added-and-length)）。絞り込みボタンはそれぞれを適用中の絞り込み 1 つとして数える。`Clear filters` はお気に入り、種類、追加日、長さをほかの絞り込みと一緒にだけ解除し、並び順は保つ。`fav=1`、`tagKind`、`sort=favorited*` のいずれかを含むゲストの URL は、リクエストの前に既定値へ戻し、URL を正す。
+絞り込みのポップオーバーは、視聴状態、`Favorites only`（URL は `fav=1`）、再生可否、所有者には `Tag kind` の選択欄（URL は `tagKind=<id>`）をこの順に並べる。選択欄は `Any kind` と、名前の自然順に並べた種類を示し、種類はポップオーバーを最初に開いたときに共有の種類一覧から読む。適用した種類は `Filtering by` の行に `Kind: <name>` のチップとしても表示され、読み込んだ一覧にもう含まれない種類はトーストとともに URL から外れる（[051 UI 設計、Library](../../specs/051-tag-kinds/ui-design.md#library)）。その後に `Added` と `Length` が続く。所有者とゲストに共通の、プリセットの 2 つの選択欄だ（URL は `addedWithin=<days>`、`minDuration=<s>`、`maxDuration=<s>`）。プリセット外の値はそれ自身の選択肢として描き、範囲外の値や最大を上回る最小はリクエストの前に URL から外れる（[052 UI 設計、Added and length](../../specs/052-smart-folders/ui-design.md#added-and-length)）。絞り込みボタンはそれぞれを適用中の絞り込み 1 つとして数える。`Clear filters` はお気に入りだけの絞り込み、種類、追加日、長さをほかの絞り込みと一緒に解除し、並び順は保つ。`fav=1`、`tagKind`、`sort=favorited*` のいずれかを含むゲストの URL は、リクエストの前に既定値へ戻し、URL を正す。
 
 いずれかの絞り込みが適用されている間、所有者のライブラリのヘッダーには `outline` の操作 `Save as smart folder` があり、絞り込みを条件に、現在の並び順を並び順にして（`Random` は追加日に置き換える）スマートフォルダのダイアログを開き、`Created "{name}"` のトーストには新しいフォルダのページへ進む `Open` がある（[052 UI 設計、Save as smart folder](../../specs/052-smart-folders/ui-design.md#save-as-smart-folder)）。
 
