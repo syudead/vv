@@ -1,6 +1,6 @@
 ---
 source: specs/042-folder-watch-import/plan.md
-sourceHash: 18f7e4244ea972f95a5f5c16ce94f948e861c112bb323a3be80ccee4052d930f
+sourceHash: e8dff52cbf63f887e7c2906327816c994ef008822c4eaf49c122eeb00977ca21
 ---
 
 # 実装計画: 変更されたメディアフォルダを自動で取り込む {#implementation-plan-auto-import-changed-media-folders}
@@ -50,6 +50,7 @@ flowchart LR
 | 起動と停止の順序 | [process-lifecycle.md](../../docs/design-docs/process-lifecycle.md)、[cmd/mdm/main.go](../../cmd/mdm/main.go) |
 | 保存する設定と Settings 画面 | [internal/store/settings.go](../../internal/store/settings.go)、[037 のネットワーク設定の契約](../037-windows-app/contracts/network-settings-api.md) |
 | 画面の API と生成コード | [api/openapi.yaml](../../api/openapi.yaml)、`task generate` |
+| Web のテスト段階 | [web-testing.md](../../docs/design-docs/web-testing.md) |
 | 検査 | [Taskfile.yml](../../Taskfile.yml) (`task check`、`task check-docs`、`task build-windows-check`) |
 
 **この機能に固有の文脈**:
@@ -157,4 +158,14 @@ flowchart LR
 
 **依存**: 自動取り込みの設定とスキャンの起点を画面の API に出す。
 
-**受け入れ**: `task check` が通り、e2e の spec が次を示す: 進行中の `watch` のスキャンは右下に何も出さない。`partial` で終わったものは通知を出し、その問題を Settings に出す。切り替えは選択を保存し、再読み込みの後も残る。ゲストには切り替えが見えない。画面が変わるので、実装は `ui-design.md` に照らした見た目のレビューを負い、単位が入ったら [quickstart.md](quickstart.md) の行を実行する。
+**受け入れ**: `task check` が通る。証拠は [Web のテスト段階](../../docs/design-docs/web-testing.md) に沿って分ける:
+
+| 段階 | 証拠 |
+| --- | --- |
+| ロジック | 通知の規則は実行中と成功した監視によるスキャンの通知を抑え、partial または failed のスキャンには失敗の通知を選ぶ。 |
+| コンポーネント | 実行中の監視によるスキャンは右下に何も出さず、partial または failed の監視によるスキャンは失敗の通知を出す。 |
+| コンポーネント | ゲストには自動取り込みの切り替えが見えない。 |
+| ページ | partial の監視によるスキャンの通知を開くと Settings に移動し、その問題を示す。 |
+| E2E | 切り替えは実際のサーバーを通じて選択を保存し、再読み込みの後もそれを保つ。 |
+
+画面が変わるので、実装は `ui-design.md` に照らした見た目のレビューを負い、単位が入ったら [quickstart.md](quickstart.md) の行を実行する。

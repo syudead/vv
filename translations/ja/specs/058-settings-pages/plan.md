@@ -1,6 +1,6 @@
 ---
 source: specs/058-settings-pages/plan.md
-sourceHash: 0ab7a4bbf26a8fba0bb7fbd53fc40031cf1f2bf97e17715e1a6a88faf04cef2f
+sourceHash: c819433ef64c7adb0c54f24ef28f326b776912717376a039c767057633d9024a
 ---
 
 # 実装計画: 設定を開く頻度で 8 つのページに分ける {#implementation-plan-settings-split-into-eight-pages-by-how-often-they-are-opened}
@@ -36,7 +36,7 @@ flowchart LR
 
 Issue は `ui` ラベルを持つので、画面の単位の前に `design` の段階が `ui-design.md` を書く。ページの一覧と今の項目、ページの題と `sm` より下の戻るリンク、分けた Auto-import の行、リンク付きの押せない自動タグ付けのページ、重複の判定のスイッチの下の注記、デスクトップアプリの外でのネットワークのページの行、8 つの項目の言葉を、親 Issue の `UI品質` に照らして決める。
 
-`data-model.md` はない。この機能はエンティティを足さず、テーブルを変えない。`quickstart.md` もない。受け入れ条件はページのテスト、e2e のテスト、`ui-design.md` が求める目視の確認である。
+`data-model.md` はない。この機能はエンティティを足さず、テーブルを変えない。`quickstart.md` もない。受け入れの証拠には下でリンクするテスト段階と、`ui-design.md` が求める目視の確認を使う。
 
 ## 技術的な文脈 {#technical-context}
 
@@ -120,7 +120,7 @@ flowchart LR
 
 **依存**: なし。
 
-**受け入れ**: `task check` が `task generate` との差分なしに通る。ハンドラのテストは、`GET /api/settings/ollama` が保存の前は `saved: false` を、`PUT` の後は `saved: true` を返し、`PUT` の応答が `saved: true` を持ち、`saved` を持つ `PUT` の本文には `400` を返すことを示す。ページのテストは、Ollama の節が `saved` 付きで読んだ接続先を保存でき、リクエストの本文が `endpoint` と `model` だけを持つことを示す。設定の画面は変わらない。
+**受け入れ**: `task check` が `task generate` との差分なしに通る。ハンドラのテストは、`GET /api/settings/ollama` が保存の前は `saved: false` を、`PUT` の後は `saved: true` を返し、`PUT` の応答が `saved: true` を持ち、`saved` を持つ `PUT` の本文には `400` を返すことを示す。API モジュールのテストは、更新リクエストの本文が `endpoint` と `model` だけを持つことを示す。コンポーネントのテストは、Ollama の節が `saved` 付きで読んだ接続先を保存できることを示す。設定の画面は変わらない。
 
 ### 設定のページのパターンにページの一覧のスロットを与える {#give-the-settings-page-pattern-a-slot-for-a-page-list}
 
@@ -136,7 +136,7 @@ flowchart LR
 
 **依存**: なし。
 
-**受け入れ**: `task check` が通る。2 つのコンポーネントへ移した Auto-import の節のページのテストが通る。`auto-import` の e2e の仕様は変更なしに通る。
+**受け入れ**: `task check` が通る。コンポーネントのテストは監視状態とスイッチを別々に扱う。実際のサーバーを使う設定の保存と再読み込みに関する `auto-import` の e2e の仕様は変更なしに通る。
 
 ### 設定を自分のアドレスを持つ 8 つのページとページの一覧に分ける {#split-settings-into-eight-pages-with-their-own-addresses-and-a-page-list}
 
@@ -144,7 +144,7 @@ flowchart LR
 
 **依存**: 設定のページのパターンにページの一覧のスロットを与える。Auto-import の節を監視状態とスイッチに分ける。
 
-**受け入れ**: `task check` と `task check-docs` が通る。ロジックのテストは、知らないスラッグが `scan` に、`#comfyui` が接続のページに対応することを示す。ページのテストは、8 つのアドレスのそれぞれがそのページの節だけを描くこと、一覧が今のページを示すこと、`/settings/nowhere` が `/settings/scan` に置き換わること、`/settings#comfyui` が ComfyUI の見出しにフォーカスした `/settings/connections#comfyui` に着くこと、一覧から別のページへ移って戻ると前のページに戻ることを示す。ページのテストは、サイドバーが `/settings` でも `/settings/library` でも `Settings` を現在の項目として示すこと、ネットワークの読み取りが `404` を返すと `/settings/network` がデスクトップアプリの行を出すことを示す。ページのテストは、ライブラリのページでメディアフォルダを足してスキャンのページを開くと `Scan library` が押せることを示す。既存の設定の e2e の仕様がライブラリのページに対して通る。ページは `ui-design.md` の幅での目視の確認に通る。`sm` より下の一覧だけの状態と戻るリンクを含む。
+**受け入れ**: `task check` と `task check-docs` が通る。ロジックのテストは、知らないスラッグが `scan` に、`#comfyui` が接続のページに対応することを示す。ページのテストは、8 つのアドレスのそれぞれがそのページの節だけを描くこと、一覧が今のページを示すこと、`/settings/nowhere` が `/settings/scan` に置き換わること、`/settings#comfyui` が ComfyUI の見出しにフォーカスした `/settings/connections#comfyui` に着くこと、一覧から別のページへ移って戻ると前のページに戻ることを示す。ページのテストは、サイドバーが `/settings` でも `/settings/library` でも `Settings` を現在の項目として示す。コンポーネントのテストは、ネットワークの読み取りが `404` を返すと Network の節がデスクトップアプリの行を出すことを示す。ページのテストは、ライブラリのページでメディアフォルダを足してスキャンのページを開くと `Scan library` が押せることを示す。既存の設定の e2e の仕様がライブラリのページに対して通る。ページは `ui-design.md` の幅での目視の確認に通る。`sm` より下の一覧だけの状態と戻るリンクを含む。
 
 ### 設定の入口をそのページへ送る {#send-the-settings-entry-points-to-their-pages}
 
@@ -152,7 +152,7 @@ flowchart LR
 
 **依存**: 設定を自分のアドレスを持つ 8 つのページとページの一覧に分ける。
 
-**受け入れ**: `task check` と `task check-docs` が通る。ページのテストは、表示が取り込みの状況の見える `/settings/scan#scan-status` を開くこと、動画のページの編集の入口が `/settings/connections#comfyui` へリンクすること、作品情報の取得ダイアログの `Open Settings` が `/settings/plugins#work-info-plugins` へリンクすること、空のルートフォルダの `Open Settings` が `/settings/library` へリンクすることを示す。`scan-progress`、`scan-issues`、`auto-import`、`folders`、`work-info-plugins` の e2e の仕様が新しいアドレスに対して通る。
+**受け入れ**: `task check` と `task check-docs` が通る。ページのテストは、表示が取り込みの状況の見える `/settings/scan#scan-status` を開くことを示す。コンポーネントのテストは、編集の入口が `/settings/connections#comfyui` へリンクすること、作品情報の取得ダイアログの `Open Settings` が `/settings/plugins#work-info-plugins` へリンクすること、空のルートフォルダの `Open Settings` が `/settings/library` へリンクすることを示す。`scan-progress`、`scan-issues`、`auto-import`、`folders`、`work-info-plugins` の e2e の仕様が新しいアドレスに対して通る。
 
 ### Ollama の接続先が保存されるまで自動タグ付けのページを押せなくする {#lock-the-auto-tagging-page-until-the-ollama-connection-is-saved}
 
@@ -160,7 +160,19 @@ flowchart LR
 
 **依存**: 設定 API で Ollama の接続先を保存したかを返す。設定を自分のアドレスを持つ 8 つのページとページの一覧に分ける。
 
-**受け入れ**: `task check` が通る。ページのテストは、`saved: false` のときスイッチ、入力、`Save`、`Test judging`、実行ボタンが保存した値を見せたまま `aria-disabled` で、リンクが `/settings/connections` へ導くこと、各スイッチとボタンを押しても各入力に打っても表示された値が変わらずリクエストも送られないこと、そこで接続先を保存して戻ると押せること、`saved: true` で自動タグ付けをオフにして保存すると実行ボタンが今までどおり隠れること、読み取りの失敗では操作が押せたままで読み取り失敗の行が出ることを示す。ページは `ui-design.md` の幅での目視の確認に通る。
+**受け入れ**: `task check` が通る。証拠は [Web のテスト段階](../../docs/design-docs/web-testing.md) に沿って分ける:
+
+| 段階 | 証拠 |
+| --- | --- |
+| ロジック (フック) | 接続の読み取りは、失敗した読み取りの後の再試行を含め、R-5 の表にある読み込み中、未保存、保存済み、失敗の状態を生む。 |
+| コンポーネント | 押せない間、自動タグ付けの節のスイッチ、入力、`Save`、`Test judging`、実行ボタンは保存した値を見せたまま `aria-disabled` である。 |
+| コンポーネント | 押せない各スイッチとボタンを押しても、各入力に打っても、値は変わらず、リクエストも送られない。 |
+| コンポーネント | 押せる状態で自動タグ付けをオフにして保存すると、自動タグ付けの節は実行ボタンを隠す。 |
+| コンポーネント | 押せないことを知らせる通知は `/settings/connections` にリンクし、読み取り失敗の通知は `Retry` を提示する。 |
+| ページ | `saved: false` のとき、ページは操作を押せなくし、通知から Connections に移動してそこで接続先を保存し、戻ると操作を押せるようにする。 |
+| コンポーネント | 接続の読み取りに失敗すると、操作は押せたままで、読み取り失敗の通知が出る。 |
+
+ページは `ui-design.md` の幅での目視の確認に通る。
 
 ### 重複の判定のスイッチの下で、異なる組には Ollama の接続が要ると言う {#say-under-the-duplicate-judging-switch-that-differing-pairs-need-the-ollama-connection}
 
@@ -168,4 +180,4 @@ flowchart LR
 
 **依存**: Ollama の接続先が保存されるまで自動タグ付けのページを押せなくする。
 
-**受け入れ**: `task check` が通る。ページのテストは、`saved: false` でスイッチが切り替わって保存され、注記が `/settings/connections` へリンクすること、`saved: true` か読み取りの失敗では注記がないことを示す。節は `ui-design.md` の幅での目視の確認に通る。
+**受け入れ**: `task check` が通る。コンポーネントのテストは、`saved: false` でスイッチが切り替わって保存され、注記が `/settings/connections` へリンクすること、`saved: true` か読み取りの失敗では注記がないことを示す。ページのテストは、ライブラリのページの注記から Connections へ移動することを示す。節は `ui-design.md` の幅での目視の確認に通る。

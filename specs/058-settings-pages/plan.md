@@ -45,8 +45,8 @@ entries, judged against the parent Issue's
 `UI品質`.
 
 No `data-model.md`: the feature adds no entity and changes no table. No
-`quickstart.md`: the acceptance criteria are page tests, e2e tests and the
-visual review `ui-design.md` asks for.
+`quickstart.md`: the acceptance evidence uses the test levels linked below
+and the visual review `ui-design.md` asks for.
 
 ## Technical Context
 
@@ -149,9 +149,10 @@ the `OllamaConnection` port and handler answering `saved` from the store's
 **Acceptance**: `task check` passes with no diff from `task generate`; handler
 tests show `GET /api/settings/ollama` answers `saved: false` before any save
 and `saved: true` after a `PUT`, the `PUT` response carries `saved: true`, and
-a `PUT` body with `saved` is answered `400`; a page test shows the Ollama
-section saves a connection it read with `saved` and the request body holds
-`endpoint` and `model` only; the Settings screen is unchanged.
+a `PUT` body with `saved` is answered `400`; an API module test shows the
+update request body holds `endpoint` and `model` only; a component test shows
+the Ollama section saves a connection it read with `saved`; the Settings
+screen is unchanged.
 
 ### Give the settings page pattern a slot for a page list
 
@@ -176,9 +177,9 @@ shown in the one Settings screen
 
 **Dependencies**: None.
 
-**Acceptance**: `task check` passes; the Auto-import section's page tests,
-moved to the two components, pass; the `auto-import` e2e spec passes
-unchanged.
+**Acceptance**: `task check` passes; component tests cover the watch state
+and the switch separately; the real-server setting save and reload in the
+`auto-import` e2e spec passes unchanged.
 
 ### Split Settings into eight pages with their own addresses and a page list
 
@@ -204,9 +205,9 @@ list marks the current page, `/settings/nowhere` is replaced by
 `/settings/scan`, `/settings#comfyui` lands on `/settings/connections#comfyui`
 with the ComfyUI heading focused, and moving from the list to another page
 and back restores the previous page; page tests show the sidebar marks
-`Settings` current on `/settings` and on `/settings/library`, and that with
-the network read answering `404` `/settings/network` shows the desktop-app
-line; a page test shows adding a media folder
+`Settings` current on `/settings` and on `/settings/library`; a component
+test shows the Network section's desktop-app line when the network read
+answers `404`; a page test shows adding a media folder
 on the Library page and opening the Scan page enables `Scan library`; the
 existing settings e2e spec passes against the Library page; the pages pass a
 visual review at the widths in `ui-design.md`, including the list alone and
@@ -224,10 +225,10 @@ assert or open the old addresses.
 **Dependencies**: Split Settings into eight pages with their own addresses and
 a page list.
 
-**Acceptance**: `task check` and `task check-docs` pass; page tests show the
-indicator opens `/settings/scan#scan-status` with the scan status visible, the
-video page's edit entry links to `/settings/connections#comfyui`, the
-work-info fetch dialog's `Open Settings` links to
+**Acceptance**: `task check` and `task check-docs` pass; a page test shows the
+indicator opens `/settings/scan#scan-status` with the scan status visible;
+component tests show the edit entry links to `/settings/connections#comfyui`,
+the work-info fetch dialog's `Open Settings` links to
 `/settings/plugins#work-info-plugins`, and the empty root folder's
 `Open Settings` links to `/settings/library`; the `scan-progress`,
 `scan-issues`, `auto-import`, `folders` and `work-info-plugins` e2e specs pass
@@ -245,15 +246,20 @@ failed-read line with `Retry`, from `ui-design.md`.
 settings API; Split Settings into eight pages with their own addresses and a
 page list.
 
-**Acceptance**: `task check` passes; page tests show that with `saved: false`
-the switches, inputs, `Save`, `Test judging` and the run buttons are
-`aria-disabled` with the saved values visible and the link leads to
-`/settings/connections`, that pressing each switch and button and typing in
-each input changes no value shown and sends no request, that after saving the connection there and going
-back they are pressable, that with `saved: true` and auto-tagging turned off
-and saved the run buttons are hidden as today, and that a failed read leaves
-the controls pressable and shows the failed-read line; the page passes a
-visual review at the widths in `ui-design.md`.
+**Acceptance**: `task check` passes, with the evidence split by
+[Web test levels](../../docs/design-docs/web-testing.md):
+
+| Level | Evidence |
+| --- | --- |
+| Logic (hook) | The connection read produces the loading, unsaved, saved and failed states in R-5's table, including retry after a failed read. |
+| Component | The Auto-tagging section's switches, inputs, `Save`, `Test judging` and run buttons are `aria-disabled` with their saved values visible while locked. |
+| Component | Pressing each locked switch and button and typing in each locked input changes no value and sends no request. |
+| Component | The Auto-tagging section hides the run buttons after auto-tagging is turned off and saved while unlocked. |
+| Component | The lock notice links to `/settings/connections`, and the failed-read notice offers `Retry`. |
+| Page | With `saved: false`, the page locks its controls, follows the notice to Connections, saves the connection there and returns with the controls pressable. |
+| Component | A failed connection read leaves the controls pressable and shows the failed-read notice. |
+
+The page passes a visual review at the widths in `ui-design.md`.
 
 ### Say under the duplicate judging switch that differing pairs need the Ollama connection
 
@@ -265,7 +271,8 @@ visual review at the widths in `ui-design.md`.
 **Dependencies**: Lock the Auto-tagging page until the Ollama connection is
 saved.
 
-**Acceptance**: `task check` passes; page tests show the switch toggles and
-saves with `saved: false` and the note links to `/settings/connections`, and
-that with `saved: true` or a failed read there is no note; the section passes
-a visual review at the widths in `ui-design.md`.
+**Acceptance**: `task check` passes; component tests show the switch toggles
+and saves with `saved: false`, the note links to `/settings/connections`, and
+there is no note with `saved: true` or a failed read. A page test follows the
+Library page's note to Connections. The section passes a visual review at
+the widths in `ui-design.md`.

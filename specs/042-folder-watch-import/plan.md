@@ -51,6 +51,7 @@ is added.
 | Startup and shutdown order | [process-lifecycle.md](../../docs/design-docs/process-lifecycle.md), [cmd/mdm/main.go](../../cmd/mdm/main.go) |
 | Stored settings and the Settings screen | [internal/store/settings.go](../../internal/store/settings.go), [037 network settings contract](../037-windows-app/contracts/network-settings-api.md) |
 | Screen API and generated code | [api/openapi.yaml](../../api/openapi.yaml), `task generate` |
+| Web test levels | [web-testing.md](../../docs/design-docs/web-testing.md) |
 | Checks | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`, `task build-windows-check`) |
 
 **Feature-specific context**:
@@ -217,9 +218,17 @@ scan ends `partial` or `failed` (`要件 6`, `要件 7`, the `UI品質` section)
 **Dependencies**: Expose the auto-import setting and scan origin in the screen
 API.
 
-**Acceptance**: `task check` passes, and e2e specs show: a `watch` scan in
-progress shows nothing at the bottom right; one that ends `partial` shows the
-notice and its issue in Settings; the toggle stores the choice and survives a
-reload; a guest sees no toggle. The screen changes, so the implementation owes a
-visual review against `ui-design.md`, and the rows of
-[quickstart.md](quickstart.md) are run once the unit lands.
+**Acceptance**: `task check` passes, with the evidence split by
+[Web test levels](../../docs/design-docs/web-testing.md):
+
+| Level | Evidence |
+| --- | --- |
+| Logic | The notice rule suppresses running and successful watch scans and selects a failure notice for partial or failed scans. |
+| Component | A running watch scan shows nothing at the bottom right, and a partial or failed watch scan shows its failure notice. |
+| Component | A guest sees no auto-import toggle. |
+| Page | Opening a partial watch scan's notice navigates to Settings and shows its issue. |
+| E2E | The toggle stores the choice through the real server and keeps it after a reload. |
+
+The screen changes, so the implementation owes a visual review against
+`ui-design.md`, and the rows of [quickstart.md](quickstart.md) are run once
+the unit lands.

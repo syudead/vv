@@ -303,12 +303,13 @@ screen API; the `design` stage's `ui-design.md`.
 
 **Acceptance**: This unit changes a screen, so it needs a visual and
 interaction review against `ui-design.md` and the parent Issue's `UI品質`.
-`task check` passes; page tests show: entries listed newest first with the
-time and the title; an entry with a `video` opens `/videos/{id}` and one
-without is not a link and reads as not playable; loading more sends the
-previous `nextCursor`; deleting one removes that row and keeps the others; a
-`404` on delete reloads the list without a message; a failed delete keeps the
-row and shows a toast; clear asks first, cancel changes nothing, confirm
+`task check` passes; component tests show the entry's time and title and
+that an entry without a video has no link and reads as not playable; a list
+hook test shows loading more sends the previous `nextCursor`; page tests
+show: entries follow the response's newest-first order; an entry with a
+`video` opens `/videos/{id}`; deleting one removes that row and keeps the
+others; a `404` on delete reloads the list without a message; a failed delete
+keeps the row and shows a toast; clear asks first, cancel changes nothing, confirm
 shows the empty state; the guest sidebar has no entry and a guest at
 `/history` is sent to the login page.
 
@@ -397,15 +398,22 @@ the `design` stage's revised `ui-design.md`.
 
 **Acceptance**: This unit changes a screen, so it needs a visual and
 interaction review against the revised `ui-design.md` and the parent Issue's
-`UI品質`. `task check` passes; page tests show: an in-progress entry shows its
-position and length as `16:05 / 42:18` with a bar at that ratio and the resume
-action; a watched entry shows the restart action and no resume action; an
-entry with a video and no progress shows no position; an entry without a video
-shows neither action; pressing the resume action navigates to `/videos/{id}`
-with `state.autoplay` true and `state.from` the history URL; pressing the row
-itself navigates without `autoplay`; the video page test shows that
-`autoplay` from the history starts playback at `resumePosition(video)`, 0 for
-a completed video.
+`UI品質`. `task check` passes, with the evidence split by
+[Web test levels](../../docs/design-docs/web-testing.md):
+
+| Level | Evidence |
+| --- | --- |
+| Logic | The entry rules derive the position text, bar value and action from progress and duration, including completed videos and missing progress or duration. |
+| Component | An in-progress entry shows `16:05 / 42:18`, a bar at that ratio and the resume action. |
+| Component | A watched entry shows the restart action and no resume action. |
+| Component | An entry with a video and no progress shows no position. |
+| Component | An entry without a video shows neither action. |
+| Page | Pressing resume navigates to `/videos/{id}` with `state.autoplay` true and `state.from` the history URL. |
+| Page | Pressing the row itself navigates without `autoplay`. |
+| Page | The video page uses `autoplay` from history to start at `resumePosition(video)`, 0 for a completed video. |
+
+Actual playback from the resume and restart actions is checked by the
+browser-test unit below.
 
 ### Filter, search and jump by date on the watch history screen
 
@@ -433,9 +441,11 @@ interaction review against the revised `ui-design.md` and the parent Issue's
 check` passes; logic tests of the criteria show that
 `?watch=inProgress&q=a&date=2026-09` is read, that `watch=all`, an empty `q`
 and unreadable values are omitted or treated as the default, and that `q` is
-cut at 100 code points; page tests show: the filter and the search box send
-`watch` and `query` on the first page and on the next page; choosing a day
-sends `date` and `tz` and shows the page that comes back; the date list
+cut at 100 code points; logic tests cover the day and month grouping of the
+dates response; component tests show the date list's groups and distinguish
+the "no matches" state from the empty state; page tests show: the filter and
+the search box send `watch` and `query` on the first page and on the next
+page; choosing a day sends `date` and `tz` and shows the page that comes back; the date list
 requests the dates with the current `watch` and `query`, lists the days and
 months the response gives, and re-requests when the filter or the search
 changes; a response with no items under a filter or a search shows the "no
@@ -506,20 +516,20 @@ interaction review against the revised `ui-design.md` and the parent Issue's
 `UI品質` at the widths `ui-design.md` names, with a history of two viewings of
 one video on one day. `task check` and `task check-docs` pass, with no diff
 from `task generate`; logic tests show that `historyDays.ts` still groups
-entries by the viewer's local day, newest day first, and joins a next page's
-first entries to the open day; page tests show: the list has one level-2
-heading per day with the words the revised `ui-design.md` gives, and every
-row of a day is under that heading in the API's order; no row shows a time,
-so no text in the list matches the `formatTime` form (`9:42 PM`), and the
-document holds no `timeline` slot; two viewings of one video on one day are
-two rows under one heading; the accessible names of the row link and the
-remove button carry no time and read as the revised `ui-design.md` words
-them; the loading state, the "no matches" state, the date jump, the resume
-and start-over actions, remove and clear behave as the page tests of #863,
-#875 and #876 already show, on the new sections; `web/src/ui` exports no
-`Timeline`, `LoadingState` accepts no `timeline` layout, and
-`web/registry/r/` holds no `timeline` or `timeline-example` item;
-`task test-e2e -- e2e/history.e2e.ts` passes and shows: after playing a video
-for a few seconds, the history shows it as the first row under today's
-heading and the row carries no time (acceptance criterion 1), and the tests
+entries by the viewer's local day, newest day first, joins a next page's
+first entries to the open day, and keeps two viewings of one video on one
+day as two entries in one group; component tests show the revised day
+heading, row and loading skeleton, with no time in the row text or in the
+accessible names of its link and remove button. A page test shows the
+grouping is used: two viewings of one video appear under one level-2 day
+heading in the API's order, with no text matching the `formatTime` form
+(`9:42 PM`) and no `timeline` slot. The logic, component and page checks of
+#863, #875 and #876 still cover the loading and "no matches" states, date
+jump, resume and start-over actions, remove and clear on the new sections;
+registry checks show `web/src/ui` exports no `Timeline`, `LoadingState`
+accepts no `timeline` layout, and `web/registry/r/` holds no `timeline` or
+`timeline-example` item. `task test-e2e -- e2e/history.e2e.ts` passes and
+shows: after playing a video for a few seconds, the history shows it as the
+first row under today's heading and the row carries no time (acceptance
+criterion 1), and the tests
 of criteria 2 to 16 still pass with the names that carry no time.
