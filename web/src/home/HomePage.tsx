@@ -188,7 +188,13 @@ function OrganizingLine() {
 }
 
 /** FolderShelfMenu はフォルダの棚の所有者の「More」である。並びは見えている並びから作る。 */
-function FolderShelfMenu({ shelf, editing }: { shelf: HomeShelf; editing: ShelfEditing }) {
+function FolderShelfMenu({
+  shelf,
+  editing,
+}: {
+  shelf: HomeShelf;
+  editing: ShelfEditing;
+}) {
   const id = shelf.folderId;
   if (id === undefined) return null;
   const { order, writes } = editing;

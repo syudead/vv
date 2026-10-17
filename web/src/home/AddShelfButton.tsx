@@ -96,7 +96,10 @@ function ShelfPicker({
   );
   return (
     <Command label={t.home.addShelf}>
-      <CommandInput placeholder={t.home.addShelfSearch} aria-label={t.home.addShelfSearch} />
+      <CommandInput
+        placeholder={t.home.addShelfSearch}
+        aria-label={t.home.addShelfSearch}
+      />
       <CommandList label={t.home.addShelfList}>
         <CommandEmpty>{t.home.addShelfNoMatch}</CommandEmpty>
         {choices.map((folder) => (

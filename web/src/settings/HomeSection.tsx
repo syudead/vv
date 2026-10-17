@@ -134,6 +134,8 @@ export default function HomeSection() {
         >
           <Button
             id={reorganizeId}
+            // 行の名札（Shelves）ではなく、見えている文言を名前にする。
+            aria-label={text.reorganize}
             variant="outline"
             size="sm"
             disabled={busy}
@@ -147,6 +149,7 @@ export default function HomeSection() {
       <FormRow label={text.setup} htmlFor={setupId} description={text.setupDescription}>
         <Button
           id={setupId}
+          aria-label={text.startSetup}
           variant="outline"
           size="sm"
           disabled={startingSetup}
