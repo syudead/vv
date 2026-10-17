@@ -158,11 +158,21 @@ func TestInspectGoodModuleReturnsManifest(t *testing.T) {
 	}
 }
 
-func TestInspectBuiltPluginReturnsManifest(t *testing.T) {
-	rt := newTestRuntime(t)
+// Keep one real Go-toolchain integration test; the other runtime and network
+// tests use small prebuilt fixtures so each runtime compiles only a few KiB.
+func TestInspectAndRunGoBuiltPlugin(t *testing.T) {
+	rt := newNetTestRuntime(t, newTestSite(t))
 	module := mustWithManifest(t, plugintest.Build(t, "testdata/probe"), goodManifest)
 	if _, problem, err := rt.Inspect(context.Background(), module); err != nil || problem != "" {
 		t.Fatalf("Inspect(built probe) = problem %q, err %v; want a manifest", problem, err)
+	}
+	wantEchoWorks(t, rt, module)
+	req := fetchMode("http")
+	req.Settings = map[string]string{"request": get("http://site.test/page")}
+	got, _, err := rt.Run(context.Background(), probeDigest, module, req, domain.WorkInfoRunNetwork{}, nil)
+	wantCodes(t, got.WorkInfo, err, "0")
+	if got.WorkInfo.Title != "hello" {
+		t.Fatalf("Go plugin HTTP body = %q, want hello", got.WorkInfo.Title)
 	}
 }
 
