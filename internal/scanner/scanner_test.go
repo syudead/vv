@@ -1294,3 +1294,14 @@ func TestScanFailureCodeIsInternalForIndexFailure(t *testing.T) {
 	}
 	assertScanFailure(t, err, domain.ScanErrorInternal, "")
 }
+
+// 走査を始めたものを UpsertVideo に渡す。所在だけを足した取り込みの記録がそれを書く。
+func TestScanPassesTheDeciderToUpsertVideo(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
+	index := newFakeIndex()
+	runScan(t, root, index)
+
+	if len(index.upserts) != 1 || index.upserts[0].Decider != domain.ActivityByOwner {
+		t.Fatalf("UpsertVideo = %+v, want one file with the owner as decider", index.upserts)
+	}
+}

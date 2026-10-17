@@ -649,6 +649,7 @@ func (s *Scanner) ingest(
 		SizeBytes:  info.Size(),
 		MTime:      info.ModTime(),
 		Container:  domain.ContainerFromPath(target.path),
+		Decider:    decider,
 	}
 	// 読めなかった作成日時はゼロ値のまま登録する（失敗にしない）。
 	if createdAt, ok := s.createdAt(target.path, info); ok {

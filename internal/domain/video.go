@@ -282,6 +282,8 @@ type VideoFile struct {
 	Container     string
 	// AddedAt はゼロ値なら取り込み時刻を使う。新規のときだけ効く。
 	AddedAt time.Time
+	// Decider は走査を始めたもので、所在だけを足した取り込みの記録に書く。空なら rule。
+	Decider ActivityDecider
 }
 
 // IndexedVideo は差分判定に要る最小限の値である。走査は実際のファイルと

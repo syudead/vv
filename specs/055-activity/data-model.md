@@ -55,7 +55,7 @@ Indexes on `(status, id)`, `(feature, id)` and `(kind, subject_key, subject_key_
 
 | `kind` | Subject | Written by |
 | --- | --- | --- |
-| `import` | video | Queuing a video's ingest jobs when it has no pending job ([R-3](research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages)) |
+| `import` | video | Queuing a video's ingest jobs when it has no pending job; a scan that finds known content at a new path (a move, a rename or an identical copy) and queues no job writes it already `done` ([R-3](research.md#r-3-one-entry-per-run-and-subject-an-import-is-one-entry-for-all-its-stages)) |
 | `scan` | scan | A scan that ends `failed` for a reason other than `interrupted` |
 | `auto_tag` | video | Queuing a video for auto-tagging |
 | `version_judgement` | pair | A judgeable candidate appearing while judging is on, or judging being turned on |
@@ -151,7 +151,7 @@ never claims them.
 | A candidate inserted for a pair, including by a rebuild, attaches to that pair's open `version_judgement` entry, found by `(kind, subject_key, subject_key_b)`; an `interrupted` one returns to `running` on its next claim | `store` |
 | An open `version_judgement` closes as `gone` only when one of its keys has left the library | `store` |
 | Turning judging off leaves open `version_judgement` entries `waiting`; they are claimed again when it is turned on | `store` |
-| An `import` entry is `running` while any of its jobs is pending, `attention` when one gave up, else `done` | `domain` (the rule over the stage states), `store` |
+| An `import` entry is `running` while any of its jobs is pending, `attention` when one gave up, else `done`; a new location whose video needs no job (none queued or running, no stage pending, no fingerprint missing) is one `done`/`completed` entry by the scan's decider, written in the `UpsertVideo` transaction | `domain` (the rule over the stage states), `store` |
 | A new entry of a kind on a subject closes that kind and subject's `attention` entries as `superseded`; a scan that ends `done` closes every open `scan` entry; a `version_judgement` keeps one entry per pair through its retries | `domain`, `store` |
 | Startup, before the workers start, turns every entry `running` with reason `processing` into `attention`/`interrupted`; `waiting` entries stay | `store`, called from `cmd/mdm` beside `Scans.RecoverInterrupted` |
 | Retry is offered for `attention` with reason `failed` or `interrupted`, of kind `import`, `scan`, `auto_tag` or `version_judgement` | `domain` |
