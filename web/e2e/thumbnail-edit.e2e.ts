@@ -11,8 +11,9 @@ import {
 // ComfyUI で動画の1コマを編集してサムネイルにする流れ（specs/045-comfyui-thumbnails、
 // 親 #942、子 #960）を、本物のサーバーとアダプタに偽の ComfyUI（fake-comfyui.mjs）を
 // つないで実ブラウザに通す。個々の規則はアダプタ・app・画面のテストが持つので、ここでは
-// 設定から適用し、読み直しとスキャンの後も残るまでの流れだけを確かめる
-// （docs/design-docs/web-testing.md）。中止・破棄・取り消し・塗りとマスク・収め方・ゲストは
+// 設定から適用し、読み直しとスキャンの後も残るまでの流れと、実ブラウザで塗ったマスクが
+// サーバーを通って偽物に届き、塗った範囲だけが変わることを確かめる
+// （docs/design-docs/web-testing.md）。中止・破棄・取り消し・収め方・ゲストは
 // Vitest と Go のテストが持つ。
 //
 // 動画は run-e2e.mjs が generateThumbnailEditFixtures で作る1本で、色の混ざった
@@ -181,6 +182,27 @@ async function thumbnailKind(image: Locator): Promise<"generated" | "frame" | nu
   return solid ? "generated" : "frame";
 }
 
+/**
+ * strokeOver は img の画像が、paintStroke で塗った線の上は偽物の色で、四隅は background の
+ * 色なら true を返す。まだ読み込んでいなければ null を返す。
+ */
+async function strokeOver(image: Locator, background: RGB): Promise<boolean | null> {
+  const pixels = await pixelsAt(image, [
+    [0.45, 0.45],
+    [0.1, 0.1],
+    [0.9, 0.1],
+    [0.1, 0.9],
+    [0.9, 0.9],
+  ]);
+  if (pixels === null) return null;
+  const [inside, ...outside] = pixels;
+  return (
+    inside !== undefined &&
+    near(inside, outputColor) &&
+    outside.every((pixel) => near(pixel, background))
+  );
+}
+
 /** naturalAspect は img の画像の元の縦横比を返す。まだ読み込んでいなければ null を返す。 */
 function naturalAspect(image: Locator): Promise<number | null> {
   return image.evaluate((element) => {
@@ -308,6 +330,17 @@ async function expectUploadedItem(page: Page, color: RGB) {
   await expect.poll(() => solidIn(item, color)).toBe(true);
 }
 
+/** startThumbnailEdit は入口を押してメニューから今のサムネイルを選び、編集画面を開く。 */
+async function startThumbnailEdit(entry: Locator): Promise<Locator> {
+  const page = entry.page();
+  await entry.click();
+  await page.getByRole("menuitem", { name: "Current thumbnail" }).click();
+  const editor = page.getByRole("dialog", { name: "Edit thumbnail" });
+  await expect(editor).toBeVisible();
+  await expect(editor.getByRole("img", { name: "Painted area" })).toBeVisible();
+  return editor;
+}
+
 /** paintStroke は塗りの層の (0.3, 0.3) から (0.6, 0.6) まで（割合）を一筆で塗る。 */
 async function paintStroke(editor: Locator) {
   const page = editor.page();
@@ -321,6 +354,20 @@ async function paintStroke(editor: Locator) {
   });
   await page.mouse.up();
   await expect(editor.getByRole("button", { name: "Undo" })).toBeEnabled();
+}
+
+/** generate は「Generate」を押し、比較に生成した画像が出るまで待つ。 */
+async function generate(editor: Locator) {
+  await editor.getByRole("button", { name: "Generate", exact: true }).click();
+  await expect(editor.getByRole("img", { name: "Generated" })).toBeVisible({
+    timeout: 15_000,
+  });
+}
+
+/** setComposite は偽物がマスクを通して合成するかを変える。 */
+async function setComposite(request: APIRequestContext, enabled: boolean) {
+  const response = await request.put(`${fake()}/__fake/composite`, { data: { enabled } });
+  expect(response.status()).toBe(200);
 }
 
 /** openVideo は動画ページを開き、編集の入口が押せるようになるまで待つ。 */
@@ -401,6 +448,7 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
   });
 
   test.afterAll(async ({ request }) => {
+    await setComposite(request, false);
     if (folder === undefined) return;
     const removed = await request.delete(
       `/api/media-folders/${String(folder.id)}?version=${String(folder.version)}`,
@@ -529,5 +577,44 @@ test.describe.serial("thumbnail edit with ComfyUI", () => {
       await page.goto(`/videos/${String(target().id)}`);
       await expectUploadedItem(page, upload.color);
     }
+  });
+
+  // 046 受け入れ条件 5・6: 上げた画像から始めた編集はそれを元として出し、マスク付きの実行の
+  // 後は、塗った範囲の中が偽物の色、外が上げた画像の色になる。偽物はここから、ワークフローの
+  // ようにマスクを通して合成する。
+  test("上げた画像から編集を始め、塗った範囲だけが変わった画像を適用する", async ({
+    page,
+    request,
+  }) => {
+    test.setTimeout(120_000);
+    await setTiming(request, { queuedMs: 300, runningMs: 800 });
+    await setComposite(request, true);
+
+    await page.goto(`/videos/${String(target().id)}`);
+    await uploadFromPage(page, uploads.jpeg);
+    await expectUploadedItem(page, uploads.jpeg.color);
+
+    const entry = await openVideo(page);
+    const editor = await startThumbnailEdit(entry);
+    await expect(editor).toContainText("Current thumbnail, saved image");
+    await paintStroke(editor);
+
+    const sent = (await prompts(request)).length;
+    await generate(editor);
+    const recorded = await prompts(request);
+    expect(recorded).toHaveLength(sent + 1);
+    expect(inputOf(recorded.at(-1)!, "vv:mask", "image")).toMatch(
+      /^vv-[0-9a-f]+-mask\.png$/,
+    );
+
+    const source = editor.getByRole("img", { name: "Thumbnail" });
+    await expect.poll(() => solidIn(source, uploads.jpeg.color)).toBe(true);
+    const result = editor.getByRole("img", { name: "Generated" });
+    await expect.poll(() => strokeOver(result, uploads.jpeg.color)).toBe(true);
+
+    await editor.getByRole("button", { name: "Use as thumbnail" }).click();
+    await expect(editor).toBeHidden();
+    await expect(page.getByRole("img", { name: "Generated thumbnail" })).toBeVisible();
+    expect((await readVideo(request)).thumbnailImage).toBe("generated");
   });
 });
