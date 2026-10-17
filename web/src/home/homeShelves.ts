@@ -1,7 +1,7 @@
-import type { LibraryItem } from "../api/client";
 import { type FavoritesChange, withItemFavoriteSince } from "../api/favorites";
 import {
   type HomeShelf,
+  type HomeShelfItem,
   type HomeShelfItems,
   type HomeShelfKey,
   MAX_HOME_SHELF_KEYS,
@@ -25,7 +25,7 @@ import {
 export type ShelfState =
   | { status: "loading"; retry?: boolean }
   | { status: "failed"; reason: UiText }
-  | { status: "ready"; items: LibraryItem[]; total: number };
+  | { status: "ready"; items: HomeShelfItem[]; total: number };
 
 /** ShelfStates は棚の鍵ごとの状態である。 */
 export type ShelfStates = ReadonlyMap<HomeShelfKey, ShelfState>;
@@ -66,10 +66,7 @@ export function seeAllPath(shelf: HomeShelf): string | undefined {
  * フォルダの棚では `?smartFolder` を付けて次の動画を棚の並びに従わせる。グループは開いている
  * 動画を `?group` 付きで開く。棚の項目にフォルダは無い。
  */
-export function shelfItemPath(
-  shelf: HomeShelf,
-  item: Exclude<LibraryItem, { kind: "smartFolder" }>,
-): string {
+export function shelfItemPath(shelf: HomeShelf, item: HomeShelfItem): string {
   if (item.kind === "group") {
     return videoInGroupPath(item.group.openVideoId, item.group.id);
   }
@@ -244,7 +241,7 @@ export function withFavorites(
 ): Map<HomeShelfKey, ShelfState> {
   const videos = new Set(change.videoIds);
   const groups = new Set(change.groupIds);
-  const mark = (item: LibraryItem): LibraryItem => {
+  const mark = (item: HomeShelfItem): HomeShelfItem => {
     if (item.kind === "video" && videos.has(item.video.id)) {
       return { ...item, video: { ...item.video, favorite: change.favorite } };
     }

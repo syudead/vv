@@ -1,4 +1,4 @@
-import { type LibraryItem, request } from "./client";
+import { type LibraryItemOf, request } from "./client";
 import type { components } from "./gen/openapi";
 import { applyFavoritesToListSnapshot, holdListSnapshot } from "./listSnapshot";
 
@@ -180,12 +180,14 @@ export function withGroupFavoriteSince<T extends { id: number; favorite?: boolea
  * withItemFavoriteSince はライブラリの項目（動画かグループ）の `favorite` を
  * withFavoriteSince・withGroupFavoriteSince で補正する。フォルダの項目はそのまま返す。
  */
-export function withItemFavoriteSince(item: LibraryItem, mark: number): LibraryItem {
+export function withItemFavoriteSince<
+  T extends LibraryItemOf<{ id: number; favorite?: boolean }>,
+>(item: T, mark: number): T {
   if (item.kind === "video") {
-    return { kind: "video", video: withFavoriteSince(item.video, mark) };
+    return { ...item, video: withFavoriteSince(item.video, mark) };
   }
   if (item.kind === "group") {
-    return { kind: "group", group: withGroupFavoriteSince(item.group, mark) };
+    return { ...item, group: withGroupFavoriteSince(item.group, mark) };
   }
   return item;
 }

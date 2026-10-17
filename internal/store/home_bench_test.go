@@ -54,6 +54,10 @@ func BenchmarkHomeReads(b *testing.B) {
 		}
 	})
 	benchRecommended(b, db)
+	// 準備は表へ直接書いたので、書き込みの確定のあとに走る維持（根の値、棚への一致）をここで 1 度行う。
+	if err := db.maintainHomeIndexes(ctx); err != nil {
+		b.Fatal(err)
+	}
 	for _, audience := range []domain.Audience{domain.AudienceOwner, domain.AudienceGuest} {
 		b.Run("home for "+audience.String(), func(b *testing.B) {
 			for b.Loop() {
@@ -86,6 +90,19 @@ func BenchmarkHomeReads(b *testing.B) {
 		b.Run("8 held shelves for "+audience.String(), func(b *testing.B) {
 			readShelves(b)
 			for b.Loop() {
+				readShelves(b)
+			}
+		})
+		// 動画の書き込み（再生位置の保存）の直後の読み出し: 引き金が消した根の値と棚への一致の印を、確定のあとの
+		// 維持が埋め直してから読む。
+		b.Run("8 shelves after a progress write for "+audience.String(), func(b *testing.B) {
+			n := 0
+			for b.Loop() {
+				n++
+				if _, err := db.sql.Exec(`update playback_progress set position_ms = ?, updated_at = ? where content_key = 'key-3'`, 1000+n, 100000+n); err != nil {
+					b.Fatal(err)
+				}
+				db.publishEvents(domain.HomeChanged{})
 				readShelves(b)
 			}
 		})

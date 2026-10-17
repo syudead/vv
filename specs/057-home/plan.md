@@ -31,7 +31,8 @@ flowchart LR
   apply --> sf
   home[Home screen] --> read[Home reads]
   read --> sf
-  read --> items[Library item query]
+  read --> closure[(group_closure, group_root_values, watch states, search hits)]
+  groups[Group writers] --> closure
   read --> rec[Recommended]
   rec --> score[Closeness score]
 ```
@@ -47,8 +48,8 @@ flowchart LR
 | Shelves | Smart folders with `home_position` ([R-7](research.md#r-7-a-shelf-is-a-smart-folder-with-a-home-position), [data-model.md](data-model.md#smart_foldershome_position)) |
 | Rebuild and extend | One transaction; owner-kept folders untouched ([R-8](research.md#r-8-a-rebuild-replaces-the-organizers-folders-in-one-transaction-an-extend-only-adds)) |
 | When it runs | A pending run in settings, triggered by events ([R-9](research.md#r-9-one-run-at-a-time-queued-in-settings-triggered-by-events), [R-10](research.md#r-10-an-extend-runs-when-20-or-more-shown-videos-are-unshelved)) |
-| Unshelved | A library filter evaluated on read ([R-11](research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read)) |
-| Reads | Summaries, then items for the shelves on screen, 1 s budget ([R-12](research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen)) |
+| Unshelved | A library filter evaluated on read; the unshelved shelf reads the write-maintained `home_shelved_videos` ([R-11](research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read), [R-12](research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen)) |
+| Reads | Summaries, then items for the shelves on screen by an index walk over persisted group structure, 1 s budget ([R-12](research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen), [data-model.md](data-model.md#group-closure)) |
 | Fixed shelves | Continue watching and recommended for the owner; recent and unshelved for all ([R-13](research.md#r-13-four-fixed-shelves-two-of-them-the-owners-only)) |
 | Playback | The video page with autoplay ([R-14](research.md#r-14-pressing-a-shelf-card-plays)) |
 | Routes | Library at `/library`, old URLs redirected ([R-15](research.md#r-15-the-library-moves-to-library)) |
@@ -56,7 +57,11 @@ flowchart LR
 
 The Issue was split on 2026-10-16: the maintainer asked that the home work
 without AI and depend on no unimplemented Issue, so the owner's policy and the
-AI organizer moved to #1307, and initial tag presets stay with #1137.
+AI organizer moved to #1307, and initial tag presets stay with #1137. The
+shelf items read was redesigned on 2026-10-17
+([R-12](research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen)):
+the maintainer rejected reading each shelf through the library items query,
+which evaluated every video before taking a shelf's first 24 items.
 
 The Issue has the `ui` label, so the `design` stage writes `ui-design.md`
 before the screen units: onboarding with its three steps and skipping, the
@@ -88,7 +93,8 @@ reorganizes, judged against the parent Issue's `UI品質`.
 
 **Feature-specific context**:
 
-- One migration, numbered when it lands
+- Three migrations: the home position, the group closure with the sort-key
+  indexes, and the card columns, watch states and search hits
   ([data-model.md, Migration](data-model.md#migration)).
 - Eight routes, one list parameter and one screen event kind on the screen API
   ([contracts/screen-api.md](contracts/screen-api.md)); the external API and
@@ -111,7 +117,7 @@ reorganizes, judged against the parent Issue's `UI品質`.
 | Every read knows its viewer (ARCHITECTURE.md) | Pass: shelf items, unshelved and recent are cut to the viewer; continue watching, recommended, the organizer state and onboarding are owner only |
 | Only a scan reads the media folders' files (ARCHITECTURE.md) | Pass: onboarding starts a scan through the existing scan route and reads no file |
 | Do not hand-edit generated files (AGENTS.md) | Pass: `api/openapi.yaml` changes, then `task generate` |
-| Complexity 25 or less, no copied code (AGENTS.md) | Pass: unshelved negates the existing per-video match; shelf items call the library item query; interests reuse tag creation and synonyms; recommended calls `ContentRelatedness` |
+| Complexity 25 or less, no copied code (AGENTS.md) | Pass: unshelved negates the existing per-video match; shelf items apply the library items' rules row by row over persisted group structure, with the library read as the test oracle and its condition, order, descendants and item loaders shared; interests reuse tag creation and synonyms; recommended calls `ContentRelatedness` |
 | Read design-system.md before a screen; test at the lowest level (AGENTS.md) | Pass: screens follow `ui-design.md`; the shelf row becomes a registry item; the organizer and onboarding get app tests with fakes, the store its tests and a benchmark, screens page tests, the acceptance criteria browser tests |
 
 No violation, so no complexity tracking.
@@ -140,7 +146,7 @@ place by the test's API calls, so nothing is left to run by hand.
 | Boundary | What it owns in this feature |
 | --- | --- |
 | `internal/domain` | The interest catalog, the onboarding step and its order, proposed shelves and their limits, the rule organizer's choice, `VideoQuery.Unshelved`, `HomeChanged`, the organizer state |
-| `internal/store` | The migration, `HomeStore` (summaries, shelf items, order, apply, interest shelves), the unshelved condition, the seed queries for recommended and continue watching, the settings keys, the benchmark |
+| `internal/store` | The migrations, `HomeStore` (summaries, shelf items, order, apply, interest shelves), the group closure and its maintenance by the group writers, the unshelved condition, the seed queries for recommended and continue watching, the settings keys, the benchmark |
 | `internal/app` | `Onboarding` (step, interests, asking auto-tagging again), `HomeOrganizer` (triggers, pending run, rule organizer), recommended scoring and its cache, the `Scans.OnFinish` list |
 | `internal/httpapi`, `api/openapi.yaml`, `cmd/mdm` | The routes, the `unshelved` parameter, the `home` event, the wiring |
 | `web/src/onboarding` (new), `web/src/home` (new), `web/src/app`, `web/src/auth`, `web/src/shell`, `web/src/settings`, `web/src/library`, `web/src/smartFolders`, `web/src/ui`, `web/src/i18n` | The onboarding page and its gate, the home page and shelf row, the routes and redirect, the sidebar, the Settings section, the empty library, the folder page action |

@@ -99,12 +99,15 @@ func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.A
 // 食い違わないようにする。フォルダ名の分は語に当たるタグの名前から引く（cross join で結ぶ順を
 // 決める）。フォルダ名の行を全部読むと、2 万本では検索 1 回に十数 ms かかる。
 func ownerFactsMatchCondition(alias string) string {
-	keys := `select vt.content_key from video_tags vt join tag_names tn on tn.tag_id = vt.tag_id where instr(tn.search_key, ?) > 0 ` +
+	// 名前の表（タグ名・人物名・団体名）を外側にして、当たった名前の id から動画の行を索引で引く。
+	// 統計の無い計画器は動画の行の表（video_tags など）を外側にして全部読むので、cross join で順を
+	// 固定する。
+	keys := `select vt.content_key from tag_names tn cross join video_tags vt on vt.tag_id = tn.tag_id where instr(tn.search_key, ?) > 0 ` +
 		`union select wi.content_key from video_work_info wi where instr(wi.code_key, ?) > 0 ` +
-		`union select vp.content_key from video_work_people vp ` +
-		`join people_names pn on pn.person_id = vp.person_id where instr(pn.search_key, ?) > 0 ` +
-		`union select vo.content_key from video_work_organizations vo ` +
-		`join organization_names onm on onm.organization_id = vo.organization_id where instr(onm.search_key, ?) > 0`
+		`union select vp.content_key from people_names pn ` +
+		`cross join video_work_people vp on vp.person_id = pn.person_id where instr(pn.search_key, ?) > 0 ` +
+		`union select vo.content_key from organization_names onm ` +
+		`cross join video_work_organizations vo on vo.organization_id = onm.organization_id where instr(onm.search_key, ?) > 0`
 	return `(` + alias + `.video_id in (` + userKeyVideosSQL(keys) + `) ` +
 		`or ` + alias + `.video_id in (select vfn.video_id from tag_names tn ` +
 		`cross join tag_names folder_tn on folder_tn.tag_id = tn.tag_id ` +

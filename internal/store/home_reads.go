@@ -2,9 +2,9 @@ package store
 
 // ホームの読み出し（specs/057-home/contracts/screen-api.md、research.md R-12、R-13）。Home は棚の
 // 要約と整理役の状態を、ShelfItems は画面に入った棚の最初の項目を、どちらも 1 つの読み取りの
-// スナップショットから返す。棚の項目はライブラリの項目の問い合わせ（libraryItemsPart）で、どの棚も
-// 1 つの問い合わせにまとめて読み（listFirstItemPages）、
-// フォルダの棚にはフォルダの経路の条件（smartFolderSpec）を掛ける。子フォルダは混ぜない（R-14）。
+// スナップショットから返す。棚の項目はライブラリの項目と同じ項目・同じ並びで、基底の表の索引を並び順に
+// なぞって最初のページだけを読む（home_shelf_read.go）。フォルダの棚にはフォルダの経路の条件
+// （smartFolderSpec）を掛ける。子フォルダは混ぜない（R-14）。
 
 import (
 	"context"
@@ -87,7 +87,8 @@ func (s *HomeStore) Home(ctx context.Context, audience domain.Audience) (domain.
 // ゲストの続きから見る棚と、この読み出しが受け持たない棚（おすすめ。internal/app の Home が読む）の
 // 鍵は落とす。経路の条件が無い実体を名指す
 // フォルダの棚は、所有者には項目の無い棚にする（specs/052-smart-folders/research.md R-9）。棚ごとの
-// 結果は保持し（home_shelf_cache.go）、保持の無い棚だけを 1 つの読み取りのスナップショットから読む。
+// 結果は保持し（home_shelf_cache.go）、保持の無い棚だけを 1 つの読み取りのスナップショットから読む
+// （home_shelf_read.go）。
 func (s *HomeStore) ShelfItems(ctx context.Context, audience domain.Audience, keys []domain.HomeShelfKey) (domain.HomeShelfPage, error) {
 	generation := s.db.homeShelves.start()
 	results := make([]homeShelfCacheEntry, len(keys))
@@ -127,33 +128,26 @@ func (s *HomeStore) ShelfItems(ctx context.Context, audience domain.Audience, ke
 	return page, nil
 }
 
-// readHomeShelves は棚 keys のうち位置 indexes の棚を読み、同じ位置の results に入れる。棚の項目は
-// 1 つの問い合わせにまとめて読む（listFirstItemPages）。
+// readHomeShelves は棚 keys のうち位置 indexes の棚を読み、同じ位置の results に入れる。棚の項目は基底の
+// 表の索引をなぞって読む（home_shelf_read.go）。
 func readHomeShelves(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []domain.HomeShelfKey, indexes []int, results []homeShelfCacheEntry) error {
-	now := listNow().Unix()
-	// read は results の位置から specs の位置への対応で、項目を読まない棚（経路の条件が無い実体を
-	// 名指すフォルダの棚）は持たない。
-	var specs []listSpec
-	read := map[int]int{}
-	for _, i := range indexes {
-		spec, found, err := homeShelfItemsSpec(ctx, tx, audience, keys[i], now)
-		if err != nil {
-			return err
-		}
-		results[i] = homeShelfCacheEntry{shelf: domain.HomeShelfItems{Key: keys[i], Items: []domain.LibraryItem{}}, shown: found, isShelf: found}
-		if spec != nil {
-			read[i] = len(specs)
-			specs = append(specs, *spec)
-		}
-	}
-	pages, err := listFirstItemPages(ctx, tx, audience, specs)
+	reader, err := newHomeShelfReader(ctx, tx, audience, listNow().Unix())
 	if err != nil {
 		return err
 	}
 	for _, i := range indexes {
+		spec, found, err := homeShelfItemsSpec(ctx, tx, audience, keys[i], reader.now)
+		if err != nil {
+			return err
+		}
+		results[i] = homeShelfCacheEntry{shelf: domain.HomeShelfItems{Key: keys[i], Items: []domain.LibraryItem{}}, shown: found, isShelf: found}
 		shelf := &results[i].shelf
-		if j, ok := read[i]; ok {
-			shelf.Items, shelf.Total = pages[j].Items, pages[j].Total
+		if spec != nil {
+			page, err := reader.homeShelfFirstPage(*spec)
+			if err != nil {
+				return err
+			}
+			shelf.Items, shelf.Total = page.Items, page.Total
 		}
 		if shelf.Total == 0 && shelf.Key.Kind == domain.HomeShelfFolder && !audience.IsOwner() {
 			results[i].shown = false
@@ -175,11 +169,9 @@ func homeShelfItemsSpec(ctx context.Context, tx *sql.Tx, audience domain.Audienc
 		}
 		fallthrough
 	case domain.HomeShelfRecent, domain.HomeShelfUnshelved:
+		// 棚にない動画は hs_shelved で求める（home_shelf_read.go）ので、ここでは shelved を埋めない。
 		fixed := libraryListSpec(audience, fixedShelfQuery(key.Kind), nil)
 		fixed.now, fixed.limit = now, domain.HomeShelfItemLimit
-		if err := fillShelved(ctx, tx, &fixed); err != nil {
-			return nil, false, err
-		}
 		return &fixed, true, nil
 	}
 	return nil, false, nil

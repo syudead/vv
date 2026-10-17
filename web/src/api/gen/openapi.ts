@@ -4115,9 +4115,20 @@ export interface components {
         HomeShelfItems: {
             key: components["schemas"]["HomeShelfKey"];
             /** @description 動画とグループの項目だけ。フォルダの棚の子フォルダは入れない */
-            items: components["schemas"]["LibraryItem"][];
-            /** @description 棚の項目（動画とグループ）の数。0 なら画面は棚を出さない */
+            items: components["schemas"]["HomeShelfItem"][];
+            /** @description 棚の項目（動画とグループ）の数を、items の上限 + 1（25）を上限に数えたもの。25 なら 1 ページより多い。0 なら画面は棚を出さない */
             total: number;
+        };
+        /**
+         * @description 棚の項目 1 件。`kind` に応じて `video`・`group` のちょうど 1 つが入る。グループはカードに要る値だけの
+         *     LibraryGroupCard で、ライブラリの LibraryGroup が持つ `videoIds`・`tags` は載せない
+         *     （specs/057-home/research.md R-12）
+         */
+        HomeShelfItem: {
+            /** @enum {string} */
+            kind: "video" | "group";
+            video?: components["schemas"]["Video"];
+            group?: components["schemas"]["LibraryGroupCard"];
         };
         /** @description GET /api/home/shelves の応答 */
         HomeShelfItemsList: {
@@ -4784,13 +4795,17 @@ export interface components {
             group?: components["schemas"]["LibraryGroup"];
             smartFolder?: components["schemas"]["SmartFolderSummary"];
         };
+        /** @description ホームの棚の項目（HomeShelfItem）のグループ。カードの値（LibraryGroupCardValues）だけを持つ。 */
+        LibraryGroupCard: components["schemas"]["LibraryGroupCardValues"];
         /**
-         * @description グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+         * @description グループのカードの値。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
          *     同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
          *     「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-         *     `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+         *     `watchState`・`lastPlayedAt`・`favorite` を省く。ほかの値を禁じるのはこれを合成する
+         *     LibraryGroupCard と LibraryGroup の `unevaluatedProperties` で、ここは開いたままにする
+         *     （閉じると合成で足す `videoIds`・`tags` まで禁じる）。
          */
-        LibraryGroup: {
+        LibraryGroupCardValues: {
             /**
              * Format: int64
              * @description グループの識別子
@@ -4844,15 +4859,17 @@ export interface components {
              *     未完了のメンバー、全部完了なら最初のメンバー
              */
             openVideoId: number;
-            /** @description 全メンバーの id を並びの順に */
-            videoIds: number[];
-            /** @description メンバーのタグの和集合。同じタグの出所は和にする */
-            tags: components["schemas"]["VideoTag"][];
             /**
              * @description 所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
              *     所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
              */
             favorite?: boolean;
+        };
+        LibraryGroup: components["schemas"]["LibraryGroupCardValues"] & {
+            /** @description 全メンバーの id を並びの順に */
+            videoIds: number[];
+            /** @description メンバーのタグの和集合。同じタグの出所は和にする */
+            tags: components["schemas"]["VideoTag"][];
         };
         /** @description グループの項目に足す動画とグループ。動画、次にグループの順に、それぞれ要求の順で足す */
         GroupMembers: {

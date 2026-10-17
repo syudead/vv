@@ -1059,6 +1059,24 @@ func (e HomeShelfKind) Valid() bool {
 	}
 }
 
+// Defines values for HomeShelfItemKind.
+const (
+	HomeShelfItemKindGroup HomeShelfItemKind = "group"
+	HomeShelfItemKindVideo HomeShelfItemKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the HomeShelfItemKind enum.
+func (e HomeShelfItemKind) Valid() bool {
+	switch e {
+	case HomeShelfItemKindGroup:
+		return true
+	case HomeShelfItemKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for LibraryGroupWatchState.
 const (
 	LibraryGroupWatchStateInProgress LibraryGroupWatchState = "inProgress"
@@ -1074,6 +1092,27 @@ func (e LibraryGroupWatchState) Valid() bool {
 	case LibraryGroupWatchStateUnwatched:
 		return true
 	case LibraryGroupWatchStateWatched:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for LibraryGroupCardValuesWatchState.
+const (
+	LibraryGroupCardValuesWatchStateInProgress LibraryGroupCardValuesWatchState = "inProgress"
+	LibraryGroupCardValuesWatchStateUnwatched  LibraryGroupCardValuesWatchState = "unwatched"
+	LibraryGroupCardValuesWatchStateWatched    LibraryGroupCardValuesWatchState = "watched"
+)
+
+// Valid indicates whether the value is a known member of the LibraryGroupCardValuesWatchState enum.
+func (e LibraryGroupCardValuesWatchState) Valid() bool {
+	switch e {
+	case LibraryGroupCardValuesWatchStateInProgress:
+		return true
+	case LibraryGroupCardValuesWatchStateUnwatched:
+		return true
+	case LibraryGroupCardValuesWatchStateWatched:
 		return true
 	default:
 		return false
@@ -2916,10 +2955,6 @@ type GroupCreate struct {
 
 // GroupDetail GET /api/groups/{id} の応答
 type GroupDetail struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group LibraryGroup `json:"group"`
 
 	// Items 項目の最初のページ。位置の順で、見る人に見せる項目だけ
@@ -2934,10 +2969,6 @@ type GroupDetail struct {
 
 // GroupItem グループの項目 1 件。`kind` に応じて `video` か `group` のちょうど一方が入る
 type GroupItem struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup `json:"group,omitempty"`
 
 	// Id 項目の識別子。動画やグループの id ではない
@@ -3124,15 +3155,33 @@ type HomeShelf struct {
 // HomeShelfKind defines model for HomeShelf.Kind.
 type HomeShelfKind string
 
+// HomeShelfItem 棚の項目 1 件。`kind` に応じて `video`・`group` のちょうど 1 つが入る。グループはカードに要る値だけの
+// LibraryGroupCard で、ライブラリの LibraryGroup が持つ `videoIds`・`tags` は載せない
+// （specs/057-home/research.md R-12）
+type HomeShelfItem struct {
+	// Group ホームの棚の項目（HomeShelfItem）のグループ。カードの値（LibraryGroupCardValues）だけを持つ。
+	Group *LibraryGroupCard `json:"group,omitempty"`
+	Kind  HomeShelfItemKind `json:"kind"`
+
+	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
+	// （specs/016-single-account-auth/contracts/guest-api.md §1、
+	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	Video *Video `json:"video,omitempty"`
+}
+
+// HomeShelfItemKind defines model for HomeShelfItem.Kind.
+type HomeShelfItemKind string
+
 // HomeShelfItems 棚 1 つの最初の項目
 type HomeShelfItems struct {
 	// Items 動画とグループの項目だけ。フォルダの棚の子フォルダは入れない
-	Items []LibraryItem `json:"items"`
+	Items []HomeShelfItem `json:"items"`
 
 	// Key `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
 	Key HomeShelfKey `json:"key"`
 
-	// Total 棚の項目（動画とグループ）の数。0 なら画面は棚を出さない
+	// Total 棚の項目（動画とグループ）の数を、items の上限 + 1（25）を上限に数えたもの。25 なら 1 ページより多い。0 なら画面は棚を出さない
 	Total int `json:"total"`
 }
 
@@ -3184,10 +3233,7 @@ type InterestPickResult struct {
 	Shelves []HomeShelf `json:"shelves"`
 }
 
-// LibraryGroup グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
+// LibraryGroup defines model for LibraryGroup.
 type LibraryGroup struct {
 	// AddedAt メンバーの追加日時の最大
 	AddedAt time.Time `json:"addedAt"`
@@ -3243,6 +3289,64 @@ type LibraryGroup struct {
 // inProgress。所有者の応答にだけ入る
 type LibraryGroupWatchState string
 
+// LibraryGroupCard ホームの棚の項目（HomeShelfItem）のグループ。カードの値（LibraryGroupCardValues）だけを持つ。
+type LibraryGroupCard = LibraryGroupCardValues
+
+// LibraryGroupCardValues グループのカードの値。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
+// `watchState`・`lastPlayedAt`・`favorite` を省く。ほかの値を禁じるのはこれを合成する
+// LibraryGroupCard と LibraryGroup の `unevaluatedProperties` で、ここは開いたままにする
+// （閉じると合成で足す `videoIds`・`tags` まで禁じる）。
+type LibraryGroupCardValues struct {
+	// AddedAt メンバーの追加日時の最大
+	AddedAt time.Time `json:"addedAt"`
+
+	// DurationMs 長さの分かっているメンバーの合計。1本も分からなければ省く
+	DurationMs *int64 `json:"durationMs,omitempty"`
+
+	// Favorite 所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
+	// 所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
+	Favorite *bool `json:"favorite,omitempty"`
+
+	// Folder 自動グループのフォルダ。フォルダから自動でできたグループで、そのフォルダが登録フォルダの
+	// 下にあるときだけ入る。手で作ったグループには無く、画面はこれで 2 つを見分ける
+	Folder *VideoFolder `json:"folder,omitempty"`
+
+	// Id グループの識別子
+	Id int64 `json:"id"`
+
+	// LastPlayedAt メンバーの最後に再生した時刻の最大。無ければ省く
+	LastPlayedAt *time.Time `json:"lastPlayedAt,omitempty"`
+
+	// Name グループの名前
+	Name string `json:"name"`
+
+	// OpenVideoId 押したときに開くメンバー。並びの順で途中まで見た最初のメンバー、無ければ最初の
+	// 未完了のメンバー、全部完了なら最初のメンバー
+	OpenVideoId int64 `json:"openVideoId"`
+
+	// Previews カードのフォルダの絵柄に差し込むサムネイル。メンバーのうちサムネイル生成済みのものを
+	// 並びの順に最大4件（フォルダカードの previews と同じ形）。リスト表示の行は先頭の
+	// 1件をサムネイルに使う
+	Previews []FolderPreview `json:"previews"`
+
+	// SizeBytes メンバーの代表の所在の大きさの合計
+	SizeBytes  int64 `json:"sizeBytes"`
+	VideoCount int   `json:"videoCount"`
+
+	// WatchState 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
+	// inProgress。所有者の応答にだけ入る
+	WatchState *LibraryGroupCardValuesWatchState `json:"watchState,omitempty"`
+
+	// WatchedCount 完了したメンバーの数。所有者の応答にだけ入る
+	WatchedCount *int `json:"watchedCount,omitempty"`
+}
+
+// LibraryGroupCardValuesWatchState 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
+// inProgress。所有者の応答にだけ入る
+type LibraryGroupCardValuesWatchState string
+
 // LibraryGroupIds GET /api/library/ids のグループの項目 1 件
 type LibraryGroupIds struct {
 	// Id グループの識別子
@@ -3257,10 +3361,6 @@ type LibraryGroupIds struct {
 // カードの値は `listSmartFolderCards` で読む（specs/052-smart-folders/data-model.md
 // 「Library items」）
 type LibraryItem struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup   `json:"group,omitempty"`
 	Kind  LibraryItemKind `json:"kind"`
 
@@ -3706,10 +3806,6 @@ type Playlist struct {
 // `smartFolder` の値は読んだ時点のフォルダの再生順から作り、再生もその時点の再生順に従う
 // （specs/052-smart-folders/contracts/screen-api.md）
 type PlaylistItem struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup `json:"group,omitempty"`
 
 	// Id 並べ替えと取り外しに使う項目の識別子
@@ -4230,10 +4326,6 @@ type SmartFolderDetail struct {
 
 // SmartFolderItem スマートフォルダの中身の項目 1 件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る
 type SmartFolderItem struct {
-	// Group グループの項目。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする。
 	Group *LibraryGroup       `json:"group,omitempty"`
 	Kind  SmartFolderItemKind `json:"kind"`
 

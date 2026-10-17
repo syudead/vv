@@ -173,7 +173,7 @@ func TestHomeShelfItemsHoldVideosAndGroupsOnly(t *testing.T) {
 	f := newHomeFixture(t)
 	shelves := f.shelfItems(t, folderKey(f.manual)+",recent,unshelved,"+folderKey(f.manual), f.owner)
 	manual := shelves[folderKey(f.manual)]
-	if manual.Total != 1 || len(manual.Items) != 1 || manual.Items[0].Kind != gen.LibraryItemKindVideo ||
+	if manual.Total != 1 || len(manual.Items) != 1 || manual.Items[0].Kind != gen.HomeShelfItemKindVideo ||
 		manual.Items[0].Video.Id != f.ids["ep1"] {
 		t.Fatalf("手の棚 = %+v, want ep1 only and no child folder", manual)
 	}
@@ -181,9 +181,9 @@ func TestHomeShelfItemsHoldVideosAndGroupsOnly(t *testing.T) {
 	names := make([]string, 0, len(recent.Items))
 	for _, item := range recent.Items {
 		switch item.Kind {
-		case gen.LibraryItemKindGroup:
+		case gen.HomeShelfItemKindGroup:
 			names = append(names, "group:"+item.Group.Name)
-		case gen.LibraryItemKindVideo:
+		case gen.HomeShelfItemKindVideo:
 			names = append(names, item.Video.Title)
 		default:
 			t.Errorf("recent に %s の項目がある", item.Kind)
@@ -315,7 +315,7 @@ func TestHomeShowsContinueAndRecommendedToTheOwnerOnly(t *testing.T) {
 	recommended := shelves["recommended"]
 	var ids []int64
 	for _, item := range recommended.Items {
-		if item.Kind != gen.LibraryItemKindVideo {
+		if item.Kind != gen.HomeShelfItemKindVideo {
 			t.Fatalf("おすすめに %s の項目がある", item.Kind)
 		}
 		ids = append(ids, item.Video.Id)
@@ -325,7 +325,7 @@ func TestHomeShowsContinueAndRecommendedToTheOwnerOnly(t *testing.T) {
 		t.Errorf("おすすめ = %v (total %d), want ep2 first and neither ep10 nor ep1", ids, recommended.Total)
 	}
 	// ep2 は途中まで見たので、そのグループ show が続きから見るに出る。
-	if cont := shelves["continue"]; cont.Total != 1 || cont.Items[0].Kind != gen.LibraryItemKindGroup || cont.Items[0].Group.Name != "show" {
+	if cont := shelves["continue"]; cont.Total != 1 || cont.Items[0].Kind != gen.HomeShelfItemKindGroup || cont.Items[0].Group.Name != "show" {
 		t.Errorf("続きから見る = %+v, want the group show", cont)
 	}
 

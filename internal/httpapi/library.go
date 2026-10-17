@@ -195,7 +195,8 @@ func (l itemLookup) video(ctx context.Context, audience domain.Audience, roots [
 // 自動グループのフォルダが登録フォルダ roots の下にあるときだけ載せる（specs/048-groups/
 // contracts/screen-api.md）。ゲストには視聴の値を載せず、タグを空にする（data-model.md §7）。
 func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, group domain.LibraryGroup) (gen.LibraryGroup, bool) {
-	if len(group.Members) == 0 {
+	card, ok := l.card(ctx, audience, roots, group)
+	if !ok {
 		return gen.LibraryGroup{}, false
 	}
 	ids := make([]int64, 0, len(group.Members))
@@ -203,16 +204,35 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 		ids = append(ids, member.ID)
 	}
 	out := gen.LibraryGroup{
+		Id: card.Id, Folder: card.Folder, Name: card.Name, VideoCount: card.VideoCount, WatchedCount: card.WatchedCount,
+		WatchState: (*gen.LibraryGroupWatchState)(card.WatchState), DurationMs: card.DurationMs, SizeBytes: card.SizeBytes,
+		AddedAt: card.AddedAt, LastPlayedAt: card.LastPlayedAt, Previews: card.Previews, OpenVideoId: card.OpenVideoId,
+		Favorite: card.Favorite, VideoIds: ids, Tags: []gen.VideoTag{},
+	}
+	if audience.IsOwner() {
+		for _, tag := range unionMemberTags(group.Members, l.tags) {
+			out.Tags = append(out.Tags, toAPIVideoTag(tag))
+		}
+	}
+	return out, true
+}
+
+// card はグループのカードの値を応答の形にする（ホームの棚の項目。specs/057-home/research.md R-12）。
+// 見せる動画が無ければ false を返す。folder は自動グループのフォルダが登録フォルダ roots の下にあるときだけ
+// 載せる（specs/048-groups/contracts/screen-api.md）。ゲストには視聴の値を載せない（data-model.md §7）。
+func (l itemLookup) card(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, group domain.LibraryGroup) (gen.LibraryGroupCard, bool) {
+	if group.VideoCount == 0 {
+		return gen.LibraryGroupCard{}, false
+	}
+	out := gen.LibraryGroupCard{
 		Id:          group.ID,
 		Name:        group.Name,
-		VideoCount:  len(group.Members),
+		VideoCount:  group.VideoCount,
 		DurationMs:  group.DurationMs,
 		SizeBytes:   group.SizeBytes,
 		AddedAt:     group.AddedAt,
-		Previews:    l.s.folderPreviews(ctx, groupPreviewMembers(group.Members)),
+		Previews:    l.s.folderPreviews(ctx, previewVideos(group.Previews)),
 		OpenVideoId: group.OpenVideoID,
-		VideoIds:    ids,
-		Tags:        []gen.VideoTag{},
 	}
 	if group.Path != "" {
 		if folder, ok := domain.LocateFolder(roots, group.Path); ok {
@@ -222,7 +242,7 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 	if !audience.IsOwner() {
 		return out, true
 	}
-	state := gen.LibraryGroupWatchState(group.WatchState)
+	state := gen.LibraryGroupCardValuesWatchState(group.WatchState)
 	watched := group.WatchedCount
 	out.WatchState, out.WatchedCount = &state, &watched
 	favorite := group.Favorite
@@ -231,25 +251,7 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 		played := *group.LastPlayedAt
 		out.LastPlayedAt = &played
 	}
-	for _, tag := range unionMemberTags(group.Members, l.tags) {
-		out.Tags = append(out.Tags, toAPIVideoTag(tag))
-	}
 	return out, true
-}
-
-// groupPreviewMembers は、グループのカードのフォルダの絵柄に差し込むメンバーを返す。
-// サムネイル生成済みのメンバーを並びの順に、フォルダカードと同じ上限まで取る。
-func groupPreviewMembers(members []domain.Video) []domain.Video {
-	out := make([]domain.Video, 0, domain.MaxFolderPreviews)
-	for _, member := range members {
-		if len(out) == domain.MaxFolderPreviews {
-			break
-		}
-		if member.HasThumbnail() {
-			out = append(out, member)
-		}
-	}
-	return out
 }
 
 // unionMemberTags はメンバーのタグの和集合を返す。同じタグは1件にまとめ、出所は

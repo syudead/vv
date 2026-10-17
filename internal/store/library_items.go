@@ -188,7 +188,7 @@ const videoWatchStateExpr = `case when p.completed = 1 then 'watched'
 // （specs/035-favorites/data-model.md §5、specs/048-groups/data-model.md「Library items」）。
 func libraryItemsCTE(spec listSpec) (string, []any) {
 	cte, args := chosenLocationsCTEFor(spec.scope, spec.searchAudience(), spec.searchExprs())
-	part, partArgs := libraryItemsPart(spec, `chosen`, ``)
+	part, partArgs := libraryItemsPart(spec)
 	return cte + `,
 	` + itemGroupsCTE(spec) + `,
 	` + part, append(args, partArgs...)
@@ -234,13 +234,11 @@ func groupWatchStateExpr(completed, position string) string {
 }
 
 // libraryItemsPart は libraryItemsCTE の項目の表を、所在の表 chosen（`(video_id, path)`）と gm
-// から作る with 句の部品とその引数を返す。表の名前は matched・hits・whole・carded・mv・items に
-// suffix を付けたもので、suffix を変えれば 1 つの with 句に別の絞り込みの項目の表を並べられる
-// （itemsBatch）。
-func libraryItemsPart(spec listSpec, chosen, suffix string) (string, []any) {
+// から作る with 句の部品とその引数を返す。表の名前は matched・hits・whole・carded・mv・items である。
+// ホームの棚の読み出し（home_shelf_read.go）は同じ決め方を一時表の上で行う。
+func libraryItemsPart(spec listSpec) (string, []any) {
 	audience := spec.scope.audience
-	matched, hits, whole, carded, mv, items := `matched`+suffix, `hits`+suffix, `whole`+suffix,
-		`carded`+suffix, `mv`+suffix, `items`+suffix
+	const chosen, matched, hits, whole, carded, mv, items = `chosen`, `matched`, `hits`, `whole`, `carded`, `mv`, `items`
 	conditions, args := matchConditions(spec)
 	if spec.unshelved {
 		conditions = append(conditions, `videos.id not in (select value from json_each(?))`)
@@ -616,6 +614,15 @@ func libraryPageItems(ctx context.Context, tx *sql.Tx, spec listSpec, order list
 // 所在（chosen）の題名・大きさ・更新時刻で、グループの項目は見せてよい子孫の動画の全部から作る。
 // スマートフォルダの項目は、一覧が混ぜたフォルダ folders の要約から取る。
 func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []librarySmartFolder) ([]domain.LibraryItem, error) {
+	return assembleLibraryItems(ctx, tx, audience, keys, folders, func(ids []int64) (map[int64]domain.LibraryGroup, error) {
+		return loadGroups(ctx, tx, audience, ids)
+	})
+}
+
+// assembleLibraryItems は loadLibraryItems の本体で、グループの項目を groups で読む。ホームの棚はカードの値
+// だけを読む loadGroupCards を渡す（home_group_cards.go）。
+func assembleLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience, keys []itemRow, folders []librarySmartFolder,
+	groups func([]int64) (map[int64]domain.LibraryGroup, error)) ([]domain.LibraryItem, error) {
 	var pairs [][2]any
 	var groupIDs []int64
 	for _, key := range keys {
@@ -634,7 +641,7 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 	if err := attachVersionsIn(ctx, tx, audience, videos); err != nil {
 		return nil, err
 	}
-	groups, err := loadGroups(ctx, tx, audience, groupIDs)
+	loaded, err := groups(groupIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -650,7 +657,7 @@ func loadLibraryItems(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 			continue
 		}
 		if key.groupID.Valid {
-			group, ok := groups[key.groupID.Int64]
+			group, ok := loaded[key.groupID.Int64]
 			if !ok {
 				return nil, fmt.Errorf("cannot read the group (id=%d)", key.groupID.Int64)
 			}
