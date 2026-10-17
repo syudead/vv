@@ -150,6 +150,8 @@ for (const { width, height } of [
       window.dispatchEvent(new PopStateEvent("popstate"));
     });
     await expect(page).toHaveURL(/\/videos\/1$/);
+    // 再生画面では溜まったトーストを一度に 1 つだけ出す。1 つになってから位置を測る。
+    await expect(page.getByText(logoutFailed)).toHaveCount(1);
     const toast = page.getByText(logoutFailed);
     await expect(toast).toBeVisible();
     await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
