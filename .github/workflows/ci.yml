@@ -105,7 +105,7 @@ jobs:
         include:
           # generate-check は shadcn（web）と openapi-typescript（tools）を使う。
           - group: go lint
-            tasks: fmt-check-go lint-go generate-check migrations-check build-windows-check
+            tasks: fmt-check-go lint-go generate-check migrations-check e2e-groups-check build-windows-check
             web: true
             tools: true
             golangci: true
@@ -403,7 +403,7 @@ jobs:
   # （docs/how-to/dependency-updates.md）。
   # 1 台で全部を順に流すと 10 分かかるので、ファイルを 4 組に分けて並べて流す。
   # ファイルで絞っても、依存の準備（未設定のサーバーとログイン）は各組で先に走る。
-  # e2e のファイルを足したら、どれかの組に入れる。
+  # e2e のファイルを足したら、どれかの組に入れる（task e2e-groups-check が確かめる）。
   e2e:
     name: Browser E2E (${{ matrix.group }})
     needs: changes
@@ -419,11 +419,11 @@ jobs:
           - group: playback
             files: e2e/playback.e2e.ts
           - group: tags
-            files: e2e/smart-folders.e2e.ts e2e/tags.e2e.ts
+            files: e2e/smart-folders.e2e.ts e2e/tag-kinds.e2e.ts e2e/tags.e2e.ts
           - group: library
             files: e2e/card-scrub.e2e.ts e2e/folders.e2e.ts e2e/guest.e2e.ts e2e/history.e2e.ts e2e/hover-preview.e2e.ts e2e/media-info.e2e.ts e2e/playlists.e2e.ts e2e/thumbnail-edit.e2e.ts
           - group: scan and search
-            files: e2e/auth.e2e.ts e2e/drag-organize.e2e.ts e2e/groups.e2e.ts e2e/scan-issues.e2e.ts e2e/scan-progress.e2e.ts e2e/search.e2e.ts e2e/settings.e2e.ts e2e/work-info-plugins.e2e.ts e2e/work-info.e2e.ts
+            files: e2e/activity.e2e.ts e2e/auth.e2e.ts e2e/auto-import.e2e.ts e2e/drag-organize.e2e.ts e2e/groups.e2e.ts e2e/scan-issues.e2e.ts e2e/scan-progress.e2e.ts e2e/search.e2e.ts e2e/settings.e2e.ts e2e/work-info-plugins.e2e.ts e2e/work-info.e2e.ts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
