@@ -52,7 +52,7 @@ func (e *fetchEnv) fetchCover(t *testing.T, cover []byte) domain.WorkInfoFetchRe
 		WorkInfo:   domain.FetchedWorkInfo{Title: "Title", CoverURL: "https://example.com/cover.png"},
 		CoverImage: cover,
 	}
-	result, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "https://example.com/works/1")
+	result, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "W-1")
 	if err != nil {
 		t.Fatalf("FetchWorkInfo: %v", err)
 	}
@@ -93,7 +93,7 @@ func TestApplyCoverMakesItTheThumbnailAfterTheWorkInfo(t *testing.T) {
 	image := pngOf(t, 4, 3)
 	result := e.fetchCover(t, image)
 	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle})
+		[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle}, nil)
 	if err != nil || len(applied.Skipped) != 0 {
 		t.Fatalf("apply = %+v, %v", applied, err)
 	}
@@ -112,7 +112,7 @@ func TestApplyCoverIsNotAppliedWhenTheWorkInfoIsRefused(t *testing.T) {
 		result := e.fetchCover(t, pngOf(t, 2, 2))
 		e.applier.err = failure
 		if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-			[]domain.WorkInfoField{domain.WorkInfoFieldCover}); !errors.Is(err, failure) || len(covers.images) != 0 {
+			[]domain.WorkInfoField{domain.WorkInfoFieldCover}, nil); !errors.Is(err, failure) || len(covers.images) != 0 {
 			t.Fatalf("%v: err = %v, %d covers applied; want the failure and no cover", failure, err, len(covers.images))
 		}
 	}
@@ -125,7 +125,7 @@ func TestApplyCoverThatCannotBeUsedIsSkippedAfterTheRestIsApplied(t *testing.T) 
 		covers.err = failure
 		result := e.fetchCover(t, pngOf(t, 2, 2))
 		applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-			[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle})
+			[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle}, nil)
 		want := domain.SkippedWorkInfoValue{
 			Field: domain.WorkInfoFieldCover, Value: "https://example.com/cover.png", Reason: domain.SkippedWorkInfoInvalid,
 		}
@@ -139,7 +139,7 @@ func TestApplyCoverIsRefusedWithoutACover(t *testing.T) {
 	e, _ := newCoverEnv()
 	result := e.fetchCover(t, nil)
 	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{domain.WorkInfoFieldCover}); !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
+		[]domain.WorkInfoField{domain.WorkInfoFieldCover}, nil); !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
 		t.Fatalf("err = %v; want ErrWorkInfoApplyInvalid", err)
 	}
 }
@@ -177,7 +177,7 @@ func TestApplyCoverIsSkippedWhenTheVideoOrTheApplierIsMissing(t *testing.T) {
 		result := e.fetchCover(t, pngOf(t, 2, 2))
 		change(e)
 		applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-			[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle})
+			[]domain.WorkInfoField{domain.WorkInfoFieldCover, domain.WorkInfoFieldTitle}, nil)
 		if err != nil || len(applied.Skipped) != 1 || applied.Skipped[0].Field != domain.WorkInfoFieldCover ||
 			len(covers.images) != 0 || e.applier.titles[fetchVideo] != "Title" {
 			t.Fatalf("%s: apply = %+v, %v; want the cover skipped and the title written", name, applied, err)

@@ -12,7 +12,8 @@ func runCover(t *testing.T, rt *Runtime, cover string) (domain.WorkInfoRunResult
 	t.Helper()
 	req := fetchMode("cover")
 	req.Settings = map[string]string{"cover": cover}
-	return rt.Run(context.Background(), probeDigest, probeModule(t), req)
+	got, _, err := rt.Run(context.Background(), probeDigest, probeModule(t), req, domain.WorkInfoRunNetwork{}, nil)
+	return got, err
 }
 
 func TestCoverIsFetchedThroughVVAfterTheRun(t *testing.T) {
@@ -62,7 +63,7 @@ func TestCoverOnARefusedAddressFailsTheRun(t *testing.T) {
 func TestCoverImageSendsNothingForAURLItCannotRequest(t *testing.T) {
 	site := newTestSite(t)
 	rt := newNetTestRuntime(t, site)
-	session := &httpSession{net: rt.run.net}
+	session := rt.run.net.session(domain.WorkInfoRunNetwork{})
 	for _, raw := range []string{"", "http://[::1", "http://site.test/%zz"} {
 		if got := session.coverImage(context.Background(), raw); got != nil {
 			t.Fatalf("coverImage(%q) = %q, want nil", raw, got)

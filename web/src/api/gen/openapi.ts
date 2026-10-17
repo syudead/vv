@@ -1006,6 +1006,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/settings/plugin-proxy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 作品情報プラグインの要求を送るプロキシの URL を返す
+         * @description 保存した URL を返す。保存が無ければ `""`（プロキシなし）。`/api/settings/network` と違い、
+         *     どのビルドでも答える（specs/056-plugin-tooling/contracts/screen-api.md）。
+         */
+        get: operations["getPluginProxySettings"];
+        /**
+         * 作品情報プラグインの要求を送るプロキシの URL を保存する
+         * @description `url` を規則のとおりに確かめて保存する。`""` はプロキシなし。次の実行が保存した値を使い、
+         *     進行中の実行は始めたときの値で終わる。`url` が無いか規則に外れれば `400` `invalid_request`
+         *     で、何も書かない（specs/056-plugin-tooling/contracts/screen-api.md、research.md R-4）。
+         */
+        put: operations["updatePluginProxySettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/settings/auto-import": {
         parameters: {
             query?: never;
@@ -1549,6 +1576,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/work-info-plugins/{id}/last-run": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * 作品情報プラグインの直近の実行の標準エラーを読む
+         * @description 所有者だけ。今のモジュールの直近の実行が残した標準エラーの先頭 64 KiB を、その実行が受け取った秘密の
+         *     設定の値を `[secret]` に置き換えて返す。実行が残っていなければ `{}`。差し替えたプラグインは差し替えの
+         *     後の実行だけを返す。無ければ `404` `not_found`
+         *     （specs/056-plugin-tooling/contracts/screen-api.md、research.md R-6）。
+         */
+        get: operations["getWorkInfoPluginLastRun"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/work-info-plugins/{id}/search": {
         parameters: {
             query?: never;
@@ -1560,7 +1610,7 @@ export interface paths {
         put?: never;
         /**
          * 作品情報プラグインの search で作品を探す
-         * @description 所有者だけ。承認済みのプラグインの `search` を 1 回動かし、候補（URL・題名・省略できる説明の文字だけ）を
+         * @description 所有者だけ。承認済みのプラグインの `search` を 1 回動かし、候補（作品 ID・ページの URL・題名・省略できる説明の文字だけ）を
          *     返す。`query` は前後の空白を除いて 1〜200 文字で、外れれば `400` `invalid_request`。マニフェストが
          *     `search` を宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
          *     specs/049-work-info-plugins/contracts/screen-api.md の Run failures のとおりである
@@ -1584,10 +1634,10 @@ export interface paths {
         put?: never;
         /**
          * 作品情報プラグインの fetch で動画の作品情報を取る
-         * @description 所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を、作品の `url`（http か https、2048 文字まで）か
-         *     作品の `id`（前後の空白を除いて 1〜200 文字。URL に埋め込むのはプラグイン）で 1 回動かし、結果を
-         *     10 分の間メモリに持って `201` で返す。`url` と `id` はどちらか 1 つで、両方かどちらも無ければ
-         *     `400` `invalid_request`。動画は変えない。`title` は表示名の規則を
+         * @description 所有者だけ。承認済みのプラグイン `pluginId` の `fetch` を、作品の `id`（前後の空白を除いて 1〜200 文字。
+         *     検索の候補の `id` か所有者が入れた文字列で、URL の形でもそのまま ID として渡し、vv が URL として取得する
+         *     ことはない。URL に埋め込むのはプラグイン）で 1 回動かし、結果を 10 分の間メモリに持って `201` で返す。
+         *     `id` が無いか規則に外れれば `400` `invalid_request`。動画は変えない。`title` は表示名の規則を
          *     通ったもので、無いか規則に外れれば省く。人物・団体は取得の時点の照合の答え `match` を持つ
          *     （specs/052-plugin-work-info-fields/contracts/screen-api.md）。動画が無ければ `404` `not_found`、マニフェストが `fetch` を
          *     宣言しなければ `409` `operation_unsupported`。実行の前の誤りと実行の失敗は
@@ -1617,7 +1667,9 @@ export interface paths {
          *     作品情報の項目は保存済みの作品情報に重ね、規則に合わない値・上限を超える件・照合が曖昧な人物と団体は
          *     飛ばして `skipped` で知らせる（specs/052-plugin-work-info-fields/contracts/screen-api.md）。結果は使い切りで、
          *     成功すると消える。タグ名の規則に合わない名前は `invalid`、却下した名前は `rejected` として
-         *     `skippedTags` で知らせ、付けない。`fields` が空か結果に値の無い項目を含めば `400` `invalid_request`、
+         *     `skippedTags` で知らせ、付けない。`tags` を送れば取得したタグのうちその名前だけを付け、`skippedTags` も
+         *     その名前だけを知らせる（specs/056-plugin-tooling/contracts/screen-api.md）。`fields` が空か結果に値の無い
+         *     項目を含むか、`tags` が空か結果に無い名前を含むか `fields` に `tags` が無いのに有れば `400` `invalid_request`、
          *     動画が無いか結果が別の動画のものなら `404` `not_found`、結果が期限切れか不明か、取得の後にプラグインが
          *     差し替えられたか承認を取り消されたか消されていれば `409` `work_info_fetch_stale` で、どれも何も
          *     書かない。確定後に `/api/events` の `video` が流れる
@@ -3275,6 +3327,15 @@ export interface components {
         UpdateNetworkSettingsRequest: {
             lanAccess: boolean;
         };
+        /** @description 作品情報プラグインの要求を送るプロキシ（specs/056-plugin-tooling/contracts/screen-api.md） */
+        PluginProxySettings: {
+            /** @description 保存した URL。http、https か socks5 の scheme、ホスト、任意のポートと任意のユーザー情報からなり、 パスもクエリも持たない。"" はプロキシなし */
+            url: string;
+        };
+        UpdatePluginProxySettingsRequest: {
+            /** @description 保存する URL。規則は PluginProxySettings.url と同じ。"" はプロキシなし */
+            url: string;
+        };
         /** @description 自動の取り込みの選択と監視の状態（specs/042-folder-watch-import/contracts/screen-api.md） */
         AutoImportSettings: {
             /** @description 保存した選択。保存値が無ければ true */
@@ -3475,6 +3536,18 @@ export interface components {
             set: boolean;
             /** @description 保存された値。秘密の設定では入らない */
             value?: string;
+            /**
+             * @description マニフェストの既定値。値が保存されていないとき、または保存された値が選択肢の外にあるときに実行が受け取る
+             *     （specs/056-plugin-tooling/research.md R-3）
+             */
+            default?: string;
+            /** @description マニフェストの選択肢で、マニフェストの順。無ければ値は自由に入力する */
+            options?: string[];
+            /**
+             * @description 保存された値が今の選択肢の外にあるときだけ入る、その値。`set` は真で `value` も同じ値を持つが、
+             *     実行は代わりに既定値を受け取る
+             */
+            staleValue?: string;
         };
         /** @description 作品情報プラグイン 1 つ（specs/049-work-info-plugins/contracts/screen-api.md の WorkInfoPlugin） */
         WorkInfoPlugin: {
@@ -3501,6 +3574,35 @@ export interface components {
              * @description 最後のアップロードか承認の変更の時刻（Unix 秒）
              */
             updatedAt: number;
+            /**
+             * Format: int64
+             * @description 出力が残っている直近の実行が終わった時刻（Unix 秒）。残っていなければ無い
+             *     （specs/056-plugin-tooling/research.md R-6）
+             */
+            lastRunAt?: number;
+        };
+        /**
+         * @description 実行の失敗の種類（specs/049-work-info-plugins/contracts/screen-api.md の Run failures の reason）。
+         *     枠を取れなかった実行はモジュールを動かさないので、busy は残らない
+         * @enum {string}
+         */
+        WorkInfoPluginRunFailure: "plugin_failed" | "timed_out" | "memory_exceeded" | "output_too_large" | "blocked_address" | "network_error";
+        /** @description 直近の実行の標準エラー（specs/056-plugin-tooling/contracts/screen-api.md） */
+        WorkInfoPluginRun: {
+            /**
+             * Format: int64
+             * @description 実行が終わった時刻（Unix 秒）
+             */
+            ranAt: number;
+            operation: components["schemas"]["WorkInfoOperation"];
+            failure?: components["schemas"]["WorkInfoPluginRunFailure"];
+            /** @description 標準エラーの先頭 64 KiB。秘密の設定の値は `[secret]` に置き換えてある。何も書かなければ空 */
+            stderr: string;
+            /** @description 64 KiB より後ろを捨てたか */
+            truncated: boolean;
+        };
+        WorkInfoPluginLastRun: {
+            run?: components["schemas"]["WorkInfoPluginRun"];
         };
         WorkInfoPluginList: {
             /** @description 名前、次にファイル名の順 */
@@ -3522,7 +3624,9 @@ export interface components {
         };
         /** @description 検索の候補 1 つ。文字だけで、画像は持たない（specs/049-work-info-plugins/research.md R-10） */
         WorkInfoCandidate: {
-            /** @description 作品の URL（http か https）。取得にそのまま渡す */
+            /** @description 作品の ID（前後の空白を除いて 1〜200 文字）。候補を選ぶと取得の `id` にそのまま渡す */
+            id: string;
+            /** @description 作品のページの URL（http か https）。画面がリンクとして出すだけで、取得には渡さない */
             url: string;
             title: string;
             /** @description 候補を見分ける説明の 1 行 */
@@ -3532,17 +3636,14 @@ export interface components {
             /** @description プラグインが返した順の候補（先頭 50 件まで） */
             candidates: components["schemas"]["WorkInfoCandidate"][];
         };
-        /** @description `url` と `id` のどちらか 1 つを持つ */
         WorkInfoFetchRequest: {
             /**
              * Format: int64
              * @description 承認済みのプラグイン
              */
             pluginId: number;
-            /** @description 作品の URL（http か https、2048 文字まで） */
-            url?: string;
-            /** @description 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL に埋め込むのはプラグイン */
-            id?: string;
+            /** @description 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL の形でも ID としてそのまま渡し、URL に埋め込むのはプラグイン */
+            id: string;
         };
         /** @description メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8） */
         WorkInfoFetch: {
@@ -3625,6 +3726,11 @@ export interface components {
         ApplyWorkInfoFetchRequest: {
             /** @description 反映する項目。空にできず、どれも結果に値がなければならない */
             fields: components["schemas"]["WorkInfoField"][];
+            /**
+             * @description fields が tags を含むときに付ける取得済みのタグの名前。結果の tags の空でない部分集合で、結果が返した綴りのまま。
+             *     無ければ取得したタグを全部付ける。空、結果に無い名前、fields に tags が無いのに有る場合は 400
+             */
+            tags?: string[];
         };
         /**
          * @description 付けなかった理由。rejected は却下した名前、invalid はタグ名の規則に合わない名前
@@ -7430,6 +7536,52 @@ export interface operations {
             };
         };
     };
+    getPluginProxySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 保存した URL */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginProxySettings"];
+                };
+            };
+        };
+    };
+    updatePluginProxySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdatePluginProxySettingsRequest"];
+            };
+        };
+        responses: {
+            /** @description 保存した URL */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginProxySettings"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+        };
+    };
     getAutoImportSettings: {
         parameters: {
             query?: never;
@@ -8195,6 +8347,31 @@ export interface operations {
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
             409: components["responses"]["Conflict"];
+        };
+    };
+    getWorkInfoPluginLastRun: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 作品情報プラグインの識別子 */
+                id: components["parameters"]["WorkInfoPluginId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 直近の実行。残っていなければ `run` が無い */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WorkInfoPluginLastRun"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
     searchWorkInfo: {

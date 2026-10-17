@@ -55,7 +55,8 @@ function MarkText({ mark }: { mark: ChipMark | undefined }) {
   );
 }
 
-function Chip({ item }: { item: ChipItem }) {
+/** Chip は比較の行のチップ 1 つである。 */
+export function Chip({ item }: { item: ChipItem }) {
   const text = t.player.workInfoFetch;
   const muted = item.mark === "onVideo" || item.mark === "notLinked";
   const hint = item.hint ?? (item.mark === "onVideo" ? text.onVideo : undefined);

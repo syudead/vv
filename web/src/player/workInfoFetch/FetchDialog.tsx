@@ -19,14 +19,15 @@ import { useToast } from "../../ui/Toast";
 import CompareStep, { type Fetched } from "./CompareStep";
 import {
   canFetch,
-  fetchTarget,
   type FindBy,
   initialQuery,
   initialSelection,
   type RunOperation,
   runFor,
+  selectableTags,
   type SkippedLine,
   skippedLines,
+  withField,
 } from "./fetchRules";
 import FindStep, { type RunFailure, type Running } from "./FindStep";
 
@@ -100,6 +101,8 @@ function useFetchFlow({
   const [step, setStep] = useState<Step>("find");
   const [fetched, setFetched] = useState<Fetched | null>(null);
   const [selection, setSelection] = useState<WorkInfoField[]>([]);
+  // 選んだタグの名前。1 つでも選ばれていれば selection が `tags` を含む（056 R-7）。
+  const [tags, setTags] = useState<string[]>([]);
   const [stale, setStale] = useState(false);
   const [applyFailure, setApplyFailure] = useState<unknown>(null);
   const [applying, setApplying] = useState(false);
@@ -119,6 +122,7 @@ function useFetchFlow({
   const showCompare = (next: Fetched, result: Fetched["result"]) => {
     setFetched({ ...next, result });
     setSelection(initialSelection(latestVideo.current, result));
+    setTags(selectableTags(latestVideo.current, result));
     setStale(false);
     setApplyFailure(null);
     setStep("compare");
@@ -131,14 +135,15 @@ function useFetchFlow({
     fromSearch: boolean,
   ) => {
     const signal = begin();
-    setRunning({ operation, url: fromSearch ? input : undefined });
+    setRunning({ operation, id: fromSearch ? input : undefined });
     setFailure(null);
     try {
       if (operation === "search") {
         setCandidates(await searchWorkInfo(target.id, input.trim(), signal));
         return;
       }
-      const source = fetchTarget(input);
+      // 入れた文字列は URL の形でも作品の ID としてそのまま送る（親 Issue 1232 の要件 14）。
+      const source = input.trim();
       const result = await fetchWorkInfo(video.id, target.id, source, signal);
       if (signal.aborted) return;
       showCompare({ source, plugin: target, fromSearch, result }, result);
@@ -164,6 +169,7 @@ function useFetchFlow({
         video.id,
         fetched.result.fetchId,
         selection,
+        selection.includes("tags") ? tags : undefined,
         signal,
       );
       onApplied(applied.video, mark);
@@ -192,7 +198,7 @@ function useFetchFlow({
       return;
     }
     if (plugin === undefined || running !== null || query.trim() === "") return;
-    void run(plugin, runFor(plugin, query, by), query, false);
+    void run(plugin, runFor(plugin, by), query, false);
   };
 
   return {
@@ -205,6 +211,7 @@ function useFetchFlow({
     step,
     fetched,
     selection,
+    tags,
     stale,
     applyFailure,
     applying,
@@ -224,22 +231,31 @@ function useFetchFlow({
       setFailure(null);
     },
     changeQuery: setQuery,
-    choose: (url: string) => {
-      // 候補を選ぶことはその URL の取得なので、取得できないプラグインでは走らせない。
+    choose: (id: string) => {
+      // 候補を選ぶことはその作品 ID の取得なので、取得できないプラグインでは走らせない。
       if (plugin !== undefined && canFetch(plugin) && running === null)
-        void run(plugin, "fetch", url, true);
+        void run(plugin, "fetch", id, true);
     },
-    toggle: (field: WorkInfoField, on: boolean) =>
-      setSelection((current) =>
-        on ? [...new Set([...current, field])] : current.filter((item) => item !== field),
-      ),
+    toggle: (field: WorkInfoField, on: boolean) => {
+      // タグの行のチェックボックスは、選べるタグを全部選ぶか全部外す。
+      if (field === "tags" && fetched !== null)
+        setTags(on ? selectableTags(latestVideo.current, fetched.result) : []);
+      setSelection((current) => withField(current, field, on));
+    },
+    toggleTag: (name: string, on: boolean) => {
+      // 1 つも選ばれていなければ、反映の項目からタグを外す。
+      const next = on
+        ? [...new Set([...tags, name])]
+        : tags.filter((item) => item !== name);
+      setTags(next);
+      setSelection((current) => withField(current, "tags", next.length > 0));
+    },
     back: () => setStep("find"),
     fetchAgain: () => {
-      // 同じプラグインと URL か ID で取り直す。プラグインが承認を外されていれば、その失敗が
+      // 同じプラグインと作品 ID で取り直す。プラグインが承認を外されていれば、その失敗が
       // 見つける段に出る。
       if (fetched === null || running !== null) return;
-      const input = "id" in fetched.source ? fetched.source.id : fetched.source.url;
-      void run(fetched.plugin, "fetch", input, fetched.fromSearch);
+      void run(fetched.plugin, "fetch", fetched.source, fetched.fromSearch);
     },
     cancel: () => controller.current?.abort(),
   };
@@ -252,9 +268,8 @@ function submitLabel(flow: Flow): ReactNode {
   if (flow.step === "result") return text.done;
   if (flow.step === "compare")
     return flow.applying ? busyLabel(text.applying) : text.apply;
-  const operation =
-    flow.plugin === undefined ? "search" : runFor(flow.plugin, flow.query, flow.by);
-  if (flow.running !== null && flow.running.url === undefined)
+  const operation = flow.plugin === undefined ? "search" : runFor(flow.plugin, flow.by);
+  if (flow.running !== null && flow.running.id === undefined)
     return busyLabel(
       flow.running.operation === "search" ? text.searching : text.fetching,
     );
@@ -327,11 +342,13 @@ export default function FetchDialog(props: {
           video={video}
           fetched={flow.fetched}
           selection={flow.selection}
+          tags={flow.tags}
           locked={flow.applying}
           stale={flow.stale}
           refetching={flow.running !== null}
           failure={flow.applyFailure}
           onToggle={flow.toggle}
+          onToggleTag={flow.toggleTag}
           onBack={flow.back}
           onFetchAgain={flow.fetchAgain}
         />

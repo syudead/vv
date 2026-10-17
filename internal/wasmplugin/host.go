@@ -80,10 +80,12 @@ func sessionFrom(ctx context.Context) *httpSession {
 	return &httpSession{}
 }
 
-// httpSession は 1 回の実行の HTTP の状態である。送った要求の数、応答（ハンドルはその添字）、
-// 拒んだホストと、最初に届かなかったホストを持つ。
+// httpSession は 1 回の実行の HTTP の状態である。要求を送るクライアント、送った要求の数、
+// 応答（ハンドルはその添字）、拒んだホストと、最初に届かなかったホストを持つ。
 type httpSession struct {
-	net *netClient
+	client *http.Client
+	// proxyHost は実行がプロキシを使うときの、そのホストである。プロキシのない実行では空である。
+	proxyHost string
 
 	mu          sync.Mutex
 	sent        int
@@ -115,7 +117,7 @@ type metaJSON struct {
 // send は http_send である。要求を組み立て、上限の中で送り、ハンドルか負の誤りを返す。
 func (s *httpSession) send(ctx context.Context, mod api.Module, ptr, length uint32) int32 {
 	raw, ok := mod.Memory().Read(ptr, length)
-	if !ok || s.net == nil {
+	if !ok || s.client == nil {
 		return hostInvalid
 	}
 	req, ok := buildRequest(ctx, raw)
@@ -148,13 +150,26 @@ func (s *httpSession) take() bool {
 	return true
 }
 
+// close はプロキシを使った実行の接続を閉じる。プロキシのない実行のクライアントは実行の間で
+// 共有するので閉じない。
+func (s *httpSession) close() {
+	if s.proxyHost != "" && s.client != nil {
+		s.client.CloseIdleConnections()
+	}
+}
+
 // do は要求を送って本文を読み、応答か負の誤りを返す。拒んだホストと、届かなかったホストを記録する。
+// プロキシを使う実行で 407 が返れば、プロキシの認証に失敗したとして届かなかった要求にする。
 func (s *httpSession) do(req *http.Request) (*response, int32) {
-	resp, err := s.net.client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, s.failure(req, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	if s.proxyHost != "" && resp.StatusCode == http.StatusProxyAuthRequired {
+		s.recordUnreachable(s.proxyHost)
+		return nil, hostUnreachable
+	}
 	body, err := io.ReadAll(io.LimitReader(resp.Body, domain.WorkInfoPluginHTTPMaxBodyBytes+1))
 	if err != nil {
 		// resp.Request はリダイレクトの最後の要求で、本文を送ってきたホストを持つ。
@@ -183,13 +198,21 @@ func (s *httpSession) failure(req *http.Request, err error) int32 {
 		return hostRefused
 	case errors.Is(req.Context().Err(), context.DeadlineExceeded):
 		return hostTimedOut
+	case s.proxyHost != "" && isProxyFailure(err):
+		s.recordUnreachable(s.proxyHost)
+	default:
+		s.recordUnreachable(failedHost(req, err))
 	}
-	s.mu.Lock()
-	if s.unreachable == "" {
-		s.unreachable = failedHost(req, err)
-	}
-	s.mu.Unlock()
 	return hostUnreachable
+}
+
+// recordUnreachable は、まだ無ければ host を最初に届かなかったホストとして記録する。
+func (s *httpSession) recordUnreachable(host string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.unreachable == "" {
+		s.unreachable = host
+	}
 }
 
 // failedHost は失敗した要求のホストを返す。リダイレクトの先で失敗したときは、その先のホストである。

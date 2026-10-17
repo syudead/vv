@@ -1,11 +1,9 @@
 // Package plugintest はテストの作品情報プラグインを Go のソースから組み立てる。.wasm のファイルは
-// リポジトリに置かず、テストのたびに GOOS=wasip1 GOARCH=wasm でビルドし、vv.plugin のセクションを
-// 足す（specs/049-work-info-plugins/research.md R-12）。テストだけが使う。
+// リポジトリに置かず、テストのたびに GOOS=wasip1 GOARCH=wasm でビルドする（specs/049-work-info-plugins/research.md R-12）。
+// vv.plugin のセクションは、mdm plugin pack と同じ wasmplugin.WithManifest で足す。テストだけが使う。
 package plugintest
 
 import (
-	"bytes"
-	"encoding/binary"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -44,20 +42,4 @@ func Build(tb testing.TB, dir string) []byte {
 	}
 	built[abs] = module
 	return module
-}
-
-// WithManifest は module の末尾に、manifest を中身とする vv.plugin のカスタムセクションを足した
-// 新しいバイト列を返す。
-func WithManifest(module []byte, manifest string) []byte {
-	return append(bytes.Clone(module), CustomSection("vv.plugin", []byte(manifest))...)
-}
-
-// CustomSection は名前 name、中身 data のカスタムセクション（id 0）を符号化する。
-func CustomSection(name string, data []byte) []byte {
-	payload := binary.AppendUvarint(nil, uint64(len(name)))
-	payload = append(payload, name...)
-	payload = append(payload, data...)
-	section := []byte{0}
-	section = binary.AppendUvarint(section, uint64(len(payload)))
-	return append(section, payload...)
 }
