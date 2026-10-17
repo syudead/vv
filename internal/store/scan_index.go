@@ -148,22 +148,50 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	}
 	// 新しい所在で、登録外の所在しか無かった仕事が着手できるようになりうる。
 	c.remainingChanged()
-	if err := s.db.commit(ctx, tx, &c); err != nil {
-		return domain.UpsertResult{}, err
-	}
 	outcome := domain.OutcomeMoved
 	if locationExists {
 		outcome = domain.OutcomeUpdated
 	} else if newVideo {
 		outcome = domain.OutcomeAdded
 	}
-	return domain.UpsertResult{
+	result := domain.UpsertResult{
 		ID: videoID, Outcome: outcome,
 		NeedsProbe:         probeState != string(domain.ProbeStateDone),
 		NeedsThumbnail:     thumbnailState != string(domain.ThumbnailStateDone),
 		NeedsSeekThumbnail: seekThumbnailState != string(domain.SeekThumbnailDone),
 		NeedsPreview:       probeState == string(domain.ProbeStateDone) && previewState != string(domain.PreviewStateDone),
-	}, nil
+	}
+	if err := recordLocationImport(ctx, tx, &c, result, file.Decider); err != nil {
+		return domain.UpsertResult{}, err
+	}
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return domain.UpsertResult{}, err
+	}
+	return result, nil
+}
+
+// recordLocationImport は、既知の内容を新しいパスで見つけて（移動・改名・完全に同じファイルの複製）
+// 積む仕事が無い取り込みを、done/completed の import の記録として書く。仕事を積む取り込みは
+// joinImportActivity が記録を開くので、ここでは書かない（specs/055-activity/data-model.md「Rules」）。
+func recordLocationImport(
+	ctx context.Context, tx activityWriter, c *changes, result domain.UpsertResult, decider domain.ActivityDecider,
+) error {
+	if result.Outcome != domain.OutcomeMoved || result.NeedsProbe || result.NeedsThumbnail ||
+		result.NeedsSeekThumbnail || result.NeedsPreview {
+		return nil
+	}
+	if decider == "" {
+		decider = domain.ActivityByRule
+	}
+	subject, err := videoActivitySubject(ctx, tx, result.ID)
+	if err != nil {
+		return err
+	}
+	_, err = recordActivity(ctx, tx, c, domain.ActivityEntry{
+		Kind: domain.ActivityImport, Subject: subject, Status: domain.ActivityDone,
+		Outcome: domain.ActivityCompleted, Decider: decider,
+	}, time.Now())
+	return err
 }
 
 // DeleteVideos は指定した行を消す。連鎖してジョブも消える。

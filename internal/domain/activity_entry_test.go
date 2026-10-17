@@ -139,6 +139,10 @@ func TestActivitySupersedes(t *testing.T) {
 			t.Errorf("%s を閉じる", name)
 		}
 	}
+	location := ActivityEntry{Kind: ActivityImport, Subject: subject, Status: ActivityDone, Outcome: ActivityCompleted}
+	if location.Supersedes(older) {
+		t.Error("所在だけを足した import が前の失敗を閉じる")
+	}
 	pair := ActivitySubject{Kind: ActivitySubjectPair, Key: "a", KeyB: "b"}
 	judgement := ActivityEntry{Kind: ActivityVersionJudgement, Subject: pair, Status: ActivityRunning}
 	if judgement.Supersedes(ActivityEntry{Kind: ActivityVersionJudgement, Subject: pair, Status: ActivityAttention}) {

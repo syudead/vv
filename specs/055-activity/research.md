@@ -50,7 +50,10 @@ so no role calls another role's methods.
 A video's import is one entry covering its five ingest stages (probe,
 thumbnail, seek preview, hover preview, fingerprint); a scan writes an entry
 only when it ends `failed` for a reason other than `interrupted`, and the next
-scan that ends `done` closes it as `superseded`.
+scan that ends `done` closes it as `superseded`. A file whose content is
+already in the library, found at a new path (a move, a rename or an identical
+copy), adds a location and is an import too: when it queues no job, it is one
+entry written already `done`.
 
 | Option | Entries for 1,000 new files | Can open and retry one file | Verdict |
 | --- | --- | --- | --- |
@@ -66,7 +69,11 @@ retry) opens a new entry instead of reviving a finished one (the edge case
 "each run is its own row"). A scan's subject is the scan itself, because a
 scan covers every media folder (`POST /api/scans` takes no folder); its retry
 starts a manual scan. A scan closed as `interrupted` at startup writes no
-entry, because startup already resumes it.
+entry, because startup already resumes it. A new location with every stage
+already done has no job to hang an entry on, so `UpsertVideo` writes it in the
+transaction that adds the location; a rescan of an unchanged path writes
+nothing, so repeated scans do not fill the log. That entry ran no stage, so it
+does not close an earlier failed import of the same video.
 
 ## R-4: Three statuses with a reason, and a newer run closes an older problem
 
