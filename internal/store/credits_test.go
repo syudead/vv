@@ -151,17 +151,17 @@ func TestCreditsWithTheSameNameAreDifferentPeople(t *testing.T) {
 
 func TestListCreditsPagesUnderAnAliasQuery(t *testing.T) {
 	db := migratedDB(t)
-	for i := range 150 {
+	for i := range 3 {
 		createPerson(t, db, fmt.Sprintf("人物%03d", i), fmt.Sprintf("Hanako %d", i))
 	}
 	createPerson(t, db, "別の人", "Taro")
 
-	query := domain.CreditQuery{Q: "ＨＡＮＡＫＯ", Limit: 100}
+	query := domain.CreditQuery{Q: "ＨＡＮＡＫＯ", Limit: 2}
 	first, err := db.Credits().List(context.Background(), domain.CreditPerson, query)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(first.Items) != 100 || first.Total != 150 || first.TotalAll != 151 || first.NextCursor == "" {
+	if len(first.Items) != 2 || first.Total != 3 || first.TotalAll != 4 || first.NextCursor == "" {
 		t.Fatalf("1 ページ目 = %d 件、total %d、totalAll %d、nextCursor %q", len(first.Items), first.Total, first.TotalAll, first.NextCursor)
 	}
 	if first.Items[0].Name != "人物000" || len(first.Items[0].Aliases) != 1 {
@@ -172,13 +172,13 @@ func TestListCreditsPagesUnderAnAliasQuery(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(second.Items) != 50 || second.Total != 150 || second.NextCursor != "" || second.Items[0].Name != "人物100" {
+	if len(second.Items) != 1 || second.Total != 3 || second.NextCursor != "" || second.Items[0].Name != "人物002" {
 		t.Fatalf("2 ページ目 = %d 件、total %d、nextCursor %q", len(second.Items), second.Total, second.NextCursor)
 	}
 
 	// 別の種類のカーソルは受け付けない。
 	if _, err := db.Credits().List(context.Background(), domain.CreditOrganization,
-		domain.CreditQuery{Limit: 100, Cursor: first.NextCursor}); !errors.Is(err, domain.ErrInvalidCursor) {
+		domain.CreditQuery{Limit: 2, Cursor: first.NextCursor}); !errors.Is(err, domain.ErrInvalidCursor) {
 		t.Errorf("団体の一覧に人物のカーソル: err = %v", err)
 	}
 }

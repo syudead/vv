@@ -95,29 +95,44 @@ func TestScanIssueFromScanInImportIsNotUnregistered(t *testing.T) {
 
 func TestPageScanIssues(t *testing.T) {
 	media := filepath.FromSlash("/media")
-	var records []ScanIssueRecord
-	for _, name := range []string{"a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4"} {
-		records = append(records, ScanIssueRecord{Path: filepath.Join(media, name), Kinds: []ScanIssueKind{IssueUnreadable}})
+	records := []ScanIssueRecord{
+		{Path: filepath.Join(media, "b", "x.mp4"), Kinds: []ScanIssueKind{IssueUnreadable}},
+		{Path: filepath.Join(media, "b", "a.mp4"), Kinds: []ScanIssueKind{IssueThumbnailFirstFrame}},
+		{Path: filepath.Join(media, "z.mp4"), Kinds: []ScanIssueKind{IssueUnreadable}},
+		{Path: filepath.Join(media, "a", "x.mp4"), Kinds: []ScanIssueKind{IssueUnreadable}},
+		{Path: filepath.Join(media, "a", "a.mp4"), Kinds: []ScanIssueKind{IssueThumbnailFirstFrame}},
 	}
 	issues := ScanIssues([]MediaFolder{{ID: 1, Path: media}}, records)
-
-	var names []string
-	cursor := ""
-	for {
-		page, next, err := PageScanIssues(issues, cursor, 2)
-		if err != nil {
-			t.Fatal(err)
+	want := []string{"a/x.mp4", "b/x.mp4", "z.mp4", "a/a.mp4", "b/a.mp4"}
+	for _, limit := range []int{1, 2} {
+		var paths []string
+		cursor := ""
+		for pages := 0; ; pages++ {
+			if pages >= len(records) {
+				t.Fatal("cursor did not finish")
+			}
+			page, next, err := PageScanIssues(issues, cursor, limit)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(page) > limit || (next != "" && len(page) != limit) {
+				t.Fatalf("page has %d items, limit %d, next %q", len(page), limit, next)
+			}
+			for _, issue := range page {
+				rel, err := filepath.Rel(media, issue.Path)
+				if err != nil {
+					t.Fatal(err)
+				}
+				paths = append(paths, filepath.ToSlash(rel))
+			}
+			if next == "" {
+				break
+			}
+			cursor = next
 		}
-		for _, issue := range page {
-			names = append(names, issue.FileName)
+		if !slices.Equal(paths, want) {
+			t.Fatalf("limit %d: paths = %v, want %v", limit, paths, want)
 		}
-		if next == "" {
-			break
-		}
-		cursor = next
-	}
-	if want := []string{"a.mp4", "b.mp4", "c.mp4", "d.mp4", "e.mp4"}; !slices.Equal(names, want) {
-		t.Fatalf("辿った件 = %v, want %v", names, want)
 	}
 
 	// カーソルは最後に返した件の位置なので、その件が消えても次の件から続く。
@@ -126,8 +141,8 @@ func TestPageScanIssues(t *testing.T) {
 		t.Fatal(err)
 	}
 	page, _, err := PageScanIssues(slices.Delete(slices.Clone(issues), 1, 2), next, 2)
-	if err != nil || len(page) == 0 || page[0].FileName != "c.mp4" {
-		t.Fatalf("消えた件のあと = %+v, %v, want c.mp4 から", page, err)
+	if err != nil || len(page) == 0 || page[0].FileName != "z.mp4" {
+		t.Fatalf("消えた件のあと = %+v, %v, want z.mp4 から", page, err)
 	}
 
 	for _, bad := range []string{"%%%", "bm90IGpzb24", "eyJzIjo1fQ"} {

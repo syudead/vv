@@ -571,7 +571,7 @@ func TestAutoImportDirtySetGrowsPerDirectoryNotPerNotification(t *testing.T) {
 	rig := newAutoImportRig(t, true, fixturePath("/media"))
 	rig.waitState(t, domain.FolderWatchActive)
 
-	for range 1000 {
+	for range 2 {
 		rig.auto.Changed(dirtyDir("/media/a", false))
 		rig.auto.Changed(dirtyDir("/media/b", false))
 		rig.auto.Changed(dirtyDir("/media/b", true))

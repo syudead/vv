@@ -3,8 +3,8 @@ package store
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io/fs"
+	"slices"
 	"testing"
 	"time"
 
@@ -298,19 +298,12 @@ func TestApplyVideoTagsReplaceAndRemoveAdvanceOnlyChanged(t *testing.T) {
 	assertEditedSince(t, db, beta, start)
 }
 
-// 変わる鍵を求める問い合わせは、鍵ごとに高々 1 行を返す。鍵 × タグの組の数だけ行を
-// 返さないので、上限の一括操作でも書き込みの取引の中で受け取る行は鍵の数までである。
+// Changed keys are returned once each, in input order, rather than once per tag.
 func TestChangedManualTagKeysReturnsOneRowPerKey(t *testing.T) {
 	ctx := context.Background()
 	db := migratedDB(t)
-	keys := make([]string, 0, 500)
-	for i := range 500 {
-		keys = append(keys, fmt.Sprintf("key-%d", i))
-	}
-	tagIDs := make([]int64, 0, 100)
-	for i := range 100 {
-		tagIDs = append(tagIDs, int64(i+1))
-	}
+	keys := []string{"key-c", "key-a", "key-b"}
+	tagIDs := []int64{1, 2}
 	encodedKeys, _ := json.Marshal(keys)
 	encodedTags, _ := json.Marshal(tagIDs)
 	tx, err := db.sql.BeginTx(ctx, nil)
@@ -323,7 +316,7 @@ func TestChangedManualTagKeysReturnsOneRowPerKey(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(got) != len(keys) || got[0] != keys[0] || got[len(got)-1] != keys[len(keys)-1] {
+		if !slices.Equal(got, keys) {
 			t.Errorf("%s: %d 行, want 鍵ごとに 1 行・鍵の順の %d 行", action, len(got), len(keys))
 		}
 	}

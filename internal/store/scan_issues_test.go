@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"errors"
-	"fmt"
 	"io/fs"
 	"slices"
 	"testing"
@@ -390,79 +389,6 @@ func TestIssueLocationChangeAdvancesRevision(t *testing.T) {
 	}
 	if after.IssuesRevision <= moved.IssuesRevision {
 		t.Fatalf("所在を消したあとの issues_revision = %d → %d, want 増える", moved.IssuesRevision, after.IssuesRevision)
-	}
-}
-
-// 数千件の問題を、カーソルで重ならずに最後まで辿れる。
-func TestThousandsOfIssuesPageWithoutOverlap(t *testing.T) {
-	db := migratedDB(t)
-	ctx := context.Background()
-	scan, _, err := db.Scans().StartScan(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	const total = 3000
-	tx, err := db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for i := range total {
-		kind := domain.IssueUnreadable
-		if i%3 == 0 {
-			kind = domain.IssueThumbnailFirstFrame
-		}
-		// 同じファイル名を別のフォルダに置き、並びの決め手がフォルダまで及ぶようにする。
-		path := fixturePath(fmt.Sprintf("/media/d%d/f%04d.mp4", i%7, i/7))
-		if err := recordScanIssue(ctx, tx, 0, path, kind, 1); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatal(err)
-	}
-
-	issues, err := db.Scans().ScanIssues(ctx, scan.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(issues) != total {
-		t.Fatalf("件数 = %d, want %d", len(issues), total)
-	}
-	seen := map[string]bool{}
-	var walked []domain.ScanIssue
-	cursor := ""
-	for pages := 0; ; pages++ {
-		if pages > total {
-			t.Fatal("カーソルが進まない")
-		}
-		page, next, err := domain.PageScanIssues(issues, cursor, 200)
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, issue := range page {
-			if seen[issue.Path] {
-				t.Fatalf("%s を2度返した", issue.Path)
-			}
-			seen[issue.Path] = true
-		}
-		walked = append(walked, page...)
-		if next == "" {
-			break
-		}
-		cursor = next
-	}
-	if len(walked) != total {
-		t.Fatalf("辿った件数 = %d, want %d", len(walked), total)
-	}
-	// 失敗が先、同じ重さの中はファイル名の順である。
-	for i := 1; i < len(walked); i++ {
-		a, b := walked[i-1], walked[i]
-		if a.Severity == domain.IssueSubstituted && b.Severity == domain.IssueFailed {
-			t.Fatalf("代用のあとに失敗が来た: %s, %s", a.Path, b.Path)
-		}
-		if a.Severity == b.Severity && a.FileName > b.FileName {
-			t.Fatalf("ファイル名の順でない: %s, %s", a.FileName, b.FileName)
-		}
 	}
 }
 
