@@ -554,3 +554,42 @@ func TestImportActivityNewLocationWithPendingStagesWritesNothing(t *testing.T) {
 		t.Errorf("entries = %+v, want none before jobs are queued", entries)
 	}
 }
+
+// 所在だけを足した記録を書けなければ UpsertVideo は失敗し、所在も足さない。残りの仕事の読み出しと記録の
+// 書き込みのどちらで失敗しても同じである。
+func TestImportActivityNewLocationFailureRollsBack(t *testing.T) {
+	for name, breakage := range map[string]string{
+		"remaining work": `alter table jobs rename to jobs_broken`,
+		"entry": `create trigger fail_location_entry before insert on activity_entries
+			begin select raise(abort, 'broken'); end`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := migratedDB(t)
+			queueNewFile(t, db, "clip", domain.ActivityByRule)
+			finishImport(t, db)
+			if _, err := db.sql.Exec(breakage); err != nil {
+				t.Fatal(err)
+			}
+			requireLocationRollback(t, db)
+		})
+	}
+}
+
+// requireLocationRollback は、同じ内容を新しいパスで見つけた UpsertVideo が失敗し、その所在が残らないことを
+// 確かめる。
+func requireLocationRollback(t *testing.T, db *DB) {
+	t.Helper()
+	copied := fixturePath("/media/copy/clip.mp4")
+	if _, err := db.ScanIndex().UpsertVideo(context.Background(),
+		sampleFile(copied, "clip", "key-clip", 1024, 0)); err == nil {
+		t.Fatal("UpsertVideo succeeded, want the activity failure")
+	}
+	var locations int
+	if err := db.sql.QueryRow(`select count(*) from video_locations where path = ?`, copied).
+		Scan(&locations); err != nil {
+		t.Fatal(err)
+	}
+	if locations != 0 {
+		t.Errorf("locations at %s = %d, want 0 after the rollback", copied, locations)
+	}
+}
