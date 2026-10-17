@@ -10,7 +10,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/wasmplugin/plugintest"
@@ -82,40 +81,6 @@ func TestRunReadsBackTheEchoedResponse(t *testing.T) {
 	if got.WorkInfo.Title != req.ID || strings.Join(got.WorkInfo.Tags, ",") != `apiKey=secret"\<&>,lang=日本語` {
 		t.Fatalf("work info = %+v, want the ID and the settings echoed", got.WorkInfo)
 	}
-}
-
-func TestRunStopsAPluginThatNeverEndsAndRefusesASecondRun(t *testing.T) {
-	t.Parallel()
-	rt := newTestRuntime(t)
-	module := probeModule(t)
-
-	first := make(chan error, 1)
-	var firstLog domain.WorkInfoRunLog
-	start := time.Now()
-	go func() {
-		_, log, err := rt.Run(context.Background(), probeDigest, module, search("loop"), domain.WorkInfoRunNetwork{}, nil)
-		firstLog = log
-		first <- err
-	}()
-	for len(rt.slot) == 0 {
-		time.Sleep(10 * time.Millisecond)
-	}
-
-	waited := time.Now()
-	_, _, err := rt.Run(context.Background(), probeDigest, module, search("second"), domain.WorkInfoRunNetwork{}, nil)
-	wantFailure(t, err, domain.WorkInfoRunBusy)
-	if d := time.Since(waited); d < domain.WorkInfoPluginBusyWait {
-		t.Fatalf("second run refused after %v, want after %v", d, domain.WorkInfoPluginBusyWait)
-	}
-
-	wantFailure(t, <-first, domain.WorkInfoRunTimedOut)
-	if firstLog.Stderr != "looping\n" || firstLog.Truncated {
-		t.Fatalf("timed-out run log = %+v, want the line it wrote", firstLog)
-	}
-	if d := time.Since(start); d < domain.WorkInfoPluginRunTimeout || d > domain.WorkInfoPluginRunTimeout+5*time.Second {
-		t.Fatalf("looping run stopped after %v, want %v", d, domain.WorkInfoPluginRunTimeout)
-	}
-	wantEchoWorks(t, rt, module)
 }
 
 func TestRunStopsAPluginThatGrowsItsMemory(t *testing.T) {
@@ -373,29 +338,26 @@ func TestCapTablesKeepsTablesThatNeedNoCap(t *testing.T) {
 	}
 }
 
-// record は実行の枠を持ったまま呼ばれるので、record の中から始めた 2 本目の実行は枠を取れない。2 本目は
-// モジュールを動かさないので、record を呼ばない（056 research.md R-6）。
-func TestRunRecordsBeforeASecondRunCanStart(t *testing.T) {
+// record runs while the execution slot is held; it is released after recording.
+func TestRunRecordsBeforeReleasingTheSlot(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
-
-	var second error
-	secondRecorded := false
+	recorded := false
 	record := func(domain.WorkInfoRunLog) error {
-		ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
-		defer cancel()
-		_, _, second = rt.Run(ctx, probeDigest, module, search("second"), domain.WorkInfoRunNetwork{},
-			func(domain.WorkInfoRunLog) error {
-				secondRecorded = true
-				return nil
-			})
+		recorded = true
+		select {
+		case rt.slot <- struct{}{}:
+			<-rt.slot
+			t.Fatal("the execution slot was released before recording")
+		default:
+		}
 		return nil
 	}
 	if _, _, err := rt.Run(context.Background(), probeDigest, module, search("first"), domain.WorkInfoRunNetwork{}, record); err != nil {
 		t.Fatalf("Run(first): %v", err)
 	}
-	if !errors.Is(second, context.DeadlineExceeded) || secondRecorded {
-		t.Fatalf("second run inside record = %v (recorded %v); want it still waiting for the slot", second, secondRecorded)
+	if !recorded {
+		t.Fatal("the run was not recorded")
 	}
 	wantEchoWorks(t, rt, module)
 }

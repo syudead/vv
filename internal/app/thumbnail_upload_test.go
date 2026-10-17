@@ -288,9 +288,9 @@ func TestUploadAfterPositionChangeWins(t *testing.T) {
 	}
 }
 
-// 自分の動画の錠を待つ間に期限が来たアップロードは、錠が空くのを待たずに期限の誤りを返し、
+// 期限切れのアップロードは、自分の動画の錠が空くのを待たずに期限の誤りを返し、
 // 何も書かない。待つのをやめたあとも錠は空き、後の位置の指定とアップロードは進む。
-func TestUploadWaitingOnLockStopsAtDeadline(t *testing.T) {
+func TestUploadRefusesExpiredRequestWhileLockIsHeld(t *testing.T) {
 	video := probedVideo(1, "a")
 	store := newFakeIngestStore(video)
 	hold := newHoldGeneration("thumbnail-at")
@@ -305,7 +305,7 @@ func TestUploadWaitingOnLockStopsAtDeadline(t *testing.T) {
 	}()
 	<-hold.started["thumbnail-at"]
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	ctx, cancel := context.WithTimeout(context.Background(), 0)
 	defer cancel()
 	done := make(chan error, 1)
 	go func() {

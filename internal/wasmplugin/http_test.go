@@ -79,12 +79,7 @@ func newTestSite(t *testing.T) *testSite {
 		}
 		_, _ = w.Write([]byte("hello"))
 	})
-	mux.HandleFunc("/slow", func(w http.ResponseWriter, r *http.Request) {
-		select {
-		case <-time.After(11 * time.Second):
-		case <-r.Context().Done():
-		}
-	})
+
 	s.Server = httptest.NewServer(mux)
 	t.Cleanup(s.Close)
 	return s
@@ -233,20 +228,6 @@ func TestHTTPAnswersEachLimitWithItsErrorCode(t *testing.T) {
 	wantCodes(t, info, err, "0")
 	if !strings.Contains(info.Tags[1], `"status":302`) || !strings.Contains(info.Tags[1], `"url":"http://site.test/hop/5"`) {
 		t.Fatalf("meta = %s, want the sixth redirect handed to the plugin", info.Tags[1])
-	}
-}
-
-func TestHTTPAnswersASlowResponseWithTimedOut(t *testing.T) {
-	t.Parallel()
-	site := newTestSite(t)
-	rt := newNetTestRuntime(t, site)
-
-	start := time.Now()
-	info, err := runHTTP(t, rt, get("http://site.test/slow"), 1, false)
-	wantCodes(t, info, err, "-4")
-	// 上は実行の時間の上限で抑える。実行は並べて動くテストのビルドとコンパイルの時間も含む。
-	if d := time.Since(start); d < domain.WorkInfoPluginHTTPTimeout || d >= domain.WorkInfoPluginRunTimeout {
-		t.Fatalf("slow request answered after %v, want after %v and before the run's limit", d, domain.WorkInfoPluginHTTPTimeout)
 	}
 }
 

@@ -4,7 +4,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <time.h>
 #include <unistd.h>
 #include <wasi/api.h>
 
@@ -171,9 +170,4 @@ static void repeat(int fd, char c, unsigned n) {
     memset(buf, c, n);
     (void)write(fd, buf, n);
     free(buf);
-}
-
-static void sleep_forever(void) {
-    struct timespec duration = {.tv_sec = 3600};
-    for (;;) nanosleep(&duration, NULL);
 }

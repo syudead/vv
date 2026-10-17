@@ -7,18 +7,11 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/syudead/vv/internal/domain"
 )
-
-// shortTranscodeStartTimeout は報告の経路の待ちの上限をテストの間だけ縮める。
-func shortTranscodeStartTimeout(t *testing.T, timeout time.Duration) {
-	t.Helper()
-	saved := transcodeStartupTimeout
-	transcodeStartupTimeout = timeout
-	t.Cleanup(func() { transcodeStartupTimeout = saved })
-}
 
 func transcodeStartOf(t *testing.T, rec *httptest.ResponseRecorder) int64 {
 	t.Helper()
@@ -53,66 +46,71 @@ func TestTranscodeStartReportsActualStartAfterTranscode(t *testing.T) {
 
 // 報告の要求が変換の要求より先に届いても、載るまで待って値を返す。
 func TestTranscodeStartWaitsForAttemptToAppear(t *testing.T) {
-	fake := &fakeTranscoder{body: "fragmented-mp4", actualStartMs: 4_000}
-	handler := transcodeServer(t, false, fake)
+	synctest.Test(t, func(t *testing.T) {
+		fake := &fakeTranscoder{body: "fragmented-mp4", actualStartMs: 4_000}
+		handler := transcodeServer(t, false, fake)
 
-	report := make(chan *httptest.ResponseRecorder, 1)
-	go func() {
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/videos/1/transcode-start?attempt=early", nil))
-		report <- rec
-	}()
-	time.Sleep(20 * time.Millisecond)
-	if rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4?startMs=6000&attempt=early"); rec.Code != http.StatusOK {
-		t.Fatalf("transcode = %d", rec.Code)
-	}
-	select {
-	case rec := <-report:
-		if got := transcodeStartOf(t, rec); got != 4_000 {
-			t.Errorf("startMs = %d, want 4000", got)
+		report := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/videos/1/transcode-start?attempt=early", nil))
+			report <- rec
+		}()
+		synctest.Wait()
+		if rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4?startMs=6000&attempt=early"); rec.Code != http.StatusOK {
+			t.Fatalf("transcode = %d", rec.Code)
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("報告の要求が戻らない")
-	}
+		select {
+		case rec := <-report:
+			if got := transcodeStartOf(t, rec); got != 4_000 {
+				t.Errorf("startMs = %d, want 4000", got)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("報告の要求が戻らない")
+		}
+	})
 }
 
 // 載っていて未決の間は待ち、最初のデータとともに決まった値を返す。
 func TestTranscodeStartWaitsUntilStartIsResolved(t *testing.T) {
-	release := make(chan struct{})
-	entered := make(chan struct{})
-	fake := &fakeTranscoder{body: "fragmented-mp4", actualStartMs: 3_000}
-	fake.beforeReturn = func(domain.LiveTranscodeRequest) {
-		close(entered)
-		<-release
-	}
-	handler := transcodeServer(t, false, fake)
+	synctest.Test(t, func(t *testing.T) {
+		release := make(chan struct{})
+		entered := make(chan struct{})
+		fake := &fakeTranscoder{body: "fragmented-mp4", actualStartMs: 3_000}
+		fake.beforeReturn = func(domain.LiveTranscodeRequest) {
+			close(entered)
+			<-release
+		}
+		handler := transcodeServer(t, false, fake)
 
-	transcoded := make(chan int, 1)
-	go func() {
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/videos/1/transcode.mp4?startMs=5000&attempt=pending", nil))
-		transcoded <- rec.Code
-	}()
-	<-entered
+		transcoded := make(chan int, 1)
+		go func() {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/videos/1/transcode.mp4?startMs=5000&attempt=pending", nil))
+			transcoded <- rec.Code
+		}()
+		<-entered
 
-	report := make(chan *httptest.ResponseRecorder, 1)
-	go func() {
-		rec := httptest.NewRecorder()
-		handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/videos/1/transcode-start?attempt=pending", nil))
-		report <- rec
-	}()
-	select {
-	case rec := <-report:
-		t.Fatalf("開始位置が決まる前に戻った: %d %s", rec.Code, rec.Body)
-	case <-time.After(30 * time.Millisecond):
-	}
-	close(release)
-	if got := transcodeStartOf(t, <-report); got != 3_000 {
-		t.Errorf("startMs = %d, want 3000", got)
-	}
-	if code := <-transcoded; code != http.StatusOK {
-		t.Errorf("transcode = %d", code)
-	}
+		report := make(chan *httptest.ResponseRecorder, 1)
+		go func() {
+			rec := httptest.NewRecorder()
+			handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/api/videos/1/transcode-start?attempt=pending", nil))
+			report <- rec
+		}()
+		synctest.Wait()
+		select {
+		case rec := <-report:
+			t.Fatalf("開始位置が決まる前に戻った: %d %s", rec.Code, rec.Body)
+		default:
+		}
+		close(release)
+		if got := transcodeStartOf(t, <-report); got != 3_000 {
+			t.Errorf("startMs = %d, want 3000", got)
+		}
+		if code := <-transcoded; code != http.StatusOK {
+			t.Errorf("transcode = %d", code)
+		}
+	})
 }
 
 // 変換が最初のデータを出せずに終わったら、上限を待たずに 404 を返す。
@@ -144,27 +142,28 @@ func TestTranscodeStartNotFoundWhenTranscodeFails(t *testing.T) {
 
 // 上限までに attempt が現れなければ 404。別の動画の経路からは同じ attempt を引けない。
 func TestTranscodeStartNotFoundForUnknownAttempt(t *testing.T) {
-	shortTranscodeStartTimeout(t, 30*time.Millisecond)
-	mediaDir, first, _ := streamFixture(t, "a.mkv", 128)
-	second := first
-	second.ID = 2
-	handler := newTestServer(t, Options{
-		Videos:     &fakeLibrary{videos: map[int64]domain.Video{1: first, 2: second}, roots: []string{mediaDir}},
-		Transcoder: &fakeTranscoder{body: "fragmented-mp4", actualStartMs: 1_000},
-	})
+	synctest.Test(t, func(t *testing.T) {
+		mediaDir, first, _ := streamFixture(t, "a.mkv", 128)
+		second := first
+		second.ID = 2
+		handler := newTestServer(t, Options{
+			Videos:     &fakeLibrary{videos: map[int64]domain.Video{1: first, 2: second}, roots: []string{mediaDir}},
+			Transcoder: &fakeTranscoder{body: "fragmented-mp4", actualStartMs: 1_000},
+		})
 
-	if rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode-start?attempt=never"); rec.Code != http.StatusNotFound {
-		t.Errorf("unknown attempt = %d", rec.Code)
-	}
-	if rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4?startMs=2000&attempt=shared"); rec.Code != http.StatusOK {
-		t.Fatalf("transcode = %d", rec.Code)
-	}
-	if rec := do(t, handler, http.MethodGet, "/api/videos/2/transcode-start?attempt=shared"); rec.Code != http.StatusNotFound {
-		t.Errorf("other video = %d", rec.Code)
-	}
-	if rec := do(t, handler, http.MethodGet, "/api/videos/999/transcode-start?attempt=shared"); rec.Code != http.StatusNotFound {
-		t.Errorf("missing video = %d", rec.Code)
-	}
+		if rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode-start?attempt=never"); rec.Code != http.StatusNotFound {
+			t.Errorf("unknown attempt = %d", rec.Code)
+		}
+		if rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4?startMs=2000&attempt=shared"); rec.Code != http.StatusOK {
+			t.Fatalf("transcode = %d", rec.Code)
+		}
+		if rec := do(t, handler, http.MethodGet, "/api/videos/2/transcode-start?attempt=shared"); rec.Code != http.StatusNotFound {
+			t.Errorf("other video = %d", rec.Code)
+		}
+		if rec := do(t, handler, http.MethodGet, "/api/videos/999/transcode-start?attempt=shared"); rec.Code != http.StatusNotFound {
+			t.Errorf("missing video = %d", rec.Code)
+		}
+	})
 }
 
 func TestTranscodeStartRejectsMalformedAttempt(t *testing.T) {
@@ -203,51 +202,42 @@ func TestTranscodeStartKeepsLatestValue(t *testing.T) {
 
 // 変換の要求が終わってから保持時間が過ぎた行は消える。attempt の無い要求は載らない。
 func TestTranscodeStartForgetsAfterRetention(t *testing.T) {
-	shortTranscodeStartTimeout(t, 30*time.Millisecond)
-	saved := transcodeStartRetention
-	transcodeStartRetention = 20 * time.Millisecond
-	t.Cleanup(func() { transcodeStartRetention = saved })
-
-	fake := &fakeTranscoder{body: "fragmented-mp4", actualStartMs: 1_000}
-	handler := transcodeServer(t, false, fake)
-	do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4?startMs=2000&attempt=old")
-	deadline := time.Now().Add(5 * time.Second)
-	for {
-		rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode-start?attempt=old")
-		if rec.Code == http.StatusNotFound {
-			break
-		}
-		if time.Now().After(deadline) {
+	synctest.Test(t, func(t *testing.T) {
+		fake := &fakeTranscoder{body: "fragmented-mp4", actualStartMs: 1_000}
+		handler := transcodeServer(t, false, fake)
+		do(t, handler, http.MethodGet, "/api/videos/1/transcode.mp4?startMs=2000&attempt=old")
+		time.Sleep(transcodeStartRetention + time.Nanosecond)
+		if rec := do(t, handler, http.MethodGet, "/api/videos/1/transcode-start?attempt=old"); rec.Code != http.StatusNotFound {
 			t.Fatalf("保持時間を過ぎても残っている: %d", rec.Code)
 		}
-		time.Sleep(10 * time.Millisecond)
-	}
-
+	})
 }
 
 // 決まらずに終わった要求は失敗として返り、報告の要求だけが作った行は待ち手が居なく
 // なれば消える。
 func TestTranscodeStartLedgerFailureAndPlaceholders(t *testing.T) {
-	ledger := newTranscodeStarts()
-	failed := transcodeStartKey{videoID: 1, attempt: "x"}
-	_, end := ledger.begin(failed)
-	end()
-	if _, ok := ledger.wait(t.Context(), failed, time.Second); ok {
-		t.Error("決まらずに終わった要求の値が返った")
-	}
+	synctest.Test(t, func(t *testing.T) {
+		ledger := newTranscodeStarts()
+		failed := transcodeStartKey{videoID: 1, attempt: "x"}
+		_, end := ledger.begin(failed)
+		end()
+		if _, ok := ledger.wait(t.Context(), failed, time.Second); ok {
+			t.Error("決まらずに終わった要求の値が返った")
+		}
 
-	absent := transcodeStartKey{videoID: 1, attempt: "absent"}
-	if _, ok := ledger.wait(t.Context(), absent, 10*time.Millisecond); ok {
-		t.Error("載っていない attempt の値が返った")
-	}
-	ledger.mu.Lock()
-	_, leaked := ledger.slots[absent]
-	_, kept := ledger.slots[failed]
-	ledger.mu.Unlock()
-	if leaked {
-		t.Error("報告の要求だけが作った行が残っている")
-	}
-	if !kept {
-		t.Error("終わった変換の行が保持時間の前に消えた")
-	}
+		absent := transcodeStartKey{videoID: 1, attempt: "absent"}
+		if _, ok := ledger.wait(t.Context(), absent, 10*time.Millisecond); ok {
+			t.Error("載っていない attempt の値が返った")
+		}
+		ledger.mu.Lock()
+		_, leaked := ledger.slots[absent]
+		_, kept := ledger.slots[failed]
+		ledger.mu.Unlock()
+		if leaked {
+			t.Error("報告の要求だけが作った行が残っている")
+		}
+		if !kept {
+			t.Error("終わった変換の行が保持時間の前に消えた")
+		}
+	})
 }
