@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: 911cbab5854ee7000e46df323f1171c422d9ea701383c6c24b4521c01b3f0d7f
+sourceHash: 143206662317060c9a72f39d2ea9043343cb163ea9b3e6ed5a7d5219b79ba13b
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
@@ -115,6 +115,38 @@ flowchart LR
 [`internal/app/work_info_fetch.go`](../../internal/app/work_info_fetch.go) の `WorkInfoPlugins.FetchWorkInfo` は、取得した日付を種類順に、人物と組織を役割順に並べ、その後人物と組織を `CreditStore.Match` で照合する。詳細と照合結果は、タイトルとタグとともに、同じ 10 分間メモリ上の結果に残る ([049 research.md](../../specs/049-work-info-plugins/research.md) R-8)。人物も組織もない結果はストアを読まない。
 
 照合結果は表示されるだけである。画面はそれをもとに各項目を結び付け済み、`New`、`Not linked` のいずれかとして示す ([052 screen-api.md](../../specs/052-plugin-work-info-fields/contracts/screen-api.md))。次の節で示すとおり、適用はトランザクションの中で照合し直す。適用は何かを書く前に、結果の中でその行に値がない選択済みのフィールドを `invalid_request` で拒否する。
+
+## VVMDM がカバーを取得し、アップロードした画像として適用する {#vvmdm-fetches-the-cover-and-applies-it-as-an-uploaded-image}
+
+プラグインはカバーを `workInfo.cover` の URL として返し、VVMDM は実行の後に、プラグインの要求の HTTP クライアントでそれを取得する ([`cover.go`](../../internal/wasmplugin/cover.go) の `coverImage`)。そのため [プラグインは公開インターネットのアドレスにだけ到達する](#plugins-reach-only-public-internet-addresses) のアドレスの規則はカバーにも当てはまり、拒否されたアドレスは実行を `blocked_address` で失敗させる。それ以外の失敗ではカバーを捨て、結果の残りを保つ ([プラグインの契約](../how-to/work-info-plugins.md#cover-image))。
+
+図は、実行からサムネイルまでのカバーを示す。
+
+```mermaid
+flowchart LR
+  run[実行が workInfo.cover を返す] --> get[プラグインのクライアントを通した 1 回の GET]
+  get -->|拒否| blocked[実行の失敗: blocked_address]
+  get -->|その他の失敗| none[カバーなし]
+  get -->|2xx、4 MiB 以下| check{ヘッダーによると PNG、JPEG、静止画の WebP のどれかで、120 MP 以下か}
+  check -->|いいえ| none
+  check -->|はい| keep[取得とともに 10 分間保つ]
+  keep --> serve[GET .../cover が比較にそれを返す]
+  keep -->|カバーを選んだとき| apply[作品情報のコミット後に UploadThumbnailImage]
+```
+
+[`work_info_cover.go`](../../internal/app/work_info_cover.go) は画像のヘッダーだけを確かめる。完全なデコードは適用が担う。カバーはアップロードした画像の経路である `Ingest.UploadThumbnailImage` を通る ([thumbnail-editing.md](thumbnail-editing.md#uploaded-images)) ので、アップロードのゲート、1 億 2000 万ピクセルの上限、生成のロックを受け、origin `uploaded` で保存される。
+
+ブラウザはカバーを `GET /api/videos/{id}/work-info-fetches/{fetchId}/cover` から表示するので、プラグインのサイトに決して接続しない。VVMDM は読み取った形式から型を設定し、`nosniff` とサンドボックス化する `Content-Security-Policy` を送るので、応答は画像にしかならない。
+
+各カバーは、その取得とともにメモリに保持する。保持するカバーは合わせて 32 MiB、つまり上限の 4 MiB のカバー 8 つ分に収まる。この予算を超える新しい取得は、カバーを持つ取得のうち先に期限が切れるものを捨て、捨てた取得の適用は `work_info_fetch_stale` を返す。
+
+適用は、作品情報のトランザクションがコミットした後にカバーをサムネイルにするので、取得の後に差し替えられた、または取り消されたプラグインは、そのトランザクションが確かめ直すため、サムネイルを変えない。コミット後のカバーの失敗 (サムネイルの経路が拒否する画像、取得の後に内容が変わった動画、書き込みのエラー) はすべて `invalid` として飛ばす。取得は一度しか使えず、すでに適用済みなので、エラーにすると画面は何が書かれたかを判別できなくなる。
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| プラグインが画像をダウンロードして応答で返す | 応答は 1 MiB に制限され、base64 は画像を 3 分の 1 大きくする |
+| ブラウザがサイトからカバーを読み込む | サイトに閲覧者が見えてしまう。[R-10](../../specs/049-work-info-plugins/research.md#r-10-search-candidates-are-text-only) が候補について退けたとおりである |
+| 表示のたびや適用時にカバーを取得し直す | 所有者が比較した画像とは別の画像をサイトが返しうる |
 
 ## 適用は選んだフィールドを 1 つのトランザクションでマージする {#the-apply-merges-the-selected-fields-in-one-transaction}
 

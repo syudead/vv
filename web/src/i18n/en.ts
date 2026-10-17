@@ -1,5 +1,5 @@
 import type { components } from "../api/gen/openapi";
-import { formatList, formatNumber, selectPlural } from "./intl";
+import { formatDecimal, formatList, formatNumber, selectPlural } from "./intl";
 
 // 英語の文言カタログである。画面の文言はここに集め、コンポーネントは messages.ts の `t`
 // から引く（specs/023-english-i18n/research.md R-1）。
@@ -27,6 +27,7 @@ type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 type WorkInfoOperation = components["schemas"]["WorkInfoOperation"];
 type SkippedTagReason = components["schemas"]["SkippedTag"]["reason"];
 type WorkInfoField = components["schemas"]["WorkInfoField"];
+type MediaInfoHdr = components["schemas"]["MediaInfoVideo"]["hdr"];
 
 /** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
 export interface ErrorDetails {
@@ -1560,6 +1561,13 @@ export const en = {
       /** ラベルの無い字幕（`<名前>.srt`）の表示名。 */
       default: "Default",
     },
+    // チャプターのボタンとメニュー（specs/056-media-info/ui-design.md「Words」）。チャプターの
+    // タイトルは利用者のデータで、訳さない。
+    chapters: {
+      button: "Chapters",
+      /** タイトルの無いチャプターの名前。n は開始の順の 1 からの番号。 */
+      untitled: (n: number) => `Chapter ${String(n)}`,
+    },
     neighbors: {
       previous: "Previous video",
       next: "Next video",
@@ -1863,6 +1871,56 @@ export const en = {
       showLess: "Show less",
       edit: "Edit details",
     },
+    // 情報欄の技術情報の行の下の、動画の追加の情報のまとまり（specs/056-media-info/ui-design.md
+    // 「Words」の Video page, groups）。言語の名前は formatLanguage、畳みの文言は workInfo のものを使う。
+    mediaInfo: {
+      video: "Video",
+      audio: "Audio",
+      subtitles: "Subtitles",
+      embedded: "Embedded",
+      broadcast: "Broadcast",
+      /** 畳んだトラックの `Show all {count} {group}` の group。 */
+      audioTracks: "Audio tracks",
+      subtitleTracks: "Subtitle tracks",
+      hdr: {
+        sdr: "SDR",
+        hdr10: "HDR10",
+        hlg: "HLG",
+        dolby_vision: "Dolby Vision",
+      } satisfies Record<MediaInfoHdr, string>,
+      frameRate: (rate: number) => `${formatDecimal(rate, 2)} fps`,
+      bitDepth: (bits: number) => `${formatNumber(bits)}-bit`,
+      bitRate: (bitsPerSecond: number) =>
+        bitsPerSecond >= 1_000_000
+          ? `${formatDecimal(bitsPerSecond / 1_000_000, 1)} Mbps`
+          : `${formatNumber(Math.round(bitsPerSecond / 1000))} kbps`,
+      interlaced: "Interlaced",
+      spherical: "360°",
+      stereo3d: (type: string) => `3D (${type})`,
+      trackNumber: (n: number) => formatNumber(n),
+      mono: "Mono",
+      stereo: "Stereo",
+      channels: (count: number) => `${formatNumber(count)} ch`,
+      default: "Default",
+      forced: "Forced",
+      hearingImpaired: "Hearing impaired",
+      closedCaptions: "Closed captions",
+      title: "Title",
+      author: "Author",
+      comment: "Comment",
+      description: "Description",
+      genre: "Genre",
+      date: "Date",
+      recorded: "Recorded",
+      device: "Device",
+      location: "Location",
+      coordinates: (latitude: number, longitude: number) =>
+        `${formatDecimal(latitude, 4, 4)}, ${formatDecimal(longitude, 4, 4)}`,
+      altitude: (metres: number) => `${formatNumber(Math.round(metres))} m`,
+      coverArt: "Cover art",
+      station: "Station",
+      program: "Program",
+    },
     // 作品情報プラグインからの取得（specs/049-work-info-plugins/ui-design.md「Words」の
     // Video page text）。
     workInfoFetch: {
@@ -1901,6 +1959,7 @@ export const en = {
       fields: {
         title: "Title",
         tags: "Tags",
+        cover: "Cover",
         code: "Code",
         description: "Description",
         "dates.release": "Released",
@@ -1916,6 +1975,10 @@ export const en = {
         externalIds: "IDs",
       } satisfies Record<WorkInfoField, string>,
       notInResult: "Not in the result",
+      // カバー画像の行の画像の名前。取得した側は、反映すると代表サムネイルになることも言う。
+      nowThumbnail: "Current thumbnail",
+      fetchedCover: (width: number, height: number) =>
+        `Fetched cover, ${formatNumber(width)} × ${formatNumber(height)}. Becomes the thumbnail when you apply`,
       nothingToAdd: "Nothing to add",
       // チップの中の従の印。読み上げは「{name}, New」になる。
       newMark: "New",
@@ -1947,6 +2010,7 @@ export const en = {
         invalidDate: "not a date in the form YYYY-MM-DD, YYYY-MM or YYYY",
         invalidUrl: "not a full URL starting with http:// or https://",
         invalidOther: "too long or contains characters that can't be used",
+        invalidCover: "couldn't be used as the thumbnail",
         tooMany: (items: string) => `over the limit for ${items}`,
         ambiguous: {
           person: "matches more than one person",

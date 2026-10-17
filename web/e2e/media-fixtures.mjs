@@ -503,6 +503,130 @@ export function generateWorkInfoPluginFixtures(root) {
 }
 
 /**
+ * MEDIA_INFO_VIDEO は generateMediaInfoFixtures が作る動画の題名で、動画ページの追加の情報の
+ * まとまり（specs/056-media-info、子 #1252）を web/e2e/media-info.e2e.ts で確かめる。
+ * 言語の印の違う音声 2 本と、題名・作者・ジャンルの埋め込みのタグを持つ。
+ */
+export const MEDIA_INFO_VIDEO = "追加情報動画";
+
+export function generateMediaInfoFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=10:duration=2",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:sample_rate=48000:duration=2",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=880:sample_rate=48000:duration=2",
+    "-map",
+    "0:v",
+    "-map",
+    "1:a",
+    "-map",
+    "2:a",
+    ...h264,
+    "-c:a",
+    "aac",
+    "-ac",
+    "2",
+    "-b:a",
+    "64k",
+    "-metadata:s:a:0",
+    "language=jpn",
+    "-metadata:s:a:1",
+    "language=eng",
+    "-metadata:s:a:1",
+    "title=Commentary",
+    "-disposition:a:0",
+    "default",
+    "-disposition:a:1",
+    "0",
+    "-metadata",
+    "title=埋め込みの題名",
+    "-metadata",
+    "artist=E2E Author",
+    "-metadata",
+    "genre=Documentary",
+    "-shortest",
+    path.join(root, `${MEDIA_INFO_VIDEO}.mkv`),
+  ]);
+}
+
+/**
+ * CHAPTERS_VIDEO は generateChapterFixtures が作る動画の題名で、プレーヤーのチャプター
+ * （specs/056-media-info、子 #1253）を web/e2e/media-info.e2e.ts で確かめる。6 秒の動画に
+ * チャプターが 3 つあり、2 つ目はタイトルが無く、3 つ目は動画の終わりを過ぎて終わる
+ * （quickstart.md の chapters.mkv）。隣に字幕を 1 つ置く。
+ */
+export const CHAPTERS_VIDEO = "チャプター動画";
+
+export function generateChapterFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  // チャプターの定義は取り込みの対象の外（media の root の隣）に置く。
+  const metadata = `${root}.chapters.ffmetadata`;
+  writeFileSync(
+    metadata,
+    [
+      ";FFMETADATA1",
+      "[CHAPTER]",
+      "TIMEBASE=1/1000",
+      "START=0",
+      "END=2000",
+      "title=Opening",
+      "[CHAPTER]",
+      "TIMEBASE=1/1000",
+      "START=2000",
+      "END=4000",
+      "[CHAPTER]",
+      "TIMEBASE=1/1000",
+      "START=4000",
+      "END=9000",
+      "title=Ending",
+      "",
+    ].join("\n"),
+  );
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=10:duration=6",
+    "-f",
+    "lavfi",
+    "-i",
+    "sine=frequency=440:sample_rate=48000:duration=6",
+    "-i",
+    metadata,
+    "-map",
+    "0:v",
+    "-map",
+    "1:a",
+    "-map_metadata",
+    "2",
+    "-map_chapters",
+    "2",
+    ...h264,
+    "-c:a",
+    "aac",
+    "-b:a",
+    "64k",
+    "-shortest",
+    path.join(root, `${CHAPTERS_VIDEO}.mkv`),
+  ]);
+  // 隣に置いた字幕。360px の操作バーにチャプター・変換の表示・字幕が並んでも収まるかを見る
+  // （ui-design.md「Responsive behaviour」）。
+  writeFileSync(
+    path.join(root, `${CHAPTERS_VIDEO}.srt`),
+    "1\n00:00:00,500 --> 00:00:06,000\nChapter subtitle cue\n",
+  );
+}
+
+/**
  * generateTagsFixtures が作る動画の本数（タグ動画A〜D と、タグ埋めの動画）。
  * web/e2e/tags.e2e.ts の videoCount と同じ数にする。
  */
