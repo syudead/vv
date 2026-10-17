@@ -171,9 +171,23 @@ func insertMergeSources(t *testing.T, db *DB, n, keys int) []int64 {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback() }()
+	prepare := func(query string) *sql.Stmt {
+		stmt, err := tx.Prepare(query)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return stmt
+	}
+	tags := prepare(`insert into tags (created_at, tentative) values (1, ?)`)
+	defer func() { _ = tags.Close() }()
+	names := prepare(`insert into tag_names (name, tag_id, canonical, search_key, sort_key, search_version)
+		values (?, ?, ?, ?, ?, ?)`)
+	defer func() { _ = names.Close() }()
+	assignments := prepare(`insert into video_tags (content_key, tag_id, created_at) values (?, ?, 1)`)
+	defer func() { _ = assignments.Close() }()
 	ids := make([]int64, 0, n)
 	for i := range n {
-		res, err := tx.Exec(`insert into tags (created_at, tentative) values (1, ?)`, i%2)
+		res, err := tags.Exec(i % 2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -185,13 +199,12 @@ func insertMergeSources(t *testing.T, db *DB, n, keys int) []int64 {
 			name      string
 			canonical int
 		}{{fmt.Sprintf("s%d", i), 1}, {fmt.Sprintf("s%d-別名", i), 0}} {
-			if _, err := tx.Exec(`insert into tag_names (name, tag_id, canonical, search_key, sort_key, search_version)
-				values (?, ?, ?, ?, ?, ?)`, name.name, id, name.canonical,
+			if _, err := names.Exec(name.name, id, name.canonical,
 				domain.FoldForMatch(name.name), domain.NaturalSortKey(name.name), domain.SearchKeyVersion); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if _, err := tx.Exec(`insert into video_tags (content_key, tag_id, created_at) values (?, ?, 1)`,
+		if _, err := assignments.Exec(
 			fmt.Sprintf("key-%d", i%keys), id); err != nil {
 			t.Fatal(err)
 		}

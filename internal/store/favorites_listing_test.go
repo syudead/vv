@@ -193,23 +193,23 @@ func TestListLibraryFavoritedOrder(t *testing.T) {
 	favoriteVideos(t, db, true, x)
 	setFavorites(t, db, domain.FavoriteChange{GroupIDs: []int64{groupIDOf(t, db, fixturePath("/media/pair"))}, Favorite: true})
 
-	for _, tc := range []struct {
+	cases := []struct {
 		sort domain.VideoSort
 		head []string
 	}{
 		{domain.SortFavoritedDesc, []string{"group:pair", "x", "solo"}},
 		{domain.SortFavoritedAsc, []string{"solo", "x", "group:pair"}},
-	} {
-		for _, limit := range []int{1, 2} {
-			names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: tc.sort, Limit: limit}))
-			if len(names) != 5 || !slices.Equal(names[:3], tc.head) {
-				t.Fatalf("%s limit=%d = %v, want 先頭が %v で全 5 件", tc.sort, limit, names, tc.head)
-			}
-			tail := slices.Clone(names[3:])
-			slices.Sort(tail)
-			if !slices.Equal(tail, []string{"group:show", "y"}) {
-				t.Errorf("%s limit=%d の末尾 = %v, want お気に入りでない show・y", tc.sort, limit, tail)
-			}
+	}
+	for _, pageCase := range pagingCases(cases, 2) {
+		tc := pageCase.value
+		names := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: tc.sort, Limit: pageCase.limit}))
+		if len(names) != 5 || !slices.Equal(names[:3], tc.head) {
+			t.Fatalf("%s limit=%d = %v, want 先頭が %v で全 5 件", tc.sort, pageCase.limit, names, tc.head)
+		}
+		tail := slices.Clone(names[3:])
+		slices.Sort(tail)
+		if !slices.Equal(tail, []string{"group:show", "y"}) {
+			t.Errorf("%s limit=%d の末尾 = %v, want お気に入りでない show・y", tc.sort, pageCase.limit, tail)
 		}
 	}
 

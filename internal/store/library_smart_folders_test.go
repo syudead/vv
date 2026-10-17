@@ -185,13 +185,11 @@ func TestListLibraryPagesAcrossSmartFolders(t *testing.T) {
 	if want := []string{"folder:全部", "folder:猫", "folder:空", "group:pair", "group:show", "solo", "x", "y"}; !slices.Equal(all, want) {
 		t.Fatalf("項目 = %v, want %v", all, want)
 	}
-	for _, sort := range allSorts {
-		for _, limit := range []int{1, 2, 3} {
-			got := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: sort, Seed: 7, Limit: limit}))
-			slices.Sort(got)
-			if !slices.Equal(got, all) {
-				t.Errorf("%s limit=%d = %v, want %v", sort, limit, got, all)
-			}
+	for _, tc := range pagingCases(allSorts, 2, 3) {
+		got := itemNames(libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: tc.value, Seed: 7, Limit: tc.limit}))
+		slices.Sort(got)
+		if !slices.Equal(got, all) {
+			t.Errorf("%s limit=%d = %v, want %v", tc.value, tc.limit, got, all)
 		}
 	}
 }

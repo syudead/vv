@@ -53,6 +53,7 @@ func readAllTagPages(t *testing.T, db *DB, query domain.TagListQuery) []domain.T
 		if err != nil {
 			t.Fatalf("ListTags(%+v) error = %v", query, err)
 		}
+		assertPageSize(t, len(page.Items), query.Limit, page.NextCursor)
 		pages = append(pages, page)
 		if page.NextCursor == "" {
 			return pages
@@ -290,12 +291,11 @@ func TestListTagsSortsByCountAndCreatedAcrossPages(t *testing.T) {
 		{domain.TagSortCreatedAsc, expected(createdAt, false)},
 		{domain.TagSortName, naturalOrder(names, ids)},
 	}
-	for _, tc := range cases {
-		for _, limit := range []int{1, 2, 3, 4} {
-			pages := readAllTagPages(t, db, domain.TagListQuery{Sort: tc.sort, Limit: limit})
-			if got := pagedTagNames(pages); !slices.Equal(got, tc.want) {
-				t.Errorf("%s limit=%d: %v\nwant %v", tc.sort, limit, got, tc.want)
-			}
+	for _, pageCase := range pagingCases(cases, 2, 3, 4) {
+		tc := pageCase.value
+		pages := readAllTagPages(t, db, domain.TagListQuery{Sort: tc.sort, Limit: pageCase.limit})
+		if got := pagedTagNames(pages); !slices.Equal(got, tc.want) {
+			t.Errorf("%s limit=%d: %v\nwant %v", tc.sort, pageCase.limit, got, tc.want)
 		}
 	}
 
