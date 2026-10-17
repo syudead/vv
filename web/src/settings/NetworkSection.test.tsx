@@ -104,17 +104,21 @@ describe("NetworkSection", () => {
     expect(await proxyInput()).toBeDefined();
   });
 
-  it("shows only the proxy row outside the desktop app (404)", async () => {
+  it("says LAN access is in the desktop app outside it (404), then the proxy row alone", async () => {
     serve(notFound);
     render(<NetworkSection />);
 
     expect(
-      await screen.findByRole("heading", { level: 2, name: "Network" }),
+      await screen.findByRole("heading", { level: 2, name: "Local network" }),
     ).toBeDefined();
     expect(
       screen.getByText("Connections to VVMDM, and from its plugins to other sites."),
     ).toBeDefined();
+    const line = screen.getByText(/LAN access is set in the Windows desktop app\./);
     const input = await proxyInput();
+    expect(
+      line.compareDocumentPosition(input) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(input.value).toBe("");
     expect(input.getAttribute("placeholder")).toBe("http://proxy.example:3128");
     expect(input.getAttribute("type")).toBe("url");
@@ -317,7 +321,7 @@ describe("NetworkSection", () => {
     render(<NetworkSection />);
 
     expect(
-      await screen.findByRole("heading", { level: 2, name: "Network" }),
+      await screen.findByRole("heading", { level: 2, name: "Local network" }),
     ).toBeDefined();
     expect(lanSwitch().getAttribute("aria-checked")).toBe("false");
     expect(screen.getByText("Before you turn this on")).toBeDefined();

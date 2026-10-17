@@ -81,3 +81,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Automatic duplicate judging (the versions mark on cards and rows, the Duplicate judging switch in Settings): UI](../../specs/054-auto-dup/ui-design.md)
 - [Media information on the video page and chapters on the seek bar (the Video, Audio, Subtitles, Embedded and Broadcast groups, chapter marks, the seek preview's chapter title, the chapters menu): UI](../../specs/056-media-info/ui-design.md)
 - [Work-info plugin tooling (setting defaults and choices, the plugin proxy in the Network section, the last run dialog, picking fetched tags one by one): UI](../../specs/056-plugin-tooling/ui-design.md)
+- [Settings split into eight pages (the page list, the narrow-screen list and back link, the Auto-import state and switch on two pages, the Auto-tagging lock and the Duplicate judging note that link to Connections): UI](../../specs/058-settings-pages/ui-design.md)

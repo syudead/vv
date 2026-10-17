@@ -12,7 +12,10 @@ import {
 } from "@playwright/test";
 
 // 一覧の動画カードのスクラブの帯（specs/032-card-scrub-preview、親 Issue #616 の
-// 受け入れ条件 1〜7・9）を、playback.e2e.ts と同じ実物のスプライトで確かめる。
+// 受け入れ条件 1〜7・9）のうち、実物のスプライトのコマ・ループ再生・カードの実際の寸法に
+// 頼るものを、playback.e2e.ts と同じ実物のスプライトで確かめる
+// （docs/design-docs/web-testing.md）。帯の上のクリックが開始位置を運ばずに再生画面を開く
+// ことは src/videoList/VideoCard.test.tsx が確かめる。
 
 interface Video {
   id: number;
@@ -22,7 +25,6 @@ interface Video {
   previewUrl?: string;
   durationMs?: number;
   seekThumbnailUrl?: string;
-  progress?: { positionMs: number; completed: boolean };
 }
 
 interface SeekSprite {
@@ -375,42 +377,6 @@ test.describe.serial("library card scrub band", () => {
           )
           .toBeGreaterThan(stoppedAt);
         await page.mouse.move(0, 0);
-      });
-    }
-  });
-
-  test("帯の上のクリックで再生画面を開き、開始位置は変わらない", async ({
-    page,
-    request,
-  }) => {
-    test.setTimeout(60_000);
-    const item = video("portrait");
-    await page.setViewportSize({ width: 1280, height: 800 });
-    for (const surface of surfaces) {
-      await test.step(surface.name, async () => {
-        const url =
-          surface.name === "folder-search"
-            ? `${surface.url().split("?")[0] ?? ""}?q=portrait`
-            : surface.url();
-        const response = await request.get(`/api/videos/${String(item.id)}`);
-        const saved = ((await response.json()) as Video).progress?.positionMs ?? 0;
-        await page.goto(url);
-        const target = card(page, item);
-        await expect(target).toBeVisible();
-        await target.scrollIntoViewIfNeeded();
-        const point = await bandPoint(target, 0.8);
-        await page.mouse.move(point.x, point.y);
-        await expect(target.locator("[data-scrub-bar]")).toBeVisible();
-        await page.mouse.click(point.x, point.y);
-        await expect(page).toHaveURL(new RegExp(`/videos/${String(item.id)}$`));
-        await page.waitForFunction(() => {
-          const element = document.querySelector<HTMLVideoElement>("video.vjs-tech");
-          return element !== null && element.readyState >= 1;
-        });
-        const start = await page
-          .locator("video.vjs-tech")
-          .evaluate((element) => (element as HTMLVideoElement).currentTime);
-        expect(Math.abs(start * 1000 - saved)).toBeLessThan(1000);
       });
     }
   });

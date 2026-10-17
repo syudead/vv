@@ -24,7 +24,7 @@ test("filesystem rootをメディアフォルダとして登録できる", async
     });
   });
 
-  await page.goto("/settings");
+  await page.goto("/settings/library");
   await page.getByRole("button", { name: "Add folder" }).click();
   const picker = page.getByRole("dialog", { name: "Add media folder" });
   await picker.getByRole("button", { name: filesystemRoot, exact: true }).click();
@@ -38,9 +38,14 @@ test("filesystem rootをメディアフォルダとして登録できる", async
   );
   await add.click();
   expect((await create).status()).toBe(201);
-  await expect(page.locator("code", { hasText: filesystemRoot })).toBeVisible();
+  // 「/」はどのパスにも含まれるので、文字を含む code ではなく、パスがちょうど
+  // filesystemRoot の行を探す。他の e2e の登録フォルダや自動取り込みの警告が
+  // 画面にあると、含むで探すとそちらに当たり、別のフォルダを外してしまう。
+  const rootPath = page.locator(`code[title="${filesystemRoot}"]`);
+  const row = page.locator(`div:has(> div > div > code[title="${filesystemRoot}"])`);
+  await expect(rootPath).toBeVisible();
 
-  await page.getByRole("button", { name: "Remove folder" }).click();
+  await row.getByRole("button", { name: "Remove folder" }).click();
   const confirmation = page.getByRole("alertdialog", { name: "Remove this folder?" });
   const remove = page.waitForResponse(
     (response) =>
@@ -49,7 +54,7 @@ test("filesystem rootをメディアフォルダとして登録できる", async
   );
   await confirmation.getByRole("button", { name: "Remove" }).click();
   expect((await remove).status()).toBe(204);
-  await expect(page.locator("code", { hasText: filesystemRoot })).toHaveCount(0);
+  await expect(rootPath).toHaveCount(0);
 });
 
 test("設定画面からVite proxy越しにメディアフォルダを追加できる", async ({ page }) => {
@@ -73,8 +78,8 @@ test("設定画面からVite proxy越しにメディアフォルダを追加で�
       });
     });
 
-    await page.goto("/settings");
-    await expect(page.getByRole("heading", { name: "Settings" })).toBeVisible();
+    await page.goto("/settings/library");
+    await expect(page.getByRole("heading", { level: 1, name: "Library" })).toBeVisible();
     await expect(page.getByText("No media folders yet")).toBeVisible();
 
     await page.getByRole("button", { name: "Add folder" }).click();
@@ -94,7 +99,11 @@ test("設定画面からVite proxy越しにメディアフォルダを追加で�
       0,
     );
 
-    await page.getByRole("button", { name: "Remove folder" }).click();
+    // 他の e2e の登録フォルダが並んでいても、この行のボタンを押す。
+    await page
+      .locator(`div:has(> div > div > code[title="${mediaDir}"])`)
+      .getByRole("button", { name: "Remove folder" })
+      .click();
     const confirmation = page.getByRole("alertdialog", { name: "Remove this folder?" });
     const remove = page.waitForResponse(
       (response) =>

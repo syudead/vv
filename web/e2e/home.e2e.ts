@@ -495,7 +495,7 @@ test.describe.serial("home", () => {
     expect(edited?.byOrganizer).toBe(false);
 
     const before = (await readHome(request)).organizer?.last?.finishedAt;
-    await page.goto("/settings");
+    await page.goto("/settings/library");
     const reorganize = page.waitForResponse(
       (response) =>
         response.url().endsWith("/api/home/organize") &&

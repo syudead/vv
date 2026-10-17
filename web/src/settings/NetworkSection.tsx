@@ -63,13 +63,16 @@ function useLoad<T>(
 }
 
 /**
- * NetworkSection は設定画面の「Network」区画である。デスクトップ版では所有者が LAN からの接続を
- * 許可し、許可中に開くアドレスを見る（specs/037-windows-app/research.md R-15）。どのビルドでも、
- * プラグインの要求を送るプロキシを選ぶ（specs/056-plugin-tooling/research.md R-8）。
+ * NetworkSection は「Network」のページの「Local network」節である。デスクトップ版では所有者が
+ * LAN からの接続を許可し、許可中に開くアドレスを見る（specs/037-windows-app/research.md R-15）。
+ * どのビルドでも、プラグインの要求を送るプロキシを選ぶ（specs/056-plugin-tooling/research.md R-8）。
  *
  * `GET /api/settings/network`（デスクトップ版だけ、ほかは `404`）か `GET /api/settings/plugin-proxy`
- * のどちらかが答えるまでは何も出さない。LAN スイッチはデスクトップ版だけで、プロキシの行はその下に
- * 出す。どちらも読めなければ 1 つの ErrorState を出し、片方だけ読めなければ読めない側の行の場所に出す。
+ * のどちらかが答えるまでは何も出さない。LAN スイッチはデスクトップ版だけで、`404` のとき（デスク
+ * トップ版でない）はスイッチの代わりにデスクトップ版で設定する旨の 1 行を出す
+ * （specs/058-settings-pages/ui-design.md「Network page outside the desktop app」）。プロキシの行は
+ * その下に出す。どちらも読めなければ 1 つの ErrorState を出し、片方だけ読めなければ読めない側の
+ * 行の場所に出す。
  *
  * スイッチを押すと、送信中は押した先の状態を示し、応答で表示を置き換える。失敗
  * （`409` `listen_failed` など）では誤りを出し、スイッチを元の状態に戻す
@@ -118,6 +121,9 @@ export default function NetworkSection() {
   return (
     <PageSection title={text.heading} description={text.description}>
       {network.kind === "failed" && errorState(network.reason, () => void loadNetwork())}
+      {network.kind === "absent" && (
+        <p className="text-sm text-muted-foreground">{text.notDesktop}</p>
+      )}
       {settings !== null && (
         <LANAccess
           settings={settings}

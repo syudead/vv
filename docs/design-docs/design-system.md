@@ -362,7 +362,17 @@ from a named step is an arbitrary value to the checks; the step still comes
 from `tokens.css`. `DetailPage`'s aside is the named step `detail-aside`
 (`detail-aside-wide` from `xl`). `ListPage`'s optional aside is the column
 `list-aside` from `lg`, laid out by the named utility `grid-cols-list-aside`
-and capped at `list-aside-max` while it sticks under the top bar. The video page's player frame sizes itself
+and capped at `list-aside-max` while it sticks under the top bar.
+`SettingsPage`'s optional `nav` is the list of a settings area's pages: from
+`sm` a column `settings-nav` wide at the left, laid out by the named utility
+`grid-cols-settings-page` within `max-w-4xl`; below `sm` the list alone or the
+page alone under a back link, chosen in CSS by its `view`
+([058 UI design, Page list and skeleton](../../specs/058-settings-pages/ui-design.md#page-list-and-skeleton)).
+Its optional `notice` holds one `Alert` between the header and the sections
+for a condition of the whole page, such as the Auto-tagging page locked until
+an Ollama connection is saved
+([058 UI design, Changes to the design system](../../specs/058-settings-pages/ui-design.md#changes-to-the-design-system)).
+The video page's player frame sizes itself
 from named steps declared in an `@theme inline` block (`player-width`,
 `player-height`, `aspect-player`), because their values read the video's
 aspect ratio from the frame at run time and must be resolved on the element,

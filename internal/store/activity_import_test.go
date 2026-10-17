@@ -66,6 +66,8 @@ func runImportStage(t *testing.T, db *DB, kind domain.JobKind) {
 		_, err = ingest.SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone, domain.SubstitutionUnknown)
 	case domain.JobPreview:
 		_, err = ingest.SetPreviewStateForJob(ctx, job, domain.PreviewStateDone)
+	case domain.JobFingerprint:
+		_, err = ingest.ApplyFingerprintForJob(ctx, job, sampleFingerprint())
 	}
 	if err != nil {
 		t.Fatalf("record %s: %v", kind, err)
@@ -449,5 +451,145 @@ func TestScanActivityRecordsFailedScansUntilOneSucceeds(t *testing.T) {
 	superseded := domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivitySuperseded}
 	if len(entries) != 1 || entryState(entries[0]) != superseded {
 		t.Errorf("entries after a done scan = %+v, want the failed scan superseded", entries)
+	}
+}
+
+// finishImport は queueNewFile で積んだ 5 つの段階をすべて終える。
+func finishImport(t *testing.T, db *DB) {
+	t.Helper()
+	for _, kind := range []domain.JobKind{
+		domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail, domain.JobPreview, domain.JobFingerprint,
+	} {
+		runImportStage(t, db, kind)
+	}
+}
+
+// 取り込み済みの内容を新しいパスで見つけ（完全に同じファイルの複製・移動・改名）、積む仕事が無ければ、
+// 始めたものの done/completed の import の記録を 1 件書く。変わらないパスの再走査は書かない。
+func TestImportActivityRecordsANewLocationWithoutJobs(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	queueNewFile(t, db, "clip", domain.ActivityByRule)
+	finishImport(t, db)
+	first := importEntries(t, db)
+	if len(first) != 1 || entryState(first[0]) != activityDone {
+		t.Fatalf("first entries = %+v, want one done", first)
+	}
+
+	copied := sampleFile(fixturePath("/media/copy/clip.mp4"), "clip", "key-clip", 1024, 0)
+	copied.Decider = domain.ActivityByOwner
+	upserted, err := db.ScanIndex().UpsertVideo(ctx, copied)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if upserted.Outcome != domain.OutcomeMoved {
+		t.Fatalf("Outcome = %q, want %q", upserted.Outcome, domain.OutcomeMoved)
+	}
+	entries := importEntries(t, db)
+	if len(entries) != 2 || entries[1].ID != first[0].ID {
+		t.Fatalf("entries = %+v, want a second entry above the first", entries)
+	}
+	entry := entries[0]
+	if entryState(entry) != activityDone || entry.Decider != domain.ActivityByOwner || entry.Subject.Key != "key-clip" {
+		t.Errorf("entry = %+v, want done/completed by owner on key-clip", entry)
+	}
+
+	if _, err := db.ScanIndex().UpsertVideo(ctx, copied); err != nil {
+		t.Fatal(err)
+	}
+	if entries := importEntries(t, db); len(entries) != 2 {
+		t.Errorf("entries after an unchanged rescan = %d, want 2", len(entries))
+	}
+}
+
+// queueUntilFingerprint は新しいファイルを積み、指紋の手前の 4 つの段階を終える。
+func queueUntilFingerprint(t *testing.T, db *DB) {
+	t.Helper()
+	queueNewFile(t, db, "clip", domain.ActivityByRule)
+	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail, domain.JobPreview} {
+		runImportStage(t, db, kind)
+	}
+}
+
+// requireNoLocationEntry は、同じ内容を新しいパスで見つけても import の記録が増えないことを確かめる。
+func requireNoLocationEntry(t *testing.T, db *DB) {
+	t.Helper()
+	before := len(importEntries(t, db))
+	if _, err := db.ScanIndex().UpsertVideo(context.Background(),
+		sampleFile(fixturePath("/media/copy/clip.mp4"), "clip", "key-clip", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if entries := importEntries(t, db); len(entries) != before {
+		t.Errorf("entries = %+v, want still %d", entries, before)
+	}
+}
+
+// 指紋の仕事が待っている動画を新しいパスで見つけたときは書かない。その仕事の記録が取り込みを表す。
+func TestImportActivityNewLocationWithQueuedFingerprintWritesNothing(t *testing.T) {
+	db := migratedDB(t)
+	queueUntilFingerprint(t, db)
+	requireNoLocationEntry(t, db)
+}
+
+// 指紋を諦めた動画を新しいパスで見つけたときも書かない。走査が積み直す指紋の仕事の記録が取り込みを表す。
+func TestImportActivityNewLocationWithMissingFingerprintWritesNothing(t *testing.T) {
+	db := migratedDB(t)
+	queueUntilFingerprint(t, db)
+	giveUpStage(t, db, domain.JobFingerprint, errors.New("the fingerprint could not be read"))
+	requireNoLocationEntry(t, db)
+}
+
+// 段階が残っている動画を新しいパスで見つけたときは、ここでは書かない。走査が積む仕事の記録になる。
+func TestImportActivityNewLocationWithPendingStagesWritesNothing(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	if _, err := db.ScanIndex().UpsertVideo(ctx, sampleFile(fixturePath("/media/clip.mp4"), "clip", "key-clip", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.ScanIndex().UpsertVideo(ctx,
+		sampleFile(fixturePath("/media/copy/clip.mp4"), "clip", "key-clip", 1024, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if entries := importEntries(t, db); len(entries) != 0 {
+		t.Errorf("entries = %+v, want none before jobs are queued", entries)
+	}
+}
+
+// 所在だけを足した記録を書けなければ UpsertVideo は失敗し、所在も足さない。残りの仕事の読み出しと記録の
+// 書き込みのどちらで失敗しても同じである。
+func TestImportActivityNewLocationFailureRollsBack(t *testing.T) {
+	for name, breakage := range map[string]string{
+		"remaining work": `alter table jobs rename to jobs_broken`,
+		"entry": `create trigger fail_location_entry before insert on activity_entries
+			begin select raise(abort, 'broken'); end`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			db := migratedDB(t)
+			queueNewFile(t, db, "clip", domain.ActivityByRule)
+			finishImport(t, db)
+			if _, err := db.sql.Exec(breakage); err != nil {
+				t.Fatal(err)
+			}
+			requireLocationRollback(t, db)
+		})
+	}
+}
+
+// requireLocationRollback は、同じ内容を新しいパスで見つけた UpsertVideo が失敗し、その所在が残らないことを
+// 確かめる。
+func requireLocationRollback(t *testing.T, db *DB) {
+	t.Helper()
+	copied := fixturePath("/media/copy/clip.mp4")
+	if _, err := db.ScanIndex().UpsertVideo(context.Background(),
+		sampleFile(copied, "clip", "key-clip", 1024, 0)); err == nil {
+		t.Fatal("UpsertVideo succeeded, want the activity failure")
+	}
+	var locations int
+	if err := db.sql.QueryRow(`select count(*) from video_locations where path = ?`, copied).
+		Scan(&locations); err != nil {
+		t.Fatal(err)
+	}
+	if locations != 0 {
+		t.Errorf("locations at %s = %d, want 0 after the rollback", copied, locations)
 	}
 }

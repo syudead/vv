@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -55,7 +55,9 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
       value: 1_000_000,
     });
     Object.defineProperty(window, "scrollY", { configurable: true, value: top });
-    window.dispatchEvent(new Event("scroll"));
+    act(() => {
+      window.dispatchEvent(new Event("scroll"));
+    });
   }
 
   /** scrollToEnd は読み込んだ行の末尾近くまでスクロールし、続きのきっかけを作る。 */
@@ -464,19 +466,23 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
       tag({ id: index + 1, name: name(index), tentative: index % 2 === 0 }),
     );
     install();
-    renderPage();
-    await screen.findByTitle(name(0));
-    await toggleFilter(user, "Tentative only");
+    // 「Tentative only」を URL で効かせて開く。吹き出しから選ぶ操作は他のテストが
+    // 確かめており、ここで重ねると CI の遅い走りで 5 秒の上限に届く。
+    renderPage({ url: "/tags?tentative=1" });
     await waitFor(() => expect(count()).toBe("125 of 250 tags"));
+    expect(server.pageRequests.map((params) => params.get("tentative"))).toEqual([
+      "true",
+    ]);
 
     hold.getsFrom = server.getCalls + 1;
     await scrollToEnd(100);
     await waitFor(() => expect(heldGetReleases).toHaveLength(1));
-    scrollTo(0);
-    await screen.findByTitle(name(0));
 
-    await user.click(within(rowOf(name(0))).getByRole("button", { name: "Confirm" }));
-    await waitFor(() => expect(screen.queryByTitle(name(0))).toBeNull());
+    // 末尾まで描いた行のうち、境（Tag 198）の 1 つ前を確定する。先頭へ戻すと
+    // 描く行を全部入れ替えるので、スクロールし直さない。
+    const confirmed = name(196);
+    await user.click(within(rowOf(confirmed)).getByRole("button", { name: "Confirm" }));
+    await waitFor(() => expect(screen.queryByTitle(confirmed)).toBeNull());
     expect(count()).toBe("124 of 250 tags");
 
     // 確定の前に受けた続き（total 125）が届く。

@@ -22,4 +22,23 @@ describe("useScrollTopOnChange", () => {
     expect(scrollTo).toHaveBeenCalledTimes(1);
     expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" });
   });
+
+  it("undefined のあと初めて決まった条件は最初の描画として扱い、その後の変化で先頭へ戻す", () => {
+    const scrollTo = vi.spyOn(window, "scrollTo").mockImplementation(() => {});
+    const { rerender } = renderHook(
+      ({ signature }: { signature: string | undefined }) =>
+        useScrollTopOnChange(signature),
+      { initialProps: { signature: undefined as string | undefined } },
+    );
+
+    rerender({ signature: "connections" });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    rerender({ signature: undefined });
+    expect(scrollTo).not.toHaveBeenCalled();
+
+    rerender({ signature: "plugins" });
+    expect(scrollTo).toHaveBeenCalledTimes(1);
+    expect(scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "auto" });
+  });
 });

@@ -373,6 +373,12 @@ describe("LibraryPage", () => {
         name: "Ascending (shortest first). Press for descending",
       }),
     ).toBeDefined();
+    expect(
+      (screen.getByRole("searchbox", { name: "Search videos" }) as HTMLInputElement)
+        .value,
+    ).toBe("京都");
+    // 視聴状態と「Playable only」を数え、検索語は数えない。
+    expect(screen.getByRole("button", { name: "Filter (2 applied)" })).toBeDefined();
   });
 
   it("random で seed が無ければ作って URL に書き足し、履歴は増やさない", async () => {
@@ -806,6 +812,44 @@ describe("LibraryPage", () => {
       ),
     );
     expect(screen.getByRole("link", { name: "動画 1" })).toBeDefined();
+  });
+
+  it("未視聴で絞った一覧から動画を開き、見終えて戻っても、控えから同じ並びと件数で戻し読み直さない", async () => {
+    fetchMock.mockImplementation((input) => {
+      const url = String(input);
+      if (url.startsWith("/api/scans/current")) return Promise.resolve(json({}, 404));
+      if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      return Promise.resolve(
+        json({ items: [video(3), video(2), video(1)], total: 3 } satisfies VideoPage),
+      );
+    });
+    const view = renderLibrary("/?watch=unwatched&sort=titleDesc");
+    await screen.findByRole("link", { name: "動画 2" });
+    const titles = () =>
+      Array.from(document.querySelectorAll("[data-video-id] h3"), (h) => h.textContent);
+    const before = titles();
+    const requested = listRequests(fetchMock).length;
+
+    fireEvent.click(screen.getByRole("link", { name: "動画 2" }));
+    await screen.findByText("再生画面");
+    // 再生画面での保存で見終えた（未視聴の条件から外れる）。
+    act(() =>
+      recordSavedProgress(
+        2,
+        { positionMs: 1_500, completed: true, updatedAt: "" },
+        nextProgressSequence(),
+      ),
+    );
+    view.unmount();
+
+    // 戻ると一覧が控えから作り直される。その場では外さず、同じ位置に残す。
+    renderLibrary("/?watch=unwatched&sort=titleDesc");
+    await screen.findByRole("link", { name: "動画 2" });
+    expect(titles()).toEqual(before);
+    expect(screen.getByRole("status", { name: "Search results" }).textContent).toBe(
+      "3 items",
+    );
+    expect(listRequests(fetchMock)).toHaveLength(requested);
   });
 
   it("一部にしか反映されなかった切り替えの取り直し中に動画を開いても、古い一覧を控えない（PR 338）", async () => {

@@ -394,7 +394,23 @@ describe("FolderPage", () => {
       screen.getByText("No videos or subfolders were found. Put files there, then scan."),
     ).toBeDefined();
     expect(screen.getByRole("link", { name: "Scan" }).getAttribute("href")).toBe(
-      "/settings#scan-status",
+      "/settings/scan#scan-status",
+    );
+  });
+
+  it("登録フォルダが無ければ、設定の Library のページへの入口を出す", async () => {
+    const original = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) =>
+      String(input) === "/api/folders"
+        ? Promise.resolve(json({ folders: [] }))
+        : original!(input, init),
+    );
+    renderFolders("/folders");
+    expect(
+      await screen.findByRole("heading", { name: "No media folders yet" }),
+    ).toBeDefined();
+    expect(screen.getByRole("link", { name: "Open Settings" }).getAttribute("href")).toBe(
+      "/settings/library",
     );
   });
 
@@ -1004,6 +1020,10 @@ describe("FolderPage", () => {
     const status = screen.getByText("2 videos");
     expect(status.textContent).toBe("2 videos");
     expect(status.classList.contains("sr-only")).toBe(false);
+    // パンくずの現在地に、配下を探していることを添える。
+    expect(screen.getByRole("navigation", { name: "Breadcrumbs" }).textContent).toContain(
+      "— searching inside",
+    );
 
     const box = screen.getByRole("searchbox", { name: "Search in A" });
     await user.clear(box);
@@ -1135,6 +1155,14 @@ describe("FolderPage", () => {
     expect(y).toBeDefined();
     expect(z).toBeDefined();
     expect(requests.some((url) => url.startsWith("/api/videos?query="))).toBe(true);
+    // 検索語が空のときは無効の絞り込み・並べ替えを、検索中は使える。
+    expect(
+      (screen.getByRole("button", { name: "Filter" }) as HTMLButtonElement).disabled,
+    ).toBe(false);
+    expect(
+      (screen.getByRole("button", { name: "Sort by: Date added" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
   });
 
   // 受け入れ条件 18: グループはライブラリでだけ1件にまとまる。フォルダ画面の一覧と

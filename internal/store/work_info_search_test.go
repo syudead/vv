@@ -78,6 +78,20 @@ func TestSearchFollowsRenamedPerson(t *testing.T) {
 	}
 }
 
+// 人物を統合すると、統合元の名前は統合先の別名になり、その名前で統合先の動画がすべて当たる
+// （親 Issue #967 の受け入れ条件 5）。
+func TestSearchFindsAMergedPersonByTheMergedName(t *testing.T) {
+	db, tagged, other, person := workInfoSearchFixture(t)
+	source := createPerson(t, db, "佐藤秋子")
+	setWorkInfo(t, db, other, domain.WorkInfo{People: []domain.WorkPerson{performer(source.ID)}})
+	if _, err := db.Credits().Merge(context.Background(), domain.CreditPerson, person.ID, []int64{source.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if got := slices.Sorted(slices.Values(listIDs(t, db, domain.AudienceOwner, domain.VideoQuery{Query: "佐藤秋子"}))); !slices.Equal(got, slices.Sorted(slices.Values([]int64{tagged, other}))) {
+		t.Errorf("統合元の名前 = %v, want [%d %d]", got, tagged, other)
+	}
+}
+
 // 集まりの代表以外のバージョンから書いた作品情報も集まりの利用者データの鍵に載るので、ライブラリの
 // 項目（ListLibrary）では品番・人物・団体の名前の語で代表の 1 件が出て、除外語にすると集まりごと
 // 除かれる（data-model.md「Search」、specs/030-video-versions/data-model.md §3）。

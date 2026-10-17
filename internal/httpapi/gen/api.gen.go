@@ -3609,6 +3609,9 @@ type OllamaSettings struct {
 
 	// Model Ollama の模型名。保存値が無ければ clef-flash
 	Model string `json:"model"`
+
+	// Saved 所有者が接続先を保存したか（接続先の行があるか）。false のあいだ endpoint と model は サーバーが返す既定値である（specs/058-settings-pages/research.md R-4）。保存の応答は常に true
+	Saved bool `json:"saved"`
 }
 
 // Onboarding defines model for Onboarding.
@@ -4761,6 +4764,15 @@ type UpdateMediaFolderRequest struct {
 // UpdateNetworkSettingsRequest defines model for UpdateNetworkSettingsRequest.
 type UpdateNetworkSettingsRequest struct {
 	LanAccess bool `json:"lanAccess"`
+}
+
+// UpdateOllamaSettingsRequest Ollama の接続先を保存する要求。saved は要求に含めない
+type UpdateOllamaSettingsRequest struct {
+	// Endpoint Ollama の基底 URL（http か https）
+	Endpoint string `json:"endpoint"`
+
+	// Model Ollama の模型名
+	Model string `json:"model"`
 }
 
 // UpdatePluginProxySettingsRequest defines model for UpdatePluginProxySettingsRequest.
@@ -6483,7 +6495,7 @@ type UpdateComfyUISettingsJSONRequestBody = UpdateComfyUISettingsRequest
 type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
 
 // UpdateOllamaSettingsJSONRequestBody defines body for UpdateOllamaSettings for application/json ContentType.
-type UpdateOllamaSettingsJSONRequestBody = OllamaSettings
+type UpdateOllamaSettingsJSONRequestBody = UpdateOllamaSettingsRequest
 
 // UpdatePluginProxySettingsJSONRequestBody defines body for UpdatePluginProxySettings for application/json ContentType.
 type UpdatePluginProxySettingsJSONRequestBody = UpdatePluginProxySettingsRequest

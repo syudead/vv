@@ -8,14 +8,18 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-type fakeOllamaStore struct{ settings domain.OllamaSettings }
+type fakeOllamaStore struct {
+	settings domain.OllamaSettings
+	saved    bool
+}
 
-func (s *fakeOllamaStore) OllamaSettings(context.Context) (domain.OllamaSettings, error) {
-	return s.settings, nil
+func (s *fakeOllamaStore) SavedOllamaSettings(context.Context) (domain.OllamaSettings, bool, error) {
+	return s.settings, s.saved, nil
 }
 
 func (s *fakeOllamaStore) SaveOllamaSettings(_ context.Context, settings domain.OllamaSettings) error {
 	s.settings = settings
+	s.saved = true
 	return nil
 }
 
@@ -42,13 +46,16 @@ func TestOllamaConnectionSaveAndCheck(t *testing.T) {
 	if store.settings != domain.DefaultOllamaSettings() {
 		t.Fatalf("規則に合わない値を保存した: %+v", store.settings)
 	}
+	if got, saved, err := conn.Settings(ctx); err != nil || saved || got != domain.DefaultOllamaSettings() {
+		t.Fatalf("保存の前の Settings = %+v, %v, %v", got, saved, err)
+	}
 	want := domain.OllamaSettings{Endpoint: "http://h:1", Model: "clef"}
 	saved, err := conn.SaveSettings(ctx, domain.OllamaSettings{Endpoint: " http://h:1/ ", Model: "clef"})
 	if err != nil || saved != want || store.settings != want {
 		t.Fatalf("saved = %+v, %v", saved, err)
 	}
-	if got, err := conn.Settings(ctx); err != nil || got != want {
-		t.Fatalf("Settings = %+v, %v", got, err)
+	if got, saved, err := conn.Settings(ctx); err != nil || got != want || !saved {
+		t.Fatalf("保存のあとの Settings = %+v, %v, %v", got, saved, err)
 	}
 	if err := conn.Check(ctx); err == nil || probe.checks != 1 {
 		t.Fatalf("Check = %v, checks = %d", err, probe.checks)

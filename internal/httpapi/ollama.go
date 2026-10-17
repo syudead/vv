@@ -13,7 +13,9 @@ import (
 // internal/app の *OllamaConnection が満たす（docs/design-docs/ai-layer.md）。判定モデルを
 // 使う機能（AutoTagging）とは別の口にする。
 type OllamaConnection interface {
-	Settings(ctx context.Context) (domain.OllamaSettings, error)
+	// Settings は接続先と、所有者が接続先を保存したかを同じ時点の値として返す
+	// （specs/058-settings-pages/research.md R-4）。
+	Settings(ctx context.Context) (settings domain.OllamaSettings, saved bool, err error)
 	SaveSettings(ctx context.Context, settings domain.OllamaSettings) (domain.OllamaSettings, error)
 	Check(ctx context.Context) error
 }
@@ -24,13 +26,13 @@ func (s *server) GetOllamaSettings(w http.ResponseWriter, r *http.Request) {
 		s.internalError(w, "Ollama settings are not configured.", nil)
 		return
 	}
-	settings, err := s.ollama.Settings(r.Context())
+	settings, saved, err := s.ollama.Settings(r.Context())
 	if err != nil {
 		s.internalError(w, "Could not read the Ollama settings.", err)
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.OllamaSettings{Endpoint: settings.Endpoint, Model: settings.Model}, s.logger)
+	writeJSON(w, http.StatusOK, ollamaSettingsBody(settings, saved), s.logger)
 }
 
 // UpdateOllamaSettings は Ollama の接続先を確かめて保存する。
@@ -62,7 +64,12 @@ func (s *server) UpdateOllamaSettings(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.Header().Set("Cache-Control", cacheNoStore)
-	writeJSON(w, http.StatusOK, gen.OllamaSettings{Endpoint: saved.Endpoint, Model: saved.Model}, s.logger)
+	writeJSON(w, http.StatusOK, ollamaSettingsBody(saved, true), s.logger)
+}
+
+// ollamaSettingsBody は接続先と保存したかを応答の本文にする。
+func ollamaSettingsBody(settings domain.OllamaSettings, saved bool) gen.OllamaSettings {
+	return gen.OllamaSettings{Endpoint: settings.Endpoint, Model: settings.Model, Saved: saved}
 }
 
 // CheckOllama は保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる。判定は

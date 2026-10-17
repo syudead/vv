@@ -1969,7 +1969,7 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/OllamaSettings"
+              $ref: "#/components/schemas/UpdateOllamaSettingsRequest"
       responses:
         "200":
           description: 保存後の接続先
@@ -5934,7 +5934,7 @@ components:
 
     OllamaSettings:
       type: object
-      required: [endpoint, model]
+      required: [endpoint, model, saved]
       additionalProperties: false
       description: Ollama の接続先（docs/design-docs/ai-layer.md）
       properties:
@@ -5944,6 +5944,24 @@ components:
         model:
           type: string
           description: Ollama の模型名。保存値が無ければ clef-flash
+        saved:
+          type: boolean
+          description: >-
+            所有者が接続先を保存したか（接続先の行があるか）。false のあいだ endpoint と model は
+            サーバーが返す既定値である（specs/058-settings-pages/research.md R-4）。保存の応答は常に true
+
+    UpdateOllamaSettingsRequest:
+      type: object
+      required: [endpoint, model]
+      additionalProperties: false
+      description: Ollama の接続先を保存する要求。saved は要求に含めない
+      properties:
+        endpoint:
+          type: string
+          description: Ollama の基底 URL（http か https）
+        model:
+          type: string
+          description: Ollama の模型名
 
     ComfyUIProvider:
       type: string

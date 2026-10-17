@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/development.md
-sourceHash: f3503af2f42fcecd3a737cfb04ad5266e63173123ecffa453e9a12afbd054ad0
+sourceHash: c7a80cf91fa9660c4c7dcff08c8371c7f43e37083f3b85defd2e8b45eff05430
 ---
 
 # 開発 {#development}
@@ -65,7 +65,7 @@ flowchart LR
   manual -->|はい| e2e[5 グループで E2E]
 ```
 
-「いいえ」は、Markdown、`docs/`、`specs/` だけが変更されたことを意味する。コードの変更では、CI は `task check` のサブタスクを並列の `Checks (<group>)` ジョブとして実行する。生成ファイル、マイグレーション、Windows のビルドの確認と組み合わせた Go の lint、Go のテスト、SPA のビルドの確認（`task build-check-web`）と組み合わせた Web の lint、3 つのシャードに分けた Vitest スイート（`task test-web-report -- --shard=1/3`）だ。`task test-web` はビルドの確認とスイート全体を実行する。`task check` に追加する確認は、`.github/workflows/ci.yml` のこれらのグループのいずれかにも入れる。Go のビルドキャッシュを復元するのは Go のグループだけで、それぞれが `main` への push で自分のコピーを保存する。Vitest はファイル単位でシャードに分けるため、一つのシャードの大半を占めるまで大きくなったテストファイルは、`web/src/tags/TagsPage*.test.tsx` が共有の `web/src/testing/tagsPage.tsx` を中心に分けられているように、トピックごとに分割する。`main` への push はマージされたプルリクエストなので、ブラウザ E2E と Docker イメージのビルドはプルリクエストでは実行されない。プルリクエストでは `Browser E2E` は実行されずに成功する。Renovate の PR（head ブランチが `renovate/*`）は例外で、イメージを公開せずに両方を実行する。Renovate のルーチンが人を介さずにそれらをマージするためである（[dependency-updates.md](dependency-updates.md)）。
+「いいえ」は、Markdown、`docs/`、`specs/` だけが変更されたことを意味する。コードの変更では、CI は `task check` のサブタスクを並列の `Checks (<group>)` ジョブとして実行する。生成ファイル、マイグレーション、e2e グループ、Windows のビルドの確認と組み合わせた Go の lint、Go のテスト、SPA のビルドの確認（`task build-check-web`）と組み合わせた Web の lint、3 つのシャードに分けた Vitest スイート（`task test-web-report -- --shard=1/3`）だ。`task test-web` はビルドの確認とスイート全体を実行する。`task check` に追加する確認は、`.github/workflows/ci.yml` のこれらのグループのいずれかにも入れ、新しい `web/e2e/*.e2e.ts` ファイルは同じファイルの 5 つの E2E グループのいずれかに入れる。ファイルがどのグループにも入っていないとき、または 2 つのグループに入っているとき、`task e2e-groups-check` は失敗する。Go のビルドキャッシュを復元するのは Go のグループだけで、それぞれが `main` への push で自分のコピーを保存する。Vitest はファイル単位でシャードに分けるため、一つのシャードの大半を占めるまで大きくなったテストファイルは、`web/src/tags/TagsPage*.test.tsx` が共有の `web/src/testing/tagsPage.tsx` を中心に分けられているように、トピックごとに分割する。`main` への push はマージされたプルリクエストなので、ブラウザ E2E と Docker イメージのビルドはプルリクエストでは実行されない。プルリクエストでは `Browser E2E` は実行されずに成功する。Renovate の PR（head ブランチが `renovate/*`）は例外で、イメージを公開せずに両方を実行する。Renovate のルーチンが人を介さずにそれらをマージするためである（[dependency-updates.md](dependency-updates.md)）。
 
 マージ前のブランチでブラウザ E2E を実行するには、Actions タブから、または `gh workflow run ci.yml --ref <branch>` で、CI ワークフローを手動で開始する（`workflow_dispatch`）。手動実行はブランチをコードの変更として扱い、すべての `Checks` グループと 5 つの E2E グループを実行する。Docker イメージはビルドしない。
 

@@ -8,14 +8,16 @@ import {
 import { copyFileSync, existsSync, mkdirSync, renameSync, rmSync } from "node:fs";
 import path from "node:path";
 
-// 任意のグループ（specs/048-groups、親 #1040、子 #1059）の流れを、実サーバーと実メディアに
-// 通す。動画は run-e2e.mjs が generateGroupsFixtures で作る 3 秒の動画で、名前は
-// media-fixtures.mjs の GROUPS_* と同じ。名前の規則、入れ子の判定、同期の細かな場合などは
-// domain・ストア・ページのテストが持つので、ここでは重ねず受け入れ条件の流れだけを確かめる
+// 任意のグループ（specs/048-groups、親 #1040、子 #1059）のうち、本物のスキャナーを通る
+// 再スキャンに頼るものを、実サーバーと実メディアに通す。動画は run-e2e.mjs が
+// generateGroupsFixtures で作る 3 秒の動画で、名前は media-fixtures.mjs の GROUPS_* と同じ。
+// 画面からグループを作ってサーバーが残しカードに出る流れは 1 本だけ残し、ほかの受け入れ条件
+// （2 つのグループ・入れ子・並べ替え・お気に入りとプレイリスト）は Vitest
+// （src/library/LibraryGroups・LibraryFavorites・LibraryPlaylists、src/groups/GroupPage、
+// src/player/VideoPage）と Go のストア・ハンドラーのテストが確かめる
 // （docs/design-docs/web-testing.md の Test levels）。括弧の番号は親 Issue の受け入れ条件である。
 //
-// テストは順に状態を引き継ぐ。「三つのフォルダ」（動画1〜3）は 1・2・4・7・8 で、
-// 「もう一つのグループ」（動画1 と単体A）は 2・3 で、「外のグループ」（単体B）は 3 で使う。
+// テストは順に状態を引き継ぐ。「三つのフォルダ」（動画1〜3）は 1 で作り 7 で使う。
 
 interface MediaFolder {
   id: number;
@@ -43,7 +45,6 @@ const query = "グループ確認";
 const video1 = "グループ確認の動画1";
 const video2 = "グループ確認の動画2";
 const video3 = "グループ確認の動画3";
-const singleA = "グループ確認の単体A";
 const singleB = "グループ確認の単体B";
 const autoFolder = "自動のグループ";
 const auto1 = "グループ確認の自動1";
@@ -57,7 +58,6 @@ const allTitles = [
   video1,
   video2,
   video3,
-  singleA,
   singleB,
   auto1,
   auto2,
@@ -65,13 +65,10 @@ const allTitles = [
   dissolved1,
   dissolved2,
 ];
-// テストが作る、または名前を変えるグループとプレイリスト。
+// テストが作る、または名前を変えるグループ。
 const spread = "三つのフォルダ";
-const second = "もう一つのグループ";
-const outer = "外のグループ";
 const renamedAuto = "名前を変えた自動グループ";
-const playlistName = "グループのプレイリスト";
-const groupNames = [spread, second, outer, renamedAuto, autoFolder, dissolvedFolder];
+const groupNames = [spread, renamedAuto, autoFolder, dissolvedFolder];
 const librarySearch = `/library?q=${encodeURIComponent(query)}`;
 let folder: MediaFolder | undefined;
 
@@ -270,38 +267,9 @@ async function itemTitles(page: Page): Promise<string[]> {
   );
 }
 
-/**
- * upNext は動画のページの「Up next」の、グループのメンバーの一覧である。同じ区画の後ろに
- * 「Related videos」の一覧が続くので、最初の一覧だけを見る。
- */
-function upNext(page: Page): Locator {
-  return page.getByRole("region", { name: "Up next" }).getByRole("list").first();
-}
-
-/**
- * openFromGroup はグループのページのカードから title の動画を開き、題名の上のグループの
- * 行が name を指すのを確かめる。
- */
-async function openFromGroup(page: Page, name: string, title: string, count: number) {
-  await openGroup(page, name);
-  await videoCard(page, title).getByRole("link").first().click();
-  await expect(page).toHaveURL(/\/videos\/\d+\?group=\d+$/);
-  await expect(
-    page.getByRole("link", {
-      name: new RegExp(
-        `^Group "${escapeRegExp(name)}", video \\d+ of ${String(count)}\\. Open the group$`,
-      ),
-    }),
-  ).toBeVisible();
-}
-
 /** headerCount はグループのページの見出しの件数（「3 videos · 0:09」）である。 */
 function headerCount(page: Page): Locator {
   return page.getByText(/^\d+ videos? · /);
-}
-
-function memberLink(region: Locator, title: string): Locator {
-  return region.getByRole("link", { name: new RegExp(`^${escapeRegExp(title)}\\b`) });
 }
 
 test.describe.serial("groups", () => {
@@ -323,7 +291,7 @@ test.describe.serial("groups", () => {
 
   test.afterAll(async ({ request }) => {
     // 手で作ったグループは登録フォルダを外しても残り、CI のリトライで同じ動画が戻ると
-    // また出てくる。名前で探して解散し、プレイリストも消す。
+    // また出てくる。名前で探して解散する。
     for (const name of groupNames) {
       for (const group of await groupsNamed(request, name)) {
         const removed = await request.delete(`/api/groups/${String(group.id)}`, {
@@ -331,14 +299,6 @@ test.describe.serial("groups", () => {
         });
         expect([204, 404]).toContain(removed.status());
       }
-    }
-    const lists = await request.get("/api/playlists");
-    for (const item of ((await lists.json()) as { items: GroupSummary[] }).items) {
-      if (item.name !== playlistName) continue;
-      const removed = await request.delete(`/api/playlists/${String(item.id)}`, {
-        headers: mutationHeaders,
-      });
-      expect([204, 404]).toContain(removed.status());
     }
     if (folder !== undefined) {
       const removed = await request.delete(
@@ -381,135 +341,20 @@ test.describe.serial("groups", () => {
     }
   });
 
-  test("2 つのグループに入れた動画はどちらにも出て、Up next は開いたグループに従う", async ({
-    page,
-  }) => {
-    test.setTimeout(90_000);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    // グループのページのカードから、動画1 を新しいグループへ入れる。
-    await openGroup(page, spread);
-    await addFromCard(
-      videoCard(page, video1),
-      `Add "${video1}" to a group`,
-      second,
-      true,
-    );
-    // ライブラリの単体A を、そのグループへ足す。
-    await page.goto(librarySearch);
-    await addFromCard(videoCard(page, singleA), `Add "${singleA}" to a group`, second);
-
-    // どちらのグループを開いても動画1 が出る（2）。
-    await openGroup(page, second);
-    await expect(videoCard(page, video1)).toBeVisible();
-    await expect(videoCard(page, singleA)).toBeVisible();
-
-    // 「三つのフォルダ」から開くと、Up next はそのメンバーを並べる。
-    await openFromGroup(page, spread, video1, 3);
-    await expect(memberLink(upNext(page), video2)).toBeVisible();
-    await expect(memberLink(upNext(page), singleA)).toHaveCount(0);
-
-    // 「もう一つのグループ」から開くと、Up next はそちらのメンバーになる（2）。
-    await openFromGroup(page, second, video1, 2);
-    await expect(memberLink(upNext(page), singleA)).toBeVisible();
-    await expect(memberLink(upNext(page), video2)).toHaveCount(0);
-  });
-
-  test("A を入れた B だけがいちばん上に出て、B を A に入れることはできない", async ({
-    page,
-  }) => {
-    test.setTimeout(90_000);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(librarySearch);
-    // B（外のグループ）を単体B から作り、A（もう一つのグループ）を B に入れる。
-    await addFromCard(
-      videoCard(page, singleB),
-      `Add "${singleB}" to a group`,
-      outer,
-      true,
-    );
-    await addFromCard(groupCard(page, second), `Add group "${second}" to a group`, outer);
-
-    // いちばん上には B だけが出る（3）。
-    await expect(groupCard(page, outer)).toHaveCount(1);
-    await expect(groupCard(page, second)).toHaveCount(0);
-
-    // B を開くと A が出る（3）。
-    await openGroup(page, outer);
-    await expect(groupCard(page, second)).toBeVisible();
-
-    // B を A に入れようとすると、ピッカーが開いたまま理由を出す（3）。
-    await page.goto(librarySearch);
-    const picker = await openPicker(
-      groupCard(page, outer),
-      `Add group "${outer}" to a group`,
-      second,
-    );
-    await picker.getByRole("option", { name: second, exact: true }).click();
-    await expect(picker.getByRole("alert")).toHaveText(
-      "Couldn't add to the group: A group can't be put inside itself or inside a group it contains.",
-    );
-    await expect(picker).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(picker).toBeHidden();
-
-    // A は B の中にだけあり、B の中から開くと道筋の帯が B を通る。A の中に B は無い。
-    await openGroup(page, outer);
-    await groupCard(page, second).getByRole("link").first().click();
-    await expect(page.getByRole("heading", { level: 1, name: second })).toBeVisible();
-    await expect(
-      page
-        .getByRole("navigation", { name: "Group path" })
-        .getByRole("link", { name: outer }),
-    ).toBeVisible();
-    await expect(videoCard(page, video1)).toBeVisible();
-    await expect(groupCard(page, outer)).toHaveCount(0);
-  });
-
-  test("並べ替えた順は再読み込みしても残る", async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await openGroup(page, spread);
-    await showList(page);
-    await expect.poll(() => itemTitles(page)).toEqual([video1, video2, video3]);
-
-    // 動画3 をキーボードで 1 つ上へ動かす。ハンドルのキーボードの並べ替えは
-    // POST /api/organize/reorder を 1 項目で送る（specs/050-drag-organize/ui-design.md「Group page」）。
-    const move = page.waitForResponse(
-      (response) =>
-        response.request().method() === "POST" &&
-        new URL(response.url()).pathname === "/api/organize/reorder",
-    );
-    await page.getByRole("button", { name: `Reorder "${video3}"` }).focus();
-    await page.keyboard.press("Space");
-    await expect(
-      page.getByText(`"${video3}" moved to position 3 of 3.`, { exact: true }),
-    ).toBeAttached();
-    await page.keyboard.press("ArrowUp");
-    await expect(
-      page.getByText(`"${video3}" moved to position 2 of 3.`, { exact: true }),
-    ).toBeAttached();
-    await page.keyboard.press("Space");
-    expect((await move).status()).toBe(200);
-    const reordered = [video1, video3, video2];
-    await expect.poll(() => itemTitles(page)).toEqual(reordered);
-
-    // 再読み込みしても変えた順のまま出る（4）。
-    await page.reload();
-    await expect(page.getByRole("heading", { level: 1, name: spread })).toBeVisible();
-    await expect.poll(() => itemTitles(page)).toEqual(reordered);
-  });
-
   test("自動グループに足した・外した・名前を変えた結果は再スキャン後も残り、新しいファイルが加わる", async ({
     page,
     request,
   }) => {
     test.setTimeout(150_000);
     await page.setViewportSize({ width: 1280, height: 800 });
-    // 別のフォルダ（登録フォルダの直下）の単体B を、外のグループから開いた動画のページの
-    // 「Add to group」で自動グループに足す。
-    await openGroup(page, outer);
-    await videoCard(page, singleB).getByRole("link").first().click();
-    await expect(page).toHaveURL(/\/videos\/\d+\?group=\d+$/);
-    await addFromCard(page.locator("body"), `Add "${singleB}" to a group`, autoFolder);
+    // 別のフォルダ（登録フォルダの直下）の単体B を、ライブラリのカードの「Add to group」で
+    // 自動グループに足す。
+    await page.goto(librarySearch);
+    await addFromCard(
+      videoCard(page, singleB),
+      `Add "${singleB}" to a group`,
+      autoFolder,
+    );
 
     // 自動1 を外し、名前を変える。
     await openGroup(page, autoFolder);
@@ -590,58 +435,6 @@ test.describe.serial("groups", () => {
     await openGroup(page, spread);
     await expect(headerCount(page)).toHaveText(/^3 videos · /);
     await showList(page);
-    await expect.poll(() => itemTitles(page)).toEqual([video1, video3, video2]);
-  });
-
-  test("手で作ったグループをお気に入りにし、プレイリストに足すと、その後も両方に出る", async ({
-    page,
-  }) => {
-    test.setTimeout(90_000);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(librarySearch);
-    const card = groupCard(page, spread);
-    await card.hover();
-    const heart = card.getByRole("button", { name: `Favorite group "${spread}"` });
-    await heart.click();
-    await expect(heart).toHaveAttribute("aria-pressed", "true");
-
-    // お気に入りだけに絞っても出る（8）。
-    await page.goto(`${librarySearch}&fav=1`);
-    await expect(groupCard(page, spread)).toBeVisible();
-    await expect(groupCard(page, outer)).toHaveCount(0);
-
-    // カードの「Add to playlist」から新しいプレイリストに足す。
-    await card.hover();
-    await card
-      .getByRole("button", { name: `Add group "${spread}" to a playlist` })
-      .click();
-    const picker = page.getByRole("dialog", { name: "Add to playlist" });
-    await picker
-      .getByRole("combobox", { name: "Search or create a playlist" })
-      .fill(playlistName);
-    await picker
-      .getByRole("option", { name: `Create "${playlistName}"`, exact: true })
-      .click();
-    await expect(picker).toBeHidden();
-    await expect(toast(page, `Added 1 item to "${playlistName}"`)).toBeVisible();
-
-    // プレイリストの画面に並び、開き直しても残る（8）。
-    await page
-      .getByRole("complementary", { name: "Main navigation" })
-      .getByRole("link", { name: "Playlists" })
-      .click();
-    await page
-      .locator("article[data-playlist-id]")
-      .getByRole("link", { name: `${playlistName}, 1 item` })
-      .click();
-    await expect(page).toHaveURL(/\/playlists\/\d+$/);
-    const row = page
-      .getByRole("table", { name: "Items" })
-      .getByRole("link", { name: `Play from ${spread}` });
-    await expect(row).toBeVisible();
-    await page.reload();
-    await expect(row).toBeVisible();
-    await page.goto(`${librarySearch}&fav=1`);
-    await expect(groupCard(page, spread)).toBeVisible();
+    await expect.poll(() => itemTitles(page)).toEqual([video1, video2, video3]);
   });
 });

@@ -1,129 +1,27 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 
-import type { MediaFolder, TranscodingSettings } from "../api/client";
+import type { MediaFolder } from "../api/client";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
-import AppShell from "../shell/AppShell";
-import { ScanNoticeProvider } from "../shell/ScanNoticeProvider";
-import { ScanProvider } from "../shell/ScanProvider";
-import { OwnerAudience } from "../testing/audience";
-import { ToastProvider } from "../ui/Toast";
-import { TooltipProvider } from "../ui/shadcn/tooltip";
-import SettingsPage from "./SettingsPage";
+import {
+  folder,
+  installSettingsServer,
+  json,
+  renderSettings,
+} from "../testing/settingsPage";
 
-function json(body: unknown, status = 200): Response {
-  return new Response(status === 204 ? null : JSON.stringify(body), {
-    status,
-    headers: { "Content-Type": "application/json" },
-  });
-}
-
-function folder(id: number, path: string, version = 1): MediaFolder {
-  return {
-    id,
-    path,
-    version,
-    createdAt: "2026-09-21T00:00:00Z",
-    updatedAt: "2026-09-21T00:00:00Z",
-  };
-}
-
-const transcodingSettings: TranscodingSettings = {
-  videoEncoder: "software",
-  effectiveEncoder: "software",
-  checking: false,
-  encoders: [
-    { encoder: "nvenc", state: "unavailable", reason: "encoder_missing" },
-    { encoder: "qsv", state: "unavailable", reason: "encoder_missing" },
-    { encoder: "vaapi", state: "unavailable", reason: "encoder_missing" },
-    { encoder: "videotoolbox", state: "unavailable", reason: "unsupported_os" },
-  ],
-};
-
+// 「Library」のページの「Media folders」節の流れを確かめる。ページの行き来と一覧は
+// SettingsPage.pages.test.tsx が確かめる。
 function renderPage() {
-  return render(
-    <MemoryRouter initialEntries={["/settings"]}>
-      <TooltipProvider>
-        <ToastProvider>
-          <OwnerAudience>
-            <ScanProvider>
-              <ScanNoticeProvider>
-                <AppShell>
-                  <SettingsPage />
-                </AppShell>
-              </ScanNoticeProvider>
-            </ScanProvider>
-          </OwnerAudience>
-        </ToastProvider>
-      </TooltipProvider>
-    </MemoryRouter>,
-  );
+  return renderSettings("/settings/library");
 }
 
-describe("SettingsPage", () => {
-  const fetchMock = vi.fn<typeof fetch>();
+describe("SettingsPage: media folders", () => {
+  const server = installSettingsServer();
 
-  beforeEach(() => {
-    // 「動画の変換」区画の読み取りは TranscodingSection.test.tsx が確かめる。ここでは
-    // メディアフォルダの要求だけを fetchMock に通す。
-    // 「API tokens」区画は APITokensSection.test.tsx が確かめる。ここでは空の一覧を返す。
-    vi.stubGlobal("fetch", (input: RequestInfo | URL, init?: RequestInit) => {
-      if (String(input) === "/api/settings/transcoding")
-        return Promise.resolve(json(transcodingSettings));
-      if (String(input) === "/api/api-tokens")
-        return Promise.resolve(json({ items: [] }));
-      // 「Network」区画は NetworkSection.test.tsx が確かめる。ここではデスクトップ版でない。
-      if (String(input) === "/api/settings/network")
-        return Promise.resolve(json({ code: "not_found", message: "not found" }, 404));
-      // プラグインのプロキシは何も保存されていない。
-      if (String(input) === "/api/settings/plugin-proxy")
-        return Promise.resolve(json({ url: "" }));
-      // 「Auto-import」区画は AutoImportSection.test.tsx が確かめる。ここでは切れている。
-      if (String(input) === "/api/settings/auto-import")
-        return Promise.resolve(json({ enabled: false, watch: { state: "off" } }));
-      // 「Ollama」区画は OllamaSection.test.tsx が確かめる。ここでは既定値を返す。
-      if (String(input) === "/api/settings/ollama")
-        return Promise.resolve(
-          json({ endpoint: "http://127.0.0.1:11434", model: "clef-flash" }),
-        );
-      // 「Auto-tagging」区画は AutoTaggingSection.test.tsx が確かめる。ここでは既定値を返す。
-      if (String(input) === "/api/settings/auto-tagging")
-        return Promise.resolve(
-          json({
-            enabled: false,
-            afterImport: false,
-            threshold: 0.8,
-            tentativeThreshold: 0.5,
-            queue: { queued: 0, running: 0, done: 0, failed: 0 },
-          }),
-        );
-      // 「Duplicate judging」区画は VersionJudgingSection.test.tsx が確かめる。ここでは切である。
-      if (String(input) === "/api/settings/version-judging")
-        return Promise.resolve(json({ enabled: false }));
-      // 「ComfyUI」区画は ComfyUISection.test.tsx が確かめる。ここでは何も保存されていない。
-      if (String(input) === "/api/settings/comfyui")
-        return Promise.resolve(json({ apiKeySet: false, model: "flux2_klein_4b" }));
-      // 「Work-info plugins」区画は WorkInfoPluginsSection.test.tsx が確かめる。ここでは空の一覧を返す。
-      if (String(input) === "/api/work-info-plugins")
-        return Promise.resolve(json({ plugins: [] }));
-      // 「Home」区画は HomeSection.test.tsx が確かめる。ここでは整理役が走っていない。
-      if (String(input) === "/api/home")
-        return Promise.resolve(json({ shelves: [], organizer: { running: false } }));
-      return fetchMock(input, init);
-    });
-    window.matchMedia = vi.fn().mockReturnValue({
-      matches: false,
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-    });
-  });
-
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("0件を明示し、path入力とbulk保存を置かず、取り込みを無効にする", async () => {
-    fetchMock.mockImplementation((input) => {
+  it("0件を明示し、path入力とbulk保存を置かない", async () => {
+    server.fetchMock.mockImplementation((input) => {
       if (String(input) === "/api/media-folders") return Promise.resolve(json([]));
       return Promise.resolve(json({}, 404));
     });
@@ -131,30 +29,21 @@ describe("SettingsPage", () => {
     renderPage();
 
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Settings" }),
+      await screen.findByRole("heading", { level: 1, name: "Library" }),
     ).toBeDefined();
     expect(await screen.findByText("No media folders yet")).toBeDefined();
-    expect(
-      await screen.findByRole("heading", { level: 2, name: "Video conversion" }),
-    ).toBeDefined();
     expect(
       within(screen.getByRole("region", { name: "Media folders" })).queryByRole(
         "textbox",
       ),
     ).toBeNull();
     expect(screen.queryByRole("button", { name: /保存/ })).toBeNull();
-    const start = screen.getByRole("button", { name: "Scan library" });
-    expect(start.hasAttribute("disabled")).toBe(true);
-    expect(start.getAttribute("aria-describedby")).toBe("scan-start-blocked");
-    expect(document.getElementById("scan-start-blocked")?.textContent).toBe(
-      "Add a media folder below to scan.",
-    );
   });
 
   it("pickerを親子移動して1件追加し、自動取り込みを始めない", async () => {
     const created = folder(7, "/srv/media");
     let createdOnServer = false;
-    fetchMock.mockImplementation((input, init) => {
+    server.fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders" && init?.method === "POST") {
@@ -221,13 +110,13 @@ describe("SettingsPage", () => {
     await user.click(within(dialog).getByRole("button", { name: "Add this folder" }));
 
     expect(await screen.findByText("/srv/media")).toBeDefined();
-    const createCall = fetchMock.mock.calls.find(
+    const createCall = server.fetchMock.mock.calls.find(
       ([input, init]) =>
         String(input) === "/api/media-folders" && init?.method === "POST",
     );
     expect(createCall?.[1]?.body).toBe(JSON.stringify({ path: "/srv/media" }));
     expect(
-      fetchMock.mock.calls.some(
+      server.fetchMock.mock.calls.some(
         ([input, init]) => String(input) === "/api/scans" && init?.method === "POST",
       ),
     ).toBe(false);
@@ -238,7 +127,7 @@ describe("SettingsPage", () => {
       folder(1, "/media/one"),
       folder(2, "/very/long/日本語/動画保管場所"),
     ];
-    fetchMock.mockImplementation((input) => {
+    server.fetchMock.mockImplementation((input) => {
       const url = String(input);
       if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") return Promise.resolve(json(folders));
@@ -304,7 +193,7 @@ describe("SettingsPage", () => {
 
   it("一覧取得失敗を0件扱いせず再試行できる", async () => {
     let attempts = 0;
-    fetchMock.mockImplementation((input) => {
+    server.fetchMock.mockImplementation((input) => {
       if (String(input) === "/api/media-folders") {
         attempts += 1;
         return Promise.resolve(
@@ -332,7 +221,7 @@ describe("SettingsPage", () => {
   it("削除は対象id/versionだけへ送り、残る行へfocusを移す", async () => {
     const folders = [folder(1, "/media/one", 3), folder(2, "/media/two", 5)];
     let deleted = false;
-    fetchMock.mockImplementation((input, init) => {
+    server.fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") {
@@ -356,7 +245,7 @@ describe("SettingsPage", () => {
     await waitFor(() => expect(screen.queryByText("/media/one")).toBeNull());
     expect(screen.getByText("/media/two")).toBeDefined();
     expect(
-      fetchMock.mock.calls.some(
+      server.fetchMock.mock.calls.some(
         ([input, init]) =>
           String(input) === "/api/media-folders/1?version=3" && init?.method === "DELETE",
       ),
@@ -372,7 +261,7 @@ describe("SettingsPage", () => {
     const original = folder(1, "/media/original", 3);
     const concurrent = folder(2, "/media/concurrent", 1);
     let deleted = false;
-    fetchMock.mockImplementation((input, init) => {
+    server.fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") {
@@ -395,8 +284,15 @@ describe("SettingsPage", () => {
 
     expect(await screen.findByText("/media/concurrent")).toBeDefined();
     expect(screen.queryByText("/media/original")).toBeNull();
+    await user.click(
+      within(screen.getByRole("navigation", { name: "Settings" })).getByRole("link", {
+        name: "Scan",
+      }),
+    );
     expect(
-      screen.getByRole("button", { name: "Scan library" }).hasAttribute("disabled"),
+      (await screen.findByRole("button", { name: "Scan library" })).hasAttribute(
+        "disabled",
+      ),
     ).toBe(false);
   });
 
@@ -404,7 +300,7 @@ describe("SettingsPage", () => {
     const original = folder(1, "/media/original", 3);
     let deleted = false;
     let deleteRequests = 0;
-    fetchMock.mockImplementation((input, init) => {
+    server.fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") {
@@ -443,7 +339,7 @@ describe("SettingsPage", () => {
     const remaining = folder(2, "/media/remaining", 5);
     let listRequests = 0;
     let deletedElsewhere = false;
-    fetchMock.mockImplementation((input, init) => {
+    server.fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       if (url === "/api/scans/current") return Promise.resolve(json({}, 404));
       if (url === "/api/media-folders") {
@@ -481,7 +377,7 @@ describe("SettingsPage", () => {
     );
   });
   it("存在しないフォルダを開くと、API エラーの英語の説明を出す", async () => {
-    fetchMock.mockImplementation((input) => {
+    server.fetchMock.mockImplementation((input) => {
       const url = String(input);
       if (url === "/api/media-folders") return Promise.resolve(json([]));
       if (url === "/api/directories") {
@@ -511,7 +407,7 @@ describe("SettingsPage", () => {
   });
 
   it("重なるメディアフォルダの追加は、API エラーの英語の説明を出す", async () => {
-    fetchMock.mockImplementation((input, init) => {
+    server.fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       if (url === "/api/media-folders" && init?.method === "POST") {
         return Promise.resolve(
@@ -546,7 +442,7 @@ describe("SettingsPage", () => {
   });
 
   it("別の操作でメディアフォルダが変わったら、reason の英語の説明を出す", async () => {
-    fetchMock.mockImplementation((input, init) => {
+    server.fetchMock.mockImplementation((input, init) => {
       const url = String(input);
       if (url === "/api/media-folders" && init?.method === "POST") {
         return Promise.resolve(
@@ -585,7 +481,7 @@ describe("SettingsPage", () => {
     const paths = ["/srv/media", "/very/long/日本語/動画保管場所", "/other", "/", "srv"];
 
     function serve(folders: MediaFolder[], listFails = false) {
-      fetchMock.mockImplementation((input) => {
+      server.fetchMock.mockImplementation((input) => {
         const url = String(input);
         if (url === "/api/media-folders") {
           return Promise.resolve(

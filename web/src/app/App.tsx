@@ -118,14 +118,18 @@ function AppRoutes() {
               }
             />
           ))}
-          <Route
-            path="/settings"
-            element={
-              <AppShell>
-                <SettingsPage />
-              </AppShell>
-            }
-          />
+          {/* 設定の一覧と 8 つのページ（specs/058-settings-pages/research.md R-1）。 */}
+          {["/settings", "/settings/*"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <AppShell>
+                  <SettingsPage />
+                </AppShell>
+              }
+            />
+          ))}
           <Route
             path="/tags"
             element={

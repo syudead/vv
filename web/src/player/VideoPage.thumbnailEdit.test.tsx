@@ -274,7 +274,7 @@ describe("VideoPage thumbnail edit", () => {
 
     pressEntry();
     const link = await screen.findByRole("link", { name: "Open Settings" });
-    expect(link.getAttribute("href")).toBe("/settings#comfyui");
+    expect(link.getAttribute("href")).toBe("/settings/connections#comfyui");
     expect(screen.getByText("Set up ComfyUI first")).toBeDefined();
     expect(
       server.requests.filter((r) => r === "GET /api/thumbnail-edits/readiness"),

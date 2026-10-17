@@ -1,7 +1,5 @@
 import {
   type APIRequestContext,
-  type Browser,
-  type BrowserContext,
   expect,
   type Locator,
   type Page,
@@ -13,9 +11,9 @@ import { DatabaseSync } from "node:sqlite";
 // 名前付きプレイリストと連続再生（specs/044-playlists、親 #787、子 #903）の流れを、実サーバーと
 // 実メディアに通す。動画は run-e2e.mjs が generatePlaylistsFixtures で作る 3 秒の 5 本で、
 // 登録フォルダの直下の 2 本（A・B）は単体の動画、「プレイリストのグループ」の 3 本はグループに
-// なる。名前の規則、並べ替えの失敗、パネルの読み直しなどの個々の規則はストア・domain・ページの
-// テストが持つので、ここでは重ねず流れだけを確かめる（docs/design-docs/web-testing.md の
-// Test levels）。括弧の番号は親 Issue の受け入れ条件である。
+// なる。名前の規則、並べ替えの失敗、パネルの読み直し、ゲストの扱い（9）などの個々の規則は
+// ストア・domain・httpapi・ページのテストが持つので、ここでは重ねず流れだけを確かめる
+// （docs/design-docs/web-testing.md の Test levels）。括弧の番号は親 Issue の受け入れ条件である。
 //
 // 3 秒の動画は、末尾とみなす 15 秒（internal/domain/progress.go の CompletionTailMs）より短いので、
 // 再生の位置を 1 度でも保存すると見終わったことになる。グループの開始のメンバーは最初の
@@ -220,10 +218,6 @@ async function expectPlaylistVideo(page: Page, title: string, position: number) 
     { timeout: 20_000 },
   );
   await expect(playlistLine(page, position)).toBeVisible();
-}
-
-function guestContext(browser: Browser): Promise<BrowserContext> {
-  return browser.newContext({ storageState: { cookies: [], origins: [] } });
 }
 
 test.describe.serial("playlists", () => {
@@ -496,39 +490,5 @@ test.describe.serial("playlists", () => {
       { timeout: 20_000 },
     );
     await expect(page.getByRole("link", { name: /^Playlist "/ })).toHaveCount(0);
-  });
-
-  test("ゲストには入口が無く、プレイリストの画面はログイン画面になる", async ({
-    browser,
-    request,
-  }) => {
-    // ゲストに見えるカードを用意するため、A を公開にする。フォルダは afterAll で外す。
-    const published = await request.put("/api/video-visibility", {
-      headers: mutationHeaders,
-      data: { videoIds: [video(titleA).id], public: true },
-    });
-    expect(published.status()).toBe(200);
-
-    const context = await guestContext(browser);
-    const page = await context.newPage();
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(librarySearch);
-    const card = videoCard(page, titleA);
-    await expect(card).toBeVisible();
-    await card.hover();
-    await expect(page.getByRole("button", { name: /to a playlist$/ })).toHaveCount(0);
-    await expect(
-      page
-        .getByRole("complementary", { name: "Main navigation" })
-        .getByRole("link", { name: "Playlists" }),
-    ).toHaveCount(0);
-
-    // 画面を直接開くとログイン画面へ送られ、中身は出ない（9）。
-    for (const path of ["/playlists", `/playlists/${String(playlistId(tonight))}`]) {
-      await page.goto(path);
-      await expect(page).toHaveURL(`/login?next=${encodeURIComponent(path)}`);
-      await expect(page.getByText(tonight)).toHaveCount(0);
-    }
-    await context.close();
   });
 });

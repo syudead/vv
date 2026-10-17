@@ -103,6 +103,7 @@ export type VersionJudgingSettings = components["schemas"]["VersionJudgingSettin
 export type AutoTaggingSettings = components["schemas"]["AutoTaggingSettings"];
 export type CheckResult = components["schemas"]["CheckResult"];
 export type OllamaSettings = components["schemas"]["OllamaSettings"];
+export type UpdateOllamaSettings = components["schemas"]["UpdateOllamaSettingsRequest"];
 export type ComfyUISettings = components["schemas"]["ComfyUISettings"];
 export type UpdateComfyUISettings = components["schemas"]["UpdateComfyUISettingsRequest"];
 export type ComfyUIMissingItem = components["schemas"]["ComfyUIMissingItem"];
@@ -1136,15 +1137,23 @@ export function getOllamaSettings(signal?: AbortSignal): Promise<OllamaSettings>
   return request<OllamaSettings>("/api/settings/ollama", { signal });
 }
 
-/** updateOllamaSettings は Ollama の接続先を保存し、整えた保存後の値を返す。 */
+/**
+ * updateOllamaSettings は Ollama の接続先を保存し、整えた保存後の値（`saved: true`）を返す。
+ * 読んだ本文をそのまま渡されても、送るのは `endpoint` と `model` だけである（サーバーは
+ * ほかの欄を 400 で拒む、specs/058-settings-pages/contracts/screen-api.md）。
+ */
 export function updateOllamaSettings(
-  settings: OllamaSettings,
+  settings: UpdateOllamaSettings,
   signal?: AbortSignal,
 ): Promise<OllamaSettings> {
+  const body: UpdateOllamaSettings = {
+    endpoint: settings.endpoint,
+    model: settings.model,
+  };
   return request<OllamaSettings>("/api/settings/ollama", {
     method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(settings),
+    body: JSON.stringify(body),
     signal,
   });
 }

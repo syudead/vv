@@ -70,7 +70,7 @@ describe("TranscodingSection", () => {
     render(<TranscodingSection />);
 
     expect(
-      await screen.findByRole("heading", { level: 2, name: "Video conversion" }),
+      await screen.findByRole("heading", { level: 2, name: "Encoder" }),
     ).toBeDefined();
     await screen.findByRole("radiogroup", { name: "Video encoder" });
     expect(checked(radio("Software"))).toBe(true);
@@ -168,9 +168,7 @@ describe("TranscodingSection", () => {
 
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toMatch(/^Couldn't change the encoder: /);
-    expect(screen.getByRole("region", { name: "Video conversion" }).contains(alert)).toBe(
-      true,
-    );
+    expect(screen.getByRole("region", { name: "Encoder" }).contains(alert)).toBe(true);
     expect(checked(radio("Software"))).toBe(true);
     expect(checked(radio("Automatic"))).toBe(false);
     expect(inUse()).toBe("Software");

@@ -1,15 +1,14 @@
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-// タグ管理画面のタグの種類（親 Issue #1136 の受け入れ条件 1・2、子 Issue #1154）を実ブラウザに
-// 通す。種類の名札・「Filter」の「Kind」・選択バーの「Set kind…」は
-// specs/051-tag-kinds/ui-design.md「Tag management screen」のとおり。
+// タグ管理画面のタグの種類（親 Issue #1136 の受け入れ条件 1、子 Issue #1154）を、画面で
+// 種類を付ける・サーバーが残す・その種類の絞り込みで出るという 1 本の流れだけ実ブラウザに
+// 通す（docs/design-docs/web-testing.md）。まとめて付ける・名札・絞り込みの細部は
+// src/tags/TagsPage.kindFilter.test.tsx・TagsPage.bulk.test.tsx と Go のストアのテスト
+// （internal/store/tag_kind_batch_test.go）が確かめる。
 // サーバーとデータベースはほかの e2e と共有するので、作ったタグは終わりに消す。
 
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
-
-/** batchPrefix はまとめて種類を付ける 10 個のタグの名前の頭である。 */
-const batchPrefix = "e2e種類まとめ";
 
 interface TagKind {
   id: number;
@@ -75,9 +74,6 @@ test.describe.serial("tag kinds on the tag management screen", () => {
   test.beforeAll(async ({ request }) => {
     await ensureKind(request, "Genre");
     await createTag(request, "Robot");
-    for (let index = 1; index <= 10; index += 1) {
-      await createTag(request, `${batchPrefix}${String(index).padStart(2, "0")}`);
-    }
   });
 
   test.afterAll(async ({ request }) => {
@@ -124,27 +120,5 @@ test.describe.serial("tag kinds on the tag management screen", () => {
       page.getByRole("heading", { name: "No tags match the current search and filters" }),
     ).toBeVisible();
     await expect(tagRow(page, "Robot")).toHaveCount(0);
-  });
-
-  test("2: 10 個のタグを選んで種類を付けると、10 個すべてがその種類の絞り込みで出る", async ({
-    page,
-  }) => {
-    await page.goto("/tags");
-    await page.getByRole("searchbox", { name: "Search tags" }).fill(batchPrefix);
-    await expect(page.getByText("10 of ")).toBeVisible();
-    await page.getByRole("checkbox", { name: "Select all 10 loaded tags" }).click();
-    const bar = page.getByRole("region", { name: "Selected tags" });
-    await expect(bar.getByText("10 tags selected")).toBeVisible();
-    await setKind(page, "Genre");
-    await expect(page.getByText('Set the kind "Genre" on 10 tags')).toBeVisible();
-
-    await chooseKind(page, "Genre");
-    await expect(page).toHaveURL(/[?&]kind=\d+/);
-    await expect(page.getByText("10 of ")).toBeVisible();
-    for (let index = 1; index <= 10; index += 1) {
-      const name = `${batchPrefix}${String(index).padStart(2, "0")}`;
-      await expect(tagRow(page, name)).toBeVisible();
-      await expect(tagRow(page, name).getByTitle("Kind: Genre")).toBeVisible();
-    }
   });
 });

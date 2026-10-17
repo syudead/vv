@@ -69,7 +69,7 @@ screen in `web/src` is built from. Read an item from `web/` with
 | `select`                   | Component     | Pick one value from a fixed list in a dropdown                               |
 | `selection-bar`            | Section       | Count and bulk actions while items are selected                              |
 | `separator`                | Component     | A hairline between groups                                                    |
-| `settings-page`            | Page skeleton | Settings, one value per row                                                  |
+| `settings-page`            | Page skeleton | Settings, one value per row, with an optional list of pages                  |
 | `settings-page-example`    | Block         | Copy to start a settings page                                                |
 | `shelf-row`                | Section       | Shelves of cards, one row each, scrolling sideways                           |
 | `shelf-row-example`        | Block         | Copy to start a page of shelves                                              |
