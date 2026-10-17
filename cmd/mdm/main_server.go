@@ -37,7 +37,7 @@ func main() {
 
 // osAccountEnv は実際の標準入出力と環境変数を使う accountEnv を返す。
 func osAccountEnv() accountEnv {
-	env := accountEnv{Getenv: os.Getenv, Stdin: os.Stdin, Stderr: os.Stderr, Now: time.Now}
+	env := accountEnv{Getenv: os.Getenv, Stdin: os.Stdin, Stdout: os.Stdout, Stderr: os.Stderr, Now: time.Now}
 	fd := int(os.Stdin.Fd())
 	if term.IsTerminal(fd) {
 		env.ReadHidden = func() ([]byte, error) { return term.ReadPassword(fd) }

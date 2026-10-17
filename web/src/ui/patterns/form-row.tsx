@@ -11,18 +11,28 @@ export interface FormRowProps {
   label: ReactNode;
   /** ラベルの下の説明。 */
   description?: ReactNode;
+  /** 説明の id。操作の aria-describedby から説明を指すときに渡す。 */
+  descriptionId?: string;
   /** ラベルを結び付ける操作の id。 */
   htmlFor: string;
   /** 操作（Switch、Select、Input、Button）。1 つにする。 */
   children: ReactNode;
 }
 
-export function FormRow({ label, description, htmlFor, children }: FormRowProps) {
+export function FormRow({
+  label,
+  description,
+  descriptionId,
+  htmlFor,
+  children,
+}: FormRowProps) {
   return (
     <Field data-slot="form-row" orientation="responsive" className="sm:gap-6">
       <FieldContent>
         <FieldLabel htmlFor={htmlFor}>{label}</FieldLabel>
-        {description && <FieldDescription>{description}</FieldDescription>}
+        {description && (
+          <FieldDescription id={descriptionId}>{description}</FieldDescription>
+        )}
       </FieldContent>
       <div
         data-slot="form-row-control"

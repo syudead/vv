@@ -10,7 +10,7 @@ tables this feature writes into are
 ## Migration
 
 One migration, numbered after the last one on `main` when it is written
-(`00054` today), creates `activity_entries` with its nullable `tag_id` and
+(`00055` today), creates `activity_entries` with its nullable `tag_id` and
 `decided_mark` columns, `activity_entry_tags`, `activity_entry_tag_keys`,
 `activity_entry_keys` and `video_version_judging_holds`, and adds a nullable `activity_id` to `jobs`,
 `auto_tag_queue` and `video_version_candidates`. Down drops them. No entry is

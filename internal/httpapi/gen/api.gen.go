@@ -2058,6 +2058,36 @@ func (e WorkInfoPluginProblem) Valid() bool {
 	}
 }
 
+// Defines values for WorkInfoPluginRunFailure.
+const (
+	WorkInfoPluginRunFailureBlockedAddress WorkInfoPluginRunFailure = "blocked_address"
+	WorkInfoPluginRunFailureMemoryExceeded WorkInfoPluginRunFailure = "memory_exceeded"
+	WorkInfoPluginRunFailureNetworkError   WorkInfoPluginRunFailure = "network_error"
+	WorkInfoPluginRunFailureOutputTooLarge WorkInfoPluginRunFailure = "output_too_large"
+	WorkInfoPluginRunFailurePluginFailed   WorkInfoPluginRunFailure = "plugin_failed"
+	WorkInfoPluginRunFailureTimedOut       WorkInfoPluginRunFailure = "timed_out"
+)
+
+// Valid indicates whether the value is a known member of the WorkInfoPluginRunFailure enum.
+func (e WorkInfoPluginRunFailure) Valid() bool {
+	switch e {
+	case WorkInfoPluginRunFailureBlockedAddress:
+		return true
+	case WorkInfoPluginRunFailureMemoryExceeded:
+		return true
+	case WorkInfoPluginRunFailureNetworkError:
+		return true
+	case WorkInfoPluginRunFailureOutputTooLarge:
+		return true
+	case WorkInfoPluginRunFailurePluginFailed:
+		return true
+	case WorkInfoPluginRunFailureTimedOut:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for WorkInfoPluginState.
 const (
 	WorkInfoPluginStateApproved   WorkInfoPluginState = "approved"
@@ -2354,6 +2384,10 @@ type Alias struct {
 type ApplyWorkInfoFetchRequest struct {
 	// Fields 反映する項目。空にできず、どれも結果に値がなければならない
 	Fields []WorkInfoField `json:"fields"`
+
+	// Tags fields が tags を含むときに付ける取得済みのタグの名前。結果の tags の空でない部分集合で、結果が返した綴りのまま。
+	// 無ければ取得したタグを全部付ける。空、結果に無い名前、fields に tags が無いのに有る場合は 400
+	Tags *[]string `json:"tags,omitempty"`
 }
 
 // ApproveWorkInfoPluginRequest defines model for ApproveWorkInfoPluginRequest.
@@ -3544,6 +3578,12 @@ type PlaylistSummary struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
+// PluginProxySettings 作品情報プラグインの要求を送るプロキシ（specs/056-plugin-tooling/contracts/screen-api.md）
+type PluginProxySettings struct {
+	// Url 保存した URL。http、https か socks5 の scheme、ホスト、任意のポートと任意のユーザー情報からなり、 パスもクエリも持たない。"" はプロキシなし
+	Url string `json:"url"`
+}
+
 // ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
 type ProbeErrorCode string
 
@@ -4365,6 +4405,12 @@ type UpdateNetworkSettingsRequest struct {
 	LanAccess bool `json:"lanAccess"`
 }
 
+// UpdatePluginProxySettingsRequest defines model for UpdatePluginProxySettingsRequest.
+type UpdatePluginProxySettingsRequest struct {
+	// Url 保存する URL。規則は PluginProxySettings.url と同じ。"" はプロキシなし
+	Url string `json:"url"`
+}
+
 // UpdateTranscodingSettingsRequest defines model for UpdateTranscodingSettingsRequest.
 type UpdateTranscodingSettingsRequest struct {
 	// VideoEncoder 所有者が選ぶライブ変換の映像エンコード方式。auto は使えるハードウェアの方式を nvenc・qsv・vaapi・videotoolbox の順で選び、無ければ software にする
@@ -4932,9 +4978,12 @@ type WorkInfo struct {
 type WorkInfoCandidate struct {
 	// Detail 候補を見分ける説明の 1 行
 	Detail *string `json:"detail,omitempty"`
-	Title  string  `json:"title"`
 
-	// Url 作品の URL（http か https）。取得にそのまま渡す
+	// Id 作品の ID（前後の空白を除いて 1〜200 文字）。候補を選ぶと取得の `id` にそのまま渡す
+	Id    string `json:"id"`
+	Title string `json:"title"`
+
+	// Url 作品のページの URL（http か https）。画面がリンクとして出すだけで、取得には渡さない
 	Url string `json:"url"`
 }
 
@@ -4993,16 +5042,13 @@ type WorkInfoFetchApplied struct {
 	Video Video `json:"video"`
 }
 
-// WorkInfoFetchRequest `url` と `id` のどちらか 1 つを持つ
+// WorkInfoFetchRequest defines model for WorkInfoFetchRequest.
 type WorkInfoFetchRequest struct {
-	// Id 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL に埋め込むのはプラグイン
-	Id *string `json:"id,omitempty"`
+	// Id 作品の ID（品番など、前後の空白を除いて 1〜200 文字）。URL の形でも ID としてそのまま渡し、URL に埋め込むのはプラグイン
+	Id string `json:"id"`
 
 	// PluginId 承認済みのプラグイン
 	PluginId int64 `json:"pluginId"`
-
-	// Url 作品の URL（http か https、2048 文字まで）
-	Url *string `json:"url,omitempty"`
 }
 
 // WorkInfoFetchedCover 取ったカバー画像の大きさ。プラグインが返さなかったか、取れないか、PNG・JPEG・静止画の WebP で
@@ -5093,6 +5139,10 @@ type WorkInfoPlugin struct {
 	FileName string `json:"fileName"`
 	Id       int64  `json:"id"`
 
+	// LastRunAt 出力が残っている直近の実行が終わった時刻（Unix 秒）。残っていなければ無い
+	// （specs/056-plugin-tooling/research.md R-6）
+	LastRunAt *int64 `json:"lastRunAt,omitempty"`
+
 	// Name マニフェストの name。マニフェストを読めなかったときは無い
 	Name *string `json:"name,omitempty"`
 
@@ -5116,6 +5166,12 @@ type WorkInfoPlugin struct {
 	Version   *string `json:"version,omitempty"`
 }
 
+// WorkInfoPluginLastRun defines model for WorkInfoPluginLastRun.
+type WorkInfoPluginLastRun struct {
+	// Run 直近の実行の標準エラー（specs/056-plugin-tooling/contracts/screen-api.md）
+	Run *WorkInfoPluginRun `json:"run,omitempty"`
+}
+
 // WorkInfoPluginList defines model for WorkInfoPluginList.
 type WorkInfoPluginList struct {
 	// Plugins 名前、次にファイル名の順
@@ -5125,16 +5181,49 @@ type WorkInfoPluginList struct {
 // WorkInfoPluginProblem プラグインを承認できない理由（specs/049-work-info-plugins/data-model.md の work_info_plugins）
 type WorkInfoPluginProblem string
 
+// WorkInfoPluginRun 直近の実行の標準エラー（specs/056-plugin-tooling/contracts/screen-api.md）
+type WorkInfoPluginRun struct {
+	// Failure 実行の失敗の種類（specs/049-work-info-plugins/contracts/screen-api.md の Run failures の reason）。
+	// 枠を取れなかった実行はモジュールを動かさないので、busy は残らない
+	Failure *WorkInfoPluginRunFailure `json:"failure,omitempty"`
+
+	// Operation プラグインの操作（specs/049-work-info-plugins/contracts/plugin-contract.md）
+	Operation WorkInfoOperation `json:"operation"`
+
+	// RanAt 実行が終わった時刻（Unix 秒）
+	RanAt int64 `json:"ranAt"`
+
+	// Stderr 標準エラーの先頭 64 KiB。秘密の設定の値は `[secret]` に置き換えてある。何も書かなければ空
+	Stderr string `json:"stderr"`
+
+	// Truncated 64 KiB より後ろを捨てたか
+	Truncated bool `json:"truncated"`
+}
+
+// WorkInfoPluginRunFailure 実行の失敗の種類（specs/049-work-info-plugins/contracts/screen-api.md の Run failures の reason）。
+// 枠を取れなかった実行はモジュールを動かさないので、busy は残らない
+type WorkInfoPluginRunFailure string
+
 // WorkInfoPluginSetting マニフェストが宣言する設定の 1 つと、その値の有無。`value` は `secret` が偽で値があるときだけ入る
 // （specs/049-work-info-plugins/research.md R-13）
 type WorkInfoPluginSetting struct {
-	Key      string `json:"key"`
-	Label    string `json:"label"`
-	Required bool   `json:"required"`
-	Secret   bool   `json:"secret"`
+	// Default マニフェストの既定値。値が保存されていないとき、または保存された値が選択肢の外にあるときに実行が受け取る
+	// （specs/056-plugin-tooling/research.md R-3）
+	Default *string `json:"default,omitempty"`
+	Key     string  `json:"key"`
+	Label   string  `json:"label"`
+
+	// Options マニフェストの選択肢で、マニフェストの順。無ければ値は自由に入力する
+	Options  *[]string `json:"options,omitempty"`
+	Required bool      `json:"required"`
+	Secret   bool      `json:"secret"`
 
 	// Set 値が保存されているか
 	Set bool `json:"set"`
+
+	// StaleValue 保存された値が今の選択肢の外にあるときだけ入る、その値。`set` は真で `value` も同じ値を持つが、
+	// 実行は代わりに既定値を受け取る
+	StaleValue *string `json:"staleValue,omitempty"`
 
 	// Value 保存された値。秘密の設定では入らない
 	Value *string `json:"value,omitempty"`
@@ -6017,6 +6106,9 @@ type UpdateNetworkSettingsJSONRequestBody = UpdateNetworkSettingsRequest
 // UpdateOllamaSettingsJSONRequestBody defines body for UpdateOllamaSettings for application/json ContentType.
 type UpdateOllamaSettingsJSONRequestBody = OllamaSettings
 
+// UpdatePluginProxySettingsJSONRequestBody defines body for UpdatePluginProxySettings for application/json ContentType.
+type UpdatePluginProxySettingsJSONRequestBody = UpdatePluginProxySettingsRequest
+
 // UpdateTranscodingSettingsJSONRequestBody defines body for UpdateTranscodingSettings for application/json ContentType.
 type UpdateTranscodingSettingsJSONRequestBody = UpdateTranscodingSettingsRequest
 
@@ -6346,6 +6438,12 @@ type ServerInterface interface {
 	// CheckOllama 保存した接続先に Ollama が動いていて、保存した模型があるかを確かめる
 	// (POST /api/settings/ollama/check)
 	CheckOllama(w http.ResponseWriter, r *http.Request)
+	// GetPluginProxySettings 作品情報プラグインの要求を送るプロキシの URL を返す
+	// (GET /api/settings/plugin-proxy)
+	GetPluginProxySettings(w http.ResponseWriter, r *http.Request)
+	// UpdatePluginProxySettings 作品情報プラグインの要求を送るプロキシの URL を保存する
+	// (PUT /api/settings/plugin-proxy)
+	UpdatePluginProxySettings(w http.ResponseWriter, r *http.Request)
 	// GetTranscodingSettings ライブ変換の映像エンコード方式の設定と、各方式が使えるかを返す
 	// (GET /api/settings/transcoding)
 	GetTranscodingSettings(w http.ResponseWriter, r *http.Request)
@@ -6595,6 +6693,9 @@ type ServerInterface interface {
 	// ApproveWorkInfoPlugin 所有者が見たモジュールを承認する
 	// (PUT /api/work-info-plugins/{id}/approval)
 	ApproveWorkInfoPlugin(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
+	// GetWorkInfoPluginLastRun 作品情報プラグインの直近の実行の標準エラーを読む
+	// (GET /api/work-info-plugins/{id}/last-run)
+	GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
 	// SearchWorkInfo 作品情報プラグインの search で作品を探す
 	// (POST /api/work-info-plugins/{id}/search)
 	SearchWorkInfo(w http.ResponseWriter, r *http.Request, id WorkInfoPluginId)
@@ -9059,6 +9160,34 @@ func (siw *ServerInterfaceWrapper) CheckOllama(w http.ResponseWriter, r *http.Re
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.CheckOllama(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetPluginProxySettings operation middleware
+func (siw *ServerInterfaceWrapper) GetPluginProxySettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetPluginProxySettings(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdatePluginProxySettings operation middleware
+func (siw *ServerInterfaceWrapper) UpdatePluginProxySettings(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdatePluginProxySettings(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -11779,6 +11908,32 @@ func (siw *ServerInterfaceWrapper) ApproveWorkInfoPlugin(w http.ResponseWriter, 
 	handler.ServeHTTP(w, r)
 }
 
+// GetWorkInfoPluginLastRun operation middleware
+func (siw *ServerInterfaceWrapper) GetWorkInfoPluginLastRun(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id WorkInfoPluginId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetWorkInfoPluginLastRun(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // SearchWorkInfo operation middleware
 func (siw *ServerInterfaceWrapper) SearchWorkInfo(w http.ResponseWriter, r *http.Request) {
 
@@ -11996,6 +12151,8 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/transcoding", wrapper.UpdateTranscodingSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/network", wrapper.GetNetworkSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/network", wrapper.UpdateNetworkSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/plugin-proxy", wrapper.GetPluginProxySettings)
+	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/plugin-proxy", wrapper.UpdatePluginProxySettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/auto-import", wrapper.GetAutoImportSettings)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/settings/auto-import", wrapper.UpdateAutoImportSettings)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/settings/ollama", wrapper.GetOllamaSettings)
@@ -12027,6 +12184,7 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodDelete+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.RevokeWorkInfoPluginApproval)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/approval", wrapper.ApproveWorkInfoPlugin)
 	m.HandleFunc(http.MethodPut+" "+options.BaseURL+"/api/work-info-plugins/{id}/settings", wrapper.SetWorkInfoPluginSettings)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/work-info-plugins/{id}/last-run", wrapper.GetWorkInfoPluginLastRun)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/work-info-plugins/{id}/search", wrapper.SearchWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches", wrapper.FetchWorkInfo)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/videos/{id}/work-info-fetches/{fetchId}/apply", wrapper.ApplyWorkInfoFetch)

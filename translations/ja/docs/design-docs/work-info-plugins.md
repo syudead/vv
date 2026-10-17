@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/work-info-plugins.md
-sourceHash: 143206662317060c9a72f39d2ea9043343cb163ea9b3e6ed5a7d5219b79ba13b
+sourceHash: 68f8a0a7a84b1d0550460c5c3bb42f15e566fa04e16658ee0b1c36628acde1c7
 ---
 
 # 作品情報プラグイン: サンドボックス、制限、ネットワーク {#work-info-plugins-sandbox-limits-and-network}
@@ -53,7 +53,7 @@ Go の `wasip1` リンカが関数テーブルを書き出すときのように�
 | 線形メモリ | 128 MiB (2048 ページ) | `memory.grow` が `-1` を返し、モジュールを閉じ、プラグインがその後正常に終了した場合でも、実行は `memory_exceeded` で失敗する |
 | 実行時間 | 実行枠を取ってから 30 秒、コンパイルと HTTP を含む | コンパイルまたはモジュールを止め、実行は `timed_out` で失敗する |
 | 標準出力 | 1 MiB | 実行を `output_too_large` で止める |
-| 標準エラー出力 | 64 KiB を保持し、残りは捨てる | サーバーのログにだけ書く |
+| 標準エラー出力 | 64 KiB を保持し、残りは捨てる | サーバーのログに書き、プラグインの最後の実行として保つ ([最後の実行の標準エラー出力はプラグインごとに保つ](#the-last-runs-standard-error-is-kept-per-plugin)) |
 | 同時に行う実行 | 1。2 つ目の実行は最大 10 秒待つ | 2 つ目の実行は `busy` で失敗する |
 
 メモリの上限は wazero のページ数の上限ではなく vv のメモリアロケータで強制する。wazero は上限を超える `memory.grow` をアロケータが見る前に拒否するので、vv はメモリの失敗を他の 0 以外の終了と区別できなくなるからである。実行が出力とメモリの両方の上限に達したときは、先に達した方が失敗を決める。応答がプラグインのエラーである実行、0 以外で終了した実行、契約から外れた出力をした実行は `plugin_failed` で失敗する。
@@ -65,6 +65,34 @@ Go の `wasip1` リンカが関数テーブルを書き出すときのように�
 | 実行ごとに別のプロセス | コンテナと Windows アプリで別々の OS のサンドボックスが必要になる |
 | アップロード時に `describe` 操作を実行する | 承認のために表示する名前とバージョンが、承認されていないコードから来ることになる |
 | 複数の実行を同時に行う | 各実行は 128 MiB を使いうるので、1 つずつにするとプラグインのメモリが 1 モジュール分に収まる |
+
+## 最後の実行の標準エラー出力はプラグインごとに保つ {#the-last-runs-standard-error-is-kept-per-plugin}
+
+各プラグインは、最後の実行の標準エラー出力を、秘密の設定値をすべて `[secret]` に置き換えて、1 行の `work_info_plugin_runs` として保つ。所有者は `GET /api/work-info-plugins/{id}/last-run` でそれを読む ([056 R-6](../../specs/056-plugin-tooling/research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked))。設定画面では、プラグインの行の `Last run output` から開く最後の実行のダイアログに表示する ([056 UI design](../../specs/056-plugin-tooling/ui-design.md#last-run-dialog))。サーバーのログには、従来どおり同じテキストがマスクなしで届き続ける。
+
+```mermaid
+sequenceDiagram
+  participant App as app.WorkInfoPlugins
+  participant Rt as wasmplugin.Runtime
+  participant St as store
+  App->>Rt: Run(request, record)
+  Rt->>Rt: 実行枠を取り、モジュールを実行する
+  Rt->>App: record(実行ログ)
+  App->>App: 実行の秘密の値をマスクする
+  App->>St: プラグインが実行された世代のままなら行を書く
+  Rt->>Rt: 実行枠を解放する
+  Rt-->>App: 結果、実行ログ、エラー
+```
+
+| 規則 | 場所 | 理由 |
+| --- | --- | --- |
+| `Run` は成功時にも失敗時にも実行ログを返し、モジュールが開始し、成功または実行の失敗で終わったときにだけ `record` を呼ぶ | [`run.go`](../../internal/wasmplugin/run.go) | `busy` の拒否、コンパイルに失敗したモジュールやコンパイル中に時間切れになったモジュール、取り消された要求は、最後の出力を置き換える価値のあるものを何も実行していない |
+| 行は `record` の中で、実行枠を解放する前に書く | `internal/app`、`internal/wasmplugin` | 行は実行が終わった順に書かれるので、古い実行が新しい実行を上書きすることはない |
+| 実行が受け取った秘密の値は、現れる場所をすべて置き換え、重なる一致は 1 つの `[secret]` にする。切り詰めた出力では、末尾にある秘密の値の先頭部分も置き換える | [`work_info_plugin_run_log.go`](../../internal/domain/work_info_plugin_run_log.go) | 64 KiB で切れた値も一部が平文で残らない。プラグインが先にエンコードした値は見つからない |
+| 行は、`work_info_plugins` に実行された世代の行がある間だけ、1 つの文で書く | [`work_info_plugin_runs.go`](../../internal/store/work_info_plugin_runs.go) | 置き換えられた (同じバイト列でも)、取り消された、または削除されたプラグインの実行は何も書かない |
+| 置き換えるアップロードは、そのトランザクションで行を削除する。プラグインを削除すると連鎖して消える | `internal/store` | 画面には現在のモジュールの出力だけを示す |
+
+行の保存に失敗したときはサーバーのログに書き、実行の結果は変えない。
 
 ## プラグインは公開インターネットのアドレスにだけ到達する {#plugins-reach-only-public-internet-addresses}
 
@@ -99,16 +127,47 @@ flowchart LR
 | 応答のヘッダー | 1 MiB | 要求は `-3` を返す |
 | 応答の本文 | 4 MiB | 要求は `-6` を返す |
 
-プロキシを使うとダイアラの確認がプロキシのアドレスしか見なくなるので、クライアントは `HTTP_PROXY` などのプロキシの変数を無視する。プラグインが設定した `Host` とホップバイホップのヘッダーは捨てる。プラグインが `User-Agent` を設定しないときは、一般的なデスクトップブラウザのもの（Windows 版 Chrome）を送る。プラグインが読むのはユーザーが開いたページであってクロールではなく、ボットのような値では別のページが返ったり拒否されたりすることがあるからだ。本文は応答のヘッダーとともにバイト列としてプラグインに届くので、ページの文字コードはプラグイン自身がデコードする。
+プロキシを使うとダイアラの確認がプロキシのアドレスしか見なくなるので、クライアントは `HTTP_PROXY` などのプロキシの変数を無視する。プラグインが設定した `Host` とホップバイホップのヘッダーは捨てる。プラグインが `User-Agent` を設定しないときは、一般的なデスクトップブラウザのもの (Windows 版 Chrome) を送る。プラグインが読むのはユーザーが開いたページであってクロールではなく、ボットのような値では別のページが返ったり拒否されたりすることがあるからだ。本文は応答のヘッダーとともにバイト列としてプラグインに届くので、ページの文字コードはプラグイン自身がデコードする。
 
-アドレスの確認はこのアダプタにだけある。ComfyUI と Ollama のクライアントは、それらのサービスが動く LAN に引き続き到達する。
+アドレスの確認と、次に示すプロキシのサポートはこのアダプタにだけある。ComfyUI と Ollama のクライアントは、それらのサービスが動く LAN に引き続き到達し、プラグインのプロキシは使わない。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
-| 要求の前にホスト名を名前解決して確認する | 接続が名前を再び解決して別の応答を得ることがあり、リダイレクトは確認を通らない |
+| プロキシなしで、要求の前にホスト名を名前解決して確認する | 接続が名前を再び解決して別の応答を得ることがあり、リダイレクトは確認を通らない |
 | プラグインごとのホスト名の許可リスト | 公開の名前が LAN のアドレスに解決されうる |
 | 拒否をプラグインにだけ返す | プラグインがそれを無視でき、所有者は到達しようとしたことを知れない |
 | 接続、TLS、ヘッダーで別々のタイムアウト | 遅いサイトが、要求の 10 秒の制限より前に `-4` ではなく `-3` を返しうる |
+
+### 実行は運用者のプロキシを通せる {#a-run-can-go-through-the-operators-proxy}
+
+`Runtime.Run` は `domain.WorkInfoRunNetwork` を受け取る。その `Proxy` は運用者が選んだプロキシで、なければ nil である ([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option))。`domain.ParseWorkInfoPluginProxyURL` が URL の規則を持つ: スキームは `http`、`https`、`socks5` のいずれか、ホスト、任意のポート、任意のユーザー情報で、パス、クエリ、フラグメントはなく、最大 2048 文字である。`""` はプロキシなしを意味する。プロキシなしの実行は、上のクライアントをそのまま使う。
+
+所有者は、すべてのビルドで設定画面の `Network` セクションから `PUT /api/settings/plugin-proxy` を通じてプロキシを設定する。`app.WorkInfoPluginProxy` がそれを上の規則に照らして確認し、`settings` の行 `work_info_plugins.proxy_url` として保存する。`app.WorkInfoPlugins` は実行のたびにその行を読むので、保存した変更は次の実行から適用され、実行中のものは開始時の値のままである。規則に反する保存済みの値は、直接接続せずに実行を失敗させる。
+
+プロキシを使う実行は専用のトランスポートを持ち、その接続はすべてプロキシに向かうので、接続時の確認は宛先を見られない。代わりに、Go がすべての要求と追跡するすべてのリダイレクトで呼ぶトランスポートの `Proxy` コールバックが、宛先のホストを名前解決し (リテラルのアドレスならそれを解析し)、解決したアドレスのどれかが同じ規則を満たさないときは、要求を `-2` と `blocked_address` で拒否する ([056 R-5](../../specs/056-plugin-tooling/research.md#r-5-through-a-proxy-the-destination-is-checked-by-resolving-its-name-before-each-request-and-redirect))。拒否したホストは名前であり、プロキシは要求を見ない。プロキシ自身のアドレスは確認しない。運用者が選んだもので、たいてい LAN にあるからである。
+
+プロキシに到達できない、TLS や SOCKS のやり取りに失敗する、`CONNECT` を拒否する、または `407` を返すと、要求は `-3` を返す。その後プラグインが失敗したときは、実行は `network_error` とプロキシのホストで失敗する。所有者が直すのはサイトではなくプロキシの設定だからである。トランスポートとその接続は実行の終了時に閉じるので、次の実行は開始時の設定を使う。
+
+図は、プロキシを設定した 1 回の `http_send` を示す。
+
+```mermaid
+flowchart LR
+  send[http_send] --> resolve[宛先の名前を解決する]
+  resolve --> allowed{すべてのアドレスが許可されるか}
+  allowed -->|いいえ| refuse[-2、名前を記録]
+  allowed -->|はい| proxy[運用者のプロキシ]
+  proxy -->|到達不能、CONNECT 拒否、407| fail[-3、プロキシのホストを記録]
+  proxy -->|リダイレクト、最大 5 回| resolve
+  proxy --> body[プラグインへの応答]
+```
+
+残るリスクは、VVMDM の名前解決とプロキシの名前解決の間で答えが変わる名前である: VVMDM は自分が解決したアドレスを確認し、プロキシは自分で解決したアドレスに接続する。プライベートな宛先を拒否するプロキシはこの隙間を塞ぐが、VVMDM には塞げない。
+
+| 採用しなかった案 | 理由 |
+| --- | --- |
+| プロキシが LAN の宛先を拒否すると信頼する | 運用者がそう設定したときしか成り立たず、VVMDM はそれらの宛先を自分で拒否しなければならない |
+| プロキシ経由でも接続時の確認を続ける | プロキシしか見えず、その LAN のアドレスがすべての要求を失敗させる |
+| `HTTP_PROXY` に従う | 運用者がプラグインだけにプロキシを設定できず、Windows アプリには編集できる環境変数がない |
 
 ## 取得は作品の詳細とその照合結果を保持する {#the-fetch-keeps-the-work-details-and-their-matches}
 
@@ -116,37 +175,37 @@ flowchart LR
 
 照合結果は表示されるだけである。画面はそれをもとに各項目を結び付け済み、`New`、`Not linked` のいずれかとして示す ([052 screen-api.md](../../specs/052-plugin-work-info-fields/contracts/screen-api.md))。次の節で示すとおり、適用はトランザクションの中で照合し直す。適用は何かを書く前に、結果の中でその行に値がない選択済みのフィールドを `invalid_request` で拒否する。
 
-## VVMDM がカバーを取得し、アップロードした画像として適用する {#vvmdm-fetches-the-cover-and-applies-it-as-an-uploaded-image}
+## VVMDM は表紙を取得し、アップロードされた画像として適用する {#vvmdm-fetches-the-cover-and-applies-it-as-an-uploaded-image}
 
-プラグインはカバーを `workInfo.cover` の URL として返し、VVMDM は実行の後に、プラグインの要求の HTTP クライアントでそれを取得する ([`cover.go`](../../internal/wasmplugin/cover.go) の `coverImage`)。そのため [プラグインは公開インターネットのアドレスにだけ到達する](#plugins-reach-only-public-internet-addresses) のアドレスの規則はカバーにも当てはまり、拒否されたアドレスは実行を `blocked_address` で失敗させる。それ以外の失敗ではカバーを捨て、結果の残りを保つ ([プラグインの契約](../how-to/work-info-plugins.md#cover-image))。
+プラグインは表紙を `workInfo.cover` の URL として返し、VVMDM は実行の後に、プラグインの要求と同じ HTTP クライアントでそれを取得する ([`cover.go`](../../internal/wasmplugin/cover.go) の `coverImage`)。したがって [プラグインは公開インターネットのアドレスにだけ到達する](#plugins-reach-only-public-internet-addresses) のアドレスの規則は表紙にも適用され、拒否されたアドレスは実行を `blocked_address` で失敗させる。それ以外の失敗は表紙を捨て、結果の残りを保つ ([プラグインの契約](../how-to/work-info-plugins.md#cover-image))。
 
-図は、実行からサムネイルまでのカバーを示す。
+図は、実行からサムネイルまでの表紙を示す。
 
 ```mermaid
 flowchart LR
-  run[実行が workInfo.cover を返す] --> get[プラグインのクライアントを通した 1 回の GET]
+  run[実行が workInfo.cover を返す] --> get[プラグインのクライアントで GET を 1 回]
   get -->|拒否| blocked[実行の失敗: blocked_address]
-  get -->|その他の失敗| none[カバーなし]
-  get -->|2xx、4 MiB 以下| check{ヘッダーによると PNG、JPEG、静止画の WebP のどれかで、120 MP 以下か}
+  get -->|その他の失敗| none[表紙なし]
+  get -->|2xx、4 MiB 以下| check{ヘッダーで PNG、JPEG、静止画の WebP、かつ 120 MP 以下か}
   check -->|いいえ| none
   check -->|はい| keep[取得とともに 10 分間保つ]
-  keep --> serve[GET .../cover が比較にそれを返す]
-  keep -->|カバーを選んだとき| apply[作品情報のコミット後に UploadThumbnailImage]
+  keep --> serve[GET .../cover が比較用に返す]
+  keep -->|表紙を選択| apply[作品情報のコミットの後に UploadThumbnailImage]
 ```
 
-[`work_info_cover.go`](../../internal/app/work_info_cover.go) は画像のヘッダーだけを確かめる。完全なデコードは適用が担う。カバーはアップロードした画像の経路である `Ingest.UploadThumbnailImage` を通る ([thumbnail-editing.md](thumbnail-editing.md#uploaded-images)) ので、アップロードのゲート、1 億 2000 万ピクセルの上限、生成のロックを受け、origin `uploaded` で保存される。
+[`work_info_cover.go`](../../internal/app/work_info_cover.go) は画像のヘッダーだけを確認する。完全なデコードは適用が行う: 表紙は、アップロードされた画像の経路である `Ingest.UploadThumbnailImage` ([thumbnail-editing.md](thumbnail-editing.md#uploaded-images)) を通るので、アップロードのゲート、120 メガピクセルの上限、生成のロックを受け、由来 `uploaded` で保存される。
 
-ブラウザはカバーを `GET /api/videos/{id}/work-info-fetches/{fetchId}/cover` から表示するので、プラグインのサイトに決して接続しない。VVMDM は読み取った形式から型を設定し、`nosniff` とサンドボックス化する `Content-Security-Policy` を送るので、応答は画像にしかならない。
+ブラウザは表紙を `GET /api/videos/{id}/work-info-fetches/{fetchId}/cover` から表示するので、プラグインのサイトには接続しない。VVMDM は読み取った形式から種類を設定し、`nosniff` とサンドボックス化する `Content-Security-Policy` を送るので、応答は常に画像でしかありえない。
 
-各カバーは、その取得とともにメモリに保持する。保持するカバーは合わせて 32 MiB、つまり上限の 4 MiB のカバー 8 つ分に収まる。この予算を超える新しい取得は、カバーを持つ取得のうち先に期限が切れるものを捨て、捨てた取得の適用は `work_info_fetch_stale` を返す。
+各表紙は取得とともにメモリに保持する。保持する表紙は合計で 32 MiB 以内に収め、4 MiB の上限の表紙で 8 枚分である。この予算を超える新しい取得は、先に期限が切れる表紙つきの取得を捨て、そのうちの 1 つを適用すると `work_info_fetch_stale` を返す。
 
-適用は、作品情報のトランザクションがコミットした後にカバーをサムネイルにするので、取得の後に差し替えられた、または取り消されたプラグインは、そのトランザクションが確かめ直すため、サムネイルを変えない。コミット後のカバーの失敗 (サムネイルの経路が拒否する画像、取得の後に内容が変わった動画、書き込みのエラー) はすべて `invalid` として飛ばす。取得は一度しか使えず、すでに適用済みなので、エラーにすると画面は何が書かれたかを判別できなくなる。
+適用は、作品情報のトランザクションがコミットされた後に表紙をサムネイルにするので、取得の後に置き換えられた、または取り消されたプラグインは、そのトランザクションが再確認するため、サムネイルを変えない。コミットの後の表紙の失敗 (サムネイルの経路が拒否する画像、取得の後に内容が変わった動画、書き込みエラー) は、`invalid` としてスキップする: 取得は 1 回限りで、すでに適用されているので、エラーにすると画面は何が書かれたのかを判断できなくなる。
 
 | 採用しなかった案 | 理由 |
 | --- | --- |
-| プラグインが画像をダウンロードして応答で返す | 応答は 1 MiB に制限され、base64 は画像を 3 分の 1 大きくする |
-| ブラウザがサイトからカバーを読み込む | サイトに閲覧者が見えてしまう。[R-10](../../specs/049-work-info-plugins/research.md#r-10-search-candidates-are-text-only) が候補について退けたとおりである |
-| 表示のたびや適用時にカバーを取得し直す | 所有者が比較した画像とは別の画像をサイトが返しうる |
+| プラグインが画像をダウンロードし、応答に入れて返す | 応答は 1 MiB に制限され、base64 は画像を 3 分の 1 大きくする |
+| ブラウザがサイトから表紙を読み込む | [R-10](../../specs/049-work-info-plugins/research.md#r-10-search-candidates-are-text-only) が候補について拒否するとおり、サイトが閲覧者を見ることになる |
+| 表示のたびに、または適用時に表紙を取得し直す | サイトが、所有者が比較したものとは別の画像を返しうる |
 
 ## 適用は選んだフィールドを 1 つのトランザクションでマージする {#the-apply-merges-the-selected-fields-in-one-transaction}
 

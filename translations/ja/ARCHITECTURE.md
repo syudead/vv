@@ -72,7 +72,7 @@ CI では golangci-lint の depguard がこれらの規則を強制する ([.gol
 
 ## コンポジションルート {#composition-root}
 
-`cmd/mdm` は設定を読み、アダプタとアプリケーション層の値を作り、それらを結び付け、起動し、停止する。独自のユースケースは持たない。利用する側の各パッケージが必要なインターフェースを宣言し、そこを渡る値 (`domain.VideoFile`、`domain.Job`、`domain.VideoQuery`、…) は `internal/domain` に置かれるので、どちらの側も相手をインポートしない。イベントの購読者を登録するのは [`cmd/mdm/events.go`](cmd/mdm/events.go) だけなので、購読者を 1 つ追加しても、触れるのはその購読者とこのファイルだけである。
+`cmd/mdm` は設定を読み、アダプタとアプリケーション層の値を作り、それらを結び付け、起動し、停止する。独自のユースケースは持たない。ホストコマンドは同じパッケージを薄く組み合わせたものである。`mdm account` は `internal/store` の上に、`mdm plugin pack` と `mdm plugin run` は `internal/wasmplugin` と `internal/domain` の規則の上にあり、この 2 つはデータベースを開かない。利用する側の各パッケージが必要なインターフェースを宣言し、そこを渡る値 (`domain.VideoFile`、`domain.Job`、`domain.VideoQuery`、…) は `internal/domain` に置かれるので、どちらの側も相手をインポートしない。イベントの購読者を登録するのは [`cmd/mdm/events.go`](cmd/mdm/events.go) だけなので、購読者を 1 つ追加しても、触れるのはその購読者とこのファイルだけである。
 
 起動時は、リスナーを開く前にストレージとバックグラウンド処理を準備する。その順序、中断した実行の回復、停止の順序は [process-lifecycle.md](docs/design-docs/process-lifecycle.md) にある。
 

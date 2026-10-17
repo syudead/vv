@@ -20,7 +20,8 @@ to get past it.
 
 Push only after the checks the change needs pass, including the pre-push check
 from `AGENTS.md`. A browser e2e check (`task test-e2e`) the change or plan
-requires is satisfied by the PR's CI, which runs the whole e2e suite; a visual
+requires is satisfied by a manual CI run on the pushed branch (see "Checks
+before a push" in `.agents/skills/issue-handoff/references/README.md`), since a PR's CI does not run e2e; a visual
 or manual check the plan or `ui-design.md` asks for (screenshots, a quickstart
 walk) is not, so redo it when your fix changes that screen. Run e2e locally only when it
 tells you something sooner than CI would (one spec you wrote or changed, or

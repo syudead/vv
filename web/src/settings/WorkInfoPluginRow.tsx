@@ -9,7 +9,7 @@ import {
 import { Fragment, type ReactNode, type Ref } from "react";
 
 import type { WorkInfoPlugin, WorkInfoPluginState } from "../api/workInfoPlugins";
-import { t, type UiText } from "../i18n";
+import { formatDateTime, formatRelative, t, type UiText } from "../i18n";
 import { RowMoreMenu } from "../tags/TagRow";
 import { Badge } from "../ui/shadcn/badge";
 import { Button } from "../ui/shadcn/button";
@@ -19,6 +19,8 @@ import {
   operationTexts,
   pluginName,
   settingsSummary,
+  staleSettings,
+  unixDate,
 } from "./workInfoPluginRows";
 
 /** RowWork は行で進んでいる取り消しか削除である。 */
@@ -54,6 +56,17 @@ function FactsLine({ plugin }: { plugin: WorkInfoPlugin }) {
     });
   const summary = settingsSummary(plugin);
   if (summary !== null) parts.push({ id: "settings", node: summary });
+  if (plugin.lastRunAt !== undefined) {
+    const ranAt = unixDate(plugin.lastRunAt);
+    parts.push({
+      id: "last-run",
+      node: (
+        <span title={formatDateTime(ranAt)}>
+          {text.lastRun(formatRelative(ranAt.toISOString()))}
+        </span>
+      ),
+    });
+  }
   return (
     <p className="text-xs break-words text-muted-foreground">
       {parts.map((part, index) => (
@@ -66,9 +79,19 @@ function FactsLine({ plugin }: { plugin: WorkInfoPlugin }) {
   );
 }
 
+function WarningLine({ children }: { children: ReactNode }) {
+  return (
+    <p className="inline-flex items-center gap-1 break-words text-warning">
+      <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
+      {children}
+    </p>
+  );
+}
+
 function RowText({ plugin }: { plugin: WorkInfoPlugin }) {
   const text = t.settings.workInfoPlugins;
   const missing = missingRequired(plugin);
+  const stale = staleSettings(plugin);
   const invalid = plugin.state === "invalid";
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-1">
@@ -101,10 +124,10 @@ function RowText({ plugin }: { plugin: WorkInfoPlugin }) {
         <FactsLine plugin={plugin} />
       )}
       {!invalid && missing.length > 0 && (
-        <p className="inline-flex items-center gap-1 text-warning">
-          <CircleAlert aria-hidden="true" className="size-4 shrink-0" />
-          {text.requiredMissing(missing)}
-        </p>
+        <WarningLine>{text.requiredMissing(missing)}</WarningLine>
+      )}
+      {!invalid && stale.length > 0 && (
+        <WarningLine>{text.staleSettings(stale)}</WarningLine>
       )}
     </div>
   );
@@ -122,6 +145,7 @@ export default function WorkInfoPluginRow({
   rowRef,
   onApprove,
   onSettings,
+  onLastRun,
   onRevoke,
   onDelete,
 }: {
@@ -131,6 +155,7 @@ export default function WorkInfoPluginRow({
   rowRef: Ref<HTMLDivElement>;
   onApprove: () => void;
   onSettings: () => void;
+  onLastRun: () => void;
   onRevoke: () => void;
   onDelete: () => void;
 }) {
@@ -163,6 +188,9 @@ export default function WorkInfoPluginRow({
           </Button>
         )}
         <RowMoreMenu buttonRef={null} label={text.more(name)} disabled={busy}>
+          {plugin.state !== "invalid" && (
+            <DropdownMenuItem onSelect={onLastRun}>{text.lastRunOutput}</DropdownMenuItem>
+          )}
           {plugin.state === "approved" && (
             <DropdownMenuItem onSelect={onRevoke}>{text.revoke}</DropdownMenuItem>
           )}

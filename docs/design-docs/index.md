@@ -79,3 +79,4 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Smart folders whose contents follow a saved condition (Save as smart folder, the smart folder dialog, card and page with its conditions lines, the video page's folder line): UI](../../specs/052-smart-folders/ui-design.md)
 - [Automatic duplicate judging (the versions mark on cards and rows, the Duplicate judging switch in Settings): UI](../../specs/054-auto-dup/ui-design.md)
 - [Media information on the video page and chapters on the seek bar (the Video, Audio, Subtitles, Embedded and Broadcast groups, chapter marks, the seek preview's chapter title, the chapters menu): UI](../../specs/056-media-info/ui-design.md)
+- [Work-info plugin tooling (setting defaults and choices, the plugin proxy in the Network section, the last run dialog, picking fetched tags one by one): UI](../../specs/056-plugin-tooling/ui-design.md)

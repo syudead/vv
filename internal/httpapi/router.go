@@ -161,6 +161,16 @@ type NetworkSettings interface {
 	SetLANAccess(ctx context.Context, allowed bool) (domain.NetworkSettings, error)
 }
 
+// PluginProxySettings は作品情報プラグインの要求を送るプロキシの URL である。internal/app の
+// *WorkInfoPluginProxy がこれを満たす（specs/056-plugin-tooling/research.md R-4）。
+type PluginProxySettings interface {
+	// URL は保存した URL を返す。保存が無ければ "" である。
+	URL(ctx context.Context) (string, error)
+	// SetURL は URL を確かめて保存し、保存した値を返す。規則に外れれば
+	// domain.ErrWorkInfoPluginProxyURLInvalid を返し、何も書かない。
+	SetURL(ctx context.Context, raw string) (string, error)
+}
+
 // AutoImportSettings は自動の取り込みの選択と、フォルダの監視の状態である。internal/app の
 // *AutoImport がこれを満たす（specs/042-folder-watch-import/contracts/screen-api.md）。
 type AutoImportSettings interface {
@@ -323,6 +333,9 @@ type Options struct {
 	// NetworkSettings は LAN からの接続の許可。デスクトップ版だけが渡し、nil なら
 	// /api/settings/network は 404 を返す。
 	NetworkSettings NetworkSettings
+	// PluginProxy は作品情報プラグインの要求を送るプロキシ。どのビルドでも渡し、nil なら
+	// /api/settings/plugin-proxy は 500 を返す。
+	PluginProxy PluginProxySettings
 	// AutoImport は自動の取り込みの選択と監視の状態。nil なら /api/settings/auto-import は
 	// 500 を返す。
 	AutoImport AutoImportSettings
@@ -415,6 +428,7 @@ type server struct {
 	// transcodeSettings はライブ変換の映像エンコード方式の設定（nil なら software）。
 	transcodeSettings TranscodeSettings
 	networkSettings   NetworkSettings
+	pluginProxy       PluginProxySettings
 	autoImport        AutoImportSettings
 	autoTagging       AutoTagging
 	versionJudging    VersionJudging
@@ -508,6 +522,7 @@ func NewRouter(opts Options) http.Handler {
 		transcodeProbes:        opts.TranscodeProbes,
 		transcodeSettings:      opts.TranscodeSettings,
 		networkSettings:        opts.NetworkSettings,
+		pluginProxy:            opts.PluginProxy,
 		autoImport:             opts.AutoImport,
 		autoTagging:            opts.AutoTagging,
 		versionJudging:         opts.VersionJudging,
@@ -699,6 +714,7 @@ var putJSONBodyPaths = map[string]bool{
 	"/api/favorites":                true,
 	"/api/settings/transcoding":     true,
 	"/api/settings/network":         true,
+	"/api/settings/plugin-proxy":    true,
 	"/api/settings/auto-import":     true,
 	"/api/settings/auto-tagging":    true,
 	"/api/settings/ollama":          true,

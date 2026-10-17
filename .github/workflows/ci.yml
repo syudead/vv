@@ -6,6 +6,9 @@ on:
   pull_request: {}
   push:
     branches: [main]
+  # 任意のブランチで全検査と e2e を手で回す（PR では e2e が走らないため）。
+  # Docker イメージは作らない。
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -36,7 +39,11 @@ jobs:
           EVENT: ${{ github.event_name }}
           BEFORE: ${{ github.event.before }}
         run: |
-          if [ "$EVENT" = "pull_request" ]; then
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            echo "手動実行なのでコード変更として扱う"
+            echo "code=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          elif [ "$EVENT" = "pull_request" ]; then
             base="HEAD^1"
           elif [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
             echo "比較元がない push なのでコード変更として扱う"
@@ -190,7 +197,7 @@ jobs:
       # ではなく main と比べる理由は scripts/migrations-immutable.sh にある。push
       # （main だけ）では checkout が origin/main を作るので取り寄せない。
       - name: main を取得する
-        if: matrix.golangci && github.event_name == 'pull_request'
+        if: matrix.golangci && github.event_name != 'push'
         run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
 
       # E2E の組と同じく、ffmpeg の .deb を runner のイメージ版ごとに取っておく。
@@ -390,8 +397,8 @@ jobs:
         if: needs.changes.outputs.code == 'false'
         run: task check-docs
 
-  # e2e はコード変更を含む main への push（PR のマージ）でだけ回す。PR では回さない。
-  # ただし Renovate の PR（renovate/ ブランチ）では回す。メジャー更新も含めて
+  # e2e はコード変更を含む main への push（PR のマージ）と手動実行（workflow_dispatch）で
+  # だけ回す。PR では回さない。ただし Renovate の PR（renovate/ ブランチ）では回す。メジャー更新も含めて
   # renovate-triage ルーチンがマージするので、マージ前に実ブラウザで確かめる
   # （docs/how-to/dependency-updates.md）。
   # 1 台で全部を順に流すと 10 分かかるので、ファイルを 4 組に分けて並べて流す。
@@ -400,7 +407,7 @@ jobs:
   e2e:
     name: Browser E2E (${{ matrix.group }})
     needs: changes
-    if: needs.changes.outputs.code == 'true' && (github.event_name == 'push' || startsWith(github.head_ref, 'renovate/'))
+    if: needs.changes.outputs.code == 'true' && (github.event_name != 'pull_request' || startsWith(github.head_ref, 'renovate/'))
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -535,7 +542,8 @@ jobs:
           retention-days: 7
 
   # ブランチ保護が求める「Browser E2E」は、組に分けた e2e のまとめとしてここで出す。
-  # PR と文書だけの変更で e2e を飛ばしたときも通す。
+  # PR と文書だけの変更で e2e を飛ばしたときも通す。手動実行は e2e を回すための
+  # ものなので、changes の失敗などで e2e が飛んだら落とす。
   e2e-result:
     name: Browser E2E
     needs: [changes, e2e]
@@ -545,9 +553,14 @@ jobs:
       - name: 組ごとの結果を確かめる
         env:
           RESULT: ${{ needs.e2e.result }}
+          EVENT: ${{ github.event_name }}
         run: |
           echo "e2e: $RESULT"
-          test "$RESULT" = success || test "$RESULT" = skipped
+          if [ "$EVENT" = "workflow_dispatch" ]; then
+            test "$RESULT" = success
+          else
+            test "$RESULT" = success || test "$RESULT" = skipped
+          fi
 
   # イメージはコード変更を含む main への push（PR のマージ）でだけ作り、
   # ghcr.io/syudead/vv へ公開する（docs/how-to/hosting-vv.md）。Renovate の PR では
