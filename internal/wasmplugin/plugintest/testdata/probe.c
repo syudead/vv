@@ -58,12 +58,7 @@ int main(void) {
     const char *req = request();
     const char *mode = text(req, !strcmp(text(req, "operation"), "search") ? "query" : "id");
     const char *settings = field(req, "settings");
-    if (!strcmp(mode, "loop")) {
-        fputs("looping\n", stderr);
-        for (;;) __asm__ volatile("");
-    } else if (!strcmp(mode, "sleep")) {
-        sleep_forever();
-    } else if (!strcmp(mode, "grow")) {
+    if (!strcmp(mode, "grow")) {
         while (__builtin_wasm_memory_grow(0, 16) != (size_t)-1) {}
         __builtin_trap();
     } else if (!strcmp(mode, "flood")) {

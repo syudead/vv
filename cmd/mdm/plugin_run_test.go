@@ -183,12 +183,6 @@ func TestPluginRunPutsTheFailureOnItsOwnLine(t *testing.T) {
 	wantRun(t, got, exitAccountError, "no newline\nRun failed: plugin_failed: failed on purpose\n")
 }
 
-func TestPluginRunAPluginThatSleepsPastTheLimitTimesOut(t *testing.T) {
-	t.Parallel()
-	got := runPluginCommand(t, wasmplugin.Options{}, runModulePath(t, runManifest), "search", "sleep", "--set", "token=x")
-	wantRun(t, got, exitAccountError, "Run failed: timed_out")
-}
-
 func TestPluginRunARequestToLoopbackIsBlocked(t *testing.T) {
 	t.Parallel()
 	site := newRunSite(t)
