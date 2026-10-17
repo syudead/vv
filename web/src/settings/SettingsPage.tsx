@@ -40,6 +40,7 @@ import { useToast } from "../ui/Toast";
 import AutoImportSection from "./AutoImportSection";
 import AutoTaggingSection from "./AutoTaggingSection";
 import ComfyUISection from "./ComfyUISection";
+import HomeSection from "./HomeSection";
 import OllamaSection from "./OllamaSection";
 import FolderPicker from "./FolderPicker";
 import NetworkSection from "./NetworkSection";
@@ -379,6 +380,7 @@ export default function SettingsPage() {
             })}
         </div>
       </PageSection>
+      <HomeSection />
       <OllamaSection />
       <AutoTaggingSection />
       <VersionJudgingSection />

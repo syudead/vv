@@ -4,6 +4,7 @@ import { Link, useLocation, useNavigate } from "react-router";
 
 import type { LibraryItem } from "../api/client";
 import type { HomeShelf } from "../api/home";
+import { ONBOARDING_PATH } from "../api/onboarding";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { GroupCard } from "../library/GroupCard";
@@ -17,6 +18,7 @@ import { PageHeader } from "../ui/patterns/page-header";
 import { ShelfRow, ShelfRows } from "../ui/patterns/shelf-row";
 import { Toolbar } from "../ui/patterns/toolbar";
 import { Button } from "../ui/shadcn/button";
+import { Spinner } from "../ui/shadcn/spinner";
 import { normalizeQuery } from "../videoList/listCriteria";
 import SearchBox from "../videoList/SearchBox";
 import { EmptyState } from "../videoList/states";
@@ -25,20 +27,22 @@ import {
   type PreviewCardProps,
 } from "../videoList/usePreviewCoordination";
 import VideoCard from "../videoList/VideoCard";
+import AddShelfButton from "./AddShelfButton";
 import {
   type DrawnShelf,
   drawnShelves,
+  organizingLineIndex,
   seeAllPath,
   shelfHeadingPath,
   shelfItemPath,
   type ShelfStates,
   shelfTitle,
 } from "./homeShelves";
+import ShelfMenu from "./ShelfMenu";
+import { folderShelfIds, shelfMoves } from "./shelfOrder";
 import { type HomeList, useHome } from "./useHome";
 import { useInView } from "./useInView";
-
-/** ONBOARDING_PATH はオンボードの画面の場所である（specs/057-home/ui-design.md「Onboarding」）。 */
-const ONBOARDING_PATH = "/welcome";
+import { useShelfWrites } from "./useShelfWrites";
 
 /**
  * HomePage は `/` のホームである（specs/057-home/ui-design.md「Home」）。棚を上から 1 行ずつ
@@ -47,16 +51,37 @@ const ONBOARDING_PATH = "/welcome";
  */
 export default function HomePage() {
   const home = useHome();
+  const owner = useAudience() === "owner";
+  const writes = useShelfWrites(home.reload);
+  const order =
+    owner && home.list.status === "ready"
+      ? folderShelfIds(home.list.home.shelves)
+      : undefined;
+  const editing = order === undefined ? undefined : { order, writes };
   return (
     <ListPage
-      header={<PageHeader title={t.home.title} titleHidden />}
+      header={
+        <PageHeader
+          title={t.home.title}
+          titleHidden
+          actions={
+            order !== undefined && (
+              <AddShelfButton
+                onHome={order}
+                disabled={writes.busy}
+                onPick={(folder) => void writes.add(folder, order)}
+              />
+            )
+          }
+        />
+      }
       toolbar={
         <TopBarPortal>
           <Toolbar placement="topBar" search={<HomeSearch />} />
         </TopBarPortal>
       }
     >
-      <HomeBody {...home} />
+      <HomeBody {...home} editing={editing} />
     </ListPage>
   );
 }
@@ -94,8 +119,16 @@ function HomeSearch() {
 /** ignoreCommit は検索欄の打鍵の確定を捨てる。ホームは Enter で送るまで何もしない。 */
 function ignoreCommit() {}
 
+/** ShelfEditing は所有者の棚の操作である。見えているフォルダの棚の並びと、その書き込み。 */
+interface ShelfEditing {
+  order: readonly number[];
+  writes: ReturnType<typeof useShelfWrites>;
+}
+
 interface HomeBodyProps {
   list: HomeList;
+  /** 所有者だけが受け取る。 */
+  editing: ShelfEditing | undefined;
   shelves: ShelfStates;
   loadMore: () => void;
   retryList: () => void;
@@ -103,7 +136,14 @@ interface HomeBodyProps {
 }
 
 /** HomeBody は本体である。一覧の状態ごとに、棚の行か状態のブロックを 1 つ出す。 */
-function HomeBody({ list, shelves, loadMore, retryList, retryShelf }: HomeBodyProps) {
+function HomeBody({
+  list,
+  editing,
+  shelves,
+  loadMore,
+  retryList,
+  retryShelf,
+}: HomeBodyProps) {
   const owner = useAudience() === "owner";
   const preview = usePreviewCoordination();
   const frontier = useInView(loadMore);
@@ -120,18 +160,46 @@ function HomeBody({ list, shelves, loadMore, retryList, retryShelf }: HomeBodyPr
     );
   }
   if (list.home.empty === "noVideos") return <EmptyHome owner={owner} />;
+  const drawn = drawnShelves(list.home.shelves, shelves);
+  const rows = drawn.map((entry) => (
+    <HomeShelfRow
+      key={entry.shelf.key}
+      drawn={entry}
+      frontierRef={entry.frontier ? frontier : undefined}
+      preview={preview.cardProps}
+      onRetry={retryShelf}
+      editing={editing}
+    />
+  ));
+  if (editing !== undefined && list.home.organizer?.running === true) {
+    rows.splice(organizingLineIndex(drawn), 0, <OrganizingLine key="organizing" />);
+  }
+  return <ShelfRows label={t.home.shelves}>{rows}</ShelfRows>;
+}
+
+/** OrganizingLine は整理役が走っている間、所有者に最後のフォルダの棚の下で見せる行である。 */
+function OrganizingLine() {
   return (
-    <ShelfRows label={t.home.shelves}>
-      {drawnShelves(list.home.shelves, shelves).map((drawn) => (
-        <HomeShelfRow
-          key={drawn.shelf.key}
-          drawn={drawn}
-          frontierRef={drawn.frontier ? frontier : undefined}
-          preview={preview.cardProps}
-          onRetry={retryShelf}
-        />
-      ))}
-    </ShelfRows>
+    <p role="status" className="flex items-center gap-2 text-xs text-muted-foreground">
+      <Spinner aria-hidden="true" role="presentation" className="size-3" />
+      {t.home.organizing}
+    </p>
+  );
+}
+
+/** FolderShelfMenu はフォルダの棚の所有者の「More」である。並びは見えている並びから作る。 */
+function FolderShelfMenu({ shelf, editing }: { shelf: HomeShelf; editing: ShelfEditing }) {
+  const id = shelf.folderId;
+  if (id === undefined) return null;
+  const { order, writes } = editing;
+  return (
+    <ShelfMenu
+      name={shelf.name}
+      moves={shelfMoves(order, id)}
+      disabled={writes.busy}
+      onMove={(direction) => void writes.move(id, direction, order)}
+      onRemove={() => void writes.remove({ id, name: shelf.name }, order)}
+    />
   );
 }
 
@@ -159,11 +227,13 @@ function HomeShelfRow({
   frontierRef,
   preview,
   onRetry,
+  editing,
 }: {
   drawn: DrawnShelf;
   frontierRef: ((element: HTMLElement | null) => void) | undefined;
   preview: PreviewCardProps;
   onRetry: (key: string) => void;
+  editing: ShelfEditing | undefined;
 }) {
   const { shelf, state } = drawn;
   const title = shelfTitle(shelf);
@@ -175,13 +245,18 @@ function HomeShelfRow({
       leading={shelf.kind === "folder" ? <FolderSearch aria-hidden="true" /> : undefined}
       href={shelfHeadingPath(shelf)}
       actions={
-        all !== undefined && (
-          <Button variant="link" size="sm" asChild>
-            <Link to={all} aria-label={t.home.seeAllFor(title)}>
-              {t.home.seeAll}
-            </Link>
-          </Button>
-        )
+        <>
+          {all !== undefined && (
+            <Button variant="link" size="sm" asChild>
+              <Link to={all} aria-label={t.home.seeAllFor(title)}>
+                {t.home.seeAll}
+              </Link>
+            </Button>
+          )}
+          {editing !== undefined && shelf.kind === "folder" && (
+            <FolderShelfMenu shelf={shelf} editing={editing} />
+          )}
+        </>
       }
       previousLabel={t.home.previous(title)}
       nextLabel={t.home.next(title)}

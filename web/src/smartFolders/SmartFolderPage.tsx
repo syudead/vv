@@ -9,6 +9,7 @@ import Breadcrumbs from "../folders/Breadcrumbs";
 import { loadingCrumbs } from "../groups/groupPaths";
 import { useFocusAfterEdit } from "../groups/useGroupEdits";
 import { useLeavePage } from "../groups/useLeaveGroup";
+import { useShelfWrites } from "../home/useShelfWrites";
 import { t } from "../i18n";
 import { formatDuration } from "../lib/format";
 import { GroupCard, GroupRow } from "../library/GroupCard";
@@ -63,7 +64,10 @@ import { SmartFolderCardsProvider } from "./cardValues";
 import ConditionLines from "./ConditionLines";
 import { type AncestorRule, bodyKind, missingParent, selectAllLoaded } from "./pageRules";
 import { SmartFolderCard, SmartFolderRow } from "./SmartFolderCard";
-import SmartFolderMenu, { type SmartFolderMenuDialog } from "./SmartFolderMenu";
+import SmartFolderMenu, {
+  type SmartFolderMenuDialog,
+  type SmartFolderMenuProps,
+} from "./SmartFolderMenu";
 import {
   parseSmartFolderId,
   smartFolderCrumbs,
@@ -294,6 +298,7 @@ function useFolderMenu(
   );
   const editConditions = useCallback(() => setDialog("edit"), []);
   const { moreRef, focus } = useFocusAfterEdit();
+  const writes = useShelfWrites(refresh);
   const saved = useCallback(() => {
     refresh();
     focus("more");
@@ -312,9 +317,28 @@ function useFolderMenu(
       onCreatedChild={refresh}
       onDeleted={deleted}
       onGone={markGone}
+      home={homeToggle(data, writes)}
     />
   );
   return { menu, editConditions };
+}
+
+/**
+ * homeToggle は「More」の「Add to home」「Remove from home」である。応答に `onHome` が無ければ
+ * 出さない。並びは書く前に GET /api/home で読む（home/useShelfWrites.ts）。
+ */
+function homeToggle(
+  data: SmartFolderPageData,
+  writes: ReturnType<typeof useShelfWrites>,
+): SmartFolderMenuProps["home"] {
+  const onHome = data.onHome;
+  if (onHome === undefined) return undefined;
+  const folder = { id: data.folder.id, name: data.folder.name };
+  return {
+    onHome,
+    busy: writes.busy,
+    toggle: () => void (onHome ? writes.remove(folder) : writes.add(folder)),
+  };
 }
 
 /** noTrail は読めていない間の祖先。描画ごとに作らない。 */

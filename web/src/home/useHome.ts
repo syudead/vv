@@ -175,5 +175,8 @@ export function useHome() {
     [loadShelves],
   );
 
-  return { list, shelves, loadMore, retryList, retryShelf };
+  // reload は所有者が棚を書いた後の読み直しである。今の行を出したまま一覧と読んだ棚を読み直す。
+  const reload = useCallback(() => void refresh(), [refresh]);
+
+  return { list, shelves, loadMore, retryList, retryShelf, reload };
 }
