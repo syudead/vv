@@ -44,7 +44,7 @@ func (s *IngestStore) NextKeyframeProbe(ctx context.Context, afterID int64) (dom
 		and not exists (select 1 from jobs j where j.video_id = v.id and j.kind = 'probe'
 			and j.state in ('queued', 'running'))
 		and not exists (select 1 from video_keyframe_spacing k where k.video_id = v.id and k.version = ?
-			and k.size_bytes = l.size_bytes and k.mtime_ns / 1000000000 = l.mtime)
+			and k.size_bytes = l.size_bytes and k.mtime_ns = l.mtime_ns)
 		order by v.id, l.path limit 1`, afterID, domain.KeyframeProbeVersion).
 		Scan(&job.VideoID, &job.ContentKey, &job.LocationGeneration, &job.LocationID, &job.LocationVersion, &job.LocationPath)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -71,16 +71,23 @@ func (s *IngestStore) SaveKeyframeProbe(ctx context.Context, job domain.Job, p d
 	// If the file was unavailable, record unknown against the indexed stamp so
 	// one missing file cannot keep the background worker busy on every pass.
 	if p.Source == (domain.FileStamp{}) {
-		if err := tx.QueryRowContext(ctx, `select size_bytes, mtime * 1000000000 from video_locations where id = ?`,
+		if err := tx.QueryRowContext(ctx, `select size_bytes, coalesce(mtime_ns, mtime * 1000000000) from video_locations where id = ?`,
 			job.LocationID).Scan(&p.Source.SizeBytes, &p.Source.ModTimeNs); err != nil {
 			return err
 		}
 		p.Spacing = domain.KeyframesUnknown
 	}
+	// Legacy locations have only second precision. Learn their exact stamp from
+	// this sample once; subsequent samples must match it at nanosecond precision.
+	if _, err := tx.ExecContext(ctx, `update video_locations set mtime_ns = ?
+		where id = ? and mtime_ns is null and size_bytes = ? and mtime = ?`,
+		p.Source.ModTimeNs, job.LocationID, p.Source.SizeBytes, p.Source.ModTimeNs/1e9); err != nil {
+		return err
+	}
 	var matches bool
 	if err := tx.QueryRowContext(ctx, `select exists (select 1 from video_locations
-		where id = ? and size_bytes = ? and mtime = ?)`,
-		job.LocationID, p.Source.SizeBytes, p.Source.ModTimeNs/1e9).Scan(&matches); err != nil {
+		where id = ? and size_bytes = ? and mtime_ns = ?)`,
+		job.LocationID, p.Source.SizeBytes, p.Source.ModTimeNs).Scan(&matches); err != nil {
 		return err
 	}
 	if !matches {

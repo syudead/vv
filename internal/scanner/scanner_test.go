@@ -397,6 +397,31 @@ func TestScanSkipsUnchangedFiles(t *testing.T) {
 	}
 }
 
+func TestScanDetectsSameSizeUpdateWithinOneSecond(t *testing.T) {
+	root := mediaTree(t, map[string]string{"a.mp4": "before"})
+	path := filepath.Join(root, "a.mp4")
+	stamp := time.Unix(1_757_000_000, 100_000_000)
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	index := newFakeIndex()
+	runScan(t, root, index)
+	if err := os.WriteFile(path, []byte("after!"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stamp = stamp.Add(100 * time.Millisecond)
+	if err := os.Chtimes(path, stamp, stamp); err != nil {
+		t.Fatal(err)
+	}
+	second := runScan(t, root, index)
+	if second.Updated != 1 || len(index.upserts) != 2 {
+		t.Fatalf("subsecond update skipped: result = %+v, upserts = %d", second, len(index.upserts))
+	}
+	if !index.upserts[1].MTime.Equal(stamp) {
+		t.Fatalf("updated timestamp = %v, want %v", index.upserts[1].MTime, stamp)
+	}
+}
+
 func TestScanRequeuesMissingJobsForUnchangedPendingVideo(t *testing.T) {
 	root := mediaTree(t, map[string]string{"a.mp4": "内容"})
 	index := newFakeIndex()

@@ -179,9 +179,16 @@ playability or generated assets.
 
 The saved rows, including unknown results, survive restarts. The loop checks
 content and location identity again in the save transaction and leaves a
-concurrent import's sample for the same source intact. A changed indexed file
-stamp or sample version makes the video eligible again; an unavailable file
-gets an unknown result against its indexed stamp. With multiple locations it
+concurrent import's sample for the same source intact. Scans retain the file's
+nanosecond modification time in `video_locations.mtime_ns`, and both scan
+change detection and backfill eligibility compare that full precision. A
+same-size update within one second therefore becomes eligible after a scan.
+Legacy locations have a null nanosecond timestamp until a scan or background
+sample supplies it; their samples are not excluded using a seconds-only
+comparison. A changed indexed file stamp or sample version makes the video
+eligible again; an unavailable file gets an unknown result against its indexed
+stamp (the legacy seconds value when no precise timestamp is available).
+With multiple locations it
 uses the first registered path in lexical order. Playback remains available
 before the backfill reaches a video, using the existing copy-first path.
 

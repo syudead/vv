@@ -553,7 +553,7 @@ func (s *Scanner) visit(
 
 	if existing, ok := pass.indexed[path]; ok &&
 		existing.SizeBytes == info.Size() &&
-		existing.MTime.Unix() == info.ModTime().Unix() {
+		existing.MTime.Equal(info.ModTime()) {
 		// 変わっていないファイルは取り込み対象に含めない。作成日時が索引と
 		// 違えば所在の列だけを直し、欠落した pending jobだけを補い、terminal
 		// failureは復活させない。

@@ -32,14 +32,14 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	var locationID, oldVideoID, oldVersion, oldSize, oldMtime int64
 	var oldKey string
 	err = tx.QueryRowContext(ctx, `
-		select l.id, l.video_id, l.version, l.size_bytes, l.mtime, v.content_key
+		select l.id, l.video_id, l.version, l.size_bytes, coalesce(l.mtime_ns, l.mtime * 1000000000), v.content_key
 		from video_locations l join videos v on v.id = l.video_id where l.path = ?`, file.Path).
 		Scan(&locationID, &oldVideoID, &oldVersion, &oldSize, &oldMtime, &oldKey)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return domain.UpsertResult{}, err
 	}
 	locationExists := err == nil
-	if locationExists && oldKey == file.ContentKey && oldSize == file.SizeBytes && oldMtime == file.MTime.Unix() {
+	if locationExists && oldKey == file.ContentKey && oldSize == file.SizeBytes && oldMtime == file.MTime.UnixNano() {
 		return domain.UpsertResult{ID: oldVideoID, Outcome: domain.OutcomeUnchanged}, tx.Commit()
 	}
 
@@ -76,11 +76,11 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 	}
 
 	if locationExists {
-		_, err = tx.ExecContext(ctx, `update video_locations set video_id = ?, version = version + 1, title = ?, size_bytes = ?, mtime = ?, file_created_at = ?, updated_at = ? where id = ?`,
-			videoID, file.Title, file.SizeBytes, file.MTime.Unix(), nullableUnix(file.FileCreatedAt), now, locationID)
+		_, err = tx.ExecContext(ctx, `update video_locations set video_id = ?, version = version + 1, title = ?, size_bytes = ?, mtime = ?, mtime_ns = ?, file_created_at = ?, updated_at = ? where id = ?`,
+			videoID, file.Title, file.SizeBytes, file.MTime.Unix(), file.MTime.UnixNano(), nullableUnix(file.FileCreatedAt), now, locationID)
 	} else {
-		_, err = tx.ExecContext(ctx, `insert into video_locations(video_id, path, version, title, size_bytes, mtime, file_created_at, created_at, updated_at) values (?, ?, 1, ?, ?, ?, ?, ?, ?)`,
-			videoID, file.Path, file.Title, file.SizeBytes, file.MTime.Unix(), nullableUnix(file.FileCreatedAt), now, now)
+		_, err = tx.ExecContext(ctx, `insert into video_locations(video_id, path, version, title, size_bytes, mtime, mtime_ns, file_created_at, created_at, updated_at) values (?, ?, 1, ?, ?, ?, ?, ?, ?, ?)`,
+			videoID, file.Path, file.Title, file.SizeBytes, file.MTime.Unix(), file.MTime.UnixNano(), nullableUnix(file.FileCreatedAt), now, now)
 	}
 	if err != nil {
 		return domain.UpsertResult{}, fmt.Errorf("cannot save the video location (%s): %w", file.Path, err)
@@ -306,7 +306,7 @@ func (s *ScanIndexStore) UpdateLocationCreatedAt(ctx context.Context, locationID
 // IndexedVideosByPath は索引に入っているものをパスで引ける形で返す。
 // 走査はこれと実際のファイルを突き合わせて差分を出す。
 func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]domain.IndexedVideo, error) {
-	rows, err := s.db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, l.mtime, l.file_created_at, v.probe_state, v.thumbnail_state, v.seek_thumbnail_state, v.preview_state,
+	rows, err := s.db.sql.QueryContext(ctx, `select v.id, l.id, l.version, l.path, v.content_key, l.size_bytes, coalesce(l.mtime_ns, l.mtime * 1000000000), l.file_created_at, v.probe_state, v.thumbnail_state, v.seek_thumbnail_state, v.preview_state,
 		`+fingerprintMissingCondition("v")+`
 		from video_locations l join videos v on v.id = l.video_id`)
 	if err != nil {
@@ -323,7 +323,7 @@ func (s *ScanIndexStore) IndexedVideosByPath(ctx context.Context) (map[string]do
 		if err := rows.Scan(&video.ID, &video.LocationID, &video.LocationVersion, &path, &video.ContentKey, &video.SizeBytes, &mtime, &fileCreatedAt, &video.ProbeState, &video.ThumbnailState, &video.SeekThumbnailState, &video.PreviewState, &video.FingerprintMissing); err != nil {
 			return nil, fmt.Errorf("cannot read the index: %w", err)
 		}
-		video.MTime = time.Unix(mtime, 0)
+		video.MTime = time.Unix(0, mtime)
 		video.FileCreatedAt = unixOrZero(fileCreatedAt)
 		out[path] = video
 	}
