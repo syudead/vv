@@ -110,7 +110,7 @@
 /*
  * 操作バーの並び（specs/012-video-detail-ia/ui-design.md「Control bar」）。
  * 再生バーは操作バーの上に置き、バーの中は 最初に戻る・再生・音量・現在時刻/長さ・
- * 右寄せの空き・変換中の表示・画質・再生速度・PiP・全画面 の順にする。
+ * 右寄せの空き・チャプター・変換中の表示・画質・字幕・再生速度・PiP・全画面 の順にする。
  * 操作バーはプレイヤーの上に重ねる層（再生失敗・再生終了）より上に出し、押せるままにする。
  * video.js の CSS は index.css より後に読まれるので、.video-js を挟んで詳細度で勝つ。
  */
@@ -202,6 +202,58 @@
 }
 
 /*
+ * チャプターのメニュー（specs/056-media-info/ui-design.md「Chapters button and menu」）。
+ * 項目は `{start} {title}` で、画質の 10em ではタイトルが切れるので 20em にする。項目は左に
+ * 寄せて 1 行にし、幅を超えるタイトルは省略記号で切る。メニューの幅は変えない。
+ */
+.vv-video-player .video-js .vjs-chapters-button .vjs-menu {
+  left: -8em;
+  width: 20em;
+}
+
+.vv-video-player .video-js .vjs-chapters-button .vjs-menu ul {
+  width: 100%;
+}
+
+.vv-video-player .video-js .vjs-chapters-button .vjs-menu li.vjs-menu-item {
+  justify-content: flex-start;
+  padding-right: 0.75em;
+  padding-left: 0.75em;
+  text-align: left;
+  text-transform: none;
+}
+
+.vv-video-player .video-js .vjs-chapters-button .vjs-menu-item-text {
+  overflow: hidden;
+  min-width: 0;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.vv-video-player .video-js .vv-chapter-start {
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * シークバーのチャプターの印（ui-design.md「Marks」）。再生済みの塗りより上、シークの
+ * プレビューと取っ手より下に描き、pointer を取らない。バーの高さいっぱいで、hover で
+ * バーが太るとともに太る。
+ */
+.vv-video-player .vv-chapter-marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.vv-video-player .vv-chapter-mark {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: var(--spacing-chapter-mark);
+  background: var(--color-navbar);
+}
+
+/*
  * 字幕は操作バーと重ねない（specs/028-sidecar-subtitles 要件 10）。操作バーが見えている間は、
  * 字幕の下端を操作バー（3em）とその上の再生バー（2em）の上に置く。操作バーが隠れる間
  * （再生中に操作が無い）は video.js の既定どおり下へ戻す。
@@ -240,9 +292,26 @@
     width: 3em;
   }
 
+  /*
+   * チャプター・変換の表示・字幕がそろっても 360px に収まるよう、ボタンを隠す前に時刻と
+   * 変換の表示の余白を詰める（specs/056-media-info/ui-design.md「Responsive behaviour」）。
+   */
   .vv-video-player .video-js .vjs-time-control {
-    padding-right: 0.5em;
-    padding-left: 0.5em;
+    padding-right: 0.125em;
+    padding-left: 0.125em;
+  }
+
+  .vv-video-player .video-js .vjs-current-time {
+    padding-left: 0.25em;
+  }
+
+  .vv-video-player .video-js .vjs-duration {
+    padding-right: 0.25em;
+  }
+
+  .vv-video-player .video-js .vv-transcode-indicator {
+    padding-right: 0;
+    padding-left: 0;
   }
 
   /* 3em の箱にも 1080p が収まるよう、画質の文字を 10px・字間を詰める。印には畳まない。 */
@@ -314,15 +383,34 @@
   font-size: var(--text-seek-preview);
   font-variant-numeric: tabular-nums;
   line-height: 1.35;
+  text-align: center;
   white-space: nowrap;
+  max-width: calc(100% - var(--spacing-seek-preview-edge) * 2);
   background: var(--color-overlay);
   border-radius: var(--radius-sm);
   transform: translateX(-50%);
 }
 
+/* チャプターのタイトルの行。時刻の上に置き、pill の幅（枠の幅まで）で省略記号で切る。 */
+.vv-seek-preview-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.vv-seek-preview-title:empty {
+  display: none;
+}
+
+/* 幅は中身（時刻とチャプターのタイトル）に合わせるが、シークバーの幅と上限を超えない。
+   超える長いタイトルは .vv-seek-preview-title が省略記号で切る。 */
 .vv-seek-preview[data-state="unavailable"] {
   bottom: var(--spacing-seek-preview-unavailable-gap);
   width: max-content;
+  max-width: min(
+    calc(100% - var(--spacing-seek-preview-edge) * 2),
+    var(--size-seek-preview-max)
+  );
 }
 
 .vv-seek-preview[data-state="unavailable"] .vv-seek-preview-frame {
