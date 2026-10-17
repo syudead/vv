@@ -11,7 +11,7 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import SmartFolderMenu from "./SmartFolderMenu";
 
 // スマートフォルダの「More」の Edit・New child・Delete と、条件の編集の窓
-// （specs/052-smart-folders/ui-design.md「Smart folder dialog」「Deleting」、子 Issue #1179）。
+//
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

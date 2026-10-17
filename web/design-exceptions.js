@@ -1,6 +1,5 @@
 // デザインシステムの検査（web/eslint.config.js）の例外の一覧。noInlineConfig のため
-// 例外はコメントでなくここに置く（specs/038-design-system/contracts/registry.md の
-// Exception list、docs/design-docs/design-system.md の Checks and exceptions）。
+// 例外はコメントでなくここに置く。
 //
 // 項目の欄:
 // - file: web/src からのパス。

@@ -13,8 +13,7 @@ import type { MemberTarget } from "./RelatedVideos";
 
 /**
  * VideoGroupContext は、動画ページを開いたグループ（`?group`）かスマートフォルダ（`?smartFolder`）に
- * 従う場所と操作である（specs/048-groups/ui-design.md「Video page」、research.md R-9、
- * specs/052-smart-folders/ui-design.md「Video page」）。
+ * 従う場所と操作である。
  */
 export type VideoGroupContext = {
   /** 読み取りに渡すグループの id。`?group` が無いか、プレイリストの文脈の間は undefined。 */
@@ -22,7 +21,7 @@ export type VideoGroupContext = {
   /**
    * 読み取りに渡すスマートフォルダの id。`?smartFolder` が無いか、`?group` があれば undefined
    * （`group` が勝つ）。プレイリストの文脈の間も読む。フォルダの項目の中で、フォルダの行と
-   * フォルダの `Up next` を出すためである（ui-design.md「Video page in a playlist」）。
+   * フォルダの `Up next` を出すためである。
    */
   smartFolder: number | undefined;
   /** この画面から別の動画を開く場所。`?group` か `?smartFolder` があれば残す。 */

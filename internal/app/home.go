@@ -12,7 +12,7 @@ import (
 )
 
 // HomeShelfStore はホームの棚の読み出しと並びの書き込みと、おすすめの元の保存先である。
-// internal/store の *HomeStore が満たす（specs/057-home/contracts/screen-api.md）。
+// internal/store の *HomeStore が満たす（docs/design-docs/home.md）。
 type HomeShelfStore interface {
 	Home(ctx context.Context, audience domain.Audience) (domain.Home, error)
 	// ShelfItems はおすすめの棚の鍵を落とし、ほかの棚の最初の項目を keys の順に返す。
@@ -39,7 +39,7 @@ type HomeOptions struct {
 	Now func() time.Time
 }
 
-// Home はホームの読み出しで、保存層の読み出しに所有者のおすすめの棚を足す（specs/057-home/research.md
+// Home はホームの読み出しで、保存層の読み出しに所有者のおすすめの棚を足す（docs/design-docs/home.md
 // R-13）。おすすめは種のどれかへの近さの最大で並べ、並びを domain.RecommendTTL のあいだ保持する。
 // internal/httpapi の Home を満たす。
 type Home struct {

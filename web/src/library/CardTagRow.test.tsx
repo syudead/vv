@@ -104,7 +104,7 @@ describe("CardTagRow", () => {
     ).toBeDefined();
   });
 
-  // 受け入れ条件 6（specs/017-folder-groups/ui-design.md「Folder-derived tag chip」）:
+  // 受け入れ条件 6:
   // フォルダ名からだけ付いたタグは面の無い破線の枠と Folder の目印で出し、
   // 読み上げ名に「フォルダ名から」を添える。手でも付いていれば今の形のまま。
   describe("フォルダ由来のタグ", () => {
@@ -190,8 +190,7 @@ describe("CardTagRow", () => {
     });
   });
 
-  // 受け入れ条件 4・5（specs/031-tentative-tags/ui-design.md「Tentative mark」
-  // 「Library card and group card」）: 仮のタグは名前の後ろに破線の丸を置き、
+  // 受け入れ条件 4・5: 仮のタグは名前の後ろに破線の丸を置き、
   // 読み上げ名に「(tentative)」を添える。面・文字の色・高さは確定したタグと同じ。
   describe("仮のタグ", () => {
     const mixed: VideoTag[] = [
@@ -301,7 +300,7 @@ describe("CardTagRow", () => {
     });
   });
 
-  // specs/041-tag-overflow-list/research.md R-4: 一覧は開いたときに写さず、行と
+  // docs/design-docs/library-ui.md: 一覧は開いたときに写さず、行と
   // 同じ tags と測った数から毎回導く。jsdom は幅を測れないので、行の幅を 100、
   // どのチップの幅も 40 と答えさせる。先頭の1つと「+N」だけが行に収まる。
   describe("「+N」の一覧", () => {
@@ -395,7 +394,7 @@ describe("CardTagRow", () => {
       expect(screen.queryByRole("dialog")).toBeNull();
     });
 
-    // ui-design.md「Interaction」: 留めて開いた一覧はフォーカスを動かさず、押して開いた
+    // 留めて開いた一覧はフォーカスを動かさず、押して開いた
     // 一覧は最初のチップへフォーカスを移す。
     describe("開き方", () => {
       const overflow = () => screen.getByRole("button", { name: "Show 3 more tags" });

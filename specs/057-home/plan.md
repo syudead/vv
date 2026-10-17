@@ -77,15 +77,15 @@ reorganizes, judged against the parent Issue's `UI品質`.
 | Topic | Source |
 | --- | --- |
 | Boundaries, store roles, events after commit, the viewer of every read | [ARCHITECTURE.md](../../ARCHITECTURE.md), [.golangci.yml](../../.golangci.yml) (depguard) |
-| Smart folders, rules, `owner_kept`, contents, cards, read budget | [052 plan](../052-smart-folders/plan.md), [052 data-model](../052-smart-folders/data-model.md), [052 research](../052-smart-folders/research.md) |
-| Tag kinds and the seeded `Genre` | [051 data-model](../051-tag-kinds/data-model.md), [`internal/domain/tag_kind.go`](../../internal/domain/tag_kind.go) |
+| Smart folders, rules, `owner_kept`, contents, cards, read budget | [Catalog organization](../../docs/design-docs/catalog-organization.md), [Catalog organization](../../docs/design-docs/catalog-organization.md), [Catalog organization](../../docs/design-docs/catalog-organization.md) |
+| Tag kinds and the seeded `Genre` | [Catalog organization](../../docs/design-docs/catalog-organization.md), [`internal/domain/tag_kind.go`](../../internal/domain/tag_kind.go) |
 | Tags, synonyms | [`internal/store/tags.go`](../../internal/store/tags.go) |
 | Auto-tagging, its candidates and "Tag all videos again" | [auto-tagging.md](../../docs/design-docs/auto-tagging.md) |
 | Media folders and scans | `/api/media-folders` and `/api/scans` in [api/openapi.yaml](../../api/openapi.yaml) |
-| People, organizations and their videos | [047 data-model](../047-video-work-info/data-model.md) |
-| Account setup and the auth gate | [016 data-model](../016-single-account-auth/data-model.md), [`web/src/auth/AuthGate.tsx`](../../web/src/auth/AuthGate.tsx) |
+| People, organizations and their videos | [Catalog organization](../../docs/design-docs/catalog-organization.md) |
+| Account setup and the auth gate | [Authentication](../../docs/design-docs/authentication.md), [`web/src/auth/AuthGate.tsx`](../../web/src/auth/AuthGate.tsx) |
 | Closeness score | [related-videos.md](../../docs/design-docs/related-videos.md) |
-| Watch history, favorites | [043 data-model](../043-watch-history/data-model.md), [035 data-model](../035-favorites/data-model.md) |
+| Watch history, favorites | [Catalog organization](../../docs/design-docs/catalog-organization.md), [Catalog organization](../../docs/design-docs/catalog-organization.md) |
 | Library screen, its URL and cards | [library-ui.md](../../docs/design-docs/library-ui.md), [`web/src/videoList/listCriteria.ts`](../../web/src/videoList/listCriteria.ts) |
 | Screen API and generated code | [api/openapi.yaml](../../api/openapi.yaml), `task generate` |
 | Screens and Web tests | [design-system.md](../../docs/design-docs/design-system.md), [web-testing.md](../../docs/design-docs/web-testing.md), [i18n.md](../../docs/design-docs/i18n.md) |

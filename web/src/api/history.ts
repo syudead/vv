@@ -1,7 +1,7 @@
 import { apiFetch, PAGE_SIZE, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 
-// 視聴履歴の画面 API（specs/043-watch-history/contracts/screen-api.md「Client use」）。
+// 視聴履歴の画面 API。
 // 型は api/openapi.yaml からの生成物を使う。
 
 export type WatchHistoryPage = components["schemas"]["WatchHistoryPage"];
@@ -9,7 +9,7 @@ export type WatchHistoryEntry = components["schemas"]["WatchHistoryEntry"];
 export type WatchHistoryFilter = components["schemas"]["WatchHistoryFilter"];
 export type WatchHistoryDates = components["schemas"]["WatchHistoryDates"];
 
-/** 一覧と日付の一覧が共通に受ける条件（contracts/screen-api.md、research.md R-8）。 */
+/** 一覧と日付の一覧が共通に受ける条件。 */
 export interface WatchHistoryConditions {
   /** 動画のいまの視聴状態。省けば all（絞り込まない）。 */
   watch?: WatchHistoryFilter;
@@ -33,7 +33,7 @@ export interface ListWatchHistoryDatesParams extends WatchHistoryConditions {
   signal?: AbortSignal;
 }
 
-/** browserTimeZone はブラウザの IANA の地域名を返す（research.md R-11）。 */
+/** browserTimeZone はブラウザの IANA の地域名を返す。 */
 export function browserTimeZone(): string {
   return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
@@ -90,7 +90,7 @@ export function listWatchHistoryDates({
 
 /**
  * deleteWatchHistoryEntry は視聴履歴の 1 件を消す（DELETE /api/watch-history/{id}）。
- * 別のところで消えていた件は 404 の RequestFailed になる（research.md R-6）。
+ * 別のところで消えていた件は 404 の RequestFailed になる。
  */
 export async function deleteWatchHistoryEntry(
   id: number,

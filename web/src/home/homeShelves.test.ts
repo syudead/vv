@@ -57,7 +57,7 @@ function folders(count: number): HomeShelf[] {
   }));
 }
 
-describe("棚の見出しと行き先（specs/057-home/ui-design.md「Home」）", () => {
+describe("棚の見出しと行き先（docs/design-docs/home.md「Home」）", () => {
   it("フォルダの棚はフォルダの名前で、見出しと See all はフォルダのページを開く", () => {
     expect(shelfTitle(folder)).toBe("Travel");
     expect(shelfHeadingPath(folder)).toBe("/smart-folders/3");

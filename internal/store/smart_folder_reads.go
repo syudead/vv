@@ -1,8 +1,8 @@
 package store
 
-// スマートフォルダの中身の読み出し（specs/052-smart-folders/data-model.md「Contents」）。中身は
+// スマートフォルダの中身の読み出し。中身は
 // 保存せず、読むたびにライブラリの項目の問い合わせ（libraryItemsCTE）を、フォルダと祖先の条件を
-// 1 段ずつ重ねた絞り込み（listSpec.and）で求める（research.md R-2・R-3・R-5）。条件は所有者の
+// 1 段ずつ重ねた絞り込み（listSpec.and）で求める。条件は所有者の
 // 事実（タグ・再生の記録・お気に入り・検索の意味）で決め、見せる範囲は見る人のものにする（R-11）。
 
 import (
@@ -20,8 +20,7 @@ import (
 // cursor が空なら最初のページで、子フォルダを名前の順に先に置き、続けてライブラリの項目を limit 件
 // 置く。cursor は前のページの NextCursor で、読めなければ domain.ErrInvalidCursor である。
 //
-// フォルダが無いときと、ゲストに見せる動画の無いフォルダは domain.ErrNotFound である（research.md
-// R-8）。所有者は空のフォルダも読める。経路の条件が無い実体を名指すと、中身は子フォルダだけになる
+// フォルダが無いときと、ゲストに見せる動画の無いフォルダは domain.ErrNotFound である。所有者は空のフォルダも読める。経路の条件が無い実体を名指すと、中身は子フォルダだけになる
 // （R-9）。フォルダ・祖先・子フォルダ・中身・登録フォルダを同じ読み取りスナップショットから返す。
 func (s *SmartFolderStore) SmartFolderContents(ctx context.Context, audience domain.Audience, id int64, cursor string, limit int) (domain.SmartFolderPage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -87,7 +86,7 @@ type smartFolderView struct {
 }
 
 // shown は、フォルダを見る人に見せるかを返す。所有者には常に、ゲストには再生順が空でないときだけ
-// 見せる（research.md R-8）。
+// 見せる。
 func (v smartFolderView) shown(audience domain.Audience) bool {
 	return audience.IsOwner() || len(v.card.Members) > 0
 }
@@ -95,7 +94,7 @@ func (v smartFolderView) shown(audience domain.Audience) bool {
 // viewSmartFolder はフォルダ folder を、経路の条件 rules（外側の祖先から順、最後が folder の条件）
 // で読む。now は追加日の絞り込みの基準時刻で、1 回の読み出しのどのフォルダにも同じ値を使う。
 // request が nil でなければ、そのページの項目も読む。再生順とページは同じ 1 回の問い合わせから
-// 求める（research.md R-13）。
+// 求める。
 func viewSmartFolder(ctx context.Context, tx *sql.Tx, audience domain.Audience, folder domain.SmartFolder, rules []domain.SmartRule, now int64, request *smartFolderPageRequest) (smartFolderView, error) {
 	var view smartFolderView
 	var err error
@@ -141,7 +140,7 @@ func viewSmartFolder(ctx context.Context, tx *sql.Tx, audience domain.Audience, 
 }
 
 // smartFolderSpec は経路の条件 rules（外側の祖先から順）を、ライブラリの項目の問い合わせの絞り込みに
-// する。最後の条件を本体に、祖先の条件を 1 段ずつ and に置く（research.md R-5）。どの段も見る人の
+// する。最後の条件を本体に、祖先の条件を 1 段ずつ and に置く。どの段も見る人の
 // 範囲で読み、検索式は所有者の意味で照合する（R-11）。条件の名指すタグはどれも有ると確かめてから
 // 使う（無ければ中身を求めない）。
 func smartFolderSpec(audience domain.Audience, rules []domain.SmartRule, sort domain.VideoSort, now int64) listSpec {
@@ -161,7 +160,7 @@ func smartFolderSpec(audience domain.Audience, rules []domain.SmartRule, sort do
 
 // smartFolderContents はフォルダの中身を 1 回読んだ結果である。
 type smartFolderContents struct {
-	// playOrder は再生順の動画の id である（data-model.md「Contents」の Play order）。
+	// playOrder は再生順の動画の id である。
 	playOrder []int64
 	// keys と values は、カーソルより後ろの項目の鍵と並べ替えの値を並べ順に limit+1 件まで持つ。
 	// order と limit はそのページの並べ順と件数である。
@@ -274,7 +273,7 @@ func playOrderMembers(ctx context.Context, tx *sql.Tx, audience domain.Audience,
 }
 
 // smartFolderChildren はフォルダ parent の子フォルダを、名前の順（title_key、同じなら id）に要約の
-// 項目にする（data-model.md「Contents」の Child folders、research.md R-14）。子の経路の条件は
+// 項目にする。子の経路の条件は
 // parentRules に子の条件を足したものである。ゲストには再生順の空の子を出さない。
 func smartFolderChildren(ctx context.Context, tx *sql.Tx, audience domain.Audience, parent int64, parentRules []domain.SmartRule, now int64) ([]domain.LibraryItem, error) {
 	ids, err := queryInt64s(ctx, tx, `select id from smart_folders where parent_id = ? order by title_key, id`, parent)
@@ -324,7 +323,7 @@ func smartFolderTrail(ctx context.Context, tx *sql.Tx, id int64) ([]domain.Group
 }
 
 // ownerSmartFolderCard はスマートフォルダ id のカードを、所有者として今の再生順で読む（プレイリストの
-// スマートフォルダの項目、specs/052-smart-folders/contracts/screen-api.md）。now は追加日の絞り込みの
+// スマートフォルダの項目、docs/design-docs/catalog-organization.md）。now は追加日の絞り込みの
 // 基準時刻である。
 func ownerSmartFolderCard(ctx context.Context, tx *sql.Tx, id int64, now int64) (domain.LibrarySmartFolder, error) {
 	folder, err := readSmartFolder(ctx, tx, id)
@@ -343,9 +342,8 @@ func ownerSmartFolderCard(ctx context.Context, tx *sql.Tx, id int64, now int64) 
 }
 
 // smartFolderVideoGroup はスマートフォルダ id を、見る人（audience）に見せる再生順の動画の文脈
-// （domain.VideoGroup の SmartFolder）にする（GET /api/videos/{id} などの smartFolder、
-// contracts/screen-api.md「Schemas and parameters changed」）。フォルダが無ければ false である。
-// 経路の条件が無い実体を名指すフォルダの再生順は空である（research.md R-9）。
+// （domain.VideoGroup の SmartFolder）にする（GET /api/videos/{id} などの smartFolder）。フォルダが無ければ false である。
+// 経路の条件が無い実体を名指すフォルダの再生順は空である。
 func smartFolderVideoGroup(ctx context.Context, tx *sql.Tx, audience domain.Audience, id int64) (domain.VideoGroup, bool, error) {
 	folder, err := readSmartFolder(ctx, tx, id)
 	if errors.Is(err, domain.ErrNotFound) {

@@ -7,8 +7,7 @@ import {
 /**
  * 最後に読んだ、失敗の項目の一覧である。自動の取り込みの `partial` は、前の取り込みから
  * 持ち越した失敗も数えるので、状態だけでは古い失敗をまた知らせてしまう。新しい失敗かどうかは
- * 画面が、この一覧と比べて決める（specs/042-folder-watch-import/ui-design.md「Bottom-right
- * indicator and result notice」。問題の一覧に項目ごとの「新しい」印は無い）。
+ * 画面が、この一覧と比べて決める。
  */
 let lastRead: { scanId: number; keys: ReadonlySet<string> } | null = null;
 

@@ -26,7 +26,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 適用したサムネイルの画像（specs/045-comfyui-thumbnails/data-model.md、research.md R-6・R-10）を、
+// 適用したサムネイルの画像を、
 // 本物の保存層・生成物の置き場・取り込み・経路をつないで確かめる。ffmpeg の代わりに
 // frameGenerator が、どのコマから作ったかを中身に書く。
 

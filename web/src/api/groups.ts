@@ -12,7 +12,7 @@ import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
 import { refreshTags } from "./tags";
 
-// グループの一覧と編集の画面 API（specs/048-groups/contracts/screen-api.md「Statuses」）。型は
+// グループの一覧と編集の画面 API。型は
 // api/openapi.yaml からの生成物を使う。一覧はゲストも読め、書き込みは所有者だけである。
 // 一覧の項目の取り直しに使うグループ 1 つの読み出し（getGroup）は client.ts にあり、グループの
 // ページは道筋付きの readGroupPage と続きの listGroupItems で読む。
@@ -32,8 +32,7 @@ function groupPath(id: number): string {
 /**
  * readGroupPage はグループ 1 つと、その道筋と項目の最初のページを取得する
  * （GET /api/groups/{id}?trail=）。`trail` は画面が通ってきたグループの id で、外側から順に
- * 並べる。空なら送らない。応答の `trail` は、そのうち今も親と子の組が続く部分である
- * （research.md R-8）。無いか見せないときは 404 の RequestFailed で失敗する。
+ * 並べる。空なら送らない。応答の `trail` は、そのうち今も親と子の組が続く部分である。無いか見せないときは 404 の RequestFailed で失敗する。
  */
 export function readGroupPage(
   id: number,
@@ -69,7 +68,7 @@ const directItemPageSize = 200;
 /**
  * findVideoItem はグループ `id` の直接の項目から動画 `videoId` の項目を探し、その項目の id を
  * 返す。`nextCursor` を追って全部を読み、無ければ undefined（子グループを通してだけ入っている
- * 動画も undefined。外す経路はグループ自身の項目しか取らない。specs/048-groups/ui-design.md
+ * 動画も undefined。外す経路はグループ自身の項目しか取らない。docs/design-docs/catalog-organization.md
  * 「Video page」）。
  */
 export async function findVideoItem(
@@ -136,7 +135,7 @@ export function listGroups({
 /**
  * listAllGroups は見る人に見せるグループの全部を、`nextCursor` が尽きるまで最大の件数
  * （MAX_PAGE_SIZE）のページで辿って取得する。名前で選ぶ「Add to group」のピッカーが、一覧の
- * 全部を手元で絞るのに使う（specs/048-groups/ui-design.md「Add to group」）。グループの数に
+ * 全部を手元で絞るのに使う。グループの数に
  * 上限は無いので、ページ数では打ち切らない。同じカーソルが二度返ったら、終わらない読みに
  * なるので欠けた一覧を返さずに失敗にする。
  */
@@ -179,7 +178,7 @@ export function createGroup(
 /**
  * renameGroup はグループの名前を変え、前後を削った名前の値を返す（PATCH /api/groups/{id}）。
  * `undoToken` にこのグループを作った「Make a group」のトークンを渡すと、名前の変更がその取り消しに
- * 含まれる（specs/050-drag-organize/contracts/screen-api.md）。トークンが使えなくても名前は変わる。
+ * 含まれる。トークンが使えなくても名前は変わる。
  * 成功したら一覧の控えを捨てる（ライブラリのカードの名前が変わる）。
  */
 export async function renameGroup(
@@ -311,7 +310,7 @@ export async function tagGroup(
   return result;
 }
 
-/** taggedMessage はグループをタグに変えたことを伝える文言である（specs/048-groups/ui-design.md「Words」）。 */
+/** taggedMessage はグループをタグに変えたことを伝える文言である。 */
 export function taggedMessage(result: GroupTagResult): UiText {
   return t.groups.tagged(result.tag.name, result.created);
 }

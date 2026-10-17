@@ -2,7 +2,7 @@ import type { components } from "../api/gen/openapi";
 import { formatDecimal, formatList, formatNumber, selectPlural } from "./intl";
 
 // 英語の文言カタログである。画面の文言はここに集め、コンポーネントは messages.ts の `t`
-// から引く（specs/023-english-i18n/research.md R-1）。
+// から引く。
 //
 // - 領域ごとの入れ子のオブジェクトにする。後続の単位が自分の領域の枝を足す。
 // - 埋め込みを持つ文言は引数を取る関数にする。数は formatNumber、単数・複数は
@@ -33,11 +33,11 @@ type ActivityDecider = components["schemas"]["ActivityDecider"];
 type ActivityStage = components["schemas"]["ActivityStage"];
 type MediaInfoHdr = components["schemas"]["MediaInfoVideo"]["hdr"];
 
-/** ErrorDetails は API エラーが文言へ渡す値である（contracts/error-api.md §1）。 */
+/** ErrorDetails は API エラーが文言へ渡す値である。 */
 export interface ErrorDetails {
   limit?: number;
   tagName?: string;
-  /** 作品情報プラグインの要求を拒んだか届かなかったホスト（specs/049-work-info-plugins/ui-design.md）。 */
+  /** 作品情報プラグインの要求を拒んだか届かなかったホスト。 */
   host?: string;
 }
 
@@ -68,8 +68,7 @@ function minutesText(secondsCount: number): string {
 }
 
 /**
- * lengthWords は長さの条件の語である（specs/052-smart-folders/ui-design.md「Words」の Length
- * options）。絞り込みのプリセットはその語、ほかは分の数で言う。上限 `max` は含む秒数。
+ * lengthWords は長さの条件の語である。絞り込みのプリセットはその語、ほかは分の数で言う。上限 `max` は含む秒数。
  */
 function lengthWords(min: number | undefined, max: number | undefined): string {
   const upper = max === undefined ? undefined : max + 1;
@@ -177,8 +176,7 @@ function videos(count: number): string {
 }
 
 /**
- * creditKindTexts は人物・団体の管理画面の、種類で言い分ける文言である
- * （specs/047-video-work-info/ui-design.md「People and organizations screens」）。
+ * creditKindTexts は人物・団体の管理画面の、種類で言い分ける文言である。
  * `one`・`many` は数える名詞、`title` は見出しの名詞、`target` は統合先の欄の名札である。
  */
 function creditKindTexts(one: string, many: string, title: string, target: string) {
@@ -367,7 +365,7 @@ const errorReasons = {
   no_output: "ComfyUI returned no image",
   timed_out: "No result after 10 minutes",
   // 作品情報と人物・団体の理由は項目名を入れない。画面が `field` の示す入力の下に出す
-  // （specs/047-video-work-info/ui-design.md「Error reasons」）。
+  //
   work_info_control_characters: "Contains characters that can't be used.",
   work_info_too_long: ({ limit }) =>
     limit === undefined ? "Too long." : `Too long: up to ${characters(limit)}.`,
@@ -387,7 +385,7 @@ const errorReasons = {
   merge_same_person: "A person can't be merged into themselves.",
   merge_same_organization: "An organization can't be merged into itself.",
   external_id_taken: "Another entry already has this ID.",
-  // 作品情報プラグインの実行の失敗（specs/049-work-info-plugins/ui-design.md の Error text）。
+  // 作品情報プラグインの実行の失敗。
   blocked_address: ({ host }) =>
     host === undefined
       ? "The plugin tried to reach VVMDM itself or a device on your network."
@@ -398,7 +396,7 @@ const errorReasons = {
       : `The plugin couldn't reach ${host}.`,
   memory_exceeded: "The plugin used more than 128 MB of memory and was stopped.",
   output_too_large: "The plugin's answer was over 1 MB.",
-  // タグの種類（specs/051-tag-kinds/ui-design.md）。名前の重複は tagName に種類の名前が入る。
+  // タグの種類。名前の重複は tagName に種類の名前が入る。
   tag_kind_not_found: "This kind no longer exists.",
   tag_kind_name_taken: ({ tagName }) =>
     tagName === undefined
@@ -857,7 +855,7 @@ export const en = {
       playableOnly: "Playable only",
       favoritesOnly: "Favorites only",
       clear: "Clear filters",
-      // 追加日と長さの行（specs/052-smart-folders/ui-design.md「Words」）。
+      // 追加日と長さの行。
       added: "Added",
       length: "Length",
       addedOptions: {
@@ -923,16 +921,16 @@ export const en = {
       withLocation: (title: string, location: string) => `${title}, ${location}`,
       public: "Public",
       // お気に入りの付け外しの読み上げ名と、変えられなかったときのトースト
-      // （specs/035-favorites/ui-design.md「Words」）。
+      //
       favorite: (title: string) => `Favorite "${title}"`,
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
-      // プレイリストに足す操作の読み上げ名（specs/044-playlists/ui-design.md「Words」）。
+      // プレイリストに足す操作の読み上げ名。
       addToPlaylist: (title: string) => `Add "${title}" to a playlist`,
-      // グループに足す操作の読み上げ名（specs/048-groups/ui-design.md「Words」）。
+      // グループに足す操作の読み上げ名。
       addToGroup: (title: string) => `Add "${title}" to a group`,
       watchedRatio: "Watched portion",
       // 帯にいる間の時刻の表示。位置と長さは formatDuration で整えた文字列
-      // （specs/032-card-scrub-preview/ui-design.md「Words」）。
+      //
       scrubTime: (position: string, duration: string) => `${position} / ${duration}`,
       watched: "Watched",
       noImage: "No image",
@@ -965,7 +963,7 @@ export const en = {
     deletedTagsRemoved: "Removed deleted tags from the filter",
     selectAllFailed: (reason: string) => `Couldn't select everything: ${reason}`,
     activeTags: {
-      // 人物・団体のチップも並ぶ（specs/047-video-work-info/ui-design.md「Words」の Library）。
+      // 人物・団体のチップも並ぶ。
       label: "Filtering by",
       list: "Tags in the filter",
       remove: "Remove the tag filter",
@@ -974,13 +972,13 @@ export const en = {
       removeOrganization: "Remove the organization filter",
       personGone: "Removed a person who no longer exists from the filter",
       organizationGone: "Removed an organization that no longer exists from the filter",
-      // タグの種類のチップ（specs/051-tag-kinds/ui-design.md「Words」の Library chip）。
+      // タグの種類のチップ。
       kindChip: (name: string) => `Kind: ${name}`,
       removeKind: "Remove the kind filter",
       removeKindNamed: (name: string) => `Remove the filter for the kind "${name}"`,
       kindGone: "Removed a kind that no longer exists from the filter",
     },
-    // 絞り込みのポップオーバーのタグの種類の行（specs/051-tag-kinds/ui-design.md「Words」）。
+    // 絞り込みのポップオーバーのタグの種類の行。
     tagKindFilter: {
       label: "Tag kind",
       any: "Any kind",
@@ -1015,7 +1013,7 @@ export const en = {
       progress: (watched: number, total: number) =>
         `${formatNumber(watched)} / ${formatNumber(total)}`,
     },
-    // スマートフォルダのカードと行（specs/052-smart-folders/ui-design.md「Words」）。
+    // スマートフォルダのカードと行。
     smartFolder: {
       label: (name: string, count: number, watched: number) =>
         watched >= 1
@@ -1067,7 +1065,7 @@ export const en = {
       visibilityFailed: (reason: string) => `Couldn't change the visibility: ${reason}`,
       bundle: "Bundle as versions",
       bundleOverLimit: (limit: number) => `Bundle up to ${videos(limit)} at a time`,
-      // グループのページだけに出る（specs/048-groups/ui-design.md「Selection bar」）。
+      // グループのページだけに出る。
       removeFromGroup: "Remove from group",
     },
   },
@@ -1136,26 +1134,26 @@ export const en = {
     count: tagCount,
     filteredCount: (shown: number, total: number) =>
       `${formatNumber(shown)} of ${tagCount(total)}`,
-    // 見出しの下のタブ（specs/036-tag-admin-scale/ui-design.md「Tabs」）。
+    // 見出しの下のタブ。
     tabs: {
       label: "Tag lists",
       tags: "Tags",
     },
-    // 一覧の上の列の見出し（ui-design.md「Column header」）。
+    // 一覧の上の列の見出し。
     columns: {
       name: "Name",
       videos: "Videos",
     },
-    // 見出しの下の、効いている絞り込みのチップ（ui-design.md「Active filters」）。
+    // 見出しの下の、効いている絞り込みのチップ。
     activeFilters: {
       label: "Active filters",
       remove: (name: string) => `Remove the filter "${name}"`,
     },
     loadFailed: "Couldn't load the tags",
-    // 一覧を持ったまま先頭のページを読めなかったとき（ui-design.md「Stale list」）。
+    // 一覧を持ったまま先頭のページを読めなかったとき。
     staleList: (reason: string) =>
       `Couldn't load tags: ${reason}. The list below may not match the current search, filters and sort.`,
-    // 一覧の末尾の続きの状態（ui-design.md「Loading more」）。
+    // 一覧の末尾の続きの状態。
     loadingMore: "Loading more tags…",
     loadMoreFailed: (reason: string) => `Couldn't load more: ${reason}`,
     listChanged:
@@ -1168,7 +1166,7 @@ export const en = {
     },
     noMatches: (query: string) => `No tags match "${query}"`,
     clearSearch: "Show all tags",
-    // 仮のタグ（specs/031-tentative-tags/ui-design.md「Words」）。
+    // 仮のタグ。
     tentative: "Tentative",
     tentativeOnly: "Tentative only",
     tentativeOnlyHint: "Show only tags created by automatic tagging",
@@ -1178,7 +1176,7 @@ export const en = {
         "Tags created by automatic tagging appear here until you confirm or reject them.",
     },
     noTentativeMatches: (query: string) => `No tentative tags match "${query}"`,
-    // 0 本のタグの絞り込みと並び順（specs/036-tag-admin-scale/ui-design.md「Words」）。
+    // 0 本のタグの絞り込みと並び順。
     // 0 本のタグは「Unused」と呼び、「empty」「orphan」は使わない。
     unusedOnly: "Unused only",
     unusedOnlyHint: "Show only tags that aren't on any videos",
@@ -1190,7 +1188,7 @@ export const en = {
     noUnusedMatches: (query: string) => `No unused tags match "${query}"`,
     noUnusedTentativeMatches: (query: string) =>
       `No unused tentative tags match "${query}"`,
-    // タグの種類の行の名札・絞り込み・チップ（specs/051-tag-kinds/ui-design.md「Words」）。
+    // タグの種類の行の名札・絞り込み・チップ。
     // 種類の名前は利用者のデータなので訳さずに埋め込む。
     kindFilter: {
       label: "Kind",
@@ -1244,7 +1242,7 @@ export const en = {
       removeFailed: (name: string, reason: string) =>
         `Couldn't remove "${name}": ${reason}`,
     },
-    // 「Kinds」のタブ（specs/051-tag-kinds/ui-design.md「Words」「Kinds tab」）。
+    // 「Kinds」のタブ。
     kinds: {
       tab: "Kinds",
       table: "Kinds",
@@ -1294,7 +1292,7 @@ export const en = {
     deleted: (name: string) => `Deleted "${name}"`,
     merged: (source: string, target: string) => `Merged "${source}" into "${target}"`,
     // タグ名の競合の説明。送った名前と、API の tagName（競合先のタグの元の名前）を合わせる
-    // （contracts/error-api.md §1）。
+    //
     nameIsTag: (tagName: string) => `A tag named "${tagName}" already exists.`,
     nameIsOwnName: (tagName: string) => `"${tagName}" is already this tag's name.`,
     nameIsSynonym: (submitted: string, tagName: string) =>
@@ -1322,7 +1320,7 @@ export const en = {
       select: (name: string) => `Select "${name}"`,
       actions: "Actions",
     },
-    // 行の選択とまとめての確定・却下・削除（specs/036-tag-admin-scale/ui-design.md「Words」）。
+    // 行の選択とまとめての確定・却下・削除。
     selectAllLoaded: (count: number) =>
       selectPlural(count, {
         one: `Select the ${formatNumber(count)} loaded tag`,
@@ -1365,7 +1363,7 @@ export const en = {
       stale: "Some of the tags no longer existed, so the list was reloaded",
       merged: (count: number, target: string) =>
         `Merged ${tagCount(count)} into "${target}"`,
-      // 選択バーの「Set kind…」（specs/051-tag-kinds/ui-design.md「Set kind」）。
+      // 選択バーの「Set kind…」。
       setKind: "Set kind…",
       noKinds: "No kinds yet. Add them on the Kinds tab.",
       kindSet: (name: string, applied: number, skipped: number) =>
@@ -1416,16 +1414,16 @@ export const en = {
       title: (name: string) => `Merge "${name}"`,
       target: "Tag to merge into",
       synonymHint: (synonym: string) => `Synonym: ${synonym}`,
-      // 統合先の候補の一覧が空のとき（ui-design.md「Merge dialog」）。
+      // 統合先の候補の一覧が空のとき。
       noCandidates: "No matching tags",
       // 窓の下端の「統合元 → 統合先」。統合元が複数なら数で言う。
       summarySources: (count: number) => tagCount(count),
-      // 統合先の候補をサーバーで引けなかったとき（ui-design.md「Target candidates」）。
+      // 統合先の候補をサーバーで引けなかったとき。
       searchFailed: (reason: string) => `Couldn't search tags: ${reason}`,
       videoCount: videos,
       warning: (source: string, count: number, target: string) =>
         `The ${videos(count)} tagged "${source}" get the tag "${target}". "${source}" and its synonyms become synonyms of "${target}", and "${source}" leaves the tag list. This can't be undone.`,
-      // 統合元が複数のとき（specs/036-tag-admin-scale/ui-design.md「Words」）。count は統合先を
+      // 統合元が複数のとき。count は統合先を
       // 外した統合元の数で、選んだ数ではない。videoCount が 0 なら「0 videos」とは言わない。
       titleMany: (count: number) => `Merge ${tagCount(count)}`,
       sources: "Tags to merge",
@@ -1464,8 +1462,7 @@ export const en = {
       merge: "Merge",
     },
   },
-  // 人物と団体の管理画面（specs/047-video-work-info/ui-design.md「Words」の「People and
-  // organizations screens」）。並び順の文言はタグの画面（tags.sort）と同じものを使う。
+  // 人物と団体の管理画面。並び順の文言はタグの画面（tags.sort）と同じものを使う。
   credits: {
     person: creditKindTexts("person", "people", "People", "Person to merge into"),
     organization: creditKindTexts(
@@ -1561,7 +1558,7 @@ export const en = {
       folder: "Folder",
     },
     // 操作バー（video.js）の読み上げ名とツールチップ。キーボード操作を持つボタンには
-    // withKey でキーを添える（specs/023-english-i18n/research.md R-9）。
+    // withKey でキーを添える。
     controls: {
       withKey: (label: string, key: string) => `${label} (${key})`,
       play: "Play",
@@ -1585,11 +1582,11 @@ export const en = {
       transcoding: "Converting for playback",
       transcodingDetail:
         "The browser can't play this format directly, so it's converted while it plays. Seeking takes a few seconds.",
-      // 画質の名前（480p など）は翻訳しない（specs/027-playback-quality/ui-design.md「Words」）。
+      // 画質の名前（480p など）は翻訳しない。
       transcodingTo: (quality: string) => `Converting to ${quality}`,
       transcodingToDetail: (quality: string) =>
         `Playing a ${quality} version converted while it plays, so it needs less bandwidth. Choose “Original” in the quality menu to go back. Seeking takes a few seconds.`,
-      // 操作バーの画質メニュー（ui-design.md「Words」「Control bar: quality menu」）。
+      // 操作バーの画質メニュー。
       quality: "Quality",
       qualityName: (quality: string) => quality,
       qualityOriginal: "Original",
@@ -1597,14 +1594,14 @@ export const en = {
       qualityOriginalShort: "Orig",
       qualityNoSmaller: "No smaller sizes for this video",
     },
-    // 字幕ボタンとメニュー（specs/028-sidecar-subtitles research.md R-10）。
+    // 字幕ボタンとメニュー。
     subtitles: {
       button: "Subtitles",
       off: "Off",
       /** ラベルの無い字幕（`<名前>.srt`）の表示名。 */
       default: "Default",
     },
-    // チャプターのボタンとメニュー（specs/056-media-info/ui-design.md「Words」）。チャプターの
+    // チャプターのボタンとメニュー。チャプターの
     // タイトルは利用者のデータで、訳さない。
     chapters: {
       button: "Chapters",
@@ -1619,7 +1616,7 @@ export const en = {
     loading: "Loading",
     reconnecting: "Connection lost · Reconnecting",
     // 途切れの警告。知らせるだけで、画質を下げる勧めや切り替えは書かない
-    // （specs/027-playback-quality/ui-design.md「Words」）。
+    //
     stallWarning: {
       message: "Slow connection is interrupting playback",
       dismiss: "Dismiss",
@@ -1713,7 +1710,7 @@ export const en = {
           : `Show ${formatNumber(count)} earlier videos`,
       moreFailed: "Couldn't load more of the group",
     },
-    // プレイリストの文脈で開いた動画ページ（specs/044-playlists/ui-design.md「Words」）。
+    // プレイリストの文脈で開いた動画ページ。
     // 名前と題名（利用者のデータ）はそのまま埋め込む。
     playlist: {
       line: (name: string, position: number, count: number) =>
@@ -1748,7 +1745,7 @@ export const en = {
       useAutomaticThumbnail: "Use automatic thumbnail",
       thumbnailFailed: (reason: string) => `Couldn't change the thumbnail: ${reason}`,
       // 右端の一群の先頭のお気に入りの付け外しと、変えられなかった 1 行
-      // （specs/035-favorites/ui-design.md「Words」「Video page」）。
+      //
       favorite: "Favorite",
       favoriteFailed: (reason: string) => `Couldn't change the favorite: ${reason}`,
       technical: "Technical details",
@@ -1756,7 +1753,7 @@ export const en = {
       technicalFailed: "Couldn't read the technical details",
     },
     // ComfyUI でコマを編集してサムネイルにする入口・編集画面・生成した画像の項目
-    // （specs/045-comfyui-thumbnails/ui-design.md「Words」の Video page）。
+    //
     thumbnailEdit: {
       entry: "Edit thumbnail with ComfyUI",
       setupTitle: "Set up ComfyUI first",
@@ -1766,7 +1763,7 @@ export const en = {
       title: "Edit thumbnail",
       frameAt: (time: string) => `Frame at ${time}`,
       // 編集を何から始めるかのメニューと、今のサムネイルから始めたときの編集画面の文言
-      // （specs/046-thumbnail-image-upload/ui-design.md「Words」）。
+      //
       frameOnScreen: "Frame on screen",
       currentThumbnail: "Current thumbnail",
       thumbnailFrameAt: (time: string) => `Current thumbnail, frame at ${time}`,
@@ -1825,7 +1822,7 @@ export const en = {
       useFrameInstead: "Use the frame instead",
     },
     // 手元の画像をサムネイルにする入口とアップロードした画像の項目
-    // （specs/046-thumbnail-image-upload/ui-design.md「Words」の Video page）。
+    //
     thumbnailUpload: {
       entry: "Upload an image as thumbnail",
       refusedType: "Choose a PNG, JPEG or WebP image.",
@@ -1883,8 +1880,7 @@ export const en = {
       fileNameTitle: (name: string) => `File name: ${name}`,
       saveFailed: (reason: string) => `Couldn't save the name: ${reason}`,
     },
-    // 情報欄の作品情報の行と編集の入口（specs/047-video-work-info/ui-design.md「Words」の
-    // Video page, work details row）。役割の名前は 1 人なら単数、2 人以上なら複数。
+    // 情報欄の作品情報の行と編集の入口。役割の名前は 1 人なら単数、2 人以上なら複数。
     workInfo: {
       label: "Work details",
       code: "Code",
@@ -1914,8 +1910,7 @@ export const en = {
       showLess: "Show less",
       edit: "Edit details",
     },
-    // 情報欄の技術情報の行の下の、動画の追加の情報のまとまり（specs/056-media-info/ui-design.md
-    // 「Words」の Video page, groups）。言語の名前は formatLanguage、畳みの文言は workInfo のものを使う。
+    // 情報欄の技術情報の行の下の、動画の追加の情報のまとまり。言語の名前は formatLanguage、畳みの文言は workInfo のものを使う。
     mediaInfo: {
       video: "Video",
       audio: "Audio",
@@ -1964,8 +1959,7 @@ export const en = {
       station: "Station",
       program: "Program",
     },
-    // 作品情報プラグインからの取得（specs/049-work-info-plugins/ui-design.md「Words」の
-    // Video page text）。
+    // 作品情報プラグインからの取得。
     workInfoFetch: {
       entry: "Fetch work info from a plugin",
       title: "Fetch work info",
@@ -1997,7 +1991,7 @@ export const en = {
       back: "Back to the matches",
       now: "Now",
       fetched: "Fetched",
-      // 比較の行のラベル（specs/052-plugin-work-info-fields/ui-design.md「Words」）。役割は複数形。
+      // 比較の行のラベル。役割は複数形。
       fields: {
         title: "Title",
         tags: "Tags",
@@ -2036,7 +2030,7 @@ export const en = {
       onVideo: "On the video",
       tentative: "Tentative",
       newCount: (count: number) => `${formatNumber(count)} new`,
-      // タグの行の数。m は動画にまだ無い、選べるタグの数（specs/056-plugin-tooling/ui-design.md）。
+      // タグの行の数。m は動画にまだ無い、選べるタグの数。
       tagsSelected: (selected: number, selectable: number) =>
         `${formatNumber(selected)} of ${formatNumber(selectable)} selected`,
       more: (count: number) => `+${formatNumber(count)} more`,
@@ -2084,7 +2078,7 @@ export const en = {
       applyFailed: (reason: string) => `Couldn't apply: ${reason}`,
       pluginSaid: (message: string) => `The plugin said: "${message}"`,
     },
-    // 全画面の編集画面（specs/047-video-work-info/ui-design.md「Words」の Editor）。
+    // 全画面の編集画面。
     detailsEditor: {
       title: "Edit details",
       documentTitle: (title: string) => `Edit details · ${title}`,
@@ -2155,7 +2149,7 @@ export const en = {
       private: "Private",
       failed: (reason: string) => `Couldn't change the visibility: ${reason}`,
     },
-    // Group line と、その後のグループ操作（specs/048-groups/ui-design.md「Video page」）。
+    // Group line と、その後のグループ操作。
     group: {
       line: (name: string, position: number, count: number) =>
         `Group "${name}", video ${formatNumber(position)} of ${formatNumber(count)}. Open the group`,
@@ -2166,7 +2160,7 @@ export const en = {
       removed: (name: string) => `Removed from "${name}"`,
       removeFailed: (reason: string) => `Couldn't remove from the group: ${reason}`,
     },
-    // スマートフォルダの行（specs/052-smart-folders/ui-design.md「Video page」）。
+    // スマートフォルダの行。
     smartFolder: {
       line: (name: string, position: number, count: number) =>
         `Smart folder "${name}", video ${formatNumber(position)} of ${formatNumber(count)}. Open the smart folder`,
@@ -2295,7 +2289,7 @@ export const en = {
       title: "No history matches these conditions",
     },
   },
-  // ホーム（specs/057-home/ui-design.md「Words」の Home の行）。
+  // ホーム（docs/design-docs/home.md「Words」の Home の行）。
   home: {
     title: "Home",
     shelves: "Shelves",
@@ -2341,7 +2335,7 @@ export const en = {
     writeFailed: (reason: string) => `Couldn't change your home: ${reason}`,
     organizing: "Organizing your shelves…",
   },
-  // アクティビティ（specs/055-activity/ui-design.md「Words」）。
+  // アクティビティ（docs/design-docs/activity.md「Words」）。
   activity: {
     title: "Activity",
     documentTitle: "Activity",
@@ -2526,7 +2520,7 @@ export const en = {
       description: "No entries match these filters.",
     },
   },
-  // プレイリスト（specs/044-playlists/ui-design.md「Words」）。
+  // プレイリスト。
   playlists: {
     title: "Playlists",
     documentTitle: "Playlists",
@@ -2595,8 +2589,7 @@ export const en = {
       failed: (reason: string) => `Couldn't delete the playlist: ${reason}`,
     },
     deleted: (name: string) => `Deleted "${name}"`,
-    // 動画とグループをプレイリストに足すピッカー（specs/044-playlists/ui-design.md
-    // 「Add to playlist」「Words」）。名前（利用者のデータ）はそのまま埋め込む。
+    // 動画とグループをプレイリストに足すピッカー。名前（利用者のデータ）はそのまま埋め込む。
     add: {
       label: "Add to playlist",
       search: "Search or create a playlist",
@@ -2615,7 +2608,7 @@ export const en = {
       failed: (reason: string) => `Couldn't add to the playlist: ${reason}`,
     },
   },
-  // スマートフォルダ（specs/052-smart-folders/ui-design.md「Words」）。画面では条件を
+  // スマートフォルダ。画面では条件を
   // "conditions" と呼び、"rule" とは言わない。保存・編集・削除の語と、カードとページの語。
   smartFolders: {
     // カードの印の Tooltip と title。
@@ -2687,7 +2680,7 @@ export const en = {
         lengthWords(minSeconds, maxSeconds),
     },
     detail: {
-      // 見出しの「More」の項目（ui-design.md「Smart folder page」）。
+      // 見出しの「More」の項目。
       edit: "Edit…",
       newChild: "New child smart folder…",
       delete: "Delete…",
@@ -2727,13 +2720,12 @@ export const en = {
       failed: (reason: string) => `Couldn't delete the smart folder: ${reason}`,
     },
   },
-  // グループのページ（/groups/{id}）と、グループをタグに変える窓（specs/048-groups/ui-design.md
-  // 「Words」）。名前とパス（利用者のデータ）はそのまま埋め込む。
+  // グループのページ（/groups/{id}）と、グループをタグに変える窓。名前とパス（利用者のデータ）はそのまま埋め込む。
   groups: {
     // 道筋の帯（Breadcrumb）の名前。
     trail: "Group path",
     nameLabel: "Name",
-    // プレイリストの名前と同じ規則（research.md R-14）。
+    // プレイリストの名前と同じ規則。
     nameRule: "Use a name of 1 to 100 characters.",
     created: (name: string) => `Created "${name}"`,
     // 選択バーの「New group」の窓。説明は何がグループになるかを言う。グループ 1 つだけの選択では
@@ -2812,8 +2804,7 @@ export const en = {
       failed: (reason: string) => `Couldn't dissolve the group: ${reason}`,
     },
     dissolved: (name: string) => `Dissolved "${name}"`,
-    // グループをタグに変える確認の窓と、その成功のトースト（ui-design.md「Turning into a tag」
-    // 「Words」）。グループページ、動画ページ、フォルダのメニューが共有する。
+    // グループをタグに変える確認の窓と、その成功のトースト。グループページ、動画ページ、フォルダのメニューが共有する。
     tagDialog: {
       title: (name: string) => `Turn "${name}" into a tag?`,
       description: (name: string) =>
@@ -2828,7 +2819,7 @@ export const en = {
         : `Added the tag "${name}" and dissolved the group`,
   },
   // ドラッグで並べ替え・グループ化・マージ・バージョン化する操作と、その取り消しの通知
-  // （specs/050-drag-organize/ui-design.md「Words」）。
+  //
   organize: {
     drop: {
       putIn: "Put in",
@@ -2864,7 +2855,7 @@ export const en = {
       merge: (reason: string) => `Couldn't merge: ${reason}`,
     },
     // ドラッグの層の読み上げの案内（dnd-kit の screenReaderInstructions、描かない）。カードは
-    // キーボードでは持ち上がらず、キーボードでは 048 のメニューを使う（research.md R-7）。
+    // キーボードでは持ち上がらず、キーボードでは 048 のメニューを使う。
     instructions:
       "Press and move a card to pick it up, then drop it on another card or a group to organize. With the keyboard, use the card's buttons instead.",
     undo: "Undo",
@@ -2893,13 +2884,13 @@ export const en = {
     tooLong: (limit: number, length: number) =>
       `Use ${characters(limit)} or fewer (currently ${formatNumber(length)})`,
   },
-  // 人物・団体の名前を打つ CreditCommand の理由（specs/047-video-work-info/ui-design.md「Words」）。
+  // 人物・団体の名前を打つ CreditCommand の理由。
   creditName: {
     required: "Enter a name",
     controlCharacters: "Line breaks and tabs aren't allowed",
     tooLong: (limit: number) => `Up to ${characters(limit)}`,
   },
-  // オンボード（specs/057-home/ui-design.md「Words」の Onboarding の行）。
+  // オンボード（docs/design-docs/home.md「Words」の Onboarding の行）。
   onboarding: {
     documentTitle: "Set up your library",
     steps: "Setup steps",
@@ -3029,7 +3020,7 @@ export const en = {
     scan: {
       startFailed: (reason: string) => `Couldn't start the scan: ${reason}`,
       notRun: "No scan has run yet",
-      // 状態の言葉（specs/024-import-progress/ui-design.md「Words」）。走査と準備を
+      // 状態の言葉。走査と準備を
       // 言い分けない。
       status: {
         starting: "Starting",
@@ -3068,7 +3059,7 @@ export const en = {
       seeSettingsForList: "See Settings for the list.",
       // 読み上げは完了・一部失敗・失敗の節目だけにする。
       // 自動の取り込み（origin watch）の言葉。走っているあいだは何も出さないので、
-      // 終わったあとの状態だけがある（specs/042-folder-watch-import/ui-design.md「Words」）。
+      // 終わったあとの状態だけがある。
       watchStatus: {
         done: "Auto-imported",
         partial: "Auto-import: some failed",
@@ -3102,7 +3093,7 @@ export const en = {
   },
   settings: {
     title: "Settings",
-    // 設定のページ（specs/058-settings-pages/ui-design.md「Words」）。一覧の項目、ページの h1、
+    // 設定のページ。一覧の項目、ページの h1、
     // ブラウザの題に同じ 1 語を使う。キーは settingsPages.ts のスラッグである。
     pages: {
       scan: "Scan",
@@ -3128,13 +3119,13 @@ export const en = {
       runningReason: "A scan is running. You can start another when it finishes.",
       // 「Library」はページへのリンクになる。
       needsMediaFolder: { before: "Add a media folder in ", after: " to scan." },
-      // 問題の一覧（specs/024-import-progress/ui-design.md「Issue List」）。
+      // 問題の一覧。
       issues: {
         heading: "Videos with problems",
         failed: "Failed",
         check: "Check",
         // 影響（その動画がどうなっているか）と理由。種類の漏れは型検査で見つかる
-        // （research.md R-10）。
+        //
         kinds: {
           unreadable: {
             impact: "Not added to the library.",
@@ -3522,7 +3513,7 @@ export const en = {
         failed: (reason: string) => `Couldn't delete the plugin: ${reason}`,
       },
     },
-    // 設定の「Home」の節（specs/057-home/ui-design.md「Words」の Settings の行）。
+    // 設定の「Home」の節（docs/design-docs/home.md「Words」の Settings の行）。
     home: {
       heading: "Home",
       shelves: "Shelves",

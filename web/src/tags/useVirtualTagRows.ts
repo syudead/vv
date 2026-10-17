@@ -50,10 +50,8 @@ function rowFocusables(row: Element): HTMLElement[] {
 }
 
 /**
- * useVirtualTagRows はタグ管理画面の一覧を、表示域と前後の少数の行だけ描く
- * （specs/036-tag-admin-scale/research.md R-2）。描いていない行へのフォーカスの移動と、
- * 描いている範囲の端での Tab の受け渡しも持つ（ui-design.md「Keyboard across
- * virtualized rows」）。`fallbackFocus` は、行へ移せないときの最後の行き先である。
+ * useVirtualTagRows はタグ管理画面の一覧を、表示域と前後の少数の行だけ描く。描いていない行へのフォーカスの移動と、
+ * 描いている範囲の端での Tab の受け渡しも持つ。`fallbackFocus` は、行へ移せないときの最後の行き先である。
  *
  * 人物・団体の管理画面（`web/src/credits/`）も同じ行の描き方とフォーカスの規則で使う。
  * 行は `rowIdAttribute`（既定は `data-tag-id`）に id を持ち、`TagRowRefs` の
@@ -93,7 +91,7 @@ export function useVirtualTagRows<R extends { id: number }>({
    * pinnedRowId は、見えている範囲の外でも描き続ける行である。フォーカスを
    * 持つ行（行から開いたメニューにあるときも含む）と、これからフォーカスを移す
    * 行を指す。フォーカスが一覧の外へ出たら外す（`handleListBlur`。
-   * specs/036-tag-admin-scale/ui-design.md「Keyboard across virtualized rows」）。
+   * docs/design-docs/catalog-organization.md「Keyboard across virtualized rows」）。
    */
   const [pinnedRowId, setPinnedRowId] = useState<number | null>(null);
   /**
@@ -202,7 +200,7 @@ export function useVirtualTagRows<R extends { id: number }>({
    * focusAfterRemoval は、行が一覧から消えた（削除・却下、tag_not_found の
    * 取り直しで消えた、または「Tentative only」の絞り込みから外れた）あとの
    * フォーカス先を決める。次の行の「改名」、無ければ前の行、1つも無ければ
-   * `focusFallback`（ui-design.md「Merge and delete」、031 の「Toolbar」）。
+   * `focusFallback`。
    * order は消える前の（絞り込み後の）並びで、`alsoGone` は同時に一覧から
    * 外れるほかの行（統合先が確定になって絞り込みから外れるときなど）である。
    *
@@ -244,8 +242,7 @@ export function useVirtualTagRows<R extends { id: number }>({
   /**
    * rowActionTarget は、行の操作へフォーカスを移すときの実際の行き先である。
    * タッチの端末と `sm` 未満では行のアイコンのボタン（`RowIconButton`）が隠れて「Actions」1 つに
-   * まとまるので、隠れている操作の代わりに「Actions」を指す（ui-design.md
-   * 「Actions on touch and narrow widths」）。名前のリンクは隠れない。
+   * まとまるので、隠れている操作の代わりに「Actions」を指す。名前のリンクは隠れない。
    */
   function rowActionTarget(
     refs: TagRowRefs | undefined,
@@ -261,8 +258,7 @@ export function useVirtualTagRows<R extends { id: number }>({
     visibleRowsRef.current = visibleRows;
   }, [visibleRows]);
 
-  // 一覧は表示域と前後の少数の行だけを描く（specs/036-tag-admin-scale/research.md
-  // R-2）。スクロールの持ち主は文書で、行の高さは描いた要素を測る。
+  // 一覧は表示域と前後の少数の行だけを描く。スクロールの持ち主は文書で、行の高さは描いた要素を測る。
   const pinnedIndex = useMemo(
     () =>
       pinnedRowId === null ? -1 : visibleRows.findIndex((tag) => tag.id === pinnedRowId),
@@ -272,7 +268,7 @@ export function useVirtualTagRows<R extends { id: number }>({
    * renamingIndex は改名中の行の位置である。改名中の行は、フォーカスが一覧の
    * 外へ出ても（並び順のメニューを開くなど）描き続ける。外すと `TagRow` が
    * 外れて打っている途中の名前を失う（並び順・絞り込みを変えても改名中の行を
-   * 消さない。specs/036-tag-admin-scale/plan.md）。
+   * 消さない。docs/design-docs/catalog-organization.md）。
    */
   const renamingIndex = useMemo(
     () =>
@@ -338,7 +334,7 @@ export function useVirtualTagRows<R extends { id: number }>({
    * handleListKeyDown は、描いている範囲の端の Tab を次の（Shift+Tab は前の）
    * 行へ渡す。描いていない行は DOM に無いので、既定の Tab では一覧の外へ
    * 飛んでしまう。全件の最後の行の Tab、最初の行の Shift+Tab は既定のまま
-   * 一覧の外へ進める（ui-design.md「Keyboard across virtualized rows」）。
+   * 一覧の外へ進める。
    */
   function handleListKeyDown(event: KeyboardEvent<HTMLTableSectionElement>) {
     if (event.key !== "Tab" || event.altKey || event.ctrlKey || event.metaKey) return;

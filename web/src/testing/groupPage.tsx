@@ -370,7 +370,7 @@ function write(url: URL, method: string, body: unknown): Promise<Response> | und
       return targetGone();
     }
     stored.items = stored.items.filter((item) => !itemIds.includes(item.id));
-    // 最後の項目を外したグループは解散され、本文の無い 204 で答える（data-model.md「Edits」）。
+    // 最後の項目を外したグループは解散され、本文の無い 204 で答える。
     if (stored.items.length === 0) {
       server.groups.delete(id);
       return Promise.resolve(new Response(null, { status: 204 }));

@@ -30,8 +30,7 @@ const sections: { id: string; title: () => string; body?: () => ReactNode }[] = 
 ];
 
 /**
- * DesignSystemPage は開発時だけの見本で、デザインシステムの段階ごとの確認に使う
- * （specs/038-design-system/research.md R-1、R-2）。各段階の実装が自分の節を埋める。
+ * DesignSystemPage は開発時だけの見本で、デザインシステムの段階ごとの確認に使う。各段階の実装が自分の節を埋める。
  */
 export default function DesignSystemPage() {
   return (

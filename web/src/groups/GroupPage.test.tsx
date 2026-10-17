@@ -543,7 +543,7 @@ describe("GroupPage", () => {
     expectCatalogTextOnly(document.body, ["Season", "Extras", "Bonus", "1:00"]);
   });
 
-  it("「Add to group」はこのグループへ足したときだけ読み直し、カードのグループ自身はピッカーに出さない（ui-design.md「Add to group」）", async () => {
+  it("「Add to group」はこのグループへ足したときだけ読み直し、カードのグループ自身はピッカーに出さない", async () => {
     seed();
     const base = globalThis.fetch;
     const adds: { path: string; body: unknown }[] = [];

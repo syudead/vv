@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 規則でホームを整理する（specs/057-home/research.md R-1、R-2、R-9、R-10）。案の適用そのもの（owner-kept
+// 規則でホームを整理する（docs/design-docs/home.md）。案の適用そのもの（owner-kept
 // の棚を残す、extend が名前を変えない）は保存層と cmd/mdm の結合の試験が確かめる。
 
 // fakeHomeStore は整理役の保存先の代わりで、待ちと最後の実行をメモリに持ち、適用した案を記録する。

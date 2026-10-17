@@ -12,8 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// サムネイルの編集の画像の確かめ（contracts/screen-api.md の Run an edit、
-// docs/design-docs/thumbnail-editing.md）。マスクと参考画像は何も上げる前に、提供元の出力は
+// サムネイルの編集の画像の確かめ。マスクと参考画像は何も上げる前に、提供元の出力は
 // succeeded にする前に、最後まで読めるかを確かめる。
 
 // thumbnailEditMaxPixels は、確かめるために最後まで読む画像の画素数の上限である。見出しだけ
@@ -102,7 +101,7 @@ func decodeImage(data []byte, maxPixels int64) (image.Image, error) {
 }
 
 // thumbnailEditFrameFromImage は適用した画像 data（JPEG）を、編集の元にするコマ（PNG とその
-// 大きさ）にする（specs/046-thumbnail-image-upload/research.md R-4）。読めなければ誤りである。
+// 大きさ）にする。読めなければ誤りである。
 func thumbnailEditFrameFromImage(data []byte) (domain.ThumbnailFrame, error) {
 	decoded, err := decodeThumbnailEditImage(data)
 	if err != nil {

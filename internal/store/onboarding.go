@@ -1,6 +1,6 @@
 package store
 
-// オンボードの段階と分野（specs/057-home/research.md R-3、R-5、R-6、R-16）。段階は settings の
+// オンボードの段階と分野（docs/design-docs/home.md）。段階は settings の
 // onboarding.step に置き、書き込みは名前の段階をそのまま書く（後の書き込みが残る）。分野を選ぶと、
 // 1 つの取引で分野のタグを探すか作り、種類の無いタグに Genre を付け、そのタグの条件の所有者の棚を
 // 作る。タグの作成と同義語は tags.go・tag_lookup.go の関数を使う。

@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 画面の API トークンの管理（specs/026-external-api/contracts/token-api.md）。
+// 画面の API トークンの管理。
 //
 // 3 つの操作はどれも所有者だけで、accessRoutes に載せない。Bearer はここでは読まない。
 // Bearer で所有者を確かめるのは境界（auth.go の bearerBoundary）で、同じ APITokens を使う。
@@ -24,7 +24,7 @@ type APITokens interface {
 	// その行を返す。問い合わせが失敗したら、無効とせずに誤りを返す。
 	CheckAPIToken(ctx context.Context, secret string) (domain.APIToken, bool, error)
 	// RecordAPITokenUse は id の API トークンを今使ったことを記録する。60 秒より細かくは
-	// 書かない（specs/026-external-api/research.md R-9）。
+	// 書かない。
 	RecordAPITokenUse(ctx context.Context, id int64) error
 	// ListAPITokens は有効な API トークンを作成日時の降順で返す。
 	ListAPITokens(ctx context.Context) ([]domain.APIToken, error)
@@ -64,7 +64,7 @@ func (s *server) CreateApiToken(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// 境界が確かめたのと同じセッションを渡し、保存と同じ取引でもう一度確かめさせる。
-	// 境界の後に資格情報が変わっていれば、新しい版のトークンを作らない（research.md R-2）。
+	// 境界の後に資格情報が変わっていれば、新しい版のトークンを作らない。
 	token, secret, err := s.apiTokens.CreateAPIToken(r.Context(), s.sessionToken(r), body.Name)
 	if errors.Is(err, domain.ErrInvalidAPITokenName) {
 		s.invalidAPITokenName(w, err)
@@ -92,14 +92,14 @@ func (s *server) DeleteApiToken(w http.ResponseWriter, r *http.Request, id gen.A
 		s.internalError(w, "Could not revoke the API token.", err)
 		return
 	}
-	// 失効したトークンで処理中の外部連携 API と MCP の要求を、すぐに打ち切る（research.md R-9）。
+	// 失効したトークンで処理中の外部連携 API と MCP の要求を、すぐに打ち切る。
 	s.sessions.revoke(apiTokenLedgerKey(id))
 	w.Header().Set("Cache-Control", cacheNoStore)
 	w.WriteHeader(http.StatusNoContent)
 }
 
 // invalidAPITokenName は domain.NormalizeAPITokenName の失敗を、その理由に応じた reason の
-// invalid_request へ写す（contracts/token-api.md）。
+// invalid_request へ写す。
 func (s *server) invalidAPITokenName(w http.ResponseWriter, err error) {
 	var invalid *domain.InvalidAPITokenNameError
 	if !errors.As(err, &invalid) {

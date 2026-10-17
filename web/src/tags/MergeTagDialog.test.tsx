@@ -247,7 +247,7 @@ describe("MergeTagDialog の幅と候補の一覧", () => {
 });
 
 describe("MergeTagDialog の数え直し", () => {
-  it("選択から開いた窓で同じ統合先を選び直しても、数え直す（ui-design.md「Confirmation」）", async () => {
+  it("選択から開いた窓で同じ統合先を選び直しても、数え直す", async () => {
     const user = userEvent.setup();
     vi.mocked(tagImpact)
       .mockResolvedValueOnce({ tagCount: 2, videoCount: 5 })

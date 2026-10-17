@@ -15,7 +15,6 @@ import (
 
 // 本物の watcher・走査・保存層をつないで、メディアフォルダへ置いたファイルが走査を始めずに
 // 索引へ入り、消すと索引から消えることを確かめる
-// （specs/042-folder-watch-import/quickstart.md の最初と 3 つ目の行）。
 func TestAutoImportImportsAndRemovesFilesWithoutManualScan(t *testing.T) {
 	ctx, db, mediaDir := openTestDB(t)
 	logger := slog.New(slog.DiscardHandler)

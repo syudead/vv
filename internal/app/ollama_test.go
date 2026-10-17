@@ -62,7 +62,7 @@ func TestOllamaConnectionSaveAndCheck(t *testing.T) {
 	}
 }
 
-// 保存に成功したときだけ、登録した関数を呼ぶ（重複の判定の再開、specs/054-auto-dup/research.md R-13）。
+// 保存に成功したときだけ、登録した関数を呼ぶ（重複の判定の再開、docs/design-docs/duplicate-judging.md）。
 func TestOllamaConnectionOnSaved(t *testing.T) {
 	conn := NewOllamaConnection(&fakeOllamaStore{}, &fakeProbe{})
 	calls := 0

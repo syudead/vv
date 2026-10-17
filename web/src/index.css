@@ -9,7 +9,7 @@
 
 /*
  * 見本（/design-system）は部品の hover・キーボードのフォーカス・押下の状態を、触らずに
- * 横に並べて見せる（specs/038-design-system/ui-design.md「Review criteria」4）。
+ * 横に並べて見せる。
  * data-demo-state を付けた要素の中では、その状態のクラスを当てたまま描く。フォーカスの輪は
  * 下の :focus-visible の規則が data-demo-state="focus" の最初の子に描く。画面では
  * data-demo-state を使わない。hover の既定（hover できる端末だけ）はそのまま残す。
@@ -108,7 +108,7 @@
 }
 
 /*
- * 操作バーの並び（specs/012-video-detail-ia/ui-design.md「Control bar」）。
+ * 操作バーの並び。
  * 再生バーは操作バーの上に置き、バーの中は 最初に戻る・再生・音量・現在時刻/長さ・
  * 右寄せの空き・チャプター・変換中の表示・画質・字幕・再生速度・PiP・全画面 の順にする。
  * 操作バーはプレイヤーの上に重ねる層（再生失敗・再生終了）より上に出し、押せるままにする。
@@ -160,7 +160,7 @@
 }
 
 /*
- * 画質のメニュー（specs/027-playback-quality/ui-design.md「Control bar: quality menu」）。
+ * 画質のメニュー。
  * 箱・余白・hover は再生速度と同じ .vjs-control・.vjs-button の規則に任せ、文字だけを
  * text-xs（0.75rem / 1rem）と等幅の数字にする。メニューの幅は video.js の既定（10em）の
  * ままにして「Original (1080p)」を 1 行に収め、項目は小文字に変えない。
@@ -202,7 +202,7 @@
 }
 
 /*
- * チャプターのメニュー（specs/056-media-info/ui-design.md「Chapters button and menu」）。
+ * チャプターのメニュー。
  * 項目は `{start} {title}` で、画質の 10em ではタイトルが切れるので 20em にする。項目は左に
  * 寄せて 1 行にし、幅を超えるタイトルは省略記号で切る。メニューの幅は変えない。
  */
@@ -235,7 +235,7 @@
 }
 
 /*
- * シークバーのチャプターの印（ui-design.md「Marks」）。再生済みの塗りより上、シークの
+ * シークバーのチャプターの印。再生済みの塗りより上、シークの
  * プレビューと取っ手より下に描き、pointer を取らない。バーの高さいっぱいで、hover で
  * バーが太るとともに太る。
  */
@@ -254,7 +254,7 @@
 }
 
 /*
- * 字幕は操作バーと重ねない（specs/028-sidecar-subtitles 要件 10）。操作バーが見えている間は、
+ * 字幕は操作バーと重ねない。操作バーが見えている間は、
  * 字幕の下端を操作バー（3em）とその上の再生バー（2em）の上に置く。操作バーが隠れる間
  * （再生中に操作が無い）は video.js の既定どおり下へ戻す。
  */
@@ -294,7 +294,7 @@
 
   /*
    * チャプター・変換の表示・字幕がそろっても 360px に収まるよう、ボタンを隠す前に時刻と
-   * 変換の表示の余白を詰める（specs/056-media-info/ui-design.md「Responsive behaviour」）。
+   * 変換の表示の余白を詰める。
    */
   .vv-video-player .video-js .vjs-time-control {
     padding-right: 0.125em;

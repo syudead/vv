@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-// 所有者へのおすすめの棚（specs/057-home/research.md R-13）。おすすめは、よく再生した動画と新しい
+// 所有者へのおすすめの棚（docs/design-docs/home.md）。おすすめは、よく再生した動画と新しい
 // お気に入り（種）のどれかに中身が近い、見終わっていない動画である。近さは関連動画と同じ
 // RelatedScorer で測る（docs/design-docs/related-videos.md）。
 

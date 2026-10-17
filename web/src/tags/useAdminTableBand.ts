@@ -9,7 +9,7 @@ import {
 
 /**
  * useAdminTableBand は管理表の画面（`AdminTablePage`）の、上部バーの下に留める帯と表の
- * 列の見出しの高さを測る（specs/036-tag-admin-scale/ui-design.md「Band」）。タグの画面と
+ * 列の見出しの高さを測る。タグの画面と
  * 人物・団体の画面が使う。
  *
  * - `bandRef` は帯（`AdminTablePage` の `bandRef`）、`headRef` は表の列の見出しに渡す。

@@ -1,17 +1,17 @@
-import { mkdir, rm } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
 // フォルダ画面（親 Issue #145・#195）のうち、本物のサーバーとブラウザでしか
-// 確かめられないものだけを流す（docs/design-docs/web-testing.md）。取り込んだ
-// フォルダの索引を画面でたどる流れ、長い名前の三幅での横のはみ出し、キーボードの
-// フォーカスの見え方、取り込みでフォルダが無くなったときの案内、画面写真である。
-// 並び順・パンくず・検索・絞り込みの振る舞いは Vitest（src/folders/FolderPage、
+// 確かめられないものだけを流す（docs/design-docs/web-testing.md）。長い名前の三幅での
+// 横のはみ出しと、取り込んだフォルダをキーボードでたどるときのフォーカスの見え方である。
+// 並び順・パンくず・空の案内・検索・絞り込み・取り込みでフォルダが無くなったときの案内の
+// 振る舞いは Vitest（src/folders/FolderPage、
 // src/folders/folderPath）が、子フォルダの自然順・直下だけの一覧・配下の検索は
 // Go のテスト（internal/domain/folder_test.go、internal/httpapi/folders_test.go、
 // internal/store/folders_test.go）が確かめる。
-// 構成は run-e2e.mjs が generateFolderFixtures で、quickstart.md のとおりに作る。
+// 構成は run-e2e.mjs が generateFolderFixtures で作る。
 
 interface MediaFolder {
   id: number;
@@ -21,8 +21,6 @@ interface MediaFolder {
 
 const origin = "http://127.0.0.1:15173";
 const mutationHeaders = { Origin: origin, "Content-Type": "application/json" };
-/** 取り込むファイル 16 本のうち、同じ内容の複製 2 本を除いた動画の数。 */
-const expectedVideos = 14;
 const registered: MediaFolder[] = [];
 
 function rootA(): number {
@@ -38,11 +36,7 @@ function folderUrl(rootId: number, path = ""): string {
   return ["/folders", String(rootId), ...segments].join("/");
 }
 
-async function waitForLibrary(
-  request: APIRequestContext,
-  scanId: number,
-  expectedVideoCount = expectedVideos,
-) {
+async function waitForLibrary(request: APIRequestContext, scanId: number) {
   const currentScan = async () => {
     const response = await request.get("/api/scans/current");
     return (await response.json()) as {
@@ -60,37 +54,12 @@ async function waitForLibrary(
       { timeout: 60_000 },
     )
     .toBe("finished");
-  // 取り込めなかったファイルがあると動画の数が揃わず、下のサムネイル待ちが
-  // 上限まで空回りする。ここで結果を見て、すぐに落とす。
+  // 取り込めなかったファイルがあれば、ここで結果を見てすぐに落とす。
   const scan = await currentScan();
   expect({ state: scan.state, failed: scan.issues.failed }).toEqual({
     state: "done",
     failed: 0,
   });
-  const states = async () => {
-    const response = await request.get("/api/videos?limit=200");
-    const page = (await response.json()) as { items: { thumbnailState: string }[] };
-    return page.items.map((item) => item.thumbnailState);
-  };
-  // サムネイルは1本ずつ順に作られるので、待つのは「作り終わるまで」にする。
-  // 失敗したものがあれば、下の件数の検査が落とす。
-  await expect
-    .poll(
-      async () => {
-        const all = await states();
-        return all.length === expectedVideoCount && !all.includes("pending");
-      },
-      { timeout: 300_000 },
-    )
-    .toBe(true);
-  expect((await states()).filter((state) => state === "done")).toHaveLength(
-    expectedVideoCount,
-  );
-}
-
-/** cardNames はフォルダカードの名前を画面の順に返す。 */
-async function cardNames(page: Page): Promise<string[]> {
-  return page.locator("[data-folder-path] h3").allTextContents();
 }
 
 /** tabUntil は条件を満たす要素にフォーカスが来るまで Tab を押す。 */
@@ -183,17 +152,8 @@ test.describe.serial("folder browser", () => {
         await page.goto("/folders");
         const card = page.getByRole("link", { name: new RegExp(`^${name}, 0 videos`) });
         await expect(card).toBeVisible();
-        await expect(card.locator("h3")).toHaveAttribute("title", name);
-        await expect(card.locator("p[dir=rtl]")).toHaveAttribute("title", empty.path);
         await card.click();
-        await expect(
-          page.getByRole("heading", { name: "The media folders are empty" }),
-        ).toBeVisible();
-        // 押すと設定の「Scan status」へ移る（取り込みは始めない）。
-        await expect(page.getByRole("link", { name: "Scan" })).toHaveAttribute(
-          "href",
-          "/settings/scan#scan-status",
-        );
+        await expect(page).toHaveURL(folderUrl(empty.id));
         expect(
           await page.evaluate(
             () =>
@@ -209,57 +169,6 @@ test.describe.serial("folder browser", () => {
       );
       expect(removed.status()).toBe(204);
     }
-  });
-
-  test("子フォルダを自然順に並べ、直下だけを出し、プレビューは直下の4件まで", async ({
-    page,
-    request,
-  }) => {
-    await page.goto(folderUrl(rootA()));
-    await expect(page.locator("[data-folder-path]").first()).toBeVisible();
-    expect(await cardNames(page)).toEqual([
-      "1",
-      "2",
-      "10",
-      "100% #1 日本語",
-      "A",
-      "dup",
-      "five",
-      "only-deeper",
-    ]);
-
-    const five = page.locator('[data-folder-path="five"]');
-    await expect(five.locator("img")).toHaveCount(4);
-    const deeper = page.locator('[data-folder-path="only-deeper"]');
-    await expect(deeper.locator("img")).toHaveCount(0);
-    await expect(deeper).toContainText("0 videos");
-
-    // A を開くと、直下の x と子フォルダ B だけが出る。
-    await page.getByRole("link", { name: "A, 1 video, 1 folder" }).click();
-    await expect(page).toHaveURL(folderUrl(rootA(), "A"));
-    const videoLinks = page.locator("[data-video-id] a");
-    await expect(videoLinks).toHaveCount(1);
-    await expect(videoLinks.first()).toHaveAccessibleName("x");
-    expect(await cardNames(page)).toEqual(["B"]);
-
-    const b = page.getByRole("link", { name: "B, 1 video, 1 folder" });
-    await expect(b).toBeVisible();
-    // 子フォルダの一群は動画の一群より前に出る。
-    const folderBox = await b.boundingBox();
-    const videoBox = await videoLinks.first().boundingBox();
-    expect(folderBox!.y).toBeLessThan(videoBox!.y);
-
-    // B のプレビューは直下の y だけで、孫の z は入らない。
-    const y = (await (
-      await request.get(`/api/folders/${String(rootA())}/videos?path=A%2FB`)
-    ).json()) as { items: { id: number; title: string }[] };
-    expect(y.items.map((item) => item.title)).toEqual(["y"]);
-    const previews = page.locator('[data-folder-path="A/B"] img');
-    await expect(previews).toHaveCount(1);
-    await expect(previews.first()).toHaveAttribute(
-      "src",
-      new RegExp(`^/api/videos/${String(y.items[0]!.id)}/thumbnail`),
-    );
   });
 
   test("キーボードだけでフォルダをたどって動画へ行き、パンくずで戻れる", async ({
@@ -283,147 +192,5 @@ test.describe.serial("folder browser", () => {
     await tabUntil(page, (active) => active.text === "movies", "Shift+Tab");
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(folderUrl(rootA()));
-  });
-});
-
-// フォルダの中の検索（親 Issue #195、#228 の完了の条件）の画面写真と、取り込みで
-// 表示中のフォルダが無くなる場合。フォルダ構成は generateFolderSearchFixtures が作る:
-// movies/A/x 京都.mp4・movies/A/B/y 京都.mp4・movies/A/大阪.mp4・movies/C/z 京都.mp4
-// （A/x・A/B/y・C/z が「京都」を含み、C は A の配下ではない）。
-test.describe.serial("folder search", () => {
-  const screenshotDir = process.env.MDM_E2E_SCREENSHOT_DIR;
-  let root: MediaFolder | undefined;
-  const expectedVideos = 4;
-
-  function cardTitles(page: Page): Promise<string[]> {
-    return page.locator("[data-video-id] h3").allTextContents();
-  }
-
-  test.beforeAll(async ({ request }) => {
-    test.setTimeout(180_000);
-    const dir = process.env.MDM_E2E_FOLDERS_SEARCH_MEDIA_DIR;
-    if (dir === undefined)
-      throw new Error("MDM_E2E_FOLDERS_SEARCH_MEDIA_DIR is not configured");
-
-    const created = await request.post("/api/media-folders", {
-      headers: mutationHeaders,
-      data: { path: `${dir}/movies` },
-    });
-    expect(created.status()).toBe(201);
-    root = (await created.json()) as MediaFolder;
-
-    const scan = await request.post("/api/scans", { headers: mutationHeaders, data: {} });
-    expect(scan.status()).toBe(202);
-    await waitForLibrary(
-      request,
-      ((await scan.json()) as { id: number }).id,
-      expectedVideos,
-    );
-  });
-
-  test.afterAll(async ({ request }) => {
-    if (root === undefined) return;
-    const removed = await request.delete(
-      `/api/media-folders/${String(root.id)}?version=${String(root.version)}`,
-      { headers: mutationHeaders },
-    );
-    expect(removed.status()).toBe(204);
-  });
-
-  test("画面の画像を撮る", async ({ page, request }) => {
-    test.skip(screenshotDir === undefined, "MDM_E2E_SCREENSHOT_DIR is not set");
-    test.setTimeout(180_000);
-    const dir = screenshotDir ?? "";
-    await mkdir(dir, { recursive: true });
-    await expect
-      .poll(
-        async () => {
-          const response = await request.get("/api/videos?limit=200");
-          const page2 = (await response.json()) as {
-            items: { thumbnailState: string }[];
-          };
-          return page2.items.filter((item) => item.thumbnailState === "pending").length;
-        },
-        { timeout: 120_000 },
-      )
-      .toBe(0);
-
-    const shoot = async (name: string) => {
-      await page.waitForLoadState("networkidle");
-      await page.waitForTimeout(400);
-      await page.screenshot({
-        path: path.join(dir, `20260924-folder-search-${name}.png`),
-      });
-    };
-    for (const width of [360, 768, 1280]) {
-      await page.setViewportSize({ width, height: 800 });
-      await page.goto(`${folderUrl(root!.id, "A")}?q=${encodeURIComponent("京都")}`);
-      await expect.poll(() => cardTitles(page)).toEqual(["x 京都", "y 京都"]);
-      await shoot(`results-${String(width)}`);
-
-      await page.goto(`${folderUrl(root!.id, "A")}?watch=unwatched`);
-      await expect(
-        page.getByRole("link", { name: "B, 1 video, 0 folders" }),
-      ).toBeVisible();
-      await shoot(`filter-only-${String(width)}`);
-
-      await page.goto(`/folders?q=${encodeURIComponent("京都")}`);
-      await expect
-        .poll(async () => new Set(await cardTitles(page)))
-        .toEqual(new Set(["x 京都", "y 京都", "z 京都"]));
-      await shoot(`top-level-${String(width)}`);
-
-      await page.goto(`${folderUrl(root!.id, "A")}?q=zzz-no-such-video`);
-      await expect(
-        page.getByRole("heading", { name: "No videos match these conditions" }),
-      ).toBeVisible();
-      await shoot(`no-match-${String(width)}`);
-
-      // 最上位で検索語が空のとき（絞り込み・並べ替え・向きが無効）。
-      await page.goto("/folders");
-      await expect(
-        page.getByRole("button", { name: "Filter", exact: true }),
-      ).toBeDisabled();
-      await shoot(`top-level-empty-${String(width)}`);
-    }
-
-    // 360px の「表示と並び順」を開いた状態（フォルダ画面）。
-    await page.setViewportSize({ width: 360, height: 800 });
-    await page.goto(`${folderUrl(root!.id, "A")}?q=${encodeURIComponent("京都")}`);
-    await expect.poll(() => cardTitles(page)).toEqual(["x 京都", "y 京都"]);
-    await page.getByRole("button", { name: "View and sort" }).click();
-    await shoot("compact-360");
-  });
-
-  test("表示している検索結果のフォルダが取り込みで無くなると、案内が見つからないに切り替わる", async ({
-    page,
-  }) => {
-    test.setTimeout(120_000);
-    const dir = process.env.MDM_E2E_FOLDERS_SEARCH_MEDIA_DIR;
-    if (dir === undefined)
-      throw new Error("MDM_E2E_FOLDERS_SEARCH_MEDIA_DIR is not configured");
-
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`${folderUrl(root!.id, "A/B")}?q=${encodeURIComponent("京都")}`);
-    await expect(page.getByRole("link", { name: "y 京都, This folder" })).toBeVisible();
-
-    // 表示している間に B が丸ごと無くなる想定で、配下を消してから取り込み直す。
-    // これでこの describe の他のフィクスチャ（x・y・z・大阪）のうち y が無くなるので、
-    // 以後のテストはこれに依存しない（この describe の最後のテストである）。
-    // アプリ自身の設定の「Scan library」から取り込みを始める（scan.start が
-    // requestedScanId を覚えるので、取り込みがどれだけ速く終わっても
-    // ScanProvider の finished 判定を取りこぼさない。API を直接叩いて外側から
-    // 取り込むと、ページの ScanProvider が「実行中」を観測する前に終わってしまい
-    // 検知できないことがある）。
-    await rm(`${dir}/movies/A/B`, { recursive: true, force: true });
-    // 取り込みを始められるのは設定の「Scan status」だけなので、ページを読み込み直さずに
-    // （ScanProvider を保ったまま）設定へ移って始め、履歴で戻る。
-    await page.getByRole("link", { name: "Settings", exact: true }).click();
-    await page.getByRole("button", { name: "Scan library" }).click();
-    await page.goBack();
-
-    await expect(page.getByText("This folder wasn't found")).toBeVisible({
-      timeout: 60_000,
-    });
   });
 });

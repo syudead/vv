@@ -12,7 +12,7 @@ import {
 } from "../testing/smartFolderPage";
 
 // スマートフォルダのページの所有者の「More」の「Add to home」「Remove from home」
-// （specs/057-home/ui-design.md「Smart folder page and Settings」）。
+// （docs/design-docs/home.md「Smart folder page and Settings」）。
 
 setUpSmartFolderServer();
 

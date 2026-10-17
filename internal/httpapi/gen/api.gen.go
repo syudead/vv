@@ -2337,7 +2337,7 @@ func (e TranscodeVideoParamsQuality) Valid() bool {
 	}
 }
 
-// APIToken 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。
+// APIToken 発行した API トークン 1 件。平文とハッシュは持たない。
 type APIToken struct {
 	CreatedAt time.Time `json:"createdAt"`
 	Id        int64     `json:"id"`
@@ -2360,31 +2360,31 @@ type ActivityCounts struct {
 	Running   int `json:"running"`
 }
 
-// ActivityDecider 記録した判断をしたもの、無ければ処理を始めたもの（specs/055-activity/research.md R-5）
+// ActivityDecider 記録した判断をしたもの、無ければ処理を始めたもの
 type ActivityDecider string
 
-// ActivityEntry アクティビティの記録の 1 件（specs/055-activity/contracts/screen-api.md）
+// ActivityEntry アクティビティの記録の 1 件
 type ActivityEntry struct {
 	// Candidate 組の候補が重複の候補の画面にまだある
 	Candidate bool      `json:"candidate"`
 	CreatedAt time.Time `json:"createdAt"`
 
-	// Decider 記録した判断をしたもの、無ければ処理を始めたもの（specs/055-activity/research.md R-5）
+	// Decider 記録した判断をしたもの、無ければ処理を始めたもの
 	Decider ActivityDecider `json:"decider"`
 
 	// Detail 提供元か段階の失敗の文、所有者の操作が変えたタグ、メディアフォルダの登録の解除で外れた動画の数
 	// （翻訳しない）
 	Detail *string `json:"detail,omitempty"`
 
-	// Feature 種類のまとまりで、機能の絞り込みの単位（specs/055-activity/contracts/screen-api.md「Features」）。
+	// Feature 種類のまとまりで、機能の絞り込みの単位。
 	// `undo` は取り消した記録の機能に入る
 	Feature ActivityFeature `json:"feature"`
 	Id      int64           `json:"id"`
 
-	// Kind アクティビティの記録の種類（specs/055-activity/data-model.md「Kinds」）
+	// Kind アクティビティの記録の種類
 	Kind ActivityKind `json:"kind"`
 
-	// Outcome done の記録の結果（specs/055-activity/data-model.md「Outcomes」）
+	// Outcome done の記録の結果
 	Outcome *ActivityOutcome `json:"outcome,omitempty"`
 
 	// Probability モデルの答え。モデルが決めたか決められなかった組と、自動タグ付けで入る
@@ -2393,7 +2393,7 @@ type ActivityEntry struct {
 	// Progress waiting を過ぎた running の `import` の、今の段階と済んだ段階の数
 	Progress *ActivityProgress `json:"progress,omitempty"`
 
-	// Reason running と attention の記録の理由（specs/055-activity/data-model.md「Reasons」）
+	// Reason running と attention の記録の理由
 	Reason *ActivityReason `json:"reason,omitempty"`
 
 	// RetryAt 失敗した `version_judgement` が次に試す時刻
@@ -2405,10 +2405,10 @@ type ActivityEntry struct {
 	// Stage 取り込みの段階（jobs.kind の値）
 	Stage *ActivityStage `json:"stage,omitempty"`
 
-	// Status 記録の状態（specs/055-activity/research.md R-4）
+	// Status 記録の状態
 	Status ActivityStatus `json:"status"`
 
-	// Subject 記録の対象。鍵ごとに 1 項目で、組は 2 項目、それ以外は 1 項目（specs/055-activity/research.md R-10）
+	// Subject 記録の対象。鍵ごとに 1 項目で、組は 2 項目、それ以外は 1 項目
 	Subject ActivitySubject `json:"subject"`
 
 	// Tags `auto_tag` が付けたタグ
@@ -2425,7 +2425,7 @@ type ActivityEntry struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// ActivityFeature 種類のまとまりで、機能の絞り込みの単位（specs/055-activity/contracts/screen-api.md「Features」）。
+// ActivityFeature 種類のまとまりで、機能の絞り込みの単位。
 // `undo` は取り消した記録の機能に入る
 type ActivityFeature string
 
@@ -2442,10 +2442,10 @@ type ActivityFeatureCounts struct {
 	WorkInfo       int `json:"work_info"`
 }
 
-// ActivityKind アクティビティの記録の種類（specs/055-activity/data-model.md「Kinds」）
+// ActivityKind アクティビティの記録の種類
 type ActivityKind string
 
-// ActivityOutcome done の記録の結果（specs/055-activity/data-model.md「Outcomes」）
+// ActivityOutcome done の記録の結果
 type ActivityOutcome string
 
 // ActivityPage defines model for ActivityPage.
@@ -2470,16 +2470,16 @@ type ActivityProgress struct {
 	Total int           `json:"total"`
 }
 
-// ActivityReason running と attention の記録の理由（specs/055-activity/data-model.md「Reasons」）
+// ActivityReason running と attention の記録の理由
 type ActivityReason string
 
 // ActivityStage 取り込みの段階（jobs.kind の値）
 type ActivityStage string
 
-// ActivityStatus 記録の状態（specs/055-activity/research.md R-4）
+// ActivityStatus 記録の状態
 type ActivityStatus string
 
-// ActivitySubject 記録の対象。鍵ごとに 1 項目で、組は 2 項目、それ以外は 1 項目（specs/055-activity/research.md R-10）
+// ActivitySubject 記録の対象。鍵ごとに 1 項目で、組は 2 項目、それ以外は 1 項目
 type ActivitySubject struct {
 	Items []ActivitySubjectItem `json:"items"`
 	Kind  ActivitySubjectKind   `json:"kind"`
@@ -2520,22 +2520,22 @@ type ActivityUndoRequest struct {
 
 // ActivityUndone `undo` の記録が取り消した記録の種類と結果、タグごとの取り消しならそのタグ
 type ActivityUndone struct {
-	// Kind アクティビティの記録の種類（specs/055-activity/data-model.md「Kinds」）
+	// Kind アクティビティの記録の種類
 	Kind ActivityKind `json:"kind"`
 
-	// Outcome done の記録の結果（specs/055-activity/data-model.md「Outcomes」）
+	// Outcome done の記録の結果
 	Outcome *ActivityOutcome `json:"outcome,omitempty"`
 	TagName *string          `json:"tagName,omitempty"`
 }
 
 // AddTagSynonymRequest defines model for AddTagSynonymRequest.
 type AddTagSynonymRequest struct {
-	// MergeTagId 統合を承諾したタグのid（contracts/tags-api.md §3）
+	// MergeTagId 統合を承諾したタグのid
 	MergeTagId *int64 `json:"mergeTagId,omitempty"`
 	Name       string `json:"name"`
 }
 
-// Alias 人物か団体の別名 1 件（specs/047-video-work-info/data-model.md「Fields」）
+// Alias 人物か団体の別名 1 件
 type Alias struct {
 	// Language BCP 47 の構文の言語タグ。無ければ省く
 	Language *string `json:"language,omitempty"`
@@ -2576,7 +2576,7 @@ type AuthSession struct {
 // AuthSessionState owner = ログイン済み、guest = 未ログイン、setupRequired = アカウントが未設定
 type AuthSessionState string
 
-// AutoImportSettings 自動の取り込みの選択と監視の状態（specs/042-folder-watch-import/contracts/screen-api.md）
+// AutoImportSettings 自動の取り込みの選択と監視の状態
 type AutoImportSettings struct {
 	// Enabled 保存した選択。保存値が無ければ true
 	Enabled bool        `json:"enabled"`
@@ -2633,7 +2633,7 @@ type CheckResult struct {
 	Missing *[]ComfyUIMissingItem `json:"missing,omitempty"`
 }
 
-// ComfyUIMissingItem ComfyUI に足りないノードの型かモデルファイル（specs/045-comfyui-thumbnails/research.md R-13）
+// ComfyUIMissingItem ComfyUI に足りないノードの型かモデルファイル
 type ComfyUIMissingItem struct {
 	// Folder モデルファイルだけ。ComfyUI の `models` の下のフォルダ
 	Folder *string                `json:"folder,omitempty"`
@@ -2691,7 +2691,7 @@ type CreatedAPIToken struct {
 	// Secret トークンの平文（`vvt_` で始まる 47 文字）。この応答にだけ現れ、再び取り出せない
 	Secret string `json:"secret"`
 
-	// Token 発行した API トークン 1 件。平文とハッシュは持たない（specs/026-external-api/contracts/token-api.md）。
+	// Token 発行した API トークン 1 件。平文とハッシュは持たない。
 	Token APIToken `json:"token"`
 }
 
@@ -2779,35 +2779,35 @@ type Error struct {
 	// Code 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 	Code ErrorCode `json:"code"`
 
-	// Field reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く （aliases[0].language・externalIds[1]・parentId）。work_info_*・person_not_found・ organization_not_found・external_id_taken のときだけ入る （specs/047-video-work-info/contracts/screen-api.md「Added reason values and field」）
+	// Field reason が指すプロパティの経路。JSON のプロパティ名を . でつなぎ、一覧の位置を [] で書く （aliases[0].language・externalIds[1]・parentId）。work_info_*・person_not_found・ organization_not_found・external_id_taken のときだけ入る
 	Field *string `json:"field,omitempty"`
 
 	// Host 作品情報プラグインの要求を拒んだか届かなかったホスト。reason が blocked_address か network_error の ときだけ入る
 	Host *string `json:"host,omitempty"`
 
-	// Limit reason の上限値。契約の表で limit を返す reason のときだけ入る （specs/023-english-i18n/contracts/error-api.md §1）
+	// Limit reason の上限値。契約の表で limit を返す reason のときだけ入る
 	Limit *int `json:"limit,omitempty"`
 
-	// Message 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0）
+	// Message 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである
 	Message string `json:"message"`
 
-	// PluginMessage 作品情報プラグインが報告した誤りの文の先頭 300 文字（翻訳しないプラグインの文）。plugin_failed のとき だけ入りうる（specs/049-work-info-plugins/contracts/screen-api.md の Run failures）
+	// PluginMessage 作品情報プラグインが報告した誤りの文の先頭 300 文字（翻訳しないプラグインの文）。plugin_failed のとき だけ入りうる
 	PluginMessage *string `json:"pluginMessage,omitempty"`
 
-	// Reason 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+	// Reason 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない。ここが正本で、Go の定数は 生成物である（task generate）。
 	Reason *ErrorReason `json:"reason,omitempty"`
 
 	// SettingKeys 値の無い必須の設定のキー（宣言の順）。plugin_settings_missing のときだけ入る
 	SettingKeys *[]string `json:"settingKeys,omitempty"`
 
-	// TagName 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と tag_merge_required のときだけ入る（specs/023-english-i18n/contracts/error-api.md §1）
+	// TagName 競合の相手になったタグの元の名前（翻訳しない利用者のデータ）。tag_name_taken と tag_merge_required のときだけ入る
 	TagName *string `json:"tagName,omitempty"`
 }
 
 // ErrorCode 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
 type ErrorCode string
 
-// ErrorReason 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない（specs/023-english-i18n/contracts/error-api.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+// ErrorReason 同じ code の中で状況を区別する下位の理由。契約の表の状況だけで返し、それ以外の応答には 入らない。ここが正本で、Go の定数は 生成物である（task generate）。
 type ErrorReason string
 
 // ExternalId 外部の情報源での識別子 1 件
@@ -2821,10 +2821,10 @@ type FavoritesRequest struct {
 	// Favorite true でお気に入りにし、false で外す
 	Favorite bool `json:"favorite"`
 
-	// GroupIds お気に入りを付け外しするグループの id（specs/048-groups/research.md R-10）
+	// GroupIds お気に入りを付け外しするグループの id
 	GroupIds *[]int64 `json:"groupIds,omitempty"`
 
-	// SmartFolderIds お気に入りを付け外しするスマートフォルダの id（specs/052-smart-folders/contracts/screen-api.md）
+	// SmartFolderIds お気に入りを付け外しするスマートフォルダの id
 	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
 
 	// VideoIds お気に入りを付け外しする動画の id
@@ -2845,26 +2845,25 @@ type FavoritesResponse struct {
 }
 
 // FolderGrouping フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
-// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1、
-// specs/048-groups/contracts/screen-api.md「Routes and schemas changed」）
+// ゲストでは省く
 type FolderGrouping struct {
 	// GroupId このフォルダの自動グループの id。無ければ省く。`POST /api/groups/{id}/tag` で
 	// タグに変えられる
 	GroupId *int64 `json:"groupId,omitempty"`
 
 	// Mode フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
-	// `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+	// `groupDirect` は「直下をまとめる」
 	Mode FolderGroupingMode `json:"mode"`
 }
 
 // FolderGroupingMode フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
-// `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+// `groupDirect` は「直下をまとめる」
 type FolderGroupingMode string
 
 // FolderGroupingRequest defines model for FolderGroupingRequest.
 type FolderGroupingRequest struct {
 	// Mode フォルダのまとめ方の例外。`auto` は例外なし、`ungroup` は「まとめを解除」、
-	// `groupDirect` は「直下をまとめる」（specs/017-folder-groups/contracts/folder-groups-api.md §1）
+	// `groupDirect` は「直下をまとめる」
 	Mode FolderGroupingMode `json:"mode"`
 }
 
@@ -2895,8 +2894,7 @@ type FolderSummary struct {
 	FolderCount int `json:"folderCount"`
 
 	// Grouping フォルダのまとめ方の今の状態。`FolderSummary.grouping` として所有者の応答にだけ入り、
-	// ゲストでは省く（specs/017-folder-groups/contracts/folder-groups-api.md §1、
-	// specs/048-groups/contracts/screen-api.md「Routes and schemas changed」）
+	// ゲストでは省く
 	Grouping *FolderGrouping `json:"grouping,omitempty"`
 
 	// Name 表示名。相対パスの最後の段、登録フォルダ自身は絶対パスの最後の段
@@ -2909,7 +2907,7 @@ type FolderSummary struct {
 	Previews []FolderPreview `json:"previews"`
 	RootId   int64           `json:"rootId"`
 
-	// RootPath 登録フォルダの絶対パス。ゲストの応答では省く（guest-api.md §1）。画面は
+	// RootPath 登録フォルダの絶対パス。ゲストの応答では省く。画面は
 	// 登録フォルダの表示名を、これが無ければ `name` から作る
 	RootPath *string `json:"rootPath,omitempty"`
 
@@ -2976,9 +2974,7 @@ type GroupItem struct {
 	Kind GroupItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
-	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする。
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -3046,7 +3042,7 @@ type GroupRef struct {
 	Name string `json:"name"`
 }
 
-// GroupRename PATCH /api/groups/{id} の本文（specs/050-drag-organize/contracts/screen-api.md）
+// GroupRename PATCH /api/groups/{id} の本文
 type GroupRename struct {
 	// Name グループの名前。サーバーが前後の空白を取り除いてから長さを数える
 	Name string `json:"name"`
@@ -3060,7 +3056,7 @@ type GroupTagResult struct {
 	// Created タグを新しく作ったとき true。名前かシノニムで引けた既存のタグなら false
 	Created bool `json:"created"`
 
-	// Tag 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
+	// Tag 動画に付いたタグ1件。nameは常に元の名前。
 	Tag TagRef `json:"tag"`
 }
 
@@ -3089,7 +3085,7 @@ type Home struct {
 	// Empty 見る人にライブラリの動画が 1 本も見えないときだけ入る
 	Empty *HomeEmpty `json:"empty,omitempty"`
 
-	// Organizer 整理役の状態（specs/057-home/data-model.md「Organizer state」）
+	// Organizer 整理役の状態（docs/design-docs/home.md「Organizer state」）
 	Organizer *HomeOrganizer `json:"organizer,omitempty"`
 
 	// Shelves フォルダの棚を並びの順に、続けて決まった棚
@@ -3099,7 +3095,7 @@ type Home struct {
 // HomeEmpty 見る人にライブラリの動画が 1 本も見えないときだけ入る
 type HomeEmpty string
 
-// HomeOrganizeRun 最後に終わった実行（specs/057-home/data-model.md「Settings」の home.organize.last）
+// HomeOrganizeRun 最後に終わった実行（docs/design-docs/home.md「Settings」の home.organize.last）
 type HomeOrganizeRun struct {
 	// Added 足した棚の数
 	Added int `json:"added"`
@@ -3121,9 +3117,9 @@ type HomeOrganizeRunOutcome string
 // HomeOrganizeRunRun defines model for HomeOrganizeRun.Run.
 type HomeOrganizeRunRun string
 
-// HomeOrganizer 整理役の状態（specs/057-home/data-model.md「Organizer state」）
+// HomeOrganizer 整理役の状態（docs/design-docs/home.md「Organizer state」）
 type HomeOrganizer struct {
-	// Last 最後に終わった実行（specs/057-home/data-model.md「Settings」の home.organize.last）
+	// Last 最後に終わった実行（docs/design-docs/home.md「Settings」の home.organize.last）
 	Last *HomeOrganizeRun `json:"last,omitempty"`
 
 	// Pending 待っている実行。無ければ省く
@@ -3136,7 +3132,7 @@ type HomeOrganizer struct {
 // HomeOrganizerPending 待っている実行。無ければ省く
 type HomeOrganizerPending string
 
-// HomeShelf ホームの棚 1 つ（specs/057-home/contracts/screen-api.md）
+// HomeShelf ホームの棚 1 つ（docs/design-docs/home.md）
 type HomeShelf struct {
 	// ByOrganizer 所有者だけ。owner_kept が 0 の間は真
 	ByOrganizer *bool `json:"byOrganizer,omitempty"`
@@ -3157,16 +3153,14 @@ type HomeShelfKind string
 
 // HomeShelfItem 棚の項目 1 件。`kind` に応じて `video`・`group` のちょうど 1 つが入る。グループはカードに要る値だけの
 // LibraryGroupCard で、ライブラリの LibraryGroup が持つ `videoIds`・`tags` は載せない
-// （specs/057-home/research.md R-12）
+// （docs/design-docs/home.md）
 type HomeShelfItem struct {
 	// Group ホームの棚の項目（HomeShelfItem）のグループ。カードの値（LibraryGroupCardValues）だけを持つ。
 	Group *LibraryGroupCard `json:"group,omitempty"`
 	Kind  HomeShelfItemKind `json:"kind"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
-	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする。
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -3201,7 +3195,7 @@ type HomeShelfOrder struct {
 
 // Interest defines model for Interest.
 type Interest struct {
-	// Id 分野の変わらない識別子（specs/057-home/data-model.md「Interest catalog」）
+	// Id 分野の変わらない識別子（docs/design-docs/home.md「Interest catalog」）
 	Id string `json:"id"`
 
 	// Name タグの名前（英語）
@@ -3242,7 +3236,7 @@ type LibraryGroup struct {
 	DurationMs *int64 `json:"durationMs,omitempty"`
 
 	// Favorite 所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
-	// 所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
+	// 所有者の応答にだけ入る
 	Favorite *bool `json:"favorite,omitempty"`
 
 	// Folder 自動グループのフォルダ。フォルダから自動でできたグループで、そのフォルダが登録フォルダの
@@ -3293,7 +3287,7 @@ type LibraryGroupWatchState string
 type LibraryGroupCard = LibraryGroupCardValues
 
 // LibraryGroupCardValues グループのカードの値。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
+// 同じ動画は最初の 1 回）に並べたものから作る（docs/design-docs/catalog-organization.md。この説明の
 // 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
 // `watchState`・`lastPlayedAt`・`favorite` を省く。ほかの値を禁じるのはこれを合成する
 // LibraryGroupCard と LibraryGroup の `unevaluatedProperties` で、ここは開いたままにする
@@ -3306,7 +3300,7 @@ type LibraryGroupCardValues struct {
 	DurationMs *int64 `json:"durationMs,omitempty"`
 
 	// Favorite 所有者がグループをお気に入りにしたか。メンバーの動画のお気に入りとは独立で、
-	// 所有者の応答にだけ入る（specs/035-favorites/data-model.md §3）
+	// 所有者の応答にだけ入る
 	Favorite *bool `json:"favorite,omitempty"`
 
 	// Folder 自動グループのフォルダ。フォルダから自動でできたグループで、そのフォルダが登録フォルダの
@@ -3358,20 +3352,17 @@ type LibraryGroupIds struct {
 
 // LibraryItem ライブラリの項目1件。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
 // `smartFolder` は一番上のスマートフォルダ（お気に入りのみではお気に入りのフォルダ）の要約で、
-// カードの値は `listSmartFolderCards` で読む（specs/052-smart-folders/data-model.md
-// 「Library items」）
+// カードの値は `listSmartFolderCards` で読む
 type LibraryItem struct {
 	Group *LibraryGroup   `json:"group,omitempty"`
 	Kind  LibraryItemKind `json:"kind"`
 
 	// SmartFolder スマートフォルダの要約。ライブラリの項目と中身のページの子フォルダの項目が持ち、カードの値は
-	// 持たない。値は画面が `listSmartFolderCards` で読む（specs/052-smart-folders/research.md R-14）
+	// 持たない。値は画面が `listSmartFolderCards` で読む
 	SmartFolder *SmartFolderSummary `json:"smartFolder,omitempty"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
-	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする。
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -3393,8 +3384,7 @@ type LibraryPage struct {
 }
 
 // LibrarySmartFolder スマートフォルダのカード。値は `LibraryGroup` の同じ名前の欄と同じ意味で、`getSmartFolder` では
-// フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る
-// （specs/052-smart-folders/data-model.md「Contents」）。ゲストの応答では `watchedCount`・
+// フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る。ゲストの応答では `watchedCount`・
 // `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする
 type LibrarySmartFolder struct {
 	// AddedAt 追加日時の最大。動画が無ければ省く
@@ -3452,7 +3442,7 @@ type MediaFolder struct {
 	Version   int64     `json:"version"`
 }
 
-// MediaInfo 動画の追加の情報（specs/056-media-info/contracts/screen-api.md）。どの項目も、ファイルに
+// MediaInfo 動画の追加の情報。どの項目も、ファイルに
 // 無ければ省く。項目の無い object は丸ごと省く。
 type MediaInfo struct {
 	// AudioTracks すべての音声 stream。stream の順
@@ -3489,7 +3479,7 @@ type MediaInfoAudioTrack struct {
 	// Index ファイルの中の stream の番号
 	Index int `json:"index"`
 
-	// Language ファイルの言語の印（`und` は省く。research.md R-8）
+	// Language ファイルの言語の印（`und` は省く）
 	Language *string `json:"language,omitempty"`
 	Title    *string `json:"title,omitempty"`
 }
@@ -3551,7 +3541,7 @@ type MediaInfoSubtitleTrack struct {
 	// Index ファイルの中の stream の番号
 	Index int `json:"index"`
 
-	// Language ファイルの言語の印（`und` は省く。research.md R-8）
+	// Language ファイルの言語の印（`und` は省く）
 	Language *string `json:"language,omitempty"`
 	Title    *string `json:"title,omitempty"`
 }
@@ -3590,7 +3580,7 @@ type MergeTagRequest struct {
 	SourceIds []int64 `json:"sourceIds"`
 }
 
-// NetworkSettings Windows デスクトップ版の LAN からの接続の設定 （specs/037-windows-app/contracts/network-settings-api.md §1）
+// NetworkSettings Windows デスクトップ版の LAN からの接続の設定
 type NetworkSettings struct {
 	// Addresses lanAccess が true のときだけ、上がっている非ループバックの IPv4 アドレスごとに "http://<アドレス>:<ポート>/" が入る。false なら空
 	Addresses []string `json:"addresses"`
@@ -3610,17 +3600,17 @@ type OllamaSettings struct {
 	// Model Ollama の模型名。保存値が無ければ clef-flash
 	Model string `json:"model"`
 
-	// Saved 所有者が接続先を保存したか（接続先の行があるか）。false のあいだ endpoint と model は サーバーが返す既定値である（specs/058-settings-pages/research.md R-4）。保存の応答は常に true
+	// Saved 所有者が接続先を保存したか（接続先の行があるか）。false のあいだ endpoint と model は サーバーが返す既定値である。保存の応答は常に true
 	Saved bool `json:"saved"`
 }
 
 // Onboarding defines model for Onboarding.
 type Onboarding struct {
-	// Step オンボードの段階（specs/057-home/research.md R-3）
+	// Step オンボードの段階（docs/design-docs/home.md）
 	Step OnboardingStep `json:"step"`
 }
 
-// OnboardingStep オンボードの段階（specs/057-home/research.md R-3）
+// OnboardingStep オンボードの段階（docs/design-docs/home.md）
 type OnboardingStep string
 
 // Organization 団体 1 件。Person と同じ項目に親の団体が加わる
@@ -3710,7 +3700,7 @@ type OrganizeMove struct {
 	To *int64 `json:"to,omitempty"`
 }
 
-// OrganizeRef ドラッグしたカード 1 枚（specs/050-drag-organize/research.md R-4）
+// OrganizeRef ドラッグしたカード 1 枚
 type OrganizeRef struct {
 	// Id 動画かグループの id
 	Id   int64           `json:"id"`
@@ -3750,7 +3740,7 @@ type OrganizeUndo struct {
 	Token string `json:"token"`
 }
 
-// Person 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
+// Person 人物 1 件
 type Person struct {
 	// Aliases 名前の自然順
 	Aliases   []Alias   `json:"aliases"`
@@ -3784,7 +3774,7 @@ type PersonMergeResponse struct {
 	// NotFoundIds もう無かった統合元
 	NotFoundIds []int64 `json:"notFoundIds"`
 
-	// Person 人物 1 件（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）
+	// Person 人物 1 件
 	Person Person `json:"person"`
 }
 
@@ -3807,7 +3797,6 @@ type Playlist struct {
 
 // PlaylistItem プレイリストの項目 1 つ。`kind` に応じて `video`・`group`・`smartFolder` のちょうど 1 つが入る。
 // `smartFolder` の値は読んだ時点のフォルダの再生順から作り、再生もその時点の再生順に従う
-// （specs/052-smart-folders/contracts/screen-api.md）
 type PlaylistItem struct {
 	Group *LibraryGroup `json:"group,omitempty"`
 
@@ -3816,15 +3805,12 @@ type PlaylistItem struct {
 	Kind PlaylistItemKind `json:"kind"`
 
 	// SmartFolder スマートフォルダのカード。値は `LibraryGroup` の同じ名前の欄と同じ意味で、`getSmartFolder` では
-	// フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る
-	// （specs/052-smart-folders/data-model.md「Contents」）。ゲストの応答では `watchedCount`・
+	// フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る。ゲストの応答では `watchedCount`・
 	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする
 	SmartFolder *LibrarySmartFolder `json:"smartFolder,omitempty"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
-	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする。
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -3880,8 +3866,7 @@ type PlaylistName struct {
 	Name string `json:"name"`
 }
 
-// PlaylistPlayback プレイリストから再生しているときの位置と次の動画（specs/044-playlists/data-model.md
-// 「Playback order」）
+// PlaylistPlayback プレイリストから再生しているときの位置と次の動画
 type PlaylistPlayback struct {
 	// Count 見せる項目の数
 	Count int `json:"count"`
@@ -3895,7 +3880,7 @@ type PlaylistPlayback struct {
 	// NextItem 連続再生で開く動画 1 本と、それが属する項目
 	NextItem *PlaylistStep `json:"nextItem,omitempty"`
 
-	// Playlist プレイリスト 1 つの要約（specs/044-playlists/contracts/screen-api.md）
+	// Playlist プレイリスト 1 つの要約
 	Playlist PlaylistSummary `json:"playlist"`
 
 	// Position 見せる項目の中での 1 からの番号。今の項目が見せない項目なら 0
@@ -3911,17 +3896,14 @@ type PlaylistStep struct {
 
 	// SmartFolderId 項目がスマートフォルダの項目のときのフォルダの id。動画とグループの項目では無い。
 	// 動画ページはこれで開く URL に smartFolder を付ける
-	// （specs/052-smart-folders/contracts/screen-api.md）
 	SmartFolderId *int64 `json:"smartFolderId,omitempty"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
-	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする。
 	Video Video `json:"video"`
 }
 
-// PlaylistSummary プレイリスト 1 つの要約（specs/044-playlists/contracts/screen-api.md）
+// PlaylistSummary プレイリスト 1 つの要約
 type PlaylistSummary struct {
 	// Covers 一覧のカードのフォルダの絵柄に差し込むサムネイル（`LibraryGroup.previews` と同じ形）。
 	// 見せる項目を位置の順にたどり、動画の項目はその動画、グループの項目は並びの順で
@@ -3930,7 +3912,7 @@ type PlaylistSummary struct {
 	Covers *[]FolderPreview `json:"covers,omitempty"`
 	Id     int64            `json:"id"`
 
-	// ItemCount 今見せる項目の数（specs/044-playlists/research.md R-4）
+	// ItemCount 今見せる項目の数
 	ItemCount int `json:"itemCount"`
 
 	// Name 前後の空白を取り除いた 1〜100 文字の名前。ほかのプレイリストと同じでもよい
@@ -3940,13 +3922,13 @@ type PlaylistSummary struct {
 	UpdatedAt time.Time `json:"updatedAt"`
 }
 
-// PluginProxySettings 作品情報プラグインの要求を送るプロキシ（specs/056-plugin-tooling/contracts/screen-api.md）
+// PluginProxySettings 作品情報プラグインの要求を送るプロキシ
 type PluginProxySettings struct {
 	// Url 保存した URL。http、https か socks5 の scheme、ホスト、任意のポートと任意のユーザー情報からなり、 パスもクエリも持たない。"" はプロキシなし
 	Url string `json:"url"`
 }
 
-// ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+// ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く。ここが正本で、Go の定数は 生成物である（task generate）。
 type ProbeErrorCode string
 
 // Progress defines model for Progress.
@@ -3977,7 +3959,7 @@ type RejectedTagNameList struct {
 	Total int `json:"total"`
 }
 
-// RelatedGroup 基準の動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+// RelatedGroup 基準の動画の文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）。
 // メンバーはそのグループの再生順の動画で、ゲストの応答では公開の動画だけで作る
 type RelatedGroup struct {
 	// Id グループの識別子
@@ -3999,7 +3981,7 @@ type RelatedGroup struct {
 
 // RelatedVideos defines model for RelatedVideos.
 type RelatedVideos struct {
-	// Group 基準の動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+	// Group 基準の動画の文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）。
 	// メンバーはそのグループの再生順の動画で、ゲストの応答では公開の動画だけで作る
 	Group *RelatedGroup `json:"group,omitempty"`
 
@@ -4043,25 +4025,25 @@ type RunThumbnailEditRequest struct {
 	Reference *openapi_types.File `json:"reference,omitempty"`
 }
 
-// Scan 直近の取り込みの状態（specs/024-import-progress/contracts/scan-api.md §2）。右下の表示と設定画面は、 どちらもこの1つを読む
+// Scan 直近の取り込みの状態。右下の表示と設定画面は、 どちらもこの1つを読む
 type Scan struct {
-	// Activity 取り込み中の今の処理（specs/024-import-progress/contracts/scan-api.md §2）。複数が同時に動くときは 最後に始まったもの。何も動いていなければ Scan から省く。利用者の言葉は SPA が kind から組み立てる
+	// Activity 取り込み中の今の処理。複数が同時に動くときは 最後に始まったもの。何も動いていなければ Scan から省く。利用者の言葉は SPA が kind から組み立てる
 	Activity *ScanActivity `json:"activity,omitempty"`
 
-	// Error スキャン自体が失敗した理由の自由文。画面は表示せず、errorCode と errorPath から説明を作る （specs/023-english-i18n/contracts/error-api.md §3）
+	// Error スキャン自体が失敗した理由の自由文。画面は表示せず、errorCode と errorPath から説明を作る
 	Error *string `json:"error,omitempty"`
 
-	// ErrorCode スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す （specs/023-english-i18n/data-model.md §2）。ここが正本で、Go の定数は生成物である （task generate）。
+	// ErrorCode スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す。ここが正本で、Go の定数は生成物である （task generate）。
 	ErrorCode *ScanErrorCode `json:"errorCode,omitempty"`
 
 	// ErrorPath errorCode の理由が特定の場所に結び付くときの、その絶対パス（メディアフォルダ、またはその下の 読めなかった場所。翻訳しない利用者のデータ）。それ以外は省略される
 	ErrorPath *string `json:"errorPath,omitempty"`
 	Id        int64   `json:"id"`
 
-	// Issues 直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える （specs/024-import-progress/contracts/scan-api.md §2）
+	// Issues 直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える
 	Issues ScanIssueCounts `json:"issues"`
 
-	// Origin 取り込みを始めた主体。watch はフォルダの監視が始めた、変わったフォルダだけの取り込み （specs/042-folder-watch-import/contracts/screen-api.md）
+	// Origin 取り込みを始めた主体。watch はフォルダの監視が始めた、変わったフォルダだけの取り込み
 	Origin ScanOrigin `json:"origin"`
 
 	// SettledAt 対象の動画がすべて済んだ時刻。status が done・partial のときだけ返す
@@ -4070,20 +4052,20 @@ type Scan struct {
 	// State 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
 	State ScanState `json:"state"`
 
-	// Status 利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、 finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外（specs/024-import-progress/contracts/scan-api.md §2）
+	// Status 利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、 finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外
 	Status ScanStatus `json:"status"`
 
 	// Videos 取り込みの進み具合。status が finding のあいだは省く
 	Videos *ScanVideos `json:"videos,omitempty"`
 }
 
-// ScanOrigin 取り込みを始めた主体。watch はフォルダの監視が始めた、変わったフォルダだけの取り込み （specs/042-folder-watch-import/contracts/screen-api.md）
+// ScanOrigin 取り込みを始めた主体。watch はフォルダの監視が始めた、変わったフォルダだけの取り込み
 type ScanOrigin string
 
 // ScanState 走査そのものの状態。一覧の読み直しと、取り込みを始められるかの判定に使う
 type ScanState string
 
-// ScanActivity 取り込み中の今の処理（specs/024-import-progress/contracts/scan-api.md §2）。複数が同時に動くときは 最後に始まったもの。何も動いていなければ Scan から省く。利用者の言葉は SPA が kind から組み立てる
+// ScanActivity 取り込み中の今の処理。複数が同時に動くときは 最後に始まったもの。何も動いていなければ Scan から省く。利用者の言葉は SPA が kind から組み立てる
 type ScanActivity struct {
 	// FileName 処理しているファイルの名前（翻訳しない利用者のデータ）
 	FileName string `json:"fileName"`
@@ -4096,17 +4078,17 @@ type ScanActivity struct {
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
-	// Kind 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は 同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）
+	// Kind 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は 同じ動画の別バージョンを探すための映像の指紋を作っている
 	Kind ScanActivityKind `json:"kind"`
 
 	// VideoId 登録された動画なら、その id
 	VideoId *int64 `json:"videoId,omitempty"`
 }
 
-// ScanActivityKind 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は 同じ動画の別バージョンを探すための映像の指紋を作っている（specs/030-video-versions/research.md R-6）
+// ScanActivityKind 今の処理が何をしているか。registering は走査がファイルを一覧へ登録している、probe は動画の情報を 読んでいる、thumbnail・seekThumbnail・preview はそれぞれの生成物を作っている、fingerprint は 同じ動画の別バージョンを探すための映像の指紋を作っている
 type ScanActivityKind string
 
-// ScanErrorCode スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す （specs/023-english-i18n/data-model.md §2）。ここが正本で、Go の定数は生成物である （task generate）。
+// ScanErrorCode スキャン自体の失敗理由のコード。state = failed でコードが保存されているときだけ返す。ここが正本で、Go の定数は生成物である （task generate）。
 type ScanErrorCode string
 
 // ScanIssue 直近の取り込みの問題の、動画（未登録ならファイル）ごとの1件
@@ -4135,7 +4117,7 @@ type ScanIssue struct {
 // ScanIssueSeverity まとめた件の重さ。失敗の種類を1つでも含めば failed
 type ScanIssueSeverity string
 
-// ScanIssueCounts 直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える （specs/024-import-progress/contracts/scan-api.md §2）
+// ScanIssueCounts 直近の取り込みの問題の本数。GET /api/scans/current/issues のまとめた件を数える
 type ScanIssueCounts struct {
 	// Failed 重さが失敗の件数。1以上なら取り込みは partial になる
 	Failed int `json:"failed"`
@@ -4147,7 +4129,7 @@ type ScanIssueCounts struct {
 	Substituted int `json:"substituted"`
 }
 
-// ScanIssueKind 取り込みの問題の種類（specs/024-import-progress/data-model.md §3）。unreadable・ changed_during_import・register_failed は走査で、*_failed は準備の仕事がやり直しの上限まで 失敗したもの（以上は失敗）。thumbnail_first_frame・seek_thumbnail_full_decode は代用
+// ScanIssueKind 取り込みの問題の種類。unreadable・ changed_during_import・register_failed は走査で、*_failed は準備の仕事がやり直しの上限まで 失敗したもの（以上は失敗）。thumbnail_first_frame・seek_thumbnail_full_decode は代用
 type ScanIssueKind string
 
 // ScanIssuePage defines model for ScanIssuePage.
@@ -4161,7 +4143,7 @@ type ScanIssuePage struct {
 	ScanId int64 `json:"scanId"`
 }
 
-// ScanStatus 利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、 finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外（specs/024-import-progress/contracts/scan-api.md §2）
+// ScanStatus 利用者に見せる取り込みの状態。上から順に最初に当てはまるものになる。failed は走査そのものの失敗、 finding は走査が対象をまだ数え終えていない、running は走査中か済んでいない対象がある、 partial は失敗の問題がある、done はそれ以外
 type ScanStatus string
 
 // ScanVideos 取り込みの進み具合。status が finding のあいだは省く
@@ -4173,8 +4155,7 @@ type ScanVideos struct {
 	Total int `json:"total"`
 }
 
-// SeekThumbnailSprite シーク用サムネイルのスプライトの配置情報
-// （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。最後のシートの
+// SeekThumbnailSprite シーク用サムネイルのスプライトの配置情報。最後のシートの
 // frameCount を超える部分は黒く、クライアントはそこを指さない。
 type SeekThumbnailSprite struct {
 	// Columns 1 シートの列数
@@ -4232,7 +4213,6 @@ type SkippedWorkInfoReason string
 // SkippedWorkInfoValue defines model for SkippedWorkInfoValue.
 type SkippedWorkInfoValue struct {
 	// Field 動画に反映できる取得の結果の項目。比較の行の順
-	// （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）
 	Field WorkInfoField `json:"field"`
 
 	// Reason 反映で飛ばした理由。invalid は項目の規則に合わない値、too_many は保存済みの件の後に数えて上限を超える件、
@@ -4257,14 +4237,14 @@ type SmartFolderChange struct {
 	// ParentId 親のフォルダの id。null なら一番上にする
 	ParentId *int64 `json:"parentId,omitempty"`
 
-	// Rule スマートフォルダの条件（specs/052-smart-folders/data-model.md「smart_folders.rule」）。どの
+	// Rule スマートフォルダの条件。どの
 	// 項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
 	// ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
 	Rule *SmartRule `json:"rule,omitempty"`
 
 	// Sort 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
 	// 所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
-	// specs/033-video-dates/research.md R-4）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+	// docs/design-docs/catalog-organization.md）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
 	// 動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
 	// 最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、favorited = お気に入りに
 	// した日時（お気に入りでない項目は向きに関係なく末尾。グループの項目はグループを
@@ -4287,14 +4267,14 @@ type SmartFolderCreate struct {
 	// ParentId 親のフォルダの id。省けば一番上に作る
 	ParentId *int64 `json:"parentId,omitempty"`
 
-	// Rule スマートフォルダの条件（specs/052-smart-folders/data-model.md「smart_folders.rule」）。どの
+	// Rule スマートフォルダの条件。どの
 	// 項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
 	// ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
 	Rule SmartRule `json:"rule"`
 
 	// Sort 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
 	// 所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
-	// specs/033-video-dates/research.md R-4）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+	// docs/design-docs/catalog-organization.md）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
 	// 動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
 	// 最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、favorited = お気に入りに
 	// した日時（お気に入りでない項目は向きに関係なく末尾。グループの項目はグループを
@@ -4311,15 +4291,14 @@ type SmartFolderDetail struct {
 	// NextCursor 続きがあるときだけ入る。`listSmartFolderItems` に渡す
 	NextCursor *string `json:"nextCursor,omitempty"`
 
-	// OnHome 所有者の応答にだけ入る。このフォルダがホームの棚か（specs/057-home/contracts/screen-api.md）
+	// OnHome 所有者の応答にだけ入る。このフォルダがホームの棚か（docs/design-docs/home.md）
 	OnHome *bool `json:"onHome,omitempty"`
 
 	// Settings フォルダの条件と並べ順。所有者の応答にだけ入る
 	Settings *SmartFolderSettings `json:"settings,omitempty"`
 
 	// SmartFolder スマートフォルダのカード。値は `LibraryGroup` の同じ名前の欄と同じ意味で、`getSmartFolder` では
-	// フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る
-	// （specs/052-smart-folders/data-model.md「Contents」）。ゲストの応答では `watchedCount`・
+	// フォルダの再生順、`listSmartFolderCards` ではフォルダの一致する動画から作る。ゲストの応答では `watchedCount`・
 	// `watchState`・`lastPlayedAt`・`favorite` を省き、`tags` を空の配列にする
 	SmartFolder LibrarySmartFolder `json:"smartFolder"`
 
@@ -4333,13 +4312,11 @@ type SmartFolderItem struct {
 	Kind  SmartFolderItemKind `json:"kind"`
 
 	// SmartFolder スマートフォルダの要約。ライブラリの項目と中身のページの子フォルダの項目が持ち、カードの値は
-	// 持たない。値は画面が `listSmartFolderCards` で読む（specs/052-smart-folders/research.md R-14）
+	// 持たない。値は画面が `listSmartFolderCards` で読む
 	SmartFolder *SmartFolderSummary `json:"smartFolder,omitempty"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
-	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする。
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -4365,14 +4342,14 @@ type SmartFolderSettings struct {
 	// Missing このフォルダと祖先の条件が名指す実体のうち今無いもの（外側の祖先から順）
 	Missing []SmartRuleRef `json:"missing"`
 
-	// Rule スマートフォルダの条件（specs/052-smart-folders/data-model.md「smart_folders.rule」）。どの
+	// Rule スマートフォルダの条件。どの
 	// 項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
 	// ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
 	Rule SmartRule `json:"rule"`
 
 	// Sort 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
 	// 所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
-	// specs/033-video-dates/research.md R-4）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+	// docs/design-docs/catalog-organization.md）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
 	// 動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
 	// 最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、favorited = お気に入りに
 	// した日時（お気に入りでない項目は向きに関係なく末尾。グループの項目はグループを
@@ -4382,7 +4359,7 @@ type SmartFolderSettings struct {
 }
 
 // SmartFolderSummary スマートフォルダの要約。ライブラリの項目と中身のページの子フォルダの項目が持ち、カードの値は
-// 持たない。値は画面が `listSmartFolderCards` で読む（specs/052-smart-folders/research.md R-14）
+// 持たない。値は画面が `listSmartFolderCards` で読む
 type SmartFolderSummary struct {
 	// Favorite 所有者がフォルダをお気に入りにしたか。所有者の応答にだけ入る
 	Favorite *bool  `json:"favorite,omitempty"`
@@ -4393,7 +4370,7 @@ type SmartFolderSummary struct {
 	ParentId *int64 `json:"parentId,omitempty"`
 }
 
-// SmartRule スマートフォルダの条件（specs/052-smart-folders/data-model.md「smart_folders.rule」）。どの
+// SmartRule スマートフォルダの条件。どの
 // 項目も省けて、省いた項目は絞り込まない。空のオブジェクトはどの動画にも当たる。各項目は
 // ライブラリの絞り込みの同じ欄と同じ意味である。null は省いた項目ではなく誤りである
 type SmartRule struct {
@@ -4418,7 +4395,7 @@ type SmartRule struct {
 	// Playable ブラウザで再生できる動画だけにする
 	Playable *bool `json:"playable,omitempty"`
 
-	// Q 検索欄の入力。所有者の意味で照合する（research.md R-11）
+	// Q 検索欄の入力。所有者の意味で照合する
 	Q *string `json:"q,omitempty"`
 
 	// TagKind その種類のタグをどれか持つ動画だけにするタグの種類の id
@@ -4457,7 +4434,6 @@ type StartThumbnailEditRequest struct {
 	PositionMs *int64 `json:"positionMs,omitempty"`
 
 	// Source 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
-	// （specs/046-thumbnail-image-upload/research.md R-4）
 	Source ThumbnailEditSource `json:"source"`
 }
 
@@ -4481,20 +4457,20 @@ type SubtitleTrackList struct {
 	Subtitles []SubtitleTrack `json:"subtitles"`
 }
 
-// Tag 管理画面と候補に出す1件（contracts/tags-api.md §1）。
+// Tag 管理画面と候補に出す1件。
 type Tag struct {
-	// CreatedAt タグを作った時刻（秒の精度。specs/036-tag-admin-scale/contracts/screen-api.md §0）
+	// CreatedAt タグを作った時刻（秒の精度。docs/design-docs/catalog-organization.md）
 	CreatedAt time.Time `json:"createdAt"`
 	Id        int64     `json:"id"`
 
-	// Kind タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
+	// Kind タグの種類。null は種類の無いタグ
 	Kind *TagKindRef `json:"kind"`
 	Name string      `json:"name"`
 
 	// Synonyms 名前の自然順
 	Synonyms []string `json:"synonyms"`
 
-	// Tentative 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0）
+	// Tentative 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である
 	Tentative bool `json:"tentative"`
 
 	// VideoCount いまライブラリにある動画の本数
@@ -4545,13 +4521,13 @@ type TagImpactResponse struct {
 }
 
 // TagInput 付与で使うタグの指定。id と name のちょうど一方を持つ。両方あるか、どちらも
-// 無いときは invalid_request（400）にする（contracts/tags-api.md §1）。
+// 無いときは invalid_request（400）にする。
 type TagInput struct {
 	Id   *int64  `json:"id,omitempty"`
 	Name *string `json:"name,omitempty"`
 }
 
-// TagKind 種類の一覧の1件（specs/051-tag-kinds/contracts/screen-api.md）。
+// TagKind 種類の一覧の1件。
 type TagKind struct {
 	// CreatedAt 種類を作った時刻（秒の精度）
 	CreatedAt time.Time `json:"createdAt"`
@@ -4573,7 +4549,7 @@ type TagKindNameRequest struct {
 	Name string `json:"name"`
 }
 
-// TagKindRef タグの種類の id と名前（specs/051-tag-kinds/research.md R-4）。
+// TagKindRef タグの種類の id と名前。
 type TagKindRef struct {
 	Id   int64  `json:"id"`
 	Name string `json:"name"`
@@ -4602,25 +4578,24 @@ type TagMergeResponse struct {
 	// NotFoundIds もう無かった統合元
 	NotFoundIds []int64 `json:"notFoundIds"`
 
-	// Tag 管理画面と候補に出す1件（contracts/tags-api.md §1）。
+	// Tag 管理画面と候補に出す1件。
 	Tag Tag `json:"tag"`
 }
 
-// TagRef 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
+// TagRef 動画に付いたタグ1件。nameは常に元の名前。
 type TagRef struct {
 	Id int64 `json:"id"`
 
-	// Kind タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
+	// Kind タグの種類。null は種類の無いタグ
 	Kind *TagKindRef `json:"kind"`
 	Name string      `json:"name"`
 
-	// Tentative 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である（specs/031-tentative-tags/contracts/screen-api.md §0）
+	// Tentative 仮のタグ（自動の付与で新しく作られ、まだ確定していない）である
 	Tentative bool `json:"tentative"`
 }
 
 // TagSort タグの一覧の並び順。name は名前の自然順（向きは無い）、countDesc・countAsc は本数、
 // createdDesc・createdAsc は作った日。値が同じタグは名前の自然順、それも同じなら id
-// （specs/036-tag-admin-scale/data-model.md §0・§2）
 type TagSort string
 
 // ThumbnailEdit defines model for ThumbnailEdit.
@@ -4654,10 +4629,9 @@ type ThumbnailEdit struct {
 	ResultUrl *string `json:"resultUrl,omitempty"`
 
 	// Source 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
-	// （specs/046-thumbnail-image-upload/research.md R-4）
 	Source ThumbnailEditSource `json:"source"`
 
-	// State 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
+	// State 編集のセッションの状態
 	State   ThumbnailEditState `json:"state"`
 	VideoId int64              `json:"videoId"`
 }
@@ -4667,11 +4641,11 @@ type ThumbnailEditError struct {
 	// Message 提供元の文（ノードの誤り、実行の誤り、足りない名前）。無ければ省く
 	Message *string `json:"message,omitempty"`
 
-	// Reason 実行が失敗した理由（specs/045-comfyui-thumbnails/contracts/workflow.md の Failure reasons）
+	// Reason 実行が失敗した理由
 	Reason ThumbnailEditFailure `json:"reason"`
 }
 
-// ThumbnailEditFailure 実行が失敗した理由（specs/045-comfyui-thumbnails/contracts/workflow.md の Failure reasons）
+// ThumbnailEditFailure 実行が失敗した理由
 type ThumbnailEditFailure string
 
 // ThumbnailEditProgress 提供元が報告したステップの進み具合。報告が無ければ省く
@@ -4687,10 +4661,9 @@ type ThumbnailEditReadiness struct {
 }
 
 // ThumbnailEditSource 編集を何から始めるか。`frame` は選んだ位置のコマ、`thumbnail` は今のサムネイル
-// （specs/046-thumbnail-image-upload/research.md R-4）
 type ThumbnailEditSource string
 
-// ThumbnailEditState 編集のセッションの状態（specs/045-comfyui-thumbnails/data-model.md の Edit session）
+// ThumbnailEditState 編集のセッションの状態
 type ThumbnailEditState string
 
 // ThumbnailPositionUpdate defines model for ThumbnailPositionUpdate.
@@ -4807,7 +4780,7 @@ type UploadWorkInfoPluginRequest struct {
 	Module openapi_types.File `json:"module"`
 }
 
-// VersionCandidate 「同じ動画かもしれない」2 本の組（specs/030-video-versions/contracts/screen-api.md §5）
+// VersionCandidate 「同じ動画かもしれない」2 本の組
 type VersionCandidate struct {
 	// Distance 2 本の映像の指紋のハミング距離の中央値（小さいほど似ている）
 	Distance int `json:"distance"`
@@ -4831,16 +4804,14 @@ type VersionCandidatePage struct {
 	Total int `json:"total"`
 }
 
-// VersionJudgingSettings 重複の自動判定の入切（specs/054-auto-dup/contracts/screen-api.md）
+// VersionJudgingSettings 重複の自動判定の入切
 type VersionJudgingSettings struct {
 	// Enabled 保存した選択。保存値が無ければ false
 	Enabled bool `json:"enabled"`
 }
 
 // Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
-// （specs/016-single-account-auth/contracts/guest-api.md §1、
-// specs/029-video-overrides/contracts/screen-api.md §0）。
+// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする。
 type Video struct {
 	AddedAt time.Time `json:"addedAt"`
 
@@ -4866,11 +4837,10 @@ type Video struct {
 	DurationMs *int64 `json:"durationMs,omitempty"`
 
 	// Favorite 所有者がお気に入りにした動画か。所有者の応答にだけ入る
-	// （specs/035-favorites/data-model.md §3）
 	Favorite *bool `json:"favorite,omitempty"`
 
 	// FileCreatedAt 一覧に出す所在のファイルの作成日時。ファイルシステムから取れないときはそのファイルの
-	// 更新日時（mtime）（specs/033-video-dates/research.md R-4）
+	// 更新日時（mtime）
 	FileCreatedAt time.Time `json:"fileCreatedAt"`
 
 	// FileTitle 拡張子を除いたファイル名。所有者の応答にだけ入る
@@ -4884,7 +4854,7 @@ type Video struct {
 	// グループのフォルダそのものを指す
 	Folder *VideoFolder `json:"folder,omitempty"`
 
-	// Group 動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+	// Group 動画の文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）。
 	// GET /api/videos/{id} の応答にだけ、動画がグループにあるときだけ入る（location と同じ扱いで、
 	// 一覧の項目には入らない）。位置と本数はそのグループの再生順（子グループは深さ優先、同じ動画は
 	// 最初の 1 回）で数え、ゲストの応答では公開の動画だけで数える
@@ -4900,7 +4870,6 @@ type Video struct {
 	// MediaInfo 取り込みの解析で読んだ動画の追加の情報。GET /api/videos/{id} の応答にだけ入り、今の版の
 	// 行がある動画にだけ入る。所有者と、公開の動画を読むゲストに同じ値を返す。一覧の項目・関連動画・
 	// ライブラリの項目・所有者の PUT の応答には入らない
-	// （specs/056-media-info/contracts/screen-api.md、research.md R-6）
 	MediaInfo *MediaInfo `json:"mediaInfo,omitempty"`
 
 	// Playable ブラウザでそのまま再生できると判定されたか
@@ -4913,13 +4882,12 @@ type Video struct {
 	// ProbeError probeState = failed のときの理由。ゲストの応答では省く（ファイルの絶対パスを含みうる）
 	ProbeError *string `json:"probeError,omitempty"`
 
-	// ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く（specs/023-english-i18n/data-model.md §1）。ここが正本で、Go の定数は 生成物である（task generate）。
+	// ProbeErrorCode 解析の失敗理由のコード。probeState = failed でコードが保存されている動画だけで返し、 ゲストの応答では省く。ここが正本で、Go の定数は 生成物である（task generate）。
 	ProbeErrorCode *ProbeErrorCode `json:"probeErrorCode,omitempty"`
 	ProbeState     VideoProbeState `json:"probeState"`
 	Progress       *Progress       `json:"progress,omitempty"`
 
 	// Public 公開の動画か。公開の動画はログインしていない人にも見える
-	// （specs/016-single-account-auth/contracts/guest-api.md §4）
 	Public bool `json:"public"`
 
 	// SeekThumbnailState シーク用サムネイルの状態。GET /api/videos/{id} の応答にだけ入り、
@@ -4931,25 +4899,21 @@ type Video struct {
 
 	// SeekThumbnailUrl probeState = done かつ正のdurationMsを持つときだけ入る、シーク用サムネイルの
 	// スプライトの配置情報（SeekThumbnailSprite）を返す経路の版付き URL
-	// （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §1）
 	SeekThumbnailUrl *string `json:"seekThumbnailUrl,omitempty"`
 	SizeBytes        int64   `json:"sizeBytes"`
 
 	// SmartFolder 動画を開いたスマートフォルダ（`smartFolder` の問い合わせ）。GET /api/videos/{id} の応答にだけ、
 	// 文脈がスマートフォルダで、その再生順が動画を持つときだけ入る。このとき `group` は入らない。
 	// 位置と本数はフォルダの再生順で数え、ゲストの応答では公開の動画だけで数える
-	// （specs/052-smart-folders/contracts/screen-api.md）
 	SmartFolder *VideoSmartFolderRef `json:"smartFolder,omitempty"`
 
 	// Tags 付いたタグ。名前の自然順（domain.CompareNatural、同じなら id）。タグが
-	// 無ければ空配列（contracts/tags-api.md §1）。ゲストの応答では常に空配列。
+	// 無ければ空配列。ゲストの応答では常に空配列。
 	// フォルダ名から付いている分も含む
-	// （specs/017-folder-groups/contracts/folder-groups-api.md §4）
 	Tags []VideoTag `json:"tags"`
 
 	// ThumbnailImage 所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
 	// `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る
-	// （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-5）
 	ThumbnailImage *VideoThumbnailImage `json:"thumbnailImage,omitempty"`
 
 	// ThumbnailPositionMs 代表サムネイルにする場面の位置（ミリ秒）。設定されているときだけ、所有者の応答にだけ入る
@@ -4961,21 +4925,18 @@ type Video struct {
 	ThumbnailUrl *string `json:"thumbnailUrl,omitempty"`
 
 	// Title 有効な題名。表示名があればそれ、無ければ拡張子を除いたファイル名
-	// （specs/029-video-overrides/contracts/screen-api.md §0）
 	Title string `json:"title"`
 
 	// UnplayableReason playable = false の理由。判定前は省略される
 	UnplayableReason *VideoUnplayableReason `json:"unplayableReason,omitempty"`
 
 	// UpdatedAt vv 上で動画の情報（表示名・タグ・公開設定・代表サムネイル）を最後に編集した日時。
-	// 一度も編集していなければ addedAt と同じ（specs/033-video-dates/data-model.md §3）
+	// 一度も編集していなければ addedAt と同じ
 	UpdatedAt time.Time `json:"updatedAt"`
 
 	// Versions 動画が属する集まり（同じ動画の別バージョン）の要約。集まりのメンバーのときだけ、
 	// 画面 API が Video を返すすべての応答に入る（一覧の項目も含む。一覧はページごとに 1 回の
 	// 問い合わせで読む）。カードの印はこれから出す
-	// （specs/054-auto-dup/contracts/screen-api.md「Video delta」、
-	// specs/030-video-versions/contracts/screen-api.md §0）
 	Versions *VideoVersionsRef `json:"versions,omitempty"`
 
 	// VideoCodec Examples: h264, vp9
@@ -4986,7 +4947,7 @@ type Video struct {
 
 	// WorkInfo 作品情報。GET /api/videos/{id} と、作品情報を書く所有者の PUT（work-info・details）の
 	// 応答にだけ入り、行の無い動画とゲストの応答では無い。一覧の項目・関連動画・ライブラリの
-	// 項目には入らない（specs/047-video-work-info/contracts/screen-api.md「Video changes」）
+	// 項目には入らない
 	WorkInfo *WorkInfo `json:"workInfo,omitempty"`
 }
 
@@ -5005,7 +4966,6 @@ type VideoSeekThumbnailState string
 
 // VideoThumbnailImage 所有者が適用した画像が代表サムネイルのとき、その出どころ。`generated` は ComfyUI の編集結果、
 // `uploaded` はアップロードした画像。適用しているときだけ、所有者の応答にだけ入る
-// （specs/046-thumbnail-image-upload/contracts/screen-api.md、research.md R-5）
 type VideoThumbnailImage string
 
 // VideoThumbnailState defines model for Video.ThumbnailState.
@@ -5029,13 +4989,12 @@ type VideoChanged struct {
 	Id int64 `json:"id"`
 }
 
-// VideoDetailsInput 全画面の編集画面の保存の本文（specs/047-video-work-info/contracts/screen-api.md
-// 「PUT /api/videos/{id}/details」）。両方とも必須
+// VideoDetailsInput 全画面の編集画面の保存の本文。両方とも必須
 type VideoDetailsInput struct {
 	// DisplayName 新しい表示名。前後の空白を取り除いて空なら解除する
 	DisplayName string `json:"displayName"`
 
-	// WorkInfo 作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
+	// WorkInfo 作品情報の書き込みの本文。
 	// WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
 	// 解除で、全体を置き換える
 	WorkInfo WorkInfoInput `json:"workInfo"`
@@ -5065,7 +5024,7 @@ type VideoFolder struct {
 	RootName *string `json:"rootName,omitempty"`
 }
 
-// VideoGroupRef 動画の文脈のグループ（`group` の問い合わせ、specs/048-groups/research.md R-9）。
+// VideoGroupRef 動画の文脈のグループ（`group` の問い合わせ、docs/design-docs/catalog-organization.md）。
 // GET /api/videos/{id} の応答にだけ、動画がグループにあるときだけ入る（location と同じ扱いで、
 // 一覧の項目には入らない）。位置と本数はそのグループの再生順（子グループは深さ優先、同じ動画は
 // 最初の 1 回）で数え、ゲストの応答では公開の動画だけで数える
@@ -5091,7 +5050,6 @@ type VideoGroupRef struct {
 type VideoIdsResponse struct {
 	// Groups 条件に合うグループの項目。各要素のグループの id と、その再生順の動画の id（ids にも含まれる）。
 	// listLibraryIds の応答にだけ入り、1 つも無ければ省略される
-	// （specs/035-favorites/contracts/screen-api.md §3）
 	Groups *[]LibraryGroupIds `json:"groups,omitempty"`
 	Ids    []int64            `json:"ids"`
 
@@ -5099,8 +5057,7 @@ type VideoIdsResponse struct {
 	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
 
 	// SmartFolderIds 条件に合うスマートフォルダの項目の id。フォルダの動画は ids に入らない。listLibraryIds の
-	// 応答にだけ入り、1 つも無ければ省略される（specs/052-smart-folders/data-model.md
-	// 「Library items」）
+	// 応答にだけ入り、1 つも無ければ省略される
 	SmartFolderIds *[]int64 `json:"smartFolderIds,omitempty"`
 }
 
@@ -5119,7 +5076,6 @@ type VideoPage struct {
 	Items []Video `json:"items"`
 
 	// MissingTagIds tag のうち存在しなかった id。1つも無ければ省略される
-	// （specs/014-video-tags/contracts/tags-api.md §5）
 	MissingTagIds *[]int64 `json:"missingTagIds,omitempty"`
 
 	// NextCursor 次のページの取得に渡す。これ以上無い場合は省略される
@@ -5133,7 +5089,6 @@ type VideoPage struct {
 // VideoSmartFolderRef 動画を開いたスマートフォルダ（`smartFolder` の問い合わせ）。GET /api/videos/{id} の応答にだけ、
 // 文脈がスマートフォルダで、その再生順が動画を持つときだけ入る。このとき `group` は入らない。
 // 位置と本数はフォルダの再生順で数え、ゲストの応答では公開の動画だけで数える
-// （specs/052-smart-folders/contracts/screen-api.md）
 type VideoSmartFolderRef struct {
 	// Count フォルダの再生順の動画の本数
 	Count int `json:"count"`
@@ -5150,7 +5105,7 @@ type VideoSmartFolderRef struct {
 
 // VideoSort 並び順。末尾の Asc は昇順、Desc は降順。added = 追加日、modified = 一覧に出す
 // 所在の更新日時（mtime）、created = 一覧に出す所在の作成日時（取れなければ mtime。
-// specs/033-video-dates/research.md R-4）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
+// docs/design-docs/catalog-organization.md）、title = 一覧に出す所在の題名（自然順）、duration = 長さ（無い
 // 動画は向きに関係なく末尾）、size = 一覧に出す所在のファイルサイズ、played =
 // 最後に再生した時刻（記録の無い動画は向きに関係なく末尾）、favorited = お気に入りに
 // した日時（お気に入りでない項目は向きに関係なく末尾。グループの項目はグループを
@@ -5159,14 +5114,13 @@ type VideoSmartFolderRef struct {
 type VideoSort string
 
 // VideoTag 動画に付いたタグ1件と、その出所。nameは常に元の名前。同じタグが手でも
-// フォルダ名からも付いていれば1件にまとめて両方を真にする
-// （specs/017-folder-groups/contracts/folder-groups-api.md §4）。
+// フォルダ名からも付いていれば1件にまとめて両方を真にする。
 type VideoTag struct {
 	// FromFolder 祖先のフォルダ名がこのタグの名前かシノニムに一致する
 	FromFolder bool  `json:"fromFolder"`
 	Id         int64 `json:"id"`
 
-	// Kind タグの種類。null は種類の無いタグ（specs/051-tag-kinds/research.md R-4）
+	// Kind タグの種類。null は種類の無いタグ
 	Kind *TagKindRef `json:"kind"`
 
 	// Manual 手で付けた分がある
@@ -5189,7 +5143,7 @@ type VideoTagsRequest struct {
 	Action VideoTagsAction `json:"action"`
 
 	// Tag 付与で使うタグの指定。id と name のちょうど一方を持つ。両方あるか、どちらも
-	// 無いときは invalid_request（400）にする（contracts/tags-api.md §1）。
+	// 無いときは invalid_request（400）にする。
 	Tag      TagInput `json:"tag"`
 	VideoIds []int64  `json:"videoIds"`
 }
@@ -5199,7 +5153,7 @@ type VideoTagsResponse struct {
 	// Applied videoIds のうちいまライブラリにある動画の数
 	Applied int `json:"applied"`
 
-	// Tag 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
+	// Tag 動画に付いたタグ1件。nameは常に元の名前。
 	Tag TagRef `json:"tag"`
 }
 
@@ -5218,7 +5172,7 @@ type VideoTagsSummaryItem struct {
 	// ManualCount 手で付けた本数
 	ManualCount int `json:"manualCount"`
 
-	// Tag 動画に付いたタグ1件。nameは常に元の名前（contracts/tags-api.md §1）。
+	// Tag 動画に付いたタグ1件。nameは常に元の名前。
 	Tag TagRef `json:"tag"`
 }
 
@@ -5227,7 +5181,7 @@ type VideoTagsSummaryRequest struct {
 	VideoIds []int64 `json:"videoIds"`
 }
 
-// VideoVersions 集まりの全バージョン（specs/030-video-versions/contracts/screen-api.md §1）
+// VideoVersions 集まりの全バージョン
 type VideoVersions struct {
 	// Items 代表が先頭で、続きは題名の自然順（同じなら id）。各項目は GET /api/videos/{id} と
 	// 同じ形
@@ -5240,8 +5194,6 @@ type VideoVersions struct {
 // VideoVersionsRef 動画が属する集まり（同じ動画の別バージョン）の要約。集まりのメンバーのときだけ、
 // 画面 API が Video を返すすべての応答に入る（一覧の項目も含む。一覧はページごとに 1 回の
 // 問い合わせで読む）。カードの印はこれから出す
-// （specs/054-auto-dup/contracts/screen-api.md「Video delta」、
-// specs/030-video-versions/contracts/screen-api.md §0）
 type VideoVersionsRef struct {
 	// Count 見る人に見せてよい所在を持つバージョンの本数
 	Count int `json:"count"`
@@ -5287,9 +5239,7 @@ type WatchHistoryEntry struct {
 	Title string `json:"title"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
-	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする。
 	Video *Video `json:"video,omitempty"`
 }
 
@@ -5312,14 +5262,14 @@ type WorkDate struct {
 	// Examples: 2024, 2024-02, 2024-02-29
 	Date string `json:"date"`
 
-	// Kind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+	// Kind 日付の種類
 	Kind WorkDateKind `json:"kind"`
 }
 
-// WorkDateKind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+// WorkDateKind 日付の種類
 type WorkDateKind string
 
-// WorkInfo 動画の作品情報（specs/047-video-work-info/contracts/screen-api.md「WorkInfo schema」）。
+// WorkInfo 動画の作品情報。
 // 一覧は必ずあり、空なら []。単一の値は未設定なら無い
 type WorkInfo struct {
 	// Code 品番
@@ -5344,7 +5294,7 @@ type WorkInfo struct {
 	Urls []string `json:"urls"`
 }
 
-// WorkInfoCandidate 検索の候補 1 つ。文字だけで、画像は持たない（specs/049-work-info-plugins/research.md R-10）
+// WorkInfoCandidate 検索の候補 1 つ。文字だけで、画像は持たない
 type WorkInfoCandidate struct {
 	// Detail 候補を見分ける説明の 1 行
 	Detail *string `json:"detail,omitempty"`
@@ -5357,7 +5307,7 @@ type WorkInfoCandidate struct {
 	Url string `json:"url"`
 }
 
-// WorkInfoFetch メモリに持つ取得の結果（specs/049-work-info-plugins/research.md R-8）
+// WorkInfoFetch メモリに持つ取得の結果
 type WorkInfoFetch struct {
 	// Code 前後の空白を除いた品番。プラグインが返さなければ無い。規則に外れても残し、反映が飛ばす
 	Code *string `json:"code,omitempty"`
@@ -5406,9 +5356,7 @@ type WorkInfoFetchApplied struct {
 	SkippedTags []SkippedTag `json:"skippedTags"`
 
 	// Video ゲストの応答では `location`・`progress`・`probeError`・`fileTitle`・`displayName`・
-	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする
-	// （specs/016-single-account-auth/contracts/guest-api.md §1、
-	// specs/029-video-overrides/contracts/screen-api.md §0）。
+	// `thumbnailPositionMs`・`thumbnailImage`・`workInfo` を省き、`tags` を空の配列にする。
 	Video Video `json:"video"`
 }
 
@@ -5433,7 +5381,7 @@ type WorkInfoFetchedDate struct {
 	// Date プラグインが返した日付。形が規則に外れても残し、反映が飛ばす
 	Date string `json:"date"`
 
-	// Kind 日付の種類（specs/047-video-work-info/data-model.md「Fields」）
+	// Kind 日付の種類
 	Kind WorkDateKind `json:"kind"`
 }
 
@@ -5462,10 +5410,9 @@ type WorkInfoFetchedPerson struct {
 }
 
 // WorkInfoField 動画に反映できる取得の結果の項目。比較の行の順
-// （specs/052-plugin-work-info-fields/contracts/screen-api.md の WorkInfoField）
 type WorkInfoField string
 
-// WorkInfoInput 作品情報の書き込みの本文（specs/047-video-work-info/contracts/screen-api.md「WorkInfoInput schema」）。
+// WorkInfoInput 作品情報の書き込みの本文。
 // WorkInfo の 7 つのプロパティを持ち、どれも省いてよく null も受け付ける。省いたものと null は
 // 解除で、全体を置き換える
 type WorkInfoInput struct {
@@ -5487,18 +5434,18 @@ type WorkInfoMatch struct {
 	Name *string `json:"name,omitempty"`
 
 	// State 取得した人物・団体の照合の答え。existing は既存の実体 1 つ、new は何にも当たらず反映が作る、
-	// ambiguous は複数に当たり反映が飛ばす（specs/052-plugin-work-info-fields/research.md R-3）
+	// ambiguous は複数に当たり反映が飛ばす
 	State WorkInfoMatchState `json:"state"`
 }
 
 // WorkInfoMatchState 取得した人物・団体の照合の答え。existing は既存の実体 1 つ、new は何にも当たらず反映が作る、
-// ambiguous は複数に当たり反映が飛ばす（specs/052-plugin-work-info-fields/research.md R-3）
+// ambiguous は複数に当たり反映が飛ばす
 type WorkInfoMatchState string
 
-// WorkInfoOperation プラグインの操作（specs/049-work-info-plugins/contracts/plugin-contract.md）
+// WorkInfoOperation プラグインの操作
 type WorkInfoOperation string
 
-// WorkInfoPlugin 作品情報プラグイン 1 つ（specs/049-work-info-plugins/contracts/screen-api.md の WorkInfoPlugin）
+// WorkInfoPlugin 作品情報プラグイン 1 つ
 type WorkInfoPlugin struct {
 	Description *string `json:"description,omitempty"`
 
@@ -5510,7 +5457,6 @@ type WorkInfoPlugin struct {
 	Id       int64  `json:"id"`
 
 	// LastRunAt 出力が残っている直近の実行が終わった時刻（Unix 秒）。残っていなければ無い
-	// （specs/056-plugin-tooling/research.md R-6）
 	LastRunAt *int64 `json:"lastRunAt,omitempty"`
 
 	// Name マニフェストの name。マニフェストを読めなかったときは無い
@@ -5522,13 +5468,13 @@ type WorkInfoPlugin struct {
 	// Operations マニフェストの operations。invalid のプラグインでは空
 	Operations []WorkInfoOperation `json:"operations"`
 
-	// Problem プラグインを承認できない理由（specs/049-work-info-plugins/data-model.md の work_info_plugins）
+	// Problem プラグインを承認できない理由
 	Problem *WorkInfoPluginProblem `json:"problem,omitempty"`
 
 	// Settings 宣言の順の設定。invalid のプラグインでは空
 	Settings []WorkInfoPluginSetting `json:"settings"`
 
-	// State プラグインの状態（specs/049-work-info-plugins/data-model.md の State transitions）
+	// State プラグインの状態
 	State WorkInfoPluginState `json:"state"`
 
 	// UpdatedAt 最後のアップロードか承認の変更の時刻（Unix 秒）
@@ -5538,7 +5484,7 @@ type WorkInfoPlugin struct {
 
 // WorkInfoPluginLastRun defines model for WorkInfoPluginLastRun.
 type WorkInfoPluginLastRun struct {
-	// Run 直近の実行の標準エラー（specs/056-plugin-tooling/contracts/screen-api.md）
+	// Run 直近の実行の標準エラー
 	Run *WorkInfoPluginRun `json:"run,omitempty"`
 }
 
@@ -5548,16 +5494,16 @@ type WorkInfoPluginList struct {
 	Plugins []WorkInfoPlugin `json:"plugins"`
 }
 
-// WorkInfoPluginProblem プラグインを承認できない理由（specs/049-work-info-plugins/data-model.md の work_info_plugins）
+// WorkInfoPluginProblem プラグインを承認できない理由
 type WorkInfoPluginProblem string
 
-// WorkInfoPluginRun 直近の実行の標準エラー（specs/056-plugin-tooling/contracts/screen-api.md）
+// WorkInfoPluginRun 直近の実行の標準エラー
 type WorkInfoPluginRun struct {
-	// Failure 実行の失敗の種類（specs/049-work-info-plugins/contracts/screen-api.md の Run failures の reason）。
+	// Failure 実行の失敗の種類。
 	// 枠を取れなかった実行はモジュールを動かさないので、busy は残らない
 	Failure *WorkInfoPluginRunFailure `json:"failure,omitempty"`
 
-	// Operation プラグインの操作（specs/049-work-info-plugins/contracts/plugin-contract.md）
+	// Operation プラグインの操作
 	Operation WorkInfoOperation `json:"operation"`
 
 	// RanAt 実行が終わった時刻（Unix 秒）
@@ -5570,15 +5516,13 @@ type WorkInfoPluginRun struct {
 	Truncated bool `json:"truncated"`
 }
 
-// WorkInfoPluginRunFailure 実行の失敗の種類（specs/049-work-info-plugins/contracts/screen-api.md の Run failures の reason）。
+// WorkInfoPluginRunFailure 実行の失敗の種類。
 // 枠を取れなかった実行はモジュールを動かさないので、busy は残らない
 type WorkInfoPluginRunFailure string
 
 // WorkInfoPluginSetting マニフェストが宣言する設定の 1 つと、その値の有無。`value` は `secret` が偽で値があるときだけ入る
-// （specs/049-work-info-plugins/research.md R-13）
 type WorkInfoPluginSetting struct {
 	// Default マニフェストの既定値。値が保存されていないとき、または保存された値が選択肢の外にあるときに実行が受け取る
-	// （specs/056-plugin-tooling/research.md R-3）
 	Default *string `json:"default,omitempty"`
 	Key     string  `json:"key"`
 	Label   string  `json:"label"`
@@ -5599,7 +5543,7 @@ type WorkInfoPluginSetting struct {
 	Value *string `json:"value,omitempty"`
 }
 
-// WorkInfoPluginState プラグインの状態（specs/049-work-info-plugins/data-model.md の State transitions）
+// WorkInfoPluginState プラグインの状態
 type WorkInfoPluginState string
 
 // WorkInfoSearchRequest defines model for WorkInfoSearchRequest.
@@ -5850,7 +5794,7 @@ type ListFolderVideosParams struct {
 	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-	// ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+	// ほかの絞り込みと AND で組み合わさる
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
 
 	// Sort 並び順
@@ -5881,8 +5825,7 @@ type ListGroupsParams struct {
 
 // GetGroupParams defines parameters for GetGroup.
 type GetGroupParams struct {
-	// Trail 画面が通ってきたグループの id を外側から順に `,` で区切って並べたもの
-	// （specs/048-groups/research.md R-8）。応答の `trail` は、このグループから外へ向かって
+	// Trail 画面が通ってきたグループの id を外側から順に `,` で区切って並べたもの。応答の `trail` は、このグループから外へ向かって
 	// 親と子の組が続く部分で、組が崩れた所より外側を捨てる
 	Trail *[]int64 `form:"trail,omitempty" json:"trail,omitempty"`
 }
@@ -5919,7 +5862,7 @@ type ListLibraryParams struct {
 	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-	// ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+	// ほかの絞り込みと AND で組み合わさる
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
 
 	// Sort 並び順
@@ -5937,45 +5880,41 @@ type ListLibraryParams struct {
 
 	// Tag タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
 	// 最大16個、17個以上は400。存在しない id は条件から落とし、応答の
-	// missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
+	// missingTagIds に返す
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
 
 	// Person 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
 	// 組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
 	// `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
 	// ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-	// （specs/047-video-work-info/contracts/screen-api.md）
 	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
 
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
-	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
 
 	// AddedWithin 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
 	// 組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
-	// `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+	// `invalid_request`。ゲストも使える
 	AddedWithin *AddedWithinFilter `form:"addedWithin,omitempty" json:"addedWithin,omitempty"`
 
 	// MinDuration 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
 	// 0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
-	// ゲストも使える（specs/052-smart-folders/research.md R-4）
+	// ゲストも使える
 	MinDuration *MinDurationFilter `form:"minDuration,omitempty" json:"minDuration,omitempty"`
 
 	// MaxDuration 長さの上限（秒、含む）。扱いは `minDuration` と同じ
-	// （specs/052-smart-folders/research.md R-4）
 	MaxDuration *MaxDurationFilter `form:"maxDuration,omitempty" json:"maxDuration,omitempty"`
 
 	// TagKind タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
 	// 持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
 	// 実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
 	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 
 	// Unshelved true ならホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも
 	// 一致しない動画だけにする。ほかの絞り込みと AND で組み合わさり、スマートフォルダの
 	// 項目は出さない。動画と棚の対応は保存せず、読むたびに求める。ゲストも使える
-	// （specs/057-home/research.md R-11）
+	// （docs/design-docs/home.md）
 	Unshelved *bool `form:"unshelved,omitempty" json:"unshelved,omitempty"`
 }
 
@@ -5986,7 +5925,7 @@ type ListLibraryIdsParams struct {
 	Playable *bool        `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-	// ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+	// ほかの絞り込みと AND で組み合わさる
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
 
 	// Tag 最大16個、17個以上は400。存在しない id は無視して missingTagIds に返す
@@ -5996,32 +5935,28 @@ type ListLibraryIdsParams struct {
 	// 組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
 	// `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
 	// ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-	// （specs/047-video-work-info/contracts/screen-api.md）
 	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
 
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
-	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
 
 	// AddedWithin 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
 	// 組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
-	// `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+	// `invalid_request`。ゲストも使える
 	AddedWithin *AddedWithinFilter `form:"addedWithin,omitempty" json:"addedWithin,omitempty"`
 
 	// MinDuration 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
 	// 0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
-	// ゲストも使える（specs/052-smart-folders/research.md R-4）
+	// ゲストも使える
 	MinDuration *MinDurationFilter `form:"minDuration,omitempty" json:"minDuration,omitempty"`
 
 	// MaxDuration 長さの上限（秒、含む）。扱いは `minDuration` と同じ
-	// （specs/052-smart-folders/research.md R-4）
 	MaxDuration *MaxDurationFilter `form:"maxDuration,omitempty" json:"maxDuration,omitempty"`
 
 	// TagKind タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
 	// 持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
 	// 実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
 	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 }
 
@@ -6126,7 +6061,7 @@ type ListTagsParams struct {
 
 	// Kind 種類の id（正の整数）ならその種類のタグだけ、`none` なら種類の無いタグだけにする。
 	// 無い id は空の一覧。`total` はこれも掛けて数え、`totalAll` は掛けない。正の整数でも
-	// `none` でもなければ 400 `invalid_request`（specs/051-tag-kinds/contracts/screen-api.md）
+	// `none` でもなければ 400 `invalid_request`
 	Kind *string `form:"kind,omitempty" json:"kind,omitempty"`
 
 	// Sort 並び順
@@ -6178,7 +6113,7 @@ type ListVideosParams struct {
 	Playable *bool `form:"playable,omitempty" json:"playable,omitempty"`
 
 	// Favorite true ならお気に入りの項目だけにする。項目ごとに自分のお気に入りで判定し、
-	// ほかの絞り込みと AND で組み合わさる（specs/035-favorites/contracts/screen-api.md §2）
+	// ほかの絞り込みと AND で組み合わさる
 	Favorite *bool `form:"favorite,omitempty" json:"favorite,omitempty"`
 
 	// Sort 並び順
@@ -6196,39 +6131,35 @@ type ListVideosParams struct {
 
 	// Tag タグの id ごとに1つ（`tag=3&tag=8`）。すべて持つ動画だけにする（AND）。
 	// 最大16個、17個以上は400。存在しない id は条件から落とし、応答の
-	// missingTagIds に返す（specs/014-video-tags/contracts/tags-api.md §5）
+	// missingTagIds に返す
 	Tag *[]int64 `form:"tag,omitempty" json:"tag,omitempty"`
 
 	// Person 人物の id。どの役割でもその人物に結び付いた動画だけにする。ほかの絞り込みと AND で
 	// 組み合わさり、`total` もそれを掛けて数える。実体の無い id は空の一覧になり、誤りにも
 	// `missingTagIds` のような報告にもしない。正の整数でなければ `400` `invalid_request`。
 	// ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-	// （specs/047-video-work-info/contracts/screen-api.md）
 	Person *PersonFilter `form:"person,omitempty" json:"person,omitempty"`
 
 	// Organization 団体の id。どの役割でもその団体に結び付いた動画だけにする。扱いは `person` と同じ
-	// （specs/047-video-work-info/contracts/screen-api.md）
 	Organization *OrganizationFilter `form:"organization,omitempty" json:"organization,omitempty"`
 
 	// AddedWithin 日数。いまからその日数前の時刻以後に追加した動画だけにする。ほかの絞り込みと AND で
 	// 組み合わさり、`total` もそれを掛けて数える。1 以上 36500 以下でなければ `400`
-	// `invalid_request`。ゲストも使える（specs/052-smart-folders/research.md R-4）
+	// `invalid_request`。ゲストも使える
 	AddedWithin *AddedWithinFilter `form:"addedWithin,omitempty" json:"addedWithin,omitempty"`
 
 	// MinDuration 長さの下限（秒、含む）。秒未満を切り捨てた長さで比べ、長さの分からない動画は当たらない。
 	// 0 以上 360000 以下でなければ、または `maxDuration` を越えれば `400` `invalid_request`。
-	// ゲストも使える（specs/052-smart-folders/research.md R-4）
+	// ゲストも使える
 	MinDuration *MinDurationFilter `form:"minDuration,omitempty" json:"minDuration,omitempty"`
 
 	// MaxDuration 長さの上限（秒、含む）。扱いは `minDuration` と同じ
-	// （specs/052-smart-folders/research.md R-4）
 	MaxDuration *MaxDurationFilter `form:"maxDuration,omitempty" json:"maxDuration,omitempty"`
 
 	// TagKind タグの種類の id。手で付けたかフォルダ名から付いたかを問わず、その種類のタグを 1 つでも
 	// 持つ動画だけにする。ほかの絞り込みと AND で組み合わさり、`total` もそれを掛けて数える。
 	// 実体の無い id は空の一覧になり、誤りにも報告にもしない。正の整数でなければ `400`
 	// `invalid_request`。ゲストからは `400` `invalid_request` / `guest_filter_not_allowed`
-	// （specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）
 	TagKind *TagKindFilter `form:"tagKind,omitempty" json:"tagKind,omitempty"`
 }
 
@@ -6237,13 +6168,12 @@ type GetVideoParams struct {
 	// Group 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
 	// このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
 	// 持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
-	// 答える（specs/048-groups/research.md R-9）
+	// 答える
 	Group *VideoGroupContext `form:"group,omitempty" json:"group,omitempty"`
 
 	// SmartFolder 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
 	// 持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
 	// 答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
-	// （specs/052-smart-folders/contracts/screen-api.md）
 	SmartFolder *VideoSmartFolderContext `form:"smartFolder,omitempty" json:"smartFolder,omitempty"`
 }
 
@@ -6252,13 +6182,12 @@ type ListVideoGroupMembersParams struct {
 	// Group 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
 	// このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
 	// 持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
-	// 答える（specs/048-groups/research.md R-9）
+	// 答える
 	Group *VideoGroupContext `form:"group,omitempty" json:"group,omitempty"`
 
 	// SmartFolder 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
 	// 持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
 	// 答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
-	// （specs/052-smart-folders/contracts/screen-api.md）
 	SmartFolder *VideoSmartFolderContext `form:"smartFolder,omitempty" json:"smartFolder,omitempty"`
 
 	// Offset 返す最初のメンバーの、グループの中の並びの位置（0 始まり）
@@ -6279,13 +6208,12 @@ type GetRelatedVideosParams struct {
 	// Group 動画を開いたグループの id。動画のグループ（group）・前後・メンバーの窓とメンバーのページは、
 	// このグループが見る人に見せる再生順に動画を持てばその再生順で答える。省くか、動画を
 	// 持たないグループなら、動画を直接持ち見る人に見せるグループのうち id のいちばん小さいもので
-	// 答える（specs/048-groups/research.md R-9）
+	// 答える
 	Group *VideoGroupContext `form:"group,omitempty" json:"group,omitempty"`
 
 	// SmartFolder 動画を開いたスマートフォルダの id。`group` が無く、このフォルダの見る人に見せる再生順が動画を
 	// 持てば、動画の文脈（`smartFolder`）・前後・メンバーの窓とメンバーのページをその再生順で
 	// 答える。`group` があれば `group` が勝ち、動画を持たないフォルダは無視する
-	// （specs/052-smart-folders/contracts/screen-api.md）
 	SmartFolder *VideoSmartFolderContext `form:"smartFolder,omitempty" json:"smartFolder,omitempty"`
 
 	// Cursor 前の応答の `nextCursor`。省くと先頭から返す
@@ -6336,8 +6264,7 @@ type TranscodeVideoParams struct {
 	// Quality 縮める画質。無ければ元の画質（今までどおり、映像をコピーできればコピーする）。
 	// あれば映像を必ずエンコードし、表示の短辺をこの値に縮め、ビットレートに上限を付ける。
 	// 動画の表示の短辺（`Video.width`・`height` の小さい方）より小さい画質だけを受け付け、
-	// それ以外と寸法の無い動画は 400
-	// （specs/027-playback-quality/contracts/transcode-quality-api.md）。
+	// それ以外と寸法の無い動画は 400。
 	Quality *TranscodeVideoParamsQuality `form:"quality,omitempty" json:"quality,omitempty"`
 }
 

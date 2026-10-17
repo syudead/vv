@@ -58,7 +58,6 @@ func TestParseWorkInfoPluginManifestDefaultsSettingFlags(t *testing.T) {
 }
 
 // 設定の既定値と選択肢の規則に外れるマニフェストは manifest_invalid である
-// （specs/056-plugin-tooling/contracts/plugin-contract.md の Manifest）。
 func TestParseWorkInfoPluginManifestSettingChoices(t *testing.T) {
 	manifest := func(setting string) string {
 		return `{"contract":1,"name":"p","version":"1","operations":["fetch"],"settings":[` + setting + `]}`
@@ -119,7 +118,7 @@ func TestParseWorkInfoPluginManifestKeepsDefaultAndOptions(t *testing.T) {
 	}
 }
 
-// 拒んだマニフェストの理由は、反した項目と規則を名指す（specs/056-plugin-tooling/contracts/plugin-cli.md）。
+// 拒んだマニフェストの理由は、反した項目と規則を名指す。
 func TestCheckWorkInfoPluginManifestNamesTheFieldAndTheRule(t *testing.T) {
 	const ok = `"contract":1,"name":"p","version":"1","operations":["fetch"]`
 	cases := []struct {

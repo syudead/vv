@@ -15,7 +15,6 @@ import (
 const versionJudgeRetryDelay = 5 * time.Second
 
 // errNoVersionAnswer は判定の口が問いに答えなかったことを表す。確率 0 ではなく失敗として扱う
-// （specs/054-auto-dup/research.md R-3・R-5）。
 var errNoVersionAnswer = errors.New("the classifier did not answer the question")
 
 // VersionJudgeStore は「同じ動画かもしれない」候補の判定の保存先である。internal/store の
@@ -39,7 +38,7 @@ type VersionJudgeStore interface {
 type VersionJudgeSettingsStore interface {
 	VersionJudgingEnabled(ctx context.Context) (bool, error)
 	SaveVersionJudgingEnabled(ctx context.Context, enabled bool) error
-	// OllamaConnectionSaved は所有者が Ollama の接続先を保存したかを返す（research.md R-13）。
+	// OllamaConnectionSaved は所有者が Ollama の接続先を保存したかを返す。
 	OllamaConnectionSaved(ctx context.Context) (bool, error)
 }
 
@@ -134,7 +133,7 @@ func (j *VersionJudge) SaveEnabled(ctx context.Context, enabled bool) error {
 }
 
 // ConnectionSaved は Ollama の接続先が保存されたことを受け取る。接続が無くて待っていた組
-// （no_connection）を待ちに戻すよう判定の処理に頼んで起こす（research.md R-13）。戻すのは Run の中で
+// （no_connection）を待ちに戻すよう判定の処理に頼んで起こす。戻すのは Run の中で
 // 行うので、保存の要求の取り消しに左右されず、判定中の組が後から no_connection を書いても次の判定の
 // 前に戻り、戻せなければ再び試す。
 func (j *VersionJudge) ConnectionSaved(context.Context) {
@@ -337,7 +336,7 @@ func (j *VersionJudge) decide(
 }
 
 // ask は 2 つの内容の組ごとのコマを左右に並べた画像と R-3 の問いを判定の口に送り、答えの確率を
-// 返す。ファイル名・フォルダ・長さは送らない（research.md R-11）。答えが無ければ errNoVersionAnswer。
+// 返す。ファイル名・フォルダ・長さは送らない。答えが無ければ errNoVersionAnswer。
 func (j *VersionJudge) ask(ctx context.Context, keys [2]string, pairs []domain.FramePair) (float64, error) {
 	images, err := j.frames.SeekFramePairs(keys[0], keys[1], pairs)
 	if err != nil {

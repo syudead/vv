@@ -297,7 +297,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("PlaylistPage（specs/044-playlists/ui-design.md「Playlist screen」）", () => {
+describe("PlaylistPage", () => {
   it("項目を応答の順に、それぞれの視聴状態とともに並べる", async () => {
     renderPage();
     await screen.findByRole("table", { name: "Items" });
@@ -668,7 +668,7 @@ describe("PlaylistPage（specs/044-playlists/ui-design.md「Playlist screen」�
     expect(await screen.findByRole("table", { name: "Items" })).toBeDefined();
   });
 
-  describe("スマートフォルダの項目（052 ui-design.md「Playlist screen row」）", () => {
+  describe("スマートフォルダの項目", () => {
     it("グループの項目の行として名前・表紙・本数をサーバーの位置に出し、行はフォルダの開く動画を smartFolder 付きで開く", async () => {
       server.items = [server.items[0]!, folderItem(4, 4), server.items[2]!];
       const user = userEvent.setup();

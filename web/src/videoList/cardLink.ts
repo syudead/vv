@@ -1,7 +1,7 @@
 /**
  * cardLinkState は動画とグループのカードのリンクが開いた先へ渡す状態である。`from` は戻る先の
  * 一覧の場所で、`autoplay` を渡すと再生画面が再生を始める（ホームの棚のカード。
- * specs/057-home/research.md R-14）。
+ * docs/design-docs/home.md）。
  */
 export function cardLinkState(
   backTo: string,

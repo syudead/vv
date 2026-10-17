@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 代表サムネイルの位置（specs/029-video-overrides/data-model.md §1・§3、research.md R-4・R-6）。
+// 代表サムネイルの位置。
 
 func setThumbnailPosition(t *testing.T, db *DB, id int64, positionMs *int64) domain.Video {
 	t.Helper()

@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 動画の追加の情報（specs/056-media-info/contracts/screen-api.md「GET /api/videos/{id}: mediaInfo」）は、
+// 動画の追加の情報は、
 // 本物の認証・保存層・経路で確かめる。
 
 // applyMediaInfo は動画 name の解析の結果に追加の情報を載せて書き、今の版の行を作る。
@@ -44,7 +44,7 @@ func sampleMediaInfo() domain.MediaInfo {
 }
 
 // 公開動画では所有者とゲストが同じ mediaInfo を得て、ゲストは非公開動画で 404 のまま、行の無い動画には
-// mediaInfo が無い。一覧の項目と所有者の PUT の応答には決して載らない（research.md R-6）。
+// mediaInfo が無い。一覧の項目と所有者の PUT の応答には決して載らない。
 func TestGetVideoMediaInfo(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.applyMediaInfo(t, "a", sampleMediaInfo()) // 公開

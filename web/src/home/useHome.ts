@@ -16,7 +16,7 @@ import {
   withShelfStatus,
 } from "./homeShelves";
 
-// ホームの読み取り（specs/057-home/research.md R-12・R-16）。棚の一覧を読み、棚の項目は
+// ホームの読み取り（docs/design-docs/home.md・R-16）。棚の一覧を読み、棚の項目は
 // 描いた先頭の棚が画面に入るたびに、その棚から画面に入る分とその次の 2 つを読む。`home`・
 // `smartFolder`・`video`・`group` の知らせ（サーバーが棚の控えを捨てる知らせと同じ。
 // internal/store/home_shelf_cache.go）で一覧と読んだ棚を読み直し、読み直す間は今の行を

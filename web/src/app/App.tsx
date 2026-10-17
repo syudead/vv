@@ -27,7 +27,7 @@ const SettingsPage = await deferredRoute(
   "/settings",
 );
 const TagsPage = await deferredRoute(() => import("../tags/TagsPage"), "/tags");
-// 人物と団体の管理画面（specs/047-video-work-info/ui-design.md「People and organizations
+// 人物と団体の管理画面（docs/design-docs/catalog-organization.md「People and organizations
 // screens」）。1 つの部品が種類を受けて両方を描く。
 const PeoplePage = await deferredRoute(() => import("../credits/PeoplePage"), "/people");
 const OrganizationsPage = await deferredRoute(
@@ -48,7 +48,7 @@ const PlaylistPage = await deferredRoute(
   (pathname) => matchesBelowPath(pathname, "/playlists"),
 );
 const GroupPage = await deferredRoute(() => import("../groups/GroupPage"), "/groups");
-// スマートフォルダのページ（specs/052-smart-folders/ui-design.md「Smart folder page」）。
+// スマートフォルダのページ（docs/design-docs/catalog-organization.md「Smart folder page」）。
 const SmartFolderPage = await deferredRoute(
   () => import("../smartFolders/SmartFolderPage"),
   "/smart-folders",
@@ -57,18 +57,18 @@ const DuplicatesPage = await deferredRoute(
   () => import("../versions/DuplicatesPage"),
   "/duplicates",
 );
-// アクティビティの記録（specs/055-activity/ui-design.md「Activity page」）。
+// アクティビティの記録（docs/design-docs/activity.md「Activity page」）。
 const ActivityPage = await deferredRoute(
   () => import("../activity/ActivityPage"),
   "/activity",
 );
-// 動画の作品情報と表示名の編集画面（specs/047-video-work-info/ui-design.md「Editor」）。
+// 動画の作品情報と表示名の編集画面（docs/design-docs/catalog-organization.md「Editor」）。
 // 再生画面を開くたびの読み込みに、編集画面の部品を加えない。
 const VideoDetailsEditor = await deferredRoute(
   () => import("../player/detailsEditor/VideoDetailsEditor"),
   isVideoEditPath,
 );
-// オンボード（specs/057-home/ui-design.md「Onboarding」）。シェルの外に置き、ゲートが送るときに
+// オンボード（docs/design-docs/home.md「Onboarding」）。シェルの外に置き、ゲートが送るときに
 // 読み込む。
 const OnboardingPage = await deferredRoute(
   () => import("../onboarding/OnboardingPage"),
@@ -77,7 +77,7 @@ const OnboardingPage = await deferredRoute(
 const SetupPage = await deferredRoute(() => import("../auth/SetupPage"), "/setup");
 const LoginPage = await deferredRoute(() => import("../auth/LoginPage"), "/login");
 // デザインシステムの見本（/design-system）は開発時だけに置く
-// （specs/038-design-system/research.md R-2）。本番のビルドでは import.meta.env.DEV が
+// （docs/design-docs/design-system.md）。本番のビルドでは import.meta.env.DEV が
 // false に置き換わり、この import ごと出力から消える。
 const DesignSystemPage = import.meta.env.DEV
   ? lazy(() => import("../designSystem/DesignSystemPage"))
@@ -93,11 +93,11 @@ function AppRoutes() {
       {/* 取り込みの進捗と通知は所有者だけに出す（ui-design.md「Top bar」）。 */}
       {owner && <ScanProgressIndicator />}
       {/* 所有者の段階が done でない間は、どの経路も /welcome へ置き換える
-          （specs/057-home/research.md R-4）。 */}
+          （docs/design-docs/home.md）。 */}
       <OnboardingGate>
         <Routes>
           {/* `/` はホーム。ライブラリの問い合わせの付いた `/?tag=3` などは問い合わせごと
-            `/library` へ送る（specs/057-home/research.md R-15）。 */}
+            `/library` へ送る（docs/design-docs/home.md）。 */}
           <Route path="/" element={<HomeRoute />} />
           <Route
             path={LIBRARY_PATH}
@@ -118,7 +118,7 @@ function AppRoutes() {
               }
             />
           ))}
-          {/* 設定の一覧と 8 つのページ（specs/058-settings-pages/research.md R-1）。 */}
+          {/* 設定の一覧と 8 つのページ。 */}
           {["/settings", "/settings/*"].map((path) => (
             <Route
               key={path}

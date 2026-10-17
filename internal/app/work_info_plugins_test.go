@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの登録の判断（specs/049-work-info-plugins/data-model.md の Rules、research.md R-7・R-13）。
+// 作品情報プラグインの登録の判断。
 // 保存の規則（差し替え・値の引き継ぎ・削除の連鎖）は internal/store のテストが本物の SQLite で確かめる。
 
 // fakePluginRuntime はモジュールのバイト列をマニフェストの名前として読む検査である。"broken" は
@@ -236,7 +236,6 @@ func TestSetWorkInfoPluginSettingsChecksDeclarationsAndHidesSecrets(t *testing.T
 }
 
 // 差し替えで保存済みの値が選択肢から外れても値は残り、一覧は set・value と同じ staleValue でそれを示す
-// （specs/056-plugin-tooling/contracts/screen-api.md の WorkInfoPluginSetting）。
 func TestReplacedOptionsReportTheStoredValueAsStale(t *testing.T) {
 	ctx := context.Background()
 	runtime := &fakePluginRuntime{settings: []domain.WorkInfoPluginSetting{

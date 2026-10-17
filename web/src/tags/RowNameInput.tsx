@@ -7,8 +7,7 @@ import { Input } from "../ui/shadcn/input";
 import { useTagNameField, type TagFieldError } from "./tagNameField";
 
 /**
- * RowNameInput は管理画面の行の、その場の改名の入力である（ui-design.md「Create and
- * rename」）。改名を始めると描かれ、今の名前を選んだ状態でフォーカスを持つ。Enter で
+ * RowNameInput は管理画面の行の、その場の改名の入力である。改名を始めると描かれ、今の名前を選んだ状態でフォーカスを持つ。Enter で
  * 送り、Esc で閉じる（送信中は閉じない）。理由は入力の下に出す: 名前の規則と
  * `taken` の失敗は `text-xs`、それ以外の失敗は `role="alert"` の `text-sm`。
  *

@@ -36,8 +36,7 @@ function facts(video: Video): string {
 }
 
 /**
- * EditorAside は編集画面の左の列の中身で、どの動画を編集しているかを示す
- * （ui-design.md「Screen」の Left column）。サムネイル、ファイル名、長さ・サイズ・解像度、
+ * EditorAside は編集画面の左の列の中身で、どの動画を編集しているかを示す。サムネイル、ファイル名、長さ・サイズ・解像度、
  * 置き場所、「Back to the video」。どれも編集できない。`video` が無い間は形だけを出す。
  */
 export default function EditorAside({

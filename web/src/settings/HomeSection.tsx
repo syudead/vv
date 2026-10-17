@@ -75,7 +75,7 @@ function useOrganizer() {
 }
 
 /**
- * HomeSection は設定の「Home」の節である（specs/057-home/ui-design.md「Smart folder page and
+ * HomeSection は設定の「Home」の節である（docs/design-docs/home.md「Smart folder page and
  * Settings」）。「Reorganize」は整理役の組み直しを待ちに入れ（research.md R-9）、待ちか実行中は
  * `Spinner` を出して押せない。説明の下に最後の実行を出す。「Start setup」はオンボードの段階を
  * `folders` に書いてオンボードの画面を開く。

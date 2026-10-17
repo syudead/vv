@@ -9,7 +9,7 @@ import { json } from "../testing/groupPage";
 import { ToastProvider } from "../ui/Toast";
 import HomeSection from "./HomeSection";
 
-// 設定の「Home」の節（specs/057-home/ui-design.md「Smart folder page and Settings」）。
+// 設定の「Home」の節（docs/design-docs/home.md「Smart folder page and Settings」）。
 // 「Reorganize」は組み直しを待ちに入れ（research.md R-9）、「Start setup」は段階を
 // `folders` に書いてオンボードを開く。
 

@@ -1,5 +1,5 @@
 /**
- * libraryPath はライブラリの画面の場所である（specs/057-home/research.md R-15）。
+ * libraryPath はライブラリの画面の場所である（docs/design-docs/home.md）。
  * トップ（`/`）はホームに明け渡し、ライブラリは `/library` に置く。問い合わせ
  * （`tag`・`person`・`organization` など）は前と同じ。
  */
@@ -17,7 +17,7 @@ export function libraryFilterPath(param: string, id: number): string {
 
 /**
  * UNSHELVED_PARAM はホームのどの棚にも一致しない動画だけに絞る問い合わせである
- * （`/library?unshelved=1`。specs/057-home/research.md R-11、ui-design.md「Home」）。
+ * （`/library?unshelved=1`。docs/design-docs/home.md、ui-design.md「Home」）。
  */
 export const UNSHELVED_PARAM = "unshelved";
 

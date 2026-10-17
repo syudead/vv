@@ -114,8 +114,7 @@ export function useVideoPages({
    * fetchPage は1ページを取る。`keep` を与えると、条件の変更ではなく取り込みの結果を
    * その場で取り込む更新になる。読み込み済みの件数に届くまで先頭からページを取り直して
    * 置き換え、置き換わるまで今の項目を見せ続ける（一覧を消さず、読み込み中の表示も出さない。
-   * スクロールの位置と選択はそのまま）。失敗は静かに捨てて今の一覧を残す
-   * （specs/042-folder-watch-import/ui-design.md「Open lists after a watch scan」）。
+   * スクロールの位置と選択はそのまま）。失敗は静かに捨てて今の一覧を残す。
    */
   const fetchPage = useCallback(
     async (from: string | undefined, replace: boolean, keep?: number) => {
@@ -359,7 +358,7 @@ export function useVideoPages({
           failure.status === 404
         ) {
           // フォルダが無くなった（検索中に配下が削除された等）。一致なしではなく
-          // 「このフォルダは見つかりません」を出す（list-api.md §5）。
+          // 「このフォルダは見つかりません」を出す。
           setNotFound(true);
           setError(null);
           dispatch({ type: "stop" });

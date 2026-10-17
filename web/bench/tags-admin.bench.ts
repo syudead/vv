@@ -2,8 +2,7 @@ import { writeFile } from "node:fs/promises";
 
 import { expect, test, type Locator, type Page, type Response } from "@playwright/test";
 
-// タグ管理画面（/tags）を規模のデータで測る（specs/036-tag-admin-scale/quickstart.md の
-// 「場面と期待」）。`go run ./scripts/tagsbench` から呼ばれ、場面ごとの値を Markdown の表で
+// タグ管理画面（/tags）を規模のデータで測る。`go run ./scripts/tagsbench` から呼ばれ、場面ごとの値を Markdown の表で
 // TAGSBENCH_RESULT に書く。
 //
 // Long Task とフレーム時間はページの中から読む（PerformanceObserver の longtask と
@@ -282,7 +281,7 @@ test("タグ管理画面を規模のデータで測る", async ({ page, browser 
     });
   }
 
-  // 内訳（quickstart.md「内訳の切り分け」）: 開いたときの GET /api/tags の応答時間を
+  // 内訳: 開いたときの GET /api/tags の応答時間を
   // 描画と分けて出す。
   results.push({
     scene: "GET /api/tags の応答（開いたとき・内訳）",

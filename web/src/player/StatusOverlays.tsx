@@ -220,7 +220,7 @@ export function ReadFailure({
   video: Video;
   /**
    * 読み取りのやり直し。省くと（ゲストの画面）、やり直し・ファイルを開く・誤りの文の
-   * 枠を出さない（specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+   * 枠を出さない。
    */
   onReprobe?: () => Promise<void>;
 }) {
@@ -232,7 +232,7 @@ export function ReadFailure({
           {t.player.readFailure.title}
         </h2>
         {/* 自由文の probeError（ffprobe の出力や過去の日本語）は出さず、コードから説明を作る
-            （specs/023-english-i18n/research.md R-6）。コードの無い行は一般的な概要になる。 */}
+            。コードの無い行は一般的な概要になる。 */}
         <p className="text-sm text-muted-foreground">
           {probeErrorText(video.probeErrorCode)}
         </p>

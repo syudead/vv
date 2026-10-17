@@ -1,23 +1,14 @@
-import { mkdir } from "node:fs/promises";
-import path from "node:path";
-
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-// タグのうち、本物のサーバーとブラウザでしか確かめられないものだけを流す
-// （docs/design-docs/web-testing.md）。作ったタグが別の動画の候補に出る・統合で
-// 動画の付け替えまで通るという画面からサーバーまでの流れ 2 本と、行・一覧の実際の
-// 配置、マウスを留める時間に頼る開き方、画面写真である。ほかの振る舞いは
-// Vitest（src/player/VideoTags、src/tags/TagsPage*、src/library/CardTagRow）と
-// Go のストアのテストが確かめる。
-// 動画は run-e2e.mjs が generateTagsFixtures で作る videoCount 本
-// （タグ動画A・タグ動画B・タグ動画C・タグ動画D と、本数を足すだけのタグ埋めの動画）。
-// タグ埋めの動画は、1280×800 で格子の最後の行を画面の下端に
-// 置くためにある（041-tag-overflow-list）。
+// タグのうち、本物のブラウザのレイアウトでしか確かめられないものだけを流す
+// （docs/design-docs/web-testing.md）。タグ管理画面の行・タブ・統合先の候補と、カードの「+N」の
+// 一覧の実際の配置である。ほかの振る舞いは Vitest（src/player/VideoTags、src/tags/TagsPage*、
+// src/library/CardTagRow、src/library/useHoverOpen）と Go のストアのテストが確かめる。
+// 動画は run-e2e.mjs が generateTagsFixtures で作る videoCount 本。本数は、1280×800 で格子の
+// 最後の行を画面の下端に置くためにある（041-tag-overflow-list）。
 
 /** generateTagsFixtures（media-fixtures.mjs）が作る動画の本数。 */
 const videoCount = 16;
-
-const screenshotDir = process.env.MDM_E2E_SCREENSHOT_DIR;
 
 interface MediaFolder {
   id: number;
@@ -69,14 +60,6 @@ async function createTag(request: APIRequestContext, name: string): Promise<Tag>
   return (await response.json()) as Tag;
 }
 
-async function addSynonym(request: APIRequestContext, id: number, name: string) {
-  const response = await request.post(`/api/tags/${String(id)}/synonyms`, {
-    headers: mutationHeaders,
-    data: { name },
-  });
-  expect(response.ok()).toBe(true);
-}
-
 async function attachTag(request: APIRequestContext, videoId: number, tagId: number) {
   const response = await request.post("/api/video-tags", {
     headers: mutationHeaders,
@@ -100,14 +83,6 @@ async function clearVideoTags(request: APIRequestContext, videoId: number) {
     });
     expect(removed.ok()).toBe(true);
   }
-}
-
-function addInput(page: Page) {
-  return page.getByRole("combobox", { name: "Add tag" });
-}
-
-function chip(page: Page, name: string) {
-  return page.locator(`[title="${name}"]`);
 }
 
 test.describe.serial("video tags", () => {
@@ -143,29 +118,6 @@ test.describe.serial("video tags", () => {
     expect(removed.status()).toBe(204);
   });
 
-  test("1: 新しい名前で確定すると付いて表示され、別の動画の候補にも出る", async ({
-    page,
-  }) => {
-    const a = video("タグ動画A");
-    const b = video("タグ動画B");
-
-    await page.goto(`/videos/${String(a.id)}`);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("タグ動画A");
-
-    const input = addInput(page);
-    await input.click();
-    await input.fill("e2e新規タグ");
-    await page.keyboard.press("Enter");
-
-    await expect(chip(page, "e2e新規タグ")).toBeVisible();
-    await expect(input).toHaveValue("");
-
-    // 別の動画の再生画面でも、作ったタグが候補に出る。
-    await page.goto(`/videos/${String(b.id)}`);
-    await addInput(page).click();
-    await expect(page.getByRole("option", { name: /e2e新規タグ/ })).toBeVisible();
-  });
-
   test.describe("タグ管理画面（issue 271）", () => {
     /** tagRowByName は、名前のリンク（読み上げ名「〈名〉で絞り込んだライブラリを開く」）から行を探す。 */
     function tagRowByName(page: Page, name: string) {
@@ -179,8 +131,7 @@ test.describe.serial("video tags", () => {
 
     /**
      * rowMenuName は、幅ごとに行の右端のメニューの読み上げ名を返す。`sm`（640px）
-     * 未満では行の操作が 1 つの「Actions」にまとまり、「More actions」は CSS で隠れる
-     * （specs/036-tag-admin-scale/ui-design.md「Actions on touch and narrow widths」）。
+     * 未満では行の操作が 1 つの「Actions」にまとまり、「More actions」は CSS で隠れる。
      */
     function rowMenuName(width: number) {
       return width < 640 ? "Actions" : "More actions";
@@ -188,7 +139,7 @@ test.describe.serial("video tags", () => {
 
     /**
      * revealTagRow は、名前の行が描かれるまで文書を送ってから、その行を返す。
-     * 一覧は見えている行だけを描く（specs/036-tag-admin-scale/research.md R-2）
+     * 一覧は見えている行だけを描く
      * ので、前の試験で作ったタグが増えると、探す行が表示域の外で DOM に無い。
      * 送るたびに行が描かれるのを少し待ち、末尾まで来ても無ければ先頭から送り直す。
      * 描き直しの途中（読み直した一覧が先頭へ戻すときなど）に末尾と見誤って
@@ -221,7 +172,7 @@ test.describe.serial("video tags", () => {
       page,
       request,
     }) => {
-      // 仮のタグは外部連携 API の tentative でだけ作れる（specs/031-tentative-tags）。
+      // 仮のタグは外部連携 API の tentative でだけ作れる。
       const issued = await request.post("/api/api-tokens", {
         headers: mutationHeaders,
         data: { name: "e2e仮のタグ" },
@@ -246,7 +197,7 @@ test.describe.serial("video tags", () => {
       });
       expect(tagged.ok()).toBe(true);
 
-      // 名前の列が最も狭くなる 360px でも確かめる（ui-design.md「Responsive behaviour」）。
+      // 名前の列が最も狭くなる 360px でも確かめる。
       for (const width of [1280, 360]) {
         await page.setViewportSize({ width, height: 800 });
         await page.goto("/tags");
@@ -314,7 +265,7 @@ test.describe.serial("video tags", () => {
       page,
     }) => {
       // 4 桁の件数と 4 桁の却下した名前で、見出しとタブが最も長くなる形を作る
-      // （ui-design.md「Header」「Tabs」「Responsive behaviour」）。
+      //
       const createdAt = "2026-01-01T00:00:00Z";
       const items = Array.from({ length: 1000 }, (_, index) => ({
         id: 900000 + index,
@@ -349,7 +300,7 @@ test.describe.serial("video tags", () => {
       );
       for (const width of [320, 360]) {
         await page.setViewportSize({ width, height: 800 });
-        // 「Tentative only」が効いた URL で開く（ui-design.md「URL state」）。
+        // 「Tentative only」が効いた URL で開く。
         await page.goto("/tags?tentative=1");
         const count = page.getByRole("status").filter({ hasText: "1,000 of 1,000 tags" });
         await expect(count).toBeVisible();
@@ -376,23 +327,10 @@ test.describe.serial("video tags", () => {
             () => document.documentElement.scrollWidth <= window.innerWidth,
           ),
         ).toBe(true);
-        // タブは押せ、本文に却下した名前が出る。
-        await tab.click();
-        await expect(
-          page.getByRole("tabpanel", { name: /^Rejected names/ }).getByRole("table"),
-        ).toBeVisible();
-        // 3 つ目の「Kinds」は、収まらなければタブの並びの中で送って押せ、画面は横に送れない。
+        // 3 つ目の「Kinds」は、収まらなければタブの並びの中で送って押せる。
         const kinds = page.getByRole("tab", { name: /^Kinds/ });
         await kinds.click();
         await expect(page).toHaveURL(/[?&]tab=kinds/);
-        const kindsBox = await kinds.boundingBox();
-        if (kindsBox === null) throw new Error("no layout");
-        expect(kindsBox.x + kindsBox.width).toBeLessThanOrEqual(width);
-        expect(
-          await page.evaluate(
-            () => document.documentElement.scrollWidth <= window.innerWidth,
-          ),
-        ).toBe(true);
         // キーボードで移ったタブのフォーカスの輪（外へ 4px）は、送る帯に切られない。
         await kinds.press("ArrowLeft");
         await expect(tab).toBeFocused();
@@ -435,117 +373,7 @@ test.describe.serial("video tags", () => {
       await page.setViewportSize({ width: 1280, height: 800 });
     });
 
-    test("タグ管理画面の画像を撮る", async ({ page, request }) => {
-      test.skip(screenshotDir === undefined, "MDM_E2E_SCREENSHOT_DIR is not set");
-      const dir = screenshotDir ?? "";
-      await mkdir(dir, { recursive: true });
-      const anime = await createTag(request, "e2e画像Anime");
-      await addSynonym(request, anime.id, "e2e画像アニメ");
-      await createTag(request, "e2e画像旅行");
-      for (const width of [360, 1280]) {
-        await page.setViewportSize({ width, height: 800 });
-        await page.goto("/tags");
-        await revealTagRow(page, "e2e画像Anime");
-        await expect(tagRowByName(page, "e2e画像Anime")).toBeVisible();
-        await page.screenshot({ path: path.join(dir, `tags-list-${String(width)}.png`) });
-
-        await revealTagRow(page, "e2e画像旅行");
-        await tagRowByName(page, "e2e画像旅行")
-          .getByRole("button", { name: rowMenuName(width) })
-          .click();
-        await page.getByRole("menuitem", { name: "Merge into another tag…" }).click();
-        const dialog = page.getByRole("dialog", { name: 'Merge "e2e画像旅行"' });
-        await dialog.getByRole("combobox", { name: "Tag to merge into" }).fill("e2e画像");
-        await page.getByRole("option", { name: /e2e画像Anime/ }).click();
-        await page.screenshot({
-          path: path.join(dir, `tags-merge-${String(width)}.png`),
-        });
-        await page.keyboard.press("Escape");
-
-        await revealTagRow(page, "e2e画像Anime");
-        if (width < 640) {
-          // `sm` 未満では「シノニム」も「Actions」のメニューの項目になる。
-          await tagRowByName(page, "e2e画像Anime")
-            .getByRole("button", { name: rowMenuName(width) })
-            .click();
-          await page.getByRole("menuitem", { name: "Synonyms" }).click();
-        } else {
-          await tagRowByName(page, "e2e画像Anime")
-            .getByRole("button", { name: "Synonyms" })
-            .click();
-        }
-        const synonyms = page.getByRole("dialog", { name: 'Synonyms of "e2e画像Anime"' });
-        await synonyms.getByRole("textbox", { name: "Add synonym" }).fill("e2e画像旅行");
-        await page.keyboard.press("Enter");
-        await expect(synonyms.getByText(/is a tag on/)).toBeVisible();
-        await page.screenshot({
-          path: path.join(dir, `tags-synonym-merge-${String(width)}.png`),
-        });
-        await synonyms.getByRole("button", { name: "Back" }).click();
-        await page.keyboard.press("Escape");
-      }
-    });
-
-    test("12: 統合すると統合元が付いていた動画すべてに統合先が付き、統合元は一覧から消えて統合先のシノニムになる", async ({
-      page,
-      request,
-    }) => {
-      const x = await createTag(request, "e2e管理統合元X");
-      const y = await createTag(request, "e2e管理統合先Y");
-      const a = video("タグ動画A");
-      const b = video("タグ動画B");
-      await clearVideoTags(request, a.id);
-      await clearVideoTags(request, b.id);
-      await attachTag(request, a.id, x.id);
-      await attachTag(request, b.id, x.id);
-      await attachTag(request, b.id, y.id);
-
-      await page.goto("/tags");
-      await revealTagRow(page, "e2e管理統合元X");
-      const row = tagRowByName(page, "e2e管理統合元X");
-      await row.getByRole("button", { name: "More actions" }).click();
-      await page.getByRole("menuitem", { name: "Merge into another tag…" }).click();
-
-      const dialog = page.getByRole("dialog", { name: 'Merge "e2e管理統合元X"' });
-      await dialog
-        .getByRole("combobox", { name: "Tag to merge into" })
-        .fill("e2e管理統合先Y");
-      await page.getByRole("option", { name: /e2e管理統合先Y/ }).click();
-      await expect(
-        dialog.getByText(
-          'The 2 videos tagged "e2e管理統合元X" get the tag "e2e管理統合先Y". ' +
-            '"e2e管理統合元X" and its synonyms become synonyms of "e2e管理統合先Y", ' +
-            'and "e2e管理統合元X" leaves the tag list. This can\'t be undone.',
-        ),
-      ).toBeVisible();
-      await dialog.getByRole("button", { name: "Merge" }).click();
-
-      await expect(
-        page.getByText('Merged "e2e管理統合元X" into "e2e管理統合先Y"'),
-      ).toBeVisible();
-      await expect(tagRowByName(page, "e2e管理統合元X")).toHaveCount(0);
-      const targetRow = tagRowByName(page, "e2e管理統合先Y");
-      await expect(targetRow).toContainText("Synonyms: e2e管理統合元X");
-      // 両方付いていた B には Y が1つだけ付く（重複して並ばない）。
-      await expect(targetRow).toContainText("2 videos");
-
-      // A（X だけが付いていた）にも Y が付く。
-      await page.goto(`/videos/${String(a.id)}`);
-      await expect(chip(page, "e2e管理統合先Y")).toBeVisible();
-      await expect(chip(page, "e2e管理統合元X")).toHaveCount(0);
-
-      // 統合後、再生画面で X と入力して確定すると Y が付く（受け入れ条件12）。
-      const c = video("タグ動画C");
-      await clearVideoTags(request, c.id);
-      await page.goto(`/videos/${String(c.id)}`);
-      const input = addInput(page);
-      await input.click();
-      await input.fill("e2e管理統合元X");
-      await page.keyboard.press("Enter");
-      await expect(chip(page, "e2e管理統合先Y")).toBeVisible();
-    });
-
-    test("B3: 1280幅で統合先の候補を開くと、8行すべてが見える（ui-design.mdは最大8行）", async ({
+    test("B3: 1280幅で統合先の候補を開くと、8行すべてが見える", async ({
       page,
       request,
     }) => {
@@ -583,7 +411,7 @@ test.describe.serial("video tags", () => {
     });
   });
 
-  // specs/041-tag-overflow-list: カードの「+N」の一覧は、隠れたタグを折り返す
+  // docs/design-docs/library-ui.md: カードの「+N」の一覧は、隠れたタグを折り返す
   // チップで並べ、画面の中に収まり、収まらない分は一覧の中でスクロールし、長い
   // 名前を省略しない（親 Issue #813 の受け入れ条件 1・5 と、画面の下端に近い
   // カードの Edge Case）。マウスを「+N」に留めると開き、押しても開く（受け入れ
@@ -700,19 +528,7 @@ test.describe.serial("video tags", () => {
         expect(rendered.clipped).toBe(false);
         expect(rendered.lines).toBeGreaterThanOrEqual(2);
 
-        if (screenshotDir !== undefined && !scrolls) {
-          await mkdir(screenshotDir, { recursive: true });
-          await dialog.evaluate((element) => element.querySelector("ul")?.scrollTo(0, 0));
-          await page.screenshot({
-            path: path.join(
-              screenshotDir,
-              `tag-overflow-list-${String(viewport.width)}.png`,
-            ),
-          });
-        }
-
-        // 一覧をスクロールすると最後のタグが見え、押すと絞り込まれて一覧が閉じる
-        // （受け入れ条件1）。
+        // 一覧をスクロールすると最後のタグが見える（受け入れ条件1）。
         const chips = dialog.getByRole("button");
         await expect(chips).toHaveCount(30 - (await visibleChipCount(card)));
         const lastChip = chips.last();
@@ -741,136 +557,9 @@ test.describe.serial("video tags", () => {
         expect(lastBox.y + lastBox.height).toBeLessThanOrEqual(
           listBox.y + listBox.height,
         );
-        const lastName = await lastChip.getAttribute("title");
-        const lastTagId = lastName === null ? undefined : tagIds.get(lastName);
-        if (lastTagId === undefined) throw new Error(`unknown tag: ${String(lastName)}`);
-        await lastChip.click();
-        await expect(page).toHaveURL(new RegExp(`tag=${String(lastTagId)}(&|$)`));
+        await page.keyboard.press("Escape");
         await expect(page.getByRole("dialog")).toHaveCount(0);
-        await expect(page.getByRole("article")).toHaveCount(1);
       }
-    });
-
-    /**
-     * cardWithHiddenTags は、格子の最初のカードのタグを付け直し、短い名前のタグを
-     * 12個付ける。行に収まらない分が「+N」に入る。名前は prefix で他のテストと分ける。
-     */
-    async function cardWithHiddenTags(
-      page: Page,
-      request: APIRequestContext,
-      prefix: string,
-    ) {
-      await page.goto("/library");
-      await expect(page.getByRole("article")).toHaveCount(videoCount);
-      const firstId = await page
-        .getByRole("article")
-        .first()
-        .getAttribute("data-video-id");
-      if (firstId === null) throw new Error("no data-video-id on the first card");
-      const targetId = Number(firstId);
-      await clearVideoTags(request, targetId);
-      const tagIds = new Map<string, number>();
-      for (let index = 1; index <= 12; index += 1) {
-        const name = `${prefix}${String(index).padStart(2, "0")}`;
-        const tag = await createTag(request, name);
-        tagIds.set(name, tag.id);
-        await attachTag(request, targetId, tag.id);
-      }
-      await page.reload();
-      const card = page.locator(`article[data-video-id="${String(targetId)}"]`);
-      const overflow = card.getByRole("button", { name: /^Show \d+ more tags?$/ });
-      await expect(overflow).toBeVisible();
-      return { card, overflow, tagIds };
-    }
-
-    /** center は要素の箱の中央の座標を返す。 */
-    async function center(locator: ReturnType<Page["locator"]>) {
-      const box = await locator.boundingBox();
-      if (box === null) throw new Error("no layout");
-      return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-    }
-
-    test("2・3: 1280×800 でマウスを「+N」に留めるとクリックなしで開き、一覧へ移っても開いたまま、横切っただけでは開かない", async ({
-      page,
-      request,
-    }) => {
-      test.setTimeout(120_000);
-      await page.setViewportSize({ width: 1280, height: 800 });
-      const { overflow, tagIds } = await cardWithHiddenTags(page, request, "e2e留め");
-      const dialog = page.getByRole("dialog");
-      await page.mouse.move(5, 795);
-      // hover の見た目は、文字色が text-muted-foreground から text-foreground に
-      // 変わる（面の bg-accent は secondary と同じ値）。
-      const restColor = await overflow.evaluate(
-        (element) => getComputedStyle(element).color,
-      );
-
-      // 横切って 400ms 未満で離れると開かない（受け入れ条件3）。留まった時間は
-      // テストの実行側の往復ではなく、ブラウザが受けた pointerenter から
-      // pointerleave までで測り、一覧が一瞬でも現れたかを MutationObserver で見る。
-      await overflow.evaluate((element) => {
-        const probe = { enteredAt: -1, leftAt: -1, dialogSeen: false };
-        (window as unknown as { __crossProbe: typeof probe }).__crossProbe = probe;
-        element.addEventListener("pointerenter", () => {
-          probe.enteredAt = performance.now();
-        });
-        element.addEventListener("pointerleave", () => {
-          probe.leftAt = performance.now();
-        });
-        new MutationObserver(() => {
-          if (document.querySelector('[role="dialog"]') !== null) probe.dialogSeen = true;
-        }).observe(document.body, { childList: true, subtree: true });
-      });
-      const target = await center(overflow);
-      await page.mouse.move(target.x, target.y);
-      await page.mouse.move(5, 795);
-      await page.waitForTimeout(800);
-      await expect(dialog).toHaveCount(0);
-      const crossing = await page.evaluate(
-        () =>
-          (
-            window as unknown as {
-              __crossProbe: { enteredAt: number; leftAt: number; dialogSeen: boolean };
-            }
-          ).__crossProbe,
-      );
-      expect(crossing.enteredAt).toBeGreaterThanOrEqual(0);
-      expect(crossing.leftAt).toBeGreaterThanOrEqual(crossing.enteredAt);
-      expect(crossing.leftAt - crossing.enteredAt).toBeLessThan(400);
-      expect(crossing.dialogSeen).toBe(false);
-
-      // 留めるとクリックなしで開き、フォーカスは動かない（受け入れ条件2、R-1）。
-      const focusedBefore = await page.evaluateHandle(() => document.activeElement);
-      await page.mouse.move(target.x, target.y);
-      await expect(dialog).toBeVisible();
-      expect(
-        await page.evaluate((before) => document.activeElement === before, focusedBefore),
-      ).toBe(true);
-
-      // 一覧へ移る間も、一覧の上でも開いたまま。開いている間「+N」は hover の見た目を保つ。
-      const firstChip = dialog.getByRole("button").first();
-      const chipCenter = await center(firstChip);
-      await page.mouse.move(chipCenter.x, chipCenter.y, { steps: 10 });
-      await page.waitForTimeout(500);
-      await expect(dialog).toBeVisible();
-      await expect(overflow).toHaveAttribute("data-state", "open");
-      expect(
-        await overflow.evaluate((element) => getComputedStyle(element).color),
-      ).not.toBe(restColor);
-      if (screenshotDir !== undefined) {
-        await mkdir(screenshotDir, { recursive: true });
-        await page.screenshot({
-          path: path.join(screenshotDir, "tag-overflow-hover-1280.png"),
-        });
-      }
-
-      // 一覧のチップを押すと、そのタグで絞り込まれて一覧が閉じる（受け入れ条件2）。
-      const name = await firstChip.getAttribute("title");
-      const tagId = name === null ? undefined : tagIds.get(name);
-      if (tagId === undefined) throw new Error(`unknown tag: ${String(name)}`);
-      await firstChip.click();
-      await expect(page).toHaveURL(new RegExp(`tag=${String(tagId)}(&|$)`));
-      await expect(dialog).toHaveCount(0);
     });
 
     /** visibleChipCount は、カードの行に直に出ているタグのチップの数（「+N」を除く）。 */

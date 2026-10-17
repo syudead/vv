@@ -44,7 +44,7 @@ import { useInView } from "./useInView";
 import { useShelfWrites } from "./useShelfWrites";
 
 /**
- * HomePage は `/` のホームである（specs/057-home/ui-design.md「Home」）。棚を上から 1 行ずつ
+ * HomePage は `/` のホームである（docs/design-docs/home.md「Home」）。棚を上から 1 行ずつ
  * 並べ、カードを 1 回押すと再生する。トップバーには検索欄だけを置き、送るとライブラリで
  * 探す。
  */

@@ -10,7 +10,7 @@ import { groupsIn, groupsWithMembers } from "./libraryItems";
 import { applyTagToTags } from "./tagOrder";
 
 /**
- * defaultSort は並び順が指定されていないときの値である（data-model.md 1.）。
+ * defaultSort は並び順が指定されていないときの値である。
  *
  * 鍵の正規化がこの既定を吸収する。`/` と `/?sort=addedDesc` は利用者から見て
  * 同じ一覧なので、片方で保存した控えをもう片方で拾えないと復元が取りこぼす。
@@ -19,7 +19,7 @@ const defaultSort: VideoSort = "addedDesc";
 
 /**
  * ListKey は一覧を一意に決める条件である（検索語・視聴状態・再生可否・お気に入りのみ・並び順・
- * seed、フォルダ画面ではフォルダも。specs/013-library-search/contracts/list-url.md）。
+ * seed、フォルダ画面ではフォルダも。docs/design-docs/catalog-organization.md）。
  */
 export interface ListKey {
   /** 検索語。前後の空白は鍵の正規化が落とす。 */
@@ -30,7 +30,7 @@ export interface ListKey {
   playable?: boolean;
   /**
    * お気に入りのみか。省略すると偽と同じ鍵になる。お気に入りのみの一覧と絞らない一覧の
-   * 控えを取り違えない（specs/035-favorites/ui-design.md「Filter menu」）。
+   * 控えを取り違えない。
    */
   favorite?: boolean;
   /** 並び順。省略すると既定値と同じ鍵になる。 */
@@ -44,27 +44,26 @@ export interface ListKey {
   folder?: string;
   /**
    * ライブラリのタグ絞り込み（id の並び。順は問わない、鍵の正規化がそろえる）。
-   * `/?tag=1` から戻って `/` の控えが使われないようにする
-   * （specs/014-video-tags/contracts/list-url.md §1）。
+   * `/?tag=1` から戻って `/` の控えが使われないようにする。
    */
   tags?: readonly number[];
   /**
    * ライブラリの人物・団体の絞り込み（id）。`/?person=1` から戻って `/` の控えが
-   * 使われないようにする（specs/047-video-work-info/contracts/screen-api.md）。
+   * 使われないようにする。
    */
   person?: number;
   organization?: number;
-  /** ライブラリのタグの種類の絞り込み（specs/051-tag-kinds/contracts/screen-api.md）。 */
+  /** ライブラリのタグの種類の絞り込み。 */
   tagKind?: number;
-  /** ライブラリの追加日と長さの絞り込み（specs/052-smart-folders/research.md R-4）。 */
+  /** ライブラリの追加日と長さの絞り込み。 */
   addedWithin?: number;
   minDuration?: number;
   maxDuration?: number;
-  /** ライブラリの「棚に無い動画のみ」（specs/057-home/research.md R-11）。 */
+  /** ライブラリの「棚に無い動画のみ」（docs/design-docs/home.md）。 */
   unshelved?: boolean;
 }
 
-/** ListSnapshot は一覧を離れる直前の状態である（data-model.md 2.）。 */
+/** ListSnapshot は一覧を離れる直前の状態である。 */
 export interface ListSnapshot {
   /** 鍵。ListKey を正規化して連結したもの。 */
   key: string;
@@ -102,7 +101,7 @@ export interface ListSnapshot {
  * held は保持している控えである。
  *
  * **直近の 1 件だけ**を持つ。鍵ごとに溜めると、検索語を変えて回っただけで
- * 数千件の Video がメモリに残る（data-model.md 2.）。
+ * 数千件の Video がメモリに残る。
  *
  * localStorage・sessionStorage には書かない。1 ページ 60 件 × 複数ページの
  * JSON を毎回直列化する費用に対し、得られるのは「タブを閉じても戻れる」ことだけで、
@@ -112,8 +111,7 @@ let held: (ListSnapshot & { expiresAt?: number }) | undefined;
 
 /**
  * ADDED_WITHIN_SNAPSHOT_TTL_MS は追加日の絞り込み（`addedWithin`）のある控えを使える時間である。
- * その絞り込みは今から遡る相対の期間なので、時間が経つと当たる動画が変わる
- * （specs/052-smart-folders/research.md R-4）。控えは鍵の一致だけでは古さが分からないので、
+ * その絞り込みは今から遡る相対の期間なので、時間が経つと当たる動画が変わる。控えは鍵の一致だけでは古さが分からないので、
  * 取ってからこの時間を過ぎたら使わず、1 ページ目から読み直させる。戻る操作（動画を見て
  * 戻る）でスクロールを保てるだけの長さで、期間の端が動いた影響が無視できる短さにする。
  */
@@ -275,8 +273,7 @@ export function applyVisibilityToListSnapshot(
 }
 
 /**
- * applyFavoritesToListSnapshot はお気に入りの付け外しの結果を控えへ反映する
- * （specs/035-favorites/research.md R-6）。動画の項目は `favorite` を差し替え、グループの
+ * applyFavoritesToListSnapshot はお気に入りの付け外しの結果を控えへ反映する。動画の項目は `favorite` を差し替え、グループの
  * 項目は戻ったときに取り直す印を付ける（グループの値はサーバーから取り直す）。
  * お気に入りのみで絞った一覧でも、その場では項目を外さない。
  */
@@ -310,7 +307,7 @@ export function applyFavoritesToListSnapshot(
 
 /**
  * clearListSnapshot は控えを捨てる。取り込みが終わって一覧を読み直すときに
- * 呼ぶ — 取り込む前の一覧に戻してはならない（data-model.md 2.）。
+ * 呼ぶ — 取り込む前の一覧に戻してはならない。
  */
 export function clearListSnapshot(): void {
   held = undefined;
@@ -319,7 +316,7 @@ export function clearListSnapshot(): void {
 /**
  * applyTagToListSnapshot は控えの中の動画たちのタグを書き換える。付け外しの
  * 直後に、控えを取り直さず結果を反映するために使う。action = "remove" で絞り込みに合わなくなった項目も、その場では
- * 一覧から外さない（次の読み込みで反映する。contracts/tags-api.md §5）。
+ * 一覧から外さない（次の読み込みで反映する）。
  * 対象の動画をメンバーに持つグループの項目には、戻ったときに取り直す印を付ける。
  */
 export function applyTagToListSnapshot(

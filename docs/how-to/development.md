@@ -33,6 +33,9 @@ restart and the Vite development server.
 
 ## Validate changes
 
+Read the [testing policy](../design-docs/testing.md) when writing or changing
+Go or Web tests; it defines their scope, synchronization and fixture choices.
+
 ```bash
 mise exec --command "task check"
 ```
@@ -72,9 +75,9 @@ flowchart LR
   docs --> checks[Checks job]
   groups --> checks
   code -->|yes| push{Push to main or Renovate PR?}
-  push -->|yes| more[E2E in five groups and Docker image build]
+  push -->|yes| more[E2E in four groups and Docker image build]
   code -->|yes| manual{Manual run?}
-  manual -->|yes| e2e[E2E in five groups]
+  manual -->|yes| e2e[E2E in four groups]
 ```
 
 "No" means only Markdown, `docs/` or `specs/` changed. For a code change, CI
@@ -84,7 +87,7 @@ lint with the SPA build check (`task build-check-web`), and the Vitest suite
 split into three shards (`task test-web-report -- --shard=1/3`). `task test-web`
 runs the build check and the whole suite. A check added to `task check` also
 goes into one of these groups in `.github/workflows/ci.yml`, and a new
-`web/e2e/*.e2e.ts` file goes into one of the five E2E groups there;
+`web/e2e/*.e2e.ts` file goes into one of the four E2E groups there;
 `task e2e-groups-check` fails when a file is in no group or in two. Only the Go groups
 restore the Go build cache, and each saves its own copy on a push to `main`.
 Vitest shards by file, so a test file that grows to dominate a shard is split by
@@ -99,7 +102,7 @@ image, because the Renovate routine merges them without a person
 To run browser E2E on a branch before it merges, start the CI workflow by hand
 (`workflow_dispatch`) from the Actions tab or with
 `gh workflow run ci.yml --ref <branch>`. A manual run treats the branch as a
-code change and runs every `Checks` group and the five E2E groups; it does not
+code change and runs every `Checks` group and the four E2E groups; it does not
 build the Docker image.
 
 The Go and Vitest test groups run the same tests as `task test-go` and

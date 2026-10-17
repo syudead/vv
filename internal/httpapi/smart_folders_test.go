@@ -14,7 +14,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// スマートフォルダの経路（specs/052-smart-folders/contracts/screen-api.md）を、本物の認証・保存層・
+// スマートフォルダの経路を、本物の認証・保存層・
 // 経路をつないで確かめる。中身は library_test.go の libraryFixture で、show と pair が自動グループ、
 // solo がグループに入らない動画である。公開は ep1・ep2・p1・solo。
 
@@ -163,7 +163,7 @@ func TestChangeAndDeleteSmartFolderStatuses(t *testing.T) {
 }
 
 // ゲストはどの書き込みも 401 で、読み取りには settings と favorite と視聴の値が無い。見せる動画の無い
-// フォルダは一覧から外れ、開くと 404 である（research.md R-8）。
+// フォルダは一覧から外れ、開くと 404 である。
 func TestSmartFolderGuestAccess(t *testing.T) {
 	f := newLibraryFixture(t)
 	shown := f.smartFolderTag(t, "公開", "solo", "ep10")
@@ -201,7 +201,6 @@ func TestSmartFolderGuestAccess(t *testing.T) {
 }
 
 // 所有者の詳細の settings は条件と並べ順を返し、消したタグを missing に名指す。中身は子フォルダだけになる
-// （research.md R-9）。
 func TestSmartFolderSettingsNameAMissingTag(t *testing.T) {
 	f := newLibraryFixture(t)
 	gone := f.smartFolderTag(t, "消す", "solo")
@@ -267,7 +266,7 @@ func TestSmartFolderItemsPage(t *testing.T) {
 }
 
 // GET /api/smart-folders/cards: ids が無いか空か整数でないか 61 件以上なら 400 invalid_request。カードは
-// 求めた順で、ゲストに見せないフォルダと無い id は入らない（data-model.md「Cards read」）。
+// 求めた順で、ゲストに見せないフォルダと無い id は入らない。
 func TestSmartFolderCardsStatuses(t *testing.T) {
 	f := newLibraryFixture(t)
 	shown := f.smartFolderTag(t, "公開", "solo", "ep10")

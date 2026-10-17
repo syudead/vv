@@ -2,10 +2,10 @@ import { apiFetch, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 import { dropSnapshotAfter } from "./groups";
 
-// スマートフォルダの画面 API（specs/052-smart-folders/contracts/screen-api.md）。型は
+// スマートフォルダの画面 API。型は
 // api/openapi.yaml からの生成物を使う。読み取りはゲストも読め、書き込みは所有者だけである。
 // ライブラリの一覧はフォルダの項目を要約で返し、カードの値は readSmartFolderCards で読む
-// （research.md R-14）。
+//
 
 export type SmartRule = components["schemas"]["SmartRule"];
 export type SmartRuleRef = components["schemas"]["SmartRuleRef"];
@@ -79,7 +79,7 @@ export function listSmartFolderItems(
 
 /**
  * readSmartFolderCards は画面に出たフォルダ `ids`（1〜60 件）のカードの値を、`ids` の順に取得する
- * （GET /api/smart-folders/cards、data-model.md「Cards read」）。無いか見せないフォルダは入らない。
+ * （GET /api/smart-folders/cards）。無いか見せないフォルダは入らない。
  * `ids` が空なら送らずに空を返す。
  */
 export async function readSmartFolderCards(

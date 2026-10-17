@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ホームの棚のグループの項目は、カードに要る値だけで作る（specs/057-home/research.md R-12）。集計の値
+// ホームの棚のグループの項目は、カードに要る値だけで作る（docs/design-docs/home.md）。集計の値
 // （本数、合計、追加日時、視聴の本数）は判定のときに読んだ根の値（group_root_values の行）から、開くメンバー
 // とフォルダの絵柄に差し込むサムネイルは、ページのカードの全部をまとめた 1 つの問い合わせで、再生順の
 // 先頭から選ぶ。メンバーの全部は読まない（ライブラリの項目の loadGroups と違い、Members は nil である）。

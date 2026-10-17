@@ -88,8 +88,7 @@ function firstItemText(setting: WorkInfoPluginSetting): string {
 }
 
 /**
- * isStale は欄の値が選択肢の外の保存値のままかである。先頭の項目か選択肢を選べば外れる
- * （specs/056-plugin-tooling/ui-design.md「Settings dialog」）。
+ * isStale は欄の値が選択肢の外の保存値のままかである。先頭の項目か選択肢を選べば外れる。
  */
 function isStale(setting: WorkInfoPluginSetting, draft: SettingDraft): boolean {
   return (
@@ -302,8 +301,8 @@ function SettingField({
 /**
  * WorkInfoPluginSettingsDialog は「Settings」が開く設定の値のダイアログである。宣言の順に欄を
  * 並べ、「Save」は変わったキーだけを送る（消す値は null）。秘密の欄は常に空で始まり、保存済みの
- * 値を欄に戻さない（specs/049-work-info-plugins/ui-design.md「Settings dialog」）。既定値に戻した
- * 欄は null を送る（specs/056-plugin-tooling/ui-design.md「Settings dialog」）。
+ * 値を欄に戻さない。既定値に戻した
+ * 欄は null を送る。
  */
 export default function WorkInfoPluginSettingsDialog({
   plugin,

@@ -225,7 +225,7 @@ describe("Sidebar", () => {
       "Organizations",
       "Duplicates",
     ]);
-    // ホームはトップ、ライブラリは `/library`（specs/057-home/ui-design.md「Sidebar and library」）。
+    // ホームはトップ、ライブラリは `/library`（docs/design-docs/home.md「Sidebar and library」）。
     expect(within(main).getByRole("link", { name: "Home" }).getAttribute("href")).toBe(
       "/",
     );

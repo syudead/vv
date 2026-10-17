@@ -21,7 +21,7 @@ interface PreviewOptions {
   /**
    * Video.seekThumbnailUrl。スプライトの配置情報を返す。無ければ枠もスプライトの取得も無い、
    * 取得できなかったときの形（時刻の pill だけ）で出す（チャプターのある動画、
-   * specs/056-media-info/ui-design.md「Seek preview title」）。
+   * docs/design-docs/media-information.md「Seek preview title」）。
    */
   thumbnailUrl: string | undefined;
   /** 位置のチャプターのタイトル。時刻の上の行に出す。チャプターの外は undefined。 */
@@ -52,8 +52,7 @@ export function seekPreviewTarget(
 type PreviewState = "hidden" | "loading" | "ready" | "unavailable";
 
 /**
- * attachSeekPreview はシークバーにプレビューを取り付ける
- * （specs/021-seek-thumbnail-sprite/research.md R-5）。
+ * attachSeekPreview はシークバーにプレビューを取り付ける。
  *
  * 最初に出すときに配置情報を取得し、必要になったシートを 1 回だけ取得して object URL
  * で持つ。持っているシートは取り付けの間ずっと保持し、取り外しで解放する。取得は

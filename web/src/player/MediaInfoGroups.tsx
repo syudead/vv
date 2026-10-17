@@ -81,7 +81,7 @@ function language(code: string | undefined): string | undefined {
 
 /**
  * audioTrackText は音声トラック 1 本の項目の文字である。番号（2 本以上のとき）、コーデック、
- * 並び、言語の名前、題名、Default の順につなぎ、無い部分は飛ばす（ui-design.md「Video page: groups」）。
+ * 並び、言語の名前、題名、Default の順につなぎ、無い部分は飛ばす。
  */
 export function audioTrackText(track: AudioTrack, number?: number): string {
   const m = t.player.mediaInfo;
@@ -272,8 +272,7 @@ function BroadcastGroup({ broadcast }: { broadcast: Broadcast }) {
 }
 
 /**
- * MediaInfoGroups は情報欄の技術情報の行の下の、動画の追加の情報のまとまりである
- * （specs/056-media-info/ui-design.md「Video page: groups」）。Video・Audio・Subtitles・
+ * MediaInfoGroups は情報欄の技術情報の行の下の、動画の追加の情報のまとまりである。Video・Audio・Subtitles・
  * Embedded・Broadcast の順に、項目のあるまとまりだけを出す。`mediaInfo` の無い動画では何も
  * 描かない（情報欄は今までどおり）。チャプターはプレーヤーに渡し、ここには出さない。
  */

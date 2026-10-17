@@ -22,13 +22,12 @@ import (
 // 競合は最後の書き込みが残る（upsert）。複数のタブ・端末での同時再生は
 // この単純化で割り切る。
 //
-// play があって ContentKey が空でないときは、同じ取引で視聴履歴を 1 件書く
-// （specs/043-watch-history/data-model.md）。playback_id が一意なので、同じ視聴の 2 回目以降の
+// play があって ContentKey が空でないときは、同じ取引で視聴履歴を 1 件書く。playback_id が一意なので、同じ視聴の 2 回目以降の
 // 保存は何も足さず、時刻と題名は最初の保存のものに留まる。時刻はサーバーの現在時刻
-// （Unix ミリ秒）で、クライアントの時計は使わない（research.md R-3）。
+// （Unix ミリ秒）で、クライアントの時計は使わない。
 //
 // 保存で domain.WatchState が変わるときだけ、確定後に domain.SmartFoldersChanged を発行する
-// （specs/052-smart-folders/research.md R-12）。再生中は数秒ごとに保存されるので、視聴状態の
+// （docs/design-docs/catalog-organization.md）。再生中は数秒ごとに保存されるので、視聴状態の
 // 変わらない保存は知らせない。保存のたびに、ホームの続きから見る棚の保持は捨てる
 // （home_shelf_cache.go）。
 func (p *PlaybackStore) SaveProgress(
@@ -77,7 +76,7 @@ func (p *PlaybackStore) SaveProgress(
 		return domain.Progress{}, fmt.Errorf("cannot save the playback position (%s): %w", contentKey, err)
 	}
 	// 続きから見る棚は最後に再生した順なので、視聴状態の変わらない保存でも並びが変わる
-	// （specs/057-home/research.md R-13）。
+	// （docs/design-docs/home.md）。
 	p.db.homeShelves.dropKind(domain.HomeShelfContinue)
 
 	progress.UpdatedAt = updatedAt.Truncate(time.Second)

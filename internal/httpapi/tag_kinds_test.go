@@ -102,7 +102,7 @@ func TestDeleteTagKindReturnsNoContent(t *testing.T) {
 	}
 }
 
-// 契約の表（specs/051-tag-kinds/contracts/screen-api.md）の誤りのすべての状態。
+// 契約の表の誤りのすべての状態。
 func TestTagKindErrorsFollowTheContract(t *testing.T) {
 	taken := &domain.TagKindNameConflict{Kind: domain.TagKindRef{ID: 1, Name: "Genre"}}
 	nameRules := []struct {
@@ -192,7 +192,7 @@ func TestTagKindRoutesAreOwnerOnly(t *testing.T) {
 	}
 }
 
-// タグの 3 つの形は種類を { id, name } か null で載せる（specs/051-tag-kinds/research.md R-4）。
+// タグの 3 つの形は種類を { id, name } か null で載せる。
 func TestTagShapesCarryKind(t *testing.T) {
 	genre := &domain.TagKindRef{ID: 1, Name: "Genre"}
 	fake := &fakeTags{tags: []domain.Tag{

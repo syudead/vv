@@ -20,7 +20,7 @@ import { useAudience } from "../auth/audience";
 import { routePath } from "../auth/AuthGate";
 import { ONBOARDING_PATH, onboardingRedirect } from "./onboardingRoute";
 
-// オンボードのゲート（specs/057-home/ui-design.md「Onboarding」、research.md R-3・R-4）。
+// オンボードのゲート（docs/design-docs/home.md「Onboarding」、research.md R-3・R-4）。
 // 所有者の段階を読み、`done` でない間はどの経路も `/welcome` へ置き換える。段階は `home` の
 // 知らせとつなぎ直しで読み直し、ほかの端末での変化に合わせる。この画面から書いた段階は
 // api/onboarding.ts の知らせで、知らせを待たずに当てる。

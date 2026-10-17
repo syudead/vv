@@ -115,7 +115,6 @@ func TestUpdateVideoTagsRejectsOutOfRangeVideoIDs(t *testing.T) {
 }
 
 // 名前で付けるタグが規則を外れれば、その理由を reason で返す
-// （specs/023-english-i18n/contracts/error-api.md §1）。
 func TestUpdateVideoTagsInvalidTagNameReason(t *testing.T) {
 	cases := []struct {
 		problem domain.TagNameProblem

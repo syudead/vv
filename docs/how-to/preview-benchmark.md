@@ -4,8 +4,7 @@ A PR that changes how motion previews (hover playback on library cards) or seek
 thumbnails (the preview over the player's seek bar) are generated records
 wall-clock time and peak memory before and after the change, with the same
 inputs on the same environment. `scripts/previewbench` runs the production
-generation code; the reasoning is in
-[specs/019-preview-input-seek/research.md R-4](../../specs/019-preview-input-seek/research.md#r-4-measurement-method).
+generation code, so the measurement includes the work the application runs.
 
 The measurement runs in this order; step 4 applies only when comparing
 approaches for long HD videos.

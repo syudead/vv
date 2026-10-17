@@ -1,7 +1,7 @@
 import { request } from "./client";
 import type { components } from "./gen/openapi";
 
-// オンボードの画面 API（specs/057-home/contracts/screen-api.md）。型は api/openapi.yaml からの
+// オンボードの画面 API（docs/design-docs/home.md）。型は api/openapi.yaml からの
 // 生成物を使う。段階は設定に 1 つで持ち、どの端末からも同じものを読む（research.md R-3）。
 // どれも所有者だけ。
 

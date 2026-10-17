@@ -4,11 +4,10 @@ import "fmt"
 
 // 画像編集の 1 回の実行の値である。サムネイルの編集のセッション（internal/app）と、
 // 提供元のアダプタ（internal/comfyui）の間で受け渡す
-// （specs/045-comfyui-thumbnails/data-model.md、contracts/workflow.md）。
+//
 
-// ThumbnailEditState はサムネイルの編集のセッションの状態である（data-model.md の Edit session）。
+// ThumbnailEditState はサムネイルの編集のセッションの状態である。
 // 提供元の状態はアダプタが queued から cancelled までのどれかに対応させる
-// （contracts/workflow.md の Run states）。
 type ThumbnailEditState string
 
 const (
@@ -33,7 +32,7 @@ func (s ThumbnailEditState) Terminal() bool {
 	return s == ThumbnailEditSucceeded || s == ThumbnailEditFailed || s == ThumbnailEditCancelled
 }
 
-// ImageEditFailure は画像編集が失敗した理由である（contracts/workflow.md の Failure reasons）。
+// ImageEditFailure は画像編集が失敗した理由である。
 type ImageEditFailure string
 
 const (
@@ -75,7 +74,7 @@ type ImageEditInput struct {
 	// Frame は編集するコマの PNG である。
 	Frame []byte
 	// Mask は塗った範囲の PNG で、コマと同じ大きさ、塗った画素が不透明な白、残りが不透明な黒である。
-	// nil なら塗っていない。アダプタはコマの大きさの真っ白なマスクを送る（research.md R-3）。
+	// nil なら塗っていない。アダプタはコマの大きさの真っ白なマスクを送る。
 	Mask []byte
 	// Reference は参考画像である。nil なら参考画像の無いワークフローを使う。
 	Reference []byte
@@ -93,7 +92,7 @@ type ImageEditJob struct {
 }
 
 // ImageEditProgress は実行のステップの進み具合で、Max ステップのうち Value まで進んだことを表す。
-// 提供元が報告したときだけあり、実行の状態は決めない（contracts/workflow.md の Run states）。
+// 提供元が報告したときだけあり、実行の状態は決めない。
 type ImageEditProgress struct {
 	Value int
 	Max   int

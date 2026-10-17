@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// スマートフォルダのカードの読み出し（specs/052-smart-folders/data-model.md「Cards read」、
-// research.md R-14）。
+// スマートフォルダのカードの読み出し。
 
 func smartFolderCards(t *testing.T, db *DB, audience domain.Audience, ids ...int64) []domain.SmartFolderCard {
 	t.Helper()
@@ -119,7 +118,7 @@ func TestSmartFolderCardsLeaveOutFoldersHiddenFromGuests(t *testing.T) {
 }
 
 // フォルダの一覧はどの深さのものも名前の順に親の id とともに返り、ゲストには再生順の空のフォルダが
-// 入らない（GET /api/smart-folders、research.md R-8）。
+// 入らない（GET /api/smart-folders）。
 func TestListSmartFoldersByNameWithParents(t *testing.T) {
 	db, ids := itemsFixture(t)
 	solo, x := ids[fixturePath("/media/solo.mp4")], ids[fixturePath("/media/mixed/x.mp4")]
@@ -154,7 +153,7 @@ func TestListSmartFoldersByNameWithParents(t *testing.T) {
 	}
 }
 
-// 経路の条件が無い実体を名指すフォルダは、所有者には値の無いカードで返る（research.md R-9）。
+// 経路の条件が無い実体を名指すフォルダは、所有者には値の無いカードで返る。
 func TestSmartFolderCardsOfAFolderWithAMissingTag(t *testing.T) {
 	db, ids := itemsFixture(t)
 	cat := attachNamedTag(t, db, "猫", ids[fixturePath("/media/solo.mp4")])
@@ -210,7 +209,7 @@ func TestSmartFolderCardsApplyPlayableAndFavoriteRules(t *testing.T) {
 }
 
 // 集まりの動画のカードのタグは、ライブラリの項目のタグ（tagsByContentKeys）と同じである。フォルダ名の
-// 表（video_folder_names）は代表だけを持つので（specs/030-video-versions の受け入れ条件 11）、代表で
+// 表（video_folder_names）は代表だけを持つので、代表で
 // ない B のフォルダ名 Y からはどちらにもタグが付かず、代表 A のフォルダ名 X からはどちらにも付く。
 func TestSmartFolderCardTagsOfABundleMatchTheLibraryItem(t *testing.T) {
 	db, ids := folderFixture(t,

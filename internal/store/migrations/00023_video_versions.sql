@@ -1,5 +1,5 @@
 -- +goose Up
--- 同じ動画の別バージョンの集まり（specs/030-video-versions/research.md R-1、data-model.md §1）。
+-- 同じ動画の別バージョンの集まり。
 -- 作り直せない利用者データで、videos への外部キーを張らない。集まりのタグ・再生位置・公開の設定は
 -- video_tags・playback_progress・public_videos に user_key を鍵として置く。
 create table video_bundles (

@@ -1,9 +1,9 @@
 package store
 
-// グループの編集（specs/048-groups/data-model.md「Edits」）。GroupStore は書き込みの取引の中で
+// グループの編集。GroupStore は書き込みの取引の中で
 // 入力を読み、domain の規則（ValidateGroupName・ValidateNesting）で決める。要求が名指した動画・
 // グループ・項目のどれかが無ければ domain.ErrGroupTargetNotFound で、取引を巻き戻すので何も
-// 書かない（research.md R-12）。どの操作も変えたグループの更新日時を進め、それらとその祖先の id を
+// 書かない。どの操作も変えたグループの更新日時を進め、それらとその祖先の id を
 // 確定後に domain.GroupsChanged で知らせる（R-13）。
 
 import (
@@ -138,7 +138,7 @@ func (s *GroupStore) RemoveGroupItems(ctx context.Context, id int64, itemIDs []i
 }
 
 // MoveGroupItem はグループ id の項目 itemID を、項目 afterItemID のすぐ後ろへ移し（nil なら
-// 先頭）、詰め直す（specs/044-playlists/research.md R-3 の規則を共有する）。グループが無ければ
+// 先頭）、詰め直す。グループが無ければ
 // domain.ErrGroupNotFound、どちらかの項目がそのグループに無ければ domain.ErrGroupTargetNotFound。
 // itemID の後ろへ自分を移すのは何も変えない（API はその要求を 400 にする）。
 func (s *GroupStore) MoveGroupItem(ctx context.Context, id, itemID int64, afterItemID *int64) error {
@@ -157,7 +157,7 @@ func (s *GroupStore) MoveGroupItem(ctx context.Context, id, itemID int64, afterI
 	})
 }
 
-// DissolveGroup はグループ id を解散する（research.md R-4）。グループの行と項目を消し、子グループと
+// DissolveGroup はグループ id を解散する。グループの行と項目を消し、子グループと
 // 動画は残し、親からその項目を消して親を詰め直す。自動グループならそのフォルダに ungroup を書き、
 // 同じ取引で索引を作り直すので、作り直しでもう作られない。それで項目が 1 つも残らなくなった親も、
 // 祖先へ向かって同じ取引で解散する（dissolveGroup）。無ければ domain.ErrGroupNotFound。
@@ -167,13 +167,12 @@ func (s *GroupStore) DissolveGroup(ctx context.Context, id int64) error {
 	})
 }
 
-// TagGroup はグループ id をタグにする（research.md R-11）。グループの名前を
+// TagGroup はグループ id をタグにする。グループの名前を
 // domain.NormalizeTagName に通し、名前かシノニムで引けたタグを使うか新しく作り、子孫の全動画の
 // 項目の鍵に手で付け（video_tags）、グループを解散する。1 つの取引で行う。名前がタグ名の規則に
 // 合わなければ domain.ErrInvalidTagName、無ければ domain.ErrGroupNotFound で、何も書かない。
 // 解散で項目が 1 つも残らなくなった親も解散する（DissolveGroup と同じ）。動画のタグを変える所有者の操作なので、
 // タグが実際に付いた鍵ごとに tag_attach の記録を書き、確定後に domain.ActivityChanged も知らせる
-// （specs/055-activity/research.md R-6）。
 func (s *GroupStore) TagGroup(ctx context.Context, id int64) (domain.GroupTag, error) {
 	var out domain.GroupTag
 	err := writeWithEvents(ctx, s.db, "turn the group into a tag", func(tx *sql.Tx) ([]domain.Event, error) {
@@ -517,7 +516,7 @@ func dissolveGroupAndRebuild(ctx context.Context, tx *sql.Tx, id int64) ([]int64
 
 // dissolveGroup はグループ id を dissolveOneGroup で解散し、それで項目が 1 つも残らなくなった親も
 // 同じ道筋で解散する。祖先へ向かって繰り返す（項目を取り除いて空になったグループと同じく、空の
-// グループは残さない。specs/048-groups/data-model.md「Edits」）。解散したグループと、元の親とその
+// グループは残さない。docs/design-docs/catalog-organization.md「Edits」）。解散したグループと、元の親とその
 // 祖先の id と、自動グループを 1 つでも解散したかを返す。id が無ければ domain.ErrGroupNotFound。
 // フォルダの索引の作り直しは呼び出し側が行う。
 func dissolveGroup(ctx context.Context, tx *sql.Tx, id int64) ([]int64, bool, error) {
@@ -569,7 +568,7 @@ type dissolvedGroup struct {
 
 // dissolveOneGroup はグループ id の行と項目を消し（R-4）、子グループと動画は残す。親からその項目を
 // 消して親を詰め直し、親の更新日時を進める。グループのお気に入りとプレイリストの項目も外部キーで
-// 消え（specs/048-groups/research.md R-10）、項目を失ったプレイリストを詰め直して更新日時を進める。
+// 消え、項目を失ったプレイリストを詰め直して更新日時を進める。
 // 自動グループなら同じ取引でそのフォルダに ungroup を書く。無ければ domain.ErrGroupNotFound。
 // 項目を失った親の解散は dissolveGroup が行う。
 func dissolveOneGroup(ctx context.Context, tx *sql.Tx, id int64) (dissolvedGroup, error) {

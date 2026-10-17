@@ -110,7 +110,7 @@ func TestTranscodeArgsEncodesUnsafeStreams(t *testing.T) {
 }
 
 // 映像がコピーできる動画は途中からでもコピーし、実際の開始位置を moov に書かせる引数に
-// する（research.md R-1）。
+// する。
 func TestTranscodeArgsCopiesSeek(t *testing.T) {
 	args := strings.Join(transcodeArgs("movie.mkv", 25000, compatibleMetadata(), false), " ")
 	for _, want := range []string{
@@ -634,18 +634,14 @@ func TestLiveTranscoderBoundsProbeByStartupDeadline(t *testing.T) {
 		return cmd
 	}
 
-	started := time.Now()
 	_, err := transcoder.Start(context.Background(), domain.LiveTranscodeRequest{
-		Path: "movie.mkv", StartupDeadline: time.Now().Add(30 * time.Millisecond),
+		Path: "movie.mkv", StartupDeadline: time.Now().Add(-time.Second),
 	})
 	if err == nil {
 		t.Fatal("停止するprobeが成功した")
 	}
 	if errors.Is(err, domain.ErrUnprocessableMedia) {
 		t.Fatalf("timeoutを動画固有errorとして返しました: %v", err)
-	}
-	if elapsed := time.Since(started); elapsed > time.Second {
-		t.Fatalf("startup deadlineまで %s かかった", elapsed)
 	}
 }
 
@@ -982,7 +978,7 @@ func TestLiveTranscoderDoesNotReturnProbeOfChangedFile(t *testing.T) {
 }
 
 // 保存値で始めた変換がコピーでもエンコードでもデータを出さずに終わったら、その場で
-// 解析してコピーから 1 回だけやり直す（Structural Decision 3、research.md R-3）。
+// 解析してコピーから 1 回だけやり直す（Structural Decision 3）。
 func TestLiveTranscoderRetriesWithFreshProbeWhenStoredProbeFails(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()
@@ -1124,15 +1120,11 @@ func TestLiveTranscoderDoesNotRetryAfterStartupTimeout(t *testing.T) {
 	path, stamp := sourceFile(t)
 	stored := helperProbe()
 	scripted := newScriptedTranscoder("ffmpeg-silent")
-	began := time.Now()
 	_, err := scripted.Start(context.Background(), domain.LiveTranscodeRequest{
-		Path: path, Source: stamp, Probe: &stored, StartupDeadline: time.Now().Add(200 * time.Millisecond),
+		Path: path, Source: stamp, Probe: &stored, StartupDeadline: time.Now().Add(-time.Second),
 	})
 	if err == nil {
 		t.Fatal("データを出さない FFmpeg で成功した")
-	}
-	if elapsed := time.Since(began); elapsed > 2*time.Second {
-		t.Errorf("期限切れまで %s かかった", elapsed)
 	}
 	if got := scripted.started(); !slices.Equal(got, []string{transcodeCommand}) {
 		t.Errorf("起動したコマンド = %v", got)

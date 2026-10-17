@@ -29,8 +29,7 @@ type ProcessingChanged struct{}
 // ScanChanged は直近の走査の状態が変わったことを表す。
 type ScanChanged struct{}
 
-// ScanActivityChanged は取り込み中の今の処理が変わったことを表す
-// （specs/024-import-progress/research.md R-8）。値はメモリにだけあり、受け取る側は
+// ScanActivityChanged は取り込み中の今の処理が変わったことを表す。値はメモリにだけあり、受け取る側は
 // 読み出しの時点の値を使う。
 type ScanActivityChanged struct{}
 

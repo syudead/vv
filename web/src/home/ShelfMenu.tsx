@@ -11,7 +11,7 @@ import {
 import type { ShelfMoves } from "./shelfOrder";
 
 /**
- * ShelfMenu は所有者のフォルダの棚の見出しの「More」である（specs/057-home/ui-design.md
+ * ShelfMenu は所有者のフォルダの棚の見出しの「More」である（docs/design-docs/home.md
  * 「Home」）。「Move up」「Move down」「Remove from home」はどれも押すとすぐ書く。最初の棚に
  * 「Move up」は無く、最後の棚に「Move down」は無い。
  */

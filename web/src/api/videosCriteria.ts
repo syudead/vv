@@ -4,23 +4,20 @@ import type { FolderRef, FolderScope, VideoSort, WatchFilter } from "./client";
  * VideosSource は useVideos が読む一覧である。
  *
  * - `"videos"`: 1本ずつの一覧（`GET /api/videos`）。フォルダ画面の最上位の検索結果が使う。
- * - `"library"`: 動画とグループの項目の一覧（`GET /api/library`）。ライブラリが使う
- *   （specs/017-folder-groups/contracts/library-api.md §1）。
+ * - `"library"`: 動画とグループの項目の一覧（`GET /api/library`）。ライブラリが使う。
  * - フォルダ: そのフォルダの動画（`GET /api/folders/{rootId}/videos`）。フォルダ画面が使う。
  */
 export type VideosSource = "videos" | "library" | FolderRef;
 
 /**
- * VideosCriteria は一覧を取りに行く条件である
- * （specs/013-library-search/contracts/list-url.md の q・watch・playable・sort・seed と、
- * specs/035-favorites の fav）。
+ * VideosCriteria は一覧を取りに行く条件である。
  * 省略した項目はサーバーの既定になる。
  */
 export interface VideosCriteria {
   query?: string;
   watch?: WatchFilter;
   playable?: boolean;
-  /** true ならお気に入りの項目だけにする（specs/035-favorites/contracts/screen-api.md §2）。 */
+  /** true ならお気に入りの項目だけにする。 */
   favorite?: boolean;
   sort: VideoSort;
   /** sort=random のときだけ送る。 */
@@ -32,28 +29,28 @@ export interface VideosCriteria {
   scope?: FolderScope;
   /**
    * 絞り込むタグの id（listVideos だけが受け取る。listFolderVideos には渡さない。
-   * specs/014-video-tags/contracts/tags-api.md §5）。
+   * docs/design-docs/catalog-organization.md）。
    */
   tag?: number[];
   /**
    * 絞り込む人物・団体の id（tag と同じく listFolderVideos には渡さない。
-   * specs/047-video-work-info/contracts/screen-api.md「List parameters `person` and
+   * docs/design-docs/catalog-organization.md「List parameters `person` and
    * `organization`」）。
    */
   person?: number;
   organization?: number;
-  /** 絞り込むタグの種類の id（specs/051-tag-kinds/contracts/screen-api.md）。 */
+  /** 絞り込むタグの種類の id。 */
   tagKind?: number;
   /**
    * 追加日と長さの絞り込み（tag と同じく listFolderVideos には渡さない。
-   * specs/052-smart-folders/research.md R-4）。
+   * docs/design-docs/catalog-organization.md）。
    */
   addedWithin?: number;
   minDuration?: number;
   maxDuration?: number;
   /**
    * true ならホームのどの棚にも一致しない動画だけにする（listLibrary だけが受け取る。
-   * specs/057-home/research.md R-11）。
+   * docs/design-docs/home.md）。
    */
   unshelved?: boolean;
 }
@@ -81,8 +78,7 @@ export function criteriaKey(criteria: VideosCriteria): string {
 
 /**
  * listsSmartFolders はこの条件のライブラリの一番上にスマートフォルダのカードが並ぶかを返す。
- * 検索もお気に入りのみ以外の絞り込みも無いときだけ並ぶ（specs/052-smart-folders/research.md
- * R-7、サーバーの `domain.VideoQuery.ListsSmartFolders` と同じ判定）。並べ替えは絞り込みではない。
+ * 検索もお気に入りのみ以外の絞り込みも無いときだけ並ぶ。並べ替えは絞り込みではない。
  */
 export function listsSmartFolders(criteria: VideosCriteria): boolean {
   return (

@@ -2,8 +2,8 @@
 
 Inherited decisions: smart folders, their rules, `owner_kept`, contents
 computed on read and the read budget
-([052 research](../052-smart-folders/research.md)); tag kinds and the seeded
-`Genre` ([051 research, R-2](../051-tag-kinds/research.md#r-2-preset-kinds-are-seeded-rows-with-no-special-status));
+([Catalog organization](../../docs/design-docs/catalog-organization.md)); tag kinds and the seeded
+`Genre` ([Catalog organization](../../docs/design-docs/catalog-organization.md));
 auto-tagging and its candidates ([auto-tagging.md](../../docs/design-docs/auto-tagging.md));
 the closeness score ([related-videos.md](../../docs/design-docs/related-videos.md)).
 This file records only the decisions this feature adds.

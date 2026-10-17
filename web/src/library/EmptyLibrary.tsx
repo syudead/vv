@@ -8,7 +8,7 @@ import { EmptyState } from "../videoList/states";
 /**
  * EmptyLibrary はライブラリに動画が1本も無いときの所有者の状態で、オンボードへ案内する。
  * 「Set up library」は段階を `folders` に書いてから `/welcome` を開く
- * （specs/057-home/ui-design.md「Sidebar and library」）。取り込みはそこで始める。
+ * （docs/design-docs/home.md「Sidebar and library」）。取り込みはそこで始める。
  */
 export default function EmptyLibrary() {
   const setup = useStartSetup();

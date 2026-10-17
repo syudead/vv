@@ -5,18 +5,18 @@ import (
 	"fmt"
 )
 
-// グループの編集（specs/048-groups/data-model.md「Edits」「Play order」）。保存層は書き込みの
+// グループの編集。保存層は書き込みの
 // 取引の中で入力を読み、ここの規則で決める。
 
 // ErrGroupNotFound はグループが無いことを表す。errors.Is(err, ErrNotFound) も真になる。
 var ErrGroupNotFound = fmt.Errorf("group %w", ErrNotFound)
 
 // ErrGroupTargetNotFound は、編集の要求が名指した動画・グループ・項目のどれかが無いことを表す。
-// その編集は何も書かない（research.md R-12）。API では 404 group_target_not_found で、グループ
+// その編集は何も書かない。API では 404 group_target_not_found で、グループ
 // そのものが無い ErrGroupNotFound（404 not_found）と区別するため ErrNotFound を包まない。
 var ErrGroupTargetNotFound = errors.New("group target not found")
 
-// ErrGroupCycle は、グループを自分自身か自分の子孫に入れようとしたことを表す（research.md R-5）。
+// ErrGroupCycle は、グループを自分自身か自分の子孫に入れようとしたことを表す。
 var ErrGroupCycle = errors.New("group cycle")
 
 // GroupAdd はグループの作成と追加の入力である。項目は動画（VideoIDs）、次にグループ（GroupIDs）の
@@ -40,7 +40,7 @@ type GroupEdge struct {
 
 // ValidateNesting はグループ child を親 parent の項目にしてよいかを、今の入れ子 edges から
 // 決める。child が parent そのものか parent の祖先（child から子をたどって parent に着く）なら
-// ErrGroupCycle である（research.md R-5）。兄弟やほかの枝のグループは入れてよい。
+// ErrGroupCycle である。兄弟やほかの枝のグループは入れてよい。
 func ValidateNesting(parent, child int64, edges []GroupEdge) error {
 	if parent == child {
 		return ErrGroupCycle
@@ -74,8 +74,7 @@ type GroupPlayItem struct {
 	ChildID int64
 }
 
-// GroupPlayOrder はグループの再生順の動画 id を返す（data-model.md「Play order」、research.md
-// R-7）。items はそのグループの項目を位置の順に、children は子孫のグループごとの項目を位置の順に
+// GroupPlayOrder はグループの再生順の動画 id を返す。items はそのグループの項目を位置の順に、children は子孫のグループごとの項目を位置の順に
 // 持つ。項目を順にたどり、子グループはその再生順で置き換え（深さ優先）、各動画は最初に出た所に
 // だけ残す。引けない動画の項目と children に無いグループは飛ばす。同じグループに 2 度着いても
 // 2 度目はたどらない（加えるものが無く、循環があっても止まる）。

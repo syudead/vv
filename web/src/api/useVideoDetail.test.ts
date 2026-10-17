@@ -131,7 +131,7 @@ describe("useVideoDetail", () => {
     expect(result.current.state).toMatchObject({ video: { group: series } });
   });
 
-  it("ゲストは変化の知らせ（/api/events）のうち group だけで取り直す（specs/048-groups/contracts/screen-api.md）", async () => {
+  it("ゲストは変化の知らせ（/api/events）のうち group だけで取り直す", async () => {
     getVideo.mockResolvedValue({
       ...done,
       group: { id: 9, name: "picks", position: 1, count: 3 },
@@ -151,7 +151,7 @@ describe("useVideoDetail", () => {
     expect(getVideo).toHaveBeenCalledTimes(2);
   });
 
-  it("グループの行か開いたグループが変わった group の知らせで、読み込み中に戻さずに取り直す（research.md R-13）", async () => {
+  it("グループの行か開いたグループが変わった group の知らせで、読み込み中に戻さずに取り直す", async () => {
     const picks = { id: 9, name: "picks", position: 1, count: 3 };
     getVideo
       .mockResolvedValueOnce({ ...done, group: picks })
@@ -182,7 +182,7 @@ describe("useVideoDetail", () => {
     expect(getVideo).toHaveBeenCalledTimes(3);
   });
 
-  describe("開いたスマートフォルダ（052 ui-design.md「Video page」）", () => {
+  describe("開いたスマートフォルダ", () => {
     const inFolder = { id: 5, name: "タグ: 猫", position: 2, count: 4 };
 
     it("smartFolder を取得に渡し、同じ動画で smartFolder だけが変わったら取り直す", async () => {
@@ -265,7 +265,7 @@ describe("useVideoDetail", () => {
     });
   });
 
-  it("フォールバックのグループを表示中なら、それより id の小さいグループの知らせでも取り直す（research.md R-9）", async () => {
+  it("フォールバックのグループを表示中なら、それより id の小さいグループの知らせでも取り直す", async () => {
     const picks = { id: 9, name: "picks", position: 1, count: 3 };
     getVideo.mockResolvedValue({ ...done, group: picks });
     renderHook(() => useVideoDetail(7), { wrapper: OwnerAudience });
@@ -803,7 +803,7 @@ describe("useRelatedVideos", () => {
     getRelatedVideos.mockReset();
   });
 
-  it("並びのグループか開いたグループが変わった group の知らせで、並びを見せたまま最初のページから読み直す（research.md R-13）", async () => {
+  it("並びのグループか開いたグループが変わった group の知らせで、並びを見せたまま最初のページから読み直す", async () => {
     const video = (id: number): Video => ({ ...done, id, title: `v${String(id)}` });
     const group = (items: Video[]) => ({
       id: 9,

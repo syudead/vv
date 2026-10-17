@@ -69,14 +69,13 @@ async function loadPages(
 }
 
 /**
- * useScanIssues は直近の取り込みの問題の一覧を読む
- * （specs/024-import-progress/contracts/scan-api.md §3・§4）。
+ * useScanIssues は直近の取り込みの問題の一覧を読む。
  *
  * - 一覧は SSE では届かない。`Scan.id` か `Scan.issues.revision` が変わったら読み直す。
  *   つながり直したあとの取り直しで版が変わっていれば、切れていた間の問題も反映される。
  * - 新しい取り込みでは先頭から読み直す。同じ取り込みの中では、読めた件数まで読み直す。
  * - 応答の `scanId` が今の `Scan.id` と違えば、状態を取り直し（`refreshScan`）、読み直す。
- * - 読めなかったときは、最後に読めた一覧を残す（ui-design.md「States」）。状態を取り直せたら、
+ * - 読めなかったときは、最後に読めた一覧を残す。状態を取り直せたら、
  *   版が同じでも読み直す。
  */
 export function useScanIssues(scan: Scan | null, refreshScan: () => void): ScanIssueList {

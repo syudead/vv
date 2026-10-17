@@ -1,6 +1,6 @@
 import type { HomeShelf } from "../api/home";
 
-// ホームのフォルダの棚の並びの規則（specs/057-home/ui-design.md「Home」、research.md R-7）。
+// ホームのフォルダの棚の並びの規則（docs/design-docs/home.md「Home」、research.md R-7）。
 // PUT /api/home/shelves はフォルダの棚の id を上から順に全部送るので、足す・外す・動かすは
 // どれも今の並びから次の並びを作る。画面の部品から外し、ロジックのテストで確かめる
 // （docs/design-docs/web-testing.md）。

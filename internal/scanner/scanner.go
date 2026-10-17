@@ -61,12 +61,12 @@ type Index interface {
 	DeleteVideoLocations(ctx context.Context, ids []int64) error
 	// UpdateLocationCreatedAt は所在のファイルの作成日時だけを書き直す。ゼロ値は取れなかった
 	// （null に戻す）。変わっていないファイルの作成日時が索引と違うときに呼ぶ
-	// （specs/033-video-dates/data-model.md §5）。
+	//
 	UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error
 }
 
 // Queue は重い処理の積み先である。nil でもよい（積まないだけ）。decider は取り込みを始めたもので、
-// 積んだ仕事の import の記録に残る（specs/055-activity/research.md R-5）。1 本の動画に要る仕事は 1 回の
+// 積んだ仕事の import の記録に残る。1 本の動画に要る仕事は 1 回の
 // 呼び出しでまとめて積み、1 件の記録にする（R-3）。
 type Queue interface {
 	EnqueueJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
@@ -74,8 +74,7 @@ type Queue interface {
 }
 
 // Reporter は走査の進捗・今のファイル・ファイルごとの失敗の報告先である。nil でも
-// よい（報告しないだけ）。失敗は直近の取り込みの問題として記録される
-// （specs/024-import-progress/data-model.md §3）。scanner は記録の手段を知らない。
+// よい（報告しないだけ）。失敗は直近の取り込みの問題として記録される。scanner は記録の手段を知らない。
 type Reporter interface {
 	// ReportScanProgress は進みを報告する。登録の対象を数え終えたときと、
 	// 1ファイルを終えるごとに呼ばれる。
@@ -83,7 +82,7 @@ type Reporter interface {
 	ReportScanIssue(ctx context.Context, issue domain.ScanFileIssue) error
 	// ReportScanFile は登録を始めるファイルを知らせる。videoID は走査が知っている
 	// 既存の動画（知らなければ 0）である。path が空なら、ファイルの登録をすべて
-	// 終えたことを表す（specs/024-import-progress/research.md R-8）。
+	// 終えたことを表す。
 	ReportScanFile(path string, videoID int64)
 }
 
@@ -162,7 +161,7 @@ type scanPass struct {
 	// 消えたファイルを失敗にせず、変更の知らせで始まる次の走査に任せる。
 	scoped bool
 	// vanished は監視の走査が歩いている途中で消えたディレクトリである。その下の所在は
-	// 今回は消さず、消えた知らせで始まる次の監視の走査に任せる（research.md R-3）。
+	// 今回は消さず、消えた知らせで始まる次の監視の走査に任せる。
 	vanished []domain.DirtyDirectory
 }
 
@@ -188,7 +187,6 @@ func (s *Scanner) Scan(ctx context.Context, decider domain.ActivityDecider) (dom
 }
 
 // ScanScoped は dirs のディレクトリだけを読む走査を1回行い、集計を返す
-// （specs/042-folder-watch-import/research.md R-2・R-3）。
 //
 // Scan と手順は同じだが、歩くのは dirs だけで、消すのは「パスが dirs の読む範囲に
 // あり、今回の走査で見つからなかった」所在だけである。範囲の外は、索引にあっても
@@ -198,7 +196,7 @@ func (s *Scanner) Scan(ctx context.Context, decider domain.ActivityDecider) (dom
 // 走査の context が domain.ErrScanSuperseded を理由に取り消されたら、次のファイルの
 // 前で止め、何も消さずに domain.ErrScanSuperseded を返す。
 //
-// 監視の走査は規則が始めたものとして仕事を積む（specs/055-activity/research.md R-5）。
+// 監視の走査は規則が始めたものとして仕事を積む。
 func (s *Scanner) ScanScoped(ctx context.Context, dirs []domain.DirtyDirectory) (domain.ScanResult, error) {
 	return s.scan(ctx, domain.NormalizeDirtyDirectories(dirs), true, domain.ActivityByRule)
 }
@@ -332,7 +330,7 @@ func (s *Scanner) ingestTargets(ctx context.Context, pass *scanPass, result *dom
 		}
 
 		// 1ファイルごとに進みを知らせる。画面への送信は接続ごとにまとまるので、
-		// 遅い接続に古い値は積もらない（research.md R-8）。
+		// 遅い接続に古い値は積もらない。
 		if err := s.report(ctx, *result); err != nil {
 			return err
 		}
@@ -346,7 +344,6 @@ func (s *Scanner) ingestTargets(ctx context.Context, pass *scanPass, result *dom
 //
 // 監視の走査では、途中で変わった・消えたファイルは失敗にせず対象から外す。その変更は
 // 変更の知らせになって、ディレクトリを次の監視の走査へ回すからである
-// （specs/042-folder-watch-import/research.md R-3）。
 func (s *Scanner) recordIngestFailure(
 	ctx context.Context, pass *scanPass, result *domain.ScanResult, path string, videoID int64, err error,
 ) error {
@@ -375,7 +372,6 @@ func (s *Scanner) recordIngestFailure(
 // 親ディレクトリごと消えた場合は列挙結果を信頼できないため、全体の走査は失敗にする。
 // 監視の走査では、消えたディレクトリは移動か削除の知らせで次の監視の走査に回るので、
 // その所在を今は残し（消さず）、走査は続ける。移動先の追加を先に行ってから消すためである
-// （research.md R-3）。
 func (s *Scanner) dropVanished(pass *scanPass, scanned []domain.MediaFolder) error {
 	checkedDirs := map[string]struct{}{}
 	for _, folder := range scanned {
@@ -531,7 +527,7 @@ func (s *Scanner) visit(
 	info, infoErr := entry.Info()
 	if infoErr != nil && pass.scoped && errors.Is(infoErr, fs.ErrNotExist) {
 		// 列挙のあとに消えた。取り込みの対象にはせず、消えた知らせが次の監視の走査に回す。
-		// seen には残すので、親ごと消えたかは dropVanished が確かめる（research.md R-3）。
+		// seen には残すので、親ごと消えたかは dropVanished が確かめる。
 		return nil
 	}
 	if infoErr == nil && !info.Mode().IsRegular() {
@@ -553,7 +549,7 @@ func (s *Scanner) visit(
 
 	if existing, ok := pass.indexed[path]; ok &&
 		existing.SizeBytes == info.Size() &&
-		existing.MTime.Unix() == info.ModTime().Unix() {
+		existing.MTime.Equal(info.ModTime()) {
 		// 変わっていないファイルは取り込み対象に含めない。作成日時が索引と
 		// 違えば所在の列だけを直し、欠落した pending jobだけを補い、terminal
 		// failureは復活させない。
@@ -701,7 +697,7 @@ func (s *Scanner) stableTargetInfo(path string) (fs.FileInfo, error) {
 
 // refreshCreatedAt は変わっていないファイルの作成日時を読み、索引の値と秒で違うときだけ
 // 所在の列を書き直す。読めなかったときはゼロ値として比べるので、索引に値があれば null に
-// 戻る（specs/033-video-dates/research.md R-6）。中身の識別子も job も触らない。
+// 戻る。中身の識別子も job も触らない。
 func (s *Scanner) refreshCreatedAt(
 	ctx context.Context, path string, info fs.FileInfo, existing domain.IndexedVideo,
 ) error {
@@ -741,7 +737,7 @@ func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVid
 		{kind: domain.JobSeekThumbnail, pending: video.SeekThumbnailState == domain.SeekThumbnailPending},
 		{kind: domain.JobPreview, pending: video.ProbeState == domain.ProbeStateDone && video.PreviewState == domain.PreviewStatePending},
 		// 指紋は状態の列を持たないので、上限まで失敗した分もここで積み直す
-		// （specs/030-video-versions/data-model.md §6）。
+		//
 		{kind: domain.JobFingerprint, pending: video.FingerprintMissing},
 	}
 	var kinds []domain.JobKind

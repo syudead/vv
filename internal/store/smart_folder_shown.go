@@ -1,10 +1,10 @@
 package store
 
-// ゲストに見せるスマートフォルダ（specs/052-smart-folders/data-model.md「Contents」の Shown、
+// ゲストに見せるスマートフォルダ（docs/design-docs/catalog-organization.md「Contents」の Shown、
 // research.md R-8）。ゲストにはフォルダの再生順が空でないときだけ見せる。再生順が空でないのは、
 // ライブラリの項目の問い合わせ（libraryItemsCTE）の項目が 1 つでもあるときである。フォルダごとに
 // その問い合わせを読むと、フォルダの数だけ見せる動画とグループの子孫の動画を求めることになる
-// （ホームの 50 の棚で十数秒、specs/057-home/research.md R-12）。ここではカードの読み出しと同じく
+// （ホームの 50 の棚で十数秒、docs/design-docs/home.md）。ここではカードの読み出しと同じく
 // smart_base を 1 度だけ求め、どのフォルダの答えも 1 つの問い合わせで、項目の問い合わせと同じ
 // 規則で求める。
 //

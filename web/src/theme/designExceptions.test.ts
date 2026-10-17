@@ -7,11 +7,10 @@ import { describe, expect, it } from "vitest";
 import designExceptions, { type DesignException } from "../../design-exceptions.js";
 
 /**
- * デザインシステムの検査の例外一覧（web/design-exceptions.js）を検査する
- * （specs/038-design-system/contracts/registry.md の Exception list）。消えたファイルを
+ * デザインシステムの検査の例外一覧（web/design-exceptions.js）を検査する。消えたファイルを
  * 指す項目、理由の無い special の項目と、残った migration の項目で落ちる。テーマの
  * 名前空間を空にした後は、画面はすべてデザインシステムに移っており、残る例外は
- * デザインシステムで表せない見た目（special）だけである（research.md R-9）。
+ * デザインシステムで表せない見た目（special）だけである。
  */
 
 const src = join(__dirname, "..");

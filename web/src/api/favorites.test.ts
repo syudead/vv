@@ -15,7 +15,7 @@ import { videoItem } from "./libraryItems";
 import { clearListSnapshot, saveListSnapshot, takeListSnapshot } from "./listSnapshot";
 
 /**
- * お気に入りの付け外し（specs/035-favorites/contracts/screen-api.md §1、research.md R-6）。
+ * お気に入りの付け外し。
  * 要求は 1 回だけ送り、受け付けた結果だけを画面と控えへ知らせる。
  */
 

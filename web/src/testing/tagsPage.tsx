@@ -29,8 +29,7 @@ export function jsonResponse(body: unknown, status = 200): Response {
 }
 
 /**
- * takenResponse は実際のサーバーと同じ形の tag_name_taken を返す
- * （contracts/error-api.md §1）。submitted が owner の元の名前なら name_is_tag、
+ * takenResponse は実際のサーバーと同じ形の tag_name_taken を返す。submitted が owner の元の名前なら name_is_tag、
  * そうでなければ name_is_synonym。画面がカタログの文を出す（サーバーの
  * message をそのまま出さない）ことを確かめるため、message は画面に出ない文にする。
  */
@@ -58,7 +57,7 @@ export function tag(overrides: Partial<Tag> & { id: number; name: string }): Tag
 }
 
 /**
- * pageOf は `GET /api/tags` のページ（specs/036-tag-admin-scale/contracts/screen-api.md §5）を
+ * pageOf は `GET /api/tags` のページを
  * 偽のサーバーの側で作る。条件を全部のタグに掛け、並び順で並べ、カーソル（前のページの
  * 最後の行の並びの値）より後ろから `limit` 件を返す。カーソルは keyset と同じく、
  * 並びの値で「より後ろ」を決める（読み込んだあとで前へ動いた行は返さない）。
@@ -114,7 +113,7 @@ export function kind(
   return { tagCount: 0, createdAt: "2026-01-01T00:00:00Z", ...overrides };
 }
 
-/** presetKinds は新しいデータベースの 4 つの種類（specs/051-tag-kinds/data-model.md）。 */
+/** presetKinds は新しいデータベースの 4 つの種類。 */
 export function presetKinds(): TagKind[] {
   return [
     kind({ id: 1, name: "Genre" }),
@@ -272,8 +271,7 @@ function tagKindRoute(
 }
 
 /**
- * kindBatch は `POST /api/tags/batch` の `setKind`・`clearKind` を扱う
- * （specs/051-tag-kinds/contracts/screen-api.md）。既にその種類の（`clearKind` では種類の
+ * kindBatch は `POST /api/tags/batch` の `setKind`・`clearKind` を扱う。既にその種類の（`clearKind` では種類の
  * 無い）タグは `notApplicableIds`、無い種類の `setKind` は 404 `tag_kind_not_found` で
  * 何も変えない。
  */
@@ -670,7 +668,7 @@ export function install() {
         );
       }
       // 無い統合元は飛ばして notFoundIds に載せる。統合元がすべて無ければ統合先は
-      // 変わらない（specs/036-tag-admin-scale/contracts/screen-api.md §2）。
+      // 変わらない。
       return maybeHold(() => {
         const notFoundIds: number[] = [];
         for (const sourceId of body.sourceIds) {

@@ -11,7 +11,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import HomePage from "./HomePage";
 
-// 所有者のホームの棚の操作（specs/057-home/ui-design.md「Home」、research.md R-7）。棚を
+// 所有者のホームの棚の操作（docs/design-docs/home.md「Home」、research.md R-7）。棚を
 // 動かす・外す・足すと、PUT /api/home/shelves にフォルダの棚の新しい並びを送る。
 
 function folderShelf(id: number, name: string): HomeShelf {
@@ -115,7 +115,7 @@ function headings(): string[] {
     .map((heading) => heading.textContent ?? "");
 }
 
-describe("ホームの棚の操作（specs/057-home/ui-design.md「Home」）", () => {
+describe("ホームの棚の操作（docs/design-docs/home.md「Home」）", () => {
   it("棚を動かすと新しい並びを送り、行がその並びになる", async () => {
     const user = userEvent.setup();
     renderHome();

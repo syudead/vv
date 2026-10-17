@@ -7,7 +7,7 @@ import (
 	"slices"
 )
 
-// ホームの棚（specs/057-home/data-model.md、research.md R-7、R-8）。棚はホームの位置
+// ホームの棚（docs/design-docs/home.md、research.md R-7、R-8）。棚はホームの位置
 // （smart_folders.home_position）を持つスマートフォルダで、整理役（organizer）が返す棚の案
 // （ProposedShelf）は保存せず、適用の取引（store の HomeStore）がフォルダにする。
 

@@ -376,8 +376,7 @@ func TestRelatedVideosUsesTheGivenScorer(t *testing.T) {
 	}
 }
 
-// 関連動画は、受け取った見る人のまま3つの読み出しすべてに渡す
-// （specs/016-single-account-auth/data-model.md §3）。ゲストの関連動画に非公開の
+// 関連動画は、受け取った見る人のまま3つの読み出しすべてに渡す。ゲストの関連動画に非公開の
 // 動画を混ぜないため。
 func TestRelatedVideosPassesAudience(t *testing.T) {
 	for _, audience := range []domain.Audience{domain.AudienceGuest, domain.AudienceOwner} {
@@ -404,7 +403,7 @@ func TestRetryProbePassesVideoID(t *testing.T) {
 	}
 }
 
-// グループのメンバーでは（specs/017-folder-groups/contracts/folder-groups-api.md §3）、
+// グループのメンバーでは、
 // グループを載せ、前後をグループの中の並びにする。関連動画は同じグループのメンバーを除いて
 // から並べるので、メンバーが多くても関連動画が残る（受け入れ条件 6）。
 func TestRelatedVideosForGroupMember(t *testing.T) {
@@ -503,7 +502,7 @@ func TestRelatedVideosForLargeGroupCarriesAWindow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// 文脈のグループ（research.md R-9）はそのまま保存層に渡す。
+	// 文脈のグループはそのまま保存層に渡す。
 	if !slices.Equal(store.contexts, []int64{7}) {
 		t.Errorf("contexts = %v, want [7]", store.contexts)
 	}

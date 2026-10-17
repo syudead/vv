@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画の表示名（specs/029-video-overrides/data-model.md §1・§3・§4）。
+// 動画の表示名。
 
 // overrideFixture は題名 alpha・beta・gamma の3本を /media の下に取り込む。
 func overrideFixture(t *testing.T) (*DB, map[string]int64) {

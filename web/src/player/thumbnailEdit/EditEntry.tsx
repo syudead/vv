@@ -80,9 +80,7 @@ function framePosition(capture: ThumbnailCapture | undefined): number | null {
 
 /**
  * EditEntry は情報の行の右端の「Edit thumbnail with ComfyUI」と、それが開く元の選択のメニューと
- * 編集画面である（specs/045-comfyui-thumbnails/ui-design.md「Video page: edit entry」、
- * specs/046-thumbnail-image-upload/ui-design.md「Video page: edit entry with the source
- * choice」）。所有者に置き、プレイヤーが出ていない動画にも置く。
+ * 編集画面である。所有者に置き、プレイヤーが出ていない動画にも置く。
  *
  * - 準備ができていれば、押すと元の選択のメニューを開く。コマの項目はメニューを開いた時点の
  *   プレイヤーの位置を名指して送り、画面にコマが無いとき（`capture` が無いか押せない）は

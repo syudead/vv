@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// タグの種類による一覧の絞り込み（specs/051-tag-kinds/research.md R-5、data-model.md の Rules、
-// contracts/screen-api.md の List parameter tagKind、#1151）。
+// タグの種類による一覧の絞り込み。
 
 type tagKindListing struct {
 	db               *DB
@@ -105,7 +104,7 @@ func TestListVideosFiltersByTagKind(t *testing.T) {
 	}
 }
 
-// 種類を消すとそのタグは種類なしになり、消した種類の id では何にも当たらない（data-model.md の Rules）。
+// 種類を消すとそのタグは種類なしになり、消した種類の id では何にも当たらない。
 func TestListVideosByDeletedTagKindIsEmpty(t *testing.T) {
 	f := tagKindListingFixture(t)
 	if err := f.db.Tags().DeleteTagKind(context.Background(), f.work.ID); err != nil {

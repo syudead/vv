@@ -13,7 +13,7 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
 // ホームの「Not on any shelf」の「See all」が開く `/library?unshelved=1`
-// （specs/057-home/ui-design.md「Home」、research.md R-11）。ライブラリは URL の `unshelved=1` を
+// （docs/design-docs/home.md「Home」、research.md R-11）。ライブラリは URL の `unshelved=1` を
 // 一覧の条件 `unshelved=true` として送る。ゲストも使える。
 
 function video(id: number): Video {

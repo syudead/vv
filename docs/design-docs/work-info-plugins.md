@@ -6,9 +6,7 @@ from external sites, inside its own process with wazero; the adapter is
 `WorkInfoPluginRuntime` port in
 [`internal/app/work_info_plugin_runtime.go`](../../internal/app/work_info_plugin_runtime.go).
 The plugin contract is
-[Write a work-info plugin](../how-to/work-info-plugins.md),
-and the reasons for each choice are in the feature's
-[research.md](../../specs/049-work-info-plugins/research.md) (R-1 to R-5).
+[Write a work-info plugin](../how-to/work-info-plugins.md).
 
 The diagram shows what a module goes through, from upload to a run's result.
 
@@ -27,8 +25,7 @@ flowchart LR
 ## Inspection never runs the module
 
 `Inspect` compiles the module and reads its `vv.plugin` manifest, imports,
-exports and tables, and returns the first `problem` of
-[data-model.md](../../specs/049-work-info-plugins/data-model.md#work_info_plugins)
+exports and tables, and returns the first validation `problem`
 it finds ([`runtime.go`](../../internal/wasmplugin/runtime.go)).
 
 The owner approves a plugin from its name, version and settings, so these come
@@ -100,11 +97,9 @@ only when it compiles with more than one worker, so a run compiles with two.
 Each plugin keeps the standard error of its last run as one
 `work_info_plugin_runs` row, with every secret setting value replaced by
 `[secret]`, for the owner to read through
-`GET /api/work-info-plugins/{id}/last-run`
-([056 R-6](../../specs/056-plugin-tooling/research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked)).
+`GET /api/work-info-plugins/{id}/last-run`.
 The settings screen shows it in the last run dialog, opened from the plugin
-row's `Last run output`
-([056 UI design](../../specs/056-plugin-tooling/ui-design.md#last-run-dialog)).
+row's `Last run output`.
 The server log keeps receiving the same text unmasked, as before.
 
 ```mermaid
@@ -208,8 +203,7 @@ run, and never use the plugins' proxy.
 ### A run can go through the operator's proxy
 
 `Runtime.Run` takes `domain.WorkInfoRunNetwork`, whose `Proxy` is the proxy
-the operator chose, or nil for none
-([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option)).
+the operator chose, or nil for none.
 `domain.ParseWorkInfoPluginProxyURL` holds the URL rule: the `http`, `https`
 or `socks5` scheme, a host, an optional port and optional user information,
 with no path, query or fragment, at most 2048 characters; `""` means no proxy.
@@ -228,8 +222,7 @@ proxy, so the dial-time check cannot see the destination. Instead, the
 transport's `Proxy` callback, which Go calls for every request and every
 followed redirect, resolves the destination host (or parses a literal
 address) and refuses the request with `-2` and `blocked_address` when any
-resolved address fails the same rule
-([056 R-5](../../specs/056-plugin-tooling/research.md#r-5-through-a-proxy-the-destination-is-checked-by-resolving-its-name-before-each-request-and-redirect)).
+resolved address fails the same rule.
 The refused host is the name, and the proxy never sees the request. The
 proxy's own address is not checked: the operator chose it, and it usually
 sits on the LAN.
@@ -272,13 +265,11 @@ closes that gap; VVMDM cannot.
 orders the fetched dates by kind and the people and organizations by role,
 then matches the people and organizations through `CreditStore.Match`. The
 details and the matches stay in the in-memory result with the title and the
-tags, for the same 10 minutes
-([049 research.md](../../specs/049-work-info-plugins/research.md) R-8). A
+tags, for the same 10 minutes. A
 result without people or organizations does not read the store.
 
 The matches are only shown: the screen marks each entry as linked, `New` or
-`Not linked` from them
-([052 screen-api.md](../../specs/052-plugin-work-info-fields/contracts/screen-api.md)).
+`Not linked` from them.
 The apply matches again inside its transaction, as the next section shows.
 Before it writes anything, the apply refuses a selected field whose row has
 no value in the result with `invalid_request`.
@@ -338,7 +329,7 @@ unable to tell what was written.
 | Rejected | Why |
 | --- | --- |
 | The plugin downloads the image and returns it in its response | The response is limited to 1 MiB, and base64 grows the image by a third |
-| The browser loads the cover from the site | The site would see the viewer, as [R-10](../../specs/049-work-info-plugins/research.md#r-10-search-candidates-are-text-only) rejects for candidates |
+| The browser loads the cover from the site | The site would see the viewer's address |
 | Fetching the cover again for each view or at the apply | The site could answer another image than the one the owner compared |
 
 ## The apply merges the selected fields in one transaction
@@ -346,9 +337,7 @@ unable to tell what was written.
 `OverrideStore.ApplyFetchedWorkInfo` in
 [`internal/store/work_info_fetch.go`](../../internal/store/work_info_fetch.go)
 writes the selected title, tags and work details of a fetched result in one
-transaction. The reasons are
-[052 research.md](../../specs/052-plugin-work-info-fields/research.md) R-3 and
-R-4.
+transaction.
 
 The diagram shows the order of the steps inside the transaction.
 

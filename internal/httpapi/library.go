@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// LibraryItems はライブラリの項目（動画とグループ）の問い合わせ先である
-// （specs/017-folder-groups/contracts/library-api.md）。internal/store の
+// LibraryItems はライブラリの項目（動画とグループ）の問い合わせ先である。internal/store の
 // *LibraryStore がこれを満たす。
 type LibraryItems interface {
 	// ListLibrary は見る人に見せる項目1ページを返す（GET /api/library）。
@@ -50,7 +49,7 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 	if !ok {
 		return
 	}
-	// 棚に無い動画のみはライブラリの項目の一覧だけが受け、ゲストも使える（specs/057-home/research.md R-11）。
+	// 棚に無い動画のみはライブラリの項目の一覧だけが受け、ゲストも使える（docs/design-docs/home.md）。
 	query.Unshelved = params.Unshelved != nil && *params.Unshelved
 
 	page, err := s.library.ListLibrary(r.Context(), audience, query)
@@ -85,10 +84,8 @@ func (s *server) ListLibrary(w http.ResponseWriter, r *http.Request, params gen.
 }
 
 // ListLibraryIds は絞り込みに合う項目の動画の id を返す（GET /api/library/ids、
-// 「すべて選択」用。specs/017-folder-groups/contracts/library-api.md §2）。グループの
-// 項目は groups にもグループの id と再生順の動画として書く（specs/035-favorites/contracts/screen-api.md §3、
-// specs/048-groups/contracts/screen-api.md）。スマートフォルダの項目は smartFolderIds に書く
-// （specs/052-smart-folders/data-model.md「Library items」）。
+// 「すべて選択」用。docs/design-docs/catalog-organization.md）。グループの
+// 項目は groups にもグループの id と再生順の動画として書く。スマートフォルダの項目は smartFolderIds に書く
 func (s *server) ListLibraryIds(w http.ResponseWriter, r *http.Request, params gen.ListLibraryIdsParams) {
 	if s.library == nil {
 		s.internalError(w, "Library queries are not configured.", nil)
@@ -148,7 +145,7 @@ func (s *server) presentLibraryItems(ctx context.Context, audience domain.Audien
 	for _, item := range items {
 		if item.SmartFolder != nil {
 			// スマートフォルダの項目は要約だけを載せる。カードの値は画面が listSmartFolderCards で読む
-			// （specs/052-smart-folders/research.md R-14）。
+			// （docs/design-docs/catalog-organization.md）。
 			folder := toAPISmartFolderSummary(audience, *item.SmartFolder)
 			out = append(out, gen.LibraryItem{Kind: gen.LibraryItemKindSmartFolder, SmartFolder: &folder})
 			continue
@@ -192,8 +189,7 @@ func (l itemLookup) video(ctx context.Context, audience domain.Audience, roots [
 }
 
 // group はグループの項目を応答の形にする。見せる動画が無ければ false を返す。folder は
-// 自動グループのフォルダが登録フォルダ roots の下にあるときだけ載せる（specs/048-groups/
-// contracts/screen-api.md）。ゲストには視聴の値を載せず、タグを空にする（data-model.md §7）。
+// 自動グループのフォルダが登録フォルダ roots の下にあるときだけ載せる。ゲストには視聴の値を載せず、タグを空にする。
 func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, group domain.LibraryGroup) (gen.LibraryGroup, bool) {
 	card, ok := l.card(ctx, audience, roots, group)
 	if !ok {
@@ -217,9 +213,9 @@ func (l itemLookup) group(ctx context.Context, audience domain.Audience, roots [
 	return out, true
 }
 
-// card はグループのカードの値を応答の形にする（ホームの棚の項目。specs/057-home/research.md R-12）。
+// card はグループのカードの値を応答の形にする（ホームの棚の項目。docs/design-docs/home.md）。
 // 見せる動画が無ければ false を返す。folder は自動グループのフォルダが登録フォルダ roots の下にあるときだけ
-// 載せる（specs/048-groups/contracts/screen-api.md）。ゲストには視聴の値を載せない（data-model.md §7）。
+// 載せる（docs/design-docs/catalog-organization.md）。ゲストには視聴の値を載せない（data-model.md §7）。
 func (l itemLookup) card(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, group domain.LibraryGroup) (gen.LibraryGroupCard, bool) {
 	if group.VideoCount == 0 {
 		return gen.LibraryGroupCard{}, false
@@ -255,7 +251,7 @@ func (l itemLookup) card(ctx context.Context, audience domain.Audience, roots []
 }
 
 // unionMemberTags はメンバーのタグの和集合を返す。同じタグは1件にまとめ、出所は
-// どれかのメンバーで真なら真にする（contracts/library-api.md §1）。
+// どれかのメンバーで真なら真にする。
 func unionMemberTags(members []domain.Video, tags map[string][]domain.VideoTag) []domain.VideoTag {
 	index := map[int64]int{}
 	var out []domain.VideoTag

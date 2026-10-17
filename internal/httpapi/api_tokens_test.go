@@ -17,7 +17,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 画面の API トークンの管理（specs/026-external-api/contracts/token-api.md）を、本物の
+// 画面の API トークンの管理を、本物の
 // Auth と保存先で確かめる。
 
 func createAPITokenBody(name string) string {
@@ -209,7 +209,7 @@ func (b beforeCreateAPITokens) CreateAPIToken(ctx context.Context, sessionToken,
 }
 
 // 境界がセッションを確かめた後に mdm account が資格情報を変えたら、その要求では発行せず
-// 未認証にする。新しい版のトークンが古いセッションから生まれない（research.md R-2）。
+// 未認証にする。新しい版のトークンが古いセッションから生まれない。
 func TestAPITokenCreateRacingCredentialChangeIsUnauthenticated(t *testing.T) {
 	var db *store.DB
 	env := newAuthEnvWith(t, t.TempDir(), func(opened *store.DB) Options {

@@ -20,8 +20,7 @@ export interface SearchBoxProps {
   query: string;
   /**
    * onCommit は検索語を確定する。mode は履歴の増やし方で、フォーカスが入ってから
-   * 外れるか Esc で抜けるまでの一続きで最初の確定だけが push になる
-   * （specs/013-library-search/contracts/list-url.md §3）。
+   * 外れるか Esc で抜けるまでの一続きで最初の確定だけが push になる。
    */
   onCommit: (next: string, mode: HistoryMode) => void;
   /** 入力欄を外から指す。 */
@@ -50,7 +49,7 @@ export interface SearchBoxProps {
 
 /**
  * limitQueryInput は入力を検索語の上限に収める。HTML の maxLength は UTF-16 の単位で
- * 数えるので使わず、URL・サーバーと同じく符号位置で数える（list-url.md §1）。
+ * 数えるので使わず、URL・サーバーと同じく符号位置で数える。
  * 上限を超える貼り付けも、入る分だけが入る（Issue の Edge Case「語の長さの上限」）。
  */
 export function limitQueryInput(

@@ -20,8 +20,7 @@ type lanAccessStore interface {
 
 // startNetworkSettings はデスクトップ版の LAN からの接続の許可を、DB を開いたあと待ち受けの
 // 前に読み、待ち受けるアドレスと切り替えの設定を返す。許可していれば 0.0.0.0、
-// していないか保存値が無ければ 127.0.0.1 で、addr のポートで待ち受ける
-// （specs/037-windows-app/research.md R-14）。切り替えは listener を開き直してから保存する。
+// していないか保存値が無ければ 127.0.0.1 で、addr のポートで待ち受ける。切り替えは listener を開き直してから保存する。
 func startNetworkSettings(
 	ctx context.Context,
 	store lanAccessStore,

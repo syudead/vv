@@ -363,7 +363,7 @@ func TestStartScanWhileRunningReturnsCurrent(t *testing.T) {
 }
 
 // Busy は走っている走査があるか、queued・running の仕事があるとき真で、どちらも
-// 無いとき偽（specs/037-windows-app/research.md R-7）。
+// 無いとき偽。
 func TestBusy(t *testing.T) {
 	scanner := &fakeScanner{release: make(chan struct{}), started: make(chan struct{})}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -476,7 +476,6 @@ func TestRecoverInterrupted(t *testing.T) {
 
 // 起動時に、最新の走査が中断で終わっていれば走査を 1 回始め直す。done、
 // interrupted 以外の理由の failed、走査の記録が無いときは始めない
-// （specs/037-windows-app/research.md R-9）。
 func TestResumeInterrupted(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -575,7 +574,6 @@ func (f *fakeScanStore) setVideos(videos, settled int, settledAt time.Time) {
 
 // 走査が閉じても対象に残りの仕事があるあいだは running のままで、最後の仕事の成否が
 // 記録された時点で done になる。完了の時刻は走査の終了より後になる
-// （specs/024-import-progress/research.md R-4）。
 func TestCurrentScanStaysRunningUntilJobsSettle(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 2, Processed: 2, Added: 2}}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)
@@ -632,7 +630,6 @@ func TestStartScanReturnsFindingImport(t *testing.T) {
 
 // 走査が報告したファイルの失敗は問題として記録され、変化として知らせる。登録できなかった
 // ファイルは分母と済みの本数に入り、失敗の問題があるので取り込みは partial になる
-// （specs/024-import-progress/research.md R-5）。
 func TestReportedFileIssueMakesImportPartial(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 2, Processed: 1, Added: 1, Failed: 1}}
 	scans, store, publisher := newTestScans(t, context.Background(), scanner)

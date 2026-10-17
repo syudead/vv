@@ -9,7 +9,7 @@ import (
 	"slices"
 )
 
-// 映像の指紋（specs/030-video-versions/research.md R-6、data-model.md §2・§6）。
+// 映像の指紋。
 //
 // 指紋はシーク用スプライトの各コマの pHash を並べたものである。internal/media が各コマを
 // 32×32 の輝度に縮め、ここで 2 次元 DCT の低周波からハッシュを作る。2 本の比較は、コマを

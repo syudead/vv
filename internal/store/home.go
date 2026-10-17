@@ -1,6 +1,6 @@
 package store
 
-// ホームの棚（specs/057-home/data-model.md、research.md R-7、R-8、R-16）。棚はホームの位置
+// ホームの棚（docs/design-docs/home.md、research.md R-7、R-8、R-16）。棚はホームの位置
 // （home_position）を持つスマートフォルダで、位置の小さい順、同じなら id の順に並ぶ。HomeStore は
 // 棚の一覧、所有者の棚の並びの書き込み、整理役の案の適用と、整理役の settings のキーを受け持つ。
 // フォルダの挿入と削除は SmartFolderStore と同じ非公開の関数（insertSmartFolder・deleteSmartFolder）で

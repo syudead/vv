@@ -402,7 +402,7 @@ jobs:
   # だけ回す。PR では回さない。ただし Renovate の PR（renovate/ ブランチ）では回す。メジャー更新も含めて
   # renovate-triage ルーチンがマージするので、マージ前に実ブラウザで確かめる
   # （docs/how-to/dependency-updates.md）。
-  # 1 台で全部を順に流すと 10 分かかるので、ファイルを 5 組に分けて並べて流す。
+  # 1 台で全部を順に流すと 10 分かかるので、ファイルを 4 組に分けて並べて流す。
   # ファイルで絞っても、依存の準備（未設定のサーバーとログイン）は各組で先に走る。
   # e2e のファイルを足したら、どれかの組に入れる（task e2e-groups-check が確かめる）。
   e2e:
@@ -419,15 +419,12 @@ jobs:
         include:
           - group: playback
             files: e2e/playback.e2e.ts
-          - group: tags
-            files: e2e/smart-folders.e2e.ts e2e/tag-kinds.e2e.ts e2e/tags.e2e.ts
-          # home.e2e.ts は走査の終わりの棚の追加を待つので数分かかる（specs/057-home/research.md R-9）。
           - group: home
             files: e2e/home.e2e.ts e2e/onboarding.e2e.ts
           - group: library
-            files: e2e/card-scrub.e2e.ts e2e/folders.e2e.ts e2e/guest.e2e.ts e2e/history.e2e.ts e2e/hover-preview.e2e.ts e2e/media-info.e2e.ts e2e/playlists.e2e.ts e2e/thumbnail-edit.e2e.ts
-          - group: scan and search
-            files: e2e/activity.e2e.ts e2e/auth.e2e.ts e2e/auto-import.e2e.ts e2e/drag-organize.e2e.ts e2e/groups.e2e.ts e2e/scan-issues.e2e.ts e2e/scan-progress.e2e.ts e2e/search.e2e.ts e2e/settings.e2e.ts e2e/work-info-plugins.e2e.ts e2e/work-info.e2e.ts
+            files: e2e/folders.e2e.ts e2e/search.e2e.ts e2e/tags.e2e.ts
+          - group: pages
+            files: e2e/auth.e2e.ts e2e/drag-organize.e2e.ts e2e/history.e2e.ts e2e/scan-progress.e2e.ts e2e/work-info.e2e.ts
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -516,15 +513,15 @@ jobs:
         working-directory: web
         run: npx playwright install chromium
 
-      # テストの動画（web/e2e/media-fixtures.mjs が ffmpeg で作る約 200 本、1 回 20 秒ほど）を
-      # 持ち越す。run-e2e.mjs は作り方（media-fixtures.mjs と run-e2e.mjs 自身と写す画像）と
+      # テストの動画（web/e2e/media-fixtures.mjs が ffmpeg で作る）を
+      # 持ち越す。run-e2e.mjs は作り方（media-fixtures.mjs と run-e2e.mjs 自身）と
       # ffmpeg の版から決めた名前の下に作り、同じ名前が
       # あれば作らずに写す。ffmpeg の版は runner のイメージ版で決まる。
       - name: テストの動画を復元する
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: .local/e2e-fixtures
-          key: e2e-fixtures-${{ steps.image.outputs.version }}-${{ hashFiles('web/e2e/media-fixtures.mjs', 'web/e2e/run-e2e.mjs', 'web/e2e/fixtures/**') }}
+          key: e2e-fixtures-${{ steps.image.outputs.version }}-${{ hashFiles('web/e2e/media-fixtures.mjs', 'web/e2e/run-e2e.mjs') }}
 
       - name: 実ブラウザE2E
         env:

@@ -91,8 +91,7 @@ user loaded. **Revisit only after measuring what is slow.**
 
 The tag admin list (`/tags`) is the measured exception: with thousands of tags,
 opening, search and scrolling froze, so it draws only the rows near the
-viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`,
-[036 research R-2](../../specs/036-tag-admin-scale/research.md)). Neither
+viewport (`@tanstack/react-virtual`'s `useWindowVirtualizer`). Neither
 reason above applies there: it is one column, and rows arrive 100 at a time
 from the server for the current conditions. The document stays the scroll
 owner, the list keeps the focused row drawn, and Tab crosses the edge of the
@@ -101,13 +100,11 @@ table page pattern: the header, tabs and toolbar scroll with the page, the
 rows are the body of a `DataTable`, and rows outside the drawn range are kept
 as empty spacer rows so the columns stay aligned. The page passes the fixed top
 bar's height (`--spacing-navbar`) to the virtualizer and to
-`scroll-padding-top`, so a focused row never hides under the top bar
-([036 UI design, Band](../../specs/036-tag-admin-scale/ui-design.md)).
+`scroll-padding-top`, so a focused row never hides under the top bar.
 The people and organizations admin lists (`/people`, `/organizations`) are
 built the same way from the same pieces in `web/src/tags/`: pages of 100
 read from the server, rows drawn near the viewport, and local updates after
-rename, details, merge and delete
-([047 UI design, People and organizations screens](../../specs/047-video-work-info/ui-design.md#people-and-organizations-screens-1)).
+rename, details, merge and delete.
 
 ### The window owns scrolling
 
@@ -215,7 +212,7 @@ The sidebar has two states (rail, drawer; see
 The rail is 68px (`sidebar-rail`) wide and shows each entry's icon above a
 small label in a 56px (`rail-item`) square, so every entry stays named.
 Card width follows the zoom level. Guest rules are in
-[016 UI design, Shell entries, Guest degradation](../../specs/016-single-account-auth/ui-design.md).
+[authentication.md](authentication.md).
 
 | Part | Owner | Guest |
 | --- | --- | --- |
@@ -246,23 +243,20 @@ and in the section heading for a folder's direct contents.
 The sort orders are date added, date modified, date created, title, duration,
 file size, recently played, date favorited and random; guests lose the
 owner-only recently played and date favorited. Date created sits
-with the other dates ([033 UI design](../../specs/033-video-dates/ui-design.md));
-date favorited follows recently played and sorts newest first
-([035 UI design, Sort and direction](../../specs/035-favorites/ui-design.md)).
+with the other dates;
+date favorited follows recently played and sorts newest first.
 
 The filter popover lists watch status, `Favorites only` (URL `fav=1`),
 playability and, for the owner, a `Tag kind` select (URL `tagKind=<id>`), in
 that order. The select offers `Any kind` and the kinds in natural name order,
 read from the shared kind list when the popover first opens; an applied kind
 also shows as a `Kind: <name>` chip in the `Filtering by` row, and a kind that
-the loaded list no longer holds leaves the URL with a toast
-([051 UI design, Library](../../specs/051-tag-kinds/ui-design.md#library)).
+the loaded list no longer holds leaves the URL with a toast.
 After them come `Added` and `Length`, two selects of presets for the owner
 and guests alike (URL `addedWithin=<days>`, `minDuration=<s>` and
 `maxDuration=<s>`); a value outside the presets is drawn as its own option,
 and an out-of-range value or a minimum over the maximum leaves the URL before
-the request
-([052 UI design, Added and length](../../specs/052-smart-folders/ui-design.md#added-and-length)).
+the request.
 The filter button counts each as one applied filter.
 `Clear filters` clears favorites only, the kind, the added date and the length
 with the other filters and keeps the sort. A guest URL with `fav=1`, `tagKind`
@@ -272,8 +266,7 @@ is corrected.
 While any filter applies, the owner's library header carries the `outline`
 action `Save as smart folder`, which opens the smart folder dialog with the
 filter as its conditions and the current sort, `Random` replaced by date added;
-the `Created "{name}"` toast carries `Open` to the new folder's page
-([052 UI design, Save as smart folder](../../specs/052-smart-folders/ui-design.md#save-as-smart-folder)).
+the `Created "{name}"` toast carries `Open` to the new folder's page.
 
 ### Scan entry and progress
 
@@ -281,7 +274,7 @@ A scan starts from `Scan library` in the `Scan status` section of the
 Settings `Scan` page
 ([`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)) or
 on the `Scan` step of onboarding at `/welcome`
-([057 UI design, Onboarding](../../specs/057-home/ui-design.md#onboarding)),
+([Home and onboarding](home.md)),
 because scanning is occasional and a permanent button in the top bar repeated
 the bottom-right indicator. The button is present in every scan state. It is
 disabled while a scan runs (including one started in another tab) and while
@@ -295,9 +288,8 @@ library`: it sets the onboarding step to `folders` and opens `/welcome`
 
 The bottom-right indicator
 ([`ScanProgressIndicator.tsx`](../../web/src/shell/ScanProgressIndicator.tsx))
-keeps the placement and content of
-[024 UI design](../../specs/024-import-progress/ui-design.md); these rules
-replace its opening, closing and dismissal.
+shows the latest import summary. The following rules govern its opening,
+closing and dismissal.
 
 | Event | Summary popover | Indicator |
 | --- | --- | --- |
@@ -328,7 +320,7 @@ bottom edge and the title.
 
 | Card | Rules |
 | --- | --- |
-| Video, library and folder pages | Tag row under the title, none without tags ([014 UI design, Library card](../../specs/014-video-tags/ui-design.md)) |
+| Video, library and folder pages | Tag row under the title, none without tags  |
 | Video, folder search results | Location row under the title |
 | Folder | Video card's width and border, folder artwork, Folder icon in the title |
 | Group (library only) | Video card's box and size, folder artwork of up to 4 member thumbnails |
@@ -340,8 +332,8 @@ Video card behaviour:
 | --- | --- |
 | Tag pressed in the library | Filters by the tag |
 | Tag pressed on a folder page or a group page | Opens `/library?tag=<id>` |
-| Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full ([041 UI design](../../specs/041-tag-overflow-list/ui-design.md#the-list)) |
-| Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag` ([017 UI design](../../specs/017-folder-groups/ui-design.md)) |
+| Tags that do not fit the row | Collected in `+N`; resting the mouse on it or pressing it opens the hidden tags as wrapping chips inside the viewport, scrolling when they do not fit, with every name in full  |
+| Tag from a folder name only | Same size, no fill, dashed border, Folder marker; no × on the video page; not offered by `Remove tag`  |
 | Hover preview | One at a time on any screen |
 | Zoom changed | Returns to the card that was at the top |
 
@@ -354,8 +346,7 @@ folder pages and their search results list videos one by one. A group card
 shows a panel with the count (`12 videos`) and total duration, a watched-share
 bar only while some members are in progress, the group name and the members'
 tags. Pressing it opens the group page (`/groups/{id}`), which lists the
-group's child groups and videos in their saved order under a sticky trail band
-([048 UI design, Group page](../../specs/048-groups/ui-design.md#group-page)).
+group's child groups and videos in their saved order under a sticky trail band.
 On that page a child group opens with `?trail` one group longer, and a video
 opens with `?group`, so the video page follows that group.
 Guests see no watch status, watched count or bar.
@@ -364,8 +355,7 @@ Root smart folders stand among the groups and videos of the unfiltered library
 (favorites only keeps the favorited ones) and of a smart folder page's child
 list. The list carries only each folder's name; a card draws a `Skeleton` count
 panel until it scrolls into view, and the cards then on screen are read 60 at a
-time through `GET /api/smart-folders/cards`
-([052 research, R-14](../../specs/052-smart-folders/research.md#r-14-folder-cards-carry-a-summary-their-values-are-read-on-screen-without-group-collapsing)).
+time through `GET /api/smart-folders/cards`.
 A `smartFolder` event reads the named cards again, keeping only the newest
 answer per card, and makes the unfiltered library reload its loaded pages, so
 a folder created, moved or renamed in another tab appears. A folder left out of
@@ -373,8 +363,7 @@ the answer loses its card. The card's tags stay pressable while other cards are
 selected, since a folder card has no selection. A smart folder card cannot be
 dragged, and dropping on it shows `Can't drop here`.
 
-Pressing a smart folder card opens `/smart-folders/{id}`
-([052 UI design, Smart folder page](../../specs/052-smart-folders/ui-design.md#smart-folder-page)):
+Pressing a smart folder card opens `/smart-folders/{id}`:
 a trail band of the folder's ancestors, the name, `12 videos · 1:32:10`, and
 for the owner one conditions line per folder on the path, then the child
 folders by name and the matching videos and groups in the folder's sort, in
@@ -394,17 +383,14 @@ turning into a tag and dissolving also sit in the video page's group actions
 ([Group members](#group-members)). The folder menu offers "Turn the group into
 a tag…" only when the folder has an automatic group, including a registered
 folder's own group, and opens the confirmation dialog that every entry point
-shares ([`GroupTagDialog.tsx`](../../web/src/groups/GroupTagDialog.tsx),
-[048 UI design, Turning into a tag](../../specs/048-groups/ui-design.md#turning-into-a-tag)).
+shares.
 After an action the cached library list is discarded and reloads on the next
 visit.
 
 ### Favorite mark
 
 The owner's favorite mark is one heart that is both mark and toggle, at the
-top right of the thumbnail on video and group cards
-([`FavoriteToggle.tsx`](../../web/src/ui/FavoriteToggle.tsx),
-[035 UI design, Mark, Card](../../specs/035-favorites/ui-design.md)).
+top right of the thumbnail on video and group cards.
 
 | Aspect | Rule |
 | --- | --- |
@@ -431,10 +417,7 @@ A group is refetched with `GET /api/groups/{id}`.
 Left of the heart, in the same corner and shown exactly when the off heart is,
 the owner's `Add to playlist` control opens the playlist picker, and left of
 it `Add to group` opens the group picker; neither has state, so the heart
-stays nearest the corner
-([`PickerButton.tsx`](../../web/src/library/PickerButton.tsx),
-[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist),
-[048 UI design, Add to group](../../specs/048-groups/ui-design.md#add-to-group)).
+stays nearest the corner.
 
 ### List view and selection
 
@@ -443,13 +426,12 @@ add to group (owner, from `sm`; below it the card and the selection bar offer
 them), watched,
 duration, quality, size and date added. A group row uses the
 same columns: first member's thumbnail, Folder marker and count under the
-title, `3 / 12` watched, total duration and size, empty quality
-([017 UI design, List view row](../../specs/017-folder-groups/ui-design.md)).
+title, `3 / 12` watched, total duration and size, empty quality.
 
 Selection is library- and owner-only. Its check shows on hover or focus in the
 grid (always where hover is impossible), always faintly in list view, and on
-every item during selection. What a group's check selects is in
-[017 UI design, Pressing and selection](../../specs/017-folder-groups/ui-design.md#pressing-and-selection).
+every item during selection. A group's check selects that group; the selection
+bar below decides whether an operation sends the group or its selected videos.
 
 ### Selection bar
 
@@ -465,16 +447,7 @@ Its items, in order, are clear, `N selected`, `Add tag`, `Remove tag`,
 actions sit at the right end; those that do not fit move to the right end of
 the next line.
 
-Details: tag actions in
-[014 UI design, Selection bar](../../specs/014-video-tags/ui-design.md#selection-bar),
-the visibility menu in
-[016 UI design, Selection bar](../../specs/016-single-account-auth/ui-design.md#selection-bar),
-`Favorite` and wrapping in
-[035 UI design, Selection bar](../../specs/035-favorites/ui-design.md#selection-bar),
-`Add to playlist`, which sends what `Favorite` sends, in
-[044 UI design, Add to playlist](../../specs/044-playlists/ui-design.md#add-to-playlist),
-and `New group` and `Add to group`, which send the same, in
-[048 UI design, Selection bar](../../specs/048-groups/ui-design.md#selection-bar).
+The request shapes are in [the screen API schema](../../api/openapi.yaml).
 
 `Favorite` decides per selected group whether to send it as a group:
 
@@ -502,12 +475,12 @@ avoid a double outline.
 
 Each sidebar item goes to its screen. `Home` opens `/` and sits above
 `Library`, which opens the library at `/library`
-([057 research, R-15](../../specs/057-home/research.md#r-15-the-library-moves-to-library)).
+([Home shelves](home.md)).
 The library keeps its query parameters at that address, and every in-app link
 that filters the library (a tag, a person, an organization) opens
 `/library?<parameter>=<id>`. A URL of the form `/?tag=<id>` from before the
 move opens `/library` with the same query. `/` without a query is the home
-([057 UI design, Home](../../specs/057-home/ui-design.md#home)).
+([Home and onboarding](home.md)).
 
 While the owner's onboarding step is not `done`, every route replaces itself
 with `/welcome`, the onboarding page outside the shell, and the owner's
@@ -516,13 +489,13 @@ gate ([`OnboardingGate.tsx`](../../web/src/onboarding/OnboardingGate.tsx))
 reads the step before it draws a route, reads it again on the `home` event so
 a step changed on another device takes effect, and treats a step it cannot
 read as `done`, so a failed read never locks the owner out
-([057 research, R-4](../../specs/057-home/research.md#r-4-onboarding-adds-routes-for-its-step-and-interests-only)).
+([Home shelves](home.md)).
 
 ## Video page layout
 
 The video page (`/videos/:id`) is for watching, so it is less dense than the
-lists; shapes and text are in
-[012 UI design](../../specs/012-video-detail-ia/ui-design.md).
+lists. Its layout uses the viewing density of
+[the design system](design-system.md#page-patterns).
 
 The page is layered over the list with no shell and closes with × or Esc. It
 is built on the `DetailPage` skeleton
@@ -544,10 +517,10 @@ flowchart LR
 | --- | --- |
 | Header band | Logo (home), breadcrumb to the folder, the only × |
 | Return target | The list before the page opened, kept through related videos and `Play next` |
-| Tags | Right below the title as one unit ([014 UI design, Video page tags](../../specs/014-video-tags/ui-design.md#video-page-tags)) |
+| Tags | Right below the title as one unit  |
 | Visibility toggle | `Private` or `Public` with a lock or globe icon, a `Button` with `role="switch"`, below the title unit, above the information rows |
 | Right column | Up to three sections, the playlist panel, `Up next` (a group's or smart folder's members) and related videos, all as library-style cards 224px wide: the thumbnail with the name under it, two lines at most. An ordered card carries its number at the thumbnail's top left, and the current one is not a link and shows `ring-2 ring-primary ring-inset` on `bg-accent`. Related videos are ordered by closeness and loaded further as the list scrolls ([Related videos](related-videos.md)) |
-| Guests | No tags, visibility toggle, work details, `Edit details`, `Open file` or `Copy path` ([016 UI design, Visibility toggle](../../specs/016-single-account-auth/ui-design.md#visibility-toggle)) |
+| Guests | No tags, visibility toggle, work details, `Edit details`, `Open file` or `Copy path`  |
 
 Width variations stay in CSS, as in
 [Width breakpoints in CSS, and the sidebar exception](#width-breakpoints-in-css-and-the-sidebar-exception):
@@ -571,14 +544,13 @@ The rows under the title, above which a divider runs, carry no frames.
 | First | Length, size, added, edited, created with icons, then `3 versions` when the group has two or more visible versions, and the thumbnail item for the owner when a thumbnail position is set or a generated or uploaded image is the thumbnail; actions at the right end |
 | Work details | Only when the video has work information, and only for the owner: the set items as `label value` pairs in the first row's `text-sm` and gaps (code, the three dates as stored, the people and organizations of each role, links, IDs), wrapping item by item, with the description folded to three lines under them |
 | Technical | Resolution, container, codec separated by thin rules; smallest and most subdued |
-| Media information | Only for a video with `mediaInfo`, for owners and guests alike: the Video, Audio, Subtitles, Embedded and Broadcast groups, each a wrapping muted row in the first row's `text-sm` and gaps with its name in the technical row's type at the start, and only when it has an item; more than six tracks fold to six and `+{n} more` ([056 UI design, Video page: groups](../../specs/056-media-info/ui-design.md#video-page-groups)) |
+| Media information | Only for a video with `mediaInfo`, for owners and guests alike: the Video, Audio, Subtitles, Embedded and Broadcast groups, each a wrapping muted row in the first row's `text-sm` and gaps with its name in the technical row's type at the start, and only when it has an item; more than six tracks fold to six and `+{n} more`  |
 
 The work details row takes words as labels, muted, and the values in the body
 colour. A role, `Links` or `IDs` with more than three entries shows three and
 `+{n} more`, which opens that item in place; a description longer than three
 lines shows `Show more`. A video without work information shows the rows as
-before, and the row adds no prompt to fill it in
-([047 UI design, Video page: work details row](../../specs/047-video-work-info/ui-design.md#video-page-work-details-row)).
+before, and the row adds no prompt to fill it in.
 
 The actions are favorite, `Add to playlist`, `Add to group`, `Edit details`,
 `Use current frame as thumbnail`,
@@ -586,8 +558,7 @@ The actions are favorite, `Add to playlist`, `Add to group`, `Edit details`,
 `Copy path`: icon-only ghost buttons with tooltips. The ComfyUI entry opens the
 thumbnail editor, an `EditorDialog` over the page, and is dimmed with a set-up
 popover until a ComfyUI connection is saved; while its generated image is the
-thumbnail, the thumbnail item shows that image with `Use the frame instead`
-([045 UI design](../../specs/045-comfyui-thumbnails/ui-design.md#video-page-edit-entry)).
+thumbnail, the thumbnail item shows that image with `Use the frame instead`.
 The upload entry is the owner's even when the player is not shown, and does not
 depend on ComfyUI. It opens the browser's file picker for PNG, JPEG and WebP,
 refuses another type or a file over 64 MB on the failure line before sending
@@ -603,8 +574,7 @@ While an uploaded image is the thumbnail,
 the thumbnail item shows it with an `ImageUp` icon, the label
 `Uploaded thumbnail` and the same `Use the frame instead`. One thumbnail
 action sends at a time: while the capture, a `×` or the upload sends, the
-others are `aria-disabled`
-([046 UI design](../../specs/046-thumbnail-image-upload/ui-design.md#video-page-upload-entry)). Dates show the date only;
+others are `aria-disabled`. Dates show the date only;
 the time is in the `title` attribute and in a popover opened by pressing the
 date. No path appears under the title, because the breadcrumb already shows
 the location.
@@ -614,7 +584,7 @@ The owner's favorite toggle opens the right-hand action group, left of
 `aria-pressed`). It is the group's only control with state, so the eye lands on
 it first; even so, it is no more prominent than the title: on is a small
 `bg-primary-soft` fill with the pink heart. It is absent on group rows and for
-guests ([035 UI design, Video page](../../specs/035-favorites/ui-design.md#video-page)).
+guests.
 `Add to playlist` and then `Add to group` follow it, under the same
 conditions.
 
@@ -648,8 +618,7 @@ under that control. `Cancel`, `Back to the video` and the browser's Back ask
 `Discard changes?` when the draft changed. Opened from the page, the editor
 starts from the page's video and returns along the history, so the page's `×`
 still leads to the list; opened by its URL, it reads the video first, and a
-guest is sent to sign in
-([047 UI design, Editor](../../specs/047-video-work-info/ui-design.md#editor)).
+guest is sent to sign in.
 
 ### Player states
 
@@ -675,7 +644,7 @@ one-at-a-time container.
 
 Rules: [Playback quality, Stall warning](playback-quality.md#stall-warning);
 details:
-[027 UI design, Stall warning](../../specs/027-playback-quality/ui-design.md#stall-warning).
+[playback-quality.md](playback-quality.md).
 
 ### Playback errors
 
@@ -755,12 +724,11 @@ rest of the screen.
 | Seek preview title | The title of the chapter under the pointer, above the time; a video with chapters and no sprite shows it in the time pill alone |
 
 Quality: [Playback quality, Switching](playback-quality.md#switching) and
-[027 UI design, Control bar: quality menu](../../specs/027-playback-quality/ui-design.md#control-bar-quality-menu).
+[playback-quality.md](playback-quality.md).
 Subtitles use video.js's `vjs-text-track-display`
 ([sidecar-subtitles.md](sidecar-subtitles.md)). Chapters: the seek preview
 title and the menu's mark share one rule for the chapter at a position, the
-latest start at or before it whose end is after it
-([056 UI design, Player: chapters](../../specs/056-media-info/ui-design.md#player-chapters)).
+latest start at or before it whose end is after it.
 
 Keyboard shortcuts work on the whole screen: video.js components stop key
 propagation, so keys are caught in the capture phase on `window`, passing
@@ -772,11 +740,10 @@ and it closes the popover, not the page.
 ### Group members
 
 A video in a group only gains parts on the same page; a video outside any group
-is unchanged ([017 UI design, Video page](../../specs/017-folder-groups/ui-design.md#video-page)).
+is unchanged.
 The group is the one the video was opened from (`?group=<id>`, passed to the
 video, related-video and member reads), or else the group with the smallest id
-that holds the video directly; a playlist context overrides both
-([048 UI design, Video page](../../specs/048-groups/ui-design.md#video-page)).
+that holds the video directly; a playlist context overrides both.
 
 | Part | Rule |
 | --- | --- |
@@ -797,8 +764,7 @@ a `smartFolder` event naming the folder. A playlist shows a smart folder item
 as one row with the group item's shape and the `FolderSearch` icon, on the
 playlist screen and in the panel; its link and every playlist step onto it
 carry `smartFolder` from the item or from the step's `smartFolderId`, and a
-folder with no video is a row without a link
-([052 UI design, Playlists](../../specs/052-smart-folders/ui-design.md#playlists)).
+folder with no video is a row without a link.
 
 `matchMedia` reads the `lg` width only to scroll the current member's row into
 view on wide screens; on narrow widths scrolling would move the whole page and
@@ -835,8 +801,7 @@ column applies to `GET /api/videos` and `GET /api/library`:
 `query`, `tag`, `person` and `organization` apply to each group member, so a
 group matched only in part lists its matched members as video items. A
 `person` or `organization` id with no entity gives an empty list, and a value
-that is not a positive integer is `400 invalid_request`
-([047 screen-api.md](../../specs/047-video-work-info/contracts/screen-api.md#list-parameters-person-and-organization)).
+that is not a positive integer is `400 invalid_request`.
 
 For the owner, a search term matches a video when it appears in the title or
 relative path of one of its locations, in a name or synonym of one of its
@@ -845,9 +810,7 @@ linked to its work information. Matching uses the folded form
 (`domain.FoldForMatch`), so width, letter case and hiragana or katakana do not
 matter. The description, dates, URLs and external IDs are not matched. A guest
 search matches only the title and relative path, so names a guest cannot see
-do not decide which public videos are returned
-([`search.go`](../../internal/store/search.go),
-[047 data-model.md, Search](../../specs/047-video-work-info/data-model.md#search)).
+do not decide which public videos are returned.
 
 Only the server knows which videos and groups belong to a folder and match the
 filters, so a page that filtered locally would show a different set from

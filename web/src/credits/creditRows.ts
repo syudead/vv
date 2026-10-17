@@ -15,7 +15,7 @@ import type { TagFieldError } from "../tags/tagNameField";
 import type { RowsPage } from "../tags/useTagPage";
 import { normalizeQuery } from "../videoList/listCriteria";
 
-/** creditPageLimit は一覧の 1 ページの件数である（contracts/screen-api.md「People and organizations」）。 */
+/** creditPageLimit は一覧の 1 ページの件数である。 */
 export const creditPageLimit = 100;
 
 /** CreditPageRows は人物・団体の管理画面の読み込んだ行と件数である。 */
@@ -47,7 +47,7 @@ export function parentOf(credit: Credit) {
 /**
  * reparentRows は、団体 `fromId` の改名・削除・統合のあと、読み込んだ行のうちその団体を親に
  * 持つ子の `parent` を書き換える。`to` は新しい親（改名ならその団体、統合なら統合先）で、
- * undefined なら親を外す（削除はサーバーが子の親を外す。data-model.md「Entities」）。親は
+ * undefined なら親を外す（削除はサーバーが子の親を外す）。親は
  * 並び順と検索に関わらないので、行の位置と件数は変えない。子が無ければ同じ配列を返す。
  */
 export function reparentRows(
@@ -67,7 +67,7 @@ export function reparentRows(
 
 /**
  * secondLine は行の名前の下の 1 行である。親（団体）を先に、別名を言語つきで並べる。
- * どちらも無ければ null（ui-design.md「People and organizations screens」の Words）。
+ * どちらも無ければ null。
  */
 export function secondLine(credit: Credit): UiText | null {
   const parts: UiText[] = [];
@@ -100,7 +100,7 @@ export function creditNameError(failure: unknown): TagFieldError {
 
 /**
  * creditCountText は見出しの件数である。検索している間は `total` of `totalAll`。先頭の
- * ページを待つ間は出さない（ui-design.md「States」の Loading）。
+ * ページを待つ間は出さない。
  */
 export function creditCountText(
   kind: CreditKind,

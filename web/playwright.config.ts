@@ -43,19 +43,13 @@ export default defineConfig({
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
-  // プロジェクトは依存の順に走る。未設定のサーバーでの確かめ → アカウントを作って
-  // ログインした状態を保存 → その状態で既存の e2e すべて。
-  // onboarding は動画のないライブラリから始めるので（親 #1140 受け入れ条件 3）、ほかの e2e が
-  // フォルダを足す前に走らせる。e2e より前に並べ、ファイルで絞ったときはその組にだけ入る。
+  // プロジェクトは依存の順に走る。アカウントを作ってログインした状態を保存 → その状態で
+  // e2e すべて。
+  // onboarding は動画のないライブラリから始めるので、ほかの e2e より前に走らせる。
   projects: [
-    {
-      name: "unconfigured",
-      testMatch: "unconfigured.setup.ts",
-    },
     {
       name: "owner-setup",
       testMatch: "auth.setup.ts",
-      dependencies: ["unconfigured"],
     },
     {
       name: "onboarding",

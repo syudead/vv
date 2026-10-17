@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 代表サムネイルの位置の指定（specs/029-video-overrides/research.md R-4・R-5・R-11）。
+// 代表サムネイルの位置の指定。
 
 func int64Ptr(value int64) *int64 { return &value }
 

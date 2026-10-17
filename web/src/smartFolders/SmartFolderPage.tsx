@@ -87,8 +87,7 @@ const skeletonCount = 12;
 const noMissing: readonly never[] = [];
 
 /**
- * SmartFolderPage はスマートフォルダ 1 つを開いた画面（`/smart-folders/{id}`）である
- * （specs/052-smart-folders/ui-design.md「Smart folder page」）。上のバーの下に道筋の帯、見出しに
+ * SmartFolderPage はスマートフォルダ 1 つを開いた画面（`/smart-folders/{id}`）である。上のバーの下に道筋の帯、見出しに
  * フォルダの名前と本数と条件の行と「Play」、本体に子フォルダのカード、続けて条件に合う動画と
  * グループをフォルダの並べ順でライブラリのカードか行で並べる。所有者とゲストの両方が開く。
  *
@@ -103,7 +102,7 @@ export default function SmartFolderPage() {
 
 /**
  * useFolderSelection はスマートフォルダのページの選択である。ライブラリと同じく動画の id の
- * 集合と、グループとして選んだグループを持つ（ui-design.md「Body」）。子フォルダのカードは
+ * 集合と、グループとして選んだグループを持つ。子フォルダのカードは
  * 選ばない。読み直した項目に合わせて、並ばなくなった動画（タグが変わって条件から外れた）を
  * 選択から外し（keepMembers、見えない動画に一括の操作が及ばない）、選んだグループを直す
  * （reconcileGroups）。「Select all」はここまでに並んだ動画とグループを選ぶ。
@@ -277,7 +276,7 @@ function SmartFolderScreen({ id }: { id: number | null }) {
 
 /**
  * useFolderMenu は所有者の見出しの「More」（SmartFolderMenu）と、空の状態の「Edit conditions…」が
- * 開く窓を持つ（ui-design.md「Header」「Editing」「New child」「Deleting」）。直せたときと子を
+ * 開く窓を持つ。直せたときと子を
  * 作れたときは静かに読み直し（名前・帯・条件の行・本体）、直せたらフォーカスを「More」へ戻す。
  * 消えたら親のページか、親が無ければ
  * ライブラリへ移ってトーストを出す。直す窓が 404 を受けたら無くなった状態にする。ゲストと
@@ -345,8 +344,7 @@ function homeToggle(
 const noTrail: SmartFolderPageData["trail"] = [];
 
 /**
- * EmptyBody は動画もグループも無いフォルダの空の印である（ui-design.md「States」の Empty と
- * Missing）。子フォルダのカードの後に置く。条件の消えた実体が祖先の条件にあれば、説明にその
+ * EmptyBody は動画もグループも無いフォルダの空の印である。子フォルダのカードの後に置く。条件の消えた実体が祖先の条件にあれば、説明にその
  * 祖先の名前を足す。所有者には条件を直す窓を開く「Edit conditions…」を添える。中身があれば
  * 何も描かない。
  */
@@ -394,7 +392,7 @@ function EmptyBody({
 }
 
 /**
- * SmartFolderHeader は道筋の帯と見出しである（ui-design.md「Trail band」「Header」「States」）。
+ * SmartFolderHeader は道筋の帯と見出しである。
  * 帯はフォルダ画面の Breadcrumbs を共有し、上のバーの下に貼り付く。読めなかったときと
  * 無くなったときは、見せられないものの名前を出さない。
  */
@@ -483,7 +481,7 @@ interface ItemsProps {
 
 /**
  * FolderItems は中身を応答の順に、格子ならライブラリのカード、リストならライブラリの行で
- * 並べる（ui-design.md「Body」）。子フォルダはそのページ、動画は `?smartFolder` 付きの再生画面、
+ * 並べる。子フォルダはそのページ、動画は `?smartFolder` 付きの再生画面、
  * グループはそのグループのページを開く。選択は所有者の動画とグループのカードだけ。
  */
 function FolderItems(props: ItemsProps) {

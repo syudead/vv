@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// アクティビティの記録の規則（specs/055-activity/data-model.md「Rules」）。
+// アクティビティの記録の規則。
 
 func TestActivityKindFeature(t *testing.T) {
 	for kind, want := range map[ActivityKind]ActivityFeature{

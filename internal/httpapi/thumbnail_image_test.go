@@ -14,8 +14,7 @@ import (
 )
 
 // 適用したサムネイルの画像の取り消しと、thumbnailImage・thumbnailUrl の版
-// （specs/045-comfyui-thumbnails/contracts/screen-api.md、
-// specs/046-thumbnail-image-upload/contracts/screen-api.md）は、本物の認証・保存層で確かめる。
+// は、本物の認証・保存層で確かめる。
 // 画像の生成だけを fakeThumbnailPicker が代わりにする。
 
 func (f *guestFixture) revertThumbnailImage(name string, cookies ...*http.Cookie) *httptest.ResponseRecorder {

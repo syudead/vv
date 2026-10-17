@@ -65,7 +65,7 @@ See [Development](docs/how-to/development.md) for the full local workflow and
 - [Product specifications](docs/product-specs/index.md): specification policy
 - [How-to guides](docs/how-to/README.md): repeatable operational procedures
 
-These documents and the feature plans under `specs/` are also published as a
+These permanent documents are also published as a
 browsable site with search at <https://syudead.github.io/vv/>
 ([Documentation site](docs/how-to/docs-site.md)).
 

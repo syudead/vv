@@ -16,7 +16,7 @@ func shelfNames(proposal []ProposedShelf) []string {
 }
 
 // 5 本以上の候補だけを、種類付きのタグ（種類の id 順）、種類なしのタグ、人物、団体の順に、それぞれ本数の
-// 多い順で棚にする（specs/057-home/research.md R-2）。
+// 多い順で棚にする（docs/design-docs/home.md）。
 func TestOrganizeByRulesOrdersAndFilters(t *testing.T) {
 	candidates := []ShelfCandidate{
 		{Kind: ShelfSourceOrganization, ID: 1, Name: "Maker", Videos: 9},

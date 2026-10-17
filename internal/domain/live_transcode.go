@@ -21,6 +21,8 @@ type LiveTranscodeRequest struct {
 	// Normalize は映像と音声を必ずエンコードし直すかである。直接再生から切り替えた
 	// 変換だけが真で、シークや途中からの再開では立てない。
 	Normalize bool
+	// SparseKeyframes skips an unhelpful copy attempt on mid-file starts.
+	SparseKeyframes bool
 	// StartupDeadline はその場の解析と最初のデータまでを合わせた期限である。
 	StartupDeadline time.Time
 	// VideoEncoder は映像をエンコードするときに使う方式である。空なら software として
@@ -28,7 +30,7 @@ type LiveTranscodeRequest struct {
 	VideoEncoder VideoEncoder
 	// Quality は縮める画質である。空なら元の画質で、今までどおり映像をコピーできれば
 	// コピーする。あれば映像と音声を必ずエンコードし、表示の短辺をこの画質に縮めて
-	// ビットレートに上限を付ける（specs/027-playback-quality/research.md R-2）。
+	// ビットレートに上限を付ける。
 	// 動画に使える画質か（TranscodeQuality.Available）は呼び出し側が確かめる。
 	Quality TranscodeQuality
 }
@@ -54,6 +56,6 @@ type LiveTranscode struct {
 	// HardwareFailure は、要求の方式（ハードウェア）が最初のデータを出さずに終わり、同じ要求の
 	// 中で software に切り替えたときの誤り（FFmpeg の標準エラーの末尾を含む）である。
 	// 切り替えなかったときは nil。ログに書くのは呼び出し側である
-	// （specs/025-hardware-encoding/research.md R-6）。
+	//
 	HardwareFailure error
 }

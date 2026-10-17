@@ -5,8 +5,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * 取り込んだ shadcn スキルは、リポジトリが固定した CLI だけを呼ぶ
- * （specs/038-design-system/research.md R-7）。上流のスキルは npx shadcn@latest を使うので、
+ * 取り込んだ shadcn スキルは、リポジトリが固定した CLI だけを呼ぶ。上流のスキルは npx shadcn@latest を使うので、
  * 更新で取り込み直したときに置き換えを忘れるとここで落ちる。
  */
 

@@ -12,7 +12,6 @@ import (
 
 // ScanIssueKind は直近の取り込みで起きた、利用者に知らせる出来事の種類である。
 // 値は scan_issues.kind と api/openapi.yaml の ScanIssueKind に対応する
-// （specs/024-import-progress/data-model.md §3）。
 type ScanIssueKind string
 
 const (
@@ -67,7 +66,7 @@ func (k ScanIssueKind) Severity() ScanIssueSeverity {
 
 // FromScan は走査がファイルを登録できなかった種類かを返す。この種類を持つ件は、
 // 対象の動画の集合に入っていなければ「登録できなかったファイル」として分母と
-// 済みの本数に足す（specs/024-import-progress/research.md R-5）。
+// 済みの本数に足す。
 func (k ScanIssueKind) FromScan() bool {
 	return k == IssueUnreadable || k == IssueChangedDuringImport || k == IssueRegisterFailed
 }
@@ -103,7 +102,6 @@ func SubstitutedIssueKind(kind JobKind) (ScanIssueKind, bool) {
 
 // Substitution は、生成の段階が成功したときに代用したかである。internal/media の
 // 生成の関数が返す値から internal/app が決め、成功を書く保存側へ渡す
-// （specs/024-import-progress/research.md R-7）。
 type Substitution int
 
 const (
@@ -159,7 +157,6 @@ type ScanIssueRecord struct {
 }
 
 // ScanIssue は直近の取り込みの問題の、まとめた1件である
-// （specs/024-import-progress/contracts/scan-api.md §3）。
 type ScanIssue struct {
 	// VideoID は登録された動画の id。未登録のファイルは 0 である。
 	VideoID  int64
@@ -185,7 +182,7 @@ type ScanIssueCounts struct {
 }
 
 // ScanIssues は保存された行を表示の形にし、並べて返す。所在がどの登録フォルダにも
-// 含まれない件は除く（contracts/scan-api.md §3）。並びは、失敗を先に、同じ重さの
+// 含まれない件は除く。並びは、失敗を先に、同じ重さの
 // 中はファイル名、次にフォルダ（登録フォルダの表示名、相対パス）の順である。
 func ScanIssues(roots []MediaFolder, records []ScanIssueRecord) []ScanIssue {
 	out := make([]ScanIssue, 0, len(records))

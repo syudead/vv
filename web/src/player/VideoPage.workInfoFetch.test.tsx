@@ -23,8 +23,7 @@ import {
 } from "../testing/workInfoFetchPage";
 import type { PlayerControls } from "./playerControls";
 
-// 動画ページの作品情報の取得（specs/049-work-info-plugins/ui-design.md「Video page: fetch
-// entry」「Fetch dialog」）。作品の詳細の行は VideoPage.workInfoFetchDetails.test.tsx。
+// 動画ページの作品情報の取得。作品の詳細の行は VideoPage.workInfoFetchDetails.test.tsx。
 
 vi.mock("./VideoPlayer", () => ({
   default: function VideoPlayerMock(props: {

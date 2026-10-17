@@ -8,12 +8,12 @@ import { type CreditFilter, hasCreditFilter } from "./creditCriteria";
 
 /**
  * tagCriteria は、ライブラリだけが持つタグ絞り込みの条件（URL の `tag`）の
- * 読み書きを行う（specs/014-video-tags/contracts/list-url.md §1・§2）。共有の `ListCriteria`（videoList/listCriteria.ts）には
+ * 読み書きを行う。共有の `ListCriteria`（videoList/listCriteria.ts）には
  * `tag` を足さない — 足すとフォルダ画面も `tag` を読んで URL に残してしまい、
  * フォルダ画面の URL を変えない約束に反する。
  */
 
-/** MAX_TAG_COUNT はタグ絞り込みに使える id の最大個数である（list-url.md §1）。 */
+/** MAX_TAG_COUNT はタグ絞り込みに使える id の最大個数である。 */
 export const MAX_TAG_COUNT = MAX_TAG_FILTER_COUNT;
 
 /** URL の `tag` パラメータの名前。useListCriteria の画面固有パラメータの口へ渡す。 */
@@ -21,7 +21,7 @@ export const TAG_PARAM = "tag";
 
 /**
  * parseTagParam は URL の生の `tag` の値（`getAll("tag")` の結果）を、整えた
- * id の配列にする。数でない値、重複、17 個目以降は捨てる（list-url.md §1）。
+ * id の配列にする。数でない値、重複、17 個目以降は捨てる。
  * 誤りは出さない。
  */
 export function parseTagParam(raw: readonly string[]): number[] {
@@ -40,7 +40,7 @@ export function parseTagParam(raw: readonly string[]): number[] {
 
 /**
  * serializeTagIds は id の集まりを URL に書く形にする。書く順は id の昇順に
- * そろえる（list-url.md §1、listSnapshot の鍵の一致を保つため）。
+ * そろえる（listSnapshot の鍵の一致を保つため）。
  */
 export function serializeTagIds(ids: readonly number[]): string[] {
   return Array.from(new Set(ids))

@@ -30,13 +30,11 @@ const modes: readonly FolderGroupingMode[] = ["auto", "ungroup", "groupDirect"];
 
 /**
  * FolderGroupingMenu はフォルダ画面の「動画 N」の見出しの行の右端に置く、そのフォルダの
- * ライブラリでのまとめ方のメニューである（specs/017-folder-groups/ui-design.md
- * 「Folder grouping menu」、要件 7・11・22）。
+ * ライブラリでのまとめ方のメニューである。
  *
  * ラジオは応答の `grouping` を `onGroupingChange` で返すだけで、一覧は読み直させない。
  * 「Turn the group into a tag…」は `grouping.groupId`（そのフォルダの自動グループ）があるときだけ
- * 描き、共有のタグの窓（GroupTagDialog）を開く（specs/048-groups/ui-design.md「Folder grouping
- * menu」）。グループは改名できるので、窓の名前は開く前に `GET /api/groups/{id}` で読んだ今の名前に
+ * 描き、共有のタグの窓（GroupTagDialog）を開く。グループは改名できるので、窓の名前は開く前に `GET /api/groups/{id}` で読んだ今の名前に
  * する（タグはその名前で作られる）。その読み出しの 404 は窓からの 404 と同じに扱う。成功は `onTagged` で画面に動画の一覧を読み直させ、窓からの 404（途中で解散された）と
  * ラジオの 409 は `onStale` でフォルダの `grouping` を読み直させる。どちらの操作も、成功すると
  * 一覧の控えを捨てる（api/folderGrouping、api/groups）。
@@ -71,7 +69,7 @@ export default function FolderGroupingMenu({
     if (conflict) onStale();
   };
 
-  // 同じ値を選び直しても送る（ui-design.md「Folder grouping menu」。応答は 200）。
+  // 同じ値を選び直しても送る。
   const choose = async (mode: FolderGroupingMode) => {
     setBusy(true);
     try {
@@ -165,7 +163,7 @@ export default function FolderGroupingMenu({
           onTagged={(result) => {
             setTagging(null);
             toast(taggedMessage(result));
-            // タグにすると自動グループは解散し、そのフォルダに ungroup が書かれる（research.md R-4・R-11）。
+            // タグにすると自動グループは解散し、そのフォルダに ungroup が書かれる。
             onGroupingChange({ mode: "ungroup" });
             onTagged();
           }}

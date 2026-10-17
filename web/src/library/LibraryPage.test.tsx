@@ -123,7 +123,7 @@ function renderLibrary(initial = "/", audience: Audience = "owner") {
           <AudienceProvider audience={audience}>
             <ScanProvider>
               <Routes>
-                {/* `/` は問い合わせごと `/library` へ送る（specs/057-home/research.md R-15）。 */}
+                {/* `/` は問い合わせごと `/library` へ送る（docs/design-docs/home.md）。 */}
                 <Route path="/" element={<LibraryRedirect />} />
                 <Route
                   path="/library"
@@ -242,7 +242,7 @@ describe("LibraryPage", () => {
     );
     renderLibrary();
     expect(await screen.findByText("No videos yet")).toBeDefined();
-    // 段階を folders に書いてオンボードを開く（specs/057-home/ui-design.md「Sidebar and library」）。
+    // 段階を folders に書いてオンボードを開く（docs/design-docs/home.md「Sidebar and library」）。
     const user = userEvent.setup();
     await user.click(screen.getByRole("button", { name: "Set up library" }));
     await waitFor(() =>
@@ -471,7 +471,7 @@ describe("LibraryPage", () => {
     expect(screen.getByTestId("location").textContent).toBe("?sort=sizeDesc");
   });
 
-  describe("お気に入りのみと「Date favorited」（specs/035-favorites/ui-design.md「Filter menu」「Sort and direction」）", () => {
+  describe("お気に入りのみと「Date favorited」", () => {
     it("「Favorites only」を入れると favorite=true で読み、URL に fav=1 が付き、ボタンの数字に数え、「Clear filters」で外れる（要件 8）", async () => {
       const user = userEvent.setup();
       renderLibrary("/?sort=titleAsc");
@@ -1660,7 +1660,7 @@ describe("LibraryPage", () => {
         expect(screen.getByTestId("location").textContent).not.toContain("tag=1"),
       );
       // 選択は作られない。条件（tag）が変わったことで、押す前の選択も解除される
-      // （検索語・視聴状態・再生可否と同じ扱い。ui-design.md「Active tag filters」）。
+      // （検索語・視聴状態・再生可否と同じ扱い）。
       await waitFor(() =>
         expect(screen.queryByText(/^\d[\d,]* videos? selected$/)).toBeNull(),
       );
@@ -1814,7 +1814,7 @@ describe("LibraryPage", () => {
 
     // Devin の指摘4: 一括で外したタグが今の絞り込みに含まれているときは、選択を
     // 解除して一覧を取り直し、件数と一覧を条件に合わせ直す
-    // （docs/design-docs/library-ui.md §6）。
+    // （docs/design-docs/library-ui.md）。
     it("一括で外したタグが今の絞り込みに含まれるとき、選択を解除して一覧を取り直す（Devin の指摘4）", async () => {
       const tag = {
         id: 1,
@@ -1902,7 +1902,7 @@ describe("LibraryPage", () => {
       expect(await screen.findByText("No videos match these conditions")).toBeDefined();
     });
   });
-  describe("ゲスト（specs/016-single-account-auth/ui-design.md「Guest degradation」）", () => {
+  describe("ゲスト", () => {
     function guestPage(): VideoPage {
       // ゲストの応答には progress が無く、tags は空である。
       return {
@@ -1944,7 +1944,7 @@ describe("LibraryPage", () => {
       );
       expect(paths.every((path) => path === "/api/library")).toBe(true);
       // /api/events はゲストにも group だけを送るので、グループの変化のために 1 本つなぐ
-      // （specs/048-groups/contracts/screen-api.md「/api/events」）。
+      //
       expect(FakeEventSource.instances).toHaveLength(1);
     });
 
@@ -2066,7 +2066,7 @@ describe("LibraryPage", () => {
       expect(login.getAttribute("href")).toBe("/login?next=%2Flibrary");
     });
   });
-  describe("グループのカード（specs/017-folder-groups/ui-design.md「Group card」）", () => {
+  describe("グループのカード", () => {
     const memberIds = Array.from({ length: 12 }, (_, i) => 101 + i);
 
     function seriesGroup(extra: Partial<LibraryGroup> = {}): LibraryGroup {
@@ -2166,7 +2166,7 @@ describe("LibraryPage", () => {
           );
         }
         if (url.pathname === "/api/library/ids") {
-          // グループの項目は `groups` にも入る（specs/035-favorites/contracts/screen-api.md §3）。
+          // グループの項目は `groups` にも入る。
           return Promise.resolve(
             json({
               ids: [1, ...memberIds, 2],
@@ -2240,7 +2240,7 @@ describe("LibraryPage", () => {
       ).toBeDefined();
     });
 
-    it("押すとそのグループのページへ移り、戻る先は今の一覧（specs/048-groups/research.md R-8）", async () => {
+    it("押すとそのグループのページへ移り、戻る先は今の一覧", async () => {
       installGroupList();
       const user = userEvent.setup();
       renderWithPlayer("/?q=ser");
@@ -2414,7 +2414,7 @@ describe("LibraryPage", () => {
     });
 
     it("ゲストのグループのカードには視聴状態と見終えた本数を出さない", async () => {
-      // ゲストの応答では watchedCount・watchState を省く（data-model.md §7）。
+      // ゲストの応答では watchedCount・watchState を省く。
       const guest = seriesGroup();
       delete guest.watchedCount;
       delete guest.watchState;
@@ -2432,7 +2432,7 @@ describe("LibraryPage", () => {
   });
 });
 
-describe("LibraryPage の英語の画面（specs/023-english-i18n）", () => {
+describe("LibraryPage の英語の画面", () => {
   const fetchMock = vi.fn<typeof fetch>();
   /** library は GET /api/library の応答を作る。テストごとに差し替える。 */
   let library: (url: URL) => Promise<Response>;
@@ -2706,7 +2706,7 @@ describe("LibraryPage の英語の画面（specs/023-english-i18n）", () => {
   });
 });
 
-describe("LibraryPage の束ねる操作（specs/030-video-versions/ui-design.md「Selection bar」）", () => {
+describe("LibraryPage の束ねる操作", () => {
   const fetchMock = vi.fn<typeof fetch>();
   /** 一覧に出る動画の id。束ねると代表以外が消える。 */
   let listed: number[];

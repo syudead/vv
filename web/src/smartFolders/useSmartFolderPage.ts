@@ -27,7 +27,7 @@ export interface SmartFolderPageData {
   items: readonly LibraryItem[];
   /** 続きがあるときだけ入る。 */
   nextCursor?: string;
-  /** フォルダがホームの棚か。所有者の応答にだけ入る（specs/057-home/contracts/screen-api.md）。 */
+  /** フォルダがホームの棚か。所有者の応答にだけ入る（docs/design-docs/home.md）。 */
   onHome?: boolean;
 }
 
@@ -78,8 +78,7 @@ async function readFolderThrough(
 }
 
 /**
- * useSmartFolderPage はスマートフォルダのページ 1 つの読み込みである
- * （specs/052-smart-folders/ui-design.md「Smart folder page」「Reading again」）。開いたときに
+ * useSmartFolderPage はスマートフォルダのページ 1 つの読み込みである。開いたときに
  * 読み、続きは `loadMore` で 1 ページずつ足す。このフォルダの id を運ぶ `smartFolder` の知らせと
  * つなぎ直しで、骨組みを出さずに並んでいる分を保ったまま読み直す。
  *

@@ -11,7 +11,7 @@ import (
 type OllamaSettingsStore interface {
 	// SavedOllamaSettings は接続先（行が無ければ既定値）と、接続先の行があるか
 	// （OllamaConnectionSaved と同じ答え）を同じ時点の値として返す
-	// （specs/058-settings-pages/research.md R-4）。
+	//
 	SavedOllamaSettings(ctx context.Context) (domain.OllamaSettings, bool, error)
 	SaveOllamaSettings(ctx context.Context, settings domain.OllamaSettings) error
 }
@@ -30,7 +30,7 @@ type OllamaConnection struct {
 	probe OllamaProbe
 	mu    sync.Mutex
 	// saved は接続先を保存したあとに呼ぶ（重複の判定が接続を待っていた組を再開する、
-	// specs/054-auto-dup/research.md R-13）。nil なら呼ばない。
+	// docs/design-docs/duplicate-judging.md）。nil なら呼ばない。
 	saved func(context.Context)
 }
 
@@ -45,8 +45,7 @@ func (o *OllamaConnection) OnSaved(saved func(context.Context)) {
 }
 
 // Settings は保存した接続先と、所有者が接続先を保存したかを同じ時点の値として返す。保存したかは
-// 重複の判定が待つかを決めるのと同じ答え（specs/054-auto-dup/research.md R-13、
-// specs/058-settings-pages/research.md R-4）。
+// 重複の判定が待つかを決めるのと同じ答え。
 func (o *OllamaConnection) Settings(ctx context.Context) (settings domain.OllamaSettings, saved bool, err error) {
 	return o.store.SavedOllamaSettings(ctx)
 }

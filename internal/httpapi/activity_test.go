@@ -15,7 +15,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// アクティビティの記録の画面 API（specs/055-activity/contracts/screen-api.md）。
+// アクティビティの記録の画面 API。
 
 // publishToEvents は保存層の発行を画面への知らせに渡す（cmd/mdm の購読の代わり）。
 type publishToEvents struct{ events *Events }

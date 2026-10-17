@@ -79,7 +79,7 @@ func (s *SettingsStore) AddMediaFolder(ctx context.Context, path string) (domain
 		return domain.MediaFolder{}, err
 	}
 	// 登録外の所在しか無かった待ちの仕事が、この登録で取り出せるようになる。
-	// その動画を直近の取り込みの対象に加える（specs/024-import-progress/data-model.md §2）。
+	// その動画を直近の取り込みの対象に加える。
 	if err := addScanVideosWithRemainingJobs(ctx, tx); err != nil {
 		return domain.MediaFolder{}, err
 	}
@@ -226,7 +226,7 @@ func (s *SettingsStore) DeleteMediaFolder(ctx context.Context, id, expectedVersi
 	// VideoIngestChanged も出ないので、ここで起こさないと次に仕事が積まれるまで
 	// 止まったままになる。
 	c.jobsQueued(domain.JobSeekThumbnail)
-	// 登録の解除は所有者の操作として、外れた動画の数とともに記録する（specs/055-activity/research.md R-6）。
+	// 登録の解除は所有者の操作として、外れた動画の数とともに記録する。
 	if err := recordMediaFolderRemoval(ctx, tx, &c, path, removed, time.Now()); err != nil {
 		return err
 	}

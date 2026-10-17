@@ -9,7 +9,7 @@ import (
 )
 
 // OnboardingStore はオンボードの段階と分野の保存先である。internal/store の *HomeStore が満たす
-// （specs/057-home/research.md R-3、R-6）。
+// （docs/design-docs/home.md）。
 type OnboardingStore interface {
 	// OnboardingStep は段階を返す。無ければメディアフォルダの有無で決まる既定である。
 	OnboardingStep(ctx context.Context) (domain.OnboardingStep, error)
@@ -29,7 +29,7 @@ type OnboardingAutoTagging interface {
 	QueueLibrary(ctx context.Context, scope domain.AutoTagScope) (int, error)
 }
 
-// Onboarding はオンボードの段階と分野の選び方である（specs/057-home/research.md R-3〜R-6）。
+// Onboarding はオンボードの段階と分野の選び方である（docs/design-docs/home.md〜R-6）。
 type Onboarding struct {
 	store      OnboardingStore
 	autoTagger OnboardingAutoTagging

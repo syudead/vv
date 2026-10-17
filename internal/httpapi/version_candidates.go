@@ -7,8 +7,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 「同じ動画かもしれない」候補の一覧と「違う動画」の記録
-// （specs/030-video-versions/contracts/screen-api.md §5・§6、research.md R-7・R-8）。どちらも
+// 「同じ動画かもしれない」候補の一覧と「違う動画」の記録。どちらも
 // 所有者だけで、accessRoutes に載せない。候補は取り込みの fingerprint の段階で増減し、画面は
 // /api/events の scan（ProcessingChanged）で取り直すので、新しい知らせの種類は足さない。
 // 「同じ動画」は POST /api/video-bundles を使い、束ねると保存層が候補を消す。

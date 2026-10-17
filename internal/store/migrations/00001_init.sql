@@ -1,6 +1,6 @@
 -- +goose Up
 -- Phase 0 の最小スキーマ。利用者データは持たず、全体が「消してもスキャンで
--- 再構築できる索引」である（specs/001-initial-setup/data-model.md）。
+-- 再構築できる索引」である。
 
 create table videos (
     -- FTS5 の rowid と対応させるため integer primary key にする。
@@ -18,7 +18,7 @@ create table videos (
 
 -- 外部コンテンツ方式にして本文の二重保持を避ける。trigram は3文字単位で索引を
 -- 作るため、2文字以下の検索語は MATCH に一致しない。1〜2文字はこの表への
--- LIKE '%…%'（trigram 索引で処理される）に振り分ける（research.md R-001）。
+-- LIKE '%…%'（trigram 索引で処理される）に振り分ける。
 create virtual table videos_fts using fts5(
     title,
     path,

@@ -11,8 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 外部連携 API の名前でのタグの一括操作（specs/026-external-api/research.md R-7、
-// contracts/external-api.md §4）。画面の付与（video_tags.go）と違い、引けない動画を
+// 外部連携 API の名前でのタグの一括操作。画面の付与（video_tags.go）と違い、引けない動画を
 // 飛ばさずに要求全体を失敗させる。書き換えるのは手で付けたタグ（video_tags の行）だけで、
 // 祖先のフォルダ名から付くタグは変えない。
 
@@ -22,7 +21,7 @@ import (
 // tentative が真の add・replace は、どのタグの名前にもシノニムにも当たらない名前を仮のタグとして
 // 作る。その名前が却下した名前なら作らず付けず、飛ばした名前として返す（replace の置き換え後の
 // 集合にも入らない）。tentative が偽なら確定したタグとして作る。既存のタグに当たる名前は
-// tentative を問わずそのタグを付け、その状態を変えない（specs/031-tentative-tags/data-model.md §3）。
+// tentative を問わずそのタグを付け、その状態を変えない。
 //
 // 全体を 1 つのトランザクションで行う。videos の指定のうち、登録フォルダの下に所在を持つ
 // 今の動画へ引けないもの（内容を読めていない動画を含む）が 1 つでもあれば
@@ -53,7 +52,7 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 		return domain.VideoTagsOutcome{}, err
 	}
 	keys := uniqueUserKeys(targets)
-	// 外部連携 API の操作も所有者の操作として記録する（specs/055-activity/research.md R-6）。
+	// 外部連携 API の操作も所有者の操作として記録する。
 	c := &changes{}
 	skipped, err := writeVideoTagsByName(ctx, tx, keys, action, normalized, tagWrite{tentative: tentative, activity: c},
 		time.Now())
@@ -86,7 +85,7 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 // （resolveTagNames）。keepSuggested は、自動タグ付けが提案した（video_tags.tentative = 1 の）付与に
 // 同じタグを付けるとき、提案のまま残す。偽なら手で付けたのと同じく確定する（docs/design-docs/auto-tagging.md）。
 // activity が nil でなければ、変わる鍵とタグの組ごとに所有者の記録を書き（recordManualTagActivity）、それを
-// activity に残す（specs/055-activity/research.md R-6）。
+// activity に残す。
 type tagWrite struct {
 	tentative     bool
 	keepSuggested bool
@@ -96,7 +95,7 @@ type tagWrite struct {
 // writeVideoTagsByName は利用者データの鍵 keys の手で付けたタグを、整えた名前 names で action の通りに
 // 書き換え、飛ばした（却下した）名前を返す。名前の引き当て（resolveTagNames）と書き込みと更新日時は
 // 呼び出し側の取引 tx で行う。更新日時は手で付けたタグが実際に変わった鍵（集まりなら全メンバー）だけを
-// 進める（specs/033-video-dates/research.md R-3）。外部連携の一括操作と、作品情報の取得の結果の反映
+// 進める。外部連携の一括操作と、作品情報の取得の結果の反映
 // （ApplyFetchedWorkInfo）が共有する。
 func writeVideoTagsByName(
 	ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, names []string, mode tagWrite, now time.Time,
@@ -116,7 +115,7 @@ func writeVideoTagsByName(
 }
 
 // taggableVideo は一括操作の対象に引き当てた動画である。userKey は利用者データの鍵
-// （specs/030-video-versions/data-model.md §3）で、タグはこの鍵に書き、この鍵で読む。
+// で、タグはこの鍵に書き、この鍵で読む。
 type taggableVideo struct {
 	id         int64
 	contentKey string
@@ -157,8 +156,7 @@ func resolveTaggableVideos(ctx context.Context, tx *sql.Tx, videos []domain.Vide
 // 当たる名前は 1 つにまとめる。
 //
 // 作るタグは tentative が真なら仮のタグで、名前が却下した名前なら作らずに skipped へ入れる
-// （names の順、重複なし）。偽なら確定したタグで、名前を却下した名前から外す
-// （specs/031-tentative-tags/data-model.md §3）。判定は名前の引き当てと同じ取引で行う（R-6）。
+// （names の順、重複なし）。偽なら確定したタグで、名前を却下した名前から外す。判定は名前の引き当てと同じ取引で行う（R-6）。
 func resolveTagNames(ctx context.Context, tx *sql.Tx, action domain.VideoTagsAction, names []string, tentative bool) ([]int64, []string, error) {
 	seen := make(map[int64]bool, len(names))
 	ids := make([]int64, 0, len(names))
@@ -245,8 +243,7 @@ func uniqueUserKeys(targets []taggableVideo) []string {
 // 書き込みの前に所有者の記録を書く。
 // 動画とタグの組を 1 行ずつ送らず、json_each で渡した集合に対する文の数を一定に保つ。上限の
 // 20000 件 × 100 件でも文の数が増えず、書き込みの鍵を持つ時間を SQLite の中の処理だけに抑える。
-// 変わる鍵は書き込みの前に 1 文で求め（changedManualTagKeys）、返る行を鍵の数までに抑える
-// （specs/033-video-dates/research.md R-3）。書き込みは同じ取引で行うので、求めた鍵と実際に
+// 変わる鍵は書き込みの前に 1 文で求め（changedManualTagKeys）、返る行を鍵の数までに抑える。書き込みは同じ取引で行うので、求めた鍵と実際に
 // 変わる行は食い違わない。
 func applyManualTags(
 	ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, tagIDs []int64, mode tagWrite, now time.Time,

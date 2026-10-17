@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 規則の整理役の元の数え方（specs/057-home/research.md R-2、R-10）。
+// 規則の整理役の元の数え方（docs/design-docs/home.md）。
 
 // candidatesFixture は 10 本の動画を入れ、Five を 0〜4、Four を 5〜8、仮のタグ Guess を 0〜5、種類付きの
 // Kinded を 5〜9 に付け、花子を 0〜4 の出演者に、メーカー A を 5〜9 に結ぶ。

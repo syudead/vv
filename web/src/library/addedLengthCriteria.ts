@@ -6,7 +6,7 @@ import { formatNumber, t, type UiText } from "../i18n";
 /**
  * addedLengthCriteria は、ライブラリの絞り込みの追加日と長さ（URL の `addedWithin`・
  * `minDuration`・`maxDuration`）の読み書きと、ポップオーバーとスマートフォルダの窓が出す
- * 選択肢を受け持つ（specs/052-smart-folders/ui-design.md「Added and length」、research.md R-4）。
+ * 選択肢を受け持つ。
  * タグや人物と同じく共有の `ListCriteria` には足さない — 足すとフォルダ画面も読んでしまう。
  * タグや人物と違ってゲストも使える（所有者のデータに依らない）。
  */
@@ -25,7 +25,7 @@ export const addedLengthParams: readonly string[] = [
   MAX_DURATION_PARAM,
 ];
 
-/** 追加日の日数の範囲（contracts/screen-api.md の SmartRule と一覧のパラメータ）。 */
+/** 追加日の日数の範囲。 */
 export const MIN_ADDED_WITHIN = 1;
 export const MAX_ADDED_WITHIN = 36500;
 /** 長さの秒数の上限（下限は 0）。 */
@@ -95,7 +95,7 @@ export interface ParsedAddedLength {
   filter: AddedLengthFilter;
   /**
    * URL に送れない値（範囲の外、整数でない、下限が上限を超える）があった。画面は
-   * `filter` の値で履歴を増やさずに URL を書き直す（ui-design.md「Added and length」）。
+   * `filter` の値で履歴を増やさずに URL を書き直す。
    */
   dropped: boolean;
 }

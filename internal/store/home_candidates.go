@@ -8,7 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ShelfCandidates は規則の整理役の元を 1 つの読み取りの取引で数える（specs/057-home/research.md R-2、
+// ShelfCandidates は規則の整理役の元を 1 つの読み取りの取引で数える（docs/design-docs/home.md、
 // R-10）。数える動画はライブラリの一覧と同じ所有者に見せる動画で、unshelvedOnly なら
 // domain.VideoQuery.Unshelved と同じくどの棚にも一致しない動画だけである。候補は仮でない
 // （tags.tentative = 0 の）タグ・人物・団体のうち、domain.RuleShelfMinVideos 本以上の動画に当たるもので、

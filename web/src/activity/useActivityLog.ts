@@ -16,8 +16,7 @@ import {
   activityCriteriaKey,
 } from "./activityCriteria";
 
-// アクティビティの一覧の読み込み（specs/055-activity/ui-design.md「Cards」「Live updates」
-// 「States」）。
+// アクティビティの一覧の読み込み。
 
 export type MoreState = { kind: "idle" } | { kind: "loading" } | { kind: "failed" };
 

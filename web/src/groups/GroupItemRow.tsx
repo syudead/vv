@@ -60,11 +60,10 @@ function linkLabel(item: GroupItem) {
 }
 
 /**
- * GroupItemRow はグループのページのリスト表示の 1 行である（specs/048-groups/ui-design.md
- * 「Body」）。プレイリストの画面の行に、ライブラリの選択のチェックを前に足す: チェック、番号、
+ * GroupItemRow はグループのページのリスト表示の 1 行である。プレイリストの画面の行に、ライブラリの選択のチェックを前に足す: チェック、番号、
  * サムネイル、題名（子グループは「12 videos」の行）、`sm` から視聴済み、長さ。所有者には番号の
  * 前にハンドル、後ろに `×`「Remove from group」を描き、行のどこからでも持ち上げられる
- * （「Reordering」「Removing one item」、specs/050-drag-organize/ui-design.md「Group page」）。
+ * （「Reordering」「Removing one item」、docs/design-docs/catalog-organization.md「Group page」）。
  */
 export const GroupItemRow = memo(function GroupItemRow({
   item,

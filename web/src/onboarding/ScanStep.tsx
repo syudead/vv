@@ -7,7 +7,7 @@ import { StepsPage } from "../ui/patterns/steps-page";
 import { Button } from "../ui/shadcn/button";
 import { SkipButton, StepNotice, type StepProps } from "./stepFrame";
 
-// オンボードの「Scan」の手順（specs/057-home/ui-design.md「Onboarding」）。「Scan library」は
+// オンボードの「Scan」の手順（docs/design-docs/home.md「Onboarding」）。「Scan library」は
 // /api/scans で取り込みを始め、段階を `interests` にする。もう走っている取り込みは始めたものと
 // 数える（開始の要求は走っているものをそのまま返す）。メディアフォルダが無ければ押せない。
 

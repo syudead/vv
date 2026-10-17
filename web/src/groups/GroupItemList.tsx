@@ -19,8 +19,7 @@ export interface GroupItemEditing {
 }
 
 /**
- * GroupItemList はグループのページのリスト表示である（specs/048-groups/ui-design.md「Body」
- * 「Reordering」）。所有者には行をドラッグの層（GroupDragLayer、呼び出し側が包む）に加え、
+ * GroupItemList はグループのページのリスト表示である。所有者には行をドラッグの層（GroupDragLayer、呼び出し側が包む）に加え、
  * ハンドルと行の `×` を足す。ゲストには番号つきの行だけを描く。
  */
 export function GroupItemList({

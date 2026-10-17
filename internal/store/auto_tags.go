@@ -71,8 +71,7 @@ func (s *SettingsStore) OllamaSettings(ctx context.Context) (domain.OllamaSettin
 }
 
 // OllamaConnectionSaved は所有者が Ollama の接続先を保存したか（接続先の行があるか）を返す。
-// OllamaSettings は行が無ければ既定の接続先に倒すので、こちらで行の有無を見る
-// （specs/054-auto-dup/research.md R-13）。前の版のキーの行も保存とみなす。
+// OllamaSettings は行が無ければ既定の接続先に倒すので、こちらで行の有無を見る。前の版のキーの行も保存とみなす。
 func (s *SettingsStore) OllamaConnectionSaved(ctx context.Context) (bool, error) {
 	_, saved, err := ollamaConnection(ctx, s.db.sql)
 	return saved, err
@@ -80,7 +79,6 @@ func (s *SettingsStore) OllamaConnectionSaved(ctx context.Context) (bool, error)
 
 // SavedOllamaSettings は接続先と、それを保存したか（OllamaConnectionSaved と同じ答え）を
 // 1 つの読み取りの取引で返す。同時の保存があっても、両者は同じ時点の値になる
-// （specs/058-settings-pages/research.md R-4）。
 func (s *SettingsStore) SavedOllamaSettings(ctx context.Context) (domain.OllamaSettings, bool, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -183,7 +181,7 @@ func writeSettings(ctx context.Context, q *sql.DB, values []settingValue) error 
 
 // QueueVideos は videoIDs のうち、登録フォルダの下に所在を持つ動画の内容を待ち行列へ積み、
 // 積んだ件数を返す。既にある行の扱いは mode で決まり、判定中の行は動かさない。積んだ内容ごとに、decider が
-// 始めた running/waiting の auto_tag の記録を開く（specs/055-activity/data-model.md）。
+// 始めた running/waiting の auto_tag の記録を開く。
 func (s *AutoTagStore) QueueVideos(
 	ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
 ) (int, error) {
@@ -561,7 +559,7 @@ func (s *AutoTagStore) settleTentative(ctx context.Context, videoID, tagID int64
 	if err := touchEditedAtForUserKeys(ctx, tx, []string{userKey}, now); err != nil {
 		return err
 	}
-	// 提案のタグを残すか却下するのは所有者の操作である（specs/055-activity/research.md R-6）。
+	// 提案のタグを残すか却下するのは所有者の操作である。
 	kind := domain.ActivityTagKeep
 	if reject {
 		kind = domain.ActivityTagReject

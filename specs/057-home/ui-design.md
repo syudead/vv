@@ -21,10 +21,10 @@ Sources that already decide things, linked rather than repeated here:
 | The video card, the group card, their thumbnails, progress edge and favorite heart | [library-ui.md, Cards](../../docs/design-docs/library-ui.md#cards), [Favorite mark](../../docs/design-docs/library-ui.md#favorite-mark) |
 | The top bar, its toolbar portal and the sidebar's rail and drawer | [library-ui.md, Shell and toolbar](../../docs/design-docs/library-ui.md#shell-and-toolbar) |
 | The media folder picker dialog | [`web/src/settings/FolderPicker.tsx`](../../web/src/settings/FolderPicker.tsx) and the `Media folders` section of Settings |
-| Starting a scan, its states and words, the bottom-right indicator | [library-ui.md, Scan entry and progress](../../docs/design-docs/library-ui.md#scan-entry-and-progress), [024 UI design](../024-import-progress/ui-design.md) |
-| The smart folder page and its `More` menu | [052 UI design, Smart folder page](../052-smart-folders/ui-design.md#smart-folder-page) |
-| The video page's autoplay and folder context | [052 UI design, Video page](../052-smart-folders/ui-design.md#video-page), [library-ui.md, Group members](../../docs/design-docs/library-ui.md#group-members) |
-| Guest degradation | [016 UI design, Guest degradation](../016-single-account-auth/ui-design.md#guest-degradation) |
+| Starting a scan, its states and words, the bottom-right indicator | [library-ui.md, Scan entry and progress](../../docs/design-docs/library-ui.md#scan-entry-and-progress), [Import pipeline](../../docs/design-docs/import-pipeline.md) |
+| The smart folder page and its `More` menu | [Catalog organization](../../docs/design-docs/catalog-organization.md) |
+| The video page's autoplay and folder context | [Catalog organization](../../docs/design-docs/catalog-organization.md), [library-ui.md, Group members](../../docs/design-docs/library-ui.md#group-members) |
+| Guest degradation | [Authentication](../../docs/design-docs/authentication.md) |
 | Width breakpoints in CSS; layout checked by people | [library-ui.md, Width breakpoints](../../docs/design-docs/library-ui.md#width-breakpoints-in-css-and-the-sidebar-exception), [Layout verified by people](../../docs/design-docs/library-ui.md#layout-verified-by-people-not-machines) |
 | Screen text | [`web/src/i18n/en.ts`](../../web/src/i18n/en.ts); this feature adds `home`, `onboarding` and the words below |
 

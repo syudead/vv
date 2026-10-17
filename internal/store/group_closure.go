@@ -1,7 +1,7 @@
 package store
 
 // グループの構造の表 group_closure と、根ごとのグループの項目の値 group_root_values の維持
-// （specs/057-home/data-model.md「Group closure」、research.md R-12）。
+// （docs/design-docs/home.md「Group closure」、research.md R-12）。
 //
 // group_closure は、いちばん上のグループ（根）ごとの子孫の動画の項目の鍵と再生順の鍵で、グループの
 // 構造を変える書き込み（GroupStore と OrganizeStore の書き込み、フォルダの自動グループの同期、集まりの

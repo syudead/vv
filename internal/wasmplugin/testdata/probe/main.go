@@ -12,7 +12,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"time"
 	"unsafe"
 )
 
@@ -47,12 +46,6 @@ func main() {
 		mode = req.ID
 	}
 	switch mode {
-	case "loop":
-		fmt.Fprintln(os.Stderr, "looping")
-		for {
-		}
-	case "sleep":
-		time.Sleep(time.Hour)
 	case "grow":
 		for i := 0; ; i++ {
 			chunk := make([]byte, 1<<20)

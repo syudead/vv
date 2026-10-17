@@ -247,7 +247,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」）", () => {
+describe("HistoryPage", () => {
   it("件を新しい順に、日ごとに 1 つの見出しの下へ時刻なしで並べる", async () => {
     renderPage();
     expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeDefined();

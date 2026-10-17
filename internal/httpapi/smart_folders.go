@@ -12,12 +12,12 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// スマートフォルダの経路（specs/052-smart-folders/contracts/screen-api.md）。読み取り（GET）は所有者と
+// スマートフォルダの経路。読み取り（GET）は所有者と
 // ゲストが読め（accessRoutes）、書き込みは /api/* の既定どおり所有者だけである。所有者だけの欄
 // （settings と favorite と視聴の値）はゲストの応答から外す。
 
 // SmartFolders はスマートフォルダの保存先である。internal/store の *SmartFolderStore がこれを満たす。
-// どの操作も 1 つの取引で済むので、internal/app は通さない（plan.md の Constitution Check）。
+// どの操作も 1 つの取引で済むので、internal/app は通さない。
 type SmartFolders interface {
 	// ListSmartFolders は見る人に見せるフォルダの要約を名前の順に返す。
 	ListSmartFolders(ctx context.Context, audience domain.Audience) ([]domain.SmartFolderSummary, error)
@@ -236,8 +236,7 @@ func (s *server) ListSmartFolderItems(w http.ResponseWriter, r *http.Request, id
 	writeJSON(w, http.StatusOK, gen.SmartFolderItemPage{Items: items, NextCursor: optionalCursor(page.NextCursor)}, s.logger)
 }
 
-// ListSmartFolderCards は画面に出たフォルダのカードの値を返す（GET /api/smart-folders/cards、
-// data-model.md「Cards read」）。上限は契約どおり、重複を除く前の件数で数える。
+// ListSmartFolderCards は画面に出たフォルダのカードの値を返す（GET /api/smart-folders/cards）。上限は契約どおり、重複を除く前の件数で数える。
 func (s *server) ListSmartFolderCards(w http.ResponseWriter, r *http.Request, params gen.ListSmartFolderCardsParams) {
 	if len(params.Ids) == 0 || len(params.Ids) > domain.MaxSmartFolderCards {
 		s.invalidRequest(w, fmt.Sprintf("ids must name between 1 and %d smart folders.", domain.MaxSmartFolderCards))
@@ -309,7 +308,7 @@ func (s *server) writeSmartFolder(w http.ResponseWriter, r *http.Request, status
 	writeJSON(w, status, out, s.logger)
 }
 
-// writeSmartFolderError は保存層の誤りを応答にする（contracts/screen-api.md「Statuses」）。条件か並べ順の
+// writeSmartFolderError は保存層の誤りを応答にする。条件か並べ順の
 // 違反は 400 invalid_smart_rule、名前の規則違反は 400 invalid_request、親が無ければ 404
 // smart_folder_not_found、フォルダが無ければ 404 not_found、入れ子の循環は 409 smart_folder_cycle、
 // それ以外は message の 500 である。

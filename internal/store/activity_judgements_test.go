@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 重複の候補の判定の記録と、自動の束ねと「違う動画」の取り消し（specs/055-activity/data-model.md「Rules」、
-// research.md R-4・R-5・R-7）。
+// 重複の候補の判定の記録と、自動の束ねと「違う動画」の取り消し。
 
 // pairEntries は version_judgement の記録を新しい順に返す。
 func pairEntries(t *testing.T, db *DB) []domain.ActivityEntry {
@@ -127,7 +126,7 @@ func TestJudgementEntryTurnsFromNoConnectionIntoResult(t *testing.T) {
 	}
 }
 
-// コマの規則で束ねた組は rule で、確率を持たない（research.md R-5）。
+// コマの規則で束ねた組は rule で、確率を持たない。
 func TestJudgementEntryOfFrameRuleBundleIsRule(t *testing.T) {
 	db, _ := judgementFixture(t)
 	entry := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule})
@@ -139,7 +138,6 @@ func TestJudgementEntryOfFrameRuleBundleIsRule(t *testing.T) {
 }
 
 // 失敗した組は attention/failed で再試行の時刻を持ち、やり直すと同じ記録が待ちに戻ってすぐ取り出せる
-// （contracts/screen-api.md「POST /api/activity/{id}/retry」）。
 func TestJudgementEntryRetryReturnsSameEntryToRunning(t *testing.T) {
 	db, _ := judgementFixture(t)
 	failed := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionFailed, Error: "timeout"})
@@ -166,7 +164,7 @@ func TestJudgementEntryRetryReturnsSameEntryToRunning(t *testing.T) {
 }
 
 // 自動の束ねを取り消すと、加わった動画がまとまりから外れ、その組は二度と取り出されない。2 度目の取り消しは
-// 出さない（research.md R-7）。
+// 出さない。
 func TestUndoAutomaticBundleSplitsTheJoinedVideo(t *testing.T) {
 	db, ids := judgementFixture(t)
 	a, b := ids["a"], ids["b"]
@@ -202,7 +200,7 @@ func TestUndoAutomaticBundleSplitsTheJoinedVideo(t *testing.T) {
 	}
 }
 
-// 自動の「違う動画」を取り消すと、組が候補の一覧に戻り、ワーカーはそれを取り出さない（research.md R-7）。
+// 自動の「違う動画」を取り消すと、組が候補の一覧に戻り、ワーカーはそれを取り出さない。
 func TestUndoAutomaticDismissalReturnsThePairToCandidates(t *testing.T) {
 	db, ids := judgementFixture(t)
 	a, b := ids["a"], ids["b"]
@@ -298,7 +296,7 @@ func TestOwnerDecisionClosesTheOpenPairEntry(t *testing.T) {
 	}
 }
 
-// 1 つの鍵の候補を作り直しても、組の記録は保たれ、候補が付き直して待ちに戻る（data-model.md「Rules」）。
+// 1 つの鍵の候補を作り直しても、組の記録は保たれ、候補が付き直して待ちに戻る。
 func TestRebuildingCandidatesKeepsThePairEntry(t *testing.T) {
 	db, ids := judgementFixture(t)
 	undecided := judgePair(t, db, domain.VersionJudgeResult{Verdict: domain.VersionUndecided, Decider: domain.ActivityByRule})
@@ -323,7 +321,7 @@ func TestRebuildingCandidatesKeepsThePairEntry(t *testing.T) {
 }
 
 // 指紋の作り直しで組が候補から外れると、両方の鍵がライブラリにあっても組の開いている記録は done/superseded で
-// 閉じ、判断したものは変えない（data-model.md「Outcomes」）。
+// 閉じ、判断したものは変えない。
 func TestRebuildingCandidatesClosesTheDroppedPairEntry(t *testing.T) {
 	db, ids := judgementFixture(t)
 	undecided := judgePair(t, db, domain.VersionJudgeResult{
@@ -348,7 +346,7 @@ func TestRebuildingCandidatesClosesTheDroppedPairEntry(t *testing.T) {
 }
 
 // 判定を入れると待っている判定できる候補に記録を開き、入のあいだに現れた候補にも開く。切っても待ちのまま残り、
-// 鍵の動画がライブラリから外れると gone で閉じる（data-model.md「Kinds」「Rules」）。
+// 鍵の動画がライブラリから外れると gone で閉じる。
 func TestJudgingSettingOpensWaitingEntriesAndGoneClosesThem(t *testing.T) {
 	db, ids := judgementFixture(t)
 	ctx := context.Background()
@@ -387,7 +385,7 @@ func TestJudgingSettingOpensWaitingEntriesAndGoneClosesThem(t *testing.T) {
 }
 
 // 起動時に判定中だった組の記録は attention/interrupted になり、判定中の行を戻しても残って、次の取り出しで同じ
-// 記録が running に戻る（research.md R-4 の Deviation）。
+// 記録が running に戻る。
 func TestInterruptedPairEntryReturnsToRunningOnClaim(t *testing.T) {
 	db, _ := judgementFixture(t)
 	ctx := context.Background()
@@ -416,7 +414,7 @@ func TestInterruptedPairEntryReturnsToRunningOnClaim(t *testing.T) {
 	expectEntryState(t, onlyPairEntry(t, db), activityWaiting, domain.ActivityByRule)
 }
 
-// 同じパスの中身が変わって引き継ぐと、判定の保留と開いている記録の鍵も付け替える（data-model.md「Rules」）。
+// 同じパスの中身が変わって引き継ぐと、判定の保留と開いている記録の鍵も付け替える。
 func TestSuccessionRekeysHoldsAndOpenPairEntries(t *testing.T) {
 	db, _ := judgementFixture(t)
 	ctx := context.Background()
@@ -450,7 +448,7 @@ func TestSuccessionRekeysHoldsAndOpenPairEntries(t *testing.T) {
 }
 
 // 所有者のまとまり {B1, B2}（代表 B1）と {A, C} を自動で束ねた後に取り消すと、両方のまとまりが元の代表のまま
-// 残り、video_version_unbundles は両側をまたぐ組だけに書かれる（research.md R-7）。
+// 残り、video_version_unbundles は両側をまたぐ組だけに書かれる。
 func TestUndoAutomaticBundleOfTwoBundlesRestoresBoth(t *testing.T) {
 	db, ids := judgementFixture(t)
 	a, b, c, d := ids["a"], ids["b"], ids["c"], ids["d"]
@@ -494,7 +492,7 @@ func TestUndoAutomaticBundleOfTwoBundlesRestoresBoth(t *testing.T) {
 }
 
 // 同じパスの中身が変わっても、前の中身の組の開いている記録は引き継ぎを決めるまで閉じない。尺が合って引き継ぐと
-// 同じ記録が新しい鍵の組になり、引き継がないと決まったときだけ gone で閉じる（data-model.md「Rules」）。
+// 同じ記録が新しい鍵の組になり、引き継がないと決まったときだけ gone で閉じる。
 func TestSuccessionKeepsTheOpenPairEntryUntilDecided(t *testing.T) {
 	for name, c := range map[string]struct {
 		durationMs int64
@@ -534,7 +532,7 @@ func TestSuccessionKeepsTheOpenPairEntryUntilDecided(t *testing.T) {
 }
 
 // 自動の束ねの後に所有者が加わった動画を外して手で束ね直したら、古い記録の取り消しは already_reverted で、
-// 所有者のまとまりを変えない（research.md R-7）。所有者の操作は判定と同じ秒の中で行い、取り消しが時刻ではなく
+// 所有者のまとまりを変えない。所有者の操作は判定と同じ秒の中で行い、取り消しが時刻ではなく
 // 所有者の記録の id で見分けることを確かめる。
 func TestUndoAfterOwnerRebundledIsAlreadyReverted(t *testing.T) {
 	db, ids := judgementFixture(t)
@@ -554,7 +552,6 @@ func TestUndoAfterOwnerRebundledIsAlreadyReverted(t *testing.T) {
 }
 
 // ドラッグで束ねて閉じた組の記録は、そのドラッグを取り消すと、戻った候補の判定の状態で同じ記録が開き直す
-// （data-model.md「Rules」）。
 func TestOrganizeBundleUndoReopensThePairEntry(t *testing.T) {
 	db, ids := judgementFixture(t)
 	ctx := context.Background()
@@ -592,7 +589,7 @@ func TestOrganizeBundleUndoReopensThePairEntry(t *testing.T) {
 
 // 判定中に所有者が加わる側の動画を別のまとまりに束ねて外しても、その記録は判定の結果より前なので、取り消しは判定が
 // 束ねた側を外す。記録は取り出したときに開くので、所有者の記録の id は記録の id より大きいが、結果を書いた印
-// （decided_mark）より小さい（research.md R-7）。
+// （decided_mark）より小さい。
 func TestUndoAutomaticBundleAfterTheOwnerBundledWhileItWaited(t *testing.T) {
 	db, ids := judgementFixture(t)
 	a, b, c := ids["a"], ids["b"], ids["c"]
@@ -630,7 +627,7 @@ func succeedA(t *testing.T, db *DB) int64 {
 }
 
 // 同じパスの中身が変わって引き継がれると、終わった記録の対象の鍵も新しい鍵になるので、その後の自動タグの取り消し
-// は新しい鍵の行を見つけて消す（data-model.md「Rules」、research.md R-7）。
+// は新しい鍵の行を見つけて消す。
 func TestUndoAutoTagAfterTheSubjectWasRekeyedBySuccession(t *testing.T) {
 	db, ids := judgementFixture(t)
 	ctx := context.Background()
@@ -692,7 +689,7 @@ func TestUndoAutomaticBundleAfterTheJoinedKeyWasRekeyedBySuccession(t *testing.T
 }
 
 // 自動の束ねの後に所有者が別の動画を加えても、代表の集まりにいたメンバーの所属は変わらないので bundle の記録は
-// 加えた動画にだけ書き、古い記録の取り消しは加わった側を外して completed になる（research.md R-6・R-7）。所有者が
+// 加えた動画にだけ書き、古い記録の取り消しは加わった側を外して completed になる。所有者が
 // 加わった側を外して束ね直した場合は TestUndoAfterOwnerRebundledIsAlreadyReverted。
 func TestUndoAutomaticBundleAfterTheOwnerAddedAMember(t *testing.T) {
 	db, ids := judgementFixture(t)

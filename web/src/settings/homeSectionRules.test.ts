@@ -4,7 +4,7 @@ import type { HomeOrganizeRun } from "../api/home";
 import { formatDateTime } from "../i18n";
 import { lastRunLine, organizerBusy } from "./homeSectionRules";
 
-// 設定の「Home」の節の規則（specs/057-home/ui-design.md「Words」の Settings の行）。
+// 設定の「Home」の節の規則（docs/design-docs/home.md「Words」の Settings の行）。
 
 const finishedAt = Date.UTC(2026, 9, 17, 3, 4);
 const when = formatDateTime(new Date(finishedAt));

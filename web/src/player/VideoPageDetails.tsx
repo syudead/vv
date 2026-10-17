@@ -19,7 +19,7 @@ type Related = ReturnType<typeof useRelatedVideos>;
 /**
  * VideoPageDetails は動画ページの左の列のプレイヤーの下（題名・タグ・公開・情報）である。
  * 動画を読む前は骨組みを出す。題名とタグは 1 つのまとまりで、その上にプレイリスト・
- * スマートフォルダ・グループの行を置く（ui-design.md「Video page tags」Placement）。
+ * スマートフォルダ・グループの行を置く。
  */
 export default function VideoPageDetails({
   loading,
@@ -61,8 +61,7 @@ export default function VideoPageDetails({
     );
   if (video === undefined) return null;
   const { refresh, replace, setFavorite } = detail;
-  // 取り直しの間と失敗したときは前の値のまま（specs/033-video-dates/ui-design.md
-  // 「Refresh after edits」）。
+  // 取り直しの間と失敗したときは前の値のまま。
   const reread = () => void refresh();
   const { playback } = playlist;
   return (
@@ -123,14 +122,13 @@ export default function VideoPageDetails({
         onStale={reread}
         onEditingChange={onEditingThumbnail}
         // 作品情報の編集画面の入口。戻り先（from・trail）を載せて開き、編集画面から
-        // 戻ったときはそこへフォーカスを戻す（specs/047-video-work-info/ui-design.md
-        // 「Video page: entry」）。
+        // 戻ったときはそこへフォーカスを戻す。
         details={{
           linkState: { from: backTo, trail },
           focusEntry: handoff.focusEntry(video.id),
         }}
         // 付け外しの後は動画を取り直し、取り直した `favorite` で塗りを確かめる
-        // （specs/035-favorites/ui-design.md「Video page」）。
+        //
         onFavorite={setFavorite}
         versions={{
           navigation: { backTo, autoplay },
@@ -169,7 +167,7 @@ function OwnerControls({
       {/* タグの並びのすぐ下で、この動画のタグを判定モデルに聞く
           （docs/design-docs/auto-tagging.md）。 */}
       <AutoTagButton key={`auto-tag:${String(video.id)}`} videoId={video.id} />
-      {/* 題名 → タグ → 公開の順（ui-design.md「Visibility toggle」）。
+      {/* 題名 → タグ → 公開の順。
           別の動画へ移ったら失敗の行を持ち越さないよう、id で作り直す。 */}
       <VisibilitySwitch
         key={`visibility:${String(video.id)}`}

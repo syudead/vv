@@ -9,7 +9,7 @@ import LoginPage from "./LoginPage";
 import SetupPage from "./SetupPage";
 
 // HTTPS では警告の行そのものを出さず、肯定の文も出さない
-// （specs/016-single-account-auth/ui-design.md「Connection warning」）。
+//
 describe("HTTPS の接続", () => {
   it("ページが https: なら前提を確かめる", () => {
     expect(window.location.protocol).toBe("https:");

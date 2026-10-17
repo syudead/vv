@@ -11,7 +11,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import HomePage from "./HomePage";
 
-// ホームの画面（specs/057-home/ui-design.md「Home」）。棚のカードを 1 回押すと再生し
+// ホームの画面（docs/design-docs/home.md「Home」）。棚のカードを 1 回押すと再生し
 // （受け入れ条件 1）、検索欄で送るとライブラリで探す（受け入れ条件 2）。
 
 const travel: HomeShelf = {
@@ -107,7 +107,7 @@ function renderHome(audience: Audience = "owner") {
   );
 }
 
-describe("ホーム（specs/057-home/ui-design.md「Home」）", () => {
+describe("ホーム（docs/design-docs/home.md「Home」）", () => {
   it("棚のカードを 1 回押すと、フォルダの棚では ?smartFolder 付きの再生画面を autoplay で開く", async () => {
     const user = userEvent.setup();
     renderHome();

@@ -93,7 +93,7 @@ func TestGetVideoPreviewServesRangesAndCachePolicies(t *testing.T) {
 		t.Errorf("unsatisfiable Content-Range = %q, want %q", got, "bytes */12")
 	}
 
-	// 版の無い要求・古い版の要求も、同じく使うたびに確かめさせる（guest-api.md §5）。
+	// 版の無い要求・古い版の要求も、同じく使うたびに確かめさせる。
 	for _, target := range []string{"/api/videos/1/preview?v=stale", "/api/videos/1/preview"} {
 		rec := do(t, handler, http.MethodGet, target)
 		if rec.Code != 200 || rec.Header().Get("Cache-Control") != cacheRevalidate {

@@ -82,8 +82,7 @@ func TestAttachTagByIDSkipsUnresolvableVideoIDs(t *testing.T) {
 }
 
 // TestAttachTagByIDCountsDuplicateVideoIDsOnce は、videoIDs に同じ id が
-// 重複していても applied が1つとして数えることを確かめる
-// （contracts/tags-api.md §4「重複は1つとして扱う」）。
+// 重複していても applied が1つとして数えることを確かめる。
 func TestAttachTagByIDCountsDuplicateVideoIDsOnce(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -216,8 +215,7 @@ func TestDetachTagIgnoresAlreadyUnassignedVideos(t *testing.T) {
 }
 
 // TestDetachTagCountsDuplicateVideoIDsOnce は、videoIDs に同じ id が重複して
-// いても applied が1つとして数えることを確かめる（contracts/tags-api.md §4
-// 「重複は1つとして扱う」）。
+// いても applied が1つとして数えることを確かめる。
 func TestDetachTagCountsDuplicateVideoIDsOnce(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -338,8 +336,7 @@ func TestSummaryCountsOnlyRegisteredVideosAndPartiallyTaggedTags(t *testing.T) {
 }
 
 // TestSummaryCountsDuplicateVideoIDsOnce は、videoIDs に同じ id が重複して
-// いても Total とタグの count が1つとして数えることを確かめる
-// （contracts/tags-api.md §4「重複は1つとして扱う」）。
+// いても Total とタグの count が1つとして数えることを確かめる。
 func TestSummaryCountsDuplicateVideoIDsOnce(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

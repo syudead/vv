@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// ExternalVideos は外部連携 API の動画の一覧と引き当てである（specs/026-external-api/
-// contracts/external-api.md §2）。internal/store の *LibraryStore がこれを満たす。見る人は
+// ExternalVideos は外部連携 API の動画の一覧と引き当てである。internal/store の *LibraryStore がこれを満たす。見る人は
 // 常に所有者なので、画面の Library と違って audience を取らない。
 type ExternalVideos interface {
 	// ListExternalVideos は登録フォルダの下に所在を持つ動画を (added_at, id) の昇順で

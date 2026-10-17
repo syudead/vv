@@ -111,7 +111,9 @@ type Probe struct {
 	// Source は ffprobe の直前に取ったファイルの大きさと更新時刻。Transcode を
 	// 保存するときの同一性に使う。
 	Source FileStamp
-	// Media は同じ ffprobe の出力から読んだ追加の情報（specs/056-media-info/data-model.md）。
+	// Keyframes is an optional bounded sample for live-transcode seek decisions.
+	Keyframes *KeyframeProbe
+	// Media は同じ ffprobe の出力から読んだ追加の情報。
 	// 取り込みの解析では必ず埋まり、video_media_info に保存する。
 	Media *MediaInfo
 }
@@ -175,11 +177,10 @@ type Video struct {
 	// IndexedAt は索引の行（videos.indexed_at）を最後に書き換えた時刻。取り込み・解析・
 	// サムネイル作成などの裏方の処理でも進む内部用の値で、API には出さない。
 	IndexedAt time.Time
-	// EditedAt は vv 上で動画の情報を最後に編集した日時（更新日時。specs/033-video-dates/
-	// data-model.md §2）。保存層が coalesce(video_edits.edited_at, videos.added_at) で埋める。
+	// EditedAt は vv 上で動画の情報を最後に編集した日時（更新日時。docs/design-docs/catalog-organization.md/）。保存層が coalesce(video_edits.edited_at, videos.added_at) で埋める。
 	// API の updatedAt はこの値で、IndexedAt（索引の行の更新時刻）とは別の値である。
 	EditedAt time.Time
-	// FileCreatedAt は一覧に出す所在のファイルの作成日時（specs/033-video-dates/data-model.md §2）。
+	// FileCreatedAt は一覧に出す所在のファイルの作成日時。
 	// 保存層が coalesce(video_locations.file_created_at, mtime) で埋めるので、作成日時が
 	// 取れなかった所在では MTime と同じになる。
 	FileCreatedAt time.Time
@@ -187,17 +188,16 @@ type Video struct {
 	// ContentKey は内容由来の識別子。移動・改名を越えて同じ動画と判定する鍵で、
 	// 再生位置とサムネイルの名前もこれで決まる。
 	ContentKey string
-	// UserKey は利用者データ（タグ・再生位置・公開の設定）の鍵である
-	// （specs/030-video-versions/data-model.md §3）。集まりのメンバーなら集まりの
+	// UserKey は利用者データ（タグ・再生位置・公開の設定）の鍵である。集まりのメンバーなら集まりの
 	// user_key、そうでなければ ContentKey と同じ。保存層が埋め、空の ContentKey の動画では空。
 	UserKey string
 	// Versions は集まりのメンバーのときだけ、詳細の読み出しが埋める集まりの要約である。
 	// 一覧の読み出しでは nil。
 	Versions *VideoVersionsRef
-	// WorkInfo は利用者データの鍵の作品情報である（specs/047-video-work-info/data-model.md「Reads」）。
+	// WorkInfo は利用者データの鍵の作品情報である。
 	// 詳細と外部連携の読み出し、作品情報を書いた操作の戻り値が埋め、一覧の読み出しと行の無い動画では nil。
 	WorkInfo *WorkInfo
-	// MediaInfo は取り込みの解析で読んだ追加の情報である（specs/056-media-info/research.md R-6）。
+	// MediaInfo は取り込みの解析で読んだ追加の情報である。
 	// 動画 1 件の詳細の読み出しだけが埋め、一覧の読み出し・書いた操作の戻り値・今の版の行の無い動画では nil。
 	MediaInfo *MediaInfo
 
@@ -217,7 +217,7 @@ type Video struct {
 	ProbeState ProbeState
 	ProbeError string
 	// ProbeErrorCode は ProbeState が failed のときの理由のコード。アップグレード前の
-	// 行では空である（specs/023-english-i18n/data-model.md §1）。
+	// 行では空である。
 	ProbeErrorCode ProbeErrorCode
 	ThumbnailState ThumbnailState
 	// SeekThumbnailState は videos.seek_thumbnail_state の値である。置き場の
@@ -225,17 +225,17 @@ type Video struct {
 	SeekThumbnailState SeekThumbnailState
 	PreviewState       PreviewState
 
-	// Public は公開フラグが立っているか（specs/016-single-account-auth/data-model.md §1）。
+	// Public は公開フラグが立っているか。
 	// 保存層が public_videos から埋める。空の content_key の動画は常に false である。
 	Public bool
 
-	// Favorite はお気に入りか（specs/035-favorites/data-model.md §2）。保存層が利用者データの鍵で
+	// Favorite はお気に入りか。保存層が利用者データの鍵で
 	// video_favorites から埋める。空の content_key の動画は常に false である。
 	Favorite bool
 
 	// FileTitle はファイル名由来の題名（代表の所在の video_locations.title）である。
 	// Title は有効な題名で、表示名があればそれ、無ければ FileTitle と同じになる
-	// （specs/029-video-overrides/research.md R-2）。
+	//
 	FileTitle string
 	// DisplayName は所有者が付けた表示名。未設定は空である。
 	DisplayName string
@@ -244,12 +244,11 @@ type Video struct {
 	// ThumbnailRevision は位置を記録するたびに書く改版番号（R-6）。未設定は 0。
 	// thumbnailUrl の版だけに使い、応答の項目にはしない。
 	ThumbnailRevision int64
-	// ThumbnailImageRevision は適用したサムネイルの画像（thumbnail_images）の改版番号
-	// （specs/045-comfyui-thumbnails/data-model.md）。適用していなければ 0。設定されていれば
+	// ThumbnailImageRevision は適用したサムネイルの画像（thumbnail_images）の改版番号。適用していなければ 0。設定されていれば
 	// thumbnailUrl の版は位置の改版番号の代わりにこれを使う。
 	ThumbnailImageRevision int64
 	// ThumbnailImageOrigin は適用した画像の出どころ（thumbnail_images.origin。
-	// specs/046-thumbnail-image-upload/data-model.md）。適用していなければ空である。
+	// docs/design-docs/thumbnail-editing.md）。適用していなければ空である。
 	ThumbnailImageOrigin ThumbnailImageOrigin
 }
 
@@ -302,7 +301,7 @@ type IndexedVideo struct {
 	SeekThumbnailState SeekThumbnailState
 	PreviewState       PreviewState
 	// FingerprintMissing は、シーク用スプライトが完成しているのに今の FingerprintVersion の
-	// 指紋が無いことを表す（specs/030-video-versions/data-model.md §6）。走査はこれで指紋の
+	// 指紋が無いことを表す。走査はこれで指紋の
 	// 仕事を積み直す。
 	FingerprintMissing bool
 }

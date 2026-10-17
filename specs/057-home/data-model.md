@@ -1,23 +1,23 @@
 # Data model: A home of shelves, started by onboarding
 
-The rest of the model is unchanged: [052 data-model](../052-smart-folders/data-model.md)
-for smart folders, [051 data-model](../051-tag-kinds/data-model.md) for tag
+The rest of the model is unchanged: [Catalog organization](../../docs/design-docs/catalog-organization.md)
+for smart folders, [Catalog organization](../../docs/design-docs/catalog-organization.md) for tag
 kinds and the [migrations](../../internal/store/migrations/).
 
 ## Migration
 
-`00056_home_shelves.sql` adds `home_position` to `smart_folders` and the
+`00058_home_shelves.sql` adds `home_position` to `smart_folders` and the
 index `smart_folders_home_idx(home_position)` where it is not null. No row
 gets a position, so the home starts with no folder shelf until onboarding,
 the first run (R-9) or the owner adds one.
 
-`00057_group_closure.sql` adds the [group closure](#group-closure) tables
+`00059_group_closure.sql` adds the [group closure](#group-closure) tables
 with their backfill and triggers, and the indexes the shelf read walks
 (R-12): `video_locations_mtime_idx(mtime, video_id)`,
 `video_locations_created_idx(coalesce(file_created_at, mtime), video_id)` and
 `playback_progress_updated_idx(updated_at, content_key)`.
 
-`00058_home_watch.sql` adds the card columns and the indexed watch state to
+`00060_home_watch.sql` adds the card columns and the indexed watch state to
 `group_root_values`, the `video_watch_states` and `home_search_hits` tables
 with the `search_dirty` flag and its triggers, and clears the stored values so
 the first maintenance refills them with the new columns.

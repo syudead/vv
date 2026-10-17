@@ -14,7 +14,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API の動画の一覧と引き当て（specs/026-external-api/contracts/external-api.md §2）を、
+// 外部連携 API の動画の一覧と引き当てを、
 // 本物の保存先と Bearer の境界で確かめる。
 
 type externalVideosFixture struct {
@@ -157,7 +157,7 @@ func TestExternalListVideosPagesThroughAll(t *testing.T) {
 		t.Errorf("解析前の長さとタグの無い動画: %s", body)
 	}
 
-	// 受け入れ条件 7（specs/033-video-dates/contracts/external-api.md §0）: どの動画にも
+	// 受け入れ条件 7: どの動画にも
 	// updatedAt・fileCreatedAt が入る。
 	for i, item := range items {
 		for _, key := range []string{"updatedAt", "fileCreatedAt"} {

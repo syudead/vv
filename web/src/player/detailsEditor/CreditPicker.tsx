@@ -8,7 +8,7 @@ import { foldForMatch } from "../../lib/foldForMatch";
 import CreditCommand, { type CreditChoice } from "../../ui/CreditCommand";
 import { type Chip, isNewChip, newRowKey } from "./draft";
 
-/** candidateLimit は、打つたびに読む候補の数である（ui-design.md「Picker」）。 */
+/** candidateLimit は、打つたびに読む候補の数である。 */
 const candidateLimit = 8;
 
 /** Candidates は 1 回の候補の読み込みの結果である。 */
@@ -40,8 +40,7 @@ function aliasHint(credit: Credit, folded: string): string | undefined {
 }
 
 /**
- * CreditPicker は役割 1 つの、人物か団体を選ぶか作る入力である（specs/047-video-work-info/
- * ui-design.md「Picker」）。CreditCommand の `dropdown` で、打つたびに `limit=8` で候補を読む
+ * CreditPicker は役割 1 つの、人物か団体を選ぶか作る入力である。CreditCommand の `dropdown` で、打つたびに `limit=8` で候補を読む
  * （前の要求は打ち切り、新しい行が届くまで前の行を残す）。この役割のチップにあるものは候補に
  * 出さず、下書きのまだ作っていない同じ種類の名前は `New` の行として出す。作成の行は、
  * 同じ綴りのまだ作っていない名前が無ければ、一致する人物がいても出す。

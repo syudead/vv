@@ -14,11 +14,9 @@ import { SelectionAction, WithTooltip } from "./SelectionAction";
 import { overLimitMessage } from "./selectionErrors";
 
 /**
- * FavoriteMenu は選択バーの「Favorite」である（specs/035-favorites/ui-design.md
- * 「Selection bar」）。選んだ項目の今の状態は示さず、「Add to favorites」「Remove from
+ * FavoriteMenu は選択バーの「Favorite」である。選んだ項目の今の状態は示さず、「Add to favorites」「Remove from
  * favorites」の両方を常に押せる。`videoIds` は選んだ id のうち選んだグループのメンバーで
- * ないもの、`groupIds` は選んだグループで、1 回の `PUT /api/favorites` で送る（research.md
- * R-7、specs/048-groups/research.md R-10）。確定したらトーストで結果を伝え、選択は残す。カードの
+ * ないもの、`groupIds` は選んだグループで、1 回の `PUT /api/favorites` で送る。確定したらトーストで結果を伝え、選択は残す。カードの
  * 印は応答の通知（api/favorites.ts）で一覧が差し替える。
  */
 export default function FavoriteMenu({

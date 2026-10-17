@@ -31,11 +31,11 @@ func (e *refusedError) Error() string {
 
 func (e *refusedError) Unwrap() error { return errAddressRefused }
 
-// netClient はプラグインの要求を送る vv の HTTP クライアントである（049 research.md R-5）。
+// netClient はプラグインの要求を送る vv の HTTP クライアントである。
 // プロキシのない実行では、環境変数のプロキシを使わず、名前を解決してから、接続のたびに dialer の
 // control hook で解決済みのアドレスを確かめる。リダイレクトの先も同じ dialer で接続するので、
 // 同じ確認を通る。運用者がプロキシを選んだ実行では、接続はプロキシへのものなので、要求と
-// リダイレクトのたびに接続先の名前を解決して確かめる（056 research.md R-5、session）。
+// リダイレクトのたびに接続先の名前を解決して確かめる（session）。
 type netClient struct {
 	// client はプロキシのない実行のクライアントである。
 	client *http.Client
@@ -110,7 +110,7 @@ func (c *netClient) close() {
 }
 
 // session は 1 回の実行の httpSession を作る。network にプロキシがあれば、その実行の要求を
-// すべてプロキシに送るクライアントを使う（research.md R-5）。プロキシの接続はその実行の
+// すべてプロキシに送るクライアントを使う。プロキシの接続はその実行の
 // あいだだけ持ち、httpSession.close で閉じる。
 func (c *netClient) session(network domain.WorkInfoRunNetwork) *httpSession {
 	if network.Proxy == nil {

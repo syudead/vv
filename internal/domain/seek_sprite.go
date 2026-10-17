@@ -61,7 +61,7 @@ func ceilDiv(a, b int64) int64 {
 	return q
 }
 
-// SeekSprite は公開したスプライトの配置情報である（research.md R-3）。配置に、
+// SeekSprite は公開したスプライトの配置情報である。配置に、
 // 出来上がったシートから読んだ 1 コマの大きさ（px）を加えたもので、1 本の中の
 // 全コマが同じ大きさになる。
 type SeekSprite struct {

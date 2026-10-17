@@ -22,7 +22,7 @@ type Folders =
   | { status: "ready"; folders: SmartFolderSummary[] };
 
 /**
- * AddShelfButton はホームの見出しの「Add shelf」である（specs/057-home/ui-design.md「Home」）。
+ * AddShelfButton はホームの見出しの「Add shelf」である（docs/design-docs/home.md「Home」）。
  * 開くたびにスマートフォルダを読み、ホームに無いものを名前で絞って選ぶ一覧を出す。選ぶと
  * `onPick` を呼んで閉じる。足す先（最後のフォルダの棚の後）は呼び手が決める。
  */

@@ -11,7 +11,9 @@ done yet and stops.
    Do not rebase or force-push the long-lived feature branch. Resolve conflicts
    by keeping both sides' behaviour; ask when that is not possible.
 2. Run `task check`. For a `ui` feature, also review the screens against
-   `ui-design.md`. This step needs no `task test-e2e`: the
+   `ui-design.md` while the artifacts remain. After the sweep retires them,
+   use the permanent design docs and the acceptance evidence in the PR.
+   This step needs no `task test-e2e`: the
    [pre-merge sweep](#pre-merge-sweep) runs the full suite in CI on the
    finished feature ([checks before a push](README.md#checks-before-a-push)).
 3. Push the feature branch. If the integration PR does not exist yet, open it
@@ -114,13 +116,20 @@ single round.
    hazards with no reachable trigger, unmeasured performance, defects `main`
    already had, and anything larger. Pick at most five, most severe first; the
    rest stay remaining risks.
-4. **Fix them in one PR.** When step 1 found a defect or step 3 picked one,
-   create a sub-branch from `origin/<feature>`, fix each at its root cause with
-   a focused test, run `task check` and `task check-docs` again, push (and,
+4. **Finish the feature in one PR.** After the checks and acceptance walk,
+   create a sub-branch from `origin/<feature>`. Extract any lasting decisions
+   still missing from `docs/design-docs/`, update permanent references, and
+   delete this feature's directory under `specs/`. Do not copy
+   the artifact set into an archive or into design docs. The feature's Git
+   history keeps the validation inputs; later integration refreshes use the
+   permanent documents and the acceptance evidence recorded in the PR.
+   When step 1 found a defect or step 3 picked one, fix each at its root cause with
+   a focused test. Run `task check` and `task check-docs` again, push (and,
    when the fix touches the web app or the flow it tests, start a manual CI
    run on the sub-branch and wait for its `Browser E2E` job), and open one PR to the feature branch with `Refs #<parent>`, titled
    for the pre-merge sweep. Its body lists each fix and the backlog item or
-   check it answers. Nothing to fix means no PR.
+   check it answers, and the artifact cleanup. If the artifacts are already
+   gone and there is no fix or documentation change, no PR is needed.
 5. **Comment the result on the integration PR**, in one comment: the checks
    run and their results, the acceptance-criterion walk, the items collected
    (naming the sweep PR), and every item left with a one-line reason. Start

@@ -1,7 +1,7 @@
 # Web test levels
 
-A behaviour of the Web client is tested at the lowest level that fails when the
-behaviour breaks. Unit tests run in Vitest with Testing Library on jsdom
+Web tests apply the shared [testing policy](testing.md) at the levels below.
+Unit tests run in Vitest with Testing Library on jsdom
 (`task test-web`); browser tests run in Playwright against the real server
 (`task test-e2e`).
 
@@ -24,7 +24,7 @@ Each level proves a different kind of behaviour, at a different cost per test.
 | Logic test | A rule (ordering, filtering, validation, formatting), a hook, or an API module | Nothing, or a hook through `renderHook`; `fetch` stubbed where the module calls it | 0.01 s |
 | Component test | What one component shows and emits for given props | That component inside its providers | 0.10 s |
 | Page test | A flow across components, request ordering, focus moving between parts, URL state | A `*Page` component with `fetch` replaced by a fake server | 0.35 s |
-| E2E test | What only the real server, browser and media show: playback, setup and login, scanning | The app from the Vite development server in Chromium, against the built Go server | Seconds; runs on a push to `main` and on Renovate PRs |
+| E2E test | What only the real server, browser and media show: playback and seeking, the login cookie, and layout, scroll and focus that jsdom cannot compute | The app from the Vite development server in Chromium, against the built Go server | Seconds; runs on a push to `main` and on Renovate PRs |
 
 The costs are the mean worker time per test in a full Vitest run.
 
@@ -38,9 +38,13 @@ CPU time of a full run.
 E2E does not cover the production Vite build or its embedding in the Go binary:
 `task test-web` builds the SPA, and no test serves that build.
 
+Timer-dependent Vitest tests apply [Time and synchronization](testing-time.md#clocks-and-state)
+with `vi.useFakeTimers` and `vi.advanceTimersByTimeAsync`, restoring real timers
+in cleanup with `vi.useRealTimers`.
+
 ## Choosing the level
 
-Pick the first level in the diagram whose test fails when the behaviour breaks.
+The diagram applies the shared scope rule to Web components and pages.
 
 ```mermaid
 flowchart LR
@@ -70,8 +74,7 @@ component; [Rules out of pages](#rules-out-of-pages) covers that case.
 
 ## Page tests
 
-A page test covers one flow, and the variations of a rule inside that flow are
-logic or component tests. A page with many flows shares its fake server and
+A page test covers one flow. A page with many flows shares its fake server and
 helpers through a module under `web/src/testing/`, as the tag admin screen does
 with [`tagsPage.tsx`](../../web/src/testing/tagsPage.tsx), and splits its tests
 into files by topic.
@@ -79,6 +82,21 @@ into files by topic.
 Vitest runs the files of one CI shard in parallel and runs the tests of one file
 in order, so one long file sets the shard's duration
 ([development.md](../how-to/development.md#validate-changes)).
+
+## E2E tests
+
+An E2E test stays only while all of these hold:
+
+- It checks what only the real server, Chromium or media can break: playback
+  and seeking, the login cookie, or layout, scroll and focus that jsdom cannot
+  compute.
+- It follows the shared [scope rules](testing.md#scope-and-test-levels).
+- Thumbnail, preview or sprite preparation is complete before the tested
+  interaction, and assertions await observable browser state.
+
+A test that only takes screenshots is not a test. A behaviour that fails these
+rules is tested at a lower level, or not at all when every part of it already
+is.
 
 ## Rules out of pages
 
@@ -90,13 +108,10 @@ component that renders each empty state has a component test.
 
 ## Existing tests
 
-Existing page tests stay until their page changes. A change to a page moves the
-tests of the rules it touches to the lower level, in the same pull request;
-there is no separate rewrite.
+Page changes follow [Changes to existing tests](testing.md#changes-to-existing-tests).
 
 | Rejected | Why |
 | --- | --- |
 | Every behaviour as a page test | 0.35 s per test, and a failure names the page rather than the broken rule |
 | Snapshot tests of rendered markup | A snapshot fails on every markup change and does not state the behaviour |
 | `isolate: false` or Testing Library's `defaultHidden` to speed page tests up | Tests share module state, or role queries also match hidden elements, so a test can pass on what the user cannot see |
-| Rewriting the existing page tests at once | Thousands of lines of churn with no behaviour change; moving tests with each page change spreads the cost |

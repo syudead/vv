@@ -15,8 +15,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-// 人物・団体でのライブラリの絞り込み（specs/047-video-work-info/ui-design.md
-// 「Library: filter by a person or organization」、親 Issue の要件 11・受け入れ条件 4）。
+// 人物・団体でのライブラリの絞り込み。
 
 function video(id: number, extra: Partial<Video> = {}): Video {
   return {

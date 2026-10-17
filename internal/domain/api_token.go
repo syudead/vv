@@ -10,10 +10,10 @@ import (
 )
 
 // APITokenNameMaxLength は API トークンの名前の上限（符号位置数）である。タグ名の上限と
-// そろえる（specs/026-external-api/research.md R-10）。
+// そろえる。
 const APITokenNameMaxLength = 100
 
-// APIToken は発行した API トークン 1 件である（specs/026-external-api/data-model.md §3）。
+// APIToken は発行した API トークン 1 件である。
 // 平文とハッシュは持たない。平文は発行の応答にだけ現れ、どこにも保存しない。
 type APIToken struct {
 	ID        int64
@@ -63,7 +63,7 @@ func (e *InvalidAPITokenNameError) Error() string {
 
 func (e *InvalidAPITokenNameError) Unwrap() error { return ErrInvalidAPITokenName }
 
-// NormalizeAPITokenName は受け取った入力を API トークンの名前に整える（research.md R-10）。
+// NormalizeAPITokenName は受け取った入力を API トークンの名前に整える。
 // 規則と手順の順番は NormalizeTagName と同じである。制御文字（Cc）を前後の空白の除去より
 // 先に調べ、前後の Unicode White_Space を除き、空と APITokenNameMaxLength 符号位置の超過を
 // 拒む。Unicode の正規化はしない。同じ名前は重複してよい。

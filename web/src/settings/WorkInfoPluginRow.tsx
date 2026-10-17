@@ -135,8 +135,7 @@ function RowText({ plugin }: { plugin: WorkInfoPlugin }) {
 
 /**
  * WorkInfoPluginRow は「Work-info plugins」節の 1 行である。状態のバッジを先頭に名前と版、
- * 説明、事実の行を出し、状態ごとの操作を右端に置く。360px では操作が文の下へ回る
- * （specs/049-work-info-plugins/ui-design.md「Plugin row」「Responsive behaviour」）。
+ * 説明、事実の行を出し、状態ごとの操作を右端に置く。360px では操作が文の下へ回る。
  */
 export default function WorkInfoPluginRow({
   plugin,

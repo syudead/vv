@@ -8,7 +8,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// POST /api/organize/bundle（specs/050-drag-organize/contracts/screen-api.md）を、本物の保存層と
+// POST /api/organize/bundleを、本物の保存層と
 // internal/app の Organizer をつないで確かめる。
 
 // versionsOf は所有者として動画 id の集まりを読み、代表と本数を返す。

@@ -10,7 +10,7 @@ import {
   withShelfRemoved,
 } from "./shelfOrder";
 
-// 所有者がホームの棚を足す・外す・動かす書き込み（specs/057-home/ui-design.md「Home」「Smart
+// 所有者がホームの棚を足す・外す・動かす書き込み（docs/design-docs/home.md「Home」「Smart
 // folder page and Settings」、research.md R-7）。ホームと、スマートフォルダのページの「More」が
 // 使い、同じトーストを出す。書き込みは PUT /api/home/shelves にフォルダの棚の並びを全部送る。
 

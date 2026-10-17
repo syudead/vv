@@ -9,15 +9,15 @@ import (
 	"time"
 )
 
-// プレイリスト（specs/044-playlists/data-model.md「domain values added」）。
+// プレイリスト。
 
 // PlaylistNameMaxLength はプレイリストの名前の上限（符号位置数）である。SQLite の length() と
-// 同じ数え方で、表の check と同じ値である（research.md R-11）。
+// 同じ数え方で、表の check と同じ値である。
 const PlaylistNameMaxLength = 100
 
-// Playlist はプレイリスト 1 つの要約である。ItemCount は見せる項目（research.md R-4）の数、
+// Playlist はプレイリスト 1 つの要約である。ItemCount は見せる項目の数、
 // UpdatedAt は名前か項目を最後に変えた時刻である。Covers は一覧のカードのフォルダの絵柄に
-// 差し込むサムネイル（ui-design.md「Playlists screen」）で、見せる項目を位置の順にたどって
+// 差し込むサムネイルで、見せる項目を位置の順にたどって
 // 動画の項目はその動画、グループの項目は並びの順で最初のサムネイル生成済みのメンバーを
 // 1 枚ずつ、サムネイル生成済みのものだけ MaxFolderPreviews 件まで持つ。一覧（ListPlaylists）
 // だけが埋め、ほかの読み出しでは nil である。
@@ -31,7 +31,6 @@ type Playlist struct {
 
 // PlaylistPage はプレイリストの一覧の 1 ページである。Items は (updated_at desc, id desc) の順、
 // Total はページングとは独立な全部のプレイリストの数、NextCursor は続きがあるときだけ空でない
-// （specs/044-playlists/contracts/screen-api.md「GET /api/playlists」）。
 //
 // Version は一覧の並びの版で、プレイリストを作る・消す・名前か項目を変えるたびに変わる不透明な
 // 文字列である。並びは updated_at の新しい順なので、ページを読んでいる間に変わったプレイリストは
@@ -78,7 +77,7 @@ func DecodePlaylistCursor(cursor string) (PlaylistCursor, error) {
 
 // PlaylistItem はプレイリストの項目 1 つである。見せる項目は Video・Group・SmartFolder のどれか
 // 1 つだけを持ち、どれも所有者として読んだ値である。スマートフォルダの項目のメンバーは読んだ時点の
-// フォルダの再生順である（specs/052-smart-folders/contracts/screen-api.md）。見せない項目
+// フォルダの再生順である。見せない項目
 // （PlaylistPlaybackOf の入力にだけ現れる）はどれも持たない。
 type PlaylistItem struct {
 	ID          int64
@@ -88,8 +87,7 @@ type PlaylistItem struct {
 }
 
 // PlaylistAdd はプレイリストへの追加の入力である。VideoIDs の動画、GroupIDs のグループ、
-// SmartFolderIDs のスマートフォルダを、この順で末尾に足す（research.md R-5、
-// specs/048-groups/research.md R-10）。
+// SmartFolderIDs のスマートフォルダを、この順で末尾に足す。
 type PlaylistAdd struct {
 	VideoIDs       []int64
 	GroupIDs       []int64
@@ -146,7 +144,7 @@ func (e *InvalidPlaylistNameError) Unwrap() error { return ErrInvalidPlaylistNam
 
 // ValidatePlaylistName は前後の Unicode White_Space を取り除いた名前を返す。空か
 // PlaylistNameMaxLength 符号位置を超えれば *InvalidPlaylistNameError である。同じ名前は
-// 重複してよい（research.md R-11）。
+// 重複してよい。
 func ValidatePlaylistName(input string) (string, error) {
 	trimmed, problem := checkName(input, PlaylistNameMaxLength)
 	switch problem {
@@ -160,7 +158,6 @@ func ValidatePlaylistName(input string) (string, error) {
 
 // PlaylistStep は連続再生で開く動画 1 本と、それが属する項目である。SmartFolderID は項目が
 // スマートフォルダの項目のときのフォルダの id で、動画とグループの項目では 0 である
-// （specs/052-smart-folders/contracts/screen-api.md の PlaylistStep）。
 type PlaylistStep struct {
 	ItemID        int64
 	Video         Video
@@ -168,7 +165,7 @@ type PlaylistStep struct {
 }
 
 // PlaylistPlayback は動画ページがプレイリストから再生しているときの、今の位置と次に開く動画
-// である（specs/044-playlists/data-model.md「Playback order」）。Position は見せる項目の中での
+// である。Position は見せる項目の中での
 // 1 からの番号で、今の項目が見せない項目なら 0 である。Count は見せる項目の数である。Next は
 // 連続再生で次に開く動画で、プレイリストの終わりなら nil である。PreviousItem と NextItem は
 // 前後の見せる項目の開始の動画で、無ければ nil である。
@@ -188,8 +185,7 @@ type PlaylistCurrent struct {
 	VideoID int64
 }
 
-// Shown は項目を見せるかを返す。プレイリストの順序の入力では、見せない項目（動画やグループが
-// 今ライブラリに引けない項目、research.md R-4）は Video も Group も SmartFolder も持たない。
+// Shown は項目を見せるかを返す。プレイリストの順序の入力では、見せない項目（動画やグループが 今ライブラリに引けない項目）は Video も Group も SmartFolder も持たない。
 func (i PlaylistItem) Shown() bool {
 	return i.Video != nil || i.Group != nil || i.SmartFolder != nil
 }
@@ -238,8 +234,7 @@ func (i PlaylistItem) step(video Video) *PlaylistStep {
 }
 
 // PlaylistPlaybackOf はプレイリストの全項目 items（見せない項目も含めて位置の順）と、今の項目と
-// 動画 current から、今の位置と次に開く動画を決める（specs/044-playlists/data-model.md
-// 「Playback order」、research.md R-6）。順序の規則はすべてここにある。
+// 動画 current から、今の位置と次に開く動画を決める。順序の規則はすべてここにある。
 //
 //   - グループの項目では、今の動画がそのメンバーなら、グループの再生順（GroupPlayOrder、
 //     LibraryGroup.Members の順）で後ろのメンバーへ進む。スマートフォルダの項目も同じく、

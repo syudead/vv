@@ -1,11 +1,11 @@
 import type { OnboardingStep } from "../api/onboarding";
 
-/** ONBOARDING_PATH はオンボードの画面の場所である（specs/057-home/ui-design.md「Onboarding」）。 */
+/** ONBOARDING_PATH はオンボードの画面の場所である（docs/design-docs/home.md「Onboarding」）。 */
 export const ONBOARDING_PATH = "/welcome";
 
 /**
  * onboardingRedirect は、見る人が `pathname` を開いたときに置き換える先を返す。置き換えなければ
- * null（specs/057-home/research.md R-4）。
+ * null（docs/design-docs/home.md）。
  *
  * - 所有者で段階が `done` でなければ、どの経路も `/welcome` へ置き換える。
  * - 所有者で段階が `done` なら、`/welcome` は `/` へ置き換える。

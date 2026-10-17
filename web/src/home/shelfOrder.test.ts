@@ -9,7 +9,7 @@ import {
   withShelfRemoved,
 } from "./shelfOrder";
 
-// ホームのフォルダの棚の並びの規則（specs/057-home/ui-design.md「Home」、research.md R-7）。
+// ホームのフォルダの棚の並びの規則（docs/design-docs/home.md「Home」、research.md R-7）。
 
 const folder = (id: number): HomeShelf => ({
   key: `folder:${String(id)}`,

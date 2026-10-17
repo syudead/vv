@@ -5,7 +5,7 @@ import (
 	"slices"
 )
 
-// 規則の整理役（specs/057-home/research.md R-1、R-2、R-10）。見せる動画に付いたタグ・結び付いた
+// 規則の整理役（docs/design-docs/home.md）。見せる動画に付いたタグ・結び付いた
 // 人物と団体の本数（ShelfCandidate）から棚の案（ProposedShelf）を選ぶ。本数は保存層が数え、
 // どれを棚にするか、どの順に並べるかはここが決める。
 

@@ -3,7 +3,7 @@ import type { components } from "./gen/openapi";
 import { applyVisibilityToListSnapshot, holdListSnapshot } from "./listSnapshot";
 
 // 型は api/openapi.yaml からの生成物を使う
-// （specs/016-single-account-auth/contracts/guest-api.md §4）。
+//
 export type VideoVisibilityResponse = components["schemas"]["VideoVisibilityResponse"];
 
 /**
@@ -17,8 +17,7 @@ const listeners = new Set<Listener>();
 
 /**
  * サーバーが要求より少ない本数にしか反映しなかった（`applied` が異なる id の数より
- * 少ない）とき、どの動画が切り替わったかは応答から分からない（空の content_key の
- * 動画・ライブラリから消えた id は数えない、contracts/guest-api.md §4）。そのときは
+ * 少ない）とき、どの動画が切り替わったかは応答から分からない（空の content_key の 動画・ライブラリから消えた id は数えない）。そのときは
  * 手元で切り替え済みにせず、これで知らせて該当の動画を取り直させる（Devin の指摘、PR 292）。
  */
 type StaleListener = (videoIds: readonly number[]) => Promise<void> | undefined;
@@ -141,7 +140,7 @@ export function withVisibilitySince<T extends { id: number; public: boolean }>(
 
 /**
  * updateVideoVisibility は `videoIds` の公開フラグを `isPublic` にそろえる
- * （PUT /api/video-visibility、contracts/guest-api.md §4）。再生画面の1本も、
+ * （PUT /api/video-visibility）。再生画面の1本も、
  * 選択バーの複数本も、これを使う。前の切り替えが決着するまで送るのを待ち、
  * 成功したら、受け付けた結果を画面へ知らせる。`applied` が異なる id の数より
  * 少なければ、どれが切り替わったか分からないので、取り直しを求める。

@@ -8,7 +8,7 @@ import { panelCurrentItemId, type VideoPlaylist } from "./useVideoPlaylist";
 /**
  * VideoPageAside は動画ページの右の列（関連動画）である。プレイリストの文脈では、プレイリストの
  * パネルを続けて再生・関連動画と同じ入れ物の先頭に置き、一緒にスクロールさせる（広い画面。
- * specs/044-playlists/ui-design.md「Video page in a playlist」）。
+ * docs/design-docs/catalog-organization.md「Video page in a playlist」）。
  */
 export default function VideoPageAside({
   related,
@@ -69,7 +69,7 @@ export default function VideoPageAside({
             // 続けて再生があるときは、そちらが今のメンバーへ動かす。
             scrollToCurrent={ready?.group === undefined}
           />
-          {/* 後に何も続かなければ境目を描かない（ui-design.md「Playlist panel」Divider）。 */}
+          {/* 後に何も続かなければ境目を描かない。 */}
           {!(
             ready !== undefined &&
             ready.group === undefined &&

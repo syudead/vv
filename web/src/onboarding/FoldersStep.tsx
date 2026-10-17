@@ -11,7 +11,7 @@ import { Button } from "../ui/shadcn/button";
 import { Skeleton } from "../ui/shadcn/skeleton";
 import { SkipButton, StepNotice, type StepProps } from "./stepFrame";
 
-// オンボードの「Media folders」の手順（specs/057-home/ui-design.md「Onboarding」）。足した
+// オンボードの「Media folders」の手順（docs/design-docs/home.md「Onboarding」）。足した
 // フォルダの行と、メディアフォルダの選択ダイアログを開く「Add folder」。フォルダが無ければ
 // 「Continue」を押せない。Continue も Skip も段階を `scan` にする。
 

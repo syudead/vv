@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 取り込みと失敗した走査のやり直し（specs/055-activity/contracts/screen-api.md「POST /api/activity/{id}/retry」）。
+// 取り込みと失敗した走査のやり直し。
 
 // listActivityItems は GET /api/activity の項目を返す。
 func (e *activityEnv) listActivityItems(t *testing.T, query string) []gen.ActivityEntry {

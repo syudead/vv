@@ -33,7 +33,7 @@ const ignore = () => undefined;
 
 /**
  * useLibraryTagKinds はライブラリのタグの種類の絞り込み（URL の `tagKind`）の、種類の一覧と
- * 書き換えを受け持つ（specs/051-tag-kinds/ui-design.md「Library」）。
+ * 書き換えを受け持つ。
  *
  * - 一覧は `api/tagKinds.ts` の共有の保持から読む。`tagKind` が効いていて保持が無ければ
  *   すぐに、そうでなければポップオーバーを開いたとき（`load`）に `GET /api/tag-kinds` を

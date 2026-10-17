@@ -70,8 +70,7 @@ export function buildAddOptions(
 /**
  * removableSummary は要約から、選んだ動画のどれかに手で付けたタグ
  * （`manualCount >= 1`）だけを残す。フォルダ名から付いているだけのタグは
- * 外せないので、候補にも `disabled` の行にも出さない
- * （specs/017-folder-groups/ui-design.md「Folder-derived tag chip」）。
+ * 外せないので、候補にも `disabled` の行にも出さない。
  */
 export function removableSummary(summary: VideoTagsSummary): VideoTagsSummary {
   return { ...summary, items: summary.items.filter((item) => item.manualCount >= 1) };

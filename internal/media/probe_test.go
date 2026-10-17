@@ -66,7 +66,7 @@ func TestParseProbeOutputDoesNotTreatAttachedPictureAsVideo(t *testing.T) {
 
 // 索引のコーデックは codec_name が空の stream を飛ばして次の同種の stream を採る。
 // 名前の無い先頭の音声のために後ろの ac3 を見落とすと、再生できない動画を
-// 直接再生できると判定してしまう。ライブ変換用の値は data-model.md §2 のとおり
+// 直接再生できると判定してしまう。ライブ変換用の値は
 // 最初の非添付映像・最初の音声のままである。
 func TestParseProbeOutputSkipsStreamsWithoutCodecName(t *testing.T) {
 	const output = `{
@@ -99,15 +99,15 @@ func TestParseProbeOutputSkipsStreamsWithoutCodecName(t *testing.T) {
 
 // ffprobe の前後でファイルの印が変わったら、ライブ変換用の解析情報もメディア情報も持たせない。
 func TestStampProbeDropsTranscodeWhenFileChanged(t *testing.T) {
-	probe := domain.Probe{Transcode: &domain.TranscodeProbe{}, Media: &domain.MediaInfo{}}
+	probe := domain.Probe{Transcode: &domain.TranscodeProbe{}, Media: &domain.MediaInfo{}, Keyframes: &domain.KeyframeProbe{}}
 	before := domain.FileStamp{SizeBytes: 10, ModTimeNs: 1}
 
 	same := stampProbe(probe, before, before)
-	if same.Source != before || same.Transcode == nil || same.Media == nil {
+	if same.Source != before || same.Transcode == nil || same.Media == nil || same.Keyframes == nil {
 		t.Errorf("変わらないファイル: %+v", same)
 	}
 	changed := stampProbe(probe, before, domain.FileStamp{SizeBytes: 12, ModTimeNs: 2})
-	if changed.Source != before || changed.Transcode != nil || changed.Media != nil {
+	if changed.Source != before || changed.Transcode != nil || changed.Media != nil || changed.Keyframes != nil {
 		t.Errorf("差し替わったファイル: %+v", changed)
 	}
 }

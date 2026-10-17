@@ -1294,7 +1294,7 @@ describe("FolderPage", () => {
         .disabled,
     ).toBe(true);
   });
-  describe("ゲスト（specs/016-single-account-auth/ui-design.md「Guest degradation」）", () => {
+  describe("ゲスト", () => {
     /** withoutRootPath はゲストの応答（登録フォルダの絶対パスが無い）を作る。 */
     function withoutRootPath({ rootPath: _, ...rest }: FolderSummary): FolderSummary {
       return rest;
@@ -1435,7 +1435,7 @@ describe("FolderPage", () => {
       );
     });
   });
-  describe("まとめ方のメニュー（specs/017-folder-groups/ui-design.md「Folder grouping menu」）", () => {
+  describe("まとめ方のメニュー", () => {
     const series: FolderListing = {
       folder: summary({
         path: "series",
@@ -1804,7 +1804,7 @@ describe("FolderPage", () => {
       );
       expect(await trigger(true)).toBeDefined();
       expect(writes.map(({ url }) => url)).toEqual(["/api/folders/3/grouping"]);
-      // 登録フォルダ自身のグループもタグに変えられる（research.md R-11）。
+      // 登録フォルダ自身のグループもタグに変えられる。
       await user.click(await trigger(true));
       expect(
         await screen.findByRole("menuitem", { name: "Turn the group into a tag…" }),
@@ -1850,7 +1850,7 @@ describe("FolderPage", () => {
   });
 });
 
-describe("FolderPage の英語の画面（specs/023-english-i18n）", () => {
+describe("FolderPage の英語の画面", () => {
   const fetchMock = vi.fn<typeof fetch>();
   /** route は URL ごとの応答である。無い URL は 404 を返す。 */
   let route: (url: string, method: string) => Promise<Response> | undefined;

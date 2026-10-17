@@ -2,7 +2,7 @@ import { apiFetch, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
 
-// ドラッグの操作と取り消しの画面 API（specs/050-drag-organize/contracts/screen-api.md）。型は
+// ドラッグの操作と取り消しの画面 API。型は
 // api/openapi.yaml からの生成物を使う。どれも所有者だけである。操作は 1 つの取引で行い、取り消しの
 // トークン（`undoToken`）を返す。トークンは 10 分有効で、1 回だけ使える。
 

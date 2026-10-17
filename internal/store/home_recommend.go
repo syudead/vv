@@ -1,6 +1,6 @@
 package store
 
-// 所有者へのおすすめの棚の元（specs/057-home/research.md R-13）。種はよく再生した動画と新しい
+// 所有者へのおすすめの棚の元（docs/design-docs/home.md）。種はよく再生した動画と新しい
 // お気に入りで、どちらも所有者に見せる動画（集まりでは代表）に引き直す。並べるのは internal/app で、
 // 近さの手がかりは関連動画と同じ RelatedCandidates（related.go）から読む。
 

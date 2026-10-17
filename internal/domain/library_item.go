@@ -2,13 +2,12 @@ package domain
 
 import "time"
 
-// ライブラリの項目（specs/017-folder-groups/data-model.md §5・§6）。ライブラリの
+// ライブラリの項目。ライブラリの
 // 一覧は、動画とグループを「項目」として混ぜて返す。
 
 // LibraryItem は一覧の項目1件である。Video・Group・SmartFolder のちょうど 1 つを持つ。
 // SmartFolder はスマートフォルダの中身の子フォルダか、ライブラリの一番上のフォルダで、カードの値を
-// 持たない要約である（specs/052-smart-folders/data-model.md「Contents」「Library items」、research.md
-// R-14）。
+// 持たない要約である。
 type LibraryItem struct {
 	Video       *Video
 	Group       *LibraryGroup
@@ -32,16 +31,14 @@ type LibraryPage struct {
 }
 
 // LibrarySelection は一覧の条件に合う項目の、ページングしない選択である
-// （GET /api/library/ids、specs/035-favorites/data-model.md §5）。動画の項目の id と、
-// グループの項目ごとの id と再生順の動画の id を分けて持つ（specs/048-groups/data-model.md
-// 「Library items」）。
+// （GET /api/library/ids、docs/design-docs/catalog-organization.md）。動画の項目の id と、
+// グループの項目ごとの id と再生順の動画の id を分けて持つ。
 type LibrarySelection struct {
 	// VideoIDs は動画の項目の id。
 	VideoIDs []int64
 	// Groups はグループの項目ごとの id と動画。
 	Groups []LibraryGroupSelection
-	// SmartFolderIDs はスマートフォルダの項目の id（specs/052-smart-folders/data-model.md
-	// 「Library items」）。フォルダの動画は AllVideoIDs に入れない。
+	// SmartFolderIDs はスマートフォルダの項目の id。フォルダの動画は AllVideoIDs に入れない。
 	SmartFolderIDs []int64
 }
 
@@ -63,7 +60,7 @@ func (s LibrarySelection) AllVideoIDs() []int64 {
 }
 
 // LibraryGroup はグループの項目である。値はどれも、絞り込みに関係なく、見る人に
-// 見せてよい子孫の動画の全部から、再生順で作る（specs/048-groups/research.md R-7）。
+// 見せてよい子孫の動画の全部から、再生順で作る。
 type LibraryGroup struct {
 	// ID はグループの id。
 	ID int64
@@ -73,7 +70,7 @@ type LibraryGroup struct {
 	// Name はグループの名前。
 	Name string
 	// Members は見せてよい子孫の動画を再生順（子グループは深さ優先、同じ動画は最初の 1 回）で
-	// 持つ。カードの値だけで読んだグループ（ホームの棚の項目。specs/057-home/research.md R-12）では
+	// 持つ。カードの値だけで読んだグループ（ホームの棚の項目。docs/design-docs/home.md）では
 	// nil で、カードに要る値は VideoCount と Previews が持つ。
 	Members []Video
 	// VideoCount は見せてよい子孫の動画の数（Members の長さ）。
@@ -94,7 +91,7 @@ type LibraryGroup struct {
 	AddedAt time.Time
 	// LastPlayedAt はメンバーの最後に再生した時刻の最大。記録が無ければ nil。
 	LastPlayedAt *time.Time
-	// Favorite は所有者がグループをお気に入りにしたか（specs/035-favorites/data-model.md §2）。
+	// Favorite は所有者がグループをお気に入りにしたか。
 	// メンバーの Video.Favorite とは独立である。保存層が埋める。
 	Favorite bool
 }
@@ -161,7 +158,7 @@ func memberStarted(progress *Progress) bool {
 }
 
 // GroupWatch は並んだメンバーの再生の記録から、グループの視聴状態と見終えた本数を
-// 決める（data-model.md §6、親 Issue 要件 17）。見始めたメンバーが無ければ
+// 決める。見始めたメンバーが無ければ
 // unwatched、全メンバーが完了なら watched、それ以外は inProgress である。
 //
 // internal/store の一覧は、同じ定義を SQL（libraryItemsCTE の視聴状態）として持つ。
@@ -181,7 +178,6 @@ func GroupWatch(progress []*Progress) (WatchState, int) {
 
 // WatchStateOf は count 本のうち見始めた本数 started と見終えた本数 watched から、GroupWatch と
 // 同じ規則で視聴状態を決める。スマートフォルダのカードは一致する動画の本数から決める
-// （specs/052-smart-folders/data-model.md「Contents」）。
 func WatchStateOf(count, started, watched int) WatchState {
 	switch {
 	case started == 0:
@@ -193,8 +189,7 @@ func WatchStateOf(count, started, watched int) WatchState {
 	}
 }
 
-// GroupOpenIndex は、グループを押したときに開くメンバーの位置を返す（data-model.md §6、
-// 親 Issue 要件 23）。並びの順で、位置が 0 より大きく完了していない最初のメンバー。
+// GroupOpenIndex は、グループを押したときに開くメンバーの位置を返す。並びの順で、位置が 0 より大きく完了していない最初のメンバー。
 // 無ければ最初の未完了のメンバー。全部完了なら（メンバーが無いときも）0 である。
 func GroupOpenIndex(progress []*Progress) int {
 	for i, p := range progress {

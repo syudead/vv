@@ -14,7 +14,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API と MCP のタグの種類（specs/051-tag-kinds/contracts/external-api.md）を、本物の保存先と
+// 外部連携 API と MCP のタグの種類を、本物の保存先と
 // Bearer の境界で確かめる。
 
 // postExternalAs は外部連携 API に body を POST し、200 なら本文を T に読む。200 でなければ止める。
@@ -244,7 +244,6 @@ func newExternalKindsEnv(t *testing.T, tags Tags) (*authEnv, map[string]string) 
 }
 
 // 保存先の想定外の失敗は 500 internal で、削除は失敗した id より前の id を消したまま止まる
-// （contracts/external-api.md、deleteCredits と同じ）。
 func TestExternalTagKindsStoreFailures(t *testing.T) {
 	internal := wantExternalError{http.StatusInternalServerError, extgen.ErrorCodeInternal, "", -1, 0}
 	broken := errors.New("disk I/O error")

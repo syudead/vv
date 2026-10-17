@@ -43,7 +43,7 @@ durations are read on the Actions pages of the CI runs.
 Codecov reports on every pull request that changes code, and every status it
 sets is informational ([`.github/codecov.yml`](../../.github/codecov.yml)).
 A required coverage number invites tests written for the number, which
-[Web test levels](web-testing.md) rules out by choosing the lowest level that
+[Testing policy](testing.md) rules out by choosing the lowest level that
 fails when a behaviour breaks.
 
 | Codecov setting | What a pull request gets |

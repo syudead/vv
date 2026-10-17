@@ -18,7 +18,7 @@ var frameScale = "scale='min(" + strconv.Itoa(domain.ThumbnailFrameMaxSide) + ",
 	strconv.Itoa(domain.ThumbnailFrameMaxSide) + ",ih)':force_original_aspect_ratio=decrease,setsar=1"
 
 // FrameAt は動画 videoPath の positionMs ミリ秒の場面を 1 枚、PNG で取り出す。サムネイルの編集で
-// 持ち主が塗り、提供元へ上げるコマである（specs/045-comfyui-thumbnails/research.md R-8）。長辺は
+// 持ち主が塗り、提供元へ上げるコマである。長辺は
 // 動画の長辺で、上限は domain.ThumbnailFrameMaxSide である。指定の位置でコマが取れなくても先頭の
 // コマで作り直さない（ThumbnailAt と同じ）。
 func FrameAt(ctx context.Context, videoPath string, positionMs int64) (domain.ThumbnailFrame, error) {

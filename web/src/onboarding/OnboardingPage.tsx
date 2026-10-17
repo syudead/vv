@@ -10,7 +10,7 @@ import { useOnboardingStep } from "./OnboardingGate";
 import ScanStep from "./ScanStep";
 import { stepFrame, type StepWrite } from "./stepFrame";
 
-// オンボードの画面（/welcome、specs/057-home/ui-design.md「Onboarding」）。シェルの外の
+// オンボードの画面（/welcome、docs/design-docs/home.md「Onboarding」）。シェルの外の
 // StepsPage で、ゲートが読んだ段階の手順を 1 つ出す。どの手順も段階を /api/onboarding に
 // 書いて次へ進み、書く間は下端のボタンを押せなくする。書けなければ Alert を出して段階を残す。
 // 段階が `done` になったらホームを開く。

@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// タグの種類の API（specs/051-tag-kinds/contracts/screen-api.md）。タグの管理 API と同じく
+// タグの種類の API。タグの管理 API と同じく
 // internal/app は通さず、どの操作も internal/store.TagStore の 1 つの取引で済む。/api/* の
 // 既定で所有者だけが使える。
 
@@ -86,7 +86,7 @@ func (s *server) DeleteTagKind(w http.ResponseWriter, r *http.Request, id gen.Ta
 }
 
 // writeTagKindError は種類の操作の誤りを契約の表の状態へ写す。名前の規則違反はタグの名前と
-// 同じ reason（tag_name_*）にする（specs/051-tag-kinds/research.md R-6）。名前の重複には、
+// 同じ reason（tag_name_*）にする。名前の重複には、
 // 画面が文に入れられるように、その名前を持つ種類の名前を tagName に載せる。
 func (s *server) writeTagKindError(w http.ResponseWriter, err error) {
 	var conflict *domain.TagKindNameConflict

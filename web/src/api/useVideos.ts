@@ -192,7 +192,7 @@ export function useVideos(
     const waiters = idleWaiters.current;
     const pending = uncertain.current;
     // お気に入りの付け外しが一部の動画にしか反映されなかったときも同じに取り直す
-    // （specs/035-favorites/research.md R-6）。
+    //
     // 理由ごとに分けて覚え、全件に反映された結果はその理由だけを確かにする。
     const onStale = (reason: UncertainReason) => (videoIds: readonly number[]) => {
       const targets = new Set(videoIds);
@@ -246,7 +246,7 @@ export function useVideos(
     [notifyIfIdle, settleUncertainReason],
   );
 
-  // お気に入りの付け外しの結果も一覧を読み直さずに反映する（specs/035-favorites/research.md R-6）。
+  // お気に入りの付け外しの結果も一覧を読み直さずに反映する。
   // 動画の項目は `favorite` をその場で差し替える。メンバーの付け外しはグループの値を
   // 変えないので、グループは取り直さない（要件 4）。付け外したグループの項目は
   // `GET /api/groups/{id}` で取り直し、404 なら外す（useGroupRefresh）。
@@ -275,18 +275,17 @@ export function useVideos(
   );
 
   // 変化の知らせ（/api/events）。ゲストには group と smartFolder だけが届くので、その 2 つだけを
-  // 購読する（specs/048-groups/contracts/screen-api.md「/api/events」、
-  // specs/052-smart-folders/contracts/screen-api.md）。video と取り込みの知らせは
-  // 所有者のもの（specs/016-single-account-auth/ui-design.md「Top bar」）。
+  // 購読する。video と取り込みの知らせは
+  // 所有者のもの。
   const owner = useAudience() === "owner";
   // refreshInPlace は下の useVideoPages が返すので、知らせの購読からは参照で呼ぶ。
   const refreshInPlaceRef = useRef<() => void>(() => undefined);
   useEffect(() => {
     const queue = refreshQueue.current;
-    // グループの名前か項目が変わった（specs/048-groups/research.md R-13）。表示中の
+    // グループの名前か項目が変わった。表示中の
     // グループの項目だけを取り直す。ページの取得中は、そのページのために覚えておく。
     // ライブラリのいちばん上は、他のグループに入っていないグループと、どのグループにも
-    // 入っていない動画からなる（specs/048-groups/data-model.md「Library items」）。別の画面で
+    // 入っていない動画からなる。別の画面で
     // グループを作る・項目を足す・解散すると、表示中でないグループが現れたり動画がいちばん上から
     // 外れたりするので、表示中のグループの取り直しでは足りず、読み込み済みのページを条件を
     // 保ったまま読み直す（親 Issue 1040 の Edge Cases「もう一方の画面は最新の内容に更新される」）。
@@ -302,11 +301,11 @@ export function useVideos(
       refreshGroups(groupsIn(itemsRef.current, ids));
     };
     // スマートフォルダが作られた・移った・名前が変わった・消えた、または中身が変わったかも
-    // しれない（specs/052-smart-folders/research.md R-12）。知らせは id だけを運び、構成の変化と
+    // しれない。知らせは id だけを運び、構成の変化と
     // 一致の変化を分けられないので、フォルダのカードが並ぶライブラリ（R-7）は読み込み済みの
     // ページを条件を保ったまま読み直す（グループの知らせと同じ）。カードの値は
     // SmartFolderCardsProvider が読み直す。
-    // 棚に無い動画のみ（specs/057-home/research.md R-11）は、読むたびに棚の条件から求めるので、
+    // 棚に無い動画のみ（docs/design-docs/home.md）は、読むたびに棚の条件から求めるので、
     // フォルダの中身か棚の集合が変わる（smartFolder・home の知らせ）たびに読み直す。
     const smartFolder = () => {
       const current = criteriaRef.current;

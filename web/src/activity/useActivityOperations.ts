@@ -4,7 +4,7 @@ import { type ActivityEntry, retryActivity, undoActivity } from "../api/activity
 import { errorText, t } from "../i18n";
 import { useToast } from "../ui/Toast";
 
-// アクティビティのカードのやり直しと取り消し（specs/055-activity/ui-design.md「Cards」）。
+// アクティビティのカードのやり直しと取り消し。
 
 export interface ActivityOperations {
   retry: (entry: ActivityEntry) => Promise<void>;

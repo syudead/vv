@@ -9,7 +9,7 @@ import (
 )
 
 // HomeOrganizer はホームの整理役である。internal/app の *HomeOrganizer が満たす
-// （specs/057-home/contracts/screen-api.md、research.md R-9）。POST /api/home/organize は所有者だけで、
+// （docs/design-docs/home.md、research.md R-9）。POST /api/home/organize は所有者だけで、
 // accessRoutes に載せない。
 type HomeOrganizer interface {
 	// Reorganize は rebuild を待ちに入れ、入れたあとの状態を返す。

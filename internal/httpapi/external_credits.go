@@ -13,8 +13,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 外部連携 API の人物と団体（specs/047-video-work-info/contracts/external-api.md「People and
-// organizations」、research.md R-9）。/api/v1/people と /api/v1/organizations の 5 つずつの経路は、
+// 外部連携 API の人物と団体。/api/v1/people と /api/v1/organizations の 5 つずつの経路は、
 // 種類（externalCreditKind）を添えて同じハンドラを呼ぶ。どの操作も画面の経路と同じ CreditStore の操作を
 // Credits 越しに呼び、本文は画面と同じ形の gen 型に読んで画面と同じ変換（creditPatchOf・fromAPIAliases）を
 // 通す。誤りは画面と同じ workInfoFailureOf で写す。実体は経路ではなく本文の id で指す（039 R-2 と同じ）。
@@ -174,7 +173,7 @@ func (e *externalServer) lookupCredit(w http.ResponseWriter, r *http.Request, ap
 }
 
 // createCredit は POST /api/v1/people と POST /api/v1/organizations である。他の外部連携の書き込みと同じく
-// 200 を返す（contracts/external-api.md「People and organizations」）。
+// 200 を返す。
 func (e *externalServer) createCredit(w http.ResponseWriter, r *http.Request, api externalCreditKind) {
 	var body gen.CreditInput
 	fields, ok := e.readJSONBodyFields(w, r, &body)

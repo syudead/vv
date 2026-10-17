@@ -4,8 +4,7 @@ A viewer on a slow connection picks a smaller quality, and the live transcode
 (`GET /api/videos/{id}/transcode.mp4`) downscales the video and caps its
 bitrate; the player switches quality in place and warns when playback stalls
 ([`internal/domain/transcode_quality.go`](../../internal/domain/transcode_quality.go)).
-Background: [specs/027-playback-quality/](../../specs/027-playback-quality/plan.md)
-(parent Issue #521). Starting a live transcode is in
+Starting a live transcode is in
 [live-transcode-seek.md](live-transcode-seek.md); the encoder choice is in
 [hardware-encoding.md](hardware-encoding.md).
 
@@ -62,8 +61,9 @@ frame ends up smaller: 1200×12000 becomes 384×3840 at `1080p`, `720p` and
 
 A Go test transcodes full-frame noise at `480p` and requires a short side of
 480 and an average video bitrate of at most 1.2 × 1200 kbps. CI cannot check
-hardware encoders; they are checked on real hardware with
-[quickstart.md](../../specs/027-playback-quality/quickstart.md).
+hardware encoders. On a machine with the selected encoder, play a video at
+each quality, seek outside the buffer, and confirm that the picture resumes
+at the selected quality without recreating the player.
 
 | Rejected | Why |
 | --- | --- |
@@ -75,8 +75,7 @@ hardware encoders; they are checked on real hardware with
 ## API
 
 The transcode route takes an optional `quality` (`1080p`, `720p`, `480p`,
-`360p`), and the server decides the quality from each request alone
-([contract, `quality` on `GET /api/videos/{id}/transcode.mp4`](../../specs/027-playback-quality/contracts/transcode-quality-api.md#quality-on-get-apivideosidtranscodemp4)).
+`360p`), and the server decides the quality from each request alone.
 
 The viewer switches quality during playback; a server-side memory or a route
 per quality would have to track which quality goes with each seek and resume
@@ -132,7 +131,7 @@ flowchart LR
 | Unavailable remembered quality | Original plays; the remembered value is kept for the next larger video |
 | Quality other than original | Transcoded from the resume position, even for a video that can play directly |
 | Unbuffered seek, network reload | Rebuilt with the same quality, never without one |
-| Transcode indicator | `Converting to 480p` with how to go back ([ui-design.md](../../specs/027-playback-quality/ui-design.md#control-bar-transcode-indicator)); quality names are not translated |
+| Transcode indicator | `Converting to 480p` with how to go back; quality names are not translated |
 
 | Rejected | Why |
 | --- | --- |
@@ -188,7 +187,7 @@ usual error path and retries from the switch position.
 | Rejected | Why |
 | --- | --- |
 | Recreate the player | Returns to the poster, hides the control bar and rebuilds full-screen state |
-| A React popover menu | The speed menu's look, opening and keyboard handling would have to be rebuilt and kept in sync (research.md R-4) |
+| A React popover menu | The speed menu's look, opening and keyboard handling would have to be rebuilt and kept in sync |
 
 ## Stall warning
 

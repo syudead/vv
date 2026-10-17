@@ -1,5 +1,5 @@
 -- +goose Up
--- タグの種類（specs/051-tag-kinds/data-model.md、research.md R-1・R-2）。種類は利用者データで、
+-- タグの種類。種類は利用者データで、
 -- 再スキャンで作り直さない。タグは tags.kind_id で種類を 0 か 1 つ持つ。
 
 -- autoincrement で、消した種類の id を使い回さない（tags.id と同じ）。name はタグの名前とは別の

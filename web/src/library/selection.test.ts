@@ -15,7 +15,7 @@ import {
   toggleVideo,
 } from "./selection";
 
-/** 選択の持ち方（specs/035-favorites/research.md R-7）。 */
+/** 選択の持ち方。 */
 const series = {
   id: 5,
   videoIds: [101, 102, 103],

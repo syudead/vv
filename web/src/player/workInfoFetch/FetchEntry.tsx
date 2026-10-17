@@ -43,7 +43,7 @@ function useApprovedPlugins(): {
 
 /**
  * FetchEntry は情報の行の操作群の「Fetch work info from a plugin」と、それが開く取得の
- * ダイアログである（specs/049-work-info-plugins/ui-design.md「Video page: fetch entry」）。
+ * ダイアログである。
  * 所有者にだけ置かれ、承認済みのプラグインが一覧にあるときだけ入口を出す。押すと再生を止めて
  * ダイアログを開く。ダイアログを開いている間に入口の条件が外れても、閉じるまではダイアログを残す。
  */

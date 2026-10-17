@@ -25,13 +25,13 @@ type nameLookup struct {
 	// シノニムのときは、name とは異なる。
 	canonicalName string
 	isCanonical   bool
-	// tentative はその名前を持つタグが仮のタグであること（specs/031-tentative-tags/data-model.md §5）。
+	// tentative はその名前を持つタグが仮のタグであること。
 	tentative bool
-	// kind はその名前を持つタグの種類。種類が無ければ nil（specs/051-tag-kinds/research.md R-4）。
+	// kind はその名前を持つタグの種類。種類が無ければ nil。
 	kind *domain.TagKindRef
 }
 
-// lookupTagName は名前からタグを引く（data-model.md §3）。元の名前でも
+// lookupTagName は名前からタグを引く。元の名前でも
 // シノニムでも同じタグに着く。無ければ found = false を返す。
 func lookupTagName(ctx context.Context, q tagTx, name string) (nameLookup, bool, error) {
 	var lookup nameLookup
@@ -119,8 +119,7 @@ func tagByID(ctx context.Context, q tagTx, id int64) (domain.Tag, error) {
 }
 
 // videoCountByTagID はいまライブラリにある動画のうち id が付いている本数を
-// 数える（data-model.md §5）。フォルダ名から付いている分も含む（017 の
-// data-model.md §4）。
+// 数える。フォルダ名から付いている分も含む（017 の）。
 func videoCountByTagID(ctx context.Context, q rowQueryer, id int64) (int, error) {
 	query := `select count(*) from (` + taggedVideosSQL(` and tag_id = ?`) + `)`
 	var count int
@@ -153,8 +152,7 @@ func synonymsByTagID(ctx context.Context, q queryExecer, id int64) ([]string, er
 }
 
 // insertTagName は tag_names に1行足し、照合用の鍵と名前の自然順の鍵を同じ文で
-// 書く（data-model.md §7、specs/036-tag-admin-scale/data-model.md §0）。同じ取引でその名前を却下した名前から外す
-// （specs/031-tentative-tags/research.md R-3）。
+// 書く。同じ取引でその名前を却下した名前から外す
 func insertTagName(ctx context.Context, tx *sql.Tx, name string, tagID int64, canonical bool) error {
 	if _, err := tx.ExecContext(ctx, `
 		insert into tag_names (name, tag_id, canonical, search_key, sort_key, search_version)
@@ -175,7 +173,6 @@ func forgetRejectedName(ctx context.Context, tx *sql.Tx, name string) error {
 }
 
 // confirmTagInTx はタグ id を確定したタグにする（tentative = 0）。既に 0 なら何も変えない
-// （specs/031-tentative-tags/research.md R-4）。
 func confirmTagInTx(ctx context.Context, tx queryExecer, id int64) error {
 	if _, err := tx.ExecContext(ctx, `update tags set tentative = 0 where id = ? and tentative = 1`, id); err != nil {
 		return fmt.Errorf("cannot confirm the tag (id=%d): %w", id, err)
@@ -184,7 +181,7 @@ func confirmTagInTx(ctx context.Context, tx queryExecer, id int64) error {
 }
 
 // existingTagIDs は ids のうち tags テーブルにあるものと無いものを、それぞれ
-// ids の並びのまま返す（data-model.md §6）。LibraryStore がタグでの絞り込み・
+// ids の並びのまま返す。LibraryStore がタグでの絞り込み・
 // 「すべて選択」で使う（Structural Decisions 13：複数の型が読む問い合わせの共有）。
 // ids の重複は1つにまとめる。ids が空なら問い合わせずに両方空を返す（空の
 // in () は誤りになる）。

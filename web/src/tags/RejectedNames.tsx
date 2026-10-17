@@ -13,10 +13,9 @@ import { Button } from "../ui/shadcn/button";
 import { TableBody, TableCell, TableRow } from "../ui/shadcn/table";
 
 /**
- * RejectedNames はタグ管理画面の「Rejected names」のタブの中身である
- * （specs/036-tag-admin-scale/ui-design.md「Rejected names tab」）。却下した名前を
+ * RejectedNames はタグ管理画面の「Rejected names」のタブの中身である。却下した名前を
  * 表（`DataTable`）に 1 行ずつ並べ、行の「Allow again」でその名前を外す（規則は 031 のまま。
- * specs/031-tentative-tags/ui-design.md「Rejected names」）。一覧の取得・続き・
+ * docs/design-docs/catalog-organization.md「Rejected names」）。一覧の取得・続き・
  * 取り直しは呼び出し元（TagsPage）が持ち、ここは行・取り外しと、並びの末尾が
  * 表示域に入ったことを伝える番兵を持つ。
  *

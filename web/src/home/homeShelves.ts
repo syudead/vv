@@ -14,7 +14,7 @@ import {
   videoInSmartFolderPath,
 } from "../smartFolders/smartFolderPaths";
 
-// ホームの棚の規則（specs/057-home/ui-design.md「Home」、research.md R-12・R-14）。画面の部品から
+// ホームの棚の規則（docs/design-docs/home.md「Home」、research.md R-12・R-14）。画面の部品から
 // 外し、ロジックのテストで確かめる（docs/design-docs/web-testing.md）。
 
 /**

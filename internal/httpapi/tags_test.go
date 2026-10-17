@@ -255,8 +255,7 @@ func TestCreateTagNameTakenReturnsConflict(t *testing.T) {
 
 // TestTagNameTakenMessageDistinguishesOwnNameFromSynonym は、tag_name_taken の
 // message が「送った名前が衝突したタグ自身の元の名前か、そのシノニムか」を
-// 言い分けることを確かめる（contracts/tags-api.md §2、親 Issue の Edge Case
-// 「シノニム名の衝突」）。
+// 言い分けることを確かめる。
 func TestTagNameTakenMessageDistinguishesOwnNameFromSynonym(t *testing.T) {
 	t.Run("送った名前が衝突したタグ自身の元の名前", func(t *testing.T) {
 		fake := &fakeTags{err: &domain.TagNameConflict{Tag: domain.TagRef{ID: 5, Name: "Bar"}}}
@@ -290,8 +289,7 @@ func TestTagNameTakenMessageDistinguishesOwnNameFromSynonym(t *testing.T) {
 
 	t.Run("自分自身の元の名前を自分のシノニムに登録", func(t *testing.T) {
 		// AddTagSynonym(id=5, name="Bar") で id=5 自身の元の名前が "Bar" のとき、
-		// store は自分自身を owner とする TagNameConflict を返す
-		// （data-model.md §4）。この場合も「自分の名前」の文言になる。
+		// store は自分自身を owner とする TagNameConflict を返す。この場合も「自分の名前」の文言になる。
 		fake := &fakeTags{err: &domain.TagNameConflict{Tag: domain.TagRef{ID: 5, Name: "Bar"}}}
 		rec := jsonRequest(t, newTestServer(t, Options{Tags: fake}), http.MethodPost, "/api/tags/5/synonyms",
 			`{"name":"Bar"}`)

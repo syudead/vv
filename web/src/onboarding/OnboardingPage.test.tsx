@@ -13,7 +13,7 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { OnboardingGate } from "./OnboardingGate";
 import OnboardingPage from "./OnboardingPage";
 
-// オンボードの画面とゲート（specs/057-home/ui-design.md「Onboarding」、research.md R-3・R-4）。
+// オンボードの画面とゲート（docs/design-docs/home.md「Onboarding」、research.md R-3・R-4）。
 // 段階が done でない所有者はどの経路からも手順に着き（受け入れ条件 4）、閲覧者は送られない。
 // どの手順も Skip で次の段階を書き、終えるとホームが開く（受け入れ条件 3）。
 

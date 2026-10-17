@@ -1,6 +1,5 @@
 -- +goose Up
--- シーク用サムネイルを個別 JPEG からスプライトシートに作り直す
--- （specs/021-seek-thumbnail-sprite/research.md R-6）。schema は変えない。
+-- シーク用サムネイルを個別 JPEG からスプライトシートに作り直す。schema は変えない。
 -- done の動画だけを作り直しの対象にする。failed は読み取りのやり直しで戻し、
 -- 代表サムネイルと動くプレビューの状態とジョブには触れない。
 -- 旧形式の個別 JPEG は、スプライトの公開時に internal/artifacts が消す。

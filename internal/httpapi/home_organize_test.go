@@ -11,8 +11,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// POST /api/home/organize は rebuild を待ちに入れ、202 で整理役の状態を返す（specs/057-home/
-// contracts/screen-api.md）。整理役は Run で動かさないので、実行は待ちに残る。最後の実行があれば添える。
+// POST /api/home/organize は rebuild を待ちに入れ、202 で整理役の状態を返す（docs/design-docs/home.md）。整理役は Run で動かさないので、実行は待ちに残る。最後の実行があれば添える。
 func TestOrganizeHomeQueuesARebuild(t *testing.T) {
 	var db *store.DB
 	env := newAuthEnvWith(t, t.TempDir(), func(opened *store.DB) Options {

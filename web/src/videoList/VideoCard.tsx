@@ -51,7 +51,7 @@ export interface VideoCardProps {
   backTo: string;
   /**
    * カードと行が開く場所。省くとその動画の再生画面（`/videos/{id}`）。グループのページは
-   * `?group` を付けた場所を渡す（specs/048-groups/ui-design.md「Body」）。
+   * `?group` を付けた場所を渡す。
    */
   to?: string;
   selected: boolean;
@@ -63,7 +63,7 @@ export interface VideoCardProps {
   onPreviewStart?: (id: number) => void;
   onPreviewReset?: () => void;
   /**
-   * フォルダ画面の検索結果にだけ添える置き場所（ui-design.md「Search results」）。
+   * フォルダ画面の検索結果にだけ添える置き場所。
    * `label` は表示・読み上げ名に使う文字列（先頭の側を省略して表示する）で、
    * `title` 属性には省略しない全体を入れる（最上位では登録フォルダの絶対パスから）。
    */
@@ -71,7 +71,7 @@ export interface VideoCardProps {
   /**
    * 題名の下に呼び出し側の行を足す口。省くと
    * 題名の下には何も足さない。ライブラリの格子表示とフォルダ画面はここへタグの行を
-   * 渡す（specs/014-video-tags/ui-design.md「Tag row」）。タグの行はリンクの**外**、
+   * 渡す。タグの行はリンクの**外**、
    * 同じ `article` の中に置かれる（Structural Decisions 10、キーボードの入れ子を避ける）。
    *
    * `ReactNode` ではなく関数で受け取るのは、呼び出し側が安定した
@@ -82,18 +82,18 @@ export interface VideoCardProps {
   tagsRow?: (video: Video) => ReactNode;
   /**
    * リストの行をドラッグの層に加える値（useCardDrag）。所有者のライブラリのリスト表示だけが
-   * 渡す（specs/050-drag-organize/ui-design.md「Library」）。格子のカードは DraggableCard で包む。
+   * 渡す。格子のカードは DraggableCard で包む。
    */
   drag?: CardDragBinding;
   /**
    * 格子のカードが開く再生画面で再生を始める（`state.autoplay`）。ホームの棚のカードが渡す
-   * （specs/057-home/research.md R-14）。
+   * （docs/design-docs/home.md）。
    */
   autoplay?: boolean;
   /**
    * 格子のカードの右上に、所有者のお気に入りの付け外しだけを置く（「Add to group」と
    * 「Add to playlist」を置かない）。ホームの棚の card-0 のカードが渡す
-   * （specs/057-home/ui-design.md「Home」）。
+   * （docs/design-docs/home.md「Home」）。
    */
   favoriteOnly?: boolean;
 }
@@ -109,8 +109,7 @@ function useCardState(video: Video) {
 }
 
 /**
- * usePublicMark は所有者の一覧で公開の印を出すかを返す
- * （specs/016-single-account-auth/ui-design.md「Visibility toggle」の「Card」）。
+ * usePublicMark は所有者の一覧で公開の印を出すかを返す。
  * ゲストに見えるのはすべて公開の動画で、印に意味が無いので出さない。
  */
 function usePublicMark(video: Video): boolean {
@@ -119,7 +118,7 @@ function usePublicMark(video: Video): boolean {
 
 /**
  * VideoFavorite は動画のカード・行のお気に入りの付け外しである（所有者だけ。
- * specs/035-favorites/ui-design.md「Card」）。ゲストには描かない（「Guest degradation」）。
+ * docs/design-docs/catalog-organization.md「Card」）。ゲストには描かない（「Guest degradation」）。
  */
 function VideoFavorite({ video, variant }: { video: Video; variant: "card" | "row" }) {
   const favorite = video.favorite === true;
@@ -135,7 +134,7 @@ function VideoFavorite({ video, variant }: { video: Video; variant: "card" | "ro
 
 /**
  * VideoAddToPlaylist は動画のカード・行の「Add to playlist」である（所有者だけ。
- * specs/044-playlists/ui-design.md「Add to playlist」）。ハートと同じところにだけ描く。
+ * docs/design-docs/catalog-organization.md「Add to playlist」）。ハートと同じところにだけ描く。
  */
 function VideoAddToPlaylist({
   video,
@@ -155,7 +154,7 @@ function VideoAddToPlaylist({
 
 /**
  * VideoAddToGroup は動画のカード・行の「Add to group」である（所有者だけ。
- * specs/048-groups/ui-design.md「Group card and row」）。ハートと同じところにだけ描く。
+ * docs/design-docs/catalog-organization.md「Group card and row」）。ハートと同じところにだけ描く。
  */
 function VideoAddToGroup({ video, variant }: { video: Video; variant: "card" | "row" }) {
   return (
@@ -215,8 +214,7 @@ function SelectCheck({
 }
 
 /**
- * useCardScrub はカードのスクラブの帯をループ再生（useCardPreview）とつなぐ
- * （specs/032-card-scrub-preview/research.md R-2、ui-design.md「Pointer rules」）。
+ * useCardScrub はカードのスクラブの帯をループ再生（useCardPreview）とつなぐ。
  *
  * - 帯への出入りでループを一時停止・再開する。帯から下へカードの外に出たときは再開せず、
  *   カードの pointerleave の解放に任せる。
@@ -314,7 +312,7 @@ function VideoCard(props: VideoCardProps) {
     favoriteOnly = false,
   } = props;
   const { duration, unplayable: rawUnplayable, state, ratio } = useCardState(video);
-  // タグが無い動画は行を出さない（ui-design.md「Tag row」）が、題名の下の余白は
+  // タグが無い動画は行を出さないが、題名の下の余白は
   // 今の pb-3 のまま保つ（タグの有無で高さの余白が変わって見えないように）。
   const tagsRowNode = tagsRow?.(video);
   const publicMark = usePublicMark(video);
@@ -338,7 +336,7 @@ function VideoCard(props: VideoCardProps) {
     preview,
   });
   // 帯にいる間のポインタの位置。時刻の表示とスクラブ位置のバーを差し替える
-  // （ui-design.md「Time and bar」）。
+  //
   const scrubPosition = scrub.position;
 
   return (
@@ -372,7 +370,7 @@ function VideoCard(props: VideoCardProps) {
             : t.list.card.withLocation(video.title, location.label)
         }
         // リンクの名前が中の文を置き換えるので、バージョンの印の読み上げは説明として指す
-        // （specs/054-auto-dup/ui-design.md「Accessibility」）。
+        //
         aria-describedby={versions === null ? undefined : versionsId}
         onClick={(event) => {
           onPreviewReset?.();
@@ -463,10 +461,10 @@ function VideoCard(props: VideoCardProps) {
         </div>
       </Link>
       {/* 付け外しはサムネイルの右上、リンクの外に置く（チェックと同じ。DOM の順は
-          チェック → リンク → 付け外し → タグの行。ui-design.md「Placement」）。 */}
+          チェック → リンク → 付け外し → タグの行）。 */}
       {owner && (
         // ポインタが入ったらホバープレビューを止め、ここからはプレビューを始めない。
-        // 足す操作はハートの左（specs/044-playlists/ui-design.md「Add to playlist」）。
+        // 足す操作はハートの左。
         <VideoThumbnailMark data-preview-checkbox="true" onPointerEnter={release}>
           {!favoriteOnly && <VideoAddToGroup video={video} variant="card" />}
           {!favoriteOnly && <VideoAddToPlaylist video={video} variant="card" />}
@@ -551,19 +549,19 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         )}
         <RowDropMarks drag={drag} />
       </TableCell>
-      {/* お気に入りは題名の列の直後の列（ui-design.md「List view row」）。ゲストには列ごと描かない。 */}
+      {/* お気に入りは題名の列の直後の列。ゲストには列ごと描かない。 */}
       {owner && (
         <TableCell className="w-8 px-0">
           <VideoFavorite video={video} variant="row" />
         </TableCell>
       )}
-      {/* 足す操作はお気に入りの列の直後の列で、sm 未満では列ごと隠す（specs/044-playlists/ui-design.md）。 */}
+      {/* 足す操作はお気に入りの列の直後の列で、sm 未満では列ごと隠す。 */}
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
           <VideoAddToPlaylist video={video} variant="row" />
         </TableCell>
       )}
-      {/* 「Add to group」は「Add to playlist」の列の直後の列（specs/048-groups/ui-design.md）。 */}
+      {/* 「Add to group」は「Add to playlist」の列の直後の列。 */}
       {owner && (
         <TableCell className="hidden w-8 px-0 sm:table-cell">
           <VideoAddToGroup video={video} variant="row" />
@@ -578,8 +576,7 @@ export const VideoRow = memo(function VideoRow(props: VideoCardProps) {
         )}
       </TableCell>
       <TableCell className="w-list-number pr-4 text-right tabular-nums">
-        {/* 公開の印は時間の直前に、バージョンの印はその前に置く（ui-design.md「Card」、
-            specs/054-auto-dup/ui-design.md「Versions mark」）。 */}
+        {/* 公開の印は時間の直前に、バージョンの印はその前に置く。 */}
         <span className="inline-flex items-center justify-end gap-1.5">
           {versions !== null && <VersionsMark count={versions} />}
           {publicMark && <PublicMark />}

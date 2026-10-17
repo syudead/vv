@@ -4,8 +4,7 @@ import { cn } from "@/lib/cn";
 import { Progress } from "@/ui/shadcn/progress";
 
 // VideoThumbnail は vv 固有の部品で、動画・まとめ・フォルダのカードと一覧の行が共有する
-// サムネイルの枠である（specs/038-design-system/ui-design.md「Components」、
-// web/registry/rules/components.md「VideoThumbnail」）。shadcn/ui の部品と同じく、
+// サムネイルの枠である。shadcn/ui の部品と同じく、
 // 枠と、その上に重ねる部品（長さの印・視聴の進み・角の印・全面の知らせ）に分けて組む。
 //
 // 重ねる順（下から）: 画像（children）→ 長さの印 → 進みの縁 → 全面の知らせ → 角の印。

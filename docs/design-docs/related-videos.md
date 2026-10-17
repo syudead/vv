@@ -93,8 +93,7 @@ The page carries a trail of the video ids it came through in the navigation
 state, so opening a video by URL or from a list has no ‹. Before showing ‹ the
 page fetches that video, and a deleted video or one the guest may not see hides
 it. Going back drops the video from the trail, so ‹ again goes one further
-back. Group members keep the group's order for both arrows
-([017 folder groups](../../specs/017-folder-groups/ui-design.md)).
+back. Group members keep the group's order for both arrows.
 
 ## Excluded videos
 

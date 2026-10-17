@@ -1,11 +1,10 @@
 package store
 
-// フォルダの索引（動画ごとの祖先フォルダ名）と、フォルダごとの例外（specs/017-folder-groups/data-model.md
-// §1〜§3）。グループそのものは groups と group_items が持ち、作り直しの同期（syncFolderGroups）が
-// フォルダとそろえる（specs/048-groups/research.md R-1）。
+// フォルダの索引（動画ごとの祖先フォルダ名）と、フォルダごとの例外。グループそのものは groups と group_items が持ち、作り直しの同期（syncFolderGroups）が
+// フォルダとそろえる。
 // 例外の書き換えは FolderGroupStore、スキャンの後と起動時の作り直しは ScanIndexStore、
 // メディアフォルダの変更に伴う作り直しは SettingsStore、束ねの変更に伴う作り直しは
-// VersionStore（specs/030-video-versions/research.md R-4）が受け持ち、どれも
+// VersionStoreが受け持ち、どれも
 // rebuildFolderIndex を自分の取引の中で呼ぶ。
 
 import (
@@ -39,7 +38,7 @@ func (s *FolderGroupStore) ClearOverride(ctx context.Context, folderPath string)
 
 // SetFolderGrouping はフォルダ folderPath（絶対パス）の例外を mode にし、同じ取引で
 // 索引を作り直して、変更後のまとめ方を返す（PUT /api/folders/{rootId}/grouping、
-// specs/017-folder-groups/contracts/folder-groups-api.md §1）。mode が空なら例外を
+// docs/design-docs/catalog-organization.md）。mode が空なら例外を
 // 外す（自動）。同じ値の再設定も誤りにしない。
 func (s *FolderGroupStore) SetFolderGrouping(ctx context.Context, folderPath string, mode domain.FolderGroupMode) (domain.FolderGrouping, error) {
 	if mode != "" && !mode.Valid() {
@@ -131,7 +130,7 @@ func folderGroupings(ctx context.Context, tx *sql.Tx, folderPaths []string) ([]d
 
 // dissolveUngroupedAndRebuild は、例外 mode が ungroup ならフォルダ folderPath の自動グループを
 // 解散と同じ経路（dissolveFolderGroup）で消し、索引を作り直して、変わったグループとその祖先の id を
-// 返す（specs/048-groups/research.md R-4）。auto と groupDirect は作り直しの同期が、規則が成り立てば
+// 返す。auto と groupDirect は作り直しの同期が、規則が成り立てば
 // 新しいグループを作る。
 func dissolveUngroupedAndRebuild(ctx context.Context, tx *sql.Tx, folderPath string, mode domain.FolderGroupMode) ([]int64, error) {
 	var dissolved []int64
@@ -225,9 +224,8 @@ func markFolderIndexStale(ctx context.Context, q queryExecer) error {
 }
 
 // rebuildFolderIndex は、登録フォルダの下の全所在と例外を読み、
-// domain.BuildFolderIndex を通して、フォルダ名の表を丸ごと書き直す
-// （specs/017-folder-groups/data-model.md §3）。同じ取引で自動グループをフォルダとそろえ
-// （syncFolderGroups、specs/048-groups/data-model.md「Automatic group sync」）、変わった
+// domain.BuildFolderIndex を通して、フォルダ名の表を丸ごと書き直す。同じ取引で自動グループをフォルダとそろえ
+// （syncFolderGroups、docs/design-docs/catalog-organization.md「Automatic group sync」）、変わった
 // グループとその祖先の id を返す。呼び出し側は確定の後に groupsChangedEvents で知らせる。
 // 呼び出し側の書き込み取引の中で行うので、読み出しは作り直しの前か後のどちらかだけを見る。
 // ファイルシステムは読まない。
@@ -256,7 +254,7 @@ func rebuildFolderIndexOnly(ctx context.Context, tx *sql.Tx) ([]int64, error) {
 }
 
 // folderIndexLocations は索引の入力にする所在を返す。所有者から見た見せる動画
-// （shownVideoCondition、specs/030-video-versions/data-model.md §4、research.md R-4）の所在
+// （shownVideoCondition、docs/design-docs/catalog-organization.md）の所在
 // だけで、集まりの代表以外のバージョンはグループにもフォルダ名の表にも入らない。
 func folderIndexLocations(ctx context.Context, tx *sql.Tx) ([]domain.FolderIndexLocation, error) {
 	rows, err := tx.QueryContext(ctx, `select l.video_id, l.path from video_locations l

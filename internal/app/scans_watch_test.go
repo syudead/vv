@@ -91,7 +91,7 @@ func TestOnFinishReportsOriginAndState(t *testing.T) {
 }
 
 // OnFinish で足した関数は、どれも登録の順に呼ばれる（自動の取り込みとホームの整理役、
-// specs/057-home/research.md R-9）。
+// docs/design-docs/home.md）。
 func TestOnFinishCallsEveryRegisteredFunction(t *testing.T) {
 	scanner := &fakeScanner{result: domain.ScanResult{Total: 1, Processed: 1}}
 	scans, store, _ := newTestScans(t, context.Background(), scanner)

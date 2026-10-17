@@ -7,7 +7,7 @@ import LibraryRedirect from "./LibraryRedirect";
 /**
  * HomeRoute はトップ（`/`）である。問い合わせの無い `/` はシェルの中のホームを出し、問い合わせの
  * 付いた `/?tag=3` などは前のトップのブックマークとリンクとして、問い合わせごとライブラリへ
- * 送る（specs/057-home/research.md R-15）。
+ * 送る（docs/design-docs/home.md）。
  */
 export default function HomeRoute() {
   const { search } = useLocation();

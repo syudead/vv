@@ -28,21 +28,22 @@ const probeCommand = "ffprobe"
 
 // Probe は1ファイルのメタデータを取得する。
 //
-// 必要な値は -show_format -show_streams の1回ですべて揃う。値ごとに
+// stream の情報は -show_format -show_streams の1回で揃う。値ごとに
 // -show_entries で複数回起動すると、プロセス起動が支配的なコストなので遅くなる。
 //
 // ffmpeg／ffprobe を起こす os/exec はこのパッケージの外へ漏らさない（OS の
 // 既定アプリの起動だけは別の責務として internal/opener に閉じ込める）。
 // 再生可否の判定規則は internal/domain にあり、外部プロセスに触れずにテストできる。
 //
+// コピー可能な映像では、別の時間制限付き調査でキーフレーム間隔も記録する（ProbeKeyframes）。
+//
 // ffprobe の直前にファイルの大きさと更新時刻を取り、Probe.Source に載せる。
-// 保存したライブ変換用の解析情報が、変換で開いたファイルと同じ内容かを比べる鍵になる
-// （specs/018-live-transcode-seek/data-model.md §4）。ffprobe の後にも取り直し、
+// 保存したライブ変換用の解析情報が、変換で開いたファイルと同じ内容かを比べる鍵になる。ffprobe の後にも取り直し、
 // 途中で差し替わっていたら解析情報を持たせない（stampProbe）。
 //
 // TS の録画（.ts・.m2ts・.mts）は ffprobe の後に SI を読み、放送局名と番組名を
 // MediaInfo.Broadcast に入れる（readBroadcast）。SI の読み取りは probeTimeout と別の
-// 自分の期限で動き、読めなければ名前を省くだけである（specs/056-media-info/research.md R-4）。
+// 自分の期限で動き、読めなければ名前を省くだけである。
 func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	probeCtx, cancel := context.WithTimeout(ctx, probeTimeout)
 	defer cancel()
@@ -77,6 +78,10 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	if probe.Media != nil && isTransportStreamPath(path) {
 		probe.Media.Broadcast = readBroadcast(ctx, path, probe.DurationMs)
 	}
+	if probe.Transcode != nil && videoCanCopy(probe.Transcode.Video) {
+		keyframes := ProbeKeyframes(ctx, path)
+		probe.Keyframes = &keyframes
+	}
 	after, err := os.Stat(path)
 	if err != nil {
 		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorFileUnavailable,
@@ -91,11 +96,11 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 // 限らない。その印で保存すると、同じ印を持つ別の所在の変換に別の内容の解析情報が
 // 使われるので、ライブ変換用の解析情報を持たせない（行を書かず、変換の要求時に
 // その場で解析させる）。メディア情報も同じ理由で持たせない。行が無い動画は
-// 再解析の対象になり、混ざった内容の行が今の版として残り続けることが無い
-// （specs/056-media-info/plan.md「How it works」3・4）。索引の値はこれまでどおり反映する。
+// 再解析の対象になり、混ざった内容の行が今の版として残り続けることが無い。索引の値はこれまでどおり反映する。
 func stampProbe(probe domain.Probe, before, after domain.FileStamp) domain.Probe {
 	probe.Source = before
 	if before != after {
+		probe.Keyframes = nil
 		probe.Transcode = nil
 		probe.Media = nil
 	}
@@ -115,7 +120,7 @@ func probeArgs(path string) []string {
 }
 
 // importProbeArgs は取り込みの解析の引数である。probeArgs にチャプターを足し、MPEG-TS
-// だけ長く読む（specs/056-media-info/research.md R-2）。ライブ変換の要求時の解析は
+// だけ長く読む。ライブ変換の要求時の解析は
 // 変換の開始を待たせないよう、probeArgs のままにする。
 func importProbeArgs(path string) []string {
 	args := []string{"-show_chapters"}
@@ -216,8 +221,7 @@ func parseProbeOutput(output []byte) (domain.Probe, error) {
 		FormatName: parsed.Format.FormatName,
 	}
 
-	// ライブ変換用の値は、映像は最初の非添付stream、音声は最初のstreamから採る
-	// （specs/018-live-transcode-seek/data-model.md §2）。アルバムアートや
+	// ライブ変換用の値は、映像は最初の非添付stream、音声は最初のstreamから採る。アルバムアートや
 	// posterはvideoとして現れるため、attached_picを本編にしてはならない。
 	//
 	// 索引のコーデック・寸法はこれまでどおり、codec_name が空の stream を飛ばして

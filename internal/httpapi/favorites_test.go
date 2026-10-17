@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// お気に入りの付け外し（specs/035-favorites/contracts/screen-api.md §0・§1）を、本物の認証・
+// お気に入りの付け外しを、本物の認証・
 // 保存層・経路をつないで確かめる。中身は library_test.go の libraryFixture と同じ。
 
 func newFavoritesFixture(t *testing.T) *libraryFixture {

@@ -4,8 +4,7 @@ import { parseGroupId } from "../groups/groupPaths";
 import { t } from "../i18n";
 import { LIBRARY_PATH } from "../library/libraryPath";
 
-// スマートフォルダのページが URL と応答から決める規則（specs/052-smart-folders/ui-design.md
-// 「Smart folder page」）。親は保存されているので、グループのページのような `?trail` は無い。
+// スマートフォルダのページが URL と応答から決める規則。親は保存されているので、グループのページのような `?trail` は無い。
 
 /** parseSmartFolderId は経路の id を正の整数として読む。読めなければ null（無いフォルダ）。 */
 export const parseSmartFolderId = parseGroupId;
@@ -17,7 +16,7 @@ export function smartFolderPagePath(id: number): string {
 
 /**
  * smartFolderParentPath はフォルダを消した後に移る場所である。応答の `trail` の最後（親）の
- * ページ、親が無ければライブラリ（ui-design.md「Deleting」）。
+ * ページ、親が無ければライブラリ。
  */
 export function smartFolderParentPath(trail: readonly GroupRef[]): string {
   const parent = trail.at(-1);
@@ -38,7 +37,7 @@ export function smartFolderContextOf(search: string): number | undefined {
 
 /**
  * videoInSmartFolderPath はスマートフォルダ `folderId` のページから開く動画ページの場所である。
- * `?smartFolder` で再生画面の `Up next` がフォルダの再生順に従う（ui-design.md「Body」）。
+ * `?smartFolder` で再生画面の `Up next` がフォルダの再生順に従う。
  */
 export function videoInSmartFolderPath(videoId: number, folderId: number): string {
   return `/videos/${String(videoId)}?${SMART_FOLDER_PARAM}=${String(folderId)}`;

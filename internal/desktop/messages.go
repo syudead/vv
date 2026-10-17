@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-// 起動の失敗のダイアログの文（specs/037-windows-app/contracts/windows-app.md §2）。
+// 起動の失敗のダイアログの文。
 // 文言は英語で、どの文にもログの場所を添える（ログを書けない 2 番目を除く）。
 
 // WebView2URL は WebView2 ランタイムの入手先である。
@@ -73,7 +73,7 @@ func alternativePort(port int) int {
 	return port + 1
 }
 
-// 閉じる前の確認の文（research.md R-7、contracts/windows-app.md §4）。ボタンは
+// 閉じる前の確認の文。ボタンは
 // 「閉じる」「続ける」に当たる 2 つで、既定は「続ける」。
 const (
 	CloseConfirmInstruction = "Import is in progress"
@@ -87,18 +87,18 @@ const (
 )
 
 // ShutdownBlockReason はサインアウト・シャットダウンで停止を待つ間に Windows が示す
-// 理由である（research.md R-8）。
+// 理由である。
 const ShutdownBlockReason = "VVMDM is stopping"
 
 // MessageOtherSession は同じ利用者が別のセッション（リモート デスクトップなど）で
-// 起動中のときのダイアログの文である（research.md R-6）。
+// 起動中のときのダイアログの文である。
 func MessageOtherSession() string {
 	return "VVMDM is already running in another sign-in session of this user.\n\n" +
 		"Close VVMDM in that session, and then run it here again."
 }
 
 // MessageStillRunning は同じセッションで起動中か停止の途中の VVMDM が、待っても
-// ウィンドウを出さず終わりもしなかったときのダイアログの文である（research.md R-6）。
+// ウィンドウを出さず終わりもしなかったときのダイアログの文である。
 func MessageStillRunning() string {
 	return "VVMDM is already running, but its window did not appear.\n\n" +
 		"Wait a moment, and then run VVMDM again."

@@ -1,6 +1,6 @@
 package store
 
-// ホームの読み出し（specs/057-home/contracts/screen-api.md、research.md R-12、R-13）。Home は棚の
+// ホームの読み出し（docs/design-docs/home.md、research.md R-12、R-13）。Home は棚の
 // 要約と整理役の状態を、ShelfItems は画面に入った棚の最初の項目を、どちらも 1 つの読み取りの
 // スナップショットから返す。棚の項目はライブラリの項目と同じ項目・同じ並びで、基底の表の索引を並び順に
 // なぞって最初のページだけを読む（home_shelf_read.go）。フォルダの棚にはフォルダの経路の条件
@@ -86,7 +86,7 @@ func (s *HomeStore) Home(ctx context.Context, audience domain.Audience) (domain.
 // 数を、keys の順に返す。もう棚でないフォルダ、無いフォルダ、ゲストに見せる項目の無いフォルダの棚、
 // ゲストの続きから見る棚と、この読み出しが受け持たない棚（おすすめ。internal/app の Home が読む）の
 // 鍵は落とす。経路の条件が無い実体を名指す
-// フォルダの棚は、所有者には項目の無い棚にする（specs/052-smart-folders/research.md R-9）。棚ごとの
+// フォルダの棚は、所有者には項目の無い棚にする（docs/design-docs/catalog-organization.md）。棚ごとの
 // 結果は保持し（home_shelf_cache.go）、保持の無い棚だけを 1 つの読み取りのスナップショットから読む
 // （home_shelf_read.go）。
 func (s *HomeStore) ShelfItems(ctx context.Context, audience domain.Audience, keys []domain.HomeShelfKey) (domain.HomeShelfPage, error) {

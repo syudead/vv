@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// ホームの経路（specs/057-home/contracts/screen-api.md）。GET /api/home と GET /api/home/shelves は
+// ホームの経路（docs/design-docs/home.md）。GET /api/home と GET /api/home/shelves は
 // 所有者とゲストが読め（accessRoutes）、PUT /api/home/shelves は /api/* の既定どおり所有者だけである。
 // 所有者だけの欄（organizer と byOrganizer）はゲストの応答から外す。
 
@@ -88,7 +88,7 @@ func (s *server) ListHomeShelfItems(w http.ResponseWriter, r *http.Request, para
 }
 
 // presentHomeShelfItems は棚の項目を応答の形にする。グループはカードの値だけ（LibraryGroupCard）を載せ、
-// メンバーの id とタグは載せないので、メンバーのタグは引かない（specs/057-home/research.md R-12）。
+// メンバーの id とタグは載せないので、メンバーのタグは引かない（docs/design-docs/home.md）。
 func (s *server) presentHomeShelfItems(ctx context.Context, audience domain.Audience, roots []domain.MediaFolder, items []domain.LibraryItem) ([]gen.HomeShelfItem, error) {
 	var shown []domain.Video
 	for _, item := range items {

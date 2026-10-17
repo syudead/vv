@@ -7,7 +7,7 @@ import (
 
 // TranscodeProbeVersion は保存する TranscodeProbe の形の版である。項目を足す・
 // 意味を変えるときに上げる。版が違う保存値は「無い」と読まれ、次の変換か再解析で
-// 書き直される（specs/018-live-transcode-seek/data-model.md §2・§3）。
+// 書き直される。
 const TranscodeProbeVersion = 1
 
 // TranscodeProbe はライブ変換の ffmpeg の引数を決めるのに要る ffprobe の事実である。
@@ -70,7 +70,7 @@ type StoredTranscodeProbe struct {
 }
 
 // TranscodeProbeUsable は、保存された解析情報をいま開いたファイルの変換に使ってよいかを
-// 判定し、使えるときはその値を返す（data-model.md §3）。行が無い（nil）、版が違う、JSON が
+// 判定し、使えるときはその値を返す。行が無い（nil）、版が違う、JSON が
 // TranscodeProbe として読めない、大きさか更新時刻が開いたファイルと違う、のいずれかなら
 // 使えない。
 func TranscodeProbeUsable(stored *StoredTranscodeProbe, opened FileStamp) (TranscodeProbe, bool) {

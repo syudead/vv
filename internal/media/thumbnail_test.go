@@ -8,7 +8,7 @@ import (
 )
 
 // 位置を指定していない動画のコマは、自動の位置、次に先頭の順に取りに行く。サムネイルジョブと
-// 今のサムネイルからの編集が同じ規則を使う（specs/046-thumbnail-image-upload/research.md R-4）。
+// 今のサムネイルからの編集が同じ規則を使う。
 func TestAutoThumbnailPositions(t *testing.T) {
 	tests := []struct {
 		name       string

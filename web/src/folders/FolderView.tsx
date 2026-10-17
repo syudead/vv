@@ -179,7 +179,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
     reloadVideos();
   }, [reloadListing, reloadVideos, scan.finished]);
 
-  // --- まとめ方のメニュー（ui-design.md「Folder grouping menu」） ---
+  // --- まとめ方のメニュー ---
   // タグ化の後は動画の一覧を読み直す（表示中のカードのタグは応答に含まれず古いため）。
   // 読み直しの間は骨組みで背が縮むので、読み終えたら元のスクロール位置へ戻す。
   // 読み直しは先頭のページだけを返すので、元の位置が続きのページにあったときは、
@@ -284,12 +284,12 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
   let body: ReactNode;
   if (listing.notFound || videos.notFound) {
     // 検索中にフォルダが無くなった（listFolderVideos が 404）ときも、一致なしでは
-    // なく「このフォルダは見つかりません」を出す（list-api.md §5）。
+    // なく「このフォルダは見つかりません」を出す。
     body = <FolderNotFound />;
   } else if (listing.error !== null) {
     body = <LoadFailed reason={listing.error} onRetry={listing.reload} />;
   } else if (searching) {
-    // 検索結果（ui-design.md「Search results」）。
+    // 検索結果。
     body = (
       <FolderSearchResults
         folder={folder}
@@ -309,7 +309,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
         }
         description={owner ? t.folders.empty.description : undefined}
         action={
-          // 取り込みは所有者だけの操作である（ui-design.md「Guest degradation」）。
+          // 取り込みは所有者だけの操作である。
           // 押すと開始の場所である設定の「Scan status」へ移る（issue 830）。
           owner ? (
             <Button asChild size="sm">
@@ -320,7 +320,7 @@ export default function FolderView({ folder }: { folder: FolderRef }) {
       />
     );
   } else {
-    // 直下だけを対象にする通常表示（絞り込みだけのときも同じ形。ui-design.md「Filter only」）。
+    // 直下だけを対象にする通常表示（絞り込みだけのときも同じ形）。
     body = (
       <FolderContents
         criteria={criteria}

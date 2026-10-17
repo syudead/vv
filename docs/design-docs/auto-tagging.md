@@ -153,7 +153,7 @@ still makes the interests' tags and shelves, queues nothing and answers
 
 Picking interests queues every video, not only those without a row, because a
 video judged before an interest's tag existed was never asked about that tag
-([057 research, R-6](../../specs/057-home/research.md#r-6-a-picked-interest-becomes-an-owner-shelf-and-auto-tagging-is-asked-again)).
+([Home shelves](home.md)).
 
 Keeping `done` rows means a tag the owner removed is not added back by the
 next import of the same content. One worker judges one video at a time, so a
@@ -178,8 +178,7 @@ queue row keeps its id; the claim makes it `processing`, the answer makes it
 provider's message. A row whose entry is no longer `running` when it is
 claimed, after a restart, opens a new entry, which closes the interrupted one
 as `superseded`. The queuing, the claim, the answer and the failure each write
-the entry in the transaction that changes the row
-([055 R-2](../../specs/055-activity/research.md#r-2-an-entry-is-written-in-the-transaction-of-the-change-it-records)).
+the entry in the transaction that changes the row.
 
 | Run started by | Decider until it finishes | Decider after the answer |
 | --- | --- | --- |
@@ -193,8 +192,7 @@ whether it was suggested and the user key it was written at, in
 the owner's request, and answers `409 auto_tagging_off` while the feature is
 off.
 
-Undo is one tag at a time, in one `ActivityStore` transaction
-([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)):
+Undo is one tag at a time, in one `ActivityStore` transaction:
 
 1. Look in the log for an owner `tag_attach`, `tag_detach`, `tag_keep` or
    `tag_reject` entry with the same `tag_id` whose touched content keys

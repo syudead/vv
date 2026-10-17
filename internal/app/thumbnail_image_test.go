@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 適用したサムネイルの画像（specs/045-comfyui-thumbnails/data-model.md、research.md R-6・R-7・R-10）。
+// 適用したサムネイルの画像。
 
 func sizedVideo(id int64, contentKey string, width, height int) domain.Video {
 	video := probedVideo(id, contentKey)
@@ -49,7 +49,7 @@ func TestApplyThumbnailImageFitsPublishesThenRecords(t *testing.T) {
 		saved.ThumbnailImageOrigin != domain.ThumbnailImageGenerated {
 		t.Fatalf("返した動画 = %+v", saved)
 	}
-	// 元の画像と出どころも、代表サムネイルと同じ 1 回の記録で書く（specs/046-thumbnail-image-upload R-3）。
+	// 元の画像と出どころも、代表サムネイルと同じ 1 回の記録で書く。
 	row := store.rows["a"]
 	if !bytes.Equal(row.Image, []byte("fitted:edited")) || !bytes.Equal(row.Source, []byte("source:edited")) ||
 		row.Origin != domain.ThumbnailImageGenerated {

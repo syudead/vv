@@ -1,6 +1,6 @@
 -- +goose Up
 -- コア機能（取り込み・一覧・再生・検索）のスキーマ。
--- 表の設計は specs/002-core-video-library/data-model.md にある。
+-- 表の設計は docs/design-docs/import-pipeline.md にある。
 --
 -- 区分は 2 つある。videos・videos_fts・jobs・scans とサムネイル画像は
 -- 「再スキャンで作り直せる索引」で、playback_progress だけが

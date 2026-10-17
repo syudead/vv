@@ -1,15 +1,14 @@
 import { apiFetch, MAX_PAGE_SIZE, PAGE_SIZE, request, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 
-// プレイリストの画面 API（specs/044-playlists/contracts/screen-api.md「Client use」）。
+// プレイリストの画面 API。
 // 型は api/openapi.yaml からの生成物を使う。どの経路も所有者だけである。
 
 export type PlaylistSummary = components["schemas"]["PlaylistSummary"];
 type ApiPlaylist = components["schemas"]["Playlist"];
 type ApiPlaylistItem = components["schemas"]["PlaylistItem"];
 /**
- * PlaylistItem は画面が描くプレイリストの項目（動画・グループ・スマートフォルダ）である
- * （specs/052-smart-folders/ui-design.md「Playlists」）。
+ * PlaylistItem は画面が描くプレイリストの項目（動画・グループ・スマートフォルダ）である。
  */
 export type PlaylistItem = ApiPlaylistItem;
 export type Playlist = ApiPlaylist;
@@ -65,7 +64,7 @@ export const MAX_LIST_RESTARTS = 3;
  *
  * 並びは更新日時の新しい順なので、辿っている間に変わったプレイリストは前のページの側へ動き、
  * カーソルの次からは返らない。応答の `version` が最初のページと違えばそれが起きたので、最初の
- * ページから読み直す（contracts/screen-api.md「GET /api/playlists」）。MAX_LIST_RESTARTS 回
+ * ページから読み直す。MAX_LIST_RESTARTS 回
  * 読み直しても揃わなければ、欠けた一覧を返さずに失敗にする。
  */
 export async function listAllPlaylists(signal?: AbortSignal): Promise<PlaylistSummary[]> {
@@ -137,8 +136,8 @@ export async function deletePlaylist(id: number, signal?: AbortSignal): Promise<
 
 /**
  * addToPlaylist は `videoIds` の動画、`groupIds` のグループ、`smartFolderIds` のスマートフォルダを、
- * この順でプレイリストの末尾に足す（POST /api/playlists/{id}/items、specs/048-groups/research.md
- * R-10、specs/052-smart-folders/contracts/screen-api.md）。既にあるものは `existing` に数えられ、
+ * この順でプレイリストの末尾に足す（POST /api/playlists/{id}/items、docs/design-docs/catalog-organization.md
+ * R-10、docs/design-docs/catalog-organization.md）。既にあるものは `existing` に数えられ、
  * 何も変わらない。`smartFolderIds` が空なら本文に載せない。
  */
 export function addToPlaylist(
@@ -200,8 +199,8 @@ export async function removePlaylistItem(
 /**
  * getPlaylistPlayback は、動画ページがプレイリスト `playlistId` の項目 `itemId` の動画 `videoId` を
  * 再生しているときの位置と次の動画を、その時点の並びから取得する
- * （GET /api/playlists/{id}/playback、research.md R-6）。プレイリストか項目が無くなっていれば
- * 404 の RequestFailed になり、画面はプレイリストの文脈を外す（research.md R-7）。
+ * （GET /api/playlists/{id}/playback）。プレイリストか項目が無くなっていれば
+ * 404 の RequestFailed になり、画面はプレイリストの文脈を外す。
  */
 export function getPlaylistPlayback(
   playlistId: number,

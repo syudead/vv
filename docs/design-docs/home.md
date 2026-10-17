@@ -7,8 +7,6 @@ organizations without AI. The organizer is
 choice of shelves is
 [`internal/domain/home_rules.go`](../../internal/domain/home_rules.go), and
 the apply transaction is [`internal/store/home.go`](../../internal/store/home.go).
-The decisions behind this document are in the
-[057 research](../../specs/057-home/research.md).
 
 The diagram shows what starts a run and what a run reads and writes.
 
@@ -26,11 +24,41 @@ flowchart LR
   run --> event[HomeChanged]
 ```
 
+## Home and onboarding
+
+`/` opens the shelves; `/library` keeps the searchable list. A legacy root
+URL with query parameters redirects to `/library` with those parameters.
+Pressing a shelf's video or group card opens playback with autoplay; the
+shelf heading and `See all` open the corresponding filtered list.
+
+Onboarding at `/welcome` uses `StepsPage` outside the shell. Its stages are
+`folders`, `scan`, `interests` and `done`, stored as `onboarding.step` in `settings`
+so another device can resume. With no saved stage, an existing media folder
+means `done`; otherwise the stage is `folders`. Each step can be skipped.
+The owner gate reads the stage before rendering routes and refreshes on the
+`home` event. Guests are not redirected; a failed stage read leaves the
+owner's routes accessible.
+
+Picking interests reuses a tag by name or synonym, or creates one with its
+synonyms, assigns `Genre` when it has no kind, and creates an owner-kept
+smart-folder shelf for its rule. These changes share a transaction. When
+auto-tagging is enabled, every video is queued again so the classifier can
+consider the new tags; otherwise picking interests still creates the shelves.
+
+Owners add, remove and reorder shelves, up to 50, through
+`PUT /api/home/shelves`. A shelf added or moved by the owner is retained by
+the organizer. Empty folder shelves are hidden. Settings' `Library` page
+places the `Home` section after `Duplicate judging`, with `Reorganize` and
+`Start setup`; the latter saves `folders` and opens `/welcome`.
+
+The `home` server event carries an empty object to owners and guests. Readers
+reload the summary, shelf items or onboarding stage according to their screen.
+The API contract is [openapi.yaml](../../api/openapi.yaml).
+
 ## Shelves from tags, people and organizations
 
 The rule organizer proposes one shelf per tag, person or organization on at
-least 5 shown videos, named after it, at most 24 in a run
-([R-2](../../specs/057-home/research.md#r-2-the-rule-organizer-makes-shelves-from-tags-people-and-organizations)).
+least 5 shown videos, named after it, at most 24 in a run.
 Five videos keep a shelf from being one card, and a tentative tag is left out
 because it is the auto-tagger's guess, not a tag the owner accepted.
 
@@ -47,8 +75,7 @@ tag counts both tags added by hand and tags from folder names.
 ## Rebuild and extend
 
 A rebuild proposes from every shown video and replaces the organizer's
-shelves; an extend proposes only from unshelved videos and only adds
-([R-8](../../specs/057-home/research.md#r-8-a-rebuild-replaces-the-organizers-folders-in-one-transaction-an-extend-only-adds)).
+shelves; an extend proposes only from unshelved videos and only adds.
 Neither run changes a shelf the owner added, moved or kept, or a shelf
 onboarding made from a picked interest, because both have `owner_kept` 1.
 
@@ -60,8 +87,7 @@ onboarding made from a picked interest, because both have `owner_kept` 1.
 ## One run at a time
 
 At most one run waits, in the setting `home.organize.pending`, and a rebuild
-absorbs a waiting extend
-([R-9](../../specs/057-home/research.md#r-9-one-run-at-a-time-queued-in-settings-triggered-by-events)).
+absorbs a waiting extend.
 The setting keeps the waiting run across a restart, and a run stopped by
 shutdown stays in it, so the next start runs it again.
 
@@ -90,8 +116,7 @@ is cleared only after the result is written.
 ## Waiting for the queues after a scan
 
 A scan-triggered run waits until the job queue and the auto-tag queue have
-both stayed empty for 2 minutes after a scan ends as `done`
-([R-10](../../specs/057-home/research.md#r-10-an-extend-runs-when-20-or-more-shown-videos-are-unshelved)).
+both stayed empty for 2 minutes after a scan ends as `done`.
 New videos get their tags from auto-tagging after the scan, so an earlier run
 would count every new video as unshelved before it had a tag. A failed or
 cancelled scan starts nothing.
@@ -111,8 +136,7 @@ tries again at the next poll.
 
 After the folder shelves, the owner's home lists continue watching, recently
 added, unshelved and recommended; a guest gets only recently added and
-unshelved, because the watch history is the owner's only
-([R-13](../../specs/057-home/research.md#r-13-four-fixed-shelves-two-of-them-the-owners-only)).
+unshelved, because the watch history is the owner's only.
 
 - **Continue watching** is the library's `watch=inProgress` list sorted by
   the latest play, read by [`internal/store/home_reads.go`](../../internal/store/home_reads.go).
@@ -139,9 +163,7 @@ unshelved, because the watch history is the owner's only
 
 `GET /api/home/shelves` returns the first 24 items of up to 8 shelves, and
 each shelf shows the items the library would show for its rule: videos, and a
-group card for every group whose shown videos all match
-([R-12](../../specs/057-home/research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen),
-[R-14](../../specs/057-home/research.md#r-14-pressing-a-shelf-card-plays)).
+group card for every group whose shown videos all match.
 The library's own query rebuilds the shown videos and the group descendants
 for every shelf and builds every item row before it takes the first page, so
 at 20,000 videos eight shelves took 2.3 to 3.0 s. The shelf read in
@@ -184,7 +206,6 @@ The walk stops after one more than a page, reading the ties of the last value
 so they sort as the library sorts them. `total` counts up to 25; the screen
 reads only whether it is 0. The unshelved shelf is an indexed `not exists`
 against `home_shelved_videos`
-([R-11](../../specs/057-home/research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read))
 plus, per walked row, the rules of the shelves that depend on the clock
 (added within N days), which the persisted set leaves out; only while marks
 are pending does it test every folder shelf's rule per walked row. A search
@@ -210,7 +231,6 @@ card without member ids and member tags while the library item keeps them. A
 test checks that every shelf returns exactly the library read's first page
 and card values, for every sort, both viewers, nested and overlapping groups
 and bundled videos. The shelf cache
-([R-12](../../specs/057-home/research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen))
 stays for repeated opens of the home within ten minutes; it is no longer what
 keeps the read inside its budget.
 

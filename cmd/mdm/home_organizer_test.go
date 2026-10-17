@@ -14,7 +14,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// ホームの整理役を本物の保存層とつないで確かめる（specs/057-home/research.md R-2、R-8、R-9、R-10、
+// ホームの整理役を本物の保存層とつないで確かめる（docs/design-docs/home.md、
 // 親 Issue の受け入れ条件 5・7）。app の単体試験は保存層を差し替えるので、案の適用が owner-kept の棚と
 // 分野の棚を残し、extend がほかの棚の名前を変えないことはここで見る。
 

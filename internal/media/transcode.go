@@ -31,7 +31,7 @@ const (
 	// 出力は frag_keyframe でキーフレームごとに fragment を区切るので、最初の
 	// データはこの間隔分をエンコードし終えるまで出ない。
 	liveKeyframeInterval = 2
-	// vaapiDevice は VAAPI で使う DRM の render node である（research.md R-7）。
+	// vaapiDevice は VAAPI で使う DRM の render node である。
 	vaapiDevice = "/dev/dri/renderD128"
 )
 
@@ -156,12 +156,13 @@ type startedTranscode struct {
 	hardwareFailure error
 }
 
-// startWithProbe は 1 つの解析情報で変換を始める。映像をコピーできればコピーを試し、
+// startWithProbe は 1 つの解析情報で変換を始める。間隔が長いと分かっているシークを除き、コピーを試し、
 // 最初のデータを出さずに終わるか差の上限を超えたら、映像をエンコードして始め直す。
 func (t *LiveTranscoder) startWithProbe(
 	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
 ) (startedTranscode, error) {
-	if !request.Normalize && request.Quality == "" && videoCanCopy(metadata.Video) {
+	if !request.Normalize && request.Quality == "" && videoCanCopy(metadata.Video) &&
+		(request.StartMs <= 0 || !request.SparseKeyframes) {
 		started, err := t.startAttempt(ctx, request, metadata, "")
 		if err == nil {
 			return started, nil
@@ -183,7 +184,7 @@ func (t *LiveTranscoder) startWithProbe(
 }
 
 // startEncode は映像をエンコードして始める。要求の方式がハードウェアなら、まずそれで始め、
-// 最初のデータを出さずに終わったら同じ解析情報で software で始め直す（research.md R-6）。
+// 最初のデータを出さずに終わったら同じ解析情報で software で始め直す。
 // 期限切れと取り消しは切り替えない。期限は Start と共通の StartupDeadline 1 つである。
 func (t *LiveTranscoder) startEncode(
 	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
@@ -337,7 +338,6 @@ type sourceProbe struct {
 
 // probeSource はその場で ffprobe を実行する。解析のあとにファイルの大きさか
 // 更新時刻が開いたときと違っていたら、変換には使うが保存用には返さない
-// （data-model.md §4）。
 func (t *LiveTranscoder) probeSource(ctx context.Context, request domain.LiveTranscodeRequest) (sourceProbe, error) {
 	metadata, err := t.probe(ctx, request.Path, request.StartupDeadline)
 	if err != nil {
@@ -403,11 +403,10 @@ func transcodeArgs(path string, startMs int64, metadata domain.TranscodeProbe, n
 // demuxer が着いたキーフレームからの区間を残すので、音声だけが指定位置より前から始まる。
 //
 // 途中からのコピーだけ -copyts -start_at_zero と delay_moov を付け、mp4 muxer が各 track の
-// 開始時刻を moov の edit list に書くようにする（research.md R-1）。-noaccurate_seek は、
+// 開始時刻を moov の edit list に書くようにする。-noaccurate_seek は、
 // エンコードする音声もコピーする映像と同じくキーフレームの時刻から始めるためのものである。
 //
 // 画質があるときは映像も音声も必ずエンコードし、音声はその画質の kbps にする
-// （specs/027-playback-quality/research.md R-2）。
 func buildTranscodeArgs(
 	path string, startMs int64, metadata domain.TranscodeProbe, normalize, copyVideo bool,
 	encoder domain.VideoEncoder, quality domain.TranscodeQuality,
@@ -518,13 +517,13 @@ func hardwareDeviceArgs(encoder domain.VideoEncoder) []string {
 	return nil
 }
 
-// encoderCodecArgs は方式ごとの符号化器の指定である（research.md R-7）。どれも H.264 High・
+// encoderCodecArgs は方式ごとの符号化器の指定である。どれも H.264 High・
 // Level 5.1・4:2:0 8bit で、強制キーフレームを IDR にする。VAAPI の画素形式は
 // フィルターの format=nv12,hwupload で与える。知らない方式は software とする。
 //
 // 画質が無ければ一定品質である。画質があれば、software と NVENC は一定品質に
 // -maxrate／-bufsize の上限を重ね、QSV・VAAPI・VideoToolbox は一定品質をやめて上限の
-// VBR にする（specs/027-playback-quality/research.md R-2）。
+// VBR にする。
 func encoderCodecArgs(encoder domain.VideoEncoder, quality domain.TranscodeQuality) []string {
 	limits, hasQuality := quality.Limits()
 	var capped []string
@@ -647,7 +646,7 @@ func outputDimensions(width, height int) (int, int) {
 // qualityDimensions は表示の寸法 width×height を、縦横比を保って短辺が shortSide になるよう
 // 縮めた偶数の寸法を返す。縮める比は shortSide への比と、今の変換の枠（長辺 maxVideoLongSide・
 // 短辺 maxVideoShortSide）への比の小さい方で、極端に細長い動画だけは短辺が shortSide より
-// 小さくなる（specs/027-playback-quality/research.md R-2）。shortSide は動画の短辺より小さいこと。
+// 小さくなる。shortSide は動画の短辺より小さいこと。
 func qualityDimensions(width, height, shortSide int) (int, int) {
 	longSide, videoShortSide := float64(max(width, height)), float64(min(width, height))
 	ratio := math.Min(float64(shortSide)/videoShortSide,

@@ -14,8 +14,7 @@ import { SelectionAction, WithTooltip } from "./SelectionAction";
 import { overLimitMessage } from "./selectionErrors";
 
 /**
- * VisibilityMenu は選択バーの「公開」である（specs/016-single-account-auth/ui-design.md
- * 「Visibility toggle」の「Selection bar」）。選んだ動画の今の状態は示さず、
+ * VisibilityMenu は選択バーの「公開」である。選んだ動画の今の状態は示さず、
  * 「公開にする」「非公開にする」の両方を常に押せる。確定したらトーストで結果を伝え、
  * 選択は残す。カードの印は応答の通知（api/visibility.ts）で一覧が差し替える。
  */

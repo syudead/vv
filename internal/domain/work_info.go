@@ -11,8 +11,7 @@ import (
 	"unicode/utf8"
 )
 
-// 作品情報と人物・団体が共有する値と規則（specs/047-video-work-info/data-model.md「Fields」・
-// 「Values added to domain」）。動画ごとの作品情報の項目と、人物・団体の名前・別名・外部 ID は
+// 作品情報と人物・団体が共有する値と規則。動画ごとの作品情報の項目と、人物・団体の名前・別名・外部 ID は
 // 同じ誤りの型 InvalidWorkInfoError で拒み、Field に失敗したプロパティの経路を載せる。
 
 const (
@@ -127,7 +126,7 @@ func trimWorkInfoText(input string) string {
 }
 
 // normalizeExternalID は外部 ID 1 件を整える。両方が空になれば keep が偽（その件を落とす）、
-// 片方だけ空になれば空の側の WorkInfoEmpty である（data-model.md「Fields」）。
+// 片方だけ空になれば空の側の WorkInfoEmpty である。
 func normalizeExternalID(field string, id ExternalID) (ExternalID, bool, error) {
 	source, err := normalizeWorkInfoText(field+".source", id.Source, ExternalIDSourceMaxLength, false)
 	if err != nil {
@@ -175,7 +174,7 @@ func normalizeExternalIDs(field string, ids []ExternalID) ([]ExternalID, error) 
 	return normalized, nil
 }
 
-// DateKind は動画の日付の種類である（research.md R-12）。1 つの動画は種類ごとに日付を 1 つ持つ。
+// DateKind は動画の日付の種類である。1 つの動画は種類ごとに日付を 1 つ持つ。
 type DateKind string
 
 const (
@@ -247,7 +246,7 @@ type WorkOrganization struct {
 	Organization CreditRef
 }
 
-// WorkInfo は動画 1 本の作品情報である（data-model.md「Values added to domain」）。未設定の値は空の
+// WorkInfo は動画 1 本の作品情報である。未設定の値は空の
 // 文字列か空の一覧で、項目の並びは API の WorkInfo スキーマと同じ。誤りはこの順で最初の 1 件を返す。
 type WorkInfo struct {
 	Code          string
@@ -292,7 +291,7 @@ type WorkInfoLimitSet struct {
 	OrganizationsPerRoleMaxCount int
 }
 
-// WorkInfoLimits は作品情報の上限（data-model.md「Fields」）。API が誤りの limit に載せる。
+// WorkInfoLimits は作品情報の上限。API が誤りの limit に載せる。
 var WorkInfoLimits = WorkInfoLimitSet{
 	CodeMaxLength:                100,
 	DescriptionMaxLength:         10_000,
@@ -305,7 +304,7 @@ var WorkInfoLimits = WorkInfoLimitSet{
 	OrganizationsPerRoleMaxCount: 20,
 }
 
-// NormalizeWorkInfo は入力を保存する作品情報に整える（data-model.md「Fields」）。empty は整えた結果の
+// NormalizeWorkInfo は入力を保存する作品情報に整える。empty は整えた結果の
 // すべての項目が空であることを表す。人物と団体の id があるかは保存層が確かめる。
 //
 // 文字列はどれも表示名と同じ手順を通り（制御文字は誤りで description の改行だけは許す、前後の空白を
@@ -523,7 +522,7 @@ func isWorkURL(value string) bool {
 }
 
 // WorkInfoChange は外部連携の一括操作の 1 件である。WorkInfo は保存済みの値をまるごと置き換え、
-// 整えて空なら解除する（research.md R-5）。
+// 整えて空なら解除する。
 type WorkInfoChange struct {
 	Video    VideoRef
 	WorkInfo WorkInfo
@@ -542,7 +541,7 @@ func (e *WorkInfoAtError) Error() string {
 
 func (e *WorkInfoAtError) Unwrap() error { return e.Err }
 
-// VideoWorkInfoChanged は動画の作品情報が変わったことを表す（research.md R-11）。VideoIDs は
+// VideoWorkInfoChanged は動画の作品情報が変わったことを表す。VideoIDs は
 // 変わった利用者データの鍵に属するすべての動画の id である。画面への知らせに写し、ワーカーの
 // 起床には結ばない。
 type VideoWorkInfoChanged struct {

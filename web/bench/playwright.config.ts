@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 
 import { defineConfig } from "@playwright/test";
 
-// タグ管理画面の規模の計測（specs/036-tag-admin-scale/research.md R-9）。
+// タグ管理画面の規模の計測。
 // `go run ./scripts/tagsbench` が規模のデータで本番ビルドを起動し、その URL を
 // TAGSBENCH_BASE_URL で渡して呼ぶ。web/e2e/ の試験とは別の設定で、task test-e2e と
 // CI には入れない。手順は docs/how-to/tags-admin-benchmark.md。

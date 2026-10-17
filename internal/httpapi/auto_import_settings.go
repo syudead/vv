@@ -8,7 +8,6 @@ import (
 )
 
 // GetAutoImportSettings は自動の取り込みの選択と、フォルダの監視の今の状態を返す
-// （specs/042-folder-watch-import/contracts/screen-api.md）。
 func (s *server) GetAutoImportSettings(w http.ResponseWriter, _ *http.Request) {
 	if s.autoImport == nil {
 		s.internalError(w, "Auto-import settings are not configured.", nil)

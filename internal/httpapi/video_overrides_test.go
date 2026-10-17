@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 表示名の設定・解除（specs/029-video-overrides/contracts/screen-api.md §0・§1）は、本物の
+// 表示名の設定・解除は、本物の
 // 認証・保存層で確かめる（#557）。
 
 func displayNameBody(name string) string {

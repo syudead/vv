@@ -14,8 +14,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 作品情報の読み書き（specs/047-video-work-info/contracts/screen-api.md「PUT /api/videos/{id}/work-info」
-// 「PUT /api/videos/{id}/details」「Video changes」）は、本物の認証・保存層・経路で確かめる。
+// 作品情報の読み書きは、本物の認証・保存層・経路で確かめる。
 
 func (f *guestFixture) putVideo(name, suffix, body string, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	return f.env.serve(authRequest{method: http.MethodPut, target: f.videoPath(name, suffix), body: body, cookies: cookies})

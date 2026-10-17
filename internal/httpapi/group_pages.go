@@ -10,7 +10,7 @@ import (
 )
 
 // グループの画面の読み取り（GET /api/groups/{id} と GET /api/groups/{id}/items、
-// specs/048-groups/contracts/screen-api.md）。所有者とゲストが読め（accessRoutes）、ゲストには
+// docs/design-docs/catalog-organization.md）。所有者とゲストが読め（accessRoutes）、ゲストには
 // 公開の動画だけから作ったグループを返す。
 
 // GetGroup はグループ 1 つと、その道筋と項目の最初のページを返す（GET /api/groups/{id}）。

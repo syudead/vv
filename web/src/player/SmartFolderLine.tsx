@@ -8,8 +8,7 @@ import { smartFolderPagePath } from "../smartFolders/smartFolderPaths";
 type VideoSmartFolder = NonNullable<Video["smartFolder"]>;
 
 /**
- * SmartFolderLine は題名の上に置く、スマートフォルダの名前と何本目かの 1 行である
- * （specs/052-smart-folders/ui-design.md「Video page」）。グループの行（GroupLine）と同じ形で、
+ * SmartFolderLine は題名の上に置く、スマートフォルダの名前と何本目かの 1 行である。グループの行（GroupLine）と同じ形で、
  * 印が `FolderSearch` になる。行はフォルダのページへのリンクで、ゲストにも同じリンクを出す。
  * フォルダには手で外す操作が無く、編集はフォルダのページにあるので、行の後に操作は置かない。
  */

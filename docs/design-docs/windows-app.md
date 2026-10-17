@@ -3,9 +3,6 @@
 On Windows, VVMDM runs its server and UI in one GUI process, `VVMDM.exe`,
 built from `cmd/mdm` with the `desktop` build tag; the Windows-specific parts
 live in [`internal/desktop`](../../internal/desktop).
-Background: [specs/037-windows-app/](../../specs/037-windows-app/plan.md)
-(parent Issue #653); zip contents, startup arguments, dialog texts and data
-locations: [contracts/windows-app.md](../../specs/037-windows-app/contracts/windows-app.md).
 The Docker and direct-run forms are in
 [running-vv.md](../how-to/running-vv.md).
 
@@ -78,9 +75,9 @@ stateDiagram-v2
 
 | Rejected | Why |
 | --- | --- |
-| A new `cmd/vvmdm` with composition in `internal/server` | Two composition roots, or 3,500 lines of composition moved ([research.md](../../specs/037-windows-app/research.md) R-1) |
-| A launcher exe starting `mdm.exe` as a child | A GUI parent cannot send a graceful stop to a console child (R-1) |
-| `jchv/go-webview2` high-level API, Wails, Edge `--app=`, Electron, Tauri | Each cannot receive the close action, changes the asset origin, or adds a runtime (R-2) |
+| A new `cmd/vvmdm` with composition in `internal/server` | Two composition roots, or 3,500 lines of composition moved  |
+| A launcher exe starting `mdm.exe` as a child | A GUI parent cannot send a graceful stop to a console child |
+| `jchv/go-webview2` high-level API, Wails, Edge `--app=`, Electron, Tauri | Each cannot receive the close action, changes the asset origin, or adds a runtime |
 
 ## Data and ffmpeg
 
@@ -102,8 +99,8 @@ so writing next to the exe would lose data or fail.
 
 | Rejected | Why |
 | --- | --- |
-| Data next to the exe, or in `%APPDATA%` (Roaming) | Lost when the zip is replaced, or large generated files sync at every sign-in (R-5) |
-| `ffmpeg`/`ffprobe` paths as settings in `internal/media` | The desktop app is the only caller, and the change would spread (R-11) |
+| Data next to the exe, or in `%APPDATA%` (Roaming) | Lost when the zip is replaced, or large generated files sync at every sign-in |
+| `ffmpeg`/`ffprobe` paths as settings in `internal/media` | The desktop app is the only caller, and the change would spread |
 
 ## Startup failures
 
@@ -142,7 +139,7 @@ listener), shows a summary and the log location.
 
 | Rejected | Why |
 | --- | --- |
-| A failure page in WebView2 | Cannot show when the WebView2 Runtime is missing or fails to initialise (R-10) |
+| A failure page in WebView2 | Cannot show when the WebView2 Runtime is missing or fails to initialise |
 
 ## Closing, second launch and sign-out
 
@@ -213,9 +210,9 @@ cancelled. If the process dies before stopping, the scan restart and
 
 | Rejected | Why |
 | --- | --- |
-| `beforeunload` or a confirmation in the SPA | The close action does not reach WebView2, or the window cannot close before the SPA loads or after a renderer failure (R-7) |
-| Only a `Local\` mutex, a lock file, or a port conflict | Allows the same DB across sessions, is left behind by a kill, or cannot be told from another program's port (R-6) |
-| Refusing in `WM_QUERYENDSESSION` to confirm | Windows moves on without waiting (R-8) |
+| `beforeunload` or a confirmation in the SPA | The close action does not reach WebView2, or the window cannot close before the SPA loads or after a renderer failure |
+| Only a `Local\` mutex, a lock file, or a port conflict | Allows the same DB across sessions, is left behind by a kill, or cannot be told from another program's port |
+| Refusing in `WM_QUERYENDSESSION` to confirm | Windows moves on without waiting |
 
 ## Connections from the LAN
 
@@ -231,8 +228,7 @@ failure is a DB-stage [startup failure](#startup-failures).
 
 The owner switches it with `GET`/`PUT /api/settings/network`
 (`lanAccess`, `port`, `addresses`), behind the same authentication and
-same-origin boundary as `/api/settings/transcoding`
-([contracts/network-settings-api.md](../../specs/037-windows-app/contracts/network-settings-api.md)).
+same-origin boundary as `/api/settings/transcoding`.
 Outside the desktop app the route answers `404` `not_found`, and the SPA hides
 the Network section.
 
@@ -265,9 +261,9 @@ new LAN connections are refused at the TCP level.
 
 | Rejected | Why |
 | --- | --- |
-| Always listen on `0.0.0.0` and drop LAN connections while off | The firewall dialog appears on the first start (R-14) |
-| Add a `0.0.0.0` listener beside `127.0.0.1` | A wildcard and a specific address on one port depend on Windows socket options (R-14) |
-| A settings file in the data location | A second storage mechanism (R-14) |
+| Always listen on `0.0.0.0` and drop LAN connections while off | The firewall dialog appears on the first start |
+| Add a `0.0.0.0` listener beside `127.0.0.1` | A wildcard and a specific address on one port depend on Windows socket options |
+| A settings file in the data location | A second storage mechanism |
 
 ## Distribution
 
@@ -302,7 +298,7 @@ flowchart LR
 | FFmpeg cache | `dist/cache/`, re-hashed on each use; a mismatch deletes it and fails with expected and actual hashes. In the workflow it is kept in the Actions cache so the download source cannot turn `main` red |
 | Runs on `main` | Every push builds and checks the zip, moves the `nightly` tag to the commit and replaces the zip of the `nightly` prerelease; a newer push cancels the running one, tag runs are never cancelled |
 | Hardware encoders | NVENC and QSV as in [hardware-encoding.md](hardware-encoding.md); no AMF |
-| Windows check | Layout, and `ffmpeg -hide_banner -encoders` lists `h264_nvenc` and `h264_qsv`; GPU transcoding is checked on real hardware ([quickstart.md](../../specs/037-windows-app/quickstart.md)) |
+| Windows check | Layout, and `ffmpeg -hide_banner -encoders` lists `h264_nvenc` and `h264_qsv`; GPU transcoding is checked on real hardware  |
 | Release | Created when missing, the zip replaced when present. `nightly` is a prerelease, never marked latest, with fixed short notes; the new zip is uploaded before the old one is deleted |
 | SmartScreen | Steps in `README.txt` and [running-vv.md](../how-to/running-vv.md#windows-app) |
 
@@ -314,6 +310,6 @@ being compiled in. Workflow: `.github/workflows/windows-app.yml`.
 | --- | --- |
 | A new Release tagged `main-<12 characters>` for every push to `main` | The Releases page grows with every merge, and generated notes list the whole history |
 | GitHub Packages | No generic file package; container and NuGet downloads need a CLI or a token, not a browser |
-| `windows/arm64` too | No pinnable arm64 `ffmpeg` exists, and the x64 exe runs under emulation (R-13) |
-| `ffmpeg` from BtbN/FFmpeg-Builds | No fixed Release per version, so a pin cannot be fetched later (R-12) |
+| `windows/arm64` too | No pinnable arm64 `ffmpeg` exists, and the x64 exe runs under emulation |
+| `ffmpeg` from BtbN/FFmpeg-Builds | No fixed Release per version, so a pin cannot be fetched later |
 | Committing the `.syso` | The untagged `mdm.exe` would get the icon and manifest, and the version information would go stale |

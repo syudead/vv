@@ -25,7 +25,7 @@ import (
 )
 
 // DefaultInstruction は、範囲を塗って指示を空にした実行で送る既定の指示である。持ち主の言語に
-// かかわらずこの英文を一字一句送る（contracts/workflow.md の Workflows、research.md R-3）。
+// かかわらずこの英文を一字一句送る。
 const DefaultInstruction = "Remove any text, logo or object in the marked area and restore the background behind it so it matches its surroundings."
 
 // requestTimeout は実行の 1 つの要求の上限時間である。
@@ -37,7 +37,7 @@ const maxQueueBytes = 32 << 20
 // maxOutputBytes は出力の画像の上限である。
 const maxOutputBytes = 64 << 20
 
-// vv が埋めるノードの _meta.title である（contracts/workflow.md の Workflows）。
+// vv が埋めるノードの _meta.title である。
 const (
 	titleFrame     = "vv:frame"
 	titlePrompt    = "vv:prompt"
@@ -48,8 +48,8 @@ const (
 
 // Start は入力を上げ、vv のワークフローの vv:* の入力だけを書き換えて POST /prompt で送る。
 // 参考画像があれば参考画像ありの版を、なければもう一方を使う。マスクが無ければコマの大きさの
-// 真っ白なマスクを、塗ったマスクで指示が空なら DefaultInstruction を送る（research.md R-3）。
-// 上げたファイルと出力は ComfyUI から消さない（contracts/workflow.md の Run）。送る前に、
+// 真っ白なマスクを、塗ったマスクで指示が空なら DefaultInstruction を送る。
+// 上げたファイルと出力は ComfyUI から消さない。送る前に、
 // ステップの進み具合を読む WebSocket を同じ client_id で開き始める（Progress）。
 func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input domain.ImageEditInput) (domain.ImageEditJob, error) {
 	target, err := c.target(conn)
@@ -123,7 +123,7 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 		return domain.ImageEditJob{}, err
 	}
 	// 最初の progress を取りこぼさないよう、送る前に WebSocket を開き、提供元に登録されるのを
-	// 上限つきで待つ（research.md R-5）。
+	// 上限つきで待つ。
 	watch := c.watchProgress(ctx, target, clientID)
 	watch.waitReady(ctx)
 	id, err := target.submit(ctx, prompt, clientID)
@@ -136,8 +136,8 @@ func (c *Client) Start(ctx context.Context, conn domain.ComfyUISettings, input d
 }
 
 // State は実行の状態を読む。自前の ComfyUI は GET /queue の後に GET /history/{id}、Comfy Cloud は
-// GET /job/{id}/status を読み、contracts/workflow.md の Run states の表で vv の状態に対応させる。
-// どちらの表にも無い値なら previous を返す（research.md R-5）。終わった実行の WebSocket は閉じる。
+// GET /job/{id}/status を読み、provider の実行状態を vv の状態に対応させる。
+// どちらの表にも無い値なら previous を返す。終わった実行の WebSocket は閉じる。
 func (c *Client) State(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) (domain.ThumbnailEditState, *domain.ImageEditError, error) {
 	target, err := c.target(job.Connection)
 	if err != nil {
@@ -156,7 +156,7 @@ func (c *Client) State(ctx context.Context, job domain.ImageEditJob, previous do
 // アカウントの実行中の仕事をすべて止めるので、終わった実行のために送ると別の実行を止めてしまう。
 // 実行中なら自前の ComfyUI に POST /interrupt {"prompt_id":id}、Comfy Cloud に POST /interrupt を
 // 送る。それより前なら POST /queue {"delete":[id]} で消し、読んでから消すまでに実行が
-// 始まっていれば、もう一度読んで実行中なら interrupt を送る（research.md R-5）。進み具合を
+// 始まっていれば、もう一度読んで実行中なら interrupt を送る。進み具合を
 // 読む WebSocket は中止が済んだときだけ閉じ、失敗すれば実行は続きうるので開いたままにする。
 func (c *Client) Cancel(ctx context.Context, job domain.ImageEditJob, previous domain.ThumbnailEditState) error {
 	target, err := c.target(job.Connection)
@@ -261,8 +261,7 @@ func (t *target) do(req *http.Request, withKey bool) (*http.Response, error) {
 	return resp, nil
 }
 
-// statusError は 2xx でない応答 resp を失敗の理由に対応させる（contracts/workflow.md の
-// Failure reasons）。応答の本文は読まない。
+// statusError は 2xx でない応答 resp を失敗の理由に対応させる。応答の本文は読まない。
 func (t *target) statusError(route string, resp *http.Response) *domain.ImageEditError {
 	switch {
 	case t.cloud && (resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden):
@@ -557,8 +556,7 @@ func (t *target) cloudState(ctx context.Context, job domain.ImageEditJob, previo
 	}
 }
 
-// cloudStates は Comfy Cloud の仕事の状態から vv の状態への対応である（contracts/workflow.md の
-// Run states）。succeeded は出力の画像があるときだけで、cloudState が確かめる。
+// cloudStates は Comfy Cloud の仕事の状態から vv の状態への対応である。succeeded は出力の画像があるときだけで、cloudState が確かめる。
 var cloudStates = map[string]domain.ThumbnailEditState{
 	"submitted":           domain.ThumbnailEditQueued,
 	"preprocessing":       domain.ThumbnailEditQueued,
@@ -893,7 +891,7 @@ func (g promptGraph) stringInput(id, input string) string {
 	return value
 }
 
-// whiteMask はコマ frame と同じ大きさの、不透明な真っ白の PNG を作る（research.md R-3）。
+// whiteMask はコマ frame と同じ大きさの、不透明な真っ白の PNG を作る。
 func whiteMask(frame []byte) ([]byte, error) {
 	config, _, err := image.DecodeConfig(bytes.NewReader(frame))
 	if err != nil {
@@ -911,7 +909,7 @@ func whiteMask(frame []byte) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// uploadPrefix は上げるファイルの名前の頭で、vv- と乱数である（contracts/workflow.md の Run）。
+// uploadPrefix は上げるファイルの名前の頭で、vv- と乱数である。
 func uploadPrefix() (string, error) {
 	var random [8]byte
 	if _, err := rand.Read(random[:]); err != nil {

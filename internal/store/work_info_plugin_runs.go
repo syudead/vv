@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインごとの直近の実行の標準エラー（specs/056-plugin-tooling/data-model.md の
-// work_info_plugin_runs・Rules、research.md R-6）。利用者データで、イベントを発行しない。
+// 作品情報プラグインごとの直近の実行の標準エラー。利用者データで、イベントを発行しない。
 
 // SaveWorkInfoPluginRun はプラグイン run.PluginID の直近の実行を run に置き換える。プラグインの行が無いか、
 // 世代が run.Generation でなければ（実行の後に差し替えられたか、取り消されたか、消された）何も書かない。

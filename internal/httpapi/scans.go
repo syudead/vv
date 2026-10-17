@@ -70,7 +70,7 @@ const (
 )
 
 // ListCurrentScanIssues は直近の取り込みの問題の一覧を返す
-// （GET /api/scans/current/issues、specs/024-import-progress/contracts/scan-api.md §3）。
+// （GET /api/scans/current/issues、docs/design-docs/import-pipeline.md）。
 // 所有者だけの経路で、ゲストに返す経路の表（accessRoutes）には入れない。
 func (s *server) ListCurrentScanIssues(w http.ResponseWriter, r *http.Request, params gen.ListCurrentScanIssuesParams) {
 	if s.scans == nil {
@@ -160,7 +160,7 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 		out.Error = &reason
 	}
 	// コードと場所は failed の行だけに出す。アップグレード前の失敗にはコードが無い
-	// （specs/023-english-i18n/contracts/error-api.md §3）。
+	//
 	if scan.State == domain.ScanFailed && scan.ErrorCode != "" {
 		code := gen.ScanErrorCode(scan.ErrorCode)
 		out.ErrorCode = &code
@@ -173,7 +173,7 @@ func toAPIScan(scan domain.Scan) gen.Scan {
 }
 
 // toAPIScanActivity は今の処理を契約の形へ写す。利用者の言葉は SPA が kind から
-// 組み立てる（specs/024-import-progress/research.md R-10）。
+// 組み立てる。
 func toAPIScanActivity(activity domain.ScanActivity) *gen.ScanActivity {
 	out := &gen.ScanActivity{Kind: gen.ScanActivityKind(activity.Kind), FileName: activity.FileName()}
 	if activity.Located {

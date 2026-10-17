@@ -45,7 +45,7 @@ function unsavedOf(draft: Draft, kind: CreditKind): UnsavedName[] {
 }
 
 /**
- * CreditsPanel は編集画面の `Credits` の欄の中身である（ui-design.md「Screen」「Fields」）。
+ * CreditsPanel は編集画面の `Credits` の欄の中身である。
  * `People`（4 つの役割）と `Organizations`（2 つの役割）の 2 つの組を gap-6 で離し、役割ごとに
  * 左の列に名前、右の列にチップと選び手を 1 行に並べて折り返す。
  */

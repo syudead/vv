@@ -1,5 +1,5 @@
 -- +goose Up
--- スマートフォルダ（specs/052-smart-folders/data-model.md「Migration」、research.md R-1）。作り直せない
+-- スマートフォルダ。作り直せない
 -- 利用者データで、videos への外部キーを張らない。条件（rule）は domain.SmartRule の JSON、並べ順
 -- （sort）は random 以外の VideoSort である。親を消すと子孫も外部キーで消える。
 create table smart_folders (
@@ -10,7 +10,7 @@ create table smart_folders (
     title_key  text    not null,
     rule       text    not null,
     sort       text    not null,
-    -- 所有者が作ったか直したフォルダ（research.md R-10）。
+    -- 所有者が作ったか直したフォルダ。
     owner_kept integer not null default 1 check (owner_kept in (0, 1)),
     -- Unix ミリ秒。
     created_at integer not null,
@@ -34,7 +34,7 @@ create table playlist_items_new (
     content_key     text,
     group_id        integer references groups (id) on delete cascade,
     smart_folder_id integer references smart_folders (id) on delete cascade,
-    -- プレイリストの中で 0 から詰めた位置（specs/044-playlists/research.md R-3）。
+    -- プレイリストの中で 0 から詰めた位置。
     position        integer not null,
     -- Unix ミリ秒。
     added_at        integer not null,

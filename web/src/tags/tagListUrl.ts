@@ -9,8 +9,7 @@ export type TagListTab = "tags" | "rejected" | "kinds";
 
 /**
  * TagKindFilter はタグの一覧の種類の絞り込みの値である。種類の id（正の整数の文字列）か、
- * 種類の無いタグの `none`。null は絞り込まない（specs/051-tag-kinds/contracts/screen-api.md
- * 「`GET /api/tags` parameter `kind`」）。
+ * 種類の無いタグの `none`。null は絞り込まない。
  */
 export type TagKindFilter = string | null;
 
@@ -26,9 +25,8 @@ function parseTagKindFilter(value: string | null): TagKindFilter {
 }
 
 /**
- * TagListCriteria はタグ管理画面の URL に載せる条件である
- * （specs/036-tag-admin-scale/ui-design.md「URL state」）。ライブラリの一覧の条件
- * （specs/013-library-search/contracts/list-url.md）と同じく、再読み込み・戻る・進むで
+ * TagListCriteria はタグ管理画面の URL に載せる条件である。ライブラリの一覧の条件
+ * と同じく、再読み込み・戻る・進むで
  * 検索語・絞り込み・並び順・タブが残る。
  */
 export interface TagListCriteria {
@@ -68,7 +66,7 @@ export function parseTagListCriteria(
 /**
  * serializeTagListCriteria は条件を URL のクエリにする。偽の絞り込みと「Tags」の
  * タブは書かない。sort は書く — 省略すると「端末に保存した並び順」の意味になり、
- * 並び順を変えたあとに戻るで前の並びに戻れなくなる（list-url.md §1 と同じ）。
+ * 並び順を変えたあとに戻るで前の並びに戻れなくなる。
  * 順は q・tentative・unused・kind・sort・tab で固定する。
  */
 export function serializeTagListCriteria(criteria: TagListCriteria): URLSearchParams {

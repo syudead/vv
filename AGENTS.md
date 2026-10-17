@@ -9,11 +9,13 @@ file into a handbook.
 1. Read `ARCHITECTURE.md` for system boundaries and dependency direction.
 2. Read `docs/design-docs/index.md` and `docs/product-specs/index.md` for the
    relevant design and product context.
-3. For substantial feature work, the Plan (`specs/<feature>/plan.md`) carries
-   the goal, the scope, the validation strategy and the notable decisions.
-   Progress is read from the feature branch's artifacts, the integration PR
-   and the native child Issues; it is not recorded in a file or in the parent
-   Issue body.
+3. `specs/` contains temporary SDD artifacts, used only for the active feature
+   on its feature branch. For ordinary implementation and investigation, use
+   `docs/design-docs/`, the code, API schemas and tests. Never cite a feature's
+   SDD artifacts from permanent documentation or code. Before integration,
+   retain lasting decisions in design docs and remove the feature's artifacts
+   after validation. Git history keeps the working records. Progress lives in
+   GitHub, not in a permanent plan archive.
 
 ## Working agreements
 
@@ -22,6 +24,7 @@ file into a handbook.
   English. Internal reasoning may stay in English. Code, code comments,
   identifiers and quoted output stay as they are.
 - Keep documentation close to the code and update it with behavior changes.
+- Maintain repository documents only in English. Do not create translated mirrors.
 - Write documents in technical English to
   [docs/design-docs/writing-quality.md](docs/design-docs/writing-quality.md),
   starting from the type for the document's kind. Issue and PR bodies stay
@@ -30,12 +33,6 @@ file into a handbook.
   after, a diagram when a flow changes) so a reviewer can follow the change
   without opening the code; `plan` and `design` PRs use
   [stage-pr-body.md](.agents/skills/issue-handoff/references/stage-pr-body.md).
-- After the English of a change is final, hand every changed, renamed or
-  deleted document under `docs/`, `specs/` and `ARCHITECTURE.md` to the
-  `doc-translator` subagent and commit its `translations/ja/` output in the
-  same pull request
-  ([japanese-translation.md](docs/design-docs/japanese-translation.md)). Do
-  not write or edit a translation yourself.
 - A feature's specification is its parent GitHub Issue. Write and revise it with
   `.agents/skills/issue-spec`, following
   [docs/product-specs/spec-quality.md](docs/product-specs/spec-quality.md).
@@ -60,9 +57,9 @@ file into a handbook.
 - Before building or changing a screen, read
   [docs/design-docs/design-system.md](docs/design-docs/design-system.md); it
   routes to the registry of components, tokens and rules every screen uses.
-- Before writing or moving Web tests, read
-  [docs/design-docs/web-testing.md](docs/design-docs/web-testing.md) for the
-  level each behaviour is tested at.
+- Before writing, moving or optimizing Go or Web tests, read
+  [docs/design-docs/testing.md](docs/design-docs/testing.md) for shared scope,
+  synchronization and fixture rules; it links to the Web-specific levels.
 - Give every pushed working branch a pull request as its review target.
 - Dependency updates (Renovate) follow
   [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md). The

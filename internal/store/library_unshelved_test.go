@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ライブラリの棚に無い動画の絞り込み（specs/057-home/research.md R-11）。
+// ライブラリの棚に無い動画の絞り込み（docs/design-docs/home.md）。
 
 // setHomeShelves はホームの棚をフォルダ ids にする。
 func setHomeShelves(t *testing.T, db *DB, ids ...int64) {

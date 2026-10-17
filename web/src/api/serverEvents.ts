@@ -15,15 +15,15 @@ type SmartFolderChanged = components["schemas"]["SmartFolderChanged"];
  * - `scan`: 直近の取り込みが変わった（済みの本数と今の処理を含む）
  * - `video`: 動画の状態が変わった（最新の内容は取り直す）
  * - `group`: グループの名前か項目が変わった。変わったグループとその祖先の id を受け取る
- *   （specs/048-groups/research.md R-13。最新の内容は取り直す）
+ *
  * - `smartFolder`: スマートフォルダの中身かカードの値が変わったかもしれない。名指された
- *   フォルダの id を受け取る（specs/052-smart-folders/research.md R-12。最新の内容は取り直す）
+ *   フォルダの id を受け取る
  * - `candidates`: 重複の候補の一覧が変わったかもしれない。中身は運ばない
- *   （specs/054-auto-dup/research.md R-10。最新の一覧は取り直す）
+ *
  * - `activity`: アクティビティの記録が書かれたか変わった。中身は運ばない
- *   （specs/055-activity/research.md R-8。件数と読み込んだページを取り直す）
+ *   （docs/design-docs/activity.md。件数と読み込んだページを取り直す）
  * - `home`: ホームの棚の集合か並び、整理役かオンボードの状態が変わった。中身は運ばない
- *   （specs/057-home/research.md R-16。ホームは取り直す）
+ *   （docs/design-docs/home.md。ホームは取り直す）
  * - `open`: つながった、またはつなぎ直した。切れていた間の変化を取り直す合図。
  *   `reconnected` は、この購読者がつながった状態を前にも見ていたかを表す。
  *   つなぎ直しでは、切れていた間の `video` を受け取っていない。

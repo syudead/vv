@@ -10,7 +10,7 @@ import (
 // wazero の CompiledModule は関数とメモリの import しか見せず、テーブルも見せない。検査に要る
 // import の種類とテーブルの要素数は、モジュールのバイト列からここで読む。読むのは import
 // セクション（2）とテーブルセクション（4）だけで、他のセクションは飛ばす。最大値を宣言しない
-// テーブルには、コンパイルの前に capTables が最大値を書き足す（research.md R-4）。
+// テーブルには、コンパイルの前に capTables が最大値を書き足す。
 
 const (
 	sectionImport = 2

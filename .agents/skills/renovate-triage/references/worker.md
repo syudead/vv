@@ -101,9 +101,7 @@ on the same PR.
 Run the checks the AGENTS.md pre-push rule asks for: `task check` when a path
 outside `*.md`, `docs/` and `specs/` changed, and `task check-docs` when a path
 inside them changed. Fix formatting with `task fmt`. Run the `Browser E2E`
-files that failed, if any; CI runs the whole suite on the PR. When a document
-under `docs/`, `specs/` or `ARCHITECTURE.md` changed, hand it to the
-`doc-translator` subagent and commit its `translations/ja/` output.
+files that failed, if any; CI runs the whole suite on the PR.
 
 Commit with a Conventional Commit message (`fix(deps): ...` for a code fix,
 `build(deps): ...` for a lockfile or merge fix). Push once, at the end of

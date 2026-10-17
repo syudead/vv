@@ -79,22 +79,22 @@ type listSpec struct {
 	expr         domain.SearchExpr
 	watch        domain.WatchFilter
 	playableOnly bool
-	// tagIDs はすでに存在を確かめたタグの id（data-model.md §6）。呼び出し側
+	// tagIDs はすでに存在を確かめたタグの id。呼び出し側
 	// （ListVideos）が resolveTagIDs で存在しない id を落としたうえで
 	// 渡す。
 	tagIDs []int64
-	// favoriteOnly はお気に入りだけにする（specs/035-favorites/data-model.md §5）。
+	// favoriteOnly はお気に入りだけにする。
 	favoriteOnly bool
 	// personID と organizationID は、どの役割でもその人物・団体に結び付いた動画だけにする
-	// id である。0 は絞り込まない（specs/047-video-work-info/data-model.md の Lists）。
+	// id である。0 は絞り込まない。
 	personID       int64
 	organizationID int64
 	// tagKindID は、この種類のタグを手で付けたかフォルダ名から 1 つでも持つ動画だけにする
-	// 種類の id である。0 は絞り込まない（specs/051-tag-kinds/research.md R-5）。
+	// 種類の id である。0 は絞り込まない。
 	tagKindID int64
 	// addedWithinDays は追加日の絞り込み（日数、0 は絞り込まない）、minDurationSec と
 	// maxDurationSec は長さの範囲（秒、nil はその側を限らない）である
-	// （specs/052-smart-folders/research.md R-4）。
+	//
 	addedWithinDays int
 	minDurationSec  *int
 	maxDurationSec  *int
@@ -102,23 +102,23 @@ type listSpec struct {
 	// 決め、件数・ページ・空ページの再集計のどの SQL にも同じ値を渡す。
 	now int64
 	// and は、この絞り込みに重ねて掛ける絞り込みで、スマートフォルダの祖先の条件を 1 段に 1 つ
-	// 持つ（specs/052-smart-folders/research.md R-5）。ライブラリの項目の問い合わせ
+	// 持つ。ライブラリの項目の問い合わせ
 	// （libraryItemsCTE）だけが読み、各段の絞り込みの項目（検索式・視聴状態・再生可否・お気に入り・
 	// タグ・人物と団体・追加日と長さ）をそれぞれ掛ける。範囲・並べ順・カーソル・件数と、各段の
 	// and は読まない。
 	and []listSpec
 	// ownerSearch は、ゲストにも検索式を所有者の意味（タグ名と作品情報にも照合する）で掛ける。
-	// スマートフォルダの条件は所有者の事実で決まる（research.md R-11）。
+	// スマートフォルダの条件は所有者の事実で決まる。
 	ownerSearch bool
 	// userKeyColumn は videos の利用者データの鍵を持つ列（例えば videos.user_key）で、空なら
 	// userKeyExpr で求める。スマートフォルダの一致する動画は、鍵を 1 度だけ求めた smart_base を
 	// videos として読むので、その列を使う（smart_folder_matches.go）。
 	userKeyColumn string
 	// smartFolders は一覧の一番上にスマートフォルダの項目として混ぜるフォルダである。ライブラリの
-	// 一覧（ListLibrary）だけが librarySmartFolders で埋める（specs/052-smart-folders/research.md R-7）。
+	// 一覧（ListLibrary）だけが librarySmartFolders で埋める。
 	smartFolders []librarySmartFolder
 	// unshelved は、ホームのどのフォルダの棚の実効の規則にも一致しない動画だけにする
-	// （specs/057-home/research.md R-11）。shelved はどれかの棚に一致する動画の id の JSON の配列
+	// （docs/design-docs/home.md）。shelved はどれかの棚に一致する動画の id の JSON の配列
 	// （shelvedVideos）で、ライブラリの項目の問い合わせ（libraryItemsCTE）だけが読む。
 	unshelved bool
 	shelved   string
@@ -197,13 +197,13 @@ func (s *LibraryStore) CountVideos(ctx context.Context, audience domain.Audience
 }
 
 // chosenLocationsCTE は、範囲と検索式を満たす所在を動画ごとにパスの最小の1件へ
-// まとめる `chosen(video_id, path)` を返す（contracts/list-api.md §4）。
+// まとめる `chosen(video_id, path)` を返す。
 // 式は所在1行に対して評価するので、語ごとに別の所在で満たした動画は当たらない
 // （要件 9）。ゲストの検索はタグの名前に照合しない（searchExprCondition）。
 //
 // 範囲は見せる動画（集まりに属さない動画と各集まりの実効の代表、shownVideoCondition）の
 // 所在に掛ける。検索式は、集まりに属さない動画では自分の所在に、集まりの代表では同じ集まりの
-// どれかの動画の登録の所在に掛ける（specs/030-video-versions/data-model.md §4）。どの
+// どれかの動画の登録の所在に掛ける。どの
 // バージョンの題名・パスに当たっても代表の1件が出て、chosen.path は範囲にある代表の所在の
 // パスの最小のまま。所在の範囲が見せてよい所在に限るので、見せる動画の判定は所在ごとに
 // 集まりの規則だけを足せばよく、動画ごとの見せてよいかの判定を重ねない。
@@ -213,7 +213,7 @@ func chosenLocationsCTE(scope locationScope, expr domain.SearchExpr) (string, []
 
 // chosenLocationsCTEFor は chosenLocationsCTE と同じ chosen を、検索式 exprs のすべてを満たす
 // 所在から作る。検索式は見る人 searchAudience の意味で照合する（スマートフォルダは所有者の意味、
-// specs/052-smart-folders/research.md R-11）。範囲と集まりの代表は scope の見る人で決める。
+// docs/design-docs/catalog-organization.md）。範囲と集まりの代表は scope の見る人で決める。
 func chosenLocationsCTEFor(scope locationScope, searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	selectSQL, args := chosenLocationsSelect(scope, searchAudience, exprs)
 	return `with chosen as (` + selectSQL + `)`, args
@@ -247,7 +247,7 @@ func chosenLocationsFrom(scope locationScope, searchAudience domain.Audience, ex
 // searchLocationCondition は、所在 l（動画 sv、集まりの行 sbm を左結合したもの）が検索式 exprs の
 // すべてに当たる条件句とその引数を返す。式が無ければ空である。どの検索式も同じ所在 1 行で満たす。
 // 集まりに属さない動画では l 自身に、集まりの動画では同じ集まりのどれかの動画の登録の所在 bl に、
-// すべての式を 1 つの exists の同じ bl に掛ける（specs/030-video-versions/data-model.md §4）。
+// すべての式を 1 つの exists の同じ bl に掛ける（docs/design-docs/catalog-organization.md §4）。
 func searchLocationCondition(searchAudience domain.Audience, exprs []domain.SearchExpr) (string, []any) {
 	search := searchClausesFor(searchAudience, exprs)
 	if search.location == "" {
@@ -297,8 +297,7 @@ func (s searchClauses) bundleExists() string {
 }
 
 // watchCondition は視聴状態の絞り込みを、playback_progress（別名 p、left join）
-// に対する条件句にする。定義は domain.ClassifyWatch と同じ
-// （data-model.md §6）。絞り込まないときは空の句を返す。
+// に対する条件句にする。定義は domain.ClassifyWatch と同じ。絞り込まないときは空の句を返す。
 func watchCondition(filter domain.WatchFilter) string {
 	switch filter {
 	case domain.WatchUnwatched:
@@ -337,9 +336,9 @@ func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 		from += ` join video_locations loc on loc.path = chosen.path`
 	}
 	// 内容の識別子が空の動画は再生位置を持たない（API の progressFor と同じ扱い）。
-	// 鍵は利用者データの鍵（userKeyExpr、specs/030-video-versions/data-model.md §3）。
+	// 鍵は利用者データの鍵（userKeyExpr、docs/design-docs/catalog-organization.md）。
 	from += ` left join playback_progress p on p.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
-	// お気に入りも同じ鍵に結ぶ（specs/035-favorites/data-model.md §5）。並べ替えの値にも使う。
+	// お気に入りも同じ鍵に結ぶ。並べ替えの値にも使う。
 	from += ` left join video_favorites fav on fav.content_key = ` + userKeyExpr("videos") + ` and videos.content_key <> ''`
 	var conditions []string
 	if condition := watchCondition(spec.watch); condition != "" {
@@ -348,7 +347,7 @@ func filteredFrom(spec listSpec, withLocation bool) (string, []any) {
 	if spec.favoriteOnly {
 		conditions = append(conditions, `fav.content_key is not null`)
 	}
-	// 再生可否・タグ（data-model.md §6）・人物と団体。タグの存在の確認は呼び出し側
+	// 再生可否・タグ・人物と団体。タグの存在の確認は呼び出し側
 	// （resolveTagIDs）が済ませているので、ここでは AND を掛けるだけでよい。
 	member, args := memberConditions(spec)
 	conditions = append(conditions, member...)
@@ -524,7 +523,7 @@ const (
 	sortText
 )
 
-// listOrder は並び順1つ分の定義である（contracts/list-api.md §3）。並び順を
+// listOrder は並び順1つ分の定義である。並び順を
 // 足すときは listOrders に1件足す。
 type listOrder struct {
 	// value は並べ替えの値を作る式。一覧の内側の問い合わせ（videos・loc・p）で
@@ -544,10 +543,10 @@ var listOrders = map[domain.VideoSort]listOrder{
 	domain.SortAddedDesc:    {value: `videos.added_at`, desc: true},
 	domain.SortModifiedAsc:  {value: `loc.mtime`},
 	domain.SortModifiedDesc: {value: `loc.mtime`, desc: true},
-	// 作成日は所在の作成日時、取れなかった所在は更新日時（specs/033-video-dates/data-model.md §4）。
+	// 作成日は所在の作成日時、取れなかった所在は更新日時。
 	domain.SortCreatedAsc:  {value: fileCreatedAtExpr("loc")},
 	domain.SortCreatedDesc: {value: fileCreatedAtExpr("loc"), desc: true},
-	// 題名は保存した title_key のバイト順で、自然順になる（data-model.md §4）。
+	// 題名は保存した title_key のバイト順で、自然順になる。
 	domain.SortTitleAsc:     {value: `loc.title_key`, kind: sortText},
 	domain.SortTitleDesc:    {value: `loc.title_key`, kind: sortText, desc: true},
 	domain.SortDurationAsc:  {value: `videos.duration_ms`, nullable: true},
@@ -558,7 +557,7 @@ var listOrders = map[domain.VideoSort]listOrder{
 	domain.SortPlayedAsc:  {value: `p.updated_at`, nullable: true},
 	domain.SortPlayedDesc: {value: `p.updated_at`, desc: true, nullable: true},
 	// お気に入りにした日時は filteredFrom の left join（fav）から取る。お気に入りでなければ NULL
-	// （specs/035-favorites/research.md R-4）。
+	//
 	domain.SortFavoritedAsc:  {value: `fav.favorited_at`, nullable: true},
 	domain.SortFavoritedDesc: {value: `fav.favorited_at`, desc: true, nullable: true},
 	// ランダムは seed と id だけで決まる値の昇順で、値が同じなら id の昇順。
@@ -597,7 +596,7 @@ func (o listOrder) after(isNull bool, value any, id int64) (string, []any) {
 }
 
 // cursorCondition はカーソルより後ろだけを取る条件を返す。別の並び順や別の
-// seed で作ったカーソルは誤りにする（contracts/list-api.md §5）。
+// seed で作ったカーソルは誤りにする。
 func (o listOrder) cursorCondition(spec listSpec, cursor string) (string, []any, error) {
 	c, err := decodeCursor(cursor)
 	if err != nil {

@@ -16,7 +16,7 @@ import { ownerAccount } from "./owner-account";
 // 動画のないライブラリで走る。動画は run-e2e.mjs が generateOnboardingFixtures で作る2本である。
 //
 // 自動タグ付けは e2e では切なので、分野の動画にタグが付くことは API でタグを付けて置き換える
-// （specs/057-home/plan.md の Project Structure）。手順ごとの規則（Skip の書く段階、ゲストを送らない
+// （docs/design-docs/home.md の Project Structure）。手順ごとの規則（Skip の書く段階、ゲストを送らない
 // こと、失敗の表示）はページテストが確かめ、ここでは重ねない（docs/design-docs/web-testing.md）。
 
 interface MediaFolder {

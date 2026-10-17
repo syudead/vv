@@ -15,8 +15,7 @@ import type { GroupPageData } from "./useGroupPage";
 export type FocusTarget = number | "title" | "more";
 
 /**
- * isTargetGone は編集の対象（項目、`after`）がもう無いこと（`404 group_target_not_found`、
- * research.md R-12）を表すかを返す。サーバーは `code` を `not_found` にし、どの 404 かを
+ * isTargetGone は編集の対象（項目、`after`）がもう無いこと（`404 group_target_not_found`）を表すかを返す。サーバーは `code` を `not_found` にし、どの 404 かを
  * `reason` に入れる（グループそのものが無いときは `reason` が無い）。
  */
 function isTargetGone(error: unknown): boolean {
@@ -103,11 +102,10 @@ export function useFocusAfterEdit() {
 }
 
 /**
- * useGroupEdits はグループのページの項目の編集である（specs/048-groups/ui-design.md
- * 「Reordering」「Removing one item」「Body」「Edits that fail」）。
+ * useGroupEdits はグループのページの項目の編集である。
  *
  * - 並べ替えは置いたときに番号を振り直してから、持ち上げた項目を画面の順に `reorder` で
- *   1 回送る（specs/050-drag-organize/ui-design.md「Group page」）。送る要求は置いた順に
+ *   1 回送る。送る要求は置いた順に
  *   1 つずつ流し（鎖は useGroupPage と共有し、静かな読み直しは鎖が答えてから読む）、
  *   受け入れられたら「Undo」付きの通知を出し、失敗したらサーバーが最後に認めた並びへ戻して
  *   知らせる。鎖が空になったら、認めた並びを見せる（途中の読み直しが移動の前の並びを置いても、
@@ -118,14 +116,13 @@ export function useFocusAfterEdit() {
  * - ドラッグで子グループ・祖先・ライブラリへ移す項目は、置いたときに画面から外してから
  *   `move` で 1 回送る（並べ替えと同じ鎖）。受け入れられたら「Undo」付きの通知を出して
  *   読み直し、失敗したら外す前に見せていた項目と本数に戻して知らせる。すべての項目を
- *   移すとサーバーがグループを解散するので、通知とトークンを持ち越して `onDissolved` へ渡す
- *   （specs/050-drag-organize/ui-design.md「Undo toast」の Carried）。
+ *   移すとサーバーがグループを解散するので、通知とトークンを持ち越して `onDissolved` へ渡す。
  * - 子グループを含む項目を子グループへマージすると、持ち上げた項目（動画と子グループの両方）を
  *   画面から外してから、開いているグループを `from` に付けて `merge` で 1 回送る（並べ替えと
  *   同じ鎖）。サーバーは持ち上げた動画とグループを `from` から外す。受け入れられたら「Undo」
  *   付きの通知を出して読み直し、失敗したら外す前の項目に戻して知らせる。
  * - 選択バーの「Remove from group」は選んだ項目をまとめて外し、件数を知らせる。
- * - 最後の項目を外すとサーバーがグループを解散する（`204`、data-model.md「Edits」）。外した行は
+ * - 最後の項目を外すとサーバーがグループを解散する（`204`）。外した行は
  *   見せず、`onDissolved` で画面を解散と同じ結末（道筋の親へ移ってトースト）へ渡す。
  * - どれも `404 group_target_not_found` なら表示を保ったまま読み直し、変わっていたと知らせる。
  *   ほかの `404`（グループが無い）は読み直しが無くなった状態を見せる。

@@ -24,7 +24,7 @@ const transcodeProbeSaveTimeout = 10 * time.Second
 // TranscodeVideo streams one request-scoped fragmented MP4 process.
 func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.TranscodeVideoParams) {
 	// ゲストとして処理する要求は、非公開にされたら打ち切れるよう台帳に載せる
-	// （contracts/guest-api.md §6）。
+	//
 	video, r, release, ok := s.lookupServedVideo(w, r, id)
 	if !ok {
 		return
@@ -32,7 +32,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 	defer release()
 	// attempt 付きの要求は始めた時点で台帳に載せ、最初のデータを持って本文を書き始める
 	// 前に実際の開始位置を記録する。記録の前に終われば、報告の経路は 404 を返す
-	// （contracts/transcode-start-api.md §1）。
+	//
 	quality, ok := s.transcodeQuality(w, video, params.Quality)
 	if !ok {
 		return
@@ -77,22 +77,23 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 	defer func() { _ = file.Close() }()
 
 	// 比べるのは変換で実際に開いた所在の印である。同じ content_key の別の所在が
-	// あっても、開いた所在で決める（specs/018-live-transcode-seek/data-model.md §3）。
+	// あっても、開いた所在で決める。
 	source := domain.FileStampOf(info)
 	request := domain.LiveTranscodeRequest{
-		Path:    file.Name(),
-		Source:  source,
-		Probe:   s.usableTranscodeProbe(r.Context(), video.ID, source),
-		StartMs: startMs,
-		// 直接再生から切り替えた変換だけエンコードを強いる。シークでは映像がコピー
-		// できればコピーする。
+		Path:            file.Name(),
+		Source:          source,
+		Probe:           s.usableTranscodeProbe(r.Context(), video.ID, source),
+		StartMs:         startMs,
+		SparseKeyframes: s.sparseKeyframes(r.Context(), video.ID, source),
+		// 直接再生から切り替えた変換は必ずエンコードする。シークのコピー可否は
+		// SparseKeyframes と stream の条件で決める。
 		Normalize:       video.Playable,
 		StartupDeadline: time.Now().Add(transcodeStartupTimeout),
 		// 方式は要求ごとに今の設定から決める。変更は次に始まる要求から効き、配信中の変換は
-		// 始めた方式のまま続く（specs/025-hardware-encoding/contracts/transcoding-settings-api.md §4）。
+		// 始めた方式のまま続く。
 		VideoEncoder: s.effectiveVideoEncoder(),
 		// 画質があれば映像を必ずエンコードするので、変換は startMs の位置そのものから始まる
-		// （specs/027-playback-quality/contracts/transcode-quality-api.md §1）。
+		//
 		Quality: quality,
 	}
 	started, err := s.transcoder.Start(r.Context(), request)
@@ -109,8 +110,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 		return
 	}
 	if started.HardwareFailure != nil {
-		// ハードウェアが最初のデータを出さずに終わり、同じ要求の中で software に切り替えた
-		// （research.md R-6）。誤りには FFmpeg の標準エラーの末尾が入っている。
+		// ハードウェアが最初のデータを出さずに終わり、同じ要求の中で software に切り替えた。誤りには FFmpeg の標準エラーの末尾が入っている。
 		s.logger.Warn("hardware video encoder failed; live transcoding fell back to software",
 			slog.Int64("video", video.ID),
 			slog.String("encoder", string(request.VideoEncoder)),
@@ -177,7 +177,7 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 
 // transcodeQuality は quality の指定を解釈する。無ければ元の画質（空）である。知らない値、
 // 動画の表示の短辺以上の画質、寸法の無い動画は 400 を書いて ok を偽にし、変換を始めない。
-// 使えるかの規則は domain が持つ（specs/027-playback-quality/research.md R-3）。
+// 使えるかの規則は domain が持つ。
 func (s *server) transcodeQuality(w http.ResponseWriter, video domain.Video, param *gen.TranscodeVideoParamsQuality) (domain.TranscodeQuality, bool) {
 	if param == nil {
 		return "", true
@@ -283,4 +283,9 @@ func awaitInitialTranscodeData(
 	closeErr := stream.Close()
 	waitErr := wait()
 	return nil, errors.Join(readErr, closeErr, waitErr)
+}
+
+func (s *server) sparseKeyframes(ctx context.Context, videoID int64, source domain.FileStamp) bool {
+	probe, err := s.videos.KeyframeSpacing(ctx, videoID)
+	return err == nil && probe.SparseFor(source)
 }

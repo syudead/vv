@@ -2,7 +2,7 @@
 # 添付し、main への push では prerelease の Release「nightly」1 件の zip を差し替え、手動実行では
 # workflow の成果物として残す。組み立ては手元の task build-windows-app と
 # 同じ入口で、同梱の ffmpeg のエンコーダは Windows のランナーで確かめる
-# （specs/037-windows-app/research.md R-12・R-13、docs/design-docs/windows-app.md の「配布」）。
+#
 name: Windows app
 
 on:

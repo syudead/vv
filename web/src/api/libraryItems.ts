@@ -17,8 +17,7 @@ export function folderRefKey(folder: FolderRef): string {
 
 /**
  * OrganizableItem はドラッグで持ち上げて整理できる項目（動画とグループ）である。スマート
- * フォルダの項目は持ち上げず、落とす先にもならない（specs/052-smart-folders/ui-design.md
- * 「Smart folder card and row」）。
+ * フォルダの項目は持ち上げず、落とす先にもならない。
  */
 export type OrganizableItem = Exclude<LibraryItem, { kind: "smartFolder" }>;
 

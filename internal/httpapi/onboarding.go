@@ -11,7 +11,7 @@ import (
 )
 
 // Onboarding はオンボードの段階と分野の選び方である。internal/app の *Onboarding が満たす
-// （specs/057-home/contracts/screen-api.md）。経路はどれも所有者だけで、accessRoutes に載せない。
+// （docs/design-docs/home.md）。経路はどれも所有者だけで、accessRoutes に載せない。
 type Onboarding interface {
 	Step(ctx context.Context) (domain.OnboardingStep, error)
 	// SetStep は段階を書き、書いた段階を返す。段階は呼ぶ側が確かめる。

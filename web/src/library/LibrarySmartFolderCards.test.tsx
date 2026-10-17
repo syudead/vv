@@ -15,8 +15,7 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
 /**
- * ライブラリのスマートフォルダのカード（specs/052-smart-folders/ui-design.md「Smart folder card
- * and row」）。
+ * ライブラリのスマートフォルダのカード。
  */
 
 const fetchMock = vi.fn<typeof fetch>();

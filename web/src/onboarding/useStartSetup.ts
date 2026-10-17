@@ -8,7 +8,7 @@ import { ONBOARDING_PATH } from "./onboardingRoute";
 
 /**
  * useStartSetup はオンボードを始め直す操作である。段階を `folders` に書いてから `/welcome` を
- * 開く（specs/057-home/ui-design.md「Sidebar and library」）。段階を書かずに開くと、段階が
+ * 開く（docs/design-docs/home.md「Sidebar and library」）。段階を書かずに開くと、段階が
  * `done` の所有者はゲートがホームへ戻す。書けなかったら理由を通知に出して留まる。
  */
 export function useStartSetup() {

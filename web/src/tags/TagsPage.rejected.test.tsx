@@ -18,7 +18,7 @@ import {
 
 setUpTagsPageServer();
 
-describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/research.md R-13）", () => {
+describe("TagsPage 却下した名前のページ", () => {
   /** 見張っている番兵（IntersectionObserver）。窓の中身を末尾までスクロールしたことにする。 */
   const observers = new Set<{
     callback: IntersectionObserverCallback;

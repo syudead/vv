@@ -96,7 +96,7 @@ func TestListLibraryListsHandMadeGroupAsOneItem(t *testing.T) {
 }
 
 // A が B の中にあるとき、いちばん上には B だけが並び、B のグループの画面が A を返す。B の値は
-// 子孫の動画を深さ優先の再生順で数える（research.md R-7）。
+// 子孫の動画を深さ優先の再生順で数える。
 func TestListLibraryListsTopGroupsAndGroupShowsChildGroup(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -143,8 +143,7 @@ func TestListLibraryMatchesOverDescendants(t *testing.T) {
 	}
 }
 
-// 丸ごと当たるグループのカードにある動画も、一部だけが当たる別のグループからは 1 本で並ぶ
-// （research.md R-6）。件数と「すべて選択」の id も同じ項目を数える。
+// 丸ごと当たるグループのカードにある動画も、一部だけが当たる別のグループからは 1 本で並ぶ。件数と「すべて選択」の id も同じ項目を数える。
 func TestListLibraryKeepsPartialMatchBesideWholeGroup(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -171,7 +170,7 @@ func TestListLibraryKeepsPartialMatchBesideWholeGroup(t *testing.T) {
 	}
 }
 
-// 入れ子の深さに上限は無い（research.md R-5）。いちばん深いグループの動画もいちばん上の
+// 入れ子の深さに上限は無い。いちばん深いグループの動画もいちばん上の
 // グループの再生順に入る。
 func TestGroupReadsDescendantsAtAnyDepth(t *testing.T) {
 	db, ids := itemsFixture(t)
@@ -192,7 +191,7 @@ func TestGroupReadsDescendantsAtAnyDepth(t *testing.T) {
 
 // 複数の親に入った子グループ（ダイヤモンド状の階層）は、たどれる道ごとに展開し直さない。各段の
 // 2 つのグループがどちらも次の段の 2 つを持つ 40 段の階層は、道が 2^40 本あるが、すぐに読める。
-// 再生順は深さ優先で最初に現れた位置のままである（research.md R-7）。
+// 再生順は深さ優先で最初に現れた位置のままである。
 func TestGroupReadsSharedChildGroupsOnce(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)

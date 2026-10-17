@@ -57,7 +57,7 @@ type FocusAfterRemoval = {
 };
 
 /**
- * SynonymsDialog は「シノニム」で開く窓である（ui-design.md「Synonyms」）。
+ * SynonymsDialog は「シノニム」で開く窓である。
  * 上に今のシノニムを Chip の並びで、下に追加の入力を持つ。追加しようとした
  * 名前が既存のタグの名前と一致すると、同じ窓の中を統合の確認に切り替える
  * （要件6「シノニム登録」、受け入れ条件17）。
@@ -201,7 +201,7 @@ export default function SynonymsDialog({
   /**
    * openConfirm は tag_merge_required を受けたときに呼ぶ。タグの一覧を取り直し
    * （別のタブでの変更を拾うため）、その名前を元の名前として持つタグ S を
-   * 探して確認へ切り替える。契約（tags-api.md §3）どおり、承諾は S の id を
+   * 探して確認へ切り替える。契約どおり、承諾は S の id を
    * 添えて送るので、ここで正しい S を確かめ直す（確認の後に別のタブでその
    * 名前が移っていても、確認していないタグを統合しないため）。
    *
@@ -215,7 +215,7 @@ export default function SynonymsDialog({
   async function openConfirm(name: string, attempt = 0, ownerName?: string) {
     try {
       const list = await refreshTags();
-      // S は API が tagName で返した元の名前で探す（contracts/error-api.md §1）。
+      // S は API が tagName で返した元の名前で探す。
       // tagName が無い応答では送った綴りで探す。
       const found = list.find((item) => item.name === (ownerName ?? name));
       if (found === undefined) {
@@ -304,7 +304,7 @@ export default function SynonymsDialog({
       }
       if (isMergeRequired(failure)) {
         // 確認の後に別のタブでこの名前がさらに別のタグへ移った。一覧を
-        // 取り直して確認をやり直す（tags-api.md §3）。
+        // 取り直して確認をやり直す。
         await openConfirm(confirm.name, 0, mergeOwner(failure));
         return;
       }

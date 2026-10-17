@@ -8,7 +8,7 @@ import {
 } from "./client";
 import type { components } from "./gen/openapi";
 
-// ホームの画面 API（specs/057-home/contracts/screen-api.md）。型は api/openapi.yaml からの
+// ホームの画面 API（docs/design-docs/home.md）。型は api/openapi.yaml からの
 // 生成物を使う。棚の一覧（GET /api/home）を先に読み、棚の項目は画面に入った棚の分だけ
 // GET /api/home/shelves で読む（research.md R-12）。どちらもゲストも読める。
 

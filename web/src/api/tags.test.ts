@@ -293,7 +293,7 @@ describe("タグの変更が成功した後の後始末", () => {
     const created = await createTag("新しいタグ");
     expect(created.name).toBe("新しいタグ");
     // 作ったタグは同じ名前のフォルダの下の既存の動画にもすぐ付くので
-    // （017 の data-model.md §4）、控えを復元すると古いタグが戻ってしまう。
+    // 、控えを復元すると古いタグが戻ってしまう。
     expect(takeListSnapshot(key)).toBeUndefined();
     await vi.waitFor(() => {
       expect(currentTags()).toEqual([tag({ id: 9, name: "新しいタグ" })]);
@@ -416,7 +416,7 @@ describe("タグの変更が成功した後の後始末", () => {
   });
 });
 
-describe("購読者のいない共有の保持（specs/036-tag-admin-scale/research.md R-12）", () => {
+describe("購読者のいない共有の保持", () => {
   it("変更のあと購読者がいなければ全件を取り直さず、保持を捨てて次のgetTagsに取らせる", async () => {
     saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
     const fetch = vi
@@ -509,7 +509,7 @@ describe("購読者のいない共有の保持（specs/036-tag-admin-scale/resea
   });
 });
 
-describe("仮のタグと却下した名前（specs/031-tentative-tags/contracts/screen-api.md §2・§3）", () => {
+describe("仮のタグと却下した名前", () => {
   it("confirmTagはPOST /api/tags/{id}/confirmを送り、成功後に購読者のいる共有の一覧を取り直す", async () => {
     subscribeTags(() => undefined);
     saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
@@ -731,7 +731,7 @@ describe("動画へのタグの付け外し・要約（issue 267）", () => {
   });
 
   // 名前で付けて新しいタグが作られたら、フォルダ名から既存の動画にも付くので
-  // 一覧の控えを捨てる（017 の data-model.md §4）。既存のタグなら控えは残す。
+  // 一覧の控えを捨てる。既存のタグなら控えは残す。
   it("attachVideoTagByNameは新しく作られたタグなら一覧の控えを捨てる", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -850,7 +850,7 @@ describe("動画へのタグの付け外し・要約（issue 267）", () => {
   });
 });
 
-describe("まとめての操作と確認の数（specs/036-tag-admin-scale/contracts/screen-api.md §1・§3・§4）", () => {
+describe("まとめての操作と確認の数", () => {
   it("batchTagsはPOST /api/tags/batchを送り、成功後に購読者のいる共有の一覧を1回取り直して一覧の控えを捨てる", async () => {
     subscribeTags(() => undefined);
     saveListSnapshot(key, { items: [], total: 0, hasMore: false, scrollY: 0 });
@@ -875,7 +875,7 @@ describe("まとめての操作と確認の数（specs/036-tag-admin-scale/contr
     expect(fetch).toHaveBeenCalledTimes(2);
   });
 
-  it("batchTagsはsetKindのときだけkindIdを送り、clearKindでは送らない（specs/051-tag-kinds/contracts/screen-api.md）", async () => {
+  it("batchTagsはsetKindのときだけkindIdを送り、clearKindでは送らない", async () => {
     const outcome = { appliedIds: [4], notFoundIds: [], notApplicableIds: [] };
     const fetch = vi
       .fn<typeof globalThis.fetch>()

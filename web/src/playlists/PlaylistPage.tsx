@@ -74,11 +74,11 @@ function parseId(raw: string | undefined): number | null {
 
 /**
  * PlaylistPage はプレイリスト 1 つの項目を持ち主の決めた順に並べ、そこから再生を始め、並べ替え、
- * 外し、名前を変え、消す画面である（specs/044-playlists/ui-design.md「Playlist screen」）。
+ * 外し、名前を変え、消す画面である。
  *
- * 開いたとき、移動か外すの `404` の後に読み、自分では取り直さない（research.md R-10）。
+ * 開いたとき、移動か外すの `404` の後に読み、自分では取り直さない。
  * 並べ替えは置いたときに番号を変えてから `move` を 1 回送る。送る要求は置いた順に 1 つずつ
- * 送り、失敗したらサーバーが最後に認めた並びへ戻す（ui-design.md「Reordering」）。
+ * 送り、失敗したらサーバーが最後に認めた並びへ戻す。
  *
  * 読み直しは移動と同じ鎖に並べる。送った移動が答えるまで読まず、読み終えるまで次の移動を
  * 送らないので、読んだ並びがどの移動より古いということがない。読み直しを決めた時点で
@@ -149,7 +149,7 @@ function PlaylistScreen({ id }: { id: number | null }) {
           showPage({ kind: "gone" });
           return;
         }
-        // 読み直しの失敗も読み込みの失敗として Retry を出す（ui-design.md「States」）。
+        // 読み直しの失敗も読み込みの失敗として Retry を出す。
         // 古いかもしれない行を残すと、サーバーが退けた並びを認めたように見せる。
         showPage({ kind: "failed" });
       },
@@ -300,7 +300,7 @@ function PlaylistScreen({ id }: { id: number | null }) {
 
   const ready = page.kind === "ready" ? page : null;
   // 「Play」は始める動画のある最初の項目から始める。動画の無いスマートフォルダの項目は飛ばす
-  // （specs/052-smart-folders/ui-design.md「Playlist screen row」）。
+  //
   const firstTarget = id === null ? null : firstPlayTarget(id, ready?.items ?? []);
 
   // dnd-kit の読み上げ。位置は今の並びでの 1 始まり。
@@ -327,7 +327,7 @@ function PlaylistScreen({ id }: { id: number | null }) {
     return (
       <PageHeader
         titleRef={titleRef}
-        // 長い名前は見出しの中で 2 行まで折り返す（ui-design.md「Responsive behaviour」）。
+        // 長い名前は見出しの中で 2 行まで折り返す。
         title={
           <span title={ready.name} className="line-clamp-2 whitespace-normal break-words">
             {ready.name}

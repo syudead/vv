@@ -1,7 +1,7 @@
 import type { HomeOrganizer, HomeOrganizeRun } from "../api/home";
 import { formatDateTime, t, type UiText } from "../i18n";
 
-// 設定の「Home」の節の規則（specs/057-home/ui-design.md「Words」の Settings の行）。画面の部品から
+// 設定の「Home」の節の規則（docs/design-docs/home.md「Words」の Settings の行）。画面の部品から
 // 外し、ロジックのテストで確かめる（docs/design-docs/web-testing.md）。
 
 /** lastRunLine は「Shelves」の説明の下に出す、最後の実行の行である（ui-design.md「Words」）。 */

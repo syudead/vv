@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// お気に入りのみの絞り込みとお気に入りにした日時の並び順（specs/035-favorites/data-model.md §5、
-// research.md R-3・R-4）。fixture のグループ show（G）のメンバーは ep1・ep2・ep10（A・B・C）で、
+// お気に入りのみの絞り込みとお気に入りにした日時の並び順。fixture のグループ show（G）のメンバーは ep1・ep2・ep10（A・B・C）で、
 // 視聴状態は ep1 が見終えた、ep2 が未視聴、ep10 が途中である。
 
 // favoriteLibrary は所有者のお気に入りのみの ListLibrary を最後まで読み、項目の名前を返す。

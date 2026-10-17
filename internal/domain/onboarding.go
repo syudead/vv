@@ -7,7 +7,7 @@ import (
 	"fmt"
 )
 
-// オンボード（specs/057-home/research.md R-3、R-5、R-6）。進み具合は settings の onboarding.step に
+// オンボード（docs/design-docs/home.md）。進み具合は settings の onboarding.step に
 // 段階 1 つで持ち、分野の一覧 InterestCatalog はコードで持つ（表にしない）。
 
 // OnboardingStep はオンボードの段階である（data-model.md「Settings」）。

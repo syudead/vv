@@ -35,8 +35,7 @@ export interface CreditRowHandlers {
 export const creditRowIdAttribute = "data-credit-id";
 
 /**
- * CreditRow は人物・団体の管理画面の一覧の 1 行である（specs/047-video-work-info/
- * ui-design.md「People and organizations screens」）。タグの行（`TagRow`）と同じ形で、
+ * CreditRow は人物・団体の管理画面の一覧の 1 行である。タグの行（`TagRow`）と同じ形で、
  * チェックの列と仮の目印が無く、2 つ目のボタンが「Edit details」である。名前は
  * `/library?person=<id>`（団体は `/library?organization=<id>`）へのリンクで、その下に親と別名の 1 行を
  * 置く。改名中は名前の列だけを入力に置き換える。タッチの端末と `sm` 未満では操作を

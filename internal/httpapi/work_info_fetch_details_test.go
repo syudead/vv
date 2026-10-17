@@ -16,7 +16,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 取得した作品の詳細の取得と反映の経路（specs/052-plugin-work-info-fields/contracts/screen-api.md、#1159）は、
+// 取得した作品の詳細の取得と反映の経路は、
 // 本物の認証・保存層・app.WorkInfoPlugins で確かめる。プラグインの実行だけが偽で、決めた作品情報を返す。
 
 // fetchedRuntime は fetch に決めた作品情報を返す実行である。検査は使わない。

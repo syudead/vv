@@ -16,8 +16,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// プレイリスト（specs/044-playlists/data-model.md「Store operations」「Succession and bundling」、
-// research.md R-1〜R-5・R-11）。
+// プレイリスト。
 
 func createPlaylist(t *testing.T, db *DB, name string) int64 {
 	t.Helper()
@@ -347,7 +346,7 @@ func TestPlaylistHidesAGroupWithoutMembers(t *testing.T) {
 
 // 動画の場所がなくなった項目は読み出しから外れ、中身を再スキャンすると元の位置で読める。グループの
 // 項目は、フォルダのグループ化を解くとグループの解散で消え、自動に戻して新しいグループができても
-// 戻らない（R-4、specs/048-groups/research.md R-4・R-10）。
+// 戻らない（R-4、docs/design-docs/catalog-organization.md）。
 func TestPlaylistHidesItemsUntilTheyResolveAgain(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -563,8 +562,7 @@ func TestListPlaylistsByUpdatedAt(t *testing.T) {
 
 // 一覧は cursor の次から limit 件を返し、続きがあるときだけ NextCursor を持つ。同じ更新日時の
 // プレイリストもページの境で重ならず漏れず、Total はどのページでも全部の数で、Covers は返した
-// ページの分だけ埋まる。読めない cursor は ErrInvalidCursor（contracts/screen-api.md
-// 「GET /api/playlists」）。
+// ページの分だけ埋まる。読めない cursor は ErrInvalidCursor。
 func TestListPlaylistsPaged(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -628,7 +626,7 @@ func TestListPlaylistsPaged(t *testing.T) {
 // 一覧の Version はどのページでも同じで、プレイリストを作る・名前か項目を変える・消すたびに
 // 変わる。同じミリ秒に別のプレイリストを変えても変わる。何も変わらない操作（既にある動画を
 // 足す）では変わらない。ページを読んでいる間に変わったプレイリストはカーソルの次からは返らないので、
-// クライアントはこれを比べて最初のページから読み直す（contracts/screen-api.md「GET /api/playlists」）。
+// クライアントはこれを比べて最初のページから読み直す。
 func TestListPlaylistsVersion(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -685,8 +683,7 @@ func TestListPlaylistsVersion(t *testing.T) {
 }
 
 // 同じミリ秒の変更でも、時計が戻っても、名前か項目を変えるたびに更新日時は前より進む。
-// 再生の応答とプレイリストの応答は更新日時が同じときだけ同じ並びとして使われる（ui-design.md
-// 「One order」）。
+// 再生の応答とプレイリストの応答は更新日時が同じときだけ同じ並びとして使われる。
 func TestPlaylistUpdatedAtAdvancesOnEveryChange(t *testing.T) {
 	db, ids := versionFixture(t)
 	ctx := context.Background()
@@ -726,7 +723,7 @@ func TestPlaylistUpdatedAtAdvancesOnEveryChange(t *testing.T) {
 }
 
 // 束ねて項目が 1 つにまとまったプレイリストは更新日時が進み、鍵を付け替えただけのプレイリストは
-// 並びが変わらないので進まない（R-2、ui-design.md「One order」）。
+// 並びが変わらないので進まない（R-2）。
 func TestBundleAdvancesUpdatedAtOnlyWhereItemsMerge(t *testing.T) {
 	db, ids := versionFixture(t)
 	clock := time.UnixMilli(1_000_000)
@@ -751,7 +748,7 @@ func TestBundleAdvancesUpdatedAtOnlyWhereItemsMerge(t *testing.T) {
 }
 
 // 後継で隠れていた項目が見えるようになったプレイリストは更新日時が進み、項目の鍵が変わらない
-// プレイリストは進まない（ui-design.md「One order」）。
+// プレイリストは進まない。
 func TestSuccessionAdvancesUpdatedAtWhenAnItemReappears(t *testing.T) {
 	db, a := taggedVideoFixture(t)
 	clock := time.UnixMilli(1_000_000)
@@ -828,7 +825,7 @@ func TestPlaylistsMigration(t *testing.T) {
 
 // 一覧の Covers は、見せる項目を位置の順にたどり、動画の項目はその動画、グループの項目は並びの順で
 // 最初のサムネイル生成済みのメンバーを 1 枚ずつ、サムネイル生成済みのものだけ最大 4 件持つ。
-// 見せなくなった項目は飛ばし、空のプレイリストは空の配列になる（ui-design.md「Playlists screen」）。
+// 見せなくなった項目は飛ばし、空のプレイリストは空の配列になる。
 func TestListPlaylistsCovers(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()

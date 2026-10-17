@@ -13,8 +13,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 今のサムネイルから始める編集（specs/046-thumbnail-image-upload/contracts/screen-api.md の
-// POST /api/videos/{id}/thumbnail-edits (changed)）を、本物の保存層の適用した画像で確かめる。
+// 今のサムネイルから始める編集を、本物の保存層の適用した画像で確かめる。
 
 // applySource は動画 name に元の画像 source を持つ画像を適用したことを保存層へ直接記録する。
 func (f *guestFixture) applySource(t *testing.T, name string, source []byte) {
@@ -71,8 +70,7 @@ func TestStartThumbnailEditFromThumbnail(t *testing.T) {
 		wantError{status: http.StatusConflict, code: gen.ErrorCodeConflict, reason: reasonThumbnailFrameUnavailable})
 }
 
-// 動画のファイルを開けなくても、画像を適用していれば今のサムネイルから始められる（ui-design.md:
-// プレイヤーが出ない動画でも始められる）。コマが要るときは従来どおり 404 file_unavailable である。
+// 動画のファイルを開けなくても、画像を適用していれば今のサムネイルから始められる。コマが要るときは従来どおり 404 file_unavailable である。
 func TestStartThumbnailEditFromThumbnailWithoutFile(t *testing.T) {
 	f := newGuestFixture(t, true)
 	f.saveConnection(t)

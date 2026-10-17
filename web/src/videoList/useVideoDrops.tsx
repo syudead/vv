@@ -18,9 +18,7 @@ import {
 } from "./videoDrop";
 import { useVideoDropMenu, type VideoDropChoice } from "./VideoDropMenu";
 
-// 動画を動画に落としたときの「Make a group」と「Bundle as versions」である
-// （specs/050-drag-organize/ui-design.md「What a drop does」「Drop menus」「The new group's
-// name」、research.md R-6、R-8）。ライブラリ、グループのページ、フォルダ画面が共有する。
+// 動画を動画に落としたときの「Make a group」と「Bundle as versions」である。ライブラリ、グループのページ、フォルダ画面が共有する。
 
 /** Shown はサーバーが答える前に見せる落とした結果である。 */
 interface Shown {
@@ -112,7 +110,7 @@ function overlayOf<T>(
  * （`shown`）、失敗したら戻して理由を出し、受け付けたら取り消しの通知を出す。「Make a group」の
  * 後は新しいグループの名前の欄を開き（`nameFieldFor` か、フォルダ画面では `attached` の窓）、
  * 欄が閉じたら読み直す。束ねた後はすぐ読み直す。取り消したら見せていた結果と名前の欄を外す。
- * 画面を離れた後に答えた要求は何も見せない（トークンは忘れる。ui-design.md「Undo toast」の Gone）。
+ * 画面を離れた後に答えた要求は何も見せない（トークンは忘れる。の Gone）。
  * 見せる結果・名前の欄・取り消しの通知は、失敗していない最後の操作のものである。前の操作の答え・
  * 失敗・取り消しや前の名前の欄の閉じが後から届いても、後の操作の結果・名前の欄・通知には触れない
  * （前の操作のグループは読み直しで並びに出る）。後の操作の答えを待つ間に答えた「Make a group」は、
@@ -260,7 +258,7 @@ export function useVideoDrops<T>(options: VideoDropsOptions<T>) {
   }, []);
   const { offer } = undo;
   // accepted はサーバーが操作 `op` を受け付けたときの共通の後始末である。後の操作の通知が出ていなければ
-  // 取り消しの通知を出し（ui-design.md「Undo toast」の Replaced）、待たせていた前の名前の欄を捨てる。
+  // 取り消しの通知を出し、待たせていた前の名前の欄を捨てる。
   const accepted = useCallback(
     (op: number, message: UiText, token: string) => {
       onAccepted?.();

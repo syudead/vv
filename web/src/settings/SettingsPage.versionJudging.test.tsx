@@ -6,7 +6,7 @@ import { installSettingsServer, json, renderSettings } from "../testing/settings
 
 // 「Library」のページの重複の判定の切り替えは、Ollama の接続先が保存されていないあいだも押せ、
 // その下に接続が要る旨と「Connections」へのリンクを添える
-// （specs/058-settings-pages/research.md R-5、ui-design.md「Library page」）。
+//
 
 const ollamaURL = "/api/settings/ollama";
 const judgingURL = "/api/settings/version-judging";

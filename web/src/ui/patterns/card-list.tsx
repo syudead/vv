@@ -7,7 +7,7 @@ import { cn } from "@/lib/cn";
 // 一覧の下まで揃う。lg からは 1 行（印・題・チップ・右に寄せた結果・時刻・操作）、lg 未満では
 // 2 行（印と題、その下にチップ・結果・短い時刻。操作は右で 2 行にまたがる）。
 // 余白・面・線・列の幅はこの区画が持ち、画面は中身を渡すだけにする
-// （specs/055-activity/ui-design.md「Changes to the design system」）。
+//
 // 規則は web/registry/rules/patterns.md の Sections。
 
 export type CardListTone = "default" | "primary" | "destructive" | "warning";

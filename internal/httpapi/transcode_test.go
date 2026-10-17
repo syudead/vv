@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/syudead/vv/internal/app"
@@ -247,17 +248,15 @@ func TestTranscodeSilentlyStopsWhenRequestIsCanceledBeforeInitialData(t *testing
 
 // Start が期限の間際に最初のデータを持って戻っても、経路は期限をかけ直さずに配信する。
 func TestTranscodeServesStreamStartedAtDeadline(t *testing.T) {
-	saved := transcodeStartupTimeout
-	transcodeStartupTimeout = 20 * time.Millisecond
-	t.Cleanup(func() { transcodeStartupTimeout = saved })
-
-	fake := &fakeTranscoder{body: "fragmented-mp4", beforeReturn: func(request domain.LiveTranscodeRequest) {
-		time.Sleep(time.Until(request.StartupDeadline) + 20*time.Millisecond)
-	}}
-	rec := do(t, transcodeServer(t, false, fake), http.MethodGet, "/api/videos/1/transcode.mp4")
-	if rec.Code != http.StatusOK || rec.Body.String() != fake.body || fake.stops != 0 {
-		t.Fatalf("response = %d %q stops=%d", rec.Code, rec.Body.String(), fake.stops)
-	}
+	synctest.Test(t, func(t *testing.T) {
+		fake := &fakeTranscoder{body: "fragmented-mp4", beforeReturn: func(request domain.LiveTranscodeRequest) {
+			time.Sleep(time.Until(request.StartupDeadline) + 20*time.Millisecond)
+		}}
+		rec := do(t, transcodeServer(t, false, fake), http.MethodGet, "/api/videos/1/transcode.mp4")
+		if rec.Code != http.StatusOK || rec.Body.String() != fake.body || fake.stops != 0 {
+			t.Fatalf("response = %d %q stops=%d", rec.Code, rec.Body.String(), fake.stops)
+		}
+	})
 }
 
 // transcodeProbeEnv は本物の保存層に動画を 3 本入れる。"ingested" は取り込みの解析で
@@ -639,7 +638,7 @@ func videoCodecArg(args string) string {
 }
 
 // 方式の変更は次に始まる要求から効き、配信中の変換は始めた方式のまま続く
-// （親 Issue #370 要件 4、contracts/transcoding-settings-api.md §4）。
+// （親 Issue #370 要件 4）。
 func TestTranscodeUsesEncoderSelectedBeforeRequestStarts(t *testing.T) {
 	env := newLiveEncoderEnv(t)
 
@@ -736,7 +735,7 @@ func argsContain(args string, want ...string) bool {
 }
 
 // 画質付きの要求は映像をエンコードし、短辺を縮めてビットレートに上限を付ける。画質の無い要求は
-// 今までどおりコピーで始まる（specs/027-playback-quality/contracts/transcode-quality-api.md §1）。
+// 今までどおりコピーで始まる。
 func TestTranscodeQualityScalesAndCapsWhileOriginalCopies(t *testing.T) {
 	env := newLiveEncoderEnv(t)
 	env.touch(t, "release")

@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 重複の候補の判定の記録（specs/055-activity/data-model.md「Rules」、research.md R-4・R-5）。組ごとに 1 件の
+// 重複の候補の判定の記録。組ごとに 1 件の
 // version_judgement の記録を保ち、候補の行の activity_id がそれを指す。候補が作り直されたら、組の開いている
 // 記録（subject の鍵で引く）に付き直す。記録の状態は候補の判定に従い（domain.VersionJudgementActivityState）、
 // 書き込みは候補を変える取引の中で行う。
@@ -160,8 +160,8 @@ func keysJSON(keys []string) (any, error) {
 const keysCondition = `(?1 is null or c.key_a in (select value from json_each(?1)) or c.key_b in (select value from json_each(?1)))`
 
 // syncPairActivities は記録の付いていない候補の行（鍵 keys のどれかを含むもの、nil なら全件）を、組の開いて
-// いる記録に付け直す（data-model.md「Rules」）。判定できる待ちの候補なら、付け直した記録を待ちに戻し、
-// 開いている記録が無ければ、判定が入のときだけ新しい記録を待ちで開く（research.md R-4）。
+// いる記録に付け直す。判定できる待ちの候補なら、付け直した記録を待ちに戻し、
+// 開いている記録が無ければ、判定が入のときだけ新しい記録を待ちで開く。
 func syncPairActivities(ctx context.Context, tx *sql.Tx, c *changes, keys []string, now time.Time) error {
 	filter, err := keysJSON(keys)
 	if err != nil {
@@ -232,7 +232,7 @@ func queryKeyPairs(ctx context.Context, tx *sql.Tx, query string, args ...any) (
 }
 
 // closePairActivities は、両方の鍵が members にある組の開いている version_judgement の記録（except を除く）を
-// done/outcome で閉じる。decider が空なら判断したものは変えない。束ねる操作が呼ぶ（data-model.md「Rules」）。
+// done/outcome で閉じる。decider が空なら判断したものは変えない。束ねる操作が呼ぶ。
 func closePairActivities(
 	ctx context.Context, tx *sql.Tx, c *changes, members []string, outcome domain.ActivityOutcome,
 	decider domain.ActivityDecider, except int64, now time.Time,
@@ -247,7 +247,7 @@ func closePairActivities(
 
 // leftLibraryCondition は内容の鍵 %[1]s がライブラリから外れた条件である。その鍵の動画の行が無く、同じパスの
 // 中身の引き継ぎ（video_successions）の前の中身としても待っていない。引き継ぎを待つ鍵は、引き継げば新しい
-// 鍵へ付け替わり（movePairActivityKey）、引き継がないと決まったときに外れる（data-model.md「Rules」）。
+// 鍵へ付け替わり（movePairActivityKey）、引き継がないと決まったときに外れる。
 const leftLibraryCondition = `(not exists (select 1 from videos v where v.content_key = %[1]s)
 	and not exists (select 1 from video_successions s where s.old_key = %[1]s))`
 
@@ -262,7 +262,7 @@ func closeGonePairActivities(ctx context.Context, tx *sql.Tx, c *changes, now ti
 
 // closeDroppedPairActivities は、鍵 key を含む組のうち、候補の行が無くなったのに両方の鍵の動画がまだライブラリに
 // ある組の開いている version_judgement の記録を done/superseded で閉じる。指紋の作り直し（rebuildVersionCandidates）
-// で組が候補から外れたときで、判断したものは変えない（data-model.md「Outcomes」）。引き継ぎを待つ前の中身や
+// で組が候補から外れたときで、判断したものは変えない。引き継ぎを待つ前の中身や
 // ライブラリから外れた鍵の組は、動画の行が無いのでここでは閉じない（closeGonePairActivities）。
 func closeDroppedPairActivities(ctx context.Context, tx *sql.Tx, c *changes, key string, now time.Time) error {
 	return closeActivities(ctx, tx, c, `subject_kind = ?1 and (subject_key = ?2 or subject_key_b = ?2)
@@ -335,8 +335,8 @@ func returnPairActivitiesToWaiting(
 }
 
 // moveActivityKey は、同じパスの中身が from から to に変わって引き継がれたとき、記録が持つ鍵 from を to に
-// 付け替える（data-model.md「Rules」）。開いている記録も終わった記録も付け替えるので、その後の取り消しは利用者
-// データと一緒に動いた行を新しい鍵で見つける（research.md R-7）。組の記録は movePairActivityKey、動画の記録は
+// 付け替える。開いている記録も終わった記録も付け替えるので、その後の取り消しは利用者
+// データと一緒に動いた行を新しい鍵で見つける。組の記録は movePairActivityKey、動画の記録は
 // 対象の鍵、auto_tag の記録が付けたタグは書いた鍵（user_key）と行がある鍵（activity_entry_tag_keys）、自動の束ねの
 // 記録は加わった側の鍵（undo_keys）である。付け替えたかを返す。
 func moveActivityKey(ctx context.Context, tx *sql.Tx, from, to string, now time.Time) (bool, error) {
@@ -480,7 +480,7 @@ func rekeyedPairSubject(subject domain.ActivitySubject, from, to string) (domain
 	return subject, true
 }
 
-// recordJudgementActivity は判定の結果 result を組 keys の記録 id に書く（research.md R-5）。束ねたなら
+// recordJudgementActivity は判定の結果 result を組 keys の記録 id に書く。束ねたなら
 // done/same、却下したなら done/different で、判断したものと確率を残し、束ねたときは加わった側の鍵を残して、
 // 同じまとまりになった他の組の開いている記録を superseded で閉じる。それ以外は候補のいまの判定に従い、
 // モデルが決めなかった組は rule、失敗はその文を残す。
@@ -521,7 +521,7 @@ type candidateVerdict struct {
 }
 
 // activityUpdate は候補の判定に従う記録の欄を返す。モデルの確率を残した undecided は ai とその確率（規則の衝突で
-// 決まらなかった組は確率を残さないので rule）、failed はその文である（research.md R-5）。
+// 決まらなかった組は確率を残さないので rule）、failed はその文である。
 func (j candidateVerdict) activityUpdate() activityUpdate {
 	update := activityUpdate{state: domain.VersionJudgementActivityState(domain.VersionJudgement(j.judgement.String))}
 	switch update.state.Reason {
@@ -538,7 +538,7 @@ func (j candidateVerdict) activityUpdate() activityUpdate {
 
 // reopenRestoredPairActivities は、ドラッグの束ねの取り消し（OrganizeStore.Undo）が戻した候補の行のうち、
 // 束ねで所有者が決めたとして閉じた（decided_by_owner）記録を指すものの記録を、その候補の判定に従う状態に開き
-// 直す。束ねる前の記録に戻すので、組は 1 つの記録を保つ（data-model.md「Rules」）。
+// 直す。束ねる前の記録に戻すので、組は 1 つの記録を保つ。
 func reopenRestoredPairActivities(ctx context.Context, tx *sql.Tx, c *changes, now time.Time) error {
 	rows, err := tx.QueryContext(ctx, `select c.activity_id, c.judgement, c.probability, c.judgement_error
 		from video_version_candidates c join activity_entries e on e.id = c.activity_id
@@ -572,7 +572,7 @@ func reopenRestoredPairActivities(ctx context.Context, tx *sql.Tx, c *changes, n
 }
 
 // RetryJudgement は失敗か中断で attention の version_judgement の記録 id の組を、すぐ取り出せるようにし
-// （失敗なら retry_at を今にする）、記録を待ちに戻す（contracts/screen-api.md「POST /api/activity/{id}/retry」）。
+// （失敗なら retry_at を今にする）、記録を待ちに戻す。
 // 判定のワーカーを起こすのは呼び出し側である。記録が無ければ domain.ErrNotFound、やり直しを出さないか、組が
 // もう判定できる候補でなければ domain.ErrActivityNotRetryable。
 func (s *VersionStore) RetryJudgement(ctx context.Context, id int64) error {
@@ -628,7 +628,7 @@ func (s *VersionStore) RetryJudgement(ctx context.Context, id int64) error {
 }
 
 // UndoVersionJudgement は rule か ai が決めた version_judgement の記録 id の判断を取り消し、所有者の undo の記録を
-// 返す（research.md R-7）。1 つの取引で対象の状態を読み直し、「同じ」なら束ねがまだあるときだけ加わった側を外し、
+// 返す。1 つの取引で対象の状態を読み直し、「同じ」なら束ねがまだあるときだけ加わった側を外し、
 // 「違う」なら却下がまだあるときだけ消して組を候補に戻し、判定の保留を書く。状態がもう違えば何も変えず、undo の
 // 記録の結果は already_reverted。記録が無ければ domain.ErrNotFound、取り消しを出さなければ
 // domain.ErrActivityNotUndoable。
@@ -706,7 +706,6 @@ func recordUndo(
 // 一覧に戻し、判定の保留（video_version_judging_holds）を書いて、戻したかを返す。mark は取り消す判定が結果を
 // 書いた印（decided_mark）である。却下がもう無いか、所有者がその後に（印より id が大きい dismiss の記録で）同じ組
 // を「違う動画」と決め直したなら何も変えない。却下の行は誰が書いたかを持たないので、所有者の判断は記録で見分ける
-// （research.md R-7）。
 func undoJudgedDismissal(ctx context.Context, tx *sql.Tx, c *changes, keys [2]string, mark int64) (bool, error) {
 	var redecided bool
 	if err := tx.QueryRowContext(ctx, `select exists (select 1 from activity_entries
@@ -782,7 +781,6 @@ func undoJudgedBundle(
 // leavingMembers は加わった側の鍵 joined のうち、合わさったまとまり bundleID にいるメンバーで、いまライブラリに
 // あり、判定が束ねた後に（印 mark より大きい id で）所有者が束ねた・外した・ドラッグの束ねを取り消した記録を持た
 // ないものを返す。所有者の記録を持つ鍵は、所有者が置いた所にあるので、合わさったまとまりにいたとはみなさない
-// （research.md R-7）。
 func leavingMembers(ctx context.Context, tx *sql.Tx, joined []string, bundleID int64, mark int64) ([]string, error) {
 	kinds := []domain.ActivityKind{domain.ActivityBundle, domain.ActivityUnbundle, domain.ActivityOrganizeUndo}
 	var leaving []string

@@ -49,7 +49,7 @@ const (
 	// SortModifiedDesc は一覧に出す所在の更新日時が新しい順。
 	SortModifiedDesc VideoSort = "modifiedDesc"
 	// SortCreatedAsc は一覧に出す所在のファイルの作成日時が古い順。作成日時が取れなかった
-	// 所在は更新日時を使う（specs/033-video-dates/data-model.md §4）。
+	// 所在は更新日時を使う。
 	SortCreatedAsc VideoSort = "createdAsc"
 	// SortCreatedDesc は一覧に出す所在のファイルの作成日時が新しい順。
 	SortCreatedDesc VideoSort = "createdDesc"
@@ -70,7 +70,7 @@ const (
 	// SortPlayedDesc は最後に再生した時刻が新しい順。再生の記録が無い動画は末尾。
 	SortPlayedDesc VideoSort = "playedDesc"
 	// SortFavoritedAsc はお気に入りにした日時が古い順。お気に入りでない項目は末尾
-	// （specs/035-favorites/research.md R-4）。
+	//
 	SortFavoritedAsc VideoSort = "favoritedAsc"
 	// SortFavoritedDesc はお気に入りにした日時が新しい順。お気に入りでない項目は末尾。
 	SortFavoritedDesc VideoSort = "favoritedDesc"
@@ -111,7 +111,7 @@ func ShuffleKey(seed, id int64) int64 {
 // VideoQuery は一覧の問い合わせ条件である。
 type VideoQuery struct {
 	// Query は検索欄の入力である。ParseSearchQuery の書き方
-	// （specs/013-library-search/contracts/list-api.md §1）で解釈する。
+	// で解釈する。
 	// 語が残らなければ絞り込まない。
 	Query string
 	// Watch は視聴状態の絞り込み。空は WatchAll と同じ。
@@ -126,24 +126,24 @@ type VideoQuery struct {
 	Cursor string
 	Limit  int
 	// TagIDs は絞り込むタグの id の並び（すべてを持つ動画だけにする AND、
-	// specs/014-video-tags/data-model.md §6）。存在しない id は条件から落とし、
+	// docs/design-docs/catalog-organization.md）。存在しない id は条件から落とし、
 	// VideoPage.MissingTagIDs に返す。空ならタグで絞り込まない。
 	TagIDs []int64
-	// FavoriteOnly はお気に入りの項目だけにする（specs/035-favorites/research.md R-3）。
+	// FavoriteOnly はお気に入りの項目だけにする。
 	FavoriteOnly bool
 	// Person は、どの役割でもこの人物に結び付いた動画だけにする人物の id である。
 	// 0 は絞り込まない。実体の無い id は何にも当たらない
-	// （specs/047-video-work-info/research.md R-7）。
+	//
 	Person int64
 	// Organization は Person と同じ形の、団体の id による絞り込みである。
 	Organization int64
 	// TagKindID は、手で付けたかフォルダ名から付いたかを問わず、この種類のタグを 1 つでも
 	// 持つ動画だけにするタグの種類の id である。0 は絞り込まない。実体の無い id は何にも
-	// 当たらない（specs/051-tag-kinds/research.md R-5）。
+	// 当たらない。
 	TagKindID int64
 	// AddedWithinDays は、いまからこの日数前の時刻以後に追加した動画だけにする
 	// （1 以上 MaxAddedWithinDays 以下）。0 は絞り込まない
-	// （specs/052-smart-folders/research.md R-4）。
+	//
 	AddedWithinDays int
 	// MinDurationSec と MaxDurationSec は長さの範囲（秒、両端を含む。0 以上
 	// MaxDurationBoundSec 以下）である。nil はその側を限らない。どちらかがあれば、
@@ -152,13 +152,13 @@ type VideoQuery struct {
 	MaxDurationSec *int
 	// Unshelved は、ホームのどのフォルダの棚の実効の規則（祖先の条件を含む経路の条件）にも一致しない
 	// 動画だけにする。棚との対応は保存せず、読むたびに求める
-	// （specs/057-home/research.md R-11）。ライブラリの項目の一覧（GET /api/library）だけが読む。
+	// （docs/design-docs/home.md）。ライブラリの項目の一覧（GET /api/library）だけが読む。
 	Unshelved bool
 }
 
 // ListsSmartFolders は、この条件のライブラリの一番上にスマートフォルダの項目を出すかを返す。
 // 検索が無く、お気に入りのみ以外の絞り込み（棚に無い動画のみを含む）も無いときだけ出す。
-// お気に入りのみはお気に入りにしたフォルダだけを出す（specs/052-smart-folders/research.md R-7）。
+// お気に入りのみはお気に入りにしたフォルダだけを出す（docs/design-docs/catalog-organization.md）。
 // 並べ替えは絞り込みではない。
 func (q VideoQuery) ListsSmartFolders() bool {
 	return ParseSearchQuery(q.Query).Empty() && (q.Watch == "" || q.Watch == WatchAll) && !q.PlayableOnly &&
@@ -182,7 +182,6 @@ var (
 
 // CheckAddedAndLength は追加日と長さの絞り込みの値を確かめる。addedWithin・minSec・maxSec は
 // 指定が無ければ nil である。ライブラリの一覧とスマートフォルダの条件が同じ範囲を使う
-// （specs/052-smart-folders/contracts/screen-api.md）。
 func CheckAddedAndLength(addedWithin, minSec, maxSec *int) error {
 	if addedWithin != nil && (*addedWithin < 1 || *addedWithin > MaxAddedWithinDays) {
 		return ErrInvalidAddedWithin
@@ -208,7 +207,7 @@ type VideoPage struct {
 	// Limit は実際に使われた件数。指定の丸めが効いたかを呼び出し側が見られる。
 	Limit int
 	// MissingTagIDs は VideoQuery.TagIDs のうちいまタグとして存在しなかった id。
-	// 1つも無ければ空（specs/014-video-tags/contracts/tags-api.md §5）。
+	// 1つも無ければ空。
 	MissingTagIDs []int64
 }
 
@@ -238,19 +237,19 @@ type Scan struct {
 	// Error は走査そのものが失敗した理由。個別のファイルの失敗は含まない。
 	Error string
 	// ErrorCode は State が failed のときの理由のコード。アップグレード前の行では空である
-	// （specs/023-english-i18n/data-model.md §2）。
+	//
 	ErrorCode ScanErrorCode
 	// ErrorPath は理由が結び付く場所（メディアフォルダ、または読めなかった場所）の
 	// 絶対パス。特定の場所に結び付かなければ空である。
 	ErrorPath string
 	// Videos はこの走査の対象の動画の本数、SettledVideos はそのうち残りの仕事が
-	// 無い本数である（specs/024-import-progress/data-model.md §2）。
+	// 無い本数である。
 	Videos        int
 	SettledVideos int
 	// SettledAt は対象の動画がすべて済んだ時刻。済んでいなければゼロ値である。
 	SettledAt time.Time
 	// IssuesRevision は問題の記録（scan_issues）を変えるたびに増える番号である
-	// （specs/024-import-progress/data-model.md §1・§3）。
+	//
 	IssuesRevision int64
 	// Import は利用者に見せる取り込みの状態で、internal/app が組み立てる。
 	// 保存側は埋めない。

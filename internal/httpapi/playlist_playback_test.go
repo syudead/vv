@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// GET /api/playlists/{id}/playback（specs/044-playlists/contracts/screen-api.md）を、本物の認証・
+// GET /api/playlists/{id}/playbackを、本物の認証・
 // 保存層・経路をつないで確かめる。順序の規則そのものは domain と store の試験が持つ。
 
 type playlistPlaybackFixture struct {
@@ -135,7 +135,7 @@ func TestPlaylistPlaybackNotFound(t *testing.T) {
 	}
 }
 
-// ゲストは /api/* の既定で 401（research.md R-8）。
+// ゲストは /api/* の既定で 401。
 func TestPlaylistPlaybackIsOwnerOnly(t *testing.T) {
 	f := newPlaylistPlaybackFixture(t)
 	if rec := f.env.get(f.target(f.id, f.itemA, fmt.Sprint(f.ids["solo"]))); rec.Code != http.StatusUnauthorized {
@@ -144,7 +144,7 @@ func TestPlaylistPlaybackIsOwnerOnly(t *testing.T) {
 }
 
 // 項目がスマートフォルダの項目の step だけが smartFolderId を持ち、フォルダの中の next も持つ。
-// 動画とグループの項目への step は持たない（specs/052-smart-folders/contracts/screen-api.md）。
+// 動画とグループの項目への step は持たない。
 func TestPlaylistPlaybackNamesTheSmartFolderOfAStep(t *testing.T) {
 	f := newLibraryFixture(t)
 	ctx := context.Background()

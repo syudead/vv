@@ -13,7 +13,6 @@ import (
 )
 
 // ClassName はウィンドウクラス名である。二重起動の検出に使う
-// （specs/037-windows-app/contracts/windows-app.md §4）。
 const ClassName = "VVMDMWindow"
 
 // 初期のウィンドウの大きさ（96 DPI での画素数）。画面より大きければ収める。
@@ -32,14 +31,14 @@ type WindowOptions struct {
 	// DataPath は WebView2 の利用者データの置き場。
 	DataPath string
 	// ShouldConfirmClose は利用者がウィンドウを閉じようとしたときに UI のスレッドで
-	// 呼び、真なら閉じる前の確認を出す（research.md R-7）。nil なら確認しない。
+	// 呼び、真なら閉じる前の確認を出す。nil なら確認しない。
 	ShouldConfirmClose func() bool
 	// OnClose は利用者がウィンドウを閉じると決めたときに UI のスレッドで呼ぶ。
 	// ウィンドウは先に隠れる。ウィンドウを壊すのは Destroy で、呼び出し元が停止を
 	// 終えてから呼ぶ。
 	OnClose func()
 	// OnEndSession はサインアウト・シャットダウンが確定したとき（WM_ENDSESSION）に
-	// UI のスレッドで呼ぶ。停止を終えるまで戻らない（research.md R-8）。
+	// UI のスレッドで呼ぶ。停止を終えるまで戻らない。
 	OnEndSession func()
 	// OnFatal は WebView2 が続けられない誤りを起こしたときに UI のスレッドで呼ぶ。
 	// 戻るとプロセスは終わる。
@@ -47,7 +46,7 @@ type WindowOptions struct {
 	Logger  *slog.Logger
 }
 
-// Window は WebView2 を埋め込んだ自前の Win32 ウィンドウである（research.md R-2）。
+// Window は WebView2 を埋め込んだ自前の Win32 ウィンドウである。
 // NewWindow・Run・Post 以外の操作は UI のスレッドで行う。
 type Window struct {
 	opts     WindowOptions
@@ -233,7 +232,7 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 		w.requestClose()
 		return 0
 	case wmQueryEndSession:
-		// 終了は拒まず、停止を待つ理由を Windows に示す（research.md R-8）。
+		// 終了は拒まず、停止を待つ理由を Windows に示す。
 		w.setShutdownBlockReason(true)
 		return 1
 	case wmEndSession:
@@ -263,7 +262,7 @@ func wndProc(hwnd, message, wparam, lparam uintptr) uintptr {
 
 // requestClose は閉じる操作を扱う。取り込みの途中なら確認を出し、「続ける」なら
 // 何もしない。閉じるなら、反応がすぐ見えるよう先にウィンドウを隠し、停止を終えた
-// 呼び出し元が Destroy で壊す（research.md R-7）。
+// 呼び出し元が Destroy で壊す。
 func (w *Window) requestClose() {
 	if w.closing || w.confirming {
 		return
@@ -312,7 +311,7 @@ func (w *Window) focusWebView() {
 }
 
 // fullScreenChanged は動画の全画面をウィンドウの全画面（枠なし・画面いっぱい）に
-// 切り替え、抜けたら元の位置と大きさに戻す（contracts/windows-app.md §4）。
+// 切り替え、抜けたら元の位置と大きさに戻す。
 func (w *Window) fullScreenChanged(sender *edge.ICoreWebView2, _ *edge.ICoreWebView2ContainsFullScreenElementChangedEventArgs) {
 	on, err := sender.GetContainsFullScreenElement()
 	if err != nil {

@@ -17,8 +17,7 @@ export function kindNameOf(
 
 /**
  * isGoneKind は、URL の `kind` の種類が、読めた種類の一覧に無いかである。一覧を画面を
- * 開いてから読めていない（`fresh` が false）間と読み込みの失敗の間は、外さない
- * （specs/051-tag-kinds/ui-design.md「Kind filter」）。
+ * 開いてから読めていない（`fresh` が false）間と読み込みの失敗の間は、外さない。
  */
 export function isGoneKind(
   kind: TagKindFilter,

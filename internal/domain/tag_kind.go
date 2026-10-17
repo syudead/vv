@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// タグの種類（specs/051-tag-kinds/data-model.md、research.md R-1・R-6）。種類は名前だけを持ち
+// タグの種類。種類は名前だけを持ち
 // （R-7）、タグは種類を 0 か 1 つ持つ。種類の名前は NormalizeTagName で整え、タグの名前とは
 // 別の名前空間で一意にする。
 
@@ -20,7 +20,6 @@ var ErrTagKindNotFound = errors.New("tag kind not found")
 var ErrTagKindNameTaken = errors.New("tag kind name is already in use")
 
 // TagKindRef はタグの種類の id と名前である。Tag・TagRef・VideoTag の Kind に載る
-// （research.md R-4）。
 type TagKindRef struct {
 	ID   int64
 	Name string

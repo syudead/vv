@@ -74,7 +74,7 @@ tasks:
       - go run ./scripts/build -windows-app
 
   docs:
-    desc: Serve the documentation site (docs/ and specs/) locally with live reload.
+    desc: Serve the documentation site (docs/ and ARCHITECTURE.md) locally with live reload.
     cmds:
       - npm --prefix docs-site run dev
 
@@ -82,17 +82,6 @@ tasks:
     desc: Build the documentation site into docs-site/.vitepress/dist, as CI does.
     cmds:
       - npm --prefix docs-site run build
-
-  docs-test:
-    desc: Test the translation tools in docs-site/translate and check translations/ja, as CI does.
-    cmds:
-      - npm --prefix docs-site test
-      - node docs-site/translate/ja.mjs check
-
-  docs-ja-status:
-    desc: List published documents whose Japanese translation is stale or missing.
-    cmds:
-      - node docs-site/translate/ja.mjs status
 
   generate:
     desc: Generate Go and TypeScript types from OpenAPI.
@@ -167,7 +156,7 @@ tasks:
   lint-go-windows-desktop:
     desc: Run golangci-lint on the Windows desktop build (VVMDM.exe).
     # Windows 専用と desktop タグのファイルは、Linux のタグなしの lint では読まれない
-    # （specs/037-windows-app/plan.md の Constitution Check）。
+    #
     cmds:
       - task: golangci
         vars:
@@ -247,7 +236,7 @@ tasks:
       - >-
         node tools/node_modules/jscpd/bin/jscpd .
         --format go,typescript,tsx,javascript
-        --ignore "**/node_modules/**,**/dist/**,**/gen/**,**/extgen/**,translations/**,docs-site/**,worktrees/**,.claude/**,web/registry/**,media/**,**/testdata/**,**/*.d.ts,reports/**,tools/**"
+        --ignore "**/node_modules/**,**/dist/**,**/gen/**,**/extgen/**,docs-site/**,worktrees/**,.claude/**,web/registry/**,media/**,**/testdata/**,**/*.d.ts,reports/**,tools/**"
         --gitignore --reporters json --output reports/quality/duplication --silent
 
   # 変異テスト（mutation testing）。テストが壊れたコードを見つけられるかを測る。

@@ -374,7 +374,7 @@ func TestListFolderVideosFilters(t *testing.T) {
 }
 
 // ページを送る途中で別の動画の所在を足しても、1ページ目の時点で条件に合い、
-// 並べ替えの値が変わらない動画に重複と取りこぼしが無い（contracts/list-api.md §5）。
+// 並べ替えの値が変わらない動画に重複と取りこぼしが無い。
 func TestListingPagingSurvivesAddedLocations(t *testing.T) {
 	for _, sort := range []domain.VideoSort{domain.SortAddedDesc, domain.SortTitleAsc} {
 		for _, query := range []string{"", "旅"} {
@@ -442,7 +442,6 @@ func countOf(values []string, value string) int {
 // 検索式は所在1行に対する条件句になる。3文字以上は MATCH、1〜2文字は instr で、
 // 除外は not、OR は括弧で包んだ or、項どうしは and で結ぶ。語1つごとの条件は、
 // 所在の条件とタグ名・作品情報への instr の OR に広がる
-// （specs/014-video-tags/data-model.md §7）。
 func TestSearchExprCondition(t *testing.T) {
 	clause, args := searchExprCondition(domain.ParseSearchQuery(`京都 -2023 夏休み OR 花 -"a b" ab"c`), "l", domain.AudienceOwner)
 
@@ -458,9 +457,8 @@ func TestSearchExprCondition(t *testing.T) {
 		t.Errorf("clause =\n%s\nwant\n%s", clause, want)
 	}
 	// 所在の条件の引数の直後に、同じ語（FoldForMatch 済みでフレーズの引用は無い）が 9 つ続く。
-	// 鍵の集合（タグ名の手で付けた分、作品情報の品番・人物・団体、047 の data-model.md「Search」）を
-	// 集まりに属さない動画と集まりの動画のために 2 回と、タグ名のフォルダ名の分（017 の
-	// data-model.md §4）である（ownerFactsMatchCondition）。
+	// 鍵の集合（タグ名の手で付けた分、作品情報の品番・人物・団体）を
+	// 集まりに属さない動画と集まりの動画のために 2 回と、タグ名のフォルダ名の分（017 の）である（ownerFactsMatchCondition）。
 	nine := func(text string) []any {
 		return []any{text, text, text, text, text, text, text, text, text}
 	}
@@ -499,7 +497,7 @@ func TestListVideosWithManyTerms(t *testing.T) {
 	}
 }
 
-// 除外語は所在ごとに評価する（contracts/list-api.md §1-8・§1-9）。除外語を含まない
+// 除外語は所在ごとに評価する。除外語を含まない
 // 所在が1つでもあれば動画は当たり、項目の題名と所在はその所在から取る。
 func TestListVideosExclusionIsEvaluatedPerLocation(t *testing.T) {
 	db := migratedDB(t)
@@ -547,7 +545,7 @@ func TestWatchFilterIgnoresProgressOfEmptyContentKey(t *testing.T) {
 
 // タグ A と B で絞ると両方を持つ動画だけが返り、Total もその数になり、検索語・
 // 視聴状態と組み合わさる。無い tag_id は無視され、どれを無視したかが返る
-// （完了の条件、data-model.md §6）。
+// （完了の条件）。
 func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -621,7 +619,7 @@ func TestListVideosFiltersByTagIDsWithAndAndCombinesWithOtherFilters(t *testing.
 }
 
 // タグで絞り込んだ一覧は、ページングを繋ぐと条件に合う動画を取りこぼしも重複も
-// なく返す（specs/014-video-tags の完了の条件、Structural Decisions 4）。
+// なく返す。
 func TestListVideosPagesWithTagFilterCoverEveryMatch(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -743,8 +741,7 @@ func TestTagAttachmentSurvivesLocationMoveAndRescan(t *testing.T) {
 // 題名に「旅行」を含まない動画に「旅行」タグを付けると、検索語 旅行 で
 // ライブラリ・フォルダ直下・フォルダ配下のどの範囲でも返り、-旅行 では返らない。
 // シノニムの名前でも返り、改名の後は新しい名前で返って古い名前では返らない。
-// ﾘｮｺｳ と りょこう のように照合形が同じ語は同じ結果になる（完了の条件、
-// data-model.md §7）。
+// ﾘｮｺｳ と りょこう のように照合形が同じ語は同じ結果になる（完了の条件）。
 func TestSearchMatchesTagNamesAcrossScopesAndFoldsSynonymsAndRenames(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

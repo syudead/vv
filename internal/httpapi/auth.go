@@ -17,7 +17,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 認証の HTTP 境界（specs/016-single-account-auth/contracts/auth-api.md）。
+// 認証の HTTP 境界。
 
 const (
 	// sessionCookieHTTPS は HTTPS の要求で使うセッション Cookie の名前である。
@@ -32,7 +32,7 @@ const (
 	defaultSessionRecheck = 30 * time.Second
 )
 
-// AuthState は見る人の状態である（contracts/auth-api.md §4）。
+// AuthState は見る人の状態である。
 type AuthState string
 
 // 見る人の状態。
@@ -76,12 +76,11 @@ type Authenticator interface {
 	State(ctx context.Context, token string) (AuthState, error)
 }
 
-// access は要求の扱いである（contracts/auth-api.md §1）。ゼロ値は「所有者だけ」で、
+// access は要求の扱いである。ゼロ値は「所有者だけ」で、
 // 分類に挙がらない要求はここに倒れる。
 //
 // accessBearer は外部連携 API（/api/v1/…）と MCP（/mcp）の扱いで、Cookie を読まず
-// Authorization: Bearer の API トークンだけで所有者を決める（specs/026-external-api/
-// research.md R-3）。それ以外の扱いでは Authorization を読まない。
+// Authorization: Bearer の API トークンだけで所有者を決める。それ以外の扱いでは Authorization を読まない。
 type access int
 
 const (
@@ -246,7 +245,7 @@ func audienceFrom(ctx context.Context) domain.Audience {
 }
 
 // sessionCookieName は認証で読む Cookie の名前である。HTTPS では __Host-vv_session
-// だけを、HTTP では vv_session だけを読む（contracts/auth-api.md §7）。HTTPS かどうかは
+// だけを、HTTP では vv_session だけを読む。HTTPS かどうかは
 // clientOrigin で決める。
 func sessionCookieName(https bool) string {
 	if https {
@@ -267,8 +266,7 @@ func (s *server) sessionToken(r *http.Request) string {
 // authBoundary は要求を3つの扱いに振り分け、見る人を決めて context に載せる
 // （Structural Decisions 1）。/api/* の応答には処理した見る人を X-VV-Audience で付ける。
 //
-// 「ゲストも」の要求は、有効なセッションが無ければゲストとして処理する
-// （contracts/guest-api.md）。アカウントが未設定の間は未認証の応答を返す。
+// 「ゲストも」の要求は、有効なセッションが無ければゲストとして処理する。アカウントが未設定の間は未認証の応答を返す。
 func (s *server) authBoundary(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		class, api := classifyRequest(r)
@@ -321,7 +319,7 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 				next.ServeHTTP(w, r.WithContext(withAudience(r.Context(), domain.AudienceGuest)))
 				return
 			}
-			// 所有者ともゲストともみなさない（contracts/auth-api.md §5）。
+			// 所有者ともゲストともみなさない。
 			s.internalError(w, "Could not check the sign-in status.", err)
 			return
 		}
@@ -350,7 +348,7 @@ func (s *server) authBoundary(next http.Handler) http.Handler {
 		case valid || class == accessPublic:
 		case class == accessGuest:
 			// 「ゲストも」の要求はゲストとして処理する。ただしアカウントが未設定の間は
-			// 公開フラグも効かせず、未認証にする（contracts/auth-api.md §1、親 Issue 要件 2）。
+			// 公開フラグも効かせず、未認証にする。
 			configured, err := s.accountConfigured(r.Context())
 			if err != nil {
 				s.internalError(w, "Could not check the sign-in status.", err)
@@ -379,8 +377,7 @@ func (s *server) accountConfigured(ctx context.Context) (bool, error) {
 	return state != AuthStateSetupRequired, nil
 }
 
-// bearerBoundary は Bearer の扱いの要求を、API トークンで所有者と確かめてから通す
-// （specs/026-external-api/research.md R-3・R-9）。Cookie は読まない。トークンが無い・
+// bearerBoundary は Bearer の扱いの要求を、API トークンで所有者と確かめてから通す。Cookie は読まない。トークンが無い・
 // 形式が違う・無効・失効済みなら、原因を区別せずに 401 と WWW-Authenticate: Bearer を返す。
 //
 // 要求はトークンの id ごとに台帳へ載せ、画面での失効（DeleteApiToken）で打ち切る。
@@ -433,7 +430,7 @@ func (s *server) bearerBoundary(
 		return
 	}
 
-	// 最終使用日時は 60 秒に 1 回だけ書く。書けなくても要求は続ける（research.md R-9）。
+	// 最終使用日時は 60 秒に 1 回だけ書く。書けなくても要求は続ける。
 	if err := s.apiTokens.RecordAPITokenUse(ctx, token.ID); err != nil {
 		s.logger.Warn("could not record the API token use", slog.Any("error", err))
 	}
@@ -463,7 +460,7 @@ func apiTokenLedgerKey(id int64) string {
 	return "api-token:" + strconv.FormatInt(id, 10)
 }
 
-// bearerUnauthenticated は Bearer の扱いの未認証の応答である（contracts/external-api.md §1）。
+// bearerUnauthenticated は Bearer の扱いの未認証の応答である。
 func (s *server) bearerUnauthenticated(w http.ResponseWriter) {
 	w.Header().Set("WWW-Authenticate", "Bearer")
 	s.writeError(w, http.StatusUnauthorized, gen.ErrorCodeUnauthenticated, "A valid API token is required.")
@@ -474,7 +471,7 @@ func (s *server) unauthenticated(w http.ResponseWriter) {
 	s.writeError(w, http.StatusUnauthorized, gen.ErrorCodeUnauthenticated, "Sign-in required.")
 }
 
-// SetupAccount は初回設定である（contracts/auth-api.md §2）。
+// SetupAccount は初回設定である。
 // invalidUsernameMessage はユーザー名の規則を外れたときの英語の説明である。
 var invalidUsernameMessage = "Usernames must be 1 to " + strconv.Itoa(domain.MaxUsernameLength) +
 	" characters, with no control characters or leading or trailing spaces."
@@ -499,7 +496,7 @@ func (s *server) SetupAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	case errors.Is(err, domain.ErrInvalidUsername):
 		// 長さ以外（制御文字・前後の空白）の違反には対応する reason が無いので、
-		// username_length を付けない（contracts/error-api.md §1）。
+		// username_length を付けない。
 		s.invalidRequest(w, invalidUsernameMessage)
 		return
 	case errors.Is(err, domain.ErrInvalidPassword):
@@ -516,7 +513,7 @@ func (s *server) SetupAccount(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.AuthRedirect{RedirectTo: domain.DefaultRedirectTarget}, s.logger)
 }
 
-// Login はログインである（contracts/auth-api.md §3）。
+// Login はログインである。
 func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
 		s.internalError(w, "Cannot sign in.", errors.New("authentication is not configured"))
@@ -568,7 +565,7 @@ func (s *server) Login(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.AuthRedirect{RedirectTo: domain.SafeRedirectTarget(next)}, s.logger)
 }
 
-// GetAuthSession は見る人の状態を返す（contracts/auth-api.md §4）。
+// GetAuthSession は見る人の状態を返す。
 func (s *server) GetAuthSession(w http.ResponseWriter, r *http.Request, params gen.GetAuthSessionParams) {
 	if s.auth == nil {
 		s.internalError(w, "Cannot check the sign-in status.", errors.New("authentication is not configured"))
@@ -595,7 +592,7 @@ func (s *server) GetAuthSession(w http.ResponseWriter, r *http.Request, params g
 	writeJSON(w, http.StatusOK, body, s.logger)
 }
 
-// Logout はログアウトである（contracts/auth-api.md §4）。認証の読み分けと違い、届いた
+// Logout はログアウトである。認証の読み分けと違い、届いた
 // 両方の名前の Cookie を見て、それぞれのセッションを消し、処理中の要求を打ち切る。
 func (s *server) Logout(w http.ResponseWriter, r *http.Request) {
 	if s.auth == nil {
@@ -632,7 +629,7 @@ func (s *server) readAuthBody(w http.ResponseWriter, r *http.Request, target any
 	return s.readJSONBody(w, r, target)
 }
 
-// setSessionCookie はセッションの Cookie を付ける（contracts/auth-api.md §7）。
+// setSessionCookie はセッションの Cookie を付ける。
 func (s *server) setSessionCookie(w http.ResponseWriter, r *http.Request, session IssuedSession) {
 	https := s.clientOrigin(r).https
 	maxAge := int(session.ExpiresAt.Sub(s.now()) / time.Second)
@@ -650,7 +647,7 @@ func (s *server) setSessionCookie(w http.ResponseWriter, r *http.Request, sessio
 	})
 }
 
-// logAuthEvent は認証の出来事を1行記録する（contracts/auth-api.md §9）。属性は出来事の
+// logAuthEvent は認証の出来事を1行記録する。属性は出来事の
 // 種類と送信元だけで、送られたユーザー名・パスワード・セッション ID・Cookie は出さない。
 func (s *server) logAuthEvent(r *http.Request, event string) {
 	source := "unknown"

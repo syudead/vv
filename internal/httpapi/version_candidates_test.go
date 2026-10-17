@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 候補の一覧と「違う動画」の記録（specs/030-video-versions/contracts/screen-api.md §5）は、
+// 候補の一覧と「違う動画」の記録は、
 // 本物の認証・保存層で確かめる（#583）。guestFixture の a・b・c はどれも尺 60 秒で、a と b に
 // 一致する指紋、c に違う指紋を書く。
 

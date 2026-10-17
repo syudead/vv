@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-// ホームの読み出し（specs/057-home/contracts/screen-api.md、research.md R-12、R-13）。ホームは棚の
+// ホームの読み出し（docs/design-docs/home.md、research.md R-12、R-13）。ホームは棚の
 // 要約を並べ、画面に入った棚の最初の項目を別に読む。棚はフォルダの棚と、そのあとに並ぶ決まった棚
 // （HomeShelfKind の folder 以外）である。
 
@@ -127,7 +127,7 @@ type HomeShelfItems struct {
 	// Items は動画とグループの項目だけで、フォルダの棚の子フォルダは入れない（research.md R-14）。
 	Items []LibraryItem
 	// Total は棚の項目（動画とグループ）の数を、HomeShelfItemLimit + 1 を上限に数えたものである。上限なら
-	// 1 ページより多い（specs/057-home/research.md R-12）。
+	// 1 ページより多い（docs/design-docs/home.md）。
 	Total int
 }
 

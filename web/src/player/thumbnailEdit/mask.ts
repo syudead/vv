@@ -1,5 +1,4 @@
-// 塗りの層の筆跡と、送るマスクの組み立て（specs/045-comfyui-thumbnails/ui-design.md
-// 「Compose」、contracts/workflow.md「Workflows」）。座標と太さはコマの画素で持つので、
+// 塗りの層の筆跡と、送るマスクの組み立て。座標と太さはコマの画素で持つので、
 // 窓の大きさが変わっても筆跡はコマの同じ場所に残る。
 
 /** Stroke は 1 回の筆跡である。`erase` は塗りを消す。 */

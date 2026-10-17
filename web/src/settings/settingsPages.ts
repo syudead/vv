@@ -1,7 +1,7 @@
 import type { t } from "../i18n";
 
 /**
- * 設定のページの対応表である（specs/058-settings-pages/research.md R-1、R-2）。ページは
+ * 設定のページの対応表である。ページは
  * `/settings/<slug>` のルートで、一覧はこの順に並ぶ。スラッグはカタログの
  * `settings.pages` のキー（一覧の項目、ページの題、ブラウザの題の 1 語）でもある。
  */
@@ -39,7 +39,7 @@ export const settingsPages: readonly SettingsPageEntry[] = [
   },
   {
     slug: "library",
-    // 「Home」は「Media folders」の後に置く（specs/057-home/ui-design.md「Smart folder page and
+    // 「Home」は「Media folders」の後に置く（docs/design-docs/home.md「Smart folder page and
     // Settings」）。
     sections: ["media-folders", "auto-import-switch", "version-judging", "home"],
     anchors: [],

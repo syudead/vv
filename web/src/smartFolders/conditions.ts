@@ -1,8 +1,7 @@
 import type { SmartRule, SmartRuleRef } from "../api/smartFolders";
 import { t } from "../i18n";
 
-// スマートフォルダのページの条件の行が、条件から決めるチップ（specs/052-smart-folders/
-// ui-design.md「Conditions lines」）。画面の部品から外し、ロジックのテストで確かめる。
+// スマートフォルダのページの条件の行が、条件から決めるチップ。画面の部品から外し、ロジックのテストで確かめる。
 
 /** RefKind は名前を引いて見せる条件の種類である（欠けた参照の `kind` と同じ）。 */
 export type RefKind = SmartRuleRef["kind"];

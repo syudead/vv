@@ -154,8 +154,7 @@ export function FoldButton({
 
 /**
  * ListItem はいくつもの値を `, ` でつないだ項目である。limit（既定 3）より多ければ先頭の
- * limit 件と「+{n} more」を出し、押すとその項目のすべてを出してフォーカスを次の 1 つへ移す
- * （ui-design.md「Work details row」の Long lists）。開いたことは覚えない。
+ * limit 件と「+{n} more」を出し、押すとその項目のすべてを出してフォーカスを次の 1 つへ移す。開いたことは覚えない。
  */
 function ListItem({
   label,
@@ -199,11 +198,10 @@ function ListItem({
 }
 
 /**
- * Description は作品の説明で、3 行を超えるときは畳んで「Show more」を添える
- * （ui-design.md「Folded description」）。溢れるかは要素で測り、窓の大きさが変わったら
+ * Description は作品の説明で、3 行を超えるときは畳んで「Show more」を添える。溢れるかは要素で測り、窓の大きさが変わったら
  * 測り直す。開いたことは覚えない（別の動画では呼び手が作り直す）。取得の比較の段も
  * 同じ畳み方で使い、今の側は `muted` で従の色にする。動画の追加の情報の Comment・Description は
- * 先頭のラベル（`label`）を付けて `muted` で使う（specs/056-media-info/ui-design.md）。
+ * 先頭のラベル（`label`）を付けて `muted` で使う。
  */
 export function Description({
   text,
@@ -256,8 +254,7 @@ export function Description({
 }
 
 /**
- * WorkInfo は情報欄の作品情報の行である（specs/047-video-work-info/ui-design.md
- * 「Video page: work details row」）。ファイルの行と同じ形の折り返す並びに、値のある項目だけを
+ * WorkInfo は情報欄の作品情報の行である。ファイルの行と同じ形の折り返す並びに、値のある項目だけを
  * ラベル（薄い色）と値の組で出し、説明はその下に 3 行まで畳んで出す。項目が 1 つも無ければ
  * 何も描かない（情報欄は今までどおり）。ゲストの応答には `workInfo` が無いので出ない。
  * 日付は保存した文字列のまま出し、日付の書式は通さない。

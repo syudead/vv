@@ -326,9 +326,7 @@ describe("VideoTags", () => {
     expect(screen.getByTitle("Anime")).toBeDefined();
   });
 
-  // 017 の ui-design.md「Folder-derived tag chip」・受け入れ条件 6・9。
-  // 受け入れ条件 4・5（specs/031-tentative-tags/ui-design.md「Tentative mark」
-  // 「Video page」）: 仮のタグは名前の部分（Link）の中で名前の後ろに破線の丸を
+  // 受け入れ条件 4・5: 仮のタグは名前の部分（Link）の中で名前の後ろに破線の丸を
   // 置く。縦線と × は今のまま。
   describe("仮のタグ", () => {
     function mark(el: Element): Element | null {
@@ -834,7 +832,7 @@ describe("VideoTags", () => {
     expect(await screen.findByTitle("旅行")).toBeDefined();
   });
 
-  // (2): 上矢印は先頭の行で止まる（ui-design.md「Combobox」端で止まる）。
+  // (2): 上矢印は先頭の行で止まる。
   it("先頭の候補で上矢印を押しても先頭のまま", async () => {
     const user = userEvent.setup();
     install();
@@ -1005,7 +1003,7 @@ describe("VideoTags", () => {
   });
 
   // B1: 一覧が開いていれば1回目のEscでそれだけを閉じ、すでに閉じていれば
-  // 2回目のEscで入力を空にする（ui-design.md「Add input」）。
+  // 2回目のEscで入力を空にする。
   it("一覧を閉じてからのEscで入力を空にする", async () => {
     const user = userEvent.setup();
     install();

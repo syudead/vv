@@ -13,7 +13,7 @@ import {
 
 afterEach(() => cleanup());
 
-// 順に並ぶ項目の行の共通の値（specs/052-smart-folders/ui-design.md「Playlist screen row」）。
+// 順に並ぶ項目の行の共通の値。
 // 画面の行はプレイリストとグループのページのテストが確かめ、ここでは項目の種類ごとの値を見る。
 
 const folder: OrderedItem = {
@@ -104,7 +104,7 @@ function renderCell(item: OrderedItem) {
 }
 
 // 順に並ぶ行（プレイリスト、グループのリスト表示）のバージョンの印
-// （specs/054-auto-dup/ui-design.md「Versions mark」）。
+//
 describe("ItemThumbnailCell のバージョンの印", () => {
   it("2 本以上の動画は長さの面の先頭に印を出す", () => {
     const { container } = renderCell({

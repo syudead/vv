@@ -14,7 +14,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// ホームの経路（specs/057-home/contracts/screen-api.md）を、本物の認証・保存層・経路をつないで
+// ホームの経路（docs/design-docs/home.md）を、本物の認証・保存層・経路をつないで
 // 確かめる。中身は library_test.go の libraryFixture で、公開は ep1・ep2・p1・solo である。
 
 // homeFixture は libraryFixture に、所有者が並べた棚を持たせたものである。

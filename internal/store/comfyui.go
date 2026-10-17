@@ -7,7 +7,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ComfyUI の接続先の設定のキーである（specs/045-comfyui-thumbnails/data-model.md の Settings）。
+// ComfyUI の接続先の設定のキーである。
 // 空の値は保存されていないものとして読む。
 const (
 	comfyUIProviderKey = "comfyui.provider"

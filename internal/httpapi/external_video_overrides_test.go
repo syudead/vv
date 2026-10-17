@@ -15,7 +15,7 @@ import (
 )
 
 // 外部連携 API の表示名とサムネイルの位置の一括操作
-// （specs/029-video-overrides/contracts/external-api.md §0〜§2）を、本物の認証・保存層と
+// を、本物の認証・保存層と
 // Bearer の境界で確かめる。画像の生成だけを fakeThumbnailPicker が代わりにする。
 
 type externalOverridesFixture struct {

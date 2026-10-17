@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// マージ（specs/050-drag-organize/data-model.md「Operations」の Merge、research.md R-5）の保存層の
+// マージの保存層の
 // テスト。groupRef と videoRef は organize_move_test.go のものを使う。
 
 // merge は items を into へマージし、取り消しの像を返す。
@@ -277,7 +277,7 @@ func TestOrganizeMergeUndoConflicts(t *testing.T) {
 }
 
 // マージの後で、ドラッグしたグループの祖先ではない Y を改名すると、取り消しは ErrUndoConflict で
-// 何も変えない（data-model.md「Undo image」: Merge は Move と同じく Y の groups の行を持つ）。
+// 何も変えない。
 func TestOrganizeMergeUndoConflictsOnTargetRename(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

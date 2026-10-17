@@ -6,13 +6,12 @@ import type {
 import { t, type UiText } from "../i18n";
 
 // 設定画面の「Work-info plugins」節が行とダイアログに出す値の決まりである
-// （specs/049-work-info-plugins/ui-design.md「Plugin row」「Settings dialog」、既定値と選択肢は
-// specs/056-plugin-tooling/ui-design.md「Settings dialog」）。
+//
 
 /** MAX_PLUGIN_BYTES は送る前に断るファイルの大きさの上限（16 MiB）である。 */
 export const MAX_PLUGIN_BYTES = 16 * 1024 * 1024;
 
-/** MAX_SETTING_LENGTH は設定の値 1 つの上限である。サーバーと同じく符号位置で数える（screen-api.md）。 */
+/** MAX_SETTING_LENGTH は設定の値 1 つの上限である。サーバーと同じく符号位置で数える。 */
 export const MAX_SETTING_LENGTH = 2000;
 
 /** pluginName は行と文言に出す名前である。マニフェストを読めなかったプラグインはファイル名。 */
@@ -46,8 +45,7 @@ export function settingsSummary(plugin: Pick<WorkInfoPlugin, "settings">): UiTex
 
 /**
  * missingRequired は実効値の無い `required` の設定のラベルを宣言の順に返す。選択肢の外の保存値は
- * 使われないので値の無いものと数え、既定値のある設定は実行を止めないので挙げない
- * （specs/056-plugin-tooling/research.md R-3）。
+ * 使われないので値の無いものと数え、既定値のある設定は実行を止めないので挙げない。
  */
 export function missingRequired(plugin: Pick<WorkInfoPlugin, "settings">): string[] {
   return plugin.settings
@@ -128,7 +126,7 @@ export function unixDate(seconds: number): Date {
 /**
  * runFailureText は直近の実行の失敗の理由である。実行の失敗のコードごとに 049 の Error reasons の
  * 文を使う。実行の行は接続先の `{host}` を残さないので、`blocked_address` と `network_error` は
- * 接続先の無い形にする（specs/056-plugin-tooling/ui-design.md「Last run dialog text」）。
+ * 接続先の無い形にする。
  */
 export function runFailureText(failure: WorkInfoPluginRunFailure): UiText {
   const { code, reason } = t.errors;

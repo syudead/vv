@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { readHome, readHomeShelves } from "./home";
 
-// ホームの画面 API のクライアント（specs/057-home/contracts/screen-api.md）。
+// ホームの画面 API のクライアント（docs/design-docs/home.md）。
 
 function json(body: unknown): Response {
   return new Response(JSON.stringify(body), {

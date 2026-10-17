@@ -83,7 +83,7 @@ func (s *server) GetRelatedVideos(w http.ResponseWriter, r *http.Request, id gen
 }
 
 // ListVideoGroupMembers は動画の文脈のグループの動画を、再生順の範囲で返す
-// （GET /api/videos/{id}/group-members、specs/048-groups/research.md R-9）。関連動画の group の
+// （GET /api/videos/{id}/group-members、docs/design-docs/catalog-organization.md）。関連動画の group の
 // 窓の外を、画面がスクロールに合わせて読む。
 func (s *server) ListVideoGroupMembers(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.ListVideoGroupMembersParams) {
 	window := domain.GroupWindow{Limit: domain.GroupMemberWindow}

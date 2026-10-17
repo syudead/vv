@@ -10,7 +10,7 @@ import (
 )
 
 // HomeOrganizerStore は整理役の待ちの実行・最後の実行・案の元と、案の適用の保存先である。
-// internal/store の *HomeStore が満たす（specs/057-home/data-model.md「Settings」、research.md R-8）。
+// internal/store の *HomeStore が満たす（docs/design-docs/home.md「Settings」、research.md R-8）。
 type HomeOrganizerStore interface {
 	// PendingOrganize は待っている実行を返す。無ければ found は偽である。
 	PendingOrganize(ctx context.Context) (run domain.HomeOrganizeRun, found bool, err error)
@@ -31,7 +31,7 @@ type AutoTagCounter interface {
 	Counts(ctx context.Context) (domain.AutoTagCounts, error)
 }
 
-// 整理役の既定の時間（specs/057-home/research.md R-9）。
+// 整理役の既定の時間（docs/design-docs/home.md）。
 const (
 	// homeQueueSettle は走査が終わったあと、job と自動タグ付けの待ち行列が空のまま続く長さで、これだけ
 	// 続いたら extend か最初の rebuild を待ちに入れる。
@@ -57,7 +57,7 @@ type HomeOrganizerOptions struct {
 	Now func() time.Time
 }
 
-// HomeOrganizer は規則の整理役でホームの棚を組み直し、足す（specs/057-home/research.md R-1、R-2、R-9、
+// HomeOrganizer は規則の整理役でホームの棚を組み直し、足す（docs/design-docs/home.md、
 // R-10）。待ちの実行は settings の home.organize.pending に 1 つだけ持ち、Run の goroutine で
 // 1 つずつ走らせる。走っているあいだの依頼は、終わったあとに走る。
 type HomeOrganizer struct {

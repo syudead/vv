@@ -14,7 +14,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// CloudBaseURL は Comfy Cloud の API の基底 URL である（research.md R-5）。
+// CloudBaseURL は Comfy Cloud の API の基底 URL である。
 const CloudBaseURL = "https://cloud.comfy.org/api"
 
 // checkTimeout は接続の確かめの上限時間である。画像は作らないので短い。
@@ -98,7 +98,7 @@ var errAPIKeyRejected = errors.New("the API key was rejected by Comfy Cloud; che
 
 // Check は保存した接続先に ComfyUI が応え、vv のワークフローに要るものが揃っているかを
 // 確かめる。自前の ComfyUI は保存した URL の GET /system_stats、Comfy Cloud は
-// GET /jobs?limit=1 に X-API-Key を付けて問い合わせる（research.md R-5）。応えたら
+// GET /jobs?limit=1 に X-API-Key を付けて問い合わせる。応えたら
 // GET /object_info を読み、ワークフローのノードの型とローダーが名指すモデルファイルが
 // あるかを確かめる（R-13）。使えなければ、何も保存されていない・つながらない・ComfyUI でない・
 // キーが拒まれたのどれかを述べた誤りか、足りないものを挙げた *domain.ComfyUIMissingError を

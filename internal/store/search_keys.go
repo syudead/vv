@@ -22,14 +22,14 @@ type queryExecer interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-// locationSearchKey は所在1件の search_key を作る（data-model.md §3）。
+// locationSearchKey は所在1件の search_key を作る。
 //
 // 相対パスは、所在を含む登録メディアフォルダより下のパスで、拡張子を含む。
 // 登録フォルダ自身のパスは入れない。どの登録フォルダにも含まれない所在は
 // 空文字列を返す。登録フォルダは互いに入れ子にならない（ensureFolderPlacementAllowed）
 // ので、含むフォルダは高々1つである。
 //
-// 表示名があれば3つ目の部分として足す（specs/029-video-overrides/data-model.md §4）。
+// 表示名があれば3つ目の部分として足す。
 // 表示名の無い所在の鍵は足す前と同じ値なので、SearchKeyVersion は上げない。
 func locationSearchKey(roots []string, path, title, displayName string) string {
 	for _, root := range roots {
@@ -103,7 +103,6 @@ type searchKeyTarget struct {
 
 // searchKeyTargetsSelect は所在と、その動画の表示名を読む選択句である。where 句は
 // 呼び出し側が足す。所在の別名は l で、表示名は内容の識別子が空でない動画だけに結ぶ
-// （specs/029-video-overrides/data-model.md §4）。
 const searchKeyTargetsSelect = `select l.id, l.path, l.title, coalesce(ov.display_name, '')
 	from video_locations l join videos v on v.id = l.video_id
 	left join video_overrides ov on ov.content_key = v.content_key and v.content_key <> ''`
@@ -169,7 +168,7 @@ func refreshSearchKeysUnder(ctx context.Context, q queryExecer, root string) err
 }
 
 // refreshSearchKeysForContentKeys は内容の識別子が keys のいずれかである動画の、すべての
-// 所在の鍵を作り直す。表示名を書き換える取引の中で呼ぶ（specs/029-video-overrides/data-model.md §4）。
+// 所在の鍵を作り直す。表示名を書き換える取引の中で呼ぶ。
 func refreshSearchKeysForContentKeys(ctx context.Context, q queryExecer, keys []string) error {
 	if len(keys) == 0 {
 		return nil
@@ -214,7 +213,7 @@ func searchKeyTargets(ctx context.Context, q queryExecer, query string, args ...
 }
 
 // RefreshSearchKeys は search_version が現在の版より小さい所在の鍵をすべて
-// 作り直し、作り直した件数を返す（data-model.md §5）。
+// 作り直し、作り直した件数を返す。
 //
 // 起動時、Migrate の直後で、中断したジョブの戻し・ジョブワーカーの起動・HTTP の
 // 受け付けより前に呼ぶ。searchKeyBatchSize 件ずつのトランザクションで書き、

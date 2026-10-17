@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// おすすめの棚の並び（specs/057-home/research.md R-13）。棚の項目と要約そのものは保存層と
+// おすすめの棚の並び（docs/design-docs/home.md）。棚の項目と要約そのものは保存層と
 // internal/httpapi の試験が確かめる。
 
 // fakeShelfStore はホームの保存層の代わりで、おすすめの鍵を落とした棚を空の項目で返し、おすすめの元を

@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画とグループのお気に入り（specs/035-favorites/data-model.md §1〜§4、research.md R-1・R-8）。
+// 動画とグループのお気に入り。
 
 // setFavorites はお気に入りを付け外しし、反映した数を返す。
 func setFavorites(t *testing.T, db *DB, change domain.FavoriteChange) domain.FavoriteApplied {
@@ -223,7 +223,7 @@ func TestSetFavoritesCountsBundleMembersByID(t *testing.T) {
 }
 
 // 時計を止めても、続けて付けた後のほうが大きい favorited_at を持つ。動画とグループは同じ列で
-// 比べるので、2 表をまたいでも後のほうが大きい（data-model.md §4）。
+// 比べるので、2 表をまたいでも後のほうが大きい。
 func TestFavoritedAtIncreasesWithFrozenClock(t *testing.T) {
 	db, ids := itemsFixture(t)
 	freezeFavoriteClock(t, fixedTime)
@@ -250,7 +250,7 @@ func TestFavoritedAtIncreasesWithFrozenClock(t *testing.T) {
 	}
 }
 
-// 付け外しは動画の更新日時（video_edits）を進めない（research.md R-8）。
+// 付け外しは動画の更新日時（video_edits）を進めない。
 func TestSetFavoritesKeepsEditedAt(t *testing.T) {
 	db, ids := versionFixture(t)
 	before := editedAt(t, db, ids["a"])
@@ -301,7 +301,7 @@ func TestFavoriteSurvivesMoveAndCompletion(t *testing.T) {
 }
 
 // 束ねると代表の値が集まりの鍵に写って全バージョンが真になり、外したバージョンは自分の鍵の
-// 値に戻る（data-model.md §1「引き継ぎと束ね」）。
+// 値に戻る。
 func TestFavoriteFollowsBundles(t *testing.T) {
 	db, ids := versionFixture(t)
 	favoriteVideos(t, db, true, ids["a"])

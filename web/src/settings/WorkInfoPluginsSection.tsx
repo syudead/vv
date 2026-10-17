@@ -189,8 +189,7 @@ function PluginList({
 
 /**
  * WorkInfoPluginsSection は設定の「Work-info plugins」節である。所有者が `.wasm` のプラグインを
- * 足し、状態を見て、承認・取り消し・削除し、設定の値を入れる
- * （specs/049-work-info-plugins/ui-design.md「Settings: Work-info plugins section」）。
+ * 足し、状態を見て、承認・取り消し・削除し、設定の値を入れる。
  * 設定画面は所有者だけが開けるので、この節も所有者にだけ出る（受け入れ条件 7）。
  *
  * 節は `/settings/plugins#work-info-plugins` の行き先で、動画ページの取得ダイアログの「Open Settings」が

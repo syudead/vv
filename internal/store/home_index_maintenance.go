@@ -1,6 +1,6 @@
 package store
 
-// ホームの読み出しが引く表の維持（specs/057-home/data-model.md「Group closure」、research.md R-12）。
+// ホームの読み出しが引く表の維持（docs/design-docs/home.md「Group closure」、research.md R-12）。
 // 書き込みの引き金が消した根の値（group_root_values）と印を付けた動画の棚への一致（home_shelved_videos）
 // を、書き込みの確定のあと（publishEvents）とマイグレーションの直後に埋め直す。グループの構造の表に印が
 // あれば（作り直しを通らない書き手）作り直す。読み出しは書かない。

@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// 二重起動の判定の手順（specs/037-windows-app/research.md R-6、contracts/windows-app.md §2）。
+// 二重起動の判定の手順。
 // OS の呼び出しは instanceOS の裏にあり、Windows の実装は instance_windows.go にある。
 // 手順だけをここに置くので、プロセスの割り込みの順をどの OS でも試験できる。
 

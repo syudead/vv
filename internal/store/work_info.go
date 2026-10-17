@@ -12,8 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画の作品情報（specs/047-video-work-info/data-model.md「Writes (WorkInfoStore)」「Reads」「Rules」、
-// research.md R-2・R-5・R-11・R-13・R-14）。作品情報は利用者データの鍵（userKeyExpr）に結ぶ 6 つの表の
+// 動画の作品情報。作品情報は利用者データの鍵（userKeyExpr）に結ぶ 6 つの表の
 // 行で持ち、1 つの物として書き換える。video_work_info の行は品番か説明があるときだけ置き、code_key は
 // 値と同じ文で書く。
 
@@ -143,7 +142,7 @@ func (s *WorkInfoStore) SetMany(ctx context.Context, changes []domain.WorkInfoCh
 }
 
 // SetDetails は全画面の編集画面の保存で、動画 videoID の表示名を displayName に、作品情報を info に
-// 1 つの取引で置き換え、両方を含む動画を返す（research.md R-14）。
+// 1 つの取引で置き換え、両方を含む動画を返す。
 //
 // 表示名を domain.NormalizeDisplayName、次に作品情報を domain.NormalizeWorkInfo で整え、どちらの誤りも
 // 何も書く前に返す（*domain.InvalidDisplayNameError、*domain.InvalidWorkInfoError）。動画を引けなければ
@@ -153,7 +152,7 @@ func (s *WorkInfoStore) SetMany(ctx context.Context, changes []domain.WorkInfoCh
 // 日時は 1 回の touchEditedAt で、表示名が変われば動画の内容、作品情報が変われば鍵の全メンバーの内容を
 // 進める。確定後、表示名が変われば domain.VideoOverrideChanged、作品情報が変われば
 // domain.VideoWorkInfoChanged を発行し、どちらも変わらなければ何も発行しない。どちらかが変われば
-// すべてのスマートフォルダを名指す domain.SmartFoldersChanged も発行する（specs/052-smart-folders/research.md R-12）。
+// すべてのスマートフォルダを名指す domain.SmartFoldersChanged も発行する。
 func (s *WorkInfoStore) SetDetails(ctx context.Context, videoID int64, displayName string, info domain.WorkInfo) (domain.Video, error) {
 	name, _, err := domain.NormalizeDisplayName(displayName)
 	if err != nil {
@@ -220,7 +219,7 @@ func (s *WorkInfoStore) SetDetails(ctx context.Context, videoID int64, displayNa
 	return video, nil
 }
 
-// ByUserKeys は利用者データの鍵 userKeys の作品情報を返す（data-model.md「Reads」）。どの表にも行の
+// ByUserKeys は利用者データの鍵 userKeys の作品情報を返す。どの表にも行の
 // 無い鍵は含めない。人物と団体は役割の順・位置の順で今の名前を運び、URL は位置の順、日付は
 // domain.DateKinds の順、外部 ID は (source, value) の順である。
 //
@@ -382,8 +381,7 @@ func deleteWorkInfo(ctx context.Context, tx *sql.Tx, key string) error {
 	return nil
 }
 
-// moveWorkInfo は引き継ぎで鍵 from の作品情報を鍵 to へ付け替える（data-model.md「Bundles and
-// succession」）。6 表を 1 つの物として扱い、from にどれかの行があれば to の 6 表の行を消してから
+// moveWorkInfo は引き継ぎで鍵 from の作品情報を鍵 to へ付け替える。6 表を 1 つの物として扱い、from にどれかの行があれば to の 6 表の行を消してから
 // 付け替える。from に行が無ければ to の作品情報を残す。
 func moveWorkInfo(ctx context.Context, tx *sql.Tx, from, to string) error {
 	args := make([]any, len(workInfoTables))

@@ -10,12 +10,12 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API v1（specs/026-external-api/contracts/external-api.md）。正本は
+// 外部連携 API v1。正本は
 // api/external-v1.yaml で、経路とハンドラの口は internal/httpapi/extgen に生成する。
 //
 // ハンドラは画面の API の server とは別の型に置く。生成された ServerInterface の名前
 // （ListTags・StartScan など）が画面の API とぶつからないようにするためで、依存と
-// 応答の書き出しは server と共有する（plan.md の Structure decision）。
+// 応答の書き出しは server と共有する。
 //
 // 認証は境界（auth.go の bearerBoundary）が済ませていて、ここに届く要求は API トークンで
 // 確かめた所有者のものだけである。
@@ -55,10 +55,10 @@ func (e *externalServer) internalError(w http.ResponseWriter, message string, er
 }
 
 // ListTags はタグの一覧を返す（GET /api/v1/tags、
-// specs/039-external-tag-admin/contracts/external-api.md §1）。引数は画面の GET /api/tags と
+// docs/design-docs/catalog-organization.md）。引数は画面の GET /api/tags と
 // 同じ規則（buildTagListQuery）で読み、画面と同じ TagStore.ListTags を呼ぶ。limit を省いた
 // 要求は今までどおり条件に合う全件を返し、nextCursor を付けない。kind は画面と同じ parseTagKindFilter で
-// 読む（specs/051-tag-kinds/contracts/external-api.md）。
+// 読む。
 func (e *externalServer) ListTags(w http.ResponseWriter, r *http.Request, params extgen.ListTagsParams) {
 	sort := sortParam(params.Sort)
 	query, problem := buildTagListQuery(params.Q, params.Tentative, params.Unused, sort, params.Cursor, params.Limit)
@@ -128,7 +128,7 @@ func toExternalTag(tag domain.Tag) extgen.Tag {
 	}
 }
 
-// StartScan はスキャンを始める（POST /api/v1/scans、contracts/external-api.md §5）。
+// StartScan はスキャンを始める（POST /api/v1/scans）。
 // 新しく始めたら 201、実行中のものを返したら 200 にする。どちらかは、行を作るか実行中の
 // 行を返すかを 1 つのトランザクションで決めた app.Scans.StartScan の started で決め、
 // 応答の前に状態を読み直して決めることはしない（読む間に走査が始まる・終わる）。

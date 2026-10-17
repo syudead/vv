@@ -16,7 +16,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui/shadcn/tooltip";
 import { useToast } from "../ui/Toast";
 import { SkipButton, StepNotice, type StepProps } from "./stepFrame";
 
-// オンボードの「Interests」の手順（specs/057-home/ui-design.md「Onboarding」）。上に取り込みの行、
+// オンボードの「Interests」の手順（docs/design-docs/home.md「Onboarding」）。上に取り込みの行、
 // 自動タグ付けが切なら注意、その下に分野の ToggleGroup。ホームにもうある分野は押したまま押せ
 // なくし、tooltip で理由を言う。「Finish」は選んだ分野を足してから段階を `done` にしてホームを
 // 開く。足せなかったら選んだ分野を残す。Skip は何も足さずに `done` にする。

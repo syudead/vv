@@ -18,7 +18,7 @@ type ComfyUIConnection interface {
 }
 
 // GetComfyUISettings は ComfyUI の接続先を返す。API キーは返さず、保存されているかだけを
-// 返す（specs/045-comfyui-thumbnails/research.md R-9）。
+// 返す。
 func (s *server) GetComfyUISettings(w http.ResponseWriter, r *http.Request) {
 	if s.comfyUI == nil {
 		s.internalError(w, "ComfyUI settings are not configured.", nil)
@@ -82,7 +82,7 @@ func (s *server) UpdateComfyUISettings(w http.ResponseWriter, r *http.Request) {
 
 // CheckComfyUI は保存した接続先に ComfyUI が応え、vv のワークフローに要るノードとモデル
 // ファイルが揃っているかを確かめる。使えないことは 200 の available=false で返し、足りない
-// ものは missing に挙げる（specs/045-comfyui-thumbnails/research.md R-13）。接続先は要求から
+// ものは missing に挙げる。接続先は要求から
 // 取らず、保存した設定だけを使う。
 func (s *server) CheckComfyUI(w http.ResponseWriter, r *http.Request) {
 	if s.comfyUI == nil {
@@ -115,7 +115,7 @@ func (s *server) CheckComfyUI(w http.ResponseWriter, r *http.Request) {
 
 // GetThumbnailEditReadiness は動画のページが編集の入口を有効にできるかを返す。connection は
 // 接続先が保存されていることで、テストに通ったことではない（要件 14、
-// specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+// docs/design-docs/thumbnail-editing.md）。
 func (s *server) GetThumbnailEditReadiness(w http.ResponseWriter, r *http.Request) {
 	if s.comfyUI == nil {
 		s.internalError(w, "ComfyUI settings are not configured.", nil)
