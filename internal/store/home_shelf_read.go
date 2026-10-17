@@ -4,8 +4,9 @@ package store
 // （libraryItemsCTE）と同じ項目・同じ並びだが、ライブラリの問い合わせは棚ごとに見せる動画の表と
 // グループの子孫の表を組み立て直し、索引の無い with 句どうしを結ぶたびに自動の索引を作るので、
 // 2 万本では画面に入った 8 つの棚で 2 秒を超えた。ここでは 1 回の読み出しの取引の中に、棚によらない
-// 表を索引付きの一時表として 1 度だけ作り、棚ごとには当たった動画の id の集合とグループの判定だけを
-// 求めて、最初のページの項目だけを読む。
+// 表を索引付きの一時表として 1 度だけ作り、棚ごとには並び順の索引で先頭から当たった動画をなぞって
+// 最初のページの項目だけを読む（home_shelf_top.go。メンバー 1 本から値の決まらない並び順だけ、項目を
+// 組み立てて並べる）。項目の数は limit + 1 を上限に数える。
 //
 //   - hs_base: 見る人に見せる動画 1 本 1 行と、ライブラリの項目の値の列。id が主キーで、利用者データ
 //     の鍵（user_key）に索引を持つ。動画が入っているいちばん上のグループ（1 つだけなら group_id、
@@ -52,6 +53,7 @@ func newHomeShelfTables(ctx context.Context, tx *sql.Tx, audience domain.Audienc
 		tables.favorite = tables.favorite || spec.itemGroupsFavorite()
 	}
 	stmts := homeBaseTableSQL(audience, tables.favorite)
+	stmts = append(stmts, homeShelfSortIndexSQL(specs)...)
 	stmts = append(stmts, homeGroupTableSQL(topGroupsSelect, ``)...)
 	if tables.favorite {
 		stmts = append(stmts, homeGroupTableSQL(favoriteGroupsSelect, `_fav`)...)
@@ -228,46 +230,71 @@ func (t *homeShelfTables) groupNames(spec listSpec) homeShelfGroupNames {
 		groupID: `group_id` + suffix, groupCount: `group_count` + suffix}
 }
 
-// homeShelfItemsSQL は棚 spec の最初のページを読む文とその引数を返す。項目の決め方はライブラリの項目
-// （libraryItemsPart）と同じである。当たった動画（matched）を、入っている根が 1 つならその id とともに
-// 求め、根ごとの当たった本数（hits）が子孫の本数と等しい根を全部が当たったグループ（whole）にする。
-// 動画の項目は、どの根にも入らないか、全部が当たっていない根のどれかに入る当たった動画で、グループの
-// 項目は whole の根の値（hs_groups）である。入っている根が 2 つ以上の動画だけ、根の表（hs_gm）を引く。
-// 項目は並べ替えの値を添えて 1 度だけ組み立て（filtered）、数と最初の limit 件を読む（listLibraryPageTx
-// と同じ形）。
-func (t *homeShelfTables) homeShelfItemsSQL(spec listSpec, order listOrder, limit int) (string, []any) {
-	names := t.groupNames(spec)
-	condition, args := t.videoCondition(spec, smartRuleMatch(spec, `s`))
+// homeShelfRule は棚 1 つの条件を SQL の句にしたものである。
+type homeShelfRule struct {
+	names homeShelfGroupNames
+	// condition は hs_base の行（別名 videos）が当たる条件句で、args はその引数である。
+	condition string
+	args      []any
+	// videoFilter は動画の項目に、groupFilter はグループが whole になるために掛ける再生可否の句である
+	// （どちらも ` and ` で始まる）。
+	videoFilter, groupFilter string
+	// watch と watchArgs は項目の視聴状態の絞り込み（itemsWhere）である。
+	watch     string
+	watchArgs []any
+}
+
+// ruleOf は棚 spec の条件を句にする。条件はライブラリの項目の当たった動画（smartRuleMatch）と同じで、
+// 棚にない動画の棚は hs_shelved で絞る。
+func (t *homeShelfTables) ruleOf(spec listSpec) homeShelfRule {
+	rule := homeShelfRule{names: t.groupNames(spec)}
+	rule.condition, rule.args = t.videoCondition(spec, smartRuleMatch(spec, `s`))
 	if spec.unshelved {
-		condition += ` and videos.id not in (select id from hs_shelved)`
+		rule.condition += ` and videos.id not in (select id from hs_shelved)`
 	}
-	videoFilter, groupFilter := "", ""
 	if spec.anyLevel(func(level listSpec) bool { return level.playableOnly }) {
-		videoFilter += ` and ` + playableCondition
-		groupFilter += ` and g.playable`
+		rule.videoFilter += ` and ` + playableCondition
+		rule.groupFilter += ` and g.playable`
 	}
 	if spec.itemGroupsFavorite() {
-		videoFilter += ` and videos.favorited_at is not null`
+		rule.videoFilter += ` and videos.favorited_at is not null`
 	}
-	whole, videos := homeShelfSetsSQL(names, condition, groupFilter)
-	if order.seeded {
-		args = append(args, spec.seed)
-	}
-	watch, watchArgs := itemsWhere(spec)
-	args = append(append(args, watchArgs...), limit)
+	rule.watch, rule.watchArgs = itemsWhere(spec)
+	return rule
+}
+
+// homeShelfItemsCTE は棚 rule の項目の表 items を定める with 句とその引数を返す。項目の決め方は
+// ライブラリの項目（libraryItemsPart）と同じである。当たった動画（matched）を、入っている根が 1 つなら
+// その id とともに求め、根ごとの当たった本数（hits）が子孫の本数と等しい根を全部が当たったグループ
+// （whole）にする。動画の項目は、どの根にも入らないか、全部が当たっていない根のどれかに入る当たった
+// 動画で、グループの項目は whole の根の値（hs_groups）である。入っている根が 2 つ以上の動画だけ、根の表
+// （hs_gm）を引く。
+func homeShelfItemsCTE(rule homeShelfRule) (string, []any) {
+	whole, videos := homeShelfSetsSQL(rule.names, rule.condition, rule.groupFilter)
 	return `with ` + whole + `,
 	items as (
 		select null as group_id, videos.id * 2 as id, videos.id as video_id, videos.path as path, videos.added_at as added_at,
 			videos.mtime as mtime, videos.created_at as created_at, videos.title_key as title_key, videos.duration_ms as duration_ms,
 			videos.size_bytes as size_bytes, videos.played_at as played_at, videos.favorited_at as favorited_at,
 			videos.watch_state as watch_state
-		from ` + videos + videoFilter + `
+		from ` + videos + rule.videoFilter + `
 		union all
 		select g.group_id, g.group_id * 2 + 1, null, null, g.added_at, g.mtime, g.created_at, g.title_key, g.duration_ms,
 			g.size_bytes, g.played_at, g.favorited_at, g.watch_state
-		from whole w join ` + names.groups + ` g on g.group_id = w.group_id),
-	filtered as materialized (select items.*, ` + order.value + ` as sort_value from items` + watch + `)
-	select group_id, id, video_id, path, sort_value, (select count(*) from filtered) from filtered
+		from whole w join ` + rule.names.groups + ` g on g.group_id = w.group_id)`, rule.args
+}
+
+// homeShelfItemsSQL は棚 rule の最初の limit + 1 件を、項目をすべて組み立てて並べて読む文とその引数を
+// 返す。並び順の値が項目のメンバー 1 本から決まらない並び順（合計、題名、お気に入り、シャッフル）が使う。
+// ほかの並び順は索引で先頭から読む（home_shelf_top.go）。
+func homeShelfItemsSQL(spec listSpec, rule homeShelfRule, order listOrder, limit int) (string, []any) {
+	cte, args := homeShelfItemsCTE(rule)
+	if order.seeded {
+		args = append(args, spec.seed)
+	}
+	args = append(append(args, rule.watchArgs...), limit+1)
+	return cte + `
+	select group_id, id, video_id, path, ` + order.value + ` as sort_value from items` + rule.watch + `
 	order by ` + order.orderBy() + ` limit ?`, args
 }
 
@@ -301,39 +328,64 @@ func homeShelfSetsSQL(names homeShelfGroupNames, condition, groupFilter string) 
 }
 
 // homeShelfFirstPage は一時表 tables から棚 spec の最初のページ（listLibraryPageTx の最初のページと同じ
-// 項目と数。次のページのカーソルは持たない）を読む。
+// 項目と並び。次のページのカーソルは持たない）と、limit + 1 を上限にした項目の数を読む。並び順の値が
+// 項目のメンバー 1 本から決まる並び順は索引で先頭から読み（homeShelfTopPage）、ほかは項目をすべて
+// 組み立てて並べる。
 func (t *homeShelfTables) homeShelfFirstPage(ctx context.Context, tx *sql.Tx, spec listSpec) (domain.LibraryPage, error) {
 	if !spec.sort.Valid() {
 		spec.sort = domain.SortAddedDesc
 	}
 	order, limit := itemOrder(spec.sort), normalizeLimit(spec.limit)
-	query, args := t.homeShelfItemsSQL(spec, order, limit)
-	rows, err := tx.QueryContext(ctx, query, args...)
-	if err != nil {
-		return domain.LibraryPage{}, fmt.Errorf("cannot read the home shelf: %w", err)
-	}
-	defer func() { _ = rows.Close() }()
-	total := 0
-	var keys []itemRow
-	var values []any
-	for rows.Next() {
-		var key itemRow
-		var value any
-		if err := rows.Scan(&key.groupID, &key.id, &key.videoID, &key.path, &value, &total); err != nil {
-			return domain.LibraryPage{}, fmt.Errorf("cannot read the home shelf: %w", err)
+	rule := t.ruleOf(spec)
+	var page firstPageRows
+	var err error
+	if _, ok := homeShelfTopSorts[spec.sort]; ok {
+		page, err = homeShelfTopPage(ctx, tx, spec, rule, limit)
+	} else {
+		query, args := homeShelfItemsSQL(spec, rule, order, limit)
+		if page, err = readFirstPageRows(ctx, tx, query, args); err == nil {
+			page.total = len(page.keys)
 		}
-		keys = append(keys, key)
-		values = append(values, value)
 	}
-	if err := rows.Err(); err != nil {
-		return domain.LibraryPage{}, fmt.Errorf("cannot read the home shelf: %w", err)
-	}
-	if err := rows.Close(); err != nil {
-		return domain.LibraryPage{}, fmt.Errorf("cannot close the home shelf: %w", err)
-	}
-	items, _, err := libraryPageItems(ctx, tx, spec, order, keys, values, limit)
 	if err != nil {
 		return domain.LibraryPage{}, err
 	}
-	return domain.LibraryPage{Items: items, Total: total, Limit: limit}, nil
+	items, _, err := libraryPageItems(ctx, tx, spec, order, page.keys, page.values, limit)
+	if err != nil {
+		return domain.LibraryPage{}, err
+	}
+	return domain.LibraryPage{Items: items, Total: page.total, Limit: limit}, nil
+}
+
+// firstPageRows は最初のページの項目の鍵と並べ替えの値と、棚の項目の数である。
+type firstPageRows struct {
+	keys   []itemRow
+	values []any
+	total  int
+}
+
+// readFirstPageRows は列 group_id, id, video_id, path, sort_value を返す問い合わせ query を読む。
+func readFirstPageRows(ctx context.Context, tx *sql.Tx, query string, args []any) (firstPageRows, error) {
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return firstPageRows{}, fmt.Errorf("cannot read the home shelf: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var page firstPageRows
+	for rows.Next() {
+		var key itemRow
+		var value any
+		if err := rows.Scan(&key.groupID, &key.id, &key.videoID, &key.path, &value); err != nil {
+			return firstPageRows{}, fmt.Errorf("cannot read the home shelf: %w", err)
+		}
+		page.keys = append(page.keys, key)
+		page.values = append(page.values, value)
+	}
+	if err := rows.Err(); err != nil {
+		return firstPageRows{}, fmt.Errorf("cannot read the home shelf: %w", err)
+	}
+	if err := rows.Close(); err != nil {
+		return firstPageRows{}, fmt.Errorf("cannot close the home shelf: %w", err)
+	}
+	return page, nil
 }

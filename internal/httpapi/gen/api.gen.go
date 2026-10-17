@@ -3132,7 +3132,7 @@ type HomeShelfItems struct {
 	// Key `folder:<id>`、`continue`、`recent`、`unshelved` か `recommended`
 	Key HomeShelfKey `json:"key"`
 
-	// Total 棚の項目（動画とグループ）の数。0 なら画面は棚を出さない
+	// Total 棚の項目（動画とグループ）の数を、items の上限 + 1（25）を上限に数えたもの。25 なら 1 ページより多い。0 なら画面は棚を出さない
 	Total int `json:"total"`
 }
 

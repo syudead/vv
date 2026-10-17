@@ -166,7 +166,7 @@ func TestHomeShelfReadMatchesTheLibraryItemsRead(t *testing.T) {
 				}
 				continue
 			}
-			if shelf.Total != want.Total || !slices.Equal(itemIDs(shelf.Items), itemIDs(want.Items)) {
+			if shelf.Total != min(want.Total, domain.HomeShelfItemLimit+1) || !slices.Equal(itemIDs(shelf.Items), itemIDs(want.Items)) {
 				t.Errorf("%s %v (%s): items = %v total = %d, want %v total = %d", audience, key, spec.sort,
 					itemIDs(shelf.Items), shelf.Total, itemIDs(want.Items), want.Total)
 			}

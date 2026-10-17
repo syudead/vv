@@ -6849,7 +6849,7 @@ components:
             $ref: "#/components/schemas/LibraryItem"
         total:
           type: integer
-          description: 棚の項目（動画とグループ）の数。0 なら画面は棚を出さない
+          description: 棚の項目（動画とグループ）の数を、items の上限 + 1（25）を上限に数えたもの。25 なら 1 ページより多い。0 なら画面は棚を出さない
 
     HomeShelfItemsList:
       type: object

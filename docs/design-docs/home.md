@@ -168,12 +168,19 @@ flowchart LR
 | `hs_search` | One per (video, search phrase) for the phrases the shelves use | The full-text index, one statement per phrase, driven by the index |
 | `hs_shelved` | One per video matched by any folder shelf's effective rule, only when the unshelved shelf is read | One statement per distinct rule over `hs_base` ([R-11](../../specs/057-home/research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read)) |
 
-A shelf then runs one statement: the matched video ids with their top group,
-the groups whose matched count equals their member count (whole), the video
-items (matched videos in no whole group) and the group items (whole groups'
-aggregates), sorted and cut to the first page with the count. A shelf with no
-rule, the recently added shelf, skips the matching: every group is whole and
-the video items are the ungrouped videos. The tables live in the read
+A shelf is then read from the index on its sort key
+([`internal/store/home_shelf_top.go`](../../internal/store/home_shelf_top.go)):
+the scan visits the matching videos in sort order and stops after one more
+than a page. A visited video is a video item when it is in no group or in a
+group that is not whole, and a group card appears at the member with the
+largest value once every member of the group matches, so whole groups are
+decided only for the visited candidates. The items with the same value as the
+last one are read too, so ties sort as the library sorts them. `total` counts
+up to 25, one more than a page; the screen reads only whether it is 0. The
+sorts whose card value is not one member's (total length and size, the
+group's own title and favorite time, shuffle) build the shelf's items from
+the matched ids and sort them instead; a shelf with no rule, the recently
+added shelf, needs no matching there. The tables live in the read
 transaction, which ends with a rollback so they vanish with it. A test checks that every
 shelf returns exactly the library read's first page, for every sort, both
 viewers, nested and overlapping groups and bundled videos. The shelf cache
@@ -184,5 +191,5 @@ keeps the read inside its budget.
 | Rejected | Why |
 | --- | --- |
 | The library items query per shelf | Rebuilds the shown videos and the group descendants per shelf, builds every item row, and joins unindexed `with` tables through automatic indexes; 2.3 to 3.0 s for eight shelves |
-| Top-N by an index with early termination and no count | `total` is the shelf's item count and a group is whole only when all its members match, so every matched video is visited once anyway |
+| An exact `total` | A count of every item is a full pass over the matched videos; the screen reads only whether it is 0 |
 | Persisting the group descendants, maintained on group writes | Saves about 70 ms of the read, costs a maintained table in five group writers; left for when the budget tightens |

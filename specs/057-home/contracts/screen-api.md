@@ -59,7 +59,7 @@ HomeShelfItems:
   properties:
     key:   { $ref: HomeShelfKey }
     items: { type: array, maxItems: 24, items: { $ref: LibraryItem } }  # videos and groups only; a folder shelf leaves out its child folders (R-14)
-    total: { type: integer }          # the shelf's video and group count; 0 drops the shelf from the screen
+    total: { type: integer }          # the shelf's video and group count, capped at 25 (one more than a page; R-12); 0 drops the shelf from the screen
 
 HomeShelfOrder:          # PUT /api/home/shelves
   required: [folderIds]

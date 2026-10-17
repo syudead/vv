@@ -244,14 +244,22 @@ the owner, the organizer state, and `GET /api/home/shelves` returns the first
 screen; with 20,000 videos and 50 shelves, each returns within 1 second on
 the development host, measured by a store benchmark.
 
-Revised 2026-10-17: the shelf items read builds, once per read, indexed
-temporary tables that depend on the viewer but not on the shelf (the shown
-videos with their item values and the top group each belongs to, the group
-descendants with each group's item values, the videos per search phrase and,
-for the unshelved shelf, the videos on any shelf), and reads each shelf as id
-sets (matched videos, whole groups) plus its first page. The items and their
-order are the library's ([R-14](#r-14-pressing-a-shelf-card-plays)), checked
-by a test against the library items read for every sort and both viewers. The
+Revised 2026-10-17: the shelf items are read by a query of their own, apart
+from the library items read. It builds, once per read, indexed temporary
+tables that depend on the viewer but not on the shelf (the shown videos with
+their item values and the top group each belongs to, the group descendants
+with each group's item values, the videos per search phrase and, for the
+unshelved shelf, the videos on any shelf), then reads each shelf from the
+index on its sort key, in sort order with a limit: a visited video is a video
+item when it is in no group or in a group that is not whole, and a group card
+appears at its member with the largest value once the group is whole, so the
+group decision is made only for the candidates near the top. The sorts whose
+card value is not one member's (total length and size, the group's own title
+and favorite time, shuffle) build the items and sort them instead. `total` is
+counted up to one more than a page (25), where 25 means more than a page; the
+screen only reads whether it is 0. The items and their order are the
+library's ([R-14](#r-14-pressing-a-shelf-card-plays)), checked by a test
+against the library items read for every sort and both viewers. The
 10-minute shelf cache (PR #1335) stays for repeated opens of the home; it no
 longer carries the budget.
 
@@ -260,10 +268,12 @@ longer carries the budget.
 | **Summaries, then items for the shelves on screen** | Chosen |
 | Every shelf's items in one read | Rejected: 50 shelves are 50 folder reads, as 052 R-13 found for the library cards |
 | Items from the smart folder items route, one request per shelf | Rejected: a screen of 6 shelves costs 6 round trips, and the fixed shelves are not folders |
-| **Tables built once per read; per shelf only id sets and the first page** | Chosen (2026-10-17) |
+| **A shelf query of its own: tables built once per read, then the first page from the sort key's index, group cards decided for the visited candidates** | Chosen (2026-10-17) |
 | Each shelf through the library items query (the decision until 2026-10-17) | Rejected by the maintainer (2026-10-17): it evaluates the rule over every video, rebuilds the group descendants and every item row before taking 24 items, and joins unindexed `with` tables through automatic indexes; 2.3 to 3.0 s for 8 shelves at 20,000 videos, and the cache helped warm reads only |
 | Shelves of videos only | Rejected by the maintainer (2026-10-17): a shelf shows the group cards the library shows (R-14) |
-| The first page through an index with early termination, no count | Rejected: `total` is the shelf's item count and a group is whole only when every member matches, so every matched video is visited once; the page is then cut from the items |
+| An exact `total` | Rejected by the maintainer (2026-10-17): counting every item is a full pass over the matched videos; the screen reads only whether the count is 0, so the count stops at 25 |
+| Serving `total` from the group structure | Rejected: the count of video items depends on the rule, not only on the groups |
+| Building all items and sorting them for every sort | Rejected by the maintainer (2026-10-17): a full match-then-sort per shelf; kept only for the sorts whose card value is not one member's |
 | Group descendants persisted and maintained on group writes | Rejected for now: about 70 ms of the read against a maintained table in the five group writers; reconsider if the budget tightens |
 
 **Rationale**: It is the pattern of 052 R-14 for folder cards, so a home with

@@ -126,7 +126,8 @@ type HomeShelfItems struct {
 	Key HomeShelfKey
 	// Items は動画とグループの項目だけで、フォルダの棚の子フォルダは入れない（research.md R-14）。
 	Items []LibraryItem
-	// Total は棚の項目（動画とグループ）の数である。
+	// Total は棚の項目（動画とグループ）の数を、HomeShelfItemLimit + 1 を上限に数えたものである。上限なら
+	// 1 ページより多い（specs/057-home/research.md R-12）。
 	Total int
 }
 

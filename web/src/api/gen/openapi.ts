@@ -4116,7 +4116,7 @@ export interface components {
             key: components["schemas"]["HomeShelfKey"];
             /** @description 動画とグループの項目だけ。フォルダの棚の子フォルダは入れない */
             items: components["schemas"]["LibraryItem"][];
-            /** @description 棚の項目（動画とグループ）の数。0 なら画面は棚を出さない */
+            /** @description 棚の項目（動画とグループ）の数を、items の上限 + 1（25）を上限に数えたもの。25 なら 1 ページより多い。0 なら画面は棚を出さない */
             total: number;
         };
         /** @description GET /api/home/shelves の応答 */
