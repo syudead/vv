@@ -15,6 +15,7 @@ import { Switch } from "../ui/shadcn/switch";
 
 import { PageLinkText } from "./PageLink";
 import { SaveStatus } from "./SaveStatus";
+import { useOllamaConnection } from "./useOllamaConnection";
 import { useSwitchSave } from "./useSwitchSave";
 
 /**
@@ -22,14 +23,20 @@ import { useSwitchSave } from "./useSwitchSave";
  * 自動の判定を、所有者が 1 つのスイッチで入れたり切ったりする
  * （specs/054-auto-dup/ui-design.md「Settings: Duplicate judging section」）。
  *
- * スイッチを押すとすぐに保存し、保存ボタンも成功の通知も無い。Ollama の接続先は読まず、
- * 判定の進み具合も出さない（それは Duplicates の画面が見せる）。
+ * スイッチを押すとすぐに保存し、保存ボタンも成功の通知も無い。判定の進み具合は出さない
+ * （それは Duplicates の画面が見せる）。
+ *
+ * Ollama の接続先を読み、保存されていないと答えたあいだだけ、違いのある組の判定には接続が要る旨と
+ * 「Connections」へのリンクをスイッチの下に添える。スイッチはどの状態でも押せ、読み込み中と
+ * 読めなかったときは何も足さない（specs/058-settings-pages/research.md R-5、
+ * ui-design.md「Library page」）。
  */
 export default function VersionJudgingSection() {
   const text = t.settings.versionJudging;
   const [settings, setSettings] = useState<VersionJudgingSettings | null>(null);
   const [loadError, setLoadError] = useState<UiText | null>(null);
   const controller = useRef<AbortController | null>(null);
+  const { connection } = useOllamaConnection();
 
   const load = useCallback(async () => {
     controller.current?.abort();
@@ -95,6 +102,11 @@ export default function VersionJudgingSection() {
             />
           )}
         </FormRow>
+      )}
+      {loadError === null && connection.status === "unsaved" && (
+        <p className="text-sm text-muted-foreground">
+          <PageLinkText sentence={text.connectionNote} page="connections" />
+        </p>
       )}
       <SaveStatus saving={saving !== null} savingText={text.saving} error={saveError} />
     </PageSection>
