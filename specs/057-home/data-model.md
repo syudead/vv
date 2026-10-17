@@ -90,7 +90,7 @@ row with a flag.
 | Rule | Enforced in |
 | --- | --- |
 | Every write that changes group structure rebuilds `group_closure` in the same transaction | `store`: `writeGroups` (group and organize writes), `rebuildFolderIndex` (folder groups, media folders, bundles, successions, undo), `rekeyGroupItems` |
-| A write to `groups` or `group_items` sets the dirty flag; the maintenance after the next committed write rebuilds | SQL triggers; `store` `maintainHomeIndexes` |
+| A write to `groups` or `group_items` sets the dirty flag; the maintenance after the next committed write rebuilds the closure and clears the flag; a shelf read does not read the flag and reads the closure as it is | SQL triggers; `store` `maintainHomeIndexes` |
 | A write to `videos`, `video_locations` or `playback_progress` deletes the values of the groups holding that video for both viewers; a write to `public_videos` deletes the guest's; a write to `media_folders`, `video_bundles` or `video_bundle_members` deletes them all | SQL triggers |
 | A write to `videos`, `video_locations`, `video_tags`, `playback_progress`, `video_favorites` or the work-info links marks the video's key; a write to `smart_folders`, `tags`, `tag_names`, `video_folder_names`, `media_folders` or `video_bundle_members` flags every key | SQL triggers |
 | A write that can change a search result (`video_locations`, `video_tags`, `tag_names`, `video_work_info`, `people_names`, `video_work_people`, `organization_names`, `video_work_organizations`, `video_folder_names`, the bundle tables, `media_folders`, `smart_folders`) sets `search_dirty`; a progress or probe write does not | SQL triggers |
@@ -192,7 +192,10 @@ The organizer returns a list of proposed shelves; nothing stores it.
 `smart_folders.owner_kept` keeps the meaning of 052 R-10; the organizer is
 the write path that R-10 left for this feature. Smart folder contents, cards,
 favorites and playlist items do not change: a shelf is read as the folder it
-is. No table records which video is on which shelf (R-11); the group closure
+is. No table records which video is on which shelf (R-11):
+`home_shelved_videos` records only that a video is on some folder shelf, and
+`home_search_hits` records the videos matching a search expression, not a
+shelf; a shelf of any other rule keeps no stored members. The group closure
 records group structure, not shelf membership. Media folders,
 scans, tags and auto-tagging keep their tables; onboarding writes through
 them.

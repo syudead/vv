@@ -165,7 +165,7 @@ flowchart LR
 
 | Table | Rows | Maintained by |
 | --- | --- | --- |
-| `group_closure` | One per (group, descendant video item), with the play-order key | Every writer that changes groups rebuilds it in its transaction ([`group_closure.go`](../../internal/store/group_closure.go)); triggers on `groups` and `group_items` set a dirty flag that the next shelf read honours |
+| `group_closure` | One per (group, descendant video item), with the play-order key | Every writer that changes groups rebuilds it in its transaction ([`group_closure.go`](../../internal/store/group_closure.go)); triggers on `groups` and `group_items` set a dirty flag, and the maintenance after the next committed write rebuilds the closure when it is set; a shelf read does not read the flag |
 | `group_root_values` | One per (group, viewer): the card values and, per sort key, the descendant with the largest value | Triggers on video, location, progress, public, folder and bundle writes delete the affected rows; the maintenance after the next committed write refills them |
 | `home_shelved_videos` | One per video on some folder shelf whose rule does not depend on the clock | Triggers mark a video's key (or flag every key when a shelf, tag or folder changes); the maintenance recomputes the marked keys, found by index |
 | `video_watch_states` | One per video key: its watch state | The same marks; recomputed with the shelved marks |
@@ -193,9 +193,11 @@ rule is a watch state alone starts from the groups with that state
 (`group_root_values.watch_state`) and the ungrouped videos with that state
 (`video_watch_states`), instead of walking the whole sort index. The read
 never writes: the maintenance runs after every committed write
-([`home_index_maintenance.go`](../../internal/store/home_index_maintenance.go)),
-and a read that still finds a group's values missing aggregates that group's
-descendants itself.
+([`home_index_maintenance.go`](../../internal/store/home_index_maintenance.go)).
+A read that still finds a group's values missing aggregates that group's
+descendants itself, and one that finds search hits pending runs the search's
+full-text query once; it reads `group_closure` as it is, whatever its dirty
+flag.
 The sorts whose card value is not one member's (total length and size, the
 group's own title and favorite time, shuffle) read the matched videos and
 assemble the items instead. The group cards of a page are built from the

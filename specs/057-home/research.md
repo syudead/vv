@@ -236,6 +236,22 @@ them, and the unshelved shelf and its `See all` read through it.
 read already builds (`smartMatchFor`), so it adds no second translation of a
 rule.
 
+Revised 2026-10-17 by [R-12](#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen):
+the meaning of unshelved and the library's `unshelved` filter, which `See
+all` reads, stay as decided, and the filter is still evaluated on read. The
+unshelved shelf no longer reads through it. It reads `home_shelved_videos`,
+the set of videos that match some folder shelf's effective rule as a video,
+which triggers mark and the maintenance after every committed write
+recomputes ([data-model.md, Group closure](data-model.md#group-closure)); a
+shelf whose rule depends on the clock stays out of that set and is tested per
+walked row. A search shelf's matches are read from `home_search_hits`,
+recomputed the same way. Neither table records which shelf a video is on.
+
+| Option | Verdict |
+| --- | --- |
+| **For the unshelved shelf, a set of shelved videos maintained after each write** | Chosen (2026-10-17) |
+| The library filter for the unshelved shelf (the decision until 2026-10-17) | Rejected by the maintainer (2026-10-17): it evaluates every folder shelf's rule over every shown video on each read, which does not fit R-12's second |
+
 ## R-12: The home lists shelf summaries; shelf items are read on screen
 
 **Decision**: `GET /api/home` returns the ordered shelf summaries and, for

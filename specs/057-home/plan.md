@@ -48,7 +48,7 @@ flowchart LR
 | Shelves | Smart folders with `home_position` ([R-7](research.md#r-7-a-shelf-is-a-smart-folder-with-a-home-position), [data-model.md](data-model.md#smart_foldershome_position)) |
 | Rebuild and extend | One transaction; owner-kept folders untouched ([R-8](research.md#r-8-a-rebuild-replaces-the-organizers-folders-in-one-transaction-an-extend-only-adds)) |
 | When it runs | A pending run in settings, triggered by events ([R-9](research.md#r-9-one-run-at-a-time-queued-in-settings-triggered-by-events), [R-10](research.md#r-10-an-extend-runs-when-20-or-more-shown-videos-are-unshelved)) |
-| Unshelved | A library filter evaluated on read ([R-11](research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read)) |
+| Unshelved | A library filter evaluated on read; the unshelved shelf reads the write-maintained `home_shelved_videos` ([R-11](research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read), [R-12](research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen)) |
 | Reads | Summaries, then items for the shelves on screen by an index walk over persisted group structure, 1 s budget ([R-12](research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen), [data-model.md](data-model.md#group-closure)) |
 | Fixed shelves | Continue watching and recommended for the owner; recent and unshelved for all ([R-13](research.md#r-13-four-fixed-shelves-two-of-them-the-owners-only)) |
 | Playback | The video page with autoplay ([R-14](research.md#r-14-pressing-a-shelf-card-plays)) |
