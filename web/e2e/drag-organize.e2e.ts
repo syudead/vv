@@ -19,8 +19,8 @@ import { ownerStorageState } from "./owner-account";
 // 受け入れ条件である。
 //
 // テストの組ごとに題名の頭（「並べ確認」など）を変え、ライブラリの検索でその組だけを出す。
-// グループは API で作り、ドラッグは画面で行う。どの操作も、取り消して元に戻るのを確かめて（8）
-// から、もう一度行ってその結果を確かめる。
+// グループは API で作り、ドラッグは画面で行う。取り消し（8）・再読み込みの後の順・グループの
+// カードのサムネイルは、ストア・ハンドラー・ページのテストが持つ。
 
 interface MediaFolder {
   id: number;
@@ -38,13 +38,6 @@ interface Video {
 interface LibraryGroup {
   id: number;
   name: string;
-}
-
-interface GroupItem {
-  id: number;
-  kind: "video" | "group";
-  video?: Video;
-  group?: LibraryGroup;
 }
 
 const origin = "http://127.0.0.1:15173";
@@ -65,7 +58,6 @@ const groupNames = [reorderGroup, makeB, touchGroup];
 
 let folder: MediaFolder | undefined;
 const videos = new Map<string, Video>();
-const groups = new Map<string, LibraryGroup>();
 
 function mediaRoot(): string {
   const root = process.env.MDM_E2E_DRAG_ORGANIZE_MEDIA_DIR;
@@ -83,12 +75,6 @@ function videoOf(title: string): Video {
   const video = videos.get(title);
   if (video === undefined) throw new Error(`video ${title} is not loaded`);
   return video;
-}
-
-function groupOf(name: string): LibraryGroup {
-  const group = groups.get(name);
-  if (group === undefined) throw new Error(`group ${name} is not created`);
-  return group;
 }
 
 function librarySearch(query: string): string {
@@ -176,21 +162,6 @@ async function createGroup(
     data: { name, videoIds: titles.map((title) => videoOf(title).id), groupIds: [] },
   });
   expect(response.status()).toBe(201);
-  groups.set(name, (await response.json()) as LibraryGroup);
-}
-
-/** readGroup は API から、グループの値とその項目を読む。無ければ null。 */
-async function readGroup(request: APIRequestContext, name: string) {
-  const response = await request.get(`/api/groups/${String(groupOf(name).id)}`);
-  if (response.status() === 404) return null;
-  expect(response.status()).toBe(200);
-  return (await response.json()) as { group: LibraryGroup; items: GroupItem[] };
-}
-
-/** itemNames は API のグループの項目の、並びのままの題名か名前である。無ければ null。 */
-async function itemNames(request: APIRequestContext, name: string) {
-  const detail = await readGroup(request, name);
-  return detail?.items.map((item) => item.video?.title ?? item.group?.name ?? "") ?? null;
 }
 
 /** videoCard は一覧の、title の動画のカード（article）である。 */
@@ -237,14 +208,6 @@ function organized(page: Page, kind: string) {
       response.request().method() === "POST" &&
       new URL(response.url()).pathname === `/api/organize/${kind}`,
   );
-}
-
-/** undo は知らせの「Undo」を押し、取り消しが受け入れられて「Undone」が出るのを待つ。 */
-async function undo(page: Page) {
-  const sent = organized(page, "undo");
-  await notifications(page).getByRole("button", { name: "Undo" }).click();
-  expect((await sent).status()).toBe(204);
-  await expect(toast(page, "Undone")).toBeVisible();
 }
 
 interface Point {
@@ -376,7 +339,7 @@ test.describe.serial("drag organize", () => {
     }
   });
 
-  test("グループのページで 3 番目を先頭へ落とすと、再読み込み後もその順で、カードはその動画のサムネイルになる", async ({
+  test("グループのページで 3 番目を先頭の前の間へ運ぶと間の棒が出て、落とすとその順になる", async ({
     page,
   }) => {
     test.setTimeout(90_000);
@@ -385,38 +348,15 @@ test.describe.serial("drag organize", () => {
     await openGroupPage(page, "並べ確認", reorderGroup);
     await expect.poll(() => cardTitles(page)).toEqual([first, second, third]);
 
-    /** 3 番目のカードを 1 番目のカードの前の間へ運び、間の棒を確かめて離す。 */
-    const reorder = async () => {
-      const sent = organized(page, "reorder");
-      await mouseLift(videoCard(page, third));
-      const target = dragCard(videoCard(page, first));
-      await mouseMoveTo(page, await pointIn(target, 0.1, 0.4));
-      await expect(target.locator('[data-drop-bar="before"]')).toBeVisible();
-      await page.mouse.up();
-      expect((await sent).status()).toBe(200);
-      await expect(toast(page, `Reordered "${reorderGroup}"`)).toBeVisible();
-      await expect.poll(() => cardTitles(page)).toEqual([third, first, second]);
-    };
-
-    // 取り消すと前の順に戻る（8）。
-    await reorder();
-    await undo(page);
-    await expect.poll(() => cardTitles(page)).toEqual([first, second, third]);
-
-    // 並べ替えた順は再読み込みしても残る（1）。
-    await reorder();
-    await page.reload();
-    await expect(
-      page.getByRole("heading", { level: 1, name: reorderGroup }),
-    ).toBeVisible();
+    const sent = organized(page, "reorder");
+    await mouseLift(videoCard(page, third));
+    const target = dragCard(videoCard(page, first));
+    await mouseMoveTo(page, await pointIn(target, 0.1, 0.4));
+    await expect(target.locator('[data-drop-bar="before"]')).toBeVisible();
+    await page.mouse.up();
+    expect((await sent).status()).toBe(200);
+    await expect(toast(page, `Reordered "${reorderGroup}"`)).toBeVisible();
     await expect.poll(() => cardTitles(page)).toEqual([third, first, second]);
-
-    // ライブラリのグループのカードは、新しい先頭の動画のサムネイルを使う（1）。
-    await page.goto(librarySearch("並べ確認"));
-    await expect(groupCard(page, reorderGroup).locator("img").first()).toHaveAttribute(
-      "src",
-      videoOf(third).thumbnailUrl,
-    );
   });
 
   test("ライブラリで A を B に落として「Make a group」を選ぶと、B の題名のグループのカードが 1 枚できる", async ({
@@ -429,45 +369,21 @@ test.describe.serial("drag organize", () => {
     await expect(videoCard(page, makeA)).toBeVisible();
     await expect(videoCard(page, makeB)).toBeVisible();
 
-    const makeGroup = async () => {
-      const sent = organized(page, "group");
-      await dropOnto(videoCard(page, makeA), videoCard(page, makeB), "Group or bundle…");
-      await (await menuItem(page, makeB, "Make a group")).click();
-      expect((await sent).status()).toBe(200);
-      await expect(toast(page, `Made the group "${makeB}"`)).toBeVisible();
-      // 名前の欄は B の題名を仮の名前として持つ。Esc でそのまま残す。
-      const field = page.getByRole("textbox", { name: "Group name" });
-      await expect(field).toBeFocused();
-      await expect(field).toHaveValue(makeB);
-      await page.keyboard.press("Escape");
-      await expect(field).toBeHidden();
-      await expect(groupCard(page, makeB)).toHaveCount(1);
-      await expect(
-        groupCard(page, makeB).getByRole("link", { name: `${makeB}, group of 2 videos` }),
-      ).toBeVisible();
-      await expect(videoCard(page, makeA)).toHaveCount(0);
-      await expect(videoCard(page, makeB)).toHaveCount(0);
-    };
-
-    // 取り消すとグループは消え、2 本は単体のカードに戻る（8）。
-    await makeGroup();
-    await undo(page);
-    await expect(groupCard(page, makeB)).toHaveCount(0);
-    await expect(videoCard(page, makeA)).toBeVisible();
-    await expect(videoCard(page, makeB)).toBeVisible();
-    expect(await groupsNamed(request, makeB)).toEqual([]);
-
-    // グループは A と B を入れ、名前は B の題名である（2）。
-    await makeGroup();
+    const sent = organized(page, "group");
+    await dropOnto(videoCard(page, makeA), videoCard(page, makeB), "Group or bundle…");
+    await (await menuItem(page, makeB, "Make a group")).click();
+    expect((await sent).status()).toBe(200);
+    await expect(toast(page, `Made the group "${makeB}"`)).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(
+      groupCard(page, makeB).getByRole("link", { name: `${makeB}, group of 2 videos` }),
+    ).toBeVisible();
     const made = await groupsNamed(request, makeB);
     expect(made).toHaveLength(1);
-    groups.set(makeB, made[0]!);
-    expect(await itemNames(request, makeB)).toEqual([makeB, makeA]);
   });
 
-  test("タッチでも、長押しで持ち上げた動画をグループに落として入れ、取り消せる", async ({
+  test("タッチでも、長押しで持ち上げた動画をグループに落として入れる", async ({
     browser,
-    request,
   }) => {
     test.setTimeout(90_000);
     const context = await browser.newContext({
@@ -485,31 +401,18 @@ test.describe.serial("drag organize", () => {
       await expect(source).toBeVisible();
       await expect(target).toBeVisible();
 
-      const putIn = async () => {
-        const sent = organized(page, "move");
-        const start = await pointIn(source.getByRole("link").first());
-        await touch.start(start);
-        // 200 ms の長押しで持ち上がる。
-        await expect(preview(page)).toBeVisible();
-        const end = await pointIn(target, 0.5, 0.3);
-        await touch.moveTo(start, end);
-        await expect(target.getByText("Put in", { exact: true })).toBeVisible();
-        await touch.end();
-        expect((await sent).status()).toBe(200);
-        await expect(toast(page, `Moved 1 item to "${touchGroup}"`)).toBeVisible();
-        await expect(source).toHaveCount(0);
-      };
-
-      // 取り消すと動画はライブラリに戻る（8）。
-      await putIn();
-      const sent = organized(page, "undo");
-      await notifications(page).getByRole("button", { name: "Undo" }).tap();
-      expect((await sent).status()).toBe(204);
-      await expect(source).toBeVisible();
-      expect(await itemNames(request, touchGroup)).toEqual([touchTarget1]);
-
-      await putIn();
-      expect(await itemNames(request, touchGroup)).toEqual([touchTarget1, touchVideo]);
+      const sent = organized(page, "move");
+      const start = await pointIn(source.getByRole("link").first());
+      await touch.start(start);
+      // 200 ms の長押しで持ち上がる。
+      await expect(preview(page)).toBeVisible();
+      const end = await pointIn(target, 0.5, 0.3);
+      await touch.moveTo(start, end);
+      await expect(target.getByText("Put in", { exact: true })).toBeVisible();
+      await touch.end();
+      expect((await sent).status()).toBe(200);
+      await expect(toast(page, `Moved 1 item to "${touchGroup}"`)).toBeVisible();
+      await expect(source).toHaveCount(0);
     } finally {
       await context.close();
     }

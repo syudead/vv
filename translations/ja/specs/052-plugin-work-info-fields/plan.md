@@ -1,6 +1,6 @@
 ---
 source: specs/052-plugin-work-info-fields/plan.md
-sourceHash: 18f202ce24b1e57c354cc6b8b9362aef3dadc649594e01aed5a89288ee903c10
+sourceHash: f52b224765dce2f46efee71d1a812e874cd262e577987f04a8ee68cd022ad146
 ---
 
 # 実装計画: 作品情報プラグインからの作品の詳細 {#implementation-plan-work-details-from-work-info-plugins}
@@ -51,7 +51,7 @@ Issue は `ui` ラベルを持つので、`design` ステージが画面の単�
 | 照合形 | [013 data-model.md](../013-library-search/data-model.md)、`domain.FoldForMatch` |
 | 画面の API、エラー、生成コード | [api/openapi.yaml](../../api/openapi.yaml)、[023 error-api](../023-english-i18n/contracts/error-api.md)、`task generate` |
 | 取得のダイアログ、作品の詳細の行、画面の規則、Web のテスト | [web/src/player/workInfoFetch/](../../web/src/player/workInfoFetch/)、[web/src/player/WorkInfo.tsx](../../web/src/player/WorkInfo.tsx)、[design-system.md](../../docs/design-docs/design-system.md)、[web-testing.md](../../docs/design-docs/web-testing.md) |
-| ブラウザテストとそのフィクスチャのプラグイン | [web/e2e/work-info-plugins.e2e.ts](../../web/e2e/work-info-plugins.e2e.ts)、[internal/wasmplugin/testdata/e2eworks/](../../internal/wasmplugin/testdata/e2eworks/) |
+| ブラウザテストとそのフィクスチャのプラグイン | `web/e2e/work-info-plugins.e2e.ts` (削除済み)、`internal/wasmplugin/testdata/e2eworks/` (削除済み) |
 | チェック | [Taskfile.yml](../../Taskfile.yml) (`task check`、`task check-docs`) |
 
 **この機能に固有の文脈**: 新しい依存、マイグレーション、新しいルートは無い。この機能は 2 つの取得のルートの本文、プラグインの応答、ストアの適用を変える。049 R-8 の結果のキャッシュは、タイトルとタグの横に作品の詳細とその照合を、同じ寿命で持つ。

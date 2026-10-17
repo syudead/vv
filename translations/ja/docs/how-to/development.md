@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/development.md
-sourceHash: 236071e640baa0102f0ddb2d6f54590b53ea9f0e18be75cd0faf7fc75d410aa9
+sourceHash: 0b6f3f4e2b871a69f85385693097584bba79e323e784eda266e0c30a4cf3c754
 ---
 
 # 開発 {#development}
@@ -60,14 +60,14 @@ flowchart LR
   docs --> checks[Checks ジョブ]
   groups --> checks
   code -->|はい| push{main への push か Renovate の PR か}
-  push -->|はい| more[4 グループで E2E と Docker イメージのビルド]
+  push -->|はい| more[3 グループで E2E と Docker イメージのビルド]
   code -->|はい| manual{手動実行か}
-  manual -->|はい| e2e[4 グループで E2E]
+  manual -->|はい| e2e[3 グループで E2E]
 ```
 
-「いいえ」は、Markdown、`docs/`、`specs/` だけが変更されたことを意味する。コードの変更では、CI は `task check` のサブタスクを並列の `Checks (<group>)` ジョブとして実行する。生成ファイル、マイグレーション、e2e グループ、Windows のビルドの確認と組み合わせた Go の lint、Go のテスト、SPA のビルドの確認（`task build-check-web`）と組み合わせた Web の lint、3 つのシャードに分けた Vitest スイート（`task test-web-report -- --shard=1/3`）だ。`task test-web` はビルドの確認とスイート全体を実行する。`task check` に追加する確認は、`.github/workflows/ci.yml` のこれらのグループのいずれかにも入れ、新しい `web/e2e/*.e2e.ts` ファイルは同じファイルの 4 つの E2E グループのいずれかに入れる。ファイルがどのグループにも入っていないとき、または 2 つのグループに入っているとき、`task e2e-groups-check` は失敗する。Go のビルドキャッシュを復元するのは Go のグループだけで、それぞれが `main` への push で自分のコピーを保存する。Vitest はファイル単位でシャードに分けるため、一つのシャードの大半を占めるまで大きくなったテストファイルは、`web/src/tags/TagsPage*.test.tsx` が共有の `web/src/testing/tagsPage.tsx` を中心に分けられているように、トピックごとに分割する。`main` への push はマージされたプルリクエストなので、ブラウザ E2E と Docker イメージのビルドはプルリクエストでは実行されない。プルリクエストでは `Browser E2E` は実行されずに成功する。Renovate の PR（head ブランチが `renovate/*`）は例外で、イメージを公開せずに両方を実行する。Renovate のルーチンが人を介さずにそれらをマージするためである（[dependency-updates.md](dependency-updates.md)）。
+「いいえ」は、Markdown、`docs/`、`specs/` だけが変更されたことを意味する。コードの変更では、CI は `task check` のサブタスクを並列の `Checks (<group>)` ジョブとして実行する。生成ファイル、マイグレーション、e2e グループ、Windows のビルドの確認と組み合わせた Go の lint、Go のテスト、SPA のビルドの確認（`task build-check-web`）と組み合わせた Web の lint、3 つのシャードに分けた Vitest スイート（`task test-web-report -- --shard=1/3`）だ。`task test-web` はビルドの確認とスイート全体を実行する。`task check` に追加する確認は、`.github/workflows/ci.yml` のこれらのグループのいずれかにも入れ、新しい `web/e2e/*.e2e.ts` ファイルは同じファイルの 3 つの E2E グループのいずれかに入れる。ファイルがどのグループにも入っていないとき、または 2 つのグループに入っているとき、`task e2e-groups-check` は失敗する。Go のビルドキャッシュを復元するのは Go のグループだけで、それぞれが `main` への push で自分のコピーを保存する。Vitest はファイル単位でシャードに分けるため、一つのシャードの大半を占めるまで大きくなったテストファイルは、`web/src/tags/TagsPage*.test.tsx` が共有の `web/src/testing/tagsPage.tsx` を中心に分けられているように、トピックごとに分割する。`main` への push はマージされたプルリクエストなので、ブラウザ E2E と Docker イメージのビルドはプルリクエストでは実行されない。プルリクエストでは `Browser E2E` は実行されずに成功する。Renovate の PR（head ブランチが `renovate/*`）は例外で、イメージを公開せずに両方を実行する。Renovate のルーチンが人を介さずにそれらをマージするためである（[dependency-updates.md](dependency-updates.md)）。
 
-マージ前のブランチでブラウザ E2E を実行するには、Actions タブから、または `gh workflow run ci.yml --ref <branch>` で、CI ワークフローを手動で開始する（`workflow_dispatch`）。手動実行はブランチをコードの変更として扱い、すべての `Checks` グループと 4 つの E2E グループを実行する。Docker イメージはビルドしない。
+マージ前のブランチでブラウザ E2E を実行するには、Actions タブから、または `gh workflow run ci.yml --ref <branch>` で、CI ワークフローを手動で開始する（`workflow_dispatch`）。手動実行はブランチをコードの変更として扱い、すべての `Checks` グループと 3 つの E2E グループを実行する。Docker イメージはビルドしない。
 
 Go と Vitest のテストグループは、`task test-go` と `task test-web-unit` と同じテストを `task test-go-report` と `task test-web-report` で実行し、これらはカバレッジと JUnit のテスト結果も `reports/` の下に書き出す。CI は、テストが失敗したときも、それらを `main` への push の E2E の結果と合わせて [Codecov](https://app.codecov.io/gh/syudead/vv) にアップロードする。コードを変更する各プルリクエストで、Codecov は変更行のカバレッジをコメントし、失敗したテストと不安定なテストの名前を示し、`go` と `web` のフラグごとに情報提供の patch ステータスを設定する。マージはブロックしない（[`.github/codecov.yml`](../../.github/codecov.yml)）。フラグ別とコンポーネント別のカバレッジは Codecov の Flags と Components のページにある。新しいプッシュは、プルリクエストでは実行中の CI 実行をキャンセルするが、`main` ではキャンセルしない。そのため `main` のすべてのコミットが Codecov に届く。アップロードは GitHub OIDC で認証するため、リポジトリに Codecov のトークンは不要だが、codecov.io に GitHub でサインインして Codecov GitHub App をインストールし、リポジトリを一度有効にする必要がある。アップロードが失敗しても確認は失敗しない。
 

@@ -82,7 +82,7 @@ the last one; distributing or sharing plugins.
 | Plugin rows, setting values, the fixture build helper | [049 data-model.md](../049-work-info-plugins/data-model.md), [internal/store/work_info_plugins.go](../../internal/store/work_info_plugins.go), [internal/wasmplugin/plugintest](../../internal/wasmplugin/plugintest) |
 | Screen API, errors, generated code | [api/openapi.yaml](../../api/openapi.yaml), [023 error-api](../023-english-i18n/contracts/error-api.md), `task generate` |
 | Settings dialog, fetch dialog, screen rules, Web tests | [web/src/settings/WorkInfoPluginSettingsDialog.tsx](../../web/src/settings/WorkInfoPluginSettingsDialog.tsx), [web/src/player/workInfoFetch/](../../web/src/player/workInfoFetch/), [design-system.md](../../docs/design-docs/design-system.md), [web-testing.md](../../docs/design-docs/web-testing.md) |
-| Browser test and its fixture plugin | [web/e2e/work-info-plugins.e2e.ts](../../web/e2e/work-info-plugins.e2e.ts), [internal/wasmplugin/testdata/e2eworks/](../../internal/wasmplugin/testdata/e2eworks/) |
+| Browser test and its fixture plugin | `web/e2e/work-info-plugins.e2e.ts` (since removed), `internal/wasmplugin/testdata/e2eworks/` (since removed) |
 | Checks | [Taskfile.yml](../../Taskfile.yml) (`task check`, `task check-docs`) |
 
 **Feature-specific context**:
