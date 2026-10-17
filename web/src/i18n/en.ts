@@ -573,6 +573,7 @@ export const en = {
         formPage: "Form page",
         groupedList: "Grouped list",
         shelfRow: "Shelf rows",
+        stepsPage: "Steps page",
         listState: (state: string) => `List page: ${state}`,
       },
       states: {
@@ -733,6 +734,17 @@ export const en = {
       scrollBack: (name: string) => `Scroll ${name} back`,
       scrollForward: (name: string) => `Scroll ${name} forward`,
       loadingShelf: (name: string) => `Loading ${name}`,
+      steps: "Setup steps",
+      stepNames: { folders: "Folders", topics: "Topics", finish: "Finish" },
+      stepOf: (current: number, total: number) =>
+        `Step ${formatNumber(current)} of ${formatNumber(total)}`,
+      stepDone: (name: string) => `${name}, done`,
+      stepCurrent: (name: string) => `${name}, current step`,
+      stepsTitle: "What do you watch?",
+      stepsDescription: "Pick a few topics. You can change them later.",
+      topics: "Topics",
+      skip: "Skip",
+      continue: "Continue",
     },
   },
   app: {
@@ -2697,6 +2709,8 @@ export const en = {
       autoTaggingOff:
         "Auto-tagging is off, so these shelves fill in only as you tag videos. You can turn it on in Settings.",
       onHome: "On your home",
+      // ホームにもうある分野の切り替えの読み上げ名。押せない理由を名前に含める。
+      onHomeLabel: (name: string) => `${name}, on your home`,
       scanning: (settled: number, total: number) =>
         `Scanning: ${formatNumber(settled)} of ${formatNumber(total)}`,
       scanProgress: "Scan progress",

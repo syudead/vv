@@ -52,7 +52,13 @@ export interface StepProps {
 }
 
 /** SkipButton は下端の左の「Skip」である。 */
-export function SkipButton({ disabled, onClick }: { disabled: boolean; onClick: () => void }) {
+export function SkipButton({
+  disabled,
+  onClick,
+}: {
+  disabled: boolean;
+  onClick: () => void;
+}) {
   return (
     <Button variant="ghost" size="sm" disabled={disabled} onClick={onClick}>
       {t.onboarding.skip}

@@ -66,6 +66,9 @@ function InterestChip({ interest }: { interest: Interest }) {
     <ToggleGroupItem
       value={interest.id}
       disabled={interest.onHome}
+      aria-label={
+        interest.onHome ? t.onboarding.interests.onHomeLabel(interest.name) : undefined
+      }
       title={interest.synonym}
       className="flex-none rounded-md px-3 data-[variant=outline]:border-l"
     >
@@ -76,10 +79,7 @@ function InterestChip({ interest }: { interest: Interest }) {
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <span className="inline-flex">
-          {item}
-          <span className="sr-only">{t.onboarding.interests.onHome}</span>
-        </span>
+        <span className="inline-flex">{item}</span>
       </TooltipTrigger>
       <TooltipContent>{t.onboarding.interests.onHome}</TooltipContent>
     </Tooltip>

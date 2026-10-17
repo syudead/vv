@@ -90,124 +90,124 @@ function AppRoutes() {
       {/* 所有者の段階が done でない間は、どの経路も /welcome へ置き換える
           （specs/057-home/research.md R-4）。 */}
       <OnboardingGate>
-      <Routes>
-        {/* `/` はホーム。ライブラリの問い合わせの付いた `/?tag=3` などは問い合わせごと
+        <Routes>
+          {/* `/` はホーム。ライブラリの問い合わせの付いた `/?tag=3` などは問い合わせごと
             `/library` へ送る（specs/057-home/research.md R-15）。 */}
-        <Route path="/" element={<HomeRoute />} />
-        <Route
-          path={LIBRARY_PATH}
-          element={
-            <AppShell>
-              <LibraryPage />
-            </AppShell>
-          }
-        />
-        {["/folders", "/folders/*"].map((path) => (
+          <Route path="/" element={<HomeRoute />} />
           <Route
-            key={path}
-            path={path}
+            path={LIBRARY_PATH}
             element={
               <AppShell>
-                <FolderPage />
+                <LibraryPage />
               </AppShell>
             }
           />
-        ))}
-        <Route
-          path="/settings"
-          element={
-            <AppShell>
-              <SettingsPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/tags"
-          element={
-            <AppShell>
-              <TagsPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/people"
-          element={
-            <AppShell>
-              <PeoplePage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/organizations"
-          element={
-            <AppShell>
-              <OrganizationsPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/history"
-          element={
-            <AppShell>
-              <HistoryPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/playlists"
-          element={
-            <AppShell>
-              <PlaylistsPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/playlists/:id"
-          element={
-            <AppShell>
-              <PlaylistPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/groups/:id"
-          element={
-            <AppShell>
-              <GroupPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/smart-folders/:id"
-          element={
-            <AppShell>
-              <SmartFolderPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/duplicates"
-          element={
-            <AppShell>
-              <DuplicatesPage />
-            </AppShell>
-          }
-        />
-        <Route path={ONBOARDING_PATH} element={<OnboardingPage />} />
-        <Route path="/videos/:id" element={<VideoPage />} />
-        {/* 編集画面は再生画面と同じくシェルの外に置く。 */}
-        <Route path="/videos/:id/edit" element={<VideoDetailsEditor />} />
-        {DesignSystemPage && (
+          {["/folders", "/folders/*"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <AppShell>
+                  <FolderPage />
+                </AppShell>
+              }
+            />
+          ))}
           <Route
-            path="/design-system"
+            path="/settings"
             element={
-              <Suspense fallback={null}>
-                <DesignSystemPage />
-              </Suspense>
+              <AppShell>
+                <SettingsPage />
+              </AppShell>
             }
           />
-        )}
-      </Routes>
+          <Route
+            path="/tags"
+            element={
+              <AppShell>
+                <TagsPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/people"
+            element={
+              <AppShell>
+                <PeoplePage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/organizations"
+            element={
+              <AppShell>
+                <OrganizationsPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/history"
+            element={
+              <AppShell>
+                <HistoryPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/playlists"
+            element={
+              <AppShell>
+                <PlaylistsPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/playlists/:id"
+            element={
+              <AppShell>
+                <PlaylistPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/groups/:id"
+            element={
+              <AppShell>
+                <GroupPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/smart-folders/:id"
+            element={
+              <AppShell>
+                <SmartFolderPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/duplicates"
+            element={
+              <AppShell>
+                <DuplicatesPage />
+              </AppShell>
+            }
+          />
+          <Route path={ONBOARDING_PATH} element={<OnboardingPage />} />
+          <Route path="/videos/:id" element={<VideoPage />} />
+          {/* 編集画面は再生画面と同じくシェルの外に置く。 */}
+          <Route path="/videos/:id/edit" element={<VideoDetailsEditor />} />
+          {DesignSystemPage && (
+            <Route
+              path="/design-system"
+              element={
+                <Suspense fallback={null}>
+                  <DesignSystemPage />
+                </Suspense>
+              }
+            />
+          )}
+        </Routes>
       </OnboardingGate>
     </ToastProvider>
   );

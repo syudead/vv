@@ -31,7 +31,11 @@ function FolderRows({ folders }: { folders: readonly MediaFolder[] }) {
       {folders.map((folder) => (
         <li key={folder.id} className="flex min-w-0 items-center gap-3 px-3 py-2 text-sm">
           <Folder aria-hidden="true" className="size-4 shrink-0 text-muted-foreground" />
-          <p title={folder.path} dir="rtl" className="min-w-0 truncate text-left font-mono">
+          <p
+            title={folder.path}
+            dir="rtl"
+            className="min-w-0 truncate text-left font-mono"
+          >
             <bdi dir="ltr">{folder.path}</bdi>
           </p>
         </li>

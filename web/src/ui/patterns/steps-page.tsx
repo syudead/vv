@@ -44,7 +44,15 @@ export interface StepsPageProps {
   action: ReactNode;
 }
 
-function StepMark({ index, done, current }: { index: number; done: boolean; current: boolean }) {
+function StepMark({
+  index,
+  done,
+  current,
+}: {
+  index: number;
+  done: boolean;
+  current: boolean;
+}) {
   return (
     <span
       aria-hidden="true"

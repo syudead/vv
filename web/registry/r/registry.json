@@ -703,6 +703,19 @@
       ]
     },
     {
+      "name": "steps-page",
+      "type": "registry:ui",
+      "title": "StepsPage",
+      "description": "Page skeleton outside the shell: a header band with the logo and a strip of numbered steps (Step 2 of 3 below sm), then one centered column at most 42rem wide with the step's title, description, content, a failure notice and a footer row of Skip and one primary action. Uses brand-home-link.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#steps-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/steps-page.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "form-dialog",
       "type": "registry:ui",
       "title": "FormDialog",
@@ -1061,6 +1074,19 @@
       "files": [
         {
           "path": "src/designSystem/blocks/centered-form-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "steps-page-example",
+      "type": "registry:block",
+      "title": "Steps page example",
+      "description": "A working setup step: the second of three steps, with topic toggles that wrap, Skip and Continue.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#steps-page (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/steps-page-example.tsx",
           "type": "registry:component"
         }
       ]
