@@ -400,11 +400,20 @@ export const SCAN_ISSUE_BROKEN = "scan-issue-broken.mp4";
 
 export function generateScanIssueFixtures(root) {
   mkdirSync(root, { recursive: true });
-  run("mkfifo", [path.join(root, SCAN_ISSUE_UNREADABLE)]);
   writeFileSync(
     path.join(root, SCAN_ISSUE_BROKEN),
     "this is not a video; the probe cannot read any stream from it\n".repeat(64),
   );
+}
+
+/**
+ * prepareScanIssueFixtures は、読めないファイル（名前付きパイプ）を置く。作った動画は
+ * 実行をまたいでキャッシュから写す（run-e2e.mjs）が、パイプは写せない（読むと止まる）
+ * ので、実行のたびに写したあとで作る。
+ */
+export function prepareScanIssueFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  run("mkfifo", [path.join(root, SCAN_ISSUE_UNREADABLE)]);
 }
 
 /**
@@ -687,6 +696,19 @@ export const SEARCH_FILLERS = 62;
  * - 「長さ不明」は動画として読めないファイルで、長さが入らない
  * - 「clip NN」は 1 ページ（60 件）を越えるための動画
  */
+/**
+ * prepareSearchFixtures は、検索の動画の更新時刻を実行した時刻から数えて付ける。
+ * 作った動画はキャッシュから写すので、生成の時刻のままだと日がたつほどずれる。
+ */
+export function prepareSearchFixtures(root) {
+  const file = (name) => path.join(root, name);
+  const now = Date.now() / 1000;
+  const day = 24 * 60 * 60;
+  utimesSync(file("京都旅行 2024.mp4"), now - 3 * day, now - 3 * day);
+  utimesSync(file("京都旅行 2023.mp4"), now - 2 * day, now - 2 * day);
+  utimesSync(file("2024 奈良.mp4"), now - day, now - day);
+}
+
 export function generateSearchFixtures(root) {
   mkdirSync(root, { recursive: true });
   const file = (name) => path.join(root, name);
@@ -717,12 +739,6 @@ export function generateSearchFixtures(root) {
   clip("京都旅行 2023.mp4", 5, 80);
   clip("2024 奈良.mp4", 4, 120);
   clip("base.tmp.mp4", 2, 160);
-
-  const now = Date.now() / 1000;
-  const day = 24 * 60 * 60;
-  utimesSync(file("京都旅行 2024.mp4"), now - 3 * day, now - 3 * day);
-  utimesSync(file("京都旅行 2023.mp4"), now - 2 * day, now - 2 * day);
-  utimesSync(file("2024 奈良.mp4"), now - day, now - day);
 
   const copies = [
     "京都 嵐山.mp4",
