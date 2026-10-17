@@ -116,8 +116,7 @@ func TestGenerateSeekSpriteFramesStayInTheirIntervals(t *testing.T) {
 	t.Parallel()
 
 	requireFFmpeg(t)
-	videoPath := filepath.Join(t.TempDir(), "clock.mp4")
-	runFFmpeg(t, "-f", "lavfi", "-i", timeGraySource("64x64", "30"), "-c:v", "mpeg4", "-q:v", "2", "-y", videoPath)
+	videoPath := mediaFixture(t, "clock.mp4")
 
 	output, layout := generateSprite(t, videoPath, 30_000)
 	if layout.FrameCount != 30 || layout.IntervalMs != 1000 {
@@ -149,11 +148,7 @@ func TestGenerateSeekSpriteRepeatsLastSceneWhenVideoEndsEarly(t *testing.T) {
 	t.Parallel()
 
 	requireFFmpeg(t)
-	videoPath := filepath.Join(t.TempDir(), "short-video.mp4")
-	runFFmpeg(t,
-		"-f", "lavfi", "-i", timeGraySource("64x64", "23"),
-		"-f", "lavfi", "-i", "sine=frequency=440:duration=30",
-		"-c:v", "mpeg4", "-q:v", "2", "-c:a", "aac", "-y", videoPath)
+	videoPath := mediaFixture(t, "short-video.mp4")
 
 	output, layout := generateSprite(t, videoPath, 30_000)
 	if layout.FrameCount != 30 {
@@ -179,11 +174,7 @@ func TestGenerateSeekSpriteRepeatsPreviousFrameForEmptyInterval(t *testing.T) {
 	t.Parallel()
 
 	requireFFmpeg(t)
-	videoPath := filepath.Join(t.TempDir(), "sparse.mp4")
-	runFFmpeg(t,
-		"-f", "lavfi", "-i", timeGraySource("64x64", "30"),
-		"-vf", "select=eq(n\\,0)+eq(n\\,100)+eq(n\\,200)",
-		"-fps_mode", "vfr", "-c:v", "mpeg4", "-q:v", "2", "-y", videoPath)
+	videoPath := mediaFixture(t, "sparse.mp4")
 
 	layout := domain.NewSeekSpriteLayout(15_000)
 	output := t.TempDir()
@@ -203,13 +194,7 @@ func TestGenerateSeekSpriteRepeatsPreviousFrameForEmptyInterval(t *testing.T) {
 
 func TestGenerateSeekSpriteIgnoresAttachedCover(t *testing.T) {
 	requireFFmpeg(t)
-	dir := t.TempDir()
-	mainVideo := filepath.Join(dir, "main.mp4")
-	cover := filepath.Join(dir, "cover.jpg")
-	videoPath := filepath.Join(dir, "with-cover.mp4")
-	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=green:s=64x64:r=1:d=5", "-c:v", "mpeg4", "-y", mainVideo)
-	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=red:s=600x600", "-frames:v", "1", "-y", cover)
-	runFFmpeg(t, "-i", mainVideo, "-i", cover, "-map", "0:v:0", "-map", "1:v:0", "-c", "copy", "-disposition:v:1", "attached_pic", "-y", videoPath)
+	videoPath := mediaFixture(t, "with-cover.mp4")
 
 	output, _ := generateSprite(t, videoPath, 5000)
 	sheets := readSheets(t, output)
@@ -223,8 +208,7 @@ func TestGenerateSeekSpriteIgnoresAttachedCover(t *testing.T) {
 // 間隔の半分より短い入力でも、1 コマのシートができる。
 func TestGenerateSeekSpriteWritesSingleFrameForOneSecondInput(t *testing.T) {
 	requireFFmpeg(t)
-	videoPath := filepath.Join(t.TempDir(), "one-second.mp4")
-	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=white:s=64x64:r=30:d=1", "-c:v", "mpeg4", "-y", videoPath)
+	videoPath := mediaFixture(t, "one-second.mp4")
 
 	output, layout := generateSprite(t, videoPath, 1000)
 	if layout.FrameCount != 1 {
@@ -244,8 +228,7 @@ func TestGenerateSeekSpriteKeepsPortraitAspect(t *testing.T) {
 	t.Parallel()
 
 	requireFFmpeg(t)
-	videoPath := filepath.Join(t.TempDir(), "portrait.mp4")
-	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=gray:s=360x640:r=1:d=510", "-c:v", "mpeg4", "-y", videoPath)
+	videoPath := mediaFixture(t, "portrait.mp4")
 
 	output, layout := generateSprite(t, videoPath, 510_000)
 	if layout.FrameCount != 81 || layout.SheetCount != 1 {

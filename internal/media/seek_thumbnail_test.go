@@ -4,7 +4,6 @@ import (
 	"context"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"testing"
 )
 
@@ -13,15 +12,7 @@ func TestGenerateSeekThumbnailSetWritesSpriteIntoOutputDir(t *testing.T) {
 		t.Skip("ffmpegが無いため実画像の生成を省略します")
 	}
 
-	videoPath := filepath.Join(t.TempDir(), "green.mp4")
-	args := []string{
-		"-nostdin", "-v", "error",
-		"-f", "lavfi", "-i", "color=c=green:s=64x64:r=30:d=11",
-		"-c:v", "mpeg4", "-y", videoPath,
-	}
-	if output, err := exec.Command(seekThumbnailCommand, args...).CombinedOutput(); err != nil {
-		t.Fatalf("fixture生成に失敗しました: %v: %s", err, output)
-	}
+	videoPath := mediaFixture(t, "green.mp4")
 
 	output := t.TempDir()
 	if err := GenerateSeekThumbnailSet(context.Background(), videoPath, output, 11_000); err != nil {

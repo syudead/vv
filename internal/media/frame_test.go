@@ -5,7 +5,6 @@ import (
 	"context"
 	"image"
 	"image/png"
-	"path/filepath"
 	"testing"
 )
 
@@ -14,9 +13,7 @@ import (
 
 func TestFrameAtKeepsSmallVideoSizeAndPosition(t *testing.T) {
 	requireFFmpeg(t)
-	dir := t.TempDir()
-	videoPath := filepath.Join(dir, "clock.mp4")
-	runFFmpeg(t, "-f", "lavfi", "-i", timeGraySource("64x48", "30"), "-c:v", "mpeg4", "-q:v", "2", "-g", "50", "-y", videoPath)
+	videoPath := mediaFixture(t, "frame-clock.mp4")
 
 	for _, positionMs := range []int64{3_000, 22_000} {
 		frame, err := FrameAt(context.Background(), videoPath, positionMs)
@@ -41,9 +38,7 @@ func TestFrameAtKeepsSmallVideoSizeAndPosition(t *testing.T) {
 
 func TestFrameAtCapsLongSide(t *testing.T) {
 	requireFFmpeg(t)
-	dir := t.TempDir()
-	videoPath := filepath.Join(dir, "large.mp4")
-	runFFmpeg(t, "-f", "lavfi", "-i", "color=c=gray:s=2560x1440:r=1:d=2", "-c:v", "mpeg4", "-q:v", "10", "-y", videoPath)
+	videoPath := mediaFixture(t, "large.mp4")
 
 	frame, err := FrameAt(context.Background(), videoPath, 500)
 	if err != nil {
@@ -56,9 +51,7 @@ func TestFrameAtCapsLongSide(t *testing.T) {
 
 func TestFrameAtFailsPastTheEnd(t *testing.T) {
 	requireFFmpeg(t)
-	dir := t.TempDir()
-	videoPath := filepath.Join(dir, "short.mp4")
-	runFFmpeg(t, "-f", "lavfi", "-i", timeGraySource("64x64", "3"), "-c:v", "mpeg4", "-q:v", "2", "-y", videoPath)
+	videoPath := mediaFixture(t, "short-clock.mp4")
 
 	if _, err := FrameAt(context.Background(), videoPath, 20_000); err == nil {
 		t.Fatal("FrameAt past the end succeeded")

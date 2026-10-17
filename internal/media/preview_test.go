@@ -51,7 +51,7 @@ func TestGeneratePreviewProducesBrowserCompatibleFastStartAsset(t *testing.T) {
 
 	requireFFmpeg(t)
 	dir := t.TempDir()
-	source := makePreviewSource(t, dir, 10)
+	source := mediaFixture(t, "preview.mp4")
 	target := filepath.Join(dir, "preview.mp4")
 	if err := GeneratePreview(context.Background(), source, target, 10000); err != nil {
 		t.Fatal(err)
@@ -100,22 +100,7 @@ func TestGeneratePreviewSamplesAcrossWholeTimeline(t *testing.T) {
 
 	requireFFmpeg(t)
 	dir := t.TempDir()
-	timeline := filepath.Join(dir, "timeline.mp4")
-	filter := "nullsrc=size=64x64:rate=4:duration=120,geq=lum='16+floor(N/40)*18':cb=128:cr=128"
-	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", filter,
-		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", timeline).CombinedOutput(); err != nil {
-		t.Fatalf("create timeline source: %v: %s", err, out)
-	}
-	cover := filepath.Join(dir, "cover.jpg")
-	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", "color=white:size=64x64",
-		"-frames:v", "1", "-y", cover).CombinedOutput(); err != nil {
-		t.Fatalf("create cover: %v: %s", err, out)
-	}
-	source := filepath.Join(dir, "timeline-with-cover.mp4")
-	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-i", cover, "-i", timeline,
-		"-map", "0:v:0", "-map", "1:v:0", "-c", "copy", "-disposition:v:0", "attached_pic", "-y", source).CombinedOutput(); err != nil {
-		t.Fatalf("mux attached cover: %v: %s", err, out)
-	}
+	source := mediaFixture(t, "timeline-with-cover.mp4")
 	disposition, err := exec.Command("ffprobe", "-v", "error", "-select_streams", "v:1",
 		"-show_entries", "stream_disposition=attached_pic", "-of", "default=nw=1:nk=1", source).Output()
 	if err != nil || strings.TrimSpace(string(disposition)) != "1" {
@@ -184,13 +169,7 @@ func TestGeneratePreviewSkipsSegmentsPastVideoEnd(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()
 	// 映像 10 秒・音声 12 秒。容器の長さ 12 秒で区間を選ぶと、末尾の 2 区間は映像の後ろになる。
-	source := filepath.Join(dir, "longer-container.mp4")
-	video := "nullsrc=size=64x64:rate=8:duration=10,geq=lum='16+floor(N/8)*20':cb=128:cr=128"
-	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", video,
-		"-f", "lavfi", "-i", "sine=frequency=440:duration=12",
-		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-y", source).CombinedOutput(); err != nil {
-		t.Fatalf("create source: %v: %s", err, out)
-	}
+	source := mediaFixture(t, "longer-container.mp4")
 	target := filepath.Join(dir, "preview.mp4")
 	if err := GeneratePreview(context.Background(), source, target, 12000); err != nil {
 		t.Fatal(err)
@@ -230,12 +209,7 @@ func TestGeneratePreviewFailsWhenNoSegmentHasFrames(t *testing.T) {
 	dir := t.TempDir()
 	// 4fps・15 秒でキーフレームが先頭だけの MPEG-TS。索引が無いのでシークが
 	// キーフレームに着かず、どの区間もフレームを出さない。
-	source := filepath.Join(dir, "sparse-keyframes.ts")
-	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi",
-		"-i", "testsrc2=size=320x240:rate=4:duration=15",
-		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-f", "mpegts", "-y", source).CombinedOutput(); err != nil {
-		t.Fatalf("create source: %v: %s", err, out)
-	}
+	source := mediaFixture(t, "sparse-keyframes.ts")
 	if err := GeneratePreview(context.Background(), source, filepath.Join(dir, "preview.mp4"), 15000); err == nil {
 		t.Fatal("generation without any video frame unexpectedly succeeded")
 	}
@@ -246,17 +220,7 @@ func TestGeneratePreviewKeepsRotatedPortrait(t *testing.T) {
 
 	requireFFmpeg(t)
 	dir := t.TempDir()
-	landscape := filepath.Join(dir, "landscape.mp4")
-	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi",
-		"-i", "testsrc2=size=1280x720:rate=8:duration=12",
-		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", landscape).CombinedOutput(); err != nil {
-		t.Fatalf("create landscape: %v: %s", err, out)
-	}
-	source := filepath.Join(dir, "portrait.mp4")
-	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-display_rotation", "90",
-		"-i", landscape, "-c", "copy", "-y", source).CombinedOutput(); err != nil {
-		t.Skipf("ffmpeg cannot write display rotation: %v: %s", err, out)
-	}
+	source := mediaFixture(t, "rotated.mp4")
 	target := filepath.Join(dir, "preview.mp4")
 	if err := GeneratePreview(context.Background(), source, target, 12000); err != nil {
 		t.Fatal(err)
@@ -287,7 +251,7 @@ func slicesIndex(values []string, want string) int {
 func TestGeneratePreviewCancellationFails(t *testing.T) {
 	requireFFmpeg(t)
 	dir := t.TempDir()
-	source := makePreviewSource(t, dir, 1)
+	source := mediaFixture(t, "preview-short.mp4")
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if err := GeneratePreview(ctx, source, filepath.Join(dir, "preview.mp4"), 1000); err == nil {
@@ -302,17 +266,6 @@ func requireFFmpeg(t *testing.T) {
 			t.Skipf("%s is unavailable", command)
 		}
 	}
-}
-
-func makePreviewSource(t *testing.T, dir string, seconds int) string {
-	t.Helper()
-	path := filepath.Join(dir, "source.mp4")
-	filter := "testsrc2=size=642x362:rate=8:duration=" + strconv.Itoa(seconds)
-	if out, err := exec.Command("ffmpeg", "-nostdin", "-v", "error", "-f", "lavfi", "-i", filter,
-		"-c:v", "libx264", "-pix_fmt", "yuv420p", "-y", path).CombinedOutput(); err != nil {
-		t.Fatalf("create source: %v: %s", err, out)
-	}
-	return path
 }
 
 func contains(value, want string) bool {
