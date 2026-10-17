@@ -139,14 +139,17 @@ func (h *Home) recommendedIDs(ctx context.Context) ([]int64, error) {
 	if err != nil {
 		return nil, err
 	}
-	ids := []int64{}
-	if len(inputs.Seeds) > 0 {
-		candidates, err := h.catalog.RelatedCandidates(ctx, domain.AudienceOwner, 0)
-		if err != nil {
-			return nil, err
-		}
-		ids = domain.RankRecommended(h.scorer, inputs, candidates, domain.HomeShelfItemLimit)
+	// 種が無ければ並びを保持しない。保持すると、そのあとお気に入りを足して Home がおすすめの棚を
+	// 出しても、期限まで棚が空のままになる。種の有無は元を読むだけで決まり、計算はいらない。
+	if len(inputs.Seeds) == 0 {
+		h.recommended = nil
+		return nil, nil
 	}
+	candidates, err := h.catalog.RelatedCandidates(ctx, domain.AudienceOwner, 0)
+	if err != nil {
+		return nil, err
+	}
+	ids := domain.RankRecommended(h.scorer, inputs, candidates, domain.HomeShelfItemLimit)
 	h.recommended, h.expiry = ids, h.now().Add(domain.RecommendTTL)
 	return ids, nil
 }

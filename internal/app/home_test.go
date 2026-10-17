@@ -150,3 +150,26 @@ func TestRecommendedIsHeldForTheTTLAndOwnerOnly(t *testing.T) {
 		t.Errorf("種の無いおすすめ = %v（元を %d 回読んだ）, want none", got, store.reads)
 	}
 }
+
+// 種の無い所有者の並びは保持しない。お気に入りを足して種ができれば、期限を待たずに次の読み出しで
+// おすすめが並ぶ（Home は種を見てすぐ棚を出すので、保持すると棚が空のままになる）。
+func TestRecommendedWithoutSeedsIsNotHeld(t *testing.T) {
+	store := &fakeShelfStore{}
+	home := NewHome(HomeOptions{Store: store, Catalog: fakeRecommendCatalog{ids: []int64{1, 2}}, Scorer: tableScorer{}})
+	ctx := context.Background()
+	page, err := home.ShelfItems(ctx, domain.AudienceOwner, recommendedKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := recommendedIDsOf(t, page); got != nil {
+		t.Fatalf("種の無いおすすめ = %v, want none", got)
+	}
+	store.inputs = domain.RecommendInputs{Seeds: []int64{1}}
+	page, err = home.ShelfItems(ctx, domain.AudienceOwner, recommendedKeys)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := recommendedIDsOf(t, page); !slices.Equal(got, []int64{2}) || store.reads != 2 {
+		t.Errorf("種を足したあとのおすすめ = %v（元を %d 回読んだ）, want [2] read again", got, store.reads)
+	}
+}
