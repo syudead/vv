@@ -56,7 +56,9 @@ The points come from one `RelatedScorer`, and the store, the catalog and the
 API see only the resulting number.
 
 Changing a clue, a weight or the whole method replaces or edits that one type;
-the catalog takes another scorer through `CatalogOptions.Scorer`.
+the catalog takes another scorer through `CatalogOptions.Scorer`. The home's
+recommended shelf ranks by the same scorer and takes another through
+`HomeOptions.Scorer` ([home.md](home.md#the-owners-fixed-shelves)).
 
 ## Paging without duplicates
 

@@ -469,9 +469,9 @@ func run(opts runOptions) error {
 		// 分野を選ぶと、自動タグ付けが入なら全動画を判定に回す（specs/057-home/research.md R-6）。
 		Onboarding:    app.NewOnboarding(db.Home(), autoTagger),
 		HomeOrganizer: homeOrganizer,
-		// ホームの棚の読み出しと並びの書き込みは 1 つの取引で済むので、保存層を直接渡す
-		// （specs/057-home/contracts/screen-api.md）。
-		Home:           db.Home(),
+		// ホームの棚は保存層が読み、所有者のおすすめの棚は関連動画と同じ近さで並べて 10 分保持する
+		// （specs/057-home/research.md R-13）。
+		Home:           app.NewHome(app.HomeOptions{Store: db.Home(), Catalog: libraryStore}),
 		VersionJudging: versionJudge,
 		Ollama:         ollamaConnection,
 		ComfyUI:        comfyUIConnection,

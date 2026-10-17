@@ -3,8 +3,9 @@ package store
 // ホームの棚の項目の保持（specs/057-home/research.md R-12）。棚の項目はライブラリの項目の問い合わせで
 // 読むので、2 万本では画面に入った棚を読むのに 1 秒を超える。読んだ棚を、棚の鍵と見る人ごとに
 // homeShelfCacheTTL のあいだ保持し、ホームの画面を読み直させる知らせ（動画・グループ・スマート
-// フォルダ・ホームの変化）を発行するたびに捨てる。知らせの無い変化（再生の記録など）は、おすすめと
-// 同じく保持のあいだ前の値のままである。
+// フォルダ・ホームの変化）を発行するたびに捨てる。再生の記録は知らせを出さないことが多いので、続きから
+// 見る棚の保持だけは再生位置を書くたびに捨てる（dropKind）。ほかの知らせの無い変化は、おすすめと同じく
+// 保持のあいだ前の値のままである。
 
 import (
 	"sync"
@@ -86,6 +87,18 @@ func (c *homeShelfCache) dropFor(events []domain.Event) {
 			clear(c.entries)
 			c.mu.Unlock()
 			return
+		}
+	}
+}
+
+// dropKind は種類 kind の棚の保持したものを捨てる。捨てる前に読み始めた結果もしまわない。
+func (c *homeShelfCache) dropKind(kind domain.HomeShelfKind) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.generation++
+	for key := range c.entries {
+		if key.shelf.Kind == kind {
+			delete(c.entries, key)
 		}
 	}
 }
