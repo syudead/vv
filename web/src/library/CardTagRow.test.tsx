@@ -450,6 +450,10 @@ describe("CardTagRow", () => {
         screen.getByRole("button", { name: "Filter by 旅行" }).focus();
         await user.tab();
         expect(document.activeElement).toBe(overflow());
+        // 留めて開くまでの時間が過ぎても、フォーカスだけでは開かない。
+        await act(
+          () => new Promise((resolve) => setTimeout(resolve, HOVER_OPEN_DELAY_MS + 100)),
+        );
         expect(screen.queryByRole("dialog")).toBeNull();
 
         await user.keyboard("{Enter}");
