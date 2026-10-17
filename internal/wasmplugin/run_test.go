@@ -16,13 +16,13 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin/plugintest"
 )
 
-// 実行のテストは testdata/probe をビルドしたプラグインを使う。probe は要求の query で振る舞いを選ぶ。
+// 実行のテストは小さな WASI fixture を使い、要求の query で振る舞いを選ぶ。
 
 const probeDigest = "probe"
 
 func probeModule(t *testing.T) []byte {
 	t.Helper()
-	return mustWithManifest(t, plugintest.Build(t, "testdata/probe"), goodManifest)
+	return mustWithManifest(t, plugintest.Probe(), goodManifest)
 }
 
 func search(query string) domain.WorkInfoRunRequest {
@@ -62,22 +62,24 @@ func TestRunReadsBackTheEchoedResponse(t *testing.T) {
 	rt := newTestRuntime(t)
 	module := probeModule(t)
 
-	got, _, err := rt.Run(context.Background(), probeDigest, module, search("Example work"), domain.WorkInfoRunNetwork{}, nil)
-	if err != nil {
-		t.Fatalf("Run(search): %v", err)
-	}
-	want := domain.WorkInfoCandidate{ID: "q:Example work", URL: "https://example.com/?q=Example work", Title: "Example work", Detail: "contract 1"}
-	if len(got.Candidates) != 1 || got.Candidates[0] != want {
-		t.Fatalf("candidates = %+v, want [%+v]", got.Candidates, want)
+	for _, query := range []string{"Example work", `日本語 "quotes" \slash <>&`} {
+		got, _, err := rt.Run(context.Background(), probeDigest, module, search(query), domain.WorkInfoRunNetwork{}, nil)
+		if err != nil {
+			t.Fatalf("Run(search %q): %v", query, err)
+		}
+		want := domain.WorkInfoCandidate{ID: "q:" + query, URL: "https://example.com/?q=" + query, Title: query, Detail: "contract 1"}
+		if len(got.Candidates) != 1 || got.Candidates[0] != want {
+			t.Fatalf("candidates = %+v, want [%+v]", got.Candidates, want)
+		}
 	}
 
 	req := fetch()
-	req.Settings = map[string]string{"apiKey": "secret", "lang": "ja"}
-	got, _, err = rt.Run(context.Background(), probeDigest, module, req, domain.WorkInfoRunNetwork{}, nil)
+	req.Settings = map[string]string{"apiKey": `secret"\<&>`, "lang": "日本語"}
+	got, _, err := rt.Run(context.Background(), probeDigest, module, req, domain.WorkInfoRunNetwork{}, nil)
 	if err != nil {
 		t.Fatalf("Run(fetch): %v", err)
 	}
-	if got.WorkInfo.Title != req.ID || strings.Join(got.WorkInfo.Tags, ",") != "apiKey=secret,lang=ja" {
+	if got.WorkInfo.Title != req.ID || strings.Join(got.WorkInfo.Tags, ",") != `apiKey=secret"\<&>,lang=日本語` {
 		t.Fatalf("work info = %+v, want the ID and the settings echoed", got.WorkInfo)
 	}
 }

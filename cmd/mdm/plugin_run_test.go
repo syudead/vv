@@ -19,19 +19,23 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin/plugintest"
 )
 
-// mdm plugin run のテスト。プラグインは
-// testdata/runplugin をビルドしたもので、CI はインターネットに出ないので、site.test を公開のアドレスに
-// 解決し、その接続を loopback に立てたサイトへつなぐ。
+// mdm plugin run のテスト。
+// 実行には plugintest の WASI fixture、引数検証には testdata/minimal.wasm を使う。CI はインターネットに
+// 出ないので、site.test を公開のアドレスに解決し、その接続を loopback に立てたサイトへつなぐ。
 
 const runManifest = `{"contract":1,"name":"run-test","version":"0.1.0","operations":["search","fetch"],` +
 	`"settings":[{"key":"token","label":"API token","secret":true,"required":true},` +
 	`{"key":"region","label":"Region","default":"jp","options":["jp","us"]}]}`
 
-// runModulePath は runplugin にマニフェストを足したモジュールを一時ファイルに書き、そのパスを返す。
+// runModulePath は CLI fixture にマニフェストを足したモジュールを一時ファイルに書き、そのパスを返す。
 // manifest が空ならマニフェストを足さない。
 func runModulePath(t *testing.T, manifest string) string {
 	t.Helper()
-	module := plugintest.Build(t, "testdata/runplugin")
+	return writeRunModulePath(t, plugintest.CLI(), manifest)
+}
+
+func writeRunModulePath(t *testing.T, module []byte, manifest string) string {
+	t.Helper()
 	if manifest != "" {
 		var err error
 		if module, err = wasmplugin.WithManifest(module, []byte(manifest)); err != nil {
@@ -223,13 +227,14 @@ func TestPluginRunSendsTheRequestsThroughTheProxy(t *testing.T) {
 
 func TestPluginRunRefusesWithUsage(t *testing.T) {
 	t.Parallel()
-	module := runModulePath(t, runManifest)
+	const fixture = "testdata/minimal.wasm"
+	module := writeRunModulePath(t, readFile(t, fixture), runManifest)
 	cases := []struct {
 		name string
 		args []string
 		want []string
 	}{
-		{"no manifest", []string{runModulePath(t, ""), "fetch", "site.test/1", "--set", "token=x"},
+		{"no manifest", []string{fixture, "fetch", "site.test/1", "--set", "token=x"},
 			[]string{"manifest_missing", "mdm plugin pack"}},
 		{"undeclared setting", []string{module, "fetch", "site.test/1", "--set", "token=x", "--set", "colour=red"},
 			[]string{`no setting "colour"`}},
