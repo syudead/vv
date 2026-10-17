@@ -14,15 +14,13 @@ import {
   tagsTab,
   setUpTagsPageServer,
 } from "../testing/tagsPage";
+import { stubRowHeights } from "../testing/virtualRows";
 
 setUpTagsPageServer();
 
 describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale/research.md R-1・R-11・R-12）", () => {
-  /** jsdom には表示域の高さと要素の高さが無いので、試験用の高さを置く。 */
-  const rowHeight = 40;
-  const viewportHeight = 200;
-  let originalInnerHeight = 0;
-  let originalOffsetHeight: PropertyDescriptor | undefined;
+  /** jsdom には表示域の高さと要素の高さが無いので、試験用の高さ（行 40px、表示域 200px）を置く。 */
+  let restoreHeights = () => {};
 
   /** name は並べたときに番号の順になる名前（名前の自然順）。 */
   function name(index: number): string {
@@ -78,25 +76,11 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
     server.tags = Array.from({ length: 150 }, (_, index) =>
       tag({ id: index + 1, name: name(index), tentative: index % 2 === 0 }),
     );
-    originalInnerHeight = window.innerHeight;
-    window.innerHeight = viewportHeight;
-    originalOffsetHeight = Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "offsetHeight",
-    );
-    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
-      configurable: true,
-      get(this: HTMLElement) {
-        return this.hasAttribute("data-index") ? rowHeight : 0;
-      },
-    });
+    restoreHeights = stubRowHeights({ rowHeight: 40, viewportHeight: 200 });
   });
 
   afterEach(() => {
-    window.innerHeight = originalInnerHeight;
-    if (originalOffsetHeight !== undefined) {
-      Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
-    }
+    restoreHeights();
     Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
     Reflect.deleteProperty(document.documentElement, "scrollHeight");
   });
@@ -404,10 +388,13 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
       tag({ id: index + 1, name: name(index), tentative: index % 2 === 0 }),
     );
     install();
-    renderPage();
-    await screen.findByTitle(name(0));
-    await toggleFilter(user, "Tentative only");
+    // 「Tentative only」を URL で効かせて開く。吹き出しから選ぶ操作は他のテストが
+    // 確かめており、ここで重ねると CI の遅い走りで 5 秒の上限に近づく。
+    renderPage({ url: "/tags?tentative=1" });
     await waitFor(() => expect(count()).toBe("125 of 250 tags"));
+    expect(server.pageRequests.map((params) => params.get("tentative"))).toEqual([
+      "true",
+    ]);
 
     await user.click(
       screen.getByRole("checkbox", { name: "Select all 100 loaded tags" }),
@@ -600,14 +587,13 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
     server.failFullGets = true;
     const unsubscribe = subscribeTags(() => undefined);
     try {
-      renderPage();
-      await screen.findByTitle(name(0));
-      await user.click(screen.getByRole("button", { name: "Sort by: Name" }));
-      await user.click(await screen.findByRole("menuitemradio", { name: "Video count" }));
-      await waitFor(() =>
-        expect(server.pageRequests.at(-1)?.get("sort")).toBe("countDesc"),
-      );
+      // 本数の多い順は URL で効かせて開く。並び順のメニューから選ぶ操作は他のテストが
+      // 確かめており、名前の順の行を描いてから描き直すと CI の遅い走りで 5 秒に近づく。
+      renderPage({ url: "/tags?sort=countDesc" });
       await waitFor(() => expect(loadedNames()[1]).toBe(name(1)));
+      expect(server.pageRequests.map((params) => params.get("sort"))).toEqual([
+        "countDesc",
+      ]);
       expect(screen.queryByTitle(name(140))).toBeNull();
 
       await user.click(
@@ -617,10 +603,12 @@ describe("TagsPage サーバーのページで読む（specs/036-tag-admin-scale
         await screen.findByRole("menuitem", { name: "Merge into another tag…" }),
       );
       const dialog = await screen.findByRole("dialog", { name: `Merge "${name(0)}"` });
-      await user.type(
+      // 統合先の名前は貼り付けて 1 回で引く。打鍵ごとに候補を引き直すことは
+      // MergeTagDialog.test.tsx が確かめる。
+      await user.click(
         within(dialog).getByRole("combobox", { name: "Tag to merge into" }),
-        name(140),
       );
+      await user.paste(name(140));
       await user.click(
         await within(dialog).findByRole("option", { name: new RegExp(`^${name(140)}`) }),
       );

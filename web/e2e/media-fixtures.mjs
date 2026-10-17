@@ -400,11 +400,20 @@ export const SCAN_ISSUE_BROKEN = "scan-issue-broken.mp4";
 
 export function generateScanIssueFixtures(root) {
   mkdirSync(root, { recursive: true });
-  run("mkfifo", [path.join(root, SCAN_ISSUE_UNREADABLE)]);
   writeFileSync(
     path.join(root, SCAN_ISSUE_BROKEN),
     "this is not a video; the probe cannot read any stream from it\n".repeat(64),
   );
+}
+
+/**
+ * prepareScanIssueFixtures は、読めないファイル（名前付きパイプ）を置く。作った動画は
+ * 実行をまたいでキャッシュから写す（run-e2e.mjs）が、パイプは写せない（読むと止まる）
+ * ので、実行のたびに写したあとで作る。
+ */
+export function prepareScanIssueFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  run("mkfifo", [path.join(root, SCAN_ISSUE_UNREADABLE)]);
 }
 
 /**
@@ -687,6 +696,19 @@ export const SEARCH_FILLERS = 62;
  * - 「長さ不明」は動画として読めないファイルで、長さが入らない
  * - 「clip NN」は 1 ページ（60 件）を越えるための動画
  */
+/**
+ * prepareSearchFixtures は、検索の動画の更新時刻を実行した時刻から数えて付ける。
+ * 作った動画はキャッシュから写すので、生成の時刻のままだと日がたつほどずれる。
+ */
+export function prepareSearchFixtures(root) {
+  const file = (name) => path.join(root, name);
+  const now = Date.now() / 1000;
+  const day = 24 * 60 * 60;
+  utimesSync(file("京都旅行 2024.mp4"), now - 3 * day, now - 3 * day);
+  utimesSync(file("京都旅行 2023.mp4"), now - 2 * day, now - 2 * day);
+  utimesSync(file("2024 奈良.mp4"), now - day, now - day);
+}
+
 export function generateSearchFixtures(root) {
   mkdirSync(root, { recursive: true });
   const file = (name) => path.join(root, name);
@@ -717,12 +739,6 @@ export function generateSearchFixtures(root) {
   clip("京都旅行 2023.mp4", 5, 80);
   clip("2024 奈良.mp4", 4, 120);
   clip("base.tmp.mp4", 2, 160);
-
-  const now = Date.now() / 1000;
-  const day = 24 * 60 * 60;
-  utimesSync(file("京都旅行 2024.mp4"), now - 3 * day, now - 3 * day);
-  utimesSync(file("京都旅行 2023.mp4"), now - 2 * day, now - 2 * day);
-  utimesSync(file("2024 奈良.mp4"), now - day, now - day);
 
   const copies = [
     "京都 嵐山.mp4",
@@ -1022,7 +1038,7 @@ export function generateActivityVersionFixtures(root) {
 /**
  * generateGroupsFixtures は、任意のグループの流れ（specs/048-groups、子 #1059）を確かめる
  * 動画を作る（web/e2e/groups.e2e.ts）。「フォルダ1」〜「フォルダ3」は 1 本ずつなので
- * グループにならず、登録フォルダの直下の 2 本も単体の動画になる。「自動のグループ」と
+ * グループにならず、登録フォルダの直下の 1 本も単体の動画になる。「自動のグループ」と
  * 「解散するグループ」は直下に 2 本以上あるので自動グループになる。`spare` の 1 本は
  * 登録フォルダの外に置き、テストが再スキャンの前に「自動のグループ」へ写す。
  * 中身で同じ動画とみなされないよう、ほかの組と違う長さとコマの速さにし、色合いを変える。
@@ -1032,7 +1048,7 @@ export const GROUPS_SPREAD = [
   ["フォルダ2", "グループ確認の動画2"],
   ["フォルダ3", "グループ確認の動画3"],
 ];
-export const GROUPS_SINGLES = ["グループ確認の単体A", "グループ確認の単体B"];
+export const GROUPS_SINGLES = ["グループ確認の単体B"];
 export const GROUPS_AUTO = "自動のグループ";
 export const GROUPS_AUTO_MEMBERS = [
   "グループ確認の自動1",
@@ -1074,7 +1090,8 @@ export function generateGroupsFixtures(root, spare) {
 
 /**
  * DRAG_ORGANIZE_VIDEOS は、ドラッグでの整理（specs/050-drag-organize、子 #1109）を確かめる
- * 動画の題名である（web/e2e/drag-organize.e2e.ts）。どれも登録フォルダの直下に置くので、
+ * 動画の題名である（web/e2e/drag-organize.e2e.ts）。e2e に残る並べ替え・「Make a group」・
+ * タッチの長押しの 3 組の分だけを作る。どれも登録フォルダの直下に置くので、
  * 自動グループにはならない。テストの組ごとに題名の頭を変え、ライブラリの検索でその組だけを
  * 出せるようにする。中身で同じ動画とみなされないよう、ほかの組と違う長さとコマの速さにし、
  * 色合いを変える。
@@ -1085,25 +1102,8 @@ export const DRAG_ORGANIZE_VIDEOS = [
   "並べ確認の3",
   "作る確認のA",
   "作る確認のB",
-  "束ね確認のA",
-  "束ね確認のB",
-  "合流確認のX1",
-  "合流確認のX2",
-  "合流確認のY1",
-  "入れ子確認のP1",
-  "入れ子確認のQ1",
-  "移動確認のA1",
-  "移動確認のA2",
-  "移動確認のB1",
-  "選択確認の1",
-  "選択確認の2",
-  "選択確認の3",
-  "選択確認の先1",
   "タッチ確認の1",
   "タッチ確認の先1",
-  "取り出し確認のV",
-  "取り出し確認のX1",
-  "取り出し確認のY1",
 ];
 
 export function generateDragOrganizeFixtures(root) {

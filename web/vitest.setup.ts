@@ -2,10 +2,17 @@
 //
 // @testing-library/jest-dom は入れない。表明は Vitest の expect だけで書く
 // （実行時にも開発時にも依存を増やさないため）。
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 
 import { resetLocale } from "./src/i18n/pseudo";
+
+// findBy* と waitFor の待ちの上限。既定の 1 秒は、CI で coverage を取りながら並べて
+// 走らせると、重いページの最初の描画だけで越えることがある
+// （LibrarySmartFolderCards の findByRole が負荷の下で 1 回落ちた）。待つのは条件が
+// 満たされるまでなので、上限を延ばしても通るテストが遅くなることはない。テスト全体の
+// 上限（5 秒）より短くして、落ちたときに待っていた条件が分かるようにする。
+configure({ asyncUtilTimeout: 3000 });
 
 afterEach(() => {
   cleanup();

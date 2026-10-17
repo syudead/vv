@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react";
+import { act, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -15,6 +15,7 @@ import {
   filterChecked,
   setUpTagsPageServer,
 } from "../testing/tagsPage";
+import { stubRowHeights } from "../testing/virtualRows";
 
 setUpTagsPageServer();
 
@@ -24,8 +25,7 @@ describe("TagsPage 見えている行だけ描く", () => {
   const viewportHeight = 200;
   const tagCount = 60;
   const bandHeight = 50;
-  let originalInnerHeight = 0;
-  let originalOffsetHeight: PropertyDescriptor | undefined;
+  let restoreHeights = () => {};
 
   function name(index: number): string {
     return `Tag ${String(index).padStart(2, "0")}`;
@@ -45,27 +45,16 @@ describe("TagsPage 見えている行だけ描く", () => {
     server.tags = Array.from({ length: tagCount }, (_, index) =>
       tag({ id: index + 1, name: name(index), tentative: true }),
     );
-    originalInnerHeight = window.innerHeight;
-    window.innerHeight = viewportHeight;
-    originalOffsetHeight = Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "offsetHeight",
-    );
-    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
-      configurable: true,
-      get(this: HTMLElement) {
-        if (this.hasAttribute("data-index")) return rowHeight;
-        // 上部バーの下に留める帯（ui-design.md「Band」）。
-        return this.classList.contains("sticky") ? bandHeight : 0;
-      },
+    restoreHeights = stubRowHeights({
+      rowHeight,
+      viewportHeight,
+      // 上部バーの下に留める帯（ui-design.md「Band」）。
+      otherHeight: (element) => (element.classList.contains("sticky") ? bandHeight : 0),
     });
   });
 
   afterEach(() => {
-    window.innerHeight = originalInnerHeight;
-    if (originalOffsetHeight !== undefined) {
-      Object.defineProperty(HTMLElement.prototype, "offsetHeight", originalOffsetHeight);
-    }
+    restoreHeights();
   });
 
   /** tabPastRange は描いている範囲の最後の行の最後の操作から Tab で次の行へ進む。 */
@@ -197,7 +186,9 @@ describe("TagsPage 見えている行だけ描く", () => {
         value: 100_000,
       });
       Object.defineProperty(window, "scrollY", { configurable: true, value: scrolled });
-      window.dispatchEvent(new Event("scroll"));
+      act(() => {
+        window.dispatchEvent(new Event("scroll"));
+      });
     }
 
     afterEach(() => {

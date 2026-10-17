@@ -13,7 +13,6 @@ import {
   renderPage,
   filterButton,
   toggleFilter,
-  filterChecked,
   rejectedTab,
   tagsTab,
   openRejectedTab,
@@ -63,11 +62,17 @@ describe("TagsPage 仮のタグ", () => {
     renderPage();
     await screen.findByTitle("Gamma");
 
-    expect(await filterChecked(user, "Tentative only")).toBe(false);
+    // 吹き出しは 1 回だけ開き、押す前と後のチェックを同じ吹き出しで読む。開き直して読むと
+    // 開閉のたびに描き直し、CI の遅い走りで 5 秒の上限に近づく。閉じたあとも効いている
+    // ことは「Filter」の読み上げ名で確かめる。
     expect(filterButton().getAttribute("aria-label")).toBe("Filter");
-    await toggleFilter(user, "Tentative only");
-
-    expect(await filterChecked(user, "Tentative only")).toBe(true);
+    await user.click(filterButton());
+    const tentative = () => screen.getByRole("checkbox", { name: /^Tentative only/ });
+    await waitFor(() => expect(tentative().getAttribute("aria-checked")).toBe("false"));
+    await user.click(tentative());
+    await waitFor(() => expect(tentative().getAttribute("aria-checked")).toBe("true"));
+    await user.keyboard("{Escape}");
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(filterButton().getAttribute("aria-label")).toBe("Filter (1 applied)");
     expect(await screen.findByText("3 of 4 tags")).toBeDefined();
     expect(screen.queryByTitle("Gamma")).toBeNull();
