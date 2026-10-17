@@ -177,11 +177,15 @@ integration PR.
 ## Checks before a push
 
 A check named in a child Issue's acceptance or a Plan's verification is
-satisfied by the PR's CI when CI runs it. CI's `Browser E2E` job runs the whole
-e2e suite, split into parallel groups, on every PR that changes a path outside
-`*.md`, `docs/` and `specs/`, including PRs into a feature branch, and it is a
-required check. A full local `task test-e2e` before a push repeats that run
-and adds nothing to it.
+satisfied by the PR's CI when CI runs it. A PR's CI does not run browser e2e:
+its required `Browser E2E` job passes without running, except on Renovate PRs.
+The whole suite runs, split into parallel groups, after the merge to `main`,
+and on any branch through a manual run of the CI workflow
+(`workflow_dispatch`): start `ci.yml` on the branch, with
+`gh workflow run ci.yml --ref <branch>` or the GitHub tool that triggers a
+workflow run, and read the result of its `Browser E2E` job. The
+[pre-merge sweep](integrate.md#pre-merge-sweep) runs e2e this way instead of a
+local `task test-e2e`.
 
 CI runs only automated checks. A visual review or a manual step that a Plan,
 `ui-design.md` or `quickstart.md` asks for is still done by the agent whose

@@ -162,7 +162,7 @@ as `DONE` if it is picked again, and you close it then.
    integration PR head.
 4. The **pre-merge sweep**, once per integration PR: when it has no
    sweep comment ([Derive the state](#derive-the-state)), remove every finished worker's
-   worktree and check that the free space meets the e2e threshold
+   worktree and check the free space
    ([Worktrees and disk space](#worktrees-and-disk-space)), then start a fresh stage worker with the sweep
    brief from [briefs.md](briefs.md). It runs the
    [pre-merge sweep](../../issue-handoff/references/integrate.md#pre-merge-sweep):
@@ -215,10 +215,8 @@ also clears what an earlier session left.
 **Check the free space** on the repository's file system
 (`df -Pk <repository root>`, the `Available` column) before starting a
 worker. Below 5 GB, remove the finished workers' worktrees first; if it is
-still below 5 GB, stop and report. The pre-merge sweep runs `task test-e2e`,
-which builds the binaries, generates the e2e media and starts Chromium, so it
-needs 10 GB: below that after the cleanup, stop and report instead of
-starting it. Its worker checks again before running e2e
+still below 5 GB, stop and report. The pre-merge sweep runs e2e as a manual
+CI run, not on this host
 ([integrate.md](../../issue-handoff/references/integrate.md#pre-merge-sweep)).
 
 The download caches are already shared: npm's cache (`~/.npm`), Go's module
