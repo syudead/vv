@@ -25,7 +25,7 @@ func (s *SettingsStore) SaveTranscodeEncoderChoice(ctx context.Context, value st
 	return writeSetting(ctx, s.db.sql, transcodeVideoEncoderKey, value)
 }
 
-func readSetting(ctx context.Context, q *sql.DB, key string) (string, bool, error) {
+func readSetting(ctx context.Context, q rowQueryer, key string) (string, bool, error) {
 	var value string
 	err := q.QueryRowContext(ctx, `select value from settings where key = ?`, key).Scan(&value)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -37,7 +37,7 @@ func readSetting(ctx context.Context, q *sql.DB, key string) (string, bool, erro
 	return value, true, nil
 }
 
-func writeSetting(ctx context.Context, q *sql.DB, key, value string) error {
+func writeSetting(ctx context.Context, q queryExecer, key, value string) error {
 	_, err := q.ExecContext(ctx, `
 		insert into settings (key, value, updated_at) values (?, ?, ?)
 		on conflict (key) do update set value = excluded.value, updated_at = excluded.updated_at`,

@@ -36,6 +36,7 @@ for screen text ([i18n](i18n.md#wording-in-ui-designmd)).
 - [Auto-tagging with a decision model](auto-tagging.md)
 - [AI layer: classifier port and providers](ai-layer.md)
 - [Judging possible duplicates automatically](duplicate-judging.md)
+- [Activity log](activity.md)
 - [Thumbnail editing sessions](thumbnail-editing.md)
 - [Work-info plugins: sandbox, limits and network](work-info-plugins.md)
 - [vv design system](design-system.md)

@@ -23,7 +23,7 @@ func runScanWithCreatedAt(
 	index.folders = []domain.MediaFolder{{ID: 1, Path: root, Version: 1}}
 	scanner := New(Options{Index: index, Queue: index, Reporter: index})
 	scanner.createdAt = createdAt
-	result, err := scanner.Scan(context.Background())
+	result, err := scanner.Scan(context.Background(), domain.ActivityByOwner)
 	if err != nil {
 		t.Fatalf("走査に失敗した: %v", err)
 	}

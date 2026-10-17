@@ -53,7 +53,10 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 		return domain.VideoTagsOutcome{}, err
 	}
 	keys := uniqueUserKeys(targets)
-	skipped, err := writeVideoTagsByName(ctx, tx, keys, action, normalized, tagWrite{tentative: tentative}, time.Now())
+	// 外部連携 API の操作も所有者の操作として記録する（specs/055-activity/research.md R-6）。
+	c := &changes{}
+	skipped, err := writeVideoTagsByName(ctx, tx, keys, action, normalized, tagWrite{tentative: tentative, activity: c},
+		time.Now())
 	if err != nil {
 		return domain.VideoTagsOutcome{}, err
 	}
@@ -62,7 +65,9 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 	if err != nil {
 		return domain.VideoTagsOutcome{}, err
 	}
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	// タグを書くので、スマートフォルダの一致も変わりうる。
+	c.matchesChanged()
+	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.VideoTagsOutcome{}, fmt.Errorf("cannot update the video tags: %w", err)
 	}
 
@@ -80,9 +85,12 @@ func (s *TagStore) ApplyVideoTags(ctx context.Context, videos []domain.VideoRef,
 // tagWrite は writeVideoTagsByName の書き方である。tentative は無い名前を仮のタグとして作る
 // （resolveTagNames）。keepSuggested は、自動タグ付けが提案した（video_tags.tentative = 1 の）付与に
 // 同じタグを付けるとき、提案のまま残す。偽なら手で付けたのと同じく確定する（docs/design-docs/auto-tagging.md）。
+// activity が nil でなければ、変わる鍵とタグの組ごとに所有者の記録を書き（recordManualTagActivity）、それを
+// activity に残す（specs/055-activity/research.md R-6）。
 type tagWrite struct {
 	tentative     bool
 	keepSuggested bool
+	activity      *changes
 }
 
 // writeVideoTagsByName は利用者データの鍵 keys の手で付けたタグを、整えた名前 names で action の通りに
@@ -97,7 +105,7 @@ func writeVideoTagsByName(
 	if err != nil {
 		return nil, err
 	}
-	changed, err := applyManualTags(ctx, tx, keys, action, tagIDs, mode.keepSuggested, now)
+	changed, err := applyManualTags(ctx, tx, keys, action, tagIDs, mode, now)
 	if err != nil {
 		return nil, err
 	}
@@ -233,14 +241,15 @@ func uniqueUserKeys(targets []taggableVideo) []string {
 
 // applyManualTags は利用者データの鍵 keys の手で付けたタグ（video_tags の行）を action の通りに
 // 書き換え、行が実際に変わる鍵を重複なく keys の順で返す。add・replace は、自動タグ付けが提案した
-// 付与に同じタグを付けると確定する。keepSuggested が真なら提案のまま残す。
+// 付与に同じタグを付けると確定する。mode.keepSuggested が真なら提案のまま残す。mode.activity があれば
+// 書き込みの前に所有者の記録を書く。
 // 動画とタグの組を 1 行ずつ送らず、json_each で渡した集合に対する文の数を一定に保つ。上限の
 // 20000 件 × 100 件でも文の数が増えず、書き込みの鍵を持つ時間を SQLite の中の処理だけに抑える。
 // 変わる鍵は書き込みの前に 1 文で求め（changedManualTagKeys）、返る行を鍵の数までに抑える
 // （specs/033-video-dates/research.md R-3）。書き込みは同じ取引で行うので、求めた鍵と実際に
 // 変わる行は食い違わない。
 func applyManualTags(
-	ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, tagIDs []int64, keepSuggested bool, now time.Time,
+	ctx context.Context, tx *sql.Tx, keys []string, action domain.VideoTagsAction, tagIDs []int64, mode tagWrite, now time.Time,
 ) ([]string, error) {
 	encodedKeys, err := json.Marshal(keys)
 	if err != nil {
@@ -250,9 +259,15 @@ func applyManualTags(
 	if err != nil {
 		return nil, fmt.Errorf("cannot build tag ids: %w", err)
 	}
-	changed, err := changedManualTagKeys(ctx, tx, string(encodedKeys), action, string(encodedTags))
+	changed, err := changedManualTagKeys(ctx, tx, string(encodedKeys), action, string(encodedTags), mode.keepSuggested)
 	if err != nil {
 		return nil, err
+	}
+	if mode.activity != nil {
+		if err := recordManualTagActivity(ctx, tx, mode.activity, string(encodedKeys), action, string(encodedTags),
+			mode.keepSuggested, now); err != nil {
+			return nil, err
+		}
 	}
 	switch action {
 	case domain.VideoTagsReplace:
@@ -267,7 +282,7 @@ func applyManualTags(
 		fallthrough
 	case domain.VideoTagsAdd:
 		onConflict := `do update set tentative = 0 where video_tags.tentative = 1`
-		if keepSuggested {
+		if mode.keepSuggested {
 			onConflict = `do nothing`
 		}
 		if _, err := tx.ExecContext(ctx,
@@ -294,13 +309,15 @@ func applyManualTags(
 // changedManualTagKeys は、鍵の集合 encodedKeys（JSON の配列）のうち、action の書き込みで
 // 手で付けたタグの行が変わる鍵を、書き込みの前に 1 文で返す（1 鍵につき高々 1 行）。
 // add はタグの集合 encodedTags に付いていないタグがある鍵、remove は集合のタグが付いている鍵、
-// replace はその両方に加えて集合に無いタグが付いている鍵である。
-func changedManualTagKeys(ctx context.Context, tx *sql.Tx, encodedKeys string, action domain.VideoTagsAction, encodedTags string) ([]string, error) {
-	const missing = `exists (select 1 from json_each(:tags) t where not exists
-		(select 1 from video_tags vt where vt.content_key = k.value and vt.tag_id = t.value))`
-	const present = `exists (select 1 from video_tags vt where vt.content_key = k.value
+// replace はその両方に加えて集合に無いタグが付いている鍵である。keepSuggested が偽なら、提案のまま
+// 付いている（tentative = 1 の）タグは確定して行が変わるので、付いていないタグと同じに数える（unheldManualTag）。
+func changedManualTagKeys(
+	ctx context.Context, tx *sql.Tx, encodedKeys string, action domain.VideoTagsAction, encodedTags string, keepSuggested bool,
+) ([]string, error) {
+	missing := `exists (select 1 from json_each(:tags) t where ` + unheldManualTag(keepSuggested) + `)`
+	present := `exists (select 1 from video_tags vt where vt.content_key = k.value
 		and vt.tag_id in (select value from json_each(:tags)))`
-	const extra = `exists (select 1 from video_tags vt where vt.content_key = k.value
+	extra := `exists (select 1 from video_tags vt where vt.content_key = k.value
 		and vt.tag_id not in (select value from json_each(:tags)))`
 	var condition string
 	switch action {
@@ -332,4 +349,14 @@ func changedManualTagKeys(ctx context.Context, tx *sql.Tx, encodedKeys string, a
 		return nil, fmt.Errorf("cannot read the changed video tags: %w", err)
 	}
 	return keys, nil
+}
+
+// unheldManualTag は、鍵 k.value にタグ t.value を付ける書き込み（applyManualTags の add）がその行を
+// 変える条件である。行が無いときに加えて、keepSuggested が偽なら提案のまま付いている行も確定するので変わる。
+func unheldManualTag(keepSuggested bool) string {
+	held := `vt.content_key = k.value and vt.tag_id = t.value`
+	if !keepSuggested {
+		held += ` and vt.tentative = 0`
+	}
+	return `not exists (select 1 from video_tags vt where ` + held + `)`
 }

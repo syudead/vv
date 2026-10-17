@@ -37,7 +37,7 @@ func (f *guestFixture) writeFingerprints(t *testing.T, fingerprints map[string]d
 	byID := map[int64]domain.Fingerprint{}
 	for name, fingerprint := range fingerprints {
 		byID[f.ids[name]] = fingerprint
-		if err := ingest.EnqueueJob(ctx, domain.JobSeekThumbnail, f.ids[name]); err != nil {
+		if err := ingest.EnqueueJob(ctx, domain.JobSeekThumbnail, f.ids[name], domain.ActivityByRule); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -67,7 +67,7 @@ func (f *guestFixture) refingerprint(t *testing.T, fingerprints map[string]domai
 	byID := map[int64]domain.Fingerprint{}
 	for name, fingerprint := range fingerprints {
 		byID[f.ids[name]] = fingerprint
-		if err := f.env.db.Ingest().EnqueueJob(context.Background(), domain.JobFingerprint, f.ids[name]); err != nil {
+		if err := f.env.db.Ingest().EnqueueJob(context.Background(), domain.JobFingerprint, f.ids[name], domain.ActivityByRule); err != nil {
 			t.Fatal(err)
 		}
 	}

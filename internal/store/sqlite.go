@@ -59,7 +59,8 @@ type Publisher interface {
 // （domain.VideoIngestChanged）と、それで内容の識別子の参照が無くなったこと
 // （domain.ContentUnreferenced）、動画の上書きが変わったこと
 // （domain.VideoOverrideChanged）、フォルダの索引の作り直しで自動グループが変わったこと
-// （domain.GroupsChanged）、スマートフォルダの一致が変わりうること（domain.SmartFoldersChanged）である。どれも取引が確定した後にだけ発行し、
+// （domain.GroupsChanged）、スマートフォルダの一致が変わりうること（domain.SmartFoldersChanged）、
+// アクティビティの記録を書いたか変えたこと（domain.ActivityChanged）である。どれも取引が確定した後にだけ発行し、
 // ロールバックした取引からは発行しない。
 func (db *DB) PublishTo(publisher Publisher) {
 	db.publisherMu.Lock()
@@ -90,6 +91,14 @@ type changes struct {
 	// domain.SmartFoldersChanged で知らせる（specs/052-smart-folders/data-model.md「Notices」）。
 	matches      bool
 	smartFolders []int64
+	// activity は、アクティビティの記録を書いたか変えたことを表す（activity.go）。確定後に
+	// domain.ActivityChanged で知らせる。
+	activity bool
+}
+
+// activityChanged は、アクティビティの記録を書いたか変えたことを記録する。
+func (c *changes) activityChanged() {
+	c.activity = true
 }
 
 // matchesChanged は、スマートフォルダの一致が変わりうることを記録する。
@@ -167,6 +176,9 @@ func (c *changes) events() []domain.Event {
 	if c.processing {
 		events = append(events, domain.ProcessingChanged{})
 	}
+	if c.activity {
+		events = append(events, domain.ActivityChanged{})
+	}
 	events = append(events, groupsChangedEvents(c.groups)...)
 	return append(events, smartFoldersChangedEvents(c.smartFolders)...)
 }
@@ -179,6 +191,15 @@ func (c *changes) events() []domain.Event {
 func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 	if err := settle(ctx, tx, c); err != nil {
 		return err
+	}
+	if err := closeDeletedPairActivities(ctx, tx, c); err != nil {
+		return err
+	}
+	// 消した動画の取り込みの記録は、仕事が連鎖して消えたので閉じる。
+	if c != nil {
+		if err := closeDeletedVideoImports(ctx, tx, c, c.deleted); err != nil {
+			return err
+		}
 	}
 	if c != nil && c.issues {
 		if err := bumpIssuesRevision(ctx, tx); err != nil {
@@ -196,6 +217,22 @@ func (db *DB) commit(ctx context.Context, tx *sql.Tx, c *changes) error {
 		return err
 	}
 	db.publish(c)
+	return nil
+}
+
+// commitWith は取引 tx を commit で確定し、確定できたときだけ集めた変化 c と、changes に載らない
+// 知らせ events（domain.VideoBundleChanged、domain.AutoTagApplied など）を発行する。events に
+// スマートフォルダの一致を変えうる知らせがあれば（changesMatches）、c にもそれを記録し、すべての
+// フォルダを名指す知らせを commit が出す。所有者の記録を書く取引が、記録の知らせと操作そのものの
+// 知らせを 1 回の確定で出すために使う。
+func (db *DB) commitWith(ctx context.Context, tx *sql.Tx, c *changes, events ...domain.Event) error {
+	if changesMatches(events) {
+		c.matchesChanged()
+	}
+	if err := db.commit(ctx, tx, c); err != nil {
+		return err
+	}
+	db.publishEvents(events...)
 	return nil
 }
 

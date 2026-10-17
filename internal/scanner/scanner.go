@@ -65,10 +65,12 @@ type Index interface {
 	UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error
 }
 
-// Queue は重い処理の積み先である。nil でもよい（積まないだけ）。
+// Queue は重い処理の積み先である。nil でもよい（積まないだけ）。decider は取り込みを始めたもので、
+// 積んだ仕事の import の記録に残る（specs/055-activity/research.md R-5）。1 本の動画に要る仕事は 1 回の
+// 呼び出しでまとめて積み、1 件の記録にする（R-3）。
 type Queue interface {
-	EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64) error
-	EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64) error
+	EnqueueJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
+	EnsureJobs(ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind) error
 }
 
 // Reporter は走査の進捗・今のファイル・ファイルごとの失敗の報告先である。nil でも
@@ -154,6 +156,8 @@ type scanPass struct {
 	// targets は metadata の比較で変更なしを除いた、実際に取り込むファイル。
 	// 全ルートを列挙してから処理し、進捗の分母を先に確定させる。
 	targets []scanTarget
+	// decider は走査を始めたもので、積む仕事の記録に渡す。
+	decider domain.ActivityDecider
 	// scoped は範囲を絞った走査（監視の走査）であることを表す。取り込みの途中で変わった・
 	// 消えたファイルを失敗にせず、変更の知らせで始まる次の走査に任せる。
 	scoped bool
@@ -177,8 +181,10 @@ type scanPass struct {
 //
 // 動画ファイルは読み取りのみで扱う。変更・移動・削除・変換は行わない。
 // 個別のファイルの失敗では中止せず、失敗として数えて次へ進む。
-func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
-	return s.scan(ctx, nil, false)
+//
+// decider は走査を始めたもの（手動の走査は所有者、起動時の再開は規則）で、積む仕事の記録に渡す。
+func (s *Scanner) Scan(ctx context.Context, decider domain.ActivityDecider) (domain.ScanResult, error) {
+	return s.scan(ctx, nil, false, decider)
 }
 
 // ScanScoped は dirs のディレクトリだけを読む走査を1回行い、集計を返す
@@ -191,19 +197,25 @@ func (s *Scanner) Scan(ctx context.Context) (domain.ScanResult, error) {
 //
 // 走査の context が domain.ErrScanSuperseded を理由に取り消されたら、次のファイルの
 // 前で止め、何も消さずに domain.ErrScanSuperseded を返す。
+//
+// 監視の走査は規則が始めたものとして仕事を積む（specs/055-activity/research.md R-5）。
 func (s *Scanner) ScanScoped(ctx context.Context, dirs []domain.DirtyDirectory) (domain.ScanResult, error) {
-	return s.scan(ctx, domain.NormalizeDirtyDirectories(dirs), true)
+	return s.scan(ctx, domain.NormalizeDirtyDirectories(dirs), true, domain.ActivityByRule)
 }
 
-func (s *Scanner) scan(ctx context.Context, dirs []domain.DirtyDirectory, scoped bool) (domain.ScanResult, error) {
-	result, err := s.scanOnce(ctx, dirs, scoped)
+func (s *Scanner) scan(
+	ctx context.Context, dirs []domain.DirtyDirectory, scoped bool, decider domain.ActivityDecider,
+) (domain.ScanResult, error) {
+	result, err := s.scanOnce(ctx, dirs, scoped, decider)
 	if err != nil && ctx.Err() != nil && errors.Is(context.Cause(ctx), domain.ErrScanSuperseded) {
 		return result, domain.ErrScanSuperseded
 	}
 	return result, err
 }
 
-func (s *Scanner) scanOnce(ctx context.Context, dirs []domain.DirtyDirectory, scoped bool) (domain.ScanResult, error) {
+func (s *Scanner) scanOnce(
+	ctx context.Context, dirs []domain.DirtyDirectory, scoped bool, decider domain.ActivityDecider,
+) (domain.ScanResult, error) {
 	folders, err := s.index.ListMediaFolders(ctx)
 	if err != nil {
 		return domain.ScanResult{}, err
@@ -216,7 +228,9 @@ func (s *Scanner) scanOnce(ctx context.Context, dirs []domain.DirtyDirectory, sc
 		return domain.ScanResult{}, err
 	}
 
-	pass := &scanPass{indexed: indexed, seen: map[string]struct{}{}, targets: []scanTarget{}, scoped: scoped}
+	pass := &scanPass{
+		indexed: indexed, seen: map[string]struct{}{}, targets: []scanTarget{}, scoped: scoped, decider: decider,
+	}
 	// scanned は今回の走査が読むメディアフォルダ。全体の走査は全部、範囲を絞った走査は
 	// 読むディレクトリを持つものだけである（ほかのフォルダが読めなくても止めない）。
 	scanned := folders
@@ -306,7 +320,7 @@ func (s *Scanner) ingestTargets(ctx context.Context, pass *scanPass, result *dom
 		}
 		videoID := pass.indexed[target.path].ID
 		s.reportFile(target.path, videoID)
-		if err := s.ingest(ctx, target, result); err != nil {
+		if err := s.ingest(ctx, target, result, pass.decider); err != nil {
 			if ctx.Err() != nil {
 				return err
 			}
@@ -544,7 +558,7 @@ func (s *Scanner) visit(
 		// 違えば所在の列だけを直し、欠落した pending jobだけを補い、terminal
 		// failureは復活させない。
 		createdErr := s.refreshCreatedAt(ctx, path, info, existing)
-		jobsErr := s.ensurePendingJobs(ctx, existing)
+		jobsErr := s.ensurePendingJobs(ctx, existing, pass.decider)
 		if err := errors.Join(createdErr, jobsErr); err != nil {
 			if ctx.Err() != nil {
 				return err
@@ -608,6 +622,7 @@ func (s *Scanner) ingest(
 	ctx context.Context,
 	target scanTarget,
 	result *domain.ScanResult,
+	decider domain.ActivityDecider,
 ) error {
 	info, err := s.stableTargetInfo(target.path)
 	if err != nil {
@@ -656,7 +671,7 @@ func (s *Scanner) ingest(
 		return nil
 	}
 
-	if err := s.enqueue(ctx, upserted); err != nil {
+	if err := s.enqueue(ctx, upserted, decider); err != nil {
 		return failFile(domain.IssueRegisterFailed, upserted.ID, err)
 	}
 	return nil
@@ -711,7 +726,7 @@ func sameCreatedAt(a, b time.Time) bool {
 	return a.Unix() == b.Unix()
 }
 
-func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVideo) error {
+func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVideo, decider domain.ActivityDecider) error {
 	if s.queue == nil {
 		return nil
 	}
@@ -728,18 +743,20 @@ func (s *Scanner) ensurePendingJobs(ctx context.Context, video domain.IndexedVid
 		// （specs/030-video-versions/data-model.md §6）。
 		{kind: domain.JobFingerprint, pending: video.FingerprintMissing},
 	}
+	var kinds []domain.JobKind
 	for _, state := range states {
 		if state.pending {
-			if err := s.queue.EnsureJob(ctx, state.kind, video.ID); err != nil {
-				return err
-			}
+			kinds = append(kinds, state.kind)
 		}
 	}
-	return nil
+	if len(kinds) == 0 {
+		return nil
+	}
+	return s.queue.EnsureJobs(ctx, video.ID, decider, kinds...)
 }
 
 // enqueue は解析・サムネイル・シーク用サムネイル・プレビューのうち要るジョブを積む。
-func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult) error {
+func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult, decider domain.ActivityDecider) error {
 	if s.queue == nil {
 		return nil
 	}
@@ -756,12 +773,10 @@ func (s *Scanner) enqueue(ctx context.Context, result domain.UpsertResult) error
 	if result.NeedsPreview {
 		kinds = append(kinds, domain.JobPreview)
 	}
-	for _, kind := range kinds {
-		if err := s.queue.EnqueueJob(ctx, kind, result.ID); err != nil {
-			return err
-		}
+	if len(kinds) == 0 {
+		return nil
 	}
-	return nil
+	return s.queue.EnqueueJobs(ctx, result.ID, decider, kinds...)
 }
 
 // removeMissing は走査で見つからなかった行を消す。

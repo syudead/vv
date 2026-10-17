@@ -315,10 +315,10 @@ func (j *VersionJudge) decide(
 ) (domain.VersionJudgeResult, *float64) {
 	switch rule.Outcome {
 	case domain.VersionFramesSame:
-		return domain.VersionJudgeResult{Verdict: domain.VersionSame}, nil
+		return domain.VersionJudgeResult{Verdict: domain.VersionSame, Decider: domain.ActivityByRule}, nil
 	case domain.VersionFramesDiffer:
 	default:
-		return domain.VersionJudgeResult{Verdict: domain.VersionUndecided}, nil
+		return domain.VersionJudgeResult{Verdict: domain.VersionUndecided, Decider: domain.ActivityByRule}, nil
 	}
 	saved, err := j.settings.OllamaConnectionSaved(ctx)
 	if err != nil {
@@ -331,7 +331,9 @@ func (j *VersionJudge) decide(
 	if err != nil {
 		return failedJudgement(err), nil
 	}
-	return domain.VersionJudgeResult{Verdict: domain.VersionVerdictFor(probability), Probability: &probability}, &probability
+	return domain.VersionJudgeResult{
+		Verdict: domain.VersionVerdictFor(probability), Probability: &probability, Decider: domain.ActivityByAI,
+	}, &probability
 }
 
 // ask は 2 つの内容の組ごとのコマを左右に並べた画像と R-3 の問いを判定の口に送り、答えの確率を

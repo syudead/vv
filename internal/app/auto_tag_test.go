@@ -25,30 +25,38 @@ type fakeAutoTagQueue struct {
 	failed        map[string]string
 	queuedIDs     []int64
 	modes         []domain.AutoTagQueueMode
-	done          chan string
+	// queueDeciders は積んだときの、記録の始めたものである。finishDeciders は終えたときの判断したもの。
+	queueDeciders  []domain.ActivityDecider
+	finishDeciders map[string]domain.ActivityDecider
+	done           chan string
 }
 
 func newFakeAutoTagQueue() *fakeAutoTagQueue {
 	return &fakeAutoTagQueue{
-		videos:   map[string]domain.Video{},
-		finished: map[string]domain.AutoTagSelection{},
-		failed:   map[string]string{},
-		done:     make(chan string, 10),
+		videos:         map[string]domain.Video{},
+		finished:       map[string]domain.AutoTagSelection{},
+		finishDeciders: map[string]domain.ActivityDecider{},
+		failed:         map[string]string{},
+		done:           make(chan string, 10),
 	}
 }
 
-func (q *fakeAutoTagQueue) QueueVideos(_ context.Context, ids []int64, mode domain.AutoTagQueueMode) (int, error) {
+func (q *fakeAutoTagQueue) QueueVideos(
+	_ context.Context, ids []int64, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
+) (int, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.queuedIDs = append(q.queuedIDs, ids...)
 	q.modes = append(q.modes, mode)
+	q.queueDeciders = append(q.queueDeciders, decider)
 	return len(ids), nil
 }
 
-func (q *fakeAutoTagQueue) QueueLibrary(_ context.Context, mode domain.AutoTagQueueMode) (int, error) {
+func (q *fakeAutoTagQueue) QueueLibrary(_ context.Context, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	q.modes = append(q.modes, mode)
+	q.queueDeciders = append(q.queueDeciders, decider)
 	return 3, nil
 }
 
@@ -84,9 +92,12 @@ func (q *fakeAutoTagQueue) Candidates(_ context.Context, key string) ([]domain.A
 func (q *fakeAutoTagQueue) ConfirmTentative(context.Context, int64, int64) error { return nil }
 func (q *fakeAutoTagQueue) RejectTentative(context.Context, int64, int64) error  { return nil }
 
-func (q *fakeAutoTagQueue) Finish(_ context.Context, key string, selection domain.AutoTagSelection) error {
+func (q *fakeAutoTagQueue) Finish(
+	_ context.Context, key string, selection domain.AutoTagSelection, decider domain.ActivityDecider,
+) error {
 	q.mu.Lock()
 	q.finished[key] = selection
+	q.finishDeciders[key] = decider
 	q.mu.Unlock()
 	q.done <- key
 	return nil
@@ -232,9 +243,15 @@ func TestAutoTaggerSelectsTags(t *testing.T) {
 	runAutoTagger(t, tagger)
 
 	waitAutoTagDone(t, queue)
-	want := domain.AutoTagSelection{Confirmed: []int64{1, 40}, Tentative: []int64{2}}
+	want := domain.AutoTagSelection{
+		Confirmed: []int64{1, 40}, Tentative: []int64{2}, Probabilities: map[int64]float64{1: 0.95, 2: 0.5, 40: 0.9},
+	}
 	if got := queue.finished["k1"]; !reflect.DeepEqual(got, want) {
 		t.Fatalf("付けたタグ = %v", got)
+	}
+	// 判定モデルに聞いた実行は、終えると判断したものが ai になる（specs/055-activity/research.md R-5）。
+	if got := queue.finishDeciders["k1"]; got != domain.ActivityByAI {
+		t.Fatalf("判断したもの = %q", got)
 	}
 	if len(classifier.requests) != 1 || len(classifier.requests[0].Questions) != 40 {
 		t.Fatalf("問い合わせ = %d 件", len(classifier.requests))
@@ -297,6 +314,10 @@ func TestAutoTaggerSkipsWithoutSubjectOrCandidates(t *testing.T) {
 	if _, ok := queue.finished["gone"]; !ok {
 		t.Fatal("消えた動画の判定を終えていない")
 	}
+	// 判定モデルに聞いていない実行は、判断したものを変えない。
+	if got := queue.finishDeciders["k1"]; got != "" {
+		t.Fatalf("聞いていない実行の判断したもの = %q", got)
+	}
 }
 
 // 取り込みのあとの自動の判定は、機能と自動の判定の両方が入のときだけ、まだ判定していない
@@ -336,6 +357,11 @@ func TestAutoTaggerQueuesOnlyWhenEnabled(t *testing.T) {
 	}
 	if n, err := tagger.QueueLibrary(ctx, domain.AutoTagScopeMissing); err != nil || n != 3 || queue.modes[2] != domain.AutoTagQueueUnlessDone {
 		t.Fatalf("QueueLibrary = %d, %v, %v", n, err, queue.modes)
+	}
+	// 取り込みが始めた実行は rule、設定や動画ページから始めた実行は owner である（research.md R-5）。
+	wantDeciders := []domain.ActivityDecider{domain.ActivityByRule, domain.ActivityByOwner, domain.ActivityByOwner}
+	if !slices.Equal(queue.queueDeciders, wantDeciders) {
+		t.Fatalf("始めたもの = %v", queue.queueDeciders)
 	}
 }
 
@@ -421,5 +447,60 @@ func TestAutoTaggerCheckClassifier(t *testing.T) {
 		Classifier: &fakeClassifier{err: errors.New("model 'clef' not found")}})
 	if err := failing.CheckClassifier(context.Background()); err == nil || err.Error() != "model 'clef' not found" {
 		t.Fatalf("err = %v", err)
+	}
+}
+
+// fakeAutoTagUndo は取り消した記録とタグを覚える。
+type fakeAutoTagUndo struct{ undone [][2]int64 }
+
+func (f *fakeAutoTagUndo) UndoAutoTag(_ context.Context, entryID, tagID int64) (domain.ActivityEntry, error) {
+	f.undone = append(f.undone, [2]int64{entryID, tagID})
+	return domain.ActivityEntry{ID: 50, Kind: domain.ActivityUndo, UndoesID: entryID}, nil
+}
+
+// 失敗した実行のやり直しは対象の動画を所有者の求めとして積み直し、機能が切なら ErrAutoTaggingOff を返す。
+// タグの取り消しは記録とタグを保存層の 1 つの取引に渡す（specs/055-activity/research.md R-7）。
+func TestAutoTaggerRetriesAndUndoesActivity(t *testing.T) {
+	queue := newFakeAutoTagQueue()
+	settings := &fakeAutoTagSettings{settings: domain.DefaultAutoTagSettings()}
+	undo := &fakeAutoTagUndo{}
+	tagger := NewAutoTagger(AutoTaggerOptions{Queue: queue, Settings: settings, Undo: undo, Classifier: &fakeClassifier{}})
+	activity := NewActivity(ActivityOptions{
+		Store: &fakeActivityLog{entries: map[int64]domain.ActivityEntry{
+			1: {ID: 1, Kind: domain.ActivityAutoTag, Status: domain.ActivityAttention, Reason: domain.ActivityFailed,
+				VideoIDs: [2]int64{6}},
+			2: {ID: 2, Kind: domain.ActivityAutoTag, Status: domain.ActivityAttention, Reason: domain.ActivityFailed},
+			3: {ID: 3, Kind: domain.ActivityAutoTag, Status: domain.ActivityDone, Decider: domain.ActivityByAI,
+				Tags: []domain.ActivityEntryTag{{TagID: 7}}},
+		}},
+		Retriers: map[domain.ActivityKind]ActivityRetrier{domain.ActivityAutoTag: tagger},
+		Undoers:  map[domain.ActivityKind]ActivityUndoer{domain.ActivityAutoTag: tagger},
+	})
+	ctx := context.Background()
+
+	if err := activity.RetryActivity(ctx, 1); !errors.Is(err, domain.ErrAutoTaggingOff) {
+		t.Fatalf("切のやり直し = %v, want ErrAutoTaggingOff", err)
+	}
+	if len(queue.queuedIDs) != 0 {
+		t.Fatalf("切なのに積んだ: %v", queue.queuedIDs)
+	}
+	settings.settings.Enabled = true
+	if err := activity.RetryActivity(ctx, 1); err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(queue.queuedIDs, []int64{6}) || queue.queueDeciders[0] != domain.ActivityByOwner ||
+		queue.modes[0] != domain.AutoTagQueueAgain {
+		t.Fatalf("積んだ = %v, %v, %v", queue.queuedIDs, queue.queueDeciders, queue.modes)
+	}
+	if err := activity.RetryActivity(ctx, 2); !errors.Is(err, domain.ErrActivityNotRetryable) {
+		t.Fatalf("動画の無い記録のやり直し = %v", err)
+	}
+
+	got, err := activity.UndoActivity(ctx, 3, 7)
+	if err != nil || got.UndoesID != 3 || !slices.Equal(undo.undone, [][2]int64{{3, 7}}) {
+		t.Fatalf("取り消し = %+v, %v, %v", got, err, undo.undone)
+	}
+	if _, err := activity.UndoActivity(ctx, 3, 8); !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("付けていないタグの取り消し = %v", err)
 	}
 }

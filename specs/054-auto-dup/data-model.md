@@ -46,7 +46,7 @@ Pairs removed from a bundle, never judged by the model
 
 | Rule | Enforced in |
 | --- | --- |
-| A candidate is claimable when the feature is on, its pair is not in `video_version_unbundles`, and its `judgement` is null, or `failed` with `retry_at` passed | `domain` (the rule), `store` (the claim query) |
+| A candidate is claimable when the feature is on, its pair is in neither `video_version_unbundles` nor `video_version_judging_holds` ([055 data-model](../055-activity/data-model.md#video_version_judging_holds)), and its `judgement` is null, or `failed` with `retry_at` passed | `domain` (the rule), `store` (the claim query, `judgeablePairs`) |
 | The claim returns both keys' fingerprints, which the frame rule reads ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)) | `store` |
 | One judgement is `running` at a time | The single worker; the claim is one statement |
 | A pair the rules cannot settle becomes `no_connection` without a request when no Ollama connection is saved; saving one returns every `no_connection` row to null | `app` (asks the store whether the connection row exists), `store` |
@@ -56,7 +56,7 @@ Pairs removed from a bundle, never judged by the model
 | "Different videos" writes `video_version_dismissals` and deletes the candidate, as the owner's "Different videos" does | `store` |
 | A result for a candidate that is gone or no longer `running` is discarded | `store` |
 | `Unbundle` writes the removed key paired with every other member, then rebuilds the removed key's candidates | `store` (`VersionStore.Unbundle`) |
-| A content change at the same path re-keys `video_version_unbundles` as `moveDismissals` re-keys dismissals | `store` (successions) |
+| A content change at the same path re-keys `video_version_unbundles` and `video_version_judging_holds` as `moveDismissals` re-keys dismissals | `store` (successions) |
 | Every result and `Unbundle` publish `VersionCandidatesChanged` after commit ([R-10](research.md#r-10-the-duplicates-page-refreshes-on-a-candidates-notification)) | `store` |
 
 ## Settings

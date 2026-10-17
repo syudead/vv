@@ -51,7 +51,8 @@ type PlaybackStore struct {
 // 接続を持ち、ライブラリ索引の型には依存せず、タグの書き込みの確定後に
 // domain.SmartFoldersChanged を発行するため *DB も持つ。ページの読み出しは件数と行を
 // 同じスナップショットから返すため、書き込みの枠を取らない読み取り用の接続 read
-// （deferred）で取引を開く。
+// （deferred）で取引を開く。動画のタグを変える操作は所有者の記録を同じ取引で書き
+// （owner_activity.go）、確定後に domain.ActivityChanged も発行する。
 type TagStore struct {
 	sql, read *sql.DB
 	db        *DB
@@ -156,6 +157,12 @@ type WorkInfoStore struct{ db *DB }
 // 依存せず、ドメインイベントを発行しない（plan.md の Constitution Check）。
 type WorkInfoPluginStore struct{ sql, read *sql.DB }
 
+// ActivityStore はアクティビティの記録の一覧と件数・1 件の読み出し・起動時の回復を受け持つ（activity.go、
+// specs/055-activity/data-model.md）。記録の書き込みはこの型のメソッドではなく、記録する各役割が自分の取引から
+// 呼ぶパッケージ内の関数（recordActivity・setActivityState）である。確定後に domain.ActivityChanged を発行する
+// ため、発行先を持つ *DB を通して使う。
+type ActivityStore struct{ db *DB }
+
 func (db *DB) Ingest() *IngestStore       { return &IngestStore{db: db} }
 func (db *DB) Library() *LibraryStore     { return &LibraryStore{db: db} }
 func (db *DB) Scans() *ScanStore          { return &ScanStore{db: db} }
@@ -181,3 +188,4 @@ func (db *DB) WorkInfo() *WorkInfoStore        { return &WorkInfoStore{db: db} }
 func (db *DB) WorkInfoPlugins() *WorkInfoPluginStore {
 	return &WorkInfoPluginStore{sql: db.sql, read: db.read}
 }
+func (db *DB) Activity() *ActivityStore { return &ActivityStore{db: db} }
