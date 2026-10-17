@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/test-quality-monitoring.md
-sourceHash: a9010b9dde011be294f962f80bbe85dbd73c1686645696259d437df7d42a790f
+sourceHash: 15abdd30376e9c25dcee18cbf76cd86a18764087526a9c2494df32bc9c97f133
 ---
 
 # テストと CI の品質監視 {#test-and-ci-quality-monitoring}
@@ -36,7 +36,7 @@ flowchart LR
 
 ## カバレッジはプルリクエストに情報を示し、ブロックしない {#coverage-informs-a-pull-request-and-does-not-block-it}
 
-Codecov はコードを変更するすべてのプルリクエストについて報告し、設定するステータスはすべて情報提供のみだ（[`.github/codecov.yml`](../../.github/codecov.yml)）。必須のカバレッジの数値は数値のために書かれたテストを招く。[Web のテストレベル](web-testing.md)は、振る舞いが壊れたときに失敗する最も低いレベルを選ぶことで、それを排除している。
+Codecov はコードを変更するすべてのプルリクエストについて報告し、設定するステータスはすべて情報提供のみだ（[`.github/codecov.yml`](../../.github/codecov.yml)）。必須のカバレッジの数値は数値のために書かれたテストを招く。[テスト方針](testing.md)は、振る舞いが壊れたときに失敗する最も低いレベルを選ぶことで、それを排除している。
 
 | Codecov の設定 | プルリクエストが得るもの |
 | --- | --- |

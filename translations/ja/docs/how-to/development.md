@@ -1,6 +1,6 @@
 ---
 source: docs/how-to/development.md
-sourceHash: 0b6f3f4e2b871a69f85385693097584bba79e323e784eda266e0c30a4cf3c754
+sourceHash: 8cb82c2f693924efc07c8f7e73ae5f439a1b283843a7f7f87d773234622a896b
 ---
 
 # 開発 {#development}
@@ -33,6 +33,8 @@ mise exec --command "task dev"
 | `MDM_DATA_DIR` | データフォルダ。Windows で直接起動した Go バイナリには、ドライブ文字つきの絶対パスが必要（`task dev` は絶対パスを渡す） |
 
 ## 変更を検証する {#validate-changes}
+
+Go または Web のテストを書くときや変更するときは、[テスト方針](../design-docs/testing.md)を読む。テストの範囲、同期、フィクスチャの選び方を定めている。
 
 ```bash
 mise exec --command "task check"

@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/index.md
-sourceHash: 638807c5e03018c84265fbb16ce0fb13a7ba44376988d2c8cec7bb9e7bf7dfb6
+sourceHash: 931ba74f0b814126969d1df83730ebc380e553160086d53878878a16677f297d
 ---
 
 # 設計文書 {#design-documents}
@@ -41,6 +41,7 @@ sourceHash: 638807c5e03018c84265fbb16ce0fb13a7ba44376988d2c8cec7bb9e7bf7dfb6
 - [ライブラリ UI: 視覚ルールと一覧のレイアウト](library-ui.md)
 - [関連動画と前後の動画](related-videos.md)
 - [画面の文言と書式 (i18n)](i18n.md)
+- [テスト方針: 共通の規則と Go のツール](testing.md)
 - [Web のテストレベル](web-testing.md)
 - [テストと CI の品質監視](test-quality-monitoring.md)
 - [複雑度と重複](complexity-and-duplication.md)
