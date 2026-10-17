@@ -1205,6 +1205,22 @@ describe("VideoPage", () => {
       expect(screen.getByTestId("screen").textContent).toBe("グループ /groups/1");
     });
 
+    it("カードもメンバーの一覧もドラッグの層に加えず、メンバーを押して動かしても何も持ち上げない（050 受け入れ条件 9）", async () => {
+      await openMember();
+      expect(document.querySelector("[data-drag-card]")).toBeNull();
+      const member = screen.getByRole("link", { name: /^ep03\b/ });
+      const pointer = { pointerType: "mouse", isPrimary: true, button: 0, pointerId: 1 };
+      fireEvent.pointerDown(member, { ...pointer, clientX: 10, clientY: 10 });
+      fireEvent.pointerMove(document, { ...pointer, clientX: 50, clientY: 50 });
+      expect(document.querySelector("[data-drag-preview]")).toBeNull();
+      fireEvent.pointerUp(document, { ...pointer, clientX: 50, clientY: 50 });
+      expect(
+        fetchMock.mock.calls.some(([input]) =>
+          String(input).startsWith("/api/organize/"),
+        ),
+      ).toBe(false);
+    });
+
     it("手で作ったグループ（folder が無い）も同じリンクと操作のボタンにする", async () => {
       server.videos.set(12, [
         { ...ep02, group: { id: 9, name: "picks", position: 2, count: 3 } },

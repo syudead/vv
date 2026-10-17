@@ -128,6 +128,7 @@ tasks:
       - task: test
       - task: generate-check
       - task: migrations-check
+      - task: e2e-groups-check
       - task: build-windows-check
       - 'echo "check: all checks passed (browser checks are in task test-e2e)"'
 
@@ -293,6 +294,11 @@ tasks:
     desc: Check that applied migrations have not been changed.
     cmds:
       - bash scripts/migrations-immutable.sh
+
+  e2e-groups-check:
+    desc: Check that every e2e file is in exactly one CI e2e group.
+    cmds:
+      - bash scripts/e2e-groups.sh
 
   # Windows でしか使わないコード（scripts/dev/procgroup_windows.go）は、
   # 手元の GOOS では型検査すらされない。壊れたことに気付く口をここに置く。

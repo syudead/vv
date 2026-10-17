@@ -3,9 +3,14 @@ import path from "node:path";
 
 import { expect, test, type APIRequestContext, type Page } from "@playwright/test";
 
-// ライブラリの検索・絞り込み・並べ替え（親 Issue #195 の受け入れ条件 11〜15・22 と、
-// 「未視聴で絞った一覧から再生して戻ると、その動画が同じ位置に残る」）を実ブラウザに
-// 通す。動画は run-e2e.mjs が generateSearchFixtures で作る。
+// ライブラリの検索・絞り込み・並べ替え（親 Issue #195）のうち、本物のサーバーと
+// ブラウザでしか確かめられないものだけを流す（docs/design-docs/web-testing.md）。
+// 未視聴で絞った一覧をスクロールで読み切る画面からサーバーまでの流れ、ランダムの
+// 並びでの戻る・再読み込みのスクロール位置、キーボードで結果へ着いたときの
+// フォーカスの見え方、画面写真である。条件・並べ替え・手引き・一致なしの振る舞いは
+// Vitest（src/library/LibraryPage、src/videoList/SearchBox）が、検索・絞り込み・
+// 並び順の結果は Go のストアのテスト（internal/store/listing*_test.go）が確かめる。
+// 動画は run-e2e.mjs が generateSearchFixtures で作る。
 
 interface MediaFolder {
   id: number;
@@ -18,7 +23,6 @@ interface Video {
   title: string;
   probeState: string;
   thumbnailState: string;
-  durationMs?: number;
 }
 
 interface VideoPage {
@@ -54,11 +58,6 @@ async function saveProgress(request: APIRequestContext, id: number, positionMs: 
   expect(response.ok()).toBe(true);
 }
 
-/** cardTitles は格子のカードの題名を画面の順に返す。 */
-function cardTitles(page: Page): Promise<string[]> {
-  return page.locator("[data-video-id] h3").allTextContents();
-}
-
 /** cardIds はカードの動画 id を画面の順に返す。 */
 async function cardIds(page: Page): Promise<number[]> {
   return (
@@ -92,22 +91,6 @@ function resultCount(total: number): string {
  */
 function summary(page: Page) {
   return page.getByRole("status", { name: "Search results" });
-}
-
-/** listed は一覧の要求のうち、並び順が sort の応答を待つ。 */
-function listed(page: Page, sort: string) {
-  return page.waitForResponse((response) => {
-    const url = new URL(response.url());
-    return url.pathname === "/api/library" && url.searchParams.get("sort") === sort;
-  });
-}
-
-async function chooseSort(page: Page, current: string, next: string, sort: string) {
-  const response = listed(page, sort);
-  await page.getByRole("button", { name: `Sort by: ${current}` }).click();
-  await page.getByRole("menuitemradio", { name: next, exact: true }).click();
-  await expect(page.getByRole("button", { name: `Sort by: ${next}` })).toBeVisible();
-  await response;
 }
 
 test.describe.serial("library search", () => {
@@ -153,14 +136,10 @@ test.describe.serial("library search", () => {
       )
       .toBe(true);
 
-    // 最近再生した順を確かめるため、3 本に時刻をずらして再生位置を残す。
-    // どれも 15 秒より短いので、位置を残すと視聴済みになる（internal/domain/progress.go）。
+    // 未視聴の絞り込みが全件から減るように、1 本に再生位置を残す。15 秒より短い
+    // 動画なので、位置を残すと視聴済みになる（internal/domain/progress.go）。
     const all = await listAll(request);
     await saveProgress(request, byTitle(all, "京都旅行 2023").id, 1_000);
-    await new Promise((resolve) => setTimeout(resolve, 1_100));
-    await saveProgress(request, byTitle(all, "京都旅行 2024").id, 1_000);
-    await new Promise((resolve) => setTimeout(resolve, 1_100));
-    await saveProgress(request, byTitle(all, "2024 奈良").id, 1_000);
   });
 
   test.afterAll(async ({ request }) => {
@@ -223,141 +202,6 @@ test.describe.serial("library search", () => {
     await expect(summary(page)).toHaveText(resultCount(unwatched.total));
   });
 
-  test("12: 条件を載せた URL は別のタブでも同じ一覧を出し、戻る/進むで前の条件に戻る", async ({
-    page,
-    context,
-    request,
-  }) => {
-    const url = `/?q=${encodeURIComponent("旅行 OR 奈良")}&watch=watched&playable=1&sort=durationDesc`;
-    const expected = await listAll(
-      request,
-      `&query=${encodeURIComponent("旅行 OR 奈良")}&watch=watched&playable=true&sort=durationDesc`,
-    );
-    expect(expected.total).toBe(3);
-
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(url);
-    await expect
-      .poll(() => cardTitles(page))
-      .toEqual(expected.items.map((item) => item.title));
-    await expect(summary(page)).toHaveText("3 items");
-    await expect(page.getByRole("searchbox", { name: "Search videos" })).toHaveValue(
-      "旅行 OR 奈良",
-    );
-    await expect(page.getByRole("button", { name: "Filter (2 applied)" })).toBeVisible();
-
-    const other = await context.newPage();
-    await other.setViewportSize({ width: 1280, height: 800 });
-    await other.goto(url);
-    await expect
-      .poll(() => cardTitles(other))
-      .toEqual(expected.items.map((item) => item.title));
-    await expect(summary(other)).toHaveText("3 items");
-    await other.close();
-
-    // 並べ替えを変えると履歴が 1 つ増え、戻ると前の並びに戻る。
-    await page
-      .getByRole("button", { name: "Descending (longest first). Press for ascending" })
-      .click();
-    await expect(page).toHaveURL(/sort=durationAsc/);
-    await expect
-      .poll(() => cardTitles(page))
-      .toEqual(expected.items.map((item) => item.title).reverse());
-    await page.goBack();
-    await expect(page).toHaveURL(new RegExp(`sort=durationDesc$`));
-    await expect
-      .poll(() => cardTitles(page))
-      .toEqual(expected.items.map((item) => item.title));
-    await page.goForward();
-    await expect(page).toHaveURL(/sort=durationAsc$/);
-
-    // 検索語の入力は一続きで 1 つだけ増える。
-    await page.goto("/?sort=titleAsc");
-    const box = page.getByRole("searchbox", { name: "Search videos" });
-    await box.click();
-    await box.pressSequentially("話", { delay: 50 });
-    await expect(page).toHaveURL(/\?q=%E8%A9%B1&sort=titleAsc$/);
-    await box.pressSequentially(" -10", { delay: 50 });
-    await expect(page).toHaveURL(/\?q=%E8%A9%B1\+-10&sort=titleAsc$/);
-    await expect.poll(() => cardTitles(page)).toEqual(["2話"]);
-    await page.keyboard.press("Tab");
-    await page.goBack();
-    await expect(page).toHaveURL(/\/\?sort=titleAsc$/);
-    await expect(box).toHaveValue("");
-  });
-
-  test("13: 7 種の並べ替えを選べ、ランダム以外は向きで並びが逆になる。題名は自然順", async ({
-    page,
-  }) => {
-    test.setTimeout(60_000);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`/?q=${encodeURIComponent("旅行 OR 奈良")}&sort=addedDesc`);
-    await expect(summary(page)).toHaveText("3 items");
-
-    const kinds: [string, string, string][] = [
-      ["Date added", "addedDesc", "addedAsc"],
-      ["Date modified", "modifiedDesc", "modifiedAsc"],
-      ["Title", "titleAsc", "titleDesc"],
-      ["Length", "durationDesc", "durationAsc"],
-      ["File size", "sizeDesc", "sizeAsc"],
-      ["Recently played", "playedDesc", "playedAsc"],
-    ];
-    let current = "Date added";
-    for (const [kind, initial, reversed] of kinds) {
-      if (kind !== current) await chooseSort(page, current, kind, initial);
-      current = kind;
-      await expect(page).toHaveURL(new RegExp(`sort=${initial}$`));
-      await expect(page.locator("[data-video-id]")).toHaveCount(3);
-      const before = await cardTitles(page);
-      const response = listed(page, reversed);
-      await page
-        .getByRole("button", {
-          name: /^(Ascending|Descending)( \(.+\))?\. Press for (ascending|descending)$/,
-        })
-        .click();
-      await response;
-      await expect(page).toHaveURL(new RegExp(`sort=${reversed}$`));
-      await expect.poll(() => cardTitles(page)).toEqual([...before].reverse());
-    }
-    // 更新日時の新しい順は、ファイルの変更日時の新しい順である。
-    await chooseSort(page, current, "Date modified", "modifiedDesc");
-    await expect
-      .poll(() => cardTitles(page))
-      .toEqual(["2024 奈良", "京都旅行 2023", "京都旅行 2024"]);
-
-    await chooseSort(page, "Date modified", "Random", "random");
-    await expect(page).toHaveURL(/sort=random&seed=\d+$/);
-    await expect(page.getByRole("button", { name: "Shuffle" })).toBeVisible();
-
-    await page.goto(`/?q=${encodeURIComponent("話")}&sort=titleAsc`);
-    await expect.poll(() => cardTitles(page)).toEqual(["2話", "10話"]);
-  });
-
-  test("14: 長さの無い動画と再生したことの無い動画は、向きに関係なく末尾に出る", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    const durationQuery = encodeURIComponent("長さ不明 OR 旅行");
-    await page.goto(`/?q=${durationQuery}&sort=durationDesc`);
-    await expect
-      .poll(() => cardTitles(page))
-      .toEqual(["京都旅行 2023", "京都旅行 2024", "長さ不明"]);
-    await page.goto(`/?q=${durationQuery}&sort=durationAsc`);
-    await expect
-      .poll(() => cardTitles(page))
-      .toEqual(["京都旅行 2024", "京都旅行 2023", "長さ不明"]);
-
-    const playedQuery = encodeURIComponent('旅行 OR "clip 01"');
-    await page.goto(`/?q=${playedQuery}&sort=playedDesc`);
-    await expect
-      .poll(() => cardTitles(page))
-      .toEqual(["京都旅行 2024", "京都旅行 2023", "clip 01"]);
-    await page.goto(`/?q=${playedQuery}&sort=playedAsc`);
-    await expect
-      .poll(() => cardTitles(page))
-      .toEqual(["京都旅行 2023", "京都旅行 2024", "clip 01"]);
-  });
-
   test("15: ランダムは全件を 1 度ずつ出し、戻る・再読み込みで同じ並び、並べ直すで別の並び", async ({
     page,
   }) => {
@@ -399,62 +243,6 @@ test.describe.serial("library search", () => {
       .not.toEqual(order.slice(0, 10));
     await page.goBack();
     await expect(page).toHaveURL(url);
-  });
-
-  test("22: 一致なしでは条件や解除操作を重ねない", async ({ page }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/?q=zzz-no-such-video&watch=unwatched&playable=1&sort=titleDesc");
-    await expect(
-      page.getByRole("heading", { name: "No videos match these conditions" }),
-    ).toBeVisible();
-    await expect(page.getByRole("list", { name: "効いている条件" })).toHaveCount(0);
-    await expect(page.getByRole("button", { name: "Clear filters" })).toHaveCount(0);
-    await expect(page).toHaveURL(
-      /\?q=zzz-no-such-video&watch=unwatched&playable=1&sort=titleDesc$/,
-    );
-    const box = page.getByRole("searchbox", { name: "Search videos" });
-    await expect(box).toHaveValue("zzz-no-such-video");
-    await expect(page.getByRole("button", { name: "Sort by: Title" })).toBeVisible();
-  });
-
-  test("16: 検索の書き方を開くと 4 つの書き方が出て、閉じても検索語が残る", async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto(`/?q=${encodeURIComponent("京都")}&sort=addedDesc`);
-    const box = page.getByRole("searchbox", { name: "Search videos" });
-    await expect(box).toHaveValue("京都");
-    const url = page.url();
-
-    const help = page.getByRole("button", { name: "How to search" });
-    await help.click();
-    const dialog = page.getByRole("dialog", { name: "How to search" });
-    await expect(dialog.getByRole("heading", { name: "How to search" })).toBeVisible();
-    await expect(dialog.getByRole("term")).toHaveText([
-      "kyoto 2024",
-      '"kyoto trip 2024"',
-      "kyoto -2023",
-      /kyoto OR nara\s*kyoto \| nara/,
-    ]);
-    await expect(dialog.getByRole("definition")).toHaveCount(4);
-    await expect(help).toBeFocused();
-
-    // 例を押しても検索欄には入らない。
-    await dialog.getByText("kyoto -2023").click();
-    await expect(box).toHaveValue("京都");
-
-    await page.keyboard.press("Escape");
-    await expect(dialog).toBeHidden();
-    await expect(help).toBeFocused();
-    await expect(box).toHaveValue("京都");
-    expect(page.url()).toBe(url);
-
-    await help.click();
-    await expect(dialog).toBeVisible();
-    await help.click();
-    await expect(dialog).toBeHidden();
-    await expect(box).toHaveValue("京都");
-    expect(page.url()).toBe(url);
   });
 
   test("23: キーボードだけで検索欄 → 手引き → 絞り込み → 並べ替えと向き → 結果へ進める", async ({
@@ -508,43 +296,6 @@ test.describe.serial("library search", () => {
       );
     });
     expect(visible).toBe(true);
-  });
-
-  test("未視聴で絞った一覧から再生して戻ると、その動画が同じ位置に残る", async ({
-    page,
-  }) => {
-    test.setTimeout(60_000);
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await page.goto("/?watch=unwatched&sort=titleDesc");
-    await expect(page.locator("[data-video-id]")).toHaveCount(60);
-    const before = await cardTitles(page);
-    const status = (await summary(page).textContent()) ?? "";
-    // 2 枚目以降の clip を開く（先頭でない位置に残ることを確かめる）。
-    const index = before.findIndex((name) => name.startsWith("clip "));
-    expect(index).toBeGreaterThan(0);
-    const title = before[index] ?? "";
-
-    const id = Number(
-      await page.locator("[data-video-id]").nth(index).getAttribute("data-video-id"),
-    );
-    await page.getByRole("link", { name: title, exact: true }).click();
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText(title);
-    // 再生して位置が残ったことを、サーバーへの保存で表す。実際の再生は
-    // playback.e2e.ts が確かめており、ここでは戻り先の一覧の扱いだけを見る。
-    // 短い動画なので視聴済みになり、「未視聴」の条件からは外れる。
-    await saveProgress(page.request, id, 1_500);
-
-    await page.goBack();
-    await expect(page).toHaveURL(/\?watch=unwatched&sort=titleDesc$/);
-    await expect(page.locator("[data-video-id]")).toHaveCount(60);
-    // その場では一覧から外さず、同じ位置に残す。
-    expect(await cardTitles(page)).toEqual(before);
-    await expect(summary(page)).toHaveText(status);
-
-    // 次に読み直したときに反映する。
-    await page.reload();
-    await expect(page.locator("[data-video-id]")).toHaveCount(60);
-    await expect.poll(() => cardTitles(page)).not.toContain(title);
   });
 
   test("画面の画像を撮る", async ({ page, request }) => {

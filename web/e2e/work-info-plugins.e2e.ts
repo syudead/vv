@@ -6,8 +6,9 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 // ネットワークを使わずに決まったデータで答え、必須の秘密の設定 token を宣言する。fetch は
 // token を受け取ったときだけ「プラグインe2e鍵タグ」を返すので、そのタグが付けば秘密の値が
 // プラグインに届いている。動画は generateWorkInfoPluginFixtures が作る 1 本である。
-// 設定画面の直近の実行の出力（親 Issue #1232、子 #1261）では、プラグインが標準エラーに書いた
-// 秘密の値が伏せてあることを見る。
+// 2 つ目の作品の出演者を足す比べ方、直近の実行の出力の伏せ方（親 Issue #1232、子 #1261）、
+// 作られた人物の外部 ID は Go のストア・アプリと Vitest のページのテストが持つので、ここでは
+// 重ねない（docs/design-docs/web-testing.md の Test levels）。
 // プラグイン・作ったタグ・人物・団体・表示名と作品情報はサーバーの中で他の e2e と共有するので、
 // 前後で消す。
 
@@ -48,7 +49,6 @@ const secretTag = "プラグインe2e鍵タグ";
 const fetchedCode = "PE2E-052";
 const fetchedRelease = "2024-03-01";
 const performer = "プラグインe2e出演者";
-const secondPerformer = "プラグインe2e出演者二";
 const maker = "プラグインe2eメーカー";
 
 let folder: MediaFolder | undefined;
@@ -104,7 +104,7 @@ async function deleteTags(request: APIRequestContext) {
 /** deleteCredits は反映で作られた人物と団体を消す。消せば次の試行でも反映が作り直す。 */
 async function deleteCredits(request: APIRequestContext) {
   const targets: [string, string[]][] = [
-    ["people", [performer, secondPerformer]],
+    ["people", [performer]],
     ["organizations", [maker]],
   ];
   for (const [kind, names] of targets) {
@@ -120,15 +120,6 @@ async function deleteCredits(request: APIRequestContext) {
       }
     }
   }
-}
-
-async function findPerson(request: APIRequestContext, name: string): Promise<Credit> {
-  const response = await request.get(`/api/people?q=${encodeURIComponent(name)}`);
-  expect(response.ok()).toBe(true);
-  const { items } = (await response.json()) as { items: Credit[] };
-  const found = items.find((item) => item.name === name);
-  if (found === undefined) throw new Error(`no person named ${name}`);
-  return found;
 }
 
 function workDetails(page: Page) {
@@ -293,67 +284,5 @@ test.describe.serial("work-info plugins", () => {
       page.getByRole("link", { name: `Filter by ${secretTag} (tentative)` }),
     ).toBeVisible();
     await expect(detailItem(page, "Code")).toHaveText(`Code${fetchedCode}`);
-  });
-
-  test("別の出演者がいる動画に、もう 1 つの作品の出演者を足すと、2 人とも出る", async ({
-    page,
-  }) => {
-    await openVideo(page, fetchedTitle);
-    await fetchEntry(page).click();
-    const dialog = page.getByRole("dialog", { name: "Fetch work info" });
-    await dialog.getByRole("textbox", { name: "Search words" }).fill("e2e");
-    await dialog.getByRole("button", { name: "Search" }).click();
-    await dialog.getByRole("button", { name: /プラグインe2e別作品/ }).click();
-
-    // 品番・発売日・メーカーは今と同じで選べず、出演者だけが選ばれている。
-    const performers = dialog.getByRole("checkbox", { name: "Performers" });
-    await expect(performers).toBeChecked();
-    for (const field of ["Title", "Code", "Released", "Makers"])
-      await expect(dialog.getByRole("checkbox", { name: field })).toBeDisabled();
-    await expect(dialog.getByText("1 new")).toBeVisible();
-    await dialog.getByRole("button", { name: "Apply selected" }).click();
-    await expect(dialog).toBeHidden();
-
-    await expect(detailItem(page, "Performers")).toHaveText(
-      `Performers${performer}, ${secondPerformer}`,
-    );
-  });
-
-  test("設定画面で直近の実行の出力を開くと、プラグインが書いた秘密の値は伏せてある", async ({
-    page,
-  }) => {
-    // 直前の試験の取得が直近の実行である。プラグインは受け取った設定を標準エラーに書く
-    // （specs/056-plugin-tooling R-6）。
-    await page.goto("/settings#work-info-plugins");
-    await expect(pluginRow(page)).toContainText(/Last run /);
-    await pluginRow(page)
-      .getByRole("button", { name: `More actions for ${pluginName}` })
-      .click();
-    await page.getByRole("menuitem", { name: "Last run output" }).click();
-    const dialog = page.getByRole("dialog", { name: `Last run of ${pluginName}` });
-    await expect(dialog.getByText("Fetch by ID")).toBeVisible();
-    await expect(dialog.getByText("Finished")).toBeVisible();
-    const output = dialog.getByRole("region", { name: "Output" });
-    await expect(output).toHaveText("fetch: token=[secret]");
-    await expect(dialog).not.toContainText(secret);
-    await dialog.getByRole("button", { name: "Close" }).click();
-    await expect(dialog).toBeHidden();
-  });
-
-  test("反映で作られた出演者は、人物の画面でプラグインの外部 ID を持つ", async ({
-    page,
-    request,
-  }) => {
-    const person = await findPerson(request, performer);
-    await page.goto(`/people?q=${encodeURIComponent(performer)}`);
-    const row = page.locator(`[data-credit-id="${String(person.id)}"]`);
-    await row.getByRole("button", { name: "Edit details" }).click();
-    const details = page.getByRole("dialog", { name: `Edit "${performer}"` });
-    await expect(details.getByRole("textbox", { name: "Source" })).toHaveValue(
-      "e2eworks",
-    );
-    await expect(details.getByRole("textbox", { name: "Value" })).toHaveValue(
-      "performer-1",
-    );
   });
 });

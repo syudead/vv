@@ -10,8 +10,6 @@ import {
   type Request,
 } from "@playwright/test";
 
-import { elapse } from "./clock";
-
 interface Video {
   id: number;
   title: string;
@@ -123,25 +121,6 @@ async function liveRegionSnapshot(page: Page) {
   );
 }
 
-// Bounds the Tab presses by the page's focusable elements rather than a fixed
-// count, so adding controls to a card does not make a reachable target fail.
-// It waits for the target first so the count covers the rendered page.
-async function tabTo(page: Page, target: ReturnType<Page["locator"]>) {
-  await target.waitFor({ state: "attached" });
-  const limit =
-    (await page.evaluate(
-      () =>
-        document.querySelectorAll(
-          'a[href], button, input, select, textarea, summary, [tabindex], [contenteditable="true"]',
-        ).length,
-    )) + 1;
-  for (let attempt = 0; attempt < limit; attempt += 1) {
-    await page.keyboard.press("Tab");
-    if (await target.evaluate((element) => element === document.activeElement)) return;
-  }
-  throw new Error(`target was not reachable with Tab within ${limit} presses`);
-}
-
 async function snapshot(directory: string): Promise<Map<string, string>> {
   const result = new Map<string, string>();
   for (const name of (await readdir(directory)).sort()) {
@@ -208,21 +187,6 @@ async function seekPreviewFrame(preview: ReturnType<Page["locator"]>, seconds: n
   );
 }
 
-async function assertNoPreviewAfterPointer(
-  page: Page,
-  item: Video,
-  pointerType: "touch" | "pen",
-) {
-  const target = card(page, item);
-  // React synthesizes onPointerEnter from bubbling pointerover events.
-  await target.dispatchEvent("pointerover", {
-    pointerType,
-    bubbles: true,
-  });
-  await elapse(page, 500);
-  await expect(target.locator("video")).toHaveCount(0);
-}
-
 async function screenshot(page: Page, width: number, state: string) {
   if (screenshotDir === undefined) return;
   await mkdir(screenshotDir, { recursive: true });
@@ -235,6 +199,10 @@ async function screenshot(page: Page, width: number, state: string) {
   });
 }
 
+// 本物のプレビューの再生・実ブラウザの CSS と触れる端末の文脈・画面写真だけを流す
+// （docs/design-docs/web-testing.md）。プレビューを作らない場合（準備中・失敗・URL 無し・
+// フォーカス・タッチ・ペン・チェック）とキーボードでの選択と遷移は
+// src/videoList/VideoCard.test.tsx の「VideoCard hover preview」が確かめる。
 test.describe.serial("library hover preview", () => {
   test.beforeAll(async ({ request }) => {
     test.setTimeout(240_000);
@@ -338,71 +306,6 @@ test.describe.serial("library hover preview", () => {
     expect(forbiddenRequests(requests)).toHaveLength(0);
   });
 
-  test("pending、failed、previewUrl欠落とfocus/touch/penはpreviewを作らない", async ({
-    page,
-  }) => {
-    const ineligibleTitles = ["direct-fallback", "audio-only", "silent"];
-    const variants: Video[] = ineligibleTitles.map((title, index) => {
-      const item = video(title);
-      const previewState = index === 0 ? "pending" : index === 1 ? "failed" : "done";
-      const copy = { ...item, previewState } as Video;
-      delete copy.previewUrl;
-      return copy;
-    });
-
-    await page.route("**/api/library?*", async (route) => {
-      const response = await route.fetch();
-      const body = (await response.json()) as LibraryPage;
-      const byID = new Map(variants.map((item) => [item.id, item]));
-      await route.fulfill({
-        response,
-        json: replaceVideos(body, (item) => byID.get(item.id) ?? item),
-      });
-    });
-    // 一覧は準備中の項目を1件ずつ取り直すので、1件の応答も同じ状態にそろえる。
-    await page.route(/\/api\/videos\/\d+$/, async (route) => {
-      const id = Number(new URL(route.request().url()).pathname.split("/").at(-1));
-      const variant = variants.find((item) => item.id === id);
-      if (variant === undefined) {
-        await route.fallback();
-        return;
-      }
-      const response = await route.fetch();
-      const body = (await response.json()) as Video;
-      await route.fulfill({ response, json: { ...body, ...variant } });
-    });
-
-    const requests = watchRequests(page);
-    await page.clock.install();
-    await page.goto("/");
-    for (const item of variants) {
-      await hoverCard(page, item);
-      await elapse(page, 500);
-      await expect(card(page, item).locator("video")).toHaveCount(0);
-    }
-
-    const eligible = video("direct");
-    const link = card(page, eligible).getByRole("link", {
-      name: eligible.title,
-      exact: true,
-    });
-    await link.focus();
-    await elapse(page, 500);
-    await expect(card(page, eligible).locator("video")).toHaveCount(0);
-    await assertNoPreviewAfterPointer(page, eligible, "touch");
-    await assertNoPreviewAfterPointer(page, eligible, "pen");
-    // お気に入りの付け外しも data-preview-checkbox を持つので、選択のチェックの方を指す。
-    await card(page, eligible)
-      .locator("[data-preview-checkbox]")
-      .filter({ has: page.getByRole("checkbox") })
-      .hover();
-    await elapse(page, 500);
-    await expect(card(page, eligible).locator("video")).toHaveCount(0);
-
-    expect(previewRequests(requests)).toHaveLength(0);
-    expect(forbiddenRequests(requests)).toHaveLength(0);
-  });
-
   test("touch主体contextでもmouse hoverは再生し、accessibility treeを変えない", async ({
     browser,
   }) => {
@@ -438,41 +341,6 @@ test.describe.serial("library hover preview", () => {
     } finally {
       await context.close();
     }
-  });
-
-  test("keyboard操作はfocus、選択、Esc解除、Enter遷移だけを行いpreviewを作らない", async ({
-    page,
-  }) => {
-    const item = video("direct");
-    const requests = watchRequests(page);
-
-    await page.clock.install();
-    await page.goto("/");
-    const target = card(page, item);
-    const link = target.getByRole("link", { name: item.title, exact: true });
-    const checkbox = target.getByRole("checkbox", { name: `Select "${item.title}"` });
-
-    await tabTo(page, checkbox);
-    await expect(checkbox).toBeFocused();
-    await page.keyboard.press("Space");
-    await expect(checkbox).toBeChecked();
-    await expect(page.getByText("1 video selected")).toBeVisible();
-    await page.keyboard.press("Escape");
-    await expect(checkbox).not.toBeChecked();
-    await expect(page.getByText("1 video selected")).toHaveCount(0);
-
-    await page.keyboard.press("Tab");
-    await expect(link).toBeFocused();
-    await elapse(page, 500);
-
-    await expect(target.locator("video")).toHaveCount(0);
-    await expect(target.locator("video[controls]")).toHaveCount(0);
-    expect(previewRequests(requests)).toHaveLength(0);
-    expect(forbiddenRequests(requests)).toHaveLength(0);
-
-    await page.keyboard.press("Enter");
-    await expect(page).toHaveURL(new RegExp(`/videos/${String(item.id)}$`));
-    expect(previewRequests(requests)).toHaveLength(0);
   });
 
   test("reduced motionでもpreviewが進み、装飾transition durationは実質ゼロ", async ({

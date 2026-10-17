@@ -1,5 +1,6 @@
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { MemoryRouter, Route, Routes } from "react-router";
+import userEvent from "@testing-library/user-event";
+import { MemoryRouter, Route, Routes, useLocation } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -144,6 +145,62 @@ describe("VideoCard hover preview", () => {
     act(() => vi.advanceTimersByTime(400));
     expect(onStart).not.toHaveBeenCalled();
     expect(document.querySelector("video")).toBeNull();
+  });
+
+  it("does not start a preview for a failed preview or a done preview without a URL", () => {
+    for (const extra of [
+      { previewState: "failed" as const },
+      { previewState: "done" as const, previewUrl: undefined },
+    ]) {
+      const onStart = vi.fn();
+      renderCard(video(extra), { onPreviewStart: onStart });
+      fireEvent.pointerEnter(screen.getByRole("article"), { pointerType: "mouse" });
+      act(() => vi.advanceTimersByTime(500));
+      expect(onStart).not.toHaveBeenCalled();
+      expect(document.querySelector("video")).toBeNull();
+      cleanup();
+    }
+  });
+
+  it("selects with Space and opens with Enter from the keyboard without a preview", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const onSelect = vi.fn();
+    render(
+      <MemoryRouter>
+        <Routes>
+          <Route
+            path="/"
+            element={
+              <VideoCard
+                video={video()}
+                backTo="/"
+                selected={false}
+                selectionMode={false}
+                onSelect={onSelect}
+              />
+            }
+          />
+          <Route path="/videos/:id" element={<p>video page</p>} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.tab();
+    expect(document.activeElement).toBe(
+      screen.getByRole("checkbox", { name: 'Select "動画 1"' }),
+    );
+    await user.keyboard(" ");
+    expect(onSelect).toHaveBeenCalledWith(1, true);
+
+    await user.tab();
+    expect(document.activeElement).toBe(screen.getByRole("link", { name: "動画 1" }));
+    act(() => vi.advanceTimersByTime(500));
+    expect(document.querySelector("video")).toBeNull();
+    expect(play).not.toHaveBeenCalled();
+
+    await user.keyboard("{Enter}");
+    expect(screen.getByText("video page")).toBeDefined();
+    expect(play).not.toHaveBeenCalled();
   });
 
   it("returns to the thumbnail on leave, media error, or play rejection and retries", async () => {
@@ -834,7 +891,13 @@ describe("VideoCard のスクラブの帯（specs/032-card-scrub-preview）", ()
     expect(scrubBar()).toBeNull();
   });
 
-  it("帯の上のクリックは通常どおり再生画面へ遷移する", () => {
+  it("帯の上のクリックは通常どおり再生画面へ遷移し、開始位置を運ばない", () => {
+    function Player() {
+      const location = useLocation();
+      return (
+        <p>{`player search=[${location.search}] state=${JSON.stringify(location.state)}`}</p>
+      );
+    }
     render(
       <MemoryRouter>
         <Routes>
@@ -850,13 +913,15 @@ describe("VideoCard のスクラブの帯（specs/032-card-scrub-preview）", ()
               />
             }
           />
-          <Route path="/videos/:id" element={<p>player</p>} />
+          <Route path="/videos/:id" element={<Player />} />
         </Routes>
       </MemoryRouter>,
     );
     const element = enterBand(300);
     fireEvent.click(element);
-    expect(screen.getByText("player")).not.toBeNull();
+    // 時刻の問い合わせも自動再生の印も無いので、プレイヤーは保存した続きの位置から始める
+    // （VideoPage.test.tsx「途中まで見た動画は続きの位置から始め…」）。
+    expect(screen.getByText('player search=[] state={"from":"/"}')).not.toBeNull();
   });
 
   it("帯は aria-hidden で、リンクの読み上げ名を変えない", () => {

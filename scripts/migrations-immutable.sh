@@ -15,6 +15,12 @@
 # （PR #834 の 00036 → 00038、PR #1215 の 00048 → 00049）。PR の base branch と
 # 比べると、フィーチャーブランチへの PR でこの改名を壊れた変更として報告し、
 # 手元（origin/main と比べる）と CI で判定が変わる。
+#
+# 比べるのは比較対象の先端ではなく、HEAD との分岐点（merge-base）である。先端と
+# 比べると、main がブランチの後に足した版（ブランチに無い版）を「削除」と数え、
+# main を取り込んでいないフィーチャーブランチとその PR がすべて落ちていた
+# （2026-10-16 の 00051〜00053、10-17 の 00055）。分岐点にある版はすべて main に
+# 配布済みのものなので、それを変えていないかを見れば足りる。
 set -eu
 
 base="${1:-${MIGRATIONS_BASE:-origin/main}}"
@@ -25,9 +31,14 @@ if ! git rev-parse --verify --quiet "$base" >/dev/null; then
 	exit 2
 fi
 
+if ! fork="$(git merge-base "$base" HEAD)"; then
+	echo "$base と HEAD の分岐点を求められません。浅い clone なら履歴を取り寄せてください。" >&2
+	exit 2
+fi
+
 # 内容の変更(M)だけでなく、削除(D)と改名(R)も履歴を変える。新しい番号の
-# 追加(A)は許す。
-modified="$(git diff --name-only --diff-filter=DMR "$base" -- "$dir")"
+# 追加(A)は許す。作業ツリーと比べるので、コミット前の変更も報告する。
+modified="$(git diff --name-only --diff-filter=DMR "$fork" -- "$dir")"
 
 if [ -n "$modified" ]; then
 	echo "適用済みのマイグレーションが変更・削除されています:" >&2

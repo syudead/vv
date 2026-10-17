@@ -1001,6 +1001,23 @@ describe("HistoryPage（specs/043-watch-history/ui-design.md「History screen」
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
   });
 
+  it("lg 未満で / を押すと畳んだ検索欄が開いてフォーカスが入り、/ は欄に入らない", async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByRole("list", { name: "Watch history" });
+    const toggle = screen.getByRole("button", { name: "Search titles" });
+    const field = screen.getByRole("searchbox", { name: "Search titles" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+
+    await user.keyboard("/");
+
+    await waitFor(() => expect(document.activeElement).toBe(field));
+    expect(toggle.getAttribute("aria-expanded")).toBe("true");
+    expect((field as HTMLInputElement).value).toBe("");
+    await user.keyboard("kyoto");
+    await waitFor(() => expect(search).toBe("?q=kyoto"));
+  });
+
   it("行のリンクと操作の state.from は今のクエリ文字列を持つ", async () => {
     const user = userEvent.setup();
     renderPage("/history?watch=all&q=kyoto&date=2026-09");
