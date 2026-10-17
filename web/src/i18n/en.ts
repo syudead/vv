@@ -1943,9 +1943,8 @@ export const en = {
       title: "Fetch work info",
       description: "Nothing changes until you apply.",
       plugin: "Plugin",
-      queryBoth: "Search words or the work's page URL",
       querySearch: "Search words",
-      queryFetch: "The work's ID or page URL",
+      queryFetch: "The work's ID",
       findBy: "Find by",
       findByOptions: {
         words: "Words",
@@ -2009,6 +2008,9 @@ export const en = {
       onVideo: "On the video",
       tentative: "Tentative",
       newCount: (count: number) => `${formatNumber(count)} new`,
+      // タグの行の数。m は動画にまだ無い、選べるタグの数（specs/056-plugin-tooling/ui-design.md）。
+      tagsSelected: (selected: number, selectable: number) =>
+        `${formatNumber(selected)} of ${formatNumber(selectable)} selected`,
       more: (count: number) => `+${formatNumber(count)} more`,
       showFewer: "Show fewer",
       apply: "Apply selected",
@@ -3153,18 +3155,23 @@ export const en = {
       version: (version: string) => `v${version}`,
       operations: {
         search: "Search",
-        fetch: "Fetch by ID or URL",
+        fetch: "Fetch by ID",
       } satisfies Record<WorkInfoOperation, string>,
       network: "Reaches internet sites",
       settingSet: (label: string) => `${label} set`,
       settingNotSet: (label: string) => `${label} not set`,
+      settingDefault: (label: string) => `${label} default`,
       settingsSummary: (items: readonly string[]) => `Settings: ${items.join(", ")}`,
       requiredMissing: (labels: readonly string[]) =>
         `Needs a value: ${labels.join(", ")}`,
+      staleSettings: (labels: readonly string[]) => `Choose again: ${labels.join(", ")}`,
+      defaultHint: (value: string) => `Default: ${value}`,
+      lastRun: (when: string) => `Last run ${when}`,
       approve: "Review and approve",
       settings: "Settings",
       more: (name: string) => `More actions for ${name}`,
       revoke: "Revoke approval",
+      lastRunOutput: "Last run output",
       delete: "Delete",
       revoking: "Revoking…",
       deleting: "Deleting…",
@@ -3209,9 +3216,32 @@ export const en = {
         forget: "Forget",
         forgotten: "Removed when you save.",
         undo: "Undo",
+        defaultItem: (value: string) => `Default (${value})`,
+        notSetItem: "Not set",
+        staleWithDefault: (value: string) =>
+          `"${value}" isn't one of this version's choices. The default is used until you save.`,
+        staleNoDefault: (value: string) =>
+          `"${value}" isn't one of this version's choices. No value is sent until you save.`,
         submit: "Save",
         saved: (name: string) => `Saved the settings for ${name}.`,
         saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
+      },
+      runDialog: {
+        title: (name: string) => `Last run of ${name}`,
+        description:
+          "What the plugin wrote to its error output during its last run. Values of secret settings are shown as [secret].",
+        ran: "Ran",
+        did: "Did",
+        result: "Result",
+        finished: "Finished",
+        failed: (reason: string) => `Failed: ${reason}`,
+        truncated: "The output was cut at 64 KB.",
+        output: "Output",
+        wroteNothing: "The last run wrote nothing.",
+        noRun: "No run yet. Run the plugin from a video page, then open this again.",
+        loading: "Loading the last run",
+        loadFailed: (reason: string) => `Couldn't load the last run: ${reason}`,
+        close: "Close",
       },
       deleteDialog: {
         title: (name: string) => `Delete ${name}?`,
@@ -3308,11 +3338,22 @@ export const en = {
     },
     network: {
       heading: "Network",
-      description:
-        "By default only this PC can open VVMDM. Allow connections from your local network to open it from a phone or another computer on the same network.",
+      description: "Connections to VVMDM, and from its plugins to other sites.",
       loading: "Loading the network settings",
       loadFailed: (reason: string) => `Couldn't load the network settings: ${reason}`,
       lanAccess: "Allow connections from the local network",
+      lanAccessDescription:
+        "By default only this PC can open VVMDM. Allow connections from your local network to open it from a phone or another computer on the same network.",
+      proxy: {
+        label: "Proxy for plugin requests",
+        description:
+          "Plugin requests to other sites go through this proxy. Leave it empty to connect directly. Devices on your network are refused either way.",
+        placeholder: "http://proxy.example:3128",
+        invalid:
+          "Enter a URL starting with http://, https:// or socks5://, with a host and no path.",
+        saved: "Saved.",
+        saveFailed: (reason: string) => `Couldn't save the proxy: ${reason}`,
+      },
       saving: "Saving…",
       saveFailed: (reason: string) => `Couldn't change the setting: ${reason}`,
       cautionHeading: "Before you turn this on",

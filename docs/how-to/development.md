@@ -73,6 +73,8 @@ flowchart LR
   groups --> checks
   code -->|yes| push{Push to main or Renovate PR?}
   push -->|yes| more[E2E in five groups and Docker image build]
+  code -->|yes| manual{Manual run?}
+  manual -->|yes| e2e[E2E in five groups]
 ```
 
 "No" means only Markdown, `docs/` or `specs/` changed. For a code change, CI
@@ -91,6 +93,12 @@ pull request; `Browser E2E` passes there without running. Renovate PRs (head
 branch `renovate/*`) are the exception: they run both, without publishing the
 image, because the Renovate routine merges them without a person
 ([dependency-updates.md](dependency-updates.md)).
+
+To run browser E2E on a branch before it merges, start the CI workflow by hand
+(`workflow_dispatch`) from the Actions tab or with
+`gh workflow run ci.yml --ref <branch>`. A manual run treats the branch as a
+code change and runs every `Checks` group and the five E2E groups; it does not
+build the Docker image.
 
 The Go and Vitest test groups run the same tests as `task test-go` and
 `task test-web-unit` through `task test-go-report` and `task test-web-report`,

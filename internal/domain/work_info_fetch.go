@@ -13,10 +13,8 @@ import (
 // 実行は internal/app、反映の書き込みは internal/store（OverrideStore）が行う。
 
 const (
-	// WorkInfoSearchQueryMaxRunes は検索の語の、前後の空白を除いたあとの長さの上限（文字数）である。
+	// WorkInfoSearchQueryMaxRunes は検索の語と取得の作品 ID の、前後の空白を除いたあとの長さの上限（文字数）である。
 	WorkInfoSearchQueryMaxRunes = 200
-	// WorkInfoFetchURLMaxRunes は取得する作品の URL の長さの上限（文字数）である（contracts/screen-api.md）。
-	WorkInfoFetchURLMaxRunes = 2048
 	// WorkInfoFetchLifetime は取得の結果をメモリに持つ時間である（research.md R-8）。
 	WorkInfoFetchLifetime = 10 * time.Minute
 )
@@ -26,7 +24,7 @@ var (
 	ErrWorkInfoPluginNotApproved = errors.New("the work-info plugin is not approved")
 	// ErrWorkInfoOperationUnsupported はプラグインのマニフェストがその操作を宣言しないことを表す。
 	ErrWorkInfoOperationUnsupported = errors.New("the work-info plugin does not support the operation")
-	// ErrWorkInfoRunInvalid は検索の語か取得の URL が規則に合わないことを表す。
+	// ErrWorkInfoRunInvalid は検索の語か取得の作品 ID が規則に合わないことを表す。
 	ErrWorkInfoRunInvalid = errors.New("the work-info plugin request is invalid")
 	// ErrWorkInfoFetchStale は取得の結果が期限切れか不明か、取得のあとにプラグインが差し替えられたか、
 	// 承認を取り消されたか、消されたことを表す（research.md R-8）。
@@ -45,46 +43,73 @@ func (e *WorkInfoSettingsMissingError) Error() string {
 	return "the work-info plugin needs settings: " + strings.Join(e.Keys, ", ")
 }
 
-// MissingWorkInfoPluginSettings は宣言 settings のうち、必須なのに values に値の無いキーを宣言の順に返す。
+// EffectiveWorkInfoPluginValue は設定 s について実行が受け取る値を返す（specs/056-plugin-tooling/research.md R-3）。
+// values に空でない値が保存されていて、s に選択肢が無いか選択肢のどれかならその値、そうでなければ既定値である。
+// stale は保存された値が選択肢の外にあり、使われないことを表す。値が空なら実行はこのキーを受け取らない。
+func EffectiveWorkInfoPluginValue(s WorkInfoPluginSetting, values map[string]string) (value string, stale bool) {
+	stored := values[s.Key]
+	if stored == "" {
+		return s.Default, false
+	}
+	if s.Options != nil && !slices.Contains(s.Options, stored) {
+		return s.Default, true
+	}
+	return stored, false
+}
+
+// MissingWorkInfoPluginSettings は宣言 settings のうち、必須なのに実効値（EffectiveWorkInfoPluginValue）の無い
+// キーを宣言の順に返す。既定値のある必須の設定は不足にならない。
 func MissingWorkInfoPluginSettings(settings []WorkInfoPluginSetting, values map[string]string) []string {
 	var missing []string
 	for _, s := range settings {
-		if s.Required && values[s.Key] == "" {
+		if v, _ := EffectiveWorkInfoPluginValue(s, values); s.Required && v == "" {
 			missing = append(missing, s.Key)
 		}
 	}
 	return missing
 }
 
-// DeclaredWorkInfoPluginValues は values のうち、宣言 settings にあって値のあるものだけを返す。実行の要求には
-// これを入れ、宣言に無いキーと他のプラグインの値は入れない（research.md R-13）。
+// DeclaredWorkInfoPluginValues は宣言 settings のキーごとの実効値（EffectiveWorkInfoPluginValue）のうち、
+// 空でないものを返す。実行の要求にはこれを入れ、宣言に無いキーと他のプラグインの値は入れない（research.md R-13）。
 func DeclaredWorkInfoPluginValues(settings []WorkInfoPluginSetting, values map[string]string) map[string]string {
 	out := make(map[string]string, len(settings))
 	for _, s := range settings {
-		if v := values[s.Key]; v != "" {
+		if v, _ := EffectiveWorkInfoPluginValue(s, values); v != "" {
 			out[s.Key] = v
 		}
 	}
 	return out
 }
 
-// NormalizeWorkInfoSearchQuery は検索の語か取得の ID の前後の空白を除き、1〜WorkInfoSearchQueryMaxRunes
-// 文字の正しい UTF-8 なら返す。外れれば ErrWorkInfoRunInvalid を返す。
+// WorkInfoRunSettings は宣言 settings と値 values から、実行の要求の settings（DeclaredWorkInfoPluginValues）を
+// 返す。必須なのに実効値の無いキーがあれば、宣言の順にそれを持つ *WorkInfoSettingsMissingError を返す。
+// サーバーの実行と mdm plugin run が同じ要求を組み立てるために使う（specs/056-plugin-tooling/research.md R-1）。
+func WorkInfoRunSettings(settings []WorkInfoPluginSetting, values map[string]string) (map[string]string, error) {
+	if missing := MissingWorkInfoPluginSettings(settings, values); len(missing) > 0 {
+		return nil, &WorkInfoSettingsMissingError{Keys: missing}
+	}
+	return DeclaredWorkInfoPluginValues(settings, values), nil
+}
+
+// KeptWorkInfoTitle は取得した題名 raw のうち VVMDM が残すものを返す。表示名の規則（NormalizeDisplayName）で
+// 整えた題名で、規則に合わなければ値が無いものとして "" を返す（specs/049-work-info-plugins/contracts/screen-api.md）。
+func KeptWorkInfoTitle(raw string) string {
+	title, _, err := NormalizeDisplayName(raw)
+	if err != nil {
+		return ""
+	}
+	return title
+}
+
+// NormalizeWorkInfoSearchQuery は検索の語か取得の作品 ID の前後の空白を除き、1〜WorkInfoSearchQueryMaxRunes
+// 文字の正しい UTF-8 なら返す。外れれば ErrWorkInfoRunInvalid を返す。所有者が入れた文字列は URL の形でも
+// 作品 ID であり、vv が URL として読むことはない（親 Issue #1232 の要件 14）。
 func NormalizeWorkInfoSearchQuery(query string) (string, error) {
 	trimmed := strings.TrimFunc(query, unicode.IsSpace)
 	if !runeCountBetween(trimmed, 1, WorkInfoSearchQueryMaxRunes) {
 		return "", ErrWorkInfoRunInvalid
 	}
 	return trimmed, nil
-}
-
-// CheckWorkInfoFetchURL は取得の URL が正しい UTF-8 で WorkInfoFetchURLMaxRunes 文字以下の、host を持つ
-// http・https の絶対 URL かを確かめる。上限はバイト数ではなく文字数で数える。外れれば ErrWorkInfoRunInvalid を返す。
-func CheckWorkInfoFetchURL(raw string) error {
-	if !runeCountBetween(raw, 1, WorkInfoFetchURLMaxRunes) || !isWorkURL(raw) {
-		return ErrWorkInfoRunInvalid
-	}
-	return nil
 }
 
 // WorkInfoField は取得の結果のうち、動画に反映できる項目である。

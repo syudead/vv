@@ -156,3 +156,23 @@ func TestAutoImportDefaultsToOnAndRoundTrips(t *testing.T) {
 		t.Fatalf("保存値 = %q, want false", value)
 	}
 }
+
+// プラグインのプロキシは、行が無ければ "" で、保存した値をそのまま読める
+// （specs/056-plugin-tooling/data-model.md）。
+func TestWorkInfoPluginProxyURLRoundTrip(t *testing.T) {
+	db := migratedDB(t)
+	ctx := context.Background()
+	settings := db.Settings()
+
+	if got, err := settings.WorkInfoPluginProxyURL(ctx); err != nil || got != "" {
+		t.Fatalf("保存の前 = (%q, %v), want \"\"", got, err)
+	}
+	for _, want := range []string{"http://user:pass@proxy.example:3128", ""} {
+		if err := settings.SaveWorkInfoPluginProxyURL(ctx, want); err != nil {
+			t.Fatal(err)
+		}
+		if got, err := settings.WorkInfoPluginProxyURL(ctx); err != nil || got != want {
+			t.Fatalf("%q を保存したあと = (%q, %v)", want, got, err)
+		}
+	}
+}

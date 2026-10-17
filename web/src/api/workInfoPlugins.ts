@@ -13,10 +13,13 @@ export type WorkInfoPluginSetting = components["schemas"]["WorkInfoPluginSetting
 export type WorkInfoPluginState = components["schemas"]["WorkInfoPluginState"];
 export type WorkInfoPluginProblem = components["schemas"]["WorkInfoPluginProblem"];
 export type WorkInfoPluginList = components["schemas"]["WorkInfoPluginList"];
+export type WorkInfoPluginRun = components["schemas"]["WorkInfoPluginRun"];
+export type WorkInfoPluginRunFailure = components["schemas"]["WorkInfoPluginRunFailure"];
 export type WorkInfoCandidate = components["schemas"]["WorkInfoCandidate"];
 export type WorkInfoFetch = components["schemas"]["WorkInfoFetch"];
 export type WorkInfoField = components["schemas"]["WorkInfoField"];
 export type WorkInfoFetchApplied = components["schemas"]["WorkInfoFetchApplied"];
+type ApplyWorkInfoFetchRequest = components["schemas"]["ApplyWorkInfoFetchRequest"];
 export type SkippedTag = components["schemas"]["SkippedTag"];
 export type WorkInfoFetchedDate = components["schemas"]["WorkInfoFetchedDate"];
 export type WorkInfoFetchedPerson = components["schemas"]["WorkInfoFetchedPerson"];
@@ -119,6 +122,22 @@ export async function deleteWorkInfoPlugin(
 }
 
 /**
+ * getWorkInfoPluginLastRun はプラグインの直近の実行が残した標準エラーを読む（GET …/{id}/last-run、
+ * specs/056-plugin-tooling/contracts/screen-api.md）。秘密の設定の値は `[secret]` に置き換えてある。
+ * 今のモジュールの実行が残っていなければ `null` を返す。無ければ 404 の RequestFailed。
+ */
+export async function getWorkInfoPluginLastRun(
+  id: number,
+  signal?: AbortSignal,
+): Promise<WorkInfoPluginRun | null> {
+  const body = await request<components["schemas"]["WorkInfoPluginLastRun"]>(
+    `${pluginPath(id)}/last-run`,
+    { signal },
+  );
+  return body.run ?? null;
+}
+
+/**
  * searchWorkInfo は承認済みのプラグインの search で作品を探し、候補を返す（POST …/{id}/search）。`query` は
  * 前後の空白を除いて 1〜200 文字である。失敗は Run failures の RequestFailed（`pluginMessage`・`host`・
  * `settingKeys` を持ちうる）で、`search` を持たないプラグインは 409 `operation_unsupported` である。
@@ -135,25 +154,23 @@ export async function searchWorkInfo(
   return result.candidates;
 }
 
-/** WorkInfoTarget は取得する作品で、作品の URL か ID（URL に埋め込むのはプラグイン）である。 */
-export type WorkInfoTarget = { url: string } | { id: string };
-
 /**
- * fetchWorkInfo は承認済みのプラグイン `pluginId` で動画 `videoId` の作品情報を取る
- * （POST /api/videos/{id}/work-info-fetches）。`target` の `url` か `id` を fetch に渡す。
- * 結果は作品の詳細と、人物・団体ごとの照合の答え `match` を持つ。結果はサーバーが 10 分持ち、動画は
- * 変わらない。動画が無ければ 404 `not_found` で、実行の失敗は searchWorkInfo と同じである。
+ * fetchWorkInfo は承認済みのプラグイン `pluginId` で動画 `videoId` の作品情報を、作品の ID `id`（候補の
+ * `id` か所有者が入れた文字列。URL の形でも ID としてそのまま送り、URL に埋め込むのはプラグイン）から取る
+ * （POST /api/videos/{id}/work-info-fetches）。結果は作品の詳細と、人物・団体ごとの照合の答え `match` を
+ * 持つ。結果はサーバーが 10 分持ち、動画は変わらない。動画が無ければ 404 `not_found` で、実行の失敗は
+ * searchWorkInfo と同じである。
  */
 export function fetchWorkInfo(
   videoId: number,
   pluginId: number,
-  target: WorkInfoTarget,
+  id: string,
   signal?: AbortSignal,
 ): Promise<WorkInfoFetch> {
   return request<WorkInfoFetch>(`/api/videos/${String(videoId)}/work-info-fetches`, {
     method: "POST",
     headers: jsonHeaders,
-    body: JSON.stringify({ pluginId, ...target }),
+    body: JSON.stringify({ pluginId, id }),
     signal,
   });
 }
@@ -169,7 +186,8 @@ export function workInfoFetchCoverUrl(videoId: number, fetchId: string): string 
 
 /**
  * applyWorkInfoFetch は取得の結果 `fetchId` のうち `fields` の項目を動画に反映する
- * （POST …/work-info-fetches/{fetchId}/apply）。応答は反映後の動画（`workInfo` を含む）と、付けなかった
+ * （POST …/work-info-fetches/{fetchId}/apply）。`tags` を渡せば、`fields` が `tags` を含むとき
+ * 取得したタグのうちその名前だけを付ける（specs/056-plugin-tooling/contracts/screen-api.md）。応答は反映後の動画（`workInfo` を含む）と、付けなかった
  * タグの名前 `skippedTags` と、飛ばした作品の詳細の値 `skipped` である。結果は
  * 使い切りで、期限切れか取得の後にプラグインが変わっていれば 409 `work_info_fetch_stale` で失敗する。
  * 成功したら一覧の控えを捨て、タグを付けたなら共有のタグの一覧も取り直す。
@@ -178,11 +196,14 @@ export async function applyWorkInfoFetch(
   videoId: number,
   fetchId: string,
   fields: readonly WorkInfoField[],
+  tags?: readonly string[],
   signal?: AbortSignal,
 ): Promise<WorkInfoFetchApplied> {
+  const body: ApplyWorkInfoFetchRequest = { fields: [...fields] };
+  if (tags !== undefined) body.tags = [...tags];
   const applied = await request<WorkInfoFetchApplied>(
     `/api/videos/${String(videoId)}/work-info-fetches/${encodeURIComponent(fetchId)}/apply`,
-    { method: "POST", headers: jsonHeaders, body: JSON.stringify({ fields }), signal },
+    { method: "POST", headers: jsonHeaders, body: JSON.stringify(body), signal },
   );
   // 控えは離れた一覧の題名とタグを持ち、一覧が外れている間の `video` 通知では直らないので、
   // 捨てて戻ったときに読み直させる（setVideoDetails と同じ）。タグを付けたなら、作られた

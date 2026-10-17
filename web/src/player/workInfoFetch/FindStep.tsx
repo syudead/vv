@@ -43,10 +43,10 @@ export interface RunFailure {
   plugin: WorkInfoPlugin | undefined;
 }
 
-/** Running は走っている検索か取得で、`url` は候補の行から取っているときのその URL である。 */
+/** Running は走っている検索か取得で、`id` は候補の行から取っているときのその候補の作品 ID である。 */
 export interface Running {
   operation: RunOperation;
-  url?: string;
+  id?: string;
 }
 
 function PluginField({
@@ -192,8 +192,9 @@ function CandidateText({ candidate }: { candidate: WorkInfoCandidate }) {
 }
 
 /**
- * CandidateRow は候補の 1 行である。行を押すとその URL を取得するので、取得できない
- * （検索だけの）プラグインでは行を押せる形にせず、文と `Open page` だけを出す。
+ * CandidateRow は候補の 1 行である。行を押すとその作品 ID で取得するので、取得できない
+ * （検索だけの）プラグインでは行を押せる形にせず、文と `Open page` だけを出す。`Open page` は候補の
+ * ページへのリンクで、VVMDM がその URL を取得することはない。
  */
 function CandidateRow({
   candidate,
@@ -204,10 +205,10 @@ function CandidateRow({
   candidate: WorkInfoCandidate;
   choosable: boolean;
   running: Running | null;
-  onChoose: (url: string) => void;
+  onChoose: (id: string) => void;
 }) {
   const text = t.player.workInfoFetch;
-  const chosen = running?.url === candidate.url;
+  const chosen = running?.id === candidate.id;
   const busy = running !== null;
   const layout =
     "h-auto min-w-0 flex-1 flex-col items-start gap-0.5 px-2 py-1.5 text-left";
@@ -219,7 +220,7 @@ function CandidateRow({
           className={`${layout} font-normal whitespace-normal`}
           aria-disabled={busy || undefined}
           onClick={() => {
-            if (!busy) onChoose(candidate.url);
+            if (!busy) onChoose(candidate.id);
           }}
         >
           <CandidateText candidate={candidate} />
@@ -248,7 +249,7 @@ function Candidates({
   plugin: WorkInfoPlugin | undefined;
   candidates: readonly WorkInfoCandidate[];
   running: Running | null;
-  onChoose: (url: string) => void;
+  onChoose: (id: string) => void;
 }) {
   const text = t.player.workInfoFetch;
   const headingId = useId();
@@ -269,7 +270,7 @@ function Candidates({
       <ul className="flex flex-col divide-y divide-border border-y border-border">
         {shown.map((candidate) => (
           <CandidateRow
-            key={candidate.url}
+            key={candidate.id}
             candidate={candidate}
             choosable={choosable}
             running={running}
@@ -283,7 +284,7 @@ function Candidates({
 
 /**
  * FindStep は取得のダイアログの最初の段で、プラグインの選択、語と ID の選択（両方できるプラグインだけ）、
- * 語か ID か URL の 1 つの欄、失敗、候補の一覧を縦に並べる（ui-design「Find」「Candidates」「Failures」）。
+ * 語か ID の 1 つの欄、失敗、候補の一覧を縦に並べる（ui-design「Find」「Candidates」「Failures」）。
  */
 export default function FindStep({
   plugins,
@@ -310,7 +311,7 @@ export default function FindStep({
   onPlugin: (id: number) => void;
   onBy: (by: FindBy) => void;
   onQuery: (query: string) => void;
-  onChoose: (url: string) => void;
+  onChoose: (id: string) => void;
 }) {
   const text = t.player.workInfoFetch;
   const queryId = useId();
@@ -330,7 +331,7 @@ export default function FindStep({
       )}
       <Field>
         <FieldLabel htmlFor={queryId}>
-          {plugin === undefined ? text.queryBoth : queryLabel(plugin, by)}
+          {plugin === undefined ? text.querySearch : queryLabel(plugin, by)}
         </FieldLabel>
         <Input
           ref={queryRef}

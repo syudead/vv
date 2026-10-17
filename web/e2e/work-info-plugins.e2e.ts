@@ -6,6 +6,8 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 // ネットワークを使わずに決まったデータで答え、必須の秘密の設定 token を宣言する。fetch は
 // token を受け取ったときだけ「プラグインe2e鍵タグ」を返すので、そのタグが付けば秘密の値が
 // プラグインに届いている。動画は generateWorkInfoPluginFixtures が作る 1 本である。
+// 設定画面の直近の実行の出力（親 Issue #1232、子 #1261）では、プラグインが標準エラーに書いた
+// 秘密の値が伏せてあることを見る。
 // プラグイン・作ったタグ・人物・団体・表示名と作品情報はサーバーの中で他の e2e と共有するので、
 // 前後で消す。
 
@@ -234,18 +236,33 @@ test.describe.serial("work-info plugins", () => {
     await openVideo(page, videoTitle);
     await fetchEntry(page).click();
     const dialog = page.getByRole("dialog", { name: "Fetch work info" });
-    await expect(
-      dialog.getByRole("textbox", { name: "Search words or the work's page URL" }),
-    ).toHaveValue(videoTitle);
+    await expect(dialog.getByRole("textbox", { name: "Search words" })).toHaveValue(
+      videoTitle,
+    );
     await dialog.getByRole("button", { name: "Search" }).click();
     await expect(dialog.getByText("2 matches")).toBeVisible();
+    // 候補はページへのリンクを持ち、選ぶと候補の ID（e2e-1）で取得する。
+    await expect(dialog.getByRole("link", { name: "Open page" }).first()).toHaveAttribute(
+      "href",
+      "https://works.example/w/e2e-1",
+    );
     await dialog.getByRole("button", { name: /プラグインe2e作品/ }).click();
+    await expect(dialog.getByText(/· ID e2e-1$/)).toBeVisible();
 
     // 比較の段: 題名・タグと、品番・発売日・出演者・メーカーのすべてが選ばれている。出演者と
     // メーカーはまだ無いので、作られる印が付く。
     for (const field of ["Title", "Tags", "Code", "Released", "Performers", "Makers"])
       await expect(dialog.getByRole("checkbox", { name: field })).toBeChecked();
-    await expect(dialog.getByText("2 new")).toBeVisible();
+    await expect(dialog.getByText("2 of 2 selected")).toBeVisible();
+    // 取得したタグを 1 つ外す（specs/056-plugin-tooling R-7）。鍵のタグは残し、秘密の値が届いた
+    // ことを後で確かめる。
+    // 名前はチップの「{name}, Tentative」で、鍵のタグの名前は fetchedTag を含まない。
+    await dialog.getByRole("checkbox", { name: fetchedTag }).uncheck();
+    await expect(dialog.getByText("1 of 2 selected")).toBeVisible();
+    await expect(dialog.getByRole("checkbox", { name: "Tags" })).toHaveAttribute(
+      "aria-checked",
+      "mixed",
+    );
     await expect(dialog.getByText(fetchedCode)).toBeVisible();
     await expect(dialog.getByTitle(performer)).toHaveText(`${performer}, New`);
     await expect(dialog.getByTitle(maker)).toHaveText(`${maker}, New`);
@@ -253,12 +270,15 @@ test.describe.serial("work-info plugins", () => {
     await expect(dialog).toBeHidden();
     await expect(page.getByText("Applied to the video.")).toBeVisible();
 
-    // 新しい表示名と、仮のタグとして付いた 2 つのタグ。鍵のタグは秘密の値が届いた印である。
+    // 新しい表示名と、仮のタグとして付いた鍵のタグ。外したタグは付かない。鍵のタグは秘密の値が
+    // 届いた印である。
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(fetchedTitle);
-    for (const name of [fetchedTag, secretTag])
-      await expect(
-        page.getByRole("link", { name: `Filter by ${name} (tentative)` }),
-      ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: `Filter by ${secretTag} (tentative)` }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: new RegExp(`^Filter by ${fetchedTag}`) }),
+    ).toHaveCount(0);
 
     // 作品情報の行に品番・発売日・出演者・メーカーが出る。
     await expect(detailItem(page, "Code")).toHaveText(`Code${fetchedCode}`);
@@ -281,9 +301,7 @@ test.describe.serial("work-info plugins", () => {
     await openVideo(page, fetchedTitle);
     await fetchEntry(page).click();
     const dialog = page.getByRole("dialog", { name: "Fetch work info" });
-    await dialog
-      .getByRole("textbox", { name: "Search words or the work's page URL" })
-      .fill("e2e");
+    await dialog.getByRole("textbox", { name: "Search words" }).fill("e2e");
     await dialog.getByRole("button", { name: "Search" }).click();
     await dialog.getByRole("button", { name: /プラグインe2e別作品/ }).click();
 
@@ -299,6 +317,27 @@ test.describe.serial("work-info plugins", () => {
     await expect(detailItem(page, "Performers")).toHaveText(
       `Performers${performer}, ${secondPerformer}`,
     );
+  });
+
+  test("設定画面で直近の実行の出力を開くと、プラグインが書いた秘密の値は伏せてある", async ({
+    page,
+  }) => {
+    // 直前の試験の取得が直近の実行である。プラグインは受け取った設定を標準エラーに書く
+    // （specs/056-plugin-tooling R-6）。
+    await page.goto("/settings#work-info-plugins");
+    await expect(pluginRow(page)).toContainText(/Last run /);
+    await pluginRow(page)
+      .getByRole("button", { name: `More actions for ${pluginName}` })
+      .click();
+    await page.getByRole("menuitem", { name: "Last run output" }).click();
+    const dialog = page.getByRole("dialog", { name: `Last run of ${pluginName}` });
+    await expect(dialog.getByText("Fetch by ID")).toBeVisible();
+    await expect(dialog.getByText("Finished")).toBeVisible();
+    const output = dialog.getByRole("region", { name: "Output" });
+    await expect(output).toHaveText("fetch: token=[secret]");
+    await expect(dialog).not.toContainText(secret);
+    await dialog.getByRole("button", { name: "Close" }).click();
+    await expect(dialog).toBeHidden();
   });
 
   test("反映で作られた出演者は、人物の画面でプラグインの外部 ID を持つ", async ({

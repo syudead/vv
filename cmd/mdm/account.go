@@ -14,32 +14,44 @@ import (
 	"github.com/syudead/vv/internal/domain"
 	"github.com/syudead/vv/internal/password"
 	"github.com/syudead/vv/internal/store"
+	"github.com/syudead/vv/internal/wasmplugin"
 )
 
 // account の下位コマンドの終了コード（specs/016-single-account-auth/contracts/account-cli.md §3）。
+// plugin の下位コマンドも同じ値を使う（specs/056-plugin-tooling/contracts/plugin-cli.md）。
 const (
 	exitAccountOK    = 0
 	exitAccountError = 1 // DB を開けない・書けない
 	exitAccountUsage = 2 // 未設定・値の誤り・確認の不一致・未知の下位コマンド
 )
 
-// accountUsage は account の下位コマンドの使い方である。
+// accountUsage は引数つきの mdm（account と plugin の下位コマンド）の使い方である。
 const accountUsage = `Usage:
   mdm                                 start the server
   mdm account set-username <NAME>     change the username
   mdm account set-password            reset the password (read from standard input)
+  mdm plugin pack <module.wasm> <manifest.json>
+                                      check a work-info plugin manifest and write it into the module
+  mdm plugin run <module.wasm> <operation> <input> [--set KEY=VALUE]... [--proxy URL]
+                                      run a work-info plugin once as VVMDM would; <operation> is search
+                                      (input: the words) or fetch (input: the work's ID); after --,
+                                      every argument is positional, so words may start with --
 
-Settings are read only from MDM_DATA_DIR. The password is never taken from arguments or environment variables.
+Account settings are read only from MDM_DATA_DIR; plugin commands do not read it. The password is never taken from arguments or environment variables.
 If standard input is a terminal, the password is asked for twice; otherwise the first line is used as the password.`
 
 // accountEnv はホスト側のコマンドが外界から受け取るものである。テストが差し替える。
 type accountEnv struct {
 	Getenv func(string) string
 	Stdin  io.Reader
+	Stdout io.Writer
 	Stderr io.Writer
 	// ReadHidden はエコーを止めて端末から1行読む。nil なら標準入力は端末でない。
 	ReadHidden func() ([]byte, error)
 	Now        func() time.Time
+	// PluginRuntime は mdm plugin run のランタイムの選択肢である。本番はゼロ値で、テストが名前の解決と接続を
+	// 差し替える。
+	PluginRuntime wasmplugin.Options
 }
 
 // accountFailure は終了コードと、標準エラーへ出す理由の組である。
@@ -67,6 +79,8 @@ func notConfiguredFailure() *accountFailure {
 func runCommand(ctx context.Context, args []string, env accountEnv) int {
 	var failure *accountFailure
 	switch {
+	case len(args) > 0 && args[0] == "plugin":
+		failure = runPlugin(ctx, args[1:], env)
 	case len(args) == 0 || args[0] != "account":
 		failure = usageFailure("Unknown command: %s", strings.Join(args, " "))
 	case len(args) == 1:

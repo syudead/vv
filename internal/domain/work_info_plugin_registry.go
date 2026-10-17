@@ -56,6 +56,9 @@ type WorkInfoPlugin struct {
 	Generation int64
 	// Values は所有者が入力した設定の値で、キーは宣言の key である。
 	Values map[string]string
+	// LastRunAt は残っている直近の実行が終わった時刻で、ゼロなら残っていない
+	// （specs/056-plugin-tooling/research.md R-6）。
+	LastRunAt time.Time
 }
 
 // State はプラグインの状態を返す（data-model.md の State transitions）。
@@ -71,6 +74,9 @@ type WorkInfoPluginSettingEntry struct {
 	Set bool
 	// Value は保存された値である。Secret のときは常に空である。
 	Value string
+	// StaleValue は保存された値が今の選択肢の外にあるときのその値で、それ以外は空である。実行は代わりに
+	// 既定値を受け取る（specs/056-plugin-tooling/contracts/screen-api.md の WorkInfoPluginSetting）。
+	StaleValue string
 }
 
 // WorkInfoPluginEntry は画面に見せるプラグインである。秘密の設定の値は含まない。
@@ -86,6 +92,8 @@ type WorkInfoPluginEntry struct {
 	Problem     WorkInfoPluginProblem
 	Settings    []WorkInfoPluginSettingEntry
 	UpdatedAt   time.Time
+	// LastRunAt は残っている直近の実行が終わった時刻で、ゼロなら残っていない。
+	LastRunAt time.Time
 }
 
 // Entry は画面に見せる形を返す。設定は宣言の順に並べ、秘密の設定の値を落とす。
@@ -96,6 +104,9 @@ func (p WorkInfoPlugin) Entry() WorkInfoPluginEntry {
 		entry := WorkInfoPluginSettingEntry{WorkInfoPluginSetting: s, Set: set}
 		if !s.Secret {
 			entry.Value = value
+		}
+		if _, stale := EffectiveWorkInfoPluginValue(s, p.Values); stale {
+			entry.StaleValue = value
 		}
 		settings = append(settings, entry)
 	}
@@ -115,6 +126,7 @@ func (p WorkInfoPlugin) Entry() WorkInfoPluginEntry {
 		Problem:     p.Problem,
 		Settings:    settings,
 		UpdatedAt:   p.UpdatedAt,
+		LastRunAt:   p.LastRunAt,
 	}
 }
 
