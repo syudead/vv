@@ -42,6 +42,9 @@ type Client struct {
 	// ComfyUI のときだけ使う。
 	diffusionModel string
 
+	// startProgress opens the independently managed progress stream.
+	startProgress func(context.Context, *target, string) *progressWatch
+
 	// progressMu は progress を守る。progress は実行の id ごとの、進み具合を読む WebSocket である。
 	progressMu sync.Mutex
 	progress   map[string]*progressWatch
@@ -78,10 +81,12 @@ func NewWithOptions(settings SettingsSource, opts Options) *Client {
 	if cloud == "" {
 		cloud = CloudBaseURL
 	}
-	return &Client{
+	c := &Client{
 		settings: settings, http: client, cloud: strings.TrimRight(cloud, "/"),
 		diffusionModel: strings.TrimSpace(opts.DiffusionModel), progress: map[string]*progressWatch{},
 	}
+	c.startProgress = c.watchProgress
+	return c
 }
 
 // diffusionModelFor は接続先 conn で拡散モデルに代えて読ませるファイルを返す。差し替えは
