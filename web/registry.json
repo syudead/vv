@@ -846,6 +846,19 @@
       ]
     },
     {
+      "name": "shelf-row",
+      "type": "registry:ui",
+      "title": "ShelfRow",
+      "description": "Section: shelves gap-6 apart, each a heading row (title, optional leading icon, optional link, actions at the end) above one row of card-0 cards that scrolls sideways and snaps to a card, with previous and next buttons from md on a hovering pointer; or the row's loading skeletons or its failure. Uses button, skeleton and error-state.",
+      "docs": "Usage rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/ui/patterns/shelf-row.tsx",
+          "type": "registry:ui"
+        }
+      ]
+    },
+    {
       "name": "jump-list",
       "type": "registry:ui",
       "title": "JumpList",
@@ -888,7 +901,7 @@
       "name": "loading-state",
       "type": "registry:ui",
       "title": "LoadingState",
-      "description": "State: Skeleton shapes of the final grid, table or grouped list in the body slot. Uses skeleton.",
+      "description": "State: Skeleton shapes of the final grid, table, grouped list or shelf rows in the body slot. Uses skeleton.",
       "docs": "Usage rules: web/registry/rules/patterns.md#states (item vv-rules).",
       "files": [
         {
@@ -975,6 +988,23 @@
       "files": [
         {
           "path": "src/designSystem/blocks/grouped-list-example.tsx",
+          "type": "registry:component"
+        },
+        {
+          "path": "src/designSystem/blocks/list-page-example.tsx",
+          "type": "registry:component"
+        }
+      ]
+    },
+    {
+      "name": "shelf-row-example",
+      "type": "registry:block",
+      "title": "Shelf row example",
+      "description": "A list page body of shelf rows: a folder shelf whose heading is a link with a FolderSearch icon, and a fixed shelf with a plain heading still loading, each with See all at the end.",
+      "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#sections (item vv-rules).",
+      "files": [
+        {
+          "path": "src/designSystem/blocks/shelf-row-example.tsx",
           "type": "registry:component"
         },
         {

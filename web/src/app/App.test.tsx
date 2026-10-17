@@ -24,6 +24,23 @@ vi.mock("../library/LibraryPage", () => ({
   },
 }));
 
+// ホーム（`/`）もライブラリと同じ中身の代わりを置く。経路とシェルの組み立てだけを見る。
+vi.mock("../home/HomePage", () => ({
+  default: function MockHomePage() {
+    const toast = useToast();
+    return (
+      <div>
+        <Link to="/folders">フォルダへ</Link>
+        <Link to="/settings">設定へ</Link>
+        <Link to="/videos/1">動画へ</Link>
+        <button type="button" onClick={() => toast("route toast" as UiText)}>
+          通知する
+        </button>
+      </div>
+    );
+  },
+}));
+
 vi.mock("../folders/FolderPage", () => ({
   default: () => (
     <div>

@@ -572,6 +572,7 @@ export const en = {
         editorDialog: "Editor dialog",
         formPage: "Form page",
         groupedList: "Grouped list",
+        shelfRow: "Shelf rows",
         listState: (state: string) => `List page: ${state}`,
       },
       states: {
@@ -724,6 +725,14 @@ export const en = {
       formPageNotesHint: "Shown under the video's details.",
       formPageCode: "Code",
       save: "Save",
+      home: "Home",
+      shelves: "Shelves",
+      recentlyAdded: "Recently added",
+      seeAll: "See all",
+      seeAllFor: (name: string) => `See all: ${name}`,
+      scrollBack: (name: string) => `Scroll ${name} back`,
+      scrollForward: (name: string) => `Scroll ${name} forward`,
+      loadingShelf: (name: string) => `Loading ${name}`,
     },
   },
   app: {
@@ -2241,6 +2250,34 @@ export const en = {
     },
     noMatch: {
       title: "No history matches these conditions",
+    },
+  },
+  // ホーム（specs/057-home/ui-design.md「Words」の Home の行）。
+  home: {
+    title: "Home",
+    shelves: "Shelves",
+    loading: "Loading your home",
+    search: "Search the library",
+    fixed: {
+      continue: "Continue watching",
+      recent: "Recently added",
+      unshelved: "Not on any shelf",
+      recommended: "Recommended",
+    },
+    seeAll: "See all",
+    // 「See all」は棚ごとに並ぶので、読み上げ名に棚の名前を足す。
+    seeAllFor: (name: string) => `See all: ${name}`,
+    // 棚の行の端に重ねる送りのボタンの読み上げ名。
+    previous: (name: string) => `Scroll ${name} back`,
+    next: (name: string) => `Scroll ${name} forward`,
+    loadingShelf: (name: string) => `Loading ${name}`,
+    shelfFailed: (reason: string) => `Couldn't load this shelf: ${reason}`,
+    loadFailed: (reason: string) => `Couldn't load your home: ${reason}`,
+    empty: {
+      title: "No videos yet",
+      owner: "Add a media folder and scan it, and your shelves appear here.",
+      guest: "There's nothing to watch here yet.",
+      setUp: "Set up library",
     },
   },
   // プレイリスト（specs/044-playlists/ui-design.md「Words」）。

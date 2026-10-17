@@ -22,6 +22,7 @@ import {
 } from "../ui/VideoThumbnail";
 import { groupPagePath } from "../groups/groupPaths";
 import { type CardDragBinding, dragRowProps, RowDropMarks } from "../videoList/cardDrag";
+import { cardLinkState } from "../videoList/cardLink";
 import FolderArt from "../videoList/FolderArt";
 
 /**
@@ -62,6 +63,10 @@ export interface GroupCardProps {
   nameField?: ReactNode;
   /** リストの行をドラッグの層に加える値（useCardDrag）。所有者のライブラリのリスト表示だけが渡す。 */
   drag?: CardDragBinding;
+  /** 格子のカードが開く再生画面で再生を始める（VideoCard の autoplay と同じ）。 */
+  autoplay?: boolean;
+  /** 格子のカードの右上に、所有者のお気に入りの付け外しだけを置く（VideoCard と同じ）。 */
+  favoriteOnly?: boolean;
 }
 
 /** CollectionValues はグループとスマートフォルダのカードが共有する、視聴と長さの値である。 */
@@ -262,6 +267,8 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
     onPreviewReset,
     tagsRow,
     nameField,
+    autoplay,
+    favoriteOnly = false,
   } = props;
   const { state, ratio, duration, countText, label } = useGroupFacts(group);
   const owner = useAudience() === "owner";
@@ -300,7 +307,7 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
 
       <Link
         to={to}
-        state={{ from: backTo }}
+        state={cardLinkState(backTo, autoplay)}
         aria-label={label}
         onClick={(event) => {
           onPreviewReset?.();
@@ -336,8 +343,8 @@ export const GroupCard = memo(function GroupCard(props: GroupCardProps) {
         // 前に出たサムネイルより上（チェックと同じ z-30）。リンクの外、タグの行の前に置く
         // （ui-design.md「Placement」）。
         <VideoThumbnailMark className="z-30">
-          <GroupAddToGroup group={group} variant="card" />
-          <GroupAddToPlaylist group={group} variant="card" />
+          {!favoriteOnly && <GroupAddToGroup group={group} variant="card" />}
+          {!favoriteOnly && <GroupAddToPlaylist group={group} variant="card" />}
           <GroupFavorite group={group} variant="card" />
         </VideoThumbnailMark>
       )}

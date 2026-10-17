@@ -14,7 +14,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { isVideoEditPath } from "../lib/videoEditPath";
 import { deferredRoute, matchesBelowPath, matchesExactPath } from "./deferredRoute";
-import LibraryRedirect from "./LibraryRedirect";
+import HomeRoute from "./HomeRoute";
 
 // 一覧と再生画面のほかは使うときだけ読み込む（deferredRoute）。再生画面から
 // 一覧へ戻るたびの読み込みに、ほかの画面の部品を加えない。初回設定とログインの
@@ -80,9 +80,9 @@ function AppRoutes() {
       {/* 取り込みの進捗と通知は所有者だけに出す（ui-design.md「Top bar」）。 */}
       {owner && <ScanProgressIndicator />}
       <Routes>
-        {/* ホームの画面が入るまでの仮の入り口。`/` は問い合わせごと `/library` へ送る
-            （specs/057-home/research.md R-15）。 */}
-        <Route path="/" element={<LibraryRedirect />} />
+        {/* `/` はホーム。ライブラリの問い合わせの付いた `/?tag=3` などは問い合わせごと
+            `/library` へ送る（specs/057-home/research.md R-15）。 */}
+        <Route path="/" element={<HomeRoute />} />
         <Route
           path={LIBRARY_PATH}
           element={

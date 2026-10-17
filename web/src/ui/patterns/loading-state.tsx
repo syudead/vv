@@ -1,6 +1,7 @@
 import { Skeleton } from "@/ui/shadcn/skeleton";
 
 import { CardGrid, type CardSize } from "./card-grid";
+import { ShelfCardSkeletons } from "./shelf-row";
 
 // 読み込み中（状態）。出来上がりの形の Skeleton を、骨格の本体の位置に並べる。
 // ページ全体を覆う回転の印は出さない。規則は web/registry/rules/patterns.md の States。
@@ -8,22 +9,27 @@ import { CardGrid, type CardSize } from "./card-grid";
 export interface LoadingStateProps {
   /** 読み込んでいるものの名前（「Loading videos」）。支援技術に読まれる。 */
   label: string;
-  /** 出来上がりの形: カードのグリッドか、表の行か、見出しつきのまとまり（GroupedList）の行か。 */
-  layout: "grid" | "table" | "grouped";
+  /**
+   * 出来上がりの形: カードのグリッドか、表の行か、見出しつきのまとまり（GroupedList）の行か、
+   * 棚の行（ShelfRow）か。
+   */
+  layout: "grid" | "table" | "grouped" | "shelves";
   /** grid のときのカードの大きさ。データが来たときの CardGrid と同じにする。 */
   size?: CardSize;
-  /** 並べる数。既定は grid と table で 8、grouped で 3。 */
+  /** 並べる数。既定は grid と table で 8、grouped と shelves で 3（shelves は棚の数）。 */
   count?: number;
 }
 
 export function LoadingState({ label, layout, size = 1, count }: LoadingStateProps) {
   const keys = Array.from(
-    { length: count ?? (layout === "grouped" ? 3 : 8) },
+    { length: count ?? (layout === "grouped" || layout === "shelves" ? 3 : 8) },
     (_, index) => index,
   );
   return (
     <div data-slot="loading-state" role="status" aria-label={label} aria-busy="true">
-      {layout === "grid" ? (
+      {layout === "shelves" ? (
+        <ShelfSkeletons keys={keys} />
+      ) : layout === "grid" ? (
         <CardGrid size={size}>
           {keys.map((key) => (
             <div key={key} className="flex flex-col gap-2">
@@ -63,6 +69,23 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * ShelfSkeletons は ShelfRows と同じ形の骨組みである。見出しの大きさの棒の下に、card-0 の
+ * 幅のカードの形を横に並べ、行の右端で切る。棚の間は gap-6。
+ */
+function ShelfSkeletons({ keys }: { keys: number[] }) {
+  return (
+    <div className="flex flex-col gap-6">
+      {keys.map((key) => (
+        <div key={key} className="flex flex-col gap-2">
+          <Skeleton className="h-5 w-1/3" />
+          <ShelfCardSkeletons />
+        </div>
+      ))}
     </div>
   );
 }

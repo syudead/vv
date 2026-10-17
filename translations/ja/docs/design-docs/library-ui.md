@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/library-ui.md
-sourceHash: b287e60f4f3e8c405a128e7bedc60f2c3ddb59b60fa52d13cfaf8b2ca2b82e50
+sourceHash: ceeb49792655f13a9dcdbade09bd9725511d7e01aceae612649e229641940dfa
 ---
 
 # ライブラリ UI: 視覚ルールと一覧のレイアウト {#library-ui-visual-rules-and-list-layout}
@@ -265,7 +265,7 @@ flowchart LR
 
 ## サイドバーのナビゲーション {#sidebar-navigation}
 
-サイドバーの各項目は、それぞれの画面へ移る。`Home` は `/` を開き、`Library` の上にある。この項目は `/library` でライブラリを開く（[057 調査、R-15](../../specs/057-home/research.md#r-15-the-library-moves-to-library)）。ライブラリはそのアドレスでもクエリパラメータを保ち、ライブラリを絞り込むアプリ内のリンク（タグ、人物、組織）はすべて `/library?<parameter>=<id>` を開く。移動の前からある `/?tag=<id>` の形の URL は、同じクエリで `/library` を開く。ホーム画面ができるまでは、クエリのない `/` も `/library` を開く。
+サイドバーの各項目は、それぞれの画面へ移る。`Home` は `/` を開き、`Library` の上にある。この項目は `/library` でライブラリを開く（[057 調査、R-15](../../specs/057-home/research.md#r-15-the-library-moves-to-library)）。ライブラリはそのアドレスでもクエリパラメータを保ち、ライブラリを絞り込むアプリ内のリンク（タグ、人物、組織）はすべて `/library?<parameter>=<id>` を開く。移動の前からある `/?tag=<id>` の形の URL は、同じクエリで `/library` を開く。クエリのない `/` はホームだ（[057 UI 設計、Home](../../specs/057-home/ui-design.md#home)）。
 
 ## 動画ページのレイアウト {#video-page-layout}
 

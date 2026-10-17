@@ -197,7 +197,12 @@ export function useVideoPages({
                 cursor: cursorFrom,
               })
             : libraryRef.current
-              ? listLibrary({ ...params, ...listOnly, cursor: cursorFrom })
+              ? listLibrary({
+                  ...params,
+                  ...listOnly,
+                  unshelved: current.unshelved,
+                  cursor: cursorFrom,
+                })
               : listVideos({ ...params, ...listOnly, cursor: cursorFrom });
         const toPage = (fetched: Awaited<ReturnType<typeof fetchOne>>) => ({
           ...fetched,
