@@ -230,7 +230,7 @@ describe("LibraryPage", () => {
     expect(within(dialog).getByRole("slider", { name: "Card size" })).toBeDefined();
   });
 
-  it("空なら取り込みを促す", async () => {
+  it("空なら所有者をオンボードへ案内する", async () => {
     fetchMock.mockImplementation((input) =>
       Promise.resolve(
         String(input).startsWith("/api/scans/current")
@@ -242,9 +242,18 @@ describe("LibraryPage", () => {
     );
     renderLibrary();
     expect(await screen.findByText("No videos yet")).toBeDefined();
-    // 押しても取り込みを始めず、開始の場所である設定の「Scan status」へ移る。
-    expect(screen.getByRole("link", { name: "Scan" }).getAttribute("href")).toBe(
-      "/settings#scan-status",
+    // 段階を folders に書いてオンボードを開く（specs/057-home/ui-design.md「Sidebar and library」）。
+    const user = userEvent.setup();
+    await user.click(screen.getByRole("button", { name: "Set up library" }));
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(
+          ([input, init]) =>
+            String(input) === "/api/onboarding" &&
+            init?.method === "PUT" &&
+            init.body === JSON.stringify({ step: "folders" }),
+        ),
+      ).toBe(true),
     );
   });
 
