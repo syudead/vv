@@ -66,7 +66,7 @@ HomeShelfItem:           # a LibraryItem without smart folders, whose group is t
   properties:
     kind:  { type: string, enum: [video, group] }
     video: { $ref: Video }
-    group: { $ref: LibraryGroupCard }  # LibraryGroup without videoIds and tags; LibraryGroup is LibraryGroupCard plus those two
+    group: { $ref: LibraryGroupCard }  # LibraryGroup without videoIds and tags; both close the shared, open LibraryGroupCardValues with unevaluatedProperties, and LibraryGroup adds those two
 
 HomeShelfOrder:          # PUT /api/home/shelves
   required: [folderIds]

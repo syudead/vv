@@ -4795,14 +4795,17 @@ export interface components {
             group?: components["schemas"]["LibraryGroup"];
             smartFolder?: components["schemas"]["SmartFolderSummary"];
         };
+        /** @description ホームの棚の項目（HomeShelfItem）のグループ。カードの値（LibraryGroupCardValues）だけを持つ。 */
+        LibraryGroupCard: components["schemas"]["LibraryGroupCardValues"];
         /**
          * @description グループのカードの値。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
          *     同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
          *     「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-         *     `watchState`・`lastPlayedAt`・`favorite` を省く。ホームの棚の項目（HomeShelfItem）はこの形で、
-         *     ライブラリの項目（LibraryGroup）はこれに `videoIds`・`tags` を足す。
+         *     `watchState`・`lastPlayedAt`・`favorite` を省く。ほかの値を禁じるのはこれを合成する
+         *     LibraryGroupCard と LibraryGroup の `unevaluatedProperties` で、ここは開いたままにする
+         *     （閉じると合成で足す `videoIds`・`tags` まで禁じる）。
          */
-        LibraryGroupCard: {
+        LibraryGroupCardValues: {
             /**
              * Format: int64
              * @description グループの識別子
@@ -4862,7 +4865,7 @@ export interface components {
              */
             favorite?: boolean;
         };
-        LibraryGroup: components["schemas"]["LibraryGroupCard"] & {
+        LibraryGroup: components["schemas"]["LibraryGroupCardValues"] & {
             /** @description 全メンバーの id を並びの順に */
             videoIds: number[];
             /** @description メンバーのタグの和集合。同じタグの出所は和にする */

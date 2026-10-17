@@ -242,7 +242,7 @@ func (l itemLookup) card(ctx context.Context, audience domain.Audience, roots []
 	if !audience.IsOwner() {
 		return out, true
 	}
-	state := gen.LibraryGroupCardWatchState(group.WatchState)
+	state := gen.LibraryGroupCardValuesWatchState(group.WatchState)
 	watched := group.WatchedCount
 	out.WatchState, out.WatchedCount = &state, &watched
 	favorite := group.Favorite

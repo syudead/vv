@@ -1098,21 +1098,21 @@ func (e LibraryGroupWatchState) Valid() bool {
 	}
 }
 
-// Defines values for LibraryGroupCardWatchState.
+// Defines values for LibraryGroupCardValuesWatchState.
 const (
-	LibraryGroupCardWatchStateInProgress LibraryGroupCardWatchState = "inProgress"
-	LibraryGroupCardWatchStateUnwatched  LibraryGroupCardWatchState = "unwatched"
-	LibraryGroupCardWatchStateWatched    LibraryGroupCardWatchState = "watched"
+	LibraryGroupCardValuesWatchStateInProgress LibraryGroupCardValuesWatchState = "inProgress"
+	LibraryGroupCardValuesWatchStateUnwatched  LibraryGroupCardValuesWatchState = "unwatched"
+	LibraryGroupCardValuesWatchStateWatched    LibraryGroupCardValuesWatchState = "watched"
 )
 
-// Valid indicates whether the value is a known member of the LibraryGroupCardWatchState enum.
-func (e LibraryGroupCardWatchState) Valid() bool {
+// Valid indicates whether the value is a known member of the LibraryGroupCardValuesWatchState enum.
+func (e LibraryGroupCardValuesWatchState) Valid() bool {
 	switch e {
-	case LibraryGroupCardWatchStateInProgress:
+	case LibraryGroupCardValuesWatchStateInProgress:
 		return true
-	case LibraryGroupCardWatchStateUnwatched:
+	case LibraryGroupCardValuesWatchStateUnwatched:
 		return true
-	case LibraryGroupCardWatchStateWatched:
+	case LibraryGroupCardValuesWatchStateWatched:
 		return true
 	default:
 		return false
@@ -3159,11 +3159,7 @@ type HomeShelfKind string
 // LibraryGroupCard で、ライブラリの LibraryGroup が持つ `videoIds`・`tags` は載せない
 // （specs/057-home/research.md R-12）
 type HomeShelfItem struct {
-	// Group グループのカードの値。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
-	// 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
-	// 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-	// `watchState`・`lastPlayedAt`・`favorite` を省く。ホームの棚の項目（HomeShelfItem）はこの形で、
-	// ライブラリの項目（LibraryGroup）はこれに `videoIds`・`tags` を足す。
+	// Group ホームの棚の項目（HomeShelfItem）のグループ。カードの値（LibraryGroupCardValues）だけを持つ。
 	Group *LibraryGroupCard `json:"group,omitempty"`
 	Kind  HomeShelfItemKind `json:"kind"`
 
@@ -3293,12 +3289,16 @@ type LibraryGroup struct {
 // inProgress。所有者の応答にだけ入る
 type LibraryGroupWatchState string
 
-// LibraryGroupCard グループのカードの値。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
+// LibraryGroupCard ホームの棚の項目（HomeShelfItem）のグループ。カードの値（LibraryGroupCardValues）だけを持つ。
+type LibraryGroupCard = LibraryGroupCardValues
+
+// LibraryGroupCardValues グループのカードの値。値はどれも、見る人に見せてよい子孫の動画を再生順（子グループは深さ優先、
 // 同じ動画は最初の 1 回）に並べたものから作る（specs/048-groups/research.md R-7。この説明の
 // 「メンバー」はその動画を指す）。グループは `id` で指す。ゲストの応答では `watchedCount`・
-// `watchState`・`lastPlayedAt`・`favorite` を省く。ホームの棚の項目（HomeShelfItem）はこの形で、
-// ライブラリの項目（LibraryGroup）はこれに `videoIds`・`tags` を足す。
-type LibraryGroupCard struct {
+// `watchState`・`lastPlayedAt`・`favorite` を省く。ほかの値を禁じるのはこれを合成する
+// LibraryGroupCard と LibraryGroup の `unevaluatedProperties` で、ここは開いたままにする
+// （閉じると合成で足す `videoIds`・`tags` まで禁じる）。
+type LibraryGroupCardValues struct {
 	// AddedAt メンバーの追加日時の最大
 	AddedAt time.Time `json:"addedAt"`
 
@@ -3337,15 +3337,15 @@ type LibraryGroupCard struct {
 
 	// WatchState 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
 	// inProgress。所有者の応答にだけ入る
-	WatchState *LibraryGroupCardWatchState `json:"watchState,omitempty"`
+	WatchState *LibraryGroupCardValuesWatchState `json:"watchState,omitempty"`
 
 	// WatchedCount 完了したメンバーの数。所有者の応答にだけ入る
 	WatchedCount *int `json:"watchedCount,omitempty"`
 }
 
-// LibraryGroupCardWatchState 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
+// LibraryGroupCardValuesWatchState 見始めたメンバーが無ければ unwatched、全メンバーが完了なら watched、それ以外は
 // inProgress。所有者の応答にだけ入る
-type LibraryGroupCardWatchState string
+type LibraryGroupCardValuesWatchState string
 
 // LibraryGroupIds GET /api/library/ids のグループの項目 1 件
 type LibraryGroupIds struct {
