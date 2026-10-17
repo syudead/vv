@@ -182,19 +182,26 @@ test.describe.serial("media information", () => {
 
     // 360px では、チャプター・変換の表示・字幕がそろっても操作バーのボタンが枠の中に収まる
     // （ui-design.md「Responsive behaviour」）。隣に字幕があり、mkv は変換して再生する。
+    // 6 秒の動画は数秒で終わり、終わると操作バーの中身が変わる。止めてから測り、幅を
+    // 変えたあとの並べ直しが落ち着くまで測り直す（1 回だけ測ると、main で 2 回落ちた）。
+    await page.keyboard.press("Space");
+    await expect(page.locator(".video-js")).toHaveClass(/vjs-paused/);
     await page.setViewportSize({ width: 360, height: 800 });
     await page.locator(".video-js").hover();
     await expect(page.locator(".vjs-control-bar > .vjs-subs-caps-button")).toBeVisible();
-    const overflow = await page.evaluate(() => {
-      const bar = document.querySelector(".vjs-control-bar");
-      if (bar === null) return null;
-      const frame = bar.getBoundingClientRect();
-      return Array.from(bar.querySelectorAll(":scope > .vjs-control, :scope > div"))
-        .filter((child) => (child as HTMLElement).offsetWidth > 0)
-        .filter((child) => !child.classList.contains("vjs-progress-control"))
-        .filter((child) => child.getBoundingClientRect().right > frame.right + 0.5)
-        .map((child) => child.className);
-    });
-    expect(overflow).toEqual([]);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const bar = document.querySelector(".vjs-control-bar");
+          if (bar === null) return null;
+          const frame = bar.getBoundingClientRect();
+          return Array.from(bar.querySelectorAll(":scope > .vjs-control, :scope > div"))
+            .filter((child) => (child as HTMLElement).offsetWidth > 0)
+            .filter((child) => !child.classList.contains("vjs-progress-control"))
+            .filter((child) => child.getBoundingClientRect().right > frame.right + 0.5)
+            .map((child) => child.className);
+        }),
+      )
+      .toEqual([]);
   });
 });
