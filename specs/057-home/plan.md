@@ -31,7 +31,7 @@ flowchart LR
   apply --> sf
   home[Home screen] --> read[Home reads]
   read --> sf
-  read --> closure[(group_closure, group_root_values)]
+  read --> closure[(group_closure, group_root_values, watch states, search hits)]
   groups[Group writers] --> closure
   read --> rec[Recommended]
   rec --> score[Closeness score]
@@ -93,8 +93,9 @@ reorganizes, judged against the parent Issue's `UI品質`.
 
 **Feature-specific context**:
 
-- Two migrations: the home position, and the group closure with the sort-key
-  indexes ([data-model.md, Migration](data-model.md#migration)).
+- Three migrations: the home position, the group closure with the sort-key
+  indexes, and the card columns, watch states and search hits
+  ([data-model.md, Migration](data-model.md#migration)).
 - Eight routes, one list parameter and one screen event kind on the screen API
   ([contracts/screen-api.md](contracts/screen-api.md)); the external API and
   MCP do not change.

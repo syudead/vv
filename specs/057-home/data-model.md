@@ -17,6 +17,11 @@ with their backfill and triggers, and the indexes the shelf read walks
 `video_locations_created_idx(coalesce(file_created_at, mtime), video_id)` and
 `playback_progress_updated_idx(updated_at, content_key)`.
 
+`00058_home_watch.sql` adds the card columns and the indexed watch state to
+`group_root_values`, the `video_watch_states` and `home_search_hits` tables
+with the `search_dirty` flag and its triggers, and clears the stored values so
+the first maintenance refills them with the new columns.
+
 ## `smart_folders.home_position`
 
 | Field | Type | Null | Meaning |
@@ -55,6 +60,25 @@ guest), the card values over the descendants that viewer is shown:
 | `watched`, `started` | Descendants completed, and completed or started; the group's watch state follows 048 |
 | `playable` | Whether any descendant plays in the browser |
 | `added_member`, `mtime_member`, `created_member`, `played_member` | The descendant with the largest value (ties by the larger id); a shelf walking that sort key places the card at this video |
+| `open_member` | The video the card opens: the first in play order that is in progress, else the first not completed, else the first (048's open index); a guest's row holds the first |
+| `previews` | JSON array of up to 4 video ids: the thumbnail-ready descendants first in play order, the card's folder art |
+| `watch_state` | Generated: `unwatched`, `inProgress` or `watched` from `started`, `watched` and `members` (048), indexed with `audience` so a watch-only shelf reads its groups by index |
+
+A shelf's group card is built from this row and one query per page for the
+groups' names and the chosen videos' thumbnail versions; no shelf read loads a
+card's members (R-12).
+
+`video_watch_states`, one row per shown video key (the bundle's user key for
+a bundled video): `state` is the video's watch state (unwatched without a
+progress row), indexed by `state` so a watch-only shelf reads the ungrouped
+videos of that state by index.
+
+`home_search_hits`, one row per (search expression, video id): the videos of
+the owner's library that match a folder shelf's search expression
+(`search` is the expression's condition and arguments). The shelf read and
+the shelved-set maintenance read a search shelf's matches here instead of
+running the full-text query; `home_shelved_state.search_dirty` says the hits
+are to be recomputed.
 
 `home_shelved_videos` holds the user key of every video the owner is shown
 that matches some folder shelf's effective rule as a video
@@ -69,8 +93,10 @@ row with a flag.
 | A write to `groups` or `group_items` sets the dirty flag; the maintenance after the next committed write rebuilds | SQL triggers; `store` `maintainHomeIndexes` |
 | A write to `videos`, `video_locations` or `playback_progress` deletes the values of the groups holding that video for both viewers; a write to `public_videos` deletes the guest's; a write to `media_folders`, `video_bundles` or `video_bundle_members` deletes them all | SQL triggers |
 | A write to `videos`, `video_locations`, `video_tags`, `playback_progress`, `video_favorites` or the work-info links marks the video's key; a write to `smart_folders`, `tags`, `tag_names`, `video_folder_names`, `media_folders` or `video_bundle_members` flags every key | SQL triggers |
-| After every committed write (`publishEvents`) and after `Migrate`, the maintenance refills the missing values for both viewers, recomputes the marked keys (all of them when flagged) and rebuilds the closure if its flag is set; a read never writes | `store` `maintainHomeIndexes` |
-| A read whose values are still missing aggregates those groups' descendants itself; a read that finds shelved marks pending evaluates the shelf rules per walked row instead of the table | `store` shelf read |
+| A write that can change a search result (`video_locations`, `video_tags`, `tag_names`, `video_work_info`, `people_names`, `video_work_people`, `organization_names`, `video_work_organizations`, `video_folder_names`, the bundle tables, `media_folders`, `smart_folders`) sets `search_dirty`; a progress or probe write does not | SQL triggers |
+| After every committed write (`publishEvents`) and after `Migrate`, the maintenance rebuilds the closure if its flag is set, refills the missing values for both viewers, recomputes the search hits when `search_dirty` is set, and recomputes the marked keys' shelved marks and watch states (all of them when flagged), looking the marked keys up by index; a read never writes | `store` `maintainHomeIndexes` |
+| A shelf whose rule depends on the clock (added within N days) is left out of `home_shelved_videos`; the unshelved shelf tests those shelves' rules per walked row | `store` `refillShelvedVideos`, shelf read |
+| A read whose values are still missing aggregates those groups' descendants itself; a read that finds shelved marks or search hits pending evaluates the shelf rules, or runs the full-text query once, per read instead of the tables | `store` shelf read |
 
 ## Settings
 

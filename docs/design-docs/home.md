@@ -153,20 +153,23 @@ and looks up everything else per walked row.
 ```mermaid
 flowchart LR
   write[Group writers] -->|same transaction| closure[(group_closure)]
-  triggers[Video, location, progress writes] -->|invalidate| values[(group_root_values, home_shelved_videos)]
-  maintain[Maintenance after each committed write] -->|refill, recompute| values
-  read[Shelf read] --> walk[Walk videos / locations / progress by the sort key, keyset, limit]
+  triggers[Video, location, progress, search-related writes] -->|invalidate, mark| values[(group_root_values, home_shelved_videos, video_watch_states, home_search_hits)]
+  maintain[Maintenance after each committed write] -->|refill, recompute the marked keys| values
+  read[Shelf read] --> walk[Walk videos / locations / progress by the sort key, or the search hits or the watch state sets, keyset, limit]
   values --> decide
   walk -->|per row| rule[Visibility, rule, roots: indexed lookups]
   rule -->|first appearance of a root| decide[Whole? values from group_root_values]
   decide --> page[Page of 24 and whether more]
+  page --> cards[Cards from the stored values: one query for the names and thumbnail versions]
 ```
 
 | Table | Rows | Maintained by |
 | --- | --- | --- |
 | `group_closure` | One per (group, descendant video item), with the play-order key | Every writer that changes groups rebuilds it in its transaction ([`group_closure.go`](../../internal/store/group_closure.go)); triggers on `groups` and `group_items` set a dirty flag that the next shelf read honours |
 | `group_root_values` | One per (group, viewer): the card values and, per sort key, the descendant with the largest value | Triggers on video, location, progress, public, folder and bundle writes delete the affected rows; the maintenance after the next committed write refills them |
-| `home_shelved_videos` | One per video on some folder shelf | Triggers mark a video's key (or flag every key when a shelf, tag or folder changes); the maintenance recomputes the marked keys |
+| `home_shelved_videos` | One per video on some folder shelf whose rule does not depend on the clock | Triggers mark a video's key (or flag every key when a shelf, tag or folder changes); the maintenance recomputes the marked keys, found by index |
+| `video_watch_states` | One per video key: its watch state | The same marks; recomputed with the shelved marks |
+| `home_search_hits` | One per (search expression of a folder shelf, matching video) | Triggers on the tables a search reads set one flag; the maintenance reruns the shelves' full-text queries when it is set, so a probe or progress write never does |
 
 A shelf walks `videos` by `added_at`, `video_locations` by `mtime` or the
 created date, or `playback_progress` by `updated_at`, in keyset batches, and
@@ -181,19 +184,30 @@ The walk stops after one more than a page, reading the ties of the last value
 so they sort as the library sorts them. `total` counts up to 25; the screen
 reads only whether it is 0. The unshelved shelf is an indexed `not exists`
 against `home_shelved_videos`
-([R-11](../../specs/057-home/research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read));
-only while marks are pending does it test every folder shelf's rule per
-walked row. A search shelf starts from its hits in the full-text index
-instead of walking the whole sort index. The read never writes: the
-maintenance runs after every committed write
+([R-11](../../specs/057-home/research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read))
+plus, per walked row, the rules of the shelves that depend on the clock
+(added within N days), which the persisted set leaves out; only while marks
+are pending does it test every folder shelf's rule per walked row. A search
+shelf starts from its persisted hits (`home_search_hits`), and a shelf whose
+rule is a watch state alone starts from the groups with that state
+(`group_root_values.watch_state`) and the ungrouped videos with that state
+(`video_watch_states`), instead of walking the whole sort index. The read
+never writes: the maintenance runs after every committed write
 ([`home_index_maintenance.go`](../../internal/store/home_index_maintenance.go)),
 and a read that still finds a group's values missing aggregates that group's
 descendants itself.
 The sorts whose card value is not one member's (total length and size, the
 group's own title and favorite time, shuffle) read the matched videos and
-assemble the items instead. A test checks that every
-shelf returns exactly the library read's first page, for every sort, both
-viewers, nested and overlapping groups and bundled videos. The shelf cache
+assemble the items instead. The group cards of a page are built from the
+stored values alone
+([`home_group_cards.go`](../../internal/store/home_group_cards.go)): counts,
+sums, dates, watch state, the open video and the preview thumbnails come from
+`group_root_values`, and one query reads the groups' names and the chosen
+videos' thumbnail versions, so the shelf item (`HomeShelfItem`) carries a
+card without member ids and member tags while the library item keeps them. A
+test checks that every shelf returns exactly the library read's first page
+and card values, for every sort, both viewers, nested and overlapping groups
+and bundled videos. The shelf cache
 ([R-12](../../specs/057-home/research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen))
 stays for repeated opens of the home within ten minutes; it is no longer what
 keeps the read inside its budget.

@@ -58,8 +58,15 @@ HomeShelfItems:
   required: [key, items, total]
   properties:
     key:   { $ref: HomeShelfKey }
-    items: { type: array, maxItems: 24, items: { $ref: LibraryItem } }  # videos and groups only; a folder shelf leaves out its child folders (R-14)
+    items: { type: array, maxItems: 24, items: { $ref: HomeShelfItem } }  # videos and groups only; a folder shelf leaves out its child folders (R-14)
     total: { type: integer }          # the shelf's video and group count, capped at 25 (one more than a page; R-12); 0 drops the shelf from the screen
+
+HomeShelfItem:           # a LibraryItem without smart folders, whose group is the card alone (R-12)
+  required: [kind]
+  properties:
+    kind:  { type: string, enum: [video, group] }
+    video: { $ref: Video }
+    group: { $ref: LibraryGroupCard }  # LibraryGroup without videoIds and tags; LibraryGroup is LibraryGroupCard plus those two
 
 HomeShelfOrder:          # PUT /api/home/shelves
   required: [folderIds]
