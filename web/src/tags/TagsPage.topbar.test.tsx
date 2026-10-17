@@ -1,6 +1,6 @@
 import { screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
 
 import {
   tag,
@@ -16,6 +16,7 @@ import {
   tagsTab,
   setUpTagsPageServer,
 } from "../testing/tagsPage";
+import { stubRowHeights } from "../testing/virtualRows";
 
 setUpTagsPageServer();
 
@@ -139,6 +140,9 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
     server.tags = Array.from({ length: 150 }, (_, index) =>
       tag({ id: index + 1, name: `Tag ${String(index).padStart(3, "0")}` }),
     );
+    // 行の高さを置き、画面に近い数の行だけを描かせる。jsdom のままでは読み込んだ 100 行の
+    // 6 割ほどを描き、描画と役割での検索だけで 1 秒を超える。
+    onTestFinished(stubRowHeights());
     install();
     renderPage();
     await screen.findByText("150 tags");
@@ -154,9 +158,7 @@ describe("TagsPage トップバー・見出し・タブ（specs/036-tag-admin-sc
 
     await user.type(screen.getByRole("searchbox", { name: "Search tags" }), "Tag 01");
     await waitFor(() => expect(status.textContent).toBe("10 of 150 tags"));
-    // 150 件を描き、打鍵ごとに引き直すので、負荷の高い `task check` の中では既定の 5 秒を
-    // 超えることがある。表明は弱めず、時間だけを仕事の量に合わせる。
-  }, 20_000);
+  });
 
   it("列の見出しは先頭のチェック・「Name」・右寄せの「Videos」で、表の見出しの行にある", async () => {
     install();

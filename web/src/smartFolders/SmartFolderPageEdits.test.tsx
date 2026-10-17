@@ -63,7 +63,10 @@ describe("見出しの More（所有者）", () => {
     const dialog = await screen.findByRole("dialog", { name: "Edit smart folder" });
     const name = within(dialog).getByRole("textbox", { name: "Name" });
     await user.clear(name);
-    await user.type(name, "タグ: ねこ{Enter}");
+    // 名前は貼り付けて 1 回で入れる。1 文字ずつ打つと条件の欄を持つ窓を打鍵ごとに
+    // 描き直し、CI の遅い走りで 5 秒の上限に近づく。
+    await user.paste("タグ: ねこ");
+    await user.keyboard("{Enter}");
 
     expect(await screen.findByText('Saved "タグ: ねこ"')).toBeTruthy();
     expect(

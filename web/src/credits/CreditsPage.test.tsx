@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Credit, CreditKind } from "../api/credits";
 import { foldForMatch } from "../lib/foldForMatch";
 import { compareTagsForSort } from "../tags/tagPageRows";
+import { stubRowHeights } from "../testing/virtualRows";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import CreditsPage from "./CreditsPage";
@@ -265,18 +266,7 @@ describe("CreditsPage 人物の一覧", () => {
       credit({ id: index + 1, name: `Person ${String(index).padStart(3, "0")}` }),
     );
     // jsdom には表示域と要素の高さが無いので、試験用の高さを置く（タグの画面の試験と同じ）。
-    const originalInnerHeight = window.innerHeight;
-    const originalOffsetHeight = Object.getOwnPropertyDescriptor(
-      HTMLElement.prototype,
-      "offsetHeight",
-    );
-    window.innerHeight = 200;
-    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
-      configurable: true,
-      get(this: HTMLElement) {
-        return this.hasAttribute("data-index") ? 40 : 0;
-      },
-    });
+    const restoreHeights = stubRowHeights({ rowHeight: 40, viewportHeight: 200 });
     try {
       renderPage("person");
       await screen.findByTitle("Person 000");
@@ -287,7 +277,9 @@ describe("CreditsPage 人物の一覧", () => {
         value: 1_000_000,
       });
       Object.defineProperty(window, "scrollY", { configurable: true, value: 100 * 60 });
-      window.dispatchEvent(new Event("scroll"));
+      act(() => {
+        window.dispatchEvent(new Event("scroll"));
+      });
 
       await waitFor(() =>
         expect(
@@ -298,14 +290,7 @@ describe("CreditsPage 人物の一覧", () => {
       );
       expect(await screen.findByTitle("Person 120")).toBeDefined();
     } finally {
-      window.innerHeight = originalInnerHeight;
-      if (originalOffsetHeight !== undefined) {
-        Object.defineProperty(
-          HTMLElement.prototype,
-          "offsetHeight",
-          originalOffsetHeight,
-        );
-      }
+      restoreHeights();
       Object.defineProperty(window, "scrollY", { configurable: true, value: 0 });
       Reflect.deleteProperty(document.documentElement, "scrollHeight");
     }
