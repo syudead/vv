@@ -21,6 +21,8 @@ type LiveTranscodeRequest struct {
 	// Normalize は映像と音声を必ずエンコードし直すかである。直接再生から切り替えた
 	// 変換だけが真で、シークや途中からの再開では立てない。
 	Normalize bool
+	// SparseKeyframes skips an unhelpful copy attempt on mid-file starts.
+	SparseKeyframes bool
 	// StartupDeadline はその場の解析と最初のデータまでを合わせた期限である。
 	StartupDeadline time.Time
 	// VideoEncoder は映像をエンコードするときに使う方式である。空なら software として

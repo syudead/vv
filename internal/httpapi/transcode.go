@@ -80,12 +80,13 @@ func (s *server) TranscodeVideo(w http.ResponseWriter, r *http.Request, id gen.V
 	// あっても、開いた所在で決める（specs/018-live-transcode-seek/data-model.md §3）。
 	source := domain.FileStampOf(info)
 	request := domain.LiveTranscodeRequest{
-		Path:    file.Name(),
-		Source:  source,
-		Probe:   s.usableTranscodeProbe(r.Context(), video.ID, source),
-		StartMs: startMs,
-		// 直接再生から切り替えた変換だけエンコードを強いる。シークでは映像がコピー
-		// できればコピーする。
+		Path:            file.Name(),
+		Source:          source,
+		Probe:           s.usableTranscodeProbe(r.Context(), video.ID, source),
+		StartMs:         startMs,
+		SparseKeyframes: s.sparseKeyframes(r.Context(), video.ID, source),
+		// 直接再生から切り替えた変換は必ずエンコードする。シークのコピー可否は
+		// SparseKeyframes と stream の条件で決める。
 		Normalize:       video.Playable,
 		StartupDeadline: time.Now().Add(transcodeStartupTimeout),
 		// 方式は要求ごとに今の設定から決める。変更は次に始まる要求から効き、配信中の変換は
@@ -283,4 +284,9 @@ func awaitInitialTranscodeData(
 	closeErr := stream.Close()
 	waitErr := wait()
 	return nil, errors.Join(readErr, closeErr, waitErr)
+}
+
+func (s *server) sparseKeyframes(ctx context.Context, videoID int64, source domain.FileStamp) bool {
+	probe, err := s.videos.KeyframeSpacing(ctx, videoID)
+	return err == nil && probe.SparseFor(source)
 }

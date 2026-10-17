@@ -156,12 +156,13 @@ type startedTranscode struct {
 	hardwareFailure error
 }
 
-// startWithProbe は 1 つの解析情報で変換を始める。映像をコピーできればコピーを試し、
+// startWithProbe は 1 つの解析情報で変換を始める。間隔が長いと分かっているシークを除き、コピーを試し、
 // 最初のデータを出さずに終わるか差の上限を超えたら、映像をエンコードして始め直す。
 func (t *LiveTranscoder) startWithProbe(
 	ctx context.Context, request domain.LiveTranscodeRequest, metadata domain.TranscodeProbe,
 ) (startedTranscode, error) {
-	if !request.Normalize && request.Quality == "" && videoCanCopy(metadata.Video) {
+	if !request.Normalize && request.Quality == "" && videoCanCopy(metadata.Video) &&
+		(request.StartMs <= 0 || !request.SparseKeyframes) {
 		started, err := t.startAttempt(ctx, request, metadata, "")
 		if err == nil {
 			return started, nil

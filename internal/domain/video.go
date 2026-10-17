@@ -111,6 +111,8 @@ type Probe struct {
 	// Source は ffprobe の直前に取ったファイルの大きさと更新時刻。Transcode を
 	// 保存するときの同一性に使う。
 	Source FileStamp
+	// Keyframes is an optional bounded sample for live-transcode seek decisions.
+	Keyframes *KeyframeProbe
 	// Media は同じ ffprobe の出力から読んだ追加の情報（specs/056-media-info/data-model.md）。
 	// 取り込みの解析では必ず埋まり、video_media_info に保存する。
 	Media *MediaInfo

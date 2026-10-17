@@ -46,6 +46,7 @@ type Library interface {
 	// TranscodeProbe は保存済みのライブ変換用の解析情報を解釈せずに返す。行が無ければ
 	// nil。使ってよいかはライブ変換の経路が domain.TranscodeProbeUsable で決める。
 	TranscodeProbe(ctx context.Context, videoID int64) (*domain.StoredTranscodeProbe, error)
+	KeyframeSpacing(ctx context.Context, videoID int64) (domain.KeyframeProbe, error)
 }
 
 // Playback は再生位置の保存先である。鍵は content_key（videos.id ではない）なので、

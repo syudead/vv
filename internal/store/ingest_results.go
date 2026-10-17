@@ -80,6 +80,11 @@ func upsertProbeRows(ctx context.Context, tx *sql.Tx, videoID int64, probe domai
 			return err
 		}
 	}
+	if probe.Keyframes != nil && probe.Keyframes.Version == domain.KeyframeProbeVersion {
+		if err := upsertKeyframeSpacing(ctx, tx, videoID, *probe.Keyframes, true); err != nil {
+			return err
+		}
+	}
 	if probe.Media != nil {
 		return upsertMediaInfo(ctx, tx, videoID, *probe.Media, now)
 	}

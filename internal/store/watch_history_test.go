@@ -194,12 +194,13 @@ func TestWatchHistoryMigrationBackfills(t *testing.T) {
 	db, provider := migrateTo(t, 33)
 	ctx := context.Background()
 	execSQL(t, db, `insert into media_folders(path, version, created_at, updated_at) values (?, 1, 1, 1)`, fixturePath("/media"))
-	upsertAll(t, db,
-		listingFile(fixturePath("/media/a.mp4"), "a", "key-a", 1),
-		listingFile(fixturePath("/media/b.mp4"), "b", "key-b", 2),
-		listingFile(fixturePath("/media/c.mp4"), "c", "key-c", 3),
-		listingFile(fixturePath("/media/d.mp4"), "d", "key-d", 4),
-	)
+	// Use the historical schema directly; current scan writes require newer columns.
+	for _, title := range []string{"a", "b", "c", "d"} {
+		execSQL(t, db, `insert into videos (content_key, added_at, indexed_at) values (?, 1, 1)`, "key-"+title)
+		execSQL(t, db, `insert into video_locations (video_id, path, title, size_bytes, mtime, created_at, updated_at)
+			select id, ?, ?, 1, 1, 1, 1 from videos where content_key = ?`,
+			fixturePath("/media/"+title+".mp4"), title, "key-"+title)
+	}
 	// 束ねる操作は今のスキーマ（版 33 に無い表）を使うので、集まりの行を直接書く。
 	execSQL(t, db, `insert into video_bundles (user_key, representative_key, created_at, updated_at)
 		values ('bundle:1', 'key-a', 1, 1)`)

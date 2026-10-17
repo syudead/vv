@@ -90,7 +90,8 @@ decides usability and saves, so media tests without ffmpeg need no SQLite.
 ## Copy path and gap limit
 
 A video whose stream can be copied (`videoCanCopy`, for example H.264 in MKV)
-is copied from a mid-file position unless the copy starts more than
+is encoded immediately on a mid-file start when its saved keyframe sample is
+sparse. Otherwise it is copied unless the copy starts more than
 `domain.CopySeekAllowance` (15 seconds) before the requested position; then it
 is encoded from the requested position.
 
@@ -101,7 +102,7 @@ For one probe, FFmpeg starts are tried in this order:
 
 ```mermaid
 flowchart LR
-  req[Start request] --> can{Copyable and not Normalize?}
+  req[Start request] --> can{Copyable, not Normalize, and no sparse seek hint?}
   can -->|yes| copy[Copy video]
   copy --> ok{First data, gap within 15 s?}
   ok -->|yes| send[Send copy]
@@ -142,7 +143,54 @@ inputs get the same `-ss`, and the track difference stays in `elst`, so audio
 and video do not drift.
 
 The first data of a copy arrives after one keyframe interval of the source is
-read; a video over the limit pays that read before switching to encoding.
+read. A known sparse video skips that read on a mid-file start; encoding still
+decodes from the preceding keyframe to the requested position.
+
+### Bounded keyframe sampling
+
+Import samples copyable video streams and saves a separate, versioned
+`video_keyframe_spacing` row with the file size and nanosecond modification
+time ([`keyframes.go`](../../internal/media/keyframes.go)). The request reads
+this hint independently of the stream metadata, so a request-time probe save
+cannot erase the sample and a missing stream-metadata row does not hide it.
+
+| Sampling rule | Behaviour |
+| --- | --- |
+| Work limit | One extra `ffprobe`, at most 500 ms; demux the first 16 seconds of the first non-attached video, without decoding; retain at most 256 KiB of packet output |
+| Sparse | A timestamp more than 15 seconds after the preceding sampled keyframe, including a non-key packet before the next keyframe |
+| Short | At least two keyframes and no observed gap over 15 seconds |
+| Unknown | Too little evidence, invalid timestamps, process failure, cancellation, timeout or output limit |
+| Replacement during sampling | Discard the sample when the before/after file stamps differ |
+| Playback | Use a sparse hint only when its version, size and nanosecond modification time match the opened file |
+
+The sample is a hint about part of the video. A short sample can miss longer
+intervals later; the existing copy-gap fallback still handles those seeks.
+A sparse sample can make a later copyable seek encode unnecessarily, but its
+start position remains correct. Starts from zero and `Normalize` requests
+keep their existing behaviour. Sampling never runs in a playback request.
+
+A single background loop fills missing samples for previously imported H.264
+videos ([`app/keyframes.go`](../../internal/app/keyframes.go)). It selects
+registered locations from SQLite, skips videos with pending probe jobs, and
+samples one file at a time with 250 ms between files and one minute between
+passes. It starts with the other workers and is cancelled and joined before
+the database closes. It does not change import progress, media information,
+playability or generated assets.
+
+The saved rows, including unknown results, survive restarts. The loop checks
+content and location identity again in the save transaction and leaves a
+concurrent import's sample for the same source intact. Scans retain the file's
+nanosecond modification time in `video_locations.mtime_ns`, and both scan
+change detection and backfill eligibility compare that full precision. A
+same-size update within one second therefore becomes eligible after a scan.
+Legacy locations have a null nanosecond timestamp until a scan or background
+sample supplies it; their samples are not excluded using a seconds-only
+comparison. A changed indexed file stamp or sample version makes the video
+eligible again; an unavailable file gets an unknown result against its indexed
+stamp (the legacy seconds value when no precise timestamp is available).
+With multiple locations it
+uses the first registered path in lexical order. Playback remains available
+before the backfill reaches a video, using the existing copy-first path.
 
 ### Why the gap limit is 15 seconds
 
