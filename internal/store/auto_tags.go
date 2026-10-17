@@ -158,8 +158,11 @@ func writeSettings(ctx context.Context, q *sql.DB, values []settingValue) error 
 }
 
 // QueueVideos は videoIDs のうち、登録フォルダの下に所在を持つ動画の内容を待ち行列へ積み、
-// 積んだ件数を返す。既にある行の扱いは mode で決まり、判定中の行は動かさない。
-func (s *AutoTagStore) QueueVideos(ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode) (int, error) {
+// 積んだ件数を返す。既にある行の扱いは mode で決まり、判定中の行は動かさない。積んだ内容ごとに、decider が
+// 始めた running/waiting の auto_tag の記録を開く（specs/055-activity/data-model.md）。
+func (s *AutoTagStore) QueueVideos(
+	ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
+) (int, error) {
 	if len(videoIDs) == 0 {
 		return 0, nil
 	}
@@ -169,60 +172,122 @@ func (s *AutoTagStore) QueueVideos(ctx context.Context, videoIDs []int64, mode d
 	}
 	return s.queue(ctx, `select v.content_key from videos v
 		where v.id in (select value from json_each(?)) and v.content_key <> '' and `+
-		registeredVideoCondition("v"), []any{string(encoded)}, mode)
+		registeredVideoCondition("v"), []any{string(encoded)}, mode, decider)
 }
 
 // QueueLibrary は登録フォルダの下に所在を持つすべての動画の内容を待ち行列へ積み、積んだ件数を
-// 返す。既にある行の扱いは QueueVideos と同じ。
-func (s *AutoTagStore) QueueLibrary(ctx context.Context, mode domain.AutoTagQueueMode) (int, error) {
+// 返す。既にある行の扱いと記録は QueueVideos と同じ。
+func (s *AutoTagStore) QueueLibrary(ctx context.Context, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error) {
 	return s.queue(ctx, `select v.content_key from videos v
-		where v.content_key <> '' and `+registeredVideoCondition("v"), nil, mode)
+		where v.content_key <> '' and `+registeredVideoCondition("v"), nil, mode, decider)
 }
 
-// queue は selectKeys が返す内容の識別子を mode に従って積む。
-func (s *AutoTagStore) queue(ctx context.Context, selectKeys string, args []any, mode domain.AutoTagQueueMode) (int, error) {
-	var conflict string
+// queueableStates は積み方 mode が積む行の状態である。空文字は行が無いことを表す。
+func queueableStates(mode domain.AutoTagQueueMode) (string, error) {
 	switch mode {
 	case domain.AutoTagQueueIfNew:
-		conflict = `do nothing`
+		return `''`, nil
 	case domain.AutoTagQueueUnlessDone:
-		conflict = `do update set state = 'queued', error = '', queued_at = excluded.queued_at,
-			updated_at = excluded.updated_at where auto_tag_queue.state = 'failed'`
+		return `'', 'failed'`, nil
 	case domain.AutoTagQueueAgain:
-		conflict = `do update set state = 'queued', error = '', queued_at = excluded.queued_at,
-			updated_at = excluded.updated_at where auto_tag_queue.state in ('done', 'failed')`
+		return `'', 'done', 'failed'`, nil
 	default:
-		return 0, fmt.Errorf("unknown auto-tagging queue mode %d", mode)
+		return "", fmt.Errorf("unknown auto-tagging queue mode %d", mode)
 	}
-	now := time.Now().UnixMilli()
-	// on conflict を select からの insert に付けるときは、構文の曖昧さを避けるために where が要る。
-	result, err := s.db.sql.ExecContext(ctx, `
-		insert into auto_tag_queue (content_key, state, error, queued_at, updated_at)
-		select content_key, 'queued', '', ?, ? from (`+selectKeys+`) where true
-		on conflict (content_key) `+conflict,
-		append([]any{now, now}, args...)...)
-	if err != nil {
-		return 0, fmt.Errorf("cannot queue videos for auto-tagging: %w", err)
-	}
-	affected, err := result.RowsAffected()
-	if err != nil {
-		return 0, fmt.Errorf("cannot queue videos for auto-tagging: %w", err)
-	}
-	return int(affected), nil
 }
 
-// Claim は積んだ順にいちばん古い判定を判定中にして返す。無ければ domain.ErrNoJob。
+// queue は selectKeys が返す内容の識別子を mode に従って 1 つの取引で積み、内容ごとに記録を開いて行の
+// activity_id に持たせる。確定後に domain.ActivityChanged を発行する。
+func (s *AutoTagStore) queue(
+	ctx context.Context, selectKeys string, args []any, mode domain.AutoTagQueueMode, decider domain.ActivityDecider,
+) (int, error) {
+	states, err := queueableStates(mode)
+	if err != nil {
+		return 0, err
+	}
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	subjects, err := queueableAutoTagSubjects(ctx, tx, `select k.content_key, `+contentLabelExpr("k.content_key")+`
+		from (select distinct content_key from (`+selectKeys+`)) k
+		where coalesce((select q.state from auto_tag_queue q where q.content_key = k.content_key), '') in (`+states+`)
+		order by k.content_key`, args)
+	if err != nil {
+		return 0, err
+	}
+	now := time.Now()
+	c := &changes{}
+	for _, subject := range subjects {
+		id, err := recordActivity(ctx, tx, c,
+			autoTagActivityEntry(subject.Key, subject.Label, domain.ActivityWaiting, decider), now)
+		if err != nil {
+			return 0, err
+		}
+		if _, err := tx.ExecContext(ctx, `
+			insert into auto_tag_queue (content_key, state, error, queued_at, updated_at, activity_id)
+			values (?, 'queued', '', ?, ?, ?)
+			on conflict (content_key) do update set state = 'queued', error = '', queued_at = excluded.queued_at,
+				updated_at = excluded.updated_at, activity_id = excluded.activity_id`,
+			subject.Key, now.UnixMilli(), now.UnixMilli(), id); err != nil {
+			return 0, fmt.Errorf("cannot queue videos for auto-tagging: %w", err)
+		}
+	}
+	if err := s.db.commit(ctx, tx, c); err != nil {
+		return 0, fmt.Errorf("cannot queue videos for auto-tagging: %w", err)
+	}
+	return len(subjects), nil
+}
+
+// queueableAutoTagSubjects は積む内容の鍵と表示名を読む。
+func queueableAutoTagSubjects(ctx context.Context, tx *sql.Tx, query string, args []any) ([]domain.ActivitySubject, error) {
+	rows, err := tx.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read the videos to queue for auto-tagging: %w", err)
+	}
+	defer func() { _ = rows.Close() }()
+	var subjects []domain.ActivitySubject
+	for rows.Next() {
+		subject := domain.ActivitySubject{Kind: domain.ActivitySubjectVideo}
+		if err := rows.Scan(&subject.Key, &subject.Label); err != nil {
+			return nil, fmt.Errorf("cannot read the videos to queue for auto-tagging: %w", err)
+		}
+		subjects = append(subjects, subject)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("cannot read the videos to queue for auto-tagging: %w", err)
+	}
+	return subjects, nil
+}
+
+// Claim は積んだ順にいちばん古い判定を判定中にして返す。無ければ domain.ErrNoJob。行の記録を processing に
+// し、記録が running でなければ新しい記録を開く。
 func (s *AutoTagStore) Claim(ctx context.Context) (domain.AutoTagJob, error) {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return domain.AutoTagJob{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	now := time.Now()
 	var key string
-	err := s.db.sql.QueryRowContext(ctx, `
+	var activityID int64
+	err = tx.QueryRowContext(ctx, `
 		update auto_tag_queue set state = 'running', updated_at = ?
 		where content_key = (select content_key from auto_tag_queue where state = 'queued'
 			order by queued_at, content_key limit 1)
-		returning content_key`, time.Now().UnixMilli()).Scan(&key)
+		returning content_key, coalesce(activity_id, 0)`, now.UnixMilli()).Scan(&key, &activityID)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.AutoTagJob{}, domain.ErrNoJob
 	}
 	if err != nil {
+		return domain.AutoTagJob{}, fmt.Errorf("cannot claim an auto-tagging job: %w", err)
+	}
+	c := &changes{}
+	if err := claimAutoTagActivity(ctx, tx, c, key, activityID, now); err != nil {
+		return domain.AutoTagJob{}, err
+	}
+	if err := s.db.commit(ctx, tx, c); err != nil {
 		return domain.AutoTagJob{}, fmt.Errorf("cannot claim an auto-tagging job: %w", err)
 	}
 	return domain.AutoTagJob{ContentKey: key}, nil
@@ -310,8 +375,11 @@ func (s *AutoTagStore) Candidates(ctx context.Context, contentKey string) ([]dom
 // Confirmed は確定した付与として付け、仮に付いていれば確定する。Tentative は仮に付け、既に
 // 付いていれば（手で付けた分も）そのままにする。所有者がこの動画で却下したタグは付けない。
 // 行が判定中でなくなっていた（積み直された）なら何もしない。動画が消えていれば行を消す。
-// 確定の後に domain.AutoTagApplied を発行する。
-func (s *AutoTagStore) Finish(ctx context.Context, contentKey string, selection domain.AutoTagSelection) error {
+// 同じ取引で行の記録を done/completed にし、decider が空でなければそれを判断したものとして書き、付けたタグを
+// 確率とともに残す。確定の後に domain.AutoTagApplied と domain.ActivityChanged を発行する。
+func (s *AutoTagStore) Finish(
+	ctx context.Context, contentKey string, selection domain.AutoTagSelection, decider domain.ActivityDecider,
+) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return err
@@ -319,20 +387,28 @@ func (s *AutoTagStore) Finish(ctx context.Context, contentKey string, selection 
 	defer func() { _ = tx.Rollback() }()
 
 	var state string
-	err = tx.QueryRowContext(ctx, `select state from auto_tag_queue where content_key = ?`, contentKey).Scan(&state)
+	var activityID int64
+	err = tx.QueryRowContext(ctx, `select state, coalesce(activity_id, 0) from auto_tag_queue where content_key = ?`,
+		contentKey).Scan(&state, &activityID)
 	if errors.Is(err, sql.ErrNoRows) || (err == nil && state != "running") {
 		return nil
 	}
 	if err != nil {
 		return fmt.Errorf("cannot read the auto-tagging job: %w", err)
 	}
+	now := time.Now()
+	c := &changes{}
+	completed := domain.ActivityState{Status: domain.ActivityDone, Outcome: domain.ActivityCompleted}
 
 	videoID, err := videoIDForContent(ctx, tx, contentKey)
 	if errors.Is(err, domain.ErrNotFound) {
 		if _, err := tx.ExecContext(ctx, `delete from auto_tag_queue where content_key = ?`, contentKey); err != nil {
 			return fmt.Errorf("cannot remove the auto-tagging job: %w", err)
 		}
-		return tx.Commit()
+		if err := closeAutoTagActivity(ctx, tx, c, activityID, completed, "", "", now); err != nil {
+			return err
+		}
+		return s.db.commit(ctx, tx, c)
 	}
 	if err != nil {
 		return err
@@ -346,34 +422,11 @@ func (s *AutoTagStore) Finish(ctx context.Context, contentKey string, selection 
 	}
 	userKey := keys[0]
 
-	now := time.Now()
-	confirmed, err := attachableAutoTags(ctx, tx, userKey, selection.Confirmed)
+	written, err := writeAutoTags(ctx, tx, userKey, selection, now)
 	if err != nil {
 		return err
 	}
-	for _, tagID := range confirmed {
-		if _, err := attachTagToVideoIDs(ctx, tx, []int64{videoID}, tagID, now); err != nil {
-			return err
-		}
-	}
-	tentative, err := attachableAutoTags(ctx, tx, userKey, selection.Tentative)
-	if err != nil {
-		return err
-	}
-	var added bool
-	for _, tagID := range tentative {
-		result, err := tx.ExecContext(ctx, `insert or ignore into video_tags (content_key, tag_id, created_at, tentative)
-			values (?, ?, ?, 1)`, userKey, tagID, now.Unix())
-		if err != nil {
-			return fmt.Errorf("cannot add a tentative tag (tag=%d): %w", tagID, err)
-		}
-		if affected, err := result.RowsAffected(); err != nil {
-			return fmt.Errorf("cannot add a tentative tag (tag=%d): %w", tagID, err)
-		} else if affected > 0 {
-			added = true
-		}
-	}
-	if added {
+	if len(written) > 0 {
 		if err := touchEditedAtForUserKeys(ctx, tx, []string{userKey}, now); err != nil {
 			return err
 		}
@@ -382,13 +435,21 @@ func (s *AutoTagStore) Finish(ctx context.Context, contentKey string, selection 
 		where content_key = ?`, now.UnixMilli(), contentKey); err != nil {
 		return fmt.Errorf("cannot finish the auto-tagging job: %w", err)
 	}
+	if err := closeAutoTagActivity(ctx, tx, c, activityID, completed, decider, "", now); err != nil {
+		return err
+	}
+	if activityID != 0 {
+		if err := recordAutoTagActivityTags(ctx, tx, activityID, userKey, written, selection.Probabilities); err != nil {
+			return err
+		}
+	}
 	// 集まりのメンバーなら、タグは集まりの鍵に付き、すべてのメンバーに見える。メンバーの
 	// どの動画を開いている画面にも知らせる。
 	affected, err := videoIDsSharingUserKey(ctx, tx, videoID)
 	if err != nil {
 		return err
 	}
-	if err := s.db.commitEvents(ctx, tx, domain.AutoTagApplied{VideoIDs: affected}); err != nil {
+	if err := s.db.commitWith(ctx, tx, c, domain.AutoTagApplied{VideoIDs: affected}); err != nil {
 		return fmt.Errorf("cannot finish the auto-tagging job: %w", err)
 	}
 	return nil
@@ -476,20 +537,50 @@ func (s *AutoTagStore) settleTentative(ctx context.Context, videoID, tagID int64
 	if err := touchEditedAtForUserKeys(ctx, tx, []string{userKey}, now); err != nil {
 		return err
 	}
+	// 提案のタグを残すか却下するのは所有者の操作である（specs/055-activity/research.md R-6）。
+	kind := domain.ActivityTagKeep
+	if reject {
+		kind = domain.ActivityTagReject
+	}
+	c := &changes{}
+	if err := recordOwnerVideoActivity(ctx, tx, c, kind, ownerTagChanges([]string{userKey}, tagID), now); err != nil {
+		return err
+	}
 	affected, err := videoIDsSharingUserKey(ctx, tx, videoID)
 	if err != nil {
 		return err
 	}
-	if err := s.db.commitEvents(ctx, tx, domain.AutoTagApplied{VideoIDs: affected}); err != nil {
+	if err := s.db.commitWith(ctx, tx, c, domain.AutoTagApplied{VideoIDs: affected}); err != nil {
 		return fmt.Errorf("cannot settle the tentative tag (tag=%d): %w", tagID, err)
 	}
 	return nil
 }
 
-// Fail は判定中の行を失敗にし、理由を残す。行が判定中でなくなっていれば何もしない。
+// Fail は判定中の行を失敗にし、理由を残す。同じ取引で行の記録を attention/failed にし、理由を detail に書く。
+// 行が判定中でなくなっていれば何もしない。
 func (s *AutoTagStore) Fail(ctx context.Context, contentKey, reason string) error {
-	if _, err := s.db.sql.ExecContext(ctx, `update auto_tag_queue set state = 'failed', error = ?, updated_at = ?
-		where content_key = ? and state = 'running'`, reason, time.Now().UnixMilli(), contentKey); err != nil {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback() }()
+	now := time.Now()
+	var activityID int64
+	err = tx.QueryRowContext(ctx, `update auto_tag_queue set state = 'failed', error = ?, updated_at = ?
+		where content_key = ? and state = 'running' returning coalesce(activity_id, 0)`,
+		reason, now.UnixMilli(), contentKey).Scan(&activityID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("cannot record the auto-tagging failure: %w", err)
+	}
+	c := &changes{}
+	if err := closeAutoTagActivity(ctx, tx, c, activityID,
+		domain.ActivityState{Status: domain.ActivityAttention, Reason: domain.ActivityFailed}, "", reason, now); err != nil {
+		return err
+	}
+	if err := s.db.commit(ctx, tx, c); err != nil {
 		return fmt.Errorf("cannot record the auto-tagging failure: %w", err)
 	}
 	return nil
@@ -546,10 +637,20 @@ func videoIDForContent(ctx context.Context, q rowQueryer, contentKey string) (in
 // videoIDsSharingUserKey は videoID の動画と利用者データの鍵が同じ動画（集まりのメンバー、
 // 束ねていなければその動画だけ）の id を、id の順で返す。
 func videoIDsSharingUserKey(ctx context.Context, tx *sql.Tx, videoID int64) ([]int64, error) {
+	return videoIDsWithUserKey(ctx, tx, `(select `+userKeyExpr("t")+` from videos t where t.id = ?)`, videoID)
+}
+
+// videoIDsForUserKey は利用者データの鍵 userKey を持つ動画（集まりならすべてのメンバー）の id を、id の順で返す。
+func videoIDsForUserKey(ctx context.Context, tx *sql.Tx, userKey string) ([]int64, error) {
+	return videoIDsWithUserKey(ctx, tx, `?`, userKey)
+}
+
+// videoIDsWithUserKey は利用者データの鍵が式 keyExpr（引数 arg を 1 つ取る）の値である動画の id を、id の順で
+// 返す。
+func videoIDsWithUserKey(ctx context.Context, tx *sql.Tx, keyExpr string, arg any) ([]int64, error) {
 	rows, err := tx.QueryContext(ctx, `select v.id from videos v
-		where v.content_key <> '' and `+userKeyExpr("v")+` = (
-			select `+userKeyExpr("t")+` from videos t where t.id = ?)
-		order by v.id`, videoID)
+		where v.content_key <> '' and `+userKeyExpr("v")+` = `+keyExpr+`
+		order by v.id`, arg)
 	if err != nil {
 		return nil, fmt.Errorf("cannot read the videos sharing the tags: %w", err)
 	}

@@ -4,6 +4,8 @@ import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 import {
+  generateActivityFixtures,
+  generateActivityVersionFixtures,
   generateDragOrganizeFixtures,
   generateFolderFixtures,
   generateFolderSearchFixtures,
@@ -48,6 +50,8 @@ const dragOrganizeMediaDir = path.join(runRoot, "drag-organize-media");
 const historyMediaDir = path.join(runRoot, "history-media");
 const homeMediaDir = path.join(runRoot, "home-media");
 const onboardingMediaDir = path.join(runRoot, "onboarding-media");
+const activityMediaDir = path.join(runRoot, "activity-media");
+const activityVersionsMediaDir = path.join(runRoot, "activity-versions-media");
 const smartFoldersMediaDir = path.join(runRoot, "smart-folders-media");
 const playlistsMediaDir = path.join(runRoot, "playlists-media");
 const scanProgressMediaDir = path.join(runRoot, "scan-progress-media");
@@ -88,6 +92,8 @@ function run() {
     generateHistoryFixtures(historyMediaDir);
     generateHomeFixtures(homeMediaDir);
     generateOnboardingFixtures(onboardingMediaDir);
+    generateActivityFixtures(activityMediaDir);
+    generateActivityVersionFixtures(activityVersionsMediaDir);
     generateSmartFoldersFixtures(smartFoldersMediaDir);
     generatePlaylistsFixtures(playlistsMediaDir);
     generateScanProgressFixtures(scanProgressMediaDir);
@@ -154,6 +160,8 @@ function run() {
           MDM_E2E_HISTORY_MEDIA_DIR: historyMediaDir,
           MDM_E2E_HOME_MEDIA_DIR: homeMediaDir,
           MDM_E2E_ONBOARDING_MEDIA_DIR: onboardingMediaDir,
+          MDM_E2E_ACTIVITY_MEDIA_DIR: activityMediaDir,
+          MDM_E2E_ACTIVITY_VERSIONS_MEDIA_DIR: activityVersionsMediaDir,
           MDM_E2E_SMART_FOLDERS_MEDIA_DIR: smartFoldersMediaDir,
           MDM_E2E_PLAYLISTS_MEDIA_DIR: playlistsMediaDir,
           MDM_E2E_SCAN_PROGRESS_MEDIA_DIR: scanProgressMediaDir,

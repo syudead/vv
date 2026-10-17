@@ -319,7 +319,7 @@ func TestChangedManualTagKeysReturnsOneRowPerKey(t *testing.T) {
 	}
 	defer func() { _ = tx.Rollback() }()
 	for _, action := range []domain.VideoTagsAction{domain.VideoTagsAdd, domain.VideoTagsReplace} {
-		got, err := changedManualTagKeys(ctx, tx, string(encodedKeys), action, string(encodedTags))
+		got, err := changedManualTagKeys(ctx, tx, string(encodedKeys), action, string(encodedTags), false)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -327,7 +327,7 @@ func TestChangedManualTagKeysReturnsOneRowPerKey(t *testing.T) {
 			t.Errorf("%s: %d 行, want 鍵ごとに 1 行・鍵の順の %d 行", action, len(got), len(keys))
 		}
 	}
-	got, err := changedManualTagKeys(ctx, tx, string(encodedKeys), domain.VideoTagsRemove, string(encodedTags))
+	got, err := changedManualTagKeys(ctx, tx, string(encodedKeys), domain.VideoTagsRemove, string(encodedTags), false)
 	if err != nil {
 		t.Fatal(err)
 	}

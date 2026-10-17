@@ -89,6 +89,18 @@ type fakeFetchApplier struct {
 	skipped  []domain.SkippedWorkInfoValue
 	err      error
 	calls    []domain.FetchedWorkInfoApply
+	// fetches は記録した取得の、動画と失敗の文である。
+	fetches []recordedFetch
+}
+
+type recordedFetch struct {
+	videoID int64
+	failure string
+}
+
+func (a *fakeFetchApplier) RecordWorkInfoFetch(_ context.Context, videoID int64, failure string) error {
+	a.fetches = append(a.fetches, recordedFetch{videoID: videoID, failure: failure})
+	return nil
 }
 
 func (a *fakeFetchApplier) ApplyFetchedWorkInfo(ctx context.Context, apply domain.FetchedWorkInfoApply) (domain.FetchedWorkInfoApplied, error) {
@@ -310,6 +322,30 @@ func TestFetchWorkInfoKeepsTheResultAndLeavesTheVideo(t *testing.T) {
 	if _, err := e.plugins.FetchWorkInfo(ctx, fetchVideo, 1, "W-1"); !errors.As(err, &failed) ||
 		failed.Host != "127.0.0.1" {
 		t.Fatalf("failed run: err = %v", err)
+	}
+}
+
+// プラグインを動かした取得だけを記録し、失敗はプラグインの文（無ければ失敗の種類）を持つ（specs/055-activity
+// research.md R-11）。動かす前に断った取得は記録しない。
+func TestFetchWorkInfoRecordsEveryRun(t *testing.T) {
+	ctx := context.Background()
+	e := newFetchEnv()
+	e.fetch(t, "Title")
+	e.runtime.err = &domain.WorkInfoRunError{Failure: domain.WorkInfoRunFailed, PluginMessage: "no such work"}
+	if _, err := e.plugins.FetchWorkInfo(ctx, fetchVideo, 1, "https://example.com/"); err == nil {
+		t.Fatal("failed run: err = nil")
+	}
+	e.runtime.err = &domain.WorkInfoRunError{Failure: domain.WorkInfoRunTimedOut}
+	if _, err := e.plugins.FetchWorkInfo(ctx, fetchVideo, 1, "https://example.com/"); err == nil {
+		t.Fatal("timed-out run: err = nil")
+	}
+	e.store.plugins[1].ApprovedDigest = ""
+	if _, err := e.plugins.FetchWorkInfo(ctx, fetchVideo, 1, "https://example.com/"); err == nil {
+		t.Fatal("unapproved plugin: err = nil")
+	}
+	want := []recordedFetch{{fetchVideo, ""}, {fetchVideo, "no such work"}, {fetchVideo, string(domain.WorkInfoRunTimedOut)}}
+	if !slices.Equal(e.applier.fetches, want) {
+		t.Fatalf("recorded fetches = %+v; want %+v", e.applier.fetches, want)
 	}
 }
 

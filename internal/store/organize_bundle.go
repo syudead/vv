@@ -65,7 +65,11 @@ func (s *OrganizeStore) Bundle(ctx context.Context, videoIDs []int64, targetID i
 		if encoded, err = image.encode(); err != nil {
 			return nil, err
 		}
-		return outcome.events(), nil
+		c := &changes{}
+		if err := recordOwnerBundle(ctx, tx, c, plan.members, plan.joined); err != nil {
+			return nil, err
+		}
+		return append(outcome.events(), c.events()...), nil
 	})
 	if err != nil {
 		return nil, err

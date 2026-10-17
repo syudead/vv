@@ -90,11 +90,11 @@ func TestHomeListsShelvesInTheirOrderThenTheFixedShelves(t *testing.T) {
 		t.Fatalf("棚 = %v, want %v", got, want)
 	}
 	first := home.Shelves[0]
-	if first.Kind != gen.Folder || first.Name != "隠れ" || first.FolderId == nil || *first.FolderId != f.hidden ||
+	if first.Kind != gen.HomeShelfKindFolder || first.Name != "隠れ" || first.FolderId == nil || *first.FolderId != f.hidden ||
 		first.ByOrganizer == nil || *first.ByOrganizer {
 		t.Errorf("フォルダの棚 = %+v", first)
 	}
-	if fixed := home.Shelves[4]; fixed.Kind != gen.Recent || fixed.Name != "" || fixed.FolderId != nil || fixed.ByOrganizer != nil {
+	if fixed := home.Shelves[4]; fixed.Kind != gen.HomeShelfKindRecent || fixed.Name != "" || fixed.FolderId != nil || fixed.ByOrganizer != nil {
 		t.Errorf("決まった棚 = %+v", fixed)
 	}
 	if home.Organizer == nil || home.Organizer.Running || home.Organizer.Pending != nil || home.Organizer.Last != nil {

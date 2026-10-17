@@ -393,7 +393,9 @@ func TestBundlePublishesOnceAndRejectsInvalidInput(t *testing.T) {
 	}
 
 	bundle(t, db, ids["b"], ids["b"], ids["a"])
-	want := []domain.Event{domain.VideoBundleChanged{VideoIDs: []int64{ids["a"], ids["b"]}}}
+	// 所有者の操作の記録の知らせ（specs/055-activity/research.md R-6）は確定の直後に先に届く。
+	bundled := domain.VideoBundleChanged{VideoIDs: []int64{ids["a"], ids["b"]}}
+	want := []domain.Event{domain.ActivityChanged{}, bundled}
 	if !slices.EqualFunc(recorder.events, want, eventsEqual) {
 		t.Errorf("events = %v, want %v", recorder.events, want)
 	}
@@ -403,7 +405,7 @@ func TestBundlePublishesOnceAndRejectsInvalidInput(t *testing.T) {
 		t.Fatal(err)
 	}
 	// 解除は外した組の候補を作り直すので、候補の一覧の変化も知らせる（specs/054-auto-dup/research.md R-8）。
-	want = append(want, domain.VersionCandidatesChanged{})
+	want = []domain.Event{domain.ActivityChanged{}, bundled, domain.VersionCandidatesChanged{}}
 	if !slices.EqualFunc(recorder.events, want, eventsEqual) {
 		t.Errorf("解除の events = %v, want %v", recorder.events, want)
 	}

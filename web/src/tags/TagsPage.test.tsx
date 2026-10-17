@@ -11,6 +11,7 @@ import {
   heldGetReleases,
   hold,
   install,
+  probe,
   renderPage,
   setUpTagsPageServer,
 } from "../testing/tagsPage";
@@ -143,6 +144,38 @@ describe("TagsPage", () => {
 
     expect(await screen.findByText('A tag named "旅行" already exists.')).toBeDefined();
     expect((input as HTMLInputElement).value).toBe("旅行");
+  });
+
+  it("作成の行は、空の名前と長すぎる名前に理由を出して作らない", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+    await screen.findByTitle("旅行");
+
+    await user.click(screen.getByRole("button", { name: "New tag" }));
+    await user.click(screen.getByRole("button", { name: "Create" }));
+    expect(await screen.findByText("Enter a name")).toBeDefined();
+
+    const input = screen.getByRole("textbox", { name: "New tag name" });
+    fireEvent.change(input, { target: { value: "あ".repeat(101) } });
+    expect(
+      await screen.findByText("Use 100 characters or fewer (currently 101)"),
+    ).toBeDefined();
+    await user.click(screen.getByRole("button", { name: "Create" }));
+    expect(screen.getByText("3 tags")).toBeDefined();
+  });
+
+  it("タグの名前は、そのタグだけで絞り込んだライブラリ一覧を開く（受け入れ条件16）", async () => {
+    const user = userEvent.setup();
+    install();
+    renderPage();
+
+    const link = await screen.findByRole("link", {
+      name: "Open the library filtered by 旅行",
+    });
+    expect(link.getAttribute("href")).toBe("/library?tag=1");
+    await user.click(link);
+    expect(probe.search).toBe("?tag=1");
   });
 
   it("改名すると新しい名前で表示され、既存名との重なりは理由を出す（受け入れ条件10）", async () => {

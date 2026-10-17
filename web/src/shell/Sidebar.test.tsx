@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { emitServerEvent, installFakeEventSource } from "../api/fakeEventSource";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { type Audience, AudienceProvider } from "../auth/audience";
 import { reloadPage } from "../auth/pageNavigation";
@@ -259,6 +260,47 @@ describe("Sidebar", () => {
     expect(screen.queryByRole("link", { name: "History" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Playlists" })).toBeNull();
     expect(screen.queryByRole("link", { name: "Duplicates" })).toBeNull();
+  });
+
+  it("所有者の上段の最後に「Activity」を置き、要対応の数をレールに出して activity の知らせで読み直す", async () => {
+    installFakeEventSource();
+    let attention = 2;
+    fetchMock.mockImplementation((input) => {
+      expect(String(input)).toMatch(/^\/api\/activity\?limit=1$/);
+      return Promise.resolve(
+        new Response(
+          JSON.stringify({
+            items: [],
+            counts: { running: 4, attention, done: 9 },
+            features: {},
+          }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+    });
+    renderSidebar({ mode: "rail" });
+    const main = screen.getByRole("complementary", { name: "Main navigation" });
+    const [screens] = within(main).getAllByRole("navigation");
+    const links = within(screens!).getAllByRole("link");
+    expect(links.at(-1)?.textContent).toBe("Activity");
+    expect(links.at(-1)?.getAttribute("href")).toBe("/activity");
+    expect(await within(main).findByText("2 need attention")).toBeDefined();
+
+    attention = 120;
+    await emitServerEvent("activity");
+    expect(await within(main).findByText("120 need attention")).toBeDefined();
+    expect(within(main).getByText("99+")).toBeDefined();
+
+    attention = 0;
+    await emitServerEvent("activity");
+    await waitFor(() => expect(within(main).queryByText("99+")).toBeNull());
+  });
+
+  it("ゲストには「Activity」を出さず、件数も読まない", () => {
+    installFakeEventSource();
+    renderSidebar({ audience: "guest", mode: "rail" });
+    expect(screen.queryByRole("link", { name: "Activity" })).toBeNull();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it.each<Audience>(["owner", "guest"])(

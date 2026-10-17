@@ -967,6 +967,59 @@ export function generatePlaylistsFixtures(root) {
 }
 
 /**
+ * generateActivityFixtures は、取り込みの記録がアクティビティの画面で読み直しなしに done に
+ * なる流れ（specs/055-activity、子 #1244）を確かめる動画を 1 本作る（web/e2e/activity.e2e.ts）。
+ * ほかの動画と同じ中身とみなされないよう、長さとコマの速さと色合いを変える。
+ */
+export const ACTIVITY_VIDEO = "activity-import-check";
+
+export function generateActivityFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  ffmpeg([
+    "-f",
+    "lavfi",
+    "-i",
+    "testsrc2=size=320x180:rate=12:duration=7",
+    "-vf",
+    "hue=h=250",
+    ...h264,
+    "-an",
+    "-movflags",
+    "+faststart",
+    path.join(root, `${ACTIVITY_VIDEO}.mp4`),
+  ]);
+}
+
+/**
+ * generateActivityVersionFixtures は、自動の束ねをアクティビティの画面から取り消す流れ
+ * （specs/055-activity、子 #1245）を確かめる 2 本を作る（web/e2e/activity.e2e.ts）。同じ
+ * 映像を違う画質で 2 度符号化するので、指紋の規則だけで同じ動画と判定される。ほかの動画と
+ * 組にならないよう、ほかで使わない映像と長さにする。
+ */
+export const ACTIVITY_VERSION_VIDEOS = ["activity-version-a", "activity-version-b"];
+
+export function generateActivityVersionFixtures(root) {
+  mkdirSync(root, { recursive: true });
+  for (const [index, name] of ACTIVITY_VERSION_VIDEOS.entries()) {
+    ffmpeg([
+      "-f",
+      "lavfi",
+      "-i",
+      "mandelbrot=size=320x180:rate=10",
+      "-t",
+      "13",
+      ...h264,
+      "-crf",
+      index === 0 ? "18" : "30",
+      "-an",
+      "-movflags",
+      "+faststart",
+      path.join(root, `${name}.mp4`),
+    ]);
+  }
+}
+
+/**
  * generateGroupsFixtures は、任意のグループの流れ（specs/048-groups、子 #1059）を確かめる
  * 動画を作る（web/e2e/groups.e2e.ts）。「フォルダ1」〜「フォルダ3」は 1 本ずつなので
  * グループにならず、登録フォルダの直下の 2 本も単体の動画になる。「自動のグループ」と

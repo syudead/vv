@@ -17,7 +17,7 @@ import (
 func seekDone(t *testing.T, db *DB, videoID int64) {
 	t.Helper()
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobSeekThumbnail, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobSeekThumbnail, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobSeekThumbnail)
@@ -106,7 +106,7 @@ func TestClaimFingerprintWaitsForSeekThumbnail(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	probeDone(t, db, videoID)
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobFingerprint, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobFingerprint, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	for _, state := range []string{"pending", "failed"} {
@@ -210,13 +210,13 @@ func TestFailedFingerprintIsRequeuedByNextScan(t *testing.T) {
 	if !missing() {
 		t.Fatal("指紋の無い動画が FingerprintMissing にならない")
 	}
-	if err := db.Ingest().EnsureJob(ctx, domain.JobFingerprint, videoID); err != nil {
+	if err := db.Ingest().EnsureJob(ctx, domain.JobFingerprint, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobCounts(t, db, videoID); !equalCounts(got, map[string]int{"fingerprint:queued": 1}) {
 		t.Fatalf("jobs = %v, want one queued fingerprint", got)
 	}
-	if err := db.Ingest().EnsureJob(ctx, domain.JobFingerprint, videoID); err != nil {
+	if err := db.Ingest().EnsureJob(ctx, domain.JobFingerprint, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobCounts(t, db, videoID); !equalCounts(got, map[string]int{"fingerprint:queued": 1}) {
@@ -243,7 +243,7 @@ func TestFailedFingerprintIsRequeuedByNextScan(t *testing.T) {
 	if missing() {
 		t.Fatal("指紋のある動画が FingerprintMissing になる")
 	}
-	if err := db.Ingest().EnsureJob(ctx, domain.JobFingerprint, videoID); err != nil {
+	if err := db.Ingest().EnsureJob(ctx, domain.JobFingerprint, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobCounts(t, db, videoID); !equalCounts(got, map[string]int{"fingerprint:done": 1}) {
@@ -258,7 +258,7 @@ func TestFailedFingerprintIsRequeuedByNextScan(t *testing.T) {
 		t.Fatal("旧い版の指紋が FingerprintMissing にならない")
 	}
 	// 完了した行が残っていても、版を上げたら積み直す。
-	if err := db.Ingest().EnsureJob(ctx, domain.JobFingerprint, videoID); err != nil {
+	if err := db.Ingest().EnsureJob(ctx, domain.JobFingerprint, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobCounts(t, db, videoID); !equalCounts(got, map[string]int{"fingerprint:queued": 1}) {

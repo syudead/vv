@@ -46,7 +46,7 @@ func TestMediaFolderOperationsAreAtomicAndScoped(t *testing.T) {
 	if _, err := db.ScanIndex().UpsertVideo(ctx, fileB); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	claimed, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)
@@ -199,7 +199,7 @@ func TestAddMediaFolderAllowsFilesystemRoot(t *testing.T) {
 	if _, err := db.Library().GetVideo(ctx, domain.AudienceOwner, video.ID); err != nil {
 		t.Fatalf("root video detail is unavailable: %v", err)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)

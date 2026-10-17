@@ -16,19 +16,36 @@ import (
 // 一度諦めた行は消してから積み直す。内容が変わった動画を解析し直せないと、
 // 差し替えたファイルが永久に未解析のままになる。諦めた行を残さないのは、
 // 再スキャンのたびに履歴が積み上がるのを避けるためである。
-func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
+//
+// 積んだ仕事は動画の running の import の記録に加わり、無ければ decider が始めた記録を開く
+// （specs/055-activity/research.md R-3・R-5）。
+func (s *IngestStore) EnqueueJob(ctx context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error {
+	return s.EnqueueJobs(ctx, videoID, decider, kind)
+}
+
+// EnqueueJobs は動画 videoID の kinds の仕事を、EnqueueJob と同じく 1 つの取引で積む。確定の前にワーカーが
+// 前の段階を終えて記録を閉じないよう、走査が新しい動画に要る仕事をまとめて 1 件の記録に入れるために使う
+// （research.md R-3）。
+func (s *IngestStore) EnqueueJobs(
+	ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
+) error {
+	if len(kinds) == 0 {
+		return nil
+	}
 	tx, err := s.db.sql.BeginTx(ctx, nil)
 	if err != nil {
-		return fmt.Errorf("cannot start queueing the job (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot start queueing the jobs (%v, video=%d): %w", kinds, videoID, err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	if err := requeueJob(ctx, tx, kind, videoID, time.Now().Unix()); err != nil {
-		return err
-	}
 	var c changes
-	c.jobsQueued(kind)
+	for _, kind := range kinds {
+		if err := requeueJob(ctx, tx, &c, kind, videoID, time.Now().Unix(), decider); err != nil {
+			return err
+		}
+	}
+	c.jobsQueued(kinds...)
 	if err := s.db.commit(ctx, tx, &c); err != nil {
-		return fmt.Errorf("cannot commit queueing the job (%s, video=%d): %w", kind, videoID, err)
+		return fmt.Errorf("cannot commit queueing the jobs (%v, video=%d): %w", kinds, videoID, err)
 	}
 	return nil
 }
@@ -54,7 +71,53 @@ var jobStateColumns = map[domain.JobKind]string{
 // 上限まで失敗した failed の行も、完了した done の行も捨てて積み直す（queued・running の
 // 行があれば積まない）。失敗した指紋は次の走査で作り直され、版を上げたときも前の版の
 // done の行に妨げられずに追いつく（specs/030-video-versions/data-model.md §6）。
-func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64) error {
+//
+// 積んだ仕事の記録は EnqueueJob と同じく決める。
+func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoID int64, decider domain.ActivityDecider) error {
+	return s.EnsureJobs(ctx, videoID, decider, kind)
+}
+
+// EnsureJobs は動画 videoID の kinds の欠けた仕事を、EnsureJob と同じく 1 つの取引で積み直す。走査が動画に
+// 要る仕事をまとめて 1 件の記録に入れるために使う（EnqueueJobs と同じ）。
+func (s *IngestStore) EnsureJobs(
+	ctx context.Context, videoID int64, decider domain.ActivityDecider, kinds ...domain.JobKind,
+) error {
+	if len(kinds) == 0 {
+		return nil
+	}
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot start restoring missing jobs (%v, video=%d): %w", kinds, videoID, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	var queued []domain.JobKind
+	for _, kind := range kinds {
+		inserted, err := ensureJob(ctx, tx, kind, videoID)
+		if err != nil {
+			return err
+		}
+		if inserted {
+			queued = append(queued, kind)
+		}
+	}
+	var c changes
+	if len(queued) > 0 {
+		if err := joinImportActivity(ctx, tx, &c, videoID, decider, time.Now()); err != nil {
+			return err
+		}
+		if err := addScanVideos(ctx, tx, videoID); err != nil {
+			return err
+		}
+		c.jobsQueued(queued...)
+	}
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return fmt.Errorf("cannot commit restoring missing jobs (%v, video=%d): %w", kinds, videoID, err)
+	}
+	return nil
+}
+
+// ensureJob は取引 tx で、動画 videoID に欠けた kind の仕事を積み直し、積んだかを返す（EnsureJob）。
+func ensureJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, videoID int64) (bool, error) {
 	var pending string
 	discarded := `state = 'failed'`
 	if kind == domain.JobFingerprint {
@@ -63,19 +126,13 @@ func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoI
 	} else {
 		column, ok := jobStateColumns[kind]
 		if !ok {
-			return fmt.Errorf("unknown job kind: %s", kind)
+			return false, fmt.Errorf("unknown job kind: %s", kind)
 		}
 		pending = `exists (select 1 from videos where id = ? and ` + column + ` = 'pending')`
 	}
-
-	tx, err := s.db.sql.BeginTx(ctx, nil)
-	if err != nil {
-		return fmt.Errorf("cannot start restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
-	}
-	defer func() { _ = tx.Rollback() }()
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and `+discarded+` and `+pending,
 		string(kind), videoID, videoID); err != nil {
-		return fmt.Errorf("cannot discard finished job rows (%s, video=%d): %w", kind, videoID, err)
+		return false, fmt.Errorf("cannot discard finished job rows (%s, video=%d): %w", kind, videoID, err)
 	}
 	now := time.Now().Unix()
 	res, err := tx.ExecContext(ctx, `
@@ -84,23 +141,13 @@ func (s *IngestStore) EnsureJob(ctx context.Context, kind domain.JobKind, videoI
 		where not exists (select 1 from jobs where kind = ? and video_id = ?) and `+pending,
 		string(kind), videoID, now, now, string(kind), videoID, videoID)
 	if err != nil {
-		return fmt.Errorf("cannot restore missing jobs (%s, video=%d): %w", kind, videoID, err)
+		return false, fmt.Errorf("cannot restore missing jobs (%s, video=%d): %w", kind, videoID, err)
 	}
 	inserted, err := res.RowsAffected()
 	if err != nil {
-		return fmt.Errorf("cannot count restored jobs (%s, video=%d): %w", kind, videoID, err)
+		return false, fmt.Errorf("cannot count restored jobs (%s, video=%d): %w", kind, videoID, err)
 	}
-	var c changes
-	if inserted > 0 {
-		if err := addScanVideos(ctx, tx, videoID); err != nil {
-			return err
-		}
-		c.jobsQueued(kind)
-	}
-	if err := s.db.commit(ctx, tx, &c); err != nil {
-		return fmt.Errorf("cannot commit restoring missing jobs (%s, video=%d): %w", kind, videoID, err)
-	}
-	return nil
+	return inserted > 0, nil
 }
 
 // ClaimJob は待ち行列から kind の仕事を1件専有する。
@@ -162,14 +209,8 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	}
 	job.Attempts = domain.ClaimAttempts(job.Attempts, startsRound)
 	if errors.Is(err, sql.ErrNoRows) {
-		if _, updateErr := conn.ExecContext(ctx, `delete from jobs where id = ?`, job.ID); updateErr != nil {
-			return domain.Job{}, updateErr
-		}
-		if settleErr := refreshScanSettled(ctx, conn, time.Now().Unix()); settleErr != nil {
-			return domain.Job{}, settleErr
-		}
-		if _, commitErr := conn.ExecContext(ctx, `commit`); commitErr != nil {
-			return domain.Job{}, commitErr
+		if dropErr := s.dropUnplacedJob(ctx, conn, job.ID); dropErr != nil {
+			return domain.Job{}, dropErr
 		}
 		committed = true
 		return domain.Job{}, domain.ErrNoJob
@@ -203,13 +244,54 @@ func (s *IngestStore) ClaimJob(ctx context.Context, kind domain.JobKind) (domain
 	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
 		return domain.Job{}, err
 	}
+	// 取り出した仕事の記録が running でなければ（再起動で中断した記録、この機能より前に積んだ仕事）、
+	// 新しい記録を開く。起動時の再開と同じく、始めたのは規則である（research.md R-5）。
+	var c changes
+	if err := joinImportActivity(ctx, conn, &c, job.VideoID, domain.ActivityByRule, time.Now()); err != nil {
+		return domain.Job{}, err
+	}
 
 	if _, err := conn.ExecContext(ctx, `commit`); err != nil {
 		return domain.Job{}, fmt.Errorf("cannot take ownership of the job (id=%d): %w", job.ID, err)
 	}
 	committed = true
+	s.db.publish(&c)
 
 	return job, nil
+}
+
+// dropUnplacedJob は登録の所在が無くなった動画の仕事 id を、begin immediate で始めた conn の取引で捨て、
+// その記録を閉じるかまとめ直して確定する。
+func (s *IngestStore) dropUnplacedJob(ctx context.Context, conn *sql.Conn, id int64) error {
+	var activityID sql.NullInt64
+	if err := conn.QueryRowContext(ctx, `select activity_id from jobs where id = ?`, id).Scan(&activityID); err != nil {
+		return err
+	}
+	if _, err := conn.ExecContext(ctx, `delete from jobs where id = ?`, id); err != nil {
+		return err
+	}
+	if err := refreshScanSettled(ctx, conn, time.Now().Unix()); err != nil {
+		return err
+	}
+	// 最後に待っていた仕事を捨てた記録は、動画が登録の所在を失ったので done/gone で閉じる。まだ待つ仕事が
+	// あれば状態をまとめ直す。
+	var c changes
+	if activityID.Valid {
+		closed, err := closeGoneImportActivity(ctx, conn, &c, activityID.Int64, time.Now())
+		if err != nil {
+			return err
+		}
+		if !closed {
+			if err := settleImportActivity(ctx, conn, &c, activityID.Int64, time.Now()); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := conn.ExecContext(ctx, `commit`); err != nil {
+		return err
+	}
+	s.db.publish(&c)
+	return nil
 }
 
 // claimConditionSQL は domain.JobClaimCondition を、jobs の行（別名 alias）に
@@ -263,12 +345,21 @@ func (s *IngestStore) CompleteClaimedJob(ctx context.Context, job domain.Job) er
 	if err != nil {
 		return fmt.Errorf("cannot record job completion (id=%d): %w", job.ID, err)
 	}
-	var c changes
-	c.remainingChanged()
-	if err := s.db.commit(ctx, tx, &c); err != nil {
+	if err := s.commitJobChange(ctx, tx, job.ID); err != nil {
 		return fmt.Errorf("cannot commit job completion (id=%d): %w", job.ID, err)
 	}
 	return nil
+}
+
+// commitJobChange は仕事 jobID の状態を変えた取引 tx で、その仕事の import の記録をまとめ直し、残りの仕事を
+// 決め直して確定する。
+func (s *IngestStore) commitJobChange(ctx context.Context, tx *sql.Tx, jobID int64) error {
+	var c changes
+	if err := settleJobActivity(ctx, tx, &c, jobID, time.Now()); err != nil {
+		return err
+	}
+	c.remainingChanged()
+	return s.db.commit(ctx, tx, &c)
 }
 
 // CompleteJob は専有時点の所在を確かめずに完了を記録する。専有の控えを
@@ -283,9 +374,7 @@ func (s *IngestStore) CompleteJob(ctx context.Context, id int64) error {
 		time.Now().Unix(), id); err != nil {
 		return err
 	}
-	var c changes
-	c.remainingChanged()
-	return s.db.commit(ctx, tx, &c)
+	return s.commitJobChange(ctx, tx, id)
 }
 
 // FailJob は専有時点の所在を確かめずに失敗を記録する。専有の控えを持たない
@@ -309,9 +398,7 @@ func (s *IngestStore) FailJob(ctx context.Context, id int64, reason string) erro
 		string(state), reason, time.Now().Unix(), id); err != nil {
 		return err
 	}
-	var c changes
-	c.remainingChanged()
-	return s.db.commit(ctx, tx, &c)
+	return s.commitJobChange(ctx, tx, id)
 }
 
 // FailClaimedJob は失敗を記録する。queued へ戻すか failed で止めるかは
@@ -368,9 +455,7 @@ func (s *IngestStore) FailClaimedJob(ctx context.Context, job domain.Job, cause 
 			return err
 		}
 	}
-	var c changes
-	c.remainingChanged()
-	if err := s.db.commit(ctx, tx, &c); err != nil {
+	if err := s.commitJobChange(ctx, tx, job.ID); err != nil {
 		return fmt.Errorf("cannot commit the job failure (id=%d): %w", job.ID, err)
 	}
 	return nil

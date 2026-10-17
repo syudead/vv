@@ -525,6 +525,44 @@ function SidebarMenuBadge({ className, ...props }: React.ComponentProps<"div">) 
   );
 }
 
+/**
+ * SidebarMenuCount は項目の件数である（vv が足した部品。specs/055-activity/ui-design.md
+ * 「Changes to the design system」）。上流の SidebarMenuBadge はアイコンだけのレールでは
+ * 隠れるので、レールではアイコンの右上に destructive の丸い印として描き、狭い幅のドロワーでは
+ * 行の端の SidebarMenuBadge として描く。0 なら何も描かない。見える文字（`text`、99 を超えれば
+ * 「99+」）とは別に、読み上げの文（`label`）を持つ。SidebarMenuItem の中、
+ * SidebarMenuButton の後ろに置く。
+ */
+function SidebarMenuCount({
+  count,
+  text,
+  label,
+}: {
+  count: number;
+  text: React.ReactNode;
+  label: string;
+}) {
+  const { isMobile } = useSidebar();
+  if (count <= 0) return null;
+  if (isMobile) {
+    return (
+      <SidebarMenuBadge data-slot="sidebar-menu-count" className="text-destructive">
+        <span aria-hidden="true">{text}</span>
+        <span className="sr-only">{label}</span>
+      </SidebarMenuBadge>
+    );
+  }
+  return (
+    <div
+      data-slot="sidebar-menu-count"
+      className="pointer-events-none absolute top-1 right-2 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive-strong px-1 text-2xs font-semibold text-destructive-foreground tabular-nums select-none"
+    >
+      <span aria-hidden="true">{text}</span>
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
 function SidebarMenuSkeleton({
   className,
   showIcon = false,
@@ -612,6 +650,7 @@ export {
   SidebarMenuAction,
   SidebarMenuBadge,
   SidebarMenuButton,
+  SidebarMenuCount,
   SidebarMenuItem,
   SidebarMenuSkeleton,
   SidebarMenuSub,
