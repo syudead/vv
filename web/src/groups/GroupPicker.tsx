@@ -7,8 +7,7 @@ import NamedPicker, { type PickerChoice } from "../library/NamedPicker";
 import { useGroupChanged } from "./groupChanges";
 
 /**
- * GroupPicker は「Add to group」のポップオーバーの中身である
- * （specs/048-groups/ui-design.md「Add to group」）。カード・行・動画ページ・選択バーの 4 か所が、
+ * GroupPicker は「Add to group」のポップオーバーの中身である。カード・行・動画ページ・選択バーの 4 か所が、
  * それぞれの `Popover` の中に置く。形と読み込みは NamedPicker が持つ。
  *
  * - 開くたびに `GET /api/groups` を `nextCursor` が尽きるまで読み（listAllGroups）、自然な名前の

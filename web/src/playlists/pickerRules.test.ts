@@ -7,7 +7,7 @@ function playlist(id: number, name: string): PlaylistSummary {
   return { id, name, itemCount: 0, updatedAt: "2026-10-01T00:00:00Z" };
 }
 
-describe("ピッカーの規則（specs/044-playlists/ui-design.md「Add to playlist」）", () => {
+describe("ピッカーの規則", () => {
   it("トーストは added と existing で文を分ける（「Words」）", () => {
     expect(resultText({ added: 3, existing: 0 }, "Tonight")).toBe(
       'Added 3 items to "Tonight"',

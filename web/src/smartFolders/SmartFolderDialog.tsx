@@ -52,8 +52,7 @@ export type SmartFolderDialogTarget =
     };
 
 /**
- * indentClasses は親の `Select` の行の字下げで、深さ 1 段ごとに `pl-4` ずつ増やす
- * （ui-design.md「Smart folder dialog」の Parent）。4 段より深いものは 4 段目にそろえる。
+ * indentClasses は親の `Select` の行の字下げで、深さ 1 段ごとに `pl-4` ずつ増やす。4 段より深いものは 4 段目にそろえる。
  */
 const indentClasses = ["pl-2", "pl-6", "pl-10", "pl-14", "pl-18"] as const;
 
@@ -97,8 +96,7 @@ interface FieldErrors {
 const noErrors: FieldErrors = { name: false, parent: null, conditions: null };
 
 /**
- * failureErrors は送った結果の失敗を、どの欄の誤りかに振り分ける
- * （contracts/screen-api.md「Statuses」、ui-design.md「Words」）。欄の無い失敗は null。
+ * failureErrors は送った結果の失敗を、どの欄の誤りかに振り分ける。欄の無い失敗は null。
  */
 function failureErrors(error: unknown): FieldErrors | null {
   if (!(error instanceof RequestFailed)) return null;
@@ -185,7 +183,7 @@ function submitWords(target: SmartFolderDialogTarget): { idle: UiText; busy: UiT
 }
 
 /**
- * ParentField は親を選ぶ欄である（ui-design.md「Smart folder dialog」の Parent）。直す窓では
+ * ParentField は親を選ぶ欄である。直す窓では
  * フォルダ自身とその子孫を選べない（parentChoices）。欄の誤り error が無いときは、親の一覧を
  * 読めなかったことを出す。
  */
@@ -251,8 +249,7 @@ function ParentField({
 }
 
 /**
- * SmartFolderDialog はスマートフォルダを作るか直す窓である
- * （specs/052-smart-folders/ui-design.md「Smart folder dialog」）。名前・親・並べ順と条件を持つ。
+ * SmartFolderDialog はスマートフォルダを作るか直す窓である。名前・親・並べ順と条件を持つ。
  * 呼び出し元は開いている間だけ描く。
  *
  * - 名前（1〜100 文字）と条件の 1 つ（直すときは、元から空の条件はそのまま）を送る前に
@@ -291,7 +288,7 @@ export default function SmartFolderDialog({
   const randomHint =
     target.kind === "create" && target.randomReplaced === true && sort === target.sort;
 
-  // 直す窓は名前を選んだ状態で開く（ui-design.md「Editing」）。
+  // 直す窓は名前を選んだ状態で開く。
   useEffect(() => {
     if (target.kind === "edit") nameInput.current?.select();
   }, [target.kind]);

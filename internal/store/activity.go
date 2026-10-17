@@ -15,10 +15,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// アクティビティの記録（specs/055-activity/data-model.md）。記録は変える内容と同じ取引で、記録する各役割が
-// recordActivity・setActivityState を呼んで書き、確定後に domain.ActivityChanged を発行する（research.md
-// R-2）。ActivityStore は記録の一覧・1 件の読み出しと、起動時の回復だけを持つ（plan.md の Structure
-// decision）。
+// アクティビティの記録。記録は変える内容と同じ取引で、記録する各役割が
+// recordActivity・setActivityState を呼んで書き、確定後に domain.ActivityChanged を発行する。ActivityStore は記録の一覧・1 件の読み出しと、起動時の回復だけを持つ。
 
 // foldCaseFunction は表示名の検索で大文字と小文字をそろえる関数を SQLite から呼ぶ名前である。SQLite の
 // lower は ASCII だけを変えるので、Go の strings.ToLower を使う。select の中でしか使わず、スキーマには
@@ -183,7 +181,7 @@ func writeActivityState(ctx context.Context, tx activityWriter, id int64, state 
 }
 
 // RecoverInterruptedActivity は、前回の停止で processing の running のまま残った記録をすべて
-// attention/interrupted にし、件数を返す。waiting の記録は取り出される前なので変えない（research.md R-4）。
+// attention/interrupted にし、件数を返す。waiting の記録は取り出される前なので変えない。
 // 起動時に、ワーカーを動かす前に 1 度だけ呼ぶ。変えた記録があれば確定後に domain.ActivityChanged を発行する。
 func (s *ActivityStore) RecoverInterruptedActivity(ctx context.Context) (int, error) {
 	result, err := s.db.sql.ExecContext(ctx, `update activity_entries set status = ?, reason = ?, updated_at = ?
@@ -283,7 +281,7 @@ func (s *ActivityStore) ActivityEntry(ctx context.Context, id int64) (domain.Act
 	return entries[0], nil
 }
 
-// ListActivity は query を満たす記録を id の降順に、cursor の次から limit 件返す（research.md R-9）。
+// ListActivity は query を満たす記録を id の降順に、cursor の次から limit 件返す。
 // cursor が空なら先頭から、読めなければ domain.ErrInvalidCursor。Counts は Status 以外の、Features は
 // Features 以外の絞り込みに従う。ページと件数は同じスナップショットから読む（読み取り用の接続）。
 // 各件の VideoIDs は audience が開ける今の動画である。
@@ -344,7 +342,7 @@ func activityFilter(query domain.ActivityQuery, withStatus, withFeatures bool) (
 		args = append(args, query.Since.UnixMilli())
 	}
 	if query.Search != "" {
-		// 対象の表示名だけを見る。ほかの絞り込みが残す行を読むので、文字の索引は要らない（data-model.md）。
+		// 対象の表示名だけを見る。ほかの絞り込みが残す行を読むので、文字の索引は要らない。
 		needle := strings.ToLower(query.Search)
 		conditions = append(conditions, `(instr(`+foldCaseFunction+`(e.subject_label), ?) > 0 or instr(`+
 			foldCaseFunction+`(e.subject_label_b), ?) > 0)`)
@@ -503,7 +501,7 @@ func attachActivityTags(ctx context.Context, q rowsQueryer, entries []domain.Act
 }
 
 // attachActivityVideos は動画と組の記録の各鍵に、audience が開ける今の動画の id を添える。鍵の動画が無いか
-// 開けなければ 0 のままにする（research.md R-10）。
+// 開けなければ 0 のままにする。
 func attachActivityVideos(ctx context.Context, q rowsQueryer, audience domain.Audience, entries []domain.ActivityEntry) error {
 	var keys []string
 	for _, entry := range entries {

@@ -5,8 +5,7 @@ saved probe, copies the video stream from a mid-file position when it can, and
 tells the player the actual start position through
 `GET /api/videos/{id}/transcode-start`
 ([`internal/httpapi/transcode.go`](../../internal/httpapi/transcode.go),
-[`internal/media`](../../internal/media)). Background:
-[research.md](../../specs/018-live-transcode-seek/research.md).
+[`internal/media`](../../internal/media)).
 
 The player makes two requests per transcode from a mid-file position; the
 transcode records its actual start position in a ledger that the report reads.
@@ -96,8 +95,7 @@ sparse. Otherwise it is copied unless the copy starts more than
 is encoded from the requested position.
 
 A copy starts at the preceding keyframe, so the server has to learn the time it
-actually started
-([research.md R-1](../../specs/018-live-transcode-seek/research.md#r-1-source-of-the-actual-start-position)).
+actually started.
 For one probe, FFmpeg starts are tried in this order:
 
 ```mermaid
@@ -199,8 +197,7 @@ and 10.4 seconds at 23.976 fps, so a 10-second limit would re-encode every
 film-rate video made with the default. Camera and streaming videos use 1 to 10
 seconds, and 15 seconds copies all of them. Videos with keyframes only at scene
 changes (tens of seconds to minutes) would jump back too far from the chosen
-position, so they are re-encoded
-([research.md R-2](../../specs/018-live-transcode-seek/research.md#r-2-allowed-gap-to-the-keyframe-when-copying)).
+position, so they are re-encoded.
 
 | Rejected | Why |
 | --- | --- |
@@ -213,14 +210,12 @@ position, so they are re-encoded
 
 The player adds a per-request `attempt` to the transcode URL and asks
 `GET /api/videos/{id}/transcode-start` with the same `attempt` for the actual
-start position
-([contract](../../specs/018-live-transcode-seek/contracts/transcode-start-api.md)).
+start position.
 
 Playback through `<video src>` exposes neither response headers nor body
 structure to JavaScript, so the transcode response cannot carry the start
 position. Without the report, the displayed time and the saved playback
-position would run ahead of the picture by up to the gap limit
-([research.md R-4](../../specs/018-live-transcode-seek/research.md#r-4-path-that-reports-the-actual-start-position-to-the-player)).
+position would run ahead of the picture by up to the gap limit.
 
 The browser may send either request first, so the report waits for the ledger
 entry:

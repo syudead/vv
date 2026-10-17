@@ -13,8 +13,7 @@ import {
 
 setUpGroupPageServer();
 
-// 子グループのカードと道筋の段へ落として移す（specs/050-drag-organize/ui-design.md
-// 「What a drop does」「Group page」）。jsdom は配置を持たないので、格子のカードを横一列に
+// 子グループのカードと道筋の段へ落として移す。jsdom は配置を持たないので、格子のカードを横一列に
 // 200px ずつ、道筋の段をその下に 100px ずつ置き、ポインタの出来事で持ち上げて落とす。
 
 const cardWidth = 190;

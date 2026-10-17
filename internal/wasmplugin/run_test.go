@@ -363,7 +363,7 @@ func TestRunRecordsBeforeReleasingTheSlot(t *testing.T) {
 }
 
 // コンパイルに失敗した実行はモジュールを起動しないので、record を呼ばず、前の実行のログを残す
-// （056 research.md R-6）。
+// 。
 func TestRunDoesNotRecordARunWhoseModuleDidNotCompile(t *testing.T) {
 	rt := newTestRuntime(t)
 	recorded := false

@@ -9,7 +9,7 @@ import { ToastProvider } from "../ui/Toast";
 import AddToPlaylistButton from "./AddToPlaylistButton";
 
 /**
- * 「Add to playlist」のピッカー（specs/044-playlists/ui-design.md「Add to playlist」）。
+ * 「Add to playlist」のピッカー。
  * 動画ページの形の引き金で開き、偽のサーバーへ送る。
  */
 

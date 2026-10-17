@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// 重複の候補の判定の記録（specs/055-activity/data-model.md「Reasons」、research.md R-4・R-7）。組ごとに 1 件の
+// 重複の候補の判定の記録。組ごとに 1 件の
 // version_judgement の記録を保ち、その状態は候補の判定に従う。
 
 // VersionJudgementActivityState は候補の判定 judgement（空は待ち）のときの、組の開いている記録の状態である。
@@ -35,7 +35,7 @@ func (r VersionJudgeResult) ResultDecider() ActivityDecider {
 }
 
 // VersionBundleUndoKeys は自動で束ねた組の、加わった側のメンバーの鍵と、その側の元の代表の鍵である
-// （activity_entries.undo_keys、research.md R-7）。取り消しはこの側を元の代表のまとまりとして外す。
+// （activity_entries.undo_keys）。取り消しはこの側を元の代表のまとまりとして外す。
 type VersionBundleUndoKeys struct {
 	Members        []string `json:"members"`
 	Representative string   `json:"representative"`

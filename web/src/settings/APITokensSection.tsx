@@ -146,7 +146,7 @@ function TokenReveal({ revealed, onDone }: { revealed: Revealed; onDone: () => v
 /**
  * APITokensSection は設定画面の「API tokens」節である。所有者が外部連携 API と MCP の
  * トークンを発行し、発行直後に一度だけ平文を見てコピーし、一覧で名前と日時を確かめ、
- * 確認の後に失効する（specs/026-external-api/ui-design.md）。
+ * 確認の後に失効する。
  */
 export default function APITokensSection() {
   const text = t.settings.apiTokens;

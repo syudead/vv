@@ -72,7 +72,7 @@ func WebView2Version() (string, error) {
 }
 
 // ShowError は Windows 標準のダイアログ（題名 VVMDM、OK だけ）で text を示し、
-// 閉じられるまで待つ（research.md R-10）。
+// 閉じられるまで待つ。
 func ShowError(text string) {
 	title, _ := windows.UTF16PtrFromString(AppName)
 	body, err := windows.UTF16PtrFromString(text)
@@ -83,7 +83,7 @@ func ShowError(text string) {
 }
 
 // JoinKillOnCloseJob は自分のプロセスを JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE の
-// ジョブオブジェクトに入れる（research.md R-11）。子プロセス（ffmpeg・ffprobe）も同じ
+// ジョブオブジェクトに入れる。子プロセス（ffmpeg・ffprobe）も同じ
 // ジョブに入るので、このプロセスが強制終了されても子が残らない。ジョブのハンドルは
 // プロセスの終わりまで閉じない（閉じるとジョブの全てのプロセスが終わる）。
 func JoinKillOnCloseJob() error {

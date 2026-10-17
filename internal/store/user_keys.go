@@ -8,7 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 利用者データの鍵（specs/030-video-versions/data-model.md §3、research.md R-2）。
+// 利用者データの鍵。
 //
 // 動画のタグ・再生位置・公開の設定・お気に入り（video_tags・playback_progress・public_videos・
 // video_favorites）は、集まりのメンバーなら集まりの user_key（'bundle:<id>'）に、そうでなければ
@@ -116,7 +116,7 @@ func contentKeysForUserKeys(ctx context.Context, q queryExecer, userKeys []strin
 	return keys, nil
 }
 
-// 見せる動画（specs/030-video-versions/data-model.md §4、research.md R-3）。
+// 見せる動画。
 //
 // 一覧・検索・フォルダ・関連・フォルダの索引・タグの本数は、集まりに属さない動画と、各集まりの
 // 実効の代表だけを対象にする。実効の代表は、representative_key の動画に見る人に見せてよい所在が
@@ -124,7 +124,7 @@ func contentKeysForUserKeys(ctx context.Context, q queryExecer, userKeys []strin
 // 集まりは出ない。実効の代表は読み出しのたびに決め、どこにも書かない。詳細（getVideo）・所在・
 // 配信・字幕・バージョンの一覧は、代表以外のバージョンも返す。
 //
-// data-model.md §4 の「見せる動画の CTE」shown(video_id, bundle_id) は、動画ごとの条件
+// 「見せる動画の CTE」shown(video_id, bundle_id) は、動画ごとの条件
 // shownVideoCondition と、所在ごとに集まりを結ぶ chosenLocationsCTE の形で持つ。一覧は
 // 所在の範囲で見せてよいかを既に判定しているので、動画ごとの表にすると同じ判定を
 // 2 度行い、1 万件で一覧が 1.5 倍ほど遅くなるため。

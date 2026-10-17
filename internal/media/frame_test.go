@@ -10,7 +10,7 @@ import (
 )
 
 // 編集するコマは指定の位置の場面の PNG で、長辺は動画の長辺、上限 2048px である
-// （specs/045-comfyui-thumbnails/research.md R-8）。
+//
 
 func TestFrameAtKeepsSmallVideoSizeAndPosition(t *testing.T) {
 	requireFFmpeg(t)

@@ -4,8 +4,7 @@ import { getOllamaSettings, isAborted } from "../api/client";
 import { errorText, type UiText } from "../i18n";
 
 /**
- * OllamaConnection は Ollama の接続先を読んだ結果である
- * （specs/058-settings-pages/research.md R-4、R-5）。
+ * OllamaConnection は Ollama の接続先を読んだ結果である。
  * - `loading`: 読んでいる。
  * - `saved` / `unsaved`: 持ち主が接続先を保存したか（`OllamaSettings.saved`）。
  * - `failed`: 読めなかった。保存したかは分からない。
@@ -18,8 +17,7 @@ export type OllamaConnection =
 
 /**
  * useOllamaConnection は、接続先に頼るページ（「Auto-tagging」と「Library」）が開いたときに
- * `GET /api/settings/ollama` を 1 回読み、保存したかを返す
- * （specs/058-settings-pages/contracts/screen-api.md「Client use」）。`retry` は読み直す。
+ * `GET /api/settings/ollama` を 1 回読み、保存したかを返す。`retry` は読み直す。
  */
 export function useOllamaConnection(): {
   connection: OllamaConnection;

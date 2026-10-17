@@ -23,7 +23,7 @@ import { useToast } from "../ui/Toast";
 import { navEntries, type NavEntry } from "./navigation";
 
 function settingsEntry(): NavEntry {
-  // 設定の下のページ（`/settings/library` など）でも選択中にする（specs/058-settings-pages R-1）。
+  // 設定の下のページ（`/settings/library` など）でも選択中にする。
   return {
     id: "settings",
     label: t.shell.nav.settings,
@@ -43,8 +43,7 @@ function useCloseDrawer(): () => void {
 
 /**
  * Entry はサイドバーの 1 項目である。`count` があれば（アクティビティの要対応の数）、
- * レールではアイコンの右上、ドロワーでは行の端に出す（specs/055-activity/ui-design.md
- * 「Sidebar entry」）。
+ * レールではアイコンの右上、ドロワーでは行の端に出す。
  */
 function Entry({ entry, count }: { entry: NavEntry; count?: number }) {
   const location = useLocation();
@@ -76,8 +75,7 @@ function Entry({ entry, count }: { entry: NavEntry; count?: number }) {
 
 /**
  * LogoutEntry はログアウトの項目である。確認の窓は出さず、成功したら今の URL を
- * ページごと読み直す。読み直した画面はゲストとして描かれる
- * （specs/016-single-account-auth/ui-design.md「Sidebar」）。
+ * ページごと読み直す。読み直した画面はゲストとして描かれる。
  */
 function LogoutEntry() {
   const toast = useToast();

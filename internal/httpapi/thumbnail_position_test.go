@@ -19,7 +19,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 代表サムネイルの位置の設定・解除（specs/029-video-overrides/contracts/screen-api.md §2）は、
+// 代表サムネイルの位置の設定・解除は、
 // 本物の認証・保存層で確かめる（#559）。画像の生成だけを fakeThumbnailPicker が代わりにする。
 
 // fakeThumbnailPicker は internal/app の Ingest.SetThumbnailPosition の代わりである。位置を

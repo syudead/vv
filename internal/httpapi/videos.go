@@ -18,7 +18,7 @@ const maxQueryLength = 100
 
 // maxTagFilterCount は一覧の絞り込みに使えるタグの id の最大個数である。
 // api/openapi.yaml の tag パラメータの maxItems と同じ値で、越える要求は
-// invalid_request にする（specs/014-video-tags/contracts/tags-api.md §5）。
+// invalid_request にする。
 const maxTagFilterCount = 16
 
 // thumbnailVersionLength はサムネイルの URL に付ける版の長さである。
@@ -73,15 +73,15 @@ type videoQueryParams struct {
 	limit    *int
 	tag      *[]int64
 	favorite *bool
-	// person と organization は人物・団体の id による絞り込み（specs/047-video-work-info/research.md R-7）。
+	// person と organization は人物・団体の id による絞り込み。
 	person       *int64
 	organization *int64
 	// addedWithin は追加日の日数、minDuration と maxDuration は長さの範囲（秒）である
-	// （specs/052-smart-folders/research.md R-4）。
+	//
 	addedWithin *int
 	minDuration *int
 	maxDuration *int
-	// tagKind はタグの種類の id による絞り込み（specs/051-tag-kinds/research.md R-5）。
+	// tagKind はタグの種類の id による絞り込み。
 	tagKind *int64
 }
 
@@ -136,8 +136,8 @@ func (s *server) parseVideoQuery(w http.ResponseWriter, audience domain.Audience
 
 // parseIDFilters は一覧の person・organization・tagKind を検査して query に書く。指定が無ければ
 // 0 のままにする。正の整数でない値は 400 を書いて false を返す。実体の有無は確かめない（当たらなければ
-// 空の一覧になる、specs/047-video-work-info/contracts/screen-api.md、
-// specs/051-tag-kinds/contracts/screen-api.md の List parameter `tagKind`）。
+// 空の一覧になる、docs/design-docs/catalog-organization.md、
+// docs/design-docs/catalog-organization.md の List parameter `tagKind`）。
 func (s *server) parseIDFilters(w http.ResponseWriter, params videoQueryParams, query *domain.VideoQuery) bool {
 	for _, filter := range []struct {
 		name  string
@@ -161,8 +161,7 @@ func (s *server) parseIDFilters(w http.ResponseWriter, params videoQueryParams, 
 }
 
 // parseAddedAndLength は一覧の addedWithin・minDuration・maxDuration を検査して query に写す。
-// 範囲の外の値と、minDuration が maxDuration を越える組は 400 を書いて false を返す
-// （specs/052-smart-folders/contracts/screen-api.md）。ゲストも使える。
+// 範囲の外の値と、minDuration が maxDuration を越える組は 400 を書いて false を返す。ゲストも使える。
 func (s *server) parseAddedAndLength(w http.ResponseWriter, params videoQueryParams, query *domain.VideoQuery) bool {
 	switch err := domain.CheckAddedAndLength(params.addedWithin, params.minDuration, params.maxDuration); {
 	case errors.Is(err, domain.ErrInvalidAddedWithin):
@@ -184,7 +183,6 @@ func (s *server) parseAddedAndLength(w http.ResponseWriter, params videoQueryPar
 // writeVideoPage は一覧1ページを応答に書く。各項目には再生位置・タグと、一覧に
 // 出す所在の置かれたフォルダ（Video.folder）を載せる。roots が無ければ folder は
 // 省く。page.MissingTagIDs があれば応答にもそのまま載せる
-// （contracts/tags-api.md §5）。
 func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page domain.VideoPage, roots []domain.MediaFolder) {
 	progress := s.progressFor(r.Context(), page.Items)
 	tags := s.tagsFor(r.Context(), page.Items)
@@ -213,7 +211,7 @@ func (s *server) writeVideoPage(w http.ResponseWriter, r *http.Request, page dom
 }
 
 // checkAudienceQuery は、見る人がこの一覧の条件を使えるかを確かめる。ゲストが所有者の
-// データに依る条件を指定したら 400 を書いて false を返す（contracts/guest-api.md §3）。
+// データに依る条件を指定したら 400 を書いて false を返す。
 func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audience, query domain.VideoQuery) bool {
 	if err := audience.CheckVideoQuery(query); err != nil {
 		s.invalidRequestReason(w, reasonGuestFilterNotAllowed, "Sign in to filter by watch status, tags, or favorites, or to sort by last played or date favorited.")
@@ -223,11 +221,9 @@ func (s *server) checkAudienceQuery(w http.ResponseWriter, audience domain.Audie
 }
 
 // forAudience は応答に載せる動画を見る人に合わせる。ゲストには所在（絶対パス）・
-// 再生位置・読み取りの誤りとそのコード（誤りは絶対パスを含みうる）を出さず、タグを空の配列にする
-// （contracts/guest-api.md §1、親 Issue 要件 18）。ファイル名由来の題名・表示名・代表サムネイルの
-// 位置と適用した画像の有無も出さず、ゲストは title で表示名だけを受け取る
-// （specs/029-video-overrides/contracts/screen-api.md §0）。作品情報も出さない
-// （specs/047-video-work-info/research.md R-10）。
+// 再生位置・読み取りの誤りとそのコード（誤りは絶対パスを含みうる）を出さず、タグを空の配列にする。ファイル名由来の題名・表示名・代表サムネイルの
+// 位置と適用した画像の有無も出さず、ゲストは title で表示名だけを受け取る。作品情報も出さない
+//
 // 所有者にはそのまま返す。
 func forAudience(audience domain.Audience, video gen.Video) gen.Video {
 	if audience.IsOwner() {
@@ -286,7 +282,7 @@ type listFilters struct {
 }
 
 // parseListFilters は絞り込みと並び順を検査して写す。未知の値と範囲外の seed は
-// 400 を書いて false を返す（contracts/list-api.md §5）。黙って既定へ戻さないのは、
+// 400 を書いて false を返す。黙って既定へ戻さないのは、
 // 画面の送り間違いを、条件と違う一覧として見せないためである。
 func (s *server) parseListFilters(w http.ResponseWriter, params listFilterParams) (listFilters, bool) {
 	out := listFilters{watch: domain.WatchAll, sort: domain.SortAddedDesc}
@@ -334,7 +330,7 @@ func (s *server) parseSearchQuery(w http.ResponseWriter, query *string) (string,
 }
 
 // parseTagFilter は絞り込みに使うタグの id の個数を検査する。17 個以上は 400 を
-// 書いて false を返す（contracts/tags-api.md §5）。存在しない id は誤りにせず、
+// 書いて false を返す。存在しない id は誤りにせず、
 // 保存層（existingTagIDs）が落として応答の missingTagIds に返す。
 func (s *server) parseTagFilter(w http.ResponseWriter, tag *[]int64) ([]int64, bool) {
 	if tag == nil {
@@ -350,21 +346,19 @@ func (s *server) parseTagFilter(w http.ResponseWriter, tag *[]int64) ([]int64, b
 
 // GetVideo は動画1件の詳細を返す（GET /api/videos/{id}）。group は動画を開いたグループ、smartFolder
 // は動画を開いたスマートフォルダで、応答の group か smartFolder をその文脈で答える
-// （specs/048-groups/research.md R-9、specs/052-smart-folders/contracts/screen-api.md）。
 func (s *server) GetVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId, params gen.GetVideoParams) {
 	video, ok := s.lookupVideo(w, r, id)
 	if !ok {
 		return
 	}
-	// 作品情報は動画 1 件の応答にだけ載せる（specs/047-video-work-info/contracts/screen-api.md
-	// 「Video changes」）。一覧・関連動画・ライブラリの項目は読まない。
+	// 作品情報は動画 1 件の応答にだけ載せる。一覧・関連動画・ライブラリの項目は読まない。
 	video, err := s.workInfoForDetail(r.Context(), video)
 	if err != nil {
 		s.internalError(w, "Could not load the video.", err)
 		return
 	}
 	// 追加の情報も動画 1 件の応答にだけ載せ、所有者とゲストに同じ値を返す
-	// （specs/056-media-info/research.md R-6）。
+	//
 	video, err = s.mediaInfoForDetail(r.Context(), video)
 	if err != nil {
 		s.internalError(w, "Could not load the video.", err)
@@ -386,7 +380,7 @@ func videoContext(group *gen.VideoGroupContext, smartFolder *gen.VideoSmartFolde
 }
 
 // writeVideoDetail は動画1件の詳細を GET /api/videos/{id} の形で書く。表示名の設定の
-// 応答も同じ形にする（specs/029-video-overrides/contracts/screen-api.md §1）。group は
+// 応答も同じ形にする。group は
 // 文脈の無い動画と同じく、id のいちばん小さいグループで答える。
 func (s *server) writeVideoDetail(w http.ResponseWriter, r *http.Request, video domain.Video) {
 	s.writeVideoDetailIn(w, r, video, domain.VideoContext{})
@@ -426,8 +420,8 @@ func (s *server) videoDetail(r *http.Request, video domain.Video, opened domain.
 	// 追加の情報も、GET /api/videos/{id} が video に埋めたときだけ載せる。
 	payload.MediaInfo = toAPIMediaInfo(video.MediaInfo)
 	// グループも動画1件の応答にだけ載せる。文脈のグループの再生順で数え、ゲストには公開の
-	// 動画だけで数えたものが返る（specs/048-groups/research.md R-9）。文脈がスマートフォルダなら
-	// group の代わりに smartFolder をフォルダの再生順で載せる（specs/052-smart-folders/contracts/screen-api.md）。
+	// 動画だけで数えたものが返る。文脈がスマートフォルダなら
+	// group の代わりに smartFolder をフォルダの再生順で載せる。
 	if s.catalog != nil {
 		// 位置と本数だけを使うので、メンバーの詳細は読まない。
 		group, grouped, err := s.catalog.VideoGroup(r.Context(), audienceFrom(r.Context()), video, opened, domain.GroupWindow{})
@@ -475,7 +469,7 @@ func detailFolder(roots []domain.MediaFolder, locationPath string) *gen.VideoFol
 // 引けなかった場合は一覧を諦めない。再生位置は一覧に「あると嬉しい」情報で
 // あって、無いと動画を見渡せなくなるものではない。
 //
-// ゲストには再生位置を出さないので、読みもしない（contracts/guest-api.md §1）。
+// ゲストには再生位置を出さないので、読みもしない。
 func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[string]domain.Progress {
 	if s.playback == nil || len(videos) == 0 || !audienceFrom(ctx).IsOwner() {
 		return nil
@@ -502,7 +496,7 @@ func (s *server) progressFor(ctx context.Context, videos []domain.Video) map[str
 // 引けなかった場合は一覧を諦めない。タグは「あると嬉しい」情報であって、
 // 無いと動画を見渡せなくなるものではない。
 //
-// ゲストにはタグを出さないので、読みもしない（contracts/guest-api.md §1）。
+// ゲストにはタグを出さないので、読みもしない。
 func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string][]domain.VideoTag {
 	if s.tags == nil || len(videos) == 0 || !audienceFrom(ctx).IsOwner() {
 		return nil
@@ -523,8 +517,7 @@ func (s *server) tagsFor(ctx context.Context, videos []domain.Video) map[string]
 	return tags
 }
 
-// withTags はタグを載せる。タグが1つも無い動画は空の配列にする（null にしない。
-// contracts/tags-api.md §1）。
+// withTags はタグを載せる。タグが1つも無い動画は空の配列にする（null にしない）。
 func withTags(video gen.Video, tags map[string][]domain.VideoTag, contentKey string) gen.Video {
 	refs := tags[contentKey]
 	video.Tags = make([]gen.VideoTag, 0, len(refs))
@@ -586,15 +579,15 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		PreviewState:   gen.VideoPreviewState(video.PreviewState),
 		Public:         video.Public,
 		// 集まりの要約は、集まりのメンバーならどの応答の項目にも載せる。ゲストには公開のバージョン
-		// だけで数えたものが返る（specs/054-auto-dup/contracts/screen-api.md「Video delta」）。
+		// だけで数えたものが返る。
 		Versions: apiVersionsRef(video.Versions),
 	}
 	// お気に入りは所有者の応答にだけ入る。ゲストの応答からは forAudience が外す
-	// （specs/035-favorites/contracts/screen-api.md §0）。
+	//
 	favorite := video.Favorite
 	out.Favorite = &favorite
 
-	// 上書きの項目（specs/029-video-overrides/contracts/screen-api.md §0）。title は有効な
+	// 上書きの項目。title は有効な
 	// 題名で、ファイル名由来の題名・表示名・代表サムネイルの位置は forAudience がゲストの
 	// 応答から外す。
 	if video.FileTitle != "" {
@@ -615,7 +608,7 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		contentVersion := thumbnailVersion(video.ContentKey)
 		out.ContentVersion = &contentVersion
 	}
-	// 適用した画像の出どころも所有者の応答にだけ入る（specs/046-thumbnail-image-upload/contracts/screen-api.md）。
+	// 適用した画像の出どころも所有者の応答にだけ入る。
 	if video.ThumbnailImageRevision != 0 && video.ThumbnailImageOrigin != "" {
 		origin := gen.VideoThumbnailImage(video.ThumbnailImageOrigin)
 		out.ThumbnailImage = &origin
@@ -653,7 +646,7 @@ func toAPIVideo(view domain.VideoView) gen.Video {
 		out.ProbeError = &reason
 	}
 	// コードは failed の行だけに出す。アップグレード前の失敗にはコードが無い
-	// （specs/023-english-i18n/contracts/error-api.md §2）。
+	//
 	if video.ProbeState == domain.ProbeStateFailed && video.ProbeErrorCode != "" {
 		code := gen.ProbeErrorCode(video.ProbeErrorCode)
 		out.ProbeErrorCode = &code
@@ -701,9 +694,9 @@ func previewURL(video domain.Video) string {
 
 // thumbnailURL はサムネイルの取得先を組み立てる。版は content_key の先頭で、
 // 内容が変われば URL も変わる。所有者が画像を適用していれば、版に画像の改版番号を
-// 足して `<内容鍵の先頭>-g<改版番号>` にする（specs/045-comfyui-thumbnails/data-model.md）。
+// 足して `<内容鍵の先頭>-g<改版番号>` にする。
 // 適用していなくて位置を指定していれば、位置の改版番号を足して `<内容鍵の先頭>-r<改版番号>`
-// にし、位置を記録し直すたびに URL を変える（specs/029-video-overrides/research.md R-6）。
+// にし、位置を記録し直すたびに URL を変える。
 // ゲストにも渡る URL なので、位置の値は入れない。
 func thumbnailURL(video domain.Video) string {
 	version := thumbnailVersion(video.ContentKey)

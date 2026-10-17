@@ -13,8 +13,7 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
 /**
- * ライブラリのカード・行・選択バーからプレイリストに足す（specs/044-playlists/ui-design.md
- * 「Add to playlist」、issue 901）。
+ * ライブラリのカード・行・選択バーからプレイリストに足す。
  */
 
 function video(id: number, extra: Partial<Video> = {}): Video {
@@ -172,7 +171,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("ライブラリからプレイリストに足す（specs/044-playlists/ui-design.md「Add to playlist」）", () => {
+describe("ライブラリからプレイリストに足す", () => {
   it("動画のカードでは、ハートの左の印から選ぶとその動画の id を送り、カードは開かない", async () => {
     const server = install([{ kind: "video", video: video(1) }]);
     const user = userEvent.setup();
@@ -229,7 +228,7 @@ describe("ライブラリからプレイリストに足す（specs/044-playlists
       .getAllByRole("button")
       .map((button) => button.getAttribute("aria-label"));
     expect(names.indexOf("Add to playlist")).toBe(names.indexOf("Favorite") + 1);
-    // 間に「New group」「Add to group」（specs/048-groups/ui-design.md「Selection bar」）。
+    // 間に「New group」「Add to group」。
     expect(names.indexOf("Visibility")).toBe(names.indexOf("Add to playlist") + 3);
 
     await user.click(within(bar).getByRole("button", { name: "Add to playlist" }));
@@ -267,7 +266,7 @@ describe("ライブラリからプレイリストに足す（specs/044-playlists
     const row = trigger.closest("tr") as HTMLElement;
     expect(row.children).toHaveLength(heads.length);
     // 360px で長さの列を表から押し出さないよう、sm 未満では見出しごと列を隠す
-    // （specs/044-playlists/ui-design.md「Add to playlist」）。
+    //
     const head = heads[Array.from(row.children).indexOf(cell)] as HTMLElement;
     for (const element of [cell, groupCell, head]) {
       expect(element.className.split(" ")).toEqual(

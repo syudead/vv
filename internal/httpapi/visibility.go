@@ -10,7 +10,7 @@ import (
 )
 
 // 公開フラグの切り替えと、非公開にした動画のゲストへの配信の打ち切り
-// （specs/016-single-account-auth/contracts/guest-api.md §4・§6）。
+//
 
 // Visibility は動画の公開フラグの保存先である。internal/store の *VisibilityStore が
 // これを満たす。1つのトランザクションで済むので、internal/app は通さない。
@@ -21,8 +21,7 @@ type Visibility interface {
 }
 
 // UpdateVideoVisibility は動画の公開・非公開を切り替える（PUT /api/video-visibility）。
-// videoIds の数の上限・重複の扱い・applied の意味はタグの付け外しと同じにする
-// （contracts/guest-api.md §4）。非公開にしたら、その動画をゲストとして処理中の
+// videoIds の数の上限・重複の扱い・applied の意味はタグの付け外しと同じにする。非公開にしたら、その動画をゲストとして処理中の
 // 応答を打ち切る（§6）。
 func (s *server) UpdateVideoVisibility(w http.ResponseWriter, r *http.Request) {
 	// gen.VideoVisibilityRequest の public は bool なので、欠けても false に読めてしまう。

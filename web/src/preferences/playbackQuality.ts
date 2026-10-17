@@ -2,7 +2,7 @@ import { isTranscodeQuality, type TranscodeQuality } from "../api/client";
 
 /**
  * PlaybackQuality は見る人が選ぶ再生の画質である。"original" は元の画質で、それ以外は
- * ライブ変換で縮める画質（specs/027-playback-quality/research.md R-3・R-5）。
+ * ライブ変換で縮める画質。
  */
 export type PlaybackQuality = "original" | TranscodeQuality;
 

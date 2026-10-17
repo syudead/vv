@@ -6,7 +6,7 @@ import (
 )
 
 // 所有者が手元の画像をサムネイルにするアップロードの上限と誤りである
-// （specs/046-thumbnail-image-upload/research.md R-2、contracts/screen-api.md）。
+//
 
 const (
 	// ThumbnailUploadMaxBytes はアップロードの image 部分の大きさの上限（64 MiB）である。

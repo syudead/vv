@@ -11,8 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ListTags は条件に合うタグを並び順に 1 ページ返す。本数 0 のタグも返す
-// （specs/036-tag-admin-scale/data-model.md §2）。本数は video_tags を
+// ListTags は条件に合うタグを並び順に 1 ページ返す。本数 0 のタグも返す。本数は video_tags を
 // videos.content_key と結び、いまライブラリにある動画だけを数える
 // （taggedVideosSQL の集計）。query.Limit が 0 なら条件と並び順だけを掛けて
 // 全件を返し、カーソルは無視する（外部連携 API と候補の全件）。
@@ -20,7 +19,7 @@ import (
 // タグ・件数・シノニムは ListVideos と同じく読み取り用の接続（s.read、deferred）の
 // 1 つの読み取りの取引で読むので、Total とページの行は同じ時点のものになり、書き込みの
 // 枠を取らず走査やタグの書き込みを待たせない。本数の集計（taggedVideosSQL）は Total とページの行を 1 つの問い合わせで読んで
-// 1 回だけ掛ける（research.md R-1）。シノニムはページのタグの分だけを 1 回で読む
+// 1 回だけ掛ける。シノニムはページのタグの分だけを 1 回で読む
 // （N+1 にしない）。
 func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (domain.TagPage, error) {
 	sort := query.Sort
@@ -94,7 +93,7 @@ func (s *TagStore) ListTags(ctx context.Context, query domain.TagListQuery) (dom
 // exactListedTag は検索語（前後の空白を落とした生の綴り）と元の名前かシノニムの綴りが
 // 完全に一致し、絞り込みにも合うタグを返す。無ければ nil。ページの行は名前の自然順の
 // 部分一致なので、完全に一致するタグが 1 ページ目に入るとは限らない（統合の窓の
-// 統合先、specs/036-tag-admin-scale/contracts/screen-api.md §5）。
+// 統合先、docs/design-docs/catalog-organization.md）。
 func exactListedTag(ctx context.Context, tx *sql.Tx, query domain.TagListQuery) (*domain.Tag, error) {
 	name := strings.TrimSpace(query.Search)
 	if name == "" {
@@ -123,7 +122,7 @@ func listedTagsCTE(query domain.TagListQuery) (string, []any) {
 	var conditions []string
 	var args []any
 	if search := strings.TrimSpace(domain.FoldForMatch(query.Search)); search != "" {
-		// 元の名前かシノニムの照合形に部分一致する（014 の data-model.md §7 と同じ照合形）。
+		// 元の名前かシノニムの照合形に部分一致する（と同じ照合形）。
 		conditions = append(conditions,
 			`exists (select 1 from tag_names sn where sn.tag_id = t.id and instr(sn.search_key, ?) > 0)`)
 		args = append(args, search)

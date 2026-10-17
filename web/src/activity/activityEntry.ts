@@ -3,7 +3,7 @@ import { formatDateTime, formatMonthDay, formatTime, t, type UiText } from "../i
 import { videoEditPath } from "../lib/videoEditPath";
 
 /**
- * アクティビティの記録 1 件の見せ方（specs/055-activity/ui-design.md「Cards」「Words」）。
+ * アクティビティの記録 1 件の見せ方。
  * カードの色・状態の印・対象・結果・時刻・開く操作を記録から決める。React に依存しない純粋な
  * 関数だけを置く。
  */
@@ -14,7 +14,7 @@ export type CardTone = "default" | "primary" | "destructive" | "warning";
 /** StatusMark は状態の印の種類である。 */
 export type StatusMark = "running" | "waiting" | "attention" | "done" | "doneByYou";
 
-/** cardTone は記録のカードの色を返す（ui-design.md「Card state」）。 */
+/** cardTone は記録のカードの色を返す。 */
 export function cardTone(entry: ActivityEntry): CardTone {
   if (entry.status === "running")
     return entry.reason === "processing" ? "primary" : "default";
@@ -255,7 +255,7 @@ function firstVideo(entry: ActivityEntry): number | undefined {
 }
 
 /**
- * openActions は記録のカードの端の開く操作を返す（ui-design.md「Cards」の Action の表）。
+ * openActions は記録のカードの端の開く操作を返す。
  * 対象に動画が無い記録の Open と Work info は出さない。
  */
 export function openActions(entry: ActivityEntry): OpenAction[] {
@@ -295,8 +295,7 @@ export interface EntryOperations {
 }
 
 /**
- * entryOperations は記録のカードのやり直しと取り消しの操作を返す（ui-design.md「Cards」の
- * Action の表）。`auto_tag` はまだ取り消していないタグを 1 つずつ取り消すメニューにする。
+ * entryOperations は記録のカードのやり直しと取り消しの操作を返す。`auto_tag` はまだ取り消していないタグを 1 つずつ取り消すメニューにする。
  */
 export function entryOperations(entry: ActivityEntry): EntryOperations {
   const autoTag = entry.kind === "auto_tag";

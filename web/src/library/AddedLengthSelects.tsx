@@ -58,7 +58,7 @@ function PresetSelect<T>({
 }
 
 /**
- * AddedSelect は `Added` の行である（specs/052-smart-folders/ui-design.md「Added and length」）。
+ * AddedSelect は `Added` の行である。
  * 選択肢に無い日数は `Last {N} days` として最後に出し、選んだ形にする。
  */
 export function AddedSelect({
@@ -80,7 +80,7 @@ export function AddedSelect({
 }
 
 /**
- * LengthSelect は `Length` の行である（ui-design.md「Added and length」）。選択肢に無い範囲は
+ * LengthSelect は `Length` の行である。選択肢に無い範囲は
  * その範囲の名前で最後に出し、選んだ形にする。
  */
 export function LengthSelect({

@@ -19,7 +19,7 @@ import {
   readSmartFolderPage,
 } from "./smartFolders";
 
-// スマートフォルダの画面 API のクライアント（specs/052-smart-folders/contracts/screen-api.md）。
+// スマートフォルダの画面 API のクライアント。
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

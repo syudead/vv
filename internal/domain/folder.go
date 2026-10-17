@@ -365,7 +365,7 @@ func locateVideoFolderFor(roots []MediaFolder, locationPath string, windows bool
 // 空文字である。含む登録フォルダが無ければ false を返す。
 //
 // LocateVideoFolder と同じ規則で含むかどうかを決め、違いは最後の段を落とさない
-// ことだけである（specs/017-folder-groups/data-model.md §2）。
+// ことだけである。
 func LocateFolder(roots []MediaFolder, folderPath string) (VideoFolder, bool) {
 	return locateFolderFor(roots, folderPath, runtime.GOOS == "windows", filepath.Separator)
 }

@@ -14,9 +14,7 @@ import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
 /**
- * ライブラリの選択バー・カード・行からグループを作り、グループに足す
- * （specs/048-groups/ui-design.md「Selection bar」「New group」「Add to group」「Cycle」、
- * issue #1057）。
+ * ライブラリの選択バー・カード・行からグループを作り、グループに足す。
  */
 
 function video(id: number, extra: Partial<Video> = {}): Video {
@@ -229,7 +227,7 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-describe("ライブラリからグループを作る・足す（specs/048-groups/ui-design.md）", () => {
+describe("ライブラリからグループを作る・足す", () => {
   it("選んだ 3 本と名前でグループができ、3 枚の代わりにそのカードが出て、選択は外れる（受け入れ条件 1）", async () => {
     const server = install([
       { kind: "video", video: video(1) },

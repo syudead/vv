@@ -43,9 +43,9 @@ func NewEvents() *Events {
 type eventSubscriber struct {
 	mu   sync.Mutex
 	scan bool
-	// candidates は重複の候補の一覧が変わったかもしれないことを表す（specs/054-auto-dup/research.md R-10）。
+	// candidates は重複の候補の一覧が変わったかもしれないことを表す。
 	candidates bool
-	// activity はアクティビティの記録が書かれたか変わったことを表す（specs/055-activity/research.md R-8）。
+	// activity はアクティビティの記録が書かれたか変わったことを表す。
 	activity bool
 	videos   map[int64]struct{}
 	groups   map[int64]struct{}
@@ -138,13 +138,12 @@ func (e *Events) ScanChanged() {
 
 // ProcessingChanged は残りの仕事が変わったかもしれないことを知らせる。仕事の成否で
 // 直近の取り込みの済みの本数と状態が変わるので、scan を送る
-// （specs/024-import-progress/contracts/scan-api.md §4）。
 func (e *Events) ProcessingChanged() {
 	e.publish(func(s *eventSubscriber) { s.scan = true })
 }
 
 // ScanActivityChanged は取り込み中の今の処理が変わったことを知らせる。今の処理は
-// scan が運ぶので、scan だけを送る（specs/024-import-progress/contracts/scan-api.md §4）。
+// scan が運ぶので、scan だけを送る。
 // 1ファイルごとに届くが、接続ごとにまとまるので、遅い接続に古い値は積もらない。
 func (e *Events) ScanActivityChanged() {
 	e.publish(func(s *eventSubscriber) { s.scan = true })
@@ -156,18 +155,18 @@ func (e *Events) VideoChanged(id int64) {
 }
 
 // CandidatesChanged は重複の候補の一覧が変わったかもしれないことを知らせる。中身は運ばず、
-// 重複の候補の画面が取り直す（specs/054-auto-dup/research.md R-10）。
+// 重複の候補の画面が取り直す。
 func (e *Events) CandidatesChanged() {
 	e.publish(func(s *eventSubscriber) { s.candidates = true })
 }
 
 // ActivityChanged はアクティビティの記録が書かれたか変わったことを知らせる。中身は運ばず、アクティビティの
-// 画面と入口の件数が取り直す（specs/055-activity/research.md R-8）。
+// 画面と入口の件数が取り直す。
 func (e *Events) ActivityChanged() {
 	e.publish(func(s *eventSubscriber) { s.activity = true })
 }
 
-// GroupsChanged はグループの名前か項目が変わったことを知らせる（specs/048-groups/research.md R-13）。
+// GroupsChanged はグループの名前か項目が変わったことを知らせる。
 // ids は変わったグループとその祖先の id である。
 func (e *Events) GroupsChanged(ids []int64) {
 	if len(ids) == 0 {
@@ -180,8 +179,7 @@ func (e *Events) GroupsChanged(ids []int64) {
 	})
 }
 
-// SmartFoldersChanged はスマートフォルダの中身かカードが変わったかもしれないことを知らせる
-// （specs/052-smart-folders/research.md R-12）。ids は名指すフォルダの id である。
+// SmartFoldersChanged はスマートフォルダの中身かカードが変わったかもしれないことを知らせる。ids は名指すフォルダの id である。
 func (e *Events) SmartFoldersChanged(ids []int64) {
 	if len(ids) == 0 {
 		return
@@ -207,17 +205,17 @@ func (e *Events) Handle(event domain.Event) {
 		e.VideoChanged(event.VideoID)
 	case domain.VideoOverrideChanged:
 		// 表示名・代表サムネイルの位置の変化も、一覧と動画ページに読み直させる
-		// （specs/029-video-overrides/research.md R-7）。
+		//
 		e.VideoChanged(event.VideoID)
 	case domain.VideoBundleChanged:
 		// 束ねの変化は、影響した各動画の video の知らせにする。一覧・動画ページが集まりの
-		// 値と代表を読み直す（specs/030-video-versions/research.md R-9）。
+		// 値と代表を読み直す。
 		for _, id := range event.VideoIDs {
 			e.VideoChanged(id)
 		}
 	case domain.VideoWorkInfoChanged:
 		// 作品情報の変化は、同じ利用者データの鍵の各動画の video の知らせにする。/api/events の種類は
-		// 増やさない（specs/047-video-work-info/research.md R-11）。
+		// 増やさない。
 		for _, id := range event.VideoIDs {
 			e.VideoChanged(id)
 		}
@@ -228,18 +226,18 @@ func (e *Events) Handle(event domain.Event) {
 		}
 	case domain.VersionCandidatesChanged:
 		// 判定の結果や版の取り外しで候補が変わったら candidates の知らせにする
-		// （specs/054-auto-dup/research.md R-10）。
+		//
 		e.CandidatesChanged()
 	case domain.ActivityChanged:
-		// 記録の書き込みと変化は activity の知らせにする（specs/055-activity/research.md R-8）。
+		// 記録の書き込みと変化は activity の知らせにする。
 		e.ActivityChanged()
 	case domain.GroupsChanged:
 		// グループの変化は group の知らせにする。グループの画面・カード・動画ページのグループの行が
-		// 読み直す（specs/048-groups/research.md R-13）。
+		// 読み直す。
 		e.GroupsChanged(event.GroupIDs)
 	case domain.SmartFoldersChanged:
 		// スマートフォルダの変化は smartFolder の知らせにする。フォルダの画面とライブラリのフォルダの
-		// カードが読み直す（specs/052-smart-folders/research.md R-12）。
+		// カードが読み直す。
 		e.SmartFoldersChanged(event.IDs)
 	}
 }
@@ -263,8 +261,7 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	defer unsubscribe()
 	// ゲストには group と smartFolder だけを送る。scan と video は所有者の取り込みと非公開の動画を
 	// 運び、candidates と activity は所有者だけが開く重複の候補とアクティビティの画面のものである
-	// （specs/048-groups/contracts/screen-api.md「/api/events」、specs/054-auto-dup/research.md R-10、
-	// specs/055-activity/research.md R-8）。
+	//
 	guest := !audienceFrom(r.Context()).IsOwner()
 
 	controller := http.NewResponseController(w)

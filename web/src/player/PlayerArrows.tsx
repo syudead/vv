@@ -5,7 +5,7 @@ import type { VideoPlaylist } from "./useVideoPlaylist";
 /**
  * PlayerArrows はプレイヤーの左右の端の前後のつまみである。プレイリストの文脈を読めたら再生の
  * 応答のステップへ移り、プレイヤーの無い状態の層の上にも描く。終わらない動画から先へ進む道
- * だからである（ui-design.md「Unplayable item」）。文脈の外では、プレイヤーが出ている間だけ
+ * だからである。文脈の外では、プレイヤーが出ている間だけ
  * 関連動画の前後へ移る。文脈を読んでいる間と失敗した間は出さない。
  */
 export default function PlayerArrows({

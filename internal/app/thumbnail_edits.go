@@ -15,8 +15,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// サムネイルの編集のセッション（specs/045-comfyui-thumbnails/data-model.md の Edit session、
-// research.md R-4・R-8・R-10・R-11、docs/design-docs/thumbnail-editing.md）。動画ごとに 1 つを
+// サムネイルの編集のセッション。動画ごとに 1 つを
 // メモリに持ち、画面が読むたびに提供元の状態を問い合わせる。イベントは出さない。
 
 // thumbnailEditSweepInterval は、読まれないセッションと時間切れの実行を探す間隔である。
@@ -38,19 +37,18 @@ type ComfyUISettingsReader interface {
 }
 
 // ThumbnailFrameSource は動画のファイル path の positionMs の場面を、長辺を動画の長辺
-// （上限 domain.ThumbnailFrameMaxSide）にした PNG で取り出す（research.md R-8）。
+// （上限 domain.ThumbnailFrameMaxSide）にした PNG で取り出す。
 // internal/media の *Assets が満たす。
 type ThumbnailFrameSource interface {
 	FrameAt(ctx context.Context, path string, positionMs int64) (domain.ThumbnailFrame, error)
 	// AutoThumbnailPositions は、位置を指定していない動画のサムネイルジョブがコマを取りに行く位置
 	// （ミリ秒）を、尺 durationMs（0 は不明）に対して試す順に返す（自動の位置、次に先頭。
-	// specs/046-thumbnail-image-upload/research.md R-4）。
+	// docs/design-docs/thumbnail-editing.md）。
 	AutoThumbnailPositions(durationMs int64) []int64
 }
 
 // ThumbnailImageReader は内容の今の代表サムネイルの選び方（適用した画像の元の画像、元の画像を
-// 持たない古い行では代表サムネイル、と指定した位置）を、同じ時点のものとして読む
-// （specs/046-thumbnail-image-upload/research.md R-4）。internal/store の *OverrideStore が満たす。
+// 持たない古い行では代表サムネイル、と指定した位置）を、同じ時点のものとして読む。internal/store の *OverrideStore が満たす。
 type ThumbnailImageReader interface {
 	CurrentThumbnailSelection(ctx context.Context, contentKey string) (domain.CurrentThumbnailSelection, error)
 }
@@ -167,7 +165,7 @@ func NewThumbnailEdits(opts ThumbnailEditsOptions) *ThumbnailEdits {
 }
 
 // Start は動画 video の編集を、要求 start の画像から ready のセッションとして始める。画像は
-// 始めた時点のものをセッションが持ち続ける（specs/046-thumbnail-image-upload/research.md R-4）。
+// 始めた時点のものをセッションが持ち続ける。
 // 同じ動画のセッションがあれば、その実行を提供元で中止してから終える（R-11）。接続先が保存されて
 // いなければ domain.ErrThumbnailEditNotReady、内容を読めていない動画は domain.ErrNotFound、
 // コマの位置は domain.CheckThumbnailPosition の誤り（位置が無ければ
@@ -231,7 +229,7 @@ func (e *ThumbnailEdits) startImage(
 	}
 }
 
-// currentThumbnail は動画 video の今のサムネイルの画像を用意する（research.md R-4）。画像を
+// currentThumbnail は動画 video の今のサムネイルの画像を用意する。画像を
 // 適用していればその元の画像（無い古い行では代表サムネイル）を PNG にしたもの、なければ指定した
 // 位置のコマ、それも無ければサムネイルジョブと同じ規則（自動の位置、次に先頭）のコマである。
 // 画像と位置は video ではなく保存先から同じ時点のものとして読み、video を読んだあとの変更と

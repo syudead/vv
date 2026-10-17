@@ -13,16 +13,16 @@ import (
 
 // TagNameMaxLength はタグ名（元の名前・シノニムとも）の上限（符号位置数）で
 // ある。検索語の上限（domain.SearchKeyMaxRunes 相当）とそろえ、利用者が覚える
-// 上限を1つにする（data-model.md §2）。
+// 上限を1つにする。
 const TagNameMaxLength = 100
 
 // ErrInvalidTagName はタグ名として受け付けられない入力を表す。API では
-// invalid_request（400）になる（data-model.md §2）。
+// invalid_request（400）になる。
 //
 // NormalizeTagName はこれを直接は返さず、具体的な理由（空・制御文字・長さ超過）を
 // 運ぶ *InvalidTagNameError を返す。errors.Is(err, ErrInvalidTagName) は真のまま
 // になり、errors.As で取り出した Problem から internal/httpapi が API の reason を
-// 決める（specs/023-english-i18n/contracts/error-api.md §1）。
+// 決める。
 var ErrInvalidTagName = errors.New("invalid tag name")
 
 // TagNameProblem はタグ名の規則違反の種類である。
@@ -77,30 +77,28 @@ var ErrTagNameTaken = errors.New("name is already in use")
 var ErrTagMergeRequired = errors.New("merge confirmation is required")
 
 // ErrTagNotTentative は仮でないタグを却下しようとしたことを表す。API では
-// tag_not_tentative（409）になる（specs/031-tentative-tags/research.md R-5）。
+// tag_not_tentative（409）になる。
 var ErrTagNotTentative = errors.New("tag is not tentative")
 
 // TagRef は動画に付いたタグ1件である。Name は常に元の名前
-// （contracts/tags-api.md §1 の TagRef）。
 type TagRef struct {
 	ID   int64
 	Name string
 	// Tentative は仮のタグ（自動の付与で新しく作られ、まだ確定していないタグ）である
-	// こと（specs/031-tentative-tags/data-model.md §4）。
+	// こと。
 	Tentative bool
-	// Kind はタグの種類。nil は種類の無いタグ（specs/051-tag-kinds/research.md R-4）。
+	// Kind はタグの種類。nil は種類の無いタグ。
 	Kind *TagKindRef
 }
 
-// VideoTag は動画に付いたタグ1件と、その出所である（017 の
-// contracts/folder-groups-api.md §4 の VideoTag）。同じタグが手でもフォルダ名
+// VideoTag は動画に付いたタグ1件と、その出所である（017 の の VideoTag）。同じタグが手でもフォルダ名
 // からも付いていれば、1件にまとめて両方を真にする。
 type VideoTag struct {
 	TagRef
 	// Manual は手で付けた分（video_tags の行）があること。
 	Manual bool
 	// FromFolder は祖先のフォルダ名がこのタグの名前かシノニムに一致すること
-	// （017 の data-model.md §4）。
+	// 。
 	FromFolder bool
 	// Unconfirmed は、自動タグ付けが確率の中間の帯で仮に付け、所有者がまだ確定していない
 	// 付与であること（docs/design-docs/auto-tagging.md）。フォルダ名からも付いていれば偽。
@@ -108,36 +106,34 @@ type VideoTag struct {
 	Unconfirmed bool
 }
 
-// Tag は管理画面と候補に出す1件である（contracts/tags-api.md §1 の Tag）。
+// Tag は管理画面と候補に出す1件である。
 type Tag struct {
 	ID   int64
 	Name string
 	// Synonyms は名前の自然順（SortTagNames）。
 	Synonyms []string
-	// VideoCount はいまライブラリにある動画の本数（data-model.md §5）。
+	// VideoCount はいまライブラリにある動画の本数。
 	VideoCount int
-	// Tentative は仮のタグであること（specs/031-tentative-tags/data-model.md §4）。
+	// Tentative は仮のタグであること。
 	Tentative bool
-	// Kind はタグの種類。nil は種類の無いタグ（specs/051-tag-kinds/research.md R-4）。
+	// Kind はタグの種類。nil は種類の無いタグ。
 	Kind *TagKindRef
-	// CreatedAt は tags.created_at（Unix 秒。specs/036-tag-admin-scale/data-model.md §1）。
+	// CreatedAt は tags.created_at（Unix 秒。docs/design-docs/catalog-organization.md）。
 	CreatedAt time.Time
 }
 
 // TagSummaryItem は選んだ動画のタグの要約1件である
-// （contracts/tags-api.md §4 の summary）。
 type TagSummaryItem struct {
 	Tag TagRef
 	// Count は選んだ動画のうちこのタグが付いている本数。Count が
 	// TagSummary.Total より小さいタグが「一部にだけ付いている」。手で付けた分と
-	// フォルダ名から付いている分のどちらかで数える（017 の data-model.md §4）。
+	// フォルダ名から付いている分のどちらかで数える。
 	Count int
 	// ManualCount は選んだ動画のうちこのタグを手で付けた本数。
 	ManualCount int
 }
 
-// TagSummary は選んだ動画のタグの要約である（contracts/tags-api.md §4 の
-// summary）。
+// TagSummary は選んだ動画のタグの要約である。
 type TagSummary struct {
 	// Total は選んだ動画のうちいまライブラリにある動画の数。
 	Total int
@@ -172,7 +168,7 @@ func (e *TagMergeRequired) Error() string {
 
 func (e *TagMergeRequired) Unwrap() error { return ErrTagMergeRequired }
 
-// NormalizeTagName は受け取った入力をタグ名に整える（data-model.md §2）。
+// NormalizeTagName は受け取った入力をタグ名に整える。
 // 手順の順番に意味がある。
 //
 //  1. 入力のどこかに制御文字（一般カテゴリ Cc。改行・タブ・CR を含む）が
@@ -218,8 +214,7 @@ func SortTagNames(names []string) {
 // SortTagRefs は動画に付いたタグ（TagRef）を Name の自然順に並べる。同順位は
 // ID で決着させる（元の名前は tag_names の主キーで一意なので、実際には
 // CompareNatural だけで決まる。ID の比較は同順位が起き得る呼び出し側の入力
-// でも決定的な並びにするための保険である）（contracts/tags-api.md §1 の
-// Video.tags）。
+// でも決定的な並びにするための保険である）。
 func SortTagRefs(refs []TagRef) {
 	slices.SortStableFunc(refs, compareTagRefs)
 }

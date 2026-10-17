@@ -17,8 +17,7 @@ const titleType = "text-xl leading-snug font-semibold sm:text-video-title";
 
 /**
  * VideoTitle は再生画面の題名（`h1`）である。所有者には、その場で表示名を編集する入口と、
- * 表示名があるときの元のファイル名の行を添える
- * （specs/029-video-overrides/ui-design.md「Title editing」「File name line」）。
+ * 表示名があるときの元のファイル名の行を添える。
  * ゲストには今の `h1` だけを出す。
  *
  * 保存は `PUT /api/videos/{id}/display-name` を 1 回送り、応答の動画を、送る直前に取った

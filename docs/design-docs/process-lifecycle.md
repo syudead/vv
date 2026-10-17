@@ -55,8 +55,8 @@ flowchart LR
 | Step | On failure |
 | --- | --- |
 | Settings, `ffmpeg`/`ffprobe` on `PATH`, SQLite, migrations | Startup stops |
-| Search keys of locations and tag names | Startup stops, so search never runs on keys built by an older rule ([013 data-model, When keys are built, and `search_version`](../../specs/013-library-search/data-model.md#when-keys-are-built-and-search_version)) |
-| Folder index | Logged; the previous index stays until the next rebuild ([017 data-model, When the index is rebuilt](../../specs/017-folder-groups/data-model.md#when-the-index-is-rebuilt)) |
+| Search keys of locations and tag names | Startup stops, so search never runs on keys built by an older rule  |
+| Folder index | Logged; the previous index stays until the next rebuild  |
 | Marking activity entries interrupted | Logged; the entries stay `running` until the next startup ([activity.md](activity.md)) |
 | Unfinished artifacts under `.tmp` | Logged |
 | Resuming the interrupted scan | Logged; the user can start a scan |
@@ -75,9 +75,7 @@ them to a state the next run continues from: interrupted scans are closed as
 activity entries a worker had claimed (`running` with reason `processing`)
 become `attention`/`interrupted` while `waiting` ones stay, and once the
 workers run one new manual scan starts. An interrupted watch scan is
-closed and not resumed, so startup reads no directory for it
-([folder-watching.md](folder-watching.md);
-[037 research R-9](../../specs/037-windows-app/research.md#r-9-an-interrupted-last-scan-restarts-automatically-at-startup-for-every-way-of-starting)).
+closed and not resumed, so startup reads no directory for it.
 
 ## Shutdown order
 

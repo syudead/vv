@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取得した作品の詳細の反映（specs/052-plugin-work-info-fields/research.md R-3・R-4、#1158）。
+// 取得した作品の詳細の反映。
 
 var performerField = domain.PersonField(domain.PersonPerformer)
 

@@ -2,7 +2,7 @@
  * foldForMatch はサーバーの `domain.FoldForMatch`（internal/domain/search.go）と
  * 同じ照合形を作る。NFKC 正規化、1 符号位置ずつの小文字化、ひらがなから
  * カタカナへの置き換えの順に掛ける。全角半角・大文字小文字・かなの違いと、
- * NFC・NFD の違いが同じ照合形に畳まれる（specs/036-tag-admin-scale/research.md R-3）。
+ * NFC・NFD の違いが同じ照合形に畳まれる。
  *
  * Go と同じ結果になることは internal/domain/testdata/fold_for_match.json の
  * 組で、Go と Vitest の両方から確かめる。

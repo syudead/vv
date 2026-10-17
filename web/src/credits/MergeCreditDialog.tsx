@@ -17,12 +17,11 @@ import { FormDialog } from "../ui/patterns/form-dialog";
 import { Spinner } from "../ui/shadcn/spinner";
 import { kindTexts } from "./creditRows";
 
-/** candidateLimit は統合先の候補に出す最大の行数である（ui-design.md「Merge and delete」）。 */
+/** candidateLimit は統合先の候補に出す最大の行数である。 */
 const candidateLimit = 8;
 
 /**
- * MergeCreditDialog は人物・団体の統合の窓である（specs/047-video-work-info/ui-design.md
- * 「Merge and delete」）。タグの統合の窓（036）の統合元 1 件の形で、統合先は
+ * MergeCreditDialog は人物・団体の統合の窓である。タグの統合の窓（036）の統合元 1 件の形で、統合先は
  * `CreditCommand` の `inline` で選ぶ。候補は入力のたびに `GET /api/people?q=&limit=…` で
  * 引き、統合元を除き、作成の行は出さない。統合先を選ぶと確認の文（統合元の
  * `videoCount`）と「統合元 → 統合先」を出し、「Merge」を押せるようにする。

@@ -42,7 +42,7 @@ type NetworkSettingsOptions struct {
 }
 
 // NetworkSettings は Windows デスクトップ版の LAN からの接続の許可を持ち、切り替えでは
-// 待ち受けを開き直してから保存する（specs/037-windows-app/research.md R-14）。
+// 待ち受けを開き直してから保存する。
 // 待ち受けのアドレスと保存値を食い違わせない。
 type NetworkSettings struct {
 	store     NetworkSettingsStore
@@ -80,7 +80,6 @@ func (n *NetworkSettings) Current() domain.NetworkSettings {
 // SetLANAccess は許可を切り替える。今と同じ値なら何もしない。新しいアドレスで待ち受けを
 // 開けなければ、保存値を変えずに domain.ErrListenFailed を包んで返す。開き直したあとの
 // 保存に失敗したら、待ち受けを元のアドレスへ戻して保存の誤りを返す
-// （specs/037-windows-app/contracts/network-settings-api.md §3）。
 func (n *NetworkSettings) SetLANAccess(ctx context.Context, allowed bool) (domain.NetworkSettings, error) {
 	n.mu.Lock()
 	defer n.mu.Unlock()

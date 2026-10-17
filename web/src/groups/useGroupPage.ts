@@ -23,7 +23,7 @@ const videoRefreshDelayMs = 300;
 
 /**
  * readGroupThrough はグループを読み、項目が `atLeast` 件そろうか続きが無くなるまで続きのページを
- * 辿る（specs/048-groups/ui-design.md「Edits that fail」）。
+ * 辿る。
  */
 async function readGroupThrough(
   id: number,
@@ -42,10 +42,9 @@ async function readGroupThrough(
 }
 
 /**
- * useGroupPage はグループのページ 1 つの読み込みである（specs/048-groups/ui-design.md
- * 「Group page」）。開いたときに読み、続きは `loadMore` で 1 ページずつ足す。このグループの id を
+ * useGroupPage はグループのページ 1 つの読み込みである。開いたときに読み、続きは `loadMore` で 1 ページずつ足す。このグループの id を
  * 運ぶ `group` の知らせ、子孫の動画の `video` の知らせ、つなぎ直しで、並んでいる分を保ったまま
- * 読み直す（research.md R-13）。
+ * 読み直す。
  *
  * 新しい読み込みを始めると、古い読み込みと続きのページの応答は捨てる。読み直しの失敗
  * （404 のほか）は並んでいる中身を残す。404 はグループが無くなったこととして見せる。

@@ -14,7 +14,7 @@ import {
 
 /**
  * 画質のメニューを本物の video.js で組み、項目・ボタンの文字・選択の知らせ・開閉の印を
- * 確かめる（specs/027-playback-quality/ui-design.md「Control bar: quality menu」）。
+ * 確かめる。
  */
 describe("QualityMenuButton", () => {
   let player: ReturnType<typeof videojs> | undefined;

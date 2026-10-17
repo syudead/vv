@@ -1,8 +1,7 @@
 import type { Tag } from "../api/tags";
 
 /**
- * 選択は読み込んだ行の id の部分集合である（specs/036-tag-admin-scale/data-model.md
- * §4「選択」）。改名中の行は選ばない（ui-design.md「Row checkbox」）。
+ * 選択は読み込んだ行の id の部分集合である。改名中の行は選ばない。
  */
 
 /** withoutIds は選択から ids を外した集合を返す。 */
@@ -35,7 +34,7 @@ export function keepLoaded(
 
 /**
  * countSelectable は「読み込んだものをすべて選ぶ」の対象の数である。改名中の行は
- * 入らない（ui-design.md「Column header」）。読み込んでいないタグは選ばない（要件 10）。
+ * 入らない。読み込んでいないタグは選ばない（要件 10）。
  */
 export function countSelectable(rows: readonly Tag[], renamingId: number | null): number {
   const renamingLoaded = renamingId !== null && rows.some((tag) => tag.id === renamingId);
@@ -59,7 +58,7 @@ export interface SelectionSummary {
   confirmed: boolean;
   /**
    * 選んだタグがみな持つ種類の id の文字列。みな種類なしなら `none`、混ざっているか
-   * 選んでいなければ undefined（specs/051-tag-kinds/ui-design.md「Set kind」）。
+   * 選んでいなければ undefined。
    */
   kind: string | undefined;
 }
@@ -71,8 +70,7 @@ function kindValue(tag: Tag): string {
 
 /**
  * selectedKinds は、選んだ行に仮のタグと確定したタグがそれぞれあるかと、みなが持つ
- * 種類である。選択の行は、無い種類の操作を押せなくする（ui-design.md「Enabled and
- * disabled」）。
+ * 種類である。選択の行は、無い種類の操作を押せなくする。
  */
 export function selectedKinds(
   rows: readonly Tag[],

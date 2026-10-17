@@ -41,7 +41,7 @@ export default function RootView() {
     changeZoom: saveZoom,
   } = useConditions();
   // ゲストには登録フォルダの絶対パスも、設定への入口も出さない
-  // （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+  //
   const owner = useAudience() === "owner";
   // 倍率を変えても読んでいた位置を保つ（ライブラリと同じ）。
   const { listRef, capture } = useZoomAnchor(zoom);

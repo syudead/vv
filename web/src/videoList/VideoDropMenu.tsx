@@ -10,8 +10,7 @@ import { type DropChoice, DropMenu, useDropMenu } from "./dropMenu";
 import { bundleOverLimit } from "./videoDrop";
 
 /**
- * VideoDropMenu は動画を動画に落としたときに、落とした先のカードに開くメニューである
- * （specs/050-drag-organize/ui-design.md「Drop menus」の Video on video）。「Make a group」と
+ * VideoDropMenu は動画を動画に落としたときに、落とした先のカードに開くメニューである。「Make a group」と
  * 「Bundle as versions」の 2 つで、持ち上げたカードと落とした先が 20 枚を超えれば後者を押せなく
  * して理由を添える。Esc、外の押下、Tab で閉じると何も選ばずに `onClose` を呼ぶ。
  */

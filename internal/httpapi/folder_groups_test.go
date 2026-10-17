@@ -17,8 +17,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// フォルダのまとめ方の例外（specs/017-folder-groups/contracts/folder-groups-api.md §1）と、
-// フォルダの自動グループのタグ化（specs/048-groups/research.md R-11）を、本物の認証・保存層・
+// フォルダのまとめ方の例外と、
+// フォルダの自動グループのタグ化を、本物の認証・保存層・
 // 経路をつないで確かめる。フォルダの構成は newLibraryFixture のとおり。
 
 func (f *libraryFixture) groupingPath(rel string) string {
@@ -115,8 +115,8 @@ func TestSetFolderGrouping(t *testing.T) {
 	}
 	got := decodeBytes[gen.FolderGrouping](t, res.body)
 	assertGrouping(t, "ungroup の応答", &got, gen.FolderGroupingModeUngroup, false)
-	// ライブラリはグループ（specs/048-groups）から読む。ungroup は show の自動グループを解くので、
-	// メンバーは動画として並ぶ（specs/048-groups/research.md R-4）。
+	// ライブラリはグループから読む。ungroup は show の自動グループを解くので、
+	// メンバーは動画として並ぶ。
 	if names := f.ownerLibraryNames(t); !slices.Equal(names, []string{"ep1", "ep10", "ep2", "group:pair", "solo"}) {
 		t.Errorf("ungroup の後の項目 = %v", names)
 	}
@@ -185,7 +185,7 @@ func TestSetFolderGrouping(t *testing.T) {
 
 // 要件 15 のサーバー側: フォルダの grouping が名指す自動グループを POST /api/groups/{id}/tag で
 // タグに変えると、メンバーが単体に戻ってフォルダ由来のタグを得て、grouping は ungroup になり
-// groupId が消える。登録フォルダそのもののグループも変えられる（research.md R-11）。旧ルートは無い。
+// groupId が消える。登録フォルダそのもののグループも変えられる。旧ルートは無い。
 func TestTagFolderAutomaticGroup(t *testing.T) {
 	f := newLibraryFixture(t)
 	before := tagCount(t, f)

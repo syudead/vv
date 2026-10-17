@@ -60,8 +60,7 @@ import {
 } from "./cardDragRules";
 import { verticalOnly } from "./reorder";
 
-// カードと行を持ち上げて、ほかのカードの上か間に落とす共通の層である
-// （specs/050-drag-organize/ui-design.md「Drag layer」、research.md R-7）。所有者の格子とリストを
+// カードと行を持ち上げて、ほかのカードの上か間に落とす共通の層である。所有者の格子とリストを
 // 包み、何を持ち上げたか、ポインタが何の上か、落としたら何になるかを決める。何を送るかは
 // 画面が決める。ゲストの画面はこの層で包まない。
 //
@@ -176,7 +175,7 @@ function crumbAt(
 
 /**
  * HeldDrop は落とした後も画面が保つ印である。落とした先のメニューが開いている間、持ち上げた
- * カードは半透明のまま、落とした先は輪と札のまま残る（ui-design.md「Drop menus」）。
+ * カードは半透明のまま、落とした先は輪と札のまま残る。
  */
 export interface HeldDrop {
   lifted: readonly string[];
@@ -293,7 +292,7 @@ function useCardSensors() {
 /** noShift はカードの層の並べ方である。落とすまでどのカードも動かさない。 */
 const noShift: SortingStrategy = () => null;
 
-/** edgeScroll は端から 48 px で窓を送る autoScroll の設定である（ui-design.md「Lifting」）。 */
+/** edgeScroll は端から 48 px で窓を送る autoScroll の設定である。 */
 function edgeScroll() {
   const height = typeof window === "undefined" ? 0 : window.innerHeight;
   const y = height > 0 ? Math.min(0.5, 48 / height) : 0.1;
@@ -448,7 +447,7 @@ function insertPosition(order: readonly string[], key: string, side: "before" | 
   return order.indexOf(key) + (side === "after" ? 2 : 1);
 }
 
-/** useAnnouncements はカードの層の読み上げである（ui-design.md「Words」の Announcement）。 */
+/** useAnnouncements はカードの層の読み上げである。 */
 function useAnnouncements(
   latest: { current: CardDragLayerProps },
   announced: { current: DragState | null },
@@ -735,7 +734,7 @@ function signOf(key: string, drag: DragState | null, held: HeldDrop | null) {
 }
 
 /**
- * CardDropMark はカードか行に出す印である（ui-design.md「Indicators」）。上はカードの箱の
+ * CardDropMark はカードか行に出す印である。上はカードの箱の
  * `primary` の輪とサムネイルの札、間は隙間の中央の細い棒、拒否はカードに何も出さない。
  * 置く先は `relative` の箱（カードは DraggableCard、行は TableRow）。
  */
@@ -843,7 +842,7 @@ export function DraggableCard({ id, children }: { id: string; children: ReactNod
 
 /**
  * RefusingDropCard は持ち上げられず、上に落とすと拒否する格子のカード 1 枚を層に加える
- * （スマートフォルダのカード。specs/052-smart-folders/ui-design.md「Smart folder card and
+ * （スマートフォルダのカード。docs/design-docs/catalog-organization.md「Smart folder card and
  * row」）。拒否するかは層の `onto` が `id` に "refused" を返して決め、写しに拒否の Badge が出る。
  */
 export function RefusingDropCard({ id, children }: { id: string; children: ReactNode }) {
@@ -877,7 +876,7 @@ export function CardDragFace({
 }
 
 /**
- * CardDragPreview はポインタに付いてくる写しである（ui-design.md「Lifting」）。カードの幅
+ * CardDragPreview はポインタに付いてくる写しである。カードの幅
  * （リストでは w-list-thumb）で、2 枚以上なら右上に件数の Badge、拒否の上では `Ban` の
  * Badge を出す。
  */
@@ -921,7 +920,7 @@ function CardDragPreview({
 }
 
 /**
- * CrumbDropTarget は道筋の帯の段 1 つを落とす先にする（ui-design.md「Indicators」の Crumb）。
+ * CrumbDropTarget は道筋の帯の段 1 つを落とす先にする。
  * 落とせる段の上では段の文字に `primary-soft` の地を敷き、帯のほかの所は変えない。`refused`
  * の段（開いているグループ、畳んだ「…」）は印を出さず、写しに拒否の Badge を出す。
  * CardDragLayer の中で使う。

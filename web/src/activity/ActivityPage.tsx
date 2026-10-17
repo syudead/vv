@@ -68,8 +68,7 @@ function useActivityCriteria(): {
 }
 
 /**
- * ActivityFooter はログ全体の数の帯である。絞り込みによらず、サイドバーと同じ数を出す
- * （ui-design.md「Footer band」）。`running` は待ちの記録も含む。
+ * ActivityFooter はログ全体の数の帯である。絞り込みによらず、サイドバーと同じ数を出す。`running` は待ちの記録も含む。
  */
 function ActivityFooter({ counts }: { counts: ActivityCounts | null }) {
   if (counts === null) return null;
@@ -97,8 +96,7 @@ function ActivityFooter({ counts }: { counts: ActivityCounts | null }) {
 }
 
 /**
- * ActivityPage は所有者のアクティビティの記録を新しい順にカードで並べる画面である
- * （specs/055-activity/ui-design.md「Activity page」）。絞り込みは URL に持ち、`activity` の
+ * ActivityPage は所有者のアクティビティの記録を新しい順にカードで並べる画面である。絞り込みは URL に持ち、`activity` の
  * 知らせで件数と読み込んだページを読み直す。最後のカードが見えたら次のページを読む。
  */
 export default function ActivityPage() {

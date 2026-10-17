@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 動画の更新日時（specs/033-video-dates/data-model.md §1・§3・§4、research.md R-1〜R-3）。
+// 動画の更新日時。
 
 // staleEditedAt は「進んでいない」ことを見分けるために更新日時へ書き戻す過去の値である。
 var staleEditedAt = time.Unix(1_000, 0)

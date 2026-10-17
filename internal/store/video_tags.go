@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// AttachTagByID は id で指定したタグを videoIDs の動画へ付ける
-// （data-model.md §4）。videoIDs は、いまライブラリにある動画の content_key へ
+// AttachTagByID は id で指定したタグを videoIDs の動画へ付ける。videoIDs は、いまライブラリにある動画の content_key へ
 // 引き直したうえで、content_key ごとに insert or ignore する。既に付いていた
 // 動画があっても誤りにしない。引けない id（消えた動画）は飛ばし、反映した
 // 本数（applied）を返す。applied には、既に付いていた・付いていなかった動画も
@@ -37,7 +36,7 @@ func (s *TagStore) AttachTagByID(ctx context.Context, videoIDs []int64, tagID in
 }
 
 // AttachTagByName は名前でタグを付ける。名前はシノニムを含めて引き、無ければ
-// 同じトランザクションの中で作る（data-model.md §3・§4、要件 1）。それ以外は
+// 同じトランザクションの中で作る。それ以外は
 // AttachTagByID と同じ。
 func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name string) (domain.TagRef, int, error) {
 	normalized, err := domain.NormalizeTagName(name)
@@ -63,7 +62,7 @@ func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name s
 	return ref, applied, nil
 }
 
-// DetachTag は id で指定したタグを videoIDs の動画から外す（data-model.md §4）。
+// DetachTag は id で指定したタグを videoIDs の動画から外す。
 // 付いていない動画も誤りにしない。tagID が無ければ domain.ErrTagNotFound。
 func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64) (domain.TagRef, int, error) {
 	tx, err := s.sql.BeginTx(ctx, nil)
@@ -91,7 +90,7 @@ func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64)
 // attachTagToVideoIDs は videoIDs のうちいまライブラリにある動画の利用者データの鍵
 // （userKeysForVideoIDs。同じ集まりは 1 つ）へ tagID を insert or ignore で付け、実際に付いた鍵ごとに
 // tag_attach の記録を書いて取引 tx を確定し、反映した本数を返す。実際に付いた鍵（集まりなら全メンバー）の
-// 更新日時を今にする（specs/033-video-dates/research.md R-3）。
+// 更新日時を今にする。
 func (s *TagStore) attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64) (int, error) {
 	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
@@ -108,8 +107,7 @@ func (s *TagStore) attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs
 	return len(keys), nil
 }
 
-// commitTagChanges は鍵 changed のそれぞれにタグ tagID の kind の記録を書き、取引 tx を確定する
-// （specs/055-activity/research.md R-6）。確定後に domain.ActivityChanged と、すべてのスマートフォルダを
+// commitTagChanges は鍵 changed のそれぞれにタグ tagID の kind の記録を書き、取引 tx を確定する。確定後に domain.ActivityChanged と、すべてのスマートフォルダを
 // 名指す domain.SmartFoldersChanged を発行する。
 func (s *TagStore) commitTagChanges(
 	ctx context.Context, tx *sql.Tx, kind domain.ActivityKind, changed []string, tagID int64, now time.Time,
@@ -173,11 +171,11 @@ func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, ta
 	return len(keys), changed, nil
 }
 
-// TagsByContentKeys は利用者データの鍵（Video.UserKey、specs/030-video-versions/data-model.md §3）の
+// TagsByContentKeys は利用者データの鍵（Video.UserKey、docs/design-docs/catalog-organization.md）の
 // 集合からそれぞれのタグ（元の名前、
 // domain.CompareNatural の順、同じなら id）を出所つきでまとめて引く。手で
 // 付けた分とフォルダ名から付いている分の和で、同じタグが両方から付けば1件に
-// まとめて出所を両方持つ（017 の data-model.md §4）。タグの無い content_key は
+// まとめて出所を両方持つ。タグの無い content_key は
 // 結果に現れない。PlaybackStore.ProgressByContentKeys と同じ形で、
 // internal/httpapi が progressFor と同じ位置から一覧の項目にタグを足すために
 // 使う。

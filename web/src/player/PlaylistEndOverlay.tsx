@@ -6,8 +6,7 @@ import { Button } from "../ui/shadcn/button";
 import { Dimmed } from "./StatusOverlays";
 
 /**
- * PlaylistEndOverlay はプレイリストの最後の項目を見終えたときの層である
- * （specs/044-playlists/ui-design.md「Video page in a playlist」End of playlist、要件 9）。
+ * PlaylistEndOverlay はプレイリストの最後の項目を見終えたときの層である。
  * 何も進めず、カウントダウンも出さない。「もう一度見る」だけを置く。
  *
  * `takeFocus` が真のとき（フォーカスがプレイヤーの中にあったとき）だけ、その操作へ

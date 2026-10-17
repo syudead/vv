@@ -18,8 +18,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// サムネイルの編集のセッション（specs/045-comfyui-thumbnails/data-model.md の Edit session、
-// research.md R-4・R-11）を、偽の ImageEditor と偽の時計で確かめる。
+// サムネイルの編集のセッションを、偽の ImageEditor と偽の時計で確かめる。
 
 type fakeImageEditor struct {
 	mu        sync.Mutex

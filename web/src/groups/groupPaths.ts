@@ -3,10 +3,10 @@ import type { GroupRef } from "../api/groups";
 import type { Crumb } from "../folders/folderPath";
 import { t } from "../i18n";
 
-// グループのページが URL と応答から決める規則（specs/048-groups/ui-design.md「Group page」）。
+// グループのページが URL と応答から決める規則。
 // 画面の部品から外し、ロジックのテストで確かめる（docs/design-docs/web-testing.md）。
 
-/** TRAIL_PARAM は通ってきたグループの id を載せる問い合わせの名前である（research.md R-8）。 */
+/** TRAIL_PARAM は通ってきたグループの id を載せる問い合わせの名前である。 */
 export const TRAIL_PARAM = "trail";
 
 /** maxTrailLength は `trail` に載せる id の上限である（api/openapi.yaml の maxItems）。 */
@@ -54,7 +54,7 @@ export function childGroupPath(
 
 /**
  * groupItemPath はグループ `id` のページ（道筋 `trail`）で項目が開く場所である。動画は
- * `?group` 付きの再生画面、子グループは道筋を 1 段伸ばしたそのページ（ui-design.md「Body」）。
+ * `?group` 付きの再生画面、子グループは道筋を 1 段伸ばしたそのページ。
  */
 export function groupItemPath(
   item: { kind: "video" | "group"; video?: { id: number }; group?: { id: number } },
@@ -67,7 +67,7 @@ export function groupItemPath(
   return videoInGroupPath(item.video?.id ?? 0, id);
 }
 
-/** GROUP_PARAM は動画ページを開いたグループの id を載せる問い合わせの名前である（research.md R-9）。 */
+/** GROUP_PARAM は動画ページを開いたグループの id を載せる問い合わせの名前である。 */
 const GROUP_PARAM = "group";
 
 /**
@@ -81,7 +81,7 @@ export function groupContextOf(search: string): number | undefined {
 
 /**
  * videoInGroupPath はグループ `groupId` のページから開く動画ページの場所である。`?group` で
- * 再生画面の `Up next` がそのグループの順に従う（research.md R-9）。
+ * 再生画面の `Up next` がそのグループの順に従う。
  */
 export function videoInGroupPath(videoId: number, groupId: number): string {
   return `/videos/${String(videoId)}?${GROUP_PARAM}=${String(groupId)}`;
@@ -89,8 +89,7 @@ export function videoInGroupPath(videoId: number, groupId: number): string {
 
 /**
  * searchWithoutGroup は動画ページの問い合わせから `?group` を外したものである。ほかの問い合わせは
- * 残し、何も残らなければ空文字を返す（グループの操作の後に `group` なしで読み直す。ui-design.md
- * 「Video page」）。
+ * 残し、何も残らなければ空文字を返す（グループの操作の後に `group` なしで読み直す。 「Video page」）。
  */
 export function searchWithoutGroup(search: string): string {
   const params = new URLSearchParams(search);
@@ -100,7 +99,7 @@ export function searchWithoutGroup(search: string): string {
 
 /**
  * parentPagePath はグループが終わった（解散、タグ化）後に移る場所である。道筋の最後の
- * グループ（その手前で切った道筋付き）、道筋が無ければライブラリ（ui-design.md「Dissolving」）。
+ * グループ（その手前で切った道筋付き）、道筋が無ければライブラリ。
  */
 export function parentPagePath(trail: readonly GroupRef[]): string {
   const parent = trail[trail.length - 1];

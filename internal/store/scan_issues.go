@@ -1,7 +1,7 @@
 package store
 
 // 直近の取り込みの問題（scan_issues）を記録・消去・読み出す操作
-// （specs/024-import-progress/data-model.md §3）。
+//
 
 import (
 	"context"
@@ -121,7 +121,7 @@ func clearFailedIssue(ctx context.Context, q queryExecer, kind domain.JobKind, v
 
 // applySubstitution は段階 kind の成功を書いた取引で、代用の行を入れる・消す。
 // 代用したなら入れ、代用せずに作り直したなら消す。分からない（既存の生成物を採用した）
-// ときは変えない（specs/024-import-progress/data-model.md §3）。
+// ときは変えない。
 func applySubstitution(
 	ctx context.Context, q queryExecer, kind domain.JobKind, job domain.Job, substitution domain.Substitution,
 ) error {
@@ -201,8 +201,7 @@ func (s *ScanStore) ScanIssueRecords(ctx context.Context, scanID int64) ([]domai
 	return out, nil
 }
 
-// ScanIssues は走査 scanID の問題を、表示の形にまとめて並べて返す
-// （specs/024-import-progress/contracts/scan-api.md §3）。所在がどの登録フォルダにも
+// ScanIssues は走査 scanID の問題を、表示の形にまとめて並べて返す。所在がどの登録フォルダにも
 // 含まれない件は除く。
 func (s *ScanStore) ScanIssues(ctx context.Context, scanID int64) ([]domain.ScanIssue, error) {
 	records, err := s.ScanIssueRecords(ctx, scanID)

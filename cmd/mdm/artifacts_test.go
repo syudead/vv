@@ -133,7 +133,7 @@ func newArtifactsFixture(t *testing.T) artifactsFixture {
 }
 
 // placeSprite は、シーク用プレビューの置き場をスプライトの形式（シート 000.jpg と
-// sprite.json）に置き換える（specs/021-seek-thumbnail-sprite/research.md R-3）。
+// sprite.json）に置き換える。
 func (f artifactsFixture) placeSprite(t *testing.T) {
 	t.Helper()
 	dir := filepath.Dir(f.files.frame0)

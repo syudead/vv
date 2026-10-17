@@ -7,8 +7,7 @@ import { type OrderedItem, orderedItemTitle, rowFacts } from "./ItemRowCells";
 
 /**
  * OrderedItemFace は持ち上げた動画かグループの写しの中身である。格子では動画のサムネイルか
- * グループのフォルダの絵柄、リストでは行のサムネイル（specs/050-drag-organize/ui-design.md
- * 「Lifting」）。ライブラリの項目とグループの項目が同じ形を持つ。
+ * グループのフォルダの絵柄、リストでは行のサムネイル。ライブラリの項目とグループの項目が同じ形を持つ。
  */
 export function OrderedItemFace({ item, list }: { item: OrderedItem; list: boolean }) {
   const title = orderedItemTitle(item);

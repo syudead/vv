@@ -1,6 +1,5 @@
 -- +goose Up
--- 動画の作品情報と、人物・団体の実体（specs/047-video-work-info/data-model.md「Migration」、
--- research.md R-1・R-2・R-3）。12 表はすべて利用者データで、videos への外部キーを持たない。
+-- 動画の作品情報と、人物・団体の実体。12 表はすべて利用者データで、videos への外部キーを持たない。
 
 -- 実体（R-3）。autoincrement で、消した id を使い回さない。
 create table people (

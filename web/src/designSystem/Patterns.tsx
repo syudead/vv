@@ -14,8 +14,7 @@ import { ListPageExample } from "./blocks/list-page-example";
 import { type ListState, ListStatesExample } from "./blocks/list-states-example";
 import { SettingsPageExample } from "./blocks/settings-page-example";
 
-// 見本の画面の型の節（specs/038-design-system/ui-design.md「Page patterns」と「Review
-// criteria」6〜7）。骨格ごとに見本のブロックを枠に入れて並べ、一覧ページは状態ごとにも並べる。
+// 見本の画面の型の節。骨格ごとに見本のブロックを枠に入れて並べ、一覧ページは状態ごとにも並べる。
 // ダイアログは開くボタンを置き、押すと見本のダイアログが開く。
 
 const listStates: ListState[] = [
@@ -62,7 +61,7 @@ function Pattern({
 
 /**
  * Patterns は見本の画面の型の節である。骨格・区画・状態を見本のデータで組んだブロックを
- * 並べ、メンテナーが 1440px と 390px で確かめる（specs/038-design-system/research.md R-1）。
+ * 並べ、メンテナーが 1440px と 390px で確かめる。
  */
 export default function Patterns() {
   const p = t.designSystem.pattern;

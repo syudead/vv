@@ -16,10 +16,7 @@ import type { PlayerControls } from "./playerControls";
 import type { PlayerStatus } from "./VideoPlayer";
 import VideoPage from "./VideoPage";
 
-// 動画ページから ComfyUI でサムネイルを編集する流れ（specs/045-comfyui-thumbnails/ui-design.md
-// 「Video page: edit entry」「Thumbnail editor」「Generated thumbnail item」、
-// specs/046-thumbnail-image-upload/ui-design.md「Video page: edit entry with the source choice」
-// 「Thumbnail editor from the current thumbnail」）。
+// 動画ページから ComfyUI でサムネイルを編集する流れ。
 
 interface PlayerProps {
   onControls: (controls: PlayerControls | null) => void;

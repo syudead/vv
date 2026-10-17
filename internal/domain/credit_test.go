@@ -8,7 +8,7 @@ import (
 	"testing"
 )
 
-// 人物・団体の入力の規則（specs/047-video-work-info/data-model.md「Fields」）。どの規則も、
+// 人物・団体の入力の規則。どの規則も、
 // 失敗したフィールドの経路と問題を名指しして入力を拒む。
 func TestNormalizeCreditRefusesEachRule(t *testing.T) {
 	manyAliases := make([]Alias, CreditAliasesMaxCount+1)

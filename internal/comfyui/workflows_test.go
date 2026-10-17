@@ -12,8 +12,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 埋め込んだ各ワークフローは、アダプタが埋める vv:* のノードを決まった型で 1 つずつ持つ
-// （contracts/workflow.md の Workflows、research.md R-2）。参考画像の vv:reference は
+// 埋め込んだ各ワークフローは、アダプタが埋める vv:* のノードを決まった型で 1 つずつ持つ。参考画像の vv:reference は
 // 参考画像ありの方だけが持つ。vv:prompt の型はモデルごとに違い、promptInputs に載っている。
 func TestWorkflowsHaveTheTitlesVVFills(t *testing.T) {
 	titles := func(prompt string, reference bool) map[string]string {

@@ -26,8 +26,7 @@ interface PluginProxySave {
 }
 
 /**
- * usePluginProxySave は、プロキシの欄の値を、前に保存した値と違うときに保存する
- * （specs/056-plugin-tooling/ui-design.md の Network section）。保存は 1 度に 1 つで、保存中の
+ * usePluginProxySave は、プロキシの欄の値を、前に保存した値と違うときに保存する。保存は 1 度に 1 つで、保存中の
  * commit は何も送らず、保存が答えたあとに、そのとき欄にある値を送り直す。応答の `url` は、欄が送った
  * 値のままのときだけ欄を置き換えるので、保存中の編集は失われない。誤りも同じく、欄が送った値のままの
  * ときだけ出し、欄を編集すれば前の誤りは消える。規則に外れた値は送らない。
@@ -106,8 +105,7 @@ function usePluginProxySave(initialURL: string): PluginProxySave {
 }
 
 /**
- * PluginProxyRow は「Network」区画の、プラグインの要求を送るプロキシの行である
- * （specs/056-plugin-tooling/ui-design.md の Network section、research.md R-8）。欄を離れるか Enter で、
+ * PluginProxyRow は「Network」区画の、プラグインの要求を送るプロキシの行である。欄を離れるか Enter で、
  * 前に保存した値と違う値を保存する。保存ボタンは持たない。
  */
 export function PluginProxyRow({ initialURL }: { initialURL: string }) {

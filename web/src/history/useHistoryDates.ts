@@ -3,8 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { isAborted } from "../api/client";
 import { listWatchHistoryDates, type WatchHistoryFilter } from "../api/history";
 
-// 日付へ移る一覧の元になる、件のある日の読み込み（specs/043-watch-history/ui-design.md
-// 「Jump to date」、research.md R-11）。
+// 日付へ移る一覧の元になる、件のある日の読み込み。
 
 export type HistoryDatesState =
   { kind: "loading" } | { kind: "failed" } | { kind: "ready"; days: readonly string[] };

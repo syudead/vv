@@ -34,8 +34,9 @@
   decisions.
 
   In a new repository, or wherever no canonical source exists yet, record the
-  information here as usual — the plan is then the first source of truth, and a
-  later change should move it to a durable location and link back.
+  information here while the feature is active. Before integration, extract
+  lasting decisions into design docs and delete these working artifacts after
+  validation. Permanent documents and code never link back to this directory.
 -->
 
 ## Summary

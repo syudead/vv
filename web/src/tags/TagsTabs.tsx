@@ -16,8 +16,7 @@ export function tagsPanelId(prefix: string, value: TagListTab): string {
 }
 
 /**
- * TagsTabs は「Tags」「Rejected names」「Kinds」のタブである（ui-design.md「Tabs」、
- * specs/051-tag-kinds/ui-design.md「Kinds tab」）。それぞれに
+ * TagsTabs は「Tags」「Rejected names」「Kinds」のタブである。それぞれに
  * 件数を添え、読み込む前は出さない。`locked` の間（作成・改名の送信中）は、描いて
  * いないタブを押せず、矢印でも移らない。3 つのタブが幅に収まらないとき（320px で
  * 4 桁の件数が付くなど）は、画面ではなくタブの並びを包む帯が横に送れるようにし、

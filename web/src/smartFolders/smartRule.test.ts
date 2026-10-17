@@ -11,7 +11,7 @@ import {
   validRule,
 } from "./smartRule";
 
-// スマートフォルダの条件と親の木（specs/052-smart-folders/ui-design.md「Smart folder dialog」）。
+// スマートフォルダの条件と親の木。
 
 const unfiltered = {
   query: "",

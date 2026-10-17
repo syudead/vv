@@ -243,7 +243,7 @@ type AutoTagSelection struct {
 	// Tentative は確率が TentativeThreshold 以上 Threshold 未満で、仮に付けるタグである。
 	Tentative []int64
 	// Probabilities は Confirmed と Tentative の各タグの、判定モデルの答えである。アクティビティの記録に
-	// 残す（specs/055-activity/research.md R-5）。選ばなかったタグは入らない。
+	// 残す。選ばなかったタグは入らない。
 	Probabilities map[int64]float64
 }
 

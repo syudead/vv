@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import type { Video } from "../../api/client";
 
 // 動画ページと編集画面（/videos/:id/edit）の間で、手元の `Video` を渡す控え
-// （specs/047-video-work-info/ui-design.md「Editor」「Save」「Leaving」）。
+//
 //
 // 履歴の状態（location.state）には載せない。再読み込みや後から戻ったときに、古い `Video` を
 // 今の値として使ってしまうからである。控えはメモリにだけあり、受け取った側が描画の中で

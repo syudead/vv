@@ -15,7 +15,7 @@ import (
 )
 
 // 動画の隣の字幕ファイル（SRT・WebVTT）を、文字コードを判定して UTF-8 の WebVTT にし、
-// 時刻をずらす（specs/028-sidecar-subtitles/research.md R-4〜R-8）。外部プロセスは
+// 時刻をずらす。外部プロセスは
 // 起動しない。
 
 // SubtitleConverter は字幕ファイルを WebVTT に変換する。状態を持たないので、ゼロ値の
@@ -47,7 +47,6 @@ func (SubtitleConverter) Convert(src []byte, format domain.SubtitleFormat, offse
 }
 
 // subtitleScripts は、BOM の無い UTF-8 の字幕をそのまま UTF-8 と決めてよい文字体系である
-// （research.md R-5 の手順 1）。
 var subtitleScripts = []*unicode.RangeTable{
 	unicode.Common, unicode.Inherited, unicode.Latin, unicode.Greek, unicode.Cyrillic,
 	unicode.Hebrew, unicode.Arabic, unicode.Thai, unicode.Hangul, unicode.Han,
@@ -55,7 +54,7 @@ var subtitleScripts = []*unicode.RangeTable{
 }
 
 // decodeSubtitle は字幕ファイルの文字コードを BOM → UTF-8 の妥当性 → Shift_JIS の順で
-// 決め、UTF-8 の文字列にする（research.md R-5）。
+// 決め、UTF-8 の文字列にする。
 func decodeSubtitle(src []byte) (string, error) {
 	switch {
 	case len(src) == 0:
@@ -228,7 +227,7 @@ func blocks(text string) [][]string {
 	return result
 }
 
-// convertSRT は SRT を WebVTT にする（research.md R-8）。番号行を除き、時刻の行を
+// convertSRT は SRT を WebVTT にする。番号行を除き、時刻の行を
 // WebVTT の形に揃え、cue の本文はそのまま通す。時刻の行が読めない cue は落とす。
 func convertSRT(text string, offsetMs int64) ([]byte, error) {
 	var out strings.Builder
@@ -272,7 +271,7 @@ func convertVTT(text string, offsetMs int64) ([]byte, error) {
 	if header != "WEBVTT" && !strings.HasPrefix(header, "WEBVTT ") && !strings.HasPrefix(header, "WEBVTT\t") {
 		return nil, fmt.Errorf("%w: missing WEBVTT header", domain.ErrSubtitleUnreadable)
 	}
-	// ずらさないときは、復号と行末の統一のほかは手を入れずに通す（research.md R-4）。
+	// ずらさないときは、復号と行末の統一のほかは手を入れずに通す。
 	if offsetMs == 0 {
 		return []byte(text), nil
 	}

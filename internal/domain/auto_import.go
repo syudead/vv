@@ -1,7 +1,6 @@
 package domain
 
 // FolderWatchState はフォルダの監視が今どうなっているかである
-// （specs/042-folder-watch-import/contracts/screen-api.md）。
 type FolderWatchState string
 
 const (

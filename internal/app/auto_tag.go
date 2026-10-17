@@ -32,7 +32,7 @@ func failureReason(err error) string {
 // AutoTagQueue は自動タグ付けの待ち行列である。internal/store の *AutoTagStore が満たす。
 type AutoTagQueue interface {
 	// QueueVideos と QueueLibrary は動画を積み、積んだ動画ごとに decider が始めた auto_tag の記録を開く
-	// （specs/055-activity/research.md R-5）。
+	//
 	QueueVideos(ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error)
 	QueueLibrary(ctx context.Context, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error)
 	// Claim は積んだ順にいちばん古い判定を専有する。無ければ domain.ErrNoJob。
@@ -73,7 +73,7 @@ type VideoImageSource interface {
 // AutoTagUndoStore は自動タグ付けが付けたタグの取り消しである。internal/store の *ActivityStore が満たす。
 type AutoTagUndoStore interface {
 	// UndoAutoTag は auto_tag の記録 entryID が付けたタグ tagID を 1 つの取引で取り消し、所有者の undo の記録を
-	// 返す（specs/055-activity/research.md R-7）。
+	// 返す。
 	UndoAutoTag(ctx context.Context, entryID, tagID int64) (domain.ActivityEntry, error)
 }
 
@@ -375,7 +375,7 @@ func (a *AutoTagger) process(ctx context.Context, job domain.AutoTagJob) {
 
 // decide は動画の手がかりを判定モデルに渡し、確定と仮に付けるタグの id と確率、判断したもの（判定モデルに
 // 聞いたなら ai）を返す。動画が消えていれば空を返す（Finish が行を消す）。聞くタグが無ければ判断したものは
-// 空で、記録は始めたもののままになる（specs/055-activity/research.md R-5）。
+// 空で、記録は始めたもののままになる。
 func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.AutoTagSelection, domain.ActivityDecider, error) {
 	var selection domain.AutoTagSelection
 	settings, err := a.settings.AutoTagSettings(ctx)

@@ -23,8 +23,7 @@ import { useToast } from "../ui/Toast";
 type VideoGroup = NonNullable<Video["group"]>;
 
 /**
- * GroupLine は題名の上に置く、グループ名と何本目かの1行である（specs/048-groups/ui-design.md
- * 「Video page」）。題名より小さく従の色にし、題名より先に目に入らないようにする。行はグループの
+ * GroupLine は題名の上に置く、グループ名と何本目かの1行である。題名より小さく従の色にし、題名より先に目に入らないようにする。行はグループの
  * ページへのリンクで、ゲストにも同じリンクを出す。動画ページから開くので道筋は空である。
  *
  * 所有者には、行の後の同じ並びに「Group actions」のメニューを置く。行そのものはグループを開くので、

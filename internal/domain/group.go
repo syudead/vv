@@ -10,13 +10,13 @@ import (
 	"unicode/utf8"
 )
 
-// 任意のグループ（specs/048-groups/data-model.md）。グループは所有者のデータで、id は
-// 変わらない（research.md R-1）。動画の項目は利用者データの鍵で、子グループの項目は
+// 任意のグループ。グループは所有者のデータで、id は
+// 変わらない。動画の項目は利用者データの鍵で、子グループの項目は
 // グループの id で持つ（R-2）。フォルダから自動でできるグループは origin_folder を持ち、
 // スキャンのたびにフォルダ由来のメンバーだけを足し引きする（R-3、PlanFolderGroupSync）。
 
 // GroupNameMaxLength はグループの名前の上限（符号位置数）である。SQLite の length() と
-// 同じ数え方で、表の check と同じ値である（research.md R-14）。
+// 同じ数え方で、表の check と同じ値である。
 const GroupNameMaxLength = 100
 
 // Group はグループ 1 つの要約である。
@@ -30,7 +30,7 @@ type Group struct {
 	Automatic bool
 	// UpdatedAt は名前か項目を最後に変えた時刻（Unix ミリ秒）である。
 	UpdatedAt int64
-	// Favorite は所有者がグループをお気に入りにしたか（specs/035-favorites/data-model.md §2）。
+	// Favorite は所有者がグループをお気に入りにしたか。
 	// 見せる動画が無くなっても残る。
 	Favorite bool
 }
@@ -42,14 +42,13 @@ type GroupRef struct {
 }
 
 // GroupItemsDefaultLimit と GroupItemsMaxLimit は、グループの項目 1 ページの件数の既定と上限である
-// （specs/048-groups/contracts/screen-api.md「Statuses」）。
 const (
 	GroupItemsDefaultLimit = 100
 	GroupItemsMaxLimit     = 200
 )
 
 // GroupListDefaultLimit と GroupListMaxLimit は、グループの一覧（GET /api/groups）1 ページの件数の
-// 既定と上限である（specs/048-groups/contracts/screen-api.md「Statuses」）。
+// 既定と上限である。
 const (
 	GroupListDefaultLimit = 100
 	GroupListMaxLimit     = 200
@@ -79,9 +78,9 @@ type GroupPage struct {
 	// Group はグループの値（LibraryGroup）である。
 	Group LibraryGroup
 	// Items は見せる項目を位置の順に持つ 1 ページである。見る人に引けない動画の項目と、
-	// 見る人に見せる動画の無い子グループの項目は入らない（data-model.md「Visibility」）。
+	// 見る人に見せる動画の無い子グループの項目は入らない。
 	Items []GroupItem
-	// Trail は要求の trail のうち、親と子の組が続く部分である（research.md R-8）。外側から順に
+	// Trail は要求の trail のうち、親と子の組が続く部分である。外側から順に
 	// 持ち、最後はグループの親である。
 	Trail []GroupRef
 	// NextCursor は次のページの取得に渡す。これ以上無ければ空。
@@ -90,7 +89,7 @@ type GroupPage struct {
 	Roots []MediaFolder
 }
 
-// GroupsChanged はグループの名前か項目が変わったことを表す（research.md R-13）。GroupIDs は
+// GroupsChanged はグループの名前か項目が変わったことを表す。GroupIDs は
 // 変わったグループと、その祖先のグループの id で、小さい順に重複なく持つ。取引の確定後に
 // 発行する。
 type GroupsChanged struct {
@@ -134,7 +133,7 @@ func (e *InvalidGroupNameError) Unwrap() error { return ErrInvalidGroupName }
 
 // ValidateGroupName は前後の Unicode White_Space を取り除いた名前を返す。空か
 // GroupNameMaxLength 符号位置を超えれば *InvalidGroupNameError である。同じ名前は
-// 重複してよい（research.md R-14）。
+// 重複してよい。
 func ValidateGroupName(input string) (string, error) {
 	trimmed, problem := checkName(input, GroupNameMaxLength)
 	switch problem {
@@ -156,7 +155,7 @@ const (
 )
 
 // checkName は前後の Unicode White_Space を取り除いた名前と、規則違反の種類を返す。
-// プレイリストとグループの名前が共有する（research.md R-14）。
+// プレイリストとグループの名前が共有する。
 func checkName(input string, maxLength int) (string, nameProblem) {
 	trimmed := strings.TrimFunc(input, func(r rune) bool {
 		return unicode.Is(unicode.White_Space, r)
@@ -171,7 +170,7 @@ func checkName(input string, maxLength int) (string, nameProblem) {
 }
 
 // cutGroupName は自動グループの最初の名前を、フォルダ名の先頭 GroupNameMaxLength 符号位置に
-// する（research.md R-14）。
+// する。
 func cutGroupName(name string) string {
 	if utf8.RuneCountInString(name) <= GroupNameMaxLength {
 		return name
@@ -238,7 +237,6 @@ type FolderGroupSync struct {
 
 // PlanFolderGroupSync は、フォルダの索引（folders）、今の自動グループ（groups）、フォルダごとの
 // 例外（overrides）から、自動グループをフォルダとそろえる変更を決める
-// （specs/048-groups/data-model.md「Automatic group sync」、research.md R-3）。
 //
 //   - 規則がグループにするフォルダで、それを origin_folder に持つグループが無く、ungroup の
 //     例外も無ければ、フォルダ名（GroupNameMaxLength で切る）で直下の動画を持つグループを作る。

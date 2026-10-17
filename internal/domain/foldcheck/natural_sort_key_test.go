@@ -11,8 +11,7 @@ import (
 )
 
 // naturalSortKeyFile は、Go の NaturalSortKey と画面の naturalSortKey
-// （web/src/lib/naturalSortKey.ts）が同じ鍵を返すことを確かめる共有の入力の組である
-// （specs/036-tag-admin-scale/research.md R-12「移植の検査」）。組は鍵の
+// （web/src/lib/naturalSortKey.ts）が同じ鍵を返すことを確かめる共有の入力の組である。組は鍵の
 // strings.Compare の順に並べ、画面の compareNaturalSortKeys が同じ順を返すことを
 // Vitest が同じファイルで確かめる。
 type naturalSortKeyFile struct {

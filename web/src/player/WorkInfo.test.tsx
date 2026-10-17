@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import type { WorkInfo as WorkInfoValue } from "../api/workInfo";
 import WorkInfo from "./WorkInfo";
 
-// 情報欄の作品情報の行（specs/047-video-work-info/ui-design.md「Video page: work details row」）。
+// 情報欄の作品情報の行。
 
 const empty: WorkInfoValue = {
   dates: [],

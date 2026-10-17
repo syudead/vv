@@ -19,8 +19,7 @@ export function autoplayRequested(state: unknown): boolean {
 
 /**
  * resumePosition は再生を始める位置である。集まり（同じ動画の別バージョン）の再生位置は
- * バージョンの間で共有するので、このバージョンの尺以上なら先頭から再生する
- * （specs/030-video-versions/research.md R-11）。
+ * バージョンの間で共有するので、このバージョンの尺以上なら先頭から再生する。
  */
 export function resumePosition(video: Video): number {
   const progress = video.progress;

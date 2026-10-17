@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 作品情報と人物・団体の誤りの写し方（specs/047-video-work-info/contracts/screen-api.md
-// 「Added reason values and field」）。画面 API の人物・団体と作品情報の経路、外部連携 API の経路が
+// 作品情報と人物・団体の誤りの写し方。画面 API の人物・団体と作品情報の経路、外部連携 API の経路が
 // 同じ workInfoFailureOf を呼び、応答の型（gen.Error・extgen.Error）への書き出しだけをそれぞれが持つ。
 
 // workInfoFailure は誤り 1 件の API の形である。code と reason は契約の値の文字列で、

@@ -6,10 +6,8 @@ import {
 
 /**
  * TagListPreferences はタグ管理画面の端末の設定である。並び順だけを残し、
- * 「Tentative only」「Unused only」と検索語は残さない
- * （specs/036-tag-admin-scale/research.md R-7）。人物・団体の管理画面も同じ形を
- * 種類ごとの鍵で残す（specs/047-video-work-info/ui-design.md「People and organizations
- * screens」の Sort）。
+ * 「Tentative only」「Unused only」と検索語は残さない。人物・団体の管理画面も同じ形を
+ * 種類ごとの鍵で残す。
  */
 export interface TagListPreferences {
   sort: TagListSort;

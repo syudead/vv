@@ -11,7 +11,7 @@ import {
 } from "../api/tags";
 
 // 絞り込みのチップとスマートフォルダの条件の欄が名前を引くための読み込み
-// （ライブラリの「Filtering by」の行と specs/052-smart-folders/ui-design.md「Conditions」）。
+// （ライブラリの「Filtering by」の行と docs/design-docs/catalog-organization.md「Conditions」）。
 
 /** useTagNames は共有のタグの一覧を読み、絞り込み中のタグの名前を引けるようにする。 */
 export function useTagNames(tagIds: readonly number[]): Map<number, Tag> {

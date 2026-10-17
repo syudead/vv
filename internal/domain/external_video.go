@@ -1,7 +1,6 @@
 package domain
 
-// 外部連携 API の動画の読み出し（specs/026-external-api/data-model.md §2、
-// contracts/external-api.md §2、research.md R-6）。
+// 外部連携 API の動画の読み出し。
 
 const (
 	// ExternalVideoDefaultLimit は外部連携 API の一覧で limit が指定されなかったときの件数。

@@ -1,6 +1,5 @@
 -- +goose Up
--- 所有者が代表サムネイルとして適用した画像（specs/045-comfyui-thumbnails/data-model.md、
--- research.md R-6）。作り直せない利用者データで、video_overrides と同じく内容の識別子に結び、
+-- 所有者が代表サムネイルとして適用した画像。作り直せない利用者データで、video_overrides と同じく内容の識別子に結び、
 -- videos への外部キーを張らない。代表サムネイルのファイルは、この行から作り直す。
 create table thumbnail_images (
     content_key text    primary key,

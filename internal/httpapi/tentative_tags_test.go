@@ -14,7 +14,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// 仮のタグと却下した名前の画面の API（specs/031-tentative-tags/contracts/screen-api.md）は、
+// 仮のタグと却下した名前の画面の APIは、
 // 本物の保存層と認証で確かめる（guest_test.go の guestFixture）。
 
 // addTentativeTag は動画 video に、tentative が真の一括操作で名前 name の仮のタグを作って付ける。

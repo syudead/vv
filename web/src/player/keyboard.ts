@@ -70,8 +70,7 @@ function isDocumentFullscreen(): boolean {
 /**
  * isPopoverOpen は、画面のどこかで吹き出し（Radix の Popover）かメニュー（`DropdownMenu`、
  * role="menu"）が開いているかを返す。取り込み状況の概要のように、再生画面の外の部品が開く
- * 吹き出しや、Group line のまとめ方のメニュー（specs/017-folder-groups/ui-design.md
- * 「Group line」）も含む。そのときの Esc はそれを閉じるためのもので、画面を閉じてはいけない。
+ * 吹き出しや、Group line のまとめ方のメニューも含む。そのときの Esc はそれを閉じるためのもので、画面を閉じてはいけない。
  * ツールチップ（role="tooltip"）は含めない。
  */
 function isPopoverOpen(): boolean {
@@ -92,8 +91,7 @@ function isPopoverOpen(): boolean {
  * - Esc で呼ぶのは `onClose` なので、呼び出し側が別の操作を渡せる。再生画面は自動再生の
  *   予告が出ている間、画面を閉じる代わりに予告の取り消しを渡す。
  * - `suspended` の間はどのキーも受けない。画面全体を覆う編集画面（サムネイルの編集）が
- *   開いている間で、Space は欄に入り、Esc は編集画面のものになる
- *   （specs/045-comfyui-thumbnails/ui-design.md「Closing」）。
+ *   開いている間で、Space は欄に入り、Esc は編集画面のものになる。
  */
 export function useKeyboardShortcuts(
   controls: PlayerControls | null,

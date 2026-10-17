@@ -8,8 +8,7 @@ import testingLibrary from "eslint-plugin-testing-library";
 import globals from "globals";
 import designExceptions from "./design-exceptions.js";
 
-// 画面の文言の訳し漏れを報告する（specs/023-english-i18n/research.md R-3、
-// docs/design-docs/i18n.md）。文言と書式は web/src/i18n/ だけが持つ。
+// 画面の文言の訳し漏れを報告する。文言と書式は web/src/i18n/ だけが持つ。
 const japanese =
   "[\\u3040-\\u30ff\\u3400-\\u4dbf\\u4e00-\\u9fff\\uf900-\\ufaff\\uff66-\\uff9f]";
 const letter =
@@ -53,8 +52,7 @@ const i18nRestrictedSyntax = [
   },
 ];
 
-// デザインシステムの外の書き方を落とす（specs/038-design-system/contracts/registry.md
-// の Check rules、research.md R-8）。例外はコメントでなく web/design-exceptions.js に置き、
+// デザインシステムの外の書き方を落とす。例外はコメントでなく web/design-exceptions.js に置き、
 // 一覧の検査は src/theme/designExceptions.test.ts が行う。
 const sourceFiles = ["src/**/*.{ts,tsx}"];
 const i18nFiles = ["src/i18n/**"];
@@ -111,7 +109,7 @@ const arbitraryMessage =
   "Arbitrary value outside the design-system scale (web/registry/rules/foundations.md).";
 
 // 段階の外の数値の段（`p-7`、`text-2xl`、`rounded-xl`、`font-bold` など）は、src/ui/tokens.css
-// がテーマの名前空間を空にしているので生成されず、no-unknown-classes が落とす（research.md R-8）。
+// がテーマの名前空間を空にしているので生成されず、no-unknown-classes が落とす。
 // 共通のフォーカスの輪（index.css の :focus-visible）を消すか、独自の輪を足すクラス。
 // web/registry/rules/components.md の Focus。shadcn の部品（ui/shadcn）は上流のまま持つので外す。
 const focusRing = String.raw`(?:^|:)!?outline-(?:none|hidden)!?$|(?:^|:)(?:focus|focus-visible|focus-within):(?:[^:]*:)*!?(?:ring|outline)(?:-[^:]*)?!?$`;

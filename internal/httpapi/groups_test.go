@@ -14,7 +14,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// グループの一覧と編集の経路（specs/048-groups/contracts/screen-api.md「Statuses」）を、本物の
+// グループの一覧と編集の経路を、本物の
 // 認証・保存層・経路をつないで確かめる。中身は library_test.go の libraryFixture で、show と pair が
 // 自動グループ、solo がグループに入らない動画である。
 
@@ -416,7 +416,7 @@ func TestGroupWritesCountLimitBeforeDeduplicating(t *testing.T) {
 }
 
 // お気に入りの自動グループから項目を全部外すと、そのグループは解散されて（204）お気に入りからも
-// 消え、フォルダの grouping は ungroup になる（specs/048-groups/data-model.md「Edits」の Remove）。
+// 消え、フォルダの grouping は ungroup になる。
 func TestRemovingEveryItemDissolvesGroup(t *testing.T) {
 	f := newLibraryFixture(t)
 	pair := f.groupID(t, "pair")

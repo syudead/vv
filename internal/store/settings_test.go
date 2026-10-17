@@ -69,7 +69,6 @@ func TestTranscodeEncoderChoiceKeepsUnknownValue(t *testing.T) {
 }
 
 // LAN からの接続の許可は、行が無ければ偽で、保存した値が読める
-// （specs/037-windows-app/research.md R-14）。
 func TestLANAccessRoundTrip(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -123,7 +122,6 @@ func TestLANAccessTreatsUnknownValueAsDenied(t *testing.T) {
 }
 
 // 自動の取り込みは、行が無ければ入で、保存した値が読める
-// （specs/042-folder-watch-import/research.md R-7）。
 func TestAutoImportDefaultsToOnAndRoundTrips(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
@@ -158,7 +156,6 @@ func TestAutoImportDefaultsToOnAndRoundTrips(t *testing.T) {
 }
 
 // プラグインのプロキシは、行が無ければ "" で、保存した値をそのまま読める
-// （specs/056-plugin-tooling/data-model.md）。
 func TestWorkInfoPluginProxyURLRoundTrip(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

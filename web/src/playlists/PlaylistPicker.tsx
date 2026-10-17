@@ -29,8 +29,7 @@ async function createOnce(
 }
 
 /**
- * PlaylistPicker は「Add to playlist」のポップオーバーの中身である
- * （specs/044-playlists/ui-design.md「Add to playlist」）。カード・行・動画ページ・選択バーの
+ * PlaylistPicker は「Add to playlist」のポップオーバーの中身である。カード・行・動画ページ・選択バーの
  * 4 か所が、それぞれの `Popover` の中に置く。形と読み込みは NamedPicker が持つ。
  *
  * - 開くたびに `GET /api/playlists` を `nextCursor` が尽きるまで読む（listAllPlaylists）。

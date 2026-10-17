@@ -9,9 +9,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 公開フラグ（specs/016-single-account-auth/data-model.md §1・§3・§5）。
+// 公開フラグ。
 // 公開は利用者データの鍵（userKeyExpr。集まりのメンバーなら集まりの鍵、そうでなければ
-// content_key。specs/030-video-versions/data-model.md §3）に結ぶ public_videos の行の有無で
+// content_key。docs/design-docs/catalog-organization.md）に結ぶ public_videos の行の有無で
 // 表し、見る人（domain.Audience）
 // がゲストのときは、動画・所在・フォルダを返す LibraryStore の読み出しが
 // visibleLocationCondition を通して公開の動画だけに絞る。
@@ -25,7 +25,7 @@ func publicVideoCondition(alias string) string {
 }
 
 // visibleLocationCondition は、所在（別名 alias）を見る人に見せてよいかの条件句を
-// 返す（data-model.md §3）。所有者では登録フォルダの
+// 返す。所有者では登録フォルダの
 // 下にあることだけを、ゲストではそれに加えて動画が公開であることを求める。
 // Audience のゼロ値はゲストなので、付け忘れは狭い側に倒れる。
 //
@@ -53,12 +53,11 @@ var publicColumn = `exists (select 1 from public_videos pub where pub.content_ke
 	` and videos.content_key <> '')`
 
 // SetVideosPublic は videoIDs のうちいまライブラリにある動画の公開フラグを
-// public にそろえ、反映した内容の content_key を返す。その数が反映した本数である
-// （data-model.md §5「公開・非公開を切り替える」）。呼び出し側は非公開にした
-// content_key で、ゲストとして処理中の応答を打ち切る（contracts/guest-api.md §6）。
+// public にそろえ、反映した内容の content_key を返す。その数が反映した本数である。呼び出し側は非公開にした
+// content_key で、ゲストとして処理中の応答を打ち切る。
 //
 // id は利用者データの鍵へ引き直し（タグの付け外しと同じ userKeysForVideoIDs、
-// specs/030-video-versions/data-model.md §3）、その鍵に書く。集まりの鍵に書いたときは、
+// docs/design-docs/catalog-organization.md）、その鍵に書く。集まりの鍵に書いたときは、
 // 公開が集まりの全バージョンに効くので、返す鍵にはその集まりの全メンバーの content_key を
 // 入れる（ゲストの配信の打ち切りは内容ごと）。ライブラリに無い id と空の content_key の
 // 動画は数えない。既に同じ状態の動画も
@@ -101,7 +100,7 @@ func (s *VisibilityStore) SetVideosPublic(ctx context.Context, videoIDs []int64,
 		}
 	}
 	// 更新日時は公開の設定が実際に変わった鍵（集まりなら全メンバー）だけを進める
-	// （specs/033-video-dates/research.md R-3）。
+	//
 	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
 		return nil, err
 	}

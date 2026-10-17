@@ -38,7 +38,7 @@ function card(name: string) {
   return link.closest("article") as HTMLElement;
 }
 
-describe("スマートフォルダのカード（specs/052-smart-folders/ui-design.md「Smart folder card and row」）", () => {
+describe("スマートフォルダのカード", () => {
   it("要約から名前と骨組みの面を出し、画面に入ったカードだけ値を読む", async () => {
     server.cards.set(1, folderCard(1, "猫", { videoCount: 12 }));
     server.cards.set(2, folderCard(2, "犬"));
@@ -230,7 +230,7 @@ describe("スマートフォルダのカード（specs/052-smart-folders/ui-desi
     await waitFor(() => expect(screen.queryByRole("link", { name: /^犬/ })).toBeNull());
   });
 
-  describe("角の印（ui-design.md「Smart folder card and row」「Add to playlist」）", () => {
+  describe("角の印", () => {
     function renderMarked(audience: Audience = "owner", favorite = false) {
       render(
         <MemoryRouter>

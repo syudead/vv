@@ -421,7 +421,7 @@ func TestImportDoesNotDoubleCountRequeuedRunningJobs(t *testing.T) {
 }
 
 // 未完了の仕事がある状態から移行すると、その動画が直近の走査の対象に入り、完了の時刻は
-// null のままになる。前の走査の完了の時刻は、閉じた時刻になる（data-model.md §1）。
+// null のままになる。前の走査の完了の時刻は、閉じた時刻になる。
 func TestScanImportMigrationCarriesUnfinishedJobs(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {

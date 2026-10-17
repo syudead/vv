@@ -34,7 +34,7 @@ export function useLeavePage(path: string) {
 
 /**
  * useLeaveGroup はグループが終わった（解散、タグ化、最後の項目を外した）後に画面を離れる
- * 操作を返す（specs/048-groups/ui-design.md「Dissolving」）。`message` があればトーストを出し、
+ * 操作を返す。`message` があればトーストを出し、
  * 道筋の親のページ、無ければライブラリへ移る（useLeavePage）。
  */
 export function useLeaveGroup(trail: readonly GroupRef[]) {

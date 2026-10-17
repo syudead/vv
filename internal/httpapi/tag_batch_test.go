@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// まとめての確定・却下・削除と確認の数（specs/036-tag-admin-scale/contracts/screen-api.md §1・§3）。
+// まとめての確定・却下・削除と確認の数。
 
 // idsJSON は 1 から n までの id の JSON の配列を返す。
 func idsJSON(n int) string {

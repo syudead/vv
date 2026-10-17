@@ -21,8 +21,7 @@ import type { PlayerControls } from "./playerControls";
 import type { PlayerStatus } from "./VideoPlayer";
 import VideoPage from "./VideoPage";
 
-// 動画ページのプレイリストの文脈（specs/044-playlists/ui-design.md「Video page in a playlist」
-// 「Playlist panel」）のページテスト。URL・応答の組・移動の流れを確かめる。規則そのもの
+// 動画ページのプレイリストの文脈のページテスト。URL・応答の組・移動の流れを確かめる。規則そのもの
 // （クエリの読み方、組の選び方、スクロールの位置）は playlistPlayback.test.ts が確かめる。
 
 interface PlayerProps {
@@ -302,7 +301,7 @@ describe("VideoPage のプレイリストの文脈", () => {
     expect(location()).toBe("/videos/12?playlist=5&item=22");
   });
 
-  it("`?group` があってもプレイリストの文脈を優先し、読み取りに group を運ばない（048 ui-design.md「Video page」）", async () => {
+  it("`?group` があってもプレイリストの文脈を優先し、読み取りに group を運ばない", async () => {
     renderPage("/videos/12?playlist=5&item=22&group=9");
     await line();
     expect(calls("/api/playlists/5/playback?item=22&video=12")).toBe(1);
@@ -809,7 +808,7 @@ describe("VideoPage のプレイリストの文脈", () => {
     expect(location()).toBe("/videos/12?playlist=5&item=22");
   });
 
-  describe("スマートフォルダの項目（052 ui-design.md「Video page in a playlist」）", () => {
+  describe("スマートフォルダの項目", () => {
     const member3 = videoOf(43, "member-three");
     /** folderItem はフォルダ 7 の項目 22（再生順 second・member-three）である。 */
     const folderItem = (videoCount = 2) => ({

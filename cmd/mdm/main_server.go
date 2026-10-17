@@ -15,7 +15,7 @@ import (
 // Windows デスクトップ版（desktop タグ）の入口は desktop_windows.go にある。
 func main() {
 	// 引数つきはホスト側のコマンド（mdm account …）で、サーバーは起動しない
-	// （specs/016-single-account-auth/contracts/account-cli.md）。
+	//
 	if len(os.Args) > 1 {
 		os.Exit(runCommand(context.Background(), os.Args[1:], osAccountEnv()))
 	}

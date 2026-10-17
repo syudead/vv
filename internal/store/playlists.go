@@ -15,9 +15,9 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// プレイリスト（specs/044-playlists/data-model.md「Store operations」、research.md R-1〜R-5・R-11）。
-// 項目は動画の利用者データの鍵（userKeyExpr）、グループの id（specs/048-groups/research.md R-10）、
-// スマートフォルダの id（specs/052-smart-folders/contracts/screen-api.md）のどれかで持つ。
+// プレイリスト。
+// 項目は動画の利用者データの鍵（userKeyExpr）、グループの id、
+// スマートフォルダの idのどれかで持つ。
 // スマートフォルダの項目は中身を持たず、読むたびにフォルダの再生順を求める。フォルダの項目は
 // フォルダの削除で外部キーにより消え、削除が詰め直す（DeleteSmartFolder）。動画への外部キーは持たず、鍵が今ライブラリの動画に引けない項目や、見せる動画を持たない
 // グループの項目は、読み出しから外すだけで消さない（R-4）。グループの項目はグループの解散で外部キーの
@@ -44,8 +44,8 @@ func playlistGroupVideos(alias string) string {
 
 // playlistItemShownCondition は、プレイリストの項目（別名 alias）を見せるかの条件句である。
 // 動画の項目は playlistItemVideoExpr が引けるとき、グループの項目はそのグループが所有者に見せる
-// 子孫の動画を持つとき見せる（R-4、specs/048-groups/data-model.md「Play order」）。スマートフォルダの
-// 項目は、空のフォルダを所有者に見せるのと同じく（specs/052-smart-folders/research.md R-8）、
+// 子孫の動画を持つとき見せる（R-4、docs/design-docs/catalog-organization.md「Play order」）。スマートフォルダの
+// 項目は、空のフォルダを所有者に見せるのと同じく、
 // フォルダがある限り見せる。shownPlaylistItems も同じ条件で項目を選ぶので、件数と Playlist の項目が
 // 食い違わない。
 func playlistItemShownCondition(alias string) string {
@@ -295,7 +295,7 @@ func (s *PlaylistStore) Playlist(ctx context.Context, id int64) (domain.Playlist
 }
 
 // PlaylistPlayback はプレイリスト id を項目 itemID の動画 videoID から再生しているときの、今の
-// 位置と次に開く動画を、最新の並びから返す（data-model.md「Playback order」、research.md R-6）。
+// 位置と次に開く動画を、最新の並びから返す。
 // 全項目（見せない項目も含む）と見せる項目の動画・グループを読み取り用の接続の同じ
 // スナップショットから読み、domain.PlaylistPlaybackOf に渡す。プレイリストが無ければ
 // domain.ErrPlaylistNotFound、項目がそのプレイリストに無ければ domain.ErrPlaylistItemNotFound。
@@ -485,8 +485,7 @@ func (s *PlaylistStore) RemovePlaylistItem(ctx context.Context, id, itemID int64
 	return nil
 }
 
-// rekeyPlaylistItems は利用者データの鍵 from の動画の項目を鍵 to の項目へ付け替える
-// （data-model.md「Succession and bundling」、R-2）。行は写さずに移す。1 つのプレイリストに
+// rekeyPlaylistItems は利用者データの鍵 from の動画の項目を鍵 to の項目へ付け替える。行は写さずに移す。1 つのプレイリストに
 // 鍵 to の項目が 2 つになるときは位置の大きい方を消し、そのプレイリストを詰め直す。
 //
 // 更新日時はここでは進めない。付け替えと同じ取引で集まりや動画も変わり、見せる項目はその後で
@@ -545,8 +544,7 @@ func snapshotPlaylistShapes(ctx context.Context, tx *sql.Tx, keys []string) (pla
 
 // touchReshapedPlaylists は、before に読んだプレイリストのうち形が変わったものの更新日時を
 // 進める。付け替えで隠れていた項目が見えた、見えていた項目が隠れた、重なった項目を消したときが
-// それにあたる。再生の応答とプレイリストの応答は更新日時が同じときだけ同じ並びとして使われる
-// （ui-design.md「One order」）。鍵を付け替えただけで形が変わらないプレイリストは進めず、一覧の
+// それにあたる。再生の応答とプレイリストの応答は更新日時が同じときだけ同じ並びとして使われる。鍵を付け替えただけで形が変わらないプレイリストは進めず、一覧の
 // 順を動かさない。取引の変更を終えてから呼ぶ。
 func touchReshapedPlaylists(ctx context.Context, tx *sql.Tx, before playlistShapes) error {
 	for _, id := range slices.Sorted(maps.Keys(before)) {
@@ -607,7 +605,7 @@ func ensurePlaylist(ctx context.Context, tx *sql.Tx, id int64) error {
 
 // nextUpdatedAt は名前か項目を変えた後の playlists.updated_at である。今の時刻で、前の値より
 // 必ず進める。同じミリ秒に 2 度変わっても、時計が戻っても、変わる前と後の更新日時は違うので、
-// 応答の更新日時が同じなら同じ並びである（ui-design.md「One order」）。引数は今の Unix ms。
+// 応答の更新日時が同じなら同じ並びである。引数は今の Unix ms。
 const nextUpdatedAt = `max(?, updated_at + 1)`
 
 // touchPlaylist はプレイリスト id の更新日時を今に、前の値より必ず後へ進める。
@@ -663,8 +661,8 @@ type playlistEntry struct {
 
 // shownPlaylistItems はプレイリスト id の見せる項目（playlistItemShownCondition）を位置の順に、
 // 所有者として読んだ動画・グループ・スマートフォルダと合わせて返す。グループの値とメンバーの並びは
-// loadGroups の再生順（specs/048-groups/data-model.md「Play order」）、スマートフォルダの値と
-// メンバーの並びは読んだ時点のフォルダの再生順（specs/052-smart-folders/data-model.md「Contents」）
+// loadGroups の再生順、スマートフォルダの値と
+// メンバーの並びは読んだ時点のフォルダの再生順
 // である。
 func shownPlaylistItems(ctx context.Context, tx *sql.Tx, id int64) ([]domain.PlaylistItem, error) {
 	entries, err := shownPlaylistEntries(ctx, tx, id)

@@ -43,8 +43,7 @@ const defaultStreamContentType = "application/octet-stream"
 // 再生できない形式（playable = false）でも配信自体は行う。ブラウザが再生
 // できるかどうかと、ファイルを取得できるかは別の話である。
 func (s *server) StreamVideo(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
-	// ゲストとして処理する要求は、非公開にされたら打ち切れるよう台帳に載せる
-	// （contracts/guest-api.md §6）。
+	// ゲストとして処理する要求は、非公開にされたら打ち切れるよう台帳に載せる。
 	video, r, release, ok := s.lookupServedVideo(w, r, id)
 	if !ok {
 		return

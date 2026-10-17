@@ -22,8 +22,7 @@ export type PlaylistPanelState =
   { kind: "loading" } | { kind: "ready"; playlist: Playlist } | { kind: "failed" };
 
 /**
- * PlaylistContextStatus は動画ページのプレイリストの文脈の段階である
- * （specs/044-playlists/ui-design.md「Video page in a playlist」）。
+ * PlaylistContextStatus は動画ページのプレイリストの文脈の段階である。
  *
  * - `off`: クエリが無いか、ゲスト。ページは今までどおり
  * - `reading`: 開いてから最初の応答まで。行と矢印は描かない
@@ -60,7 +59,7 @@ function isNotFound(reason: unknown): boolean {
 
 /**
  * usePlaylistContext は、URL の `?playlist=&item=` と再生の応答から、動画ページの
- * プレイリストの文脈を作る（plan の Structure decision、research.md R-6・R-7）。
+ * プレイリストの文脈を作る（plan の Structure decision）。
  *
  * - 所有者だけが読む。ゲストとクエリの無いときは何も送らない（R-8）。
  * - 開いたとき・`readKey` が変わったとき（動画の終わり、予告が次の動画の消えたのを知ったとき）

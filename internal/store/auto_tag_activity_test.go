@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 自動タグ付けのアクティビティの記録と、タグごとの取り消し（specs/055-activity/research.md R-4・R-5・R-7）。
+// 自動タグ付けのアクティビティの記録と、タグごとの取り消し。
 
 // autoTagEntries は auto_tag の記録を新しい順に返す。
 func autoTagEntries(t *testing.T, db *DB) []domain.ActivityEntry {
@@ -260,7 +260,7 @@ func TestUndoAutoTagRemovesTheTagFromTheBundle(t *testing.T) {
 
 // 所有者がもう変えたタグの取り消しは already_reverted で、どのタグも変えずに却下だけを残す。外しただけ、外して
 // 手で付け直した、提案を確定した、のどれでも所有者のタグは残る。所有者の操作は判定と同じ秒の中で行い、取り消しが
-// 時刻ではなく所有者の記録の id で見分けることを確かめる（research.md R-7）。
+// 時刻ではなく所有者の記録の id で見分けることを確かめる。
 func TestUndoAutoTagAfterTheOwnerChangedIt(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -306,7 +306,6 @@ func TestUndoAutoTagAfterTheOwnerChangedIt(t *testing.T) {
 // 集まりのメンバー（代表でない）の判定が集まりの鍵に付けたタグを、所有者が同じ秒の中で外して付け直すと、所有者の
 // 記録の対象は代表の内容の鍵になり、触った鍵としてメンバー全員の内容の鍵を持つ。その後に代表が別のメンバーに
 // 変わっても、取り消しは対象の動画の内容の鍵で所有者の変更を見つけて already_reverted にし、所有者のタグを残す
-// （research.md R-7）。
 func TestUndoAutoTagKeepsTheOwnersReattachOnTheBundle(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -347,7 +346,7 @@ func TestUndoAutoTagKeepsTheOwnersReattachOnTheBundle(t *testing.T) {
 
 // 判定を待つ間・判定中に所有者が同じタグを付けて外しても、その記録は判定の結果より前なので、取り消しは判定が付けた
 // タグを消す。記録は積んだときに開くので、所有者の記録の id は記録の id より大きいが、結果を書いた印
-// （decided_mark）より小さい（research.md R-7）。
+// （decided_mark）より小さい。
 func TestUndoAutoTagRemovesTheTagTheOwnerChangedWhileItWaited(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -385,7 +384,7 @@ func TestUndoAutoTagRemovesTheTagTheOwnerChangedWhileItWaited(t *testing.T) {
 }
 
 // 所有者の記録はタグを id で持つので、判定の後にタグが改名され、所有者が外して付け直し、さらに改名されても、取り消し
-// は所有者の変更を見つけて already_reverted にし、所有者のタグを残す（research.md R-7）。
+// は所有者の変更を見つけて already_reverted にし、所有者のタグを残す。
 func TestUndoAutoTagKeepsTheOwnersReattachAcrossRenames(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
@@ -465,7 +464,7 @@ func TestUndoAutoTagAfterTheSubjectJoinedABundle(t *testing.T) {
 
 // ownerTagContest は、判定が p1 に cat を付け、所有者が p2 に cat を手で付けてから、p1 と p2 を representative
 // （"p1" か "p2"）を代表に束ねる。集まりの行は代表の行の写しなので、判定の行と所有者の行のどちらが集まりの行に
-// なるかは代表で決まる（research.md R-7）。判定の記録・cat・p1 と p2 の動画の id・鍵（集まりの鍵は "bundle"）を返す。
+// なるかは代表で決まる。判定の記録・cat・p1 と p2 の動画の id・鍵（集まりの鍵は "bundle"）を返す。
 func ownerTagContest(t *testing.T, representative string) (*DB, domain.ActivityEntry, domain.Tag, map[string]int64, map[string]string) {
 	t.Helper()
 	db, ids := itemsFixture(t)
@@ -488,7 +487,7 @@ func ownerTagContest(t *testing.T, representative string) (*DB, domain.ActivityE
 
 // 判定が p1 に付けたタグを、所有者が p2 に手で付けてから p2 を代表に束ねると、集まりの行は所有者の p2 の行の写しで、
 // 判定の行は p1 の鍵に隠れて残る。取り消しは判定が書いた行とその写しだけを消す（activity_entry_tag_keys）ので、
-// 集まりの所有者のタグは残し、隠れた判定の行を消して already_reverted になる（research.md R-7）。
+// 集まりの所有者のタグは残し、隠れた判定の行を消して already_reverted になる。
 func TestUndoAutoTagKeepsTheOwnersTagThatWonTheBundle(t *testing.T) {
 	db, entry, cat, _, keys := ownerTagContest(t, "p2")
 

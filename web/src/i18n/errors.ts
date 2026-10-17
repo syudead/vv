@@ -9,7 +9,7 @@ import type { ErrorDetails } from "./en";
 import { t } from "./messages";
 import { asUiText, type UiText } from "./uiText";
 
-// 失敗を画面の英語の文言にする（specs/023-english-i18n/research.md R-5・R-6）。
+// 失敗を画面の英語の文言にする。
 // サーバーの自由文（ffprobe の出力、過去の日本語の理由）は出さない。
 
 type Entry = UiText | ((details: ErrorDetails) => UiText);
@@ -43,7 +43,7 @@ export function errorText(error: unknown): UiText {
     const entry =
       lookup(t.errors.reason, error.reason) ?? lookup(t.errors.code, error.code);
     if (entry !== undefined) return render(entry, details);
-    // サーバーの message は英語の文である（contracts/error-api.md §0）。未知のコードの
+    // サーバーの message は英語の文である。未知のコードの
     // フォールバックとしてだけ出す。
     if (error.code !== "" && error.message !== "") return asUiText(error.message);
     return t.errors.requestFailed(error.status);

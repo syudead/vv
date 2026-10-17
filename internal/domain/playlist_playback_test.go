@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// プレイリストの連続再生の順序（specs/044-playlists/data-model.md「Playback order」）。
+// プレイリストの連続再生の順序。
 
 func playbackVideo(id int64) PlaylistItem {
 	video := Video{ID: id}
@@ -56,7 +56,7 @@ func TestPlaylistPlaybackOf(t *testing.T) {
 	v, h := playbackVideo(5), playbackGroup(6, "nn", 5, 61)
 	// スマートフォルダ F(7: 再生順 71〜73、71 は視聴済み)。
 	f := playbackSmartFolder(7, "dnn", 71, 72, 73)
-	// 再生順の空のスマートフォルダ E(8)。見せる項目として数えるが、開く動画は無い（research.md R-8）。
+	// 再生順の空のスマートフォルダ E(8)。見せる項目として数えるが、開く動画は無い。
 	e := playbackSmartFolder(8, "")
 
 	tests := []struct {
@@ -138,8 +138,7 @@ func TestPlaylistPlaybackOf(t *testing.T) {
 	}
 }
 
-// 項目がスマートフォルダの項目の step だけがフォルダの id を持つ（contracts/screen-api.md の
-// PlaylistStep）。フォルダの中の次の動画も持つ。
+// 項目がスマートフォルダの項目の step だけがフォルダの id を持つ。フォルダの中の次の動画も持つ。
 func TestPlaylistPlaybackOfSmartFolderSteps(t *testing.T) {
 	a, f, g := playbackVideo(1), playbackSmartFolder(7, "dnn", 71, 72, 73), playbackGroup(2, "nn", 21, 22)
 	folderOf := func(step *PlaylistStep) int64 {

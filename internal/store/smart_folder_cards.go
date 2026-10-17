@@ -1,7 +1,6 @@
 package store
 
-// スマートフォルダのカードの読み出し（GET /api/smart-folders/cards、specs/052-smart-folders/
-// data-model.md「Cards read」、research.md R-14）。画面に出たカードの値を、フォルダの一致する動画
+// スマートフォルダのカードの読み出し（GET /api/smart-folders/cards、docs/design-docs/catalog-organization.md/）。画面に出たカードの値を、フォルダの一致する動画
 // （smart_folder_matches.go）から読む。グループにまとめないので、本数は一致する動画の数で、絵柄と
 // 開く動画はフォルダの並べ順の先頭から選ぶ。
 
@@ -18,9 +17,8 @@ import (
 
 // SmartFolderCards は見る人（audience）に見せるスマートフォルダ ids のカードの値を、ids の順に
 // 返す。無いフォルダと、ゲストに見せないフォルダ（再生順が空）の id は飛ばし、同じ id は 1 回だけ
-// 返す。経路の条件が無い実体を名指すフォルダは何にも一致しない（research.md R-9）。フォルダによらない
+// 返す。経路の条件が無い実体を名指すフォルダは何にも一致しない。フォルダによらない
 // 部分は 1 度だけ求め、どのフォルダの値も同じ読み取りスナップショットの 1 つの問い合わせで読む
-// （research.md R-13）。
 func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain.Audience, ids []int64) ([]domain.SmartFolderCard, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
@@ -48,7 +46,7 @@ func (s *SmartFolderStore) SmartFolderCards(ctx context.Context, audience domain
 
 // ListSmartFolders は見る人（audience）に見せるスマートフォルダの要約を、どの深さのものも名前の順
 // （title_key、同じなら id）に返す（GET /api/smart-folders、親を選ぶ欄とフォルダの木）。所有者には
-// すべてを、ゲストには再生順が空でないフォルダだけを返す（research.md R-8）。ゲストにはフォルダごとに
+// すべてを、ゲストには再生順が空でないフォルダだけを返す。ゲストにはフォルダごとに
 // 再生順の最初の項目があるかを確かめる。
 func (s *SmartFolderStore) ListSmartFolders(ctx context.Context, audience domain.Audience) ([]domain.SmartFolderSummary, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})

@@ -20,7 +20,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// サムネイルの編集のセッションの経路（specs/045-comfyui-thumbnails/contracts/screen-api.md）は、
+// サムネイルの編集のセッションの経路は、
 // 本物の認証・保存層と app.ThumbnailEdits で確かめる。提供元・コマの取り出し・適用だけが偽である。
 
 // editFakes は app.ThumbnailEdits の偽の部品である。

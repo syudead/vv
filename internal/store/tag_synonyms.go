@@ -7,7 +7,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// AddSynonym は名前 name をタグ tagID のシノニムにする（data-model.md §4）。
+// AddSynonym は名前 name をタグ tagID のシノニムにする。
 //
 //   - name が無ければ canonical = 0 で1行足し、tagID を確定したタグにする。
 //   - name が既に tagID のシノニムなら何も変えない。
@@ -42,7 +42,7 @@ func (s *TagStore) AddSynonym(ctx context.Context, tagID int64, name string, mer
 		if err := insertTagName(ctx, tx, normalized, tagID, false); err != nil {
 			return domain.Tag{}, err
 		}
-		// シノニムを足したタグは確定したタグになる（specs/031-tentative-tags/research.md R-4）。
+		// シノニムを足したタグは確定したタグになる。
 		if err := confirmTagInTx(ctx, tx, tagID); err != nil {
 			return domain.Tag{}, err
 		}
@@ -71,7 +71,7 @@ func (s *TagStore) AddSynonym(ctx context.Context, tagID int64, name string, mer
 }
 
 // RemoveSynonym はタグ tagID のシノニム name を解除し、同じトランザクションで読んだ変更後の
-// タグを返す（外部連携 API が応答に載せる。specs/039-external-tag-admin/research.md R-5）。
+// タグを返す（外部連携 API が応答に載せる。docs/design-docs/catalog-organization.md）。
 // name が tagID のシノニムでなければ何も変えずに今のタグを返す。tagID が無ければ
 // domain.ErrTagNotFound を返す。
 func (s *TagStore) RemoveSynonym(ctx context.Context, tagID int64, name string) (domain.Tag, error) {

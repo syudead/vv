@@ -14,8 +14,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 映像の指紋と「同じ動画かもしれない」候補（specs/030-video-versions/data-model.md §1・§6・§7、
-// research.md R-6・R-7）。video_fingerprints と video_version_candidates は索引で、内容の参照が
+// 映像の指紋と「同じ動画かもしれない」候補。video_fingerprints と video_version_candidates は索引で、内容の参照が
 // 無くなるときに releaseContentIndex が消す。
 
 // fingerprintMissingCondition は、別名 alias の videos の行のシーク用スプライトが完成して
@@ -30,7 +29,7 @@ func fingerprintMissingCondition(alias string) string {
 
 // ApplyFingerprintForJob は専有した時点の内容鍵・所在・所在の世代が今も同じときだけ、
 // その内容の指紋を置き換え、反映したかを返す。同じ取引でその動画の fingerprint_failed を
-// 直近の取り込みの問題から消す。同じ取引でその内容の候補を作り直す（data-model.md §7）。
+// 直近の取り込みの問題から消す。同じ取引でその内容の候補を作り直す。
 func (s *IngestStore) ApplyFingerprintForJob(
 	ctx context.Context, job domain.Job, fingerprint domain.Fingerprint,
 ) (bool, error) {
@@ -68,8 +67,7 @@ func (s *IngestStore) ApplyFingerprintForJob(
 	return true, nil
 }
 
-// fingerprintDistanceFunction は 2 本の指紋の距離を SQLite から呼ぶ名前である
-// （data-model.md §7、research.md R-7）。引数は (hashes_a, interval_a, hashes_b, interval_b) で、
+// fingerprintDistanceFunction は 2 本の指紋の距離を SQLite から呼ぶ名前である。引数は (hashes_a, interval_a, hashes_b, interval_b) で、
 // どちらも今の domain.FingerprintVersion の指紋として読む（呼び出し側が版で絞る）。
 // domain.CompareFingerprints はコマを時刻で組にするので、保存の形のハッシュに加えて各指紋の
 // 間隔が要る。比べられない・読めないときは -1 を返す。
@@ -117,11 +115,10 @@ func decodeFingerprintArgs(hashes, interval driver.Value) (domain.Fingerprint, b
 	return fingerprint, true
 }
 
-// rebuildVersionCandidates は内容 key の候補をいったん消し、fingerprint と比べて作り直す
-// （data-model.md §7）。相手は同じ版の指紋を持ち、尺が domain.DurationsMatch の幅にある内容で、
+// rebuildVersionCandidates は内容 key の候補をいったん消し、fingerprint と比べて作り直す。相手は同じ版の指紋を持ち、尺が domain.DurationsMatch の幅にある内容で、
 // 却下された組と同じ集まりの組を除き、距離が 0 以上 domain.FingerprintMatchMaxDistance 以下の
 // もの。key の動画の尺が分からなければ候補を作らない。作った候補は組の開いている記録に付き直し、判定が入なら
-// 判定できる組に記録を開く（syncPairActivities、specs/055-activity/data-model.md「Rules」）。作り直しで候補から
+// 判定できる組に記録を開く（syncPairActivities、docs/design-docs/activity.md「Rules」）。作り直しで候補から
 // 外れた組の開いている記録は閉じる（closeDroppedPairActivities）。
 func rebuildVersionCandidates(ctx context.Context, tx *sql.Tx, c *changes, key string, fingerprint domain.Fingerprint) error {
 	if err := computeVersionCandidates(ctx, tx, key, fingerprint); err != nil {
@@ -178,8 +175,7 @@ func computeVersionCandidates(ctx context.Context, tx *sql.Tx, key string, finge
 	return nil
 }
 
-// pruneVersionCandidates は、却下された組と同じ集まりの 2 本の組を候補から消す
-// （data-model.md §1 の不変条件）。束ねる操作と、スキャン時の引き継ぎが集まりのメンバーや
+// pruneVersionCandidates は、却下された組と同じ集まりの 2 本の組を候補から消す。束ねる操作と、スキャン時の引き継ぎが集まりのメンバーや
 // 却下の鍵を付け替えたあとに呼ぶ。
 func pruneVersionCandidates(ctx context.Context, tx *sql.Tx) error {
 	if _, err := tx.ExecContext(ctx, `delete from video_version_candidates
@@ -203,7 +199,7 @@ const candidatePairsFrom = `from video_version_candidates c
 	where `
 
 // candidatePairsCondition は、候補の組 c の両方の鍵に登録の所在を持つ動画があり、却下されて
-// おらず、同じ集まりでもない条件である（research.md R-7: 却下は算出と読み出しの両方で除く）。
+// おらず、同じ集まりでもない条件である。
 func candidatePairsCondition() string {
 	return registeredVideoCondition("va") + ` and ` + registeredVideoCondition("vb") + `
 	and not exists (select 1 from video_version_dismissals d where d.key_a = c.key_a and d.key_b = c.key_b)
@@ -213,7 +209,7 @@ func candidatePairsCondition() string {
 
 // Candidates は「同じ動画かもしれない」候補のうち、両方の鍵に登録の所在を持つ動画がある組を
 // 新しい順（created_at、同じなら鍵の順）に最大 domain.MaxVersionCandidates 組返し、Total に
-// 全件の数を入れる（data-model.md §7）。各組の動画は所有者から見た詳細（GET /api/videos/{id}
+// 全件の数を入れる。各組の動画は所有者から見た詳細（GET /api/videos/{id}
 // と同じ値）で、id の小さい順に並べる。所有者だけの経路が使う。
 func (s *VersionStore) Candidates(ctx context.Context) (domain.VersionCandidatePage, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -290,7 +286,7 @@ func candidatePairIDs(ctx context.Context, tx *sql.Tx, condition string) ([]cand
 }
 
 // Dismiss は 2 本の動画を「違う動画」と記録し（video_version_dismissals、key_a < key_b）、その組の
-// 候補を消す（data-model.md §7・§8）。候補に無い組でも記録する。どちらかがいまライブラリに
+// 候補を消す。候補に無い組でも記録する。どちらかがいまライブラリに
 // 無ければ domain.ErrNotFound、2 本が同じ内容なら domain.ErrTooFewVersions で、何も変えない。
 func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 	tx, err := s.db.sql.BeginTx(ctx, nil)
@@ -313,7 +309,7 @@ func (s *VersionStore) Dismiss(ctx context.Context, videoIDs [2]int64) error {
 	if err := dismissPair(ctx, tx, keyA, keyB); err != nil {
 		return err
 	}
-	// 判定の記録が開いている組なら、所有者が決めたとして閉じる（specs/055-activity/data-model.md「Outcomes」）。
+	// 判定の記録が開いている組なら、所有者が決めたとして閉じる。
 	c := &changes{}
 	now := time.Now()
 	if err := closePairActivities(ctx, tx, c, []string{keyA, keyB}, domain.ActivityDecidedByOwner,

@@ -26,7 +26,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 手元の画像のアップロードの経路（specs/046-thumbnail-image-upload/contracts/screen-api.md）は、
+// 手元の画像のアップロードの経路は、
 // 本物の認証・保存層と app.Ingest の確かめと適用で確かめる。ffmpeg の合わせと生成物の置き場だけが
 // 偽である。
 

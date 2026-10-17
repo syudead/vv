@@ -6,7 +6,6 @@ as one versioned JSON row per video in `video_media_info`
 ([`internal/media/probe_media.go`](../../internal/media/probe_media.go),
 [`internal/domain/media_info.go`](../../internal/domain/media_info.go),
 [`internal/store/media_info.go`](../../internal/store/media_info.go)).
-Background: [research.md](../../specs/056-media-info/research.md).
 
 The diagram shows where each part of the value is read, decided and stored.
 

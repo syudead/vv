@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/ai-layer.md
-sourceHash: f795632829396c9856042b460f0ff7413d0e3c44c01128c588d0ff19cf3cb1a3
+sourceHash: ce85a53ab0fdd30787da793a395883a61ce7c9f065175dc4073a41b853307d66
 ---
 
 # AI 層: 分類器のポートとプロバイダ {#ai-layer-classifier-port-and-providers}
@@ -68,7 +68,7 @@ Ollama は 1 回のリクエストで 64 個の質問を受け付けるが、64 
 
 ## 画像編集のプロバイダ {#image-edit-provider}
 
-[`internal/comfyui`](../../internal/comfyui) は画像編集のプロバイダだ。1 つのアダプタがセルフホストの ComfyUI と Comfy Cloud の両方を扱い、両者の違いはこのパッケージの中に閉じ込める ([045 research R-1、R-5](../../specs/045-comfyui-thumbnails/research.md#r-1-an-image-edit-port-in-internalapp-one-internalcomfyui-adapter-for-both-providers))。`internal/app` は自身が使うインターフェースを宣言し、`cmd/mdm` がアダプタを渡す。depguard は `internal/app` がアダプタを import しないようにする。
+[`internal/comfyui`](../../internal/comfyui) は画像編集のプロバイダだ。1 つのアダプタがセルフホストの ComfyUI と Comfy Cloud の両方を扱い、両者の違いはこのパッケージの中に閉じ込める。`internal/app` は自身が使うインターフェースを宣言し、`cmd/mdm` がアダプタを渡す。depguard は `internal/app` がアダプタを import しないようにする。
 
 `app.ComfyUIConnection` は、`/api/settings/comfyui` と `/api/settings/comfyui/check` で、接続を保存し、接続テストを実行する。`app.OllamaConnection` が自動タグ付けと別であるように、プロバイダを使うサムネイルの機能とは別だ。
 
@@ -85,19 +85,19 @@ Ollama は 1 回のリクエストで 64 個の質問を受け付けるが、64 
 
 | モデル | 強み | モデルファイル | Comfy Cloud での編集 1 回あたりの時間 |
 | --- | --- | --- | --- |
-| FLUX.2 [klein] 4B fp8 (既定) | 字幕を最も確実に消す | 約 12 GB | 8〜16 秒 ([R-12](../../specs/045-comfyui-thumbnails/research.md#r-12-the-model-is-flux2-klein-4b-fp8)) |
+| FLUX.2 [klein] 4B fp8 (既定) | 字幕を最も確実に消す | 約 12 GB | 8〜16 秒  |
 | Qwen-Image-Edit-2511 fp8mixed、Lightning 4 ステップ LoRA | 参照画像の色と雰囲気を取り込む | 約 31 GB | アップロードを含めて約 23 秒 |
 
-Qwen-Image-Edit の時間は合成した 1 枚のフレームで計測した。セルフホストの ComfyUI でこのモデルを使うには 24 GB の GPU が必要だ。このモデルの既知の弱点は POC から得たものだ。日本語の指示を一度読み違え、フレーム内の画面にモザイクをかけた (R-12)。所有者が Settings でモデルを選ぶので、既定は主な用途に最も優れたモデルのままにする。
+Qwen-Image-Edit の時間は合成した 1 枚のフレームで計測した。セルフホストの ComfyUI でこのモデルを使うには 24 GB の GPU が必要だ。このモデルの既知の弱点は POC から得たものだ。日本語の指示を一度読み違え、フレーム内の画面にモザイクをかけた。所有者が Settings でモデルを選ぶので、既定は主な用途に最も優れたモデルのままにする。
 
-API キーは書き込み専用だ。`GET` は `apiKeySet` を答え、キーは決して答えない。`Cache-Control: no-store` を付ける。`apiKey` のない `PUT` は保存済みのキーを保持し、空文字列はキーを消す。キーは平文で保存する。暗号化の鍵は同じデータフォルダに置かれることになるので、暗号化してもデータベースを読む者から何も守れない ([R-9](../../specs/045-comfyui-thumbnails/research.md#r-9-the-api-key-is-write-only))。
+API キーは書き込み専用だ。`GET` は `apiKeySet` を答え、キーは決して答えない。`Cache-Control: no-store` を付ける。`apiKey` のない `PUT` は保存済みのキーを保持し、空文字列はキーを消す。キーは平文で保存する。暗号化の鍵は同じデータフォルダに置かれることになるので、暗号化してもデータベースを読む者から何も守れない。
 
 | 接続テスト | リクエスト | 利用できないと判断する条件 |
 | --- | --- | --- |
 | セルフホスト | 保存した URL への `GET /system_stats` | URL に到達できない、または応答が ComfyUI のシステム情報ではない |
 | Comfy Cloud | `X-API-Key` を付けた `GET https://cloud.comfy.org/api/jobs?limit=1` | Comfy Cloud に到達できない、またはキーに対して `401` か `403` を返す |
 
-プロバイダが応答すると、テストは `GET /object_info` を読み、vv が [`internal/comfyui/workflows`](../../internal/comfyui/workflows) に同梱する、保存済みのモデルの 2 つのワークフローを確認する。ワークフローが使うすべての `class_type` が存在しなければならず、ローダーノードが指定するすべてのモデルファイルがそのローダーの選択肢に含まれていなければならない。確認は `missing` の一覧を付けて利用できないと答える。一覧には、各モデルファイルをその `models` 以下のフォルダとダウンロードページとともに並べ、続いて欠けている各ノードの型を並べる。ノードの型の対処は ComfyUI の更新だ ([R-13](../../specs/045-comfyui-thumbnails/research.md#r-13-the-connection-test-checks-the-workflows-nodes-and-model-files))。ワークフローの正は埋め込んだファイルだ。所有者向けの手順は [comfyui-thumbnails.md](../how-to/comfyui-thumbnails.md) にある。`GET /api/thumbnail-edits/readiness` は接続が保存されているかを答える。動画ページが編集を有効にするのに必要なのはこの情報だ。このエンドポイントはテストを実行しない。
+プロバイダが応答すると、テストは `GET /object_info` を読み、vv が [`internal/comfyui/workflows`](../../internal/comfyui/workflows) に同梱する、保存済みのモデルの 2 つのワークフローを確認する。ワークフローが使うすべての `class_type` が存在しなければならず、ローダーノードが指定するすべてのモデルファイルがそのローダーの選択肢に含まれていなければならない。確認は `missing` の一覧を付けて利用できないと答える。一覧には、各モデルファイルをその `models` 以下のフォルダとダウンロードページとともに並べ、続いて欠けている各ノードの型を並べる。ノードの型の対処は ComfyUI の更新だ。ワークフローの正は埋め込んだファイルだ。所有者向けの手順は [comfyui-thumbnails.md](../how-to/comfyui-thumbnails.md) にある。`GET /api/thumbnail-edits/readiness` は接続が保存されているかを答える。動画ページが編集を有効にするのに必要なのはこの情報だ。このエンドポイントはテストを実行しない。
 
 テストは、何も保存されていないときもそれを報告する。原因ごとに別のメッセージがあり、どのメッセージも応答の本文を含まない。テストはリダイレクトをたどらないので、キーが別のホストに送られることはない。Ollama と同じく、サーバーは保存した接続にのみリクエストを送り、リクエスト本文の URL には決して送らない。
 

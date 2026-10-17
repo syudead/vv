@@ -39,7 +39,7 @@ func (s *server) GetVideoThumbnail(
 		return
 	}
 
-	// 版の有無によらず、使うたびに確かめさせる（contracts/guest-api.md §5）。
+	// 版の有無によらず、使うたびに確かめさせる。
 	// If-None-Match が一致すれば http.ServeContent が 304 を返す。ETag は内容から
 	// 作る。作り直しで大きさと更新時刻が前と同じになっても、古い画像を使わせない。
 	etag, err := readerETag(file)

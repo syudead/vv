@@ -9,9 +9,8 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API のタグの種類（specs/051-tag-kinds/contracts/external-api.md）。どの操作も画面の経路
-// （tag_kinds.go）と同じ TagStore の操作を呼び、新しい書き込みの経路は持たない
-// （specs/039-external-tag-admin/research.md R-6）。形は人物の操作（external_credits.go）に倣い、一覧と
+// 外部連携 API のタグの種類。どの操作も画面の経路
+// （tag_kinds.go）と同じ TagStore の操作を呼び、新しい書き込みの経路は持たない。形は人物の操作（external_credits.go）に倣い、一覧と
 // 作成は集まりの経路、名前の変更と削除は POST の下位の経路で、種類は本文の id で指す。
 
 // ListTagKinds はすべての種類を id の順に返す（GET /api/v1/tag-kinds）。

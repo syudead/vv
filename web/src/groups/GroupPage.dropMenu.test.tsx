@@ -15,8 +15,7 @@ import { renderPage, seed, server, setUpGroupPageServer } from "../testing/group
 
 setUpGroupPageServer();
 
-// グループのページで動画を動画に落とす（specs/050-drag-organize/ui-design.md「Drop menus」
-// 「The new group's name」「Group page」、R-6）。「Season」は左から Episode 1、子グループ
+// グループのページで動画を動画に落とす。「Season」は左から Episode 1、子グループ
 // Extras、Episode 2 を持つ。
 
 /** cardTitles は格子のカードの題名か名前の欄の値を左から返す。 */

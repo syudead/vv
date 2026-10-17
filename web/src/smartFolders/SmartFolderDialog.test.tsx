@@ -7,8 +7,7 @@ import { __resetTagsForTest } from "../api/tags";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import SmartFolderDialog, { type SmartFolderDialogTarget } from "./SmartFolderDialog";
 
-// スマートフォルダを作る・直す窓（specs/052-smart-folders/ui-design.md「Smart folder
-// dialog」）。送る前の確かめと、送った結果の失敗の振り分け。
+// スマートフォルダを作る・直す窓。送る前の確かめと、送った結果の失敗の振り分け。
 
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

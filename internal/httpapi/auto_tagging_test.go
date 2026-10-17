@@ -127,7 +127,7 @@ func TestOllamaSettingsDefaultsAndSave(t *testing.T) {
 		got.Endpoint != domain.DefaultOllamaEndpoint || got.Model != domain.DefaultOllamaModel || got.Saved {
 		t.Fatalf("defaults = %d %+v", rec.Code, got)
 	}
-	// saved は応答だけの値で、要求に含めると拒む（specs/058-settings-pages/contracts/screen-api.md）。
+	// saved は応答だけの値で、要求に含めると拒む。
 	if res := f.send(http.MethodPut, "/api/settings/ollama", `{"endpoint":"http://gpu:11434","model":"clef","saved":true}`); res.StatusCode != http.StatusBadRequest {
 		t.Errorf("body with saved: status = %d", res.StatusCode)
 	}

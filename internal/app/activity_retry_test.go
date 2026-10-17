@@ -10,7 +10,6 @@ import (
 )
 
 // 走査を始めたものは、手動の走査なら所有者、監視の走査と起動時の再開なら規則で、走査と閉じる記録に渡る
-// （specs/055-activity/research.md R-5）。
 func TestScansPassTheDeciderOfTheirOrigin(t *testing.T) {
 	ctx := context.Background()
 	for _, tc := range []struct {

@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 適用したサムネイルの画像（specs/045-comfyui-thumbnails/data-model.md、research.md R-6・R-10）。
+// 適用したサムネイルの画像。
 
 func applyThumbnailImage(t *testing.T, db *DB, id int64, key string, image []byte) domain.Video {
 	t.Helper()
@@ -103,7 +103,7 @@ func TestApplyThumbnailImageRecordsRow(t *testing.T) {
 }
 
 // 適用は代表サムネイル・元の画像・出どころを 1 つの行に書き、動画は出どころを読める。適用し直すと
-// 3 つとも置き換わる（specs/046-thumbnail-image-upload/data-model.md）。
+// 3 つとも置き換わる。
 func TestApplyThumbnailImageRecordsSourceAndOrigin(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()
@@ -306,7 +306,6 @@ func TestThumbnailImageSurvivesVideoDeletion(t *testing.T) {
 
 // 00041 の移行は、それより前に書いた行を元の画像なし（null）・出どころ generated として読めるように
 // し、Down は 2 列を落とす。不変条件の検査は空の元の画像と未知の出どころを見つける
-// （specs/046-thumbnail-image-upload/data-model.md）。
 func TestThumbnailImageSourcesMigration(t *testing.T) {
 	db, err := Open(t.TempDir())
 	if err != nil {
@@ -379,7 +378,7 @@ func TestThumbnailImageSourcesMigration(t *testing.T) {
 }
 
 // 今の代表サムネイルの選び方は、適用した画像の元の画像（無い行では代表サムネイル）と指定した位置を
-// 1 つの文で読む（specs/046-thumbnail-image-upload/research.md R-4）。
+// 1 つの文で読む。
 func TestCurrentThumbnailSelection(t *testing.T) {
 	db, ids := overrideFixture(t)
 	ctx := context.Background()

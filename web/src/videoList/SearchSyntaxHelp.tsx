@@ -11,7 +11,7 @@ import { Separator } from "../ui/shadcn/separator";
 const maxSearchTerms = 16;
 
 /**
- * syntaxRows は手引きの4行の対応表である（ui-design.md「Syntax help」）。描画のたびに
+ * syntaxRows は手引きの4行の対応表である。描画のたびに
  * カタログから作る。
  */
 function syntaxRows(): { examples: UiText[]; meaning: ReactNode }[] {

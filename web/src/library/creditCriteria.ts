@@ -4,9 +4,7 @@ import type { CreditKind } from "../api/credits";
 
 /**
  * creditCriteria は、ライブラリだけが持つ人物・団体の絞り込み（URL の `person` と
- * `organization`）の読み書きを行う（specs/047-video-work-info/contracts/screen-api.md
- * 「List parameters `person` and `organization`」、ui-design.md「Library: filter by a
- * person or organization」）。tagCriteria と同じく、共有の `ListCriteria` には足さない —
+ * `organization`）の読み書きを行う。tagCriteria と同じく、共有の `ListCriteria` には足さない —
  * 足すとフォルダ画面も読んで URL に残してしまい、フォルダ画面の URL を変えない約束に反する。
  */
 
@@ -17,8 +15,7 @@ export const PERSON_PARAM = "person";
 export const ORGANIZATION_PARAM = "organization";
 
 /**
- * URL の `tagKind` パラメータの名前（specs/051-tag-kinds/contracts/screen-api.md
- * 「List parameter `tagKind`」）。人物・団体と同じくライブラリだけの条件なので、ここで
+ * URL の `tagKind` パラメータの名前。人物・団体と同じくライブラリだけの条件なので、ここで
  * 一緒に読み書きする。
  */
 export const TAG_KIND_PARAM = "tagKind";

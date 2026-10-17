@@ -102,7 +102,7 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 		return domain.UpsertResult{}, err
 	}
 	// 前の中身が別のパスの動画として現れたら、それを前の中身とする後継の記録は取り消す
-	// （specs/030-video-versions/data-model.md §5 の手順 3）。
+	//
 	if newVideo {
 		if err := cancelSuccessionsFrom(ctx, tx, file.ContentKey); err != nil {
 			return domain.UpsertResult{}, err
@@ -173,7 +173,7 @@ func (s *ScanIndexStore) UpsertVideo(ctx context.Context, file domain.VideoFile)
 // recordLocationImport は、既知の内容を新しいパスで見つけて（移動・改名・完全に同じファイルの複製）
 // 積む仕事が無い取り込みを、done/completed の import の記録として書く。仕事を積むか、待っているか
 // 走っている仕事か欠けた指紋がある動画は、走査が積む仕事の記録（joinImportActivity）に入るので、
-// ここでは書かない（specs/055-activity/data-model.md「Rules」）。
+// ここでは書かない。
 func recordLocationImport(
 	ctx context.Context, tx activityWriter, c *changes, result domain.UpsertResult, decider domain.ActivityDecider,
 ) error {
@@ -292,7 +292,7 @@ func (s *ScanIndexStore) DeleteVideoLocations(ctx context.Context, ids []int64) 
 }
 
 // UpdateLocationCreatedAt は所在 locationID のファイルの作成日時を createdAt にする（秒で持ち、
-// ゼロ値なら null に戻して読み出しを mtime に倒す。specs/033-video-dates/data-model.md §5）。
+// ゼロ値なら null に戻して読み出しを mtime に倒す。docs/design-docs/catalog-organization.md）。
 // 走査が変わっていないファイルの作成日時の違いを見つけたときに呼ぶ。所在の事実を直すだけなので
 // updated_at・version は動かさず、イベントも発行しない。所在が無ければ何もしない。
 func (s *ScanIndexStore) UpdateLocationCreatedAt(ctx context.Context, locationID int64, createdAt time.Time) error {

@@ -22,8 +22,7 @@ export interface NavEntry {
   /** 行き先より下の URL（`/folders/3/A` など）でも選択中にする。 */
   matchDescendants?: boolean;
   /**
-   * 所有者のデータ（タグ・人物と団体・視聴履歴・プレイリスト・候補）に依る項目。ゲストには出さない
-   * （specs/016-single-account-auth/ui-design.md「Guest degradation」）。
+   * 所有者のデータ（タグ・人物と団体・視聴履歴・プレイリスト・候補）に依る項目。ゲストには出さない。
    */
   ownerOnly?: boolean;
   /** レールの右上に要対応の記録の数を出す（アクティビティの項目）。 */

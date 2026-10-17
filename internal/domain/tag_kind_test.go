@@ -8,7 +8,6 @@ import (
 )
 
 // 名前の重複は包まれても ErrTagKindNameTaken として判定でき、文はその名前を挙げる
-// （specs/051-tag-kinds/contracts/screen-api.md の 409 tag_kind_name_taken）。
 func TestTagKindNameConflictIsNameTaken(t *testing.T) {
 	err := fmt.Errorf("create: %w", &TagKindNameConflict{Kind: TagKindRef{ID: 1, Name: "Genre"}})
 	if !errors.Is(err, ErrTagKindNameTaken) {

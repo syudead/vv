@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-// TS の録画の番組の選び方（specs/056-media-info/research.md R-4 の表）。
+// TS の録画の番組の選び方。
 
 var broadcastZone = time.FixedZone("JST", 9*60*60)
 

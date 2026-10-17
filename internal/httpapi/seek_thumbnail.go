@@ -14,7 +14,6 @@ import (
 )
 
 // GetVideoSeekThumbnail はシーク用サムネイルのスプライトの配置情報を返す
-// （specs/021-seek-thumbnail-sprite/contracts/seek-sprite-api.md §2）。
 func (s *server) GetVideoSeekThumbnail(
 	w http.ResponseWriter,
 	r *http.Request,
@@ -44,7 +43,7 @@ func (s *server) GetVideoSeekThumbnail(
 	}
 	body = append(body, '\n')
 
-	// 版の有無によらず、使うたびに確かめさせる（contracts/guest-api.md §5）。
+	// 版の有無によらず、使うたびに確かめさせる。
 	etag := bytesETag(body)
 	setRevalidate(w, etag)
 	if etagMatches(r.Header.Get("If-None-Match"), etag) {
@@ -60,7 +59,6 @@ func (s *server) GetVideoSeekThumbnail(
 }
 
 // GetVideoSeekThumbnailSheet はシーク用サムネイルのスプライトのシートを返す
-// （contracts/seek-sprite-api.md §3）。
 func (s *server) GetVideoSeekThumbnailSheet(
 	w http.ResponseWriter,
 	r *http.Request,

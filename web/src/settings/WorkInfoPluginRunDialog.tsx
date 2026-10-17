@@ -109,8 +109,7 @@ function RunBody({ loaded, onRetry }: { loaded: Loaded; onRetry: () => void }) {
 /**
  * WorkInfoPluginRunDialog はプラグインの直近の実行が標準エラーに書いたものを見せる。開くたびに
  * `GET …/{id}/last-run` を読むので、設定画面を開いている間に終わった実行も出る。秘密の設定の
- * 値はサーバーが `[secret]` に置き換えてある（specs/056-plugin-tooling/ui-design.md
- * 「Last run dialog」）。
+ * 値はサーバーが `[secret]` に置き換えてある。
  */
 export default function WorkInfoPluginRunDialog({
   plugin,

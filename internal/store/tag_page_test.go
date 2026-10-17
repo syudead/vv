@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// タグの一覧のページ読み（specs/036-tag-admin-scale/data-model.md §2、#726）。
+// タグの一覧のページ読み。
 
 // createTagsNamed は名前ごとにタグを作り、名前から id への対応を返す。
 func createTagsNamed(t *testing.T, db *DB, names ...string) map[string]int64 {

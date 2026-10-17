@@ -1,6 +1,6 @@
 -- +goose Up
 -- 索引。内容の参照が無くなるときに消し、走査と取り込みで作り直せる。
--- 同じパスの中身が変わった後継の候補（research.md R-5、data-model.md §5）。記録した走査が
+-- 同じパスの中身が変わった後継の候補。記録した走査が
 -- 閉じ、新しい中身の解析が終わったときに判定して消す。
 create table video_successions (
     new_key         text    primary key,

@@ -1,5 +1,4 @@
-// Package arib は ARIB STD-B24 の 8 単位符号の文字列を UTF-8 にする（specs/056-media-info/
-// research.md R-4）。TS の録画の SDT と EIT にある放送局名と番組名を読むためにある。
+// Package arib は ARIB STD-B24 の 8 単位符号の文字列を UTF-8 にする。TS の録画の SDT と EIT にある放送局名と番組名を読むためにある。
 //
 // 漢字・かな（JIS X 0208）は golang.org/x/text/encoding/japanese で、ひらがな・カタカナの
 // 集合、JIS X 0201 のカタカナ、85〜94 区の追加記号は表で読む。符号の切り替え（locking

@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/sidecar-subtitles.md
-sourceHash: ea82a78074c8236ee9b8d1463c4dc17accf72e5c578fbc1db39c75d1922e6f6a
+sourceHash: 7639f119b30b18b59233c2c6b2126b738deafd59c02594e5d0f9ace15e1e3d9d
 ---
 
 # 隣の字幕ファイル {#sidecar-subtitle-files}
 
-VVMDM は、動画の隣に置かれた SRT と WebVTT のファイルを字幕として表示し、リクエストのたびに WebVTT へ変換する ([`internal/httpapi/subtitles.go`](../../internal/httpapi/subtitles.go))。背景: [research.md](../../specs/028-sidecar-subtitles/research.md)。API: [contracts/subtitles-api.md](../../specs/028-sidecar-subtitles/contracts/subtitles-api.md)。
+VVMDM は、動画の隣に置かれた SRT と WebVTT のファイルを字幕として表示し、リクエストのたびに WebVTT へ変換する ([`internal/httpapi/subtitles.go`](../../internal/httpapi/subtitles.go))。リクエストと応答の形は [api/openapi.yaml](../../api/openapi.yaml) にある。
 
 プレーヤーは 2 つのリクエストを送る。一方は字幕を一覧し、もう一方はそのうちの 1 つを取得する。どちらも動画のフォルダを読み、何も保存しない。
 
@@ -105,7 +105,7 @@ flowchart LR
 
 ライブ変換中は、サーバーが字幕を `offsetMs` だけずらし、プレーヤーは開始位置が確定するたびにトラックを付け直す ([`subtitleTracks.ts`](../../web/src/player/subtitleTracks.ts))。
 
-プレーヤーは、シーク位置を 0 として始まる変換後のストリームの時刻でキューを選ぶ。プレーヤーが自分の時計に加えるオフセットは字幕には届かないので、サーバーが字幕をずらす必要がある ([research.md R-6](../../specs/028-sidecar-subtitles/research.md))。
+プレーヤーは、シーク位置を 0 として始まる変換後のストリームの時刻でキューを選ぶ。プレーヤーが自分の時計に加えるオフセットは字幕には届かないので、サーバーが字幕をずらす必要がある。
 
 トラックは、次の状態を経て開始位置に追従する。
 

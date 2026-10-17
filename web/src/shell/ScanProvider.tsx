@@ -28,7 +28,7 @@ export interface ScanContextValue {
   loaded: boolean;
   /**
    * 今の処理。取り込み中に `Scan.activity` が一瞬無くなっても、同じ取り込みのあいだは
-   * 直前の値を残す（specs/024-import-progress/ui-design.md「Words」）。
+   * 直前の値を残す。
    */
   activity: ScanActivity | null;
   /** 状態取得や開始の失敗。 */
@@ -50,8 +50,7 @@ export interface ScanContextValue {
   finished: Scan | null;
   /**
    * 「終わったのを見た」自動の取り込み（`origin` が `watch`）のスキャン。終わりは `status` で
-   * 決める。手動の `finished` とは分け、開いている一覧はこちらでその場で更新する
-   * （specs/042-folder-watch-import/ui-design.md「Open lists after a watch scan」）。
+   * 決める。手動の `finished` とは分け、開いている一覧はこちらでその場で更新する。
    */
   watchFinished: Scan | null;
 }
@@ -101,7 +100,7 @@ export function useScanControls(): ScanControlsValue {
 
 /**
  * isWatchScan は、フォルダの監視が始めた取り込みかを返す。走っているあいだは画面のどこにも
- * 出さず、「取り込みを始められない」理由にもしない（ui-design.md「Settings: Scan status with a watch scan」）。
+ * 出さず、「取り込みを始められない」理由にもしない。
  */
 export function isWatchScan(scan: Scan | null): boolean {
   return scan?.origin === "watch";
@@ -137,8 +136,7 @@ export function nextActivity(
  *
  * 取り込みは所有者だけのものなので、ゲストとして描くときは状態を取りに行かず
  * （`GET /api/scans/current` を呼ばない）、`/api/events` も購読しない。取り込みの
- * 状態は「まだ取り込んでいない」のまま動かず、開始も取り直しも何もしない
- * （specs/016-single-account-auth/ui-design.md「Top bar」）。
+ * 状態は「まだ取り込んでいない」のまま動かず、開始も取り直しも何もしない。
  */
 export function ScanProvider({ children }: { children: ReactNode }) {
   const owner = useAudience() === "owner";

@@ -13,7 +13,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// サムネイルの編集のセッションの経路（specs/045-comfyui-thumbnails/contracts/screen-api.md）。
+// サムネイルの編集のセッションの経路。
 // どれも所有者だけで、accessRoutes に載せない。セッションは internal/app の *ThumbnailEdits が
 // メモリに持つ。
 
@@ -38,7 +38,7 @@ type ThumbnailEdits interface {
 }
 
 // StartThumbnailEdit は動画のコマか今のサムネイルから編集を始める（POST /api/videos/{id}/thumbnail-edits。
-// specs/046-thumbnail-image-upload/contracts/screen-api.md）。
+// docs/design-docs/thumbnail-editing.md）。
 func (s *server) StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id gen.VideoId) {
 	var body gen.StartThumbnailEditRequest
 	if !s.readJSONBody(w, r, &body) {
@@ -72,7 +72,7 @@ func (s *server) StartThumbnailEdit(w http.ResponseWriter, r *http.Request, id g
 	// 読む元は配信と同じ規則で決め、symlink を辿った先のパスを渡す（SetVideoThumbnailPosition）。
 	// 今のサムネイルから始める編集は、適用した画像があればファイルを読まないので、ファイルを
 	// 開けなくても空のパスで進め、コマが要るときだけ Start が domain.ErrMediaFileUnavailable を返す
-	// （specs/046-thumbnail-image-upload/ui-design.md: プレイヤーが出ない動画でも始められる）。
+	//
 	_, path, ok := s.resolveMediaFile(r, video)
 	if !ok && start.Source == domain.ThumbnailEditFromFrame {
 		s.notFoundReason(w, reasonFileUnavailable, "Cannot open this video's file.")
@@ -311,8 +311,7 @@ func (s *server) thumbnailEditFailure(w http.ResponseWriter, err error) {
 	}
 }
 
-// thumbnailEditError は編集に固有の誤りを契約の応答にし、書いたかを返す
-// （specs/045-comfyui-thumbnails/contracts/screen-api.md）。提供元の文は message に入れない。
+// thumbnailEditError は編集に固有の誤りを契約の応答にし、書いたかを返す。提供元の文は message に入れない。
 func (s *server) thumbnailEditError(w http.ResponseWriter, err error) bool {
 	var failure *domain.ImageEditError
 	switch {

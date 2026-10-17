@@ -11,8 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの取得の結果の反映（specs/049-work-info-plugins/data-model.md の Rules、
-// research.md R-8・R-9、specs/052-plugin-work-info-fields/research.md R-3・R-4）。選んだ題名を表示名に、
+// 作品情報プラグインの取得の結果の反映。選んだ題名を表示名に、
 // 選んだタグを仮のタグとして、選んだ作品の詳細を 047 の作品情報として 1 つの取引で書く。
 // SetDisplayName・ApplyVideoTags・WorkInfoStore.Set を順に呼ばず、パッケージ内の関数
 // （writeChangedDisplayName・writeVideoTagsByName・matchCredits・insertCredit・applyWorkInfo）を共有する。
@@ -107,7 +106,7 @@ func (s *OverrideStore) ApplyFetchedWorkInfo(
 	if err != nil {
 		return domain.FetchedWorkInfoApplied{}, err
 	}
-	// 適用は所有者の操作として、反映先の動画に 1 件記録する（specs/055-activity/research.md R-6）。
+	// 適用は所有者の操作として、反映先の動画に 1 件記録する。
 	c := &changes{}
 	if err := recordOwnerVideoActivity(ctx, tx, c, domain.ActivityWorkInfoApply,
 		ownerVideoChanges(contentKeys[:1], ""), now); err != nil {
@@ -205,7 +204,7 @@ func appliedWorkInfoEvents(videoID int64, changed []int64) []domain.Event {
 // checkFetchedPlugin は取引 tx の中でプラグイン apply.PluginID の行を読み直し、行が無いか、問題があるか、
 // 承認済みでないか、ダイジェストが apply.Digest でないか、世代が apply.Generation でなければ
 // domain.ErrWorkInfoFetchStale を返す。世代は、取得のあとに同じバイト列で差し替えて再承認したことや、
-// 取り消して再承認したことを見分ける（research.md R-8）。
+// 取り消して再承認したことを見分ける。
 func checkFetchedPlugin(ctx context.Context, tx *sql.Tx, apply domain.FetchedWorkInfoApply) error {
 	var (
 		current           string

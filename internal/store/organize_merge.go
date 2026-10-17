@@ -1,6 +1,6 @@
 package store
 
-// グループのマージ（specs/050-drag-organize/data-model.md「Operations」の Merge、research.md R-5）。
+// グループのマージ。
 // ドラッグしたカードを画面の順にたどり、グループはマージ先へマージし、動画はマージ先の末尾へ足す。
 // 動画とグループが混ざった選択も 1 つの取引で、取り消しの像は 1 つである。
 
@@ -165,8 +165,7 @@ func resolveMergeStep(ctx context.Context, tx *sql.Tx, item domain.OrganizeRef, 
 	return mergeStep{}, fmt.Errorf("unknown card kind %q", item.Kind)
 }
 
-// mergeImage はマージの取り消しの像の範囲を作る（data-model.md「Undo image」の Merge の行で、Move と
-// 同じ行）。groups はドラッグしたグループと、あれば開いているグループ from である。消えるかもしれない
+// mergeImage はマージの取り消しの像の範囲を作る。groups はドラッグしたグループと、あれば開いているグループ from である。消えるかもしれない
 // グループ（groups と、解散が届きうるその祖先すべて）と
 // into は、グループの行、項目、それを指す項目、除外、お気に入り、それを持つプレイリストの全項目と、
 // 自動グループのフォルダの例外を持つ。祖先は親をすべて含むので、親の項目もこの範囲に入る。into の

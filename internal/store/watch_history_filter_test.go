@@ -9,8 +9,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 視聴履歴の絞り込み・検索・日付（specs/043-watch-history/data-model.md の Rules の revision、
-// research.md R-8〜R-11）。
+// 視聴履歴の絞り込み・検索・日付。
 
 // setProgress は鍵 key に再生位置を書く。completed なら視聴済み。
 func setProgress(t *testing.T, db *DB, key string, positionMs int64, completed bool) {

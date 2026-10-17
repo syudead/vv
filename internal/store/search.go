@@ -32,14 +32,13 @@ func termUsesMatch(text string) bool {
 // 結ぶ。
 //
 // 語1つごとの条件は、所在の条件（MATCH か instr）と、その所在の動画に付いた
-// タグ名（元の名前・シノニムの両方）への instr の OR に広げる
-// （specs/014-video-tags/data-model.md §7）。除外語はこの OR 全体の否定にする。
+// タグ名（元の名前・シノニムの両方）への instr の OR に広げる。除外語はこの OR 全体の否定にする。
 // タグは動画の単位なので、語の長さに関係なく instr で調べ、全文索引は足さない。
 // 所有者の OR には作品情報の品番と、結び付いた人物・団体の名前と別名への instr も
-// 加える（specs/047-video-work-info/data-model.md「Search」、research.md R-6）。
+// 加える。
 //
 // ゲストの検索はタグの名前とシノニムにも作品情報にも照合せず、所在の条件だけにする
-// （specs/016-single-account-auth/contracts/guest-api.md §3、047 research.md R-10）。
+//
 // ゲストに見せないタグの名前や作品情報が、当たる動画の有無から漏れないようにするため。
 func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.Audience) (string, []any) {
 	if expr.Empty() {
@@ -88,11 +87,9 @@ func searchExprCondition(expr domain.SearchExpr, alias string, audience domain.A
 // 2 か所に 1 回ずつ、タグのフォルダ名の分を 1 つ）引数として渡す。語に当たる鍵の集合を動画の id に
 // 引き直してから所在の動画を照らすので、所在 1 行ごとに鍵を求めない。
 //
-// タグは手で付けた分（video_tags）とフォルダ名から付いている分（video_folder_names、017 の
-// data-model.md §4）のどちらでもよい。手で付けた分と作品情報は利用者データの鍵（userKeyExpr、
-// specs/030-video-versions/data-model.md §3）で結び、作品情報は品番の照合形（code_key）か、結び付いた
-// 人物・団体の名前か別名の照合形（search_key）を照らす（specs/047-video-work-info/data-model.md
-// 「Search」）。名前の照合形は名前の行にあるので、人物の改名や統合では動画側の鍵を書き直さない
+// タグは手で付けた分（video_tags）とフォルダ名から付いている分（video_folder_names、017 の）のどちらでもよい。手で付けた分と作品情報は利用者データの鍵（userKeyExpr、
+// docs/design-docs/catalog-organization.md）で結び、作品情報は品番の照合形（code_key）か、結び付いた
+// 人物・団体の名前か別名の照合形（search_key）を照らす。名前の照合形は名前の行にあるので、人物の改名や統合では動画側の鍵を書き直さない
 // （R-6）。説明・日付・URL・外部 ID は照合しない。内容の識別子が空の動画は再生位置を持たない
 // （listing.go の playback_progress の join）のと同じ理由で照合から除く。空文字列どうしが一致して
 // 無関係な行を拾わないためで、フォルダ名の分も同じ扱いにして Video.tags（content_key で引く）と

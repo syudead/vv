@@ -33,7 +33,7 @@ export interface FolderToolbarProps {
   onClear: () => void;
   /**
    * 最上位（`/folders`）で検索語が空のときは true。絞り込み・並べ替え・向きを
-   * 無効にする（ui-design.md「Top level」）。検索欄と表示形式は無効にしない。
+   * 無効にする。検索欄と表示形式は無効にしない。
    */
   disabled?: boolean;
   zoom: Zoom;

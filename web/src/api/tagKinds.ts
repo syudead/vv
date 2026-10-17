@@ -4,7 +4,7 @@ import { compareNatural } from "./tagOrder";
 import { refreshTags } from "./tags";
 import type { components } from "./gen/openapi";
 
-// タグの種類（specs/051-tag-kinds/contracts/screen-api.md の `web/src/api` functions）。型は
+// タグの種類。型は
 // api/openapi.yaml からの生成物を使う。
 export type TagKind = components["schemas"]["TagKind"];
 export type TagKindRef = components["schemas"]["TagKindRef"];
@@ -12,7 +12,7 @@ export type TagKindList = components["schemas"]["TagKindList"];
 
 /**
  * sortTagKinds は種類を名前の自然順（同じなら id の順）に並べた新しい配列を返す。サーバーは
- * id の順に返す（specs/051-tag-kinds/contracts/screen-api.md の `TagKindList`）。自然順は
+ * id の順に返す。自然順は
  * 大文字小文字を区別しないので、`Era` と `era` のように名前が違っても同順位になりうる。
  */
 export function sortTagKinds(kinds: readonly TagKind[]): TagKind[] {
@@ -106,8 +106,7 @@ function afterTagKindsChanged(): void {
 
 /**
  * afterTagKindRenamedOrDeleted は種類の名前の変更と削除の後に呼ぶ。キャッシュしたタグは
- * どれも種類の名前を持つので、共有のタグの一覧を取り直し、動画一覧の控えを捨てる
- * （specs/051-tag-kinds/research.md R-4）。
+ * どれも種類の名前を持つので、共有のタグの一覧を取り直し、動画一覧の控えを捨てる。
  */
 function afterTagKindRenamedOrDeleted(): void {
   afterTagKindsChanged();
@@ -117,7 +116,7 @@ function afterTagKindRenamedOrDeleted(): void {
 
 /**
  * tagKindCountsChanged はタグの操作で種類ごとのタグの数（`tagCount`）が変わったときに呼ぶ
- * （種類の付け外し、タグの削除・却下・統合。specs/051-tag-kinds/ui-design.md「Kind filter」）。
+ * （種類の付け外し、タグの削除・却下・統合。docs/design-docs/catalog-organization.md「Kind filter」）。
  * 共有の保持を古いものとし、購読者がいれば取り直す。
  */
 export function tagKindCountsChanged(): void {

@@ -1,5 +1,5 @@
 -- +goose Up
--- 所在ごとの照合用の鍵（specs/013-library-search/data-model.md §1・§2）。
+-- 所在ごとの照合用の鍵。
 -- 鍵の値は SQL では作れない（NFKC などの正規化が要る）ので、ここでは列・索引・
 -- トリガを作るまでとし、値は起動時の埋め直し（store.RefreshSearchKeys）が埋める。
 alter table video_locations add column search_key text not null default '';

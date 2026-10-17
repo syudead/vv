@@ -23,8 +23,7 @@ const SettingsPage = await deferredRoute(
   "/settings",
 );
 const TagsPage = await deferredRoute(() => import("../tags/TagsPage"), "/tags");
-// 人物と団体の管理画面（specs/047-video-work-info/ui-design.md「People and organizations
-// screens」）。1 つの部品が種類を受けて両方を描く。
+// 人物と団体の管理画面。1 つの部品が種類を受けて両方を描く。
 const PeoplePage = await deferredRoute(() => import("../credits/PeoplePage"), "/people");
 const OrganizationsPage = await deferredRoute(
   () => import("../credits/OrganizationsPage"),
@@ -44,7 +43,7 @@ const PlaylistPage = await deferredRoute(
   (pathname) => matchesBelowPath(pathname, "/playlists"),
 );
 const GroupPage = await deferredRoute(() => import("../groups/GroupPage"), "/groups");
-// スマートフォルダのページ（specs/052-smart-folders/ui-design.md「Smart folder page」）。
+// スマートフォルダのページ。
 const SmartFolderPage = await deferredRoute(
   () => import("../smartFolders/SmartFolderPage"),
   "/smart-folders",
@@ -53,12 +52,12 @@ const DuplicatesPage = await deferredRoute(
   () => import("../versions/DuplicatesPage"),
   "/duplicates",
 );
-// アクティビティの記録（specs/055-activity/ui-design.md「Activity page」）。
+// アクティビティの記録。
 const ActivityPage = await deferredRoute(
   () => import("../activity/ActivityPage"),
   "/activity",
 );
-// 動画の作品情報と表示名の編集画面（specs/047-video-work-info/ui-design.md「Editor」）。
+// 動画の作品情報と表示名の編集画面。
 // 再生画面を開くたびの読み込みに、編集画面の部品を加えない。
 const VideoDetailsEditor = await deferredRoute(
   () => import("../player/detailsEditor/VideoDetailsEditor"),
@@ -66,8 +65,7 @@ const VideoDetailsEditor = await deferredRoute(
 );
 const SetupPage = await deferredRoute(() => import("../auth/SetupPage"), "/setup");
 const LoginPage = await deferredRoute(() => import("../auth/LoginPage"), "/login");
-// デザインシステムの見本（/design-system）は開発時だけに置く
-// （specs/038-design-system/research.md R-2）。本番のビルドでは import.meta.env.DEV が
+// デザインシステムの見本（/design-system）は開発時だけに置く。本番のビルドでは import.meta.env.DEV が
 // false に置き換わり、この import ごと出力から消える。
 const DesignSystemPage = import.meta.env.DEV
   ? lazy(() => import("../designSystem/DesignSystemPage"))
@@ -80,7 +78,7 @@ function AppRoutes() {
 
   return (
     <ToastProvider placement={scanPlacement}>
-      {/* 取り込みの進捗と通知は所有者だけに出す（ui-design.md「Top bar」）。 */}
+      {/* 取り込みの進捗と通知は所有者だけに出す。 */}
       {owner && <ScanProgressIndicator />}
       <Routes>
         <Route
@@ -102,7 +100,7 @@ function AppRoutes() {
             }
           />
         ))}
-        {/* 設定の一覧と 8 つのページ（specs/058-settings-pages/research.md R-1）。 */}
+        {/* 設定の一覧と 8 つのページ。 */}
         {["/settings", "/settings/*"].map((path) => (
           <Route
             key={path}

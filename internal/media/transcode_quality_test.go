@@ -16,7 +16,7 @@ import (
 )
 
 // 画質があるときは表示の短辺をその画質にし、偶数に丸める。極端に細長い動画は今の変換の枠
-// （長辺 3840）に収まるまで縮める（specs/027-playback-quality/research.md R-2）。
+// （長辺 3840）に収まるまで縮める。
 func TestVideoEncodeArgsScalesToQuality(t *testing.T) {
 	for _, tc := range []struct {
 		name    string
@@ -177,7 +177,7 @@ func TestLiveTranscoderQualityEncodesAndKeepsLimitsOnFallback(t *testing.T) {
 }
 
 // 動きの多い入力を 480p で変換すると、短辺が 480 になり、映像の平均ビットレートは上限の
-// 1.2 倍以下、音声は 96 kbps 付近になる（research.md R-8）。
+// 1.2 倍以下、音声は 96 kbps 付近になる。
 func TestTranscodeQualityCapsBitrateWithFFmpeg(t *testing.T) {
 	t.Parallel()
 

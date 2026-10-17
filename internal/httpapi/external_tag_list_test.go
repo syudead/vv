@@ -13,7 +13,7 @@ import (
 )
 
 // GET /api/v1/tags と MCP の list_tags の検索・絞り込み・並び順・ページ
-// （specs/039-external-tag-admin/contracts/external-api.md §1・§8、research.md R-1）を、
+// を、
 // 本物の保存先と Bearer の境界で確かめる。
 
 // addTentativeTags は名前 names の仮のタグを作り、動画 videoID に付ける。
@@ -150,7 +150,7 @@ func TestExternalListTagsRejectsInvalidParameters(t *testing.T) {
 }
 
 // 引数なしの list_tags は 100 件と nextCursor を返し、limit: 10・sort: countDesc は本数の
-// 順に 10 件を返す（contracts/external-api.md §8）。
+// 順に 10 件を返す。
 func TestMCPListTagsPagesByDefault(t *testing.T) {
 	f := newMCPFixture(t, Options{Scans: &fakeScans{}})
 	ctx := context.Background()

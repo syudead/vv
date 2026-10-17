@@ -16,7 +16,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 外部連携 API の名前でのタグの一括操作（specs/026-external-api/contracts/external-api.md §4）を、
+// 外部連携 API の名前でのタグの一括操作を、
 // 本物の保存先と Bearer の境界で確かめる。
 
 type externalTagsFixture struct {
@@ -145,7 +145,7 @@ func TestExternalVideoTagsAddByPathShowsInScreenAPI(t *testing.T) {
 	}
 }
 
-// specs/033-video-dates/data-model.md §3: video-tags で付けると lookup の updatedAt が進み、
+// docs/design-docs/catalog-organization.md: video-tags で付けると lookup の updatedAt が進み、
 // 同じタグをもう一度付けても（行が変わらないので）進まない。
 func TestExternalVideoTagsAdvanceUpdatedAt(t *testing.T) {
 	f := newExternalTagsFixture(t)

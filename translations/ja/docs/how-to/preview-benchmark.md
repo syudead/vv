@@ -1,11 +1,11 @@
 ---
 source: docs/how-to/preview-benchmark.md
-sourceHash: bcfa1135703bd44c076022aa4604e2e0eb33d1282d609f1d94da53fbfc10e467
+sourceHash: 2eadfd03696b306d0e86d7848bcc44436adbee7153ca8744f58ff1aded6ce159
 ---
 
 # モーションプレビューとシーク用サムネイルの生成を測る {#measure-motion-preview-and-seek-thumbnail-generation}
 
-モーションプレビュー（ライブラリのカードでのホバー再生）やシーク用サムネイル（プレーヤーのシークバー上のプレビュー）の生成方法を変える PR は、同じ環境・同じ入力で、変更前と変更後の経過時間とピークメモリを記録する。`scripts/previewbench` は本番の生成コードを実行する。根拠は [specs/019-preview-input-seek/research.md R-4](../../specs/019-preview-input-seek/research.md#r-4-measurement-method) にある。
+モーションプレビュー（ライブラリのカードでのホバー再生）やシーク用サムネイル（プレーヤーのシークバー上のプレビュー）の生成方法を変える PR は、同じ環境・同じ入力で、変更前と変更後の経過時間とピークメモリを記録する。`scripts/previewbench` は本番の生成コードを実行するので、アプリケーションが実行する作業も測定に含まれる。
 
 測定は次の順で進める。手順 4 は長い HD 動画向けの方式を比較するときだけ行う。
 

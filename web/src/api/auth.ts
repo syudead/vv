@@ -1,7 +1,7 @@
 import { RequestFailed, sendRequest, toRequestFailed } from "./client";
 import type { components } from "./gen/openapi";
 
-// 認証の経路（specs/016-single-account-auth/contracts/auth-api.md §2〜§4）。
+// 認証の経路。
 // 画面は fetch せず、ここを通す。所有者として描いている間の 401 で読み直す
 // client.ts の仕組みには乗せない。ここの誤りは画面がそのまま扱う。
 

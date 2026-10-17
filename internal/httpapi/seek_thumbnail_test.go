@@ -44,7 +44,7 @@ func assertRevalidated(t *testing.T, handler http.Handler, target string, rec *h
 	}
 }
 
-// 配置情報は契約の形（contracts/seek-sprite-api.md §2）で、シートの版付き URL を
+// 配置情報は契約の形で、シートの版付き URL を
 // 番号順に並べる。
 func TestSeekThumbnailReturnsSpriteDescription(t *testing.T) {
 	reader := &fakeArtifacts{sprite: testSprite()}

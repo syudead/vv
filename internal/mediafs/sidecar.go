@@ -9,8 +9,7 @@ import (
 )
 
 // ListSidecarFiles は、videoPath が OpenMediaFile と同じ規則で開けるときだけ、その
-// 所在のフォルダにある通常ファイルの名前と大きさを返す
-// （specs/028-sidecar-subtitles/research.md R-2）。サブフォルダと symlink は含めない。
+// 所在のフォルダにある通常ファイルの名前と大きさを返す。サブフォルダと symlink は含めない。
 // 名前の意味（字幕かどうか）はここでは判断しない。
 //
 // 動画を開けないときは domain.ErrMediaFileUnavailable を包んだ誤りを返し、フォルダを

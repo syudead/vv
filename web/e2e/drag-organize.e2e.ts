@@ -9,7 +9,7 @@ import {
 
 import { ownerStorageState } from "./owner-account";
 
-// ドラッグでの整理（specs/050-drag-organize、親 #1075、子 #1109）を、実サーバーと実メディアに
+// ドラッグでの整理を、実サーバーと実メディアに
 // 通す。動画は run-e2e.mjs が generateDragOrganizeFixtures で作る 2 秒の動画で、題名は
 // media-fixtures.mjs の DRAG_ORGANIZE_VIDEOS と同じ。落とし方の規則、取り消しの像、送る本文と、
 // 束ね・マージ・入れ子・移動・複数の選択の結果（受け入れ条件 3〜7・9）はドメイン・ストア・

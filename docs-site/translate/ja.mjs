@@ -18,7 +18,7 @@ import { structureDiff } from './structure.mjs'
 const here = path.dirname(new URL(import.meta.url).pathname)
 export const defaultRoot = path.resolve(here, '../..')
 export const translationsDir = 'translations/ja'
-export const publishedRoots = ['docs', 'specs', 'ARCHITECTURE.md']
+export const publishedRoots = ['docs', 'ARCHITECTURE.md']
 
 export const sha256 = (s) => crypto.createHash('sha256').update(s).digest('hex')
 

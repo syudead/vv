@@ -33,7 +33,7 @@ export function isPlayable(video: Video | undefined): video is Video {
 
 /**
  * isUnplayable は再生のできない状態（読み取りの失敗・再生できない・動画が無い）かである。
- * この状態は終わらない（ui-design.md「Unplayable item」）。
+ * この状態は終わらない。
  */
 export function isUnplayable(detail: VideoDetailState): boolean {
   if (detail.kind === "missing") return true;
@@ -114,7 +114,7 @@ const noLayer: PlayerLayer = { layer: null, noticeShown: false };
 
 /**
  * endLayer は状態の層が無いときの層である。プレイリストの文脈では、次の動画があれば予告を、
- * 無ければ終わりの層を出す（ui-design.md「Video page in a playlist」）。それ以外は
+ * 無ければ終わりの層を出す。それ以外は
  * groupEndLayer が決める。
  */
 export function endLayer(args: EndLayerArgs): PlayerLayer {
@@ -242,7 +242,7 @@ export function playerLayer(status: ReactNode, args: EndLayerArgs): PlayerLayer 
 /**
  * stallWarningShown は途切れの警告を出すかである。警告は入れ物とは別の層で、失敗・再生終了・
  * 次の予告・再接続中・取り込み中の層が出ている間は出さない。データ待ちの読み込み中の輪とは
- * 並べて出す（specs/027-playback-quality/research.md R-7）。
+ * 並べて出す。
  */
 export function stallWarningShown({
   showPlayer,
@@ -270,8 +270,7 @@ export function stallWarningShown({
 /**
  * thumbnailCapture は今の場面を代表サムネイルにするボタンである。所有者でプレイヤーが出て
  * いるときだけ置く。押せるのは、最初の読み込みで論理上の位置が確定し、映像を覆う状態の層・
- * 再生終了の層（と次の予告）が無いときである
- * （specs/029-video-overrides/ui-design.md「Capture button」）。
+ * 再生終了の層（と次の予告）が無いときである。
  */
 export function thumbnailCapture({
   shown,

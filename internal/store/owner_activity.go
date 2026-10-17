@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 所有者の操作の記録（specs/055-activity/research.md R-6、data-model.md「Kinds」）。動画のタグと版の集まりを
+// 所有者の操作の記録。動画のタグと版の集まりを
 // 変える操作、メディアフォルダの登録の解除、作品情報の取得と適用を、decider owner の done の記録として、
 // 操作と同じ取引で書く（R-2）。所有者の記録はどれも done で書くので、同じ種類と対象の attention の記録は
 // 無く、recordActivity の閉じる手順（supersedeActivity）が閉じるものも無い。動画ごとの記録は 1 文で
@@ -168,7 +168,7 @@ func recordManualTagActivity(
 // recordOwnerBundle は所有者が members を 1 つの集まりに束ねたことを記録する。その中の組の開いている
 // version_judgement の記録を所有者が決めたとして閉じ、所属が変わったメンバー joined（bundlePlan.joined）ごとに
 // bundle の記録を書く。代表が属していた集まりのメンバーには書かない: 所有者はそのメンバーを置き直していないので、
-// 自動の束ねの取り消しはそのメンバーをまだ外せる（research.md R-6・R-7）。VersionStore.Bundle と
+// 自動の束ねの取り消しはそのメンバーをまだ外せる。VersionStore.Bundle と
 // OrganizeStore.Bundle が共有する。
 func recordOwnerBundle(ctx context.Context, tx *sql.Tx, c *changes, members, joined []string) error {
 	now := time.Now()
@@ -181,7 +181,7 @@ func recordOwnerBundle(ctx context.Context, tx *sql.Tx, c *changes, members, joi
 
 // markDecided は、自動の結果を書いた記録 id に、いまの記録の id の最大値を decided_mark として残す。記録は待ち行列に
 // 積んだとき・候補が現れたときに開くので、id の比較では処理を待つ間の所有者の操作が「後」になる。取り消しは、
-// この印より大きい id の所有者の記録だけを結果より後の変更と見る（research.md R-7）。書いた取引の中で呼ぶ。
+// この印より大きい id の所有者の記録だけを結果より後の変更と見る。書いた取引の中で呼ぶ。
 func markDecided(ctx context.Context, tx *sql.Tx, id int64) error {
 	if _, err := tx.ExecContext(ctx, `update activity_entries set decided_mark = (select max(id) from activity_entries)
 		where id = ?`, id); err != nil {
@@ -202,7 +202,7 @@ func decidedMark(ctx context.Context, tx *sql.Tx, id int64) (int64, error) {
 
 // ownerEntryAfter は、印 mark より後に書かれた（id が大きい。id は単調に増える）所有者の動画の記録のうち、種類が
 // kinds のどれかで、条件 condition（activity_entries の別名は e、引数は args）に合うものがあるかを返す。自動の
-// 判断の取り消しが、所有者がその後に同じ対象を変えたかを時刻ではなく記録で見分けるのに使う（research.md R-7）。
+// 判断の取り消しが、所有者がその後に同じ対象を変えたかを時刻ではなく記録で見分けるのに使う。
 func ownerEntryAfter(
 	ctx context.Context, tx *sql.Tx, mark int64, kinds []domain.ActivityKind, condition string, args ...any,
 ) (bool, error) {
@@ -252,7 +252,7 @@ func ownerDoneEntry(kind domain.ActivityKind, subject domain.ActivitySubject, de
 	}
 }
 
-// RecordWorkInfoFetch は動画 videoID の作品情報の取得 1 回を work_info_fetch の記録にする（research.md R-11）。
+// RecordWorkInfoFetch は動画 videoID の作品情報の取得 1 回を work_info_fetch の記録にする。
 // failure が空なら done/completed、そうでなければ done/failed で、failure（プラグインの文）を detail に書く。
 // やり直しは出さない。動画が無ければ domain.ErrNotFound。確定後に domain.ActivityChanged を発行する。
 func (s *OverrideStore) RecordWorkInfoFetch(ctx context.Context, videoID int64, failure string) error {

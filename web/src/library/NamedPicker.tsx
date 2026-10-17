@@ -20,7 +20,7 @@ export interface NamedTarget {
   name: string;
 }
 
-/** PickerWords はピッカーの文言である（各機能の ui-design.md「Words」）。 */
+/** PickerWords はピッカーの文言である（各機能の）。 */
 export interface PickerWords {
   label: UiText;
   search: UiText;
@@ -43,9 +43,7 @@ type Load<T> =
 type Pending = { kind: "target"; id: number } | { kind: "create" } | null;
 
 /**
- * NamedPicker は「Add to playlist」と「Add to group」のポップオーバーの中身である
- * （specs/044-playlists/ui-design.md「Add to playlist」、specs/048-groups/ui-design.md
- * 「Add to group」）。呼び出し側がそれぞれの `Popover` の中に置く。
+ * NamedPicker は「Add to playlist」と「Add to group」のポップオーバーの中身である。呼び出し側がそれぞれの `Popover` の中に置く。
  *
  * - 開くたびに `loadAll` で全部を読み、打った文字を名前に含むものを読んだ順に出す
  *   （`excludeIds` の行は出さない）。打った名前と同じ名前の行が無ければ、先頭に

@@ -20,7 +20,7 @@ export interface ChipItem {
   tentative?: boolean;
   /**
    * 取得した側の印。`onVideo` は薄いチップと Check、`new` は「New」、`notLinked` は薄いチップと
-   * 「Not linked」（specs/052-plugin-work-info-fields/ui-design.md「Words」）。
+   * 「Not linked」。
    */
   mark?: ChipMark;
   /** ツールチップ。無ければ `onVideo` のチップだけが「On the video」を出す。 */

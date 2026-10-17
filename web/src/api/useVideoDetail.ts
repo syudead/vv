@@ -55,8 +55,7 @@ export function isProcessing(video: Video): boolean {
 
 /**
  * VideoReadContext は動画を開いた文脈で、動画の読み取りに渡す。`group` は開いたグループ
- * （`?group`）、`smartFolder` は開いたスマートフォルダ（`?smartFolder`）の id である
- * （specs/048-groups/research.md R-9、specs/052-smart-folders/contracts/screen-api.md）。
+ * （`?group`）、`smartFolder` は開いたスマートフォルダ（`?smartFolder`）の id である。
  */
 export interface VideoReadContext {
   group?: number;
@@ -67,8 +66,7 @@ export interface VideoReadContext {
  * withGroupOf は、変更の要求の応答 `saved` のグループとスマートフォルダを手元の 1 件 `current` の
  * ものに揃える。変更の要求は `group` も `smartFolder` も受け取らないので、応答のグループはいつも
  * id のいちばん小さいもので、スマートフォルダは無い。動画を開いた文脈（`opened`）があるときに
- * それを採ると、グループかフォルダの行が関連動画の再生順と食い違う（specs/048-groups/research.md
- * R-9）。文脈が無ければ応答のまま。
+ * それを採ると、グループかフォルダの行が関連動画の再生順と食い違う。文脈が無ければ応答のまま。
  */
 function withGroupOf(
   saved: Video,
@@ -87,12 +85,11 @@ function withGroupOf(
 
 /**
  * groupEventConcerns は、`group` の知らせ（変わったグループとその祖先の id、ids）が動画ページの
- * グループの行や関連動画のグループの並びに関わるかを返す（specs/048-groups/research.md R-13）。
+ * グループの行や関連動画のグループの並びに関わるかを返す。
  * shown は表示中のグループ、group は動画を開いたグループ（`?group`）の id である。
  *
  * サーバーは、開いたグループが動画を持てばそれを、そうでなければ動画を直接の項目に持つ
- * グループのうち id のいちばん小さいものを文脈にする（research.md R-9、
- * internal/store/related.go の groupContext）。
+ * グループのうち id のいちばん小さいものを文脈にする。
  * - 表示中のグループが無い: 動画がどこかのグループに足されたかもしれないので、いつも関わる。
  * - 開いたグループが知らせにある: 中身が変わったか、動画が足されて文脈になったかもしれない。
  * - 開いたグループを表示中: 文脈は他のグループの変化では替わらないので、それだけを見る。
@@ -143,8 +140,7 @@ function withWorkInfoOf(saved: Video, current: Video | undefined): Video {
 
 /**
  * withMediaInfoOf は、`mediaInfo` を載せない変更の応答 saved に、手元の動画 current の追加の
- * 情報を戻す。追加の情報は `GET /api/videos/{id}` にだけ載り（specs/056-media-info/research.md
- * R-6）、表示名やサムネイルの変更では変わらない。応答が持つとき、手元に無いときは saved のまま。
+ * 情報を戻す。追加の情報は `GET /api/videos/{id}` にだけ載り、表示名やサムネイルの変更では変わらない。応答が持つとき、手元に無いときは saved のまま。
  */
 function withMediaInfoOf(saved: Video, current: Video | undefined): Video {
   if (saved.mediaInfo !== undefined || current?.mediaInfo === undefined) return saved;
@@ -163,14 +159,13 @@ function withMediaInfoOf(saved: Video, current: Video | undefined): Video {
  * `refresh` はすぐに取り直し、その取得が終わったら解決する。
  *
  * `replace` は、変更の要求の応答で受け取った動画を手元の 1 件にする（表示名の保存。
- * specs/029-video-overrides/ui-design.md「Save」）。`mark` は要求を送る直前に取った
+ * docs/design-docs/catalog-organization.md「Save」）。`mark` は要求を送る直前に取った
  * detailMark である。
  * - 要求より前に始めた取り直しは打ち切る。その応答で、変更した値を巻き戻さないため。
  *   要求の後に始めた取り直しは残す（公開の一部反映で始めた取り直しなど）。
  * - 要求の間に反映した公開の切り替えとお気に入りの付け外しは、応答の `public`・`favorite`
  *   より優先する。どちらもサーバーから知らせが来ないので、ここで巻き戻すと直らない。
- * - replace に渡る応答（表示名・代表サムネイル・束から外す）は契約上 `workInfo` を載せない
- *   （specs/047-video-work-info/contracts/screen-api.md「Video changes」）。`workInfo` が
+ * - replace に渡る応答（表示名・代表サムネイル・束から外す）は契約上 `workInfo` を載せない。`workInfo` が
  *   `keep` なら、応答に無い作品情報は手元の値を残す（そのまま置くと情報欄から作品情報が消える）。
  *   `refetch` なら手元の値を残さず、差し替えた後に取り直す。束から外した動画は束の作品情報から
  *   固有の作品情報に戻るので、手元の値を残すと別の作品情報を出し、詳細の保存で上書きしかねない。
@@ -180,15 +175,15 @@ function withMediaInfoOf(saved: Video, current: Video | undefined): Video {
  *   （withGroupOf）。
  *
  * `setFavorite` は表示中の動画のお気に入りを `PUT /api/favorites` で付け外しし、成功したら
- * 取り直して、その取得が終わったら解決する（specs/035-favorites/ui-design.md「Video page」）。
+ * 取り直して、その取得が終わったら解決する。
  * 塗りは取り直した `favorite` で変える。付け外しの結果の知らせはこの 1 件へ重ねないので、
  * 取り直しの間と取り直しに失敗したときは前の状態のままである。失敗は reject で返す。
  *
- * `group` は動画を開いたグループの id で、取得のたびに渡す（specs/048-groups/research.md R-9）。
+ * `group` は動画を開いたグループの id で、取得のたびに渡す。
  * 同じ動画のまま `group` だけが変わったら、読み込み中に戻さずに取り直す（グループの操作の後に
  * `group` なしで読み直すとき、再生を止めない）。`smartFolder` は動画を開いたスマートフォルダの id
  * で、`group` と同じく取得のたびに渡し、変われば取り直す。そのフォルダを名指した `smartFolder` の
- * 知らせでも取り直す（specs/052-smart-folders/ui-design.md「Video page」）。
+ * 知らせでも取り直す。
  */
 export function useVideoDetail(
   id: number,
@@ -207,7 +202,7 @@ export function useVideoDetail(
       : { kind: "loading", id },
   );
   // 手元にある応答（編集画面の保存の応答）から始める。最初の取得までの間もそれを出し、
-  // 古い値や読み込み中を挟まない（specs/047-video-work-info/ui-design.md「Save」）。
+  // 古い値や読み込み中を挟まない。
   // 使うのは最初の 1 回だけで、別の動画へ移ったら使わない。
   const seed = useRef(initial);
   const refreshRef = useRef<() => Promise<void>>(() => Promise.resolve());
@@ -273,7 +268,7 @@ export function useVideoDetail(
       started = loadsStarted;
       // 取得の間に公開を切り替えたら、切り替える前の `public` を読んだ応答で
       // 表示を巻き戻さない（切り替えはサーバーから知らせが来ない。PR 328）。
-      // お気に入りの付け外しも同じ（specs/035-favorites/research.md R-6）。
+      // お気に入りの付け外しも同じ。
       const mark = visibilityMark();
       const favorite = favoriteMark();
       const read = favoriteReadMark();
@@ -391,7 +386,7 @@ export function useVideoDetail(
     });
 
     // お気に入りの付け外しの結果も、取り直さずに手元の1件へ重ねる。ゲストの応答には
-    // `favorite` が無いので、無いものは足さない（specs/035-favorites/research.md R-6）。
+    // `favorite` が無いので、無いものは足さない。
     // この画面の付け外しは setFavorite の取り直しで確かめるので、ここでは重ねない。
     const unsubscribeFavorites = subscribeFavorites((change) => {
       if (ownFavorites > 0) return;
@@ -406,7 +401,7 @@ export function useVideoDetail(
     });
 
     // グループの名前・項目・並び順が変わったら、グループの行（位置・本数・前後）を取り直す
-    // （specs/048-groups/research.md R-13）。
+    //
     // スマートフォルダを文脈に開いたときは、どのグループの知らせでも取り直す。文脈がフォルダから
     // グループへ戻っているかもしれず、関連動画の並びがフォルダかグループかを区別できないからである。
     const onGroup = (ids: readonly number[]) => {
@@ -418,13 +413,13 @@ export function useVideoDetail(
         void load();
     };
     // 開いたスマートフォルダの中身が変わったら、フォルダの行（位置・本数）を取り直す
-    // （specs/052-smart-folders/research.md R-12）。
+    //
     const onSmartFolder = (ids: readonly number[]) => {
       const opened = contextRef.current.smartFolder;
       if (opened !== undefined && ids.includes(opened)) void load();
     };
     // 購読してから取得する。取得のあとに起きた変化を取りこぼさない。ゲストには group だけが
-    // 届くので、group だけを購読する（specs/048-groups/contracts/screen-api.md「/api/events」）。
+    // 届くので、group だけを購読する。
     const unsubscribe = owner
       ? subscribeServerEvents({
           video: (changed) => {
@@ -504,7 +499,7 @@ export type RelatedState =
  * `rethumb` は、基準の動画の代表サムネイルを指定・解除した応答を同じように写し、
  * 並びのサムネイル（URL の版が変わる）を画面のサムネイルとそろえる。
  *
- * `group` は動画を開いたグループの id で、どのページの取得にも渡す（research.md R-9）。
+ * `group` は動画を開いたグループの id で、どのページの取得にも渡す。
  * 変われば最初のページから読み直す。`smartFolder` は動画を開いたスマートフォルダの id で、
  * 同じく渡し、そのフォルダを名指した `smartFolder` の知らせでも読み直す。
  */
@@ -568,8 +563,7 @@ export function useRelatedVideos(
         if (!shownOnce) setState({ kind: "failed", id });
       }
     };
-    // 開いたグループか並びのグループの名前・項目・並び順が変わったら、最初のページから読み直す
-    // （specs/048-groups/research.md R-13）。送信中の取得と続きの取得は打ち切る。続きの取得を
+    // 開いたグループか並びのグループの名前・項目・並び順が変わったら、最初のページから読み直す。送信中の取得と続きの取得は打ち切る。続きの取得を
     // 打ち切ったら、その読み込み中の印も外す。読み直しが失敗して今の並びを残しても、続きを
     // もう一度読めるようにする。
     const reload = () => {
@@ -586,7 +580,7 @@ export function useRelatedVideos(
       controller = new AbortController();
       void load();
     };
-    // ゲストにも group は届く（specs/048-groups/contracts/screen-api.md「/api/events」）。
+    // ゲストにも group は届く。
     // スマートフォルダを文脈に開いたときは、どのグループの知らせでも、開いたフォルダを名指した
     // `smartFolder` の知らせでも読み直す（useVideoDetail の onGroup と同じ理由）。
     const unsubscribe = subscribeServerEvents({

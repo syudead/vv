@@ -13,12 +13,12 @@ import (
 
 // 作品情報プラグイン（WebAssembly モジュール）の値と規則である。モジュールの検査と実行は
 // internal/wasmplugin が行い、ここには I/O を伴わない型と規則だけを置く
-// （specs/049-work-info-plugins/contracts/plugin-contract.md、data-model.md、research.md R-3・R-4）。
+//
 
 // WorkInfoPluginContract は vv が動かせるプラグインの取り決めの版である。
 const WorkInfoPluginContract = 1
 
-// 作品情報プラグインの上限である（research.md R-4、plugin-contract.md）。
+// 作品情報プラグインの上限である。
 const (
 	// WorkInfoPluginModuleMaxBytes はモジュールの大きさの上限である。
 	WorkInfoPluginModuleMaxBytes = 16 << 20
@@ -45,7 +45,7 @@ const (
 	WorkInfoPluginMaxTags = 100
 )
 
-// 作品情報プラグインの HTTP 要求の上限である（research.md R-5、plugin-contract.md の Host functions）。
+// 作品情報プラグインの HTTP 要求の上限である。
 const (
 	// WorkInfoPluginHTTPMaxRequests は 1 回の実行で送れる要求の数である。
 	WorkInfoPluginHTTPMaxRequests = 16
@@ -63,7 +63,7 @@ const (
 // ErrWorkInfoPluginTooLarge はモジュールが WorkInfoPluginModuleMaxBytes を超えることを表す。
 var ErrWorkInfoPluginTooLarge = errors.New("work-info plugin module is larger than 16 MiB")
 
-// WorkInfoPluginProblem はプラグインを承認できない理由である（data-model.md の work_info_plugins）。
+// WorkInfoPluginProblem はプラグインを承認できない理由である。
 // 空は問題が無いことを表す。
 type WorkInfoPluginProblem string
 
@@ -85,7 +85,7 @@ const (
 	WorkInfoPluginTableTooLarge WorkInfoPluginProblem = "table_too_large"
 )
 
-// WorkInfoPluginState は所有者に見せるプラグインの状態である（data-model.md の State transitions）。
+// WorkInfoPluginState は所有者に見せるプラグインの状態である。
 type WorkInfoPluginState string
 
 const (
@@ -98,7 +98,7 @@ const (
 )
 
 // WorkInfoPluginStateOf はプラグインの状態を決める。承認済みは、問題が無く、承認したダイジェストが
-// 今のモジュールのダイジェストと等しいときだけである（data-model.md の Rules）。
+// 今のモジュールのダイジェストと等しいときだけである。
 func WorkInfoPluginStateOf(problem WorkInfoPluginProblem, digest, approvedDigest string) WorkInfoPluginState {
 	switch {
 	case problem != "":
@@ -128,13 +128,13 @@ type WorkInfoPluginSetting struct {
 	Secret   bool   `json:"secret"`
 	Required bool   `json:"required"`
 	// Default は値が保存されていないとき（Options の外の値が保存されているときも）に実行が受け取る値である。
-	// 空なら既定値は無い（specs/056-plugin-tooling/research.md R-3）。
+	// 空なら既定値は無い。
 	Default string `json:"default,omitempty"`
 	// Options は値の選択肢で、マニフェストの順である。nil なら値は自由に入力する。
 	Options []string `json:"options,omitempty"`
 }
 
-// 設定の既定値と選択肢の上限である（specs/056-plugin-tooling/contracts/plugin-contract.md の Manifest）。
+// 設定の既定値と選択肢の上限である。
 const (
 	workInfoPluginMinOptions     = 2
 	workInfoPluginMaxOptions     = 50
@@ -165,7 +165,7 @@ func optionalJSON(raw json.RawMessage, dst any) (present, ok bool) {
 }
 
 // WorkInfoPluginManifest はモジュールの vv.plugin セクションのマニフェストである
-// （plugin-contract.md の Manifest）。
+// 。
 type WorkInfoPluginManifest struct {
 	Contract    int
 	Name        string
@@ -189,7 +189,7 @@ type manifestJSON struct {
 	Settings    []json.RawMessage   `json:"settings"`
 }
 
-// WorkInfoPluginManifestError は拒んだマニフェストの理由である（specs/056-plugin-tooling/contracts/plugin-cli.md）。
+// WorkInfoPluginManifestError は拒んだマニフェストの理由である。
 // Field は規則に反した項目の道筋（"settings[0].default"）で、マニフェスト全体の誤りなら空である。
 // Rule は Field に続けて読める、反した規則の文である。
 type WorkInfoPluginManifestError struct {
@@ -454,7 +454,7 @@ func validSettingKey(key string) bool {
 	return true
 }
 
-// WorkInfoRunRequest は 1 回の実行でプラグインの標準入力に書く要求である（plugin-contract.md の Request）。
+// WorkInfoRunRequest は 1 回の実行でプラグインの標準入力に書く要求である。
 // 文字数の確かめは要求を作る側（internal/app、cmd/mdm）が行う。
 type WorkInfoRunRequest struct {
 	Operation WorkInfoOperation
@@ -488,7 +488,7 @@ func (r WorkInfoRunRequest) MarshalJSON() ([]byte, error) {
 	return json.Marshal(body)
 }
 
-// WorkInfoCandidate は検索の候補の 1 つである。文字だけで、画像は持たない（research.md R-10）。
+// WorkInfoCandidate は検索の候補の 1 つである。文字だけで、画像は持たない。
 // ID は候補を選んだときに fetch へ渡す作品の ID で、前後の空白を除いたものである。URL は候補の作品の
 // ページで、画面がリンクとして出すだけで、vv が取得することも fetch に渡すこともない。
 type WorkInfoCandidate struct {
@@ -500,7 +500,7 @@ type WorkInfoCandidate struct {
 
 // FetchedWorkInfo はプラグインが取った作品情報である。空の文字列と nil の一覧は値が無いことを表す。
 // 動画に保存する作品情報（WorkInfo）とは別の値で、人物と団体は名前と外部 ID で持ち、項目の規則に
-// 合わない値も残す（specs/052-plugin-work-info-fields/contracts/plugin-contract.md）。
+// 合わない値も残す。
 type FetchedWorkInfo struct {
 	Title         string
 	Tags          []string
@@ -525,7 +525,7 @@ type WorkInfoRunResult struct {
 	CoverImage []byte
 }
 
-// WorkInfoRunFailure は実行の失敗の種類である（contracts/screen-api.md の Run failures）。
+// WorkInfoRunFailure は実行の失敗の種類である。
 type WorkInfoRunFailure string
 
 const (
@@ -540,7 +540,7 @@ const (
 	// WorkInfoRunBusy は別の実行が WorkInfoPluginBusyWait の間、枠を空けなかったことを表す。
 	WorkInfoRunBusy WorkInfoRunFailure = "busy"
 	// WorkInfoRunBlockedAddress はプラグインが vv、LAN か他の公開でないアドレスに要求を送ろうとしたことを表す。
-	// プラグインが何を返しても実行はこの失敗になる（research.md R-5）。
+	// プラグインが何を返しても実行はこの失敗になる。
 	WorkInfoRunBlockedAddress WorkInfoRunFailure = "blocked_address"
 	// WorkInfoRunNetworkError は要求の接続が失敗し、そのあとプラグインも失敗したことを表す。
 	WorkInfoRunNetworkError WorkInfoRunFailure = "network_error"
@@ -549,7 +549,7 @@ const (
 // WorkInfoRunError は実行の失敗である。PluginMessage はプラグインが報告した誤りの文の
 // 先頭 WorkInfoPluginMessageMaxRunes 文字で、Failure が WorkInfoRunFailed か
 // WorkInfoRunNetworkError のときだけ入りうる。Host は拒んだか届かなかったホストで、Failure が
-// WorkInfoRunBlockedAddress か WorkInfoRunNetworkError のときだけ入る（contracts/screen-api.md の Run failures）。
+// WorkInfoRunBlockedAddress か WorkInfoRunNetworkError のときだけ入る。
 type WorkInfoRunError struct {
 	Failure       WorkInfoRunFailure
 	PluginMessage string
@@ -567,7 +567,7 @@ func (e *WorkInfoRunError) Error() string {
 	return msg
 }
 
-// responseJSON はプラグインの標準出力の JSON の形である（plugin-contract.md の Response）。
+// responseJSON はプラグインの標準出力の JSON の形である。
 // 知らない項目は無視する。
 type responseJSON struct {
 	Candidates []struct {

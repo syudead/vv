@@ -22,8 +22,7 @@ import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import LibraryPage from "./LibraryPage";
 
-// ライブラリで動画を動画に落とす（specs/050-drag-organize/ui-design.md「Drop menus」「The new
-// group's name」「Library」、受け入れ条件 2、3）。
+// ライブラリで動画を動画に落とす。
 
 function video(id: number, title: string): Video {
   return {

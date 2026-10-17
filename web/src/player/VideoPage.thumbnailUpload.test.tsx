@@ -13,8 +13,7 @@ import type { PlayerStatus } from "./VideoPlayer";
 import VideoPage from "./VideoPage";
 
 // 動画ページから手元の画像をプレビューで確かめてサムネイルにする流れ
-// （specs/046-thumbnail-image-upload/ui-design.md「Video page: upload entry」「Uploaded thumbnail
-// item」、docs/design-docs/thumbnail-editing.md「Uploaded images」）。
+//
 
 interface PlayerProps {
   onControls: (controls: PlayerControls | null) => void;

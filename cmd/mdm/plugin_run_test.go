@@ -19,7 +19,7 @@ import (
 	"github.com/syudead/vv/internal/wasmplugin/plugintest"
 )
 
-// mdm plugin run のテスト（specs/056-plugin-tooling/contracts/plugin-cli.md）。
+// mdm plugin run のテスト。
 // 実行には plugintest の WASI fixture、引数検証には testdata/minimal.wasm を使う。CI はインターネットに
 // 出ないので、site.test を公開のアドレスに解決し、その接続を loopback に立てたサイトへつなぐ。
 

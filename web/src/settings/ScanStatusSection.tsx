@@ -34,8 +34,7 @@ function failureText(presentation: ScanPresentation): UiText {
 }
 
 /**
- * ScanStatusSection は設定の「Scan status」の概要である（specs/024-import-progress/ui-design.md
- * 「Settings Scan Status」）。概要（右下の popover）と同じ要素に、取り込みの開始・分母の
+ * ScanStatusSection は設定の「Scan status」の概要である。概要（右下の popover）と同じ要素に、取り込みの開始・分母の
  * 意味・取り込み自体の失敗の理由・問題の一覧だけを足す。取り込みを始める場所はここだけで
  * ある（issue 830）。
  */

@@ -1,6 +1,6 @@
 package store
 
-// ドラッグの操作と取り消し（specs/050-drag-organize/data-model.md「Operations」）。OrganizeStore の
+// ドラッグの操作と取り消し。OrganizeStore の
 // 操作はどれも 1 つの取引で、変える行の前後の像（organize_image.go）を同じ取引で読んで返し、確定後に
 // domain.GroupsChanged を発行する。要求が名指したグループや項目が無ければ
 // domain.ErrGroupTargetNotFound で、何も書かない。
@@ -53,7 +53,7 @@ func (s *OrganizeStore) Reorder(ctx context.Context, groupID int64, itemIDs []in
 }
 
 // Move はカード move.Items を画面の順にグループ move.To の末尾へ足し（既にあるものは飛ばす）、
-// move.From があればそこから外す（data-model.md「Operations」の Move）。To が無ければ外すだけである。
+// move.From があればそこから外す。To が無ければ外すだけである。
 // 外すのは RemoveGroupItems と同じで、フォルダ由来のメンバーには除外を書き、最後の項目を外した From は
 // 解散する（空になった祖先も）。取り消しの像（groupsImage。From・To と From の祖先）を返す。From か To
 // が無い、カードの動画やグループが無い、カードが From に無ければ domain.ErrGroupTargetNotFound、
@@ -183,7 +183,7 @@ func nonZeroIDs(ids ...int64) []int64 {
 	return slices.DeleteFunc(ids, func(id int64) bool { return id == 0 })
 }
 
-// Undo は操作が返した像 image の前の状態へ戻す（research.md R-1）。今の行が後の像と等しくなければ
+// Undo は操作が返した像 image の前の状態へ戻す。今の行が後の像と等しくなければ
 // domain.ErrUndoConflict で、何も書かない。確定後に、集まりを戻した動画を domain.VideoBundleChanged
 // で、戻したグループとその祖先を domain.GroupsChanged で知らせる。
 func (s *OrganizeStore) Undo(ctx context.Context, image []byte) error {
@@ -196,7 +196,7 @@ func (s *OrganizeStore) Undo(ctx context.Context, image []byte) error {
 		if err != nil {
 			return nil, err
 		}
-		// 束ねの取り消しが戻した候補の判定の記録を開き直す（specs/055-activity/data-model.md「Rules」）。
+		// 束ねの取り消しが戻した候補の判定の記録を開き直す。
 		c := &changes{}
 		now := time.Now()
 		if err := reopenRestoredPairActivities(ctx, tx, c, now); err != nil {
@@ -214,8 +214,8 @@ func (s *OrganizeStore) Undo(ctx context.Context, image []byte) error {
 }
 
 // recordOrganizeUndo は取り消しが版の集まりを戻した動画 videoIDs のそれぞれに organize_undo の所有者の記録を
-// 書く（specs/055-activity/data-model.md「Kinds」）。グループだけを戻した取り消しは動画のタグも集まりも
-// 変えないので、何も書かない（research.md R-6）。
+// 書く。グループだけを戻した取り消しは動画のタグも集まりも
+// 変えないので、何も書かない。
 func recordOrganizeUndo(ctx context.Context, tx *sql.Tx, c *changes, videoIDs []int64, now time.Time) error {
 	keys, err := registeredContentKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
@@ -227,7 +227,7 @@ func recordOrganizeUndo(ctx context.Context, tx *sql.Tx, c *changes, videoIDs []
 }
 
 // ensureGroupTarget は要求が名指したグループ id があるかを確かめる。無ければ
-// domain.ErrGroupTargetNotFound（contracts/screen-api.md「Errors」）。
+// domain.ErrGroupTargetNotFound。
 func ensureGroupTarget(ctx context.Context, tx *sql.Tx, id int64) error {
 	_, err := groupSummary(ctx, tx, id)
 	if errors.Is(err, domain.ErrGroupNotFound) {
@@ -236,8 +236,7 @@ func ensureGroupTarget(ctx context.Context, tx *sql.Tx, id int64) error {
 	return err
 }
 
-// Group は動画 targetID に動画 videoIDs を落とした「グループにする」を行う（data-model.md
-// 「Operations」の Group、research.md R-6）。targetID の題名を domain.GroupNameFromTitle で名前に
+// Group は動画 targetID に動画 videoIDs を落とした「グループにする」を行う。targetID の題名を domain.GroupNameFromTitle で名前に
 // した手で作るグループを作り、targetID、続いて videoIDs を要求の順に項目にする（同じ利用者データの
 // 鍵は 1 つにする）。fromID があれば、新しいグループがグループ fromID の中で targetID の項目の位置を
 // 取り、targetID と videoIDs の項目は fromID から抜ける（フォルダ由来の項目は除外を書く）。新しい
@@ -401,8 +400,7 @@ func placeGroupAt(ctx context.Context, tx *sql.Tx, fromID, childID int64, leavin
 
 // RenameGroup はグループ id の名前を name にする。名前の規則と誤りは GroupStore.RenameGroup と
 // 同じである。image は取り消しのトークンが持つ「グループにする」の像で（nil なら持たない）、名前を
-// 変える直前の行がその後の像と等しければ、名前を変えた後の行で後の像を読み直した像を返す
-// （data-model.md「Rename under an undo token」）。等しくないか image が nil なら像を返さない。
+// 変える直前の行がその後の像と等しければ、名前を変えた後の行で後の像を読み直した像を返す。等しくないか image が nil なら像を返さない。
 // 前の像は変えない。
 func (s *OrganizeStore) RenameGroup(ctx context.Context, id int64, name string, image []byte) (domain.Group, []byte, error) {
 	name, err := domain.ValidateGroupName(name)

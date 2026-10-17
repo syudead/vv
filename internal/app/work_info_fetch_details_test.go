@@ -10,8 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 取得した作品の詳細の取得と反映の受け渡し（specs/052-plugin-work-info-fields/contracts/screen-api.md、
-// research.md R-3・R-4、#1159）。照合と併合そのものは internal/store と internal/domain のテストが確かめる。
+// 取得した作品の詳細の取得と反映の受け渡し。照合と併合そのものは internal/store と internal/domain のテストが確かめる。
 
 // fakeCreditMatcher は名前ごとに決めた答えを返し、受けた件を記録する。決めていない名前は new である。
 type fakeCreditMatcher struct {

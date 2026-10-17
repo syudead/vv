@@ -19,8 +19,7 @@ function single(key: string): readonly string[] {
 
 /**
  * FolderVideoGrid はフォルダ画面の動画のカードの格子である。所有者には動画のカードを 1 枚ずつ
- * ドラッグさせ、動画のカードだけを落とす先にする（specs/050-drag-organize/ui-design.md
- * 「Folder screen」）。フォルダの直下と検索結果が共有する。
+ * ドラッグさせ、動画のカードだけを落とす先にする。フォルダの直下と検索結果が共有する。
  */
 export default function FolderVideoGrid(props: FolderVideoGridProps) {
   const owner = useAudience() === "owner";

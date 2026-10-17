@@ -2,7 +2,7 @@ import { request, type Video } from "./client";
 import type { components } from "./gen/openapi";
 import { clearListSnapshot } from "./listSnapshot";
 
-// 型は api/openapi.yaml からの生成物を使う（specs/047-video-work-info/contracts/screen-api.md）。
+// 型は api/openapi.yaml からの生成物を使う。
 export type WorkInfo = components["schemas"]["WorkInfo"];
 export type WorkInfoInput = components["schemas"]["WorkInfoInput"];
 export type WorkDateKind = components["schemas"]["WorkDateKind"];
@@ -30,7 +30,7 @@ export const workOrganizationRoles: readonly WorkOrganizationRole[] = ["maker", 
 
 /**
  * setVideoDetails は全画面の編集画面の保存で、表示名と作品情報の全体を 1 回で書く
- * （`PUT /api/videos/{id}/details`、contracts/screen-api.md、research.md R-14）。サーバーは
+ * （`PUT /api/videos/{id}/details`）。サーバーは
  * 両方を書くか、どちらも書かない。応答は `getVideo` と同じ形の動画である。
  *
  * 成功したら一覧の控えを捨てる。控えは離れた一覧の題名を持ち、一覧が外れている間の

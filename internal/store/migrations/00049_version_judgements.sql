@@ -1,5 +1,5 @@
 -- +goose Up
--- 「同じ動画かもしれない」候補の自動の判定（specs/054-auto-dup/data-model.md、research.md R-4・R-5）。
+-- 「同じ動画かもしれない」候補の自動の判定。
 -- 候補は索引なので、作り直すと判定も null と 0 に戻り、もう一度判定する。
 -- judgement は null（待ち）か running・undecided・failed・no_connection。
 alter table video_version_candidates add column judgement text;
@@ -12,7 +12,7 @@ alter table video_version_candidates add column judgement_error text;
 -- undecided の行のモデルの答え。衝突で決められなかったときは null。
 alter table video_version_candidates add column probability real;
 
--- 集まりから外した組（research.md R-8）。利用者データで、自動では束ねない。key_a < key_b に並べて 1 行。
+-- 集まりから外した組。利用者データで、自動では束ねない。key_a < key_b に並べて 1 行。
 create table video_version_unbundles (
     key_a      text    not null,
     key_b      text    not null,

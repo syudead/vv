@@ -14,8 +14,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/extgen"
 )
 
-// 外部連携 API と MCP のタグの統合・改名・シノニム（specs/039-external-tag-admin/contracts/
-// external-api.md §2〜§4・§8）を、本物の保存先と Bearer の境界で確かめる。
+// 外部連携 API と MCP のタグの統合・改名・シノニムを、本物の保存先と Bearer の境界で確かめる。
 
 // createTag は確定したタグ name を作り、その id を返す。
 func (f mcpFixture) createTag(t *testing.T, name string) int64 {

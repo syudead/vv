@@ -3,8 +3,7 @@ import { t } from "../i18n";
 import { Badge } from "../ui/shadcn/badge";
 
 /**
- * TagKindLabel はタグの行の名前（と仮の目印）の後ろに置く種類の名札である
- * （specs/051-tag-kinds/ui-design.md「Kind on a row」）。枠だけで塗らない `outline` の
+ * TagKindLabel はタグの行の名前（と仮の目印）の後ろに置く種類の名札である。枠だけで塗らない `outline` の
  * `Badge` を一段小さい文字・弱い色にし、名前より先に目に入らず、タグのチップ（塗り）とも
  * 見分けがつくようにする。名前の行の高さを変えないよう `h-5` にし、`sm` 未満は名前の行の
  * 半分、`sm` 以上は `max-w-chip-label` で省略する。押せない。種類の無いタグには何も描かない。

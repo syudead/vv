@@ -1,11 +1,11 @@
 ---
 source: docs/design-docs/hardware-encoding.md
-sourceHash: 850313b9260872747ced86bfbf1025f64365e4bec02234ef4edd16f985e5500c
+sourceHash: 25831e437ed39fa5013bf4217283a3c5be69b786962d0d9a8cde3616b6f4a71e
 ---
 
 # ライブ変換のハードウェアエンコード {#hardware-encoding-for-live-transcoding}
 
-所有者はライブ変換 (`GET /api/videos/{id}/transcode.mp4`) の動画エンコーダを選ぶ。起動時の確認がどのハードウェアエンコーダが動くかを決め、失敗したエンコーダはそのリクエストの中でソフトウェアに切り替わる ([`internal/app/transcode_settings.go`](../../internal/app/transcode_settings.go))。背景: [specs/025-hardware-encoding/](../../specs/025-hardware-encoding/plan.md) (親 Issue #370)。ライブ変換の開始は [live-transcode-seek.md](live-transcode-seek.md) に、MOV の入力は [mov-live-transcoding.md](mov-live-transcoding.md) にある。
+所有者はライブ変換 (`GET /api/videos/{id}/transcode.mp4`) の動画エンコーダを選ぶ。起動時の確認がどのハードウェアエンコーダが動くかを決め、失敗したエンコーダはそのリクエストの中でソフトウェアに切り替わる ([`internal/app/transcode_settings.go`](../../internal/app/transcode_settings.go))。ライブ変換の開始は [live-transcode-seek.md](live-transcode-seek.md) に、MOV の入力は [mov-live-transcoding.md](mov-live-transcoding.md) にある。
 
 保存された選択と確認の結果が使用中のエンコーダを決め、各変換リクエストはそれをメモリから読む。
 
@@ -122,7 +122,7 @@ flowchart LR
 
 ## 設定 API {#settings-api}
 
-`GET` と `PUT /api/settings/transcoding` (本文 `{"videoEncoder": …}`) は所有者専用で、どちらも現在の `TranscodingSettings` を `Cache-Control: no-store` 付きで返す ([契約](../../specs/025-hardware-encoding/contracts/transcoding-settings-api.md)。正本は [api/openapi.yaml](../../api/openapi.yaml))。
+`GET` と `PUT /api/settings/transcoding` (本文 `{"videoEncoder": …}`) は所有者専用で、どちらも現在の `TranscodingSettings` を `Cache-Control: no-store` 付きで返す (。正本は [api/openapi.yaml](../../api/openapi.yaml))。
 
 応答には、選択、使用中のエンコーダ、`fallbackReason`、`checking`、そして `nvenc`、`qsv`、`vaapi`、`videotoolbox` の順にそれぞれの確認結果と理由が入る。`software` と `auto` は常に受け付ける。
 

@@ -9,7 +9,7 @@ import (
 )
 
 // startTranscodeSettings はライブ変換の映像エンコード方式の設定を作り、保存値を読み、
-// 起動時の確認を背後で始めて待たずに戻る（specs/025-hardware-encoding/research.md R-2）。
+// 起動時の確認を背後で始めて待たずに戻る。
 // 確認が終わるまで、実際に使う方式は software である。確認は ctx の取り消しで止まる。
 func startTranscodeSettings(
 	ctx context.Context,

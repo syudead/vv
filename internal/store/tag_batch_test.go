@@ -10,7 +10,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// まとめての確定・却下・削除と確認の数（specs/036-tag-admin-scale/data-model.md §2）。
+// まとめての確定・却下・削除と確認の数。
 
 // batchFixture は key-a に仮のタグ t1・t2・t3 を付け、確定したタグ c1・c2 を作る。
 // 返す map は名前から id。
@@ -42,7 +42,7 @@ func batchIDs(ids map[string]int64, missing int64) []int64 {
 }
 
 // assertTagInvariantsNow は 031 の不変条件（と各タグがちょうど 1 つの元の名前を持つこと）と
-// 名前の自然順の鍵の不変条件（036 の data-model.md §2）を、テストの終わりを待たずにその場で
+// 名前の自然順の鍵の不変条件を、テストの終わりを待たずにその場で
 // 確かめる。
 func assertTagInvariantsNow(t *testing.T, db *DB) {
 	t.Helper()
@@ -215,7 +215,7 @@ func TestTagImpactCountsDistinctRegisteredVideos(t *testing.T) {
 }
 
 // 100 本に付いた仮のタグと、別の 1 本に付いた確定したタグを渡すと、操作ごとに働くタグと
-// その動画だけを数える（research.md R-6）。
+// その動画だけを数える。
 func TestTagImpactCountsOnlyTagsTheActionAppliesTo(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()

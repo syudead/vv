@@ -15,11 +15,11 @@ import { RemoveItemButton, ReorderHandle, useSortableRow } from "../videoList/re
 import { itemTitle, playTarget } from "./playlistItems";
 
 /**
- * PlaylistItemRow はプレイリストの画面の 1 行である（specs/044-playlists/ui-design.md「Rows」）。
+ * PlaylistItemRow はプレイリストの画面の 1 行である。
  * ライブラリのリスト表示の行と同じ列と高さに、前へハンドルと番号、後ろへ外す `×` を足す。
  *
  * 行のリンク（サムネイルと題名）はその項目から再生を始める。行はハンドルからだけ持ち上がり
- * （research.md R-9）、持ち上げている間はリンクを押せない。
+ * 、持ち上げている間はリンクを押せない。
  */
 export default function PlaylistItemRow({
   playlistId,

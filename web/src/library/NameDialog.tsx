@@ -19,9 +19,8 @@ export interface NameDialogWords {
 }
 
 /**
- * NameDialog は名前を 1 つ聞いて送る窓である（specs/044-playlists/ui-design.md「New playlist」、
- * specs/048-groups/ui-design.md「New group」）。呼び出し元は開いている間だけ描き、閉じるたびに
- * 入れた名前を捨てる。プレイリストとグループの名前は同じ規則である（048 research.md R-14）。
+ * NameDialog は名前を 1 つ聞いて送る窓である。呼び出し元は開いている間だけ描き、閉じるたびに
+ * 入れた名前を捨てる。プレイリストとグループの名前は同じ規則である。
  *
  * 名前は送る前に数え、空か 100 文字を超えるなら送らずに規則を欄の誤りとして出す（入れて
  * いる間は出さない）。送れたら `onDone` を呼び、閉じるのは呼び出し元に任せる。`400` は名前の

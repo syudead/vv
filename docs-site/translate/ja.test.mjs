@@ -104,10 +104,10 @@ test('a translation without a source is an error', () => {
   assert.deepEqual(r.errors.map((e) => e.rel), ['gone.md'.replace(/^/, 'docs/')])
 })
 
-test('a missing translation is listed, not an error', () => {
+test('a missing published translation is listed; temporary SDD artifacts are excluded', () => {
   const root = repo({ 'docs/a.md': source, 'specs/b.md': '# B\n' })
   const r = checkAll(root)
-  assert.deepEqual(r.untranslated, ['docs/a.md', 'specs/b.md'])
+  assert.deepEqual(r.untranslated, ['docs/a.md'])
   assert.equal(r.errors.length, 0)
 })
 

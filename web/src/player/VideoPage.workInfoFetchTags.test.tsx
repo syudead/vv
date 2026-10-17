@@ -13,8 +13,7 @@ import {
 } from "../testing/workInfoFetchPage";
 import type { PlayerControls } from "./playerControls";
 
-// 比較の段で取得したタグを 1 つずつ選ぶ（specs/056-plugin-tooling/ui-design.md「Compare: tags
-// row」、research.md R-7）。
+// 比較の段で取得したタグを 1 つずつ選ぶ。
 
 vi.mock("./VideoPlayer", () => ({
   default: function VideoPlayerMock(props: {

@@ -12,7 +12,7 @@ import (
 	"github.com/syudead/vv/internal/store"
 )
 
-// 人物と団体の管理の経路（specs/047-video-work-info/contracts/screen-api.md「People and organizations」）を、
+// 人物と団体の管理の経路を、
 // 本物の認証・保存層・経路をつないで確かめる。
 
 type creditFixture struct {
@@ -312,7 +312,7 @@ func TestListPeoplePages(t *testing.T) {
 		wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest}, "")
 }
 
-// ゲストはどの経路でも 401 で、何も変わらない（research.md R-10）。
+// ゲストはどの経路でも 401 で、何も変わらない。
 func TestCreditsOwnerOnly(t *testing.T) {
 	f := newCreditFixture(t)
 	person := f.createPerson(t, map[string]any{"name": "人"})

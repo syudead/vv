@@ -57,8 +57,7 @@ export interface ConditionsFieldsProps {
 }
 
 /**
- * ConditionsFields はスマートフォルダの窓の「Conditions」の欄である
- * （specs/052-smart-folders/ui-design.md「Conditions」）。ライブラリの絞り込みの部品を表の
+ * ConditionsFields はスマートフォルダの窓の「Conditions」の欄である。ライブラリの絞り込みの部品を表の
  * 順に並べ、同じ言葉と形で条件を持つ: 検索、視聴状態、お気に入りのみ・再生できるものだけ、
  * タグの種類、タグ、人物、団体、追加日、長さ。空の条件は条件から外れる。
  */

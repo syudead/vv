@@ -9,7 +9,7 @@ import (
 	"github.com/syudead/vv/internal/httpapi/gen"
 )
 
-// ドラッグの操作と取り消しの経路（specs/050-drag-organize/contracts/screen-api.md「Errors」）を、
+// ドラッグの操作と取り消しの経路を、
 // 本物の認証・保存層・internal/app の Organizer をつないで確かめる。中身は library_test.go の
 // libraryFixture である。
 

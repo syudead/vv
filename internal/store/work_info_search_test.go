@@ -8,8 +8,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// ライブラリの検索欄と作品情報（specs/047-video-work-info/data-model.md「Search」、research.md R-6・R-10、
-// #1024）。
+// ライブラリの検索欄と作品情報。
 
 // workInfoSearchFixture は題名にも相対パスにも検索語を含まない 2 本の動画を作り、1 本目に作品情報を書く。
 // 1 本目の作品情報は品番 AB-12、出演者の人物（別名はひらがな）、メーカーの団体、説明を持つ。2 本目は
@@ -94,7 +93,7 @@ func TestSearchFindsAMergedPersonByTheMergedName(t *testing.T) {
 
 // 集まりの代表以外のバージョンから書いた作品情報も集まりの利用者データの鍵に載るので、ライブラリの
 // 項目（ListLibrary）では品番・人物・団体の名前の語で代表の 1 件が出て、除外語にすると集まりごと
-// 除かれる（data-model.md「Search」、specs/030-video-versions/data-model.md §3）。
+// 除かれる。
 func TestLibrarySearchMatchesWorkInfoOfTheBundle(t *testing.T) {
 	db := migratedDB(t)
 	paths := upsertAll(t, db,

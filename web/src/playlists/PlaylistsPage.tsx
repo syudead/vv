@@ -52,11 +52,10 @@ function readyPage(list: PlaylistList): Page {
 }
 
 /**
- * PlaylistsPage は所有者のプレイリストを最後に変えた順にカードの格子で並べ、新しく作らせる画面である
- * （specs/044-playlists/ui-design.md「Playlists screen」）。カードはライブラリのグループのカードの形
+ * PlaylistsPage は所有者のプレイリストを最後に変えた順にカードの格子で並べ、新しく作らせる画面である。カードはライブラリのグループのカードの形
  * （PlaylistCard）で、格子はライブラリと同じ CardGrid である。
  *
- * 一覧はライブラリと同じく 1 ページずつ読む（ui-design.md「Paging」）。格子の末尾の見張りが画面に
+ * 一覧はライブラリと同じく 1 ページずつ読む。格子の末尾の見張りが画面に
  * 近づいたら `nextCursor` で続きを読み、読んでいる間は LoadMoreRow の Spinner、失敗したら今の
  * カードを残して Retry つきの LoadMoreRow を出す。見出しの件数は応答の `total`（全部の数）である。
  *
@@ -66,9 +65,9 @@ function readyPage(list: PlaylistList): Page {
  * 読み直しに失敗したら今のカードを残して Retry つきの LoadMoreRow を出し、Retry は最初のページを
  * もう一度求める。読み直しが終わるか失敗すると見張りは付け直され、続きはそこから読まれる。
  *
- * 最初のページは開いたときと作った後に読む。開いている間は自分では取り直さない（research.md R-10）。
+ * 最初のページは開いたときと作った後に読む。開いている間は自分では取り直さない。
  * 作ったプレイリストは応答で先頭に置いてから最初のページを読み直し、フォーカスをそのカードのリンクへ
- * 移す。同じ名前のプレイリストもそれぞれ 1 枚に出す（research.md R-11）。
+ * 移す。同じ名前のプレイリストもそれぞれ 1 枚に出す。
  */
 export default function PlaylistsPage() {
   const [page, setPage] = useState<Page>({ kind: "loading" });

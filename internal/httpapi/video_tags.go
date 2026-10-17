@@ -10,7 +10,7 @@ import (
 )
 
 // 動画へのタグの付け外し・要約・「すべて選択」用の全件 id
-// （specs/014-video-tags/contracts/tags-api.md §4・§5）。
+//
 //
 // 付け外し・要約は internal/store.TagStore（s.tags）、全件の id は
 // internal/store.LibraryStore（s.videos）を、httpapi が直接呼ぶ。internal/app は
@@ -18,7 +18,7 @@ import (
 
 // maxVideoTagsIDs は付け外し・要約が受け付ける videoIds の最大件数である。
 // api/openapi.yaml の VideoTagsRequest/VideoTagsSummaryRequest の maxItems と
-// 同じ値（contracts/tags-api.md §4）。
+// 同じ値。
 const maxVideoTagsIDs = 20000
 
 // UpdateVideoTags は動画へタグを付ける・外す（POST /api/video-tags）。
@@ -55,7 +55,7 @@ func (s *server) UpdateVideoTags(w http.ResponseWriter, r *http.Request) {
 		}
 	case gen.Remove:
 		// 取り外しは id での指定だけを受け付ける。画面が外す候補はいつも付いている
-		// タグで、id を持っているからである（contracts/tags-api.md §4）。
+		// タグで、id を持っているからである。
 		if tagID == nil {
 			s.invalidRequest(w, "Removing a tag requires tag.id.")
 			return
@@ -136,7 +136,7 @@ func (s *server) parseIDsQuery(w http.ResponseWriter, params videoQueryParams) (
 }
 
 // writeVideoIDs は「すべて選択」の id を応答に書く。groups はグループの項目、smartFolderIDs はスマート
-// フォルダの項目の id で、どちらも無ければ省く（specs/035-favorites/contracts/screen-api.md §3）。
+// フォルダの項目の id で、どちらも無ければ省く。
 func (s *server) writeVideoIDs(w http.ResponseWriter, ids, missingTagIDs []int64, groups []gen.LibraryGroupIds, smartFolderIDs []int64) {
 	if ids == nil {
 		ids = []int64{}
@@ -156,13 +156,11 @@ func (s *server) writeVideoIDs(w http.ResponseWriter, ids, missingTagIDs []int64
 }
 
 // validVideoTagsIDs は videoIds が1件以上20000件以下かを確かめる
-// （contracts/tags-api.md §4）。
 func validVideoTagsIDs(videoIDs []int64) bool {
 	return len(videoIDs) >= 1 && len(videoIDs) <= maxVideoTagsIDs
 }
 
-// parseTagInput は TagInput が id と name のちょうど一方を持つかを確かめる
-// （contracts/tags-api.md §1）。どちらも無いか両方あれば ok = false を返す。
+// parseTagInput は TagInput が id と name のちょうど一方を持つかを確かめる。どちらも無いか両方あれば ok = false を返す。
 func parseTagInput(tag gen.TagInput) (id *int64, name *string, ok bool) {
 	if (tag.Id == nil) == (tag.Name == nil) {
 		return nil, nil, false
@@ -171,7 +169,7 @@ func parseTagInput(tag gen.TagInput) (id *int64, name *string, ok bool) {
 }
 
 // tooManyVideos は一括操作の videoIds が 0 件か maxVideoTagsIDs を超えることを
-// 返す（specs/023-english-i18n/contracts/error-api.md §1 の too_many_videos）。
+// 返す。
 func (s *server) tooManyVideos(w http.ResponseWriter) {
 	s.invalidRequestLimit(w, reasonTooManyVideos, maxVideoTagsIDs,
 		fmt.Sprintf("videoIds must contain between 1 and %d items.", maxVideoTagsIDs))

@@ -11,7 +11,7 @@ import {
   renderSettings,
 } from "../testing/settingsPage";
 
-// 設定の 8 つのページ、その一覧とアドレス（specs/058-settings-pages/research.md R-1〜R-3）。
+// 設定の 8 つのページ、その一覧とアドレス。
 // アドレスの決め方そのものは settingsPages.test.ts が確かめる。
 
 /** sectionHeadings はページの本文にある節の見出しである（一覧の見出しは含まない）。 */

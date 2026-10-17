@@ -7,7 +7,7 @@ import type {
 import { orderedItemCollection } from "../videoList/ItemRowCells";
 
 // 動画ページのプレイリストの文脈が URL と応答から決める規則
-// （specs/044-playlists/ui-design.md「Video page in a playlist」「Playlist panel」「One order」）。
+//
 // 画面の部品から外し、ロジックのテストで確かめる（docs/design-docs/web-testing.md）。
 
 /** PlaylistQuery は動画ページの URL の `?playlist=<id>&item=<itemId>` である。 */
@@ -38,7 +38,7 @@ export function parsePlaylistQuery(search: string): PlaylistQuery | null {
  * stepPath はプレイリストの項目 `itemId` を動画 `videoId` から再生する動画ページの場所である。
  * ステップへ移るときは常に `playlist` を保ち、`item` をステップの項目にする（R-7）。項目が
  * スマートフォルダの項目なら `smartFolderId` にそのフォルダを渡し、`smartFolder` を付ける。
- * 省けば付けない（specs/052-smart-folders/ui-design.md「Video page in a playlist」）。
+ * 省けば付けない。
  */
 export function stepPath(
   playlistId: number,
@@ -78,7 +78,7 @@ export function itemSmartFolderId(item: PlaylistItem): number | undefined {
 
 /**
  * itemStepPath は項目 `item` を始める動画ページの場所である。始める動画が無ければ null。
- * スマートフォルダの項目は `smartFolder` を付ける（ui-design.md「Playlist screen row」）。
+ * スマートフォルダの項目は `smartFolder` を付ける。
  */
 export function itemStepPath(playlistId: number, item: PlaylistItem): string | null {
   const videoId = itemStartVideoId(item);
@@ -111,8 +111,7 @@ function pairTime(pair: PlaylistPair): number {
 
 /**
  * choosePair は読んだ組から使う 1 組を選ぶ。そろった組があれば最後のそろった組、
- * 上限まで読んでもそろわなければ `updatedAt` の遅い組で、両方の部分をそれが代表する
- * （ui-design.md「One order」）。組が無ければ null。
+ * 上限まで読んでもそろわなければ `updatedAt` の遅い組で、両方の部分をそれが代表する。組が無ければ null。
  */
 export function choosePair(pairs: readonly PlaylistPair[]): PlaylistPair | null {
   let agreed: PlaylistPair | null = null;
@@ -127,8 +126,7 @@ export function choosePair(pairs: readonly PlaylistPair[]): PlaylistPair | null 
 
 /**
  * panelScrollTop は、パネルの一覧の `scrollTop` である。再生中の行を見える位置に置き、
- * 上の行の下端（高さの 3 分の 1）を残して、何が前に流れたかを読めるようにする
- * （ui-design.md「Playlist panel」Scrolling）。位置は一覧の上端からの値で、上の行が無ければ 0。
+ * 上の行の下端（高さの 3 分の 1）を残して、何が前に流れたかを読めるようにする。位置は一覧の上端からの値で、上の行が無ければ 0。
  */
 export function panelScrollTop(previous: { top: number; height: number } | null): number {
   if (previous === null) return 0;

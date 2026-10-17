@@ -11,7 +11,7 @@ import { expect, test, type APIRequestContext, type Page } from "@playwright/tes
 // src/folders/folderPath）が、子フォルダの自然順・直下だけの一覧・配下の検索は
 // Go のテスト（internal/domain/folder_test.go、internal/httpapi/folders_test.go、
 // internal/store/folders_test.go）が確かめる。
-// 構成は run-e2e.mjs が generateFolderFixtures で、quickstart.md のとおりに作る。
+// 構成は run-e2e.mjs が generateFolderFixtures で作る。
 
 interface MediaFolder {
   id: number;

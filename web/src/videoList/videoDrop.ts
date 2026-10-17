@@ -3,8 +3,7 @@ import type { LibraryGroup, Video } from "../api/client";
 import { t, type UiText } from "../i18n";
 import type { OntoAnswer } from "./cardDragRules";
 
-// 動画を動画に落としたときの規則である（specs/050-drag-organize/ui-design.md「What a drop
-// does」「Drop menus」「The new group's name」）。画面（ライブラリ、グループのページ、フォルダ
+// 動画を動画に落としたときの規則である。画面（ライブラリ、グループのページ、フォルダ
 // 画面）が共有する。
 
 /** groupNameLimit はグループの名前の長さの上限（コードポイント）である（domain.ValidateGroupName）。 */
@@ -12,7 +11,7 @@ export const groupNameLimit = 100;
 
 /**
  * videoOnto は動画のカードの上に `lifted` を落とせるかを返す。動画だけなら「Group or bundle…」、
- * グループが混じれば拒否（グループからはグループを作らない。contracts/screen-api.md `/group`）。
+ * グループが混じれば拒否（グループからはグループを作らない。 `/group`）。
  */
 export function videoOnto(liftedAllVideos: boolean): OntoAnswer<UiText> {
   return liftedAllVideos ? { label: t.organize.drop.groupOrBundle } : "refused";
@@ -20,7 +19,7 @@ export function videoOnto(liftedAllVideos: boolean): OntoAnswer<UiText> {
 
 /**
  * bundleOverLimit は持ち上げたカード `liftedCount` 枚と落とした先の 1 枚が、束ねられる 20 本を
- * 超えるかを返す。画面はカードを数え、集まりの展開はサーバーに任せる（ui-design.md「Bundle limit」）。
+ * 超えるかを返す。画面はカードを数え、集まりの展開はサーバーに任せる。
  */
 export function bundleOverLimit(liftedCount: number): boolean {
   return liftedCount + 1 > maxBundleSelection;
@@ -43,7 +42,7 @@ const trailingWhiteSpace = new RegExp(`[${whiteSpace}]+$`, "u");
 /**
  * provisionalGroupName はサーバーが「Make a group」の新しいグループに付ける名前である。落とした先の
  * 題名の先頭の空白を除き、先頭 100 コードポイントに切り、末尾の空白を除いたもの
- * （domain.GroupNameFromTitle、data-model.md「Operations」の Group）。順序もサーバーと同じにする。
+ * （domain.GroupNameFromTitle、の Group）。順序もサーバーと同じにする。
  */
 export function provisionalGroupName(title: string): string {
   const cut = Array.from(title.replace(leadingWhiteSpace, ""))
@@ -58,8 +57,7 @@ export type NameFieldOutcome =
 
 /**
  * nameFieldOutcome は名前の欄の値 `value` で Enter を押した結果を返す。前後を削って空か仮の名前と
- * 同じなら何も送らずに閉じ、100 コードポイントを超えれば閉じない（ui-design.md「The new group's
- * name」）。
+ * 同じなら何も送らずに閉じ、100 コードポイントを超えれば閉じない。
  */
 export function nameFieldOutcome(value: string, provisional: string): NameFieldOutcome {
   const name = value.trim();

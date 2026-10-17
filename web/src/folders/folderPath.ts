@@ -59,8 +59,7 @@ export function parseFolderPathname(pathname: string): FolderLocation {
 }
 
 /**
- * VideoLocationLabel は動画カードに添える置き場所である（ui-design.md
- * 「Search results」）。`label` は表示・読み上げに使う文字列（先頭の側を
+ * VideoLocationLabel は動画カードに添える置き場所である。`label` は表示・読み上げに使う文字列（先頭の側を
  * 省略して表示する）、`title` は `title` 属性に入れる省略しない全体である。
  */
 export interface VideoLocationLabel {
@@ -69,8 +68,7 @@ export interface VideoLocationLabel {
 }
 
 /**
- * folderLocationLabel は、開いているフォルダの配下検索結果に添える置き場所を作る
- * （ui-design.md「Search results」）。直下は「このフォルダ」、それ以外は開いている
+ * folderLocationLabel は、開いているフォルダの配下検索結果に添える置き場所を作る。直下は「このフォルダ」、それ以外は開いている
  * フォルダからの相対パス。相対パス自体が省略しない全体なので、`title` は `label`
  * と同じにする。
  */
@@ -91,15 +89,14 @@ export function folderLocationLabel(
 export interface RootDisplay {
   /** rootFolderName と同じ規則の表示名。 */
   name: string;
-  /** 登録フォルダの絶対パス。ゲストの応答には無い（guest-api.md §1）。 */
+  /** 登録フォルダの絶対パス。ゲストの応答には無い。 */
   rootPath?: string;
 }
 
 /**
  * topLevelLocationLabel は、最上位（`/folders`）の検索結果に添える置き場所を作る。
  * 表示は登録フォルダの表示名から始め、直下ならその名前だけにする。`title` は
- * 省略しない全体として、登録フォルダの絶対パスから始める（ui-design.md
- * 「Search results」）。登録フォルダが分からない間（取り込み直後の入れ替わりなど）
+ * 省略しない全体として、登録フォルダの絶対パスから始める。登録フォルダが分からない間（取り込み直後の入れ替わりなど）
  * は undefined を返し、呼び出し側は行ごと出さない。
  */
 export function topLevelLocationLabel(
@@ -139,7 +136,7 @@ export function rootDisplayName(rootPath: string): string {
 /**
  * rootFolderName は登録フォルダの集計（`path` が空の FolderSummary）から表示名を作る。
  * 絶対パスがあれば rootDisplayName で作り、ゲストの応答のように無ければサーバーが
- * 同じ規則で作った `name` を使う（specs/016-single-account-auth/contracts/guest-api.md §1）。
+ * 同じ規則で作った `name` を使う。
  */
 export function rootFolderName(root: { name: string; rootPath?: string }): string {
   return root.rootPath === undefined ? root.name : rootDisplayName(root.rootPath);

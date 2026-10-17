@@ -11,7 +11,6 @@ import (
 
 // SearchKeyVersion は FoldForMatch と NaturalSortKey の規則の版である。
 // 規則を変えるときは版を上げ、保存済みの鍵を作り直させる
-// （specs/013-library-search/data-model.md §5）。
 const SearchKeyVersion = 1
 
 // MaxSearchTerms は1つの検索式で使う語の上限である。17 個目以降の語と、
@@ -58,7 +57,7 @@ const (
 )
 
 // ParseSearchQuery は検索欄の入力を検索式に解釈する。規則は
-// specs/013-library-search/contracts/list-api.md §1 のとおりで、どの入力でも
+// docs/design-docs/catalog-organization.md のとおりで、どの入力でも
 // 誤りを返さない。語が残らなければ空の式（絞り込まない）を返す。
 //
 // 契約に書かれていない細部は次のように決めている。
@@ -173,7 +172,7 @@ func isSearchSpace(r rune) bool { return unicode.Is(unicode.White_Space, r) }
 // unicode.ToLower（CompareNatural と同じ小文字化）、ひらがなからカタカナへの
 // 置き換えの順に掛ける。全角半角・大文字小文字・かなの違いと、NFC・NFD の
 // 違いが同じ照合形に畳まれる。検索語の各語と、所在の search_key の両方に
-// 掛ける（specs/013-library-search/data-model.md §3）。
+// 掛ける。
 func FoldForMatch(s string) string {
 	return strings.Map(func(r rune) rune {
 		r = unicode.ToLower(r)
@@ -187,8 +186,7 @@ func FoldForMatch(s string) string {
 	}, norm.NFKC.String(s))
 }
 
-// NaturalSortKey は題名から、バイト順に比べると自然順になる鍵を作る
-// （specs/013-library-search/data-model.md §4）。FoldForMatch を掛けたうえで、
+// NaturalSortKey は題名から、バイト順に比べると自然順になる鍵を作る。FoldForMatch を掛けたうえで、
 // ASCII の数字の連続を「先頭の 0 を除いた桁数を10進4桁で表した接頭辞 + 先頭の
 // 0 を除いた数字」に置き換える（`2` → `00012`、`10` → `000210`、`0` や `00` は
 // 数値 0 として `0000`）。

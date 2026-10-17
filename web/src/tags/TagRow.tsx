@@ -39,27 +39,23 @@ export interface TagRowRefs {
 }
 
 /**
- * TagRow は管理画面の一覧の1行である（ui-design.md「Rows」「Create and
- * rename」）。改名中は、名前の場所（列）だけを同じ入力に置き換える。本数・
+ * TagRow は管理画面の一覧の1行である。改名中は、名前の場所（列）だけを同じ入力に置き換える。本数・
  * 「改名」・「その他の操作」は出したままにし、行の高さも変えない
  * （行全体を作成の行のような別レイアウトに差し替えない）。削除は行に直接
  * 出さず「その他の操作」のメニューへ置く（UI品質「削除と統合を、作成・改名
  * より目立たせない」）。「シノニム」は改名の右に直接置き、「別のタグへ
- * 統合…」は「その他の操作」の先頭・区切り線の上に置く（ui-design.md「Rows」）。
+ * 統合…」は「その他の操作」の先頭・区切り線の上に置く。
  *
  * 仮のタグ（`tentative`）の行は、名前の後ろに仮の目印を付け、操作の一群の
- * 先頭に「確定する」を置き、メニューの「削除…」を「却下する…」に置き換える
- * （specs/031-tentative-tags/ui-design.md「Row」）。行の高さ・本数の列・改名の
+ * 先頭に「確定する」を置き、メニューの「削除…」を「却下する…」に置き換える。行の高さ・本数の列・改名の
  * 入力は確定した行と同じ。
  *
  * 名前の列の左に行のチェックを置き、選んだ行は面を `primary-soft` にする。
  * タッチの端末（`pointer: coarse`）と `sm` 未満の幅では、行の操作を文字を持つ
- * 1 つのメニュー「Actions」にまとめる。出し分けは CSS だけで行う
- * （specs/036-tag-admin-scale/ui-design.md「Row checkbox」「Actions on touch and
- * narrow widths」）。
+ * 1 つのメニュー「Actions」にまとめる。出し分けは CSS だけで行う。
  *
  * 一覧は見えている行だけを描き、スクロールや検索のたびに行を描き直すので、
- * `React.memo` で包む（specs/036-tag-admin-scale/research.md R-2）。呼び出し元は
+ * `React.memo` で包む。呼び出し元は
  * 行の props（関数を含む）を安定させる。
  */
 export default memo(TagRow);
@@ -124,7 +120,7 @@ function TagRow({
         {/*
           押す範囲はチェックを中央に置いた size-8 の正方形（タッチでも外さない）。
           包みの余白を押しても同じチェックを切り替える。改名中の行は選ばない
-          （改名の確定で並びの別の位置へ動きうるため。ui-design.md「Row checkbox」）。
+          （改名の確定で並びの別の位置へ動きうるため）。
         */}
         <div
           className="-my-1.5 flex size-8 items-center justify-center"
@@ -162,7 +158,7 @@ function TagRow({
           <>
             {/*
               名前は省略されても、仮の目印は shrink-0 で名前の後ろに残す
-              （ui-design.md「Tentative mark」）。Link は文字の幅に縮むので、`after:` の
+              。Link は文字の幅に縮むので、`after:` の
               疑似要素を包み（relative）いっぱいに広げ、名前の列の空白を押しても絞り込んだ
               一覧が開くようにする。目印は relative で疑似要素の上に置き、Tooltip を
               受けられるようにする。
@@ -221,7 +217,7 @@ function TagRow({
         <div className="flex items-center justify-end gap-1 max-sm:hidden [@media(pointer:coarse)]:hidden">
           {/*
             確定したタグの行も「確定する」の分の幅を空けておき、操作の並びを全部の行で
-            そろえる（specs/036-tag-admin-scale/ui-design.md「Column header」）。
+            そろえる。
           */}
           {!tag.tentative && <span aria-hidden="true" className="size-8 shrink-0" />}
           {tag.tentative && (
@@ -231,8 +227,7 @@ function TagRow({
               aria-disabled={confirming || undefined}
               onClick={() => {
                 // 送信中は disabled にせず（押した本人のボタンのフォーカスを
-                // 保つため）、次の押下を無視して要求を1回だけにする（ui-design.md
-                // 「Confirm」）。
+                // 保つため）、次の押下を無視して要求を1回だけにする。
                 if (confirming) return;
                 onConfirm?.(tag);
               }}
@@ -347,7 +342,7 @@ export function RowMoreMenu({
 /**
  * CompactActions は、タッチの端末と `sm` 未満の幅で行の右端に出す「Actions」の
  * メニューである。項目は文字を持ち、行のアイコンのボタン（`RowIconButton`）と「その他の操作」の項目と
- * 同じ振る舞いをする（ui-design.md「Actions on touch and narrow widths」）。
+ * 同じ振る舞いをする。
  * マウスの端末で `sm` 以上では CSS で隠す（`matchMedia` は読まない）。
  *
  * DOM では行のアイコンのボタンの一群より前に置く。どちらか一方だけが描かれるので

@@ -48,7 +48,7 @@ import {
   withDirection,
 } from "./listCriteria";
 
-/** sortIcons は種類ごとのアイコンである（ui-design.md「Sort and direction」）。 */
+/** sortIcons は種類ごとのアイコンである。 */
 export const sortIcons: Record<SortKind, LucideIcon> = {
   added: CalendarArrowDown,
   modified: CalendarClock,
@@ -74,8 +74,8 @@ export const sortOptions = sortKinds.map((info) => ({
 /**
  * useSortOptions は今描いている相手に出す並べ替えの種類である。ゲストには
  * 「最近再生した順」と「お気に入りにした日時」を出さない（再生位置とお気に入りは
- * 所有者のもの。specs/016-single-account-auth/ui-design.md「Guest degradation」、
- * specs/035-favorites/ui-design.md「Guest degradation」）。ゲストは7種になる。
+ * 所有者のもの。docs/design-docs/authentication.md「Guest degradation」、
+ * docs/design-docs/catalog-organization.md「Guest degradation」）。ゲストは7種になる。
  */
 function useSortOptions(): typeof sortOptions {
   const owner = useAudience() === "owner";

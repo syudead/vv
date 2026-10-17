@@ -10,12 +10,11 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// タグそのものの保存（specs/014-video-tags/data-model.md §1〜§4・§7）。
+// タグそのものの保存。
 //
 // TagStore は PlaybackStore と同じく、共有する SQLite 接続を持ち、ライブラリ索引の
 // 役割の型（LibraryStore）には依存しない。タグの変更はスマートフォルダの一致を変えうるので、
-// 書き込みは db.commitMatchChange で確定し、確定後に domain.SmartFoldersChanged を発行する
-// （specs/052-smart-folders/data-model.md「Notices」）。ほかの副作用（生成物の削除・ワーカーの
+// 書き込みは db.commitMatchChange で確定し、確定後に domain.SmartFoldersChanged を発行する。ほかの副作用（生成物の削除・ワーカーの
 // 起床）は持たない。
 
 // CreateTag は新しいタグを作る。名前が既に別のタグの元の名前かシノニムなら
@@ -45,8 +44,8 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 		return domain.Tag{}, err
 	}
 	// 作ったばかりのタグでも、同じ名前の祖先フォルダの下の動画にはもう付いて
-	// いる（017 の data-model.md §4）ので、本数も数える。作った時刻も載せるため、
-	// 手で組み立てずに同じ取引で読み直す（specs/036-tag-admin-scale/data-model.md §2）。
+	// いるので、本数も数える。作った時刻も載せるため、
+	// 手で組み立てずに同じ取引で読み直す。
 	tag, err := tagByID(ctx, tx, id)
 	if err != nil {
 		return domain.Tag{}, err
@@ -60,7 +59,7 @@ func (s *TagStore) CreateTag(ctx context.Context, name string) (domain.Tag, erro
 
 // RenameTag は id の元の名前を書き換える。今と同じ名前なら何も変えずに今の
 // 状態を返す。名前が変わるときは、同じ取引でタグを確定し、新しい名前を却下した名前から
-// 外す（specs/031-tentative-tags/data-model.md §3）。新しい名前が既にあれば（自分のシノニムでも）
+// 外す。新しい名前が既にあれば（自分のシノニムでも）
 // *domain.TagNameConflict を返す。id が無ければ domain.ErrTagNotFound を返す。
 func (s *TagStore) RenameTag(ctx context.Context, id int64, name string) (domain.Tag, error) {
 	normalized, err := domain.NormalizeTagName(name)
@@ -135,8 +134,7 @@ func (s *TagStore) DeleteTag(ctx context.Context, id int64) error {
 	return nil
 }
 
-// MergeTags は sourceIDs のタグを targetID へ 1 つの取引で統合する
-// （specs/036-tag-admin-scale/data-model.md §2、specs/014-video-tags/data-model.md §4）。統合元の付与は
+// MergeTags は sourceIDs のタグを targetID へ 1 つの取引で統合する。統合元の付与は
 // insert or ignore で統合先へ写り、統合元の元の名前とシノニムはすべて統合先のシノニムになり、
 // 統合元は一覧から消え、統合先は確定したタグになる。統合先が無ければ domain.ErrTagNotFound を返す。
 // sourceIDs の重複は 1 つとして扱い、無い id は飛ばして NotFoundIDs に入れる。統合先の id は
@@ -191,9 +189,8 @@ func mergeTagsInTx(ctx context.Context, tx tagTx, targetID int64, sourceIDs []in
 	return domain.TagMergeOutcome{Tag: tag, NotFoundIDs: notFound}, nil
 }
 
-// mergeTagsInto は同じ取引の中で sourceIDs のタグを targetID へ統合し、統合先を確定したタグにする
-// （specs/031-tentative-tags/data-model.md §3）。統合元の数によらず決まった数の文で行い、統合後の
-// タグは組み立てない（20,000 個の統合で書きの取引を長く握らないため。036 の data-model.md §2）。
+// mergeTagsInto は同じ取引の中で sourceIDs のタグを targetID へ統合し、統合先を確定したタグにする。統合元の数によらず決まった数の文で行い、統合後の
+// タグは組み立てない（20,000 個の統合で書きの取引を長く握らないため）。
 // 統合元がすべて今あり、統合先を含まないことは呼び手が先に確かめて渡す。
 func mergeTagsInto(ctx context.Context, tx queryExecer, targetID int64, sourceIDs []int64) error {
 	encoded, err := json.Marshal(sourceIDs)
@@ -220,7 +217,7 @@ func mergeTagsInto(ctx context.Context, tx queryExecer, targetID int64, sourceID
 	); err != nil {
 		return fmt.Errorf("cannot delete the merged tags (target=%d): %w", targetID, err)
 	}
-	// スマートフォルダの条件が名指す統合元を統合先にする（specs/052-smart-folders/research.md R-9）。
+	// スマートフォルダの条件が名指す統合元を統合先にする。
 	if err := rewriteSmartRuleRefs(ctx, tx, domain.SmartRefTag, targetID, sourceIDs); err != nil {
 		return err
 	}
@@ -246,7 +243,7 @@ func findOrCreateTag(ctx context.Context, tx *sql.Tx, normalized string) (domain
 }
 
 // insertTag は整えた名前 normalized を元の名前に持つタグを作り、その id を返す。
-// tentative が真なら仮のタグとして作る（specs/031-tentative-tags/data-model.md §3）。
+// tentative が真なら仮のタグとして作る。
 // 名前がまだ無いことは呼び出し側が確かめる。
 func insertTag(ctx context.Context, tx *sql.Tx, normalized string, tentative bool) (int64, error) {
 	res, err := tx.ExecContext(ctx, `insert into tags (created_at, tentative) values (?, ?)`,

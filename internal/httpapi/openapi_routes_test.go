@@ -179,8 +179,7 @@ func TestErrorResponsesAreNotCached(t *testing.T) {
 }
 
 // TestAccessClassificationMatchesOpenAPISecurity は、境界の3つの扱い（auth.go の
-// classifyRequest）が api/openapi.yaml の各操作の security と一致することを確かめる
-// （specs/016-single-account-auth/contracts/auth-api.md §1）。`security: []` は誰でも、
+// classifyRequest）が api/openapi.yaml の各操作の security と一致することを確かめる。`security: []` は誰でも、
 // `[{sessionCookie: []}, {}]` はゲストも、宣言が無いものは全体の既定（所有者だけ）である。
 // 宣言の無い method と経路の組が「所有者だけ」に倒れることも確かめる。
 func TestAccessClassificationMatchesOpenAPISecurity(t *testing.T) {
@@ -290,8 +289,7 @@ func openAPISecurity(t *testing.T) map[operation]access {
 }
 
 // TestExternalAPIOperationsAreBearer は、外部連携 API（api/external-v1.yaml）のすべての操作が
-// bearerAuth で、境界がそれを Bearer の扱いに分類することを確かめる（specs/026-external-api/
-// research.md R-3）。文書の基底が境界の externalAPIBase と同じで、操作ごとの security の上書きが
+// bearerAuth で、境界がそれを Bearer の扱いに分類することを確かめる。文書の基底が境界の externalAPIBase と同じで、操作ごとの security の上書きが
 // 無いことも確かめる。宣言の無い method も Bearer の扱いである（/api/v1 の下はすべて Bearer）。
 // 本文を取る操作と requiresJSONBody の一致も、画面の API と同じく確かめる。
 func TestExternalAPIOperationsAreBearer(t *testing.T) {
@@ -368,7 +366,6 @@ func TestClassifyBearerPaths(t *testing.T) {
 
 // /api/tags/rejected-names は /api/tags/{id} と字面の段で区別される。GET と DELETE の
 // この経路が {id} の操作（タグの削除など）に取られないことを確かめる
-// （specs/031-tentative-tags/contracts/screen-api.md §3）。
 func TestRejectedTagNamesRouteIsNotTagID(t *testing.T) {
 	fake := &fakeTags{rejectedNames: []string{"Blocked"}}
 	handler := newTestServer(t, Options{Tags: fake})
@@ -377,7 +374,7 @@ func TestRejectedTagNamesRouteIsNotTagID(t *testing.T) {
 	if rec.Code != http.StatusOK || fake.operation != "list-rejected" {
 		t.Fatalf("GET: status = %d operation = %q: %s", rec.Code, fake.operation, rec.Body)
 	}
-	// パラメータが無ければ先頭から 100 件まで（specs/036-tag-admin-scale/contracts/screen-api.md §6）。
+	// パラメータが無ければ先頭から 100 件まで。
 	if fake.lastCursor != "" || fake.lastLimit != 100 {
 		t.Errorf("GET: cursor = %q limit = %d, want 空と 100", fake.lastCursor, fake.lastLimit)
 	}
@@ -398,7 +395,6 @@ func TestRejectedTagNamesRouteIsNotTagID(t *testing.T) {
 
 // /api/tags/batch と /api/tags/impact は /api/tags/{id} と字面の段で区別される。どちらの POST も
 // {id} の操作に取られず、それぞれの経路に届くことを確かめる
-// （specs/036-tag-admin-scale/contracts/screen-api.md §1）。
 func TestTagBatchRoutesAreNotTagID(t *testing.T) {
 	fake := &fakeTags{}
 	handler := newTestServer(t, Options{Tags: fake})

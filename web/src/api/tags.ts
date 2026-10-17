@@ -3,7 +3,7 @@ import { clearListSnapshot } from "./listSnapshot";
 import { nextVideoTagsSequence, recordAppliedVideoTags } from "./videoTagsEvents";
 import type { components } from "./gen/openapi";
 
-// 型は api/openapi.yaml からの生成物を使う（specs/014-video-tags/contracts/tags-api.md §1）。
+// 型は api/openapi.yaml からの生成物を使う。
 export type Tag = components["schemas"]["Tag"];
 export type TagRef = components["schemas"]["TagRef"];
 export type VideoTagsResponse = components["schemas"]["VideoTagsResponse"];
@@ -12,7 +12,7 @@ export type RejectedTagNameList = components["schemas"]["RejectedTagNameList"];
 export type TagBatchAction = components["schemas"]["TagBatchRequest"]["action"];
 /**
  * TagBatchCommand は `batchTags` に渡す操作である。`setKind` だけが付ける種類の `kindId` を持ち、
- * ほかの操作は `kindId` を送らない（specs/051-tag-kinds/contracts/screen-api.md）。
+ * ほかの操作は `kindId` を送らない。
  */
 export type TagBatchCommand =
   Exclude<TagBatchAction, "setKind"> | { action: "setKind"; kindId: number };
@@ -24,17 +24,15 @@ export type TagList = components["schemas"]["TagList"];
 export type TagSort = components["schemas"]["TagSort"];
 
 /**
- * maxVideoTagsSelection は `POST /api/video-tags` の `videoIds` に許される上限
- * （contracts/tags-api.md §4）。この要求は全部か無しか（1件でも上限を超えると
+ * maxVideoTagsSelection は `POST /api/video-tags` の `videoIds` に許される上限。この要求は全部か無しか（1件でも上限を超えると
  * 400 になり、何も変わらない）なので、選択がこれを超えるときは画面側で
  * 静かに分割して送らず、選択バーの一括操作を disabled のままにする
- * （web/src/library/SelectionBar.tsx、docs/design-docs/library-ui.md §6）。
+ * （web/src/library/SelectionBar.tsx、docs/design-docs/library-ui.md）。
  */
 export const maxVideoTagsSelection = 20000;
 
 /**
- * maxTagBatch は `POST /api/tags/batch`・`POST /api/tags/impact` の `ids` に許される上限
- * （specs/036-tag-admin-scale/contracts/screen-api.md §4）。超えると 400 `too_many_tags` に
+ * maxTagBatch は `POST /api/tags/batch`・`POST /api/tags/impact` の `ids` に許される上限。超えると 400 `too_many_tags` に
  * なるので、画面は読み込んだ行がこれを超えるときは先頭のチェック（読み込んだものを
  * すべて選ぶ）だけを、選んだ数がこれを超えるときはまとめての操作を disabled にする。
  */
@@ -52,12 +50,11 @@ function listTags(): Promise<Tag[]> {
 }
 
 /**
- * tagPageLimit はタグ管理画面が 1 回に読むタグの数
- * （specs/036-tag-admin-scale/contracts/screen-api.md §4）。
+ * tagPageLimit はタグ管理画面が 1 回に読むタグの数。
  */
 export const tagPageLimit = 100;
 
-/** TagPageQuery は `listTagPage` の条件である（contracts/screen-api.md §5）。 */
+/** TagPageQuery は `listTagPage` の条件である。 */
 export interface TagPageQuery {
   /** 検索語。サーバーが照合形にして名前とシノニムに部分一致させる。空なら絞らない。 */
   q?: string;
@@ -66,8 +63,7 @@ export interface TagPageQuery {
   /** 本数 0 のタグだけにする。 */
   unused?: boolean;
   /**
-   * 種類で絞る。種類の id（正の整数の文字列）か、種類の無いタグの `none`
-   * （specs/051-tag-kinds/contracts/screen-api.md「`GET /api/tags` parameter `kind`」）。
+   * 種類で絞る。種類の id（正の整数の文字列）か、種類の無いタグの `none`。
    */
   kind?: string;
   sort?: TagSort;
@@ -78,7 +74,7 @@ export interface TagPageQuery {
 }
 
 /**
- * listTagPage は条件に合うタグを 1 ページ読む（`GET /api/tags`、contracts/screen-api.md §4・§5）。
+ * listTagPage は条件に合うタグを 1 ページ読む（`GET /api/tags`）。
  * 検索・絞り込み・並び順はサーバーが全部のタグに掛ける。共有の保持（`getTags`）には触れず、
  * 呼び手ごとの `AbortSignal` で打ち切れる（条件を変えたら前の要求を打ち切るため）。
  */
@@ -257,9 +253,7 @@ export function __resetTagsForTest(): void {
 
 /**
  * refreshOnStaleTagError は、古いタグを使った操作の誤り（`tag_not_found`・
- * `tag_merge_required`・`tag_not_tentative`）を受けたときに共有の一覧を取り直す（別のタブでの
- * 削除・改名・統合・確定に、その場で気付けるようにする。specs/031-tentative-tags/
- * contracts/screen-api.md §2）。取り直しの完了は待たず、失敗しても揉み消して
+ * `tag_merge_required`・`tag_not_tentative`）を受けたときに共有の一覧を取り直す（別のタブでの 削除・改名・統合・確定に、その場で気付けるようにする。docs/design-docs/catalog-organization.md/）。取り直しの完了は待たず、失敗しても揉み消して
  * 未処理の reject を残さない（B2）。誤りは常にそのまま投げ直す。
  */
 function refreshOnStaleTagError(error: unknown): never {
@@ -276,8 +270,7 @@ function refreshOnStaleTagError(error: unknown): never {
 
 /**
  * afterTagCreated は、タグを新しく作る操作が成功した後に呼ぶ。作ったタグは
- * 同じ名前の祖先フォルダの下にある既存の動画にもすぐ付く（017 の
- * data-model.md §4）ので、改名などと同じく動画一覧の控えを捨て、共有の
+ * 同じ名前の祖先フォルダの下にある既存の動画にもすぐ付く（017 の）ので、改名などと同じく動画一覧の控えを捨て、共有の
  * タグの一覧も取り直す（Structural Decisions 7・8）。
  */
 function afterTagCreated(): void {
@@ -286,7 +279,7 @@ function afterTagCreated(): void {
 
 /**
  * afterTagsAppliedByName は、名前のタグを動画に付ける別の経路（作品情報の取得の反映。
- * specs/049-work-info-plugins/contracts/screen-api.md）が成功した後に呼ぶ。名前に当たる
+ * docs/design-docs/work-info-plugins.md）が成功した後に呼ぶ。名前に当たる
  * タグが無ければサーバーが作るので、`attachVideoTagByName` で作られたときと同じく
  * 動画一覧の控えを捨て、共有のタグの一覧を取り直す（候補と本数を新しく保つ）。
  */
@@ -301,7 +294,7 @@ export function afterTagsAppliedByName(): void {
  *
  * 共有のタグの一覧は、購読者（`subscribeTags`）がいれば今までどおり取り直し
  * （Structural Decisions 8）、いなければ取り直さずに `held` を捨てて次の `getTags` に
- * 取らせる（specs/036-tag-admin-scale/research.md R-12、contracts/screen-api.md §4）。
+ * 取らせる。
  * タグ管理画面は購読しないので、そこでの操作のたびに全件を取り直さない。どちらも
  * 完了を待たなくてよい。
  */
@@ -376,8 +369,7 @@ export async function deleteTag(id: number, signal?: AbortSignal): Promise<void>
 
 /**
  * mergeTag は sourceIds のタグを id のタグへ統合する（1 件の統合も `[sourceId]` で送る）。
- * 返るのは統合先の更新後のタグ（`tag`）と、もう無かった統合元（`notFoundIds`）である
- * （specs/036-tag-admin-scale/contracts/screen-api.md §2・§4）。統合元がすべて無かったときも
+ * 返るのは統合先の更新後のタグ（`tag`）と、もう無かった統合元（`notFoundIds`）である。統合元がすべて無かったときも
  * 成功で、`tag` は変わらない統合先になる。
  */
 export async function mergeTag(
@@ -400,7 +392,7 @@ export async function mergeTag(
  *
  * 名前が別のタグ S の元の名前で、確認をとって承諾したタグの id を `mergeTagId` に
  * 渡すと、S を id へ統合する（承諾していなければ渡さない）。承諾していないタグと
- * 違えば 409 `tag_merge_required` になる（contracts/tags-api.md §3）。
+ * 違えば 409 `tag_merge_required` になる。
  */
 export async function addTagSynonym(
   id: number,
@@ -440,7 +432,7 @@ export async function removeTagSynonym(
 
 /**
  * confirmTag は仮のタグを確定する（POST /api/tags/{id}/confirm、
- * specs/031-tentative-tags/contracts/screen-api.md §2）。既に確定していても今の状態が返る。
+ * docs/design-docs/catalog-organization.md）。既に確定していても今の状態が返る。
  */
 export async function confirmTag(id: number, signal?: AbortSignal): Promise<Tag> {
   const confirmed = await request<Tag>(`/api/tags/${String(id)}/confirm`, {
@@ -452,7 +444,7 @@ export async function confirmTag(id: number, signal?: AbortSignal): Promise<Tag>
 }
 
 /**
- * rejectTag は仮のタグを却下する（POST /api/tags/{id}/reject、contracts/screen-api.md §2）。
+ * rejectTag は仮のタグを却下する（POST /api/tags/{id}/reject）。
  * タグは消え、付いていた動画から外れ、名前が却下した名前の一覧に入る。確定したタグは
  * 409 `tag_not_tentative` になる。却下した名前の一覧は呼び出し側が
  * `listRejectedTagNamePage` で取り直す。
@@ -470,7 +462,7 @@ export async function rejectTag(id: number, signal?: AbortSignal): Promise<void>
 
 /**
  * batchTags は複数のタグをまとめて確定・却下・削除し、種類を付け外しする（POST /api/tags/batch、
- * specs/036-tag-admin-scale/contracts/screen-api.md §1、specs/051-tag-kinds/contracts/screen-api.md）。
+ * docs/design-docs/catalog-organization.md、docs/design-docs/catalog-organization.md）。
  * `setKind` は `{ action: "setKind", kindId }` で渡す。働かない種類・無いタグは
  * サーバーが飛ばし、`notApplicableIds`・`notFoundIds` で返す。成功したら、1 件の操作と同じく
  * `afterTagChanged` を 1 回呼ぶ。却下のあとの却下した名前の一覧は呼び出し側が取り直す。
@@ -493,7 +485,7 @@ export async function batchTags(
 
 /**
  * tagImpact はまとめての却下・削除・統合の確認に出す、働くタグの数と影響を受ける動画の
- * 本数（重複なし）を返す（POST /api/tags/impact、contracts/screen-api.md §3）。何も変えない
+ * 本数（重複なし）を返す（POST /api/tags/impact）。何も変えない
  * ので、共有の保持には触れない。
  */
 export function tagImpact(
@@ -511,7 +503,7 @@ export function tagImpact(
 
 /**
  * listRejectedTagNamePage は却下した名前の 1 ページを名前の自然順で返す
- * （GET /api/tags/rejected-names、specs/036-tag-admin-scale/contracts/screen-api.md §6）。
+ * （GET /api/tags/rejected-names、docs/design-docs/catalog-organization.md）。
  * `cursor` は前のページの `nextCursor`、`limit` は 1 ページの件数（1〜200）。省くとサーバーの
  * 既定（先頭から 100 件）になる。応答の `total` は却下した名前の全部の数で、`nextCursor` は
  * 続きがあるときだけ入る。共有の保持には触れない。
@@ -533,7 +525,7 @@ export function listRejectedTagNamePage(
 
 /**
  * forgetRejectedTagName は名前を却下した名前の一覧から外す
- * （DELETE /api/tags/rejected-names?name=…、contracts/screen-api.md §3）。一覧に無い名前でも
+ * （DELETE /api/tags/rejected-names?name=…）。一覧に無い名前でも
  * 成功する。外した名前は、次に自動で付けたとき再び仮のタグとして作られる。
  */
 export async function forgetRejectedTagName(
@@ -551,8 +543,7 @@ export async function forgetRejectedTagName(
 }
 
 /**
- * updateVideoTags は動画へタグを付ける・外す（POST /api/video-tags、
- * contracts/tags-api.md §4）。成功したら、読み込み済みの一覧の項目と
+ * updateVideoTags は動画へタグを付ける・外す（POST /api/video-tags）。成功したら、読み込み済みの一覧の項目と
  * listSnapshot の控えの tags へ結果を反映する通知を送る（Structural
  * Decisions 7）。`tag_not_found` を受けたときは共有のタグの一覧も取り直す。
  */
@@ -593,12 +584,11 @@ export function attachVideoTagByID(
 
 /**
  * attachVideoTagByName は名前でタグを付ける。名前はシノニムを含めて引き、
- * 無ければ作る（contracts/tags-api.md §4）。新しいタグが作られているかも
+ * 無ければ作る。新しいタグが作られているかも
  * しれないので、共有のタグの一覧を取り直す
  * （issue 268 の受け入れ条件1「別の動画の再生画面でタグを追加しようとすると、
  * そのタグが候補に出る」）。送る前の共有の一覧に無いタグが返ったときは
- * 作られたとみなし、`createTag` と同じく動画一覧の控えも捨てる（作った
- * タグはフォルダ名から既存の動画にも付くため。017 の data-model.md §4）。
+ * 作られたとみなし、`createTag` と同じく動画一覧の控えも捨てる（作った タグはフォルダ名から既存の動画にも付くため）。
  */
 export function attachVideoTagByName(
   videoIds: readonly number[],
@@ -618,8 +608,7 @@ export function attachVideoTagByName(
 
 /**
  * detachVideoTag は id で指定したタグを videoIds の動画から外す。外すときは
- * 常に id で指定する（画面が外す候補はいつも付いているタグで、id を
- * 持っているため。contracts/tags-api.md §4）。本数が変わるので、共有の
+ * 常に id で指定する（画面が外す候補はいつも付いているタグで、id を 持っているため）。本数が変わるので、共有の
  * タグの一覧も取り直す。
  */
 export function detachVideoTag(
@@ -635,7 +624,7 @@ export function detachVideoTag(
 
 /**
  * summarizeVideoTags は選んだ動画に付いたタグの要約を返す
- * （POST /api/video-tags/summary、contracts/tags-api.md §4）。
+ * （POST /api/video-tags/summary）。
  */
 export function summarizeVideoTags(
   videoIds: readonly number[],

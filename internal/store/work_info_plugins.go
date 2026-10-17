@@ -12,9 +12,8 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 作品情報プラグインの行と、その設定の値（specs/049-work-info-plugins/data-model.md の
-// work_info_plugins・work_info_plugin_settings・Rules）。どちらも利用者データで、イベントを発行しない
-// （plan.md の Constitution Check。設定画面と開いている動画ページは一覧を読み直す）。
+// 作品情報プラグインの行と、その設定の値。どちらも利用者データで、イベントを発行しない
+//
 
 // workInfoPluginColumns は行を読む列である。モジュールのバイト列は読まない。
 // 最後の列は残っている直近の実行の終わった時刻で、無ければ null である。
@@ -89,7 +88,6 @@ func (s *WorkInfoPluginStore) WorkInfoPluginModule(ctx context.Context, id int64
 // 「同じ名前のプラグインを追加したときは差し替えとして扱い、承認前に戻る」）。
 // 差し替えでは、新しいマニフェストが宣言するキーの値を残してそれ以外を消す。問題のある差し替えは
 // 宣言を読めていないので、値を全部残す。名前を読めなかったアップロードは新しい行になる
-// （data-model.md の Rules）。
 func (s *WorkInfoPluginStore) SaveWorkInfoPlugin(
 	ctx context.Context, upload domain.WorkInfoPluginUpload, now time.Time,
 ) (domain.WorkInfoPlugin, bool, error) {
@@ -222,7 +220,7 @@ func replaceWorkInfoPlugin(
 		cols.module, upload.Digest, cols.problem, now.Unix(), id); err != nil {
 		return fmt.Errorf("cannot replace the work-info plugin: %w", err)
 	}
-	// 前のモジュールの実行は残さない（specs/056-plugin-tooling/data-model.md の Rules）。
+	// 前のモジュールの実行は残さない。
 	if _, err := tx.ExecContext(ctx, `delete from work_info_plugin_runs where plugin_id = ?`, id); err != nil {
 		return fmt.Errorf("cannot delete the replaced work-info plugin's last run: %w", err)
 	}
@@ -242,7 +240,7 @@ func replaceWorkInfoPlugin(
 
 // ApproveWorkInfoPlugin はプラグイン id のダイジェスト digest を承認し、承認後の行を返す。取引の中で行を
 // 読み直し、無ければ domain.ErrNotFound、問題があれば domain.ErrWorkInfoPluginUnusable、ダイジェストが
-// 違えば domain.ErrWorkInfoPluginChanged を返して何も書かない（data-model.md の Rules）。
+// 違えば domain.ErrWorkInfoPluginChanged を返して何も書かない。
 func (s *WorkInfoPluginStore) ApproveWorkInfoPlugin(
 	ctx context.Context, id int64, digest string, now time.Time,
 ) (domain.WorkInfoPlugin, error) {

@@ -11,7 +11,7 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// 人物と団体の保存（specs/047-video-work-info/data-model.md「Entities」、#1020）。
+// 人物と団体の保存。
 
 func createCredit(t *testing.T, db *DB, kind domain.CreditKind, input domain.CreditInput) domain.Credit {
 	t.Helper()
