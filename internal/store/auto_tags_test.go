@@ -118,35 +118,35 @@ func TestAutoTagQueueModes(t *testing.T) {
 	solo := ids[fixturePath("/media/solo.mp4")]
 	soloKey := "key" + fixturePath("/media/solo.mp4")
 
-	if n, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew); err != nil || n != 1 {
+	if n, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew, domain.ActivityByRule); err != nil || n != 1 {
 		t.Fatalf("初回の積み = %d, %v", n, err)
 	}
-	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew); n != 0 {
+	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew, domain.ActivityByRule); n != 0 {
 		t.Fatalf("2 回目の IfNew が %d 件積んだ", n)
 	}
 	claimAutoTag(t, store)
 	for _, mode := range []domain.AutoTagQueueMode{domain.AutoTagQueueIfNew, domain.AutoTagQueueUnlessDone, domain.AutoTagQueueAgain} {
-		if n, _ := store.QueueVideos(ctx, []int64{solo}, mode); n != 0 {
+		if n, _ := store.QueueVideos(ctx, []int64{solo}, mode, domain.ActivityByRule); n != 0 {
 			t.Fatalf("判定中の行を mode %d が積み直した", mode)
 		}
 	}
 	if err := store.Fail(ctx, soloKey, "boom"); err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew); n != 0 {
+	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew, domain.ActivityByRule); n != 0 {
 		t.Fatalf("失敗した行を IfNew が積み直した")
 	}
-	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueUnlessDone); n != 1 {
+	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueUnlessDone, domain.ActivityByRule); n != 1 {
 		t.Fatalf("失敗した行を UnlessDone が積み直さなかった")
 	}
 	claimAutoTag(t, store)
-	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{}); err != nil {
+	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{}, domain.ActivityByAI); err != nil {
 		t.Fatal(err)
 	}
-	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueUnlessDone); n != 0 {
+	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueUnlessDone, domain.ActivityByRule); n != 0 {
 		t.Fatalf("判定を終えた行を UnlessDone が積み直した")
 	}
-	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueAgain); n != 1 {
+	if n, _ := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueAgain, domain.ActivityByRule); n != 1 {
 		t.Fatalf("判定を終えた行を Again が積み直さなかった")
 	}
 	if state := autoTagState(t, db, soloKey); state != "queued" {
@@ -160,14 +160,14 @@ func TestAutoTagQueueLibraryAndClaimOrder(t *testing.T) {
 	ctx := context.Background()
 	store := db.AutoTags()
 	first := ids[fixturePath("/media/pair/p2.mp4")]
-	if _, err := store.QueueVideos(ctx, []int64{first}, domain.AutoTagQueueIfNew); err != nil {
+	if _, err := store.QueueVideos(ctx, []int64{first}, domain.AutoTagQueueIfNew, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	// 次の積みが同じミリ秒に入っても順が決まるよう、最初に積んだ行を前の時刻にする。
 	if _, err := db.sql.Exec(`update auto_tag_queue set queued_at = queued_at - 1000`); err != nil {
 		t.Fatal(err)
 	}
-	n, err := store.QueueLibrary(ctx, domain.AutoTagQueueUnlessDone)
+	n, err := store.QueueLibrary(ctx, domain.AutoTagQueueUnlessDone, domain.ActivityByOwner)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,11 +210,11 @@ func TestAutoTagFinishAttachesExistingTags(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew); err != nil {
+	if _, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	claimAutoTag(t, store)
-	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{Confirmed: []int64{cat.ID, gone.ID}}); err != nil {
+	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{Confirmed: []int64{cat.ID, gone.ID}}, domain.ActivityByAI); err != nil {
 		t.Fatal(err)
 	}
 	if got := manualTagIDs(t, db, soloKey); !reflect.DeepEqual(got, []int64{cat.ID}) {
@@ -237,14 +237,14 @@ func TestAutoTagFinishIgnoresJobsNoLongerRunning(t *testing.T) {
 	solo := ids[fixturePath("/media/solo.mp4")]
 	soloKey := "key" + fixturePath("/media/solo.mp4")
 	cat := createTestTag(t, db, "cat")
-	if _, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew); err != nil {
+	if _, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	claimAutoTag(t, store)
 	if _, err := store.RequeueRunning(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{Confirmed: []int64{cat.ID}}); err != nil {
+	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{Confirmed: []int64{cat.ID}}, domain.ActivityByAI); err != nil {
 		t.Fatal(err)
 	}
 	if got := manualTagIDs(t, db, soloKey); len(got) != 0 {
@@ -265,7 +265,7 @@ func TestAutoTagFinishDropsRemovedVideos(t *testing.T) {
 	store := db.AutoTags()
 	solo := ids[fixturePath("/media/solo.mp4")]
 	soloKey := "key" + fixturePath("/media/solo.mp4")
-	if _, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew); err != nil {
+	if _, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	claimAutoTag(t, store)
@@ -284,7 +284,7 @@ func TestAutoTagFinishDropsRemovedVideos(t *testing.T) {
 	if _, err := store.Subject(ctx, soloKey); !errors.Is(err, domain.ErrNotFound) {
 		t.Fatalf("登録外の動画の Subject = %v", err)
 	}
-	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{}); err != nil {
+	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{}, domain.ActivityByAI); err != nil {
 		t.Fatal(err)
 	}
 	if state := autoTagState(t, db, soloKey); state != "" {
@@ -330,13 +330,13 @@ func TestAutoTagCandidatesExcludeAttachedAndRejected(t *testing.T) {
 	rejected := createTestTag(t, db, "rejected")
 	createTestTag(t, db, "fresh")
 	solo := ids[fixturePath("/media/solo.mp4")]
-	if _, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew); err != nil {
+	if _, err := store.QueueVideos(ctx, []int64{solo}, domain.AutoTagQueueIfNew, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	claimAutoTag(t, store)
 	if err := store.Finish(ctx, soloKey, domain.AutoTagSelection{
 		Confirmed: []int64{attached.ID}, Tentative: []int64{suggested.ID, rejected.ID},
-	}); err != nil {
+	}, domain.ActivityByAI); err != nil {
 		t.Fatal(err)
 	}
 	if err := store.RejectTentative(ctx, solo, rejected.ID); err != nil {
@@ -377,7 +377,7 @@ func TestAutoTagCountsLastError(t *testing.T) {
 	db, ids := itemsFixture(t)
 	ctx := context.Background()
 	store := db.AutoTags()
-	if _, err := store.QueueVideos(ctx, []int64{ids[fixturePath("/media/solo.mp4")]}, domain.AutoTagQueueIfNew); err != nil {
+	if _, err := store.QueueVideos(ctx, []int64{ids[fixturePath("/media/solo.mp4")]}, domain.AutoTagQueueIfNew, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job := claimAutoTag(t, store)
@@ -405,11 +405,11 @@ func TestAutoTagFinishNotifiesBundleMembers(t *testing.T) {
 	db.PublishTo(recorder)
 	store := db.AutoTags()
 	cat := createTestTag(t, db, "cat")
-	if _, err := store.QueueVideos(ctx, []int64{p2}, domain.AutoTagQueueIfNew); err != nil {
+	if _, err := store.QueueVideos(ctx, []int64{p2}, domain.AutoTagQueueIfNew, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job := claimAutoTag(t, store)
-	if err := store.Finish(ctx, job.ContentKey, domain.AutoTagSelection{Confirmed: []int64{cat.ID}}); err != nil {
+	if err := store.Finish(ctx, job.ContentKey, domain.AutoTagSelection{Confirmed: []int64{cat.ID}}, domain.ActivityByAI); err != nil {
 		t.Fatal(err)
 	}
 	if tags := ownerVideo(t, db, p1).UserKey; len(manualTagIDs(t, db, tags)) != 1 {
@@ -442,11 +442,11 @@ func finishSolo(t *testing.T, db *DB, ids map[string]int64, selection domain.Aut
 	t.Helper()
 	ctx := context.Background()
 	store := db.AutoTags()
-	if _, err := store.QueueVideos(ctx, []int64{ids[fixturePath("/media/solo.mp4")]}, domain.AutoTagQueueAgain); err != nil {
+	if _, err := store.QueueVideos(ctx, []int64{ids[fixturePath("/media/solo.mp4")]}, domain.AutoTagQueueAgain, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job := claimAutoTag(t, store)
-	if err := store.Finish(ctx, job.ContentKey, selection); err != nil {
+	if err := store.Finish(ctx, job.ContentKey, selection, domain.ActivityByAI); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -19,6 +19,8 @@ type fakeScanStore struct {
 	hasScan  bool
 	progress map[int64][]domain.ScanProgress
 	finished chan domain.Scan
+	// finishDeciders は FinishScan が受け取った、走査を始めたものである。
+	finishDeciders []domain.ActivityDecider
 
 	interrupted int64
 	requeued    int64
@@ -93,12 +95,15 @@ func (f *fakeScanStore) UpdateScanProgress(_ context.Context, id int64, progress
 	return nil
 }
 
-func (f *fakeScanStore) FinishScan(ctx context.Context, id int64, state domain.ScanState, cause error) error {
+func (f *fakeScanStore) FinishScan(
+	ctx context.Context, id int64, state domain.ScanState, cause error, decider domain.ActivityDecider,
+) error {
 	// 閉じる書き込みは、停止で取り消された context でも届かなければならない。
 	if ctx.Err() != nil {
 		return ctx.Err()
 	}
 	f.mu.Lock()
+	f.finishDeciders = append(f.finishDeciders, decider)
 	f.current.State, f.current.Error, f.current.ErrorCode, f.current.ErrorPath = state, "", "", ""
 	f.current.FinishedAt = time.Now()
 	if cause != nil {
@@ -181,6 +186,8 @@ type fakeScanner struct {
 	release      chan struct{}
 	started      chan struct{}
 	runs         int
+	// deciders は Scan が受け取った、走査を始めたものである。
+	deciders []domain.ActivityDecider
 	// scoped は範囲を絞った走査の呼び出しで受け取った範囲である。
 	scoped [][]domain.DirtyDirectory
 	mu     sync.Mutex
@@ -192,16 +199,17 @@ func (f *fakeScanner) ScanScoped(ctx context.Context, dirs []domain.DirtyDirecto
 	f.mu.Lock()
 	f.scoped = append(f.scoped, dirs)
 	f.mu.Unlock()
-	result, err := f.Scan(ctx)
+	result, err := f.Scan(ctx, domain.ActivityByRule)
 	if err != nil && errors.Is(context.Cause(ctx), domain.ErrScanSuperseded) {
 		return result, domain.ErrScanSuperseded
 	}
 	return result, err
 }
 
-func (f *fakeScanner) Scan(ctx context.Context) (domain.ScanResult, error) {
+func (f *fakeScanner) Scan(ctx context.Context, decider domain.ActivityDecider) (domain.ScanResult, error) {
 	f.mu.Lock()
 	f.runs++
+	f.deciders = append(f.deciders, decider)
 	f.mu.Unlock()
 	if f.panics {
 		panic("broken scan")

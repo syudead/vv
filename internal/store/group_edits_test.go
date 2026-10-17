@@ -575,7 +575,10 @@ func TestGroupEditsPublishGroupsChanged(t *testing.T) {
 	if _, err := groups.TagGroup(ctx, parent); err != nil {
 		t.Fatal(err)
 	}
-	expect("tag", parent, top)
+	// グループのタグ化は動画にタグを付けるので、所有者の記録の知らせも続く（owner_activity_test.go）。
+	if want := []domain.Event{domain.GroupsChanged{GroupIDs: []int64{parent, top}}, domain.ActivityChanged{}}; !reflect.DeepEqual(recorder.events, want) {
+		t.Fatalf("tag: events = %+v, want %+v", recorder.events, want)
+	}
 	if groupExists(t, db, top) {
 		t.Fatal("the parent emptied by turning its only child into a tag still exists")
 	}

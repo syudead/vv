@@ -29,13 +29,9 @@ func (s *TagStore) AttachTagByID(ctx context.Context, videoIDs []int64, tagID in
 		return domain.TagRef{}, 0, err
 	}
 
-	applied, err := attachTagToVideoIDs(ctx, tx, videoIDs, tagID, time.Now())
+	applied, err := s.attachTagToVideoIDs(ctx, tx, videoIDs, tagID)
 	if err != nil {
 		return domain.TagRef{}, 0, err
-	}
-
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
-		return domain.TagRef{}, 0, fmt.Errorf("cannot add the tag: %w", err)
 	}
 	return ref, applied, nil
 }
@@ -60,13 +56,9 @@ func (s *TagStore) AttachTagByName(ctx context.Context, videoIDs []int64, name s
 		return domain.TagRef{}, 0, err
 	}
 
-	applied, err := attachTagToVideoIDs(ctx, tx, videoIDs, ref.ID, time.Now())
+	applied, err := s.attachTagToVideoIDs(ctx, tx, videoIDs, ref.ID)
 	if err != nil {
 		return domain.TagRef{}, 0, err
-	}
-
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
-		return domain.TagRef{}, 0, fmt.Errorf("cannot add the tag: %w", err)
 	}
 	return ref, applied, nil
 }
@@ -85,35 +77,55 @@ func (s *TagStore) DetachTag(ctx context.Context, videoIDs []int64, tagID int64)
 		return domain.TagRef{}, 0, err
 	}
 
-	applied, err := detachTagFromVideoIDs(ctx, tx, videoIDs, tagID, time.Now())
+	now := time.Now()
+	applied, changed, err := detachTagFromVideoIDs(ctx, tx, videoIDs, tagID, now)
 	if err != nil {
 		return domain.TagRef{}, 0, err
 	}
-
-	if err := s.db.commitMatchChange(ctx, tx); err != nil {
+	if err := s.commitTagChanges(ctx, tx, domain.ActivityTagDetach, changed, tagID, now); err != nil {
 		return domain.TagRef{}, 0, fmt.Errorf("cannot remove the tag: %w", err)
 	}
 	return ref, applied, nil
 }
 
 // attachTagToVideoIDs は videoIDs のうちいまライブラリにある動画の利用者データの鍵
-// （userKeysForVideoIDs。同じ集まりは 1 つ）へ tagID を insert or ignore で付け、反映した
-// 本数を返す。実際に付いた鍵（集まりなら全メンバー）の更新日時を now にする
-// （specs/033-video-dates/research.md R-3）。
-func attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64, now time.Time) (int, error) {
+// （userKeysForVideoIDs。同じ集まりは 1 つ）へ tagID を insert or ignore で付け、実際に付いた鍵ごとに
+// tag_attach の記録を書いて取引 tx を確定し、反映した本数を返す。実際に付いた鍵（集まりなら全メンバー）の
+// 更新日時を今にする（specs/033-video-dates/research.md R-3）。
+func (s *TagStore) attachTagToVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64) (int, error) {
 	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
 		return 0, err
 	}
-	if err := attachTagToUserKeys(ctx, tx, keys, tagID, now); err != nil {
+	now := time.Now()
+	changed, err := attachTagToUserKeys(ctx, tx, keys, tagID, now)
+	if err != nil {
 		return 0, err
+	}
+	if err := s.commitTagChanges(ctx, tx, domain.ActivityTagAttach, changed, tagID, now); err != nil {
+		return 0, fmt.Errorf("cannot add the tag: %w", err)
 	}
 	return len(keys), nil
 }
 
-// attachTagToUserKeys は利用者データの鍵 keys へ tagID を手で付ける。仮に付いていたタグは
-// 確定する。実際に付いた鍵（集まりなら全メンバー）の更新日時を now にする。
-func attachTagToUserKeys(ctx context.Context, tx *sql.Tx, keys []string, tagID int64, now time.Time) error {
+// commitTagChanges は鍵 changed のそれぞれにタグ tagID の kind の記録を書き、取引 tx を確定する
+// （specs/055-activity/research.md R-6）。確定後に domain.ActivityChanged と、すべてのスマートフォルダを
+// 名指す domain.SmartFoldersChanged を発行する。
+func (s *TagStore) commitTagChanges(
+	ctx context.Context, tx *sql.Tx, kind domain.ActivityKind, changed []string, tagID int64, now time.Time,
+) error {
+	c := &changes{}
+	if err := recordOwnerVideoActivity(ctx, tx, c, kind, ownerTagChanges(changed, tagID), now); err != nil {
+		return err
+	}
+	// タグを書くので、スマートフォルダの一致も変わりうる。
+	c.matchesChanged()
+	return s.db.commit(ctx, tx, c)
+}
+
+// attachTagToUserKeys は利用者データの鍵 keys へ tagID を手で付け、実際に付いた鍵を keys の順で返す。
+// 仮に付いていたタグは確定する。実際に付いた鍵（集まりなら全メンバー）の更新日時を now にする。
+func attachTagToUserKeys(ctx context.Context, tx *sql.Tx, keys []string, tagID int64, now time.Time) ([]string, error) {
 	changed := make([]string, 0, len(keys))
 	for _, key := range keys {
 		result, err := tx.ExecContext(ctx,
@@ -123,23 +135,23 @@ func attachTagToUserKeys(ctx context.Context, tx *sql.Tx, keys []string, tagID i
 			key, tagID, now.Unix(),
 		)
 		if err != nil {
-			return fmt.Errorf("cannot add the tag (tag=%d): %w", tagID, err)
+			return nil, fmt.Errorf("cannot add the tag (tag=%d): %w", tagID, err)
 		}
 		if affected, err := result.RowsAffected(); err != nil {
-			return fmt.Errorf("cannot add the tag (tag=%d): %w", tagID, err)
+			return nil, fmt.Errorf("cannot add the tag (tag=%d): %w", tagID, err)
 		} else if affected > 0 {
 			changed = append(changed, key)
 		}
 	}
-	return touchEditedAtForUserKeys(ctx, tx, changed, now)
+	return changed, touchEditedAtForUserKeys(ctx, tx, changed, now)
 }
 
 // detachTagFromVideoIDs は videoIDs のうちいまライブラリにある動画から tagID
-// を外し、反映した本数を返す。実際に外れた鍵（集まりなら全メンバー）の更新日時を now にする。
-func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64, now time.Time) (int, error) {
+// を外し、反映した本数と、実際に外れた鍵を返す。実際に外れた鍵（集まりなら全メンバー）の更新日時を now にする。
+func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, tagID int64, now time.Time) (int, []string, error) {
 	keys, err := userKeysForVideoIDs(ctx, tx, videoIDs)
 	if err != nil {
-		return 0, err
+		return 0, nil, err
 	}
 	changed := make([]string, 0, len(keys))
 	for _, key := range keys {
@@ -147,18 +159,18 @@ func detachTagFromVideoIDs(ctx context.Context, tx *sql.Tx, videoIDs []int64, ta
 			`delete from video_tags where content_key = ? and tag_id = ?`, key, tagID,
 		)
 		if err != nil {
-			return 0, fmt.Errorf("cannot remove the tag (tag=%d): %w", tagID, err)
+			return 0, nil, fmt.Errorf("cannot remove the tag (tag=%d): %w", tagID, err)
 		}
 		if affected, err := result.RowsAffected(); err != nil {
-			return 0, fmt.Errorf("cannot remove the tag (tag=%d): %w", tagID, err)
+			return 0, nil, fmt.Errorf("cannot remove the tag (tag=%d): %w", tagID, err)
 		} else if affected > 0 {
 			changed = append(changed, key)
 		}
 	}
 	if err := touchEditedAtForUserKeys(ctx, tx, changed, now); err != nil {
-		return 0, err
+		return 0, nil, err
 	}
-	return len(keys), nil
+	return len(keys), changed, nil
 }
 
 // TagsByContentKeys は利用者データの鍵（Video.UserKey、specs/030-video-versions/data-model.md §3）の

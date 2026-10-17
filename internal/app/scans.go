@@ -24,8 +24,9 @@ type ScanStore interface {
 	CurrentScan(ctx context.Context) (domain.Scan, error)
 	UpdateScanProgress(ctx context.Context, id int64, progress domain.ScanProgress) error
 	// FinishScan は走査を閉じる。cause は走査そのものが失敗した理由（成功なら nil）で、
-	// domain.ScanFailure で包まれた理由のコードと場所は保存側が取り出す。
-	FinishScan(ctx context.Context, id int64, state domain.ScanState, cause error) error
+	// domain.ScanFailure で包まれた理由のコードと場所は保存側が取り出す。decider は走査を始めたもので、
+	// 失敗した走査の記録に残る（specs/055-activity/research.md R-5）。
+	FinishScan(ctx context.Context, id int64, state domain.ScanState, cause error, decider domain.ActivityDecider) error
 	// FailInterruptedScans は running のまま残った走査を failed で閉じる。
 	FailInterruptedScans(ctx context.Context) (int64, error)
 	// RecordScanIssue は走査が1つのファイルで出会った失敗を、直近の取り込みの問題と
@@ -57,7 +58,8 @@ type FolderIndexStore interface {
 // Scanner は登録済みのメディアフォルダを1回走査する。internal/scanner の
 // *Scanner がこれを満たす。
 type Scanner interface {
-	Scan(ctx context.Context) (domain.ScanResult, error)
+	// Scan はすべての登録フォルダを読む。decider は走査を始めたもので、積む仕事の記録に渡す。
+	Scan(ctx context.Context, decider domain.ActivityDecider) (domain.ScanResult, error)
 	// ScanScoped は dirs のディレクトリだけを読み、消すのもその範囲の所在だけにする。
 	// ctx が domain.ErrScanSuperseded を理由に取り消されたら、何も消さずに
 	// domain.ErrScanSuperseded を返す。
@@ -187,7 +189,7 @@ func (s *Scans) StartScan(ctx context.Context) (domain.Scan, bool, error) {
 	const attempts = 3
 	for attempt := 1; ; attempt++ {
 		s.SupersedeWatchScan(ctx)
-		scan, started, err := s.start(ctx, s.store.StartScan, nil)
+		scan, started, err := s.start(ctx, s.store.StartScan, nil, domain.ActivityByOwner)
 		if err != nil || started || scan.Origin != domain.ScanOriginWatch || attempt >= attempts {
 			return scan, started, err
 		}
@@ -202,7 +204,7 @@ func (s *Scans) StartWatchScan(ctx context.Context, dirs []domain.DirtyDirectory
 	dirs = domain.NormalizeDirtyDirectories(dirs)
 	return s.start(ctx, func(ctx context.Context) (domain.Scan, bool, error) {
 		return s.store.StartWatchScan(ctx, dirs)
-	}, &dirs)
+	}, &dirs, domain.ActivityByRule)
 }
 
 // SupersedeWatchScan は走っている監視の走査を次のファイルの前で止め、何も消さずに done で
@@ -225,9 +227,11 @@ func (s *Scans) SupersedeWatchScan(ctx context.Context) bool {
 }
 
 // start は open で走査の行を作り、新しく作ったなら背後で走らせる。dirs が nil でなければ、
-// その範囲だけを読む監視の走査である。
+// その範囲だけを読む監視の走査である。decider は走査を始めたもの（手動は所有者、監視と起動時の再開は
+// 規則）で、走査が積む仕事と失敗した走査の記録に残る（specs/055-activity/research.md R-5）。
 func (s *Scans) start(
 	ctx context.Context, open func(context.Context) (domain.Scan, bool, error), dirs *[]domain.DirtyDirectory,
+	decider domain.ActivityDecider,
 ) (domain.Scan, bool, error) {
 	scan, started, err := open(ctx)
 	if err != nil {
@@ -263,7 +267,7 @@ func (s *Scans) start(
 	if s.onStart != nil {
 		s.onStart(s.runOrigin)
 	}
-	go s.run(runCtx, scan.ID, s.runFinished, dirs)
+	go s.run(runCtx, scan.ID, s.runFinished, dirs, decider)
 
 	s.scanChanged()
 	scan, err = s.withImport(ctx, scan)
@@ -486,7 +490,7 @@ func (s *Scans) ResumeInterrupted(ctx context.Context) (bool, error) {
 	}
 	scan, started, err := s.start(ctx, func(ctx context.Context) (domain.Scan, bool, error) {
 		return s.store.ResumeScan(ctx, latest.ID)
-	}, nil)
+	}, nil, domain.ActivityByRule)
 	if err != nil {
 		return false, err
 	}
@@ -519,7 +523,9 @@ func (s *Scans) stopRuns() {
 }
 
 // run は走査を最後まで走らせ、結果を記録する。
-func (s *Scans) run(ctx context.Context, scanID int64, finished chan struct{}, dirs *[]domain.DirtyDirectory) {
+func (s *Scans) run(
+	ctx context.Context, scanID int64, finished chan struct{}, dirs *[]domain.DirtyDirectory, decider domain.ActivityDecider,
+) {
 	defer s.done.Done()
 	origin := domain.ScanOriginManual
 	if dirs != nil {
@@ -553,7 +559,7 @@ func (s *Scans) run(ctx context.Context, scanID int64, finished chan struct{}, d
 		if dirs != nil {
 			return s.scanner.ScanScoped(ctx, *dirs)
 		}
-		return s.scanner.Scan(ctx)
+		return s.scanner.Scan(ctx, decider)
 	}()
 	// 走査が途中で止まっても、登録中のファイルを今の処理に残さない。
 	s.activity.end(scanActivityKey)
@@ -598,7 +604,7 @@ func (s *Scans) run(ctx context.Context, scanID int64, finished chan struct{}, d
 	// 利用者が取り込みを始めたときの走査だけである。
 	s.rebuildFolderIndex(closeCtx)
 
-	if err := s.store.FinishScan(closeCtx, scanID, state, scanErr); err != nil {
+	if err := s.store.FinishScan(closeCtx, scanID, state, scanErr, decider); err != nil {
 		s.logger.Warn("could not record the end of the scan", slog.Any("error", err))
 	} else {
 		endState = state

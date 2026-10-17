@@ -11,12 +11,12 @@ export interface LoadingStateProps {
   label: string;
   /**
    * 出来上がりの形: カードのグリッドか、表の行か、見出しつきのまとまり（GroupedList）の行か、
-   * 棚の行（ShelfRow）か。
+   * 1 行のカードの一覧（CardList）か、棚の行（ShelfRow）か。
    */
-  layout: "grid" | "table" | "grouped" | "shelves";
+  layout: "grid" | "table" | "grouped" | "cards" | "shelves";
   /** grid のときのカードの大きさ。データが来たときの CardGrid と同じにする。 */
   size?: CardSize;
-  /** 並べる数。既定は grid と table で 8、grouped と shelves で 3（shelves は棚の数）。 */
+  /** 並べる数。既定は grid・table・cards で 8、grouped と shelves で 3（shelves は棚の数）。 */
   count?: number;
 }
 
@@ -39,6 +39,20 @@ export function LoadingState({ label, layout, size = 1, count }: LoadingStatePro
             </div>
           ))}
         </CardGrid>
+      ) : layout === "cards" ? (
+        // CardList と同じ形: 枠線のある muted の面の 1 行のカード。
+        <div className="flex flex-col gap-2">
+          {keys.map((key) => (
+            <div
+              key={key}
+              className="flex min-h-activity-card items-center gap-3 rounded-lg border border-border bg-muted px-4 py-2"
+            >
+              <Skeleton className="size-5 rounded-full" />
+              <Skeleton className="h-4 w-1/3" />
+              <Skeleton className="ml-auto h-4 w-1/4" />
+            </div>
+          ))}
+        </div>
       ) : layout === "grouped" ? (
         // GroupedList と同じ形: 見出しの大きさの棒と、地の面の上のサムネイルの大きさの行。
         <div className="flex flex-col gap-2">

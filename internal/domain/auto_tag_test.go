@@ -104,7 +104,9 @@ func TestSelectAutoTagsSplitsByThresholds(t *testing.T) {
 	candidates := []AutoTagCandidate{{ID: 1}, {ID: 2}, {ID: 3}, {ID: 4}, {ID: 5}, {ID: 6}}
 	probabilities := map[string]float64{"tag_1": 0.8, "tag_2": 0.79, "tag_3": 0.5, "tag_4": 0.49, "tag_5": math.NaN()}
 	settings := AutoTagSettings{Threshold: 0.8, TentativeThreshold: 0.5}
-	want := AutoTagSelection{Confirmed: []int64{1}, Tentative: []int64{2, 3}}
+	want := AutoTagSelection{
+		Confirmed: []int64{1}, Tentative: []int64{2, 3}, Probabilities: map[int64]float64{1: 0.8, 2: 0.79, 3: 0.5},
+	}
 	if got := SelectAutoTags(candidates, probabilities, settings); !reflect.DeepEqual(got, want) {
 		t.Fatalf("got %+v, want %+v", got, want)
 	}

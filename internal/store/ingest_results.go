@@ -6,6 +6,7 @@ import (
 	"context"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -125,7 +126,8 @@ func (s *IngestStore) ApplyProbeForJob(
 	if err := clearFailedIssue(ctx, tx, domain.JobProbe, job.VideoID); err != nil {
 		return false, err
 	}
-	if err := requeueJob(ctx, tx, domain.JobPreview, job.VideoID, now.Unix()); err != nil {
+	var c changes
+	if err := requeueJob(ctx, tx, &c, domain.JobPreview, job.VideoID, now.Unix(), domain.ActivityByRule); err != nil {
 		return false, err
 	}
 	// 走査が閉じたあとに解析が終わったなら、同じパスの前の中身を引き継ぐかをここで決める
@@ -134,7 +136,6 @@ func (s *IngestStore) ApplyProbeForJob(
 	if err != nil {
 		return false, err
 	}
-	var c changes
 	c.jobsQueued(domain.JobPreview)
 	// 長さと再生可否を書いたので、後継の引き継ぎが無くてもスマートフォルダの一致は変わりうる。
 	// 走査を閉じるときの知らせ（FinishScan）は解析より前に出るので、ここでも知らせる
@@ -254,7 +255,7 @@ func (s *IngestStore) setStageStateForJob(
 	var c changes
 	if succeeded && len(next) > 0 {
 		for _, following := range next {
-			if err := requeueJob(ctx, tx, following, job.VideoID, time.Now().Unix()); err != nil {
+			if err := requeueJob(ctx, tx, &c, following, job.VideoID, time.Now().Unix(), domain.ActivityByRule); err != nil {
 				return false, err
 			}
 		}
@@ -337,6 +338,9 @@ func (s *IngestStore) CompletePreviewForContent(ctx context.Context, job domain.
 		return false, err
 	}
 	var c changes
+	if err := settleJobActivity(ctx, tx, &c, job.ID, time.Now()); err != nil {
+		return false, err
+	}
 	c.remainingChanged()
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, err
@@ -412,10 +416,10 @@ func (s *IngestStore) RequeueMissingPreview(ctx context.Context, id int64, conte
 	if reset == 0 {
 		return false, nil
 	}
-	if err := requeueJob(ctx, tx, domain.JobPreview, id, now); err != nil {
+	var c changes
+	if err := requeueJob(ctx, tx, &c, domain.JobPreview, id, now, domain.ActivityByRule); err != nil {
 		return false, err
 	}
-	var c changes
 	c.jobsQueued(domain.JobPreview)
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, fmt.Errorf("cannot commit regenerating the preview (id=%d): %w", id, err)
@@ -450,7 +454,8 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 	if reset == 0 {
 		return false, nil
 	}
-	if err := requeueJob(ctx, tx, domain.JobSeekThumbnail, id, now); err != nil {
+	var c changes
+	if err := requeueJob(ctx, tx, &c, domain.JobSeekThumbnail, id, now, domain.ActivityByRule); err != nil {
 		return false, err
 	}
 	// 待っている指紋の仕事は、スプライトが完成するまで取り出せない。作り直しが上限まで
@@ -460,7 +465,6 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 		string(domain.JobFingerprint), id); err != nil {
 		return false, fmt.Errorf("cannot drop the waiting fingerprint job (id=%d): %w", id, err)
 	}
-	var c changes
 	c.jobsQueued(domain.JobSeekThumbnail)
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return false, fmt.Errorf("cannot commit regenerating seek thumbnails (id=%d): %w", id, err)
@@ -469,10 +473,13 @@ func (s *IngestStore) RequeueMissingSeekThumbnails(ctx context.Context, id int64
 }
 
 // requeueJob は終わった行を捨ててから kind の仕事を queued で積み、その動画を直近の
-// 走査の対象に加える（addScanVideos）。未完了の行が既にあれば積まない。
+// 走査の対象に加える（addScanVideos）。未完了の行が既にあれば積まない。積んだ仕事は動画の
+// running の import の記録に加わり、無ければ decider が始めた記録を開く（joinImportActivity）。
 //
 // 呼び出し側は changes.jobsQueued を記録し、commit で完了の時刻を決め直させる。
-func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now int64) error {
+func requeueJob(
+	ctx context.Context, tx *sql.Tx, c *changes, kind domain.JobKind, id, now int64, decider domain.ActivityDecider,
+) error {
 	if _, err := tx.ExecContext(ctx, `delete from jobs where kind = ? and video_id = ? and state in ('done', 'failed')`,
 		string(kind), id); err != nil {
 		return fmt.Errorf("cannot clean up old jobs (%s, video=%d): %w", kind, id, err)
@@ -482,6 +489,9 @@ func requeueJob(ctx context.Context, tx *sql.Tx, kind domain.JobKind, id, now in
 		on conflict (kind, video_id) where state in ('queued', 'running') do nothing`,
 		string(kind), id, now, now); err != nil {
 		return fmt.Errorf("cannot queue the job (%s, video=%d): %w", kind, id, err)
+	}
+	if err := joinImportActivity(ctx, tx, c, id, decider, time.Now()); err != nil {
+		return err
 	}
 	return addScanVideos(ctx, tx, id)
 }
@@ -528,45 +538,141 @@ func (s *IngestStore) RetryProbe(ctx context.Context, id int64) error {
 		return domain.ErrProbeNotFailed
 	}
 
-	res, err = tx.ExecContext(ctx, `update videos set thumbnail_state = 'pending', indexed_at = ?
-		where id = ? and thumbnail_state <> 'done'`, now, id)
+	following, err := resetFailedStages(ctx, tx, id, now, false)
 	if err != nil {
-		return fmt.Errorf("cannot reset the thumbnail state (id=%d): %w", id, err)
+		return err
 	}
-	thumbnailReset, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("cannot check the thumbnail state update count (id=%d): %w", id, err)
-	}
-	if _, err := tx.ExecContext(ctx, `update videos set preview_state = 'pending', indexed_at = ?
-		where id = ? and preview_state = 'failed'`, now, id); err != nil {
-		return fmt.Errorf("cannot reset the preview state (id=%d): %w", id, err)
-	}
-	res, err = tx.ExecContext(ctx, `update videos set seek_thumbnail_state = 'pending', indexed_at = ?
-		where id = ? and seek_thumbnail_state = 'failed'`, now, id)
-	if err != nil {
-		return fmt.Errorf("cannot reset the seek thumbnail state (id=%d): %w", id, err)
-	}
-	seekThumbnailReset, err := res.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("cannot check the seek thumbnail state update count (id=%d): %w", id, err)
-	}
-
-	kinds := []domain.JobKind{domain.JobProbe}
-	if thumbnailReset > 0 {
-		kinds = append(kinds, domain.JobThumbnail)
-	}
-	if seekThumbnailReset > 0 {
-		kinds = append(kinds, domain.JobSeekThumbnail)
-	}
+	kinds := append([]domain.JobKind{domain.JobProbe}, following...)
+	var c changes
 	for _, kind := range kinds {
-		if err := requeueJob(ctx, tx, kind, id, now); err != nil {
+		if err := requeueJob(ctx, tx, &c, kind, id, now, domain.ActivityByOwner); err != nil {
 			return err
 		}
 	}
-	var c changes
 	c.jobsQueued(kinds...)
 	if err := s.db.commit(ctx, tx, &c); err != nil {
 		return fmt.Errorf("cannot commit re-reading (id=%d): %w", id, err)
 	}
 	return nil
+}
+
+// resetFailedStages は動画 id の段階のうち、終わっていないサムネイル・失敗したシーク用サムネイル・失敗した
+// 一覧用プレビューを pending に戻し、積み直す仕事の種類を返す。プレビューは probeDone のときだけ積む。解析が
+// まだなら、解析の結果を書く取引（ApplyProbeForJob）が積む。
+func resetFailedStages(ctx context.Context, tx *sql.Tx, id, now int64, probeDone bool) ([]domain.JobKind, error) {
+	stages := []struct {
+		kind      domain.JobKind
+		column    string
+		condition string
+		queue     bool
+	}{
+		{kind: domain.JobThumbnail, column: "thumbnail_state", condition: "<> 'done'", queue: true},
+		{kind: domain.JobSeekThumbnail, column: "seek_thumbnail_state", condition: "= 'failed'", queue: true},
+		{kind: domain.JobPreview, column: "preview_state", condition: "= 'failed'", queue: probeDone},
+	}
+	var kinds []domain.JobKind
+	for _, stage := range stages {
+		res, err := tx.ExecContext(ctx, `update videos set `+stage.column+` = 'pending', indexed_at = ?
+			where id = ? and `+stage.column+` `+stage.condition, now, id)
+		if err != nil {
+			return nil, fmt.Errorf("cannot reset the %s state (id=%d): %w", stage.kind, id, err)
+		}
+		reset, err := res.RowsAffected()
+		if err != nil {
+			return nil, fmt.Errorf("cannot check the %s state update count (id=%d): %w", stage.kind, id, err)
+		}
+		if reset > 0 && stage.queue {
+			kinds = append(kinds, stage.kind)
+		}
+	}
+	return kinds, nil
+}
+
+// RetryImport は内容の鍵 contentKey の動画の失敗した段階を、1 つの取引の中で積み直す（POST
+// /api/activity/{id}/retry の import）。読み取りのやり直し（RetryProbe）と同じく段階の状態を pending に戻し、
+// 解析が済んでいれば失敗した一覧用プレビューを、シーク用サムネイルが済んでいれば上限まで失敗した指紋も積む。
+// 積んだ仕事と、再起動で中断して待っている仕事は、所有者が始めた新しい import の記録になる。やり直す記録
+// entryID は同じ取引で読み直し、もうやり直しを出さない（同時に届いた別のやり直しが閉じた）か、その動画が
+// 無いか、積み直す仕事が 1 つも無ければ domain.ErrActivityNotRetryable を返す。
+func (s *IngestStore) RetryImport(ctx context.Context, entryID int64, contentKey string) error {
+	tx, err := s.db.sql.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("cannot start retrying the import (%s): %w", contentKey, err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	if offered, err := activityRetryOffered(ctx, tx, entryID); err != nil {
+		return err
+	} else if !offered {
+		return domain.ErrActivityNotRetryable
+	}
+	var id int64
+	var probeState, seekState string
+	err = tx.QueryRowContext(ctx, `select id, probe_state, seek_thumbnail_state from videos
+		where content_key = ? and content_key <> '' order by id limit 1`, contentKey).Scan(&id, &probeState, &seekState)
+	if errors.Is(err, sql.ErrNoRows) {
+		return domain.ErrActivityNotRetryable
+	}
+	if err != nil {
+		return fmt.Errorf("cannot read the video to retry (%s): %w", contentKey, err)
+	}
+	kinds, err := retryImportStages(ctx, tx, id, domain.ProbeState(probeState), domain.SeekThumbnailState(seekState))
+	if err != nil {
+		return err
+	}
+	var c changes
+	now := time.Now()
+	for _, kind := range kinds {
+		if err := requeueJob(ctx, tx, &c, kind, id, now.Unix(), domain.ActivityByOwner); err != nil {
+			return err
+		}
+	}
+	if err := joinImportActivity(ctx, tx, &c, id, domain.ActivityByOwner, now); err != nil {
+		return err
+	}
+	var pending bool
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from jobs j where j.video_id = ? and `+
+		pendingJobCondition("j")+`)`, id).Scan(&pending); err != nil {
+		return fmt.Errorf("cannot read the pending jobs (video=%d): %w", id, err)
+	}
+	if !pending {
+		return domain.ErrActivityNotRetryable
+	}
+	c.jobsQueued(kinds...)
+	c.remainingChanged()
+	if err := s.db.commit(ctx, tx, &c); err != nil {
+		return fmt.Errorf("cannot commit retrying the import (video=%d): %w", id, err)
+	}
+	return nil
+}
+
+// retryImportStages は動画 id の失敗した段階を pending に戻し、積み直す仕事の種類を返す。
+func retryImportStages(
+	ctx context.Context, tx *sql.Tx, id int64, probe domain.ProbeState, seek domain.SeekThumbnailState,
+) ([]domain.JobKind, error) {
+	now := time.Now().Unix()
+	var kinds []domain.JobKind
+	if probe == domain.ProbeStateFailed {
+		if _, err := tx.ExecContext(ctx, `update videos set probe_state = 'pending', probe_error = null,
+			probe_error_code = null, indexed_at = ? where id = ?`, now, id); err != nil {
+			return nil, fmt.Errorf("cannot reset the probe state (id=%d): %w", id, err)
+		}
+		kinds = append(kinds, domain.JobProbe)
+	}
+	following, err := resetFailedStages(ctx, tx, id, now, probe == domain.ProbeStateDone)
+	if err != nil {
+		return nil, err
+	}
+	kinds = append(kinds, following...)
+	if seek != domain.SeekThumbnailDone {
+		return kinds, nil
+	}
+	var fingerprintFailed bool
+	if err := tx.QueryRowContext(ctx, `select exists (select 1 from jobs where kind = ? and video_id = ?
+		and state = 'failed')`, string(domain.JobFingerprint), id).Scan(&fingerprintFailed); err != nil {
+		return nil, fmt.Errorf("cannot read the fingerprint job (id=%d): %w", id, err)
+	}
+	if fingerprintFailed {
+		kinds = append(kinds, domain.JobFingerprint)
+	}
+	return kinds, nil
 }
