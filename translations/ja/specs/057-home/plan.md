@@ -1,6 +1,6 @@
 ---
 source: specs/057-home/plan.md
-sourceHash: 3e860e0f3a9b1d48035e2e6bcd31882f61d353d88d1a2d4bc371171a598e5187
+sourceHash: b63590ee4b77020dbb1d94d1254e6c0a8ccd7a13dbafb5c20f241abe98b2f22e
 ---
 
 # 実装計画: オンボーディングで始まる棚のホーム {#implementation-plan-a-home-of-shelves-started-by-onboarding}
@@ -28,7 +28,8 @@ flowchart LR
   apply --> sf
   home[ホームの画面] --> read[ホームの読み取り]
   read --> sf
-  read --> items[ライブラリの項目のクエリー]
+  read --> closure[(group_closure, group_root_values, 視聴状態, 検索の一致)]
+  groups[グループを書く処理] --> closure
   read --> rec[おすすめ]
   rec --> score[近さのスコア]
 ```
@@ -45,13 +46,13 @@ flowchart LR
 | 作り直しと追加 | 1 つのトランザクション。所有者が保ったフォルダには触れない ([R-8](research.md#r-8-a-rebuild-replaces-the-organizers-folders-in-one-transaction-an-extend-only-adds)) |
 | 動く時 | 設定にある保留中の実行。イベントが起こす ([R-9](research.md#r-9-one-run-at-a-time-queued-in-settings-triggered-by-events)、[R-10](research.md#r-10-an-extend-runs-when-20-or-more-shown-videos-are-unshelved)) |
 | 棚にない動画 | 読み取りのときに評価するライブラリの絞り込み ([R-11](research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read)) |
-| 読み取り | 要約、次に画面上の棚の項目。予算は 1 秒 ([R-12](research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen)) |
+| 読み取り | 要約、次に、保存したグループの構造を索引でたどって読む画面上の棚の項目。予算は 1 秒 ([R-12](research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen)、[data-model.md](data-model.md#group-closure)) |
 | 固定の棚 | 続きを見る棚とおすすめの棚は所有者に、最近追加した動画の棚と棚にない動画の棚は全員に ([R-13](research.md#r-13-four-fixed-shelves-two-of-them-the-owners-only)) |
 | 再生 | 自動再生する動画のページ ([R-14](research.md#r-14-pressing-a-shelf-card-plays)) |
 | ルート | ライブラリは `/library`。古い URL はリダイレクトする ([R-15](research.md#r-15-the-library-moves-to-library)) |
 | イベント | `HomeChanged` と画面のイベント `home` ([R-16](research.md#r-16-homechanged-tells-open-screens-to-read-the-home-again)) |
 
-Issue は 2026-10-16 に分割された。メンテナーは、ホームが AI なしで動き、実装されていない Issue に依存しないことを求めたので、所有者の方針と AI の整理役は #1307 に移り、最初のタグのプリセットは #1137 に残る。
+Issue は 2026-10-16 に分割された。メンテナーは、ホームが AI なしで動き、実装されていない Issue に依存しないことを求めたので、所有者の方針と AI の整理役は #1307 に移り、最初のタグのプリセットは #1137 に残る。棚の項目の読み取りは 2026-10-17 に設計し直した ([R-12](research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen))。メンテナーは、各棚をライブラリの項目のクエリーで読むことを採用しなかった。そのクエリーは、棚の最初の 24 項目を取る前にすべての動画を評価していた。
 
 Issue に `ui` ラベルがあるので、`design` 段階が画面の単位の前に `ui-design.md` を書く。対象は、3 つの段階とその飛ばし方を持つオンボーディング、棚の行を持つホーム、検索ボックスと `See all`、空のホーム、固定の棚をフォルダの棚とどう見分けさせるか、棚の追加、削除、並べ替え、オンボーディングをやり直し整理し直す Settings のセクションであり、親 Issue の `UI品質` に照らして判断する。
 
@@ -78,7 +79,7 @@ Issue に `ui` ラベルがあるので、`design` 段階が画面の単位の�
 
 **この機能に固有の文脈**:
 
-- マイグレーションは 1 つで、マージされるときに番号を付ける ([data-model.md、マイグレーション](data-model.md#migration))。
+- マイグレーションは 3 つ。ホームでの位置、並べ替えのキーの索引を持つグループの閉包、カードの列と視聴状態と検索の一致である ([data-model.md、マイグレーション](data-model.md#migration))。
 - 画面の API に 8 つのルート、1 つの一覧のパラメーター、1 つの画面のイベントの種類が加わる ([contracts/screen-api.md](contracts/screen-api.md))。外部 API と MCP は変わらない。
 - どの単位もほかの Issue を待たない。ホームは、タグ、タグの種類、スマートフォルダ、自動タグ付け、作品の情報、視聴履歴、お気に入りを `main` にあるまま使う。
 - `Scans.OnFinish` は今は 1 つのコールバックを持つ。それをリストにする ([R-9](research.md#r-9-one-run-at-a-time-queued-in-settings-triggered-by-events))。
@@ -95,7 +96,7 @@ Issue に `ui` ラベルがあるので、`design` 段階が画面の単位の�
 | すべての読み取りは閲覧者を知る (ARCHITECTURE.md) | 合格: 棚の項目、棚にない動画、最近追加した動画は閲覧者に合わせて絞る。続きを見る棚、おすすめ、整理役の状態、オンボーディングは所有者だけ |
 | メディアフォルダのファイルを読むのはスキャンだけである (ARCHITECTURE.md) | 合格: オンボーディングは既存のスキャンのルートを通してスキャンを始め、ファイルを読まない |
 | 生成ファイルを手で編集しない (AGENTS.md) | 合格: `api/openapi.yaml` を変え、`task generate` を実行する |
-| 複雑度は 25 以下、コードをコピーしない (AGENTS.md) | 合格: 棚にない動画は既存の動画ごとの一致を否定する。棚の項目はライブラリの項目のクエリーを呼ぶ。興味はタグの作成と同義語を再利用する。おすすめは `ContentRelatedness` を呼ぶ |
+| 複雑度は 25 以下、コードをコピーしない (AGENTS.md) | 合格: 棚にない動画は既存の動画ごとの一致を否定する。棚の項目は、保存したグループの構造の上でライブラリの項目の規則を行ごとに当てはめ、ライブラリの読み取りをテストの正解とし、その条件、順序、子孫、項目の読み込み処理を共有する。興味はタグの作成と同義語を再利用する。おすすめは `ContentRelatedness` を呼ぶ |
 | 画面の前に design-system.md を読む。最も低いレベルでテストする (AGENTS.md) | 合格: 画面は `ui-design.md` に従う。棚の行はレジストリの項目になる。整理役とオンボーディングは偽物を使うアプリのテスト、ストアはそのテストとベンチマーク、画面はページのテスト、受け入れ条件はブラウザーのテストを持つ |
 
 違反はないので、Complexity Tracking はない。
@@ -122,7 +123,7 @@ specs/057-home/
 | 境界 | この機能でそれが持つもの |
 | --- | --- |
 | `internal/domain` | 興味の一覧、オンボーディングの段階とその順序、提案する棚とその上限、規則の整理役の選び方、`VideoQuery.Unshelved`、`HomeChanged`、整理役の状態 |
-| `internal/store` | マイグレーション、`HomeStore` (要約、棚の項目、順序、適用、興味の棚)、棚にない動画の条件、おすすめと続きを見る棚の種のクエリー、設定のキー、ベンチマーク |
+| `internal/store` | マイグレーション、`HomeStore` (要約、棚の項目、順序、適用、興味の棚)、グループの閉包とグループを書く処理によるその保守、棚にない動画の条件、おすすめと続きを見る棚の種のクエリー、設定のキー、ベンチマーク |
 | `internal/app` | `Onboarding` (段階、興味、自動タグ付けにもう一度尋ねること)、`HomeOrganizer` (起こす処理、保留中の実行、規則の整理役)、おすすめのスコア付けとそのキャッシュ、`Scans.OnFinish` のリスト |
 | `internal/httpapi`、`api/openapi.yaml`、`cmd/mdm` | ルート、`unshelved` パラメーター、`home` のイベント、配線 |
 | `web/src/onboarding` (新規)、`web/src/home` (新規)、`web/src/app`、`web/src/auth`、`web/src/shell`、`web/src/settings`、`web/src/library`、`web/src/smartFolders`、`web/src/ui`、`web/src/i18n` | オンボーディングのページとそのゲート、ホームのページと棚の行、ルートとリダイレクト、サイドバー、Settings のセクション、空のライブラリ、フォルダのページの操作 |

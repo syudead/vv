@@ -1,6 +1,6 @@
 ---
 source: specs/057-home/contracts/screen-api.md
-sourceHash: 4ef1a772d49a76508bc072151eba5f3fb0f390bba5600d201250127f4dede31a
+sourceHash: 4c68c653e6e9a79dc0fb5fb1fed0787e4a716b16eb6121ff3352c5689750b270
 ---
 
 # 契約: ホームとオンボーディングの画面の API {#contract-screen-api-for-the-home-and-onboarding}
@@ -58,8 +58,15 @@ HomeShelfItems:
   required: [key, items, total]
   properties:
     key:   { $ref: HomeShelfKey }
-    items: { type: array, maxItems: 24, items: { $ref: LibraryItem } }  # videos and groups only; a folder shelf leaves out its child folders (R-14)
-    total: { type: integer }          # the shelf's video and group count; 0 drops the shelf from the screen
+    items: { type: array, maxItems: 24, items: { $ref: HomeShelfItem } }  # videos and groups only; a folder shelf leaves out its child folders (R-14)
+    total: { type: integer }          # the shelf's video and group count, capped at 25 (one more than a page; R-12); 0 drops the shelf from the screen
+
+HomeShelfItem:           # a LibraryItem without smart folders, whose group is the card alone (R-12)
+  required: [kind]
+  properties:
+    kind:  { type: string, enum: [video, group] }
+    video: { $ref: Video }
+    group: { $ref: LibraryGroupCard }  # LibraryGroup without videoIds and tags; LibraryGroup is LibraryGroupCard plus those two
 
 HomeShelfOrder:          # PUT /api/home/shelves
   required: [folderIds]
