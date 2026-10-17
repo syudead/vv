@@ -1,0 +1,37 @@
+---
+source: specs/056-plugin-tooling/contracts/plugin-contract.md
+sourceHash: c149a821ec18ac76c5406f2b319759fd43bc0b05cecc08a0333e82aa6de2ff1f
+---
+
+# 契約: プラグインの契約への追加 {#contract-plugin-contract-additions}
+
+正典: 作者向けの手順書 [docs/how-to/work-info-plugins.md](../../../docs/how-to/work-info-plugins.md)。実装がこれを更新する。契約のバージョンは `1` のままである。新しいフィールドのないマニフェストは従来どおり動くが、ID による取得は後方互換ではない。これより前に作られたプラグインは `fetch` の要求から `url` を読み、候補に `url` だけを返すので、`id` を読み、各候補に `id` を返すように作り直さなければならない。このファイルは、この機能が変えるものだけを挙げる。
+
+## Manifest {#manifest}
+
+`settings` の各エントリは、2 つのフィールドを追加で持てる ([R-3](../research.md#r-3-a-setting-declares-default-and-options-the-stored-value-or-the-default-is-what-the-run-receives))。
+
+| フィールド | 型 | 必須 | 規則 |
+| --- | --- | --- | --- |
+| `default` | string | いいえ | 1 から 2000 文字。`options` があるときは、そのうちの 1 つ。`secret` とは併用できない |
+| `options` | string array | いいえ | 1 から 200 文字の重複しない値を 2 から 50 個。`secret` とは併用できない |
+
+規則に違反するマニフェストは、アップロード時と `mdm plugin pack` で `manifest_invalid` になる。
+
+## Request {#request}
+
+`settings` は、値を持つ宣言済みのすべてのキーの実効値を載せる。所有者の保存された値が設定されていて、`options` のある設定ではそのうちの 1 つであればその値、そうでなければ `default` である。既定値のある `required` のキーが実行を止めることはない。
+
+`fetch` の要求は `id` を持ち、`url` を持たない ([R-10](../research.md#r-10-a-fetch-takes-a-work-id-only-and-vvmdm-never-fetches-a-url-the-owner-typed)): 候補の `id`、または所有者が入力してトリムした文字列で、プラグインがこれをページの URL に対応づける。`url` を読んでいたプラグインは、`id` を読むように作り直さなければならない。VVMDM は `url` を送らない。
+
+## Candidates {#candidates}
+
+`search` の候補は `url`、`title`、`detail` の隣に `id` を持つ。`id` は必須で、前後に空白のない 1 から 200 文字であり、所有者が候補を選ぶと、VVMDM はこれをそのまま取得の `id` として送る。有効な `id` のない候補があると、検索は `plugin_failed` で失敗するので、この変更より前に作られたプラグインは、これを返すように作り直さなければならない。`url` は引き続き必須で、作品の `http` または `https` のページである。ダイアログはそのホストを示し、`Open page` でリンクする。VVMDM はこれを取得せず、プラグインの `fetch` にも送らない。
+
+## Standard error {#standard-error}
+
+プラグインが標準エラーに書くものは、プラグインの直近の実行について設定画面で所有者に表示する。先頭の 64 KiB を保持し、各秘密の設定値は `[secret]` に置き換える ([R-6](../research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked))。書く前にエンコードしたり分割したりした秘密は置き換えられない。
+
+## Rate limiting {#rate-limiting}
+
+手順書に、[R-9](../research.md#r-9-on-a-429-a-plugin-waits-for-the-smaller-of-retry-after-and-5-seconds-retries-once-and-otherwise-reports-an-error) の挙動で `429` 応答の節が加わる。実行の待ちの合計が最大 10 秒の範囲で、最大 5 秒後に 1 回再試行し、そのあとは `error` 応答にする。

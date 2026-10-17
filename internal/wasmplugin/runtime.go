@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/netip"
 	"slices"
 
 	"github.com/tetratelabs/wazero"
@@ -30,6 +32,12 @@ const (
 type Options struct {
 	// Logger はプラグインの標準エラーを書く先である。nil なら slog の既定を使う。
 	Logger *slog.Logger
+	// Resolve はプラグインの要求のホスト名を解決する。nil ならシステムの resolver を使う。インターネットに
+	// 出られないテスト（mdm plugin run のテストなど）が差し替える。
+	Resolve func(ctx context.Context, host string) ([]netip.Addr, error)
+	// Connect はプロキシのない要求を、アドレスの規則が許した解決済みのアドレス（ip:port）へつなぐ。規則は
+	// Connect の前に確かめる。nil なら net.Dialer で接続する。テストが差し替える。
+	Connect func(ctx context.Context, network, address string) (net.Conn, error)
 }
 
 // Runtime は作品情報プラグインを検査し、動かす。app.WorkInfoPluginRuntime を満たす。
@@ -66,7 +74,7 @@ func New(ctx context.Context, opts Options) (*Runtime, error) {
 		_ = inspect.Close(ctx)
 		return nil, err
 	}
-	run, err := newRunner(ctx, logger)
+	run, err := newRunner(ctx, logger, newNetClient(opts))
 	if err != nil {
 		_ = inspect.Close(ctx)
 		return nil, err

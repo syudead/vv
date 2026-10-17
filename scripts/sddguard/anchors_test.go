@@ -35,10 +35,20 @@ func slugify(text string) string {
 	return b.String()
 }
 
+// headingText returns the text GitHub slugs: link labels without their
+// destinations, and no HTML tags or emphasis marks. A code span keeps its
+// content as written, so `<module.wasm>` in a heading is text, not a tag.
 func headingText(raw string) string {
 	text := inlineLink.ReplaceAllString(raw, "$1")
-	text = htmlTag.ReplaceAllString(text, "")
-	return emphasis.ReplaceAllString(text, "")
+	var b strings.Builder
+	last := 0
+	for _, span := range codeSpan.FindAllStringIndex(text, -1) {
+		b.WriteString(htmlTag.ReplaceAllString(text[last:span[0]], ""))
+		b.WriteString(text[span[0]:span[1]])
+		last = span[1]
+	}
+	b.WriteString(htmlTag.ReplaceAllString(text[last:], ""))
+	return emphasis.ReplaceAllString(b.String(), "")
 }
 
 // anchorsOf returns every fragment a Markdown document defines: GitHub slugs of
@@ -138,10 +148,12 @@ func TestMarkdownLinkAnchorsResolve(t *testing.T) {
 func TestSlugify(t *testing.T) {
 	cases := map[string]string{
 		"R-4: Where translations live, and how they follow the English source": "r-4-where-translations-live-and-how-they-follow-the-english-source",
-		"The site's published set":  "the-sites-published-set",
-		"`ui-design.md` の文言":        "ui-designmd-の文言",
-		"Step 1 — set up":           "step-1--set-up",
-		"[Link](x.md) and **bold**": "link-and-bold",
+		"The site's published set":                        "the-sites-published-set",
+		"`ui-design.md` の文言":                              "ui-designmd-の文言",
+		"Step 1 — set up":                                 "step-1--set-up",
+		"[Link](x.md) and **bold**":                       "link-and-bold",
+		"Tag <br> outside code":                           "tag--outside-code",
+		"`mdm plugin pack <module.wasm> <manifest.json>`": "mdm-plugin-pack-modulewasm-manifestjson",
 	}
 	for in, want := range cases {
 		if got := slugify(headingText(in)); got != want {

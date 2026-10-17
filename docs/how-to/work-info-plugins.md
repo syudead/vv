@@ -1,9 +1,9 @@
 # Write a work-info plugin
 
 A work-info plugin is a WebAssembly module that VVMDM runs to search an
-external site for works and fetch a work's title, tags and details by its page
-URL or its ID; when you finish,
-you have a module the owner can add and approve on the settings screen. This
+external site for works and fetch a work's title, tags and details by its
+ID; when you finish, you have a module the owner can add and approve on the
+settings screen. This
 guide is the plugin contract, version 1. Why the sandbox, the limits and the
 network rule have this shape is in
 [work-info-plugins.md](../design-docs/work-info-plugins.md).
@@ -29,6 +29,11 @@ sequenceDiagram
 - Go 1.24 or later, which builds `wasip1` modules with
   `GOOS=wasip1 GOARCH=wasm`. Any toolchain that builds a module meeting
   [Module](#module) works; the steps use Go.
+- The VVMDM server binary `mdm` (in the container image at
+  `/usr/local/bin/mdm`, or built with `go build ./cmd/mdm`), to write the
+  manifest into the module and run it locally. `VVMDM.exe` of the Windows app
+  does not take commands. The commands read no settings, open no database and
+  need no `ffmpeg`.
 - A VVMDM owner account, to add and approve the plugin.
 
 ## Steps
@@ -42,8 +47,8 @@ sequenceDiagram
 2. Write the plugin as `main.go`, a Go `main` package. It reads the
    [request](#request) from standard input, calls the
    [host functions](#host-functions) for HTTP, and writes the
-   [response](#response) to standard output. This one fetches the work's page
-   and returns its `<title>`:
+   [response](#response) to standard output. This one builds the work's page
+   URL from the ID, fetches the page and returns its `<title>`:
 
    ```go
    package main
@@ -51,6 +56,7 @@ sequenceDiagram
    import (
        "encoding/json"
        "html"
+       "net/url"
        "os"
        "regexp"
        "unsafe"
@@ -67,7 +73,7 @@ sequenceDiagram
 
    type request struct {
        Operation string            `json:"operation"`
-       URL       string            `json:"url"`
+       ID        string            `json:"id"`
        Settings  map[string]string `json:"settings"`
    }
 
@@ -79,9 +85,10 @@ sequenceDiagram
            fail("unreadable request")
            return
        }
-       page, ok := get(req.URL)
+       pageURL := "https://example.com/works/" + url.PathEscape(req.ID)
+       page, ok := get(pageURL)
        if !ok {
-           fail("could not read " + req.URL)
+           fail("could not read " + pageURL)
            return
        }
        info := map[string]any{}
@@ -149,54 +156,56 @@ sequenceDiagram
    }
    ```
 
-5. Save this program as `addsection/main.go`. It appends the manifest to the
-   module as a custom section named `vv.plugin`:
-
-   ```go
-   // Command addsection appends a vv.plugin custom section holding a manifest file
-   // to a WebAssembly module. Usage: go run ./addsection plugin.wasm manifest.json
-   package main
-
-   import (
-       "encoding/binary"
-       "log"
-       "os"
-   )
-
-   func main() {
-       module, err := os.ReadFile(os.Args[1])
-       if err != nil {
-           log.Fatal(err)
-       }
-       manifest, err := os.ReadFile(os.Args[2])
-       if err != nil {
-           log.Fatal(err)
-       }
-       const name = "vv.plugin"
-       payload := binary.AppendUvarint(nil, uint64(len(name)))
-       payload = append(payload, name...)
-       payload = append(payload, manifest...)
-       module = append(module, 0) // custom section id
-       module = binary.AppendUvarint(module, uint64(len(payload)))
-       module = append(module, payload...)
-       if err := os.WriteFile(os.Args[1], module, 0o644); err != nil {
-           log.Fatal(err)
-       }
-   }
-   ```
-
-6. Add the section to the freshly built module. Run it once per build, since
-   each run appends another section:
+5. Write the manifest into the module with `mdm plugin pack`, the VVMDM
+   server binary's plugin command. It checks the manifest and the packed
+   module as an upload would, and only then replaces the module's
+   `vv.plugin` section, so you can run it after every build or manifest
+   change:
 
    ```bash
-   go run ./addsection plugin.wasm manifest.json
+   mdm plugin pack plugin.wasm manifest.json
    ```
+
+   On success it prints the plugin's name, version, operations and settings
+   as the settings screen lists them. On a problem it exits with code 2,
+   prints the problem, and leaves `plugin.wasm` as it was: for a manifest,
+   the field and the rule it breaks, such as
+   `manifest_invalid: settings[0].default must be one of options`.
+
+6. Run the plugin once with `mdm plugin run`, giving the operation and its
+   input:
+
+   ```bash
+   mdm plugin run plugin.wasm fetch 1
+   ```
+
+   The operation is `search`, whose input is the words, or `fetch`, whose
+   input is the work's ID; the input follows the same rules as on the video
+   page. Give a plugin with [settings](#setting-fields) their values with
+   `--set KEY=VALUE`, once per key, such as `--set token=abc`; only keys the
+   manifest declares are taken, and a setting without `--set` receives its
+   `default`, as in VVMDM.
+   `--proxy URL` sends the plugin's requests through a proxy, as the
+   operator's proxy setting does. The run has the same [limits](#limits) and
+   [address rule](#addresses) as in VVMDM.
 
 7. In VVMDM, open **Settings**, choose **Add plugin** in the **Work-info
    plugins** section, and pick `plugin.wasm`. Review the plugin and approve
    it.
 
 ## Check the result
+
+`mdm plugin run` exits with code 0 when the response is valid. It prints
+what VVMDM keeps of the response as indented JSON on standard output,
+`{"candidates": […]}` for `search` or `{"workInfo": {…}}` for `fetch`, after
+VVMDM's limits and trimming, and the plugin's standard error on standard
+error. A failed run exits with code 1 and ends standard error with one line
+such as `Run failed: blocked_address, host 127.0.0.1`: the failure, the host
+for `blocked_address` and `network_error`, and the plugin's message for
+`plugin_failed`. A module that VVMDM would refuse, an undeclared or missing
+setting, and an input or proxy URL that breaks its rule exit with code 2 and
+the reason. Secret values given with `--set` are printed as the plugin
+wrote them; VVMDM masks them only on the settings screen.
 
 The plugin's row shows its name and version with the **Approved** badge, and
 the video page offers **Fetch work info from a plugin**. A row without a name
@@ -225,7 +234,7 @@ before the other fields.
 | `version` | string | Yes | 1 to 32 characters, shown to the owner |
 | `description` | string | No | At most 500 characters |
 | `operations` | string array | Yes | A non-empty subset of `search` and `fetch`, each at most once; see [Choose the operations](#choose-the-operations) |
-| `settings` | object array | No | At most 10 declarations of `{"key", "label", "secret", "required"}`: `key` is 1 to 32 characters of `A-Z`, `a-z`, `0-9`, `_` starting with a letter and unique; `label` is 1 to 60 characters shown to the owner; `secret` and `required` default to `false` |
+| `settings` | object array | No | At most 10 declarations of the [setting fields](#setting-fields) |
 
 Declare a setting for anything the owner supplies, such as an API key
 (`"secret": true`) or a language. The owner enters the values on the settings
@@ -238,11 +247,41 @@ page.
 
 | The site | Declare | The owner |
 | --- | --- | --- |
-| Has a search | `search` and `fetch` | Types words and picks one of the candidates, which VVMDM fetches by its URL; or chooses **ID** above the field and types the work's ID |
-| Has a page URL built from the work's ID, such as the product code | `fetch` | Types the ID, which starts as the video's code, or pastes the page URL |
+| Has a search | `search` and `fetch` | Types words and picks one of the candidates, which VVMDM fetches by the candidate's `id`; or chooses **ID** above the field and types the work's ID |
+| Has a page URL built from the work's ID, such as the product code | `fetch` | Types the ID, which starts as the video's code |
 
-A plugin that declares only `search` shows its candidates as links, with
-nothing to fetch.
+A plugin that declares only `search` shows its candidates as text with a link
+to each page, with nothing to fetch.
+
+The fetch input is always an ID: what the owner types reaches the plugin as
+`id` unchanged, even when it looks like a URL, and VVMDM never fetches it as a
+page. A plugin that wants to accept a pasted page URL reads the ID out of it
+itself.
+
+### Setting fields
+
+| Field | Type | Required | Rule |
+| --- | --- | --- | --- |
+| `key` | string | Yes | 1 to 32 characters of `A-Z`, `a-z`, `0-9`, `_`, starting with a letter; unique within the manifest |
+| `label` | string | Yes | 1 to 60 characters, shown to the owner |
+| `secret` | boolean | No | Defaults to `false` |
+| `required` | boolean | No | Defaults to `false` |
+| `default` | string | No | 1 to 2000 characters; with `options`, one of them; not allowed with `"secret": true` |
+| `options` | string array | No | 2 to 50 distinct values of 1 to 200 characters, in the order the owner sees them; not allowed with `"secret": true` |
+
+A manifest that breaks a rule is refused with `manifest_invalid`.
+
+A `default` is the value a run receives while the owner has not stored one,
+so declare it for any setting that has a sensible value, such as
+`"default": "ja"` for a language. VVMDM never writes the default into the
+owner's values: a later version's default reaches every owner who has not
+chosen a value.
+
+`options` turns the setting into a choice. A replacement that drops an option
+keeps the owner's stored value, but VVMDM does not pass it to the run: the
+run receives the `default` instead, or nothing when there is none, and the
+settings screen shows the owner that the stored value is no longer one of the
+options.
 
 ## Request
 
@@ -251,11 +290,14 @@ VVMDM writes one JSON object to standard input and closes it.
 | Operation | Fields |
 | --- | --- |
 | `search` | `{"contract": 1, "operation": "search", "query": "<1 to 200 characters>"}` |
-| `fetch` | `{"contract": 1, "operation": "fetch", "url": "<an http or https URL of at most 2048 characters>"}` for a candidate or a pasted page URL, or `{"contract": 1, "operation": "fetch", "id": "<1 to 200 characters>"}` for an ID the owner typed, without surrounding spaces; the plugin builds the page URL from the ID |
+| `fetch` | `{"contract": 1, "operation": "fetch", "id": "<1 to 200 characters>"}`: a candidate's `id` or the text the owner typed, without surrounding spaces; the plugin builds the page URL from the ID |
 
-Both operations also carry `"settings": {"<key>": "<value>"}` with every
-declared key the owner has set, and only those; a run never starts while a
-`required` key is unset.
+Both operations also carry `"settings": {"<key>": "<value>"}` with the
+effective value of every declared key that has one, and only those keys. The
+effective value is the owner's stored value when it is set and, for a setting
+with `options`, one of them; otherwise it is the `default`. A run never starts
+while a `required` key has no effective value, so a `required` key with a
+`default` never stops a run.
 
 ## Response
 
@@ -264,7 +306,7 @@ are ignored, so a later contract can add fields without breaking version 1.
 
 | Case | Body |
 | --- | --- |
-| `search` result | `{"candidates": [{"url": "...", "title": "...", "detail": "..."}]}`: `url` (http or https) and `title` required, `detail` optional; VVMDM keeps the first 50 |
+| `search` result | `{"candidates": [{"id": "...", "url": "...", "title": "...", "detail": "..."}]}`: `id` (the work's ID, 1 to 200 characters without surrounding spaces, which a later `fetch` request carries unchanged), `url` (the work's page, http or https, which the owner can open but VVMDM never fetches) and `title` required, `detail` optional; VVMDM keeps the first 50 |
 | `fetch` result | `{"workInfo": {"title": "...", "tags": ["..."], ...}}`: every field optional; the fields are in [Work fields](#work-fields) |
 | Failure | `{"error": {"message": "..."}}`: VVMDM shows the first 300 characters of `message` to the owner |
 
@@ -360,7 +402,9 @@ character set itself, from the `Content-Type` header or the page.
 
 ## Limits
 
-A run stops at the first limit it reaches.
+A run stops at the first limit it reaches. A site that refuses a request with
+`429` is not a VVMDM limit; [Rate limiting](#rate-limiting) says how a plugin
+handles it within these limits.
 
 | Limit | Value | When it is reached |
 | --- | --- | --- |
@@ -368,13 +412,40 @@ A run stops at the first limit it reaches.
 | Linear memory | 128 MiB (2048 pages) | The run fails with `memory_exceeded` |
 | Run time | 30 s, compiling and HTTP included | The run fails with `timed_out` |
 | Standard output | 1 MiB | The run fails with `output_too_large` |
-| Standard error | 64 KiB kept, the rest discarded | Written to the server log only |
+| Standard error | 64 KiB kept, the rest discarded | Written unchanged to the server log, and kept as the plugin's last run with each secret setting value replaced by `[secret]`, which the owner opens on the settings screen from the plugin row's `Last run output`; a value the plugin encodes or splits first is not replaced |
 | Runs at the same time | 1; a second run waits up to 10 s | The second run fails with `busy` |
 | HTTP requests | 16 per run, `GET` and `POST`, `http` and `https` | `http_send` returns `-5`, or `-1` for another method or scheme |
 | Redirects | 5 per request | The sixth redirect response is handed to the plugin as it is |
 | Request time | 10 s, from sending to the last byte of the body | `http_send` returns `-4` |
 | Response headers | 1 MiB | `http_send` returns `-3` |
 | Response body | 4 MiB | `http_send` returns `-6` |
+
+## Rate limiting
+
+A site may answer `429 Too Many Requests` when requests come too fast. VVMDM
+does not retry for the plugin: `http_send` returns the `429` response like any
+other, and the plugin decides. Handle it this way:
+
+1. Read the `Retry-After` header from `http_meta`. It is a number of seconds
+   or an HTTP date; when it is missing or cannot be read, take 1 s.
+2. Take the smaller of that delay and 5 s as the wait.
+3. Before waiting, check the budget: when the run's waits, this one included,
+   would total more than 10 s, do not wait and go to step 5.
+4. Wait, then send the request once more. Clocks and `nanosleep` work in the
+   sandbox, so the language's ordinary sleep works.
+5. When the budget is spent, or the retry answers `429` again, return an
+   `error` response whose message names the site and the delay, such as
+   `example.com is busy; try again in 60 s`.
+
+This fits the [Limits](#limits). Every retry is a request and counts toward
+the 16 per run, so a plugin that fetches up to 7 pages still has one retry per
+page. The waits of a run total at most 10 s however many pages are refused,
+so the rest of the 30 s run time stays for compiling the module, the plugin's
+own work and its requests. The waits do not make room for the requests: each
+request may still take up to 10 s, so a plugin that also makes several slow
+requests can reach `timed_out` with or without a `429`. A plugin that waits
+longer than this budget makes that more likely, and the owner then sees no
+message; an `error` response tells the owner to try again later.
 
 ## Addresses
 
@@ -396,12 +467,21 @@ A refused address answers `-2`, and the run fails with `blocked_address` and
 the refused host, whatever the plugin writes afterwards. VVMDM ignores
 `HTTP_PROXY` and the other proxy variables for plugin requests.
 
+The operator may send plugin requests through a proxy (`http`, `https` or
+`socks5`). The plugin sees no difference in the host functions. VVMDM then
+resolves each request's host, and each redirect's, before the request leaves,
+and refuses it with `-2` and `blocked_address` when any address falls under
+the rules above, so a public name that resolves to the LAN is refused before
+it reaches the proxy. When the proxy cannot be reached, refuses the
+connection or answers `407`, the request answers `-3`, and if the plugin then
+fails, the run fails with `network_error` and the proxy's host.
+
 ## Troubleshooting
 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
-| `manifest_missing` | The module has no `vv.plugin` section | Run step 6 on the built module |
-| `manifest_invalid` | The section is not a JSON object, or a field breaks a [Manifest](#manifest) rule | Fix `manifest.json`, rebuild, and add the section again |
+| `manifest_missing` | The module has no `vv.plugin` section, as a fresh build has none | Run `mdm plugin pack` on the built module (step 5) |
+| `manifest_invalid` | The section is not a JSON object, or a field breaks a [Manifest](#manifest) rule | Fix the field `mdm plugin pack` names in `manifest.json` and run it again |
 | `contract_unsupported` | `contract` is not `1` | Set `"contract": 1` |
 | `import_unsupported` | The module imports something other than WASI and `vv` functions, or uses another signature | Build for `wasip1` and declare the host functions as in step 2 |
 | `export_invalid` | `_start` or `memory` is missing or has another type | Build a command (`package main`) rather than a library |

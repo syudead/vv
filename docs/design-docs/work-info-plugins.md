@@ -75,7 +75,7 @@ Its only way to the network is the `vv` host functions, described in
 | Linear memory | 128 MiB (2048 pages) | `memory.grow` returns `-1`, the module is closed and the run fails with `memory_exceeded`, even when the plugin goes on to exit successfully |
 | Run time | 30 s from taking the run slot, compiling and HTTP included | The compile or the module is stopped and the run fails with `timed_out` |
 | Standard output | 1 MiB | The run is stopped with `output_too_large` |
-| Standard error | 64 KiB kept, the rest discarded | Written to the server log only |
+| Standard error | 64 KiB kept, the rest discarded | Written to the server log and kept as the plugin's last run ([The last run's standard error is kept per plugin](#the-last-runs-standard-error-is-kept-per-plugin)) |
 | Runs at the same time | 1; a second run waits up to 10 s | The second run fails with `busy` |
 
 The memory cap is enforced by vv's memory allocator rather than by wazero's
@@ -94,6 +94,43 @@ only when it compiles with more than one worker, so a run compiles with two.
 | A separate process per run | The container and the Windows app would need different OS sandboxes |
 | Running a `describe` operation at upload | The name and version shown for approval would come from unapproved code |
 | Several runs at the same time | Each run may use 128 MiB, and one at a time bounds the plugins' memory to one module's |
+
+## The last run's standard error is kept per plugin
+
+Each plugin keeps the standard error of its last run as one
+`work_info_plugin_runs` row, with every secret setting value replaced by
+`[secret]`, for the owner to read through
+`GET /api/work-info-plugins/{id}/last-run`
+([056 R-6](../../specs/056-plugin-tooling/research.md#r-6-the-runtime-returns-each-runs-standard-error-and-the-app-keeps-the-last-one-per-plugin-with-the-secret-values-masked)).
+The settings screen shows it in the last run dialog, opened from the plugin
+row's `Last run output`
+([056 UI design](../../specs/056-plugin-tooling/ui-design.md#last-run-dialog)).
+The server log keeps receiving the same text unmasked, as before.
+
+```mermaid
+sequenceDiagram
+  participant App as app.WorkInfoPlugins
+  participant Rt as wasmplugin.Runtime
+  participant St as store
+  App->>Rt: Run(request, record)
+  Rt->>Rt: take the run slot, run the module
+  Rt->>App: record(run log)
+  App->>App: mask the run's secret values
+  App->>St: write the row if the plugin still has the generation that ran
+  Rt->>Rt: release the run slot
+  Rt-->>App: result, run log, error
+```
+
+| Rule | Where | Why |
+| --- | --- | --- |
+| `Run` returns the run log on success and on failure, and calls `record` only when the module started and ended in success or a run failure | [`run.go`](../../internal/wasmplugin/run.go) | A `busy` refusal, a module that failed to compile or ran out of time while compiling, and a cancelled request ran nothing worth replacing the last output with |
+| The row is written inside `record`, before the run slot is released | `internal/app`, `internal/wasmplugin` | Rows are written in the order the runs end, so an older run never overwrites a newer one |
+| Each secret value the run received is replaced wherever it occurs, and overlapping matches become one `[secret]`; in a truncated output, a tail that is the start of a secret value is replaced too | [`work_info_plugin_run_log.go`](../../internal/domain/work_info_plugin_run_log.go) | A value cut at 64 KiB leaves no part in clear; a value the plugin encodes first is not found |
+| The row is written only while `work_info_plugins` has the row with the generation that ran, in one statement | [`work_info_plugin_runs.go`](../../internal/store/work_info_plugin_runs.go) | A run of a replaced (even with the same bytes), revoked or deleted plugin writes nothing |
+| A replacing upload deletes the row in its transaction; deleting the plugin cascades | `internal/store` | The screen shows only output of the current module |
+
+A failure to save the row is written to the server log and does not change
+the run's result.
 
 ## Plugins reach only public internet addresses
 
@@ -157,15 +194,76 @@ value can get a different page or a refusal. The body reaches the plugin as
 bytes with the response headers, so the plugin decodes the page's character
 set itself.
 
-The address check lives only in this adapter. The ComfyUI and Ollama clients
-keep reaching the LAN, where those services run.
+The address check and the proxy support below live only in this adapter.
+The ComfyUI and Ollama clients keep reaching the LAN, where those services
+run, and never use the plugins' proxy.
 
 | Rejected | Why |
 | --- | --- |
-| Resolving and checking the host name before the request | The connection resolves the name again and may get another answer, and a redirect skips the check |
+| Resolving and checking the host name before a request without a proxy | The connection resolves the name again and may get another answer, and a redirect skips the check |
 | A host-name allowlist per plugin | A public name can resolve to a LAN address |
 | Returning the refusal to the plugin only | The plugin could ignore it, and the owner would not see that it tried |
 | Separate connect, TLS and header timeouts | A slow site could then answer `-3` instead of `-4` before the 10 s request limit |
+
+### A run can go through the operator's proxy
+
+`Runtime.Run` takes `domain.WorkInfoRunNetwork`, whose `Proxy` is the proxy
+the operator chose, or nil for none
+([056 R-4](../../specs/056-plugin-tooling/research.md#r-4-the-proxy-is-one-url-in-settings-read-on-each-run-and-passed-to-the-runtime-as-a-run-option)).
+`domain.ParseWorkInfoPluginProxyURL` holds the URL rule: the `http`, `https`
+or `socks5` scheme, a host, an optional port and optional user information,
+with no path, query or fragment, at most 2048 characters; `""` means no proxy.
+A run without a proxy uses the client above unchanged.
+
+The owner sets the proxy in the settings screen's `Network` section on every
+build, through `PUT /api/settings/plugin-proxy`, which `app.WorkInfoPluginProxy`
+checks against that rule and stores as the `settings` row
+`work_info_plugins.proxy_url`. `app.WorkInfoPlugins` reads the row before each
+run, so a saved change applies from the next run and a run in progress keeps
+the value it started with. A stored value that breaks the rule fails the run
+instead of connecting directly.
+
+A run with a proxy gets its own transport, whose connections all go to the
+proxy, so the dial-time check cannot see the destination. Instead, the
+transport's `Proxy` callback, which Go calls for every request and every
+followed redirect, resolves the destination host (or parses a literal
+address) and refuses the request with `-2` and `blocked_address` when any
+resolved address fails the same rule
+([056 R-5](../../specs/056-plugin-tooling/research.md#r-5-through-a-proxy-the-destination-is-checked-by-resolving-its-name-before-each-request-and-redirect)).
+The refused host is the name, and the proxy never sees the request. The
+proxy's own address is not checked: the operator chose it, and it usually
+sits on the LAN.
+
+A proxy that cannot be reached, fails the TLS or SOCKS exchange, refuses the
+`CONNECT` or answers `407` makes the request answer `-3`; when the plugin then
+fails, the run fails with `network_error` and the proxy's host, because the
+owner fixes the proxy setting, not the site. The transport and its
+connections are closed when the run ends, so the next run uses the setting it
+starts with.
+
+The diagram shows one `http_send` with a proxy set.
+
+```mermaid
+flowchart LR
+  send[http_send] --> resolve[Resolve the destination name]
+  resolve --> allowed{Every address allowed?}
+  allowed -->|no| refuse[-2, name recorded]
+  allowed -->|yes| proxy[Operator proxy]
+  proxy -->|unreachable, CONNECT refused, 407| fail[-3, proxy host recorded]
+  proxy -->|redirect, up to 5| resolve
+  proxy --> body[Response to the plugin]
+```
+
+The residual risk is a name whose answer changes between VVMDM's lookup and
+the proxy's: VVMDM checks the address it resolved, and the proxy connects to
+the address it resolves itself. A proxy that refuses private destinations
+closes that gap; VVMDM cannot.
+
+| Rejected | Why |
+| --- | --- |
+| Trusting the proxy to refuse LAN destinations | It holds only when the operator configured the proxy so, and VVMDM must refuse those destinations itself |
+| Keeping the dial-time check through a proxy | It would see only the proxy, whose LAN address would fail every request |
+| Honouring `HTTP_PROXY` | The operator could not set a proxy for plugins alone, and the Windows app has no environment to edit |
 
 ## The fetch keeps the work details and their matches
 

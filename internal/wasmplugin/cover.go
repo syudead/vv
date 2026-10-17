@@ -13,7 +13,7 @@ import (
 // domain.WorkInfoCoverMaxBytes を越えれば nil で、カバー画像は無いものとする。拒んだアドレスはプラグインの
 // 要求と同じく記録し、実行は blocked_address で失敗する。要求の数には数えない。
 func (s *httpSession) coverImage(ctx context.Context, rawURL string) []byte {
-	if s.net == nil || rawURL == "" {
+	if s.client == nil || rawURL == "" {
 		return nil
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, domain.WorkInfoPluginHTTPTimeout)
@@ -24,7 +24,7 @@ func (s *httpSession) coverImage(ctx context.Context, rawURL string) []byte {
 	}
 	req.Header.Set("User-Agent", defaultUserAgent)
 	req.Header.Set("Accept", "image/png,image/jpeg,image/webp")
-	resp, err := s.net.client.Do(req)
+	resp, err := s.client.Do(req)
 	if err != nil {
 		s.failure(req, err)
 		return nil

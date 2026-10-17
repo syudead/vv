@@ -17,8 +17,10 @@ import (
 // （plan.md の Constitution Check。設定画面と開いている動画ページは一覧を読み直す）。
 
 // workInfoPluginColumns は行を読む列である。モジュールのバイト列は読まない。
+// 最後の列は残っている直近の実行の終わった時刻で、無ければ null である。
 const workInfoPluginColumns = `id, name, file_name, version, description, contract, operations, settings,
-	digest, problem, approved_digest, added_at, updated_at, generation`
+	digest, problem, approved_digest, added_at, updated_at, generation,
+	(select ran_at from work_info_plugin_runs where plugin_id = work_info_plugins.id)`
 
 // ListWorkInfoPlugins はすべてのプラグインを、名前、次にファイル名の順で返す。名前を読めなかった
 // プラグインは名前のあるものの後に、ファイル名の順で並ぶ。
@@ -220,6 +222,10 @@ func replaceWorkInfoPlugin(
 		cols.module, upload.Digest, cols.problem, now.Unix(), id); err != nil {
 		return fmt.Errorf("cannot replace the work-info plugin: %w", err)
 	}
+	// 前のモジュールの実行は残さない（specs/056-plugin-tooling/data-model.md の Rules）。
+	if _, err := tx.ExecContext(ctx, `delete from work_info_plugin_runs where plugin_id = ?`, id); err != nil {
+		return fmt.Errorf("cannot delete the replaced work-info plugin's last run: %w", err)
+	}
 	if cols.keepAllValues {
 		return nil
 	}
@@ -404,11 +410,11 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 		plugin                                           domain.WorkInfoPlugin
 		name, version, description, operations, settings sql.NullString
 		problem, approved                                sql.NullString
-		contract                                         sql.NullInt64
+		contract, lastRunAt                              sql.NullInt64
 		addedAt, updatedAt                               int64
 	)
 	err := row.Scan(&plugin.ID, &name, &plugin.FileName, &version, &description, &contract, &operations,
-		&settings, &plugin.Digest, &problem, &approved, &addedAt, &updatedAt, &plugin.Generation)
+		&settings, &plugin.Digest, &problem, &approved, &addedAt, &updatedAt, &plugin.Generation, &lastRunAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return domain.WorkInfoPlugin{}, err
 	}
@@ -435,5 +441,8 @@ func scanWorkInfoPlugin(row rowScanner) (domain.WorkInfoPlugin, error) {
 	plugin.ApprovedDigest = approved.String
 	plugin.AddedAt = time.Unix(addedAt, 0)
 	plugin.UpdatedAt = time.Unix(updatedAt, 0)
+	if lastRunAt.Valid {
+		plugin.LastRunAt = time.Unix(lastRunAt.Int64, 0)
+	}
 	return plugin, nil
 }

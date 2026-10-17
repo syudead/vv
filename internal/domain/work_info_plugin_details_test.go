@@ -186,7 +186,7 @@ func TestParseWorkInfoResponseKeepsOnlyAWebCoverURL(t *testing.T) {
 		`"ftp://example.com/cover.jpg"`:   "",
 		`"/cover.jpg"`:                    "",
 		`{"url":"https://example.com/c"}`: "",
-		`"https://example.com/` + strings.Repeat("a", WorkInfoFetchURLMaxRunes) + `"`: "",
+		`"https://example.com/` + strings.Repeat("a", WorkInfoCoverURLMaxRunes) + `"`: "",
 	} {
 		got, err := ParseWorkInfoResponse(WorkInfoFetch, []byte(`{"workInfo":{"title":"T","cover":`+raw+`}}`))
 		if err != nil || got.WorkInfo.CoverURL != want || got.WorkInfo.Title != "T" {

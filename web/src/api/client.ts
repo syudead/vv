@@ -92,6 +92,7 @@ export type VersionCandidatePage = components["schemas"]["VersionCandidatePage"]
 export type LibraryGroup = components["schemas"]["LibraryGroup"];
 export type TranscodingSettings = components["schemas"]["TranscodingSettings"];
 export type NetworkSettings = components["schemas"]["NetworkSettings"];
+export type PluginProxySettings = components["schemas"]["PluginProxySettings"];
 export type AutoImportSettings = components["schemas"]["AutoImportSettings"];
 export type VersionJudgingSettings = components["schemas"]["VersionJudgingSettings"];
 export type AutoTaggingSettings = components["schemas"]["AutoTaggingSettings"];
@@ -1018,6 +1019,33 @@ export function updateNetworkSettings(
     method: "PUT",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ lanAccess }),
+    signal,
+  });
+}
+
+/**
+ * getPluginProxySettings は作品情報プラグインの要求を送るプロキシの URL を取得する。保存が無ければ
+ * `""`。`/api/settings/network` と違いどのビルドでも答える
+ * （specs/056-plugin-tooling/contracts/screen-api.md）。
+ */
+export function getPluginProxySettings(
+  signal?: AbortSignal,
+): Promise<PluginProxySettings> {
+  return request<PluginProxySettings>("/api/settings/plugin-proxy", { signal });
+}
+
+/**
+ * updatePluginProxySettings はプロキシの URL を保存し、保存した値を返す。`""` はプロキシなし。
+ * 規則に外れれば `400` `invalid_request` になる（同）。
+ */
+export function updatePluginProxySettings(
+  url: string,
+  signal?: AbortSignal,
+): Promise<PluginProxySettings> {
+  return request<PluginProxySettings>("/api/settings/plugin-proxy", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
     signal,
   });
 }
