@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/auto-tagging.md
-sourceHash: 3b61ed3484102b15c8baebb7b1d8e63983ec5c16fd2b265e7acde5ae24a3a5d8
+sourceHash: 7b56e74784c00507077eb4254d60fe686994691e40c86140ab333bc3c7bc1918
 ---
 
 # 判定モデルによる自動タグ付け {#auto-tagging-with-a-decision-model}
@@ -123,6 +123,26 @@ stateDiagram-v2
 失敗したリクエストは、その行をプロバイダのメッセージとともに `failed` にし、ワーカーは次へ進む。所有者が再びキューに入れるまで、何も再試行しない。
 
 Ollama が止まっていると、キューを塞ぐ代わりに、キューにある動画はすべて数秒以内に失敗し、Settings ページにその件数と最後のメッセージが表示される。終了時にまだ `running` の行は、次の起動時に `queued` に戻る。
+
+## activity 項目と取り消し {#activity-entries-and-undo}
+
+動画の 1 回の実行は 1 つの `auto_tag` activity 項目だ ([activity.md](activity.md))。キューに入れると項目を `running`/`waiting` として書き、キューの行はその id を保持する。取得すると項目は `processing` になり、回答で `done`/`completed` になり、リクエストが失敗するとプロバイダのメッセージを伴う `attention`/`failed` になる。再起動後に取得したとき項目がもう `running` でない行は新しい項目を開き、それにより中断された項目が `superseded` として閉じる。キューへの追加、取得、回答、失敗は、それぞれ行を変更するトランザクションの中で項目を書く ([055 R-2](../../specs/055-activity/research.md#r-2-an-entry-is-written-in-the-transaction-of-the-change-it-records))。
+
+| 実行を開始したもの | 終わるまでの決定者 | 回答後の決定者 |
+| --- | --- | --- |
+| 取り込み、"Tag new videos automatically" | `rule` | `ai` |
+| Settings または動画ページ | `owner` | `ai` |
+
+候補のタグがない実行は分類器に質問せず、実行を開始した決定者のままになる。項目は、実行が書いた各タグを、確率、提案かどうか、書いたときの利用者の鍵とともに `activity_entry_tags` に列挙する。実行が変えなかったタグは列挙しない。Activity 画面からの再試行は、所有者の要求として動画を再びキューに入れ、機能がオフの間は `409 auto_tagging_off` で応答する。
+
+取り消しは 1 回に 1 つのタグで、1 つの `ActivityStore` トランザクションで行う ([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion))。
+
+1. ログから、同じ `tag_id` を持ち、触れた内容の鍵にその動画を含み (まとまりでタグを変えたときはすべてのメンバー)、id が `auto_tag` 項目の `decided_mark` (実行が結果を書いたときの最大の項目 id) より大きい、所有者の `tag_attach`、`tag_detach`、`tag_keep`、`tag_reject` 項目を探す。1 つあれば、所有者が実行の後にタグを再び決めたことを意味し、何も削除しない。その間のタグの名前の変更や新しい代表は、それを隠さない。
+2. そうでなければ、実行が書いた行に由来する `video_tags` の行を削除する: 記録した利用者の鍵と、まとめることやバージョンから外すことで行がコピーされたすべての鍵 (`activity_entry_tag_keys`) である。提案されたタグは、まだ提案のままである間に削除する。まとまりの行は共有されているので、タグはすべてのメンバーから外れる。動画の現在の鍵がその中にないときは、まとめたときにほかのメンバーの行が勝っている (たとえば所有者が代表に手でタグを付けた)。その行は残り、取り消しは `already_reverted` になる。
+3. どちらの場合も、そのタグをその動画について `auto_tag_rejections` に記録するので、"Tag all videos again" がそのタグについて質問したり、そのタグを追加したりすることは決してない。
+4. 所有者の `undo` 項目を書く。行を削除したときは `done`/`completed`、所有者がすでにタグを外した、付け直した、または残したときは `done`/`already_reverted` で、その場合タグは所有者が残した状態のままになる。
+
+所有者の変更は `video_tags.created_at` ではなく項目の id から読むので、所有者が実行と同じ 1 秒の間に手でタグを外して付け直しても、それは所有者のものとして扱われる。
 
 ## 設定 {#settings}
 

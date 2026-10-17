@@ -158,7 +158,7 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobThumbnail, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 
@@ -206,7 +206,7 @@ func TestProbeCompletionStartsThumbnailWithoutPolling(t *testing.T) {
 	}
 
 	running.Go(func() { probe.Run(runCtx) })
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	select {
@@ -239,7 +239,7 @@ func (l *eventLog) has(match func(domain.Event) bool) bool {
 
 type finishedScanner struct{}
 
-func (finishedScanner) Scan(context.Context) (domain.ScanResult, error) {
+func (finishedScanner) Scan(context.Context, domain.ActivityDecider) (domain.ScanResult, error) {
 	return domain.ScanResult{}, nil
 }
 
@@ -283,7 +283,7 @@ func TestAddedSubscriberReceivesEveryEventWithoutPublisherChanges(t *testing.T) 
 		t.Fatal(err)
 	}
 	scans.Wait()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, video.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	ingest.JobFinished(domain.Job{Kind: domain.JobProbe, VideoID: video.ID})

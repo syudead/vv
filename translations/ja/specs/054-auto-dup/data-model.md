@@ -1,6 +1,6 @@
 ---
 source: specs/054-auto-dup/data-model.md
-sourceHash: 6abafdaefdef01c3d67914749ce6a5a9efaa150eb578ff6b8a1b7b320cbe5ca7
+sourceHash: 7707180cd7912dca577c7ba15ac7e1d73ec996370cfc130d823d932a8e9870c4
 ---
 
 # データモデル: 重複の候補を自動で判定する {#data-model-judging-possible-duplicates-automatically}
@@ -43,7 +43,7 @@ sourceHash: 6abafdaefdef01c3d67914749ce6a5a9efaa150eb578ff6b8a1b7b320cbe5ca7
 
 | 規則 | 強制する場所 |
 | --- | --- |
-| 候補を取得できるのは、機能がオンで、その組が `video_version_unbundles` になく、その `judgement` が null か、`retry_at` を過ぎた `failed` であるときである | `domain` (規則)、`store` (取得のクエリ) |
+| 候補を取得できるのは、機能がオンで、その組が `video_version_unbundles` にも `video_version_judging_holds` ([055 data-model](../055-activity/data-model.md#video_version_judging_holds)) にもなく、その `judgement` が null か、`retry_at` を過ぎた `failed` であるときである | `domain` (規則)、`store` (取得のクエリ、`judgeablePairs`) |
 | 取得は両方の鍵の指紋を返し、フレームの規則がそれを読む ([R-1](research.md#r-1-the-fingerprints-decide-first-the-model-is-asked-only-when-a-section-differs)) | `store` |
 | 同時に `running` の判定は 1 つである | 単一のワーカー。取得は 1 つの文である |
 | 規則で決められない組は、Ollama の接続が保存されていなければ、リクエストなしで `no_connection` になる。接続を保存すると、すべての `no_connection` の行が null に戻る | `app` (接続の行があるかをストアに問う)、`store` |
@@ -53,7 +53,7 @@ sourceHash: 6abafdaefdef01c3d67914749ce6a5a9efaa150eb578ff6b8a1b7b320cbe5ca7
 | 「別の動画」は、所有者の "Different videos" と同じように、`video_version_dismissals` を書いて候補を削除する | `store` |
 | なくなったか、もう `running` でない候補についての結果は捨てる | `store` |
 | `Unbundle` は外した鍵をほかのすべてのメンバーと組にして書き、それから外した鍵の候補を作り直す | `store` (`VersionStore.Unbundle`) |
-| 同じパスの内容の変化は、`moveDismissals` が退けた組のキーを付け替えるのと同じように、`video_version_unbundles` のキーを付け替える | `store` (引き継ぎ) |
+| 同じパスの内容の変化は、`moveDismissals` が退けた組のキーを付け替えるのと同じように、`video_version_unbundles` と `video_version_judging_holds` のキーを付け替える | `store` (引き継ぎ) |
 | すべての結果と `Unbundle` は、コミットの後に `VersionCandidatesChanged` を発行する ([R-10](research.md#r-10-the-duplicates-page-refreshes-on-a-candidates-notification)) | `store` |
 
 ## 設定 {#settings}

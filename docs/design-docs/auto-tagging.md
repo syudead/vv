@@ -169,6 +169,57 @@ blocking the queue, and the Settings page shows the count and the last
 message. A row still `running` at shutdown goes back to `queued` at the next
 startup.
 
+## Activity entries and undo
+
+Each run of a video is one `auto_tag` activity entry
+([activity.md](activity.md)). Queuing writes it `running`/`waiting` and the
+queue row keeps its id; the claim makes it `processing`, the answer makes it
+`done`/`completed`, and a failed request makes it `attention`/`failed` with the
+provider's message. A row whose entry is no longer `running` when it is
+claimed, after a restart, opens a new entry, which closes the interrupted one
+as `superseded`. The queuing, the claim, the answer and the failure each write
+the entry in the transaction that changes the row
+([055 R-2](../../specs/055-activity/research.md#r-2-an-entry-is-written-in-the-transaction-of-the-change-it-records)).
+
+| Run started by | Decider until it finishes | Decider after the answer |
+| --- | --- | --- |
+| Import, "Tag new videos automatically" | `rule` | `ai` |
+| Settings or the video page | `owner` | `ai` |
+
+A run with no candidate tag never asks the classifier and keeps the decider
+that started it. The entry lists each tag the run wrote, with the probability,
+whether it was suggested and the user key it was written at, in
+`activity_entry_tags`; a tag the run left unchanged is not listed. Retry from the Activity screen queues the video again as
+the owner's request, and answers `409 auto_tagging_off` while the feature is
+off.
+
+Undo is one tag at a time, in one `ActivityStore` transaction
+([055 R-7](../../specs/055-activity/research.md#r-7-undo-restores-the-state-and-always-records-the-exclusion)):
+
+1. Look in the log for an owner `tag_attach`, `tag_detach`, `tag_keep` or
+   `tag_reject` entry with the same `tag_id` whose touched content keys
+   include the video (every member, when the tag was changed on a bundle) and
+   whose id is greater than the `auto_tag` entry's `decided_mark`, the
+   greatest entry id when the run wrote its result. One means the owner
+   decided the tag again after the run, and nothing is deleted; a rename of
+   the tag or a new representative in between does not hide it.
+2. Otherwise delete the `video_tags` rows that descend from the row the run
+   wrote: the recorded user key and every key bundling or unbundling copied
+   the row to (`activity_entry_tag_keys`), while a suggested tag is still
+   suggested. A bundle's row is shared, so the tag leaves every member. When
+   the video's current key is not among them, another member's row won at
+   bundling (the owner tagged the representative by hand, say); that row
+   stays and the undo is `already_reverted`.
+3. Record the tag for the video in `auto_tag_rejections` in either case, so
+   "Tag all videos again" never asks about it or adds it.
+4. Write the owner's `undo` entry, `done`/`completed` when the row was
+   deleted and `done`/`already_reverted` when the owner had already removed,
+   re-attached or kept the tag, which then stays as the owner left it.
+
+The owner's change is read from entry ids, not from `video_tags.created_at`,
+so a tag the owner removes and attaches again by hand within the same second
+as the run is still the owner's.
+
 ## Settings
 
 The Auto-tagging section of Settings (`/api/settings/auto-tagging`) holds

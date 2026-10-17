@@ -89,6 +89,15 @@ describe("App", () => {
       const url = String(input);
       if (url === "/api/auth/session") return Promise.resolve(json({ state: "owner" }));
       if (url === "/api/media-folders") return Promise.resolve(json([{}]));
+      if (url.startsWith("/api/activity?")) {
+        return Promise.resolve(
+          json({
+            items: [],
+            counts: { running: 0, attention: 0, done: 0 },
+            features: {},
+          }),
+        );
+      }
       if (url === "/api/scans/current") {
         return Promise.resolve(
           json({
@@ -273,6 +282,7 @@ describe("App", () => {
       "People",
       "Organizations",
       "Duplicates",
+      "Activity",
       "Settings",
       "Sign out",
     ]);

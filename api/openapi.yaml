@@ -4083,6 +4083,130 @@ paths:
         "404":
           $ref: "#/components/responses/NotFound"
 
+  /api/activity:
+    get:
+      operationId: listActivity
+      summary: アクティビティの記録を新しい順に返す
+      description: |
+        所有者だけ。取り込み・自動タグ付け・重複の判定・作品情報の取得・失敗した走査と、所有者のタグと
+        集まりの操作の記録を id の大きい順に返す（specs/055-activity/contracts/screen-api.md、
+        research.md R-9）。絞り込みはページを切る前に掛け、`and` で結ぶ。`counts` は `status` 以外の、
+        `features` は `feature` 以外の絞り込みに従う。`status`・`feature`・`decider` が知らない値、
+        `cursor` か `since` が読めない、`q` か `limit` が範囲の外のときは 400 `invalid_request`
+        （読めない `cursor` は reason `invalid_cursor`）。
+      parameters:
+        - name: status
+          in: query
+          description: その状態の記録だけにする。無ければすべて
+          schema:
+            $ref: "#/components/schemas/ActivityStatus"
+        - name: feature
+          in: query
+          description: その機能の記録だけにする。繰り返して複数を選べる。無ければすべて
+          style: form
+          explode: true
+          schema:
+            type: array
+            maxItems: 9
+            items:
+              $ref: "#/components/schemas/ActivityFeature"
+        - name: decider
+          in: query
+          description: その判断したものの記録だけにする
+          schema:
+            $ref: "#/components/schemas/ActivityDecider"
+        - name: since
+          in: query
+          description: この時刻以降に作った記録だけにする
+          schema:
+            type: string
+            format: date-time
+        - name: q
+          in: query
+          description: 対象の表示名にこの文字列を含む記録だけにする。大文字と小文字を区別しない
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 200
+        - name: cursor
+          in: query
+          description: 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+          schema:
+            type: string
+        - name: limit
+          in: query
+          description: 1ページの件数
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+      responses:
+        "200":
+          description: 記録の1ページと件数
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityPage"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+
+  /api/activity/{id}/retry:
+    post:
+      operationId: retryActivity
+      summary: 記録の処理を始め直す
+      description: |
+        所有者だけ。記録の処理を始め直し、202 を返す。新しい実行は新しい記録になり、この記録を閉じる。
+        `version_judgement` は記録を保ち、`running` に戻る（specs/055-activity/contracts/screen-api.md、
+        research.md R-4）。`import` は動画の失敗した段階を積み直し、`scan` はすべてのメディアフォルダの手動の
+        スキャンを始める。無い記録は 404 `not_found`、やり直しを出さない記録か対象がもう無い記録は 409
+        `activity_not_retryable`、スキャン中の `scan` の記録は 409 `scan_in_progress`、自動タグ付けが切の
+        あいだの `auto_tag` の記録は 409 `auto_tagging_off`。
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      responses:
+        "202":
+          description: 始め直した
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/activity/{id}/undo:
+    post:
+      operationId: undoActivity
+      summary: 自動の判断を取り消す
+      description: |
+        所有者だけ。自動の判断を取り消し、所有者の `undo` の記録を返す。所有者がすでに状態を変えていれば、
+        その `outcome` は `already_reverted` になる（specs/055-activity/contracts/screen-api.md、
+        research.md R-7）。無い記録と、`auto_tag` の記録が付けていないタグは 404 `not_found`、取り消しを
+        出さない記録かタグと、取り消し済みのものは 409 `activity_not_undoable`。
+      parameters:
+        - $ref: "#/components/parameters/ActivityId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ActivityUndoRequest"
+      responses:
+        "200":
+          description: 所有者の undo の記録
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityEntry"
+        "400":
+          $ref: "#/components/responses/InvalidRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
   /api/directories:
     get:
       operationId: listDirectories
@@ -5100,14 +5224,17 @@ paths:
         - `candidates`: 重複の候補の一覧が変わったかもしれない。判定の結果や版の取り外しの確定後に
           送る。data は空のオブジェクト `{}` で、中身は運ばない。最新の一覧は
           `GET /api/version-candidates` で取る（specs/054-auto-dup/research.md R-10）
+        - `activity`: アクティビティの記録が書かれたか変わった。記録を書いた取引の確定後に送る。data は
+          空のオブジェクト `{}` で、中身は運ばない。最新の記録と件数は `GET /api/activity` で取る
+          （specs/055-activity/research.md R-8）
         - `home`: ホームの棚の集合か並び、整理役やオンボードの状態が変わった。data は空のオブジェクト
           `{}` で、中身は運ばない。最新の内容は `GET /api/home` で取る（specs/057-home/research.md R-16）
 
         接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-        変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates`・`home` は切れていた間の分を送り直さない。
+        変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates`・`activity`・`home` は切れていた間の分を送り直さない。
 
         ゲストには `group`・`smartFolder`・`home` だけを送る（specs/048-groups/contracts/screen-api.md、
-        specs/052-smart-folders/contracts/screen-api.md、specs/057-home/research.md R-16）。`scan`・`video`・`candidates` は所有者だけに送る。
+        specs/052-smart-folders/contracts/screen-api.md、specs/057-home/research.md R-16）。`scan`・`video`・`candidates`・`activity` は所有者だけに送る。
       responses:
         "200":
           description: イベントの流れ
@@ -5137,6 +5264,14 @@ components:
         type: string
 
   parameters:
+    ActivityId:
+      name: id
+      in: path
+      required: true
+      description: アクティビティの記録の識別子
+      schema:
+        type: integer
+        format: int64
     ThumbnailEditId:
       name: editId
       in: path
@@ -9935,6 +10070,315 @@ components:
         - interrupted
         - internal
 
+    ActivityKind:
+      type: string
+      description: アクティビティの記録の種類（specs/055-activity/data-model.md「Kinds」）
+      enum:
+        - import
+        - scan
+        - auto_tag
+        - version_judgement
+        - work_info_fetch
+        - bundle
+        - unbundle
+        - make_representative
+        - dismiss
+        - tag_attach
+        - tag_detach
+        - tag_keep
+        - tag_reject
+        - work_info_apply
+        - media_folder_remove
+        - organize_undo
+        - undo
+
+    ActivityFeature:
+      type: string
+      description: |
+        種類のまとまりで、機能の絞り込みの単位（specs/055-activity/contracts/screen-api.md「Features」）。
+        `undo` は取り消した記録の機能に入る
+      enum:
+        - import
+        - scan
+        - duplicate_check
+        - auto_tagging
+        - work_info
+        - tags
+        - versions
+        - media_folders
+        - organize
+      # 値の名前（owner・tags）がほかの列挙と重なると、生成器が既存の定数名まで型名で前置きし直すので、
+      # 定数名を明示する。
+      x-enum-varnames:
+        - ActivityFeatureImport
+        - ActivityFeatureScan
+        - ActivityFeatureDuplicateCheck
+        - ActivityFeatureAutoTagging
+        - ActivityFeatureWorkInfo
+        - ActivityFeatureTags
+        - ActivityFeatureVersions
+        - ActivityFeatureMediaFolders
+        - ActivityFeatureOrganize
+
+    ActivityStatus:
+      type: string
+      description: 記録の状態（specs/055-activity/research.md R-4）
+      enum:
+        - running
+        - attention
+        - done
+
+    ActivityReason:
+      type: string
+      description: running と attention の記録の理由（specs/055-activity/data-model.md「Reasons」）
+      enum:
+        - waiting
+        - processing
+        - failed
+        - interrupted
+        - no_connection
+        - undecided
+
+    ActivityOutcome:
+      type: string
+      description: done の記録の結果（specs/055-activity/data-model.md「Outcomes」）
+      enum:
+        - completed
+        - same
+        - different
+        - failed
+        - superseded
+        - decided_by_owner
+        - gone
+        - already_reverted
+
+    ActivityDecider:
+      type: string
+      description: 記録した判断をしたもの、無ければ処理を始めたもの（specs/055-activity/research.md R-5）
+      enum:
+        - rule
+        - ai
+        - owner
+      x-enum-varnames:
+        - ActivityDeciderRule
+        - ActivityDeciderAi
+        - ActivityDeciderOwner
+
+    ActivityStage:
+      type: string
+      description: 取り込みの段階（jobs.kind の値）
+      enum:
+        - probe
+        - thumbnail
+        - seek_thumbnail
+        - preview
+        - fingerprint
+
+    ActivityPage:
+      type: object
+      required: [items, counts, features]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityEntry"
+        nextCursor:
+          type: string
+          description: 続きがあるときだけ入る
+        counts:
+          $ref: "#/components/schemas/ActivityCounts"
+        features:
+          $ref: "#/components/schemas/ActivityFeatureCounts"
+
+    ActivityCounts:
+      type: object
+      description: "`status` 以外の絞り込みを満たす記録の、状態ごとの数"
+      required: [running, attention, done]
+      additionalProperties: false
+      properties:
+        running:
+          type: integer
+        attention:
+          type: integer
+        done:
+          type: integer
+
+    ActivityFeatureCounts:
+      type: object
+      description: "`feature` 以外の絞り込みを満たす記録の、機能ごとの数。どの機能も入る"
+      required: [import, scan, duplicate_check, auto_tagging, work_info, tags, versions, media_folders, organize]
+      additionalProperties: false
+      properties:
+        import:
+          type: integer
+        scan:
+          type: integer
+        duplicate_check:
+          type: integer
+        auto_tagging:
+          type: integer
+        work_info:
+          type: integer
+        tags:
+          type: integer
+        versions:
+          type: integer
+        media_folders:
+          type: integer
+        organize:
+          type: integer
+
+    ActivityEntry:
+      type: object
+      description: アクティビティの記録の 1 件（specs/055-activity/contracts/screen-api.md）
+      required: [id, kind, feature, status, decider, subject, candidate, retryRun, undoable, undone, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        kind:
+          $ref: "#/components/schemas/ActivityKind"
+        feature:
+          $ref: "#/components/schemas/ActivityFeature"
+        status:
+          $ref: "#/components/schemas/ActivityStatus"
+        reason:
+          $ref: "#/components/schemas/ActivityReason"
+        outcome:
+          $ref: "#/components/schemas/ActivityOutcome"
+        decider:
+          $ref: "#/components/schemas/ActivityDecider"
+        probability:
+          type: number
+          format: double
+          description: モデルの答え。モデルが決めたか決められなかった組と、自動タグ付けで入る
+        detail:
+          type: string
+          description: |
+            提供元か段階の失敗の文、所有者の操作が変えたタグ、メディアフォルダの登録の解除で外れた動画の数
+            （翻訳しない）
+        subject:
+          $ref: "#/components/schemas/ActivitySubject"
+        candidate:
+          type: boolean
+          description: 組の候補が重複の候補の画面にまだある
+        stage:
+          $ref: "#/components/schemas/ActivityStage"
+        retryAt:
+          type: string
+          format: date-time
+          description: 失敗した `version_judgement` が次に試す時刻
+        progress:
+          $ref: "#/components/schemas/ActivityProgress"
+        undoes:
+          $ref: "#/components/schemas/ActivityUndone"
+        tags:
+          type: array
+          description: "`auto_tag` が付けたタグ"
+          items:
+            $ref: "#/components/schemas/ActivityTag"
+        retryRun:
+          type: boolean
+          description: やり直しを出す
+        undoable:
+          type: boolean
+          description: 取り消しを出す（`auto_tag` は取り消せるタグが 1 つでもある）
+        undone:
+          type: boolean
+          description: 所有者が取り消した
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    ActivitySubject:
+      type: object
+      description: |
+        記録の対象。鍵ごとに 1 項目で、組は 2 項目、それ以外は 1 項目（specs/055-activity/research.md R-10）
+      required: [kind, items]
+      additionalProperties: false
+      properties:
+        kind:
+          type: string
+          enum: [video, pair, scan, folder]
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivitySubjectItem"
+
+    ActivitySubjectItem:
+      type: object
+      required: [label]
+      additionalProperties: false
+      properties:
+        label:
+          type: string
+          description: 書いた時点の表示名（翻訳しない利用者のデータ）
+        videoId:
+          type: integer
+          format: int64
+          description: 見る人が開ける今の動画。無ければ入らない
+
+    ActivityProgress:
+      type: object
+      description: waiting を過ぎた running の `import` の、今の段階と済んだ段階の数
+      required: [stage, done, total]
+      additionalProperties: false
+      properties:
+        stage:
+          $ref: "#/components/schemas/ActivityStage"
+        done:
+          type: integer
+        total:
+          type: integer
+
+    ActivityUndone:
+      type: object
+      description: "`undo` の記録が取り消した記録の種類と結果、タグごとの取り消しならそのタグ"
+      required: [kind]
+      additionalProperties: false
+      properties:
+        kind:
+          $ref: "#/components/schemas/ActivityKind"
+        outcome:
+          $ref: "#/components/schemas/ActivityOutcome"
+        tagName:
+          type: string
+
+    ActivityTag:
+      type: object
+      required: [id, name, suggested, probability, undone]
+      additionalProperties: false
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: 書いた時点のタグの名前
+        suggested:
+          type: boolean
+          description: 提案のタグとして付けた
+        probability:
+          type: number
+          format: double
+        undone:
+          type: boolean
+          description: 所有者が取り消した
+
+    ActivityUndoRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        tagId:
+          type: integer
+          format: int64
+          description: "`auto_tag` の記録で取り消すタグ。ほかの種類では使わない"
+
     VideoChanged:
       type: object
       required: [id]
@@ -9993,6 +10437,8 @@ components:
             - invalid_smart_rule
             - smart_folder_not_found
             - smart_folder_cycle
+            - activity_not_retryable
+            - activity_not_undoable
         message:
           type: string
           description: >-

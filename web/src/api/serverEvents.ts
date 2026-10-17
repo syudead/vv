@@ -20,6 +20,8 @@ type SmartFolderChanged = components["schemas"]["SmartFolderChanged"];
  *   フォルダの id を受け取る（specs/052-smart-folders/research.md R-12。最新の内容は取り直す）
  * - `candidates`: 重複の候補の一覧が変わったかもしれない。中身は運ばない
  *   （specs/054-auto-dup/research.md R-10。最新の一覧は取り直す）
+ * - `activity`: アクティビティの記録が書かれたか変わった。中身は運ばない
+ *   （specs/055-activity/research.md R-8。件数と読み込んだページを取り直す）
  * - `home`: ホームの棚の集合か並び、整理役かオンボードの状態が変わった。中身は運ばない
  *   （specs/057-home/research.md R-16。ホームは取り直す）
  * - `open`: つながった、またはつなぎ直した。切れていた間の変化を取り直す合図。
@@ -32,6 +34,7 @@ export interface ServerEventHandlers {
   group?: (ids: readonly number[]) => void;
   smartFolder?: (ids: readonly number[]) => void;
   candidates?: () => void;
+  activity?: () => void;
   home?: () => void;
   open?: (reconnected: boolean) => void;
 }
@@ -97,6 +100,7 @@ function connect(): void {
     if (changed !== undefined) dispatch("smartFolder", changed.ids);
   });
   current.addEventListener("candidates", () => dispatch("candidates"));
+  current.addEventListener("activity", () => dispatch("activity"));
   current.addEventListener("home", () => dispatch("home"));
   current.addEventListener("error", () => {
     // 接続中の切断はブラウザが自分でつなぎ直す。CLOSED は諦めた状態

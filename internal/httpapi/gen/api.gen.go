@@ -15,6 +15,267 @@ import (
 	openapi_types "github.com/oapi-codegen/runtime/types"
 )
 
+// Defines values for ActivityDecider.
+const (
+	ActivityDeciderAi    ActivityDecider = "ai"
+	ActivityDeciderOwner ActivityDecider = "owner"
+	ActivityDeciderRule  ActivityDecider = "rule"
+)
+
+// Valid indicates whether the value is a known member of the ActivityDecider enum.
+func (e ActivityDecider) Valid() bool {
+	switch e {
+	case ActivityDeciderAi:
+		return true
+	case ActivityDeciderOwner:
+		return true
+	case ActivityDeciderRule:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActivityFeature.
+const (
+	ActivityFeatureAutoTagging    ActivityFeature = "auto_tagging"
+	ActivityFeatureDuplicateCheck ActivityFeature = "duplicate_check"
+	ActivityFeatureImport         ActivityFeature = "import"
+	ActivityFeatureMediaFolders   ActivityFeature = "media_folders"
+	ActivityFeatureOrganize       ActivityFeature = "organize"
+	ActivityFeatureScan           ActivityFeature = "scan"
+	ActivityFeatureTags           ActivityFeature = "tags"
+	ActivityFeatureVersions       ActivityFeature = "versions"
+	ActivityFeatureWorkInfo       ActivityFeature = "work_info"
+)
+
+// Valid indicates whether the value is a known member of the ActivityFeature enum.
+func (e ActivityFeature) Valid() bool {
+	switch e {
+	case ActivityFeatureAutoTagging:
+		return true
+	case ActivityFeatureDuplicateCheck:
+		return true
+	case ActivityFeatureImport:
+		return true
+	case ActivityFeatureMediaFolders:
+		return true
+	case ActivityFeatureOrganize:
+		return true
+	case ActivityFeatureScan:
+		return true
+	case ActivityFeatureTags:
+		return true
+	case ActivityFeatureVersions:
+		return true
+	case ActivityFeatureWorkInfo:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActivityKind.
+const (
+	ActivityKindAutoTag            ActivityKind = "auto_tag"
+	ActivityKindBundle             ActivityKind = "bundle"
+	ActivityKindDismiss            ActivityKind = "dismiss"
+	ActivityKindImport             ActivityKind = "import"
+	ActivityKindMakeRepresentative ActivityKind = "make_representative"
+	ActivityKindMediaFolderRemove  ActivityKind = "media_folder_remove"
+	ActivityKindOrganizeUndo       ActivityKind = "organize_undo"
+	ActivityKindScan               ActivityKind = "scan"
+	ActivityKindTagAttach          ActivityKind = "tag_attach"
+	ActivityKindTagDetach          ActivityKind = "tag_detach"
+	ActivityKindTagKeep            ActivityKind = "tag_keep"
+	ActivityKindTagReject          ActivityKind = "tag_reject"
+	ActivityKindUnbundle           ActivityKind = "unbundle"
+	ActivityKindUndo               ActivityKind = "undo"
+	ActivityKindVersionJudgement   ActivityKind = "version_judgement"
+	ActivityKindWorkInfoApply      ActivityKind = "work_info_apply"
+	ActivityKindWorkInfoFetch      ActivityKind = "work_info_fetch"
+)
+
+// Valid indicates whether the value is a known member of the ActivityKind enum.
+func (e ActivityKind) Valid() bool {
+	switch e {
+	case ActivityKindAutoTag:
+		return true
+	case ActivityKindBundle:
+		return true
+	case ActivityKindDismiss:
+		return true
+	case ActivityKindImport:
+		return true
+	case ActivityKindMakeRepresentative:
+		return true
+	case ActivityKindMediaFolderRemove:
+		return true
+	case ActivityKindOrganizeUndo:
+		return true
+	case ActivityKindScan:
+		return true
+	case ActivityKindTagAttach:
+		return true
+	case ActivityKindTagDetach:
+		return true
+	case ActivityKindTagKeep:
+		return true
+	case ActivityKindTagReject:
+		return true
+	case ActivityKindUnbundle:
+		return true
+	case ActivityKindUndo:
+		return true
+	case ActivityKindVersionJudgement:
+		return true
+	case ActivityKindWorkInfoApply:
+		return true
+	case ActivityKindWorkInfoFetch:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActivityOutcome.
+const (
+	ActivityOutcomeAlreadyReverted ActivityOutcome = "already_reverted"
+	ActivityOutcomeCompleted       ActivityOutcome = "completed"
+	ActivityOutcomeDecidedByOwner  ActivityOutcome = "decided_by_owner"
+	ActivityOutcomeDifferent       ActivityOutcome = "different"
+	ActivityOutcomeFailed          ActivityOutcome = "failed"
+	ActivityOutcomeGone            ActivityOutcome = "gone"
+	ActivityOutcomeSame            ActivityOutcome = "same"
+	ActivityOutcomeSuperseded      ActivityOutcome = "superseded"
+)
+
+// Valid indicates whether the value is a known member of the ActivityOutcome enum.
+func (e ActivityOutcome) Valid() bool {
+	switch e {
+	case ActivityOutcomeAlreadyReverted:
+		return true
+	case ActivityOutcomeCompleted:
+		return true
+	case ActivityOutcomeDecidedByOwner:
+		return true
+	case ActivityOutcomeDifferent:
+		return true
+	case ActivityOutcomeFailed:
+		return true
+	case ActivityOutcomeGone:
+		return true
+	case ActivityOutcomeSame:
+		return true
+	case ActivityOutcomeSuperseded:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActivityReason.
+const (
+	ActivityReasonFailed       ActivityReason = "failed"
+	ActivityReasonInterrupted  ActivityReason = "interrupted"
+	ActivityReasonNoConnection ActivityReason = "no_connection"
+	ActivityReasonProcessing   ActivityReason = "processing"
+	ActivityReasonUndecided    ActivityReason = "undecided"
+	ActivityReasonWaiting      ActivityReason = "waiting"
+)
+
+// Valid indicates whether the value is a known member of the ActivityReason enum.
+func (e ActivityReason) Valid() bool {
+	switch e {
+	case ActivityReasonFailed:
+		return true
+	case ActivityReasonInterrupted:
+		return true
+	case ActivityReasonNoConnection:
+		return true
+	case ActivityReasonProcessing:
+		return true
+	case ActivityReasonUndecided:
+		return true
+	case ActivityReasonWaiting:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActivityStage.
+const (
+	ActivityStageFingerprint   ActivityStage = "fingerprint"
+	ActivityStagePreview       ActivityStage = "preview"
+	ActivityStageProbe         ActivityStage = "probe"
+	ActivityStageSeekThumbnail ActivityStage = "seek_thumbnail"
+	ActivityStageThumbnail     ActivityStage = "thumbnail"
+)
+
+// Valid indicates whether the value is a known member of the ActivityStage enum.
+func (e ActivityStage) Valid() bool {
+	switch e {
+	case ActivityStageFingerprint:
+		return true
+	case ActivityStagePreview:
+		return true
+	case ActivityStageProbe:
+		return true
+	case ActivityStageSeekThumbnail:
+		return true
+	case ActivityStageThumbnail:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActivityStatus.
+const (
+	ActivityStatusAttention ActivityStatus = "attention"
+	ActivityStatusDone      ActivityStatus = "done"
+	ActivityStatusRunning   ActivityStatus = "running"
+)
+
+// Valid indicates whether the value is a known member of the ActivityStatus enum.
+func (e ActivityStatus) Valid() bool {
+	switch e {
+	case ActivityStatusAttention:
+		return true
+	case ActivityStatusDone:
+		return true
+	case ActivityStatusRunning:
+		return true
+	default:
+		return false
+	}
+}
+
+// Defines values for ActivitySubjectKind.
+const (
+	ActivitySubjectKindFolder ActivitySubjectKind = "folder"
+	ActivitySubjectKindPair   ActivitySubjectKind = "pair"
+	ActivitySubjectKindScan   ActivitySubjectKind = "scan"
+	ActivitySubjectKindVideo  ActivitySubjectKind = "video"
+)
+
+// Valid indicates whether the value is a known member of the ActivitySubjectKind enum.
+func (e ActivitySubjectKind) Valid() bool {
+	switch e {
+	case ActivitySubjectKindFolder:
+		return true
+	case ActivitySubjectKindPair:
+		return true
+	case ActivitySubjectKindScan:
+		return true
+	case ActivitySubjectKindVideo:
+		return true
+	default:
+		return false
+	}
+}
+
 // Defines values for AuthSessionState.
 const (
 	Guest         AuthSessionState = "guest"
@@ -183,6 +444,8 @@ func (e EncoderUnavailableReason) Valid() bool {
 // Defines values for ErrorCode.
 const (
 	ErrorCodeAccountAlreadyConfigured    ErrorCode = "account_already_configured"
+	ErrorCodeActivityNotRetryable        ErrorCode = "activity_not_retryable"
+	ErrorCodeActivityNotUndoable         ErrorCode = "activity_not_undoable"
 	ErrorCodeConflict                    ErrorCode = "conflict"
 	ErrorCodeDirectoryUnavailable        ErrorCode = "directory_unavailable"
 	ErrorCodeFileMissing                 ErrorCode = "file_missing"
@@ -225,6 +488,10 @@ const (
 func (e ErrorCode) Valid() bool {
 	switch e {
 	case ErrorCodeAccountAlreadyConfigured:
+		return true
+	case ErrorCodeActivityNotRetryable:
+		return true
+	case ErrorCodeActivityNotUndoable:
 		return true
 	case ErrorCodeConflict:
 		return true
@@ -767,25 +1034,25 @@ func (e HomeOrganizerPending) Valid() bool {
 
 // Defines values for HomeShelfKind.
 const (
-	Continue    HomeShelfKind = "continue"
-	Folder      HomeShelfKind = "folder"
-	Recent      HomeShelfKind = "recent"
-	Recommended HomeShelfKind = "recommended"
-	Unshelved   HomeShelfKind = "unshelved"
+	HomeShelfKindContinue    HomeShelfKind = "continue"
+	HomeShelfKindFolder      HomeShelfKind = "folder"
+	HomeShelfKindRecent      HomeShelfKind = "recent"
+	HomeShelfKindRecommended HomeShelfKind = "recommended"
+	HomeShelfKindUnshelved   HomeShelfKind = "unshelved"
 )
 
 // Valid indicates whether the value is a known member of the HomeShelfKind enum.
 func (e HomeShelfKind) Valid() bool {
 	switch e {
-	case Continue:
+	case HomeShelfKindContinue:
 		return true
-	case Folder:
+	case HomeShelfKindFolder:
 		return true
-	case Recent:
+	case HomeShelfKindRecent:
 		return true
-	case Recommended:
+	case HomeShelfKindRecommended:
 		return true
-	case Unshelved:
+	case HomeShelfKindUnshelved:
 		return true
 	default:
 		return false
@@ -2045,6 +2312,181 @@ type APIToken struct {
 type APITokenList struct {
 	// Items 作成日時の降順
 	Items []APIToken `json:"items"`
+}
+
+// ActivityCounts `status` 以外の絞り込みを満たす記録の、状態ごとの数
+type ActivityCounts struct {
+	Attention int `json:"attention"`
+	Done      int `json:"done"`
+	Running   int `json:"running"`
+}
+
+// ActivityDecider 記録した判断をしたもの、無ければ処理を始めたもの（specs/055-activity/research.md R-5）
+type ActivityDecider string
+
+// ActivityEntry アクティビティの記録の 1 件（specs/055-activity/contracts/screen-api.md）
+type ActivityEntry struct {
+	// Candidate 組の候補が重複の候補の画面にまだある
+	Candidate bool      `json:"candidate"`
+	CreatedAt time.Time `json:"createdAt"`
+
+	// Decider 記録した判断をしたもの、無ければ処理を始めたもの（specs/055-activity/research.md R-5）
+	Decider ActivityDecider `json:"decider"`
+
+	// Detail 提供元か段階の失敗の文、所有者の操作が変えたタグ、メディアフォルダの登録の解除で外れた動画の数
+	// （翻訳しない）
+	Detail *string `json:"detail,omitempty"`
+
+	// Feature 種類のまとまりで、機能の絞り込みの単位（specs/055-activity/contracts/screen-api.md「Features」）。
+	// `undo` は取り消した記録の機能に入る
+	Feature ActivityFeature `json:"feature"`
+	Id      int64           `json:"id"`
+
+	// Kind アクティビティの記録の種類（specs/055-activity/data-model.md「Kinds」）
+	Kind ActivityKind `json:"kind"`
+
+	// Outcome done の記録の結果（specs/055-activity/data-model.md「Outcomes」）
+	Outcome *ActivityOutcome `json:"outcome,omitempty"`
+
+	// Probability モデルの答え。モデルが決めたか決められなかった組と、自動タグ付けで入る
+	Probability *float64 `json:"probability,omitempty"`
+
+	// Progress waiting を過ぎた running の `import` の、今の段階と済んだ段階の数
+	Progress *ActivityProgress `json:"progress,omitempty"`
+
+	// Reason running と attention の記録の理由（specs/055-activity/data-model.md「Reasons」）
+	Reason *ActivityReason `json:"reason,omitempty"`
+
+	// RetryAt 失敗した `version_judgement` が次に試す時刻
+	RetryAt *time.Time `json:"retryAt,omitempty"`
+
+	// RetryRun やり直しを出す
+	RetryRun bool `json:"retryRun"`
+
+	// Stage 取り込みの段階（jobs.kind の値）
+	Stage *ActivityStage `json:"stage,omitempty"`
+
+	// Status 記録の状態（specs/055-activity/research.md R-4）
+	Status ActivityStatus `json:"status"`
+
+	// Subject 記録の対象。鍵ごとに 1 項目で、組は 2 項目、それ以外は 1 項目（specs/055-activity/research.md R-10）
+	Subject ActivitySubject `json:"subject"`
+
+	// Tags `auto_tag` が付けたタグ
+	Tags *[]ActivityTag `json:"tags,omitempty"`
+
+	// Undoable 取り消しを出す（`auto_tag` は取り消せるタグが 1 つでもある）
+	Undoable bool `json:"undoable"`
+
+	// Undoes `undo` の記録が取り消した記録の種類と結果、タグごとの取り消しならそのタグ
+	Undoes *ActivityUndone `json:"undoes,omitempty"`
+
+	// Undone 所有者が取り消した
+	Undone    bool      `json:"undone"`
+	UpdatedAt time.Time `json:"updatedAt"`
+}
+
+// ActivityFeature 種類のまとまりで、機能の絞り込みの単位（specs/055-activity/contracts/screen-api.md「Features」）。
+// `undo` は取り消した記録の機能に入る
+type ActivityFeature string
+
+// ActivityFeatureCounts `feature` 以外の絞り込みを満たす記録の、機能ごとの数。どの機能も入る
+type ActivityFeatureCounts struct {
+	AutoTagging    int `json:"auto_tagging"`
+	DuplicateCheck int `json:"duplicate_check"`
+	Import         int `json:"import"`
+	MediaFolders   int `json:"media_folders"`
+	Organize       int `json:"organize"`
+	Scan           int `json:"scan"`
+	Tags           int `json:"tags"`
+	Versions       int `json:"versions"`
+	WorkInfo       int `json:"work_info"`
+}
+
+// ActivityKind アクティビティの記録の種類（specs/055-activity/data-model.md「Kinds」）
+type ActivityKind string
+
+// ActivityOutcome done の記録の結果（specs/055-activity/data-model.md「Outcomes」）
+type ActivityOutcome string
+
+// ActivityPage defines model for ActivityPage.
+type ActivityPage struct {
+	// Counts `status` 以外の絞り込みを満たす記録の、状態ごとの数
+	Counts ActivityCounts `json:"counts"`
+
+	// Features `feature` 以外の絞り込みを満たす記録の、機能ごとの数。どの機能も入る
+	Features ActivityFeatureCounts `json:"features"`
+	Items    []ActivityEntry       `json:"items"`
+
+	// NextCursor 続きがあるときだけ入る
+	NextCursor *string `json:"nextCursor,omitempty"`
+}
+
+// ActivityProgress waiting を過ぎた running の `import` の、今の段階と済んだ段階の数
+type ActivityProgress struct {
+	Done int `json:"done"`
+
+	// Stage 取り込みの段階（jobs.kind の値）
+	Stage ActivityStage `json:"stage"`
+	Total int           `json:"total"`
+}
+
+// ActivityReason running と attention の記録の理由（specs/055-activity/data-model.md「Reasons」）
+type ActivityReason string
+
+// ActivityStage 取り込みの段階（jobs.kind の値）
+type ActivityStage string
+
+// ActivityStatus 記録の状態（specs/055-activity/research.md R-4）
+type ActivityStatus string
+
+// ActivitySubject 記録の対象。鍵ごとに 1 項目で、組は 2 項目、それ以外は 1 項目（specs/055-activity/research.md R-10）
+type ActivitySubject struct {
+	Items []ActivitySubjectItem `json:"items"`
+	Kind  ActivitySubjectKind   `json:"kind"`
+}
+
+// ActivitySubjectKind defines model for ActivitySubject.Kind.
+type ActivitySubjectKind string
+
+// ActivitySubjectItem defines model for ActivitySubjectItem.
+type ActivitySubjectItem struct {
+	// Label 書いた時点の表示名（翻訳しない利用者のデータ）
+	Label string `json:"label"`
+
+	// VideoId 見る人が開ける今の動画。無ければ入らない
+	VideoId *int64 `json:"videoId,omitempty"`
+}
+
+// ActivityTag defines model for ActivityTag.
+type ActivityTag struct {
+	Id int64 `json:"id"`
+
+	// Name 書いた時点のタグの名前
+	Name        string  `json:"name"`
+	Probability float64 `json:"probability"`
+
+	// Suggested 提案のタグとして付けた
+	Suggested bool `json:"suggested"`
+
+	// Undone 所有者が取り消した
+	Undone bool `json:"undone"`
+}
+
+// ActivityUndoRequest defines model for ActivityUndoRequest.
+type ActivityUndoRequest struct {
+	// TagId `auto_tag` の記録で取り消すタグ。ほかの種類では使わない
+	TagId *int64 `json:"tagId,omitempty"`
+}
+
+// ActivityUndone `undo` の記録が取り消した記録の種類と結果、タグごとの取り消しならそのタグ
+type ActivityUndone struct {
+	// Kind アクティビティの記録の種類（specs/055-activity/data-model.md「Kinds」）
+	Kind ActivityKind `json:"kind"`
+
+	// Outcome done の記録の結果（specs/055-activity/data-model.md「Outcomes」）
+	Outcome *ActivityOutcome `json:"outcome,omitempty"`
+	TagName *string          `json:"tagName,omitempty"`
 }
 
 // AddTagSynonymRequest defines model for AddTagSynonymRequest.
@@ -5113,6 +5555,9 @@ type WorkPersonRole string
 // APITokenId defines model for APITokenId.
 type APITokenId = int64
 
+// ActivityId defines model for ActivityId.
+type ActivityId = int64
+
 // AddedWithinFilter defines model for AddedWithinFilter.
 type AddedWithinFilter = int
 
@@ -5226,6 +5671,30 @@ type PluginTooLarge = Error
 
 // ProviderFailed defines model for ProviderFailed.
 type ProviderFailed = Error
+
+// ListActivityParams defines parameters for ListActivity.
+type ListActivityParams struct {
+	// Status その状態の記録だけにする。無ければすべて
+	Status *ActivityStatus `form:"status,omitempty" json:"status,omitempty"`
+
+	// Feature その機能の記録だけにする。繰り返して複数を選べる。無ければすべて
+	Feature *[]ActivityFeature `form:"feature,omitempty" json:"feature,omitempty"`
+
+	// Decider その判断したものの記録だけにする
+	Decider *ActivityDecider `form:"decider,omitempty" json:"decider,omitempty"`
+
+	// Since この時刻以降に作った記録だけにする
+	Since *time.Time `form:"since,omitempty" json:"since,omitempty"`
+
+	// Q 対象の表示名にこの文字列を含む記録だけにする。大文字と小文字を区別しない
+	Q *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// Cursor 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Limit 1ページの件数
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+}
 
 // GetAuthSessionParams defines parameters for GetAuthSession.
 type GetAuthSessionParams struct {
@@ -5807,6 +6276,9 @@ type ListWatchHistoryDatesParams struct {
 	Query *string `form:"query,omitempty" json:"query,omitempty"`
 }
 
+// UndoActivityJSONRequestBody defines body for UndoActivity for application/json ContentType.
+type UndoActivityJSONRequestBody = ActivityUndoRequest
+
 // CreateApiTokenJSONRequestBody defines body for CreateApiToken for application/json ContentType.
 type CreateApiTokenJSONRequestBody = CreateAPITokenRequest
 
@@ -6019,6 +6491,15 @@ type SetWorkInfoPluginSettingsJSONRequestBody = SetWorkInfoPluginSettingsRequest
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
+	// ListActivity アクティビティの記録を新しい順に返す
+	// (GET /api/activity)
+	ListActivity(w http.ResponseWriter, r *http.Request, params ListActivityParams)
+	// RetryActivity 記録の処理を始め直す
+	// (POST /api/activity/{id}/retry)
+	RetryActivity(w http.ResponseWriter, r *http.Request, id ActivityId)
+	// UndoActivity 自動の判断を取り消す
+	// (POST /api/activity/{id}/undo)
+	UndoActivity(w http.ResponseWriter, r *http.Request, id ActivityId)
 	// ListApiTokens 発行した API トークンを返す
 	// (GET /api/api-tokens)
 	ListApiTokens(w http.ResponseWriter, r *http.Request)
@@ -6542,6 +7023,169 @@ type ServerInterfaceWrapper struct {
 }
 
 type MiddlewareFunc func(http.Handler) http.Handler
+
+// ListActivity operation middleware
+func (siw *ServerInterfaceWrapper) ListActivity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListActivityParams
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "status", r.URL.Query(), &params.Status, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "status"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "feature" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "feature", r.URL.Query(), &params.Feature, runtime.BindQueryParameterOptions{Type: "array", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "feature"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "feature", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "decider" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "decider", r.URL.Query(), &params.Decider, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "decider"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "decider", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "since" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "since", r.URL.Query(), &params.Since, runtime.BindQueryParameterOptions{Type: "string", Format: "date-time"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "since"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "since", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "q", r.URL.Query(), &params.Q, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "q"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "cursor" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "cursor", r.URL.Query(), &params.Cursor, runtime.BindQueryParameterOptions{Type: "string", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "cursor"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "cursor", Err: err})
+		}
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, false, "limit", r.URL.Query(), &params.Limit, runtime.BindQueryParameterOptions{Type: "integer", Format: ""})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "limit"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListActivity(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RetryActivity operation middleware
+func (siw *ServerInterfaceWrapper) RetryActivity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ActivityId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RetryActivity(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UndoActivity operation middleware
+func (siw *ServerInterfaceWrapper) UndoActivity(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "id" -------------
+	var id ActivityId
+
+	err = runtime.BindStyledParameterWithOptions("simple", "id", r.PathValue("id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "integer", Format: "int64", ValueIsUnescaped: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UndoActivity(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
 
 // ListApiTokens operation middleware
 func (siw *ServerInterfaceWrapper) ListApiTokens(w http.ResponseWriter, r *http.Request) {
@@ -12057,6 +12701,9 @@ func HandlerWithOptions(si ServerInterface, options StdHTTPServerOptions) http.H
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/video-bundles", wrapper.BundleVideos)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/version-candidates", wrapper.ListVersionCandidates)
 	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/version-candidates/dismiss", wrapper.DismissVersionCandidate)
+	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/activity", wrapper.ListActivity)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/activity/{id}/retry", wrapper.RetryActivity)
+	m.HandleFunc(http.MethodPost+" "+options.BaseURL+"/api/activity/{id}/undo", wrapper.UndoActivity)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/directories", wrapper.ListDirectories)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders", wrapper.ListRootFolders)
 	m.HandleFunc(http.MethodGet+" "+options.BaseURL+"/api/folders/{rootId}", wrapper.GetFolder)

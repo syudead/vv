@@ -44,7 +44,7 @@ func TestClaimSeekThumbnailWaitsForProbeAndRemainingThumbnails(t *testing.T) {
 	}{
 		{domain.JobSeekThumbnail, videoID}, {domain.JobThumbnail, other.ID}, {domain.JobThumbnail, outside.ID},
 	} {
-		if err := db.Ingest().EnqueueJob(ctx, job.kind, job.id); err != nil {
+		if err := db.Ingest().EnqueueJob(ctx, job.kind, job.id, domain.ActivityByRule); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -95,7 +95,7 @@ func TestRemainingJobsCountSeekThumbnailSeparately(t *testing.T) {
 	}{
 		{domain.JobThumbnail, videoID}, {domain.JobSeekThumbnail, videoID}, {domain.JobSeekThumbnail, other.ID},
 	} {
-		if err := db.Ingest().EnqueueJob(ctx, job.kind, job.id); err != nil {
+		if err := db.Ingest().EnqueueJob(ctx, job.kind, job.id, domain.ActivityByRule); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -156,7 +156,7 @@ func TestSetSeekThumbnailStateForJobRequiresClaimIdentity(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	ctx := context.Background()
 	probeDone(t, db, videoID)
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobSeekThumbnail, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobSeekThumbnail, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobSeekThumbnail)
@@ -284,7 +284,7 @@ func TestUpsertVideoReportsSeekThumbnailNeed(t *testing.T) {
 	if _, err := db.sql.Exec(`update videos set seek_thumbnail_state = 'pending' where id = ?`, added.ID); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Ingest().EnsureJob(ctx, domain.JobSeekThumbnail, added.ID); err != nil {
+	if err := db.Ingest().EnsureJob(ctx, domain.JobSeekThumbnail, added.ID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	if got := jobCounts(t, db, added.ID); !equalCounts(got, map[string]int{"seek_thumbnail:queued": 1}) {

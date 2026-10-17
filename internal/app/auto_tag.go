@@ -31,8 +31,10 @@ func failureReason(err error) string {
 
 // AutoTagQueue は自動タグ付けの待ち行列である。internal/store の *AutoTagStore が満たす。
 type AutoTagQueue interface {
-	QueueVideos(ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode) (int, error)
-	QueueLibrary(ctx context.Context, mode domain.AutoTagQueueMode) (int, error)
+	// QueueVideos と QueueLibrary は動画を積み、積んだ動画ごとに decider が始めた auto_tag の記録を開く
+	// （specs/055-activity/research.md R-5）。
+	QueueVideos(ctx context.Context, videoIDs []int64, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error)
+	QueueLibrary(ctx context.Context, mode domain.AutoTagQueueMode, decider domain.ActivityDecider) (int, error)
 	// Claim は積んだ順にいちばん古い判定を専有する。無ければ domain.ErrNoJob。
 	Claim(ctx context.Context) (domain.AutoTagJob, error)
 	// Subject は内容の動画と、その代表の所在を含む登録フォルダを返す。無ければ
@@ -41,8 +43,9 @@ type AutoTagQueue interface {
 	// Candidates は内容の動画に聞くタグを返す。仮タグ、その動画に確定して付いているタグ、
 	// その動画で却下されたタグは含めない。
 	Candidates(ctx context.Context, contentKey string) ([]domain.AutoTagCandidate, error)
-	// Finish は判定を終え、確定と仮のタグを付ける。
-	Finish(ctx context.Context, contentKey string, selection domain.AutoTagSelection) error
+	// Finish は判定を終え、確定と仮のタグを付けて、その確率を記録に残す。decider が空でなければ記録の判断した
+	// ものをそれにする。
+	Finish(ctx context.Context, contentKey string, selection domain.AutoTagSelection, decider domain.ActivityDecider) error
 	// ConfirmTentative と RejectTentative は動画に仮に付いたタグを確定・却下する。仮に付いて
 	// いなければ domain.ErrNotFound。
 	ConfirmTentative(ctx context.Context, videoID, tagID int64) error
@@ -67,10 +70,19 @@ type VideoImageSource interface {
 	SeekFramesJPEG(contentKey string, n int) ([][]byte, error)
 }
 
+// AutoTagUndoStore は自動タグ付けが付けたタグの取り消しである。internal/store の *ActivityStore が満たす。
+type AutoTagUndoStore interface {
+	// UndoAutoTag は auto_tag の記録 entryID が付けたタグ tagID を 1 つの取引で取り消し、所有者の undo の記録を
+	// 返す（specs/055-activity/research.md R-7）。
+	UndoAutoTag(ctx context.Context, entryID, tagID int64) (domain.ActivityEntry, error)
+}
+
 // AutoTaggerOptions は自動タグ付けに必要な依存である。
 type AutoTaggerOptions struct {
 	Queue    AutoTagQueue
 	Settings AutoTagSettingsStore
+	// Undo は付けたタグの取り消しで、nil なら取り消しを出さない。
+	Undo AutoTagUndoStore
 	// Classifier は判定モデルの口で、どの提供元かは知らない。
 	Classifier Classifier
 	Images     VideoImageSource
@@ -84,6 +96,7 @@ type AutoTaggerOptions struct {
 type AutoTagger struct {
 	queue      AutoTagQueue
 	settings   AutoTagSettingsStore
+	undo       AutoTagUndoStore
 	classifier Classifier
 	images     VideoImageSource
 	logger     *slog.Logger
@@ -102,6 +115,7 @@ func NewAutoTagger(opts AutoTaggerOptions) *AutoTagger {
 	return &AutoTagger{
 		queue:      opts.Queue,
 		settings:   opts.Settings,
+		undo:       opts.Undo,
 		classifier: opts.Classifier,
 		images:     opts.Images,
 		logger:     logger.With(slog.String("component", "auto-tagging")),
@@ -175,7 +189,7 @@ func (a *AutoTagger) enabled(ctx context.Context) (bool, error) {
 	return settings.Enabled, err
 }
 
-// QueueVideo は動画 1 本を判定に回す（判定を終えていても回し直す）。積んだら true を返す。
+// QueueVideo は動画 1 本を所有者の求めで判定に回す（判定を終えていても回し直す）。積んだら true を返す。
 // 登録フォルダの下に所在の無い動画や判定中の動画は積まない。機能が切なら
 // domain.ErrAutoTaggingOff。
 func (a *AutoTagger) QueueVideo(ctx context.Context, videoID int64) (bool, error) {
@@ -184,7 +198,7 @@ func (a *AutoTagger) QueueVideo(ctx context.Context, videoID int64) (bool, error
 	} else if !on {
 		return false, domain.ErrAutoTaggingOff
 	}
-	queued, err := a.queue.QueueVideos(ctx, []int64{videoID}, domain.AutoTagQueueAgain)
+	queued, err := a.queue.QueueVideos(ctx, []int64{videoID}, domain.AutoTagQueueAgain, domain.ActivityByOwner)
 	if err != nil {
 		return false, err
 	}
@@ -194,7 +208,7 @@ func (a *AutoTagger) QueueVideo(ctx context.Context, videoID int64) (bool, error
 	return queued > 0, nil
 }
 
-// QueueLibrary はライブラリの動画を scope に従って判定に回し、積んだ件数を返す。機能が切なら
+// QueueLibrary はライブラリの動画を所有者の求めで scope に従って判定に回し、積んだ件数を返す。機能が切なら
 // domain.ErrAutoTaggingOff。
 func (a *AutoTagger) QueueLibrary(ctx context.Context, scope domain.AutoTagScope) (int, error) {
 	if !scope.Valid() {
@@ -205,7 +219,7 @@ func (a *AutoTagger) QueueLibrary(ctx context.Context, scope domain.AutoTagScope
 	} else if !on {
 		return 0, domain.ErrAutoTaggingOff
 	}
-	queued, err := a.queue.QueueLibrary(ctx, scope.QueueMode())
+	queued, err := a.queue.QueueLibrary(ctx, scope.QueueMode(), domain.ActivityByOwner)
 	if err != nil {
 		return 0, err
 	}
@@ -225,6 +239,32 @@ func (a *AutoTagger) RejectTag(ctx context.Context, videoID, tagID int64) error 
 	return a.queue.RejectTentative(ctx, videoID, tagID)
 }
 
+// RetryActivity は失敗した auto_tag の記録の動画を、所有者の求めとして判定に回し直す（app.Activity の
+// やり直しの振り分け先）。機能が切なら domain.ErrAutoTaggingOff、対象の動画がもう無ければ
+// domain.ErrActivityNotRetryable。新しい実行は新しい記録になり、この記録を閉じる。
+func (a *AutoTagger) RetryActivity(ctx context.Context, entry domain.ActivityEntry) error {
+	if on, err := a.enabled(ctx); err != nil {
+		return err
+	} else if !on {
+		return domain.ErrAutoTaggingOff
+	}
+	videoID := entry.VideoIDs[0]
+	if videoID == 0 {
+		return domain.ErrActivityNotRetryable
+	}
+	_, err := a.QueueVideo(ctx, videoID)
+	return err
+}
+
+// UndoActivity は auto_tag の記録が付けたタグ tagID を取り消し、所有者の undo の記録を返す（app.Activity の
+// 取り消しの振り分け先）。取り消しの口が無ければ domain.ErrActivityNotUndoable。
+func (a *AutoTagger) UndoActivity(ctx context.Context, entry domain.ActivityEntry, tagID int64) (domain.ActivityEntry, error) {
+	if a.undo == nil {
+		return domain.ActivityEntry{}, domain.ErrActivityNotUndoable
+	}
+	return a.undo.UndoAutoTag(ctx, entry.ID, tagID)
+}
+
 // VideoImagesFinished は取り込みで動画のシーク用プレビューの段階が終わった（成否を問わない）
 // ことを受け取る。代表サムネイルはそれより前に終わっているので、判定に添える画像が揃っている。
 // 機能と取り込みのあとの自動の判定が入なら、まだ判定していない動画を積む。
@@ -237,7 +277,7 @@ func (a *AutoTagger) VideoImagesFinished(ctx context.Context, videoID int64) {
 	if !settings.Enabled || !settings.AfterImport {
 		return
 	}
-	queued, err := a.queue.QueueVideos(ctx, []int64{videoID}, domain.AutoTagQueueIfNew)
+	queued, err := a.queue.QueueVideos(ctx, []int64{videoID}, domain.AutoTagQueueIfNew, domain.ActivityByRule)
 	if err != nil {
 		a.logger.Warn("cannot queue a video for auto-tagging", slog.Int64("video_id", videoID), slog.Any("error", err))
 		return
@@ -317,7 +357,7 @@ func (a *AutoTagger) Run(ctx context.Context) {
 // process は 1 件を判定し、結果を記録する。停止で途切れた判定は記録せず、次の起動で
 // Recover が積み直す。
 func (a *AutoTagger) process(ctx context.Context, job domain.AutoTagJob) {
-	selection, err := a.decide(ctx, job)
+	selection, decider, err := a.decide(ctx, job)
 	if ctx.Err() != nil {
 		return
 	}
@@ -328,35 +368,36 @@ func (a *AutoTagger) process(ctx context.Context, job domain.AutoTagJob) {
 		}
 		return
 	}
-	if err := a.queue.Finish(ctx, job.ContentKey, selection); err != nil {
+	if err := a.queue.Finish(ctx, job.ContentKey, selection, decider); err != nil {
 		a.logger.Error("cannot record the auto-tagging result", slog.String("content_key", job.ContentKey), slog.Any("error", err))
 	}
 }
 
-// decide は動画の手がかりを判定モデルに渡し、確定と仮に付けるタグの id を返す。動画が
-// 消えていれば空を返す（Finish が行を消す）。
-func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.AutoTagSelection, error) {
+// decide は動画の手がかりを判定モデルに渡し、確定と仮に付けるタグの id と確率、判断したもの（判定モデルに
+// 聞いたなら ai）を返す。動画が消えていれば空を返す（Finish が行を消す）。聞くタグが無ければ判断したものは
+// 空で、記録は始めたもののままになる（specs/055-activity/research.md R-5）。
+func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.AutoTagSelection, domain.ActivityDecider, error) {
 	var selection domain.AutoTagSelection
 	settings, err := a.settings.AutoTagSettings(ctx)
 	if err != nil {
-		return selection, err
+		return selection, "", err
 	}
 	found, err := a.queue.Subject(ctx, job.ContentKey)
 	if errors.Is(err, domain.ErrNotFound) {
-		return selection, nil
+		return selection, "", nil
 	}
 	if err != nil {
-		return selection, err
+		return selection, "", err
 	}
 	candidates, err := a.queue.Candidates(ctx, job.ContentKey)
 	if errors.Is(err, domain.ErrNotFound) {
-		return selection, nil
+		return selection, "", nil
 	}
 	if err != nil {
-		return selection, err
+		return selection, "", err
 	}
 	if len(candidates) == 0 {
-		return selection, nil
+		return selection, "", nil
 	}
 
 	video := found.Video
@@ -372,10 +413,10 @@ func (a *AutoTagger) decide(ctx context.Context, job domain.AutoTagJob) (domain.
 		Questions: questions,
 	})
 	if err != nil {
-		return selection, err
+		return selection, "", err
 	}
 	selection = domain.SelectAutoTags(candidates, probabilities, settings)
-	return selection, nil
+	return selection, domain.ActivityByAI, nil
 }
 
 // videoImages は判定に添える画像（代表サムネイルと、動画全体から等間隔に選んだコマ）を
