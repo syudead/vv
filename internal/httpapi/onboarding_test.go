@@ -100,7 +100,7 @@ func TestOnboardingInterestsBecomeShelves(t *testing.T) {
 		t.Fatalf("result = %+v, want 2 shelves and nothing queued", result)
 	}
 	anime := result.Shelves[0]
-	if anime.Name != "Anime" || anime.Kind != gen.Folder || anime.FolderId == nil ||
+	if anime.Name != "Anime" || anime.Kind != gen.HomeShelfKindFolder || anime.FolderId == nil ||
 		anime.ByOrganizer == nil || *anime.ByOrganizer || anime.Key != "folder:"+strconv.FormatInt(*anime.FolderId, 10) {
 		t.Fatalf("shelf = %+v", anime)
 	}

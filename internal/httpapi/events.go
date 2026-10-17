@@ -45,8 +45,10 @@ type eventSubscriber struct {
 	scan bool
 	// candidates は重複の候補の一覧が変わったかもしれないことを表す（specs/054-auto-dup/research.md R-10）。
 	candidates bool
-	videos     map[int64]struct{}
-	groups     map[int64]struct{}
+	// activity はアクティビティの記録が書かれたか変わったことを表す（specs/055-activity/research.md R-8）。
+	activity bool
+	videos   map[int64]struct{}
+	groups   map[int64]struct{}
 	// smartFolders はまだ送っていないスマートフォルダの知らせの id である。
 	smartFolders map[int64]struct{}
 	// home はホームが変わったことを表す（specs/057-home/research.md R-16）。
@@ -69,6 +71,7 @@ func (s *eventSubscriber) mark(update func(*eventSubscriber)) {
 type pendingEvents struct {
 	scan         bool
 	candidates   bool
+	activity     bool
 	videos       []int64
 	groups       []int64
 	smartFolders []int64
@@ -80,11 +83,12 @@ func (s *eventSubscriber) take() pendingEvents {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	pending := pendingEvents{
-		scan: s.scan, candidates: s.candidates, videos: sortedIDs(s.videos), groups: sortedIDs(s.groups),
-		smartFolders: sortedIDs(s.smartFolders), home: s.home,
+		scan: s.scan, candidates: s.candidates, activity: s.activity, videos: sortedIDs(s.videos),
+		groups: sortedIDs(s.groups), smartFolders: sortedIDs(s.smartFolders), home: s.home,
 	}
 	s.scan = false
 	s.candidates = false
+	s.activity = false
 	s.home = false
 	clear(s.videos)
 	clear(s.groups)
@@ -161,6 +165,12 @@ func (e *Events) CandidatesChanged() {
 	e.publish(func(s *eventSubscriber) { s.candidates = true })
 }
 
+// ActivityChanged はアクティビティの記録が書かれたか変わったことを知らせる。中身は運ばず、アクティビティの
+// 画面と入口の件数が取り直す（specs/055-activity/research.md R-8）。
+func (e *Events) ActivityChanged() {
+	e.publish(func(s *eventSubscriber) { s.activity = true })
+}
+
 // GroupsChanged はグループの名前か項目が変わったことを知らせる（specs/048-groups/research.md R-13）。
 // ids は変わったグループとその祖先の id である。
 func (e *Events) GroupsChanged(ids []int64) {
@@ -230,6 +240,9 @@ func (e *Events) Handle(event domain.Event) {
 		// 判定の結果や版の取り外しで候補が変わったら candidates の知らせにする
 		// （specs/054-auto-dup/research.md R-10）。
 		e.CandidatesChanged()
+	case domain.ActivityChanged:
+		// 記録の書き込みと変化は activity の知らせにする（specs/055-activity/research.md R-8）。
+		e.ActivityChanged()
 	case domain.GroupsChanged:
 		// グループの変化は group の知らせにする。グループの画面・カード・動画ページのグループの行が
 		// 読み直す（specs/048-groups/research.md R-13）。
@@ -262,8 +275,9 @@ func (s *server) StreamEvents(w http.ResponseWriter, r *http.Request) {
 	sub, unsubscribe := s.events.subscribe()
 	defer unsubscribe()
 	// ゲストには group と smartFolder と home だけを送る。scan と video は所有者の取り込みと非公開の
-	// 動画を運び、candidates は所有者だけが開く重複の候補の画面のものである
-	// （specs/048-groups/contracts/screen-api.md「/api/events」、specs/054-auto-dup/research.md R-10）。
+	// 動画を運び、candidates と activity は所有者だけが開く重複の候補とアクティビティの画面のものである
+	// （specs/048-groups/contracts/screen-api.md「/api/events」、specs/054-auto-dup/research.md R-10、
+	// specs/055-activity/research.md R-8、specs/057-home/research.md R-16）。
 	guest := !audienceFrom(r.Context()).IsOwner()
 
 	controller := http.NewResponseController(w)
@@ -317,6 +331,7 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 	if guest {
 		pending.scan = false
 		pending.candidates = false
+		pending.activity = false
 		pending.videos = nil
 	}
 	if pending.scan && s.scans != nil {
@@ -335,6 +350,12 @@ func (s *server) writePendingEvents(ctx context.Context, w http.ResponseWriter, 
 		// 中身の無い知らせである。EventSource は data の無いイベントを届けないので、空の
 		// オブジェクトを data にする。
 		if err := writeEvent(w, "candidates", struct{}{}); err != nil {
+			return err
+		}
+	}
+	if pending.activity {
+		// candidates と同じく中身の無い知らせである。
+		if err := writeEvent(w, "activity", struct{}{}); err != nil {
 			return err
 		}
 	}

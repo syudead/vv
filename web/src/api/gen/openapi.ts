@@ -2678,6 +2678,79 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * アクティビティの記録を新しい順に返す
+         * @description 所有者だけ。取り込み・自動タグ付け・重複の判定・作品情報の取得・失敗した走査と、所有者のタグと
+         *     集まりの操作の記録を id の大きい順に返す（specs/055-activity/contracts/screen-api.md、
+         *     research.md R-9）。絞り込みはページを切る前に掛け、`and` で結ぶ。`counts` は `status` 以外の、
+         *     `features` は `feature` 以外の絞り込みに従う。`status`・`feature`・`decider` が知らない値、
+         *     `cursor` か `since` が読めない、`q` か `limit` が範囲の外のときは 400 `invalid_request`
+         *     （読めない `cursor` は reason `invalid_cursor`）。
+         */
+        get: operations["listActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activity/{id}/retry": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 記録の処理を始め直す
+         * @description 所有者だけ。記録の処理を始め直し、202 を返す。新しい実行は新しい記録になり、この記録を閉じる。
+         *     `version_judgement` は記録を保ち、`running` に戻る（specs/055-activity/contracts/screen-api.md、
+         *     research.md R-4）。`import` は動画の失敗した段階を積み直し、`scan` はすべてのメディアフォルダの手動の
+         *     スキャンを始める。無い記録は 404 `not_found`、やり直しを出さない記録か対象がもう無い記録は 409
+         *     `activity_not_retryable`、スキャン中の `scan` の記録は 409 `scan_in_progress`、自動タグ付けが切の
+         *     あいだの `auto_tag` の記録は 409 `auto_tagging_off`。
+         */
+        post: operations["retryActivity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/activity/{id}/undo": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * 自動の判断を取り消す
+         * @description 所有者だけ。自動の判断を取り消し、所有者の `undo` の記録を返す。所有者がすでに状態を変えていれば、
+         *     その `outcome` は `already_reverted` になる（specs/055-activity/contracts/screen-api.md、
+         *     research.md R-7）。無い記録と、`auto_tag` の記録が付けていないタグは 404 `not_found`、取り消しを
+         *     出さない記録かタグと、取り消し済みのものは 409 `activity_not_undoable`。
+         */
+        post: operations["undoActivity"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/directories": {
         parameters: {
             query?: never;
@@ -3325,14 +3398,17 @@ export interface paths {
          *     - `candidates`: 重複の候補の一覧が変わったかもしれない。判定の結果や版の取り外しの確定後に
          *       送る。data は空のオブジェクト `{}` で、中身は運ばない。最新の一覧は
          *       `GET /api/version-candidates` で取る（specs/054-auto-dup/research.md R-10）
+         *     - `activity`: アクティビティの記録が書かれたか変わった。記録を書いた取引の確定後に送る。data は
+         *       空のオブジェクト `{}` で、中身は運ばない。最新の記録と件数は `GET /api/activity` で取る
+         *       （specs/055-activity/research.md R-8）
          *     - `home`: ホームの棚の集合か並び、整理役やオンボードの状態が変わった。data は空のオブジェクト
          *       `{}` で、中身は運ばない。最新の内容は `GET /api/home` で取る（specs/057-home/research.md R-16）
          *
          *     接続の直後に `scan`（あれば）を1回送るので、つなぎ直したクライアントは切れていた間の
-         *     変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates`・`home` は切れていた間の分を送り直さない。
+         *     変化を取り戻せる。`video`・`group`・`smartFolder`・`candidates`・`activity`・`home` は切れていた間の分を送り直さない。
          *
          *     ゲストには `group`・`smartFolder`・`home` だけを送る（specs/048-groups/contracts/screen-api.md、
-         *     specs/052-smart-folders/contracts/screen-api.md、specs/057-home/research.md R-16）。`scan`・`video`・`candidates` は所有者だけに送る。
+         *     specs/052-smart-folders/contracts/screen-api.md、specs/057-home/research.md R-16）。`scan`・`video`・`candidates`・`activity` は所有者だけに送る。
          */
         get: operations["streamEvents"];
         put?: never;
@@ -5916,6 +5992,157 @@ export interface components {
          * @enum {string}
          */
         ScanErrorCode: "media_folder_unreadable" | "media_folder_not_directory" | "location_unreadable" | "interrupted" | "internal";
+        /**
+         * @description アクティビティの記録の種類（specs/055-activity/data-model.md「Kinds」）
+         * @enum {string}
+         */
+        ActivityKind: "import" | "scan" | "auto_tag" | "version_judgement" | "work_info_fetch" | "bundle" | "unbundle" | "make_representative" | "dismiss" | "tag_attach" | "tag_detach" | "tag_keep" | "tag_reject" | "work_info_apply" | "media_folder_remove" | "organize_undo" | "undo";
+        /**
+         * @description 種類のまとまりで、機能の絞り込みの単位（specs/055-activity/contracts/screen-api.md「Features」）。
+         *     `undo` は取り消した記録の機能に入る
+         * @enum {string}
+         */
+        ActivityFeature: "import" | "scan" | "duplicate_check" | "auto_tagging" | "work_info" | "tags" | "versions" | "media_folders" | "organize";
+        /**
+         * @description 記録の状態（specs/055-activity/research.md R-4）
+         * @enum {string}
+         */
+        ActivityStatus: "running" | "attention" | "done";
+        /**
+         * @description running と attention の記録の理由（specs/055-activity/data-model.md「Reasons」）
+         * @enum {string}
+         */
+        ActivityReason: "waiting" | "processing" | "failed" | "interrupted" | "no_connection" | "undecided";
+        /**
+         * @description done の記録の結果（specs/055-activity/data-model.md「Outcomes」）
+         * @enum {string}
+         */
+        ActivityOutcome: "completed" | "same" | "different" | "failed" | "superseded" | "decided_by_owner" | "gone" | "already_reverted";
+        /**
+         * @description 記録した判断をしたもの、無ければ処理を始めたもの（specs/055-activity/research.md R-5）
+         * @enum {string}
+         */
+        ActivityDecider: "rule" | "ai" | "owner";
+        /**
+         * @description 取り込みの段階（jobs.kind の値）
+         * @enum {string}
+         */
+        ActivityStage: "probe" | "thumbnail" | "seek_thumbnail" | "preview" | "fingerprint";
+        ActivityPage: {
+            items: components["schemas"]["ActivityEntry"][];
+            /** @description 続きがあるときだけ入る */
+            nextCursor?: string;
+            counts: components["schemas"]["ActivityCounts"];
+            features: components["schemas"]["ActivityFeatureCounts"];
+        };
+        /** @description `status` 以外の絞り込みを満たす記録の、状態ごとの数 */
+        ActivityCounts: {
+            running: number;
+            attention: number;
+            done: number;
+        };
+        /** @description `feature` 以外の絞り込みを満たす記録の、機能ごとの数。どの機能も入る */
+        ActivityFeatureCounts: {
+            import: number;
+            scan: number;
+            duplicate_check: number;
+            auto_tagging: number;
+            work_info: number;
+            tags: number;
+            versions: number;
+            media_folders: number;
+            organize: number;
+        };
+        /** @description アクティビティの記録の 1 件（specs/055-activity/contracts/screen-api.md） */
+        ActivityEntry: {
+            /** Format: int64 */
+            id: number;
+            kind: components["schemas"]["ActivityKind"];
+            feature: components["schemas"]["ActivityFeature"];
+            status: components["schemas"]["ActivityStatus"];
+            reason?: components["schemas"]["ActivityReason"];
+            outcome?: components["schemas"]["ActivityOutcome"];
+            decider: components["schemas"]["ActivityDecider"];
+            /**
+             * Format: double
+             * @description モデルの答え。モデルが決めたか決められなかった組と、自動タグ付けで入る
+             */
+            probability?: number;
+            /**
+             * @description 提供元か段階の失敗の文、所有者の操作が変えたタグ、メディアフォルダの登録の解除で外れた動画の数
+             *     （翻訳しない）
+             */
+            detail?: string;
+            subject: components["schemas"]["ActivitySubject"];
+            /** @description 組の候補が重複の候補の画面にまだある */
+            candidate: boolean;
+            stage?: components["schemas"]["ActivityStage"];
+            /**
+             * Format: date-time
+             * @description 失敗した `version_judgement` が次に試す時刻
+             */
+            retryAt?: string;
+            progress?: components["schemas"]["ActivityProgress"];
+            undoes?: components["schemas"]["ActivityUndone"];
+            /** @description `auto_tag` が付けたタグ */
+            tags?: components["schemas"]["ActivityTag"][];
+            /** @description やり直しを出す */
+            retryRun: boolean;
+            /** @description 取り消しを出す（`auto_tag` は取り消せるタグが 1 つでもある） */
+            undoable: boolean;
+            /** @description 所有者が取り消した */
+            undone: boolean;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: date-time */
+            updatedAt: string;
+        };
+        /** @description 記録の対象。鍵ごとに 1 項目で、組は 2 項目、それ以外は 1 項目（specs/055-activity/research.md R-10） */
+        ActivitySubject: {
+            /** @enum {string} */
+            kind: "video" | "pair" | "scan" | "folder";
+            items: components["schemas"]["ActivitySubjectItem"][];
+        };
+        ActivitySubjectItem: {
+            /** @description 書いた時点の表示名（翻訳しない利用者のデータ） */
+            label: string;
+            /**
+             * Format: int64
+             * @description 見る人が開ける今の動画。無ければ入らない
+             */
+            videoId?: number;
+        };
+        /** @description waiting を過ぎた running の `import` の、今の段階と済んだ段階の数 */
+        ActivityProgress: {
+            stage: components["schemas"]["ActivityStage"];
+            done: number;
+            total: number;
+        };
+        /** @description `undo` の記録が取り消した記録の種類と結果、タグごとの取り消しならそのタグ */
+        ActivityUndone: {
+            kind: components["schemas"]["ActivityKind"];
+            outcome?: components["schemas"]["ActivityOutcome"];
+            tagName?: string;
+        };
+        ActivityTag: {
+            /** Format: int64 */
+            id: number;
+            /** @description 書いた時点のタグの名前 */
+            name: string;
+            /** @description 提案のタグとして付けた */
+            suggested: boolean;
+            /** Format: double */
+            probability: number;
+            /** @description 所有者が取り消した */
+            undone: boolean;
+        };
+        ActivityUndoRequest: {
+            /**
+             * Format: int64
+             * @description `auto_tag` の記録で取り消すタグ。ほかの種類では使わない
+             */
+            tagId?: number;
+        };
         VideoChanged: {
             /**
              * Format: int64
@@ -5928,7 +6155,7 @@ export interface components {
              * @description 機械可読なエラー種別。ここが正本で、Go の定数は生成物である （task generate）。新しい種別はまずここへ足す。
              * @enum {string}
              */
-            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "operation_unsupported" | "work_info_fetch_stale" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle";
+            code: "not_found" | "invalid_request" | "internal" | "forbidden" | "conflict" | "invalid_media_directory" | "unsupported_media_directory" | "media_folder_not_found" | "overlapping_media_directories" | "scan_in_progress" | "media_folders_not_configured" | "directory_unavailable" | "probe_not_failed" | "open_unavailable" | "file_missing" | "tag_not_found" | "tag_name_taken" | "tag_merge_required" | "tag_not_tentative" | "unauthenticated" | "invalid_credentials" | "login_throttled" | "account_already_configured" | "provider_failed" | "plugin_too_large" | "plugin_changed" | "plugin_unusable" | "plugin_not_approved" | "plugin_settings_missing" | "plugin_failed" | "plugin_timed_out" | "plugin_busy" | "operation_unsupported" | "work_info_fetch_stale" | "invalid_smart_rule" | "smart_folder_not_found" | "smart_folder_cycle" | "activity_not_retryable" | "activity_not_undoable";
             /** @description 英語の説明。画面は code と reason から表示し、この文は API 利用者と未知のコードに 対するフォールバックである（specs/023-english-i18n/contracts/error-api.md §0） */
             message: string;
             reason?: components["schemas"]["ErrorReason"];
@@ -6035,6 +6262,8 @@ export interface components {
         };
     };
     parameters: {
+        /** @description アクティビティの記録の識別子 */
+        ActivityId: number;
         /** @description サムネイルの編集のセッションの識別子 */
         ThumbnailEditId: string;
         /**
@@ -10281,6 +10510,97 @@ export interface operations {
             400: components["responses"]["InvalidRequest"];
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listActivity: {
+        parameters: {
+            query?: {
+                /** @description その状態の記録だけにする。無ければすべて */
+                status?: components["schemas"]["ActivityStatus"];
+                /** @description その機能の記録だけにする。繰り返して複数を選べる。無ければすべて */
+                feature?: components["schemas"]["ActivityFeature"][];
+                /** @description その判断したものの記録だけにする */
+                decider?: components["schemas"]["ActivityDecider"];
+                /** @description この時刻以降に作った記録だけにする */
+                since?: string;
+                /** @description 対象の表示名にこの文字列を含む記録だけにする。大文字と小文字を区別しない */
+                q?: string;
+                /** @description 前回の応答が返した `nextCursor`。中身は不透明で、解釈しない */
+                cursor?: string;
+                /** @description 1ページの件数 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 記録の1ページと件数 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityPage"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+        };
+    };
+    retryActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description アクティビティの記録の識別子 */
+                id: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 始め直した */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    undoActivity: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description アクティビティの記録の識別子 */
+                id: components["parameters"]["ActivityId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ActivityUndoRequest"];
+            };
+        };
+        responses: {
+            /** @description 所有者の undo の記録 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ActivityEntry"];
+                };
+            };
+            400: components["responses"]["InvalidRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     listDirectories: {

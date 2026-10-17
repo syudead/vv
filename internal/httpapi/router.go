@@ -303,6 +303,8 @@ type Options struct {
 	PlaylistPlayback PlaylistPlaybackReader
 	// WatchHistory は視聴履歴の読みと削除の先。nilなら視聴履歴の経路は500を返す。
 	WatchHistory WatchHistory
+	// Activity はアクティビティの記録の一覧・やり直し・取り消しの先。nilなら /api/activity* は500を返す。
+	Activity Activity
 	// Overrides は動画の表示名の保存先。nilなら表示名の設定の経路は500を返す。
 	Overrides OverrideStore
 	// ThumbnailPicker は代表サムネイルの位置の設定先。nilなら位置の設定の経路は500を返す。
@@ -418,6 +420,7 @@ type server struct {
 	// playlistPlayback はプレイリストの連続再生の読み出し先（playlist_playback.go）。
 	playlistPlayback PlaylistPlaybackReader
 	watchHistory     WatchHistory
+	activity         Activity
 	overrides        OverrideStore
 	thumbnails       ThumbnailPicker
 	versions         VersionStore
@@ -514,6 +517,7 @@ func NewRouter(opts Options) http.Handler {
 		playlists:              opts.Playlists,
 		playlistPlayback:       opts.PlaylistPlayback,
 		watchHistory:           opts.WatchHistory,
+		activity:               opts.Activity,
 		overrides:              opts.Overrides,
 		thumbnails:             opts.ThumbnailPicker,
 		versions:               opts.Versions,
@@ -653,7 +657,7 @@ func (s *server) mutationBoundary(next http.Handler) http.Handler {
 
 func requiresJSONBody(r *http.Request) bool {
 	return requiresCreditJSONBody(r.Method, r.URL.Path) || isWorkInfoPluginJSONBody(r) || isWorkInfoFetchJSONPost(r) ||
-		requiresOtherJSONBody(r)
+		isActivityUndoPost(r) || requiresOtherJSONBody(r)
 }
 
 // requiresOtherJSONBody は人物と団体の経路（requiresCreditJSONBody）を除く、本文を持つ経路を返す。
@@ -960,6 +964,8 @@ const (
 	codePluginBusy                  = gen.ErrorCodePluginBusy
 	codeOperationUnsupported        = gen.ErrorCodeOperationUnsupported
 	codeWorkInfoFetchStale          = gen.ErrorCodeWorkInfoFetchStale
+	codeActivityNotRetryable        = gen.ErrorCodeActivityNotRetryable
+	codeActivityNotUndoable         = gen.ErrorCodeActivityNotUndoable
 )
 
 // エラーの reason の正本も api/openapi.yaml の ErrorReason である。生成された

@@ -144,11 +144,12 @@ place), and it is removed only when the last video referencing its content goes.
 
 **User data survives a rebuild.** Playback positions, watch history, tags,
 public flags, favorites, playlist items, groups and their items, smart
-folders, owner edits, applied thumbnail images, work information, and the pairs
-of videos the owner marked as different or removed from a version bundle are
-keyed by values a rescan reproduces (the content key, a version bundle's key, a
-folder's absolute path) or by their own ids, never by `videos.id`, and carry no
-foreign key to `videos`. People and organizations are entities with ids of their own that
+folders, owner edits, applied thumbnail images, work information, the pairs of
+videos the owner marked as different, removed from a version bundle or held
+back from automatic judging, and the activity log are keyed by values a rescan
+reproduces (the content key, a version bundle's key, a folder's absolute path)
+or by their own ids, never by `videos.id`, and carry no foreign key to
+`videos`. People and organizations are entities with ids of their own that
 work information refers to. Which tables are rebuildable is in
 [Data and recovery](docs/how-to/running-vv.md#data-and-recovery).
 
@@ -187,6 +188,7 @@ filesystem.
 | `internal/app` (`WorkInfoPluginRuntime`, `WorkInfoPlugins`), `internal/store` (`WorkInfoPluginStore`, `OverrideStore.ApplyFetchedWorkInfo`), `internal/wasmplugin` | Work-info plugins: inspecting a WebAssembly module without running it, running it in a wazero sandbox with no files or environment and fixed limits, performing its HTTP requests so that only public internet addresses are reached, the owner's plugin rows with an approval bound to the module's digest and per-plugin setting values, and searching, fetching into a 10-minute in-memory result, and applying the selected title, tags and work details in one transaction that re-checks the plugin's approval, matches the fetched people and organizations again and creates only the entities the merge keeps | [work-info-plugins.md](docs/design-docs/work-info-plugins.md) |
 | `internal/app` (`AutoTagger`) | Asking the classifier port which existing tags fit a video, and its queue | [auto-tagging.md](docs/design-docs/auto-tagging.md) |
 | `internal/app` (`VersionJudge`), `internal/store` (`VersionStore.ClaimJudgement`, `ApplyJudgement`) | Judging possible duplicates from their per-frame fingerprints and, for a differing run, the classifier port; bundling or dismissing the pair as the owner's actions do | [duplicate-judging.md](docs/design-docs/duplicate-judging.md) |
+| `internal/store` (`ActivityStore`), `internal/app` (`Activity`) | The activity log: one entry per run and subject written in the transaction of its change, listed newest first to the owner, with retry and undo dispatched by kind | [activity.md](docs/design-docs/activity.md) |
 | `internal/opener` | Opening a video in the server PC's default app, loopback requests only | [video-detail-api.md](specs/012-video-detail-ia/contracts/video-detail-api.md) |
 | `internal/password` | Argon2id hashing in PHC strings | [016 data-model](specs/016-single-account-auth/data-model.md) |
 | `internal/app` (`Auth`) | Setup, login throttling, sessions and API tokens | [016 data-model](specs/016-single-account-auth/data-model.md), [026 data-model](specs/026-external-api/data-model.md) |

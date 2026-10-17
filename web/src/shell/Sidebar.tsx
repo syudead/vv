@@ -3,6 +3,7 @@ import { useState } from "react";
 import { matchPath, NavLink, useLocation } from "react-router";
 
 import { logout } from "../api/auth";
+import { useActivityTotals } from "../api/useActivityTotals";
 import { useAudience } from "../auth/audience";
 import { currentPath, loginPath, reloadPage } from "../auth/pageNavigation";
 import { t } from "../i18n";
@@ -14,6 +15,7 @@ import {
   SidebarGroup,
   SidebarMenu,
   SidebarMenuButton,
+  SidebarMenuCount,
   SidebarMenuItem,
   useSidebar,
 } from "../ui/shadcn/sidebar";
@@ -32,7 +34,12 @@ function useCloseDrawer(): () => void {
   };
 }
 
-function Entry({ entry }: { entry: NavEntry }) {
+/**
+ * Entry はサイドバーの 1 項目である。`count` があれば（アクティビティの要対応の数）、
+ * レールではアイコンの右上、ドロワーでは行の端に出す（specs/055-activity/ui-design.md
+ * 「Sidebar entry」）。
+ */
+function Entry({ entry, count }: { entry: NavEntry; count?: number }) {
   const location = useLocation();
   const closeDrawer = useCloseDrawer();
   const Icon = entry.icon;
@@ -49,6 +56,13 @@ function Entry({ entry }: { entry: NavEntry }) {
           <span>{entry.label}</span>
         </NavLink>
       </SidebarMenuButton>
+      {count !== undefined && (
+        <SidebarMenuCount
+          count={count}
+          text={t.shell.nav.railCount(count)}
+          label={t.shell.nav.activityCount(count)}
+        />
+      )}
     </SidebarMenuItem>
   );
 }
@@ -120,6 +134,8 @@ export default function Sidebar() {
   const audience = useAudience();
   const all = navEntries();
   const entries = audience === "owner" ? all : all.filter((entry) => !entry.ownerOnly);
+  // 要対応の数は所有者だけが読む。どの画面でも `activity` の知らせで読み直す。
+  const totals = useActivityTotals(audience === "owner");
 
   return (
     // 上端はトップバーの下から始める（トップバーが全幅にあるため）。狭い幅のドロワーと
@@ -137,7 +153,13 @@ export default function Sidebar() {
             <nav>
               <SidebarMenu className={railItems}>
                 {entries.map((entry) => (
-                  <Entry key={entry.id} entry={entry} />
+                  <Entry
+                    key={entry.id}
+                    entry={entry}
+                    {...(entry.attentionCount === true && totals !== null
+                      ? { count: totals.attention }
+                      : {})}
+                  />
                 ))}
               </SidebarMenu>
             </nav>

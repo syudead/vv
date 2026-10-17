@@ -192,7 +192,7 @@ func TestScanSupersededRemovesNothing(t *testing.T) {
 	ctx, cancel := context.WithCancelCause(context.Background())
 	cancel(domain.ErrScanSuperseded)
 	scanner := New(Options{Index: index, Queue: index, Reporter: index})
-	if _, err := scanner.Scan(ctx); !errors.Is(err, domain.ErrScanSuperseded) {
+	if _, err := scanner.Scan(ctx, domain.ActivityByOwner); !errors.Is(err, domain.ErrScanSuperseded) {
 		t.Fatalf("error = %v, want ErrScanSuperseded", err)
 	}
 	if len(index.deleted) != 0 {

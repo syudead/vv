@@ -71,11 +71,11 @@ func TestThumbnailSubstitutionIsReportedAsImportIssue(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail} {
-		if err := db.Ingest().EnqueueJob(ctx, kind, video.ID); err != nil {
+		if err := db.Ingest().EnqueueJob(ctx, kind, video.ID, domain.ActivityByRule); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanDone, nil); err != nil {
+	if err := db.Scans().FinishScan(ctx, scan.ID, domain.ScanDone, nil, domain.ActivityByOwner); err != nil {
 		t.Fatal(err)
 	}
 

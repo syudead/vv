@@ -180,7 +180,7 @@ func TestProbeResultNamesEverySmartFolder(t *testing.T) {
 	db, videoID := jobsFixture(t)
 	folder := createSmartFolder(t, db, "長い", 0)
 	ctx := context.Background()
-	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID); err != nil {
+	if err := db.Ingest().EnqueueJob(ctx, domain.JobProbe, videoID, domain.ActivityByRule); err != nil {
 		t.Fatal(err)
 	}
 	job, err := db.Ingest().ClaimJob(ctx, domain.JobProbe)

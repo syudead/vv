@@ -300,6 +300,7 @@ func run(opts runOptions) error {
 	autoTagger := app.NewAutoTagger(app.AutoTaggerOptions{
 		Queue:      db.AutoTags(),
 		Settings:   settingsStore,
+		Undo:       db.Activity(),
 		Classifier: classifier,
 		Images:     videoImageSource{artifacts: artifactStore},
 		Logger:     logger,
@@ -317,6 +318,9 @@ func run(opts runOptions) error {
 		logger.Warn("could not read the pending home organizer run; retrying", slog.Any("error", err))
 	}
 	scans.OnFinish(homeOrganizer.ScanFinished)
+	// アクティビティの記録のうち、前回の停止で処理中のまま残ったものを中断にする。ワーカーを動かす前に行う。
+	// 回復は記録の読み書きだけなので、やり直しと取り消しの振り分け先（判定のワーカー）を作る前に行う。
+	recoverActivity(backgroundCtx, app.NewActivity(app.ActivityOptions{Store: db.Activity()}), logger)
 	// 重複の自動判定。「同じ動画かもしれない」候補を指紋のコマごとに比べ、食い違う区間だけを判定の口に
 	// 聞く（docs/design-docs/duplicate-judging.md）。Ollama の接続先の保存で、接続を待っていた組を再開する。
 	versionJudge := app.NewVersionJudge(app.VersionJudgeOptions{
@@ -330,6 +334,22 @@ func run(opts runOptions) error {
 		logger.Warn("could not requeue interrupted duplicate judgements", slog.Any("error", err))
 	}
 	ollamaConnection.OnSaved(versionJudge.ConnectionSaved)
+	// アクティビティの記録の一覧と、やり直しと取り消しを種類ごとにその処理の use case へ振り分ける
+	// （specs/055-activity/plan.md）。
+	versionJudgementActivity := app.NewVersionJudgementActivity(db.Versions(), db.Activity(), versionJudge)
+	activity := app.NewActivity(app.ActivityOptions{
+		Store: db.Activity(),
+		Retriers: map[domain.ActivityKind]app.ActivityRetrier{
+			domain.ActivityAutoTag:          autoTagger,
+			domain.ActivityImport:           app.NewImportRetrier(ingestStore),
+			domain.ActivityScan:             scans,
+			domain.ActivityVersionJudgement: versionJudgementActivity,
+		},
+		Undoers: map[domain.ActivityKind]app.ActivityUndoer{
+			domain.ActivityAutoTag:          autoTagger,
+			domain.ActivityVersionJudgement: versionJudgementActivity,
+		},
+	})
 	subscriptions := subscribeEvents(bus, eventSubscribers{
 		Screen:           events.Handle,
 		Workers:          wakers,
@@ -449,8 +469,10 @@ func run(opts runOptions) error {
 		Playlists:        db.Playlists(),
 		PlaylistPlayback: db.Playlists(),
 		WatchHistory:     playbackStore,
-		Overrides:        db.Overrides(),
-		Versions:         db.Versions(),
+		// アクティビティの記録の一覧・やり直し・取り消し（specs/055-activity/contracts/screen-api.md）。
+		Activity:  activity,
+		Overrides: db.Overrides(),
+		Versions:  db.Versions(),
 		// 代表サムネイルの位置は、取り込みの job と同じ生成の錠の中で作り直して記録する。
 		ThumbnailPicker: ingest,
 		Folders:         libraryStore,
@@ -509,6 +531,20 @@ func run(opts runOptions) error {
 	}
 	// 戻ったあと、走査とワーカーは上の defer が止める。
 	return serveUntil(opts.NotifyStop, opts.Listener, cfg, handler, logger, opts.OnListening, beforeShutdown)
+}
+
+// recoverActivity は、前回の停止で processing の running のまま残ったアクティビティの記録を
+// attention/interrupted にする。waiting の記録はそのまま残す（docs/design-docs/process-lifecycle.md）。
+// できなくても起動は止めない。残った記録は画面に処理中と出るだけで、次の起動でもう一度戻す。
+func recoverActivity(ctx context.Context, activity *app.Activity, logger *slog.Logger) {
+	recovered, err := activity.RecoverInterrupted(ctx)
+	if err != nil {
+		logger.Warn("could not mark the interrupted activity entries", slog.Any("error", err))
+		return
+	}
+	if recovered > 0 {
+		logger.Info("marked the interrupted activity entries", slog.Int("entries", recovered))
+	}
 }
 
 // startupStage は起動のどの段階で失敗したかである。デスクトップ版は、これで

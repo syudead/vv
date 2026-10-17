@@ -57,6 +57,11 @@ const DuplicatesPage = await deferredRoute(
   () => import("../versions/DuplicatesPage"),
   "/duplicates",
 );
+// アクティビティの記録（specs/055-activity/ui-design.md「Activity page」）。
+const ActivityPage = await deferredRoute(
+  () => import("../activity/ActivityPage"),
+  "/activity",
+);
 // 動画の作品情報と表示名の編集画面（specs/047-video-work-info/ui-design.md「Editor」）。
 // 再生画面を開くたびの読み込みに、編集画面の部品を加えない。
 const VideoDetailsEditor = await deferredRoute(
@@ -190,6 +195,14 @@ function AppRoutes() {
             element={
               <AppShell>
                 <DuplicatesPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/activity"
+            element={
+              <AppShell>
+                <ActivityPage />
               </AppShell>
             }
           />

@@ -281,6 +281,7 @@ must be taken in order and the screen is nothing else; one form is a
 | `FactList`     | `fact-list`     | Term and value pairs in two columns                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 | `CardGrid`     | `card-grid`     | Cards at least `card-0` to `card-3` wide, stretched to fill the row, so both edges line up with the toolbar                                                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `GroupedList`  | `grouped-list`  | Rows under headings (`h2`, `text-sm font-semibold`, with an optional `detail` after a `·` in `text-xs` muted on the same line) that stick under the top bar while their group scrolls; each row `py-2` on the page background with no card, no line and no horizontal padding, `gap-2` between a heading and its rows, and groups `gap-6` apart                                                                                                                                                                                              |
+| `CardList`     | `card-list`     | One-line cards stacked `gap-2` apart, each on `muted` with a `border` line, `rounded-lg`, `px-4`, at least `activity-card` high, in one of four tones (`default`, `primary`, `destructive`, `warning`); an icon, a title truncated first, a `badge` never truncated, a `detail` pushed right and truncated after the title, then a time column at least `activity-time` wide that never wraps and an actions column of fixed width; below `lg` two lines with a short time after the detail                                                  |
 | `JumpList`     | `jump-list`     | A `ToggleGroup type="single"` of jump targets in groups divided by `Separator`s; from `lg` a vertical list of full-width, left-aligned `sm` toggles in the muted colour under an `h2` (`text-sm font-semibold`) with an optional `action` after a last divider, and below `lg` one horizontally scrolling line of outlined `sm` chips with the heading for screen readers only and no `action`                                                                                                                                               |
 | `DataTable`    | `data-table`    | A `Table` on a card with its border; rows, heads and cells come from `table`; `stickyHeaderTop` sticks the column header that many px from the top, under an admin table page's stuck band                                                                                                                                                                                                                                                                                                                                                   |
 | `ShelfRow`     | `shelf-row`     | Shelves `gap-6` apart in `ShelfRows`, each a heading row (`h2`, `text-base font-semibold`: the title, an optional `leading` icon, an optional `href` making both a link, `actions` at the end) above one row of cards `card-0` wide and `gap-3` apart that scrolls sideways and snaps to a card's start; from `md` with a pointer that hovers, `ghost` `icon-sm` previous and next buttons over the row's ends while it is hovered or focused, each absent at its end; or the row's `loading` skeletons or its `failed` `Alert` with `Retry` |
@@ -309,6 +310,21 @@ control }`: inline, the controls stand without a visible name, so each needs
   heading, so a hover fill on a pressable row reaches the heading's edge. Use it when the headings carry information the rows then leave
   out, such as the day of a history; a table with a repeated column, or cards,
   is the wrong shape for it. Example block `grouped-list-example`.
+- `CardList`: pass a `label`, then one `CardListItem` per record with its
+  `tone` (`primary` for work in progress, `destructive` for a failure,
+  `warning` for something waiting on the owner, `default` otherwise), `icon`
+  (a `size-5` status icon with its name), `title`, `badge`, `detail` (give its
+  text element `truncate`), `time` and `timeShort`, and `actions` (`ghost`
+  `icon-sm` buttons). Write no padding, border, surface or gap around a card.
+  Use it for records that each need their state seen before they are read,
+  such as an activity log; rows grouped under headings are `GroupedList`, and
+  records to sort and select are `DataTable`. Example block
+  `card-list-example`.
+- `Toolbar` `nowrap` (`page` only): the row never wraps and scrolls sideways
+  when it does not fit, for a row of filters that must stay one line. The
+  search shows from `md`; below it the screen puts an `outline` `icon-sm`
+  search button first among the children (`md:hidden`), which opens the field
+  over the row.
 - `Toolbar` `searchPlacement="end"` (`page` only): the search moves after the
   filters to the row's end, no wider than `max-w-sm`, for a row that begins
   with the page title (`ListPage toolbarRow="header"`); below `sm` it still
@@ -349,13 +365,13 @@ control }`: inline, the controls stand without a visible name, so each needs
 Every list, table and section shows its data or exactly one of these blocks,
 in the body slot of its skeleton, so the header and the toolbar never move.
 
-| State            | Block                            | Shows                                                                                                                                               |
-| ---------------- | -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards, `table` rows, `grouped` rows under a heading or `shelves` of `card-0` cards under heading bars |
-| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                                                |
-| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                                            |
-| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                                                        |
-| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                                              |
+| State            | Block                            | Shows                                                                                                                                                                        |
+| ---------------- | -------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Loading          | `LoadingState` (`loading-state`) | `Skeleton` shapes of the final layout: `grid` cards, `table` rows, `grouped` rows under a heading, `cards` of a `CardList` or `shelves` of `card-0` cards under heading bars |
+| Empty            | `EmptyState` (`empty-state`)     | An icon, a title saying why, a description, and the action that fills it when the viewer can take it                                                                         |
+| Error            | `ErrorState` (`error-state`)     | A `destructive` `Alert`: what failed, and `Retry` when retrying can help                                                                                                     |
+| Loading more     | `LoadMoreRow` (`load-more-row`)  | The content, then a `Spinner` row at the end                                                                                                                                 |
+| Load more failed | `LoadMoreRow` (`load-more-row`)  | The content kept, then an `Alert` row with `Retry`, which requests the same page again                                                                                       |
 
 ```mermaid
 stateDiagram-v2
