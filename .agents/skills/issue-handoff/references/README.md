@@ -144,7 +144,7 @@ for a `ui` Issue, and carries `research.md`, `data-model.md`, `contracts/` or
 These are temporary inputs for this active feature, not permanent references.
 Implementation records lasting decisions in `docs/design-docs/` and never
 cites feature artifacts from code or permanent documents. The integration
-sweep removes the feature directory and its translations after validation;
+sweep removes the feature directory after validation;
 Git history preserves it. Do not consult another completed feature's artifacts
 as the current system design.
 

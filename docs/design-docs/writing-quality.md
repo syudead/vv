@@ -6,12 +6,6 @@ with fixed headings), listed in [Document types](#document-types). Plans add
 P-1..P-7 from [plan-quality.md](plan-quality.md); Issue specifications follow
 [spec-quality.md](../product-specs/spec-quality.md).
 
-Japanese readers use the translation published under `/ja/` on the
-documentation site ([docs-site.md](../how-to/docs-site.md)). The
-`doc-translator` subagent writes it from the finished English in the same pull
-request ([japanese-translation.md](japanese-translation.md)). Nobody edits a
-translation by hand; fix the English source and translate it again.
-
 ## Rules
 
 ### W-1: Documents are in English; Issues and PR bodies are in Japanese
@@ -53,7 +47,7 @@ section. Link to the place that says it.
 
 | Write | Not |
 | --- | --- |
-| Translations live in `translations/ja/` (see the Storage section). | Translations live in `translations/ja/`. In other words, the translated files are kept in a separate directory called `translations/ja/`. |
+| Design documents live in `docs/design-docs/`. | Design documents live in `docs/design-docs/`. In other words, design documents are stored in that directory. |
 
 ### W-5: No emphasis without evidence
 
@@ -106,9 +100,7 @@ small.
 Use one English term for one concept across all documents. Product terms use
 the words the screen shows, as defined in
 [web/src/i18n/en.ts](../../web/src/i18n/en.ts). When a term is introduced,
-define it once and link to the definition elsewhere. The
-[translation terms](japanese-translation.md#terms) map each term to one
-Japanese rendering.
+define it once and link to the definition elsewhere.
 
 ### W-9: Stable headings
 

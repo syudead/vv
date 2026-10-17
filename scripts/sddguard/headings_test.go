@@ -19,9 +19,6 @@ var numberedHeading = regexp.MustCompile(`^\d+(\.\d+)*[.)]\s`)
 func TestHeadingsAreNotNumbered(t *testing.T) {
 	for _, path := range guardedMarkdown(t) {
 		rel := relativeTo(t, path)
-		if isTranslation(rel) {
-			continue
-		}
 		body, err := os.ReadFile(path)
 		if err != nil {
 			t.Fatalf("read %s: %v", rel, err)
