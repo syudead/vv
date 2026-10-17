@@ -266,6 +266,11 @@ func dsn(path string, txLock string) string {
 	q.Add("_pragma", "journal_mode(WAL)")
 	q.Add("_pragma", fmt.Sprintf("busy_timeout(%d)", busyTimeout))
 	q.Add("_pragma", "foreign_keys(on)")
+	if txLock == "deferred" {
+		// 一覧の読み出しは一時表と並べ替えの一時 B 木を作る（home_shelf_read.go）。既定の一時領域は
+		// ファイルなので、読み出し用の接続ではメモリに置く。
+		q.Add("_pragma", "temp_store(memory)")
+	}
 	return "file:" + path + "?" + q.Encode()
 }
 

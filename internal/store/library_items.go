@@ -188,7 +188,7 @@ const videoWatchStateExpr = `case when p.completed = 1 then 'watched'
 // （specs/035-favorites/data-model.md §5、specs/048-groups/data-model.md「Library items」）。
 func libraryItemsCTE(spec listSpec) (string, []any) {
 	cte, args := chosenLocationsCTEFor(spec.scope, spec.searchAudience(), spec.searchExprs())
-	part, partArgs := libraryItemsPart(spec, `chosen`, ``)
+	part, partArgs := libraryItemsPart(spec)
 	return cte + `,
 	` + itemGroupsCTE(spec) + `,
 	` + part, append(args, partArgs...)
@@ -234,13 +234,11 @@ func groupWatchStateExpr(completed, position string) string {
 }
 
 // libraryItemsPart は libraryItemsCTE の項目の表を、所在の表 chosen（`(video_id, path)`）と gm
-// から作る with 句の部品とその引数を返す。表の名前は matched・hits・whole・carded・mv・items に
-// suffix を付けたもので、suffix を変えれば 1 つの with 句に別の絞り込みの項目の表を並べられる
-// （itemsBatch）。
-func libraryItemsPart(spec listSpec, chosen, suffix string) (string, []any) {
+// から作る with 句の部品とその引数を返す。表の名前は matched・hits・whole・carded・mv・items である。
+// ホームの棚の読み出し（home_shelf_read.go）は同じ決め方を一時表の上で行う。
+func libraryItemsPart(spec listSpec) (string, []any) {
 	audience := spec.scope.audience
-	matched, hits, whole, carded, mv, items := `matched`+suffix, `hits`+suffix, `whole`+suffix,
-		`carded`+suffix, `mv`+suffix, `items`+suffix
+	const chosen, matched, hits, whole, carded, mv, items = `chosen`, `matched`, `hits`, `whole`, `carded`, `mv`, `items`
 	conditions, args := matchConditions(spec)
 	if spec.unshelved {
 		conditions = append(conditions, `videos.id not in (select value from json_each(?))`)

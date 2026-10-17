@@ -51,6 +51,13 @@ const groupSortWidth = 10
 //
 // 入れ子の深さに上限は無い（research.md R-5）。
 func groupDescendantsCTE(roots string, audience domain.Audience) string {
+	return groupDescendantsCTEFrom(roots, shownVideoForKeyExpr("gi.content_key", audience), "")
+}
+
+// groupDescendantsCTEFrom は groupDescendantsCTE の本体で、グループの項目 gi の動画を videoExpr で
+// 求める。videoJoin は gi に続けて結ぶ join 句（無ければ空）で、見せる動画を 1 行に持つ表があれば、
+// 鍵で結んで動画ごとの副問い合わせを省ける（home_shelf_read.go）。
+func groupDescendantsCTEFrom(roots, videoExpr, videoJoin string) string {
 	width := strconv.Itoa(groupSortWidth)
 	return `groots(id) as (select distinct id from (` + roots + `)),
 	gnodes(id) as (
@@ -77,9 +84,9 @@ func groupDescendantsCTE(roots string, audience domain.Audience) string {
 				where n.group_id = p.group_id)),
 	gdesc(root_id, video_id, sort_key) as materialized (
 		select root_id, video_id, min(sort_key) from (
-			select t.root_id, ` + shownVideoForKeyExpr("gi.content_key", audience) + ` as video_id,
+			select t.root_id, ` + videoExpr + ` as video_id,
 				t.sort_path || printf('%0` + width + `d', gi.position) as sort_key
-			from gpath t join group_items gi on gi.group_id = t.target
+			from gpath t join group_items gi on gi.group_id = t.target` + videoJoin + `
 			where t.group_id = t.target and gi.content_key is not null)
 		where video_id is not null
 		group by root_id, video_id)`
