@@ -60,6 +60,16 @@ file into a handbook.
 - Before writing, moving or optimizing Go or Web tests, read
   [docs/design-docs/testing.md](docs/design-docs/testing.md) for shared scope,
   synchronization and fixture rules; it links to the Web-specific levels.
+- Name the unit contract before choosing its fixture. Use the minimum cases
+  that expose its failure, fake unrelated dependencies, and assert arguments,
+  results and required effects. Apply the
+  [unit contracts](docs/design-docs/testing.md#unit-test-contracts) and
+  [fixture rules](docs/design-docs/testing.md#fixtures-and-build-cost).
+- Keep load and stress work out of unit cases, and use observable synchronization
+  or virtual time instead of wall-clock waits. Remove duplicate or out-of-scope
+  cases; do not move them to integration tests merely to retain them
+  ([load and waiting](docs/design-docs/testing.md#load-and-waiting),
+  [existing tests](docs/design-docs/testing.md#changes-to-existing-tests)).
 - Give every pushed working branch a pull request as its review target.
 - Dependency updates (Renovate) follow
   [docs/how-to/dependency-updates.md](docs/how-to/dependency-updates.md). The
@@ -88,6 +98,11 @@ file into a handbook.
 
 ## Review guidelines
 
+- Flag bulk fixtures, repeated runs, wall-clock waits and real dependencies
+  whose necessity is not explained by the tested contract. Check extracted
+  rules retain a caller wiring case and removed integration tests are not
+  claimed as covered by isolated unit tests
+  ([testing policy](docs/design-docs/testing.md)).
 - Treat as P1 a function the change adds or makes more complex whose
   complexity goes over 25 (gocyclo for Go; ESLint `complexity` with
   `variant: "modified"` for `web/src`), and code the change copies from
