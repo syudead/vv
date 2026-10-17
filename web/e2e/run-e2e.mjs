@@ -92,8 +92,6 @@ function run() {
     generateMediaInfoFixtures(mediaInfoMediaDir);
     generateChapterFixtures(mediaInfoMediaDir);
     generateWorkInfoPluginFixtures(workInfoPluginsMediaDir);
-    mkdirSync(path.dirname(workInfoPlugin), { recursive: true });
-    buildWorkInfoPlugin(repoRoot, workInfoPlugin, { ...process.env, GOCACHE: goCache });
     const mediaContract = spawnSync(
       "go",
       ["test", "./internal/media", "-run", "^TestVideoEncode.*WithFFmpeg$", "-count=1"],
@@ -116,6 +114,11 @@ function run() {
     );
     if (build.error !== undefined) throw build.error;
     if (build.status !== 0) return build.status ?? 1;
+    mkdirSync(path.dirname(workInfoPlugin), { recursive: true });
+    buildWorkInfoPlugin(repoRoot, workInfoPlugin, output, {
+      ...process.env,
+      GOCACHE: goCache,
+    });
 
     const playwrightCLI = path.join(
       webRoot,

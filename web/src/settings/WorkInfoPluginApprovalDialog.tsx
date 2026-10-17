@@ -53,6 +53,11 @@ function SettingsItReceives({ plugin }: { plugin: WorkInfoPlugin }) {
               <span className="break-words">{setting.label}</span>
               {setting.secret && <Badge variant="secondary">{text.secret}</Badge>}
               {setting.required && <Badge variant="secondary">{text.required}</Badge>}
+              {setting.default !== undefined && (
+                <span className="min-w-0 text-muted-foreground wrap-anywhere">
+                  {t.settings.workInfoPlugins.defaultHint(setting.default)}
+                </span>
+              )}
             </li>
           ))}
         </ul>

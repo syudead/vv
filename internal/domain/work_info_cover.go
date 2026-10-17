@@ -13,6 +13,8 @@ const (
 	WorkInfoFetchCoverBudget = 8 * WorkInfoCoverMaxBytes
 	// WorkInfoFieldCover はカバー画像で、動画の代表サムネイルにする。
 	WorkInfoFieldCover WorkInfoField = "cover"
+	// WorkInfoCoverURLMaxRunes はプラグインが返すカバー画像の URL の長さの上限（文字数）である。
+	WorkInfoCoverURLMaxRunes = 2048
 )
 
 // WorkInfoCover は取得したカバー画像である。Data は PNG・JPEG・静止画の WebP の本文で、ContentType は
@@ -24,10 +26,11 @@ type WorkInfoCover struct {
 	Height      int
 }
 
-// workInfoCoverURL はプラグインが返したカバー画像の URL を、http か https の、WorkInfoFetchURLMaxRunes 文字
-// 以下の絶対 URL のときだけ返す。外れれば空で、カバー画像は無いものとする。
+// workInfoCoverURL はプラグインが返したカバー画像の URL を、host を持つ http か https の、
+// WorkInfoCoverURLMaxRunes 文字以下（バイト数ではなく文字数）の絶対 URL のときだけ返す。外れれば空で、
+// カバー画像は無いものとする。作品の取得は ID だけで指定するので、vv が URL を取るのはこの画像だけである。
 func workInfoCoverURL(raw string) string {
-	if CheckWorkInfoFetchURL(raw) != nil {
+	if !runeCountBetween(raw, 1, WorkInfoCoverURLMaxRunes) || !isWorkURL(raw) {
 		return ""
 	}
 	return raw

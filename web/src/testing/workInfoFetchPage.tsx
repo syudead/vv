@@ -100,6 +100,10 @@ export function appliedResult(
   return { video: applied, skippedTags: [], skipped: [], ...overrides };
 }
 
+/** workId は候補と取得に使う作品の ID である。 */
+export const workId = "W-1";
+
+/** workUrl は候補のページの URL である。画面がリンクに出すだけで、取得には送らない。 */
 export const workUrl = "https://works.example/w/1";
 
 /** server は経路ごとの応答を差し替えられる偽のサーバーである。 */
@@ -146,14 +150,13 @@ export async function openDialog() {
   return { user, dialog };
 }
 
-/** fetchFromUrl は URL を打って取得し、比較の段を開く。 */
-export async function fetchFromUrl() {
+/** fetchById は ID を選んで作品の ID を打って取得し、比較の段を開く。 */
+export async function fetchById() {
   const opened = await openDialog();
-  const query = within(opened.dialog).getByRole("textbox", {
-    name: "Search words or the work's page URL",
-  });
+  await opened.user.click(within(opened.dialog).getByRole("radio", { name: "ID" }));
+  const query = within(opened.dialog).getByRole("textbox", { name: "The work's ID" });
   await opened.user.clear(query);
-  await opened.user.type(query, workUrl);
+  await opened.user.type(query, workId);
   await opened.user.click(within(opened.dialog).getByRole("button", { name: "Fetch" }));
   await within(opened.dialog).findByRole("checkbox", { name: "Title" });
   return opened;

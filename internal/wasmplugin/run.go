@@ -31,23 +31,33 @@ var (
 )
 
 // Run はモジュールを新しいインスタンスで 1 回動かす。要求の JSON を標準入力に書いて閉じ、
-// 標準出力の応答を読む。同時に動く実行は 1 本で、2 本目は枠を最大 domain.WorkInfoPluginBusyWait 待つ
+// 標準出力の応答を読む。プラグインの要求は network のとおりに送る（056 research.md R-4・R-5）。同時に動く実行は 1 本で、2 本目は枠を最大 domain.WorkInfoPluginBusyWait 待つ
 // （research.md R-2・R-4）。時間の上限は枠を取ったときから数え、コンパイルも含む。失敗は *domain.WorkInfoRunError で返し、呼び出し元の ctx が
 // 終わったときはその誤りを返す。
-func (r *Runtime) Run(ctx context.Context, digest string, module []byte, req domain.WorkInfoRunRequest) (domain.WorkInfoRunResult, error) {
+//
+// 成功でも失敗でも、残した標準エラーを実行のログとして返す。モジュールを起動し、それが成功か実行の失敗で
+// 終わったときは、同じログを、枠を空ける前に record に渡す（056 research.md R-6）。record が nil なら
+// 渡さない。record の誤りはサーバーのログに残し、実行の結果は変えない。枠を取れなかった実行、コンパイルの
+// 失敗か時間切れでモジュールを起動しなかった実行、呼び出し元の ctx が終わった実行は record を呼ばず、
+// 前の実行のログを残す。
+func (r *Runtime) Run(
+	ctx context.Context, digest string, module []byte, req domain.WorkInfoRunRequest, network domain.WorkInfoRunNetwork,
+	record func(domain.WorkInfoRunLog) error,
+) (domain.WorkInfoRunResult, domain.WorkInfoRunLog, error) {
 	input, err := json.Marshal(req)
 	if err != nil {
-		return domain.WorkInfoRunResult{}, fmt.Errorf("encode work-info plugin request: %w", err)
+		return domain.WorkInfoRunResult{}, domain.WorkInfoRunLog{}, fmt.Errorf("encode work-info plugin request: %w", err)
 	}
 	release, err := r.acquire(ctx)
 	if err != nil {
-		return domain.WorkInfoRunResult{}, err
+		return domain.WorkInfoRunResult{}, domain.WorkInfoRunLog{}, err
 	}
 	defer release()
 	deadline, cancel := context.WithTimeoutCause(ctx, domain.WorkInfoPluginRunTimeout, errTimedOut)
 	defer cancel()
-	session := &httpSession{net: r.run.net}
-	output, err := r.run.run(ctx, deadline, digest, module, input, session)
+	session := r.run.net.session(network)
+	defer session.close()
+	output, stderr, started, err := r.run.run(ctx, deadline, digest, module, input, session)
 	var result domain.WorkInfoRunResult
 	if err == nil {
 		result, err = domain.ParseWorkInfoResponse(req.Operation, output)
@@ -55,10 +65,21 @@ func (r *Runtime) Run(ctx context.Context, digest string, module []byte, req dom
 	if err == nil && req.Operation == domain.WorkInfoFetch {
 		result.CoverImage = session.coverImage(deadline, result.WorkInfo.CoverURL)
 	}
-	if err = session.outcome(err); err != nil {
-		return domain.WorkInfoRunResult{}, err
+	err = session.outcome(err)
+	log := domain.WorkInfoRunLog{Operation: req.Operation, Stderr: stderr.buf.String(), Truncated: stderr.dropped}
+	var runErr *domain.WorkInfoRunError
+	if errors.As(err, &runErr) {
+		log.Failure = runErr.Failure
 	}
-	return result, nil
+	if record != nil && started && (err == nil || runErr != nil) {
+		if recordErr := record(log); recordErr != nil {
+			r.run.logger.Warn("work-info plugin run log was not saved", "digest", digest, "error", recordErr)
+		}
+	}
+	if err != nil {
+		return domain.WorkInfoRunResult{}, log, err
+	}
+	return result, log, nil
 }
 
 // outcome は実行の誤り err に、実行の HTTP で起きたことを重ねる（contracts/screen-api.md の Run failures）。
@@ -104,7 +125,7 @@ type runner struct {
 	order  []string
 }
 
-func newRunner(ctx context.Context, logger *slog.Logger) (*runner, error) {
+func newRunner(ctx context.Context, logger *slog.Logger, nc *netClient) (*runner, error) {
 	// ランタイムのページの上限は wazero の既定（4 GiB）のままにする。wazero は上限を超える
 	// memory.grow をメモリの確保に渡さずに断るので、上限を 128 MiB に置くと、超えたことを
 	// cappedMemory が記録できない。実際に使える大きさは cappedMemory が
@@ -119,7 +140,7 @@ func newRunner(ctx context.Context, logger *slog.Logger) (*runner, error) {
 		_ = rt.Close(ctx)
 		return nil, fmt.Errorf("instantiate vv host module: %w", err)
 	}
-	return &runner{logger: logger, rt: rt, net: newNetClient(), cache: map[string]wazero.CompiledModule{}}, nil
+	return &runner{logger: logger, rt: rt, net: nc, cache: map[string]wazero.CompiledModule{}}, nil
 }
 
 func (rn *runner) close(ctx context.Context) error {
@@ -128,21 +149,25 @@ func (rn *runner) close(ctx context.Context) error {
 }
 
 // run はモジュールを 1 回動かす。parent は呼び出し元の ctx、deadline はそれに実行の時間の上限を
-// 付けたもので、コンパイルとインスタンスの両方を止める。vv のホスト関数は session を使う。
-func (rn *runner) run(parent, deadline context.Context, digest string, module, input []byte, session *httpSession) ([]byte, error) {
+// 付けたもので、コンパイルとインスタンスの両方を止める。vv のホスト関数は session を使う。標準エラーの
+// 残した部分は、失敗でも返す。started はモジュールを起動したかで、コンパイルの失敗か時間切れでは false
+// である（そのとき標準エラーは空である）。
+func (rn *runner) run(
+	parent, deadline context.Context, digest string, module, input []byte, session *httpSession,
+) (output []byte, stderr *keptOutput, started bool, err error) {
+	stderr = &keptOutput{limit: domain.WorkInfoPluginStderrKeptBytes}
 	compiled, err := rn.compiled(deadline, digest, module)
 	if err != nil {
 		if stop := stopped(parent, deadline); stop != nil {
-			return nil, stop
+			return nil, stderr, false, stop
 		}
-		return nil, err
+		return nil, stderr, false, err
 	}
 	runCtx, cancel := context.WithCancelCause(context.WithValue(deadline, sessionKey{}, session))
 	defer cancel(nil)
 
 	memory := &cappedMemory{limit: memoryLimitBytes, exceed: func() { cancel(errMemoryExceeded) }}
 	stdout := &limitedOutput{limit: domain.WorkInfoPluginOutputMaxBytes, exceed: func() { cancel(errOutputTooLarge) }}
-	stderr := &keptOutput{limit: domain.WorkInfoPluginStderrKeptBytes}
 	config := wazero.NewModuleConfig().
 		WithName("").
 		WithStdin(bytes.NewReader(input)).
@@ -161,9 +186,9 @@ func (rn *runner) run(parent, deadline context.Context, digest string, module, i
 		if err != nil {
 			rn.logger.Info("work-info plugin run failed", "digest", digest, "error", err)
 		}
-		return nil, failure
+		return nil, stderr, true, failure
 	}
-	return stdout.buf.Bytes(), nil
+	return stdout.buf.Bytes(), stderr, true, nil
 }
 
 // runFailure は実行の終わり方を失敗に対応させる。出力とメモリの上限は、超えたときに runCtx を

@@ -43,7 +43,7 @@ func (e *fetchEnv) fetchDetails(t *testing.T, info domain.FetchedWorkInfo) domai
 	t.Helper()
 	e.runtime.result = domain.WorkInfoRunResult{WorkInfo: info}
 	e.runtime.err = nil
-	result, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "https://example.com/works/1")
+	result, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "W-1")
 	if err != nil {
 		t.Fatalf("FetchWorkInfo: %v", err)
 	}
@@ -114,7 +114,7 @@ func TestFetchWorkInfoCarriesDetailsWithMatches(t *testing.T) {
 	// 照合に失敗すれば結果を持たない。
 	e.matcher.err = errors.New("database is locked")
 	e.runtime.result = domain.WorkInfoRunResult{WorkInfo: detailedWork()}
-	if _, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "https://example.com/"); err == nil {
+	if _, err := e.plugins.FetchWorkInfo(context.Background(), fetchVideo, 1, "W-1"); err == nil {
 		t.Fatal("a failed match was not reported")
 	}
 }
@@ -142,7 +142,7 @@ func TestApplyWorkInfoFetchPassesDetailFieldsAndReportsSkipped(t *testing.T) {
 	performer := domain.PersonField(domain.PersonPerformer)
 	release := domain.DateField(domain.DateRelease)
 	applied, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-		[]domain.WorkInfoField{performer, domain.WorkInfoFieldTitle, release, domain.WorkInfoFieldCode})
+		[]domain.WorkInfoField{performer, domain.WorkInfoFieldTitle, release, domain.WorkInfoFieldCode}, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -161,7 +161,7 @@ func TestApplyWorkInfoFetchPassesDetailFieldsAndReportsSkipped(t *testing.T) {
 	e.applier.skipped = nil
 	again := e.fetchDetails(t, detailedWork())
 	applied, err = e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, again.ID,
-		[]domain.WorkInfoField{domain.WorkInfoFieldTags})
+		[]domain.WorkInfoField{domain.WorkInfoFieldTags}, nil)
 	if err != nil || e.applier.calls[1].DetailFields != nil || applied.Skipped == nil || len(applied.Skipped) != 0 {
 		t.Fatalf("tags-only apply = %+v, %v (detail fields %v)", applied, err, e.applier.calls[1].DetailFields)
 	}
@@ -180,7 +180,7 @@ func TestApplyWorkInfoFetchRefusesADetailWithoutAValue(t *testing.T) {
 		"dates.unknown",
 	} {
 		_, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID,
-			[]domain.WorkInfoField{domain.WorkInfoFieldCode, field})
+			[]domain.WorkInfoField{domain.WorkInfoFieldCode, field}, nil)
 		if !errors.Is(err, domain.ErrWorkInfoApplyInvalid) {
 			t.Fatalf("%s: err = %v; want ErrWorkInfoApplyInvalid", field, err)
 		}
@@ -193,7 +193,7 @@ func TestApplyWorkInfoFetchRefusesADetailWithoutAValue(t *testing.T) {
 		domain.PersonField(domain.PersonPerformer), domain.PersonField(domain.PersonDirector),
 		domain.OrganizationField(domain.OrganizationMaker), domain.WorkInfoFieldURLs, domain.WorkInfoFieldExternalIDs,
 	}
-	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, every); err != nil {
+	if _, err := e.plugins.ApplyWorkInfoFetch(context.Background(), fetchVideo, result.ID, every, nil); err != nil {
 		t.Fatalf("the kept result could not be applied: %v", err)
 	}
 }

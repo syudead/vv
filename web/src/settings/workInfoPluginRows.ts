@@ -1,8 +1,13 @@
-import type { WorkInfoPlugin, WorkInfoPluginSetting } from "../api/workInfoPlugins";
+import type {
+  WorkInfoPlugin,
+  WorkInfoPluginRunFailure,
+  WorkInfoPluginSetting,
+} from "../api/workInfoPlugins";
 import { t, type UiText } from "../i18n";
 
 // 設定画面の「Work-info plugins」節が行とダイアログに出す値の決まりである
-// （specs/049-work-info-plugins/ui-design.md「Plugin row」「Settings dialog」）。
+// （specs/049-work-info-plugins/ui-design.md「Plugin row」「Settings dialog」、既定値と選択肢は
+// specs/056-plugin-tooling/ui-design.md「Settings dialog」）。
 
 /** MAX_PLUGIN_BYTES は送る前に断るファイルの大きさの上限（16 MiB）である。 */
 export const MAX_PLUGIN_BYTES = 16 * 1024 * 1024;
@@ -22,27 +27,50 @@ export function operationTexts(plugin: Pick<WorkInfoPlugin, "operations">): UiTe
   );
 }
 
-/** settingsSummary は事実の行の設定の要約である。設定を宣言しないプラグインには無い。 */
-export function settingsSummary(plugin: Pick<WorkInfoPlugin, "settings">): UiText | null {
+function summaryOf(setting: WorkInfoPluginSetting): UiText {
   const text = t.settings.workInfoPlugins;
-  if (plugin.settings.length === 0) return null;
-  return text.settingsSummary(
-    plugin.settings.map((setting) =>
-      setting.set ? text.settingSet(setting.label) : text.settingNotSet(setting.label),
-    ),
-  );
+  if (setting.staleValue !== undefined) return text.settingNotSet(setting.label);
+  if (setting.set) return text.settingSet(setting.label);
+  if (setting.default !== undefined) return text.settingDefault(setting.label);
+  return text.settingNotSet(setting.label);
 }
 
-/** missingRequired は値の無い `required` の設定のラベルを宣言の順に返す。 */
+/**
+ * settingsSummary は事実の行の設定の要約である。設定を宣言しないプラグインには無い。既定値で
+ * 動く設定は `{label} default`、選択肢の外の保存値は `{label} not set` と数える。
+ */
+export function settingsSummary(plugin: Pick<WorkInfoPlugin, "settings">): UiText | null {
+  if (plugin.settings.length === 0) return null;
+  return t.settings.workInfoPlugins.settingsSummary(plugin.settings.map(summaryOf));
+}
+
+/**
+ * missingRequired は実効値の無い `required` の設定のラベルを宣言の順に返す。選択肢の外の保存値は
+ * 使われないので値の無いものと数え、既定値のある設定は実行を止めないので挙げない
+ * （specs/056-plugin-tooling/research.md R-3）。
+ */
 export function missingRequired(plugin: Pick<WorkInfoPlugin, "settings">): string[] {
   return plugin.settings
-    .filter((setting) => setting.required && !setting.set)
+    .filter(
+      (setting) =>
+        setting.required &&
+        setting.default === undefined &&
+        (!setting.set || setting.staleValue !== undefined),
+    )
+    .map((setting) => setting.label);
+}
+
+/** staleSettings は保存値が今の版の選択肢に無い設定のラベルを宣言の順に返す（`Choose again`）。 */
+export function staleSettings(plugin: Pick<WorkInfoPlugin, "settings">): string[] {
+  return plugin.settings
+    .filter((setting) => setting.staleValue !== undefined)
     .map((setting) => setting.label);
 }
 
 /**
  * SettingDraft は設定のダイアログの欄 1 つである。秘密の欄の value は今入力した値だけで、
- * 保存済みの値は持たない。forgotten は保存済みの秘密を「Forget」で消す印である。
+ * 保存済みの値は持たない。forgotten は保存済みの秘密を「Forget」で消す印である。選択肢の欄では
+ * 空が先頭の項目（既定値か Not set）で、選択肢の外の保存値は value にそのまま残る。
  */
 export interface SettingDraft {
   value: string;
@@ -90,4 +118,32 @@ export function settingChanges(
     if (change !== undefined) changes[setting.key] = change;
   }
   return changes;
+}
+
+/** unixDate は API の Unix 秒を日時にする。 */
+export function unixDate(seconds: number): Date {
+  return new Date(seconds * 1000);
+}
+
+/**
+ * runFailureText は直近の実行の失敗の理由である。実行の失敗のコードごとに 049 の Error reasons の
+ * 文を使う。実行の行は接続先の `{host}` を残さないので、`blocked_address` と `network_error` は
+ * 接続先の無い形にする（specs/056-plugin-tooling/ui-design.md「Last run dialog text」）。
+ */
+export function runFailureText(failure: WorkInfoPluginRunFailure): UiText {
+  const { code, reason } = t.errors;
+  switch (failure) {
+    case "plugin_failed":
+      return code.plugin_failed;
+    case "timed_out":
+      return code.plugin_timed_out;
+    case "memory_exceeded":
+      return reason.memory_exceeded;
+    case "output_too_large":
+      return reason.output_too_large;
+    case "blocked_address":
+      return reason.blocked_address({});
+    case "network_error":
+      return reason.network_error({});
+  }
 }

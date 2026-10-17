@@ -3,7 +3,7 @@ import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { WorkInfoPlugin } from "../api/workInfoPlugins";
+import type { WorkInfoPlugin, WorkInfoPluginSetting } from "../api/workInfoPlugins";
 import { enablePseudoLocale, expectCatalogTextOnly } from "../i18n/pseudo";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
@@ -50,6 +50,16 @@ const uploads: Record<string, Omit<WorkInfoPlugin, "id">> = {
     problem: "not_wasm",
   }),
 };
+
+/** saved は偽のサーバーが値を保存した後の設定である。秘密の値は返さない。 */
+function saved(
+  setting: WorkInfoPluginSetting,
+  value: string | null | undefined,
+): WorkInfoPluginSetting {
+  const { value: _old, staleValue: _stale, ...rest } = setting;
+  if (value === null || value === undefined) return { ...rest, set: false };
+  return setting.secret ? { ...rest, set: true } : { ...rest, set: true, value };
+}
 
 type Override = (method: string, url: string) => Response | undefined;
 
@@ -99,7 +109,7 @@ function server(initial: WorkInfoPlugin[], override: Override = () => undefined)
       const current = stored.find((item) => item.id === id);
       const settings = (current?.settings ?? []).map((setting) =>
         Object.hasOwn(values, setting.key)
-          ? { ...setting, set: values[setting.key] !== null }
+          ? saved(setting, values[setting.key])
           : setting,
       );
       return Promise.resolve(json(replace(id, { settings })));
@@ -151,6 +161,9 @@ describe("WorkInfoPluginsSection", () => {
 
   beforeEach(() => {
     vi.stubGlobal("fetch", fetchMock);
+    // Radix Select はポインタの捕捉を使う。jsdom には無いので何もしない実装を置く。
+    Element.prototype.hasPointerCapture ??= () => false;
+    Element.prototype.releasePointerCapture ??= () => undefined;
   });
 
   afterEach(() => {
@@ -184,7 +197,7 @@ describe("WorkInfoPluginsSection", () => {
     expect(within(row).getByText("Not approved")).toBeDefined();
     expect(within(row).getByText("v1.2.0")).toBeDefined();
     expect(within(row).getByText("Reaches internet sites")).toBeDefined();
-    expect(within(row).getByText(/Search · Fetch by ID or URL/)).toBeDefined();
+    expect(within(row).getByText(/Search · Fetch by ID/)).toBeDefined();
     const approve = within(row).getByRole("button", { name: "Review and approve" });
     await waitFor(() => expect(document.activeElement).toBe(approve));
     const posted = fake.requests.find((request) => request.method === "POST");
@@ -364,6 +377,158 @@ describe("WorkInfoPluginsSection", () => {
     expect(
       within(dialog).getByRole("button", { name: "Save" }).hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  it("既定値は入力した値と見分けて示し、選択肢は既定値を選んだ形で出し、選んだ値と消した値を送る", async () => {
+    const fake = server([
+      plugin({
+        id: 1,
+        state: "approved",
+        settings: [
+          {
+            key: "region",
+            label: "Region",
+            secret: false,
+            required: true,
+            set: false,
+            default: "jp",
+          },
+          {
+            key: "sort",
+            label: "Sort",
+            secret: false,
+            required: false,
+            set: false,
+            default: "new",
+            options: ["new", "popular"],
+          },
+          {
+            key: "lang",
+            label: "Language",
+            secret: false,
+            required: false,
+            set: true,
+            value: "en",
+            default: "ja",
+          },
+        ],
+      }),
+    ]);
+    fetchMock.mockImplementation(fake.handler);
+    const user = userEvent.setup();
+    renderSection();
+
+    const row = await waitFor(() => rowOf("example.works"));
+    expect(
+      within(row).getByText(/Settings: Region default, Sort default, Language set/),
+    ).toBeDefined();
+    expect(within(row).queryByText(/Needs a value/)).toBeNull();
+    await user.click(within(row).getByRole("button", { name: "Settings" }));
+    const dialog = screen.getByRole("dialog", { name: "Settings for example.works" });
+
+    // 既定値は欄の値ではなく placeholder と欄の下の注記に出る。
+    const region = within(dialog).getByLabelText<HTMLInputElement>(/Region/);
+    expect(region.value).toBe("");
+    expect(region.placeholder).toBe("jp");
+    expect(within(dialog).getByText("Default: jp")).toBeDefined();
+    const lang = within(dialog).getByLabelText<HTMLInputElement>(/Language/);
+    expect(lang.value).toBe("en");
+    expect(within(dialog).getByText("Default: ja")).toBeDefined();
+
+    // 選択肢の設定は Select だけで、既定値の項目が選ばれている。
+    expect(within(dialog).queryByRole("textbox", { name: /Sort/ })).toBeNull();
+    const sort = within(dialog).getByRole("combobox", { name: /Sort/ });
+    expect(sort.textContent).toBe("Default (new)");
+    await user.click(sort);
+    const options = await screen.findAllByRole("option");
+    expect(options.map((option) => option.textContent)).toEqual([
+      "Default (new)",
+      "new",
+      "popular",
+    ]);
+    await user.click(screen.getByRole("option", { name: "popular" }));
+    expect(sort.textContent).toBe("popular");
+
+    await user.clear(lang);
+    expect(lang.placeholder).toBe("ja");
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText("Saved the settings for example.works."),
+    ).toBeDefined();
+    expect(fake.requests).toContainEqual({
+      method: "PUT",
+      url: "/api/work-info-plugins/1/settings",
+      body: { values: { sort: "popular", lang: null } },
+    });
+    expect(
+      within(rowOf("example.works")).getByText(
+        /Settings: Region default, Sort set, Language default/,
+      ),
+    ).toBeDefined();
+  });
+
+  it("選択肢に無い保存値は注記して既定値の形で出し、選び直すとその値を送る", async () => {
+    const fake = server([
+      plugin({
+        id: 1,
+        settings: [
+          {
+            key: "mode",
+            label: "Mode",
+            secret: false,
+            required: false,
+            set: true,
+            value: "old",
+            staleValue: "old",
+            default: "fast",
+            options: ["fast", "slow"],
+          },
+        ],
+      }),
+    ]);
+    fetchMock.mockImplementation(fake.handler);
+    const user = userEvent.setup();
+    renderSection();
+
+    const row = await waitFor(() => rowOf("example.works"));
+    expect(within(row).getByText(/Settings: Mode not set/)).toBeDefined();
+    expect(within(row).getByText("Choose again: Mode")).toBeDefined();
+
+    // 承認のプロンプトは既定値を設定の行の末尾に出す。
+    await user.click(within(row).getByRole("button", { name: "Review and approve" }));
+    const approval = screen.getByRole("dialog", { name: "Approve example.works?" });
+    expect(within(approval).getByText("Default: fast")).toBeDefined();
+    await user.keyboard("{Escape}");
+
+    await user.click(within(row).getByRole("button", { name: "Settings" }));
+    const dialog = screen.getByRole("dialog", { name: "Settings for example.works" });
+    expect(
+      within(dialog).getByText(
+        `"old" isn't one of this version's choices. The default is used until you save.`,
+      ),
+    ).toBeDefined();
+    const mode = within(dialog).getByRole("combobox", { name: /Mode/ });
+    expect(mode.textContent).toBe("Default (fast)");
+    expect(
+      within(dialog).getByRole("button", { name: "Save" }).hasAttribute("disabled"),
+    ).toBe(true);
+    await user.click(mode);
+    await user.click(await screen.findByRole("option", { name: "slow" }));
+    expect(within(dialog).queryByText(/isn't one of this version's choices/)).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Save" }));
+
+    expect(
+      await screen.findByText("Saved the settings for example.works."),
+    ).toBeDefined();
+    expect(fake.requests).toContainEqual({
+      method: "PUT",
+      url: "/api/work-info-plugins/1/settings",
+      body: { values: { mode: "slow" } },
+    });
+    const saved = rowOf("example.works");
+    expect(within(saved).getByText(/Settings: Mode set/)).toBeDefined();
+    expect(within(saved).queryByText(/Choose again/)).toBeNull();
   });
 
   it("失敗した要求を節に出す", async () => {
@@ -596,6 +761,25 @@ describe("WorkInfoPluginsSection", () => {
           state: "approved",
           settings: [
             { key: "apiKey", label: "API key", secret: true, required: true, set: false },
+            {
+              key: "mode",
+              label: "Mode",
+              secret: false,
+              required: false,
+              set: true,
+              value: "old",
+              staleValue: "old",
+              default: "fast",
+              options: ["fast", "slow"],
+            },
+            {
+              key: "region",
+              label: "Region",
+              secret: false,
+              required: true,
+              set: false,
+              default: "jp",
+            },
           ],
         }),
         plugin({ ...uploads["broken.wasm"], id: 2 }),
@@ -608,6 +792,8 @@ describe("WorkInfoPluginsSection", () => {
       "Fetches titles from example.works",
       "broken.wasm",
       "API key",
+      "Mode",
+      "Region",
       "1.2.0",
     ]);
   });

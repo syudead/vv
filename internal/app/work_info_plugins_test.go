@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"slices"
 	"testing"
 	"time"
 
@@ -30,15 +31,33 @@ func (r *fakePluginRuntime) Inspect(_ context.Context, module []byte) (domain.Wo
 	}, "", nil
 }
 
-func (r *fakePluginRuntime) Run(context.Context, string, []byte, domain.WorkInfoRunRequest) (domain.WorkInfoRunResult, error) {
-	return domain.WorkInfoRunResult{}, errors.New("not used")
+func (r *fakePluginRuntime) Run(
+	context.Context, string, []byte, domain.WorkInfoRunRequest, domain.WorkInfoRunNetwork, func(domain.WorkInfoRunLog) error,
+) (domain.WorkInfoRunResult, domain.WorkInfoRunLog, error) {
+	return domain.WorkInfoRunResult{}, domain.WorkInfoRunLog{}, errors.New("not used")
 }
 
-// fakePluginStore は行を 1 つ持つ保存先で、書き込みの呼び出しを数える。
+// fakePluginStore は行を 1 つ持つ保存先で、書き込みの呼び出しを数える。runs は保存された実行で、
+// 世代の確かめはしない（本物の保存先の規則は internal/store のテストが確かめる）。
 type fakePluginStore struct {
 	plugin  *domain.WorkInfoPlugin
 	uploads []domain.WorkInfoPluginUpload
 	writes  int
+	runs    []domain.WorkInfoPluginRun
+}
+
+func (s *fakePluginStore) SaveWorkInfoPluginRun(_ context.Context, run domain.WorkInfoPluginRun) error {
+	s.runs = append(s.runs, run)
+	return nil
+}
+
+func (s *fakePluginStore) WorkInfoPluginRun(_ context.Context, id int64) (domain.WorkInfoPluginRun, bool, error) {
+	for _, run := range slices.Backward(s.runs) {
+		if run.PluginID == id {
+			return run, true, nil
+		}
+	}
+	return domain.WorkInfoPluginRun{}, false, nil
 }
 
 func (s *fakePluginStore) ListWorkInfoPlugins(context.Context) ([]domain.WorkInfoPlugin, error) {
@@ -213,6 +232,37 @@ func TestSetWorkInfoPluginSettingsChecksDeclarationsAndHidesSecrets(t *testing.T
 	}
 	if store.writes != writes {
 		t.Fatal("a refused setting reached the store")
+	}
+}
+
+// 差し替えで保存済みの値が選択肢から外れても値は残り、一覧は set・value と同じ staleValue でそれを示す
+// （specs/056-plugin-tooling/contracts/screen-api.md の WorkInfoPluginSetting）。
+func TestReplacedOptionsReportTheStoredValueAsStale(t *testing.T) {
+	ctx := context.Background()
+	runtime := &fakePluginRuntime{settings: []domain.WorkInfoPluginSetting{
+		{Key: "lang", Label: "Language", Default: "ja", Options: []string{"ja", "fr"}},
+	}}
+	store := &fakePluginStore{}
+	plugins := NewWorkInfoPlugins(WorkInfoPluginsOptions{
+		Store: store, Runtime: runtime, Now: func() time.Time { return time.Unix(1_800_000_000, 0) },
+	})
+	listed, _, _ := plugins.UploadWorkInfoPlugin(ctx, "a.wasm", []byte("example"))
+	if _, err := plugins.SetWorkInfoPluginSettings(ctx, listed.ID, map[string]*string{"lang": new("fr")}); err != nil {
+		t.Fatal(err)
+	}
+	runtime.settings = []domain.WorkInfoPluginSetting{
+		{Key: "lang", Label: "Language", Default: "en", Options: []string{"ja", "en"}},
+	}
+	if _, _, err := plugins.UploadWorkInfoPlugin(ctx, "a.wasm", []byte("example")); err != nil {
+		t.Fatal(err)
+	}
+	listedAll, err := plugins.ListWorkInfoPlugins(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lang := listedAll[0].Settings[0]
+	if !lang.Set || lang.Value != "fr" || lang.StaleValue != "fr" || lang.Default != "en" {
+		t.Fatalf("lang = %+v; want set, value fr, staleValue fr, default en", lang)
 	}
 }
 
