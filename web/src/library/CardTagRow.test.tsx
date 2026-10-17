@@ -1,8 +1,18 @@
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { VideoTag } from "../api/client";
 import CardTagRow from "./CardTagRow";
+import { HOVER_OPEN_DELAY_MS } from "./useHoverOpen";
 
 function tags(...names: string[]): VideoTag[] {
   return names.map((name, index) => ({
@@ -47,7 +57,7 @@ describe("CardTagRow", () => {
     expect(onPress).toHaveBeenCalledWith(expect.objectContaining({ name: "旅行" }));
   });
 
-  it("収まらない分は +N にまとめ、押すとポップオーバーで残りを見せる", () => {
+  it("ResizeObserver が測り直しても、幅が 0 のあいだは「+N」を出さない", () => {
     // available width が測れない（0）ときは全部表示するので、収まりきらない状況は
     // computeVisibleTagCount 側の単体テストで確かめる。ここでは +N の配線
     // （押すとポップオーバーが開き、選ぶと onPress される）だけを、手で visibleCount
@@ -383,6 +393,75 @@ describe("CardTagRow", () => {
       );
       expect(onPress).toHaveBeenCalledWith(expect.objectContaining({ name: "夏" }));
       expect(screen.queryByRole("dialog")).toBeNull();
+    });
+
+    // ui-design.md「Interaction」: 留めて開いた一覧はフォーカスを動かさず、押して開いた
+    // 一覧は最初のチップへフォーカスを移す。
+    describe("開き方", () => {
+      const overflow = () => screen.getByRole("button", { name: "Show 3 more tags" });
+
+      afterEach(() => vi.useRealTimers());
+
+      function openByHover() {
+        fireEvent.pointerEnter(overflow(), { pointerType: "mouse" });
+        act(() => vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS));
+        expect(screen.getByRole("dialog")).toBeDefined();
+      }
+
+      it("留めて開いた一覧は Esc でも外を押しても閉じ、フォーカスを動かさない", () => {
+        vi.useFakeTimers();
+        stubWidths();
+        renderRow({ tags: tags("旅行", "2024", "Anime", "夏") });
+        const focused = document.activeElement;
+
+        openByHover();
+        expect(document.activeElement).toBe(focused);
+        fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+        expect(screen.queryByRole("dialog")).toBeNull();
+        expect(document.activeElement).toBe(focused);
+
+        openByHover();
+        // Radix は開いた次の tick から外の押下を聞く。
+        act(() => vi.advanceTimersByTime(0));
+        fireEvent.pointerDown(document.body, { pointerType: "mouse", button: 0 });
+        fireEvent.click(document.body);
+        expect(screen.queryByRole("dialog")).toBeNull();
+        expect(document.activeElement).toBe(focused);
+      });
+
+      it("タッチで触れても留まっただけでは開かず、タップで開く", () => {
+        vi.useFakeTimers();
+        stubWidths();
+        renderRow({ tags: tags("旅行", "2024", "Anime", "夏") });
+
+        fireEvent.pointerEnter(overflow(), { pointerType: "touch" });
+        act(() => vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS * 2));
+        expect(screen.queryByRole("dialog")).toBeNull();
+
+        fireEvent.click(overflow());
+        expect(screen.getByRole("dialog")).toBeDefined();
+      });
+
+      it("フォーカスが来ただけでは開かず、Enter で開いて最初のチップへフォーカスが移る", async () => {
+        const user = userEvent.setup();
+        stubWidths();
+        const { onPress } = renderRow({ tags: tags("旅行", "2024", "Anime", "夏") });
+
+        screen.getByRole("button", { name: "Filter by 旅行" }).focus();
+        await user.tab();
+        expect(document.activeElement).toBe(overflow());
+        expect(screen.queryByRole("dialog")).toBeNull();
+
+        await user.keyboard("{Enter}");
+        const first = within(screen.getByRole("dialog")).getByRole("button", {
+          name: "Filter by 2024",
+        });
+        await waitFor(() => expect(document.activeElement).toBe(first));
+
+        await user.keyboard("{Enter}");
+        expect(onPress).toHaveBeenCalledWith(expect.objectContaining({ name: "2024" }));
+        expect(screen.queryByRole("dialog")).toBeNull();
+      });
     });
   });
 });
