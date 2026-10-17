@@ -1147,10 +1147,10 @@ test.describe("live MP4 playback", () => {
             .evaluate((element) => (element as HTMLVideoElement).currentTime),
         )
         .toBeGreaterThan(beforeSeek);
-      // 見出しの帯の右端の閉じる × で戻る。× は帯の 1 か所だけにある。
+      // 見出しの帯の右端の閉じる × で戻る。× は帯の 1 か所だけにある。直接開いたのでホームへ戻る。
       const back = page.getByRole("button", { name: "Close" });
       await back.focus();
-      await Promise.all([page.waitForURL("/library"), back.press("Enter")]);
+      await Promise.all([page.waitForURL("/"), back.press("Enter")]);
     }
   });
 
