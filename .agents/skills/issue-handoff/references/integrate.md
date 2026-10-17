@@ -11,9 +11,9 @@ done yet and stops.
    Do not rebase or force-push the long-lived feature branch. Resolve conflicts
    by keeping both sides' behaviour; ask when that is not possible.
 2. Run `task check`. For a `ui` feature, also review the screens against
-   `ui-design.md`. This step needs no local `task test-e2e`: the integration
-   PR's CI runs it, and the [pre-merge sweep](#pre-merge-sweep) runs the full suite on
-   the finished feature ([checks before a push](README.md#checks-before-a-push)).
+   `ui-design.md`. This step needs no `task test-e2e`: the
+   [pre-merge sweep](#pre-merge-sweep) runs the full suite in CI on the
+   finished feature ([checks before a push](README.md#checks-before-a-push)).
 3. Push the feature branch. If the integration PR does not exist yet, open it
    now: feature branch → `main`, the parent's title, `Closes #<parent>`, and
    the repository PR template. Otherwise the push updates it; do not open a
@@ -79,16 +79,12 @@ follow-up. Everything it changes goes into one PR, so the sweep converges in a
 single round.
 
 1. **Run every check on the feature branch head**, not only the ones a single
-   child needed: `task check`, `task check-docs`, `task test-e2e` (for every
-   feature, not only `ui`; when the host cannot run a browser, say so in the
-   body instead of passing it over), and `task docs-build` when the feature
-   changed `docs/` or `specs/`. Before `task test-e2e`, check the free space
-   on the checkout's file system (`df -Pk .`): e2e builds the binaries,
-   generates its media and starts Chromium, and fails in ways that look like
-   test failures (a link error, `net::ERR_INSUFFICIENT_RESOURCES`) when the
-   disk is nearly full. Below 10 GB free, remove the worktrees and build
-   output you made and no longer need; if it is still below 10 GB, stop and
-   report the shortage instead of running e2e or counting it as passed. Then
+   child needed: `task check`, `task check-docs`, the browser e2e suite (for
+   every feature, not only `ui`), and `task docs-build` when the feature
+   changed `docs/` or `specs/`. Run e2e as a manual CI run on the feature
+   branch ([checks before a push](README.md#checks-before-a-push)), not with
+   a local `task test-e2e`, and wait for its `Browser E2E` job; when the run
+   cannot be started, report that instead of counting e2e as passed. Then
    walk every acceptance criterion of the
    parent Issue and point at the test or the code path that satisfies it. A
    failing check or an unmet criterion is a defect to fix in this sweep,
@@ -120,9 +116,9 @@ single round.
    rest stay remaining risks.
 4. **Fix them in one PR.** When step 1 found a defect or step 3 picked one,
    create a sub-branch from `origin/<feature>`, fix each at its root cause with
-   a focused test, run `task check` and `task check-docs` again (and
-   `task test-e2e` when the fix touches the web app or the flow it tests),
-   push, and open one PR to the feature branch with `Refs #<parent>`, titled
+   a focused test, run `task check` and `task check-docs` again, push (and,
+   when the fix touches the web app or the flow it tests, start a manual CI
+   run on the sub-branch and wait for its `Browser E2E` job), and open one PR to the feature branch with `Refs #<parent>`, titled
    for the pre-merge sweep. Its body lists each fix and the backlog item or
    check it answers. Nothing to fix means no PR.
 5. **Comment the result on the integration PR**, in one comment: the checks
