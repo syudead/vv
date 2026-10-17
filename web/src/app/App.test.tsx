@@ -239,6 +239,23 @@ describe("App", () => {
     expect(FakeEventSource.instances).toHaveLength(0);
   });
 
+  it("段階が done でない所有者の設定画面は、シェルの外のオンボードへ置き換える", async () => {
+    window.history.replaceState({}, "", "/settings");
+    const original = fetchMock.getMockImplementation();
+    fetchMock.mockImplementation((input, init) =>
+      String(input) === "/api/onboarding"
+        ? Promise.resolve(json({ step: "scan" }))
+        : original!(input, init),
+    );
+    render(<App />);
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Scan your library" }),
+    ).toBeDefined();
+    expect(window.location.pathname).toBe("/welcome");
+    expect(screen.queryByRole("complementary", { name: "Main navigation" })).toBeNull();
+  });
+
   it("所有者にはサイドバーの全項目を出し、トップバーに取り込みの button を出さない", async () => {
     render(<App />);
     await screen.findByRole("button", { name: /^Scanning 4 of 10 videos done\./ });

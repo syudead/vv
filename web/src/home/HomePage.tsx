@@ -4,12 +4,12 @@ import { Link, useLocation, useNavigate } from "react-router";
 
 import type { LibraryItem } from "../api/client";
 import type { HomeShelf } from "../api/home";
-import { ONBOARDING_PATH } from "../api/onboarding";
 import { useAudience } from "../auth/audience";
 import { t } from "../i18n";
 import { GroupCard } from "../library/GroupCard";
 import { LIBRARY_PATH } from "../library/libraryPath";
 import { isComposingNativeKeyEvent } from "../lib/ime";
+import { useStartSetup } from "../onboarding/useStartSetup";
 import TopBarPortal from "../shell/TopBarPortal";
 import { ErrorState } from "../ui/patterns/error-state";
 import { ListPage } from "../ui/patterns/list-page";
@@ -209,8 +209,12 @@ function FolderShelfMenu({
   );
 }
 
-/** EmptyHome は見る人に見える動画が 1 本も無いときの本体である。所有者には取り込みへの入口を置く。 */
+/**
+ * EmptyHome は見る人に見える動画が 1 本も無いときの本体である。所有者にはオンボードへの入口を
+ * 置く。「Set up library」は段階を `folders` に書いてから `/welcome` を開く。
+ */
 function EmptyHome({ owner }: { owner: boolean }) {
+  const setup = useStartSetup();
   return (
     <EmptyState
       icon={Film}
@@ -218,8 +222,8 @@ function EmptyHome({ owner }: { owner: boolean }) {
       description={owner ? t.home.empty.owner : t.home.empty.guest}
       action={
         owner && (
-          <Button asChild size="sm">
-            <Link to={ONBOARDING_PATH}>{t.home.empty.setUp}</Link>
+          <Button size="sm" disabled={setup.pending} onClick={() => void setup.start()}>
+            {t.home.empty.setUp}
           </Button>
         )
       }

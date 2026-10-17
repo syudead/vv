@@ -24,6 +24,7 @@ sample text and data with the screen's own, keeping the structure.
 | Asks the viewer to confirm an action that cannot be undone  | `ConfirmDialog`  | `confirm-dialog`   | `confirm-dialog-example`   |
 | Works on one image that needs the whole window              | `EditorDialog`   | `editor-dialog`    | `editor-dialog-example`    |
 | Fills in many values saved together, on a screen of its own | `FormPage`       | `form-page`        | `form-page-example`        |
+| Walks through fixed steps one at a time (the first setup)   | `StepsPage`      | `steps-page`       | `steps-page-example`       |
 
 The states of a list or table are shown in `list-states-example`.
 
@@ -40,14 +41,15 @@ example block and a section here.
 - **No `className` on patterns**: skeletons and sections take no `className`.
   If a screen needs a different spacing, the pattern is wrong for it; change
   the pattern in the design system for every screen, or pick another one.
-- **Density**: `ListPage`, `AdminTablePage`, `SettingsPage`, `CenteredForm`
-  and the dialogs are library density (`sm` controls, `text-sm`, `p-3` rows).
+- **Density**: `ListPage`, `AdminTablePage`, `SettingsPage`, `CenteredForm`,
+  `StepsPage` and the dialogs are library density (`sm` controls, `text-sm`, `p-3` rows).
   `DetailPage` is viewing density: its sections switch to `p-4` rows and
   `text-base` by themselves, and its controls use `default` and `lg`.
 - **Text**: patterns hold no text. Every title, label, count and message comes
   from the caller through `t`.
 - **One primary action per area**: the header's `actions`, a dialog footer, an
-  empty state and a centered form each hold at most one `default` button.
+  empty state, a centered form and a steps page's footer each hold at most one
+  `default` button.
 
 ## List page
 
@@ -241,6 +243,32 @@ band sit the `notice` and then the body, `px-4` (`px-6` from `sm`) and `py-6`.
 Library density: `sm` controls. Use it when a form has more than a few fields
 or holds lists of chips, so it would scroll inside a `FormDialog`. Leaving
 with unsaved changes asks first with a `ConfirmDialog`.
+
+## Steps page
+
+Item `steps-page`. `StepsPage` is a page of its own outside the shell for
+steps taken in a fixed order, one at a time, such as the first setup. A header
+band `navbar` high, sticky at the top, with a bottom border, holds
+`BrandHomeLink` at the left and the step strip in the middle: each step's name
+after its number, the current one in `primary` with `aria-current="step"`,
+done ones with a check. Below `sm` the strip is the `progress` text
+(`Step 2 of 3`) and the current name only. Under the band one column, at most
+`max-w-2xl` and centered, `p-4` (`p-6` from `sm`), holds the step's `title`
+(the page's `h1`, `text-xl`), its `description`, the `content` `gap-4` apart,
+the `notice` and the footer row.
+
+| Slot      | Put in it                                                                                                     | Never                                          |
+| --------- | ------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `steps`   | Every step in order, each with its `name` and a `label` for screen readers that says done or current          | Steps that appear or vanish as the viewer goes |
+| `content` | The step's own controls and lines: rows, an `outline` `sm` button that adds to them, toggles, an `Alert` note | The step's main action; it goes in the footer  |
+| `notice`  | The `destructive` `Alert` of a failed save, so it sits right above the buttons that retry it                  | Field errors; they go under their field        |
+| `skip`    | `Skip` (`ghost` `sm`), on every step, so skipping is never hidden                                             | A link out of the steps                        |
+| `action`  | The one `default` `sm` button that finishes the step                                                          | A second `default` button                      |
+
+While a step is saved, disable both footer buttons. Use it only when the steps
+must be taken in order and the screen is nothing else; one form is a
+`CenteredForm`, and settings the viewer changes in any order are a
+`SettingsPage`.
 
 ## Sections
 

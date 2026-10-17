@@ -277,16 +277,20 @@ the `Created "{name}"` toast carries `Open` to the new folder's page
 
 ### Scan entry and progress
 
-A scan starts only from `Scan library` in the Settings `Scan status` section
-([`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)),
+A scan starts from `Scan library` in the Settings `Scan status` section
+([`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)) or
+on the `Scan` step of onboarding at `/welcome`
+([057 UI design, Onboarding](../../specs/057-home/ui-design.md#onboarding)),
 because scanning is occasional and a permanent button in the top bar repeated
 the bottom-right indicator. The button is present in every scan state. It is
 disabled while a scan runs (including one started in another tab) and while
 no media folder exists, with the reason in a line it references through
 `aria-describedby`. A failed start request appears as an alert in the same
 section, and the button stays available to try again. The `Scan` action of an
-empty library or empty folder is a link to `/settings#scan-status` and starts
-nothing.
+empty folder is a link to `/settings#scan-status` and starts nothing. The
+owner's action on an empty library, and on a home with no video, is `Set up
+library`: it sets the onboarding step to `folders` and opens `/welcome`
+([`useStartSetup.ts`](../../web/src/onboarding/useStartSetup.ts)).
 
 The bottom-right indicator
 ([`ScanProgressIndicator.tsx`](../../web/src/shell/ScanProgressIndicator.tsx))
@@ -503,6 +507,15 @@ that filters the library (a tag, a person, an organization) opens
 `/library?<parameter>=<id>`. A URL of the form `/?tag=<id>` from before the
 move opens `/library` with the same query. `/` without a query is the home
 ([057 UI design, Home](../../specs/057-home/ui-design.md#home)).
+
+While the owner's onboarding step is not `done`, every route replaces itself
+with `/welcome`, the onboarding page outside the shell, and the owner's
+`/welcome` with the step `done` goes to `/`. Guests are never sent there. The
+gate ([`OnboardingGate.tsx`](../../web/src/onboarding/OnboardingGate.tsx))
+reads the step before it draws a route, reads it again on the `home` event so
+a step changed on another device takes effect, and treats a step it cannot
+read as `done`, so a failed read never locks the owner out
+([057 research, R-4](../../specs/057-home/research.md#r-4-onboarding-adds-routes-for-its-step-and-interests-only)).
 
 ## Video page layout
 

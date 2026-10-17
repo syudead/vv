@@ -1,6 +1,6 @@
 ---
 source: docs/design-docs/design-system.md
-sourceHash: 7fe06607a63316814fa8f81e2ff9e36b079a54a8986b6412b46083130819de43
+sourceHash: 6ae20e9a6a55b07b470d16776f31cf8889beed027e08b2c470c26460c83c8a42
 ---
 
 # vv デザインシステム {#vv-design-system}
@@ -207,7 +207,7 @@ shadcn のコンポーネントは、上流のケバブケースの名前（`dro
 
 | 層 | 何であるか | レジストリ |
 | --- | --- | --- |
-| ページの雛形 | `ListPage`、`AdminTablePage`、`SettingsPage`、`DetailPage`、`CenteredForm`、`FormDialog`、`ConfirmDialog`、`EditorDialog`、`FormPage`。ページの領域、その順序、外側の余白、最大幅、領域の間の間隔 | `registry:ui`、それぞれ 1 項目 |
+| ページの雛形 | `ListPage`、`AdminTablePage`、`SettingsPage`、`DetailPage`、`CenteredForm`、`FormDialog`、`ConfirmDialog`、`EditorDialog`、`FormPage`、`StepsPage`。ページの領域、その順序、外側の余白、最大幅、領域の間の間隔 | `registry:ui`、それぞれ 1 項目 |
 | セクション | `PageHeader`、`Toolbar`、`PageSection`、`FormRow`、`FactList`、`CardGrid`、`DataTable`、`GroupedList`、`JumpList`、`ShelfRow`、`SelectionBar`。領域を埋める部品と、その行の余白と内側の間隔 | `registry:ui`、それぞれ 1 項目 |
 | 状態 | `LoadingState`、`EmptyState`、`ErrorState`、`LoadMoreRow`。本体がデータの代わりに、またはデータの後に示すもの | `registry:ui`、それぞれ 1 項目 |
 
@@ -240,6 +240,8 @@ flowchart TD
 `EditorDialog` は、動画のフレームの上に塗り、その結果をフレームと比べるといった 1 枚の画像に対する作業のために、ビューポートを満たす `Dialog` である。ヘッダーの帯、画像のための `stage`、入力のための `aside` から成り、入力の側の `footer` が主な操作を持つ。`lg` 未満では、stage の高さは名前付きの段階 `editor-stage`（ビューポートの高さの約 45%）である。`Dialog` は `max-w-lg` で止まるので、1280 px では 16:9 のフレームの高さが約 290 px になり、塗るにも 2 枚の画像を比べるにも小さすぎる。`FormDialog` はフォームのためのダイアログのままである（[045 UI 設計、Changes to the design system](../../specs/045-comfyui-thumbnails/ui-design.md#changes-to-the-design-system)）。
 
 `FormPage` は、動画の詳細のように、専用の画面でまとめて保存する多くの値のためのページであり、ダイアログではない。上部に貼り付くヘッダーの帯がタイトル、控えめな補足、操作を持ち、その下に `notice` の行がある。その下では、`lg` から名前付きのユーティリティ `grid-cols-form-page` が、名前付きの段階 `form-page-aside` の幅の `aside` と、比が 5:6 の 2 つのパネルを並べ、ページはビューポートの高さを保ち、各パネルは内側でスクロールする。`lg` 未満では各部分が縦に積まれ、ページ全体が 1 つとしてスクロールする。`FormDialog` は少数の入力欄を持ち、`SettingsPage` は各行を個別に保存するので、どちらも 1 つのボタンで保存する十数個の入力欄のフォームには合わない（[047 UI 設計、Changes to the design system](../../specs/047-video-work-info/ui-design.md#changes-to-the-design-system)）。
+
+`StepsPage` は、初回のセットアップのように決まった順序で 1 つずつ進む手順のための、シェルの外のページだ。ロゴと番号付きの手順の帯を持つヘッダーの帯があり、その下に最大 `max-w-2xl` の 1 列があって、手順のタイトル、内容、`Skip` と 1 つの主要な操作のフッターを持つ。Esc で閉じるダイアログは、手順が終わっていないのに終わったように読め、`CenteredForm` はスキップする手段のない 1 つのフォームを持つ（[057 UI 設計、Changes to the design system](../../specs/057-home/ui-design.md#changes-to-the-design-system)）。
 
 `FormDialog` は、動画の現在の詳細と取得した詳細のように、値を並べて比べながら設定するフォームのために `size="wide"` を受け取る。このサイズは `max-w-lg` ではなく `max-w-2xl` で止まり、`sm` 未満では既定のサイズと同じく 16px の余白を残して画面に広がる。閉じることだけが操作である最後の段階のために、`cancelLabel` がなければフッターは送信ボタンだけを持つ（[049 UI 設計、Changes to the design system](../../specs/049-work-info-plugins/ui-design.md#changes-to-the-design-system)）。
 

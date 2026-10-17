@@ -1,0 +1,15 @@
+{
+  "$schema": "https://ui.shadcn.com/schema/registry-item.json",
+  "name": "steps-page-example",
+  "title": "Steps page example",
+  "description": "A working setup step: the second of three steps, with topic toggles that wrap, Skip and Continue.",
+  "files": [
+    {
+      "path": "src/designSystem/blocks/steps-page-example.tsx",
+      "content": "import { t } from \"@/i18n\";\nimport { StepsPage } from \"@/ui/patterns/steps-page\";\nimport { Button } from \"@/ui/shadcn/button\";\nimport { ToggleGroup, ToggleGroupItem } from \"@/ui/shadcn/toggle-group\";\n\n// 手順の画面の見本（registry:block steps-page-example）。3 つの手順の 2 つ目を開いた形で、\n// 中身に分野の切り替えを並べ、下端の左に Skip（ghost の sm）、右に 1 つの主操作（default の sm）を\n// 置く。写した画面は手順・題・中身・操作を自分のものに差し替え、間隔と幅は書かない\n// （web/registry/rules/patterns.md の Steps page）。\n\nconst stepKeys = [\"folders\", \"topics\", \"finish\"] as const;\n\nexport function StepsPageExample() {\n  const p = t.designSystem.pattern;\n  const current = 1;\n  const steps = stepKeys.map((key, index) => {\n    const name = p.stepNames[key];\n    let label: string = name;\n    if (index < current) label = p.stepDone(name);\n    else if (index === current) label = p.stepCurrent(name);\n    return { key, name, label };\n  });\n  const topics = Object.entries(p.tagNames);\n  return (\n    <StepsPage\n      steps={steps}\n      current={current}\n      stepsLabel={p.steps}\n      progress={p.stepOf(current + 1, steps.length)}\n      title={p.stepsTitle}\n      description={p.stepsDescription}\n      skip={\n        <Button variant=\"ghost\" size=\"sm\">\n          {p.skip}\n        </Button>\n      }\n      action={<Button size=\"sm\">{p.continue}</Button>}\n    >\n      <ToggleGroup\n        type=\"multiple\"\n        variant=\"outline\"\n        size=\"sm\"\n        aria-label={p.topics}\n        defaultValue={[\"travel\"]}\n        className=\"w-full flex-wrap gap-2\"\n      >\n        {topics.map(([key, name]) => (\n          <ToggleGroupItem\n            key={key}\n            value={key}\n            className=\"flex-none rounded-md px-3 data-[variant=outline]:border-l\"\n          >\n            {name}\n          </ToggleGroupItem>\n        ))}\n      </ToggleGroup>\n    </StepsPage>\n  );\n}\n",
+      "type": "registry:component"
+    }
+  ],
+  "docs": "Copy it, then replace the sample text and data; keep the structure. Rules: web/registry/rules/patterns.md#steps-page (item vv-rules).",
+  "type": "registry:block"
+}

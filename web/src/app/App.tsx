@@ -13,6 +13,8 @@ import { ScanProvider } from "../shell/ScanProvider";
 import { ToastProvider } from "../ui/Toast";
 import { TooltipProvider } from "../ui/shadcn/tooltip";
 import { isVideoEditPath } from "../lib/videoEditPath";
+import { OnboardingGate } from "../onboarding/OnboardingGate";
+import { ONBOARDING_PATH } from "../onboarding/onboardingRoute";
 import { deferredRoute, matchesBelowPath, matchesExactPath } from "./deferredRoute";
 import HomeRoute from "./HomeRoute";
 
@@ -61,6 +63,12 @@ const VideoDetailsEditor = await deferredRoute(
   () => import("../player/detailsEditor/VideoDetailsEditor"),
   isVideoEditPath,
 );
+// オンボード（specs/057-home/ui-design.md「Onboarding」）。シェルの外に置き、ゲートが送るときに
+// 読み込む。
+const OnboardingPage = await deferredRoute(
+  () => import("../onboarding/OnboardingPage"),
+  ONBOARDING_PATH,
+);
 const SetupPage = await deferredRoute(() => import("../auth/SetupPage"), "/setup");
 const LoginPage = await deferredRoute(() => import("../auth/LoginPage"), "/login");
 // デザインシステムの見本（/design-system）は開発時だけに置く
@@ -79,123 +87,128 @@ function AppRoutes() {
     <ToastProvider placement={scanPlacement}>
       {/* 取り込みの進捗と通知は所有者だけに出す（ui-design.md「Top bar」）。 */}
       {owner && <ScanProgressIndicator />}
-      <Routes>
-        {/* `/` はホーム。ライブラリの問い合わせの付いた `/?tag=3` などは問い合わせごと
+      {/* 所有者の段階が done でない間は、どの経路も /welcome へ置き換える
+          （specs/057-home/research.md R-4）。 */}
+      <OnboardingGate>
+        <Routes>
+          {/* `/` はホーム。ライブラリの問い合わせの付いた `/?tag=3` などは問い合わせごと
             `/library` へ送る（specs/057-home/research.md R-15）。 */}
-        <Route path="/" element={<HomeRoute />} />
-        <Route
-          path={LIBRARY_PATH}
-          element={
-            <AppShell>
-              <LibraryPage />
-            </AppShell>
-          }
-        />
-        {["/folders", "/folders/*"].map((path) => (
+          <Route path="/" element={<HomeRoute />} />
           <Route
-            key={path}
-            path={path}
+            path={LIBRARY_PATH}
             element={
               <AppShell>
-                <FolderPage />
+                <LibraryPage />
               </AppShell>
             }
           />
-        ))}
-        <Route
-          path="/settings"
-          element={
-            <AppShell>
-              <SettingsPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/tags"
-          element={
-            <AppShell>
-              <TagsPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/people"
-          element={
-            <AppShell>
-              <PeoplePage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/organizations"
-          element={
-            <AppShell>
-              <OrganizationsPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/history"
-          element={
-            <AppShell>
-              <HistoryPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/playlists"
-          element={
-            <AppShell>
-              <PlaylistsPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/playlists/:id"
-          element={
-            <AppShell>
-              <PlaylistPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/groups/:id"
-          element={
-            <AppShell>
-              <GroupPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/smart-folders/:id"
-          element={
-            <AppShell>
-              <SmartFolderPage />
-            </AppShell>
-          }
-        />
-        <Route
-          path="/duplicates"
-          element={
-            <AppShell>
-              <DuplicatesPage />
-            </AppShell>
-          }
-        />
-        <Route path="/videos/:id" element={<VideoPage />} />
-        {/* 編集画面は再生画面と同じくシェルの外に置く。 */}
-        <Route path="/videos/:id/edit" element={<VideoDetailsEditor />} />
-        {DesignSystemPage && (
+          {["/folders", "/folders/*"].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={
+                <AppShell>
+                  <FolderPage />
+                </AppShell>
+              }
+            />
+          ))}
           <Route
-            path="/design-system"
+            path="/settings"
             element={
-              <Suspense fallback={null}>
-                <DesignSystemPage />
-              </Suspense>
+              <AppShell>
+                <SettingsPage />
+              </AppShell>
             }
           />
-        )}
-      </Routes>
+          <Route
+            path="/tags"
+            element={
+              <AppShell>
+                <TagsPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/people"
+            element={
+              <AppShell>
+                <PeoplePage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/organizations"
+            element={
+              <AppShell>
+                <OrganizationsPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/history"
+            element={
+              <AppShell>
+                <HistoryPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/playlists"
+            element={
+              <AppShell>
+                <PlaylistsPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/playlists/:id"
+            element={
+              <AppShell>
+                <PlaylistPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/groups/:id"
+            element={
+              <AppShell>
+                <GroupPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/smart-folders/:id"
+            element={
+              <AppShell>
+                <SmartFolderPage />
+              </AppShell>
+            }
+          />
+          <Route
+            path="/duplicates"
+            element={
+              <AppShell>
+                <DuplicatesPage />
+              </AppShell>
+            }
+          />
+          <Route path={ONBOARDING_PATH} element={<OnboardingPage />} />
+          <Route path="/videos/:id" element={<VideoPage />} />
+          {/* 編集画面は再生画面と同じくシェルの外に置く。 */}
+          <Route path="/videos/:id/edit" element={<VideoDetailsEditor />} />
+          {DesignSystemPage && (
+            <Route
+              path="/design-system"
+              element={
+                <Suspense fallback={null}>
+                  <DesignSystemPage />
+                </Suspense>
+              }
+            />
+          )}
+        </Routes>
+      </OnboardingGate>
     </ToastProvider>
   );
 }

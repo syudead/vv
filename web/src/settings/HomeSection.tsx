@@ -3,9 +3,10 @@ import { useNavigate } from "react-router";
 
 import { isAborted } from "../api/client";
 import { type HomeOrganizer, organizeHome, readHome } from "../api/home";
-import { ONBOARDING_PATH, writeOnboardingStep } from "../api/onboarding";
+import { writeOnboarding } from "../api/onboarding";
 import { subscribeServerEvents } from "../api/serverEvents";
 import { errorText, t, type UiText } from "../i18n";
+import { ONBOARDING_PATH } from "../onboarding/onboardingRoute";
 import { ErrorState } from "../ui/patterns/error-state";
 import { FormRow } from "../ui/patterns/form-row";
 import { PageSection } from "../ui/patterns/page-section";
@@ -103,7 +104,8 @@ export default function HomeSection() {
   const startSetup = async () => {
     setStartingSetup(true);
     try {
-      await writeOnboardingStep("folders");
+      // 購読を通して書き、書いた段階をすぐゲートに当てる（done のままの振り分けで戻されない）。
+      await writeOnboarding("folders");
       void navigate(ONBOARDING_PATH);
     } catch (error) {
       toast(text.setupFailed(errorText(error)));

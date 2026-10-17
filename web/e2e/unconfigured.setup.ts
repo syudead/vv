@@ -41,7 +41,7 @@ test("未設定のサーバーはどの要求にも初回設定を求める", as
 
 // 画面でも、未設定のサーバーではどの URL も初回設定画面になり、キーボードだけで
 // 設定まで進める。ここで作ったアカウントを、auth.setup.ts はログインで使う。
-test("未設定のサーバーはどの URL も初回設定画面にし、設定するとログイン済みの一覧になる", async ({
+test("未設定のサーバーはどの URL も初回設定画面にし、設定するとオンボードになる", async ({
   page,
 }) => {
   for (const target of ["/settings", "/login?next=%2Ftags", "/folders"]) {
@@ -95,12 +95,15 @@ test("未設定のサーバーはどの URL も初回設定画面にし、設定
 
   await page.keyboard.type(ownerAccount.password);
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL("/library");
-  await expect(page.getByRole("heading", { level: 1, name: "Library" })).toBeAttached();
-  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  // メディアフォルダの無い新しい所有者は、オンボードの最初の手順に着く
+  // （specs/057-home/research.md R-3・R-4）。
+  await expect(page).toHaveURL("/welcome");
+  await expect(
+    page.getByRole("heading", { level: 1, name: "Where are your videos?" }),
+  ).toBeVisible();
   expect(requests).toEqual(["POST"]);
 
   // 設定済みのサーバーでは、初回設定画面を二度と出さない。
   await page.goto("/setup");
-  await expect(page).toHaveURL("/library");
+  await expect(page).toHaveURL("/welcome");
 });
