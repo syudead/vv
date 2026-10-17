@@ -8,16 +8,16 @@ import { inProgress, useScan } from "../shell/ScanProvider";
 const pollMs = 2000;
 
 /**
- * AutoImportReloads は、自動の取り込みの設定を読み直す契機である。開いたときと `reloadToken` が
- * 変わったときは、いつも読み直す。
+ * AutoImportReloads は、自動の取り込みの設定を読み直す契機である。開いたとき、ウィンドウへ
+ * 戻ったとき、`reloadToken` が変わったときは、いつも読み直す（別のタブでの変更を拾う）。
  */
 export interface AutoImportReloads {
   /** 変わるたびに読み直す（メディアフォルダを変えたあとなど）。 */
   reloadToken?: number;
   /**
-   * 監視の状態を追う。ウィンドウへ戻ったとき、直近の取り込みが終わったときに読み直し、
-   * 監視を張っている最中（`starting`）は 2 秒ごとに読み直す。監視の状態を出す
-   * AutoImportState が要る。切り替えだけを出す AutoImportSwitch は要らない。
+   * 監視の状態を追う。直近の取り込みが終わったときに読み直し、監視を張っている最中
+   * （`starting`）は 2 秒ごとに読み直す。監視の状態を出す AutoImportState が要る。
+   * 切り替えだけを出す AutoImportSwitch は要らない。
    */
   followWatch?: boolean;
 }
@@ -81,6 +81,12 @@ export function useAutoImportSettings({
     void load();
   }, [load, reloadToken]);
 
+  useEffect(() => {
+    const onFocus = () => void load();
+    window.addEventListener("focus", onFocus);
+    return () => window.removeEventListener("focus", onFocus);
+  }, [load]);
+
   useEffect(
     () => () => {
       controller.current?.abort();
@@ -105,18 +111,10 @@ export function useAutoImportSettings({
 
 /**
  * useWatchReloads は、監視の状態を追う読み直しである。`enabled` が偽なら何もしない。
- * ウィンドウへ戻ったとき、直近の取り込みが終わったときに読み直し、`starting` のあいだは
- * 2 秒ごとに読み直す。
+ * 直近の取り込みが終わったときに読み直し、`starting` のあいだは 2 秒ごとに読み直す。
  */
 function useWatchReloads(enabled: boolean, starting: boolean, load: () => Promise<void>) {
   const scan = useScan();
-
-  useEffect(() => {
-    if (!enabled) return;
-    const onFocus = () => void load();
-    window.addEventListener("focus", onFocus);
-    return () => window.removeEventListener("focus", onFocus);
-  }, [enabled, load]);
 
   useEffect(() => {
     if (!enabled || !starting) return;

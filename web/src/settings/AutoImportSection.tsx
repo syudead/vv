@@ -26,7 +26,7 @@ export function AutoImportStateSection() {
 /**
  * AutoImportSwitchSection は「Library」のページの「Auto-import」節である。切り替えの 1 行で、
  * 説明は監視の状態のある「Scan」のページへのリンクである（どちらの状態でも同じ文なので、押しても
- * 行の高さが変わらない）。開いたときに読めば足りる
+ * 行の高さが変わらない）。開いたときとウィンドウへ戻ったときに読み直す。監視の状態は追わない
  * （specs/058-settings-pages/ui-design.md「Library page」）。
  */
 export function AutoImportSwitchSection() {

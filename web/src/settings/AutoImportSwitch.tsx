@@ -17,7 +17,7 @@ import { useSwitchSave } from "./useSwitchSave";
  * section」）。オンにしても、バーも通知も出さない。
  *
  * 読み込みの最中は Skeleton、最初の読み込みに失敗すると Retry 付きの ErrorState を行に出す。
- * `source` は開いたときに読んだもので足りる。`description` は行の説明である。
+ * `source` は監視の状態を追わなくてよい。`description` は行の説明である。
  */
 export default function AutoImportSwitch({
   source,
