@@ -1031,6 +1031,14 @@ test.describe.serial("video tags", () => {
         await kindsInView();
         await page.getByRole("tab", { name: /^Tags/ }).click();
         await expect(page).not.toHaveURL(/[?&]tab=kinds/);
+        // 押したタブへのフォーカスで帯が送られるのを描き終えてから戻る。人は押した同じ
+        // コマのうちに戻らない。
+        await page.evaluate(
+          () =>
+            new Promise((resolve) =>
+              requestAnimationFrame(() => requestAnimationFrame(resolve)),
+            ),
+        );
         await page.goBack();
         await expect(page).toHaveURL(/[?&]tab=kinds/);
         await kindsInView();
