@@ -72,9 +72,9 @@ flowchart LR
   docs --> checks[Checks job]
   groups --> checks
   code -->|yes| push{Push to main or Renovate PR?}
-  push -->|yes| more[E2E in four groups and Docker image build]
+  push -->|yes| more[E2E in five groups and Docker image build]
   code -->|yes| manual{Manual run?}
-  manual -->|yes| e2e[E2E in four groups]
+  manual -->|yes| e2e[E2E in five groups]
 ```
 
 "No" means only Markdown, `docs/` or `specs/` changed. For a code change, CI
@@ -97,7 +97,7 @@ image, because the Renovate routine merges them without a person
 To run browser E2E on a branch before it merges, start the CI workflow by hand
 (`workflow_dispatch`) from the Actions tab or with
 `gh workflow run ci.yml --ref <branch>`. A manual run treats the branch as a
-code change and runs every `Checks` group and the four E2E groups; it does not
+code change and runs every `Checks` group and the five E2E groups; it does not
 build the Docker image.
 
 The Go and Vitest test groups run the same tests as `task test-go` and

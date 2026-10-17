@@ -1000,7 +1000,8 @@ test.describe("live MP4 playback", () => {
   test("離脱とreloadは自分の変換だけを止め、別tabの再生を継続する", async ({
     browser,
   }) => {
-    test.setTimeout(60_000);
+    // 帯域を 32KB/s に絞った 2 つのページで再生画面と一覧を開くので、遅い機械では 1 分近くかかる。
+    test.setTimeout(120_000);
     const context = await browser.newContext();
     const first = await context.newPage();
     const second = await context.newPage();
@@ -1147,10 +1148,10 @@ test.describe("live MP4 playback", () => {
             .evaluate((element) => (element as HTMLVideoElement).currentTime),
         )
         .toBeGreaterThan(beforeSeek);
-      // 見出しの帯の右端の閉じる × で戻る。× は帯の 1 か所だけにある。
+      // 見出しの帯の右端の閉じる × で戻る。× は帯の 1 か所だけにある。直接開いたのでホームへ戻る。
       const back = page.getByRole("button", { name: "Close" });
       await back.focus();
-      await Promise.all([page.waitForURL("/library"), back.press("Enter")]);
+      await Promise.all([page.waitForURL("/"), back.press("Enter")]);
     }
   });
 
