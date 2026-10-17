@@ -60,6 +60,9 @@ file into a handbook.
 - Before writing, moving or optimizing Go or Web tests, read
   [docs/design-docs/testing.md](docs/design-docs/testing.md) for shared scope,
   synchronization and fixture rules; it links to the Web-specific levels.
+  Apply [write-tests](.agents/skills/write-tests/SKILL.md) before selecting
+  cases, including tests added during implementation or review fixes without
+  an explicit test request. SDD carries that selection in acceptance evidence.
 - Name the unit contract before choosing its fixture. Use the minimum cases
   that expose its failure, fake unrelated dependencies, and assert arguments,
   results and required effects. Apply the

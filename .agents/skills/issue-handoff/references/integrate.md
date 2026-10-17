@@ -89,6 +89,9 @@ single round.
    cannot be started, report that instead of counting e2e as passed. Then
    walk every acceptance criterion of the
    parent Issue and point at the test or the code path that satisfies it. A
+   test cited here must support the claimed boundary; apply
+   [write-tests review](../../write-tests/SKILL.md#review-and-report) to the
+   feature's changed tests rather than relying on test counts. A
    failing check or an unmet criterion is a defect to fix in this sweep,
    whatever its size, unless the fix needs a requester decision or an approved
    artifact changed; then stop and ask.
@@ -124,7 +127,8 @@ single round.
    history keeps the validation inputs; later integration refreshes use the
    permanent documents and the acceptance evidence recorded in the PR.
    When step 1 found a defect or step 3 picked one, fix each at its root cause with
-   a focused test. Run `task check` and `task check-docs` again, push (and,
+   a focused test selected through [write-tests](../../write-tests/SKILL.md).
+   Run `task check` and `task check-docs` again, push (and,
    when the fix touches the web app or the flow it tests, start a manual CI
    run on the sub-branch and wait for its `Browser E2E` job), and open one PR to the feature branch with `Refs #<parent>`, titled
    for the pre-merge sweep. Its body lists each fix and the backlog item or

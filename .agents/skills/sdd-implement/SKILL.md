@@ -101,6 +101,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 
 5. Implement only the requested work and its necessary tests:
    - Respect dependencies without expanding the scope to unrelated work
+   - Apply [write-tests](../write-tests/SKILL.md) before editing tests; use the
+     supplied acceptance evidence and inspect existing coverage before adding cases
    - Follow TDD when required by the specification or request
    - Include only setup, integration, and documentation changes necessary for this work
    - Write documentation in English to [writing-quality.md](../../../docs/design-docs/writing-quality.md);
@@ -117,7 +119,8 @@ You **MUST** consider the user input before proceeding (if not empty).
 7. Completion validation:
    - Verify the requested work is complete
    - Check that the implementation matches the relevant specification and acceptance criteria
-   - Validate that tests pass and coverage meets requirements
+   - Run [write-tests review](../write-tests/SKILL.md#review-and-report) and
+     validate that the selected evidence meets the requested behaviour
    - Confirm the implementation follows the technical plan
 
 Note: Broader work described by the plan is context, not permission to implement

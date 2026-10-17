@@ -34,6 +34,11 @@ whether the code matches. A behaviour
 with no governing line is either missing from the artifact or outside the
 change's scope; say which.
 
+For changed tests, apply
+[write-tests review](../../write-tests/SKILL.md#review-and-report) and compare
+the selected cases with their assertions, dependencies and fixture sizes.
+Passing checks alone do not establish that the tests detect the claimed defect.
+
 This is the largest category by far. The artifact was read when the work
 started and the code was written from memory afterwards, so the drift is
 invisible from inside the change.

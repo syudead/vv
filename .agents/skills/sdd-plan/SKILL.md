@@ -174,6 +174,10 @@ something to say, is worse than an absent one.
    - Add one `## Implementation Work` section
    - Add one `### <child Issue title>` subsection per independently reviewable implementation unit
    - For each unit, state its scope, dependencies, and observable acceptance evidence
+   - Apply [write-tests](../write-tests/SKILL.md#select-cases) to choose that
+     evidence: reuse existing coverage, identify the lowest test level for each
+     gap, and justify real dependencies or an actual size boundary when needed.
+     Keep these choices in Acceptance; do not create a separate test-plan artifact.
    - Acceptance evidence is something observable — a check that passes, a
      response that is returned, something visible on screen. "Implemented
      correctly" is not evidence (P-5)
