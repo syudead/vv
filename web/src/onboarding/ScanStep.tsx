@@ -19,6 +19,9 @@ export default function ScanStep({ frame, write }: StepProps) {
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState<UiText | null>(null);
   const noFolder = scan.noMediaFolders && !scan.running;
+  // フォルダの件数が分かるまで（読み込み中・読めなかった）も押せない。走っている取り込みは
+  // 始めたものと数えるので押せる。
+  const startable = scan.running || scan.canStart;
 
   const start = async () => {
     setStarting(true);
@@ -47,7 +50,7 @@ export default function ScanStep({ frame, write }: StepProps) {
       action={
         <Button
           size="sm"
-          disabled={busy || noFolder}
+          disabled={busy || !startable}
           aria-describedby={noFolder ? NO_FOLDER_ID : undefined}
           onClick={() => void start()}
         >

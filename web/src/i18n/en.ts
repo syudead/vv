@@ -2718,6 +2718,9 @@ export const en = {
       scanFailed: "Scan failed. See Settings.",
       finish: "Finish",
       pickFailed: (reason: string) => `Couldn't add the shelves: ${reason}`,
+      // 棚はできたが自動タグ付けへ動画を入れられなかったとき。棚の追加の失敗とは言わない。
+      queueFailed: (reason: string) =>
+        `Added the shelves, but couldn't queue your videos for auto-tagging: ${reason}`,
       added: (count: number) =>
         selectPlural(count, {
           one: `Added ${formatNumber(count)} shelf to your home.`,

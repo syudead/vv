@@ -37,6 +37,14 @@ const server = {
   writes: [] as OnboardingStep[],
   failWrites: false,
   folders: [] as { id: number; path: string; version: number }[],
+  // folderReads は GET /api/media-folders の回数。emptyFirstRead なら最初の 1 回だけ空を返す。
+  folderReads: 0,
+  emptyFirstRead: false,
+  failFolders: false,
+  interests: [] as Interest[],
+  failInterests: false,
+  // failQueue なら分野の追加は棚を作ってから失敗する（自動タグ付けへ入れられない）。
+  failQueue: false,
   picks: [] as string[][],
   scans: 0,
   autoTagging: false,
@@ -58,7 +66,11 @@ function respond(url: URL, init: RequestInit | undefined): Response {
       return json({ step });
     }
     case "GET /api/media-folders":
-      return json(server.folders);
+      server.folderReads += 1;
+      if (server.failFolders) return json({ code: "internal", message: "x" }, 500);
+      return json(
+        server.emptyFirstRead && server.folderReads === 1 ? [] : server.folders,
+      );
     case "GET /api/scans/current":
       return server.scans === 0
         ? json({ code: "not_found", message: "x" }, 404)
@@ -67,10 +79,15 @@ function respond(url: URL, init: RequestInit | undefined): Response {
       server.scans += 1;
       return json(runningScan);
     case "GET /api/onboarding/interests":
-      return json({ interests });
+      if (server.failInterests) return json({ code: "internal", message: "x" }, 500);
+      return json({ interests: server.interests });
     case "POST /api/onboarding/interests": {
       const { ids } = body as { ids: string[] };
       server.picks.push(ids);
+      server.interests = server.interests.map((interest) =>
+        ids.includes(interest.id) ? { ...interest, onHome: true } : interest,
+      );
+      if (server.failQueue) return json({ code: "internal", message: "x" }, 500);
       return json({
         shelves: ids.map((id, index) => ({
           key: `folder:${String(index + 20)}`,
@@ -98,6 +115,12 @@ beforeEach(() => {
   server.writes = [];
   server.failWrites = false;
   server.folders = [{ id: 1, path: "/media/videos", version: 1 }];
+  server.folderReads = 0;
+  server.emptyFirstRead = false;
+  server.failFolders = false;
+  server.interests = interests;
+  server.failInterests = false;
+  server.failQueue = false;
   server.picks = [];
   server.scans = 0;
   server.autoTagging = false;
@@ -260,6 +283,70 @@ describe("オンボードの手順", () => {
 
     expect(await screen.findByText("Opened /")).toBeTruthy();
     expect(server.picks).toEqual([["anime", "cooking"]]);
+    expect(server.writes).toEqual(["done"]);
+  });
+
+  it("フォルダの件数が分かるまで Scan library を押せない", async () => {
+    server.step = "scan";
+    server.failFolders = true;
+    renderApp("/welcome");
+    await screen.findByRole("heading", { level: 1, name: "Scan your library" });
+
+    await waitFor(() => expect(server.folderReads).toBeGreaterThan(0));
+    expect(footerButton("Scan library").hasAttribute("disabled")).toBe(true);
+    // 件数が 0 と分かったのではないので、フォルダを足すようには言わない。
+    expect(screen.queryByText("Add a media folder first.")).toBeNull();
+  });
+
+  it("フォルダの手順で読んだフォルダでスキャンの手順も押せる", async () => {
+    const user = userEvent.setup();
+    // 最初の共有の取得は 0 件、そのあと別の端末でフォルダが足された。
+    server.emptyFirstRead = true;
+    renderApp("/welcome");
+    await screen.findByTitle("/media/videos");
+
+    await user.click(footerButton("Continue"));
+    await screen.findByRole("heading", { level: 1, name: "Scan your library" });
+
+    expect(footerButton("Scan library").hasAttribute("disabled")).toBe(false);
+    expect(screen.queryByText("Add a media folder first.")).toBeNull();
+  });
+
+  it("分野を読めなければ Finish を押せない", async () => {
+    server.step = "interests";
+    server.failInterests = true;
+    renderApp("/welcome");
+
+    await screen.findByText(/^Couldn't load the interests: /);
+    expect(footerButton("Finish").hasAttribute("disabled")).toBe(true);
+    expect(footerButton("Skip").hasAttribute("disabled")).toBe(false);
+  });
+
+  it("棚ができて自動タグ付けへ入れるのだけが失敗したら、足した棚を知らせて手順に残る", async () => {
+    const user = userEvent.setup();
+    server.step = "interests";
+    server.failQueue = true;
+    renderApp("/welcome");
+
+    const group = await screen.findByRole("toolbar", { name: "Interests" });
+    await user.click(within(group).getByRole("button", { name: "Anime" }));
+    await user.click(footerButton("Finish"));
+
+    expect(
+      await screen.findByText(
+        /^Added the shelves, but couldn't queue your videos for auto-tagging: /,
+      ),
+    ).toBeTruthy();
+    expect(await screen.findByText("Added 1 shelf to your home.")).toBeTruthy();
+    expect(
+      within(group).getByRole("button", { name: "Anime, on your home" }),
+    ).toBeTruthy();
+    expect(server.writes).toEqual([]);
+
+    // 選んだ分野はもう残っていないので、Finish は何も足さずに終える。
+    await user.click(footerButton("Finish"));
+    expect(await screen.findByText("Opened /")).toBeTruthy();
+    expect(server.picks).toEqual([["anime"]]);
     expect(server.writes).toEqual(["done"]);
   });
 

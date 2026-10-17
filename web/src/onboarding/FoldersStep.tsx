@@ -1,5 +1,5 @@
 import { Folder, FolderPlus } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { createMediaFolder, listMediaFolders, type MediaFolder } from "../api/client";
 import { errorText, t, type UiText } from "../i18n";
@@ -52,15 +52,28 @@ export default function FoldersStep({ frame, write }: StepProps) {
   const [adding, setAdding] = useState(false);
   const [addError, setAddError] = useState<UiText | null>(null);
 
-  const load = useCallback(async (signal?: AbortSignal) => {
-    setList({ status: "loading" });
-    try {
-      setList({ status: "ready", folders: await listMediaFolders(signal) });
-    } catch (error) {
-      if (signal?.aborted) return;
-      setList({ status: "failed", reason: errorText(error) });
-    }
-  }, []);
+  // 一覧を変えるたびに増える。遅れて届いた読み込みが、足した直後の一覧と件数を巻き戻さない。
+  const revision = useRef(0);
+  const { setFolderCount } = scan;
+
+  const load = useCallback(
+    async (signal?: AbortSignal) => {
+      revision.current += 1;
+      const at = revision.current;
+      setList({ status: "loading" });
+      try {
+        const loaded = await listMediaFolders(signal);
+        if (at !== revision.current) return;
+        setList({ status: "ready", folders: loaded });
+        // スキャンの手順はこの件数で押せるかを決める。一覧と同じ結果から揃える。
+        setFolderCount(loaded.length);
+      } catch (error) {
+        if (signal?.aborted || at !== revision.current) return;
+        setList({ status: "failed", reason: errorText(error) });
+      }
+    },
+    [setFolderCount],
+  );
 
   useEffect(() => {
     const controller = new AbortController();
@@ -75,9 +88,10 @@ export default function FoldersStep({ frame, write }: StepProps) {
     setAddError(null);
     try {
       const created = await createMediaFolder(path);
+      revision.current += 1;
       const next = [...folders, created].sort((a, b) => a.id - b.id);
       setList({ status: "ready", folders: next });
-      scan.setFolderCount(next.length);
+      setFolderCount(next.length);
       setPicking(false);
     } catch (error) {
       setAddError(text.addFailed(errorText(error)));

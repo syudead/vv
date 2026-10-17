@@ -112,20 +112,57 @@ function useInterestsData() {
     return () => controller.abort();
   }, [load]);
 
-  return { list, autoTagging, reload: () => void load() };
+  const replace = useCallback((interests: Interest[]) => {
+    setList({ status: "ready", interests });
+  }, []);
+
+  return { list, autoTagging, reload: () => void load(), replace };
+}
+
+/**
+ * madeAfterFailure は分野の追加が失敗したあと一覧を読み直し、選んだ分野のうちホームに
+ * 載ったものを返す。棚を確定してから自動タグ付けへ入れるので、入れるのだけが失敗すれば
+ * 棚は残っている（research.md R-6）。読み直せなければ null で、何も足せなかったと扱う。
+ */
+async function madeAfterFailure(
+  picked: readonly string[],
+): Promise<{ interests: Interest[]; made: string[] } | null> {
+  try {
+    const interests = await listInterests();
+    const onHome = new Set(interests.filter((i) => i.onHome).map(({ id }) => id));
+    return { interests, made: picked.filter((id) => onHome.has(id)) };
+  } catch {
+    return null;
+  }
 }
 
 export default function InterestsStep({ frame, write }: StepProps) {
   const text = t.onboarding.interests;
   const { scan } = useScan();
   const toast = useToast();
-  const { list, autoTagging, reload } = useInterestsData();
+  const { list, autoTagging, reload, replace } = useInterestsData();
   const [picked, setPicked] = useState<string[]>([]);
   const [picking, setPicking] = useState(false);
   const [pickError, setPickError] = useState<UiText | null>(null);
 
   const interests = list.status === "ready" ? list.interests : [];
   const onHome = interests.filter((interest) => interest.onHome).map(({ id }) => id);
+
+  // 失敗のあと、棚ができていればそれを知らせ、自動タグ付けへ入れられなかったことだけを言う。
+  // 手順には残り、ホームに載った分野は押したまま押せなくなる。
+  const settleFailedPick = async (error: unknown) => {
+    const reason = errorText(error);
+    const after = await madeAfterFailure(picked);
+    if (after === null || after.made.length === 0) {
+      setPickError(text.pickFailed(reason));
+      return;
+    }
+    replace(after.interests);
+    toast(text.added(after.made.length));
+    const left = picked.filter((id) => !after.made.includes(id));
+    setPicked(left);
+    setPickError(left.length > 0 ? text.pickFailed(reason) : text.queueFailed(reason));
+  };
 
   const finish = async () => {
     setPickError(null);
@@ -136,7 +173,7 @@ export default function InterestsStep({ frame, write }: StepProps) {
         if (result.shelves.length > 0) toast(text.added(result.shelves.length));
         setPicked([]);
       } catch (error) {
-        setPickError(text.pickFailed(errorText(error)));
+        await settleFailedPick(error);
         return;
       } finally {
         setPicking(false);
@@ -154,7 +191,11 @@ export default function InterestsStep({ frame, write }: StepProps) {
       notice={<StepNotice message={pickError ?? write.error} />}
       skip={<SkipButton disabled={busy} onClick={() => void write.go("done")} />}
       action={
-        <Button size="sm" disabled={busy} onClick={() => void finish()}>
+        <Button
+          size="sm"
+          disabled={busy || list.status !== "ready"}
+          onClick={() => void finish()}
+        >
           {text.finish}
         </Button>
       }
