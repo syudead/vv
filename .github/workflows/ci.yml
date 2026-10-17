@@ -193,12 +193,13 @@ jobs:
           key: golangci-lint-${{ runner.os }}-${{ github.sha }}
           restore-keys: golangci-lint-${{ runner.os }}-
 
-      # migrations-check が origin/main と比べるので取り寄せる。PR の base branch
-      # ではなく main と比べる理由は scripts/migrations-immutable.sh にある。push
-      # （main だけ）では checkout が origin/main を作るので取り寄せない。
+      # migrations-check が origin/main との分岐点と比べるので、main と分岐点までの
+      # 履歴を取り寄せる。PR の base branch ではなく main と比べる理由は
+      # scripts/migrations-immutable.sh にある。push（main だけ）では checkout が
+      # origin/main を作り、分岐点は HEAD そのものなので取り寄せない。
       - name: main を取得する
         if: matrix.golangci && github.event_name != 'push'
-        run: git fetch --no-tags --depth=1 origin main:refs/remotes/origin/main
+        run: git fetch --no-tags --unshallow origin main:refs/remotes/origin/main
 
       # E2E の組と同じく、ffmpeg の .deb を runner のイメージ版ごとに取っておく。
       - name: runnerのイメージ版を調べる
