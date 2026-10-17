@@ -1,4 +1,4 @@
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Info } from "lucide-react";
 import { type MouseEvent, type ReactNode, useState } from "react";
 
 import { t } from "@/i18n";
@@ -7,6 +7,7 @@ import { FormRow } from "@/ui/patterns/form-row";
 import { PageHeader } from "@/ui/patterns/page-header";
 import { PageSection } from "@/ui/patterns/page-section";
 import { SettingsNav, SettingsNavItem, SettingsPage } from "@/ui/patterns/settings-page";
+import { Alert, AlertTitle } from "@/ui/shadcn/alert";
 import { Button } from "@/ui/shadcn/button";
 import {
   Select,
@@ -22,6 +23,7 @@ import { Switch } from "@/ui/shadcn/switch";
 // （web/registry/rules/patterns.md の Settings page）。ページの一覧（nav）を持つ設定の
 // 3 ページを見せる。見本はページの切り替えを状態で持つが、写した画面は一覧の項目と戻るリンクを
 // ルーターのリンクにし、一覧の住所を view="list"、各ページの住所を view="page" にする。
+// 「Server」のページは、ページ全体に効く状態の 1 行を notice に置く。
 
 const pageIds = ["library", "playback", "server"] as const;
 type PageId = (typeof pageIds)[number];
@@ -148,6 +150,14 @@ export function SettingsPageExample() {
             </Button>
           }
         />
+      }
+      notice={
+        shown === "server" ? (
+          <Alert role="note">
+            <Info aria-hidden="true" />
+            <AlertTitle>{p.serverNotice}</AlertTitle>
+          </Alert>
+        ) : undefined
       }
     >
       {pageRows[shown]}

@@ -673,6 +673,7 @@ export const en = {
       autoplayDescription: "Start the next video in the list when one ends.",
       detailsSection: "Details",
       detailsSectionDescription: "Read only; set when the server starts.",
+      serverNotice: "Restart the server to change these values.",
       version: "Version",
       dataFolder: "Data folder",
       port: "Port",
@@ -2960,6 +2961,15 @@ export const en = {
               other: `${formatNumber(count)} videos were queued for auto-tagging`,
             }),
       startFailed: (reason: string) => `Couldn't start auto-tagging: ${reason}`,
+      // Ollama の接続先が保存されていないあいだ、ページの見出しの下に出す。「Connections」は
+      // ページへのリンクになる。
+      lockTitle: "Ollama connection needed",
+      lockBody: {
+        before: "Save the Ollama URL and model in ",
+        after: " to use auto-tagging.",
+      },
+      connectionReadFailed: (reason: string) =>
+        `Couldn't read the Ollama connection: ${reason}`,
     },
     versionJudging: {
       heading: "Duplicate judging",

@@ -25,6 +25,7 @@ describe("SettingsPage", () => {
     expect(slot("settings-page").className).toContain("max-w-3xl");
     expect(document.querySelector('[data-slot="settings-page-nav"]')).toBeNull();
     expect(screen.queryByRole("navigation")).toBeNull();
+    expect(document.querySelector('[data-slot="settings-page-notice"]')).toBeNull();
   });
 
   it("shows the list alone below sm on the list address and the page under a back link on a page address", () => {
@@ -68,9 +69,22 @@ describe("SettingsPage", () => {
       "sm:**:data-[slot=page-header-leading]:hidden",
     );
 
+    // 「Server」のページは notice を見出しと節の間に置き、ほかのページには描かない。
+    const notice = slot("settings-page-notice");
+    expect(notice.textContent).toBe(p.serverNotice);
+    expect(
+      notice.compareDocumentPosition(slot("settings-page-body")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    expect(
+      slot("page-header").compareDocumentPosition(notice) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
     const header = slot("page-header");
     fireEvent.click(within(header).getByRole("link", { name: p.settings }));
 
     expect(slot("settings-page").dataset.view).toBe("list");
+    expect(document.querySelector('[data-slot="settings-page-notice"]')).toBeNull();
   });
 });

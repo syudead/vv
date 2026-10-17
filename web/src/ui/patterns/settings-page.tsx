@@ -8,7 +8,8 @@ import { cn } from "@/lib/cn";
 // 節の間隔は骨格が持つ。nav（ページの一覧、SettingsNav）を渡すと、sm からは settings-nav の
 // 幅の列を本文の左に置き、トップバーの下に貼り付ける（窓より高ければ列の中で動かす）。sm 未満は view が "list" なら一覧だけ、
 // "page" なら本文だけを出す（幅は CSS が決め、useIsMobile は使わない）。本文だけのときの
-// 一覧へ戻るリンクは header の PageHeader の leading に置き、骨格が sm から隠す。
+// 一覧へ戻るリンクは header の PageHeader の leading に置き、骨格が sm から隠す。notice を渡すと、
+// 見出しと節の間にページ全体に効く状態の 1 行（Alert）を置く。
 // 規則は web/registry/rules/patterns.md の Settings page。
 
 export interface SettingsPageProps {
@@ -23,6 +24,11 @@ export interface SettingsPageProps {
    * sm からはどちらも一覧と本文を並べる。nav が無いときは使わない。
    */
   view?: "list" | "page";
+  /**
+   * ページ全体に効く状態の 1 行（Alert、たとえば設定が前提を欠いて押せない理由）。見出しと節の
+   * 間に置く。渡さなければ何も描かない。
+   */
+  notice?: ReactNode;
 }
 
 export function SettingsPage({
@@ -30,11 +36,15 @@ export function SettingsPage({
   children,
   nav,
   view = "page",
+  notice,
 }: SettingsPageProps) {
   const body = (
-    <div data-slot="settings-page-body" className="flex flex-col gap-8">
-      {children}
-    </div>
+    <>
+      {notice !== undefined && <div data-slot="settings-page-notice">{notice}</div>}
+      <div data-slot="settings-page-body" className="flex flex-col gap-8">
+        {children}
+      </div>
+    </>
   );
   if (nav === undefined) {
     return (

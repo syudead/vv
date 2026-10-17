@@ -1,5 +1,5 @@
 import { CircleAlert, CircleCheck, LoaderCircle } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 import {
   type AutoTaggingScope,
@@ -64,10 +64,12 @@ type CheckState =
 function ProgressSection({
   settings,
   starting,
+  locked,
   onStart,
 }: {
   settings: AutoTaggingSettings;
   starting: AutoTaggingScope | null;
+  locked?: boolean;
   onStart: (scope: AutoTaggingScope) => void;
 }) {
   const text = t.settings.autoTagging;
@@ -92,7 +94,7 @@ function ProgressSection({
           size="sm"
           variant="outline"
           onClick={() => onStart("missing")}
-          aria-disabled={starting !== null || undefined}
+          aria-disabled={locked || starting !== null || undefined}
         >
           {text.runMissing}
         </Button>
@@ -100,7 +102,7 @@ function ProgressSection({
           size="sm"
           variant="ghost"
           onClick={() => onStart("all")}
-          aria-disabled={starting !== null || undefined}
+          aria-disabled={locked || starting !== null || undefined}
         >
           {text.runAll}
         </Button>
@@ -121,14 +123,115 @@ function ProgressSection({
 }
 
 /**
+ * SectionsLoading は 2 つの節を読んでいる間の形である。読めなければ「Classifier」の節に
+ * 読めなかった旨と `Retry` を出す。
+ */
+function SectionsLoading({
+  description,
+  loadError,
+  onRetry,
+}: {
+  description: ReactNode;
+  loadError: UiText | null;
+  onRetry: () => void;
+}) {
+  const text = t.settings.autoTagging;
+  return (
+    <>
+      {loadError === null && (
+        <PageSection title={text.progressHeading}>
+          <Skeleton className="h-8" />
+        </PageSection>
+      )}
+      <PageSection title={text.heading} description={description}>
+        {loadError !== null ? (
+          <div>
+            <ErrorState
+              title={text.loadFailed(loadError)}
+              retryLabel={t.common.retry}
+              onRetry={onRetry}
+            />
+          </div>
+        ) : (
+          <div role="status" aria-label={text.loading} className="flex flex-col gap-3">
+            <Skeleton className="h-9" />
+            <Skeleton className="h-9" />
+          </div>
+        )}
+      </PageSection>
+    </>
+  );
+}
+
+/** ClassifierFeedback は「Test judging」の結果と保存の失敗の行である。 */
+function ClassifierFeedback({
+  check,
+  saveError,
+}: {
+  check: CheckState;
+  saveError: UiText | null;
+}) {
+  const text = t.settings.autoTagging;
+  return (
+    <>
+      {check.kind === "checking" && (
+        <p
+          role="status"
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+        >
+          <LoaderCircle
+            aria-hidden="true"
+            className="size-4 animate-spin motion-reduce:animate-none"
+          />
+          {text.checking}
+        </p>
+      )}
+      {check.kind === "ok" && (
+        <p
+          role="status"
+          className="flex items-center gap-2 text-xs text-muted-foreground"
+        >
+          <CircleCheck aria-hidden="true" className="size-4" />
+          {text.checkOk}
+        </p>
+      )}
+      {check.kind === "failed" && (
+        <Alert variant="destructive">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>{check.message}</AlertTitle>
+        </Alert>
+      )}
+      {saveError !== null && (
+        <Alert variant="destructive">
+          <CircleAlert aria-hidden="true" />
+          <AlertTitle>{saveError}</AlertTitle>
+        </Alert>
+      )}
+    </>
+  );
+}
+
+/**
  * AutoTaggingSection は「Auto-tagging」のページの「Progress」と「Classifier」の 2 つの節である。
  * 「Classifier」で機能の入切、取り込みのあとの自動の判定と 2 つの確率を設定し、機能が入なら
  * 「Progress」でライブラリの動画を判定に回す
  * （docs/design-docs/auto-tagging.md）。Ollama の接続先は OllamaSection が持つ。判定が
  * 待ち行列に残っている間は件数を読み直す。「Test judging」は判定の口に 1 問を判定させ、
  * 機能の入切に関係なく使えるかを確かめる。
+ *
+ * `locked` は Ollama の接続先が保存されていないことである（specs/058-settings-pages/research.md
+ * R-5）。そのあいだ切り替え、入力、ボタンは値を見せたまま `aria-disabled` にし、`aria-disabled` は
+ * それだけでは何も止めないので、各ハンドラは下書きを変えず要求も送らずに返す。`pending` は
+ * 接続先をまだ読んでいることで、保存したかが分かるまでは操作を描かず読み込み中の形を出す（R-5 の
+ * Loading）。
  */
-export default function AutoTaggingSection() {
+export default function AutoTaggingSection({
+  locked,
+  pending,
+}: {
+  locked?: boolean;
+  pending?: boolean;
+}) {
   const text = t.settings.autoTagging;
   const toast = useToast();
   const [settings, setSettings] = useState<AutoTaggingSettings | null>(null);
@@ -202,7 +305,7 @@ export default function AutoTaggingSection() {
   };
 
   const save = async () => {
-    if (draft === null || !valid || saving) return;
+    if (locked || draft === null || !valid || saving) return;
     setSaving(true);
     try {
       if (await persist()) toast(text.saved);
@@ -212,7 +315,7 @@ export default function AutoTaggingSection() {
   };
 
   const runCheck = async () => {
-    if (check.kind === "checking") return;
+    if (locked || check.kind === "checking") return;
     setCheck({ kind: "checking" });
     try {
       const result = await checkAutoTaggingClassifier();
@@ -227,7 +330,7 @@ export default function AutoTaggingSection() {
   };
 
   const start = async (scope: AutoTaggingScope) => {
-    if (starting !== null) return;
+    if (locked || starting !== null) return;
     setStarting(scope);
     try {
       const queued = await startAutoTagging(scope);
@@ -241,45 +344,28 @@ export default function AutoTaggingSection() {
   };
 
   const update = (change: Partial<Draft>) => {
+    if (locked) return;
     setDraft((current) => (current === null ? current : { ...current, ...change }));
     setSaveError(null);
   };
 
   const description = <PageLinkText sentence={text.description} page="connections" />;
 
-  if (draft === null || settings === null) {
+  if (pending || draft === null || settings === null)
     return (
-      <>
-        {loadError === null && (
-          <PageSection title={text.progressHeading}>
-            <Skeleton className="h-8" />
-          </PageSection>
-        )}
-        <PageSection title={text.heading} description={description}>
-          {loadError !== null ? (
-            <div>
-              <ErrorState
-                title={text.loadFailed(loadError)}
-                retryLabel={t.common.retry}
-                onRetry={() => void load()}
-              />
-            </div>
-          ) : (
-            <div role="status" aria-label={text.loading} className="flex flex-col gap-3">
-              <Skeleton className="h-9" />
-              <Skeleton className="h-9" />
-            </div>
-          )}
-        </PageSection>
-      </>
+      <SectionsLoading
+        description={description}
+        loadError={loadError}
+        onRetry={() => void load()}
+      />
     );
-  }
 
   return (
     <>
       <ProgressSection
         settings={settings}
         starting={starting}
+        locked={locked}
         onStart={(scope) => void start(scope)}
       />
       <PageSection title={text.heading} description={description}>
@@ -291,6 +377,7 @@ export default function AutoTaggingSection() {
           <Switch
             id="auto-tagging-enabled"
             checked={draft.enabled}
+            aria-disabled={locked || undefined}
             onCheckedChange={(checked) => update({ enabled: checked })}
           />
         </FormRow>
@@ -302,6 +389,7 @@ export default function AutoTaggingSection() {
           <Switch
             id="auto-tagging-after-import"
             checked={draft.afterImport}
+            aria-disabled={locked || undefined}
             onCheckedChange={(checked) => update({ afterImport: checked })}
           />
         </FormRow>
@@ -319,6 +407,7 @@ export default function AutoTaggingSection() {
             step={0.05}
             className="sm:w-16"
             aria-invalid={threshold === null || undefined}
+            aria-disabled={locked || undefined}
             value={draft.threshold}
             onChange={(event) => update({ threshold: event.target.value })}
           />
@@ -337,6 +426,7 @@ export default function AutoTaggingSection() {
             step={0.05}
             className="sm:w-16"
             aria-invalid={!tentativeValid || undefined}
+            aria-disabled={locked || undefined}
             value={draft.tentativeThreshold}
             onChange={(event) => update({ tentativeThreshold: event.target.value })}
           />
@@ -346,7 +436,7 @@ export default function AutoTaggingSection() {
             <Button
               size="sm"
               onClick={() => void save()}
-              aria-disabled={saving || !valid || undefined}
+              aria-disabled={locked || saving || !valid || undefined}
             >
               {saving && (
                 <LoaderCircle
@@ -360,44 +450,12 @@ export default function AutoTaggingSection() {
               size="sm"
               variant="outline"
               onClick={() => void runCheck()}
-              aria-disabled={check.kind === "checking" || undefined}
+              aria-disabled={locked || check.kind === "checking" || undefined}
             >
               {text.check}
             </Button>
           </div>
-          {check.kind === "checking" && (
-            <p
-              role="status"
-              className="flex items-center gap-2 text-xs text-muted-foreground"
-            >
-              <LoaderCircle
-                aria-hidden="true"
-                className="size-4 animate-spin motion-reduce:animate-none"
-              />
-              {text.checking}
-            </p>
-          )}
-          {check.kind === "ok" && (
-            <p
-              role="status"
-              className="flex items-center gap-2 text-xs text-muted-foreground"
-            >
-              <CircleCheck aria-hidden="true" className="size-4" />
-              {text.checkOk}
-            </p>
-          )}
-          {check.kind === "failed" && (
-            <Alert variant="destructive">
-              <CircleAlert aria-hidden="true" />
-              <AlertTitle>{check.message}</AlertTitle>
-            </Alert>
-          )}
-          {saveError !== null && (
-            <Alert variant="destructive">
-              <CircleAlert aria-hidden="true" />
-              <AlertTitle>{saveError}</AlertTitle>
-            </Alert>
-          )}
+          <ClassifierFeedback check={check} saveError={saveError} />
         </div>
       </PageSection>
     </>
