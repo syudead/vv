@@ -57,7 +57,7 @@ test.describe.serial("scan issues with the real server", () => {
     expect(created.status()).toBe(201);
     folder = (await created.json()) as MediaFolder;
 
-    await page.goto("/settings#scan-status");
+    await page.goto("/settings/scan#scan-status");
     await expect(page.getByRole("button", { name: "Scan library" })).toBeEnabled();
     await page.getByRole("button", { name: "Scan library" }).click();
 

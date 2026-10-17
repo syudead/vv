@@ -209,7 +209,7 @@ test.describe.serial("folder browser", () => {
         // 押すと設定の「Scan status」へ移る（取り込みは始めない）。
         await expect(page.getByRole("link", { name: "Scan" })).toHaveAttribute(
           "href",
-          "/settings#scan-status",
+          "/settings/scan#scan-status",
         );
         expect(
           await page.evaluate(

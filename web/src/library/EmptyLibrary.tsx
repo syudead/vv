@@ -17,7 +17,7 @@ export default function EmptyLibrary() {
       description={t.library.empty.description}
       action={
         <Button asChild size="sm">
-          <Link to="/settings#scan-status">{t.list.scan}</Link>
+          <Link to="/settings/scan#scan-status">{t.list.scan}</Link>
         </Button>
       }
     />

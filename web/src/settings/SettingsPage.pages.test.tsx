@@ -101,6 +101,15 @@ describe("SettingsPage: pages", () => {
     await waitFor(() => expect(document.activeElement).toBe(heading));
   });
 
+  it("opens /settings/scan#scan-status with Scan status focused", async () => {
+    renderSettings("/settings/scan#scan-status");
+
+    const heading = await screen.findByRole("heading", { level: 2, name: "Scan status" });
+    expect(screen.getByRole("heading", { level: 1, name: "Scan" })).toBeDefined();
+    expect(currentLocation()).toBe("/settings/scan#scan-status");
+    await waitFor(() => expect(document.activeElement).toBe(heading));
+  });
+
   it("goes to another page from the list and back to the previous one", async () => {
     const user = userEvent.setup();
     renderSettings("/settings/library");

@@ -277,7 +277,8 @@ the `Created "{name}"` toast carries `Open` to the new folder's page
 
 ### Scan entry and progress
 
-A scan starts only from `Scan library` in the Settings `Scan status` section
+A scan starts only from `Scan library` in the `Scan status` section of the
+Settings `Scan` page
 ([`ScanStatusSection.tsx`](../../web/src/settings/ScanStatusSection.tsx)),
 because scanning is occasional and a permanent button in the top bar repeated
 the bottom-right indicator. The button is present in every scan state. It is
@@ -285,7 +286,7 @@ disabled while a scan runs (including one started in another tab) and while
 no media folder exists, with the reason in a line it references through
 `aria-describedby`. A failed start request appears as an alert in the same
 section, and the button stays available to try again. The `Scan` action of an
-empty library or empty folder is a link to `/settings#scan-status` and starts
+empty library or empty folder is a link to `/settings/scan#scan-status` and starts
 nothing.
 
 The bottom-right indicator
@@ -298,7 +299,7 @@ replace its opening, closing and dismissal.
 | --- | --- | --- |
 | Pointer enters the indicator or the summary | Opens | — |
 | Focus moves onto the indicator | Opens, unless the summary closed while the indicator kept focus | — |
-| Pointer leaves (after 100 ms), `Esc`, a press outside, focus leaves, the indicator is pressed | Closes; focus does not return to the indicator | Pressing goes to `/settings#scan-status` and ends a result notice |
+| Pointer leaves (after 100 ms), `Esc`, a press outside, focus leaves, the indicator is pressed | Closes; focus does not return to the indicator | Pressing goes to `/settings/scan#scan-status` and ends a result notice |
 | The hide button (`×`) is pressed, in any state | Closes | Hidden for the rest of that scan and for its result |
 | The scan ends (done, partial or failed) | — | Shows the result for 8 seconds, then hides itself |
 | The next scan starts | — | Shown again |

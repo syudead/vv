@@ -30,8 +30,8 @@ import {
   type RunOperation,
 } from "./fetchRules";
 
-/** WORK_INFO_PLUGIN_SETTINGS は Settings の「Work-info plugins」の節である。 */
-export const WORK_INFO_PLUGIN_SETTINGS = "/settings#work-info-plugins";
+/** WORK_INFO_PLUGIN_SETTINGS は Settings の Plugins のページの「Work-info plugins」の節である。 */
+export const WORK_INFO_PLUGIN_SETTINGS = "/settings/plugins#work-info-plugins";
 
 /** MAX_CANDIDATES は出す候補の数の上限である（ui-design「Candidates」）。 */
 const MAX_CANDIDATES = 50;
