@@ -26,6 +26,8 @@ const server = {
   home: { shelves: [] } as Home,
   puts: [] as number[][],
   folders: [] as { id: number; name: string }[],
+  /** 置くと GET /api/home はこの約束が解けるまで答えない。 */
+  holdHome: undefined as Promise<void> | undefined,
 };
 
 /** applyOrder は書いた並びをサーバーの棚の一覧に当てる。 */
@@ -45,6 +47,7 @@ function applyOrder(ids: readonly number[]) {
 beforeEach(() => {
   server.home = { shelves: [travel, food, recent], organizer: { running: false } };
   server.puts = [];
+  server.holdHome = undefined;
   server.folders = [
     { id: 3, name: "Travel" },
     { id: 4, name: "Food" },
@@ -61,7 +64,10 @@ beforeEach(() => {
         applyOrder(body.folderIds);
         return Promise.resolve(new Response(null, { status: 204 }));
       }
-      if (url.pathname === "/api/home") return Promise.resolve(json(server.home));
+      if (url.pathname === "/api/home") {
+        const hold = server.holdHome ?? Promise.resolve();
+        return hold.then(() => json(server.home));
+      }
       if (url.pathname === "/api/home/shelves") {
         const keys = (url.searchParams.get("keys") ?? "").split(",");
         return Promise.resolve(
@@ -122,6 +128,45 @@ describe("ホームの棚の操作（specs/057-home/ui-design.md「Home」）", 
 
     expect(server.puts).toEqual([[4, 3]]);
     await waitFor(() => expect(headings()).toEqual(["Food", "Travel", "Recently added"]));
+  });
+
+  it("書いた後の読み直しが終わるまで、棚の操作を受け付けない", async () => {
+    const user = userEvent.setup();
+    renderHome();
+    const travelMore = await screen.findByRole("button", {
+      name: "More actions for Travel",
+    });
+    let release = () => {};
+    server.holdHome = new Promise((resolve) => {
+      release = resolve;
+    });
+
+    await user.click(travelMore);
+    await user.click(screen.getByRole("menuitem", { name: "Remove from home" }));
+    expect(server.puts).toEqual([[4]]);
+
+    // 読み直す前の並び（[3, 4]）から次を作らせない。
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "More actions for Food" })
+          .hasAttribute("disabled"),
+      ).toBe(true),
+    );
+    expect(
+      screen.getByRole("button", { name: "Add shelf" }).hasAttribute("disabled"),
+    ).toBe(true);
+
+    server.holdHome = undefined;
+    release();
+    await waitFor(() => expect(headings()).toEqual(["Food", "Recently added"]));
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "More actions for Food" })
+          .hasAttribute("disabled"),
+      ).toBe(false),
+    );
   });
 
   it("Remove from home は棚を外し、トーストの Undo で元の位置に戻す", async () => {

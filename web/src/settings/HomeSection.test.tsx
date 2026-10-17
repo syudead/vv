@@ -16,11 +16,14 @@ import HomeSection from "./HomeSection";
 const server = {
   organizer: { running: false } as HomeOrganizer,
   requests: [] as { method: string; path: string; body?: unknown }[],
+  /** 置くと POST /api/home/organize はこの約束が解けるまで答えない。 */
+  holdOrganize: undefined as Promise<void> | undefined,
 };
 
 beforeEach(() => {
   server.organizer = { running: false };
   server.requests = [];
+  server.holdOrganize = undefined;
   installFakeEventSource();
   vi.stubGlobal(
     "fetch",
@@ -37,7 +40,9 @@ beforeEach(() => {
       }
       if (path === "/api/home/organize" && method === "POST") {
         server.organizer = { running: false, pending: "rebuild" };
-        return Promise.resolve(json(server.organizer, 202));
+        const accepted = server.organizer;
+        const hold = server.holdOrganize ?? Promise.resolve();
+        return hold.then(() => json(accepted, 202));
       }
       if (path === "/api/onboarding" && method === "PUT") {
         return Promise.resolve(json({ step: "folders" }));
@@ -91,6 +96,29 @@ describe("設定の Home の節", () => {
       last: { run: "rebuild", outcome: "unchanged", finishedAt: 0, added: 0, removed: 0 },
     };
     await emitServerEvent("home");
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+    expect(screen.getByText(/^Last organized .*: nothing changed\.$/)).toBeTruthy();
+  });
+
+  it("応答より先に実行の終わりの知らせが来ても、待ちのまま残さない", async () => {
+    const user = userEvent.setup();
+    renderSection();
+    const button = await screen.findByRole("button", { name: "Reorganize" });
+    await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
+    let release = () => {};
+    server.holdOrganize = new Promise((resolve) => {
+      release = resolve;
+    });
+
+    await user.click(button);
+    // 待ちに入った組み直しが応答の前に終わり、`home` の知らせが先に届く。
+    server.organizer = {
+      running: false,
+      last: { run: "rebuild", outcome: "unchanged", finishedAt: 0, added: 0, removed: 0 },
+    };
+    await emitServerEvent("home");
+    release();
+
     await waitFor(() => expect(button.hasAttribute("disabled")).toBe(false));
     expect(screen.getByText(/^Last organized .*: nothing changed\.$/)).toBeTruthy();
   });

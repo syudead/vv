@@ -21,7 +21,7 @@ type Load =
 
 /**
  * useOrganizer はホームの整理役の状態を GET /api/home で読み、`home` の知らせとつなぎ直しで
- * 読み直す。`set` は POST /api/home/organize の応答を当てる。
+ * 読み直す。`set` は POST /api/home/organize の応答を当てて読み直す。
  */
 function useOrganizer() {
   const [load, setLoad] = useState<Load>({ status: "loading" });
@@ -57,10 +57,15 @@ function useOrganizer() {
       controller.current.abort();
     };
   }, [reload]);
-  const set = useCallback((organizer: HomeOrganizer) => {
-    controller.current.abort();
-    setLoad({ status: "ready", organizer });
-  }, []);
+  // 応答を当てた後、読み直す。応答より先に `home` の知らせ（実行の終わり）が届いていても、
+  // 応答の後に読んだ今の状態で待ちを消す。
+  const set = useCallback(
+    (organizer: HomeOrganizer) => {
+      setLoad({ status: "ready", organizer });
+      reload();
+    },
+    [reload],
+  );
   const retry = useCallback(() => {
     setLoad({ status: "loading" });
     reload();

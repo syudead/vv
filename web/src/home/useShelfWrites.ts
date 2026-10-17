@@ -34,9 +34,11 @@ async function currentOrder(known: KnownOrder): Promise<readonly number[]> {
 /**
  * useShelfWrites は棚の書き込みと、その結果のトーストを持つ。書けたら `onWritten` を呼ぶ
  * （呼び手が読み直す。サーバーの `home` の知らせも届く）。失敗は理由のトーストにする。
- * `busy` は書き込みの最中で、呼び手は棚の操作を無効にする。
+ * `busy` は書き込みと、その後の `onWritten` の読み直しが終わるまでで、呼び手は棚の操作を
+ * 無効にする。ホームは見えている並びから次の並びを作るので、読み直す前の古い並びで次を
+ * 書かせない。
  */
-export function useShelfWrites(onWritten: () => void) {
+export function useShelfWrites(onWritten: () => void | Promise<void>) {
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const written = useRef(onWritten);
@@ -50,14 +52,17 @@ export function useShelfWrites(onWritten: () => void) {
       setBusy(true);
       try {
         await setHomeShelves(await next());
-        written.current();
-        return true;
       } catch (error) {
         toast(t.home.writeFailed(errorText(error)));
+        setBusy(false);
         return false;
+      }
+      try {
+        await written.current();
       } finally {
         setBusy(false);
       }
+      return true;
     },
     [toast],
   );
