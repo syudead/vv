@@ -359,6 +359,7 @@ func run(opts runOptions) error {
 	for _, worker := range workers {
 		workersDone.Go(func() { worker.Run(backgroundCtx) })
 	}
+	workersDone.Go(func() { app.BackfillKeyframes(backgroundCtx, ingestStore, media.ProbeKeyframes, logger) })
 	workersDone.Go(func() { autoTagger.Run(backgroundCtx) })
 	workersDone.Go(func() { versionJudge.Run(backgroundCtx) })
 	// 読まれないセッションと時間切れの実行を片付け、止めるときは進んでいる実行を中止する。

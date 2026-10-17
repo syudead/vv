@@ -28,12 +28,14 @@ const probeCommand = "ffprobe"
 
 // Probe は1ファイルのメタデータを取得する。
 //
-// 必要な値は -show_format -show_streams の1回ですべて揃う。値ごとに
+// stream の情報は -show_format -show_streams の1回で揃う。値ごとに
 // -show_entries で複数回起動すると、プロセス起動が支配的なコストなので遅くなる。
 //
 // ffmpeg／ffprobe を起こす os/exec はこのパッケージの外へ漏らさない（OS の
 // 既定アプリの起動だけは別の責務として internal/opener に閉じ込める）。
 // 再生可否の判定規則は internal/domain にあり、外部プロセスに触れずにテストできる。
+//
+// コピー可能な映像では、別の時間制限付き調査でキーフレーム間隔も記録する（ProbeKeyframes）。
 //
 // ffprobe の直前にファイルの大きさと更新時刻を取り、Probe.Source に載せる。
 // 保存したライブ変換用の解析情報が、変換で開いたファイルと同じ内容かを比べる鍵になる
@@ -77,6 +79,10 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 	if probe.Media != nil && isTransportStreamPath(path) {
 		probe.Media.Broadcast = readBroadcast(ctx, path, probe.DurationMs)
 	}
+	if probe.Transcode != nil && videoCanCopy(probe.Transcode.Video) {
+		keyframes := ProbeKeyframes(ctx, path)
+		probe.Keyframes = &keyframes
+	}
 	after, err := os.Stat(path)
 	if err != nil {
 		return domain.Probe{}, domain.NewProbeFailure(domain.ProbeErrorFileUnavailable,
@@ -96,6 +102,7 @@ func Probe(ctx context.Context, path string) (domain.Probe, error) {
 func stampProbe(probe domain.Probe, before, after domain.FileStamp) domain.Probe {
 	probe.Source = before
 	if before != after {
+		probe.Keyframes = nil
 		probe.Transcode = nil
 		probe.Media = nil
 	}
