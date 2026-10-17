@@ -56,8 +56,8 @@ func (i *Ingest) UploadThumbnailImage(
 // checkThumbnailUpload は、image が上限以下の、最後まで読める PNG・JPEG・静止画の WebP かを
 // 確かめる。読み方はサムネイルの編集の画像と同じ checkImage で、画素数の上限だけが大きい。
 func checkThumbnailUpload(image []byte) error {
-	if len(image) > domain.ThumbnailUploadMaxBytes {
-		return &domain.ThumbnailUploadTooLargeError{Limit: domain.ThumbnailUploadMaxBytes}
+	if err := checkThumbnailUploadSize(len(image)); err != nil {
+		return err
 	}
 	if animatedWebP(image) {
 		return domain.ErrThumbnailUploadInvalid
@@ -68,6 +68,14 @@ func checkThumbnailUpload(image []byte) error {
 		return &domain.ThumbnailUploadTooLargeError{Limit: domain.ThumbnailUploadMaxPixels}
 	case err != nil:
 		return domain.ErrThumbnailUploadInvalid
+	}
+	return nil
+}
+
+// checkThumbnailUploadSize checks the byte count before image decoding.
+func checkThumbnailUploadSize(size int) error {
+	if size > domain.ThumbnailUploadMaxBytes {
+		return &domain.ThumbnailUploadTooLargeError{Limit: domain.ThumbnailUploadMaxBytes}
 	}
 	return nil
 }

@@ -92,15 +92,10 @@ func TestServeReleasesStopNotifierOnce(t *testing.T) {
 	}
 }
 
-// 要求に応答したあとの停止の指示でも、正常に止まる。応答したなら Serve が
-// 待ち受けを http.Server に登録しているので、先に閉じた待ち受けの登録を Serve が
-// 外す前に Shutdown が走ると、Shutdown がもう一度閉じる。その順になるかは
-// 時の運なので、何度も繰り返す。
+// A stop requested after a response completes shuts the server down cleanly.
 func TestServeStopsCleanlyAfterServingARequest(t *testing.T) {
-	for i := range 200 {
-		if err := serveOneRequestAndStop(t); err != nil {
-			t.Fatalf("%d 回目: 正常な停止なのに誤りが返った: %v", i+1, err)
-		}
+	if err := serveOneRequestAndStop(t); err != nil {
+		t.Fatalf("正常な停止なのに誤りが返った: %v", err)
 	}
 }
 

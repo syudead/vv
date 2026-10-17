@@ -111,6 +111,7 @@ func libraryPages(t *testing.T, db *DB, audience domain.Audience, q domain.Video
 		if err != nil {
 			t.Fatalf("%+v: %v", q, err)
 		}
+		assertPageSize(t, len(page.Items), q.Limit, page.NextCursor)
 		out = append(out, page.Items...)
 		// 自動グループのフォルダは、同じスナップショットの登録フォルダの下にある。
 		for _, item := range page.Items {
@@ -417,7 +418,8 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 	}
 	all := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Limit: domain.MaxLimit})
 
-	for _, sort := range allSorts {
+	for _, tc := range pagingCases(allSorts, 2, 3) {
+		sort := tc.value
 		const seed = 42
 		want := slices.Clone(all)
 		desc := sort != domain.SortRandom && sort[len(sort)-4:] == "Desc"
@@ -436,11 +438,9 @@ func TestListLibraryAllSortsPageInExpectedOrder(t *testing.T) {
 			}
 			return c
 		})
-		for _, limit := range []int{1, 2, 3} {
-			got := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: sort, Seed: seed, Limit: limit})
-			if !slices.Equal(itemNames(got), itemNames(want)) {
-				t.Errorf("%s limit=%d = %v, want %v", sort, limit, itemNames(got), itemNames(want))
-			}
+		got := libraryPages(t, db, domain.AudienceOwner, domain.VideoQuery{Sort: sort, Seed: seed, Limit: tc.limit})
+		if !slices.Equal(itemNames(got), itemNames(want)) {
+			t.Errorf("%s limit=%d = %v, want %v", sort, tc.limit, itemNames(got), itemNames(want))
 		}
 	}
 }

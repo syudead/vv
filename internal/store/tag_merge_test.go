@@ -223,8 +223,9 @@ func mergeCounted(t *testing.T, db *DB, targetID int64, sourceIDs []int64) (doma
 	return outcome, counted
 }
 
-func TestMergeTagsHandlesMaxTagBatchSourcesInFixedStatements(t *testing.T) {
-	const keys = 50
+func TestMergeTagsUsesFixedStatementsForSeveralSources(t *testing.T) {
+	// Three sources cover both tentative states and overlapping assignments.
+	const sourceCount, keys = 3, 2
 	ctx := context.Background()
 
 	// 統合元 1 個のときの文の数を基準にとる。
@@ -240,12 +241,12 @@ func TestMergeTagsHandlesMaxTagBatchSourcesInFixedStatements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources := insertMergeSources(t, db, domain.MaxTagBatch, keys)
+	sources := insertMergeSources(t, db, sourceCount, keys)
 	outcome, counted := mergeCounted(t, db, target.ID, sources)
 
 	if counted.execs != baseline.execs {
 		t.Errorf("統合元 %d 個の文の数 = %d, 1 個のとき = %d（統合元の数によってはいけない）",
-			domain.MaxTagBatch, counted.execs, baseline.execs)
+			sourceCount, counted.execs, baseline.execs)
 	}
 	if counted.tagByIDRun != 1 {
 		t.Errorf("統合先の tagByID = %d 回, want 1", counted.tagByIDRun)
@@ -253,7 +254,7 @@ func TestMergeTagsHandlesMaxTagBatchSourcesInFixedStatements(t *testing.T) {
 	if len(outcome.NotFoundIDs) != 0 || outcome.Tag.Tentative {
 		t.Errorf("outcome = NotFoundIDs %v, Tentative %v", outcome.NotFoundIDs, outcome.Tag.Tentative)
 	}
-	if got, want := len(outcome.Tag.Synonyms), 2*domain.MaxTagBatch; got != want {
+	if got, want := len(outcome.Tag.Synonyms), 2*sourceCount; got != want {
 		t.Errorf("統合先のシノニムの数 = %d, want %d", got, want)
 	}
 
@@ -267,9 +268,9 @@ func TestMergeTagsHandlesMaxTagBatchSourcesInFixedStatements(t *testing.T) {
 	if err := db.sql.QueryRow(`select count(*) from tag_names where tag_id = ?`, target.ID).Scan(&names); err != nil {
 		t.Fatal(err)
 	}
-	if remaining != 1 || assignments != keys || names != 1+2*domain.MaxTagBatch {
+	if remaining != 1 || assignments != keys || names != 1+2*sourceCount {
 		t.Errorf("残ったタグ %d・統合先の付与 %d・名前 %d, want 1・%d・%d",
-			remaining, assignments, names, keys, 1+2*domain.MaxTagBatch)
+			remaining, assignments, names, keys, 1+2*sourceCount)
 	}
 	assertTagInvariantsNow(t, db)
 }

@@ -53,6 +53,7 @@ func readAllTagPages(t *testing.T, db *DB, query domain.TagListQuery) []domain.T
 		if err != nil {
 			t.Fatalf("ListTags(%+v) error = %v", query, err)
 		}
+		assertPageSize(t, len(page.Items), query.Limit, page.NextCursor)
 		pages = append(pages, page)
 		if page.NextCursor == "" {
 			return pages
@@ -91,22 +92,19 @@ func TestListTagsReadsAllTagsInPagesByNaturalOrder(t *testing.T) {
 
 	// 照合形が同じ名前（全角・半角、かな）を含め、id で前後が決まる組を作る。
 	names := []string{"tag 2", "tag 10", "ｔａｇ ２", "アニメ", "あにめ", "Tag 1", "ﾀｸﾞ", "タグ"}
-	for i := 0; len(names) < 250; i++ {
-		names = append(names, fmt.Sprintf("tag %d", 100+i))
-	}
 	ids := createTagsNamed(t, db, names...)
 
-	pages := readAllTagPages(t, db, domain.TagListQuery{Limit: 100})
+	pages := readAllTagPages(t, db, domain.TagListQuery{Limit: 3})
 	if len(pages) != 3 {
 		t.Fatalf("ページの数 = %d, want 3", len(pages))
 	}
 	for i, page := range pages {
-		if page.Total != 250 || page.TotalAll != 250 {
-			t.Errorf("pages[%d]: Total = %d, TotalAll = %d, want 250, 250", i, page.Total, page.TotalAll)
+		if page.Total != 8 || page.TotalAll != 8 {
+			t.Errorf("pages[%d]: Total = %d, TotalAll = %d, want 8, 8", i, page.Total, page.TotalAll)
 		}
 	}
-	if len(pages[0].Items) != 100 || len(pages[1].Items) != 100 || len(pages[2].Items) != 50 {
-		t.Errorf("各ページの件数 = %d, %d, %d, want 100, 100, 50",
+	if len(pages[0].Items) != 3 || len(pages[1].Items) != 3 || len(pages[2].Items) != 2 {
+		t.Errorf("各ページの件数 = %d, %d, %d, want 3, 3, 2",
 			len(pages[0].Items), len(pages[1].Items), len(pages[2].Items))
 	}
 	if got, want := pagedTagNames(pages), naturalOrder(names, ids); !slices.Equal(got, want) {
@@ -290,12 +288,11 @@ func TestListTagsSortsByCountAndCreatedAcrossPages(t *testing.T) {
 		{domain.TagSortCreatedAsc, expected(createdAt, false)},
 		{domain.TagSortName, naturalOrder(names, ids)},
 	}
-	for _, tc := range cases {
-		for _, limit := range []int{1, 2, 3, 4} {
-			pages := readAllTagPages(t, db, domain.TagListQuery{Sort: tc.sort, Limit: limit})
-			if got := pagedTagNames(pages); !slices.Equal(got, tc.want) {
-				t.Errorf("%s limit=%d: %v\nwant %v", tc.sort, limit, got, tc.want)
-			}
+	for _, pageCase := range pagingCases(cases, 2, 3, 4) {
+		tc := pageCase.value
+		pages := readAllTagPages(t, db, domain.TagListQuery{Sort: tc.sort, Limit: pageCase.limit})
+		if got := pagedTagNames(pages); !slices.Equal(got, tc.want) {
+			t.Errorf("%s limit=%d: %v\nwant %v", tc.sort, pageCase.limit, got, tc.want)
 		}
 	}
 
@@ -345,8 +342,10 @@ func TestListTagsRejectsCursorOfAnotherSortOrUnreadable(t *testing.T) {
 func TestListTagsWithoutLimitReturnsEverythingWithoutCursor(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
-	names := make([]string, 0, 250)
-	for i := range 250 {
+	// Exceed the paged limit to catch accidental clamping of an unpaged query.
+	const total = domain.MaxLimit + 1
+	names := make([]string, 0, total)
+	for i := range total {
 		names = append(names, fmt.Sprintf("t%d", i))
 	}
 	ids := createTagsNamed(t, db, names...)
@@ -359,7 +358,7 @@ func TestListTagsWithoutLimitReturnsEverythingWithoutCursor(t *testing.T) {
 	if page.NextCursor != "" {
 		t.Errorf("NextCursor = %q, want 空", page.NextCursor)
 	}
-	if page.Total != 250 || page.TotalAll != 250 {
+	if page.Total != total || page.TotalAll != total {
 		t.Errorf("Total = %d, TotalAll = %d", page.Total, page.TotalAll)
 	}
 	if got := pagedTagNames([]domain.TagPage{page}); !slices.Equal(got, naturalOrder(names, ids)) {

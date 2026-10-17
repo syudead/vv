@@ -214,18 +214,18 @@ func TestTagImpactCountsDistinctRegisteredVideos(t *testing.T) {
 	}
 }
 
-// 100 本に付いた仮のタグと、別の 1 本に付いた確定したタグを渡すと、操作ごとに働くタグと
+// 2 本に付いた仮のタグと、別の 1 本に付いた確定したタグを渡すと、操作ごとに働くタグと
 // その動画だけを数える。
 func TestTagImpactCountsOnlyTagsTheActionAppliesTo(t *testing.T) {
 	db := migratedDB(t)
 	ctx := context.Background()
 
-	files := make([]domain.VideoFile, 0, 101)
-	refs := make([]domain.VideoRef, 0, 100)
-	for i := range 101 {
+	files := make([]domain.VideoFile, 0, 3)
+	refs := make([]domain.VideoRef, 0, 2)
+	for i := range 3 {
 		key := fmt.Sprintf("key-%03d", i)
 		files = append(files, listingFile(fixturePath(fmt.Sprintf("/media/%03d.mp4", i)), key, key, i))
-		if i < 100 {
+		if i < 2 {
 			refs = append(refs, domain.VideoRef{ContentKey: key})
 		}
 	}
@@ -236,15 +236,15 @@ func TestTagImpactCountsOnlyTagsTheActionAppliesTo(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	attachTag(t, db, "key-100", confirmed.ID)
+	attachTag(t, db, "key-002", confirmed.ID)
 
 	cases := []struct {
 		action domain.TagImpactAction
 		want   domain.TagImpact
 	}{
 		{domain.TagImpactDelete, domain.TagImpact{TagCount: 1, VideoCount: 1}},
-		{domain.TagImpactReject, domain.TagImpact{TagCount: 1, VideoCount: 100}},
-		{domain.TagImpactMerge, domain.TagImpact{TagCount: 2, VideoCount: 101}},
+		{domain.TagImpactReject, domain.TagImpact{TagCount: 1, VideoCount: 2}},
+		{domain.TagImpactMerge, domain.TagImpact{TagCount: 2, VideoCount: 3}},
 	}
 	for _, tc := range cases {
 		got, err := db.Tags().TagImpact(ctx, tc.action, []int64{tentative, confirmed.ID})

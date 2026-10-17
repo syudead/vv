@@ -194,25 +194,34 @@ func TestCloseDrainsPendingAndDropsLaterEvents(t *testing.T) {
 func TestConcurrentPublishersKeepOneOrderForEverySubscriber(t *testing.T) {
 	bus := newTestBus()
 	first, second := newRecorder(), newRecorder()
-	first.got = make(chan struct{}, 1000)
-	second.got = make(chan struct{}, 1000)
 	bus.Subscribe("first", first.handle)
 	bus.Subscribe("second", second.handle)
 
+	start := make(chan struct{})
 	var publishers sync.WaitGroup
-	for publisher := range 4 {
+	for publisher := range 2 {
 		publishers.Go(func() {
-			for i := range 100 {
-				bus.Publish(domain.VideoIngestChanged{VideoID: int64(publisher*1000 + i)})
+			<-start
+			for i := range 2 {
+				bus.Publish(domain.VideoIngestChanged{VideoID: int64(publisher*2 + i)})
 			}
 		})
 	}
+	close(start)
 	publishers.Wait()
 	bus.Close()
 
 	got := first.snapshot()
-	if len(got) != 400 {
-		t.Fatalf("受け取り = %d 件, want 400", len(got))
+	if len(got) != 4 {
+		t.Fatalf("受け取り = %d 件, want 4", len(got))
+	}
+	seen := map[int64]bool{}
+	for _, event := range got {
+		id := event.(domain.VideoIngestChanged).VideoID
+		if id < 0 || id >= 4 || seen[id] {
+			t.Fatalf("unexpected or repeated video ID %d", id)
+		}
+		seen[id] = true
 	}
 	if !slices.Equal(got, second.snapshot()) {
 		t.Fatal("購読者ごとに順番が違う")

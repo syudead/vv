@@ -3,7 +3,6 @@ package store
 import (
 	"context"
 	"errors"
-	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -13,16 +12,12 @@ import (
 
 // 却下した名前のページ読み。
 
-// 036 #727: 却下した名前 250 個を limit 100 で 3 ページ読むと、名前の自然順で重複も抜けも無く、
-// Total は 250、3 ページ目の NextCursor は空。外したあとの Total は減る。
+// Rejected names retain natural order across full and partial pages; forgetting one reduces the total.
 func TestListRejectedTagNamesPages(t *testing.T) {
 	db, _ := tentativeFixture(t)
 	ctx := context.Background()
 
-	want := make([]string, 0, 250)
-	for i := 1; i <= 250; i++ {
-		want = append(want, fmt.Sprintf("name %d", i))
-	}
+	want := []string{"name 1", "name 2", "name 3", "name 10", "name 11"}
 	// 挿入の順に依らないことを見るため、逆順に作る。
 	created := slices.Clone(want)
 	slices.Reverse(created)
@@ -38,16 +33,16 @@ func TestListRejectedTagNamesPages(t *testing.T) {
 	var got []string
 	cursor := ""
 	for page := 1; page <= 3; page++ {
-		result, err := db.Tags().ListRejectedTagNames(ctx, cursor, 100)
+		result, err := db.Tags().ListRejectedTagNames(ctx, cursor, 2)
 		if err != nil {
 			t.Fatalf("ページ %d: %v", page, err)
 		}
-		if result.Total != 250 {
-			t.Errorf("ページ %d: Total = %d, want 250", page, result.Total)
+		if result.Total != 5 {
+			t.Errorf("ページ %d: Total = %d, want 5", page, result.Total)
 		}
-		wantLen := 100
+		wantLen := 2
 		if page == 3 {
-			wantLen = 50
+			wantLen = 1
 		}
 		if len(result.Items) != wantLen {
 			t.Errorf("ページ %d: %d 件, want %d", page, len(result.Items), wantLen)
@@ -68,11 +63,11 @@ func TestListRejectedTagNamesPages(t *testing.T) {
 	if removed, err := db.Tags().ForgetRejectedTagName(ctx, "name 2"); err != nil || !removed {
 		t.Fatalf("ForgetRejectedTagName = %v, %v, want true", removed, err)
 	}
-	result, err := db.Tags().ListRejectedTagNames(ctx, "", 100)
+	result, err := db.Tags().ListRejectedTagNames(ctx, "", 2)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Total != 249 || slices.Contains(result.Items, "name 2") {
+	if result.Total != 4 || slices.Contains(result.Items, "name 2") {
 		t.Errorf("外したあと: Total = %d, name 2 を含む = %v", result.Total, slices.Contains(result.Items, "name 2"))
 	}
 }

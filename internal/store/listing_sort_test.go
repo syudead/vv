@@ -169,6 +169,7 @@ func pageIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 		if err != nil {
 			t.Fatalf("%+v: %v", q, err)
 		}
+		assertPageSize(t, len(page.Items), q.Limit, page.NextCursor)
 		for _, item := range page.Items {
 			out = append(out, item.ID)
 		}
@@ -184,12 +185,10 @@ func pageIDs(t *testing.T, db *DB, q domain.VideoQuery) []int64 {
 // 17 の並び順すべてで、ページをまたいで全件が1度ずつ、期待する順で返る。
 func TestListVideosAllSortsPageInExpectedOrder(t *testing.T) {
 	db, ids := sortFixture(t)
-	for _, sort := range allSorts {
-		for _, limit := range []int{1, 2, 3} {
-			got := pageIDs(t, db, domain.VideoQuery{Sort: sort, Seed: 42, Limit: limit})
-			if want := expectedOrder(sort, 42, ids); !slices.Equal(got, want) {
-				t.Errorf("%s limit=%d = %v, want %v", sort, limit, got, want)
-			}
+	for _, tc := range pagingCases(allSorts, 2, 3) {
+		got := pageIDs(t, db, domain.VideoQuery{Sort: tc.value, Seed: 42, Limit: tc.limit})
+		if want := expectedOrder(tc.value, 42, ids); !slices.Equal(got, want) {
+			t.Errorf("%s limit=%d = %v, want %v", tc.value, tc.limit, got, want)
 		}
 	}
 }
