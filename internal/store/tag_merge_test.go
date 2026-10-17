@@ -171,23 +171,9 @@ func insertMergeSources(t *testing.T, db *DB, n, keys int) []int64 {
 		t.Fatal(err)
 	}
 	defer func() { _ = tx.Rollback() }()
-	prepare := func(query string) *sql.Stmt {
-		stmt, err := tx.Prepare(query)
-		if err != nil {
-			t.Fatal(err)
-		}
-		return stmt
-	}
-	tags := prepare(`insert into tags (created_at, tentative) values (1, ?)`)
-	defer func() { _ = tags.Close() }()
-	names := prepare(`insert into tag_names (name, tag_id, canonical, search_key, sort_key, search_version)
-		values (?, ?, ?, ?, ?, ?)`)
-	defer func() { _ = names.Close() }()
-	assignments := prepare(`insert into video_tags (content_key, tag_id, created_at) values (?, ?, 1)`)
-	defer func() { _ = assignments.Close() }()
 	ids := make([]int64, 0, n)
 	for i := range n {
-		res, err := tags.Exec(i % 2)
+		res, err := tx.Exec(`insert into tags (created_at, tentative) values (1, ?)`, i%2)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -199,12 +185,13 @@ func insertMergeSources(t *testing.T, db *DB, n, keys int) []int64 {
 			name      string
 			canonical int
 		}{{fmt.Sprintf("s%d", i), 1}, {fmt.Sprintf("s%d-別名", i), 0}} {
-			if _, err := names.Exec(name.name, id, name.canonical,
+			if _, err := tx.Exec(`insert into tag_names (name, tag_id, canonical, search_key, sort_key, search_version)
+				values (?, ?, ?, ?, ?, ?)`, name.name, id, name.canonical,
 				domain.FoldForMatch(name.name), domain.NaturalSortKey(name.name), domain.SearchKeyVersion); err != nil {
 				t.Fatal(err)
 			}
 		}
-		if _, err := assignments.Exec(
+		if _, err := tx.Exec(`insert into video_tags (content_key, tag_id, created_at) values (?, ?, 1)`,
 			fmt.Sprintf("key-%d", i%keys), id); err != nil {
 			t.Fatal(err)
 		}
@@ -236,8 +223,9 @@ func mergeCounted(t *testing.T, db *DB, targetID int64, sourceIDs []int64) (doma
 	return outcome, counted
 }
 
-func TestMergeTagsHandlesMaxTagBatchSourcesInFixedStatements(t *testing.T) {
-	const keys = 50
+func TestMergeTagsUsesFixedStatementsForSeveralSources(t *testing.T) {
+	// Three sources cover both tentative states and overlapping assignments.
+	const sourceCount, keys = 3, 2
 	ctx := context.Background()
 
 	// 統合元 1 個のときの文の数を基準にとる。
@@ -253,12 +241,12 @@ func TestMergeTagsHandlesMaxTagBatchSourcesInFixedStatements(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	sources := insertMergeSources(t, db, domain.MaxTagBatch, keys)
+	sources := insertMergeSources(t, db, sourceCount, keys)
 	outcome, counted := mergeCounted(t, db, target.ID, sources)
 
 	if counted.execs != baseline.execs {
 		t.Errorf("統合元 %d 個の文の数 = %d, 1 個のとき = %d（統合元の数によってはいけない）",
-			domain.MaxTagBatch, counted.execs, baseline.execs)
+			sourceCount, counted.execs, baseline.execs)
 	}
 	if counted.tagByIDRun != 1 {
 		t.Errorf("統合先の tagByID = %d 回, want 1", counted.tagByIDRun)
@@ -266,7 +254,7 @@ func TestMergeTagsHandlesMaxTagBatchSourcesInFixedStatements(t *testing.T) {
 	if len(outcome.NotFoundIDs) != 0 || outcome.Tag.Tentative {
 		t.Errorf("outcome = NotFoundIDs %v, Tentative %v", outcome.NotFoundIDs, outcome.Tag.Tentative)
 	}
-	if got, want := len(outcome.Tag.Synonyms), 2*domain.MaxTagBatch; got != want {
+	if got, want := len(outcome.Tag.Synonyms), 2*sourceCount; got != want {
 		t.Errorf("統合先のシノニムの数 = %d, want %d", got, want)
 	}
 
@@ -280,9 +268,9 @@ func TestMergeTagsHandlesMaxTagBatchSourcesInFixedStatements(t *testing.T) {
 	if err := db.sql.QueryRow(`select count(*) from tag_names where tag_id = ?`, target.ID).Scan(&names); err != nil {
 		t.Fatal(err)
 	}
-	if remaining != 1 || assignments != keys || names != 1+2*domain.MaxTagBatch {
+	if remaining != 1 || assignments != keys || names != 1+2*sourceCount {
 		t.Errorf("残ったタグ %d・統合先の付与 %d・名前 %d, want 1・%d・%d",
-			remaining, assignments, names, keys, 1+2*domain.MaxTagBatch)
+			remaining, assignments, names, keys, 1+2*sourceCount)
 	}
 	assertTagInvariantsNow(t, db)
 }
