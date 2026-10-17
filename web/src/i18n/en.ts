@@ -2279,6 +2279,24 @@ export const en = {
       guest: "There's nothing to watch here yet.",
       setUp: "Set up library",
     },
+    // 所有者の棚の操作（ui-design.md「Words」の Folder shelf `More` と Add shelf の行）。
+    addShelf: "Add shelf",
+    addShelfSearch: "Find a smart folder",
+    addShelfList: "Smart folders not on your home",
+    addShelfNoMatch: "No smart folder matches.",
+    addShelfAllOnHome: "Every smart folder is already on your home.",
+    addShelfNone: "No smart folders yet. Save a library filter as a smart folder first.",
+    addShelfLoadFailed: (reason: string) => `Couldn't load the smart folders: ${reason}`,
+    shelfMore: (name: string) => `More actions for ${name}`,
+    moveUp: "Move up",
+    moveDown: "Move down",
+    removeFromHome: "Remove from home",
+    addToHome: "Add to home",
+    added: (name: string) => `Added "${name}" to your home.`,
+    removed: (name: string) => `Removed "${name}" from your home.`,
+    undo: "Undo",
+    writeFailed: (reason: string) => `Couldn't change your home: ${reason}`,
+    organizing: "Organizing your shelves…",
   },
   // プレイリスト（specs/044-playlists/ui-design.md「Words」）。
   playlists: {
@@ -3129,6 +3147,27 @@ export const en = {
         deleted: (name: string) => `Deleted ${name}.`,
         failed: (reason: string) => `Couldn't delete the plugin: ${reason}`,
       },
+    },
+    // 設定の「Home」の節（specs/057-home/ui-design.md「Words」の Settings の行）。
+    home: {
+      heading: "Home",
+      shelves: "Shelves",
+      shelvesDescription:
+        "Rebuild the shelves VVMDM made from your tags, people and organizations. Shelves you made, changed or picked as interests stay.",
+      reorganize: "Reorganize",
+      lastRun: {
+        changed: (when: string, added: number, removed: number) =>
+          `Last organized ${when}: ${formatNumber(added)} added, ${formatNumber(removed)} removed.`,
+        unchanged: (when: string) => `Last organized ${when}: nothing changed.`,
+        failed: (when: string) => `Last organizing failed ${when}.`,
+        never: "Not organized yet.",
+      },
+      setup: "Setup",
+      setupDescription: "Add media folders, scan and pick interests again.",
+      startSetup: "Start setup",
+      loadFailed: (reason: string) => `Couldn't load the home settings: ${reason}`,
+      reorganizeFailed: (reason: string) => `Couldn't start reorganizing: ${reason}`,
+      setupFailed: (reason: string) => `Couldn't start setup: ${reason}`,
     },
     mediaFolders: {
       heading: "Media folders",

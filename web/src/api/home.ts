@@ -1,4 +1,10 @@
-import { type LibraryItem, request, toLibraryItems } from "./client";
+import {
+  apiFetch,
+  type LibraryItem,
+  request,
+  toLibraryItems,
+  toRequestFailed,
+} from "./client";
 import type { components } from "./gen/openapi";
 
 // ホームの画面 API（specs/057-home/contracts/screen-api.md）。型は api/openapi.yaml からの
@@ -35,4 +41,32 @@ export async function readHomeShelves(
     { signal },
   );
   return list.shelves.map((shelf) => ({ ...shelf, items: toLibraryItems(shelf.items) }));
+}
+
+export type HomeOrganizer = components["schemas"]["HomeOrganizer"];
+export type HomeOrganizeRun = components["schemas"]["HomeOrganizeRun"];
+
+/**
+ * setHomeShelves はフォルダの棚を `folderIds` の順にする（PUT /api/home/shelves）。名指さない
+ * フォルダは棚から外れる（research.md R-7）。所有者だけ。
+ */
+export async function setHomeShelves(
+  folderIds: readonly number[],
+  signal?: AbortSignal,
+): Promise<void> {
+  const response = await apiFetch("/api/home/shelves", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ folderIds }),
+    signal,
+  });
+  if (!response.ok) throw await toRequestFailed(response);
+}
+
+/**
+ * organizeHome はホームの組み直し（rebuild）を待ちに入れ、待ちに入れたあとの整理役の状態を
+ * 返す（POST /api/home/organize）。所有者だけ（research.md R-9）。
+ */
+export function organizeHome(signal?: AbortSignal): Promise<HomeOrganizer> {
+  return request<HomeOrganizer>("/api/home/organize", { method: "POST", signal });
 }
