@@ -15,12 +15,23 @@ import (
 	"github.com/syudead/vv/internal/domain"
 )
 
-// fixedHomeShelves はフォルダの棚のあとに並べる決まった棚である（research.md R-13）。
-var fixedHomeShelves = []domain.HomeShelfKind{domain.HomeShelfRecent, domain.HomeShelfUnshelved}
+// fixedHomeShelves は、見る人 audience のフォルダの棚のあとに並べる決まった棚である（research.md R-13）。
+// 続きから見るとおすすめは所有者だけで、おすすめは種 seeded があるときだけ並べる。
+func fixedHomeShelves(audience domain.Audience, seeded bool) []domain.HomeShelfKind {
+	if !audience.IsOwner() {
+		return []domain.HomeShelfKind{domain.HomeShelfRecent, domain.HomeShelfUnshelved}
+	}
+	kinds := []domain.HomeShelfKind{domain.HomeShelfContinue, domain.HomeShelfRecent, domain.HomeShelfUnshelved}
+	if seeded {
+		kinds = append(kinds, domain.HomeShelfRecommended)
+	}
+	return kinds
+}
 
 // Home は見る人 audience のホームの要約を返す（GET /api/home）。フォルダの棚を並びの順に、続けて
 // 決まった棚を並べる。ゲストには見せる動画の無いフォルダの棚を入れず（research.md R-8 と同じ）、
-// 所有者には整理役の待っている実行と最後の実行を添える。見る人に動画が 1 本も見えなければ
+// 所有者には整理役の待っている実行と最後の実行を添え、続きから見る棚と、おすすめの種があれば
+// おすすめの棚を並べる。見る人に動画が 1 本も見えなければ
 // NoVideos を真にする。
 func (s *HomeStore) Home(ctx context.Context, audience domain.Audience) (domain.Home, error) {
 	tx, err := s.db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
@@ -41,13 +52,20 @@ func (s *HomeStore) Home(ctx context.Context, audience domain.Audience) (domain.
 	for _, target := range shown {
 		visible[target.summary.ID] = true
 	}
-	home := domain.Home{Shelves: make([]domain.HomeShelf, 0, len(shown)+len(fixedHomeShelves))}
+	var seeds []int64
+	if audience.IsOwner() {
+		if seeds, err = recommendSeeds(ctx, tx); err != nil {
+			return domain.Home{}, err
+		}
+	}
+	fixed := fixedHomeShelves(audience, len(seeds) > 0)
+	home := domain.Home{Shelves: make([]domain.HomeShelf, 0, len(shown)+len(fixed))}
 	for _, folder := range folders {
 		if visible[folder.ID] {
 			home.Shelves = append(home.Shelves, domain.FolderShelf(folder))
 		}
 	}
-	for _, kind := range fixedHomeShelves {
+	for _, kind := range fixed {
 		home.Shelves = append(home.Shelves, domain.HomeShelf{Key: domain.HomeShelfKey{Kind: kind}})
 	}
 	if home.NoVideos, err = noVisibleVideos(ctx, tx, audience); err != nil {
@@ -65,8 +83,9 @@ func (s *HomeStore) Home(ctx context.Context, audience domain.Audience) (domain.
 }
 
 // ShelfItems は見る人 audience に見せる棚 keys の最初の domain.HomeShelfItemLimit 件の項目と項目の
-// 数を、keys の順に返す。もう棚でないフォルダ、無いフォルダ、ゲストに見せる項目の無いフォルダの棚と、
-// この読み出しが受け持たない棚（続きから見る・おすすめ）の鍵は落とす。経路の条件が無い実体を名指す
+// 数を、keys の順に返す。もう棚でないフォルダ、無いフォルダ、ゲストに見せる項目の無いフォルダの棚、
+// ゲストの続きから見る棚と、この読み出しが受け持たない棚（おすすめ。internal/app の Home が読む）の
+// 鍵は落とす。経路の条件が無い実体を名指す
 // フォルダの棚は、所有者には項目の無い棚にする（specs/052-smart-folders/research.md R-9）。棚ごとの
 // 結果は保持し（home_shelf_cache.go）、保持の無い棚だけを 1 つの読み取りのスナップショットから読む。
 func (s *HomeStore) ShelfItems(ctx context.Context, audience domain.Audience, keys []domain.HomeShelfKey) (domain.HomeShelfPage, error) {
@@ -149,9 +168,14 @@ func homeShelfItemsSpec(ctx context.Context, tx *sql.Tx, audience domain.Audienc
 	switch key.Kind {
 	case domain.HomeShelfFolder:
 		return folderShelfSpec(ctx, tx, audience, key.FolderID, now)
+	case domain.HomeShelfContinue:
+		// 視聴状態は所有者のものなので、ゲストには棚が無い（research.md R-13）。
+		if !audience.IsOwner() {
+			return nil, false, nil
+		}
+		fallthrough
 	case domain.HomeShelfRecent, domain.HomeShelfUnshelved:
-		q := domain.VideoQuery{Sort: domain.SortAddedDesc, Unshelved: key.Kind == domain.HomeShelfUnshelved}
-		fixed := libraryListSpec(audience, q, nil)
+		fixed := libraryListSpec(audience, fixedShelfQuery(key.Kind), nil)
 		fixed.now, fixed.limit = now, domain.HomeShelfItemLimit
 		if err := fillShelved(ctx, tx, &fixed); err != nil {
 			return nil, false, err
@@ -159,6 +183,15 @@ func homeShelfItemsSpec(ctx context.Context, tx *sql.Tx, audience domain.Audienc
 		return &fixed, true, nil
 	}
 	return nil, false, nil
+}
+
+// fixedShelfQuery は決まった棚 kind の項目のライブラリの絞り込みである。続きから見るはライブラリの
+// watch=inProgress と同じ視聴途中の項目を最後に再生した順に、ほかは新しく追加した順に並べる。
+func fixedShelfQuery(kind domain.HomeShelfKind) domain.VideoQuery {
+	if kind == domain.HomeShelfContinue {
+		return domain.VideoQuery{Sort: domain.SortPlayedDesc, Watch: domain.WatchInProgress}
+	}
+	return domain.VideoQuery{Sort: domain.SortAddedDesc, Unshelved: kind == domain.HomeShelfUnshelved}
 }
 
 // folderShelfSpec はフォルダ id の棚の項目の絞り込みを、フォルダと祖先の条件とフォルダの並べ順で

@@ -106,3 +106,31 @@ tries again at the next poll.
 | A kind in the `jobs` table | `jobs` rows belong to one video and its location |
 | A timer every few hours | Requirement 8 ties adding shelves to the end of a scan |
 | A share of the library for the extend threshold | At 20,000 videos it waits for 2,000 unshelved videos |
+
+## The owner's fixed shelves
+
+After the folder shelves, the owner's home lists continue watching, recently
+added, unshelved and recommended; a guest gets only recently added and
+unshelved, because the watch history is the owner's only
+([R-13](../../specs/057-home/research.md#r-13-four-fixed-shelves-two-of-them-the-owners-only)).
+
+- **Continue watching** is the library's `watch=inProgress` list sorted by
+  the latest play, read by [`internal/store/home_reads.go`](../../internal/store/home_reads.go).
+  Its held items are dropped on every saved playback position, because a play
+  that keeps a video in progress changes the order without any notice.
+- **Recommended** is listed only when a seed exists: up to 10 videos played
+  most in the last 90 days and up to 10 latest favorites
+  ([`internal/store/home_recommend.go`](../../internal/store/home_recommend.go)).
+  [`internal/app/home.go`](../../internal/app/home.go) ranks the shown videos
+  that are neither a seed nor completed by their highest closeness to any
+  seed, with the related videos' `RelatedScorer`, keeps the first 24, and
+  holds that order for 10 minutes. Scoring 20,000 videos against 20 seeds
+  takes seconds on one core, so the candidates are scored in parallel, and a
+  shelf read computes the ranking alongside the store's read of the other
+  shelves.
+
+| Rejected | Why |
+| --- | --- |
+| The sum of closeness to all seeds | Videos near one large cluster of seeds fill the whole shelf |
+| Ranking on every read | One pass reads every video's clues, which does not fit the home's 1 second |
+| Continue watching held until the next notice | Playing a video in progress publishes nothing, so the shelf would keep the old order for 10 minutes |
