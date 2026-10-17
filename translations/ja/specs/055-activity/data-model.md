@@ -1,6 +1,6 @@
 ---
 source: specs/055-activity/data-model.md
-sourceHash: 1f9d801b9da2185d1222841b1243f217deb60f98dd056533efe322ee7895c099
+sourceHash: 12f7885feb42bbb54889fb2d3417f5ecf36207bd5f6bb780c9240a406ef5664d
 ---
 
 # データモデル: Activity {#data-model-activity}
@@ -133,8 +133,8 @@ sourceHash: 1f9d801b9da2185d1222841b1243f217deb60f98dd056533efe322ee7895c099
 | 組について挿入した候補は、作り直しによるものも含め、`(kind, subject_key, subject_key_b)` で見つけたその組の開いている `version_judgement` の項目に付く。`interrupted` の項目は、次の取得で `running` に戻る | `store` |
 | 開いている `version_judgement` は、その鍵の 1 つがライブラリから離れたときだけ `gone` として閉じる | `store` |
 | 判定をオフにしても、開いている `version_judgement` の項目は `waiting` のまま残る。オンにされるともう一度取得される | `store` |
-| `import` の項目は、そのジョブのどれかが未完了の間は `running`、1 つが諦めたときは `attention`、それ以外は `done` である。ジョブをキューに入れない新しい場所は、スキャンの決定者による 1 つの `done`/`completed` の項目であり、`UpsertVideo` のトランザクションの中で書く | `domain` (段階の状態についての規則)、`store` |
-| ある対象に対するある種類の新しい項目は、その種類と対象の `attention` の項目を `superseded` として閉じる。ただし、新しい場所について `done` で書いた `import` は、段階を実行していないので閉じない。`done` で終わったスキャンは、開いているすべての `scan` の項目を閉じる。`version_judgement` は再試行を通して組ごとに 1 つの項目を保つ | `domain`、`store` |
+| `import` の項目は、そのジョブのどれかが未完了の間は `running`、1 つが諦めたときは `attention`、それ以外は `done` である。動画にジョブが要らない (キューにあるものも実行中のものもなく、未完了の段階もなく、欠けた指紋もない) 新しい場所は、スキャンの決定者による 1 つの `done`/`completed` の項目であり、`UpsertVideo` のトランザクションの中で書く | `domain` (段階の状態についての規則)、`store` |
+| ある対象に対するある種類の新しい項目は、その種類と対象の `attention` の項目を `superseded` として閉じる。`done` で終わったスキャンは、開いているすべての `scan` の項目を閉じる。`version_judgement` は再試行を通して組ごとに 1 つの項目を保つ | `domain`、`store` |
 | 起動時、ワーカーが始まる前に、理由が `processing` の `running` の項目をすべて `attention`/`interrupted` にする。`waiting` の項目は残る | `store`。`cmd/mdm` から `Scans.RecoverInterrupted` と並べて呼ぶ |
 | 再試行を示すのは、理由が `failed` か `interrupted` の `attention` で、種類が `import`、`scan`、`auto_tag`、`version_judgement` のどれかのときである | `domain` |
 | 取り消しを示すのは、`rule` か `ai` が決めてまだ取り消していない項目である: 結果が `same` か `different` の `version_judgement`、または `auto_tag` の項目のタグ | `domain` |

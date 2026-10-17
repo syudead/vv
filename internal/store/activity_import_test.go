@@ -66,6 +66,8 @@ func runImportStage(t *testing.T, db *DB, kind domain.JobKind) {
 		_, err = ingest.SetSeekThumbnailStateForJob(ctx, job, domain.SeekThumbnailDone, domain.SubstitutionUnknown)
 	case domain.JobPreview:
 		_, err = ingest.SetPreviewStateForJob(ctx, job, domain.PreviewStateDone)
+	case domain.JobFingerprint:
+		_, err = ingest.ApplyFingerprintForJob(ctx, job, sampleFingerprint())
 	}
 	if err != nil {
 		t.Fatalf("record %s: %v", kind, err)
@@ -500,30 +502,41 @@ func TestImportActivityRecordsANewLocationWithoutJobs(t *testing.T) {
 	}
 }
 
-// 所在だけを足した記録は、段階を走らせていないので、前に諦めた段階の記録を閉じない。
-func TestImportActivityNewLocationKeepsAFailedImport(t *testing.T) {
-	db := migratedDB(t)
-	ctx := context.Background()
+// queueUntilFingerprint は新しいファイルを積み、指紋の手前の 4 つの段階を終える。
+func queueUntilFingerprint(t *testing.T, db *DB) {
+	t.Helper()
 	queueNewFile(t, db, "clip", domain.ActivityByRule)
 	for _, kind := range []domain.JobKind{domain.JobProbe, domain.JobThumbnail, domain.JobSeekThumbnail, domain.JobPreview} {
 		runImportStage(t, db, kind)
 	}
-	giveUpStage(t, db, domain.JobFingerprint, errors.New("the fingerprint could not be read"))
+}
 
-	if _, err := db.ScanIndex().UpsertVideo(ctx,
+// requireNoLocationEntry は、同じ内容を新しいパスで見つけても import の記録が増えないことを確かめる。
+func requireNoLocationEntry(t *testing.T, db *DB) {
+	t.Helper()
+	before := len(importEntries(t, db))
+	if _, err := db.ScanIndex().UpsertVideo(context.Background(),
 		sampleFile(fixturePath("/media/copy/clip.mp4"), "clip", "key-clip", 1024, 0)); err != nil {
 		t.Fatal(err)
 	}
-	entries := importEntries(t, db)
-	if len(entries) != 2 {
-		t.Fatalf("entries = %+v, want the failed entry and the new location", entries)
+	if entries := importEntries(t, db); len(entries) != before {
+		t.Errorf("entries = %+v, want still %d", entries, before)
 	}
-	if entryState(entries[0]) != activityDone || entries[0].Decider != domain.ActivityByRule {
-		t.Errorf("new location entry = %+v, want done/completed by rule", entries[0])
-	}
-	if entryState(entries[1]) != activityFailed {
-		t.Errorf("failed entry = %+v, want it to stay attention/failed", entries[1])
-	}
+}
+
+// 指紋の仕事が待っている動画を新しいパスで見つけたときは書かない。その仕事の記録が取り込みを表す。
+func TestImportActivityNewLocationWithQueuedFingerprintWritesNothing(t *testing.T) {
+	db := migratedDB(t)
+	queueUntilFingerprint(t, db)
+	requireNoLocationEntry(t, db)
+}
+
+// 指紋を諦めた動画を新しいパスで見つけたときも書かない。走査が積み直す指紋の仕事の記録が取り込みを表す。
+func TestImportActivityNewLocationWithMissingFingerprintWritesNothing(t *testing.T) {
+	db := migratedDB(t)
+	queueUntilFingerprint(t, db)
+	giveUpStage(t, db, domain.JobFingerprint, errors.New("the fingerprint could not be read"))
+	requireNoLocationEntry(t, db)
 }
 
 // 段階が残っている動画を新しいパスで見つけたときは、ここでは書かない。走査が積む仕事の記録になる。

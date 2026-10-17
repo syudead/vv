@@ -72,8 +72,9 @@ starts a manual scan. A scan closed as `interrupted` at startup writes no
 entry, because startup already resumes it. A new location with every stage
 already done has no job to hang an entry on, so `UpsertVideo` writes it in the
 transaction that adds the location; a rescan of an unchanged path writes
-nothing, so repeated scans do not fill the log. That entry ran no stage, so it
-does not close an earlier failed import of the same video.
+nothing, so repeated scans do not fill the log. A video with a job queued or
+running, a stage pending or its fingerprint missing gets no such entry: the
+scan queues that work, and its running entry is the import.
 
 ## R-4: Three statuses with a reason, and a newer run closes an older problem
 

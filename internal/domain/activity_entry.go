@@ -307,11 +307,7 @@ func (e ActivityEntry) TagUndoOffered(tag ActivityEntryTag) bool {
 
 // Supersedes は新しい記録 e が、古い記録 older を superseded で閉じるかを返す。同じ種類と対象の attention の
 // 記録だけを閉じる（research.md R-4）。version_judgement は組ごとに 1 件を保つので、新しい記録で閉じない。
-// done で書く import は所在を足しただけで段階を走らせていないので、前の失敗を閉じない。
 func (e ActivityEntry) Supersedes(older ActivityEntry) bool {
-	if e.Kind == ActivityImport && e.Status == ActivityDone {
-		return false
-	}
 	return e.Kind != ActivityVersionJudgement && older.Status == ActivityAttention &&
 		older.Kind == e.Kind && older.Subject.SameAs(e.Subject)
 }
