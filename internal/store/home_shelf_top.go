@@ -147,9 +147,32 @@ func homeShelfTopPage(ctx context.Context, tx *sql.Tx, spec listSpec, rule homeS
 	return page, nil
 }
 
-// next は続きの行を limit 件まで読む。最後の動画の行は、まとまりの切れ目で根が欠けるかもしれないので、
-// 行が limit 件あって 2 本以上の動画を含むときは次のまとまりへ送る。done は行を読み切ったかである。
+// next は続きの行を limit 件以上読む。最後の動画の行は、まとまりの切れ目で根が欠けるかもしれないので、
+// 行が limit 件あるときは最後の動画の行を次のまとまりへ送る。まとまりが 1 本の動画の行だけなら（limit
+// より多くの根に入る動画）、その動画の行をすべて読むまで limit を増やして読み直す。done は行を読み切った
+// かである。
 func (s *homeShelfTopScan) next(limit int) ([]homeShelfScanRow, bool, error) {
+	for {
+		rows, done, err := s.read(limit)
+		if err != nil || done {
+			return rows, done, err
+		}
+		lastVideo := rows[len(rows)-1].videoID
+		cut := len(rows)
+		for cut > 0 && rows[cut-1].videoID == lastVideo {
+			cut--
+		}
+		if cut > 0 {
+			rows = rows[:cut]
+			s.last, s.started = rows[len(rows)-1], true
+			return rows, false, nil
+		}
+		limit *= homeShelfTopGrowth
+	}
+}
+
+// read は続きの行を limit 件まで読む。done は行を読み切ったかで、そのときだけ last を進める。
+func (s *homeShelfTopScan) read(limit int) ([]homeShelfScanRow, bool, error) {
 	names, column := s.rule.names, `videos.`+s.sort.column
 	query := `select videos.id, videos.path, ` + column + `, x.group_id, videos.watch_state, videos.favorited_at is not null,
 		` + playableCondition + `
@@ -179,17 +202,7 @@ func (s *homeShelfTopScan) next(limit int) ([]homeShelfScanRow, bool, error) {
 		return nil, false, fmt.Errorf("cannot read the home shelf: %w", err)
 	}
 	done := len(out) < limit
-	if !done {
-		lastVideo := out[len(out)-1].videoID
-		cut := len(out)
-		for cut > 0 && out[cut-1].videoID == lastVideo {
-			cut--
-		}
-		if cut > 0 {
-			out = out[:cut]
-		}
-	}
-	if len(out) > 0 {
+	if done && len(out) > 0 {
 		s.last, s.started = out[len(out)-1], true
 	}
 	return out, done, nil
@@ -227,8 +240,10 @@ func (s *homeShelfTopScan) decide(rows []homeShelfScanRow) error {
 		return fmt.Errorf("cannot build group ids: %w", err)
 	}
 	names := s.rule.names
+	// 条件が NULL になるメンバー（長さの分からない動画に長さの条件を掛けたとき）も当たらないメンバー
+	// なので、not ではなく is not true で見つける。
 	whole := `not exists (select 1 from ` + names.gm + ` w join hs_base videos on videos.id = w.video_id
-			where w.group_id = g.group_id and not (` + s.rule.condition + `))`
+			where w.group_id = g.group_id and (` + s.rule.condition + `) is not true)`
 	if s.rule.groupFilter != "" {
 		whole += ` and g.playable = 1`
 	}

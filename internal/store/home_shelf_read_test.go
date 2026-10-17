@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"slices"
 	"testing"
 	"time"
@@ -208,5 +209,78 @@ func TestHomeShelfReadWithNoShelfBuildsNothing(t *testing.T) {
 	}
 	if len(page.Shelves) != 0 {
 		t.Errorf("shelves = %+v", page.Shelves)
+	}
+}
+
+// 長さの分からない動画（duration が NULL）を持つグループに長さの条件を掛けると、その動画は当たらないので
+// グループは丸ごと当たらず、ライブラリと同じく当たった動画が 1 本ずつ並ぶ（条件が NULL のメンバーを
+// 「当たらない」と見る。PR #1348 のレビュー）。
+func TestHomeShelfReadTreatsANullRuleResultAsNoMatch(t *testing.T) {
+	db, ids, _ := homeShelfReadFixture(t)
+	ctx := context.Background()
+	long := 3000
+	folder, err := db.SmartFolders().CreateSmartFolder(ctx, domain.SmartFolderCreate{Name: "long", Rule: domain.SmartRule{MaxDuration: &long}, Sort: domain.SortAddedDesc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Home().SetShelves(ctx, []int64{folder.ID}); err != nil {
+		t.Fatal(err)
+	}
+	page, err := db.Home().ShelfItems(ctx, domain.AudienceOwner, []domain.HomeShelfKey{domain.FolderShelfKey(folder.ID)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Shelves) != 1 {
+		t.Fatalf("shelves = %+v", page.Shelves)
+	}
+	// show は ep2 の長さが分からないので丸ごと当たらず、ep10 と ep1 が動画で出る。
+	got := itemIDs(page.Shelves[0].Items)
+	for _, name := range []string{"show/ep10.mp4", "show/ep1.mp4"} {
+		if !slices.Contains(got, ids[fixturePath("/media/"+name)]*2) {
+			t.Errorf("%s が動画の項目に無い: %v", name, got)
+		}
+	}
+	if slices.Contains(got, groupIDOf(t, db, fixturePath("/media/show"))*2+1) {
+		t.Errorf("show がグループの項目で出た: %v", got)
+	}
+}
+
+// 1 本の動画が多くの根に入っていても（まとまりの行数を超える）、その動画の行は 1 つのまとまりで読み切り、
+// ライブラリと同じ項目を返す（PR #1348 のレビュー）。
+func TestHomeShelfReadReadsAVideoInManyGroupsWhole(t *testing.T) {
+	db, ids, _ := homeShelfReadFixture(t)
+	ctx := context.Background()
+	solo := ids[fixturePath("/media/solo.mp4")]
+	for i := range homeShelfTopBatch + 5 {
+		if _, err := db.Groups().CreateGroup(ctx, fmt.Sprintf("many-%d", i), domain.GroupAdd{VideoIDs: []int64{solo, ids[fixturePath("/media/mixed/x.mp4")]}}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	folder, err := db.SmartFolders().CreateSmartFolder(ctx, domain.SmartFolderCreate{Name: "all", Rule: domain.SmartRule{Playable: true}, Sort: domain.SortAddedDesc})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Home().SetShelves(ctx, []int64{folder.ID}); err != nil {
+		t.Fatal(err)
+	}
+	page, err := db.Home().ShelfItems(ctx, domain.AudienceOwner, []domain.HomeShelfKey{domain.FolderShelfKey(folder.ID)})
+	if err != nil || len(page.Shelves) != 1 {
+		t.Fatalf("shelves = %+v, %v", page.Shelves, err)
+	}
+	tx, err := db.read.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = tx.Rollback() }()
+	spec, _, err := homeShelfItemsSpec(ctx, tx, domain.AudienceOwner, domain.FolderShelfKey(folder.ID), listNow().Unix())
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := listLibraryPageTx(ctx, tx, *spec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(itemIDs(page.Shelves[0].Items), itemIDs(want.Items)) {
+		t.Errorf("items = %v, want %v", itemIDs(page.Shelves[0].Items), itemIDs(want.Items))
 	}
 }
