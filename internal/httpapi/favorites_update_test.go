@@ -3,6 +3,8 @@ package httpapi
 import (
 	"context"
 	"errors"
+	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
@@ -137,21 +139,36 @@ func TestUpdateFavoritesMapsStorageFailure(t *testing.T) {
 	}
 }
 
-func TestUpdateFavoritesMapsBodyLimitWithoutStorage(t *testing.T) {
-	calls := 0
-	handler := newTestServer(t, Options{Favorites: favoritesFunc(func(context.Context, domain.FavoriteChange) (domain.FavoriteApplied, error) {
-		calls++
-		return domain.FavoriteApplied{}, nil
-	})})
-	req := httptest.NewRequest(http.MethodPut, "/api/favorites", errReader{&http.MaxBytesError{Limit: favoritesBodyLimit}})
-	req.Header.Set("Content-Type", "application/json")
-	rec := httptest.NewRecorder()
-	handler.ServeHTTP(rec, req)
-	assertErrorBody(t, "body limit", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
-	if !strings.Contains(rec.Body.String(), strconv.Itoa(favoritesBodyLimit)) {
-		t.Errorf("missing limit: %s", rec.Body)
+func TestUpdateFavoritesBodyLimit(t *testing.T) {
+	srv := &server{logger: slog.New(slog.NewTextHandler(io.Discard, nil))}
+	if got := srv.favoriteBodyLimit(); got != 32<<20 {
+		t.Fatalf("default body limit = %d, want 32 MiB", got)
 	}
-	if calls != 0 {
-		t.Errorf("oversized body reached storage %d times", calls)
+	const limit = 64
+	srv.favoritesMaxBody = limit
+	for _, size := range []int{limit - 1, limit, limit + 1} {
+		t.Run(strconv.Itoa(size), func(t *testing.T) {
+			calls := 0
+			srv.favorites = favoritesFunc(func(context.Context, domain.FavoriteChange) (domain.FavoriteApplied, error) {
+				calls++
+				return domain.FavoriteApplied{Videos: 1}, nil
+			})
+			const value = `{"videoIds":[1],"favorite":true}`
+			body := value + strings.Repeat(" ", size-len(value))
+			req := httptest.NewRequest(http.MethodPut, "/api/favorites", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			srv.UpdateFavorites(rec, req)
+			if size <= limit {
+				if rec.Code != http.StatusOK || calls != 1 {
+					t.Fatalf("status = %d, calls = %d: %s", rec.Code, calls, rec.Body)
+				}
+			} else {
+				assertErrorBody(t, "body limit", rec.Code, rec.Body.Bytes(), wantError{status: http.StatusBadRequest, code: gen.ErrorCodeInvalidRequest})
+				if calls != 0 || !strings.Contains(rec.Body.String(), "64 bytes") {
+					t.Fatalf("calls = %d: %s", calls, rec.Body)
+				}
+			}
+		})
 	}
 }
