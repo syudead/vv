@@ -245,46 +245,58 @@ screen; with 20,000 videos and 50 shelves, each returns within 1 second on
 the development host, measured by a store benchmark.
 
 Revised 2026-10-17: the shelf items are read by a query of their own, apart
-from the library items read. It builds, once per read, indexed temporary
-tables that depend on the viewer but not on the shelf (the shown videos with
-their item values and the top group each belongs to, the group descendants
-with each group's item values, the videos per search phrase and, for the
-unshelved shelf, the videos on any shelf), then reads each shelf from the
-index on its sort key, in sort order with a limit: a visited video is a video
-item when it is in no group or in a group that is not whole, and a group card
-appears at its member with the largest value once the group is whole, so the
-group decision is made only for the candidates near the top. The sorts whose
+from the library items read, and no step of a read touches every video. The
+group structure is persisted ([data-model.md, Group
+closure](data-model.md#group-closure)): every writer that changes groups
+rebuilds the closure in its transaction; the per-group card values of both
+viewers and each video's "on some shelf" flag are invalidated by triggers and
+recomputed by the maintenance that follows every committed write, so a read
+never writes and an unshelved shelf is an indexed `not exists`. A shelf
+walks the base table of its sort key by index (videos by added date,
+locations by modified and created date, playback progress by last play) in
+keyset batches, applies visibility and the rule to each walked row through
+indexed lookups, and stops after one page and one more item; a walked video
+is a video item when it is in no group or in a group that is not whole, and a
+group card appears at its member with the largest value once the group is
+whole, so the group decision (all descendants match, with `is not true` for a
+NULL rule result) is made only for the roots that appear. The sorts whose
 card value is not one member's (total length and size, the group's own title
-and favorite time, shuffle) build the items and sort them instead. `total` is
-counted up to one more than a page (25), where 25 means more than a page; the
-screen only reads whether it is 0. The items and their order are the
-library's ([R-14](#r-14-pressing-a-shelf-card-plays)), checked by a test
-against the library items read for every sort and both viewers. The
-10-minute shelf cache (PR #1335) stays for repeated opens of the home; it no
-longer carries the budget.
+and favorite time, shuffle) read the matched videos and assemble the items
+instead; none of the benchmark's 50 shelves uses them. `total` is counted up
+to one more than a page (25), where 25 means more than a page; the screen
+only reads whether it is 0. The items and their order are the library's
+([R-14](#r-14-pressing-a-shelf-card-plays)), checked by a test against the
+library items read for every sort and both viewers. The 10-minute shelf cache
+(PR #1335) stays for repeated opens of the home; it no longer carries the
+budget.
 
 | Option | Verdict |
 | --- | --- |
 | **Summaries, then items for the shelves on screen** | Chosen |
 | Every shelf's items in one read | Rejected: 50 shelves are 50 folder reads, as 052 R-13 found for the library cards |
 | Items from the smart folder items route, one request per shelf | Rejected: a screen of 6 shelves costs 6 round trips, and the fixed shelves are not folders |
-| **A shelf query of its own: tables built once per read, then the first page from the sort key's index, group cards decided for the visited candidates** | Chosen (2026-10-17) |
+| **A shelf query of its own: an index walk over the base tables with persisted group structure, group cards decided for the roots that appear** | Chosen (2026-10-17) |
+| Indexed temporary tables over all shown videos and groups, built once per read | Rejected by the maintainer (2026-10-17): still builds a table over every video per read; 0.9 to 1.0 s for 8 shelves |
+| Group structure held in memory across reads | Rejected by the maintainer (2026-10-17): persisted and maintained by the writers instead, so a read never rebuilds it |
 | Each shelf through the library items query (the decision until 2026-10-17) | Rejected by the maintainer (2026-10-17): it evaluates the rule over every video, rebuilds the group descendants and every item row before taking 24 items, and joins unindexed `with` tables through automatic indexes; 2.3 to 3.0 s for 8 shelves at 20,000 videos, and the cache helped warm reads only |
 | Shelves of videos only | Rejected by the maintainer (2026-10-17): a shelf shows the group cards the library shows (R-14) |
 | An exact `total` | Rejected by the maintainer (2026-10-17): counting every item is a full pass over the matched videos; the screen reads only whether the count is 0, so the count stops at 25 |
 | Serving `total` from the group structure | Rejected: the count of video items depends on the rule, not only on the groups |
 | Building all items and sorting them for every sort | Rejected by the maintainer (2026-10-17): a full match-then-sort per shelf; kept only for the sorts whose card value is not one member's |
-| Group descendants persisted and maintained on group writes | Rejected for now: about 70 ms of the read against a maintained table in the five group writers; reconsider if the budget tightens |
+| Group descendants recomputed per read by the recursive query | Rejected: 65 to 180 ms per read that every shelf shares; the writers maintain `group_closure` instead |
 
 **Rationale**: It is the pattern of 052 R-14 for folder cards, so a home with
 many shelves opens without waiting (Edge Case). On the host of the 2026-10-17
-change, `BenchmarkHomeReads` went from 2.25 to 2.5 s to 0.9 to 1.0 s for the
-owner's 8 shelves, from 2.7 s to 0.5 to 0.6 s for a guest's, and from 0.60 s
-to 0.35 s for the continue watching shelf alone; the development host measured
-the old read at 2.7 to 3.0 s. The read now spends about 0.3 s on the tables
-(shown videos, group structure), about 0.1 s on the search phrases and the
-videos on any shelf, and the rest on the shelves, half of it loading the 24
-group cards' members.
+change, `BenchmarkHomeReads` went from 2.25 to 2.5 s to 0.55 to 0.64 s for the
+owner's 8 shelves (0.70 to 0.72 s right after a progress write, maintenance
+included), from 2.7 s to 0.48 to 0.50 s for a guest's (0.66 to 0.68 s after a
+write), and from 0.60 s to 0.05 s for the continue watching shelf alone; the
+development host measured the old read at 2.7 to 3.0 s. What remains: a shelf
+with fewer than 25 items walks its whole index (about 100 ms at 20,000
+videos, the `unwatched` rule being the one the benchmark has), each shelf of
+group cards loads 24 cards with their members through the existing item
+loader (about 45 ms), and a search shelf reads its hits from the full-text
+index once per read (about 10 ms).
 
 ## R-13: Four fixed shelves, two of them the owner's only
 

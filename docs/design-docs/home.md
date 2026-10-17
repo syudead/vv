@@ -146,42 +146,52 @@ The library's own query rebuilds the shown videos and the group descendants
 for every shelf and builds every item row before it takes the first page, so
 at 20,000 videos eight shelves took 2.3 to 3.0 s. The shelf read in
 [`internal/store/home_shelf_read.go`](../../internal/store/home_shelf_read.go)
-builds, once per read, indexed temporary tables that do not depend on the
-shelf, and reads each shelf as sets of ids plus its first page.
+and [`home_shelf_top.go`](../../internal/store/home_shelf_top.go) touches no
+table as a whole: it walks the base table of the shelf's sort key by index
+and looks up everything else per walked row.
 
 ```mermaid
 flowchart LR
-  read[Shelf read] --> base[(hs_base: shown videos, item values, top group)]
-  base --> gm[(hs_gm, hs_groups: group descendants and aggregates)]
-  base --> search[(hs_search: videos per search phrase)]
-  base --> shelved[(hs_shelved: videos on any shelf)]
-  gm --> shelf[Per shelf: matched ids, whole groups, first page]
-  search --> shelf
-  shelved --> shelf
-  shelf --> load[Load the 24 items]
+  write[Group writers] -->|same transaction| closure[(group_closure)]
+  triggers[Video, location, progress writes] -->|invalidate| values[(group_root_values, home_shelved_videos)]
+  maintain[Maintenance after each committed write] -->|refill, recompute| values
+  read[Shelf read] --> walk[Walk videos / locations / progress by the sort key, keyset, limit]
+  values --> decide
+  walk -->|per row| rule[Visibility, rule, roots: indexed lookups]
+  rule -->|first appearance of a root| decide[Whole? values from group_root_values]
+  decide --> page[Page of 24 and whether more]
 ```
 
-| Table | Rows | Built from |
+| Table | Rows | Maintained by |
 | --- | --- | --- |
-| `hs_base` | One per video the viewer is shown, with the item values (dates, length, size, title key, play, favorite, watch state) and the top group it belongs to | The same `chosen` locations as the library, joined once to locations, playback and favorites |
-| `hs_gm`, `hs_groups` | One per (top group, shown descendant video); one per top group with its member count and the group item's values | The group descendants CTE, with the video resolved through `hs_base.user_key` instead of a subquery per item |
-| `hs_search` | One per (video, search phrase) for the phrases the shelves use | The full-text index, one statement per phrase, driven by the index |
-| `hs_shelved` | One per video matched by any folder shelf's effective rule, only when the unshelved shelf is read | One statement per distinct rule over `hs_base` ([R-11](../../specs/057-home/research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read)) |
+| `group_closure` | One per (group, descendant video item), with the play-order key | Every writer that changes groups rebuilds it in its transaction ([`group_closure.go`](../../internal/store/group_closure.go)); triggers on `groups` and `group_items` set a dirty flag that the next shelf read honours |
+| `group_root_values` | One per (group, viewer): the card values and, per sort key, the descendant with the largest value | Triggers on video, location, progress, public, folder and bundle writes delete the affected rows; the maintenance after the next committed write refills them |
+| `home_shelved_videos` | One per video on some folder shelf | Triggers mark a video's key (or flag every key when a shelf, tag or folder changes); the maintenance recomputes the marked keys |
 
-A shelf is then read from the index on its sort key
-([`internal/store/home_shelf_top.go`](../../internal/store/home_shelf_top.go)):
-the scan visits the matching videos in sort order and stops after one more
-than a page. A visited video is a video item when it is in no group or in a
-group that is not whole, and a group card appears at the member with the
-largest value once every member of the group matches, so whole groups are
-decided only for the visited candidates. The items with the same value as the
-last one are read too, so ties sort as the library sorts them. `total` counts
-up to 25, one more than a page; the screen reads only whether it is 0. The
-sorts whose card value is not one member's (total length and size, the
-group's own title and favorite time, shuffle) build the shelf's items from
-the matched ids and sort them instead; a shelf with no rule, the recently
-added shelf, needs no matching there. The tables live in the read
-transaction, which ends with a rollback so they vanish with it. A test checks that every
+A shelf walks `videos` by `added_at`, `video_locations` by `mtime` or the
+created date, or `playback_progress` by `updated_at`, in keyset batches, and
+checks each walked row through indexed lookups: shown to the viewer, matching
+the rule, and which groups hold it (`group_closure` by key). A walked video is
+a video item when it is in no group or in a group that is not whole; a group
+card appears at the member with the largest value once every shown descendant
+matches (`(rule) is not true` finds the non-matching ones, so an unknown
+length counts as a non-match), so whole groups are decided only for the roots
+that appear, and the members of a group already decided are skipped in SQL.
+The walk stops after one more than a page, reading the ties of the last value
+so they sort as the library sorts them. `total` counts up to 25; the screen
+reads only whether it is 0. The unshelved shelf is an indexed `not exists`
+against `home_shelved_videos`
+([R-11](../../specs/057-home/research.md#r-11-unshelved-means-matching-no-home-shelf-computed-on-read));
+only while marks are pending does it test every folder shelf's rule per
+walked row. A search shelf starts from its hits in the full-text index
+instead of walking the whole sort index. The read never writes: the
+maintenance runs after every committed write
+([`home_index_maintenance.go`](../../internal/store/home_index_maintenance.go)),
+and a read that still finds a group's values missing aggregates that group's
+descendants itself.
+The sorts whose card value is not one member's (total length and size, the
+group's own title and favorite time, shuffle) read the matched videos and
+assemble the items instead. A test checks that every
 shelf returns exactly the library read's first page, for every sort, both
 viewers, nested and overlapping groups and bundled videos. The shelf cache
 ([R-12](../../specs/057-home/research.md#r-12-the-home-lists-shelf-summaries-shelf-items-are-read-on-screen))
@@ -191,5 +201,6 @@ keeps the read inside its budget.
 | Rejected | Why |
 | --- | --- |
 | The library items query per shelf | Rebuilds the shown videos and the group descendants per shelf, builds every item row, and joins unindexed `with` tables through automatic indexes; 2.3 to 3.0 s for eight shelves |
+| Indexed temporary tables over every shown video, built once per read | Still a pass over the library per read; 0.9 to 1.0 s for eight shelves |
+| Group structure in memory across reads | A read would rebuild it after a change; the writers maintain the persisted table instead |
 | An exact `total` | A count of every item is a full pass over the matched videos; the screen reads only whether it is 0 |
-| Persisting the group descendants, maintained on group writes | Saves about 70 ms of the read, costs a maintained table in five group writers; left for when the budget tightens |
