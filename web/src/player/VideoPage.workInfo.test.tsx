@@ -294,9 +294,16 @@ describe("VideoPage work information", () => {
     await openPage();
     const user = await openEditor();
 
-    await user.type(field("Name"), "New title");
-    await user.type(field("Code"), "XY-9");
-    await user.type(field("Released"), "2025");
+    // 空の欄には貼り付けて 1 回で入れる。1 文字ずつ打つと編集画面を打鍵ごとに描き直し、
+    // CI の遅い走りで 5 秒の上限に近づく。送る値はどちらでも同じ。
+    for (const [name, value] of [
+      ["Name", "New title"],
+      ["Code", "XY-9"],
+      ["Released", "2025"],
+    ] as const) {
+      await user.click(field(name));
+      await user.paste(value);
+    }
     const picker = screen.getByRole("combobox", { name: "Add a performer" });
     await user.type(picker, "Bob");
     await user.click(await screen.findByRole("option", { name: /^Bob/ }));

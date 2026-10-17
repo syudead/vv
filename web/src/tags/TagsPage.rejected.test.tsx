@@ -56,6 +56,22 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     return screen.getByTitle(name).closest("[data-tag-id]")!;
   }
 
+  /**
+   * rows は並びの行である。役割での検索（getAllByRole("row")）は 100〜250 行で 1 回
+   * 0.2 秒ほどかかり、waitFor が繰り返すと CI の遅い走りで上限に届く。行が役割 row で
+   * あることは最初のテストが役割で確かめる。
+   */
+  function rows(list: HTMLElement): HTMLElement[] {
+    return [...list.querySelectorAll<HTMLElement>("tbody > tr")];
+  }
+
+  /** allowButton はその名前の行の「Allow again」である。行の中だけを役割で探す。 */
+  function allowButton(list: HTMLElement, name: string): HTMLElement {
+    return within(within(list).getByTitle(name)).getByRole("button", {
+      name: `Allow "${name}" again`,
+    });
+  }
+
   function bar(): HTMLElement {
     return screen.getByRole("region", { name: "Selected tags" });
   }
@@ -120,7 +136,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       const list = await openRejected(user);
 
       scrollRejectedToEnd();
-      await waitFor(() => expect(within(list).getAllByRole("row")).toHaveLength(200));
+      await waitFor(() => expect(rows(list)).toHaveLength(200));
       expect(server.rejectedGetRequests[1]?.get("cursor")).toBe("Name099");
       expect(server.rejectedGetRequests[1]?.get("limit")).toBe("100");
       expect(list.getAttribute("aria-busy")).toBeNull();
@@ -129,7 +145,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       // 見張り直すまで送り直す（読み込み中は画面が重ねて送らない）。
       await waitFor(() => {
         scrollRejectedToEnd();
-        expect(within(list).getAllByRole("row")).toHaveLength(250);
+        expect(rows(list)).toHaveLength(250);
       });
       expect(within(list).getByTitle("Name249")).toBeDefined();
       // 末尾まで読んだら、もう番兵は見張らない。
@@ -138,7 +154,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
 
       await backToTags(user);
       const reopened = await openRejected(user);
-      expect(within(reopened).getAllByRole("row")).toHaveLength(250);
+      expect(rows(reopened)).toHaveLength(250);
       expect(server.rejectedGetRequests).toHaveLength(requests);
     },
     heavyTimeout,
@@ -153,7 +169,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     await waitFor(() => expect(entry.textContent).toContain("250"));
     const list = await openRejected(user);
 
-    await user.click(within(list).getByRole("button", { name: 'Allow "Name000" again' }));
+    await user.click(allowButton(list, "Name000"));
     await waitFor(() => expect(within(list).queryByTitle("Name000")).toBeNull());
     expect(
       fetchMock.mock.calls.some(
@@ -163,7 +179,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       ),
     ).toBe(true);
     expect(entry.textContent).toContain("249");
-    expect(within(list).getAllByRole("row")).toHaveLength(99);
+    expect(rows(list)).toHaveLength(99);
     expect(server.rejectedGetRequests).toHaveLength(1);
   });
 
@@ -176,7 +192,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       await screen.findByTitle("Alpha");
       const list = await openRejected(user);
       scrollRejectedToEnd();
-      await waitFor(() => expect(within(list).getAllByRole("row")).toHaveLength(200));
+      await waitFor(() => expect(rows(list)).toHaveLength(200));
       await backToTags(user);
 
       const before = server.rejectedGetRequests.length;
@@ -198,7 +214,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       expect(reloads[0]?.get("limit")).toBe("100");
 
       const reopened = await openRejected(user);
-      expect(within(reopened).getAllByRole("row")).toHaveLength(100);
+      expect(rows(reopened)).toHaveLength(100);
       expect(within(reopened).getByTitle("Alpha")).toBeDefined();
     },
     heavyTimeout,
@@ -215,13 +231,13 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
     scrollRejectedToEnd();
     const alert = await screen.findByRole("alert");
     expect(alert.textContent).toBe("Couldn't load more rejected namesRetry");
-    expect(within(list).getAllByRole("row")).toHaveLength(100);
+    expect(rows(list)).toHaveLength(100);
     // 失敗の間は番兵で読み直さない。
     expect(observers.size).toBe(0);
 
     server.failRejectedMoreGets = false;
     await user.click(screen.getByRole("button", { name: "Retry" }));
-    await waitFor(() => expect(within(list).getAllByRole("row")).toHaveLength(200));
+    await waitFor(() => expect(rows(list)).toHaveLength(200));
     const more = server.rejectedGetRequests.filter((params) => params.has("cursor"));
     expect(more.map((params) => params.get("cursor"))).toEqual(["Name099", "Name099"]);
     expect(screen.queryByText("Couldn't load more rejected names")).toBeNull();
@@ -241,10 +257,14 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       expect((await screen.findByRole("alert")).textContent).toBe(
         "Couldn't load more rejected namesRetry",
       );
-      for (const name of names.slice(0, 100)) {
-        fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
-      }
-      await waitFor(() => expect(within(list).queryAllByRole("row")).toHaveLength(0));
+      // 100 回の押下を 1 つの act にまとめる。押すたびに 100 行を描き直す（送信中の印）
+      // と O(n²) になり、どの押下も応答を待たずに続けて押すので、その間の描画は誰も見ない。
+      act(() => {
+        for (const name of names.slice(0, 100)) {
+          fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
+        }
+      });
+      await waitFor(() => expect(rows(list)).toHaveLength(0));
       expect(screen.queryByText("No rejected names")).toBeNull();
 
       server.failRejectedMoreGets = false;
@@ -264,10 +284,14 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       await screen.findByTitle("Alpha");
       const list = await openRejected(user);
 
-      for (const name of names.slice(0, 100)) {
-        fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
-      }
-      await waitFor(() => expect(within(list).queryAllByRole("row")).toHaveLength(0));
+      // 100 回の押下を 1 つの act にまとめる。押すたびに 100 行を描き直す（送信中の印）
+      // と O(n²) になり、どの押下も応答を待たずに続けて押すので、その間の描画は誰も見ない。
+      act(() => {
+        for (const name of names.slice(0, 100)) {
+          fireEvent.click(within(list).getByTitle(name).querySelector("button")!);
+        }
+      });
+      await waitFor(() => expect(rows(list)).toHaveLength(0));
       expect(screen.queryByText("No rejected names")).toBeNull();
 
       scrollRejectedToEnd();
@@ -310,7 +334,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       expect([...observers].some((observer) => !watching.has(observer))).toBe(true),
     );
     scrollRejectedToEnd(watching);
-    await waitFor(() => expect(within(reopened).getAllByRole("row")).toHaveLength(200));
+    await waitFor(() => expect(rows(reopened)).toHaveLength(200));
   });
 
   it(
@@ -323,7 +347,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       const entry = rejectedTab();
       const list = await openRejected(user);
       scrollRejectedToEnd();
-      await waitFor(() => expect(within(list).getAllByRole("row")).toHaveLength(200));
+      await waitFor(() => expect(rows(list)).toHaveLength(200));
       await backToTags(user);
 
       // 却下で先頭のページの取り直しが始まり、その応答（取り外しの前の 251 件）は止まる。
@@ -339,9 +363,7 @@ describe("TagsPage 却下した名前のページ（specs/036-tag-admin-scale/re
       // 古い続きに残る名前を外す。DELETE の応答も止める。
       const reopened = await openRejected(user);
       hold.rejectedDeletes = true;
-      await user.click(
-        within(reopened).getByRole("button", { name: 'Allow "Name150" again' }),
-      );
+      await user.click(allowButton(reopened, "Name150"));
       await waitFor(() => expect(rejectedDeleteReleases).toHaveLength(1));
       hold.rejectedDeletes = false;
 
