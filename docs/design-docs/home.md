@@ -55,6 +55,24 @@ The `home` server event carries an empty object to owners and guests. Readers
 reload the summary, shelf items or onboarding stage according to their screen.
 The API contract is [openapi.yaml](../../api/openapi.yaml).
 
+## Upgrading development databases
+
+The home feature used migration numbers 56–58 before merging main, which
+assigned 56 to keyframe spacing and 57 to location timestamps. Home now uses
+58–60. Goose records numbers rather than filenames, so a database from the
+old feature branch otherwise skips main's changes and tries to create
+`group_closure` again at version 59.
+
+Before applying pending migrations, startup recognizes the old home schema
+at versions 56–58 by its home column, closure/watch tables, missing keyframe
+table and timestamp column, and contiguous applied migration history. It
+renumbers only those home history rows and applies main's two missing SQL
+migrations in one transaction. A failure rolls back both schema and history;
+the next startup can retry. Normal main databases follow the usual migration
+path, and an ambiguous legacy schema or history stops without being repaired.
+Library entries, shelves, playback positions, watch history and favorites
+remain in place; no database reset or rescan is needed.
+
 ## Shelves from tags, people and organizations
 
 The rule organizer proposes one shelf per tag, person or organization on at

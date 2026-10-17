@@ -18,7 +18,7 @@ import (
 var migrationsFS embed.FS
 
 // versionTableName は goose が適用済みの版を記録する表である。
-// アプリケーションは読み取り専用で扱い、直接書き換えない。
+// 通常は goose だけが書く。旧ホーム機能ブランチの番号補正だけは migrate_home_legacy.go が行う。
 const versionTableName = "goose_db_version"
 
 // ErrFutureSchema はデータベースがアプリケーションの知らない将来の版を
@@ -69,6 +69,10 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 		)
 	}
 
+	repaired, err := repairLegacyHomeMigrations(ctx, db.sql, current)
+	if err != nil {
+		return MigrateResult{}, fmt.Errorf("cannot reconcile legacy home migrations: %w", err)
+	}
 	results, err := provider.Up(ctx)
 	if err != nil {
 		return MigrateResult{}, fmt.Errorf("cannot apply migrations: %w", err)
@@ -83,7 +87,7 @@ func Migrate(ctx context.Context, db *DB) (MigrateResult, error) {
 		return MigrateResult{}, err
 	}
 
-	return MigrateResult{Applied: len(results), Version: applied}, nil
+	return MigrateResult{Applied: repaired + len(results), Version: applied}, nil
 }
 
 // latestKnownVersion は埋め込み済みマイグレーションの最大の版を返す。
