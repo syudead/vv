@@ -97,17 +97,17 @@ func TestParseProbeOutputSkipsStreamsWithoutCodecName(t *testing.T) {
 	}
 }
 
-// ffprobe の前後でファイルの印が変わったら、ライブ変換用の解析情報を持たせない。
+// ffprobe の前後でファイルの印が変わったら、ライブ変換用の解析情報もメディア情報も持たせない。
 func TestStampProbeDropsTranscodeWhenFileChanged(t *testing.T) {
-	probe := domain.Probe{Transcode: &domain.TranscodeProbe{}}
+	probe := domain.Probe{Transcode: &domain.TranscodeProbe{}, Media: &domain.MediaInfo{}}
 	before := domain.FileStamp{SizeBytes: 10, ModTimeNs: 1}
 
 	same := stampProbe(probe, before, before)
-	if same.Source != before || same.Transcode == nil {
+	if same.Source != before || same.Transcode == nil || same.Media == nil {
 		t.Errorf("変わらないファイル: %+v", same)
 	}
 	changed := stampProbe(probe, before, domain.FileStamp{SizeBytes: 12, ModTimeNs: 2})
-	if changed.Source != before || changed.Transcode != nil {
+	if changed.Source != before || changed.Transcode != nil || changed.Media != nil {
 		t.Errorf("差し替わったファイル: %+v", changed)
 	}
 }

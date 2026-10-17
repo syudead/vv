@@ -1,6 +1,6 @@
 ---
 source: specs/052-plugin-work-info-fields/ui-design.md
-sourceHash: 24d9f1e050dec1f0773d3c51550b8138a0ceeaff9972c3957ed107d9af81a884
+sourceHash: 7badabc111c56eafdd8c30e5c41e9f4f538519530a83de827ca8efdaf87c7b91
 ---
 
 # UI デザイン: 作品情報プラグインからの作品の詳細 {#ui-design-work-details-from-work-info-plugins}
@@ -59,16 +59,19 @@ flowchart LR
 | 飛ばした、`invalid`、日付 | not a date in the form YYYY-MM-DD, YYYY-MM or YYYY | |
 | 飛ばした、`invalid`、リンク | not a full URL starting with http:// or https:// | |
 | 飛ばした、`invalid`、その他 | too long or contains characters that can't be used | コード、説明、名前、ID |
+| 飛ばした、`invalid`、カバー | couldn't be used as the thumbnail | `{value}` はカバーの URL |
+| カバー画像 | Current thumbnail · Fetched cover, {width} × {height}. Becomes the thumbnail when you apply | 2 つの画像の `alt` と `title` |
 | 飛ばした、`too_many` | over the limit for {label} | `{label}` は小文字にする: `over the limit for performers` |
 | 飛ばした、`ambiguous` | matches more than one person · matches more than one organization | 行の種類による |
 
 ## 比較 {#compare}
 
-比較はそのグリッド、見出しの行、出典の行、`Back to the matches` を保つ ([049、比較](../049-work-info-plugins/ui-design.md#compare))。行は `Title`、`Tags`、次に結果が持つ作品の詳細ごとに一行を `WorkInfoField` の順に置く。そのため、作品の詳細の行と同じく、コードと発売日が名前より前に来る。
+比較はそのグリッド、見出しの行、出典の行、`Back to the matches` を保つ ([049、比較](../049-work-info-plugins/ui-design.md#compare))。行は `Title`、`Tags`、結果がカバー画像を持つときは `Cover`、次に結果が持つ作品の詳細ごとに一行を `WorkInfoField` の順に置く。そのため、作品の詳細の行と同じく、コードと発売日が名前より前に来る。
 
 | 行 | Now (`text-muted-foreground`) | Fetched (`text-foreground`) | 現在と同じになる条件 |
 | --- | --- | --- | --- |
 | Title、Tags | 049 と同じ | 049 と同じ | 049 と同じ |
+| Cover | 今のサムネイルを、幅が最大 `max-w-xs` の `VideoThumbnail` の枠に、不透明度 70% で示す | VVMDM が返す取得したカバーを同じ枠に示す。サムネイルと比べられないので、最初から選んだ状態にする | なし |
 | Code | 保存したコード、`tabular-nums` | 取得したコード、`tabular-nums`。規則に反するときも返されたとおり | 文字列が等しい |
 | Description | 保存した文字、`whitespace-pre-line`。三行で折りたたみ、`Show more` を付ける | 取得した文字。同じく折りたたむ | 等しい |
 | Released、Recorded、Published | その種類の保存した日付、`tabular-nums` | 返されたとおりの取得した日付、`tabular-nums`。別の形の日付も直さずに表示する | 等しい |
