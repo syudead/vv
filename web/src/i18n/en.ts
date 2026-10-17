@@ -2987,6 +2987,13 @@ export const en = {
       saveFailed: (reason: string) => `Couldn't save the settings: ${reason}`,
       loadFailed: (reason: string) =>
         `Couldn't load the duplicate judging settings: ${reason}`,
+      // Ollama の接続先が保存されていないあいだ、スイッチの下に出す。「Connections」は
+      // ページへのリンクになる。
+      connectionNote: {
+        before:
+          "No Ollama connection is saved. Pairs with a differing part wait until you save one in ",
+        after: ".",
+      },
     },
     comfyui: {
       heading: "ComfyUI",
